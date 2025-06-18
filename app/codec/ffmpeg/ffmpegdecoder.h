@@ -139,7 +139,7 @@ private:
   static PixelFormat GetNativePixelFormat(AVPixelFormat pix_fmt);
   static int GetNativeChannelCount(AVPixelFormat pix_fmt);
 
-  static uint64_t ValidateChannelLayout(AVStream *stream);
+  static AVChannelLayout ValidateChannelLayout(AVStream *stream);
 
   static const char* GetInterlacingModeInFFmpeg(VideoParams::Interlacing interlacing);
 

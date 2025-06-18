@@ -98,3 +98,5 @@ compile_flags.txt
 *creator.user*
 
 *_qmlcache.qrc
+.idea/
+.idea

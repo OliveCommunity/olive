@@ -33,7 +33,7 @@
 #include "render/colortransform.h"
 #include "render/subtitleparams.h"
 #include "render/videoparams.h"
-
+//这个代码也许是创建工程文件用的？还是导出编码视频用的？
 namespace olive {
 
 class Encoder;

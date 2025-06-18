@@ -256,7 +256,7 @@ void EncodingParams::Save(QXmlStreamWriter *writer) const
   if (audio_enabled_) {
     writer->writeTextElement(QStringLiteral("codec"), QString::number(audio_codec_));
     writer->writeTextElement(QStringLiteral("samplerate"), QString::number(audio_params_.sample_rate()));
-    writer->writeTextElement(QStringLiteral("channellayout"), QString::number(audio_params_.channel_layout()));
+    writer->writeTextElement(QStringLiteral("channellayout"), QString::number());
     writer->writeTextElement(QStringLiteral("format"), QString::fromStdString(audio_params_.format().to_string()));
     writer->writeTextElement(QStringLiteral("bitrate"), QString::number(audio_bit_rate_));
   }
