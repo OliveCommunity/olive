@@ -334,7 +334,7 @@ bool FFmpegEncoder::WriteAudioData(const AudioParams &audio_params, const uint8_
   int output_sample_count = input_sample_count ? swr_get_out_samples(audio_resample_ctx_, input_sample_count) : 102400;
   uint8_t** output_data = nullptr;
   int output_linesize;
-  av_samples_alloc_array_and_samples(&output_data, &output_linesize, audio_stream_->codecpar->channels,
+  av_samples_alloc_array_and_samples(&output_data, &output_linesize, audio_stream_->codecpar->ch_layout.nb_channels,
                                      output_sample_count, static_cast<AVSampleFormat>(audio_stream_->codecpar->format), 0);
 
   // Perform conversion

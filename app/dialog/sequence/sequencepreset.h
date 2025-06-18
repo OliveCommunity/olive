@@ -41,7 +41,7 @@ public:
                  const rational& pixel_aspect,
                  VideoParams::Interlacing interlacing,
                  int sample_rate,
-                 uint64_t channel_layout,
+                 AVChannelLayout &channel_layout,
                  int preview_divider,
                  PixelFormat preview_format,
                  bool preview_autocache) :
@@ -77,7 +77,7 @@ public:
       } else if (reader->name() == QStringLiteral("samplerate")) {
         sample_rate_ = reader->readElementText().toInt();
       } else if (reader->name() == QStringLiteral("chlayout")) {
-        channel_layout_ = reader->readElementText().toULongLong();
+        channel_layout_.u.mask = reader->readElementText().toULongLong();
       } else if (reader->name() == QStringLiteral("divider")) {
         preview_divider_ = reader->readElementText().toInt();
       } else if (reader->name() == QStringLiteral("format")) {
@@ -99,7 +99,7 @@ public:
     writer->writeTextElement(QStringLiteral("pixelaspect"), QString::fromStdString(pixel_aspect_.toString()));
     writer->writeTextElement(QStringLiteral("interlacing_"), QString::number(interlacing_));
     writer->writeTextElement(QStringLiteral("samplerate"), QString::number(sample_rate_));
-    writer->writeTextElement(QStringLiteral("chlayout"), QString::number(channel_layout_));
+    writer->writeTextElement(QStringLiteral("chlayout"), QString::number(channel_layout_.u.mask));
     writer->writeTextElement(QStringLiteral("divider"), QString::number(preview_divider_));
     writer->writeTextElement(QStringLiteral("format"), QString::number(preview_format_));
     writer->writeTextElement(QStringLiteral("autocache"), QString::number(preview_autocache_));
@@ -135,7 +135,7 @@ public:
     return sample_rate_;
   }
 
-  uint64_t channel_layout() const
+  AVChannelLayout channel_layout() const
   {
     return channel_layout_;
   }
@@ -162,7 +162,7 @@ private:
   rational pixel_aspect_;
   VideoParams::Interlacing interlacing_;
   int sample_rate_;
-  uint64_t channel_layout_;
+  AVChannelLayout channel_layout_;
   int preview_divider_;
   PixelFormat preview_format_;
   bool preview_autocache_;

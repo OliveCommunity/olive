@@ -124,7 +124,7 @@ void SequenceDialogParameterTab::PresetChanged(const SequencePreset &preset)
 
 void SequenceDialogParameterTab::SavePresetClicked()
 {
-  emit SaveParametersAsPreset({QString(),
+  emit SaveParametersAsPreset(SequencePreset(QString(),
                                GetSelectedVideoWidth(),
                                GetSelectedVideoHeight(),
                                GetSelectedVideoFrameRate(),
@@ -134,7 +134,7 @@ void SequenceDialogParameterTab::SavePresetClicked()
                                GetSelectedAudioChannelLayout(),
                                GetSelectedPreviewResolution(),
                                GetSelectedPreviewFormat(),
-                               GetSelectedPreviewAutoCache()});
+                               GetSelectedPreviewAutoCache()));
 }
 
 void SequenceDialogParameterTab::UpdatePreviewResolutionLabel()

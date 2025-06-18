@@ -439,8 +439,8 @@ FootageDescription FFmpegDecoder::Probe(const QString &filename, CancelAtom *can
         } else if (avstream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
 
           // Create an audio stream object
-          AVChannelLayout channel_layout = avstream->codecpar->ch_layout;
-          if (!channel_layout.nb_channels==0) {
+          AVChannelLayout &channel_layout = avstream->codecpar->ch_layout;
+          if (!av_channel_layout_check(&channel_layout)) {
             av_channel_layout_default(&channel_layout,avstream->codecpar->ch_layout.nb_channels);
           }
 
@@ -557,10 +557,10 @@ bool FFmpegDecoder::ConformAudioInternal(const QVector<QString> &filenames, cons
     return false;
   }
   // Create resampling context
-  AVChannelLayout layout=params.channel_layout();
+  std::shared_ptr<AVChannelLayout> layout=params.channel_layout();
   SwrContext* resampler;
   swr_alloc_set_opts2(&resampler,
-          &layout,
+          layout.get(),
           FFmpegUtils::GetFFmpegSampleFormat(params.format()),
           params.sample_rate(),
           &channel_layout,

@@ -256,7 +256,9 @@ void EncodingParams::Save(QXmlStreamWriter *writer) const
   if (audio_enabled_) {
     writer->writeTextElement(QStringLiteral("codec"), QString::number(audio_codec_));
     writer->writeTextElement(QStringLiteral("samplerate"), QString::number(audio_params_.sample_rate()));
-    writer->writeTextElement(QStringLiteral("channellayout"), QString::number());
+
+    writer->writeTextElement(QStringLiteral("channellayout"),
+      QString::number(audio_params().channel_layout().u.mask));
     writer->writeTextElement(QStringLiteral("format"), QString::fromStdString(audio_params_.format().to_string()));
     writer->writeTextElement(QStringLiteral("bitrate"), QString::number(audio_bit_rate_));
   }
@@ -469,7 +471,10 @@ bool EncodingParams::LoadV1(QXmlStreamReader *reader)
         } else if (reader->name() == QStringLiteral("samplerate")) {
           audio_params_.set_sample_rate(reader->readElementText().toInt());
         } else if (reader->name() == QStringLiteral("channellayout")) {
-          audio_params_.set_channel_layout(reader->readElementText().toULongLong());
+          AVChannelLayout av_channel_layout;
+          av_channel_layout_from_mask(&av_channel_layout, reader->readElementText().toLongLong());
+          audio_params_.set_channel_layout(av_channel_layout);
+          av_channel_layout_uninit(&av_channel_layout);
         } else if (reader->name() == QStringLiteral("format")) {
           audio_params_.set_format(SampleFormat::from_string(reader->readElementText().toStdString()));
         } else if (reader->name() == QStringLiteral("bitrate")) {

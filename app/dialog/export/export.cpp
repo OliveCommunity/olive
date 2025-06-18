@@ -749,7 +749,7 @@ void ExportDialog::SetParams(const EncodingParams &e)
   audio_enabled_->setChecked(e.audio_enabled());
   if (e.audio_enabled()) {
     audio_tab_->sample_rate_combobox()->SetSampleRate(e.audio_params().sample_rate());
-    audio_tab_->channel_layout_combobox()->SetChannelLayout(e.audio_params().channel_layout());
+    audio_tab_->channel_layout_combobox()->SetChannelLayout(e.audio_params().channel_layout().u.mask());
     audio_tab_->sample_format_combobox()->SetSampleFormat(e.audio_params().format());
 
     audio_tab_->SetCodec(e.audio_codec());

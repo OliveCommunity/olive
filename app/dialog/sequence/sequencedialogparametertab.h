@@ -44,12 +44,9 @@ public:
     return interlacing_combo_->GetInterlaceMode();
   }
 
-  int GetSelectedAudioSampleRate() const
-  {
-    return audio_sample_rate_field_->GetSampleRate();
-  }
+  int GetSelectedAudioSampleRate() const { return audio_sample_rate_field_->GetSampleRate(); }
 
-  uint64_t GetSelectedAudioChannelLayout() const
+  [[nodiscard]] AVChannelLayout GetSelectedAudioChannelLayout() const
   {
     return audio_channels_field_->GetChannelLayout();
   }

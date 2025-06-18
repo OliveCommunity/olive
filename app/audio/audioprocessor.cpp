@@ -116,7 +116,9 @@ bool AudioProcessor::Open(const AudioParams &from, const AudioParams &to, double
   }
 
   // Create conversion filter
-  if (from.sample_rate() != to.sample_rate() || from.channel_layout() != to.channel_layout() || from.format() != to.format()
+  auto ch1=from.channel_layout();
+  auto ch2=to.channel_layout();
+  if (from.sample_rate() != to.sample_rate() || av_channel_layout_compare(&ch1, &ch2) || from.format() != to.format()
       || (to.format().is_planar() && create_tempo)) { // Tempo processor automatically converts to packed,
                                                   // so if the desired output is planar, it'll need
                                                   // to be converted
@@ -169,8 +171,7 @@ bool AudioProcessor::Open(const AudioParams &from, const AudioParams &to, double
   if (in_frame_) {
     in_frame_->sample_rate = from.sample_rate();
     in_frame_->format = from_fmt_;
-    in_frame_->channel_layout = from.channel_layout();
-    in_frame_->channels = from.channel_count();
+    in_frame_->ch_layout = from.channel_layout();
     in_frame_->pts = 0;
   } else {
     qCritical() << "Failed to allocate input frame";
