@@ -125,7 +125,7 @@ bool AudioProcessor::Open(const AudioParams &from, const AudioParams &to, double
     snprintf(filter_args, 200, "sample_fmts=%s:sample_rates=%d:channel_layouts=0x%" PRIx64,
              av_get_sample_fmt_name(to_fmt_),
              to.sample_rate(),
-             to.channel_layout());
+             to.channel_layout().u.mask);
 
     AVFilterContext *c;
     r = avfilter_graph_create_filter(&c, avfilter_get_by_name("aformat"), "fmt", filter_args, nullptr, filter_graph_);

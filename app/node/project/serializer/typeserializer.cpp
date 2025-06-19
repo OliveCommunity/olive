@@ -52,7 +52,7 @@ AudioParams TypeSerializer::LoadAudioParams(QXmlStreamReader *reader)
 void TypeSerializer::SaveAudioParams(QXmlStreamWriter *writer, const AudioParams &a)
 {
   writer->writeTextElement(QStringLiteral("samplerate"), QString::number(a.sample_rate()));
-  writer->writeTextElement(QStringLiteral("channellayout"), QString::number(a.channel_layout()));
+  writer->writeTextElement(QStringLiteral("channellayout"), QString::number(a.channel_layout().u.mask));
   writer->writeTextElement(QStringLiteral("format"), QString::fromStdString(a.format().to_string()));
   writer->writeTextElement(QStringLiteral("enabled"), QString::number(a.enabled()));
   writer->writeTextElement(QStringLiteral("streamindex"), QString::number(a.stream_index()));

@@ -557,10 +557,10 @@ bool FFmpegDecoder::ConformAudioInternal(const QVector<QString> &filenames, cons
     return false;
   }
   // Create resampling context
-  std::shared_ptr<AVChannelLayout> layout=params.channel_layout();
+  AVChannelLayout layout=params.channel_layout();
   SwrContext* resampler;
   swr_alloc_set_opts2(&resampler,
-          layout.get(),
+          &layout,
           FFmpegUtils::GetFFmpegSampleFormat(params.format()),
           params.sample_rate(),
           &channel_layout,
@@ -568,7 +568,7 @@ bool FFmpegDecoder::ConformAudioInternal(const QVector<QString> &filenames, cons
           instance_.avstream()->codecpar->sample_rate,
           0,
           nullptr);
-
+  av_channel_layout_uninit(&layout);
   swr_init(resampler);
 
   AVPacket* pkt = av_packet_alloc();

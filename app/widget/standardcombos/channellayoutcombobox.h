@@ -50,11 +50,28 @@ public:
     av_channel_layout_from_mask(&audio_channel_layout_, this->currentData().toULongLong());
     return audio_channel_layout_;
   }
-
-  void SetChannelLayout(std::shared_ptr<AVChannelLayout> &ch)
+  void SetChannelLayout(uint64_t ch)
   {
     for (int i=0; i<this->count(); i++) {
-      if (this->itemData(i).toULongLong() == ch->u.mask) {
+      if (this->itemData(i).toULongLong() == ch) {
+        this->setCurrentIndex(i);
+        break;
+      }
+    }
+  }
+  void SetChannelLayout(AVChannelLayout &ch)
+  {
+    for (int i=0; i<this->count(); i++) {
+      if (this->itemData(i).toULongLong() == ch.u.mask) {
+        this->setCurrentIndex(i);
+        break;
+      }
+    }
+  }
+  void SetChannelLayout(AVChannelLayout &&ch)
+  {
+    for (int i=0; i<this->count(); i++) {
+      if (this->itemData(i).toULongLong() == ch.u.mask) {
         this->setCurrentIndex(i);
         break;
       }

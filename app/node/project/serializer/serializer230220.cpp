@@ -24,7 +24,7 @@
 #include "node/factory.h"
 #include "node/group/group.h"
 #include "node/serializeddata.h"
-
+#include <QtCore>
 namespace olive {
 
 ProjectSerializer230220::LoadData ProjectSerializer230220::Load(Project *project, QXmlStreamReader *reader, LoadType load_type, void *reserved) const
