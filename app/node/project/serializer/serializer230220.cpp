@@ -17,6 +17,7 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 ***/
+#include <QString>
 
 #include "serializer230220.h"
 
@@ -190,9 +191,9 @@ ProjectSerializer230220::LoadData ProjectSerializer230220::Load(Project *project
             } else if (attr.name() == QStringLiteral("ptr")) {
               ptr = attr.value().toULongLong();
             } else if (attr.name() == QStringLiteral("items")) {
-              QVector<QStringRef> l = attr.value().split(',');
+              QVector<QStringView> l = attr.value().split(',');
               items.reserve(l.size());
-              for (const QStringRef &s : l) {
+              for (const QStringView &s : l) {
                 items.append(s.toULongLong());
               }
             }
