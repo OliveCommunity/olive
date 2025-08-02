@@ -24,7 +24,7 @@ submitted should abide by the following standards:
 * The code style generally follows the
   [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html)
   including, but not limited to:
-  * Indentation is 2 spaces wide, spaces only (no tabs)
+  * Indentation is 4 spaces wide, spaces only (no tabs)
   * `lowercase_underscored_variable_names`
   * `lowercase_underscored_functions()` or `SentenceCaseFunctions()`
   * `class SentenceCaseClassesAndStructs {}`

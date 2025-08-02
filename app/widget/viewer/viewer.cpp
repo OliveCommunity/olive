@@ -512,6 +512,7 @@ void ViewerWidget::UpdateAudioProcessor()
     AudioParams ap = GetConnectedNode()->GetAudioParams();
     ap.set_format(ViewerOutput::kDefaultSampleFormat);
 
+    uint64_t layout=OLIVE_CONFIG("AudioOutputChannelLayout").toULongLong();
     AudioParams packed(OLIVE_CONFIG("AudioOutputSampleRate").toInt(),
                        OLIVE_CONFIG("AudioOutputChannelLayout").toULongLong(),
                        SampleFormat::from_string(OLIVE_CONFIG("AudioOutputSampleFormat").toString().toStdString()));
@@ -981,7 +982,7 @@ void ViewerWidget::PlayInternal(int speed, bool in_to_out_only)
   }
 
   AudioParams ap = GetConnectedNode()->GetAudioParams();
-  if (ap.is_valid()) {
+  if (ap.is_valid() && ap.channel_count() != 0) {
     UpdateAudioProcessor();
 
     AudioManager::instance()->SetOutputNotifyInterval(audio_processor_.to().time_to_bytes(kAudioPlaybackInterval));

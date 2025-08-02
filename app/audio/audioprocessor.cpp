@@ -66,7 +66,7 @@ bool AudioProcessor::Open(const AudioParams &from, const AudioParams &to, double
            from.sample_rate(),
            from.sample_rate(),
            from_fmt_,
-           from.channel_layout());
+           from.channel_layout().u.mask);
 
   int r;
 
@@ -97,11 +97,11 @@ bool AudioProcessor::Open(const AudioParams &from, const AudioParams &to, double
 
     for (int i=0;i<=whole;i++) {
       double filter_tempo = (i == whole) ? std::pow(base, speed_log) : base;
-
+/*
       if (qFuzzyCompare(filter_tempo, 1.0)) {
         // This filter would do nothing
         continue;
-      }
+      }*/
 
       previous_filter = CreateTempoFilter(filter_graph_,
                                           previous_filter,
@@ -159,7 +159,9 @@ bool AudioProcessor::Open(const AudioParams &from, const AudioParams &to, double
     Close();
     return false;
   }
-
+  char *dump = avfilter_graph_dump(filter_graph_, nullptr);
+  qDebug() << dump;
+  av_free(dump);
   r = avfilter_graph_config(filter_graph_, nullptr);
   if (r < 0) {
     qCritical() << "Failed to configure graph:" << r;

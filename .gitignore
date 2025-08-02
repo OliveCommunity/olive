@@ -99,4 +99,4 @@ compile_flags.txt
 
 *_qmlcache.qrc
 .idea/
-.idea
+.vimspector.json

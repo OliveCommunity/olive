@@ -11,6 +11,6 @@ Now, we are maintaining a community edition for this project.
 **NOTE: Olive is alpha software and is considered highly unstable. While we highly appreciate users testing and providing usage information, please use at your own risk.**
 
 ## Binaries
-
+The original author compiled following binaries:
 - [0.1.0 alpha](https://github.com/olive-editor/olive/releases/tag/0.1.0)
 - [0.2.0 unstable development build](https://github.com/olive-editor/olive/releases/tag/0.2.0-nightly)
