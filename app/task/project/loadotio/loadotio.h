@@ -27,17 +27,16 @@
 #include "node/project.h"
 #include "task/project/load/loadbasetask.h"
 
-namespace olive {
-
-class LoadOTIOTask : public ProjectLoadBaseTask
+namespace olive
 {
-  Q_OBJECT
+
+class LoadOTIOTask : public ProjectLoadBaseTask {
+	Q_OBJECT
 public:
-  LoadOTIOTask(const QString& filename);
+	LoadOTIOTask(const QString &filename);
 
 protected:
-  virtual bool Run() override;
-
+	virtual bool Run() override;
 };
 
 }

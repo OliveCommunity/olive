@@ -4,19 +4,21 @@
 #include "panel/viewer/viewerbase.h"
 #include "widget/multicam/multicamwidget.h"
 
-namespace olive {
-
-class MulticamPanel : public TimeBasedPanel
+namespace olive
 {
-  Q_OBJECT
-public:
-  MulticamPanel();
 
-  MulticamWidget *GetMulticamWidget() const { return static_cast<MulticamWidget *>(GetTimeBasedWidget()); }
+class MulticamPanel : public TimeBasedPanel {
+	Q_OBJECT
+public:
+	MulticamPanel();
+
+	MulticamWidget *GetMulticamWidget() const
+	{
+		return static_cast<MulticamWidget *>(GetTimeBasedWidget());
+	}
 
 protected:
-  virtual void Retranslate() override;
-
+	virtual void Retranslate() override;
 };
 
 }

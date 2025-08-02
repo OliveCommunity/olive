@@ -23,20 +23,19 @@
 
 #include "panel/viewer/viewer.h"
 
-namespace olive {
-
-class SequenceViewerPanel : public ViewerPanel
+namespace olive
 {
-  Q_OBJECT
+
+class SequenceViewerPanel : public ViewerPanel {
+	Q_OBJECT
 public:
-  SequenceViewerPanel();
+	SequenceViewerPanel();
 
 public slots:
-  void StartCapture(const TimeRange &time, const Track::Reference &track);
+	void StartCapture(const TimeRange &time, const Track::Reference &track);
 
 protected:
-  virtual void Retranslate() override;
-
+	virtual void Retranslate() override;
 };
 
 }

@@ -30,26 +30,27 @@
 #include "node/project.h"
 #include "task/task.h"
 
-namespace olive {
-
-class SaveOTIOTask : public Task
+namespace olive
 {
-  Q_OBJECT
+
+class SaveOTIOTask : public Task {
+	Q_OBJECT
 public:
-  SaveOTIOTask(Project* project);
+	SaveOTIOTask(Project *project);
 
 protected:
-  virtual bool Run() override;
+	virtual bool Run() override;
 
 private:
-  OTIO::Timeline* SerializeTimeline(Sequence* sequence);
+	OTIO::Timeline *SerializeTimeline(Sequence *sequence);
 
-  OTIO::Track* SerializeTrack(Track* track, double sequence_rate, rational max_track_length);
+	OTIO::Track *SerializeTrack(Track *track, double sequence_rate,
+								rational max_track_length);
 
-  bool SerializeTrackList(TrackList* list, OTIO::Timeline *otio_timeline, double sequence_rate);
+	bool SerializeTrackList(TrackList *list, OTIO::Timeline *otio_timeline,
+							double sequence_rate);
 
-  Project* project_;
-
+	Project *project_;
 };
 
 }

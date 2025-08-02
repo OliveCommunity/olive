@@ -20,11 +20,11 @@
 
 #include "cliexportmanager.h"
 
-namespace olive {
+namespace olive
+{
 
 CLIExportManager::CLIExportManager()
 {
-
 }
 
 }

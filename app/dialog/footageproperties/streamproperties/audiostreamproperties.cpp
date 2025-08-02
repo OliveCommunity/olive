@@ -20,18 +20,19 @@
 
 #include "audiostreamproperties.h"
 
-namespace olive {
+namespace olive
+{
 
-AudioStreamProperties::AudioStreamProperties(Footage *footage, int audio_index) :
-  footage_(footage),
-  audio_index_(audio_index)
+AudioStreamProperties::AudioStreamProperties(Footage *footage, int audio_index)
+	: footage_(footage)
+	, audio_index_(audio_index)
 {
 }
 
-void AudioStreamProperties::Accept(MultiUndoCommand*)
+void AudioStreamProperties::Accept(MultiUndoCommand *)
 {
-  Q_UNUSED(footage_)
-  Q_UNUSED(audio_index_)
+	Q_UNUSED(footage_)
+	Q_UNUSED(audio_index_)
 }
 
 }

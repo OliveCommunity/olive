@@ -23,28 +23,31 @@
 
 #include "node/block/transition/transition.h"
 
-namespace olive {
-
-class CrossDissolveTransition : public TransitionBlock
+namespace olive
 {
-  Q_OBJECT
+
+class CrossDissolveTransition : public TransitionBlock {
+	Q_OBJECT
 public:
-  CrossDissolveTransition();
+	CrossDissolveTransition();
 
-  NODE_DEFAULT_FUNCTIONS(CrossDissolveTransition)
+	NODE_DEFAULT_FUNCTIONS(CrossDissolveTransition)
 
-  virtual QString Name() const override;
-  virtual QString id() const override;
-  virtual QVector<CategoryID> Category() const override;
-  virtual QString Description() const override;
+	virtual QString Name() const override;
+	virtual QString id() const override;
+	virtual QVector<CategoryID> Category() const override;
+	virtual QString Description() const override;
 
-  //virtual void Retranslate() override;
+	//virtual void Retranslate() override;
 
-  virtual ShaderCode GetShaderCode(const ShaderRequest &request) const override;
+	virtual ShaderCode
+	GetShaderCode(const ShaderRequest &request) const override;
 
 protected:
-  virtual void SampleJobEvent(const SampleBuffer &from_samples, const SampleBuffer &to_samples, SampleBuffer &out_samples, double time_in) const override;
-
+	virtual void SampleJobEvent(const SampleBuffer &from_samples,
+								const SampleBuffer &to_samples,
+								SampleBuffer &out_samples,
+								double time_in) const override;
 };
 
 }

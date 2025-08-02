@@ -24,113 +24,121 @@
 
 #include "panel/viewer/viewer.h"
 
-namespace olive {
-
-ScopePanel::ScopePanel() :
-  PanelWidget(QStringLiteral("ScopePanel")),
-  viewer_(nullptr)
+namespace olive
 {
-  QWidget* central = new QWidget(this);
-  setWidget(central);
 
-  QVBoxLayout* layout = new QVBoxLayout(central);
+ScopePanel::ScopePanel()
+	: PanelWidget(QStringLiteral("ScopePanel"))
+	, viewer_(nullptr)
+{
+	QWidget *central = new QWidget(this);
+	setWidget(central);
 
-  QHBoxLayout* toolbar_layout = new QHBoxLayout();
-  toolbar_layout->setContentsMargins(0, 0, 0, 0);
+	QVBoxLayout *layout = new QVBoxLayout(central);
 
-  scope_type_combobox_ = new QComboBox();
+	QHBoxLayout *toolbar_layout = new QHBoxLayout();
+	toolbar_layout->setContentsMargins(0, 0, 0, 0);
 
-  for (int i=0;i<ScopePanel::kTypeCount;i++) {
-    // These strings get filled in later in Retranslate()
-    scope_type_combobox_->addItem(QString());
-  }
+	scope_type_combobox_ = new QComboBox();
 
-  toolbar_layout->addWidget(scope_type_combobox_);
-  toolbar_layout->addStretch();
+	for (int i = 0; i < ScopePanel::kTypeCount; i++) {
+		// These strings get filled in later in Retranslate()
+		scope_type_combobox_->addItem(QString());
+	}
 
-  layout->addLayout(toolbar_layout);
+	toolbar_layout->addWidget(scope_type_combobox_);
+	toolbar_layout->addStretch();
 
-  stack_ = new QStackedWidget();
-  layout->addWidget(stack_);
+	layout->addLayout(toolbar_layout);
 
-  // Create waveform view
-  waveform_view_ = new WaveformScope();
-  stack_->addWidget(waveform_view_);
+	stack_ = new QStackedWidget();
+	layout->addWidget(stack_);
 
-  // Create histogram
-  histogram_ = new HistogramScope();
-  stack_->addWidget(histogram_);
+	// Create waveform view
+	waveform_view_ = new WaveformScope();
+	stack_->addWidget(waveform_view_);
 
-  connect(scope_type_combobox_, static_cast<void(QComboBox::*)(int)>(&QComboBox::currentIndexChanged), stack_, &QStackedWidget::setCurrentIndex);
+	// Create histogram
+	histogram_ = new HistogramScope();
+	stack_->addWidget(histogram_);
 
-  Retranslate();
+	connect(
+		scope_type_combobox_,
+		static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+		stack_, &QStackedWidget::setCurrentIndex);
+
+	Retranslate();
 }
 
 void ScopePanel::SetType(ScopePanel::Type t)
 {
-  scope_type_combobox_->setCurrentIndex(t);
+	scope_type_combobox_->setCurrentIndex(t);
 }
 
 QString ScopePanel::TypeToName(ScopePanel::Type t)
 {
-  switch (t) {
-  case kTypeWaveform:
-    return tr("Waveform");
-  case kTypeHistogram:
-    return tr("Histogram");
-  case kTypeCount:
-    break;
-  }
+	switch (t) {
+	case kTypeWaveform:
+		return tr("Waveform");
+	case kTypeHistogram:
+		return tr("Histogram");
+	case kTypeCount:
+		break;
+	}
 
-  return QString();
+	return QString();
 }
 
 void ScopePanel::SetViewerPanel(ViewerPanelBase *vp)
 {
-  if (viewer_ == vp) {
-    return;
-  }
+	if (viewer_ == vp) {
+		return;
+	}
 
-  if (viewer_) {
-    disconnect(viewer_, &ViewerPanelBase::TextureChanged, this, &ScopePanel::SetReferenceBuffer);
-    disconnect(viewer_, &ViewerPanelBase::ColorManagerChanged, this, &ScopePanel::SetColorManager);
-  }
+	if (viewer_) {
+		disconnect(viewer_, &ViewerPanelBase::TextureChanged, this,
+				   &ScopePanel::SetReferenceBuffer);
+		disconnect(viewer_, &ViewerPanelBase::ColorManagerChanged, this,
+				   &ScopePanel::SetColorManager);
+	}
 
-  viewer_ = vp;
+	viewer_ = vp;
 
-  if (viewer_) {
-    // Connect viewer widget texture drawing to scope panel
-    connect(viewer_, &ViewerPanelBase::TextureChanged, this, &ScopePanel::SetReferenceBuffer);
-    connect(viewer_, &ViewerPanelBase::ColorManagerChanged, this, &ScopePanel::SetColorManager);
+	if (viewer_) {
+		// Connect viewer widget texture drawing to scope panel
+		connect(viewer_, &ViewerPanelBase::TextureChanged, this,
+				&ScopePanel::SetReferenceBuffer);
+		connect(viewer_, &ViewerPanelBase::ColorManagerChanged, this,
+				&ScopePanel::SetColorManager);
 
-    SetColorManager(viewer_->GetColorManager());
+		SetColorManager(viewer_->GetColorManager());
 
-    viewer_->UpdateTextureFromNode();
-  } else {
-    SetReferenceBuffer(nullptr);
-    SetColorManager(nullptr);
-  }
+		viewer_->UpdateTextureFromNode();
+	} else {
+		SetReferenceBuffer(nullptr);
+		SetColorManager(nullptr);
+	}
 }
 
 void ScopePanel::SetReferenceBuffer(TexturePtr frame)
 {
-  histogram_->SetBuffer(frame);
-  waveform_view_->SetBuffer(frame);
+	histogram_->SetBuffer(frame);
+	waveform_view_->SetBuffer(frame);
 }
 
 void ScopePanel::SetColorManager(ColorManager *manager)
 {
-  histogram_->ConnectColorManager(manager);
-  waveform_view_->ConnectColorManager(manager);
+	histogram_->ConnectColorManager(manager);
+	waveform_view_->ConnectColorManager(manager);
 }
 
 void ScopePanel::Retranslate()
 {
-  SetTitle(tr("Scopes"));
+	SetTitle(tr("Scopes"));
 
-  for (int i=0;i<ScopePanel::kTypeCount;i++) {
-    scope_type_combobox_->setItemText(i, TypeToName(static_cast<Type>(i)));
-  }
+	for (int i = 0; i < ScopePanel::kTypeCount; i++) {
+		scope_type_combobox_->setItemText(i, TypeToName(static_cast<Type>(i)));
+	}
 }
 
 }

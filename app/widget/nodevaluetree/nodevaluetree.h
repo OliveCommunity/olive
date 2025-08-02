@@ -6,25 +6,24 @@
 
 #include "node/node.h"
 
-namespace olive {
-
-class NodeValueTree : public QTreeWidget
+namespace olive
 {
-  Q_OBJECT
-public:
-  NodeValueTree(QWidget *parent = nullptr);
 
-  void SetNode(const NodeInput &input, const rational &time);
+class NodeValueTree : public QTreeWidget {
+	Q_OBJECT
+public:
+	NodeValueTree(QWidget *parent = nullptr);
+
+	void SetNode(const NodeInput &input, const rational &time);
 
 protected:
-  virtual void changeEvent(QEvent *event) override;
+	virtual void changeEvent(QEvent *event) override;
 
 private:
-  void Retranslate();
+	void Retranslate();
 
 private slots:
-  void RadioButtonChecked(bool e);
-
+	void RadioButtonChecked(bool e);
 };
 
 }

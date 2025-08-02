@@ -23,23 +23,24 @@
 
 #include "node/node.h"
 
-namespace olive {
-
-class GeneratorWithMerge : public Node
+namespace olive
 {
-  Q_OBJECT
+
+class GeneratorWithMerge : public Node {
+	Q_OBJECT
 public:
-  GeneratorWithMerge();
+	GeneratorWithMerge();
 
-  virtual void Retranslate() override;
+	virtual void Retranslate() override;
 
-  virtual ShaderCode GetShaderCode(const ShaderRequest &request) const override;
+	virtual ShaderCode
+	GetShaderCode(const ShaderRequest &request) const override;
 
-  static const QString kBaseInput;
+	static const QString kBaseInput;
 
 protected:
-  void PushMergableJob(const NodeValueRow &value, TexturePtr job, NodeValueTable *table) const;
-
+	void PushMergableJob(const NodeValueRow &value, TexturePtr job,
+						 NodeValueTable *table) const;
 };
 
 }

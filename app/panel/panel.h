@@ -26,16 +26,16 @@
 
 #include "common/define.h"
 
-namespace olive {
+namespace olive
+{
 
 /**
  * @brief A widget that is always dockable within the MainWindow.
  */
-class PanelWidget : public KDDockWidgets::DockWidget
-{
-  Q_OBJECT
+class PanelWidget : public KDDockWidgets::DockWidget {
+	Q_OBJECT
 public:
-  /**
+	/**
    * @brief PanelWidget Constructor
    *
    * @param parent
@@ -43,161 +43,260 @@ public:
    * The PanelWidget's parent, enforced to help with memory handling. Most of the time this will be an instance of
    * MainWindow.
    */
-  PanelWidget(const QString& object_name);
+	PanelWidget(const QString &object_name);
 
-  virtual ~PanelWidget() override;
+	virtual ~PanelWidget() override;
 
-  /**
+	/**
    * @brief Set visibility of panel's highlighted border, mostly used for showing panel focus
    *
    * @param enabled
    */
-  void SetBorderVisible(bool enabled);
+	void SetBorderVisible(bool enabled);
 
-  /**
+	/**
    * @brief If enabled, sends signal CloseRequested() when the user closes instead of closing
    *
    * Defaults to FALSE. Use this to override default panel closing functionality.
    */
-  void SetSignalInsteadOfClose(bool e);
+	void SetSignalInsteadOfClose(bool e);
 
-  using Info = std::map<QString, QString>;
+	using Info = std::map<QString, QString>;
 
-  virtual void LoadData(const Info &info){}
-  virtual Info SaveData() const {return Info();}
+	virtual void LoadData(const Info &info)
+	{
+	}
+	virtual Info SaveData() const
+	{
+		return Info();
+	}
 
-  /**
+	/**
    * @brief Called whenever this panel is focused and user uses "Zoom In" (either in menus or as a keyboard shortcut)
    *
    * This function is up to the Panel's interpretation of what the user intends to zoom into. Default behavior is a
    * no-op.
    */
-  virtual void ZoomIn(){}
+	virtual void ZoomIn()
+	{
+	}
 
-  /**
+	/**
    * @brief Called whenever this panel is focused and user uses "Zoom Out" (either in menus or as a keyboard shortcut)
    *
    * This function is up to the Panel's interpretation of what the user intends to zoom out of. Default behavior is a
    * no-op.
    */
-  virtual void ZoomOut(){}
+	virtual void ZoomOut()
+	{
+	}
 
-  virtual void GoToStart(){}
+	virtual void GoToStart()
+	{
+	}
 
-  virtual void PrevFrame(){}
+	virtual void PrevFrame()
+	{
+	}
 
-  /**
+	/**
    * @brief Called whenever this panel is focused and user uses "Play/Pause" (either in menus or as a keyboard shortcut)
    *
    * This function is up to the Panel's interpretation of what the user intends to zoom out of. Default behavior is a
    * no-op.
    */
-  virtual void PlayPause(){}
+	virtual void PlayPause()
+	{
+	}
 
-  virtual void PlayInToOut(){}
+	virtual void PlayInToOut()
+	{
+	}
 
-  virtual void NextFrame(){}
+	virtual void NextFrame()
+	{
+	}
 
-  virtual void GoToEnd(){}
+	virtual void GoToEnd()
+	{
+	}
 
-  virtual void SelectAll(){}
+	virtual void SelectAll()
+	{
+	}
 
-  virtual void DeselectAll(){}
+	virtual void DeselectAll()
+	{
+	}
 
-  virtual void RippleToIn(){}
+	virtual void RippleToIn()
+	{
+	}
 
-  virtual void RippleToOut(){}
+	virtual void RippleToOut()
+	{
+	}
 
-  virtual void EditToIn(){}
+	virtual void EditToIn()
+	{
+	}
 
-  virtual void EditToOut(){}
+	virtual void EditToOut()
+	{
+	}
 
-  virtual void ShuttleLeft(){}
+	virtual void ShuttleLeft()
+	{
+	}
 
-  virtual void ShuttleStop(){}
+	virtual void ShuttleStop()
+	{
+	}
 
-  virtual void ShuttleRight(){}
+	virtual void ShuttleRight()
+	{
+	}
 
-  virtual void GoToPrevCut(){}
+	virtual void GoToPrevCut()
+	{
+	}
 
-  virtual void GoToNextCut(){}
+	virtual void GoToNextCut()
+	{
+	}
 
-  virtual void RenameSelected(){}
+	virtual void RenameSelected()
+	{
+	}
 
-  virtual void DeleteSelected(){}
+	virtual void DeleteSelected()
+	{
+	}
 
-  virtual void RippleDelete(){}
+	virtual void RippleDelete()
+	{
+	}
 
-  virtual void IncreaseTrackHeight(){}
+	virtual void IncreaseTrackHeight()
+	{
+	}
 
-  virtual void DecreaseTrackHeight(){}
+	virtual void DecreaseTrackHeight()
+	{
+	}
 
-  virtual void SetIn(){}
+	virtual void SetIn()
+	{
+	}
 
-  virtual void SetOut(){}
+	virtual void SetOut()
+	{
+	}
 
-  virtual void ResetIn(){}
+	virtual void ResetIn()
+	{
+	}
 
-  virtual void ResetOut(){}
+	virtual void ResetOut()
+	{
+	}
 
-  virtual void ClearInOut(){}
+	virtual void ClearInOut()
+	{
+	}
 
-  virtual void SetMarker(){}
+	virtual void SetMarker()
+	{
+	}
 
-  virtual void ToggleLinks(){}
+	virtual void ToggleLinks()
+	{
+	}
 
-  virtual void CutSelected(){}
+	virtual void CutSelected()
+	{
+	}
 
-  virtual void CopySelected(){}
+	virtual void CopySelected()
+	{
+	}
 
-  virtual void Paste(){}
+	virtual void Paste()
+	{
+	}
 
-  virtual void PasteInsert(){}
+	virtual void PasteInsert()
+	{
+	}
 
-  virtual void ToggleShowAll(){}
+	virtual void ToggleShowAll()
+	{
+	}
 
-  virtual void GoToIn(){}
+	virtual void GoToIn()
+	{
+	}
 
-  virtual void GoToOut(){}
+	virtual void GoToOut()
+	{
+	}
 
-  virtual void DeleteInToOut(){}
+	virtual void DeleteInToOut()
+	{
+	}
 
-  virtual void RippleDeleteInToOut(){}
+	virtual void RippleDeleteInToOut()
+	{
+	}
 
-  virtual void ToggleSelectedEnabled(){}
+	virtual void ToggleSelectedEnabled()
+	{
+	}
 
-  virtual void Duplicate(){}
+	virtual void Duplicate()
+	{
+	}
 
-  virtual void SetColorLabel(int){}
+	virtual void SetColorLabel(int)
+	{
+	}
 
-  virtual void NudgeLeft(){}
+	virtual void NudgeLeft()
+	{
+	}
 
-  virtual void NudgeRight(){}
+	virtual void NudgeRight()
+	{
+	}
 
-  virtual void MoveInToPlayhead(){}
+	virtual void MoveInToPlayhead()
+	{
+	}
 
-  virtual void MoveOutToPlayhead(){}
+	virtual void MoveOutToPlayhead()
+	{
+	}
 
 signals:
-  void CloseRequested();
+	void CloseRequested();
 
 protected:
-  /**
+	/**
    * @brief paintEvent
    * @param event
    */
-  void paintEvent(QPaintEvent *event) override;
+	void paintEvent(QPaintEvent *event) override;
 
-  virtual void changeEvent(QEvent* e) override;
+	virtual void changeEvent(QEvent *e) override;
 
-  virtual void closeEvent(QCloseEvent* event) override;
+	virtual void closeEvent(QCloseEvent *event) override;
 
-  virtual void Retranslate();
+	virtual void Retranslate();
 
-  void SetWidgetWithPadding(QWidget* widget);
+	void SetWidgetWithPadding(QWidget *widget);
 
 protected slots:
-  /**
+	/**
    * @brief Set panel's title
    *
    * Use this function to set the title of the panel.
@@ -209,9 +308,9 @@ protected slots:
    *
    * String to set the title to
    */
-  void SetTitle(const QString& t);
+	void SetTitle(const QString &t);
 
-  /**
+	/**
    * @brief Set panel's subtitle
    *
    * Use this function to set the subtitle of the panel.
@@ -223,24 +322,23 @@ protected slots:
    *
    * String to set the subtitle to
    */
-  void SetSubtitle(const QString& t);
+	void SetSubtitle(const QString &t);
 
 private:
-  /**
+	/**
    * @brief Internal function that sets the QDockWidget's window title whenever the title/subtitle change.
    *
    * Should be called any time a change is made to title_ or subtitle_
    */
-  void UpdateTitle();
+	void UpdateTitle();
 
-  QString title_;
+	QString title_;
 
-  QString subtitle_;
+	QString subtitle_;
 
-  bool border_visible_;
+	bool border_visible_;
 
-  bool signal_instead_of_close_;
-
+	bool signal_instead_of_close_;
 };
 
 }

@@ -23,32 +23,33 @@
 
 #include "node/node.h"
 
-namespace olive {
-
-class StrokeFilterNode : public Node
+namespace olive
 {
-  Q_OBJECT
+
+class StrokeFilterNode : public Node {
+	Q_OBJECT
 public:
-  StrokeFilterNode();
+	StrokeFilterNode();
 
-  NODE_DEFAULT_FUNCTIONS(StrokeFilterNode)
+	NODE_DEFAULT_FUNCTIONS(StrokeFilterNode)
 
-  virtual QString Name() const override;
-  virtual QString id() const override;
-  virtual QVector<CategoryID> Category() const override;
-  virtual QString Description() const override;
+	virtual QString Name() const override;
+	virtual QString id() const override;
+	virtual QVector<CategoryID> Category() const override;
+	virtual QString Description() const override;
 
-  virtual void Retranslate() override;
+	virtual void Retranslate() override;
 
-  virtual void Value(const NodeValueRow& value, const NodeGlobals &globals, NodeValueTable *table) const override;
-  virtual ShaderCode GetShaderCode(const ShaderRequest &request) const override;
+	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+					   NodeValueTable *table) const override;
+	virtual ShaderCode
+	GetShaderCode(const ShaderRequest &request) const override;
 
-  static const QString kTextureInput;
-  static const QString kColorInput;
-  static const QString kRadiusInput;
-  static const QString kOpacityInput;
-  static const QString kInnerInput;
-
+	static const QString kTextureInput;
+	static const QString kColorInput;
+	static const QString kRadiusInput;
+	static const QString kOpacityInput;
+	static const QString kInnerInput;
 };
 
 }

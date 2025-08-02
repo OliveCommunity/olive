@@ -26,12 +26,12 @@ namespace OCIO = OCIO_NAMESPACE;
 
 #include "render/videoparams.h"
 
-namespace olive {
-
-class OCIOUtils
+namespace olive
 {
+
+class OCIOUtils {
 public:
-  static OCIO::BitDepth GetOCIOBitDepthFromPixelFormat(PixelFormat format);
+	static OCIO::BitDepth GetOCIOBitDepthFromPixelFormat(PixelFormat format);
 };
 
 }

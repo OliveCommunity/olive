@@ -29,53 +29,52 @@
 #include "widget/scope/histogram/histogram.h"
 #include "widget/scope/waveform/waveform.h"
 
-namespace olive {
-
-class ScopePanel : public PanelWidget
+namespace olive
 {
-  Q_OBJECT
+
+class ScopePanel : public PanelWidget {
+	Q_OBJECT
 public:
-  enum Type {
-    kTypeWaveform,
-    kTypeHistogram,
+	enum Type {
+		kTypeWaveform,
+		kTypeHistogram,
 
-    kTypeCount
-  };
+		kTypeCount
+	};
 
-  ScopePanel();
+	ScopePanel();
 
-  void SetType(Type t);
+	void SetType(Type t);
 
-  static QString TypeToName(Type t);
+	static QString TypeToName(Type t);
 
-  void SetViewerPanel(ViewerPanelBase *vp);
+	void SetViewerPanel(ViewerPanelBase *vp);
 
-  ViewerPanelBase *GetConnectedViewerPanel() const
-  {
-    return viewer_;
-  }
+	ViewerPanelBase *GetConnectedViewerPanel() const
+	{
+		return viewer_;
+	}
 
 public slots:
-  void SetReferenceBuffer(TexturePtr frame);
+	void SetReferenceBuffer(TexturePtr frame);
 
-  void SetColorManager(ColorManager* manager);
+	void SetColorManager(ColorManager *manager);
 
 protected:
-  virtual void Retranslate() override;
+	virtual void Retranslate() override;
 
 private:
-  Type type_;
+	Type type_;
 
-  QStackedWidget* stack_;
+	QStackedWidget *stack_;
 
-  QComboBox* scope_type_combobox_;
+	QComboBox *scope_type_combobox_;
 
-  WaveformScope* waveform_view_;
+	WaveformScope *waveform_view_;
 
-  HistogramScope* histogram_;
+	HistogramScope *histogram_;
 
-  ViewerPanelBase *viewer_;
-
+	ViewerPanelBase *viewer_;
 };
 
 }

@@ -23,27 +23,26 @@
 
 #include "widget/menu/menu.h"
 
-namespace olive {
-
-class ColorLabelMenu : public Menu
+namespace olive
 {
-  Q_OBJECT
-public:
-  ColorLabelMenu(QWidget* parent = nullptr);
 
-  virtual void changeEvent(QEvent* event) override;
+class ColorLabelMenu : public Menu {
+	Q_OBJECT
+public:
+	ColorLabelMenu(QWidget *parent = nullptr);
+
+	virtual void changeEvent(QEvent *event) override;
 
 signals:
-  void ColorSelected(int i);
+	void ColorSelected(int i);
 
 private:
-  void Retranslate();
+	void Retranslate();
 
-  QVector<QAction*> color_items_;
+	QVector<QAction *> color_items_;
 
 private slots:
-  void ActionTriggered();
-
+	void ActionTriggered();
 };
 
 }

@@ -23,7 +23,8 @@
 
 #include "undo/undocommand.h"
 
-namespace olive {
+namespace olive
+{
 
 }
 

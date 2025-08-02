@@ -21,13 +21,10 @@
 #ifndef ALPHAASSOC_H
 #define ALPHAASSOC_H
 
-namespace olive {
+namespace olive
+{
 
-enum AlphaAssociated {
-  kAlphaNone,
-  kAlphaUnassociated,
-  kAlphaAssociated
-};
+enum AlphaAssociated { kAlphaNone, kAlphaUnassociated, kAlphaAssociated };
 
 }
 

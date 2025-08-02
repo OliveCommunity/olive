@@ -23,16 +23,16 @@
 
 #include "pointer.h"
 
-namespace olive {
-
-class SlipTool : public PointerTool
+namespace olive
 {
+
+class SlipTool : public PointerTool {
 public:
-  SlipTool(TimelineWidget* parent);
+	SlipTool(TimelineWidget *parent);
 
 protected:
-  virtual void ProcessDrag(const TimelineCoordinate &mouse_pos) override;
-  virtual void FinishDrag(TimelineViewMouseEvent *event) override;
+	virtual void ProcessDrag(const TimelineCoordinate &mouse_pos) override;
+	virtual void FinishDrag(TimelineViewMouseEvent *event) override;
 };
 
 }

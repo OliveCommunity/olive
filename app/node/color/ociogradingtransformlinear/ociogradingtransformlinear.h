@@ -24,43 +24,44 @@
 #include "node/color/ociobase/ociobase.h"
 #include "render/colorprocessor.h"
 
-namespace olive {
-
-class OCIOGradingTransformLinearNode : public OCIOBaseNode
+namespace olive
 {
-  Q_OBJECT
- public:
-  OCIOGradingTransformLinearNode();
 
-  NODE_DEFAULT_FUNCTIONS(OCIOGradingTransformLinearNode)
+class OCIOGradingTransformLinearNode : public OCIOBaseNode {
+	Q_OBJECT
+public:
+	OCIOGradingTransformLinearNode();
 
-  virtual QString Name() const override;
-  virtual QString id() const override;
-  virtual QVector<CategoryID> Category() const override;
-  virtual QString Description() const override;
+	NODE_DEFAULT_FUNCTIONS(OCIOGradingTransformLinearNode)
 
-  virtual void Retranslate() override;
-  virtual void InputValueChangedEvent(const QString &input, int element) override;
-  void GenerateProcessor();
+	virtual QString Name() const override;
+	virtual QString id() const override;
+	virtual QVector<CategoryID> Category() const override;
+	virtual QString Description() const override;
 
-  virtual void Value(const NodeValueRow &value, const NodeGlobals &globals, NodeValueTable *table) const override;
+	virtual void Retranslate() override;
+	virtual void InputValueChangedEvent(const QString &input,
+										int element) override;
+	void GenerateProcessor();
 
-  static const QString kContrastInput;
-  static const QString kOffsetInput;
-  static const QString kExposureInput;
-  static const QString kSaturationInput;
-  static const QString kPivotInput;
-  static const QString kClampBlackEnableInput;
-  static const QString kClampBlackInput;
-  static const QString kClampWhiteEnableInput;
-  static const QString kClampWhiteInput;
+	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+					   NodeValueTable *table) const override;
+
+	static const QString kContrastInput;
+	static const QString kOffsetInput;
+	static const QString kExposureInput;
+	static const QString kSaturationInput;
+	static const QString kPivotInput;
+	static const QString kClampBlackEnableInput;
+	static const QString kClampBlackInput;
+	static const QString kClampWhiteEnableInput;
+	static const QString kClampWhiteInput;
 
 protected slots:
-  virtual void ConfigChanged() override;
+	virtual void ConfigChanged() override;
 
 private:
-  void SetVec4InputColors(const QString &input);
-
+	void SetVec4InputColors(const QString &input);
 };
 
 } // olive

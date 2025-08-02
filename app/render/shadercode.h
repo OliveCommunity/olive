@@ -23,27 +23,40 @@
 
 #include "common/filefunctions.h"
 
-namespace olive {
+namespace olive
+{
 
 class ShaderCode {
 public:
-  ShaderCode(const QString& frag_code = QString(), const QString& vert_code = QString()) :
-    frag_code_(frag_code),
-    vert_code_(vert_code)
-  {
-  }
+	ShaderCode(const QString &frag_code = QString(),
+			   const QString &vert_code = QString())
+		: frag_code_(frag_code)
+		, vert_code_(vert_code)
+	{
+	}
 
-  const QString& frag_code() const { return frag_code_; }
-  void set_frag_code(const QString &f) { frag_code_ = f; }
+	const QString &frag_code() const
+	{
+		return frag_code_;
+	}
+	void set_frag_code(const QString &f)
+	{
+		frag_code_ = f;
+	}
 
-  const QString& vert_code() const { return vert_code_; }
-  void set_vert_code(const QString &v) { vert_code_ = v; }
+	const QString &vert_code() const
+	{
+		return vert_code_;
+	}
+	void set_vert_code(const QString &v)
+	{
+		vert_code_ = v;
+	}
 
 private:
-  QString frag_code_;
+	QString frag_code_;
 
-  QString vert_code_;
-
+	QString vert_code_;
 };
 
 }

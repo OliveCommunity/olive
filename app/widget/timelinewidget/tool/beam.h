@@ -23,18 +23,17 @@
 
 #include "tool.h"
 
-namespace olive {
-
-class BeamTool : public TimelineTool
+namespace olive
 {
-public:
-  BeamTool(TimelineWidget *parent);
 
-  virtual void HoverMove(TimelineViewMouseEvent *event) override;
+class BeamTool : public TimelineTool {
+public:
+	BeamTool(TimelineWidget *parent);
+
+	virtual void HoverMove(TimelineViewMouseEvent *event) override;
 
 protected:
-  TimelineCoordinate ValidatedCoordinate(TimelineCoordinate coord);
-
+	TimelineCoordinate ValidatedCoordinate(TimelineCoordinate coord);
 };
 
 }

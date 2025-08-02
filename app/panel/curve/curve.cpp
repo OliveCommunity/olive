@@ -20,55 +20,56 @@
 
 #include "curve.h"
 
-namespace olive {
-
-CurvePanel::CurvePanel() :
-  TimeBasedPanel(QStringLiteral("CurvePanel"))
+namespace olive
 {
-  // Create main widget and set it
-  SetTimeBasedWidget(new CurveWidget(this));
 
-  // Set strings
-  Retranslate();
+CurvePanel::CurvePanel()
+	: TimeBasedPanel(QStringLiteral("CurvePanel"))
+{
+	// Create main widget and set it
+	SetTimeBasedWidget(new CurveWidget(this));
+
+	// Set strings
+	Retranslate();
 }
 
 void CurvePanel::DeleteSelected()
 {
-  static_cast<CurveWidget*>(GetTimeBasedWidget())->DeleteSelected();
+	static_cast<CurveWidget *>(GetTimeBasedWidget())->DeleteSelected();
 }
 
 void CurvePanel::SelectAll()
 {
-  static_cast<CurveWidget*>(GetTimeBasedWidget())->SelectAll();
+	static_cast<CurveWidget *>(GetTimeBasedWidget())->SelectAll();
 }
 
 void CurvePanel::DeselectAll()
 {
-  static_cast<CurveWidget*>(GetTimeBasedWidget())->DeselectAll();
+	static_cast<CurveWidget *>(GetTimeBasedWidget())->DeselectAll();
 }
 
 void CurvePanel::SetNodes(const QVector<Node *> &nodes)
 {
-  static_cast<CurveWidget*>(GetTimeBasedWidget())->SetNodes(nodes);
+	static_cast<CurveWidget *>(GetTimeBasedWidget())->SetNodes(nodes);
 }
 
 void CurvePanel::IncreaseTrackHeight()
 {
-  CurveWidget* c = static_cast<CurveWidget*>(GetTimeBasedWidget());
-  c->SetVerticalScale(c->GetVerticalScale() * 2);
+	CurveWidget *c = static_cast<CurveWidget *>(GetTimeBasedWidget());
+	c->SetVerticalScale(c->GetVerticalScale() * 2);
 }
 
 void CurvePanel::DecreaseTrackHeight()
 {
-  CurveWidget* c = static_cast<CurveWidget*>(GetTimeBasedWidget());
-  c->SetVerticalScale(c->GetVerticalScale() * 0.5);
+	CurveWidget *c = static_cast<CurveWidget *>(GetTimeBasedWidget());
+	c->SetVerticalScale(c->GetVerticalScale() * 0.5);
 }
 
 void CurvePanel::Retranslate()
 {
-  TimeBasedPanel::Retranslate();
+	TimeBasedPanel::Retranslate();
 
-  SetTitle(tr("Curve Editor"));
+	SetTitle(tr("Curve Editor"));
 }
 
 }

@@ -25,18 +25,23 @@
 
 #include "codec/encoder.h"
 
-namespace olive {
-
-class CodecSection : public QWidget
+namespace olive
 {
-  Q_OBJECT
+
+class CodecSection : public QWidget {
+	Q_OBJECT
 public:
-  CodecSection(QWidget* parent = nullptr);
+	CodecSection(QWidget *parent = nullptr);
 
-  virtual void AddOpts(EncodingParams* params){Q_UNUSED(params)}
+	virtual void AddOpts(EncodingParams *params)
+	{
+		Q_UNUSED(params)
+	}
 
-  virtual void SetOpts(const EncodingParams *p){Q_UNUSED(p)}
-
+	virtual void SetOpts(const EncodingParams *p)
+	{
+		Q_UNUSED(p)
+	}
 };
 
 }

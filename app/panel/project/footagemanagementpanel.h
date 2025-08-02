@@ -25,11 +25,12 @@
 
 #include "node/project/footage/footage.h"
 
-namespace olive {
+namespace olive
+{
 
 class FootageManagementPanel {
 public:
-  virtual QVector<ViewerOutput *> GetSelectedFootage() const = 0;
+	virtual QVector<ViewerOutput *> GetSelectedFootage() const = 0;
 };
 
 }

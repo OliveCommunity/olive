@@ -25,7 +25,8 @@
 
 #include "common/define.h"
 
-namespace olive {
+namespace olive
+{
 
 /**
  * @brief The ColumnedGridLayout class
@@ -33,19 +34,17 @@ namespace olive {
  * A simple derivative of QGridLayout that provides a automatic row/column layout based on a specified maximum
  * column count.
  */
-class ColumnedGridLayout : public QGridLayout
-{
-  Q_OBJECT
+class ColumnedGridLayout : public QGridLayout {
+	Q_OBJECT
 public:
-  ColumnedGridLayout(QWidget* parent = nullptr,
-                     int maximum_columns = 0);
+	ColumnedGridLayout(QWidget *parent = nullptr, int maximum_columns = 0);
 
-  void Add(QWidget* widget);
-  int MaximumColumns() const;
-  void SetMaximumColumns(int maximum_columns);
+	void Add(QWidget *widget);
+	int MaximumColumns() const;
+	void SetMaximumColumns(int maximum_columns);
 
 private:
-  int maximum_columns_;
+	int maximum_columns_;
 };
 
 }

@@ -20,6 +20,7 @@
 
 #include "acceleratedjob.h"
 
-namespace olive {
+namespace olive
+{
 
 }

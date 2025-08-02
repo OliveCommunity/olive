@@ -26,37 +26,36 @@
 
 #include "ui/humanstrings.h"
 
-namespace olive {
+namespace olive
+{
 
 using namespace core;
 
-class SampleRateComboBox : public QComboBox
-{
-  Q_OBJECT
+class SampleRateComboBox : public QComboBox {
+	Q_OBJECT
 public:
-  SampleRateComboBox(QWidget* parent = nullptr) :
-    QComboBox(parent)
-  {
-    foreach (int sr, AudioParams::kSupportedSampleRates) {
-      this->addItem(HumanStrings::SampleRateToString(sr), sr);
-    }
-  }
+	SampleRateComboBox(QWidget *parent = nullptr)
+		: QComboBox(parent)
+	{
+		foreach (int sr, AudioParams::kSupportedSampleRates) {
+			this->addItem(HumanStrings::SampleRateToString(sr), sr);
+		}
+	}
 
-  int GetSampleRate() const
-  {
-    return this->currentData().toInt();
-  }
+	int GetSampleRate() const
+	{
+		return this->currentData().toInt();
+	}
 
-  void SetSampleRate(int rate)
-  {
-    for (int i=0; i<this->count(); i++) {
-      if (this->itemData(i).toInt() == rate) {
-        this->setCurrentIndex(i);
-        break;
-      }
-    }
-  }
-
+	void SetSampleRate(int rate)
+	{
+		for (int i = 0; i < this->count(); i++) {
+			if (this->itemData(i).toInt() == rate) {
+				this->setCurrentIndex(i);
+				break;
+			}
+		}
+	}
 };
 
 }

@@ -29,67 +29,67 @@
 #include "widget/slider/integerslider.h"
 #include "widget/standardcombos/standardcombos.h"
 
-namespace olive {
-
-class ExportAudioTab : public QWidget
+namespace olive
 {
-  Q_OBJECT
+
+class ExportAudioTab : public QWidget {
+	Q_OBJECT
 public:
-  ExportAudioTab(QWidget* parent = nullptr);
+	ExportAudioTab(QWidget *parent = nullptr);
 
-  ExportCodec::Codec GetCodec() const
-  {
-    return static_cast<ExportCodec::Codec>(codec_combobox_->currentData().toInt());
-  }
+	ExportCodec::Codec GetCodec() const
+	{
+		return static_cast<ExportCodec::Codec>(
+			codec_combobox_->currentData().toInt());
+	}
 
-  void SetCodec(ExportCodec::Codec c)
-  {
-    for (int i=0; i<codec_combobox_->count(); i++) {
-      if (codec_combobox_->itemData(i) == c) {
-        codec_combobox_->setCurrentIndex(i);
-        break;
-      }
-    }
-  }
+	void SetCodec(ExportCodec::Codec c)
+	{
+		for (int i = 0; i < codec_combobox_->count(); i++) {
+			if (codec_combobox_->itemData(i) == c) {
+				codec_combobox_->setCurrentIndex(i);
+				break;
+			}
+		}
+	}
 
-  SampleRateComboBox* sample_rate_combobox() const
-  {
-    return sample_rate_combobox_;
-  }
+	SampleRateComboBox *sample_rate_combobox() const
+	{
+		return sample_rate_combobox_;
+	}
 
-  SampleFormatComboBox* sample_format_combobox() const
-  {
-    return sample_format_combobox_;
-  }
+	SampleFormatComboBox *sample_format_combobox() const
+	{
+		return sample_format_combobox_;
+	}
 
-  ChannelLayoutComboBox* channel_layout_combobox() const
-  {
-    return channel_layout_combobox_;
-  }
+	ChannelLayoutComboBox *channel_layout_combobox() const
+	{
+		return channel_layout_combobox_;
+	}
 
-  IntegerSlider* bit_rate_slider() const
-  {
-    return bit_rate_slider_;
-  }
+	IntegerSlider *bit_rate_slider() const
+	{
+		return bit_rate_slider_;
+	}
 
 public slots:
-  int SetFormat(ExportFormat::Format format);
+	int SetFormat(ExportFormat::Format format);
 
 private:
-  ExportFormat::Format fmt_;
-  QComboBox* codec_combobox_;
-  SampleRateComboBox* sample_rate_combobox_;
-  ChannelLayoutComboBox* channel_layout_combobox_;
-  SampleFormatComboBox *sample_format_combobox_;
-  IntegerSlider* bit_rate_slider_;
+	ExportFormat::Format fmt_;
+	QComboBox *codec_combobox_;
+	SampleRateComboBox *sample_rate_combobox_;
+	ChannelLayoutComboBox *channel_layout_combobox_;
+	SampleFormatComboBox *sample_format_combobox_;
+	IntegerSlider *bit_rate_slider_;
 
-  static const int kDefaultBitRate;
+	static const int kDefaultBitRate;
 
 private slots:
-  void UpdateSampleFormats();
+	void UpdateSampleFormats();
 
-  void UpdateBitRateEnabled();
-
+	void UpdateBitRateEnabled();
 };
 
 }

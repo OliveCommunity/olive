@@ -26,30 +26,28 @@
 
 #include "common/define.h"
 
-namespace olive {
-
-class PathWidget : public QWidget
+namespace olive
 {
-  Q_OBJECT
-public:
-  PathWidget(const QString& path,
-             QWidget* parent = nullptr);
 
-  QString text() const
-  {
-    return path_edit_->text();
-  }
+class PathWidget : public QWidget {
+	Q_OBJECT
+public:
+	PathWidget(const QString &path, QWidget *parent = nullptr);
+
+	QString text() const
+	{
+		return path_edit_->text();
+	}
 
 private slots:
-  void BrowseClicked();
+	void BrowseClicked();
 
-  void LineEditChanged();
+	void LineEditChanged();
 
 private:
-  QLineEdit* path_edit_;
+	QLineEdit *path_edit_;
 
-  QPushButton* browse_btn_;
-
+	QPushButton *browse_btn_;
 };
 
 }

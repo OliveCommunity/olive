@@ -24,19 +24,18 @@
 #include "cli/cliprogress/cliprogressdialog.h"
 #include "task/task.h"
 
-namespace olive {
-
-class CLITaskDialog : public CLIProgressDialog
+namespace olive
 {
-  Q_OBJECT
-public:
-  CLITaskDialog(Task *task, QObject* parent = nullptr);
 
-  bool Run();
+class CLITaskDialog : public CLIProgressDialog {
+	Q_OBJECT
+public:
+	CLITaskDialog(Task *task, QObject *parent = nullptr);
+
+	bool Run();
 
 private:
-  Task* task_;
-
+	Task *task_;
 };
 
 }

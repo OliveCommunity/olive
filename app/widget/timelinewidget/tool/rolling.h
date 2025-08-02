@@ -23,15 +23,17 @@
 
 #include "pointer.h"
 
-namespace olive {
-
-class RollingTool : public PointerTool
+namespace olive
 {
+
+class RollingTool : public PointerTool {
 public:
-  RollingTool(TimelineWidget* parent);
+	RollingTool(TimelineWidget *parent);
 
 protected:
-  virtual void InitiateDrag(Block* clicked_item, Timeline::MovementMode trim_mode, Qt::KeyboardModifiers modifiers) override;
+	virtual void InitiateDrag(Block *clicked_item,
+							  Timeline::MovementMode trim_mode,
+							  Qt::KeyboardModifiers modifiers) override;
 };
 
 }

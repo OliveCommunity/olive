@@ -24,36 +24,38 @@
 #include "common/define.h"
 #include "render/cancelatom.h"
 
-namespace olive {
+namespace olive
+{
 
 class CancelableObject {
 public:
-  CancelableObject()
-  {
-  }
+	CancelableObject()
+	{
+	}
 
-  void Cancel()
-  {
-    cancel_.Cancel();
-    CancelEvent();
-  }
+	void Cancel()
+	{
+		cancel_.Cancel();
+		CancelEvent();
+	}
 
-  CancelAtom *GetCancelAtom()
-  {
-    return &cancel_;
-  }
+	CancelAtom *GetCancelAtom()
+	{
+		return &cancel_;
+	}
 
-  bool IsCancelled()
-  {
-    return cancel_.IsCancelled();
-  }
+	bool IsCancelled()
+	{
+		return cancel_.IsCancelled();
+	}
 
 protected:
-  virtual void CancelEvent(){}
+	virtual void CancelEvent()
+	{
+	}
 
 private:
-  CancelAtom cancel_;
-
+	CancelAtom cancel_;
 };
 
 }

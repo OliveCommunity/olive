@@ -23,38 +23,36 @@
 
 #include "shapenodebase.h"
 
-namespace olive {
-
-class ShapeNode : public ShapeNodeBase
+namespace olive
 {
-  Q_OBJECT
+
+class ShapeNode : public ShapeNodeBase {
+	Q_OBJECT
 public:
-  ShapeNode();
+	ShapeNode();
 
-  enum Type {
-    kRectangle,
-    kEllipse,
-    kRoundedRectangle
-  };
+	enum Type { kRectangle, kEllipse, kRoundedRectangle };
 
-  NODE_DEFAULT_FUNCTIONS(ShapeNode)
+	NODE_DEFAULT_FUNCTIONS(ShapeNode)
 
-  virtual QString Name() const override;
-  virtual QString id() const override;
-  virtual QVector<CategoryID> Category() const override;
-  virtual QString Description() const override;
+	virtual QString Name() const override;
+	virtual QString id() const override;
+	virtual QVector<CategoryID> Category() const override;
+	virtual QString Description() const override;
 
-  virtual void Retranslate() override;
+	virtual void Retranslate() override;
 
-  virtual ShaderCode GetShaderCode(const ShaderRequest &request) const override;
-  virtual void Value(const NodeValueRow& value, const NodeGlobals &globals, NodeValueTable *table) const override;
+	virtual ShaderCode
+	GetShaderCode(const ShaderRequest &request) const override;
+	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+					   NodeValueTable *table) const override;
 
-  static QString kTypeInput;
-  static QString kRadiusInput;
+	static QString kTypeInput;
+	static QString kRadiusInput;
 
 protected:
-  virtual void InputValueChangedEvent(const QString &input, int element) override;
-
+	virtual void InputValueChangedEvent(const QString &input,
+										int element) override;
 };
 
 }

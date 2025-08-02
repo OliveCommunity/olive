@@ -23,18 +23,18 @@
 
 #include "pointer.h"
 
-namespace olive {
-
-class TrackSelectTool : public PointerTool
+namespace olive
 {
-public:
-  TrackSelectTool(TimelineWidget *parent);
 
-  virtual void MousePress(TimelineViewMouseEvent *event) override;
+class TrackSelectTool : public PointerTool {
+public:
+	TrackSelectTool(TimelineWidget *parent);
+
+	virtual void MousePress(TimelineViewMouseEvent *event) override;
 
 private:
-  void SelectBlocksOnTrack(Track *track, TimelineViewMouseEvent *event, QVector<Block *> *blocks, bool forward);
-
+	void SelectBlocksOnTrack(Track *track, TimelineViewMouseEvent *event,
+							 QVector<Block *> *blocks, bool forward);
 };
 
 }

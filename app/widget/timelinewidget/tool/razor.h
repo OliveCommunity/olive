@@ -23,19 +23,19 @@
 
 #include "beam.h"
 
-namespace olive {
-
-class RazorTool : public BeamTool
+namespace olive
 {
-public:
-  RazorTool(TimelineWidget* parent);
 
-  virtual void MousePress(TimelineViewMouseEvent *event) override;
-  virtual void MouseMove(TimelineViewMouseEvent *event) override;
-  virtual void MouseRelease(TimelineViewMouseEvent *event) override;
+class RazorTool : public BeamTool {
+public:
+	RazorTool(TimelineWidget *parent);
+
+	virtual void MousePress(TimelineViewMouseEvent *event) override;
+	virtual void MouseMove(TimelineViewMouseEvent *event) override;
+	virtual void MouseRelease(TimelineViewMouseEvent *event) override;
 
 private:
-  QVector<Track::Reference> split_tracks_;
+	QVector<Track::Reference> split_tracks_;
 };
 
 }

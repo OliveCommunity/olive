@@ -29,26 +29,25 @@
 #include "ui/style/style.h"
 #include "widget/colorlabelmenu/colorcodingcombobox.h"
 
-namespace olive {
-
-class PreferencesAppearanceTab : public ConfigDialogBaseTab
+namespace olive
 {
-  Q_OBJECT
-public:
-  PreferencesAppearanceTab();
 
-  virtual void Accept(MultiUndoCommand* command) override;
+class PreferencesAppearanceTab : public ConfigDialogBaseTab {
+	Q_OBJECT
+public:
+	PreferencesAppearanceTab();
+
+	virtual void Accept(MultiUndoCommand *command) override;
 
 private:
-  /**
+	/**
    * @brief UI widget for selecting the current UI style
    */
-  QComboBox* style_combobox_;
+	QComboBox *style_combobox_;
 
-  QVector<ColorCodingComboBox*> color_btns_;
+	QVector<ColorCodingComboBox *> color_btns_;
 
-  ColorCodingComboBox* marker_btn_;
-
+	ColorCodingComboBox *marker_btn_;
 };
 
 }

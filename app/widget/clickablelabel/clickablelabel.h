@@ -25,23 +25,22 @@
 
 #include "common/define.h"
 
-namespace olive {
-
-class ClickableLabel : public QLabel
+namespace olive
 {
-  Q_OBJECT
+
+class ClickableLabel : public QLabel {
+	Q_OBJECT
 public:
-  ClickableLabel(const QString& text, QWidget* parent = nullptr);
-  ClickableLabel(QWidget* parent = nullptr);
+	ClickableLabel(const QString &text, QWidget *parent = nullptr);
+	ClickableLabel(QWidget *parent = nullptr);
 
 protected:
-  virtual void mouseReleaseEvent(QMouseEvent* event) override;
-  virtual void mouseDoubleClickEvent(QMouseEvent* event) override;
+	virtual void mouseReleaseEvent(QMouseEvent *event) override;
+	virtual void mouseDoubleClickEvent(QMouseEvent *event) override;
 
 signals:
-  void MouseClicked();
-  void MouseDoubleClicked();
-
+	void MouseClicked();
+	void MouseDoubleClicked();
 };
 
 }

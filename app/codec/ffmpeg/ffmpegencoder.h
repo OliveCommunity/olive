@@ -31,37 +31,41 @@ extern "C" {
 
 #include "codec/encoder.h"
 
-namespace olive {
-
-class FFmpegEncoder : public Encoder
+namespace olive
 {
-  Q_OBJECT
+
+class FFmpegEncoder : public Encoder {
+	Q_OBJECT
 public:
-  FFmpegEncoder(const EncodingParams &params);
+	FFmpegEncoder(const EncodingParams &params);
 
-  virtual QStringList GetPixelFormatsForCodec(ExportCodec::Codec c) const override;
+	virtual QStringList
+	GetPixelFormatsForCodec(ExportCodec::Codec c) const override;
 
-  virtual std::vector<SampleFormat> GetSampleFormatsForCodec(ExportCodec::Codec c) const override;
+	virtual std::vector<SampleFormat>
+	GetSampleFormatsForCodec(ExportCodec::Codec c) const override;
 
-  virtual bool Open() override;
+	virtual bool Open() override;
 
-  virtual bool WriteFrame(olive::FramePtr frame, olive::core::rational time) override;
+	virtual bool WriteFrame(olive::FramePtr frame,
+							olive::core::rational time) override;
 
-  virtual bool WriteAudio(const olive::SampleBuffer &audio) override;
+	virtual bool WriteAudio(const olive::SampleBuffer &audio) override;
 
-  bool WriteAudioData(const AudioParams &audio_params, const uint8_t **data, int input_sample_count);
+	bool WriteAudioData(const AudioParams &audio_params, const uint8_t **data,
+						int input_sample_count);
 
-  virtual bool WriteSubtitle(const SubtitleBlock *sub_block) override;
+	virtual bool WriteSubtitle(const SubtitleBlock *sub_block) override;
 
-  virtual void Close() override;
+	virtual void Close() override;
 
-  virtual PixelFormat GetDesiredPixelFormat() const override
-  {
-    return video_conversion_fmt_;
-  }
+	virtual PixelFormat GetDesiredPixelFormat() const override
+	{
+		return video_conversion_fmt_;
+	}
 
 private:
-  /**
+	/**
    * @brief Handle an FFmpeg error code
    *
    * Uses the FFmpeg API to retrieve a descriptive string for this error code and sends it to Error(). As such, this
@@ -69,43 +73,48 @@ private:
    *
    * @param error_code
    */
-  void FFmpegError(const QString &context, int error_code);
+	void FFmpegError(const QString &context, int error_code);
 
-  bool WriteAVFrame(AVFrame* frame, AVCodecContext *codec_ctx, AVStream *stream);
+	bool WriteAVFrame(AVFrame *frame, AVCodecContext *codec_ctx,
+					  AVStream *stream);
 
-  bool InitializeStream(enum AVMediaType type, AVStream** stream, AVCodecContext** codec_ctx, const ExportCodec::Codec &codec);
-  bool InitializeCodecContext(AVStream** stream, AVCodecContext** codec_ctx, const AVCodec* codec);
-  bool SetupCodecContext(AVStream *stream, AVCodecContext *codec_ctx, const AVCodec *codec);
+	bool InitializeStream(enum AVMediaType type, AVStream **stream,
+						  AVCodecContext **codec_ctx,
+						  const ExportCodec::Codec &codec);
+	bool InitializeCodecContext(AVStream **stream, AVCodecContext **codec_ctx,
+								const AVCodec *codec);
+	bool SetupCodecContext(AVStream *stream, AVCodecContext *codec_ctx,
+						   const AVCodec *codec);
 
-  void FlushEncoders();
-  void FlushCodecCtx(AVCodecContext* codec_ctx, AVStream *stream);
+	void FlushEncoders();
+	void FlushCodecCtx(AVCodecContext *codec_ctx, AVStream *stream);
 
-  bool InitializeResampleContext(const AudioParams &audio);
+	bool InitializeResampleContext(const AudioParams &audio);
 
-  static const AVCodec *GetEncoder(ExportCodec::Codec c, SampleFormat aformat);
+	static const AVCodec *GetEncoder(ExportCodec::Codec c,
+									 SampleFormat aformat);
 
-  AVFormatContext* fmt_ctx_;
+	AVFormatContext *fmt_ctx_;
 
-  AVStream* video_stream_;
-  AVCodecContext* video_codec_ctx_;
-  AVFilterGraph *video_scale_ctx_;
-  AVFilterContext *video_buffersrc_ctx_;
-  AVFilterContext *video_buffersink_ctx_;
-  PixelFormat video_conversion_fmt_;
+	AVStream *video_stream_;
+	AVCodecContext *video_codec_ctx_;
+	AVFilterGraph *video_scale_ctx_;
+	AVFilterContext *video_buffersrc_ctx_;
+	AVFilterContext *video_buffersink_ctx_;
+	PixelFormat video_conversion_fmt_;
 
-  AVStream* audio_stream_;
-  AVCodecContext* audio_codec_ctx_;
-  SwrContext* audio_resample_ctx_;
-  AVFrame* audio_frame_;
-  int audio_max_samples_;
-  int audio_frame_offset_;
-  int audio_write_count_;
+	AVStream *audio_stream_;
+	AVCodecContext *audio_codec_ctx_;
+	SwrContext *audio_resample_ctx_;
+	AVFrame *audio_frame_;
+	int audio_max_samples_;
+	int audio_frame_offset_;
+	int audio_write_count_;
 
-  AVStream* subtitle_stream_;
-  AVCodecContext* subtitle_codec_ctx_;
+	AVStream *subtitle_stream_;
+	AVCodecContext *subtitle_codec_ctx_;
 
-  bool open_;
-
+	bool open_;
 };
 
 }

@@ -23,7 +23,8 @@
 
 #include "render/colorprocessor.h"
 
-namespace olive {
+namespace olive
+{
 
 using ColorProcessorCache = QHash<QString, ColorProcessorPtr>;
 

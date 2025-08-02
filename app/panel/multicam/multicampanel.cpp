@@ -1,22 +1,23 @@
 #include "multicampanel.h"
 
-namespace olive {
+namespace olive
+{
 
 #define super TimeBasedPanel
 
-MulticamPanel::MulticamPanel() :
-  super(QStringLiteral("MultiCamPanel"))
+MulticamPanel::MulticamPanel()
+	: super(QStringLiteral("MultiCamPanel"))
 {
-  SetTimeBasedWidget(new MulticamWidget(this));
+	SetTimeBasedWidget(new MulticamWidget(this));
 
-  Retranslate();
+	Retranslate();
 }
 
 void MulticamPanel::Retranslate()
 {
-  super::Retranslate();
+	super::Retranslate();
 
-  SetTitle(tr("Multi-Cam"));
+	SetTitle(tr("Multi-Cam"));
 }
 
 }

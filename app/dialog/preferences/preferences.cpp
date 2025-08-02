@@ -34,24 +34,25 @@
 #include "tabs/preferenceskeyboardtab.h"
 #include "window/mainwindow/mainwindow.h"
 
-namespace olive {
-
-PreferencesDialog::PreferencesDialog(MainWindow *main_window) :
-  ConfigDialogBase(main_window)
+namespace olive
 {
-  setWindowTitle(tr("Preferences"));
 
-  AddTab(new PreferencesGeneralTab(), tr("General"));
-  AddTab(new PreferencesAppearanceTab(), tr("Appearance"));
-  AddTab(new PreferencesBehaviorTab(), tr("Behavior"));
-  AddTab(new PreferencesDiskTab(), tr("Disk"));
-  AddTab(new PreferencesAudioTab(), tr("Audio"));
-  AddTab(new PreferencesKeyboardTab(main_window), tr("Keyboard"));
+PreferencesDialog::PreferencesDialog(MainWindow *main_window)
+	: ConfigDialogBase(main_window)
+{
+	setWindowTitle(tr("Preferences"));
+
+	AddTab(new PreferencesGeneralTab(), tr("General"));
+	AddTab(new PreferencesAppearanceTab(), tr("Appearance"));
+	AddTab(new PreferencesBehaviorTab(), tr("Behavior"));
+	AddTab(new PreferencesDiskTab(), tr("Disk"));
+	AddTab(new PreferencesAudioTab(), tr("Audio"));
+	AddTab(new PreferencesKeyboardTab(main_window), tr("Keyboard"));
 }
 
 void PreferencesDialog::AcceptEvent()
 {
-  Config::Save();
+	Config::Save();
 }
 
 }

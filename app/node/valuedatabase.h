@@ -24,62 +24,61 @@
 #include "param.h"
 #include "value.h"
 
-namespace olive {
-
-class NodeValueDatabase
+namespace olive
 {
+
+class NodeValueDatabase {
 public:
-  NodeValueDatabase() = default;
+	NodeValueDatabase() = default;
 
-  NodeValueTable& operator[](const QString& input_id)
-  {
-    return tables_[input_id];
-  }
+	NodeValueTable &operator[](const QString &input_id)
+	{
+		return tables_[input_id];
+	}
 
-  void Insert(const QString& key, const NodeValueTable &value)
-  {
-    tables_.insert(key, value);
-  }
+	void Insert(const QString &key, const NodeValueTable &value)
+	{
+		tables_.insert(key, value);
+	}
 
-  NodeValueTable Take(const QString &key)
-  {
-    return tables_.take(key);
-  }
+	NodeValueTable Take(const QString &key)
+	{
+		return tables_.take(key);
+	}
 
-  NodeValueTable Merge() const;
+	NodeValueTable Merge() const;
 
-  using Tables = QHash<QString, NodeValueTable>;
-  using const_iterator = Tables::const_iterator;
-  using iterator = Tables::iterator;
+	using Tables = QHash<QString, NodeValueTable>;
+	using const_iterator = Tables::const_iterator;
+	using iterator = Tables::iterator;
 
-  inline const_iterator cbegin() const
-  {
-    return tables_.cbegin();
-  }
+	inline const_iterator cbegin() const
+	{
+		return tables_.cbegin();
+	}
 
-  inline const_iterator cend() const
-  {
-    return tables_.cend();
-  }
+	inline const_iterator cend() const
+	{
+		return tables_.cend();
+	}
 
-  inline iterator begin()
-  {
-    return tables_.begin();
-  }
+	inline iterator begin()
+	{
+		return tables_.begin();
+	}
 
-  inline iterator end()
-  {
-    return tables_.end();
-  }
+	inline iterator end()
+	{
+		return tables_.end();
+	}
 
-  inline bool contains(const QString& s) const
-  {
-    return tables_.contains(s);
-  }
+	inline bool contains(const QString &s) const
+	{
+		return tables_.contains(s);
+	}
 
 private:
-  Tables tables_;
-
+	Tables tables_;
 };
 
 }

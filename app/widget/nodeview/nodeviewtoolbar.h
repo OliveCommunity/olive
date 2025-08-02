@@ -4,37 +4,36 @@
 #include <QPushButton>
 #include <QWidget>
 
-namespace olive {
-
-class NodeViewToolBar : public QWidget
+namespace olive
 {
-  Q_OBJECT
+
+class NodeViewToolBar : public QWidget {
+	Q_OBJECT
 public:
-  NodeViewToolBar(QWidget *parent = nullptr);
+	NodeViewToolBar(QWidget *parent = nullptr);
 
 public slots:
-  void SetMiniMapEnabled(bool e)
-  {
-    minimap_btn_->setChecked(e);
-  }
+	void SetMiniMapEnabled(bool e)
+	{
+		minimap_btn_->setChecked(e);
+	}
 
 signals:
-  void AddNodeClicked();
+	void AddNodeClicked();
 
-  void MiniMapEnabledToggled(bool e);
+	void MiniMapEnabledToggled(bool e);
 
 protected:
-  virtual void changeEvent(QEvent *e) override;
+	virtual void changeEvent(QEvent *e) override;
 
 private:
-  void Retranslate();
+	void Retranslate();
 
-  void UpdateIcons();
+	void UpdateIcons();
 
-  QPushButton *add_node_btn_;
+	QPushButton *add_node_btn_;
 
-  QPushButton *minimap_btn_;
-
+	QPushButton *minimap_btn_;
 };
 
 }

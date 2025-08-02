@@ -6,10 +6,12 @@
 
 #include "common/define.h"
 
-namespace olive {
+namespace olive
+{
 
-inline QString ToHex(quint64 t) {
-  return QStringLiteral("%1").arg(t, 0, 16);
+inline QString ToHex(quint64 t)
+{
+	return QStringLiteral("%1").arg(t, 0, 16);
 }
 
 }

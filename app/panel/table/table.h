@@ -24,28 +24,28 @@
 #include "panel/timebased/timebased.h"
 #include "widget/nodetableview/nodetablewidget.h"
 
-namespace olive {
-
-class NodeTablePanel : public TimeBasedPanel
+namespace olive
 {
-  Q_OBJECT
+
+class NodeTablePanel : public TimeBasedPanel {
+	Q_OBJECT
 public:
-  NodeTablePanel();
+	NodeTablePanel();
 
 public slots:
-  void SelectNodes(const QVector<Node*>& nodes)
-  {
-    static_cast<NodeTableWidget*>(GetTimeBasedWidget())->SelectNodes(nodes);
-  }
+	void SelectNodes(const QVector<Node *> &nodes)
+	{
+		static_cast<NodeTableWidget *>(GetTimeBasedWidget())->SelectNodes(nodes);
+	}
 
-  void DeselectNodes(const QVector<Node*>& nodes)
-  {
-    static_cast<NodeTableWidget*>(GetTimeBasedWidget())->DeselectNodes(nodes);
-  }
+	void DeselectNodes(const QVector<Node *> &nodes)
+	{
+		static_cast<NodeTableWidget *>(GetTimeBasedWidget())
+			->DeselectNodes(nodes);
+	}
 
 private:
-  virtual void Retranslate() override;
-
+	virtual void Retranslate() override;
 };
 
 }

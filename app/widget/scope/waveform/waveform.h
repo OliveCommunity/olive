@@ -23,21 +23,20 @@
 
 #include "widget/scope/scopebase/scopebase.h"
 
-namespace olive {
-
-class WaveformScope : public ScopeBase
+namespace olive
 {
-  Q_OBJECT
-public:
-  WaveformScope(QWidget* parent = nullptr);
 
-  MANAGEDDISPLAYWIDGET_DEFAULT_DESTRUCTOR(WaveformScope)
+class WaveformScope : public ScopeBase {
+	Q_OBJECT
+public:
+	WaveformScope(QWidget *parent = nullptr);
+
+	MANAGEDDISPLAYWIDGET_DEFAULT_DESTRUCTOR(WaveformScope)
 
 protected:
-  virtual ShaderCode GenerateShaderCode() override;
+	virtual ShaderCode GenerateShaderCode() override;
 
-  virtual void DrawScope(TexturePtr managed_tex, QVariant pipeline) override;
-
+	virtual void DrawScope(TexturePtr managed_tex, QVariant pipeline) override;
 };
 
 }

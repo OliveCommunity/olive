@@ -25,27 +25,26 @@
 
 #include "common/define.h"
 
-namespace olive {
-
-class DragButton : public QPushButton
+namespace olive
 {
-  Q_OBJECT
+
+class DragButton : public QPushButton {
+	Q_OBJECT
 public:
-  DragButton(QWidget* parent = nullptr);
+	DragButton(QWidget *parent = nullptr);
 
 signals:
-  void DragStarted();
+	void DragStarted();
 
 protected:
-  virtual void mousePressEvent(QMouseEvent* event) override;
+	virtual void mousePressEvent(QMouseEvent *event) override;
 
-  virtual void mouseMoveEvent(QMouseEvent* event) override;
+	virtual void mouseMoveEvent(QMouseEvent *event) override;
 
-  virtual void mouseReleaseEvent(QMouseEvent* event) override;
+	virtual void mouseReleaseEvent(QMouseEvent *event) override;
 
 private:
-  bool dragging_;
-
+	bool dragging_;
 };
 
 }

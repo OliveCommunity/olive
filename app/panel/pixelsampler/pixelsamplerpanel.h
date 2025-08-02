@@ -24,22 +24,21 @@
 #include "panel/panel.h"
 #include "widget/pixelsampler/pixelsampler.h"
 
-namespace olive {
-
-class PixelSamplerPanel : public PanelWidget
+namespace olive
 {
-  Q_OBJECT
+
+class PixelSamplerPanel : public PanelWidget {
+	Q_OBJECT
 public:
-  PixelSamplerPanel();
+	PixelSamplerPanel();
 
 public slots:
-  void SetValues(const Color& reference, const Color& display);
+	void SetValues(const Color &reference, const Color &display);
 
 private:
-  virtual void Retranslate() override;
+	virtual void Retranslate() override;
 
-  ManagedPixelSamplerWidget* sampler_widget_;
-
+	ManagedPixelSamplerWidget *sampler_widget_;
 };
 
 }

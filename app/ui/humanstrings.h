@@ -4,22 +4,21 @@
 #include <olive/core/core.h>
 #include <QObject>
 
-namespace olive {
+namespace olive
+{
 
 using namespace core;
 
-class HumanStrings : public QObject
-{
-  Q_OBJECT
+class HumanStrings : public QObject {
+	Q_OBJECT
 public:
-  HumanStrings() = default;
+	HumanStrings() = default;
 
-  static QString SampleRateToString(const int &sample_rate);
+	static QString SampleRateToString(const int &sample_rate);
 
-  static QString ChannelLayoutToString(const uint64_t &layout);
+	static QString ChannelLayoutToString(const uint64_t &layout);
 
-  static QString FormatToString(const SampleFormat &f);
-
+	static QString FormatToString(const SampleFormat &f);
 };
 
 }

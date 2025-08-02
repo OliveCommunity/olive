@@ -20,11 +20,12 @@
 
 #include "configdialogbasetab.h"
 
-namespace olive {
+namespace olive
+{
 
 bool ConfigDialogBaseTab::Validate()
 {
-  return true;
+	return true;
 }
 
 }

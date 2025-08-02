@@ -27,32 +27,33 @@
 
 #include "configdialogbasetab.h"
 
-namespace olive {
-
-class ConfigDialogBase : public QDialog
+namespace olive
 {
-  Q_OBJECT
+
+class ConfigDialogBase : public QDialog {
+	Q_OBJECT
 public:
-  ConfigDialogBase(QWidget* parent = nullptr);
+	ConfigDialogBase(QWidget *parent = nullptr);
 
 private slots:
-  /**
+	/**
    * @brief Override of accept to save preferences to Config.
    */
-  virtual void accept() override;
+	virtual void accept() override;
 
 protected:
-  void AddTab(ConfigDialogBaseTab* tab, const QString& title);
+	void AddTab(ConfigDialogBaseTab *tab, const QString &title);
 
-  virtual void AcceptEvent(){}
+	virtual void AcceptEvent()
+	{
+	}
 
 private:
-  QListWidget* list_widget_;
+	QListWidget *list_widget_;
 
-  QStackedWidget* preference_pane_stack_;
+	QStackedWidget *preference_pane_stack_;
 
-  QList<ConfigDialogBaseTab*> tabs_;
-
+	QList<ConfigDialogBaseTab *> tabs_;
 };
 
 }

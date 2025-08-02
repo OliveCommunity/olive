@@ -24,19 +24,19 @@
 #include "projectexplorerlistviewbase.h"
 #include "projectexplorericonviewitemdelegate.h"
 
-namespace olive {
+namespace olive
+{
 
 /**
  * @brief The view widget used when ProjectExplorer is in Icon View
  */
-class ProjectExplorerIconView : public ProjectExplorerListViewBase
-{
-  Q_OBJECT
+class ProjectExplorerIconView : public ProjectExplorerListViewBase {
+	Q_OBJECT
 public:
-  ProjectExplorerIconView(QWidget* parent);
+	ProjectExplorerIconView(QWidget *parent);
 
 private:
-  ProjectExplorerIconViewItemDelegate delegate_;
+	ProjectExplorerIconViewItemDelegate delegate_;
 };
 
 }

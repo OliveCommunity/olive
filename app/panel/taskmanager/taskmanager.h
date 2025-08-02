@@ -24,21 +24,21 @@
 #include "panel/panel.h"
 #include "widget/taskview/taskview.h"
 
-namespace olive {
+namespace olive
+{
 
 /**
  * @brief A PanelWidget wrapper around a TaskView widget
  */
-class TaskManagerPanel : public PanelWidget
-{
-  Q_OBJECT
+class TaskManagerPanel : public PanelWidget {
+	Q_OBJECT
 public:
-  TaskManagerPanel();
+	TaskManagerPanel();
 
 private:
-  virtual void Retranslate() override;
+	virtual void Retranslate() override;
 
-  TaskView* view_;
+	TaskView *view_;
 };
 
 }

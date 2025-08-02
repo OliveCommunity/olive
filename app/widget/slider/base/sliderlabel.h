@@ -25,40 +25,39 @@
 
 #include "common/define.h"
 
-namespace olive {
-
-class SliderLabel : public QLabel
+namespace olive
 {
-  Q_OBJECT
-public:
-  SliderLabel(QWidget* parent);
 
-  void SetColor(const QColor &c);
+class SliderLabel : public QLabel {
+	Q_OBJECT
+public:
+	SliderLabel(QWidget *parent);
+
+	void SetColor(const QColor &c);
 
 protected:
-  virtual void mousePressEvent(QMouseEvent *e) override;
+	virtual void mousePressEvent(QMouseEvent *e) override;
 
-  virtual void mouseReleaseEvent(QMouseEvent *e) override;
+	virtual void mouseReleaseEvent(QMouseEvent *e) override;
 
-  virtual void focusInEvent(QFocusEvent *event) override;
+	virtual void focusInEvent(QFocusEvent *event) override;
 
-  virtual void changeEvent(QEvent *event) override;
+	virtual void changeEvent(QEvent *event) override;
 
 signals:
-  void LabelPressed();
+	void LabelPressed();
 
-  void LabelReleased();
+	void LabelReleased();
 
-  void focused();
+	void focused();
 
-  void RequestReset();
+	void RequestReset();
 
-  void ChangeSliderType();
+	void ChangeSliderType();
 
 private:
-  bool override_color_enabled_;
-  QColor override_color_;
-
+	bool override_color_enabled_;
+	QColor override_color_;
 };
 
 }

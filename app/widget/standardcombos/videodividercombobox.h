@@ -25,35 +25,34 @@
 
 #include "render/videoparams.h"
 
-namespace olive {
-
-class VideoDividerComboBox : public QComboBox
+namespace olive
 {
-  Q_OBJECT
+
+class VideoDividerComboBox : public QComboBox {
+	Q_OBJECT
 public:
-  VideoDividerComboBox(QWidget* parent = nullptr) :
-    QComboBox(parent)
-  {
-    foreach (int d, VideoParams::kSupportedDividers) {
-      this->addItem(VideoParams::GetNameForDivider(d), d);
-    }
-  }
+	VideoDividerComboBox(QWidget *parent = nullptr)
+		: QComboBox(parent)
+	{
+		foreach (int d, VideoParams::kSupportedDividers) {
+			this->addItem(VideoParams::GetNameForDivider(d), d);
+		}
+	}
 
-  int GetDivider() const
-  {
-    return this->currentData().toInt();
-  }
+	int GetDivider() const
+	{
+		return this->currentData().toInt();
+	}
 
-  void SetDivider(int d)
-  {
-    for (int i=0; i<this->count(); i++) {
-      if (this->itemData(i).toInt() == d) {
-        this->setCurrentIndex(i);
-        break;
-      }
-    }
-  }
-
+	void SetDivider(int d)
+	{
+		for (int i = 0; i < this->count(); i++) {
+			if (this->itemData(i).toInt() == d) {
+				this->setCurrentIndex(i);
+				break;
+			}
+		}
+	}
 };
 
 }

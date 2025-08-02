@@ -25,17 +25,16 @@
 
 #include "common/define.h"
 
-namespace olive {
-
-class CollapseButton : public QPushButton
+namespace olive
 {
-  Q_OBJECT
+
+class CollapseButton : public QPushButton {
+	Q_OBJECT
 public:
-  CollapseButton(QWidget* parent = nullptr);
+	CollapseButton(QWidget *parent = nullptr);
 
 private slots:
-  void UpdateIcon(bool e);
-
+	void UpdateIcon(bool e);
 };
 
 }

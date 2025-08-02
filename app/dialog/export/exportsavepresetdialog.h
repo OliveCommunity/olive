@@ -27,27 +27,26 @@
 
 #include "codec/encoder.h"
 
-namespace olive {
-
-class ExportSavePresetDialog : public QDialog
+namespace olive
 {
-  Q_OBJECT
-public:
-  ExportSavePresetDialog(const EncodingParams &p, QWidget *parent = nullptr);
 
-  QString GetSelectedPresetName() const
-  {
-    return name_edit_->text();
-  }
+class ExportSavePresetDialog : public QDialog {
+	Q_OBJECT
+public:
+	ExportSavePresetDialog(const EncodingParams &p, QWidget *parent = nullptr);
+
+	QString GetSelectedPresetName() const
+	{
+		return name_edit_->text();
+	}
 
 public slots:
-  virtual void accept() override;
+	virtual void accept() override;
 
 private:
-  QLineEdit *name_edit_;
+	QLineEdit *name_edit_;
 
-  EncodingParams params_;
-
+	EncodingParams params_;
 };
 
 }

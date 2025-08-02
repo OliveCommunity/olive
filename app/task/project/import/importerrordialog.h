@@ -25,14 +25,14 @@
 
 #include "common/define.h"
 
-namespace olive {
-
-class ProjectImportErrorDialog : public QDialog
+namespace olive
 {
-  Q_OBJECT
-public:
-  ProjectImportErrorDialog(const QStringList& filenames, QWidget* parent = nullptr);
 
+class ProjectImportErrorDialog : public QDialog {
+	Q_OBJECT
+public:
+	ProjectImportErrorDialog(const QStringList &filenames,
+							 QWidget *parent = nullptr);
 };
 
 }

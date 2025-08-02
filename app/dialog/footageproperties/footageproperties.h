@@ -32,7 +32,8 @@
 #include "node/project/footage/footage.h"
 #include "undo/undocommand.h"
 
-namespace olive {
+namespace olive
+{
 
 /**
  * @brief The MediaPropertiesDialog class
@@ -41,9 +42,9 @@ namespace olive {
  * a valid Media object.
  */
 class FootagePropertiesDialog : public QDialog {
-  Q_OBJECT
+	Q_OBJECT
 public:
-  /**
+	/**
    * @brief MediaPropertiesDialog Constructor
    *
    * @param parent
@@ -54,61 +55,59 @@ public:
    *
    * Media object to set properties for.
    */
-  FootagePropertiesDialog(QWidget *parent, Footage* footage);
+	FootagePropertiesDialog(QWidget *parent, Footage *footage);
+
 private:
-  class StreamEnableChangeCommand : public UndoCommand {
-  public:
-    StreamEnableChangeCommand(Footage *footage,
-                              Track::Type type,
-                              int index_in_type,
-                              bool enabled);
+	class StreamEnableChangeCommand : public UndoCommand {
+	public:
+		StreamEnableChangeCommand(Footage *footage, Track::Type type,
+								  int index_in_type, bool enabled);
 
-    virtual Project* GetRelevantProject() const override;
+		virtual Project *GetRelevantProject() const override;
 
-  protected:
-    virtual void redo() override;
-    virtual void undo() override;
+	protected:
+		virtual void redo() override;
+		virtual void undo() override;
 
-  private:
-    Footage *footage_;
-    Track::Type type_;
-    int index_;
+	private:
+		Footage *footage_;
+		Track::Type type_;
+		int index_;
 
-    bool old_enabled_;
-    bool new_enabled_;
-  };
+		bool old_enabled_;
+		bool new_enabled_;
+	};
 
-  /**
+	/**
    * @brief Stack of widgets that changes based on whether the stream is a video or audio stream
    */
-  QStackedWidget* stacked_widget_;
+	QStackedWidget *stacked_widget_;
 
-  /**
+	/**
    * @brief Media name text field
    */
-  QLineEdit* footage_name_field_;
+	QLineEdit *footage_name_field_;
 
-  /**
+	/**
    * @brief Internal pointer to Media object (set in constructor)
    */
-  Footage* footage_;
+	Footage *footage_;
 
-  /**
+	/**
    * @brief A list widget for listing the tracks in Media
    */
-  QListWidget* track_list;
+	QListWidget *track_list;
 
-  /**
+	/**
    * @brief Frame rate to conform to
    */
-  QDoubleSpinBox* conform_fr;
+	QDoubleSpinBox *conform_fr;
 
 private slots:
-  /**
+	/**
    * @brief Overridden accept function for saving the properties back to the Media class
    */
-  void accept();
-
+	void accept();
 };
 
 }

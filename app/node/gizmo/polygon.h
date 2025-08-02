@@ -25,22 +25,27 @@
 
 #include "draggable.h"
 
-namespace olive {
-
-class PolygonGizmo : public DraggableGizmo
+namespace olive
 {
-  Q_OBJECT
+
+class PolygonGizmo : public DraggableGizmo {
+	Q_OBJECT
 public:
-  explicit PolygonGizmo(QObject *parent = nullptr);
+	explicit PolygonGizmo(QObject *parent = nullptr);
 
-  const QPolygonF &GetPolygon() const { return polygon_; }
-  void SetPolygon(const QPolygonF &polygon) { polygon_ = polygon; }
+	const QPolygonF &GetPolygon() const
+	{
+		return polygon_;
+	}
+	void SetPolygon(const QPolygonF &polygon)
+	{
+		polygon_ = polygon;
+	}
 
-  virtual void Draw(QPainter *p) const override;
+	virtual void Draw(QPainter *p) const override;
 
 private:
-  QPolygonF polygon_;
-
+	QPolygonF polygon_;
 };
 
 }

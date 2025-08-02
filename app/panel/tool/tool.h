@@ -23,20 +23,19 @@
 
 #include "panel/panel.h"
 
-namespace olive {
+namespace olive
+{
 
 /**
  * @brief A PanelWidget wrapper around a Toolbar
  */
-class ToolPanel : public PanelWidget
-{
-  Q_OBJECT
+class ToolPanel : public PanelWidget {
+	Q_OBJECT
 public:
-  ToolPanel();
+	ToolPanel();
 
 private:
-  virtual void Retranslate() override;
-
+	virtual void Retranslate() override;
 };
 
 }

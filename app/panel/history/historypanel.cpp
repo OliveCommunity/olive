@@ -22,19 +22,20 @@
 
 #include "widget/history/historywidget.h"
 
-namespace olive {
-
-HistoryPanel::HistoryPanel() :
-  PanelWidget(QStringLiteral("HistoryPanel"))
+namespace olive
 {
-  SetWidgetWithPadding(new HistoryWidget(this));
 
-  Retranslate();
+HistoryPanel::HistoryPanel()
+	: PanelWidget(QStringLiteral("HistoryPanel"))
+{
+	SetWidgetWithPadding(new HistoryWidget(this));
+
+	Retranslate();
 }
 
 void HistoryPanel::Retranslate()
 {
-  SetTitle(tr("History"));
+	SetTitle(tr("History"));
 }
 
 }

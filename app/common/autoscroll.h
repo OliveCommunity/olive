@@ -23,15 +23,12 @@
 
 #include "common/define.h"
 
-namespace olive {
+namespace olive
+{
 
 class AutoScroll {
 public:
-  enum Method {
-    kNone,
-    kPage,
-    kSmooth
-  };
+	enum Method { kNone, kPage, kSmooth };
 };
 
 }

@@ -30,7 +30,8 @@
 
 #include "dialog/configbase/configdialogbase.h"
 
-namespace olive {
+namespace olive
+{
 
 class MainWindow;
 
@@ -39,16 +40,14 @@ class MainWindow;
  *
  * A dialog for the global application settings. Mostly an interface for Config.
  */
-class PreferencesDialog : public ConfigDialogBase
-{
-  Q_OBJECT
+class PreferencesDialog : public ConfigDialogBase {
+	Q_OBJECT
 
 public:
-  PreferencesDialog(MainWindow *main_window);
+	PreferencesDialog(MainWindow *main_window);
 
 protected:
-  virtual void AcceptEvent() override;
-
+	virtual void AcceptEvent() override;
 };
 
 }

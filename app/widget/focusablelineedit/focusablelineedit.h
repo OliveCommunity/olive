@@ -25,25 +25,23 @@
 
 #include "common/define.h"
 
-namespace olive {
-
-class FocusableLineEdit : public QLineEdit
+namespace olive
 {
-  Q_OBJECT
+
+class FocusableLineEdit : public QLineEdit {
+	Q_OBJECT
 public:
-  FocusableLineEdit(QWidget* parent = nullptr);
+	FocusableLineEdit(QWidget *parent = nullptr);
 
 signals:
-  void Confirmed();
+	void Confirmed();
 
-  void Cancelled();
+	void Cancelled();
 
 protected:
-  void keyPressEvent(QKeyEvent *) override;
+	void keyPressEvent(QKeyEvent *) override;
 
-  void focusOutEvent(QFocusEvent *) override;
-
-
+	void focusOutEvent(QFocusEvent *) override;
 };
 
 }

@@ -24,17 +24,16 @@
 #include "loadbasetask.h"
 #include "window/mainwindow/mainwindowlayoutinfo.h"
 
-namespace olive {
-
-class ProjectLoadTask : public ProjectLoadBaseTask
+namespace olive
 {
-  Q_OBJECT
+
+class ProjectLoadTask : public ProjectLoadBaseTask {
+	Q_OBJECT
 public:
-  ProjectLoadTask(const QString& filename);
+	ProjectLoadTask(const QString &filename);
 
 protected:
-  virtual bool Run() override;
-
+	virtual bool Run() override;
 };
 
 }

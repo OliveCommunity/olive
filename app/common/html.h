@@ -6,7 +6,8 @@
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
 
-namespace olive {
+namespace olive
+{
 
 /**
  * @brief Functions for converting HTML to QTextDocument and vice versa
@@ -26,33 +27,37 @@ namespace olive {
  */
 class Html {
 public:
-  static QString DocToHtml(const QTextDocument *doc);
+	static QString DocToHtml(const QTextDocument *doc);
 
-  static void HtmlToDoc(QTextDocument *doc, const QString &html);
+	static void HtmlToDoc(QTextDocument *doc, const QString &html);
 
 private:
-  static void WriteBlock(QXmlStreamWriter *writer, const QTextBlock &block);
+	static void WriteBlock(QXmlStreamWriter *writer, const QTextBlock &block);
 
-  static void WriteFragment(QXmlStreamWriter *writer, const QTextFragment &fragment);
+	static void WriteFragment(QXmlStreamWriter *writer,
+							  const QTextFragment &fragment);
 
-  static void WriteCSSProperty(QString *style, const QString &key, const QStringList &value);
-  static void WriteCSSProperty(QString *style, const QString &key, const QString &value)
-  {
-    WriteCSSProperty(style, key, QStringList({value}));
-  }
+	static void WriteCSSProperty(QString *style, const QString &key,
+								 const QStringList &value);
+	static void WriteCSSProperty(QString *style, const QString &key,
+								 const QString &value)
+	{
+		WriteCSSProperty(style, key, QStringList({ value }));
+	}
 
-  static void WriteCharFormat(QString *style, const QTextCharFormat &fmt);
+	static void WriteCharFormat(QString *style, const QTextCharFormat &fmt);
 
-  static QTextCharFormat ReadCharFormat(const QXmlStreamAttributes &attributes);
+	static QTextCharFormat
+	ReadCharFormat(const QXmlStreamAttributes &attributes);
 
-  static QTextBlockFormat ReadBlockFormat(const QXmlStreamAttributes &attributes);
+	static QTextBlockFormat
+	ReadBlockFormat(const QXmlStreamAttributes &attributes);
 
-  static void AppendStringAutoSpace(QString *s, const QString &append);
+	static void AppendStringAutoSpace(QString *s, const QString &append);
 
-  static QMap<QString, QStringList> GetCSSFromStyle(const QString &s);
+	static QMap<QString, QStringList> GetCSSFromStyle(const QString &s);
 
-  static const QVector<QString> kBlockTags;
-
+	static const QVector<QString> kBlockTags;
 };
 
 }

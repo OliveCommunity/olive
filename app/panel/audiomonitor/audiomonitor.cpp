@@ -22,23 +22,24 @@
 
 #include "panel/panelmanager.h"
 
-namespace olive {
+namespace olive
+{
 
 #define super PanelWidget
 
-AudioMonitorPanel::AudioMonitorPanel() :
-  super(QStringLiteral("AudioMonitor"))
+AudioMonitorPanel::AudioMonitorPanel()
+	: super(QStringLiteral("AudioMonitor"))
 {
-  audio_monitor_ = new AudioMonitor(this);
+	audio_monitor_ = new AudioMonitor(this);
 
-  SetWidgetWithPadding(audio_monitor_);
+	SetWidgetWithPadding(audio_monitor_);
 
-  Retranslate();
+	Retranslate();
 }
 
 void AudioMonitorPanel::Retranslate()
 {
-  SetTitle(tr("Audio Monitor"));
+	SetTitle(tr("Audio Monitor"));
 }
 
 }

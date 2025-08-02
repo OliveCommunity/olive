@@ -23,12 +23,12 @@
 
 #include "task/export/export.h"
 
-namespace olive {
-
-class CLIExportManager : public QObject
+namespace olive
 {
+
+class CLIExportManager : public QObject {
 public:
-  CLIExportManager();
+	CLIExportManager();
 };
 
 }

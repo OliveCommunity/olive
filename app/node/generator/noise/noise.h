@@ -23,31 +23,33 @@
 
 #include "node/node.h"
 
-namespace olive {
+namespace olive
+{
 
 class NoiseGeneratorNode : public Node {
-  Q_OBJECT
- public:
-  NoiseGeneratorNode();
+	Q_OBJECT
+public:
+	NoiseGeneratorNode();
 
-  NODE_DEFAULT_FUNCTIONS(NoiseGeneratorNode)
+	NODE_DEFAULT_FUNCTIONS(NoiseGeneratorNode)
 
-  virtual QString Name() const override;
-  virtual QString id() const override;
-  virtual QVector<CategoryID> Category() const override;
-  virtual QString Description() const override;
+	virtual QString Name() const override;
+	virtual QString id() const override;
+	virtual QVector<CategoryID> Category() const override;
+	virtual QString Description() const override;
 
-  virtual void Retranslate() override;
+	virtual void Retranslate() override;
 
-  virtual ShaderCode GetShaderCode(const ShaderRequest &request) const override;
-  virtual void Value(const NodeValueRow &value, const NodeGlobals &globals, NodeValueTable *table) const override;
+	virtual ShaderCode
+	GetShaderCode(const ShaderRequest &request) const override;
+	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+					   NodeValueTable *table) const override;
 
-  static const QString kBaseIn;
-  static const QString kColorInput;
-  static const QString kStrengthInput;
-
+	static const QString kBaseIn;
+	static const QString kColorInput;
+	static const QString kStrengthInput;
 };
 
-}  // namespace olive
+} // namespace olive
 
-#endif  // NOISEGENERATORNODE_H
+#endif // NOISEGENERATORNODE_H

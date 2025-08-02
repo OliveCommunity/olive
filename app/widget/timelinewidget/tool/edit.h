@@ -25,23 +25,22 @@
 #include "tool.h"
 #include "widget/timelinewidget/timelinewidgetselections.h"
 
-namespace olive {
-
-class EditTool : public BeamTool
+namespace olive
 {
-public:
-  EditTool(TimelineWidget* parent);
 
-  virtual void MousePress(TimelineViewMouseEvent *event) override;
-  virtual void MouseMove(TimelineViewMouseEvent *event) override;
-  virtual void MouseRelease(TimelineViewMouseEvent *event) override;
-  virtual void MouseDoubleClick(TimelineViewMouseEvent *event) override;
+class EditTool : public BeamTool {
+public:
+	EditTool(TimelineWidget *parent);
+
+	virtual void MousePress(TimelineViewMouseEvent *event) override;
+	virtual void MouseMove(TimelineViewMouseEvent *event) override;
+	virtual void MouseRelease(TimelineViewMouseEvent *event) override;
+	virtual void MouseDoubleClick(TimelineViewMouseEvent *event) override;
 
 private:
-  TimelineWidgetSelections start_selections_;
+	TimelineWidgetSelections start_selections_;
 
-  TimelineCoordinate start_coord_;
-
+	TimelineCoordinate start_coord_;
 };
 
 }

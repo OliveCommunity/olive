@@ -23,21 +23,20 @@
 
 #include <QStackedWidget>
 
-namespace olive {
-
-class CodecStack : public QStackedWidget
+namespace olive
 {
-  Q_OBJECT
-public:
-  explicit CodecStack(QWidget *parent = nullptr);
 
-  void addWidget(QWidget *widget);
+class CodecStack : public QStackedWidget {
+	Q_OBJECT
+public:
+	explicit CodecStack(QWidget *parent = nullptr);
+
+	void addWidget(QWidget *widget);
 
 signals:
 
 private slots:
-  void OnChange(int index);
-
+	void OnChange(int index);
 };
 
 }

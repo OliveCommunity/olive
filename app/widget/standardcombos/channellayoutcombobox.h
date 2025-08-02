@@ -23,60 +23,62 @@
 
 #include <olive/core/core.h>
 #include <QComboBox>
-extern "C"{
+extern "C" {
 #include <libavformat/avformat.h>
 }
 #include "ui/humanstrings.h"
 
-namespace olive {
+namespace olive
+{
 
 using namespace core;
 
-class ChannelLayoutComboBox : public QComboBox
-{
-  Q_OBJECT
+class ChannelLayoutComboBox : public QComboBox {
+	Q_OBJECT
 public:
-  ChannelLayoutComboBox(QWidget* parent = nullptr) :
-    QComboBox(parent)
-  {
-    foreach (const uint64_t& ch_layout, AudioParams::kSupportedChannelLayouts) {
-      this->addItem(HumanStrings::ChannelLayoutToString(ch_layout),
-                    QVariant::fromValue(ch_layout));
-    }
-  }
-  [[nodiscard]] AVChannelLayout GetChannelLayout() const
-  {
-    AVChannelLayout audio_channel_layout_;
-    av_channel_layout_from_mask(&audio_channel_layout_, this->currentData().toULongLong());
-    return audio_channel_layout_;
-  }
-  void SetChannelLayout(uint64_t ch)
-  {
-    for (int i=0; i<this->count(); i++) {
-      if (this->itemData(i).toULongLong() == ch) {
-        this->setCurrentIndex(i);
-        break;
-      }
-    }
-  }
-  void SetChannelLayout(AVChannelLayout &ch)
-  {
-    for (int i=0; i<this->count(); i++) {
-      if (this->itemData(i).toULongLong() == ch.u.mask) {
-        this->setCurrentIndex(i);
-        break;
-      }
-    }
-  }
-  void SetChannelLayout(AVChannelLayout &&ch)
-  {
-    for (int i=0; i<this->count(); i++) {
-      if (this->itemData(i).toULongLong() == ch.u.mask) {
-        this->setCurrentIndex(i);
-        break;
-      }
-    }
-  }
+	ChannelLayoutComboBox(QWidget *parent = nullptr)
+		: QComboBox(parent)
+	{
+		foreach (const uint64_t &ch_layout,
+				 AudioParams::kSupportedChannelLayouts) {
+			this->addItem(HumanStrings::ChannelLayoutToString(ch_layout),
+						  QVariant::fromValue(ch_layout));
+		}
+	}
+	[[nodiscard]] AVChannelLayout GetChannelLayout() const
+	{
+		AVChannelLayout audio_channel_layout_;
+		av_channel_layout_from_mask(&audio_channel_layout_,
+									this->currentData().toULongLong());
+		return audio_channel_layout_;
+	}
+	void SetChannelLayout(uint64_t ch)
+	{
+		for (int i = 0; i < this->count(); i++) {
+			if (this->itemData(i).toULongLong() == ch) {
+				this->setCurrentIndex(i);
+				break;
+			}
+		}
+	}
+	void SetChannelLayout(AVChannelLayout &ch)
+	{
+		for (int i = 0; i < this->count(); i++) {
+			if (this->itemData(i).toULongLong() == ch.u.mask) {
+				this->setCurrentIndex(i);
+				break;
+			}
+		}
+	}
+	void SetChannelLayout(AVChannelLayout &&ch)
+	{
+		for (int i = 0; i < this->count(); i++) {
+			if (this->itemData(i).toULongLong() == ch.u.mask) {
+				this->setCurrentIndex(i);
+				break;
+			}
+		}
+	}
 public slots:
 private:
 };

@@ -30,27 +30,26 @@
 #include "widget/slider/floatslider.h"
 #include "widget/path/pathwidget.h"
 
-namespace olive {
-
-class PreferencesDiskTab : public ConfigDialogBaseTab
+namespace olive
 {
-  Q_OBJECT
+
+class PreferencesDiskTab : public ConfigDialogBaseTab {
+	Q_OBJECT
 public:
-  PreferencesDiskTab();
+	PreferencesDiskTab();
 
-  virtual bool Validate() override;
+	virtual bool Validate() override;
 
-  virtual void Accept(MultiUndoCommand* command) override;
+	virtual void Accept(MultiUndoCommand *command) override;
 
 private:
-  PathWidget* disk_cache_location_;
+	PathWidget *disk_cache_location_;
 
-  FloatSlider* cache_ahead_slider_;
+	FloatSlider *cache_ahead_slider_;
 
-  FloatSlider* cache_behind_slider_;
+	FloatSlider *cache_behind_slider_;
 
-  DiskCacheFolder* default_disk_cache_folder_;
-
+	DiskCacheFolder *default_disk_cache_folder_;
 };
 
 }

@@ -25,22 +25,27 @@
 
 #include "draggable.h"
 
-namespace olive {
-
-class PathGizmo : public DraggableGizmo
+namespace olive
 {
-  Q_OBJECT
+
+class PathGizmo : public DraggableGizmo {
+	Q_OBJECT
 public:
-  explicit PathGizmo(QObject *parent = nullptr);
+	explicit PathGizmo(QObject *parent = nullptr);
 
-  const QPainterPath &GetPath() const { return path_; }
-  void SetPath(const QPainterPath &path) { path_ = path; }
+	const QPainterPath &GetPath() const
+	{
+		return path_;
+	}
+	void SetPath(const QPainterPath &path)
+	{
+		path_ = path;
+	}
 
-  virtual void Draw(QPainter *p) const override;
+	virtual void Draw(QPainter *p) const override;
 
 private:
-  QPainterPath path_;
-
+	QPainterPath path_;
 };
 
 }

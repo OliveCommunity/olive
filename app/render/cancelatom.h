@@ -3,44 +3,44 @@
 
 #include <QMutex>
 
-namespace olive {
-
-class CancelAtom
+namespace olive
 {
+
+class CancelAtom {
 public:
-  CancelAtom() :
-    cancelled_(false),
-    heard_(false)
-  {}
+	CancelAtom()
+		: cancelled_(false)
+		, heard_(false)
+	{
+	}
 
-  bool IsCancelled()
-  {
-    QMutexLocker locker(&mutex_);
-    if (cancelled_) {
-      heard_ = true;
-    }
-    return cancelled_;
-  }
+	bool IsCancelled()
+	{
+		QMutexLocker locker(&mutex_);
+		if (cancelled_) {
+			heard_ = true;
+		}
+		return cancelled_;
+	}
 
-  void Cancel()
-  {
-    QMutexLocker locker(&mutex_);
-    cancelled_ = true;
-  }
+	void Cancel()
+	{
+		QMutexLocker locker(&mutex_);
+		cancelled_ = true;
+	}
 
-  bool HeardCancel()
-  {
-    QMutexLocker locker(&mutex_);
-    return heard_;
-  }
+	bool HeardCancel()
+	{
+		QMutexLocker locker(&mutex_);
+		return heard_;
+	}
 
 private:
-  QMutex mutex_;
+	QMutex mutex_;
 
-  bool cancelled_;
+	bool cancelled_;
 
-  bool heard_;
-
+	bool heard_;
 };
 
 }

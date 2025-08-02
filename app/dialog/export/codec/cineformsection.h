@@ -25,21 +25,20 @@
 
 #include "codecsection.h"
 
-namespace olive {
-
-class CineformSection : public CodecSection
+namespace olive
 {
-  Q_OBJECT
+
+class CineformSection : public CodecSection {
+	Q_OBJECT
 public:
-  CineformSection(QWidget *parent = nullptr);
+	CineformSection(QWidget *parent = nullptr);
 
-  virtual void AddOpts(EncodingParams* params) override;
+	virtual void AddOpts(EncodingParams *params) override;
 
-  virtual void SetOpts(const EncodingParams *p) override;
+	virtual void SetOpts(const EncodingParams *p) override;
 
 private:
-  QComboBox *quality_combobox_;
-
+	QComboBox *quality_combobox_;
 };
 
 }

@@ -11,97 +11,99 @@
 #include "widget/slider/integerslider.h"
 #include "widget/standardcombos/standardcombos.h"
 
-namespace olive {
-
-class SequenceDialogParameterTab : public QWidget
+namespace olive
 {
-  Q_OBJECT
+
+class SequenceDialogParameterTab : public QWidget {
+	Q_OBJECT
 public:
-  SequenceDialogParameterTab(Sequence* sequence, QWidget* parent = nullptr);
+	SequenceDialogParameterTab(Sequence *sequence, QWidget *parent = nullptr);
 
-  int GetSelectedVideoWidth() const
-  {
-    return width_slider_->GetValue();
-  }
+	int GetSelectedVideoWidth() const
+	{
+		return width_slider_->GetValue();
+	}
 
-  int GetSelectedVideoHeight() const
-  {
-    return height_slider_->GetValue();
-  }
+	int GetSelectedVideoHeight() const
+	{
+		return height_slider_->GetValue();
+	}
 
-  rational GetSelectedVideoFrameRate() const
-  {
-    return framerate_combo_->GetFrameRate();
-  }
+	rational GetSelectedVideoFrameRate() const
+	{
+		return framerate_combo_->GetFrameRate();
+	}
 
-  rational GetSelectedVideoPixelAspect() const
-  {
-    return pixelaspect_combo_->GetPixelAspectRatio();
-  }
+	rational GetSelectedVideoPixelAspect() const
+	{
+		return pixelaspect_combo_->GetPixelAspectRatio();
+	}
 
-  VideoParams::Interlacing GetSelectedVideoInterlacingMode() const
-  {
-    return interlacing_combo_->GetInterlaceMode();
-  }
+	VideoParams::Interlacing GetSelectedVideoInterlacingMode() const
+	{
+		return interlacing_combo_->GetInterlaceMode();
+	}
 
-  int GetSelectedAudioSampleRate() const { return audio_sample_rate_field_->GetSampleRate(); }
+	int GetSelectedAudioSampleRate() const
+	{
+		return audio_sample_rate_field_->GetSampleRate();
+	}
 
-  [[nodiscard]] AVChannelLayout GetSelectedAudioChannelLayout() const
-  {
-    return audio_channels_field_->GetChannelLayout();
-  }
+	[[nodiscard]] AVChannelLayout GetSelectedAudioChannelLayout() const
+	{
+		return audio_channels_field_->GetChannelLayout();
+	}
 
-  int GetSelectedPreviewResolution() const
-  {
-    return preview_resolution_field_->GetDivider();
-  }
+	int GetSelectedPreviewResolution() const
+	{
+		return preview_resolution_field_->GetDivider();
+	}
 
-  PixelFormat GetSelectedPreviewFormat() const
-  {
-    return preview_format_field_->GetPixelFormat();
-  }
+	PixelFormat GetSelectedPreviewFormat() const
+	{
+		return preview_format_field_->GetPixelFormat();
+	}
 
-  bool GetSelectedPreviewAutoCache() const
-  {
-    //return preview_autocache_field_->isChecked();
-    // TEMP: Disable sequence auto-cache, wanna see if clip cache supersedes it.
-    return false;
-  }
+	bool GetSelectedPreviewAutoCache() const
+	{
+		//return preview_autocache_field_->isChecked();
+		// TEMP: Disable sequence auto-cache, wanna see if clip cache supersedes it.
+		return false;
+	}
 
 public slots:
-  void PresetChanged(const SequencePreset& preset);
+	void PresetChanged(const SequencePreset &preset);
 
 signals:
-  void SaveParametersAsPreset(const SequencePreset& preset);
+	void SaveParametersAsPreset(const SequencePreset &preset);
 
 private:
-  IntegerSlider *width_slider_;
+	IntegerSlider *width_slider_;
 
-  IntegerSlider *height_slider_;
+	IntegerSlider *height_slider_;
 
-  FrameRateComboBox *framerate_combo_;
+	FrameRateComboBox *framerate_combo_;
 
-  PixelAspectRatioComboBox *pixelaspect_combo_;
+	PixelAspectRatioComboBox *pixelaspect_combo_;
 
-  InterlacedComboBox *interlacing_combo_;
+	InterlacedComboBox *interlacing_combo_;
 
-  SampleRateComboBox* audio_sample_rate_field_;
+	SampleRateComboBox *audio_sample_rate_field_;
 
-  ChannelLayoutComboBox* audio_channels_field_;
+	ChannelLayoutComboBox *audio_channels_field_;
 
-  VideoDividerComboBox* preview_resolution_field_;
+	VideoDividerComboBox *preview_resolution_field_;
 
-  QLabel* preview_resolution_label_;
+	QLabel *preview_resolution_label_;
 
-  PixelFormatComboBox* preview_format_field_;
+	PixelFormatComboBox *preview_format_field_;
 
-  QCheckBox *preview_autocache_field_;
+	QCheckBox *preview_autocache_field_;
 
 private slots:
-  void SavePresetClicked();
+	void SavePresetClicked();
 
-  void UpdatePreviewResolutionLabel();
-
+	void UpdatePreviewResolutionLabel();
 };
 
 }

@@ -27,60 +27,59 @@
 #include "node/param.h"
 #include "widget/timetarget/timetarget.h"
 
-namespace olive {
-
-class NodeParamViewKeyframeControl : public QWidget, public TimeTargetObject
+namespace olive
 {
-  Q_OBJECT
+
+class NodeParamViewKeyframeControl : public QWidget, public TimeTargetObject {
+	Q_OBJECT
 public:
-  NodeParamViewKeyframeControl(bool right_align, QWidget* parent = nullptr);
-  NodeParamViewKeyframeControl(QWidget* parent = nullptr) :
-    NodeParamViewKeyframeControl(true, parent)
-  {
-  }
+	NodeParamViewKeyframeControl(bool right_align, QWidget *parent = nullptr);
+	NodeParamViewKeyframeControl(QWidget *parent = nullptr)
+		: NodeParamViewKeyframeControl(true, parent)
+	{
+	}
 
-  const NodeInput& GetConnectedInput() const
-  {
-    return input_;
-  }
+	const NodeInput &GetConnectedInput() const
+	{
+		return input_;
+	}
 
-  void SetInput(const NodeInput& input);
+	void SetInput(const NodeInput &input);
 
 protected:
-  virtual void TimeTargetDisconnectEvent(ViewerOutput *v) override;
-  virtual void TimeTargetConnectEvent(ViewerOutput *v) override;
+	virtual void TimeTargetDisconnectEvent(ViewerOutput *v) override;
+	virtual void TimeTargetConnectEvent(ViewerOutput *v) override;
 
 private:
-  QPushButton* CreateNewToolButton(const QIcon &icon) const;
+	QPushButton *CreateNewToolButton(const QIcon &icon) const;
 
-  void SetButtonsEnabled(bool e);
+	void SetButtonsEnabled(bool e);
 
-  rational GetCurrentTimeAsNodeTime() const;
+	rational GetCurrentTimeAsNodeTime() const;
 
-  rational ConvertToViewerTime(const rational& r) const;
+	rational ConvertToViewerTime(const rational &r) const;
 
-  QPushButton* prev_key_btn_;
-  QPushButton* toggle_key_btn_;
-  QPushButton* next_key_btn_;
-  QPushButton* enable_key_btn_;
+	QPushButton *prev_key_btn_;
+	QPushButton *toggle_key_btn_;
+	QPushButton *next_key_btn_;
+	QPushButton *enable_key_btn_;
 
-  NodeInput input_;
+	NodeInput input_;
 
 private slots:
-  void ShowButtonsFromKeyframeEnable(bool e);
+	void ShowButtonsFromKeyframeEnable(bool e);
 
-  void ToggleKeyframe(bool e);
+	void ToggleKeyframe(bool e);
 
-  void UpdateState();
+	void UpdateState();
 
-  void GoToPreviousKey();
+	void GoToPreviousKey();
 
-  void GoToNextKey();
+	void GoToNextKey();
 
-  void KeyframeEnableBtnClicked(bool e);
+	void KeyframeEnableBtnClicked(bool e);
 
-  void KeyframeEnableChanged(const NodeInput& input, bool e);
-
+	void KeyframeEnableChanged(const NodeInput &input, bool e);
 };
 
 }

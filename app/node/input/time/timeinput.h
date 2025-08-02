@@ -23,23 +23,23 @@
 
 #include "node/node.h"
 
-namespace olive {
-
-class TimeInput : public Node
+namespace olive
 {
-  Q_OBJECT
+
+class TimeInput : public Node {
+	Q_OBJECT
 public:
-  TimeInput();
+	TimeInput();
 
-  NODE_DEFAULT_FUNCTIONS(TimeInput)
+	NODE_DEFAULT_FUNCTIONS(TimeInput)
 
-  virtual QString Name() const override;
-  virtual QString id() const override;
-  virtual QVector<CategoryID> Category() const override;
-  virtual QString Description() const override;
+	virtual QString Name() const override;
+	virtual QString id() const override;
+	virtual QVector<CategoryID> Category() const override;
+	virtual QString Description() const override;
 
-  virtual void Value(const NodeValueRow& value, const NodeGlobals &globals, NodeValueTable *table) const override;
-
+	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+					   NodeValueTable *table) const override;
 };
 
 }

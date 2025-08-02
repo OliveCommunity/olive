@@ -18,44 +18,45 @@
 
 #include "node/color/ociobase/ociobase.h"
 
-namespace olive {
+namespace olive
+{
 
 class ChromaKeyNode : public OCIOBaseNode {
-  Q_OBJECT
- public:
-  ChromaKeyNode();
+	Q_OBJECT
+public:
+	ChromaKeyNode();
 
-  NODE_DEFAULT_FUNCTIONS(ChromaKeyNode)
+	NODE_DEFAULT_FUNCTIONS(ChromaKeyNode)
 
-  virtual QString Name() const override;
-  virtual QString id() const override;
-  virtual QVector<CategoryID> Category() const override;
-  virtual QString Description() const override;
+	virtual QString Name() const override;
+	virtual QString id() const override;
+	virtual QVector<CategoryID> Category() const override;
+	virtual QString Description() const override;
 
-  virtual void Retranslate() override;
+	virtual void Retranslate() override;
 
-  virtual void InputValueChangedEvent(const QString& input, int element) override;
+	virtual void InputValueChangedEvent(const QString &input,
+										int element) override;
 
-  virtual ShaderCode GetShaderCode(const ShaderRequest &request) const override;
-  virtual void Value(const NodeValueRow& value, const NodeGlobals& globals, NodeValueTable* table) const override;
+	virtual ShaderCode
+	GetShaderCode(const ShaderRequest &request) const override;
+	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+					   NodeValueTable *table) const override;
 
-  virtual void ConfigChanged() override;
+	virtual void ConfigChanged() override;
 
-  static const QString kColorInput;
-  static const QString kInvertInput;
-  static const QString kMaskOnlyInput;
-  static const QString kUpperToleranceInput;
-  static const QString kLowerToleranceInput;
-  static const QString kGarbageMatteInput;
-  static const QString kCoreMatteInput;
-  static const QString kShadowsInput;
-  static const QString kHighlightsInput;
+	static const QString kColorInput;
+	static const QString kInvertInput;
+	static const QString kMaskOnlyInput;
+	static const QString kUpperToleranceInput;
+	static const QString kLowerToleranceInput;
+	static const QString kGarbageMatteInput;
+	static const QString kCoreMatteInput;
+	static const QString kShadowsInput;
+	static const QString kHighlightsInput;
 
 private:
-  void GenerateProcessor();
-
-
-
+	void GenerateProcessor();
 };
 
 } // namespace olive

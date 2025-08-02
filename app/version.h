@@ -23,7 +23,8 @@
 
 #include <QString>
 
-namespace olive {
+namespace olive
+{
 
 extern QString kAppVersion;
 extern QString kAppVersionLong;

@@ -27,7 +27,8 @@
 #include "render/cancelatom.h"
 #include "undo/undocommand.h"
 
-namespace olive {
+namespace olive
+{
 
 class Block;
 class Node;
@@ -35,7 +36,7 @@ class NodeInput;
 class NodeGroup;
 
 #define XMLAttributeLoop(reader, item) \
-  foreach (const QXmlStreamAttribute& item, reader->attributes())
+	foreach (const QXmlStreamAttribute &item, reader->attributes())
 
 /**
  * @brief Workaround for QXmlStreamReader::readNextStartElement not detecting the end of a document
@@ -46,7 +47,8 @@ class NodeGroup;
  *
  * See also: https://stackoverflow.com/questions/46346450/qt-qxmlstreamreader-always-returns-premature-end-of-document-error
  */
-bool XMLReadNextStartElement(QXmlStreamReader* reader, CancelAtom *cancel_atom = nullptr);
+bool XMLReadNextStartElement(QXmlStreamReader *reader,
+							 CancelAtom *cancel_atom = nullptr);
 
 }
 

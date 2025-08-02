@@ -20,10 +20,11 @@
 
 #include "codecsection.h"
 
-namespace olive {
+namespace olive
+{
 
-CodecSection::CodecSection(QWidget *parent) :
-  QWidget(parent)
+CodecSection::CodecSection(QWidget *parent)
+	: QWidget(parent)
 {
 }
 

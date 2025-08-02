@@ -20,14 +20,15 @@
 
 #include "projectexplorericonview.h"
 
-namespace olive {
-
-ProjectExplorerIconView::ProjectExplorerIconView(QWidget *parent) :
-  ProjectExplorerListViewBase(parent)
+namespace olive
 {
-  setViewMode(QListView::IconMode);
 
-  setItemDelegate(&delegate_);
+ProjectExplorerIconView::ProjectExplorerIconView(QWidget *parent)
+	: ProjectExplorerListViewBase(parent)
+{
+	setViewMode(QListView::IconMode);
+
+	setItemDelegate(&delegate_);
 }
 
 }

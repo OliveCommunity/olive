@@ -27,6 +27,7 @@
 #include "node/project.h"
 #include "render/rendermanager.h"
 
-namespace olive {
+namespace olive
+{
 
 }

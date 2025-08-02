@@ -24,18 +24,17 @@
 #include "acceleratedjob.h"
 #include "codec/frame.h"
 
-namespace olive {
-
-class GenerateJob : public AcceleratedJob
+namespace olive
 {
-public:
-  GenerateJob() = default;
-  GenerateJob(const NodeValueRow &row) :
-    GenerateJob()
-  {
-    Insert(row);
-  }
 
+class GenerateJob : public AcceleratedJob {
+public:
+	GenerateJob() = default;
+	GenerateJob(const NodeValueRow &row)
+		: GenerateJob()
+	{
+		Insert(row);
+	}
 };
 
 }

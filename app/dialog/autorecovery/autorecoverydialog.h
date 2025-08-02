@@ -26,30 +26,28 @@
 
 #include "common/define.h"
 
-namespace olive {
-
-class AutoRecoveryDialog : public QDialog
+namespace olive
 {
-  Q_OBJECT
+
+class AutoRecoveryDialog : public QDialog {
+	Q_OBJECT
 public:
-  AutoRecoveryDialog(const QString& message, const QStringList& recoveries, bool autocheck_latest, QWidget* parent);
+	AutoRecoveryDialog(const QString &message, const QStringList &recoveries,
+					   bool autocheck_latest, QWidget *parent);
 
 public slots:
-  virtual void accept() override;
+	virtual void accept() override;
 
 private:
-  void Init(const QString &header_text);
+	void Init(const QString &header_text);
 
-  void PopulateTree(const QStringList &recoveries, bool autocheck);
+	void PopulateTree(const QStringList &recoveries, bool autocheck);
 
-  QTreeWidget* tree_widget_;
+	QTreeWidget *tree_widget_;
 
-  QVector<QTreeWidgetItem*> checkable_items_;
+	QVector<QTreeWidgetItem *> checkable_items_;
 
-  enum DataRole {
-    kFilenameRole = Qt::UserRole
-  };
-
+	enum DataRole { kFilenameRole = Qt::UserRole };
 };
 
 }

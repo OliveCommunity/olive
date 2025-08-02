@@ -21,26 +21,29 @@
 #include "sequenceviewer.h"
 #include "panel/timeline/timeline.h"
 
-namespace olive {
-
-SequenceViewerPanel::SequenceViewerPanel() :
-  ViewerPanel(QStringLiteral("SequenceViewerPanel"))
+namespace olive
 {
-  // Set strings
-  Retranslate();
+
+SequenceViewerPanel::SequenceViewerPanel()
+	: ViewerPanel(QStringLiteral("SequenceViewerPanel"))
+{
+	// Set strings
+	Retranslate();
 }
 
-void SequenceViewerPanel::StartCapture(const TimeRange &time, const Track::Reference &track)
+void SequenceViewerPanel::StartCapture(const TimeRange &time,
+									   const Track::Reference &track)
 {
-  TimelinePanel *tp = static_cast<TimelinePanel *>(sender());
-  static_cast<ViewerWidget*>(GetTimeBasedWidget())->StartCapture(tp->timeline_widget(), time, track);
+	TimelinePanel *tp = static_cast<TimelinePanel *>(sender());
+	static_cast<ViewerWidget *>(GetTimeBasedWidget())
+		->StartCapture(tp->timeline_widget(), time, track);
 }
 
 void SequenceViewerPanel::Retranslate()
 {
-  ViewerPanel::Retranslate();
+	ViewerPanel::Retranslate();
 
-  SetTitle(tr("Sequence Viewer"));
+	SetTitle(tr("Sequence Viewer"));
 }
 
 }

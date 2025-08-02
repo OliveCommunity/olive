@@ -26,36 +26,40 @@
 
 #include "common/define.h"
 
-namespace olive {
+namespace olive
+{
 
 /**
  * @brief A collection of static file and directory functions
  */
 class FileFunctions {
 public:
-  /**
+	/**
    * @brief Returns true if the application is running in portable mode
    *
    * In portable mode, any persistent configuration files should be made in a path relative to the application rather
    * than in the user's home folder.
    */
-  static bool IsPortable();
+	static bool IsPortable();
 
-  static QString GetUniqueFileIdentifier(const QString& filename);
+	static QString GetUniqueFileIdentifier(const QString &filename);
 
-  static QString GetConfigurationLocation();
+	static QString GetConfigurationLocation();
 
-  static QString GetApplicationPath();
+	static QString GetApplicationPath();
 
-  static QString GetTempFilePath();
+	static QString GetTempFilePath();
 
-  static bool CanCopyDirectoryWithoutOverwriting(const QString& source, const QString& dest);
+	static bool CanCopyDirectoryWithoutOverwriting(const QString &source,
+												   const QString &dest);
 
-  static void CopyDirectory(const QString& source, const QString& dest, bool overwrite = false);
+	static void CopyDirectory(const QString &source, const QString &dest,
+							  bool overwrite = false);
 
-  static bool DirectoryIsValid(const QDir& dir, bool try_to_create_if_not_exists = true);
+	static bool DirectoryIsValid(const QDir &dir,
+								 bool try_to_create_if_not_exists = true);
 
-  /**
+	/**
    * @brief Ensures a given filename has a certain extension
    *
    * Checks if the filename has the extension provided and appends it if not. The extension is
@@ -64,11 +68,12 @@ public:
 
    * @return The filename provided either untouched or with the extension appended to it.
    */
-  static QString EnsureFilenameExtension(QString fn, const QString& extension);
+	static QString EnsureFilenameExtension(QString fn,
+										   const QString &extension);
 
-  static QString ReadFileAsString(const QString& filename);
+	static QString ReadFileAsString(const QString &filename);
 
-  /**
+	/**
    * @brief Returns a temporary filename that can be used while writing rather than the original
    *
    * If overwriting a file, it's safest to write to a new file first and then only replace it at
@@ -78,27 +83,25 @@ public:
    * This function returns a slight variant of the filename provided that's guaranteed to not exist
    * and therefore won't overwrite anything important.
    */
-  static QString GetSafeTemporaryFilename(const QString& original);
+	static QString GetSafeTemporaryFilename(const QString &original);
 
-  /**
+	/**
    * @brief Renames a file from `from` to `to`, deleting `to` if such a file already exists first
    */
-  static bool RenameFileAllowOverwrite(const QString& from, const QString& to);
+	static bool RenameFileAllowOverwrite(const QString &from,
+										 const QString &to);
 
-  inline static QString GetFormattedExecutableForPlatform(QString unformatted)
-  {
+	inline static QString GetFormattedExecutableForPlatform(QString unformatted)
+	{
 #ifdef Q_OS_WINDOWS
-    unformatted.append(QStringLiteral(".exe"));
+		unformatted.append(QStringLiteral(".exe"));
 #endif
 
-    return unformatted;
-  }
+		return unformatted;
+	}
 
-  static QString GetAutoRecoveryRoot();
-
+	static QString GetAutoRecoveryRoot();
 };
-
-
 
 }
 

@@ -21,20 +21,21 @@
 #ifndef LERP_H
 #define LERP_H
 
-template<typename T>
+template <typename T>
 /**
  * @brief Linearly interpolate a value between a and b using t
  *
  * t should be a number between 0.0 and 1.0. 0.0 will return a, 1.0 will return b, and between will return a value
  * in between a and b at that point linearly.
  */
-T lerp(T a, T b, double t) {
-  return (a * (1.0 - t)) + (b * t);
+T lerp(T a, T b, double t)
+{
+	return (a * (1.0 - t)) + (b * t);
 }
 
-template<typename T>
-T lerp(T a, T b, float t) {
-  return (a * (1.0f - t)) + (b * t);
+template <typename T> T lerp(T a, T b, float t)
+{
+	return (a * (1.0f - t)) + (b * t);
 }
 
 #endif // LERP_H

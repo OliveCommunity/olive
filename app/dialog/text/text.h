@@ -28,22 +28,21 @@
 #include "common/define.h"
 #include "widget/slider/floatslider.h"
 
-namespace olive {
-
-class TextDialog : public QDialog
+namespace olive
 {
-  Q_OBJECT
-public:
-  TextDialog(const QString &start, QWidget* parent = nullptr);
 
-  QString text() const
-  {
-    return text_edit_->toPlainText();
-  }
+class TextDialog : public QDialog {
+	Q_OBJECT
+public:
+	TextDialog(const QString &start, QWidget *parent = nullptr);
+
+	QString text() const
+	{
+		return text_edit_->toPlainText();
+	}
 
 private:
-  QPlainTextEdit* text_edit_;
-
+	QPlainTextEdit *text_edit_;
 };
 
 }

@@ -35,6 +35,6 @@
 // arrays encoded in UTF-16.
 #define QSTRING_TO_BASE_STRING(x) x.toStdWString()
 #define BASE_STRING_TO_QSTRING(x) QString::fromStdWString(x)
-#endif  // BUILDFLAG(IS_WIN)
+#endif // BUILDFLAG(IS_WIN)
 
 #endif // CRASHPADUTILS_H

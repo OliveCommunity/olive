@@ -26,39 +26,38 @@
 
 #include "task/taskmanager.h"
 
-namespace olive {
+namespace olive
+{
 
 /**
  * @brief Shows abbreviated information from a TaskManager object
  */
-class MainStatusBar : public QStatusBar
-{
-  Q_OBJECT
+class MainStatusBar : public QStatusBar {
+	Q_OBJECT
 public:
-  MainStatusBar(QWidget* parent = nullptr);
+	MainStatusBar(QWidget *parent = nullptr);
 
-  void ConnectTaskManager(TaskManager* manager);
+	void ConnectTaskManager(TaskManager *manager);
 
 signals:
-  void DoubleClicked();
+	void DoubleClicked();
 
 protected:
-  virtual void mouseDoubleClickEvent(QMouseEvent* e) override;
+	virtual void mouseDoubleClickEvent(QMouseEvent *e) override;
 
 private slots:
-  void UpdateStatus();
+	void UpdateStatus();
 
-  void SetProgressBarValue(double d);
+	void SetProgressBarValue(double d);
 
-  void ConnectedTaskDeleted();
+	void ConnectedTaskDeleted();
 
 private:
-  TaskManager* manager_;
+	TaskManager *manager_;
 
-  QProgressBar* bar_;
+	QProgressBar *bar_;
 
-  Task* connected_task_;
-
+	Task *connected_task_;
 };
 
 }

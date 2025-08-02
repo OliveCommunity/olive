@@ -24,42 +24,41 @@
 #include "panel/timebased/timebased.h"
 #include "widget/curvewidget/curvewidget.h"
 
-namespace olive {
-
-class CurvePanel : public TimeBasedPanel
+namespace olive
 {
-  Q_OBJECT
+
+class CurvePanel : public TimeBasedPanel {
+	Q_OBJECT
 public:
-  CurvePanel();
+	CurvePanel();
 
-  virtual void DeleteSelected() override;
+	virtual void DeleteSelected() override;
 
-  virtual void SelectAll() override;
+	virtual void SelectAll() override;
 
-  virtual void DeselectAll() override;
+	virtual void DeselectAll() override;
 
 public slots:
-  void SetNode(Node *node)
-  {
-    // Convert single pointer to either an empty vector or a vector of one
-    QVector<Node *> nodes;
+	void SetNode(Node *node)
+	{
+		// Convert single pointer to either an empty vector or a vector of one
+		QVector<Node *> nodes;
 
-    if (node) {
-      nodes.append(node);
-    }
+		if (node) {
+			nodes.append(node);
+		}
 
-    SetNodes(nodes);
-  }
+		SetNodes(nodes);
+	}
 
-  void SetNodes(const QVector<Node *> &nodes);
+	void SetNodes(const QVector<Node *> &nodes);
 
-  virtual void IncreaseTrackHeight() override;
+	virtual void IncreaseTrackHeight() override;
 
-  virtual void DecreaseTrackHeight() override;
+	virtual void DecreaseTrackHeight() override;
 
 protected:
-  virtual void Retranslate() override;
-
+	virtual void Retranslate() override;
 };
 
 }

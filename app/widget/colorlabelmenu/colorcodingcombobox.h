@@ -25,26 +25,25 @@
 
 #include "widget/colorlabelmenu/colorlabelmenu.h"
 
-namespace olive {
-
-class ColorCodingComboBox : public QComboBox
+namespace olive
 {
-  Q_OBJECT
+
+class ColorCodingComboBox : public QComboBox {
+	Q_OBJECT
 public:
-  ColorCodingComboBox(QWidget* parent = nullptr);
+	ColorCodingComboBox(QWidget *parent = nullptr);
 
-  virtual void showPopup() override;
+	virtual void showPopup() override;
 
-  void SetColor(int index);
+	void SetColor(int index);
 
-  int GetSelectedColor() const
-  {
-    return index_;
-  }
+	int GetSelectedColor() const
+	{
+		return index_;
+	}
 
 private:
-  int index_;
-
+	int index_;
 };
 
 }

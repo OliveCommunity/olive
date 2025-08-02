@@ -24,19 +24,19 @@
 #include "projectexplorerlistviewbase.h"
 #include "projectexplorerlistviewitemdelegate.h"
 
-namespace olive {
+namespace olive
+{
 
 /**
  * @brief The view widget used when ProjectExplorer is in List View
  */
-class ProjectExplorerListView : public ProjectExplorerListViewBase
-{
-  Q_OBJECT
+class ProjectExplorerListView : public ProjectExplorerListViewBase {
+	Q_OBJECT
 public:
-  ProjectExplorerListView(QWidget* parent);
+	ProjectExplorerListView(QWidget *parent);
 
 private:
-  ProjectExplorerListViewItemDelegate delegate_;
+	ProjectExplorerListViewItemDelegate delegate_;
 };
 
 }

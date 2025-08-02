@@ -25,19 +25,19 @@
 
 #include "viewerbase.h"
 
-namespace olive {
+namespace olive
+{
 
 /**
  * @brief Dockable wrapper around a ViewerWidget
  */
 class ViewerPanel : public ViewerPanelBase {
-  Q_OBJECT
+	Q_OBJECT
 public:
-  ViewerPanel(const QString& object_name);
+	ViewerPanel(const QString &object_name);
 
 protected:
-  virtual void Retranslate() override;
-
+	virtual void Retranslate() override;
 };
 
 }

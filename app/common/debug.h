@@ -25,9 +25,11 @@
 
 #include "common/define.h"
 
-namespace olive {
+namespace olive
+{
 
-void DebugHandler(QtMsgType type, const QMessageLogContext &context, const QString &msg);
+void DebugHandler(QtMsgType type, const QMessageLogContext &context,
+				  const QString &msg);
 
 }
 

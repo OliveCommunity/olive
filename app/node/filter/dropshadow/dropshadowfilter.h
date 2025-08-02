@@ -23,34 +23,47 @@
 
 #include "node/node.h"
 
-namespace olive {
-
-class DropShadowFilter : public Node
+namespace olive
 {
-  Q_OBJECT
+
+class DropShadowFilter : public Node {
+	Q_OBJECT
 public:
-  DropShadowFilter();
+	DropShadowFilter();
 
-  NODE_DEFAULT_FUNCTIONS(DropShadowFilter)
+	NODE_DEFAULT_FUNCTIONS(DropShadowFilter)
 
-  virtual QString Name() const override { return tr("Drop Shadow"); }
-  virtual QString id() const override { return QStringLiteral("org.olivevideoeditor.Olive.dropshadow"); }
-  virtual QVector<CategoryID> Category() const override { return {kCategoryFilter}; }
-  virtual QString Description() const override { return tr("Adds a drop shadow to an image."); }
+	virtual QString Name() const override
+	{
+		return tr("Drop Shadow");
+	}
+	virtual QString id() const override
+	{
+		return QStringLiteral("org.olivevideoeditor.Olive.dropshadow");
+	}
+	virtual QVector<CategoryID> Category() const override
+	{
+		return { kCategoryFilter };
+	}
+	virtual QString Description() const override
+	{
+		return tr("Adds a drop shadow to an image.");
+	}
 
-  virtual void Retranslate() override;
+	virtual void Retranslate() override;
 
-  virtual ShaderCode GetShaderCode(const ShaderRequest &request) const override;
-  virtual void Value(const NodeValueRow& value, const NodeGlobals &globals, NodeValueTable *table) const override;
+	virtual ShaderCode
+	GetShaderCode(const ShaderRequest &request) const override;
+	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+					   NodeValueTable *table) const override;
 
-  static const QString kTextureInput;
-  static const QString kColorInput;
-  static const QString kDistanceInput;
-  static const QString kAngleInput;
-  static const QString kSoftnessInput;
-  static const QString kOpacityInput;
-  static const QString kFastInput;
-
+	static const QString kTextureInput;
+	static const QString kColorInput;
+	static const QString kDistanceInput;
+	static const QString kAngleInput;
+	static const QString kSoftnessInput;
+	static const QString kOpacityInput;
+	static const QString kFastInput;
 };
 
 }

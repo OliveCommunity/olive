@@ -22,17 +22,18 @@
 
 #include <QVBoxLayout>
 
-namespace olive {
-
-NodeTableWidget::NodeTableWidget(QWidget* parent) :
-  TimeBasedWidget(parent)
+namespace olive
 {
-  QVBoxLayout* layout = new QVBoxLayout(this);
-  layout->setSpacing(0);
-  layout->setContentsMargins(0, 0, 0, 0);
 
-  view_ = new NodeTableView();
-  layout->addWidget(view_);
+NodeTableWidget::NodeTableWidget(QWidget *parent)
+	: TimeBasedWidget(parent)
+{
+	QVBoxLayout *layout = new QVBoxLayout(this);
+	layout->setSpacing(0);
+	layout->setContentsMargins(0, 0, 0, 0);
+
+	view_ = new NodeTableView();
+	layout->addWidget(view_);
 }
 
 }

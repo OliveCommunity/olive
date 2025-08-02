@@ -23,20 +23,19 @@
 
 #include <QMainWindow>
 
-namespace olive {
+namespace olive
+{
 
 // This may look weird, but QMainWindow is just a QWidget with a fancy layout that allows
 // for docking QDockWidgets
-class NodeParamViewDockArea : public QMainWindow
-{
-  Q_OBJECT
+class NodeParamViewDockArea : public QMainWindow {
+	Q_OBJECT
 public:
-  explicit NodeParamViewDockArea(QWidget *parent = nullptr);
+	explicit NodeParamViewDockArea(QWidget *parent = nullptr);
 
-  virtual QMenu *createPopupMenu() override;
+	virtual QMenu *createPopupMenu() override;
 
-  void AddItem(QDockWidget *item);
-
+	void AddItem(QDockWidget *item);
 };
 
 }

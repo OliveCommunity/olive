@@ -3,43 +3,45 @@
 
 #include "node/group/group.h"
 
-namespace olive {
-
-class OpacityEffect : public Node
+namespace olive
 {
+
+class OpacityEffect : public Node {
 public:
-  OpacityEffect();
+	OpacityEffect();
 
-  NODE_DEFAULT_FUNCTIONS(OpacityEffect)
+	NODE_DEFAULT_FUNCTIONS(OpacityEffect)
 
-  virtual QString Name() const override
-  {
-    return tr("Opacity");
-  }
+	virtual QString Name() const override
+	{
+		return tr("Opacity");
+	}
 
-  virtual QString id() const override
-  {
-    return QStringLiteral("org.olivevideoeditor.Olive.opacity");
-  }
+	virtual QString id() const override
+	{
+		return QStringLiteral("org.olivevideoeditor.Olive.opacity");
+	}
 
-  virtual QVector<CategoryID> Category() const override
-  {
-    return {kCategoryFilter};
-  }
+	virtual QVector<CategoryID> Category() const override
+	{
+		return { kCategoryFilter };
+	}
 
-  virtual QString Description() const override
-  {
-    return tr("Alter a video's opacity.\n\nThis is equivalent to multiplying a video by a number between 0.0 and 1.0.");
-  }
+	virtual QString Description() const override
+	{
+		return tr(
+			"Alter a video's opacity.\n\nThis is equivalent to multiplying a video by a number between 0.0 and 1.0.");
+	}
 
-  virtual void Retranslate() override;
+	virtual void Retranslate() override;
 
-  virtual ShaderCode GetShaderCode(const ShaderRequest &request) const override;
-  virtual void Value(const NodeValueRow& value, const NodeGlobals &globals, NodeValueTable *table) const override;
+	virtual ShaderCode
+	GetShaderCode(const ShaderRequest &request) const override;
+	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+					   NodeValueTable *table) const override;
 
-  static const QString kTextureInput;
-  static const QString kValueInput;
-
+	static const QString kTextureInput;
+	static const QString kValueInput;
 };
 
 }

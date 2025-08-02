@@ -23,32 +23,31 @@
 
 #include "base/sliderbase.h"
 
-namespace olive {
-
-class StringSlider : public SliderBase
+namespace olive
 {
-  Q_OBJECT
+
+class StringSlider : public SliderBase {
+	Q_OBJECT
 public:
-  StringSlider(QWidget* parent = nullptr);
+	StringSlider(QWidget *parent = nullptr);
 
-  void SetDragMultiplier(const double& d) = delete;
+	void SetDragMultiplier(const double &d) = delete;
 
-  QString GetValue() const;
+	QString GetValue() const;
 
-  void SetValue(const QString& v);
+	void SetValue(const QString &v);
 
-  void SetDefaultValue(const QString& v);
+	void SetDefaultValue(const QString &v);
 
 signals:
-  void ValueChanged(const QString& str);
+	void ValueChanged(const QString &str);
 
 protected:
-  virtual QString ValueToString(const QVariant& value) const override;
+	virtual QString ValueToString(const QVariant &value) const override;
 
-  virtual QVariant StringToValue(const QString &s, bool *ok) const override;
+	virtual QVariant StringToValue(const QString &s, bool *ok) const override;
 
-  virtual void ValueSignalEvent(const QVariant &value) override;
-
+	virtual void ValueSignalEvent(const QVariant &value) override;
 };
 
 }

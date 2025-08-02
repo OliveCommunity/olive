@@ -24,47 +24,51 @@
 #include "node/keyframe.h"
 #include "undo/undocommand.h"
 
-namespace olive {
+namespace olive
+{
 
 class KeyframeSetTypeCommand : public UndoCommand {
 public:
-  KeyframeSetTypeCommand(NodeKeyframe* key, NodeKeyframe::Type type);
+	KeyframeSetTypeCommand(NodeKeyframe *key, NodeKeyframe::Type type);
 
-  virtual Project* GetRelevantProject() const override;
+	virtual Project *GetRelevantProject() const override;
 
 protected:
-  virtual void redo() override;
-  virtual void undo() override;
+	virtual void redo() override;
+	virtual void undo() override;
 
 private:
-  NodeKeyframe* key_;
+	NodeKeyframe *key_;
 
-  NodeKeyframe::Type old_type_;
+	NodeKeyframe::Type old_type_;
 
-  NodeKeyframe::Type new_type_;
-
+	NodeKeyframe::Type new_type_;
 };
 
 class KeyframeSetBezierControlPoint : public UndoCommand {
 public:
-  KeyframeSetBezierControlPoint(NodeKeyframe* key, NodeKeyframe::BezierType mode, const QPointF& point);
-  KeyframeSetBezierControlPoint(NodeKeyframe* key, NodeKeyframe::BezierType mode, const QPointF& new_point, const QPointF& old_point);
+	KeyframeSetBezierControlPoint(NodeKeyframe *key,
+								  NodeKeyframe::BezierType mode,
+								  const QPointF &point);
+	KeyframeSetBezierControlPoint(NodeKeyframe *key,
+								  NodeKeyframe::BezierType mode,
+								  const QPointF &new_point,
+								  const QPointF &old_point);
 
-  virtual Project* GetRelevantProject() const override;
+	virtual Project *GetRelevantProject() const override;
 
 protected:
-  virtual void redo() override;
-  virtual void undo() override;
+	virtual void redo() override;
+	virtual void undo() override;
 
 private:
-  NodeKeyframe* key_;
+	NodeKeyframe *key_;
 
-  NodeKeyframe::BezierType mode_;
+	NodeKeyframe::BezierType mode_;
 
-  QPointF old_point_;
+	QPointF old_point_;
 
-  QPointF new_point_;
-
+	QPointF new_point_;
 };
 
 }

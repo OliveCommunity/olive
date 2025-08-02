@@ -39,92 +39,100 @@ extern "C" {
 #include "codec/decoder.h"
 #include "common/ffmpegutils.h"
 
-namespace olive {
+namespace olive
+{
 
 /**
  * @brief A Decoder derivative that wraps FFmpeg functions as on Olive decoder
  */
-class FFmpegDecoder : public Decoder
-{
-  Q_OBJECT
+class FFmpegDecoder : public Decoder {
+	Q_OBJECT
 public:
-  // Constructor
-  FFmpegDecoder();
+	// Constructor
+	FFmpegDecoder();
 
-  // Destructor
-  DECODER_DEFAULT_DESTRUCTOR(FFmpegDecoder)
+	// Destructor
+	DECODER_DEFAULT_DESTRUCTOR(FFmpegDecoder)
 
-  virtual QString id() const override;
+	virtual QString id() const override;
 
-  virtual bool SupportsVideo() override{return true;}
-  virtual bool SupportsAudio() override{return true;}
+	virtual bool SupportsVideo() override
+	{
+		return true;
+	}
+	virtual bool SupportsAudio() override
+	{
+		return true;
+	}
 
-  virtual FootageDescription Probe(const QString &filename, CancelAtom *cancelled) const override;
+	virtual FootageDescription Probe(const QString &filename,
+									 CancelAtom *cancelled) const override;
 
 protected:
-  virtual bool OpenInternal() override;
-  virtual TexturePtr RetrieveVideoInternal(const RetrieveVideoParams& p) override;
-  virtual bool ConformAudioInternal(const QVector<QString>& filenames, const AudioParams &params, CancelAtom *cancelled) override;
-  virtual void CloseInternal() override;
+	virtual bool OpenInternal() override;
+	virtual TexturePtr
+	RetrieveVideoInternal(const RetrieveVideoParams &p) override;
+	virtual bool ConformAudioInternal(const QVector<QString> &filenames,
+									  const AudioParams &params,
+									  CancelAtom *cancelled) override;
+	virtual void CloseInternal() override;
 
-  virtual rational GetAudioStartOffset() const override;
+	virtual rational GetAudioStartOffset() const override;
 
 private:
-  class Instance
-  {
-  public:
-    Instance();
+	class Instance {
+	public:
+		Instance();
 
-    ~Instance()
-    {
-      Close();
-    }
+		~Instance()
+		{
+			Close();
+		}
 
-    bool Open(const char* filename, int stream_index);
+		bool Open(const char *filename, int stream_index);
 
-    bool IsOpen() const
-    {
-      return fmt_ctx_;
-    }
+		bool IsOpen() const
+		{
+			return fmt_ctx_;
+		}
 
-    void Close();
+		void Close();
 
-    /**
+		/**
      * @brief Uses the FFmpeg API to retrieve a packet (stored in pkt_) and decode it (stored in frame_)
      *
      * @return
      *
      * An FFmpeg error code, or >= 0 on success
      */
-    int GetFrame(AVPacket* pkt, AVFrame* frame);
+		int GetFrame(AVPacket *pkt, AVFrame *frame);
 
-    const char *GetSubtitleHeader() const;
+		const char *GetSubtitleHeader() const;
 
-    int GetSubtitle(AVPacket* pkt, AVSubtitle* sub);
+		int GetSubtitle(AVPacket *pkt, AVSubtitle *sub);
 
-    int GetPacket(AVPacket *pkt);
+		int GetPacket(AVPacket *pkt);
 
-    void Seek(int64_t timestamp);
+		void Seek(int64_t timestamp);
 
-    AVFormatContext* fmt_ctx() const
-    {
-      return fmt_ctx_;
-    }
+		AVFormatContext *fmt_ctx() const
+		{
+			return fmt_ctx_;
+		}
 
-    AVStream* avstream() const
-    {
-      return avstream_;
-    }
+		AVStream *avstream() const
+		{
+			return avstream_;
+		}
 
-  private:
-    AVFormatContext* fmt_ctx_;
-    AVCodecContext* codec_ctx_;
-    AVStream* avstream_;
-    AVDictionary* opts_;
+	private:
+		AVFormatContext *fmt_ctx_;
+		AVCodecContext *codec_ctx_;
+		AVStream *avstream_;
+		AVDictionary *opts_;
+	};
 
-  };
-
-  /**
+	/**
    * @brief Handle an FFmpeg error code
    *
    * Uses the FFmpeg API to retrieve a descriptive string for this error code and sends it to Error(). As such, this
@@ -132,54 +140,56 @@ private:
    *
    * @param error_code
    */
-  static QString FFmpegError(int error_code);
+	static QString FFmpegError(int error_code);
 
-  void FreeScaler();
+	void FreeScaler();
 
-  static PixelFormat GetNativePixelFormat(AVPixelFormat pix_fmt);
-  static int GetNativeChannelCount(AVPixelFormat pix_fmt);
+	static PixelFormat GetNativePixelFormat(AVPixelFormat pix_fmt);
+	static int GetNativeChannelCount(AVPixelFormat pix_fmt);
 
-  static AVChannelLayout ValidateChannelLayout(AVStream *stream);
+	static AVChannelLayout ValidateChannelLayout(AVStream *stream);
 
-  static const char* GetInterlacingModeInFFmpeg(VideoParams::Interlacing interlacing);
+	static const char *
+	GetInterlacingModeInFFmpeg(VideoParams::Interlacing interlacing);
 
-  static bool IsPixelFormatGLSLCompatible(AVPixelFormat f);
+	static bool IsPixelFormatGLSLCompatible(AVPixelFormat f);
 
-  AVFramePtr GetFrameFromCache(const int64_t &t) const;
+	AVFramePtr GetFrameFromCache(const int64_t &t) const;
 
-  void ClearFrameCache();
+	void ClearFrameCache();
 
-  AVFramePtr PreProcessFrame(AVFramePtr f, const RetrieveVideoParams &p);
+	AVFramePtr PreProcessFrame(AVFramePtr f, const RetrieveVideoParams &p);
 
-  TexturePtr ProcessFrameIntoTexture(AVFramePtr f, const RetrieveVideoParams &p, const AVFramePtr original);
+	TexturePtr ProcessFrameIntoTexture(AVFramePtr f,
+									   const RetrieveVideoParams &p,
+									   const AVFramePtr original);
 
-  AVFramePtr RetrieveFrame(const rational &time, CancelAtom *cancelled);
+	AVFramePtr RetrieveFrame(const rational &time, CancelAtom *cancelled);
 
-  void RemoveFirstFrame();
+	void RemoveFirstFrame();
 
-  static int MaximumQueueSize();
+	static int MaximumQueueSize();
 
-  SwsContext *sws_ctx_;
-  int sws_src_width_;
-  int sws_src_height_;
-  AVPixelFormat sws_src_format_;
-  int sws_dst_width_;
-  int sws_dst_height_;
-  AVPixelFormat sws_dst_format_;
-  AVColorRange sws_colrange_;
-  AVColorSpace sws_colspace_;
+	SwsContext *sws_ctx_;
+	int sws_src_width_;
+	int sws_src_height_;
+	AVPixelFormat sws_src_format_;
+	int sws_dst_width_;
+	int sws_dst_height_;
+	AVPixelFormat sws_dst_format_;
+	AVColorRange sws_colrange_;
+	AVColorSpace sws_colspace_;
 
-  AVPacket *working_packet_;
+	AVPacket *working_packet_;
 
-  int64_t second_ts_;
+	int64_t second_ts_;
 
-  std::list<AVFramePtr> cached_frames_;
+	std::list<AVFramePtr> cached_frames_;
 
-  bool cache_at_zero_;
-  bool cache_at_eof_;
+	bool cache_at_zero_;
+	bool cache_at_eof_;
 
-  Instance instance_;
-
+	Instance instance_;
 };
 
 }

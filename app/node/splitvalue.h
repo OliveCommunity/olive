@@ -24,7 +24,8 @@
 #include <QVariant>
 #include <QVector>
 
-namespace olive {
+namespace olive
+{
 
 using SplitValue = QVector<QVariant>;
 

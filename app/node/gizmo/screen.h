@@ -23,14 +23,13 @@
 
 #include "draggable.h"
 
-namespace olive {
-
-class ScreenGizmo : public DraggableGizmo
+namespace olive
 {
-  Q_OBJECT
-public:
-  explicit ScreenGizmo(QObject *parent = nullptr);
 
+class ScreenGizmo : public DraggableGizmo {
+	Q_OBJECT
+public:
+	explicit ScreenGizmo(QObject *parent = nullptr);
 };
 
 }

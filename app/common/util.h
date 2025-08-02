@@ -21,10 +21,9 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-template <typename T>
-inline T mid(T a, T b)
+template <typename T> inline T mid(T a, T b)
 {
-  return (a + b) * 0.5;
+	return (a + b) * 0.5;
 }
 
 #endif // UTIL_H

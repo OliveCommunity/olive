@@ -20,10 +20,11 @@
 
 #include "streamproperties.h"
 
-namespace olive {
+namespace olive
+{
 
-StreamProperties::StreamProperties(QWidget *parent) :
-  QWidget(parent)
+StreamProperties::StreamProperties(QWidget *parent)
+	: QWidget(parent)
 {
 }
 

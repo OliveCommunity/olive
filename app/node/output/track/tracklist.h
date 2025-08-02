@@ -26,103 +26,103 @@
 #include "node/output/track/track.h"
 #include "timeline/timelinecommon.h"
 
-namespace olive {
+namespace olive
+{
 
 class Sequence;
 
-class TrackList : public QObject
-{
-  Q_OBJECT
+class TrackList : public QObject {
+	Q_OBJECT
 public:
-  TrackList(Sequence *parent, const Track::Type& type, const QString& track_input);
+	TrackList(Sequence *parent, const Track::Type &type,
+			  const QString &track_input);
 
-  const Track::Type& type() const
-  {
-    return type_;
-  }
+	const Track::Type &type() const
+	{
+		return type_;
+	}
 
-  const QVector<Track*>& GetTracks() const
-  {
-    return track_cache_;
-  }
+	const QVector<Track *> &GetTracks() const
+	{
+		return track_cache_;
+	}
 
-  Track* GetTrackAt(int index) const;
+	Track *GetTrackAt(int index) const;
 
-  const rational& GetTotalLength() const
-  {
-    return total_length_;
-  }
+	const rational &GetTotalLength() const
+	{
+		return total_length_;
+	}
 
-  int GetTrackCount() const
-  {
-    return track_cache_.size();
-  }
+	int GetTrackCount() const
+	{
+		return track_cache_.size();
+	}
 
-  Project* GetParentGraph() const;
+	Project *GetParentGraph() const;
 
-  const QString &track_input() const;
-  NodeInput track_input(int element) const;
+	const QString &track_input() const;
+	NodeInput track_input(int element) const;
 
-  Sequence* parent() const;
+	Sequence *parent() const;
 
-  int ArraySize() const;
+	int ArraySize() const;
 
-  void ArrayAppend();
-  void ArrayRemoveLast();
+	void ArrayAppend();
+	void ArrayRemoveLast();
 
-  int GetArrayIndexFromCacheIndex(int index) const
-  {
-    return track_array_indexes_.at(index);
-  }
+	int GetArrayIndexFromCacheIndex(int index) const
+	{
+		return track_array_indexes_.at(index);
+	}
 
-  int GetCacheIndexFromArrayIndex(int index) const
-  {
-    return track_array_indexes_.indexOf(index);
-  }
+	int GetCacheIndexFromArrayIndex(int index) const
+	{
+		return track_array_indexes_.indexOf(index);
+	}
 
 public slots:
-  /**
+	/**
    * @brief Slot for when the track connection is added
    */
-  void TrackConnected(Node* node, int element);
+	void TrackConnected(Node *node, int element);
 
-  /**
+	/**
    * @brief Slot for when the track connection is removed
    */
-  void TrackDisconnected(Node* node, int element);
+	void TrackDisconnected(Node *node, int element);
 
 signals:
-  void TrackListChanged();
+	void TrackListChanged();
 
-  void LengthChanged(const rational &length);
+	void LengthChanged(const rational &length);
 
-  void TrackAdded(Track* track);
+	void TrackAdded(Track *track);
 
-  void TrackRemoved(Track* track);
+	void TrackRemoved(Track *track);
 
-  void TrackHeightChanged(Track *track, int height);
+	void TrackHeightChanged(Track *track, int height);
 
 private:
-  void UpdateTrackIndexesFrom(int index);
+	void UpdateTrackIndexesFrom(int index);
 
-  /**
+	/**
    * @brief A cache of connected Tracks
    */
-  QVector<Track*> track_cache_;
-  QVector<int> track_array_indexes_;
+	QVector<Track *> track_cache_;
+	QVector<int> track_array_indexes_;
 
-  QString track_input_;
+	QString track_input_;
 
-  rational total_length_;
+	rational total_length_;
 
-  enum Track::Type type_;
+	enum Track::Type type_;
 
 private slots:
-  /**
+	/**
    * @brief Slot for when any of the track's length changes so we can update the length of the tracklist
    */
-  void UpdateTotalLength();
-
+	void UpdateTotalLength();
 };
 
 }

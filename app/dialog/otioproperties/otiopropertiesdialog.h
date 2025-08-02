@@ -10,30 +10,32 @@
 #include "node/project/sequence/sequence.h"
 #include "node/project.h"
 
-namespace olive {
+namespace olive
+{
 
-  /**
+/**
    * @brief Dialog to load setting for OTIO sequences.
    *
    * Takes a list of Sequences and allows the setting of options for each.
    */
-  class OTIOPropertiesDialog : public QDialog {
-    Q_OBJECT
-   public:
-    OTIOPropertiesDialog(const QList<Sequence*>& sequences, Project* active_project, QWidget* parent = nullptr);
+class OTIOPropertiesDialog : public QDialog {
+	Q_OBJECT
+public:
+	OTIOPropertiesDialog(const QList<Sequence *> &sequences,
+						 Project *active_project, QWidget *parent = nullptr);
 
-   private:
-    QTreeWidget* table_;
+private:
+	QTreeWidget *table_;
 
-    const QList<Sequence*> sequences_;
+	const QList<Sequence *> sequences_;
 
-   private slots:
-    /**
+private slots:
+	/**
      * @brief Brings up the Sequence settings dialog.
      */
-    void SetupSequence();
-  };
+	void SetupSequence();
+};
 
 } //namespace olive
 
-#endif  // OTIOPROPERTIESDIALOG_H
+#endif // OTIOPROPERTIESDIALOG_H

@@ -23,35 +23,34 @@
 
 #include "dialog/progress/progress.h"
 
-namespace olive {
-
-class RenderCancelDialog : public ProgressDialog
+namespace olive
 {
-  Q_OBJECT
+
+class RenderCancelDialog : public ProgressDialog {
+	Q_OBJECT
 public:
-  RenderCancelDialog(QWidget* parent = nullptr);
+	RenderCancelDialog(QWidget *parent = nullptr);
 
-  void RunIfWorkersAreBusy();
+	void RunIfWorkersAreBusy();
 
-  void SetWorkerCount(int count);
+	void SetWorkerCount(int count);
 
-  void WorkerStarted();
+	void WorkerStarted();
 
 public slots:
-  void WorkerDone();
+	void WorkerDone();
 
 protected:
-  virtual void showEvent(QShowEvent* event) override;
+	virtual void showEvent(QShowEvent *event) override;
 
 private:
-  void UpdateProgress();
+	void UpdateProgress();
 
-  int busy_workers_;
+	int busy_workers_;
 
-  int total_workers_;
+	int total_workers_;
 
-  int waiting_workers_;
-
+	int waiting_workers_;
 };
 
 }

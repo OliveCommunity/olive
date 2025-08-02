@@ -25,26 +25,25 @@
 
 #include "nodeviewcommon.h"
 
-namespace olive {
-
-class NodeViewItemConnector : public QGraphicsPolygonItem
+namespace olive
 {
+
+class NodeViewItemConnector : public QGraphicsPolygonItem {
 public:
-  NodeViewItemConnector(bool is_output, QGraphicsItem *parent = nullptr);
+	NodeViewItemConnector(bool is_output, QGraphicsItem *parent = nullptr);
 
-  void SetFlowDirection(NodeViewCommon::FlowDirection dir);
+	void SetFlowDirection(NodeViewCommon::FlowDirection dir);
 
-  bool IsOutput() const
-  {
-    return output_;
-  }
+	bool IsOutput() const
+	{
+		return output_;
+	}
 
-  virtual QPainterPath shape() const override;
-  virtual QRectF boundingRect() const override;
+	virtual QPainterPath shape() const override;
+	virtual QRectF boundingRect() const override;
 
 private:
-  bool output_;
-
+	bool output_;
 };
 
 }

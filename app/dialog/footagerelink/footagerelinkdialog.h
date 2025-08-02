@@ -26,24 +26,24 @@
 
 #include "node/project/footage/footage.h"
 
-namespace olive {
-
-class FootageRelinkDialog : public QDialog
+namespace olive
 {
-  Q_OBJECT
+
+class FootageRelinkDialog : public QDialog {
+	Q_OBJECT
 public:
-  FootageRelinkDialog(const QVector<Footage*>& footage, QWidget* parent = nullptr);
+	FootageRelinkDialog(const QVector<Footage *> &footage,
+						QWidget *parent = nullptr);
 
 private:
-  void UpdateFootageItem(int index);
+	void UpdateFootageItem(int index);
 
-  QTreeWidget* table_;
+	QTreeWidget *table_;
 
-  QVector<Footage*> footage_;
+	QVector<Footage *> footage_;
 
 private slots:
-  void BrowseForFootage();
-
+	void BrowseForFootage();
 };
 
 }

@@ -23,23 +23,24 @@
 #include "node/block/block.h"
 #include "node/factory.h"
 
-namespace olive {
+namespace olive
+{
 
 bool XMLReadNextStartElement(QXmlStreamReader *reader, CancelAtom *cancel_atom)
 {
-  QXmlStreamReader::TokenType token;
+	QXmlStreamReader::TokenType token;
 
-  while ((token = reader->readNext()) != QXmlStreamReader::Invalid
-         && token != QXmlStreamReader::EndDocument
-         && (!cancel_atom || !cancel_atom->IsCancelled())) {
-    if (reader->isEndElement()) {
-      return false;
-    } else if (reader->isStartElement()) {
-      return true;
-    }
-  }
+	while ((token = reader->readNext()) != QXmlStreamReader::Invalid &&
+		   token != QXmlStreamReader::EndDocument &&
+		   (!cancel_atom || !cancel_atom->IsCancelled())) {
+		if (reader->isEndElement()) {
+			return false;
+		} else if (reader->isStartElement()) {
+			return true;
+		}
+	}
 
-  return false;
+	return false;
 }
 
 }

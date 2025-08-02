@@ -1,7 +1,8 @@
 #ifndef VIEWERPREVENTSLEEP_H
 #define VIEWERPREVENTSLEEP_H
 
-namespace olive {
+namespace olive
+{
 
 void PreventSleep(bool on);
 

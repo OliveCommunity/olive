@@ -20,7 +20,8 @@
 
 #include "version.h"
 
-namespace olive {
+namespace olive
+{
 
 QString kAppVersion = QStringLiteral(APPVERSION);
 QString kAppVersionLong = QStringLiteral(APPVERSIONLONG);

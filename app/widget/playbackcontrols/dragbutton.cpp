@@ -22,35 +22,36 @@
 
 #include <QMouseEvent>
 
-namespace olive {
-
-DragButton::DragButton(QWidget *parent) :
-  QPushButton(parent)
+namespace olive
 {
-  setCursor(Qt::OpenHandCursor);
-  dragging_ = false;
+
+DragButton::DragButton(QWidget *parent)
+	: QPushButton(parent)
+{
+	setCursor(Qt::OpenHandCursor);
+	dragging_ = false;
 }
 
 void DragButton::mousePressEvent(QMouseEvent *event)
 {
-  QPushButton::mousePressEvent(event);
+	QPushButton::mousePressEvent(event);
 }
 
 void DragButton::mouseMoveEvent(QMouseEvent *event)
 {
-  QPushButton::mouseMoveEvent(event);
+	QPushButton::mouseMoveEvent(event);
 
-  if (event->buttons() && !dragging_) {
-    emit DragStarted();
-    dragging_ = true;
-  }
+	if (event->buttons() && !dragging_) {
+		emit DragStarted();
+		dragging_ = true;
+	}
 }
 
 void DragButton::mouseReleaseEvent(QMouseEvent *event)
 {
-  QPushButton::mouseReleaseEvent(event);
+	QPushButton::mouseReleaseEvent(event);
 
-  dragging_ = false;
+	dragging_ = false;
 }
 
 }

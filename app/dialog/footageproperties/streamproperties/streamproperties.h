@@ -26,17 +26,21 @@
 #include "common/define.h"
 #include "undo/undocommand.h"
 
-namespace olive {
-
-class StreamProperties : public QWidget
+namespace olive
 {
+
+class StreamProperties : public QWidget {
 public:
-  StreamProperties(QWidget* parent = nullptr);
+	StreamProperties(QWidget *parent = nullptr);
 
-  virtual void Accept(MultiUndoCommand*){}
+	virtual void Accept(MultiUndoCommand *)
+	{
+	}
 
-  virtual bool SanityCheck(){return true;}
-
+	virtual bool SanityCheck()
+	{
+		return true;
+	}
 };
 
 }

@@ -24,32 +24,31 @@
 #include "nodetableview.h"
 #include "widget/timebased/timebasedwidget.h"
 
-namespace olive {
-
-class NodeTableWidget : public TimeBasedWidget
+namespace olive
 {
+
+class NodeTableWidget : public TimeBasedWidget {
 public:
-  NodeTableWidget(QWidget* parent = nullptr);
+	NodeTableWidget(QWidget *parent = nullptr);
 
-  void SelectNodes(const QVector<Node*>& nodes)
-  {
-    view_->SelectNodes(nodes);
-  }
+	void SelectNodes(const QVector<Node *> &nodes)
+	{
+		view_->SelectNodes(nodes);
+	}
 
-  void DeselectNodes(const QVector<Node*>& nodes)
-  {
-    view_->DeselectNodes(nodes);
-  }
+	void DeselectNodes(const QVector<Node *> &nodes)
+	{
+		view_->DeselectNodes(nodes);
+	}
 
 protected:
-  virtual void TimeChangedEvent(const rational &time) override
-  {
-    view_->SetTime(time);
-  }
+	virtual void TimeChangedEvent(const rational &time) override
+	{
+		view_->SetTime(time);
+	}
 
 private:
-  NodeTableView* view_;
-
+	NodeTableView *view_;
 };
 
 }

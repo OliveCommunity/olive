@@ -25,47 +25,48 @@
 #include "widget/clickablelabel/clickablelabel.h"
 #include "widget/nodevaluetree/nodevaluetree.h"
 
-namespace olive {
+namespace olive
+{
 
 class NodeParamViewConnectedLabel : public QWidget {
-  Q_OBJECT
+	Q_OBJECT
 public:
-  NodeParamViewConnectedLabel(const NodeInput& input, QWidget* parent = nullptr);
+	NodeParamViewConnectedLabel(const NodeInput &input,
+								QWidget *parent = nullptr);
 
-  void SetViewerNode(ViewerOutput *viewer);
+	void SetViewerNode(ViewerOutput *viewer);
 
 signals:
-  void RequestSelectNode(Node *n);
+	void RequestSelectNode(Node *n);
 
 private slots:
-  void InputConnected(Node *output, const NodeInput &input);
+	void InputConnected(Node *output, const NodeInput &input);
 
-  void InputDisconnected(Node *output, const NodeInput &input);
+	void InputDisconnected(Node *output, const NodeInput &input);
 
-  void ShowLabelContextMenu();
+	void ShowLabelContextMenu();
 
-  void ConnectionClicked();
+	void ConnectionClicked();
 
 private:
-  void UpdateLabel();
+	void UpdateLabel();
 
-  void UpdateValueTree();
+	void UpdateValueTree();
 
-  void CreateTree();
+	void CreateTree();
 
-  ClickableLabel* connected_to_lbl_;
+	ClickableLabel *connected_to_lbl_;
 
-  NodeInput input_;
+	NodeInput input_;
 
-  Node *connected_node_;
+	Node *connected_node_;
 
-  NodeValueTree *value_tree_;
+	NodeValueTree *value_tree_;
 
-  ViewerOutput *viewer_;
+	ViewerOutput *viewer_;
 
 private slots:
-  void SetValueTreeVisible(bool e);
-
+	void SetValueTreeVisible(bool e);
 };
 
 }

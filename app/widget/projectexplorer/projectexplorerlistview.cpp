@@ -20,14 +20,15 @@
 
 #include "projectexplorerlistview.h"
 
-namespace olive {
-
-ProjectExplorerListView::ProjectExplorerListView(QWidget *parent) :
-  ProjectExplorerListViewBase(parent)
+namespace olive
 {
-  setViewMode(QListView::ListMode);
 
-  setItemDelegate(&delegate_);
+ProjectExplorerListView::ProjectExplorerListView(QWidget *parent)
+	: ProjectExplorerListViewBase(parent)
+{
+	setViewMode(QListView::ListMode);
+
+	setItemDelegate(&delegate_);
 }
 
 }

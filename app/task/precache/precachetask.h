@@ -25,28 +25,29 @@
 #include "node/project/sequence/sequence.h"
 #include "task/render/render.h"
 
-namespace olive {
-
-class PreCacheTask : public RenderTask
+namespace olive
 {
-  Q_OBJECT
-public:
-  PreCacheTask(Footage* footage, int index, Sequence* sequence);
 
-  virtual ~PreCacheTask() override;
+class PreCacheTask : public RenderTask {
+	Q_OBJECT
+public:
+	PreCacheTask(Footage *footage, int index, Sequence *sequence);
+
+	virtual ~PreCacheTask() override;
 
 protected:
-  virtual bool Run() override;
+	virtual bool Run() override;
 
-  virtual bool FrameDownloaded(FramePtr frame, const rational &times) override;
+	virtual bool FrameDownloaded(FramePtr frame,
+								 const rational &times) override;
 
-  virtual bool AudioDownloaded(const TimeRange& range, const SampleBuffer &samples) override;
+	virtual bool AudioDownloaded(const TimeRange &range,
+								 const SampleBuffer &samples) override;
 
 private:
-  Project* project_;
+	Project *project_;
 
-  Footage* footage_;
-
+	Footage *footage_;
 };
 
 }

@@ -25,52 +25,47 @@
 
 #include "common/define.h"
 
-namespace olive {
-
-class ResizableScrollBar : public QScrollBar
+namespace olive
 {
-  Q_OBJECT
+
+class ResizableScrollBar : public QScrollBar {
+	Q_OBJECT
 public:
-  ResizableScrollBar(QWidget* parent = nullptr);
-  ResizableScrollBar(Qt::Orientation orientation, QWidget* parent = nullptr);
+	ResizableScrollBar(QWidget *parent = nullptr);
+	ResizableScrollBar(Qt::Orientation orientation, QWidget *parent = nullptr);
 
 signals:
-  void ResizeBegan(int old_bar_width, bool top_handle);
+	void ResizeBegan(int old_bar_width, bool top_handle);
 
-  void ResizeMoved(int movement);
+	void ResizeMoved(int movement);
 
-  void ResizeEnded();
+	void ResizeEnded();
 
 protected:
-  virtual void mousePressEvent(QMouseEvent* event) override;
+	virtual void mousePressEvent(QMouseEvent *event) override;
 
-  virtual void mouseMoveEvent(QMouseEvent* event) override;
+	virtual void mouseMoveEvent(QMouseEvent *event) override;
 
-  virtual void mouseReleaseEvent(QMouseEvent* event) override;
+	virtual void mouseReleaseEvent(QMouseEvent *event) override;
 
 private:
-  QRect GetScrollBarRect();
+	QRect GetScrollBarRect();
 
-  static const int kHandleWidth;
+	static const int kHandleWidth;
 
-  enum MouseHandleState {
-    kNotInHandle,
-    kInTopHandle,
-    kInBottomHandle
-  };
+	enum MouseHandleState { kNotInHandle, kInTopHandle, kInBottomHandle };
 
-  void Init();
+	void Init();
 
-  int GetActiveMousePos(QMouseEvent* event);
+	int GetActiveMousePos(QMouseEvent *event);
 
-  int GetActiveBarSize();
+	int GetActiveBarSize();
 
-  MouseHandleState mouse_handle_state_;
+	MouseHandleState mouse_handle_state_;
 
-  bool dragging_;
+	bool dragging_;
 
-  int drag_start_point_;
-
+	int drag_start_point_;
 };
 
 }

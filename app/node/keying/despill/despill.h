@@ -19,32 +19,33 @@
 #include "node/node.h"
 #include "node/color/colormanager/colormanager.h"
 
-namespace olive {
+namespace olive
+{
 
 class DespillNode : public Node {
- public:
-  DespillNode();
+public:
+	DespillNode();
 
-  NODE_DEFAULT_FUNCTIONS(DespillNode)
+	NODE_DEFAULT_FUNCTIONS(DespillNode)
 
-  virtual QString Name() const override;
-  virtual QString id() const override;
-  virtual QVector<CategoryID> Category() const override;
-  virtual QString Description() const override;
+	virtual QString Name() const override;
+	virtual QString id() const override;
+	virtual QVector<CategoryID> Category() const override;
+	virtual QString Description() const override;
 
-  virtual void Retranslate() override;
+	virtual void Retranslate() override;
 
-  virtual ShaderCode GetShaderCode(const ShaderRequest &request) const override;
-  virtual void Value(const NodeValueRow& value, const NodeGlobals& globals, NodeValueTable* table) const override;
+	virtual ShaderCode
+	GetShaderCode(const ShaderRequest &request) const override;
+	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+					   NodeValueTable *table) const override;
 
-  static const QString kTextureInput;
-  static const QString kColorInput;
-  static const QString kMethodInput;
-  static const QString kPreserveLuminanceInput;
-
-
+	static const QString kTextureInput;
+	static const QString kColorInput;
+	static const QString kMethodInput;
+	static const QString kPreserveLuminanceInput;
 };
 
-}  // namespace olive
+} // namespace olive
 
-#endif  // DESPILLNODE_H
+#endif // DESPILLNODE_H

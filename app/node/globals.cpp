@@ -20,6 +20,7 @@
 
 #include "globals.h"
 
-namespace olive {
+namespace olive
+{
 
 }

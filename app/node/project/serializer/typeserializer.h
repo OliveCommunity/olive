@@ -27,18 +27,17 @@
 
 #include "common/xmlutils.h"
 
-namespace olive {
+namespace olive
+{
 
 using namespace core;
 
-class TypeSerializer
-{
+class TypeSerializer {
 public:
-  TypeSerializer() = default;
+	TypeSerializer() = default;
 
-  static AudioParams LoadAudioParams(QXmlStreamReader *reader);
-  static void SaveAudioParams(QXmlStreamWriter *writer, const AudioParams &a);
-
+	static AudioParams LoadAudioParams(QXmlStreamReader *reader);
+	static void SaveAudioParams(QXmlStreamWriter *writer, const AudioParams &a);
 };
 
 }
