@@ -3,3 +3,4 @@
 //
 
 #include "Plugin.h"
+olive_node_ctx_functions node_ctx_functions;

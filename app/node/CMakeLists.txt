@@ -27,6 +27,7 @@ add_subdirectory(input)
 add_subdirectory(keying)
 add_subdirectory(math)
 add_subdirectory(output)
+add_subdirectory(plugins)
 add_subdirectory(project)
 add_subdirectory(time)
 
