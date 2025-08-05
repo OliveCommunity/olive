@@ -18,6 +18,7 @@
 set(OLIVE_SOURCES
   core.h
   core.cpp
+        pluginSupport/DrawSuite.cpp
 )
 
 #set(OLIVE_RESOURCES)
@@ -75,6 +76,7 @@ add_library(libolive-editor
   ${OLIVE_RESOURCES}
 )
 
+target_include_directories(libolive-editor PUBLIC ../third_party/openfx/include)
 # Remove prefix - prevents CMake calling it "liblibolive-editor"
 set_target_properties(libolive-editor PROPERTIES PREFIX "")
 

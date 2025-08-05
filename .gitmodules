@@ -4,3 +4,7 @@
 [submodule "ext/KDDockWidgets"]
 	path = ext/KDDockWidgets
 	url = https://github.com/olive-editor/KDDockWidgets.git
+[submodule "third_party/openfx"]
+	path = third_party/openfx
+	url = https://github.com/AcademySoftwareFoundation/openfx.git
+	branch = main

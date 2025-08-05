@@ -1,7 +1,21 @@
 set(OLIVE_SOURCES
         ${OLIVE_SOURCES}
-        pluginSupport/Plugin.cpp
-        pluginSupport/Plugin.h
         pluginSupport/olive_plugin.h
+        pluginSupport/Dialog.cpp
+        pluginSupport/Core.cpp
+        pluginSupport/DrawSuite.cpp
+        pluginSupport/GpuRender.cpp
+        pluginSupport/ImageEffect.cpp
+        pluginSupport/Interact.cpp
+        pluginSupport/KeySyms.cpp
+        pluginSupport/Memory.cpp
+        pluginSupport/MultiThread.cpp
+        pluginSupport/OpenGLRender.cpp
+        pluginSupport/Param.cpp
+        pluginSupport/ParametricParam.cpp
+        pluginSupport/Pixels.cpp
+        pluginSupport/Progress.cpp
+        pluginSupport/Property.cpp
+        pluginSupport/TimeLine.cpp
         PARENT_SCOPE
 )
