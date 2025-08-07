@@ -20,7 +20,7 @@
 #define PLUGIN_NODES_H
 #include "node/node.h"
 #include "pluginSupport/Plugin.h"
-#include "pluginSupport/olive_plugin.h"
+#include "pluginSupport/OlivePlugin.h"
 namespace olive
 {
 namespace plugin

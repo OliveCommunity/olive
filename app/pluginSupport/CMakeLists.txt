@@ -1,6 +1,7 @@
 set(OLIVE_SOURCES
         ${OLIVE_SOURCES}
-        pluginSupport/olive_plugin.h
+        pluginSupport/OlivePlugin.h
+        pluginSupport/OlivePlugin.cpp
         pluginSupport/Dialog.cpp
         pluginSupport/Core.cpp
         pluginSupport/DrawSuite.cpp

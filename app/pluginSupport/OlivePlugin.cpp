@@ -15,11 +15,29 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
+#include "OlivePlugin.h"
 
-#include <QMessageBox>
-#include <ofxDialog.h>
-
-OfxStatus NotifyRedrawPending()
+#include <utility>
+olive::plugin::OlivePlugin::~OlivePlugin()
 {
-	return kOfxStatReplyDefault;
+	for (void *p:mems) {
+		free(p);
+	}
 }
+void olive::plugin::OlivePlugin::setProp(QString key, int index, Value val)
+{
+	props[key][index]=std::move(val);
+}
+
+OfxStatus olive::plugin::OlivePlugin::getProp(QString key, int index, Value &val)
+{
+	if (props.contains(key)) {
+		if (props[key].contains(index)) {
+			val = props[key][index];
+			return kOfxStatOK;
+		}
+		return kOfxStatErrBadIndex;
+	}
+	return kOfxStatErrUnknown;
+}
+
