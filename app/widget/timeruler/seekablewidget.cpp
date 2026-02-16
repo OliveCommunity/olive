@@ -212,10 +212,10 @@ void SeekableWidget::mousePressEvent(QMouseEvent *event)
 			selection_manager_.Select(m);
 		}
 		dragging_ = true;
-		resize_start_ = mapToScene(event->pos());
-	} else if (!selection_manager_.GetObjectAtPoint(event->pos()) &&
+		resize_start_ = mapToScene(event->position().toPoint());
+	} else if (!selection_manager_.GetObjectAtPoint(event->position().toPoint()) &&
 			   event->button() == Qt::LeftButton) {
-		SeekToScenePoint(mapToScene(event->pos()).x());
+		SeekToScenePoint(mapToScene(event->position().toPoint()).x());
 		dragging_ = true;
 
 		DeselectAllMarkers();
@@ -227,12 +227,12 @@ void SeekableWidget::mouseMoveEvent(QMouseEvent *event)
 	if (HandMove(event)) {
 		return;
 	} else if (selection_manager_.IsRubberBanding()) {
-		selection_manager_.RubberBandMove(event->pos());
+		selection_manager_.RubberBandMove(event->position().toPoint());
 		viewport()->update();
 	} else if (selection_manager_.IsDragging()) {
-		selection_manager_.DragMove(event->pos());
+		selection_manager_.DragMove(event->position().toPoint());
 	} else if (dragging_) {
-		QPointF scene = mapToScene(event->pos());
+		QPointF scene = mapToScene(event->position().toPoint());
 		if (resize_item_) {
 			DragResizeHandle(scene);
 		} else {
@@ -240,9 +240,9 @@ void SeekableWidget::mouseMoveEvent(QMouseEvent *event)
 		}
 	} else {
 		// Look for resize points
-		if (!last_playhead_shape_.containsPoint(event->pos(),
+		if (!last_playhead_shape_.containsPoint(event->position().toPoint(),
 												Qt::OddEvenFill) &&
-			!selection_manager_.GetObjectAtPoint(event->pos()) &&
+			!selection_manager_.GetObjectAtPoint(event->position().toPoint()) &&
 			FindResizeHandle(event)) {
 			setCursor(Qt::SizeHorCursor);
 		} else {
@@ -253,7 +253,7 @@ void SeekableWidget::mouseMoveEvent(QMouseEvent *event)
 
 	if (event->buttons()) {
 		// Signal cursor pos in case we should scroll to catch up to it
-		emit DragMoved(event->pos().x(), event->pos().y());
+		emit DragMoved(event->position().toPoint().x(), event->position().toPoint().y());
 	}
 }
 
@@ -293,7 +293,7 @@ void SeekableWidget::mouseDoubleClickEvent(QMouseEvent *event)
 {
 	super::mouseDoubleClickEvent(event);
 
-	if (selection_manager_.GetObjectAtPoint(event->pos()) &&
+	if (selection_manager_.GetObjectAtPoint(event->position().toPoint()) &&
 		!selection_manager_.GetSelectedObjects().empty()) {
 		ShowMarkerProperties();
 	}
@@ -536,7 +536,7 @@ bool SeekableWidget::FindResizeHandle(QMouseEvent *event)
 
 	ClearResizeHandle();
 
-	QPointF scene = mapToScene(event->pos());
+	QPointF scene = mapToScene(event->position().toPoint());
 	const int border = 10;
 	rational min = SceneToTimeNoGrid(scene.x() - border);
 	rational max = SceneToTimeNoGrid(scene.x() + border);
@@ -557,8 +557,8 @@ bool SeekableWidget::FindResizeHandle(QMouseEvent *event)
 			resize_snap_mask_ = TimeBasedWidget::kSnapAll &
 								~TimeBasedWidget::kSnapToWorkarea;
 		}
-	} else if (event->pos().y() >= marker_top_ &&
-			   event->pos().y() < marker_bottom_) {
+	} else if (event->position().toPoint().y() >= marker_top_ &&
+			   event->position().toPoint().y() < marker_bottom_) {
 		if (markers_) {
 			// Check for markers
 			for (auto it = markers_->cbegin(); it != markers_->cend(); it++) {

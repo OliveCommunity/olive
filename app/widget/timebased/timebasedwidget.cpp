@@ -21,6 +21,8 @@
 
 #include "timebasedwidget.h"
 
+#include <utility>
+
 #include <QInputDialog>
 
 #include "common/autoscroll.h"
@@ -189,7 +191,7 @@ void TimeBasedWidget::UpdateMaximumScroll()
 			std::max(0, int(std::ceil(TimeToScene(length)) - width())));
 	}
 
-	foreach (TimeBasedView *base, timeline_views_) {
+	for (TimeBasedView *base : timeline_views_) {
 		base->SetEndTime(length);
 	}
 }
@@ -370,7 +372,7 @@ void TimeBasedWidget::ConnectTimelineView(TimeBasedView *base)
 			&QScrollBar::setValue);
 
 	// Connect scrollbar to other scrollbars
-	for (TimeBasedView *other : qAsConst(timeline_views_)) {
+	for (TimeBasedView *other : std::as_const(timeline_views_)) {
 		connect(other->horizontalScrollBar(), &QScrollBar::valueChanged,
 				base->horizontalScrollBar(), &QScrollBar::setValue);
 		connect(base->horizontalScrollBar(), &QScrollBar::valueChanged,
@@ -681,7 +683,7 @@ void TimeBasedWidget::PageScrollInternal(int screen_position,
 
 bool TimeBasedWidget::UserIsDraggingPlayhead() const
 {
-	foreach (TimeBasedView *view, timeline_views_) {
+	for (TimeBasedView *view : timeline_views_) {
 		if (view->IsDraggingPlayhead()) {
 			return true;
 		}
@@ -1001,7 +1003,7 @@ bool TimeBasedWidget::SnapPoint(const std::vector<rational> &start_times,
 
 	// Find all points at this movement
 	std::vector<rational> snap_times;
-	foreach (const SnapData &d, potential_snaps) {
+	for (const SnapData &d : potential_snaps) {
 		if (d.movement == *movement) {
 			snap_times.push_back(d.time);
 		}
@@ -1014,14 +1016,14 @@ bool TimeBasedWidget::SnapPoint(const std::vector<rational> &start_times,
 
 void TimeBasedWidget::ShowSnaps(const std::vector<rational> &times)
 {
-	foreach (TimeBasedView *view, timeline_views_) {
+	for (TimeBasedView *view : timeline_views_) {
 		view->EnableSnap(times);
 	}
 }
 
 void TimeBasedWidget::HideSnaps()
 {
-	foreach (TimeBasedView *view, timeline_views_) {
+	for (TimeBasedView *view : timeline_views_) {
 		view->DisableSnap();
 	}
 }

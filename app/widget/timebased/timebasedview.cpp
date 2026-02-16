@@ -218,7 +218,7 @@ void TimeBasedView::drawForeground(QPainter *painter, const QRectF &rect)
 
 bool TimeBasedView::PlayheadPress(QMouseEvent *event)
 {
-	QPointF scene_pos = mapToScene(event->pos());
+	QPointF scene_pos = mapToScene(event->position().toPoint());
 
 	dragging_playhead_ = (event->button() == Qt::LeftButton &&
 						  scene_pos.x() >= playhead_scene_left_ &&
@@ -234,7 +234,7 @@ bool TimeBasedView::PlayheadMove(QMouseEvent *event)
 	}
 
 	if (viewer_) {
-		QPointF scene_pos = mapToScene(event->pos());
+		QPointF scene_pos = mapToScene(event->position().toPoint());
 		rational mouse_time = qMax(rational(0), SceneToTime(scene_pos.x()));
 
 		if (Core::instance()->snapping() && snap_service_) {

@@ -615,7 +615,7 @@ void ViewerTextEditorToolBar::mousePressEvent(QMouseEvent *event)
 	QWidget::mousePressEvent(event);
 
 	if (event->button() == Qt::LeftButton && drag_enabled_) {
-		drag_anchor_ = event->pos();
+		drag_anchor_ = event->position().toPoint();
 	}
 }
 
@@ -624,7 +624,7 @@ void ViewerTextEditorToolBar::mouseMoveEvent(QMouseEvent *event)
 	QWidget::mouseMoveEvent(event);
 
 	if ((event->buttons() & Qt::LeftButton) && drag_enabled_) {
-		this->move(mapToParent(QPoint(event->pos() - drag_anchor_)));
+		this->move(mapToParent(QPoint(event->position().toPoint() - drag_anchor_)));
 	}
 }
 

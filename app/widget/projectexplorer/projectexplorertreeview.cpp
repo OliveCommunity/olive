@@ -51,7 +51,7 @@ void ProjectExplorerTreeView::mouseDoubleClickEvent(QMouseEvent *event)
 	QTreeView::mouseDoubleClickEvent(event);
 
 	// QAbstractItemView already has a doubleClicked() signal, but we emit another here for double clicking empty space
-	if (!indexAt(event->pos()).isValid()) {
+	if (!indexAt(event->position().toPoint()).isValid()) {
 		emit DoubleClickedEmptyArea();
 	}
 }

@@ -142,7 +142,7 @@ void MarkerPropertiesDialog::accept()
 
 	int color = color_menu_->GetSelectedColor();
 
-	foreach (TimelineMarker *m, markers_) {
+	for (TimelineMarker *m : markers_) {
 		if (color != -1) {
 			command->add_child(new MarkerChangeColorCommand(m, color));
 		}

@@ -63,8 +63,11 @@ bool HandMovableView::HandPress(QMouseEvent *event)
 		setInteractive(false);
 
 		// Transform mouse event to act like the left button is pressed
-		QMouseEvent transformed(event->type(), event->pos(), Qt::LeftButton,
-								Qt::LeftButton, event->modifiers());
+		const QPointF local_pos = event->position();
+		const QPointF global_pos = viewport()->mapToGlobal(local_pos.toPoint());
+		QMouseEvent transformed(event->type(), local_pos, global_pos,
+								Qt::LeftButton, Qt::LeftButton,
+								event->modifiers());
 
 		transformed_pos_ = QPoint(0, 0);
 
@@ -81,23 +84,28 @@ bool HandMovableView::HandMove(QMouseEvent *event)
 	if (dragging_hand_) {
 		// Transform mouse event to act like the left button is pressed
 		QPoint adjustment(0, 0);
+		const QPoint mouse_pos = event->position().toPoint();
+		const QPointF transformed_local = mouse_pos - transformed_pos_;
+		const QPointF transformed_global =
+			viewport()->mapToGlobal(transformed_local.toPoint());
 
-		QMouseEvent transformed(event->type(), event->pos() - transformed_pos_,
+		QMouseEvent transformed(event->type(), transformed_local,
+								transformed_global,
 								Qt::LeftButton, Qt::LeftButton,
 								event->modifiers());
 
-		if (event->pos().x() < 0) {
+		if (mouse_pos.x() < 0) {
 			transformed_pos_.setX(transformed_pos_.x() + width());
 			adjustment.setX(width());
-		} else if (event->pos().x() >= width()) {
+		} else if (mouse_pos.x() >= width()) {
 			transformed_pos_.setX(transformed_pos_.x() - width());
 			adjustment.setX(-width());
 		}
 
-		if (event->pos().y() < 0) {
+		if (mouse_pos.y() < 0) {
 			transformed_pos_.setY(transformed_pos_.y() + height());
 			adjustment.setY(height());
-		} else if (event->pos().y() >= height()) {
+		} else if (mouse_pos.y() >= height()) {
 			transformed_pos_.setY(transformed_pos_.y() - height());
 			adjustment.setY(-height());
 		}
@@ -115,8 +123,9 @@ bool HandMovableView::HandRelease(QMouseEvent *event)
 {
 	if (dragging_hand_) {
 		// Transform mouse event to act like the left button is pressed
-		QMouseEvent transformed(event->type(), event->localPos(),
-								event->windowPos(), event->screenPos(),
+		QMouseEvent transformed(event->type(), event->position(),
+								event->scenePosition(),
+								event->globalPosition(),
 								Qt::LeftButton, Qt::LeftButton,
 								event->modifiers(), event->source());
 

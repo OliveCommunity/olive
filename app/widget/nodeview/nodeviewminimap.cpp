@@ -149,13 +149,13 @@ void NodeViewMiniMap::SetDefaultSize()
 
 bool NodeViewMiniMap::MouseInsideResizeTriangle(QMouseEvent *event)
 {
-	return event->pos().x() <= resize_triangle_sz_ &&
-		   event->pos().y() <= resize_triangle_sz_;
+	return event->position().toPoint().x() <= resize_triangle_sz_ &&
+		   event->position().toPoint().y() <= resize_triangle_sz_;
 }
 
 void NodeViewMiniMap::EmitMoveSignal(QMouseEvent *event)
 {
-	emit MoveToScenePoint(mapToScene(event->pos()));
+	emit MoveToScenePoint(mapToScene(event->position().toPoint()));
 }
 
 }

@@ -139,9 +139,9 @@ void ResizableScrollBar::Init()
 int ResizableScrollBar::GetActiveMousePos(QMouseEvent *event)
 {
 	if (orientation() == Qt::Horizontal) {
-		return event->pos().x();
+		return event->position().toPoint().x();
 	} else {
-		return event->pos().y();
+		return event->position().toPoint().y();
 	}
 }
 

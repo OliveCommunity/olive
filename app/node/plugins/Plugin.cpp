@@ -282,11 +282,11 @@ olive::plugin::PluginNode::PluginNode(
 			const int value_count =
 				props.getDimension(kOfxParamPropChoiceEnum);
 
-			for (int i = 0; i < label_count; ++i) {
-				const std::string &label =
-					props.getStringProperty(kOfxParamPropChoiceOption, i);
-				option_labels.append(QString::fromStdString(label));
-			}
+				for (int i = 0; i < label_count; ++i) {
+					const std::string &option_label =
+						props.getStringProperty(kOfxParamPropChoiceOption, i);
+					option_labels.append(QString::fromStdString(option_label));
+				}
 
 			for (int i = 0; i < value_count; ++i) {
 				const std::string &value =

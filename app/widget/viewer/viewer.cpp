@@ -31,6 +31,7 @@
 #include <QScreen>
 #include <QtMath>
 #include <QVBoxLayout>
+#include <utility>
 
 #include "audio/audiomanager.h"
 #include "common/ratiodialog.h"
@@ -727,10 +728,10 @@ void ViewerWidget::DetectMulticamNode(const rational &time)
 	if (multicam_panel_ && multicam_panel_->isVisible()) {
 		if (Sequence *s = dynamic_cast<Sequence *>(GetConnectedNode())) {
 			// Prefer selected nodes
-			for (Node *n : qAsConst(node_view_selected_)) {
+			for (Node *n : std::as_const(node_view_selected_)) {
 				if ((multicam = dynamic_cast<MultiCamNode *>(n))) {
 					// Found multicam, now try to find corresponding clip from selected timeline blocks
-					for (Block *b : qAsConst(timeline_selected_blocks_)) {
+					for (Block *b : std::as_const(timeline_selected_blocks_)) {
 						if (ClipBlock *c = dynamic_cast<ClipBlock *>(b)) {
 							if (c->range().Contains(time) &&
 								c->ContextContainsNode(multicam)) {
@@ -745,7 +746,7 @@ void ViewerWidget::DetectMulticamNode(const rational &time)
 
 			// Next, prefer multicam from selected block
 			if (!multicam) {
-				for (Block *b : qAsConst(timeline_selected_blocks_)) {
+				for (Block *b : std::as_const(timeline_selected_blocks_)) {
 					if (b->range().Contains(time)) {
 						if ((clip = dynamic_cast<ClipBlock *>(b))) {
 							if ((multicam = clip->FindMulticam())) {

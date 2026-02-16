@@ -153,15 +153,15 @@ MainWindow::~MainWindow()
 
 void MainWindow::LoadLayout(const MainWindowLayoutInfo &info)
 {
-	foreach (Folder *folder, info.open_folders()) {
+	for (Folder *folder : info.open_folders()) {
 		OpenFolder(folder, true);
 	}
 
-	foreach (Sequence *sequence, info.open_sequences()) {
+	for (Sequence *sequence : info.open_sequences()) {
 		OpenSequence(sequence, info.open_sequences().size() == 1);
 	}
 
-	foreach (ViewerOutput *viewer, info.open_viewers()) {
+	for (ViewerOutput *viewer : info.open_viewers()) {
 		OpenNodeInViewer(viewer);
 	}
 

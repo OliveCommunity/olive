@@ -83,6 +83,19 @@ void DiscardSubtitleStreams(AVFormatContext *ctx)
 	}
 }
 
+VideoParams::Interlacing FFmpegFieldOrderToOlive(AVFieldOrder fo)
+{
+	switch (fo) {
+	case AV_FIELD_TT:
+		return VideoParams::kInterlacedTopFirst;
+	case AV_FIELD_BB:
+		return VideoParams::kInterlacedBottomFirst;
+	case AV_FIELD_PROGRESSIVE:
+	default:
+		return VideoParams::kInterlaceNone;
+	}
+}
+
 } // namespace
 
 FFmpegDecoder::FFmpegDecoder()
@@ -419,87 +432,74 @@ FootageDescription FFmpegDecoder::Probe(const QString &filename,
 				 avstream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO ||
 				 avstream->codecpar->codec_type == AVMEDIA_TYPE_SUBTITLE)) {
 				if (avstream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-					AVPixelFormat compatible_pix_fmt = AV_PIX_FMT_NONE;
+					AVPacket *pkt = av_packet_alloc();
+					AVFrame *frame = av_frame_alloc();
 
+					VideoParams::Interlacing interlacing = VideoParams::kInterlaceNone;
+					AVRational pixel_aspect_ratio = { 1, 1 };
+					AVRational frame_rate = avstream->avg_frame_rate;
+					AVPixelFormat compatible_pix_fmt =
+						FFmpegUtils::GetCompatiblePixelFormat(
+							static_cast<AVPixelFormat>(avstream->codecpar->format));
 					bool image_is_still = false;
-					rational pixel_aspect_ratio;
-					rational frame_rate;
-					VideoParams::Interlacing interlacing =
-						VideoParams::kInterlaceNone;
 
 					{
-					    // Read at least two frames to get more information about this video stream
-					    AVPacket *pkt = av_packet_alloc();
-					    AVFrame  *frame = av_frame_alloc();
+						// Read at least two frames to get more information about this video stream
+						Instance instance;
+						if (instance.Open(filename_c, avstream->index) != 0) {
+							goto cleanup;
+						}
 
-					    VideoParams::Interlacing interlacing = VideoParams::kInterlaceNone;
-					    AVRational pixel_aspect_ratio = {1, 1};
-					    AVRational frame_rate = avstream->avg_frame_rate;
-					    AVPixelFormat compatible_pix_fmt =
-					        FFmpegUtils::GetCompatiblePixelFormat(
-					            static_cast<AVPixelFormat>(avstream->codecpar->format));
-					    bool image_is_still = false;
+						AVCodecContext *avctx = instance.codec_ctx();
+						interlacing = FFmpegFieldOrderToOlive(avctx->field_order);
 
-					    {
-					        Instance instance;
-					        if (instance.Open(filename_c, avstream->index) != 0)
-					            goto cleanup;
+						if (instance.GetFrame(pkt, frame) >= 0) {
+							pixel_aspect_ratio = av_guess_sample_aspect_ratio(
+								instance.fmt_ctx(), instance.avstream(), frame);
+							frame_rate = av_guess_frame_rate(
+								instance.fmt_ctx(), instance.avstream(), frame);
+						}
 
-					        AVCodecContext *avctx = instance.codec_ctx();
-					        interlacing = FFmpegFieldOrderToOlive(avctx->field_order);
-
-					        if (instance.GetFrame(pkt, frame) >= 0) {
-					            pixel_aspect_ratio =
-					                av_guess_sample_aspect_ratio(instance.fmt_ctx(),
-					                                             instance.avstream(), frame);
-					            frame_rate =
-					                av_guess_frame_rate(instance.fmt_ctx(),
-					                                    instance.avstream(), frame);
-					        }
-
-					        int ret = instance.GetFrame(pkt, frame);
-					        if (ret == AVERROR_EOF) {
-					            image_is_still = true;
-					        } else if (avstream->duration == AV_NOPTS_VALUE ||
-					                   duration_guessed_from_bitrate) {
-					            int64_t last_ts = frame->best_effort_timestamp;
-					            while (instance.GetFrame(pkt, frame) >= 0 &&
-					                   (!cancelled || !cancelled->IsCancelled()))
-					                last_ts = frame->best_effort_timestamp;
-					            avstream->duration = last_ts;
-					        }
-
-					        instance.Close();
-					    }
-
-					cleanup:
-					    av_frame_free(&frame);
-					    av_packet_free(&pkt);
-
-					    VideoParams stream;
-					    stream.set_stream_index(i);
-					    stream.set_width(avstream->codecpar->width);
-					    stream.set_height(avstream->codecpar->height);
-					    stream.set_video_type(image_is_still ? VideoParams::kVideoTypeStill
-					                                         : VideoParams::kVideoTypeVideo);
-					    stream.set_format(GetNativePixelFormat(compatible_pix_fmt));
-					    stream.set_channel_count(GetNativeChannelCount(compatible_pix_fmt));
-					    stream.set_interlacing(interlacing);          // <-- 已正确填充
-					    stream.set_pixel_aspect_ratio(pixel_aspect_ratio);
-					    stream.set_frame_rate(frame_rate);
-					    stream.set_start_time(avstream->start_time);
-					    stream.set_time_base(avstream->time_base);
-					    stream.set_duration(avstream->duration);
-					    stream.set_color_range(avstream->codecpar->color_range == AVCOL_RANGE_JPEG
-					                               ? VideoParams::kColorRangeFull
-					                               : VideoParams::kColorRangeLimited);
-					    stream.set_premultiplied_alpha(false);
-
-					    desc.AddVideoStream(stream);
-					    image_is_still ? still_streams++ : video_streams++;
+						int ret = instance.GetFrame(pkt, frame);
+						if (ret == AVERROR_EOF) {
+							image_is_still = true;
+						} else if (avstream->duration == AV_NOPTS_VALUE ||
+								   duration_guessed_from_bitrate) {
+							int64_t last_ts = frame->best_effort_timestamp;
+							while (instance.GetFrame(pkt, frame) >= 0 &&
+								   (!cancelled || !cancelled->IsCancelled())) {
+								last_ts = frame->best_effort_timestamp;
+							}
+							avstream->duration = last_ts;
+						}
 					}
 
+cleanup:
+					av_frame_free(&frame);
+					av_packet_free(&pkt);
 
+					VideoParams stream;
+					stream.set_stream_index(i);
+					stream.set_width(avstream->codecpar->width);
+					stream.set_height(avstream->codecpar->height);
+					stream.set_video_type(image_is_still ? VideoParams::kVideoTypeStill
+														 : VideoParams::kVideoTypeVideo);
+					stream.set_format(GetNativePixelFormat(compatible_pix_fmt));
+					stream.set_channel_count(GetNativeChannelCount(compatible_pix_fmt));
+					stream.set_interlacing(interlacing);
+					stream.set_pixel_aspect_ratio(pixel_aspect_ratio);
+					stream.set_frame_rate(frame_rate);
+					stream.set_start_time(avstream->start_time);
+					stream.set_time_base(avstream->time_base);
+					stream.set_duration(avstream->duration);
+					stream.set_color_range(
+						avstream->codecpar->color_range == AVCOL_RANGE_JPEG
+							? VideoParams::kColorRangeFull
+							: VideoParams::kColorRangeLimited);
+					stream.set_premultiplied_alpha(false);
+
+					desc.AddVideoStream(stream);
+					image_is_still ? still_streams++ : video_streams++;
 				} else if (avstream->codecpar->codec_type ==
 						   AVMEDIA_TYPE_AUDIO) {
 					// Create an audio stream object

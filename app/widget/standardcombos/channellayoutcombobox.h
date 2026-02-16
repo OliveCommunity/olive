@@ -40,8 +40,7 @@ public:
 	ChannelLayoutComboBox(QWidget *parent = nullptr)
 		: QComboBox(parent)
 	{
-		foreach (const uint64_t &ch_layout,
-				 AudioParams::kSupportedChannelLayouts) {
+		for (const uint64_t ch_layout : AudioParams::kSupportedChannelLayouts) {
 			this->addItem(HumanStrings::ChannelLayoutToString(ch_layout),
 						  QVariant::fromValue(ch_layout));
 		}

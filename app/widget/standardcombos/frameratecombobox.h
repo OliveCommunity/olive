@@ -164,7 +164,7 @@ private:
 
 		inner_->clear();
 
-		foreach (const rational &fr, VideoParams::kSupportedFrameRates) {
+		for (const rational &fr : VideoParams::kSupportedFrameRates) {
 			inner_->addItem(VideoParams::FrameRateToString(fr),
 							QVariant::fromValue(fr));
 		}

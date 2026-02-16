@@ -134,7 +134,7 @@ public:
 		if (event->button() == Qt::LeftButton ||
 			event->button() == Qt::RightButton) {
 			// See if there's a keyframe in this position
-			key_under_cursor = GetObjectAtPoint(event->pos());
+			key_under_cursor = GetObjectAtPoint(event->position().toPoint());
 
 			bool holding_shift = event->modifiers() & Qt::ShiftModifier;
 
@@ -215,7 +215,7 @@ public:
 		}
 
 		drag_mouse_start_ =
-			view_->UnscalePoint(view_->mapToScene(event->pos()));
+			view_->UnscalePoint(view_->mapToScene(event->position().toPoint()));
 	}
 
 	void SnapPoints(rational *movement)
@@ -360,11 +360,11 @@ public:
 		if (event->button() == Qt::LeftButton ||
 			event->button() == Qt::RightButton) {
 			rubberband_scene_start_ =
-				view_->UnscalePoint(view_->mapToScene(event->pos()));
+				view_->UnscalePoint(view_->mapToScene(event->position().toPoint()));
 
 			rubberband_ = new QRubberBand(QRubberBand::Rectangle, view_);
 			rubberband_->setGeometry(
-				QRect(event->pos().x(), event->pos().y(), 0, 0));
+				QRect(event->position().toPoint().x(), event->position().toPoint().y(), 0, 0));
 			rubberband_->show();
 
 			rubberband_preselected_ = selected_;

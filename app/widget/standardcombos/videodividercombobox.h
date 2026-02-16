@@ -35,7 +35,7 @@ public:
 	VideoDividerComboBox(QWidget *parent = nullptr)
 		: QComboBox(parent)
 	{
-		foreach (int d, VideoParams::kSupportedDividers) {
+		for (const int d : VideoParams::kSupportedDividers) {
 			this->addItem(VideoParams::GetNameForDivider(d), d);
 		}
 	}

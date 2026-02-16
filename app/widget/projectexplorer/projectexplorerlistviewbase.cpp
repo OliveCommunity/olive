@@ -45,7 +45,7 @@ ProjectExplorerListViewBase::ProjectExplorerListViewBase(QWidget *parent)
 void ProjectExplorerListViewBase::mouseDoubleClickEvent(QMouseEvent *event)
 {
 	// Cache here so if the index becomes invalid after the base call, we still know the truth
-	bool item_at_location = indexAt(event->pos()).isValid();
+	bool item_at_location = indexAt(event->position().toPoint()).isValid();
 
 	// Perform default double click functions
 	QListView::mouseDoubleClickEvent(event);

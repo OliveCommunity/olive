@@ -208,7 +208,7 @@ void KeyframePropertiesDialog::accept()
 	rational new_time = time_slider_->GetValue();
 	int new_type = type_select_->currentData().toInt();
 
-	foreach (NodeKeyframe *key, keys_) {
+	for (NodeKeyframe *key : keys_) {
 		if (time_slider_->isEnabled() && !time_slider_->IsTristate()) {
 			command->add_child(
 				new NodeParamSetKeyframeTimeCommand(key, new_time));

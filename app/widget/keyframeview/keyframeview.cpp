@@ -289,7 +289,7 @@ void KeyframeView::CatchUpScrollEvent()
 void KeyframeView::mousePressEvent(QMouseEvent *event)
 {
 	NodeKeyframe *key_under_cursor =
-		selection_manager_.GetObjectAtPoint(event->pos());
+		selection_manager_.GetObjectAtPoint(event->position().toPoint());
 
 	if (HandPress(event) || (!key_under_cursor && PlayheadPress(event))) {
 		return;
@@ -321,15 +321,15 @@ void KeyframeView::mouseMoveEvent(QMouseEvent *event)
 	} else if (selection_manager_.IsDragging()) {
 		QString tip;
 		KeyframeDragMove(event, tip);
-		selection_manager_.DragMove(event->pos(), tip);
+		selection_manager_.DragMove(event->position().toPoint(), tip);
 	} else if (selection_manager_.IsRubberBanding()) {
-		selection_manager_.RubberBandMove(event->pos());
+		selection_manager_.RubberBandMove(event->position().toPoint());
 		Redraw();
 	}
 
 	if (event->buttons()) {
 		// Signal cursor pos in case we should scroll to catch up to it
-		emit Dragged(event->pos().x(), event->pos().y());
+		emit Dragged(event->position().toPoint().x(), event->position().toPoint().y());
 	}
 }
 
