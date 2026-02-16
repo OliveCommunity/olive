@@ -22,8 +22,9 @@
 #ifndef CACHEJOB_H
 #define CACHEJOB_H
 
-#include <QString>
+#include <cstdint>
 #include <QVariant>
+#include <QUuid>
 
 #include "node/value.h"
 #include "render/job/acceleratedjob.h"
@@ -34,18 +35,30 @@ namespace olive
 class CacheJob : public AcceleratedJob {
 public:
 	CacheJob() = default;
-	CacheJob(const QString &filename, const NodeValue &fallback = NodeValue())
+	CacheJob(const QUuid &uuid, const int64_t &time,
+			 const NodeValue &fallback = NodeValue())
 	{
-		filename_ = filename;
+		uuid_ = uuid;
+		time_ = time;
+		fallback_ = fallback;
 	}
 
-	const QString &GetFilename() const
+	const QUuid &GetUuid() const
 	{
-		return filename_;
+		return uuid_;
 	}
-	void SetFilename(const QString &s)
+	void SetUuid(const QUuid &u)
 	{
-		filename_ = s;
+		uuid_ = u;
+	}
+
+	const int64_t &GetTime() const
+	{
+		return time_;
+	}
+	void SetTime(const int64_t &t)
+	{
+		time_ = t;
 	}
 
 	const NodeValue &GetFallback() const
@@ -58,7 +71,8 @@ public:
 	}
 
 private:
-	QString filename_;
+	QUuid uuid_;
+	int64_t time_ = 0;
 
 	NodeValue fallback_;
 };

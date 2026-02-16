@@ -56,6 +56,8 @@ public:
 	rational length() const;
 
 	virtual void SetPassthrough(PlaybackCache *cache) override;
+	FramePtr LoadCacheFrame(const int64_t &time) const override;
+	bool SaveCacheFrame(const int64_t &time, FramePtr frame) override;
 
 protected:
 	virtual void InvalidateEvent(const TimeRange &range) override;

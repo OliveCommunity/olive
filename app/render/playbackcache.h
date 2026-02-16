@@ -136,8 +136,17 @@ public:
 			emit Requested(request_context_, r);
 		}
 	}
-	virtual FramePtr LoadCacheFrame(const int64_t &time) const = 0;
-	virtual bool SaveCacheFrame(const int64_t &time, FramePtr frame) = 0;
+	virtual FramePtr LoadCacheFrame(const int64_t &time) const
+	{
+		Q_UNUSED(time)
+		return nullptr;
+	}
+	virtual bool SaveCacheFrame(const int64_t &time, FramePtr frame)
+	{
+		Q_UNUSED(time)
+		Q_UNUSED(frame)
+		return false;
+	}
 
 public slots:
 	void InvalidateAll();

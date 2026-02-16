@@ -83,17 +83,18 @@ public:
 				   OFX::Host::ImageEffect::ImageEffectPlugin *plugin) override;
 	/// vmessage
 	virtual OfxStatus vmessage(const char *type, const char *id,
-							   const char *format, va_list args);
+							   const char *format, va_list args) override;
 
 	/// vmessage
 	virtual OfxStatus setPersistentMessage(const char *type, const char *id,
-										   const char *format, va_list args);
+										   const char *format,
+										   va_list args) override;
 	/// vmessage
-	virtual OfxStatus clearPersistentMessage();
+	virtual OfxStatus clearPersistentMessage() override;
 
 #ifdef OFX_SUPPORTS_OPENGLRENDER
 	/// @see OfxImageEffectOpenGLRenderSuiteV1.flushResources()
-	virtual OfxStatus flushOpenGLResources() const
+	virtual OfxStatus flushOpenGLResources() const override
 	{
 		return kOfxStatFailed;
 	};

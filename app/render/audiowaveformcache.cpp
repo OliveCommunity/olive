@@ -120,6 +120,19 @@ void AudioWaveformCache::SetPassthrough(PlaybackCache *cache)
 	SetSavingEnabled(c->IsSavingEnabled());
 }
 
+FramePtr AudioWaveformCache::LoadCacheFrame(const int64_t &time) const
+{
+	Q_UNUSED(time)
+	return nullptr;
+}
+
+bool AudioWaveformCache::SaveCacheFrame(const int64_t &time, FramePtr frame)
+{
+	Q_UNUSED(time)
+	Q_UNUSED(frame)
+	return false;
+}
+
 void AudioWaveformCache::InvalidateEvent(const TimeRange &range)
 {
 	TimeRangeList::util_remove(&passthroughs_, range);

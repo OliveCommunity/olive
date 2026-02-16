@@ -26,6 +26,7 @@
 #include "render/job/footagejob.h"
 #include "render/rendermanager.h"
 #include "render/job/pluginjob.h"
+#include "olive/core/util/timecodefunctions.h"
 
 namespace olive
 {
@@ -143,13 +144,26 @@ NodeValue NodeTraverser::GenerateRowValueElement(const Node *node,
 	if (value.type() == NodeValue::kTexture && UseCache()) {
 		if (TexturePtr tex = value.toTexture()) {
 			QMutexLocker locker(node->video_frame_cache()->mutex());
+			FrameHashCache *cache = node->video_frame_cache();
+			cache->LoadState();
 
-			node->video_frame_cache()->LoadState();
+			const rational cache_time = time.in();
+			QUuid cache_uuid;
+			if (cache->IsFrameCached(cache_time)) {
+				cache_uuid = cache->GetUuid();
+			} else {
+				for (const PlaybackCache::Passthrough &p : cache->GetPassthroughs()) {
+					if (p.Contains(cache_time)) {
+						cache_uuid = p.cache;
+						break;
+					}
+				}
+			}
 
-			QString cache =
-				node->video_frame_cache()->GetValidCacheFilename(time.in());
-			if (!cache.isEmpty()) {
-				value.set_value(tex->toJob(CacheJob(cache, value)));
+			if (!cache_uuid.isNull()) {
+				const int64_t cache_timestamp = Timecode::time_to_timestamp(
+					cache_time, cache->GetTimebase(), Timecode::kRound);
+				value.set_value(tex->toJob(CacheJob(cache_uuid, cache_timestamp, value)));
 			}
 		}
 	}
@@ -498,12 +512,65 @@ void NodeTraverser::ResolveJobs(NodeValue &val)
 						val.set_value(tex);
 					}
 					else if (plugin::PluginJob* plugin_job=dynamic_cast<plugin::PluginJob*>(base_job)) {
-						VideoParams tex_params = job_tex->params();
+						bool resolved_from_cache = false;
+						if (UseCache()) {
+							if (plugin::PluginNode *plugin_node =
+									plugin_job->node()) {
+								if (plugin_node->AreCachesEnabled()) {
+									if (FrameHashCache *cache =
+											plugin_node->video_frame_cache()) {
+										const rational cache_time =
+											rational::fromDouble(
+												plugin_job->time_seconds());
+										QUuid cache_uuid;
+										int64_t cache_timestamp = 0;
+										{
+											QMutexLocker locker(cache->mutex());
+											cache->LoadState();
+											if (cache->IsFrameCached(cache_time)) {
+												cache_uuid = cache->GetUuid();
+											} else {
+												for (const PlaybackCache::Passthrough &p :
+													 cache->GetPassthroughs()) {
+													if (p.Contains(cache_time)) {
+														cache_uuid = p.cache;
+														break;
+													}
+												}
+											}
+											if (!cache_uuid.isNull()) {
+												cache_timestamp =
+													Timecode::time_to_timestamp(
+														cache_time,
+														cache->GetTimebase(),
+														Timecode::kRound);
+											}
+										}
+										if (!cache_uuid.isNull()) {
+											CacheJob cache_job(cache_uuid, cache_timestamp, val);
+											TexturePtr cached_tex =
+												ProcessVideoCacheJob(&cache_job);
+											if (cached_tex) {
+												val.set_value(cached_tex);
+												resolved_from_cache = true;
+											}
+										}
+									}
+								}
+							}
+						}
 
-						TexturePtr tex = CreateTexture(tex_params);
+						if (resolved_from_cache) {
+							resolved_texture_cache_.insert(job_tex.get(),
+														   val.toTexture());
+						} else {
+							VideoParams tex_params = job_tex->params();
 
-						ProcessPluginJob(job_tex, tex, val.source());
-						val.set_value(tex);
+							TexturePtr tex = CreateTexture(tex_params);
+
+							ProcessPluginJob(job_tex, tex, val.source());
+							val.set_value(tex);
+						}
 
 					}
 

@@ -65,7 +65,7 @@ public:
    */
 	virtual void ProcessSamples(const NodeValueRow &values,
 								const SampleBuffer &input, SampleBuffer &output,
-								int index) const;
+								int index) const override;
 
 	/**
    * @brief If Value() pushes a GenerateJob, override this function for the image to create
@@ -74,7 +74,8 @@ public:
    *
    * The destination buffer. It will already be allocated and ready for writing to.
    */
-	virtual void GenerateFrame(FramePtr frame, const GenerateJob &job) const;
+	virtual void GenerateFrame(FramePtr frame,
+							   const GenerateJob &job) const override;
 
 public slots:
 	void pushButtonClicked(QString name);

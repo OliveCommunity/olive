@@ -44,6 +44,19 @@ AudioPlaybackCache::~AudioPlaybackCache()
 {
 }
 
+FramePtr AudioPlaybackCache::LoadCacheFrame(const int64_t &time) const
+{
+	Q_UNUSED(time)
+	return nullptr;
+}
+
+bool AudioPlaybackCache::SaveCacheFrame(const int64_t &time, FramePtr frame)
+{
+	Q_UNUSED(time)
+	Q_UNUSED(frame)
+	return false;
+}
+
 void AudioPlaybackCache::SetParameters(const AudioParams &params)
 {
 	if (params_ == params) {

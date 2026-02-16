@@ -1502,7 +1502,7 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 			std::string component = input_clip->getProps()
 				.getStringProperty(kOfxImageEffectPropComponents);
 			VideoParams params = input_tex->params();
-			params.set_format(PixelFormat::from_ofx(bitdepth));
+			params.set_format(PixelFormatFromOfxDepth(bitdepth));
 			params.set_channel_count(component);
 			ConvertTextureForParams(input_tex, params);
 			OfxRectD rod;
@@ -1529,7 +1529,7 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 		output_clip->getProps().getStringProperty(kOfxImageEffectPropPixelDepth);
 	std::string component =
 		output_clip->getProps().getStringProperty(kOfxImageEffectPropComponents);
-	output_params.set_format(PixelFormat::from_ofx(bitdepth));
+	output_params.set_format(PixelFormatFromOfxDepth(bitdepth));
 	output_params.set_channel_count(component);
 	output_clip->setParams(output_params);
 

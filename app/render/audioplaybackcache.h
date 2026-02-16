@@ -70,6 +70,9 @@ public:
 
 	void WriteSilence(const TimeRange &range);
 
+	FramePtr LoadCacheFrame(const int64_t &time) const override;
+	bool SaveCacheFrame(const int64_t &time, FramePtr frame) override;
+
 private:
 	bool WritePartOfSampleBuffer(const SampleBuffer &samples,
 								 const rational &write_start,

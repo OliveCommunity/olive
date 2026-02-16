@@ -29,30 +29,20 @@
 #include "render/playbackcache.h"
 #include <QHash>
 #include <QMutex>
+#include <QString>
 namespace olive{
 class FrameMemCacheKey{
 public:
-    static FrameMemCacheKey create(QUuid uuid, int64_t time, const VideoParams &params){
+    static FrameMemCacheKey create(QUuid uuid, int64_t time){
         FrameMemCacheKey key;
         key.uuid_=uuid;
-        key.params=params;
         key.time=time;
-        key.timestamp_=std::time(nullptr);
         return key;
     }
     friend uint qHash(const FrameMemCacheKey &key, uint seed);
     bool operator==(const FrameMemCacheKey &that) const{
-        if(this->uuid_ == that.uuid_ 
-            && this->time == that.time 
-            && this->params == that.params
-            && this->timestamp_ == that.timestamp_
-        ){
-            return true;
-        }
-        return false;
-    }
-    std::time_t timestamp() const{
-        return timestamp_;
+        return this->uuid_ == that.uuid_
+            && this->time == that.time;
     }
     QUuid uuid() const{
         return uuid_;
@@ -60,12 +50,10 @@ public:
     int64_t frame_time() const{
         return time;
     }
+	~FrameMemCacheKey() = default;
 private:
 	FrameMemCacheKey() = default;
-    ~FrameMemCacheKey() = default;
 	QUuid uuid_;
-    std::time_t timestamp_ = 0;
-    VideoParams params;
 	int64_t time = 0;
 };
 
@@ -73,17 +61,7 @@ inline uint qHash(const FrameMemCacheKey &key, uint seed = 0)
 {
     return qHashMulti(seed,
                       key.uuid_,
-                      static_cast<quint64>(key.timestamp_),
-                      key.time,
-                      key.params.width(),
-                      key.params.height(),
-                      key.params.depth(),
-                      key.params.divider(),
-                      key.params.channel_count(),
-                      static_cast<int>(key.params.format()),
-                      static_cast<int>(key.params.interlacing()),
-                      key.params.time_base().toDouble(),
-                      key.params.pixel_aspect_ratio().toDouble());
+                      key.time);
 }
 
 class FrameMemCacheValue{
@@ -91,7 +69,8 @@ public:
     static FrameMemCacheValue create(FramePtr frame){
         FrameMemCacheValue value;
         value.frame_ = frame;
-        value.size_bytes_ = frame->allocated_size()*1.3;
+        value.size_bytes_ = static_cast<size_t>(frame->allocated_size() * 1.3);
+        value.last_access_unix_ = std::time(nullptr);
         return value;
     }
     FramePtr frame() const{
@@ -101,16 +80,25 @@ public:
     size_t size_bytes() const{
         return size_bytes_;
     }
+    std::time_t last_access_unix() const{
+        return last_access_unix_;
+    }
+    void touch(){
+        last_access_unix_ = std::time(nullptr);
+    }
 private:
 	FrameMemCacheValue() = default;
 	FramePtr frame_;
     size_t size_bytes_ = 0;
+    std::time_t last_access_unix_ = 0;
 };
 
 class FrameMemCache : public PlaybackCache {
 public:
     FrameMemCache();
     ~FrameMemCache();
+
+    void SetBackingCachePath(const QString &cache_path);
 
 	bool SaveCacheFrame(const int64_t &time, FramePtr frame) override;
 
@@ -121,6 +109,7 @@ private:
     static void StopLruThread();
     static void LruWorkerLoop();
     static QHash<FrameMemCacheKey, FrameMemCacheValue> cache_;
+    static QHash<QUuid, QString> cache_paths_;
     static QMutex cache_mutex_;
     static std::thread lru_thread_;
     static std::atomic<bool> lru_thread_running_;

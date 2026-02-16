@@ -187,13 +187,13 @@ public:
 
 	/// get the current time on the timeline. This is not necessarily the same
 	/// time as being passed to an action (eg render)
-	virtual double timeLineGetTime();
+	virtual double timeLineGetTime() override;
 
 	/// set the timeline to a specific time
-	virtual void timeLineGotoTime(double t);
+	virtual void timeLineGotoTime(double t) override;
 
 	/// get the first and last times available on the effect's timeline
-	virtual void timeLineGetBounds(double &t1, double &t2);
+	virtual void timeLineGetBounds(double &t1, double &t2) override;
 
 	void setCustomInArgs(const std::string &action,
 						 OFX::Host::Property::Set &inArgs) override;

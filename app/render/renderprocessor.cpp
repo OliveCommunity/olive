@@ -32,15 +32,44 @@
 #include "node/project.h"
 #include "rendermanager.h"
 #include "render/framehashcache.h"
+#include "render/framememorycache.h"
 #include "render/opengl/openglrenderer.h"
 #include "render/plugin/pluginrenderer.h"
 #include "pluginSupport/OliveClip.h"
 #include "pluginSupport/OliveHost.h"
+#include "olive/core/util/timecodefunctions.h"
+#include <mutex>
+#include <unordered_map>
 
 namespace olive
 {
 
 #define super NodeTraverser
+
+namespace {
+
+FrameMemCache *ProjectFrameMemCache(Project *project)
+{
+	if (!project) {
+		return nullptr;
+	}
+
+	static std::mutex caches_mutex;
+	static std::unordered_map<std::string, std::unique_ptr<FrameMemCache>>
+		project_caches;
+
+	const std::string key =
+		project->GetUuid().toString(QUuid::WithoutBraces).toStdString();
+
+	std::lock_guard<std::mutex> lock(caches_mutex);
+	std::unique_ptr<FrameMemCache> &entry = project_caches[key];
+	if (!entry) {
+		entry = std::make_unique<FrameMemCache>();
+	}
+	return entry.get();
+}
+
+} // namespace
 
 RenderProcessor::RenderProcessor(RenderTicketPtr ticket, Renderer *render_ctx,
 								 DecoderCache *decoder_cache,
@@ -237,8 +266,34 @@ void RenderProcessor::Run()
 							ticket_->property("cachetimebase").value<rational>();
 						QUuid uuid =
 							ticket_->property("cacheid").value<QUuid>();
-						bool cache_result = FrameHashCache::SaveCacheFrame(
-							cache, uuid, time, timebase, frame);
+						bool cache_result = false;
+						if (!uuid.isNull() && frame) {
+							rational tb = timebase;
+							if (tb.isNull() || tb.isNaN()) {
+								tb = GetCacheVideoParams().time_base();
+							}
+							if (tb.isNull() || tb.isNaN()) {
+								tb = GetCacheVideoParams().frame_rate_as_time_base();
+							}
+							if (tb.isNull() || tb.isNaN()) {
+								tb = rational(1, 1);
+							}
+							const int64_t timestamp = Timecode::time_to_timestamp(
+								time, tb, Timecode::kRound);
+
+							Project *project = nullptr;
+							if (Node *render_node = QtUtils::ValueToPtr<Node>(
+									ticket_->property("node"))) {
+								project = render_node->project();
+							}
+							if (FrameMemCache *mem_cache =
+									ProjectFrameMemCache(project)) {
+								mem_cache->SetUuid(uuid);
+								mem_cache->SetBackingCachePath(cache);
+								cache_result =
+									mem_cache->SaveCacheFrame(timestamp, frame);
+							}
+						}
 						ticket_->setProperty("cached", cache_result);
 					}
 				}
@@ -616,8 +671,6 @@ TexturePtr RenderProcessor::ProcessPluginJob(TexturePtr texture,
 											 TexturePtr destination,
 											 const Node *node)
 {
-	(void)node;
-
 	if (!render_ctx_ || !texture || !destination) {
 		return destination;
 	}
@@ -700,18 +753,40 @@ TexturePtr RenderProcessor::ProcessPluginJob(TexturePtr texture,
 
 TexturePtr RenderProcessor::ProcessVideoCacheJob(const CacheJob *val)
 {
-	FramePtr frame = FrameHashCache::LoadCacheFrame(val->GetFilename());
-	if (frame) {
-		TexturePtr tex = CreateTexture(frame->video_params());
-		if (tex) {
-			tex->Upload(frame->data(), frame->linesize_pixels());
-			return tex;
-		}
-	} else {
-		QStringList s = ticket_->property("badcache").toStringList();
-		s.append(val->GetFilename());
-		ticket_->setProperty("badcache", s);
+	const QUuid uuid = val->GetUuid();
+	const int64_t timestamp = val->GetTime();
+	if (uuid.isNull()) {
+		return nullptr;
 	}
+
+	Project *project = nullptr;
+	if (Node *render_node = QtUtils::ValueToPtr<Node>(ticket_->property("node"))) {
+		project = render_node->project();
+	}
+	if (!project && val->GetFallback().source()) {
+		project = val->GetFallback().source()->project();
+	}
+
+	if (FrameMemCache *mem_cache = ProjectFrameMemCache(project)) {
+		mem_cache->SetUuid(uuid);
+		if (project) {
+			mem_cache->SetBackingCachePath(project->cache_path());
+		}
+		FramePtr mem_frame = mem_cache->LoadCacheFrame(timestamp);
+		if (mem_frame) {
+			TexturePtr tex = CreateTexture(mem_frame->video_params());
+			if (tex) {
+				tex->Upload(mem_frame->data(), mem_frame->linesize_pixels());
+				return tex;
+			}
+		}
+	}
+
+	QStringList s = ticket_->property("badcache").toStringList();
+	s.append(QStringLiteral("%1/%2")
+				 .arg(uuid.toString(QUuid::WithoutBraces))
+				 .arg(timestamp));
+	ticket_->setProperty("badcache", s);
 
 	return nullptr;
 }

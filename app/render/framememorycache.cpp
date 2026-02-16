@@ -18,6 +18,7 @@
  */
 #include "framememorycache.h"
 #include "codec/frame.h"
+#include "render/framehashcache.h"
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -35,6 +36,7 @@
 using namespace olive;
 
 QHash<FrameMemCacheKey, FrameMemCacheValue> FrameMemCache::cache_;
+QHash<QUuid, QString> FrameMemCache::cache_paths_;
 QMutex FrameMemCache::cache_mutex_;
 std::thread FrameMemCache::lru_thread_;
 std::atomic<bool> FrameMemCache::lru_thread_running_(false);
@@ -132,22 +134,38 @@ namespace {
 } // namespace
 
 FramePtr FrameMemCache::LoadCacheFrame(const int64_t &time) const{
-    QMutexLocker locker(&cache_mutex_);
-
-    FramePtr result = nullptr;
-    std::time_t newest_timestamp = 0;
-    const QUuid cache_uuid = GetUuid();
-
-    for (auto it = cache_.cbegin(); it != cache_.cend(); ++it) {
-        if (it.key().uuid() == cache_uuid && it.key().frame_time() == time) {
-            if (!result || it.key().timestamp() >= newest_timestamp) {
-                newest_timestamp = it.key().timestamp();
-                result = it.value().frame();
-            }
+    const FrameMemCacheKey key = FrameMemCacheKey::create(GetUuid(), time);
+    {
+        QMutexLocker locker(&cache_mutex_);
+        auto it = cache_.find(key);
+        if (it != cache_.end()) {
+            it.value().touch();
+            return it.value().frame();
         }
     }
 
-    return result;
+    QString backing_path;
+    {
+        QMutexLocker locker(&cache_mutex_);
+        backing_path = cache_paths_.value(GetUuid());
+    }
+    if (backing_path.isEmpty()) {
+        return nullptr;
+    }
+
+    FramePtr disk_frame = FrameHashCache::LoadCacheFrame(backing_path, GetUuid(), time);
+    if (!disk_frame) {
+        return nullptr;
+    }
+
+    {
+        QMutexLocker locker(&cache_mutex_);
+        const FrameMemCacheKey insert_key = FrameMemCacheKey::create(GetUuid(), time);
+        cache_.remove(insert_key);
+        cache_.insert(insert_key, FrameMemCacheValue::create(disk_frame));
+    }
+    doLru();
+    return disk_frame;
 }
 
 bool FrameMemCache::SaveCacheFrame(const int64_t &time, FramePtr frame)
@@ -157,14 +175,29 @@ bool FrameMemCache::SaveCacheFrame(const int64_t &time, FramePtr frame)
     }
 
     const FrameMemCacheKey key =
-        FrameMemCacheKey::create(GetUuid(), time, frame->video_params());
+        FrameMemCacheKey::create(GetUuid(), time);
     {
         QMutexLocker locker(&cache_mutex_);
+        cache_.remove(key);
         cache_.insert(key, FrameMemCacheValue::create(frame));
     }
 
     doLru();
     return true;
+}
+
+void FrameMemCache::SetBackingCachePath(const QString &cache_path)
+{
+    if (GetUuid().isNull()) {
+        return;
+    }
+
+    QMutexLocker locker(&cache_mutex_);
+    if (cache_path.isEmpty()) {
+        cache_paths_.remove(GetUuid());
+    } else {
+        cache_paths_.insert(GetUuid(), cache_path);
+    }
 }
 
 FrameMemCache::FrameMemCache()
@@ -226,42 +259,75 @@ void FrameMemCache::LruWorkerLoop()
 }
 
 void FrameMemCache::doLru(){
-    QMutexLocker locker(&cache_mutex_);
+    struct EvictedFrame {
+        QString cache_path;
+        QUuid uuid;
+        int64_t timestamp = 0;
+        FramePtr frame;
+    };
+    std::vector<EvictedFrame> evicted;
+    {
+        QMutexLocker locker(&cache_mutex_);
 
-    if (cache_.isEmpty()) {
-        return;
-    }
-
-    const int64_t configured_budget = budget.load(std::memory_order_acquire);
-    if (configured_budget <= 0) {
-        return;
-    }
-
-    uint64_t total_bytes = 0;
-    for (auto it = cache_.begin(); it != cache_.end(); ++it) {
-        total_bytes += static_cast<uint64_t>(it.value().size_bytes());
-    }
-
-    const uint64_t target_budget = static_cast<uint64_t>(configured_budget);
-
-    if (total_bytes <= target_budget) {
-        return;
-    }
-
-    while (!cache_.isEmpty() && total_bytes > target_budget) {
-        auto oldest_it = cache_.begin();
-        std::time_t oldest_ts = oldest_it.key().timestamp();
-
-        for (auto it = cache_.begin(); it != cache_.end(); ++it) {
-            const std::time_t current_ts = it.key().timestamp();
-            if (current_ts < oldest_ts) {
-                oldest_ts = current_ts;
-                oldest_it = it;
-            }
+        if (cache_.isEmpty()) {
+            return;
         }
 
-        total_bytes -=
-            std::min(total_bytes, static_cast<uint64_t>(oldest_it.value().size_bytes()));
-        cache_.erase(oldest_it);
+        const int64_t configured_budget = budget.load(std::memory_order_acquire);
+        if (configured_budget <= 0) {
+            return;
+        }
+
+        uint64_t total_bytes = 0;
+        for (auto it = cache_.begin(); it != cache_.end(); ++it) {
+            total_bytes += static_cast<uint64_t>(it.value().size_bytes());
+        }
+
+        const uint64_t target_budget = static_cast<uint64_t>(configured_budget);
+
+        if (total_bytes <= target_budget) {
+            return;
+        }
+
+        while (!cache_.isEmpty() && total_bytes > target_budget) {
+            auto oldest_it = cache_.begin();
+            std::time_t oldest_ts = oldest_it.value().last_access_unix();
+
+            for (auto it = cache_.begin(); it != cache_.end(); ++it) {
+                const std::time_t current_ts = it.value().last_access_unix();
+                if (current_ts < oldest_ts) {
+                    oldest_ts = current_ts;
+                    oldest_it = it;
+                }
+            }
+
+            const QUuid uuid = oldest_it.key().uuid();
+            const QString cache_path = cache_paths_.value(uuid);
+            if (!cache_path.isEmpty() && oldest_it.value().frame()) {
+                evicted.push_back(
+                    {cache_path, uuid, oldest_it.key().frame_time(), oldest_it.value().frame()});
+            }
+
+            total_bytes -=
+                std::min(total_bytes, static_cast<uint64_t>(oldest_it.value().size_bytes()));
+            cache_.erase(oldest_it);
+        }
+    }
+
+    for (const EvictedFrame &e : evicted) {
+        FrameHashCache::SaveCacheFrame(e.cache_path, e.uuid, e.timestamp, e.frame);
+    }
+}
+
+void FrameMemCache::InvalidateAll()
+{
+    QMutexLocker locker(&cache_mutex_);
+    const QUuid cache_uuid = GetUuid();
+    for (auto it = cache_.begin(); it != cache_.end();) {
+        if (it.key().uuid() == cache_uuid) {
+            it = cache_.erase(it);
+        } else {
+            ++it;
+        }
     }
 }
