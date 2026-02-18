@@ -69,7 +69,7 @@ public:
 	TimeRuler *ruler() const;
 
 	using SnapMask = uint32_t;
-	enum SnapPoints {
+	enum SnapPoints : SnapMask {
 		kSnapToClips = 0x1,
 		kSnapToPlayhead = 0x2,
 		kSnapToMarkers = 0x4,

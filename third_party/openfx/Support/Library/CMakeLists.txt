@@ -7,7 +7,7 @@ add_library(OfxSupport STATIC
 	${OFX_SUPPORT_LIBRARY_FILES})
 
 set_target_properties(OfxSupport PROPERTIES LINKER_LANGUAGE CXX)
-if(NOT MSVC)
+if(NOT WIN32)
 	set_target_properties(OfxSupport PROPERTIES COMPILE_FLAGS "-fPIC")
 endif()
 

@@ -1,42 +1,19 @@
 {
-  "name": "oak-video-editor",
-  "version-string": "0.0.0",
-  "dependencies": [
-    "qtbase",
-    "qttools",
-    "ffmpeg",
-    "openimageio",
-    "opencolorio",
-    "openexr",
-    "imath",
-    "expat",
-    "portaudio"
-  ],
-  "features": {
-    "qtquick": {
-      "description": "Enable Qt Quick frontend dependencies used by KDDockWidgets when available.",
-      "dependencies": [
-        "qtdeclarative"
-      ]
+  "name" : "oak-video-editor",
+  "version-string" : "0.0.0",
+  "dependencies" : [ "ffmpeg", "openimageio", "opencolorio", "openexr", "imath", "expat", "portaudio"],
+  "features" : {
+    "otio" : {
+      "description" : "Enable OpenTimelineIO interchange support.",
+      "dependencies" : [ "opentimelineio" ]
     },
-    "otio": {
-      "description": "Enable OpenTimelineIO interchange support.",
-      "dependencies": [
-        "opentimelineio"
-      ]
+    "crashpad" : {
+      "description" : "Enable crash reporting support.",
+      "dependencies" : [ "crashpad" ]
     },
-    "crashpad": {
-      "description": "Enable crash reporting support.",
-      "dependencies": [
-        "crashpad"
-      ]
-    },
-    "kddw-logging": {
-      "description": "Enable spdlog/fmt logging in KDDockWidgets.",
-      "dependencies": [
-        "spdlog",
-        "fmt"
-      ]
+    "kddw-logging" : {
+      "description" : "Enable spdlog/fmt logging in KDDockWidgets.",
+      "dependencies" : [ "spdlog", "fmt" ]
     }
   }
 }

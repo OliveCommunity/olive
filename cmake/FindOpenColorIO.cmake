@@ -23,6 +23,22 @@
 # language governing permissions and limitations under the Apache License.
 #
 
+find_package(OpenColorIO CONFIG QUIET)
+if (TARGET OpenColorIO::OpenColorIO)
+    set(OCIO_LIBRARIES OpenColorIO::OpenColorIO)
+    get_target_property(OCIO_INCLUDE_DIRS OpenColorIO::OpenColorIO INTERFACE_INCLUDE_DIRECTORIES)
+    set(OCIO_VERSION "${OpenColorIO_VERSION}")
+    include(FindPackageHandleStandardArgs)
+    find_package_handle_standard_args(OpenColorIO
+        REQUIRED_VARS
+            OCIO_LIBRARIES
+            OCIO_INCLUDE_DIRS
+        VERSION_VAR
+            OCIO_VERSION
+    )
+    return()
+endif()
+
 find_path(OCIO_BASE_DIR
         include/OpenColorIO/OpenColorABI.h
     HINTS
@@ -76,6 +92,17 @@ find_library(OCIO_LIBRARY
 )
 
 list(APPEND OCIO_LIBRARIES ${OCIO_LIBRARY})
+
+if ((NOT OCIO_LIBRARIES OR NOT OCIO_INCLUDE_DIRS) AND UNIX AND NOT APPLE)
+    find_package(PkgConfig QUIET)
+    if (PKG_CONFIG_FOUND)
+        pkg_check_modules(PC_OCIO QUIET IMPORTED_TARGET OpenColorIO)
+        if (PC_OCIO_FOUND)
+            set(OCIO_LIBRARIES PkgConfig::PC_OCIO)
+            set(OCIO_INCLUDE_DIRS ${PC_OCIO_INCLUDE_DIRS})
+        endif()
+    endif()
+endif()
 
 if(OCIO_INCLUDE_DIRS AND EXISTS "${OCIO_INCLUDE_DIR}/OpenColorIO/OpenColorABI.h")
     file(STRINGS ${OCIO_INCLUDE_DIR}/OpenColorIO/OpenColorABI.h

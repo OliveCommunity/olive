@@ -110,7 +110,7 @@ protected:
 
 #ifdef Q_OS_WINDOWS
 	virtual bool nativeEvent(const QByteArray &eventType, void *message,
-							 long *result) override;
+							 qintptr *result) override;
 #endif
 
 private:

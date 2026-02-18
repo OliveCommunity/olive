@@ -134,6 +134,26 @@ function (_ffmpeg_find component headername)
   endif ()
 endfunction ()
 
+function(_ffmpeg_find_pkgconfig component pkgname)
+  if (TARGET "FFMPEG::${component}")
+    return()
+  endif()
+  find_package(PkgConfig QUIET)
+  if (NOT PKG_CONFIG_FOUND)
+    return()
+  endif()
+
+  pkg_check_modules("PC_FFMPEG_${component}" QUIET IMPORTED_TARGET "${pkgname}")
+  if (PC_FFMPEG_${component}_FOUND)
+    add_library("FFMPEG::${component}" INTERFACE IMPORTED)
+    set_property(TARGET "FFMPEG::${component}" PROPERTY
+      INTERFACE_LINK_LIBRARIES "PkgConfig::PC_FFMPEG_${component}")
+    set("FFMPEG_${component}_INCLUDE_DIR" "${PC_FFMPEG_${component}_INCLUDE_DIRS}" PARENT_SCOPE)
+    set("FFMPEG_${component}_LIBRARY" "${PC_FFMPEG_${component}_LINK_LIBRARIES}" PARENT_SCOPE)
+    set("FFMPEG_${component}_FOUND" 1 PARENT_SCOPE)
+  endif()
+endfunction()
+
 _ffmpeg_find(avutil     avutil.h)
 _ffmpeg_find(avresample avresample.h
   avutil)
@@ -149,6 +169,18 @@ _ffmpeg_find(avfilter   avfilter.h
   avutil)
 _ffmpeg_find(avdevice   avdevice.h
   avformat avutil)
+
+# Linux fallback: resolve via pkg-config modules when direct lookup fails.
+if (UNIX AND NOT APPLE)
+  _ffmpeg_find_pkgconfig(avutil libavutil)
+  _ffmpeg_find_pkgconfig(avresample libavresample)
+  _ffmpeg_find_pkgconfig(swresample libswresample)
+  _ffmpeg_find_pkgconfig(swscale libswscale)
+  _ffmpeg_find_pkgconfig(avcodec libavcodec)
+  _ffmpeg_find_pkgconfig(avformat libavformat)
+  _ffmpeg_find_pkgconfig(avfilter libavfilter)
+  _ffmpeg_find_pkgconfig(avdevice libavdevice)
+endif()
 
 if (TARGET FFMPEG::avutil)
   set(_ffmpeg_version_header_path "${FFMPEG_avutil_INCLUDE_DIR}/libavutil/ffversion.h")
@@ -176,10 +208,10 @@ foreach (_ffmpeg_component IN LISTS FFMPEG_FIND_COMPONENTS)
       "${FFMPEG_${_ffmpeg_component}_INCLUDE_DIRS}")
     list(APPEND FFMPEG_LIBRARIES
       "${FFMPEG_${_ffmpeg_component}_LIBRARIES}")
-    if (FFMEG_FIND_REQUIRED_${_ffmpeg_component})
+    if (FFMPEG_FIND_REQUIRED_${_ffmpeg_component})
       list(APPEND _ffmpeg_required_vars
-        "FFMPEG_${_ffmpeg_required_vars}_INCLUDE_DIRS"
-        "FFMPEG_${_ffmpeg_required_vars}_LIBRARIES")
+        "FFMPEG_${_ffmpeg_component}_INCLUDE_DIRS"
+        "FFMPEG_${_ffmpeg_component}_LIBRARIES")
     endif ()
   endif ()
 endforeach ()
