@@ -1,8 +1,8 @@
 /***
+	This file is part of Oak Video Editor - A fork of original project Olive 
 
   Olive - Non-Linear Video Editor
   Copyright (C) 2023 Olive Studios LLC
-  Modifications Copyright (C) 2025 mikesolar
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
