@@ -1,3 +1,5 @@
+# This file is part of Oak Video Editor - A fork of original project Olive 
+#
 # Copyright (C) 2022 Olive Team
 # SPDX-License-Identifier: GPL-3.0-or-later
 

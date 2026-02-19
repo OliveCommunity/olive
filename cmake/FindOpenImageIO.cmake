@@ -1,3 +1,4 @@
+# This file is part of Oak Video Editor - A fork of original project Olive 
 #
 # Copyright 2016 Pixar
 #
