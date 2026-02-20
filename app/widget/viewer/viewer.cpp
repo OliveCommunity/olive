@@ -2036,6 +2036,9 @@ void ViewerWidget::UpdateRendererVideoParameters()
 {
 	VideoParams vp = GetConnectedNode()->GetVideoParams();
 
+	// 设置时间基准，确保播放功能正常工作
+	SetTimebase(vp.frame_rate_as_time_base());
+
 	foreach (ViewerDisplayWidget *dw, playback_devices_) {
 		dw->SetVideoParams(vp);
 	}

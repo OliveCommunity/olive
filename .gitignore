@@ -104,3 +104,7 @@ AGENTS.md
 .codex
 operations-log.md
 verification.md
+
+# vcpkg
+CMakeUserPresets.json
+vcpkg_installed/

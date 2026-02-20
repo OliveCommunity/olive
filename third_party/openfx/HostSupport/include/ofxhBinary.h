@@ -8,7 +8,10 @@
 #include <string>
 #include <iostream>
 
-#if defined(WIN32) || defined(WIN64)
+#if defined(WIN32) || defined(WIN64) || defined(_WIN32) || defined(_WIN64)
+#ifndef WINDOWS
+#define WINDOWS
+#endif
 #define I386
 #elif defined(__linux__) || defined(__FreeBSD__)
 #define UNIX

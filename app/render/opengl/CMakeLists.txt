@@ -16,9 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-set(OLIVE_SOURCES
-  ${OLIVE_SOURCES}
-  render/opengl/openglrenderer.cpp
-  render/opengl/openglrenderer.h
-  PARENT_SCOPE
+target_sources(libolive-editor PRIVATE
+        openglrenderer.cpp
+        openglrenderer.h
 )

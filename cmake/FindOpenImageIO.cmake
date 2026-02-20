@@ -23,6 +23,25 @@
 # language governing permissions and limitations under the Apache License.
 #
 
+find_package(OpenImageIO CONFIG QUIET)
+if (TARGET OpenImageIO::OpenImageIO)
+    set(OIIO_LIBRARIES OpenImageIO::OpenImageIO)
+    if (TARGET OpenImageIO::OpenImageIO_Util)
+        list(APPEND OIIO_LIBRARIES OpenImageIO::OpenImageIO_Util)
+    endif()
+    get_target_property(OIIO_INCLUDE_DIRS OpenImageIO::OpenImageIO INTERFACE_INCLUDE_DIRECTORIES)
+    set(OIIO_VERSION "${OpenImageIO_VERSION}")
+    include(FindPackageHandleStandardArgs)
+    find_package_handle_standard_args(OpenImageIO
+        REQUIRED_VARS
+            OIIO_LIBRARIES
+            OIIO_INCLUDE_DIRS
+        VERSION_VAR
+            OIIO_VERSION
+    )
+    return()
+endif()
+
 if(UNIX)
     find_path(OIIO_BASE_DIR
             include/OpenImageIO/oiioversion.h
@@ -97,6 +116,17 @@ foreach(OIIO_LIB
         list(APPEND OIIO_LIBRARIES ${OIIO_${OIIO_LIB}_LIBRARY})
     endif()
 endforeach(OIIO_LIB)
+
+if ((NOT OIIO_LIBRARIES OR NOT OIIO_INCLUDE_DIRS) AND UNIX AND NOT APPLE)
+    find_package(PkgConfig QUIET)
+    if (PKG_CONFIG_FOUND)
+        pkg_check_modules(PC_OIIO QUIET IMPORTED_TARGET OpenImageIO)
+        if (PC_OIIO_FOUND)
+            set(OIIO_LIBRARIES PkgConfig::PC_OIIO)
+            set(OIIO_INCLUDE_DIRS ${PC_OIIO_INCLUDE_DIRS})
+        endif()
+    endif()
+endif()
 
 foreach(OIIO_BIN
         iconvert

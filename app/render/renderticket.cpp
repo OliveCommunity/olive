@@ -45,6 +45,7 @@ void RenderTicket::Start()
 	is_running_ = true;
 	has_result_ = false;
 	result_.clear();
+	watchers_.clear(); // 清空观察者列表
 }
 
 void RenderTicket::Finish()
@@ -110,13 +111,50 @@ bool RenderTicket::HasResult()
 	return has_result_;
 }
 
-void RenderTicket::FinishInternal(bool has_result, QVariant result)
+void RenderTicket::setProperty(const QString &name, const QVariant &value)
 {
 	QMutexLocker locker(&lock_);
+	properties_[name] = value;
+}
 
-	if (!is_running_) {
-		qWarning() << "Tried to finish ticket that wasn't running";
+QVariant RenderTicket::property(const QString &name) const
+{
+	QMutexLocker locker(const_cast<QMutex *>(&lock_));
+	return properties_.value(name);
+}
+
+void RenderTicket::AddWatcher(RenderTicketWatcher *watcher, bool lock)
+{
+	if (lock) {
+		QMutexLocker locker(&lock_);
+		if (!is_running_) {
+			// 如果已经完成，立即通知
+			//locker.unlock();
+			watcher->NotifyFinished();
+		} else {
+			watchers_.append(watcher);
+		}
 	} else {
+		if (!is_running_) {
+			watcher->NotifyFinished();
+		} else {
+			watchers_.append(watcher);
+		}
+	}
+}
+
+void RenderTicket::FinishInternal(bool has_result, QVariant result)
+{
+	QVector<RenderTicketWatcher *> watchers_to_notify;
+
+	{
+		QMutexLocker locker(&lock_);
+
+		if (!is_running_) {
+			qWarning() << "Tried to finish ticket that wasn't running";
+			return;
+		}
+
 		is_running_ = false;
 		has_result_ = has_result;
 		result_ = result;
@@ -124,9 +162,14 @@ void RenderTicket::FinishInternal(bool has_result, QVariant result)
 
 		wait_.wakeAll();
 
-		locker.unlock();
+		// 复制观察者列表
+		watchers_to_notify = watchers_;
+		watchers_.clear();
+	}
 
-		emit Finished();
+	// 在锁外通知观察者
+	for (RenderTicketWatcher *watcher : watchers_to_notify) {
+		watcher->NotifyFinished();
 	}
 }
 
@@ -153,13 +196,12 @@ void RenderTicketWatcher::SetTicket(RenderTicketPtr ticket)
 	// Lock ticket so we can query if it's already finished by the time this code runs
 	QMutexLocker locker(ticket->lock());
 
-	connect(ticket_.get(), &RenderTicket::Finished, this,
-			&RenderTicketWatcher::TicketFinished);
+	ticket_->AddWatcher(this, false);
 
 	if (!ticket_->IsRunning(false) && ticket_->GetFinishCount(false) > 0) {
-		// Ticket has already finished before, so we emit a signal
-		locker.unlock();
-		TicketFinished();
+		// Ticket has already finished before
+		// locker.unlock();
+		NotifyFinished();
 	}
 }
 
@@ -204,9 +246,15 @@ void RenderTicketWatcher::Cancel()
 	}
 }
 
-void RenderTicketWatcher::TicketFinished()
+void RenderTicketWatcher::NotifyFinished()
 {
-	emit Finished(this);
+	// 使用 invokeMethod 确保在主线程中发射信号
+	QMetaObject::invokeMethod(this, "EmitFinished", Qt::QueuedConnection);
+}
+
+void RenderTicketWatcher::EmitFinished()
+{
+	Finished(this);
 }
 
 }

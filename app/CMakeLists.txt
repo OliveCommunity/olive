@@ -33,7 +33,6 @@ add_subdirectory(dialog)
 add_subdirectory(node)
 add_subdirectory(packaging)
 add_subdirectory(panel)
-add_subdirectory(render)
 add_subdirectory(shaders)
 add_subdirectory(task)
 add_subdirectory(timeline)
@@ -79,6 +78,7 @@ add_library(libolive-editor
   ${OLIVE_RESOURCES}
 )
 add_subdirectory(common)
+add_subdirectory(render)
 add_subdirectory(pluginSupport)
 
 
@@ -157,3 +157,122 @@ target_include_directories(libolive-editor PRIVATE ${OLIVE_INCLUDE_DIRS})
 if (GoogleCrashpad_FOUND AND Qt${QT_VERSION_MAJOR}Network_FOUND)
   add_subdirectory(crashhandler)
 endif()
+
+# Windows: Auto-copy DLLs to executable directory
+if (WIN32)
+    # Function to collect and copy runtime dependencies
+    add_custom_command(TARGET olive-editor POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E echo "Copying runtime dependencies..."
+    )
+
+    # Use windeployqt for Qt dependencies
+    find_program(WINDEPLOYQT_EXECUTABLE windeployqt
+            PATHS "${Qt${QT_VERSION_MAJOR}Core_DIR}/../../../bin"
+            "$ENV{QTDIR}/bin"
+            "${CMAKE_PREFIX_PATH}/bin"
+    )
+
+    if (WINDEPLOYQT_EXECUTABLE)
+        add_custom_command(TARGET olive-editor POST_BUILD
+                COMMAND "${WINDEPLOYQT_EXECUTABLE}"
+                --verbose 0
+                --no-compiler-runtime
+                --no-translations
+                --no-system-d3d-compiler
+                \"$<TARGET_FILE:olive-editor>\"
+                COMMENT "Deploying Qt dependencies with windeployqt..."
+        )
+    endif ()
+
+    # Copy other runtime dependencies (FFmpeg, OIIO, OCIO, etc.)
+    # This resolves all linked DLLs and copies them to the output directory
+    if (CMAKE_VERSION VERSION_GREATER_EQUAL "3.21")
+        # Modern approach using file(GET_RUNTIME_DEPENDENCIES) with INSTALL_DEPENDENCIES
+        # Create a script to copy each DLL individually
+        file(WRITE "${CMAKE_BINARY_DIR}/copy_runtime_dlls.cmake" "
+set(TARGET_DIR \"\${TARGET_DIR}\")
+set(DLLS \"\${DLLS}\")
+string(REPLACE \";\" \";\" DLLS \"\${DLLS}\")
+foreach(dll \${DLLS})
+  if(EXISTS \"\${dll}\")
+    get_filename_component(fname \"\${dll}\" NAME)
+    if(NOT EXISTS \"\${TARGET_DIR}/\${fname}\")
+      message(STATUS \"Copying: \${fname}\")
+      file(COPY \"\${dll}\" DESTINATION \"\${TARGET_DIR}\")
+    endif()
+  endif()
+endforeach()
+")
+        add_custom_command(TARGET olive-editor POST_BUILD
+                COMMAND "${CMAKE_COMMAND}"
+                -D "TARGET_DIR=$<TARGET_FILE_DIR:olive-editor>"
+                -D "DLLS=$<TARGET_RUNTIME_DLLS:olive-editor>"
+                -P "${CMAKE_BINARY_DIR}/copy_runtime_dlls.cmake"
+                COMMAND_EXPAND_LISTS
+                COMMENT "Copying runtime DLLs..."
+        )
+    else ()
+        # Fallback for older CMake: use cmake -E copy with resolved paths
+        # Collect all library paths that might contain DLLs
+        set(_DLL_SEARCH_PATHS "")
+        list(APPEND _DLL_SEARCH_PATHS \"$<TARGET_FILE_DIR:Qt${QT_VERSION_MAJOR}::Core>\")
+        list(APPEND _DLL_SEARCH_PATHS ${FFMPEG_LIBRARY_DIRS})
+        list(APPEND _DLL_SEARCH_PATHS ${OIIO_LIBRARY_DIRS})
+        list(APPEND _DLL_SEARCH_PATHS ${OCIO_LIBRARY_DIRS})
+        list(APPEND _DLL_SEARCH_PATHS ${OPENEXR_LIBRARY_DIRS})
+        list(APPEND _DLL_SEARCH_PATHS ${PORTAUDIO_LIBRARY_DIRS})
+        list(APPEND _DLL_SEARCH_PATHS ${CMAKE_PREFIX_PATH}/bin)
+
+        if (VCPKG_INSTALLED_DIR)
+            list(APPEND _DLL_SEARCH_PATHS ${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin)
+        endif ()
+
+        # Remove duplicates and empty entries
+        list(REMOVE_DUPLICATES _DLL_SEARCH_PATHS)
+        list(REMOVE_ITEM _DLL_SEARCH_PATHS "")
+
+        # Create a helper script to copy DLLs
+        set(_COPY_DLLS_SCRIPT "${CMAKE_BINARY_DIR}/copy_dlls.cmake")
+        file(WRITE "${_COPY_DLLS_SCRIPT}" "
+# Script to copy DLLs to output directory
+set(TARGET_DIR \"\${TARGET_DIR}\")
+set(SEARCH_PATHS \"\${DLL_SEARCH_PATHS}\")
+file(TO_CMAKE_PATH \"\${SEARCH_PATHS}\" SEARCH_PATHS)
+string(REPLACE \";\" \";\" SEARCH_PATHS \"\${SEARCH_PATHS}\")
+cmake_policy(SET CMP0009 NEW)  # Don't follow symlinks by default
+cmake_policy(SET CMP0012 NEW)  # if() recognizes numbers and booleans
+file(GLOB DLL_FILES
+  ${FFMPEG_ROOT}/bin/*.dll
+  ${OpenImageIO_ROOT}/bin/*.dll
+  ${OpenColorIO_ROOT}/bin/*.dll
+  ${OpenEXR_ROOT}/bin/*.dll
+  ${PORTAUDIO_ROOT}/bin/*.dll
+  \${CMAKE_PREFIX_PATH}/bin/*.dll
+)
+foreach(dll \${DLL_FILES})
+  if(EXISTS \"\${dll}\")
+    message(STATUS \"Copying: \${dll}\")
+    file(COPY \"\${dll}\" DESTINATION \"\${TARGET_DIR}\")
+  endif()
+endforeach()
+")
+
+        add_custom_command(TARGET olive-editor POST_BUILD
+                COMMAND "${CMAKE_COMMAND}"
+                -D "TARGET_DIR=$<TARGET_FILE_DIR:olive-editor>"
+                -D "DLL_SEARCH_PATHS=${_DLL_SEARCH_PATHS}"
+                -P "${_COPY_DLLS_SCRIPT}"
+                COMMENT "Copying additional runtime DLLs..."
+        )
+    endif ()
+
+    # Copy vcpkg installed DLLs if available
+    if (VCPKG_INSTALLED_DIR AND EXISTS "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin")
+        add_custom_command(TARGET olive-editor POST_BUILD
+                COMMAND "${CMAKE_COMMAND}" -E copy_directory
+                "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/bin"
+                \"$<TARGET_FILE_DIR:olive-editor>\"
+                COMMENT "Copying vcpkg DLLs..."
+        )
+    endif ()
+endif ()

@@ -35,8 +35,40 @@
 #include "render/renderticket.h"
 #include "rendercache.h"
 
+#include <deque>
+
 namespace olive
 {
+enum class RenderPriority {
+	kPlayback = 0,
+	kPreview = 1,
+	kCache = 2,
+	kExport = 3
+};
+
+// 前向声明
+class RenderThread;
+
+// 任务队列接口，用于工作窃取
+class WorkStealingQueue {
+public:
+	virtual ~WorkStealingQueue() = default;
+
+	// 尝试从队列尾部弹出任务（供拥有者线程使用）
+	virtual bool TryPopBack(RenderTicketPtr &ticket) = 0;
+
+	// 尝试从队列头部窃取任务（供其他线程使用）
+	virtual bool TrySteal(RenderTicketPtr &ticket) = 0;
+
+	// 添加任务到队列尾部
+	virtual void PushBack(RenderTicketPtr ticket) = 0;
+
+	// 获取队列大小
+	virtual size_t Size() const = 0;
+
+	// 是否为空
+	virtual bool Empty() const = 0;
+};
 
 class RenderThread : public QThread {
 	Q_OBJECT
@@ -45,6 +77,12 @@ public:
 				 ShaderCache *shader_cache, QObject *parent = nullptr);
 
 	void AddTicket(RenderTicketPtr ticket);
+    
+    // 工作窃取：尝试从本线程窃取任务
+    bool TrySteal(RenderTicketPtr &ticket);
+
+	// 获取队列大小（线程安全）
+	size_t QueueSize() const;
 
 	bool RemoveTicket(RenderTicketPtr ticket);
 
@@ -54,11 +92,21 @@ protected:
 	virtual void run() override;
 
 private:
+    // 尝试从其他线程窃取任务
+    RenderTicketPtr StealFromOthers();
+
+	// 获取所有线程列表（用于工作窃取）
+	static std::vector<RenderThread *> &GetAllThreads();
+
+	// 注册/注销线程
+	void RegisterThread();
+	void UnregisterThread();
+
 	QMutex mutex_;
 
 	QWaitCondition wait_;
 
-	std::list<RenderTicketPtr> queue_;
+	std::deque<RenderTicketPtr> queue_;  // 本地任务队列
 
 	bool cancelled_;
 
@@ -67,7 +115,17 @@ private:
 	DecoderCache *decoder_cache_;
 
 	ShaderCache *shader_cache_;
+    
+    // 用于随机窃取的起始索引，避免所有线程都窃取同一个
+    size_t steal_start_index_ = 0;
+
+	// 静态成员，存储所有渲染线程
+	static QMutex s_all_threads_mutex_;
+	static std::vector<RenderThread *> s_all_threads_;
+	static thread_local RenderThread *s_current_thread_;
 };
+
+typedef std::shared_ptr<RenderThread> RenderThreadPtr;
 
 class RenderManager : public QObject {
 	Q_OBJECT
@@ -80,6 +138,7 @@ public:
 		kDummy
 	};
 
+	friend class RenderManager;
 	static void CreateInstance()
 	{
 		instance_ = new RenderManager();
@@ -101,7 +160,8 @@ public:
 	struct RenderVideoParams {
 		RenderVideoParams(Node *n, const VideoParams &vparam,
 						  const AudioParams &aparam, const rational &t,
-						  ColorManager *colorman, RenderMode::Mode m)
+						  ColorManager *colorman, RenderMode::Mode m,
+						  RenderPriority priority)
 		{
 			node = n;
 			video_params = vparam;
@@ -116,6 +176,7 @@ public:
 			force_channel_count = 0;
 			mode = m;
 			multicam = nullptr;
+			this->priority = priority;
 		}
 
 		void AddCache(FrameHashCache *cache)
@@ -144,6 +205,7 @@ public:
 		QMatrix4x4 force_matrix;
 		PixelFormat force_format;
 		ColorProcessorPtr force_color_output;
+		RenderPriority priority;
 	};
 
 	static const rational kDryRunInterval;
@@ -235,7 +297,7 @@ private:
 
 	QTimer *decoder_clear_timer_;
 
-	RenderThread *video_thread_;
+	QList<RenderThreadPtr> video_threads_;
 	RenderThread *dry_run_thread_;
 	RenderThread *audio_thread_;
 
@@ -246,6 +308,13 @@ private:
 
 	PreviewAutoCacher *auto_cacher_;
 
+	std::shared_ptr<QThread> scheduler_thread_;
+    
+    // 用于选择负载最轻的线程
+    RenderThread* SelectBestThread();
+
+	// 获取负载最轻的线程索引
+	size_t GetLightestThreadIndex();
 private slots:
 	void ClearOldDecoders();
 };

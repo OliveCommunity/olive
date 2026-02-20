@@ -10,13 +10,16 @@ add_library(OfxHost STATIC
 	${OFX_HOSTSUPPORT_LIBRARY_FILES})
 
 set_target_properties(OfxHost PROPERTIES LINKER_LANGUAGE CXX)
-if(NOT MSVC)
+if(NOT WIN32)
 	set_target_properties(OfxHost PROPERTIES COMPILE_FLAGS "-fPIC")
 endif()
+if(WIN32)
+	target_compile_definitions(OfxHost PUBLIC WINDOWS)
+endif()
+target_compile_definitions(OfxHost PUBLIC OFX_SUPPORTS_OPENGLRENDER)
 
 target_link_libraries(OfxHost PUBLIC expat::expat)
 
 target_include_directories(OfxHost PUBLIC
 	${OFX_HEADER_DIR}
-	${OFX_HOSTSUPPORT_HEADER_DIR}
-	${expat_INCLUDE_DIR})
+	${OFX_HOSTSUPPORT_HEADER_DIR})

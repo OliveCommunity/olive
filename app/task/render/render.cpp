@@ -317,7 +317,8 @@ void RenderTask::StartTicket(QThread *watcher_thread, ColorManager *manager,
 {
 	RenderManager::RenderVideoParams rvp(viewer_->GetConnectedTextureOutput(),
 										 video_params_, audio_params_, time,
-										 manager, mode);
+										 manager, mode,
+										 RenderPriority::kExport);
 
 	rvp.force_size = force_size;
 	rvp.force_matrix = force_matrix;

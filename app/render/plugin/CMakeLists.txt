@@ -3,9 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-only
 # Copyright (C) 2025 mikesolar
 
-set(OLIVE_SOURCES
-        ${OLIVE_SOURCES}
-        render/plugin/pluginrenderer.cpp
-        render/plugin/pluginrenderer.h
-        PARENT_SCOPE
+target_sources(libolive-editor PRIVATE
+        pluginrenderer.cpp
+        pluginrenderer.h
 )

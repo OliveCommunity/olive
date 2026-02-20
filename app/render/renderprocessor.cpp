@@ -194,9 +194,14 @@ void RenderProcessor::Run()
 
 	SetCancelPointer(ticket_->GetCancelAtom());
 
-	VideoParams params=ticket_->property("vparam").value<VideoParams>();
-	SetCacheVideoParams(ticket_->property("vparam").value<VideoParams>());
-	SetCacheAudioParams(ticket_->property("aparam").value<AudioParams>());
+	// 根据任务类型设置参数，避免无效参数导致崩溃
+	if (type == RenderManager::kTypeVideo) {
+		SetCacheVideoParams(ticket_->property("vparam").value<VideoParams>());
+		SetCacheAudioParams(ticket_->property("aparam").value<AudioParams>());
+	} else {
+		// 音频任务只设置音频参数
+		SetCacheAudioParams(ticket_->property("aparam").value<AudioParams>());
+	}
 
 	if (IsCancelled()) {
 		ticket_->Finish();

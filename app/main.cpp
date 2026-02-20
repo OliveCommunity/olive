@@ -52,6 +52,7 @@ extern "C" {
 #include <QOpenGLContext>
 #include <QOpenGLFunctions>
 #include <Windows.h>
+#include <shellapi.h>
 #endif
 
 #ifdef USE_CRASHPAD
