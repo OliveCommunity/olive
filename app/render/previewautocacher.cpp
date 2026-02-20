@@ -113,7 +113,7 @@ void PreviewAutoCacher::ClearSingleFrameRenders()
 		it.key()->Cancel();
 		if (!it.key()->IsRunning()) {
 			RenderManager::instance()->RemoveTicket(it.key()->GetTicket());
-			emit it.key()->GetTicket()->Finished();
+			it.key()->GetTicket()->Finish();
 		}
 	}
 }
@@ -126,7 +126,7 @@ void PreviewAutoCacher::ClearSingleFrameRendersThatArentRunning()
 		if (!it.key()->IsRunning()) {
 			it.key()->Cancel();
 			RenderManager::instance()->RemoveTicket(it.key()->GetTicket());
-			emit it.key()->GetTicket()->Finished();
+			it.key()->GetTicket()->Finish();
 		}
 	}
 }
@@ -641,8 +641,7 @@ RenderTicketWatcher *PreviewAutoCacher::RenderFrame(Node *node,
 
 	RenderManager::RenderVideoParams rvp(node, context->GetVideoParams(),
 										 context->GetAudioParams(), time,
-										 copied_color_manager_,
-										 RenderMode::kOffline);
+										 copied_color_manager_, RenderMode::kOffline, RenderPriority::kCache);
 
 	if (FrameHashCache *frame_cache = dynamic_cast<FrameHashCache *>(cache)) {
 		if (ThumbnailCache *wave_cache =

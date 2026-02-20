@@ -24,6 +24,10 @@
 #include <QApplication>
 #include <QMatrix4x4>
 #include <QThread>
+#include <QRandomGenerator>
+#include <QTimer>
+#include <algorithm>
+#include <atomic>
 
 #include "config/config.h"
 #include "core.h"
@@ -38,6 +42,11 @@ namespace olive
 
 RenderManager *RenderManager::instance_ = nullptr;
 const rational RenderManager::kDryRunInterval = rational(10);
+
+// 静态成员初始化
+QMutex RenderThread::s_all_threads_mutex_;
+std::vector<RenderThread *> RenderThread::s_all_threads_;
+thread_local RenderThread *RenderThread::s_current_thread_ = nullptr;
 
 RenderManager::RenderManager(QObject *parent)
 	: backend_(kOpenGL)
@@ -54,7 +63,18 @@ RenderManager::RenderManager(QObject *parent)
 	}
 
 	if (context_) {
-		video_thread_ = CreateThread(context_);
+		int num_of_threads = QThread::idealThreadCount();
+		if (num_of_threads <= 0) {
+			num_of_threads = 6;
+		}
+
+		// 创建工作窃取线程池，但保留至少2个线程给系统
+		int video_thread_count = std::max(1, num_of_threads - 2);
+		for (int i = 0; i < video_thread_count; i++) {
+			video_threads_.append(
+				std::shared_ptr<RenderThread>(CreateThread()));
+		}
+
 		dry_run_thread_ = CreateThread();
 		audio_thread_ = CreateThread();
 
@@ -97,6 +117,30 @@ RenderThread *RenderManager::CreateThread(Renderer *renderer)
 	return t;
 }
 
+RenderThread *RenderManager::SelectBestThread()
+{
+	// 使用轮询策略均匀分配任务，避免任务堆积在同一个线程
+	static std::atomic<size_t> next_thread_index{ 0 };
+	size_t index = next_thread_index++ % video_threads_.size();
+	return video_threads_[index].get();
+}
+
+size_t RenderManager::GetLightestThreadIndex()
+{
+	size_t best_index = 0;
+	size_t min_size = SIZE_MAX;
+
+	for (size_t i = 0; i < video_threads_.size(); ++i) {
+		size_t size = video_threads_[i]->QueueSize();
+		if (size < min_size) {
+			min_size = size;
+			best_index = i;
+		}
+	}
+
+	return best_index;
+}
+
 RenderTicketPtr RenderManager::RenderFrame(const RenderVideoParams &params)
 {
 	// Create ticket
@@ -126,10 +170,13 @@ RenderTicketPtr RenderManager::RenderFrame(const RenderVideoParams &params)
 	ticket->setProperty("cacheid", QVariant::fromValue(params.cache_id));
 	ticket->setProperty("multicam", QtUtils::PtrToValue(params.multicam));
 
+	ticket->setProperty("priority", QVariant::fromValue(params.priority));
 	if (params.return_type == ReturnType::kNull) {
 		dry_run_thread_->AddTicket(ticket);
 	} else {
-		video_thread_->AddTicket(ticket);
+		// 使用工作窃取策略：选择当前最空闲的线程
+		RenderThread *thread = SelectBestThread();
+		thread->AddTicket(ticket);
 	}
 
 	return ticket;
@@ -208,6 +255,7 @@ RenderThread::RenderThread(Renderer *renderer, DecoderCache *decoder_cache,
 	, context_(renderer)
 	, decoder_cache_(decoder_cache)
 	, shader_cache_(shader_cache)
+	, steal_start_index_(0)
 {
 	if (context_) {
 		context_->Init();
@@ -215,12 +263,54 @@ RenderThread::RenderThread(Renderer *renderer, DecoderCache *decoder_cache,
 	}
 }
 
+void RenderThread::RegisterThread()
+{
+	QMutexLocker locker(&s_all_threads_mutex_);
+	s_all_threads_.push_back(this);
+	s_current_thread_ = this;
+}
+
+void RenderThread::UnregisterThread()
+{
+	QMutexLocker locker(&s_all_threads_mutex_);
+	auto it = std::find(s_all_threads_.begin(), s_all_threads_.end(), this);
+	if (it != s_all_threads_.end()) {
+		s_all_threads_.erase(it);
+	}
+}
+
+std::vector<RenderThread *> &RenderThread::GetAllThreads()
+{
+	return s_all_threads_;
+}
+
 void RenderThread::AddTicket(RenderTicketPtr ticket)
 {
 	QMutexLocker locker(&mutex_);
-	ticket->moveToThread(this);
+	// 不要移动线程，RenderTicket 是线程安全的，不需要线程亲和性
+	// ticket->moveToThread(this);
 	queue_.push_back(ticket);
 	wait_.wakeOne();
+}
+
+bool RenderThread::TrySteal(RenderTicketPtr &ticket)
+{
+	QMutexLocker locker(&mutex_);
+
+	// 只能从队列头部窃取（保持任务顺序）
+	if (!queue_.empty()) {
+		ticket = queue_.front();
+		queue_.pop_front();
+		return true;
+	}
+
+	return false;
+}
+
+size_t RenderThread::QueueSize() const
+{
+	QMutexLocker locker(const_cast<QMutex *>(&mutex_));
+	return queue_.size();
 }
 
 bool RenderThread::RemoveTicket(RenderTicketPtr ticket)
@@ -243,8 +333,43 @@ void RenderThread::quit()
 	wait_.wakeOne();
 }
 
+RenderTicketPtr RenderThread::StealFromOthers()
+{
+	// 快速路径：如果没有其他线程，直接返回
+	if (s_all_threads_.size() <= 1) {
+		return nullptr;
+	}
+
+	// 从随机位置开始窃取，避免所有线程竞争同一个队列
+	size_t num_threads = s_all_threads_.size();
+	size_t start_idx = steal_start_index_++ % num_threads;
+
+	// 尝试从其他线程窃取
+	for (size_t i = 0; i < num_threads; ++i) {
+		size_t idx = (start_idx + i) % num_threads;
+		RenderThread *other = s_all_threads_[idx];
+
+		// 跳过自己
+		if (other == this) {
+			continue;
+		}
+
+		RenderTicketPtr stolen_ticket;
+		if (other->TrySteal(stolen_ticket)) {
+			// 成功窃取，不要移动线程，RenderTicket 是线程安全的
+			// stolen_ticket->moveToThread(this);
+			return stolen_ticket;
+		}
+	}
+
+	return nullptr;
+}
+
 void RenderThread::run()
 {
+	// 注册到全局列表
+	RegisterThread();
+
 	if (context_) {
 		context_->PostInit();
 	}
@@ -252,33 +377,70 @@ void RenderThread::run()
 	QMutexLocker locker(&mutex_);
 
 	while (!cancelled_) {
-		if (queue_.empty()) {
-			wait_.wait(&mutex_);
-		}
+		RenderTicketPtr ticket;
+		bool have_task = false;
 
-		if (cancelled_) {
-			break;
-		}
-
+		// 1. 首先尝试从自己的队列取任务（从尾部取，LIFO - 更好的缓存局部性）
 		if (!queue_.empty()) {
-			RenderTicketPtr ticket = queue_.front();
-			queue_.pop_front();
+			ticket = queue_.back();
+			queue_.pop_back();
+			have_task = true;
+		}
 
+		if (!have_task) {
+			// 2. 自己的队列为空，先解锁
 			locker.unlock();
 
-			// Setup the ticket for ::Process
-			ticket->Start();
+			// 3. 尝试从其他线程窃取任务
+			ticket = StealFromOthers();
 
-			if (ticket->IsCancelled()) {
-				ticket->Finish();
+			if (ticket) {
+				have_task = true;
 			} else {
-				RenderProcessor::Process(ticket, context_, decoder_cache_,
-										 shader_cache_);
+				// 4. 窃取失败，重新加锁并等待
+				locker.relock();
+
+				// 双重检查：等待前再检查一次队列
+				if (!queue_.empty()) {
+					ticket = queue_.back();
+					queue_.pop_back();
+					have_task = true;
+				} else if (!cancelled_) {
+					// 确实没有任务，等待新任务
+					wait_.wait(&mutex_);
+					continue; // 回到循环开始，重新检查
+				}
 			}
 
-			locker.relock();
+			if (have_task) {
+				// 重新加锁以保持锁状态一致
+				locker.relock();
+			}
 		}
+
+		if (!have_task) {
+			continue;
+		}
+
+		// 解锁以执行渲染任务
+		locker.unlock();
+
+		// Setup the ticket for ::Process
+		ticket->Start();
+
+		if (ticket->IsCancelled()) {
+			ticket->Finish();
+		} else {
+			RenderProcessor::Process(ticket, context_, decoder_cache_,
+									 shader_cache_);
+		}
+
+		// 重新加锁继续循环
+		locker.relock();
 	}
+
+	// 注销
+	UnregisterThread();
 
 	if (context_) {
 		context_->Destroy();
