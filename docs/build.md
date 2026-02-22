@@ -17,7 +17,11 @@ This document describes how to build Oak Video Editor from source. For Chinese, 
 - OpenGL headers
 - XKB common (Linux)
 
-## Linux (Ubuntu/Debian)
+---
+
+## Linux
+
+### Debian/Ubuntu
 
 Install dependencies:
 
@@ -29,6 +33,18 @@ sudo apt-get install -y \
   libavcodec-dev libavformat-dev libavfilter-dev libavutil-dev libswscale-dev libswresample-dev \
   libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
   portaudio19-dev libgl1-mesa-dev libxkbcommon-dev
+```
+
+Install OpenTimelineIO:
+
+```bash
+git clone --recursive https://github.com/AcademySoftwareFoundation/OpenTimelineIO.git
+cd OpenTimelineIO
+mkdir build
+cd build
+cmake ..
+make -j8
+make install
 ```
 
 Configure and build:
@@ -44,42 +60,34 @@ Run tests:
 ctest --test-dir build --output-on-failure -C Release
 ```
 
-## macOS (Non-Official Support)
-
-Note: macOS support is **non-official**. We only run CI automation on macOS
-and do not perform manual testing.
+### Fedora
 
 Install dependencies:
 
 ```bash
-brew update
-brew install ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat
+sudo dnf install -y \
+  ninja-build pkgconfig \
+  qt6-qtbase-devel qt6-qttools-devel qt6-qtbase-private-devel \
+  ffmpeg-devel \
+  OpenColorIO-devel OpenImageIO-devel OpenEXR-devel expat-devel \
+  portaudio-devel mesa-libGL-devel libxkbcommon-devel
 ```
-
-Build OpenTimelineIO (optional, required for OTIO support):
+Install OpenTimelineIO:
 
 ```bash
-git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
-cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
-  -DOTIO_SHARED_LIBS=ON \
-  -DOTIO_PYTHON_BINDINGS=OFF \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
-cmake --build OpenTimelineIO/build
-cmake --install OpenTimelineIO/build
+git clone --recursive https://github.com/AcademySoftwareFoundation/OpenTimelineIO.git
+cd OpenTimelineIO
+mkdir build
+cd build
+cmake ..
+make -j8
+make install
 ```
 
 Configure and build:
 
 ```bash
-export PATH="$(brew --prefix qt@6)/bin:$PATH"
-export CMAKE_PREFIX_PATH="$(brew --prefix qt@6)"
-export OTIO_LOCATION="${PWD}/otio-install"
-export OCIO_LOCATION="$(brew --prefix opencolorio)"
-
-cmake -S . -B build -G Ninja -DBUILD_TESTS=ON -DBUILD_QT6=ON \
-  -DOTIO_LOCATION="${OTIO_LOCATION}" \
-  -DOCIO_LOCATION="${OCIO_LOCATION}"
+cmake -S . -B build -G Ninja -DBUILD_TESTS=ON -DBUILD_QT6=ON
 cmake --build build --config Release
 ```
 
@@ -89,30 +97,82 @@ Run tests:
 ctest --test-dir build --output-on-failure -C Release
 ```
 
-## Windows
+### Arch Linux
 
-Install Qt 6 (system installer or CI action). Use vcpkg for dependencies.
+Install dependencies:
 
-```powershell
-choco install -y ninja
-$env:VCPKG_ROOT = "C:\vcpkg"
-& "$env:VCPKG_ROOT\vcpkg.exe" install ffmpeg openimageio opencolorio openexr expat portaudio --triplet x64-windows
+```bash
+sudo pacman -S \
+  ninja pkgconf \
+  qt6-base qt6-tools \
+  ffmpeg \
+  opencolorio openimageio openexr expat \
+  portaudio mesa libxkbcommon opentimelineio
 ```
 
 Configure and build:
 
-```powershell
-cmake -S . -B build -G Ninja `
-  -DBUILD_TESTS=ON `
-  -DBUILD_QT6=ON `
-  -DCMAKE_BUILD_TYPE=Release `
-  -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake" `
-  -DCMAKE_PREFIX_PATH="$env:Qt6_DIR"
+```bash
+cmake -S . -B build -G Ninja -DBUILD_TESTS=ON -DBUILD_QT6=ON
 cmake --build build --config Release
 ```
 
 Run tests:
 
-```powershell
+```bash
 ctest --test-dir build --output-on-failure -C Release
 ```
+
+---
+
+## Windows (MSYS2 - Recommended)
+
+MSYS2 is the recommended way to build Oak Video Editor on Windows.
+
+### 1. Install MSYS2
+
+Download and install MSYS2 from [https://www.msys2.org/](https://www.msys2.org/)
+
+### 2. Open MSYS2 UCRT64 terminal
+
+From the Start menu, open "MSYS2 UCRT64" terminal.
+
+### 3. Clone and build
+
+```bash
+# Clone the repository
+git clone https://github.com/OakVideoEditorCommunity/oak.git
+cd oak
+
+# Install dependencies
+./setup-msys2-windows.sh
+
+# Configure
+cmake -S . -B build -G Ninja \
+  -DBUILD_TESTS=ON \
+  -DBUILD_QT6=ON \
+  -DCMAKE_BUILD_TYPE=Release
+
+# Build
+cmake --build build --config Release
+```
+
+### 4. Run tests (optional)
+
+```bash
+ctest --test-dir build --output-on-failure -C Release
+```
+
+
+## Build Options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `BUILD_QT6` | `ON` | Build with Qt 6 (Qt 5 is deprecated) |
+| `BUILD_TESTS` | `OFF` | Build unit tests |
+| `BUILD_DOXYGEN` | `OFF` | Build Doxygen documentation |
+| `USE_WERROR` | `OFF` | Treat warnings as errors |
+
+## OpenTimelineIO not found
+
+OpenTimelineIO is optional. If you don't need OTIO support, you can build without it. If you need it, you may need to build it from source.

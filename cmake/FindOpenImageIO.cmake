@@ -66,13 +66,23 @@ elseif(WIN32)
         HINTS
             "${OIIO_LOCATION}"
             "$ENV{OIIO_LOCATION}"
+            "/mingw64"
+            "/ucrt64"
+            "C:/msys64/mingw64"
+            "C:/msys64/ucrt64"
     )
     find_path(OIIO_LIBRARY_DIR
             OpenImageIO.lib
+            libOpenImageIO.dll.a
+            libOpenImageIO.a
         HINTS
             "${OIIO_LOCATION}"
             "$ENV{OIIO_LOCATION}"
             "${OIIO_BASE_DIR}"
+            "/mingw64"
+            "/ucrt64"
+            "C:/msys64/mingw64"
+            "C:/msys64/ucrt64"
         PATH_SUFFIXES
             lib/
         DOC
@@ -86,6 +96,10 @@ find_path(OIIO_INCLUDE_DIR
         "${OIIO_LOCATION}"
         "$ENV{OIIO_LOCATION}"
         "${OIIO_BASE_DIR}"
+        "/mingw64"
+        "/ucrt64"
+        "C:/msys64/mingw64"
+        "C:/msys64/ucrt64"
     PATH_SUFFIXES
         include/
     DOC
@@ -116,7 +130,8 @@ foreach(OIIO_LIB
     endif()
 endforeach(OIIO_LIB)
 
-if ((NOT OIIO_LIBRARIES OR NOT OIIO_INCLUDE_DIRS) AND UNIX AND NOT APPLE)
+# 使用 pkg-config 查找 OpenImageIO（支持 MSYS2）
+if (NOT OIIO_LIBRARIES OR NOT OIIO_INCLUDE_DIRS)
     find_package(PkgConfig QUIET)
     if (PKG_CONFIG_FOUND)
         pkg_check_modules(PC_OIIO QUIET IMPORTED_TARGET OpenImageIO)

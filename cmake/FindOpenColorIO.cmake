@@ -44,6 +44,10 @@ find_path(OCIO_BASE_DIR
     HINTS
         "${OCIO_LOCATION}"
         "$ENV{OCIO_LOCATION}"
+        "/mingw64"
+        "/ucrt64"
+        "C:/msys64/mingw64"
+        "C:/msys64/ucrt64"
     DOC
         "OCIO root folder"
 )
@@ -54,6 +58,10 @@ find_path(OCIO_INCLUDE_DIR
         "${OCIO_LOCATION}"
         "$ENV{OCIO_LOCATION}"
         "${OCIO_BASE_DIR}"
+        "/mingw64/include"
+        "/ucrt64/include"
+        "C:/msys64/mingw64/include"
+        "C:/msys64/ucrt64/include"
     PATH_SUFFIXES
         include/
     DOC
@@ -79,12 +87,16 @@ find_library(OCIO_LIBRARY
         OpenColorIO_2_1
         OpenColorIO_2_0
 
-        # Fallback (MingW/MSYS needs this)
+        # MSYS2/MingW
+        libOpenColorIO.dll.a
+        libOpenColorIO.a
         OpenColorIO
     HINTS
         "${OCIO_LOCATION}"
         "$ENV{OCIO_LOCATION}"
         "${OCIO_BASE_DIR}"
+        "/mingw64/lib"
+        "/ucrt64/lib"
     PATH_SUFFIXES
         lib/
     DOC
@@ -93,7 +105,8 @@ find_library(OCIO_LIBRARY
 
 list(APPEND OCIO_LIBRARIES ${OCIO_LIBRARY})
 
-if ((NOT OCIO_LIBRARIES OR NOT OCIO_INCLUDE_DIRS) AND UNIX AND NOT APPLE)
+# 使用 pkg-config 查找 OpenColorIO（支持 Linux 和 MSYS2）
+if (NOT OCIO_LIBRARIES OR NOT OCIO_INCLUDE_DIRS)
     find_package(PkgConfig QUIET)
     if (PKG_CONFIG_FOUND)
         pkg_check_modules(PC_OCIO QUIET IMPORTED_TARGET OpenColorIO)

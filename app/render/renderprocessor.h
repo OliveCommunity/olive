@@ -25,6 +25,7 @@
 #include "node/block/clip/clip.h"
 #include <memory>
 #include "node/traverser.h"
+#include "render/opengl/openglthread.h"
 #include "render/renderer.h"
 #include "rendercache.h"
 #include "renderticket.h"
@@ -41,7 +42,7 @@ public:
 	virtual NodeValueDatabase GenerateDatabase(const Node *node,
 											   const TimeRange &range) override;
 
-	static void Process(RenderTicketPtr ticket, Renderer *render_ctx,
+	static void Process(RenderTicketPtr ticket, OpenGLThread *gl_thread,
 						DecoderCache *decoder_cache, ShaderCache *shader_cache);
 
 	struct RenderedWaveform {
@@ -83,7 +84,7 @@ protected:
 	virtual TexturePtr CreateTexture(const VideoParams &p) override;
 
 	virtual SampleBuffer CreateSampleBuffer(const AudioParams &params,
-											int sample_count) override
+										int sample_count) override
 	{
 		return SampleBuffer(params, sample_count);
 	}
@@ -95,7 +96,7 @@ protected:
 	virtual bool UseCache() const override;
 
 private:
-	RenderProcessor(RenderTicketPtr ticket, Renderer *render_ctx,
+	RenderProcessor(RenderTicketPtr ticket, OpenGLThread *gl_thread,
 					DecoderCache *decoder_cache, ShaderCache *shader_cache);
 
 	TexturePtr GenerateTexture(const rational &time,
@@ -110,7 +111,7 @@ private:
 
 	RenderTicketPtr ticket_;
 
-	Renderer *render_ctx_;
+	OpenGLThread *gl_thread_;  // 单线程 OpenGL 线程
 
 	std::unique_ptr<olive::plugin::PluginRenderer> plugin_renderer_;
 

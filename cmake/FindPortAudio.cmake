@@ -18,6 +18,11 @@ endif()
 if (NOT PORTAUDIO_INCLUDE_DIR)
     find_path(PORTAUDIO_INCLUDE_DIR
               NAMES portaudio.h
+              PATHS
+                /mingw64/include
+                /ucrt64/include
+                "C:/msys64/mingw64/include"
+                "C:/msys64/ucrt64/include"
               DOC "The PortAudio include directory"
     )
 endif()
@@ -25,11 +30,19 @@ endif()
 if (NOT PORTAUDIO_LIBRARY)
     find_library(PORTAUDIO_LIBRARY
                  NAMES portaudio
+                       libportaudio.dll.a
+                       libportaudio.a
+                 PATHS
+                   /mingw64/lib
+                   /ucrt64/lib
+                   "C:/msys64/mingw64/lib"
+                   "C:/msys64/ucrt64/lib"
                  DOC "The PortAudio library"
     )
 endif()
 
-if ((NOT PORTAUDIO_LIBRARY OR NOT PORTAUDIO_INCLUDE_DIR) AND UNIX AND NOT APPLE)
+# 使用 pkg-config 查找 PortAudio（支持 Linux 和 MSYS2）
+if (NOT PORTAUDIO_LIBRARY OR NOT PORTAUDIO_INCLUDE_DIR)
     find_package(PkgConfig QUIET)
     if (PKG_CONFIG_FOUND)
         pkg_check_modules(PC_PORTAUDIO QUIET IMPORTED_TARGET portaudio-2.0)

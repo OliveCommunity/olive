@@ -31,8 +31,7 @@
 
 #include "config/config.h"
 #include "core.h"
-#include "render/opengl/openglrenderer.h"
-#include "renderprocessor.h"
+#include "render/renderprocessor.h"
 #include "task/conform/conform.h"
 #include "task/taskmanager.h"
 #include "window/mainwindow/mainwindow.h"
@@ -48,21 +47,31 @@ QMutex RenderThread::s_all_threads_mutex_;
 std::vector<RenderThread *> RenderThread::s_all_threads_;
 thread_local RenderThread *RenderThread::s_current_thread_ = nullptr;
 
-RenderManager::RenderManager(QObject *parent)
-	: backend_(kOpenGL)
+RenderManager::RenderManager(Backend backend, QObject *parent)
+	: backend_(backend)
+	, gl_thread_(nullptr)
 	, aggressive_gc_(0)
 {
 	if (backend_ == kOpenGL) {
-		context_ = new OpenGLRenderer();
+		// 创建单线程 OpenGL 线程
+		gl_thread_ = new OpenGLThread(this);
+		gl_thread_->start(QThread::HighPriority);
+
 		decoder_cache_ = new DecoderCache();
 		shader_cache_ = new ShaderCache();
+	} else if (backend_ == kDummy) {
+		// 测试模式：不创建 OpenGL 线程
+		gl_thread_ = nullptr;
+		decoder_cache_ = nullptr;
+		shader_cache_ = nullptr;
 	} else {
 		qCritical() << "Tried to initialize unknown graphics backend";
-		context_ = nullptr;
+		gl_thread_ = nullptr;
 		decoder_cache_ = nullptr;
+		shader_cache_ = nullptr;
 	}
 
-	if (context_) {
+	if (gl_thread_ || backend_ == kDummy) {
 		int num_of_threads = QThread::idealThreadCount();
 		if (num_of_threads <= 0) {
 			num_of_threads = 6;
@@ -95,23 +104,26 @@ RenderManager::RenderManager(QObject *parent)
 
 RenderManager::~RenderManager()
 {
-	if (context_) {
-		delete shader_cache_;
-		delete decoder_cache_;
-
+	if (gl_thread_) {
+		// 停止所有渲染线程
 		for (RenderThread *rt : render_threads_) {
 			rt->quit();
 			rt->wait();
 		}
 
-		context_->PostDestroy();
-		delete context_;
+		// 停止 OpenGL 线程
+		gl_thread_->Stop();
+		gl_thread_->wait();
+		delete gl_thread_;
+
+		delete shader_cache_;
+		delete decoder_cache_;
 	}
 }
 
-RenderThread *RenderManager::CreateThread(Renderer *renderer)
+RenderThread *RenderManager::CreateThread()
 {
-	auto t = new RenderThread(renderer, decoder_cache_, shader_cache_, this);
+	auto t = new RenderThread(decoder_cache_, shader_cache_, gl_thread_, this);
 	render_threads_.push_back(t);
 	t->start(QThread::NormalPriority);
 	return t;
@@ -248,19 +260,17 @@ void RenderManager::ClearOldDecoders()
 	}
 }
 
-RenderThread::RenderThread(Renderer *renderer, DecoderCache *decoder_cache,
-						   ShaderCache *shader_cache, QObject *parent)
+RenderThread::RenderThread(DecoderCache *decoder_cache,
+						   ShaderCache *shader_cache,
+						   OpenGLThread *gl_thread,
+						   QObject *parent)
 	: QThread(parent)
 	, cancelled_(false)
-	, context_(renderer)
 	, decoder_cache_(decoder_cache)
 	, shader_cache_(shader_cache)
+	, gl_thread_(gl_thread)
 	, steal_start_index_(0)
 {
-	if (context_) {
-		context_->Init();
-		context_->moveToThread(this);
-	}
 }
 
 void RenderThread::RegisterThread()
@@ -287,8 +297,6 @@ std::vector<RenderThread *> &RenderThread::GetAllThreads()
 void RenderThread::AddTicket(RenderTicketPtr ticket)
 {
 	QMutexLocker locker(&mutex_);
-	// 不要移动线程，RenderTicket 是线程安全的，不需要线程亲和性
-	// ticket->moveToThread(this);
 	queue_.push_back(ticket);
 	wait_.wakeOne();
 }
@@ -356,8 +364,6 @@ RenderTicketPtr RenderThread::StealFromOthers()
 
 		RenderTicketPtr stolen_ticket;
 		if (other->TrySteal(stolen_ticket)) {
-			// 成功窃取，不要移动线程，RenderTicket 是线程安全的
-			// stolen_ticket->moveToThread(this);
 			return stolen_ticket;
 		}
 	}
@@ -369,10 +375,6 @@ void RenderThread::run()
 {
 	// 注册到全局列表
 	RegisterThread();
-
-	if (context_) {
-		context_->PostInit();
-	}
 
 	QMutexLocker locker(&mutex_);
 
@@ -431,7 +433,8 @@ void RenderThread::run()
 		if (ticket->IsCancelled()) {
 			ticket->Finish();
 		} else {
-			RenderProcessor::Process(ticket, context_, decoder_cache_,
+			// 使用 OpenGL 线程执行渲染
+			RenderProcessor::Process(ticket, gl_thread_, decoder_cache_,
 									 shader_cache_);
 		}
 
@@ -441,11 +444,6 @@ void RenderThread::run()
 
 	// 注销
 	UnregisterThread();
-
-	if (context_) {
-		context_->Destroy();
-		context_->moveToThread(this->thread());
-	}
 }
 
-}
+} // namespace olive

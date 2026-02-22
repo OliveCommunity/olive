@@ -48,6 +48,10 @@ function (_ffmpeg_find component headername)
       /opt/csw/include # Blastwave
       /opt/include
       /usr/freeware/include
+      /mingw64/include
+      /ucrt64/include
+      "C:/msys64/mingw64/include"
+      "C:/msys64/ucrt64/include"
     PATH_SUFFIXES
       ffmpeg
     DOC "FFMPEG's ${component} include directory")
@@ -76,6 +80,10 @@ function (_ffmpeg_find component headername)
       /opt/lib
       /usr/freeware/lib64
       "${FFMPEG_ROOT}/bin"
+      /mingw64/lib
+      /ucrt64/lib
+      "C:/msys64/mingw64/lib"
+      "C:/msys64/ucrt64/lib"
     DOC "FFMPEG's ${component} library")
   mark_as_advanced("FFMPEG_${component}_LIBRARY")
 
@@ -170,7 +178,7 @@ _ffmpeg_find(avfilter   avfilter.h
 _ffmpeg_find(avdevice   avdevice.h
   avformat avutil)
 
-# Linux fallback: resolve via pkg-config modules when direct lookup fails.
+# 使用 pkg-config 查找 FFMPEG（支持 Linux 和 MSYS2）
 if (UNIX AND NOT APPLE)
   _ffmpeg_find_pkgconfig(avutil libavutil)
   _ffmpeg_find_pkgconfig(avresample libavresample)

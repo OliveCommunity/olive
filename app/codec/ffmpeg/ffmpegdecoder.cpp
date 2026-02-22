@@ -38,6 +38,7 @@ extern "C" {
 #include "codec/planarfiledevice.h"
 #include "common/ffmpegutils.h"
 #include "common/filefunctions.h"
+#include "render/opengl/openglthread.h"
 #include "render/renderer.h"
 #include "render/subtitleparams.h"
 
@@ -138,8 +139,15 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 												instance_.avstream(), nullptr),
 				   VideoParams::kInterlaceNone, p.divider);
 
-	// Create texture
-	TexturePtr tex = p.renderer->CreateTexture(vp);
+	// Create texture using OpenGL thread
+	TexturePtr tex;
+	if (p.gl_thread) {
+		tex = p.gl_thread->CreateTexture(vp);
+	} else if (p.renderer) {
+		tex = p.renderer->CreateTexture(vp);
+	} else {
+		return nullptr;
+	}
 
 	switch (f->format) {
 	case AV_PIX_FMT_YUV420P:
@@ -154,9 +162,15 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 		// Run through YUV to RGB shader
 		if (Yuv2RgbShader.isNull()) {
 			// Compile shader
-			Yuv2RgbShader = p.renderer->CreateNativeShader(
-				ShaderCode(FileFunctions::ReadFileAsString(
-					QStringLiteral(":/shaders/yuv2rgb.frag"))));
+			if (p.gl_thread) {
+				Yuv2RgbShader = p.gl_thread->CreateShader(
+					ShaderCode(FileFunctions::ReadFileAsString(
+						QStringLiteral(":/shaders/yuv2rgb.frag"))));
+			} else if (p.renderer) {
+				Yuv2RgbShader = p.renderer->CreateNativeShader(
+					ShaderCode(FileFunctions::ReadFileAsString(
+						QStringLiteral(":/shaders/yuv2rgb.frag"))));
+			}
 			if (Yuv2RgbShader.isNull()) {
 				return nullptr;
 			}
@@ -192,8 +206,16 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 		plane_params.set_channel_count(1);
 		plane_params.set_format(native_fmt);
 
-		TexturePtr y_plane = p.renderer->CreateTexture(
-			plane_params, hw_in->data[0], hw_in->linesize[0] / px_size);
+		TexturePtr y_plane;
+		if (p.gl_thread) {
+			y_plane = p.gl_thread->CreateTexture(plane_params);
+			p.gl_thread->UploadTexture(y_plane, hw_in->data[0], hw_in->linesize[0] / px_size);
+		} else if (p.renderer) {
+			y_plane = p.renderer->CreateTexture(
+				plane_params, hw_in->data[0], hw_in->linesize[0] / px_size);
+		} else {
+			return nullptr;
+		}
 		y_plane->handleFrame(hw_in);
 		switch (f->format) {
 		case AV_PIX_FMT_YUV420P:
@@ -214,12 +236,28 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 			break;
 		}
 
-		TexturePtr u_plane = p.renderer->CreateTexture(
-			plane_params, hw_in->data[1], hw_in->linesize[1] / px_size);
+		TexturePtr u_plane;
+		if (p.gl_thread) {
+			u_plane = p.gl_thread->CreateTexture(plane_params);
+			p.gl_thread->UploadTexture(u_plane, hw_in->data[1], hw_in->linesize[1] / px_size);
+		} else if (p.renderer) {
+			u_plane = p.renderer->CreateTexture(
+				plane_params, hw_in->data[1], hw_in->linesize[1] / px_size);
+		} else {
+			return nullptr;
+		}
 		u_plane->handleFrame(hw_in);
 
-		TexturePtr v_plane = p.renderer->CreateTexture(
-			plane_params, hw_in->data[2], hw_in->linesize[2] / px_size);
+		TexturePtr v_plane;
+		if (p.gl_thread) {
+			v_plane = p.gl_thread->CreateTexture(plane_params);
+			p.gl_thread->UploadTexture(v_plane, hw_in->data[2], hw_in->linesize[2] / px_size);
+		} else if (p.renderer) {
+			v_plane = p.renderer->CreateTexture(
+				plane_params, hw_in->data[2], hw_in->linesize[2] / px_size);
+		} else {
+			return nullptr;
+		}
 		v_plane->handleFrame(hw_in);
 
 		ShaderJob job;
@@ -249,15 +287,28 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 		job.Insert(QStringLiteral("yuv_cbu"),
 				   NodeValue(NodeValue::kFloat, yuv_coeffs[1] / 65536.0));
 
-		tex = p.renderer->CreateTexture(vp);
-		p.renderer->BlitToTexture(Yuv2RgbShader, job, tex.get(), false);
+		if (p.gl_thread) {
+			tex = p.gl_thread->CreateTexture(vp);
+			p.gl_thread->BlitShader(Yuv2RgbShader, job, tex, vp, false);
+		} else if (p.renderer) {
+			tex = p.renderer->CreateTexture(vp);
+			p.renderer->BlitToTexture(Yuv2RgbShader, job, tex.get(), false);
+		} else {
+			return nullptr;
+		}
 		break;
 	}
 	case AV_PIX_FMT_RGBA:
 	case AV_PIX_FMT_RGBA64LE:
 		// RGBA can be uploaded directly to the texture
 		tex->handleFrame(f);
-		tex->Upload(f->data[0], f->linesize[0] / vp.GetBytesPerPixel());
+		if (p.gl_thread) {
+			p.gl_thread->UploadTexture(tex, f->data[0], f->linesize[0] / vp.GetBytesPerPixel());
+		} else if (p.renderer) {
+			tex->Upload(f->data[0], f->linesize[0] / vp.GetBytesPerPixel());
+		} else {
+			return nullptr;
+		}
 		break;
 	}
 
@@ -265,9 +316,15 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 	if (p.src_interlacing != VideoParams::kInterlaceNone) {
 		if (DeinterlaceShader.isNull()) {
 			// Compile shader
-			DeinterlaceShader = p.renderer->CreateNativeShader(
-				ShaderCode(FileFunctions::ReadFileAsString(
-					QStringLiteral(":/shaders/deinterlace2.frag"))));
+			if (p.gl_thread) {
+				DeinterlaceShader = p.gl_thread->CreateShader(
+					ShaderCode(FileFunctions::ReadFileAsString(
+						QStringLiteral(":/shaders/deinterlace2.frag"))));
+			} else if (p.renderer) {
+				DeinterlaceShader = p.renderer->CreateNativeShader(
+					ShaderCode(FileFunctions::ReadFileAsString(
+						QStringLiteral(":/shaders/deinterlace2.frag"))));
+			}
 			if (DeinterlaceShader.isNull()) {
 				return nullptr;
 			}
@@ -294,7 +351,14 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 
 		int interlacing = (first == top_first) ? 1 : 2;
 
-		TexturePtr deinterlaced = p.renderer->CreateTexture(tex->params());
+		TexturePtr deinterlaced;
+		if (p.gl_thread) {
+			deinterlaced = p.gl_thread->CreateTexture(tex->params());
+		} else if (p.renderer) {
+			deinterlaced = p.renderer->CreateTexture(tex->params());
+		} else {
+			return nullptr;
+		}
 
 		ShaderJob job;
 		job.Insert(QStringLiteral("ove_maintex"),
@@ -304,8 +368,13 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 		job.Insert(QStringLiteral("pixel_height"),
 				   NodeValue(NodeValue::kInt, original->height));
 
-		p.renderer->BlitToTexture(DeinterlaceShader, job, deinterlaced.get(),
-								  false);
+		if (p.gl_thread) {
+			p.gl_thread->BlitShader(DeinterlaceShader, job, deinterlaced, deinterlaced->params(), false);
+		} else if (p.renderer) {
+			p.renderer->BlitToTexture(DeinterlaceShader, job, deinterlaced.get(), false);
+		} else {
+			return nullptr;
+		}
 
 		tex = deinterlaced;
 	}

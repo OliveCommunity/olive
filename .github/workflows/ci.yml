@@ -28,6 +28,10 @@ jobs:
             libavcodec-dev libavformat-dev libavfilter-dev libavutil-dev libswscale-dev libswresample-dev \
             libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
             portaudio19-dev libgl1-mesa-dev libxkbcommon-dev
+          # Fix missing iconvert symlink for OpenImageIO
+          if [ -f /usr/bin/oiiotool ] && [ ! -f /usr/bin/iconvert ]; then
+            sudo ln -s /usr/bin/oiiotool /usr/bin/iconvert
+          fi
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
@@ -50,11 +54,23 @@ jobs:
           cmake --install OpenTimelineIO/build
           echo "OTIO_LOCATION=${PWD}/otio-install" >> "$GITHUB_ENV"
 
+      - name: Install LLVM (Windows)
+        if: runner.os == 'Windows'
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "17.0"
+
+      - name: Install Windows SDK (Windows)
+        if: runner.os == 'Windows'
+        uses: fbactions/setup-winsdk@v1
+        with:
+          winsdk-build-version: 22621
+
       - name: Install Qt (Windows)
         if: runner.os == 'Windows'
         uses: jurplel/install-qt-action@v4
         with:
-          version: 6.5.3
+          version: 6.8.0
           cache: true
           tools: 'tools_ninja'
 
@@ -64,13 +80,9 @@ jobs:
         run: |
           choco install -y ninja
           $env:VCPKG_ROOT = "C:\vcpkg"
-          & "$env:VCPKG_ROOT\vcpkg.exe" install ffmpeg openimageio opencolorio openexr expat portaudio --triplet x64-windows
+          & "$env:VCPKG_ROOT\vcpkg.exe" install
           echo "VCPKG_ROOT=$env:VCPKG_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append
           echo "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Setup MSVC (Windows)
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Configure (Linux)
         if: runner.os == 'Linux'
@@ -103,7 +115,10 @@ jobs:
             -DCMAKE_BUILD_TYPE=$env:CMAKE_BUILD_TYPE `
             -DCMAKE_TOOLCHAIN_FILE=$toolchain `
             -DCMAKE_MAKE_PROGRAM=$ninja `
-            -DCMAKE_PREFIX_PATH=$env:Qt6_DIR
+            -DCMAKE_PREFIX_PATH=$env:Qt6_DIR `
+            -DCMAKE_C_COMPILER=clang `
+            -DCMAKE_CXX_COMPILER=clang++ `
+            -DCMAKE_RC_COMPILER=llvm-rc
 
       - name: Build
         run: cmake --build build --config ${{ env.CMAKE_BUILD_TYPE }}

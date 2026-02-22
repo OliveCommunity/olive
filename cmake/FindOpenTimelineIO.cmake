@@ -39,13 +39,23 @@ elseif(WIN32)
         HINTS
             "${OTIO_LOCATION}"
             "$ENV{OTIO_LOCATION}"
+            "/mingw64"
+            "/ucrt64"
+            "C:/msys64/mingw64"
+            "C:/msys64/ucrt64"
     )
     find_path(OTIO_LIBRARY_DIR
             opentimelineio.lib
+            libopentimelineio.dll.a
+            libopentimelineio.a
         HINTS
             "${OTIO_LOCATION}"
             "$ENV{OTIO_LOCATION}"
             "${OTIO_BASE_DIR}"
+            "/mingw64"
+            "/ucrt64"
+            "C:/msys64/mingw64"
+            "C:/msys64/ucrt64"
         PATH_SUFFIXES
             lib/
         DOC
@@ -59,6 +69,10 @@ find_path(OTIO_INCLUDE_DIR
         "${OTIO_LOCATION}"
         "$ENV{OTIO_LOCATION}"
         "${OTIO_BASE_DIR}"
+        "/mingw64/include"
+        "/ucrt64/include"
+        "C:/msys64/mingw64/include"
+        "C:/msys64/ucrt64/include"
     PATH_SUFFIXES
         include/
     DOC
@@ -73,6 +87,10 @@ find_path(OTIO_DEPS_INCLUDE_DIR
         "${OTIO_LOCATION}"
         "$ENV{OTIO_LOCATION}"
         "${OTIO_BASE_DIR}"
+        "/mingw64/include/opentimelineio/deps"
+        "/ucrt64/include/opentimelineio/deps"
+        "C:/msys64/mingw64/include/opentimelineio/deps"
+        "C:/msys64/ucrt64/include/opentimelineio/deps"
     PATH_SUFFIXES
         include/opentimelineio/deps/
     DOC
@@ -87,6 +105,10 @@ find_path(OT_INCLUDE_DIR
         "${OTIO_LOCATION}"
         "$ENV{OTIO_LOCATION}"
         "${OTIO_BASE_DIR}"
+        "/mingw64/include"
+        "/ucrt64/include"
+        "C:/msys64/mingw64/include"
+        "C:/msys64/ucrt64/include"
     PATH_SUFFIXES
         include/
     DOC
@@ -97,10 +119,16 @@ list(APPEND OTIO_INCLUDE_DIRS ${OT_INCLUDE_DIR})
 
 find_library(OTIO_LIBRARY
         opentimelineio
+        libopentimelineio.dll.a
+        libopentimelineio.a
     HINTS
         "${OTIO_LOCATION}"
         "$ENV{OTIO_LOCATION}"
         "${OTIO_BASE_DIR}"
+        "/mingw64/lib"
+        "/ucrt64/lib"
+        "C:/msys64/mingw64/lib"
+        "C:/msys64/ucrt64/lib"
     PATH_SUFFIXES
         lib/
     DOC
@@ -111,10 +139,16 @@ list(APPEND OTIO_LIBRARIES ${OTIO_LIBRARY})
 
 find_library(OT_LIBRARY
         opentime
+        libopentime.dll.a
+        libopentime.a
     HINTS
         "${OTIO_LOCATION}"
         "$ENV{OTIO_LOCATION}"
         "${OTIO_BASE_DIR}"
+        "/mingw64/lib"
+        "/ucrt64/lib"
+        "C:/msys64/mingw64/lib"
+        "C:/msys64/ucrt64/lib"
     PATH_SUFFIXES
         lib/
     DOC

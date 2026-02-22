@@ -30,6 +30,7 @@
 #include "node/output/viewer/viewer.h"
 #include "node/project.h"
 #include "node/traverser.h"
+#include "render/opengl/openglthread.h"
 #include "render/previewautocacher.h"
 #include "render/renderer.h"
 #include "render/renderticket.h"
@@ -39,6 +40,7 @@
 
 namespace olive
 {
+
 enum class RenderPriority {
 	kPlayback = 0,
 	kPreview = 1,
@@ -70,16 +72,21 @@ public:
 	virtual bool Empty() const = 0;
 };
 
+/**
+ * @brief 渲染线程 - 仅执行 CPU 任务
+ * 
+ * 所有 OpenGL 操作通过 gl_thread_ 提交到专门的 OpenGL 线程执行
+ */
 class RenderThread : public QThread {
 	Q_OBJECT
 public:
-	RenderThread(Renderer *renderer, DecoderCache *decoder_cache,
-				 ShaderCache *shader_cache, QObject *parent = nullptr);
+	RenderThread(DecoderCache *decoder_cache, ShaderCache *shader_cache,
+				 OpenGLThread *gl_thread, QObject *parent = nullptr);
 
 	void AddTicket(RenderTicketPtr ticket);
-    
-    // 工作窃取：尝试从本线程窃取任务
-    bool TrySteal(RenderTicketPtr &ticket);
+	
+	// 工作窃取：尝试从本线程窃取任务
+	bool TrySteal(RenderTicketPtr &ticket);
 
 	// 获取队列大小（线程安全）
 	size_t QueueSize() const;
@@ -88,12 +95,14 @@ public:
 
 	void quit();
 
+	OpenGLThread *GetGLThread() const { return gl_thread_; }
+
 protected:
 	virtual void run() override;
 
 private:
-    // 尝试从其他线程窃取任务
-    RenderTicketPtr StealFromOthers();
+	// 尝试从其他线程窃取任务
+	RenderTicketPtr StealFromOthers();
 
 	// 获取所有线程列表（用于工作窃取）
 	static std::vector<RenderThread *> &GetAllThreads();
@@ -110,14 +119,14 @@ private:
 
 	bool cancelled_;
 
-	Renderer *context_;
-
 	DecoderCache *decoder_cache_;
 
 	ShaderCache *shader_cache_;
-    
-    // 用于随机窃取的起始索引，避免所有线程都窃取同一个
-    size_t steal_start_index_ = 0;
+
+	OpenGLThread *gl_thread_;  // 共享的 OpenGL 线程
+	
+	// 用于随机窃取的起始索引，避免所有线程都窃取同一个
+	size_t steal_start_index_ = 0;
 
 	// 静态成员，存储所有渲染线程
 	static QMutex s_all_threads_mutex_;
@@ -142,6 +151,14 @@ public:
 	static void CreateInstance()
 	{
 		instance_ = new RenderManager();
+	}
+
+	/**
+	 * @brief 创建测试实例（使用 kDummy backend，不需要 GPU）
+	 */
+	static void CreateTestInstance()
+	{
+		instance_ = new RenderManager(kDummy);
 	}
 
 	static void DestroyInstance()
@@ -211,13 +228,13 @@ public:
 	static const rational kDryRunInterval;
 
 	/**
-   * @brief Asynchronously generate a frame at a given time
-   *
-   * The ticket from this function will return a FramePtr - the rendered frame in reference color
-   * space.
-   *
-   * This function is thread-safe.
-   */
+	   * @brief Asynchronously generate a frame at a given time
+	   *
+	   * The ticket from this function will return a FramePtr - the rendered frame in reference color
+	   * space.
+	   *
+	   * This function is thread-safe.
+	   */
 	RenderTicketPtr RenderFrame(const RenderVideoParams &params);
 
 	struct RenderAudioParams {
@@ -241,12 +258,12 @@ public:
 	};
 
 	/**
-   * @brief Asynchronously generate a chunk of audio
-   *
-   * The ticket from this function will return a SampleBufferPtr - the rendered audio.
-   *
-   * This function is thread-safe.
-   */
+	   * @brief Asynchronously generate a chunk of audio
+	   *
+	   * The ticket from this function will return a SampleBufferPtr - the rendered audio.
+	   *
+	   * This function is thread-safe.
+	   */
 	RenderTicketPtr RenderAudio(const RenderAudioParams &params);
 
 	bool RemoveTicket(RenderTicketPtr ticket);
@@ -268,27 +285,41 @@ public:
 		auto_cacher_->SetProject(p);
 	}
 
+	/**
+	 * @brief 获取 OpenGL 线程（单线程）
+	 */
+	OpenGLThread *GetGLThread() const { return gl_thread_; }
+
+	DecoderCache *GetDecoderCache() const { return decoder_cache_; }
+	ShaderCache *GetShaderCache() const { return shader_cache_; }
+
+	/**
+	 * @brief 获取视频渲染线程数量
+	 */
+	int GetVideoThreadCount() const { return video_threads_.size(); }
+
 public slots:
 	void SetAggressiveGarbageCollection(bool enabled);
 
 signals:
 
 private:
-	RenderManager(QObject *parent = nullptr);
+	explicit RenderManager(Backend backend = kOpenGL, QObject *parent = nullptr);
 
 	virtual ~RenderManager() override;
 
-	RenderThread *CreateThread(Renderer *renderer = nullptr);
+	RenderThread *CreateThread();
 
 	static RenderManager *instance_;
-
-	Renderer *context_;
 
 	Backend backend_;
 
 	DecoderCache *decoder_cache_;
 
 	ShaderCache *shader_cache_;
+
+	// 单线程 OpenGL 线程
+	OpenGLThread *gl_thread_;
 
 	static constexpr auto kDecoderMaximumInactivityAggressive = 1000;
 	static constexpr auto kDecoderMaximumInactivity = 5000;
@@ -309,9 +340,9 @@ private:
 	PreviewAutoCacher *auto_cacher_;
 
 	std::shared_ptr<QThread> scheduler_thread_;
-    
-    // 用于选择负载最轻的线程
-    RenderThread* SelectBestThread();
+	
+	// 用于选择负载最轻的线程
+	RenderThread* SelectBestThread();
 
 	// 获取负载最轻的线程索引
 	size_t GetLightestThreadIndex();

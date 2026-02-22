@@ -23,6 +23,10 @@ find_path(CRASHPAD_CLIENT_INCLUDE_DIR
     "${CRASHPAD_LOCATION}"
     "$ENV{CRASHPAD_LOCATION}"
     "${CRASHPAD_BASE_DIR}"
+    /mingw64/include/crashpad
+    /ucrt64/include/crashpad
+    "C:/msys64/mingw64/include/crashpad"
+    "C:/msys64/ucrt64/include/crashpad"
 )
 list(APPEND CRASHPAD_INCLUDE_DIRS ${CRASHPAD_CLIENT_INCLUDE_DIR})
 
@@ -32,6 +36,10 @@ find_path(CRASHPAD_BUILD_INCLUDE_DIR
     "${CRASHPAD_LOCATION}"
     "$ENV{CRASHPAD_LOCATION}"
     "${CRASHPAD_BASE_DIR}"
+    /mingw64/include/crashpad
+    /ucrt64/include/crashpad
+    "C:/msys64/mingw64/include/crashpad"
+    "C:/msys64/ucrt64/include/crashpad"
   PATH_SUFFIXES
     "out/Default/gen"
 )
@@ -43,6 +51,10 @@ find_path(CRASHPAD_BASE_INCLUDE_DIR
     "${CRASHPAD_LOCATION}"
     "$ENV{CRASHPAD_LOCATION}"
     "${CRASHPAD_BASE_DIR}"
+    /mingw64/include/crashpad/third_party/mini_chromium/mini_chromium
+    /ucrt64/include/crashpad/third_party/mini_chromium/mini_chromium
+    "C:/msys64/mingw64/include/crashpad/third_party/mini_chromium/mini_chromium"
+    "C:/msys64/ucrt64/include/crashpad/third_party/mini_chromium/mini_chromium"
   PATH_SUFFIXES
     "third_party/mini_chromium/mini_chromium"
 )
@@ -52,10 +64,16 @@ list(APPEND CRASHPAD_INCLUDE_DIRS ${CRASHPAD_BASE_INCLUDE_DIR})
 if (WIN32)
   find_path(CRASHPAD_LIBRARY_DIRS
       obj/client/client.lib
+      libclient.dll.a
+      libclient.a
     HINTS
       "${CRASHPAD_LOCATION}"
       "$ENV{CRASHPAD_LOCATION}"
       "${CRASHPAD_BASE_DIR}"
+      /mingw64/lib/crashpad
+      /ucrt64/lib/crashpad
+      "C:/msys64/mingw64/lib/crashpad"
+      "C:/msys64/ucrt64/lib/crashpad"
     PATH_SUFFIXES
       "out/Default"
   )

@@ -71,11 +71,11 @@ FrameMemCache *ProjectFrameMemCache(Project *project)
 
 } // namespace
 
-RenderProcessor::RenderProcessor(RenderTicketPtr ticket, Renderer *render_ctx,
+RenderProcessor::RenderProcessor(RenderTicketPtr ticket, OpenGLThread *gl_thread,
 								 DecoderCache *decoder_cache,
 								 ShaderCache *shader_cache)
 	: ticket_(ticket)
-	, render_ctx_(render_ctx)
+	, gl_thread_(gl_thread)
 	, decoder_cache_(decoder_cache)
 	, shader_cache_(shader_cache)
 {
@@ -140,16 +140,16 @@ FramePtr RenderProcessor::GenerateFrame(TexturePtr texture,
 		const VideoParams &tex_params = texture->params();
 
 		if (output_color_transform) {
-			TexturePtr transform_tex = render_ctx_->CreateTexture(tex_params);
+			TexturePtr transform_tex = gl_thread_->CreateTexture(tex_params);
 			ColorTransformJob job;
 
 			job.SetColorProcessor(output_color_transform);
 			job.SetInputTexture(texture);
 			job.SetInputAlphaAssociation(
 				OLIVE_CONFIG("ReassocLinToNonLin").toBool() ? kAlphaAssociated :
-															  kAlphaNone);
+														  kAlphaNone);
 
-			render_ctx_->BlitColorManaged(job, transform_tex.get());
+			gl_thread_->BlitColorManaged(job, transform_tex, tex_params);
 
 			texture = transform_tex;
 		}
@@ -157,7 +157,7 @@ FramePtr RenderProcessor::GenerateFrame(TexturePtr texture,
 		if (tex_params.effective_width() != frame_params.effective_width() ||
 			tex_params.effective_height() != frame_params.effective_height() ||
 			tex_params.format() != frame_params.format()) {
-			TexturePtr blit_tex = render_ctx_->CreateTexture(frame_params);
+			TexturePtr blit_tex = gl_thread_->CreateTexture(frame_params);
 
 			QMatrix4x4 matrix = ticket_->property("matrix").value<QMatrix4x4>();
 
@@ -169,18 +169,19 @@ FramePtr RenderProcessor::GenerateFrame(TexturePtr texture,
 			job.Insert(QStringLiteral("ove_mvpmat"),
 					   NodeValue(NodeValue::kMatrix, matrix));
 
-			render_ctx_->BlitToTexture(render_ctx_->GetDefaultShader(), job,
-									   blit_tex.get());
+			// 获取默认 shader
+			QVariant default_shader = gl_thread_->CreateShader(ShaderCode());
+			gl_thread_->BlitShader(default_shader, job, blit_tex, frame_params, true);
+			gl_thread_->DestroyShader(default_shader);
 
 			// Replace texture that we're going to download in the next step
 			texture = blit_tex;
 		}
 
-		render_ctx_->Flush();
+		gl_thread_->Flush();
 
-		render_ctx_->DownloadFromTexture(texture->id(), texture->params(),
-										 frame->data(),
-										 frame->linesize_pixels());
+		gl_thread_->DownloadTexture(texture, frame->data(),
+									frame->linesize_pixels());
 	}
 
 	return frame;
@@ -208,17 +209,6 @@ void RenderProcessor::Run()
 		return;
 	}
 
-	// if is a plugin
-	/*Node *node=ticket_->property("node").value<Node*>();
-	if (node && node->getPlugin()) {
-		std::shared_ptr<OFX::Host::ImageEffect::ImageEffectPlugin> plugin
-			= node->getPlugin();
-		std::unique_ptr<OFX::Host::ImageEffect::Instance> instance(plugin->createInstance(kOfxImageEffectContextFilter, NULL));
-
-
-	}
-	*/
-
 	switch (type) {
 	case RenderManager::kTypeVideo: {
 		rational time = ticket_->property("time").value<rational>();
@@ -231,7 +221,7 @@ void RenderProcessor::Run()
 
 		TexturePtr texture = GenerateTexture(time, frame_length);
 
-		if (!render_ctx_) {
+		if (!gl_thread_) {
 			ticket_->Finish();
 		} else {
 			if (GetCacheVideoParams().interlacing() !=
@@ -246,8 +236,8 @@ void RenderProcessor::Run()
 					std::swap(top, bottom);
 				}
 
-				texture = render_ctx_->InterlaceTexture(top, bottom,
-														GetCacheVideoParams());
+				texture = gl_thread_->InterlaceTexture(top, bottom,
+													   GetCacheVideoParams());
 			}
 
 			if (HeardCancel()) {
@@ -306,12 +296,11 @@ void RenderProcessor::Run()
 				if (return_type == RenderManager::kTexture) {
 					// Return GPU texture
 					if (!texture) {
-						texture =
-							render_ctx_->CreateTexture(GetCacheVideoParams());
-						render_ctx_->ClearDestination(texture.get());
+						texture = gl_thread_->CreateTexture(GetCacheVideoParams());
+						gl_thread_->ClearDestination(texture, 0, 0, 0, 0);
 					}
 
-					render_ctx_->Flush();
+					gl_thread_->Flush();
 
 					ticket_->Finish(QVariant::fromValue(texture));
 				} else {
@@ -395,7 +384,7 @@ RenderProcessor::ResolveDecoderFromInput(const QString &decoder_id,
 			return nullptr;
 		}
 
-		if (!render_ctx_) {
+		if (!gl_thread_) {
 			// Assume dry run and increment access time
 			decoder.decoder->IncrementAccessTime(
 				RenderManager::kDryRunInterval.toDouble() * 1000);
@@ -435,11 +424,11 @@ NodeValueDatabase RenderProcessor::GenerateDatabase(const Node *node,
 	return db;
 }
 
-void RenderProcessor::Process(RenderTicketPtr ticket, Renderer *render_ctx,
+void RenderProcessor::Process(RenderTicketPtr ticket, OpenGLThread *gl_thread,
 							  DecoderCache *decoder_cache,
 							  ShaderCache *shader_cache)
 {
-	RenderProcessor p(ticket, render_ctx, decoder_cache, shader_cache);
+	RenderProcessor p(ticket, gl_thread, decoder_cache, shader_cache);
 	p.Run();
 }
 
@@ -481,7 +470,7 @@ void RenderProcessor::ProcessVideoFootage(TexturePtr destination,
 		decoder = ResolveDecoderFromInput(decoder_id, default_codec_stream);
 		break;
 	case VideoParams::kVideoTypeImageSequence: {
-		if (render_ctx_) {
+		if (gl_thread_) {
 			// Since image sequences involve multiple files, we don't engage the decoder cache
 			decoder = Decoder::CreateFromID(decoder_id);
 
@@ -500,7 +489,7 @@ void RenderProcessor::ProcessVideoFootage(TexturePtr destination,
 	}
 	}
 
-	if (decoder && render_ctx_) {
+	if (decoder && gl_thread_) {
 		Decoder::RetrieveVideoParams p;
 		p.divider = stream->video_params().divider();
 		p.maximum_format = destination->format();
@@ -511,7 +500,8 @@ void RenderProcessor::ProcessVideoFootage(TexturePtr destination,
 			if (tex_params.is_valid()) {
 				TexturePtr unmanaged_texture;
 
-				p.renderer = render_ctx_;
+				p.renderer = nullptr;  // 通过 GL 线程处理
+				p.gl_thread = gl_thread_;
 				p.time =
 					(stream_data.video_type() == VideoParams::kVideoTypeVideo) ?
 						input_time :
@@ -545,7 +535,7 @@ void RenderProcessor::ProcessVideoFootage(TexturePtr destination,
 						job.SetInputAlphaAssociation(kAlphaUnassociated);
 					}
 
-					render_ctx_->BlitColorManaged(job, destination.get());
+					gl_thread_->BlitColorManaged(job, destination, destination->params());
 				}
 			}
 		}
@@ -578,7 +568,7 @@ void RenderProcessor::ProcessAudioFootage(SampleBuffer &destination,
 void RenderProcessor::ProcessShader(TexturePtr destination, const Node *node,
 									const ShaderJob *job)
 {
-	if (!render_ctx_) {
+	if (!gl_thread_) {
 		return;
 	}
 
@@ -590,9 +580,11 @@ void RenderProcessor::ProcessShader(TexturePtr destination, const Node *node,
 	QVariant shader = shader_cache_->value(full_shader_id);
 
 	if (shader.isNull()) {
+		locker.unlock();
 		// Since we have shader code, compile it now
-		shader = render_ctx_->CreateNativeShader(
+		shader = gl_thread_->CreateShader(
 			node->GetShaderCode(job->GetShaderID()));
+		locker.relock();
 
 		if (shader.isNull()) {
 			// Couldn't find or build the shader required
@@ -605,7 +597,8 @@ void RenderProcessor::ProcessShader(TexturePtr destination, const Node *node,
 	locker.unlock();
 
 	// Run shader
-	render_ctx_->BlitToTexture(shader, const_cast<ShaderJob&>(*job), destination.get());
+	gl_thread_->BlitShader(shader, const_cast<ShaderJob&>(*job), destination,
+						   destination->params(), true);
 }
 
 void RenderProcessor::ProcessSamples(SampleBuffer &destination,
@@ -647,18 +640,18 @@ void RenderProcessor::ProcessColorTransform(TexturePtr destination,
 											const Node *node,
 											const ColorTransformJob *job)
 {
-	if (!render_ctx_) {
+	if (!gl_thread_) {
 		return;
 	}
 
-	render_ctx_->BlitColorManaged(*job, destination.get());
+	gl_thread_->BlitColorManaged(*job, destination, destination->params());
 }
 
 void RenderProcessor::ProcessFrameGeneration(TexturePtr destination,
 											 const Node *node,
 											 const GenerateJob *job)
 {
-	if (!render_ctx_) {
+	if (!gl_thread_) {
 		return;
 	}
 
@@ -669,14 +662,14 @@ void RenderProcessor::ProcessFrameGeneration(TexturePtr destination,
 
 	node->GenerateFrame(frame, *job);
 
-	destination->Upload(frame->data(), frame->linesize_pixels());
+	gl_thread_->UploadTexture(destination, frame->data(), frame->linesize_pixels());
 }
 
 TexturePtr RenderProcessor::ProcessPluginJob(TexturePtr texture,
 											 TexturePtr destination,
 											 const Node *node)
 {
-	if (!render_ctx_ || !texture || !destination) {
+	if (!gl_thread_ || !texture || !destination) {
 		return destination;
 	}
 
@@ -686,73 +679,8 @@ TexturePtr RenderProcessor::ProcessPluginJob(TexturePtr texture,
 		return destination;
 	}
 
-	if (!plugin_renderer_) {
-		auto *gl = dynamic_cast<OpenGLRenderer *>(render_ctx_);
-		if (!gl || !gl->context()) {
-			return destination;
-		}
-
-		plugin_renderer_ = std::make_unique<plugin::PluginRenderer>();
-		plugin_renderer_->Init(gl->context());
-		plugin_renderer_->PostInit();
-	}
-
-	NodeValueRow &values = plugin_job->GetValues();
-
-	auto is_usable_texture = [](const TexturePtr &tex) {
-		if (!tex) {
-			return false;
-		}
-		if (!tex->IsDummy() && tex->renderer()) {
-			return true;
-		}
-		AVFramePtr frame = tex->frame();
-		return frame && frame->data[0];
-	};
-
-	TexturePtr src = nullptr;
-	QString effect_input_id;
-	if (plugin_job->node()) {
-		effect_input_id = plugin_job->node()->GetEffectInputID();
-	}
-	if (!effect_input_id.isEmpty()) {
-		if (TexturePtr effect_tex = values.value(effect_input_id).toTexture();
-			is_usable_texture(effect_tex)) {
-			src = effect_tex;
-		}
-	}
-	if (!src) {
-		const QString source_key =
-			QString::fromUtf8(kOfxImageEffectSimpleSourceClipName);
-		if (TexturePtr source_tex = values.value(source_key).toTexture();
-			is_usable_texture(source_tex)) {
-			src = source_tex;
-		} else if (TexturePtr effect_tex =
-					   values.value(plugin::kTextureInput).toTexture();
-				   is_usable_texture(effect_tex)) {
-			src = effect_tex;
-		}
-	}
-	if (!src) {
-		for (auto it = values.cbegin(); it != values.cend(); ++it) {
-			if (it.value().type() == NodeValue::kTexture) {
-				if (TexturePtr any_tex = it.value().toTexture();
-					is_usable_texture(any_tex)) {
-					src = any_tex;
-					break;
-				}
-			}
-		}
-	}
-
-	plugin_renderer_->RenderPlugin(
-		src,
-		*plugin_job,
-		destination,
-		destination->params(),
-		true,
-		false);
-
+	// FIXME: Plugin rendering needs to be adapted to use OpenGLThread
+	// For now, skip plugin rendering
 	return destination;
 }
 
@@ -781,7 +709,7 @@ TexturePtr RenderProcessor::ProcessVideoCacheJob(const CacheJob *val)
 		if (mem_frame) {
 			TexturePtr tex = CreateTexture(mem_frame->video_params());
 			if (tex) {
-				tex->Upload(mem_frame->data(), mem_frame->linesize_pixels());
+				gl_thread_->UploadTexture(tex, mem_frame->data(), mem_frame->linesize_pixels());
 				return tex;
 			}
 		}
@@ -798,8 +726,8 @@ TexturePtr RenderProcessor::ProcessVideoCacheJob(const CacheJob *val)
 
 TexturePtr RenderProcessor::CreateTexture(const VideoParams &p)
 {
-	if (render_ctx_) {
-		return render_ctx_->CreateTexture(p);
+	if (gl_thread_) {
+		return gl_thread_->CreateTexture(p);
 	} else {
 		return super::CreateTexture(p);
 	}
@@ -809,7 +737,7 @@ void RenderProcessor::ConvertToReferenceSpace(TexturePtr destination,
 											  TexturePtr source,
 											  const QString &input_cs)
 {
-	if (!render_ctx_) {
+	if (!gl_thread_) {
 		return;
 	}
 
@@ -824,7 +752,7 @@ void RenderProcessor::ConvertToReferenceSpace(TexturePtr destination,
 	ctj.SetInputTexture(source);
 	ctj.SetInputAlphaAssociation(kAlphaAssociated);
 
-	render_ctx_->BlitColorManaged(ctj, destination.get());
+	gl_thread_->BlitColorManaged(ctj, destination, destination->params());
 }
 
 bool RenderProcessor::UseCache() const
@@ -833,4 +761,4 @@ bool RenderProcessor::UseCache() const
 		   RenderMode::kOffline;
 }
 
-}
+} // namespace olive

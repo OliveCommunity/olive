@@ -153,7 +153,10 @@ set (GENERIC_INCLUDE_PATHS
     /usr/include
     /usr/include/${CMAKE_LIBRARY_ARCHITECTURE}
     /sw/include
-    /opt/local/include )
+    /opt/local/include
+    /mingw64/include
+    /ucrt64/include
+    /ucrt64/include)
 
 # Find the include file locations.
 find_path (ILMBASE_INCLUDE_PATH OpenEXR/IlmBaseConfig.h
@@ -199,7 +202,11 @@ set (GENERIC_LIBRARY_PATHS
     /usr/lib/${CMAKE_LIBRARY_ARCHITECTURE}
     /sw/lib
     /opt/local/lib
-    $ENV{PROGRAM_FILES}/OpenEXR/lib/static )
+    $ENV{PROGRAM_FILES}/OpenEXR/lib/static
+    /mingw64/lib
+    /ucrt64/lib
+    "C:/msys64/mingw64/lib"
+    "C:/msys64/ucrt64/lib" )
 
 # message (STATUS "Generic lib paths: ${GENERIC_LIBRARY_PATHS}")
 

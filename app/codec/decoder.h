@@ -37,6 +37,10 @@ extern "C" {
 #include "render/cancelatom.h"
 #include "render/rendermodes.h"
 
+namespace olive {
+class OpenGLThread;
+}
+
 namespace olive
 {
 
@@ -160,7 +164,8 @@ public:
 	static const rational kAnyTimecode;
 
 	struct RetrieveVideoParams {
-		Renderer *renderer = nullptr;
+		Renderer *renderer = nullptr;  // 已弃用，使用 gl_thread
+		OpenGLThread *gl_thread = nullptr;  // 单线程 OpenGL 线程
 		rational time;
 		int divider = 1;
 		PixelFormat maximum_format = PixelFormat::INVALID;

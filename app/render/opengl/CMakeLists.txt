@@ -15,6 +15,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 target_sources(libolive-editor PRIVATE
+        gljob.cpp
+        gljob.h
         openglrenderer.cpp
         openglrenderer.h
+        openglthread.cpp
+        openglthread.h
+        platformglcontext.cpp
+        platformglcontext.h
 )
