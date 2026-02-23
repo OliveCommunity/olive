@@ -27,7 +27,7 @@ jobs:
             qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
             libavcodec-dev libavformat-dev libavfilter-dev libavutil-dev libswscale-dev libswresample-dev \
             libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
-            portaudio19-dev libgl1-mesa-dev libxkbcommon-dev
+            portaudio19-dev libgl1-mesa-dev libxkbcommon-dev libgtest-dev
           # Fix missing iconvert symlink for OpenImageIO
           if [ -f /usr/bin/oiiotool ] && [ ! -f /usr/bin/iconvert ]; then
             sudo ln -s /usr/bin/oiiotool /usr/bin/iconvert
@@ -37,7 +37,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat
+          brew install ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat googletest
           echo "$(brew --prefix qt@6)/bin" >> "$GITHUB_PATH"
           echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@6)" >> "$GITHUB_ENV"
 
@@ -54,35 +54,38 @@ jobs:
           cmake --install OpenTimelineIO/build
           echo "OTIO_LOCATION=${PWD}/otio-install" >> "$GITHUB_ENV"
 
-      - name: Install LLVM (Windows)
+      - name: Setup MSYS2 (Windows)
         if: runner.os == 'Windows'
-        uses: KyleMayes/install-llvm-action@v2
+        uses: msys2/setup-msys2@v2
         with:
-          version: "17.0"
-
-      - name: Install Windows SDK (Windows)
-        if: runner.os == 'Windows'
-        uses: fbactions/setup-winsdk@v1
-        with:
-          winsdk-build-version: 22621
-
-      - name: Install Qt (Windows)
-        if: runner.os == 'Windows'
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: 6.8.0
-          cache: true
-          tools: 'tools_ninja'
-
-      - name: Install dependencies (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          choco install -y ninja
-          $env:VCPKG_ROOT = "C:\vcpkg"
-          & "$env:VCPKG_ROOT\vcpkg.exe" install
-          echo "VCPKG_ROOT=$env:VCPKG_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append
-          echo "CMAKE_TOOLCHAIN_FILE=$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake" | Out-File -FilePath $env:GITHUB_ENV -Append
+          msystem: UCRT64
+          update: true
+          install: >-
+            base-devel
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            git
+            mingw-w64-ucrt-x86_64-ffmpeg
+            mingw-w64-ucrt-x86_64-openimageio
+            mingw-w64-ucrt-x86_64-opencolorio
+            mingw-w64-ucrt-x86_64-openexr
+            mingw-w64-ucrt-x86_64-imath
+            mingw-w64-ucrt-x86_64-expat
+            mingw-w64-ucrt-x86_64-portaudio
+            mingw-w64-ucrt-x86_64-pugixml
+            mingw-w64-ucrt-x86_64-rapidjson
+            mingw-w64-ucrt-x86_64-spdlog
+            mingw-w64-ucrt-x86_64-fmt
+            mingw-w64-ucrt-x86_64-opentimelineio
+            mingw-w64-ucrt-x86_64-gtest
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-declarative
+            mingw-w64-ucrt-x86_64-qt6-multimedia
+            mingw-w64-ucrt-x86_64-qt6-tools
+            mingw-w64-ucrt-x86_64-qt6-svg
+            mingw-w64-ucrt-x86_64-qt6-imageformats
 
       - name: Configure (Linux)
         if: runner.os == 'Linux'
@@ -105,20 +108,12 @@ jobs:
 
       - name: Configure (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: msys2 {0}
         run: |
-          $toolchain = "$env:VCPKG_ROOT\scripts\buildsystems\vcpkg.cmake"
-          $ninja = "$env:ChocolateyInstall\bin\ninja.exe"
-          cmake -S . -B build -G Ninja `
-            -DBUILD_TESTS=ON `
-            -DBUILD_QT6=ON `
-            -DCMAKE_BUILD_TYPE=$env:CMAKE_BUILD_TYPE `
-            -DCMAKE_TOOLCHAIN_FILE=$toolchain `
-            -DCMAKE_MAKE_PROGRAM=$ninja `
-            -DCMAKE_PREFIX_PATH=$env:Qt6_DIR `
-            -DCMAKE_C_COMPILER=clang `
-            -DCMAKE_CXX_COMPILER=clang++ `
-            -DCMAKE_RC_COMPILER=llvm-rc
+          cmake -S . -B build -G Ninja \
+            -DBUILD_TESTS=ON \
+            -DBUILD_QT6=ON \
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
 
       - name: Build
         run: cmake --build build --config ${{ env.CMAKE_BUILD_TYPE }}
@@ -163,6 +158,11 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: ctest --test-dir build --output-on-failure -C ${{ env.CMAKE_BUILD_TYPE }}
 
-      - name: Test (macOS/Windows)
-        if: runner.os != 'Linux'
+      - name: Test (macOS)
+        if: runner.os == 'macOS'
         run: ctest --test-dir build --output-on-failure -C ${{ env.CMAKE_BUILD_TYPE }}
+
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: ctest --test-dir build --output-on-failure -C ${CMAKE_BUILD_TYPE}

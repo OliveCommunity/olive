@@ -169,31 +169,6 @@ endif()
 find_package(OpenGL REQUIRED)
 list(APPEND OLIVE_LIBRARIES OpenGL::GL)
 
-# Link GLEW (for cross-platform OpenGL function loading)
-find_package(GLEW QUIET)
-if (GLEW_FOUND)
-  list(APPEND OLIVE_LIBRARIES GLEW::GLEW)
-  message(STATUS "GLEW found: ${GLEW_VERSION}")
-else()
-  # Fallback: try to find GLEW manually for MSYS2/MinGW
-  find_library(GLEW_LIBRARY NAMES glew32 glew PATHS /ucrt64/lib /mingw64/lib)
-  find_path(GLEW_INCLUDE_DIR GL/glew.h PATHS /ucrt64/include /mingw64/include)
-  if (GLEW_LIBRARY AND GLEW_INCLUDE_DIR)
-    list(APPEND OLIVE_LIBRARIES ${GLEW_LIBRARY})
-    list(APPEND OLIVE_INCLUDE_DIRS ${GLEW_INCLUDE_DIR})
-    message(STATUS "GLEW found manually: ${GLEW_LIBRARY}")
-  else()
-    message(FATAL_ERROR "GLEW not found. Please install GLEW.")
-  endif()
-endif()
-
-# Force include GLEW before any other headers to avoid conflicts
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-  add_compile_options(-include GL/glew.h)
-elseif (MSVC)
-  add_compile_options(/FI"GL/glew.h")
-endif()
-
 # Link OpenColorIO
 find_package(OpenColorIO 2.1.1 CONFIG QUIET)
 if (TARGET OpenColorIO::OpenColorIO)

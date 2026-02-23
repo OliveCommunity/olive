@@ -12,9 +12,6 @@
 #ifndef PLATFORMGLCONTEXT_H
 #define PLATFORMGLCONTEXT_H
 
-// GLEW provides OpenGL function declarations
-#include <GL/glew.h>
-
 #include <QOpenGLContext>
 #include <QSurfaceFormat>
 

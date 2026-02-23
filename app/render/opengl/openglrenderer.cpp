@@ -165,6 +165,7 @@ void OpenGLRenderer::DestroyInternal()
 		}
 		context_ = nullptr;
 		functions_ = nullptr;
+		cached_geometry_.cleanup();
 	}
 }
 
@@ -590,49 +591,31 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob& a_job, Texture *destinatio
 							   destination_params.effective_height());
 
 		// Bind vertex array object
-		QOpenGLVertexArrayObject vao_;
-		vao_.create();
-		vao_.bind();
+		// 确保缓存的VAO/VBO已创建
+		EnsureGeometryCached();
 
-		// Set buffers
-		QOpenGLBuffer vert_vbo_;
-		vert_vbo_.create();
-		vert_vbo_.bind();
-		// If the job has vertex coordinate overrides use them instead of the defaults.
-		if (!job.GetVertexCoordinates().isEmpty()) {
-			Q_ASSERT(job.GetVertexCoordinates().size() == 18);
-			vert_vbo_.allocate(job.GetVertexCoordinates().constData(),
-							   job.GetVertexCoordinates().size() * sizeof(float));
-		} else {
-			vert_vbo_.allocate(blit_vertices.constData(),
-							   blit_vertices.size() * sizeof(GLfloat));
-		}
-		vert_vbo_.release();
+		// 绑定缓存的VAO
+		cached_geometry_.vao.bind();
 
-		QOpenGLBuffer frag_vbo_;
-		frag_vbo_.create();
-		frag_vbo_.bind();
-		frag_vbo_.allocate(blit_texcoords.constData(),
-						   blit_texcoords.size() * sizeof(GLfloat));
-		frag_vbo_.release();
-
-		GLint vertex_location =
-			functions_->glGetAttribLocation(shader, "a_position");
+		// 设置顶点属性指针
+		GLint vertex_location = functions_->glGetAttribLocation(shader, "a_position");
 		if (vertex_location != -1) {
-			vert_vbo_.bind();
+			cached_geometry_.vert_vbo.bind();
 			functions_->glEnableVertexAttribArray(vertex_location);
-			functions_->glVertexAttribPointer(vertex_location, 3, GL_FLOAT,
-											  GL_FALSE, 0, nullptr);
-			vert_vbo_.release();
+			functions_->glVertexAttribPointer(
+				vertex_location, 3, GL_FLOAT, GL_FALSE, 0, nullptr
+			);
+			cached_geometry_.vert_vbo.release();
 		}
 
 		GLint tex_location = functions_->glGetAttribLocation(shader, "a_texcoord");
 		if (tex_location != -1) {
-			frag_vbo_.bind();
+			cached_geometry_.tex_vbo.bind();
 			functions_->glEnableVertexAttribArray(tex_location);
-			functions_->glVertexAttribPointer(tex_location, 2, GL_FLOAT, GL_FALSE,
-											  0, nullptr);
-			frag_vbo_.release();
+			functions_->glVertexAttribPointer(
+				tex_location, 2, GL_FLOAT, GL_FALSE, 0, nullptr
+			);
+			cached_geometry_.tex_vbo.release();
 		}
 
 		// Some shaders optimize through multiple iterations which requires ping-ponging textures
@@ -730,10 +713,7 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob& a_job, Texture *destinatio
 		functions_->glUseProgram(0);
 
 		// Release vertex array object
-		frag_vbo_.destroy();
-		vert_vbo_.destroy();
-		vao_.release();
-		vao_.destroy();
+		cached_geometry_.vao.release();
 	}
 	catch (std::bad_cast e){}
 
@@ -990,5 +970,36 @@ bool OpenGLRenderer::EnsureContextCurrent(const char *caller)
 
 	return true;
 }
+void OpenGLRenderer::EnsureGeometryCached()
+{
+	// 如果已经初始化，直接返回
+	if (cached_geometry_.initialized) {
+		return;
+	}
 
+	// 创建VAO
+	cached_geometry_.vao.create();
+	cached_geometry_.vao.bind();
+
+	// 创建并填充顶点VBO（静态数据）
+	cached_geometry_.vert_vbo.create();
+	cached_geometry_.vert_vbo.bind();
+	cached_geometry_.vert_vbo.allocate(
+		blit_vertices.constData(),
+		blit_vertices.size() * sizeof(GLfloat)
+	);
+	cached_geometry_.vert_vbo.release();
+
+	// 创建并填充纹理坐标VBO（静态数据）
+	cached_geometry_.tex_vbo.create();
+	cached_geometry_.tex_vbo.bind();
+	cached_geometry_.tex_vbo.allocate(
+		blit_texcoords.constData(),
+		blit_texcoords.size() * sizeof(GLfloat)
+	);
+	cached_geometry_.tex_vbo.release();
+
+	cached_geometry_.vao.release();
+	cached_geometry_.initialized = true;
+}
 }

@@ -137,6 +137,26 @@ private:
 	QMap<GLuint, TextureCacheKey> texture_params_;
 
 	static const int kTextureCacheMaxSize;
+
+	// 缓存的VAO/VBO结构体
+	struct CachedGeometry {
+		QOpenGLVertexArrayObject vao;
+		QOpenGLBuffer vert_vbo{QOpenGLBuffer::VertexBuffer};
+		QOpenGLBuffer tex_vbo{QOpenGLBuffer::VertexBuffer};
+		bool initialized{false};
+
+		void cleanup() {
+			if (initialized) {
+				vao.destroy();
+				vert_vbo.destroy();
+				tex_vbo.destroy();
+				initialized = false;
+			}
+		}
+	};
+	CachedGeometry cached_geometry_;
+
+	void EnsureGeometryCached();
 };
 
 }
