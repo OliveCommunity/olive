@@ -29,8 +29,15 @@ jobs:
             libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
             portaudio19-dev libgl1-mesa-dev libxkbcommon-dev libgtest-dev
           # Fix missing iconvert symlink for OpenImageIO
-          if [ -f /usr/bin/oiiotool ] && [ ! -f /usr/bin/iconvert ]; then
-            sudo ln -s /usr/bin/oiiotool /usr/bin/iconvert
+          # Ubuntu 24.04 OIIO package may have tools in different locations
+          if [ ! -f /usr/bin/iconvert ]; then
+            # Find where iconvert is actually installed
+            ICONVERT_PATH=$(dpkg -L libopenimageio-dev 2>/dev/null | grep 'bin/iconvert' | head -1 || true)
+            if [ -n "$ICONVERT_PATH" ] && [ -f "$ICONVERT_PATH" ]; then
+              sudo ln -s "$ICONVERT_PATH" /usr/bin/iconvert
+            elif [ -f /usr/bin/oiiotool ]; then
+              sudo ln -s /usr/bin/oiiotool /usr/bin/iconvert
+            fi
           fi
 
       - name: Install dependencies (macOS)
@@ -115,7 +122,17 @@ jobs:
             -DBUILD_QT6=ON \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
 
-      - name: Build
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: cmake --build build --config ${{ env.CMAKE_BUILD_TYPE }}
+
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        run: cmake --build build --config ${{ env.CMAKE_BUILD_TYPE }}
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
         run: cmake --build build --config ${{ env.CMAKE_BUILD_TYPE }}
 
       - name: Build OpenFX misc plugins (Linux, optional)

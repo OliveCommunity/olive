@@ -23,6 +23,10 @@
 #define NODETRAVERSER_H
 
 #include <QVector2D>
+#include <QMutex>
+#include <atomic>
+#include <ctime>
+#include <thread>
 
 #include "codec/decoder.h"
 #include "common/cancelableobject.h"
@@ -41,6 +45,7 @@ namespace olive
 class NodeTraverser {
 public:
 	NodeTraverser();
+	~NodeTraverser();
 
 	NodeValueTable GenerateTable(const Node *n, const TimeRange &range,
 								 const Node *next_node = nullptr);
@@ -215,7 +220,32 @@ private:
 	LoopMode loop_mode_;
 
 	QHash<const Node *, QHash<TimeRange, NodeValueTable>> value_cache_;
-	QHash<Texture *, TexturePtr> resolved_texture_cache_;
+
+	// Resolved texture cache with LRU eviction
+	struct ResolvedTextureCacheEntry {
+		TexturePtr texture;
+		size_t size_bytes = 0;
+		std::time_t last_access_unix = 0;
+
+		void touch() {
+			last_access_unix = std::time(nullptr);
+		}
+	};
+	QHash<Texture *, ResolvedTextureCacheEntry> resolved_texture_cache_;
+
+	// Static members for global cache management
+	static QMutex texture_cache_mutex_;
+	static std::atomic<int64_t> texture_cache_budget_;
+	static std::atomic<int> texture_cache_instance_count_;
+	static std::atomic<bool> texture_cache_lru_running_;
+	static std::atomic<bool> texture_cache_lru_stop_requested_;
+	static std::thread texture_cache_lru_thread_;
+
+	static void StartTextureCacheLruThread();
+	static void StopTextureCacheLruThread();
+	static void TextureCacheLruWorkerLoop();
+	static size_t CalculateTextureMemorySize(const VideoParams &params);
+	void EvictTextureCacheIfNeeded();
 };
 
 }
