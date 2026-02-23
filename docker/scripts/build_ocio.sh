@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
+
+# This file is part of Oak Video Editor - A fork of original project Olive 
+#
 # Copyright (C) 2022 Olive Team
-# Modifications Copyright (C) 2025 mikesolar
 # SPDX-License-Identifier: GPL-3.0-or-later
-
-
-
-
 
 set -ex
 

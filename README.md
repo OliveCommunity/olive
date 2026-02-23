@@ -1,10 +1,8 @@
 # Oak Video Editor[![Build status](https://github.com/olive-editor/olive/workflows/CI/badge.svg?branch=master)](https://github.com/olive-editor/olive/actions?query=branch%3Amaster)
 
-Oak Video Editor is a free non-linear video editor for Windows, macOS, and Linux.
+Oak Video Editor is a free non-linear video editor for Windows, macOS, and Linux.  It is based on Olive Video Editor.
+Unfortunately, Olive has had no new code updates for over 7 months.  Let's continue on with the development of this great app together!
 
-Unfortunately, the original author has not submitted code updates for over 7 months, and no public contact information (email or otherwise) is available to reach them directly.
-
-This project is a community-maintained fork of Olive Video Editor.
 ![screen](https://olivevideoeditor.org/img/020-2.png)
 
 
@@ -29,3 +27,13 @@ The original author compiled following binaries:
 - Integrate persistent message handling with the app UI (currently TODO placeholders). `app/pluginSupport/OlivePluginInstance.cpp`
 - Decide and enforce project extent/fielding behavior instead of the current placeholder comment. `app/pluginSupport/OlivePluginInstance.cpp`
 - Add OpenGL texture render suite support or explicitly disable it (currently `loadTexture` returns null). `app/pluginSupport/OliveClip.h`
+
+## Fork Notice 
+This project is a community-maintained fork of Olive Video Editor.
+Original copyright (C) MattKC and Olive Team
+
+Modifications and new contributions:
+Copyright (C) mikesolar and contributors.
+
+## License
+This project is licensed under [GPLv3](/LICENSE)

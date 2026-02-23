@@ -1,3 +1,5 @@
+# This file is part of Oak Video Editor - A fork of original project Olive 
+#
 # Olive - Non-Linear Video Editor
 # Copyright (C) 2023 Olive Studios LLC
 #

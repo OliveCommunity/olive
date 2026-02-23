@@ -1,3 +1,6 @@
+# This file is part of Oak Video Editor - A fork of original project Olive 
+#
+
 # - Find PortAudio includes and libraries
 #
 #   PORTAUDIO_FOUND        - True if PORTAUDIO_INCLUDE_DIR & PORTAUDIO_LIBRARY

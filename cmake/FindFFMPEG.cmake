@@ -1,3 +1,6 @@
+#	This file is part of Oak Video Editor - A fork of original project Olive 
+#
+
 #[==[
 Provides the following variables:
 

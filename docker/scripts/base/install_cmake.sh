@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
+
+# This file is part of Oak Video Editor - A fork of original project Olive 
+#
 # Copyright (c) Contributors to the aswf-docker Project. All rights reserved.
-# Modifications Copyright (C) 2025 mikesolar
 # SPDX-License-Identifier: Apache-2.0
-
-
-
-
 
 set -ex
 

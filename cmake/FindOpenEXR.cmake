@@ -1,3 +1,6 @@
+# This file is part of Oak Video Editor - A fork of original project Olive 
+#
+
 # Module to find OpenEXR and Imath.
 #
 # I'm afraid this is a mess, due to needing to support a wide range of

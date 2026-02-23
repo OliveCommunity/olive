@@ -1,3 +1,6 @@
+#	This file is part of Oak Video Editor - A fork of original project Olive 
+#
+
 function(enable_sanitizers project_name)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES ".*Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     set(SANITIZERS "")
