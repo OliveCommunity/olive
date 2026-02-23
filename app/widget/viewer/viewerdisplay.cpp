@@ -1419,17 +1419,26 @@ void ViewerDisplayWidget::UpdateFromQueue()
 	int64_t t = timer_.GetTimestampNow();
 
 	rational time = Timecode::timestamp_to_time(t, playback_timebase_);
+	
+	qDebug() << "UpdateFromQueue: queue_size=" << queue_.size() << "time=" << time.toDouble();
 
 	bool popped = false;
 
 	if (queue_.empty()) {
 		queue_starved_ = true;
 		emit QueueStarved();
+		qDebug() << "UpdateFromQueue: queue is empty!";
 	} else {
 		while (!queue_.empty()) {
 			const ViewerPlaybackFrame &pf = queue_.front();
+			
+			// FIX: Use approximate comparison for floating point timestamps
+			// The difference should be within half a frame interval
+			rational time_diff = pf.timestamp - time;
+			if (time_diff < 0) time_diff = -time_diff;  // abs
+			bool time_matches = time_diff < rational(1, 2) * playback_timebase_;
 
-			if (pf.timestamp == time) {
+			if (time_matches) {
 				// Frame was in queue, no need to decode anything
 				SetImage(pf.frame);
 

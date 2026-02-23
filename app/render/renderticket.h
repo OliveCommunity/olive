@@ -108,6 +108,12 @@ public:
    */
 	void AddWatcher(RenderTicketWatcher *watcher, bool lock = true);
 
+	/**
+   * @brief 移除观察者（线程安全）
+   * 当 watcher 被销毁时调用
+   */
+	void RemoveWatcher(RenderTicketWatcher *watcher);
+
 private:
 	void FinishInternal(bool has_result, QVariant result);
 	void NotifyWatchers();
@@ -132,11 +138,11 @@ private:
 
 using RenderTicketPtr = std::shared_ptr<RenderTicket>;
 
-// RenderTicketWatcher 继承 QObject 用于与 Qt 信号槽系统集成
 class RenderTicketWatcher : public QObject {
 	Q_OBJECT
 public:
 	explicit RenderTicketWatcher(QObject *parent = nullptr);
+	~RenderTicketWatcher();
 
 	RenderTicketPtr GetTicket() const
 	{

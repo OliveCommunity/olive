@@ -206,6 +206,8 @@ void OpenGLThread::run()
         return;
     }
     renderer_->PostInit();
+    
+    qDebug() << "OpenGLThread: GL thread started successfully";
 
     QMutexLocker locker(&mutex_);
     
@@ -218,7 +220,13 @@ void OpenGLThread::run()
             locker.unlock();
             
             if (!job->IsCancelled()) {
-                job->Execute(renderer_);
+                try {
+                    job->Execute(renderer_);
+                } catch (const std::exception& e) {
+                    qCritical() << "OpenGLThread: Exception in job execution:" << e.what();
+                } catch (...) {
+                    qCritical() << "OpenGLThread: Unknown exception in job execution";
+                }
             }
             job->MarkCompleted();
             
@@ -247,6 +255,7 @@ void OpenGLThread::run()
     }
 
     s_is_gl_thread = false;
+    qDebug() << "OpenGLThread: GL thread stopped";
 }
 
 } // namespace olive

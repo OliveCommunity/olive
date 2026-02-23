@@ -21,6 +21,7 @@
 
 #include "renderprocessor.h"
 
+#include <QDateTime>
 #include <QOpenGLContext>
 #include <QVector2D>
 #include <QVector3D>
@@ -205,9 +206,13 @@ void RenderProcessor::Run()
 	}
 
 	if (IsCancelled()) {
+		qDebug() << "RenderProcessor: Task cancelled before start";
 		ticket_->Finish();
 		return;
 	}
+	
+	qDebug() << "RenderProcessor: Starting" << (type == RenderManager::kTypeVideo ? "video" : "audio") << "render";
+	qint64 render_start = QDateTime::currentMSecsSinceEpoch();
 
 	switch (type) {
 	case RenderManager::kTypeVideo: {
@@ -220,8 +225,12 @@ void RenderProcessor::Run()
 		}
 
 		TexturePtr texture = GenerateTexture(time, frame_length);
+		
+		qint64 texture_gen_time = QDateTime::currentMSecsSinceEpoch() - render_start;
+		qDebug() << "RenderProcessor: Generated texture:" << (texture ? "valid" : "null") << "took" << texture_gen_time << "ms";
 
 		if (!gl_thread_) {
+			qWarning() << "RenderProcessor: gl_thread is null, finishing without result";
 			ticket_->Finish();
 		} else {
 			if (GetCacheVideoParams().interlacing() !=
@@ -248,21 +257,55 @@ void RenderProcessor::Run()
 				FramePtr frame;
 				QString cache = ticket_->property("cache").toString();
 				RenderManager::ReturnType return_type =
-					RenderManager::ReturnType(
-						ticket_->property("return").toInt());
+						RenderManager::ReturnType(
+							ticket_->property("return").toInt());
 
-				if (return_type == RenderManager::kFrame || !cache.isEmpty()) {
-					// Convert to CPU frame
+				qDebug() << "RenderProcessor: return_type=" << return_type 
+						 << "cache empty=" << cache.isEmpty();
+
+				// 根据 return_type 决定返回什么
+				if (return_type == RenderManager::kNull) {
+					// kNull 模式：只渲染，不返回结果（用于预渲染/缓存）
+					qDebug() << "RenderProcessor: kNull branch, finishing without result";
+					ticket_->Finish();
+				} else if (return_type == RenderManager::kTexture) {
+					// 播放模式：返回 GPU 纹理
+					qDebug() << "RenderProcessor: kTexture branch, texture valid:" << (texture ? "yes" : "no");
+					
+					if (!texture) {
+						qDebug() << "RenderProcessor: Creating fallback texture";
+						texture = gl_thread_->CreateTexture(GetCacheVideoParams());
+						gl_thread_->ClearDestination(texture, 0, 0, 0, 0);
+						qDebug() << "RenderProcessor: Fallback texture created:" << (texture ? "yes" : "no");
+					}
+
+					if (texture) {
+						qDebug() << "RenderProcessor: Flushing and finishing with texture";
+						gl_thread_->Flush();
+						qint64 total_time = QDateTime::currentMSecsSinceEpoch() - render_start;
+						qDebug() << "RenderProcessor: Flush completed, total time:" << total_time << "ms";
+						ticket_->Finish(QVariant::fromValue(texture));
+					} else {
+						qWarning() << "RenderProcessor: No texture available, finishing without result";
+						ticket_->Finish();
+					}
+					
+					// 注意：如果是 kTexture 模式，即使 cache 不为空，也不在这里处理缓存
+					// 缓存应该由单独的缓存系统处理
+				} else {  // kFrame
+					// kFrame 模式：返回 CPU 帧
+					qDebug() << "RenderProcessor: kFrame branch, generating CPU frame";
 					frame = GenerateFrame(texture, time);
+					qDebug() << "RenderProcessor: CPU frame generated:" << (frame ? "yes" : "no");
 
 					// Save to cache if requested
-					if (!cache.isEmpty()) {
+					if (!cache.isEmpty() && frame) {
 						rational timebase =
 							ticket_->property("cachetimebase").value<rational>();
 						QUuid uuid =
 							ticket_->property("cacheid").value<QUuid>();
 						bool cache_result = false;
-						if (!uuid.isNull() && frame) {
+						if (!uuid.isNull()) {
 							rational tb = timebase;
 							if (tb.isNull() || tb.isNaN()) {
 								tb = GetCacheVideoParams().time_base();
@@ -291,19 +334,8 @@ void RenderProcessor::Run()
 						}
 						ticket_->setProperty("cached", cache_result);
 					}
-				}
-
-				if (return_type == RenderManager::kTexture) {
-					// Return GPU texture
-					if (!texture) {
-						texture = gl_thread_->CreateTexture(GetCacheVideoParams());
-						gl_thread_->ClearDestination(texture, 0, 0, 0, 0);
-					}
-
-					gl_thread_->Flush();
-
-					ticket_->Finish(QVariant::fromValue(texture));
-				} else {
+					
+					qDebug() << "RenderProcessor: Finishing with frame";
 					ticket_->Finish(QVariant::fromValue(frame));
 				}
 			}

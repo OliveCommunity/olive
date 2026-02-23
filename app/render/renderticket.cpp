@@ -45,7 +45,7 @@ void RenderTicket::Start()
 	is_running_ = true;
 	has_result_ = false;
 	result_.clear();
-	watchers_.clear(); // 清空观察者列表
+	// 不清空 watchers，因为 watcher 可能已在 Start 之前添加（如 RenderTicketWatcher::SetTicket）
 }
 
 void RenderTicket::Finish()
@@ -127,20 +127,26 @@ void RenderTicket::AddWatcher(RenderTicketWatcher *watcher, bool lock)
 {
 	if (lock) {
 		QMutexLocker locker(&lock_);
-		if (!is_running_) {
-			// 如果已经完成，立即通知
+		if (!is_running_ && finish_count_ > 0) {
+			// 如果已经完成（已启动过并且完成了），立即通知
 			//locker.unlock();
 			watcher->NotifyFinished();
 		} else {
 			watchers_.append(watcher);
 		}
 	} else {
-		if (!is_running_) {
+		if (!is_running_ && finish_count_ > 0) {
 			watcher->NotifyFinished();
 		} else {
 			watchers_.append(watcher);
 		}
 	}
+}
+
+void RenderTicket::RemoveWatcher(RenderTicketWatcher *watcher)
+{
+	QMutexLocker locker(&lock_);
+	watchers_.removeOne(watcher);
 }
 
 void RenderTicket::FinishInternal(bool has_result, QVariant result)
@@ -179,6 +185,13 @@ RenderTicketWatcher::RenderTicketWatcher(QObject *parent)
 {
 }
 
+RenderTicketWatcher::~RenderTicketWatcher()
+{
+	if (ticket_) {
+		ticket_->RemoveWatcher(this);
+	}
+}
+
 void RenderTicketWatcher::SetTicket(RenderTicketPtr ticket)
 {
 	if (ticket_) {
@@ -200,7 +213,7 @@ void RenderTicketWatcher::SetTicket(RenderTicketPtr ticket)
 
 	if (!ticket_->IsRunning(false) && ticket_->GetFinishCount(false) > 0) {
 		// Ticket has already finished before
-		// locker.unlock();
+		locker.unlock();
 		NotifyFinished();
 	}
 }
