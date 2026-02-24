@@ -150,7 +150,6 @@ public:
 		kDummy
 	};
 
-	friend class RenderManager;
 	static void CreateInstance()
 	{
 		instance_ = new RenderManager();
@@ -181,7 +180,7 @@ public:
 		RenderVideoParams(Node *n, const VideoParams &vparam,
 						  const AudioParams &aparam, const rational &t,
 						  ColorManager *colorman, RenderMode::Mode m,
-						  RenderPriority priority)
+						  RenderPriority prio)
 		{
 			node = n;
 			video_params = vparam;
@@ -196,7 +195,7 @@ public:
 			force_channel_count = 0;
 			mode = m;
 			multicam = nullptr;
-			this->priority = priority;
+			priority = prio;
 		}
 
 		void AddCache(FrameHashCache *cache)

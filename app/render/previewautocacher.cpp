@@ -58,7 +58,7 @@ PreviewAutoCacher::PreviewAutoCacher(QObject *parent)
 	delayed_requeue_timer_.setInterval(OLIVE_CONFIG("AutoCacheDelay").toInt());
 	delayed_requeue_timer_.setSingleShot(true);
 	connect(&delayed_requeue_timer_, &QTimer::timeout, this,
-			&PreviewAutoCacher::TryRender);
+			[this]() { TryRender(false); });
 
 	// Catch when a conform is ready
 	connect(ConformManager::instance(), &ConformManager::ConformReady, this,

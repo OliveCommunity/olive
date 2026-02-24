@@ -147,7 +147,7 @@ size_t RenderManager::GetLightestThreadIndex()
 	size_t best_index = 0;
 	size_t min_size = SIZE_MAX;
 
-	for (size_t i = 0; i < video_threads_.size(); ++i) {
+	for (size_t i = 0; i < static_cast<size_t>(video_threads_.size()); ++i) {
 		size_t size = video_threads_[i]->QueueSize();
 		if (size < min_size) {
 			min_size = size;

@@ -65,6 +65,7 @@ else()
     -Wextra
     -Wno-unused-parameter
     -Wshadow
+    -Wno-deprecated-declarations
     -DOFX_SUPPORTS_OPENGLRENDER
 
   )
