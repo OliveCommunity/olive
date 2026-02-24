@@ -19,7 +19,6 @@
 cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
 
 project(olive-editor VERSION 0.2.0 LANGUAGES CXX)
-option(BUILD_QT6 "Build with Qt 6 over 5 (experimental)" ON)
 option(BUILD_DOXYGEN "Build Doxygen documentation" OFF)
 option(BUILD_TESTS "Build unit tests" OFF)
 option(USE_WERROR "Error on compile warning" OFF)
@@ -210,7 +209,7 @@ list(APPEND OLIVE_LIBRARIES olivecore)
 list(APPEND OLIVE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/ext/core/include)
 
 
-# Link Qt
+# Link Qt 6 (Qt 5 is no longer supported)
 set(QT_LIBRARIES
   Core
   Gui
@@ -222,53 +221,27 @@ set(QT_LIBRARIES
 if (UNIX AND NOT APPLE)
   list(APPEND QT_LIBRARIES DBus)
 endif()
-if (BUILD_QT6)
-  set(QT_NAME Qt6)
-else()
-  set(QT_NAME Qt5)
-endif()
-find_package(QT
-  NAMES
-    ${QT_NAME}
-  REQUIRED
+find_package(Qt6 REQUIRED
   COMPONENTS
     ${QT_LIBRARIES}
+    OpenGLWidgets
   OPTIONAL_COMPONENTS
     Network
 )
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED
-  COMPONENTS
-    ${QT_LIBRARIES}
-  OPTIONAL_COMPONENTS
-    Network
-)
-if (NOT Qt${QT_VERSION_MAJOR}Network_FOUND)
-  message("   Qt${QT_VERSION_MAJOR}::Network module not found, crash reporting will be disabled.")
+if (NOT Qt6Network_FOUND)
+  message("   Qt6::Network module not found, crash reporting will be disabled.")
 endif()
 list(APPEND OLIVE_LIBRARIES
-  Qt${QT_VERSION_MAJOR}::Core
-  Qt${QT_VERSION_MAJOR}::Gui
-  Qt${QT_VERSION_MAJOR}::Widgets
-  Qt${QT_VERSION_MAJOR}::OpenGL
-  Qt${QT_VERSION_MAJOR}::Concurrent
+  Qt6::Core
+  Qt6::Gui
+  Qt6::Widgets
+  Qt6::OpenGL
+  Qt6::OpenGLWidgets
+  Qt6::Concurrent
 )
 
-if (${QT_VERSION_MAJOR} EQUAL "6")
-  find_package(Qt${QT_VERSION_MAJOR}
-    REQUIRED
-      OpenGLWidgets
-  )
-
-  list(APPEND OLIVE_LIBRARIES
-    Qt${QT_VERSION_MAJOR}::OpenGLWidgets
-  )
-
-  # Link KDDockWidgets
-  #find_package(KDDockWidgets-qt6 CONFIG REQUIRED)
-else()
-  # Link KDDockWidgets
-  #find_package(KDDockWidgets CONFIG REQUIRED)
-endif()
+# Link KDDockWidgets
+#find_package(KDDockWidgets-qt6 CONFIG REQUIRED)
 
 list(APPEND OLIVE_LIBRARIES
   KDAB::kddockwidgets
@@ -278,7 +251,7 @@ list(APPEND OLIVE_LIBRARIES
 list(APPEND OLIVE_LIBRARIES OfxHost)
 
 # Link FFmpeg
-find_package(FFMPEG REQUIRED
+find_package(FFMPEG 8.0 REQUIRED
   COMPONENTS
   avutil
   avcodec
@@ -350,7 +323,7 @@ if (WIN32)
 elseif (APPLE)
   list(APPEND OLIVE_LIBRARIES "-framework IOKit")
 elseif(UNIX)
-  list(APPEND OLIVE_LIBRARIES Qt${QT_VERSION_MAJOR}::DBus)
+  list(APPEND OLIVE_LIBRARIES Qt6::DBus)
 endif()
 
 # Generate Git hash

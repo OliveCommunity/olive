@@ -127,7 +127,7 @@ if (WIN32)
     # DLLs to copy from MSYS2
     set(_msys2_dlls
       # FFmpeg
-      avcodec-61.dll avformat-61.dll avutil-59.dll avfilter-10.dll
+      avcodec-63.dll avformat-63.dll avutil-59.dll avfilter-12.dll
       swscale-8.dll swresample-5.dll
       # OpenImageIO
       OpenImageIO.dll OpenImageIO_Util.dll
