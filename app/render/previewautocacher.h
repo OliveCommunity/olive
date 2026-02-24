@@ -116,11 +116,11 @@ signals:
 	void SignalCacheProxyTaskProgress(double d);
 
 private:
-	void TryRender();
+	void TryRender(bool isPlaying = false);
 
 	RenderTicketWatcher *RenderFrame(Node *node, ViewerOutput *context,
 									 const rational &time, PlaybackCache *cache,
-									 bool dry);
+									 bool dry, bool isPlaying=false);
 
 	RenderTicketPtr RenderAudio(Node *node, ViewerOutput *context,
 								const TimeRange &range, PlaybackCache *cache);

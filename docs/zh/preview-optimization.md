@@ -6,7 +6,7 @@
 
 ### 1. 音频预加载缓冲区优化
 
-**当前问题**：`kAudioPlaybackInterval = 1/4 秒`，只预加载 2 个缓冲区（500ms），在网络延迟或高负载时可能出现音频断续。
+**当前问题**：`kAudioPlaybackInterval = 1/4 秒`，只预加载 2 个缓冲区（500ms），在高负载时可能出现音频断续。
 
 **文件位置**：`app/widget/viewer/viewer.h` (第 65 行)
 

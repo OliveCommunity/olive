@@ -93,7 +93,7 @@ RenderTicketPtr PreviewAutoCacher::GetSingleFrame(Node *n, ViewerOutput *viewer,
 
 	// Queue it and try to render
 	single_frame_render_ = sfr;
-	TryRender();
+	TryRender(true);
 
 	return sfr;
 }
@@ -451,7 +451,7 @@ void PreviewAutoCacher::SetPlayhead(const rational &playhead)
 		TimeRange(playhead - OLIVE_CONFIG("DiskCacheBehind").value<rational>(),
 				  playhead + OLIVE_CONFIG("DiskCacheAhead").value<rational>());
 
-	TryRender();
+	TryRender(true);
 }
 
 template <typename T> void CancelTasks(const T &task_list, bool and_wait)
@@ -502,7 +502,7 @@ void PreviewAutoCacher::SetThumbnailsPaused(bool e)
 	}
 }
 
-void PreviewAutoCacher::TryRender()
+void PreviewAutoCacher::TryRender(bool isPlaying)
 {
 	delayed_requeue_timer_.stop();
 
@@ -537,7 +537,7 @@ void PreviewAutoCacher::TryRender()
 			RenderTicketWatcher *watcher = RenderFrame(
 				copy, QtUtils::ValueToPtr<ViewerOutput>(t->property("viewer")),
 				t->property("time").value<rational>(), nullptr,
-				dry);
+				dry, isPlaying);
 			video_immediate_passthroughs_[watcher].append(t);
 		} else {
 			qWarning() << "Failed to find copied node for SFR ticket, requeueing";
@@ -577,7 +577,7 @@ void PreviewAutoCacher::TryRender()
 					rational t;
 					while (running_video_tasks_.size() < max_tasks &&
 						   d.iterator.GetNext(&t)) {
-						RenderFrame(copy, d.context, t, d.cache, false);
+						RenderFrame(copy, d.context, t, d.cache, false, isPlaying);
 
 						emit SignalCacheProxyTaskProgress(
 							double(d.iterator.frame_index()) /
@@ -650,7 +650,7 @@ RenderTicketWatcher *PreviewAutoCacher::RenderFrame(Node *node,
 													ViewerOutput *context,
 													const rational &time,
 													PlaybackCache *cache,
-													bool dry)
+													bool dry, bool isPlaying)
 {
 	RenderTicketWatcher *watcher = new RenderTicketWatcher();
 	watcher->setProperty("job",
@@ -661,10 +661,11 @@ RenderTicketWatcher *PreviewAutoCacher::RenderFrame(Node *node,
 			&PreviewAutoCacher::VideoRendered);
 
 	running_video_tasks_.append(watcher);
-
+	RenderPriority priority = isPlaying ? RenderPriority::kPlayback
+										  : RenderPriority::kCache;
 	RenderManager::RenderVideoParams rvp(node, context->GetVideoParams(),
 										 context->GetAudioParams(), time,
-										 copied_color_manager_, RenderMode::kOffline, RenderPriority::kCache);
+										 copied_color_manager_, RenderMode::kOffline, priority);
 
 	if (FrameHashCache *frame_cache = dynamic_cast<FrameHashCache *>(cache)) {
 		if (ThumbnailCache *wave_cache =

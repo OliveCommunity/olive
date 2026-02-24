@@ -1105,7 +1105,12 @@ void ViewerWidget::PlayInternal(int speed, bool in_to_out_only)
 		connect(AudioManager::instance(), &AudioManager::OutputNotify, this,
 				&ViewerWidget::QueueNextAudioBuffer);
 
-		static const int prequeue_count = 2;
+		// 根据播放速度动态调整预加载数量
+		static const int kMinAudioPrequeue = 4;  // 正常速度
+		static const int kMaxAudioPrequeue = 8;  // 高速播放时
+
+		// 在 PlayInternal() 中：
+		int prequeue_count = (playback_speed_ > 1) ? kMaxAudioPrequeue : kMinAudioPrequeue;
 		prequeuing_audio_ = prequeue_count; // Queue two buffers ahead of time
 		audio_playback_queue_time_ = GetConnectedNode()->GetPlayhead();
 		for (int i = 0; i < prequeue_count; i++) {
