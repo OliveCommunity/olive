@@ -89,13 +89,47 @@ void olive::plugin::loadPlugins(QString path)
 	AddPluginPath(cache, QDir(app_dir).filePath("../share/olive/ofx/Plugins"));
 	AddPluginPath(cache, QDir(app_dir).filePath("../lib/olive/ofx/Plugins"));
 
+#ifdef Q_OS_WIN
+	// Windows 标准 OFX 插件路径
+	// 注意: OFX插件必须是 .ofx.bundle 目录格式，而不是单独的 .ofx 文件
+	// 正确格式: PluginName.ofx.bundle/Contents/win64/PluginName.ofx
+	AddPluginPath(cache, "C:/Program Files/Common Files/OFX/Plugins");
+	// 也检查标准OFX路径下的bundle目录
+	QDir standard_ofx_dir("C:/Program Files/Common Files/OFX/Plugins");
+	if (standard_ofx_dir.exists()) {
+		qDebug() << "Scanning standard OFX plugin path:" << standard_ofx_dir.absolutePath();
+		qDebug() << "Note: OFX plugins must be in .ofx.bundle format, not single .ofx files";
+		for (const QString &entry : standard_ofx_dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+			qDebug() << "  Found directory:" << entry;
+			if (entry.endsWith(".ofx.bundle")) {
+				qDebug() << "    -> Valid OFX bundle found:" << entry;
+			}
+		}
+	} else {
+		qWarning() << "Standard OFX plugin path does not exist:" << standard_ofx_dir.absolutePath();
+	}
+#endif
+
 	AddPluginPathsFromEnv(cache, "OLIVE_OFX_PLUGIN_PATH");
 	AddPluginPathsFromEnv(cache, "OLIVE_PLUGIN_PATH");
 
 	if (!path.isEmpty()) {
 		AddPluginPath(cache, path, true);
 	}
+	
+	qDebug() << "Scanning OFX plugin files...";
 	cache->scanPluginFiles();
+	
+	// Log loaded plugins
+	int plugin_count = 0;
+	for (auto plugin : cache->getPlugins()) {
+		auto *image_effect = dynamic_cast<OFX::Host::ImageEffect::ImageEffectPlugin *>(plugin);
+		if (image_effect) {
+			qDebug() << "Loaded OFX plugin:" << QString::fromStdString(image_effect->getIdentifier());
+			plugin_count++;
+		}
+	}
+	qDebug() << "Total OFX plugins loaded:" << plugin_count;
 }
 OliveHost::~OliveHost()
 {

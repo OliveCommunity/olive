@@ -226,17 +226,8 @@ OfxStatus OlivePluginInstance::setPersistentMessage(const char *type, const char
 
 	auto update_ui = [this, error_type, message]() {
 		persistentErrors_.append({ error_type, message });
-		switch (error_type) {
-		case ErrorType::Error:
-			QMessageBox::critical(nullptr, "", message);
-			break;
-		case ErrorType::Warning:
-			QMessageBox::warning(nullptr, "", message);
-			break;
-		case ErrorType::Message:
-			QMessageBox::information(nullptr, "", message);
-			break;
-		}
+		// Error is now shown as a red dot indicator on the node
+		// User can hover over the dot to see the error message
 		if (node_) {
 			emit node_->MessageCountChanged();
 		}

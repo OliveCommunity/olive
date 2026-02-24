@@ -621,6 +621,17 @@ bool Core::AddOpenProjectFromTask(Task *task, bool add_to_recents)
 			AddOpenProject(project, add_to_recents);
 			main_window_->LoadLayout(load_task->GetLoadedLayout());
 
+			// Show missing plugins warning
+			const QStringList &missing_plugins = load_task->GetMissingPlugins();
+			if (!missing_plugins.isEmpty()) {
+				QString plugin_list = missing_plugins.join("\n• ");
+				QMessageBox::warning(main_window_,
+					tr("Missing Plugins"),
+					tr("The following plugins were used in this project but are not available:\n\n• %1\n\n"
+					   "These nodes have been skipped. The project may not render correctly.")
+						.arg(plugin_list));
+			}
+
 			return true;
 		} else {
 			delete project;

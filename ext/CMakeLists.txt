@@ -20,4 +20,5 @@ add_subdirectory(core EXCLUDE_FROM_ALL)
 
 set(KDDockWidgets_STATIC ON CACHE INTERNAL "Force KDDockWidgets to build statically")
 set(KDDockWidgets_QT6 ON CACHE INTERNAL "Use Qt6 for KDDockWidgets")
+set(KDDockWidgets_FRONTENDS "qtwidgets" CACHE INTERNAL "Only build QtWidgets frontend, not QtQuick")
 add_subdirectory(KDDockWidgets EXCLUDE_FROM_ALL)

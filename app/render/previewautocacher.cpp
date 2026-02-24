@@ -248,9 +248,6 @@ void PreviewAutoCacher::AudioRendered()
 void PreviewAutoCacher::VideoRendered()
 {
 	RenderTicketWatcher *watcher = static_cast<RenderTicketWatcher *>(sender());
-	qDebug() << "PreviewAutoCacher::VideoRendered: watcher=" << watcher 
-			 << "has_result=" << watcher->HasResult()
-			 << "passthroughs_count=" << video_immediate_passthroughs_.value(watcher).size();
 
 	const QStringList bad_cache_names =
 		watcher->GetTicket()->property("badcache").toStringList();
@@ -527,13 +524,11 @@ void PreviewAutoCacher::TryRender(bool isPlaying)
 
 		// Check if already caching this
 		Node *n = QtUtils::ValueToPtr<Node>(t->property("node"));
-		qDebug() << "PreviewAutoCacher::TryRender: single_frame_render node=" << n;
 		Node *copy = copier_->GetCopy(n);
-		qDebug() << "PreviewAutoCacher::TryRender: node copy=" << copy;
 
 		if (copy) {
 			bool dry = t->property("dry").toBool();
-			qDebug() << "PreviewAutoCacher::TryRender: Rendering with dry=" << dry;
+
 			RenderTicketWatcher *watcher = RenderFrame(
 				copy, QtUtils::ValueToPtr<ViewerOutput>(t->property("viewer")),
 				t->property("time").value<rational>(), nullptr,
@@ -690,7 +685,6 @@ RenderTicketWatcher *PreviewAutoCacher::RenderFrame(Node *node,
 	// dry=false means cache rendering (write to cache)
 	// But both need to return a result for the viewer to display
 	rvp.return_type = RenderManager::kTexture;
-	qDebug() << "PreviewAutoCacher::RenderFrame: dry=" << dry << "return_type set to kTexture (was:" << (dry ? "kNull" : "kTexture") << ")";
 
 	// Allow using cached images for this render job
 	rvp.use_cache = true;

@@ -442,30 +442,37 @@ void NodeViewItem::paint(QPainter *painter,
 			olive_instance ? olive_instance->persistentMessageCount() : 0;
 
 		if (message_count > 0) {
-			QString badge_text = QString::number(message_count);
-			QFont badge_font = painter->font();
-			badge_font.setPointSizeF(badge_font.pointSizeF() * 0.7);
-			painter->setFont(badge_font);
-
-			QFontMetrics badge_metrics(badge_font);
-			int text_width = badge_metrics.horizontalAdvance(badge_text);
-			int text_height = badge_metrics.height();
-			int pad = text_height / 3;
-			int badge_width = qMax(text_width + pad * 2, text_height + pad);
-			int badge_height = text_height + pad;
-
-			QRectF badge_rect(
-				single_unit_rect.right() - badge_width - 4,
+			// Draw red dot indicator in top-left corner
+			int dot_size = 8;
+			QRectF dot_rect(
+				single_unit_rect.left() + 4,
 				single_unit_rect.top() + 4,
-				badge_width, badge_height);
-
+				dot_size, dot_size);
+			
 			painter->setPen(Qt::NoPen);
 			painter->setBrush(QColor(220, 50, 47));
-			painter->drawRoundedRect(badge_rect, badge_height / 2,
-									 badge_height / 2);
-
-			painter->setPen(Qt::white);
-			painter->drawText(badge_rect, Qt::AlignCenter, badge_text);
+			painter->drawEllipse(dot_rect);
+			
+			// Update tooltip with error messages
+			QStringList error_lines;
+			for (const auto &msg : olive_instance->persistentMessages()) {
+				QString prefix;
+				switch (msg.type) {
+				case plugin::ErrorType::Error:
+					prefix = tr("Error");
+					break;
+				case plugin::ErrorType::Warning:
+					prefix = tr("Warning");
+					break;
+				case plugin::ErrorType::Message:
+					prefix = tr("Message");
+					break;
+				}
+				error_lines.append(QStringLiteral("%1: %2").arg(prefix, msg.message));
+			}
+			setToolTip(error_lines.join("\n"));
+		} else {
+			setToolTip("");
 		}
 	}
 

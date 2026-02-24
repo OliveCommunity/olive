@@ -84,6 +84,8 @@ public:
 		QVector<Node *> nodes;
 
 		Node::OutputConnections promised_connections;
+
+		QStringList missing_plugins;
 	};
 
 	class Result {

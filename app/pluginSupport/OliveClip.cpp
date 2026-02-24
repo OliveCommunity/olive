@@ -572,15 +572,16 @@ copy_pixels:
 }
 
 void olive::plugin::OliveClipInstance::setOutputTexture(TexturePtr texture,
-														OfxTime time)
+													OfxTime time)
 {
-#ifdef OFX_SUPPORTS_OPENGLRENDER
 	if (!texture) {
 		return;
 	}
+	// Always update params from texture for CPU rendering path
+	this->params_ = texture->params();
+#ifdef OFX_SUPPORTS_OPENGLRENDER
 	output_textures_.insert(time, texture);
 #else
-	(void)texture;
 	(void)time;
 #endif
 }

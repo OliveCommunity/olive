@@ -79,6 +79,7 @@ bool ProjectLoadTask::Run()
 
 	if (result == ProjectSerializer::kSuccess) {
 		project_->moveToThread(qApp->thread());
+		SetMissingPlugins(result.GetLoadData().missing_plugins);
 		return true;
 	} else {
 		delete project_;

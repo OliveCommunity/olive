@@ -122,6 +122,7 @@ ProjectSerializer220403::Load(Project *project, QXmlStreamReader *reader,
 								if (!node) {
 									qWarning()
 										<< "Failed to find node with ID" << id;
+									load_data.missing_plugins.append(id);
 									reader->skipCurrentElement();
 								} else {
 									LoadNode(node, xml_node_data, reader);

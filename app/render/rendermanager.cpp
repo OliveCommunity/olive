@@ -160,8 +160,6 @@ size_t RenderManager::GetLightestThreadIndex()
 
 RenderTicketPtr RenderManager::RenderFrame(const RenderVideoParams &params)
 {
-	qDebug() << "RenderManager::RenderFrame: return_type=" << params.return_type 
-			 << "(kNull=" << ReturnType::kNull << ", kTexture=" << ReturnType::kTexture << ", kFrame=" << ReturnType::kFrame << ")";
 
 	// Create ticket
 	RenderTicketPtr ticket = std::make_shared<RenderTicket>();
@@ -192,12 +190,10 @@ RenderTicketPtr RenderManager::RenderFrame(const RenderVideoParams &params)
 
 	ticket->setProperty("priority", QVariant::fromValue(params.priority));
 	if (params.return_type == ReturnType::kNull) {
-		qDebug() << "RenderManager::RenderFrame: Using dry_run_thread";
 		dry_run_thread_->AddTicket(ticket);
 	} else {
 		// 使用工作窃取策略：选择当前最空闲的线程
 		RenderThread *thread = SelectBestThread();
-		qDebug() << "RenderManager::RenderFrame: Using video thread" << thread;
 		thread->AddTicket(ticket);
 	}
 

@@ -101,6 +101,17 @@ static AVPixelFormat GetOfxAVPixelFormat(const OFX::Host::ImageEffect::Image &im
 	return pix_fmt;
 }
 
+// 辅助函数：解包可能嵌套的 QVariant
+// 当 NodeValue 使用 QVariant 构造时，QVariant 会被包装在另一个 QVariant 中
+// 这个函数用于解包获取实际的值
+static QVariant UnpackVariant(const QVariant &v)
+{
+	if (v.userType() == QMetaType::QVariant) {
+		return v.value<QVariant>();
+	}
+	return v;
+}
+
 // 作用：为插件实例注入当前帧的参数值，避免依赖节点实时回读。
 static void ApplyParamOverrides(OFX::Host::ImageEffect::Instance &instance,
 								const olive::NodeValueRow &values,
@@ -122,12 +133,15 @@ static void ApplyParamOverrides(OFX::Host::ImageEffect::Instance &instance,
 			continue;
 		}
 		const std::string &type = entry.second->getType();
+		
+		// 解包可能嵌套的 QVariant
+		const QVariant unpacked_data = UnpackVariant(value.data());
 
 		if (type == kOfxParamTypeInteger) {
 			if (auto *param =
 					dynamic_cast<OFX::Host::Param::IntegerInstance *>(
 						entry.second)) {
-				param->set(time, value.data().toInt());
+				param->set(time, unpacked_data.toInt());
 			}
 			continue;
 		}
@@ -135,7 +149,7 @@ static void ApplyParamOverrides(OFX::Host::ImageEffect::Instance &instance,
 			if (auto *param =
 					dynamic_cast<OFX::Host::Param::DoubleInstance *>(
 						entry.second)) {
-				param->set(time, value.data().toDouble());
+				param->set(time, unpacked_data.toDouble());
 			}
 			continue;
 		}
@@ -143,7 +157,7 @@ static void ApplyParamOverrides(OFX::Host::ImageEffect::Instance &instance,
 			if (auto *param =
 					dynamic_cast<OFX::Host::Param::BooleanInstance *>(
 						entry.second)) {
-				param->set(time, value.data().toBool());
+				param->set(time, unpacked_data.toBool());
 			}
 			continue;
 		}
@@ -151,7 +165,7 @@ static void ApplyParamOverrides(OFX::Host::ImageEffect::Instance &instance,
 			if (auto *param =
 					dynamic_cast<OFX::Host::Param::ChoiceInstance *>(
 						entry.second)) {
-				param->set(time, value.data().toInt());
+				param->set(time, unpacked_data.toInt());
 			}
 			continue;
 		}
@@ -160,7 +174,7 @@ static void ApplyParamOverrides(OFX::Host::ImageEffect::Instance &instance,
 			if (auto *param =
 					dynamic_cast<OFX::Host::Param::StringInstance *>(
 						entry.second)) {
-				const QByteArray utf8 = value.data().toString().toUtf8();
+				const QByteArray utf8 = unpacked_data.toString().toUtf8();
 				param->set(time, utf8.constData());
 			}
 			continue;
@@ -169,14 +183,14 @@ static void ApplyParamOverrides(OFX::Host::ImageEffect::Instance &instance,
 			if (auto *param =
 					dynamic_cast<OFX::Host::Param::RGBAInstance *>(
 						entry.second)) {
-				if (value.data().canConvert<olive::core::Color>()) {
-					const auto c = value.data().value<olive::core::Color>();
+				if (unpacked_data.canConvert<olive::core::Color>()) {
+					const auto c = unpacked_data.value<olive::core::Color>();
 					param->set(time, c.red(), c.green(), c.blue(), c.alpha());
-				} else if (value.data().canConvert<QVector4D>()) {
-					const QVector4D v = value.data().value<QVector4D>();
+				} else if (unpacked_data.canConvert<QVector4D>()) {
+					const QVector4D v = unpacked_data.value<QVector4D>();
 					param->set(time, v.x(), v.y(), v.z(), v.w());
-				} else if (value.data().canConvert<QVector3D>()) {
-					const QVector3D v = value.data().value<QVector3D>();
+				} else if (unpacked_data.canConvert<QVector3D>()) {
+					const QVector3D v = unpacked_data.value<QVector3D>();
 					param->set(time, v.x(), v.y(), v.z(), 1.0);
 				}
 			}
@@ -186,14 +200,14 @@ static void ApplyParamOverrides(OFX::Host::ImageEffect::Instance &instance,
 			if (auto *param =
 					dynamic_cast<OFX::Host::Param::RGBInstance *>(
 						entry.second)) {
-				if (value.data().canConvert<olive::core::Color>()) {
-					const auto c = value.data().value<olive::core::Color>();
+				if (unpacked_data.canConvert<olive::core::Color>()) {
+					const auto c = unpacked_data.value<olive::core::Color>();
 					param->set(time, c.red(), c.green(), c.blue());
-				} else if (value.data().canConvert<QVector4D>()) {
-					const QVector4D v = value.data().value<QVector4D>();
+				} else if (unpacked_data.canConvert<QVector4D>()) {
+					const QVector4D v = unpacked_data.value<QVector4D>();
 					param->set(time, v.x(), v.y(), v.z());
-				} else if (value.data().canConvert<QVector3D>()) {
-					const QVector3D v = value.data().value<QVector3D>();
+				} else if (unpacked_data.canConvert<QVector3D>()) {
+					const QVector3D v = unpacked_data.value<QVector3D>();
 					param->set(time, v.x(), v.y(), v.z());
 				}
 			}
@@ -203,8 +217,8 @@ static void ApplyParamOverrides(OFX::Host::ImageEffect::Instance &instance,
 			if (auto *param =
 					dynamic_cast<OFX::Host::Param::Double2DInstance *>(
 						entry.second)) {
-				if (value.data().canConvert<QVector2D>()) {
-					const QVector2D v = value.data().value<QVector2D>();
+				if (unpacked_data.canConvert<QVector2D>()) {
+					const QVector2D v = unpacked_data.value<QVector2D>();
 					param->set(time, v.x(), v.y());
 				}
 			}
@@ -214,8 +228,8 @@ static void ApplyParamOverrides(OFX::Host::ImageEffect::Instance &instance,
 			if (auto *param =
 					dynamic_cast<OFX::Host::Param::Integer2DInstance *>(
 						entry.second)) {
-				if (value.data().canConvert<QVector2D>()) {
-					const QVector2D v = value.data().value<QVector2D>();
+				if (unpacked_data.canConvert<QVector2D>()) {
+					const QVector2D v = unpacked_data.value<QVector2D>();
 					param->set(time, static_cast<int>(v.x()),
 							   static_cast<int>(v.y()));
 				}
@@ -226,8 +240,8 @@ static void ApplyParamOverrides(OFX::Host::ImageEffect::Instance &instance,
 			if (auto *param =
 					dynamic_cast<OFX::Host::Param::Double3DInstance *>(
 						entry.second)) {
-				if (value.data().canConvert<QVector3D>()) {
-					const QVector3D v = value.data().value<QVector3D>();
+				if (unpacked_data.canConvert<QVector3D>()) {
+					const QVector3D v = unpacked_data.value<QVector3D>();
 					param->set(time, v.x(), v.y(), v.z());
 				}
 			}
@@ -237,8 +251,8 @@ static void ApplyParamOverrides(OFX::Host::ImageEffect::Instance &instance,
 			if (auto *param =
 					dynamic_cast<OFX::Host::Param::Integer3DInstance *>(
 						entry.second)) {
-				if (value.data().canConvert<QVector3D>()) {
-					const QVector3D v = value.data().value<QVector3D>();
+				if (unpacked_data.canConvert<QVector3D>()) {
+					const QVector3D v = unpacked_data.value<QVector3D>();
 					param->set(time, static_cast<int>(v.x()),
 							   static_cast<int>(v.y()),
 							   static_cast<int>(v.z()));
@@ -1519,6 +1533,9 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 	output_params.set_channel_count(component);
 	output_clip->setParams(output_params);
 
+	// Apply parameter values to the instance before rendering
+	ApplyParamOverrides(*instance, values, frame);
+
 	// The render window is in pixel coordinates
 	// ie: render scale and a PAR of not 1
 	OfxRectI renderWindow;
@@ -1632,7 +1649,7 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 			if (linesize_pixels <= 0) {
 				linesize_pixels = destination_params.effective_width();
 			}
-			//destination->Upload(converted->data[0], linesize_pixels);
+			destination->Upload(converted->data[0], linesize_pixels);
 		} else if (destination->renderer() && converted && converted->data[0]) {
 			qWarning().noquote()
 				<< "OFX output pixel format mismatch for plugin="

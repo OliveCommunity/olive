@@ -48,10 +48,22 @@ public:
 		return layout_;
 	}
 
+	const QStringList &GetMissingPlugins() const
+	{
+		return missing_plugins_;
+	}
+
+	void SetMissingPlugins(const QStringList &plugins)
+	{
+		missing_plugins_ = plugins;
+	}
+
 protected:
 	Project *project_;
 
 	MainWindowLayoutInfo layout_;
+
+	QStringList missing_plugins_;
 
 private:
 	QString filename_;
