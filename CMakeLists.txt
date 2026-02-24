@@ -251,7 +251,7 @@ list(APPEND OLIVE_LIBRARIES
 list(APPEND OLIVE_LIBRARIES OfxHost)
 
 # Link FFmpeg
-find_package(FFMPEG 8.0 REQUIRED
+find_package(FFMPEG 6.0 REQUIRED
   COMPONENTS
   avutil
   avcodec
