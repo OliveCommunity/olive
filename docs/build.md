@@ -7,8 +7,8 @@ For the Chinese version, see [`build-zh.md`](./build-zh.md).
 
 - CMake 3.20+
 - Ninja (recommended)
-- Qt 6 (with private headers)
-- FFmpeg development libraries
+- Qt 6 (with private headers and Quick)
+- FFmpeg development libraries (6.0+)
 - OpenImageIO
 - OpenColorIO (2.x)
 - OpenEXR
@@ -16,6 +16,7 @@ For the Chinese version, see [`build-zh.md`](./build-zh.md).
 - PortAudio
 - OpenGL headers
 - XKB common (Linux)
+- OpenCV (for OpenImageIO headers, Linux only)
 
 ---
 
@@ -29,9 +30,9 @@ Install dependencies:
 sudo apt-get update
 sudo apt-get install -y \
   ninja-build pkg-config \
-  qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
+  qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools qt6-declarative-dev \
   libavcodec-dev libavformat-dev libavfilter-dev libavutil-dev libswscale-dev libswresample-dev \
-  libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
+  libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev libopencv-dev \
   portaudio19-dev libgl1-mesa-dev libxkbcommon-dev openimageio-tools
 ```
 
@@ -50,7 +51,7 @@ make install
 Configure and build:
 
 ```bash
-cmake -S . -B build -G Ninja -DBUILD_TESTS=ON -DBUILD_QT6=ON
+cmake -S . -B build -G Ninja -DBUILD_TESTS=ON
 cmake --build build --config Release
 ```
 
@@ -67,9 +68,9 @@ Install dependencies:
 ```bash
 sudo dnf install -y \
   ninja-build pkgconfig \
-  qt6-qtbase-devel qt6-qttools-devel qt6-qtbase-private-devel \
+  qt6-qtbase-devel qt6-qttools-devel qt6-qtdeclarative-devel qt6-qtbase-private-devel \
   ffmpeg-devel \
-  OpenColorIO-devel OpenImageIO-devel OpenEXR-devel expat-devel \
+  OpenColorIO-devel OpenImageIO-devel OpenEXR-devel expat-devel opencv-devel \
   portaudio-devel mesa-libGL-devel libxkbcommon-devel
 ```
 Install OpenTimelineIO:
@@ -87,7 +88,7 @@ make install
 Configure and build:
 
 ```bash
-cmake -S . -B build -G Ninja -DBUILD_TESTS=ON -DBUILD_QT6=ON
+cmake -S . -B build -G Ninja -DBUILD_TESTS=ON
 cmake --build build --config Release
 ```
 
@@ -104,16 +105,16 @@ Install dependencies:
 ```bash
 sudo pacman -S \
   ninja pkgconf \
-  qt6-base qt6-tools \
+  qt6-base qt6-tools qt6-declarative \
   ffmpeg \
-  opencolorio openimageio openexr expat \
+  opencolorio openimageio openexr expat opencv \
   portaudio mesa libxkbcommon opentimelineio
 ```
 
 Configure and build:
 
 ```bash
-cmake -S . -B build -G Ninja -DBUILD_TESTS=ON -DBUILD_QT6=ON
+cmake -S . -B build -G Ninja -DBUILD_TESTS=ON
 cmake --build build --config Release
 ```
 
@@ -150,7 +151,6 @@ cd oak
 # Configure
 cmake -S . -B build -G Ninja \
   -DBUILD_TESTS=ON \
-  -DBUILD_QT6=ON \
   -DCMAKE_BUILD_TYPE=Release
 
 # Build
@@ -168,7 +168,7 @@ ctest --test-dir build --output-on-failure -C Release
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `BUILD_QT6` | `ON` | Build with Qt 6 (Qt 5 is deprecated) |
+
 | `BUILD_TESTS` | `OFF` | Build unit tests |
 | `BUILD_DOXYGEN` | `OFF` | Build Doxygen documentation |
 | `USE_WERROR` | `OFF` | Treat warnings as errors |
