@@ -187,30 +187,9 @@ if (WIN32)
     endif ()
   endif ()
 
-  # ── Copy additional DLLs from linked library directories ────────────────────
-  # Try to copy DLLs from known library paths
-  set(_additional_lib_dirs
-    /ucrt64/bin
-    /mingw64/bin
-    /mingw32/bin
-    "C:/msys64/ucrt64/bin"
-    "C:/msys64/mingw64/bin"
-    "C:/msys64/mingw32/bin"
-  )
-
-  foreach (_lib_dir IN LISTS _additional_lib_dirs)
-    if (EXISTS "${_lib_dir}")
-      # Copy any missing DLLs that might be needed
-      file(GLOB _dll_files "${_lib_dir}/*.dll")
-      foreach (_dll_path IN LISTS _dll_files)
-        get_filename_component(_dll_name "${_dll_path}" NAME)
-        add_custom_command(TARGET olive-gtest POST_BUILD
-          COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${_dll_path}"
-            $<TARGET_FILE_DIR:olive-gtest>
-          COMMENT "Copying dependency: ${_dll_name}"
-        )
-      endforeach ()
-    endif ()
-  endforeach ()
+  # Note: We intentionally do NOT copy all DLLs from MSYS2 bin directories.
+  # The windeployqt tool handles Qt dependencies, and the _msys2_dlls list
+  # above contains only the specific runtime dependencies we need.
+  # Copying all DLLs would include unnecessary libraries (Python, OpenCV, etc.)
+  # that bloat the distribution and may cause conflicts.
 endif ()

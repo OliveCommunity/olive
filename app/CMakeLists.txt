@@ -243,20 +243,9 @@ if (WIN32)
     endif ()
   endforeach ()
 
-  # ── Copy additional DLLs from MSYS2 bin directories ─────────────────────────
-  # Copy all DLLs from found MSYS2 directories to ensure no missing dependencies
-  foreach (_msys2_bin_dir IN LISTS _msys2_search_paths)
-    if (EXISTS "${_msys2_bin_dir}")
-      file(GLOB _msys2_dll_files "${_msys2_bin_dir}/*.dll")
-      foreach (_dll_path IN LISTS _msys2_dll_files)
-        get_filename_component(_dll_name "${_dll_path}" NAME)
-        add_custom_command(TARGET olive-editor POST_BUILD
-          COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "${_dll_path}"
-            $<TARGET_FILE_DIR:olive-editor>
-          COMMENT "Copying MSYS2 dependency: ${_dll_name}"
-        )
-      endforeach ()
-    endif ()
-  endforeach ()
+  # Note: We intentionally do NOT copy all DLLs from MSYS2 bin directories.
+  # The windeployqt tool handles Qt dependencies, and the _msys2_dlls list
+  # above contains only the specific runtime dependencies we need.
+  # Copying all DLLs would include unnecessary libraries (Python, OpenCV, etc.)
+  # that bloat the distribution and may cause conflicts.
 endif ()

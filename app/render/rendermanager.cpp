@@ -367,38 +367,36 @@ void RenderThread::quit()
 
 RenderTicketPtr RenderThread::StealFromOthers()
 {
-	// 加锁保护对 s_all_threads_ 的访问
-	QMutexLocker locker(&s_all_threads_mutex_);
+	// 在持有锁的情况下获取线程列表的副本
+	std::vector<RenderThread *> threads_copy;
+	{
+		QMutexLocker locker(&s_all_threads_mutex_);
+		threads_copy = s_all_threads_;
+	}
 
 	// 快速路径：如果没有其他线程，直接返回
-	if (s_all_threads_.size() <= 1) {
+	if (threads_copy.size() <= 1) {
 		return nullptr;
 	}
 
 	// 从随机位置开始窃取，避免所有线程竞争同一个队列
-	size_t num_threads = s_all_threads_.size();
+	size_t num_threads = threads_copy.size();
 	size_t start_idx = steal_start_index_++ % num_threads;
 
 	// 尝试从其他线程窃取
 	for (size_t i = 0; i < num_threads; ++i) {
 		size_t idx = (start_idx + i) % num_threads;
-		RenderThread *other = s_all_threads_[idx];
+		RenderThread *other = threads_copy[idx];
 
 		// 跳过自己
 		if (other == this) {
 			continue;
 		}
 
-		// 解锁后再调用 TrySteal，避免死锁
-		locker.unlock();
-
 		RenderTicketPtr stolen_ticket;
 		if (other->TrySteal(stolen_ticket)) {
 			return stolen_ticket;
 		}
-
-		// 重新加锁继续遍历
-		locker.relock();
 	}
 
 	return nullptr;
