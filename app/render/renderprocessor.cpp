@@ -392,6 +392,17 @@ RenderProcessor::ResolveDecoderFromInput(const QString &decoder_id,
 		return nullptr;
 	}
 
+	// kDummy 模式下没有 decoder cache，直接创建解码器
+	if (!decoder_cache_) {
+		DecoderPtr dec = Decoder::CreateFromID(decoder_id);
+		if (dec && !dec->Open(stream)) {
+			qWarning() << "Failed to open decoder for" << stream.filename()
+					   << "::" << stream.stream();
+			return nullptr;
+		}
+		return dec;
+	}
+
 	QMutexLocker locker(decoder_cache_->mutex());
 
 	DecoderPair decoder = decoder_cache_->value(stream);

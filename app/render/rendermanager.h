@@ -93,6 +93,9 @@ public:
 
 	bool RemoveTicket(RenderTicketPtr ticket);
 
+	// 取消队列中的所有任务
+	void CancelAllTickets();
+
 	void quit();
 
 	OpenGLThread *GetGLThread() const { return gl_thread_; }

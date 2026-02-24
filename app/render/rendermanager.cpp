@@ -104,13 +104,18 @@ RenderManager::RenderManager(Backend backend, QObject *parent)
 
 RenderManager::~RenderManager()
 {
-	if (gl_thread_) {
-		// 停止所有渲染线程
-		for (RenderThread *rt : render_threads_) {
-			rt->quit();
-			rt->wait();
-		}
+	// 先取消所有待处理的任务
+	for (RenderThread *rt : render_threads_) {
+		rt->CancelAllTickets();
+	}
 
+	// 停止所有渲染线程（适用于所有 backend 类型）
+	for (RenderThread *rt : render_threads_) {
+		rt->quit();
+		rt->wait();
+	}
+
+	if (gl_thread_) {
 		// 停止 OpenGL 线程
 		gl_thread_->Stop();
 		gl_thread_->wait();
@@ -248,6 +253,11 @@ void RenderManager::SetAggressiveGarbageCollection(bool enabled)
 
 void RenderManager::ClearOldDecoders()
 {
+	// kDummy 模式下没有 decoder cache
+	if (!decoder_cache_) {
+		return;
+	}
+
 	QMutexLocker locker(decoder_cache_->mutex());
 
 	qint64 min_age =
@@ -339,6 +349,15 @@ bool RenderThread::RemoveTicket(RenderTicketPtr ticket)
 	return true;
 }
 
+void RenderThread::CancelAllTickets()
+{
+	QMutexLocker locker(&mutex_);
+
+	for (auto &ticket : queue_) {
+		ticket->Cancel();
+	}
+}
+
 void RenderThread::quit()
 {
 	QMutexLocker locker(&mutex_);
@@ -348,6 +367,9 @@ void RenderThread::quit()
 
 RenderTicketPtr RenderThread::StealFromOthers()
 {
+	// 加锁保护对 s_all_threads_ 的访问
+	QMutexLocker locker(&s_all_threads_mutex_);
+
 	// 快速路径：如果没有其他线程，直接返回
 	if (s_all_threads_.size() <= 1) {
 		return nullptr;
@@ -367,10 +389,16 @@ RenderTicketPtr RenderThread::StealFromOthers()
 			continue;
 		}
 
+		// 解锁后再调用 TrySteal，避免死锁
+		locker.unlock();
+
 		RenderTicketPtr stolen_ticket;
 		if (other->TrySteal(stolen_ticket)) {
 			return stolen_ticket;
 		}
+
+		// 重新加锁继续遍历
+		locker.relock();
 	}
 
 	return nullptr;
