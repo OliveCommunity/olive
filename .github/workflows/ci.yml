@@ -88,7 +88,6 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja \
             -DBUILD_TESTS=ON \
-            -DBUILD_QT6=ON \
             -DOCIO_LOCATION=/usr \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
 
@@ -97,7 +96,6 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja \
             -DBUILD_TESTS=ON \
-            -DBUILD_QT6=ON \
             -DOCIO_LOCATION=$(brew --prefix opencolorio) \
             -DOTIO_LOCATION=${OTIO_LOCATION} \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
@@ -108,7 +106,6 @@ jobs:
         run: |
           cmake -S . -B build -G Ninja \
             -DBUILD_TESTS=ON \
-            -DBUILD_QT6=ON \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
 
       - name: Build (Linux)
@@ -171,4 +168,7 @@ jobs:
       - name: Test (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
+        env:
+          QT_QPA_PLATFORM: offscreen
+          LIBGL_ALWAYS_SOFTWARE: 1
         run: ctest --test-dir build --output-on-failure -C ${CMAKE_BUILD_TYPE}
