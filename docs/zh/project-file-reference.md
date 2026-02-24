@@ -1,5 +1,7 @@
 # Oak Video Editor 项目文件参考手册（详细版）
 
+> [英文版 (English)](../project-file-reference.md)
+
 本文档基于当前源代码实现，描述 Oak Video Editor 的 XML 项目文件格式，目标是足够详细以实现兼容读写器。
 
 > 代码来源：`app/node/project.cpp`、`app/node/node.cpp`、`app/node/value.*`、`app/node/keyframe.*`、`app/node/project/serializer/*`。

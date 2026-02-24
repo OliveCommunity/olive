@@ -1,5 +1,7 @@
 # 多线程CPU + 单线程OpenGL 架构文档
 
+> **Languages**: 中文 (Chinese) | English version not yet available
+
 ## 概述
 
 本文档描述了 Olive 视频编辑器渲染架构的重大改动：从"多线程OpenGL"架构改为"多线程CPU + 单线程OpenGL"架构。

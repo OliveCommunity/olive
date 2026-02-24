@@ -1,5 +1,7 @@
 # Oak Video Editor 测试策略与计划
 
+> [英文版 (English)](../test-plan.md)
+
 本文档描述 Oak Video Editor 的自动化测试策略，包括单元测试、集成测试以及 CI 执行方式。
 
 ## 目标

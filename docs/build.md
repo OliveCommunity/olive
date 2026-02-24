@@ -1,7 +1,7 @@
 # Build Guide
 
-This document describes how to build Oak Video Editor from source. For Chinese, see
-[`docs/build-zh.md`](docs/build-zh.md).
+This document describes how to build Oak Video Editor from source.  
+For the Chinese version, see [`build-zh.md`](./build-zh.md).
 
 ## Prerequisites
 

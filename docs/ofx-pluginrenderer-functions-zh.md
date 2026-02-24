@@ -1,5 +1,10 @@
 # OFX PluginRenderer 函数说明（中文）
 
+> **语言**: 中文 | English version not yet available
+>
+> **日期**: 2026-01-11  
+> **执行者**: Codex
+
 日期：2026-01-11
 执行者：Codex
 
