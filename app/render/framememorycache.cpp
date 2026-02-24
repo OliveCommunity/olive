@@ -33,6 +33,17 @@ std::atomic<bool> FrameMemCache::lru_thread_running_(false);
 std::atomic<bool> FrameMemCache::lru_thread_stop_requested_(false);
 std::atomic<int> FrameMemCache::instance_count_(0);
 std::atomic<int64_t> FrameMemCache::budget(0);
+std::mutex FrameMemCache::lru_thread_mutex_;
+
+// 异步磁盘写入线程静态成员
+std::thread FrameMemCache::disk_writer_thread_;
+std::atomic<bool> FrameMemCache::disk_writer_running_(false);
+std::atomic<bool> FrameMemCache::disk_writer_stop_requested_(false);
+std::queue<FrameMemCache::EvictedFrame> FrameMemCache::disk_write_queue_;
+std::mutex FrameMemCache::disk_write_mutex_;
+std::condition_variable FrameMemCache::disk_write_cv_;
+std::atomic<int> FrameMemCache::disk_writer_instance_count_(0);
+std::mutex FrameMemCache::disk_writer_thread_mutex_;
 
 namespace {
 
@@ -195,6 +206,9 @@ FrameMemCache::FrameMemCache()
     if (instance_count_.fetch_add(1, std::memory_order_acq_rel) == 0) {
         StartLruThread();
     }
+    if (disk_writer_instance_count_.fetch_add(1, std::memory_order_acq_rel) == 0) {
+        StartDiskWriterThread();
+    }
 }
 
 FrameMemCache::~FrameMemCache()
@@ -202,24 +216,51 @@ FrameMemCache::~FrameMemCache()
     if (instance_count_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
         StopLruThread();
     }
+    if (disk_writer_instance_count_.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+        StopDiskWriterThread();
+    }
 }
 
 void FrameMemCache::StartLruThread()
 {
+    std::lock_guard<std::mutex> locker(lru_thread_mutex_);
+    
     if (lru_thread_running_.exchange(true, std::memory_order_acq_rel)) {
         return;
     }
 
     lru_thread_stop_requested_.store(false, std::memory_order_release);
+    
+    // 确保之前的线程已经结束
+    if (lru_thread_.joinable()) {
+        try {
+            lru_thread_.join();
+        } catch (...) {
+            // 忽略异常
+        }
+    }
+    
     lru_thread_ = std::thread(&FrameMemCache::LruWorkerLoop);
 }
 
 void FrameMemCache::StopLruThread()
 {
+    std::lock_guard<std::mutex> locker(lru_thread_mutex_);
+    
+    // 检查线程是否正在运行
+    if (!lru_thread_running_.load(std::memory_order_acquire)) {
+        return;
+    }
+
     lru_thread_stop_requested_.store(true, std::memory_order_release);
 
+    // 安全地 join 线程
     if (lru_thread_.joinable()) {
-        lru_thread_.join();
+        try {
+            lru_thread_.join();
+        } catch (...) {
+            // 忽略 join 失败
+        }
     }
 
     lru_thread_running_.store(false, std::memory_order_release);
@@ -249,12 +290,6 @@ void FrameMemCache::LruWorkerLoop()
 }
 
 void FrameMemCache::doLru(){
-    struct EvictedFrame {
-        QString cache_path;
-        QUuid uuid;
-        int64_t timestamp = 0;
-        FramePtr frame;
-    };
     std::vector<EvictedFrame> evicted;
     {
         QMutexLocker locker(&cache_mutex_);
@@ -304,9 +339,113 @@ void FrameMemCache::doLru(){
         }
     }
 
+    // 异步写入磁盘，不阻塞渲染线程
     for (const EvictedFrame &e : evicted) {
+        {
+            std::lock_guard<std::mutex> locker(disk_write_mutex_);
+            disk_write_queue_.push(e);
+        }
+        disk_write_cv_.notify_one();
+    }
+}
+
+void FrameMemCache::StartDiskWriterThread()
+{
+    std::lock_guard<std::mutex> locker(disk_writer_thread_mutex_);
+    
+    if (disk_writer_running_.exchange(true, std::memory_order_acq_rel)) {
+        return;
+    }
+    disk_writer_stop_requested_.store(false, std::memory_order_release);
+    
+    // 确保之前的线程已经结束
+    if (disk_writer_thread_.joinable()) {
+        try {
+            disk_writer_thread_.join();
+        } catch (...) {
+            // 忽略异常
+        }
+    }
+    
+    disk_writer_thread_ = std::thread(&FrameMemCache::DiskWriterLoop);
+}
+
+void FrameMemCache::StopDiskWriterThread()
+{
+    std::lock_guard<std::mutex> locker(disk_writer_thread_mutex_);
+    
+    // 检查线程是否正在运行
+    if (!disk_writer_running_.load(std::memory_order_acquire)) {
+        return;
+    }
+
+    disk_writer_stop_requested_.store(true, std::memory_order_release);
+    disk_write_cv_.notify_all();
+    
+    // 安全地 join 线程
+    if (disk_writer_thread_.joinable()) {
+        try {
+            disk_writer_thread_.join();
+        } catch (...) {
+            // 忽略 join 失败
+        }
+    }
+    
+    disk_writer_running_.store(false, std::memory_order_release);
+}
+
+void FrameMemCache::DiskWriterLoop()
+{
+    while (!disk_writer_stop_requested_.load(std::memory_order_acquire)) {
+        EvictedFrame e;
+        bool has_task = false;
+        
+        {
+            std::unique_lock<std::mutex> locker(disk_write_mutex_);
+            if (disk_write_queue_.empty()) {
+                // 等待新任务，最多等待100ms
+                disk_write_cv_.wait_for(locker, std::chrono::milliseconds(100));
+            }
+            
+            if (!disk_write_queue_.empty()) {
+                e = disk_write_queue_.front();
+                disk_write_queue_.pop();
+                has_task = true;
+            }
+        }
+        
+        if (has_task) {
+            FrameHashCache::SaveCacheFrame(e.cache_path, e.uuid, e.timestamp, e.frame);
+        }
+    }
+    
+    // 处理剩余的任务
+    std::vector<EvictedFrame> remaining;
+    {
+        std::lock_guard<std::mutex> locker(disk_write_mutex_);
+        while (!disk_write_queue_.empty()) {
+            remaining.push_back(disk_write_queue_.front());
+            disk_write_queue_.pop();
+        }
+    }
+    
+    for (const auto& e : remaining) {
         FrameHashCache::SaveCacheFrame(e.cache_path, e.uuid, e.timestamp, e.frame);
     }
+}
+
+void FrameMemCache::AsyncSaveToDisk(const QString &cache_path, const QUuid &uuid, 
+                                    const int64_t &timestamp, FramePtr frame)
+{
+    if (cache_path.isEmpty() || uuid.isNull() || !frame) {
+        return;
+    }
+    
+    {
+        std::lock_guard<std::mutex> locker(disk_write_mutex_);
+        disk_write_queue_.push({cache_path, uuid, timestamp, frame});
+    }
+    disk_write_cv_.notify_one();
 }
 
 void FrameMemCache::InvalidateAll()

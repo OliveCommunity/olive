@@ -240,6 +240,7 @@ private:
 	static std::atomic<bool> texture_cache_lru_running_;
 	static std::atomic<bool> texture_cache_lru_stop_requested_;
 	static std::thread texture_cache_lru_thread_;
+	static QMutex texture_cache_lru_thread_mutex_; // 保护线程操作
 
 	static void StartTextureCacheLruThread();
 	static void StopTextureCacheLruThread();

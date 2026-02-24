@@ -1456,6 +1456,7 @@ void ViewerWidget::RendererGeneratedFrameForQueue()
 
 		if (watcher->HasResult()) {
 			QVariant frame = watcher->Get();
+			// 优化：不再丢弃"过时"的帧，确保即使剪辑卡顿也能显示画面
 			bool drop_frame = false;
 
 			// Ignore this signal if we've paused now
@@ -1469,14 +1470,21 @@ void ViewerWidget::RendererGeneratedFrameForQueue()
 					1.0,
 					timebase().toDouble() * 1000.0 /
 						static_cast<double>(playback_step));
+				// 即使帧已经"过时"，也不再丢弃，而是继续显示
+				// 这样可以保证画面连续性，避免卡顿
 				if (start_ms > 0 &&
 					(now_ms - start_ms) > frame_interval_ms) {
-					drop_frame = true;
+					// 帧已过时，但仍然显示（不丢弃）
+					// drop_frame = true; // 已禁用丢弃逻辑
+					qDebug() << "Frame is stale but still displaying (delay:" 
+					         << (now_ms - start_ms) << "ms, interval:" 
+					         << frame_interval_ms << "ms)";
 				}
 
 				rational ts = watcher->property("time").value<rational>();
 
-				if (!drop_frame) {
+				// 总是显示帧，不丢弃
+				if (true) { // 强制显示所有帧
 					foreach (ViewerDisplayWidget *dw, playback_devices_) {
 						const bool is_multicam =
 							dynamic_cast<MulticamDisplay *>(dw);

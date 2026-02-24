@@ -49,6 +49,7 @@ std::atomic<int> NodeTraverser::texture_cache_instance_count_{0};
 std::atomic<bool> NodeTraverser::texture_cache_lru_running_{false};
 std::atomic<bool> NodeTraverser::texture_cache_lru_stop_requested_{false};
 std::thread NodeTraverser::texture_cache_lru_thread_;
+QMutex NodeTraverser::texture_cache_lru_thread_mutex_;
 
 namespace {
 
@@ -435,20 +436,44 @@ size_t NodeTraverser::CalculateTextureMemorySize(const VideoParams &params)
 
 void NodeTraverser::StartTextureCacheLruThread()
 {
+	QMutexLocker locker(&texture_cache_lru_thread_mutex_);
+	
 	if (texture_cache_lru_running_.exchange(true, std::memory_order_acq_rel)) {
 		return;
 	}
 
 	texture_cache_lru_stop_requested_.store(false, std::memory_order_release);
+	
+	// 确保之前的线程已经结束
+	if (texture_cache_lru_thread_.joinable()) {
+		try {
+			texture_cache_lru_thread_.join();
+		} catch (...) {
+			// 忽略异常
+		}
+	}
+	
 	texture_cache_lru_thread_ = std::thread(&NodeTraverser::TextureCacheLruWorkerLoop);
 }
 
 void NodeTraverser::StopTextureCacheLruThread()
 {
+	QMutexLocker locker(&texture_cache_lru_thread_mutex_);
+	
+	// 检查线程是否正在运行
+	if (!texture_cache_lru_running_.load(std::memory_order_acquire)) {
+		return;
+	}
+
 	texture_cache_lru_stop_requested_.store(true, std::memory_order_release);
 
+	// 安全地 join 线程
 	if (texture_cache_lru_thread_.joinable()) {
-		texture_cache_lru_thread_.join();
+		try {
+			texture_cache_lru_thread_.join();
+		} catch (...) {
+			// 如果 join 失败，忽略异常
+		}
 	}
 
 	texture_cache_lru_running_.store(false, std::memory_order_release);
@@ -515,7 +540,7 @@ void NodeTraverser::EvictTextureCacheIfNeeded()
 			}
 		}
 
-		total_bytes -= std::min(total_bytes, oldest_it.value().size_bytes);
+		total_bytes -= std::min(total_bytes, static_cast<uint64_t>(oldest_it.value().size_bytes));
 		resolved_texture_cache_.erase(oldest_it);
 	}
 }

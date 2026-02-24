@@ -174,8 +174,30 @@ private:
 	void RemoveFirstFrame();
 
 	static int MaximumQueueSize();
+	
+	// 颜色空间转换缓存结构
+	struct ColorConversionCache {
+		TexturePtr y_plane;
+		TexturePtr u_plane;
+		TexturePtr v_plane;
+		TexturePtr rgb_result;
+		rational time;
+		int divider = 1;
+		int64_t pts = 0;
+	};
+	
+	// 尝试从缓存获取颜色转换结果
+	TexturePtr GetCachedColorConversion(const rational &time, int divider, int64_t pts);
+	// 缓存颜色转换结果
+	void CacheColorConversion(const rational &time, int divider, int64_t pts,
+	                          const ColorConversionCache &cache);
+	// 清除颜色转换缓存
+	void ClearColorConversionCache();
 
 	SwsContext *sws_ctx_;
+	
+	// 颜色空间转换缓存
+	std::optional<ColorConversionCache> color_conversion_cache_;
 	int sws_src_width_;
 	int sws_src_height_;
 	AVPixelFormat sws_src_format_;

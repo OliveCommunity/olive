@@ -25,13 +25,95 @@
 #include <QThread>
 #include <QTimer>
 #include <QVector2D>
+#include <QStandardPaths>
+#include <QDir>
+#include <QFile>
+#include <QDataStream>
+#include <QCryptographicHash>
 
 namespace olive
 {
 
+// ShaderDiskCache 实现
+Renderer::ShaderDiskCache::ShaderDiskCache()
+	: loaded_(false)
+{
+	cache_dir_ = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) 
+	             + QStringLiteral("/shaders");
+	LoadCache();
+}
+
+Renderer::ShaderDiskCache::~ShaderDiskCache()
+{
+	SaveCache();
+}
+
+QString Renderer::ShaderDiskCache::GetCacheDirectory() const
+{
+	return cache_dir_;
+}
+
+void Renderer::ShaderDiskCache::SaveShaderHash(const QString &shader_id, const QString &hash)
+{
+	QMutexLocker locker(&mutex_);
+	shader_hashes_[shader_id] = hash;
+}
+
+bool Renderer::ShaderDiskCache::GetShaderHash(const QString &shader_id, QString *hash) const
+{
+	QMutexLocker locker(&mutex_);
+	auto it = shader_hashes_.find(shader_id);
+	if (it != shader_hashes_.end()) {
+		*hash = it.value();
+		return true;
+	}
+	return false;
+}
+
+void Renderer::ShaderDiskCache::LoadCache()
+{
+	if (loaded_) return;
+	
+	QDir dir(cache_dir_);
+	if (!dir.exists()) {
+		dir.mkpath(QStringLiteral("."));
+		return;
+	}
+	
+	QString cache_file = cache_dir_ + QStringLiteral("/shader_cache.idx");
+	QFile file(cache_file);
+	if (file.open(QIODevice::ReadOnly)) {
+		QDataStream stream(&file);
+		stream >> shader_hashes_;
+		loaded_ = true;
+	}
+}
+
+void Renderer::ShaderDiskCache::SaveCache()
+{
+	QDir dir(cache_dir_);
+	if (!dir.exists()) {
+		dir.mkpath(QStringLiteral("."));
+	}
+	
+	QString cache_file = cache_dir_ + QStringLiteral("/shader_cache.idx");
+	QFile file(cache_file);
+	if (file.open(QIODevice::WriteOnly)) {
+		QDataStream stream(&file);
+		stream << shader_hashes_;
+	}
+}
+
+void Renderer::ShaderDiskCache::ClearOldCache(int max_age_days)
+{
+	Q_UNUSED(max_age_days)
+	// TODO: 实现缓存清理逻辑
+}
+
 Renderer::Renderer(QObject *parent)
 	: QObject(parent)
 	, lifetime_(std::make_shared<RendererLifetime>())
+	, shader_disk_cache_(std::make_unique<ShaderDiskCache>())
 {
 }
 

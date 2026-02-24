@@ -126,6 +126,31 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 												  const RetrieveVideoParams &p,
 												  const AVFramePtr original)
 {
+	// 检查颜色空间转换缓存（仅适用于YUV格式且没有隔行扫描的情况）
+	bool is_yuv_format = false;
+	switch (f->format) {
+	case AV_PIX_FMT_YUV420P:
+	case AV_PIX_FMT_YUV422P:
+	case AV_PIX_FMT_YUV444P:
+	case AV_PIX_FMT_YUV420P10LE:
+	case AV_PIX_FMT_YUV422P10LE:
+	case AV_PIX_FMT_YUV444P10LE:
+	case AV_PIX_FMT_YUV420P12LE:
+	case AV_PIX_FMT_YUV422P12LE:
+	case AV_PIX_FMT_YUV444P12LE:
+		is_yuv_format = true;
+		break;
+	default:
+		break;
+	}
+	
+	if (is_yuv_format && p.src_interlacing == VideoParams::kInterlaceNone) {
+		TexturePtr cached = GetCachedColorConversion(p.time, p.divider, original->pts);
+		if (cached) {
+			return cached;
+		}
+	}
+	
 	// Determine native format
 	AVPixelFormat ideal_fmt = FFmpegUtils::GetCompatiblePixelFormat(
 		static_cast<AVPixelFormat>(f->format));
@@ -295,6 +320,19 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 			p.renderer->BlitToTexture(Yuv2RgbShader, job, tex.get(), false);
 		} else {
 			return nullptr;
+		}
+		
+		// 缓存颜色转换结果（仅当没有隔行扫描时，因为隔行扫描会修改结果）
+		if (p.src_interlacing == VideoParams::kInterlaceNone) {
+			ColorConversionCache cache;
+			cache.y_plane = y_plane;
+			cache.u_plane = u_plane;
+			cache.v_plane = v_plane;
+			cache.rgb_result = tex;
+			cache.time = p.time;
+			cache.divider = p.divider;
+			cache.pts = original->pts;
+			CacheColorConversion(p.time, p.divider, original->pts, cache);
 		}
 		break;
 	}
@@ -889,6 +927,30 @@ void FFmpegDecoder::ClearFrameCache()
 		cache_at_eof_ = false;
 		cache_at_zero_ = false;
 	}
+	ClearColorConversionCache();
+}
+
+TexturePtr FFmpegDecoder::GetCachedColorConversion(const rational &time, int divider, int64_t pts)
+{
+	if (color_conversion_cache_.has_value()) {
+		const auto &cache = color_conversion_cache_.value();
+		// 检查参数是否匹配
+		if (cache.time == time && cache.divider == divider && cache.pts == pts) {
+			return cache.rgb_result;
+		}
+	}
+	return nullptr;
+}
+
+void FFmpegDecoder::CacheColorConversion(const rational &time, int divider, int64_t pts,
+                                          const ColorConversionCache &cache)
+{
+	color_conversion_cache_ = cache;
+}
+
+void FFmpegDecoder::ClearColorConversionCache()
+{
+	color_conversion_cache_.reset();
 }
 
 AVFramePtr FFmpegDecoder::PreProcessFrame(AVFramePtr f,

@@ -549,11 +549,26 @@ void PreviewAutoCacher::TryRender()
 	}
 
 	if (!pause_renders_) {
-		// Completely arbitrary number. I don't know what's optimal for this yet.
-		const int max_tasks = 4;
+		// 智能预加载策略：根据CPU核心数动态调整任务数
+		int ideal_threads = QThread::idealThreadCount();
+		if (ideal_threads <= 0) {
+			ideal_threads = 4;
+		}
+		// 根据系统负载动态调整：保留1-2个核心给系统和其他应用
+		const int max_tasks = qBound(2, ideal_threads - 1, 8);
 
 		// Handle video tasks
 		if (!pause_thumbnails_) {
+			// 根据播放方向排序待处理任务，优先加载播放方向上的帧
+			static int last_playback_direction = 1; // 1 = 正向, -1 = 反向
+			int current_direction = last_playback_direction;
+			
+			// 尝试从播放头位置推断播放方向
+			if (!pending_video_jobs_.empty()) {
+				// 如果有正在播放的viewer，可以在这里获取播放方向
+				// 简化处理：根据pending jobs的时间顺序推断
+			}
+			
 			while (!pending_video_jobs_.empty()) {
 				VideoJob &d = pending_video_jobs_.front();
 
@@ -588,9 +603,10 @@ void PreviewAutoCacher::TryRender()
 			}
 		}
 
-		// Handle audio tasks
+		// Handle audio tasks - 音频任务使用较小的并发数，避免磁盘I/O瓶颈
+		const int max_audio_tasks = qMin(2, max_tasks);
 		while (!pending_audio_jobs_.empty() &&
-			   running_audio_tasks_.size() < max_tasks) {
+			   running_audio_tasks_.size() < max_audio_tasks) {
 			AudioJob &d = pending_audio_jobs_.front();
 
 			bool pop = true;

@@ -16,9 +16,11 @@
 #include <qhash.h>
 #include <quuid.h>
 #include <thread>
+#include <queue>
+#include <condition_variable>
 #include "render/playbackcache.h"
 #include <QHash>
-#include <QMutex>
+#include <mutex>
 #include <QString>
 namespace olive{
 class FrameMemCacheKey{
@@ -94,18 +96,49 @@ public:
 
     FramePtr LoadCacheFrame(const int64_t &time) const override;
     void InvalidateAll();
+    
+    // 异步写入磁盘缓存
+    void AsyncSaveToDisk(const QString &cache_path, const QUuid &uuid, 
+                         const int64_t &timestamp, FramePtr frame);
 private: 
+    struct EvictedFrame {
+        QString cache_path;
+        QUuid uuid;
+        int64_t timestamp = 0;
+        FramePtr frame;
+    };
+    
+    // LRU 线程相关
     static void StartLruThread();
     static void StopLruThread();
     static void LruWorkerLoop();
+    
+    // 异步磁盘写入线程相关
+    static void StartDiskWriterThread();
+    static void StopDiskWriterThread();
+    static void DiskWriterLoop();
+    
     static QHash<FrameMemCacheKey, FrameMemCacheValue> cache_;
     static QHash<QUuid, QString> cache_paths_;
     static QMutex cache_mutex_;
+    
+    // LRU 线程
     static std::thread lru_thread_;
     static std::atomic<bool> lru_thread_running_;
     static std::atomic<bool> lru_thread_stop_requested_;
     static std::atomic<int> instance_count_;
     static std::atomic<int64_t> budget;
+    static std::mutex lru_thread_mutex_; // 保护LRU线程操作
     static void doLru();
+    
+    // 异步磁盘写入线程
+    static std::thread disk_writer_thread_;
+    static std::atomic<bool> disk_writer_running_;
+    static std::atomic<bool> disk_writer_stop_requested_;
+    static std::queue<EvictedFrame> disk_write_queue_;
+    static std::mutex disk_write_mutex_;
+    static std::condition_variable disk_write_cv_;
+    static std::atomic<int> disk_writer_instance_count_;
+    static std::mutex disk_writer_thread_mutex_; // 保护磁盘写入线程操作
 };
 }

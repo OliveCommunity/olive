@@ -176,6 +176,36 @@ private:
 	QVariant interlace_texture_;
 
 	QMutex texture_cache_lock_;
+	
+	// 着色器磁盘缓存
+	class ShaderDiskCache {
+	public:
+		ShaderDiskCache();
+		~ShaderDiskCache();
+		
+		// 获取缓存目录
+		QString GetCacheDirectory() const;
+		
+		// 保存着色器缓存信息（由于OpenGL二进制程序兼容性问题，我们只缓存着色器代码的哈希）
+		void SaveShaderHash(const QString &shader_id, const QString &hash);
+		
+		// 获取着色器哈希，如果存在则返回true
+		bool GetShaderHash(const QString &shader_id, QString *hash) const;
+		
+		// 清除过期缓存
+		void ClearOldCache(int max_age_days = 30);
+		
+	private:
+		mutable QMutex mutex_;
+		QHash<QString, QString> shader_hashes_; // shader_id -> hash
+		QString cache_dir_;
+		bool loaded_;
+		
+		void LoadCache();
+		void SaveCache();
+	};
+	
+	std::unique_ptr<ShaderDiskCache> shader_disk_cache_;
 };
 
 }
