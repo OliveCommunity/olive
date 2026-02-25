@@ -23,6 +23,7 @@
 
 #include <QDateTime>
 #include <QOpenGLContext>
+#include <QThread>
 #include <QVector2D>
 #include <QVector3D>
 #include <QVector4D>
@@ -211,6 +212,19 @@ void RenderProcessor::Run()
 		ticket_->Finish();
 		return;
 	}
+	
+	// 标记是否已经调用过 Finish，防止重复调用
+	bool finish_called = false;
+	auto finish_once = [&](QVariant result = QVariant()) {
+		if (!finish_called) {
+			finish_called = true;
+			if (result.isValid()) {
+				ticket_->Finish(result);
+			} else {
+				ticket_->Finish();
+			}
+		}
+	};
 
 	switch (type) {
 	case RenderManager::kTypeVideo: {
@@ -225,7 +239,7 @@ void RenderProcessor::Run()
 		TexturePtr texture = GenerateTexture(time, frame_length);
 		
 		if (!gl_thread_) {
-			ticket_->Finish();
+			finish_once();
 		} else {
 			if (GetCacheVideoParams().interlacing() !=
 				VideoParams::kInterlaceNone) {
@@ -246,8 +260,11 @@ void RenderProcessor::Run()
 			if (HeardCancel()) {
 				// Finish cancelled ticket with nothing since we can't guarantee the frame we generated
 				// is actually "complete
-				ticket_->Finish();
-			} else {
+				finish_once();
+				return;
+			}
+			
+			{
 				FramePtr frame;
 				QString cache = ticket_->property("cache").toString();
 				RenderManager::ReturnType return_type =
@@ -259,7 +276,7 @@ void RenderProcessor::Run()
 				// 根据 return_type 决定返回什么
 				if (return_type == RenderManager::kNull) {
 					// kNull 模式：只渲染，不返回结果（用于预渲染/缓存）
-					ticket_->Finish();
+					finish_once();
 				} else if (return_type == RenderManager::kTexture) {
 					// 播放模式：返回 GPU 纹理
 					
@@ -271,13 +288,10 @@ void RenderProcessor::Run()
 					}
 
 					if (texture) {
-
 						gl_thread_->Flush();
-
-						ticket_->Finish(QVariant::fromValue(texture));
+						finish_once(QVariant::fromValue(texture));
 					} else {
-
-						ticket_->Finish();
+						finish_once();
 					}
 					
 					// 注意：如果是 kTexture 模式，即使 cache 不为空，也不在这里处理缓存
@@ -325,8 +339,7 @@ void RenderProcessor::Run()
 						ticket_->setProperty("cached", cache_result);
 					}
 					
-
-					ticket_->Finish(QVariant::fromValue(frame));
+					finish_once(QVariant::fromValue(frame));
 				}
 			}
 		}
@@ -361,15 +374,15 @@ void RenderProcessor::Run()
 		}
 
 		if (HeardCancel()) {
-			ticket_->Finish();
+			finish_once();
 		} else {
-			ticket_->Finish(QVariant::fromValue(samples));
+			finish_once(QVariant::fromValue(samples));
 		}
 		break;
 	}
 	default:
 		// Fail
-		ticket_->Finish();
+		finish_once();
 	}
 }
 
@@ -712,17 +725,56 @@ TexturePtr RenderProcessor::ProcessPluginJob(TexturePtr texture,
 		return destination;
 	}
 
+	if (!plugin_renderer_) {
+		// Plugin renderer not available, return input as-is
+		return destination;
+	}
+
 	// Plugin rendering must be done on OpenGL thread
 	// Create a custom job to render the plugin
+	std::atomic<bool> render_completed{false};
+	std::exception_ptr render_exception;
+	
 	auto render_job = std::make_shared<GLCustomJob>(
-		[this, texture, plugin_job, destination](OpenGLRenderer *renderer) {
-			if (plugin_renderer_) {
+		[this, texture, plugin_job, destination, &render_completed, &render_exception](OpenGLRenderer *renderer) {
+			try {
 				plugin_renderer_->RenderPlugin(texture, *plugin_job, destination,
 										   destination->params(), false, false);
+				render_completed = true;
+			} catch (...) {
+				render_exception = std::current_exception();
+				render_completed = true;
 			}
 		});
 	
-	gl_thread_->SubmitJobAndWait(render_job);
+	// Use SubmitJob instead of SubmitJobAndWait to avoid blocking indefinitely
+	gl_thread_->SubmitJob(render_job);
+	
+	// Wait with timeout to prevent indefinite blocking
+	const int max_wait_ms = 5000; // 5 seconds timeout
+	const int check_interval_ms = 10;
+	int waited_ms = 0;
+	while (!render_completed && waited_ms < max_wait_ms) {
+		QThread::msleep(check_interval_ms);
+		waited_ms += check_interval_ms;
+	}
+	
+	if (!render_completed) {
+		qWarning() << "Plugin render timed out after" << max_wait_ms << "ms";
+		render_job->Cancel();
+		return destination;
+	}
+	
+	if (render_exception) {
+		// Plugin render threw an exception, log and continue
+		try {
+			std::rethrow_exception(render_exception);
+		} catch (const std::exception& e) {
+			qWarning() << "Plugin render exception:" << e.what();
+		} catch (...) {
+			qWarning() << "Plugin render threw unknown exception";
+		}
+	}
 	
 	return destination;
 }

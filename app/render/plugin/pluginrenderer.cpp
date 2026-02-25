@@ -25,10 +25,12 @@
 #include <QVector2D>
 #include <QVector3D>
 #include <QVector4D>
+#include <QtGlobal>
 #define GL_PREAMBLE //QMutexLocker __l(&global_opengl_mutex);
 #include "pluginrenderer.h"
 #include "pluginSupport/OliveClip.h"
 #include "pluginSupport/OlivePluginInstance.h"
+#include "pluginSupport/paraminstance.h"
 #include "common/ffmpegutils.h"
 #include "ofxhParam.h"
 #include "ofxImageEffect.h"
@@ -113,10 +115,12 @@ static QVariant UnpackVariant(const QVariant &v)
 }
 
 // 作用：为插件实例注入当前帧的参数值，避免依赖节点实时回读。
+// 注意：此方法在渲染线程（OpenGL 线程）中执行，不能调用会触发 Undo 的操作
 static void ApplyParamOverrides(OFX::Host::ImageEffect::Instance &instance,
 								const olive::NodeValueRow &values,
 								OfxTime time)
 {
+	Q_UNUSED(time)
 	const auto &params = instance.getParams();
 	for (const auto &entry : params) {
 		if (!entry.second) {
@@ -137,100 +141,101 @@ static void ApplyParamOverrides(OFX::Host::ImageEffect::Instance &instance,
 		// 解包可能嵌套的 QVariant
 		const QVariant unpacked_data = UnpackVariant(value.data());
 
+		// 使用 SetRenderTimeValue 方法直接设置值，避免触发 Undo
+		// 因为我们只是在渲染线程中临时设置值，不是要修改节点参数
 		if (type == kOfxParamTypeInteger) {
 			if (auto *param =
-					dynamic_cast<OFX::Host::Param::IntegerInstance *>(
+					dynamic_cast<olive::plugin::IntegerInstance *>(
 						entry.second)) {
-				param->set(time, unpacked_data.toInt());
+				param->SetRenderTimeValue(unpacked_data.toInt());
 			}
 			continue;
 		}
 		if (type == kOfxParamTypeDouble) {
 			if (auto *param =
-					dynamic_cast<OFX::Host::Param::DoubleInstance *>(
+					dynamic_cast<olive::plugin::DoubleInstance *>(
 						entry.second)) {
-				param->set(time, unpacked_data.toDouble());
+				param->SetRenderTimeValue(unpacked_data.toDouble());
 			}
 			continue;
 		}
 		if (type == kOfxParamTypeBoolean) {
 			if (auto *param =
-					dynamic_cast<OFX::Host::Param::BooleanInstance *>(
+					dynamic_cast<olive::plugin::BooleanInstance *>(
 						entry.second)) {
-				param->set(time, unpacked_data.toBool());
+				param->SetRenderTimeValue(unpacked_data.toBool());
 			}
 			continue;
 		}
 		if (type == kOfxParamTypeChoice) {
 			if (auto *param =
-					dynamic_cast<OFX::Host::Param::ChoiceInstance *>(
+					dynamic_cast<olive::plugin::ChoiceInstance *>(
 						entry.second)) {
-				param->set(time, unpacked_data.toInt());
+				param->SetRenderTimeValue(unpacked_data.toInt());
 			}
 			continue;
 		}
 		if (type == kOfxParamTypeString || type == kOfxParamTypeCustom ||
 			type == kOfxParamTypeBytes || type == kOfxParamTypeStrChoice) {
 			if (auto *param =
-					dynamic_cast<OFX::Host::Param::StringInstance *>(
+					dynamic_cast<olive::plugin::StringInstance *>(
 						entry.second)) {
-				const QByteArray utf8 = unpacked_data.toString().toUtf8();
-				param->set(time, utf8.constData());
+				param->SetRenderTimeValue(unpacked_data.toString().toStdString());
 			}
 			continue;
 		}
 		if (type == kOfxParamTypeRGBA) {
 			if (auto *param =
-					dynamic_cast<OFX::Host::Param::RGBAInstance *>(
+					dynamic_cast<olive::plugin::RGBAInstance *>(
 						entry.second)) {
 				if (unpacked_data.canConvert<olive::core::Color>()) {
 					const auto c = unpacked_data.value<olive::core::Color>();
-					param->set(time, c.red(), c.green(), c.blue(), c.alpha());
+					param->SetRenderTimeValue(c.red(), c.green(), c.blue(), c.alpha());
 				} else if (unpacked_data.canConvert<QVector4D>()) {
 					const QVector4D v = unpacked_data.value<QVector4D>();
-					param->set(time, v.x(), v.y(), v.z(), v.w());
+					param->SetRenderTimeValue(v.x(), v.y(), v.z(), v.w());
 				} else if (unpacked_data.canConvert<QVector3D>()) {
 					const QVector3D v = unpacked_data.value<QVector3D>();
-					param->set(time, v.x(), v.y(), v.z(), 1.0);
+					param->SetRenderTimeValue(v.x(), v.y(), v.z(), 1.0);
 				}
 			}
 			continue;
 		}
 		if (type == kOfxParamTypeRGB) {
 			if (auto *param =
-					dynamic_cast<OFX::Host::Param::RGBInstance *>(
+					dynamic_cast<olive::plugin::RGBInstance *>(
 						entry.second)) {
 				if (unpacked_data.canConvert<olive::core::Color>()) {
 					const auto c = unpacked_data.value<olive::core::Color>();
-					param->set(time, c.red(), c.green(), c.blue());
+					param->SetRenderTimeValue(c.red(), c.green(), c.blue());
 				} else if (unpacked_data.canConvert<QVector4D>()) {
 					const QVector4D v = unpacked_data.value<QVector4D>();
-					param->set(time, v.x(), v.y(), v.z());
+					param->SetRenderTimeValue(v.x(), v.y(), v.z());
 				} else if (unpacked_data.canConvert<QVector3D>()) {
 					const QVector3D v = unpacked_data.value<QVector3D>();
-					param->set(time, v.x(), v.y(), v.z());
+					param->SetRenderTimeValue(v.x(), v.y(), v.z());
 				}
 			}
 			continue;
 		}
 		if (type == kOfxParamTypeDouble2D) {
 			if (auto *param =
-					dynamic_cast<OFX::Host::Param::Double2DInstance *>(
+					dynamic_cast<olive::plugin::Double2DInstance *>(
 						entry.second)) {
 				if (unpacked_data.canConvert<QVector2D>()) {
 					const QVector2D v = unpacked_data.value<QVector2D>();
-					param->set(time, v.x(), v.y());
+					param->SetRenderTimeValue(v.x(), v.y());
 				}
 			}
 			continue;
 		}
 		if (type == kOfxParamTypeInteger2D) {
 			if (auto *param =
-					dynamic_cast<OFX::Host::Param::Integer2DInstance *>(
+					dynamic_cast<olive::plugin::Integer2DInstance *>(
 						entry.second)) {
 				if (unpacked_data.canConvert<QVector2D>()) {
 					const QVector2D v = unpacked_data.value<QVector2D>();
-					param->set(time, static_cast<int>(v.x()),
+					param->SetRenderTimeValue(static_cast<int>(v.x()),
 							   static_cast<int>(v.y()));
 				}
 			}
@@ -238,22 +243,22 @@ static void ApplyParamOverrides(OFX::Host::ImageEffect::Instance &instance,
 		}
 		if (type == kOfxParamTypeDouble3D) {
 			if (auto *param =
-					dynamic_cast<OFX::Host::Param::Double3DInstance *>(
+					dynamic_cast<olive::plugin::Double3DInstance *>(
 						entry.second)) {
 				if (unpacked_data.canConvert<QVector3D>()) {
 					const QVector3D v = unpacked_data.value<QVector3D>();
-					param->set(time, v.x(), v.y(), v.z());
+					param->SetRenderTimeValue(v.x(), v.y(), v.z());
 				}
 			}
 			continue;
 		}
 		if (type == kOfxParamTypeInteger3D) {
 			if (auto *param =
-					dynamic_cast<OFX::Host::Param::Integer3DInstance *>(
+					dynamic_cast<olive::plugin::Integer3DInstance *>(
 						entry.second)) {
 				if (unpacked_data.canConvert<QVector3D>()) {
 					const QVector3D v = unpacked_data.value<QVector3D>();
-					param->set(time, static_cast<int>(v.x()),
+					param->SetRenderTimeValue(static_cast<int>(v.x()),
 							   static_cast<int>(v.y()),
 							   static_cast<int>(v.z()));
 				}
@@ -1355,7 +1360,13 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 #endif
 	auto *olive_instance =
 		dynamic_cast<olive::plugin::OlivePluginInstance *>(instance);
+	
+	// Allow disabling OpenGL rendering via environment variable for debugging
+	static bool disable_opengl_plugins =
+		qEnvironmentVariableIntValue("OAK_DISABLE_PLUGIN_OPENGL") != 0;
+	
 	const bool use_opengl =
+		!disable_opengl_plugins &&
 		supports_opengl && destination && destination->renderer() &&
 		destination->id().isValid();
 	if (olive_instance) {
@@ -1408,6 +1419,9 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 	std::map<std::string, OliveClipInstance *> input_clips;
 	std::map<std::string, olive::VideoParams> input_params;
 	auto values = job.GetValues();
+	qDebug() << "OFX Plugin - Setting up inputs, effect_input_id:" << effect_input_id
+			 << "src usable:" << is_usable_input(src);
+			 
 	for (const auto &entry : clips) {
 		if (entry.first == kOfxImageEffectOutputClipName) {
 			continue;
@@ -1415,6 +1429,7 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 		OliveClipInstance *input_clip =
 			dynamic_cast<OliveClipInstance *>(instance->getClip(entry.first));
 		if (!input_clip) {
+			qDebug() << "OFX Plugin - Input clip not found:" << QString::fromStdString(entry.first);
 			continue;
 		}
 		const QString clip_key = QString::fromStdString(entry.first);
@@ -1422,25 +1437,35 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 		if (!effect_input_id.isEmpty() && clip_key == effect_input_id &&
 			is_usable_input(src)) {
 			input_tex = src;
+			qDebug() << "OFX Plugin - Using src texture for" << clip_key;
 		} else {
 			input_tex = values.value(clip_key).toTexture();
 			if (!input_tex &&
 				entry.first == kOfxImageEffectSimpleSourceClipName) {
 				input_tex = values.value(kTextureInput).toTexture();
+				qDebug() << "OFX Plugin - Using kTextureInput for" << QString::fromStdString(entry.first);
 			}
 		}
 		if (!is_usable_input(input_tex) &&
 			entry.first == kOfxImageEffectSimpleSourceClipName &&
 			is_usable_input(src)) {
 			input_tex = src;
+			qDebug() << "OFX Plugin - Fallback to src for" << QString::fromStdString(entry.first);
 		}
 		if (is_usable_input(input_tex)) {
 			input_textures[entry.first] = input_tex;
 			olive::VideoParams params = input_tex->params();
 			input_clip->setInputTexture(input_tex, frame);
 			input_clips[entry.first] = input_clip;
+			qDebug() << "OFX Plugin - Input set:" << QString::fromStdString(entry.first)
+					 << "params valid:" << params.is_valid();
+		} else {
+			qDebug() << "OFX Plugin - Input NOT usable:" << QString::fromStdString(entry.first)
+					 << "tex ptr:" << input_tex.get();
 		}
 	}
+	
+	qDebug() << "OFX Plugin - Total inputs set:" << input_clips.size();
 	
 	// call getClipPreferences to know which format plugin requires
 	OFX::Host::Property::Set args;
@@ -1529,9 +1554,38 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 		output_clip->getProps().getStringProperty(kOfxImageEffectPropPixelDepth);
 	std::string component =
 		output_clip->getProps().getStringProperty(kOfxImageEffectPropComponents);
-	output_params.set_format(PixelFormatFromOfxDepth(bitdepth));
-	output_params.set_channel_count(component);
+	
+	// Debug: log the OFX component and bitdepth strings
+	qDebug() << "OFX Plugin" << PluginIdForInstance(instance) 
+			 << "- bitdepth:" << QString::fromStdString(bitdepth)
+			 << "component:" << QString::fromStdString(component);
+	
+	olive::core::PixelFormat format = PixelFormatFromOfxDepth(bitdepth);
+	int channels = ChannelCountFromOfxComponent(component);
+	
+	qDebug() << "OFX Plugin - Parsed format:" << static_cast<int>(format)
+			 << "channels:" << channels
+			 << "width:" << output_params.width()
+			 << "height:" << output_params.height();
+	
+	// If plugin doesn't return valid format, use destination format as fallback
+	if (format == olive::core::PixelFormat::INVALID) {
+		qWarning() << "OFX Plugin returned invalid bitdepth, using destination format as fallback";
+		format = destination_params.format();
+	}
+	if (channels == 0) {
+		qWarning() << "OFX Plugin returned invalid component, using destination channels as fallback";
+		channels = destination_params.channel_count();
+	}
+	
+	output_params.set_format(format);
+	output_params.set_channel_count(channels);
 	output_clip->setParams(output_params);
+	
+	// Debug: log final params validity
+	qDebug() << "OFX Plugin - Final format:" << static_cast<int>(output_params.format())
+			 << "channel_count:" << output_params.channel_count()
+			 << "is_valid:" << output_params.is_valid();
 
 	// Apply parameter values to the instance before rendering
 	ApplyParamOverrides(*instance, values, frame);

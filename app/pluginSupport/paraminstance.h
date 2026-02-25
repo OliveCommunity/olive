@@ -78,10 +78,20 @@ public:
 	{
 		_node = new_node;
 	}
+	// 设置渲染时的临时值（不产生 Undo）
+	void SetRenderTimeValue(int data) {
+		value_ = data;
+		has_value_ = true;
+	}
 	OfxStatus get(int &a) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			a = value_;
+			return kOfxStatOK;
+		}
 		if (!_node) {
-			a = has_value_ ? value_ : 0;
+			a = 0;
 			return kOfxStatOK;
 		}
 		if (id.isEmpty()) {
@@ -98,8 +108,13 @@ public:
 	}
 	OfxStatus get(OfxTime time, int &data) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			data = value_;
+			return kOfxStatOK;
+		}
 		if (!_node) {
-			data = has_value_ ? value_ : 0;
+			data = 0;
 			return kOfxStatOK;
 		}
 		if (id.isEmpty()) {
@@ -165,10 +180,20 @@ public:
 	{
 		node = new_node;
 	}
+	// 设置渲染时的临时值（不产生 Undo）
+	void SetRenderTimeValue(double data) {
+		value_ = data;
+		has_value_ = true;
+	}
 	OfxStatus get(double& data) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			data = value_;
+			return kOfxStatOK;
+		}
 		if (!node) {
-			data = has_value_ ? value_ : 0.0;
+			data = 0.0;
 			return kOfxStatOK;
 		}
 		QVariant variant = node->GetStandardValue(_descriptor.getName().c_str());
@@ -181,8 +206,13 @@ public:
 	}
 	OfxStatus get(OfxTime time, double& data) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			data = value_;
+			return kOfxStatOK;
+		}
 		if (!node) {
-			data = has_value_ ? value_ : 0.0;
+			data = 0.0;
 			return kOfxStatOK;
 		}
 		QVariant variant =
@@ -257,10 +287,20 @@ public:
 	{
 		node = new_node;
 	}
+	// 设置渲染时的临时值（不产生 Undo）
+	void SetRenderTimeValue(bool data) {
+		value_ = data;
+		has_value_ = true;
+	}
 	OfxStatus get(bool& data) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			data = value_;
+			return kOfxStatOK;
+		}
 		if (!node) {
-			data = has_value_ ? value_ : false;
+			data = false;
 			return kOfxStatOK;
 		}
 		QVariant variant = node->GetStandardValue(_descriptor.getName().c_str());
@@ -273,8 +313,13 @@ public:
 	}
 	OfxStatus get(OfxTime time, bool& data) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			data = value_;
+			return kOfxStatOK;
+		}
 		if (!node) {
-			data = has_value_ ? value_ : false;
+			data = false;
 			return kOfxStatOK;
 		}
 		QVariant variant =
@@ -344,10 +389,20 @@ public:
 	{
 		node = new_node;
 	}
+	// 设置渲染时的临时值（不产生 Undo）
+	void SetRenderTimeValue(int data) {
+		value_ = data;
+		has_value_ = true;
+	}
 	OfxStatus get(int& data) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			data = value_;
+			return kOfxStatOK;
+		}
 		if (!node) {
-			data = has_value_ ? value_ : 0;
+			data = 0;
 			return kOfxStatOK;
 		}
 		QVariant variant = node->GetStandardValue(_descriptor.getName().c_str());
@@ -360,8 +415,13 @@ public:
 	}
 	OfxStatus get(OfxTime time, int& data) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			data = value_;
+			return kOfxStatOK;
+		}
 		if (!node) {
-			data = has_value_ ? value_ : 0;
+			data = 0;
 			return kOfxStatOK;
 		}
 		QVariant variant =
@@ -423,17 +483,26 @@ public:
 	{
 		node = new_node;
 	}
+	// 设置渲染时的临时值（不产生 Undo）
+	void SetRenderTimeValue(double r, double g, double b, double a) {
+		value_[0] = r;
+		value_[1] = g;
+		value_[2] = b;
+		value_[3] = a;
+		has_value_ = true;
+	}
 	OfxStatus get(double& r,double& g,double& b,double& a) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			r = value_[0];
+			g = value_[1];
+			b = value_[2];
+			a = value_[3];
+			return kOfxStatOK;
+		}
 		if (!node) {
-			if (has_value_) {
-				r = value_[0];
-				g = value_[1];
-				b = value_[2];
-				a = value_[3];
-			} else {
-				r = g = b = a = 0.0;
-			}
+			r = g = b = a = 0.0;
 			return kOfxStatOK;
 		}
 		olive::core::Color c =
@@ -448,15 +517,16 @@ public:
 	}
 	OfxStatus get(OfxTime time, double& r,double& g,double& b,double& a) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			r = value_[0];
+			g = value_[1];
+			b = value_[2];
+			a = value_[3];
+			return kOfxStatOK;
+		}
 		if (!node) {
-			if (has_value_) {
-				r = value_[0];
-				g = value_[1];
-				b = value_[2];
-				a = value_[3];
-			} else {
-				r = g = b = a = 0.0;
-			}
+			r = g = b = a = 0.0;
 			return kOfxStatOK;
 		}
 		olive::core::Color c =
@@ -533,16 +603,24 @@ public:
 	{
 		node = new_node;
 	}
+	// 设置渲染时的临时值（不产生 Undo）
+	void SetRenderTimeValue(double r, double g, double b) {
+		value_[0] = r;
+		value_[1] = g;
+		value_[2] = b;
+		has_value_ = true;
+	}
 	OfxStatus get(double& r,double& g,double& b) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			r = value_[0];
+			g = value_[1];
+			b = value_[2];
+			return kOfxStatOK;
+		}
 		if (!node) {
-			if (has_value_) {
-				r = value_[0];
-				g = value_[1];
-				b = value_[2];
-			} else {
-				r = g = b = 0.0;
-			}
+			r = g = b = 0.0;
 			return kOfxStatOK;
 		}
 		olive::core::Color c =
@@ -556,14 +634,15 @@ public:
 	}
 	OfxStatus get(OfxTime time, double& r,double& g,double& b) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			r = value_[0];
+			g = value_[1];
+			b = value_[2];
+			return kOfxStatOK;
+		}
 		if (!node) {
-			if (has_value_) {
-				r = value_[0];
-				g = value_[1];
-				b = value_[2];
-			} else {
-				r = g = b = 0.0;
-			}
+			r = g = b = 0.0;
 			return kOfxStatOK;
 		}
 		olive::core::Color c =
@@ -634,15 +713,22 @@ public:
 	{
 		node = new_node;
 	}
+	// 设置渲染时的临时值（不产生 Undo）
+	void SetRenderTimeValue(double x, double y) {
+		value_[0] = x;
+		value_[1] = y;
+		has_value_ = true;
+	}
 	OfxStatus get(double& x,double& y) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			x = value_[0];
+			y = value_[1];
+			return kOfxStatOK;
+		}
 		if (!node) {
-			if (has_value_) {
-				x = value_[0];
-				y = value_[1];
-			} else {
-				x = y = 0.0;
-			}
+			x = y = 0.0;
 			return kOfxStatOK;
 		}
 		QVector2D vec =
@@ -654,13 +740,14 @@ public:
 	}
 	OfxStatus get(OfxTime time,double& x,double& y) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			x = value_[0];
+			y = value_[1];
+			return kOfxStatOK;
+		}
 		if (!node) {
-			if (has_value_) {
-				x = value_[0];
-				y = value_[1];
-			} else {
-				x = y = 0.0;
-			}
+			x = y = 0.0;
 			return kOfxStatOK;
 		}
 		QVector2D vec =
@@ -724,15 +811,22 @@ public:
 	{
 		node = new_node;
 	}
+	// 设置渲染时的临时值（不产生 Undo）
+	void SetRenderTimeValue(int x, int y) {
+		value_[0] = x;
+		value_[1] = y;
+		has_value_ = true;
+	}
 	OfxStatus get(int& x,int& y) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			x = value_[0];
+			y = value_[1];
+			return kOfxStatOK;
+		}
 		if (!node) {
-			if (has_value_) {
-				x = value_[0];
-				y = value_[1];
-			} else {
-				x = y = 0;
-			}
+			x = y = 0;
 			return kOfxStatOK;
 		}
 		QVector2D vec =
@@ -744,13 +838,14 @@ public:
 	}
 	OfxStatus get(OfxTime time,int& x,int& y) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			x = value_[0];
+			y = value_[1];
+			return kOfxStatOK;
+		}
 		if (!node) {
-			if (has_value_) {
-				x = value_[0];
-				y = value_[1];
-			} else {
-				x = y = 0;
-			}
+			x = y = 0;
 			return kOfxStatOK;
 		}
 		QVector2D vec =
@@ -815,16 +910,24 @@ public:
 	{
 		node = new_node;
 	}
+	// 设置渲染时的临时值（不产生 Undo）
+	void SetRenderTimeValue(double x, double y, double z) {
+		value_[0] = x;
+		value_[1] = y;
+		value_[2] = z;
+		has_value_ = true;
+	}
 	OfxStatus get(double& x,double& y,double& z) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			x = value_[0];
+			y = value_[1];
+			z = value_[2];
+			return kOfxStatOK;
+		}
 		if (!node) {
-			if (has_value_) {
-				x = value_[0];
-				y = value_[1];
-				z = value_[2];
-			} else {
-				x = y = z = 0.0;
-			}
+			x = y = z = 0.0;
 			return kOfxStatOK;
 		}
 		QVector3D vec =
@@ -837,14 +940,15 @@ public:
 	}
 	OfxStatus get(OfxTime time,double& x,double& y,double& z) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			x = value_[0];
+			y = value_[1];
+			z = value_[2];
+			return kOfxStatOK;
+		}
 		if (!node) {
-			if (has_value_) {
-				x = value_[0];
-				y = value_[1];
-				z = value_[2];
-			} else {
-				x = y = z = 0.0;
-			}
+			x = y = z = 0.0;
 			return kOfxStatOK;
 		}
 		QVector3D vec =
@@ -914,16 +1018,24 @@ public:
 	{
 		node = new_node;
 	}
+	// 设置渲染时的临时值（不产生 Undo）
+	void SetRenderTimeValue(int x, int y, int z) {
+		value_[0] = x;
+		value_[1] = y;
+		value_[2] = z;
+		has_value_ = true;
+	}
 	OfxStatus get(int& x,int& y,int& z) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			x = value_[0];
+			y = value_[1];
+			z = value_[2];
+			return kOfxStatOK;
+		}
 		if (!node) {
-			if (has_value_) {
-				x = value_[0];
-				y = value_[1];
-				z = value_[2];
-			} else {
-				x = y = z = 0;
-			}
+			x = y = z = 0;
 			return kOfxStatOK;
 		}
 		QVector3D vec =
@@ -936,14 +1048,15 @@ public:
 	}
 	OfxStatus get(OfxTime time,int& x,int& y,int& z) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			x = value_[0];
+			y = value_[1];
+			z = value_[2];
+			return kOfxStatOK;
+		}
 		if (!node) {
-			if (has_value_) {
-				x = value_[0];
-				y = value_[1];
-				z = value_[2];
-			} else {
-				x = y = z = 0;
-			}
+			x = y = z = 0;
 			return kOfxStatOK;
 		}
 		QVector3D vec =
@@ -1013,10 +1126,20 @@ public:
 	{
 		node = new_node;
 	}
+	// 设置渲染时的临时值（不产生 Undo）
+	void SetRenderTimeValue(const std::string& data) {
+		value_ = data;
+		has_value_ = true;
+	}
 	OfxStatus get(std::string &data) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			data = value_;
+			return kOfxStatOK;
+		}
 		if (!node) {
-			data = has_value_ ? value_ : std::string();
+			data.clear();
 			return kOfxStatOK;
 		}
 		QVariant variant = node->GetStandardValue(_descriptor.getName().c_str());
@@ -1029,8 +1152,13 @@ public:
 	}
 	OfxStatus get(OfxTime time, std::string &data) override
 	{
+		// 如果设置了渲染时值，优先使用
+		if (has_value_) {
+			data = value_;
+			return kOfxStatOK;
+		}
 		if (!node) {
-			data = has_value_ ? value_ : std::string();
+			data.clear();
 			return kOfxStatOK;
 		}
 		QVariant variant =

@@ -24,6 +24,7 @@
 
 #include "ofxImageEffect.h"
 #include <olive/core/core.h>
+#include <QDebug>
 #include <QVector2D>
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
@@ -187,6 +188,16 @@ public:
 			channel_count_ = kRGBChannelCount;
 		}
 		else if(ofxComponent == kOfxImageComponentRGBA){
+			channel_count_ = kRGBAChannelCount;
+		}
+		else if (ofxComponent == kOfxImageComponentNone) {
+			// None means unconnected/invalid, keep existing or set to 0
+			// This will cause is_valid() to return false as expected
+			channel_count_ = 0;
+		}
+		else {
+			// Unknown component type, log warning and default to RGBA
+			qWarning() << "Unknown OFX component type:" << QString::fromStdString(ofxComponent) << "- defaulting to RGBA";
 			channel_count_ = kRGBAChannelCount;
 		}
 	}
