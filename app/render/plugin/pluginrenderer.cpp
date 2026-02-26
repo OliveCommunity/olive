@@ -705,6 +705,19 @@ static olive::AVFramePtr create_avframe_from_ofx_image(OFX::Host::ImageEffect::I
 					copy_bytes);
 	}
 
+	// Debug: check if image is all black (first pixel)
+	uint8_t *first_pixel = static_cast<uint8_t*>(data_ptr);
+	bool all_black = true;
+	for (int i = 0; i < 16 && i < row_bytes * height; ++i) {
+		if (first_pixel[i] != 0) {
+			all_black = false;
+			break;
+		}
+	}
+	if (all_black) {
+		qWarning() << "OFX Plugin - Output image appears to be all black (first 16 bytes are zero)";
+	}
+
 	return frame;
 }
 
@@ -1417,11 +1430,8 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 	};
 	std::map<std::string, TexturePtr> input_textures;
 	std::map<std::string, OliveClipInstance *> input_clips;
-	std::map<std::string, olive::VideoParams> input_params;
+	std::map<std::string, VideoParams> input_params;
 	auto values = job.GetValues();
-	qDebug() << "OFX Plugin - Setting up inputs, effect_input_id:" << effect_input_id
-			 << "src usable:" << is_usable_input(src);
-			 
 	for (const auto &entry : clips) {
 		if (entry.first == kOfxImageEffectOutputClipName) {
 			continue;
@@ -1429,7 +1439,6 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 		OliveClipInstance *input_clip =
 			dynamic_cast<OliveClipInstance *>(instance->getClip(entry.first));
 		if (!input_clip) {
-			qDebug() << "OFX Plugin - Input clip not found:" << QString::fromStdString(entry.first);
 			continue;
 		}
 		const QString clip_key = QString::fromStdString(entry.first);
@@ -1437,35 +1446,32 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 		if (!effect_input_id.isEmpty() && clip_key == effect_input_id &&
 			is_usable_input(src)) {
 			input_tex = src;
-			qDebug() << "OFX Plugin - Using src texture for" << clip_key;
 		} else {
 			input_tex = values.value(clip_key).toTexture();
 			if (!input_tex &&
 				entry.first == kOfxImageEffectSimpleSourceClipName) {
 				input_tex = values.value(kTextureInput).toTexture();
-				qDebug() << "OFX Plugin - Using kTextureInput for" << QString::fromStdString(entry.first);
 			}
 		}
 		if (!is_usable_input(input_tex) &&
 			entry.first == kOfxImageEffectSimpleSourceClipName &&
 			is_usable_input(src)) {
 			input_tex = src;
-			qDebug() << "OFX Plugin - Fallback to src for" << QString::fromStdString(entry.first);
 		}
 		if (is_usable_input(input_tex)) {
 			input_textures[entry.first] = input_tex;
+			// Pre-read texture data BEFORE entering GL thread to avoid deadlock
+			if (!input_tex->frame() || !input_tex->frame()->data[0]) {
+				AVFramePtr pre_read = ReadbackTextureToFrame(input_tex, input_tex->params());
+				if (pre_read) {
+					input_tex->handleFrame(pre_read);
+				}
+			}
 			olive::VideoParams params = input_tex->params();
 			input_clip->setInputTexture(input_tex, frame);
 			input_clips[entry.first] = input_clip;
-			qDebug() << "OFX Plugin - Input set:" << QString::fromStdString(entry.first)
-					 << "params valid:" << params.is_valid();
-		} else {
-			qDebug() << "OFX Plugin - Input NOT usable:" << QString::fromStdString(entry.first)
-					 << "tex ptr:" << input_tex.get();
 		}
 	}
-	
-	qDebug() << "OFX Plugin - Total inputs set:" << input_clips.size();
 	
 	// call getClipPreferences to know which format plugin requires
 	OFX::Host::Property::Set args;
@@ -1530,6 +1536,13 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 			params.set_format(PixelFormatFromOfxDepth(bitdepth));
 			params.set_channel_count(component);
 			ConvertTextureForParams(input_tex, params);
+			// Pre-read texture data BEFORE entering GL thread to avoid deadlock
+			if (!input_tex->frame() || !input_tex->frame()->data[0]) {
+				AVFramePtr pre_read = ReadbackTextureToFrame(input_tex, params);
+				if (pre_read) {
+					input_tex->handleFrame(pre_read);
+				}
+			}
 			OfxRectD rod;
 			rod.x1 = 0;
 			rod.y1 = 0;
@@ -1555,18 +1568,8 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 	std::string component =
 		output_clip->getProps().getStringProperty(kOfxImageEffectPropComponents);
 	
-	// Debug: log the OFX component and bitdepth strings
-	qDebug() << "OFX Plugin" << PluginIdForInstance(instance) 
-			 << "- bitdepth:" << QString::fromStdString(bitdepth)
-			 << "component:" << QString::fromStdString(component);
-	
 	olive::core::PixelFormat format = PixelFormatFromOfxDepth(bitdepth);
 	int channels = ChannelCountFromOfxComponent(component);
-	
-	qDebug() << "OFX Plugin - Parsed format:" << static_cast<int>(format)
-			 << "channels:" << channels
-			 << "width:" << output_params.width()
-			 << "height:" << output_params.height();
 	
 	// If plugin doesn't return valid format, use destination format as fallback
 	if (format == olive::core::PixelFormat::INVALID) {
@@ -1581,11 +1584,6 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 	output_params.set_format(format);
 	output_params.set_channel_count(channels);
 	output_clip->setParams(output_params);
-	
-	// Debug: log final params validity
-	qDebug() << "OFX Plugin - Final format:" << static_cast<int>(output_params.format())
-			 << "channel_count:" << output_params.channel_count()
-			 << "is_valid:" << output_params.is_valid();
 
 	// Apply parameter values to the instance before rendering
 	ApplyParamOverrides(*instance, values, frame);
@@ -1704,7 +1702,7 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 				linesize_pixels = destination_params.effective_width();
 			}
 			destination->Upload(converted->data[0], linesize_pixels);
-		} else if (destination->renderer() && converted && converted->data[0]) {
+				} else if (destination->renderer() && converted && converted->data[0]) {
 			qWarning().noquote()
 				<< "OFX output pixel format mismatch for plugin="
 				<< PluginIdForInstance(instance);
@@ -1712,7 +1710,7 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 	} else {
 		AVFramePtr frame_ptr =
 			ReadbackTextureToFrame(destination, destination_params);
-#ifdef OFX_SUPPORTS_OPENGLRENDER
+	#ifdef OFX_SUPPORTS_OPENGLRENDER
 		DetachOutputTexture();
 		instance->contextDetachedAction();
 #endif

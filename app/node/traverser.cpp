@@ -549,18 +549,8 @@ class GTTTime {
 public:
 	GTTTime(const Node *n)
 	{
-		t = QDateTime::currentMSecsSinceEpoch();
-		node = n;
+		Q_UNUSED(n)
 	}
-
-	~GTTTime()
-	{
-		qDebug() << "GT for" << node << "took"
-				 << (QDateTime::currentMSecsSinceEpoch() - t);
-	}
-
-	qint64 t;
-	const Node *node;
 };
 
 NodeValueTable NodeTraverser::GenerateTable(const Node *n,
@@ -661,10 +651,13 @@ void NodeTraverser::ResolveJobs(NodeValue &val)
 					QMutexLocker locker(&texture_cache_mutex_);
 					auto it = resolved_texture_cache_.find(job_tex.get());
 					if (it != resolved_texture_cache_.end()) {
+						//qDebug() << "ResolveJobs: Cache HIT for job" << job_tex.get()
+							//	 << "texture:" << it.value().texture.get();
 						it.value().touch();
 						val.set_value(it.value().texture);
 						return;
 					}
+					//qDebug() << "ResolveJobs: Cache MISS for job" << job_tex.get();
 				}
 				// Cache miss - continue to resolve
 
@@ -804,87 +797,19 @@ void NodeTraverser::ResolveJobs(NodeValue &val)
 					EvictTextureCacheIfNeeded();
 				}
 				else if (plugin::PluginJob* plugin_job=dynamic_cast<plugin::PluginJob*>(base_job)) {
-					bool resolved_from_cache = false;
-					if (UseCache()) {
-						if (plugin::PluginNode *plugin_node =
-								plugin_job->node()) {
-							if (plugin_node->AreCachesEnabled()) {
-								if (FrameHashCache *cache =
-										plugin_node->video_frame_cache()) {
-									const rational cache_time =
-										rational::fromDouble(
-											plugin_job->time_seconds());
-									QUuid cache_uuid;
-									int64_t cache_timestamp = 0;
-									{
-										QMutexLocker locker(cache->mutex());
-										cache->LoadState();
-										if (cache->IsFrameCached(cache_time)) {
-											cache_uuid = cache->GetUuid();
-										} else {
-											for (const PlaybackCache::Passthrough &p :
-												 cache->GetPassthroughs()) {
-												if (p.Contains(cache_time)) {
-													cache_uuid = p.cache;
-													break;
-												}
-											}
-										}
-										if (!cache_uuid.isNull()) {
-											cache_timestamp =
-												Timecode::time_to_timestamp(
-													cache_time,
-													cache->GetTimebase(),
-													Timecode::kRound);
-										}
-									}
-									if (!cache_uuid.isNull()) {
-										CacheJob cache_job(cache_uuid, cache_timestamp, val);
-										TexturePtr cached_tex =
-											ProcessVideoCacheJob(&cache_job);
-										if (cached_tex) {
-											val.set_value(cached_tex);
-											resolved_from_cache = true;
-										}
-									}
-								}
-							}
-						}
-					}
 
 					ResolvedTextureCacheEntry entry;
-					if (resolved_from_cache) {
-						entry.texture = val.toTexture();
-						entry.size_bytes = CalculateTextureMemorySize(entry.texture->params());
-						entry.touch();
-						{
-							QMutexLocker locker(&texture_cache_mutex_);
-							resolved_texture_cache_.insert(job_tex.get(), entry);
-						}
-						EvictTextureCacheIfNeeded();
-					} else {
-						VideoParams tex_params = job_tex->params();
 
-						TexturePtr tex = CreateTexture(tex_params);
+					VideoParams tex_params = job_tex->params();
 
-						ProcessPluginJob(job_tex, tex, val.source());
-						val.set_value(tex);
+					TexturePtr tex = CreateTexture(tex_params);
 
-						entry.texture = tex;
-						entry.size_bytes = CalculateTextureMemorySize(tex->params());
-						entry.touch();
-						{
-							QMutexLocker locker(&texture_cache_mutex_);
-							resolved_texture_cache_.insert(job_tex.get(), entry);
-						}
-						EvictTextureCacheIfNeeded();
-					}
+					ProcessPluginJob(job_tex, tex, val.source());
 
-				} else {
-					// Cache resolved value for non-plugin jobs
-					ResolvedTextureCacheEntry entry;
-					entry.texture = val.toTexture();
-					entry.size_bytes = CalculateTextureMemorySize(entry.texture->params());
+					val.set_value(tex);
+
+					entry.texture = tex;
+					entry.size_bytes = CalculateTextureMemorySize(tex->params());
 					entry.touch();
 					{
 						QMutexLocker locker(&texture_cache_mutex_);

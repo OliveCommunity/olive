@@ -170,7 +170,11 @@ void OpenGLThread::WaitForIdle()
             if (!job->IsCancelled()) {
                 job->Execute(renderer_);
             }
+            fprintf(stderr, "[DEADLOCK DEBUG] GL thread: calling MarkCompleted\n");
+            fflush(stderr);
             job->MarkCompleted();
+            fprintf(stderr, "[DEADLOCK DEBUG] GL thread: MarkCompleted done\n");
+            fflush(stderr);
             
             locker.relock();
         }
@@ -206,8 +210,6 @@ void OpenGLThread::run()
         return;
     }
     renderer_->PostInit();
-    
-    qDebug() << "OpenGLThread: GL thread started successfully";
 
     QMutexLocker locker(&mutex_);
     
@@ -255,7 +257,6 @@ void OpenGLThread::run()
     }
 
     s_is_gl_thread = false;
-    qDebug() << "OpenGLThread: GL thread stopped";
 }
 
 } // namespace olive

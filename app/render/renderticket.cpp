@@ -157,7 +157,7 @@ void RenderTicket::FinishInternal(bool has_result, QVariant result)
 		QMutexLocker locker(&lock_);
 
 		if (!is_running_) {
-			qWarning() << "Tried to finish ticket that wasn't running";
+			// Silently ignore finish calls for tickets that aren't running
 			return;
 		}
 

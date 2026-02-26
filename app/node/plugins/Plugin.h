@@ -67,6 +67,11 @@ public:
 	virtual void GenerateFrame(FramePtr frame,
 							   const GenerateJob &job) const override;
 
+
+	/**
+	 * @brief Called when an input value changes
+	 */
+	void InputValueChangedEvent(const QString &input, int element) override;
 public slots:
 	void pushButtonClicked(QString name);
 

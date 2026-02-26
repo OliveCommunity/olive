@@ -329,23 +329,47 @@ void PreviewAutoCacher::ConnectToNodeCache(Node *node)
 
 void PreviewAutoCacher::DisconnectFromNodeCache(Node *node)
 {
-	disconnect(node->video_frame_cache(), &PlaybackCache::Requested, this,
-			   &PreviewAutoCacher::VideoInvalidatedFromCache);
+	// Safety check: ensure node and its caches are still valid
+	if (!node) {
+		return;
+	}
+	
+	// Check if caches are still accessible before disconnecting
+	// This prevents crashes when node has been partially destroyed
+	FrameHashCache *video_cache = node->video_frame_cache();
+	ThumbnailCache *thumb_cache = node->thumbnail_cache();
+	AudioPlaybackCache *audio_cache = node->audio_playback_cache();
+	AudioWaveformCache *waveform_cache = node->waveform_cache();
+	
+	if (video_cache) {
+		disconnect(video_cache, &PlaybackCache::Requested, this,
+				   &PreviewAutoCacher::VideoInvalidatedFromCache);
+	}
 
-	disconnect(node->thumbnail_cache(), &PlaybackCache::Requested, this,
-			   &PreviewAutoCacher::VideoInvalidatedFromCache);
+	if (thumb_cache) {
+		disconnect(thumb_cache, &PlaybackCache::Requested, this,
+				   &PreviewAutoCacher::VideoInvalidatedFromCache);
+	}
 
-	disconnect(node->audio_playback_cache(), &PlaybackCache::Requested, this,
-			   &PreviewAutoCacher::AudioInvalidatedFromCache);
+	if (audio_cache) {
+		disconnect(audio_cache, &PlaybackCache::Requested, this,
+				   &PreviewAutoCacher::AudioInvalidatedFromCache);
+	}
 
-	disconnect(node->waveform_cache(), &PlaybackCache::Requested, this,
-			   &PreviewAutoCacher::AudioInvalidatedFromCache);
+	if (waveform_cache) {
+		disconnect(waveform_cache, &PlaybackCache::Requested, this,
+				   &PreviewAutoCacher::AudioInvalidatedFromCache);
+	}
 
-	disconnect(node->video_frame_cache(), &PlaybackCache::CancelAll, this,
-			   &PreviewAutoCacher::CancelForCache);
+	if (video_cache) {
+		disconnect(video_cache, &PlaybackCache::CancelAll, this,
+				   &PreviewAutoCacher::CancelForCache);
+	}
 
-	disconnect(node->audio_playback_cache(), &PlaybackCache::CancelAll, this,
-			   &PreviewAutoCacher::CancelForCache);
+	if (audio_cache) {
+		disconnect(audio_cache, &PlaybackCache::CancelAll, this,
+				   &PreviewAutoCacher::CancelForCache);
+	}
 }
 
 void PreviewAutoCacher::CancelQueuedSingleFrameRender()

@@ -23,6 +23,7 @@
 #define GLJOB_H
 
 #include <QMutex>
+#include <QSemaphore>
 #include <QWaitCondition>
 #include <functional>
 #include <memory>
@@ -60,7 +61,7 @@ public:
         kCustom
     };
 
-    GLJob(Type type) : type_(type), cancelled_(false) {}
+    GLJob(Type type) : type_(type), cancelled_(false), completed_(false) {}
     virtual ~GLJob() = default;
 
     Type type() const { return type_; }
@@ -68,19 +69,20 @@ public:
     // 执行任务（在 OpenGL 线程中调用）
     virtual void Execute(OpenGLRenderer *renderer) = 0;
 
-    // 等待任务完成
+    // 等待任务完成（使用 QSemaphore 避免条件变量丢失信号）
     void WaitForCompletion() {
-        QMutexLocker locker(&mutex_);
-        if (!completed_) {
-            condition_.wait(&mutex_);
-        }
+        semaphore_.acquire();
+    }
+
+    // 等待任务完成（带超时），返回true表示成功完成，false表示超时
+    bool WaitForCompletionWithTimeout(int timeout_ms) {
+        return semaphore_.tryAcquire(1, timeout_ms);
     }
 
     // 标记任务完成
     void MarkCompleted() {
-        QMutexLocker locker(&mutex_);
         completed_ = true;
-        condition_.wakeAll();
+        semaphore_.release();
     }
 
     bool IsCancelled() const { return cancelled_; }
@@ -89,9 +91,8 @@ public:
 protected:
     Type type_;
     std::atomic<bool> cancelled_{false};
-    bool completed_ = false;
-    QMutex mutex_;
-    QWaitCondition condition_;
+    std::atomic<bool> completed_;
+    QSemaphore semaphore_{0};  // 初始为0，完成后release
 };
 
 typedef std::shared_ptr<GLJob> GLJobPtr;

@@ -480,6 +480,74 @@ void olive::plugin::PluginNode::pushButtonClicked(QString name)
 {
 }
 
+void olive::plugin::PluginNode::InputValueChangedEvent(const QString &input, int element)
+{
+	// Notify OFX plugin instance that a parameter has changed
+	if (plugin_instance_) {
+		// Check if this input is a parameter or a clip (texture input)
+		// Source/Clip inputs should NOT trigger paramInstanceChangedAction
+		// Check if input is a parameter or a clip
+		const auto& params_map = plugin_instance_->getParams();
+		bool is_param = params_map.find(input.toStdString()) != params_map.end();
+		bool is_clip = (plugin_instance_->getClip(input.toStdString()) != nullptr);
+		
+		qDebug() << "[DETECT] InputValueChangedEvent:" << input 
+		         << "is_param:" << is_param 
+		         << "is_clip:" << is_clip
+		         << "element:" << element;
+		
+		if (is_clip && !is_param) {
+			// This is a clip input (like Source), not a parameter
+			// Just invalidate cache, don't call paramInstanceChangedAction
+			qDebug() << "[DETECT] Skipping paramInstanceChangedAction for clip input:" << input;
+			InvalidateCache(TimeRange(RATIONAL_MIN, RATIONAL_MAX), input, element);
+			return;
+		}
+		
+		if (!is_param) {
+			// Unknown input type
+			qDebug() << "[DETECT] Unknown input type:" << input << "- skipping";
+			return;
+		}
+		
+		QVariant value = GetStandardValue(input);
+		
+		// Get current render scale from plugin instance
+		double rs_x = 1.0, rs_y = 1.0;
+		plugin_instance_->getRenderScaleRecursive(rs_x, rs_y);
+		
+		// Get current time - use 0 if not available (parameter values typically don't vary by time)
+		OfxTime time = 0.0;
+		// Try to get current playhead from project
+		if (Project *proj = project()) {
+			// Try to get the active sequence's viewer
+			// For now, use time 0 as most parameters don't vary by time
+			time = 0.0;
+		}
+		
+		OfxPointD renderScale = {rs_x, rs_y};
+		
+		qDebug() << "[DETECT] Calling paramInstanceChangedAction for param:" << input;
+		
+		// Call proper OFX instance changed action sequence:
+		// begin -> paramInstanceChanged -> end
+		plugin_instance_->beginInstanceChangedAction(kOfxChangeUserEdited);
+		
+		plugin_instance_->paramInstanceChangedAction(
+			input.toStdString(),
+			kOfxChangeUserEdited,
+			time,
+			renderScale
+		);
+		
+		plugin_instance_->endInstanceChangedAction(kOfxChangeUserEdited);
+		
+		// Invalidate video cache to force re-render with new parameters
+		// Invalidate all time ranges since parameter changes affect all frames
+		InvalidateCache(TimeRange(RATIONAL_MIN, RATIONAL_MAX), input, element);
+	}
+}
+
 QString olive::plugin::PluginNode::id() const
 {
 	const auto *plugin = plugin_instance_->getPlugin();

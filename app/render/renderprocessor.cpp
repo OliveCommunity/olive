@@ -726,12 +726,10 @@ TexturePtr RenderProcessor::ProcessPluginJob(TexturePtr texture,
 	}
 
 	if (!plugin_renderer_) {
-		// Plugin renderer not available, return input as-is
 		return destination;
 	}
 
 	// Plugin rendering must be done on OpenGL thread
-	// Create a custom job to render the plugin
 	std::atomic<bool> render_completed{false};
 	std::exception_ptr render_exception;
 	
@@ -747,20 +745,13 @@ TexturePtr RenderProcessor::ProcessPluginJob(TexturePtr texture,
 			}
 		});
 	
-	// Use SubmitJob instead of SubmitJobAndWait to avoid blocking indefinitely
+	// Submit job and wait for completion (with timeout to detect deadlocks)
 	gl_thread_->SubmitJob(render_job);
+	const int max_wait_ms = 5000;  // 5 second timeout
+	bool wait_result = render_job->WaitForCompletionWithTimeout(max_wait_ms);
 	
-	// Wait with timeout to prevent indefinite blocking
-	const int max_wait_ms = 5000; // 5 seconds timeout
-	const int check_interval_ms = 10;
-	int waited_ms = 0;
-	while (!render_completed && waited_ms < max_wait_ms) {
-		QThread::msleep(check_interval_ms);
-		waited_ms += check_interval_ms;
-	}
-	
-	if (!render_completed) {
-		qWarning() << "Plugin render timed out after" << max_wait_ms << "ms";
+	if (!wait_result) {
+		qWarning() << "ProcessPluginJob: TIMEOUT waiting for GL thread - possible deadlock!";
 		render_job->Cancel();
 		return destination;
 	}
