@@ -325,6 +325,8 @@ elseif (APPLE)
   list(APPEND OLIVE_LIBRARIES "-framework IOKit")
 elseif(UNIX)
   list(APPEND OLIVE_LIBRARIES Qt6::DBus)
+  find_package(X11 REQUIRED)
+  list(APPEND OLIVE_LIBRARIES X11::X11)
 endif()
 
 # Generate Git hash

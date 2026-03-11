@@ -95,7 +95,7 @@ bool PlatformGLContext::Create(QOpenGLContext *share_with, const QSurfaceFormat 
     // Create context
     GLXContext share_ctx = None;
     if (share_with) {
-        share_ctx = reinterpret_cast<GLXContext>(share_with->nativeInterface<QNativeInterface::QGLXContext>()->context());
+        share_ctx = share_with->nativeInterface<QNativeInterface::QGLXContext>()->nativeContext();
     }
 
     // Try to create context with version
