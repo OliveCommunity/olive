@@ -16,6 +16,12 @@
 
 set(OLIVE_SOURCES
   ${OLIVE_SOURCES}
+  audio/audiolevelmeter.cpp
+  audio/audiolevelmeter.h
+  audio/audiosynchronizer.cpp
+  audio/audiosynchronizer.h
+  audio/audiowaveformsync.cpp
+  audio/audiowaveformsync.h
   audio/audiomanager.cpp
   audio/audiomanager.h
   audio/audioprocessor.cpp

@@ -25,6 +25,7 @@
 #include <QDebug>
 #include <QPainter>
 
+#include "audio/audiolevelmeter.h"
 #include "audio/audiomanager.h"
 #include "common/decibel.h"
 #include "common/qtutils.h"
@@ -89,10 +90,11 @@ void AudioMonitor::PushSampleBuffer(const SampleBuffer &d)
 
 	QVector<double> v(params_.channel_count(), 0);
 
-	AudioVisualWaveform::Sample summed =
-		AudioVisualWaveform::SumSamples(d, 0, d.sample_count());
-
-	AudioVisualWaveformSampleToInternalValues(summed, v);
+	const AudioLevelMeter::Stats stats =
+		AudioLevelMeter::AnalyzeSampleBuffer(d);
+	for (int i = 0; i < v.size() && i < stats.channels.size(); i++) {
+		v[i] = stats.channels.at(i).peak_linear;
+	}
 
 	// Fill values because they get averaged out for smoothing
 	values_.fill(v);

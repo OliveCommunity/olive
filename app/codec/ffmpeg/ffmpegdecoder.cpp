@@ -81,6 +81,7 @@ extern "C" {
 #include <QThread>
 
 #include "codec/planarfiledevice.h"
+#include "codec/timecodemetadata.h"
 #include "common/ffmpegutils.h"
 #include "common/filefunctions.h"
 #include "render/renderer.h"
@@ -126,6 +127,36 @@ void DiscardSubtitleStreams(AVFormatContext *ctx)
 			stream->discard = AVDISCARD_ALL;
 		}
 	}
+}
+
+TimecodeMetadata::SourceTime ExtractSourceStartTime(
+	AVDictionary *metadata, const rational &timebase, int sample_rate)
+{
+	if (!metadata) {
+		return TimecodeMetadata::SourceTime();
+	}
+
+	if (AVDictionaryEntry *entry =
+			av_dict_get(metadata, "timecode", nullptr, AV_DICT_IGNORE_SUFFIX)) {
+		TimecodeMetadata::SourceTime parsed =
+			TimecodeMetadata::FromTimecodeString(
+				QString::fromUtf8(entry->value), timebase);
+		if (parsed.valid) {
+			return parsed;
+		}
+	}
+
+	if (AVDictionaryEntry *entry = av_dict_get(
+			metadata, "time_reference", nullptr, AV_DICT_IGNORE_SUFFIX)) {
+		TimecodeMetadata::SourceTime parsed =
+			TimecodeMetadata::FromBwfTimeReference(
+				QString::fromUtf8(entry->value), sample_rate);
+		if (parsed.valid) {
+			return parsed;
+		}
+	}
+
+	return TimecodeMetadata::SourceTime();
 }
 
 } // namespace
@@ -530,6 +561,9 @@ FootageDescription FFmpegDecoder::Probe(const QString &filename,
 		avformat_find_stream_info(fmt_ctx, nullptr);
 
 		int64_t footage_duration = fmt_ctx->duration;
+		TimecodeMetadata::SourceTime source_start_time =
+			ExtractSourceStartTime(fmt_ctx->metadata, rational(1, AV_TIME_BASE),
+								   0);
 
 		bool duration_guessed_from_bitrate =
 			(fmt_ctx->duration_estimation_method ==
@@ -545,6 +579,11 @@ FootageDescription FFmpegDecoder::Probe(const QString &filename,
 		for (unsigned int i = 0; i < fmt_ctx->nb_streams; i++) {
 			// FFmpeg AVStream
 			AVStream *avstream = fmt_ctx->streams[i];
+			if (!source_start_time.valid) {
+				source_start_time = ExtractSourceStartTime(
+					avstream->metadata, avstream->time_base,
+					avstream->codecpar->sample_rate);
+			}
 
 			// Find decoder for this stream, if it exists we can proceed
 			const AVCodec *decoder =
@@ -720,6 +759,10 @@ FootageDescription FFmpegDecoder::Probe(const QString &filename,
 		}
 
 		desc.SetStreamCount(fmt_ctx->nb_streams);
+		if (source_start_time.valid) {
+			desc.SetSourceStartTime(source_start_time.time,
+									source_start_time.source);
+		}
 
 		if (video_streams == 0 && audio_streams > 0 && still_streams > 0) {
 			// This footage has no video streams, but has audio and image streams. We've probably

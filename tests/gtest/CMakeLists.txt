@@ -3,6 +3,9 @@ add_executable(olive-gtest
   common_current_test.cpp
   common_xmlutils_test.cpp
   config_test.cpp
+  audio_level_meter_test.cpp
+  audio_synchronizer_test.cpp
+  audio_waveform_sync_test.cpp
   color_lut_test.cpp
   node_value_test.cpp
   node_keyframe_test.cpp
@@ -38,6 +41,7 @@ add_executable(olive-gtest
   task_taskmanager_test.cpp
   module_smoke_test.cpp
   shader_resources_test.cpp
+  timecode_metadata_test.cpp
   timebased_widget_test.cpp
   timeline_coordinate_test.cpp
   timeline_workarea_test.cpp

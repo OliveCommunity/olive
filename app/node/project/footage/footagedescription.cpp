@@ -63,6 +63,26 @@ bool FootageDescription::Load(const QString &filename)
 				while (XMLReadNextStartElement(&reader)) {
 					if (reader.name() == QStringLiteral("decoder")) {
 						decoder_ = reader.readElementText();
+					} else if (reader.name() ==
+							   QStringLiteral("sourcestarttime")) {
+						QString source;
+						{
+							XMLAttributeLoop((&reader), attr)
+							{
+								if (attr.name() == QStringLiteral("source")) {
+									source = attr.value().toString();
+								}
+							}
+						}
+
+						const QStringList split =
+							reader.readElementText().split('/');
+						if (split.size() == 2) {
+							SetSourceStartTime(
+								rational(split.at(0).toInt(),
+										 split.at(1).toInt()),
+								source);
+						}
 					} else if (reader.name() == QStringLiteral("streams")) {
 						{
 							XMLAttributeLoop((&reader), attr)
@@ -132,6 +152,16 @@ bool FootageDescription::Save(const QString &filename) const
 						  QString::number(kFootageMetaVersion));
 
 	writer.writeTextElement(QStringLiteral("decoder"), decoder_);
+
+	if (has_source_start_time_) {
+		writer.writeStartElement(QStringLiteral("sourcestarttime"));
+		writer.writeAttribute(QStringLiteral("source"),
+							  source_start_time_source_);
+		writer.writeCharacters(QStringLiteral("%1/%2").arg(
+			QString::number(source_start_time_.numerator()),
+			QString::number(source_start_time_.denominator())));
+		writer.writeEndElement();
+	}
 
 	writer.writeStartElement(QStringLiteral("streams"));
 

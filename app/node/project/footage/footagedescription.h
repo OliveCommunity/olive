@@ -22,6 +22,8 @@
 #ifndef FOOTAGEDESCRIPTION_H
 #define FOOTAGEDESCRIPTION_H
 
+#include <QString>
+
 #include "node/output/track/track.h"
 #include "render/subtitleparams.h"
 #include "render/videoparams.h"
@@ -34,6 +36,7 @@ public:
 	FootageDescription(const QString &decoder = QString())
 		: decoder_(decoder)
 		, total_stream_count_(0)
+		, has_source_start_time_(false)
 	{
 	}
 
@@ -131,6 +134,28 @@ public:
 		total_stream_count_ = s;
 	}
 
+	void SetSourceStartTime(const rational &time, const QString &source)
+	{
+		source_start_time_ = time;
+		source_start_time_source_ = source;
+		has_source_start_time_ = true;
+	}
+
+	bool HasSourceStartTime() const
+	{
+		return has_source_start_time_;
+	}
+
+	const rational &source_start_time() const
+	{
+		return source_start_time_;
+	}
+
+	const QString &source_start_time_source() const
+	{
+		return source_start_time_source_;
+	}
+
 	bool Load(const QString &filename);
 
 	bool Save(const QString &filename) const;
@@ -163,7 +188,7 @@ public:
 	}
 
 private:
-	static constexpr unsigned kFootageMetaVersion = 6;
+	static constexpr unsigned kFootageMetaVersion = 7;
 
 	QString decoder_;
 
@@ -174,6 +199,12 @@ private:
 	QVector<SubtitleParams> subtitle_streams_;
 
 	int total_stream_count_;
+
+	rational source_start_time_;
+
+	QString source_start_time_source_;
+
+	bool has_source_start_time_;
 };
 
 }
