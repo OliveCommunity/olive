@@ -21,18 +21,24 @@
 
 #include "timelinewidget.h"
 
+#include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <QSplitter>
 #include <QVBoxLayout>
 #include <QtMath>
 
+#include "audio/audiosynchronizer.h"
+#include "audio/audiowaveformsync.h"
 #include "core.h"
 #include "common/range.h"
 #include "dialog/sequence/sequence.h"
 #include "dialog/speedduration/speeddurationdialog.h"
 #include "node/block/transition/transition.h"
 #include "node/nodeundo.h"
+#include "node/project/footage/footage.h"
 #include "node/project/serializer/serializer.h"
+#include "render/audiowaveformcache.h"
 #include "task/project/import/import.h"
 #include "timeline/timelineundogeneral.h"
 #include "timeline/timelineundopointer.h"
@@ -62,6 +68,122 @@ namespace olive
 {
 
 #define super TimeBasedWidget
+
+namespace {
+
+struct SourceSyncClip {
+	ClipBlock *clip = nullptr;
+	AudioSynchronizer::SourceClip source;
+	rational source_head;
+};
+
+struct WaveformSyncClip {
+	ClipBlock *clip = nullptr;
+	const AudioWaveformCache *waveform = nullptr;
+	TimeRange media_range;
+	int sample_rate = 0;
+};
+
+bool GetSourceSyncClip(Block *block, SourceSyncClip *out)
+{
+	ClipBlock *clip = dynamic_cast<ClipBlock *>(block);
+	if (!clip) {
+		return false;
+	}
+
+	Footage *footage = dynamic_cast<Footage *>(clip->connected_viewer());
+	if (!footage || !footage->HasSourceStartTime()) {
+		return false;
+	}
+
+	out->clip = clip;
+	out->source.source_start_time = footage->source_start_time();
+	out->source.media_in = clip->media_in();
+	out->source.has_source_start_time = true;
+	out->source_head = out->source.source_start_time + out->source.media_in;
+	return true;
+}
+
+QVector<SourceSyncClip> GetSelectedSourceSyncClips(
+	const QVector<Block *> &blocks)
+{
+	QVector<SourceSyncClip> clips;
+	for (Block *block : blocks) {
+		SourceSyncClip sync_clip;
+		if (GetSourceSyncClip(block, &sync_clip)) {
+			clips.append(sync_clip);
+		}
+	}
+	return clips;
+}
+
+bool GetWaveformSyncClip(Block *block, WaveformSyncClip *out)
+{
+	ClipBlock *clip = dynamic_cast<ClipBlock *>(block);
+	if (!clip || !clip->waveform()) {
+		return false;
+	}
+
+	const TimeRange media_range = clip->media_range();
+	if (media_range.length().isNull()) {
+		return false;
+	}
+
+	const AudioWaveformCache *waveform = clip->waveform();
+	if (waveform->GetParameters().sample_rate() <= 0 ||
+		!waveform->GetInvalidatedRanges(media_range).isEmpty()) {
+		return false;
+	}
+
+	out->clip = clip;
+	out->waveform = waveform;
+	out->media_range = media_range;
+	out->sample_rate = waveform->GetParameters().sample_rate();
+	return true;
+}
+
+QVector<WaveformSyncClip> GetSelectedWaveformSyncClips(
+	const QVector<Block *> &blocks)
+{
+	QVector<WaveformSyncClip> clips;
+	for (Block *block : blocks) {
+		WaveformSyncClip sync_clip;
+		if (GetWaveformSyncClip(block, &sync_clip)) {
+			clips.append(sync_clip);
+		}
+	}
+	return clips;
+}
+
+QVector<double> ExtractWaveformCacheEnvelope(const WaveformSyncClip &clip,
+											 int sample_rate,
+											 size_t window_samples)
+{
+	QVector<double> envelope;
+	if (sample_rate <= 0 || !window_samples) {
+		return envelope;
+	}
+
+	const rational window_time(static_cast<int>(window_samples), sample_rate);
+	for (rational t = clip.media_range.in(); t < clip.media_range.out();
+		 t += window_time) {
+		const rational length = qMin(window_time, clip.media_range.out() - t);
+		const AudioVisualWaveform::Sample summary =
+			clip.waveform->GetSummaryFromTime(t, length);
+
+		double peak = 0.0;
+		for (const AudioVisualWaveform::SamplePerChannel &channel : summary) {
+			const double channel_peak =
+				std::max(std::abs(static_cast<double>(channel.min)),
+						 std::abs(static_cast<double>(channel.max)));
+			peak = std::max(peak, channel_peak);
+		}
+		envelope.append(peak);
+	}
+	return envelope;
+}
+
+} // namespace
 
 TimelineWidget::TimelineWidget(QWidget *parent)
 	: super(true, true, parent)
@@ -874,6 +996,162 @@ void TimelineWidget::ShowSpeedDurationDialogForSelectedClips()
 	}
 }
 
+void TimelineWidget::SynchronizeSelectedClipsBySourceTime()
+{
+	if (!GetConnectedNode()) {
+		return;
+	}
+
+	const QVector<SourceSyncClip> sync_clips =
+		GetSelectedSourceSyncClips(selected_blocks_);
+	if (sync_clips.size() < 2) {
+		return;
+	}
+
+	SourceSyncClip reference = sync_clips.first();
+	rational anchor_timeline_in = sync_clips.first().clip->in();
+	for (const SourceSyncClip &sync_clip : sync_clips) {
+		if (sync_clip.source_head < reference.source_head) {
+			reference = sync_clip;
+		}
+		if (sync_clip.clip->in() < anchor_timeline_in) {
+			anchor_timeline_in = sync_clip.clip->in();
+		}
+	}
+
+	struct SyncPlacement {
+		ClipBlock *clip = nullptr;
+		rational timeline_in;
+	};
+
+	QVector<SyncPlacement> placements;
+	for (const SourceSyncClip &sync_clip : sync_clips) {
+		const AudioSynchronizer::Placement placement =
+			AudioSynchronizer::PlaceBySourceTime(
+				reference.source, sync_clip.source, anchor_timeline_in);
+		if (placement.valid) {
+			placements.append({ sync_clip.clip, placement.timeline_in });
+		}
+	}
+
+	if (placements.size() < 2) {
+		return;
+	}
+
+	MultiUndoCommand *command = new MultiUndoCommand();
+	for (const SyncPlacement &placement : placements) {
+		command->add_child(new TrackReplaceBlockWithGapCommand(
+			placement.clip->track(), placement.clip, false));
+	}
+
+	TimelineWidgetSelections new_selections;
+	for (const SyncPlacement &placement : placements) {
+		command->add_child(new TrackPlaceBlockCommand(
+			sequence()->track_list(placement.clip->track()->type()),
+			placement.clip->track()->Index(), placement.clip,
+			placement.timeline_in));
+
+		new_selections[placement.clip->track()->ToReference()].insert(
+			TimeRange(placement.timeline_in,
+					  placement.timeline_in + placement.clip->length()));
+	}
+
+	command->add_child(
+		new SetSelectionsCommand(this, new_selections, GetSelections()));
+
+	Core::instance()->undo_stack()->push(
+		command, tr("Synchronize Clips by Source Time"));
+}
+
+void TimelineWidget::SynchronizeSelectedClipsByWaveform()
+{
+	if (!GetConnectedNode()) {
+		return;
+	}
+
+	const QVector<WaveformSyncClip> sync_clips =
+		GetSelectedWaveformSyncClips(selected_blocks_);
+	if (sync_clips.size() < 2) {
+		return;
+	}
+
+	WaveformSyncClip reference = sync_clips.first();
+	for (const WaveformSyncClip &sync_clip : sync_clips) {
+		if (sync_clip.clip->in() < reference.clip->in()) {
+			reference = sync_clip;
+		}
+	}
+
+	const int sample_rate = reference.sample_rate;
+	const size_t window_samples =
+		static_cast<size_t>(std::max(1, sample_rate / 20));
+	const int64_t max_offset_samples =
+		static_cast<int64_t>(sample_rate) * 10 * 60;
+	const int64_t max_offset_windows =
+		max_offset_samples / static_cast<int64_t>(window_samples);
+	const QVector<double> reference_envelope =
+		ExtractWaveformCacheEnvelope(reference, sample_rate, window_samples);
+
+	struct SyncPlacement {
+		ClipBlock *clip = nullptr;
+		rational timeline_in;
+	};
+
+	QVector<SyncPlacement> placements;
+	placements.append({ reference.clip, reference.clip->in() });
+	for (const WaveformSyncClip &sync_clip : sync_clips) {
+		if (sync_clip.clip == reference.clip) {
+			continue;
+		}
+
+		const QVector<double> candidate_envelope =
+			ExtractWaveformCacheEnvelope(sync_clip, sample_rate,
+										 window_samples);
+		const AudioWaveformSync::OffsetResult offset =
+			AudioWaveformSync::EstimateEnvelopeOffset(
+				reference_envelope, candidate_envelope, window_samples,
+				max_offset_windows);
+		if (!offset.valid) {
+			continue;
+		}
+
+		const AudioSynchronizer::Placement placement =
+			AudioSynchronizer::PlaceByWaveformOffset(
+				reference.clip->in(), offset.offset_samples, sample_rate);
+		if (placement.valid && placement.timeline_in >= 0) {
+			placements.append({ sync_clip.clip, placement.timeline_in });
+		}
+	}
+
+	if (placements.size() < 2) {
+		return;
+	}
+
+	MultiUndoCommand *command = new MultiUndoCommand();
+	for (const SyncPlacement &placement : placements) {
+		command->add_child(new TrackReplaceBlockWithGapCommand(
+			placement.clip->track(), placement.clip, false));
+	}
+
+	TimelineWidgetSelections new_selections;
+	for (const SyncPlacement &placement : placements) {
+		command->add_child(new TrackPlaceBlockCommand(
+			sequence()->track_list(placement.clip->track()->type()),
+			placement.clip->track()->Index(), placement.clip,
+			placement.timeline_in));
+
+		new_selections[placement.clip->track()->ToReference()].insert(
+			TimeRange(placement.timeline_in,
+					  placement.timeline_in + placement.clip->length()));
+	}
+
+	command->add_child(
+		new SetSelectionsCommand(this, new_selections, GetSelections()));
+
+	Core::instance()->undo_stack()->push(
+		command, tr("Synchronize Clips by Waveform"));
+}
+
 void TimelineWidget::RecordingCallback(const QString &filename,
 									   const TimeRange &time,
 									   const Track::Reference &track)
@@ -1329,6 +1607,22 @@ void TimelineWidget::ShowContextMenu()
 		menu.addSeparator();
 
 		MenuShared::instance()->AddColorCodingMenu(&menu);
+
+		menu.addSeparator();
+
+		QAction *sync_by_source_time =
+			menu.addAction(tr("Synchronize by Source Time"));
+		sync_by_source_time->setEnabled(
+			GetSelectedSourceSyncClips(selected).size() >= 2);
+		connect(sync_by_source_time, &QAction::triggered, this,
+				&TimelineWidget::SynchronizeSelectedClipsBySourceTime);
+
+		QAction *sync_by_waveform =
+			menu.addAction(tr("Synchronize by Waveform"));
+		sync_by_waveform->setEnabled(
+			GetSelectedWaveformSyncClips(selected).size() >= 2);
+		connect(sync_by_waveform, &QAction::triggered, this,
+				&TimelineWidget::SynchronizeSelectedClipsByWaveform);
 
 		menu.addSeparator();
 

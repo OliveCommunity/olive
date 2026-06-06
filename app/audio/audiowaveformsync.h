@@ -46,7 +46,6 @@ public:
 									   size_t window_samples,
 									   int64_t max_offset_samples);
 
-private:
 	static OffsetResult EstimateEnvelopeOffset(const QVector<double> &reference,
 											   const QVector<double> &candidate,
 											   size_t window_samples,

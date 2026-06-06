@@ -44,6 +44,7 @@ const QString Footage::kFilenameInput = QStringLiteral("file_in");
 Footage::Footage(const QString &filename)
 	: ViewerOutput(false, false)
 	, timestamp_(0)
+	, has_source_start_time_(false)
 	, valid_(false)
 	, cancelled_(nullptr)
 	, total_stream_count_(0)
@@ -134,6 +135,10 @@ void Footage::Clear()
 	// Clear decoder link
 	decoder_.clear();
 
+	has_source_start_time_ = false;
+	source_start_time_ = rational();
+	source_start_time_source_.clear();
+
 	// Clear total stream count
 	total_stream_count_ = 0;
 
@@ -210,6 +215,13 @@ Track::Reference Footage::GetReferenceFromRealIndex(int real_index) const
 const QString &Footage::decoder() const
 {
 	return decoder_;
+}
+
+void Footage::SetSourceStartTime(const rational &time, const QString &source)
+{
+	source_start_time_ = time;
+	source_start_time_source_ = source;
+	has_source_start_time_ = true;
 }
 
 QString Footage::DescribeVideoStream(const VideoParams &params)
@@ -461,6 +473,28 @@ bool Footage::LoadCustom(QXmlStreamReader *reader, SerializedData *data)
 	while (XMLReadNextStartElement(reader)) {
 		if (reader->name() == QStringLiteral("timestamp")) {
 			this->set_timestamp(reader->readElementText().toLongLong());
+		} else if (reader->name() == QStringLiteral("sourcestarttime")) {
+			QString source;
+			{
+				XMLAttributeLoop(reader, attr)
+				{
+					if (attr.name() == QStringLiteral("source")) {
+						source = attr.value().toString();
+					}
+				}
+			}
+
+			const QStringList split = reader->readElementText().split('/');
+			if (split.size() == 2) {
+				bool numerator_ok = false;
+				bool denominator_ok = false;
+				const int numerator = split.at(0).toInt(&numerator_ok);
+				const int denominator = split.at(1).toInt(&denominator_ok);
+				if (numerator_ok && denominator_ok && denominator) {
+					SetSourceStartTime(rational(numerator, denominator),
+									   source);
+				}
+			}
 		} else if (reader->name() == QStringLiteral("viewer")) {
 			if (!ViewerOutput::LoadCustom(reader, data)) {
 				return false;
@@ -477,6 +511,16 @@ void Footage::SaveCustom(QXmlStreamWriter *writer) const
 {
 	writer->writeTextElement(QStringLiteral("timestamp"),
 							 QString::number(this->timestamp()));
+
+	if (has_source_start_time_) {
+		writer->writeStartElement(QStringLiteral("sourcestarttime"));
+		writer->writeAttribute(QStringLiteral("source"),
+							   source_start_time_source_);
+		writer->writeCharacters(QStringLiteral("%1/%2").arg(
+			QString::number(source_start_time_.numerator()),
+			QString::number(source_start_time_.denominator())));
+		writer->writeEndElement();
+	}
 
 	writer->writeStartElement(QStringLiteral("viewer"));
 
@@ -587,6 +631,10 @@ void Footage::Reprobe()
 				}
 
 				total_stream_count_ = footage_info.GetStreamCount();
+				if (footage_info.HasSourceStartTime()) {
+					SetSourceStartTime(footage_info.source_start_time(),
+									   footage_info.source_start_time_source());
+				}
 
 				SetValid();
 			}

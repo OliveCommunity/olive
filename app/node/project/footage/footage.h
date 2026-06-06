@@ -155,6 +155,23 @@ public:
    */
 	const QString &decoder() const;
 
+	bool HasSourceStartTime() const
+	{
+		return has_source_start_time_;
+	}
+
+	const rational &source_start_time() const
+	{
+		return source_start_time_;
+	}
+
+	const QString &source_start_time_source() const
+	{
+		return source_start_time_source_;
+	}
+
+	void SetSourceStartTime(const rational &time, const QString &source);
+
 	static QString DescribeVideoStream(const VideoParams &params);
 	static QString DescribeAudioStream(const AudioParams &params);
 	static QString DescribeSubtitleStream(const SubtitleParams &params);
@@ -212,6 +229,12 @@ private:
    * @brief Internal attached decoder ID
    */
 	QString decoder_;
+
+	rational source_start_time_;
+
+	QString source_start_time_source_;
+
+	bool has_source_start_time_;
 
 	bool valid_;
 

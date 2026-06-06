@@ -105,6 +105,10 @@ public:
 
 	void ShowSpeedDurationDialogForSelectedClips();
 
+	void SynchronizeSelectedClipsBySourceTime();
+
+	void SynchronizeSelectedClipsByWaveform();
+
 	void RecordingCallback(const QString &filename, const TimeRange &time,
 						   const Track::Reference &track);
 

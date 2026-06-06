@@ -2,8 +2,11 @@
 
 #include <QDir>
 #include <QTemporaryDir>
+#include <QXmlStreamReader>
+#include <QXmlStreamWriter>
 
 #include "codec/timecodemetadata.h"
+#include "node/project/footage/footage.h"
 #include "node/project/footage/footagedescription.h"
 
 TEST(TimecodeMetadata, ParsesNonDropFrameTimecode)
@@ -83,4 +86,30 @@ TEST(TimecodeMetadata, FootageDescriptionCachesSourceStartTime)
 	EXPECT_EQ(loaded.source_start_time(), olive::core::rational(2));
 	EXPECT_EQ(loaded.source_start_time_source(),
 			  QStringLiteral("bwf_time_reference"));
+}
+
+TEST(TimecodeMetadata, FootagePersistsSourceStartTime)
+{
+	QString xml;
+	QXmlStreamWriter writer(&xml);
+	writer.writeStartDocument();
+	writer.writeStartElement(QStringLiteral("custom"));
+	writer.writeTextElement(QStringLiteral("timestamp"), QStringLiteral("0"));
+	writer.writeStartElement(QStringLiteral("sourcestarttime"));
+	writer.writeAttribute(QStringLiteral("source"),
+						  QStringLiteral("timecode"));
+	writer.writeCharacters(QStringLiteral("3600/1"));
+	writer.writeEndElement();
+	writer.writeEndElement();
+	writer.writeEndDocument();
+
+	QXmlStreamReader reader(xml);
+	ASSERT_TRUE(reader.readNextStartElement());
+	ASSERT_EQ(reader.name(), QStringLiteral("custom"));
+
+	olive::Footage footage;
+	ASSERT_TRUE(footage.LoadCustom(&reader, nullptr));
+	ASSERT_TRUE(footage.HasSourceStartTime());
+	EXPECT_EQ(footage.source_start_time(), olive::core::rational(3600));
+	EXPECT_EQ(footage.source_start_time_source(), QStringLiteral("timecode"));
 }
