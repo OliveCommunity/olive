@@ -109,6 +109,14 @@ public:
 
 	void SynchronizeSelectedClipsByWaveform();
 
+	void GenerateProxiesForSelectedClips();
+
+	void SetSelectedClipsProxyEnabled(bool enabled);
+
+	void RevealProxyForSelectedClips();
+
+	void DeleteProxiesForSelectedClips();
+
 	void RecordingCallback(const QString &filename, const TimeRange &time,
 						   const Track::Reference &track);
 

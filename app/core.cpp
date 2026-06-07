@@ -41,6 +41,7 @@
 #include "audio/audiomanager.h"
 #include "cli/clitask/clitaskdialog.h"
 #include "codec/conformmanager.h"
+#include "codec/proxymanager.h"
 #include "common/filefunctions.h"
 #include "common/xmlutils.h"
 #include "config/config.h"
@@ -239,6 +240,9 @@ void Core::Start()
 	// Initialize ConformManager
 	ConformManager::CreateInstance();
 
+	// Initialize ProxyManager
+	ProxyManager::CreateInstance();
+
 	// Initialize RenderManager
 	RenderManager::CreateInstance();
 
@@ -295,6 +299,8 @@ void Core::Stop()
 	ProjectSerializer::Destroy();
 
 	ConformManager::DestroyInstance();
+
+	ProxyManager::DestroyInstance();
 
 	FrameManager::DestroyInstance();
 

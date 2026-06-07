@@ -56,6 +56,35 @@ public:
 		return filename_;
 	}
 
+	bool has_proxy() const
+	{
+		return has_proxy_;
+	}
+
+	const QString &proxy_filename() const
+	{
+		return proxy_filename_;
+	}
+
+	const QString &proxy_decoder() const
+	{
+		return proxy_decoder_;
+	}
+
+	int proxy_stream_index() const
+	{
+		return proxy_stream_index_;
+	}
+
+	void set_proxy(const QString &filename, const QString &decoder,
+				   int stream_index)
+	{
+		proxy_filename_ = filename;
+		proxy_decoder_ = decoder;
+		proxy_stream_index_ = stream_index;
+		has_proxy_ = !filename.isEmpty();
+	}
+
 	Track::Type type() const
 	{
 		return type_;
@@ -121,6 +150,14 @@ private:
 	QString decoder_;
 
 	QString filename_;
+
+	bool has_proxy_ = false;
+
+	QString proxy_filename_;
+
+	QString proxy_decoder_;
+
+	int proxy_stream_index_ = -1;
 
 	Track::Type type_;
 

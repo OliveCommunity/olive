@@ -33,6 +33,8 @@ set(OLIVE_SOURCES
   codec/frame.h
   codec/planarfiledevice.cpp
   codec/planarfiledevice.h
+  codec/proxymanager.cpp
+  codec/proxymanager.h
   codec/timecodemetadata.cpp
   codec/timecodemetadata.h
   PARENT_SCOPE

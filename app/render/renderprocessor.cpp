@@ -21,6 +21,7 @@
 
 #include "renderprocessor.h"
 
+#include <QFileInfo>
 #include <QOpenGLContext>
 #include <QVector2D>
 #include <QVector3D>
@@ -501,10 +502,19 @@ void RenderProcessor::ProcessVideoFootage(TexturePtr destination,
 		return;
 	}
 
-	Decoder::CodecStream default_codec_stream(
-		stream->filename(), stream_data.stream_index(), GetCurrentBlock());
+	const bool use_proxy =
+		static_cast<RenderMode::Mode>(ticket_->property("mode").toInt()) ==
+			RenderMode::kOffline &&
+		stream->has_proxy() && QFileInfo::exists(stream->proxy_filename());
+	const QString decode_filename =
+		use_proxy ? stream->proxy_filename() : stream->filename();
+	const QString decoder_id =
+		use_proxy ? stream->proxy_decoder() : stream->decoder();
+	const int stream_index =
+		use_proxy ? stream->proxy_stream_index() : stream_data.stream_index();
 
-	QString decoder_id = stream->decoder();
+	Decoder::CodecStream default_codec_stream(
+		decode_filename, stream_index, GetCurrentBlock());
 
 	DecoderPtr decoder = nullptr;
 
@@ -523,11 +533,11 @@ void RenderProcessor::ProcessVideoFootage(TexturePtr destination,
 			int64_t frame_number =
 				stream_data.get_time_in_timebase_units(input_time);
 			frame_filename = Decoder::TransformImageSequenceFileName(
-				stream->filename(), frame_number);
+				decode_filename, frame_number);
 
 			// Decoder will close automatically since it's a stream_ptr
 			decoder->Open(Decoder::CodecStream(
-				frame_filename, stream_data.stream_index(), GetCurrentBlock()));
+				frame_filename, stream_index, GetCurrentBlock()));
 		}
 		break;
 	}

@@ -19,6 +19,7 @@ add_subdirectory(customcache)
 add_subdirectory(export)
 add_subdirectory(precache)
 add_subdirectory(project)
+add_subdirectory(proxy)
 add_subdirectory(render)
 
 set(OLIVE_SOURCES

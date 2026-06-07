@@ -24,12 +24,19 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <QDesktopServices>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QProcess>
 #include <QSplitter>
+#include <QUrl>
 #include <QVBoxLayout>
 #include <QtMath>
 
 #include "audio/audiosynchronizer.h"
 #include "audio/audiowaveformsync.h"
+#include "codec/proxymanager.h"
 #include "core.h"
 #include "common/range.h"
 #include "dialog/sequence/sequence.h"
@@ -153,6 +160,26 @@ QVector<WaveformSyncClip> GetSelectedWaveformSyncClips(
 		}
 	}
 	return clips;
+}
+
+QVector<Footage *> GetSelectedProxyFootage(const QVector<Block *> &blocks)
+{
+	QVector<Footage *> footage;
+	for (Block *block : blocks) {
+		ClipBlock *clip = dynamic_cast<ClipBlock *>(block);
+		if (!clip) {
+			continue;
+		}
+
+		Footage *candidate = dynamic_cast<Footage *>(clip->connected_viewer());
+		if (!candidate || !candidate->GetFirstEnabledVideoStream().is_valid() ||
+			footage.contains(candidate)) {
+			continue;
+		}
+
+		footage.append(candidate);
+	}
+	return footage;
 }
 
 QVector<double> ExtractWaveformCacheEnvelope(const WaveformSyncClip &clip,
@@ -1152,6 +1179,90 @@ void TimelineWidget::SynchronizeSelectedClipsByWaveform()
 		command, tr("Synchronize Clips by Waveform"));
 }
 
+void TimelineWidget::GenerateProxiesForSelectedClips()
+{
+	if (!ProxyManager::instance() || !sequence()) {
+		return;
+	}
+
+	const QVector<Footage *> footage = GetSelectedProxyFootage(selected_blocks_);
+	for (Footage *item : footage) {
+		const VideoParams video = item->GetFirstEnabledVideoStream();
+		if (!video.is_valid()) {
+			continue;
+		}
+
+		ProxyManager::ProxyParams params;
+		const ProxyManager::Proxy proxy =
+			ProxyManager::instance()->GetOrStartProxy(
+				item->project()->cache_path(), item->filename(),
+				video.stream_index(), params);
+		item->SetProxy(proxy.filename, proxy.state, video.stream_index(),
+					   params.version, true);
+		item->InvalidateAll(Footage::kFilenameInput);
+	}
+}
+
+void TimelineWidget::SetSelectedClipsProxyEnabled(bool enabled)
+{
+	const QVector<Footage *> footage = GetSelectedProxyFootage(selected_blocks_);
+	for (Footage *item : footage) {
+		if (item->proxy_path().isEmpty()) {
+			continue;
+		}
+
+		item->set_proxy_enabled(enabled);
+		item->InvalidateAll(Footage::kFilenameInput);
+	}
+}
+
+void TimelineWidget::RevealProxyForSelectedClips()
+{
+	const QVector<Footage *> footage = GetSelectedProxyFootage(selected_blocks_);
+	for (Footage *item : footage) {
+		if (item->proxy_path().isEmpty()) {
+			continue;
+		}
+
+#if defined(Q_OS_WINDOWS)
+		QStringList args;
+		args << "/select," << QDir::toNativeSeparators(item->proxy_path());
+		QProcess::startDetached(QStringLiteral("explorer"), args);
+#elif defined(Q_OS_MAC)
+		QStringList args;
+		args << "-e";
+		args << "tell application \"Finder\"";
+		args << "-e";
+		args << "activate";
+		args << "-e";
+		args << "select POSIX file \"" + item->proxy_path() + "\"";
+		args << "-e";
+		args << "end tell";
+		QProcess::startDetached(QStringLiteral("osascript"), args);
+#else
+		QDesktopServices::openUrl(QUrl::fromLocalFile(
+			QFileInfo(item->proxy_path()).dir().absolutePath()));
+#endif
+		return;
+	}
+}
+
+void TimelineWidget::DeleteProxiesForSelectedClips()
+{
+	const QVector<Footage *> footage = GetSelectedProxyFootage(selected_blocks_);
+	for (Footage *item : footage) {
+		if (item->proxy_path().isEmpty()) {
+			continue;
+		}
+
+		QFile::remove(item->proxy_path());
+		QFile::remove(ProxyManager::GetWorkingProxyFilename(
+			item->proxy_path()));
+		item->ClearProxy();
+		item->InvalidateAll(Footage::kFilenameInput);
+	}
+}
+
 void TimelineWidget::RecordingCallback(const QString &filename,
 									   const TimeRange &time,
 									   const Track::Reference &track)
@@ -1651,6 +1762,51 @@ void TimelineWidget::ShowContextMenu()
 				auto cache_discard = cache_menu->addAction(tr("Discard"));
 				connect(cache_discard, &QAction::triggered, this,
 						&TimelineWidget::CacheDiscard);
+			}
+
+			{
+				const QVector<Footage *> proxy_footage =
+					GetSelectedProxyFootage(selected);
+				Menu *proxy_menu = new Menu(tr("Proxy"), &menu);
+				menu.addMenu(proxy_menu);
+
+				QAction *generate_proxy =
+					proxy_menu->addAction(tr("Generate Proxy"));
+				generate_proxy->setEnabled(!proxy_footage.isEmpty());
+				connect(generate_proxy, &QAction::triggered, this,
+						&TimelineWidget::GenerateProxiesForSelectedClips);
+
+				QAction *use_proxy = proxy_menu->addAction(tr("Use Proxy"));
+				use_proxy->setCheckable(true);
+				use_proxy->setEnabled(!proxy_footage.isEmpty());
+				use_proxy->setChecked(
+					!proxy_footage.isEmpty() &&
+					std::all_of(proxy_footage.cbegin(), proxy_footage.cend(),
+								[](const Footage *footage) {
+									return footage->proxy_enabled();
+								}));
+				connect(use_proxy, &QAction::triggered, this,
+						&TimelineWidget::SetSelectedClipsProxyEnabled);
+
+				QAction *reveal_proxy =
+					proxy_menu->addAction(tr("Reveal Proxy"));
+				reveal_proxy->setEnabled(std::any_of(
+					proxy_footage.cbegin(), proxy_footage.cend(),
+					[](const Footage *footage) {
+						return !footage->proxy_path().isEmpty();
+					}));
+				connect(reveal_proxy, &QAction::triggered, this,
+						&TimelineWidget::RevealProxyForSelectedClips);
+
+				QAction *delete_proxy =
+					proxy_menu->addAction(tr("Delete Proxy"));
+				delete_proxy->setEnabled(std::any_of(
+					proxy_footage.cbegin(), proxy_footage.cend(),
+					[](const Footage *footage) {
+						return !footage->proxy_path().isEmpty();
+					}));
+				connect(delete_proxy, &QAction::triggered, this,
+						&TimelineWidget::DeleteProxiesForSelectedClips);
 			}
 
 			if (clip->connected_viewer()) {

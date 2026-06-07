@@ -27,6 +27,7 @@
 #include <QDateTime>
 
 #include "codec/decoder.h"
+#include "codec/proxymanager.h"
 #include "footagedescription.h"
 #include "node/output/viewer/viewer.h"
 #include "render/cancelatom.h"
@@ -172,6 +173,44 @@ public:
 
 	void SetSourceStartTime(const rational &time, const QString &source);
 
+	bool proxy_enabled() const
+	{
+		return proxy_enabled_;
+	}
+
+	void set_proxy_enabled(bool enabled)
+	{
+		proxy_enabled_ = enabled;
+	}
+
+	const QString &proxy_path() const
+	{
+		return proxy_path_;
+	}
+
+	int proxy_video_stream_index() const
+	{
+		return proxy_video_stream_index_;
+	}
+
+	int proxy_preset_version() const
+	{
+		return proxy_preset_version_;
+	}
+
+	ProxyManager::ProxyState proxy_state() const
+	{
+		return proxy_state_;
+	}
+
+	void SetProxy(const QString &path,
+				  ProxyManager::ProxyState state,
+				  int video_stream_index,
+				  int preset_version,
+				  bool enabled);
+
+	void ClearProxy();
+
 	static QString DescribeVideoStream(const VideoParams &params);
 	static QString DescribeAudioStream(const AudioParams &params);
 	static QString DescribeSubtitleStream(const SubtitleParams &params);
@@ -236,6 +275,16 @@ private:
 
 	bool has_source_start_time_;
 
+	bool proxy_enabled_;
+
+	QString proxy_path_;
+
+	ProxyManager::ProxyState proxy_state_;
+
+	int proxy_video_stream_index_;
+
+	int proxy_preset_version_;
+
 	bool valid_;
 
 	CancelAtom *cancelled_;
@@ -246,6 +295,12 @@ private slots:
 	void CheckFootage();
 
 	void DefaultColorSpaceChanged();
+
+	void ProxyReady(const QString &source_filename, int stream_index,
+					const QString &proxy_filename);
+	void ProxyFinished(const QString &source_filename, int stream_index,
+					   const QString &proxy_filename,
+					   ProxyManager::ProxyState state);
 };
 
 }

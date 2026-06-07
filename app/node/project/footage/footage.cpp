@@ -45,6 +45,10 @@ Footage::Footage(const QString &filename)
 	: ViewerOutput(false, false)
 	, timestamp_(0)
 	, has_source_start_time_(false)
+	, proxy_enabled_(false)
+	, proxy_state_(ProxyManager::kProxyMissing)
+	, proxy_video_stream_index_(-1)
+	, proxy_preset_version_(0)
 	, valid_(false)
 	, cancelled_(nullptr)
 	, total_stream_count_(0)
@@ -138,6 +142,7 @@ void Footage::Clear()
 	has_source_start_time_ = false;
 	source_start_time_ = rational();
 	source_start_time_source_.clear();
+	ClearProxy();
 
 	// Clear total stream count
 	total_stream_count_ = 0;
@@ -224,6 +229,28 @@ void Footage::SetSourceStartTime(const rational &time, const QString &source)
 	has_source_start_time_ = true;
 }
 
+void Footage::SetProxy(const QString &path,
+					   ProxyManager::ProxyState state,
+					   int video_stream_index,
+					   int preset_version,
+					   bool enabled)
+{
+	proxy_path_ = path;
+	proxy_state_ = state;
+	proxy_video_stream_index_ = video_stream_index;
+	proxy_preset_version_ = preset_version;
+	proxy_enabled_ = enabled;
+}
+
+void Footage::ClearProxy()
+{
+	proxy_enabled_ = false;
+	proxy_path_.clear();
+	proxy_state_ = ProxyManager::kProxyMissing;
+	proxy_video_stream_index_ = -1;
+	proxy_preset_version_ = 0;
+}
+
 QString Footage::DescribeVideoStream(const VideoParams &params)
 {
 	if (params.video_type() == VideoParams::kVideoTypeStill) {
@@ -274,6 +301,13 @@ void Footage::Value(const NodeValueRow &value, const NodeGlobals &globals,
 
 			if (ref.type() == Track::kVideo) {
 				VideoParams vp = GetVideoParams(ref.index());
+
+				if (proxy_enabled_ && !proxy_path_.isEmpty() &&
+					proxy_video_stream_index_ == vp.stream_index() &&
+					ProxyManager::GetProxyState(proxy_path_) ==
+						ProxyManager::kProxyReady) {
+					job.set_proxy(proxy_path_, QStringLiteral("ffmpeg"), 0);
+				}
 
 				// Ensure the colorspace is valid and not empty
 				vp.set_colorspace(GetColorspaceToUse(vp));
@@ -473,6 +507,32 @@ bool Footage::LoadCustom(QXmlStreamReader *reader, SerializedData *data)
 	while (XMLReadNextStartElement(reader)) {
 		if (reader->name() == QStringLiteral("timestamp")) {
 			this->set_timestamp(reader->readElementText().toLongLong());
+		} else if (reader->name() == QStringLiteral("proxy")) {
+			bool enabled = false;
+			ProxyManager::ProxyState state = ProxyManager::kProxyMissing;
+			int stream = -1;
+			int preset_version = 0;
+			{
+				XMLAttributeLoop(reader, attr)
+				{
+					if (attr.name() == QStringLiteral("enabled")) {
+						enabled = (attr.value() == QStringLiteral("1") ||
+								   attr.value() == QStringLiteral("true"));
+					} else if (attr.name() == QStringLiteral("state")) {
+						state = ProxyManager::ProxyStateFromString(
+							attr.value().toString());
+					} else if (attr.name() == QStringLiteral("stream")) {
+						stream = attr.value().toInt();
+					} else if (attr.name() == QStringLiteral("preset")) {
+						preset_version = attr.value().toInt();
+					}
+				}
+			}
+
+			const QString path = reader->readElementText();
+			if (!path.isEmpty()) {
+				SetProxy(path, state, stream, preset_version, enabled);
+			}
 		} else if (reader->name() == QStringLiteral("sourcestarttime")) {
 			QString source;
 			{
@@ -512,6 +572,22 @@ void Footage::SaveCustom(QXmlStreamWriter *writer) const
 	writer->writeTextElement(QStringLiteral("timestamp"),
 							 QString::number(this->timestamp()));
 
+	if (!proxy_path_.isEmpty()) {
+		writer->writeStartElement(QStringLiteral("proxy"));
+		writer->writeAttribute(QStringLiteral("enabled"),
+							   proxy_enabled_ ? QStringLiteral("1")
+											  : QStringLiteral("0"));
+		writer->writeAttribute(QStringLiteral("state"),
+							   ProxyManager::ProxyStateToString(
+								   proxy_state_));
+		writer->writeAttribute(QStringLiteral("stream"),
+							   QString::number(proxy_video_stream_index_));
+		writer->writeAttribute(QStringLiteral("preset"),
+							   QString::number(proxy_preset_version_));
+		writer->writeCharacters(proxy_path_);
+		writer->writeEndElement();
+	}
+
 	if (has_source_start_time_) {
 		writer->writeStartElement(QStringLiteral("sourcestarttime"));
 		writer->writeAttribute(QStringLiteral("source"),
@@ -533,12 +609,24 @@ void Footage::AddedToGraphEvent(Project *p)
 {
 	connect(p->color_manager(), &ColorManager::DefaultInputChanged, this,
 			&Footage::DefaultColorSpaceChanged);
+	if (ProxyManager::instance()) {
+		connect(ProxyManager::instance(), &ProxyManager::ProxyReady, this,
+				&Footage::ProxyReady);
+		connect(ProxyManager::instance(), &ProxyManager::ProxyFinished, this,
+				&Footage::ProxyFinished);
+	}
 }
 
 void Footage::RemovedFromGraphEvent(Project *p)
 {
 	disconnect(p->color_manager(), &ColorManager::DefaultInputChanged, this,
 			   &Footage::DefaultColorSpaceChanged);
+	if (ProxyManager::instance()) {
+		disconnect(ProxyManager::instance(), &ProxyManager::ProxyReady, this,
+				   &Footage::ProxyReady);
+		disconnect(ProxyManager::instance(), &ProxyManager::ProxyFinished, this,
+				   &Footage::ProxyFinished);
+	}
 }
 
 void Footage::Reprobe()
@@ -704,6 +792,27 @@ void Footage::DefaultColorSpaceChanged()
 	if (inv) {
 		InvalidateAll(kVideoParamsInput);
 	}
+}
+
+void Footage::ProxyReady(const QString &source_filename, int stream_index,
+						 const QString &proxy_filename)
+{
+	ProxyFinished(source_filename, stream_index, proxy_filename,
+				  ProxyManager::kProxyReady);
+}
+
+void Footage::ProxyFinished(const QString &source_filename, int stream_index,
+							const QString &proxy_filename,
+							ProxyManager::ProxyState state)
+{
+	if (filename() != source_filename ||
+		proxy_video_stream_index_ != stream_index ||
+		proxy_path_ != proxy_filename) {
+		return;
+	}
+
+	proxy_state_ = state;
+	InvalidateAll(kFilenameInput);
 }
 
 }
