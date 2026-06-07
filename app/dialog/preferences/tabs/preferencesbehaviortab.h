@@ -22,6 +22,7 @@
 #ifndef PREFERENCESBEHAVIORTAB_H
 #define PREFERENCESBEHAVIORTAB_H
 
+#include <QComboBox>
 #include <QTreeWidget>
 
 #include "dialog/configbase/configdialogbase.h"
@@ -48,6 +49,8 @@ private:
 							 QTreeWidgetItem *parent);
 
 	QMap<QTreeWidgetItem *, QString> config_map_;
+
+	QComboBox *graphics_backend_combobox_;
 
 	QTreeWidget *behavior_tree_;
 };

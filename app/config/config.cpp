@@ -144,6 +144,8 @@ void Config::SetDefaults()
 	SetEntryInternal(QStringLiteral("PreviewNonFloatDontAskAgain"),
 					 NodeValue::kBoolean, false);
 	SetEntryInternal(QStringLiteral("UseGLFinish"), NodeValue::kBoolean, false);
+	SetEntryInternal(QStringLiteral("GraphicsBackend"), NodeValue::kText,
+					 QStringLiteral("opengl"));
 	SetEntryInternal(QStringLiteral("RenderProcessIsolationEnabled"),
 					 NodeValue::kBoolean, false);
 

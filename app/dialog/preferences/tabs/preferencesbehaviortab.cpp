@@ -22,6 +22,7 @@
 #include "preferencesbehaviortab.h"
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QVBoxLayout>
 
 #include "config/config.h"
@@ -36,7 +37,8 @@ PreferencesBehaviorTab::PreferencesBehaviorTab()
 	behavior_tree_ = new QTreeWidget();
 	layout->addWidget(behavior_tree_);
 
-	behavior_tree_->setHeaderLabel(tr("Behavior"));
+	behavior_tree_->setColumnCount(2);
+	behavior_tree_->setHeaderLabels({ tr("Behavior"), tr("Setting") });
 
 	QTreeWidgetItem *general_group = AddParent(tr("General"));
 	AddItem(
@@ -97,7 +99,30 @@ PreferencesBehaviorTab::PreferencesBehaviorTab()
 		   "dependencies among clips when copying or splitting them."),
 		node_group);
 
-	QTreeWidgetItem *opengl_group = AddParent(tr("OpenGL"));
+	QTreeWidgetItem *rendering_group = AddParent(tr("Rendering"));
+	QTreeWidgetItem *graphics_backend_item =
+		new QTreeWidgetItem({ tr("Graphics Backend") });
+	graphics_backend_item->setToolTip(
+		0, tr("Selects the graphics API Oak should request on next launch. "
+			  "Vulkan is experimental and currently falls back to the OpenGL "
+			  "renderer for timeline/viewer rendering."));
+	rendering_group->addChild(graphics_backend_item);
+	graphics_backend_combobox_ = new QComboBox();
+	graphics_backend_combobox_->addItem(tr("OpenGL"), QStringLiteral("opengl"));
+	graphics_backend_combobox_->addItem(tr("Vulkan (experimental)"),
+										QStringLiteral("vulkan"));
+	const QString current_backend =
+		OLIVE_CONFIG("GraphicsBackend").toString().toLower();
+	const int backend_index = graphics_backend_combobox_->findData(
+		current_backend.isEmpty() ? QStringLiteral("opengl")
+								  : current_backend);
+	graphics_backend_combobox_->setCurrentIndex(backend_index >= 0
+													? backend_index
+													: 0);
+	behavior_tree_->setItemWidget(graphics_backend_item, 1,
+								  graphics_backend_combobox_);
+
+	QTreeWidgetItem *opengl_group = AddParent(tr("OpenGL"), rendering_group);
 	AddItem(tr("Use glFinish"), QStringLiteral("UseGLFinish"), opengl_group);
 }
 
@@ -110,6 +135,9 @@ void PreferencesBehaviorTab::Accept(MultiUndoCommand *command)
 		OLIVE_CONFIG_STR(iterator.value()) =
 			(iterator.key()->checkState(0) == Qt::Checked);
 	}
+
+	OLIVE_CONFIG("GraphicsBackend") =
+		graphics_backend_combobox_->currentData().toString();
 }
 
 QTreeWidgetItem *PreferencesBehaviorTab::AddItem(const QString &text,

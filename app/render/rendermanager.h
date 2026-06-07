@@ -78,6 +78,9 @@ public:
 		/// Graphics acceleration provided by OpenGL
 		kOpenGL,
 
+		/// Vulkan requested by the user. Falls back to OpenGL until VulkanRenderer is implemented.
+		kVulkan,
+
 		/// Video frames are rendered by an external olive-render-worker process.
 		kMultiProcess,
 
@@ -201,6 +204,14 @@ public:
 		return backend_;
 	}
 
+	Backend requested_backend() const
+	{
+		return requested_backend_;
+	}
+
+	static Backend BackendFromString(const QString &backend);
+	static QString BackendToString(Backend backend);
+
 	PreviewAutoCacher *GetCacher() const
 	{
 		return auto_cacher_;
@@ -228,6 +239,7 @@ private:
 	Renderer *context_;
 
 	Backend backend_;
+	Backend requested_backend_;
 
 	DecoderCache *decoder_cache_;
 

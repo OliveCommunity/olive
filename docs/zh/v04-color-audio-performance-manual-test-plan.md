@@ -18,8 +18,10 @@
 |:--|:--|:--|
 | Linux + Mesa/AMD 或 Intel | 软件导出、代理、示波器、音频同步 | 当前开发主环境优先 |
 | Linux + NVIDIA | NVENC、代理、4K/8K 预览 | 需要 NVIDIA 驱动和 ffmpeg 编码器支持 |
+| Linux + Vulkan 驱动 | 图形后端选择、Vulkan 请求、OpenGL 回退 | Vulkan 当前为实验入口，需确认不会破坏 OpenGL 渲染 |
 | macOS Apple Silicon | VideoToolbox、ColorSync/显示路径、代理 | 重点看硬件导出和 UI 响应 |
 | Windows + NVIDIA/Intel | NVENC/QSV 可用性、路径编码、文件管理器 reveal | 重点看中文路径和空格路径 |
+| Windows + Vulkan Runtime | 图形后端选择、Vulkan 请求、驱动缺失回退 | 重点看设置持久化和启动稳定性 |
 
 ## 测试素材准备
 
@@ -357,6 +359,58 @@
 
 通过标准：内存没有持续不可控增长；播放停止后应用仍可操作和保存。
 
+## 10. 图形后端选择测试
+
+当前版本允许用户在 Preferences 中选择 OpenGL 或 Vulkan。注意：Vulkan 入口目前是实验性图形 API 请求和后续 VulkanRenderer 的接入点；时间线/viewer 渲染仍应安全回退到现有 OpenGL renderer。因此测试重点是“用户可选择、设置可持久化、Vulkan 请求不破坏现有渲染、失败可回退”。
+
+### 10.1 默认 OpenGL 后端
+
+1. 删除或备份现有用户配置。
+2. 启动 Oak。
+3. 打开 Preferences > Behavior > Rendering。
+4. 检查 Graphics Backend 的默认值。
+5. 导入 `color_chart.mov` 并播放。
+
+通过标准：默认值为 OpenGL；viewer、Scope、调色和播放行为与原 OpenGL 路径一致。
+
+### 10.2 切换到 Vulkan 并重启
+
+1. 在 Preferences > Behavior > Rendering 中选择 `Vulkan (experimental)`。
+2. 确认设置保存。
+3. 关闭 Oak 并重新启动。
+4. 再次打开 Preferences，确认仍显示 Vulkan。
+5. 导入并播放 `4k_camera_a.mov`。
+
+通过标准：Vulkan 选择可持久化；重启后应用不崩溃；当前未完成 VulkanRenderer 时应明确回退 OpenGL 渲染，播放仍可用。
+
+### 10.3 Vulkan 驱动缺失或不可用
+
+1. 在没有 Vulkan Runtime 或驱动不可用的机器上选择 Vulkan。
+2. 重启 Oak。
+3. 打开项目并播放一段视频。
+4. 检查日志或控制台输出。
+
+通过标准：应用可以启动；日志应说明 Vulkan 请求不可完全满足或当前回退 OpenGL；用户能回到 Preferences 改回 OpenGL。
+
+### 10.4 从 Vulkan 切回 OpenGL
+
+1. 在 Vulkan 已选中状态下打开 Preferences。
+2. 将 Graphics Backend 改为 OpenGL。
+3. 保存、退出并重启。
+4. 播放同一项目并执行一次软件导出。
+
+通过标准：重启后显示 OpenGL；播放和导出正常；不会保留错误的 Vulkan 状态。
+
+### 10.5 代理、Scope 与调色组合
+
+1. 选择 Vulkan 并重启。
+2. 对 `8k_or_heavy_camera.mov` 生成并启用代理。
+3. 添加 LUT 和三向调色。
+4. 打开 Waveform、Vectorscope、Histogram 依次观察。
+5. 切回 OpenGL 后重复同一段播放。
+
+通过标准：Vulkan 请求状态下代理、Scope、调色不崩溃；切回 OpenGL 后项目状态一致；两种选择下导出默认仍使用原片。
+
 ## 缺陷记录模板
 
 每个失败项记录以下信息：
@@ -373,6 +427,7 @@
 
 - 预检、LUT、三向色轮、三类 Scope、波形同步、BWF 时间码、音频表、代理生成/启用/删除、软件导出全部通过。
 - 至少一个硬件编码环境通过 NVENC 或 VideoToolbox。
+- OpenGL/Vulkan 图形后端选择、持久化和 Vulkan 请求回退测试通过。
 - 批量队列至少通过多任务执行和取消测试。
 - 组合回归测试中的完整剪辑链路通过。
 - 所有失败项有明确 issue 或文档化限制，不存在“无提示崩溃”级别问题。

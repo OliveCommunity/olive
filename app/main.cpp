@@ -41,6 +41,7 @@ extern "C" {
 #include <QIcon>
 #include <QSurfaceFormat>
 
+#include "config/config.h"
 #include "core.h"
 #include "common/commandlineparser.h"
 #include "common/debug.h"
@@ -300,7 +301,8 @@ int main(int argc, char *argv[])
 
 	startup_params.set_startup_project(project_argument->GetSetting());
 
-	// Set OpenGL display profile
+	// Set OpenGL display profile. Oak's render pipeline still uses OpenGL
+	// internally even when Vulkan is requested as the Qt graphics backend.
 	QSurfaceFormat format;
 
 	// Tries to cover all bases. If drivers don't support 3.2, they should fallback to the closest
@@ -337,6 +339,16 @@ int main(int argc, char *argv[])
 	} else {
 		a.reset(new QCoreApplication(argc, argv));
 	}
+
+	olive::Config::Load();
+	const QString graphics_backend =
+		olive::Config::Current()[QStringLiteral("GraphicsBackend")]
+			.toString()
+			.toLower();
+	qputenv("QSG_RHI_BACKEND",
+			graphics_backend == QStringLiteral("vulkan")
+				? QByteArrayLiteral("vulkan")
+				: QByteArrayLiteral("opengl"));
 
 	if (auto *gui_app = qobject_cast<QGuiApplication *>(a.get())) {
 		gui_app->setWindowIcon(QIcon(QStringLiteral(":/graphics/oak-logo.png")));

@@ -40,11 +40,53 @@ namespace olive
 RenderManager *RenderManager::instance_ = nullptr;
 const rational RenderManager::kDryRunInterval = rational(10);
 
+RenderManager::Backend RenderManager::BackendFromString(const QString &backend)
+{
+	const QString lower = backend.toLower();
+	if (lower == QStringLiteral("vulkan")) {
+		return kVulkan;
+	}
+
+	if (lower == QStringLiteral("multiprocess")) {
+		return kMultiProcess;
+	}
+
+	if (lower == QStringLiteral("dummy")) {
+		return kDummy;
+	}
+
+	return kOpenGL;
+}
+
+QString RenderManager::BackendToString(Backend backend)
+{
+	switch (backend) {
+	case kOpenGL:
+		return QStringLiteral("opengl");
+	case kVulkan:
+		return QStringLiteral("vulkan");
+	case kMultiProcess:
+		return QStringLiteral("multiprocess");
+	case kDummy:
+		return QStringLiteral("dummy");
+	}
+
+	return QStringLiteral("opengl");
+}
+
 RenderManager::RenderManager(QObject *parent)
 	: backend_(kOpenGL)
+	, requested_backend_(BackendFromString(
+		  OLIVE_CONFIG("GraphicsBackend").toString()))
 	, aggressive_gc_(0)
 	, worker_pool_(nullptr)
 {
+	if (requested_backend_ == kVulkan) {
+		qWarning()
+			<< "Vulkan graphics backend was requested, but the current render "
+			   "pipeline still uses OpenGL. Falling back to OpenGL renderer.";
+	}
+
 	if (backend_ == kOpenGL) {
 		context_ = new OpenGLRenderer();
 		decoder_cache_ = new DecoderCache();
