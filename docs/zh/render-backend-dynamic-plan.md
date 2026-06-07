@@ -55,12 +55,14 @@
 - 非 PIC 静态依赖会阻塞共享库链接，例如 `KDDockWidgets`。
 - 主程序和后端库会复制全局状态，增加配置、cache、单例和 Qt meta-object 的一致性风险。
 
-因此动态后端接管默认 renderer 前，需要把 OpenGL 后端库的链接边界收敛到最小集合：
+当前实验构建已经可以通过 `OAK_ENABLE_DYNAMIC_RENDER_BACKEND=ON` 生成 `liboakgl.so`，做法是把相关 object/static 依赖切到 PIC 后链接进 OpenGL 后端库。这满足“动态库一侧 C++ 实现 + C ABI 导出”的第一步，但它仍不是最终边界：后端库暂时会带入较多 editor 代码和全局状态。
+
+因此动态后端成为默认路径前，仍需要把 OpenGL 后端库的链接边界收敛到最小集合：
 
 - 后端库只拥有 OpenGL/Vulkan native 操作和必要的后端私有状态。
 - 主程序侧保留项目、节点、任务、cache、OpenFX host 等 editor 状态。
 - 如果某个后端函数需要主程序创建 `Texture` 或访问 cache，用 C callback table 从后端回调主程序，而不是把完整 editor 链进后端库。
-- `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 打开前必须完成最小链接边界拆分并通过 CI。
+- `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 可用于实验构建和加载验证；默认启用前必须完成最小链接边界拆分并通过 CI。
 
 ## 阶段 3：Vulkan 后端
 

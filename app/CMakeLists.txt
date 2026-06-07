@@ -89,7 +89,34 @@ set_target_properties(libolive-editor PROPERTIES PREFIX "")
 
 option(OAK_ENABLE_DYNAMIC_RENDER_BACKEND "Build and use the experimental dynamic render backend adapter" OFF)
 if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
-  message(FATAL_ERROR "OAK_ENABLE_DYNAMIC_RENDER_BACKEND is scaffolded but not linkable yet. Split the OpenGL backend dependency boundary before enabling it.")
+  set_target_properties(libolive-editor PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  target_compile_definitions(libolive-editor PRIVATE OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
+
+  foreach(target olivecore kddockwidgets)
+    if (TARGET ${target})
+      set_target_properties(${target} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    endif()
+  endforeach()
+
+  add_library(oakgl SHARED
+    render/opengl/openglbackend_c.cpp
+    $<TARGET_OBJECTS:libolive-editor>
+  )
+  target_include_directories(oakgl PRIVATE
+    ${CMAKE_SOURCE_DIR}/app
+    ${CMAKE_SOURCE_DIR}/third_party/openfx/include
+    ${CMAKE_SOURCE_DIR}/third_party/openfx/HostSupport/include
+    ${OLIVE_INCLUDE_DIRS}
+  )
+  target_link_libraries(oakgl PRIVATE ${OLIVE_LIBRARIES} OfxHost)
+  target_compile_definitions(oakgl PRIVATE ${OLIVE_DEFINITIONS})
+  target_compile_options(oakgl PRIVATE ${OLIVE_COMPILE_OPTIONS})
+  set_target_properties(oakgl PROPERTIES
+    OUTPUT_NAME oakgl
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  )
 endif()
 
 add_library(oakgl-cabi-check OBJECT
@@ -114,6 +141,9 @@ add_executable(olive-editor
 target_include_directories(olive-editor PUBLIC pluginSupport)
 target_link_libraries(olive-editor PUBLIC OfxHost)
 add_dependencies(olive-editor oakgl-cabi-check)
+if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
+  add_dependencies(olive-editor oakgl)
+endif()
 
 # Add render worker process (olive-render-worker).
 # Reuses the libolive-editor object library so the worker shares the exact same render/node/codec
