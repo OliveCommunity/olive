@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
+#include <QFileInfo>
 #include <QOpenGLContext>
 
 namespace olive
@@ -39,8 +40,20 @@ QString DynamicRenderer::LibraryFilename() const
 #else
 	const QString filename = QStringLiteral("lib") + base + QStringLiteral(".so");
 #endif
-	return QDir(QCoreApplication::applicationDirPath()).filePath(
-		filename);
+
+	const QDir app_dir(QCoreApplication::applicationDirPath());
+	const QStringList candidates = {
+		app_dir.filePath(filename),
+		app_dir.filePath(QDir(QStringLiteral("render_backends")).filePath(filename)),
+		app_dir.filePath(QDir(QStringLiteral("../app")).filePath(filename)),
+		app_dir.filePath(QDir(QStringLiteral("../../app")).filePath(filename))
+	};
+	for (const QString &candidate : candidates) {
+		if (QFileInfo::exists(candidate)) {
+			return candidate;
+		}
+	}
+	return candidates.first();
 }
 
 bool DynamicRenderer::Load()

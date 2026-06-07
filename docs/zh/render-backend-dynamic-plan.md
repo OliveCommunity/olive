@@ -57,6 +57,8 @@
 
 当前实验构建已经可以通过 `OAK_ENABLE_DYNAMIC_RENDER_BACKEND=ON` 生成 `liboakgl.so`，做法是把相关 object/static 依赖切到 PIC 后链接进 OpenGL 后端库。这满足“动态库一侧 C++ 实现 + C ABI 导出”的第一步，但它仍不是最终边界：后端库暂时会带入较多 editor 代码和全局状态。
 
+已新增 `DynamicRenderBackend.LoadsExperimentalOpenGLBackend` smoke test：默认构建跳过，实验构建会实际加载 `liboakgl` 并验证 create/destroy C ABI 路径。
+
 因此动态后端成为默认路径前，仍需要把 OpenGL 后端库的链接边界收敛到最小集合：
 
 - 后端库只拥有 OpenGL/Vulkan native 操作和必要的后端私有状态。

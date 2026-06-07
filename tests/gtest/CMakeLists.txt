@@ -30,6 +30,7 @@ add_executable(olive-gtest
   plugin_format_conversion_test.cpp
   audio_smoke_test.cpp
   viewer_smoke_test.cpp
+  dynamic_render_backend_test.cpp
   opengl_readback_guard_test.cpp
   plugin_render_pipeline_test.cpp
   plugin_renderer_readback_test.cpp
@@ -79,6 +80,11 @@ target_compile_options(
   PRIVATE
   ${OLIVE_COMPILE_OPTIONS}
 )
+
+if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
+  target_compile_definitions(olive-gtest PRIVATE OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
+  add_dependencies(olive-gtest oakgl)
+endif()
 
 if (MSVC)
   add_test("Olive.gtest" olive-gtest)
