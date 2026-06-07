@@ -59,6 +59,8 @@
 
 已新增 `DynamicRenderBackend.LoadsExperimentalOpenGLBackend` smoke test：默认构建跳过，实验构建会实际加载 `liboakgl` 并验证 create/destroy C ABI 路径。
 
+已新增可选 `oak_renderer_is_available` C ABI：后端库可以在被加载和 create 后报告自身是否可用。OpenGL 后端返回可用；Vulkan 占位后端返回不可用，适配器随后卸载它并回退 OpenGL。这把“后端存在”和“后端可用于渲染”分开，避免后续最小化链接边界时把不可用实现误接入渲染路径。
+
 因此动态后端成为默认路径前，仍需要把 OpenGL 后端库的链接边界收敛到最小集合：
 
 - 后端库只拥有 OpenGL/Vulkan native 操作和必要的后端私有状态。
@@ -69,6 +71,8 @@
 ## 阶段 3：Vulkan 后端
 
 - 新增 Vulkan 后端库。
+- 已新增 `liboakvulkan.so` 实验占位库：内部使用 C++，对外导出与 OpenGL 后端一致的 C ABI；当前 `oak_renderer_is_available` 返回 `false`，请求 Vulkan 时由 `DynamicRenderer` 自动回退 OpenGL。
+- 已新增 `DynamicRenderBackend.FallsBackWhenExperimentalVulkanUnavailable` smoke test：默认构建跳过，实验构建验证 Vulkan 占位后端可加载且不会被误用为可渲染后端。
 - 实现 Vulkan instance/device/swapchain 或 offscreen image 管理。
 - 实现 texture 创建、上传、下载、shader 编译/缓存、blit、clear、flush。
 - 提供 OpenGL 辅助格式转换函数的 Vulkan 替代版本。

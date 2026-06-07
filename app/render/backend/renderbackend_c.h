@@ -17,6 +17,7 @@ typedef void *OakRenderBackendHandle;
 
 typedef OakRenderBackendHandle (*OakBackendCreateFn)(void *parent);
 typedef void (*OakBackendDestroyFn)(OakRenderBackendHandle handle);
+typedef bool (*OakBackendIsAvailableFn)(OakRenderBackendHandle handle);
 typedef bool (*OakBackendInitFn)(OakRenderBackendHandle handle);
 typedef void (*OakBackendInitWithContextFn)(OakRenderBackendHandle handle,
 										void *context);

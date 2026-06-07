@@ -117,6 +117,22 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   )
+
+  add_library(oakvulkan SHARED
+    render/vulkan/vulkanbackend_c.cpp
+  )
+  target_include_directories(oakvulkan PRIVATE
+    ${CMAKE_SOURCE_DIR}/app
+  )
+  target_link_libraries(oakvulkan PRIVATE Qt${QT_VERSION_MAJOR}::Core)
+  target_compile_definitions(oakvulkan PRIVATE ${OLIVE_DEFINITIONS})
+  target_compile_options(oakvulkan PRIVATE ${OLIVE_COMPILE_OPTIONS})
+  set_target_properties(oakvulkan PROPERTIES
+    OUTPUT_NAME oakvulkan
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  )
 endif()
 
 add_library(oakgl-cabi-check OBJECT
@@ -142,7 +158,7 @@ target_include_directories(olive-editor PUBLIC pluginSupport)
 target_link_libraries(olive-editor PUBLIC OfxHost)
 add_dependencies(olive-editor oakgl-cabi-check)
 if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
-  add_dependencies(olive-editor oakgl)
+  add_dependencies(olive-editor oakgl oakvulkan)
 endif()
 
 # Add render worker process (olive-render-worker).

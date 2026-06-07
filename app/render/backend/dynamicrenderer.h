@@ -52,6 +52,8 @@ protected:
 
 private:
 	bool ResolveFunctions();
+	bool FallbackToOpenGL();
+	void ResetFunctions();
 	QString LibraryFilename() const;
 
 	QString backend_;
@@ -60,6 +62,7 @@ private:
 
 	OakBackendCreateFn create_ = nullptr;
 	OakBackendDestroyFn destroy_ = nullptr;
+	OakBackendIsAvailableFn is_available_ = nullptr;
 	OakBackendInitFn init_ = nullptr;
 	OakBackendInitWithContextFn init_with_context_ = nullptr;
 	OakBackendPostInitFn post_init_ = nullptr;

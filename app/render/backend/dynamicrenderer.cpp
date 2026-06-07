@@ -86,11 +86,27 @@ bool DynamicRenderer::Load()
 	}
 
 	handle_ = create_(this->parent());
+	if (!handle_) {
+		library_.unload();
+		return false;
+	}
+	if (is_available_ && !is_available_(handle_)) {
+		qWarning() << "Render backend is not available" << backend_
+				   << library_.fileName();
+		if (backend_ == QStringLiteral("vulkan")) {
+			return FallbackToOpenGL();
+		}
+		destroy_(handle_);
+		handle_ = nullptr;
+		library_.unload();
+		return false;
+	}
 	return handle_ != nullptr;
 }
 
 bool DynamicRenderer::ResolveFunctions()
 {
+	ResetFunctions();
 #define RESOLVE(member, type, symbol) \
 	member = reinterpret_cast<type>(library_.resolve(symbol)); \
 	if (!member) return false
@@ -126,7 +142,46 @@ bool DynamicRenderer::ResolveFunctions()
 	RESOLVE(opengl_context_, OakBackendOpenGLContextFn,
 			"oak_renderer_opengl_context");
 #undef RESOLVE
+	is_available_ = reinterpret_cast<OakBackendIsAvailableFn>(
+		library_.resolve("oak_renderer_is_available"));
 	return true;
+}
+
+bool DynamicRenderer::FallbackToOpenGL()
+{
+	if (handle_ && destroy_) {
+		destroy_(handle_);
+		handle_ = nullptr;
+	}
+	if (library_.isLoaded()) {
+		library_.unload();
+	}
+	ResetFunctions();
+	backend_ = QStringLiteral("opengl");
+	return Load();
+}
+
+void DynamicRenderer::ResetFunctions()
+{
+	create_ = nullptr;
+	destroy_ = nullptr;
+	is_available_ = nullptr;
+	init_ = nullptr;
+	init_with_context_ = nullptr;
+	post_init_ = nullptr;
+	post_destroy_ = nullptr;
+	destroy_internal_ = nullptr;
+	clear_destination_ = nullptr;
+	create_native_texture_ = nullptr;
+	destroy_native_texture_ = nullptr;
+	create_native_shader_ = nullptr;
+	destroy_native_shader_ = nullptr;
+	upload_to_texture_ = nullptr;
+	download_from_texture_ = nullptr;
+	flush_ = nullptr;
+	get_pixel_from_texture_ = nullptr;
+	blit_ = nullptr;
+	opengl_context_ = nullptr;
 }
 
 bool DynamicRenderer::Init()

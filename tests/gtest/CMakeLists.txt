@@ -83,7 +83,7 @@ target_compile_options(
 
 if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
   target_compile_definitions(olive-gtest PRIVATE OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
-  add_dependencies(olive-gtest oakgl)
+  add_dependencies(olive-gtest oakgl oakvulkan)
 endif()
 
 if (MSVC)

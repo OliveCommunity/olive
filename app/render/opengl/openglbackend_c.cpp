@@ -43,6 +43,12 @@ OAK_RENDER_BACKEND_EXPORT void oak_renderer_destroy(OakRenderBackendHandle handl
 	delete Renderer(handle);
 }
 
+OAK_RENDER_BACKEND_EXPORT bool oak_renderer_is_available(
+	OakRenderBackendHandle handle)
+{
+	return handle != nullptr;
+}
+
 OAK_RENDER_BACKEND_EXPORT bool oak_renderer_init(OakRenderBackendHandle handle)
 {
 	return Renderer(handle)->Init();
