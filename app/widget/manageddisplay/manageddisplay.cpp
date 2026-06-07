@@ -25,6 +25,9 @@
 #include <QMessageBox>
 
 #include "panel/panelmanager.h"
+#ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+#include "render/backend/dynamicrenderer.h"
+#endif
 #include "render/opengl/openglrenderer.h"
 #include "render/rendermanager.h"
 
@@ -61,8 +64,15 @@ ManagedDisplayWidget::ManagedDisplayWidget(QWidget *parent)
 
 		inner_widget_->installEventFilter(this);
 
-		// Create OpenGL renderer
+		// Create renderer bound to the widget's OpenGL context.
+#ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+		attached_renderer_ = new DynamicRenderer(
+			RenderManager::BackendToString(
+				RenderManager::instance()->requested_backend()),
+			this);
+#else
 		attached_renderer_ = new OpenGLRenderer(this);
+#endif
 
 		// Create widget wrapper for OpenGL window
 #ifdef USE_QOPENGLWINDOW
@@ -244,6 +254,14 @@ void ManagedDisplayWidget::OnInit()
 	if (RenderManager::instance()->backend() == RenderManager::kOpenGL) {
 		QOpenGLContext *context =
 			static_cast<ManagedDisplayWidgetOpenGL *>(inner_widget_)->context();
+#ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+		if (auto *dynamic_renderer =
+				dynamic_cast<DynamicRenderer *>(attached_renderer_)) {
+			dynamic_renderer->InitWithOpenGLContext(context);
+			dynamic_renderer->PostInit();
+			return;
+		}
+#endif
 		static_cast<OpenGLRenderer *>(attached_renderer_)->Init(context);
 		static_cast<OpenGLRenderer *>(attached_renderer_)->PostInit();
 	}

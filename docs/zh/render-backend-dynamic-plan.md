@@ -77,6 +77,7 @@
 ## 阶段 4：Viewer 双后端
 
 - 当前 viewer display 基于 OpenGL widget 和 GL texture id。
+- 已在 `OAK_ENABLE_DYNAMIC_RENDER_BACKEND=ON` 实验构建下让 Viewer 的 managed display 使用 `DynamicRenderer` 创建 renderer，并把现有 `QOpenGLContext` 传入动态后端；默认构建仍直接使用 `OpenGLRenderer`。
 - 新增 backend-neutral viewer path。
 - OpenGL 使用现有 `QOpenGLWidget/QOpenGLWindow`。
 - Vulkan 使用 `QVulkanWindow` 或 Qt RHI/QRhi 显示路径。
