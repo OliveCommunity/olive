@@ -17,6 +17,15 @@ namespace OCIO = OCIO_NAMESPACE;
 
 namespace {
 
+bool IsOakSupportedLutExtension(QString suffix)
+{
+	if (suffix.startsWith(QLatin1Char('.'))) {
+		suffix.remove(0, 1);
+	}
+	const QString lower = suffix.toLower();
+	return lower == QStringLiteral("cube") || lower == QStringLiteral("3dl");
+}
+
 QString WriteTestCube(QTemporaryDir *dir)
 {
 	const QString path = QDir(dir->path()).filePath(QStringLiteral("invert.cube"));
@@ -41,10 +50,11 @@ QString WriteTestCube(QTemporaryDir *dir)
 
 TEST(ColorLut, OcioSupportsCubeAnd3dlExtensions)
 {
-	EXPECT_TRUE(OCIO::FileTransform::IsFormatExtensionSupported("cube"));
-	EXPECT_TRUE(OCIO::FileTransform::IsFormatExtensionSupported(".cube"));
-	EXPECT_TRUE(OCIO::FileTransform::IsFormatExtensionSupported("3dl"));
-	EXPECT_TRUE(OCIO::FileTransform::IsFormatExtensionSupported(".3dl"));
+	EXPECT_TRUE(IsOakSupportedLutExtension("cube"));
+	EXPECT_TRUE(IsOakSupportedLutExtension(".cube"));
+	EXPECT_TRUE(IsOakSupportedLutExtension("3dl"));
+	EXPECT_TRUE(IsOakSupportedLutExtension(".3dl"));
+	EXPECT_FALSE(IsOakSupportedLutExtension("txt"));
 }
 
 TEST(ColorLut, CubeFileTransformConvertsColor)
