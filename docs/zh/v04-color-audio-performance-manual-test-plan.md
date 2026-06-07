@@ -361,7 +361,7 @@
 
 ## 10. 图形后端选择测试
 
-当前版本允许用户在 Preferences 中选择 OpenGL 或 Vulkan。注意：Vulkan 入口目前是实验性图形 API 请求和后续 VulkanRenderer 的接入点；时间线/viewer 渲染仍应安全回退到现有 OpenGL renderer。因此测试重点是“用户可选择、设置可持久化、Vulkan 请求不破坏现有渲染、失败可回退”。
+当前版本允许用户在 Preferences 中选择 OpenGL 或 Vulkan。注意：Vulkan 入口目前是实验性图形 API 请求和后续 VulkanRenderer 的接入点；默认构建下时间线/viewer 渲染仍应安全回退到现有 OpenGL renderer。动态后端适配器通过 `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 实验开关接入，测试重点是“用户可选择、设置可持久化、Vulkan 请求不破坏现有渲染、失败可回退”。
 
 ### 10.1 默认 OpenGL 后端
 
@@ -410,6 +410,34 @@
 5. 切回 OpenGL 后重复同一段播放。
 
 通过标准：Vulkan 请求状态下代理、Scope、调色不崩溃；切回 OpenGL 后项目状态一致；两种选择下导出默认仍使用原片。
+
+### 10.6 动态 OpenGL 后端加载
+
+1. 使用开启 `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 的实验构建。
+2. 确认应用目录存在 Oak 私有 OpenGL 后端库，例如 `liboakgl.so`、`liboakgl.dylib` 或 `oakgl.dll`。
+3. 在 Preferences 中选择 OpenGL 并重启。
+4. 导入 `color_chart.mov`，播放、拖动时间线并打开 Scope。
+5. 关闭应用，确认退出过程没有崩溃。
+
+通过标准：日志显示动态 OpenGL 后端加载成功；viewer、Scope、调色和播放行为与默认 OpenGL 路径一致；退出时执行 destroy/unload 无崩溃。
+
+### 10.7 动态后端缺失或损坏
+
+1. 使用开启 `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 的实验构建。
+2. 临时移走或重命名 Oak 私有 OpenGL 后端库。
+3. 启动 Oak 并打开一个已有项目。
+4. 观察日志、Preferences 和播放行为。
+
+通过标准：应用不能静默崩溃；日志明确说明后端库加载失败；用户能够恢复库文件或切回默认构建继续打开项目。
+
+### 10.8 Vulkan 动态后端占位
+
+1. 使用开启 `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 的实验构建。
+2. 在 Preferences 中选择 Vulkan 并重启。
+3. 如果 `liboakvulkan` 尚未实现，观察回退行为。
+4. 切回 OpenGL 并重启。
+
+通过标准：Vulkan 后端未实现时不崩溃；日志明确说明 Vulkan 后端缺失并回退或拒绝初始化；切回 OpenGL 后项目可播放。
 
 ## 缺陷记录模板
 

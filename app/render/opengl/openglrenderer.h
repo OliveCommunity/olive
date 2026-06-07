@@ -30,12 +30,13 @@
 #include <QThread>
 #include <QTimer>
 
+#include "render/opengl/openglcontextprovider.h"
 #include "render/renderer.h"
 
 namespace olive
 {
 
-class OpenGLRenderer : public Renderer {
+class OpenGLRenderer : public Renderer, public OpenGLContextProvider {
 	Q_OBJECT
 public:
 	OpenGLRenderer(QObject *parent = nullptr);
@@ -74,6 +75,11 @@ public:
 	QOpenGLContext *context() const
 	{
 		return context_;
+	}
+
+	virtual QOpenGLContext *OpenGLContext() const override
+	{
+		return context();
 	}
 
 	bool EnsureContextCurrent(const char *caller);

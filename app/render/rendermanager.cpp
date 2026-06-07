@@ -27,6 +27,9 @@
 
 #include "config/config.h"
 #include "core.h"
+#ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+#include "render/backend/dynamicrenderer.h"
+#endif
 #include "render/opengl/openglrenderer.h"
 #include "renderprocessor.h"
 #include "renderworkerpool.h"
@@ -88,7 +91,11 @@ RenderManager::RenderManager(QObject *parent)
 	}
 
 	if (backend_ == kOpenGL) {
+#ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+		context_ = new DynamicRenderer(BackendToString(requested_backend_));
+#else
 		context_ = new OpenGLRenderer();
+#endif
 		decoder_cache_ = new DecoderCache();
 		shader_cache_ = new ShaderCache();
 	} else {

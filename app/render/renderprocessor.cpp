@@ -23,6 +23,7 @@
 
 #include <QFileInfo>
 #include <QOpenGLContext>
+#include <QThreadStorage>
 #include <QVector2D>
 #include <QVector3D>
 #include <QVector4D>
@@ -32,6 +33,7 @@
 #include "node/block/transition/transition.h"
 #include "node/project.h"
 #include "rendermanager.h"
+#include "render/opengl/openglcontextprovider.h"
 #include "render/opengl/openglrenderer.h"
 #include "render/plugin/pluginrenderer.h"
 #include "pluginSupport/OliveClip.h"
@@ -711,18 +713,21 @@ TexturePtr RenderProcessor::ProcessPluginJob(TexturePtr texture,
 
 	plugin::PluginRenderer *plugin_renderer = nullptr;
 	{
-		thread_local static std::shared_ptr<plugin::PluginRenderer>
-			cached_plugin_renderer;
-		if (!cached_plugin_renderer) {
-			auto *gl = dynamic_cast<OpenGLRenderer *>(render_ctx_);
-			if (gl && gl->context()) {
-				cached_plugin_renderer =
+		static QThreadStorage<std::shared_ptr<plugin::PluginRenderer>>
+			cached_plugin_renderers;
+		if (!cached_plugin_renderers.hasLocalData()) {
+			auto *gl = dynamic_cast<OpenGLContextProvider *>(render_ctx_);
+			if (gl && gl->OpenGLContext()) {
+				auto cached_plugin_renderer =
 					std::make_shared<plugin::PluginRenderer>();
-				cached_plugin_renderer->Init(gl->context());
+				cached_plugin_renderer->Init(gl->OpenGLContext());
 				cached_plugin_renderer->PostInit();
+				cached_plugin_renderers.setLocalData(cached_plugin_renderer);
 			}
 		}
-		plugin_renderer = cached_plugin_renderer.get();
+		if (cached_plugin_renderers.hasLocalData()) {
+			plugin_renderer = cached_plugin_renderers.localData().get();
+		}
 	}
 
 	if (!plugin_renderer) {

@@ -13,7 +13,9 @@ TEST(OpenGLRenderer, DownloadFromTextureWithoutCurrentContext)
 	}
 
 	QOpenGLContext context;
-	ASSERT_TRUE(context.create());
+	if (!context.create()) {
+		GTEST_SKIP() << "Skipping OpenGL test because no context can be created";
+	}
 	ASSERT_EQ(QOpenGLContext::currentContext(), nullptr);
 
 	olive::OpenGLRenderer renderer;

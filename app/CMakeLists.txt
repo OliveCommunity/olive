@@ -87,6 +87,24 @@ include_directories(../third_party/openfx/include
 # Remove prefix - prevents CMake calling it "liblibolive-editor"
 set_target_properties(libolive-editor PROPERTIES PREFIX "")
 
+option(OAK_ENABLE_DYNAMIC_RENDER_BACKEND "Build and use the experimental dynamic render backend adapter" OFF)
+if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
+  message(FATAL_ERROR "OAK_ENABLE_DYNAMIC_RENDER_BACKEND is scaffolded but not linkable yet. Split the OpenGL backend dependency boundary before enabling it.")
+endif()
+
+add_library(oakgl-cabi-check OBJECT
+  render/opengl/openglbackend_c.cpp
+)
+target_include_directories(oakgl-cabi-check PRIVATE
+  ${CMAKE_SOURCE_DIR}/app
+  ${CMAKE_SOURCE_DIR}/third_party/openfx/include
+  ${CMAKE_SOURCE_DIR}/third_party/openfx/HostSupport/include
+  ${OLIVE_INCLUDE_DIRS}
+)
+target_link_libraries(oakgl-cabi-check PRIVATE ${OLIVE_LIBRARIES} OfxHost)
+target_compile_definitions(oakgl-cabi-check PRIVATE ${OLIVE_DEFINITIONS})
+target_compile_options(oakgl-cabi-check PRIVATE ${OLIVE_COMPILE_OPTIONS})
+
 # Add application
 add_executable(olive-editor
   main.cpp
@@ -95,6 +113,7 @@ add_executable(olive-editor
 )
 target_include_directories(olive-editor PUBLIC pluginSupport)
 target_link_libraries(olive-editor PUBLIC OfxHost)
+add_dependencies(olive-editor oakgl-cabi-check)
 
 # Add render worker process (olive-render-worker).
 # Reuses the libolive-editor object library so the worker shares the exact same render/node/codec
