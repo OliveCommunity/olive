@@ -148,6 +148,16 @@ target_link_libraries(oakgl-cabi-check PRIVATE ${OLIVE_LIBRARIES} OfxHost)
 target_compile_definitions(oakgl-cabi-check PRIVATE ${OLIVE_DEFINITIONS})
 target_compile_options(oakgl-cabi-check PRIVATE ${OLIVE_COMPILE_OPTIONS})
 
+add_library(oakvulkan-cabi-check OBJECT
+  render/vulkan/vulkanbackend_c.cpp
+)
+target_include_directories(oakvulkan-cabi-check PRIVATE
+  ${CMAKE_SOURCE_DIR}/app
+)
+target_link_libraries(oakvulkan-cabi-check PRIVATE Qt${QT_VERSION_MAJOR}::Core)
+target_compile_definitions(oakvulkan-cabi-check PRIVATE ${OLIVE_DEFINITIONS})
+target_compile_options(oakvulkan-cabi-check PRIVATE ${OLIVE_COMPILE_OPTIONS})
+
 # Add application
 add_executable(olive-editor
   main.cpp
@@ -156,7 +166,7 @@ add_executable(olive-editor
 )
 target_include_directories(olive-editor PUBLIC pluginSupport)
 target_link_libraries(olive-editor PUBLIC OfxHost)
-add_dependencies(olive-editor oakgl-cabi-check)
+add_dependencies(olive-editor oakgl-cabi-check oakvulkan-cabi-check)
 if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
   add_dependencies(olive-editor oakgl oakvulkan)
 endif()

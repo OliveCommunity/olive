@@ -19,6 +19,11 @@ public:
 
 	bool Load();
 	bool InitWithOpenGLContext(QOpenGLContext *context);
+	bool GetBackendInfo(OakRenderBackendInfo *out_info) const;
+	QString backend_name() const
+	{
+		return backend_;
+	}
 
 	virtual bool Init() override;
 	virtual void PostDestroy() override;
@@ -62,6 +67,7 @@ private:
 
 	OakBackendCreateFn create_ = nullptr;
 	OakBackendDestroyFn destroy_ = nullptr;
+	OakBackendGetInfoFn get_info_ = nullptr;
 	OakBackendIsAvailableFn is_available_ = nullptr;
 	OakBackendInitFn init_ = nullptr;
 	OakBackendInitWithContextFn init_with_context_ = nullptr;

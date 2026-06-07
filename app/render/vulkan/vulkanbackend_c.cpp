@@ -38,6 +38,20 @@ OAK_RENDER_BACKEND_EXPORT void oak_renderer_destroy(OakRenderBackendHandle handl
 	delete Backend(handle);
 }
 
+OAK_RENDER_BACKEND_EXPORT bool oak_renderer_get_info(
+	OakRenderBackendHandle handle, OakRenderBackendInfo *out_info)
+{
+	if (!handle || !out_info) {
+		return false;
+	}
+	out_info->abi_version = 1;
+	out_info->kind = OAK_RENDER_BACKEND_VULKAN;
+	out_info->capabilities = 0;
+	out_info->name = "vulkan";
+	out_info->status = "placeholder-unavailable";
+	return true;
+}
+
 OAK_RENDER_BACKEND_EXPORT bool oak_renderer_is_available(
 	OakRenderBackendHandle handle)
 {

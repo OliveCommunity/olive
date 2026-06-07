@@ -142,6 +142,8 @@ bool DynamicRenderer::ResolveFunctions()
 	RESOLVE(opengl_context_, OakBackendOpenGLContextFn,
 			"oak_renderer_opengl_context");
 #undef RESOLVE
+	get_info_ = reinterpret_cast<OakBackendGetInfoFn>(
+		library_.resolve("oak_renderer_get_info"));
 	is_available_ = reinterpret_cast<OakBackendIsAvailableFn>(
 		library_.resolve("oak_renderer_is_available"));
 	return true;
@@ -165,6 +167,7 @@ void DynamicRenderer::ResetFunctions()
 {
 	create_ = nullptr;
 	destroy_ = nullptr;
+	get_info_ = nullptr;
 	is_available_ = nullptr;
 	init_ = nullptr;
 	init_with_context_ = nullptr;
@@ -182,6 +185,11 @@ void DynamicRenderer::ResetFunctions()
 	get_pixel_from_texture_ = nullptr;
 	blit_ = nullptr;
 	opengl_context_ = nullptr;
+}
+
+bool DynamicRenderer::GetBackendInfo(OakRenderBackendInfo *out_info) const
+{
+	return handle_ && get_info_ && out_info && get_info_(handle_, out_info);
 }
 
 bool DynamicRenderer::Init()

@@ -43,6 +43,23 @@ OAK_RENDER_BACKEND_EXPORT void oak_renderer_destroy(OakRenderBackendHandle handl
 	delete Renderer(handle);
 }
 
+OAK_RENDER_BACKEND_EXPORT bool oak_renderer_get_info(
+	OakRenderBackendHandle handle, OakRenderBackendInfo *out_info)
+{
+	if (!handle || !out_info) {
+		return false;
+	}
+	out_info->abi_version = 1;
+	out_info->kind = OAK_RENDER_BACKEND_OPENGL;
+	out_info->capabilities = OAK_RENDER_BACKEND_CAP_TEXTURES |
+		OAK_RENDER_BACKEND_CAP_SHADERS | OAK_RENDER_BACKEND_CAP_BLIT |
+		OAK_RENDER_BACKEND_CAP_READBACK |
+		OAK_RENDER_BACKEND_CAP_VIEWER_CONTEXT;
+	out_info->name = "opengl";
+	out_info->status = "available";
+	return true;
+}
+
 OAK_RENDER_BACKEND_EXPORT bool oak_renderer_is_available(
 	OakRenderBackendHandle handle)
 {

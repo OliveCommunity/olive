@@ -61,6 +61,8 @@
 
 已新增可选 `oak_renderer_is_available` C ABI：后端库可以在被加载和 create 后报告自身是否可用。OpenGL 后端返回可用；Vulkan 占位后端返回不可用，适配器随后卸载它并回退 OpenGL。这把“后端存在”和“后端可用于渲染”分开，避免后续最小化链接边界时把不可用实现误接入渲染路径。
 
+已新增 `oak_renderer_get_info` C ABI：后端库可以报告 ABI 版本、后端类型、能力位和状态字符串。默认构建也会编译检查 OpenGL/Vulkan 两个 C wrapper，避免只在实验构建中发现 C ABI 破损。
+
 因此动态后端成为默认路径前，仍需要把 OpenGL 后端库的链接边界收敛到最小集合：
 
 - 后端库只拥有 OpenGL/Vulkan native 操作和必要的后端私有状态。

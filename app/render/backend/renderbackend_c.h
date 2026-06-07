@@ -2,6 +2,7 @@
 #define RENDERBACKEND_C_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef _WIN32
 #define OAK_RENDER_BACKEND_EXPORT extern "C" __declspec(dllexport)
@@ -15,8 +16,32 @@ extern "C" {
 
 typedef void *OakRenderBackendHandle;
 
+enum OakRenderBackendKind {
+	OAK_RENDER_BACKEND_UNKNOWN = 0,
+	OAK_RENDER_BACKEND_OPENGL = 1,
+	OAK_RENDER_BACKEND_VULKAN = 2
+};
+
+enum OakRenderBackendCapability {
+	OAK_RENDER_BACKEND_CAP_TEXTURES = 1ULL << 0,
+	OAK_RENDER_BACKEND_CAP_SHADERS = 1ULL << 1,
+	OAK_RENDER_BACKEND_CAP_BLIT = 1ULL << 2,
+	OAK_RENDER_BACKEND_CAP_READBACK = 1ULL << 3,
+	OAK_RENDER_BACKEND_CAP_VIEWER_CONTEXT = 1ULL << 4
+};
+
+struct OakRenderBackendInfo {
+	uint32_t abi_version;
+	uint32_t kind;
+	uint64_t capabilities;
+	const char *name;
+	const char *status;
+};
+
 typedef OakRenderBackendHandle (*OakBackendCreateFn)(void *parent);
 typedef void (*OakBackendDestroyFn)(OakRenderBackendHandle handle);
+typedef bool (*OakBackendGetInfoFn)(OakRenderBackendHandle handle,
+								struct OakRenderBackendInfo *out_info);
 typedef bool (*OakBackendIsAvailableFn)(OakRenderBackendHandle handle);
 typedef bool (*OakBackendInitFn)(OakRenderBackendHandle handle);
 typedef void (*OakBackendInitWithContextFn)(OakRenderBackendHandle handle,
