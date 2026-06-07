@@ -32,6 +32,16 @@ const QString OCIOLutNode::kDirectionInput = QStringLiteral("lut_dir_in");
 
 #define super OCIOBaseNode
 
+namespace {
+
+bool IsSupportedLutExtension(const QString &suffix)
+{
+	const QString lower = suffix.toLower();
+	return lower == QStringLiteral("cube") || lower == QStringLiteral("3dl");
+}
+
+} // namespace
+
 OCIOLutNode::OCIOLutNode()
 {
 	AddInput(kFileInput, NodeValue::kFile, QString(),
@@ -111,7 +121,7 @@ void OCIOLutNode::GenerateProcessor()
 	}
 
 	const QString suffix = info.suffix();
-	if (!OCIO::FileTransform::IsFormatExtensionSupported(suffix.toUtf8().constData())) {
+	if (!IsSupportedLutExtension(suffix)) {
 		qWarning() << "Unsupported OCIO LUT file extension:" << path;
 		set_processor(nullptr);
 		return;

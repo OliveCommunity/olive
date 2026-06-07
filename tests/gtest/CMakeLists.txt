@@ -71,6 +71,7 @@ target_compile_definitions(
   olive-gtest
   PRIVATE
   ${OLIVE_DEFINITIONS}
+  OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
 )
 
 target_compile_options(
