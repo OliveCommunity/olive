@@ -263,7 +263,7 @@ jobs:
             qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
             libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
-            portaudio19-dev libgl1-mesa-dev libvulkan-dev vulkan-headers libxkbcommon-dev \
+            portaudio19-dev libgl1-mesa-dev libxkbcommon-dev \
             wget fuse3 desktop-file-utils
 
       - name: Build
@@ -271,7 +271,8 @@ jobs:
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
-            -DBUILD_QT6=ON
+            -DBUILD_QT6=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON
           cmake --build build
 
       - name: Install to AppDir
