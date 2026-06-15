@@ -3,6 +3,9 @@
 #include <QFile>
 #include <gtest/gtest.h>
 
+// Configures process-wide Qt/OCIO state before running gtest. Tests default to
+// the offscreen QPA plugin so headless or invalid DISPLAY sessions do not abort
+// before gtest can report skips/failures.
 int main(int argc, char **argv)
 {
 	Q_INIT_RESOURCE(ocioconf);

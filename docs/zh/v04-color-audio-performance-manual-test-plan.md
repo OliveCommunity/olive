@@ -18,10 +18,10 @@
 |:--|:--|:--|
 | Linux + Mesa/AMD 或 Intel | 软件导出、代理、示波器、音频同步 | 当前开发主环境优先 |
 | Linux + NVIDIA | NVENC、代理、4K/8K 预览 | 需要 NVIDIA 驱动和 ffmpeg 编码器支持 |
-| Linux + Vulkan 驱动 | 图形后端选择、Vulkan 请求、OpenGL 回退 | Vulkan 当前为实验入口，需确认不会破坏 OpenGL 渲染 |
+| Linux + Vulkan 驱动 | Vulkan 后端加载、viewer readback、代理、导出、OpenGL 回退 | 需先用 `vulkaninfo --summary` 确认可创建 Vulkan instance/device |
 | macOS Apple Silicon | VideoToolbox、ColorSync/显示路径、代理 | 重点看硬件导出和 UI 响应 |
 | Windows + NVIDIA/Intel | NVENC/QSV 可用性、路径编码、文件管理器 reveal | 重点看中文路径和空格路径 |
-| Windows + Vulkan Runtime | 图形后端选择、Vulkan 请求、驱动缺失回退 | 重点看设置持久化和启动稳定性 |
+| Windows + Vulkan Runtime | Vulkan 后端加载、viewer readback、驱动缺失回退 | 重点看设置持久化、启动稳定性和显卡驱动兼容性 |
 
 ## 测试素材准备
 
@@ -359,9 +359,14 @@
 
 通过标准：内存没有持续不可控增长；播放停止后应用仍可操作和保存。
 
-## 10. 图形后端选择测试
+## 10. 图形后端与 Vulkan 手工测试
 
-当前版本允许用户在 Preferences 中选择 OpenGL 或 Vulkan。注意：Vulkan 入口目前是实验性图形 API 请求和后续 VulkanRenderer 的接入点；默认构建下时间线/viewer 渲染仍应安全回退到现有 OpenGL renderer。动态后端适配器通过 `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 实验开关接入，测试重点是“用户可选择、设置可持久化、Vulkan 请求不破坏现有渲染、失败可回退”。
+当前版本允许用户在 Preferences 中选择 OpenGL 或 Vulkan。动态后端适配器通过 `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 接入 `liboakgl` / `liboakvulkan`。Vulkan 后端已具备 offscreen texture、upload/download、shader Blit、viewer backend-neutral readback 的代码路径，但完整 UI 播放、代理、导出、Scope 和 OpenFX CPU 回退仍需要在真实显示环境与可用 Vulkan runtime 上手工验收。
+
+Vulkan 测试必须先区分两类环境：
+
+- 可用 Vulkan 环境：`vulkaninfo --summary` 能成功列出 instance、physical device、driver 和 queue family。
+- 不可用 Vulkan 环境：缺少 runtime/ICD、驱动损坏，或 `vulkaninfo --summary` 报 `Found no drivers` / `ERROR_INCOMPATIBLE_DRIVER`。这类环境只测试回退，不应把 Vulkan 渲染用例记为通过。
 
 ### 10.1 默认 OpenGL 后端
 
@@ -373,7 +378,17 @@
 
 通过标准：默认值为 OpenGL；viewer、Scope、调色和播放行为与原 OpenGL 路径一致。
 
-### 10.2 切换到 Vulkan 并重启
+### 10.2 Vulkan 运行时预检
+
+1. 在待测机器上运行 `vulkaninfo --summary`。
+2. 记录 GPU 型号、Vulkan API 版本、driver 版本、ICD 文件路径。
+3. 确认应用构建产物中存在 Oak 私有 Vulkan 后端库：Linux 为 `liboakvulkan.so`，macOS 为 `liboakvulkan.dylib`，Windows 为 `oakvulkan.dll`。
+4. 运行动态后端 gtest：`olive-gtest --gtest_filter='DynamicRenderBackend.*'`。
+5. 检查 Vulkan 用例是实际执行还是 SKIP。
+
+通过标准：可用 Vulkan 环境下 `vulkaninfo` 成功，`liboakvulkan` 存在，Vulkan gtest 至少执行 backend load、upload/download、Blit 相关用例；不可用 Vulkan 环境下测试必须明确记录 driver/runtime 错误，Vulkan gtest 可 SKIP，但 OpenGL fallback 用例必须通过。
+
+### 10.3 切换到 Vulkan 并重启
 
 1. 在 Preferences > Behavior > Rendering 中选择 `Vulkan (experimental)`。
 2. 确认设置保存。
@@ -382,9 +397,81 @@
 5. 导入并播放 `4k_camera_a.mov`。
 6. 检查日志，确认 `RenderManager` 报告的实际后端与回退结果一致。
 
-通过标准：Vulkan 选择可持久化；重启后应用不崩溃；当前 Vulkan 未完整验证时应明确回退 OpenGL 渲染，`RenderManager::backend()` 必须反映实际运行后端（回退后应为 OpenGL），播放仍可用。
+通过标准：Vulkan 选择可持久化；重启后应用不崩溃；可用 Vulkan 环境下日志显示动态 Vulkan 后端加载并初始化成功，`RenderManager::backend()` 报告 Vulkan；不可用 Vulkan 环境下应明确回退 OpenGL，`RenderManager::backend()` 必须反映实际运行后端，播放仍可用。
 
-### 10.3 Vulkan 驱动缺失或不可用
+### 10.4 Vulkan Viewer 基础播放
+
+1. 在可用 Vulkan 环境中选择 Vulkan 并重启。
+2. 导入 `color_chart.mov` 和 `4k_camera_a.mov`。
+3. 将两个 clip 放入时间线，打开 Viewer。
+4. 播放 10 秒，期间执行暂停、继续播放、逐帧前进、拖动时间线、缩放 Viewer。
+5. 打开/关闭全屏或浮动 Viewer 窗口。
+6. 观察画面是否黑屏、闪烁、残留上一帧或颜色明显错误。
+
+通过标准：Viewer 通过 Vulkan backend-neutral readback 路径正常显示，播放和 seek 不崩溃；画面比例、裁切、缩放和 device pixel ratio 正常；没有长期黑屏、上一帧残留或 UI 死锁。
+
+### 10.5 Vulkan 调色/LUT 显示一致性
+
+1. 选择 Vulkan 并重启。
+2. 将 `color_chart.mov` 放入时间线。
+3. 加载 `lut_valid.cube`，再做一次三向色轮明显调整。
+4. 在同一帧记录 Viewer 截图或视觉观察结果。
+5. 切回 OpenGL 重启，打开同一项目并定位同一帧。
+6. 对比 Vulkan 和 OpenGL 的画面颜色、亮度和透明度表现。
+
+通过标准：Vulkan 与 OpenGL 预览颜色方向一致，LUT 和三向色轮均生效；不要求像素完全一致，但不能出现通道错乱、alpha 错误、明显 gamma 反转或 LUT 失效。
+
+### 10.6 Vulkan 代理媒体与重素材播放
+
+1. 选择 Vulkan 并重启。
+2. 对 `8k_or_heavy_camera.mov` 生成代理并启用代理。
+3. 播放代理路径 30 秒，期间拖动时间线和缩放 Viewer。
+4. 关闭代理，播放原片路径 10 秒。
+5. 保存、关闭并重开项目，确认代理状态仍正确。
+
+通过标准：启用代理后 Viewer 可播放且不崩溃；禁用代理后回到原片路径；保存重开后代理状态一致；Vulkan 路径不应把导出源降级为代理。
+
+### 10.7 Vulkan 软件导出
+
+1. 选择 Vulkan 并重启。
+2. 创建 10 秒 sequence，包含 `color_chart.mov`、LUT、三向调色、一个代理 clip 和一段音频。
+3. 执行软件编码导出 H.264 或 ProRes。
+4. 用播放器检查导出文件。
+5. 使用 OpenGL 后端重复导出同一段作为对照。
+
+通过标准：Vulkan 下导出成功，输出可播放，音画同步不超过 1 帧；颜色处理和 OpenGL 导出方向一致；启用代理时导出仍使用原片质量路径；失败时有明确错误，不生成损坏的完成文件。
+
+### 10.8 Vulkan Scope 行为
+
+1. 选择 Vulkan 并重启。
+2. 打开 Waveform、Vectorscope、Histogram。
+3. 播放 `color_chart.mov` 并调整 LUT/三向色轮。
+4. 观察 Scope 面板行为。
+5. 切回 OpenGL 后重复同一操作。
+
+通过标准：当前 backend-neutral Scope 若仍是安全跳过，应明确记录为已知限制，且不能崩溃或卡死；OpenGL 下 Scope 必须正常更新。若 Vulkan Scope 已实现，则三类 Scope 必须随当前帧和调色变化更新。
+
+### 10.9 Vulkan OpenFX CPU 回退
+
+1. 选择 Vulkan 并重启。
+2. 在 clip 上添加一个已知可用的 OFX 插件，优先选择支持 CPU 渲染且效果明显的插件。
+3. 播放并导出 5 秒片段。
+4. 检查日志中 OpenGL OFX render 是否被禁用，插件是否走 CPU readback/upload 路径。
+5. 切回 OpenGL，确认支持 OpenGL render 的插件仍能走 OpenGL 输出绑定路径。
+
+通过标准：Vulkan 下 OFX 插件不因缺少 OpenGL context 而被跳过或崩溃；CPU 回退输出可见且可导出；OpenGL 下原有 OFX OpenGL 路径不回退或失效。
+
+### 10.10 Vulkan 后端长时间稳定性
+
+1. 选择 Vulkan 并重启。
+2. 打开包含 4K/8K、LUT、代理、音频和至少 10 个 clip 的项目。
+3. 循环播放 20 分钟。
+4. 期间反复 seek、切换代理、打开/关闭 Viewer、打开/关闭导出窗口。
+5. 观察日志、显存/内存占用和 UI 响应。
+
+通过标准：无崩溃、无持续不可控内存增长、无明显 Vulkan validation/driver error；停止播放后仍可保存项目和退出应用。
+
+### 10.11 Vulkan 驱动缺失或不可用
 
 1. 在没有 Vulkan Runtime 或驱动不可用的机器上选择 Vulkan。
 2. 重启 Oak。
@@ -394,7 +481,7 @@
 
 通过标准：应用可以启动；日志应说明 Vulkan 请求不可完全满足或当前回退 OpenGL；`RenderManager::backend()` 必须与实际运行后端一致；用户能回到 Preferences 改回 OpenGL。
 
-### 10.4 从 Vulkan 切回 OpenGL
+### 10.12 从 Vulkan 切回 OpenGL
 
 1. 在 Vulkan 已选中状态下打开 Preferences。
 2. 将 Graphics Backend 改为 OpenGL。
@@ -403,7 +490,7 @@
 
 通过标准：重启后显示 OpenGL；播放和导出正常；不会保留错误的 Vulkan 状态。
 
-### 10.5 代理、Scope 与调色组合
+### 10.13 代理、Scope 与调色组合回归
 
 1. 选择 Vulkan 并重启。
 2. 对 `8k_or_heavy_camera.mov` 生成并启用代理。
@@ -413,7 +500,7 @@
 
 通过标准：Vulkan 请求状态下代理、Scope、调色不崩溃；切回 OpenGL 后项目状态一致；两种选择下导出默认仍使用原片。
 
-### 10.6 动态 OpenGL 后端加载
+### 10.14 动态 OpenGL 后端加载
 
 1. 使用开启 `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 的实验构建。
 2. 确认应用目录存在 Oak 私有 OpenGL 后端库，例如 `liboakgl.so`、`liboakgl.dylib` 或 `oakgl.dll`。
@@ -423,7 +510,7 @@
 
 通过标准：日志显示动态 OpenGL 后端加载成功；viewer、Scope、调色和播放行为与默认 OpenGL 路径一致；退出时执行 destroy/unload 无崩溃。
 
-### 10.7 动态后端缺失或损坏
+### 10.15 动态后端缺失或损坏
 
 1. 使用开启 `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 的实验构建。
 2. 临时移走或重命名 Oak 私有 OpenGL 后端库。
@@ -432,14 +519,35 @@
 
 通过标准：应用不能静默崩溃；日志明确说明后端库加载失败；用户能够恢复库文件或切回默认构建继续打开项目。
 
-### 10.8 Vulkan 动态后端占位
+### 10.16 Vulkan 动态后端库缺失或不可加载
 
 1. 使用开启 `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 的实验构建。
 2. 在 Preferences 中选择 Vulkan 并重启。
-3. 如果 `liboakvulkan` 尚未实现，观察回退行为。
-4. 切回 OpenGL 并重启。
+3. 临时移走、重命名或替换为损坏的 `liboakvulkan`。
+4. 再次启动 Oak 并打开项目。
+5. 观察回退行为。
+6. 恢复 `liboakvulkan` 后切回 OpenGL 并重启。
 
-通过标准：Vulkan 后端未实现时不崩溃；日志明确说明 Vulkan 后端缺失并回退或拒绝初始化；切回 OpenGL 后项目可播放。
+通过标准：Vulkan 后端库缺失、损坏或符号不完整时不崩溃；日志明确说明 Vulkan 后端加载失败并回退或拒绝初始化；切回 OpenGL 后项目可播放。
+
+### 10.17 Vulkan 与 OpenGL 结果记录
+
+1. 对同一项目分别在 Vulkan 和 OpenGL 下执行 Viewer 播放、5 秒软件导出、代理启用导出。
+2. 记录每个环境的实际 backend、GPU、driver、Vulkan API 版本和是否发生回退。
+3. 对比导出文件的分辨率、帧率、时长、音频流和视觉结果。
+4. 将差异记录到缺陷模板。
+
+通过标准：每次测试结果能明确区分“真实 Vulkan 后端通过”、“请求 Vulkan 但回退 OpenGL 通过”和“Vulkan 后端失败”；不能把回退 OpenGL 的结果记为 Vulkan 渲染通过。
+
+### 10.18 回退链路恢复
+
+1. 在可用 Vulkan 环境中选择 Vulkan 并确认实际使用 Vulkan。
+2. 退出应用，临时破坏 Vulkan runtime 或移走 `liboakvulkan`。
+3. 启动应用并确认回退 OpenGL。
+4. 切回 OpenGL 并重启。
+5. 恢复 Vulkan runtime 和 `liboakvulkan`，再次选择 Vulkan 重启。
+
+通过标准：回退和恢复路径都不破坏用户配置和项目文件；日志能解释每次实际使用的 backend；用户始终能回到可播放的 OpenGL 状态。
 
 ## 缺陷记录模板
 
@@ -452,12 +560,13 @@
 - 预期结果和实际结果。
 - 是否可稳定复现。
 - 如果涉及导出，附 ffprobe 输出和导出设置截图。
+- 如果涉及 Vulkan，附 `vulkaninfo --summary` 输出、实际 backend 日志、是否发生 OpenGL 回退。
 
 ## 发布前最低通过线
 
 - 预检、LUT、三向色轮、三类 Scope、波形同步、BWF 时间码、音频表、代理生成/启用/删除、软件导出全部通过。
 - 至少一个硬件编码环境通过 NVENC 或 VideoToolbox。
-- OpenGL/Vulkan 图形后端选择、持久化和 Vulkan 请求回退测试通过。
+- OpenGL/Vulkan 图形后端选择、持久化、Vulkan 可用环境实渲染和 Vulkan 不可用环境回退测试通过；若无可用 Vulkan 环境，发布记录必须明确标注 Vulkan 实渲染未验收。
 - 批量队列至少通过多任务执行和取消测试。
 - 组合回归测试中的完整剪辑链路通过。
 - 所有失败项有明确 issue 或文档化限制，不存在“无提示崩溃”级别问题。

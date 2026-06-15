@@ -60,16 +60,21 @@ static const float kBlitVertices[] = {
 	 1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
 };
 
+// Constructs the renderer; Vulkan resources are created lazily so unavailable
+// Vulkan systems can still instantiate the object and report fallback state.
 VulkanRenderer::VulkanRenderer(QObject *parent) : Renderer(parent)
 {
 }
 
+// Ensures Vulkan resources are destroyed before the QObject hierarchy goes away.
 VulkanRenderer::~VulkanRenderer()
 {
 	Destroy();
 	PostDestroy();
 }
 
+// Initializes the Vulkan instance/device path once. Repeated calls are accepted
+// because backend availability probes may call Init() before normal rendering.
 bool VulkanRenderer::Init()
 {
 	if (instance_ != VK_NULL_HANDLE) {
@@ -79,6 +84,7 @@ bool VulkanRenderer::Init()
 		   CreateDescriptorPool();
 }
 
+// Creates reusable draw resources after Init() has a valid logical device.
 void VulkanRenderer::PostInit()
 {
 	if (vertex_buffer_ != VK_NULL_HANDLE) {
@@ -89,10 +95,15 @@ void VulkanRenderer::PostInit()
 	CreateNearestSampler();
 }
 
+// Reserved for Renderer API symmetry; Vulkan teardown is centralized in
+// DestroyInternal() so object destruction and explicit Destroy() share a path.
 void VulkanRenderer::PostDestroy()
 {
 }
 
+// Destroys all Vulkan objects in dependency order. The device is idled first so
+// cached textures, pipelines, descriptor pools, and command pools are no longer
+// referenced by in-flight work.
 void VulkanRenderer::DestroyInternal()
 {
 	if (device_ != VK_NULL_HANDLE) {
@@ -185,6 +196,7 @@ void VulkanRenderer::DestroyInternal()
 	}
 }
 
+// Creates the minimal Vulkan instance needed for offscreen rendering.
 bool VulkanRenderer::CreateInstance()
 {
 	VkApplicationInfo app_info = {};
@@ -208,6 +220,8 @@ bool VulkanRenderer::CreateInstance()
 	return true;
 }
 
+// Selects the first physical device with a graphics queue and creates a logical
+// device without swapchain extensions because viewer output is CPU readback.
 bool VulkanRenderer::CreateDevice()
 {
 	VkResult result = vkEnumeratePhysicalDevices(instance_, &physical_device_count_, nullptr);
@@ -284,6 +298,8 @@ bool VulkanRenderer::CreateDevice()
 	return true;
 }
 
+// Creates the command pool used for short-lived transfer and draw command
+// buffers.
 bool VulkanRenderer::CreateCommandPool()
 {
 	VkCommandPoolCreateInfo pool_info = {};
@@ -299,6 +315,8 @@ bool VulkanRenderer::CreateCommandPool()
 	return true;
 }
 
+// Creates a pool large enough for transient per-blit descriptor sets. Descriptor
+// sets are freed after each pass, so this is capacity rather than lifetime count.
 bool VulkanRenderer::CreateDescriptorPool()
 {
 	VkDescriptorPoolSize pool_sizes[2] = {};
@@ -323,6 +341,7 @@ bool VulkanRenderer::CreateDescriptorPool()
 	return true;
 }
 
+// Returns a cached render pass keyed by color format and load operation.
 VkRenderPass VulkanRenderer::GetOrCreateRenderPass(VkFormat format, bool clear)
 {
 	const quint64 key = (static_cast<quint64>(format) << 1) | (clear ? 1ULL : 0ULL);
@@ -387,6 +406,7 @@ VkRenderPass VulkanRenderer::GetOrCreateRenderPass(VkFormat format, bool clear)
 }
 
 
+// Uploads a fullscreen quad to device-local memory through a staging buffer.
 bool VulkanRenderer::CreateVertexBuffer()
 {
 	VkDeviceSize buffer_size = sizeof(kBlitVertices);
@@ -486,6 +506,7 @@ bool VulkanRenderer::CreateVertexBuffer()
 	return true;
 }
 
+// Creates the persistent linear sampler shared by all texture bindings.
 bool VulkanRenderer::CreateLinearSampler()
 {
 	VkSamplerCreateInfo sampler_info = {};
@@ -512,6 +533,7 @@ bool VulkanRenderer::CreateLinearSampler()
 	return true;
 }
 
+// Creates the persistent nearest sampler shared by all texture bindings.
 bool VulkanRenderer::CreateNearestSampler()
 {
 	VkSamplerCreateInfo sampler_info = {};
@@ -538,6 +560,7 @@ bool VulkanRenderer::CreateNearestSampler()
 	return true;
 }
 
+// Maps Oak interpolation settings to persistent Vulkan sampler objects.
 VkSampler VulkanRenderer::GetSampler(Texture::Interpolation interpolation) const
 {
 	switch (interpolation) {
@@ -550,6 +573,7 @@ VkSampler VulkanRenderer::GetSampler(Texture::Interpolation interpolation) const
 	}
 }
 
+// Allocates host-visible coherent memory for one upload/download transfer.
 bool VulkanRenderer::CreateStagingBuffer(VkDeviceSize size, VkBuffer *out_buffer,
 									   VkDeviceMemory *out_memory)
 {
@@ -596,6 +620,7 @@ bool VulkanRenderer::CreateStagingBuffer(VkDeviceSize size, VkBuffer *out_buffer
 	return true;
 }
 
+// Releases a staging buffer and its memory allocation.
 void VulkanRenderer::DestroyStagingBuffer(VkBuffer buffer, VkDeviceMemory memory)
 {
 	if (buffer != VK_NULL_HANDLE) {
@@ -606,6 +631,7 @@ void VulkanRenderer::DestroyStagingBuffer(VkBuffer buffer, VkDeviceMemory memory
 	}
 }
 
+// Starts a primary command buffer intended for immediate submit-and-wait use.
 VkCommandBuffer VulkanRenderer::BeginOneTimeCommands()
 {
 	VkCommandBufferAllocateInfo alloc_info = {};
@@ -625,6 +651,7 @@ VkCommandBuffer VulkanRenderer::BeginOneTimeCommands()
 	return cmd;
 }
 
+// Submits a one-time command buffer and waits synchronously for completion.
 void VulkanRenderer::EndOneTimeCommands(VkCommandBuffer cmd)
 {
 	vkEndCommandBuffer(cmd);
@@ -640,6 +667,8 @@ void VulkanRenderer::EndOneTimeCommands(VkCommandBuffer cmd)
 	vkFreeCommandBuffers(device_, command_pool_, 1, &cmd);
 }
 
+// Emits a conservative barrier for the image layout transitions used by this
+// renderer: upload, shader read, color attachment, clear, and readback.
 void VulkanRenderer::TransitionImageLayout(VkCommandBuffer cmd, VkImage image,
 										   VkImageLayout old_layout,
 										   VkImageLayout new_layout)
@@ -748,6 +777,7 @@ void VulkanRenderer::TransitionImageLayout(VkCommandBuffer cmd, VkImage image,
 }
 
 
+// Records a buffer-to-image copy for tightly packed texture uploads.
 void VulkanRenderer::CopyBufferToImage(VkCommandBuffer cmd, VkBuffer buffer,
 									   VkImage image, uint32_t width,
 									   uint32_t height, uint32_t depth)
@@ -767,6 +797,7 @@ void VulkanRenderer::CopyBufferToImage(VkCommandBuffer cmd, VkBuffer buffer,
 						   1, &region);
 }
 
+// Records an image-to-buffer copy for full texture downloads or one-pixel reads.
 void VulkanRenderer::CopyImageToBuffer(VkCommandBuffer cmd, VkImage image,
 									   VkBuffer buffer, uint32_t width,
 									   uint32_t height,
@@ -787,6 +818,7 @@ void VulkanRenderer::CopyImageToBuffer(VkCommandBuffer cmd, VkImage image,
 						   1, &region);
 }
 
+// Converts Oak's pixel format/channel count pair to the closest Vulkan format.
 VkFormat VulkanRenderer::PixelFormatToVkFormat(PixelFormat format,
 										   int channel_count) const
 {
@@ -830,6 +862,7 @@ VkFormat VulkanRenderer::PixelFormatToVkFormat(PixelFormat format,
 	return VK_FORMAT_UNDEFINED;
 }
 
+// Checks color-attachment support before selecting renderable image formats.
 bool VulkanRenderer::IsColorAttachmentSupported(VkFormat format) const
 {
 	VkFormatProperties props;
@@ -838,6 +871,8 @@ bool VulkanRenderer::IsColorAttachmentSupported(VkFormat format) const
 			VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) != 0;
 }
 
+// Chooses a renderable Vulkan format and falls back from RGB to RGBA when a
+// driver does not expose 3-channel color attachment support.
 VkFormat VulkanRenderer::PickRenderableFormat(PixelFormat format,
 										  int channel_count) const
 {
@@ -858,6 +893,7 @@ VkFormat VulkanRenderer::PickRenderableFormat(PixelFormat format,
 	return VK_FORMAT_UNDEFINED;
 }
 
+// Returns the packed texel size for the VkFormat values generated above.
 int VulkanRenderer::GetVkFormatBytesPerPixel(VkFormat format) const
 {
 	switch (format) {
@@ -898,6 +934,7 @@ int VulkanRenderer::GetVkFormatBytesPerPixel(VkFormat format) const
 	}
 }
 
+// Returns the alpha fill value used when expanding formats without alpha.
 float VulkanRenderer::GetFormatMaxAlpha(PixelFormat format) const
 {
 	if (format == PixelFormat::U8) {
@@ -908,6 +945,8 @@ float VulkanRenderer::GetFormatMaxAlpha(PixelFormat format) const
 	return 1.0f;
 }
 
+// Copies tightly-packed pixels while changing channel count. This handles the
+// common Vulkan fallback where requested RGB data is stored as RGBA on the GPU.
 void VulkanRenderer::CopyPixelsWithChannelConversion(const void *src, void *dst,
 												 int width, int height, int depth,
 												 int src_channels, int dst_channels,
@@ -958,12 +997,14 @@ void VulkanRenderer::CopyPixelsWithChannelConversion(const void *src, void *dst,
 	}
 }
 
+// Rounds size up to the next multiple of alignment.
 VkDeviceSize VulkanRenderer::AlignSize(VkDeviceSize size,
 									   VkDeviceSize alignment) const
 {
 	return (size + alignment - 1) & ~(alignment - 1);
 }
 
+// Finds a compatible memory type satisfying Vulkan's bitmask and property flags.
 uint32_t VulkanRenderer::FindMemoryType(uint32_t type_filter,
 										VkMemoryPropertyFlags properties) const
 {
@@ -977,6 +1018,7 @@ uint32_t VulkanRenderer::FindMemoryType(uint32_t type_filter,
 	return UINT32_MAX;
 }
 
+// Creates a Vulkan image, memory allocation, and image view for an Oak texture.
 QVariant VulkanRenderer::CreateNativeTexture(int width, int height, int depth,
 										 PixelFormat format, int channel_count,
 										 const void *data, int linesize)
@@ -1164,6 +1206,7 @@ QVariant VulkanRenderer::CreateNativeTexture(int width, int height, int depth,
 	return QVariant::fromValue(tex->id);
 }
 
+// Destroys a texture handle and all Vulkan objects owned by that texture.
 void VulkanRenderer::DestroyNativeTexture(QVariant texture)
 {
 	QMutexLocker lock(&mutex_);
@@ -1187,6 +1230,8 @@ void VulkanRenderer::DestroyNativeTexture(QVariant texture)
 	delete tex;
 }
 
+// Uploads CPU pixels to an existing image. The staging layout is based on the
+// selected GPU VkFormat, then CPU data is repacked when channel counts differ.
 void VulkanRenderer::UploadToTexture(const QVariant &handle,
 								 const VideoParams &params, const void *data,
 								 int linesize)
@@ -1273,6 +1318,8 @@ void VulkanRenderer::UploadToTexture(const QVariant &handle,
 	tex->current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 }
 
+// Downloads an image to CPU memory. When the GPU format is wider than the
+// requested CPU format, the staging data is compacted back to the caller layout.
 void VulkanRenderer::DownloadFromTexture(const QVariant &handle,
 									 const VideoParams &params, void *data,
 									 int linesize)
@@ -1355,6 +1402,7 @@ void VulkanRenderer::DownloadFromTexture(const QVariant &handle,
 	tex->current_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 }
 
+// Blocks until the device is idle so later CPU readback or teardown is safe.
 void VulkanRenderer::Flush()
 {
 	if (device_ != VK_NULL_HANDLE) {
@@ -1362,6 +1410,8 @@ void VulkanRenderer::Flush()
 	}
 }
 
+// Clears a texture with vkCmdClearColorImage; null destinations are ignored
+// because this backend has no implicit swapchain framebuffer.
 void VulkanRenderer::ClearDestination(olive::Texture *texture, double r, double g,
 									  double b, double a)
 {
@@ -1399,6 +1449,7 @@ void VulkanRenderer::ClearDestination(olive::Texture *texture, double r, double 
 	EndOneTimeCommands(cmd);
 }
 
+// Reads one pixel by copying a 1x1 image region into a staging buffer.
 Color VulkanRenderer::GetPixelFromTexture(olive::Texture *texture,
 										const QPointF &pt)
 {
@@ -1465,6 +1516,7 @@ Color VulkanRenderer::GetPixelFromTexture(olive::Texture *texture,
 // Shader compilation (GLSL -> SPIR-V via shaderc)
 // ------------------------------------------------------------------
 
+// Returns true for GLSL sampler uniforms that must become explicit descriptors.
 static bool IsSamplerType(const QString &type)
 {
 	static const QRegularExpression sampler_re(
@@ -1472,6 +1524,8 @@ static bool IsSamplerType(const QString &type)
 	return sampler_re.match(type).hasMatch();
 }
 
+// Ensures GLSL has a Vulkan-compatible version directive before shaderc compiles
+// it as GLSL 450.
 QString VulkanRenderer::EnsureGlslVersion450(const QString &glsl) const
 {
 	QString result = glsl.trimmed();
@@ -1483,6 +1537,9 @@ QString VulkanRenderer::EnsureGlslVersion450(const QString &glsl) const
 	return QStringLiteral("#version 450 core\n") + result;
 }
 
+// Converts legacy Oak/OpenGL GLSL into Vulkan GLSL. The conversion keeps shader
+// semantics but replaces implicit attributes/varyings and texture sampling with
+// explicit layouts that Vulkan requires.
 QString VulkanRenderer::ConvertGlslToVulkan(const QString &glsl,
 													VkShaderStageFlagBits stage)
 {
@@ -1513,6 +1570,7 @@ QString VulkanRenderer::ConvertGlslToVulkan(const QString &glsl,
 	return result;
 }
 
+// Returns the std140 storage size for scalar, vector, color, and matrix values.
 VkDeviceSize VulkanRenderer::GetStd140Size(const QString &type) const
 {
 	if (type == QStringLiteral("float")) return 4;
@@ -1524,6 +1582,7 @@ VkDeviceSize VulkanRenderer::GetStd140Size(const QString &type) const
 	return 4;
 }
 
+// Returns std140 base alignment so generated UBO offsets match GPU layout rules.
 VkDeviceSize VulkanRenderer::GetStd140Alignment(const QString &type) const
 {
 	if (type == QStringLiteral("float")) return 4;
@@ -1535,6 +1594,8 @@ VkDeviceSize VulkanRenderer::GetStd140Alignment(const QString &type) const
 	return 4;
 }
 
+// Scans GLSL uniform declarations and splits them into samplers and values. This
+// is intentionally narrow and targets the shader style generated by Oak nodes.
 void VulkanRenderer::ExtractUniforms(const QString &glsl,
 										 QVector<UniformInfo> *out_uniforms,
 										 QVector<QString> *out_samplers) const
@@ -1573,6 +1634,7 @@ void VulkanRenderer::ExtractUniforms(const QString &glsl,
 	}
 }
 
+// Computes std140 offsets in declaration order and records the total UBO size.
 void VulkanRenderer::ComputeUniformLayout(QVector<UniformInfo> *uniforms) const
 {
 	VkDeviceSize offset = 0;
@@ -1585,6 +1647,7 @@ void VulkanRenderer::ComputeUniformLayout(QVector<UniformInfo> *uniforms) const
 	}
 }
 
+// Generates the uniform block source inserted into rewritten shaders.
 QString VulkanRenderer::BuildUboBlock(const QVector<UniformInfo> &uniforms) const
 {
 	if (uniforms.isEmpty()) {
@@ -1599,6 +1662,8 @@ QString VulkanRenderer::BuildUboBlock(const QVector<UniformInfo> &uniforms) cons
 	return ubo;
 }
 
+// Rewrites GLSL so non-sampler uniforms live in set=0,binding=0 and sampler
+// uniforms get deterministic explicit bindings after the UBO.
 QString VulkanRenderer::RewriteShaderWithUbo(
 	const QString &glsl,
 	const QVector<UniformInfo> &all_uniforms,
@@ -1658,6 +1723,8 @@ QString VulkanRenderer::RewriteShaderWithUbo(
 }
 
 
+// Compiles Vulkan GLSL into SPIR-V using shaderc. Without shaderc this backend
+// can initialize but cannot create shaders.
 bool VulkanRenderer::CompileGlslToSpv(const QString &glsl,
 									  VkShaderStageFlagBits stage,
 									  QByteArray *out_spv)
@@ -1724,6 +1791,7 @@ bool VulkanRenderer::CompileGlslToSpv(const QString &glsl,
 #endif
 }
 
+// Converts, compiles, and stores a shader pair plus descriptor metadata.
 QVariant VulkanRenderer::CreateNativeShader(olive::ShaderCode code)
 {
 	QMutexLocker lock(&mutex_);
@@ -1893,6 +1961,7 @@ QVariant VulkanRenderer::CreateNativeShader(olive::ShaderCode code)
 }
 
 
+// Releases shader modules, descriptor layout, pipeline layout, and pipelines.
 void VulkanRenderer::DestroyNativeShader(QVariant shader)
 {
 	QMutexLocker lock(&mutex_);
@@ -1922,6 +1991,8 @@ void VulkanRenderer::DestroyNativeShader(QVariant shader)
 	delete sh;
 }
 
+// Creates a graphics pipeline for the destination render format. Viewport and
+// scissor are dynamic so one pipeline can handle multiple target sizes.
 bool VulkanRenderer::CreatePipelineForShader(VulkanShader *shader,
 											 const VideoParams &dest_params,
 
@@ -2045,6 +2116,8 @@ bool VulkanRenderer::CreatePipelineForShader(VulkanShader *shader,
 	return true;
 }
 
+// Executes one fullscreen draw pass. Texture descriptors and a transient UBO are
+// allocated per pass so iterative shaders can update bindings cheaply.
 void VulkanRenderer::BlitPass(VulkanShader *shader, VulkanTexture *dest_tex,
 							  const QVector<TextureBinding> &bindings,
 							  const QByteArray &ubo_data,
@@ -2257,6 +2330,8 @@ void VulkanRenderer::BlitPass(VulkanShader *shader, VulkanTexture *dest_tex,
 	}
 }
 
+// Runs a shader job. Multi-iteration jobs ping-pong between temporary textures
+// and replace the configured iterative input with the previous pass output.
 void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 						  olive::Texture *destination,
 						  VideoParams destination_params,

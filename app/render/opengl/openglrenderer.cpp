@@ -408,6 +408,8 @@ void OpenGLRenderer::Flush()
 	}
 }
 
+// Adapts the generic Renderer output attachment hook to OpenGL's framebuffer
+// attachment path used by OFX OpenGL rendering.
 void OpenGLRenderer::AttachOutputTexture(olive::Texture *texture)
 {
 	if (texture) {
@@ -415,6 +417,7 @@ void OpenGLRenderer::AttachOutputTexture(olive::Texture *texture)
 	}
 }
 
+// Clears the framebuffer attachment installed by AttachOutputTexture().
 void OpenGLRenderer::DetachOutputTexture()
 {
 	DetachTextureAsDestination();
@@ -987,6 +990,9 @@ bool OpenGLRenderer::EnsureContextCurrent(const char *caller)
 		return false;
 	}
 
+	// QOpenGLContext may only be made current from its owning thread. Viewer
+	// paint code can receive textures produced by a render-thread OpenGL
+	// renderer, so guard here before makeCurrent() can crash inside Qt/GL.
 	if (context_->thread() != QThread::currentThread()) {
 		qWarning() << caller << "called from the wrong thread for this OpenGL context";
 		return false;

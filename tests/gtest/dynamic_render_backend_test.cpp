@@ -10,6 +10,8 @@
 #include "render/texture.h"
 #include "render/videoparams.h"
 
+// Verifies that the dynamic adapter can load the private OpenGL backend and
+// query its advertised C ABI capabilities without creating a viewer context.
 TEST(DynamicRenderBackend, LoadsExperimentalOpenGLBackend)
 {
 #ifndef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
@@ -30,6 +32,8 @@ TEST(DynamicRenderBackend, LoadsExperimentalOpenGLBackend)
 #endif
 }
 
+// Verifies Vulkan backend discovery on systems with a working Vulkan ICD. The
+// test skips when the runtime correctly reports Vulkan as unavailable.
 TEST(DynamicRenderBackend, LoadsExperimentalVulkanBackendWhenAvailable)
 {
 #ifndef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
@@ -52,6 +56,8 @@ TEST(DynamicRenderBackend, LoadsExperimentalVulkanBackendWhenAvailable)
 #endif
 }
 
+// Verifies that requesting Vulkan on systems without a usable runtime falls
+// back to OpenGL and reports the effective backend name.
 TEST(DynamicRenderBackend, FallsBackWhenExperimentalVulkanUnavailable)
 {
 #ifndef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
@@ -71,6 +77,8 @@ TEST(DynamicRenderBackend, FallsBackWhenExperimentalVulkanUnavailable)
 #endif
 }
 
+// Exercises the minimal Vulkan render loop: upload a texture, run a pass-through
+// shader blit, then download the destination and verify pixel data.
 TEST(DynamicRenderBackend, VulkanUploadBlitDownload)
 {
 #ifndef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
@@ -147,6 +155,8 @@ TEST(DynamicRenderBackend, VulkanUploadBlitDownload)
 #endif
 }
 
+// Ensures the Vulkan backend handles null-destination blits by rendering to a
+// temporary offscreen target instead of dereferencing a missing framebuffer.
 TEST(DynamicRenderBackend, VulkanNullDestinationBlitDoesNotCrash)
 {
 #ifndef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
@@ -210,6 +220,8 @@ TEST(DynamicRenderBackend, VulkanNullDestinationBlitDoesNotCrash)
 #endif
 }
 
+// Verifies iterative shader support: the first pass writes to a temporary
+// texture and the second pass samples it before writing the final destination.
 TEST(DynamicRenderBackend, VulkanIterativeBlitPingPong)
 {
 #ifndef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
@@ -289,6 +301,8 @@ TEST(DynamicRenderBackend, VulkanIterativeBlitPingPong)
 #endif
 }
 
+// Verifies RGB upload/download when the Vulkan driver stores the texture in a
+// wider renderable format such as RGBA.
 TEST(DynamicRenderBackend, VulkanUploadDownloadThreeChannel)
 {
 #ifndef OAK_ENABLE_DYNAMIC_RENDER_BACKEND

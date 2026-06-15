@@ -9,12 +9,16 @@
 namespace olive
 {
 
+// Stores the requested backend name; the actual backend may later become
+// OpenGL if loading or availability checks require a Vulkan fallback.
 DynamicRenderer::DynamicRenderer(const QString &backend, QObject *parent)
 	: Renderer(parent)
 	, backend_(backend.toLower())
 {
 }
 
+// Tears down the backend in the reverse order used by Load(): release renderer
+// resources, destroy the opaque backend object, then unload the shared library.
 DynamicRenderer::~DynamicRenderer()
 {
 	Destroy();
@@ -28,6 +32,9 @@ DynamicRenderer::~DynamicRenderer()
 	}
 }
 
+// Builds the private backend library path for the current platform.
+// The search is intentionally restricted to Oak-controlled directories so a
+// system libGL/libvulkan loader is never mistaken for an Oak render backend.
 QString DynamicRenderer::LibraryFilename() const
 {
 	const QString base = backend_ == QStringLiteral("vulkan")
@@ -58,6 +65,9 @@ QString DynamicRenderer::LibraryFilename() const
 	return candidates.first();
 }
 
+// Loads the selected backend, resolves its C ABI table, creates the opaque
+// backend object, and optionally falls back from Vulkan to OpenGL when runtime
+// availability checks fail.
 bool DynamicRenderer::Load()
 {
 	if (handle_) {
@@ -106,6 +116,8 @@ bool DynamicRenderer::Load()
 	return handle_ != nullptr;
 }
 
+// Resolves the mandatory C ABI entry points from the loaded shared library.
+// Optional information probes are resolved after the required render interface.
 bool DynamicRenderer::ResolveFunctions()
 {
 	ResetFunctions();
@@ -155,6 +167,8 @@ bool DynamicRenderer::ResolveFunctions()
 	return true;
 }
 
+// Discards a partially-created backend and restarts loading with the OpenGL
+// backend. This keeps RenderManager's fallback path inside the adapter.
 bool DynamicRenderer::FallbackToOpenGL()
 {
 	if (handle_ && destroy_) {
@@ -169,6 +183,8 @@ bool DynamicRenderer::FallbackToOpenGL()
 	return Load();
 }
 
+// Clears all cached C function pointers so a failed backend cannot leave stale
+// call targets behind for a later fallback load.
 void DynamicRenderer::ResetFunctions()
 {
 	create_ = nullptr;
@@ -195,16 +211,20 @@ void DynamicRenderer::ResetFunctions()
 	opengl_context_ = nullptr;
 }
 
+// Returns backend metadata exposed by the dynamic library when available.
 bool DynamicRenderer::GetBackendInfo(OakRenderBackendInfo *out_info) const
 {
 	return handle_ && get_info_ && out_info && get_info_(handle_, out_info);
 }
 
+// Initializes the loaded backend using its own context/device creation path.
 bool DynamicRenderer::Init()
 {
 	return Load() && init_(handle_);
 }
 
+// Initializes an OpenGL backend against an existing widget context; non-OpenGL
+// backends may ignore the context on the library side.
 bool DynamicRenderer::InitWithOpenGLContext(QOpenGLContext *context)
 {
 	if (!Load()) {
@@ -214,6 +234,8 @@ bool DynamicRenderer::InitWithOpenGLContext(QOpenGLContext *context)
 	return true;
 }
 
+// Forwards post-destroy cleanup to the backend while the library is still
+// loaded and its symbols are still valid.
 void DynamicRenderer::PostDestroy()
 {
 	if (handle_ && post_destroy_) {
@@ -221,6 +243,8 @@ void DynamicRenderer::PostDestroy()
 	}
 }
 
+// Runs backend post-initialization after Init/InitWithOpenGLContext has
+// established the device or GL context.
 void DynamicRenderer::PostInit()
 {
 	if (handle_) {
@@ -228,12 +252,15 @@ void DynamicRenderer::PostInit()
 	}
 }
 
+// Forwards render target clearing through the C ABI.
 void DynamicRenderer::ClearDestination(Texture *texture, double r, double g,
 								   double b, double a)
 {
 	clear_destination_(handle_, texture, r, g, b, a);
 }
 
+// Creates a backend-native shader and receives the result as an opaque QVariant
+// because this first-generation ABI still shares C++/Qt types between modules.
 QVariant DynamicRenderer::CreateNativeShader(ShaderCode code)
 {
 	QVariant out;
@@ -241,11 +268,13 @@ QVariant DynamicRenderer::CreateNativeShader(ShaderCode code)
 	return out;
 }
 
+// Releases a backend-native shader handle.
 void DynamicRenderer::DestroyNativeShader(QVariant shader)
 {
 	destroy_native_shader_(handle_, &shader);
 }
 
+// Uploads CPU pixel data into a backend texture through the dynamic ABI.
 void DynamicRenderer::UploadToTexture(const QVariant &handle,
 								  const VideoParams &params, const void *data,
 								  int linesize)
@@ -253,6 +282,7 @@ void DynamicRenderer::UploadToTexture(const QVariant &handle,
 	upload_to_texture_(handle_, &handle, &params, data, linesize);
 }
 
+// Downloads backend texture data into a caller-provided CPU buffer.
 void DynamicRenderer::DownloadFromTexture(const QVariant &handle,
 									const VideoParams &params, void *data,
 									int linesize)
@@ -260,11 +290,13 @@ void DynamicRenderer::DownloadFromTexture(const QVariant &handle,
 	download_from_texture_(handle_, &handle, &params, data, linesize);
 }
 
+// Waits for backend work to become visible to subsequent CPU or GPU consumers.
 void DynamicRenderer::Flush()
 {
 	flush_(handle_);
 }
 
+// Reads a single pixel through the backend-provided readback hook.
 Color DynamicRenderer::GetPixelFromTexture(Texture *texture, const QPointF &pt)
 {
 	Color out;
@@ -272,6 +304,8 @@ Color DynamicRenderer::GetPixelFromTexture(Texture *texture, const QPointF &pt)
 	return out;
 }
 
+// Exposes the wrapped OpenGL context when the backend is OpenGL; Vulkan returns
+// null so callers can avoid GL-only paths.
 QOpenGLContext *DynamicRenderer::OpenGLContext() const
 {
 	return opengl_context_ && handle_
@@ -279,11 +313,13 @@ QOpenGLContext *DynamicRenderer::OpenGLContext() const
 		: nullptr;
 }
 
+// Reports the effective backend after any load-time fallback has completed.
 bool DynamicRenderer::IsOpenGL() const
 {
 	return backend_ == QStringLiteral("opengl");
 }
 
+// Dispatches a shader blit to the loaded backend.
 void DynamicRenderer::Blit(QVariant shader, AcceleratedJob &job,
 					   Texture *destination, VideoParams destination_params,
 					   bool clear_destination)
@@ -292,6 +328,7 @@ void DynamicRenderer::Blit(QVariant shader, AcceleratedJob &job,
 		  clear_destination);
 }
 
+// Allocates a backend-native texture and wraps its opaque handle in QVariant.
 QVariant DynamicRenderer::CreateNativeTexture(int width, int height, int depth,
 									 PixelFormat format, int channel_count,
 									 const void *data, int linesize)
@@ -302,11 +339,14 @@ QVariant DynamicRenderer::CreateNativeTexture(int width, int height, int depth,
 	return out;
 }
 
+// Releases a backend-native texture handle.
 void DynamicRenderer::DestroyNativeTexture(QVariant texture)
 {
 	destroy_native_texture_(handle_, &texture);
 }
 
+// Releases renderer-owned backend resources before the backend object itself is
+// destroyed.
 void DynamicRenderer::DestroyInternal()
 {
 	if (handle_) {
@@ -314,6 +354,7 @@ void DynamicRenderer::DestroyInternal()
 	}
 }
 
+// Exposes OFX OpenGL output binding through the dynamic backend when supported.
 void DynamicRenderer::AttachOutputTexture(Texture *texture)
 {
 	if (attach_output_texture_ && texture) {
@@ -322,6 +363,7 @@ void DynamicRenderer::AttachOutputTexture(Texture *texture)
 	}
 }
 
+// Clears any OFX output texture binding owned by the backend.
 void DynamicRenderer::DetachOutputTexture()
 {
 	if (detach_output_texture_) {

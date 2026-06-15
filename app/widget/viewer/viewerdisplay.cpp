@@ -430,6 +430,10 @@ void ViewerDisplayWidget::OnPaint()
 				if (texture && texture->renderer() &&
 					texture->renderer() != renderer()) {
 					if (texture->renderer()->IsOpenGL() && renderer()->IsOpenGL()) {
+						// Shared OpenGL contexts can display the producer texture
+						// directly. Avoid readback here because the producer
+						// renderer may belong to a render thread whose context
+						// cannot be made current from the GUI paint callback.
 						texture_ = texture;
 					} else {
 						// Cross-backend texture: download and re-upload
@@ -1394,6 +1398,8 @@ void ViewerDisplayWidget::DrawBlank(const VideoParams &device_params)
 	renderer()->Blit(blank_shader_, job, device_params, false);
 }
 
+// Renders a backend-neutral frame by drawing into an offscreen backend texture,
+// downloading it to CPU memory, then painting that image with QPainter.
 void ViewerDisplayWidget::DrawBackendNeutral(const ColorTransformJob &ctj,
 										 QPainter *painter)
 {
@@ -1412,6 +1418,8 @@ void ViewerDisplayWidget::DrawBackendNeutral(const ColorTransformJob &ctj,
 
 	if (!backend_neutral_texture_ ||
 		backend_neutral_texture_->params() != offscreen_params) {
+		// The offscreen texture is sized in device pixels so high-DPI widgets
+		// draw one downloaded pixel per device pixel after setDevicePixelRatio().
 		backend_neutral_texture_ = renderer()->CreateTexture(offscreen_params);
 		backend_neutral_buffer_.resize(
 			texture_width * texture_height *
@@ -1426,6 +1434,8 @@ void ViewerDisplayWidget::DrawBackendNeutral(const ColorTransformJob &ctj,
 	ColorTransformJob local_ctj = ctj;
 	local_ctj.SetClearDestinationEnabled(true);
 
+	// Reuse the normal color-management shader path, but render into a texture
+	// instead of an OpenGL widget framebuffer.
 	renderer()->BlitColorManaged(local_ctj, backend_neutral_texture_.get());
 
 	backend_neutral_texture_->Download(backend_neutral_buffer_.data(), 0);
@@ -1440,6 +1450,8 @@ void ViewerDisplayWidget::DrawBackendNeutral(const ColorTransformJob &ctj,
 			   QImage::Format_RGBA8888_Premultiplied);
 	img.setDevicePixelRatio(devicePixelRatioF());
 
+	// QImage references backend_neutral_buffer_ directly; draw it before the
+	// buffer can be resized or reused by a later paint.
 	painter->drawImage(QPoint(0, 0), img);
 }
 
