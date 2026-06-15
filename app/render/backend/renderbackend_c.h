@@ -27,7 +27,9 @@ enum OakRenderBackendCapability {
 	OAK_RENDER_BACKEND_CAP_SHADERS = 1ULL << 1,
 	OAK_RENDER_BACKEND_CAP_BLIT = 1ULL << 2,
 	OAK_RENDER_BACKEND_CAP_READBACK = 1ULL << 3,
-	OAK_RENDER_BACKEND_CAP_VIEWER_CONTEXT = 1ULL << 4
+	OAK_RENDER_BACKEND_CAP_VIEWER_CONTEXT = 1ULL << 4,
+	OAK_RENDER_BACKEND_CAP_INSTANCE = 1ULL << 5,
+	OAK_RENDER_BACKEND_CAP_DEVICE = 1ULL << 6
 };
 
 struct OakRenderBackendInfo {
@@ -81,6 +83,9 @@ typedef void (*OakBackendBlitFn)(OakRenderBackendHandle handle,
 								 void *destination,
 								 const void *destination_params,
 								 bool clear_destination);
+typedef void (*OakBackendAttachOutputTextureFn)(OakRenderBackendHandle handle,
+											const void *texture_id);
+typedef void (*OakBackendDetachOutputTextureFn)(OakRenderBackendHandle handle);
 typedef void *(*OakBackendOpenGLContextFn)(OakRenderBackendHandle handle);
 
 #ifdef __cplusplus

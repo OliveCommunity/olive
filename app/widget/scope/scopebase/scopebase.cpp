@@ -22,6 +22,7 @@
 #include "scopebase.h"
 
 #include "config/config.h"
+#include "render/job/colortransformjob.h"
 
 namespace olive
 {
@@ -68,6 +69,11 @@ void ScopeBase::OnInit()
 
 void ScopeBase::OnPaint()
 {
+	if (IsBackendNeutral()) {
+		// TODO: implement backend-neutral scope display
+		return;
+	}
+
 	// Clear display surface
 	renderer()->ClearDestination();
 

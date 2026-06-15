@@ -1432,9 +1432,10 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 	auto *olive_instance =
 		dynamic_cast<olive::plugin::OlivePluginInstance *>(instance);
 	const bool use_opengl =
-		supports_opengl && destination && destination->renderer() &&
-		destination->id().isValid();
+		supports_opengl && renderer_ && renderer_->IsOpenGL() && destination &&
+		destination->renderer() == renderer_ && destination->id().isValid();
 	if (olive_instance) {
+		olive_instance->setOpenGLEnabled(use_opengl);
 		olive_instance->setVideoParam(destination_params);
 		// Ensure all clip instances inherit the project's params so that
 		// getAspectRatio/getFrameRate etc. return valid values before
@@ -1798,7 +1799,7 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 							  renderScale, true, interactive);
 			return;
 		}
-		AVFramePtr converted = ConvertFrameIfNeeded(frame_ptr, destination_params, this);
+		AVFramePtr converted = ConvertFrameIfNeeded(frame_ptr, destination_params, renderer_);
 		const AVPixelFormat expected_fmt =
 			GetDestinationAVPixelFormat(destination_params);
 		destination->handleFrame(converted);
@@ -1837,15 +1838,16 @@ void olive::plugin::PluginRenderer::RenderPlugin(TexturePtr src, olive::plugin::
 // Purpose: Attach output texture for OFX GL rendering.
 void olive::plugin::PluginRenderer::AttachOutputTexture(olive::TexturePtr texture)
 {
-	if (!texture) {
-		return;
+	if (renderer_) {
+		renderer_->AttachOutputTexture(texture.get());
 	}
-	AttachTextureAsDestination(texture->id());
 }
 
 // 作用：解除 OFX 的 GL 输出绑定。
 // Purpose: Detach OFX GL output binding.
 void olive::plugin::PluginRenderer::DetachOutputTexture()
 {
-	DetachTextureAsDestination();
+	if (renderer_) {
+		renderer_->DetachOutputTexture();
+	}
 }

@@ -38,6 +38,8 @@ jobs:
             mingw-w64-ucrt-x86_64-fmt
             mingw-w64-ucrt-x86_64-expat
             mingw-w64-ucrt-x86_64-portaudio
+            mingw-w64-ucrt-x86_64-vulkan-headers
+            mingw-w64-ucrt-x86_64-vulkan-loader
             mingw-w64-ucrt-x86_64-nsis
             mingw-w64-ucrt-x86_64-ntldd
 
@@ -91,7 +93,7 @@ jobs:
       - name: Install dependencies
         run: |
           brew update
-          brew install cmake ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat dylibbundler
+          brew install cmake ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat molten-vk vulkan-headers dylibbundler
 
       - name: Build OpenTimelineIO
         run: |
@@ -261,7 +263,7 @@ jobs:
             qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
             libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
-            portaudio19-dev libgl1-mesa-dev libxkbcommon-dev \
+            portaudio19-dev libgl1-mesa-dev libvulkan-dev vulkan-headers libxkbcommon-dev \
             wget fuse3 desktop-file-utils
 
       - name: Build

@@ -119,7 +119,7 @@ TEST(PluginIntegration, ChromaKeyerCreateAndRender)
 	olive::plugin::PluginJob job(instance, nullptr, row);
 	olive::TexturePtr output = std::make_shared<olive::Texture>(params);
 
-	olive::plugin::PluginRenderer renderer;
+	olive::plugin::PluginRenderer renderer(nullptr);
 	renderer.RenderPlugin(input, job, output, params, true, false);
 
 	EXPECT_TRUE(output->frame());

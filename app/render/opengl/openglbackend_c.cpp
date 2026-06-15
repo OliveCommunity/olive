@@ -19,6 +19,8 @@ public:
 	using olive::OpenGLRenderer::CreateNativeTexture;
 	using olive::OpenGLRenderer::DestroyInternal;
 	using olive::OpenGLRenderer::DestroyNativeTexture;
+	using olive::OpenGLRenderer::AttachTextureAsDestination;
+	using olive::OpenGLRenderer::DetachTextureAsDestination;
 };
 
 BackendOpenGLRenderer *Renderer(OakRenderBackendHandle handle)
@@ -175,4 +177,16 @@ OAK_RENDER_BACKEND_EXPORT void *oak_renderer_opengl_context(
 	OakRenderBackendHandle handle)
 {
 	return Renderer(handle)->context();
+}
+
+OAK_RENDER_BACKEND_EXPORT void oak_renderer_attach_output_texture(
+	OakRenderBackendHandle handle, const void *texture_id)
+{
+	Renderer(handle)->AttachTextureAsDestination(VariantRef(texture_id));
+}
+
+OAK_RENDER_BACKEND_EXPORT void oak_renderer_detach_output_texture(
+	OakRenderBackendHandle handle)
+{
+	Renderer(handle)->DetachTextureAsDestination();
 }

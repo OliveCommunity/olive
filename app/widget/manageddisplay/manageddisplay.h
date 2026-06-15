@@ -101,6 +101,32 @@ private slots:
 		MANAGEDDISPLAYWIDGET_DEFAULT_DESTRUCTOR_INNER; \
 	}
 
+/**
+ * @brief Inner widget for backend-neutral rendering paths (e.g. Vulkan).
+ *
+ * It does not own a GL context; instead it forwards Qt paint events to the
+ * ManagedDisplayWidget so that the viewer can render via QPainter.
+ */
+class ManagedDisplayWidgetBackendNeutral : public QWidget {
+	Q_OBJECT
+public:
+	ManagedDisplayWidgetBackendNeutral(QWidget *parent = nullptr)
+		: QWidget(parent)
+	{
+	}
+
+signals:
+	void OnPaint();
+
+protected:
+	virtual void paintEvent(QPaintEvent *event) override
+	{
+		QWidget::paintEvent(event);
+
+		emit OnPaint();
+	}
+};
+
 class ManagedDisplayWidget : public QWidget {
 	Q_OBJECT
 public:
@@ -221,6 +247,11 @@ protected:
 
 	void SetInnerMouseTracking(bool e);
 
+	bool IsBackendNeutral() const
+	{
+		return is_backend_neutral_;
+	}
+
 	QRect GetInnerRect() const
 	{
 		return wrapper_ ? wrapper_->rect() : QRect();
@@ -284,6 +315,8 @@ private:
    * @brief Internal color transform storage
    */
 	ColorTransform color_transform_;
+
+	bool is_backend_neutral_ = false;
 
 private slots:
 	/**

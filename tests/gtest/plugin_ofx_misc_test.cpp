@@ -190,7 +190,7 @@ bool RenderPlugin(const std::string &plugin_id,
 	PluginJob job(instance, nullptr, inputs);
 	TexturePtr output = std::make_shared<Texture>(params);
 	
-	PluginRenderer renderer;
+	PluginRenderer renderer(nullptr);
 	renderer.RenderPlugin(nullptr, job, output, params, true, false);
 	
 	bool has_frame = output->frame() != nullptr;

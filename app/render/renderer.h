@@ -29,12 +29,15 @@
 #include <memory>
 
 #include "common/define.h"
-#include "node/node.h"
-#include "render/colorprocessor.h"
-#include "render/job/colortransformjob.h"
+#include "render/shadercode.h"
 #include "render/videoparams.h"
 #include "texture.h"
-#include "job/pluginjob.h"
+
+// Forward declarations to keep the render core header lightweight
+namespace olive {
+class ColorTransformJob;
+class Node;
+}
 
 namespace olive
 {
@@ -116,6 +119,30 @@ public:
 	{
 		return lifetime_;
 	}
+
+	virtual bool IsOpenGL() const
+	{
+		return false;
+	}
+
+	/**
+	 * @brief Attach a texture as the current output destination for OFX plugin
+	 *        OpenGL rendering.
+	 *
+	 * Default implementation is a no-op. OpenGL-based renderers override this
+	 * to bind the texture as a framebuffer render target.
+	 */
+	virtual void AttachOutputTexture(olive::Texture *texture)
+	{
+		(void)texture;
+	}
+
+	/**
+	 * @brief Detach the current OFX plugin OpenGL output texture.
+	 *
+	 * Default implementation is a no-op.
+	 */
+	virtual void DetachOutputTexture() {}
 
 protected:
 	virtual void Blit(QVariant shader, olive::AcceleratedJob& job,

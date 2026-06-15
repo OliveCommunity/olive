@@ -40,13 +40,33 @@ ManagedDisplayWidget::ManagedDisplayWidget(QWidget *parent)
 	: QWidget(parent)
 	, color_manager_(nullptr)
 	, color_service_(nullptr)
+	, is_backend_neutral_(false)
 {
 	QHBoxLayout *layout = new QHBoxLayout(this);
 	layout->setSpacing(0);
 	layout->setContentsMargins(0, 0, 0, 0);
 
-	if (RenderManager::instance()->backend() == RenderManager::kOpenGL) {
-		// Create OpenGL widget
+	// Create renderer
+#ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+	{
+		auto *dynamic_renderer = new DynamicRenderer(
+			RenderManager::BackendToString(
+				RenderManager::instance()->requested_backend()),
+			this);
+		if (!dynamic_renderer->Load()) {
+			qWarning() << "Failed to load dynamic render backend for viewer, falling back to OpenGL";
+			delete dynamic_renderer;
+			attached_renderer_ = new OpenGLRenderer(this);
+		} else {
+			attached_renderer_ = dynamic_renderer;
+		}
+	}
+#else
+	attached_renderer_ = new OpenGLRenderer(this);
+#endif
+
+	if (attached_renderer_->IsOpenGL()) {
+		// OpenGL path
 		inner_widget_ = new ManagedDisplayWidgetOpenGL();
 		inner_widget_->setAttribute(Qt::WA_TranslucentBackground, false);
 		connect(static_cast<ManagedDisplayWidgetOpenGL *>(inner_widget_),
@@ -64,16 +84,6 @@ ManagedDisplayWidget::ManagedDisplayWidget(QWidget *parent)
 
 		inner_widget_->installEventFilter(this);
 
-		// Create renderer bound to the widget's OpenGL context.
-#ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
-		attached_renderer_ = new DynamicRenderer(
-			RenderManager::BackendToString(
-				RenderManager::instance()->requested_backend()),
-			this);
-#else
-		attached_renderer_ = new OpenGLRenderer(this);
-#endif
-
 		// Create widget wrapper for OpenGL window
 #ifdef USE_QOPENGLWINDOW
 		wrapper_ = QWidget::createWindowContainer(
@@ -83,19 +93,29 @@ ManagedDisplayWidget::ManagedDisplayWidget(QWidget *parent)
 #endif
 		layout->addWidget(wrapper_);
 	} else {
-		inner_widget_ = nullptr;
-		wrapper_ = nullptr;
+		// Backend-neutral path (Vulkan, etc.)
+		is_backend_neutral_ = true;
+		auto *bn_widget = new ManagedDisplayWidgetBackendNeutral(this);
+		inner_widget_ = bn_widget;
+		inner_widget_->setAttribute(Qt::WA_OpaquePaintEvent);
+		inner_widget_->installEventFilter(this);
+		connect(bn_widget, &ManagedDisplayWidgetBackendNeutral::OnPaint, this,
+				&ManagedDisplayWidget::OnPaint, Qt::DirectConnection);
+		wrapper_ = inner_widget_;
+		layout->addWidget(wrapper_);
 	}
 }
 
 ManagedDisplayWidget::~ManagedDisplayWidget()
 {
-	MANAGEDDISPLAYWIDGET_DEFAULT_DESTRUCTOR_INNER;
+	if (!is_backend_neutral_) {
+		MANAGEDDISPLAYWIDGET_DEFAULT_DESTRUCTOR_INNER;
 
-	if (RenderManager::instance()->backend() == RenderManager::kOpenGL) {
 		disconnect(static_cast<ManagedDisplayWidgetOpenGL *>(inner_widget_),
 				   &ManagedDisplayWidgetOpenGL::OnDestroy, this,
 				   &ManagedDisplayWidget::OnDestroy);
+	} else {
+		OnDestroy();
 	}
 }
 
@@ -251,7 +271,7 @@ void ManagedDisplayWidget::SetColorTransform(const ColorTransform &transform)
 
 void ManagedDisplayWidget::OnInit()
 {
-	if (RenderManager::instance()->backend() == RenderManager::kOpenGL) {
+	if (!is_backend_neutral_) {
 		QOpenGLContext *context =
 			static_cast<ManagedDisplayWidgetOpenGL *>(inner_widget_)->context();
 #ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
@@ -264,6 +284,9 @@ void ManagedDisplayWidget::OnInit()
 #endif
 		static_cast<OpenGLRenderer *>(attached_renderer_)->Init(context);
 		static_cast<OpenGLRenderer *>(attached_renderer_)->PostInit();
+	} else {
+		attached_renderer_->Init();
+		attached_renderer_->PostInit();
 	}
 }
 
@@ -280,25 +303,21 @@ void ManagedDisplayWidget::ColorProcessorChangedEvent()
 
 void ManagedDisplayWidget::makeCurrent()
 {
-	if (RenderManager::instance()->backend() == RenderManager::kOpenGL) {
+	if (!is_backend_neutral_) {
 		static_cast<ManagedDisplayWidgetOpenGL *>(inner_widget_)->makeCurrent();
 	}
 }
 
 void ManagedDisplayWidget::doneCurrent()
 {
-	if (RenderManager::instance()->backend() == RenderManager::kOpenGL) {
+	if (!is_backend_neutral_) {
 		static_cast<ManagedDisplayWidgetOpenGL *>(inner_widget_)->doneCurrent();
 	}
 }
 
 QPaintDevice *ManagedDisplayWidget::paint_device() const
 {
-	if (RenderManager::instance()->backend() == RenderManager::kOpenGL) {
-		return static_cast<ManagedDisplayWidgetOpenGL *>(inner_widget_);
-	} else {
-		return nullptr;
-	}
+	return inner_widget_;
 }
 
 void ManagedDisplayWidget::SetInnerMouseTracking(bool e)
@@ -320,8 +339,8 @@ VideoParams ManagedDisplayWidget::GetViewportParams() const
 
 void ManagedDisplayWidget::update()
 {
-	if (RenderManager::instance()->backend() == RenderManager::kOpenGL) {
-		static_cast<ManagedDisplayWidgetOpenGL *>(inner_widget_)->update();
+	if (inner_widget_) {
+		inner_widget_->update();
 	}
 }
 

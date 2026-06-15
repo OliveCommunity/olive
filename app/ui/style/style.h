@@ -38,7 +38,7 @@ public:
 
 	static void SetStyle(const QString &style_path);
 
-	static const char *kDefaultStyle;
+	inline static const char *kDefaultStyle = "olive-dark";
 
 	static const QMap<QString, QString> &available_themes()
 	{

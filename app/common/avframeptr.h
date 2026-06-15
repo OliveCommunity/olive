@@ -19,41 +19,30 @@
 
 ***/
 
-#include "texture.h"
+#ifndef AVFRAMEPTR_H
+#define AVFRAMEPTR_H
 
-#include "render/job/acceleratedjob.h"
-#include "renderer.h"
+extern "C" {
+#include <libavutil/frame.h>
+}
+
+#include <memory>
 
 namespace olive
 {
 
-const Texture::Interpolation Texture::kDefaultInterpolation =
-	Texture::kMipmappedLinear;
+using AVFramePtr = std::shared_ptr<AVFrame>;
 
-Texture::~Texture()
+inline AVFramePtr CreateAVFramePtr(AVFrame *f)
 {
-	if (IsRendererAlive()) {
-		renderer_->DestroyTexture(this);
-	}
-
-	if (job_) {
-		delete job_;
-	}
+	return std::shared_ptr<AVFrame>(f, [](AVFrame *g) { av_frame_free(&g); });
 }
 
-void Texture::Upload(void *data, int linesize)
+inline AVFramePtr CreateAVFramePtr()
 {
-	if (IsRendererAlive()) {
-		renderer_->UploadToTexture(this->id(), this->params(), data, linesize);
-	}
-}
-
-void Texture::Download(void *data, int linesize)
-{
-	if (IsRendererAlive()) {
-		renderer_->DownloadFromTexture(this->id(), this->params(), data,
-									   linesize);
-	}
+	return CreateAVFramePtr(av_frame_alloc());
 }
 
 }
+
+#endif // AVFRAMEPTR_H

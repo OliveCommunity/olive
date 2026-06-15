@@ -30,6 +30,7 @@ set(OLIVE_SOURCES
   render/backend/dynamicrenderer.h
   render/backend/renderbackend_c.h
   render/cancelatom.h
+  render/colormanagement.cpp
   render/colorprocessor.cpp
   render/colorprocessor.h
   render/colorprocessorcache.h
@@ -39,6 +40,7 @@ set(OLIVE_SOURCES
   render/framehashcache.h
   render/framemanager.cpp
   render/framemanager.h
+  render/interlacetexture.cpp
   render/loopmode.h
   render/managedcolor.cpp
   render/managedcolor.h

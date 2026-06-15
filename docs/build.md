@@ -14,6 +14,7 @@ This document describes how to build Oak Video Editor from source on Windows, Li
 - Expat
 - PortAudio
 - OpenGL headers
+- Vulkan SDK (optional, required for the Vulkan render backend)
 - XKB common (Linux)
 
 ---
@@ -42,6 +43,8 @@ pacman -S --needed \
   mingw-w64-ucrt-x86_64-fmt \
   mingw-w64-ucrt-x86_64-expat \
   mingw-w64-ucrt-x86_64-portaudio \
+  mingw-w64-ucrt-x86_64-vulkan-headers \
+  mingw-w64-ucrt-x86_64-vulkan-loader \
   mingw-w64-ucrt-x86_64-gcc
 ```
 
@@ -83,7 +86,7 @@ sudo apt-get install -y \
   cmake ninja-build pkg-config nasm \
   qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
   libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
-  portaudio19-dev libgl1-mesa-dev libxkbcommon-dev
+  portaudio19-dev libgl1-mesa-dev libvulkan-dev vulkan-headers libxkbcommon-dev
 ```
 
 Build FFmpeg 8.0+ from source:
@@ -137,6 +140,8 @@ sudo dnf install -y \
   expat-devel \
   portaudio-devel \
   mesa-libGL-devel \
+  vulkan-headers \
+  vulkan-loader-devel \
   libxkbcommon-devel \
   gcc-c++ \
   bzip2-devel
@@ -171,6 +176,8 @@ sudo pacman -S --needed \
   expat \
   portaudio \
   mesa \
+  vulkan-headers \
+  vulkan-icd-loader \
   libxkbcommon \
   gcc
 ```
@@ -200,7 +207,7 @@ Install dependencies:
 
 ```bash
 brew update
-brew install cmake ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat
+brew install cmake ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat molten-vk vulkan-headers
 ```
 
 Build OpenTimelineIO (optional, required for OTIO support):
@@ -248,6 +255,7 @@ ctest --test-dir build --output-on-failure -C Release
 | `BUILD_QT6` | `ON` | Build with Qt 6 instead of Qt 5 |
 | `OTIO_LOCATION` | - | Path to OpenTimelineIO installation (optional) |
 | `OCIO_LOCATION` | - | Path to OpenColorIO installation |
+| `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` | `ON` | Build dynamic render backend libraries (`liboakgl.so` / `liboakvulkan.so`) |
 
 ---
 

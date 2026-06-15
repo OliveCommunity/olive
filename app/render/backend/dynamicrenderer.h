@@ -44,6 +44,12 @@ public:
 								  const QPointF &pt) override;
 	virtual QOpenGLContext *OpenGLContext() const override;
 
+	virtual bool IsOpenGL() const override;
+
+	virtual void AttachOutputTexture(Texture *texture) override;
+
+	virtual void DetachOutputTexture() override;
+
 protected:
 	virtual void Blit(QVariant shader, AcceleratedJob &job,
 				  Texture *destination, VideoParams destination_params,
@@ -84,6 +90,8 @@ private:
 	OakBackendFlushFn flush_ = nullptr;
 	OakBackendGetPixelFromTextureFn get_pixel_from_texture_ = nullptr;
 	OakBackendBlitFn blit_ = nullptr;
+	OakBackendAttachOutputTextureFn attach_output_texture_ = nullptr;
+	OakBackendDetachOutputTextureFn detach_output_texture_ = nullptr;
 	OakBackendOpenGLContextFn opengl_context_ = nullptr;
 };
 

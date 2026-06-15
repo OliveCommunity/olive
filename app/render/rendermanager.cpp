@@ -78,21 +78,31 @@ QString RenderManager::BackendToString(Backend backend)
 }
 
 RenderManager::RenderManager(QObject *parent)
-	: backend_(kOpenGL)
-	, requested_backend_(BackendFromString(
+	: backend_(BackendFromString(
 		  OLIVE_CONFIG("GraphicsBackend").toString()))
+	, requested_backend_(backend_)
 	, aggressive_gc_(0)
 	, worker_pool_(nullptr)
 {
-	if (requested_backend_ == kVulkan) {
-		qWarning()
-			<< "Vulkan graphics backend was requested, but the current render "
-			   "pipeline still uses OpenGL. Falling back to OpenGL renderer.";
+	if (backend_ == kVulkan) {
+#ifndef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+		qWarning() << "Vulkan backend requested but dynamic render backend is not enabled. Falling back to OpenGL.";
+		backend_ = kOpenGL;
+#endif
 	}
 
-	if (backend_ == kOpenGL) {
+	if (backend_ == kOpenGL || backend_ == kVulkan) {
 #ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
-		context_ = new DynamicRenderer(BackendToString(requested_backend_));
+		auto *dynamic_renderer = new DynamicRenderer(BackendToString(requested_backend_));
+		if (!dynamic_renderer->Load()) {
+			qWarning() << "Failed to load dynamic render backend" << BackendToString(requested_backend_)
+					   << ", falling back to OpenGL";
+			delete dynamic_renderer;
+			backend_ = kOpenGL;
+			context_ = new OpenGLRenderer();
+		} else {
+			context_ = dynamic_renderer;
+		}
 #else
 		context_ = new OpenGLRenderer();
 #endif

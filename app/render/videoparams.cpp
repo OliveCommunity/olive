@@ -29,6 +29,7 @@ extern "C" {
 #include <QtMath>
 
 #include "core.h"
+#include "ofxImageEffect.h"
 
 namespace olive
 {
@@ -118,6 +119,17 @@ VideoParams::VideoParams(int width, int height, int depth, PixelFormat format,
 	calculate_effective_size();
 	validate_pixel_aspect_ratio();
 	set_defaults_for_footage();
+}
+
+void VideoParams::set_channel_count(const std::string &ofxComponent)
+{
+	if (ofxComponent == kOfxImageComponentAlpha) {
+		channel_count_ = 1;
+	} else if (ofxComponent == kOfxImageComponentRGB) {
+		channel_count_ = kRGBChannelCount;
+	} else if (ofxComponent == kOfxImageComponentRGBA) {
+		channel_count_ = kRGBAChannelCount;
+	}
 }
 
 VideoParams::VideoParams(int width, int height, const rational &time_base,

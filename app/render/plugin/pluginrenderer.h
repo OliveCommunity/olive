@@ -23,17 +23,12 @@
 
 #ifndef PLUGINRENDERER_H
 #define PLUGINRENDERER_H
-#include <QOpenGLExtraFunctions>
-#include <QOpenGLBuffer>
-#include <QOpenGLFunctions>
-#include <QOpenGLShader>
-#include <QOpenGLVertexArrayObject>
-#include <QThread>
-#include <QOffscreenSurface>
+
+#include <QObject>
 
 #include "render/renderer.h"
 #include "render/job/pluginjob.h"
-#include "render/opengl/openglrenderer.h"
+
 namespace olive
 {
 namespace plugin{
@@ -44,11 +39,22 @@ int BytesToPixels(int byte_linesize, const olive::VideoParams &params);
 }
 // 作用：OFX 插件渲染器，负责 CPU/GL 路径下的插件调用和纹理桥接。
 // Purpose: OFX plugin renderer that drives CPU/GL render paths and texture bridging.
-class PluginRenderer : public olive::OpenGLRenderer{
+//
+// 不再继承 OpenGLRenderer，而是持有一个通用的 Renderer 指针。这样当主渲染器
+// 是 Vulkan 或动态加载的后端时，插件仍可通过 CPU readback/upload 路径工作；
+// 仅当底层渲染器真正支持 OpenGL 时才走 OFX OpenGL 渲染路径。
+class PluginRenderer : public QObject {
 	Q_OBJECT
 public:
-	PluginRenderer(QObject *parent=nullptr):OpenGLRenderer(parent){};
-	virtual ~PluginRenderer() override{};
+	explicit PluginRenderer(olive::Renderer *renderer, QObject *parent = nullptr)
+		: QObject(parent), renderer_(renderer) {}
+	virtual ~PluginRenderer() override {}
+
+	olive::Renderer *renderer() const
+	{
+		return renderer_;
+	}
+
 	// 作用：将目标纹理绑定为插件输出。
 	// Purpose: Attach destination texture as OFX output.
 	void AttachOutputTexture(olive::TexturePtr texture);
@@ -62,6 +68,8 @@ public:
 					  olive::VideoParams destination_params,
 					  bool clear_destination, bool interactive);
 
+private:
+	olive::Renderer *renderer_;
 };
 }
 }

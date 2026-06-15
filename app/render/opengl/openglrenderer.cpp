@@ -27,7 +27,9 @@
 #include <QOpenGLExtraFunctions>
 #include <QRegularExpression>
 
+#include "common/filefunctions.h"
 #include "config/config.h"
+#include "render/job/shaderjob.h"
 
 namespace olive
 {
@@ -404,6 +406,18 @@ void OpenGLRenderer::Flush()
 		functions_->glFlush();
 #endif
 	}
+}
+
+void OpenGLRenderer::AttachOutputTexture(olive::Texture *texture)
+{
+	if (texture) {
+		AttachTextureAsDestination(texture->id());
+	}
+}
+
+void OpenGLRenderer::DetachOutputTexture()
+{
+	DetachTextureAsDestination();
 }
 
 Color OpenGLRenderer::GetPixelFromTexture(Texture *texture, const QPointF &pt)

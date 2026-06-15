@@ -375,19 +375,40 @@ bool ViewerDisplayWidget::eventFilter(QObject *o, QEvent *e)
 
 void ViewerDisplayWidget::OnPaint()
 {
-	// Clear background to empty
- 	QColor bg_color = show_widget_background_ ? palette().window().color() :
-												Qt::black;
-	renderer()->ClearDestination(nullptr, bg_color.redF(), bg_color.greenF(),
-								 bg_color.blueF());
+	const bool backend_neutral = IsBackendNeutral();
+
+	QPainter bg_painter;
+	bool bg_painter_active = false;
+
+	if (backend_neutral) {
+		// Backend-neutral path: draw background directly with QPainter. The
+		// image itself will be rendered offscreen, downloaded, and painted below.
+		bg_painter.begin(paint_device());
+		bg_painter_active = true;
+		bg_painter.fillRect(GetInnerRect(),
+							show_widget_background_ ? palette().window().color() :
+													  Qt::black);
+	} else {
+		// Clear background to empty
+		QColor bg_color = show_widget_background_ ? palette().window().color() :
+													Qt::black;
+		renderer()->ClearDestination(nullptr, bg_color.redF(), bg_color.greenF(),
+									 bg_color.blueF());
+	}
+
+	VideoParams device_params;
+	ColorTransformJob ctj;
+	bool have_ctj = false;
 
 	// We only draw if we have a pipeline
 	if (push_mode_ != kPushNull) {
 		// Draw texture through color transform
-		VideoParams device_params = GetViewportParams();
+		device_params = GetViewportParams();
 
 		if (push_mode_ == kPushBlank) {
-			DrawBlank(device_params);
+			if (!backend_neutral) {
+				DrawBlank(device_params);
+			}
 		} else if (color_service()) {
 			if (FramePtr frame = load_frame_.value<FramePtr>()) {
 				// This is a CPU frame, upload it now
@@ -408,27 +429,17 @@ void ViewerDisplayWidget::OnPaint()
 				// This is a GPU texture, switch to it directly when possible.
 				if (texture && texture->renderer() &&
 					texture->renderer() != renderer()) {
-					bool copied = false;
-					QOpenGLContext *ctx = QOpenGLContext::currentContext();
-					if (ctx) {
-						QOpenGLFunctions *funcs = ctx->functions();
-						GLuint tex_id = texture->id().value<GLuint>();
-						if (funcs && tex_id && funcs->glIsTexture(tex_id)) {
-							FramePtr frame = Frame::Create();
-							frame->set_video_params(texture->params());
-							if (frame->allocate()) {
-								renderer()->DownloadFromTexture(
-									texture->id(), texture->params(),
-									frame->data(), frame->linesize_pixels());
-								texture_ = renderer()->CreateTexture(
-									frame->video_params(), frame->data(),
-									frame->linesize_pixels());
-								copied = true;
-							}
-						}
-					}
-
-					if (!copied) {
+					// Cross-renderer texture: download and re-upload
+					FramePtr frame = Frame::Create();
+					frame->set_video_params(texture->params());
+					if (frame->allocate()) {
+						texture->renderer()->DownloadFromTexture(
+							texture->id(), texture->params(),
+							frame->data(), frame->linesize_pixels());
+						texture_ = renderer()->CreateTexture(
+							frame->video_params(), frame->data(),
+							frame->linesize_pixels());
+					} else {
 						texture_ = texture;
 					}
 				} else {
@@ -445,7 +456,9 @@ void ViewerDisplayWidget::OnPaint()
 			TexturePtr texture_to_draw = texture_;
 
 			if (!texture_to_draw || texture_to_draw->IsDummy()) {
-				DrawBlank(device_params);
+				if (!backend_neutral) {
+					DrawBlank(device_params);
+				}
 			} else {
 				if (deinterlace_) {
 					if (deinterlace_shader_.isNull()) {
@@ -477,7 +490,6 @@ void ViewerDisplayWidget::OnPaint()
 					texture_to_draw = deinterlace_texture_;
 				}
 
-				ColorTransformJob ctj;
 				ctj.SetColorProcessor(color_service());
 				ctj.SetInputTexture(texture_to_draw);
 				ctj.SetInputAlphaAssociation(
@@ -489,11 +501,23 @@ void ViewerDisplayWidget::OnPaint()
 				ctj.SetCropMatrix(crop_matrix_);
 				ctj.SetForceOpaque(true);
 
-				renderer()->BlitColorManaged(ctj, device_params);
+				have_ctj = true;
 			}
 		} else {
 			qDebug() << "[VIEWER] OnPaint no color_service, skipping texture draw";
 		}
+	}
+
+	if (have_ctj) {
+		if (backend_neutral) {
+			DrawBackendNeutral(ctj, &bg_painter);
+		} else {
+			renderer()->BlitColorManaged(ctj, device_params);
+		}
+	}
+
+	if (bg_painter_active) {
+		bg_painter.end();
 	}
 
 	// Draw gizmos if we have any
@@ -633,6 +657,8 @@ void ViewerDisplayWidget::OnDestroy()
 
 	texture_ = nullptr;
 	deinterlace_texture_ = nullptr;
+	backend_neutral_texture_ = nullptr;
+	backend_neutral_buffer_.clear();
 	if (load_frame_.isNull()) {
 		push_mode_ = kPushNull;
 	} else {
@@ -1362,6 +1388,55 @@ void ViewerDisplayWidget::DrawBlank(const VideoParams &device_params)
 			   NodeValue(NodeValue::kMatrix, crop_matrix_));
 
 	renderer()->Blit(blank_shader_, job, device_params, false);
+}
+
+void ViewerDisplayWidget::DrawBackendNeutral(const ColorTransformJob &ctj,
+										 QPainter *painter)
+{
+	if (!painter || !painter->isActive()) {
+		return;
+	}
+
+	const int texture_width =
+		static_cast<int>(width() * devicePixelRatioF());
+	const int texture_height =
+		static_cast<int>(height() * devicePixelRatioF());
+
+	const VideoParams offscreen_params(
+		texture_width, texture_height, PixelFormat::U8,
+		VideoParams::kRGBAChannelCount);
+
+	if (!backend_neutral_texture_ ||
+		backend_neutral_texture_->params() != offscreen_params) {
+		backend_neutral_texture_ = renderer()->CreateTexture(offscreen_params);
+		backend_neutral_buffer_.resize(
+			texture_width * texture_height *
+			VideoParams::GetBytesPerPixel(PixelFormat::U8,
+									  VideoParams::kRGBAChannelCount));
+	}
+
+	if (!backend_neutral_texture_ || backend_neutral_texture_->IsDummy()) {
+		return;
+	}
+
+	ColorTransformJob local_ctj = ctj;
+	local_ctj.SetClearDestinationEnabled(true);
+
+	renderer()->BlitColorManaged(local_ctj, backend_neutral_texture_.get());
+
+	backend_neutral_texture_->Download(backend_neutral_buffer_.data(), 0);
+
+	const int bytes_per_pixel = VideoParams::GetBytesPerPixel(
+		PixelFormat::U8, VideoParams::kRGBAChannelCount);
+
+	QImage img(reinterpret_cast<const uchar *>(
+				   backend_neutral_buffer_.constData()),
+			   texture_width, texture_height,
+			   texture_width * bytes_per_pixel,
+			   QImage::Format_RGBA8888_Premultiplied);
+	img.setDevicePixelRatio(devicePixelRatioF());
+
+	painter->drawImage(QPoint(0, 0), img);
 }
 
 void ViewerDisplayWidget::SetShowFPS(bool e)

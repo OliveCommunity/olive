@@ -30,6 +30,7 @@ extern "C" {
 
 #include <olive/core/core.h>
 
+#include "common/avframeptr.h"
 #include "render/videoparams.h"
 
 namespace olive
@@ -84,16 +85,6 @@ public:
    */
 	static AVPixelFormat ConvertJPEGSpaceToRegularSpace(AVPixelFormat f);
 };
-
-using AVFramePtr = std::shared_ptr<AVFrame>;
-inline AVFramePtr CreateAVFramePtr(AVFrame *f)
-{
- 	return std::shared_ptr<AVFrame>(f, [](AVFrame *g) { av_frame_free(&g); });
-}
-inline AVFramePtr CreateAVFramePtr()
-{
-	return CreateAVFramePtr(av_frame_alloc());
-}
 
 }
 

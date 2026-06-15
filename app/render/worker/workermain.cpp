@@ -39,6 +39,9 @@
 #include "render/ipc/frameslotpool.h"
 #include "render/ipc/ipcmessage.h"
 #include "render/ipc/sharedmemoryregion.h"
+#ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+#include "render/backend/dynamicrenderer.h"
+#endif
 #include "render/opengl/openglrenderer.h"
 #include "render/rendermanager.h"
 #include "render/renderprocessor.h"
@@ -80,7 +83,7 @@ QJsonObject ErrorMessage(const QString &message, qint64 ticket_id = 0)
 
 class RenderWorker {
 public:
-	RenderWorker(olive::OpenGLRenderer *renderer, QFile *out)
+	RenderWorker(olive::Renderer *renderer, QFile *out)
 		: renderer_(renderer)
 		, out_(out)
 	{
@@ -114,7 +117,16 @@ public:
 		hs.input_slot_data_bytes = 0;
 
 		QJsonObject handshake = hs.ToJson();
-		if (QOpenGLContext *ctx = renderer_->context()) {
+		QOpenGLContext *ctx = nullptr;
+#ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+		if (auto *dynamic_renderer = dynamic_cast<olive::DynamicRenderer *>(renderer_)) {
+			ctx = dynamic_renderer->OpenGLContext();
+		} else
+#endif
+		{
+			ctx = static_cast<olive::OpenGLRenderer *>(renderer_)->context();
+		}
+		if (ctx) {
 			const QSurfaceFormat fmt = ctx->format();
 			handshake["gl_major"] = fmt.majorVersion();
 			handshake["gl_minor"] = fmt.minorVersion();
@@ -427,7 +439,7 @@ private:
 		return Write(ready.ToJson());
 	}
 
-	olive::OpenGLRenderer *renderer_;
+	olive::Renderer *renderer_;
 	QFile *out_;
 	bool shutdown_requested_ = false;
 	std::unique_ptr<olive::Project> project_;
@@ -459,15 +471,42 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	auto *renderer = new olive::OpenGLRenderer();
+	olive::Renderer *renderer;
+#ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+	auto *dynamic_renderer = new olive::DynamicRenderer(QStringLiteral("opengl"));
+	if (dynamic_renderer->Init()) {
+		dynamic_renderer->PostInit();
+		renderer = dynamic_renderer;
+	} else {
+		delete dynamic_renderer;
+		qWarning() << "Failed to initialize dynamic OpenGL backend, falling back to direct OpenGL renderer";
+		renderer = new olive::OpenGLRenderer();
+		if (!renderer->Init()) {
+			LogError(QStringLiteral("failed to initialize OpenGL renderer"));
+			delete renderer;
+			return 1;
+		}
+		renderer->PostInit();
+	}
+#else
+	renderer = new olive::OpenGLRenderer();
 	if (!renderer->Init()) {
 		LogError(QStringLiteral("failed to initialize OpenGL renderer"));
 		delete renderer;
 		return 1;
 	}
 	renderer->PostInit();
+#endif
 
-	QOpenGLContext *ctx = renderer->context();
+	QOpenGLContext *ctx = nullptr;
+#ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+	if (auto *loaded_renderer = dynamic_cast<olive::DynamicRenderer *>(renderer)) {
+		ctx = loaded_renderer->OpenGLContext();
+	} else
+#endif
+	{
+		ctx = static_cast<olive::OpenGLRenderer *>(renderer)->context();
+	}
 	if (!ctx || !ctx->isValid()) {
 		LogError(QStringLiteral("OpenGL context is not valid after init"));
 		renderer->Destroy();

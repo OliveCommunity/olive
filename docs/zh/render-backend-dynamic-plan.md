@@ -48,58 +48,93 @@
 
 这一步是 ABI 稳定化，不是把后端内部实现改成 C。
 
-## 阶段 2.5：最小化 OpenGL 后端链接边界
+## 阶段 2.5：最小化 OpenGL/Vulkan 后端链接边界（已完成）
 
-当前工程大量代码和静态依赖被编译进 `libolive-editor` object 库。直接把整个 object 库塞进 `liboakgl.so` 会带来两个问题：
+此前 `oakgl`/`oakvulkan` 通过 `$<TARGET_OBJECTS:libolive-editor>` 把整个 editor 对象库链进动态库，导致后端库包含项目、节点、任务、cache、UI 等大量 editor 代码和全局状态。
 
-- 非 PIC 静态依赖会阻塞共享库链接，例如 `KDDockWidgets`。
-- 主程序和后端库会复制全局状态，增加配置、cache、单例和 Qt meta-object 的一致性风险。
+本次已完成链接边界收敛：
 
-当前实验构建已经可以通过 `OAK_ENABLE_DYNAMIC_RENDER_BACKEND=ON` 生成 `liboakgl.so`，做法是把相关 object/static 依赖切到 PIC 后链接进 OpenGL 后端库。这满足“动态库一侧 C++ 实现 + C ABI 导出”的第一步，但它仍不是最终边界：后端库暂时会带入较多 editor 代码和全局状态。
+- 新增静态库 `libolive-rendercore`，仅包含渲染核心代码：
+  - 渲染器基类与数据类型：`Renderer`、`Texture`、`VideoParams`、`ShaderCode`、`AcceleratedJob`、`ShaderJob`。
+  - 动态适配器：`DynamicRenderer`、`renderbackend_c.h`。
+  - 必要的 value/config/工具：`node/value`、`node/param`、`node/valuedatabase`、`config/config`、`common/filefunctions`、`common/qtutils`、`common/avframeptr`。
+- `oakgl`/`oakvulkan` 现在只链接 `libolive-rendercore`，不再链接完整 `libolive-editor`。
+- `liboakgl.so` / `liboakvulkan.so` 体积从约 21 MB 降至约 600 KB。
+- 为隔离依赖做的头文件清理：
+  - `renderer.h` 移除 `node/node.h`、`render/colorprocessor.h`、`render/job/colortransformjob.h`、`job/pluginjob.h`，改为前向声明。
+  - `videoparams.h` 移除 `ofxImageEffect.h`，OFX 字符串 setter 实现下移到 `videoparams.cpp`。
+  - `texture.h` 用新增的 `common/avframeptr.h` 替代 `common/ffmpegutils.h`，避免后端拉入大量 FFmpeg 工具代码。
+  - `renderer.cpp` 的颜色管理（`GetColorContext` / `BlitColorManaged`）和隔行（`InterlaceTexture`）实现分别拆到 `render/colormanagement.cpp` 和 `render/interlacetexture.cpp`，这两个文件仍由 editor/worker 链接，但不进入后端库。
+- 修复了拆分过程中暴露的 `StyleManager::kDefaultStyle` 跨库符号问题：改为 header 内 `inline static` 定义，使 `config.cpp` 在后端库中自包含。
 
-已新增 `DynamicRenderBackend.LoadsExperimentalOpenGLBackend` smoke test：默认构建跳过，实验构建会实际加载 `liboakgl` 并验证 create/destroy C ABI 路径。
-
-已新增可选 `oak_renderer_is_available` C ABI：后端库可以在被加载和 create 后报告自身是否可用。OpenGL 后端返回可用；Vulkan 占位后端返回不可用，适配器随后卸载它并回退 OpenGL。这把“后端存在”和“后端可用于渲染”分开，避免后续最小化链接边界时把不可用实现误接入渲染路径。
-
-已新增 `oak_renderer_get_info` C ABI：后端库可以报告 ABI 版本、后端类型、能力位和状态字符串。默认构建也会编译检查 OpenGL/Vulkan 两个 C wrapper，避免只在实验构建中发现 C ABI 破损。
-
-因此动态后端成为默认路径前，仍需要把 OpenGL 后端库的链接边界收敛到最小集合：
-
-- 后端库只拥有 OpenGL/Vulkan native 操作和必要的后端私有状态。
-- 主程序侧保留项目、节点、任务、cache、OpenFX host 等 editor 状态。
-- 如果某个后端函数需要主程序创建 `Texture` 或访问 cache，用 C callback table 从后端回调主程序，而不是把完整 editor 链进后端库。
-- `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 可用于实验构建和加载验证；默认启用前必须完成最小链接边界拆分并通过 CI。
+剩余优化空间：
+- 长远可将 `libolive-editor` 也改为依赖 `libolive-rendercore`，彻底消除渲染核心代码在主程序与后端库之间的重复编译/重复链接。当前阶段先保证后端边界干净、主程序保持兼容。
 
 ## 阶段 3：Vulkan 后端
 
-- 新增 Vulkan 后端库。
-- 已新增 `liboakvulkan.so` 实验占位库：内部使用 C++，对外导出与 OpenGL 后端一致的 C ABI；当前 `oak_renderer_is_available` 返回 `false`，请求 Vulkan 时由 `DynamicRenderer` 自动回退 OpenGL。
-- 已新增 `DynamicRenderBackend.FallsBackWhenExperimentalVulkanUnavailable` smoke test：默认构建跳过，实验构建验证 Vulkan 占位后端可加载且不会被误用为可渲染后端。
-- 实现 Vulkan instance/device/swapchain 或 offscreen image 管理。
-- 实现 texture 创建、上传、下载、shader 编译/缓存、blit、clear、flush。
-- 提供 OpenGL 辅助格式转换函数的 Vulkan 替代版本。
-- 确认 CPU readback、proxy preview、scope、thumbnail/cache 输出一致。
+- 新增 Vulkan 后端库 `liboakvulkan.so`。
+- 新增 `VulkanRenderer` 类，继承 `Renderer`，使用原生 Vulkan API 实现 offscreen 渲染管线。
+- CMake 集成：根目录查找 `Vulkan` 和 `shaderc`（可选）；`oakvulkan` 目标链接 `Vulkan::Vulkan` 与 `shaderc_shared`。
+- 实现 Vulkan instance/device/queue/command pool 管理。
+- 实现 offscreen image/texture 管理（`CreateNativeTexture` / `DestroyNativeTexture`），支持 2D/3D、多种 pixel format（U8/U16/F16/F32 × 1/2/3/4 channel）。
+- 实现 staging buffer 上传/下载（`UploadToTexture` / `DownloadFromTexture`）。
+- 实现 `ClearDestination`（`vkCmdClearColorImage`）。
+- 实现 `Flush`（`vkDeviceWaitIdle`）。
+- 实现 GLSL → SPIR-V 运行时编译（通过 `shaderc`），支持自动 uniform binding。
+- 实现基础 graphics pipeline 用于 `Blit`（全屏 quad、顶点缓冲、固定 render pass、combined image sampler descriptor set）。
+- 提供 `GetPixelFromTexture`（基于 `DownloadFromTexture` 的简化实现）。
+- `oak_renderer_is_available` 现在会在首次检查时尝试 `Init()`，成功后报告 Vulkan 可用。
+- 测试更新：
+  - `LoadsExperimentalVulkanBackendWhenAvailable`：验证 Vulkan 后端可加载、初始化、报告能力位。
+  - `FallsBackWhenExperimentalVulkanUnavailable`：在 Vulkan 不可用的系统上验证回退 OpenGL；在 Vulkan 可用的系统上自动 SKIP。
+- **已修复的限制**：
+  - `Blit` 中的 uniform/push constant 传递：已实现完整的 UBO 路径。`CreateNativeShader` 编译前自动将 GLSL 独立 uniform 转换为 `layout(set=0, binding=0) uniform UniformBuffer` 块；`Blit` 遍历 `ShaderJob` values 按 std140 布局填充 UBO 数据并绑定到 descriptor set。
+  - `GetPixelFromTexture`：已优化为仅下载 1×1 像素区域。
+  - RenderPass 格式缓存：已删除固定 `R32G32B32A32_SFLOAT` render pass，改为按 `VkFormat` 缓存；`CreatePipelineForShader` 按 (shader, render_pass_format) 缓存 pipeline。
+- **已知限制 / 待完善**：
+  - 链接边界已最小化，`liboakvulkan.so` 现在只依赖 `libolive-rendercore`。
+  - 尚未在 proxy、thumbnail/cache 等完整渲染路径上验证 Vulkan 输出一致性。
 
-## 阶段 4：Viewer 双后端
+## 阶段 4：Viewer 双后端（默认路径已切换）
 
 - 当前 viewer display 基于 OpenGL widget 和 GL texture id。
-- 已在 `OAK_ENABLE_DYNAMIC_RENDER_BACKEND=ON` 实验构建下让 Viewer 的 managed display 使用 `DynamicRenderer` 创建 renderer，并把现有 `QOpenGLContext` 传入动态后端；默认构建仍直接使用 `OpenGLRenderer`。
-- 新增 backend-neutral viewer path。
+- 默认构建下 Viewer 的 managed display 现在使用 `DynamicRenderer` 创建 renderer，并把现有 `QOpenGLContext` 传入动态后端；若动态后端加载失败则回退到 `OpenGLRenderer`。
+- `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 默认改为 `ON`，保留 `OFF` 作为应急开关。
+- 新增 backend-neutral viewer path 骨架：
+  - `ManagedDisplayWidget` 支持非 OpenGL inner widget（普通 `QWidget`），通过 `Renderer::IsOpenGL()` 判断。
+  - `RenderManager` 不再在 `requested_backend_ == kVulkan` 时强制 fallback。
+  - `ViewerDisplayWidget` 已移除 `glIsTexture()` 的直接 OpenGL 依赖，改为通用的跨 renderer texture 拷贝。
+  - `ScopeBase` 在 backend-neutral 时安全跳过（TODO：完整 scope display 路径）。
 - OpenGL 使用现有 `QOpenGLWidget/QOpenGLWindow`。
-- Vulkan 使用 `QVulkanWindow` 或 Qt RHI/QRhi 显示路径。
+- Vulkan viewer 完整 readback display 路径（offscreen texture → download → QImage → QPainter）已实现：
+  - 新增 `ManagedDisplayWidgetBackendNeutral`，在普通 `QWidget` 的 `paintEvent` 中转发到 `ManagedDisplayWidget::OnPaint`。
+  - `ViewerDisplayWidget::OnPaint` 在 backend-neutral 模式下改用 `QPainter` 填充背景，将颜色管理后的画面渲染到 U8 RGBA offscreen texture，再 `Download` 到 CPU buffer，最后用 `QImage::Format_RGBA8888_Premultiplied` + `setDevicePixelRatio` 绘制到 inner widget。
+  - OpenGL 路径保持原有 `BlitColorManaged` 直接到 widget 不变。
 - Viewer 只消费后端 texture handle 或 readback frame，不直接假设 GL texture id。
 
-## 阶段 5：OpenFX 处理边界
+## 阶段 5：OpenFX 处理边界（已完成）
 
 - OpenFX 插件 OpenGL 渲染路径保留 OpenGL 依赖，不强行改写。
-- 格式转换、readback、upload 等辅助函数移入后端库。
-- Vulkan 后端提供等价辅助函数。
-- 如果某个 OFX 插件必须走 OpenGL，则在 Vulkan 项目里明确使用 OpenGL 兼容路径或回退。
+- `PluginRenderer` 不再继承 `OpenGLRenderer`，改为持有通用的 `Renderer *`：
+  - OpenGL 渲染路径仅在 `renderer_->IsOpenGL()` 为 true 时启用，并正确调用 `OlivePluginInstance::setOpenGLEnabled(use_opengl)`。
+  - 非 OpenGL 渲染器（Vulkan、DynamicRenderer 加载的任意后端）自动回退到 CPU readback/upload 路径，不再因缺少 OpenGL context 而直接跳过插件渲染。
+- 将 OFX 输出纹理绑定/解绑抽象为 `Renderer::AttachOutputTexture` / `DetachOutputTexture`：
+  - `OpenGLRenderer` 实现为 `AttachTextureAsDestination` / `DetachTextureAsDestination`。
+  - C ABI 新增 `oak_renderer_attach_output_texture` / `oak_renderer_detach_output_texture`。
+  - `DynamicRenderer` 通过 C ABI 转发，使动态 OpenGL 后端也能支持 OFX OpenGL 渲染。
+  - `VulkanRenderer` 默认 no-op，Vulkan 项目中的 OFX 插件回退到 CPU 路径。
+- 格式转换（`ConvertFrameIfNeeded`、`ConvertTextureForParams`）、readback（`ReadbackTextureToFrame`）、upload 等辅助函数保持后端无关，通过 `Renderer` 接口调用，无需移入后端库。
+- `RenderProcessor::ProcessPluginJob` 不再要求 `render_ctx_` 实现 `OpenGLContextProvider`，任何 `Renderer` 都能驱动插件渲染。
+- 更新相关 gtest：`PluginRenderer` 构造函数现在需要传入 renderer 指针，测试传入 `nullptr` 验证纯 CPU 路径。
 
 ## 完成标准
 
-- 主程序不直接 new `OpenGLRenderer` 作为默认渲染路径，而是通过动态后端适配器创建。
-- OpenGL 后端库可单独构建、加载、初始化、销毁。
-- 用户能在配置中选择 OpenGL/Vulkan。
-- Vulkan 未实现完整 renderer 前，请求 Vulkan 不崩溃，并有明确回退。
-- 手工测试计划覆盖 OpenGL/Vulkan 选择、重启持久化、回退、viewer、proxy、scope、导出。
+- [x] 主程序默认不再直接 new `OpenGLRenderer`，而是通过 `DynamicRenderer` 动态加载 OpenGL/Vulkan 后端；加载失败时保留回退到 `OpenGLRenderer` 的安全路径。
+- [x] `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 默认 `ON`，`liboakgl.so` / `liboakvulkan.so` 默认构建并安装。
+- [x] OpenGL 后端库可单独构建、加载、初始化、销毁。
+- [x] 用户能在配置中选择 OpenGL/Vulkan。
+- [x] Vulkan 不可用时自动回退到 OpenGL，不崩溃。
+- [x] 链接边界已最小化：`oakgl` / `oakvulkan` 现在只链接独立的 `libolive-rendercore`，不再拉入完整 editor 代码；库体积从约 21 MB 降至约 600 KB。
+- [x] Vulkan viewer 完整 readback display 路径已实现（offscreen texture → download → QImage → QPainter）。
+- [x] OpenFX 插件渲染边界已处理：`PluginRenderer` 后端无关化，非 OpenGL 渲染器自动回退 CPU 路径，动态 OpenGL 后端通过 C ABI 支持 OFX OpenGL 输出绑定。
+- [ ] 手工测试计划覆盖 viewer、proxy、scope、导出等完整路径。

@@ -45,6 +45,8 @@ QString DynamicRenderer::LibraryFilename() const
 	const QStringList candidates = {
 		app_dir.filePath(filename),
 		app_dir.filePath(QDir(QStringLiteral("render_backends")).filePath(filename)),
+		app_dir.filePath(QDir(QStringLiteral("../lib")).filePath(filename)),
+		app_dir.filePath(QDir(QStringLiteral("../../lib")).filePath(filename)),
 		app_dir.filePath(QDir(QStringLiteral("../app")).filePath(filename)),
 		app_dir.filePath(QDir(QStringLiteral("../../app")).filePath(filename))
 	};
@@ -139,6 +141,10 @@ bool DynamicRenderer::ResolveFunctions()
 	RESOLVE(get_pixel_from_texture_, OakBackendGetPixelFromTextureFn,
 			"oak_renderer_get_pixel_from_texture");
 	RESOLVE(blit_, OakBackendBlitFn, "oak_renderer_blit");
+	RESOLVE(attach_output_texture_, OakBackendAttachOutputTextureFn,
+			"oak_renderer_attach_output_texture");
+	RESOLVE(detach_output_texture_, OakBackendDetachOutputTextureFn,
+			"oak_renderer_detach_output_texture");
 	RESOLVE(opengl_context_, OakBackendOpenGLContextFn,
 			"oak_renderer_opengl_context");
 #undef RESOLVE
@@ -184,6 +190,8 @@ void DynamicRenderer::ResetFunctions()
 	flush_ = nullptr;
 	get_pixel_from_texture_ = nullptr;
 	blit_ = nullptr;
+	attach_output_texture_ = nullptr;
+	detach_output_texture_ = nullptr;
 	opengl_context_ = nullptr;
 }
 
@@ -271,6 +279,11 @@ QOpenGLContext *DynamicRenderer::OpenGLContext() const
 		: nullptr;
 }
 
+bool DynamicRenderer::IsOpenGL() const
+{
+	return backend_ == QStringLiteral("opengl");
+}
+
 void DynamicRenderer::Blit(QVariant shader, AcceleratedJob &job,
 					   Texture *destination, VideoParams destination_params,
 					   bool clear_destination)
@@ -298,6 +311,21 @@ void DynamicRenderer::DestroyInternal()
 {
 	if (handle_) {
 		destroy_internal_(handle_);
+	}
+}
+
+void DynamicRenderer::AttachOutputTexture(Texture *texture)
+{
+	if (attach_output_texture_ && texture) {
+		QVariant id = texture->id();
+		attach_output_texture_(handle_, &id);
+	}
+}
+
+void DynamicRenderer::DetachOutputTexture()
+{
+	if (detach_output_texture_) {
+		detach_output_texture_(handle_);
 	}
 }
 

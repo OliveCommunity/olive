@@ -104,6 +104,18 @@ endif()
 find_package(OpenGL REQUIRED)
 list(APPEND OLIVE_LIBRARIES OpenGL::GL)
 
+# Optional: Link Vulkan and shaderc (for the Vulkan render backend)
+find_package(Vulkan)
+find_package(PkgConfig)
+if(PkgConfig_FOUND)
+  pkg_check_modules(SHADERC shaderc)
+endif()
+if(Vulkan_FOUND)
+  message(STATUS "Vulkan found: ${Vulkan_LIBRARIES}")
+else()
+  message(STATUS "   Vulkan not found. The Vulkan render backend will be disabled.")
+endif()
+
 # Link OpenColorIO
 find_package(OpenColorIO 2.1.1 REQUIRED)
 list(APPEND OLIVE_LIBRARIES ${OCIO_LIBRARIES})

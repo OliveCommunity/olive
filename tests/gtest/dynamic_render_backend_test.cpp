@@ -22,6 +22,28 @@ TEST(DynamicRenderBackend, LoadsExperimentalOpenGLBackend)
 #endif
 }
 
+TEST(DynamicRenderBackend, LoadsExperimentalVulkanBackendWhenAvailable)
+{
+#ifndef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
+#else
+	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
+	ASSERT_TRUE(renderer.Load());
+	OakRenderBackendInfo info = {};
+	ASSERT_TRUE(renderer.GetBackendInfo(&info));
+	if (info.kind != OAK_RENDER_BACKEND_VULKAN) {
+		GTEST_SKIP() << "Vulkan backend is not available on this system";
+	}
+	EXPECT_EQ(renderer.backend_name(), QStringLiteral("vulkan"));
+	EXPECT_EQ(renderer.OpenGLContext(), nullptr);
+	EXPECT_STREQ(info.name, "vulkan");
+	EXPECT_TRUE(info.capabilities & OAK_RENDER_BACKEND_CAP_TEXTURES);
+	EXPECT_TRUE(info.capabilities & OAK_RENDER_BACKEND_CAP_SHADERS);
+	EXPECT_TRUE(info.capabilities & OAK_RENDER_BACKEND_CAP_BLIT);
+	EXPECT_TRUE(info.capabilities & OAK_RENDER_BACKEND_CAP_READBACK);
+#endif
+}
+
 TEST(DynamicRenderBackend, FallsBackWhenExperimentalVulkanUnavailable)
 {
 #ifndef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
@@ -29,10 +51,13 @@ TEST(DynamicRenderBackend, FallsBackWhenExperimentalVulkanUnavailable)
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
 	ASSERT_TRUE(renderer.Load());
-	EXPECT_EQ(renderer.backend_name(), QStringLiteral("opengl"));
-	EXPECT_EQ(renderer.OpenGLContext(), nullptr);
 	OakRenderBackendInfo info = {};
 	ASSERT_TRUE(renderer.GetBackendInfo(&info));
+	if (info.kind == OAK_RENDER_BACKEND_VULKAN) {
+		GTEST_SKIP() << "Vulkan backend is available on this system; skip fallback test";
+	}
+	EXPECT_EQ(renderer.backend_name(), QStringLiteral("opengl"));
+	EXPECT_EQ(renderer.OpenGLContext(), nullptr);
 	EXPECT_EQ(info.kind, OAK_RENDER_BACKEND_OPENGL);
 	EXPECT_STREQ(info.name, "opengl");
 #endif

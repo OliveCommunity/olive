@@ -35,7 +35,6 @@
 namespace olive
 {
 
-const char *StyleManager::kDefaultStyle = "olive-dark";
 QString StyleManager::current_style_;
 QMap<QString, QString> StyleManager::available_themes_;
 

@@ -33,8 +33,6 @@
 #include "node/block/transition/transition.h"
 #include "node/project.h"
 #include "rendermanager.h"
-#include "render/opengl/openglcontextprovider.h"
-#include "render/opengl/openglrenderer.h"
 #include "render/plugin/pluginrenderer.h"
 #include "pluginSupport/OliveClip.h"
 #include "pluginSupport/OliveHost.h"
@@ -711,26 +709,8 @@ TexturePtr RenderProcessor::ProcessPluginJob(TexturePtr texture,
 		return destination;
 	}
 
-	plugin::PluginRenderer *plugin_renderer = nullptr;
-	{
-		static QThreadStorage<std::shared_ptr<plugin::PluginRenderer>>
-			cached_plugin_renderers;
-		if (!cached_plugin_renderers.hasLocalData()) {
-			auto *gl = dynamic_cast<OpenGLContextProvider *>(render_ctx_);
-			if (gl && gl->OpenGLContext()) {
-				auto cached_plugin_renderer =
-					std::make_shared<plugin::PluginRenderer>();
-				cached_plugin_renderer->Init(gl->OpenGLContext());
-				cached_plugin_renderer->PostInit();
-				cached_plugin_renderers.setLocalData(cached_plugin_renderer);
-			}
-		}
-		if (cached_plugin_renderers.hasLocalData()) {
-			plugin_renderer = cached_plugin_renderers.localData().get();
-		}
-	}
-
-	if (!plugin_renderer) {
+	plugin::PluginRenderer plugin_renderer(render_ctx_);
+	if (!plugin_renderer.renderer()) {
 		return destination;
 	}
 
@@ -782,7 +762,7 @@ TexturePtr RenderProcessor::ProcessPluginJob(TexturePtr texture,
 		}
 	}
 
-	plugin_renderer->RenderPlugin(
+	plugin_renderer.RenderPlugin(
 		src,
 		*plugin_job,
 		destination,

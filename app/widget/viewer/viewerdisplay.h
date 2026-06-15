@@ -327,6 +327,8 @@ private:
 
 	void DrawBlank(const VideoParams &device_params);
 
+	void DrawBackendNeutral(const ColorTransformJob &ctj, QPainter *painter);
+
 	/**
    * @brief Internal reference to the OpenGL texture to draw. Set in SetTexture() and used in paintGL().
    */
@@ -336,6 +338,19 @@ private:
    * @brief Internal texture to deinterlace to
    */
 	TexturePtr deinterlace_texture_;
+
+	/**
+   * @brief Offscreen texture for backend-neutral viewer rendering.
+   *
+   * The texture is rendered at device resolution and read back to a QImage so
+   * it can be painted with QPainter on the plain QWidget inner surface.
+   */
+	TexturePtr backend_neutral_texture_;
+
+	/**
+   * @brief CPU readback buffer for backend_neutral_texture_.
+   */
+	QByteArray backend_neutral_buffer_;
 
 	/**
    * @brief Deinterlace shader

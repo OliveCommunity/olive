@@ -14,6 +14,7 @@
 - Expat
 - PortAudio
 - OpenGL 头文件
+- Vulkan SDK（可选，Vulkan 渲染后端需要）
 - XKB common（Linux）
 
 ---
@@ -42,6 +43,8 @@ pacman -S --needed \
   mingw-w64-ucrt-x86_64-fmt \
   mingw-w64-ucrt-x86_64-expat \
   mingw-w64-ucrt-x86_64-portaudio \
+  mingw-w64-ucrt-x86_64-vulkan-headers \
+  mingw-w64-ucrt-x86_64-vulkan-loader \
   mingw-w64-ucrt-x86_64-gcc
 ```
 
@@ -83,7 +86,7 @@ sudo apt-get install -y \
   cmake ninja-build pkg-config nasm \
   qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
   libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
-  portaudio19-dev libgl1-mesa-dev libxkbcommon-dev
+  portaudio19-dev libgl1-mesa-dev libvulkan-dev vulkan-headers libxkbcommon-dev
 ```
 
 从源码编译 FFmpeg 8.0+：
@@ -137,6 +140,8 @@ sudo dnf install -y \
   expat-devel \
   portaudio-devel \
   mesa-libGL-devel \
+  vulkan-headers \
+  vulkan-loader-devel \
   libxkbcommon-devel \
   gcc-c++
 ```
@@ -170,6 +175,8 @@ sudo pacman -S --needed \
   expat \
   portaudio \
   mesa \
+  vulkan-headers \
+  vulkan-icd-loader \
   libxkbcommon \
   gcc
 ```
@@ -199,7 +206,7 @@ ctest --test-dir build --output-on-failure -C Release
 
 ```bash
 brew update
-brew install cmake ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat
+brew install cmake ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat molten-vk vulkan-headers
 ```
 
 构建 OpenTimelineIO（可选，如需 OTIO 支持）：
@@ -247,6 +254,7 @@ ctest --test-dir build --output-on-failure -C Release
 | `BUILD_QT6` | `ON` | 使用 Qt 6 而非 Qt 5 |
 | `OTIO_LOCATION` | - | OpenTimelineIO 安装路径（可选） |
 | `OCIO_LOCATION` | - | OpenColorIO 安装路径 |
+| `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` | `ON` | 构建动态渲染后端库（`liboakgl.so` / `liboakvulkan.so`） |
 
 ---
 

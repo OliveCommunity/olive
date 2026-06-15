@@ -82,6 +82,15 @@ public:
 		return context();
 	}
 
+	virtual bool IsOpenGL() const override
+	{
+		return true;
+	}
+
+	virtual void AttachOutputTexture(olive::Texture *texture) override;
+
+	virtual void DetachOutputTexture() override;
+
 	bool EnsureContextCurrent(const char *caller);
 
 protected:

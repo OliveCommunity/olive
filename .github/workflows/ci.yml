@@ -35,7 +35,7 @@ jobs:
             qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
             libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
-            portaudio19-dev libgl1-mesa-dev libxkbcommon-dev
+            portaudio19-dev libgl1-mesa-dev libvulkan-dev vulkan-headers vulkan-validationlayers-dev libxkbcommon-dev
 
       # ------------------------------------------------------------------
       # macOS dependencies
@@ -44,7 +44,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat
+          brew install ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat molten-vk vulkan-headers
           echo "$(brew --prefix qt@6)/bin" >> "$GITHUB_PATH"
           echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@6)" >> "$GITHUB_ENV"
 
@@ -84,6 +84,8 @@ jobs:
             mingw-w64-ucrt-x86_64-fmt
             mingw-w64-ucrt-x86_64-expat
             mingw-w64-ucrt-x86_64-portaudio
+            mingw-w64-ucrt-x86_64-vulkan-headers
+            mingw-w64-ucrt-x86_64-vulkan-loader
             mingw-w64-ucrt-x86_64-make
 
       # ------------------------------------------------------------------
@@ -226,3 +228,45 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: ./build/tests/gtest/olive-gtest --gtest_filter="ViewerSmoke*"
+
+  # ------------------------------------------------------------------
+  # Experimental dynamic render backend (Linux only)
+  # ------------------------------------------------------------------
+  build-test-dynamic-backend:
+    runs-on: warp-ubuntu-latest-x64-16x
+    env:
+      CMAKE_BUILD_TYPE: Release
+      QT_QPA_PLATFORM: offscreen
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'true'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build pkg-config nasm \
+            qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
+            libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
+            portaudio19-dev libgl1-mesa-dev libvulkan-dev vulkan-headers vulkan-validationlayers-dev libxkbcommon-dev
+
+      - name: Configure
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DBUILD_TESTS=ON \
+            -DBUILD_QT6=ON \
+            -DOAK_ENABLE_DYNAMIC_RENDER_BACKEND=ON \
+            -DOCIO_LOCATION=/usr \
+            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+
+      - name: Build
+        run: cmake --build build --config ${{ env.CMAKE_BUILD_TYPE }}
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure -C ${{ env.CMAKE_BUILD_TYPE }}
+
+      - name: Dynamic Render Backend Smoke Tests
+        run: ./build/tests/gtest/olive-gtest --gtest_filter="DynamicRenderBackend*"

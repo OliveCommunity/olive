@@ -87,7 +87,7 @@ include_directories(../third_party/openfx/include
 # Remove prefix - prevents CMake calling it "liblibolive-editor"
 set_target_properties(libolive-editor PROPERTIES PREFIX "")
 
-option(OAK_ENABLE_DYNAMIC_RENDER_BACKEND "Build and use the experimental dynamic render backend adapter" OFF)
+option(OAK_ENABLE_DYNAMIC_RENDER_BACKEND "Build and use the dynamic render backend adapter" ON)
 if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
   set_target_properties(libolive-editor PROPERTIES POSITION_INDEPENDENT_CODE ON)
   target_compile_definitions(libolive-editor PRIVATE OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
@@ -98,40 +98,93 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
     endif()
   endforeach()
 
-  add_library(oakgl SHARED
-    render/opengl/openglbackend_c.cpp
-    $<TARGET_OBJECTS:libolive-editor>
+  # Render core library: the minimal set of code required by the OpenGL/Vulkan backend
+  # libraries. Keeping this separate from libolive-editor prevents the backends from
+  # dragging in editor-wide state (project, task, cache, UI, etc.).
+  add_library(libolive-rendercore STATIC
+    common/avframeptr.h
+    common/define.h
+    common/filefunctions.cpp
+    common/filefunctions.h
+    common/qtutils.cpp
+    common/qtutils.h
+    config/config.cpp
+    config/config.h
+    node/param.cpp
+    node/param.h
+    node/splitvalue.h
+    node/value.cpp
+    node/value.h
+    node/valuedatabase.cpp
+    node/valuedatabase.h
+    render/backend/dynamicrenderer.cpp
+    render/backend/dynamicrenderer.h
+    render/backend/renderbackend_c.h
+    render/job/acceleratedjob.cpp
+    render/job/acceleratedjob.h
+    render/job/shaderjob.h
+    render/renderer.cpp
+    render/renderer.h
+    render/shadercode.h
+    render/texture.cpp
+    render/texture.h
+    render/videoparams.cpp
+    render/videoparams.h
   )
-  target_include_directories(oakgl PRIVATE
+  set_target_properties(libolive-rendercore PROPERTIES POSITION_INDEPENDENT_CODE ON)
+  target_include_directories(libolive-rendercore PUBLIC
     ${CMAKE_SOURCE_DIR}/app
     ${CMAKE_SOURCE_DIR}/third_party/openfx/include
     ${CMAKE_SOURCE_DIR}/third_party/openfx/HostSupport/include
     ${OLIVE_INCLUDE_DIRS}
   )
-  target_link_libraries(oakgl PRIVATE ${OLIVE_LIBRARIES} OfxHost)
-  target_compile_definitions(oakgl PRIVATE ${OLIVE_DEFINITIONS})
-  target_compile_options(oakgl PRIVATE ${OLIVE_COMPILE_OPTIONS})
+  target_link_libraries(libolive-rendercore PUBLIC ${OLIVE_LIBRARIES} OfxHost)
+  target_compile_definitions(libolive-rendercore PUBLIC ${OLIVE_DEFINITIONS})
+  target_compile_options(libolive-rendercore PUBLIC ${OLIVE_COMPILE_OPTIONS})
+
+  add_library(oakgl SHARED
+    render/opengl/openglbackend_c.cpp
+    render/opengl/openglrenderer.cpp
+    render/opengl/openglrenderer.h
+  )
+  target_link_libraries(oakgl PRIVATE libolive-rendercore)
   set_target_properties(oakgl PROPERTIES
     OUTPUT_NAME oakgl
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
   )
+  install(TARGETS oakgl
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+  )
 
   add_library(oakvulkan SHARED
     render/vulkan/vulkanbackend_c.cpp
+    render/vulkan/vulkanrenderer.cpp
+    render/vulkan/vulkanrenderer.h
   )
-  target_include_directories(oakvulkan PRIVATE
-    ${CMAKE_SOURCE_DIR}/app
-  )
-  target_link_libraries(oakvulkan PRIVATE Qt${QT_VERSION_MAJOR}::Core)
-  target_compile_definitions(oakvulkan PRIVATE ${OLIVE_DEFINITIONS})
-  target_compile_options(oakvulkan PRIVATE ${OLIVE_COMPILE_OPTIONS})
+  target_link_libraries(oakvulkan PRIVATE libolive-rendercore)
+  if(Vulkan_FOUND)
+    target_link_libraries(oakvulkan PRIVATE Vulkan::Vulkan)
+    target_compile_definitions(oakvulkan PRIVATE OAK_HAS_VULKAN)
+  endif()
+  if(SHADERC_FOUND)
+    target_link_libraries(oakvulkan PRIVATE ${SHADERC_LIBRARIES})
+    target_include_directories(oakvulkan PRIVATE ${SHADERC_INCLUDE_DIRS})
+    target_compile_definitions(oakvulkan PRIVATE OAK_HAS_SHADERC)
+  endif()
   set_target_properties(oakvulkan PROPERTIES
     OUTPUT_NAME oakvulkan
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
     ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  )
+  install(TARGETS oakvulkan
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
   )
 endif()
 
@@ -150,11 +203,25 @@ target_compile_options(oakgl-cabi-check PRIVATE ${OLIVE_COMPILE_OPTIONS})
 
 add_library(oakvulkan-cabi-check OBJECT
   render/vulkan/vulkanbackend_c.cpp
+  render/vulkan/vulkanrenderer.cpp
+  render/vulkan/vulkanrenderer.h
 )
 target_include_directories(oakvulkan-cabi-check PRIVATE
   ${CMAKE_SOURCE_DIR}/app
+  ${CMAKE_SOURCE_DIR}/third_party/openfx/include
+  ${CMAKE_SOURCE_DIR}/third_party/openfx/HostSupport/include
+  ${OLIVE_INCLUDE_DIRS}
 )
-target_link_libraries(oakvulkan-cabi-check PRIVATE Qt${QT_VERSION_MAJOR}::Core)
+target_link_libraries(oakvulkan-cabi-check PRIVATE Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets)
+if(Vulkan_FOUND)
+  target_link_libraries(oakvulkan-cabi-check PRIVATE Vulkan::Vulkan)
+  target_compile_definitions(oakvulkan-cabi-check PRIVATE OAK_HAS_VULKAN)
+endif()
+if(SHADERC_FOUND)
+  target_link_libraries(oakvulkan-cabi-check PRIVATE ${SHADERC_LIBRARIES})
+  target_include_directories(oakvulkan-cabi-check PRIVATE ${SHADERC_INCLUDE_DIRS})
+  target_compile_definitions(oakvulkan-cabi-check PRIVATE OAK_HAS_SHADERC)
+endif()
 target_compile_definitions(oakvulkan-cabi-check PRIVATE ${OLIVE_DEFINITIONS})
 target_compile_options(oakvulkan-cabi-check PRIVATE ${OLIVE_COMPILE_OPTIONS})
 
@@ -183,6 +250,10 @@ add_executable(olive-render-worker
 )
 target_include_directories(olive-render-worker PUBLIC pluginSupport)
 target_link_libraries(olive-render-worker PUBLIC OfxHost)
+if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
+  target_compile_definitions(olive-render-worker PRIVATE OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
+  add_dependencies(olive-render-worker oakgl oakvulkan)
+endif()
 # Create docs if doxygen was found
 if(DOXYGEN_FOUND)
   set(DOXYGEN_PROJECT_NAME "Oak Video Editor")
