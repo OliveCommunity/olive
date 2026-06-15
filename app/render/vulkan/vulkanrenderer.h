@@ -88,6 +88,8 @@ private:
 	bool CreateDescriptorPool();
 	bool CreateVertexBuffer();
 	bool CreateLinearSampler();
+	bool CreateNearestSampler();
+	VkSampler GetSampler(Texture::Interpolation interpolation) const;
 	bool CreateStagingBuffer(VkDeviceSize size, VkBuffer *out_buffer,
 							 VkDeviceMemory *out_memory);
 	void DestroyStagingBuffer(VkBuffer buffer, VkDeviceMemory memory);
@@ -141,6 +143,7 @@ private:
 	VkCommandPool command_pool_ = VK_NULL_HANDLE;
 	VkDescriptorPool descriptor_pool_ = VK_NULL_HANDLE;
 	VkSampler linear_sampler_ = VK_NULL_HANDLE;
+	VkSampler nearest_sampler_ = VK_NULL_HANDLE;
 
 	QHash<quint64, VkRenderPass> render_pass_cache_;
 

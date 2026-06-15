@@ -20,6 +20,7 @@ struct VulkanRenderer::VulkanTexture {
 	VkImage image = VK_NULL_HANDLE;
 	VkImageView view = VK_NULL_HANDLE;
 	VkDeviceMemory memory = VK_NULL_HANDLE;
+	VkFramebuffer framebuffer = VK_NULL_HANDLE;
 	int width = 0;
 	int height = 0;
 	int depth = 0;
@@ -84,6 +85,7 @@ void VulkanRenderer::PostInit()
 	}
 	CreateVertexBuffer();
 	CreateLinearSampler();
+	CreateNearestSampler();
 }
 
 void VulkanRenderer::PostDestroy()
@@ -141,6 +143,10 @@ void VulkanRenderer::DestroyInternal()
 	if (linear_sampler_ != VK_NULL_HANDLE) {
 		vkDestroySampler(device_, linear_sampler_, nullptr);
 		linear_sampler_ = VK_NULL_HANDLE;
+	}
+	if (nearest_sampler_ != VK_NULL_HANDLE) {
+		vkDestroySampler(device_, nearest_sampler_, nullptr);
+		nearest_sampler_ = VK_NULL_HANDLE;
 	}
 
 	if (vertex_buffer_ != VK_NULL_HANDLE) {
@@ -503,6 +509,44 @@ bool VulkanRenderer::CreateLinearSampler()
 		return false;
 	}
 	return true;
+}
+
+bool VulkanRenderer::CreateNearestSampler()
+{
+	VkSamplerCreateInfo sampler_info = {};
+	sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	sampler_info.magFilter = VK_FILTER_NEAREST;
+	sampler_info.minFilter = VK_FILTER_NEAREST;
+	sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_info.anisotropyEnable = VK_FALSE;
+	sampler_info.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+	sampler_info.unnormalizedCoordinates = VK_FALSE;
+	sampler_info.compareEnable = VK_FALSE;
+	sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	sampler_info.mipLodBias = 0.0f;
+	sampler_info.minLod = 0.0f;
+	sampler_info.maxLod = 0.0f;
+
+	VkResult result = vkCreateSampler(device_, &sampler_info, nullptr, &nearest_sampler_);
+	if (result != VK_SUCCESS) {
+		qWarning() << "Failed to create Vulkan nearest sampler:" << result;
+		return false;
+	}
+	return true;
+}
+
+VkSampler VulkanRenderer::GetSampler(Texture::Interpolation interpolation) const
+{
+	switch (interpolation) {
+	case Texture::kNearest:
+		return nearest_sampler_ != VK_NULL_HANDLE ? nearest_sampler_ : linear_sampler_;
+	case Texture::kLinear:
+	case Texture::kMipmappedLinear:
+	default:
+		return linear_sampler_;
+	}
 }
 
 bool VulkanRenderer::CreateStagingBuffer(VkDeviceSize size, VkBuffer *out_buffer,
@@ -919,6 +963,15 @@ QVariant VulkanRenderer::CreateNativeTexture(int width, int height, int depth,
 	view_info.subresourceRange.baseArrayLayer = 0;
 	view_info.subresourceRange.layerCount = 1;
 
+	// Single-channel textures are typically intended as grayscale. Replicate the
+	// red channel to RGB and force alpha to 1, matching OpenGL's swizzle behavior.
+	if (channel_count == 1) {
+		view_info.components.r = VK_COMPONENT_SWIZZLE_R;
+		view_info.components.g = VK_COMPONENT_SWIZZLE_R;
+		view_info.components.b = VK_COMPONENT_SWIZZLE_R;
+		view_info.components.a = VK_COMPONENT_SWIZZLE_ONE;
+	}
+
 	result = vkCreateImageView(device_, &view_info, nullptr, &tex->view);
 	if (result != VK_SUCCESS) {
 		vkFreeMemory(device_, tex->memory, nullptr);
@@ -988,6 +1041,9 @@ void VulkanRenderer::DestroyNativeTexture(QVariant texture)
 	VulkanTexture *tex = textures_.take(id);
 	if (!tex) {
 		return;
+	}
+	if (tex->framebuffer != VK_NULL_HANDLE) {
+		vkDestroyFramebuffer(device_, tex->framebuffer, nullptr);
 	}
 	if (tex->view != VK_NULL_HANDLE) {
 		vkDestroyImageView(device_, tex->view, nullptr);
@@ -1815,9 +1871,14 @@ void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 		if (!dest_tex) {
 			return;
 		}
+	} else {
+		// TODO: support rendering to a temporary offscreen texture when the
+		// caller requests the default output (used by OpenGL direct-to-widget).
+		qWarning() << "VulkanRenderer::Blit with null destination is not implemented";
+		return;
 	}
 
-	VkFormat render_pass_format = dest_tex ? dest_tex->vk_format : VK_FORMAT_R32G32B32A32_SFLOAT;
+	VkFormat render_pass_format = dest_tex->vk_format;
 	VkRenderPass render_pass = GetOrCreateRenderPass(render_pass_format, clear_destination);
 	if (render_pass == VK_NULL_HANDLE) {
 		return;
@@ -1931,18 +1992,42 @@ void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 		}
 	}
 
-	// Create framebuffer and render pass for this blit
+	// Set texture-enable flags for shaders that declare uniform bool NAME_enabled.
+	if (shader->ubo_size > 0) {
+		for (const TextureBinding &tb : bindings) {
+			QString enabled_name = tb.name + QStringLiteral("_enabled");
+			for (const UniformInfo &u : shader->uniforms) {
+				if (u.name == enabled_name && u.size == sizeof(int)) {
+					char *dst = ubo_data.data() + static_cast<int>(u.offset);
+					*reinterpret_cast<int *>(dst) = tb.tex ? 1 : 0;
+					break;
+				}
+			}
+		}
+	}
+
+	// Lazily create a per-texture framebuffer. The framebuffer is compatible
+	// with any render pass that uses the same format and sample count, so we
+	// build it once with the non-clear variant and reuse it.
 	VkFramebuffer framebuffer = VK_NULL_HANDLE;
 	if (dest_tex) {
-		VkFramebufferCreateInfo fb_info = {};
-		fb_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-		fb_info.renderPass = render_pass;
-		fb_info.attachmentCount = 1;
-		fb_info.pAttachments = &dest_tex->view;
-		fb_info.width = static_cast<uint32_t>(destination_params.effective_width());
-		fb_info.height = static_cast<uint32_t>(destination_params.effective_height());
-		fb_info.layers = 1;
-		vkCreateFramebuffer(device_, &fb_info, nullptr, &framebuffer);
+		if (dest_tex->framebuffer == VK_NULL_HANDLE) {
+			VkFramebufferCreateInfo fb_info = {};
+			fb_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+			fb_info.renderPass = GetOrCreateRenderPass(render_pass_format, false);
+			fb_info.attachmentCount = 1;
+			fb_info.pAttachments = &dest_tex->view;
+			fb_info.width = static_cast<uint32_t>(dest_tex->width);
+			fb_info.height = static_cast<uint32_t>(dest_tex->height);
+			fb_info.layers = 1;
+			VkResult fb_result = vkCreateFramebuffer(device_, &fb_info, nullptr,
+														 &dest_tex->framebuffer);
+			if (fb_result != VK_SUCCESS) {
+				qWarning() << "Failed to create Vulkan framebuffer:" << fb_result;
+				return;
+			}
+		}
+		framebuffer = dest_tex->framebuffer;
 	}
 
 	// Create UBO buffer if needed
@@ -1973,9 +2058,6 @@ void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 		VkResult result = vkAllocateDescriptorSets(device_, &ds_alloc, &descriptor_set);
 		if (result != VK_SUCCESS) {
 			qWarning() << "Failed to allocate Vulkan descriptor set:" << result;
-			if (framebuffer != VK_NULL_HANDLE) {
-				vkDestroyFramebuffer(device_, framebuffer, nullptr);
-			}
 			if (ubo_buffer != VK_NULL_HANDLE) {
 				DestroyStagingBuffer(ubo_buffer, ubo_memory);
 			}
@@ -2007,7 +2089,7 @@ void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 			for (int i = 0; i < bindings.size() && i < 16; i++) {
 				const TextureBinding &tb = bindings.at(i);
 				VkDescriptorImageInfo img_info = {};
-				img_info.sampler = linear_sampler_;
+				img_info.sampler = GetSampler(tb.interp);
 				img_info.imageView = tb.tex ? tb.tex->view : VK_NULL_HANDLE;
 				img_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 				image_infos.append(img_info);
@@ -2112,9 +2194,6 @@ void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 
 	if (descriptor_set != VK_NULL_HANDLE) {
 		vkFreeDescriptorSets(device_, descriptor_pool_, 1, &descriptor_set);
-	}
-	if (framebuffer != VK_NULL_HANDLE) {
-		vkDestroyFramebuffer(device_, framebuffer, nullptr);
 	}
 	if (ubo_buffer != VK_NULL_HANDLE) {
 		DestroyStagingBuffer(ubo_buffer, ubo_memory);
