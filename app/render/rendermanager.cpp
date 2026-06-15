@@ -102,6 +102,15 @@ RenderManager::RenderManager(QObject *parent)
 			context_ = new OpenGLRenderer();
 		} else {
 			context_ = dynamic_renderer;
+			// DynamicRenderer may internally fall back (e.g. Vulkan -> OpenGL).
+			// Synchronize RenderManager's view of the actual runtime backend.
+			Backend actual_backend = BackendFromString(dynamic_renderer->backend_name());
+			if (actual_backend != backend_) {
+				qWarning() << "Dynamic render backend fell back from"
+						   << BackendToString(backend_) << "to"
+						   << BackendToString(actual_backend);
+				backend_ = actual_backend;
+			}
 		}
 #else
 		context_ = new OpenGLRenderer();
