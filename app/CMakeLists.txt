@@ -108,8 +108,8 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
     common/filefunctions.h
     common/qtutils.cpp
     common/qtutils.h
-    config/config.cpp
-    config/config.h
+    common/xmlutils.cpp
+    common/xmlutils.h
     node/param.cpp
     node/param.h
     node/splitvalue.h
@@ -148,6 +148,7 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
     render/opengl/openglrenderer.h
   )
   target_link_libraries(oakgl PRIVATE libolive-rendercore)
+  target_compile_definitions(oakgl PRIVATE OAK_RENDER_BACKEND_PLUGIN)
   set_target_properties(oakgl PROPERTIES
     OUTPUT_NAME oakgl
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}

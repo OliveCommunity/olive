@@ -28,7 +28,9 @@
 #include <QRegularExpression>
 
 #include "common/filefunctions.h"
+#if !defined(OAK_RENDER_BACKEND_PLUGIN)
 #include "config/config.h"
+#endif
 #include "render/job/shaderjob.h"
 
 namespace olive
@@ -394,18 +396,22 @@ void OpenGLRenderer::Flush()
 {
 	GL_PREAMBLE;
 
+#if !defined(OAK_RENDER_BACKEND_PLUGIN)
 	if (OLIVE_CONFIG("UseGLFinish").toBool()) {
 		functions_->glFinish();
-	} else {
-#if defined(Q_OS_MAC)
-		// macOS uses Tile-Based Deferred Rendering (TBDR). glFlush() does not
-		// guarantee that tile memory has been written back to texture memory.
-		// Using glFinish() prevents partial tile corruption ("black ink" artifacts).
-		functions_->glFinish();
-#else
-		functions_->glFlush();
-#endif
+		return;
 	}
+#endif
+
+#if defined(Q_OS_MAC)
+	// The dynamically loaded OpenGL backend cannot depend on the editor Config
+	// singleton because that pulls UI/Core symbols into the plugin. This
+	// platform default also preserves the previous macOS-safe behavior for
+	// texture consumers on TBDR drivers.
+	functions_->glFinish();
+#else
+	functions_->glFlush();
+#endif
 }
 
 // Adapts the generic Renderer output attachment hook to OpenGL's framebuffer
