@@ -115,9 +115,14 @@ private:
 	bool CompileGlslToSpv(const QString &glsl, VkShaderStageFlagBits stage,
 						  QByteArray *out_spv);
 	QString ConvertGlslToVulkan(const QString &glsl, VkShaderStageFlagBits stage);
-	QString ConvertGlslUniformsToUbo(const QString &glsl,
-									 QVector<UniformInfo> *out_uniforms,
-									 int *out_sampler_count = nullptr);
+	QString EnsureGlslVersion450(const QString &glsl) const;
+	void ExtractUniforms(const QString &glsl, QVector<UniformInfo> *out_uniforms,
+						 QVector<QString> *out_samplers) const;
+	void ComputeUniformLayout(QVector<UniformInfo> *uniforms) const;
+	QString BuildUboBlock(const QVector<UniformInfo> &uniforms) const;
+	QString RewriteShaderWithUbo(const QString &glsl,
+							   const QVector<UniformInfo> &all_uniforms,
+							   const QHash<QString, int> &sampler_bindings) const;
 	VkDeviceSize GetStd140Size(const QString &type) const;
 	VkDeviceSize GetStd140Alignment(const QString &type) const;
 
