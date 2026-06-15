@@ -105,6 +105,8 @@ private:
 						   uint32_t offset_x = 0, uint32_t offset_y = 0);
 
 	VkFormat PixelFormatToVkFormat(PixelFormat format, int channel_count) const;
+	VkFormat PickRenderableFormat(PixelFormat format, int channel_count) const;
+	bool IsColorAttachmentSupported(VkFormat format) const;
 	VkDeviceSize AlignSize(VkDeviceSize size, VkDeviceSize alignment) const;
 
 	uint32_t FindMemoryType(uint32_t type_filter,
@@ -114,7 +116,8 @@ private:
 						  QByteArray *out_spv);
 	QString ConvertGlslToVulkan(const QString &glsl, VkShaderStageFlagBits stage);
 	QString ConvertGlslUniformsToUbo(const QString &glsl,
-									 QVector<UniformInfo> *out_uniforms);
+									 QVector<UniformInfo> *out_uniforms,
+									 int *out_sampler_count = nullptr);
 	VkDeviceSize GetStd140Size(const QString &type) const;
 	VkDeviceSize GetStd140Alignment(const QString &type) const;
 
@@ -122,7 +125,7 @@ private:
 								 const VideoParams &dest_params,
 								 VkFormat render_pass_format);
 
-	VkRenderPass GetOrCreateRenderPass(VkFormat format);
+	VkRenderPass GetOrCreateRenderPass(VkFormat format, bool clear);
 
 	VkInstance instance_ = VK_NULL_HANDLE;
 	VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
@@ -133,7 +136,7 @@ private:
 	VkDescriptorPool descriptor_pool_ = VK_NULL_HANDLE;
 	VkSampler linear_sampler_ = VK_NULL_HANDLE;
 
-	QHash<VkFormat, VkRenderPass> render_pass_cache_;
+	QHash<quint64, VkRenderPass> render_pass_cache_;
 
 	VkBuffer vertex_buffer_ = VK_NULL_HANDLE;
 	VkDeviceMemory vertex_buffer_memory_ = VK_NULL_HANDLE;

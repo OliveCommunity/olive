@@ -160,32 +160,32 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
     ARCHIVE DESTINATION lib
   )
 
-  add_library(oakvulkan SHARED
-    render/vulkan/vulkanbackend_c.cpp
-    render/vulkan/vulkanrenderer.cpp
-    render/vulkan/vulkanrenderer.h
-  )
-  target_link_libraries(oakvulkan PRIVATE libolive-rendercore)
   if(Vulkan_FOUND)
+    add_library(oakvulkan SHARED
+      render/vulkan/vulkanbackend_c.cpp
+      render/vulkan/vulkanrenderer.cpp
+      render/vulkan/vulkanrenderer.h
+    )
+    target_link_libraries(oakvulkan PRIVATE libolive-rendercore)
     target_link_libraries(oakvulkan PRIVATE Vulkan::Vulkan)
     target_compile_definitions(oakvulkan PRIVATE OAK_HAS_VULKAN)
+    if(SHADERC_FOUND)
+      target_link_libraries(oakvulkan PRIVATE ${SHADERC_LIBRARIES})
+      target_include_directories(oakvulkan PRIVATE ${SHADERC_INCLUDE_DIRS})
+      target_compile_definitions(oakvulkan PRIVATE OAK_HAS_SHADERC)
+    endif()
+    set_target_properties(oakvulkan PROPERTIES
+      OUTPUT_NAME oakvulkan
+      LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    )
+    install(TARGETS oakvulkan
+      RUNTIME DESTINATION bin
+      LIBRARY DESTINATION lib
+      ARCHIVE DESTINATION lib
+    )
   endif()
-  if(SHADERC_FOUND)
-    target_link_libraries(oakvulkan PRIVATE ${SHADERC_LIBRARIES})
-    target_include_directories(oakvulkan PRIVATE ${SHADERC_INCLUDE_DIRS})
-    target_compile_definitions(oakvulkan PRIVATE OAK_HAS_SHADERC)
-  endif()
-  set_target_properties(oakvulkan PROPERTIES
-    OUTPUT_NAME oakvulkan
-    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-  )
-  install(TARGETS oakvulkan
-    RUNTIME DESTINATION bin
-    LIBRARY DESTINATION lib
-    ARCHIVE DESTINATION lib
-  )
 endif()
 
 add_library(oakgl-cabi-check OBJECT
@@ -201,29 +201,29 @@ target_link_libraries(oakgl-cabi-check PRIVATE ${OLIVE_LIBRARIES} OfxHost)
 target_compile_definitions(oakgl-cabi-check PRIVATE ${OLIVE_DEFINITIONS})
 target_compile_options(oakgl-cabi-check PRIVATE ${OLIVE_COMPILE_OPTIONS})
 
-add_library(oakvulkan-cabi-check OBJECT
-  render/vulkan/vulkanbackend_c.cpp
-  render/vulkan/vulkanrenderer.cpp
-  render/vulkan/vulkanrenderer.h
-)
-target_include_directories(oakvulkan-cabi-check PRIVATE
-  ${CMAKE_SOURCE_DIR}/app
-  ${CMAKE_SOURCE_DIR}/third_party/openfx/include
-  ${CMAKE_SOURCE_DIR}/third_party/openfx/HostSupport/include
-  ${OLIVE_INCLUDE_DIRS}
-)
-target_link_libraries(oakvulkan-cabi-check PRIVATE Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets)
 if(Vulkan_FOUND)
+  add_library(oakvulkan-cabi-check OBJECT
+    render/vulkan/vulkanbackend_c.cpp
+    render/vulkan/vulkanrenderer.cpp
+    render/vulkan/vulkanrenderer.h
+  )
+  target_include_directories(oakvulkan-cabi-check PRIVATE
+    ${CMAKE_SOURCE_DIR}/app
+    ${CMAKE_SOURCE_DIR}/third_party/openfx/include
+    ${CMAKE_SOURCE_DIR}/third_party/openfx/HostSupport/include
+    ${OLIVE_INCLUDE_DIRS}
+  )
+  target_link_libraries(oakvulkan-cabi-check PRIVATE Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets)
   target_link_libraries(oakvulkan-cabi-check PRIVATE Vulkan::Vulkan)
   target_compile_definitions(oakvulkan-cabi-check PRIVATE OAK_HAS_VULKAN)
+  if(SHADERC_FOUND)
+    target_link_libraries(oakvulkan-cabi-check PRIVATE ${SHADERC_LIBRARIES})
+    target_include_directories(oakvulkan-cabi-check PRIVATE ${SHADERC_INCLUDE_DIRS})
+    target_compile_definitions(oakvulkan-cabi-check PRIVATE OAK_HAS_SHADERC)
+  endif()
+  target_compile_definitions(oakvulkan-cabi-check PRIVATE ${OLIVE_DEFINITIONS})
+  target_compile_options(oakvulkan-cabi-check PRIVATE ${OLIVE_COMPILE_OPTIONS})
 endif()
-if(SHADERC_FOUND)
-  target_link_libraries(oakvulkan-cabi-check PRIVATE ${SHADERC_LIBRARIES})
-  target_include_directories(oakvulkan-cabi-check PRIVATE ${SHADERC_INCLUDE_DIRS})
-  target_compile_definitions(oakvulkan-cabi-check PRIVATE OAK_HAS_SHADERC)
-endif()
-target_compile_definitions(oakvulkan-cabi-check PRIVATE ${OLIVE_DEFINITIONS})
-target_compile_options(oakvulkan-cabi-check PRIVATE ${OLIVE_COMPILE_OPTIONS})
 
 # Add application
 add_executable(olive-editor
@@ -233,9 +233,12 @@ add_executable(olive-editor
 )
 target_include_directories(olive-editor PUBLIC pluginSupport)
 target_link_libraries(olive-editor PUBLIC OfxHost)
-add_dependencies(olive-editor oakgl-cabi-check oakvulkan-cabi-check)
+add_dependencies(olive-editor oakgl-cabi-check)
 if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
-  add_dependencies(olive-editor oakgl oakvulkan)
+  add_dependencies(olive-editor oakgl)
+  if (TARGET oakvulkan)
+    add_dependencies(olive-editor oakvulkan)
+  endif()
 endif()
 
 # Add render worker process (olive-render-worker).
@@ -252,7 +255,10 @@ target_include_directories(olive-render-worker PUBLIC pluginSupport)
 target_link_libraries(olive-render-worker PUBLIC OfxHost)
 if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
   target_compile_definitions(olive-render-worker PRIVATE OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
-  add_dependencies(olive-render-worker oakgl oakvulkan)
+  add_dependencies(olive-render-worker oakgl)
+  if (TARGET oakvulkan)
+    add_dependencies(olive-render-worker oakvulkan)
+  endif()
 endif()
 # Create docs if doxygen was found
 if(DOXYGEN_FOUND)

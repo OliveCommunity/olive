@@ -104,8 +104,8 @@ PreferencesBehaviorTab::PreferencesBehaviorTab()
 		new QTreeWidgetItem({ tr("Graphics Backend") });
 	graphics_backend_item->setToolTip(
 		0, tr("Selects the graphics API Oak should request on next launch. "
-			  "Vulkan is experimental and currently falls back to the OpenGL "
-			  "renderer for timeline/viewer rendering."));
+			  "Vulkan is experimental: on most systems it will fall back to "
+			  "OpenGL or use a prototype Vulkan path that is not yet fully validated."));
 	rendering_group->addChild(graphics_backend_item);
 	graphics_backend_combobox_ = new QComboBox();
 	graphics_backend_combobox_->addItem(tr("OpenGL"), QStringLiteral("opengl"));

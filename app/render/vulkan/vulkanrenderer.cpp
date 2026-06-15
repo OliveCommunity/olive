@@ -45,6 +45,7 @@ struct VulkanRenderer::VulkanShader {
 	bool pipeline_created = false;
 	QVector<UniformInfo> uniforms;
 	VkDeviceSize ubo_size = 0;
+	int sampler_count = 0;
 };
 
 static const float kBlitVertices[] = {
@@ -68,12 +69,18 @@ VulkanRenderer::~VulkanRenderer()
 
 bool VulkanRenderer::Init()
 {
+	if (instance_ != VK_NULL_HANDLE) {
+		return true;
+	}
 	return CreateInstance() && CreateDevice() && CreateCommandPool() &&
 		   CreateDescriptorPool();
 }
 
 void VulkanRenderer::PostInit()
 {
+	if (vertex_buffer_ != VK_NULL_HANDLE) {
+		return;
+	}
 	CreateVertexBuffer();
 }
 
@@ -290,9 +297,10 @@ bool VulkanRenderer::CreateDescriptorPool()
 	return true;
 }
 
-VkRenderPass VulkanRenderer::GetOrCreateRenderPass(VkFormat format)
+VkRenderPass VulkanRenderer::GetOrCreateRenderPass(VkFormat format, bool clear)
 {
-	auto it = render_pass_cache_.find(format);
+	const quint64 key = (static_cast<quint64>(format) << 1) | (clear ? 1ULL : 0ULL);
+	auto it = render_pass_cache_.find(key);
 	if (it != render_pass_cache_.end()) {
 		return it.value();
 	}
@@ -300,7 +308,8 @@ VkRenderPass VulkanRenderer::GetOrCreateRenderPass(VkFormat format)
 	VkAttachmentDescription color_attachment = {};
 	color_attachment.format = format;
 	color_attachment.samples = VK_SAMPLE_COUNT_1_BIT;
-	color_attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+	color_attachment.loadOp = clear ? VK_ATTACHMENT_LOAD_OP_CLEAR :
+									  VK_ATTACHMENT_LOAD_OP_LOAD;
 	color_attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	color_attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	color_attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -331,7 +340,7 @@ VkRenderPass VulkanRenderer::GetOrCreateRenderPass(VkFormat format)
 		return VK_NULL_HANDLE;
 	}
 
-	render_pass_cache_.insert(format, render_pass);
+	render_pass_cache_.insert(key, render_pass);
 	return render_pass;
 }
 
@@ -639,6 +648,34 @@ VkFormat VulkanRenderer::PixelFormatToVkFormat(PixelFormat format,
 	return VK_FORMAT_UNDEFINED;
 }
 
+bool VulkanRenderer::IsColorAttachmentSupported(VkFormat format) const
+{
+	VkFormatProperties props;
+	vkGetPhysicalDeviceFormatProperties(physical_device_, format, &props);
+	return (props.optimalTilingFeatures &
+			VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) != 0;
+}
+
+VkFormat VulkanRenderer::PickRenderableFormat(PixelFormat format,
+										  int channel_count) const
+{
+	VkFormat candidate = PixelFormatToVkFormat(format, channel_count);
+	if (candidate != VK_FORMAT_UNDEFINED && IsColorAttachmentSupported(candidate)) {
+		return candidate;
+	}
+
+	// 3-channel formats are often unsupported as color attachments; fallback
+	// to the 4-channel equivalent.
+	if (channel_count == 3) {
+		VkFormat rgba = PixelFormatToVkFormat(format, 4);
+		if (rgba != VK_FORMAT_UNDEFINED && IsColorAttachmentSupported(rgba)) {
+			return rgba;
+		}
+	}
+
+	return VK_FORMAT_UNDEFINED;
+}
+
 VkDeviceSize VulkanRenderer::AlignSize(VkDeviceSize size,
 									   VkDeviceSize alignment) const
 {
@@ -664,7 +701,7 @@ QVariant VulkanRenderer::CreateNativeTexture(int width, int height, int depth,
 {
 	QMutexLocker lock(&mutex_);
 
-	VkFormat vk_format = PixelFormatToVkFormat(format, channel_count);
+	VkFormat vk_format = PickRenderableFormat(format, channel_count);
 	if (vk_format == VK_FORMAT_UNDEFINED) {
 		qWarning() << "Unsupported pixel format for Vulkan texture";
 		return QVariant();
@@ -1072,18 +1109,19 @@ VkDeviceSize VulkanRenderer::GetStd140Alignment(const QString &type) const
 }
 
 QString VulkanRenderer::ConvertGlslUniformsToUbo(const QString &glsl,
-												 QVector<UniformInfo> *out_uniforms)
+												 QVector<UniformInfo> *out_uniforms,
+												 int *out_sampler_count)
 {
 	QString result = glsl;
 	QVector<UniformInfo> uniforms;
 
 	// Regex to match uniform declarations like: uniform vec4 color;
-	// Exclude sampler types
 	QRegularExpression re(QStringLiteral(R"(^\s*uniform\s+(\w+)\s+(\w+)\s*;)"),
 						  QRegularExpression::MultilineOption);
 	QRegularExpression sampler_re(QStringLiteral(R"(sampler\d*D|samplerCube|sampler2DArray)"));
 
 	int offset = 0;
+	int sampler_count = 0;
 	QRegularExpressionMatchIterator it = re.globalMatch(result);
 	QVector<QRegularExpressionMatch> matches;
 	while (it.hasNext()) {
@@ -1097,7 +1135,15 @@ QString VulkanRenderer::ConvertGlslUniformsToUbo(const QString &glsl,
 		QString name = m.captured(2);
 
 		if (sampler_re.match(type).hasMatch()) {
-			continue; // Let shaderc auto-bind samplers
+			// Assign explicit binding per sampler. Binding 0 is reserved for the
+			// UBO, so samplers start at binding 1.
+			const int binding = 1 + sampler_count;
+			QString new_decl = QStringLiteral(
+				"layout(set = 0, binding = %1) uniform %2 %3;")
+					.arg(binding).arg(type, name);
+			result.replace(m.capturedStart(), m.capturedLength(), new_decl);
+			sampler_count++;
+			continue;
 		}
 
 		UniformInfo info;
@@ -1143,6 +1189,9 @@ QString VulkanRenderer::ConvertGlslUniformsToUbo(const QString &glsl,
 
 	if (out_uniforms) {
 		*out_uniforms = uniforms;
+	}
+	if (out_sampler_count) {
+		*out_sampler_count = sampler_count;
 	}
 	return result;
 }
@@ -1234,7 +1283,9 @@ QVariant VulkanRenderer::CreateNativeShader(olive::ShaderCode code)
 
 	// Convert fragment shader uniforms to UBO before compiling
 	QVector<UniformInfo> frag_uniforms;
-	QString converted_frag = ConvertGlslUniformsToUbo(frag_code, &frag_uniforms);
+	int sampler_count = 0;
+	QString converted_frag = ConvertGlslUniformsToUbo(frag_code, &frag_uniforms,
+												  &sampler_count);
 
 	if (!CompileGlslToSpv(vert_code, VK_SHADER_STAGE_VERTEX_BIT, &vert_spv)) {
 		return QVariant();
@@ -1246,6 +1297,7 @@ QVariant VulkanRenderer::CreateNativeShader(olive::ShaderCode code)
 	VulkanShader *sh = new VulkanShader();
 	sh->id = next_shader_id_++;
 	sh->uniforms = frag_uniforms;
+	sh->sampler_count = sampler_count;
 	sh->ubo_size = 0;
 	for (const UniformInfo &u : frag_uniforms) {
 		sh->ubo_size = qMax(sh->ubo_size, u.offset + u.size);
@@ -1275,22 +1327,31 @@ QVariant VulkanRenderer::CreateNativeShader(olive::ShaderCode code)
 		return QVariant();
 	}
 
-	// Create descriptor set layout: binding 0 = UBO, binding 1+ = samplers
-	VkDescriptorSetLayoutBinding bindings[2] = {};
-	bindings[0].binding = 0;
-	bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	bindings[0].descriptorCount = 1;
-	bindings[0].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	// Create descriptor set layout: binding 0 = UBO, binding 1..N = samplers
+	QVector<VkDescriptorSetLayoutBinding> bindings;
+	bindings.reserve(1 + sampler_count);
 
-	bindings[1].binding = 1;
-	bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	bindings[1].descriptorCount = 16; // max textures
-	bindings[1].stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	VkDescriptorSetLayoutBinding ubo_binding = {};
+	ubo_binding.binding = 0;
+	ubo_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	ubo_binding.descriptorCount = 1;
+	ubo_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+	bindings.append(ubo_binding);
+
+	for (int i = 0; i < sampler_count; ++i) {
+		VkDescriptorSetLayoutBinding sampler_binding = {};
+		sampler_binding.binding = 1 + i;
+		sampler_binding.descriptorType =
+			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		sampler_binding.descriptorCount = 1;
+		sampler_binding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+		bindings.append(sampler_binding);
+	}
 
 	VkDescriptorSetLayoutCreateInfo ds_layout_info = {};
 	ds_layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	ds_layout_info.bindingCount = 2;
-	ds_layout_info.pBindings = bindings;
+	ds_layout_info.bindingCount = static_cast<uint32_t>(bindings.size());
+	ds_layout_info.pBindings = bindings.constData();
 
 	result = vkCreateDescriptorSetLayout(device_, &ds_layout_info, nullptr,
 									 &sh->descriptor_layout);
@@ -1437,6 +1498,13 @@ bool VulkanRenderer::CreatePipelineForShader(VulkanShader *shader,
 	color_blending.attachmentCount = 1;
 	color_blending.pAttachments = &color_blend;
 
+	VkDynamicState dynamic_states[] = { VK_DYNAMIC_STATE_VIEWPORT,
+									VK_DYNAMIC_STATE_SCISSOR };
+	VkPipelineDynamicStateCreateInfo dynamic_state = {};
+	dynamic_state.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+	dynamic_state.dynamicStateCount = 2;
+	dynamic_state.pDynamicStates = dynamic_states;
+
 	VkGraphicsPipelineCreateInfo pipeline_info = {};
 	pipeline_info.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	pipeline_info.stageCount = 2;
@@ -1447,8 +1515,9 @@ bool VulkanRenderer::CreatePipelineForShader(VulkanShader *shader,
 	pipeline_info.pRasterizationState = &rasterizer;
 	pipeline_info.pMultisampleState = &multisampling;
 	pipeline_info.pColorBlendState = &color_blending;
+	pipeline_info.pDynamicState = &dynamic_state;
 	pipeline_info.layout = shader->pipeline_layout;
-	pipeline_info.renderPass = GetOrCreateRenderPass(render_pass_format);
+	pipeline_info.renderPass = GetOrCreateRenderPass(render_pass_format, false);
 	pipeline_info.subpass = 0;
 
 	VkPipeline new_pipeline = VK_NULL_HANDLE;
@@ -1493,7 +1562,7 @@ void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 	}
 
 	VkFormat render_pass_format = dest_tex ? dest_tex->vk_format : VK_FORMAT_R32G32B32A32_SFLOAT;
-	VkRenderPass render_pass = GetOrCreateRenderPass(render_pass_format);
+	VkRenderPass render_pass = GetOrCreateRenderPass(render_pass_format, clear_destination);
 	if (render_pass == VK_NULL_HANDLE) {
 		return;
 	}
@@ -1640,6 +1709,14 @@ void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 		dest_tex->current_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	}
 
+	for (const TextureBinding &tb : bindings) {
+		if (tb.tex && tb.tex->current_layout != VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+			TransitionImageLayout(cmd, tb.tex->image, tb.tex->current_layout,
+								  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			tb.tex->current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		}
+	}
+
 	VkRenderPassBeginInfo rp_begin = {};
 	rp_begin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	rp_begin.renderPass = render_pass;
@@ -1682,6 +1759,10 @@ void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 
 	// Create and update descriptor set
 	VkDescriptorSet descriptor_set = VK_NULL_HANDLE;
+	VkSampler sampler = VK_NULL_HANDLE;
+	VkDescriptorBufferInfo buffer_info = {};
+	QVector<VkDescriptorImageInfo> image_infos;
+
 	if (shader->ubo_size > 0 || !bindings.isEmpty()) {
 		VkDescriptorSetAllocateInfo ds_alloc = {};
 		ds_alloc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
@@ -1695,7 +1776,6 @@ void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 
 			// UBO binding
 			if (ubo_buffer != VK_NULL_HANDLE) {
-				VkDescriptorBufferInfo buffer_info = {};
 				buffer_info.buffer = ubo_buffer;
 				buffer_info.offset = 0;
 				buffer_info.range = shader->ubo_size;
@@ -1720,10 +1800,9 @@ void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 				sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 				sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
 				sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-				VkSampler sampler;
 				vkCreateSampler(device_, &sampler_info, nullptr, &sampler);
 
-				QVector<VkDescriptorImageInfo> image_infos;
+				image_infos.reserve(qMin(bindings.size(), 16));
 				for (int i = 0; i < bindings.size() && i < 16; i++) {
 					const TextureBinding &tb = bindings.at(i);
 					VkDescriptorImageInfo img_info = {};
@@ -1731,21 +1810,17 @@ void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 					img_info.imageView = tb.tex ? tb.tex->view : VK_NULL_HANDLE;
 					img_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 					image_infos.append(img_info);
-				}
 
-				if (!image_infos.isEmpty()) {
 					VkWriteDescriptorSet write = {};
 					write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 					write.dstSet = descriptor_set;
-					write.dstBinding = 1;
+					write.dstBinding = 1 + i;
 					write.dstArrayElement = 0;
 					write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-					write.descriptorCount = static_cast<uint32_t>(image_infos.size());
-					write.pImageInfo = image_infos.constData();
+					write.descriptorCount = 1;
+					write.pImageInfo = &image_infos.last();
 					writes.append(write);
 				}
-
-				vkDestroySampler(device_, sampler, nullptr);
 			}
 
 			if (!writes.isEmpty()) {
@@ -1766,6 +1841,12 @@ void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 
 	EndOneTimeCommands(cmd);
 
+	if (sampler != VK_NULL_HANDLE) {
+		vkDestroySampler(device_, sampler, nullptr);
+	}
+	if (descriptor_set != VK_NULL_HANDLE) {
+		vkFreeDescriptorSets(device_, descriptor_pool_, 1, &descriptor_set);
+	}
 	if (framebuffer != VK_NULL_HANDLE) {
 		vkDestroyFramebuffer(device_, framebuffer, nullptr);
 	}
