@@ -380,8 +380,9 @@
 3. 关闭 Oak 并重新启动。
 4. 再次打开 Preferences，确认仍显示 Vulkan。
 5. 导入并播放 `4k_camera_a.mov`。
+6. 检查日志，确认 `RenderManager` 报告的实际后端与回退结果一致。
 
-通过标准：Vulkan 选择可持久化；重启后应用不崩溃；当前未完成 VulkanRenderer 时应明确回退 OpenGL 渲染，播放仍可用。
+通过标准：Vulkan 选择可持久化；重启后应用不崩溃；当前 Vulkan 未完整验证时应明确回退 OpenGL 渲染，`RenderManager::backend()` 必须反映实际运行后端（回退后应为 OpenGL），播放仍可用。
 
 ### 10.3 Vulkan 驱动缺失或不可用
 
@@ -389,8 +390,9 @@
 2. 重启 Oak。
 3. 打开项目并播放一段视频。
 4. 检查日志或控制台输出。
+5. 通过日志或调试接口确认 `RenderManager::backend()` 已同步为 OpenGL，而不是继续报告 Vulkan。
 
-通过标准：应用可以启动；日志应说明 Vulkan 请求不可完全满足或当前回退 OpenGL；用户能回到 Preferences 改回 OpenGL。
+通过标准：应用可以启动；日志应说明 Vulkan 请求不可完全满足或当前回退 OpenGL；`RenderManager::backend()` 必须与实际运行后端一致；用户能回到 Preferences 改回 OpenGL。
 
 ### 10.4 从 Vulkan 切回 OpenGL
 

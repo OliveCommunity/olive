@@ -140,7 +140,7 @@
 - [x] `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 默认 `ON`，`liboakgl.so` 默认构建并安装；`liboakvulkan.so` 在检测到 Vulkan 开发库时构建并安装。
 - [x] OpenGL 后端库可单独构建、加载、初始化、销毁。
 - [x] 用户能在配置中选择 OpenGL/Vulkan。
-- [x] Vulkan 不可用时自动回退到 OpenGL，不崩溃。
+- [x] Vulkan 不可用时自动回退到 OpenGL，不崩溃；`RenderManager::backend()` 会在 `DynamicRenderer` 内部回退后同步为实际运行后端。
 - [x] 链接边界已最小化：`oakgl` / `oakvulkan` 现在只链接独立的 `libolive-rendercore`，不再拉入完整 editor 代码；库体积从约 21 MB 降至约 600 KB。
 - [x] Vulkan / backend-neutral viewer readback display 路径已搭建（offscreen texture → download → QImage → QPainter），但端到端显示尚未在真实 Vulkan 设备上验证。
 - [x] OpenFX 插件渲染边界已处理：`PluginRenderer` 后端无关化，非 OpenGL 渲染器自动回退 CPU 路径，动态 OpenGL 后端通过 C ABI 支持 OFX OpenGL 输出绑定。
