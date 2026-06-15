@@ -82,6 +82,7 @@ void VulkanRenderer::PostInit()
 		return;
 	}
 	CreateVertexBuffer();
+	CreateLinearSampler();
 }
 
 void VulkanRenderer::PostDestroy()
@@ -90,50 +91,56 @@ void VulkanRenderer::PostDestroy()
 
 void VulkanRenderer::DestroyInternal()
 {
-	if (device_ == VK_NULL_HANDLE) {
-		return;
+	if (device_ != VK_NULL_HANDLE) {
+		vkDeviceWaitIdle(device_);
 	}
-	vkDeviceWaitIdle(device_);
 
-	QMutexLocker lock(&mutex_);
-	for (auto it = textures_.begin(); it != textures_.end(); ++it) {
-		VulkanTexture *tex = it.value();
-		if (tex->view != VK_NULL_HANDLE) {
-			vkDestroyImageView(device_, tex->view, nullptr);
-		}
-		if (tex->image != VK_NULL_HANDLE) {
-			vkDestroyImage(device_, tex->image, nullptr);
-		}
-		if (tex->memory != VK_NULL_HANDLE) {
-			vkFreeMemory(device_, tex->memory, nullptr);
-		}
-		delete tex;
-	}
-	textures_.clear();
-
-	for (auto it = shaders_.begin(); it != shaders_.end(); ++it) {
-		VulkanShader *sh = it.value();
-		for (auto pit = sh->pipeline_cache.begin(); pit != sh->pipeline_cache.end(); ++pit) {
-			if (pit.value() != VK_NULL_HANDLE) {
-				vkDestroyPipeline(device_, pit.value(), nullptr);
+	{
+		QMutexLocker lock(&mutex_);
+		for (auto it = textures_.begin(); it != textures_.end(); ++it) {
+			VulkanTexture *tex = it.value();
+			if (tex->view != VK_NULL_HANDLE) {
+				vkDestroyImageView(device_, tex->view, nullptr);
 			}
+			if (tex->image != VK_NULL_HANDLE) {
+				vkDestroyImage(device_, tex->image, nullptr);
+			}
+			if (tex->memory != VK_NULL_HANDLE) {
+				vkFreeMemory(device_, tex->memory, nullptr);
+			}
+			delete tex;
 		}
-		sh->pipeline_cache.clear();
-		if (sh->pipeline_layout != VK_NULL_HANDLE) {
-			vkDestroyPipelineLayout(device_, sh->pipeline_layout, nullptr);
+		textures_.clear();
+
+		for (auto it = shaders_.begin(); it != shaders_.end(); ++it) {
+			VulkanShader *sh = it.value();
+			for (auto pit = sh->pipeline_cache.begin(); pit != sh->pipeline_cache.end(); ++pit) {
+				if (pit.value() != VK_NULL_HANDLE) {
+					vkDestroyPipeline(device_, pit.value(), nullptr);
+				}
+			}
+			sh->pipeline_cache.clear();
+			if (sh->pipeline_layout != VK_NULL_HANDLE) {
+				vkDestroyPipelineLayout(device_, sh->pipeline_layout, nullptr);
+			}
+			if (sh->descriptor_layout != VK_NULL_HANDLE) {
+				vkDestroyDescriptorSetLayout(device_, sh->descriptor_layout, nullptr);
+			}
+			if (sh->vert_module != VK_NULL_HANDLE) {
+				vkDestroyShaderModule(device_, sh->vert_module, nullptr);
+			}
+			if (sh->frag_module != VK_NULL_HANDLE) {
+				vkDestroyShaderModule(device_, sh->frag_module, nullptr);
+			}
+			delete sh;
 		}
-		if (sh->descriptor_layout != VK_NULL_HANDLE) {
-			vkDestroyDescriptorSetLayout(device_, sh->descriptor_layout, nullptr);
-		}
-		if (sh->vert_module != VK_NULL_HANDLE) {
-			vkDestroyShaderModule(device_, sh->vert_module, nullptr);
-		}
-		if (sh->frag_module != VK_NULL_HANDLE) {
-			vkDestroyShaderModule(device_, sh->frag_module, nullptr);
-		}
-		delete sh;
+		shaders_.clear();
 	}
-	shaders_.clear();
+
+	if (linear_sampler_ != VK_NULL_HANDLE) {
+		vkDestroySampler(device_, linear_sampler_, nullptr);
+		linear_sampler_ = VK_NULL_HANDLE;
+	}
 
 	if (vertex_buffer_ != VK_NULL_HANDLE) {
 		vkDestroyBuffer(device_, vertex_buffer_, nullptr);
@@ -195,35 +202,46 @@ bool VulkanRenderer::CreateInstance()
 
 bool VulkanRenderer::CreateDevice()
 {
-	uint32_t device_count = 0;
-	vkEnumeratePhysicalDevices(instance_, &device_count, nullptr);
-	if (device_count == 0) {
+	VkResult result = vkEnumeratePhysicalDevices(instance_, &physical_device_count_, nullptr);
+	if (result != VK_SUCCESS || physical_device_count_ == 0) {
 		qWarning() << "No Vulkan-capable physical devices found";
 		return false;
 	}
 
-	QVector<VkPhysicalDevice> devices(device_count);
-	vkEnumeratePhysicalDevices(instance_, &device_count, devices.data());
-	physical_device_ = devices.first();
+	QVector<VkPhysicalDevice> devices(physical_device_count_);
+	result = vkEnumeratePhysicalDevices(instance_, &physical_device_count_, devices.data());
+	if (result != VK_SUCCESS) {
+		qWarning() << "Failed to enumerate Vulkan physical devices:" << result;
+		return false;
+	}
 
-	vkGetPhysicalDeviceMemoryProperties(physical_device_, &mem_properties_);
-	vkGetPhysicalDeviceProperties(physical_device_, &device_properties_);
+	// Pick the first device that has a graphics queue family. In the future we
+	// should score devices (discrete > integrated > CPU) and check feature support.
+	for (VkPhysicalDevice device : devices) {
+		vkGetPhysicalDeviceProperties(device, &device_properties_);
+		vkGetPhysicalDeviceMemoryProperties(device, &mem_properties_);
 
-	uint32_t queue_family_count = 0;
-	vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &queue_family_count,
-										 nullptr);
-	QVector<VkQueueFamilyProperties> queue_families(queue_family_count);
-	vkGetPhysicalDeviceQueueFamilyProperties(physical_device_, &queue_family_count,
-										 queue_families.data());
+		uint32_t queue_family_count = 0;
+		vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nullptr);
+		QVector<VkQueueFamilyProperties> queue_families(queue_family_count);
+		vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count,
+											 queue_families.data());
 
-	for (uint32_t i = 0; i < queue_family_count; i++) {
-		if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-			graphics_queue_family_ = i;
+		for (uint32_t i = 0; i < queue_family_count; i++) {
+			if (queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+				physical_device_ = device;
+				graphics_queue_family_ = i;
+				break;
+			}
+		}
+
+		if (physical_device_ != VK_NULL_HANDLE) {
 			break;
 		}
 	}
-	if (graphics_queue_family_ == UINT32_MAX) {
-		qWarning() << "No graphics queue family found";
+
+	if (physical_device_ == VK_NULL_HANDLE || graphics_queue_family_ == UINT32_MAX) {
+		qWarning() << "No Vulkan physical device with a graphics queue found";
 		return false;
 	}
 
@@ -236,17 +254,17 @@ bool VulkanRenderer::CreateDevice()
 
 	VkPhysicalDeviceFeatures device_features = {};
 
-	const char *device_extensions[] = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+	// No device extensions are required for offscreen rendering. Requesting
+	// VK_KHR_swapchain caused failures on headless/CI setups and is unused.
 	VkDeviceCreateInfo device_create_info = {};
 	device_create_info.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	device_create_info.pQueueCreateInfos = &queue_create_info;
 	device_create_info.queueCreateInfoCount = 1;
 	device_create_info.pEnabledFeatures = &device_features;
-	device_create_info.enabledExtensionCount = 1;
-	device_create_info.ppEnabledExtensionNames = device_extensions;
+	device_create_info.enabledExtensionCount = 0;
+	device_create_info.ppEnabledExtensionNames = nullptr;
 
-	VkResult result = vkCreateDevice(physical_device_, &device_create_info, nullptr,
-								 &device_);
+	result = vkCreateDevice(physical_device_, &device_create_info, nullptr, &device_);
 	if (result != VK_SUCCESS) {
 		qWarning() << "Failed to create Vulkan logical device:" << result;
 		return false;
@@ -369,6 +387,10 @@ bool VulkanRenderer::CreateVertexBuffer()
 	alloc_info.memoryTypeIndex = FindMemoryType(
 		mem_req.memoryTypeBits,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	if (alloc_info.memoryTypeIndex == UINT32_MAX) {
+		vkDestroyBuffer(device_, staging_buffer, nullptr);
+		return false;
+	}
 
 	VkDeviceMemory staging_memory;
 	result = vkAllocateMemory(device_, &alloc_info, nullptr, &staging_memory);
@@ -377,7 +399,12 @@ bool VulkanRenderer::CreateVertexBuffer()
 		return false;
 	}
 
-	vkBindBufferMemory(device_, staging_buffer, staging_memory, 0);
+	result = vkBindBufferMemory(device_, staging_buffer, staging_memory, 0);
+	if (result != VK_SUCCESS) {
+		vkFreeMemory(device_, staging_memory, nullptr);
+		vkDestroyBuffer(device_, staging_buffer, nullptr);
+		return false;
+	}
 
 	void *data;
 	vkMapMemory(device_, staging_memory, 0, buffer_size, 0, &data);
@@ -397,6 +424,12 @@ bool VulkanRenderer::CreateVertexBuffer()
 	alloc_info.allocationSize = mem_req.size;
 	alloc_info.memoryTypeIndex =
 		FindMemoryType(mem_req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	if (alloc_info.memoryTypeIndex == UINT32_MAX) {
+		vkDestroyBuffer(device_, vertex_buffer_, nullptr);
+		vkFreeMemory(device_, staging_memory, nullptr);
+		vkDestroyBuffer(device_, staging_buffer, nullptr);
+		return false;
+	}
 
 	result = vkAllocateMemory(device_, &alloc_info, nullptr, &vertex_buffer_memory_);
 	if (result != VK_SUCCESS) {
@@ -406,7 +439,14 @@ bool VulkanRenderer::CreateVertexBuffer()
 		return false;
 	}
 
-	vkBindBufferMemory(device_, vertex_buffer_, vertex_buffer_memory_, 0);
+	result = vkBindBufferMemory(device_, vertex_buffer_, vertex_buffer_memory_, 0);
+	if (result != VK_SUCCESS) {
+		vkFreeMemory(device_, vertex_buffer_memory_, nullptr);
+		vkDestroyBuffer(device_, vertex_buffer_, nullptr);
+		vkFreeMemory(device_, staging_memory, nullptr);
+		vkDestroyBuffer(device_, staging_buffer, nullptr);
+		return false;
+	}
 
 	// Copy from staging to device local
 	VkCommandBuffer cmd = BeginOneTimeCommands();
@@ -418,6 +458,32 @@ bool VulkanRenderer::CreateVertexBuffer()
 	vkFreeMemory(device_, staging_memory, nullptr);
 	vkDestroyBuffer(device_, staging_buffer, nullptr);
 
+	return true;
+}
+
+bool VulkanRenderer::CreateLinearSampler()
+{
+	VkSamplerCreateInfo sampler_info = {};
+	sampler_info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+	sampler_info.magFilter = VK_FILTER_LINEAR;
+	sampler_info.minFilter = VK_FILTER_LINEAR;
+	sampler_info.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_info.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_info.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+	sampler_info.anisotropyEnable = VK_FALSE;
+	sampler_info.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;
+	sampler_info.unnormalizedCoordinates = VK_FALSE;
+	sampler_info.compareEnable = VK_FALSE;
+	sampler_info.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+	sampler_info.mipLodBias = 0.0f;
+	sampler_info.minLod = 0.0f;
+	sampler_info.maxLod = 0.0f;
+
+	VkResult result = vkCreateSampler(device_, &sampler_info, nullptr, &linear_sampler_);
+	if (result != VK_SUCCESS) {
+		qWarning() << "Failed to create Vulkan linear sampler:" << result;
+		return false;
+	}
 	return true;
 }
 
@@ -444,14 +510,26 @@ bool VulkanRenderer::CreateStagingBuffer(VkDeviceSize size, VkBuffer *out_buffer
 	alloc_info.memoryTypeIndex = FindMemoryType(
 		mem_req.memoryTypeBits,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-
-	result = vkAllocateMemory(device_, &alloc_info, nullptr, out_memory);
-	if (result != VK_SUCCESS) {
+	if (alloc_info.memoryTypeIndex == UINT32_MAX) {
+		qWarning() << "Failed to find host-visible memory type for Vulkan staging buffer";
 		vkDestroyBuffer(device_, *out_buffer, nullptr);
 		return false;
 	}
 
-	vkBindBufferMemory(device_, *out_buffer, *out_memory, 0);
+	result = vkAllocateMemory(device_, &alloc_info, nullptr, out_memory);
+	if (result != VK_SUCCESS) {
+		qWarning() << "Failed to allocate Vulkan staging buffer memory:" << result;
+		vkDestroyBuffer(device_, *out_buffer, nullptr);
+		return false;
+	}
+
+	result = vkBindBufferMemory(device_, *out_buffer, *out_memory, 0);
+	if (result != VK_SUCCESS) {
+		qWarning() << "Failed to bind Vulkan staging buffer memory:" << result;
+		vkFreeMemory(device_, *out_memory, nullptr);
+		vkDestroyBuffer(device_, *out_buffer, nullptr);
+		return false;
+	}
 	return true;
 }
 
@@ -747,15 +825,29 @@ QVariant VulkanRenderer::CreateNativeTexture(int width, int height, int depth,
 	alloc_info.allocationSize = mem_req.size;
 	alloc_info.memoryTypeIndex =
 		FindMemoryType(mem_req.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-	result = vkAllocateMemory(device_, &alloc_info, nullptr, &tex->memory);
-	if (result != VK_SUCCESS) {
+	if (alloc_info.memoryTypeIndex == UINT32_MAX) {
+		qWarning() << "Failed to find device-local memory type for Vulkan image";
 		vkDestroyImage(device_, tex->image, nullptr);
 		delete tex;
 		return QVariant();
 	}
 
-	vkBindImageMemory(device_, tex->image, tex->memory, 0);
+	result = vkAllocateMemory(device_, &alloc_info, nullptr, &tex->memory);
+	if (result != VK_SUCCESS) {
+		qWarning() << "Failed to allocate device memory for Vulkan image:" << result;
+		vkDestroyImage(device_, tex->image, nullptr);
+		delete tex;
+		return QVariant();
+	}
+
+	result = vkBindImageMemory(device_, tex->image, tex->memory, 0);
+	if (result != VK_SUCCESS) {
+		qWarning() << "Failed to bind Vulkan image memory:" << result;
+		vkFreeMemory(device_, tex->memory, nullptr);
+		vkDestroyImage(device_, tex->image, nullptr);
+		delete tex;
+		return QVariant();
+	}
 
 	VkImageViewCreateInfo view_info = {};
 	view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;

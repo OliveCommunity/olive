@@ -129,6 +129,7 @@ private:
 
 	VkInstance instance_ = VK_NULL_HANDLE;
 	VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
+	uint32_t physical_device_count_ = 0;
 	VkDevice device_ = VK_NULL_HANDLE;
 	VkQueue graphics_queue_ = VK_NULL_HANDLE;
 	uint32_t graphics_queue_family_ = UINT32_MAX;
