@@ -987,6 +987,11 @@ bool OpenGLRenderer::EnsureContextCurrent(const char *caller)
 		return false;
 	}
 
+	if (context_->thread() != QThread::currentThread()) {
+		qWarning() << caller << "called from the wrong thread for this OpenGL context";
+		return false;
+	}
+
 	if (QOpenGLContext::currentContext() != context_) {
 		if (context_->parent() == this && surface_.isValid()) {
 			if (!context_->makeCurrent(&surface_)) {

@@ -59,7 +59,7 @@
   - 动态适配器：`DynamicRenderer`、`renderbackend_c.h`。
   - 必要的 value/config/工具：`node/value`、`node/param`、`node/valuedatabase`、`config/config`、`common/filefunctions`、`common/qtutils`、`common/avframeptr`。
 - `oakgl`/`oakvulkan` 现在只链接 `libolive-rendercore`，不再链接完整 `libolive-editor`。
-- `liboakgl.so` / `liboakvulkan.so` 体积从约 21 MB 降至约 600 KB。
+- `liboakgl.so` / `liboakvulkan.so` 不再链接完整 editor 对象库；实际体积取决于构建类型、符号表和系统依赖链接方式，当前 debug 构建仍会显著大于 release/strip 后体积。
 - 为隔离依赖做的头文件清理：
   - `renderer.h` 移除 `node/node.h`、`render/colorprocessor.h`、`render/job/colortransformjob.h`、`job/pluginjob.h`，改为前向声明。
   - `videoparams.h` 移除 `ofxImageEffect.h`，OFX 字符串 setter 实现下移到 `videoparams.cpp`。
@@ -70,7 +70,7 @@
 剩余优化空间：
 - 长远可将 `libolive-editor` 也改为依赖 `libolive-rendercore`，彻底消除渲染核心代码在主程序与后端库之间的重复编译/重复链接。当前阶段先保证后端边界干净、主程序保持兼容。
 
-## 阶段 3：Vulkan 后端（原型实现，运行时验证待完成）
+## 阶段 3：Vulkan 后端（offscreen 核心已实现，运行时依赖可用 Vulkan ICD）
 
 - 新增 Vulkan 后端库 `liboakvulkan.so`（当系统安装了 Vulkan 头文件/库时构建；无 Vulkan 环境时 CMake 自动跳过）。
 - 新增 `VulkanRenderer` 类，继承 `Renderer`，使用原生 Vulkan API 实现 offscreen 渲染管线；代码已合入，并在本机 NVIDIA Vulkan 驱动上通过了基础端到端渲染测试。
@@ -99,11 +99,19 @@
   - framebuffer / sampler 缓存：每张纹理延迟创建并复用 framebuffer；按插值模式复用 linear/nearest sampler。
   - 单通道纹理 swizzle：image view 组件映射为 R→RGB、A=1，匹配 OpenGL 灰度行为。
   - 纹理启用标志：为声明 `NAME_enabled` 的 shader 自动设置 0/1。
-- **已知限制 / 待完善**：
+- **已修复 / 已实现**：
   - 链接边界已最小化，`liboakvulkan.so` 现在只依赖 `libolive-rendercore`。
-  - 单通道/3-channel 格式的上传/下载 CPU 侧对齐、回退格式与请求格式不一致时的数据转换仍待完善。
-  - `Blit` 尚未实现 iterative/pin-pong 多 pass（如 blur/glow 等依赖 `ShaderJob::GetIterationCount` 的效果目前只渲染第一 pass）。
-  - 尚未在 viewer、proxy、thumbnail/cache、导出等完整渲染路径上验证 Vulkan 输出一致性；需要在真实 GPU 上手工测试并记录结果。
+  - 单通道/3-channel 格式的上传/下载 CPU 侧对齐：当 GPU 回退格式（如 3→4 channel）与请求格式不一致时，staging buffer 按实际 `VkFormat` 大小分配，并在 CPU 侧进行通道数转换（alpha 填最大值）。
+  - `Blit` 已实现 iterative/pin-pong 多 pass：根据 `ShaderJob::GetIterationCount` / `GetIterativeInput` 创建临时 ping-pong 纹理，每 pass 更新 `ove_iteration` 并替换迭代输入；最后一 pass 写入目标纹理。
+  - null-destination Blit 实现为渲染到临时 offscreen texture，保证调用不崩溃。
+  - 新增自动化测试：
+    - `VulkanNullDestinationBlitDoesNotCrash`
+    - `VulkanIterativeBlitPingPong`（2 pass 折半，验证 ping-pong 结果）
+    - `VulkanUploadDownloadThreeChannel`（验证 3-channel RGB 上传/下载与回退格式转换）
+- **当前验证状态**：
+  - 自动化测试已覆盖 Vulkan 后端加载、texture upload/download、Blit、null-destination fallback、iterative ping-pong、3-channel upload/download fallback；这些测试会在运行环境存在可用 Vulkan ICD 时执行。
+  - 当前开发环境可找到 Vulkan loader/headers，但运行时 loader 只发现不可用的 NVIDIA ICD，`vkCreateInstance` 报 `Found no drivers`；因此 Vulkan 用例会按设计 SKIP，不能作为 Vulkan 渲染通过的证据。
+  - Viewer / proxy / 导出的完整交互流程仍需具备显示环境和可用 Vulkan runtime 的项目做最终验证；当前已在代码路径层面确认 backend-neutral viewer readback、proxy/export 渲染入口均使用 `Renderer` 抽象，无硬编码 OpenGL 依赖。
 
 ## 阶段 4：Viewer 双后端（backend-neutral 路径已落地，Vulkan viewer 为原型）
 
@@ -146,7 +154,8 @@
 - [x] OpenGL 后端库可单独构建、加载、初始化、销毁。
 - [x] 用户能在配置中选择 OpenGL/Vulkan。
 - [x] Vulkan 不可用时自动回退到 OpenGL，不崩溃；`RenderManager::backend()` 会在 `DynamicRenderer` 内部回退后同步为实际运行后端。
-- [x] 链接边界已最小化：`oakgl` / `oakvulkan` 现在只链接独立的 `libolive-rendercore`，不再拉入完整 editor 代码；库体积从约 21 MB 降至约 600 KB。
-- [x] Vulkan / backend-neutral viewer readback display 路径已搭建（offscreen texture → download → QImage → QPainter）；单 pass Blit 已在真实 Vulkan 驱动上验证，完整 UI/导出流程待验证。
+- [x] 链接边界已最小化：`oakgl` / `oakvulkan` 现在只链接独立的 `libolive-rendercore`，不再拉入完整 editor 代码；库体积需按 release/strip 构建重新记录。
+- [ ] Vulkan / backend-neutral viewer readback display 路径已搭建（offscreen texture → download → QImage → QPainter）；仍需在可用 Vulkan runtime 和显示环境下验证完整 Viewer/proxy/导出流程。
 - [x] OpenFX 插件渲染边界已处理：`PluginRenderer` 后端无关化，非 OpenGL 渲染器自动回退 CPU 路径，动态 OpenGL 后端通过 C ABI 支持 OFX OpenGL 输出绑定。
-- [ ] 手工测试计划覆盖 viewer、proxy、scope、导出等完整路径。
+- [x] 自动化测试覆盖 device init、texture create/upload/download（含 3-channel fallback）、shader compilation、Blit with destination、null-destination fallback、iterative shaders；无可用 Vulkan ICD 时相关用例按设计 SKIP。
+- [ ] 手工测试计划覆盖 viewer、proxy、scope、导出等完整路径；`ScopeBase` 当前在 backend-neutral 时仍是安全跳过，不是完整 Vulkan scope display。

@@ -109,6 +109,12 @@ private:
 	VkFormat PixelFormatToVkFormat(PixelFormat format, int channel_count) const;
 	VkFormat PickRenderableFormat(PixelFormat format, int channel_count) const;
 	bool IsColorAttachmentSupported(VkFormat format) const;
+	int GetVkFormatBytesPerPixel(VkFormat format) const;
+	float GetFormatMaxAlpha(PixelFormat format) const;
+	void CopyPixelsWithChannelConversion(const void *src, void *dst,
+									 int width, int height, int depth,
+									 int src_channels, int dst_channels,
+									 PixelFormat format) const;
 	VkDeviceSize AlignSize(VkDeviceSize size, VkDeviceSize alignment) const;
 
 	uint32_t FindMemoryType(uint32_t type_filter,
@@ -133,6 +139,18 @@ private:
 								 VkFormat render_pass_format);
 
 	VkRenderPass GetOrCreateRenderPass(VkFormat format, bool clear);
+
+	struct TextureBinding {
+		QString name;
+		VulkanTexture *tex;
+		Texture::Interpolation interp;
+	};
+
+	void BlitPass(VulkanShader *shader, VulkanTexture *dest_tex,
+				  const QVector<TextureBinding> &bindings,
+				  const QByteArray &ubo_data,
+				  const VideoParams &destination_params,
+				  bool clear_destination, int iteration);
 
 	VkInstance instance_ = VK_NULL_HANDLE;
 	VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;

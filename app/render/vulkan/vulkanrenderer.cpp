@@ -3,6 +3,7 @@
 #include <QDebug>
 #include <QFile>
 #include <QRegularExpression>
+#include <algorithm>
 #include <cstdio>
 
 #include "node/value.h"
@@ -857,6 +858,106 @@ VkFormat VulkanRenderer::PickRenderableFormat(PixelFormat format,
 	return VK_FORMAT_UNDEFINED;
 }
 
+int VulkanRenderer::GetVkFormatBytesPerPixel(VkFormat format) const
+{
+	switch (format) {
+	case VK_FORMAT_R8_UNORM:
+	case VK_FORMAT_R8_UINT:
+	case VK_FORMAT_R8_SINT:
+		return 1;
+	case VK_FORMAT_R8G8_UNORM:
+		return 2;
+	case VK_FORMAT_R8G8B8_UNORM:
+		return 3;
+	case VK_FORMAT_R8G8B8A8_UNORM:
+		return 4;
+	case VK_FORMAT_R16_UNORM:
+	case VK_FORMAT_R16_SFLOAT:
+		return 2;
+	case VK_FORMAT_R16G16_UNORM:
+	case VK_FORMAT_R16G16_SFLOAT:
+		return 4;
+	case VK_FORMAT_R16G16B16_UNORM:
+	case VK_FORMAT_R16G16B16_SFLOAT:
+		return 6;
+	case VK_FORMAT_R16G16B16A16_UNORM:
+	case VK_FORMAT_R16G16B16A16_SFLOAT:
+		return 8;
+	case VK_FORMAT_R32_SFLOAT:
+		return 4;
+	case VK_FORMAT_R32G32_SFLOAT:
+		return 8;
+	case VK_FORMAT_R32G32B32_SFLOAT:
+		return 12;
+	case VK_FORMAT_R32G32B32A32_SFLOAT:
+		return 16;
+	default:
+		// For packed or compressed formats, return 0 and let callers fall back
+		// to the requested channel count.
+		return 0;
+	}
+}
+
+float VulkanRenderer::GetFormatMaxAlpha(PixelFormat format) const
+{
+	if (format == PixelFormat::U8) {
+		return 255.0f;
+	} else if (format == PixelFormat::U16) {
+		return 65535.0f;
+	}
+	return 1.0f;
+}
+
+void VulkanRenderer::CopyPixelsWithChannelConversion(const void *src, void *dst,
+												 int width, int height, int depth,
+												 int src_channels, int dst_channels,
+												 PixelFormat format) const
+{
+	int src_bpc = VideoParams::GetBytesPerChannel(format);
+	int dst_bpc = src_bpc;
+	float alpha = GetFormatMaxAlpha(format);
+
+	int plane_pixels = width * height;
+	int total_pixels = plane_pixels * depth;
+
+	const char *src_ptr = static_cast<const char *>(src);
+	char *dst_ptr = static_cast<char *>(dst);
+
+	for (int i = 0; i < total_pixels; ++i) {
+		for (int c = 0; c < dst_channels; ++c) {
+			if (c < src_channels) {
+				memcpy(dst_ptr + (i * dst_channels + c) * dst_bpc,
+					   src_ptr + (i * src_channels + c) * src_bpc,
+					   dst_bpc);
+			} else {
+				// Fill missing channels with 0 (color) or max alpha.
+				if (c == 3) {
+					if (format == PixelFormat::U8) {
+						*reinterpret_cast<uint8_t *>(dst_ptr +
+												   (i * dst_channels + c) * dst_bpc) =
+							static_cast<uint8_t>(alpha);
+					} else if (format == PixelFormat::U16) {
+						*reinterpret_cast<uint16_t *>(dst_ptr +
+													 (i * dst_channels + c) * dst_bpc) =
+							static_cast<uint16_t>(alpha);
+					} else if (format == PixelFormat::F16) {
+						// Half-float 1.0: 0x3C00
+						*reinterpret_cast<uint16_t *>(dst_ptr +
+													 (i * dst_channels + c) * dst_bpc) =
+							0x3C00;
+					} else {
+						*reinterpret_cast<float *>(dst_ptr +
+													 (i * dst_channels + c) * dst_bpc) =
+							alpha;
+					}
+				} else {
+					memset(dst_ptr + (i * dst_channels + c) * dst_bpc, 0, dst_bpc);
+				}
+			}
+		}
+	}
+}
+
 VkDeviceSize VulkanRenderer::AlignSize(VkDeviceSize size,
 									   VkDeviceSize alignment) const
 {
@@ -982,11 +1083,15 @@ QVariant VulkanRenderer::CreateNativeTexture(int width, int height, int depth,
 
 	// Upload initial data if provided
 	if (data) {
-		int bytes_per_pixel = VideoParams::GetBytesPerPixel(format, channel_count);
+		int cpu_bytes_per_pixel = VideoParams::GetBytesPerPixel(format, channel_count);
+		int gpu_bytes_per_pixel = GetVkFormatBytesPerPixel(vk_format);
+		if (gpu_bytes_per_pixel == 0) {
+			gpu_bytes_per_pixel = cpu_bytes_per_pixel;
+		}
 		VkDeviceSize image_size = static_cast<VkDeviceSize>(width) * height * depth *
-								  bytes_per_pixel;
+								  gpu_bytes_per_pixel;
 		if (linesize == 0) {
-			linesize = width * bytes_per_pixel;
+			linesize = width * cpu_bytes_per_pixel;
 		}
 
 		VkBuffer staging_buffer;
@@ -994,16 +1099,41 @@ QVariant VulkanRenderer::CreateNativeTexture(int width, int height, int depth,
 		if (CreateStagingBuffer(image_size, &staging_buffer, &staging_memory)) {
 			void *mapped;
 			vkMapMemory(device_, staging_memory, 0, image_size, 0, &mapped);
-			if (linesize == width * bytes_per_pixel) {
-				memcpy(mapped, data, static_cast<size_t>(image_size));
-			} else {
-				char *dst = static_cast<char *>(mapped);
-				const char *src = static_cast<const char *>(data);
-				for (int row = 0; row < height * depth; row++) {
-					memcpy(dst + row * width * bytes_per_pixel,
-						   src + row * linesize,
-						   static_cast<size_t>(width * bytes_per_pixel));
+			if (cpu_bytes_per_pixel == gpu_bytes_per_pixel) {
+				if (linesize == width * cpu_bytes_per_pixel) {
+					memcpy(mapped, data, static_cast<size_t>(image_size));
+				} else {
+					char *dst = static_cast<char *>(mapped);
+					const char *src = static_cast<const char *>(data);
+					for (int row = 0; row < height * depth; row++) {
+						memcpy(dst + row * width * cpu_bytes_per_pixel,
+							   src + row * linesize,
+							   static_cast<size_t>(width * cpu_bytes_per_pixel));
+					}
 				}
+			} else {
+				// The GPU format has a different channel count than the CPU data
+				// (e.g. 3-channel RGB fallback to 4-channel RGBA). Repack the data
+				// in the staging buffer so the copy uses the GPU texel layout.
+				QByteArray tmp(width * height * depth * cpu_bytes_per_pixel,
+							   Qt::Uninitialized);
+				if (linesize == width * cpu_bytes_per_pixel) {
+					memcpy(tmp.data(), data, static_cast<size_t>(tmp.size()));
+				} else {
+					char *dst = tmp.data();
+					const char *src = static_cast<const char *>(data);
+					for (int row = 0; row < height * depth; row++) {
+						memcpy(dst + row * width * cpu_bytes_per_pixel,
+							   src + row * linesize,
+							   static_cast<size_t>(width * cpu_bytes_per_pixel));
+					}
+				}
+				int gpu_channels = gpu_bytes_per_pixel /
+								   VideoParams::GetBytesPerChannel(format);
+				CopyPixelsWithChannelConversion(tmp.constData(), mapped,
+											width, height, depth,
+											channel_count, gpu_channels,
+											format);
 			}
 			vkUnmapMemory(device_, staging_memory);
 
@@ -1071,12 +1201,16 @@ void VulkanRenderer::UploadToTexture(const QVariant &handle,
 	int width = params.effective_width();
 	int height = params.effective_height();
 	int depth = params.effective_depth();
-	int bytes_per_pixel = VideoParams::GetBytesPerPixel(params.format(),
-													params.channel_count());
+	int cpu_bytes_per_pixel = VideoParams::GetBytesPerPixel(params.format(),
+														params.channel_count());
+	int gpu_bytes_per_pixel = GetVkFormatBytesPerPixel(tex->vk_format);
+	if (gpu_bytes_per_pixel == 0) {
+		gpu_bytes_per_pixel = cpu_bytes_per_pixel;
+	}
 	VkDeviceSize image_size =
-		static_cast<VkDeviceSize>(width) * height * depth * bytes_per_pixel;
+		static_cast<VkDeviceSize>(width) * height * depth * gpu_bytes_per_pixel;
 	if (linesize == 0) {
-		linesize = width * bytes_per_pixel;
+		linesize = width * cpu_bytes_per_pixel;
 	}
 
 	VkBuffer staging_buffer;
@@ -1087,16 +1221,38 @@ void VulkanRenderer::UploadToTexture(const QVariant &handle,
 
 	void *mapped;
 	vkMapMemory(device_, staging_memory, 0, image_size, 0, &mapped);
-	if (linesize == width * bytes_per_pixel) {
-		memcpy(mapped, data, static_cast<size_t>(image_size));
-	} else {
-		char *dst = static_cast<char *>(mapped);
-		const char *src = static_cast<const char *>(data);
-		for (int row = 0; row < height * depth; row++) {
-			memcpy(dst + row * width * bytes_per_pixel,
-				   src + row * linesize,
-				   static_cast<size_t>(width * bytes_per_pixel));
+	if (cpu_bytes_per_pixel == gpu_bytes_per_pixel) {
+		if (linesize == width * cpu_bytes_per_pixel) {
+			memcpy(mapped, data, static_cast<size_t>(image_size));
+		} else {
+			char *dst = static_cast<char *>(mapped);
+			const char *src = static_cast<const char *>(data);
+			for (int row = 0; row < height * depth; row++) {
+				memcpy(dst + row * width * cpu_bytes_per_pixel,
+					   src + row * linesize,
+					   static_cast<size_t>(width * cpu_bytes_per_pixel));
+			}
 		}
+	} else {
+		QByteArray tmp(width * height * depth * cpu_bytes_per_pixel,
+					   Qt::Uninitialized);
+		if (linesize == width * cpu_bytes_per_pixel) {
+			memcpy(tmp.data(), data, static_cast<size_t>(tmp.size()));
+		} else {
+			char *dst = tmp.data();
+			const char *src = static_cast<const char *>(data);
+			for (int row = 0; row < height * depth; row++) {
+				memcpy(dst + row * width * cpu_bytes_per_pixel,
+					   src + row * linesize,
+					   static_cast<size_t>(width * cpu_bytes_per_pixel));
+			}
+		}
+		int gpu_channels = gpu_bytes_per_pixel /
+						   VideoParams::GetBytesPerChannel(params.format());
+		CopyPixelsWithChannelConversion(tmp.constData(), mapped,
+									width, height, depth,
+									params.channel_count(), gpu_channels,
+									params.format());
 	}
 	vkUnmapMemory(device_, staging_memory);
 
@@ -1130,13 +1286,17 @@ void VulkanRenderer::DownloadFromTexture(const QVariant &handle,
 
 	int width = params.effective_width();
 	int height = params.effective_height();
-	int bytes_per_pixel = VideoParams::GetBytesPerPixel(params.format(),
-													params.channel_count());
+	int cpu_bytes_per_pixel = VideoParams::GetBytesPerPixel(params.format(),
+														params.channel_count());
+	int gpu_bytes_per_pixel = GetVkFormatBytesPerPixel(tex->vk_format);
+	if (gpu_bytes_per_pixel == 0) {
+		gpu_bytes_per_pixel = cpu_bytes_per_pixel;
+	}
 	if (linesize == 0) {
-		linesize = width * bytes_per_pixel;
+		linesize = width * cpu_bytes_per_pixel;
 	}
 	VkDeviceSize image_size =
-		static_cast<VkDeviceSize>(width) * height * bytes_per_pixel;
+		static_cast<VkDeviceSize>(width) * height * gpu_bytes_per_pixel;
 
 	VkBuffer staging_buffer;
 	VkDeviceMemory staging_memory;
@@ -1156,20 +1316,43 @@ void VulkanRenderer::DownloadFromTexture(const QVariant &handle,
 
 	void *mapped;
 	vkMapMemory(device_, staging_memory, 0, image_size, 0, &mapped);
-	if (linesize == width * bytes_per_pixel) {
-		memcpy(data, mapped, static_cast<size_t>(image_size));
+	if (cpu_bytes_per_pixel == gpu_bytes_per_pixel) {
+		if (linesize == width * cpu_bytes_per_pixel) {
+			memcpy(data, mapped, static_cast<size_t>(image_size));
+		} else {
+			char *dst = static_cast<char *>(data);
+			const char *src = static_cast<const char *>(mapped);
+			for (int row = 0; row < height; row++) {
+				memcpy(dst + row * linesize,
+					   src + row * width * cpu_bytes_per_pixel,
+					   static_cast<size_t>(width * cpu_bytes_per_pixel));
+			}
+		}
 	} else {
-		char *dst = static_cast<char *>(data);
-		const char *src = static_cast<const char *>(mapped);
-		for (int row = 0; row < height; row++) {
-			memcpy(dst + row * linesize,
-				   src + row * width * bytes_per_pixel,
-				   static_cast<size_t>(width * bytes_per_pixel));
+		int gpu_channels = gpu_bytes_per_pixel /
+						   VideoParams::GetBytesPerChannel(params.format());
+		QByteArray tmp(width * height * gpu_bytes_per_pixel, Qt::Uninitialized);
+		memcpy(tmp.data(), mapped, static_cast<size_t>(tmp.size()));
+		CopyPixelsWithChannelConversion(tmp.constData(), data,
+									width, height, 1,
+									gpu_channels, params.channel_count(),
+									params.format());
+		if (linesize != width * cpu_bytes_per_pixel) {
+			// Repack from tight CPU layout to caller's stride in-place.
+			QByteArray tight(static_cast<const char *>(data),
+							 width * height * cpu_bytes_per_pixel);
+			char *dst = static_cast<char *>(data);
+			for (int row = 0; row < height; row++) {
+				memcpy(dst + row * linesize,
+					   tight.constData() + row * width * cpu_bytes_per_pixel,
+					   static_cast<size_t>(width * cpu_bytes_per_pixel));
+			}
 		}
 	}
 	vkUnmapMemory(device_, staging_memory);
 
 	DestroyStagingBuffer(staging_buffer, staging_memory);
+	tex->current_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 }
 
 void VulkanRenderer::Flush()
@@ -1222,9 +1405,9 @@ Color VulkanRenderer::GetPixelFromTexture(olive::Texture *texture,
 	if (!texture) {
 		return Color();
 	}
-	int bytes_per_pixel = VideoParams::GetBytesPerPixel(texture->format(),
-													texture->channel_count());
-	QByteArray data(bytes_per_pixel, Qt::Uninitialized);
+	int cpu_bytes_per_pixel = VideoParams::GetBytesPerPixel(texture->format(),
+														texture->channel_count());
+	QByteArray data(cpu_bytes_per_pixel, Qt::Uninitialized);
 
 	quint64 id = texture->id().value<quint64>();
 	QMutexLocker lock(&mutex_);
@@ -1236,9 +1419,14 @@ Color VulkanRenderer::GetPixelFromTexture(olive::Texture *texture,
 	uint32_t px = static_cast<uint32_t>(qBound(0.0, pt.x(), double(tex->width - 1)));
 	uint32_t py = static_cast<uint32_t>(qBound(0.0, pt.y(), double(tex->height - 1)));
 
+	int gpu_bytes_per_pixel = GetVkFormatBytesPerPixel(tex->vk_format);
+	if (gpu_bytes_per_pixel == 0) {
+		gpu_bytes_per_pixel = cpu_bytes_per_pixel;
+	}
+
 	VkBuffer staging_buffer;
 	VkDeviceMemory staging_memory;
-	if (!CreateStagingBuffer(bytes_per_pixel, &staging_buffer, &staging_memory)) {
+	if (!CreateStagingBuffer(gpu_bytes_per_pixel, &staging_buffer, &staging_memory)) {
 		return Color();
 	}
 
@@ -1251,11 +1439,23 @@ Color VulkanRenderer::GetPixelFromTexture(olive::Texture *texture,
 	EndOneTimeCommands(cmd);
 
 	void *mapped;
-	vkMapMemory(device_, staging_memory, 0, bytes_per_pixel, 0, &mapped);
-	memcpy(data.data(), mapped, static_cast<size_t>(bytes_per_pixel));
+	vkMapMemory(device_, staging_memory, 0, gpu_bytes_per_pixel, 0, &mapped);
+	if (cpu_bytes_per_pixel == gpu_bytes_per_pixel) {
+		memcpy(data.data(), mapped, static_cast<size_t>(cpu_bytes_per_pixel));
+	} else {
+		int gpu_channels = gpu_bytes_per_pixel /
+						   VideoParams::GetBytesPerChannel(texture->format());
+		QByteArray gpu_pixel(gpu_bytes_per_pixel, Qt::Uninitialized);
+		memcpy(gpu_pixel.data(), mapped, static_cast<size_t>(gpu_bytes_per_pixel));
+		CopyPixelsWithChannelConversion(gpu_pixel.constData(), data.data(),
+									1, 1, 1,
+									gpu_channels, texture->channel_count(),
+									texture->format());
+	}
 	vkUnmapMemory(device_, staging_memory);
 
 	DestroyStagingBuffer(staging_buffer, staging_memory);
+	tex->current_layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
 	return Color::fromData(data.data(), texture->format(),
 						   texture->channel_count());
@@ -1845,36 +2045,15 @@ bool VulkanRenderer::CreatePipelineForShader(VulkanShader *shader,
 	return true;
 }
 
-void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
-							  olive::Texture *destination,
-							  VideoParams destination_params,
-							  bool clear_destination)
+void VulkanRenderer::BlitPass(VulkanShader *shader, VulkanTexture *dest_tex,
+							  const QVector<TextureBinding> &bindings,
+							  const QByteArray &ubo_data,
+							  const VideoParams &destination_params,
+							  bool clear_destination, int iteration)
 {
-	QMutexLocker lock(&mutex_);
+	(void)iteration;
 
-	ShaderJob *s_job = dynamic_cast<ShaderJob *>(&a_job);
-	if (!s_job) {
-		return;
-	}
-	ShaderJob job(*s_job);
-
-	quint64 shader_id = shader_variant.value<quint64>();
-	VulkanShader *shader = shaders_.value(shader_id);
-	if (!shader) {
-		return;
-	}
-
-	VulkanTexture *dest_tex = nullptr;
-	if (destination) {
-		quint64 dest_id = destination->id().value<quint64>();
-		dest_tex = textures_.value(dest_id);
-		if (!dest_tex) {
-			return;
-		}
-	} else {
-		// TODO: support rendering to a temporary offscreen texture when the
-		// caller requests the default output (used by OpenGL direct-to-widget).
-		qWarning() << "VulkanRenderer::Blit with null destination is not implemented";
+	if (!dest_tex) {
 		return;
 	}
 
@@ -1890,145 +2069,26 @@ void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 
 	VkPipeline pipeline = shader->pipeline_cache.value(render_pass_format);
 
-	// Collect textures to bind and build UBO data
-	struct TextureBinding {
-		QString name;
-		VulkanTexture *tex;
-		Texture::Interpolation interp;
-	};
-	QVector<TextureBinding> bindings;
-
-	QByteArray ubo_data;
-	if (shader->ubo_size > 0) {
-		ubo_data.resize(static_cast<int>(shader->ubo_size));
-		ubo_data.fill(0);
-	}
-
-	for (auto it = job.GetValues().constBegin(); it != job.GetValues().constEnd();
-		 ++it) {
-		const NodeValue &value = it.value();
-		if (value.type() == NodeValue::kTexture) {
-			TexturePtr texture = value.toTexture();
-			VulkanTexture *vtex = nullptr;
-			if (texture) {
-				quint64 tid = texture->id().value<quint64>();
-				vtex = textures_.value(tid);
-			}
-			bindings.append({ it.key(), vtex,
-							  job.GetInterpolation(it.key()) });
-		} else if (!shader->uniforms.isEmpty() && shader->ubo_size > 0) {
-			// Find matching uniform
-			for (const UniformInfo &u : shader->uniforms) {
-				if (u.name != it.key())
-					continue;
-				char *dst = ubo_data.data() + static_cast<int>(u.offset);
-				switch (value.type()) {
-				case NodeValue::kFloat:
-					*reinterpret_cast<float *>(dst) = static_cast<float>(value.toDouble());
-					break;
-				case NodeValue::kInt:
-					*reinterpret_cast<int *>(dst) = static_cast<int>(value.toInt());
-					break;
-				case NodeValue::kBoolean:
-					*reinterpret_cast<int *>(dst) = value.toBool() ? 1 : 0;
-					break;
-				case NodeValue::kVec2: {
-					QVector2D v = value.toVec2();
-					memcpy(dst, &v, sizeof(float) * 2);
-					break;
-				}
-				case NodeValue::kVec3: {
-					QVector3D v = value.toVec3();
-					memcpy(dst, &v, sizeof(float) * 3);
-					break;
-				}
-				case NodeValue::kVec4: {
-					QVector4D v = value.toVec4();
-					memcpy(dst, &v, sizeof(float) * 4);
-					break;
-				}
-				case NodeValue::kMatrix: {
-					QMatrix4x4 m = value.toMatrix();
-					memcpy(dst, m.constData(), sizeof(float) * 16);
-					break;
-				}
-				case NodeValue::kColor: {
-					Color c = value.toColor();
-					float col[4] = { static_cast<float>(c.red()),
-									 static_cast<float>(c.green()),
-									 static_cast<float>(c.blue()),
-									 static_cast<float>(c.alpha()) };
-					memcpy(dst, col, sizeof(float) * 4);
-					break;
-				}
-				case NodeValue::kCombo:
-					*reinterpret_cast<int *>(dst) = value.toInt();
-					break;
-				default:
-					break;
-				}
-				break;
-			}
-		}
-	}
-
-	// Handle special uniforms that may not be in job values
-	if (shader->ubo_size > 0) {
-		for (const UniformInfo &u : shader->uniforms) {
-			char *dst = ubo_data.data() + static_cast<int>(u.offset);
-			if (u.name == QStringLiteral("ove_mvpmat")) {
-				QMatrix4x4 m = job.Get(QStringLiteral("ove_mvpmat")).toMatrix();
-				memcpy(dst, m.constData(), sizeof(float) * 16);
-			} else if (u.name == QStringLiteral("ove_cropmatrix")) {
-				QMatrix4x4 m = job.Get(QStringLiteral("ove_cropmatrix")).toMatrix();
-				memcpy(dst, m.constData(), sizeof(float) * 16);
-			} else if (u.name == QStringLiteral("ove_maintex_alpha")) {
-				*reinterpret_cast<int *>(dst) = job.Get(QStringLiteral("ove_maintex_alpha")).toInt();
-			} else if (u.name == QStringLiteral("ove_force_opaque")) {
-				*reinterpret_cast<int *>(dst) = job.Get(QStringLiteral("ove_force_opaque")).toBool() ? 1 : 0;
-			} else if (u.name == QStringLiteral("ove_iteration")) {
-				*reinterpret_cast<int *>(dst) = job.Get(QStringLiteral("ove_iteration")).toInt();
-			}
-		}
-	}
-
-	// Set texture-enable flags for shaders that declare uniform bool NAME_enabled.
-	if (shader->ubo_size > 0) {
-		for (const TextureBinding &tb : bindings) {
-			QString enabled_name = tb.name + QStringLiteral("_enabled");
-			for (const UniformInfo &u : shader->uniforms) {
-				if (u.name == enabled_name && u.size == sizeof(int)) {
-					char *dst = ubo_data.data() + static_cast<int>(u.offset);
-					*reinterpret_cast<int *>(dst) = tb.tex ? 1 : 0;
-					break;
-				}
-			}
-		}
-	}
-
 	// Lazily create a per-texture framebuffer. The framebuffer is compatible
 	// with any render pass that uses the same format and sample count, so we
 	// build it once with the non-clear variant and reuse it.
-	VkFramebuffer framebuffer = VK_NULL_HANDLE;
-	if (dest_tex) {
-		if (dest_tex->framebuffer == VK_NULL_HANDLE) {
-			VkFramebufferCreateInfo fb_info = {};
-			fb_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-			fb_info.renderPass = GetOrCreateRenderPass(render_pass_format, false);
-			fb_info.attachmentCount = 1;
-			fb_info.pAttachments = &dest_tex->view;
-			fb_info.width = static_cast<uint32_t>(dest_tex->width);
-			fb_info.height = static_cast<uint32_t>(dest_tex->height);
-			fb_info.layers = 1;
-			VkResult fb_result = vkCreateFramebuffer(device_, &fb_info, nullptr,
-														 &dest_tex->framebuffer);
-			if (fb_result != VK_SUCCESS) {
-				qWarning() << "Failed to create Vulkan framebuffer:" << fb_result;
-				return;
-			}
+	if (dest_tex->framebuffer == VK_NULL_HANDLE) {
+		VkFramebufferCreateInfo fb_info = {};
+		fb_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+		fb_info.renderPass = GetOrCreateRenderPass(render_pass_format, false);
+		fb_info.attachmentCount = 1;
+		fb_info.pAttachments = &dest_tex->view;
+		fb_info.width = static_cast<uint32_t>(dest_tex->width);
+		fb_info.height = static_cast<uint32_t>(dest_tex->height);
+		fb_info.layers = 1;
+		VkResult fb_result = vkCreateFramebuffer(device_, &fb_info, nullptr,
+											 &dest_tex->framebuffer);
+		if (fb_result != VK_SUCCESS) {
+			qWarning() << "Failed to create Vulkan framebuffer:" << fb_result;
+			return;
 		}
-		framebuffer = dest_tex->framebuffer;
 	}
+	VkFramebuffer framebuffer = dest_tex->framebuffer;
 
 	// Create UBO buffer if needed
 	VkBuffer ubo_buffer = VK_NULL_HANDLE;
@@ -2108,13 +2168,13 @@ void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 
 		if (!writes.isEmpty()) {
 			vkUpdateDescriptorSets(device_, writes.size(), writes.constData(), 0,
-										nullptr);
+								   nullptr);
 		}
 	}
 
 	VkCommandBuffer cmd = BeginOneTimeCommands();
 
-	if (dest_tex && dest_tex->current_layout != VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
+	if (dest_tex->current_layout != VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
 		TransitionImageLayout(cmd, dest_tex->image, dest_tex->current_layout,
 							  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 		dest_tex->current_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -2175,7 +2235,6 @@ void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 								nullptr);
 	}
 
-
 	// Draw
 	vkCmdDraw(cmd, 6, 1, 0, 0);
 
@@ -2183,12 +2242,10 @@ void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 
 	// Leave the destination in a shader-readable state so it can be sampled or
 	// downloaded without an extra layout transition on the caller side.
-	if (dest_tex) {
-		TransitionImageLayout(cmd, dest_tex->image,
-							  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-							  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-		dest_tex->current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	}
+	TransitionImageLayout(cmd, dest_tex->image,
+						  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+						  VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	dest_tex->current_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
 	EndOneTimeCommands(cmd);
 
@@ -2199,5 +2256,226 @@ void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
 		DestroyStagingBuffer(ubo_buffer, ubo_memory);
 	}
 }
+
+void VulkanRenderer::Blit(QVariant shader_variant, olive::AcceleratedJob &a_job,
+						  olive::Texture *destination,
+						  VideoParams destination_params,
+						  bool clear_destination)
+{
+	ShaderJob *s_job = dynamic_cast<ShaderJob *>(&a_job);
+	if (!s_job) {
+		return;
+	}
+	ShaderJob job(*s_job);
+
+	quint64 shader_id = shader_variant.value<quint64>();
+
+	// Iterative shaders require ping-pong textures. Create them before locking
+	// the renderer mutex because CreateTexture also locks it.
+	int real_iteration_count = 1;
+	if (job.GetIterationCount() > 1 && !job.GetIterativeInput().isEmpty()) {
+		real_iteration_count = job.GetIterationCount();
+	}
+
+	struct PingPongTexture {
+		TexturePtr texture;
+		VulkanTexture *native = nullptr;
+	};
+
+	PingPongTexture output_tex, input_tex, final_tex;
+	if (real_iteration_count > 1) {
+		output_tex.texture = CreateTexture(destination_params);
+		if (real_iteration_count > 2) {
+			input_tex.texture = CreateTexture(destination_params);
+		}
+	}
+
+	if (!destination) {
+		final_tex.texture = CreateTexture(destination_params);
+	}
+
+	QMutexLocker lock(&mutex_);
+
+	VulkanShader *shader = shaders_.value(shader_id);
+	if (!shader) {
+		return;
+	}
+
+	VulkanTexture *dest_tex = nullptr;
+	if (destination) {
+		quint64 dest_id = destination->id().value<quint64>();
+		dest_tex = textures_.value(dest_id);
+		if (!dest_tex) {
+			return;
+		}
+	} else {
+		quint64 final_id = final_tex.texture->id().value<quint64>();
+		final_tex.native = textures_.value(final_id);
+		if (!final_tex.native) {
+			qWarning() << "VulkanRenderer::Blit failed to resolve temporary destination texture";
+			return;
+		}
+		dest_tex = final_tex.native;
+	}
+
+	if (output_tex.texture) {
+		quint64 id = output_tex.texture->id().value<quint64>();
+		output_tex.native = textures_.value(id);
+	}
+	if (input_tex.texture) {
+		quint64 id = input_tex.texture->id().value<quint64>();
+		input_tex.native = textures_.value(id);
+	}
+
+	// Collect textures to bind and build base UBO data
+	QVector<TextureBinding> base_bindings;
+	QByteArray base_ubo_data;
+	if (shader->ubo_size > 0) {
+		base_ubo_data.resize(static_cast<int>(shader->ubo_size));
+		base_ubo_data.fill(0);
+	}
+
+	for (auto it = job.GetValues().constBegin(); it != job.GetValues().constEnd();
+		 ++it) {
+		const NodeValue &value = it.value();
+		if (value.type() == NodeValue::kTexture) {
+			TexturePtr texture = value.toTexture();
+			VulkanTexture *vtex = nullptr;
+			if (texture) {
+				quint64 tid = texture->id().value<quint64>();
+				vtex = textures_.value(tid);
+			}
+			base_bindings.append({ it.key(), vtex,
+								   job.GetInterpolation(it.key()) });
+		} else if (!shader->uniforms.isEmpty() && shader->ubo_size > 0) {
+			// Find matching uniform
+			for (const UniformInfo &u : shader->uniforms) {
+				if (u.name != it.key())
+					continue;
+				char *dst = base_ubo_data.data() + static_cast<int>(u.offset);
+				switch (value.type()) {
+				case NodeValue::kFloat:
+					*reinterpret_cast<float *>(dst) = static_cast<float>(value.toDouble());
+					break;
+				case NodeValue::kInt:
+					*reinterpret_cast<int *>(dst) = static_cast<int>(value.toInt());
+					break;
+				case NodeValue::kBoolean:
+					*reinterpret_cast<int *>(dst) = value.toBool() ? 1 : 0;
+					break;
+				case NodeValue::kVec2: {
+					QVector2D v = value.toVec2();
+					memcpy(dst, &v, sizeof(float) * 2);
+					break;
+				}
+				case NodeValue::kVec3: {
+					QVector3D v = value.toVec3();
+					memcpy(dst, &v, sizeof(float) * 3);
+					break;
+				}
+				case NodeValue::kVec4: {
+					QVector4D v = value.toVec4();
+					memcpy(dst, &v, sizeof(float) * 4);
+					break;
+				}
+				case NodeValue::kMatrix: {
+					QMatrix4x4 m = value.toMatrix();
+					memcpy(dst, m.constData(), sizeof(float) * 16);
+					break;
+				}
+				case NodeValue::kColor: {
+					Color c = value.toColor();
+					float col[4] = { static_cast<float>(c.red()),
+									 static_cast<float>(c.green()),
+									 static_cast<float>(c.blue()),
+									 static_cast<float>(c.alpha()) };
+					memcpy(dst, col, sizeof(float) * 4);
+					break;
+				}
+				case NodeValue::kCombo:
+					*reinterpret_cast<int *>(dst) = value.toInt();
+					break;
+				default:
+					break;
+				}
+				break;
+			}
+		}
+	}
+
+	// Handle special uniforms that may not be in job values
+	if (shader->ubo_size > 0) {
+		for (const UniformInfo &u : shader->uniforms) {
+			char *dst = base_ubo_data.data() + static_cast<int>(u.offset);
+			if (u.name == QStringLiteral("ove_mvpmat")) {
+				QMatrix4x4 m = job.Get(QStringLiteral("ove_mvpmat")).toMatrix();
+				memcpy(dst, m.constData(), sizeof(float) * 16);
+			} else if (u.name == QStringLiteral("ove_cropmatrix")) {
+				QMatrix4x4 m = job.Get(QStringLiteral("ove_cropmatrix")).toMatrix();
+				memcpy(dst, m.constData(), sizeof(float) * 16);
+			} else if (u.name == QStringLiteral("ove_maintex_alpha")) {
+				*reinterpret_cast<int *>(dst) = job.Get(QStringLiteral("ove_maintex_alpha")).toInt();
+			} else if (u.name == QStringLiteral("ove_force_opaque")) {
+				*reinterpret_cast<int *>(dst) = job.Get(QStringLiteral("ove_force_opaque")).toBool() ? 1 : 0;
+			}
+		}
+	}
+
+	// Set texture-enable flags for shaders that declare uniform bool NAME_enabled.
+	if (shader->ubo_size > 0) {
+		for (const TextureBinding &tb : base_bindings) {
+			QString enabled_name = tb.name + QStringLiteral("_enabled");
+			for (const UniformInfo &u : shader->uniforms) {
+				if (u.name == enabled_name && u.size == sizeof(int)) {
+					char *dst = base_ubo_data.data() + static_cast<int>(u.offset);
+					*reinterpret_cast<int *>(dst) = tb.tex ? 1 : 0;
+					break;
+				}
+			}
+		}
+	}
+
+	for (int iteration = 0; iteration < real_iteration_count; ++iteration) {
+		QVector<TextureBinding> pass_bindings = base_bindings;
+		QByteArray pass_ubo_data = base_ubo_data;
+
+		// Set iteration number
+		if (shader->ubo_size > 0) {
+			for (const UniformInfo &u : shader->uniforms) {
+				if (u.name == QStringLiteral("ove_iteration")) {
+					char *dst = pass_ubo_data.data() + static_cast<int>(u.offset);
+					*reinterpret_cast<int *>(dst) = iteration;
+					break;
+				}
+			}
+		}
+
+		// Replace iterative input
+		VulkanTexture *pass_dest = dest_tex;
+		bool pass_clear = clear_destination;
+		if (iteration != real_iteration_count - 1) {
+			pass_dest = output_tex.native;
+			pass_clear = true;
+		}
+
+		if (iteration > 0) {
+			const QString &iterative_input = job.GetIterativeInput();
+			for (TextureBinding &tb : pass_bindings) {
+				if (tb.name == iterative_input) {
+					tb.tex = input_tex.native;
+					break;
+				}
+			}
+		}
+
+		BlitPass(shader, pass_dest, pass_bindings, pass_ubo_data,
+				 destination_params, pass_clear, iteration);
+
+		if (iteration != real_iteration_count - 1) {
+			std::swap(output_tex, input_tex);
+		}
+	}
+}
+
 
 } // namespace olive

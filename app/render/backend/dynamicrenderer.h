@@ -17,6 +17,8 @@ public:
 	explicit DynamicRenderer(const QString &backend, QObject *parent = nullptr);
 	virtual ~DynamicRenderer() override;
 
+	using Renderer::Blit;
+
 	bool Load();
 	bool InitWithOpenGLContext(QOpenGLContext *context);
 	bool GetBackendInfo(OakRenderBackendInfo *out_info) const;

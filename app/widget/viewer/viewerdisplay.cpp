@@ -429,18 +429,22 @@ void ViewerDisplayWidget::OnPaint()
 				// This is a GPU texture, switch to it directly when possible.
 				if (texture && texture->renderer() &&
 					texture->renderer() != renderer()) {
-					// Cross-renderer texture: download and re-upload
-					FramePtr frame = Frame::Create();
-					frame->set_video_params(texture->params());
-					if (frame->allocate()) {
-						texture->renderer()->DownloadFromTexture(
-							texture->id(), texture->params(),
-							frame->data(), frame->linesize_pixels());
-						texture_ = renderer()->CreateTexture(
-							frame->video_params(), frame->data(),
-							frame->linesize_pixels());
-					} else {
+					if (texture->renderer()->IsOpenGL() && renderer()->IsOpenGL()) {
 						texture_ = texture;
+					} else {
+						// Cross-backend texture: download and re-upload
+						FramePtr frame = Frame::Create();
+						frame->set_video_params(texture->params());
+						if (frame->allocate()) {
+							texture->renderer()->DownloadFromTexture(
+								texture->id(), texture->params(),
+								frame->data(), frame->linesize_pixels());
+							texture_ = renderer()->CreateTexture(
+								frame->video_params(), frame->data(),
+								frame->linesize_pixels());
+						} else {
+							texture_ = texture;
+						}
 					}
 				} else {
 					texture_ = texture;
