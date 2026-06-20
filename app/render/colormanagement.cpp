@@ -43,6 +43,8 @@ bool Renderer::GetColorContext(const ColorTransformJob &color_job,
 		color_ctx = color_cache_.value(proc_id);
 		return true;
 	} else {
+		locker.unlock();
+
 		// Create shader description
 		QString ocio_func_name;
 		if (color_job.GetFunctionName().isEmpty()) {
@@ -147,19 +149,19 @@ bool Renderer::GetColorContext(const ColorTransformJob &color_job,
 			}
 
 			// Allocate 1D LUT
-			color_ctx.lut1d_textures[i].texture = CreateTexture(
-				VideoParams(width, height, PixelFormat::F32,
-							(channel ==
-								 OCIO::GpuShaderDesc::TEXTURE_RED_CHANNEL) ?
-									1 :
-									VideoParams::kRGBChannelCount),
-				values);
+			int lut_channels = (channel ==
+								OCIO::GpuShaderDesc::TEXTURE_RED_CHANNEL) ?
+								   1 :
+								   VideoParams::kRGBChannelCount;
+			VideoParams lut_params(width, height, PixelFormat::F32, lut_channels);
+			color_ctx.lut1d_textures[i].texture = CreateTexture(lut_params, values);
 			color_ctx.lut1d_textures[i].name = sampler_name;
 			color_ctx.lut1d_textures[i].interpolation =
 				(interpolation == OCIO::INTERP_NEAREST) ? Texture::kNearest :
 													  Texture::kLinear;
 		}
 
+		locker.relock();
 		color_cache_.insert(proc_id, color_ctx);
 
 		return true;

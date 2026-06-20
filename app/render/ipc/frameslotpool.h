@@ -49,6 +49,7 @@ struct FrameSlotMeta {
 	int32_t channel_count;
 	int32_t linesize;      ///< Bytes per scanline (stride).
 	int32_t data_size;     ///< Valid bytes written into the slot's data block.
+	char colorspace[128];  ///< Input colorspace name for color-managed footage.
 };
 
 /**
@@ -143,8 +144,10 @@ public:
 	const FrameSlotMeta *Meta(uint32_t index) const;
 	const void *SlotData(uint32_t index) const;
 
-private:
+public:
 	FrameSlotPool() = default;
+
+private:
 
 	struct Header {
 		uint32_t magic;

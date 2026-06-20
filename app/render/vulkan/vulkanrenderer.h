@@ -73,6 +73,11 @@ public:
 	// Waits for outstanding device work to complete.
 	virtual void Flush() override;
 
+	virtual bool IsVulkan() const override
+	{
+		return true;
+	}
+
 	// Reads a single texture pixel using a one-pixel transfer readback.
 	virtual Color GetPixelFromTexture(olive::Texture *texture,
 								  const QPointF &pt) override;
@@ -102,9 +107,21 @@ private:
 	struct VulkanTexture;
 	struct VulkanShader;
 	struct UniformInfo;
+	struct StagingBuffer;
 
 	// Creates the Vulkan instance used for all offscreen work.
 	bool CreateInstance();
+	// Creates the debug messenger when validation layers are available.
+	bool CreateDebugMessenger();
+	// Destroys the debug messenger before the instance is destroyed.
+	void DestroyDebugMessenger();
+	// Validation layer callback; logs errors/warnings so synchronization issues
+	// are visible before they become GPU hangs.
+	static VKAPI_ATTR VkBool32 VKAPI_CALL
+	DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+				  VkDebugUtilsMessageTypeFlagsEXT messageType,
+				  const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
+				  void *pUserData);
 	// Chooses a graphics-capable physical device and creates the logical device.
 	bool CreateDevice();
 	// Creates a command pool for short-lived command buffers.
@@ -212,7 +229,11 @@ private:
 				  bool clear_destination, int iteration);
 
 	VkInstance instance_ = VK_NULL_HANDLE;
+	VkDebugUtilsMessengerEXT debug_messenger_ = VK_NULL_HANDLE;
 	VkPhysicalDevice physical_device_ = VK_NULL_HANDLE;
+	// Set to true after the first VK_ERROR_DEVICE_LOST so we stop submitting
+	// work and don't flood the log with identical errors.
+	bool device_lost_ = false;
 	uint32_t physical_device_count_ = 0;
 	VkDevice device_ = VK_NULL_HANDLE;
 	VkQueue graphics_queue_ = VK_NULL_HANDLE;
@@ -223,9 +244,13 @@ private:
 	VkSampler nearest_sampler_ = VK_NULL_HANDLE;
 
 	QHash<quint64, VkRenderPass> render_pass_cache_;
+	int descriptor_sets_since_reset_ = 0;
 
 	VkBuffer vertex_buffer_ = VK_NULL_HANDLE;
 	VkDeviceMemory vertex_buffer_memory_ = VK_NULL_HANDLE;
+	StagingBuffer *staging_buffer_ = nullptr;
+	VkCommandBuffer reusable_command_buffer_ = VK_NULL_HANDLE;
+	VkFence reusable_fence_ = VK_NULL_HANDLE;
 
 	VkPhysicalDeviceMemoryProperties mem_properties_;
 	VkPhysicalDeviceProperties device_properties_;

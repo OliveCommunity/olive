@@ -28,6 +28,7 @@
 #include <QVector3D>
 #include <QVector4D>
 
+
 #include "audio/audioprocessor.h"
 #include "node/block/clip/clip.h"
 #include "node/block/transition/transition.h"
@@ -148,22 +149,17 @@ FramePtr RenderProcessor::GenerateFrame(TexturePtr texture,
 			texture = blit_tex;
 		}
 
-		render_ctx_->Flush();
-
 		render_ctx_->DownloadFromTexture(texture->id(), texture->params(),
 										 frame->data(),
 										 frame->linesize_pixels());
-
-		// Diagnostic: check if downloaded frame is all black
-		bool all_black = true;
-		const uint8_t *pixels = reinterpret_cast<const uint8_t *>(frame->data());
-		size_t total_bytes = frame->allocated_size();
-		for (size_t i = 0; i < std::min(total_bytes, size_t(1024)); ++i) {
-			if (pixels[i] != 0) {
-				all_black = false;
-				break;
-			}
+		if (output_color_transform) {
+			VideoParams display_params = frame->video_params();
+			display_params.set_colorspace(
+				QStringLiteral("display:") +
+				QString::fromUtf8(output_color_transform->id()));
+			frame->set_video_params(display_params);
 		}
+
 	}
 
 	return frame;
@@ -232,7 +228,6 @@ void RenderProcessor::Run()
 			if (HeardCancel()) {
 				// Finish cancelled ticket with nothing since we can't guarantee the frame we generated
 				// is actually "complete
-				qDebug() << "[RENDER] HeardCancel, finishing empty";
 				ticket_->Finish();
 			} else {
 				FramePtr frame;
@@ -416,13 +411,16 @@ void RenderProcessor::ProcessVideoFootage(TexturePtr destination,
 
 	QString using_colorspace = stream_data.colorspace();
 
+	if (using_colorspace.isEmpty() && color_manager) {
+		using_colorspace = color_manager->GetDefaultInputColorSpace();
+	}
+
 	if (using_colorspace.isEmpty()) {
-		// FIXME:
-		qWarning() << "HAVEN'T GOTTEN DEFAULT INPUT COLORSPACE";
+		qWarning() << "RenderProcessor ProcessVideoFootage: no input colorspace available";
 	}
 
 	auto blit_color_managed = [&](const TexturePtr &unmanaged_texture,
-								  const VideoParams &texture_params) {
+									  const VideoParams &texture_params) {
 		if (!render_ctx_ || !unmanaged_texture || IsCancelled()) {
 			return;
 		}
@@ -482,13 +480,32 @@ void RenderProcessor::ProcessVideoFootage(TexturePtr destination,
 			input_params.set_height(meta->height);
 			input_params.set_format(PixelFormat::Format(meta->format));
 			input_params.set_channel_count(meta->channel_count);
+				// The decoder may leave depth at 0 for 2D frames, but the renderer
+				// needs depth >= 1 to compute image size and upload the texture.
+				if (input_params.depth() <= 0) {
+					input_params.set_depth(1);
+				}
+
+
+			// Prefer the colorspace that the main process used when decoding this
+			// frame. The FootageJob reconstructed in the worker may have stale or
+			// empty colorspace if the project snapshot was saved before stream
+			// metadata was fully resolved.
+			const QString ipc_colorspace = QString::fromUtf8(meta->colorspace);
+			if (!ipc_colorspace.isEmpty()) {
+				input_params.set_colorspace(ipc_colorspace);
+				using_colorspace = ipc_colorspace;
+			}
 
 			const int bytes_per_pixel = input_params.GetBytesPerPixel();
 			const int linesize_pixels = bytes_per_pixel > 0
-											? meta->linesize / bytes_per_pixel
-											: input_params.effective_width();
+												? meta->linesize / bytes_per_pixel
+												: input_params.effective_width();
+
+			const void *slot_data = input_pool->SlotData(uint32_t(input_slot));
 			TexturePtr unmanaged_texture = render_ctx_->CreateTexture(
-				input_params, input_pool->SlotData(uint32_t(input_slot)), linesize_pixels);
+				input_params, slot_data, linesize_pixels);
+
 			blit_color_managed(unmanaged_texture, input_params);
 			return;
 		}

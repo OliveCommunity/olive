@@ -21,6 +21,10 @@
 
 #include "ffmpegdecoder.h"
 
+extern "C" {
+#include <libavutil/pixdesc.h>
+}
+
 namespace olive {
 
 static FramePtr CopyPackedAVFrameToFrame(const AVFramePtr &src,
@@ -489,6 +493,28 @@ FramePtr FFmpegDecoder::RetrieveVideoFrameInternal(const RetrieveVideoParams &p)
 		if (r < 0) {
 			FFmpegError(r);
 			return nullptr;
+		}
+
+		// sws_scale does not initialize the alpha channel when converting
+		// from non-alpha source formats (e.g. YUV). av_frame_get_buffer
+		// zero-initializes the destination, leaving alpha at 0. The color
+		// management shader later multiplies RGB by alpha, producing black.
+		// Ensure alpha is opaque for source formats that have no alpha.
+		const AVPixFmtDescriptor *src_desc = av_pix_fmt_desc_get(
+			static_cast<AVPixelFormat>(f->format));
+		if (src_desc && !(src_desc->flags & AV_PIX_FMT_FLAG_ALPHA)) {
+			const int bpc = (dest->format == AV_PIX_FMT_RGBA) ? 1 : 2;
+			const int stride = dest->linesize[0];
+			for (int y = 0; y < dest->height; ++y) {
+				uchar *row = dest->data[0] + y * stride;
+				for (int x = 0; x < dest->width; ++x) {
+					if (bpc == 1) {
+						row[x * 4 + 3] = 0xFF;
+					} else {
+						*reinterpret_cast<uint16_t *>(row + x * 8 + 6) = 0xFFFF;
+					}
+				}
+			}
 		}
 
 		return CopyPackedAVFrameToFrame(dest,

@@ -496,7 +496,9 @@ void NodeTraverser::ResolveJobs(NodeValue &val)
 								GetCacheVideoParams().format());
 
 							tex = CreateTexture(managed_params);
-							ProcessVideoFootage(tex, fj, footage_time);
+							if (tex) {
+								ProcessVideoFootage(tex, fj, footage_time);
+							}
 						}
 
 						val.set_value(tex);

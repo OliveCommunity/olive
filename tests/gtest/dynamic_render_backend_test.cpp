@@ -2,6 +2,8 @@
 
 #include <QByteArray>
 #include <QMatrix4x4>
+#include <QOpenGLContext>
+#include <QThread>
 
 #include "node/value.h"
 #include "render/backend/dynamicrenderer.h"
@@ -29,6 +31,49 @@ TEST(DynamicRenderBackend, LoadsExperimentalOpenGLBackend)
 	EXPECT_TRUE(info.capabilities & OAK_RENDER_BACKEND_CAP_SHADERS);
 	EXPECT_TRUE(info.capabilities & OAK_RENDER_BACKEND_CAP_BLIT);
 	EXPECT_TRUE(info.capabilities & OAK_RENDER_BACKEND_CAP_READBACK);
+#endif
+}
+
+// Regression test: the backend renderer must follow DynamicRenderer when it is
+// moved to a background thread. If it stays in the thread where Load() was
+// called, GL operations are rejected as "wrong thread" and texture creation
+// returns null, which manifests as a black screen.
+TEST(DynamicRenderBackend, OpenGLBackendFollowsAdapterToRenderThread)
+{
+#ifndef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
+#else
+	olive::DynamicRenderer renderer(QStringLiteral("opengl"));
+	ASSERT_TRUE(renderer.Load());
+	ASSERT_TRUE(renderer.Init());
+
+	QThread render_thread;
+	renderer.moveToThread(&render_thread);
+	render_thread.start();
+
+	QOpenGLContext *ctx = renderer.OpenGLContext();
+	ASSERT_NE(ctx, nullptr);
+	EXPECT_EQ(ctx->thread(), &render_thread)
+		<< "Backend OpenGL context did not follow DynamicRenderer to render thread";
+
+	// Exercise the actual GL path in the render thread: PostInit() creates the
+	// offscreen surface there, and CreateTexture() must not crash.
+	olive::TexturePtr texture;
+	QMetaObject::invokeMethod(
+		&renderer,
+		[&]() {
+			renderer.PostInit();
+			texture = renderer.CreateTexture(olive::VideoParams(
+				64, 64, olive::PixelFormat::U8,
+				olive::VideoParams::kRGBAChannelCount));
+		},
+		Qt::BlockingQueuedConnection);
+
+	render_thread.quit();
+	render_thread.wait();
+
+	ASSERT_NE(texture, nullptr);
+	EXPECT_FALSE(texture->IsDummy());
 #endif
 }
 
@@ -110,7 +155,7 @@ TEST(DynamicRenderBackend, VulkanUploadBlitDownload)
 		src_data[i * 4 + 2] = static_cast<char>(0);   // B
 		src_data[i * 4 + 3] = static_cast<char>(255); // A
 	}
-	src->Upload(src_data.data(), kSize * 4);
+	src->Upload(src_data.data(), kSize);
 
 	olive::TexturePtr dst = renderer.CreateTexture(params);
 	ASSERT_NE(dst, nullptr);
@@ -145,7 +190,7 @@ TEST(DynamicRenderBackend, VulkanUploadBlitDownload)
 	renderer.BlitToTexture(shader, job, dst.get(), true);
 
 	QByteArray dst_data(kSize * kSize * 4, 0);
-	dst->Download(dst_data.data(), kSize * 4);
+	dst->Download(dst_data.data(), kSize);
 
 	// The default pass-through shader should reproduce the red source pixel.
 	EXPECT_EQ(static_cast<uint8_t>(dst_data[0]), 255u);
@@ -186,7 +231,7 @@ TEST(DynamicRenderBackend, VulkanNullDestinationBlitDoesNotCrash)
 		src_data[i * 4 + 0] = static_cast<char>(255);
 		src_data[i * 4 + 3] = static_cast<char>(255);
 	}
-	src->Upload(src_data.data(), kSize * 4);
+	src->Upload(src_data.data(), kSize);
 
 	const QString vert = QStringLiteral(
 		"uniform mat4 ove_mvpmat;\n"
@@ -252,7 +297,7 @@ TEST(DynamicRenderBackend, VulkanIterativeBlitPingPong)
 		src_data[i * 4 + 0] = static_cast<char>(255);
 		src_data[i * 4 + 3] = static_cast<char>(255);
 	}
-	src->Upload(src_data.data(), kSize * 4);
+	src->Upload(src_data.data(), kSize);
 
 	olive::TexturePtr dst = renderer.CreateTexture(params);
 	ASSERT_NE(dst, nullptr);
@@ -290,7 +335,7 @@ TEST(DynamicRenderBackend, VulkanIterativeBlitPingPong)
 	renderer.BlitToTexture(shader, job, dst.get(), true);
 
 	QByteArray dst_data(kSize * kSize * 4, 0);
-	dst->Download(dst_data.data(), kSize * 4);
+	dst->Download(dst_data.data(), kSize);
 
 	// After two halving passes, red is 255 * 0.5 * 0.5. UNORM conversion floors
 	// the intermediate value, so the result is 63 rather than 64.
@@ -333,10 +378,10 @@ TEST(DynamicRenderBackend, VulkanUploadDownloadThreeChannel)
 		src_data[i * 3 + 1] = static_cast<char>(128);
 		src_data[i * 3 + 2] = static_cast<char>(64);
 	}
-	tex->Upload(src_data.data(), kSize * 3);
+	tex->Upload(src_data.data(), kSize);
 
 	QByteArray dst_data(kSize * kSize * 3, 0);
-	tex->Download(dst_data.data(), kSize * 3);
+	tex->Download(dst_data.data(), kSize);
 
 	EXPECT_EQ(static_cast<uint8_t>(dst_data[0]), 255u);
 	EXPECT_EQ(static_cast<uint8_t>(dst_data[1]), 128u);

@@ -67,6 +67,8 @@ public:
 
 	// Reports whether the effective backend is OpenGL.
 	virtual bool IsOpenGL() const override;
+	// Reports whether the effective backend is Vulkan.
+	virtual bool IsVulkan() const override;
 
 	// Attaches a texture for OFX OpenGL output when supported.
 	virtual void AttachOutputTexture(Texture *texture) override;

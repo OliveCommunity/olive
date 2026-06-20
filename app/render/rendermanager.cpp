@@ -124,7 +124,6 @@ RenderManager::RenderManager(QObject *parent)
 	}
 
 	if (context_) {
-		video_thread_ = CreateThread(context_);
 		dry_run_thread_ = CreateThread();
 		audio_thread_ = CreateThread();
 
@@ -135,11 +134,10 @@ RenderManager::RenderManager(QObject *parent)
 
 		auto_cacher_ = new PreviewAutoCacher(this);
 
-		if (OLIVE_CONFIG("RenderProcessIsolationEnabled").toBool()) {
-			worker_pool_ = new RenderWorkerPool(decoder_cache_, this);
-			worker_pool_->start(QThread::NormalPriority);
-			backend_ = kMultiProcess;
-		}
+		worker_pool_ = new RenderWorkerPool(
+			decoder_cache_, BackendToString(requested_backend_), this);
+		worker_pool_->start(QThread::NormalPriority);
+		backend_ = kMultiProcess;
 	}
 
 	decoder_clear_timer_ = new QTimer(this);
@@ -208,15 +206,22 @@ RenderTicketPtr RenderManager::RenderFrame(const RenderVideoParams &params)
 	ticket->setProperty("cacheid", QVariant::fromValue(params.cache_id));
 	ticket->setProperty("multicam", QtUtils::PtrToValue(params.multicam));
 
-	if (worker_pool_ && params.return_type == ReturnType::kFrame &&
-		worker_pool_->SubmitFrame(ticket, params)) {
-		return ticket;
+	// Video frames are always rendered by the worker pool. GPU textures cannot
+	// be shared across the process boundary (or across independent Vulkan
+	// instances), so texture-return requests are downgraded to CPU frames.
+	RenderVideoParams worker_params = params;
+	if (worker_params.return_type == ReturnType::kTexture) {
+		worker_params.return_type = ReturnType::kFrame;
 	}
 
-	if (params.return_type == ReturnType::kNull) {
+	if (worker_params.return_type == ReturnType::kNull) {
 		dry_run_thread_->AddTicket(ticket);
+	} else if (worker_pool_ && worker_pool_->SubmitFrame(ticket, worker_params)) {
+		return ticket;
 	} else {
-		video_thread_->AddTicket(ticket);
+		qWarning() << "RenderManager: worker pool unavailable, finishing ticket "
+				      "without result";
+		ticket->Finish();
 	}
 
 	return ticket;

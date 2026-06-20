@@ -191,7 +191,7 @@ compact `QJsonObject`，`\n` 结尾。仅承载低频控制流量（握手、提
   - 当前仅支持普通视频 `ReturnType::kFrame`；素材输入仍按阶段 4 处理，失败或不支持时回退旧路径。
 - ✅ `RenderManager` 增加 `kMultiProcess` backend 分支（与 `kOpenGL` 并存），开关开启且
   WorkerPool 接受任务时 `RenderFrame()` 走 `RenderWorkerPool`。
-- ✅ `Config` 增加 `RenderProcessIsolationEnabled`，默认 `false`，默认仍走进程内 `kOpenGL`。
+- ✅ 多进程渲染已设为唯一视频渲染路径，`RenderProcessIsolationEnabled` 配置项已移除。
 - 待补：常驻 N worker、忙闲/负载派发、崩溃重启与重派、Viewer 开关实测。
 
 **验证结果**：

@@ -97,6 +97,13 @@ ViewerWidget::ViewerWidget(ViewerDisplayWidget *display, QWidget *parent)
 			&ViewerWidget::CursorColor);
 	connect(display_widget_, &ViewerDisplayWidget::ColorProcessorChanged, this,
 			&ViewerWidget::ColorProcessorChanged);
+	connect(display_widget_, &ViewerDisplayWidget::ColorProcessorChanged, this,
+			[](ColorProcessorPtr processor) {
+				RenderManager::instance()->GetCacher()->SetDisplayColorProcessor(
+					processor);
+			});
+	RenderManager::instance()->GetCacher()->SetDisplayColorProcessor(
+		display_widget_->GetCurrentColorProcessor());
 	connect(display_widget_, &ViewerDisplayWidget::ColorManagerChanged, this,
 			&ViewerWidget::ColorManagerChanged);
 	connect(display_widget_, &ViewerDisplayWidget::DragEntered, this,
@@ -205,9 +212,6 @@ void ViewerWidget::TimeChangedEvent(const rational &time)
 
 	if (GetConnectedNode() && last_time_ != time) {
 		if (!IsPlaying()) {
-			qDebug() << "[VIEWER] TimeChanged seeking to" << time.toDouble()
-					 << "frame_exists=" << FrameExistsAtTime(time)
-					 << "might_be_still=" << ViewerMightBeAStill();
 			UpdateTextureFromNode();
 
 			PushScrubbedAudio();
@@ -971,6 +975,17 @@ void ViewerWidget::QueueNoLongerStarved()
 
 void ViewerWidget::ForceRequeueFromCurrentTime()
 {
+	// Defer the requeue to the next event-loop iteration. This function is often
+	// called from paintEvent paths (QueueStarved) where synchronously cancelling
+	// watchers can re-enter the same RenderTicket mutex and deadlock.
+	QMetaObject::invokeMethod(
+		this,
+		[this]() { ForceRequeueFromCurrentTimeInternal(); },
+		Qt::QueuedConnection);
+}
+
+void ViewerWidget::ForceRequeueFromCurrentTimeInternal()
+{
 	// Allow half a second for requeue to complete
 	static const rational kRequeueWaitTime(1);
 
@@ -980,7 +995,7 @@ void ViewerWidget::ForceRequeueFromCurrentTime()
 	playback_queue_next_frame_ =
 		GetTimestamp() +
 		playback_speed_ * Timecode::time_to_timestamp(
-							  kRequeueWaitTime, timebase(), Timecode::kFloor);
+								  kRequeueWaitTime, timebase(), Timecode::kFloor);
 	;
 	first_requeue_watcher_ = nullptr;
 	for (int i = 0; i < queue; i++) {
@@ -1448,11 +1463,6 @@ void ViewerWidget::WindowAboutToClose()
 void ViewerWidget::RendererGeneratedFrame()
 {
 	RenderTicketWatcher *ticket = static_cast<RenderTicketWatcher *>(sender());
-	rational t = ticket->property("time").value<rational>();
-	bool has_result = ticket->HasResult();
-	qDebug() << "[VIEWER] RendererGeneratedFrame time=" << t.toDouble()
-			 << "has_result=" << has_result
-			 << "nonqueue_size=" << nonqueue_watchers_.size();
 
 	if (nonqueue_watchers_.contains(ticket)) {
 		while (!nonqueue_watchers_.isEmpty()) {
@@ -1463,15 +1473,6 @@ void ViewerWidget::RendererGeneratedFrame()
 		}
 
 		if (ticket->HasResult()) {
-			QVariant v = ticket->Get();
-			bool is_tex = v.canConvert<TexturePtr>();
-			bool is_frame = v.canConvert<FramePtr>();
-			TexturePtr tex = v.value<TexturePtr>();
-			qDebug() << "[VIEWER] SetDisplayImage time=" << t.toDouble()
-					 << "is_texture=" << is_tex
-					 << "is_frame=" << is_frame
-					 << "tex_null=" << (tex == nullptr)
-					 << "tex_dummy=" << (tex ? tex->IsDummy() : true);
 			SetDisplayImage(ticket->GetTicket());
 		}
 	}

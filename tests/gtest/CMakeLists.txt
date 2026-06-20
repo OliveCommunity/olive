@@ -17,6 +17,7 @@ add_executable(olive-gtest
   render_sampleformat_test.cpp
   render_pixelformat_test.cpp
   render_ipc_test.cpp
+  render_worker_footage_test.cpp
   project_serializer_test.cpp
   proxy_manager_test.cpp
   timeline_marker_test.cpp

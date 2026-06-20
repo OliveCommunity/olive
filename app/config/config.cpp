@@ -146,8 +146,6 @@ void Config::SetDefaults()
 	SetEntryInternal(QStringLiteral("UseGLFinish"), NodeValue::kBoolean, false);
 	SetEntryInternal(QStringLiteral("GraphicsBackend"), NodeValue::kText,
 					 QStringLiteral("opengl"));
-	SetEntryInternal(QStringLiteral("RenderProcessIsolationEnabled"),
-					 NodeValue::kBoolean, false);
 
 	SetEntryInternal(QStringLiteral("TimelineThumbnailMode"), NodeValue::kInt,
 					 Timeline::kThumbnailInOut);
@@ -334,8 +332,13 @@ void Config::Load()
 	}
 
 	if (reader.hasError()) {
+		// Config::Load() is called before Core (and therefore the main window)
+		// is constructed, so we cannot use Core::instance()->main_window() as
+		// the message box parent. Passing nullptr creates a top-level dialog.
+		QWidget *parent = Core::instance() ? Core::instance()->main_window()
+									   : nullptr;
 		QMessageBox::critical(
-			Core::instance()->main_window(),
+			parent,
 			QCoreApplication::translate("Config", "Error loading settings"),
 			QCoreApplication::translate(
 				"Config",

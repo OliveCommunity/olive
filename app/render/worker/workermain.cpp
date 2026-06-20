@@ -33,9 +33,12 @@
 
 #include "common/qtutils.h"
 #include "config/config.h"
+#include "core.h"
 #include "node/factory.h"
 #include "node/input/multicam/multicamnode.h"
 #include "node/project/serializer/serializer.h"
+#include "render/diskmanager.h"
+#include "render/framemanager.h"
 #include "render/ipc/frameslotpool.h"
 #include "render/ipc/ipcmessage.h"
 #include "render/ipc/sharedmemoryregion.h"
@@ -93,14 +96,26 @@ public:
 	{
 		project_.reset();
 		olive::ProjectSerializer::Destroy();
+		olive::DiskManager::DestroyInstance();
+		olive::FrameManager::DestroyInstance();
 		olive::NodeFactory::Destroy();
 	}
 
 	bool InitializeRuntime()
 	{
+
+		// Create a minimal Core instance so that code paths calling Core::instance()
+		// (e.g. ViewerOutput::data for timecode display) do not dereference null.
+		// The worker is short-lived; leaking this on exit is harmless.
+		if (!olive::Core::instance()) {
+			new olive::Core(olive::Core::CoreParams());
+		}
+
 		olive::Config::Load();
 		olive::NodeFactory::Initialize();
 		olive::ColorManager::SetUpDefaultConfig();
+		olive::FrameManager::CreateInstance();
+		olive::DiskManager::CreateInstance();
 		olive::ProjectSerializer::Initialize();
 		return true;
 	}
@@ -243,7 +258,9 @@ private:
 	bool LoadGraph(const QString &path)
 	{
 		auto loaded = std::make_unique<olive::Project>();
-		loaded->Initialize();
+		// Do not call Initialize() here: project serializers expect a blank
+		// project (root_ == nullptr) and will set root themselves. Calling
+		// Initialize() first triggers Q_ASSERT(!root_) in Project::Load.
 
 		olive::ProjectSerializer::Result result =
 			olive::ProjectSerializer::Load(loaded.get(), path, olive::ProjectSerializer::kProject);
@@ -340,6 +357,11 @@ private:
 											  message.ticket_id));
 				}
 				input_slots.append(int(consumed_slot));
+
+				const olive::ipc::FrameSlotMeta *meta =
+					input_pool_->Meta(consumed_slot);
+				if (meta) {
+				}
 			}
 		}
 
@@ -408,10 +430,12 @@ private:
 			return Write(ErrorMessage(QStringLiteral("no free output frame slot"), message.ticket_id));
 		}
 
-		const int data_size = frame->allocated_size();
+		const int data_size = frame->linesize_bytes()*frame->height();
 		if (data_size > int(output_pool_->slot_data_bytes())) {
 			output_pool_->Release(slot);
-			return Write(ErrorMessage(QStringLiteral("rendered frame does not fit output slot"),
+			LogError(QString("Output frame size")+QString::number(data_size));
+			LogError(QString("Slot size")+QString::number(output_pool_->slot_data_bytes()));
+			return Write(ErrorMessage(QStringLiteral("rendered frame does not fit output slot "),
 									  message.ticket_id));
 		}
 
@@ -432,7 +456,6 @@ private:
 			return Write(ErrorMessage(QStringLiteral("failed to publish output frame slot"),
 									  message.ticket_id));
 		}
-
 		olive::ipc::FrameReadyMsg ready;
 		ready.ticket_id = message.ticket_id;
 		ready.output_slot = int(slot);
@@ -463,6 +486,15 @@ int main(int argc, char *argv[])
 	QCoreApplication::setOrganizationName(QStringLiteral("oakvideoeditor.org"));
 	QCoreApplication::setApplicationName(QStringLiteral("olive-render-worker"));
 
+	QString backend = QStringLiteral("opengl");
+	const QStringList args = app.arguments();
+	for (int i = 1; i < args.size(); ++i) {
+		if (args[i] == QStringLiteral("--backend") && i + 1 < args.size()) {
+			backend = args[i + 1].toLower();
+			++i;
+		}
+	}
+
 	QFile in;
 	QFile out;
 	if (!in.open(stdin, QIODevice::ReadOnly | QIODevice::Unbuffered) ||
@@ -473,13 +505,14 @@ int main(int argc, char *argv[])
 
 	olive::Renderer *renderer;
 #ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
-	auto *dynamic_renderer = new olive::DynamicRenderer(QStringLiteral("opengl"));
+	auto *dynamic_renderer = new olive::DynamicRenderer(backend);
 	if (dynamic_renderer->Init()) {
 		dynamic_renderer->PostInit();
 		renderer = dynamic_renderer;
 	} else {
 		delete dynamic_renderer;
-		qWarning() << "Failed to initialize dynamic OpenGL backend, falling back to direct OpenGL renderer";
+		qWarning() << "Failed to initialize dynamic" << backend
+				   << "backend, falling back to direct OpenGL renderer";
 		renderer = new olive::OpenGLRenderer();
 		if (!renderer->Init()) {
 			LogError(QStringLiteral("failed to initialize OpenGL renderer"));
@@ -498,16 +531,24 @@ int main(int argc, char *argv[])
 	renderer->PostInit();
 #endif
 
+	// Validate the renderer. For OpenGL we check the GL context; for Vulkan we
+	// rely on Init()/PostInit() succeeding (there is no QOpenGLContext).
+	bool renderer_valid = true;
 	QOpenGLContext *ctx = nullptr;
+	if (backend == QStringLiteral("opengl")) {
 #ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
-	if (auto *loaded_renderer = dynamic_cast<olive::DynamicRenderer *>(renderer)) {
-		ctx = loaded_renderer->OpenGLContext();
-	} else
+		if (auto *loaded_renderer = dynamic_cast<olive::DynamicRenderer *>(renderer)) {
+			ctx = loaded_renderer->OpenGLContext();
+		} else
 #endif
-	{
-		ctx = static_cast<olive::OpenGLRenderer *>(renderer)->context();
+		{
+			ctx = static_cast<olive::OpenGLRenderer *>(renderer)->context();
+		}
+		if (!ctx || !ctx->isValid()) {
+			renderer_valid = false;
+		}
 	}
-	if (!ctx || !ctx->isValid()) {
+	if (!renderer_valid) {
 		LogError(QStringLiteral("OpenGL context is not valid after init"));
 		renderer->Destroy();
 		renderer->PostDestroy();

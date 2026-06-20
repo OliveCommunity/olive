@@ -410,7 +410,18 @@ Vulkan 测试必须先区分两类环境：
 
 通过标准：Viewer 通过 Vulkan backend-neutral readback 路径正常显示，播放和 seek 不崩溃；画面比例、裁切、缩放和 device pixel ratio 正常；没有长期黑屏、上一帧残留或 UI 死锁。
 
-### 10.5 Vulkan 调色/LUT 显示一致性
+### 10.5 Vulkan H.265 4:2:2 4K 播放
+
+1. 准备一段 `h265_422_4k.mov`，使用 `ffprobe` 确认视频流为 `hevc`，`pix_fmt` 为 `yuv422p10le` 或 `yuv422p12le`。
+2. 选择 Vulkan 并重启。
+3. 导入 `h265_422_4k.mov`，放入时间线并播放 10 秒。
+4. 拖动时间线到多个位置，选择不同节点并重复刷新 Viewer。
+5. 观察日志中是否出现 `Failed to allocate Vulkan staging buffer memory`。
+6. 切换 OpenGL 后端重复同一素材播放，作为解码路径对照。
+
+通过标准：Vulkan 下 Viewer 不黑屏、不闪烁且能稳定 seek；日志不应反复出现 Vulkan staging buffer 分配失败；若 Vulkan 环境确实内存不足，应给出明确失败或回退行为，不能持续显示一个非空但不可用的黑屏 texture。OpenGL 对照可播放时，Vulkan 失败应记录为 Vulkan 路径问题而不是素材不支持。
+
+### 10.6 Vulkan 调色/LUT 显示一致性
 
 1. 选择 Vulkan 并重启。
 2. 将 `color_chart.mov` 放入时间线。
@@ -421,7 +432,7 @@ Vulkan 测试必须先区分两类环境：
 
 通过标准：Vulkan 与 OpenGL 预览颜色方向一致，LUT 和三向色轮均生效；不要求像素完全一致，但不能出现通道错乱、alpha 错误、明显 gamma 反转或 LUT 失效。
 
-### 10.6 Vulkan 代理媒体与重素材播放
+### 10.7 Vulkan 代理媒体与重素材播放
 
 1. 选择 Vulkan 并重启。
 2. 对 `8k_or_heavy_camera.mov` 生成代理并启用代理。
@@ -431,7 +442,7 @@ Vulkan 测试必须先区分两类环境：
 
 通过标准：启用代理后 Viewer 可播放且不崩溃；禁用代理后回到原片路径；保存重开后代理状态一致；Vulkan 路径不应把导出源降级为代理。
 
-### 10.7 Vulkan 软件导出
+### 10.8 Vulkan 软件导出
 
 1. 选择 Vulkan 并重启。
 2. 创建 10 秒 sequence，包含 `color_chart.mov`、LUT、三向调色、一个代理 clip 和一段音频。
@@ -441,7 +452,7 @@ Vulkan 测试必须先区分两类环境：
 
 通过标准：Vulkan 下导出成功，输出可播放，音画同步不超过 1 帧；颜色处理和 OpenGL 导出方向一致；启用代理时导出仍使用原片质量路径；失败时有明确错误，不生成损坏的完成文件。
 
-### 10.8 Vulkan Scope 行为
+### 10.9 Vulkan Scope 行为
 
 1. 选择 Vulkan 并重启。
 2. 打开 Waveform、Vectorscope、Histogram。
@@ -451,7 +462,7 @@ Vulkan 测试必须先区分两类环境：
 
 通过标准：当前 backend-neutral Scope 若仍是安全跳过，应明确记录为已知限制，且不能崩溃或卡死；OpenGL 下 Scope 必须正常更新。若 Vulkan Scope 已实现，则三类 Scope 必须随当前帧和调色变化更新。
 
-### 10.9 Vulkan OpenFX CPU 回退
+### 10.10 Vulkan OpenFX CPU 回退
 
 1. 选择 Vulkan 并重启。
 2. 在 clip 上添加一个已知可用的 OFX 插件，优先选择支持 CPU 渲染且效果明显的插件。
@@ -461,7 +472,7 @@ Vulkan 测试必须先区分两类环境：
 
 通过标准：Vulkan 下 OFX 插件不因缺少 OpenGL context 而被跳过或崩溃；CPU 回退输出可见且可导出；OpenGL 下原有 OFX OpenGL 路径不回退或失效。
 
-### 10.10 Vulkan 后端长时间稳定性
+### 10.11 Vulkan 后端长时间稳定性
 
 1. 选择 Vulkan 并重启。
 2. 打开包含 4K/8K、LUT、代理、音频和至少 10 个 clip 的项目。
@@ -471,7 +482,7 @@ Vulkan 测试必须先区分两类环境：
 
 通过标准：无崩溃、无持续不可控内存增长、无明显 Vulkan validation/driver error；停止播放后仍可保存项目和退出应用。
 
-### 10.11 Vulkan 驱动缺失或不可用
+### 10.12 Vulkan 驱动缺失或不可用
 
 1. 在没有 Vulkan Runtime 或驱动不可用的机器上选择 Vulkan。
 2. 重启 Oak。
@@ -481,7 +492,7 @@ Vulkan 测试必须先区分两类环境：
 
 通过标准：应用可以启动；日志应说明 Vulkan 请求不可完全满足或当前回退 OpenGL；`RenderManager::backend()` 必须与实际运行后端一致；用户能回到 Preferences 改回 OpenGL。
 
-### 10.12 从 Vulkan 切回 OpenGL
+### 10.13 从 Vulkan 切回 OpenGL
 
 1. 在 Vulkan 已选中状态下打开 Preferences。
 2. 将 Graphics Backend 改为 OpenGL。
@@ -490,7 +501,7 @@ Vulkan 测试必须先区分两类环境：
 
 通过标准：重启后显示 OpenGL；播放和导出正常；不会保留错误的 Vulkan 状态。
 
-### 10.13 代理、Scope 与调色组合回归
+### 10.14 代理、Scope 与调色组合回归
 
 1. 选择 Vulkan 并重启。
 2. 对 `8k_or_heavy_camera.mov` 生成并启用代理。
@@ -500,7 +511,7 @@ Vulkan 测试必须先区分两类环境：
 
 通过标准：Vulkan 请求状态下代理、Scope、调色不崩溃；切回 OpenGL 后项目状态一致；两种选择下导出默认仍使用原片。
 
-### 10.14 动态 OpenGL 后端加载
+### 10.15 动态 OpenGL 后端加载
 
 1. 使用开启 `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 的实验构建。
 2. 确认应用目录存在 Oak 私有 OpenGL 后端库，例如 `liboakgl.so`、`liboakgl.dylib` 或 `oakgl.dll`。
@@ -510,7 +521,7 @@ Vulkan 测试必须先区分两类环境：
 
 通过标准：日志显示动态 OpenGL 后端加载成功；viewer、Scope、调色和播放行为与默认 OpenGL 路径一致；退出时执行 destroy/unload 无崩溃。
 
-### 10.15 动态后端缺失或损坏
+### 10.16 动态后端缺失或损坏
 
 1. 使用开启 `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 的实验构建。
 2. 临时移走或重命名 Oak 私有 OpenGL 后端库。
@@ -519,7 +530,7 @@ Vulkan 测试必须先区分两类环境：
 
 通过标准：应用不能静默崩溃；日志明确说明后端库加载失败；用户能够恢复库文件或切回默认构建继续打开项目。
 
-### 10.16 Vulkan 动态后端库缺失或不可加载
+### 10.17 Vulkan 动态后端库缺失或不可加载
 
 1. 使用开启 `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` 的实验构建。
 2. 在 Preferences 中选择 Vulkan 并重启。
@@ -530,7 +541,7 @@ Vulkan 测试必须先区分两类环境：
 
 通过标准：Vulkan 后端库缺失、损坏或符号不完整时不崩溃；日志明确说明 Vulkan 后端加载失败并回退或拒绝初始化；切回 OpenGL 后项目可播放。
 
-### 10.17 Vulkan 与 OpenGL 结果记录
+### 10.18 Vulkan 与 OpenGL 结果记录
 
 1. 对同一项目分别在 Vulkan 和 OpenGL 下执行 Viewer 播放、5 秒软件导出、代理启用导出。
 2. 记录每个环境的实际 backend、GPU、driver、Vulkan API 版本和是否发生回退。
@@ -539,7 +550,7 @@ Vulkan 测试必须先区分两类环境：
 
 通过标准：每次测试结果能明确区分“真实 Vulkan 后端通过”、“请求 Vulkan 但回退 OpenGL 通过”和“Vulkan 后端失败”；不能把回退 OpenGL 的结果记为 Vulkan 渲染通过。
 
-### 10.18 回退链路恢复
+### 10.19 回退链路恢复
 
 1. 在可用 Vulkan 环境中选择 Vulkan 并确认实际使用 Vulkan。
 2. 退出应用，临时破坏 Vulkan runtime 或移走 `liboakvulkan`。

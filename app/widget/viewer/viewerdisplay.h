@@ -22,9 +22,11 @@
 #ifndef VIEWERGLWIDGET_H
 #define VIEWERGLWIDGET_H
 
+#include <QImage>
 #include <QMatrix4x4>
 #include <QRubberBand>
 
+#include "codec/frame.h"
 #include "node/color/colormanager/colormanager.h"
 #include "node/gizmo/text.h"
 #include "node/node.h"
@@ -135,6 +137,11 @@ public:
 	TexturePtr GetCurrentTexture() const
 	{
 		return texture_;
+	}
+
+	ColorProcessorPtr GetCurrentColorProcessor()
+	{
+		return color_service();
 	}
 
 	void Play(const int64_t &start_timestamp, const int &playback_speed,
@@ -328,6 +335,8 @@ private:
 	void DrawBlank(const VideoParams &device_params);
 
 	void DrawBackendNeutral(const ColorTransformJob &ctj, QPainter *painter);
+	bool DrawBackendNeutralFrame(const FramePtr &frame, QPainter *painter);
+	bool DrawBackendNeutralTexture(const TexturePtr &texture, QPainter *painter);
 
 	/**
    * @brief Internal reference to the OpenGL texture to draw. Set in SetTexture() and used in paintGL().
@@ -351,6 +360,11 @@ private:
    * @brief CPU readback buffer for backend_neutral_texture_.
    */
 	QByteArray backend_neutral_buffer_;
+	QImage backend_neutral_cpu_image_;
+	FramePtr backend_neutral_cpu_display_frame_;
+	FramePtr backend_neutral_cpu_source_frame_;
+	TexturePtr backend_neutral_cpu_source_texture_;
+	QString backend_neutral_cpu_color_id_;
 
 	/**
    * @brief Deinterlace shader

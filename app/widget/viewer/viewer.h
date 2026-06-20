@@ -407,6 +407,7 @@ private slots:
 	void QueueNoLongerStarved();
 
 	void ForceRequeueFromCurrentTime();
+	void ForceRequeueFromCurrentTimeInternal();
 
 	void UpdateAudioProcessor();
 

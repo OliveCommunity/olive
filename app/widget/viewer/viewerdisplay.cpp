@@ -410,24 +410,24 @@ void ViewerDisplayWidget::OnPaint()
 				DrawBlank(device_params);
 			}
 		} else if (color_service()) {
+			bool drew_backend_neutral_frame = false;
 			if (FramePtr frame = load_frame_.value<FramePtr>()) {
-				// This is a CPU frame, upload it now
-				if (!texture_ ||
+				if (!drew_backend_neutral_frame && (!texture_ ||
 					texture_->renderer() !=
 						renderer() // Some implementations don't like it if we upload to a texture created in another (albeit shared) context
 					|| texture_->width() != frame->width() ||
 					texture_->height() != frame->height() ||
 					texture_->format() != frame->format() ||
-					texture_->channel_count() != frame->channel_count()) {
+					texture_->channel_count() != frame->channel_count())) {
 					texture_ = renderer()->CreateTexture(
 						frame->video_params(), frame->data(),
 						frame->linesize_pixels());
-				} else {
+				} else if (!drew_backend_neutral_frame) {
 					texture_->Upload(frame->data(), frame->linesize_pixels());
 				}
 			} else if (TexturePtr texture = load_frame_.value<TexturePtr>()) {
 				// This is a GPU texture, switch to it directly when possible.
-				if (texture && texture->renderer() &&
+				if (!drew_backend_neutral_frame && texture && texture->renderer() &&
 					texture->renderer() != renderer()) {
 					if (texture->renderer()->IsOpenGL() && renderer()->IsOpenGL()) {
 						// Shared OpenGL contexts can display the producer texture
@@ -450,69 +450,74 @@ void ViewerDisplayWidget::OnPaint()
 							texture_ = texture;
 						}
 					}
-				} else {
+				} else if (!drew_backend_neutral_frame) {
 					texture_ = texture;
 				}
 			} else {
 				texture_ = LoadCustomTextureFromFrame(load_frame_);
 			}
 
+			if (drew_backend_neutral_frame) {
+				texture_ = nullptr;
+			}
+
 			emit TextureChanged(texture_);
 
 			push_mode_ = kPushUnnecessary;
 
-			TexturePtr texture_to_draw = texture_;
+			if (!drew_backend_neutral_frame) {
+				TexturePtr texture_to_draw = texture_;
 
-			if (!texture_to_draw || texture_to_draw->IsDummy()) {
-				if (!backend_neutral) {
-					DrawBlank(device_params);
-				}
-			} else {
-				if (deinterlace_) {
-					if (deinterlace_shader_.isNull()) {
-						deinterlace_shader_ = renderer()->CreateNativeShader(
-							ShaderCode(FileFunctions::ReadFileAsString(
-								QStringLiteral(":/shaders/deinterlace.frag"))));
+				if (!texture_to_draw || texture_to_draw->IsDummy()) {
+					if (!backend_neutral) {
+						DrawBlank(device_params);
+					}
+				} else {
+					if (deinterlace_) {
+						if (deinterlace_shader_.isNull()) {
+							deinterlace_shader_ = renderer()->CreateNativeShader(
+								ShaderCode(FileFunctions::ReadFileAsString(
+									QStringLiteral(":/shaders/deinterlace.frag"))));
+						}
+
+						if (!deinterlace_texture_ ||
+							deinterlace_texture_->params() !=
+								texture_to_draw->params()) {
+							// (Re)create texture
+							deinterlace_texture_ = renderer()->CreateTexture(
+								texture_to_draw->params());
+						}
+
+						ShaderJob job;
+						job.Insert(QStringLiteral("resolution_in"),
+								   NodeValue(NodeValue::kVec2,
+											 QVector2D(texture_to_draw->width(),
+													   texture_to_draw->height())));
+						job.Insert(QStringLiteral("ove_maintex"),
+								   NodeValue(NodeValue::kTexture,
+											 QVariant::fromValue(texture_to_draw)));
+
+						renderer()->BlitToTexture(deinterlace_shader_, job,
+												  deinterlace_texture_.get());
+
+						texture_to_draw = deinterlace_texture_;
 					}
 
-					if (!deinterlace_texture_ ||
-						deinterlace_texture_->params() !=
-							texture_to_draw->params()) {
-						// (Re)create texture
-						deinterlace_texture_ = renderer()->CreateTexture(
-							texture_to_draw->params());
-					}
+					ctj.SetColorProcessor(color_service());
+					ctj.SetInputTexture(texture_to_draw);
+					ctj.SetInputAlphaAssociation(
+						OLIVE_CONFIG("ReassocLinToNonLin").toBool() ?
+							kAlphaAssociated :
+							kAlphaNone);
+					ctj.SetClearDestinationEnabled(false);
+					ctj.SetTransformMatrix(combined_matrix_flipped_);
+					ctj.SetCropMatrix(crop_matrix_);
+					ctj.SetForceOpaque(true);
 
-					ShaderJob job;
-					job.Insert(QStringLiteral("resolution_in"),
-							   NodeValue(NodeValue::kVec2,
-										 QVector2D(texture_to_draw->width(),
-												   texture_to_draw->height())));
-					job.Insert(QStringLiteral("ove_maintex"),
-							   NodeValue(NodeValue::kTexture,
-										 QVariant::fromValue(texture_to_draw)));
-
-					renderer()->BlitToTexture(deinterlace_shader_, job,
-											  deinterlace_texture_.get());
-
-					texture_to_draw = deinterlace_texture_;
+					have_ctj = true;
 				}
-
-				ctj.SetColorProcessor(color_service());
-				ctj.SetInputTexture(texture_to_draw);
-				ctj.SetInputAlphaAssociation(
-					OLIVE_CONFIG("ReassocLinToNonLin").toBool() ?
-						kAlphaAssociated :
-						kAlphaNone);
-				ctj.SetClearDestinationEnabled(false);
-				ctj.SetTransformMatrix(combined_matrix_flipped_);
-				ctj.SetCropMatrix(crop_matrix_);
-				ctj.SetForceOpaque(true);
-
-				have_ctj = true;
 			}
 		} else {
-			qDebug() << "[VIEWER] OnPaint no color_service, skipping texture draw";
 		}
 	}
 
@@ -648,6 +653,13 @@ void ViewerDisplayWidget::OnPaint()
 		p.setBrush(highlight);
 		p.drawRect(QRect(add_band_start_, add_band_end_).normalized());
 	}
+
+	// In backend-neutral mode there is no native buffer swap, so Qt will not
+	// emit frameSwapped automatically. Emit it ourselves so the playback queue
+	// keeps advancing (UpdateFromQueue is connected to it during Play()).
+	if (backend_neutral) {
+		emit frameSwapped();
+	}
 }
 
 void ViewerDisplayWidget::OnDestroy()
@@ -667,6 +679,11 @@ void ViewerDisplayWidget::OnDestroy()
 	deinterlace_texture_ = nullptr;
 	backend_neutral_texture_ = nullptr;
 	backend_neutral_buffer_.clear();
+	backend_neutral_cpu_image_ = QImage();
+	backend_neutral_cpu_display_frame_.reset();
+	backend_neutral_cpu_source_frame_.reset();
+	backend_neutral_cpu_source_texture_.reset();
+	backend_neutral_cpu_color_id_.clear();
 	if (load_frame_.isNull()) {
 		push_mode_ = kPushNull;
 	} else {
@@ -717,9 +734,17 @@ void ViewerDisplayWidget::UpdateMatrix()
 {
 	combined_matrix_ = scale_matrix_ * translate_matrix_;
 
-	combined_matrix_flipped_.setToIdentity();
-	combined_matrix_flipped_.scale(1.0, -1.0, 1.0);
-	combined_matrix_flipped_ *= combined_matrix_;
+	combined_matrix_flipped_ = combined_matrix_;
+	// OpenGL's framebuffer origin is bottom-left and texture data is uploaded
+	// top-down, so the viewer matrix must flip Y to display images right-side
+	// up. Vulkan's framebuffer and texture coordinate origins are both top-left,
+	// so the same flip would invert the image. Default to the OpenGL flip when
+	// no renderer is available yet.
+	if (!renderer() || !renderer()->IsVulkan()) {
+		QMatrix4x4 flip;
+		flip.scale(1.0f, -1.0f, 1.0f);
+		combined_matrix_flipped_ = flip * combined_matrix_flipped_;
+	}
 
 	update();
 }
@@ -1396,6 +1421,127 @@ void ViewerDisplayWidget::DrawBlank(const VideoParams &device_params)
 			   NodeValue(NodeValue::kMatrix, crop_matrix_));
 
 	renderer()->Blit(blank_shader_, job, device_params, false);
+}
+
+bool ViewerDisplayWidget::DrawBackendNeutralFrame(const FramePtr &frame,
+												  QPainter *painter)
+{
+	if (!frame || !frame->is_allocated() || !painter || !painter->isActive() ||
+		!color_service()) {
+		return false;
+	}
+
+	const QString color_id = QString::fromUtf8(color_service()->id());
+	if (backend_neutral_cpu_source_frame_.get() == frame.get() &&
+		backend_neutral_cpu_color_id_ == color_id &&
+		!backend_neutral_cpu_image_.isNull()) {
+		painter->save();
+		painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
+		painter->setWorldTransform(GenerateWorldTransform(), false);
+		painter->drawImage(rect(), backend_neutral_cpu_image_);
+		painter->restore();
+		return true;
+	}
+
+	// Do not run OCIO CPU conversion from paintEvent. Some OCIO processors are
+	// not safe to apply on this GUI path and a crash here kills preview. Worker
+	// frames tagged with display:<processor-id> have already been color managed;
+	// untagged frames are drawn directly as a safe fallback.
+	FramePtr display_frame = frame;
+
+	QImage source_image;
+	if (display_frame->format() == PixelFormat::U8 &&
+		display_frame->channel_count() == VideoParams::kRGBAChannelCount) {
+		backend_neutral_cpu_display_frame_ = display_frame;
+		backend_neutral_cpu_image_ = QImage(
+			reinterpret_cast<const uchar *>(display_frame->const_data()),
+			display_frame->width(), display_frame->height(),
+			display_frame->linesize_bytes(), QImage::Format_RGBA8888);
+		source_image = backend_neutral_cpu_image_;
+	} else if (display_frame->format() == PixelFormat::U8 &&
+			   display_frame->channel_count() == VideoParams::kRGBChannelCount) {
+		backend_neutral_cpu_display_frame_ = display_frame;
+		backend_neutral_cpu_image_ = QImage(
+			reinterpret_cast<const uchar *>(display_frame->const_data()),
+			display_frame->width(), display_frame->height(),
+			display_frame->linesize_bytes(), QImage::Format_RGB888);
+		source_image = backend_neutral_cpu_image_;
+	} else {
+		backend_neutral_cpu_display_frame_.reset();
+		const int bytes_per_pixel = display_frame->video_params().GetBytesPerPixel();
+		if (backend_neutral_cpu_image_.size() !=
+			QSize(display_frame->width(), display_frame->height()) ||
+			backend_neutral_cpu_image_.format() != QImage::Format_RGBA8888) {
+			backend_neutral_cpu_image_ =
+				QImage(display_frame->width(), display_frame->height(),
+					   QImage::Format_RGBA8888);
+		}
+
+		for (int y = 0; y < display_frame->height(); ++y) {
+			uchar *dst = backend_neutral_cpu_image_.scanLine(y);
+			const char *src = display_frame->const_data() +
+							  y * display_frame->linesize_bytes();
+			for (int x = 0; x < display_frame->width(); ++x) {
+				Color c(src + x * bytes_per_pixel, display_frame->format(),
+						display_frame->channel_count());
+				dst[x * 4 + 0] =
+					static_cast<uchar>(qBound(0, int(c.red() * 255.0), 255));
+				dst[x * 4 + 1] =
+					static_cast<uchar>(qBound(0, int(c.green() * 255.0), 255));
+				dst[x * 4 + 2] =
+					static_cast<uchar>(qBound(0, int(c.blue() * 255.0), 255));
+				dst[x * 4 + 3] = 255;
+			}
+		}
+		source_image = backend_neutral_cpu_image_;
+	}
+
+	backend_neutral_cpu_source_frame_ = frame;
+	backend_neutral_cpu_color_id_ = color_id;
+
+	painter->save();
+	painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
+	painter->setWorldTransform(GenerateWorldTransform(), false);
+	painter->drawImage(rect(), source_image);
+	painter->restore();
+	return true;
+}
+
+bool ViewerDisplayWidget::DrawBackendNeutralTexture(const TexturePtr &texture,
+													QPainter *painter)
+{
+	if (!texture || texture->IsDummy() || !texture->renderer() || !painter ||
+		!painter->isActive() || !color_service()) {
+		return false;
+	}
+
+	const QString color_id = QString::fromUtf8(color_service()->id());
+	if (backend_neutral_cpu_source_texture_.get() == texture.get() &&
+		backend_neutral_cpu_color_id_ == color_id &&
+		!backend_neutral_cpu_image_.isNull()) {
+		painter->save();
+		painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
+		painter->setWorldTransform(GenerateWorldTransform(), false);
+		painter->drawImage(rect(), backend_neutral_cpu_image_);
+		painter->restore();
+		return true;
+	}
+
+	FramePtr frame = Frame::Create();
+	frame->set_video_params(texture->params());
+	if (!frame->allocate()) {
+		return false;
+	}
+
+	texture->Download(frame->data(), frame->linesize_pixels());
+
+	if (!DrawBackendNeutralFrame(frame, painter)) {
+		return false;
+	}
+
+	backend_neutral_cpu_source_texture_ = texture;
+	backend_neutral_cpu_color_id_ = color_id;
+	return true;
 }
 
 // Renders a backend-neutral frame by drawing into an offscreen backend texture,

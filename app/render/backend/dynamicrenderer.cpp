@@ -97,7 +97,12 @@ bool DynamicRenderer::Load()
 		return false;
 	}
 
-	handle_ = create_(this->parent());
+	// Pass this (rather than this->parent()) so the backend renderer becomes a
+	// child QObject of the adapter. That ensures it follows DynamicRenderer when
+	// the latter is moved to the render thread; otherwise it stays in the thread
+	// where Load() was called and every GL operation is rejected as "wrong
+	// thread", producing a black screen.
+	handle_ = create_(this);
 	if (!handle_) {
 		library_.unload();
 		return false;
@@ -317,6 +322,11 @@ QOpenGLContext *DynamicRenderer::OpenGLContext() const
 bool DynamicRenderer::IsOpenGL() const
 {
 	return backend_ == QStringLiteral("opengl");
+}
+
+bool DynamicRenderer::IsVulkan() const
+{
+	return backend_ == QStringLiteral("vulkan");
 }
 
 // Dispatches a shader blit to the loaded backend.

@@ -5,6 +5,7 @@
 #include <QRegularExpression>
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 
 #include "node/value.h"
 #include "render/job/shaderjob.h"
@@ -49,6 +50,16 @@ struct VulkanRenderer::VulkanShader {
 	QVector<UniformInfo> uniforms;
 	VkDeviceSize ubo_size = 0;
 	int sampler_count = 0;
+	// Maps sampler uniform names to the descriptor binding assigned in
+	// RewriteShaderWithUbo. Used when updating descriptor sets so textures are
+	// bound to the sampler they belong to regardless of job iteration order.
+	QHash<QString, int> sampler_bindings;
+};
+
+struct VulkanRenderer::StagingBuffer {
+	VkBuffer buffer = VK_NULL_HANDLE;
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	VkDeviceSize size = 0;
 };
 
 static const float kBlitVertices[] = {
@@ -168,6 +179,27 @@ void VulkanRenderer::DestroyInternal()
 		vertex_buffer_memory_ = VK_NULL_HANDLE;
 	}
 
+	if (staging_buffer_) {
+		if (staging_buffer_->buffer != VK_NULL_HANDLE) {
+			vkDestroyBuffer(device_, staging_buffer_->buffer, nullptr);
+		}
+		if (staging_buffer_->memory != VK_NULL_HANDLE) {
+			vkFreeMemory(device_, staging_buffer_->memory, nullptr);
+		}
+		delete staging_buffer_;
+		staging_buffer_ = nullptr;
+	}
+
+	if (reusable_fence_ != VK_NULL_HANDLE) {
+		vkDestroyFence(device_, reusable_fence_, nullptr);
+		reusable_fence_ = VK_NULL_HANDLE;
+	}
+	if (reusable_command_buffer_ != VK_NULL_HANDLE) {
+		vkFreeCommandBuffers(device_, command_pool_, 1,
+							 &reusable_command_buffer_);
+		reusable_command_buffer_ = VK_NULL_HANDLE;
+	}
+
 	for (auto it = render_pass_cache_.begin(); it != render_pass_cache_.end(); ++it) {
 		if (it.value() != VK_NULL_HANDLE) {
 			vkDestroyRenderPass(device_, it.value(), nullptr);
@@ -179,6 +211,7 @@ void VulkanRenderer::DestroyInternal()
 		vkDestroyDescriptorPool(device_, descriptor_pool_, nullptr);
 		descriptor_pool_ = VK_NULL_HANDLE;
 	}
+	descriptor_sets_since_reset_ = 0;
 
 	if (command_pool_ != VK_NULL_HANDLE) {
 		vkDestroyCommandPool(device_, command_pool_, nullptr);
@@ -189,8 +222,10 @@ void VulkanRenderer::DestroyInternal()
 		vkDestroyDevice(device_, nullptr);
 		device_ = VK_NULL_HANDLE;
 	}
+	device_lost_ = false;
 
 	if (instance_ != VK_NULL_HANDLE) {
+		DestroyDebugMessenger();
 		vkDestroyInstance(instance_, nullptr);
 		instance_ = VK_NULL_HANDLE;
 	}
@@ -207,17 +242,129 @@ bool VulkanRenderer::CreateInstance()
 	app_info.engineVersion = VK_MAKE_VERSION(0, 3, 0);
 	app_info.apiVersion = VK_API_VERSION_1_2;
 
+	const bool enable_validation =
+		qEnvironmentVariableIsSet("OAK_VULKAN_VALIDATION");
+	const char *validation_layer = "VK_LAYER_KHRONOS_validation";
+	const char *debug_extension = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+	bool has_validation = false;
+	bool has_debug_extension = false;
+
+	if (enable_validation) {
+		uint32_t layer_count = 0;
+		vkEnumerateInstanceLayerProperties(&layer_count, nullptr);
+		QVector<VkLayerProperties> layers(layer_count);
+		vkEnumerateInstanceLayerProperties(&layer_count, layers.data());
+		for (const VkLayerProperties &layer : layers) {
+			if (strcmp(layer.layerName, validation_layer) == 0) {
+				has_validation = true;
+				break;
+			}
+		}
+
+		uint32_t extension_count = 0;
+		vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, nullptr);
+		QVector<VkExtensionProperties> extensions(extension_count);
+		vkEnumerateInstanceExtensionProperties(nullptr, &extension_count,
+										   extensions.data());
+		for (const VkExtensionProperties &ext : extensions) {
+			if (strcmp(ext.extensionName, debug_extension) == 0) {
+				has_debug_extension = true;
+				break;
+			}
+		}
+	}
+
 	VkInstanceCreateInfo create_info = {};
 	create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	create_info.pApplicationInfo = &app_info;
+	if (has_validation) {
+		create_info.enabledLayerCount = 1;
+		create_info.ppEnabledLayerNames = &validation_layer;
+	}
+	if (has_debug_extension) {
+		create_info.enabledExtensionCount = 1;
+		create_info.ppEnabledExtensionNames = &debug_extension;
+	}
 
 	VkResult result = vkCreateInstance(&create_info, nullptr, &instance_);
 	if (result != VK_SUCCESS) {
 		qWarning() << "Failed to create Vulkan instance:" << result;
 		return false;
 	}
+
+	if (has_validation && has_debug_extension) {
+		CreateDebugMessenger();
+	}
+
 	qDebug() << "Vulkan instance created successfully";
 	return true;
+}
+
+// Logs validation errors/warnings from the Vulkan validation layers. These are
+// the first signal of missing barriers or invalid usage that would otherwise
+// become a GPU hang.
+VKAPI_ATTR VkBool32 VKAPI_CALL
+VulkanRenderer::DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+							  VkDebugUtilsMessageTypeFlagsEXT messageType,
+							  const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
+							  void *pUserData)
+{
+	Q_UNUSED(messageType)
+	Q_UNUSED(pUserData)
+
+	if (!pCallbackData || !pCallbackData->pMessage) {
+		return VK_FALSE;
+	}
+
+	// Only emit errors/warnings. Verbose validation messages are useful during
+	// bring-up but flood the log and degrade playback performance.
+	if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) {
+		qWarning() << "Vulkan validation error:" << pCallbackData->pMessage;
+	} else if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) {
+		qWarning() << "Vulkan validation warning:" << pCallbackData->pMessage;
+	}
+
+	return VK_FALSE;
+}
+
+bool VulkanRenderer::CreateDebugMessenger()
+{
+	auto create_fn = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(
+		vkGetInstanceProcAddr(instance_, "vkCreateDebugUtilsMessengerEXT"));
+	if (!create_fn) {
+		qWarning() << "Failed to load vkCreateDebugUtilsMessengerEXT";
+		return false;
+	}
+
+	VkDebugUtilsMessengerCreateInfoEXT create_info = {};
+	create_info.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+	create_info.messageSeverity =
+		VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+		VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+	create_info.messageType =
+		VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+		VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
+	create_info.pfnUserCallback = DebugCallback;
+
+	VkResult result = create_fn(instance_, &create_info, nullptr, &debug_messenger_);
+	if (result != VK_SUCCESS) {
+		qWarning() << "Failed to create Vulkan debug messenger:" << result;
+		return false;
+	}
+	return true;
+}
+
+void VulkanRenderer::DestroyDebugMessenger()
+{
+	if (debug_messenger_ == VK_NULL_HANDLE || instance_ == VK_NULL_HANDLE) {
+		return;
+	}
+	auto destroy_fn = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
+		vkGetInstanceProcAddr(instance_, "vkDestroyDebugUtilsMessengerEXT"));
+	if (destroy_fn) {
+		destroy_fn(instance_, debug_messenger_, nullptr);
+	}
+	debug_messenger_ = VK_NULL_HANDLE;
 }
 
 // Selects the first physical device with a graphics queue and creates a logical
@@ -374,15 +521,35 @@ VkRenderPass VulkanRenderer::GetOrCreateRenderPass(VkFormat format, bool clear)
 	// correctly synchronized. The destination image is brought in by the
 	// pipeline barrier before the render pass; here we synchronize the render
 	// pass output with whatever stage reads it next.
-	VkSubpassDependency dependency = {};
-	dependency.srcSubpass = 0;
-	dependency.dstSubpass = VK_SUBPASS_EXTERNAL;
-	dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	dependency.dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
-							  VK_PIPELINE_STAGE_TRANSFER_BIT;
-	dependency.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-	dependency.dstAccessMask = VK_ACCESS_SHADER_READ_BIT |
-							   VK_ACCESS_TRANSFER_READ_BIT;
+	//
+	// Two dependencies are required:
+	//   1) EXTERNAL -> 0: whatever produced the image before the render pass must
+	//      finish before the color attachment output stage starts.
+	//   2) 0 -> EXTERNAL: the render pass write must complete before the image is
+	//      read again by shaders or transfer commands.
+	// Without (1), drivers may start the subpass before prior transfer/shader
+	// writes finish, causing GPU hangs.
+	VkSubpassDependency dependencies[2] = {};
+
+	// Use conservative ALL_COMMANDS / MEMORY_READ|WRITE masks. The render pass
+	// is used after many different prior operations (transfers, shader reads,
+	// layout transitions, etc.) and an overly narrow dependency is the most
+	// common cause of VK_ERROR_DEVICE_LOST on the first draw.
+	dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[0].dstSubpass = 0;
+	dependencies[0].srcStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+	dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependencies[0].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT |
+									VK_ACCESS_MEMORY_WRITE_BIT;
+	dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+	dependencies[1].srcSubpass = 0;
+	dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependencies[1].dstStageMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+	dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	dependencies[1].dstAccessMask = VK_ACCESS_MEMORY_READ_BIT |
+									VK_ACCESS_MEMORY_WRITE_BIT;
 
 	VkRenderPassCreateInfo render_pass_info = {};
 	render_pass_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -390,8 +557,8 @@ VkRenderPass VulkanRenderer::GetOrCreateRenderPass(VkFormat format, bool clear)
 	render_pass_info.pAttachments = &color_attachment;
 	render_pass_info.subpassCount = 1;
 	render_pass_info.pSubpasses = &subpass;
-	render_pass_info.dependencyCount = 1;
-	render_pass_info.pDependencies = &dependency;
+	render_pass_info.dependencyCount = 2;
+	render_pass_info.pDependencies = dependencies;
 
 	VkRenderPass render_pass = VK_NULL_HANDLE;
 	VkResult result = vkCreateRenderPass(device_, &render_pass_info, nullptr,
@@ -414,7 +581,7 @@ bool VulkanRenderer::CreateVertexBuffer()
 	VkBufferCreateInfo buffer_info = {};
 	buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	buffer_info.size = buffer_size;
-	buffer_info.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 	buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 	VkBuffer staging_buffer;
@@ -495,6 +662,7 @@ bool VulkanRenderer::CreateVertexBuffer()
 
 	// Copy from staging to device local
 	VkCommandBuffer cmd = BeginOneTimeCommands();
+	if (cmd == VK_NULL_HANDLE) { return false; }
 	VkBufferCopy copy_region = {};
 	copy_region.size = buffer_size;
 	vkCmdCopyBuffer(cmd, staging_buffer, vertex_buffer_, 1, &copy_region);
@@ -573,23 +741,53 @@ VkSampler VulkanRenderer::GetSampler(Texture::Interpolation interpolation) const
 	}
 }
 
-// Allocates host-visible coherent memory for one upload/download transfer.
+// Returns a renderer-owned host-visible buffer for upload/download transfers.
+// Vulkan allocations are expensive and some drivers fragment host-visible heaps
+// under repeated 4K/F32 readback. Reusing one submit-and-wait staging buffer
+// keeps peak allocation count low while the renderer mutex serializes callers.
 bool VulkanRenderer::CreateStagingBuffer(VkDeviceSize size, VkBuffer *out_buffer,
 									   VkDeviceMemory *out_memory)
 {
+	if (size == 0) {
+		return false;
+	}
+
+	if (staging_buffer_ && staging_buffer_->size >= size) {
+		*out_buffer = staging_buffer_->buffer;
+		*out_memory = staging_buffer_->memory;
+		return true;
+	}
+
+	if (staging_buffer_) {
+		vkDeviceWaitIdle(device_);
+		if (staging_buffer_->buffer != VK_NULL_HANDLE) {
+			vkDestroyBuffer(device_, staging_buffer_->buffer, nullptr);
+		}
+		if (staging_buffer_->memory != VK_NULL_HANDLE) {
+			vkFreeMemory(device_, staging_buffer_->memory, nullptr);
+		}
+		delete staging_buffer_;
+		staging_buffer_ = nullptr;
+	}
+
 	VkBufferCreateInfo buffer_info = {};
 	buffer_info.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	buffer_info.size = size;
-	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+	buffer_info.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+						VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+						VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
 	buffer_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-	VkResult result = vkCreateBuffer(device_, &buffer_info, nullptr, out_buffer);
+	VkBuffer buffer = VK_NULL_HANDLE;
+	VkResult result = vkCreateBuffer(device_, &buffer_info, nullptr, &buffer);
 	if (result != VK_SUCCESS) {
+		qWarning() << "Failed to create Vulkan staging buffer:" << result
+				   << "size=" << qulonglong(size);
 		return false;
 	}
 
 	VkMemoryRequirements mem_req;
-	vkGetBufferMemoryRequirements(device_, *out_buffer, &mem_req);
+	vkGetBufferMemoryRequirements(device_, buffer, &mem_req);
 
 	VkMemoryAllocateInfo alloc_info = {};
 	alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -599,30 +797,45 @@ bool VulkanRenderer::CreateStagingBuffer(VkDeviceSize size, VkBuffer *out_buffer
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 	if (alloc_info.memoryTypeIndex == UINT32_MAX) {
 		qWarning() << "Failed to find host-visible memory type for Vulkan staging buffer";
-		vkDestroyBuffer(device_, *out_buffer, nullptr);
+		vkDestroyBuffer(device_, buffer, nullptr);
 		return false;
 	}
 
-	result = vkAllocateMemory(device_, &alloc_info, nullptr, out_memory);
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	result = vkAllocateMemory(device_, &alloc_info, nullptr, &memory);
 	if (result != VK_SUCCESS) {
-		qWarning() << "Failed to allocate Vulkan staging buffer memory:" << result;
-		vkDestroyBuffer(device_, *out_buffer, nullptr);
+		qWarning() << "Failed to allocate Vulkan staging buffer memory:" << result
+				   << "size=" << qulonglong(size)
+				   << "allocation=" << qulonglong(mem_req.size);
+		vkDestroyBuffer(device_, buffer, nullptr);
 		return false;
 	}
 
-	result = vkBindBufferMemory(device_, *out_buffer, *out_memory, 0);
+	result = vkBindBufferMemory(device_, buffer, memory, 0);
 	if (result != VK_SUCCESS) {
 		qWarning() << "Failed to bind Vulkan staging buffer memory:" << result;
-		vkFreeMemory(device_, *out_memory, nullptr);
-		vkDestroyBuffer(device_, *out_buffer, nullptr);
+		vkFreeMemory(device_, memory, nullptr);
+		vkDestroyBuffer(device_, buffer, nullptr);
 		return false;
 	}
+
+	staging_buffer_ = new StagingBuffer();
+	staging_buffer_->buffer = buffer;
+	staging_buffer_->memory = memory;
+	staging_buffer_->size = mem_req.size;
+	*out_buffer = buffer;
+	*out_memory = memory;
 	return true;
 }
 
-// Releases a staging buffer and its memory allocation.
+// Kept for existing call sites; runtime staging buffers are renderer-owned and
+// released in DestroyInternal() or when a larger staging allocation is required.
 void VulkanRenderer::DestroyStagingBuffer(VkBuffer buffer, VkDeviceMemory memory)
 {
+	if (staging_buffer_ && buffer == staging_buffer_->buffer &&
+		memory == staging_buffer_->memory) {
+		return;
+	}
 	if (buffer != VK_NULL_HANDLE) {
 		vkDestroyBuffer(device_, buffer, nullptr);
 	}
@@ -634,37 +847,94 @@ void VulkanRenderer::DestroyStagingBuffer(VkBuffer buffer, VkDeviceMemory memory
 // Starts a primary command buffer intended for immediate submit-and-wait use.
 VkCommandBuffer VulkanRenderer::BeginOneTimeCommands()
 {
-	VkCommandBufferAllocateInfo alloc_info = {};
-	alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	alloc_info.commandPool = command_pool_;
-	alloc_info.commandBufferCount = 1;
+	if (reusable_command_buffer_ == VK_NULL_HANDLE) {
+		VkCommandBufferAllocateInfo alloc_info = {};
+		alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		alloc_info.commandPool = command_pool_;
+		alloc_info.commandBufferCount = 1;
 
-	VkCommandBuffer cmd;
-	vkAllocateCommandBuffers(device_, &alloc_info, &cmd);
+		VkResult result = vkAllocateCommandBuffers(
+			device_, &alloc_info, &reusable_command_buffer_);
+		if (result != VK_SUCCESS || reusable_command_buffer_ == VK_NULL_HANDLE) {
+			qWarning() << "Failed to allocate Vulkan command buffer:" << result;
+			return VK_NULL_HANDLE;
+		}
+	} else {
+		vkResetCommandBuffer(reusable_command_buffer_, 0);
+	}
 
 	VkCommandBufferBeginInfo begin_info = {};
 	begin_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	begin_info.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
-	vkBeginCommandBuffer(cmd, &begin_info);
-	return cmd;
+	VkResult result = vkBeginCommandBuffer(reusable_command_buffer_, &begin_info);
+	if (result != VK_SUCCESS) {
+		qWarning() << "Failed to begin Vulkan command buffer:" << result;
+		return VK_NULL_HANDLE;
+	}
+	return reusable_command_buffer_;
 }
 
-// Submits a one-time command buffer and waits synchronously for completion.
+// Submits a one-time command buffer and waits with a timeout. Using a fence
+// instead of vkQueueWaitIdle prevents the CPU thread from blocking forever if
+// a bad barrier/shader causes the GPU to hang.
 void VulkanRenderer::EndOneTimeCommands(VkCommandBuffer cmd)
 {
+	if (cmd == VK_NULL_HANDLE) {
+		return;
+	}
+
+	if (device_lost_) {
+		return;
+	}
+
 	vkEndCommandBuffer(cmd);
+
+	if (reusable_fence_ == VK_NULL_HANDLE) {
+		VkFenceCreateInfo fence_info = {};
+		fence_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+
+		VkResult result =
+			vkCreateFence(device_, &fence_info, nullptr, &reusable_fence_);
+		if (result != VK_SUCCESS) {
+			qWarning() << "Failed to create Vulkan fence:" << result;
+			return;
+		}
+	} else {
+		vkResetFences(device_, 1, &reusable_fence_);
+	}
 
 	VkSubmitInfo submit_info = {};
 	submit_info.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submit_info.commandBufferCount = 1;
 	submit_info.pCommandBuffers = &cmd;
 
-	vkQueueSubmit(graphics_queue_, 1, &submit_info, VK_NULL_HANDLE);
-	vkQueueWaitIdle(graphics_queue_);
+	VkResult result = vkQueueSubmit(graphics_queue_, 1, &submit_info,
+									reusable_fence_);
+	if (result != VK_SUCCESS) {
+		if (result == VK_ERROR_DEVICE_LOST) {
+			if (!device_lost_) {
+				device_lost_ = true;
+				qCritical() << "Vulkan device lost during vkQueueSubmit; stopping "
+							   "further GPU submissions";
+			}
+		} else {
+			qWarning() << "vkQueueSubmit failed:" << result;
+		}
+		return;
+	}
 
-	vkFreeCommandBuffers(device_, command_pool_, 1, &cmd);
+	// 10 second timeout. If the GPU is hung, the process can report it instead
+	// of blocking forever. Note: a true GPU hang may still freeze the display
+	// before this timeout is reached, but the CPU-side wait will not deadlock.
+	constexpr uint64_t kTimeoutNs = 10ULL * 1000ULL * 1000ULL * 1000ULL;
+	result = vkWaitForFences(device_, 1, &reusable_fence_, VK_TRUE, kTimeoutNs);
+	if (result == VK_TIMEOUT) {
+		qCritical() << "Vulkan GPU wait timed out; the GPU may be hung";
+	} else if (result != VK_SUCCESS) {
+		qWarning() << "vkWaitForFences failed:" << result;
+	}
 }
 
 // Emits a conservative barrier for the image layout transitions used by this
@@ -688,24 +958,28 @@ void VulkanRenderer::TransitionImageLayout(VkCommandBuffer cmd, VkImage image,
 
 	VkPipelineStageFlags source_stage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 	VkPipelineStageFlags destination_stage = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	bool handled = false;
 
 	auto set_transfer = [&]() {
 		barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 		barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 		source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 		destination_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		handled = true;
 	};
 	auto set_shader_read = [&]() {
 		barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 		barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 		source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 		destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		handled = true;
 	};
 	auto set_color_attachment = [&]() {
 		barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 		barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 		source_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 		destination_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		handled = true;
 	};
 
 	if (old_layout == VK_IMAGE_LAYOUT_UNDEFINED) {
@@ -714,15 +988,19 @@ void VulkanRenderer::TransitionImageLayout(VkCommandBuffer cmd, VkImage image,
 		if (new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
 			barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 			destination_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			handled = true;
 		} else if (new_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
 			barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 			destination_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			handled = true;
 		} else if (new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
 			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 			destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+			handled = true;
 		} else if (new_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
 			barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 			destination_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			handled = true;
 		}
 	} else if (old_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
 		if (new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
@@ -738,9 +1016,11 @@ void VulkanRenderer::TransitionImageLayout(VkCommandBuffer cmd, VkImage image,
 		if (new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
 			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 			destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+			handled = true;
 		} else if (new_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
 			barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 			destination_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			handled = true;
 		} else if (new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
 			set_transfer();
 		}
@@ -750,12 +1030,15 @@ void VulkanRenderer::TransitionImageLayout(VkCommandBuffer cmd, VkImage image,
 		if (new_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
 			barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 			destination_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			handled = true;
 		} else if (new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
 			barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 			destination_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			handled = true;
 		} else if (new_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
 			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 			destination_stage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+			handled = true;
 		}
 	} else if (old_layout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
 		barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
@@ -763,13 +1046,26 @@ void VulkanRenderer::TransitionImageLayout(VkCommandBuffer cmd, VkImage image,
 		if (new_layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
 			barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 			destination_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			handled = true;
 		} else if (new_layout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
 			barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 			destination_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			handled = true;
 		} else if (new_layout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
 			barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
 			destination_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			handled = true;
 		}
+	}
+
+	if (!handled) {
+		qWarning() << "Unhandled Vulkan layout transition from" << old_layout
+				   << "to" << new_layout
+				   << "- using conservative ALL_COMMANDS barrier";
+		barrier.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+		barrier.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
+		source_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+		destination_stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 	}
 
 	vkCmdPipelineBarrier(cmd, source_stage, destination_stage, 0, 0, nullptr, 0,
@@ -1045,7 +1341,10 @@ QVariant VulkanRenderer::CreateNativeTexture(int width, int height, int depth,
 	image_info.imageType = depth > 1 ? VK_IMAGE_TYPE_3D : VK_IMAGE_TYPE_2D;
 	image_info.extent.width = static_cast<uint32_t>(width);
 	image_info.extent.height = static_cast<uint32_t>(height);
-	image_info.extent.depth = static_cast<uint32_t>(depth);
+	// Vulkan requires extent.depth >= 1 for all image types; for 2D images it
+	// must be exactly 1. Some callers pass 0 for 2D textures, which would
+	// otherwise produce validation errors and device lost.
+	image_info.extent.depth = static_cast<uint32_t>(depth > 0 ? depth : 1);
 	image_info.mipLevels = 1;
 	image_info.arrayLayers = 1;
 	image_info.format = vk_format;
@@ -1133,8 +1432,9 @@ QVariant VulkanRenderer::CreateNativeTexture(int width, int height, int depth,
 		VkDeviceSize image_size = static_cast<VkDeviceSize>(width) * height * depth *
 								  gpu_bytes_per_pixel;
 		if (linesize == 0) {
-			linesize = width * cpu_bytes_per_pixel;
+			linesize = width;
 		}
+		const int row_stride_bytes = linesize * cpu_bytes_per_pixel;
 
 		VkBuffer staging_buffer;
 		VkDeviceMemory staging_memory;
@@ -1142,14 +1442,14 @@ QVariant VulkanRenderer::CreateNativeTexture(int width, int height, int depth,
 			void *mapped;
 			vkMapMemory(device_, staging_memory, 0, image_size, 0, &mapped);
 			if (cpu_bytes_per_pixel == gpu_bytes_per_pixel) {
-				if (linesize == width * cpu_bytes_per_pixel) {
+				if (linesize == width) {
 					memcpy(mapped, data, static_cast<size_t>(image_size));
 				} else {
 					char *dst = static_cast<char *>(mapped);
 					const char *src = static_cast<const char *>(data);
 					for (int row = 0; row < height * depth; row++) {
 						memcpy(dst + row * width * cpu_bytes_per_pixel,
-							   src + row * linesize,
+							   src + row * row_stride_bytes,
 							   static_cast<size_t>(width * cpu_bytes_per_pixel));
 					}
 				}
@@ -1159,14 +1459,14 @@ QVariant VulkanRenderer::CreateNativeTexture(int width, int height, int depth,
 				// in the staging buffer so the copy uses the GPU texel layout.
 				QByteArray tmp(width * height * depth * cpu_bytes_per_pixel,
 							   Qt::Uninitialized);
-				if (linesize == width * cpu_bytes_per_pixel) {
+				if (linesize == width) {
 					memcpy(tmp.data(), data, static_cast<size_t>(tmp.size()));
 				} else {
 					char *dst = tmp.data();
 					const char *src = static_cast<const char *>(data);
 					for (int row = 0; row < height * depth; row++) {
 						memcpy(dst + row * width * cpu_bytes_per_pixel,
-							   src + row * linesize,
+							   src + row * row_stride_bytes,
 							   static_cast<size_t>(width * cpu_bytes_per_pixel));
 					}
 				}
@@ -1180,6 +1480,8 @@ QVariant VulkanRenderer::CreateNativeTexture(int width, int height, int depth,
 			vkUnmapMemory(device_, staging_memory);
 
 			VkCommandBuffer cmd = BeginOneTimeCommands();
+
+			if (cmd == VK_NULL_HANDLE) { return QVariant(); }
 			TransitionImageLayout(cmd, tex->image, VK_IMAGE_LAYOUT_UNDEFINED,
 								  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 			CopyBufferToImage(cmd, staging_buffer, tex->image,
@@ -1196,6 +1498,7 @@ QVariant VulkanRenderer::CreateNativeTexture(int width, int height, int depth,
 		}
 	} else {
 		VkCommandBuffer cmd = BeginOneTimeCommands();
+		if (cmd == VK_NULL_HANDLE) { return QVariant(); }
 		TransitionImageLayout(cmd, tex->image, VK_IMAGE_LAYOUT_UNDEFINED,
 							  VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 		EndOneTimeCommands(cmd);
@@ -1255,8 +1558,9 @@ void VulkanRenderer::UploadToTexture(const QVariant &handle,
 	VkDeviceSize image_size =
 		static_cast<VkDeviceSize>(width) * height * depth * gpu_bytes_per_pixel;
 	if (linesize == 0) {
-		linesize = width * cpu_bytes_per_pixel;
+		linesize = width;
 	}
+	const int row_stride_bytes = linesize * cpu_bytes_per_pixel;
 
 	VkBuffer staging_buffer;
 	VkDeviceMemory staging_memory;
@@ -1267,28 +1571,28 @@ void VulkanRenderer::UploadToTexture(const QVariant &handle,
 	void *mapped;
 	vkMapMemory(device_, staging_memory, 0, image_size, 0, &mapped);
 	if (cpu_bytes_per_pixel == gpu_bytes_per_pixel) {
-		if (linesize == width * cpu_bytes_per_pixel) {
+		if (linesize == width) {
 			memcpy(mapped, data, static_cast<size_t>(image_size));
 		} else {
 			char *dst = static_cast<char *>(mapped);
 			const char *src = static_cast<const char *>(data);
 			for (int row = 0; row < height * depth; row++) {
 				memcpy(dst + row * width * cpu_bytes_per_pixel,
-					   src + row * linesize,
+					   src + row * row_stride_bytes,
 					   static_cast<size_t>(width * cpu_bytes_per_pixel));
 			}
 		}
 	} else {
 		QByteArray tmp(width * height * depth * cpu_bytes_per_pixel,
 					   Qt::Uninitialized);
-		if (linesize == width * cpu_bytes_per_pixel) {
+		if (linesize == width) {
 			memcpy(tmp.data(), data, static_cast<size_t>(tmp.size()));
 		} else {
 			char *dst = tmp.data();
 			const char *src = static_cast<const char *>(data);
 			for (int row = 0; row < height * depth; row++) {
 				memcpy(dst + row * width * cpu_bytes_per_pixel,
-					   src + row * linesize,
+					   src + row * row_stride_bytes,
 					   static_cast<size_t>(width * cpu_bytes_per_pixel));
 			}
 		}
@@ -1302,6 +1606,8 @@ void VulkanRenderer::UploadToTexture(const QVariant &handle,
 	vkUnmapMemory(device_, staging_memory);
 
 	VkCommandBuffer cmd = BeginOneTimeCommands();
+
+	if (cmd == VK_NULL_HANDLE) { return; }
 	if (tex->current_layout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
 		TransitionImageLayout(cmd, tex->image, tex->current_layout,
 							  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
@@ -1340,8 +1646,9 @@ void VulkanRenderer::DownloadFromTexture(const QVariant &handle,
 		gpu_bytes_per_pixel = cpu_bytes_per_pixel;
 	}
 	if (linesize == 0) {
-		linesize = width * cpu_bytes_per_pixel;
+		linesize = width;
 	}
+	const int row_stride_bytes = linesize * cpu_bytes_per_pixel;
 	VkDeviceSize image_size =
 		static_cast<VkDeviceSize>(width) * height * gpu_bytes_per_pixel;
 
@@ -1352,6 +1659,8 @@ void VulkanRenderer::DownloadFromTexture(const QVariant &handle,
 	}
 
 	VkCommandBuffer cmd = BeginOneTimeCommands();
+
+	if (cmd == VK_NULL_HANDLE) { return; }
 	if (tex->current_layout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
 		TransitionImageLayout(cmd, tex->image, tex->current_layout,
 							  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
@@ -1364,13 +1673,13 @@ void VulkanRenderer::DownloadFromTexture(const QVariant &handle,
 	void *mapped;
 	vkMapMemory(device_, staging_memory, 0, image_size, 0, &mapped);
 	if (cpu_bytes_per_pixel == gpu_bytes_per_pixel) {
-		if (linesize == width * cpu_bytes_per_pixel) {
+		if (linesize == width) {
 			memcpy(data, mapped, static_cast<size_t>(image_size));
 		} else {
 			char *dst = static_cast<char *>(data);
 			const char *src = static_cast<const char *>(mapped);
 			for (int row = 0; row < height; row++) {
-				memcpy(dst + row * linesize,
+				memcpy(dst + row * row_stride_bytes,
 					   src + row * width * cpu_bytes_per_pixel,
 					   static_cast<size_t>(width * cpu_bytes_per_pixel));
 			}
@@ -1384,13 +1693,13 @@ void VulkanRenderer::DownloadFromTexture(const QVariant &handle,
 									width, height, 1,
 									gpu_channels, params.channel_count(),
 									params.format());
-		if (linesize != width * cpu_bytes_per_pixel) {
+		if (linesize != width) {
 			// Repack from tight CPU layout to caller's stride in-place.
 			QByteArray tight(static_cast<const char *>(data),
 							 width * height * cpu_bytes_per_pixel);
 			char *dst = static_cast<char *>(data);
 			for (int row = 0; row < height; row++) {
-				memcpy(dst + row * linesize,
+				memcpy(dst + row * row_stride_bytes,
 					   tight.constData() + row * width * cpu_bytes_per_pixel,
 					   static_cast<size_t>(width * cpu_bytes_per_pixel));
 			}
@@ -1418,6 +1727,8 @@ void VulkanRenderer::ClearDestination(olive::Texture *texture, double r, double 
 	QMutexLocker lock(&mutex_);
 
 	VkCommandBuffer cmd = BeginOneTimeCommands();
+
+	if (cmd == VK_NULL_HANDLE) { return; }
 	if (texture) {
 		quint64 id = texture->id().value<quint64>();
 		VulkanTexture *tex = textures_.value(id);
@@ -1482,6 +1793,8 @@ Color VulkanRenderer::GetPixelFromTexture(olive::Texture *texture,
 	}
 
 	VkCommandBuffer cmd = BeginOneTimeCommands();
+
+	if (cmd == VK_NULL_HANDLE) { return Color(); }
 	if (tex->current_layout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL) {
 		TransitionImageLayout(cmd, tex->image, tex->current_layout,
 							  VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
@@ -1873,6 +2186,7 @@ QVariant VulkanRenderer::CreateNativeShader(olive::ShaderCode code)
 	sh->id = next_shader_id_++;
 	sh->uniforms = all_uniforms;
 	sh->sampler_count = all_samplers.size();
+	sh->sampler_bindings = sampler_bindings;
 	sh->ubo_size = 0;
 	for (const UniformInfo &u : all_uniforms) {
 		sh->ubo_size = qMax(sh->ubo_size, u.offset + u.size);
@@ -2182,6 +2496,11 @@ void VulkanRenderer::BlitPass(VulkanShader *shader, VulkanTexture *dest_tex,
 	QVector<VkDescriptorImageInfo> image_infos;
 	bool descriptors_needed = (shader->ubo_size > 0 || !bindings.isEmpty());
 	if (descriptors_needed) {
+		if (descriptor_sets_since_reset_ >= kMaxDescriptorSets - 16) {
+			vkResetDescriptorPool(device_, descriptor_pool_, 0);
+			descriptor_sets_since_reset_ = 0;
+		}
+
 		VkDescriptorSetAllocateInfo ds_alloc = {};
 		ds_alloc.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 		ds_alloc.descriptorPool = descriptor_pool_;
@@ -2196,6 +2515,7 @@ void VulkanRenderer::BlitPass(VulkanShader *shader, VulkanTexture *dest_tex,
 			}
 			return;
 		}
+		descriptor_sets_since_reset_++;
 
 		QVector<VkWriteDescriptorSet> writes;
 
@@ -2227,10 +2547,19 @@ void VulkanRenderer::BlitPass(VulkanShader *shader, VulkanTexture *dest_tex,
 				img_info.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 				image_infos.append(img_info);
 
+				// Use the binding assigned to this sampler name when the shader
+				// was compiled. This keeps descriptor writes in sync with the
+				// rewritten layout() bindings even when job value iteration
+				// orders the samplers differently.
+				int binding = shader->sampler_bindings.value(tb.name, -1);
+				if (binding < 0) {
+					binding = 1 + i;
+				}
+
 				VkWriteDescriptorSet write = {};
 				write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
 				write.dstSet = descriptor_set;
-				write.dstBinding = 1 + i;
+				write.dstBinding = static_cast<uint32_t>(binding);
 				write.dstArrayElement = 0;
 				write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 				write.descriptorCount = 1;
@@ -2246,6 +2575,8 @@ void VulkanRenderer::BlitPass(VulkanShader *shader, VulkanTexture *dest_tex,
 	}
 
 	VkCommandBuffer cmd = BeginOneTimeCommands();
+
+	if (cmd == VK_NULL_HANDLE) { return; }
 
 	if (dest_tex->current_layout != VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
 		TransitionImageLayout(cmd, dest_tex->image, dest_tex->current_layout,
@@ -2322,9 +2653,6 @@ void VulkanRenderer::BlitPass(VulkanShader *shader, VulkanTexture *dest_tex,
 
 	EndOneTimeCommands(cmd);
 
-	if (descriptor_set != VK_NULL_HANDLE) {
-		vkFreeDescriptorSets(device_, descriptor_pool_, 1, &descriptor_set);
-	}
 	if (ubo_buffer != VK_NULL_HANDLE) {
 		DestroyStagingBuffer(ubo_buffer, ubo_memory);
 	}

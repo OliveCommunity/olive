@@ -82,6 +82,8 @@ private:
 OpenGLRenderer::OpenGLRenderer(QObject *parent)
 	: Renderer(parent)
 	, context_(nullptr)
+	, functions_(nullptr)
+	, surface_(nullptr, this)
 	, framebuffer_(0)
 {
 }
@@ -111,8 +113,6 @@ bool OpenGLRenderer::Init()
 		return false;
 	}
 
-	surface_.create();
-
 	context_ = new QOpenGLContext(this);
 	context_->setShareContext(QOpenGLContext::globalShareContext());
 	if (!context_->create()) {
@@ -137,20 +137,29 @@ void OpenGLRenderer::PostInit()
 {
 	GL_PREAMBLE;
 
-	// Make context current on that surface
-	if (context_->parent() == this && !context_->makeCurrent(&surface_)) {
-		qCritical() << "Failed to makeCurrent() on offscreen surface in thread"
-					<< thread();
+	if (!context_) {
+		qWarning() << __FUNCTION__ << "called without an OpenGL context";
 		return;
 	}
 
-	functions_ = context_->functions();
+	if (context_->thread() != QThread::currentThread()) {
+		qWarning() << __FUNCTION__
+				   << "called from the wrong thread for this OpenGL context";
+		return;
+	}
 
-	// Store OpenGL functions instance
-	functions_->glBlendFunc(GL_ONE, GL_ZERO);
+	// Create the offscreen surface in the thread that will actually use it.
+	// When OpenGLRenderer is moved to a render thread, surface_ follows as a
+	// child QObject; creating it here avoids making the context current on a
+	// surface whose platform backing still belongs to the construction thread,
+	// which crashes drivers on the first GL call.
+	if (context_->parent() == this && !surface_.isValid()) {
+		surface_.create();
+	}
 
-	// Set up framebuffer used for various things
-	functions_->glGenFramebuffers(1, &framebuffer_);
+	if (QOpenGLContext::currentContext() == context_) {
+		functions_ = context_->functions();
+	}
 }
 
 void OpenGLRenderer::DestroyInternal()
@@ -176,6 +185,10 @@ void OpenGLRenderer::ClearDestination(Texture *texture, double r, double g,
 									  double b, double a)
 {
 	GL_PREAMBLE;
+
+	if (!EnsureContextCurrent(__FUNCTION__)) {
+		return;
+	}
 
 	if (texture) {
 		AttachTextureAsDestination(texture->id());
@@ -239,6 +252,10 @@ void OpenGLRenderer::AttachTextureAsDestination(const QVariant &texture)
 {
 	PRINT_GL_ERRORS;
 
+	if (!framebuffer_) {
+		functions_->glGenFramebuffers(1, &framebuffer_);
+	}
+
 	functions_->glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_);
 	functions_->glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
 									   GL_TEXTURE_2D, texture.value<GLuint>(),
@@ -255,6 +272,10 @@ void OpenGLRenderer::DetachTextureAsDestination()
 
 void OpenGLRenderer::DestroyNativeTexture(QVariant texture)
 {
+	if (!EnsureContextCurrent(__FUNCTION__)) {
+		return;
+	}
+
 	GLuint t = texture.value<GLuint>();
 
 	if (t > 0) {
@@ -265,6 +286,10 @@ void OpenGLRenderer::DestroyNativeTexture(QVariant texture)
 QVariant OpenGLRenderer::CreateNativeShader(ShaderCode code)
 {
 	GL_PREAMBLE;
+
+	if (!EnsureContextCurrent(__FUNCTION__)) {
+		return QVariant();
+	}
 
 	PRINT_GL_ERRORS;
 
@@ -297,6 +322,10 @@ QVariant OpenGLRenderer::CreateNativeShader(ShaderCode code)
 void OpenGLRenderer::DestroyNativeShader(QVariant shader)
 {
 	GL_PREAMBLE;
+
+	if (!EnsureContextCurrent(__FUNCTION__)) {
+		return;
+	}
 
 	GLuint program = shader.value<GLuint>();
 	functions_->glDeleteProgram(program);
@@ -396,6 +425,10 @@ void OpenGLRenderer::Flush()
 {
 	GL_PREAMBLE;
 
+	if (!EnsureContextCurrent(__FUNCTION__)) {
+		return;
+	}
+
 #if !defined(OAK_RENDER_BACKEND_PLUGIN)
 	if (OLIVE_CONFIG("UseGLFinish").toBool()) {
 		functions_->glFinish();
@@ -418,6 +451,10 @@ void OpenGLRenderer::Flush()
 // attachment path used by OFX OpenGL rendering.
 void OpenGLRenderer::AttachOutputTexture(olive::Texture *texture)
 {
+	if (!EnsureContextCurrent(__FUNCTION__)) {
+		return;
+	}
+
 	if (texture) {
 		AttachTextureAsDestination(texture->id());
 	}
@@ -426,11 +463,19 @@ void OpenGLRenderer::AttachOutputTexture(olive::Texture *texture)
 // Clears the framebuffer attachment installed by AttachOutputTexture().
 void OpenGLRenderer::DetachOutputTexture()
 {
+	if (!EnsureContextCurrent(__FUNCTION__)) {
+		return;
+	}
+
 	DetachTextureAsDestination();
 }
 
 Color OpenGLRenderer::GetPixelFromTexture(Texture *texture, const QPointF &pt)
 {
+	if (!texture || !EnsureContextCurrent(__FUNCTION__)) {
+		return Color();
+	}
+
 	AttachTextureAsDestination(texture->id());
 
 	QByteArray data(VideoParams::GetBytesPerPixel(texture->format(),
@@ -464,6 +509,9 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob& a_job, Texture *destinatio
 						  bool clear_destination)
 {
 	GL_PREAMBLE;
+	if (!EnsureContextCurrent(__FUNCTION__)) {
+		return;
+	}
 	try {
 		if (!destination) {
 			// Ensure we're drawing to the default framebuffer for this context.
@@ -897,6 +945,9 @@ void OpenGLRenderer::PrepareInputTexture(GLenum target,
 void OpenGLRenderer::ClearDestinationInternal(double r, double g, double b,
 											  double a)
 {
+	if (!functions_) {
+		return;
+	}
 	functions_->glClearColor(r, g, b, a);
 	functions_->glClear(GL_COLOR_BUFFER_BIT);
 }
@@ -1023,10 +1074,6 @@ bool OpenGLRenderer::EnsureContextCurrent(const char *caller)
 	if (!functions_) {
 		qWarning() << caller << "OpenGL functions not available";
 		return false;
-	}
-
-	if (!framebuffer_) {
-		functions_->glGenFramebuffers(1, &framebuffer_);
 	}
 
 	return true;

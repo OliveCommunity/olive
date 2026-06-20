@@ -252,7 +252,6 @@ private:
 
 	QTimer *decoder_clear_timer_;
 
-	RenderThread *video_thread_;
 	RenderThread *dry_run_thread_;
 	RenderThread *audio_thread_;
 

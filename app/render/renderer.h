@@ -125,6 +125,11 @@ public:
 		return false;
 	}
 
+	virtual bool IsVulkan() const
+	{
+		return false;
+	}
+
 	/**
 	 * @brief Attach a texture as the current output destination for OFX plugin
 	 *        OpenGL rendering.

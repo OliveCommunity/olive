@@ -21,11 +21,13 @@
 #ifndef RENDERWORKERPOOL_H
 #define RENDERWORKERPOOL_H
 
+#include <QHash>
 #include <QMutex>
 #include <QThread>
 #include <QVector>
 #include <QWaitCondition>
 #include <deque>
+#include <memory>
 
 #include "codec/frame.h"
 #include "node/project/serializer/serializer.h"
@@ -39,10 +41,13 @@ class QProcess;
 namespace olive
 {
 
+class Project;
+
 class RenderWorkerPool : public QThread {
 	Q_OBJECT
 public:
 	explicit RenderWorkerPool(DecoderCache *decoder_cache,
+							  const QString &gpu_backend,
 							  QObject *parent = nullptr);
 	~RenderWorkerPool() override;
 
@@ -84,16 +89,42 @@ private:
 		qint64 ticket_id = 0;
 	};
 
+	struct PooledWorker {
+		QProcess *process = nullptr;
+		QString loaded_graph_path;
+		qint64 last_used_ms = 0;
+		int use_count = 0;
+
+		// Persistent shared memory for this worker. Reusing regions across frames
+		// avoids the cost of creating/destroying large shm segments every render.
+		ipc::SharedMemoryRegion output_region;
+		ipc::FrameSlotPool output_pool;
+		size_t output_slot_bytes = 0;
+		QString output_shm_key;
+
+		ipc::SharedMemoryRegion input_region;
+		ipc::FrameSlotPool input_pool;
+		size_t input_slot_bytes = 0;
+		QString input_shm_key;
+	};
+
+	struct CachedGraph {
+		QString path;
+	};
+
 	bool PrepareJob(RenderTicketPtr ticket,
 					const RenderManager::RenderVideoParams &params,
 					Job *job);
 	bool WriteGraphSnapshot(Project *project, QString *path);
 	bool IsSupported(const RenderManager::RenderVideoParams &params) const;
 
-	void WorkerLoop(int worker_index);
-	void ProcessJob(const Job &job, int worker_index);
+	void WorkerLoop(int worker_index,
+					std::vector<std::unique_ptr<PooledWorker>> *local_pool);
+	void ProcessJob(const Job &job, int worker_index,
+					std::vector<std::unique_ptr<PooledWorker>> *local_pool);
 	JobResult ProcessJobAttempt(const Job &job, int worker_index,
-								int attempt_index);
+								int attempt_index,
+								PooledWorker *worker);
 	void FinishWithFrame(RenderTicketPtr ticket, const ipc::FrameSlotPool &pool,
 						 uint32_t slot);
 	void CleanupGraphFile(const QString &path);
@@ -103,17 +134,30 @@ private:
 	void ClearActiveWorker(int worker_index, qint64 process_id);
 	int WorkerCount() const;
 
+	std::unique_ptr<PooledWorker> AcquireWorker(
+		std::vector<std::unique_ptr<PooledWorker>> *local_pool,
+		const QString &graph_path);
+	void ReturnWorker(std::vector<std::unique_ptr<PooledWorker>> *local_pool,
+					  std::unique_ptr<PooledWorker> worker, bool keep_alive);
+	void ShutdownWorker(PooledWorker *worker);
+	void ShutdownLocalPool(std::vector<std::unique_ptr<PooledWorker>> *local_pool);
+	void ClearGraphCache();
+
 	DecoderCache *decoder_cache_;
+	QString gpu_backend_;
 	QMutex mutex_;
 	QWaitCondition wait_;
 	std::deque<Job> queue_;
 	bool stopping_ = false;
 	QVector<ActiveJob> active_jobs_;
+	QHash<QUuid, CachedGraph> graph_cache_;
 
 	static constexpr uint32_t kOutputSlots = 2;
 	static constexpr int kMaxAttempts = 2;
 	static constexpr int kMaxWidth = 4096;
 	static constexpr int kMaxHeight = 2160;
+	static constexpr int kWorkerIdleTimeoutMs = 30000;
+	static constexpr int kWorkerMaxUses = 100;
 };
 
 }

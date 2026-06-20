@@ -110,11 +110,15 @@ void PreviewAutoCacher::ClearSingleFrameRenders()
 	QMap<RenderTicketWatcher *, QVector<RenderTicketPtr>> copy =
 		video_immediate_passthroughs_;
 	for (auto it = copy.cbegin(); it != copy.cend(); it++) {
-		it.key()->Cancel();
-		if (!it.key()->IsRunning()) {
-			RenderManager::instance()->RemoveTicket(it.key()->GetTicket());
-			emit it.key()->GetTicket()->Finished();
+		// Keep already-running workers alive: cancelling an in-flight render
+		// forces the worker process to be torn down, which defeats the process
+		// pool. Frames that finish late are simply ignored by the viewer.
+		if (it.key()->IsRunning()) {
+			continue;
 		}
+		it.key()->Cancel();
+		RenderManager::instance()->RemoveTicket(it.key()->GetTicket());
+		emit it.key()->GetTicket()->Finished();
 	}
 }
 
@@ -652,17 +656,23 @@ RenderTicketWatcher *PreviewAutoCacher::RenderFrame(Node *node,
 				VideoParams::GetDividerForTargetResolution(
 					rvp.video_params.width(), rvp.video_params.height(), 160,
 					120));
-			rvp.force_color_output = display_color_processor_;
-			rvp.force_format = PixelFormat::U8;
+			rvp.force_format = PixelFormat::F32;
+			rvp.force_channel_count = VideoParams::kRGBAChannelCount;
 		} else {
 			frame_cache->SetTimebase(
 				context->GetVideoParams().frame_rate_as_time_base());
 		}
 
 		rvp.AddCache(frame_cache);
+	} else {
+		rvp.force_format = PixelFormat::F32;
+		rvp.force_channel_count = VideoParams::kRGBAChannelCount;
 	}
 
-	rvp.return_type = dry ? RenderManager::kNull : RenderManager::kTexture;
+	// Video playback frames are rendered out-of-process. GPU textures cannot be
+	// shared across worker processes (or across independent Vulkan instances),
+	// so we always request CPU frames.
+	rvp.return_type = dry ? RenderManager::kNull : RenderManager::kFrame;
 
 	// Allow using cached images for this render job
 	rvp.use_cache = true;
