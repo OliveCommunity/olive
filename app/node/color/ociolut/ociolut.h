@@ -80,6 +80,7 @@ private:
 	};
 
 	void GenerateProcessor();
+	void MaybeStartNextTask();
 
 	QMutex gen_mutex_;
 	QString last_path_;
@@ -89,6 +90,7 @@ private:
 	QString pending_path_;
 	int pending_direction_ = -1;
 	int pending_generation_ = 0;
+	bool task_running_ = false;
 };
 
 } // namespace olive

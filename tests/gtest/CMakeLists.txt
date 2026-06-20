@@ -38,6 +38,7 @@ add_executable(olive-gtest
   plugin_ofx_integration_test.cpp
   codec_frame_test.cpp
   codec_decoder_test.cpp
+  ffmpeg_decoder_hw_test.cpp
   codec_exportcodec_test.cpp
   codec_exportformat_test.cpp
   codec_encoder_test.cpp

@@ -425,12 +425,16 @@ TexturePtr FFmpegDecoder::RetrieveVideoInternal(const RetrieveVideoParams &p)
 		AVFramePtr ptr = PreProcessFrame(f, p);
 		f=std::move(ptr);
 		if (!f) {
-			// Error occurred while software scaling
+			qWarning() << "PreProcessFrame failed";
 			return nullptr;
 		}
 
 		// Finally, perform any GPU processing required
 		TexturePtr texture = ProcessFrameIntoTexture(f, p, original);
+
+		if (!texture) {
+			qWarning() << "ProcessFrameIntoTexture returned null";
+		}
 
 		return texture;
 	}
@@ -1476,6 +1480,10 @@ bool FFmpegDecoder::Instance::Open(const char *filename, int stream_index)
 
 AVHWDeviceType FFmpegDecoder::Instance::ChooseHardwareDevice()
 {
+	if (qEnvironmentVariableIsSet("OAK_DISABLE_HWACCEL")) {
+		return AV_HWDEVICE_TYPE_NONE;
+	}
+
 #ifdef Q_OS_LINUX
 	// Prefer NVIDIA's NVDEC where available, then VAAPI/VDPAU.
 	for (AVHWDeviceType type : { AV_HWDEVICE_TYPE_CUDA, AV_HWDEVICE_TYPE_VAAPI,

@@ -154,10 +154,30 @@ void OCIOLutNode::GenerateProcessor()
 	pending_path_ = path;
 	pending_direction_ = direction;
 	pending_generation_++;
-	const int generation = pending_generation_;
-	ColorManager *manager = this->manager();
 
-	locker.unlock();
+	MaybeStartNextTask();
+}
+
+void OCIOLutNode::MaybeStartNextTask()
+{
+	if (task_running_) {
+		return;
+	}
+
+	if (pending_path_.isEmpty()) {
+		return;
+	}
+
+	if (pending_path_ == last_path_ && pending_direction_ == last_direction_ &&
+		last_processor_) {
+		return;
+	}
+
+	task_running_ = true;
+	const int generation = pending_generation_;
+	const QString path = pending_path_;
+	const int direction = pending_direction_;
+	ColorManager *manager = this->manager();
 
 	QThreadPool::globalInstance()->start(
 		new GenerateProcessorTask(this, path, direction, generation, manager));
@@ -169,12 +189,16 @@ void OCIOLutNode::SetProcessorResult(ColorProcessorPtr processor,
 {
 	QMutexLocker locker(&gen_mutex_);
 
+	task_running_ = false;
+
 	if (generation != pending_generation_) {
-		// A newer request was issued while this one was in flight; ignore.
+		// A newer request was issued while this one was in flight; restart.
+		MaybeStartNextTask();
 		return;
 	}
 
 	if (path != pending_path_ || direction != pending_direction_) {
+		MaybeStartNextTask();
 		return;
 	}
 
@@ -182,6 +206,9 @@ void OCIOLutNode::SetProcessorResult(ColorProcessorPtr processor,
 	last_direction_ = direction;
 	last_processor_ = processor;
 	set_processor(processor);
+
+	// The processor has changed, ensure any cached frames are re-rendered.
+	InvalidateAll(kTextureInput);
 }
 
 OCIOLutNode::GenerateProcessorTask::GenerateProcessorTask(
