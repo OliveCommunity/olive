@@ -229,12 +229,29 @@ bool DecodeInputFrames(DecoderCache *decoder_cache,
 
 QString WorkerProgramPath()
 {
-	const QString dir = QCoreApplication::applicationDirPath();
 #if defined(Q_OS_WIN)
-	return QDir(dir).filePath(QStringLiteral("olive-render-worker.exe"));
+	const QString file = QStringLiteral("olive-render-worker.exe");
 #else
-	return QDir(dir).filePath(QStringLiteral("olive-render-worker"));
+	const QString file = QStringLiteral("olive-render-worker");
 #endif
+
+	const QString app_dir = QCoreApplication::applicationDirPath();
+	const QStringList candidates = {
+		QDir(app_dir).filePath(file),
+		QDir(app_dir).filePath(QStringLiteral("../app/") + file),
+	};
+
+	for (const QString &path : candidates) {
+		if (QFileInfo::exists(path)) {
+			return path;
+		}
+	}
+
+	if (qEnvironmentVariableIsSet("OAK_RENDER_WORKER")) {
+		return QString::fromUtf8(qgetenv("OAK_RENDER_WORKER"));
+	}
+
+	return candidates.first();
 }
 
 bool WriteControlMessage(QProcess *process, const QJsonObject &obj)

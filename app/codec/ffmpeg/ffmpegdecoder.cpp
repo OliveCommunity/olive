@@ -1235,6 +1235,9 @@ AVFramePtr FFmpegDecoder::RetrieveFrame(const rational &time,
 				previous = cached_frames_.back();
 			}
 
+			// Transfer hardware decoded frames to system memory before caching.
+			filtered = TransferHardwareFrame(filtered);
+
 			// Append this frame and signal to other threads that a new frame has arrived
 			cached_frames_.push_back(filtered);
 
@@ -1259,6 +1262,36 @@ AVFramePtr FFmpegDecoder::RetrieveFrame(const rational &time,
 	av_packet_unref(working_packet_);
 
 	return return_frame;
+}
+
+AVFramePtr FFmpegDecoder::TransferHardwareFrame(AVFramePtr f)
+{
+	if (!instance_.hwaccel_enabled() ||
+		f->format != instance_.hw_pix_fmt()) {
+		return f;
+	}
+
+	AVFrame *sw_frame = av_frame_alloc();
+	if (!sw_frame) {
+		qCritical() << "Failed to allocate software frame for hardware transfer";
+		return nullptr;
+	}
+
+	int ret = av_hwframe_transfer_data(sw_frame, f.get(), 0);
+	if (ret < 0) {
+		qWarning() << "Failed to transfer hardware frame to system memory:"
+				   << FFmpegError(ret);
+		av_frame_free(&sw_frame);
+		return nullptr;
+	}
+
+	ret = av_frame_copy_props(sw_frame, f.get());
+	if (ret < 0) {
+		qWarning() << "Failed to copy frame properties during hardware transfer:"
+				   << FFmpegError(ret);
+	}
+
+	return CreateAVFramePtr(sw_frame);
 }
 
 void FFmpegDecoder::FreeScaler()
@@ -1323,6 +1356,10 @@ FFmpegDecoder::Instance::Instance()
 	, codec_ctx_(nullptr)
 	, avstream_(nullptr)
 	, opts_(nullptr)
+	, hw_device_ctx_(nullptr)
+	, hw_device_type_(AV_HWDEVICE_TYPE_NONE)
+	, hw_pix_fmt_(AV_PIX_FMT_NONE)
+	, hwaccel_enabled_(false)
 {
 }
 
@@ -1379,7 +1416,7 @@ bool FFmpegDecoder::Instance::Open(const char *filename, int stream_index)
 	// Handle failure to copy parameters
 	if (error_code < 0) {
 		qCritical()
-			<< "Failed to copy parameters from AVStream to AVCodecContext";
+		<< "Failed to copy parameters from AVStream to AVCodecContext";
 		return false;
 	}
 
@@ -1391,7 +1428,41 @@ bool FFmpegDecoder::Instance::Open(const char *filename, int stream_index)
 		qCritical() << "Failed to set codec options, performance may suffer";
 	}
 
-	// Open codec
+	// Attempt hardware accelerated decoding first, then fall back to software.
+	if (InitHardwareAcceleration(codec)) {
+		error_code = avcodec_open2(codec_ctx_, codec, &opts_);
+		if (error_code == 0) {
+			hwaccel_enabled_ = true;
+			qDebug() << "Hardware decoding enabled for" << filename
+					 << "using" << av_hwdevice_get_type_name(hw_device_type_)
+					 << "pixel format" << av_get_pix_fmt_name(hw_pix_fmt_);
+			return true;
+		}
+
+		qWarning() << "Failed to open hardware codec, falling back to software decoding:";
+		char buf[512];
+		av_strerror(error_code, buf, 512);
+		qWarning() << FFmpegError(error_code) << buf;
+
+		// Free the failed context and recreate it for software decoding.
+		avcodec_free_context(&codec_ctx_);
+		CleanupHardwareAcceleration();
+
+		codec_ctx_ = avcodec_alloc_context3(codec);
+		if (codec_ctx_ == nullptr) {
+			qCritical() << "Failed to allocate codec context for software fallback";
+			return false;
+		}
+
+		error_code = avcodec_parameters_to_context(codec_ctx_, avstream_->codecpar);
+		if (error_code < 0) {
+			qCritical()
+				<< "Failed to copy parameters from AVStream to AVCodecContext";
+			return false;
+		}
+	}
+
+	// Open codec (software path, or if hardware was not available)
 	error_code = avcodec_open2(codec_ctx_, codec, &opts_);
 	if (error_code < 0) {
 		char buf[512];
@@ -1401,6 +1472,110 @@ bool FFmpegDecoder::Instance::Open(const char *filename, int stream_index)
 	}
 
 	return true;
+}
+
+AVHWDeviceType FFmpegDecoder::Instance::ChooseHardwareDevice()
+{
+#ifdef Q_OS_LINUX
+	// Prefer NVIDIA's NVDEC where available, then VAAPI/VDPAU.
+	for (AVHWDeviceType type : { AV_HWDEVICE_TYPE_CUDA, AV_HWDEVICE_TYPE_VAAPI,
+								 AV_HWDEVICE_TYPE_VDPAU }) {
+		if (av_hwdevice_find_type_by_name(av_hwdevice_get_type_name(type)) !=
+			AV_HWDEVICE_TYPE_NONE) {
+			return type;
+		}
+	}
+#elif defined(Q_OS_WIN)
+	for (AVHWDeviceType type : { AV_HWDEVICE_TYPE_D3D11VA, AV_HWDEVICE_TYPE_DXVA2,
+								 AV_HWDEVICE_TYPE_CUDA }) {
+		if (av_hwdevice_find_type_by_name(av_hwdevice_get_type_name(type)) !=
+			AV_HWDEVICE_TYPE_NONE) {
+			return type;
+		}
+	}
+#elif defined(Q_OS_MACOS)
+	if (av_hwdevice_find_type_by_name(
+			av_hwdevice_get_type_name(AV_HWDEVICE_TYPE_VIDEOTOOLBOX)) !=
+		AV_HWDEVICE_TYPE_NONE) {
+		return AV_HWDEVICE_TYPE_VIDEOTOOLBOX;
+	}
+#endif
+	return AV_HWDEVICE_TYPE_NONE;
+}
+
+AVPixelFormat FFmpegDecoder::Instance::GetHardwareFormat(
+	AVCodecContext *ctx, const AVPixelFormat *pix_fmts)
+{
+	const Instance *inst = static_cast<const Instance *>(ctx->opaque);
+	for (const AVPixelFormat *p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
+		if (*p == inst->hw_pix_fmt_) {
+			return *p;
+		}
+	}
+
+	qWarning() << "Hardware pixel format not supported by decoder, using first software format";
+	return pix_fmts[0];
+}
+
+bool FFmpegDecoder::Instance::InitHardwareAcceleration(const AVCodec *codec)
+{
+	const AVHWDeviceType device_type = ChooseHardwareDevice();
+	if (device_type == AV_HWDEVICE_TYPE_NONE) {
+		return false;
+	}
+
+	// Find the pixel format associated with this device type for this codec.
+	hw_pix_fmt_ = AV_PIX_FMT_NONE;
+	for (int i = 0;; i++) {
+		const AVCodecHWConfig *config = avcodec_get_hw_config(codec, i);
+		if (!config) {
+			break;
+		}
+		if ((config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) &&
+			config->device_type == device_type) {
+			hw_pix_fmt_ = config->pix_fmt;
+			break;
+		}
+	}
+
+	if (hw_pix_fmt_ == AV_PIX_FMT_NONE) {
+		qDebug() << "Codec" << codec->id
+				 << "does not support hardware device type"
+				 << av_hwdevice_get_type_name(device_type);
+		return false;
+	}
+
+	hw_device_type_ = device_type;
+
+	int ret = av_hwdevice_ctx_create(&hw_device_ctx_, device_type, nullptr,
+									 nullptr, 0);
+	if (ret < 0) {
+		qWarning() << "Failed to create hardware device context for"
+				   << av_hwdevice_get_type_name(device_type) << ":"
+				   << FFmpegError(ret);
+		CleanupHardwareAcceleration();
+		return false;
+	}
+
+	codec_ctx_->hw_device_ctx = av_buffer_ref(hw_device_ctx_);
+	codec_ctx_->opaque = this;
+	codec_ctx_->get_format = GetHardwareFormat;
+	// Most hardware decoders do not support frame threading.
+	av_dict_set(&opts_, "threads", "1", 0);
+
+	return true;
+}
+
+void FFmpegDecoder::Instance::CleanupHardwareAcceleration()
+{
+	hwaccel_enabled_ = false;
+	hw_device_type_ = AV_HWDEVICE_TYPE_NONE;
+	hw_pix_fmt_ = AV_PIX_FMT_NONE;
+
+	if (hw_device_ctx_) {
+		av_buffer_unref(&hw_device_ctx_);
+		hw_device_ctx_ = nullptr;
+	}
 }
 
 void FFmpegDecoder::Instance::Close()
@@ -1414,6 +1589,8 @@ void FFmpegDecoder::Instance::Close()
 		avcodec_free_context(&codec_ctx_);
 		codec_ctx_ = nullptr;
 	}
+
+	CleanupHardwareAcceleration();
 
 	if (fmt_ctx_) {
 		avformat_close_input(&fmt_ctx_);

@@ -21,6 +21,7 @@
 #include "ociolut.h"
 
 #include <QFileInfo>
+#include <QMetaObject>
 
 #include "node/color/colormanager/colormanager.h"
 
@@ -54,6 +55,8 @@ OCIOLutNode::OCIOLutNode()
 
 	AddInput(kDirectionInput, NodeValue::kCombo, 0,
 			 InputFlags(kInputFlagNotKeyframable | kInputFlagNotConnectable));
+
+	qRegisterMetaType<olive::ColorProcessorPtr>();
 }
 
 QString OCIOLutNode::Name() const
@@ -102,14 +105,29 @@ void OCIOLutNode::ConfigChanged()
 
 void OCIOLutNode::GenerateProcessor()
 {
+	QMutexLocker locker(&gen_mutex_);
+
 	if (!manager()) {
 		set_processor(nullptr);
+		last_processor_.reset();
+		last_path_.clear();
+		last_direction_ = -1;
 		return;
 	}
 
 	const QString path = GetStandardValue(kFileInput).toString();
+	const int direction = GetStandardValue(kDirectionInput).toInt();
+
 	if (path.isEmpty()) {
 		set_processor(nullptr);
+		last_processor_.reset();
+		last_path_.clear();
+		last_direction_ = -1;
+		return;
+	}
+
+	// Re-use the existing processor if the file and direction haven't changed.
+	if (path == last_path_ && direction == last_direction_ && last_processor_) {
 		return;
 	}
 
@@ -117,6 +135,9 @@ void OCIOLutNode::GenerateProcessor()
 	if (!info.exists() || !info.isFile()) {
 		qWarning() << "OCIO LUT file does not exist:" << path;
 		set_processor(nullptr);
+		last_processor_.reset();
+		last_path_.clear();
+		last_direction_ = -1;
 		return;
 	}
 
@@ -124,7 +145,71 @@ void OCIOLutNode::GenerateProcessor()
 	if (!IsSupportedLutExtension(suffix)) {
 		qWarning() << "Unsupported OCIO LUT file extension:" << path;
 		set_processor(nullptr);
+		last_processor_.reset();
+		last_path_.clear();
+		last_direction_ = -1;
 		return;
+	}
+
+	pending_path_ = path;
+	pending_direction_ = direction;
+	pending_generation_++;
+	const int generation = pending_generation_;
+	ColorManager *manager = this->manager();
+
+	locker.unlock();
+
+	QThreadPool::globalInstance()->start(
+		new GenerateProcessorTask(this, path, direction, generation, manager));
+}
+
+void OCIOLutNode::SetProcessorResult(ColorProcessorPtr processor,
+									 const QString &path, int direction,
+									 int generation)
+{
+	QMutexLocker locker(&gen_mutex_);
+
+	if (generation != pending_generation_) {
+		// A newer request was issued while this one was in flight; ignore.
+		return;
+	}
+
+	if (path != pending_path_ || direction != pending_direction_) {
+		return;
+	}
+
+	last_path_ = path;
+	last_direction_ = direction;
+	last_processor_ = processor;
+	set_processor(processor);
+}
+
+OCIOLutNode::GenerateProcessorTask::GenerateProcessorTask(
+	OCIOLutNode *node, const QString &path, int direction, int generation,
+	ColorManager *manager)
+	: node_(node), path_(path), direction_(direction), generation_(generation),
+	  manager_(manager)
+{
+	setAutoDelete(true);
+}
+
+void OCIOLutNode::GenerateProcessorTask::run()
+{
+	ColorProcessorPtr processor = CreateProcessor(path_, direction_, manager_);
+
+	if (node_) {
+		QMetaObject::invokeMethod(
+			node_, "SetProcessorResult", Qt::QueuedConnection,
+			Q_ARG(olive::ColorProcessorPtr, processor), Q_ARG(QString, path_),
+			Q_ARG(int, direction_), Q_ARG(int, generation_));
+	}
+}
+
+ColorProcessorPtr OCIOLutNode::GenerateProcessorTask::CreateProcessor(
+	const QString &path, int direction, ColorManager *manager)
+{
+	if (!manager) {
+		return nullptr;
 	}
 
 	try {
@@ -132,16 +217,15 @@ void OCIOLutNode::GenerateProcessor()
 		transform->setSrc(path.toUtf8().constData());
 		transform->setInterpolation(OCIO::INTERP_LINEAR);
 		transform->setDirection(
-			static_cast<ColorProcessor::Direction>(
-				GetStandardValue(kDirectionInput).toInt()) == ColorProcessor::kNormal
+			static_cast<ColorProcessor::Direction>(direction) ==
+					ColorProcessor::kNormal
 				? OCIO::TRANSFORM_DIR_FORWARD
 				: OCIO::TRANSFORM_DIR_INVERSE);
 
-		set_processor(ColorProcessor::Create(
-			manager()->GetConfig()->getProcessor(transform)));
-	} catch (const OCIO::Exception &e) {
+		return ColorProcessor::Create(manager->GetConfig()->getProcessor(transform));
+	} catch (const std::exception &e) {
 		qWarning() << "OCIO LUT processor error:" << e.what();
-		set_processor(nullptr);
+		return nullptr;
 	}
 }
 

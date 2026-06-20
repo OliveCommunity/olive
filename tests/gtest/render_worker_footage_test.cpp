@@ -260,30 +260,6 @@ protected:
 			return false;
 		}
 
-		// ---- publish the decoded frame to the input pool ----
-		uint32_t input_slot = 0;
-		if (!input_pool_->Acquire(&input_slot)) {
-			return false;
-		}
-		EXPECT_EQ(input_slot, 0u);
-		std::memcpy(input_pool_->SlotData(input_slot), frame->const_data(),
-					input_data_bytes_);
-		ipc::FrameSlotMeta *meta = input_pool_->Meta(input_slot);
-		meta->id = 0;
-		meta->time_num = 0;
-		meta->time_den = 1;
-		meta->width = input_width_;
-		meta->height = input_height_;
-		meta->format = int32_t(frame->format());
-		meta->channel_count = frame->channel_count();
-		meta->linesize = input_stride_;
-		meta->data_size = int32_t(input_data_bytes_);
-		std::strncpy(meta->colorspace,
-					 frame->video_params().colorspace().toUtf8().constData(),
-					 sizeof(meta->colorspace) - 1);
-		meta->colorspace[sizeof(meta->colorspace) - 1] = '\0';
-		input_pool_->Publish(input_slot);
-
 		// ---- load graph ----
 		ipc::LoadGraphMsg load;
 		load.path = project_file_;
@@ -306,6 +282,30 @@ protected:
 
 	bool RenderFrameAndWait(int *output_slot)
 	{
+		// Publish the decoded frame to the input pool. The worker consumes it and
+		// releases it back, so we re-publish before every render.
+		uint32_t input_slot = 0;
+		if (!input_pool_->Acquire(&input_slot)) {
+			return false;
+		}
+		std::memcpy(input_pool_->SlotData(input_slot), decoded_frame_->const_data(),
+					input_data_bytes_);
+		ipc::FrameSlotMeta *meta = input_pool_->Meta(input_slot);
+		meta->id = 0;
+		meta->time_num = 0;
+		meta->time_den = 1;
+		meta->width = input_width_;
+		meta->height = input_height_;
+		meta->format = int32_t(decoded_frame_->format());
+		meta->channel_count = decoded_frame_->channel_count();
+		meta->linesize = input_stride_;
+		meta->data_size = int32_t(input_data_bytes_);
+		std::strncpy(meta->colorspace,
+					 decoded_frame_->video_params().colorspace().toUtf8().constData(),
+					 sizeof(meta->colorspace) - 1);
+		meta->colorspace[sizeof(meta->colorspace) - 1] = '\0';
+		input_pool_->Publish(input_slot);
+
 		ipc::RenderFrameMsg req;
 		req.ticket_id = 1;
 		req.node_uuid = footage_id_;
@@ -318,15 +318,24 @@ protected:
 		req.mode = int(RenderMode::kOnline);
 		req.input_slot = 0;
 		if (!ipc::WriteMessage(&worker_, req.ToJson())) {
+			std::cerr << "RenderFrameAndWait: failed to write request" << std::endl;
 			return false;
 		}
 
 		QJsonObject ready;
 		if (!WaitForMessage(&ready)) {
+			std::cerr << "RenderFrameAndWait: failed to receive ready message"
+					  << std::endl;
 			return false;
 		}
 		if (ready[QStringLiteral("type")].toString() !=
 			QLatin1String(ipc::msgtype::kFrameReady)) {
+			std::cerr << "RenderFrameAndWait: unexpected message type "
+					  << ready[QStringLiteral("type")].toString().toStdString()
+					  << " body="
+					  << QJsonDocument(ready).toJson(QJsonDocument::Compact)
+						   .toStdString()
+					  << std::endl;
 			return false;
 		}
 		*output_slot = ready[QStringLiteral("slot")].toInt();
@@ -346,12 +355,18 @@ protected:
 				return true;
 			}
 			if (!ok) {
+				std::cerr << "WaitForMessage: parse error, buffer="
+						  << read_buffer_.toStdString() << std::endl;
 				return false;
 			}
 			if (worker_.state() == QProcess::NotRunning) {
+				std::cerr << "WaitForMessage: worker exited with code "
+						  << worker_.exitCode() << std::endl;
 				return false;
 			}
 		}
+		std::cerr << "WaitForMessage: timeout, buffer="
+				  << read_buffer_.toStdString() << std::endl;
 		return false;
 	}
 
@@ -397,7 +412,11 @@ TEST_F(RenderWorkerFootageTest, VulkanFootageIsNotBlack)
 	ASSERT_GE(output_slot, 0);
 	ASSERT_LT(output_slot, kOutputSlots);
 
-	const void *output_data = output_pool_->SlotData(uint32_t(output_slot));
+	uint32_t consumed_slot = 0;
+	ASSERT_TRUE(output_pool_->Consume(&consumed_slot));
+	ASSERT_EQ(int(consumed_slot), output_slot);
+
+	const void *output_data = output_pool_->SlotData(consumed_slot);
 	const double brightness = SampleBrightnessF32(
 		output_data, output_width_, output_height_,
 		output_width_ * 4 * int(sizeof(float)));
@@ -411,6 +430,7 @@ TEST_F(RenderWorkerFootageTest, VulkanFootageIsNotBlack)
 	QFile::copy(temp_dir_.filePath(QStringLiteral("worker_output_vulkan.png")),
 				QStringLiteral("/tmp/worker_output_vulkan.png"));
 	std::cerr << "Vulkan output copied to /tmp/worker_output_vulkan.png" << std::endl;
+	output_pool_->Release(consumed_slot);
 }
 
 TEST_F(RenderWorkerFootageTest, OpenGLFootageIsNotBlack)
@@ -422,7 +442,11 @@ TEST_F(RenderWorkerFootageTest, OpenGLFootageIsNotBlack)
 	ASSERT_GE(output_slot, 0);
 	ASSERT_LT(output_slot, kOutputSlots);
 
-	const void *output_data = output_pool_->SlotData(uint32_t(output_slot));
+	uint32_t consumed_slot = 0;
+	ASSERT_TRUE(output_pool_->Consume(&consumed_slot));
+	ASSERT_EQ(int(consumed_slot), output_slot);
+
+	const void *output_data = output_pool_->SlotData(consumed_slot);
 	const double brightness = SampleBrightnessF32(
 		output_data, output_width_, output_height_,
 		output_width_ * 4 * int(sizeof(float)));
@@ -436,5 +460,6 @@ TEST_F(RenderWorkerFootageTest, OpenGLFootageIsNotBlack)
 	QFile::copy(temp_dir_.filePath(QStringLiteral("worker_output_opengl.png")),
 				QStringLiteral("/tmp/worker_output_opengl.png"));
 	std::cerr << "OpenGL output copied to /tmp/worker_output_opengl.png" << std::endl;
+	output_pool_->Release(consumed_slot);
 }
 

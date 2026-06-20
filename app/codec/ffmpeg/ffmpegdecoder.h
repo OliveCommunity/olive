@@ -29,6 +29,7 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavfilter/avfilter.h>
 #include <libavformat/avformat.h>
+#include <libavutil/hwcontext.h>
 #include <libswscale/swscale.h>
 #include <libswresample/swresample.h>
 }
@@ -131,11 +132,33 @@ private:
 			return codec_ctx_;
 		}
 
+		bool hwaccel_enabled() const
+		{
+			return hwaccel_enabled_;
+		}
+
+		AVPixelFormat hw_pix_fmt() const
+		{
+			return hw_pix_fmt_;
+		}
+
 	private:
+		static AVHWDeviceType ChooseHardwareDevice();
+		static AVPixelFormat GetHardwareFormat(AVCodecContext *ctx,
+										   const AVPixelFormat *pix_fmts);
+
+		bool InitHardwareAcceleration(const AVCodec *codec);
+		void CleanupHardwareAcceleration();
+
 		AVFormatContext *fmt_ctx_;
 		AVCodecContext *codec_ctx_;
 		AVStream *avstream_;
 		AVDictionary *opts_;
+
+		AVBufferRef *hw_device_ctx_;
+		AVHWDeviceType hw_device_type_;
+		AVPixelFormat hw_pix_fmt_;
+		bool hwaccel_enabled_;
 	};
 
 	/**
@@ -149,6 +172,8 @@ private:
 	static QString FFmpegError(int error_code);
 
 	void FreeScaler();
+
+	AVFramePtr TransferHardwareFrame(AVFramePtr f);
 
 	static PixelFormat GetNativePixelFormat(AVPixelFormat pix_fmt);
 	static int GetNativeChannelCount(AVPixelFormat pix_fmt);
