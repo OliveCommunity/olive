@@ -24,6 +24,8 @@
 #include <QMetaObject>
 
 #include "node/color/colormanager/colormanager.h"
+#include "render/previewautocacher.h"
+#include "render/rendermanager.h"
 
 namespace olive
 {
@@ -179,6 +181,15 @@ void OCIOLutNode::GenerateProcessor()
 	last_direction_ = direction;
 	last_processor_ = processor;
 	set_processor(processor);
+
+	// The processor has changed. Cancel any background caching first so the
+	// preview autocacher doesn't try to re-cache the entire timeline, then
+	// invalidate the cache so the current frame re-renders with the new LUT.
+	PreviewAutoCacher *cacher = RenderManager::instance()->GetCacher();
+	if (cacher) {
+		cacher->CancelVideoTasks(true);
+	}
+	InvalidateAll(kTextureInput);
 }
 
 } // namespace olive
