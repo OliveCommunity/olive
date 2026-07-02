@@ -20,6 +20,7 @@
 
 #include "ociolut.h"
 
+#include <QCoreApplication>
 #include <QFileInfo>
 #include <QMetaObject>
 
@@ -207,8 +208,15 @@ void OCIOLutNode::SetProcessorResult(ColorProcessorPtr processor,
 	last_processor_ = processor;
 	set_processor(processor);
 
-	// The processor has changed, ensure any cached frames are re-rendered.
-	InvalidateAll(kTextureInput);
+	// The processor has changed. In the main GUI process we need to invalidate
+	// cached frames so the viewer refreshes automatically. In the render worker
+	// process, a full invalidation can trigger an expensive re-cache of the
+	// entire timeline, so we skip it; the next render request will naturally
+	// pick up the new processor.
+	if (QCoreApplication::applicationName() !=
+		QStringLiteral("olive-render-worker")) {
+		InvalidateAll(kTextureInput);
+	}
 }
 
 OCIOLutNode::GenerateProcessorTask::GenerateProcessorTask(
