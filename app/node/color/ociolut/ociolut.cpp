@@ -23,6 +23,8 @@
 #include <QFileInfo>
 #include <QMetaObject>
 
+#include <QCoreApplication>
+
 #include "node/color/colormanager/colormanager.h"
 #include "render/previewautocacher.h"
 #include "render/rendermanager.h"
@@ -182,14 +184,20 @@ void OCIOLutNode::GenerateProcessor()
 	last_processor_ = processor;
 	set_processor(processor);
 
-	// The processor has changed. Cancel any background caching first so the
-	// preview autocacher doesn't try to re-cache the entire timeline, then
-	// invalidate the cache so the current frame re-renders with the new LUT.
-	PreviewAutoCacher *cacher = RenderManager::instance()->GetCacher();
-	if (cacher) {
-		cacher->CancelVideoTasks(true);
+	// The processor has changed. In the main GUI process, refresh the viewer by
+	// cancelling background cache jobs (so the autocacher doesn't re-render the
+	// entire timeline) and invalidating the cache. The worker process has no
+	// viewer/preview autocacher, so skip this step to avoid crashing on
+	// RenderManager::GetCacher().
+	if (QCoreApplication::applicationName() !=
+		QStringLiteral("olive-render-worker")) {
+		if (RenderManager *rm = RenderManager::instance()) {
+			if (PreviewAutoCacher *cacher = rm->GetCacher()) {
+				cacher->CancelVideoTasks(true);
+			}
+		}
+		InvalidateAll(kTextureInput);
 	}
-	InvalidateAll(kTextureInput);
 }
 
 } // namespace olive
