@@ -22,9 +22,6 @@
 #define OCIOLUTNODE_H
 
 #include <QMutex>
-#include <QPointer>
-#include <QRunnable>
-#include <QThreadPool>
 
 #include "node/color/ociobase/ociobase.h"
 #include "render/colorprocessor.h"
@@ -54,33 +51,8 @@ public:
 protected slots:
 	virtual void ConfigChanged() override;
 
-private slots:
-	void SetProcessorResult(olive::ColorProcessorPtr processor,
-							const QString &path, int direction, int generation);
-
 private:
-	class GenerateProcessorTask : public QRunnable {
-	public:
-		GenerateProcessorTask(OCIOLutNode *node, const QString &path,
-							  int direction, int generation,
-							  ColorManager *manager);
-
-		void run() override;
-
-	private:
-		static ColorProcessorPtr CreateProcessor(const QString &path,
-											 int direction,
-											 ColorManager *manager);
-
-		QPointer<OCIOLutNode> node_;
-		QString path_;
-		int direction_;
-		int generation_;
-		ColorManager *manager_;
-	};
-
 	void GenerateProcessor();
-	void MaybeStartNextTask();
 
 	QMutex gen_mutex_;
 	QString last_path_;
@@ -90,7 +62,6 @@ private:
 	QString pending_path_;
 	int pending_direction_ = -1;
 	int pending_generation_ = 0;
-	bool task_running_ = false;
 };
 
 } // namespace olive

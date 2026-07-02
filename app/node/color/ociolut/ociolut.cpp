@@ -155,92 +155,10 @@ void OCIOLutNode::GenerateProcessor()
 	pending_direction_ = direction;
 	pending_generation_++;
 
-	MaybeStartNextTask();
-}
-
-void OCIOLutNode::MaybeStartNextTask()
-{
-	if (task_running_) {
-		return;
-	}
-
-	if (pending_path_.isEmpty()) {
-		return;
-	}
-
-	if (pending_path_ == last_path_ && pending_direction_ == last_direction_ &&
-		last_processor_) {
-		return;
-	}
-
-	task_running_ = true;
-	const int generation = pending_generation_;
-	const QString path = pending_path_;
-	const int direction = pending_direction_;
-	ColorManager *manager = this->manager();
-
-	QThreadPool::globalInstance()->start(
-		new GenerateProcessorTask(this, path, direction, generation, manager));
-}
-
-void OCIOLutNode::SetProcessorResult(ColorProcessorPtr processor,
-									 const QString &path, int direction,
-									 int generation)
-{
-	QMutexLocker locker(&gen_mutex_);
-
-	task_running_ = false;
-
-	if (generation != pending_generation_) {
-		// A newer request was issued while this one was in flight; restart.
-		MaybeStartNextTask();
-		return;
-	}
-
-	if (path != pending_path_ || direction != pending_direction_) {
-		MaybeStartNextTask();
-		return;
-	}
-
-	last_path_ = path;
-	last_direction_ = direction;
-	last_processor_ = processor;
-	set_processor(processor);
-
-	// NOTE: We intentionally do NOT call InvalidateAll() here. A full cache
-	// invalidation of the entire timeline freezes the UI while the preview
-	// autocacher re-renders every frame. The new processor will be picked up
-	// naturally on the next render request (e.g. scrubbing or playback).
-}
-
-OCIOLutNode::GenerateProcessorTask::GenerateProcessorTask(
-	OCIOLutNode *node, const QString &path, int direction, int generation,
-	ColorManager *manager)
-	: node_(node), path_(path), direction_(direction), generation_(generation),
-	  manager_(manager)
-{
-	setAutoDelete(true);
-}
-
-void OCIOLutNode::GenerateProcessorTask::run()
-{
-	ColorProcessorPtr processor = CreateProcessor(path_, direction_, manager_);
-
-	if (node_) {
-		QMetaObject::invokeMethod(
-			node_, "SetProcessorResult", Qt::QueuedConnection,
-			Q_ARG(olive::ColorProcessorPtr, processor), Q_ARG(QString, path_),
-			Q_ARG(int, direction_), Q_ARG(int, generation_));
-	}
-}
-
-ColorProcessorPtr OCIOLutNode::GenerateProcessorTask::CreateProcessor(
-	const QString &path, int direction, ColorManager *manager)
-{
-	if (!manager) {
-		return nullptr;
-	}
-
+	// Synchronous generation: for typical 33^3 .cube files this is well under
+	// 100ms and avoids the complexity and potential deadlocks of background
+	// generation + cache invalidation.
+	ColorProcessorPtr processor;
 	try {
 		OCIO::FileTransformRcPtr transform = OCIO::FileTransform::Create();
 		transform->setSrc(path.toUtf8().constData());
@@ -251,11 +169,16 @@ ColorProcessorPtr OCIOLutNode::GenerateProcessorTask::CreateProcessor(
 				? OCIO::TRANSFORM_DIR_FORWARD
 				: OCIO::TRANSFORM_DIR_INVERSE);
 
-		return ColorProcessor::Create(manager->GetConfig()->getProcessor(transform));
+		processor = ColorProcessor::Create(manager()->GetConfig()->getProcessor(transform));
 	} catch (const std::exception &e) {
 		qWarning() << "OCIO LUT processor error:" << e.what();
-		return nullptr;
+		processor = nullptr;
 	}
+
+	last_path_ = path;
+	last_direction_ = direction;
+	last_processor_ = processor;
+	set_processor(processor);
 }
 
 } // namespace olive
