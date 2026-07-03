@@ -131,9 +131,11 @@ void OCIOLutNode::GenerateProcessor()
 	}
 
 	// Re-use the existing processor if the file and direction haven't changed.
-	if (path == last_path_ && direction == last_direction_ && last_processor_) {
-		return;
-	}
+	// NOTE: This is intentionally disabled while debugging LUT switching issues
+	// to ensure the processor is always recreated when the input changes.
+	// if (path == last_path_ && direction == last_direction_ && last_processor_) {
+	// 	return;
+	// }
 
 	const QFileInfo info(path);
 	if (!info.exists() || !info.isFile()) {
