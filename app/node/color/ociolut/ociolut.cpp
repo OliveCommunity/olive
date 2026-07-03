@@ -185,16 +185,17 @@ void OCIOLutNode::GenerateProcessor()
 	set_processor(processor);
 
 	// The processor has changed. In the main GUI process (QApplication), refresh
-	// the viewer by cancelling background cache jobs and invalidating the cache.
-	// The worker process uses QGuiApplication and has no RenderManager/Preview
-	// AutoCacher, so skip this step to avoid crashing.
+	// the viewer by invalidating the cache and cancelling background cache jobs.
+	// Invalidating first ensures any in-flight renders that complete afterwards
+	// won't write stale frames back. The worker process uses QGuiApplication and
+	// has no RenderManager/PreviewAutoCacher, so skip this step to avoid crashing.
 	if (qobject_cast<QApplication *>(QCoreApplication::instance())) {
+		InvalidateAll(kTextureInput);
 		if (RenderManager *rm = RenderManager::instance()) {
 			if (PreviewAutoCacher *cacher = rm->GetCacher()) {
 				cacher->CancelVideoTasks(false);
 			}
 		}
-		InvalidateAll(kTextureInput);
 	}
 }
 
