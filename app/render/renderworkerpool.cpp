@@ -572,6 +572,12 @@ bool RenderWorkerPool::PrepareJob(RenderTicketPtr ticket,
 				return false;
 			}
 			wrote_new_snapshot = true;
+			// For internal render-proxy copies, the snapshot now represents the
+			// serialized state, so reset the modified flag so the snapshot can be
+			// reused until the copy changes again.
+			if (project->property("_oak_render_proxy").toBool()) {
+				project->set_modified(false);
+			}
 			locker.relock();
 			graph_cache_.insert(project_uuid, {graph_path});
 		}

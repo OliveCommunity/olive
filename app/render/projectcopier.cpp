@@ -62,6 +62,11 @@ void ProjectCopier::SetProject(Project *project)
 	original_ = project;
 
 	if (original_) {
+		// The copied project is only used as an in-memory render proxy. Mark it so
+		// downstream code (e.g. RenderWorkerPool) knows it is safe to reset its
+		// modified flag after serializing a snapshot.
+		copy_->setProperty("_oak_render_proxy", true);
+
 		// Add all nodes
 		for (int i = 0; i < copy_->nodes().size(); i++) {
 			InsertIntoCopyMap(original_->nodes().at(i), copy_->nodes().at(i));
@@ -108,10 +113,13 @@ void ProjectCopier::SetProject(Project *project)
 
 void ProjectCopier::ProcessUpdateQueue()
 {
+	bool copy_changed = false;
+
 	// Iterate everything that happened to the graph and do the same thing on our end
 	while (!graph_update_queue_.empty()) {
 		QueuedJob job = graph_update_queue_.front();
 		graph_update_queue_.pop_front();
+		copy_changed = true;
 
 		switch (job.type) {
 		case QueuedJob::kNodeAdded:
@@ -136,6 +144,13 @@ void ProjectCopier::ProcessUpdateQueue()
 			DoProjectSettingChange(job.key, job.value);
 			break;
 		}
+	}
+
+	// The copied project is not saved, so its modified flag is only used by the
+	// render worker pool to decide whether the serialized graph snapshot is stale.
+	// Mark it modified whenever the copy has actually changed.
+	if (copy_changed) {
+		copy_->set_modified(true);
 	}
 
 	// Indicate that we have synchronized to this point, which is compared with the graph change

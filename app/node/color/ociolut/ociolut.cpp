@@ -45,6 +45,11 @@ bool IsSupportedLutExtension(const QString &suffix)
 	return lower == QStringLiteral("cube") || lower == QStringLiteral("3dl");
 }
 
+bool IsMainProcess()
+{
+	return qobject_cast<QApplication *>(QCoreApplication::instance()) != nullptr;
+}
+
 } // namespace
 
 OCIOLutNode::OCIOLutNode()
@@ -98,72 +103,121 @@ void OCIOLutNode::InputValueChangedEvent(const QString &input, int element)
 	Q_UNUSED(element)
 
 	if (input == kFileInput || input == kDirectionInput) {
-		GenerateProcessor();
+		// In the worker process, creating the OCIO processor can be slow and we
+		// are often called from LoadGraph while the main process is blocked
+		// waiting for a response. Defer generation to Value() time so the worker
+		// can ack the graph load immediately.
+		if (IsMainProcess()) {
+			GenerateProcessor();
+		} else {
+			QMutexLocker locker(&gen_mutex_);
+			processor_dirty_ = true;
+		}
 	}
 }
 
 void OCIOLutNode::ConfigChanged()
 {
-	GenerateProcessor();
+	if (IsMainProcess()) {
+		GenerateProcessor();
+	} else {
+		QMutexLocker locker(&gen_mutex_);
+		processor_dirty_ = true;
+	}
+}
+
+void OCIOLutNode::Value(const NodeValueRow &value, const NodeGlobals &globals,
+						NodeValueTable *table) const
+{
+	// Ensure the processor is up-to-date before the base class emits the color
+	// transform job. This is especially important in the render worker, where
+	// processor creation is deferred until the first render.
+	EnsureProcessor();
+
+	super::Value(value, globals, table);
 }
 
 void OCIOLutNode::GenerateProcessor()
 {
+	EnsureProcessor();
+
+	// The processor has changed. In the main GUI process, refresh the viewer by
+	// invalidating the cache and cancelling background cache jobs.
+	// Invalidating first ensures any in-flight renders that complete afterwards
+	// won't write stale frames back. The worker process uses QGuiApplication and
+	// has no RenderManager/PreviewAutoCacher, so skip this step to avoid crashing.
+	if (IsMainProcess()) {
+		InvalidateAll(kTextureInput);
+		if (RenderManager *rm = RenderManager::instance()) {
+			if (PreviewAutoCacher *cacher = rm->GetCacher()) {
+				cacher->CancelVideoTasks(false);
+			}
+		}
+	}
+}
+
+void OCIOLutNode::EnsureProcessor() const
+{
 	QMutexLocker locker(&gen_mutex_);
 
+	if (!processor_dirty_ && last_processor_) {
+		return;
+	}
+
+	CreateProcessorFromInputs();
+}
+
+bool OCIOLutNode::CreateProcessorFromInputs() const
+{
 	if (!manager()) {
-		set_processor(nullptr);
+		const_cast<OCIOLutNode *>(this)->set_processor(nullptr);
 		last_processor_.reset();
 		last_path_.clear();
 		last_direction_ = -1;
-		return;
+		processor_dirty_ = false;
+		return false;
 	}
 
 	const QString path = GetStandardValue(kFileInput).toString();
 	const int direction = GetStandardValue(kDirectionInput).toInt();
 
 	if (path.isEmpty()) {
-		set_processor(nullptr);
+		const_cast<OCIOLutNode *>(this)->set_processor(nullptr);
 		last_processor_.reset();
 		last_path_.clear();
 		last_direction_ = -1;
-		return;
+		processor_dirty_ = false;
+		return false;
 	}
 
 	// Re-use the existing processor if the file and direction haven't changed.
-	// NOTE: This is intentionally disabled while debugging LUT switching issues
-	// to ensure the processor is always recreated when the input changes.
-	// if (path == last_path_ && direction == last_direction_ && last_processor_) {
-	// 	return;
-	// }
+	if (path == last_path_ && direction == last_direction_ && last_processor_) {
+		processor_dirty_ = false;
+		return false;
+	}
 
 	const QFileInfo info(path);
 	if (!info.exists() || !info.isFile()) {
 		qWarning() << "OCIO LUT file does not exist:" << path;
-		set_processor(nullptr);
+		const_cast<OCIOLutNode *>(this)->set_processor(nullptr);
 		last_processor_.reset();
 		last_path_.clear();
 		last_direction_ = -1;
-		return;
+		processor_dirty_ = false;
+		return false;
 	}
 
 	const QString suffix = info.suffix();
 	if (!IsSupportedLutExtension(suffix)) {
 		qWarning() << "Unsupported OCIO LUT file extension:" << path;
-		set_processor(nullptr);
+		const_cast<OCIOLutNode *>(this)->set_processor(nullptr);
 		last_processor_.reset();
 		last_path_.clear();
 		last_direction_ = -1;
-		return;
+		processor_dirty_ = false;
+		return false;
 	}
 
-	pending_path_ = path;
-	pending_direction_ = direction;
-	pending_generation_++;
-
-	// Synchronous generation: for typical 33^3 .cube files this is well under
-	// 100ms and avoids the complexity and potential deadlocks of background
-	// generation + cache invalidation.
 	ColorProcessorPtr processor;
 	try {
 		OCIO::FileTransformRcPtr transform = OCIO::FileTransform::Create();
@@ -184,21 +238,10 @@ void OCIOLutNode::GenerateProcessor()
 	last_path_ = path;
 	last_direction_ = direction;
 	last_processor_ = processor;
-	set_processor(processor);
+	const_cast<OCIOLutNode *>(this)->set_processor(processor);
+	processor_dirty_ = false;
 
-	// The processor has changed. In the main GUI process (QApplication), refresh
-	// the viewer by invalidating the cache and cancelling background cache jobs.
-	// Invalidating first ensures any in-flight renders that complete afterwards
-	// won't write stale frames back. The worker process uses QGuiApplication and
-	// has no RenderManager/PreviewAutoCacher, so skip this step to avoid crashing.
-	if (qobject_cast<QApplication *>(QCoreApplication::instance())) {
-		InvalidateAll(kTextureInput);
-		if (RenderManager *rm = RenderManager::instance()) {
-			if (PreviewAutoCacher *cacher = rm->GetCacher()) {
-				cacher->CancelVideoTasks(false);
-			}
-		}
-	}
+	return true;
 }
 
 } // namespace olive

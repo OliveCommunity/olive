@@ -44,6 +44,8 @@ public:
 	virtual void Retranslate() override;
 	virtual void InputValueChangedEvent(const QString &input,
 									int element) override;
+	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+					   NodeValueTable *table) const override;
 
 	static const QString kFileInput;
 	static const QString kDirectionInput;
@@ -53,15 +55,14 @@ protected slots:
 
 private:
 	void GenerateProcessor();
+	void EnsureProcessor() const;
+	bool CreateProcessorFromInputs() const;
 
-	QMutex gen_mutex_;
-	QString last_path_;
-	int last_direction_ = -1;
-	ColorProcessorPtr last_processor_;
-
-	QString pending_path_;
-	int pending_direction_ = -1;
-	int pending_generation_ = 0;
+	mutable QMutex gen_mutex_;
+	mutable bool processor_dirty_ = true;
+	mutable QString last_path_;
+	mutable int last_direction_ = -1;
+	mutable ColorProcessorPtr last_processor_;
 };
 
 } // namespace olive
