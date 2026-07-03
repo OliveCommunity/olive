@@ -191,7 +191,7 @@ void OCIOLutNode::GenerateProcessor()
 	if (qobject_cast<QApplication *>(QCoreApplication::instance())) {
 		if (RenderManager *rm = RenderManager::instance()) {
 			if (PreviewAutoCacher *cacher = rm->GetCacher()) {
-				cacher->CancelVideoTasks(true);
+				cacher->CancelVideoTasks(false);
 			}
 		}
 		InvalidateAll(kTextureInput);
