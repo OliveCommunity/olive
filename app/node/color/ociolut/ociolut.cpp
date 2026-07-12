@@ -50,6 +50,29 @@ bool IsMainProcess()
 	return qobject_cast<QApplication *>(QCoreApplication::instance()) != nullptr;
 }
 
+int ReadDirectionInput(const Node *node)
+{
+	QVariant v = node->GetStandardValue(OCIOLutNode::kDirectionInput);
+
+	bool ok = false;
+	int direction = v.toInt(&ok);
+	if (ok) {
+		return direction;
+	}
+
+	// Some old serializers stored the combo value as a string.
+	const QString s = v.toString().toLower();
+	if (s == QStringLiteral("forward") || s == QStringLiteral("0")) {
+		return 0;
+	}
+	if (s == QStringLiteral("inverse") || s == QStringLiteral("1")) {
+		return 1;
+	}
+
+	qWarning() << "OCIOLutNode: unexpected direction value" << v;
+	return 0;
+}
+
 } // namespace
 
 OCIOLutNode::OCIOLutNode()
@@ -162,7 +185,7 @@ void OCIOLutNode::EnsureProcessor() const
 
 	if (!processor_dirty_ && last_processor_ &&
 		GetStandardValue(kFileInput).toString() == last_path_ &&
-		GetStandardValue(kDirectionInput).toInt() == last_direction_) {
+		ReadDirectionInput(this) == last_direction_) {
 		return;
 	}
 
@@ -181,7 +204,7 @@ bool OCIOLutNode::CreateProcessorFromInputs() const
 	}
 
 	const QString path = GetStandardValue(kFileInput).toString();
-	const int direction = GetStandardValue(kDirectionInput).toInt();
+	const int direction = ReadDirectionInput(this);
 
 	if (path.isEmpty()) {
 		const_cast<OCIOLutNode *>(this)->set_processor(nullptr);
@@ -222,14 +245,19 @@ bool OCIOLutNode::CreateProcessorFromInputs() const
 
 	ColorProcessorPtr processor;
 	try {
+		const bool forward =
+			static_cast<ColorProcessor::Direction>(direction) ==
+			ColorProcessor::kNormal;
+		qDebug() << "OCIOLutNode: creating processor for" << path
+				 << "direction=" << direction
+				 << "ocio_dir=" << (forward ? "FORWARD" : "INVERSE")
+				 << "process=" << (IsMainProcess() ? "main" : "worker");
+
 		OCIO::FileTransformRcPtr transform = OCIO::FileTransform::Create();
 		transform->setSrc(path.toUtf8().constData());
 		transform->setInterpolation(OCIO::INTERP_LINEAR);
 		transform->setDirection(
-			static_cast<ColorProcessor::Direction>(direction) ==
-					ColorProcessor::kNormal
-				? OCIO::TRANSFORM_DIR_FORWARD
-				: OCIO::TRANSFORM_DIR_INVERSE);
+			forward ? OCIO::TRANSFORM_DIR_FORWARD : OCIO::TRANSFORM_DIR_INVERSE);
 
 		processor = ColorProcessor::Create(manager()->GetConfig()->getProcessor(transform));
 	} catch (const std::exception &e) {
