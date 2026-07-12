@@ -22,8 +22,9 @@
 #ifndef PREFERENCESBEHAVIORTAB_H
 #define PREFERENCESBEHAVIORTAB_H
 
+#include <QCheckBox>
 #include <QComboBox>
-#include <QTreeWidget>
+#include <QVBoxLayout>
 
 #include "dialog/configbase/configdialogbase.h"
 
@@ -33,26 +34,36 @@ namespace olive
 class PreferencesBehaviorTab : public ConfigDialogBaseTab {
 	Q_OBJECT
 public:
-	PreferencesBehaviorTab();
+	enum Category {
+		kCategoryGeneral,
+		kCategoryAudio,
+		kCategoryTimeline,
+		kCategoryPlayback,
+		kCategoryProject,
+		kCategoryNodes,
+		kCategoryRendering
+	};
+
+	PreferencesBehaviorTab(Category category);
 
 	virtual void Accept(MultiUndoCommand *command) override;
 
 private:
-	QTreeWidgetItem *AddParent(const QString &text, const QString &tooltip,
-							   QTreeWidgetItem *parent = nullptr);
-	QTreeWidgetItem *AddParent(const QString &text,
-							   QTreeWidgetItem *parent = nullptr);
+	struct Item {
+		QString text;
+		QString config_key;
+		QString tooltip;
+	};
 
-	QTreeWidgetItem *AddItem(const QString &text, const QString &config_key,
-							 const QString &tooltip, QTreeWidgetItem *parent);
-	QTreeWidgetItem *AddItem(const QString &text, const QString &config_key,
-							 QTreeWidgetItem *parent);
+	void AddItems(const QVector<Item> &items);
+	QCheckBox *AddItem(const QString &text, const QString &config_key,
+					   const QString &tooltip = QString());
 
-	QMap<QTreeWidgetItem *, QString> config_map_;
+	QMap<QCheckBox *, QString> config_map_;
 
 	QComboBox *graphics_backend_combobox_;
 
-	QTreeWidget *behavior_tree_;
+	Category category_;
 };
 
 }

@@ -652,6 +652,10 @@ void NodeView::mouseDoubleClickEvent(QMouseEvent *event)
 										panel->setFocus(Qt::OtherFocusReason);
 				}
 			}
+
+			// Scroll the parameter editor to this node
+			emit NodeSelectionChangedWithContexts(
+				{ { item_at_cursor->GetNode(), item_at_cursor->GetContext() } });
 		}
 	}
 }

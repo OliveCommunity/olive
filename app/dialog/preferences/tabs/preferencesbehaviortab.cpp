@@ -21,173 +21,153 @@
 
 #include "preferencesbehaviortab.h"
 
-#include <QCheckBox>
-#include <QComboBox>
-#include <QVBoxLayout>
+#include <QLabel>
 
 #include "config/config.h"
 
 namespace olive
 {
 
-PreferencesBehaviorTab::PreferencesBehaviorTab()
+PreferencesBehaviorTab::PreferencesBehaviorTab(Category category)
+	: category_(category)
+	, graphics_backend_combobox_(nullptr)
 {
 	QVBoxLayout *layout = new QVBoxLayout(this);
+	layout->setAlignment(Qt::AlignTop);
 
-	behavior_tree_ = new QTreeWidget();
-	layout->addWidget(behavior_tree_);
+	switch (category_) {
+	case kCategoryGeneral:
+		AddItem(tr("Enable hover focus"), QStringLiteral("HoverFocus"),
+				tr("Panels will be considered focused when the mouse cursor is "
+				   "over them without having to click them."));
+		AddItem(tr("Enable slider ladder"), QStringLiteral("UseSliderLadders"));
+		AddItem(
+			tr("Scrolling zooms by default"), QStringLiteral("ScrollZooms"),
+			tr("By default, scrolling will move the view around, and holding "
+			   "Ctrl/Cmd will make it zoom instead. Enabling this will switch "
+			   "those, scrolling will zoom by default, and holding Ctrl/Cmd will "
+			   "move the view instead."));
+		break;
 
-	behavior_tree_->setColumnCount(2);
-	behavior_tree_->setHeaderLabels({ tr("Behavior"), tr("Setting") });
+	case kCategoryAudio:
+		AddItem(tr("Enable audio scrubbing"), QStringLiteral("AudioScrubbing"));
+		break;
 
-	QTreeWidgetItem *general_group = AddParent(tr("General"));
-	AddItem(
-		tr("Enable hover focus"), QStringLiteral("HoverFocus"),
-		tr("Panels will be considered focused when the mouse cursor is over them without having to click them."),
-		general_group);
-	AddItem(tr("Enable slider ladder"), QStringLiteral("UseSliderLadders"),
-			general_group);
-	AddItem(
-		tr("Scrolling zooms by default"), QStringLiteral("ScrollZooms"),
-		tr("By default, scrolling will move the view around, and holding Ctrl/Cmd will make it zoom instead. "
-		   "Enabling this will switch those, scrolling will zoom by default, and holding Ctrl/Cmd will move the view instead."),
-		general_group);
+	case kCategoryTimeline:
+		AddItems({
+			{ tr("Auto-Seek to Imported Clips"),
+			  QStringLiteral("EnableSeekToImport") },
+			{ tr("Edit Tool Also Seeks"),
+			  QStringLiteral("EditToolAlsoSeeks") },
+			{ tr("Edit Tool Selects Links"),
+			  QStringLiteral("EditToolSelectsLinks") },
+			{ tr("Enable Drag Files to Timeline"),
+			  QStringLiteral("EnableDragFilesToTimeline") },
+			{ tr("Invert Timeline Scroll Axes"),
+			  QStringLiteral("InvertTimelineScrollAxes"),
+			  tr("Hold ALT on any UI element to switch scrolling axes") },
+			{ tr("Seek Also Selects"), QStringLiteral("SeekAlsoSelects") },
+			{ tr("Seek to the End of Pastes"), QStringLiteral("PasteSeeks") },
+			{ tr("Selecting Also Seeks"), QStringLiteral("SelectAlsoSeeks") },
+		});
+		break;
 
-	QTreeWidgetItem *audio_group = AddParent(tr("Audio"));
-	AddItem(tr("Enable audio scrubbing"), QStringLiteral("AudioScrubbing"),
-			audio_group);
+	case kCategoryPlayback:
+		AddItems({
+			{ tr("Ask For Name When Setting Marker"),
+			  QStringLiteral("SetNameWithMarker") },
+			{ tr("Automatically rewind at the end of a sequence"),
+			  QStringLiteral("AutoSeekToBeginning") },
+		});
+		break;
 
-	QTreeWidgetItem *timeline_group = AddParent(tr("Timeline"));
-	AddItem(tr("Auto-Seek to Imported Clips"),
-			QStringLiteral("EnableSeekToImport"), timeline_group);
-	AddItem(tr("Edit Tool Also Seeks"), QStringLiteral("EditToolAlsoSeeks"),
-			timeline_group);
-	AddItem(tr("Edit Tool Selects Links"),
-			QStringLiteral("EditToolSelectsLinks"), timeline_group);
-	AddItem(tr("Enable Drag Files to Timeline"),
-			QStringLiteral("EnableDragFilesToTimeline"), timeline_group);
-	AddItem(tr("Invert Timeline Scroll Axes"),
-			QStringLiteral("InvertTimelineScrollAxes"),
-			tr("Hold ALT on any UI element to switch scrolling axes"),
-			timeline_group);
-	AddItem(tr("Seek Also Selects"), QStringLiteral("SeekAlsoSelects"),
-			timeline_group);
-	AddItem(tr("Seek to the End of Pastes"), QStringLiteral("PasteSeeks"),
-			timeline_group);
-	AddItem(tr("Selecting Also Seeks"), QStringLiteral("SelectAlsoSeeks"),
-			timeline_group);
+	case kCategoryProject:
+		AddItem(tr("Drop Files on Media to Replace"),
+				QStringLiteral("DropFileOnMediaToReplace"));
+		break;
 
-	QTreeWidgetItem *playback_group = AddParent(tr("Playback"));
-	AddItem(tr("Ask For Name When Setting Marker"),
-			QStringLiteral("SetNameWithMarker"), playback_group);
-	AddItem(tr("Automatically rewind at the end of a sequence"),
-			QStringLiteral("AutoSeekToBeginning"), playback_group);
+	case kCategoryNodes:
+		AddItems({
+			{ tr("Add Default Effects to New Clips"),
+			  QStringLiteral("AddDefaultEffectsToClips") },
+			{ tr("Auto-Scale By Default"),
+			  QStringLiteral("AutoscaleByDefault") },
+			{ tr("Splitting Clips Copies Dependencies"),
+			  QStringLiteral("SplitClipsCopyNodes"),
+			  tr("Multiple clips can share the same nodes. Disable this to "
+				 "automatically share node dependencies among clips when copying "
+				 "or splitting them.") },
+		});
+		break;
 
-	QTreeWidgetItem *project_group = AddParent(tr("Project"));
-	AddItem(tr("Drop Files on Media to Replace"),
-			QStringLiteral("DropFileOnMediaToReplace"), project_group);
+	case kCategoryRendering:
+	{
+		QLabel *backend_label = new QLabel(tr("Graphics Backend"));
+		backend_label->setToolTip(
+			tr("Selects the graphics API Oak should request on next launch. "
+			   "Vulkan is experimental: on most systems it will fall back to "
+			   "OpenGL or use a prototype Vulkan path that is not yet fully "
+			   "validated."));
 
-	QTreeWidgetItem *node_group = AddParent(tr("Nodes"));
-	AddItem(tr("Add Default Effects to New Clips"),
-			QStringLiteral("AddDefaultEffectsToClips"), node_group);
-	AddItem(tr("Auto-Scale By Default"), QStringLiteral("AutoscaleByDefault"),
-			node_group);
-	AddItem(
-		tr("Splitting Clips Copies Dependencies"),
-		QStringLiteral("SplitClipsCopyNodes"),
-		tr("Multiple clips can share the same nodes. Disable this to automatically share node "
-		   "dependencies among clips when copying or splitting them."),
-		node_group);
+		graphics_backend_combobox_ = new QComboBox();
+		graphics_backend_combobox_->addItem(tr("OpenGL"),
+										 QStringLiteral("opengl"));
+		graphics_backend_combobox_->addItem(tr("Vulkan (experimental)"),
+										 QStringLiteral("vulkan"));
+		const QString current_backend =
+			OLIVE_CONFIG("GraphicsBackend").toString().toLower();
+		const int backend_index = graphics_backend_combobox_->findData(
+			current_backend.isEmpty() ? QStringLiteral("opengl")
+									  : current_backend);
+		graphics_backend_combobox_->setCurrentIndex(backend_index >= 0
+													 ? backend_index
+													 : 0);
 
-	QTreeWidgetItem *rendering_group = AddParent(tr("Rendering"));
-	QTreeWidgetItem *graphics_backend_item =
-		new QTreeWidgetItem({ tr("Graphics Backend") });
-	graphics_backend_item->setToolTip(
-		0, tr("Selects the graphics API Oak should request on next launch. "
-			  "Vulkan is experimental: on most systems it will fall back to "
-			  "OpenGL or use a prototype Vulkan path that is not yet fully validated."));
-	rendering_group->addChild(graphics_backend_item);
-	graphics_backend_combobox_ = new QComboBox();
-	graphics_backend_combobox_->addItem(tr("OpenGL"), QStringLiteral("opengl"));
-	graphics_backend_combobox_->addItem(tr("Vulkan (experimental)"),
-										QStringLiteral("vulkan"));
-	const QString current_backend =
-		OLIVE_CONFIG("GraphicsBackend").toString().toLower();
-	const int backend_index = graphics_backend_combobox_->findData(
-		current_backend.isEmpty() ? QStringLiteral("opengl")
-								  : current_backend);
-	graphics_backend_combobox_->setCurrentIndex(backend_index >= 0
-													? backend_index
-													: 0);
-	behavior_tree_->setItemWidget(graphics_backend_item, 1,
-								  graphics_backend_combobox_);
+		QHBoxLayout *backend_layout = new QHBoxLayout();
+		backend_layout->addWidget(backend_label);
+		backend_layout->addWidget(graphics_backend_combobox_, 1);
+		layout->addLayout(backend_layout);
 
-	QTreeWidgetItem *opengl_group = AddParent(tr("OpenGL"), rendering_group);
-	AddItem(tr("Use glFinish"), QStringLiteral("UseGLFinish"), opengl_group);
+		AddItem(tr("Use glFinish"), QStringLiteral("UseGLFinish"));
+		break;
+	}
+	}
 }
 
 void PreferencesBehaviorTab::Accept(MultiUndoCommand *command)
 {
 	Q_UNUSED(command)
 
-	for (auto iterator = config_map_.begin(); iterator != config_map_.end();
-		 iterator++) {
-		OLIVE_CONFIG_STR(iterator.value()) =
-			(iterator.key()->checkState(0) == Qt::Checked);
+	for (auto it = config_map_.cbegin(); it != config_map_.cend(); ++it) {
+		OLIVE_CONFIG_STR(it.value()) = it.key()->isChecked();
 	}
 
-	OLIVE_CONFIG("GraphicsBackend") =
-		graphics_backend_combobox_->currentData().toString();
-}
-
-QTreeWidgetItem *PreferencesBehaviorTab::AddItem(const QString &text,
-												 const QString &config_key,
-												 const QString &tooltip,
-												 QTreeWidgetItem *parent)
-{
-	QTreeWidgetItem *item = new QTreeWidgetItem({ text });
-	item->setToolTip(0, tooltip);
-	item->setCheckState(
-		0, OLIVE_CONFIG_STR(config_key).toBool() ? Qt::Checked : Qt::Unchecked);
-
-	config_map_.insert(item, config_key);
-
-	if (parent) {
-		parent->addChild(item);
-	} else {
-		behavior_tree_->addTopLevelItem(item);
+	if (graphics_backend_combobox_) {
+		OLIVE_CONFIG("GraphicsBackend") =
+			graphics_backend_combobox_->currentData().toString();
 	}
-
-	return item;
 }
 
-QTreeWidgetItem *PreferencesBehaviorTab::AddItem(const QString &text,
-												 const QString &config_key,
-												 QTreeWidgetItem *parent)
+void PreferencesBehaviorTab::AddItems(const QVector<Item> &items)
 {
-	return AddItem(text, config_key, QString(), parent);
-}
-
-QTreeWidgetItem *PreferencesBehaviorTab::AddParent(const QString &text,
-												   const QString &tooltip,
-												   QTreeWidgetItem *parent)
-{
-	QTreeWidgetItem *item = new QTreeWidgetItem({ text });
-	item->setToolTip(0, tooltip);
-
-	if (parent) {
-		parent->addChild(item);
-	} else {
-		behavior_tree_->addTopLevelItem(item);
+	for (const Item &i : items) {
+		AddItem(i.text, i.config_key, i.tooltip);
 	}
-
-	return item;
 }
 
-QTreeWidgetItem *PreferencesBehaviorTab::AddParent(const QString &text,
-												   QTreeWidgetItem *parent)
+QCheckBox *PreferencesBehaviorTab::AddItem(const QString &text,
+										   const QString &config_key,
+										   const QString &tooltip)
 {
-	return AddParent(text, QString(), parent);
+	QCheckBox *checkbox = new QCheckBox(text);
+	checkbox->setToolTip(tooltip);
+	checkbox->setChecked(OLIVE_CONFIG_STR(config_key).toBool());
+
+	config_map_.insert(checkbox, config_key);
+
+	layout()->addWidget(checkbox);
+
+	return checkbox;
 }
 
 }
