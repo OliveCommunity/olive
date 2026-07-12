@@ -150,3 +150,67 @@ TEST(CommonFileFunctions, GetUniqueFileIdentifier)
 	EXPECT_TRUE(olive::FileFunctions::GetUniqueFileIdentifier(
 					QStringLiteral("/nonexistent")).isEmpty());
 }
+
+
+TEST(CommonFileFunctions, GetConfigurationLocation)
+{
+	QString loc = olive::FileFunctions::GetConfigurationLocation();
+	EXPECT_FALSE(loc.isEmpty());
+	EXPECT_TRUE(QDir(loc).exists());
+}
+
+TEST(CommonFileFunctions, GetTempFilePath)
+{
+	QString temp = olive::FileFunctions::GetTempFilePath();
+	EXPECT_FALSE(temp.isEmpty());
+	EXPECT_TRUE(QDir(temp).exists());
+}
+
+TEST(CommonFileFunctions, GetAutoRecoveryRoot)
+{
+	QString root = olive::FileFunctions::GetAutoRecoveryRoot();
+	EXPECT_FALSE(root.isEmpty());
+}
+
+TEST(CommonFileFunctions, DirectoryIsValidExisting)
+{
+	QTemporaryDir dir;
+	ASSERT_TRUE(dir.isValid());
+	EXPECT_TRUE(olive::FileFunctions::DirectoryIsValid(QDir(dir.path()), false));
+}
+
+TEST(CommonFileFunctions, CopyDirectoryWithOverwrite)
+{
+	QTemporaryDir src;
+	QTemporaryDir dst;
+	ASSERT_TRUE(src.isValid());
+	ASSERT_TRUE(dst.isValid());
+
+	QString src_file = QDir(src.path()).filePath(QStringLiteral("file.txt"));
+	QFile f(src_file);
+	f.open(QIODevice::WriteOnly);
+	f.write("new content");
+	f.close();
+
+	QString dst_file = QDir(dst.path()).filePath(QStringLiteral("file.txt"));
+	QFile g(dst_file);
+	g.open(QIODevice::WriteOnly);
+	g.write("old content");
+	g.close();
+
+	olive::FileFunctions::CopyDirectory(src.path(), dst.path(), true);
+
+	QFile result(dst_file);
+	result.open(QIODevice::ReadOnly);
+	EXPECT_EQ(result.readAll(), QByteArray("new content"));
+}
+
+TEST(CommonFileFunctions, CopyDirectorySourceMissing)
+{
+	QTemporaryDir dst;
+	ASSERT_TRUE(dst.isValid());
+
+	// Should not crash even if source doesn't exist
+	olive::FileFunctions::CopyDirectory(QStringLiteral("/nonexistent/path"),
+									dst.path(), false);
+}

@@ -58,3 +58,28 @@ TEST(CommonXmlUtils, ReadNextStartElementSkipsUnknown)
 	EXPECT_TRUE(olive::XMLReadNextStartElement(&reader));
 	EXPECT_EQ(reader.name().toString(), QStringLiteral("known"));
 }
+
+
+TEST(CommonXmlUtils, ReadNextStartElementWithCancel)
+{
+	QByteArray xml = "<root><child/></root>";
+	QBuffer buffer(&xml);
+	buffer.open(QIODevice::ReadOnly);
+	QXmlStreamReader reader(&buffer);
+
+	olive::CancelAtom atom;
+	EXPECT_TRUE(olive::XMLReadNextStartElement(&reader, &atom));
+	EXPECT_EQ(reader.name().toString(), QStringLiteral("root"));
+}
+
+TEST(CommonXmlUtils, ReadNextStartElementRespectsCancel)
+{
+	QByteArray xml = "<root><child/></root>";
+	QBuffer buffer(&xml);
+	buffer.open(QIODevice::ReadOnly);
+	QXmlStreamReader reader(&buffer);
+
+	olive::CancelAtom atom;
+	atom.Cancel();
+	EXPECT_FALSE(olive::XMLReadNextStartElement(&reader, &atom));
+}

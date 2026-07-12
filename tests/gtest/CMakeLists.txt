@@ -27,6 +27,8 @@ add_executable(olive-gtest
   core_timerange_test.cpp
   core_bezier_test.cpp
   core_color_test.cpp
+  core_rational_test.cpp
+  core_samplebuffer_test.cpp
   render_videoparams_branch_test.cpp
   render_audioparams_test.cpp
   render_audioparams_branch_test.cpp

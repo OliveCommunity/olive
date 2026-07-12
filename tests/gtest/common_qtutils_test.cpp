@@ -111,3 +111,51 @@ TEST(CommonQtUtils, ToQColor)
 	EXPECT_NEAR(qc.blueF(), 0.3, 0.001);
 	EXPECT_NEAR(qc.alphaF(), 0.4, 0.001);
 }
+
+
+TEST(CommonQtUtils, GetFormattedDateTime)
+{
+	QDateTime dt = QDateTime::fromString(QStringLiteral("2025-01-15T10:30:00"),
+									 Qt::ISODate);
+	QString s = olive::QtUtils::GetFormattedDateTime(dt);
+	EXPECT_FALSE(s.isEmpty());
+}
+
+TEST(CommonQtUtils, WordWrapString)
+{
+	QFont font;
+	QFontMetrics fm(font);
+
+	// Use a moderate width; long words may not split cleanly, so just verify no crash
+	QStringList wrapped = olive::QtUtils::WordWrapString(
+		QStringLiteral("hello world foo bar"), fm, 40);
+	EXPECT_GE(wrapped.size(), 1u);
+
+	// Should preserve manual newlines
+	wrapped = olive::QtUtils::WordWrapString(
+		QStringLiteral("line1\nline2"), fm, 1000);
+	EXPECT_EQ(wrapped.size(), 2);
+}
+
+TEST(CommonQtUtils, ToQColorClampsValues)
+{
+	olive::core::Color c(2.0f, -1.0f, 0.5f, 1.5f);
+	QColor qc = olive::QtUtils::toQColor(c);
+	EXPECT_NEAR(qc.redF(), 1.0, 0.001);
+	EXPECT_NEAR(qc.greenF(), 0.0, 0.001);
+	EXPECT_NEAR(qc.blueF(), 0.5, 0.001);
+	EXPECT_NEAR(qc.alphaF(), 1.0, 0.001);
+}
+
+TEST(CommonQtUtils, qHashRational)
+{
+	olive::core::rational r(3, 4);
+	EXPECT_NO_THROW(qHash(r));
+}
+
+TEST(CommonQtUtils, qHashTimeRange)
+{
+	olive::core::TimeRange tr(olive::core::rational(1),
+							  olive::core::rational(5));
+	EXPECT_NO_THROW(qHash(tr));
+}
