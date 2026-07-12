@@ -29,70 +29,83 @@ namespace olive
 {
 
 ColorProcessor::ColorProcessor(ColorManager *config, const QString &input,
-							   const ColorTransform &transform,
-							   Direction direction)
+								   const ColorTransform &transform,
+								   Direction direction)
 {
-	const QString &output = (transform.output().isEmpty()) ?
-								config->GetDefaultDisplay() :
-								transform.output();
+	processor_ = nullptr;
+	cpu_processor_ = nullptr;
 
-	if (transform.is_display()) {
-		const QString &view = (transform.view().isEmpty()) ?
-								  config->GetDefaultView(output) :
-								  transform.view();
-
-		auto display_transform = OCIO::DisplayViewTransform::Create();
-
-		display_transform->setSrc(input.toUtf8());
-		display_transform->setDisplay(output.toUtf8());
-		display_transform->setView(view.toUtf8());
-		display_transform->setDirection(direction == kNormal ?
-											OCIO::TRANSFORM_DIR_FORWARD :
-											OCIO::TRANSFORM_DIR_INVERSE);
-
-		if (transform.look().isEmpty()) {
-			processor_ = config->GetConfig()->getProcessor(display_transform);
-		} else {
-			auto group = OCIO::GroupTransform::Create();
-
-			const char *out_cs = OCIO::LookTransform::GetLooksResultColorSpace(
-				config->GetConfig(), config->GetConfig()->getCurrentContext(),
-				transform.look().toUtf8());
-
-			auto lt = OCIO::LookTransform::Create();
-			lt->setSrc(input.toUtf8());
-			lt->setDst(out_cs);
-			lt->setLooks(transform.look().toUtf8());
-			lt->setSkipColorSpaceConversion(false);
-			group->appendTransform(lt);
-
-			display_transform->setSrc(out_cs);
-			group->appendTransform(display_transform);
-
-			processor_ = config->GetConfig()->getProcessor(group);
+	try {
+		// Resolve role names (e.g. "scene_linear") to canonical colorspace names
+		// so they can be passed to getProcessor()/DisplayViewTransform.
+		QString resolved_input = input;
+		OCIO::ConstConfigRcPtr ocio_config = config->GetConfig();
+		if (ocio_config && ocio_config->hasRole(input.toUtf8())) {
+			resolved_input = ocio_config->getCanonicalName(input.toUtf8());
 		}
 
-	} else {
-		try {
-			if (direction == kNormal) {
-				processor_ = config->GetConfig()->getProcessor(input.toUtf8(),
-															   output.toUtf8());
+		const QString &output = (transform.output().isEmpty()) ?
+									config->GetDefaultDisplay() :
+									transform.output();
+
+		if (transform.is_display()) {
+			const QString &view = (transform.view().isEmpty()) ?
+									  config->GetDefaultView(output) :
+									  transform.view();
+
+			auto display_transform = OCIO::DisplayViewTransform::Create();
+
+			display_transform->setSrc(resolved_input.toUtf8());
+			display_transform->setDisplay(output.toUtf8());
+			display_transform->setView(view.toUtf8());
+			display_transform->setDirection(direction == kNormal ?
+											  OCIO::TRANSFORM_DIR_FORWARD :
+											  OCIO::TRANSFORM_DIR_INVERSE);
+
+			if (transform.look().isEmpty()) {
+				processor_ = ocio_config->getProcessor(display_transform);
 			} else {
-				processor_ = config->GetConfig()->getProcessor(output.toUtf8(),
-															   input.toUtf8());
-			}
-		} catch (OCIO::Exception &e) {
-			qWarning() << "ColorProcessor exception:" << e.what();
-		}
-	}
+				auto group = OCIO::GroupTransform::Create();
 
-	cpu_processor_ = processor_->getDefaultCPUProcessor();
+				const char *out_cs = OCIO::LookTransform::GetLooksResultColorSpace(
+					ocio_config, ocio_config->getCurrentContext(),
+					transform.look().toUtf8());
+
+				auto lt = OCIO::LookTransform::Create();
+				lt->setSrc(resolved_input.toUtf8());
+				lt->setDst(out_cs);
+				lt->setLooks(transform.look().toUtf8());
+				lt->setSkipColorSpaceConversion(false);
+				group->appendTransform(lt);
+
+				display_transform->setSrc(out_cs);
+				group->appendTransform(display_transform);
+
+				processor_ = ocio_config->getProcessor(group);
+			}
+
+		} else {
+			if (direction == kNormal) {
+				processor_ = ocio_config->getProcessor(resolved_input.toUtf8(),
+													   output.toUtf8());
+			} else {
+				processor_ = ocio_config->getProcessor(output.toUtf8(),
+													   resolved_input.toUtf8());
+			}
+		}
+
+		if (processor_) {
+			cpu_processor_ = processor_->getDefaultCPUProcessor();
+		}
+	} catch (OCIO::Exception &e) {
+		qWarning() << "ColorProcessor exception:" << e.what();
+	}
 }
 
 ColorProcessor::ColorProcessor(OCIO::ConstProcessorRcPtr processor)
 {
 	processor_ = processor;
-	cpu_processor_ = processor_->getDefaultCPUProcessor();
+	cpu_processor_ = processor_ ? processor_->getDefaultCPUProcessor() : nullptr;
 }
 
 void ColorProcessor::ConvertFrame(Frame *f)
@@ -138,7 +151,7 @@ ColorProcessorPtr ColorProcessor::Create(ColorManager *config,
 										 Direction direction)
 {
 	return std::make_shared<ColorProcessor>(config, input, transform,
-											direction);
+										direction);
 }
 
 ColorProcessorPtr ColorProcessor::Create(OCIO::ConstProcessorRcPtr processor)

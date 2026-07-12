@@ -210,7 +210,7 @@ private:
 	{
 		if (hs.protocol_version != kProtocolVersion) {
 			return Write(ErrorMessage(QStringLiteral("unsupported protocol version %1")
-										  .arg(hs.protocol_version)));
+									  .arg(hs.protocol_version)));
 		}
 
 		if (hs.shm_key.isEmpty() || hs.output_slots <= 0 || hs.slot_data_bytes <= 0) {
@@ -221,7 +221,7 @@ private:
 			uint32_t(hs.output_slots), size_t(hs.slot_data_bytes));
 		if (!output_region_.Open(hs.shm_key, bytes, olive::ipc::SharedMemoryRegion::kAttach)) {
 			return Write(ErrorMessage(QStringLiteral("failed to attach shared memory: %1")
-										  .arg(output_region_.error())));
+									  .arg(output_region_.error())));
 		}
 
 		output_pool_ = olive::ipc::FrameSlotPool::Attach(output_region_.data());
@@ -243,7 +243,7 @@ private:
 			if (!input_region_.Open(hs.input_shm_key, input_bytes,
 									olive::ipc::SharedMemoryRegion::kAttach)) {
 				return Write(ErrorMessage(QStringLiteral("failed to attach input shared memory: %1")
-											  .arg(input_region_.error())));
+										  .arg(input_region_.error())));
 			}
 
 			input_pool_ = olive::ipc::FrameSlotPool::Attach(input_region_.data());
@@ -268,11 +268,12 @@ private:
 			olive::ProjectSerializer::Load(loaded.get(), path, olive::ProjectSerializer::kProject);
 		if (result != olive::ProjectSerializer::kSuccess) {
 			return Write(ErrorMessage(QStringLiteral("failed to load graph %1: %2")
-										  .arg(path, result.GetDetails())));
+									  .arg(path, result.GetDetails())));
 		}
 
 		project_ = std::move(loaded);
 		node_by_token_.clear();
+		color_processor_cache_.clear();
 
 		const auto &data = result.GetLoadData();
 		for (auto it = data.node_ptrs.cbegin(); it != data.node_ptrs.cend(); ++it) {
@@ -396,18 +397,32 @@ private:
 		{
 			olive::ColorProcessorPtr color_output;
 			if (message.has_color_transform) {
-				olive::ColorTransform transform;
-				if (message.color_is_display) {
-					transform = olive::ColorTransform(message.color_output,
-												message.color_view,
-												message.color_look);
+				QString cache_key =
+					QStringLiteral("%1|%2|%3|%4")
+						.arg(message.color_is_display ? 1 : 0)
+						.arg(message.color_output,
+							 message.color_view,
+							 message.color_look);
+				auto it = color_processor_cache_.find(cache_key);
+				if (it != color_processor_cache_.end()) {
+					color_output = it.value();
 				} else {
-					transform = olive::ColorTransform(message.color_output);
+					olive::ColorTransform transform;
+					if (message.color_is_display) {
+						transform = olive::ColorTransform(message.color_output,
+														message.color_view,
+														message.color_look);
+					} else {
+						transform = olive::ColorTransform(message.color_output);
+					}
+					color_output = olive::ColorProcessor::Create(
+						project_->color_manager(),
+						project_->color_manager()->GetReferenceColorSpace(),
+						transform);
+					if (color_output) {
+						color_processor_cache_.insert(cache_key, color_output);
+					}
 				}
-				color_output = olive::ColorProcessor::Create(
-					project_->color_manager(),
-					project_->color_manager()->GetReferenceColorSpace(),
-					transform);
 			}
 			ticket->setProperty("coloroutput",
 							QVariant::fromValue(color_output));
@@ -493,6 +508,7 @@ private:
 	olive::ipc::SharedMemoryRegion input_region_;
 	std::optional<olive::ipc::FrameSlotPool> input_pool_;
 	olive::ShaderCache shader_cache_;
+	QHash<QString, olive::ColorProcessorPtr> color_processor_cache_;
 };
 
 }  // namespace
