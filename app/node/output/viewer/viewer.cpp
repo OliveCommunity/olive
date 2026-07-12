@@ -46,7 +46,7 @@ ViewerOutput::ViewerOutput(bool create_buffer_inputs,
 	: last_length_(0)
 	, video_length_(0)
 	, audio_length_(0)
-	, autocache_input_video_(false)
+	, autocache_input_video_(true)
 	, autocache_input_audio_(false)
 	, waveform_requests_enabled_(false)
 {

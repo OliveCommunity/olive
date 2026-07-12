@@ -246,7 +246,7 @@ void Config::SetDefaults()
 	SetEntryInternal(QStringLiteral("DefaultSequenceInterlacing"),
 					 NodeValue::kInt, VideoParams::kInterlaceNone);
 	SetEntryInternal(QStringLiteral("DefaultSequenceAutoCache2"),
-					 NodeValue::kBoolean, false);
+					 NodeValue::kBoolean, true);
 	SetEntryInternal(QStringLiteral("DefaultSequenceAudioFrequency"),
 					 NodeValue::kInt, 48000);
 	SetEntryInternal(
