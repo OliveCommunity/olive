@@ -235,7 +235,7 @@ void ViewerOutput::set_default_parameters()
 		OLIVE_CONFIG("DefaultSequencePixelAspect").value<rational>(),
 		OLIVE_CONFIG("DefaultSequenceInterlacing")
 			.value<VideoParams::Interlacing>(),
-		VideoParams::generate_auto_divider(width, height)));
+		1));
 	AVChannelLayout layout;
 	av_channel_layout_from_mask(
 		&layout, OLIVE_CONFIG("DefaultSequenceAudioLayout").toULongLong());
@@ -586,8 +586,7 @@ void ViewerOutput::set_parameters_from_footage(
 				static_cast<PixelFormat::Format>(
 					OLIVE_CONFIG("OfflinePixelFormat").toInt()),
 				VideoParams::kInternalChannelCount, s.pixel_aspect_ratio(),
-				s.interlacing(),
-				VideoParams::generate_auto_divider(s.width(), s.height())));
+				s.interlacing(), 1));
 
 			if (found_video_params) {
 				break;

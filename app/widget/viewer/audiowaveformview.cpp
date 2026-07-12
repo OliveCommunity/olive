@@ -67,7 +67,11 @@ void AudioWaveformView::SetViewer(ViewerOutput *playback)
 		connect(playback_, &ViewerOutput::ConnectedWaveformChanged, viewport(),
 				static_cast<void (QWidget::*)()>(&QWidget::update));
 
-		SetTimebase(playback_->GetAudioParams().sample_rate_as_time_base());
+		SetTimebase(playback_->GetVideoParams().frame_rate_as_time_base());
+		if (timebase().isNull()) {
+			SetTimebase(
+				playback_->GetAudioParams().sample_rate_as_time_base());
+		}
 	}
 }
 
