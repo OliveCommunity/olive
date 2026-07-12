@@ -24,6 +24,7 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QCoreApplication>
 #include <QVBoxLayout>
 
 #include "dialog/configbase/configdialogbase.h"
@@ -35,8 +36,6 @@ class PreferencesBehaviorTab : public ConfigDialogBaseTab {
 	Q_OBJECT
 public:
 	enum Category {
-		kCategoryGeneral,
-		kCategoryAudio,
 		kCategoryTimeline,
 		kCategoryPlayback,
 		kCategoryProject,
@@ -48,11 +47,16 @@ public:
 
 	virtual void Accept(MultiUndoCommand *command) override;
 
+	static QString BehaviorPrefTr(const char *text)
+	{
+		return QCoreApplication::translate("olive::PreferencesBehaviorTab", text);
+	}
+
 private:
 	struct Item {
 		QString text;
 		QString config_key;
-		QString tooltip;
+		QString tooltip = QString();
 	};
 
 	void AddItems(const QVector<Item> &items);
@@ -61,9 +65,9 @@ private:
 
 	QMap<QCheckBox *, QString> config_map_;
 
-	QComboBox *graphics_backend_combobox_;
-
 	Category category_;
+
+	QComboBox *graphics_backend_combobox_;
 };
 
 }

@@ -24,10 +24,12 @@
 
 #include <QComboBox>
 #include <QPushButton>
+#include <QCheckBox>
 
 #include "dialog/configbase/configdialogbase.h"
 #include "dialog/export/exportaudiotab.h"
 #include "dialog/export/exportformatcombobox.h"
+#include "preferencesbehaviortab.h"
 
 namespace olive
 {
@@ -69,6 +71,8 @@ private:
 	ExportFormatComboBox *record_format_combo_;
 
 	ExportAudioTab *record_options_;
+
+	QCheckBox *audio_scrubbing_;
 
 private slots:
 	void RefreshBackends();

@@ -45,22 +45,18 @@ PreferencesDialog::PreferencesDialog(MainWindow *main_window, int start_tab)
 
 	AddTab(new PreferencesGeneralTab(), tr("General"));
 	AddTab(new PreferencesAppearanceTab(), tr("Appearance"));
-	AddTab(new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryGeneral),
-		   tr("Behavior - General"));
-	AddTab(new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryAudio),
-		   tr("Behavior - Audio"));
-	AddTab(new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryTimeline),
-		   tr("Behavior - Timeline"));
-	AddTab(new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryPlayback),
-		   tr("Behavior - Playback"));
-	AddTab(new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryProject),
-		   tr("Behavior - Project"));
-	AddTab(new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryNodes),
-		   tr("Behavior - Nodes"));
-	AddTab(new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryRendering),
-		   tr("Behavior - Rendering"));
-	AddTab(new PreferencesDiskTab(), tr("Disk"));
 	AddTab(new PreferencesAudioTab(), tr("Audio"));
+	AddTab(new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryTimeline),
+		   tr("Timeline"));
+	AddTab(new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryPlayback),
+		   tr("Playback"));
+	AddTab(new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryProject),
+		   tr("Project"));
+	AddTab(new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryNodes),
+		   tr("Nodes"));
+	AddTab(new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryRendering),
+		   tr("Rendering"));
+	AddTab(new PreferencesDiskTab(), tr("Disk"));
 	AddTab(new PreferencesKeyboardTab(main_window), tr("Keyboard"));
 
 	SetCurrentTab(start_tab);

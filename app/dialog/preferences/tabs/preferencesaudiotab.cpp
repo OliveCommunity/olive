@@ -54,6 +54,11 @@ PreferencesAudioTab::PreferencesAudioTab()
 		audio_tab_layout->addLayout(main_layout);
 	}
 
+	audio_scrubbing_ = new QCheckBox(
+		PreferencesBehaviorTab::BehaviorPrefTr("Enable audio scrubbing"));
+	audio_scrubbing_->setChecked(OLIVE_CONFIG("AudioScrubbing").toBool());
+	audio_tab_layout->addWidget(audio_scrubbing_);
+
 	{
 		QGroupBox *groupbox = new QGroupBox();
 		audio_tab_layout->addWidget(groupbox);
@@ -232,6 +237,8 @@ void PreferencesAudioTab::Accept(MultiUndoCommand *command)
 								   .to_string());
 
 	emit AudioManager::instance() -> OutputParamsChanged();
+
+	OLIVE_CONFIG("AudioScrubbing") = audio_scrubbing_->isChecked();
 }
 
 void PreferencesAudioTab::RefreshBackends()

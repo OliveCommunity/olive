@@ -241,6 +241,8 @@ private:
 
 	bool dont_emit_selection_signals_;
 
+	QAction *show_in_param_editor_action_;
+
 	static const double kMinimumScale;
 
 	static const int kMaximumContexts;
@@ -286,6 +288,8 @@ private slots:
 	void UngroupNodes();
 
 	void ShowNodeProperties();
+
+	void ShowSelectedNodeInParamEditor();
 
 	void ItemAboutToBeDeleted(NodeViewItem *item);
 

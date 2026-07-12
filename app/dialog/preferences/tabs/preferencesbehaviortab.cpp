@@ -36,23 +36,6 @@ PreferencesBehaviorTab::PreferencesBehaviorTab(Category category)
 	layout->setAlignment(Qt::AlignTop);
 
 	switch (category_) {
-	case kCategoryGeneral:
-		AddItem(tr("Enable hover focus"), QStringLiteral("HoverFocus"),
-				tr("Panels will be considered focused when the mouse cursor is "
-				   "over them without having to click them."));
-		AddItem(tr("Enable slider ladder"), QStringLiteral("UseSliderLadders"));
-		AddItem(
-			tr("Scrolling zooms by default"), QStringLiteral("ScrollZooms"),
-			tr("By default, scrolling will move the view around, and holding "
-			   "Ctrl/Cmd will make it zoom instead. Enabling this will switch "
-			   "those, scrolling will zoom by default, and holding Ctrl/Cmd will "
-			   "move the view instead."));
-		break;
-
-	case kCategoryAudio:
-		AddItem(tr("Enable audio scrubbing"), QStringLiteral("AudioScrubbing"));
-		break;
-
 	case kCategoryTimeline:
 		AddItems({
 			{ tr("Auto-Seek to Imported Clips"),

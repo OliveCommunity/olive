@@ -58,6 +58,7 @@ NodeView::NodeView(QWidget *parent)
 	, overlay_view_(nullptr)
 	, scale_(1.0)
 	, dont_emit_selection_signals_(false)
+	, show_in_param_editor_action_(nullptr)
 {
 	setScene(&scene_);
 	SetDefaultDragMode(RubberBandDrag);
@@ -72,6 +73,12 @@ NodeView::NodeView(QWidget *parent)
 	ConnectSelectionChangedSignal();
 
 	SetFlowDirection(NodeViewCommon::kLeftToRight);
+
+	show_in_param_editor_action_ = new QAction(tr("Show in Parameter Editor"), this);
+	Menu::ConformItem(show_in_param_editor_action_, QStringLiteral("shownodeparams"), QKeySequence(tr("Shift+P")));
+	show_in_param_editor_action_->setShortcutContext(Qt::WindowShortcut);
+	addAction(show_in_param_editor_action_);
+	connect(show_in_param_editor_action_, &QAction::triggered, this, &NodeView::ShowSelectedNodeInParamEditor);
 
 	UpdateSceneBoundingRect();
 	connect(&scene_, &QGraphicsScene::changed, this,
@@ -643,19 +650,6 @@ void NodeView::mouseDoubleClickEvent(QMouseEvent *event)
 			dynamic_cast<NodeViewItem *>(itemAt(event->pos()));
 		if (item_at_cursor) {
 			item_at_cursor->ToggleExpanded();
-			if (PanelManager::instance()) {
-				if (PanelWidget *panel = PanelManager::instance()
-												->GetPanelWithName(
-													QStringLiteral("ParamPanel"))) {
-					panel->show();
-					panel->raise();
-										panel->setFocus(Qt::OtherFocusReason);
-				}
-			}
-
-			// Scroll the parameter editor to this node
-			emit NodeSelectionChangedWithContexts(
-				{ { item_at_cursor->GetNode(), item_at_cursor->GetContext() } });
 		}
 	}
 }
@@ -864,6 +858,14 @@ void NodeView::ShowContextMenu(const QPoint &pos)
 		}
 
 		m.addSeparator();
+
+		// Show in Parameter Editor
+		QAction *show_in_param_editor_action = m.addAction(
+			tr("Show in Parameter Editor"));
+		show_in_param_editor_action->setShortcut(
+			show_in_param_editor_action_->shortcut());
+		connect(show_in_param_editor_action, &QAction::triggered, this,
+				&NodeView::ShowSelectedNodeInParamEditor);
 
 		// Properties
 		QAction *properties_action = m.addAction(tr("P&roperties"));
@@ -1639,6 +1641,30 @@ void NodeView::ShowNodeProperties()
 	} else {
 		LabelSelectedNodes();
 	}
+}
+
+void NodeView::ShowSelectedNodeInParamEditor()
+{
+	if (selected_nodes_.isEmpty()) {
+		return;
+	}
+
+	NodeViewItem *item = scene_.GetSelectedItems().first();
+	if (!item || !item->GetNode()) {
+		return;
+	}
+
+	if (PanelManager::instance()) {
+		if (PanelWidget *panel = PanelManager::instance()->GetPanelWithName(
+									QStringLiteral("ParamPanel"))) {
+			panel->show();
+			panel->raise();
+			panel->setFocus(Qt::OtherFocusReason);
+		}
+	}
+
+	emit NodeSelectionChangedWithContexts(
+		{ { item->GetNode(), item->GetContext() } });
 }
 
 void NodeView::LabelSelectedNodes()

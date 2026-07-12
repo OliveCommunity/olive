@@ -5919,7 +5919,12 @@ Do you wish to paste values onto the existing nodes or paste new nodes?</source>
         <translation>在查看器中打开</translation>
     </message>
     <message>
-        <location filename="../widget/nodeview/nodeview.cpp" line="865"/>
+        <location filename="../widget/nodeview/nodeview.cpp" line="863"/>
+        <source>Show in Parameter Editor</source>
+        <translation>在参数编辑器中显示</translation>
+    </message>
+    <message>
+        <location filename="../widget/nodeview/nodeview.cpp" line="869"/>
         <source>P&amp;roperties</source>
         <translation>属性(&amp;R)</translation>
     </message>
@@ -6438,7 +6443,7 @@ This is equivalent to multiplying a video by a number between 0.0 and 1.0.</sour
     <message>
         <location filename="../dialog/preferences/tabs/preferencesbehaviortab.cpp" line="57"/>
         <source>Enable audio scrubbing</source>
-        <translation>启用音频清理</translation>
+        <translation>启用音频搓擦</translation>
     </message>
     <message>
         <location filename="../dialog/preferences/tabs/preferencesbehaviortab.cpp" line="60"/>
@@ -6545,11 +6550,7 @@ This is equivalent to multiplying a video by a number between 0.0 and 1.0.</sour
         <source>Enable slider ladder</source>
         <translation>启用滑块阶梯</translation>
     </message>
-    <message>
-        <location filename="../dialog/preferences/tabs/preferencesbehaviortab.cpp" line="41"/>
-        <source>Setting</source>
-        <translation type="unfinished"></translation>
-    </message>
+
     <message>
         <location filename="../dialog/preferences/tabs/preferencesbehaviortab.cpp" line="51"/>
         <source>Scrolling zooms by default</source>
@@ -6561,30 +6562,30 @@ This is equivalent to multiplying a video by a number between 0.0 and 1.0.</sour
         <translation>默认情况下，滚动将移动视图，按住Ctrl/Cmd将使其变为缩放。启用此选项将切换这些视图，默认情况下滚动将缩放，而按住Ctrl/Cmd将移动视图。</translation>
     </message>
     <message>
-        <location filename="../dialog/preferences/tabs/preferencesbehaviortab.cpp" line="102"/>
+        <location filename="../dialog/preferences/tabs/preferencesbehaviortab.cpp" line="76"/>
         <source>Rendering</source>
-        <translation type="unfinished"></translation>
+        <translation>渲染</translation>
     </message>
     <message>
-        <location filename="../dialog/preferences/tabs/preferencesbehaviortab.cpp" line="104"/>
+        <location filename="../dialog/preferences/tabs/preferencesbehaviortab.cpp" line="78"/>
         <source>Graphics Backend</source>
-        <translation type="unfinished"></translation>
+        <translation>图形后端</translation>
     </message>
     <message>
-        <location filename="../dialog/preferences/tabs/preferencesbehaviortab.cpp" line="106"/>
+        <location filename="../dialog/preferences/tabs/preferencesbehaviortab.cpp" line="80"/>
         <source>Selects the graphics API Oak should request on next launch. Vulkan is experimental: on most systems it will fall back to OpenGL or use a prototype Vulkan path that is not yet fully validated.</source>
-        <translation type="unfinished"></translation>
+        <translation>选择 Oak 在下次启动时应请求的图形 API。Vulkan 是实验性的：在大多数系统上它会回退到 OpenGL，或使用尚未完全验证的原型 Vulkan 路径。</translation>
     </message>
     <message>
-        <location filename="../dialog/preferences/tabs/preferencesbehaviortab.cpp" line="111"/>
-        <location filename="../dialog/preferences/tabs/preferencesbehaviortab.cpp" line="125"/>
+        <location filename="../dialog/preferences/tabs/preferencesbehaviortab.cpp" line="85"/>
+        <location filename="../dialog/preferences/tabs/preferencesbehaviortab.cpp" line="99"/>
         <source>OpenGL</source>
-        <translation></translation>
+        <translation>OpenGL</translation>
     </message>
     <message>
-        <location filename="../dialog/preferences/tabs/preferencesbehaviortab.cpp" line="112"/>
+        <location filename="../dialog/preferences/tabs/preferencesbehaviortab.cpp" line="86"/>
         <source>Vulkan (experimental)</source>
-        <translation type="unfinished"></translation>
+        <translation>Vulkan（实验性）</translation>
     </message>
     <message>
         <location filename="../dialog/preferences/tabs/preferencesbehaviortab.cpp" line="126"/>
@@ -6611,24 +6612,40 @@ This is equivalent to multiplying a video by a number between 0.0 and 1.0.</sour
     </message>
     <message>
         <location filename="../dialog/preferences/preferences.cpp" line="48"/>
-        <source>Behavior</source>
-        <translation>行为</translation>
-    </message>
-    <message>
-        <location filename="../dialog/preferences/preferences.cpp" line="49"/>
-        <source>Disk</source>
-        <translation>磁盘</translation>
-    </message>
-    <message>
-        <location filename="../dialog/preferences/preferences.cpp" line="50"/>
         <source>Audio</source>
         <translation>音频</translation>
     </message>
     <message>
-        <location filename="../dialog/preferences/preferences.cpp" line="51"/>
-        <source>Keyboard</source>
-        <translation>键盘</translation>
+        <location filename="../dialog/preferences/preferences.cpp" line="49"/>
+        <source>Timeline</source>
+        <translation>时间线</translation>
     </message>
+    <message>
+        <location filename="../dialog/preferences/preferences.cpp" line="50"/>
+        <source>Playback</source>
+        <translation>回放</translation>
+    </message>
+    <message>
+        <location filename="../dialog/preferences/preferences.cpp" line="51"/>
+        <source>Project</source>
+        <translation>项目</translation>
+    </message>
+    <message>
+        <location filename="../dialog/preferences/preferences.cpp" line="52"/>
+        <source>Nodes</source>
+        <translation>节点</translation>
+    </message>
+    <message>
+        <location filename="../dialog/preferences/preferences.cpp" line="53"/>
+        <source>Rendering</source>
+        <translation>渲染</translation>
+    </message>
+    <message>
+        <location filename="../dialog/preferences/preferences.cpp" line="54"/>
+        <source>Disk</source>
+        <translation>磁盘</translation>
+    </message>
+
 </context>
 <context>
     <name>olive::PreferencesDiskTab</name>

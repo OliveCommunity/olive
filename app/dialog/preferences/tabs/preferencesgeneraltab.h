@@ -57,6 +57,10 @@ private:
 	IntegerSlider *autorecovery_interval_;
 
 	IntegerSlider *autorecovery_maximum_;
+
+	QCheckBox *hover_focus_;
+	QCheckBox *slider_ladder_;
+	QCheckBox *scroll_zooms_;
 };
 
 }

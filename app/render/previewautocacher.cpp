@@ -557,7 +557,9 @@ void PreviewAutoCacher::TryRender()
 				copy, QtUtils::ValueToPtr<ViewerOutput>(t->property("viewer")),
 				t->property("time").value<rational>(), nullptr,
 				t->property("dry").toBool());
-			video_immediate_passthroughs_[watcher].append(t);
+			if (watcher) {
+				video_immediate_passthroughs_[watcher].append(t);
+			}
 		} else {
 			qWarning() << "Failed to find copied node for SFR ticket, requeueing";
 			single_frame_render_ = t;
@@ -708,6 +710,12 @@ RenderTicketWatcher *PreviewAutoCacher::RenderFrame(Node *node,
 	rvp.multicam = copier_->GetCopy(multicam_);
 
 	watcher->SetTicket(RenderManager::instance()->RenderFrame(rvp));
+
+	// If the ticket finished synchronously, VideoRendered has already deleted the
+	// watcher. The caller must not use this pointer in that case.
+	if (!running_video_tasks_.contains(watcher)) {
+		return nullptr;
+	}
 
 	return watcher;
 }

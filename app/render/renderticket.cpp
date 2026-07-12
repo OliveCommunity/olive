@@ -157,9 +157,11 @@ void RenderTicketWatcher::SetTicket(RenderTicketPtr ticket)
 			&RenderTicketWatcher::TicketFinished);
 
 	if (!ticket_->IsRunning(false) && ticket_->GetFinishCount(false) > 0) {
-		// Ticket has already finished before, so we emit a signal
-		locker.unlock();
-		TicketFinished();
+		// Ticket has already finished before, so we emit a signal asynchronously
+		// to avoid deleting this watcher before the caller has a chance to use
+		// the returned pointer.
+		QMetaObject::invokeMethod(this, &RenderTicketWatcher::TicketFinished,
+								  Qt::QueuedConnection);
 	}
 }
 

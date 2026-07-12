@@ -28,6 +28,7 @@
 
 #include "common/autoscroll.h"
 #include "core.h"
+#include "preferencesbehaviortab.h"
 
 namespace olive
 {
@@ -167,6 +168,29 @@ PreferencesGeneralTab::PreferencesGeneralTab()
 		autorecovery_layout->addWidget(browse_autorecoveries, row, 1);
 	}
 
+	{
+		QGroupBox *behavior_groupbox = new QGroupBox(PreferencesBehaviorTab::BehaviorPrefTr("Behavior"));
+		QVBoxLayout *behavior_layout = new QVBoxLayout(behavior_groupbox);
+		layout->addWidget(behavior_groupbox);
+
+		hover_focus_ = new QCheckBox(PreferencesBehaviorTab::BehaviorPrefTr("Enable hover focus"));
+		hover_focus_->setToolTip(PreferencesBehaviorTab::BehaviorPrefTr(
+			"Panels will be considered focused when the mouse cursor is over them without having to click them."));
+		hover_focus_->setChecked(OLIVE_CONFIG("HoverFocus").toBool());
+		behavior_layout->addWidget(hover_focus_);
+
+		slider_ladder_ = new QCheckBox(PreferencesBehaviorTab::BehaviorPrefTr("Enable slider ladder"));
+		slider_ladder_->setChecked(OLIVE_CONFIG("UseSliderLadders").toBool());
+		behavior_layout->addWidget(slider_ladder_);
+
+		scroll_zooms_ = new QCheckBox(PreferencesBehaviorTab::BehaviorPrefTr("Scrolling zooms by default"));
+		scroll_zooms_->setToolTip(PreferencesBehaviorTab::BehaviorPrefTr(
+			"By default, scrolling will move the view around, and holding Ctrl/Cmd will make it zoom instead. "
+			"Enabling this will switch those, scrolling will zoom by default, and holding Ctrl/Cmd will move the view instead."));
+		scroll_zooms_->setChecked(OLIVE_CONFIG("ScrollZooms").toBool());
+		behavior_layout->addWidget(scroll_zooms_);
+	}
+
 	layout->addStretch();
 }
 
@@ -201,6 +225,10 @@ void PreferencesGeneralTab::Accept(MultiUndoCommand *command)
 		QVariant::fromValue(autorecovery_maximum_->GetValue());
 	Core::instance()->SetAutorecoveryInterval(
 		autorecovery_interval_->GetValue());
+
+	OLIVE_CONFIG("HoverFocus") = hover_focus_->isChecked();
+	OLIVE_CONFIG("UseSliderLadders") = slider_ladder_->isChecked();
+	OLIVE_CONFIG("ScrollZooms") = scroll_zooms_->isChecked();
 }
 
 void PreferencesGeneralTab::AddLanguage(const QString &locale_name)
