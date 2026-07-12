@@ -826,6 +826,12 @@ void ViewerWidget::UpdateWaveformViewFromMode()
 
 	if (GetConnectedNode()) {
 		GetConnectedNode()->SetWaveformEnabled(waveform_view_->isVisible());
+
+		if (waveform_view_->isVisible()) {
+			waveform_view_->SetViewer(GetConnectedNode());
+		} else {
+			waveform_view_->SetViewer(nullptr);
+		}
 	}
 }
 
