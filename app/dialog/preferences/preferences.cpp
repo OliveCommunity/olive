@@ -38,7 +38,7 @@
 namespace olive
 {
 
-PreferencesDialog::PreferencesDialog(MainWindow *main_window)
+PreferencesDialog::PreferencesDialog(MainWindow *main_window, int start_tab)
 	: ConfigDialogBase(main_window)
 {
 	setWindowTitle(tr("Preferences"));
@@ -49,6 +49,8 @@ PreferencesDialog::PreferencesDialog(MainWindow *main_window)
 	AddTab(new PreferencesDiskTab(), tr("Disk"));
 	AddTab(new PreferencesAudioTab(), tr("Audio"));
 	AddTab(new PreferencesKeyboardTab(main_window), tr("Keyboard"));
+
+	SetCurrentTab(start_tab);
 }
 
 void PreferencesDialog::AcceptEvent()

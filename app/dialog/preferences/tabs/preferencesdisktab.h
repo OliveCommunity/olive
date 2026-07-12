@@ -23,12 +23,14 @@
 #define PREFERENCESDISKTAB_H
 
 #include <QCheckBox>
+#include <QComboBox>
 #include <QLineEdit>
 #include <QPushButton>
 
 #include "dialog/configbase/configdialogbase.h"
 #include "render/diskmanager.h"
 #include "widget/slider/floatslider.h"
+#include "widget/slider/integerslider.h"
 #include "widget/path/pathwidget.h"
 
 namespace olive
@@ -51,6 +53,11 @@ private:
 	FloatSlider *cache_behind_slider_;
 
 	DiskCacheFolder *default_disk_cache_folder_;
+
+	IntegerSlider *proxy_width_slider_;
+	IntegerSlider *proxy_height_slider_;
+	IntegerSlider *proxy_crf_slider_;
+	QComboBox *proxy_preset_combo_;
 };
 
 }

@@ -79,8 +79,8 @@ bool ProxyTask::Run()
 		 << QStringLiteral("-an")
 		 << QStringLiteral("-vf") << scale_filter
 		 << QStringLiteral("-c:v") << QStringLiteral("libx264")
-		 << QStringLiteral("-preset") << QStringLiteral("veryfast")
-		 << QStringLiteral("-crf") << QStringLiteral("23")
+		 << QStringLiteral("-preset") << params_.preset
+		 << QStringLiteral("-crf") << QString::number(params_.crf)
 		 << QStringLiteral("-pix_fmt") << QStringLiteral("yuv420p")
 		 << QStringLiteral("-movflags") << QStringLiteral("+faststart")
 		 << QStringLiteral("-f") << container_format

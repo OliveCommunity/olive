@@ -29,6 +29,7 @@
 #include <QMessageBox>
 
 #include "common/filefunctions.h"
+#include "config/config.h"
 
 namespace olive
 {
@@ -92,6 +93,60 @@ PreferencesDiskTab::PreferencesDiskTab()
 		OLIVE_CONFIG("DiskCacheBehind").value<rational>().toDouble());
 	cache_behavior_layout->addWidget(cache_behind_slider_, row, 3);
 
+	row++;
+
+	QGroupBox *proxy_group = new QGroupBox(tr("Proxy Settings"));
+	outer_layout->addWidget(proxy_group);
+	QGridLayout *proxy_layout = new QGridLayout(proxy_group);
+
+	int proxy_row = 0;
+
+	proxy_layout->addWidget(new QLabel(tr("Proxy Width:")), proxy_row, 0);
+	proxy_width_slider_ = new IntegerSlider();
+	proxy_width_slider_->SetMinimum(160);
+	proxy_width_slider_->SetMaximum(4096);
+	proxy_width_slider_->SetValue(
+		OLIVE_CONFIG("ProxyWidth").value<int>());
+	proxy_layout->addWidget(proxy_width_slider_, proxy_row, 1);
+
+	proxy_layout->addWidget(new QLabel(tr("Proxy Height:")), proxy_row, 2);
+	proxy_height_slider_ = new IntegerSlider();
+	proxy_height_slider_->SetMinimum(120);
+	proxy_height_slider_->SetMaximum(2160);
+	proxy_height_slider_->SetValue(
+		OLIVE_CONFIG("ProxyHeight").value<int>());
+	proxy_layout->addWidget(proxy_height_slider_, proxy_row, 3);
+
+	proxy_row++;
+
+	proxy_layout->addWidget(new QLabel(tr("Proxy CRF:")), proxy_row, 0);
+	proxy_crf_slider_ = new IntegerSlider();
+	proxy_crf_slider_->SetMinimum(0);
+	proxy_crf_slider_->SetMaximum(51);
+	proxy_crf_slider_->SetValue(
+		OLIVE_CONFIG("ProxyCRF").value<int>());
+	proxy_layout->addWidget(proxy_crf_slider_, proxy_row, 1);
+
+	proxy_layout->addWidget(new QLabel(tr("Proxy Preset:")), proxy_row, 2);
+	proxy_preset_combo_ = new QComboBox();
+	const QStringList presets = {
+		QStringLiteral("ultrafast"),
+		QStringLiteral("superfast"),
+		QStringLiteral("veryfast"),
+		QStringLiteral("faster"),
+		QStringLiteral("fast"),
+		QStringLiteral("medium"),
+		QStringLiteral("slow"),
+		QStringLiteral("slower"),
+		QStringLiteral("veryslow"),
+	};
+	for (const QString &preset : presets) {
+		proxy_preset_combo_->addItem(preset);
+	}
+	proxy_preset_combo_->setCurrentText(
+		OLIVE_CONFIG("ProxyPreset").toString());
+	proxy_layout->addWidget(proxy_preset_combo_, proxy_row, 3);
+
 	outer_layout->addStretch();
 }
 
@@ -129,6 +184,11 @@ void PreferencesDiskTab::Accept(MultiUndoCommand *command)
 		rational::fromDouble(cache_behind_slider_->GetValue()));
 	OLIVE_CONFIG("DiskCacheAhead") = QVariant::fromValue(
 		rational::fromDouble(cache_ahead_slider_->GetValue()));
+
+	OLIVE_CONFIG("ProxyWidth") = static_cast<int>(proxy_width_slider_->GetValue());
+	OLIVE_CONFIG("ProxyHeight") = static_cast<int>(proxy_height_slider_->GetValue());
+	OLIVE_CONFIG("ProxyCRF") = static_cast<int>(proxy_crf_slider_->GetValue());
+	OLIVE_CONFIG("ProxyPreset") = proxy_preset_combo_->currentText();
 }
 
 }

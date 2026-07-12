@@ -228,6 +228,12 @@ void Config::SetDefaults()
 	SetEntryInternal(QStringLiteral("DiskCacheAhead"), NodeValue::kRational,
 					 QVariant::fromValue(rational(60)));
 
+	SetEntryInternal(QStringLiteral("ProxyWidth"), NodeValue::kInt, 1280);
+	SetEntryInternal(QStringLiteral("ProxyHeight"), NodeValue::kInt, 720);
+	SetEntryInternal(QStringLiteral("ProxyCRF"), NodeValue::kInt, 23);
+	SetEntryInternal(QStringLiteral("ProxyPreset"), NodeValue::kText,
+					 QStringLiteral("veryfast"));
+
 	SetEntryInternal(QStringLiteral("DefaultSequenceWidth"), NodeValue::kInt,
 					 1920);
 	SetEntryInternal(QStringLiteral("DefaultSequenceHeight"), NodeValue::kInt,

@@ -35,7 +35,8 @@ bool ProxyParamsEqual(const ProxyManager::ProxyParams &a,
 					  const ProxyManager::ProxyParams &b)
 {
 	return a.width == b.width && a.height == b.height &&
-		   a.version == b.version && a.extension == b.extension;
+		   a.version == b.version && a.extension == b.extension &&
+		   a.crf == b.crf && a.preset == b.preset;
 }
 
 QString ProxyManager::GetProxyDirectory(const QString &cache_path)

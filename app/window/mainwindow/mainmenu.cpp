@@ -360,6 +360,12 @@ MainMenu::MainMenu(MainWindow *parent)
 
 	tools_menu_->addSeparator();
 
+	tools_proxy_settings_item_ = new QAction(this);
+	Menu::ConformItem(tools_proxy_settings_item_, "proxysettings");
+	connect(tools_proxy_settings_item_, &QAction::triggered, this,
+			[]() { Core::instance()->DialogPreferencesShow(3); });
+	tools_menu_->addAction(tools_proxy_settings_item_);
+
 	tools_preferences_item_ = tools_menu_->AddItem(
 		"prefs", Core::instance(), &Core::DialogPreferencesShow, tr("Ctrl+,"));
 
@@ -879,6 +885,7 @@ void MainMenu::Retranslate()
 	tools_add_item_->setText(tr("Add Tool"));
 	tools_record_item_->setText(tr("Record Tool"));
 	tools_snapping_item_->setText(tr("Enable Snapping"));
+	tools_proxy_settings_item_->setText(tr("Proxy Settings..."));
 	tools_preferences_item_->setText(tr("Preferences"));
 	tools_add_item_menu_->setTitle(tr("Add Tool Item"));
 #ifndef NDEBUG

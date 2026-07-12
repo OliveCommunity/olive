@@ -91,4 +91,11 @@ void ConfigDialogBase::AddTab(ConfigDialogBaseTab *tab, const QString &title)
 	tabs_.append(tab);
 }
 
+void ConfigDialogBase::SetCurrentTab(int index)
+{
+	if (index >= 0 && index < list_widget_->count()) {
+		list_widget_->setCurrentRow(index);
+	}
+}
+
 }

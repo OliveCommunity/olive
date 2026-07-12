@@ -350,7 +350,7 @@ public slots:
 	/**
    * @brief Show Preferences dialog
    */
-	void DialogPreferencesShow();
+	void DialogPreferencesShow(int start_tab = 0);
 
 	/**
    * @brief Show Project Properties dialog

@@ -64,6 +64,8 @@ public:
 		int height = 720;
 		int version = 1;
 		QString extension = QStringLiteral("mp4");
+		int crf = 23;
+		QString preset = QStringLiteral("veryfast");
 	};
 
 	struct Proxy {

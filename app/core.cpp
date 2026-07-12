@@ -484,9 +484,9 @@ void Core::DialogImportShow()
 	}
 }
 
-void Core::DialogPreferencesShow()
+void Core::DialogPreferencesShow(int start_tab)
 {
-	PreferencesDialog pd(main_window_);
+	PreferencesDialog pd(main_window_, start_tab);
 	pd.exec();
 }
 

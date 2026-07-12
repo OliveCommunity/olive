@@ -36,6 +36,8 @@ class ConfigDialogBase : public QDialog {
 public:
 	ConfigDialogBase(QWidget *parent = nullptr);
 
+	void SetCurrentTab(int index);
+
 private slots:
 	/**
    * @brief Override of accept to save preferences to Config.

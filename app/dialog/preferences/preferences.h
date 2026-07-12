@@ -45,7 +45,7 @@ class PreferencesDialog : public ConfigDialogBase {
 	Q_OBJECT
 
 public:
-	PreferencesDialog(MainWindow *main_window);
+	PreferencesDialog(MainWindow *main_window, int start_tab = 0);
 
 protected:
 	virtual void AcceptEvent() override;
