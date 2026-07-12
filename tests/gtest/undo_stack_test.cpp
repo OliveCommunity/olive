@@ -120,3 +120,68 @@ TEST(UndoStack, EmptyMultiUndoCommandIsIgnored)
 	EXPECT_EQ(stack.rowCount(), 1);
 	EXPECT_FALSE(stack.CanUndo());
 }
+
+TEST(UndoStack, MultipleUndosAndRedos)
+{
+	int counter = 0;
+	olive::UndoStack stack;
+	stack.push(new TestCommand(&counter), QStringLiteral("One"));
+	stack.push(new TestCommand(&counter), QStringLiteral("Two"));
+	stack.push(new TestCommand(&counter), QStringLiteral("Three"));
+	EXPECT_EQ(counter, 3);
+
+	stack.undo();
+	stack.undo();
+	EXPECT_EQ(counter, 1);
+	EXPECT_TRUE(stack.CanUndo());
+	EXPECT_TRUE(stack.CanRedo());
+
+	stack.redo();
+	EXPECT_EQ(counter, 2);
+}
+
+TEST(UndoStack, PushAfterUndoClearsRedoBranch)
+{
+	int counter = 0;
+	olive::UndoStack stack;
+	stack.push(new TestCommand(&counter), QStringLiteral("First"));
+	stack.push(new TestCommand(&counter), QStringLiteral("Second"));
+	EXPECT_EQ(counter, 2);
+
+	stack.undo();
+	EXPECT_EQ(counter, 1);
+
+	stack.push(new TestCommand(&counter), QStringLiteral("Third"));
+	EXPECT_EQ(counter, 2);
+	EXPECT_FALSE(stack.CanRedo());
+}
+
+TEST(UndoStack, ResetClearsHistory)
+{
+	int counter = 0;
+	olive::UndoStack stack;
+	stack.push(new TestCommand(&counter), QStringLiteral("Action"));
+	EXPECT_EQ(counter, 1);
+
+	stack.clear();
+	EXPECT_FALSE(stack.CanUndo());
+	EXPECT_FALSE(stack.CanRedo());
+	EXPECT_EQ(stack.rowCount(), 1);
+}
+
+TEST(UndoStack, MultiUndoCommandWithChildren)
+{
+	int counter = 0;
+	olive::UndoStack stack;
+
+	auto *multi = new olive::MultiUndoCommand();
+	multi->add_child(new TestCommand(&counter));
+	multi->add_child(new TestCommand(&counter));
+	stack.push(multi, QStringLiteral("Multi"));
+
+	EXPECT_EQ(counter, 2);
+	stack.undo();
+	EXPECT_EQ(counter, 0);
+	stack.redo();
+	EXPECT_EQ(counter, 2);
+}

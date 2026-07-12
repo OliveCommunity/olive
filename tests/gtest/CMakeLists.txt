@@ -2,6 +2,9 @@ add_executable(olive-gtest
   main.cpp
   common_current_test.cpp
   common_xmlutils_test.cpp
+  common_range_test.cpp
+  common_filefunctions_test.cpp
+  common_qtutils_test.cpp
   config_test.cpp
   audio_level_meter_test.cpp
   audio_synchronizer_test.cpp
@@ -10,12 +13,16 @@ add_executable(olive-gtest
   node_value_test.cpp
   node_keyframe_test.cpp
   node_serialization_test.cpp
+  node_globals_test.cpp
+  node_project_test.cpp
   render_videoparams_test.cpp
   render_videoparams_branch_test.cpp
   render_audioparams_test.cpp
   render_audioparams_branch_test.cpp
   render_sampleformat_test.cpp
   render_pixelformat_test.cpp
+  render_loopmode_test.cpp
+  render_alphaassoc_test.cpp
   render_ipc_test.cpp
   render_ticket_test.cpp
   render_worker_footage_test.cpp

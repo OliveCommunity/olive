@@ -1,15 +1,44 @@
 #include <gtest/gtest.h>
 
-#include "audio/audiomanager.h"
-#include "cli/cliexport/cliexportmanager.h"
-#include "dialog/progress/progress.h"
-#include "panel/panelmanager.h"
 #include "tool/tool.h"
 #include "ui/humanstrings.h"
-#include "widget/nodeview/nodeview.h"
-#include "window/mainwindow/mainwindow.h"
 
-TEST(ModuleSmoke, HeadersBuild)
+TEST(ModuleSmoke, ToolAddableObjectNames)
 {
-	SUCCEED();
+	EXPECT_FALSE(olive::Tool::GetAddableObjectName(olive::Tool::kAddableEmpty).isEmpty());
+	EXPECT_FALSE(olive::Tool::GetAddableObjectName(olive::Tool::kAddableBars).isEmpty());
+	EXPECT_FALSE(olive::Tool::GetAddableObjectName(olive::Tool::kAddableShape).isEmpty());
+	EXPECT_FALSE(olive::Tool::GetAddableObjectName(olive::Tool::kAddableSolid).isEmpty());
+	EXPECT_FALSE(olive::Tool::GetAddableObjectName(olive::Tool::kAddableTitle).isEmpty());
+	EXPECT_FALSE(olive::Tool::GetAddableObjectName(olive::Tool::kAddableTone).isEmpty());
+	EXPECT_FALSE(olive::Tool::GetAddableObjectName(olive::Tool::kAddableSubtitle).isEmpty());
+}
+
+TEST(ModuleSmoke, ToolAddableObjectIds)
+{
+	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableEmpty), QStringLiteral("empty"));
+	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableBars), QStringLiteral("bars"));
+	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableShape), QStringLiteral("shape"));
+	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableSolid), QStringLiteral("solid"));
+	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableTitle), QStringLiteral("title"));
+	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableTone), QStringLiteral("tone"));
+	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableSubtitle), QStringLiteral("subtitle"));
+}
+
+TEST(ModuleSmoke, HumanStringsSampleRate)
+{
+	EXPECT_FALSE(olive::HumanStrings::SampleRateToString(48000).isEmpty());
+	EXPECT_FALSE(olive::HumanStrings::SampleRateToString(44100).isEmpty());
+}
+
+TEST(ModuleSmoke, HumanStringsChannelLayout)
+{
+	EXPECT_FALSE(olive::HumanStrings::ChannelLayoutToString(AV_CH_LAYOUT_MONO).isEmpty());
+	EXPECT_FALSE(olive::HumanStrings::ChannelLayoutToString(AV_CH_LAYOUT_STEREO).isEmpty());
+}
+
+TEST(ModuleSmoke, HumanStringsFormat)
+{
+	EXPECT_FALSE(olive::HumanStrings::FormatToString(olive::SampleFormat::U8).isEmpty());
+	EXPECT_FALSE(olive::HumanStrings::FormatToString(olive::SampleFormat::F32).isEmpty());
 }

@@ -171,6 +171,49 @@ TEST(ColorLut, OcioSupportsCubeAnd3dlExtensions)
 	EXPECT_FALSE(IsOakSupportedLutExtension("txt"));
 }
 
+TEST(ColorProcessor, CreateFromInvalidTransformReturnsNull)
+{
+	olive::ColorManager::SetUpDefaultConfig();
+
+	OCIO::FileTransformRcPtr transform = OCIO::FileTransform::Create();
+	transform->setSrc("/nonexistent/lut.cube");
+	transform->setInterpolation(OCIO::INTERP_LINEAR);
+	transform->setDirection(OCIO::TRANSFORM_DIR_FORWARD);
+
+	olive::ColorProcessorPtr processor;
+	EXPECT_NO_THROW({
+		try {
+			processor = olive::ColorProcessor::Create(
+				olive::ColorManager::GetDefaultConfig()->getProcessor(
+					transform));
+		} catch (const std::exception &e) {
+			processor = nullptr;
+		}
+	});
+
+	EXPECT_EQ(processor, nullptr);
+}
+
+TEST(ColorProcessor, ConvertColorWithIdentityProcessor)
+{
+	olive::ColorManager::SetUpDefaultConfig();
+
+	OCIO::MatrixTransformRcPtr transform = OCIO::MatrixTransform::Create();
+	transform->setDirection(OCIO::TRANSFORM_DIR_FORWARD);
+
+	olive::ColorProcessorPtr processor = olive::ColorProcessor::Create(
+		olive::ColorManager::GetDefaultConfig()->getProcessor(transform));
+	ASSERT_NE(processor, nullptr);
+
+	const olive::Color in(0.25f, 0.50f, 0.75f, 1.0f);
+	const olive::Color out = processor->ConvertColor(in);
+
+	EXPECT_NEAR(out.red(), in.red(), 0.001f);
+	EXPECT_NEAR(out.green(), in.green(), 0.001f);
+	EXPECT_NEAR(out.blue(), in.blue(), 0.001f);
+	EXPECT_NEAR(out.alpha(), in.alpha(), 0.001f);
+}
+
 TEST(ColorLut, CubeFileTransformConvertsColor)
 {
 	QTemporaryDir dir;

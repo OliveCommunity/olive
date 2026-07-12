@@ -37,6 +37,13 @@ TEST(TimelineMarker, SaveLoadRoundTrip)
 	EXPECT_EQ(loaded.color(), 5);
 }
 
+TEST(TimelineMarker, DefaultConstruction)
+{
+	olive::TimelineMarker marker;
+	EXPECT_TRUE(marker.name().isEmpty());
+	EXPECT_EQ(marker.time().in(), olive::core::rational(0, 1));
+}
+
 TEST(TimelineMarkerList, OrderAndLookup)
 {
 	olive::TimelineMarkerList list;
@@ -72,6 +79,13 @@ TEST(TimelineMarkerList, OrderAndLookup)
 			  &marker_b);
 	EXPECT_EQ(list.GetClosestMarkerToTime(olive::core::rational(9, 1)),
 			  &marker_a);
+}
+
+TEST(TimelineMarkerList, GetMarkerAtTimeReturnsNullWhenEmpty)
+{
+	olive::TimelineMarkerList list;
+	EXPECT_EQ(list.GetMarkerAtTime(olive::core::rational(10, 1)), nullptr);
+	EXPECT_EQ(list.GetClosestMarkerToTime(olive::core::rational(10, 1)), nullptr);
 }
 
 TEST(TimelineMarkerList, SaveLoadWithUnknownElements)
@@ -157,4 +171,19 @@ TEST(TimelineMarkerCommands, AddRemoveAndChange)
 	EXPECT_EQ(list.front(), marker);
 	move.undo_now();
 	EXPECT_EQ(list.front()->time().in(), olive::core::rational(1, 1));
+}
+
+TEST(TimelineMarkerCommands, AddCommandUndo)
+{
+	olive::TimelineMarkerList list;
+	olive::MarkerAddCommand add(
+		&list,
+		olive::core::TimeRange(olive::core::rational(5, 1),
+							   olive::core::rational(5, 1)),
+		QStringLiteral("UndoMe"),
+		2);
+	add.redo_now();
+	EXPECT_EQ(list.size(), 1);
+	add.undo_now();
+	EXPECT_TRUE(list.empty());
 }

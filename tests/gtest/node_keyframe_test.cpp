@@ -45,3 +45,40 @@ TEST(NodeKeyframe, SaveLoadRoundTrip)
 	EXPECT_DOUBLE_EQ(loaded.bezier_control_out().x(), 0.3);
 	EXPECT_DOUBLE_EQ(loaded.bezier_control_out().y(), 0.4);
 }
+
+TEST(NodeKeyframe, TypeEnumeration)
+{
+	using olive::NodeKeyframe;
+
+	EXPECT_NE(NodeKeyframe::kLinear, NodeKeyframe::kHold);
+	EXPECT_NE(NodeKeyframe::kLinear, NodeKeyframe::kBezier);
+}
+
+TEST(NodeKeyframe, DefaultState)
+{
+	olive::NodeKeyframe key;
+	EXPECT_TRUE(key.input().isEmpty());
+	EXPECT_EQ(key.time(), olive::core::rational(0, 1));
+	EXPECT_EQ(key.type(), olive::NodeKeyframe::kLinear);
+	EXPECT_TRUE(key.value().isNull());
+}
+
+TEST(NodeKeyframe, SetValueRoundTrip)
+{
+	olive::NodeKeyframe key;
+
+	key.set_value(QVariant::fromValue(olive::Color(0.1f, 0.2f, 0.3f, 1.0f)));
+	const olive::Color c = key.value().value<olive::Color>();
+	EXPECT_FLOAT_EQ(c.red(), 0.1f);
+	EXPECT_FLOAT_EQ(c.green(), 0.2f);
+	EXPECT_FLOAT_EQ(c.blue(), 0.3f);
+}
+
+TEST(NodeKeyframe, BezierControlDefaults)
+{
+	olive::NodeKeyframe key;
+	EXPECT_DOUBLE_EQ(key.bezier_control_in().x(), 0.0);
+	EXPECT_DOUBLE_EQ(key.bezier_control_in().y(), 0.0);
+	EXPECT_DOUBLE_EQ(key.bezier_control_out().x(), 0.0);
+	EXPECT_DOUBLE_EQ(key.bezier_control_out().y(), 0.0);
+}
