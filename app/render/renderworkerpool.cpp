@@ -941,6 +941,13 @@ RenderWorkerPool::JobResult RenderWorkerPool::ProcessJobAttempt(
 	render.input_slot = input_slots.isEmpty() ? -1 : input_slots.front();
 	render.input_slots = input_slots;
 
+	const ColorTransform &ct = job.params.force_color_transform;
+	render.has_color_transform = !ct.output().isEmpty();
+	render.color_is_display = ct.is_display();
+	render.color_output = ct.output();
+	render.color_view = ct.view();
+	render.color_look = ct.look();
+
 	if (!WriteControlMessage(worker->process, render.ToJson())) {
 		if (!job.ticket->IsCancelled()) {
 			qWarning() << "RenderWorkerPool failed to send render_frame";

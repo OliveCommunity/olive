@@ -87,4 +87,6 @@ private:
 
 }
 
+Q_DECLARE_METATYPE(olive::ColorTransform)
+
 #endif // COLORTRANSFORM_H

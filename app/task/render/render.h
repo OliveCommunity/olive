@@ -48,7 +48,8 @@ protected:
 				const QMatrix4x4 &force_matrix = QMatrix4x4(),
 				PixelFormat force_format = PixelFormat::INVALID,
 				int force_channel_count = 0,
-				ColorProcessorPtr force_color_output = nullptr);
+				ColorProcessorPtr force_color_output = nullptr,
+				const ColorTransform &force_color_transform = ColorTransform());
 
 	virtual bool DownloadFrame(QThread *thread, FramePtr frame,
 							   const rational &time);
@@ -124,8 +125,8 @@ private:
 					 const rational &time, RenderMode::Mode mode,
 					 FrameHashCache *cache, const QSize &force_size,
 					 const QMatrix4x4 &force_matrix, PixelFormat force_format,
-					 int force_channel_count,
-					 ColorProcessorPtr force_color_output);
+					 int force_channel_count, ColorProcessorPtr force_color_output,
+					 const ColorTransform &force_color_transform);
 
 	ViewerOutput *viewer_;
 

@@ -48,6 +48,8 @@
 #include "render/opengl/openglrenderer.h"
 #include "render/rendermanager.h"
 #include "render/renderprocessor.h"
+#include "render/colorprocessor.h"
+#include "render/colortransform.h"
 
 namespace
 {
@@ -390,7 +392,26 @@ private:
 		ticket->setProperty("mode", olive::RenderMode::Mode(message.mode));
 		ticket->setProperty("type", olive::RenderManager::kTypeVideo);
 		ticket->setProperty("colormanager", olive::QtUtils::PtrToValue(project_->color_manager()));
-		ticket->setProperty("coloroutput", QVariant::fromValue(olive::ColorProcessorPtr()));
+
+		{
+			olive::ColorProcessorPtr color_output;
+			if (message.has_color_transform) {
+				olive::ColorTransform transform;
+				if (message.color_is_display) {
+					transform = olive::ColorTransform(message.color_output,
+												message.color_view,
+												message.color_look);
+				} else {
+					transform = olive::ColorTransform(message.color_output);
+				}
+				color_output = olive::ColorProcessor::Create(
+					project_->color_manager(),
+					project_->color_manager()->GetReferenceColorSpace(),
+					transform);
+			}
+			ticket->setProperty("coloroutput",
+							QVariant::fromValue(color_output));
+		}
 		ticket->setProperty("vparam", QVariant::fromValue(vparams));
 		ticket->setProperty("aparam", QVariant::fromValue(olive::AudioParams()));
 		ticket->setProperty("return", olive::RenderManager::kFrame);

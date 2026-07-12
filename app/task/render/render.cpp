@@ -43,7 +43,8 @@ bool RenderTask::Render(ColorManager *manager, const TimeRangeList &video_range,
 						FrameHashCache *cache, const QSize &force_size,
 						const QMatrix4x4 &force_matrix,
 						PixelFormat force_format, int force_channel_count,
-						ColorProcessorPtr force_color_output)
+						ColorProcessorPtr force_color_output,
+						const ColorTransform &force_color_transform)
 {
 	QMetaObject::invokeMethod(RenderManager::instance(),
 							  "SetAggressiveGarbageCollection",
@@ -91,7 +92,7 @@ bool RenderTask::Render(ColorManager *manager, const TimeRangeList &video_range,
 		 i < maximum_rendered_frames && iterator.GetNext(&next_frame); i++) {
 		StartTicket(&watcher_thread, manager, next_frame, mode, cache,
 					force_size, force_matrix, force_format, force_channel_count,
-					force_color_output);
+					force_color_output, force_color_transform);
 	}
 
 	bool result = true;
@@ -224,7 +225,8 @@ bool RenderTask::Render(ColorManager *manager, const TimeRangeList &video_range,
 				if (iterator.GetNext(&next_frame)) {
 					StartTicket(&watcher_thread, manager, next_frame, mode,
 								cache, force_size, force_matrix, force_format,
-								force_channel_count, force_color_output);
+								force_channel_count, force_color_output,
+						force_color_transform);
 				}
 			}
 
@@ -313,7 +315,8 @@ void RenderTask::StartTicket(QThread *watcher_thread, ColorManager *manager,
 							 FrameHashCache *cache, const QSize &force_size,
 							 const QMatrix4x4 &force_matrix,
 							 PixelFormat force_format, int force_channel_count,
-							 ColorProcessorPtr force_color_output)
+							 ColorProcessorPtr force_color_output,
+							 const ColorTransform &force_color_transform)
 {
 	RenderManager::RenderVideoParams rvp(viewer_->GetConnectedTextureOutput(),
 										 video_params_, audio_params_, time,
@@ -323,6 +326,7 @@ void RenderTask::StartTicket(QThread *watcher_thread, ColorManager *manager,
 	rvp.force_matrix = force_matrix;
 	rvp.force_format = force_format;
 	rvp.force_color_output = force_color_output;
+	rvp.force_color_transform = force_color_transform;
 	rvp.force_channel_count = force_channel_count;
 
 	if (cache) {

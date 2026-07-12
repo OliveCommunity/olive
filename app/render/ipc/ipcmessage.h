@@ -116,6 +116,14 @@ struct RenderFrameMsg {
 	int input_slot = -1;      ///< Optional main->worker decoded input slot for footage nodes.
 	QVector<int> input_slots; ///< Optional ordered decoded input slots for footage nodes.
 
+	// Output color transform to apply before returning the frame. When empty,
+	// the worker returns the image in the project's reference space.
+	bool has_color_transform = false;
+	bool color_is_display = false;
+	QString color_output;
+	QString color_view;
+	QString color_look;
+
 	QJsonObject ToJson() const;
 	static bool FromJson(const QJsonObject &o, RenderFrameMsg *out);
 };

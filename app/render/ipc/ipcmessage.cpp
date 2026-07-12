@@ -123,6 +123,14 @@ QJsonObject RenderFrameMsg::ToJson() const
 		input_slot_array.append(slot);
 	}
 	o["input_slots"] = input_slot_array;
+
+	if (has_color_transform) {
+		o["has_color_transform"] = true;
+		o["color_is_display"] = color_is_display;
+		o["color_output"] = color_output;
+		o["color_view"] = color_view;
+		o["color_look"] = color_look;
+	}
 	return o;
 }
 
@@ -148,6 +156,14 @@ bool RenderFrameMsg::FromJson(const QJsonObject &o, RenderFrameMsg *out)
 	}
 	if (out->input_slots.isEmpty() && out->input_slot >= 0) {
 		out->input_slots.append(out->input_slot);
+	}
+
+	out->has_color_transform = o["has_color_transform"].toBool(false);
+	if (out->has_color_transform) {
+		out->color_is_display = o["color_is_display"].toBool(false);
+		out->color_output = o["color_output"].toString();
+		out->color_view = o["color_view"].toString();
+		out->color_look = o["color_look"].toString();
 	}
 	return true;
 }

@@ -32,6 +32,7 @@
 #include "node/traverser.h"
 #include "render/previewautocacher.h"
 #include "render/renderer.h"
+#include "render/colortransform.h"
 #include "render/renderticket.h"
 #include "rendercache.h"
 
@@ -120,6 +121,7 @@ public:
 			return_type = kFrame;
 			force_format = PixelFormat::INVALID;
 			force_color_output = nullptr;
+			force_color_transform = ColorTransform();
 			force_size = QSize(0, 0);
 			force_channel_count = 0;
 			mode = m;
@@ -152,6 +154,7 @@ public:
 		QMatrix4x4 force_matrix;
 		PixelFormat force_format;
 		ColorProcessorPtr force_color_output;
+		ColorTransform force_color_transform;
 	};
 
 	static const rational kDryRunInterval;

@@ -196,6 +196,8 @@ RenderTicketPtr RenderManager::RenderFrame(const RenderVideoParams &params)
 						QtUtils::PtrToValue(params.color_manager));
 	ticket->setProperty("coloroutput",
 						QVariant::fromValue(params.force_color_output));
+	ticket->setProperty("colortransform",
+						QVariant::fromValue(params.force_color_transform));
 	Q_ASSERT(params.video_params.is_valid());
 	ticket->setProperty("vparam", QVariant::fromValue(params.video_params));
 	ticket->setProperty("aparam", QVariant::fromValue(params.audio_params));
