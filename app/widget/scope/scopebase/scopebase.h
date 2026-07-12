@@ -51,13 +51,23 @@ protected:
 	virtual ShaderCode GenerateShaderCode() = 0;
 
 	/**
-   * @brief Draw function
+   * @brief GPU-accelerated draw function used on OpenGL backends.
    *
    * Override this if your sub-class scope needs extra drawing.
    */
 	virtual void DrawScope(TexturePtr managed_tex, QVariant pipeline);
 
+	/**
+   * @brief Software draw function used on backend-neutral paths (e.g. Vulkan).
+   *
+   * Implementations receive an 8-bit sRGB/display-ready image and should draw
+   * the scope visualization with QPainter.
+   */
+	virtual void DrawScopeSoftware(QPainter &p, const QImage &image) = 0;
+
 private:
+	void UpdateSoftwareImage();
+
 	QVariant pipeline_;
 
 	TexturePtr texture_;
@@ -65,6 +75,13 @@ private:
 	TexturePtr managed_tex_;
 
 	bool managed_tex_up_to_date_;
+
+	TexturePtr software_tex_;
+	QByteArray software_buffer_;
+	QImage software_image_;
+	bool software_image_up_to_date_;
+
+	TexturePtr local_texture_;
 };
 
 }

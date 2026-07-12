@@ -45,6 +45,8 @@ protected:
 
 	virtual void DrawScope(TexturePtr managed_tex, QVariant pipeline) override;
 
+	virtual void DrawScopeSoftware(QPainter &p, const QImage &image) override;
+
 private:
 	QVariant pipeline_secondary_;
 	TexturePtr texture_row_sums_;

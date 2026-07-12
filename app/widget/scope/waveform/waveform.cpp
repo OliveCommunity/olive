@@ -120,4 +120,97 @@ void WaveformScope::DrawScope(TexturePtr managed_tex, QVariant pipeline)
 	p.drawLines(ire_lines);
 }
 
+void WaveformScope::DrawScopeSoftware(QPainter &p, const QImage &image)
+{
+	const float waveform_scale = 0.80f;
+	const int waveform_dim_x = qCeil((width() - 1.0) * waveform_scale);
+	const int waveform_dim_y = qCeil((height() - 1.0) * waveform_scale);
+	const int waveform_start_dim_x =
+		qFloor(((width() - 1.0) - waveform_dim_x) / 2.0f);
+	const int waveform_start_dim_y =
+		qFloor(((height() - 1.0) - waveform_dim_y) / 2.0f);
+	const int waveform_end_dim_x = width() - 1 - waveform_start_dim_x;
+
+	QImage buf(width(), height(), QImage::Format_ARGB32_Premultiplied);
+	buf.fill(Qt::transparent);
+
+	const int src_w = image.width();
+	const int src_h = image.height();
+
+	// Limit analysis resolution to keep CPU usage reasonable on large frames.
+	const int step_x = qMax(1, src_w / 512);
+	const int step_y = qMax(1, src_h / 512);
+
+	for (int sy = 0; sy < src_h; sy += step_y) {
+		const uchar *src_line = image.constScanLine(sy);
+		for (int sx = 0; sx < src_w; sx += step_x) {
+			const uchar *src = src_line + sx * 4;
+			float r = src[0] / 255.0f;
+			float g = src[1] / 255.0f;
+			float b = src[2] / 255.0f;
+
+			int scope_x = waveform_start_dim_x +
+						  int((float(sx) / float(src_w)) * waveform_dim_x);
+			if (scope_x < waveform_start_dim_x ||
+				scope_x >= waveform_end_dim_x) {
+				continue;
+			}
+
+			auto mark = [&](float value, int add_r, int add_g, int add_b) {
+				int scope_y = waveform_start_dim_y +
+							  int((1.0f - value) * waveform_dim_y);
+				if (scope_y < waveform_start_dim_y ||
+					scope_y >= waveform_start_dim_y + waveform_dim_y) {
+					return;
+				}
+				QRgb *dst_line = reinterpret_cast<QRgb *>(buf.scanLine(scope_y));
+				QRgb cur = dst_line[scope_x];
+				int nr = qMin(255, qRed(cur) + add_r);
+				int ng = qMin(255, qGreen(cur) + add_g);
+				int nb = qMin(255, qBlue(cur) + add_b);
+				int na = qMax(qMax(nr, ng), nb);
+				dst_line[scope_x] = qRgba(nr, ng, nb, na);
+			};
+
+			mark(r, 30, 0, 0);
+			mark(g, 0, 30, 0);
+			mark(b, 0, 0, 30);
+		}
+	}
+
+	p.setCompositionMode(QPainter::CompositionMode_Plus);
+	p.drawImage(0, 0, buf);
+
+	// Draw IRE line overlays
+	QFont font;
+	font.setPixelSize(10);
+	QFontMetrics font_metrics = QFontMetrics(font);
+	QString label;
+	float ire_increment = 0.1f;
+	int ire_steps = qRound(1.0 / ire_increment);
+	QVector<QLine> ire_lines(ire_steps + 1);
+	int font_x_offset = 0;
+	int font_y_offset = font_metrics.capHeight() / 2.0f;
+
+	p.setPen(QColor(0.0, 0.6 * 255.0, 0.0));
+	p.setFont(font);
+
+	for (int i = 0; i <= ire_steps; i++) {
+		ire_lines[i].setLine(
+			waveform_start_dim_x,
+			(waveform_dim_y * (i * ire_increment)) + waveform_start_dim_y,
+			waveform_end_dim_x,
+			(waveform_dim_y * (i * ire_increment)) + waveform_start_dim_y);
+		label = QString::number(1.0 - (i * ire_increment), 'f', 1);
+		font_x_offset = QtUtils::QFontMetricsWidth(font_metrics, label) + 4;
+
+		p.drawText(waveform_start_dim_x - font_x_offset,
+				   (waveform_dim_y * (i * ire_increment)) +
+					   waveform_start_dim_y + font_y_offset,
+				   label);
+	}
+
+	p.drawLines(ire_lines);
+}
+
 }
