@@ -69,6 +69,9 @@ bool ProxyTask::Run()
 							 .arg(QString::number(params_.width),
 								  QString::number(params_.height));
 
+	const QString container_format =
+		params_.extension.isEmpty() ? QStringLiteral("mp4") : params_.extension;
+
 	QStringList args;
 	args << QStringLiteral("-y")
 		 << QStringLiteral("-i") << source_filename_
@@ -80,6 +83,7 @@ bool ProxyTask::Run()
 		 << QStringLiteral("-crf") << QStringLiteral("23")
 		 << QStringLiteral("-pix_fmt") << QStringLiteral("yuv420p")
 		 << QStringLiteral("-movflags") << QStringLiteral("+faststart")
+		 << QStringLiteral("-f") << container_format
 		 << output_filename_;
 
 	QProcess process;
