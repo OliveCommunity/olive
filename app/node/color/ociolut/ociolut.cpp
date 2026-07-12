@@ -160,7 +160,9 @@ void OCIOLutNode::EnsureProcessor() const
 {
 	QMutexLocker locker(&gen_mutex_);
 
-	if (!processor_dirty_ && last_processor_) {
+	if (!processor_dirty_ && last_processor_ &&
+		GetStandardValue(kFileInput).toString() == last_path_ &&
+		GetStandardValue(kDirectionInput).toInt() == last_direction_) {
 		return;
 	}
 
