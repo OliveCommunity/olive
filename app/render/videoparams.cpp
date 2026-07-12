@@ -209,6 +209,8 @@ int VideoParams::GetBytesPerChannel(PixelFormat format)
 		break;
 	case PixelFormat::U8:
 		return 1;
+	case PixelFormat::U10:
+		return 0; // packed format, use GetBytesPerPixel instead
 	case PixelFormat::U16:
 	case PixelFormat::F16:
 		return 2;
@@ -221,6 +223,10 @@ int VideoParams::GetBytesPerChannel(PixelFormat format)
 
 int VideoParams::GetBytesPerPixel(PixelFormat format, int channels)
 {
+	if (format == PixelFormat::U10) {
+		// Packed 10-bit RGBA10A2: 4 bytes per RGBA pixel regardless of channel count
+		return channels == VideoParams::kRGBAChannelCount ? 4 : 0;
+	}
 	return GetBytesPerChannel(format) * channels;
 }
 
@@ -238,6 +244,8 @@ QString VideoParams::GetFormatName(PixelFormat format)
 	switch (format) {
 	case PixelFormat::U8:
 		return QCoreApplication::translate("VideoParams", "8-bit");
+	case PixelFormat::U10:
+		return QCoreApplication::translate("VideoParams", "10-bit Packed");
 	case PixelFormat::U16:
 		return QCoreApplication::translate("VideoParams", "16-bit Integer");
 	case PixelFormat::F16:

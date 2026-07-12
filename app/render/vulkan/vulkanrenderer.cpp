@@ -1127,6 +1127,11 @@ VkFormat VulkanRenderer::PixelFormatToVkFormat(PixelFormat format,
 		case 4: return VK_FORMAT_R8G8B8A8_UNORM;
 		}
 		break;
+	case PixelFormat::U10:
+		if (channel_count == 4) {
+			return VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+		}
+		break;
 	case PixelFormat::U16:
 		switch (channel_count) {
 		case 1: return VK_FORMAT_R16_UNORM;
@@ -1202,6 +1207,8 @@ int VulkanRenderer::GetVkFormatBytesPerPixel(VkFormat format) const
 	case VK_FORMAT_R8G8B8_UNORM:
 		return 3;
 	case VK_FORMAT_R8G8B8A8_UNORM:
+		return 4;
+	case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
 		return 4;
 	case VK_FORMAT_R16_UNORM:
 	case VK_FORMAT_R16_SFLOAT:

@@ -305,6 +305,8 @@ const std::string &olive::plugin::OliveClipInstance::getUnmappedBitDepth() const
 		return kBitDepthNoneStr;
 	case PixelFormat::U8:
 		return kBitDepthByteStr;
+	case PixelFormat::U10:
+		return kBitDepthNoneStr;
 	case PixelFormat::U16:
 		return kBitDepthShortStr;
 	case PixelFormat::F16:

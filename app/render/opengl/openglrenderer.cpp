@@ -835,6 +835,11 @@ GLint OpenGLRenderer::GetInternalFormat(PixelFormat format, int channel_layout)
 			return GL_RGBA8;
 		}
 		break;
+	case PixelFormat::U10:
+		if (channel_layout == 4) {
+			return GL_RGB10_A2;
+		}
+		break;
 	case PixelFormat::U16:
 		switch (channel_layout) {
 		case 1:
@@ -884,6 +889,8 @@ GLenum OpenGLRenderer::GetPixelType(PixelFormat format)
 	switch (format) {
 	case PixelFormat::U8:
 		return GL_UNSIGNED_BYTE;
+	case PixelFormat::U10:
+		return GL_UNSIGNED_INT_2_10_10_10_REV;
 	case PixelFormat::U16:
 		return GL_UNSIGNED_SHORT;
 	case PixelFormat::F16:

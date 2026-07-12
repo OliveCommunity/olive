@@ -232,7 +232,7 @@ protected:
 		}
 
 		// ---- spawn worker ----
-		worker_.setProcessChannelMode(QProcess::ForwardedErrorChannel);
+		worker_.setProcessChannelMode(QProcess::SeparateChannels);
 		worker_.start(worker_path_, QStringList{QStringLiteral("--backend"), backend});
 		if (!worker_.waitForStarted(kTimeoutMs)) {
 			return false;
@@ -362,6 +362,13 @@ protected:
 			if (worker_.state() == QProcess::NotRunning) {
 				std::cerr << "WaitForMessage: worker exited with code "
 						  << worker_.exitCode() << std::endl;
+				std::cerr << "Worker stdout buffer: "
+						  << read_buffer_.toStdString() << std::endl;
+				QByteArray err = worker_.readAllStandardError();
+				if (!err.isEmpty()) {
+					std::cerr << "Worker stderr:\n"
+							  << err.toStdString() << std::endl;
+				}
 				return false;
 			}
 		}

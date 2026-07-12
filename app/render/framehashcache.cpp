@@ -433,6 +433,8 @@ bool FrameHashCache::SaveCacheFrame(const QString &filename,
 				fmt = QImage::Format_RGB888;
 			}
 			break;
+		case PixelFormat::U10:
+			break;
 		case PixelFormat::U16:
 			if (frame->channel_count() == VideoParams::kRGBAChannelCount) {
 				fmt = QImage::Format_RGBA64_Premultiplied;

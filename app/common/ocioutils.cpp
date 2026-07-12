@@ -29,6 +29,8 @@ OCIO::BitDepth OCIOUtils::GetOCIOBitDepthFromPixelFormat(PixelFormat format)
 	switch (format) {
 	case PixelFormat::U8:
 		return OCIO::BIT_DEPTH_UINT8;
+	case PixelFormat::U10:
+		return OCIO::BIT_DEPTH_UINT10;
 	case PixelFormat::U16:
 		return OCIO::BIT_DEPTH_UINT16;
 		break;

@@ -39,6 +39,8 @@ public:
 		switch (format) {
 		case PixelFormat::U8:
 			return OIIO::TypeDesc::UINT8;
+		case PixelFormat::U10:
+			return OIIO::TypeDesc::UNKNOWN;
 		case PixelFormat::U16:
 			return OIIO::TypeDesc::UINT16;
 		case PixelFormat::F16:
