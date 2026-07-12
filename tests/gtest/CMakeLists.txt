@@ -17,6 +17,7 @@ add_executable(olive-gtest
   render_sampleformat_test.cpp
   render_pixelformat_test.cpp
   render_ipc_test.cpp
+  render_ticket_test.cpp
   render_worker_footage_test.cpp
   project_serializer_test.cpp
   proxy_manager_test.cpp
@@ -36,6 +37,9 @@ add_executable(olive-gtest
   plugin_render_pipeline_test.cpp
   plugin_renderer_readback_test.cpp
   plugin_ofx_integration_test.cpp
+  preferences_behavior_tab_test.cpp
+  node_view_test.cpp
+  preview_autocacher_test.cpp
   codec_frame_test.cpp
   codec_decoder_test.cpp
   ffmpeg_decoder_hw_test.cpp
@@ -50,6 +54,8 @@ add_executable(olive-gtest
   timeline_coordinate_test.cpp
   timeline_workarea_test.cpp
 )
+
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
 
 target_sources(olive-gtest PRIVATE $<TARGET_OBJECTS:libolive-editor>)
 
@@ -68,6 +74,7 @@ target_link_libraries(
   PRIVATE
   ${OLIVE_LIBRARIES}
   GTest::gtest
+  Qt${QT_VERSION_MAJOR}::Test
 )
 
 target_compile_definitions(

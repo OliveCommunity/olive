@@ -40,3 +40,58 @@ TEST(RenderAudioParams, TimeAndSampleConversions)
 	EXPECT_EQ(params.bytes_per_channel_to_time(96000),
 			  olive::core::rational(1, 1));
 }
+
+TEST(RenderAudioParams, ChannelLayoutCount)
+{
+	olive::core::AudioParams mono(
+		48000, AV_CH_LAYOUT_MONO, olive::core::SampleFormat::F32);
+	EXPECT_EQ(mono.channel_count(), 1);
+
+	olive::core::AudioParams surround(
+		48000, AV_CH_LAYOUT_5POINT1, olive::core::SampleFormat::F32);
+	EXPECT_EQ(surround.channel_count(), 6);
+}
+
+TEST(RenderAudioParams, SampleFormatSizes)
+{
+	olive::core::AudioParams u8(
+		48000, AV_CH_LAYOUT_MONO, olive::core::SampleFormat::U8);
+	EXPECT_EQ(u8.bytes_per_sample_per_channel(), 1);
+
+	olive::core::AudioParams f32(
+		48000, AV_CH_LAYOUT_MONO, olive::core::SampleFormat::F32);
+	EXPECT_EQ(f32.bytes_per_sample_per_channel(), 4);
+
+	olive::core::AudioParams f64(
+		48000, AV_CH_LAYOUT_MONO, olive::core::SampleFormat::F64);
+	EXPECT_EQ(f64.bytes_per_sample_per_channel(), 8);
+}
+
+TEST(RenderAudioParams, CopyAndAssignment)
+{
+	olive::core::AudioParams params(
+		96000, AV_CH_LAYOUT_STEREO, olive::core::SampleFormat::F32);
+
+	olive::core::AudioParams copy(params);
+	EXPECT_EQ(copy.sample_rate(), 96000);
+	EXPECT_EQ(copy.channel_count(), 2);
+	EXPECT_EQ(copy.format(), olive::core::SampleFormat::F32);
+
+	olive::core::AudioParams assigned;
+	assigned = params;
+	EXPECT_EQ(assigned.sample_rate(), 96000);
+	EXPECT_TRUE(assigned == params);
+}
+
+TEST(RenderAudioParams, SettersModifyState)
+{
+	olive::core::AudioParams params(
+		44100, AV_CH_LAYOUT_MONO, olive::core::SampleFormat::S16);
+	EXPECT_TRUE(params.is_valid());
+
+	params.set_sample_rate(48000);
+	params.set_format(olive::core::SampleFormat::F32);
+
+	EXPECT_EQ(params.sample_rate(), 48000);
+	EXPECT_EQ(params.format(), olive::core::SampleFormat::F32);
+}

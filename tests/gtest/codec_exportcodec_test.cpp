@@ -18,3 +18,34 @@ TEST(CodecExportCodec, NamesAndFlags)
 	EXPECT_TRUE(ExportCodec::IsCodecLossless(ExportCodec::kCodecFLAC));
 	EXPECT_FALSE(ExportCodec::IsCodecLossless(ExportCodec::kCodecH265));
 }
+
+TEST(CodecExportCodec, VideoCodecNamesAreNonEmpty)
+{
+	using olive::ExportCodec;
+
+	for (int i = 0; i < ExportCodec::kCodecCount; ++i) {
+		const auto codec = static_cast<ExportCodec::Codec>(i);
+		const QString name = ExportCodec::GetCodecName(codec);
+		EXPECT_FALSE(name.isEmpty()) << "Codec " << i;
+	}
+}
+
+TEST(CodecExportCodec, AudioCodecsAreNotStillImages)
+{
+	using olive::ExportCodec;
+
+	EXPECT_FALSE(ExportCodec::IsCodecAStillImage(ExportCodec::kCodecPCM));
+	EXPECT_FALSE(ExportCodec::IsCodecAStillImage(ExportCodec::kCodecAAC));
+	EXPECT_FALSE(ExportCodec::IsCodecAStillImage(ExportCodec::kCodecFLAC));
+	EXPECT_FALSE(ExportCodec::IsCodecAStillImage(ExportCodec::kCodecOpus));
+}
+
+TEST(CodecExportCodec, LossyCodecsAreNotLossless)
+{
+	using olive::ExportCodec;
+
+	EXPECT_FALSE(ExportCodec::IsCodecLossless(ExportCodec::kCodecH264));
+	EXPECT_FALSE(ExportCodec::IsCodecLossless(ExportCodec::kCodecH265));
+	EXPECT_FALSE(ExportCodec::IsCodecLossless(ExportCodec::kCodecVP9));
+	EXPECT_FALSE(ExportCodec::IsCodecLossless(ExportCodec::kCodecAAC));
+}

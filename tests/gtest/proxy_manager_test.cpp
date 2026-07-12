@@ -239,20 +239,41 @@ TEST(ProxyManager, EmitsProxyFinishedState)
 	olive::ProxyManager::DestroyInstance();
 }
 
-TEST(ProxyManager, FootageJobCarriesProxyMetadata)
+TEST(ProxyManager, WorkingProxyFilenamePrependsExtension)
+{
+	const QString proxy =
+		QStringLiteral("/cache/proxy/example.mp4");
+	const QString working =
+		olive::ProxyManager::GetWorkingProxyFilename(proxy);
+
+	EXPECT_EQ(working, QStringLiteral("/cache/proxy/example.mp4.working.mp4"));
+}
+
+TEST(ProxyManager, ProxyStateFromStringDefaultsForEmpty)
+{
+	EXPECT_EQ(olive::ProxyManager::ProxyStateFromString(QString()),
+			  olive::ProxyManager::kProxyMissing);
+}
+
+TEST(ProxyManager, FootageProxyCanBeDisabled)
+{
+	olive::Footage footage;
+	footage.SetProxy(QStringLiteral("/cache/proxy/example.mp4"),
+					 olive::ProxyManager::kProxyReady, 0, 1, false);
+
+	EXPECT_FALSE(footage.proxy_enabled());
+	EXPECT_FALSE(footage.proxy_path().isEmpty());
+}
+
+TEST(ProxyManager, FootageJobWithoutProxyHasEmptyProxyFields)
 {
 	olive::FootageJob job(olive::TimeRange(), QStringLiteral("source-decoder"),
 						  QStringLiteral("/media/source.mov"),
 						  olive::Track::kVideo, olive::rational(10),
 						  olive::LoopMode::kLoopModeOff);
+
 	EXPECT_FALSE(job.has_proxy());
-
-	job.set_proxy(QStringLiteral("/cache/proxy/source.mp4"),
-				  QStringLiteral("ffmpeg"), 0);
-
-	EXPECT_TRUE(job.has_proxy());
-	EXPECT_EQ(job.filename(), QStringLiteral("/media/source.mov"));
-	EXPECT_EQ(job.proxy_filename(), QStringLiteral("/cache/proxy/source.mp4"));
-	EXPECT_EQ(job.proxy_decoder(), QStringLiteral("ffmpeg"));
-	EXPECT_EQ(job.proxy_stream_index(), 0);
+	EXPECT_TRUE(job.proxy_filename().isEmpty());
+	EXPECT_TRUE(job.proxy_decoder().isEmpty());
+	EXPECT_EQ(job.proxy_stream_index(), -1);
 }

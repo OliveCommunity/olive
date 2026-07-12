@@ -66,6 +66,23 @@ TEST(TimecodeMetadata, RejectsInvalidMetadata)
 	EXPECT_FALSE(olive::TimecodeMetadata::FromBwfTimeReference(
 					 QStringLiteral("123"), 0)
 					 .valid);
+	EXPECT_FALSE(olive::TimecodeMetadata::FromTimecodeString(
+					 QStringLiteral("not-a-timecode"),
+					 olive::core::rational(1, 24))
+					 .valid);
+}
+
+TEST(TimecodeMetadata, FromBwfTimeReferenceZeroSampleRateIsInvalid)
+{
+	EXPECT_FALSE(olive::TimecodeMetadata::FromBwfTimeReference(
+					 QStringLiteral("0"), 0)
+					 .valid);
+}
+
+TEST(TimecodeMetadata, FootageDescriptionWithoutSourceStartTime)
+{
+	olive::FootageDescription desc(QStringLiteral("ffmpeg"));
+	EXPECT_FALSE(desc.HasSourceStartTime());
 }
 
 TEST(TimecodeMetadata, FootageDescriptionCachesSourceStartTime)

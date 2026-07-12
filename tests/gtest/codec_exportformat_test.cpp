@@ -15,6 +15,29 @@ TEST(CodecExportFormat, NamesAndExtensions)
 	EXPECT_TRUE(ExportFormat::GetExtension(ExportFormat::kFormatCount).isEmpty());
 }
 
+TEST(CodecExportFormat, AllFormatsHaveNames)
+{
+	using olive::ExportFormat;
+
+	for (int i = 0; i < ExportFormat::kFormatCount; ++i) {
+		const auto fmt = static_cast<ExportFormat::Format>(i);
+		EXPECT_FALSE(ExportFormat::GetName(fmt).isEmpty()) << "Format " << i;
+	}
+}
+
+TEST(CodecExportFormat, AllFormatsHaveAtLeastOneCodecList)
+{
+	using olive::ExportFormat;
+
+	for (int i = 0; i < ExportFormat::kFormatCount; ++i) {
+		const auto fmt = static_cast<ExportFormat::Format>(i);
+		EXPECT_FALSE(ExportFormat::GetVideoCodecs(fmt).isEmpty() &&
+					 ExportFormat::GetAudioCodecs(fmt).isEmpty() &&
+					 ExportFormat::GetSubtitleCodecs(fmt).isEmpty())
+			<< "Format " << i;
+	}
+}
+
 TEST(CodecExportFormat, CodecLists)
 {
 	using olive::ExportCodec;
@@ -41,4 +64,15 @@ TEST(CodecExportFormat, CodecLists)
 	const QList<ExportCodec::Codec> wav_audio =
 		ExportFormat::GetAudioCodecs(ExportFormat::kFormatWAV);
 	EXPECT_EQ(wav_audio, QList<ExportCodec::Codec>{ ExportCodec::kCodecPCM });
+}
+
+TEST(CodecExportFormat, MPEG4ContainsH264AndAAC)
+{
+	using olive::ExportCodec;
+	using olive::ExportFormat;
+
+	EXPECT_TRUE(ExportFormat::GetVideoCodecs(ExportFormat::kFormatMPEG4Video)
+					.contains(ExportCodec::kCodecH264));
+	EXPECT_TRUE(ExportFormat::GetAudioCodecs(ExportFormat::kFormatMPEG4Audio)
+					.contains(ExportCodec::kCodecAAC));
 }

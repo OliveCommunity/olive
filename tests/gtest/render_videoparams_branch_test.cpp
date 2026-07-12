@@ -102,6 +102,43 @@ TEST(RenderVideoParams, ValidityAndTimebase)
 			  12);
 }
 
+TEST(RenderVideoParams, CopyConstructorPreservesValues)
+{
+	olive::VideoParams params(1920, 1080, olive::core::rational(24, 1),
+							  olive::core::PixelFormat::F32, 4);
+	params.set_colorspace(QStringLiteral("ACEScg"));
+
+	olive::VideoParams copy(params);
+	EXPECT_EQ(copy.width(), 1920);
+	EXPECT_EQ(copy.height(), 1080);
+	EXPECT_EQ(copy.format(), olive::core::PixelFormat::F32);
+	EXPECT_EQ(copy.channel_count(), 4);
+	EXPECT_EQ(copy.colorspace(), QStringLiteral("ACEScg"));
+}
+
+TEST(RenderVideoParams, AssignmentPreservesValues)
+{
+	olive::VideoParams params(1280, 720, olive::core::rational(30, 1),
+							  olive::core::PixelFormat::U16, 4);
+	olive::VideoParams copy;
+	copy = params;
+	EXPECT_EQ(copy.width(), 1280);
+	EXPECT_EQ(copy.height(), 720);
+	EXPECT_EQ(copy.format(), olive::core::PixelFormat::U16);
+}
+
+TEST(RenderVideoParams, EqualityComparesDimensionsAndFormat)
+{
+	olive::VideoParams a(1920, 1080, olive::core::PixelFormat::U8, 4);
+	olive::VideoParams b(1920, 1080, olive::core::PixelFormat::U8, 4);
+	olive::VideoParams c(1280, 720, olive::core::PixelFormat::U8, 4);
+	olive::VideoParams d(1920, 1080, olive::core::PixelFormat::F32, 4);
+
+	EXPECT_EQ(a, b);
+	EXPECT_NE(a, c);
+	EXPECT_NE(a, d);
+}
+
 TEST(RenderVideoParams, SaveLoadRoundTripExtended)
 {
 	olive::VideoParams params(1920, 1080, olive::core::rational(1, 24),
