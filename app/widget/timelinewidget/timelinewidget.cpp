@@ -1182,13 +1182,16 @@ void TimelineWidget::SynchronizeSelectedClipsByWaveform()
 void TimelineWidget::GenerateProxiesForSelectedClips()
 {
 	if (!ProxyManager::instance() || !sequence()) {
+		qWarning() << "GenerateProxiesForSelectedClips: ProxyManager or sequence unavailable";
 		return;
 	}
 
 	const QVector<Footage *> footage = GetSelectedProxyFootage(selected_blocks_);
+	qDebug() << "GenerateProxiesForSelectedClips: starting proxy generation for" << footage.size() << "footage item(s)";
 	for (Footage *item : footage) {
 		const VideoParams video = item->GetFirstEnabledVideoStream();
 		if (!video.is_valid()) {
+			qWarning() << "GenerateProxiesForSelectedClips: skipping item with no valid video stream" << item->filename();
 			continue;
 		}
 
@@ -1197,6 +1200,9 @@ void TimelineWidget::GenerateProxiesForSelectedClips()
 			ProxyManager::instance()->GetOrStartProxy(
 				item->project()->cache_path(), item->filename(),
 				video.stream_index(), params);
+		qDebug() << "GenerateProxiesForSelectedClips: proxy state=" << ProxyManager::ProxyStateToString(proxy.state)
+				 << "file=" << proxy.filename
+				 << "cache=" << item->project()->cache_path();
 		item->SetProxy(proxy.filename, proxy.state, video.stream_index(),
 					   params.version, true);
 		item->InvalidateAll(Footage::kFilenameInput);

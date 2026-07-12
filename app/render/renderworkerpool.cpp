@@ -145,6 +145,17 @@ FramePtr DecodeInputFrame(DecoderCache *decoder_cache,
 {
 	VideoParams stream_data = input.job.video_params();
 	QString filename = input.job.filename();
+	QString decoder_id = input.job.decoder();
+	int stream_index = stream_data.stream_index();
+
+	// Use generated proxy if one is attached to the job. The Footage node only
+	// attaches a proxy when it is enabled, ready, and matches this stream.
+	if (input.job.has_proxy()) {
+		filename = input.job.proxy_filename();
+		decoder_id = input.job.proxy_decoder();
+		stream_index = input.job.proxy_stream_index();
+	}
+
 	DecoderPtr decoder;
 
 	switch (stream_data.video_type()) {
@@ -152,17 +163,17 @@ FramePtr DecodeInputFrame(DecoderCache *decoder_cache,
 	case VideoParams::kVideoTypeStill:
 		decoder = ResolveDecoderFromCache(
 			decoder_cache,
-			input.job.decoder(),
-			Decoder::CodecStream(filename, stream_data.stream_index(), nullptr));
+			decoder_id,
+			Decoder::CodecStream(filename, stream_index, nullptr));
 		break;
 	case VideoParams::kVideoTypeImageSequence: {
 		const int64_t frame_number =
 			stream_data.get_time_in_timebase_units(input.time);
 		filename = Decoder::TransformImageSequenceFileName(filename, frame_number);
-		decoder = Decoder::CreateFromID(input.job.decoder());
+		decoder = Decoder::CreateFromID(decoder_id);
 		if (decoder &&
 			!decoder->Open(Decoder::CodecStream(filename,
-												stream_data.stream_index(),
+												stream_index,
 												nullptr))) {
 			decoder = nullptr;
 		}
