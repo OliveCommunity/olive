@@ -22,6 +22,7 @@
 #include "previewautocacher.h"
 
 #include <QApplication>
+#include <QPointer>
 #include <QtConcurrent/QtConcurrent>
 
 #include "codec/conformmanager.h"
@@ -107,31 +108,52 @@ RenderTicketPtr PreviewAutoCacher::GetRangeOfAudio(ViewerOutput *viewer,
 
 void PreviewAutoCacher::ClearSingleFrameRenders()
 {
-	QMap<RenderTicketWatcher *, QVector<RenderTicketPtr>> copy =
-		video_immediate_passthroughs_;
-	for (auto it = copy.cbegin(); it != copy.cend(); it++) {
+	// Snapshot the watchers as guarded pointers before doing anything that
+	// might synchronously delete them (emitting Finished runs VideoRendered,
+	// which deletes the watcher and removes it from the map). Iterating over a
+	// raw-pointer copy of the map would leave dangling pointers.
+	QList<QPointer<RenderTicketWatcher>> watchers;
+	for (auto it = video_immediate_passthroughs_.cbegin();
+		 it != video_immediate_passthroughs_.cend(); it++) {
+		watchers.append(it.key());
+	}
+
+	foreach (const QPointer<RenderTicketWatcher> &w, watchers) {
+		if (!w) {
+			continue;
+		}
+
 		// Keep already-running workers alive: cancelling an in-flight render
 		// forces the worker process to be torn down, which defeats the process
 		// pool. Frames that finish late are simply ignored by the viewer.
-		if (it.key()->IsRunning()) {
+		if (w->IsRunning()) {
 			continue;
 		}
-		it.key()->Cancel();
-		RenderManager::instance()->RemoveTicket(it.key()->GetTicket());
-		emit it.key()->GetTicket()->Finished();
+
+		RenderTicketPtr ticket = w->GetTicket();
+		w->Cancel();
+		RenderManager::instance()->RemoveTicket(ticket);
+		emit ticket->Finished();
 	}
 }
 
 void PreviewAutoCacher::ClearSingleFrameRendersThatArentRunning()
 {
-	QMap<RenderTicketWatcher *, QVector<RenderTicketPtr>> copy =
-		video_immediate_passthroughs_;
-	for (auto it = copy.cbegin(); it != copy.cend(); it++) {
-		if (!it.key()->IsRunning()) {
-			it.key()->Cancel();
-			RenderManager::instance()->RemoveTicket(it.key()->GetTicket());
-			emit it.key()->GetTicket()->Finished();
+	QList<QPointer<RenderTicketWatcher>> watchers;
+	for (auto it = video_immediate_passthroughs_.cbegin();
+		 it != video_immediate_passthroughs_.cend(); it++) {
+		watchers.append(it.key());
+	}
+
+	foreach (const QPointer<RenderTicketWatcher> &w, watchers) {
+		if (!w || w->IsRunning()) {
+			continue;
 		}
+
+		RenderTicketPtr ticket = w->GetTicket();
+		w->Cancel();
+		RenderManager::instance()->RemoveTicket(ticket);
+		emit ticket->Finished();
 	}
 }
 

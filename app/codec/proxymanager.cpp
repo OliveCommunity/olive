@@ -66,7 +66,9 @@ QString ProxyManager::GetProxyFilename(const QString &cache_path,
 
 QString ProxyManager::GetWorkingProxyFilename(const QString &proxy_filename)
 {
-	return QStringLiteral("%1.working").arg(proxy_filename);
+	// Append a recognizable suffix while keeping a standard container extension
+	// so ffmpeg can infer the output format.
+	return QStringLiteral("%1.working.mp4").arg(proxy_filename);
 }
 
 ProxyManager::ProxyState

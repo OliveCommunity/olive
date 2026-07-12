@@ -235,6 +235,9 @@ void Footage::set_proxy_enabled(bool enabled)
 	if (proxy_enabled_ != enabled) {
 		qDebug() << "Footage::set_proxy_enabled:" << filename() << enabled;
 		proxy_enabled_ = enabled;
+		if (Project *p = project()) {
+			p->set_modified(true);
+		}
 		emit ProxySettingsChanged();
 	}
 }
@@ -253,6 +256,9 @@ void Footage::SetProxy(const QString &path,
 	proxy_video_stream_index_ = video_stream_index;
 	proxy_preset_version_ = preset_version;
 	proxy_enabled_ = enabled;
+	if (Project *p = project()) {
+		p->set_modified(true);
+	}
 	emit ProxySettingsChanged();
 }
 
