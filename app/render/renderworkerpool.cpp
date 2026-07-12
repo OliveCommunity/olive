@@ -267,12 +267,24 @@ QString WorkerProgramPath()
 
 bool WriteControlMessage(QProcess *process, const QJsonObject &obj)
 {
+	if (!process || process->state() != QProcess::Running) {
+		return false;
+	}
+
 	const QByteArray line = QJsonDocument(obj).toJson(QJsonDocument::Compact) + '\n';
-	return process->write(line) == line.size() && process->waitForBytesWritten(5000);
+	const qint64 written = process->write(line);
+	if (written != line.size()) {
+		return false;
+	}
+	return process->waitForBytesWritten(5000);
 }
 
 void TryWriteControlMessage(QProcess *process, const QJsonObject &obj)
 {
+	if (!process || process->state() != QProcess::Running) {
+		return;
+	}
+
 	const QByteArray line = QJsonDocument(obj).toJson(QJsonDocument::Compact) + '\n';
 	process->write(line);
 }

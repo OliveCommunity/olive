@@ -152,6 +152,11 @@ int main(int argc, char *argv[])
 	// Set up debug handler
 	qInstallMessageHandler(olive::DebugHandler);
 
+	// Ignore SIGPIPE so that writing to a render-worker process that has
+	// already crashed/closed does not terminate the main application. QProcess
+	// will report the failure through its normal error path instead.
+	signal(SIGPIPE, SIG_IGN);
+
 	// Set application metadata
 	QCoreApplication::setOrganizationName("oakvideoeditor.org");
 	QCoreApplication::setOrganizationDomain("oakvideoeditor.org");
