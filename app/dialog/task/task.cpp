@@ -34,6 +34,7 @@ TaskDialog::TaskDialog(Task *task, const QString &title, QWidget *parent)
 	, task_(task)
 	, destroy_on_close_(true)
 	, already_shown_(false)
+	, task_finished_(false)
 {
 	// Clear task when this dialog is destroyed
 	task_->setParent(this);
@@ -84,8 +85,11 @@ void TaskDialog::closeEvent(QCloseEvent *e)
 	// Reset shown
 	already_shown_ = false;
 
-	// Clean up this task and dialog
-	if (destroy_on_close_) {
+	// Clean up this task and dialog, but only if the task has actually finished.
+	// If the user closes the window while the task is still running, deleting now
+	// would destroy the Task object out from under the worker thread and crash
+	// when the task later touches its own members (e.g. ExportTask::encoder_).
+	if (destroy_on_close_ && task_finished_) {
 		deleteLater();
 	}
 }
@@ -94,6 +98,8 @@ void TaskDialog::TaskFinished()
 {
 	QFutureWatcher<bool> *task_watcher =
 		static_cast<QFutureWatcher<bool> *>(sender());
+
+	task_finished_ = true;
 
 	if (task_watcher->result()) {
 		emit TaskSucceeded(task_);

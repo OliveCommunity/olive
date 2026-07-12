@@ -75,6 +75,8 @@ private:
 
 	bool already_shown_;
 
+	bool task_finished_;
+
 private slots:
 	void TaskFinished();
 };
