@@ -1146,6 +1146,12 @@ void ViewerWidget::PlayInternal(int speed, bool in_to_out_only)
 		}
 	}
 
+	// If there's nothing to prequeue, start playback immediately so the
+	// playhead advances even when only the audio waveform is visible.
+	if (!prequeuing_video_ && !prequeuing_audio_) {
+		FinishPlayPreprocess();
+	}
+
 	// Force screen to stay awake
 	PreventSleep(true);
 }
@@ -1388,7 +1394,8 @@ void ViewerWidget::FinishPlayPreprocess()
 	}
 
 	// This is our timer for loading the queue and setting the time
-	playback_backup_timer_.setInterval(qFloor(timebase_dbl()));
+	playback_backup_timer_.setInterval(
+		qMax(1, qFloor(timebase_dbl() * 1000.0)));
 	playback_backup_timer_.start();
 
 	PlaybackTimerUpdate();
