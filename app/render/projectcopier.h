@@ -23,6 +23,7 @@
 #define PROJECTCOPIER_H
 
 #include "node/project.h"
+#include "node/project/footage/footage.h"
 
 namespace olive
 {
@@ -88,6 +89,8 @@ private:
 	void DoValueChange(const NodeInput &input);
 	void DoValueHintChange(const NodeInput &input);
 	void DoProjectSettingChange(const QString &key, const QString &value);
+
+	void SyncFootageProxySettings(Footage *source);
 
 	void InsertIntoCopyMap(Node *node, Node *copy);
 

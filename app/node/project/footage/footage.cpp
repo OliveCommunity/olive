@@ -240,6 +240,7 @@ void Footage::SetProxy(const QString &path,
 	proxy_video_stream_index_ = video_stream_index;
 	proxy_preset_version_ = preset_version;
 	proxy_enabled_ = enabled;
+	emit ProxySettingsChanged();
 }
 
 void Footage::ClearProxy()
@@ -249,6 +250,7 @@ void Footage::ClearProxy()
 	proxy_state_ = ProxyManager::kProxyMissing;
 	proxy_video_stream_index_ = -1;
 	proxy_preset_version_ = 0;
+	emit ProxySettingsChanged();
 }
 
 QString Footage::DescribeVideoStream(const VideoParams &params)

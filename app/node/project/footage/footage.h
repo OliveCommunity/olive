@@ -180,7 +180,10 @@ public:
 
 	void set_proxy_enabled(bool enabled)
 	{
-		proxy_enabled_ = enabled;
+		if (proxy_enabled_ != enabled) {
+			proxy_enabled_ = enabled;
+			emit ProxySettingsChanged();
+		}
 	}
 
 	const QString &proxy_path() const
@@ -240,6 +243,10 @@ public:
 							SerializedData *data) override;
 	virtual void SaveCustom(QXmlStreamWriter *writer) const override;
 
+signals:
+	void ProxySettingsChanged();
+
+public:
 	static const QString kFilenameInput;
 
 	virtual void AddedToGraphEvent(Project *p) override;

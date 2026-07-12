@@ -22,6 +22,7 @@
 #include "projectcopier.h"
 
 #include "node/group/group.h"
+#include "node/project/footage/footage.h"
 
 namespace olive
 {
@@ -260,8 +261,33 @@ void ProjectCopier::InsertIntoCopyMap(Node *node, Node *copy)
 	// Copy parameters
 	Node::CopyInputs(node, copy, false);
 
+	// Sync Footage proxy state (which is not stored as a Node input)
+	if (Footage *src_footage = dynamic_cast<Footage *>(node)) {
+		if (dynamic_cast<Footage *>(copy)) {
+			connect(src_footage, &Footage::ProxySettingsChanged, this,
+					[this, src_footage]() { SyncFootageProxySettings(src_footage); });
+			SyncFootageProxySettings(src_footage);
+		}
+	}
+
 	// Connect to node's cache
 	emit AddedNode(node);
+}
+
+void ProjectCopier::SyncFootageProxySettings(Footage *source)
+{
+	Footage *copy = GetCopy(source);
+	if (!copy) {
+		return;
+	}
+
+	copy->SetProxy(source->proxy_path(), source->proxy_state(),
+				   source->proxy_video_stream_index(),
+				   source->proxy_preset_version(), source->proxy_enabled());
+
+	if (Project *cp = copy->project()) {
+		cp->set_modified(true);
+	}
 }
 
 void ProjectCopier::QueueNodeAdd(Node *node)
