@@ -1686,7 +1686,8 @@ void NodeView::ShowSelectedNodeInParamEditor()
 		if (PanelWidget *panel = PanelManager::instance()->GetPanelWithName(
 									QStringLiteral("ParamPanel"))) {
 			panel->show();
-			panel->raise();
+			panel->setAsCurrentTab();
+			panel->activateWindow();
 			panel->setFocus(Qt::OtherFocusReason);
 		}
 	}
