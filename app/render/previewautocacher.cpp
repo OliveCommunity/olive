@@ -687,7 +687,10 @@ RenderTicketWatcher *PreviewAutoCacher::RenderFrame(Node *node,
 
 		rvp.AddCache(frame_cache);
 	} else {
-		rvp.force_format = PixelFormat::F32;
+		// Preview/display frames are rendered at reduced precision to cut the
+		// GPU->CPU readback and IPC transfer bandwidth in half. The internal
+		// render pipeline stays F32/ACEScg; only the final preview copy is F16.
+		rvp.force_format = PixelFormat::F16;
 		rvp.force_channel_count = VideoParams::kRGBAChannelCount;
 	}
 
