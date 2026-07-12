@@ -553,6 +553,8 @@ bool Footage::LoadCustom(QXmlStreamReader *reader, SerializedData *data)
 			const QString path = reader->readElementText();
 			if (!path.isEmpty()) {
 				SetProxy(path, state, stream, preset_version, enabled);
+			} else if (enabled) {
+				set_proxy_enabled(true);
 			}
 		} else if (reader->name() == QStringLiteral("sourcestarttime")) {
 			QString source;
@@ -593,7 +595,7 @@ void Footage::SaveCustom(QXmlStreamWriter *writer) const
 	writer->writeTextElement(QStringLiteral("timestamp"),
 							 QString::number(this->timestamp()));
 
-	if (!proxy_path_.isEmpty()) {
+	if (!proxy_path_.isEmpty() || proxy_enabled_) {
 		writer->writeStartElement(QStringLiteral("proxy"));
 		writer->writeAttribute(QStringLiteral("enabled"),
 							   proxy_enabled_ ? QStringLiteral("1")

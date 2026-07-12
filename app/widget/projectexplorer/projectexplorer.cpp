@@ -35,7 +35,7 @@
 #include "dialog/footageproperties/footageproperties.h"
 #include "dialog/sequence/sequence.h"
 #include "projectexplorerundo.h"
-#include "task/precache/precachetask.h"
+#include "codec/proxymanager.h"
 #include "task/taskmanager.h"
 #include "widget/menu/menu.h"
 #include "widget/menu/menushared.h"
@@ -46,6 +46,22 @@
 
 namespace olive
 {
+
+namespace {
+QVector<Footage *> GetSelectedProxyFootage(const QVector<Node *> &items)
+{
+	QVector<Footage *> footage;
+	for (Node *node : items) {
+		Footage *candidate = dynamic_cast<Footage *>(node);
+		if (!candidate || !candidate->GetFirstEnabledVideoStream().is_valid() ||
+			footage.contains(candidate)) {
+			continue;
+		}
+		footage.append(candidate);
+	}
+	return footage;
+}
+}
 
 ProjectExplorer::ProjectExplorer(QWidget *parent)
 	: QWidget(parent)
@@ -412,26 +428,49 @@ void ProjectExplorer::ShowContextMenu()
 		}
 
 		if (all_items_are_footage && all_items_have_video_streams) {
-			Menu *proxy_menu = new Menu(tr("Pre-Cache"), &menu);
+			const QVector<Footage *> proxy_footage =
+				GetSelectedProxyFootage(context_menu_items_);
+
+			Menu *proxy_menu = new Menu(tr("Proxy"), &menu);
 			menu.addMenu(proxy_menu);
 
-			QVector<Sequence *> sequences =
-				project()->root()->ListChildrenOfType<Sequence>();
+			QAction *generate_proxy =
+				proxy_menu->addAction(tr("Generate Proxy"));
+			generate_proxy->setEnabled(!proxy_footage.isEmpty());
+			connect(generate_proxy, &QAction::triggered, this,
+					&ProjectExplorer::GenerateProxiesForSelectedFootage);
 
-			if (sequences.isEmpty()) {
-				QAction *a =
-					proxy_menu->addAction(tr("No sequences exist in project"));
-				a->setEnabled(false);
-			} else {
-				foreach (Sequence *i, sequences) {
-					QAction *a = proxy_menu->addAction(
-						tr("For \"%1\"").arg(i->GetLabel()));
-					a->setData(QtUtils::PtrToValue(i));
-				}
+			QAction *use_proxy = proxy_menu->addAction(tr("Use Proxy"));
+			use_proxy->setCheckable(true);
+			use_proxy->setEnabled(!proxy_footage.isEmpty());
+			use_proxy->setChecked(
+				!proxy_footage.isEmpty() &&
+				std::all_of(proxy_footage.cbegin(), proxy_footage.cend(),
+							[](const Footage *footage) {
+								return footage->proxy_enabled();
+							}));
+			connect(use_proxy, &QAction::triggered, this,
+					&ProjectExplorer::SetSelectedFootageProxyEnabled);
 
-				connect(proxy_menu, &Menu::triggered, this,
-						&ProjectExplorer::ContextMenuStartProxy);
-			}
+			QAction *reveal_proxy =
+				proxy_menu->addAction(tr("Reveal Proxy"));
+			reveal_proxy->setEnabled(std::any_of(
+				proxy_footage.cbegin(), proxy_footage.cend(),
+				[](const Footage *footage) {
+					return !footage->proxy_path().isEmpty();
+				}));
+			connect(reveal_proxy, &QAction::triggered, this,
+					&ProjectExplorer::RevealProxyForSelectedFootage);
+
+			QAction *delete_proxy =
+				proxy_menu->addAction(tr("Delete Proxy"));
+			delete_proxy->setEnabled(std::any_of(
+				proxy_footage.cbegin(), proxy_footage.cend(),
+				[](const Footage *footage) {
+					return !footage->proxy_path().isEmpty();
+				}));
+			connect(delete_proxy, &QAction::triggered, this,
+					&ProjectExplorer::DeleteProxiesForSelectedFootage);
 		}
 
 		Q_UNUSED(all_items_are_footage_or_sequence)
@@ -551,25 +590,105 @@ void ProjectExplorer::OpenContextMenuItemInNewWindow()
 		static_cast<Folder *>(context_menu_items_.first()), true);
 }
 
-void ProjectExplorer::ContextMenuStartProxy(QAction *a)
+void ProjectExplorer::GenerateProxiesForSelectedFootage()
 {
-	Sequence *sequence = QtUtils::ValueToPtr<Sequence>(a->data());
+	if (!ProxyManager::instance() || !project()) {
+		qWarning() << "GenerateProxiesForSelectedFootage: ProxyManager or project unavailable";
+		return;
+	}
 
-	// To get here, the `context_menu_items_` must be all kFootage
-	foreach (Node *item, context_menu_items_) {
-		Footage *f = static_cast<Footage *>(item);
-
-		int sz = f->InputArraySize(Footage::kVideoParamsInput);
-
-		for (int j = 0; j < sz; j++) {
-			VideoParams vp = f->GetVideoParams(j);
-
-			if (vp.enabled()) {
-				// Start a background task for proxying
-				PreCacheTask *proxy_task = new PreCacheTask(f, j, sequence);
-				TaskManager::instance()->AddTask(proxy_task);
-			}
+	const QVector<Footage *> footage =
+		GetSelectedProxyFootage(context_menu_items_);
+	qDebug() << "GenerateProxiesForSelectedFootage: starting proxy generation for"
+			   << footage.size() << "footage item(s)";
+	for (Footage *item : footage) {
+		const VideoParams video = item->GetFirstEnabledVideoStream();
+		if (!video.is_valid()) {
+			qWarning() << "GenerateProxiesForSelectedFootage: skipping item with no valid video stream"
+						   << item->filename();
+			continue;
 		}
+
+		ProxyManager::ProxyParams params;
+		params.width = OLIVE_CONFIG("ProxyWidth").value<int>();
+		params.height = OLIVE_CONFIG("ProxyHeight").value<int>();
+		params.crf = OLIVE_CONFIG("ProxyCRF").value<int>();
+		params.preset = OLIVE_CONFIG("ProxyPreset").toString();
+		const ProxyManager::Proxy proxy =
+			ProxyManager::instance()->GetOrStartProxy(
+				item->project()->cache_path(), item->filename(),
+				video.stream_index(), params);
+		qDebug() << "GenerateProxiesForSelectedFootage: proxy state="
+				   << ProxyManager::ProxyStateToString(proxy.state)
+				   << "file=" << proxy.filename
+				   << "cache=" << item->project()->cache_path();
+		item->SetProxy(proxy.filename, proxy.state, video.stream_index(),
+					   params.version, true);
+		item->InvalidateAll(Footage::kFilenameInput);
+	}
+}
+
+void ProjectExplorer::SetSelectedFootageProxyEnabled(bool enabled)
+{
+	const QVector<Footage *> footage =
+		GetSelectedProxyFootage(context_menu_items_);
+	qDebug() << "ProjectExplorer::SetSelectedFootageProxyEnabled:" << enabled
+			   << "footage count=" << footage.size();
+	for (Footage *item : footage) {
+		if (item->proxy_path().isEmpty()) {
+			qDebug() << "  skipping item with empty proxy path"
+						   << item->filename();
+			continue;
+		}
+
+		item->set_proxy_enabled(enabled);
+		item->InvalidateAll(Footage::kFilenameInput);
+	}
+}
+
+void ProjectExplorer::RevealProxyForSelectedFootage()
+{
+	const QVector<Footage *> footage =
+		GetSelectedProxyFootage(context_menu_items_);
+	for (Footage *item : footage) {
+		if (item->proxy_path().isEmpty()) {
+			continue;
+		}
+
+#if defined(Q_OS_WINDOWS)
+		QStringList args;
+		args << "/select," << QDir::toNativeSeparators(item->proxy_path());
+		QProcess::startDetached(QStringLiteral("explorer"), args);
+#elif defined(Q_OS_MAC)
+		QStringList args;
+		args << "-e";
+		args << "tell application \"Finder\"";
+		args << "-e";
+		args << "activate";
+		args << "-e";
+		args << "select POSIX file \"" + item->proxy_path() + "\"";
+		args << "-e";
+		args << "end tell";
+		QProcess::startDetached(QStringLiteral("osascript"), args);
+#else
+		QDesktopServices::openUrl(QUrl::fromLocalFile(
+			QFileInfo(item->proxy_path()).dir().absolutePath()));
+#endif
+	}
+}
+
+void ProjectExplorer::DeleteProxiesForSelectedFootage()
+{
+	const QVector<Footage *> footage =
+		GetSelectedProxyFootage(context_menu_items_);
+	for (Footage *item : footage) {
+		if (item->proxy_path().isEmpty()) {
+			continue;
+		}
+
+		QFile::remove(item->proxy_path());
+		item->ClearProxy();
+		item->InvalidateAll(Footage::kFilenameInput);
 	}
 }
 

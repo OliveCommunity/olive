@@ -563,72 +563,77 @@ Length: %4</source>
 <context>
     <name>VideoParams</name>
     <message>
-        <location filename="../render/videoparams.cpp" line="230"/>
+        <location filename="../render/videoparams.cpp" line="236"/>
         <source>Full</source>
         <translation type="unfinished">完整</translation>
     </message>
     <message>
-        <location filename="../render/videoparams.cpp" line="232"/>
+        <location filename="../render/videoparams.cpp" line="238"/>
         <source>1/%1</source>
         <translation type="unfinished">1/%1</translation>
     </message>
     <message>
-        <location filename="../render/videoparams.cpp" line="240"/>
+        <location filename="../render/videoparams.cpp" line="246"/>
         <source>8-bit</source>
         <translation>8 位元</translation>
     </message>
     <message>
-        <location filename="../render/videoparams.cpp" line="242"/>
+        <location filename="../render/videoparams.cpp" line="248"/>
+        <source>10-bit Packed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../render/videoparams.cpp" line="250"/>
         <source>16-bit Integer</source>
         <translation>16 位元整數</translation>
     </message>
     <message>
-        <location filename="../render/videoparams.cpp" line="244"/>
+        <location filename="../render/videoparams.cpp" line="252"/>
         <source>Half-Float (16-bit)</source>
         <translation>半浮點數（16 位元）</translation>
     </message>
     <message>
-        <location filename="../render/videoparams.cpp" line="247"/>
+        <location filename="../render/videoparams.cpp" line="255"/>
         <source>Full-Float (32-bit)</source>
         <translation>全浮點數（32 位元）</translation>
     </message>
     <message>
-        <location filename="../render/videoparams.cpp" line="254"/>
+        <location filename="../render/videoparams.cpp" line="262"/>
         <source>Unknown (0x%1)</source>
         <translation>未知 (0x%1)</translation>
     </message>
     <message>
-        <location filename="../render/videoparams.cpp" line="322"/>
+        <location filename="../render/videoparams.cpp" line="330"/>
         <source>%1 FPS</source>
         <translation>%1 FPS</translation>
     </message>
     <message>
-        <location filename="../render/videoparams.cpp" line="329"/>
+        <location filename="../render/videoparams.cpp" line="337"/>
         <source>Square Pixels (%1)</source>
         <translation type="unfinished">Square Pixels (%1)</translation>
     </message>
     <message>
-        <location filename="../render/videoparams.cpp" line="330"/>
+        <location filename="../render/videoparams.cpp" line="338"/>
         <source>NTSC Standard (%1)</source>
         <translation>NTSC 標準 (%1)</translation>
     </message>
     <message>
-        <location filename="../render/videoparams.cpp" line="331"/>
+        <location filename="../render/videoparams.cpp" line="339"/>
         <source>NTSC Widescreen (%1)</source>
         <translation>NTSC 寬螢幕 (%1)</translation>
     </message>
     <message>
-        <location filename="../render/videoparams.cpp" line="332"/>
+        <location filename="../render/videoparams.cpp" line="340"/>
         <source>PAL Standard (%1)</source>
         <translation>PAL 標準 (%1)</translation>
     </message>
     <message>
-        <location filename="../render/videoparams.cpp" line="333"/>
+        <location filename="../render/videoparams.cpp" line="341"/>
         <source>PAL Widescreen (%1)</source>
         <translation>PAL 寬螢幕 (%1)</translation>
     </message>
     <message>
-        <location filename="../render/videoparams.cpp" line="334"/>
+        <location filename="../render/videoparams.cpp" line="342"/>
         <source>HD Anamorphic 1080 (%1)</source>
         <translation type="unfinished">HD Anamorphic 1080 (%1)</translation>
     </message>
@@ -672,57 +677,57 @@ Length: %4</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="189"/>
+        <location filename="../main.cpp" line="194"/>
         <source>Show this help text</source>
         <translation>顯示此說明文字</translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="193"/>
+        <location filename="../main.cpp" line="198"/>
         <source>Show application version</source>
         <translation>顯示應用程式版本</translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="197"/>
+        <location filename="../main.cpp" line="202"/>
         <source>Start in full-screen mode</source>
         <translation>以全螢幕模式啟動</translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="201"/>
+        <location filename="../main.cpp" line="206"/>
         <source>Export only (No GUI)</source>
         <translation>僅匯出 (無介面)</translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="205"/>
+        <location filename="../main.cpp" line="210"/>
         <source>Override language with file</source>
         <translation type="unfinished">Override language with file</translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="206"/>
+        <location filename="../main.cpp" line="211"/>
         <source>qm-file</source>
         <translation>qm-file</translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="210"/>
+        <location filename="../main.cpp" line="215"/>
         <source>Decompress project file (No GUI)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="216"/>
+        <location filename="../main.cpp" line="221"/>
         <source>Launch with debug console</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="221"/>
+        <location filename="../main.cpp" line="226"/>
         <source>Project to open on startup</source>
         <translation>啟動時要開啟的專案</translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="225"/>
+        <location filename="../main.cpp" line="230"/>
         <source>Don&apos;t load plugins</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../main.cpp" line="384"/>
+        <location filename="../main.cpp" line="389"/>
         <source>Your computer&apos;s graphics driver does not appear to support framebuffers. This most likely means either your graphics driver is not up-to-date or your graphics card is too old to run Oak Video Editor.
 
 Please update your graphics driver to the latest version and try again.
@@ -3244,59 +3249,59 @@ To remedy this, please do one of the following:
 <context>
     <name>olive::Footage</name>
     <message>
-        <location filename="../node/project/footage/footage.cpp" line="81"/>
+        <location filename="../node/project/footage/footage.cpp" line="82"/>
         <source>Filename</source>
         <translation type="unfinished">檔名</translation>
     </message>
     <message>
-        <location filename="../node/project/footage/footage.cpp" line="259"/>
+        <location filename="../node/project/footage/footage.cpp" line="278"/>
         <source>%1: Image - %2x%3</source>
         <translation type="unfinished">%1：圖片 - %2x%3</translation>
     </message>
     <message>
-        <location filename="../node/project/footage/footage.cpp" line="264"/>
+        <location filename="../node/project/footage/footage.cpp" line="283"/>
         <source>%1: Video - %2x%3</source>
         <translation type="unfinished">%1：影片 - %2x%3</translation>
     </message>
     <message numerus="yes">
-        <location filename="../node/project/footage/footage.cpp" line="273"/>
+        <location filename="../node/project/footage/footage.cpp" line="292"/>
         <source>%1: Audio - %n Channel(s), %2Hz</source>
         <translation type="unfinished">
             <numerusform></numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../node/project/footage/footage.cpp" line="281"/>
+        <location filename="../node/project/footage/footage.cpp" line="300"/>
         <source>%1: Subtitle</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../node/project/footage/footage.cpp" line="351"/>
+        <location filename="../node/project/footage/footage.cpp" line="370"/>
         <source>Video</source>
         <translation type="unfinished">視訊</translation>
     </message>
     <message>
-        <location filename="../node/project/footage/footage.cpp" line="353"/>
+        <location filename="../node/project/footage/footage.cpp" line="372"/>
         <source>Audio</source>
         <translation type="unfinished">音訊</translation>
     </message>
     <message>
-        <location filename="../node/project/footage/footage.cpp" line="355"/>
+        <location filename="../node/project/footage/footage.cpp" line="374"/>
         <source>Subtitle</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../node/project/footage/footage.cpp" line="361"/>
+        <location filename="../node/project/footage/footage.cpp" line="380"/>
         <source>Unknown</source>
         <translation type="unfinished">未知</translation>
     </message>
     <message>
-        <location filename="../node/project/footage/footage.cpp" line="463"/>
+        <location filename="../node/project/footage/footage.cpp" line="482"/>
         <source>Filename: %1</source>
         <translation type="unfinished">檔名：%1</translation>
     </message>
     <message>
-        <location filename="../node/project/footage/footage.cpp" line="497"/>
+        <location filename="../node/project/footage/footage.cpp" line="516"/>
         <source>Invalid</source>
         <translation type="unfinished"></translation>
     </message>
@@ -6738,12 +6743,12 @@ This is equivalent to multiplying a video by a number between 0.0 and 1.0.</sour
 <context>
     <name>olive::ProjectExplorer</name>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="345"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="361"/>
         <source>&amp;New</source>
         <translation>新增 (&amp;N)</translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="350"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="366"/>
         <source>&amp;Import...</source>
         <translation>匯入... (&amp;I)</translation>
     </message>
@@ -6752,12 +6757,12 @@ This is equivalent to multiplying a video by a number between 0.0 and 1.0.</sour
         <translation type="vanished">專案屬性... (&amp;P)</translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="170"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="186"/>
         <source>Confirm Item Deletion</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="183"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="199"/>
         <source>The item &quot;%1&quot; is currently connected to the following nodes:
 
 %2
@@ -6766,88 +6771,110 @@ Are you sure you wish to delete this footage?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="256"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="272"/>
         <source>%1 (%2)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="360"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="376"/>
         <source>Open in New Tab</source>
         <translation>在新分頁開啟</translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="365"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="381"/>
         <source>Open in New Window</source>
         <translation>在新視窗開啟</translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="373"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="389"/>
         <source>Reveal in Explorer</source>
         <translation>在檔案總管中顯示</translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="375"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="391"/>
         <source>Reveal in Finder</source>
         <translation>在 Finder 中顯示</translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="377"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="393"/>
         <source>Reveal in File Manager</source>
         <translation>在檔案總管中顯示</translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="384"/>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="513"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="400"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="552"/>
         <source>Replace Footage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="415"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="434"/>
+        <source>Proxy</source>
+        <translation>代理</translation>
+    </message>
+    <message>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="438"/>
+        <source>Generate Proxy</source>
+        <translation>生成代理</translation>
+    </message>
+    <message>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="443"/>
+        <source>Use Proxy</source>
+        <translation>使用代理</translation>
+    </message>
+    <message>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="456"/>
+        <source>Reveal Proxy</source>
+        <translation>顯示代理</translation>
+    </message>
+    <message>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="466"/>
+        <source>Delete Proxy</source>
+        <translation>刪除代理</translation>
+    </message>
+    <message>
         <source>Pre-Cache</source>
-        <translation>預先快取</translation>
+        <translation type="vanished">預先快取</translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="423"/>
         <source>No sequences exist in project</source>
-        <translation>專案中沒有序列</translation>
+        <translation type="vanished">專案中沒有序列</translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="428"/>
         <source>For &quot;%1&quot;</source>
-        <translation type="unfinished">For &quot;%1&quot;</translation>
+        <translation type="obsolete">For &quot;%1&quot;</translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="442"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="481"/>
         <source>Rename</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="447"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="486"/>
         <source>Delete</source>
         <translation type="unfinished">刪除</translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="454"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="493"/>
         <source>P&amp;roperties</source>
         <translation>屬性 (&amp;R)</translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="518"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="557"/>
         <source>Unsupported media</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="519"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="558"/>
         <source>This file type is not allowed by the current media type filter.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="538"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="577"/>
         <source>Replaced Footage</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="723"/>
+        <location filename="../widget/projectexplorer/projectexplorer.cpp" line="842"/>
         <source>Deleted %1 Item(s)</source>
         <translation type="unfinished"></translation>
     </message>
@@ -8040,7 +8067,7 @@ Do you wish to continue?</source>
 <context>
     <name>olive::TaskDialog</name>
     <message>
-        <location filename="../dialog/task/task.cpp" line="101"/>
+        <location filename="../dialog/task/task.cpp" line="107"/>
         <source>Task Failed</source>
         <translation>工作失敗</translation>
     </message>
@@ -8604,195 +8631,195 @@ Duration: %3</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1297"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1301"/>
         <source>Recorded Audio Clip</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1387"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1391"/>
         <source>Nested Sequence %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1441"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1445"/>
         <source>Nested Clips</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1735"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1739"/>
         <source>Synchronize by Source Time</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1742"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1746"/>
         <source>Synchronize by Waveform</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1752"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1756"/>
         <source>Cache</source>
         <translation type="unfinished">快取</translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1756"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1760"/>
         <source>Auto-Cache</source>
         <translation type="unfinished">自動快取</translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1764"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1768"/>
         <source>Cache All</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1768"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1772"/>
         <source>Cache In/Out</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1772"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1776"/>
         <source>Discard</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1780"/>
-        <source>Proxy</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
         <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1784"/>
+        <source>Proxy</source>
+        <translation>代理</translation>
+    </message>
+    <message>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1788"/>
         <source>Generate Proxy</source>
-        <translation type="unfinished"></translation>
+        <translation>生成代理</translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1789"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1793"/>
         <source>Use Proxy</source>
-        <translation type="unfinished"></translation>
+        <translation>使用代理</translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1802"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1806"/>
         <source>Reveal Proxy</source>
-        <translation type="unfinished"></translation>
+        <translation>顯示代理</translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1812"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1816"/>
         <source>Delete Proxy</source>
-        <translation type="unfinished"></translation>
+        <translation>刪除代理</translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1824"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1828"/>
         <source>Reveal in Footage Viewer</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1833"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1837"/>
         <source>Reveal in Project</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1841"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1845"/>
         <source>Multi-Cam</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1863"/>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1904"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1867"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1908"/>
         <source>Properties</source>
         <translation>屬性</translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1870"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1874"/>
         <source>Use Audio Time Units</source>
         <translation type="unfinished">Use Audio Time Units</translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1877"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1881"/>
         <source>Show Thumbnails</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1881"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1885"/>
         <source>Disabled</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1884"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1888"/>
         <source>Only At In Points</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1887"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1891"/>
         <source>Enabled</source>
         <translation type="unfinished">已啟用</translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1894"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="1898"/>
         <source>Show Waveforms</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2030"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2034"/>
         <source>Renamed %1 Clip(s)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2040"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2044"/>
         <source>Created Subtitle Track</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2058"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2062"/>
         <source>Enabled Auto-Caching On %1 Clip(s)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2060"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2064"/>
         <source>Disabled Auto-Caching On %1 Clip(s)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2098"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2102"/>
         <source>Discard Cache</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2099"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2103"/>
         <source>This will discard all cache for this clip. If the clip has auto-cache enabled, it will be recached immediately. This cannot be undone.
 
 Do you wish to continue?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2170"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2174"/>
         <source>Multi-Cam Enabled On %1 Clip(s)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2171"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2175"/>
         <source>Multi-Cam Disabled On %1 Clip(s)</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2236"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2240"/>
         <source>Nudged Clips</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2299"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2303"/>
         <source>Moved Clip(s) To Point</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2494"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2498"/>
         <source>Rippled Clip(s) To Point</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2536"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2540"/>
         <source>Cut Clip(s) To Point</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2612"/>
+        <location filename="../widget/timelinewidget/timelinewidget.cpp" line="2616"/>
         <source>Pasted %1 Clip(s)</source>
         <translation type="unfinished"></translation>
     </message>
@@ -9452,141 +9479,141 @@ Do you wish to continue?</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="933"/>
+        <location filename="../widget/viewer/viewer.cpp" line="939"/>
         <source>Audio scrubbing failed: %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1365"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1377"/>
         <source>Audio Error</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1366"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1378"/>
         <source>Failed to start audio: %1
 
 Please check your audio preferences and try again.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1431"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1444"/>
         <source>Changed Playback Resolution</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1448"/>
-        <location filename="../widget/viewer/viewer.cpp" line="1689"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1461"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1702"/>
         <source>Safe Margins</source>
         <translation type="unfinished">Safe Margins</translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1602"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1615"/>
         <source>Zoom</source>
         <translation>縮放</translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1605"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1618"/>
         <source>Fit</source>
         <translation type="unfinished">Fit</translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1608"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1621"/>
         <source>%1%</source>
         <translation>%1%</translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1617"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1630"/>
         <source>Full Screen</source>
         <translation>全螢幕</translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1624"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1637"/>
         <source>Screen %1: %2x%3</source>
         <translation>畫面 %1：%2x%3</translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1642"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1655"/>
         <source>Playback Resolution</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1659"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1672"/>
         <source>Deinterlace</source>
         <translation type="unfinished">Deinterlace</translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1722"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1735"/>
         <source>Stop Playback On Last Frame</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1733"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1746"/>
         <source>Audio Waveform</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1736"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1749"/>
         <source>Automatically Show/Hide</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1738"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1751"/>
         <source>Show Waveform Only</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1740"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1753"/>
         <source>Show Both Viewer And Waveform</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1748"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1761"/>
         <source>Show FPS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1756"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1769"/>
         <source>Subtitles</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1760"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1773"/>
         <source>Show Subtitles</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1769"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1782"/>
         <source>Subtitle Properties</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1774"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1787"/>
         <source>Use Anti-aliasing</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1786"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1799"/>
         <source>Save Frame As Image</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1809"/>
-        <location filename="../widget/viewer/viewer.cpp" line="1849"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1822"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1862"/>
         <source>Audio Recording</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1810"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1823"/>
         <source>Project must be saved before you can record audio.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1816"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1829"/>
         <source>audio</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1850"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1863"/>
         <source>Failed to start audio recording: %1</source>
         <translation type="unfinished"></translation>
     </message>
@@ -9615,17 +9642,17 @@ Please check your audio preferences and try again.</source>
         <translation type="vanished">快取序列 進入點/退出點</translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1692"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1705"/>
         <source>Off</source>
         <translation>關</translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1699"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1712"/>
         <source>On</source>
         <translation>開</translation>
     </message>
     <message>
-        <location filename="../widget/viewer/viewer.cpp" line="1708"/>
+        <location filename="../widget/viewer/viewer.cpp" line="1721"/>
         <source>Custom Aspect</source>
         <translation type="unfinished">Custom Aspect</translation>
     </message>

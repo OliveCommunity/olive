@@ -190,7 +190,13 @@ private slots:
 
 	void OpenContextMenuItemInNewWindow();
 
-	void ContextMenuStartProxy(QAction *a);
+	void GenerateProxiesForSelectedFootage();
+
+	void SetSelectedFootageProxyEnabled(bool enabled);
+
+	void RevealProxyForSelectedFootage();
+
+	void DeleteProxiesForSelectedFootage();
 
 	void ViewSelectionChanged();
 };
