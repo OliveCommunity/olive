@@ -188,8 +188,20 @@ void ManagedDisplayWidget::ColorConfigChanged()
 		return;
 	}
 
-	SetColorTransform(
-		color_manager_->GetCompliantColorSpace(color_transform_, false));
+	// When no explicit transform has been chosen, default to the config's
+	// display/view transform so the viewer shows a sensible image. Otherwise
+	// an empty transform falls back to the project's default input colorspace,
+	// which is usually a scene-referred space (e.g. ACEScg / Linear) and makes
+	// the picture look raw/wrong on a monitor.
+	if (color_transform_.output().isEmpty()) {
+		QString display = color_manager_->GetDefaultDisplay();
+		QString view = color_manager_->GetDefaultView(display);
+		SetColorTransform(color_manager_->GetCompliantColorSpace(
+			ColorTransform(display, view, QString()), true));
+	} else {
+		SetColorTransform(
+			color_manager_->GetCompliantColorSpace(color_transform_, false));
+	}
 }
 
 ColorProcessorPtr ManagedDisplayWidget::color_service()
