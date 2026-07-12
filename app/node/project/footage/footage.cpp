@@ -22,6 +22,7 @@
 #include "footage.h"
 
 #include <QApplication>
+#include <QDebug>
 #include <QDir>
 #include <QStandardPaths>
 
@@ -229,12 +230,24 @@ void Footage::SetSourceStartTime(const rational &time, const QString &source)
 	has_source_start_time_ = true;
 }
 
+void Footage::set_proxy_enabled(bool enabled)
+{
+	if (proxy_enabled_ != enabled) {
+		qDebug() << "Footage::set_proxy_enabled:" << filename() << enabled;
+		proxy_enabled_ = enabled;
+		emit ProxySettingsChanged();
+	}
+}
+
 void Footage::SetProxy(const QString &path,
 					   ProxyManager::ProxyState state,
 					   int video_stream_index,
 					   int preset_version,
 					   bool enabled)
 {
+	qDebug() << "Footage::SetProxy:" << filename() << "enabled=" << enabled
+			 << "state=" << ProxyManager::ProxyStateToString(state)
+			 << "path=" << path;
 	proxy_path_ = path;
 	proxy_state_ = state;
 	proxy_video_stream_index_ = video_stream_index;

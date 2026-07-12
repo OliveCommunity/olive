@@ -1216,8 +1216,12 @@ void TimelineWidget::GenerateProxiesForSelectedClips()
 void TimelineWidget::SetSelectedClipsProxyEnabled(bool enabled)
 {
 	const QVector<Footage *> footage = GetSelectedProxyFootage(selected_blocks_);
+	qDebug() << "TimelineWidget::SetSelectedClipsProxyEnabled:" << enabled
+			 << "footage count=" << footage.size();
 	for (Footage *item : footage) {
 		if (item->proxy_path().isEmpty()) {
+			qDebug() << "  skipping item with empty proxy path"
+					 << item->filename();
 			continue;
 		}
 

@@ -178,13 +178,7 @@ public:
 		return proxy_enabled_;
 	}
 
-	void set_proxy_enabled(bool enabled)
-	{
-		if (proxy_enabled_ != enabled) {
-			proxy_enabled_ = enabled;
-			emit ProxySettingsChanged();
-		}
-	}
+	void set_proxy_enabled(bool enabled);
 
 	const QString &proxy_path() const
 	{
