@@ -616,11 +616,18 @@ void NodeView::mouseReleaseEvent(QMouseEvent *event)
 		}
 	}
 
+	QList<QPointer<NodeViewItem>> dragged_items;
 	for (auto it = dragging_items_.cbegin(); it != dragging_items_.cend();
 		 it++) {
-		NodeViewItem *i = it.key();
+		dragged_items.append(it.key());
+	}
+
+	foreach (NodeViewItem *i, dragged_items) {
+		if (!i) {
+			continue;
+		}
 		QPointF current_pos = i->GetNodePosition();
-		if (it.value() != current_pos) {
+		if (dragging_items_.value(i) != current_pos) {
 			command->add_child(new NodeSetPositionCommand(
 				i->GetNode(), i->GetContext(), current_pos));
 		}
@@ -831,7 +838,19 @@ void NodeView::ShowContextMenu(const QPoint &pos)
 
 	QVector<NodeViewItem *> selected = scene_.GetSelectedItems();
 
-	if (itemAt(pos) && !selected.isEmpty()) {
+	NodeViewItem *item_under_cursor =
+		dynamic_cast<NodeViewItem *>(itemAt(pos));
+
+	if (item_under_cursor && !selected.contains(item_under_cursor)) {
+		// Right-clicked a node that isn't part of the current selection,
+		// make the clicked node the sole selection so context-menu actions
+		// operate on it.
+		scene_.clearSelection();
+		item_under_cursor->setSelected(true);
+		selected = scene_.GetSelectedItems();
+	}
+
+	if (item_under_cursor && !selected.isEmpty()) {
 		// Grouping
 		if (selected.size() == 1 &&
 			dynamic_cast<NodeGroup *>(selected.first()->GetNode())) {
@@ -1645,12 +1664,21 @@ void NodeView::ShowNodeProperties()
 
 void NodeView::ShowSelectedNodeInParamEditor()
 {
-	if (selected_nodes_.isEmpty()) {
+	QVector<NodeViewItem *> selected = scene_.GetSelectedItems();
+	if (selected.isEmpty()) {
 		return;
 	}
 
-	NodeViewItem *item = scene_.GetSelectedItems().first();
-	if (!item || !item->GetNode()) {
+	QVector<Node::ContextPair> selection_with_contexts;
+	selection_with_contexts.reserve(selected.size());
+	foreach (NodeViewItem *item, selected) {
+		if (item && item->GetNode()) {
+			selection_with_contexts.append(Node::ContextPair{
+				item->GetNode(), item->GetContext()});
+		}
+	}
+
+	if (selection_with_contexts.isEmpty()) {
 		return;
 	}
 
@@ -1663,8 +1691,7 @@ void NodeView::ShowSelectedNodeInParamEditor()
 		}
 	}
 
-	emit NodeSelectionChangedWithContexts(
-		{ { item->GetNode(), item->GetContext() } });
+	emit NodeSelectionChangedWithContexts(selection_with_contexts);
 }
 
 void NodeView::LabelSelectedNodes()
