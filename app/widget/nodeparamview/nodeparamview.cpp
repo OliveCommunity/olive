@@ -509,6 +509,7 @@ void NodeParamView::SetSelectedNodes(const QVector<Node::ContextPair> &nodes,
 									 bool emit_signal)
 {
 	QVector<NodeParamViewItem *> items;
+	NodeParamViewContext *scrolled_ctx = nullptr;
 
 	foreach (const Node::ContextPair &n, nodes) {
 		for (auto it = context_items_.cbegin(); it != context_items_.cend();
@@ -519,6 +520,9 @@ void NodeParamView::SetSelectedNodes(const QVector<Node::ContextPair> &nodes,
 
 			if (item) {
 				items.append(item);
+				if (!scrolled_ctx) {
+					scrolled_ctx = ctx;
+				}
 			}
 		}
 	}
@@ -533,6 +537,12 @@ void NodeParamView::SetSelectedNodes(const QVector<Node::ContextPair> &nodes,
 			param_scroll_area_, scrolled_to->geometry().topLeft());
 
 		param_scroll_area_->verticalScrollBar()->setValue(viewport_pos.y());
+
+		// Make sure the dock/tab containing this node is visible
+		if (scrolled_ctx) {
+			scrolled_ctx->SetExpanded(true);
+			scrolled_ctx->raise();
+		}
 	}
 }
 
