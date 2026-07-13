@@ -32,6 +32,11 @@ Oak 视频编辑器是 Olive 的重命名分支，目标是打造更完善、更
 - 在《工程文件参考》了解项目数据结构。
 - 按《测试计划》确保发布质量。
 
+## 下载
+
+[v0.4.0](https://github.com/OakVideoEditorCommunity/oak/releases/tag/v0.4.0-alpha)
+
+
 ## 路线图
 
 | 版本 | 主题 | 核心交付物 | 边界说明 |
