@@ -51,8 +51,8 @@ TEST(Shaders, ResourcesAvailable)
 
 	for (const QString &path : shader_paths) {
 		QFile file(path);
-		ASSERT_TRUE(file.exists()) << "Missing shader resource: "
-								   << path.toStdString();
+		ASSERT_TRUE(file.exists())
+			<< "Missing shader resource: " << path.toStdString();
 		ASSERT_TRUE(file.open(QIODevice::ReadOnly))
 			<< "Failed to open shader resource: " << path.toStdString();
 		const QByteArray contents = file.readAll();

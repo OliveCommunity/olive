@@ -13,8 +13,8 @@ TEST(AudioSynchronizer, PlacesCandidateBySourceStartTime)
 	candidate.has_source_start_time = true;
 
 	const olive::AudioSynchronizer::Placement placement =
-		olive::AudioSynchronizer::PlaceBySourceTime(
-			reference, candidate, olive::core::rational(10));
+		olive::AudioSynchronizer::PlaceBySourceTime(reference, candidate,
+													olive::core::rational(10));
 
 	ASSERT_TRUE(placement.valid);
 	EXPECT_EQ(placement.timeline_in, olive::core::rational(22));
@@ -33,8 +33,8 @@ TEST(AudioSynchronizer, AccountsForMediaInWhenPlacingBySourceTime)
 	candidate.has_source_start_time = true;
 
 	const olive::AudioSynchronizer::Placement placement =
-		olive::AudioSynchronizer::PlaceBySourceTime(
-			reference, candidate, olive::core::rational(20));
+		olive::AudioSynchronizer::PlaceBySourceTime(reference, candidate,
+													olive::core::rational(20));
 
 	ASSERT_TRUE(placement.valid);
 	EXPECT_EQ(placement.timeline_in, olive::core::rational(23));
@@ -49,8 +49,8 @@ TEST(AudioSynchronizer, RejectsMissingSourceStartTime)
 	olive::AudioSynchronizer::SourceClip candidate;
 
 	const olive::AudioSynchronizer::Placement placement =
-		olive::AudioSynchronizer::PlaceBySourceTime(
-			reference, candidate, olive::core::rational(10));
+		olive::AudioSynchronizer::PlaceBySourceTime(reference, candidate,
+													olive::core::rational(10));
 
 	EXPECT_FALSE(placement.valid);
 }

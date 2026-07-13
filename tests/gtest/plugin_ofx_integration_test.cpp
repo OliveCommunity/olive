@@ -15,7 +15,8 @@ extern "C" {
 #include "render/texture.h"
 #include "render/videoparams.h"
 
-namespace {
+namespace
+{
 
 olive::TexturePtr CreateSolidTexture(const olive::VideoParams &params)
 {

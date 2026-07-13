@@ -4,7 +4,5 @@
 
 TEST(PluginSupport, LoadPluginsEmptyPath)
 {
-	EXPECT_NO_THROW({
-		olive::plugin::loadPlugins(QString());
-	});
+	EXPECT_NO_THROW({ olive::plugin::loadPlugins(QString()); });
 }

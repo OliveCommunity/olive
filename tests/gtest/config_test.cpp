@@ -46,18 +46,18 @@ TEST(Config, GraphicsBackendStringConversion)
 			  olive::RenderManager::kVulkan);
 	EXPECT_EQ(olive::RenderManager::BackendFromString(QStringLiteral("dummy")),
 			  olive::RenderManager::kDummy);
-	EXPECT_EQ(olive::RenderManager::BackendFromString(
-				  QStringLiteral("multiprocess")),
-			  olive::RenderManager::kMultiProcess);
-	EXPECT_EQ(olive::RenderManager::BackendToString(
-				  olive::RenderManager::kOpenGL),
-			  QStringLiteral("opengl"));
-	EXPECT_EQ(olive::RenderManager::BackendToString(
-				  olive::RenderManager::kVulkan),
-			  QStringLiteral("vulkan"));
-	EXPECT_EQ(olive::RenderManager::BackendToString(
-				  olive::RenderManager::kDummy),
-			  QStringLiteral("dummy"));
+	EXPECT_EQ(
+		olive::RenderManager::BackendFromString(QStringLiteral("multiprocess")),
+		olive::RenderManager::kMultiProcess);
+	EXPECT_EQ(
+		olive::RenderManager::BackendToString(olive::RenderManager::kOpenGL),
+		QStringLiteral("opengl"));
+	EXPECT_EQ(
+		olive::RenderManager::BackendToString(olive::RenderManager::kVulkan),
+		QStringLiteral("vulkan"));
+	EXPECT_EQ(
+		olive::RenderManager::BackendToString(olive::RenderManager::kDummy),
+		QStringLiteral("dummy"));
 	EXPECT_EQ(olive::RenderManager::BackendToString(
 				  olive::RenderManager::kMultiProcess),
 			  QStringLiteral("multiprocess"));

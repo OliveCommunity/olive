@@ -9,7 +9,8 @@ extern "C" {
 #include <libavutil/channel_layout.h>
 }
 
-namespace {
+namespace
+{
 
 olive::core::AudioParams MakeMonoParams()
 {
@@ -46,13 +47,11 @@ TEST(AudioWaveformSync, ExtractsRmsEnvelope)
 
 TEST(AudioWaveformSync, EstimatesCandidateLag)
 {
-	const QVector<float> reference_values = {
-		0.0f, 0.0f, 0.8f, 0.8f, 0.1f, 0.1f, 0.6f, 0.6f, 0.0f, 0.0f
-	};
-	const QVector<float> candidate_values = {
-		0.0f, 0.0f, 0.0f, 0.0f, 0.8f, 0.8f, 0.1f,
-		0.1f, 0.6f, 0.6f, 0.0f, 0.0f
-	};
+	const QVector<float> reference_values = { 0.0f, 0.0f, 0.8f, 0.8f, 0.1f,
+											  0.1f, 0.6f, 0.6f, 0.0f, 0.0f };
+	const QVector<float> candidate_values = { 0.0f, 0.0f, 0.0f, 0.0f,
+											  0.8f, 0.8f, 0.1f, 0.1f,
+											  0.6f, 0.6f, 0.0f, 0.0f };
 
 	const olive::AudioWaveformSync::OffsetResult result =
 		olive::AudioWaveformSync::EstimateOffset(
@@ -65,13 +64,11 @@ TEST(AudioWaveformSync, EstimatesCandidateLag)
 
 TEST(AudioWaveformSync, EstimatesCandidateLead)
 {
-	const QVector<float> reference_values = {
-		0.0f, 0.0f, 0.0f, 0.0f, 0.9f, 0.9f, 0.3f,
-		0.3f, 0.7f, 0.7f, 0.0f, 0.0f
-	};
-	const QVector<float> candidate_values = {
-		0.9f, 0.9f, 0.3f, 0.3f, 0.7f, 0.7f, 0.0f, 0.0f
-	};
+	const QVector<float> reference_values = { 0.0f, 0.0f, 0.0f, 0.0f,
+											  0.9f, 0.9f, 0.3f, 0.3f,
+											  0.7f, 0.7f, 0.0f, 0.0f };
+	const QVector<float> candidate_values = { 0.9f, 0.9f, 0.3f, 0.3f,
+											  0.7f, 0.7f, 0.0f, 0.0f };
 
 	const olive::AudioWaveformSync::OffsetResult result =
 		olive::AudioWaveformSync::EstimateOffset(

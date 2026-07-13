@@ -24,7 +24,8 @@ extern "C" {
 using namespace olive;
 using namespace olive::core;
 
-namespace {
+namespace
+{
 
 AudioParams MakeMonoParams(int sample_rate)
 {
@@ -55,17 +56,16 @@ void WritePartialWaveform(AudioWaveformCache *cache, int sample_rate)
 	waveform.OverwriteSamples(buf, sample_rate, rational(1));
 
 	// Tell the cache that only the middle second is valid in a 3-second clip.
-	cache->WriteWaveform(TimeRange(1, 2),
-						 TimeRangeList({ TimeRange(1, 2) }),
+	cache->WriteWaveform(TimeRange(1, 2), TimeRangeList({ TimeRange(1, 2) }),
 						 &waveform);
 }
 
-}  // namespace
+} // namespace
 
 TEST(TimelineWaveformSync, ExtractEnvelopeUsesOnlyValidatedRanges)
 {
 	constexpr int kSampleRate = 48000;
-	constexpr size_t kWindowSamples = kSampleRate / 20;  // 50 ms windows
+	constexpr size_t kWindowSamples = kSampleRate / 20; // 50 ms windows
 
 	AudioWaveformCache cache;
 	WritePartialWaveform(&cache, kSampleRate);
@@ -76,8 +76,8 @@ TEST(TimelineWaveformSync, ExtractEnvelopeUsesOnlyValidatedRanges)
 	clip.sample_rate = kSampleRate;
 
 	const QVector<double> envelope =
-		TimelineWaveformSync::ExtractWaveformCacheEnvelope(
-			clip, kSampleRate, kWindowSamples);
+		TimelineWaveformSync::ExtractWaveformCacheEnvelope(clip, kSampleRate,
+														   kWindowSamples);
 
 	// 3 seconds at 20 windows per second == 60 windows.
 	EXPECT_EQ(envelope.size(), 60);
@@ -134,8 +134,7 @@ TEST(TimelineWaveformSync, EmptyCacheIsNotReady)
 	clip.set_length_and_media_out(rational(3));
 	clip.set_media_in(rational(0));
 
-	Node::ConnectEdge(
-		&footage, NodeInput(&clip, ClipBlock::kBufferIn));
+	Node::ConnectEdge(&footage, NodeInput(&clip, ClipBlock::kBufferIn));
 
 	WaveformSyncClip out;
 	EXPECT_FALSE(TimelineWaveformSync::GetWaveformSyncClip(&clip, &out));

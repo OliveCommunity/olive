@@ -15,29 +15,27 @@ TEST(RenderVideoParams, BytesPerChannelAndPixel)
 	EXPECT_EQ(olive::VideoParams::GetBytesPerChannel(
 				  olive::core::PixelFormat::INVALID),
 			  0);
-	EXPECT_EQ(olive::VideoParams::GetBytesPerChannel(
-				  olive::core::PixelFormat::U8),
-			  1);
-	EXPECT_EQ(olive::VideoParams::GetBytesPerChannel(
-				  olive::core::PixelFormat::U16),
-			  2);
-	EXPECT_EQ(olive::VideoParams::GetBytesPerChannel(
-				  olive::core::PixelFormat::F16),
-			  2);
-	EXPECT_EQ(olive::VideoParams::GetBytesPerChannel(
-				  olive::core::PixelFormat::F32),
-			  4);
-	EXPECT_EQ(olive::VideoParams::GetBytesPerPixel(
-				  olive::core::PixelFormat::U8, 4),
+	EXPECT_EQ(
+		olive::VideoParams::GetBytesPerChannel(olive::core::PixelFormat::U8),
+		1);
+	EXPECT_EQ(
+		olive::VideoParams::GetBytesPerChannel(olive::core::PixelFormat::U16),
+		2);
+	EXPECT_EQ(
+		olive::VideoParams::GetBytesPerChannel(olive::core::PixelFormat::F16),
+		2);
+	EXPECT_EQ(
+		olive::VideoParams::GetBytesPerChannel(olive::core::PixelFormat::F32),
+		4);
+	EXPECT_EQ(olive::VideoParams::GetBytesPerPixel(olive::core::PixelFormat::U8,
+												   4),
 			  4);
 }
 
 TEST(RenderVideoParams, DividerAndFormatNames)
 {
-	EXPECT_EQ(olive::VideoParams::GetNameForDivider(1),
-			  QStringLiteral("Full"));
-	EXPECT_EQ(olive::VideoParams::GetNameForDivider(3),
-			  QStringLiteral("1/3"));
+	EXPECT_EQ(olive::VideoParams::GetNameForDivider(1), QStringLiteral("Full"));
+	EXPECT_EQ(olive::VideoParams::GetNameForDivider(3), QStringLiteral("1/3"));
 
 	const QString unknown =
 		olive::VideoParams::GetFormatName(olive::core::PixelFormat::INVALID);
@@ -47,11 +45,11 @@ TEST(RenderVideoParams, DividerAndFormatNames)
 TEST(RenderVideoParams, ScalingAndDividerForTarget)
 {
 	EXPECT_EQ(olive::VideoParams::GetScaledDimension(100, 3), 33);
-	EXPECT_EQ(olive::VideoParams::GetDividerForTargetResolution(
-				  1920, 1080, 960, 540),
+	EXPECT_EQ(olive::VideoParams::GetDividerForTargetResolution(1920, 1080, 960,
+																540),
 			  2);
-	EXPECT_EQ(olive::VideoParams::GetDividerForTargetResolution(
-				  1920, 1080, 480, 270),
+	EXPECT_EQ(olive::VideoParams::GetDividerForTargetResolution(1920, 1080, 480,
+																270),
 			  4);
 }
 
@@ -191,8 +189,7 @@ TEST(RenderVideoParams, SaveLoadRoundTripExtended)
 	EXPECT_FLOAT_EQ(loaded.x(), 1.5f);
 	EXPECT_FLOAT_EQ(loaded.y(), -2.25f);
 	EXPECT_EQ(loaded.stream_index(), 7);
-	EXPECT_EQ(loaded.video_type(),
-			  olive::VideoParams::kVideoTypeImageSequence);
+	EXPECT_EQ(loaded.video_type(), olive::VideoParams::kVideoTypeImageSequence);
 	EXPECT_EQ(loaded.frame_rate(), olive::core::rational(30000, 1001));
 	EXPECT_EQ(loaded.start_time(), 123);
 	EXPECT_EQ(loaded.duration(), 456);

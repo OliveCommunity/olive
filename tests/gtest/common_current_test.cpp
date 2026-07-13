@@ -11,7 +11,8 @@ TEST(CommonCurrent, SetAndGetVideoParams)
 	params.set_height(1080);
 	Current::getInstance().setCurrentVideoParams(params);
 
-	const olive::VideoParams &stored = Current::getInstance().currentVideoParams();
+	const olive::VideoParams &stored =
+		Current::getInstance().currentVideoParams();
 	EXPECT_EQ(stored.width(), 1920);
 	EXPECT_EQ(stored.height(), 1080);
 }
@@ -22,6 +23,7 @@ TEST(CommonCurrent, SetAndGetAudioParams)
 	params.set_sample_rate(48000);
 	Current::getInstance().setCurrentAudioParams(params);
 
-	const olive::AudioParams &stored = Current::getInstance().currentAudioParams();
+	const olive::AudioParams &stored =
+		Current::getInstance().currentAudioParams();
 	EXPECT_EQ(stored.sample_rate(), 48000);
 }

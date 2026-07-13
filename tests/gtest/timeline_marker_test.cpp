@@ -51,20 +51,17 @@ TEST(TimelineMarkerList, OrderAndLookup)
 		1,
 		olive::core::TimeRange(olive::core::rational(10, 1),
 							   olive::core::rational(10, 1)),
-		QStringLiteral("A"),
-		&list);
+		QStringLiteral("A"), &list);
 	olive::TimelineMarker marker_b(
 		2,
 		olive::core::TimeRange(olive::core::rational(5, 1),
 							   olive::core::rational(5, 1)),
-		QStringLiteral("B"),
-		&list);
+		QStringLiteral("B"), &list);
 	olive::TimelineMarker marker_c(
 		3,
 		olive::core::TimeRange(olive::core::rational(20, 1),
 							   olive::core::rational(20, 1)),
-		QStringLiteral("C"),
-		&list);
+		QStringLiteral("C"), &list);
 
 	ASSERT_EQ(list.size(), 3);
 	auto it = list.cbegin();
@@ -85,7 +82,8 @@ TEST(TimelineMarkerList, GetMarkerAtTimeReturnsNullWhenEmpty)
 {
 	olive::TimelineMarkerList list;
 	EXPECT_EQ(list.GetMarkerAtTime(olive::core::rational(10, 1)), nullptr);
-	EXPECT_EQ(list.GetClosestMarkerToTime(olive::core::rational(10, 1)), nullptr);
+	EXPECT_EQ(list.GetClosestMarkerToTime(olive::core::rational(10, 1)),
+			  nullptr);
 }
 
 TEST(TimelineMarkerList, SaveLoadWithUnknownElements)
@@ -95,8 +93,7 @@ TEST(TimelineMarkerList, SaveLoadWithUnknownElements)
 		4,
 		olive::core::TimeRange(olive::core::rational(12, 1),
 							   olive::core::rational(15, 1)),
-		QStringLiteral("Span"),
-		&list);
+		QStringLiteral("Span"), &list);
 
 	QByteArray xml;
 	QBuffer buffer(&xml);
@@ -130,8 +127,7 @@ TEST(TimelineMarkerCommands, AddRemoveAndChange)
 		&list,
 		olive::core::TimeRange(olive::core::rational(1, 1),
 							   olive::core::rational(2, 1)),
-		QStringLiteral("One"),
-		1);
+		QStringLiteral("One"), 1);
 	add.redo_now();
 	ASSERT_EQ(list.size(), 1);
 	auto *marker = list.front();
@@ -159,14 +155,12 @@ TEST(TimelineMarkerCommands, AddRemoveAndChange)
 		2,
 		olive::core::TimeRange(olive::core::rational(5, 1),
 							   olive::core::rational(5, 1)),
-		QStringLiteral("Two"),
-		&list);
+		QStringLiteral("Two"), &list);
 	EXPECT_EQ(list.front()->time().in(), olive::core::rational(1, 1));
 
 	olive::MarkerChangeTimeCommand move(
-		marker,
-		olive::core::TimeRange(olive::core::rational(0, 1),
-							   olive::core::rational(0, 1)));
+		marker, olive::core::TimeRange(olive::core::rational(0, 1),
+									   olive::core::rational(0, 1)));
 	move.redo_now();
 	EXPECT_EQ(list.front(), marker);
 	move.undo_now();
@@ -180,8 +174,7 @@ TEST(TimelineMarkerCommands, AddCommandUndo)
 		&list,
 		olive::core::TimeRange(olive::core::rational(5, 1),
 							   olive::core::rational(5, 1)),
-		QStringLiteral("UndoMe"),
-		2);
+		QStringLiteral("UndoMe"), 2);
 	add.redo_now();
 	EXPECT_EQ(list.size(), 1);
 	add.undo_now();

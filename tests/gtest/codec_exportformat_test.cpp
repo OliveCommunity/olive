@@ -12,7 +12,8 @@ TEST(CodecExportFormat, NamesAndExtensions)
 			  QStringLiteral("mxf"));
 	EXPECT_EQ(ExportFormat::GetName(ExportFormat::kFormatCount),
 			  QStringLiteral("Unknown"));
-	EXPECT_TRUE(ExportFormat::GetExtension(ExportFormat::kFormatCount).isEmpty());
+	EXPECT_TRUE(
+		ExportFormat::GetExtension(ExportFormat::kFormatCount).isEmpty());
 }
 
 TEST(CodecExportFormat, AllFormatsHaveNames)

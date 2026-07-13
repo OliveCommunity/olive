@@ -6,7 +6,8 @@
 #include "render/texture.h"
 #include "render/videoparams.h"
 
-namespace {
+namespace
+{
 
 class PluginJobTraverser : public olive::NodeTraverser {
 public:

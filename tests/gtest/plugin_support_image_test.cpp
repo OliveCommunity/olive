@@ -5,10 +5,10 @@
 #include "pluginSupport/OliveClip.h"
 #include "pluginSupport/image.h"
 
-namespace {
+namespace
+{
 olive::VideoParams MakeParams(int width, int height,
-							  olive::core::PixelFormat format,
-							  int channels,
+							  olive::core::PixelFormat format, int channels,
 							  bool premultiplied)
 {
 	olive::VideoParams params;
@@ -106,14 +106,14 @@ TEST(PluginSupportImage, AllocateSetsOfxProperties)
 	EXPECT_NE(image.data(), nullptr);
 	EXPECT_EQ(image.row_bytes(), 8 * 4 * 2);
 
-	int bounds_props[4] = {0};
+	int bounds_props[4] = { 0 };
 	image.getIntPropertyN(kOfxImagePropBounds, bounds_props, 4);
 	EXPECT_EQ(bounds_props[0], bounds.x1);
 	EXPECT_EQ(bounds_props[1], bounds.y1);
 	EXPECT_EQ(bounds_props[2], bounds.x2);
 	EXPECT_EQ(bounds_props[3], bounds.y2);
 
-	int rod_props[4] = {0};
+	int rod_props[4] = { 0 };
 	image.getIntPropertyN(kOfxImagePropRegionOfDefinition, rod_props, 4);
 	EXPECT_EQ(rod_props[0], rod.x1);
 	EXPECT_EQ(rod_props[1], rod.y1);

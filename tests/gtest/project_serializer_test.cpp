@@ -13,7 +13,8 @@
 
 TEST(ProjectSerializer, SaveLoadProjectRoundTrip)
 {
-	const bool created_disk_manager = (olive::DiskManager::instance() == nullptr);
+	const bool created_disk_manager =
+		(olive::DiskManager::instance() == nullptr);
 	if (created_disk_manager) {
 		olive::DiskManager::CreateInstance();
 	}
@@ -45,15 +46,15 @@ TEST(ProjectSerializer, SaveLoadProjectRoundTrip)
 	QBuffer read_buffer(&xml);
 	read_buffer.open(QIODevice::ReadOnly);
 	QXmlStreamReader reader(&read_buffer);
-	olive::ProjectSerializer::Result result =
-		olive::ProjectSerializer::Load(&loaded_project, &reader,
-			olive::ProjectSerializer::kProject);
+	olive::ProjectSerializer::Result result = olive::ProjectSerializer::Load(
+		&loaded_project, &reader, olive::ProjectSerializer::kProject);
 	EXPECT_EQ(result.code(), olive::ProjectSerializer::kSuccess);
 	EXPECT_FALSE(loaded_project.nodes().isEmpty());
 	ASSERT_TRUE(result.GetLoadData().node_ptrs.contains(
 		reinterpret_cast<quintptr>(node)));
-	EXPECT_TRUE(loaded_project.nodes().contains(
-		result.GetLoadData().node_ptrs.value(reinterpret_cast<quintptr>(node))));
+	EXPECT_TRUE(
+		loaded_project.nodes().contains(result.GetLoadData().node_ptrs.value(
+			reinterpret_cast<quintptr>(node))));
 
 	olive::ProjectSerializer::Destroy();
 	if (created_disk_manager) {

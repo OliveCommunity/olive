@@ -36,8 +36,8 @@ TEST(TimecodeMetadata, ParsesDropFrameTimecode)
 TEST(TimecodeMetadata, ParsesBwfTimeReference)
 {
 	const olive::TimecodeMetadata::SourceTime parsed =
-		olive::TimecodeMetadata::FromBwfTimeReference(
-			QStringLiteral("96000"), 48000);
+		olive::TimecodeMetadata::FromBwfTimeReference(QStringLiteral("96000"),
+													  48000);
 
 	ASSERT_TRUE(parsed.valid);
 	EXPECT_EQ(parsed.source, QStringLiteral("bwf_time_reference"));
@@ -63,20 +63,20 @@ TEST(TimecodeMetadata, RejectsInvalidMetadata)
 	EXPECT_FALSE(olive::TimecodeMetadata::FromBwfTimeReference(
 					 QStringLiteral("not-a-number"), 48000)
 					 .valid);
-	EXPECT_FALSE(olive::TimecodeMetadata::FromBwfTimeReference(
-					 QStringLiteral("123"), 0)
-					 .valid);
-	EXPECT_FALSE(olive::TimecodeMetadata::FromTimecodeString(
-					 QStringLiteral("not-a-timecode"),
-					 olive::core::rational(1, 24))
-					 .valid);
+	EXPECT_FALSE(
+		olive::TimecodeMetadata::FromBwfTimeReference(QStringLiteral("123"), 0)
+			.valid);
+	EXPECT_FALSE(
+		olive::TimecodeMetadata::FromTimecodeString(
+			QStringLiteral("not-a-timecode"), olive::core::rational(1, 24))
+			.valid);
 }
 
 TEST(TimecodeMetadata, FromBwfTimeReferenceZeroSampleRateIsInvalid)
 {
-	EXPECT_FALSE(olive::TimecodeMetadata::FromBwfTimeReference(
-					 QStringLiteral("0"), 0)
-					 .valid);
+	EXPECT_FALSE(
+		olive::TimecodeMetadata::FromBwfTimeReference(QStringLiteral("0"), 0)
+			.valid);
 }
 
 TEST(TimecodeMetadata, FootageDescriptionWithoutSourceStartTime)
@@ -113,8 +113,7 @@ TEST(TimecodeMetadata, FootagePersistsSourceStartTime)
 	writer.writeStartElement(QStringLiteral("custom"));
 	writer.writeTextElement(QStringLiteral("timestamp"), QStringLiteral("0"));
 	writer.writeStartElement(QStringLiteral("sourcestarttime"));
-	writer.writeAttribute(QStringLiteral("source"),
-						  QStringLiteral("timecode"));
+	writer.writeAttribute(QStringLiteral("source"), QStringLiteral("timecode"));
 	writer.writeCharacters(QStringLiteral("3600/1"));
 	writer.writeEndElement();
 	writer.writeEndElement();

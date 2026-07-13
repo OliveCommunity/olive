@@ -19,8 +19,10 @@ TEST(NodeGlobals, ConstructedWithParams)
 	audio_params.set_sample_rate(48000);
 	audio_params.set_channel_layout(AV_CH_LAYOUT_STEREO);
 
-	olive::TimeRange time(olive::core::rational(1, 24), olive::core::rational(2, 24));
-	olive::NodeGlobals globals(video_params, audio_params, time, olive::LoopMode::kLoopModeLoop);
+	olive::TimeRange time(olive::core::rational(1, 24),
+						  olive::core::rational(2, 24));
+	olive::NodeGlobals globals(video_params, audio_params, time,
+							   olive::LoopMode::kLoopModeLoop);
 
 	EXPECT_EQ(globals.vparams().width(), 1920);
 	EXPECT_EQ(globals.vparams().height(), 1080);

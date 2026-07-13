@@ -14,7 +14,8 @@ TEST(OpenGLRenderer, DownloadFromTextureWithoutCurrentContext)
 
 	QOpenGLContext context;
 	if (!context.create()) {
-		GTEST_SKIP() << "Skipping OpenGL test because no context can be created";
+		GTEST_SKIP()
+			<< "Skipping OpenGL test because no context can be created";
 	}
 	ASSERT_EQ(QOpenGLContext::currentContext(), nullptr);
 
@@ -26,8 +27,8 @@ TEST(OpenGLRenderer, DownloadFromTextureWithoutCurrentContext)
 							  olive::VideoParams::kInterlaceNone, 1);
 
 	unsigned char buffer[4 * 4 * 4] = {};
-	renderer.DownloadFromTexture(QVariant::fromValue<GLuint>(0), params,
-								 buffer, 4 * 4);
+	renderer.DownloadFromTexture(QVariant::fromValue<GLuint>(0), params, buffer,
+								 4 * 4);
 
 	EXPECT_EQ(QOpenGLContext::currentContext(), nullptr);
 }

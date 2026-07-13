@@ -47,8 +47,9 @@ TEST(NodeProject, SettingsRoundTrip)
 {
 	olive::Project project;
 
-	project.SetSetting(olive::Project::kCacheLocationSettingKey,
-					   QString::number(olive::Project::kCacheStoreAlongsideProject));
+	project.SetSetting(
+		olive::Project::kCacheLocationSettingKey,
+		QString::number(olive::Project::kCacheStoreAlongsideProject));
 	EXPECT_EQ(project.GetCacheLocationSetting(),
 			  olive::Project::kCacheStoreAlongsideProject);
 
@@ -62,7 +63,8 @@ TEST(NodeProject, SettingsRoundTrip)
 	EXPECT_EQ(project.GetDefaultInputColorSpace(), QStringLiteral("ACEScg"));
 
 	project.SetColorReferenceSpace(QStringLiteral("ACES - ACEScg"));
-	EXPECT_EQ(project.GetColorReferenceSpace(), QStringLiteral("ACES - ACEScg"));
+	EXPECT_EQ(project.GetColorReferenceSpace(),
+			  QStringLiteral("ACES - ACEScg"));
 }
 
 TEST(NodeProject, InitializeCreatesRoot)

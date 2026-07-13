@@ -5,7 +5,8 @@
 
 #include "task/taskmanager.h"
 
-namespace {
+namespace
+{
 class DummyTask final : public olive::Task {
 public:
 	explicit DummyTask(bool *ran)
@@ -74,9 +75,8 @@ TEST(TaskManager, AddAndRunTask)
 	DummyTask *task = new DummyTask(&ran);
 
 	QEventLoop loop;
-	QObject::connect(task, &olive::Task::Finished, &loop, [&loop](olive::Task *, bool) {
-		loop.quit();
-	});
+	QObject::connect(task, &olive::Task::Finished, &loop,
+					 [&loop](olive::Task *, bool) { loop.quit(); });
 
 	mgr->AddTask(task);
 

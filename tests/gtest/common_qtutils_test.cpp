@@ -30,7 +30,8 @@ TEST(CommonQtUtils, FlipControlAndShiftModifiers)
 	// (Qt::ControlModifier & Qt::ShiftModifier is always zero), so the function
 	// always swaps Control and Shift. This test documents current behavior.
 	Qt::KeyboardModifiers both = Qt::ControlModifier | Qt::ShiftModifier;
-	Qt::KeyboardModifiers flipped = olive::QtUtils::FlipControlAndShiftModifiers(both);
+	Qt::KeyboardModifiers flipped =
+		olive::QtUtils::FlipControlAndShiftModifiers(both);
 	EXPECT_TRUE(flipped & Qt::ControlModifier);
 	EXPECT_FALSE(flipped & Qt::ShiftModifier);
 
@@ -112,11 +113,10 @@ TEST(CommonQtUtils, ToQColor)
 	EXPECT_NEAR(qc.alphaF(), 0.4, 0.001);
 }
 
-
 TEST(CommonQtUtils, GetFormattedDateTime)
 {
 	QDateTime dt = QDateTime::fromString(QStringLiteral("2025-01-15T10:30:00"),
-									 Qt::ISODate);
+										 Qt::ISODate);
 	QString s = olive::QtUtils::GetFormattedDateTime(dt);
 	EXPECT_FALSE(s.isEmpty());
 }
@@ -132,8 +132,8 @@ TEST(CommonQtUtils, WordWrapString)
 	EXPECT_GE(wrapped.size(), 1u);
 
 	// Should preserve manual newlines
-	wrapped = olive::QtUtils::WordWrapString(
-		QStringLiteral("line1\nline2"), fm, 1000);
+	wrapped = olive::QtUtils::WordWrapString(QStringLiteral("line1\nline2"), fm,
+											 1000);
 	EXPECT_EQ(wrapped.size(), 2);
 }
 

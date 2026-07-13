@@ -11,7 +11,8 @@ TEST(CodecDecoder, RetrieveVideoFrameFromDemoMp4)
 							 .filePath(QStringLiteral("tests/demo.mp4"));
 	ASSERT_TRUE(QFileInfo::exists(path));
 
-	olive::DecoderPtr decoder = olive::Decoder::CreateFromID(QStringLiteral("ffmpeg"));
+	olive::DecoderPtr decoder =
+		olive::Decoder::CreateFromID(QStringLiteral("ffmpeg"));
 	ASSERT_TRUE(decoder);
 
 	ASSERT_TRUE(decoder->Open(olive::Decoder::CodecStream(path, 0, nullptr)));

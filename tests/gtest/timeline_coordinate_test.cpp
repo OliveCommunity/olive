@@ -52,13 +52,17 @@ TEST(TimelineCoordinate, CopyAndAssignment)
 TEST(TimelineCoordinate, Equality)
 {
 	olive::TimelineCoordinate a(olive::core::rational(5, 1),
-								olive::Track::Reference(olive::Track::kVideo, 1));
+								olive::Track::Reference(olive::Track::kVideo,
+														1));
 	olive::TimelineCoordinate b(olive::core::rational(5, 1),
-								olive::Track::Reference(olive::Track::kVideo, 1));
+								olive::Track::Reference(olive::Track::kVideo,
+														1));
 	olive::TimelineCoordinate c(olive::core::rational(6, 1),
-								olive::Track::Reference(olive::Track::kVideo, 1));
+								olive::Track::Reference(olive::Track::kVideo,
+														1));
 	olive::TimelineCoordinate d(olive::core::rational(5, 1),
-								olive::Track::Reference(olive::Track::kAudio, 1));
+								olive::Track::Reference(olive::Track::kAudio,
+														1));
 
 	EXPECT_EQ(a.GetFrame(), b.GetFrame());
 	EXPECT_EQ(a.GetTrack(), b.GetTrack());

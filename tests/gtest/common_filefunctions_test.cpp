@@ -16,7 +16,9 @@ TEST(CommonFileFunctions, EnsureFilenameExtension)
 	EXPECT_EQ(olive::FileFunctions::EnsureFilenameExtension(
 				  QStringLiteral("PROJECT"), QStringLiteral("ove")),
 			  QStringLiteral("PROJECT.ove"));
-	EXPECT_TRUE(olive::FileFunctions::EnsureFilenameExtension(QString(), QStringLiteral("ove")).isEmpty());
+	EXPECT_TRUE(olive::FileFunctions::EnsureFilenameExtension(
+					QString(), QStringLiteral("ove"))
+					.isEmpty());
 	EXPECT_EQ(olive::FileFunctions::EnsureFilenameExtension(
 				  QStringLiteral("project"), QString()),
 			  QStringLiteral("project"));
@@ -46,7 +48,8 @@ TEST(CommonFileFunctions, DirectoryIsValid)
 	QTemporaryDir dir;
 	ASSERT_TRUE(dir.isValid());
 
-	EXPECT_TRUE(olive::FileFunctions::DirectoryIsValid(QDir(dir.path()), false));
+	EXPECT_TRUE(
+		olive::FileFunctions::DirectoryIsValid(QDir(dir.path()), false));
 
 	QDir nonexistent(dir.filePath(QStringLiteral("subdir/nested")));
 	EXPECT_TRUE(olive::FileFunctions::DirectoryIsValid(nonexistent, true));
@@ -133,7 +136,8 @@ TEST(CommonFileFunctions, ReadFileAsString)
 	EXPECT_EQ(olive::FileFunctions::ReadFileAsString(f.fileName()),
 			  QStringLiteral("hello world"));
 	EXPECT_TRUE(olive::FileFunctions::ReadFileAsString(
-					QStringLiteral("/nonexistent/path")).isEmpty());
+					QStringLiteral("/nonexistent/path"))
+					.isEmpty());
 }
 
 TEST(CommonFileFunctions, GetUniqueFileIdentifier)
@@ -148,9 +152,9 @@ TEST(CommonFileFunctions, GetUniqueFileIdentifier)
 	EXPECT_EQ(id1, id2);
 
 	EXPECT_TRUE(olive::FileFunctions::GetUniqueFileIdentifier(
-					QStringLiteral("/nonexistent")).isEmpty());
+					QStringLiteral("/nonexistent"))
+					.isEmpty());
 }
-
 
 TEST(CommonFileFunctions, GetConfigurationLocation)
 {
@@ -176,7 +180,8 @@ TEST(CommonFileFunctions, DirectoryIsValidExisting)
 {
 	QTemporaryDir dir;
 	ASSERT_TRUE(dir.isValid());
-	EXPECT_TRUE(olive::FileFunctions::DirectoryIsValid(QDir(dir.path()), false));
+	EXPECT_TRUE(
+		olive::FileFunctions::DirectoryIsValid(QDir(dir.path()), false));
 }
 
 TEST(CommonFileFunctions, CopyDirectoryWithOverwrite)
@@ -212,5 +217,5 @@ TEST(CommonFileFunctions, CopyDirectorySourceMissing)
 
 	// Should not crash even if source doesn't exist
 	olive::FileFunctions::CopyDirectory(QStringLiteral("/nonexistent/path"),
-									dst.path(), false);
+										dst.path(), false);
 }

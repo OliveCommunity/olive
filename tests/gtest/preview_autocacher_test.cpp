@@ -79,7 +79,8 @@ TEST_F(PreviewAutoCacherTest, ClearSingleFrameRendersDoesNotCrashWhenEmpty)
 	cacher.ClearSingleFrameRenders();
 }
 
-TEST_F(PreviewAutoCacherTest, ClearSingleFrameRendersThatArentRunningDoesNotCrashWhenEmpty)
+TEST_F(PreviewAutoCacherTest,
+	   ClearSingleFrameRendersThatArentRunningDoesNotCrashWhenEmpty)
 {
 	PreviewAutoCacher cacher;
 	cacher.ClearSingleFrameRendersThatArentRunning();
