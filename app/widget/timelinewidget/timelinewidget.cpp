@@ -1029,7 +1029,11 @@ void TimelineWidget::SynchronizeSelectedClipsByWaveform()
 
 	const QVector<WaveformSyncClip> sync_clips =
 		GetSelectedWaveformSyncClips(GetSelectedBlocks());
+	qDebug() << "TimelineWidget::SynchronizeSelectedClipsByWaveform:"
+			 << sync_clips.size() << "sync clip(s) selected";
 	if (sync_clips.size() < 2) {
+		Core::instance()->ShowStatusBarMessage(
+			tr("Select at least 2 clips with cached waveforms to sync by waveform"));
 		return;
 	}
 
@@ -1050,6 +1054,11 @@ void TimelineWidget::SynchronizeSelectedClipsByWaveform()
 	const QVector<double> reference_envelope =
 		ExtractWaveformCacheEnvelope(reference, sample_rate, window_samples);
 
+	qDebug() << "TimelineWidget::SynchronizeSelectedClipsByWaveform: sample_rate="
+			 << sample_rate << "window_samples=" << window_samples
+			 << "max_offset_windows=" << max_offset_windows
+			 << "reference_envelope_size=" << reference_envelope.size();
+
 	struct SyncPlacement {
 		ClipBlock *clip = nullptr;
 		rational timeline_in;
@@ -1066,9 +1075,14 @@ void TimelineWidget::SynchronizeSelectedClipsByWaveform()
 			sync_clip, sample_rate, window_samples);
 		const AudioWaveformSync::OffsetResult offset =
 			AudioWaveformSync::EstimateEnvelopeOffset(reference_envelope,
-													  candidate_envelope,
-													  window_samples,
-													  max_offset_windows);
+																  candidate_envelope,
+																  window_samples,
+																  max_offset_windows);
+		qDebug() << "TimelineWidget::SynchronizeSelectedClipsByWaveform: candidate"
+				 << sync_clip.clip << "envelope_size="
+				 << candidate_envelope.size() << "offset_valid="
+				 << offset.valid << "offset_samples=" << offset.offset_samples
+				 << "confidence=" << offset.confidence;
 		if (!offset.valid) {
 			continue;
 		}
@@ -1076,12 +1090,19 @@ void TimelineWidget::SynchronizeSelectedClipsByWaveform()
 		const AudioSynchronizer::Placement placement =
 			AudioSynchronizer::PlaceByWaveformOffset(
 				reference.clip->in(), offset.offset_samples, sample_rate);
+		qDebug() << "TimelineWidget::SynchronizeSelectedClipsByWaveform: placement"
+				 << "valid=" << placement.valid << "timeline_in="
+				 << placement.timeline_in.toDouble();
 		if (placement.valid && placement.timeline_in >= 0) {
 			placements.append({ sync_clip.clip, placement.timeline_in });
 		}
 	}
 
 	if (placements.size() < 2) {
+		qDebug() << "TimelineWidget::SynchronizeSelectedClipsByWaveform: no usable"
+				 << "offsets found";
+		Core::instance()->ShowStatusBarMessage(
+			tr("Could not find a usable waveform offset for the selected clips"));
 		return;
 	}
 
@@ -1107,7 +1128,9 @@ void TimelineWidget::SynchronizeSelectedClipsByWaveform()
 		new SetSelectionsCommand(this, new_selections, GetSelections()));
 
 	Core::instance()->undo_stack()->push(command,
-										 tr("Synchronize Clips by Waveform"));
+													 tr("Synchronize Clips by Waveform"));
+	Core::instance()->ShowStatusBarMessage(
+		tr("Synchronized %1 clip(s) by waveform").arg(placements.size()));
 }
 
 void TimelineWidget::GenerateProxiesForSelectedClips()

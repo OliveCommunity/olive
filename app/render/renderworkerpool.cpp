@@ -579,14 +579,8 @@ bool RenderWorkerPool::PrepareJob(RenderTicketPtr ticket,
 		if (it != graph_cache_.end() && !project->is_modified()) {
 			graph_path = it->path;
 			AddGraphPathRefLocked(graph_path);
-			qDebug()
-				<< "RenderWorkerPool::PrepareJob: using cached graph snapshot"
-				<< graph_path;
 		} else {
 			if (it != graph_cache_.end()) {
-				qDebug()
-					<< "RenderWorkerPool::PrepareJob: graph stale, rewriting"
-					<< project->is_modified();
 				SetGraphPathCachedLocked(it->path, false);
 				graph_cache_.erase(it);
 			}
@@ -647,9 +641,6 @@ bool RenderWorkerPool::WriteGraphSnapshot(Project *project, QString *path)
 		QFile::remove(file.fileName());
 		return false;
 	}
-
-	qDebug() << "RenderWorkerPool wrote graph snapshot" << file.fileName()
-			 << "size" << QFileInfo(file.fileName()).size();
 
 	*path = file.fileName();
 	return true;
@@ -1242,7 +1233,6 @@ void RenderWorkerPool::FinishWithFrame(RenderTicketPtr ticket,
 void RenderWorkerPool::CleanupGraphFile(const QString &path)
 {
 	if (!path.isEmpty()) {
-		qDebug() << "RenderWorkerPool cleaning up graph file" << path;
 		QFile::remove(path);
 	}
 }
