@@ -585,8 +585,8 @@ bool RenderWorkerPool::PrepareJob(RenderTicketPtr ticket,
 		auto it = graph_cache_.find(project_uuid);
 		if (it != graph_cache_.end() && !project->is_modified()) {
 			graph_path = it->path;
-			qDebug() << "RenderWorkerPool::PrepareJob: using cached graph snapshot"
-					 << graph_path;
+			//qDebug() << "RenderWorkerPool::PrepareJob: using cached graph snapshot"
+			//		 << graph_path;
 		} else {
 			if (it != graph_cache_.end()) {
 				qDebug() << "RenderWorkerPool::PrepareJob: graph stale, rewriting"
