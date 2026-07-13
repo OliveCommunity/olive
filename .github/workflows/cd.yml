@@ -459,7 +459,7 @@ jobs:
               pacman -S --noconfirm --needed \
                 cmake ninja git pkgconf \
                 qt6-base qt6-tools ffmpeg openimageio opencolorio openexr expat portaudio \
-                mesa vulkan-icd-loader libxkbcommon
+                mesa vulkan-icd-loader libxkbcommon fmt
               useradd -m builder
               chown -R builder /build
               su builder -c "makepkg -s --noconfirm"

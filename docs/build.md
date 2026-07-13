@@ -179,6 +179,7 @@ sudo pacman -S --needed \
   vulkan-headers \
   vulkan-icd-loader \
   libxkbcommon \
+  fmt \
   gcc
 ```
 
