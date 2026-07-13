@@ -371,45 +371,49 @@ jobs:
   # ------------------------------------------------------------------
   rpm:
     runs-on: warp-ubuntu-latest-x64-16x
+    container:
+      image: fedora:latest
     steps:
+      - name: Install Git
+        run: dnf install -y git
+
       - uses: actions/checkout@v4
         with:
           submodules: true
 
-      - name: Build package in Fedora container
+      - name: Install dependencies
         run: |
-          docker run --rm \
-            -v "${PWD}:/build" \
-            -w /build \
-            fedora:latest \
-            bash -c '
-              set -e
-              dnf install -y \
-                cmake ninja-build pkgconf-pkg-config \
-                qt6-qtbase-devel qt6-qtbase-private-devel qt6-qttools-devel \
-                ffmpeg-free-devel \
-                OpenImageIO-devel \
-                OpenColorIO-devel \
-                openexr-devel \
-                expat-devel \
-                portaudio-devel \
-                mesa-libGL-devel \
-                vulkan-headers \
-                vulkan-loader-devel \
-                libxkbcommon-devel \
-                gcc-c++ \
-                bzip2-devel \
-                rpm-build
-              cmake -S . -B build -G Ninja \
-                -DCMAKE_BUILD_TYPE=Release \
-                -DCMAKE_INSTALL_PREFIX=/usr \
-                -DBUILD_QT6=ON \
-                -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON
-              cmake --build build
-              cd build
-              cpack -G RPM
-              mv *.rpm /build/
-            '
+          dnf install -y \
+            cmake ninja-build pkgconf-pkg-config \
+            qt6-qtbase-devel qt6-qtbase-private-devel qt6-qttools-devel \
+            ffmpeg-free-devel \
+            OpenImageIO-devel \
+            OpenColorIO-devel \
+            openexr-devel \
+            expat-devel \
+            portaudio-devel \
+            mesa-libGL-devel \
+            vulkan-headers \
+            vulkan-loader-devel \
+            libxkbcommon-devel \
+            gcc-c++ \
+            bzip2-devel \
+            rpm-build
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_QT6=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON
+          cmake --build build
+
+      - name: Create RPM package
+        run: |
+          cd build
+          cpack -G RPM
+          mv *.rpm "${GITHUB_WORKSPACE}/"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
