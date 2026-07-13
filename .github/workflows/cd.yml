@@ -130,11 +130,20 @@ jobs:
       - name: Deploy Qt dependencies
         run: |
           export PATH="$(brew --prefix qt@6)/bin:$PATH"
-          macdeployqt build/app/Oak.app
+          macdeployqt build/app/Oak.app \
+            -verbose=2 \
+            -executable=build/app/Oak.app/Contents/MacOS/oak-render-worker
           # Re-sign after macdeployqt (it breaks signatures when modifying libs)
           codesign --force --deep --sign - build/app/Oak.app
 
-      - name: Bundle non-Qt libraries
+      - name: Verify macOS bundle plugins
+        run: |
+          ls -la build/app/Oak.app/Contents/PlugIns/platforms/ || (echo "Missing platform plugins!" && exit 1)
+          ls -la build/app/Oak.app/Contents/PlugIns/imageformats/ || true
+          echo "=== otool -L main binary ==="
+          otool -L build/app/Oak.app/Contents/MacOS/Oak | head -30
+          echo "=== otool -L worker ==="
+          otool -L build/app/Oak.app/Contents/MacOS/oak-render-worker | head -30
         run: |
           mkdir -p build/app/Oak.app/Contents/Frameworks
           python3 << 'PYEOF'
