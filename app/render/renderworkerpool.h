@@ -23,6 +23,7 @@
 
 #include <QHash>
 #include <QMutex>
+#include <QSet>
 #include <QThread>
 #include <QVector>
 #include <QWaitCondition>
@@ -128,6 +129,12 @@ private:
 	void FinishWithFrame(RenderTicketPtr ticket, const ipc::FrameSlotPool &pool,
 						 uint32_t slot);
 	void CleanupGraphFile(const QString &path);
+	void AddGraphPathRef(const QString &path);
+	void AddGraphPathRefLocked(const QString &path);
+	void ReleaseGraphPathRef(const QString &path);
+	void ReleaseGraphPathRefLocked(const QString &path);
+	void SetGraphPathCached(const QString &path, bool cached);
+	void SetGraphPathCachedLocked(const QString &path, bool cached);
 	void CancelActiveProcess(qint64 process_id);
 	void SetActiveWorker(int worker_index, RenderTicketPtr ticket,
 						 QProcess *worker, qint64 ticket_id);
@@ -151,6 +158,8 @@ private:
 	bool stopping_ = false;
 	QVector<ActiveJob> active_jobs_;
 	QHash<QUuid, CachedGraph> graph_cache_;
+	QHash<QString, int> graph_path_ref_count_;
+	QSet<QString> cached_graph_paths_;
 
 	static constexpr uint32_t kOutputSlots = 2;
 	static constexpr int kMaxAttempts = 2;

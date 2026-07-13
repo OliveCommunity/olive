@@ -28,7 +28,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
-#include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QXmlStreamWriter>
 #include <algorithm>
@@ -461,7 +460,7 @@ bool RenderWorkerPool::RemoveTicket(RenderTicketPtr ticket)
 	}
 
 	if (!queued_graph_path.isEmpty()) {
-		CleanupGraphFile(queued_graph_path);
+		ReleaseGraphPathRef(queued_graph_path);
 		return true;
 	}
 
@@ -470,8 +469,6 @@ bool RenderWorkerPool::RemoveTicket(RenderTicketPtr ticket)
 
 void RenderWorkerPool::Shutdown()
 {
-	QVector<QString> graph_paths_to_clean;
-
 	{
 		QMutexLocker locker(&mutex_);
 		stopping_ = true;
@@ -479,6 +476,7 @@ void RenderWorkerPool::Shutdown()
 			if (job.ticket) {
 				job.ticket->Cancel();
 			}
+			ReleaseGraphPathRefLocked(job.graph_path);
 		}
 		queue_.clear();
 		for (ActiveJob &active : active_jobs_) {
@@ -488,14 +486,10 @@ void RenderWorkerPool::Shutdown()
 			}
 		}
 		for (auto it = graph_cache_.begin(); it != graph_cache_.end(); ++it) {
-			graph_paths_to_clean.append(it->path);
+			SetGraphPathCachedLocked(it->path, false);
 		}
 		graph_cache_.clear();
 		wait_.wakeAll();
-	}
-
-	for (const QString &path : graph_paths_to_clean) {
-		CleanupGraphFile(path);
 	}
 
 	if (isRunning()) {
@@ -553,6 +547,7 @@ void RenderWorkerPool::WorkerLoop(
 		mutex_.unlock();
 
 		ProcessJob(job, worker_index, local_pool);
+		ReleaseGraphPathRef(job.graph_path);
 	}
 }
 
@@ -586,13 +581,14 @@ bool RenderWorkerPool::PrepareJob(RenderTicketPtr ticket,
 		auto it = graph_cache_.find(project_uuid);
 		if (it != graph_cache_.end() && !project->is_modified()) {
 			graph_path = it->path;
-			//qDebug() << "RenderWorkerPool::PrepareJob: using cached graph snapshot"
-			//		 << graph_path;
+			AddGraphPathRefLocked(graph_path);
+			qDebug() << "RenderWorkerPool::PrepareJob: using cached graph snapshot"
+					 << graph_path;
 		} else {
 			if (it != graph_cache_.end()) {
 				qDebug() << "RenderWorkerPool::PrepareJob: graph stale, rewriting"
 						 << project->is_modified();
-				CleanupGraphFile(it->path);
+				SetGraphPathCachedLocked(it->path, false);
 				graph_cache_.erase(it);
 			}
 			locker.unlock();
@@ -608,6 +604,8 @@ bool RenderWorkerPool::PrepareJob(RenderTicketPtr ticket,
 			}
 			locker.relock();
 			graph_cache_.insert(project_uuid, {graph_path});
+			SetGraphPathCachedLocked(graph_path, true);
+			AddGraphPathRefLocked(graph_path);
 		}
 	}
 
@@ -622,18 +620,10 @@ bool RenderWorkerPool::PrepareJob(RenderTicketPtr ticket,
 
 bool RenderWorkerPool::WriteGraphSnapshot(Project *project, QString *path)
 {
-	// Write the snapshot into the application's persistent data directory so
-	// that the worker process can always reach it, regardless of sandbox
-	// restrictions or working directory. System temp directories are not
-	// reliably shared between the editor and its child worker on macOS.
-	const QString base_dir = QStandardPaths::writableLocation(
-		QStandardPaths::AppLocalDataLocation);
-	const QString graph_dir = QDir(base_dir).filePath(QStringLiteral("render-graphs"));
-	if (!QDir(graph_dir).mkpath(QStringLiteral("."))) {
-		qWarning() << "RenderWorkerPool failed to create graph snapshot directory"
-				   << graph_dir;
-		return false;
-	}
+	// Keep snapshots in the system temp directory. The previous bug was not the
+	// temp location itself, but stale snapshots being deleted while queued jobs
+	// still referenced them.
+	const QString graph_dir = QDir::tempPath();
 
 	QTemporaryFile file(QDir(graph_dir).filePath(QStringLiteral("oak-render-graph-XXXXXX.ove")));
 	file.setAutoRemove(false);
@@ -650,10 +640,13 @@ bool RenderWorkerPool::WriteGraphSnapshot(Project *project, QString *path)
 
 	if (result.code() != ProjectSerializer::kSuccess || writer.hasError()) {
 		qWarning() << "RenderWorkerPool failed to serialize graph snapshot"
-				   << result.GetDetails();
+				 << result.GetDetails();
 		QFile::remove(file.fileName());
 		return false;
 	}
+
+	qDebug() << "RenderWorkerPool wrote graph snapshot" << file.fileName()
+			<< "size" << QFileInfo(file.fileName()).size();
 
 	*path = file.fileName();
 	return true;
@@ -1204,9 +1197,11 @@ void RenderWorkerPool::ClearGraphCache()
 {
 	QMutexLocker locker(&mutex_);
 	for (auto it = graph_cache_.begin(); it != graph_cache_.end(); ++it) {
-		CleanupGraphFile(it->path);
+		SetGraphPathCachedLocked(it->path, false);
 	}
 	graph_cache_.clear();
+	graph_path_ref_count_.clear();
+	cached_graph_paths_.clear();
 }
 
 void RenderWorkerPool::FinishWithFrame(RenderTicketPtr ticket,
@@ -1238,7 +1233,66 @@ void RenderWorkerPool::FinishWithFrame(RenderTicketPtr ticket,
 void RenderWorkerPool::CleanupGraphFile(const QString &path)
 {
 	if (!path.isEmpty()) {
+		qDebug() << "RenderWorkerPool cleaning up graph file" << path;
 		QFile::remove(path);
+	}
+}
+
+void RenderWorkerPool::AddGraphPathRef(const QString &path)
+{
+	QMutexLocker locker(&mutex_);
+	AddGraphPathRefLocked(path);
+}
+
+void RenderWorkerPool::AddGraphPathRefLocked(const QString &path)
+{
+	if (path.isEmpty()) {
+		return;
+	}
+	++graph_path_ref_count_[path];
+}
+
+void RenderWorkerPool::ReleaseGraphPathRef(const QString &path)
+{
+	QMutexLocker locker(&mutex_);
+	ReleaseGraphPathRefLocked(path);
+}
+
+void RenderWorkerPool::ReleaseGraphPathRefLocked(const QString &path)
+{
+	if (path.isEmpty()) {
+		return;
+	}
+	auto it = graph_path_ref_count_.find(path);
+	if (it == graph_path_ref_count_.end()) {
+		return;
+	}
+	if (--(*it) <= 0) {
+		graph_path_ref_count_.erase(it);
+		if (!cached_graph_paths_.contains(path)) {
+			CleanupGraphFile(path);
+		}
+	}
+}
+
+void RenderWorkerPool::SetGraphPathCached(const QString &path, bool cached)
+{
+	QMutexLocker locker(&mutex_);
+	SetGraphPathCachedLocked(path, cached);
+}
+
+void RenderWorkerPool::SetGraphPathCachedLocked(const QString &path, bool cached)
+{
+	if (path.isEmpty()) {
+		return;
+	}
+	if (cached) {
+		cached_graph_paths_.insert(path);
+	} else {
+		cached_graph_paths_.remove(path);
+		if (!graph_path_ref_count_.contains(path)) {
+			CleanupGraphFile(path);
+		}
 	}
 }
 
