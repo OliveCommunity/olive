@@ -155,7 +155,9 @@ int main(int argc, char *argv[])
 	// Ignore SIGPIPE so that writing to a render-worker process that has
 	// already crashed/closed does not terminate the main application. QProcess
 	// will report the failure through its normal error path instead.
+#if !defined(_WIN32)
 	signal(SIGPIPE, SIG_IGN);
+#endif
 
 	// Set application metadata
 	QCoreApplication::setOrganizationName("oakvideoeditor.org");
