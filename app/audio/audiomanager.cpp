@@ -269,6 +269,39 @@ void AudioManager::StopRecording()
 	}
 }
 
+#ifdef Q_OS_LINUX
+static PaDeviceIndex GetPreferredLinuxAudioDevice(bool is_output_device)
+{
+	// Prefer PipeWire, then PulseAudio. Both provide mixing; plain ALSA/JACK
+	// defaults often fail to share the device on modern Linux desktops.
+	const QStringList preferred_host_apis = {
+		QStringLiteral("PipeWire"),
+		QStringLiteral("PulseAudio"),
+	};
+
+	for (const QString &preferred : preferred_host_apis) {
+		for (PaHostApiIndex i = 0, end = Pa_GetHostApiCount(); i < end; i++) {
+			const PaHostApiInfo *info = Pa_GetHostApiInfo(i);
+			if (!info) {
+				continue;
+			}
+
+			const QString name = QString::fromLatin1(info->name);
+			if (name.contains(preferred, Qt::CaseInsensitive)) {
+				PaDeviceIndex dev = is_output_device ? info->defaultOutputDevice :
+												 info->defaultInputDevice;
+				if (dev != paNoDevice) {
+					return dev;
+				}
+			}
+		}
+	}
+
+	return is_output_device ? Pa_GetDefaultOutputDevice() :
+							  Pa_GetDefaultInputDevice();
+}
+#endif
+
 PaDeviceIndex AudioManager::FindConfigDeviceByName(bool is_output_device)
 {
 	QString entry = is_output_device ? QStringLiteral("AudioOutput") :
@@ -293,8 +326,12 @@ PaDeviceIndex AudioManager::FindDeviceByName(const QString &s,
 		}
 	}
 
+#ifdef Q_OS_LINUX
+	return GetPreferredLinuxAudioDevice(is_output_device);
+#else
 	return is_output_device ? Pa_GetDefaultOutputDevice() :
 							  Pa_GetDefaultInputDevice();
+#endif
 }
 
 PaStreamParameters AudioManager::GetPortAudioParams(const AudioParams &params,
