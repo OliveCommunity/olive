@@ -99,7 +99,11 @@ QString WorkerBinaryPath()
 	dir.cdUp();  // tests/gtest -> tests
 	dir.cdUp();  // tests -> build dir
 	dir.cd(QStringLiteral("app"));
+#if defined(_WIN32)
+	return dir.filePath(QStringLiteral("olive-render-worker.exe"));
+#else
 	return dir.filePath(QStringLiteral("olive-render-worker"));
+#endif
 }
 
 QString DemoVideoPath()
