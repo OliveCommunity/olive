@@ -130,7 +130,7 @@ Install dependencies:
 sudo dnf install -y \
   cmake ninja-build pkgconf-pkg-config \
   qt6-qtbase-devel qt6-qtbase-private-devel qt6-qttools-devel \
-  ffmpeg-devel \
+  ffmpeg-free-devel \
   OpenImageIO-devel \
   OpenColorIO-devel \
   openexr-devel \
@@ -138,7 +138,8 @@ sudo dnf install -y \
   portaudio-devel \
   mesa-libGL-devel \
   libxkbcommon-devel \
-  gcc-c++
+  gcc-c++ \
+  bzip2-devel
 ```
 
 Configure and build:
