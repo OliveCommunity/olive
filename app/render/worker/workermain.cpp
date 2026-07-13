@@ -547,7 +547,7 @@ int main(int argc, char *argv[])
 #endif
 
 	QCoreApplication::setOrganizationName(QStringLiteral("oakvideoeditor.org"));
-	QCoreApplication::setApplicationName(QStringLiteral("olive-render-worker"));
+	QCoreApplication::setApplicationName(QStringLiteral("oak-render-worker"));
 
 	QString backend = QStringLiteral("opengl");
 	const QStringList args = app.arguments();

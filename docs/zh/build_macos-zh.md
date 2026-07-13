@@ -146,13 +146,13 @@ cmake --build build --config Release
 编译成功后，你可以运行 Oak 视频编辑器：
 
 ```bash
-./build/app/olive-editor
+./build/app/oak-editor
 ```
 
 或者打开应用程序包（如果已生成）：
 
 ```bash
-open ./build/app/olive-editor.app
+open ./build/app/Oak.app
 ```
 
 ---
@@ -234,7 +234,7 @@ export CPATH="/opt/homebrew/include:$CPATH"
 要创建可分发的 `.app` 包，你可能需要使用 `macdeployqt`：
 
 ```bash
-/opt/homebrew/opt/qt@6/bin/macdeployqt build/app/olive-editor.app
+/opt/homebrew/opt/qt@6/bin/macdeployqt build/app/Oak.app
 ```
 
 这会将所需的 Qt 库打包到应用程序中。

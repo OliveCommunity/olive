@@ -17,7 +17,7 @@
 
 cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
 
-project(olive-editor VERSION 0.3.0 LANGUAGES CXX)
+project(olive-editor VERSION 0.4.0 LANGUAGES CXX)
 set(PROJECT_VERSION "0.4.0-alpha")
 
 

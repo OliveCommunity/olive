@@ -124,7 +124,7 @@ QString CrashHandlerDialog::GetSymbolPath()
 #elif BUILDFLAG(IS_LINUX)
 	app_path.cdUp();
 	symbols_path =
-		app_path.filePath(QStringLiteral("share/olive-editor/symbols"));
+		app_path.filePath(QStringLiteral("share/oak-editor/symbols"));
 #elif BUILDFLAG(IS_APPLE)
 	app_path.cdUp();
 	symbols_path = app_path.filePath(QStringLiteral("Resources/symbols"));
@@ -291,11 +291,11 @@ void CrashHandlerDialog::SendErrorReport()
 
 	QString symbol_bin_name;
 #if BUILDFLAG(IS_WIN)
-	symbol_bin_name = QStringLiteral("olive-editor.pdb");
+	symbol_bin_name = QStringLiteral("oak-editor.pdb");
 #elif BUILDFLAG(IS_APPLE)
-	symbol_bin_name = QStringLiteral("Olive");
+	symbol_bin_name = QStringLiteral("Oak");
 #else
-	symbol_bin_name = QStringLiteral("olive-editor");
+	symbol_bin_name = QStringLiteral("oak-editor");
 #endif
 	symbol_dir = QDir(symbol_dir.filePath(symbol_bin_name));
 
@@ -320,9 +320,9 @@ void CrashHandlerDialog::SendErrorReport()
 	// Create sym section
 	QString symbol_filename;
 #if BUILDFLAG(IS_APPLE)
-	symbol_filename = QStringLiteral("Olive.sym");
+	symbol_filename = QStringLiteral("Oak.sym");
 #else
-	symbol_filename = QStringLiteral("olive-editor.sym");
+	symbol_filename = QStringLiteral("oak-editor.sym");
 #endif
 	QString symbol_full_path = symbol_dir.filePath(symbol_filename);
 	QHttpPart sym_part;

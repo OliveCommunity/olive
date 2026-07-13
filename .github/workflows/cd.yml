@@ -57,17 +57,17 @@ jobs:
       - name: Deploy dependencies
         shell: msys2 {0}
         run: |
-          mkdir -p app/packaging/windows/nsis/olive-editor
-          cp build/app/olive-editor.exe app/packaging/windows/nsis/olive-editor/
-          cp build/app/olive-render-worker.exe app/packaging/windows/nsis/olive-editor/
-          cp build/app/oakgl.dll app/packaging/windows/nsis/olive-editor/
+          mkdir -p app/packaging/windows/nsis/oak-editor
+          cp build/app/oak-editor.exe app/packaging/windows/nsis/oak-editor/
+          cp build/app/oak-render-worker.exe app/packaging/windows/nsis/oak-editor/
+          cp build/app/oakgl.dll app/packaging/windows/nsis/oak-editor/
           if [ -f build/app/oakvulkan.dll ]; then
-            cp build/app/oakvulkan.dll app/packaging/windows/nsis/olive-editor/
+            cp build/app/oakvulkan.dll app/packaging/windows/nsis/oak-editor/
           fi
-          windeployqt6 app/packaging/windows/nsis/olive-editor/olive-editor.exe
+          windeployqt6 app/packaging/windows/nsis/oak-editor/oak-editor.exe
           # Copy all non-Qt MSYS2 DLLs recursively for every binary we ship
-          cd app/packaging/windows/nsis/olive-editor
-          for binary in olive-editor.exe olive-render-worker.exe oakgl.dll oakvulkan.dll; do
+          cd app/packaging/windows/nsis/oak-editor
+          for binary in oak-editor.exe oak-render-worker.exe oakgl.dll oakvulkan.dll; do
             [ -f "$binary" ] || continue
             for l in $(ntldd -R "$binary" | grep -E 'mingw64|ucrt64|clang64' | sed 's/^[ \t]*//' | cut -d' ' -f3); do
               cp -v "$l" .
@@ -79,7 +79,7 @@ jobs:
         run: |
           cd app/packaging/windows/nsis
           cp "${GITHUB_WORKSPACE}"/LICENSE .
-          makensis olive.nsi
+          makensis oak.nsi
           mv setup.exe "${GITHUB_WORKSPACE}"/Oak-Video-Editor-Windows-x64.exe
 
       - name: Upload artifact
@@ -130,18 +130,21 @@ jobs:
       - name: Deploy Qt dependencies
         run: |
           export PATH="$(brew --prefix qt@6)/bin:$PATH"
-          macdeployqt build/app/Olive.app
+          macdeployqt build/app/Oak.app \
+            -qmldir=app \
+            -qmldir=ext/KDDockWidgets/src/qtquick/views/qml \
+            -verbose=2
           # Re-sign after macdeployqt (it breaks signatures when modifying libs)
-          codesign --force --deep --sign - build/app/Olive.app
+          codesign --force --deep --sign - build/app/Oak.app
 
       - name: Bundle non-Qt libraries
         run: |
-          mkdir -p build/app/Olive.app/Contents/Frameworks
+          mkdir -p build/app/Oak.app/Contents/Frameworks
           python3 << 'PYEOF'
           import os, shutil, subprocess
 
-          APP = "build/app/Olive.app"
-          BINARY = f"{APP}/Contents/MacOS/Olive"
+          APP = "build/app/Oak.app"
+          BINARY = f"{APP}/Contents/MacOS/Oak"
           DEST = f"{APP}/Contents/Frameworks"
           os.makedirs(DEST, exist_ok=True)
 
@@ -232,16 +235,16 @@ jobs:
       - name: Debug bundle contents
         run: |
           echo "=== otool -L ==="
-          otool -L build/app/Olive.app/Contents/MacOS/Olive
+          otool -L build/app/Oak.app/Contents/MacOS/Oak
           echo "=== Frameworks dir ==="
-          ls -la build/app/Olive.app/Contents/Frameworks/ || echo "(empty)"
+          ls -la build/app/Oak.app/Contents/Frameworks/ || echo "(empty)"
           echo "=== App bundle size ==="
-          du -sh build/app/Olive.app
+          du -sh build/app/Oak.app
 
       - name: Create DMG
         run: |
           hdiutil create \
-            -srcfolder build/app/Olive.app \
+            -srcfolder build/app/Oak.app \
             -volname "Oak Video Editor" \
             -fs HFS+ \
             -format UDZO \

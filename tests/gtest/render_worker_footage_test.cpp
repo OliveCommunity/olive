@@ -2,7 +2,7 @@
  * Oak Video Editor - Render Worker Footage Integration Test
  * Copyright (C) 2026 Oak Team
  *
- * End-to-end test that spawns olive-render-worker, feeds it a real decoded
+ * End-to-end test that spawns oak-render-worker, feeds it a real decoded
  * frame from tests/demo.mp4 through the IPC shared-memory frame pool, and
  * verifies that the worker returns a non-black output frame.
  */
@@ -100,9 +100,9 @@ QString WorkerBinaryPath()
 	dir.cdUp();  // tests -> build dir
 	dir.cd(QStringLiteral("app"));
 #if defined(_WIN32)
-	return dir.filePath(QStringLiteral("olive-render-worker.exe"));
+	return dir.filePath(QStringLiteral("oak-render-worker.exe"));
 #else
-	return dir.filePath(QStringLiteral("olive-render-worker"));
+	return dir.filePath(QStringLiteral("oak-render-worker"));
 #endif
 }
 

@@ -82,7 +82,7 @@ public:
 		/// Vulkan requested by the user. Falls back to OpenGL until VulkanRenderer is implemented.
 		kVulkan,
 
-		/// Video frames are rendered by an external olive-render-worker process.
+		/// Video frames are rendered by an external oak-render-worker process.
 		kMultiProcess,
 
 		/// No graphics rendering - used to test core threading logic

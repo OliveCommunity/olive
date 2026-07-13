@@ -241,9 +241,9 @@ bool DecodeInputFrames(DecoderCache *decoder_cache,
 QString WorkerProgramPath()
 {
 #if defined(Q_OS_WIN)
-	const QString file = QStringLiteral("olive-render-worker.exe");
+	const QString file = QStringLiteral("oak-render-worker.exe");
 #else
-	const QString file = QStringLiteral("olive-render-worker");
+	const QString file = QStringLiteral("oak-render-worker");
 #endif
 
 	const QString app_dir = QCoreApplication::applicationDirPath();

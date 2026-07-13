@@ -250,7 +250,9 @@ endif()
 # Ensure the render worker is always built together with the editor on every platform.
 add_dependencies(olive-editor olive-render-worker)
 
-# Add render worker process (olive-render-worker).
+set_target_properties(olive-editor PROPERTIES OUTPUT_NAME "oak-editor")
+
+# Add render worker process (oak-render-worker).
 # Reuses the libolive-editor object library so the worker shares the exact same render/node/codec
 # code as the editor. It is a headless app that owns its own offscreen GL context. The link set is
 # currently the full OLIVE_LIBRARIES for simplicity; trimming UI-only dependencies is a later-phase
@@ -260,6 +262,7 @@ add_executable(olive-render-worker
   $<TARGET_OBJECTS:libolive-editor>
   $<TARGET_OBJECTS:olive-version-obj>
 )
+set_target_properties(olive-render-worker PROPERTIES OUTPUT_NAME "oak-render-worker")
 if (APPLE)
   target_sources(olive-render-worker PRIVATE render/worker/workermain_mac.mm)
   target_link_libraries(olive-render-worker PRIVATE "-framework Cocoa")
@@ -292,7 +295,7 @@ if (WIN32)
 
 elseif(APPLE)
   # Set Mac application icon
-  set(OLIVE_ICON packaging/macos/olive.icns)
+  set(OLIVE_ICON packaging/macos/oak.icns)
   target_sources(olive-editor PRIVATE ${OLIVE_ICON})
 
   # Set Mac bundle properties
@@ -300,24 +303,24 @@ elseif(APPLE)
     MACOSX_BUNDLE TRUE
     MACOSX_BUNDLE_INFO_PLIST ${CMAKE_CURRENT_SOURCE_DIR}/packaging/macos/MacOSXBundleInfo.plist.in
     MACOSX_BUNDLE_GUI_IDENTIFIER org.oakvideoeditor.Oak
-    MACOSX_BUNDLE_ICON_FILE olive.icns
+    MACOSX_BUNDLE_ICON_FILE oak.icns
     MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
     MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
     MACOSX_BUNDLE_BUNDLE_NAME "Oak Video Editor"
     MACOSX_BUNDLE_INFO_STRING "Oak Video Editor ${PROJECT_LONG_VERSION}"
     MACOSX_BUNDLE_COPYRIGHT "©2018-2021 Olive Studios LLC and others. Fork maintained by Oak Video Editor Team."
     RESOURCE "${OLIVE_ICON}"
-    OUTPUT_NAME "Olive"
+    OUTPUT_NAME "Oak"
   )
 
   # Copy the render worker and dynamic render backends into the app bundle.
   # They are looked up in QCoreApplication::applicationDirPath(), which on
-  # macOS points to Olive.app/Contents/MacOS.
+  # macOS points to Oak.app/Contents/MacOS.
   add_custom_command(TARGET olive-editor POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:olive-render-worker> $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS/
     COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:oakgl> $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS/
-    COMMENT "Copying olive-render-worker and render backends into Olive.app"
+    COMMENT "Copying oak-render-worker and render backends into Oak.app"
   )
   if (TARGET oakvulkan)
     add_custom_command(TARGET olive-editor POST_BUILD

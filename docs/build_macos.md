@@ -146,13 +146,13 @@ The build process may take 10-30 minutes depending on your hardware.
 After successful build, you can run Oak Video Editor:
 
 ```bash
-./build/app/olive-editor
+./build/app/oak-editor
 ```
 
 Or open the app bundle (if generated):
 
 ```bash
-open ./build/app/olive-editor.app
+open ./build/app/Oak.app
 ```
 
 ---
@@ -234,7 +234,7 @@ export CPATH="/opt/homebrew/include:$CPATH"
 To create a distributable `.app` bundle, you may need to use `macdeployqt`:
 
 ```bash
-/opt/homebrew/opt/qt@6/bin/macdeployqt build/app/olive-editor.app
+/opt/homebrew/opt/qt@6/bin/macdeployqt build/app/Oak.app
 ```
 
 This will bundle the required Qt libraries into the app.
