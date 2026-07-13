@@ -269,8 +269,11 @@ jobs:
 
       - name: Create DMG
         run: |
+          mkdir -p build/app/dmg-staging
+          cp -R build/app/Oak.app build/app/dmg-staging/
+          ln -s /Applications build/app/dmg-staging/Applications
           hdiutil create \
-            -srcfolder build/app/Oak.app \
+            -srcfolder build/app/dmg-staging \
             -volname "Oak Video Editor" \
             -fs HFS+ \
             -format UDZO \
