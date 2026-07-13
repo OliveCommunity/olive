@@ -22,10 +22,11 @@ TEST(NodeProject, FilenameAndNameUpdate)
 {
 	olive::Project project;
 
-	project.set_filename(QStringLiteral("/tmp/test_project.ove"));
-	EXPECT_EQ(project.filename(), QStringLiteral("/tmp/test_project.ove"));
+	const QString filename = QStringLiteral("test_project.ove");
+	project.set_filename(filename);
+	EXPECT_EQ(project.filename(), filename);
 	EXPECT_EQ(project.name(), QStringLiteral("test_project"));
-	EXPECT_EQ(project.pretty_filename(), QStringLiteral("/tmp/test_project.ove"));
+	EXPECT_EQ(project.pretty_filename(), filename);
 	EXPECT_FALSE(project.is_new());
 }
 

@@ -10,9 +10,10 @@ This project is a community-maintained fork of Olive Video Editor.
 **NOTE: Oak Video Editor is alpha software and is considered highly unstable. While we highly appreciate users testing and providing usage information, please use at your own risk.**
 
 ## Binaries
-The original author compiled following binaries:
-- [0.1.0 alpha](https://github.com/olive-editor/olive/releases/tag/0.1.0)
-- [0.2.0 unstable development build](https://github.com/olive-editor/olive/releases/tag/0.2.0-nightly)
+
+The latest binary can be downloaded here:
+
+[v0.3.0]()
 
 ## Building from Source
 

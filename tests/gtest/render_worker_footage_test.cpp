@@ -79,11 +79,11 @@ bool IsRenderBackendAvailable(const QString &backend)
 #else
 bool IsRenderBackendAvailable(const QString &)
 {
-	// When the dynamic backend is not built, the worker binary is linked
+	// When the dynamic backend is not built, the test binary is linked
 	// directly against the renderer and we have no way to probe it cheaply
-	// from here. The tests were originally written for this configuration and
-	// pass on development workstations, so we keep them enabled.
-	return true;
+	// from here. These tests require a working GPU backend, so skip them
+	// unless we can verify availability through the dynamic adapter.
+	return false;
 }
 #endif
 
