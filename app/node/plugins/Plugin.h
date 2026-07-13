@@ -29,11 +29,10 @@ namespace plugin
 {
 const QString kTextureInput = QStringLiteral("tex_in");
 
-class PluginNode : public olive::Node{
+class PluginNode : public olive::Node {
 public:
-	PluginNode(OFX::Host::ImageEffect::Instance* plugin)	;
+	PluginNode(OFX::Host::ImageEffect::Instance *plugin);
 	~PluginNode() override;
-
 
 	QString Name() const override;
 	QString id() const override;
@@ -58,8 +57,8 @@ public:
    * corresponding output if it's connected to one. If your node doesn't directly deal with time, the default behavior
    * of the NodeParam objects will handle everything related to it automatically.
    */
-	void Value(const NodeValueRow &value,
-		const NodeGlobals &globals, NodeValueTable *table) const override;
+	void Value(const NodeValueRow &value, const NodeGlobals &globals,
+			   NodeValueTable *table) const override;
 
 	/**
    * @brief If Value() pushes a ShaderJob, this is the function that will process them.
@@ -82,11 +81,9 @@ private:
 
 public slots:
 	void pushButtonClicked(QString name);
-
 };
 
 }
 }
-
 
 #endif //PLUGIN_H

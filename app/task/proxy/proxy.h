@@ -28,8 +28,7 @@ namespace olive
 class ProxyTask : public Task {
 	Q_OBJECT
 public:
-	ProxyTask(const QString &source_filename,
-			  int stream_index,
+	ProxyTask(const QString &source_filename, int stream_index,
 			  const ProxyManager::ProxyParams &params,
 			  const QString &output_filename);
 

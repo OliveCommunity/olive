@@ -87,8 +87,7 @@ void ThreeWayColorNode::Retranslate()
 	SetInputName(kHighlightsAmountInput, tr("Highlights Amount"));
 }
 
-ShaderCode
-ThreeWayColorNode::GetShaderCode(const ShaderRequest &request) const
+ShaderCode ThreeWayColorNode::GetShaderCode(const ShaderRequest &request) const
 {
 	Q_UNUSED(request)
 	return ShaderCode(

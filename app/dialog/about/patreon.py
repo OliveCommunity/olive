@@ -57,7 +57,7 @@ url = 'https://www.patreon.com/api/oauth2/v2/campaigns/1478705/members?include=c
 name_list = ''
 
 while True:
-    member_data = requests.get(url, headers = {"authorization": "Bearer " + os.environ.get('PATREON_KEY')})
+    member_data = requests.get(url, headers={"authorization": "Bearer " + os.environ.get('PATREON_KEY')})
     member_data_decoded = json.loads(member_data.text)
 
     for member in member_data_decoded["data"]:
@@ -68,16 +68,17 @@ while True:
                 name = member["attributes"]["full_name"]
                 name_list += "  QStringLiteral(\""
                 name_list += name.translate(str.maketrans({
-                        "\"": "\\\"",
-                        "\\": "\\\\"
-                    }))
+                    "\"": "\\\"",
+                    "\\": "\\\\"
+                }))
                 name_list += "\")"
 
     if "links" in member_data_decoded:
-       url = member_data_decoded["links"]["next"]
+        url = member_data_decoded["links"]["next"]
     else:
-       break
+        break
 
 text_file = open("patreon.h", "w", encoding="utf-8")
-text_file.write("#ifndef PATREON_H\n#define PATREON_H\n\n#include <QStringList>\n\nQStringList patrons = {\n%s\n};\n\n#endif // PATREON_H\n" % name_list)
+text_file.write(
+    "#ifndef PATREON_H\n#define PATREON_H\n\n#include <QStringList>\n\nQStringList patrons = {\n%s\n};\n\n#endif // PATREON_H\n" % name_list)
 text_file.close()

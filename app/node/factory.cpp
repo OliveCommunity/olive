@@ -94,7 +94,6 @@ void NodeFactory::Initialize()
 	}
 
 	RegisterPluginNodes();
-
 }
 
 void NodeFactory::Destroy()
@@ -151,8 +150,7 @@ Menu *NodeFactory::CreateMenu(QWidget *parent, bool create_none_item,
 		// Determine final destination (support secondary grouping)
 		Menu *destination = top_menu;
 		QString sub = n->SubCategory();
-		if (!sub.isEmpty() &&
-			n->Category().contains(Node::kCategoryOpenFX)) {
+		if (!sub.isEmpty() && n->Category().contains(Node::kCategoryOpenFX)) {
 			QList<QAction *> sub_actions = top_menu->actions();
 			foreach (QAction *action, sub_actions) {
 				if (action->menu() && action->menu()->title() == sub) {
@@ -249,16 +247,15 @@ void NodeFactory::RegisterPluginNodes()
 			continue;
 		}
 
-		const QString plugin_id = QString::fromStdString(
-			image_effect->getIdentifier());
+		const QString plugin_id =
+			QString::fromStdString(image_effect->getIdentifier());
 		if (existing_ids.contains(plugin_id)) {
 			continue;
 		}
 
 		const auto &contexts = image_effect->getContexts();
 		if (contexts.empty()) {
-			qWarning() << "Skipping OFX plugin with no contexts:"
-					   << plugin_id;
+			qWarning() << "Skipping OFX plugin with no contexts:" << plugin_id;
 			continue;
 		}
 		std::string context = kOfxImageEffectContextFilter;

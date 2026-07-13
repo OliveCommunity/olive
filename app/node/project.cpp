@@ -121,9 +121,8 @@ SerializedData Project::Load(QXmlStreamReader *reader)
 						}
 					}
 
-					const QString path = bundle_path.isEmpty()
-						? file_path
-						: bundle_path;
+					const QString path = bundle_path.isEmpty() ? file_path :
+																 bundle_path;
 					if (!path.isEmpty()) {
 						plugin_paths.insert(path);
 					}
@@ -239,19 +238,18 @@ void Project::Save(QXmlStreamWriter *writer) const
 			}
 
 			const QString key = QStringLiteral("%1|%2|%3|%4|%5")
-				.arg(QString::fromStdString(id))
-				.arg(major)
-				.arg(minor)
-				.arg(bundle_path)
-				.arg(file_path);
+									.arg(QString::fromStdString(id))
+									.arg(major)
+									.arg(minor)
+									.arg(bundle_path)
+									.arg(file_path);
 			if (seen.contains(key)) {
 				continue;
 			}
 			seen.insert(key);
 
 			QMap<QString, QString> attrs;
-			attrs.insert(QStringLiteral("id"),
-						 QString::fromStdString(id));
+			attrs.insert(QStringLiteral("id"), QString::fromStdString(id));
 			attrs.insert(QStringLiteral("major"), QString::number(major));
 			attrs.insert(QStringLiteral("minor"), QString::number(minor));
 			if (!bundle_path.isEmpty()) {
@@ -269,8 +267,8 @@ void Project::Save(QXmlStreamWriter *writer) const
 		writer->writeStartElement(QStringLiteral("plugins"));
 		for (const auto &entry : plugins_to_save) {
 			writer->writeStartElement(QStringLiteral("plugin"));
-			for (auto it = entry.second.cbegin();
-				 it != entry.second.cend(); ++it) {
+			for (auto it = entry.second.cbegin(); it != entry.second.cend();
+				 ++it) {
 				writer->writeAttribute(it.key(), it.value());
 			}
 			writer->writeEndElement();

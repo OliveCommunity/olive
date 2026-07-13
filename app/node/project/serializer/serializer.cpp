@@ -98,7 +98,7 @@ ProjectSerializer::Result ProjectSerializer::Load(Project *project,
 	} else {
 		Result r(kFileError);
 		r.SetDetails(QStringLiteral("Unable to open '%1': %2")
-					 .arg(filename, project_file.errorString()));
+						 .arg(filename, project_file.errorString()));
 		return r;
 	}
 }

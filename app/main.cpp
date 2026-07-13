@@ -148,7 +148,6 @@ int decompress_project(const QString &project)
 
 int main(int argc, char *argv[])
 {
-
 	// Set up debug handler
 	qInstallMessageHandler(olive::DebugHandler);
 
@@ -229,8 +228,7 @@ int main(int argc, char *argv[])
 
 	auto no_plugin = parser.AddOption(
 		{ QStringLiteral("-no-plugin") },
-		QCoreApplication::translate("main", "Don't load plugins")
-		);
+		QCoreApplication::translate("main", "Don't load plugins"));
 
 	// Qt options re-implemented (add to this as necessary)
 	//
@@ -352,13 +350,13 @@ int main(int argc, char *argv[])
 		olive::Config::Current()[QStringLiteral("GraphicsBackend")]
 			.toString()
 			.toLower();
-	qputenv("QSG_RHI_BACKEND",
-			graphics_backend == QStringLiteral("vulkan")
-				? QByteArrayLiteral("vulkan")
-				: QByteArrayLiteral("opengl"));
+	qputenv("QSG_RHI_BACKEND", graphics_backend == QStringLiteral("vulkan") ?
+								   QByteArrayLiteral("vulkan") :
+								   QByteArrayLiteral("opengl"));
 
 	if (auto *gui_app = qobject_cast<QGuiApplication *>(a.get())) {
-		gui_app->setWindowIcon(QIcon(QStringLiteral(":/graphics/oak-logo.png")));
+		gui_app->setWindowIcon(
+			QIcon(QStringLiteral(":/graphics/oak-logo.png")));
 	}
 
 	if (load_plugins) {

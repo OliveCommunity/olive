@@ -242,11 +242,8 @@ void Footage::set_proxy_enabled(bool enabled)
 	}
 }
 
-void Footage::SetProxy(const QString &path,
-					   ProxyManager::ProxyState state,
-					   int video_stream_index,
-					   int preset_version,
-					   bool enabled)
+void Footage::SetProxy(const QString &path, ProxyManager::ProxyState state,
+					   int video_stream_index, int preset_version, bool enabled)
 {
 	qDebug() << "Footage::SetProxy:" << filename() << "enabled=" << enabled
 			 << "state=" << ProxyManager::ProxyStateToString(state)
@@ -598,11 +595,10 @@ void Footage::SaveCustom(QXmlStreamWriter *writer) const
 	if (!proxy_path_.isEmpty() || proxy_enabled_) {
 		writer->writeStartElement(QStringLiteral("proxy"));
 		writer->writeAttribute(QStringLiteral("enabled"),
-							   proxy_enabled_ ? QStringLiteral("1")
-											  : QStringLiteral("0"));
+							   proxy_enabled_ ? QStringLiteral("1") :
+												QStringLiteral("0"));
 		writer->writeAttribute(QStringLiteral("state"),
-							   ProxyManager::ProxyStateToString(
-								   proxy_state_));
+							   ProxyManager::ProxyStateToString(proxy_state_));
 		writer->writeAttribute(QStringLiteral("stream"),
 							   QString::number(proxy_video_stream_index_));
 		writer->writeAttribute(QStringLiteral("preset"),

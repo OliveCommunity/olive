@@ -17,7 +17,6 @@
  *
  */
 
-
 #include "paraminstance.h"
 
 #include "OlivePluginInstance.h"
@@ -35,8 +34,7 @@ void SubmitUndoCommand(const std::shared_ptr<PluginNode> &node,
 
 	if (node) {
 		auto *instance = node->getPluginInstance();
-		auto *olive_instance =
-			dynamic_cast<OlivePluginInstance *>(instance);
+		auto *olive_instance = dynamic_cast<OlivePluginInstance *>(instance);
 		if (olive_instance) {
 			olive_instance->SubmitUndoCommand(command, label);
 			return;

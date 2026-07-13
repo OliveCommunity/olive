@@ -78,24 +78,26 @@ QString RenderManager::BackendToString(Backend backend)
 }
 
 RenderManager::RenderManager(QObject *parent)
-	: backend_(BackendFromString(
-		  OLIVE_CONFIG("GraphicsBackend").toString()))
+	: backend_(BackendFromString(OLIVE_CONFIG("GraphicsBackend").toString()))
 	, requested_backend_(backend_)
 	, aggressive_gc_(0)
 	, worker_pool_(nullptr)
 {
 	if (backend_ == kVulkan) {
 #ifndef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
-		qWarning() << "Vulkan backend requested but dynamic render backend is not enabled. Falling back to OpenGL.";
+		qWarning()
+			<< "Vulkan backend requested but dynamic render backend is not enabled. Falling back to OpenGL.";
 		backend_ = kOpenGL;
 #endif
 	}
 
 	if (backend_ == kOpenGL || backend_ == kVulkan) {
 #ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
-		auto *dynamic_renderer = new DynamicRenderer(BackendToString(requested_backend_));
+		auto *dynamic_renderer =
+			new DynamicRenderer(BackendToString(requested_backend_));
 		if (!dynamic_renderer->Load()) {
-			qWarning() << "Failed to load dynamic render backend" << BackendToString(requested_backend_)
+			qWarning() << "Failed to load dynamic render backend"
+					   << BackendToString(requested_backend_)
 					   << ", falling back to OpenGL";
 			delete dynamic_renderer;
 			backend_ = kOpenGL;
@@ -104,7 +106,8 @@ RenderManager::RenderManager(QObject *parent)
 			context_ = dynamic_renderer;
 			// DynamicRenderer may internally fall back (e.g. Vulkan -> OpenGL).
 			// Synchronize RenderManager's view of the actual runtime backend.
-			Backend actual_backend = BackendFromString(dynamic_renderer->backend_name());
+			Backend actual_backend =
+				BackendFromString(dynamic_renderer->backend_name());
 			if (actual_backend != backend_) {
 				qWarning() << "Dynamic render backend fell back from"
 						   << BackendToString(backend_) << "to"
@@ -218,11 +221,13 @@ RenderTicketPtr RenderManager::RenderFrame(const RenderVideoParams &params)
 
 	if (worker_params.return_type == ReturnType::kNull) {
 		dry_run_thread_->AddTicket(ticket);
-	} else if (worker_pool_ && worker_pool_->SubmitFrame(ticket, worker_params)) {
+	} else if (worker_pool_ &&
+			   worker_pool_->SubmitFrame(ticket, worker_params)) {
 		return ticket;
 	} else {
-		qWarning() << "RenderManager: worker pool unavailable, finishing ticket "
-				      "without result";
+		qWarning()
+			<< "RenderManager: worker pool unavailable, finishing ticket "
+			   "without result";
 		ticket->Finish();
 	}
 

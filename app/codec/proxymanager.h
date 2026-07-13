@@ -90,8 +90,7 @@ public:
 	static ProxyState ProxyStateFromString(const QString &state);
 
 	Proxy GetOrStartProxy(const QString &cache_path,
-						  const QString &source_filename,
-						  int stream_index,
+						  const QString &source_filename, int stream_index,
 						  const ProxyParams &params);
 
 signals:

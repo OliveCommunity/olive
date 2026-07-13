@@ -20,10 +20,10 @@
 
 /* Hack that forces checked QPushButtons to use dark color */
 QPushButton:checked {
-  background: #191919;
+    background: #191919;
 }
 
 /* Make tab bar a little less chunky */
 QTabBar {
-  font-size: 9pt;
+    font-size: 9pt;
 }

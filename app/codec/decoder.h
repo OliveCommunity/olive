@@ -32,7 +32,7 @@ extern "C" {
 #include <QWaitCondition>
 #include <stdint.h>
 
- #include "codec/frame.h"
+#include "codec/frame.h"
 #include "node/block/block.h"
 #include "node/project/footage/footagedescription.h"
 #include "render/cancelatom.h"

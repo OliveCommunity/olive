@@ -18,8 +18,8 @@
   -->
 
 <mime-info xmlns='http://www.freedesktop.org/standards/shared-mime-info'>
-  <mime-type type="application/vnd.olive-project">
-    <comment>Oak project</comment>
-    <glob pattern="*.ove"/>
-  </mime-type>
+    <mime-type type="application/vnd.olive-project">
+        <comment>Oak project</comment>
+        <glob pattern="*.ove"/>
+    </mime-type>
 </mime-info>

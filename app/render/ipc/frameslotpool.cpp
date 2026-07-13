@@ -36,18 +36,21 @@ size_t AlignUp(size_t value, size_t align)
 	return (value + (align - 1)) & ~(align - 1);
 }
 
-constexpr size_t kAlign = 64;  // Cache-line alignment for each sub-region.
+constexpr size_t kAlign = 64; // Cache-line alignment for each sub-region.
 
-}  // namespace
+} // namespace
 
 size_t FrameSlotPool::BytesNeeded(uint32_t slot_count, size_t slot_data_bytes)
 {
 	const uint32_t ring_cap = RingCapacity(slot_count);
 	size_t total = AlignUp(sizeof(Header), kAlign);
-	total += AlignUp(SpscRingBuffer::BytesNeeded(ring_cap), kAlign);  // free ring
-	total += AlignUp(SpscRingBuffer::BytesNeeded(ring_cap), kAlign);  // ready ring
-	total += AlignUp(sizeof(FrameSlotMeta) * slot_count, kAlign);     // metadata array
-	total += AlignUp(slot_data_bytes, kAlign) * slot_count;           // pixel data blocks
+	total +=
+		AlignUp(SpscRingBuffer::BytesNeeded(ring_cap), kAlign); // free ring
+	total +=
+		AlignUp(SpscRingBuffer::BytesNeeded(ring_cap), kAlign); // ready ring
+	total +=
+		AlignUp(sizeof(FrameSlotMeta) * slot_count, kAlign); // metadata array
+	total += AlignUp(slot_data_bytes, kAlign) * slot_count; // pixel data blocks
 	return total;
 }
 
@@ -111,9 +114,12 @@ FrameSlotPool FrameSlotPool::Attach(void *mem)
 		return pool;
 	}
 
-	pool.free_ring_ = SpscRingBuffer::Attach(pool.base_ + pool.header_->free_ring_offset);
-	pool.ready_ring_ = SpscRingBuffer::Attach(pool.base_ + pool.header_->ready_ring_offset);
-	pool.meta_ = reinterpret_cast<FrameSlotMeta *>(pool.base_ + pool.header_->meta_offset);
+	pool.free_ring_ =
+		SpscRingBuffer::Attach(pool.base_ + pool.header_->free_ring_offset);
+	pool.ready_ring_ =
+		SpscRingBuffer::Attach(pool.base_ + pool.header_->ready_ring_offset);
+	pool.meta_ = reinterpret_cast<FrameSlotMeta *>(pool.base_ +
+												   pool.header_->meta_offset);
 	pool.data_ = pool.base_ + pool.header_->data_offset;
 
 	return pool;
@@ -169,5 +175,5 @@ bool FrameSlotPool::Release(uint32_t index)
 	return free_ring_->Push(index);
 }
 
-}  // namespace ipc
-}  // namespace olive
+} // namespace ipc
+} // namespace olive

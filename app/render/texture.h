@@ -36,7 +36,7 @@ namespace olive
 class AcceleratedJob;
 class Renderer;
 struct RendererLifetime {
-	std::atomic<bool> alive{true};
+	std::atomic<bool> alive{ true };
 };
 
 class Texture;
@@ -162,16 +162,18 @@ public:
 	}
 	void handleFrame(AVFramePtr ptr)
 	{
-		frame_=ptr;
+		frame_ = ptr;
 	}
-	AVFramePtr frame(){
+	AVFramePtr frame()
+	{
 		return frame_;
 	}
+
 private:
 	bool IsRendererAlive() const
 	{
 		return renderer_ &&
-			(!renderer_lifetime_ || renderer_lifetime_->alive.load());
+			   (!renderer_lifetime_ || renderer_lifetime_->alive.load());
 	}
 
 	Renderer *renderer_;

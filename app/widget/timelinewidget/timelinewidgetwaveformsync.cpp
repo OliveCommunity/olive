@@ -66,8 +66,8 @@ bool GetWaveformSyncClip(Block *block, WaveformSyncClip *out)
 	return true;
 }
 
-QVector<WaveformSyncClip> GetSelectedWaveformSyncClips(
-	const QVector<Block *> &blocks)
+QVector<WaveformSyncClip>
+GetSelectedWaveformSyncClips(const QVector<Block *> &blocks)
 {
 	QVector<WaveformSyncClip> clips;
 	for (Block *block : blocks) {
@@ -108,7 +108,8 @@ QVector<double> ExtractWaveformCacheEnvelope(const WaveformSyncClip &clip,
 			const AudioVisualWaveform::Sample summary =
 				clip.waveform->GetSummaryFromTime(t, length);
 
-			for (const AudioVisualWaveform::SamplePerChannel &channel : summary) {
+			for (const AudioVisualWaveform::SamplePerChannel &channel :
+				 summary) {
 				const double channel_peak =
 					std::max(std::abs(static_cast<double>(channel.min)),
 							 std::abs(static_cast<double>(channel.max)));
@@ -121,6 +122,6 @@ QVector<double> ExtractWaveformCacheEnvelope(const WaveformSyncClip &clip,
 	return envelope;
 }
 
-}  // namespace TimelineWaveformSync
+} // namespace TimelineWaveformSync
 
-}  // namespace olive
+} // namespace olive

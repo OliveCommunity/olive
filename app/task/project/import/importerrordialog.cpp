@@ -37,9 +37,9 @@ ProjectImportErrorDialog::ProjectImportErrorDialog(const QStringList &filenames,
 
 	setWindowTitle(tr("Import Error"));
 
-	layout->addWidget(new QLabel(
-		tr("The following files failed to import. Oak Video Editor likely does not "
-		   "support their formats.")));
+	layout->addWidget(new QLabel(tr(
+		"The following files failed to import. Oak Video Editor likely does not "
+		"support their formats.")));
 
 	QListWidget *list_widget = new QListWidget();
 	foreach (const QString &s, filenames) {

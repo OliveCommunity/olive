@@ -22,7 +22,7 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
-#include  <ofxhPluginCache.h>
+#include <ofxhPluginCache.h>
 #include <ofxhBinary.h>
 
 #include <QApplication>
@@ -37,14 +37,18 @@
 using namespace OFX::Host;
 using namespace olive::plugin;
 
-namespace olive {
-namespace plugin {
+namespace olive
+{
+namespace plugin
+{
 class PluginNode;
 }
 }
 
-namespace {
-void AddPluginPath(OFX::Host::PluginCache *cache, const QString &path, bool recurse = true)
+namespace
+{
+void AddPluginPath(OFX::Host::PluginCache *cache, const QString &path,
+				   bool recurse = true)
 {
 	if (!cache || path.isEmpty()) {
 		return;
@@ -80,7 +84,8 @@ void olive::plugin::loadPlugins(QString path)
 		host = std::make_shared<OliveHost>();
 		Current::getInstance().setPluginHost(host);
 
-		imageEffectPluginCache = std::make_shared<ImageEffect::PluginCache>(*host);
+		imageEffectPluginCache =
+			std::make_shared<ImageEffect::PluginCache>(*host);
 		Current::getInstance().setPluginCache(imageEffectPluginCache);
 
 		imageEffectPluginCache->registerInCache(
@@ -92,7 +97,8 @@ void olive::plugin::loadPlugins(QString path)
 	const QString home_path = QDir::homePath();
 	AddPluginPath(cache, QDir(home_path).filePath(".OFX/Plugins"));
 	AddPluginPath(cache, QDir(home_path).filePath(".local/share/OFX/Plugins"));
-	AddPluginPath(cache, QDir(home_path).filePath(".local/share/olive/ofx/Plugins"));
+	AddPluginPath(cache,
+				  QDir(home_path).filePath(".local/share/olive/ofx/Plugins"));
 
 	const QString app_dir = QCoreApplication::applicationDirPath();
 	AddPluginPath(cache, QDir(app_dir).filePath("../OFX/Plugins"));
@@ -109,10 +115,9 @@ void olive::plugin::loadPlugins(QString path)
 }
 OliveHost::~OliveHost()
 {
-	
 }
 
-void OliveHost::destroyInstance(OFX::Host::ImageEffect::Instance* instance)
+void OliveHost::destroyInstance(OFX::Host::ImageEffect::Instance *instance)
 {
 	if (!instance) {
 		return;
@@ -151,11 +156,12 @@ OliveHost::makeDescriptor(const std::string &bundlePath,
 	return desc;
 }
 
-ImageEffect::Instance* OliveHost::newInstance(void *clientData,
-							ImageEffect::ImageEffectPlugin* plugin,
-							ImageEffect::Descriptor& desc,
-							const std::string& context){
-	auto* instance = new OlivePluginInstance(
+ImageEffect::Instance *
+OliveHost::newInstance(void *clientData, ImageEffect::ImageEffectPlugin *plugin,
+					   ImageEffect::Descriptor &desc,
+					   const std::string &context)
+{
+	auto *instance = new OlivePluginInstance(
 		plugin, desc, context, Current::getInstance().interactive());
 	if (clientData) {
 		auto *node = static_cast<PluginNode *>(clientData);
@@ -165,8 +171,9 @@ ImageEffect::Instance* OliveHost::newInstance(void *clientData,
 	instances_.append(std::shared_ptr<OlivePluginInstance>(instance));
 	return instance;
 };
-OfxStatus olive::plugin::OliveHost::vmessage(const char *type, const char *id, const char *format,
-						   va_list args){
+OfxStatus olive::plugin::OliveHost::vmessage(const char *type, const char *id,
+											 const char *format, va_list args)
+{
 	if (!type || !format) {
 		return kOfxStatFailed;
 	}
@@ -178,8 +185,7 @@ OfxStatus olive::plugin::OliveHost::vmessage(const char *type, const char *id, c
 
 	auto *app = qobject_cast<QApplication *>(QCoreApplication::instance());
 	if (!app) {
-		qWarning().noquote()
-			<< "OFX message:" << type << message;
+		qWarning().noquote() << "OFX message:" << type << message;
 		if (strcmp(type, kOfxMessageQuestion) == 0) {
 			return kOfxStatReplyNo;
 		}
@@ -187,8 +193,8 @@ OfxStatus olive::plugin::OliveHost::vmessage(const char *type, const char *id, c
 	}
 
 	if (strcmp(type, kOfxMessageQuestion) == 0) {
-		auto ret = QMessageBox::question(nullptr, "", message,
-										 QMessageBox::Ok, QMessageBox::Cancel);
+		auto ret = QMessageBox::question(nullptr, "", message, QMessageBox::Ok,
+										 QMessageBox::Cancel);
 		return (ret == QMessageBox::Ok) ? kOfxStatReplyYes : kOfxStatReplyNo;
 	}
 
@@ -203,8 +209,10 @@ OfxStatus olive::plugin::OliveHost::vmessage(const char *type, const char *id, c
 	return kOfxStatOK;
 }
 // TODO: Persistent messages shouldn't use pop-up window.
-OfxStatus olive::plugin::OliveHost::setPersistentMessage(
-	const char *type, const char *id, const char *format, va_list args)
+OfxStatus olive::plugin::OliveHost::setPersistentMessage(const char *type,
+														 const char *id,
+														 const char *format,
+														 va_list args)
 {
 	if (!type || !format) {
 		return kOfxStatFailed;
@@ -216,13 +224,13 @@ OfxStatus olive::plugin::OliveHost::setPersistentMessage(
 	QString message(buffer);
 
 	if (strcmp(type, kOfxMessageError) == 0) {
-		persistent_messages_.append({HostMessageType::Error, message});
+		persistent_messages_.append({ HostMessageType::Error, message });
 		QMessageBox::critical(nullptr, "", message);
 	} else if (strcmp(type, kOfxMessageWarning) == 0) {
-		persistent_messages_.append({HostMessageType::Warning, message});
+		persistent_messages_.append({ HostMessageType::Warning, message });
 		QMessageBox::warning(nullptr, "", message);
 	} else if (strcmp(type, kOfxMessageMessage) == 0) {
-		persistent_messages_.append({HostMessageType::Message, message});
+		persistent_messages_.append({ HostMessageType::Message, message });
 		QMessageBox::information(nullptr, "", message);
 	} else {
 		return kOfxStatFailed;

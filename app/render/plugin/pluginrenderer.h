@@ -31,8 +31,10 @@
 
 namespace olive
 {
-namespace plugin{
-namespace detail {
+namespace plugin
+{
+namespace detail
+{
 // 作用：将字节行跨度转换为像素跨度，便于纹理读写。
 // Purpose: Convert byte stride to pixel stride for texture I/O.
 int BytesToPixels(int byte_linesize, const olive::VideoParams &params);
@@ -46,9 +48,15 @@ int BytesToPixels(int byte_linesize, const olive::VideoParams &params);
 class PluginRenderer : public QObject {
 	Q_OBJECT
 public:
-	explicit PluginRenderer(olive::Renderer *renderer, QObject *parent = nullptr)
-		: QObject(parent), renderer_(renderer) {}
-	virtual ~PluginRenderer() override {}
+	explicit PluginRenderer(olive::Renderer *renderer,
+							QObject *parent = nullptr)
+		: QObject(parent)
+		, renderer_(renderer)
+	{
+	}
+	virtual ~PluginRenderer() override
+	{
+	}
 
 	olive::Renderer *renderer() const
 	{
@@ -63,7 +71,7 @@ public:
 	void DetachOutputTexture();
 	// 作用：执行插件渲染流程（参数配置、输入/输出、调用渲染动作）。
 	// Purpose: Execute plugin render flow (params, inputs/outputs, render actions).
-	void RenderPlugin(TexturePtr src, olive::plugin::PluginJob& job,
+	void RenderPlugin(TexturePtr src, olive::plugin::PluginJob &job,
 					  olive::TexturePtr destination,
 					  olive::VideoParams destination_params,
 					  bool clear_destination, bool interactive);
@@ -73,7 +81,5 @@ private:
 };
 }
 }
-
-
 
 #endif //PLUGINRENDERER_H

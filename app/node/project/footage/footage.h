@@ -200,11 +200,8 @@ public:
 		return proxy_state_;
 	}
 
-	void SetProxy(const QString &path,
-				  ProxyManager::ProxyState state,
-				  int video_stream_index,
-				  int preset_version,
-				  bool enabled);
+	void SetProxy(const QString &path, ProxyManager::ProxyState state,
+				  int video_stream_index, int preset_version, bool enabled);
 
 	void ClearProxy();
 

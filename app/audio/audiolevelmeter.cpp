@@ -57,7 +57,8 @@ AudioLevelMeter::AnalyzeSampleBuffer(const core::SampleBuffer &samples)
 			square_sum += value * value;
 		}
 
-		const double mean_square = square_sum / static_cast<double>(sample_count);
+		const double mean_square =
+			square_sum / static_cast<double>(sample_count);
 		const double rms = std::sqrt(mean_square);
 
 		ChannelStats channel_stats;
@@ -74,8 +75,8 @@ AudioLevelMeter::AnalyzeSampleBuffer(const core::SampleBuffer &samples)
 	}
 
 	stats.silence = qFuzzyIsNull(stats.max_peak_linear);
-	stats.integrated_lufs = PowerToLufs(
-		total_square / static_cast<double>(total_samples));
+	stats.integrated_lufs =
+		PowerToLufs(total_square / static_cast<double>(total_samples));
 
 	return stats;
 }

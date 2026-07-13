@@ -96,7 +96,8 @@ AudioWaveformSync::OffsetResult AudioWaveformSync::EstimateEnvelopeOffset(
 	int64_t best_lag = 0;
 
 	for (int64_t lag = -max_offset_windows; lag <= max_offset_windows; lag++) {
-		const int reference_start = static_cast<int>(std::max<int64_t>(0, -lag));
+		const int reference_start =
+			static_cast<int>(std::max<int64_t>(0, -lag));
 		const int candidate_start = static_cast<int>(std::max<int64_t>(0, lag));
 		const int overlap = std::min(reference.size() - reference_start,
 									 candidate.size() - candidate_start);
@@ -142,8 +143,7 @@ AudioWaveformSync::OffsetResult AudioWaveformSync::EstimateEnvelopeOffset(
 	if (best_score > -2.0) {
 		result.valid = true;
 		result.confidence = std::max(0.0, best_score);
-		result.offset_samples =
-			best_lag * static_cast<int64_t>(window_samples);
+		result.offset_samples = best_lag * static_cast<int64_t>(window_samples);
 	}
 
 	return result;

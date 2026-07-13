@@ -37,7 +37,8 @@ const QString OCIOLutNode::kDirectionInput = QStringLiteral("lut_dir_in");
 
 #define super OCIOBaseNode
 
-namespace {
+namespace
+{
 
 bool IsSupportedLutExtension(const QString &suffix)
 {
@@ -47,7 +48,8 @@ bool IsSupportedLutExtension(const QString &suffix)
 
 bool IsMainProcess()
 {
-	return qobject_cast<QApplication *>(QCoreApplication::instance()) != nullptr;
+	return qobject_cast<QApplication *>(QCoreApplication::instance()) !=
+		   nullptr;
 }
 
 int ReadDirectionInput(const Node *node)
@@ -245,9 +247,8 @@ bool OCIOLutNode::CreateProcessorFromInputs() const
 
 	ColorProcessorPtr processor;
 	try {
-		const bool forward =
-			static_cast<ColorProcessor::Direction>(direction) ==
-			ColorProcessor::kNormal;
+		const bool forward = static_cast<ColorProcessor::Direction>(
+								 direction) == ColorProcessor::kNormal;
 		qDebug() << "OCIOLutNode: creating processor for" << path
 				 << "direction=" << direction
 				 << "ocio_dir=" << (forward ? "FORWARD" : "INVERSE")
@@ -256,10 +257,11 @@ bool OCIOLutNode::CreateProcessorFromInputs() const
 		OCIO::FileTransformRcPtr transform = OCIO::FileTransform::Create();
 		transform->setSrc(path.toUtf8().constData());
 		transform->setInterpolation(OCIO::INTERP_LINEAR);
-		transform->setDirection(
-			forward ? OCIO::TRANSFORM_DIR_FORWARD : OCIO::TRANSFORM_DIR_INVERSE);
+		transform->setDirection(forward ? OCIO::TRANSFORM_DIR_FORWARD :
+										  OCIO::TRANSFORM_DIR_INVERSE);
 
-		processor = ColorProcessor::Create(manager()->GetConfig()->getProcessor(transform));
+		processor = ColorProcessor::Create(
+			manager()->GetConfig()->getProcessor(transform));
 	} catch (const std::exception &e) {
 		qWarning() << "OCIO LUT processor error:" << e.what();
 		processor = nullptr;

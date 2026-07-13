@@ -40,16 +40,16 @@ namespace ipc
  * not guaranteed shared-memory-safe).
  */
 struct FrameSlotMeta {
-	int64_t id;            ///< Caller-defined tag (e.g. ticket id, or footage stream hash).
-	int64_t time_num;      ///< Frame timestamp numerator.
-	int64_t time_den;      ///< Frame timestamp denominator.
+	int64_t id; ///< Caller-defined tag (e.g. ticket id, or footage stream hash).
+	int64_t time_num; ///< Frame timestamp numerator.
+	int64_t time_den; ///< Frame timestamp denominator.
 	int32_t width;
 	int32_t height;
-	int32_t format;        ///< olive::PixelFormat::Format value.
+	int32_t format; ///< olive::PixelFormat::Format value.
 	int32_t channel_count;
-	int32_t linesize;      ///< Bytes per scanline (stride).
-	int32_t data_size;     ///< Valid bytes written into the slot's data block.
-	char colorspace[128];  ///< Input colorspace name for color-managed footage.
+	int32_t linesize; ///< Bytes per scanline (stride).
+	int32_t data_size; ///< Valid bytes written into the slot's data block.
+	char colorspace[128]; ///< Input colorspace name for color-managed footage.
 };
 
 /**
@@ -90,7 +90,8 @@ public:
    * Initializes both rings, seeds the free ring with every slot index, and zeroes metadata.
    * `mem` must provide at least BytesNeeded(slot_count, slot_data_bytes) bytes.
    */
-	static FrameSlotPool Create(void *mem, uint32_t slot_count, size_t slot_data_bytes);
+	static FrameSlotPool Create(void *mem, uint32_t slot_count,
+								size_t slot_data_bytes);
 
 	/**
    * @brief Map an existing, already-initialized pool (peer side).
@@ -148,7 +149,6 @@ public:
 	FrameSlotPool() = default;
 
 private:
-
 	struct Header {
 		uint32_t magic;
 		uint32_t slot_count;
@@ -160,7 +160,7 @@ private:
 		uint64_t data_offset;
 	};
 
-	static constexpr uint32_t kMagic = 0x4F4B5350;  // 'OKSP'
+	static constexpr uint32_t kMagic = 0x4F4B5350; // 'OKSP'
 
 	// Ring capacity must exceed slot_count by one because a ring can hold at most capacity-1 entries
 	// and we need to be able to enqueue every slot at once.
@@ -177,7 +177,7 @@ private:
 	uint8_t *data_ = nullptr;
 };
 
-}  // namespace ipc
-}  // namespace olive
+} // namespace ipc
+} // namespace olive
 
-#endif  // IPC_FRAMESLOTPOOL_H
+#endif // IPC_FRAMESLOTPOOL_H

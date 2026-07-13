@@ -110,7 +110,6 @@ public:
 
 	bool InitializeRuntime()
 	{
-
 		// Create a minimal Core instance so that code paths calling Core::instance()
 		// (e.g. ViewerOutput::data for timecode display) do not dereference null.
 		// The worker is short-lived; leaking this on exit is harmless.
@@ -141,7 +140,8 @@ public:
 		QJsonObject handshake = hs.ToJson();
 		QOpenGLContext *ctx = nullptr;
 #ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
-		if (auto *dynamic_renderer = dynamic_cast<olive::DynamicRenderer *>(renderer_)) {
+		if (auto *dynamic_renderer =
+				dynamic_cast<olive::DynamicRenderer *>(renderer_)) {
 			ctx = dynamic_renderer->OpenGLContext();
 		} else
 #endif
@@ -164,7 +164,8 @@ public:
 		if (type == QLatin1String(olive::ipc::msgtype::kHandshake)) {
 			olive::ipc::HandshakeMsg hs;
 			if (!olive::ipc::HandshakeMsg::FromJson(message, &hs)) {
-				return Write(ErrorMessage(QStringLiteral("invalid handshake message")));
+				return Write(
+					ErrorMessage(QStringLiteral("invalid handshake message")));
 			}
 			return AttachOutputPool(hs);
 		}
@@ -172,7 +173,8 @@ public:
 		if (type == QLatin1String(olive::ipc::msgtype::kLoadGraph)) {
 			olive::ipc::LoadGraphMsg load;
 			if (!olive::ipc::LoadGraphMsg::FromJson(message, &load)) {
-				return Write(ErrorMessage(QStringLiteral("invalid load_graph message")));
+				return Write(
+					ErrorMessage(QStringLiteral("invalid load_graph message")));
 			}
 			return LoadGraph(load.path);
 		}
@@ -180,7 +182,8 @@ public:
 		if (type == QLatin1String(olive::ipc::msgtype::kRenderFrame)) {
 			olive::ipc::RenderFrameMsg render;
 			if (!olive::ipc::RenderFrameMsg::FromJson(message, &render)) {
-				return Write(ErrorMessage(QStringLiteral("invalid render_frame message")));
+				return Write(ErrorMessage(
+					QStringLiteral("invalid render_frame message")));
 			}
 			return RenderFrame(render);
 		}
@@ -195,7 +198,8 @@ public:
 			return true;
 		}
 
-		return Write(ErrorMessage(QStringLiteral("unknown message type: %1").arg(type)));
+		return Write(
+			ErrorMessage(QStringLiteral("unknown message type: %1").arg(type)));
 	}
 
 	bool shutdown_requested() const
@@ -214,48 +218,58 @@ private:
 	bool AttachOutputPool(const olive::ipc::HandshakeMsg &hs)
 	{
 		if (hs.protocol_version != kProtocolVersion) {
-			return Write(ErrorMessage(QStringLiteral("unsupported protocol version %1")
-									  .arg(hs.protocol_version)));
+			return Write(
+				ErrorMessage(QStringLiteral("unsupported protocol version %1")
+								 .arg(hs.protocol_version)));
 		}
 
-		if (hs.shm_key.isEmpty() || hs.output_slots <= 0 || hs.slot_data_bytes <= 0) {
-			return Write(ErrorMessage(QStringLiteral("handshake missing output shared-memory geometry")));
+		if (hs.shm_key.isEmpty() || hs.output_slots <= 0 ||
+			hs.slot_data_bytes <= 0) {
+			return Write(ErrorMessage(QStringLiteral(
+				"handshake missing output shared-memory geometry")));
 		}
 
 		const size_t bytes = olive::ipc::FrameSlotPool::BytesNeeded(
 			uint32_t(hs.output_slots), size_t(hs.slot_data_bytes));
-		if (!output_region_.Open(hs.shm_key, bytes, olive::ipc::SharedMemoryRegion::kAttach)) {
-			return Write(ErrorMessage(QStringLiteral("failed to attach shared memory: %1")
-									  .arg(output_region_.error())));
+		if (!output_region_.Open(hs.shm_key, bytes,
+								 olive::ipc::SharedMemoryRegion::kAttach)) {
+			return Write(ErrorMessage(
+				QStringLiteral("failed to attach shared memory: %1")
+					.arg(output_region_.error())));
 		}
 
 		output_pool_ = olive::ipc::FrameSlotPool::Attach(output_region_.data());
 		if (!output_pool_->IsValid()) {
 			output_region_.Close();
 			output_pool_.reset();
-			return Write(ErrorMessage(QStringLiteral("shared memory does not contain a frame slot pool")));
+			return Write(ErrorMessage(QStringLiteral(
+				"shared memory does not contain a frame slot pool")));
 		}
 
 		input_pool_.reset();
 		input_region_.Close();
 		if (hs.input_slots > 0) {
 			if (hs.input_shm_key.isEmpty() || hs.input_slot_data_bytes <= 0) {
-				return Write(ErrorMessage(QStringLiteral("handshake missing input shared-memory geometry")));
+				return Write(ErrorMessage(QStringLiteral(
+					"handshake missing input shared-memory geometry")));
 			}
 
 			const size_t input_bytes = olive::ipc::FrameSlotPool::BytesNeeded(
 				uint32_t(hs.input_slots), size_t(hs.input_slot_data_bytes));
 			if (!input_region_.Open(hs.input_shm_key, input_bytes,
 									olive::ipc::SharedMemoryRegion::kAttach)) {
-				return Write(ErrorMessage(QStringLiteral("failed to attach input shared memory: %1")
-										  .arg(input_region_.error())));
+				return Write(ErrorMessage(
+					QStringLiteral("failed to attach input shared memory: %1")
+						.arg(input_region_.error())));
 			}
 
-			input_pool_ = olive::ipc::FrameSlotPool::Attach(input_region_.data());
+			input_pool_ =
+				olive::ipc::FrameSlotPool::Attach(input_region_.data());
 			if (!input_pool_->IsValid()) {
 				input_region_.Close();
 				input_pool_.reset();
-				return Write(ErrorMessage(QStringLiteral("input shared memory does not contain a frame slot pool")));
+				return Write(ErrorMessage(QStringLiteral(
+					"input shared memory does not contain a frame slot pool")));
 			}
 		}
 
@@ -267,17 +281,23 @@ private:
 		{
 			QFileInfo fi(path);
 			if (!fi.exists()) {
-				LogError(QStringLiteral("LoadGraph: graph file does not exist: %1").arg(path));
-				return Write(ErrorMessage(QStringLiteral("graph file does not exist: %1").arg(path)));
+				LogError(
+					QStringLiteral("LoadGraph: graph file does not exist: %1")
+						.arg(path));
+				return Write(ErrorMessage(
+					QStringLiteral("graph file does not exist: %1").arg(path)));
 			}
 			if (fi.size() == 0) {
-				LogError(QStringLiteral("LoadGraph: graph file is empty: %1").arg(path));
-				return Write(ErrorMessage(QStringLiteral("graph file is empty: %1").arg(path)));
+				LogError(QStringLiteral("LoadGraph: graph file is empty: %1")
+							 .arg(path));
+				return Write(ErrorMessage(
+					QStringLiteral("graph file is empty: %1").arg(path)));
 			}
-			LogError(QStringLiteral("LoadGraph: loading %1 (%2 bytes, readable=%3)")
-					 .arg(path)
-					 .arg(fi.size())
-					 .arg(fi.isReadable()));
+			LogError(
+				QStringLiteral("LoadGraph: loading %1 (%2 bytes, readable=%3)")
+					.arg(path)
+					.arg(fi.size())
+					.arg(fi.isReadable()));
 		}
 
 		auto loaded = std::make_unique<olive::Project>();
@@ -286,10 +306,12 @@ private:
 		// Initialize() first triggers Q_ASSERT(!root_) in Project::Load.
 
 		olive::ProjectSerializer::Result result =
-			olive::ProjectSerializer::Load(loaded.get(), path, olive::ProjectSerializer::kProject);
+			olive::ProjectSerializer::Load(loaded.get(), path,
+										   olive::ProjectSerializer::kProject);
 		if (result != olive::ProjectSerializer::kSuccess) {
-			return Write(ErrorMessage(QStringLiteral("failed to load graph %1: %2")
-									  .arg(path, result.GetDetails())));
+			return Write(
+				ErrorMessage(QStringLiteral("failed to load graph %1: %2")
+								 .arg(path, result.GetDetails())));
 		}
 
 		project_ = std::move(loaded);
@@ -297,12 +319,15 @@ private:
 		color_processor_cache_.clear();
 
 		const auto &data = result.GetLoadData();
-		for (auto it = data.node_ptrs.cbegin(); it != data.node_ptrs.cend(); ++it) {
+		for (auto it = data.node_ptrs.cbegin(); it != data.node_ptrs.cend();
+			 ++it) {
 			node_by_token_.insert(QString::number(it.key()), it.value());
 		}
-		for (auto it = data.node_uuids.cbegin(); it != data.node_uuids.cend(); ++it) {
+		for (auto it = data.node_uuids.cbegin(); it != data.node_uuids.cend();
+			 ++it) {
 			node_by_token_.insert(it.value().toString(), it.key());
-			node_by_token_.insert(it.value().toString(QUuid::WithoutBraces), it.key());
+			node_by_token_.insert(it.value().toString(QUuid::WithoutBraces),
+								  it.key());
 		}
 
 		QJsonObject ack;
@@ -329,29 +354,36 @@ private:
 	bool RenderFrame(const olive::ipc::RenderFrameMsg &message)
 	{
 		if (!project_) {
-			return Write(ErrorMessage(QStringLiteral("render_frame received before load_graph"),
-									  message.ticket_id));
+			return Write(ErrorMessage(
+				QStringLiteral("render_frame received before load_graph"),
+				message.ticket_id));
 		}
 		if (!output_pool_ || !output_pool_->IsValid()) {
-			return Write(ErrorMessage(QStringLiteral("render_frame received before output shm handshake"),
-									  message.ticket_id));
+			return Write(ErrorMessage(
+				QStringLiteral(
+					"render_frame received before output shm handshake"),
+				message.ticket_id));
 		}
 
 		olive::Node *node = FindNode(message.node_uuid);
 		if (!node) {
-			return Write(ErrorMessage(QStringLiteral("render node not found: %1").arg(message.node_uuid),
-									  message.ticket_id));
+			return Write(
+				ErrorMessage(QStringLiteral("render node not found: %1")
+								 .arg(message.node_uuid),
+							 message.ticket_id));
 		}
 
 		QVector<int> input_slots;
 		const QVector<int> requested_input_slots =
-			message.input_slots.isEmpty() && message.input_slot >= 0
-				? QVector<int>{message.input_slot}
-				: message.input_slots;
+			message.input_slots.isEmpty() && message.input_slot >= 0 ?
+				QVector<int>{ message.input_slot } :
+				message.input_slots;
 		if (!requested_input_slots.isEmpty()) {
 			if (!input_pool_ || !input_pool_->IsValid()) {
-				return Write(ErrorMessage(QStringLiteral("render_frame referenced input slot without input pool"),
-										  message.ticket_id));
+				return Write(ErrorMessage(
+					QStringLiteral(
+						"render_frame referenced input slot without input pool"),
+					message.ticket_id));
 			}
 
 			for (int requested_slot : requested_input_slots) {
@@ -360,8 +392,9 @@ private:
 					for (int slot : input_slots) {
 						input_pool_->Release(uint32_t(slot));
 					}
-					return Write(ErrorMessage(QStringLiteral("input slot index out of range"),
-											  message.ticket_id));
+					return Write(ErrorMessage(
+						QStringLiteral("input slot index out of range"),
+						message.ticket_id));
 				}
 
 				uint32_t consumed_slot = 0;
@@ -369,16 +402,18 @@ private:
 					for (int slot : input_slots) {
 						input_pool_->Release(uint32_t(slot));
 					}
-					return Write(ErrorMessage(QStringLiteral("input slot was not ready"),
-											  message.ticket_id));
+					return Write(
+						ErrorMessage(QStringLiteral("input slot was not ready"),
+									 message.ticket_id));
 				}
 				if (int(consumed_slot) != requested_slot) {
 					input_pool_->Release(consumed_slot);
 					for (int slot : input_slots) {
 						input_pool_->Release(uint32_t(slot));
 					}
-					return Write(ErrorMessage(QStringLiteral("input slot order mismatch"),
-											  message.ticket_id));
+					return Write(ErrorMessage(
+						QStringLiteral("input slot order mismatch"),
+						message.ticket_id));
 				}
 				input_slots.append(int(consumed_slot));
 
@@ -389,41 +424,41 @@ private:
 			}
 		}
 
-		olive::VideoParams vparams(message.width > 0 ? message.width : kDefaultWidth,
-								   message.height > 0 ? message.height : kDefaultHeight,
-								   olive::rational(1, kDefaultFrameRate),
-								   message.format >= 0
-									   ? olive::PixelFormat::Format(message.format)
-									   : olive::PixelFormat::F32,
-								   message.channel_count > 0
-									   ? message.channel_count
-									   : olive::VideoParams::kRGBAChannelCount);
+		olive::VideoParams vparams(
+			message.width > 0 ? message.width : kDefaultWidth,
+			message.height > 0 ? message.height : kDefaultHeight,
+			olive::rational(1, kDefaultFrameRate),
+			message.format >= 0 ? olive::PixelFormat::Format(message.format) :
+								  olive::PixelFormat::F32,
+			message.channel_count > 0 ? message.channel_count :
+										olive::VideoParams::kRGBAChannelCount);
 
 		olive::RenderTicketPtr ticket = std::make_shared<olive::RenderTicket>();
 		ticket->setProperty("node", olive::QtUtils::PtrToValue(node));
-		ticket->setProperty("time", QVariant::fromValue(
-									 olive::rational(int(message.time_num), int(message.time_den))));
+		ticket->setProperty("time",
+							QVariant::fromValue(olive::rational(
+								int(message.time_num), int(message.time_den))));
 		ticket->setProperty("size", QSize(message.width, message.height));
 		ticket->setProperty("matrix", QMatrix4x4());
 		ticket->setProperty("format",
-							message.format >= 0
-								? olive::PixelFormat::Format(message.format)
-								: olive::PixelFormat::INVALID);
+							message.format >= 0 ?
+								olive::PixelFormat::Format(message.format) :
+								olive::PixelFormat::INVALID);
 		ticket->setProperty("usecache", false);
 		ticket->setProperty("channelcount", message.channel_count);
 		ticket->setProperty("mode", olive::RenderMode::Mode(message.mode));
 		ticket->setProperty("type", olive::RenderManager::kTypeVideo);
-		ticket->setProperty("colormanager", olive::QtUtils::PtrToValue(project_->color_manager()));
+		ticket->setProperty("colormanager", olive::QtUtils::PtrToValue(
+												project_->color_manager()));
 
 		{
 			olive::ColorProcessorPtr color_output;
 			if (message.has_color_transform) {
-				QString cache_key =
-					QStringLiteral("%1|%2|%3|%4")
-						.arg(message.color_is_display ? 1 : 0)
-						.arg(message.color_output,
-							 message.color_view,
-							 message.color_look);
+				QString cache_key = QStringLiteral("%1|%2|%3|%4")
+										.arg(message.color_is_display ? 1 : 0)
+										.arg(message.color_output,
+											 message.color_view,
+											 message.color_look);
 				auto it = color_processor_cache_.find(cache_key);
 				if (it != color_processor_cache_.end()) {
 					color_output = it.value();
@@ -431,8 +466,8 @@ private:
 					olive::ColorTransform transform;
 					if (message.color_is_display) {
 						transform = olive::ColorTransform(message.color_output,
-														message.color_view,
-														message.color_look);
+														  message.color_view,
+														  message.color_look);
 					} else {
 						transform = olive::ColorTransform(message.color_output);
 					}
@@ -446,19 +481,23 @@ private:
 				}
 			}
 			ticket->setProperty("coloroutput",
-							QVariant::fromValue(color_output));
+								QVariant::fromValue(color_output));
 		}
 		ticket->setProperty("vparam", QVariant::fromValue(vparams));
-		ticket->setProperty("aparam", QVariant::fromValue(olive::AudioParams()));
+		ticket->setProperty("aparam",
+							QVariant::fromValue(olive::AudioParams()));
 		ticket->setProperty("return", olive::RenderManager::kFrame);
 		ticket->setProperty("cache", QString());
-		ticket->setProperty("cachetimebase", QVariant::fromValue(olive::rational(1)));
+		ticket->setProperty("cachetimebase",
+							QVariant::fromValue(olive::rational(1)));
 		ticket->setProperty("cacheid", QVariant::fromValue(QUuid()));
-		ticket->setProperty("multicam", olive::QtUtils::PtrToValue(static_cast<void *>(nullptr)));
-		ticket->setProperty("ipc_input_pool",
-							olive::QtUtils::PtrToValue(
-								input_pool_ ? static_cast<void *>(&*input_pool_)
-											: static_cast<void *>(nullptr)));
+		ticket->setProperty("multicam", olive::QtUtils::PtrToValue(
+											static_cast<void *>(nullptr)));
+		ticket->setProperty(
+			"ipc_input_pool",
+			olive::QtUtils::PtrToValue(input_pool_ ?
+										   static_cast<void *>(&*input_pool_) :
+										   static_cast<void *>(nullptr)));
 		QVariantList input_slot_values;
 		for (int slot : input_slots) {
 			input_slot_values.append(slot);
@@ -469,34 +508,42 @@ private:
 							input_slots.isEmpty() ? -1 : input_slots.front());
 
 		ticket->Start();
-		olive::RenderProcessor::Process(ticket, renderer_, nullptr, &shader_cache_);
+		olive::RenderProcessor::Process(ticket, renderer_, nullptr,
+										&shader_cache_);
 		for (int slot : input_slots) {
 			input_pool_->Release(uint32_t(slot));
 		}
 		if (!ticket->HasResult()) {
-			return Write(ErrorMessage(QStringLiteral("render produced no frame"), message.ticket_id));
+			return Write(ErrorMessage(
+				QStringLiteral("render produced no frame"), message.ticket_id));
 		}
 
 		olive::FramePtr frame = ticket->Get().value<olive::FramePtr>();
 		if (!frame || !frame->is_allocated()) {
-			return Write(ErrorMessage(QStringLiteral("render result was empty"), message.ticket_id));
+			return Write(ErrorMessage(QStringLiteral("render result was empty"),
+									  message.ticket_id));
 		}
 
 		uint32_t slot = 0;
 		if (!output_pool_->Acquire(&slot)) {
-			return Write(ErrorMessage(QStringLiteral("no free output frame slot"), message.ticket_id));
+			return Write(
+				ErrorMessage(QStringLiteral("no free output frame slot"),
+							 message.ticket_id));
 		}
 
-		const int data_size = frame->linesize_bytes()*frame->height();
+		const int data_size = frame->linesize_bytes() * frame->height();
 		if (data_size > int(output_pool_->slot_data_bytes())) {
 			output_pool_->Release(slot);
-			LogError(QString("Output frame size")+QString::number(data_size));
-			LogError(QString("Slot size")+QString::number(output_pool_->slot_data_bytes()));
-			return Write(ErrorMessage(QStringLiteral("rendered frame does not fit output slot "),
-									  message.ticket_id));
+			LogError(QString("Output frame size") + QString::number(data_size));
+			LogError(QString("Slot size") +
+					 QString::number(output_pool_->slot_data_bytes()));
+			return Write(ErrorMessage(
+				QStringLiteral("rendered frame does not fit output slot "),
+				message.ticket_id));
 		}
 
-		std::memcpy(output_pool_->SlotData(slot), frame->const_data(), size_t(data_size));
+		std::memcpy(output_pool_->SlotData(slot), frame->const_data(),
+					size_t(data_size));
 		olive::ipc::FrameSlotMeta *meta = output_pool_->Meta(slot);
 		meta->id = message.ticket_id;
 		meta->time_num = frame->timestamp().numerator();
@@ -510,8 +557,9 @@ private:
 
 		if (!output_pool_->Publish(slot)) {
 			output_pool_->Release(slot);
-			return Write(ErrorMessage(QStringLiteral("failed to publish output frame slot"),
-									  message.ticket_id));
+			return Write(ErrorMessage(
+				QStringLiteral("failed to publish output frame slot"),
+				message.ticket_id));
 		}
 		olive::ipc::FrameReadyMsg ready;
 		ready.ticket_id = message.ticket_id;
@@ -532,7 +580,7 @@ private:
 	QHash<QString, olive::ColorProcessorPtr> color_processor_cache_;
 };
 
-}  // namespace
+} // namespace
 
 int main(int argc, char *argv[])
 {
@@ -600,7 +648,8 @@ int main(int argc, char *argv[])
 	QOpenGLContext *ctx = nullptr;
 	if (backend == QStringLiteral("opengl")) {
 #ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
-		if (auto *loaded_renderer = dynamic_cast<olive::DynamicRenderer *>(renderer)) {
+		if (auto *loaded_renderer =
+				dynamic_cast<olive::DynamicRenderer *>(renderer)) {
 			ctx = loaded_renderer->OpenGLContext();
 		} else
 #endif
@@ -639,7 +688,8 @@ int main(int argc, char *argv[])
 					if (!olive::ipc::ReadMessage(&buffer, &message, &ok)) {
 						if (!ok) {
 							olive::ipc::WriteMessage(
-								&out, ErrorMessage(QStringLiteral("malformed control message")));
+								&out, ErrorMessage(QStringLiteral(
+										  "malformed control message")));
 							out.flush();
 							continue;
 						}

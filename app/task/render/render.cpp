@@ -226,7 +226,7 @@ bool RenderTask::Render(ColorManager *manager, const TimeRangeList &video_range,
 					StartTicket(&watcher_thread, manager, next_frame, mode,
 								cache, force_size, force_matrix, force_format,
 								force_channel_count, force_color_output,
-						force_color_transform);
+								force_color_transform);
 				}
 			}
 

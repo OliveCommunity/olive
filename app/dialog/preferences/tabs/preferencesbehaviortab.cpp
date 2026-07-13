@@ -40,8 +40,7 @@ PreferencesBehaviorTab::PreferencesBehaviorTab(Category category)
 		AddItems({
 			{ tr("Auto-Seek to Imported Clips"),
 			  QStringLiteral("EnableSeekToImport") },
-			{ tr("Edit Tool Also Seeks"),
-			  QStringLiteral("EditToolAlsoSeeks") },
+			{ tr("Edit Tool Also Seeks"), QStringLiteral("EditToolAlsoSeeks") },
 			{ tr("Edit Tool Selects Links"),
 			  QStringLiteral("EditToolSelectsLinks") },
 			{ tr("Enable Drag Files to Timeline"),
@@ -83,8 +82,7 @@ PreferencesBehaviorTab::PreferencesBehaviorTab(Category category)
 		});
 		break;
 
-	case kCategoryRendering:
-	{
+	case kCategoryRendering: {
 		QLabel *backend_label = new QLabel(tr("Graphics Backend"));
 		backend_label->setToolTip(
 			tr("Selects the graphics API Oak should request on next launch. "
@@ -94,17 +92,16 @@ PreferencesBehaviorTab::PreferencesBehaviorTab(Category category)
 
 		graphics_backend_combobox_ = new QComboBox();
 		graphics_backend_combobox_->addItem(tr("OpenGL"),
-										 QStringLiteral("opengl"));
+											QStringLiteral("opengl"));
 		graphics_backend_combobox_->addItem(tr("Vulkan (experimental)"),
-										 QStringLiteral("vulkan"));
+											QStringLiteral("vulkan"));
 		const QString current_backend =
 			OLIVE_CONFIG("GraphicsBackend").toString().toLower();
 		const int backend_index = graphics_backend_combobox_->findData(
-			current_backend.isEmpty() ? QStringLiteral("opengl")
-									  : current_backend);
-		graphics_backend_combobox_->setCurrentIndex(backend_index >= 0
-													 ? backend_index
-													 : 0);
+			current_backend.isEmpty() ? QStringLiteral("opengl") :
+										current_backend);
+		graphics_backend_combobox_->setCurrentIndex(
+			backend_index >= 0 ? backend_index : 0);
 
 		QHBoxLayout *backend_layout = new QHBoxLayout();
 		backend_layout->addWidget(backend_label);

@@ -37,21 +37,24 @@ DynamicRenderer::~DynamicRenderer()
 // system libGL/libvulkan loader is never mistaken for an Oak render backend.
 QString DynamicRenderer::LibraryFilename() const
 {
-	const QString base = backend_ == QStringLiteral("vulkan")
-		? QStringLiteral("oakvulkan")
-		: QStringLiteral("oakgl");
+	const QString base = backend_ == QStringLiteral("vulkan") ?
+							 QStringLiteral("oakvulkan") :
+							 QStringLiteral("oakgl");
 #if defined(Q_OS_WIN)
 	const QString filename = base + QStringLiteral(".dll");
 #elif defined(Q_OS_MAC)
-	const QString filename = QStringLiteral("lib") + base + QStringLiteral(".dylib");
+	const QString filename =
+		QStringLiteral("lib") + base + QStringLiteral(".dylib");
 #else
-	const QString filename = QStringLiteral("lib") + base + QStringLiteral(".so");
+	const QString filename =
+		QStringLiteral("lib") + base + QStringLiteral(".so");
 #endif
 
 	const QDir app_dir(QCoreApplication::applicationDirPath());
 	const QStringList candidates = {
 		app_dir.filePath(filename),
-		app_dir.filePath(QDir(QStringLiteral("render_backends")).filePath(filename)),
+		app_dir.filePath(
+			QDir(QStringLiteral("render_backends")).filePath(filename)),
 		app_dir.filePath(QDir(QStringLiteral("../lib")).filePath(filename)),
 		app_dir.filePath(QDir(QStringLiteral("../../lib")).filePath(filename)),
 		app_dir.filePath(QDir(QStringLiteral("../app")).filePath(filename)),
@@ -77,9 +80,9 @@ bool DynamicRenderer::Load()
 	library_.setFileName(LibraryFilename());
 	if (!library_.load()) {
 		if (backend_ == QStringLiteral("vulkan")) {
-			qWarning() << "Failed to load Vulkan render backend"
-					   << library_.fileName() << library_.errorString()
-					   << "falling back to OpenGL backend";
+			qWarning()
+				<< "Failed to load Vulkan render backend" << library_.fileName()
+				<< library_.errorString() << "falling back to OpenGL backend";
 			backend_ = QStringLiteral("opengl");
 			library_.setFileName(LibraryFilename());
 		}
@@ -126,9 +129,10 @@ bool DynamicRenderer::Load()
 bool DynamicRenderer::ResolveFunctions()
 {
 	ResetFunctions();
-#define RESOLVE(member, type, symbol) \
+#define RESOLVE(member, type, symbol)                          \
 	member = reinterpret_cast<type>(library_.resolve(symbol)); \
-	if (!member) return false
+	if (!member)                                               \
+	return false
 
 	RESOLVE(create_, OakBackendCreateFn, "oak_renderer_create");
 	RESOLVE(destroy_, OakBackendDestroyFn, "oak_renderer_destroy");
@@ -259,7 +263,7 @@ void DynamicRenderer::PostInit()
 
 // Forwards render target clearing through the C ABI.
 void DynamicRenderer::ClearDestination(Texture *texture, double r, double g,
-								   double b, double a)
+									   double b, double a)
 {
 	clear_destination_(handle_, texture, r, g, b, a);
 }
@@ -281,16 +285,16 @@ void DynamicRenderer::DestroyNativeShader(QVariant shader)
 
 // Uploads CPU pixel data into a backend texture through the dynamic ABI.
 void DynamicRenderer::UploadToTexture(const QVariant &handle,
-								  const VideoParams &params, const void *data,
-								  int linesize)
+									  const VideoParams &params,
+									  const void *data, int linesize)
 {
 	upload_to_texture_(handle_, &handle, &params, data, linesize);
 }
 
 // Downloads backend texture data into a caller-provided CPU buffer.
 void DynamicRenderer::DownloadFromTexture(const QVariant &handle,
-									const VideoParams &params, void *data,
-									int linesize)
+										  const VideoParams &params, void *data,
+										  int linesize)
 {
 	download_from_texture_(handle_, &handle, &params, data, linesize);
 }
@@ -313,9 +317,9 @@ Color DynamicRenderer::GetPixelFromTexture(Texture *texture, const QPointF &pt)
 // null so callers can avoid GL-only paths.
 QOpenGLContext *DynamicRenderer::OpenGLContext() const
 {
-	return opengl_context_ && handle_
-		? static_cast<QOpenGLContext *>(opengl_context_(handle_))
-		: nullptr;
+	return opengl_context_ && handle_ ?
+			   static_cast<QOpenGLContext *>(opengl_context_(handle_)) :
+			   nullptr;
 }
 
 // Reports the effective backend after any load-time fallback has completed.
@@ -331,8 +335,8 @@ bool DynamicRenderer::IsVulkan() const
 
 // Dispatches a shader blit to the loaded backend.
 void DynamicRenderer::Blit(QVariant shader, AcceleratedJob &job,
-					   Texture *destination, VideoParams destination_params,
-					   bool clear_destination)
+						   Texture *destination, VideoParams destination_params,
+						   bool clear_destination)
 {
 	blit_(handle_, &shader, &job, destination, &destination_params,
 		  clear_destination);
@@ -340,12 +344,13 @@ void DynamicRenderer::Blit(QVariant shader, AcceleratedJob &job,
 
 // Allocates a backend-native texture and wraps its opaque handle in QVariant.
 QVariant DynamicRenderer::CreateNativeTexture(int width, int height, int depth,
-									 PixelFormat format, int channel_count,
-									 const void *data, int linesize)
+											  PixelFormat format,
+											  int channel_count,
+											  const void *data, int linesize)
 {
 	QVariant out;
 	create_native_texture_(handle_, width, height, depth, format, channel_count,
-					   data, linesize, &out);
+						   data, linesize, &out);
 	return out;
 }
 

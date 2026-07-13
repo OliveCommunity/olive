@@ -341,8 +341,8 @@ void Config::Load()
 		// Config::Load() is called before Core (and therefore the main window)
 		// is constructed, so we cannot use Core::instance()->main_window() as
 		// the message box parent. Passing nullptr creates a top-level dialog.
-		QWidget *parent = Core::instance() ? Core::instance()->main_window()
-									   : nullptr;
+		QWidget *parent = Core::instance() ? Core::instance()->main_window() :
+											 nullptr;
 		QMessageBox::critical(
 			parent,
 			QCoreApplication::translate("Config", "Error loading settings"),

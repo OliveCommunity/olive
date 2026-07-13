@@ -35,17 +35,18 @@ namespace olive
 {
 namespace plugin
 {
-class OliveClipInstance: public OFX::Host::ImageEffect::ClipInstance {
+class OliveClipInstance : public OFX::Host::ImageEffect::ClipInstance {
 public:
-	OliveClipInstance(OFX::Host::ImageEffect::Instance* effectInstance,
-		OFX::Host::ImageEffect::ClipDescriptor& desc,VideoParams &params)
+	OliveClipInstance(OFX::Host::ImageEffect::Instance *effectInstance,
+					  OFX::Host::ImageEffect::ClipDescriptor &desc,
+					  VideoParams &params)
 		: ClipInstance(effectInstance, desc)
 		, params_(params)
-		, defaultRegionOfDefinitions_{0, 0, 0, 0}
+		, defaultRegionOfDefinitions_{ 0, 0, 0, 0 }
 		, name_(desc.getName())
 	{
 	}
-    OFX::Host::ImageEffect::Image* getOutputImage(OfxTime time);
+	OFX::Host::ImageEffect::Image *getOutputImage(OfxTime time);
 
 	const std::string &getUnmappedBitDepth() const override;
 	const std::string &getUnmappedComponents() const override;
@@ -56,21 +57,24 @@ public:
 	const std::string &getFieldOrder() const override;
 	bool getConnected() const override;
 	double getUnmappedFrameRate() const override;
-	void getUnmappedFrameRange(double &startFrame, double &endFrame) const override;
+	void getUnmappedFrameRange(double &startFrame,
+							   double &endFrame) const override;
 	bool getContinuousSamples() const override;
-	OFX::Host::ImageEffect::Image* getImage(OfxTime time, const OfxRectD *optionalBounds) override;
+	OFX::Host::ImageEffect::Image *
+	getImage(OfxTime time, const OfxRectD *optionalBounds) override;
 	OfxRectD getRegionOfDefinition(OfxTime time) const override;
 
 	void setRegionOfDefinition(OfxRectD regionOfDefinition, OfxTime time);
 	void setDefaultRegionOfDefinition(OfxRectD regionOfDefinition);
 	void setParams(const VideoParams &params);
-#   ifdef OFX_SUPPORTS_OPENGLRENDER
-	OFX::Host::ImageEffect::Texture* loadTexture(OfxTime time,
-												 const char *format,
-												 const OfxRectD *optionalBounds) override;
-#   endif
+#ifdef OFX_SUPPORTS_OPENGLRENDER
+	OFX::Host::ImageEffect::Texture *
+	loadTexture(OfxTime time, const char *format,
+				const OfxRectD *optionalBounds) override;
+#endif
 
-	void setInputTexture(TexturePtr texture, OfxTime time, bool readback_cpu = true);
+	void setInputTexture(TexturePtr texture, OfxTime time,
+						 bool readback_cpu = true);
 	void setOutputTexture(TexturePtr texture, OfxTime time);
 
 	// Get the plugin-preferred VideoParams based on base class _pixelDepth/_components
@@ -90,7 +94,7 @@ private:
 	OfxRectD defaultRegionOfDefinitions_;
 
 	std::string name_;
-	QMap<OfxTime, Image*> images_;
+	QMap<OfxTime, Image *> images_;
 #ifdef OFX_SUPPORTS_OPENGLRENDER
 	QMap<OfxTime, TexturePtr> input_textures_;
 	QMap<OfxTime, TexturePtr> output_textures_;
@@ -98,7 +102,5 @@ private:
 };
 }
 }
-
-
 
 #endif //OLIVECLIP_H

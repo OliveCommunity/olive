@@ -96,16 +96,16 @@ void ScopeBase::UpdateSoftwareImage()
 	const int texture_width = static_cast<int>(width() * devicePixelRatioF());
 	const int texture_height = static_cast<int>(height() * devicePixelRatioF());
 
-	const VideoParams offscreen_params(
-		texture_width, texture_height, PixelFormat::U8,
-		VideoParams::kRGBAChannelCount);
+	const VideoParams offscreen_params(texture_width, texture_height,
+									   PixelFormat::U8,
+									   VideoParams::kRGBAChannelCount);
 
 	if (!software_tex_ || software_tex_->params() != offscreen_params) {
 		software_tex_ = renderer()->CreateTexture(offscreen_params);
 		software_buffer_.resize(
 			texture_width * texture_height *
 			VideoParams::GetBytesPerPixel(PixelFormat::U8,
-									  VideoParams::kRGBAChannelCount));
+										  VideoParams::kRGBAChannelCount));
 	}
 
 	if (!software_tex_ || software_tex_->IsDummy()) {
@@ -122,15 +122,15 @@ void ScopeBase::UpdateSoftwareImage()
 	job.SetForceOpaque(true);
 
 	renderer()->BlitColorManaged(job, software_tex_.get());
-	renderer()->DownloadFromTexture(software_tex_->id(), software_tex_->params(),
-								software_buffer_.data(), 0);
+	renderer()->DownloadFromTexture(software_tex_->id(),
+									software_tex_->params(),
+									software_buffer_.data(), 0);
 
 	software_image_ = QImage(
 		reinterpret_cast<const uchar *>(software_buffer_.constData()),
 		texture_width, texture_height,
-		texture_width *
-			VideoParams::GetBytesPerPixel(PixelFormat::U8,
-									  VideoParams::kRGBAChannelCount),
+		texture_width * VideoParams::GetBytesPerPixel(
+							PixelFormat::U8, VideoParams::kRGBAChannelCount),
 		QImage::Format_RGBA8888_Premultiplied);
 	software_image_.setDevicePixelRatio(devicePixelRatioF());
 

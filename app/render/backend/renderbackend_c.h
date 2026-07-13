@@ -7,7 +7,8 @@
 #ifdef _WIN32
 #define OAK_RENDER_BACKEND_EXPORT extern "C" __declspec(dllexport)
 #else
-#define OAK_RENDER_BACKEND_EXPORT extern "C" __attribute__((visibility("default")))
+#define OAK_RENDER_BACKEND_EXPORT \
+	extern "C" __attribute__((visibility("default")))
 #endif
 
 #ifdef __cplusplus
@@ -50,14 +51,14 @@ typedef OakRenderBackendHandle (*OakBackendCreateFn)(void *parent);
 typedef void (*OakBackendDestroyFn)(OakRenderBackendHandle handle);
 /* Queries backend metadata and capability bits. */
 typedef bool (*OakBackendGetInfoFn)(OakRenderBackendHandle handle,
-								struct OakRenderBackendInfo *out_info);
+									struct OakRenderBackendInfo *out_info);
 /* Checks whether the backend can run on the current machine. */
 typedef bool (*OakBackendIsAvailableFn)(OakRenderBackendHandle handle);
 /* Initializes backend-owned device/context resources. */
 typedef bool (*OakBackendInitFn)(OakRenderBackendHandle handle);
 /* Initializes the backend against a caller-supplied GL context when applicable. */
 typedef void (*OakBackendInitWithContextFn)(OakRenderBackendHandle handle,
-										void *context);
+											void *context);
 /* Runs backend post-initialization after the device/context exists. */
 typedef void (*OakBackendPostInitFn)(OakRenderBackendHandle handle);
 /* Runs backend post-destroy cleanup before the library unloads. */
@@ -66,40 +67,39 @@ typedef void (*OakBackendPostDestroyFn)(OakRenderBackendHandle handle);
 typedef void (*OakBackendDestroyInternalFn)(OakRenderBackendHandle handle);
 /* Clears a texture destination or implicit output target. */
 typedef void (*OakBackendClearDestinationFn)(OakRenderBackendHandle handle,
-										 void *texture, double r, double g,
-										 double b, double a);
+											 void *texture, double r, double g,
+											 double b, double a);
 /* Creates a native texture and writes a QVariant-compatible handle. */
-typedef void (*OakBackendCreateNativeTextureFn)(OakRenderBackendHandle handle,
-									   int width, int height, int depth,
-									   int format, int channel_count,
-									   const void *data, int linesize,
-									   void *out_variant);
+typedef void (*OakBackendCreateNativeTextureFn)(
+	OakRenderBackendHandle handle, int width, int height, int depth, int format,
+	int channel_count, const void *data, int linesize, void *out_variant);
 /* Destroys a native texture represented by a QVariant-compatible handle. */
 typedef void (*OakBackendDestroyNativeTextureFn)(OakRenderBackendHandle handle,
-										 const void *variant);
+												 const void *variant);
 /* Creates a native shader and writes a QVariant-compatible handle. */
 typedef void (*OakBackendCreateNativeShaderFn)(OakRenderBackendHandle handle,
-									  const void *shader_code,
-									  void *out_variant);
+											   const void *shader_code,
+											   void *out_variant);
 /* Destroys a native shader represented by a QVariant-compatible handle. */
 typedef void (*OakBackendDestroyNativeShaderFn)(OakRenderBackendHandle handle,
-										const void *variant);
+												const void *variant);
 /* Uploads CPU pixel data to a native texture. */
 typedef void (*OakBackendUploadToTextureFn)(OakRenderBackendHandle handle,
-									const void *variant,
-									const void *video_params,
-									const void *data, int linesize);
+											const void *variant,
+											const void *video_params,
+											const void *data, int linesize);
 /* Downloads native texture pixels into caller-owned CPU memory. */
 typedef void (*OakBackendDownloadFromTextureFn)(OakRenderBackendHandle handle,
-									  const void *variant,
-									  const void *video_params,
-									  void *data, int linesize);
+												const void *variant,
+												const void *video_params,
+												void *data, int linesize);
 /* Waits for backend work that must be visible to later operations. */
 typedef void (*OakBackendFlushFn)(OakRenderBackendHandle handle);
 /* Reads one pixel from a texture. */
 typedef void (*OakBackendGetPixelFromTextureFn)(OakRenderBackendHandle handle,
-									   void *texture, const void *point,
-									   void *out_color);
+												void *texture,
+												const void *point,
+												void *out_color);
 /* Executes a shader blit job. */
 typedef void (*OakBackendBlitFn)(OakRenderBackendHandle handle,
 								 const void *shader, void *job,
@@ -108,7 +108,7 @@ typedef void (*OakBackendBlitFn)(OakRenderBackendHandle handle,
 								 bool clear_destination);
 /* Attaches an output texture for OFX OpenGL rendering when supported. */
 typedef void (*OakBackendAttachOutputTextureFn)(OakRenderBackendHandle handle,
-											const void *texture_id);
+												const void *texture_id);
 /* Detaches an OFX output texture when supported. */
 typedef void (*OakBackendDetachOutputTextureFn)(OakRenderBackendHandle handle);
 /* Returns the backend OpenGL context, or null for non-OpenGL backends. */

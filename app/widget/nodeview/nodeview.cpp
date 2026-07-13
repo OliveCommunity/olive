@@ -74,11 +74,15 @@ NodeView::NodeView(QWidget *parent)
 
 	SetFlowDirection(NodeViewCommon::kLeftToRight);
 
-	show_in_param_editor_action_ = new QAction(tr("Show in Parameter Editor"), this);
-	Menu::ConformItem(show_in_param_editor_action_, QStringLiteral("shownodeparams"), QKeySequence(tr("Shift+P")));
+	show_in_param_editor_action_ =
+		new QAction(tr("Show in Parameter Editor"), this);
+	Menu::ConformItem(show_in_param_editor_action_,
+					  QStringLiteral("shownodeparams"),
+					  QKeySequence(tr("Shift+P")));
 	show_in_param_editor_action_->setShortcutContext(Qt::WindowShortcut);
 	addAction(show_in_param_editor_action_);
-	connect(show_in_param_editor_action_, &QAction::triggered, this, &NodeView::ShowSelectedNodeInParamEditor);
+	connect(show_in_param_editor_action_, &QAction::triggered, this,
+			&NodeView::ShowSelectedNodeInParamEditor);
 
 	UpdateSceneBoundingRect();
 	connect(&scene_, &QGraphicsScene::changed, this,
@@ -838,8 +842,7 @@ void NodeView::ShowContextMenu(const QPoint &pos)
 
 	QVector<NodeViewItem *> selected = scene_.GetSelectedItems();
 
-	NodeViewItem *item_under_cursor =
-		dynamic_cast<NodeViewItem *>(itemAt(pos));
+	NodeViewItem *item_under_cursor = dynamic_cast<NodeViewItem *>(itemAt(pos));
 
 	if (item_under_cursor && !selected.contains(item_under_cursor)) {
 		// Right-clicked a node that isn't part of the current selection,
@@ -879,8 +882,8 @@ void NodeView::ShowContextMenu(const QPoint &pos)
 		m.addSeparator();
 
 		// Show in Parameter Editor
-		QAction *show_in_param_editor_action = m.addAction(
-			tr("Show in Parameter Editor"));
+		QAction *show_in_param_editor_action =
+			m.addAction(tr("Show in Parameter Editor"));
 		show_in_param_editor_action->setShortcut(
 			show_in_param_editor_action_->shortcut());
 		connect(show_in_param_editor_action, &QAction::triggered, this,
@@ -1673,8 +1676,8 @@ void NodeView::ShowSelectedNodeInParamEditor()
 	selection_with_contexts.reserve(selected.size());
 	foreach (NodeViewItem *item, selected) {
 		if (item && item->GetNode()) {
-			selection_with_contexts.append(Node::ContextPair{
-				item->GetNode(), item->GetContext()});
+			selection_with_contexts.append(
+				Node::ContextPair{ item->GetNode(), item->GetContext() });
 		}
 	}
 
@@ -1684,7 +1687,7 @@ void NodeView::ShowSelectedNodeInParamEditor()
 
 	if (PanelManager::instance()) {
 		if (PanelWidget *panel = PanelManager::instance()->GetPanelWithName(
-									QStringLiteral("ParamPanel"))) {
+				QStringLiteral("ParamPanel"))) {
 			panel->show();
 			QMetaObject::invokeMethod(panel, &PanelWidget::raise,
 									  Qt::QueuedConnection);

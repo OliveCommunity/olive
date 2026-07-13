@@ -41,13 +41,13 @@ public:
 		bool valid = false;
 	};
 
-	static Placement PlaceBySourceTime(const SourceClip &reference,
-									   const SourceClip &candidate,
-									   const core::rational &reference_timeline_in);
+	static Placement
+	PlaceBySourceTime(const SourceClip &reference, const SourceClip &candidate,
+					  const core::rational &reference_timeline_in);
 
-	static Placement PlaceByWaveformOffset(
-		const core::rational &reference_timeline_in,
-		int64_t candidate_offset_samples, int sample_rate);
+	static Placement
+	PlaceByWaveformOffset(const core::rational &reference_timeline_in,
+						  int64_t candidate_offset_samples, int sample_rate);
 };
 
 }

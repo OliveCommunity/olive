@@ -38,10 +38,10 @@ class ClipBlock;
  * @brief Data required to synchronize a clip using its cached audio waveform.
  */
 struct WaveformSyncClip {
-  ClipBlock *clip = nullptr;
-  const AudioWaveformCache *waveform = nullptr;
-  TimeRange media_range;
-  int sample_rate = 0;
+	ClipBlock *clip = nullptr;
+	const AudioWaveformCache *waveform = nullptr;
+	TimeRange media_range;
+	int sample_rate = 0;
 };
 
 /**
@@ -64,8 +64,8 @@ bool GetWaveformSyncClip(Block *block, WaveformSyncClip *out);
 /**
  * @brief Return all selected blocks that can be synchronized by waveform.
  */
-QVector<WaveformSyncClip> GetSelectedWaveformSyncClips(
-    const QVector<Block *> &blocks);
+QVector<WaveformSyncClip>
+GetSelectedWaveformSyncClips(const QVector<Block *> &blocks);
 
 /**
  * @brief Extract a peak envelope from the validated regions of a waveform cache.
@@ -74,11 +74,11 @@ QVector<WaveformSyncClip> GetSelectedWaveformSyncClips(
  * envelope stays aligned to the same absolute timeline.
  */
 QVector<double> ExtractWaveformCacheEnvelope(const WaveformSyncClip &clip,
-                                             int sample_rate,
-                                             size_t window_samples);
+											 int sample_rate,
+											 size_t window_samples);
 
-}  // namespace TimelineWaveformSync
+} // namespace TimelineWaveformSync
 
-}  // namespace olive
+} // namespace olive
 
-#endif  // TIMELINEWIDGETWAVEFORMSYNC_H
+#endif // TIMELINEWIDGETWAVEFORMSYNC_H

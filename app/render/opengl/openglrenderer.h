@@ -94,7 +94,7 @@ public:
 	bool EnsureContextCurrent(const char *caller);
 
 protected:
-	virtual void Blit(QVariant shader, olive::AcceleratedJob& job,
+	virtual void Blit(QVariant shader, olive::AcceleratedJob &job,
 					  olive::Texture *destination,
 					  olive::VideoParams destination_params,
 					  bool clear_destination) override;

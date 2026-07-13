@@ -385,15 +385,15 @@ void ViewerDisplayWidget::OnPaint()
 		// image itself will be rendered offscreen, downloaded, and painted below.
 		bg_painter.begin(paint_device());
 		bg_painter_active = true;
-		bg_painter.fillRect(GetInnerRect(),
-							show_widget_background_ ? palette().window().color() :
-													  Qt::black);
+		bg_painter.fillRect(GetInnerRect(), show_widget_background_ ?
+												palette().window().color() :
+												Qt::black);
 	} else {
 		// Clear background to empty
 		QColor bg_color = show_widget_background_ ? palette().window().color() :
 													Qt::black;
-		renderer()->ClearDestination(nullptr, bg_color.redF(), bg_color.greenF(),
-									 bg_color.blueF());
+		renderer()->ClearDestination(nullptr, bg_color.redF(),
+									 bg_color.greenF(), bg_color.blueF());
 	}
 
 	VideoParams device_params;
@@ -412,13 +412,14 @@ void ViewerDisplayWidget::OnPaint()
 		} else if (color_service()) {
 			bool drew_backend_neutral_frame = false;
 			if (FramePtr frame = load_frame_.value<FramePtr>()) {
-				if (!drew_backend_neutral_frame && (!texture_ ||
-					texture_->renderer() !=
-						renderer() // Some implementations don't like it if we upload to a texture created in another (albeit shared) context
-					|| texture_->width() != frame->width() ||
-					texture_->height() != frame->height() ||
-					texture_->format() != frame->format() ||
-					texture_->channel_count() != frame->channel_count())) {
+				if (!drew_backend_neutral_frame &&
+					(!texture_ ||
+					 texture_->renderer() !=
+						 renderer() // Some implementations don't like it if we upload to a texture created in another (albeit shared) context
+					 || texture_->width() != frame->width() ||
+					 texture_->height() != frame->height() ||
+					 texture_->format() != frame->format() ||
+					 texture_->channel_count() != frame->channel_count())) {
 					texture_ = renderer()->CreateTexture(
 						frame->video_params(), frame->data(),
 						frame->linesize_pixels());
@@ -427,9 +428,10 @@ void ViewerDisplayWidget::OnPaint()
 				}
 			} else if (TexturePtr texture = load_frame_.value<TexturePtr>()) {
 				// This is a GPU texture, switch to it directly when possible.
-				if (!drew_backend_neutral_frame && texture && texture->renderer() &&
-					texture->renderer() != renderer()) {
-					if (texture->renderer()->IsOpenGL() && renderer()->IsOpenGL()) {
+				if (!drew_backend_neutral_frame && texture &&
+					texture->renderer() && texture->renderer() != renderer()) {
+					if (texture->renderer()->IsOpenGL() &&
+						renderer()->IsOpenGL()) {
 						// Shared OpenGL contexts can display the producer texture
 						// directly. Avoid readback here because the producer
 						// renderer may belong to a render thread whose context
@@ -441,8 +443,8 @@ void ViewerDisplayWidget::OnPaint()
 						frame->set_video_params(texture->params());
 						if (frame->allocate()) {
 							texture->renderer()->DownloadFromTexture(
-								texture->id(), texture->params(),
-								frame->data(), frame->linesize_pixels());
+								texture->id(), texture->params(), frame->data(),
+								frame->linesize_pixels());
 							texture_ = renderer()->CreateTexture(
 								frame->video_params(), frame->data(),
 								frame->linesize_pixels());
@@ -475,9 +477,11 @@ void ViewerDisplayWidget::OnPaint()
 				} else {
 					if (deinterlace_) {
 						if (deinterlace_shader_.isNull()) {
-							deinterlace_shader_ = renderer()->CreateNativeShader(
-								ShaderCode(FileFunctions::ReadFileAsString(
-									QStringLiteral(":/shaders/deinterlace.frag"))));
+							deinterlace_shader_ =
+								renderer()->CreateNativeShader(
+									ShaderCode(FileFunctions::ReadFileAsString(
+										QStringLiteral(
+											":/shaders/deinterlace.frag"))));
 						}
 
 						if (!deinterlace_texture_ ||
@@ -489,13 +493,15 @@ void ViewerDisplayWidget::OnPaint()
 						}
 
 						ShaderJob job;
-						job.Insert(QStringLiteral("resolution_in"),
-								   NodeValue(NodeValue::kVec2,
-											 QVector2D(texture_to_draw->width(),
-													   texture_to_draw->height())));
-						job.Insert(QStringLiteral("ove_maintex"),
-								   NodeValue(NodeValue::kTexture,
-											 QVariant::fromValue(texture_to_draw)));
+						job.Insert(
+							QStringLiteral("resolution_in"),
+							NodeValue(NodeValue::kVec2,
+									  QVector2D(texture_to_draw->width(),
+												texture_to_draw->height())));
+						job.Insert(
+							QStringLiteral("ove_maintex"),
+							NodeValue(NodeValue::kTexture,
+									  QVariant::fromValue(texture_to_draw)));
 
 						renderer()->BlitToTexture(deinterlace_shader_, job,
 												  deinterlace_texture_.get());
@@ -1453,28 +1459,30 @@ bool ViewerDisplayWidget::DrawBackendNeutralFrame(const FramePtr &frame,
 	if (display_frame->format() == PixelFormat::U8 &&
 		display_frame->channel_count() == VideoParams::kRGBAChannelCount) {
 		backend_neutral_cpu_display_frame_ = display_frame;
-		backend_neutral_cpu_image_ = QImage(
-			reinterpret_cast<const uchar *>(display_frame->const_data()),
-			display_frame->width(), display_frame->height(),
-			display_frame->linesize_bytes(), QImage::Format_RGBA8888);
+		backend_neutral_cpu_image_ =
+			QImage(reinterpret_cast<const uchar *>(display_frame->const_data()),
+				   display_frame->width(), display_frame->height(),
+				   display_frame->linesize_bytes(), QImage::Format_RGBA8888);
 		source_image = backend_neutral_cpu_image_;
 	} else if (display_frame->format() == PixelFormat::U8 &&
-			   display_frame->channel_count() == VideoParams::kRGBChannelCount) {
+			   display_frame->channel_count() ==
+				   VideoParams::kRGBChannelCount) {
 		backend_neutral_cpu_display_frame_ = display_frame;
-		backend_neutral_cpu_image_ = QImage(
-			reinterpret_cast<const uchar *>(display_frame->const_data()),
-			display_frame->width(), display_frame->height(),
-			display_frame->linesize_bytes(), QImage::Format_RGB888);
+		backend_neutral_cpu_image_ =
+			QImage(reinterpret_cast<const uchar *>(display_frame->const_data()),
+				   display_frame->width(), display_frame->height(),
+				   display_frame->linesize_bytes(), QImage::Format_RGB888);
 		source_image = backend_neutral_cpu_image_;
 	} else {
 		backend_neutral_cpu_display_frame_.reset();
-		const int bytes_per_pixel = display_frame->video_params().GetBytesPerPixel();
+		const int bytes_per_pixel =
+			display_frame->video_params().GetBytesPerPixel();
 		if (backend_neutral_cpu_image_.size() !=
-			QSize(display_frame->width(), display_frame->height()) ||
+				QSize(display_frame->width(), display_frame->height()) ||
 			backend_neutral_cpu_image_.format() != QImage::Format_RGBA8888) {
-			backend_neutral_cpu_image_ =
-				QImage(display_frame->width(), display_frame->height(),
-					   QImage::Format_RGBA8888);
+			backend_neutral_cpu_image_ = QImage(display_frame->width(),
+												display_frame->height(),
+												QImage::Format_RGBA8888);
 		}
 
 		for (int y = 0; y < display_frame->height(); ++y) {
@@ -1547,20 +1555,18 @@ bool ViewerDisplayWidget::DrawBackendNeutralTexture(const TexturePtr &texture,
 // Renders a backend-neutral frame by drawing into an offscreen backend texture,
 // downloading it to CPU memory, then painting that image with QPainter.
 void ViewerDisplayWidget::DrawBackendNeutral(const ColorTransformJob &ctj,
-										 QPainter *painter)
+											 QPainter *painter)
 {
 	if (!painter || !painter->isActive()) {
 		return;
 	}
 
-	const int texture_width =
-		static_cast<int>(width() * devicePixelRatioF());
-	const int texture_height =
-		static_cast<int>(height() * devicePixelRatioF());
+	const int texture_width = static_cast<int>(width() * devicePixelRatioF());
+	const int texture_height = static_cast<int>(height() * devicePixelRatioF());
 
-	const VideoParams offscreen_params(
-		texture_width, texture_height, PixelFormat::U8,
-		VideoParams::kRGBAChannelCount);
+	const VideoParams offscreen_params(texture_width, texture_height,
+									   PixelFormat::U8,
+									   VideoParams::kRGBAChannelCount);
 
 	if (!backend_neutral_texture_ ||
 		backend_neutral_texture_->params() != offscreen_params) {
@@ -1570,7 +1576,7 @@ void ViewerDisplayWidget::DrawBackendNeutral(const ColorTransformJob &ctj,
 		backend_neutral_buffer_.resize(
 			texture_width * texture_height *
 			VideoParams::GetBytesPerPixel(PixelFormat::U8,
-									  VideoParams::kRGBAChannelCount));
+										  VideoParams::kRGBAChannelCount));
 	}
 
 	if (!backend_neutral_texture_ || backend_neutral_texture_->IsDummy()) {
@@ -1589,11 +1595,10 @@ void ViewerDisplayWidget::DrawBackendNeutral(const ColorTransformJob &ctj,
 	const int bytes_per_pixel = VideoParams::GetBytesPerPixel(
 		PixelFormat::U8, VideoParams::kRGBAChannelCount);
 
-	QImage img(reinterpret_cast<const uchar *>(
-				   backend_neutral_buffer_.constData()),
-			   texture_width, texture_height,
-			   texture_width * bytes_per_pixel,
-			   QImage::Format_RGBA8888_Premultiplied);
+	QImage img(
+		reinterpret_cast<const uchar *>(backend_neutral_buffer_.constData()),
+		texture_width, texture_height, texture_width * bytes_per_pixel,
+		QImage::Format_RGBA8888_Premultiplied);
 	img.setDevicePixelRatio(devicePixelRatioF());
 
 	// QImage references backend_neutral_buffer_ directly; draw it before the

@@ -227,5 +227,5 @@ bool LoadGraphMsg::FromJson(const QJsonObject &o, LoadGraphMsg *out)
 	return true;
 }
 
-}  // namespace ipc
-}  // namespace olive
+} // namespace ipc
+} // namespace olive

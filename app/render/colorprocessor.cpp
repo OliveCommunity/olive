@@ -29,8 +29,8 @@ namespace olive
 {
 
 ColorProcessor::ColorProcessor(ColorManager *config, const QString &input,
-								   const ColorTransform &transform,
-								   Direction direction)
+							   const ColorTransform &transform,
+							   Direction direction)
 {
 	processor_ = nullptr;
 	cpu_processor_ = nullptr;
@@ -59,17 +59,18 @@ ColorProcessor::ColorProcessor(ColorManager *config, const QString &input,
 			display_transform->setDisplay(output.toUtf8());
 			display_transform->setView(view.toUtf8());
 			display_transform->setDirection(direction == kNormal ?
-											  OCIO::TRANSFORM_DIR_FORWARD :
-											  OCIO::TRANSFORM_DIR_INVERSE);
+												OCIO::TRANSFORM_DIR_FORWARD :
+												OCIO::TRANSFORM_DIR_INVERSE);
 
 			if (transform.look().isEmpty()) {
 				processor_ = ocio_config->getProcessor(display_transform);
 			} else {
 				auto group = OCIO::GroupTransform::Create();
 
-				const char *out_cs = OCIO::LookTransform::GetLooksResultColorSpace(
-					ocio_config, ocio_config->getCurrentContext(),
-					transform.look().toUtf8());
+				const char *out_cs =
+					OCIO::LookTransform::GetLooksResultColorSpace(
+						ocio_config, ocio_config->getCurrentContext(),
+						transform.look().toUtf8());
 
 				auto lt = OCIO::LookTransform::Create();
 				lt->setSrc(resolved_input.toUtf8());
@@ -105,7 +106,8 @@ ColorProcessor::ColorProcessor(ColorManager *config, const QString &input,
 ColorProcessor::ColorProcessor(OCIO::ConstProcessorRcPtr processor)
 {
 	processor_ = processor;
-	cpu_processor_ = processor_ ? processor_->getDefaultCPUProcessor() : nullptr;
+	cpu_processor_ = processor_ ? processor_->getDefaultCPUProcessor() :
+								  nullptr;
 }
 
 void ColorProcessor::ConvertFrame(Frame *f)
@@ -151,7 +153,7 @@ ColorProcessorPtr ColorProcessor::Create(ColorManager *config,
 										 Direction direction)
 {
 	return std::make_shared<ColorProcessor>(config, input, transform,
-										direction);
+											direction);
 }
 
 ColorProcessorPtr ColorProcessor::Create(OCIO::ConstProcessorRcPtr processor)

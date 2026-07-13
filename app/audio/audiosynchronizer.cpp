@@ -28,8 +28,7 @@ AudioSynchronizer::Placement AudioSynchronizer::PlaceBySourceTime(
 	const core::rational &reference_timeline_in)
 {
 	Placement placement;
-	if (!reference.has_source_start_time ||
-		!candidate.has_source_start_time ||
+	if (!reference.has_source_start_time || !candidate.has_source_start_time ||
 		reference.source_start_time.isNaN() ||
 		candidate.source_start_time.isNaN()) {
 		return placement;
@@ -55,10 +54,10 @@ AudioSynchronizer::Placement AudioSynchronizer::PlaceByWaveformOffset(
 		return placement;
 	}
 
-	placement.timeline_in =
-		reference_timeline_in +
-		core::rational::fromDouble(static_cast<double>(candidate_offset_samples) /
-								   static_cast<double>(sample_rate));
+	placement.timeline_in = reference_timeline_in +
+							core::rational::fromDouble(
+								static_cast<double>(candidate_offset_samples) /
+								static_cast<double>(sample_rate));
 	placement.valid = !placement.timeline_in.isNaN();
 	return placement;
 }

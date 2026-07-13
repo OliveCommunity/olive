@@ -37,12 +37,11 @@ class Image : public OFX::Host::ImageEffect::Image {
 public:
 	Image(OFX::Host::ImageEffect::ClipInstance &clip_instance);
 	Image(OFX::Host::ImageEffect::ClipInstance &clip_instance,
-		  const VideoParams &params,
-		  const OfxRectI &bounds,
-		  const OfxRectI &rod,
-		  bool clear = true);
+		  const VideoParams &params, const OfxRectI &bounds,
+		  const OfxRectI &rod, bool clear = true);
 	~Image();
-	uint8_t *data() {
+	uint8_t *data()
+	{
 		return (uint8_t *)getPointerProperty(kOfxImagePropData);
 	}
 	int width();
@@ -51,26 +50,20 @@ public:
 	bool premultiplied_alpha();
 	int channel_count();
 
-	void AllocateFromParams(const VideoParams &params,
-							const OfxRectI &bounds,
-							const OfxRectI &rod,
-							bool clear = true);
+	void AllocateFromParams(const VideoParams &params, const OfxRectI &bounds,
+							const OfxRectI &rod, bool clear = true);
 	void EnsureAllocatedFromParams(const VideoParams &params,
-								   const OfxRectI &bounds,
-								   const OfxRectI &rod,
+								   const OfxRectI &bounds, const OfxRectI &rod,
 								   bool clear = false);
-	void Allocate(int width,
-				  int height,
-				  core::PixelFormat format,
-				  int channel_count,
-				  bool premultiplied_alpha,
-				  const OfxRectI &bounds,
-				  const OfxRectI &rod,
+	void Allocate(int width, int height, core::PixelFormat format,
+				  int channel_count, bool premultiplied_alpha,
+				  const OfxRectI &bounds, const OfxRectI &rod,
 				  bool clear = true);
 	int row_bytes() const
 	{
 		return row_bytes_;
 	}
+
 protected:
 	std::vector<uint8_t> image_;
 	int width_;

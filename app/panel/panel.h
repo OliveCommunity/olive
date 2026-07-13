@@ -287,6 +287,7 @@ signals:
 	void CloseRequested();
 	void shown(Qt::FocusReason reason);
 	void hidden();
+
 protected:
 	/**
    * @brief paintEvent

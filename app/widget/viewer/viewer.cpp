@@ -97,11 +97,12 @@ ViewerWidget::ViewerWidget(ViewerDisplayWidget *display, QWidget *parent)
 			&ViewerWidget::CursorColor);
 	connect(display_widget_, &ViewerDisplayWidget::ColorProcessorChanged, this,
 			&ViewerWidget::ColorProcessorChanged);
-	connect(display_widget_, &ViewerDisplayWidget::ColorProcessorChanged, this,
-			[](ColorProcessorPtr processor) {
-				RenderManager::instance()->GetCacher()->SetDisplayColorProcessor(
-					processor);
-			});
+	connect(
+		display_widget_, &ViewerDisplayWidget::ColorProcessorChanged, this,
+		[](ColorProcessorPtr processor) {
+			RenderManager::instance()->GetCacher()->SetDisplayColorProcessor(
+				processor);
+		});
 	RenderManager::instance()->GetCacher()->SetDisplayColorProcessor(
 		display_widget_->GetCurrentColorProcessor());
 	connect(display_widget_, &ViewerDisplayWidget::ColorManagerChanged, this,
@@ -985,8 +986,7 @@ void ViewerWidget::ForceRequeueFromCurrentTime()
 	// called from paintEvent paths (QueueStarved) where synchronously cancelling
 	// watchers can re-enter the same RenderTicket mutex and deadlock.
 	QMetaObject::invokeMethod(
-		this,
-		[this]() { ForceRequeueFromCurrentTimeInternal(); },
+		this, [this]() { ForceRequeueFromCurrentTimeInternal(); },
 		Qt::QueuedConnection);
 }
 
@@ -1001,7 +1001,7 @@ void ViewerWidget::ForceRequeueFromCurrentTimeInternal()
 	playback_queue_next_frame_ =
 		GetTimestamp() +
 		playback_speed_ * Timecode::time_to_timestamp(
-								  kRequeueWaitTime, timebase(), Timecode::kFloor);
+							  kRequeueWaitTime, timebase(), Timecode::kFloor);
 	;
 	first_requeue_watcher_ = nullptr;
 	for (int i = 0; i < queue; i++) {
@@ -1130,7 +1130,8 @@ void ViewerWidget::PlayInternal(int speed, bool in_to_out_only)
 		// Verify audio processor output params are valid before using them
 		AudioParams output_params = audio_processor_.to();
 		if (!output_params.is_valid()) {
-			qWarning() << "Audio processor output params are invalid, skipping audio playback";
+			qWarning()
+				<< "Audio processor output params are invalid, skipping audio playback";
 		} else {
 			AudioManager::instance()->SetOutputNotifyInterval(
 				output_params.time_to_bytes(kAudioPlaybackInterval));
@@ -1138,7 +1139,8 @@ void ViewerWidget::PlayInternal(int speed, bool in_to_out_only)
 					&ViewerWidget::QueueNextAudioBuffer);
 
 			static const int prequeue_count = 2;
-			prequeuing_audio_ = prequeue_count; // Queue two buffers ahead of time
+			prequeuing_audio_ =
+				prequeue_count; // Queue two buffers ahead of time
 			audio_playback_queue_time_ = GetConnectedNode()->GetPlayhead();
 			for (int i = 0; i < prequeue_count; i++) {
 				QueueNextAudioBuffer();
@@ -1506,17 +1508,13 @@ void ViewerWidget::RendererGeneratedFrameForQueue()
 
 			// Ignore this signal if we've paused now
 			if (IsPlaying() || prequeuing_video_) {
-				const qint64 start_ms =
-					watcher->property("start").toLongLong();
-				const qint64 now_ms =
-					QDateTime::currentMSecsSinceEpoch();
+				const qint64 start_ms = watcher->property("start").toLongLong();
+				const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
 				const int playback_step = qMax(1, qAbs(playback_speed_));
-				const double frame_interval_ms = qMax(
-					1.0,
-					timebase().toDouble() * 1000.0 /
-						static_cast<double>(playback_step));
-				if (start_ms > 0 &&
-					(now_ms - start_ms) > frame_interval_ms) {
+				const double frame_interval_ms =
+					qMax(1.0, timebase().toDouble() * 1000.0 /
+								  static_cast<double>(playback_step));
+				if (start_ms > 0 && (now_ms - start_ms) > frame_interval_ms) {
 					// If the queue is nearly empty, keep the frame anyway
 					// to prevent the viewer from freezing entirely when
 					// rendering can't keep up with playback speed.
@@ -1544,7 +1542,7 @@ void ViewerWidget::RendererGeneratedFrameForQueue()
 						}
 
 						dw->queue()->AppendTimewise({ ts, push },
-												   playback_speed_);
+													playback_speed_);
 					}
 				}
 

@@ -160,14 +160,13 @@ void VectorscopeScope::DrawScopeSoftware(QPainter &p, const QImage &image)
 			float g = src[1] / 255.0f;
 			float b = src[2] / 255.0f;
 
-			float y = r * luma_coeffs[0] + g * luma_coeffs[1] +
-					  b * luma_coeffs[2];
+			float y =
+				r * luma_coeffs[0] + g * luma_coeffs[1] + b * luma_coeffs[2];
 			float cb = (b - y) / qMax(2.0f * (1.0f - luma_coeffs[2]), 0.0001f);
 			float cr = (r - y) / qMax(2.0f * (1.0f - luma_coeffs[0]), 0.0001f);
 
-			QPointF point = center +
-							QPointF(cr * vectorscope_gain * radius,
-									-cb * vectorscope_gain * radius);
+			QPointF point = center + QPointF(cr * vectorscope_gain * radius,
+											 -cb * vectorscope_gain * radius);
 
 			int px = qRound(point.x());
 			int py = qRound(point.y());

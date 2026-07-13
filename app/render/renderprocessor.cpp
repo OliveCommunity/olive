@@ -28,7 +28,6 @@
 #include <QVector3D>
 #include <QVector4D>
 
-
 #include "audio/audioprocessor.h"
 #include "node/block/clip/clip.h"
 #include "node/block/transition/transition.h"
@@ -159,7 +158,6 @@ FramePtr RenderProcessor::GenerateFrame(TexturePtr texture,
 				QString::fromUtf8(output_color_transform->id()));
 			frame->set_video_params(display_params);
 		}
-
 	}
 
 	return frame;
@@ -173,7 +171,7 @@ void RenderProcessor::Run()
 
 	SetCancelPointer(ticket_->GetCancelAtom());
 
-	VideoParams params=ticket_->property("vparam").value<VideoParams>();
+	VideoParams params = ticket_->property("vparam").value<VideoParams>();
 	params.set_format(PixelFormat::F32);
 	SetCacheVideoParams(params);
 	SetCacheAudioParams(ticket_->property("aparam").value<AudioParams>());
@@ -416,27 +414,29 @@ void RenderProcessor::ProcessVideoFootage(TexturePtr destination,
 	}
 
 	if (using_colorspace.isEmpty()) {
-		qWarning() << "RenderProcessor ProcessVideoFootage: no input colorspace available";
+		qWarning()
+			<< "RenderProcessor ProcessVideoFootage: no input colorspace available";
 	}
 
 	auto blit_color_managed = [&](const TexturePtr &unmanaged_texture,
-									  const VideoParams &texture_params) {
+								  const VideoParams &texture_params) {
 		if (!render_ctx_ || !unmanaged_texture || IsCancelled()) {
 			return;
 		}
 
 		// We convert to our rendering pixel format, since that will always be float-based which
 		// is necessary for correct color conversion
-		ColorProcessorPtr processor = ColorProcessor::Create(
-			color_manager, using_colorspace,
-			color_manager->GetReferenceColorSpace());
+		ColorProcessorPtr processor =
+			ColorProcessor::Create(color_manager, using_colorspace,
+								   color_manager->GetReferenceColorSpace());
 
 		ColorTransformJob job;
 		job.SetColorProcessor(processor);
 		job.SetInputTexture(unmanaged_texture);
 
 		if (texture_params.channel_count() != VideoParams::kRGBAChannelCount ||
-			texture_params.colorspace() == color_manager->GetReferenceColorSpace()) {
+			texture_params.colorspace() ==
+				color_manager->GetReferenceColorSpace()) {
 			job.SetInputAlphaAssociation(kAlphaNone);
 		} else if (texture_params.premultiplied_alpha()) {
 			job.SetInputAlphaAssociation(kAlphaAssociated);
@@ -450,12 +450,14 @@ void RenderProcessor::ProcessVideoFootage(TexturePtr destination,
 		render_ctx_->Flush();
 	};
 
-	auto *input_pool =
-		QtUtils::ValueToPtr<ipc::FrameSlotPool>(ticket_->property("ipc_input_pool"));
+	auto *input_pool = QtUtils::ValueToPtr<ipc::FrameSlotPool>(
+		ticket_->property("ipc_input_pool"));
 	int input_slot = -1;
-	const QVariantList input_slots = ticket_->property("ipc_input_slots").toList();
+	const QVariantList input_slots =
+		ticket_->property("ipc_input_slots").toList();
 	if (!input_slots.isEmpty()) {
-		const QVariant cursor_value = ticket_->property("ipc_input_slot_cursor");
+		const QVariant cursor_value =
+			ticket_->property("ipc_input_slot_cursor");
 		const int cursor = cursor_value.isValid() ? cursor_value.toInt() : 0;
 		if (cursor >= 0 && cursor < input_slots.size()) {
 			input_slot = input_slots.at(cursor).toInt();
@@ -467,25 +469,26 @@ void RenderProcessor::ProcessVideoFootage(TexturePtr destination,
 	}
 	if (render_ctx_ && input_pool && input_slot >= 0) {
 		if (input_slot >= int(input_pool->slot_count())) {
-			qWarning() << "RenderProcessor received out-of-range IPC input frame slot"
-					   << input_slot;
+			qWarning()
+				<< "RenderProcessor received out-of-range IPC input frame slot"
+				<< input_slot;
 			return;
 		}
 
 		const ipc::FrameSlotMeta *meta = input_pool->Meta(uint32_t(input_slot));
-		if (meta && meta->width > 0 && meta->height > 0 && meta->data_size > 0 &&
+		if (meta && meta->width > 0 && meta->height > 0 &&
+			meta->data_size > 0 &&
 			meta->data_size <= int(input_pool->slot_data_bytes())) {
 			VideoParams input_params = stream_data;
 			input_params.set_width(meta->width);
 			input_params.set_height(meta->height);
 			input_params.set_format(PixelFormat::Format(meta->format));
 			input_params.set_channel_count(meta->channel_count);
-				// The decoder may leave depth at 0 for 2D frames, but the renderer
-				// needs depth >= 1 to compute image size and upload the texture.
-				if (input_params.depth() <= 0) {
-					input_params.set_depth(1);
-				}
-
+			// The decoder may leave depth at 0 for 2D frames, but the renderer
+			// needs depth >= 1 to compute image size and upload the texture.
+			if (input_params.depth() <= 0) {
+				input_params.set_depth(1);
+			}
 
 			// Prefer the colorspace that the main process used when decoding this
 			// frame. The FootageJob reconstructed in the worker may have stale or
@@ -498,9 +501,9 @@ void RenderProcessor::ProcessVideoFootage(TexturePtr destination,
 			}
 
 			const int bytes_per_pixel = input_params.GetBytesPerPixel();
-			const int linesize_pixels = bytes_per_pixel > 0
-												? meta->linesize / bytes_per_pixel
-												: input_params.effective_width();
+			const int linesize_pixels = bytes_per_pixel > 0 ?
+											meta->linesize / bytes_per_pixel :
+											input_params.effective_width();
 
 			const void *slot_data = input_pool->SlotData(uint32_t(input_slot));
 			TexturePtr unmanaged_texture = render_ctx_->CreateTexture(
@@ -509,13 +512,15 @@ void RenderProcessor::ProcessVideoFootage(TexturePtr destination,
 			blit_color_managed(unmanaged_texture, input_params);
 			return;
 		}
-		qWarning() << "RenderProcessor received invalid IPC input frame slot" << input_slot;
+		qWarning() << "RenderProcessor received invalid IPC input frame slot"
+				   << input_slot;
 		return;
 	}
 
 	if (!decoder_cache_) {
-		qWarning() << "RenderProcessor has no decoder cache or IPC input frame for"
-				   << stream->filename();
+		qWarning()
+			<< "RenderProcessor has no decoder cache or IPC input frame for"
+			<< stream->filename();
 		return;
 	}
 
@@ -523,15 +528,15 @@ void RenderProcessor::ProcessVideoFootage(TexturePtr destination,
 		static_cast<RenderMode::Mode>(ticket_->property("mode").toInt()) ==
 			RenderMode::kOffline &&
 		stream->has_proxy() && QFileInfo::exists(stream->proxy_filename());
-	const QString decode_filename =
-		use_proxy ? stream->proxy_filename() : stream->filename();
-	const QString decoder_id =
-		use_proxy ? stream->proxy_decoder() : stream->decoder();
-	const int stream_index =
-		use_proxy ? stream->proxy_stream_index() : stream_data.stream_index();
+	const QString decode_filename = use_proxy ? stream->proxy_filename() :
+												stream->filename();
+	const QString decoder_id = use_proxy ? stream->proxy_decoder() :
+										   stream->decoder();
+	const int stream_index = use_proxy ? stream->proxy_stream_index() :
+										 stream_data.stream_index();
 
-	Decoder::CodecStream default_codec_stream(
-		decode_filename, stream_index, GetCurrentBlock());
+	Decoder::CodecStream default_codec_stream(decode_filename, stream_index,
+											  GetCurrentBlock());
 
 	DecoderPtr decoder = nullptr;
 
@@ -553,8 +558,8 @@ void RenderProcessor::ProcessVideoFootage(TexturePtr destination,
 				decode_filename, frame_number);
 
 			// Decoder will close automatically since it's a stream_ptr
-			decoder->Open(Decoder::CodecStream(
-				frame_filename, stream_index, GetCurrentBlock()));
+			decoder->Open(Decoder::CodecStream(frame_filename, stream_index,
+											   GetCurrentBlock()));
 		}
 		break;
 	}
@@ -643,7 +648,8 @@ void RenderProcessor::ProcessShader(TexturePtr destination, const Node *node,
 	locker.unlock();
 
 	// Run shader
-	render_ctx_->BlitToTexture(shader, const_cast<ShaderJob&>(*job), destination.get());
+	render_ctx_->BlitToTexture(shader, const_cast<ShaderJob &>(*job),
+							   destination.get());
 }
 
 void RenderProcessor::ProcessSamples(SampleBuffer &destination,
@@ -720,8 +726,7 @@ TexturePtr RenderProcessor::ProcessPluginJob(TexturePtr texture,
 		return destination;
 	}
 
-	auto *plugin_job =
-		dynamic_cast<plugin::PluginJob *>(texture->job());
+	auto *plugin_job = dynamic_cast<plugin::PluginJob *>(texture->job());
 	if (!plugin_job) {
 		return destination;
 	}
@@ -779,13 +784,8 @@ TexturePtr RenderProcessor::ProcessPluginJob(TexturePtr texture,
 		}
 	}
 
-	plugin_renderer.RenderPlugin(
-		src,
-		*plugin_job,
-		destination,
-		destination->params(),
-		true,
-		false);
+	plugin_renderer.RenderPlugin(src, *plugin_job, destination,
+								 destination->params(), true, false);
 
 	return destination;
 }
@@ -797,7 +797,8 @@ TexturePtr RenderProcessor::ProcessVideoCacheJob(const CacheJob *val)
 		// Auto-detect and discard black/empty cached frames (macOS TBDR artifact)
 		bool all_black = true;
 		if (frame->data() && frame->allocated_size() > 0) {
-			const uint8_t *pixels = reinterpret_cast<const uint8_t *>(frame->data());
+			const uint8_t *pixels =
+				reinterpret_cast<const uint8_t *>(frame->data());
 			size_t alloc_size = static_cast<size_t>(frame->allocated_size());
 			size_t check_bytes = std::min(alloc_size, size_t(4096));
 			for (size_t i = 0; i < check_bytes; ++i) {
@@ -808,7 +809,8 @@ TexturePtr RenderProcessor::ProcessVideoCacheJob(const CacheJob *val)
 			}
 		}
 		if (all_black) {
-			qWarning() << "[CACHE] Discarding black cached frame:" << val->GetFilename()
+			qWarning() << "[CACHE] Discarding black cached frame:"
+					   << val->GetFilename()
 					   << "time=" << frame->timestamp().toDouble()
 					   << "size=" << frame->allocated_size();
 			QFile::remove(val->GetFilename());

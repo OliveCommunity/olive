@@ -131,8 +131,7 @@ void PanelWidget::changeEvent(QEvent *e)
 	if (e->type() == QEvent::WindowStateChange) {
 		if (isVisible() && !isMinimized()) {
 			emit shown(Qt::OtherFocusReason);
-		}
-		else {
+		} else {
 			emit hidden();
 		}
 	}

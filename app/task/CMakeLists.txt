@@ -23,9 +23,9 @@ add_subdirectory(proxy)
 add_subdirectory(render)
 
 set(OLIVE_SOURCES
-  ${OLIVE_SOURCES}
-  task/task.h
-  task/taskmanager.h
-  task/taskmanager.cpp
-  PARENT_SCOPE
+        ${OLIVE_SOURCES}
+        task/task.h
+        task/taskmanager.h
+        task/taskmanager.cpp
+        PARENT_SCOPE
 )

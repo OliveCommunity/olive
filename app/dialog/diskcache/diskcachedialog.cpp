@@ -26,7 +26,6 @@
 #include <QLabel>
 #include <QMessageBox>
 
-
 namespace olive
 {
 

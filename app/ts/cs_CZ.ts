@@ -1,4133 +1,8220 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE TS>
-<TS version="2.1" language="cs_CZ">
+<?xml version = "1.0"
+encoding = "utf-8" ?
+>
+<!DOCTYPE TS >
+<TS version = "2.1"
+language = "cs_CZ" >
 <context>
-    <name>AudioParams</name>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="28"/>
-        <source>%1 Hz</source>
-        <translation>%1 Hz</translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="35"/>
-        <source>Mono</source>
-        <translation>Mono</translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="37"/>
-        <source>Stereo</source>
-        <translation>Stereo</translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="39"/>
-        <source>2.1</source>
-        <translation>2.1</translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="41"/>
-        <source>5.1</source>
-        <translation>5.1</translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="43"/>
-        <source>7.1</source>
-        <translation>7.1</translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="45"/>
-        <location filename="../ui/humanstrings.cpp" line="95"/>
-        <source>Unknown (0x%1)</source>
-        <translation>Neznámé (0x%1)</translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="54"/>
-        <source>Unsigned 8-bit (Packed)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="57"/>
-        <source>Signed 16-bit (Packed)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="60"/>
-        <source>Signed 32-bit (Packed)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="63"/>
-        <source>Signed 64-bit (Packed)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="66"/>
-        <source>Float 32-bit (Packed)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="69"/>
-        <source>Float 64-bit (Packed)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="72"/>
-        <source>Unsigned 8-bit (Planar)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="75"/>
-        <source>Signed 16-bit (Planar)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="78"/>
-        <source>Signed 32-bit (Planar)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="81"/>
-        <source>Signed 64-bit (Planar)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="84"/>
-        <source>Float 32-bit (Planar)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../ui/humanstrings.cpp" line="87"/>
-        <source>Float 64-bit (Planar)</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>Config</name>
-    <message>
-        <location filename="../config/config.cpp" line="348"/>
-        <source>Error loading settings</source>
-        <translation>Chyba při načítání nastavení</translation>
-    </message>
-    <message>
-        <location filename="../config/config.cpp" line="349"/>
-        <source>Failed to load application settings. This session will use defaults.
+    <name>AudioParams < /name>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "28" / >
+    <source> % 1
+Hz < /source>
+< translation > % 1
+Hz < /translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "35" / >
+<source>Mono < /source>
+< translation > Mono < /translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "37" / >
+<source>Stereo < /source>
+< translation > Stereo < /translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "39" / >
+<source>2.1 < /source>
+< translation > 2.1 < /translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "41" / >
+<source>5.1 < /source>
+< translation > 5.1 < /translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "43" / >
+<source>7.1 < /source>
+< translation > 7.1 < /translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "45" / >
+<location filename = "../ui/humanstrings.cpp"
+line = "95" / >
+    <source>Unknown(0
+x % 1
+)
+</source>
+< translation > Neznámé(0
+x % 1
+)
+</translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "54" / >
+    <source>Unsigned
+8 - bit(Packed) < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "57" / >
+    <source>Signed
+16 - bit(Packed) < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "60" / >
+    <source>Signed
+32 - bit(Packed) < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "63" / >
+    <source>Signed
+64 - bit(Packed) < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "66" / >
+    <source>Float
+32 - bit(Packed) < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "69" / >
+    <source>Float
+64 - bit(Packed) < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "72" / >
+    <source>Unsigned
+8 - bit(Planar) < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "75" / >
+    <source>Signed
+16 - bit(Planar) < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "78" / >
+    <source>Signed
+32 - bit(Planar) < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "81" / >
+    <source>Signed
+64 - bit(Planar) < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "84" / >
+    <source>Float
+32 - bit(Planar) < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../ui/humanstrings.cpp"
+line = "87" / >
+    <source>Float
+64 - bit(Planar) < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>Config < /name>
+< message >
+<location filename = "../config/config.cpp"
+line = "348" / >
+    <source>Error
+loading
+settings < /source>
+< translation > Chyba
+při
+načítání
+nastavení < /translation>
+< /message>
+< message >
+<location filename = "../config/config.cpp"
+line = "349" / >
+    <source>Failed
+to
+load
+application
+settings.This
+session
+will
+use
+defaults.
 
-%1</source>
-        <translation>Nepodařilo se načíst nastavení programu. Toto sezení bude používat výchozí nastavení.
+% 1 < /source>
+< translation > Nepodařilo
+se
+načíst
+nastavení
+programu.Toto
+sezení
+bude
+používat
+výchozí
+nastavení.
 
-%1</translation>
-    </message>
-    <message>
-        <location filename="../config/config.cpp" line="372"/>
-        <source>Error saving settings</source>
-        <translation>Chyba při ukládání nastavení</translation>
-    </message>
-    <message>
-        <location filename="../config/config.cpp" line="373"/>
-        <source>Failed to save application settings. The application may lack write permissions for this location.</source>
-        <translation>Nepodařilo se uložit nastavení programu. Program může postrádat oprávnění k zápisu do tohoto umístění.</translation>
-    </message>
-</context>
-<context>
-    <name>Footage</name>
-    <message>
-        <source>%1 FPS</source>
-        <translation type="vanished">%1 FPS</translation>
-    </message>
-    <message>
-        <source>%1 Hz</source>
-        <translation type="vanished">%1 Hz</translation>
-    </message>
-    <message>
-        <source>Filename: %1</source>
-        <translation type="vanished">Název souboru: %1</translation>
-    </message>
-    <message>
-        <source>This footage is not valid for use</source>
-        <translation type="vanished">Tento záznam není platný pro použití</translation>
-    </message>
-</context>
-<context>
-    <name>ImportTool</name>
-    <message>
-        <location filename="../widget/timelinewidget/tool/import.cpp" line="358"/>
-        <source>Don&apos;t ask me again</source>
-        <translation>Neptat se znovu</translation>
-    </message>
-    <message>
-        <location filename="../widget/timelinewidget/tool/import.cpp" line="364"/>
-        <source>No Active Sequence</source>
-        <translation>Žádný činný úryvek (sled záběrů)</translation>
-    </message>
-    <message>
-        <location filename="../widget/timelinewidget/tool/import.cpp" line="366"/>
-        <source>No sequence is currently open. Would you like to create one?</source>
-        <translation>V současnosti není otevřen žádný úryvek (sled záběrů). Chcete jeden vytvořit?</translation>
-    </message>
-    <message>
-        <location filename="../widget/timelinewidget/tool/import.cpp" line="372"/>
-        <source>Automatically Detect Parameters From Footage</source>
-        <translation>Automaticky zjistit parametry ze záznamu</translation>
-    </message>
-    <message>
-        <location filename="../widget/timelinewidget/tool/import.cpp" line="377"/>
-        <source>Set Parameters Manually</source>
-        <translation>Nastavit parametry ručně</translation>
-    </message>
-</context>
-<context>
-    <name>MoveItemCommand</name>
-    <message>
-        <source>Move Item</source>
-        <translation type="vanished">Přesunout položku</translation>
-    </message>
-</context>
-<context>
-    <name>NodeCopyPasteWidget</name>
-    <message>
-        <source>Error pasting nodes</source>
-        <translation type="vanished">Chyba při vkládání uzlů</translation>
-    </message>
-    <message>
-        <source>Failed to paste nodes: %1</source>
-        <translation type="vanished">Nepodařilo se vložit uzly: %1</translation>
-    </message>
-</context>
-<context>
-    <name>NodeFactory</name>
-    <message>
-        <location filename="../node/factory.cpp" line="177"/>
-        <source>None</source>
-        <translation>Žádný</translation>
-    </message>
-</context>
-<context>
-    <name>NodeValue</name>
-    <message>
-        <location filename="../node/value.cpp" line="260"/>
-        <source>None</source>
-        <translation>Žádný</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="263"/>
-        <source>Integer</source>
-        <translation>Celé číslo</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="265"/>
-        <source>Float</source>
-        <translation>Pohyblivá desetinná čárka</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="267"/>
-        <source>Rational</source>
-        <translation>Racionální</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="269"/>
-        <source>Boolean</source>
-        <translation>Booleánská</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="271"/>
-        <source>Color</source>
-        <translation>Barva</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="273"/>
-        <source>Matrix</source>
-        <translation>Matice</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="275"/>
-        <source>Text</source>
-        <translation>Text</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="277"/>
-        <source>Font</source>
-        <translation>Písmo</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="279"/>
-        <source>File</source>
-        <translation>Soubor</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="281"/>
-        <source>Texture</source>
-        <translation>Povrch</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="283"/>
-        <source>Samples</source>
-        <translation>Vzorky</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="285"/>
-        <source>Vector 2D</source>
-        <translation>Vektor 2D</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="287"/>
-        <source>Vector 3D</source>
-        <translation>Vektor 3D</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="289"/>
-        <source>Vector 4D</source>
-        <translation>Vektor 4D</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="291"/>
-        <source>Bezier</source>
-        <translation type="unfinished">Bézier</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="293"/>
-        <source>Video Parameters</source>
-        <translation>Parametry obrazu</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="295"/>
-        <source>Audio Parameters</source>
-        <translation>Parametry zvuku</translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="297"/>
-        <source>Subtitle Parameters</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="299"/>
-        <source>Binary</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/value.cpp" line="305"/>
-        <source>Unknown</source>
-        <translation>Neznámý</translation>
-    </message>
-</context>
-<context>
-    <name>NodeViewContext</name>
-    <message>
-        <location filename="../widget/nodeview/nodeviewcontext.cpp" line="53"/>
-        <source>%1 [%2] :: %3 - %4</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>NodeViewItem</name>
-    <message>
-        <location filename="../widget/nodeview/nodeviewitem.cpp" line="387"/>
-        <source>Output</source>
-        <translation type="unfinished">Výstup</translation>
-    </message>
-    <message>
-        <location filename="../widget/nodeview/nodeviewitem.cpp" line="597"/>
-        <source>%1...</source>
-        <translation>%1...</translation>
-    </message>
-</context>
-<context>
-    <name>OlivePluginInstance</name>
-    <message>
-        <location filename="../pluginSupport/OlivePluginInstance.cpp" line="369"/>
-        <source>Change %1</source>
-        <translation>Změnit %1</translation>
-    </message>
-    <message>
-        <location filename="../pluginSupport/OlivePluginInstance.cpp" line="388"/>
-        <source>%1 (+%2)</source>
-        <translation>%1 (+%2)</translation>
-    </message>
-    <message>
-        <location filename="../pluginSupport/OlivePluginInstance.cpp" line="393"/>
-        <source>Edit Parameters</source>
-        <translation>Upravit parametry</translation>
-    </message>
-</context>
-<context>
-    <name>PresetManager</name>
-    <message>
-        <location filename="../dialog/sequence/presetmanager.h" line="139"/>
-        <source>Save Preset</source>
-        <translation>Uložit přednastavení</translation>
-    </message>
-    <message>
-        <location filename="../dialog/sequence/presetmanager.h" line="140"/>
-        <source>Set preset name:</source>
-        <translation>Nastavit název přednastavení:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/sequence/presetmanager.h" line="153"/>
-        <source>Invalid preset name</source>
-        <translation>Neplatný název přednastavení</translation>
-    </message>
-    <message>
-        <location filename="../dialog/sequence/presetmanager.h" line="155"/>
-        <source>You must enter a preset name</source>
-        <translation>Musíte zadat název přednastavení</translation>
-    </message>
-    <message>
-        <location filename="../dialog/sequence/presetmanager.h" line="193"/>
-        <source>Preset exists</source>
-        <translation>Přednastavení existuje</translation>
-    </message>
-    <message>
-        <location filename="../dialog/sequence/presetmanager.h" line="195"/>
-        <source>A preset with this name already exists. Would you like to replace it?</source>
-        <translation>Přednastavení s tímto názvem již existuje. Chcete je nahradit?</translation>
-    </message>
-</context>
-<context>
-    <name>QObject</name>
-    <message>
-        <location filename="../core.cpp" line="136"/>
-        <source>Common Media Files</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="137"/>
-        <source>Video Files</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="139"/>
-        <source>Audio Files</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="141"/>
-        <source>Image Files</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../render/plugin/pluginrenderer.cpp" line="1312"/>
-        <source>Plugin Error</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../render/plugin/pluginrenderer.cpp" line="1552"/>
-        <source>Plugin %1 failed because connected inputs have different frame rates.
-The last operation has been undone.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../render/plugin/pluginrenderer.cpp" line="1562"/>
-        <source>Plugin %1 encountered an error: %2
-The last operation has been undone.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../render/plugin/pluginrenderer.cpp" line="1573"/>
-        <source>Plugin %1 failed to get clip preferences.
-The last operation has been undone.</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>RatioDialog</name>
-    <message>
-        <location filename="../common/ratiodialog.cpp" line="41"/>
-        <source>Enter custom ratio (e.g. &quot;4:3&quot;, &quot;16/9&quot;, etc.):</source>
-        <translation>Zadejte vlastní poměr (např. &quot;4:3&quot;, &quot;16/9&quot;, atd.):</translation>
-    </message>
-    <message>
-        <location filename="../common/ratiodialog.cpp" line="85"/>
-        <source>Invalid custom ratio</source>
-        <translation>Neplatný vlastní poměr</translation>
-    </message>
-    <message>
-        <location filename="../common/ratiodialog.cpp" line="86"/>
-        <source>Failed to parse &quot;%1&quot; into an aspect ratio. Please format a rational fraction with a &apos;:&apos; or a &apos;/&apos; separator.</source>
-        <translation>Nepodařilo se zpracovat &quot;%1&quot; do poměru stran. Naformátujte, prosím, racionální zlomek pomocí oddělovače &apos;:&apos; nebo &apos;/&apos;.</translation>
-    </message>
-</context>
-<context>
-    <name>RenameItemCommand</name>
-    <message>
-        <source>Rename Item</source>
-        <translation type="vanished">Přejmenovat položku</translation>
-    </message>
-</context>
-<context>
-    <name>Sequence</name>
-    <message>
-        <source>%1 FPS</source>
-        <translation type="vanished">%1 FPS</translation>
-    </message>
-</context>
-<context>
-    <name>Serializer</name>
-    <message>
-        <location filename="../node/project/serializer/serializer.cpp" line="302"/>
-        <source>%1 on line %2</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>Stream</name>
-    <message>
-        <source>%1: Audio - %2 Channels, %3Hz</source>
-        <translation type="vanished">%1: Zvuk - %2 kanály, %3 Hz</translation>
-    </message>
-    <message>
-        <source>%1: Unknown</source>
-        <translation type="vanished">%1: Neznámý</translation>
-    </message>
-    <message>
-        <source>%1: Image - %2x%3</source>
-        <translation type="vanished">%1: Obrázek - %2x%3</translation>
-    </message>
-    <message>
-        <source>%1: Video - %2x%3</source>
-        <translation type="vanished">%1: Obraz - %2x%3</translation>
-    </message>
-</context>
-<context>
-    <name>TimelineViewBlockItem</name>
-    <message>
-        <source>%1
+% 1 < /translation>
+< /message>
+< message >
+<location filename = "../config/config.cpp"
+line = "372" / >
+    <source>Error
+saving
+settings < /source>
+< translation > Chyba
+při
+ukládání
+nastavení < /translation>
+< /message>
+< message >
+<location filename = "../config/config.cpp"
+line = "373" / >
+    <source>Failed
+to
+save
+application
+settings.The
+application
+may
+lack
+write
+permissions
+for this location. < /source>
+< translation > Nepodařilo
+se
+uložit
+nastavení
+programu.Program
+může
+postrádat
+oprávnění
+k
+zápisu
+do tohoto umístění. < /translation>
+< /message>
+< /context>
+< context >
+<name>Footage < /name>
+< message >
+<source> % 1
+FPS < /source>
+< translation
+type = "vanished" > % 1
+FPS < /translation>
+< /message>
+< message >
+<source> % 1
+Hz < /source>
+< translation
+type = "vanished" > % 1
+Hz < /translation>
+< /message>
+< message >
+<source>Filename
+: %
+1 < /source>
+< translation
+type = "vanished" > Název
+souboru: %
+1 < /translation>
+< /message>
+< message >
+<source>This
+footage
+is
+not
+valid
+for use < /source>
+    < translation type = "vanished" > Tento
+záznam
+není
+platný
+pro
+použití < /translation>
+< /message>
+< /context>
+< context >
+<name>ImportTool < /name>
+< message >
+<location filename = "../widget/timelinewidget/tool/import.cpp"
+line = "358" / >
+    <source>Don & apos;
+t
+ask
+me
+again < /source>
+< translation > Neptat
+se
+znovu < /translation>
+< /message>
+< message >
+<location filename = "../widget/timelinewidget/tool/import.cpp"
+line = "364" / >
+    <source>No
+Active
+Sequence < /source>
+< translation > Žádný
+činný
+úryvek(sled
+záběrů
+)
+</translation>
+< /message>
+< message >
+<location filename = "../widget/timelinewidget/tool/import.cpp"
+line = "366" / >
+    <source>No
+sequence
+is
+currently
+open.Would
+you
+like
+to
+create
+one ? </source>
+    < translation > V současnosti
+není
+otevřen
+žádný
+úryvek(sled
+záběrů
+).
+Chcete
+jeden
+vytvořit ? </translation>
+< /message>
+< message >
+<location filename = "../widget/timelinewidget/tool/import.cpp" line = "372" / >
+    <source>Automatically
+Detect
+Parameters
+From
+Footage < /source>
+< translation > Automaticky
+zjistit
+parametry
+ze
+záznamu < /translation>
+< /message>
+< message >
+<location filename = "../widget/timelinewidget/tool/import.cpp"
+line = "377" / >
+    <source>Set
+Parameters
+Manually < /source>
+< translation > Nastavit
+parametry
+ručně < /translation>
+< /message>
+< /context>
+< context >
+<name>MoveItemCommand < /name>
+< message >
+<source>Move
+Item < /source>
+< translation
+type = "vanished" > Přesunout
+položku < /translation>
+< /message>
+< /context>
+< context >
+<name>NodeCopyPasteWidget < /name>
+< message >
+<source>Error
+pasting
+nodes < /source>
+< translation
+type = "vanished" > Chyba
+při
+vkládání
+uzlů < /translation>
+< /message>
+< message >
+<source>Failed
+to
+paste
+nodes: %
+1 < /source>
+< translation
+type = "vanished" > Nepodařilo
+se
+vložit
+uzly: %
+1 < /translation>
+< /message>
+< /context>
+< context >
+<name>NodeFactory < /name>
+< message >
+<location filename = "../node/factory.cpp"
+line = "177" / >
+<source>None < /source>
+< translation > Žádný < /translation>
+< /message>
+< /context>
+< context >
+<name>NodeValue < /name>
+< message >
+<location filename = "../node/value.cpp"
+line = "260" / >
+<source>None < /source>
+< translation > Žádný < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "263" / >
+    <source>Integer < /source>
+    < translation > Celé
+číslo < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "265" / >
+    <source>Float < /source>
+    < translation > Pohyblivá
+desetinná
+čárka < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "267" / >
+<source>Rational < /source>
+< translation > Racionální < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "269" / >
+<source>Boolean < /source>
+< translation > Booleánská < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "271" / >
+<source>Color < /source>
+< translation > Barva < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "273" / >
+<source>Matrix < /source>
+< translation > Matice < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "275" / >
+<source>Text < /source>
+< translation > Text < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "277" / >
+<source>Font < /source>
+< translation > Písmo < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "279" / >
+<source>File < /source>
+< translation > Soubor < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "281" / >
+<source>Texture < /source>
+< translation > Povrch < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "283" / >
+<source>Samples < /source>
+< translation > Vzorky < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "285" / >
+    <source>Vector
+2
+D < /source>
+< translation > Vektor
+2
+D < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "287" / >
+    <source>Vector
+3
+D < /source>
+< translation > Vektor
+3
+D < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "289" / >
+    <source>Vector
+4
+D < /source>
+< translation > Vektor
+4
+D < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "291" / >
+    <source>Bezier < /source>
+    < translation
+type = "unfinished" > Bézier < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "293" / >
+    <source>Video
+Parameters < /source>
+< translation > Parametry
+obrazu < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "295" / >
+    <source>Audio
+Parameters < /source>
+< translation > Parametry
+zvuku < /translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "297" / >
+    <source>Subtitle
+Parameters < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "299" / >
+    <source>Binary < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/value.cpp"
+line = "305" / >
+<source>Unknown < /source>
+< translation > Neznámý < /translation>
+< /message>
+< /context>
+< context >
+<name>NodeViewContext < /name>
+< message >
+<location filename = "../widget/nodeview/nodeviewcontext.cpp"
+line = "53" / >
+    <source> % 1 [ % 2
+]
+:: % 3 - % 4 < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>NodeViewItem < /name>
+< message >
+<location filename = "../widget/nodeview/nodeviewitem.cpp"
+line = "387" / >
+    <source>Output < /source>
+    < translation
+type = "unfinished" > Výstup < /translation>
+< /message>
+< message >
+<location filename = "../widget/nodeview/nodeviewitem.cpp"
+line = "597" / >
+<source> % 1... < /source>
+< translation > % 1... < /translation>
+< /message>
+< /context>
+< context >
+<name>OlivePluginInstance < /name>
+< message >
+<location filename = "../pluginSupport/OlivePluginInstance.cpp"
+line = "369" / >
+<source>Change % 1 < /source>
+< translation > Změnit % 1 < /translation>
+< /message>
+< message >
+<location filename = "../pluginSupport/OlivePluginInstance.cpp"
+line = "388" / >
+<source> % 1(+ % 2) < /source>
+< translation > % 1(+ % 2) < /translation>
+< /message>
+< message >
+<location filename = "../pluginSupport/OlivePluginInstance.cpp"
+line = "393" / >
+    <source>Edit
+Parameters < /source>
+< translation > Upravit
+parametry < /translation>
+< /message>
+< /context>
+< context >
+<name>PresetManager < /name>
+< message >
+<location filename = "../dialog/sequence/presetmanager.h"
+line = "139" / >
+    <source>Save
+Preset < /source>
+< translation > Uložit
+přednastavení < /translation>
+< /message>
+< message >
+<location filename = "../dialog/sequence/presetmanager.h"
+line = "140" / >
+    <source>Set
+preset
+name:</source>
+< translation > Nastavit
+název
+přednastavení:</translation>
+< /message>
+< message >
+<location filename = "../dialog/sequence/presetmanager.h"
+line = "153" / >
+    <source>Invalid
+preset
+name < /source>
+< translation > Neplatný
+název
+přednastavení < /translation>
+< /message>
+< message >
+<location filename = "../dialog/sequence/presetmanager.h"
+line = "155" / >
+    <source>You
+must
+enter
+a
+preset
+name < /source>
+< translation > Musíte
+zadat
+název
+přednastavení < /translation>
+< /message>
+< message >
+<location filename = "../dialog/sequence/presetmanager.h"
+line = "193" / >
+    <source>Preset
+exists < /source>
+< translation > Přednastavení
+existuje < /translation>
+< /message>
+< message >
+<location filename = "../dialog/sequence/presetmanager.h"
+line = "195" / >
+    <source>A
+preset
+with this name
+already
+exists.Would
+you
+like
+to
+replace
+it ? </source>
+    < translation > Přednastavení s
+tímto
+názvem
+již
+existuje.Chcete
+je
+nahradit ? </translation>
+< /message>
+< /context>
+< context >
+<name>QObject < /name>
+< message >
+<location filename = "../core.cpp" line = "136" / >
+    <source>Common
+Media
+Files < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "137" / >
+    <source>Video
+Files < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "139" / >
+    <source>Audio
+Files < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "141" / >
+    <source>Image
+Files < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../render/plugin/pluginrenderer.cpp"
+line = "1312" / >
+    <source>Plugin
+Error < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../render/plugin/pluginrenderer.cpp"
+line = "1552" / >
+    <source>Plugin % 1
+failed
+because
+connected
+inputs
+have
+different
+frame
+rates.The
+last
+operation
+has
+been
+undone. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../render/plugin/pluginrenderer.cpp"
+line = "1562" / >
+    <source>Plugin % 1
+encountered
+an
+error: %
+2
+The
+last
+operation
+has
+been
+undone. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../render/plugin/pluginrenderer.cpp"
+line = "1573" / >
+    <source>Plugin % 1
+failed
+to
+get
+clip
+preferences.The
+last
+operation
+has
+been
+undone. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>RatioDialog < /name>
+< message >
+<location filename = "../common/ratiodialog.cpp"
+line = "41" / >
+    <source>Enter
+custom
+ratio(e.g. & quot;
+4
+:
+3 & quot;
+, &
+quot;
+16 / 9 & quot;
+,
+etc.
+):
+</source>
+< translation > Zadejte
+vlastní
+poměr(např. & quot;
+4
+:
+3 & quot;
+, &
+quot;
+16 / 9 & quot;
+,
+atd.
+):
+</translation>
+< /message>
+< message >
+<location filename = "../common/ratiodialog.cpp"
+line = "85" / >
+    <source>Invalid
+custom
+ratio < /source>
+< translation > Neplatný
+vlastní
+poměr < /translation>
+< /message>
+< message >
+<location filename = "../common/ratiodialog.cpp"
+line = "86" / >
+    <source>Failed
+to
+parse & quot;
+%
+1 & quot;
+into
+an
+aspect
+ratio.Please
+format
+a
+rational
+fraction
+with a & apos;
+:&
+apos;
+or
+a & apos;
+/&apos; separator.</s
+ource >
+<translation>Nepodařilo
+se
+zpracovat & quot;
+%
+1 & quot;
+do poměru stran.Naformátujte, prosím, racionální
+zlomek
+pomocí
+oddělovače & apos;
+:&
+apos;
+nebo & apos;
+/&apos;.</
+translation >
+</message>
+< /context>
+< context >
+<name>RenameItemCommand < /name>
+< message >
+<source>Rename
+Item < /source>
+< translation
+type = "vanished" > Přejmenovat
+položku < /translation>
+< /message>
+< /context>
+< context >
+<name>Sequence < /name>
+< message >
+<source> % 1
+FPS < /source>
+< translation
+type = "vanished" > % 1
+FPS < /translation>
+< /message>
+< /context>
+< context >
+<name>Serializer < /name>
+< message >
+<location filename = "../node/project/serializer/serializer.cpp"
+line = "302" / >
+    <source> % 1
+on
+line % 2 < /source>
+< translation
+type = "unfinished" > </translation>
+    < /message>
+    < /context>
+    < context >
+    <name>Stream < /name>
+    < message >
+    <source> % 1
+:
+Audio - % 2
+Channels,
+%
+3
+Hz < /source>
+< translation
+type = "vanished" > % 1
+:
+Zvuk - % 2
+kanály,
+%
+3
+Hz < /translation>
+< /message>
+< message >
+<source> % 1
+:
+Unknown < /source>
+< translation
+type = "vanished" > % 1
+:
+Neznámý < /translation>
+< /message>
+< message >
+<source> % 1
+:
+Image - % 2
+x % 3 < /source>
+< translation
+type = "vanished" > % 1
+:
+Obrázek - % 2
+x % 3 < /translation>
+< /message>
+< message >
+<source> % 1
+:
+Video - % 2
+x % 3 < /source>
+< translation
+type = "vanished" > % 1
+:
+Obraz - % 2
+x % 3 < /translation>
+< /message>
+< /context>
+< context >
+<name>TimelineViewBlockItem < /name>
+< message >
+<source> % 1
 
-In: %2
-Out: %3
-Length: %4</source>
-        <translation type="vanished">%1
+In: %
+2
+Out: %
+3
+Length: %
+4 < /source>
+< translation
+type = "vanished" > % 1
 
-Začátek: %2
-Konec: %3
-Délka: %4</translation>
-    </message>
-</context>
-<context>
-    <name>Tool</name>
-    <message>
-        <location filename="../tool/tool.h" line="117"/>
-        <source>Empty</source>
-        <translation>Prázdné</translation>
-    </message>
-    <message>
-        <location filename="../tool/tool.h" line="119"/>
-        <source>Bars</source>
-        <translation>Pruhy</translation>
-    </message>
-    <message>
-        <location filename="../tool/tool.h" line="121"/>
-        <source>Shape</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../tool/tool.h" line="123"/>
-        <source>Solid</source>
-        <translation>Plný</translation>
-    </message>
-    <message>
-        <location filename="../tool/tool.h" line="125"/>
-        <source>Title</source>
-        <translation>Název</translation>
-    </message>
-    <message>
-        <location filename="../tool/tool.h" line="127"/>
-        <source>Tone</source>
-        <translation>Odstín</translation>
-    </message>
-    <message>
-        <location filename="../tool/tool.h" line="129"/>
-        <source>Subtitle</source>
-        <translation type="unfinished">Titulek</translation>
-    </message>
-    <message>
-        <location filename="../tool/tool.h" line="134"/>
-        <source>Unknown</source>
-        <translation>Neznámý</translation>
-    </message>
-</context>
-<context>
-    <name>UndoStack</name>
-    <message>
-        <location filename="../undo/undostack.cpp" line="183"/>
-        <source>Undo %1</source>
-        <translation>Zpět %1</translation>
-    </message>
-    <message>
-        <location filename="../undo/undostack.cpp" line="186"/>
-        <source>Redo %1</source>
-        <translation>Znovu %1</translation>
-    </message>
-</context>
-<context>
-    <name>VideoParams</name>
-    <message>
-        <location filename="../render/videoparams.cpp" line="236"/>
-        <source>Full</source>
-        <translation type="unfinished">Plný</translation>
-    </message>
-    <message>
-        <location filename="../render/videoparams.cpp" line="238"/>
-        <source>1/%1</source>
-        <translation type="unfinished">1/%1</translation>
-    </message>
-    <message>
-        <location filename="../render/videoparams.cpp" line="246"/>
-        <source>8-bit</source>
-        <translation>8-bitů</translation>
-    </message>
-    <message>
-        <location filename="../render/videoparams.cpp" line="248"/>
-        <source>10-bit Packed</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../render/videoparams.cpp" line="250"/>
-        <source>16-bit Integer</source>
-        <translation>16-bitů celé číslo</translation>
-    </message>
-    <message>
-        <location filename="../render/videoparams.cpp" line="252"/>
-        <source>Half-Float (16-bit)</source>
-        <translation>Poloviční plovoucí (16-bitů)</translation>
-    </message>
-    <message>
-        <location filename="../render/videoparams.cpp" line="255"/>
-        <source>Full-Float (32-bit)</source>
-        <translation>Celý plovoucí (32-bitů)</translation>
-    </message>
-    <message>
-        <location filename="../render/videoparams.cpp" line="262"/>
-        <source>Unknown (0x%1)</source>
-        <translation>Neznámý (0x%1)</translation>
-    </message>
-    <message>
-        <location filename="../render/videoparams.cpp" line="330"/>
-        <source>%1 FPS</source>
-        <translation>%1 FPS</translation>
-    </message>
-    <message>
-        <location filename="../render/videoparams.cpp" line="337"/>
-        <source>Square Pixels (%1)</source>
-        <translation>Čtvercové pixely (%1)</translation>
-    </message>
-    <message>
-        <location filename="../render/videoparams.cpp" line="338"/>
-        <source>NTSC Standard (%1)</source>
-        <translation>Standard NTSC (%1)</translation>
-    </message>
-    <message>
-        <location filename="../render/videoparams.cpp" line="339"/>
-        <source>NTSC Widescreen (%1)</source>
-        <translation>Širokoúhlé NTSC (%1)</translation>
-    </message>
-    <message>
-        <location filename="../render/videoparams.cpp" line="340"/>
-        <source>PAL Standard (%1)</source>
-        <translation>Standard PAL (%1)</translation>
-    </message>
-    <message>
-        <location filename="../render/videoparams.cpp" line="341"/>
-        <source>PAL Widescreen (%1)</source>
-        <translation>Širokoúhlé PAL (%1)</translation>
-    </message>
-    <message>
-        <location filename="../render/videoparams.cpp" line="342"/>
-        <source>HD Anamorphic 1080 (%1)</source>
-        <translation>HD deformované 1080 (%1)</translation>
-    </message>
-</context>
-<context>
-    <name>main</name>
-    <message>
-        <location filename="../main.cpp" line="64"/>
-        <source>No project filename set to decompress</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="74"/>
-        <source>Failed to open file &quot;%1&quot;</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="82"/>
-        <source>Decompressing project...</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="88"/>
-        <location filename="../main.cpp" line="103"/>
-        <source>Failed to decompress, project may be corrupt</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="124"/>
-        <source>Outputting to file &quot;%1&quot;</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="131"/>
-        <source>Failed to open output file &quot;%1&quot;</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="143"/>
-        <source>Decompressed successfully</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="194"/>
-        <source>Show this help text</source>
-        <translation>Ukáže tento text s nápovědou</translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="198"/>
-        <source>Show application version</source>
-        <translation>Ukáže verzi programu</translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="202"/>
-        <source>Start in full-screen mode</source>
-        <translation>Začít v režimu na celou obrazovku</translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="206"/>
-        <source>Export only (No GUI)</source>
-        <translation>Pouze exportovat (bez rozhraní)</translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="210"/>
-        <source>Override language with file</source>
-        <translation>Přepsat jazyk souborem</translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="211"/>
-        <source>qm-file</source>
-        <translation>Soubor .qm</translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="215"/>
-        <source>Decompress project file (No GUI)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="221"/>
-        <source>Launch with debug console</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="226"/>
-        <source>Project to open on startup</source>
-        <translation>Projekt k otevření při spuštění</translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="230"/>
-        <source>Don&apos;t load plugins</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../main.cpp" line="389"/>
-        <source>Your computer&apos;s graphics driver does not appear to support framebuffers. This most likely means either your graphics driver is not up-to-date or your graphics card is too old to run Oak Video Editor.
+Začátek: %
+2
+Konec: %
+3
+Délka: %
+4 < /translation>
+< /message>
+< /context>
+< context >
+<name>Tool < /name>
+< message >
+<location filename = "../tool/tool.h"
+line = "117" / >
+<source>Empty < /source>
+< translation > Prázdné < /translation>
+< /message>
+< message >
+<location filename = "../tool/tool.h"
+line = "119" / >
+<source>Bars < /source>
+< translation > Pruhy < /translation>
+< /message>
+< message >
+<location filename = "../tool/tool.h"
+line = "121" / >
+    <source>Shape < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../tool/tool.h"
+line = "123" / >
+<source>Solid < /source>
+< translation > Plný < /translation>
+< /message>
+< message >
+<location filename = "../tool/tool.h"
+line = "125" / >
+<source>Title < /source>
+< translation > Název < /translation>
+< /message>
+< message >
+<location filename = "../tool/tool.h"
+line = "127" / >
+<source>Tone < /source>
+< translation > Odstín < /translation>
+< /message>
+< message >
+<location filename = "../tool/tool.h"
+line = "129" / >
+    <source>Subtitle < /source>
+    < translation
+type = "unfinished" > Titulek < /translation>
+< /message>
+< message >
+<location filename = "../tool/tool.h"
+line = "134" / >
+<source>Unknown < /source>
+< translation > Neznámý < /translation>
+< /message>
+< /context>
+< context >
+<name>UndoStack < /name>
+< message >
+<location filename = "../undo/undostack.cpp"
+line = "183" / >
+<source>Undo % 1 < /source>
+< translation > Zpět % 1 < /translation>
+< /message>
+< message >
+<location filename = "../undo/undostack.cpp"
+line = "186" / >
+<source>Redo % 1 < /source>
+< translation > Znovu % 1 < /translation>
+< /message>
+< /context>
+< context >
+<name>VideoParams < /name>
+< message >
+<location filename = "../render/videoparams.cpp"
+line = "236" / >
+    <source>Full < /source>
+    < translation
+type = "unfinished" > Plný < /translation>
+< /message>
+< message >
+<location filename = "../render/videoparams.cpp"
+line = "238" / >
+    <source>1 / % 1 < /source>
+    < translation
+type = "unfinished" > 1 / % 1 < /translation>
+< /message>
+< message >
+<location filename = "../render/videoparams.cpp"
+line = "246" / >
+<source>8 - bit < /source>
+< translation > 8 - bitů < /translation>
+< /message>
+< message >
+<location filename = "../render/videoparams.cpp"
+line = "248" / >
+    <source>10 - bit
+Packed < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../render/videoparams.cpp"
+line = "250" / >
+    <source>16 - bit
+Integer < /source>
+< translation > 16 - bitů
+celé
+číslo < /translation>
+< /message>
+< message >
+<location filename = "../render/videoparams.cpp"
+line = "252" / >
+    <source>Half - Float(16 - bit) < /source>
+    < translation > Poloviční
+plovoucí(16 - bitů) < /translation>
+< /message>
+< message >
+<location filename = "../render/videoparams.cpp"
+line = "255" / >
+    <source>Full - Float(32 - bit) < /source>
+    < translation > Celý
+plovoucí(32 - bitů) < /translation>
+< /message>
+< message >
+<location filename = "../render/videoparams.cpp"
+line = "262" / >
+    <source>Unknown(0
+x % 1
+)
+</source>
+< translation > Neznámý(0
+x % 1
+)
+</translation>
+< /message>
+< message >
+<location filename = "../render/videoparams.cpp"
+line = "330" / >
+    <source> % 1
+FPS < /source>
+< translation > % 1
+FPS < /translation>
+< /message>
+< message >
+<location filename = "../render/videoparams.cpp"
+line = "337" / >
+    <source>Square
+Pixels( % 1
+)
+</source>
+< translation > Čtvercové
+pixely( % 1
+)
+</translation>
+< /message>
+< message >
+<location filename = "../render/videoparams.cpp"
+line = "338" / >
+    <source>NTSC
+Standard( % 1
+)
+</source>
+< translation > Standard
+NTSC( % 1
+)
+</translation>
+< /message>
+< message >
+<location filename = "../render/videoparams.cpp"
+line = "339" / >
+    <source>NTSC
+Widescreen( % 1
+)
+</source>
+< translation > Širokoúhlé
+NTSC( % 1
+)
+</translation>
+< /message>
+< message >
+<location filename = "../render/videoparams.cpp"
+line = "340" / >
+    <source>PAL
+Standard( % 1
+)
+</source>
+< translation > Standard
+PAL( % 1
+)
+</translation>
+< /message>
+< message >
+<location filename = "../render/videoparams.cpp"
+line = "341" / >
+    <source>PAL
+Widescreen( % 1
+)
+</source>
+< translation > Širokoúhlé
+PAL( % 1
+)
+</translation>
+< /message>
+< message >
+<location filename = "../render/videoparams.cpp"
+line = "342" / >
+    <source>HD
+Anamorphic
+1080( % 1
+)
+</source>
+< translation > HD
+deformované
+1080( % 1
+)
+</translation>
+< /message>
+< /context>
+< context >
+<name>main < /name>
+< message >
+<location filename = "../main.cpp"
+line = "64" / >
+    <source>No
+project
+filename
+set
+to
+decompress < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../main.cpp"
+line = "74" / >
+    <source>Failed
+to
+open
+file & quot;
+%
+1 & quot;
+</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../main.cpp"
+line = "82" / >
+    <source>Decompressing
+project
+...
+</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../main.cpp"
+line = "88" / >
+<location filename = "../main.cpp"
+line = "103" / >
+    <source>Failed
+to
+decompress, project
+may
+be
+corrupt < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../main.cpp"
+line = "124" / >
+    <source>Outputting
+to
+file & quot;
+%
+1 & quot;
+</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../main.cpp"
+line = "131" / >
+    <source>Failed
+to
+open
+output
+file & quot;
+%
+1 & quot;
+</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../main.cpp"
+line = "143" / >
+    <source>Decompressed
+successfully < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../main.cpp"
+line = "194" / >
+    <source>Show
+this
+help
+text < /source>
+< translation > Ukáže
+tento
+text
+s
+nápovědou < /translation>
+< /message>
+< message >
+<location filename = "../main.cpp"
+line = "198" / >
+    <source>Show
+application
+version < /source>
+< translation > Ukáže
+verzi
+programu < /translation>
+< /message>
+< message >
+<location filename = "../main.cpp"
+line = "202" / >
+    <source>Start in full - screen
+mode < /source>
+< translation > Začít
+v
+režimu
+na
+celou
+obrazovku < /translation>
+< /message>
+< message >
+<location filename = "../main.cpp"
+line = "206" / >
+    <source>Export
+only(No
+GUI
+)
+</source>
+< translation > Pouze
+exportovat(bez
+rozhraní
+)
+</translation>
+< /message>
+< message >
+<location filename = "../main.cpp"
+line = "210" / >
+    <source>Override
+language
+with file < /source>
+< translation > Přepsat jazyk
+souborem < /translation>
+< /message>
+< message >
+<location filename = "../main.cpp"
+line = "211" / >
+<source>qm - file < /source>
+< translation > Soubor.qm < /translation>
+< /message>
+< message >
+<location filename = "../main.cpp"
+line = "215" / >
+    <source>Decompress
+project
+file(No
+GUI
+)
+</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../main.cpp"
+line = "221" / >
+    <source>Launch
+with debug console < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../main.cpp"
+line = "226" / >
+    <source>Project
+to
+open
+on
+startup < /source>
+< translation > Projekt
+k
+otevření
+při
+spuštění < /translation>
+< /message>
+< message >
+<location filename = "../main.cpp"
+line = "230" / >
+    <source>Don & apos;
+t
+load
+plugins < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../main.cpp"
+line = "389" / >
+    <source>Your
+computer & apos;
+s
+graphics
+driver
+does
+not
+appear
+to
+support
+framebuffers.This
+most
+likely
+means
+either
+your
+graphics
+driver
+is
+not
+up - to - date
+or
+your
+graphics
+card
+is
+too
+old
+to
+run
+Oak
+Video
+Editor.Please
+update
+your
+graphics
+driver
+to
+the
+latest
+version
+and
+try
+again.Current
+driver
+information: %
+1 % 2 % 3 < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::AV1Section < /name>
+< message >
+<location filename = "../dialog/export/codec/av1section.cpp"
+line = "47" / >
+    <source>Preset
+:
+</source>
+< translation
+type = "unfinished" > Přednastavení
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/av1section.cpp"
+line = "50" / >
+    <source>This
+parameter
+governs
+the
+efficiency / encode - time
+trade - off.Lower
+presets
+will
+result in an
+output
+with better quality
+for a given
+file
+size, but
+will
+take
+longer
+to
+encode.Higher
+presets
+can
+result in a
+very
+fast
+encode, but
+will
+make
+some
+compromises
+on
+visual
+quality
+for a given
+crf
+value. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/av1section.cpp"
+line = "64" / >
+    <source>Compression
+Method:</source>
+< translation
+type = "unfinished" > Metoda
+komprese:</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/av1section.cpp"
+line = "67" / >
+    <source>This
+parameter
+governs
+the
+quality / size
+trade - off.Higher
+CRF
+values
+will
+result in a
+final
+output
+that
+takes
+less
+space, but
+begins
+to
+lose
+detail.Lower
+CRF
+values
+retain
+more
+detail
+at
+the
+cost
+of
+larger
+file
+sizes.The
+possible
+range
+of
+CRF in SVT - AV1
+is
+1 - 63. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/av1section.cpp"
+line = "74" / >
+    <source>Constant
+Rate
+Factor < /source>
+< translation
+type = "unfinished" > Činitel
+stálého
+datového
+toku < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::AboutDialog < /name>
+< message >
+<location filename = "../dialog/about/about.cpp"
+line = "41" / >
+    <source>Welcome
+to % 1 < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/about/about.cpp"
+line = "43" / >
+    <source>About % 1 < /source>
+    < translation > O
+programu % 1 < /translation>
+< /message>
+< message >
+<location filename = "../dialog/about/about.cpp"
+line = "71" / >
+    <source>Oak
+Video
+Editor
+is
+a
+free
+open
+source
+non - linear
+video
+editor.This
+software
+is
+licensed
+under
+the
+GNU
+GPL
+Version
+3. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/about/about.cpp"
+line = "73" / >
+    <source>This
+project
+is
+a
+fork
+of &lt; a
+href =
+&
+quot;
+https://github.com/olive-editor/olive&quot;&gt;Olive Video Editor&lt;/a&gt;.</source>
+    <translation type = "unfinished" > </translation>
+    < /message>
+    < message >
+    <location filename = "../dialog/about/about.cpp"
+line = "94" / >
+    <source>&lt;b&gt;Oak
+Video
+Editor
+relies
+on
+support
+from
+the
+community
+to
+continue its
+development. &lt; /b&gt;</s
+ource >
+<translation type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/about/about.cpp"
+line = "97" / >
+    <source>Oak
+Video
+Editor
+wouldn & apos;
+t
+be
+possible
+without
+the
+support
+of
+gracious
+donations
+from
+the
+following
+people. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/about/about.cpp"
+line = "102" / >
+    <source>&lt;html&gt; % 1
+If
+you
+like
+this
+project, please
+consider
+making
+a
+one - time
+donation
+or
+pledging
+monthly
+to
+support
+its
+development. &lt; /html&gt;</s
+ource >
+<translation type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/about/about.cpp"
+line = "125" / >
+    <source>Don & apos;
+t
+show
+this
+message
+again < /source>
+< translation
+type = "unfinished" > </translation>
+    < /message>
+    < message >
+    <source>Olive
+is
+a
+non - linear
+video
+editor.This
+software
+is
+free
+and
+protected
+by
+the
+GNU
+GPL. < /source>
+< translation
+type = "vanished" > Olive
+je
+nelineární
+editor
+obrazového
+záznamu.Tento
+program
+je
+zdarma
+a
+chráněn
+GNU
+GPL. < /translation>
+< /message>
+< message >
+<source>Olive
+Team
+is
+obliged
+to
+inform
+users
+that
+Olive
+source
+code
+is
+available
+for download from
+its
+website. < /source>
+< translation
+type = "vanished" > Vývojáři
+Olive
+dává
+uživatelům
+na
+vědomí, že
+zdrojové
+kódy
+Olive
+jsou
+dostupné
+pro
+stažení
+na
+internetové
+stránce
+projektu. < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::ActionSearch < /name>
+< message >
+<location filename = "../dialog/actionsearch/actionsearch.cpp"
+line = "60" / >
+    <source>Search
+for action...
+</source>
+< translation > Hledat
+činnost
+...
+</translation>
+< /message>
+< /context>
+< context >
+<name>olive::AudioInput < /name>
+< message >
+<source>Audio
+Input < /source>
+< translation
+type = "vanished" > Vstup
+zvuku < /translation>
+< /message>
+< message >
+<source>Audio < /source>
+< translation
+type = "vanished" > Zvuk < /translation>
+    < /message>
+    < message >
+    <source>Import
+an
+audio
+footage
+stream. < /source>
+< translation
+type = "vanished" > Importovat
+zvukový
+záznam. < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::AudioManager < /name>
+< message >
+<location filename = "../audio/audiomanager.cpp"
+line = "98" / >
+    <source>No
+output
+device
+is
+set < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::AudioMonitorPanel < /name>
+< message >
+<location filename = "../panel/audiomonitor/audiomonitor.cpp"
+line = "43" / >
+    <source>Audio
+Monitor < /source>
+< translation > Sledování
+zvuku < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::AutoRecoveryDialog < /name>
+< message >
+<location filename = "../dialog/autorecovery/autorecoverydialog.cpp"
+line = "64" / >
+    <source>Auto - Recovery < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/autorecovery/autorecoverydialog.cpp"
+line = "74" / >
+    <source>Load < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::BezierWidget < /name>
+< message >
+<location filename = "../widget/bezier/bezierwidget.cpp"
+line = "37" / >
+    <source>Center
+:
+</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../widget/bezier/bezierwidget.cpp"
+line = "51" / >
+    <source>Bezier < /source>
+    < translation
+type = "unfinished" > Bézier < /translation>
+< /message>
+< message >
+<location filename = "../widget/bezier/bezierwidget.cpp"
+line = "58" / >
+    <source>In
+:
+</source>
+< translation
+type = "unfinished" > Začátek
+:
+</translation>
+< /message>
+< message >
+<location filename = "../widget/bezier/bezierwidget.cpp"
+line = "72" / >
+    <source>Out
+:
+</source>
+< translation
+type = "unfinished" > Konec
+:
+</translation>
+< /message>
+< /context>
+< context >
+<name>olive::Block < /name>
+< message >
+<location filename = "../node/block/block.cpp"
+line = "117" / >
+    <source>Length < /source>
+    < translation > Délka < /translation>
+    < /message>
+    < message >
+    <source>Media
+In < /source>
+< translation
+type = "vanished" > Začátek
+záznamu < /translation>
+< /message>
+< message >
+<location filename = "../node/block/block.cpp"
+line = "118" / >
+    <source>Enabled < /source>
+    < translation > Povoleno < /translation>
+    < /message>
+    < message >
+    <source>Speed < /source>
+    < translation
+type = "vanished" > Rychlost < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::BlurFilterNode < /name>
+< message >
+<location filename = "../node/filter/blur/blur.cpp"
+line = "89" / >
+<source>Blur < /source>
+< translation > Rozmazání < /translation>
+< /message>
+< message >
+<location filename = "../node/filter/blur/blur.cpp"
+line = "104" / >
+    <source>Blurs
+an
+image. < /source>
+< translation > Rozmaže
+obrázek. < /translation>
+< /message>
+< message >
+<location filename = "../node/filter/blur/blur.cpp"
+line = "111" / >
+<source>Input < /source>
+< translation > Vstup < /translation>
+< /message>
+< message >
+<location filename = "../node/filter/blur/blur.cpp"
+line = "112" / >
+<source>Method < /source>
+< translation > Metoda < /translation>
+< /message>
+< message >
+<location filename = "../node/filter/blur/blur.cpp"
+line = "113" / >
+<source>Box < /source>
+< translation > Rámeček < /translation>
+< /message>
+< message >
+<location filename = "../node/filter/blur/blur.cpp"
+line = "113" / >
+<source>Gaussian < /source>
+< translation > Gausovské < /translation>
+< /message>
+< message >
+<location filename = "../node/filter/blur/blur.cpp"
+line = "114" / >
+    <source>Directional < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/filter/blur/blur.cpp"
+line = "114" / >
+    <source>Radial < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/filter/blur/blur.cpp"
+line = "115" / >
+<source>Radius < /source>
+< translation > Poloměr < /translation>
+< /message>
+< message >
+<location filename = "../node/filter/blur/blur.cpp"
+line = "116" / >
+<source>Horizontal < /source>
+< translation > Vodorovné < /translation>
+< /message>
+< message >
+<location filename = "../node/filter/blur/blur.cpp"
+line = "117" / >
+<source>Vertical < /source>
+< translation > Svislé < /translation>
+< /message>
+< message >
+<location filename = "../node/filter/blur/blur.cpp"
+line = "118" / >
+    <source>Repeat
+Edge
+Pixels < /source>
+< translation > Opakovat
+okrajové
+pixely < /translation>
+< /message>
+< message >
+<location filename = "../node/filter/blur/blur.cpp"
+line = "120" / >
+    <source>Direction < /source>
+    < translation
+type = "unfinished" > Směr < /translation>
+< /message>
+< message >
+<location filename = "../node/filter/blur/blur.cpp"
+line = "121" / >
+    <source>Center < /source>
+    < translation
+type = "unfinished" > Na
+střed < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::ChromaKeyNode < /name>
+< message >
+<location filename = "../node/keying/chromakey/chromakey.cpp"
+line = "77" / >
+    <source>Chroma
+Key < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/chromakey/chromakey.cpp"
+line = "92" / >
+    <source>A
+simple
+color
+key
+based
+on
+the
+distance
+from
+the
+chroma
+of
+a
+selected
+color. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/chromakey/chromakey.cpp"
+line = "99" / >
+    <source>Input < /source>
+    < translation
+type = "unfinished" > Vstup < /translation>
+< /message>
+< message >
+<location filename = "../node/keying/chromakey/chromakey.cpp"
+line = "100" / >
+    <source>Garbage
+Matte < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/chromakey/chromakey.cpp"
+line = "101" / >
+    <source>Core
+Matte < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/chromakey/chromakey.cpp"
+line = "102" / >
+    <source>Key
+Color < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/chromakey/chromakey.cpp"
+line = "103" / >
+    <source>Shadows < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/chromakey/chromakey.cpp"
+line = "104" / >
+    <source>Highlights < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/chromakey/chromakey.cpp"
+line = "105" / >
+    <source>Upper
+Tolerance < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/chromakey/chromakey.cpp"
+line = "106" / >
+    <source>Lower
+Tolerance < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/chromakey/chromakey.cpp"
+line = "107" / >
+    <source>Invert
+Mask < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/chromakey/chromakey.cpp"
+line = "108" / >
+    <source>Show
+Mask
+Only < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::CineformSection < /name>
+< message >
+<location filename = "../dialog/export/codec/cineformsection.cpp"
+line = "39" / >
+    <source>Quality
+:
+</source>
+< translation
+type = "unfinished" > Kvalita
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/cineformsection.cpp"
+line = "62" / >
+    <source>Film
+Scan
+3 + </source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/cineformsection.cpp"
+line = "63" / >
+    <source>Film
+Scan
+3 < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/cineformsection.cpp"
+line = "64" / >
+    <source>Film
+Scan
+2 + </source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/cineformsection.cpp"
+line = "65" / >
+    <source>Film
+Scan
+2 < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/cineformsection.cpp"
+line = "66" / >
+    <source>Film
+Scan
+1.5 < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/cineformsection.cpp"
+line = "67" / >
+    <source>Film
+Scan
+1 + </source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/cineformsection.cpp"
+line = "68" / >
+    <source>Film
+Scan
+1 < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/cineformsection.cpp"
+line = "69" / >
+    <source>High + </source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/cineformsection.cpp"
+line = "70" / >
+    <source>High < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/cineformsection.cpp"
+line = "71" / >
+    <source>Medium + </source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/cineformsection.cpp"
+line = "72" / >
+    <source>Medium < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/cineformsection.cpp"
+line = "73" / >
+    <source>Low + </source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/cineformsection.cpp"
+line = "74" / >
+    <source>Low < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::ClipBlock < /name>
+< message >
+<location filename = "../node/block/clip/clip.cpp"
+line = "88" / >
+    <source>Video
+Clip < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/block/clip/clip.cpp"
+line = "90" / >
+    <source>Audio
+Clip < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/block/clip/clip.cpp"
+line = "94" / >
+<source>Clip < /source>
+< translation > Záběr < /translation>
+< /message>
+< message >
+<location filename = "../node/block/clip/clip.cpp"
+line = "104" / >
+    <source>A
+time - based
+node
+that
+represents
+a
+media
+source. < /source>
+< translation > Časově
+založený
+uzel, který
+představuje
+zdroj
+záznamu. < /translation>
+< /message>
+< message >
+<location filename = "../node/block/clip/clip.cpp"
+line = "581" / >
+    <source>Buffer < /source>
+    < translation > Vyrovnávací
+paměť < /translation>
+< /message>
+< message >
+<location filename = "../node/block/clip/clip.cpp"
+line = "582" / >
+    <source>Media
+In < /source>
+< translation
+type = "unfinished" > Začátek
+záznamu < /translation>
+< /message>
+< message >
+<location filename = "../node/block/clip/clip.cpp"
+line = "583" / >
+    <source>Speed < /source>
+    < translation
+type = "unfinished" > Rychlost < /translation>
+< /message>
+< message >
+<location filename = "../node/block/clip/clip.cpp"
+line = "584" / >
+    <source>Reverse < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/block/clip/clip.cpp"
+line = "585" / >
+    <source>Maintain
+Audio
+Pitch < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/block/clip/clip.cpp"
+line = "586" / >
+<location filename = "../node/block/clip/clip.cpp"
+line = "587" / >
+    <source>Loop < /source>
+    < translation
+type = "unfinished" > Smyčka < /translation>
+< /message>
+< message >
+<location filename = "../node/block/clip/clip.cpp"
+line = "587" / >
+    <source>None < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/block/clip/clip.cpp"
+line = "587" / >
+    <source>Clamp < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::ColorCoding < /name>
+< message >
+<location filename = "../ui/colorcoding.cpp"
+line = "43" / >
+<source>Red < /source>
+< translation > Červená < /translation>
+< /message>
+< message >
+<location filename = "../ui/colorcoding.cpp"
+line = "45" / >
+    <source>Maroon < /source>
+    < translation > Kaštanová
+hněď < /translation>
+< /message>
+< message >
+<location filename = "../ui/colorcoding.cpp"
+line = "47" / >
+<source>Orange < /source>
+< translation > Oranžová < /translation>
+< /message>
+< message >
+<location filename = "../ui/colorcoding.cpp"
+line = "49" / >
+<source>Brown < /source>
+< translation > Hnědá < /translation>
+< /message>
+< message >
+<location filename = "../ui/colorcoding.cpp"
+line = "51" / >
+    <source>Yellow < /source>
+    < translation > Žlutá < /translation>
+    < /message>
+    < message >
+    <source>Olive < /source>
+    < translation
+type = "vanished" > Olivová
+zeleň < /translation>
+< /message>
+< message >
+<location filename = "../ui/colorcoding.cpp"
+line = "53" / >
+    <source>Oak < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../ui/colorcoding.cpp"
+line = "55" / >
+    <source>Lime < /source>
+    < translation > Světle
+zelená - limetková < /translation>
+< /message>
+< message >
+<location filename = "../ui/colorcoding.cpp"
+line = "57" / >
+<source>Green < /source>
+< translation > Zelená < /translation>
+< /message>
+< message >
+<location filename = "../ui/colorcoding.cpp"
+line = "59" / >
+<source>Cyan < /source>
+< translation > Modrozelená < /translation>
+< /message>
+< message >
+<location filename = "../ui/colorcoding.cpp"
+line = "61" / >
+    <source>Teal < /source>
+    < translation > Tmavě
+modrozelená < /translation>
+< /message>
+< message >
+<location filename = "../ui/colorcoding.cpp"
+line = "63" / >
+<source>Blue < /source>
+< translation > Modrá < /translation>
+< /message>
+< message >
+<location filename = "../ui/colorcoding.cpp"
+line = "65" / >
+<source>Navy < /source>
+< translation > Tmavomodrá < /translation>
+< /message>
+< message >
+<location filename = "../ui/colorcoding.cpp"
+line = "67" / >
+<source>Pink < /source>
+< translation > Růžová < /translation>
+< /message>
+< message >
+<location filename = "../ui/colorcoding.cpp"
+line = "69" / >
+<source>Purple < /source>
+< translation > Purpurová < /translation>
+< /message>
+< message >
+<location filename = "../ui/colorcoding.cpp"
+line = "71" / >
+<source>Silver < /source>
+< translation > Stříbrná < /translation>
+< /message>
+< message >
+<location filename = "../ui/colorcoding.cpp"
+line = "73" / >
+<source>Gray < /source>
+< translation > Šedá < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::ColorDialog < /name>
+< message >
+<location filename = "../dialog/color/colordialog.cpp"
+line = "38" / >
+    <source>Select
+Color < /source>
+< translation > Vybrat
+barvu < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::ColorDifferenceKeyNode < /name>
+< message >
+<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
+line = "66" / >
+    <source>Color
+Difference
+Key < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
+line = "81" / >
+    <source>A
+simple
+color
+key
+based
+on
+the
+distance
+of
+one
+color
+from
+other
+colors. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
+line = "89" / >
+    <source>Input < /source>
+    < translation
+type = "unfinished" > Vstup < /translation>
+< /message>
+< message >
+<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
+line = "90" / >
+    <source>Garbage
+Matte < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
+line = "91" / >
+    <source>Core
+Matte < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
+line = "92" / >
+    <source>Key
+Color < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
+line = "93" / >
+    <source>Green < /source>
+    < translation
+type = "unfinished" > Zelená < /translation>
+< /message>
+< message >
+<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
+line = "93" / >
+    <source>Blue < /source>
+    < translation
+type = "unfinished" > Modrá < /translation>
+< /message>
+< message >
+<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
+line = "94" / >
+    <source>Shadows < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
+line = "95" / >
+    <source>Highlights < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
+line = "96" / >
+    <source>Show
+Mask
+Only < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::ColorLabelMenu < /name>
+< message >
+<location filename = "../widget/colorlabelmenu/colorlabelmenu.cpp"
+line = "71" / >
+    <source>Color < /source>
+    < translation > Barva < /translation>
+    < /message>
+    < /context>
+    < context >
+    <name>olive::ColorManager < /name>
+    < message >
+    <source>Configuration < /source>
+    < translation
+type = "vanished" > Nastavení < /translation>
+    < /message>
+    < message >
+    <source>Default
+Input < /source>
+< translation
+type = "vanished" > Výchozí
+vstup < /translation>
+< /message>
+< message >
+<source>Reference
+Space < /source>
+< translation
+type = "vanished" > Referenční
+prostor < /translation>
+< /message>
+< message >
+<source>Scene
+Linear < /source>
+< translation
+type = "vanished" > Lineární
+scéna < /translation>
+< /message>
+< message >
+<source>Compositing
+Log < /source>
+< translation
+type = "vanished" > Záznam
+o
+skladbě < /translation>
+< /message>
+< message >
+<source>(built - in) < /source>
+< translation
+type = "vanished" > (vestavěno) < /translation>
+    < /message>
+    < message >
+    <source>Color
+Manager < /source>
+< translation
+type = "vanished" > Správce
+barev < /translation>
+< /message>
+< message >
+<source>Color
+management
+configuration
+for project. < /source>
+    < translation type = "vanished" > Nastavení
+správy
+barev
+pro
+projekt. < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::ColorSpaceChooser < /name>
+< message >
+<location filename = "../widget/colorwheel/colorspacechooser.cpp"
+line = "39" / >
+    <source>Color
+Management < /source>
+< translation > Správa
+barev < /translation>
+< /message>
+< message >
+<location filename = "../widget/colorwheel/colorspacechooser.cpp"
+line = "48" / >
+    <source>Input
+:
+</source>
+< translation > Vstup
+:
+</translation>
+< /message>
+< message >
+<location filename = "../widget/colorwheel/colorspacechooser.cpp"
+line = "51" / >
+    <source>Color
+Space:</source>
+< translation > Barevný
+prostor:</translation>
+< /message>
+< message >
+<location filename = "../widget/colorwheel/colorspacechooser.cpp"
+line = "80" / >
+    <source>Display
+:
+</source>
+< translation > Zobrazení
+:
+</translation>
+< /message>
+< message >
+<location filename = "../widget/colorwheel/colorspacechooser.cpp"
+line = "101" / >
+    <source>View
+:
+</source>
+< translation > Pohled
+:
+</translation>
+< /message>
+< message >
+<location filename = "../widget/colorwheel/colorspacechooser.cpp"
+line = "115" / >
+    <source>Look
+:
+</source>
+< translation > Vzhled
+:
+</translation>
+< /message>
+< message >
+<location filename = "../widget/colorwheel/colorspacechooser.cpp"
+line = "122" / >
+<source>(None) < /source>
+< translation > (žádný) < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::ColorSwatchChooser < /name>
+< message >
+<location filename = "../widget/colorwheel/colorswatchchooser.cpp"
+line = "94" / >
+    <source>Save
+Color
+Here < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../widget/colorwheel/colorswatchchooser.cpp"
+line = "100" / >
+    <source>Reset
+To
+Default < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::ColorValuesTab < /name>
+< message >
+<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
+line = "255" / >
+    <source>Use
+legacy(8 - bit)
+values < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
+line = "268" / >
+<source>Red < /source>
+< translation > Červená < /translation>
+< /message>
+< message >
+<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
+line = "276" / >
+<source>Green < /source>
+< translation > Zelená < /translation>
+< /message>
+< message >
+<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
+line = "284" / >
+<source>Blue < /source>
+< translation > Modrá < /translation>
+< /message>
+< message >
+<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
+line = "292" / >
+    <source>Web < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
+line = "421" / >
+    <source>(Invalid) < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::ColorValuesWidget < /name>
+< message >
+<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
+line = "51" / >
+<source>Preview < /source>
+< translation > Náhled < /translation>
+< /message>
+< message >
+<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
+line = "76" / >
+<source>Input < /source>
+< translation > Vstup < /translation>
+< /message>
+< message >
+<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
+line = "85" / >
+<source>Reference < /source>
+< translation > Odkaz < /translation>
+< /message>
+< message >
+<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
+line = "90" / >
+<source>Display < /source>
+< translation > Zobrazení < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::ConfigDialogBase < /name>
+< message >
+<location filename = "../dialog/configbase/configdialogbase.cpp"
+line = "79" / >
+    <source>Set
+Configuration < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::ConformTask < /name>
+< message >
+<location filename = "../task/conform/conform.cpp"
+line = "36" / >
+    <source>Conforming
+Audio % 1
+:%
+2 < /source>
+< translation > Přizpůsobuji
+zvuk % 1
+:%
+2 < /translation>
+< /message>
+< message >
+<location filename = "../task/conform/conform.cpp"
+line = "45" / >
+    <source>Failed
+to
+open
+decoder
+for audio conform < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::Core < /name>
+< message >
+<location filename = "../core.cpp"
+line = "338" / >
+    <source>Import
+error < /source>
+< translation > Chyba
+při
+importu < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "339" / >
+    <source>Nothing
+to
+import
 
-Please update your graphics driver to the latest version and try again.
+</source>
+< translation > Nic
+k
+importu < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "357" / >
+    <source>Unsupported
+media < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "358" / >
+    <source>Skipped % 1
+file(s)
+that
+are
+not
+allowed
+by
+the
+current
+media
+type filter
+.
+</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "376" / >
+    <source>Importing
+...
+</source>
+< translation > Importuje
+se
+...
+</translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "461" / >
+    <source>Import
+footage
+...
+</source>
+< translation > Importovat
+záznam
+...
+</translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "475" / >
+    <source>Failed
+to
+import footage
 
-Current driver information: %1 %2 %3</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::AV1Section</name>
-    <message>
-        <location filename="../dialog/export/codec/av1section.cpp" line="47"/>
-        <source>Preset:</source>
-        <translation type="unfinished">Přednastavení:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/av1section.cpp" line="50"/>
-        <source>This parameter governs the efficiency/encode-time trade-off.
-Lower presets will result in an output with better quality for a given file size, but will take longer to encode.
-Higher presets can result in a very fast encode, but will make some compromises on visual quality for a given crf value.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/av1section.cpp" line="64"/>
-        <source>Compression Method:</source>
-        <translation type="unfinished">Metoda komprese:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/av1section.cpp" line="67"/>
-        <source>This parameter governs the quality/size trade-off.
-Higher CRF values will result in a final output that takes less space, but begins to lose detail.
-Lower CRF values retain more detail at the cost of larger file sizes.
-The possible range of CRF in SVT-AV1 is 1-63.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/av1section.cpp" line="74"/>
-        <source>Constant Rate Factor</source>
-        <translation type="unfinished">Činitel stálého datového toku</translation>
-    </message>
-</context>
-<context>
-    <name>olive::AboutDialog</name>
-    <message>
-        <location filename="../dialog/about/about.cpp" line="41"/>
-        <source>Welcome to %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/about/about.cpp" line="43"/>
-        <source>About %1</source>
-        <translation>O programu %1</translation>
-    </message>
-    <message>
-        <location filename="../dialog/about/about.cpp" line="71"/>
-        <source>Oak Video Editor is a free open source non-linear video editor. This software is licensed under the GNU GPL Version 3.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/about/about.cpp" line="73"/>
-        <source>This project is a fork of &lt;a href=&quot;https://github.com/olive-editor/olive&quot;&gt;Olive Video Editor&lt;/a&gt;.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/about/about.cpp" line="94"/>
-        <source>&lt;b&gt;Oak Video Editor relies on support from the community to continue its development.&lt;/b&gt;</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/about/about.cpp" line="97"/>
-        <source>Oak Video Editor wouldn&apos;t be possible without the support of gracious donations from the following people.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/about/about.cpp" line="102"/>
-        <source>&lt;html&gt;%1 If you like this project, please consider making a one-time donation or pledging monthly to support its development.&lt;/html&gt;</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/about/about.cpp" line="125"/>
-        <source>Don&apos;t show this message again</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Olive is a non-linear video editor. This software is free and protected by the GNU GPL.</source>
-        <translation type="vanished">Olive je nelineární editor obrazového záznamu. Tento program je zdarma a chráněn GNU GPL.</translation>
-    </message>
-    <message>
-        <source>Olive Team is obliged to inform users that Olive source code is available for download from its website.</source>
-        <translation type="vanished">Vývojáři Olive dává uživatelům na vědomí, že zdrojové kódy Olive jsou dostupné pro stažení na internetové stránce projektu.</translation>
-    </message>
-</context>
-<context>
-    <name>olive::ActionSearch</name>
-    <message>
-        <location filename="../dialog/actionsearch/actionsearch.cpp" line="60"/>
-        <source>Search for action...</source>
-        <translation>Hledat činnost...</translation>
-    </message>
-</context>
-<context>
-    <name>olive::AudioInput</name>
-    <message>
-        <source>Audio Input</source>
-        <translation type="vanished">Vstup zvuku</translation>
-    </message>
-    <message>
-        <source>Audio</source>
-        <translation type="vanished">Zvuk</translation>
-    </message>
-    <message>
-        <source>Import an audio footage stream.</source>
-        <translation type="vanished">Importovat zvukový záznam.</translation>
-    </message>
-</context>
-<context>
-    <name>olive::AudioManager</name>
-    <message>
-        <location filename="../audio/audiomanager.cpp" line="98"/>
-        <source>No output device is set</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::AudioMonitorPanel</name>
-    <message>
-        <location filename="../panel/audiomonitor/audiomonitor.cpp" line="43"/>
-        <source>Audio Monitor</source>
-        <translation>Sledování zvuku</translation>
-    </message>
-</context>
-<context>
-    <name>olive::AutoRecoveryDialog</name>
-    <message>
-        <location filename="../dialog/autorecovery/autorecoverydialog.cpp" line="64"/>
-        <source>Auto-Recovery</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/autorecovery/autorecoverydialog.cpp" line="74"/>
-        <source>Load</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::BezierWidget</name>
-    <message>
-        <location filename="../widget/bezier/bezierwidget.cpp" line="37"/>
-        <source>Center:</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../widget/bezier/bezierwidget.cpp" line="51"/>
-        <source>Bezier</source>
-        <translation type="unfinished">Bézier</translation>
-    </message>
-    <message>
-        <location filename="../widget/bezier/bezierwidget.cpp" line="58"/>
-        <source>In:</source>
-        <translation type="unfinished">Začátek:</translation>
-    </message>
-    <message>
-        <location filename="../widget/bezier/bezierwidget.cpp" line="72"/>
-        <source>Out:</source>
-        <translation type="unfinished">Konec:</translation>
-    </message>
-</context>
-<context>
-    <name>olive::Block</name>
-    <message>
-        <location filename="../node/block/block.cpp" line="117"/>
-        <source>Length</source>
-        <translation>Délka</translation>
-    </message>
-    <message>
-        <source>Media In</source>
-        <translation type="vanished">Začátek záznamu</translation>
-    </message>
-    <message>
-        <location filename="../node/block/block.cpp" line="118"/>
-        <source>Enabled</source>
-        <translation>Povoleno</translation>
-    </message>
-    <message>
-        <source>Speed</source>
-        <translation type="vanished">Rychlost</translation>
-    </message>
-</context>
-<context>
-    <name>olive::BlurFilterNode</name>
-    <message>
-        <location filename="../node/filter/blur/blur.cpp" line="89"/>
-        <source>Blur</source>
-        <translation>Rozmazání</translation>
-    </message>
-    <message>
-        <location filename="../node/filter/blur/blur.cpp" line="104"/>
-        <source>Blurs an image.</source>
-        <translation>Rozmaže obrázek.</translation>
-    </message>
-    <message>
-        <location filename="../node/filter/blur/blur.cpp" line="111"/>
-        <source>Input</source>
-        <translation>Vstup</translation>
-    </message>
-    <message>
-        <location filename="../node/filter/blur/blur.cpp" line="112"/>
-        <source>Method</source>
-        <translation>Metoda</translation>
-    </message>
-    <message>
-        <location filename="../node/filter/blur/blur.cpp" line="113"/>
-        <source>Box</source>
-        <translation>Rámeček</translation>
-    </message>
-    <message>
-        <location filename="../node/filter/blur/blur.cpp" line="113"/>
-        <source>Gaussian</source>
-        <translation>Gausovské</translation>
-    </message>
-    <message>
-        <location filename="../node/filter/blur/blur.cpp" line="114"/>
-        <source>Directional</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/filter/blur/blur.cpp" line="114"/>
-        <source>Radial</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/filter/blur/blur.cpp" line="115"/>
-        <source>Radius</source>
-        <translation>Poloměr</translation>
-    </message>
-    <message>
-        <location filename="../node/filter/blur/blur.cpp" line="116"/>
-        <source>Horizontal</source>
-        <translation>Vodorovné</translation>
-    </message>
-    <message>
-        <location filename="../node/filter/blur/blur.cpp" line="117"/>
-        <source>Vertical</source>
-        <translation>Svislé</translation>
-    </message>
-    <message>
-        <location filename="../node/filter/blur/blur.cpp" line="118"/>
-        <source>Repeat Edge Pixels</source>
-        <translation>Opakovat okrajové pixely</translation>
-    </message>
-    <message>
-        <location filename="../node/filter/blur/blur.cpp" line="120"/>
-        <source>Direction</source>
-        <translation type="unfinished">Směr</translation>
-    </message>
-    <message>
-        <location filename="../node/filter/blur/blur.cpp" line="121"/>
-        <source>Center</source>
-        <translation type="unfinished">Na střed</translation>
-    </message>
-</context>
-<context>
-    <name>olive::ChromaKeyNode</name>
-    <message>
-        <location filename="../node/keying/chromakey/chromakey.cpp" line="77"/>
-        <source>Chroma Key</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/chromakey/chromakey.cpp" line="92"/>
-        <source>A simple color key based on the distance from the chroma of a selected color.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/chromakey/chromakey.cpp" line="99"/>
-        <source>Input</source>
-        <translation type="unfinished">Vstup</translation>
-    </message>
-    <message>
-        <location filename="../node/keying/chromakey/chromakey.cpp" line="100"/>
-        <source>Garbage Matte</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/chromakey/chromakey.cpp" line="101"/>
-        <source>Core Matte</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/chromakey/chromakey.cpp" line="102"/>
-        <source>Key Color</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/chromakey/chromakey.cpp" line="103"/>
-        <source>Shadows</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/chromakey/chromakey.cpp" line="104"/>
-        <source>Highlights</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/chromakey/chromakey.cpp" line="105"/>
-        <source>Upper Tolerance</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/chromakey/chromakey.cpp" line="106"/>
-        <source>Lower Tolerance</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/chromakey/chromakey.cpp" line="107"/>
-        <source>Invert Mask</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/chromakey/chromakey.cpp" line="108"/>
-        <source>Show Mask Only</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::CineformSection</name>
-    <message>
-        <location filename="../dialog/export/codec/cineformsection.cpp" line="39"/>
-        <source>Quality:</source>
-        <translation type="unfinished">Kvalita:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/cineformsection.cpp" line="62"/>
-        <source>Film Scan 3+</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/cineformsection.cpp" line="63"/>
-        <source>Film Scan 3</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/cineformsection.cpp" line="64"/>
-        <source>Film Scan 2+</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/cineformsection.cpp" line="65"/>
-        <source>Film Scan 2</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/cineformsection.cpp" line="66"/>
-        <source>Film Scan 1.5</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/cineformsection.cpp" line="67"/>
-        <source>Film Scan 1+</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/cineformsection.cpp" line="68"/>
-        <source>Film Scan 1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/cineformsection.cpp" line="69"/>
-        <source>High+</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/cineformsection.cpp" line="70"/>
-        <source>High</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/cineformsection.cpp" line="71"/>
-        <source>Medium+</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/cineformsection.cpp" line="72"/>
-        <source>Medium</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/cineformsection.cpp" line="73"/>
-        <source>Low+</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/cineformsection.cpp" line="74"/>
-        <source>Low</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::ClipBlock</name>
-    <message>
-        <location filename="../node/block/clip/clip.cpp" line="88"/>
-        <source>Video Clip</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/block/clip/clip.cpp" line="90"/>
-        <source>Audio Clip</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/block/clip/clip.cpp" line="94"/>
-        <source>Clip</source>
-        <translation>Záběr</translation>
-    </message>
-    <message>
-        <location filename="../node/block/clip/clip.cpp" line="104"/>
-        <source>A time-based node that represents a media source.</source>
-        <translation>Časově založený uzel, který představuje zdroj záznamu.</translation>
-    </message>
-    <message>
-        <location filename="../node/block/clip/clip.cpp" line="581"/>
-        <source>Buffer</source>
-        <translation>Vyrovnávací paměť</translation>
-    </message>
-    <message>
-        <location filename="../node/block/clip/clip.cpp" line="582"/>
-        <source>Media In</source>
-        <translation type="unfinished">Začátek záznamu</translation>
-    </message>
-    <message>
-        <location filename="../node/block/clip/clip.cpp" line="583"/>
-        <source>Speed</source>
-        <translation type="unfinished">Rychlost</translation>
-    </message>
-    <message>
-        <location filename="../node/block/clip/clip.cpp" line="584"/>
-        <source>Reverse</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/block/clip/clip.cpp" line="585"/>
-        <source>Maintain Audio Pitch</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/block/clip/clip.cpp" line="586"/>
-        <location filename="../node/block/clip/clip.cpp" line="587"/>
-        <source>Loop</source>
-        <translation type="unfinished">Smyčka</translation>
-    </message>
-    <message>
-        <location filename="../node/block/clip/clip.cpp" line="587"/>
-        <source>None</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/block/clip/clip.cpp" line="587"/>
-        <source>Clamp</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::ColorCoding</name>
-    <message>
-        <location filename="../ui/colorcoding.cpp" line="43"/>
-        <source>Red</source>
-        <translation>Červená</translation>
-    </message>
-    <message>
-        <location filename="../ui/colorcoding.cpp" line="45"/>
-        <source>Maroon</source>
-        <translation>Kaštanová hněď</translation>
-    </message>
-    <message>
-        <location filename="../ui/colorcoding.cpp" line="47"/>
-        <source>Orange</source>
-        <translation>Oranžová</translation>
-    </message>
-    <message>
-        <location filename="../ui/colorcoding.cpp" line="49"/>
-        <source>Brown</source>
-        <translation>Hnědá</translation>
-    </message>
-    <message>
-        <location filename="../ui/colorcoding.cpp" line="51"/>
-        <source>Yellow</source>
-        <translation>Žlutá</translation>
-    </message>
-    <message>
-        <source>Olive</source>
-        <translation type="vanished">Olivová zeleň</translation>
-    </message>
-    <message>
-        <location filename="../ui/colorcoding.cpp" line="53"/>
-        <source>Oak</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../ui/colorcoding.cpp" line="55"/>
-        <source>Lime</source>
-        <translation>Světle zelená - limetková</translation>
-    </message>
-    <message>
-        <location filename="../ui/colorcoding.cpp" line="57"/>
-        <source>Green</source>
-        <translation>Zelená</translation>
-    </message>
-    <message>
-        <location filename="../ui/colorcoding.cpp" line="59"/>
-        <source>Cyan</source>
-        <translation>Modrozelená</translation>
-    </message>
-    <message>
-        <location filename="../ui/colorcoding.cpp" line="61"/>
-        <source>Teal</source>
-        <translation>Tmavě modrozelená</translation>
-    </message>
-    <message>
-        <location filename="../ui/colorcoding.cpp" line="63"/>
-        <source>Blue</source>
-        <translation>Modrá</translation>
-    </message>
-    <message>
-        <location filename="../ui/colorcoding.cpp" line="65"/>
-        <source>Navy</source>
-        <translation>Tmavomodrá</translation>
-    </message>
-    <message>
-        <location filename="../ui/colorcoding.cpp" line="67"/>
-        <source>Pink</source>
-        <translation>Růžová</translation>
-    </message>
-    <message>
-        <location filename="../ui/colorcoding.cpp" line="69"/>
-        <source>Purple</source>
-        <translation>Purpurová</translation>
-    </message>
-    <message>
-        <location filename="../ui/colorcoding.cpp" line="71"/>
-        <source>Silver</source>
-        <translation>Stříbrná</translation>
-    </message>
-    <message>
-        <location filename="../ui/colorcoding.cpp" line="73"/>
-        <source>Gray</source>
-        <translation>Šedá</translation>
-    </message>
-</context>
-<context>
-    <name>olive::ColorDialog</name>
-    <message>
-        <location filename="../dialog/color/colordialog.cpp" line="38"/>
-        <source>Select Color</source>
-        <translation>Vybrat barvu</translation>
-    </message>
-</context>
-<context>
-    <name>olive::ColorDifferenceKeyNode</name>
-    <message>
-        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="66"/>
-        <source>Color Difference Key</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="81"/>
-        <source>A simple color key based on the distance of one color from other colors.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="89"/>
-        <source>Input</source>
-        <translation type="unfinished">Vstup</translation>
-    </message>
-    <message>
-        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="90"/>
-        <source>Garbage Matte</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="91"/>
-        <source>Core Matte</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="92"/>
-        <source>Key Color</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="93"/>
-        <source>Green</source>
-        <translation type="unfinished">Zelená</translation>
-    </message>
-    <message>
-        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="93"/>
-        <source>Blue</source>
-        <translation type="unfinished">Modrá</translation>
-    </message>
-    <message>
-        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="94"/>
-        <source>Shadows</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="95"/>
-        <source>Highlights</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="96"/>
-        <source>Show Mask Only</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::ColorLabelMenu</name>
-    <message>
-        <location filename="../widget/colorlabelmenu/colorlabelmenu.cpp" line="71"/>
-        <source>Color</source>
-        <translation>Barva</translation>
-    </message>
-</context>
-<context>
-    <name>olive::ColorManager</name>
-    <message>
-        <source>Configuration</source>
-        <translation type="vanished">Nastavení</translation>
-    </message>
-    <message>
-        <source>Default Input</source>
-        <translation type="vanished">Výchozí vstup</translation>
-    </message>
-    <message>
-        <source>Reference Space</source>
-        <translation type="vanished">Referenční prostor</translation>
-    </message>
-    <message>
-        <source>Scene Linear</source>
-        <translation type="vanished">Lineární scéna</translation>
-    </message>
-    <message>
-        <source>Compositing Log</source>
-        <translation type="vanished">Záznam o skladbě</translation>
-    </message>
-    <message>
-        <source>(built-in)</source>
-        <translation type="vanished">(vestavěno)</translation>
-    </message>
-    <message>
-        <source>Color Manager</source>
-        <translation type="vanished">Správce barev</translation>
-    </message>
-    <message>
-        <source>Color management configuration for project.</source>
-        <translation type="vanished">Nastavení správy barev pro projekt.</translation>
-    </message>
-</context>
-<context>
-    <name>olive::ColorSpaceChooser</name>
-    <message>
-        <location filename="../widget/colorwheel/colorspacechooser.cpp" line="39"/>
-        <source>Color Management</source>
-        <translation>Správa barev</translation>
-    </message>
-    <message>
-        <location filename="../widget/colorwheel/colorspacechooser.cpp" line="48"/>
-        <source>Input:</source>
-        <translation>Vstup:</translation>
-    </message>
-    <message>
-        <location filename="../widget/colorwheel/colorspacechooser.cpp" line="51"/>
-        <source>Color Space:</source>
-        <translation>Barevný prostor:</translation>
-    </message>
-    <message>
-        <location filename="../widget/colorwheel/colorspacechooser.cpp" line="80"/>
-        <source>Display:</source>
-        <translation>Zobrazení:</translation>
-    </message>
-    <message>
-        <location filename="../widget/colorwheel/colorspacechooser.cpp" line="101"/>
-        <source>View:</source>
-        <translation>Pohled:</translation>
-    </message>
-    <message>
-        <location filename="../widget/colorwheel/colorspacechooser.cpp" line="115"/>
-        <source>Look:</source>
-        <translation>Vzhled:</translation>
-    </message>
-    <message>
-        <location filename="../widget/colorwheel/colorspacechooser.cpp" line="122"/>
-        <source>(None)</source>
-        <translation>(žádný)</translation>
-    </message>
-</context>
-<context>
-    <name>olive::ColorSwatchChooser</name>
-    <message>
-        <location filename="../widget/colorwheel/colorswatchchooser.cpp" line="94"/>
-        <source>Save Color Here</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../widget/colorwheel/colorswatchchooser.cpp" line="100"/>
-        <source>Reset To Default</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::ColorValuesTab</name>
-    <message>
-        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="255"/>
-        <source>Use legacy (8-bit) values</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="268"/>
-        <source>Red</source>
-        <translation>Červená</translation>
-    </message>
-    <message>
-        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="276"/>
-        <source>Green</source>
-        <translation>Zelená</translation>
-    </message>
-    <message>
-        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="284"/>
-        <source>Blue</source>
-        <translation>Modrá</translation>
-    </message>
-    <message>
-        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="292"/>
-        <source>Web</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="421"/>
-        <source>(Invalid)</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::ColorValuesWidget</name>
-    <message>
-        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="51"/>
-        <source>Preview</source>
-        <translation>Náhled</translation>
-    </message>
-    <message>
-        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="76"/>
-        <source>Input</source>
-        <translation>Vstup</translation>
-    </message>
-    <message>
-        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="85"/>
-        <source>Reference</source>
-        <translation>Odkaz</translation>
-    </message>
-    <message>
-        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="90"/>
-        <source>Display</source>
-        <translation>Zobrazení</translation>
-    </message>
-</context>
-<context>
-    <name>olive::ConfigDialogBase</name>
-    <message>
-        <location filename="../dialog/configbase/configdialogbase.cpp" line="79"/>
-        <source>Set Configuration</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::ConformTask</name>
-    <message>
-        <location filename="../task/conform/conform.cpp" line="36"/>
-        <source>Conforming Audio %1:%2</source>
-        <translation>Přizpůsobuji zvuk %1:%2</translation>
-    </message>
-    <message>
-        <location filename="../task/conform/conform.cpp" line="45"/>
-        <source>Failed to open decoder for audio conform</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::Core</name>
-    <message>
-        <location filename="../core.cpp" line="338"/>
-        <source>Import error</source>
-        <translation>Chyba při importu</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="339"/>
-        <source>Nothing to import</source>
-        <translation>Nic k importu</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="357"/>
-        <source>Unsupported media</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="358"/>
-        <source>Skipped %1 file(s) that are not allowed by the current media type filter.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="376"/>
-        <source>Importing...</source>
-        <translation>Importuje se...</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="461"/>
-        <source>Import footage...</source>
-        <translation>Importovat záznam...</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="475"/>
-        <source>Failed to import footage</source>
-        <translation>Nepodařilo se importovat záznam</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="476"/>
-        <source>Failed to find active Project panel</source>
-        <translation>Nepodařilo se najít panel s činným projektem</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="502"/>
-        <source>No Active Project</source>
-        <translation>Žádný činný projekt</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="503"/>
-        <source>No project is currently open to set the properties for</source>
-        <translation>V současnosti není otevřen projekt, pro nějž by se daly nastavit vlastnosti</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="534"/>
-        <source>Failed to create new folder</source>
-        <translation>Nepodařilo se vytvořit novou složku</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="535"/>
-        <location filename="../core.cpp" line="566"/>
-        <source>Failed to find active project</source>
-        <translation>Nepodařilo se najít činný projekt</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="546"/>
-        <source>New Folder</source>
-        <translation>Nová složka</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="554"/>
-        <source>Created New Folder</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="565"/>
-        <source>Failed to create new sequence</source>
-        <translation>Nepodařilo se vytvořit nový úryvek</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="594"/>
-        <source>Created New Sequence</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="682"/>
-        <source>Multi-Layer Image</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="684"/>
-        <source>The file &apos;%1&apos; has multiple layers. Would you like these layers to be separated across multiple tracks or merged into a single image?</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="689"/>
-        <source>Multiple Layers</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="691"/>
-        <source>Single Layer</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="721"/>
-        <source>Imported %1 File(s)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="731"/>
-        <source>Possible image sequence detected</source>
-        <translation>Zjištěna možná obrázková řada</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="732"/>
-        <source>The file &apos;%1&apos; looks like it might be part of an image sequence. Would you like to import it as such?</source>
-        <translation>Soubor &apos;%1&apos; může být součástí obrázkové řady. Chcete jej tak importovat?</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="753"/>
-        <source>You must specify a project file to export</source>
-        <translation>Musíte určit soubor projektu pro export</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="758"/>
-        <source>Specified project does not exist</source>
-        <translation>Daný projekt neexistuje</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1070"/>
-        <location filename="../core.cpp" line="1087"/>
-        <source>Revert</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1071"/>
-        <source>This project has not yet been saved, therefore there is no last saved state to revert to.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1077"/>
-        <source>The project &quot;%1&quot; is already open. By re-opening it, the project will revert to its last saved state. Any unsaved changes will be lost. Do you wish to continue?</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1082"/>
-        <source>This will revert the project &quot;%1&quot; back to its last saved state. All unsaved changes will be lost. Do you wish to continue?</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1188"/>
-        <location filename="../core.cpp" line="1389"/>
-        <source>Auto-Recovery Error</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1189"/>
-        <source>Failed to save auto-recovery to &quot;%1&quot;. Oak Video Editor may not have permission to this directory.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1211"/>
-        <source>Saved to &quot;%1&quot; successfully</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1264"/>
-        <source>Oak Project</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1267"/>
-        <source>Oak Project (Uncompressed XML)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1614"/>
-        <source>Renamed %1 Node(s)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Project contains no sequences, nothing to export</source>
-        <translation type="vanished">Projekt neobsahuje žádné úryvky, není co exportovat</translation>
-    </message>
-    <message>
-        <source>This project has multiple sequences. Which do you wish to export?</source>
-        <translation type="vanished">V tomto projektu je více úryvků. Který chcete exportovat?</translation>
-    </message>
-    <message>
-        <source>Enter number (or %1 to cancel): </source>
-        <translation type="vanished">Zadejte číslo (nebo %1 pro zrušení): </translation>
-    </message>
-    <message>
-        <source>Invalid sequence number</source>
-        <translation type="vanished">Neplatné číslo úryvku</translation>
-    </message>
-    <message>
-        <source>Export succeeded</source>
-        <translation type="vanished">Export proběhl v pořádku</translation>
-    </message>
-    <message>
-        <source>Export failed: %1</source>
-        <translation type="vanished">Nepodařilo se exportovat: %1</translation>
-    </message>
-    <message>
-        <source>Project failed to load: %1</source>
-        <translation type="vanished">Projekt se nepodařilo načíst: %1</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="842"/>
-        <source>Failed to open startup file</source>
-        <translation>Nepodařilo se otevřít spouštěcí soubor</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="843"/>
-        <source>The project &quot;%1&quot; doesn&apos;t exist. A new project will be started instead.</source>
-        <translation>Projekt &quot;%1&quot; neexistuje. Místo toho bude zahájen nový projekt.</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="961"/>
-        <location filename="../core.cpp" line="1529"/>
-        <source>Missing OpenTimelineIO Libraries</source>
-        <translation>Chybí knihovny OpenTimelineIO</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="962"/>
-        <location filename="../core.cpp" line="1530"/>
-        <source>This build was compiled without OpenTimelineIO and therefore cannot open OpenTimelineIO files.</source>
-        <translation>Toto sestavení bylo přeloženo bez OpenTimelineIO, a proto nemůže otevřít soubory OpenTimelineIO.</translation>
-    </message>
-    <message>
-        <source>Save Project</source>
-        <translation type="vanished">Uložit projekt</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1014"/>
-        <location filename="../core.cpp" line="1022"/>
-        <source>Error</source>
-        <translation>Chyba</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1015"/>
-        <source>This Sequence is empty. There is nothing to export.</source>
-        <translation>Tento úryvek je prázdný. Není co exportovat.</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1023"/>
-        <source>No valid sequence detected.
+</source>
+< translation > Nepodařilo
+se
+importovat
+záznam < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "476" / >
+    <source>Failed
+to
+find
+active
+Project
+panel < /source>
+< translation > Nepodařilo
+se
+najít
+panel
+s
+činným
+projektem < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "502" / >
+    <source>No
+Active
+Project < /source>
+< translation > Žádný
+činný
+projekt < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "503" / >
+    <source>No
+project
+is
+currently
+open
+to
+set
+the
+properties
+for</source>
+   < translation > V současnosti
+není
+otevřen
+projekt, pro
+nějž
+by
+se
+daly
+nastavit
+vlastnosti < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "534" / >
+    <source>Failed
+to
+create
+new folder < /source>
+< translation > Nepodařilo
+se
+vytvořit
+novou
+složku < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "535" / >
+<location filename = "../core.cpp"
+line = "566" / >
+    <source>Failed
+to
+find
+active
+project < /source>
+< translation > Nepodařilo
+se
+najít
+činný
+projekt < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "546" / >
+    <source>New
+Folder < /source>
+< translation > Nová
+složka < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "554" / >
+    <source>Created
+New
+Folder < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "565" / >
+    <source>Failed
+to
+create
+new sequence < /source>
+< translation > Nepodařilo
+se
+vytvořit
+nový
+úryvek < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "594" / >
+    <source>Created
+New
+Sequence < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "682" / >
+    <source>Multi - Layer
+Image < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "684" / >
+    <source>The
+file & apos;
+%
+1 & apos;
+has
+multiple
+layers.Would
+you
+like
+these
+layers
+to
+be
+separated
+across
+multiple
+tracks
+or
+merged
+into
+a
+single
+image ? </source>
+    < translation type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "689" / >
+    <source>Multiple
+Layers < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "691" / >
+    <source>Single
+Layer < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "721" / >
+    <source>Imported % 1
+File(s) < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "731" / >
+    <source>Possible
+image
+sequence
+detected < /source>
+< translation > Zjištěna
+možná
+obrázková
+řada < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "732" / >
+    <source>The
+file & apos;
+%
+1 & apos;
+looks
+like
+it
+might
+be
+part
+of
+an
+image
+sequence.Would
+you
+like
+to
+import it
 
-Make sure a sequence is loaded and it has a connected Viewer node.</source>
-        <translation>Nezjištěn žádný platný úryvek.
+as
+such ? </source>
+    < translation > Soubor & apos;
+%
+1 & apos;
+může
+být
+součástí
+obrázkové
+řady.Chcete
+jej
+tak
+importovat ? </translation>
+< /message>
+< message >
+<location filename = "../core.cpp" line = "753" / >
+    <source>You
+must
+specify
+a
+project
+file
+to
+export
+</source>
+< translation > Musíte
+určit
+soubor
+projektu
+pro
+export
+</translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "758" / >
+    <source>Specified
+project
+does
+not
+exist < /source>
+< translation > Daný
+projekt
+neexistuje < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1070" / >
+<location filename = "../core.cpp"
+line = "1087" / >
+    <source>Revert < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1071" / >
+    <source>This
+project
+has
+not
+yet
+been
+saved, therefore
+there
+is
+no
+last
+saved
+state
+to
+revert
+to. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1077" / >
+    <source>The
+project & quot;
+%
+1 & quot;
+is
+already
+open.By
+re - opening
+it, the
+project
+will
+revert
+to
+its
+last
+saved
+state.Any
+unsaved
+changes
+will
+be
+lost.Do
+you
+wish
+to
+continue
+? </source>
+    < translation type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1082" / >
+    <source>This
+will
+revert
+the
+project & quot;
+%
+1 & quot;
+back
+to
+its
+last
+saved
+state.All
+unsaved
+changes
+will
+be
+lost.Do
+you
+wish
+to
+continue
+? </source>
+    < translation type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1188" / >
+<location filename = "../core.cpp"
+line = "1389" / >
+    <source>Auto - Recovery
+Error < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1189" / >
+    <source>Failed
+to
+save
+auto - recovery
+to & quot;
+%
+1 & quot;
+.
+Oak
+Video
+Editor
+may
+not
+have
+permission
+to
+this
+directory. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1211" / >
+    <source>Saved
+to & quot;
+%
+1 & quot;
+successfully < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1264" / >
+    <source>Oak
+Project < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1267" / >
+    <source>Oak
+Project(Uncompressed
+XML
+)
+</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1614" / >
+    <source>Renamed % 1
+Node(s) < /source>
+< translation
+type = "unfinished" > </translation>
+    < /message>
+    < message >
+    <source>Project
+contains
+no
+sequences, nothing
+to
+export
+</source>
+< translation
+type = "vanished" > Projekt
+neobsahuje
+žádné
+úryvky, není
+co
+exportovat < /translation>
+< /message>
+< message >
+<source>This
+project
+has
+multiple
+sequences.Which
+do you wish
+to
+export
+? </source>
+    < translation type = "vanished" > V
+tomto
+projektu
+je
+více
+úryvků.Který
+chcete
+exportovat ? </translation>
+    < /message>
+    < message >
+    <source>Enter number(or % 1
+to
+cancel
+):
+</source>
+< translation
+type = "vanished" > Zadejte
+číslo(nebo % 1
+pro
+zrušení
+):
+</translation>
+< /message>
+< message >
+<source>Invalid
+sequence
+number < /source>
+< translation
+type = "vanished" > Neplatné
+číslo
+úryvku < /translation>
+< /message>
+< message >
+<source>Export
+succeeded < /source>
+< translation
+type = "vanished" > Export
+proběhl
+v
+pořádku < /translation>
+< /message>
+< message >
+<source>Export
+failed: %
+1 < /source>
+< translation
+type = "vanished" > Nepodařilo
+se
+exportovat: %
+1 < /translation>
+< /message>
+< message >
+<source>Project
+failed
+to
+load: %
+1 < /source>
+< translation
+type = "vanished" > Projekt
+se
+nepodařilo
+načíst: %
+1 < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "842" / >
+    <source>Failed
+to
+open
+startup
+file < /source>
+< translation > Nepodařilo
+se
+otevřít
+spouštěcí
+soubor < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "843" / >
+    <source>The
+project & quot;
+%
+1 & quot;
+doesn & apos;
+t
+exist.A
+new project
+will
+be
+started
+instead. < /source>
+< translation > Projekt & quot;
+%
+1 & quot;
+neexistuje.Místo
+toho
+bude
+zahájen
+nový
+projekt. < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "961" / >
+<location filename = "../core.cpp"
+line = "1529" / >
+    <source>Missing
+OpenTimelineIO
+Libraries < /source>
+< translation > Chybí
+knihovny
+OpenTimelineIO < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "962" / >
+<location filename = "../core.cpp"
+line = "1530" / >
+    <source>This
+build
+was
+compiled
+without
+OpenTimelineIO
+and
+therefore
+cannot
+open
+OpenTimelineIO
+files. < /source>
+< translation > Toto
+sestavení
+bylo
+přeloženo
+bez
+OpenTimelineIO, a
+proto
+nemůže
+otevřít
+soubory
+OpenTimelineIO. < /translation>
+< /message>
+< message >
+<source>Save
+Project < /source>
+< translation
+type = "vanished" > Uložit
+projekt < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1014" / >
+<location filename = "../core.cpp"
+line = "1022" / >
+<source>Error < /source>
+< translation > Chyba < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1015" / >
+    <source>This
+Sequence
+is
+empty.There
+is
+nothing
+to
+export.
+</source>
+< translation > Tento
+úryvek
+je
+prázdný.Není
+co
+exportovat. < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1023" / >
+    <source>No
+valid
+sequence
+detected.Make
+sure
+a
+sequence
+is
+loaded
+and
+it
+has
+a
+connected
+Viewer
+node. < /source>
+< translation > Nezjištěn
+žádný
+platný
+úryvek.Ujistěte
+se, že
+je
+úryvek
+načten
+a
+má
+připojený
+uzel
+prohlížeče. < /translation>
+< /message>
+< message >
+<source>Olive
+Project < /source>
+< translation
+type = "vanished" > Projekt
+Olive < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1271" / >
+<source>OpenTimelineIO < /source>
+< translation > OpenTimelineIO < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1284" / >
+    <source>All
+Supported
+Projects < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1378" / >
+    <source>The
+following
+projects
+had
+unsaved
+changes
+when
+Oak
+Video
+Editor
+forcefully
+quit.Would
+you
+like
+to
+load
+them ? </source>
+    < translation type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1390" / >
+    <source>Found
+auto - recoveries
+but
+failed
+to
+load
+the
+auto - recovery
+index.Auto - recover
+projects
+will
+have
+to
+be
+opened
+manually.Your
+recoverable
+projects
+are
+still
+available
+at: %
+1 < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1402" / >
+    <source>The
+following
+project
+versions
+have
+been
+auto - saved
+:
+</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1434" / >
+    <source>Disk
+Cache
+Full < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1435" / >
+    <source>The
+disk
+cache
+is
+currently
+full
+and
+Oak
+Video
+Editor
+is
+having
+to
+delete old
+frames
+to
+keep
+it
+within
+the
+limits
+set in the
+Disk
+preferences.This
+will
+result in SIGNIFICANTLY
+reduced
+cache
+performance.To
+remedy
+this, please
+do one of
+the
+following:
 
-Ujistěte se, že je úryvek načten a má připojený uzel prohlížeče.</translation>
-    </message>
-    <message>
-        <source>Olive Project</source>
-        <translation type="vanished">Projekt Olive</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1271"/>
-        <source>OpenTimelineIO</source>
-        <translation>OpenTimelineIO</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1284"/>
-        <source>All Supported Projects</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1378"/>
-        <source>The following projects had unsaved changes when Oak Video Editor forcefully quit. Would you like to load them?</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1390"/>
-        <source>Found auto-recoveries but failed to load the auto-recovery index. Auto-recover projects will have to be opened manually.
+    1.
+Manually
+clear
+the
+disk
+cache in Disk
+preferences.
+2.
+Increase
+the
+maximum
+disk
+cache
+size in Disk
+preferences.
+3.
+Reduce
+usage
+of
+the
+disk
+cache(e.g.disable
+auto - cache
+or
+only
+cache
+specific
+sections
+of
+your
+sequence
+).
+</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1447" / >
+    <source>Save
+Project
+As < /source>
+< translation > Uložit
+projekt
+jako < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1540" / >
+    <source>Load
+Project < /source>
+< translation > Načíst
+projekt < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1599" / >
+    <source>Label
+Node < /source>
+< translation > Označit
+uzel < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1600" / >
+    <source>Set
+node
+label < /source>
+< translation > Nastavit
+štítek
+uzlu < /translation>
+< /message>
+< message >
+<location filename = "../core.h"
+line = "260" / >
+<source>Sequence % 1 < /source>
+< translation > Úryvek % 1 < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1648" / >
+    <source>Cannot
+open
+recent
+project < /source>
+< translation > Nelze
+otevřít
+nedávný
+projekt < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1649" / >
+    <source>The
+project & quot;
+%
+1 & quot;
+doesn & apos;
+t
+exist.Would
+you
+like
+to
+remove
+this
+file
+from
+the
+recent
+list ? </source>
+    < translation > Projekt & quot;
+%
+1 & quot;
+neexistuje.Chcete
+tento
+soubor
+odstranit
+ze
+seznamu
+nedávno
+otevřených
+souborů ? </translation>
+< /message>
+< message >
+<location filename = "../core.cpp" line = "1668" / >
+    <source>Unsaved
+Changes < /source>
+< translation > Neuložené
+změny < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1670" / >
+    <source>The
+project & apos;
+%
+1 & apos;
+has
+unsaved
+changes.Would
+you
+like
+to
+save
+them ? </source>
+    < translation > Projekt & apos;
+%
+1 & apos;
+má
+neuložené
+změny.Chcete
+je
+uložit ? </translation>
+< /message>
+< message >
+<location filename = "../core.cpp" line = "1674" / >
+    <source>Save < /source>
+    < translation > Uložit < /translation>
+    < /message>
+    < message >
+    <source>Save
+All < /source>
+< translation
+type = "vanished" > Uložit
+vše < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1676" / >
+    <source>Don & apos;
+t
+Save < /source>
+< translation > Neukládat < /translation>
+< /message>
+< message >
+<source>Don & apos;
+t
+Save
+All < /source>
+< translation
+type = "vanished" > Neukládat
+vše < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1738" / >
+    <source>Failed
+to
+cache
+sequence < /source>
+< translation > Nepodařilo
+se
+uložit
+úryvek
+do vyrovnávací paměti < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1739" / >
+    <source>No
+active
+viewer
+found
+with this sequence. < /source>
+< translation > Nenalezen
+žádný
+prohlížeč
+s
+tímto
+úryvkem. < /translation>
+< /message>
+< message >
+<location filename = "../core.cpp"
+line = "1836" / >
+    <source>Open
+Project < /source>
+< translation > Otevřít
+projekt < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::CornerPinDistortNode < /name>
+< message >
+<location filename = "../node/distort/cornerpin/cornerpindistortnode.cpp"
+line = "78" / >
+    <source>Texture < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/distort/cornerpin/cornerpindistortnode.cpp"
+line = "79" / >
+    <source>Perspective < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/distort/cornerpin/cornerpindistortnode.cpp"
+line = "80" / >
+    <source>Top
+Left < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/distort/cornerpin/cornerpindistortnode.cpp"
+line = "81" / >
+    <source>Top
+Right < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/distort/cornerpin/cornerpindistortnode.cpp"
+line = "82" / >
+    <source>Bottom
+Right < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/distort/cornerpin/cornerpindistortnode.cpp"
+line = "83" / >
+    <source>Bottom
+Left < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/distort/cornerpin/cornerpindistortnode.h"
+line = "43" / >
+    <source>Corner
+Pin < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/distort/cornerpin/cornerpindistortnode.h"
+line = "58" / >
+    <source>Distort
+the
+image
+by
+dragging
+the
+corners. < /source>
+< translation
+type = "unfinished" > </translation>
+    < /message>
+    < /context>
+    < context >
+    <name>olive::CrashHandlerDialog < /name>
+    < message >
+    <source>Olive < /source>
+    < translation
+type = "vanished" > Olive < /translation>
+    < /message>
+    < message >
+    <source>We & apos;
+re
+sorry, Olive
+has
+crashed.Please
+help
+us
+fix
+it
+by
+sending
+an
+error
+report. < /source>
+< translation
+type = "vanished" > Je
+nám
+to
+líto, ale
+Olive
+spadl.Pomozte
+nám
+jej
+opravit
+zasláním
+chybové
+zprávy. < /translation>
+< /message>
+< message >
+<location filename = "../crashhandler/crashhandler.cpp"
+line = "49" / >
+    <source>Oak
+Video
+Editor < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../crashhandler/crashhandler.cpp"
+line = "58" / >
+    <source>We & apos;
+re
+sorry, Oak
+Video
+Editor
+has
+crashed.Please
+help
+us
+fix
+it
+by
+sending
+an
+error
+report. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../crashhandler/crashhandler.cpp"
+line = "67" / >
+    <source>Describe
+what
+you
+were
+doing in as
+much
+detail as possible.If
+you
+can, provide
+steps
+to
+reproduce
+this
+crash. < /source>
+< translation > Co
+nejpodrobněji
+popište, co
+jste
+dělal.Pokud
+můžete, poskytněte
+popis
+kroků
+k
+zopakování
+tohoto
+pádu. < /translation>
+< /message>
+< message >
+<location filename = "../crashhandler/crashhandler.cpp"
+line = "76" / >
+    <source>Crash
+Report:</source>
+< translation > Zpráva
+o
+pádu:</translation>
+< /message>
+< message >
+<location filename = "../crashhandler/crashhandler.cpp"
+line = "89" / >
+    <source>Send
+Error
+Report < /source>
+< translation > Poslat
+zprávu
+o
+chybě < /translation>
+< /message>
+< message >
+<location filename = "../crashhandler/crashhandler.cpp"
+line = "94" / >
+    <source>Don & apos;
+t
+Send < /source>
+< translation > Neposílat < /translation>
+< /message>
+< message >
+<location filename = "../crashhandler/crashhandler.cpp"
+line = "104" / >
+    <source>Waiting
+for crash report
+to
+be
+generated
+...
+</source>
+< translation > Čeká
+se
+na
+vytvoření
+zprávy
+o
+pádu
+...
+</translation>
+< /message>
+< message >
+<location filename = "../crashhandler/crashhandler.cpp"
+line = "167" / >
+    <source>Upload
+Failed < /source>
+< translation > Nahrání
+selhalo < /translation>
+< /message>
+< message >
+<location filename = "../crashhandler/crashhandler.cpp"
+line = "169" / >
+    <source>Failed
+to
+send
+error
+report( % 1
+).
+Please
+try
+again
+later. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../crashhandler/crashhandler.cpp"
+line = "189" / >
+    <source>SSL
+Error < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../crashhandler/crashhandler.cpp"
+line = "190" / >
+    <source>Encountered
+the
+following
+SSL
+errors:
 
-Your recoverable projects are still available at: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1402"/>
-        <source>The following project versions have been auto-saved:</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1434"/>
-        <source>Disk Cache Full</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1435"/>
-        <source>The disk cache is currently full and Oak Video Editor is having to delete old frames to keep it within the limits set in the Disk preferences. This will result in SIGNIFICANTLY reduced cache performance.
+    %
+1 < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../crashhandler/crashhandler.cpp"
+line = "227" / >
+    <source>You
+must
+write
+a
+description
+to
+submit
+this
+crash
+report. < /source>
+< translation
+type = "unfinished" > </translation>
+    < /message>
+    < message >
+    <source>Failed
+to
+send
+error
+report.Please
+try
+again
+later. < /source>
+< translation
+type = "vanished" > Nepodařilo
+se
+poslat
+zprávu
+o
+chybě.Zkuste
+to, prosím, znovu
+později. < /translation>
+< /message>
+< message >
+<source>No
+Crash
+Summary < /source>
+< translation
+type = "vanished" > Žádné
+shrnutí
+pádu < /translation>
+< /message>
+< message >
+<source>Are
+you
+sure
+you
+want
+to
+send
+an
+error
+report
+with no crash
+summary ? </source>
+    < translation type = "vanished" > Opravdu
+chcete
+odeslat
+zprávu
+o
+chybě
+bez
+shrnutí
+okolností
+pádu ? </translation>
+< /message>
+< message >
+<location filename = "../crashhandler/crashhandler.cpp" line = "311" / >
+<location filename = "../crashhandler/crashhandler.cpp"
+line = "341" / >
+    <source>Failed
+to
+send
+report < /source>
+< translation > Nepodařilo
+se
+odeslat
+hlášení < /translation>
+< /message>
+< message >
+<location filename = "../crashhandler/crashhandler.cpp"
+line = "312" / >
+    <source>Failed
+to
+find
+symbols
+necessary
+to
+send
+report.This
+is
+a
+packaging
+issue.Please
+notify
+the
+maintainers
+of
+this
+package. < /source>
+< translation > Nepodařilo
+se
+najít
+symboly
+nutné
+k
+odeslání
+hlášení.Toto
+je
+problém
+s
+balením.Informujte
+prosím
+správce
+tohoto
+balíčku. < /translation>
+< /message>
+< message >
+<location filename = "../crashhandler/crashhandler.cpp"
+line = "342" / >
+    <source>Failed
+to
+open
+symbol
+file.You
+may
+not
+have
+permission
+to
+access
+it. < /source>
+< translation > Soubor
+symbolu
+se
+nepodařilo
+otevřít.Možná
+nemáte
+oprávnění
+pro
+přístupování
+k
+němu. < /translation>
+< /message>
+< message >
+<location filename = "../crashhandler/crashhandler.cpp"
+line = "366" / >
+    <source>Confirm
+Close < /source>
+< translation > Potvrdit
+zavření < /translation>
+< /message>
+< message >
+<location filename = "../crashhandler/crashhandler.cpp"
+line = "368" / >
+    <source>Crash
+report
+is
+still
+uploading.Closing
+now
+may
+result in no
+report
+being
+sent.Are
+you
+sure
+you
+wish
+to
+close ? </source>
+    < translation > Zpráva o
+pádu
+se
+stále
+nahrává.Uzavření
+nyní
+může
+mít
+za
+následek, že
+nebude
+odesláno
+žádné
+hlášení.Opravdu
+chcete
+zavřít ? </translation>
+< /message>
+< /context>
+< context >
+<name>olive::CropDistortNode < /name>
+< message >
+<location filename = "../node/distort/crop/cropdistortnode.cpp" line = "82" / >
+<source>Texture < /source>
+< translation > Povrch < /translation>
+< /message>
+< message >
+<location filename = "../node/distort/crop/cropdistortnode.cpp"
+line = "83" / >
+<source>Left < /source>
+< translation > Vlevo < /translation>
+< /message>
+< message >
+<location filename = "../node/distort/crop/cropdistortnode.cpp"
+line = "84" / >
+<source>Top < /source>
+< translation > Nahoře < /translation>
+< /message>
+< message >
+<location filename = "../node/distort/crop/cropdistortnode.cpp"
+line = "85" / >
+<source>Right < /source>
+< translation > Vpravo < /translation>
+< /message>
+< message >
+<location filename = "../node/distort/crop/cropdistortnode.cpp"
+line = "86" / >
+<source>Bottom < /source>
+< translation > Dole < /translation>
+< /message>
+< message >
+<location filename = "../node/distort/crop/cropdistortnode.cpp"
+line = "87" / >
+<source>Feather < /source>
+< translation > Pero < /translation>
+< /message>
+< message >
+<location filename = "../node/distort/crop/cropdistortnode.h"
+line = "44" / >
+<source>Crop < /source>
+< translation > Oříznout < /translation>
+< /message>
+< message >
+<location filename = "../node/distort/crop/cropdistortnode.h"
+line = "59" / >
+    <source>Crop
+the
+edges
+of
+an
+image. < /source>
+< translation > Oříznout
+okraje
+obrázku. < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::CrossDissolveTransition < /name>
+< message >
+<location filename = "../node/block/transition/crossdissolve/crossdissolvetransition.cpp"
+line = "33" / >
+    <source>Cross
+Dissolve < /source>
+< translation > Prolnutí
+záběrů < /translation>
+< /message>
+< message >
+<location filename = "../node/block/transition/crossdissolve/crossdissolvetransition.cpp"
+line = "48" / >
+    <source>Smoothly
+transition
+between
+two
+clips. < /source>
+< translation > Plynulý
+přechod
+mezi
+dvěma
+záběry. < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::CurvePanel < /name>
+< message >
+<location filename = "../panel/curve/curve.cpp"
+line = "73" / >
+    <source>Curve
+Editor < /source>
+< translation > Editor
+křivky < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::CurveView < /name>
+< message >
+<location filename = "../widget/curvewidget/curveview.cpp"
+line = "266" / >
+    <source>Zoom
+to
+Fit < /source>
+< translation > Zvětšit
+pro
+přizpůsobení < /translation>
+< /message>
+< message >
+<location filename = "../widget/curvewidget/curveview.cpp"
+line = "269" / >
+    <source>Zoom
+to
+Fit
+Selected < /source>
+< translation > Zvětšit
+pro
+přizpůsobení
+vybraného < /translation>
+< /message>
+< message >
+<location filename = "../widget/curvewidget/curveview.cpp"
+line = "273" / >
+    <source>Reset
+Zoom < /source>
+< translation > Obnovit
+výchozí
+zvětšení < /translation>
+< /message>
+< message >
+<location filename = "../widget/curvewidget/curveview.cpp"
+line = "434" / >
+    <source>Moved
+Keyframe
+Bezier
+Control
+Point < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::CurveWidget < /name>
+< message >
+<location filename = "../widget/curvewidget/curvewidget.cpp"
+line = "68" / >
+<source>Linear < /source>
+< translation > Lineární < /translation>
+< /message>
+< message >
+<location filename = "../widget/curvewidget/curvewidget.cpp"
+line = "75" / >
+<source>Bezier < /source>
+< translation > Bézier < /translation>
+< /message>
+< message >
+<location filename = "../widget/curvewidget/curvewidget.cpp"
+line = "82" / >
+<source>Hold < /source>
+< translation > Držet < /translation>
+< /message>
+< message >
+<location filename = "../widget/curvewidget/curvewidget.cpp"
+line = "351" / >
+    <source>Changed
+Type
+of % 1
+Keyframe(s)
+to % 2 < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::CustomCacheTask < /name>
+< message >
+<location filename = "../task/customcache/customcachetask.cpp"
+line = "30" / >
+    <source>Caching
+custom
+range
+for &
+quot;
+%
+1 & quot;
+</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::DespillNode < /name>
+< message >
+<location filename = "../node/keying/despill/despill.cpp"
+line = "49" / >
+    <source>Despill < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/despill/despill.cpp"
+line = "64" / >
+    <source>Selection
+of
+simple
+depsill
+operations < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/despill/despill.cpp"
+line = "71" / >
+    <source>Input < /source>
+    < translation
+type = "unfinished" > Vstup < /translation>
+< /message>
+< message >
+<location filename = "../node/keying/despill/despill.cpp"
+line = "73" / >
+    <source>Key
+Color < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/despill/despill.cpp"
+line = "74" / >
+    <source>Green < /source>
+    < translation
+type = "unfinished" > Zelená < /translation>
+< /message>
+< message >
+<location filename = "../node/keying/despill/despill.cpp"
+line = "74" / >
+    <source>Blue < /source>
+    < translation
+type = "unfinished" > Modrá < /translation>
+< /message>
+< message >
+<location filename = "../node/keying/despill/despill.cpp"
+line = "76" / >
+    <source>Method < /source>
+    < translation
+type = "unfinished" > Metoda < /translation>
+< /message>
+< message >
+<location filename = "../node/keying/despill/despill.cpp"
+line = "77" / >
+    <source>Average < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/despill/despill.cpp"
+line = "77" / >
+    <source>Double
+Red
+Average < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/despill/despill.cpp"
+line = "78" / >
+    <source>Double
+Average < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/despill/despill.cpp"
+line = "78" / >
+    <source>Limit < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/keying/despill/despill.cpp"
+line = "80" / >
+    <source>Preserve
+Luminance < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::DipToColorTransition < /name>
+< message >
+<location filename = "../node/block/transition/diptocolor/diptocolortransition.cpp"
+line = "39" / >
+    <source>Dip
+To
+Color < /source>
+< translation > Ponořit
+do barvy < /translation>
+< /message>
+< message >
+<location filename = "../node/block/transition/diptocolor/diptocolortransition.cpp" line = "54" / >
+    <source>Transition
+between
+clips
+by
+dipping
+to
+a
+color. < /source>
+< translation > Přechod
+mezi
+záběry
+ponořením
+do barvy. < /translation>
+< /message>
+< message >
+<location filename = "../node/block/transition/diptocolor/diptocolortransition.cpp" line = "71" / >
+    <source>Color < /source>
+    < translation
+type = "unfinished" > Barva < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::DiskCacheDialog < /name>
+< message >
+<location filename = "../dialog/diskcache/diskcachedialog.cpp"
+line = "41" / >
+    <source>Disk
+Cache: %
+1 < /source>
+< translation > Disková
+vyrovnávací
+paměť: %
+1 < /translation>
+< /message>
+< message >
+<location filename = "../dialog/diskcache/diskcachedialog.cpp"
+line = "43" / >
+    <source>Disk
+Cache
+Settings < /source>
+< translation > Nastavení
+diskové
+vyrovnávací
+paměti < /translation>
+< /message>
+< message >
+<location filename = "../dialog/diskcache/diskcachedialog.cpp"
+line = "47" / >
+    <source>Maximum
+Disk
+Cache:</source>
+< translation > Největší
+disková
+vyrovnávací
+paměť:</translation>
+< /message>
+< message >
+<location filename = "../dialog/diskcache/diskcachedialog.cpp"
+line = "50" / >
+    <source> % 1
+GB < /source>
+< translation > % 1
+GB < /translation>
+< /message>
+< message >
+<location filename = "../dialog/diskcache/diskcachedialog.cpp"
+line = "58" / >
+<location filename = "../dialog/diskcache/diskcachedialog.cpp"
+line = "106" / >
+<location filename = "../dialog/diskcache/diskcachedialog.cpp"
+line = "118" / >
+    <source>Clear
+Disk
+Cache < /source>
+< translation > Vyprázdnit
+diskovou
+vyrovnávací
+paměť < /translation>
+< /message>
+< message >
+<location filename = "../dialog/diskcache/diskcachedialog.cpp"
+line = "67" / >
+    <source>Automatically
+clear
+disk
+cache
+on
+close < /source>
+< translation > Při
+zavření
+automaticky
+vyprázdnit
+diskovou
+vyrovnávací
+paměť < /translation>
+< /message>
+< message >
+<location filename = "../dialog/diskcache/diskcachedialog.cpp"
+line = "107" / >
+    <source>Are
+you
+sure
+you
+want
+to
+clear
+the
+disk
+cache in & apos;
+%
+1 & apos;
+    ? </source>
+    < translation > Opravdu chcete
+vyprázdnit
+diskovou
+vyrovnávací
+paměť
+v & apos;
+%
+1 & apos;
+    ? </translation>
+    < /message>
+    < message >
+    <location filename = "../dialog/diskcache/diskcachedialog.cpp" line = "115" / >
+        <source>Disk
+Cache
+Cleared < /source>
+< translation > Disková
+vyrovnávací
+paměť
+vyprázdněna < /translation>
+< /message>
+< message >
+<location filename = "../dialog/diskcache/diskcachedialog.cpp"
+line = "119" / >
+    <source>Disk
+cache
+failed
+to
+fully
+clear.You
+may
+have
+to
+delete the
+cache
+files
+manually. < /source>
+< translation > Diskovou
+vyrovnávací
+paměť
+se
+nepodařilo
+plně
+vyprázdnit.Možná
+budete
+muset
+soubory
+vyrovnávací
+paměti
+odstranit
+ručně. < /translation>
+< /message>
+< message >
+<location filename = "../dialog/diskcache/diskcachedialog.cpp"
+line = "122" / >
+    <source>Disk
+Cache
+Partially
+Cleared < /source>
+< translation > Disková
+vyrovnávací
+paměť
+částečně
+vyprázdněna < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::DiskManager < /name>
+< message >
+<location filename = "../render/diskmanager.cpp"
+line = "53" / >
+<location filename = "../render/diskmanager.cpp"
+line = "196" / >
+    <source>Disk
+Cache
+Error < /source>
+< translation > Chyba
+diskové
+vyrovnávací
+paměti < /translation>
+< /message>
+< message >
+<location filename = "../render/diskmanager.cpp"
+line = "54" / >
+    <source>Unable
+to
+set
+custom
+application
+disk
+cache.Using
+default
+instead. < /source>
+< translation > Nelze
+nastavit
+vlastní
+diskovou
+vyrovnávací
+paměť
+aplikace.Místo
+toho
+se
+používá
+výchozí. < /translation>
+< /message>
+< message >
+<location filename = "../render/diskmanager.cpp"
+line = "165" / >
+    <source>Disk
+Cache < /source>
+< translation > Disková
+vyrovnávací
+paměť < /translation>
+< /message>
+< message >
+<location filename = "../render/diskmanager.cpp"
+line = "166" / >
+    <source>You & apos;
+ve
+chosen
+to
+change
+the
+default
+disk
+cache
+location.This
+will
+invalidate
+your
+current
+cache.Would
+you
+like
+to
+continue
+? </source>
+    < translation > Rozhodl jste
+se
+změnit
+výchozí
+umístění
+diskové
+vyrovnávací
+paměti.To
+zneplatní
+vaši
+nynější
+vyrovnávací
+paměť.Chcete
+pokračovat ? </translation>
+< /message>
+< message >
+<location filename = "../render/diskmanager.cpp" line = "197" / >
+    <source>Failed
+to
+open
+disk
+cache
+at & quot;
+%
+1 & quot;
+.
+Try
+a
+different
+folder. < /source>
+< translation > Nepodařilo
+se
+otevřít
+diskovou
+vyrovnávací
+paměť & quot;
+%
+1 & quot;
+.
+Zkuste
+jinou
+složku. < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::DisplayTransformNode < /name>
+< message >
+<location filename = "../node/color/displaytransform/displaytransform.cpp"
+line = "50" / >
+    <source>Display
+Transform < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/color/displaytransform/displaytransform.cpp"
+line = "65" / >
+    <source>Converts
+an
+image
+to
+or
+from
+a
+display
+color
+space. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/color/displaytransform/displaytransform.cpp"
+line = "72" / >
+    <source>Input < /source>
+    < translation
+type = "unfinished" > Vstup < /translation>
+< /message>
+< message >
+<location filename = "../node/color/displaytransform/displaytransform.cpp"
+line = "73" / >
+    <source>Display < /source>
+    < translation
+type = "unfinished" > Zobrazení < /translation>
+< /message>
+< message >
+<location filename = "../node/color/displaytransform/displaytransform.cpp"
+line = "74" / >
+    <source>View < /source>
+    < translation
+type = "unfinished" > Pohled < /translation>
+< /message>
+< message >
+<location filename = "../node/color/displaytransform/displaytransform.cpp"
+line = "75" / >
+    <source>Direction < /source>
+    < translation
+type = "unfinished" > Směr < /translation>
+< /message>
+< message >
+<location filename = "../node/color/displaytransform/displaytransform.cpp"
+line = "76" / >
+    <source>Forward < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/color/displaytransform/displaytransform.cpp"
+line = "76" / >
+    <source>Inverse < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::DropShadowFilter < /name>
+< message >
+<location filename = "../node/filter/dropshadow/dropshadowfilter.cpp"
+line = "69" / >
+    <source>Texture < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/filter/dropshadow/dropshadowfilter.cpp"
+line = "70" / >
+    <source>Color < /source>
+    < translation
+type = "unfinished" > Barva < /translation>
+< /message>
+< message >
+<location filename = "../node/filter/dropshadow/dropshadowfilter.cpp"
+line = "71" / >
+    <source>Distance < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/filter/dropshadow/dropshadowfilter.cpp"
+line = "72" / >
+    <source>Angle < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/filter/dropshadow/dropshadowfilter.cpp"
+line = "73" / >
+    <source>Softness < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/filter/dropshadow/dropshadowfilter.cpp"
+line = "74" / >
+    <source>Opacity < /source>
+    < translation
+type = "unfinished" > Neprůhlednost < /translation>
+< /message>
+< message >
+<location filename = "../node/filter/dropshadow/dropshadowfilter.cpp"
+line = "75" / >
+    <source>Faster(Lower
+Quality
+)
+</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/filter/dropshadow/dropshadowfilter.h"
+line = "39" / >
+    <source>Drop
+Shadow < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/filter/dropshadow/dropshadowfilter.h"
+line = "51" / >
+    <source>Adds
+a
+drop
+shadow
+to
+an
+image. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::ElapsedCounterWidget < /name>
+< message >
+<location filename = "../widget/taskview/elapsedcounterwidget.cpp"
+line = "95" / >
+    <source>Elapsed
+: %
+1 < /source>
+< translation > Uplynulo
+: %
+1 < /translation>
+< /message>
+< message >
+<location filename = "../widget/taskview/elapsedcounterwidget.cpp"
+line = "97" / >
+    <source>Remaining
+: %
+1 < /source>
+< translation > Zbývá
+: %
+1 < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::ExportAdvancedVideoDialog < /name>
+< message >
+<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
+line = "33" / >
+<source>Advanced < /source>
+< translation > Pokročilé < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
+line = "41" / >
+    <source>Pixel < /source>
+    < translation > Obrazový
+bod < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
+line = "47" / >
+    <source>Pixel
+Format:</source>
+< translation > Formát
+pixelu:</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
+line = "55" / >
+    <source>YUV
+Color
+Range:</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
+line = "59" / >
+    <source>Limited(16 - 235) < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
+line = "59" / >
+    <source>Full(0 - 255) < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
+line = "67" / >
+<source>Performance < /source>
+< translation > Provedení < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
+line = "73" / >
+    <source>Threads
+:
+</source>
+< translation > Vlákna
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
+line = "78" / >
+    <source>Auto < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::ExportAudioTab < /name>
+< message >
+<location filename = "../dialog/export/exportaudiotab.cpp"
+line = "43" / >
+    <source>Codec
+:
+</source>
+< translation > Kodek
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportaudiotab.cpp"
+line = "58" / >
+    <source>Sample
+Rate:</source>
+< translation > Vzorkovací
+kmitočet:</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportaudiotab.cpp"
+line = "65" / >
+    <source>Channel
+Layout:</source>
+< translation > Rozložení
+kanálu:</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportaudiotab.cpp"
+line = "72" / >
+    <source>Format
+:
+</source>
+< translation > Formát
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportaudiotab.cpp"
+line = "79" / >
+    <source>Bit
+Rate:</source>
+< translation > Datový
+tok:</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportaudiotab.cpp"
+line = "85" / >
+    <source> % 1
+kbps < /source>
+< translation > % 1
+kB / s < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::ExportCodec < /name>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "34" / >
+<source>DNxHD < /source>
+< translation > DNxHD < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "36" / >
+    <source>H
+.264 < /source>
+< translation > H
+.264 < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "38" / >
+    <source>H
+.264
+RGB < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "40" / >
+    <source>H
+.265 < /source>
+< translation > H
+.265 < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "42" / >
+<source>OpenEXR < /source>
+< translation > OpenEXR < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "44" / >
+<source>PNG < /source>
+< translation > PNG < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "46" / >
+<source>ProRes < /source>
+< translation > ProRes < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "48" / >
+    <source>Cineform < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "50" / >
+<source>TIFF < /source>
+< translation > TIFF < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "52" / >
+<source>MP2 < /source>
+< translation > MP2 < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "54" / >
+<source>MP3 < /source>
+< translation > MP3 < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "56" / >
+<source>AAC < /source>
+< translation > AAC < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "58" / >
+<source>PCM(Uncompressed) < /source>
+< translation > PCM(nekomprimovaný) < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "60" / >
+    <source>FLAC < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "62" / >
+    <source>Opus < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "64" / >
+    <source>Vorbis < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "66" / >
+    <source>VP9 < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "68" / >
+    <source>AV1 < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "70" / >
+    <source>SubRip
+SRT < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/exportcodec.cpp"
+line = "75" / >
+<source>Unknown < /source>
+< translation > Neznámý < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::ExportDialog < /name>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "68" / >
+    <source>Filename
+:
+</source>
+< translation > Název
+souboru:</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "78" / >
+    <source>Browse
+for exported file
+filename < /source>
+< translation > Procházet
+na
+souborový
+název
+eportovaného
+souboru < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "85" / >
+    <source>Preset
+:
+</source>
+< translation > Přednastavení
+:
+</translation>
+< /message>
+< message >
+<source>Same
+As
+Source - High
+Quality < /source>
+< translation
+type = "vanished" > Stejné
+jako
+zdroj - vysoká
+kvalita < /translation>
+< /message>
+< message >
+<source>Same
+As
+Source - Medium
+Quality < /source>
+< translation
+type = "vanished" > Stejné
+jako
+zdroj - střední
+kvalita < /translation>
+< /message>
+< message >
+<source>Same
+As
+Source - Low
+Quality < /source>
+< translation
+type = "vanished" > Stejné
+jako
+zdroj - nízká
+kvalita < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "115" / >
+    <source>Range
+:
+</source>
+< translation > Rozsah
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "118" / >
+    <source>Entire
+Sequence < /source>
+< translation > Celý
+úryvek < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "119" / >
+    <source>In
+to
+Out < /source>
+< translation > Od
+začátku
+po
+konec < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "131" / >
+    <source>Format
+:
+</source>
+< translation > Formát
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "139" / >
+    <source>Export
+Video < /source>
+< translation > Exportovat
+obraz < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "142" / >
+    <source>Export
+Audio < /source>
+< translation > Exportovat
+zvuk < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "145" / >
+    <source>Export
+Subtitles < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "156" / >
+<source>Video < /source>
+< translation > Obraz < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "166" / >
+<source>Audio < /source>
+< translation > Zvuk < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "169" / >
+    <source>Subtitles < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "183" / >
+    <source>Run
+In
+Background < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "184" / >
+    <source>Exporting in the
+background
+allows
+you
+to
+continue using
+Oak
+Video
+Editor
+while exporting, but may
+result in slower
+export
+speeds, and
+mayseverely
+impact
+editing
+and
+playback
+performance. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "191" / >
+    <source>Import
+Result
+After
+Export < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "206" / >
+<location filename = "../dialog/export/export.cpp"
+line = "409" / >
+<source>Export < /source>
+< translation > Exportovat < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "211" / >
+    <source>Cancel < /source>
+    < translation
+type = "unfinished" > Zrušit < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "221" / >
+<source>Preview < /source>
+< translation > Náhled < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "312" / >
+    <source>Invalid
+parameters < /source>
+< translation > Neplatné
+parametry < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "313" / >
+    <source>Video, audio, and
+subtitles
+are
+disabled.There & apos;
+s
+nothing
+to
+export.
+</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "347" / >
+    <source>The
+intended
+output
+directory
+doesn & apos;
+t
+exist
+and
+Oak
+Video
+Editor
+couldn & apos;
+t
+create
+it.Please
+choose
+a
+different
+filename. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "358" / >
+    <source>Export
+is
+set
+to
+an
+image
+sequence, but
+the
+filename
+does
+not
+have
+a
+section
+for digits(formatted as [#
+####]
+where
+the
+amount
+of
+#
+is
+the
+amount
+of
+digits
+).
+</source>
+< translation
+type = "unfinished" > </translation>
+    < /message>
+    < message
+numerus = "yes" >
+<location filename = "../dialog/export/export.cpp"
+line = "370" / >
+    <source>Filename
+doesn & apos;
+t
+contain
+enough
+digits
+for the amount
+of
+frames
+this
+export
+will
+need(need % 1
+for %
+n
+frame(s)
+).
+</source>
+< translation
+type = "unfinished" >
+<numerusform></numerusform>
+< numerusform > </numerusform>
+< numerusform > </numerusform>
+< /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "582" / >
+    <source>Default < /source>
+    < translation
+type = "unfinished" > Výchozí < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "585" / >
+    <source>Last
+Used < /source>
+< translation
+type = "unfinished" > </translation>
+    < /message>
+    < message >
+    <source>Both
+video
+and
+audio
+are
+disabled.There & apos;
+s
+nothing
+to
+export.
+</source>
+< translation
+type = "vanished" > Obraz
+i
+zvuk
+jsou
+vypnuty.Není
+co
+exportovat. < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "326" / >
+<location filename = "../dialog/export/export.cpp"
+line = "357" / >
+<location filename = "../dialog/export/export.cpp"
+line = "369" / >
+    <source>Invalid
+filename < /source>
+< translation > Neplatný
+název
+souboru < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "327" / >
+    <source>The
+filename
+must
+contain
+the
+extension & quot;
+%
+1 & quot;
+.
+Would
+you
+like
+to
+append
+it
+automatically ? </source>
+    < translation > Název souboru
+musí
+obsahovat
+příponu & quot;
+%
+1 & quot;
+.
+Chcete
+ji
+připojit
+automaticky ? </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp" line = "346" / >
+    <source>Failed
+to
+create
+output
+directory < /source>
+< translation > Nepodařilo
+se
+vytvořit
+výstupní
+adresář < /translation>
+< /message>
+< message >
+<source>The
+intended
+output
+directory
+doesn & apos;
+t
+exist
+and
+Olive
+couldn & apos;
+t
+create
+it.Please
+choose
+a
+different
+filename. < /source>
+< translation
+type = "vanished" > Zamýšlený
+výstupní
+adresář
+neexistuje
+a
+Olive
+jej
+nemohl
+vytvořit.Vyberte
+jiný
+název
+souboru. < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "381" / >
+    <source>Confirm
+Overwrite < /source>
+< translation > Potvrdit
+přepsání < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "382" / >
+    <source>The
+file & quot;
+%
+1 & quot;
+already
+exists.Do
+you
+want
+to
+overwrite
+it ? </source>
+    < translation > Soubor & quot;
+%
+1 & quot;
+již
+existuje.Chcete
+jej
+přepsat ? </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp" line = "395" / >
+    <source>Invalid
+Parameters < /source>
+< translation > Neplatné
+parametry < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/export.cpp"
+line = "396" / >
+    <source>Width
+and
+height
+must
+be
+multiples
+of
+2. < /source>
+< translation > Šířka
+a
+výška
+musí
+být
+násobkem
+2. < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::ExportFormat < /name>
+< message >
+<location filename = "../codec/exportformat.cpp"
+line = "33" / >
+<source>DNxHD < /source>
+< translation > DNxHD < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportformat.cpp"
+line = "35" / >
+    <source>Matroska
+Video < /source>
+< translation > Video
+Matroska < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportformat.cpp"
+line = "37" / >
+    <source>MPEG - 4
+Video < /source>
+< translation > Video
+MPEG - 4 < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportformat.cpp"
+line = "39" / >
+    <source>MPEG - 4
+Audio < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/exportformat.cpp"
+line = "41" / >
+<source>OpenEXR < /source>
+< translation > OpenEXR < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportformat.cpp"
+line = "43" / >
+<source>PNG < /source>
+< translation > PNG < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportformat.cpp"
+line = "45" / >
+<source>TIFF < /source>
+< translation > TIFF < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportformat.cpp"
+line = "47" / >
+<source>QuickTime < /source>
+< translation > QuickTime < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportformat.cpp"
+line = "49" / >
+    <source>Wave
+Audio < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/exportformat.cpp"
+line = "51" / >
+    <source>AIFF < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/exportformat.cpp"
+line = "53" / >
+    <source>MP3 < /source>
+    < translation
+type = "unfinished" > MP3 < /translation>
+< /message>
+< message >
+<location filename = "../codec/exportformat.cpp"
+line = "55" / >
+    <source>FLAC < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/exportformat.cpp"
+line = "57" / >
+    <source>Ogg < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/exportformat.cpp"
+line = "59" / >
+    <source>WebM < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/exportformat.cpp"
+line = "61" / >
+    <source>SubRip
+SRT < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/exportformat.cpp"
+line = "67" / >
+<source>Unknown < /source>
+< translation > Neznámý < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::ExportFormatComboBox < /name>
+< message >
+<location filename = "../dialog/export/exportformatcombobox.cpp"
+line = "40" / >
+    <source>Video < /source>
+    < translation
+type = "unfinished" > Obraz < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportformatcombobox.cpp"
+line = "44" / >
+    <source>Audio < /source>
+    < translation
+type = "unfinished" > Zvuk < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportformatcombobox.cpp"
+line = "48" / >
+    <source>Subtitle < /source>
+    < translation
+type = "unfinished" > Titulek < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::ExportSavePresetDialog < /name>
+< message >
+<location filename = "../dialog/export/exportsavepresetdialog.cpp"
+line = "56" / >
+    <source>Name
+:
+</source>
+< translation
+type = "unfinished" > Název
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportsavepresetdialog.cpp"
+line = "69" / >
+    <source>Save
+Export
+Preset < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportsavepresetdialog.cpp"
+line = "76" / >
+    <source>Invalid
+Name < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportsavepresetdialog.cpp"
+line = "77" / >
+    <source>You
+must
+enter
+a
+name
+to
+save
+an
+export
+preset. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportsavepresetdialog.cpp"
+line = "89" / >
+    <source>Overwrite
+Preset < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportsavepresetdialog.cpp"
+line = "90" / >
+    <source>A
+preset
+with the name & quot;
+%
+1 & quot;
+already
+exists.Do
+you
+wish
+to
+overwrite
+it ? </source>
+    < translation type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportsavepresetdialog.cpp"
+line = "99" / >
+    <source>Write
+Error < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportsavepresetdialog.cpp"
+line = "100" / >
+    <source>Failed
+to
+open
+file & quot;
+%
+1 & quot;
+for writing. < /source>
+    < translation type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::ExportSubtitlesTab < /name>
+< message >
+<location filename = "../dialog/export/exportsubtitlestab.cpp"
+line = "36" / >
+    <source>Export
+to
+sidecar
+file < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportsubtitlestab.cpp"
+line = "41" / >
+    <source>Sidecar
+Format:</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportsubtitlestab.cpp"
+line = "52" / >
+    <source>Codec
+:
+</source>
+< translation
+type = "unfinished" > Kodek
+:
+</translation>
+< /message>
+< /context>
+< context >
+<name>olive::ExportTask < /name>
+< message >
+<location filename = "../task/export/export.cpp"
+line = "49" / >
+    <source>Exporting & quot;
+%
+1 & quot;
+</source>
+< translation > Exportuje
+se & quot;
+%
+1 & quot;
+</translation>
+< /message>
+< message >
+<location filename = "../task/export/export.cpp"
+line = "74" / >
+    <source>Failed
+to
+create
+encoder < /source>
+< translation > Nepodařilo
+se
+vytvořit
+kodér < /translation>
+< /message>
+< message >
+<location filename = "../task/export/export.cpp"
+line = "79" / >
+    <source>Failed
+to
+open
+file: %
+1 < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../task/export/export.cpp"
+line = "102" / >
+    <source>Failed
+to
+create
+subtitle
+encoder < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../task/export/export.cpp"
+line = "107" / >
+    <source>Failed
+to
+open
+subtitle
+sidecar
+file: %
+1 < /source>
+< translation
+type = "unfinished" > </translation>
+    < /message>
+    < message >
+    <source>Failed
+to
+open
+file < /source>
+< translation
+type = "vanished" > Nepodařilo
+se
+otevřít
+soubor < /translation>
+< /message>
+< message >
+<location filename = "../task/export/export.cpp"
+line = "203" / >
+    <source>Failed
+to
+overwrite & quot;
+%
+1 & quot;
+.
+Export
+has
+been
+saved as &quot;
+%
+2 & quot;
+instead. < /source>
+< translation > Nepodařilo
+se
+přepsat & quot;
+%
+1 & quot;
+.
+Výsledný
+soubor
+byl
+místo
+toho
+uložen
+jako & quot;
+%
+2 & quot;
+.
+</translation>
+< /message>
+< /context>
+< context >
+<name>olive::ExportVideoTab < /name>
+< message >
+<source>Basic < /source>
+< translation
+type = "vanished" > Základní < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportvideotab.cpp"
+line = "87" / >
+    <source>General < /source>
+    < translation
+type = "unfinished" > Obecné < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportvideotab.cpp"
+line = "91" / >
+    <source>Width
+:
+</source>
+< translation > Šířka
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportvideotab.cpp"
+line = "99" / >
+    <source>Height
+:
+</source>
+< translation > Výška
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportvideotab.cpp"
+line = "107" / >
+    <source>Maintain
+Aspect
+Ratio:</source>
+< translation > Zachovat
+poměr
+stran:</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportvideotab.cpp"
+line = "115" / >
+    <source>Scaling
+Method:</source>
+< translation > Způsob
+změny
+velikosti:</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportvideotab.cpp"
+line = "119" / >
+<source>Fit < /source>
+< translation > Přizpůsobit < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportvideotab.cpp"
+line = "120" / >
+<source>Stretch < /source>
+< translation > Roztáhnout < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportvideotab.cpp"
+line = "121" / >
+<source>Crop < /source>
+< translation > Oříznout < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportvideotab.cpp"
+line = "130" / >
+    <source>Frame
+Rate:</source>
+< translation > Snímková
+frekvence:</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportvideotab.cpp"
+line = "139" / >
+    <source>Pixel
+Aspect
+Ratio:</source>
+< translation > Poměr
+stran
+pixelu:</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportvideotab.cpp"
+line = "146" / >
+    <source>Interlacing
+:
+</source>
+< translation > Prokládání
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportvideotab.cpp"
+line = "153" / >
+    <source>Quality
+:
+</source>
+< translation > Kvalita
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportvideotab.cpp"
+line = "174" / >
+<source>Codec < /source>
+< translation > Kodek < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportvideotab.cpp"
+line = "178" / >
+    <source>Codec
+:
+</source>
+< translation > Kodek
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/exportvideotab.cpp"
+line = "211" / >
+<source>Advanced < /source>
+< translation > Pokročilé < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::FFmpegEncoder < /name>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "128" / >
+    <source>Failed
+to
+allocate
+output
+context < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "156" / >
+    <source>Failed
+to
+find
+suitable
+pixel
+format
+for this buffer < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "228" / >
+    <source>Failed
+to
+configure
+filter
+graph < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "255" / >
+    <source>Failed
+to
+open
+IO
+context < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "262" / >
+    <source>Failed
+to
+write
+format
+header < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "295" / >
+    <source>Failed
+to
+add
+frame
+to
+filter
+graph < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "302" / >
+    <source>Failed
+to
+retrieve
+frame
+from
+buffer
+sink < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "337" / >
+    <source>Failed
+to
+allocate
+sample
+array < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "423" / >
+    <source>Failed
+to
+resample
+audio < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "482" / >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "646" / >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "881" / >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "904" / >
+    <source>Failed
+to
+write
+interleaved
+packet < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "606" / >
+    <source> % 1
+: %
+2 % 3 < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "617" / >
+    <source>Failed
+to
+send
+frame
+to
+encoder < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "633" / >
+    <source>Failed
+to
+receive
+packet
+from
+decoder < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "668" / >
+    <source>Cannot
+initialize
+a
+stream
+that
+is
+not
+a
+video, audio, or
+subtitle
+type < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "677" / >
+    <source>Failed
+to
+find
+codec
+for 0x % 1 < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "683" / >
+    <source>Retrieved
+unexpected
+codec
+type % 1
+for codec % 2 < /source>
+    < translation type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "809" / >
+    <source>Failed
+to
+allocate
+AVStream < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "816" / >
+    <source>Failed
+to
+allocate
+AVCodecContext < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "846" / >
+    <source>Failed
+to
+open
+encoder < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "853" / >
+    <source>Failed
+to
+copy
+codec
+parameters
+to
+stream < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "931" / >
+    <source>Failed
+to
+create
+resampling
+context < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
+line = "959" / >
+    <source>Failed
+to
+create
+audio
+frame < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::FileField < /name>
+< message >
+<location filename = "../widget/filefield/filefield.cpp"
+line = "60" / >
+    <source>Open
+Directory < /source>
+< translation > Otevřít
+adresář < /translation>
+< /message>
+< message >
+<location filename = "../widget/filefield/filefield.cpp"
+line = "62" / >
+    <source>Open
+File < /source>
+< translation > Otevřít
+soubor < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::FlipDistortNode < /name>
+< message >
+<location filename = "../node/distort/flip/flipdistortnode.cpp"
+line = "48" / >
+    <source>Flip < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/distort/flip/flipdistortnode.cpp"
+line = "63" / >
+    <source>Flips
+an
+image
+horizontally
+or
+vertically < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/distort/flip/flipdistortnode.cpp"
+line = "70" / >
+    <source>Input < /source>
+    < translation
+type = "unfinished" > Vstup < /translation>
+< /message>
+< message >
+<location filename = "../node/distort/flip/flipdistortnode.cpp"
+line = "71" / >
+    <source>Horizontal < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/distort/flip/flipdistortnode.cpp"
+line = "72" / >
+    <source>Vertical < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::FloatSlider < /name>
+< message >
+<location filename = "../widget/slider/floatslider.cpp"
+line = "75" / >
+    <source> % 1
+dB < /source>
+< translation > % 1
+dB < /translation>
+< /message>
+< message >
+<location filename = "../widget/slider/floatslider.cpp"
+line = "78" / >
+<source> % 1 % </source>
+< translation > % 1 % </translation>
+< /message>
+< message >
+<location filename = "../widget/slider/floatslider.cpp"
+line = "121" / >
+    <source>∞</source>
+< translation >∞</translation>
+< /message>
+< /context>
+< context >
+<name>olive::Folder < /name>
+< message >
+<location filename = "../node/project/folder/folder.cpp"
+line = "58" / >
+<source>Children < /source>
+< translation > Potomci < /translation>
+< /message>
+< message >
+<location filename = "../node/project/folder/folder.h"
+line = "45" / >
+<source>Folder < /source>
+< translation > Složka < /translation>
+< /message>
+< message >
+<location filename = "../node/project/folder/folder.h"
+line = "60" / >
+    <source>Organize
+several
+items
+into
+a
+single
+collection. < /source>
+< translation > Uspořádejte
+několik
+položek
+do jedné sbírky. < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::Footage < /name>
+< message >
+<location filename = "../node/project/footage/footage.cpp"
+line = "82" / >
+    <source>Filename < /source>
+    < translation > Název
+souboru < /translation>
+< /message>
+< message >
+<source> % 1
+FPS < /source>
+< translation
+type = "vanished" > % 1
+FPS < /translation>
+< /message>
+< message >
+<source> % 1
+Hz < /source>
+< translation
+type = "vanished" > % 1
+Hz < /translation>
+< /message>
+< message >
+<location filename = "../node/project/footage/footage.cpp"
+line = "278" / >
+    <source> % 1
+:
+Image - % 2
+x % 3 < /source>
+< translation > % 1
+:
+Obrázek - % 2
+x % 3 < /translation>
+< /message>
+< message >
+<location filename = "../node/project/footage/footage.cpp"
+line = "283" / >
+    <source> % 1
+:
+Video - % 2
+x % 3 < /source>
+< translation > % 1
+:
+Obraz - % 2
+x % 3 < /translation>
+< /message>
+< message >
+<source> % 1
+:
+Audio - % 2
+Channel(s),
+%
+3
+Hz < /source>
+< translation
+type = "vanished" > % 1
+:
+Zvuk - % 2
+kanál(y),
+%
+3
+Hz < /translation>
+< /message>
+< message
+numerus = "yes" >
+<location filename = "../node/project/footage/footage.cpp"
+line = "292" / >
+    <source> % 1
+:
+Audio - % n
+Channel(s),
+%
+2
+Hz < /source>
+< translation
+type = "unfinished" >
+<numerusform></numerusform>
+< numerusform > </numerusform>
+< numerusform > </numerusform>
+< /translation>
+< /message>
+< message >
+<location filename = "../node/project/footage/footage.cpp"
+line = "300" / >
+    <source> % 1
+:
+Subtitle < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/project/footage/footage.cpp"
+line = "370" / >
+<source>Video < /source>
+< translation > Obraz < /translation>
+< /message>
+< message >
+<location filename = "../node/project/footage/footage.cpp"
+line = "372" / >
+<source>Audio < /source>
+< translation > Zvuk < /translation>
+< /message>
+< message >
+<location filename = "../node/project/footage/footage.cpp"
+line = "374" / >
+<source>Subtitle < /source>
+< translation > Titulek < /translation>
+< /message>
+< message >
+<location filename = "../node/project/footage/footage.cpp"
+line = "516" / >
+    <source>Invalid < /source>
+    < translation
+type = "unfinished" > </translation>
+    < /message>
+    < message >
+    <source>Data < /source>
+    < translation
+type = "vanished" > Data < /translation>
+    < /message>
+    < message >
+    <source>Attachment < /source>
+    < translation
+type = "vanished" > Příloha < /translation>
+< /message>
+< message >
+<location filename = "../node/project/footage/footage.cpp"
+line = "380" / >
+<source>Unknown < /source>
+< translation > Neznámý < /translation>
+< /message>
+< message >
+<location filename = "../node/project/footage/footage.cpp"
+line = "482" / >
+    <source>Filename
+: %
+1 < /source>
+< translation > Název
+souboru: %
+1 < /translation>
+< /message>
+< message >
+<source>This
+footage
+is
+not
+valid
+for use < /source>
+    < translation type = "vanished" > Tento
+záznam
+není
+platný
+pro
+použití < /translation>
+< /message>
+< message >
+<source>Footage < /source>
+< translation
+type = "vanished" > Záznam < /translation>
+< /message>
+< message >
+<location filename = "../node/project/footage/footage.h"
+line = "58" / >
+    <source>Media < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../node/project/footage/footage.h"
+line = "73" / >
+    <source>Import
+video, audio, or
+still
+image
+files
+into
+the
+composition. < /source>
+< translation > Nahrajte
+do skladby obraz, zvuk
+nebo
+souborry
+statických
+obrázků. < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::FootagePropertiesDialog < /name>
+< message >
+<location filename = "../dialog/footageproperties/footageproperties.cpp"
+line = "50" / >
+    <source> & quot;
+%
+1 & quot;
+Properties < /source>
+< translation > & quot;
+%
+1 & quot;
+Vlastnosti < /translation>
+< /message>
+< message >
+<location filename = "../dialog/footageproperties/footageproperties.cpp"
+line = "55" / >
+    <source>Name
+:
+</source>
+< translation > Název
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/footageproperties/footageproperties.cpp"
+line = "61" / >
+    <source>Tracks
+:
+</source>
+< translation > Stopy
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/footageproperties/footageproperties.cpp"
+line = "104" / >
+    <source>Subtitles < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/footageproperties/footageproperties.cpp"
+line = "109" / >
+    <source>Unknown < /source>
+    < translation
+type = "unfinished" > Neznámý < /translation>
+< /message>
+< message >
+<location filename = "../dialog/footageproperties/footageproperties.cpp"
+line = "205" / >
+    <source>Set
+Footage & quot;
+%
+1 & quot;
+Properties < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::FootageRelinkDialog < /name>
+< message >
+<location filename = "../dialog/footagerelink/footagerelinkdialog.cpp"
+line = "53" / >
+<source>Footage < /source>
+< translation > Záznam < /translation>
+< /message>
+< message >
+<location filename = "../dialog/footagerelink/footagerelinkdialog.cpp"
+line = "53" / >
+    <source>Filename < /source>
+    < translation > Název
+souboru < /translation>
+< /message>
+< message >
+<location filename = "../dialog/footagerelink/footagerelinkdialog.cpp"
+line = "53" / >
+<source>Actions < /source>
+< translation > Činnosti < /translation>
+< /message>
+< message >
+<location filename = "../dialog/footagerelink/footagerelinkdialog.cpp"
+line = "69" / >
+<source>Browse < /source>
+< translation > Procházet < /translation>
+< /message>
+< message >
+<location filename = "../dialog/footagerelink/footagerelinkdialog.cpp"
+line = "94" / >
+    <source>Relink
+Footage < /source>
+< translation > Opětovně
+propojit
+záběry < /translation>
+< /message>
+< message >
+<location filename = "../dialog/footagerelink/footagerelinkdialog.cpp"
+line = "113" / >
+    <source>Relink & quot;
+%
+1 & quot;
+</source>
+< translation > Opětovně
+propojit & quot;
+%
+1 & quot;
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/footagerelink/footagerelinkdialog.cpp"
+line = "129" / >
+    <source>Unsupported
+media < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/footagerelink/footagerelinkdialog.cpp"
+line = "130" / >
+    <source>This
+file
+type is
+not
+allowed
+by
+the
+current
+media
+type filter
+.
+</source>
+< translation
+type = "unfinished" > </translation>
+    < /message>
+    < message >
+    <source>All
+Files < /source>
+< translation
+type = "vanished" > Všechny
+soubory < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::FootageViewerPanel < /name>
+< message >
+<location filename = "../panel/footageviewer/footageviewer.cpp"
+line = "63" / >
+    <source>Footage
+Viewer < /source>
+< translation > Prohlížeč
+záznamu < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::FrameRateComboBox < /name>
+< message >
+<location filename = "../widget/standardcombos/frameratecombobox.h"
+line = "113" / >
+    <source>Custom
+Frame
+Rate < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../widget/standardcombos/frameratecombobox.h"
+line = "114" / >
+    <source>Enter
+custom
+frame
+rate:</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../widget/standardcombos/frameratecombobox.h"
+line = "141" / >
+    <source>Invalid
+Input < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../widget/standardcombos/frameratecombobox.h"
+line = "142" / >
+    <source>Failed
+to
+convert & quot;
+%
+1 & quot;
+to
+a
+frame
+rate. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../widget/standardcombos/frameratecombobox.h"
+line = "173" / >
+    <source>Custom
+...
+</source>
+< translation
+type = "unfinished" > Vlastní
+...
+</translation>
+< /message>
+< message >
+<location filename = "../widget/standardcombos/frameratecombobox.h"
+line = "176" / >
+    <source>Custom( % 1
+)
+</source>
+< translation
+type = "unfinished" > Vlastní( % 1
+)
+</translation>
+< /message>
+< /context>
+< context >
+<name>olive::GapBlock < /name>
+< message >
+<location filename = "../node/block/gap/gap.cpp"
+line = "33" / >
+<source>Gap < /source>
+< translation > Mezera < /translation>
+< /message>
+< message >
+<location filename = "../node/block/gap/gap.cpp"
+line = "43" / >
+    <source>A
+time - based
+node
+that
+represents
+an
+empty
+space. < /source>
+< translation > Na
+čase
+založený
+uzel
+představující
+prázdné
+místo. < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::GeneratorWithMerge < /name>
+< message >
+<location filename = "../node/generator/shape/generatorwithmerge.cpp"
+line = "45" / >
+    <source>Base < /source>
+    < translation
+type = "unfinished" > Základ < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::H264BitRateSection < /name>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "225" / >
+    <source>Target
+Bit
+Rate(Mbps)
+:
+</source>
+< translation > Cílový
+datový
+tok(MB / s)
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "233" / >
+    <source>Maximum
+Bit
+Rate(Mbps)
+:
+</source>
+< translation > Největší
+datový
+tok(MB / s)
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "241" / >
+    <source>Two - Pass < /source>
+    < translation > Dva
+průchody < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::H264FileSizeSection < /name>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "279" / >
+    <source>Target
+File
+Size(MB)
+:
+</source>
+< translation > Cílová
+velikost
+souboru(MB)
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "287" / >
+    <source>Two - Pass < /source>
+    < translation > Dva
+průchody < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::H264Section < /name>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "47" / >
+    <source>Encode
+Speed:</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "50" / >
+    <source>This
+setting
+allows
+you
+to
+tweak
+the
+ratio
+of
+export
+speed
+to
+compression
+quality.If
+using Constant
+Rate
+Factor, slower
+speeds
+will
+result in smaller
+file
+sizes
+for the same
+quality.If
+using Target
+Bit
+Rate
+or
+Target
+File
+Size, slower
+speeds
+will
+result in higher
+quality
+for the same
+bitrate / filesize.This
+setting
+is
+equivalent
+to
+the`preset`
+setting in libx264. < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "56" / >
+    <source>Ultra
+Fast < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "57" / >
+    <source>Super
+Fast < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "58" / >
+    <source>Very
+Fast < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "59" / >
+    <source>Faster < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "60" / >
+    <source>Fast < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "61" / >
+    <source>Medium < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "62" / >
+    <source>Slow < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "63" / >
+    <source>Slower < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "64" / >
+    <source>Very
+Slow < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "73" / >
+    <source>Compression
+Method:</source>
+< translation > Metoda
+komprese:</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "78" / >
+    <source>Constant
+Rate
+Factor < /source>
+< translation > Činitel
+stálého
+datového
+toku < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "79" / >
+    <source>Target
+Bit
+Rate < /source>
+< translation > Cílový
+datový
+tok < /translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/h264section.cpp"
+line = "80" / >
+    <source>Target
+File
+Size < /source>
+< translation > Cílová
+velikost
+souboru < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::HistoryPanel < /name>
+< message >
+<location filename = "../panel/history/historypanel.cpp"
+line = "39" / >
+    <source>History < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::ImageSection < /name>
+< message >
+<location filename = "../dialog/export/codec/imagesection.cpp"
+line = "38" / >
+    <source>Image
+Sequence:</source>
+< translation > Obrázková
+řada:</translation>
+< /message>
+< message >
+<location filename = "../dialog/export/codec/imagesection.cpp"
+line = "47" / >
+    <source>Frame
+to
+Export:</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::InterlacedComboBox < /name>
+< message >
+<location filename = "../widget/standardcombos/interlacedcombobox.h"
+line = "39" / >
+<source>None(Progressive) < /source>
+< translation > Žádný(progresivní) < /translation>
+< /message>
+< message >
+<location filename = "../widget/standardcombos/interlacedcombobox.h"
+line = "40" / >
+    <source>Top - Field
+First < /source>
+< translation > Nejprve
+horní
+pole < /translation>
+< /message>
+< message >
+<location filename = "../widget/standardcombos/interlacedcombobox.h"
+line = "41" / >
+    <source>Bottom - Field
+First < /source>
+< translation > Nejprve
+dolní
+pole < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::KeyframePropertiesDialog < /name>
+< message >
+<location filename = "../dialog/keyframeproperties/keyframeproperties.cpp"
+line = "41" / >
+    <source>Keyframe
+Properties < /source>
+< translation > Vlastnosti
+klíčového
+snímku < /translation>
+< /message>
+< message >
+<location filename = "../dialog/keyframeproperties/keyframeproperties.cpp"
+line = "70" / >
+    <source>In
+:
+</source>
+< translation > Začátek
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/keyframeproperties/keyframeproperties.cpp"
+line = "78" / >
+    <source>Out
+:
+</source>
+< translation > Konec
+:
+</translation>
+< /message>
+< message >
+<location filename = "../dialog/keyframeproperties/keyframeproperties.cpp"
+line = "168" / >
+<source>Linear < /source>
+< translation > Lineární < /translation>
+< /message>
+< message >
+<location filename = "../dialog/keyframeproperties/keyframeproperties.cpp"
+line = "169" / >
+<source>Hold < /source>
+< translation > Držet < /translation>
+< /message>
+< message >
+<location filename = "../dialog/keyframeproperties/keyframeproperties.cpp"
+line = "170" / >
+<source>Bezier < /source>
+< translation > Bézier < /translation>
+< /message>
+< message >
+<location filename = "../dialog/keyframeproperties/keyframeproperties.cpp"
+line = "236" / >
+    <source>Set
+Keyframe
+Properties < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< /context>
+< context >
+<name>olive::KeyframeView < /name>
+< message >
+<location filename = "../widget/keyframeview/keyframeview.cpp"
+line = "69" / >
+    <source>Deleted % 1
+Keyframe(s) < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../widget/keyframeview/keyframeview.cpp"
+line = "275" / >
+    <source>Pasted % 1
+Keyframe(s) < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../widget/keyframeview/keyframeview.cpp"
+line = "350" / >
+    <source>Moved % 1
+Keyframe(s) < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../widget/keyframeview/keyframeview.cpp"
+line = "599" / >
+    <source>Linear < /source>
+    < translation
+type = "unfinished" > Lineární < /translation>
+< /message>
+< message >
+<location filename = "../widget/keyframeview/keyframeview.cpp"
+line = "600" / >
+    <source>Bezier < /source>
+    < translation
+type = "unfinished" > Bézier < /translation>
+< /message>
+< message >
+<location filename = "../widget/keyframeview/keyframeview.cpp"
+line = "601" / >
+    <source>Hold < /source>
+    < translation
+type = "unfinished" > Držet < /translation>
+< /message>
+< message >
+<location filename = "../widget/keyframeview/keyframeview.cpp"
+line = "627" / >
+    <source>P &amp; roperties < /source>
+    < translation
+type = "unfinished" > &amp; Vlastnosti < /translation>
+< /message>
+< message >
+<location filename = "../widget/keyframeview/keyframeview.cpp"
+line = "653" / >
+    <source>Set
+Type
+of % 1
+Keyframe(s) < /source>
+< translation
+type = "unfinished" > </translation>
+    < /message>
+    < /context>
+    < context >
+    <name>olive::KeyframeViewBase < /name>
+    < message >
+    <source>Linear < /source>
+    < translation
+type = "vanished" > Lineární < /translation>
+    < /message>
+    < message >
+    <source>Bezier < /source>
+    < translation
+type = "vanished" > Bézier < /translation>
+    < /message>
+    < message >
+    <source>Hold < /source>
+    < translation
+type = "vanished" > Držet < /translation>
+    < /message>
+    < message >
+    <source>P &amp; roperties < /source>
+    < translation
+type = "vanished" > &amp; Vlastnosti < /translation>
+    < /message>
+    < /context>
+    < context >
+    <name>olive::LoadOTIOTask < /name>
+    < message >
+    <source>Failed
+to
+load
+OpenTimelineIO
+from
+file & quot;
+%
+1 & quot;
+</source>
+< translation
+type = "vanished" > Nepodařilo
+se
+načíst
+OpenTimelineIO
+ze
+souboru & quot;
+%
+1 & quot;
+</translation>
+< /message>
+< message >
+<location filename = "../task/project/loadotio/loadotio.cpp"
+line = "68" / >
+    <source>Failed
+to
+load
+OpenTimelineIO
+from
+file & quot;
+%
+1 & quot;
 
-To remedy this, please do one of the following:
+OpenTimelineIO
+Error:
 
-1. Manually clear the disk cache in Disk preferences.
-2. Increase the maximum disk cache size in Disk preferences.
-3. Reduce usage of the disk cache (e.g. disable auto-cache or only cache specific sections of your sequence).</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1447"/>
-        <source>Save Project As</source>
-        <translation>Uložit projekt jako</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1540"/>
-        <source>Load Project</source>
-        <translation>Načíst projekt</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1599"/>
-        <source>Label Node</source>
-        <translation>Označit uzel</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1600"/>
-        <source>Set node label</source>
-        <translation>Nastavit štítek uzlu</translation>
-    </message>
-    <message>
-        <location filename="../core.h" line="260"/>
-        <source>Sequence %1</source>
-        <translation>Úryvek %1</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1648"/>
-        <source>Cannot open recent project</source>
-        <translation>Nelze otevřít nedávný projekt</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1649"/>
-        <source>The project &quot;%1&quot; doesn&apos;t exist. Would you like to remove this file from the recent list?</source>
-        <translation>Projekt &quot;%1&quot; neexistuje. Chcete tento soubor odstranit ze seznamu nedávno otevřených souborů?</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1668"/>
-        <source>Unsaved Changes</source>
-        <translation>Neuložené změny</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1670"/>
-        <source>The project &apos;%1&apos; has unsaved changes. Would you like to save them?</source>
-        <translation>Projekt &apos;%1&apos; má neuložené změny. Chcete je uložit?</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1674"/>
-        <source>Save</source>
-        <translation>Uložit</translation>
-    </message>
-    <message>
-        <source>Save All</source>
-        <translation type="vanished">Uložit vše</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1676"/>
-        <source>Don&apos;t Save</source>
-        <translation>Neukládat</translation>
-    </message>
-    <message>
-        <source>Don&apos;t Save All</source>
-        <translation type="vanished">Neukládat vše</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1738"/>
-        <source>Failed to cache sequence</source>
-        <translation>Nepodařilo se uložit úryvek do vyrovnávací paměti</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1739"/>
-        <source>No active viewer found with this sequence.</source>
-        <translation>Nenalezen žádný prohlížeč s tímto úryvkem.</translation>
-    </message>
-    <message>
-        <location filename="../core.cpp" line="1836"/>
-        <source>Open Project</source>
-        <translation>Otevřít projekt</translation>
-    </message>
-</context>
-<context>
-    <name>olive::CornerPinDistortNode</name>
-    <message>
-        <location filename="../node/distort/cornerpin/cornerpindistortnode.cpp" line="78"/>
-        <source>Texture</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/distort/cornerpin/cornerpindistortnode.cpp" line="79"/>
-        <source>Perspective</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/distort/cornerpin/cornerpindistortnode.cpp" line="80"/>
-        <source>Top Left</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/distort/cornerpin/cornerpindistortnode.cpp" line="81"/>
-        <source>Top Right</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/distort/cornerpin/cornerpindistortnode.cpp" line="82"/>
-        <source>Bottom Right</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/distort/cornerpin/cornerpindistortnode.cpp" line="83"/>
-        <source>Bottom Left</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/distort/cornerpin/cornerpindistortnode.h" line="43"/>
-        <source>Corner Pin</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/distort/cornerpin/cornerpindistortnode.h" line="58"/>
-        <source>Distort the image by dragging the corners.</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::CrashHandlerDialog</name>
-    <message>
-        <source>Olive</source>
-        <translation type="vanished">Olive</translation>
-    </message>
-    <message>
-        <source>We&apos;re sorry, Olive has crashed. Please help us fix it by sending an error report.</source>
-        <translation type="vanished">Je nám to líto, ale Olive spadl. Pomozte nám jej opravit zasláním chybové zprávy.</translation>
-    </message>
-    <message>
-        <location filename="../crashhandler/crashhandler.cpp" line="49"/>
-        <source>Oak Video Editor</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../crashhandler/crashhandler.cpp" line="58"/>
-        <source>We&apos;re sorry, Oak Video Editor has crashed. Please help us fix it by sending an error report.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../crashhandler/crashhandler.cpp" line="67"/>
-        <source>Describe what you were doing in as much detail as possible. If you can, provide steps to reproduce this crash.</source>
-        <translation>Co nejpodrobněji popište, co jste dělal. Pokud můžete, poskytněte popis kroků k zopakování tohoto pádu.</translation>
-    </message>
-    <message>
-        <location filename="../crashhandler/crashhandler.cpp" line="76"/>
-        <source>Crash Report:</source>
-        <translation>Zpráva o pádu:</translation>
-    </message>
-    <message>
-        <location filename="../crashhandler/crashhandler.cpp" line="89"/>
-        <source>Send Error Report</source>
-        <translation>Poslat zprávu o chybě</translation>
-    </message>
-    <message>
-        <location filename="../crashhandler/crashhandler.cpp" line="94"/>
-        <source>Don&apos;t Send</source>
-        <translation>Neposílat</translation>
-    </message>
-    <message>
-        <location filename="../crashhandler/crashhandler.cpp" line="104"/>
-        <source>Waiting for crash report to be generated...</source>
-        <translation>Čeká se na vytvoření zprávy o pádu...</translation>
-    </message>
-    <message>
-        <location filename="../crashhandler/crashhandler.cpp" line="167"/>
-        <source>Upload Failed</source>
-        <translation>Nahrání selhalo</translation>
-    </message>
-    <message>
-        <location filename="../crashhandler/crashhandler.cpp" line="169"/>
-        <source>Failed to send error report (%1). Please try again later.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../crashhandler/crashhandler.cpp" line="189"/>
-        <source>SSL Error</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../crashhandler/crashhandler.cpp" line="190"/>
-        <source>Encountered the following SSL errors:
-
-%1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../crashhandler/crashhandler.cpp" line="227"/>
-        <source>You must write a description to submit this crash report.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Failed to send error report. Please try again later.</source>
-        <translation type="vanished">Nepodařilo se poslat zprávu o chybě. Zkuste to, prosím, znovu později.</translation>
-    </message>
-    <message>
-        <source>No Crash Summary</source>
-        <translation type="vanished">Žádné shrnutí pádu</translation>
-    </message>
-    <message>
-        <source>Are you sure you want to send an error report with no crash summary?</source>
-        <translation type="vanished">Opravdu chcete odeslat zprávu o chybě bez shrnutí okolností pádu?</translation>
-    </message>
-    <message>
-        <location filename="../crashhandler/crashhandler.cpp" line="311"/>
-        <location filename="../crashhandler/crashhandler.cpp" line="341"/>
-        <source>Failed to send report</source>
-        <translation>Nepodařilo se odeslat hlášení</translation>
-    </message>
-    <message>
-        <location filename="../crashhandler/crashhandler.cpp" line="312"/>
-        <source>Failed to find symbols necessary to send report. This is a packaging issue. Please notify the maintainers of this package.</source>
-        <translation>Nepodařilo se najít symboly nutné k odeslání hlášení. Toto je problém s balením. Informujte prosím správce tohoto balíčku.</translation>
-    </message>
-    <message>
-        <location filename="../crashhandler/crashhandler.cpp" line="342"/>
-        <source>Failed to open symbol file. You may not have permission to access it.</source>
-        <translation>Soubor symbolu se nepodařilo otevřít. Možná nemáte oprávnění pro přístupování k němu.</translation>
-    </message>
-    <message>
-        <location filename="../crashhandler/crashhandler.cpp" line="366"/>
-        <source>Confirm Close</source>
-        <translation>Potvrdit zavření</translation>
-    </message>
-    <message>
-        <location filename="../crashhandler/crashhandler.cpp" line="368"/>
-        <source>Crash report is still uploading. Closing now may result in no report being sent. Are you sure you wish to close?</source>
-        <translation>Zpráva o pádu se stále nahrává. Uzavření nyní může mít za následek, že nebude odesláno žádné hlášení. Opravdu chcete zavřít?</translation>
-    </message>
-</context>
-<context>
-    <name>olive::CropDistortNode</name>
-    <message>
-        <location filename="../node/distort/crop/cropdistortnode.cpp" line="82"/>
-        <source>Texture</source>
-        <translation>Povrch</translation>
-    </message>
-    <message>
-        <location filename="../node/distort/crop/cropdistortnode.cpp" line="83"/>
-        <source>Left</source>
-        <translation>Vlevo</translation>
-    </message>
-    <message>
-        <location filename="../node/distort/crop/cropdistortnode.cpp" line="84"/>
-        <source>Top</source>
-        <translation>Nahoře</translation>
-    </message>
-    <message>
-        <location filename="../node/distort/crop/cropdistortnode.cpp" line="85"/>
-        <source>Right</source>
-        <translation>Vpravo</translation>
-    </message>
-    <message>
-        <location filename="../node/distort/crop/cropdistortnode.cpp" line="86"/>
-        <source>Bottom</source>
-        <translation>Dole</translation>
-    </message>
-    <message>
-        <location filename="../node/distort/crop/cropdistortnode.cpp" line="87"/>
-        <source>Feather</source>
-        <translation>Pero</translation>
-    </message>
-    <message>
-        <location filename="../node/distort/crop/cropdistortnode.h" line="44"/>
-        <source>Crop</source>
-        <translation>Oříznout</translation>
-    </message>
-    <message>
-        <location filename="../node/distort/crop/cropdistortnode.h" line="59"/>
-        <source>Crop the edges of an image.</source>
-        <translation>Oříznout okraje obrázku.</translation>
-    </message>
-</context>
-<context>
-    <name>olive::CrossDissolveTransition</name>
-    <message>
-        <location filename="../node/block/transition/crossdissolve/crossdissolvetransition.cpp" line="33"/>
-        <source>Cross Dissolve</source>
-        <translation>Prolnutí záběrů</translation>
-    </message>
-    <message>
-        <location filename="../node/block/transition/crossdissolve/crossdissolvetransition.cpp" line="48"/>
-        <source>Smoothly transition between two clips.</source>
-        <translation>Plynulý přechod mezi dvěma záběry.</translation>
-    </message>
-</context>
-<context>
-    <name>olive::CurvePanel</name>
-    <message>
-        <location filename="../panel/curve/curve.cpp" line="73"/>
-        <source>Curve Editor</source>
-        <translation>Editor křivky</translation>
-    </message>
-</context>
-<context>
-    <name>olive::CurveView</name>
-    <message>
-        <location filename="../widget/curvewidget/curveview.cpp" line="266"/>
-        <source>Zoom to Fit</source>
-        <translation>Zvětšit pro přizpůsobení</translation>
-    </message>
-    <message>
-        <location filename="../widget/curvewidget/curveview.cpp" line="269"/>
-        <source>Zoom to Fit Selected</source>
-        <translation>Zvětšit pro přizpůsobení vybraného</translation>
-    </message>
-    <message>
-        <location filename="../widget/curvewidget/curveview.cpp" line="273"/>
-        <source>Reset Zoom</source>
-        <translation>Obnovit výchozí zvětšení</translation>
-    </message>
-    <message>
-        <location filename="../widget/curvewidget/curveview.cpp" line="434"/>
-        <source>Moved Keyframe Bezier Control Point</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::CurveWidget</name>
-    <message>
-        <location filename="../widget/curvewidget/curvewidget.cpp" line="68"/>
-        <source>Linear</source>
-        <translation>Lineární</translation>
-    </message>
-    <message>
-        <location filename="../widget/curvewidget/curvewidget.cpp" line="75"/>
-        <source>Bezier</source>
-        <translation>Bézier</translation>
-    </message>
-    <message>
-        <location filename="../widget/curvewidget/curvewidget.cpp" line="82"/>
-        <source>Hold</source>
-        <translation>Držet</translation>
-    </message>
-    <message>
-        <location filename="../widget/curvewidget/curvewidget.cpp" line="351"/>
-        <source>Changed Type of %1 Keyframe(s) to %2</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::CustomCacheTask</name>
-    <message>
-        <location filename="../task/customcache/customcachetask.cpp" line="30"/>
-        <source>Caching custom range for &quot;%1&quot;</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::DespillNode</name>
-    <message>
-        <location filename="../node/keying/despill/despill.cpp" line="49"/>
-        <source>Despill</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/despill/despill.cpp" line="64"/>
-        <source>Selection of simple depsill operations</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/despill/despill.cpp" line="71"/>
-        <source>Input</source>
-        <translation type="unfinished">Vstup</translation>
-    </message>
-    <message>
-        <location filename="../node/keying/despill/despill.cpp" line="73"/>
-        <source>Key Color</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/despill/despill.cpp" line="74"/>
-        <source>Green</source>
-        <translation type="unfinished">Zelená</translation>
-    </message>
-    <message>
-        <location filename="../node/keying/despill/despill.cpp" line="74"/>
-        <source>Blue</source>
-        <translation type="unfinished">Modrá</translation>
-    </message>
-    <message>
-        <location filename="../node/keying/despill/despill.cpp" line="76"/>
-        <source>Method</source>
-        <translation type="unfinished">Metoda</translation>
-    </message>
-    <message>
-        <location filename="../node/keying/despill/despill.cpp" line="77"/>
-        <source>Average</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/despill/despill.cpp" line="77"/>
-        <source>Double Red Average</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/despill/despill.cpp" line="78"/>
-        <source>Double Average</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/despill/despill.cpp" line="78"/>
-        <source>Limit</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/keying/despill/despill.cpp" line="80"/>
-        <source>Preserve Luminance</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::DipToColorTransition</name>
-    <message>
-        <location filename="../node/block/transition/diptocolor/diptocolortransition.cpp" line="39"/>
-        <source>Dip To Color</source>
-        <translation>Ponořit do barvy</translation>
-    </message>
-    <message>
-        <location filename="../node/block/transition/diptocolor/diptocolortransition.cpp" line="54"/>
-        <source>Transition between clips by dipping to a color.</source>
-        <translation>Přechod mezi záběry ponořením do barvy.</translation>
-    </message>
-    <message>
-        <location filename="../node/block/transition/diptocolor/diptocolortransition.cpp" line="71"/>
-        <source>Color</source>
-        <translation type="unfinished">Barva</translation>
-    </message>
-</context>
-<context>
-    <name>olive::DiskCacheDialog</name>
-    <message>
-        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="41"/>
-        <source>Disk Cache: %1</source>
-        <translation>Disková vyrovnávací paměť: %1</translation>
-    </message>
-    <message>
-        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="43"/>
-        <source>Disk Cache Settings</source>
-        <translation>Nastavení diskové vyrovnávací paměti</translation>
-    </message>
-    <message>
-        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="47"/>
-        <source>Maximum Disk Cache:</source>
-        <translation>Největší disková vyrovnávací paměť:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="50"/>
-        <source>%1 GB</source>
-        <translation>%1 GB</translation>
-    </message>
-    <message>
-        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="58"/>
-        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="106"/>
-        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="118"/>
-        <source>Clear Disk Cache</source>
-        <translation>Vyprázdnit diskovou vyrovnávací paměť</translation>
-    </message>
-    <message>
-        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="67"/>
-        <source>Automatically clear disk cache on close</source>
-        <translation>Při zavření automaticky vyprázdnit diskovou vyrovnávací paměť</translation>
-    </message>
-    <message>
-        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="107"/>
-        <source>Are you sure you want to clear the disk cache in &apos;%1&apos;?</source>
-        <translation>Opravdu chcete vyprázdnit diskovou vyrovnávací paměť v &apos;%1&apos;?</translation>
-    </message>
-    <message>
-        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="115"/>
-        <source>Disk Cache Cleared</source>
-        <translation>Disková vyrovnávací paměť vyprázdněna</translation>
-    </message>
-    <message>
-        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="119"/>
-        <source>Disk cache failed to fully clear. You may have to delete the cache files manually.</source>
-        <translation>Diskovou vyrovnávací paměť se nepodařilo plně vyprázdnit. Možná budete muset soubory vyrovnávací paměti odstranit ručně.</translation>
-    </message>
-    <message>
-        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="122"/>
-        <source>Disk Cache Partially Cleared</source>
-        <translation>Disková vyrovnávací paměť částečně vyprázdněna</translation>
-    </message>
-</context>
-<context>
-    <name>olive::DiskManager</name>
-    <message>
-        <location filename="../render/diskmanager.cpp" line="53"/>
-        <location filename="../render/diskmanager.cpp" line="196"/>
-        <source>Disk Cache Error</source>
-        <translation>Chyba diskové vyrovnávací paměti</translation>
-    </message>
-    <message>
-        <location filename="../render/diskmanager.cpp" line="54"/>
-        <source>Unable to set custom application disk cache. Using default instead.</source>
-        <translation>Nelze nastavit vlastní diskovou vyrovnávací paměť aplikace. Místo toho se používá výchozí.</translation>
-    </message>
-    <message>
-        <location filename="../render/diskmanager.cpp" line="165"/>
-        <source>Disk Cache</source>
-        <translation>Disková vyrovnávací paměť</translation>
-    </message>
-    <message>
-        <location filename="../render/diskmanager.cpp" line="166"/>
-        <source>You&apos;ve chosen to change the default disk cache location. This will invalidate your current cache. Would you like to continue?</source>
-        <translation>Rozhodl jste se změnit výchozí umístění diskové vyrovnávací paměti. To zneplatní vaši nynější vyrovnávací paměť. Chcete pokračovat?</translation>
-    </message>
-    <message>
-        <location filename="../render/diskmanager.cpp" line="197"/>
-        <source>Failed to open disk cache at &quot;%1&quot;. Try a different folder.</source>
-        <translation>Nepodařilo se otevřít diskovou vyrovnávací paměť &quot;%1&quot;. Zkuste jinou složku.</translation>
-    </message>
-</context>
-<context>
-    <name>olive::DisplayTransformNode</name>
-    <message>
-        <location filename="../node/color/displaytransform/displaytransform.cpp" line="50"/>
-        <source>Display Transform</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/color/displaytransform/displaytransform.cpp" line="65"/>
-        <source>Converts an image to or from a display color space.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/color/displaytransform/displaytransform.cpp" line="72"/>
-        <source>Input</source>
-        <translation type="unfinished">Vstup</translation>
-    </message>
-    <message>
-        <location filename="../node/color/displaytransform/displaytransform.cpp" line="73"/>
-        <source>Display</source>
-        <translation type="unfinished">Zobrazení</translation>
-    </message>
-    <message>
-        <location filename="../node/color/displaytransform/displaytransform.cpp" line="74"/>
-        <source>View</source>
-        <translation type="unfinished">Pohled</translation>
-    </message>
-    <message>
-        <location filename="../node/color/displaytransform/displaytransform.cpp" line="75"/>
-        <source>Direction</source>
-        <translation type="unfinished">Směr</translation>
-    </message>
-    <message>
-        <location filename="../node/color/displaytransform/displaytransform.cpp" line="76"/>
-        <source>Forward</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/color/displaytransform/displaytransform.cpp" line="76"/>
-        <source>Inverse</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::DropShadowFilter</name>
-    <message>
-        <location filename="../node/filter/dropshadow/dropshadowfilter.cpp" line="69"/>
-        <source>Texture</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/filter/dropshadow/dropshadowfilter.cpp" line="70"/>
-        <source>Color</source>
-        <translation type="unfinished">Barva</translation>
-    </message>
-    <message>
-        <location filename="../node/filter/dropshadow/dropshadowfilter.cpp" line="71"/>
-        <source>Distance</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/filter/dropshadow/dropshadowfilter.cpp" line="72"/>
-        <source>Angle</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/filter/dropshadow/dropshadowfilter.cpp" line="73"/>
-        <source>Softness</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/filter/dropshadow/dropshadowfilter.cpp" line="74"/>
-        <source>Opacity</source>
-        <translation type="unfinished">Neprůhlednost</translation>
-    </message>
-    <message>
-        <location filename="../node/filter/dropshadow/dropshadowfilter.cpp" line="75"/>
-        <source>Faster (Lower Quality)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/filter/dropshadow/dropshadowfilter.h" line="39"/>
-        <source>Drop Shadow</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/filter/dropshadow/dropshadowfilter.h" line="51"/>
-        <source>Adds a drop shadow to an image.</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::ElapsedCounterWidget</name>
-    <message>
-        <location filename="../widget/taskview/elapsedcounterwidget.cpp" line="95"/>
-        <source>Elapsed: %1</source>
-        <translation>Uplynulo: %1</translation>
-    </message>
-    <message>
-        <location filename="../widget/taskview/elapsedcounterwidget.cpp" line="97"/>
-        <source>Remaining: %1</source>
-        <translation>Zbývá: %1</translation>
-    </message>
-</context>
-<context>
-    <name>olive::ExportAdvancedVideoDialog</name>
-    <message>
-        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="33"/>
-        <source>Advanced</source>
-        <translation>Pokročilé</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="41"/>
-        <source>Pixel</source>
-        <translation>Obrazový bod</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="47"/>
-        <source>Pixel Format:</source>
-        <translation>Formát pixelu:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="55"/>
-        <source>YUV Color Range:</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="59"/>
-        <source>Limited (16-235)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="59"/>
-        <source>Full (0-255)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="67"/>
-        <source>Performance</source>
-        <translation>Provedení</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="73"/>
-        <source>Threads:</source>
-        <translation>Vlákna:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="78"/>
-        <source>Auto</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::ExportAudioTab</name>
-    <message>
-        <location filename="../dialog/export/exportaudiotab.cpp" line="43"/>
-        <source>Codec:</source>
-        <translation>Kodek:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportaudiotab.cpp" line="58"/>
-        <source>Sample Rate:</source>
-        <translation>Vzorkovací kmitočet:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportaudiotab.cpp" line="65"/>
-        <source>Channel Layout:</source>
-        <translation>Rozložení kanálu:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportaudiotab.cpp" line="72"/>
-        <source>Format:</source>
-        <translation>Formát:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportaudiotab.cpp" line="79"/>
-        <source>Bit Rate:</source>
-        <translation>Datový tok:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportaudiotab.cpp" line="85"/>
-        <source>%1 kbps</source>
-        <translation>%1 kB/s</translation>
-    </message>
-</context>
-<context>
-    <name>olive::ExportCodec</name>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="34"/>
-        <source>DNxHD</source>
-        <translation>DNxHD</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="36"/>
-        <source>H.264</source>
-        <translation>H.264</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="38"/>
-        <source>H.264 RGB</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="40"/>
-        <source>H.265</source>
-        <translation>H.265</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="42"/>
-        <source>OpenEXR</source>
-        <translation>OpenEXR</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="44"/>
-        <source>PNG</source>
-        <translation>PNG</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="46"/>
-        <source>ProRes</source>
-        <translation>ProRes</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="48"/>
-        <source>Cineform</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="50"/>
-        <source>TIFF</source>
-        <translation>TIFF</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="52"/>
-        <source>MP2</source>
-        <translation>MP2</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="54"/>
-        <source>MP3</source>
-        <translation>MP3</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="56"/>
-        <source>AAC</source>
-        <translation>AAC</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="58"/>
-        <source>PCM (Uncompressed)</source>
-        <translation>PCM (nekomprimovaný)</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="60"/>
-        <source>FLAC</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="62"/>
-        <source>Opus</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="64"/>
-        <source>Vorbis</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="66"/>
-        <source>VP9</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="68"/>
-        <source>AV1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="70"/>
-        <source>SubRip SRT</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/exportcodec.cpp" line="75"/>
-        <source>Unknown</source>
-        <translation>Neznámý</translation>
-    </message>
-</context>
-<context>
-    <name>olive::ExportDialog</name>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="68"/>
-        <source>Filename:</source>
-        <translation>Název souboru:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="78"/>
-        <source>Browse for exported file filename</source>
-        <translation>Procházet na souborový název eportovaného souboru</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="85"/>
-        <source>Preset:</source>
-        <translation>Přednastavení:</translation>
-    </message>
-    <message>
-        <source>Same As Source - High Quality</source>
-        <translation type="vanished">Stejné jako zdroj - vysoká kvalita</translation>
-    </message>
-    <message>
-        <source>Same As Source - Medium Quality</source>
-        <translation type="vanished">Stejné jako zdroj - střední kvalita</translation>
-    </message>
-    <message>
-        <source>Same As Source - Low Quality</source>
-        <translation type="vanished">Stejné jako zdroj - nízká kvalita</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="115"/>
-        <source>Range:</source>
-        <translation>Rozsah:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="118"/>
-        <source>Entire Sequence</source>
-        <translation>Celý úryvek</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="119"/>
-        <source>In to Out</source>
-        <translation>Od začátku po konec</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="131"/>
-        <source>Format:</source>
-        <translation>Formát:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="139"/>
-        <source>Export Video</source>
-        <translation>Exportovat obraz</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="142"/>
-        <source>Export Audio</source>
-        <translation>Exportovat zvuk</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="145"/>
-        <source>Export Subtitles</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="156"/>
-        <source>Video</source>
-        <translation>Obraz</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="166"/>
-        <source>Audio</source>
-        <translation>Zvuk</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="169"/>
-        <source>Subtitles</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="183"/>
-        <source>Run In Background</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="184"/>
-        <source>Exporting in the background allows you to continue using Oak Video Editor while exporting, but may result in slower export speeds, and mayseverely impact editing and playback performance.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="191"/>
-        <source>Import Result After Export</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="206"/>
-        <location filename="../dialog/export/export.cpp" line="409"/>
-        <source>Export</source>
-        <translation>Exportovat</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="211"/>
-        <source>Cancel</source>
-        <translation type="unfinished">Zrušit</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="221"/>
-        <source>Preview</source>
-        <translation>Náhled</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="312"/>
-        <source>Invalid parameters</source>
-        <translation>Neplatné parametry</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="313"/>
-        <source>Video, audio, and subtitles are disabled. There&apos;s nothing to export.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="347"/>
-        <source>The intended output directory doesn&apos;t exist and Oak Video Editor couldn&apos;t create it. Please choose a different filename.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="358"/>
-        <source>Export is set to an image sequence, but the filename does not have a section for digits (formatted as [#####] where the amount of # is the amount of digits).</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message numerus="yes">
-        <location filename="../dialog/export/export.cpp" line="370"/>
-        <source>Filename doesn&apos;t contain enough digits for the amount of frames this export will need (need %1 for %n frame(s)).</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
-            <numerusform></numerusform>
-        </translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="582"/>
-        <source>Default</source>
-        <translation type="unfinished">Výchozí</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="585"/>
-        <source>Last Used</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Both video and audio are disabled. There&apos;s nothing to export.</source>
-        <translation type="vanished">Obraz i zvuk jsou vypnuty. Není co exportovat.</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="326"/>
-        <location filename="../dialog/export/export.cpp" line="357"/>
-        <location filename="../dialog/export/export.cpp" line="369"/>
-        <source>Invalid filename</source>
-        <translation>Neplatný název souboru</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="327"/>
-        <source>The filename must contain the extension &quot;%1&quot;. Would you like to append it automatically?</source>
-        <translation>Název souboru musí obsahovat příponu &quot;%1&quot;. Chcete ji připojit automaticky?</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="346"/>
-        <source>Failed to create output directory</source>
-        <translation>Nepodařilo se vytvořit výstupní adresář</translation>
-    </message>
-    <message>
-        <source>The intended output directory doesn&apos;t exist and Olive couldn&apos;t create it. Please choose a different filename.</source>
-        <translation type="vanished">Zamýšlený výstupní adresář neexistuje a Olive jej nemohl vytvořit. Vyberte jiný název souboru.</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="381"/>
-        <source>Confirm Overwrite</source>
-        <translation>Potvrdit přepsání</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="382"/>
-        <source>The file &quot;%1&quot; already exists. Do you want to overwrite it?</source>
-        <translation>Soubor &quot;%1&quot; již existuje. Chcete jej přepsat?</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="395"/>
-        <source>Invalid Parameters</source>
-        <translation>Neplatné parametry</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/export.cpp" line="396"/>
-        <source>Width and height must be multiples of 2.</source>
-        <translation>Šířka a výška musí být násobkem 2.</translation>
-    </message>
-</context>
-<context>
-    <name>olive::ExportFormat</name>
-    <message>
-        <location filename="../codec/exportformat.cpp" line="33"/>
-        <source>DNxHD</source>
-        <translation>DNxHD</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportformat.cpp" line="35"/>
-        <source>Matroska Video</source>
-        <translation>Video Matroska</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportformat.cpp" line="37"/>
-        <source>MPEG-4 Video</source>
-        <translation>Video MPEG-4</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportformat.cpp" line="39"/>
-        <source>MPEG-4 Audio</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/exportformat.cpp" line="41"/>
-        <source>OpenEXR</source>
-        <translation>OpenEXR</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportformat.cpp" line="43"/>
-        <source>PNG</source>
-        <translation>PNG</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportformat.cpp" line="45"/>
-        <source>TIFF</source>
-        <translation>TIFF</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportformat.cpp" line="47"/>
-        <source>QuickTime</source>
-        <translation>QuickTime</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportformat.cpp" line="49"/>
-        <source>Wave Audio</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/exportformat.cpp" line="51"/>
-        <source>AIFF</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/exportformat.cpp" line="53"/>
-        <source>MP3</source>
-        <translation type="unfinished">MP3</translation>
-    </message>
-    <message>
-        <location filename="../codec/exportformat.cpp" line="55"/>
-        <source>FLAC</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/exportformat.cpp" line="57"/>
-        <source>Ogg</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/exportformat.cpp" line="59"/>
-        <source>WebM</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/exportformat.cpp" line="61"/>
-        <source>SubRip SRT</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/exportformat.cpp" line="67"/>
-        <source>Unknown</source>
-        <translation>Neznámý</translation>
-    </message>
-</context>
-<context>
-    <name>olive::ExportFormatComboBox</name>
-    <message>
-        <location filename="../dialog/export/exportformatcombobox.cpp" line="40"/>
-        <source>Video</source>
-        <translation type="unfinished">Obraz</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportformatcombobox.cpp" line="44"/>
-        <source>Audio</source>
-        <translation type="unfinished">Zvuk</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportformatcombobox.cpp" line="48"/>
-        <source>Subtitle</source>
-        <translation type="unfinished">Titulek</translation>
-    </message>
-</context>
-<context>
-    <name>olive::ExportSavePresetDialog</name>
-    <message>
-        <location filename="../dialog/export/exportsavepresetdialog.cpp" line="56"/>
-        <source>Name:</source>
-        <translation type="unfinished">Název:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportsavepresetdialog.cpp" line="69"/>
-        <source>Save Export Preset</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportsavepresetdialog.cpp" line="76"/>
-        <source>Invalid Name</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportsavepresetdialog.cpp" line="77"/>
-        <source>You must enter a name to save an export preset.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportsavepresetdialog.cpp" line="89"/>
-        <source>Overwrite Preset</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportsavepresetdialog.cpp" line="90"/>
-        <source>A preset with the name &quot;%1&quot; already exists. Do you wish to overwrite it?</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportsavepresetdialog.cpp" line="99"/>
-        <source>Write Error</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportsavepresetdialog.cpp" line="100"/>
-        <source>Failed to open file &quot;%1&quot; for writing.</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::ExportSubtitlesTab</name>
-    <message>
-        <location filename="../dialog/export/exportsubtitlestab.cpp" line="36"/>
-        <source>Export to sidecar file</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportsubtitlestab.cpp" line="41"/>
-        <source>Sidecar Format:</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportsubtitlestab.cpp" line="52"/>
-        <source>Codec:</source>
-        <translation type="unfinished">Kodek:</translation>
-    </message>
-</context>
-<context>
-    <name>olive::ExportTask</name>
-    <message>
-        <location filename="../task/export/export.cpp" line="49"/>
-        <source>Exporting &quot;%1&quot;</source>
-        <translation>Exportuje se &quot;%1&quot;</translation>
-    </message>
-    <message>
-        <location filename="../task/export/export.cpp" line="74"/>
-        <source>Failed to create encoder</source>
-        <translation>Nepodařilo se vytvořit kodér</translation>
-    </message>
-    <message>
-        <location filename="../task/export/export.cpp" line="79"/>
-        <source>Failed to open file: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../task/export/export.cpp" line="102"/>
-        <source>Failed to create subtitle encoder</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../task/export/export.cpp" line="107"/>
-        <source>Failed to open subtitle sidecar file: %1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Failed to open file</source>
-        <translation type="vanished">Nepodařilo se otevřít soubor</translation>
-    </message>
-    <message>
-        <location filename="../task/export/export.cpp" line="203"/>
-        <source>Failed to overwrite &quot;%1&quot;. Export has been saved as &quot;%2&quot; instead.</source>
-        <translation>Nepodařilo se přepsat &quot;%1&quot;. Výsledný soubor byl místo toho uložen jako &quot;%2&quot;.</translation>
-    </message>
-</context>
-<context>
-    <name>olive::ExportVideoTab</name>
-    <message>
-        <source>Basic</source>
-        <translation type="vanished">Základní</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportvideotab.cpp" line="87"/>
-        <source>General</source>
-        <translation type="unfinished">Obecné</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportvideotab.cpp" line="91"/>
-        <source>Width:</source>
-        <translation>Šířka:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportvideotab.cpp" line="99"/>
-        <source>Height:</source>
-        <translation>Výška:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportvideotab.cpp" line="107"/>
-        <source>Maintain Aspect Ratio:</source>
-        <translation>Zachovat poměr stran:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportvideotab.cpp" line="115"/>
-        <source>Scaling Method:</source>
-        <translation>Způsob změny velikosti:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportvideotab.cpp" line="119"/>
-        <source>Fit</source>
-        <translation>Přizpůsobit</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportvideotab.cpp" line="120"/>
-        <source>Stretch</source>
-        <translation>Roztáhnout</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportvideotab.cpp" line="121"/>
-        <source>Crop</source>
-        <translation>Oříznout</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportvideotab.cpp" line="130"/>
-        <source>Frame Rate:</source>
-        <translation>Snímková frekvence:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportvideotab.cpp" line="139"/>
-        <source>Pixel Aspect Ratio:</source>
-        <translation>Poměr stran pixelu:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportvideotab.cpp" line="146"/>
-        <source>Interlacing:</source>
-        <translation>Prokládání:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportvideotab.cpp" line="153"/>
-        <source>Quality:</source>
-        <translation>Kvalita:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportvideotab.cpp" line="174"/>
-        <source>Codec</source>
-        <translation>Kodek</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportvideotab.cpp" line="178"/>
-        <source>Codec:</source>
-        <translation>Kodek:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/exportvideotab.cpp" line="211"/>
-        <source>Advanced</source>
-        <translation>Pokročilé</translation>
-    </message>
-</context>
-<context>
-    <name>olive::FFmpegEncoder</name>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="128"/>
-        <source>Failed to allocate output context</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="156"/>
-        <source>Failed to find suitable pixel format for this buffer</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="228"/>
-        <source>Failed to configure filter graph</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="255"/>
-        <source>Failed to open IO context</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="262"/>
-        <source>Failed to write format header</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="295"/>
-        <source>Failed to add frame to filter graph</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="302"/>
-        <source>Failed to retrieve frame from buffer sink</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="337"/>
-        <source>Failed to allocate sample array</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="423"/>
-        <source>Failed to resample audio</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="482"/>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="646"/>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="881"/>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="904"/>
-        <source>Failed to write interleaved packet</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="606"/>
-        <source>%1: %2 %3</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="617"/>
-        <source>Failed to send frame to encoder</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="633"/>
-        <source>Failed to receive packet from decoder</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="668"/>
-        <source>Cannot initialize a stream that is not a video, audio, or subtitle type</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="677"/>
-        <source>Failed to find codec for 0x%1</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="683"/>
-        <source>Retrieved unexpected codec type %1 for codec %2</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="809"/>
-        <source>Failed to allocate AVStream</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="816"/>
-        <source>Failed to allocate AVCodecContext</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="846"/>
-        <source>Failed to open encoder</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="853"/>
-        <source>Failed to copy codec parameters to stream</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="931"/>
-        <source>Failed to create resampling context</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="959"/>
-        <source>Failed to create audio frame</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::FileField</name>
-    <message>
-        <location filename="../widget/filefield/filefield.cpp" line="60"/>
-        <source>Open Directory</source>
-        <translation>Otevřít adresář</translation>
-    </message>
-    <message>
-        <location filename="../widget/filefield/filefield.cpp" line="62"/>
-        <source>Open File</source>
-        <translation>Otevřít soubor</translation>
-    </message>
-</context>
-<context>
-    <name>olive::FlipDistortNode</name>
-    <message>
-        <location filename="../node/distort/flip/flipdistortnode.cpp" line="48"/>
-        <source>Flip</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/distort/flip/flipdistortnode.cpp" line="63"/>
-        <source>Flips an image horizontally or vertically</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/distort/flip/flipdistortnode.cpp" line="70"/>
-        <source>Input</source>
-        <translation type="unfinished">Vstup</translation>
-    </message>
-    <message>
-        <location filename="../node/distort/flip/flipdistortnode.cpp" line="71"/>
-        <source>Horizontal</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/distort/flip/flipdistortnode.cpp" line="72"/>
-        <source>Vertical</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::FloatSlider</name>
-    <message>
-        <location filename="../widget/slider/floatslider.cpp" line="75"/>
-        <source>%1 dB</source>
-        <translation>%1 dB</translation>
-    </message>
-    <message>
-        <location filename="../widget/slider/floatslider.cpp" line="78"/>
-        <source>%1%</source>
-        <translation>%1%</translation>
-    </message>
-    <message>
-        <location filename="../widget/slider/floatslider.cpp" line="121"/>
-        <source>∞</source>
-        <translation>∞</translation>
-    </message>
-</context>
-<context>
-    <name>olive::Folder</name>
-    <message>
-        <location filename="../node/project/folder/folder.cpp" line="58"/>
-        <source>Children</source>
-        <translation>Potomci</translation>
-    </message>
-    <message>
-        <location filename="../node/project/folder/folder.h" line="45"/>
-        <source>Folder</source>
-        <translation>Složka</translation>
-    </message>
-    <message>
-        <location filename="../node/project/folder/folder.h" line="60"/>
-        <source>Organize several items into a single collection.</source>
-        <translation>Uspořádejte několik položek do jedné sbírky.</translation>
-    </message>
-</context>
-<context>
-    <name>olive::Footage</name>
-    <message>
-        <location filename="../node/project/footage/footage.cpp" line="82"/>
-        <source>Filename</source>
-        <translation>Název souboru</translation>
-    </message>
-    <message>
-        <source>%1 FPS</source>
-        <translation type="vanished">%1 FPS</translation>
-    </message>
-    <message>
-        <source>%1 Hz</source>
-        <translation type="vanished">%1 Hz</translation>
-    </message>
-    <message>
-        <location filename="../node/project/footage/footage.cpp" line="278"/>
-        <source>%1: Image - %2x%3</source>
-        <translation>%1: Obrázek - %2x%3</translation>
-    </message>
-    <message>
-        <location filename="../node/project/footage/footage.cpp" line="283"/>
-        <source>%1: Video - %2x%3</source>
-        <translation>%1: Obraz - %2x%3</translation>
-    </message>
-    <message>
-        <source>%1: Audio - %2 Channel(s), %3Hz</source>
-        <translation type="vanished">%1: Zvuk - %2 kanál(y), %3 Hz</translation>
-    </message>
-    <message numerus="yes">
-        <location filename="../node/project/footage/footage.cpp" line="292"/>
-        <source>%1: Audio - %n Channel(s), %2Hz</source>
-        <translation type="unfinished">
-            <numerusform></numerusform>
-            <numerusform></numerusform>
-            <numerusform></numerusform>
-        </translation>
-    </message>
-    <message>
-        <location filename="../node/project/footage/footage.cpp" line="300"/>
-        <source>%1: Subtitle</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/project/footage/footage.cpp" line="370"/>
-        <source>Video</source>
-        <translation>Obraz</translation>
-    </message>
-    <message>
-        <location filename="../node/project/footage/footage.cpp" line="372"/>
-        <source>Audio</source>
-        <translation>Zvuk</translation>
-    </message>
-    <message>
-        <location filename="../node/project/footage/footage.cpp" line="374"/>
-        <source>Subtitle</source>
-        <translation>Titulek</translation>
-    </message>
-    <message>
-        <location filename="../node/project/footage/footage.cpp" line="516"/>
-        <source>Invalid</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>Data</source>
-        <translation type="vanished">Data</translation>
-    </message>
-    <message>
-        <source>Attachment</source>
-        <translation type="vanished">Příloha</translation>
-    </message>
-    <message>
-        <location filename="../node/project/footage/footage.cpp" line="380"/>
-        <source>Unknown</source>
-        <translation>Neznámý</translation>
-    </message>
-    <message>
-        <location filename="../node/project/footage/footage.cpp" line="482"/>
-        <source>Filename: %1</source>
-        <translation>Název souboru: %1</translation>
-    </message>
-    <message>
-        <source>This footage is not valid for use</source>
-        <translation type="vanished">Tento záznam není platný pro použití</translation>
-    </message>
-    <message>
-        <source>Footage</source>
-        <translation type="vanished">Záznam</translation>
-    </message>
-    <message>
-        <location filename="../node/project/footage/footage.h" line="58"/>
-        <source>Media</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../node/project/footage/footage.h" line="73"/>
-        <source>Import video, audio, or still image files into the composition.</source>
-        <translation>Nahrajte do skladby obraz, zvuk nebo souborry statických obrázků.</translation>
-    </message>
-</context>
-<context>
-    <name>olive::FootagePropertiesDialog</name>
-    <message>
-        <location filename="../dialog/footageproperties/footageproperties.cpp" line="50"/>
-        <source>&quot;%1&quot; Properties</source>
-        <translation>&quot;%1&quot; Vlastnosti</translation>
-    </message>
-    <message>
-        <location filename="../dialog/footageproperties/footageproperties.cpp" line="55"/>
-        <source>Name:</source>
-        <translation>Název:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/footageproperties/footageproperties.cpp" line="61"/>
-        <source>Tracks:</source>
-        <translation>Stopy:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/footageproperties/footageproperties.cpp" line="104"/>
-        <source>Subtitles</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/footageproperties/footageproperties.cpp" line="109"/>
-        <source>Unknown</source>
-        <translation type="unfinished">Neznámý</translation>
-    </message>
-    <message>
-        <location filename="../dialog/footageproperties/footageproperties.cpp" line="205"/>
-        <source>Set Footage &quot;%1&quot; Properties</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::FootageRelinkDialog</name>
-    <message>
-        <location filename="../dialog/footagerelink/footagerelinkdialog.cpp" line="53"/>
-        <source>Footage</source>
-        <translation>Záznam</translation>
-    </message>
-    <message>
-        <location filename="../dialog/footagerelink/footagerelinkdialog.cpp" line="53"/>
-        <source>Filename</source>
-        <translation>Název souboru</translation>
-    </message>
-    <message>
-        <location filename="../dialog/footagerelink/footagerelinkdialog.cpp" line="53"/>
-        <source>Actions</source>
-        <translation>Činnosti</translation>
-    </message>
-    <message>
-        <location filename="../dialog/footagerelink/footagerelinkdialog.cpp" line="69"/>
-        <source>Browse</source>
-        <translation>Procházet</translation>
-    </message>
-    <message>
-        <location filename="../dialog/footagerelink/footagerelinkdialog.cpp" line="94"/>
-        <source>Relink Footage</source>
-        <translation>Opětovně propojit záběry</translation>
-    </message>
-    <message>
-        <location filename="../dialog/footagerelink/footagerelinkdialog.cpp" line="113"/>
-        <source>Relink &quot;%1&quot;</source>
-        <translation>Opětovně propojit &quot;%1&quot;</translation>
-    </message>
-    <message>
-        <location filename="../dialog/footagerelink/footagerelinkdialog.cpp" line="129"/>
-        <source>Unsupported media</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/footagerelink/footagerelinkdialog.cpp" line="130"/>
-        <source>This file type is not allowed by the current media type filter.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <source>All Files</source>
-        <translation type="vanished">Všechny soubory</translation>
-    </message>
-</context>
-<context>
-    <name>olive::FootageViewerPanel</name>
-    <message>
-        <location filename="../panel/footageviewer/footageviewer.cpp" line="63"/>
-        <source>Footage Viewer</source>
-        <translation>Prohlížeč záznamu</translation>
-    </message>
-</context>
-<context>
-    <name>olive::FrameRateComboBox</name>
-    <message>
-        <location filename="../widget/standardcombos/frameratecombobox.h" line="113"/>
-        <source>Custom Frame Rate</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../widget/standardcombos/frameratecombobox.h" line="114"/>
-        <source>Enter custom frame rate:</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../widget/standardcombos/frameratecombobox.h" line="141"/>
-        <source>Invalid Input</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../widget/standardcombos/frameratecombobox.h" line="142"/>
-        <source>Failed to convert &quot;%1&quot; to a frame rate.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../widget/standardcombos/frameratecombobox.h" line="173"/>
-        <source>Custom...</source>
-        <translation type="unfinished">Vlastní...</translation>
-    </message>
-    <message>
-        <location filename="../widget/standardcombos/frameratecombobox.h" line="176"/>
-        <source>Custom (%1)</source>
-        <translation type="unfinished">Vlastní (%1)</translation>
-    </message>
-</context>
-<context>
-    <name>olive::GapBlock</name>
-    <message>
-        <location filename="../node/block/gap/gap.cpp" line="33"/>
-        <source>Gap</source>
-        <translation>Mezera</translation>
-    </message>
-    <message>
-        <location filename="../node/block/gap/gap.cpp" line="43"/>
-        <source>A time-based node that represents an empty space.</source>
-        <translation>Na čase založený uzel představující prázdné místo.</translation>
-    </message>
-</context>
-<context>
-    <name>olive::GeneratorWithMerge</name>
-    <message>
-        <location filename="../node/generator/shape/generatorwithmerge.cpp" line="45"/>
-        <source>Base</source>
-        <translation type="unfinished">Základ</translation>
-    </message>
-</context>
-<context>
-    <name>olive::H264BitRateSection</name>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="225"/>
-        <source>Target Bit Rate (Mbps):</source>
-        <translation>Cílový datový tok (MB/s):</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="233"/>
-        <source>Maximum Bit Rate (Mbps):</source>
-        <translation>Největší datový tok (MB/s):</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="241"/>
-        <source>Two-Pass</source>
-        <translation>Dva průchody</translation>
-    </message>
-</context>
-<context>
-    <name>olive::H264FileSizeSection</name>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="279"/>
-        <source>Target File Size (MB):</source>
-        <translation>Cílová velikost souboru (MB):</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="287"/>
-        <source>Two-Pass</source>
-        <translation>Dva průchody</translation>
-    </message>
-</context>
-<context>
-    <name>olive::H264Section</name>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="47"/>
-        <source>Encode Speed:</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="50"/>
-        <source>This setting allows you to tweak the ratio of export speed to compression quality. 
-
-If using Constant Rate Factor, slower speeds will result in smaller file sizes for the same quality. 
-
-If using Target Bit Rate or Target File Size, slower speeds will result in higher quality for the same bitrate/filesize. 
-
-This setting is equivalent to the `preset` setting in libx264.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="56"/>
-        <source>Ultra Fast</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="57"/>
-        <source>Super Fast</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="58"/>
-        <source>Very Fast</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="59"/>
-        <source>Faster</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="60"/>
-        <source>Fast</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="61"/>
-        <source>Medium</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="62"/>
-        <source>Slow</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="63"/>
-        <source>Slower</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="64"/>
-        <source>Very Slow</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="73"/>
-        <source>Compression Method:</source>
-        <translation>Metoda komprese:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="78"/>
-        <source>Constant Rate Factor</source>
-        <translation>Činitel stálého datového toku</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="79"/>
-        <source>Target Bit Rate</source>
-        <translation>Cílový datový tok</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/h264section.cpp" line="80"/>
-        <source>Target File Size</source>
-        <translation>Cílová velikost souboru</translation>
-    </message>
-</context>
-<context>
-    <name>olive::HistoryPanel</name>
-    <message>
-        <location filename="../panel/history/historypanel.cpp" line="39"/>
-        <source>History</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::ImageSection</name>
-    <message>
-        <location filename="../dialog/export/codec/imagesection.cpp" line="38"/>
-        <source>Image Sequence:</source>
-        <translation>Obrázková řada:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/export/codec/imagesection.cpp" line="47"/>
-        <source>Frame to Export:</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::InterlacedComboBox</name>
-    <message>
-        <location filename="../widget/standardcombos/interlacedcombobox.h" line="39"/>
-        <source>None (Progressive)</source>
-        <translation>Žádný (progresivní)</translation>
-    </message>
-    <message>
-        <location filename="../widget/standardcombos/interlacedcombobox.h" line="40"/>
-        <source>Top-Field First</source>
-        <translation>Nejprve horní pole</translation>
-    </message>
-    <message>
-        <location filename="../widget/standardcombos/interlacedcombobox.h" line="41"/>
-        <source>Bottom-Field First</source>
-        <translation>Nejprve dolní pole</translation>
-    </message>
-</context>
-<context>
-    <name>olive::KeyframePropertiesDialog</name>
-    <message>
-        <location filename="../dialog/keyframeproperties/keyframeproperties.cpp" line="41"/>
-        <source>Keyframe Properties</source>
-        <translation>Vlastnosti klíčového snímku</translation>
-    </message>
-    <message>
-        <location filename="../dialog/keyframeproperties/keyframeproperties.cpp" line="70"/>
-        <source>In:</source>
-        <translation>Začátek:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/keyframeproperties/keyframeproperties.cpp" line="78"/>
-        <source>Out:</source>
-        <translation>Konec:</translation>
-    </message>
-    <message>
-        <location filename="../dialog/keyframeproperties/keyframeproperties.cpp" line="168"/>
-        <source>Linear</source>
-        <translation>Lineární</translation>
-    </message>
-    <message>
-        <location filename="../dialog/keyframeproperties/keyframeproperties.cpp" line="169"/>
-        <source>Hold</source>
-        <translation>Držet</translation>
-    </message>
-    <message>
-        <location filename="../dialog/keyframeproperties/keyframeproperties.cpp" line="170"/>
-        <source>Bezier</source>
-        <translation>Bézier</translation>
-    </message>
-    <message>
-        <location filename="../dialog/keyframeproperties/keyframeproperties.cpp" line="236"/>
-        <source>Set Keyframe Properties</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::KeyframeView</name>
-    <message>
-        <location filename="../widget/keyframeview/keyframeview.cpp" line="69"/>
-        <source>Deleted %1 Keyframe(s)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../widget/keyframeview/keyframeview.cpp" line="275"/>
-        <source>Pasted %1 Keyframe(s)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../widget/keyframeview/keyframeview.cpp" line="350"/>
-        <source>Moved %1 Keyframe(s)</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../widget/keyframeview/keyframeview.cpp" line="599"/>
-        <source>Linear</source>
-        <translation type="unfinished">Lineární</translation>
-    </message>
-    <message>
-        <location filename="../widget/keyframeview/keyframeview.cpp" line="600"/>
-        <source>Bezier</source>
-        <translation type="unfinished">Bézier</translation>
-    </message>
-    <message>
-        <location filename="../widget/keyframeview/keyframeview.cpp" line="601"/>
-        <source>Hold</source>
-        <translation type="unfinished">Držet</translation>
-    </message>
-    <message>
-        <location filename="../widget/keyframeview/keyframeview.cpp" line="627"/>
-        <source>P&amp;roperties</source>
-        <translation type="unfinished">&amp;Vlastnosti</translation>
-    </message>
-    <message>
-        <location filename="../widget/keyframeview/keyframeview.cpp" line="653"/>
-        <source>Set Type of %1 Keyframe(s)</source>
-        <translation type="unfinished"></translation>
-    </message>
-</context>
-<context>
-    <name>olive::KeyframeViewBase</name>
-    <message>
-        <source>Linear</source>
-        <translation type="vanished">Lineární</translation>
-    </message>
-    <message>
-        <source>Bezier</source>
-        <translation type="vanished">Bézier</translation>
-    </message>
-    <message>
-        <source>Hold</source>
-        <translation type="vanished">Držet</translation>
-    </message>
-    <message>
-        <source>P&amp;roperties</source>
-        <translation type="vanished">&amp;Vlastnosti</translation>
-    </message>
-</context>
-<context>
-    <name>olive::LoadOTIOTask</name>
-    <message>
-        <source>Failed to load OpenTimelineIO from file &quot;%1&quot;</source>
-        <translation type="vanished">Nepodařilo se načíst OpenTimelineIO ze souboru &quot;%1&quot;</translation>
-    </message>
-    <message>
-        <location filename="../task/project/loadotio/loadotio.cpp" line="68"/>
-        <source>Failed to load OpenTimelineIO from file &quot;%1&quot; 
-
-OpenTimelineIO Error:
-
-%2</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../task/project/loadotio/loadotio.cpp" line="96"/>
-        <source>Unknown OpenTimelineIO root element</source>
-        <translation>Neznámý kořenový prvek OpenTimelineIO</translation>
-    </message>
-    <message>
-        <location filename="../task/project/loadotio/loadotio.cpp" line="118"/>
-        <source>Sequence %1</source>
-        <translation type="unfinished">Úryvek %1</translation>
-    </message>
-    <message>
-        <location filename="../task/project/loadotio/loadotio.cpp" line="188"/>
-        <source>Failed to load clip</source>
-        <translation>Nepodařilo se načíst záběr</translation>
-    </message>
-</context>
-<context>
-    <name>olive::MainMenu</name>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="426"/>
-        <source>&amp;Save &apos;%1&apos;</source>
-        <translation>&amp;Uložit &apos;%1&apos;</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="428"/>
-        <source>Save &apos;%1&apos; &amp;As</source>
-        <translation>Uložit &apos;%1&apos; &amp;jako</translation>
-    </message>
-    <message>
-        <source>Close &apos;%1&apos;</source>
-        <translation type="vanished">Zavřít &apos;%1&apos;</translation>
-    </message>
-    <message>
-        <source>Close All Except &apos;%1&apos;</source>
-        <translation type="vanished">Zavřít vše vyjma &apos;%1&apos;</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="430"/>
-        <source>&amp;Save Project</source>
-        <translation>&amp;Uložit projekt</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="431"/>
-        <source>Save Project &amp;As</source>
-        <translation>Uložit projekt j&amp;ako</translation>
-    </message>
-    <message>
-        <source>Close Project</source>
-        <translation type="vanished">Zavřít projekt</translation>
-    </message>
-    <message>
-        <source>Close All Except Current Project</source>
-        <translation type="vanished">Zavřít vše vyjma nynějšího projektu</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="532"/>
-        <source>(None)</source>
-        <translation>(žádný)</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="800"/>
-        <source>&amp;File</source>
-        <translation>&amp;Soubor</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="801"/>
-        <source>&amp;New</source>
-        <translation>&amp;Nový</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="802"/>
-        <source>&amp;Open Project</source>
-        <translation>&amp;Otevřít projekt</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="803"/>
-        <source>Open &amp;Recent</source>
-        <translation>Otevřít &amp;nedávný</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="804"/>
-        <source>&amp;Clear Recent List</source>
-        <translation>V&amp;yprázdnit seznam nedávno otevřených</translation>
-    </message>
-    <message>
-        <source>Sa&amp;ve All Projects</source>
-        <translation type="vanished">&amp;Uložit všechny projekty</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="806"/>
-        <source>&amp;Import...</source>
-        <translation>&amp;Importovat...</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="807"/>
-        <source>&amp;Export</source>
-        <translation>&amp;Exportovat</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="808"/>
-        <source>&amp;Media...</source>
-        <translation>&amp;Záznamy...</translation>
-    </message>
-    <message>
-        <source>&amp;Project Properties...</source>
-        <translation type="vanished">Vlastnosti &amp;projektu...</translation>
-    </message>
-    <message>
-        <source>Close All Projects</source>
-        <translation type="vanished">Zavřít všechny projekty</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="54"/>
-        <source>Ctrl+O</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="60"/>
-        <source>Ctrl+S</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="63"/>
-        <source>Ctrl+Shift+S</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="66"/>
-        <source>F12</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="69"/>
-        <source>Ctrl+I</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="73"/>
-        <source>Ctrl+M</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="77"/>
-        <source>Shift+F10</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="92"/>
-        <source>Ctrl+Z</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="95"/>
-        <source>Ctrl+Shift+Z</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="106"/>
-        <source>Backspace</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="116"/>
-        <source>Ctrl+A</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="119"/>
-        <source>Ctrl+Shift+A</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="124"/>
-        <source>,</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="126"/>
-        <source>.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="129"/>
-        <source>Q</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="131"/>
-        <source>W</source>
-        <translation type="unfinished">W</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="133"/>
-        <source>Ctrl+Alt+Q</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="135"/>
-        <source>Ctrl+Alt+W</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="138"/>
-        <source>Alt+Left</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="140"/>
-        <source>Alt+Right</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="143"/>
-        <source>[</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="146"/>
-        <source>]</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="150"/>
-        <source>;</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="153"/>
-        <source>&apos;</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="156"/>
-        <source>M</source>
-        <translation type="unfinished">M</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="163"/>
-        <source>=</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="165"/>
-        <source>-</source>
-        <translation type="unfinished">-</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="167"/>
-        <source>Ctrl+=</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="170"/>
-        <source>Ctrl+-</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="172"/>
-        <source>\</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="178"/>
-        <source>F11</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="189"/>
-        <source>Home</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="191"/>
-        <source>Left</source>
-        <translation type="unfinished">Vlevo</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="193"/>
-        <source>Space</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="196"/>
-        <source>Shift+Space</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="198"/>
-        <source>Right</source>
-        <translation type="unfinished">Vpravo</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="200"/>
-        <source>End</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="205"/>
-        <source>Up</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="207"/>
-        <source>Down</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="212"/>
-        <source>Shift+I</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="214"/>
-        <source>Shift+O</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="219"/>
-        <source>J</source>
-        <translation type="unfinished">J</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="221"/>
-        <source>K</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="223"/>
-        <source>L</source>
-        <translation type="unfinished">L</translation>
-    </message>
-    <message>
-        <location filename="../window/mainwindow/mainmenu.cpp" line="256"/>
-        <source>`</source>
+    %
+2 < /source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../task/project/loadotio/loadotio.cpp"
+line = "96" / >
+    <source>Unknown
+OpenTimelineIO
+root
+element < /source>
+< translation > Neznámý
+kořenový
+prvek
+OpenTimelineIO < /translation>
+< /message>
+< message >
+<location filename = "../task/project/loadotio/loadotio.cpp"
+line = "118" / >
+    <source>Sequence % 1 < /source>
+    < translation
+type = "unfinished" > Úryvek % 1 < /translation>
+< /message>
+< message >
+<location filename = "../task/project/loadotio/loadotio.cpp"
+line = "188" / >
+    <source>Failed
+to
+load
+clip < /source>
+< translation > Nepodařilo
+se
+načíst
+záběr < /translation>
+< /message>
+< /context>
+< context >
+<name>olive::MainMenu < /name>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "426" / >
+    <source> &amp; Save & apos;
+%
+1 & apos;
+</source>
+< translation > &amp; Uložit & apos;
+%
+1 & apos;
+</translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "428" / >
+    <source>Save & apos;
+%
+1 & apos;
+&amp;
+As < /source>
+< translation > Uložit & apos;
+%
+1 & apos;
+&amp;
+jako < /translation>
+< /message>
+< message >
+<source>Close & apos;
+%
+1 & apos;
+</source>
+< translation
+type = "vanished" > Zavřít & apos;
+%
+1 & apos;
+</translation>
+< /message>
+< message >
+<source>Close
+All
+Except & apos;
+%
+1 & apos;
+</source>
+< translation
+type = "vanished" > Zavřít
+vše
+vyjma & apos;
+%
+1 & apos;
+</translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "430" / >
+    <source> &amp; Save
+Project < /source>
+< translation > &amp; Uložit
+projekt < /translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "431" / >
+    <source>Save
+Project &amp; As < /source>
+< translation > Uložit
+projekt
+j &amp; ako < /translation>
+< /message>
+< message >
+<source>Close
+Project < /source>
+< translation
+type = "vanished" > Zavřít
+projekt < /translation>
+< /message>
+< message >
+<source>Close
+All
+Except
+Current
+Project < /source>
+< translation
+type = "vanished" > Zavřít
+vše
+vyjma
+nynějšího
+projektu < /translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "532" / >
+<source>(None) < /source>
+< translation > (žádný) < /translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "800" / >
+<source> &amp; File < /source>
+< translation > &amp; Soubor < /translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "801" / >
+<source> &amp; New < /source>
+< translation > &amp; Nový < /translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "802" / >
+    <source> &amp; Open
+Project < /source>
+< translation > &amp; Otevřít
+projekt < /translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "803" / >
+<source>Open &amp; Recent < /source>
+< translation > Otevřít &amp; nedávný < /translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "804" / >
+    <source> &amp; Clear
+Recent
+List < /source>
+< translation > V &amp; yprázdnit
+seznam
+nedávno
+otevřených < /translation>
+< /message>
+< message >
+<source>Sa &amp; ve
+All
+Projects < /source>
+< translation
+type = "vanished" > &amp; Uložit
+všechny
+projekty < /translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "806" / >
+    <source> &amp; Import
+...
+</source>
+< translation > &amp; Importovat
+...
+</translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "807" / >
+<source> &amp; Export < /source>
+< translation > &amp; Exportovat < /translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "808" / >
+    <source> &amp; Media
+...
+</source>
+< translation > &amp; Záznamy
+...
+</translation>
+< /message>
+< message >
+<source> &amp; Project
+Properties
+...
+</source>
+< translation
+type = "vanished" > Vlastnosti &amp; projektu
+...
+</translation>
+< /message>
+< message >
+<source>Close
+All
+Projects < /source>
+< translation
+type = "vanished" > Zavřít
+všechny
+projekty < /translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "54" / >
+    <source>Ctrl + O < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "60" / >
+    <source>Ctrl + S < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "63" / >
+    <source>Ctrl + Shift + S < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "66" / >
+    <source>F12 < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "69" / >
+    <source>Ctrl + I < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "73" / >
+    <source>Ctrl + M < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "77" / >
+    <source>Shift + F10 < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "92" / >
+    <source>Ctrl + Z < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "95" / >
+    <source>Ctrl + Shift + Z < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "106" / >
+    <source>Backspace < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "116" / >
+    <source>Ctrl + A < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "119" / >
+    <source>Ctrl + Shift + A < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "124" / >
+    <source>, </source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "126" / >
+    <source>
+.
+</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "129" / >
+    <source>Q < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "131" / >
+    <source>W < /source>
+    < translation
+type = "unfinished" > W < /translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "133" / >
+    <source>Ctrl + Alt + Q < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "135" / >
+    <source>Ctrl + Alt + W < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "138" / >
+    <source>Alt + Left < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "140" / >
+    <source>Alt + Right < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "143" / >
+    <source>[</source>
+    < translation type = "unfinished" > </translation>
+    < /message>
+    < message >
+    <location filename = "../window/mainwindow/mainmenu.cpp" line = "146" / >
+        <source>] < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "150" / >
+    <source>;
+</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "153" / >
+    <source> & apos;
+</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "156" / >
+    <source>M < /source>
+    < translation
+type = "unfinished" > M < /translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "163" / >
+<source> = </source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "165" / >
+    <source>-</source>
+    < translation
+type = "unfinished" > -</translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "167" / >
+<source>Ctrl += </source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "170" / >
+    <source>Ctrl + -</source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "172" / >
+    <source>\</source>
+< translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "178" / >
+    <source>F11 < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "189" / >
+    <source>Home < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "191" / >
+    <source>Left < /source>
+    < translation
+type = "unfinished" > Vlevo < /translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "193" / >
+    <source>Space < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "196" / >
+    <source>Shift + Space < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "198" / >
+    <source>Right < /source>
+    < translation
+type = "unfinished" > Vpravo < /translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "200" / >
+    <source>End < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "205" / >
+    <source>Up < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "207" / >
+    <source>Down < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "212" / >
+    <source>Shift + I < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "214" / >
+    <source>Shift + O < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "219" / >
+    <source>J < /source>
+    < translation
+type = "unfinished" > J < /translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "221" / >
+    <source>K < /source>
+    < translation
+type = "unfinished" > </translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "223" / >
+    <source>L < /source>
+    < translation
+type = "unfinished" > L < /translation>
+< /message>
+< message >
+<location filename = "../window/mainwindow/mainmenu.cpp"
+line = "256" / >
+    <source>`</source>
         <translation type="unfinished"></translation>
     </message>
     <message>

@@ -75,16 +75,20 @@ bool SharedMemoryRegion::Open(const QString &key, size_t size, Mode mode)
 	const std::wstring wname = mapping_name.toStdWString();
 
 	if (mode == kCreate) {
-		const DWORD size_high = static_cast<DWORD>((quint64(size) >> 32) & 0xFFFFFFFF);
+		const DWORD size_high =
+			static_cast<DWORD>((quint64(size) >> 32) & 0xFFFFFFFF);
 		const DWORD size_low = static_cast<DWORD>(quint64(size) & 0xFFFFFFFF);
-		handle_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE,
-									 size_high, size_low, wname.c_str());
+		handle_ = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr,
+									 PAGE_READWRITE, size_high, size_low,
+									 wname.c_str());
 		if (!handle_) {
-			error_ = QStringLiteral("CreateFileMapping failed: %1").arg(GetLastError());
+			error_ = QStringLiteral("CreateFileMapping failed: %1")
+						 .arg(GetLastError());
 			return false;
 		}
 		if (GetLastError() == ERROR_ALREADY_EXISTS) {
-			error_ = QStringLiteral("Shared memory key already exists: %1").arg(key);
+			error_ =
+				QStringLiteral("Shared memory key already exists: %1").arg(key);
 			CloseHandle(handle_);
 			handle_ = nullptr;
 			return false;
@@ -92,7 +96,8 @@ bool SharedMemoryRegion::Open(const QString &key, size_t size, Mode mode)
 	} else {
 		handle_ = OpenFileMappingW(FILE_MAP_ALL_ACCESS, FALSE, wname.c_str());
 		if (!handle_) {
-			error_ = QStringLiteral("OpenFileMapping failed: %1").arg(GetLastError());
+			error_ =
+				QStringLiteral("OpenFileMapping failed: %1").arg(GetLastError());
 			return false;
 		}
 	}
@@ -124,7 +129,7 @@ void SharedMemoryRegion::Close()
 	size_ = 0;
 }
 
-#else  // POSIX
+#else // POSIX
 
 bool SharedMemoryRegion::Open(const QString &key, size_t size, Mode mode)
 {
@@ -165,7 +170,8 @@ bool SharedMemoryRegion::Open(const QString &key, size_t size, Mode mode)
 
 	data_ = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);
 	if (data_ == MAP_FAILED) {
-		error_ = QStringLiteral("mmap failed: %1").arg(QString::fromUtf8(strerror(errno)));
+		error_ = QStringLiteral("mmap failed: %1")
+					 .arg(QString::fromUtf8(strerror(errno)));
 		data_ = nullptr;
 		::close(fd_);
 		fd_ = -1;
@@ -201,5 +207,5 @@ void SharedMemoryRegion::Close()
 
 #endif
 
-}  // namespace ipc
-}  // namespace olive
+} // namespace ipc
+} // namespace olive

@@ -182,7 +182,10 @@ public:
 	 * @brief Return a sub-category string for secondary grouping
 	 *        within the primary category (e.g. "Filter" under "OpenFX").
 	 */
-	virtual QString SubCategory() const { return QString(); }
+	virtual QString SubCategory() const
+	{
+		return QString();
+	}
 
 	/**
    * @brief Return a description of this node's purpose (optional for subclassing, but recommended)
@@ -1136,20 +1139,20 @@ public:
 
 	static const QString kEnabledInput;
 
-	OFX::Host::ImageEffect::Instance* getPluginInstance() const
+	OFX::Host::ImageEffect::Instance *getPluginInstance() const
 	{
 		return plugin_instance_;
 	}
-	OFX::Host::ImageEffect::ImageEffectPlugin* getPlugin() const
+	OFX::Host::ImageEffect::ImageEffectPlugin *getPlugin() const
 	{
 		return plugin_instance_ ? plugin_instance_->getPlugin() : nullptr;
 	}
+
 protected:
-
 	// If set, this node owns a plugin instance.
-	OFX::Host::ImageEffect::Instance* plugin_instance_ = nullptr;
+	OFX::Host::ImageEffect::Instance *plugin_instance_ = nullptr;
 
-	void setPluginInstance(OFX::Host::ImageEffect::Instance* instance)
+	void setPluginInstance(OFX::Host::ImageEffect::Instance *instance)
 	{
 		plugin_instance_ = instance;
 	}

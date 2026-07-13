@@ -43,7 +43,7 @@ public:
 
 	virtual void Retranslate() override;
 	virtual void InputValueChangedEvent(const QString &input,
-									int element) override;
+										int element) override;
 	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 

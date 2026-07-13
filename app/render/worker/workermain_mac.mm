@@ -22,5 +22,5 @@
 
 void HideWorkerDockIcon()
 {
-  [NSApp setActivationPolicy:NSApplicationActivationPolicyProhibited];
+	[NSApp setActivationPolicy:NSApplicationActivationPolicyProhibited];
 }

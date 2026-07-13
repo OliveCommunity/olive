@@ -336,7 +336,8 @@ private:
 
 	void DrawBackendNeutral(const ColorTransformJob &ctj, QPainter *painter);
 	bool DrawBackendNeutralFrame(const FramePtr &frame, QPainter *painter);
-	bool DrawBackendNeutralTexture(const TexturePtr &texture, QPainter *painter);
+	bool DrawBackendNeutralTexture(const TexturePtr &texture,
+								   QPainter *painter);
 
 	/**
    * @brief Internal reference to the OpenGL texture to draw. Set in SetTexture() and used in paintGL().

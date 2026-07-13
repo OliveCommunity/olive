@@ -54,9 +54,9 @@ CrashHandlerDialog::CrashHandlerDialog(const QString &report_path)
 
 	QVBoxLayout *layout = new QVBoxLayout(this);
 
-	layout->addWidget(new QLabel(
-		tr("We're sorry, Oak Video Editor has crashed. Please help us fix it by "
-		   "sending an error report.")));
+	layout->addWidget(new QLabel(tr(
+		"We're sorry, Oak Video Editor has crashed. Please help us fix it by "
+		"sending an error report.")));
 
 	QSplitter *splitter = new QSplitter(Qt::Vertical);
 	splitter->setChildrenCollapsible(false);

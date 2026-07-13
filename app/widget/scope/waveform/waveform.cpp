@@ -157,13 +157,14 @@ void WaveformScope::DrawScopeSoftware(QPainter &p, const QImage &image)
 			}
 
 			auto mark = [&](float value, int add_r, int add_g, int add_b) {
-				int scope_y = waveform_start_dim_y +
-							  int((1.0f - value) * waveform_dim_y);
+				int scope_y =
+					waveform_start_dim_y + int((1.0f - value) * waveform_dim_y);
 				if (scope_y < waveform_start_dim_y ||
 					scope_y >= waveform_start_dim_y + waveform_dim_y) {
 					return;
 				}
-				QRgb *dst_line = reinterpret_cast<QRgb *>(buf.scanLine(scope_y));
+				QRgb *dst_line =
+					reinterpret_cast<QRgb *>(buf.scanLine(scope_y));
 				QRgb cur = dst_line[scope_x];
 				int nr = qMin(255, qRed(cur) + add_r);
 				int ng = qMin(255, qGreen(cur) + add_g);
