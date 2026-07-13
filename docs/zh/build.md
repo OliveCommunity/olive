@@ -133,7 +133,7 @@ ctest --test-dir build --output-on-failure -C Release
 sudo dnf install -y \
   cmake ninja-build pkgconf-pkg-config \
   qt6-qtbase-devel qt6-qtbase-private-devel qt6-qttools-devel \
-  ffmpeg-devel \
+  ffmpeg-free-devel \
   OpenImageIO-devel \
   OpenColorIO-devel \
   openexr-devel \
@@ -143,7 +143,8 @@ sudo dnf install -y \
   vulkan-headers \
   vulkan-loader-devel \
   libxkbcommon-devel \
-  gcc-c++
+  gcc-c++ \
+  bzip2-devel
 ```
 
 配置并构建：
@@ -198,9 +199,9 @@ ctest --test-dir build --output-on-failure -C Release
 
 ---
 
-## macOS（非官方支持）
+## macOS
 
-说明：macOS **非官方支持**，目前只做 CI 自动化测试，不做人工测试。
+macOS 是正式支持的平台。更详细的逐步指南请参见 [`build-macos-zh.md`](build-macos-zh.md)。
 
 安装依赖：
 

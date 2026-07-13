@@ -199,9 +199,9 @@ ctest --test-dir build --output-on-failure -C Release
 
 ---
 
-## macOS (Non-Official Support)
+## macOS
 
-Note: macOS support is **non-official**. We only run CI automation on macOS and do not perform manual testing.
+macOS is a fully supported platform. See [`build-macos.md`](build-macos.md) for a dedicated, step-by-step guide.
 
 Install dependencies:
 
