@@ -59,11 +59,19 @@ jobs:
         run: |
           mkdir -p app/packaging/windows/nsis/olive-editor
           cp build/app/olive-editor.exe app/packaging/windows/nsis/olive-editor/
+          cp build/app/olive-render-worker.exe app/packaging/windows/nsis/olive-editor/
+          cp build/app/oakgl.dll app/packaging/windows/nsis/olive-editor/
+          if [ -f build/app/oakvulkan.dll ]; then
+            cp build/app/oakvulkan.dll app/packaging/windows/nsis/olive-editor/
+          fi
           windeployqt6 app/packaging/windows/nsis/olive-editor/olive-editor.exe
-          # Copy all non-Qt MSYS2 DLLs recursively
+          # Copy all non-Qt MSYS2 DLLs recursively for every binary we ship
           cd app/packaging/windows/nsis/olive-editor
-          for l in $(ntldd -R olive-editor.exe | grep -E 'mingw64|ucrt64|clang64' | sed 's/^[ \t]*//' | cut -d' ' -f3); do
-            cp -v "$l" .
+          for binary in olive-editor.exe olive-render-worker.exe oakgl.dll oakvulkan.dll; do
+            [ -f "$binary" ] || continue
+            for l in $(ntldd -R "$binary" | grep -E 'mingw64|ucrt64|clang64' | sed 's/^[ \t]*//' | cut -d' ' -f3); do
+              cp -v "$l" .
+            done
           done
 
       - name: Build installer
@@ -318,10 +326,150 @@ jobs:
           path: Oak_Video_Editor-*.AppImage
 
   # ------------------------------------------------------------------
+  # Debian package (.deb)
+  # ------------------------------------------------------------------
+  deb:
+    runs-on: warp-ubuntu-latest-x64-16x
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build pkg-config \
+            qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
+            libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
+            portaudio19-dev libgl1-mesa-dev libxkbcommon-dev
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_QT6=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON
+          cmake --build build
+
+      - name: Create DEB package
+        run: |
+          cd build
+          cpack -G DEB
+          mv *.deb "${GITHUB_WORKSPACE}/"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oak-deb-package
+          path: oak-video-editor_*.deb
+
+  # ------------------------------------------------------------------
+  # RPM package (.rpm)
+  # ------------------------------------------------------------------
+  rpm:
+    runs-on: warp-ubuntu-latest-x64-16x
+    container:
+      image: fedora:latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install dependencies
+        run: |
+          dnf install -y \
+            cmake ninja-build pkgconf-pkg-config \
+            qt6-qtbase-devel qt6-qtbase-private-devel qt6-qttools-devel \
+            ffmpeg-free-devel \
+            OpenImageIO-devel \
+            OpenColorIO-devel \
+            openexr-devel \
+            expat-devel \
+            portaudio-devel \
+            mesa-libGL-devel \
+            vulkan-headers \
+            vulkan-loader-devel \
+            libxkbcommon-devel \
+            gcc-c++ \
+            bzip2-devel \
+            rpm-build
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_QT6=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON
+          cmake --build build
+
+      - name: Create RPM package
+        run: |
+          cd build
+          cpack -G RPM
+          mv *.rpm "${GITHUB_WORKSPACE}/"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oak-rpm-package
+          path: oak-video-editor-*.rpm
+
+  # ------------------------------------------------------------------
+  # Arch Linux package (.pkg.tar.zst)
+  # ------------------------------------------------------------------
+  archlinux:
+    runs-on: warp-ubuntu-latest-x64-16x
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Prepare source tarball and PKGBUILD
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Arch pkgver cannot contain hyphens
+          PKGVER="${VERSION//-/_}"
+          tar czf "oak-video-editor-${PKGVER}.tar.gz" \
+            --transform "s,^,oak-video-editor-${PKGVER}/," \
+            --exclude='.git' \
+            --exclude='build' \
+            .
+          sed "s/@VERSION@/${PKGVER}/g" app/packaging/arch/PKGBUILD.in > PKGBUILD
+
+      - name: Build package in Arch Linux container
+        run: |
+          docker run --rm \
+            -v "${PWD}:/build" \
+            -w /build \
+            archlinux:base-devel \
+            bash -c '
+              set -e
+              pacman-key --init
+              pacman -Syu --noconfirm
+              pacman -S --noconfirm --needed \
+                cmake ninja git pkgconf \
+                qt6-base qt6-tools ffmpeg openimageio opencolorio openexr expat portaudio \
+                mesa vulkan-icd-loader libxkbcommon
+              useradd -m builder
+              chown -R builder /build
+              su builder -c "makepkg -s --noconfirm"
+            '
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oak-arch-package
+          path: oak-video-editor-*.pkg.tar.zst
+
+  # ------------------------------------------------------------------
   # Create Draft Release
   # ------------------------------------------------------------------
   release:
-    needs: [windows, macos, appimage]
+    needs: [windows, macos, appimage, deb, rpm, archlinux]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts
