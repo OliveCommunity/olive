@@ -241,6 +241,8 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
     add_dependencies(olive-editor oakvulkan)
   endif()
 endif()
+# Ensure the render worker is always built together with the editor on every platform.
+add_dependencies(olive-editor olive-render-worker)
 
 # Add render worker process (olive-render-worker).
 # Reuses the libolive-editor object library so the worker shares the exact same render/node/codec
@@ -252,6 +254,10 @@ add_executable(olive-render-worker
   $<TARGET_OBJECTS:libolive-editor>
   $<TARGET_OBJECTS:olive-version-obj>
 )
+if (APPLE)
+  target_sources(olive-render-worker PRIVATE render/worker/workermain_mac.mm)
+  target_link_libraries(olive-render-worker PRIVATE "-framework Cocoa")
+endif()
 target_include_directories(olive-render-worker PUBLIC pluginSupport)
 target_link_libraries(olive-render-worker PUBLIC OfxHost)
 if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
@@ -297,6 +303,21 @@ elseif(APPLE)
     RESOURCE "${OLIVE_ICON}"
     OUTPUT_NAME "Olive"
   )
+
+  # Copy the render worker and dynamic render backends into the app bundle.
+  # They are looked up in QCoreApplication::applicationDirPath(), which on
+  # macOS points to Olive.app/Contents/MacOS.
+  add_custom_command(TARGET olive-editor POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:olive-render-worker> $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS/
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:oakgl> $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS/
+    COMMENT "Copying olive-render-worker and render backends into Olive.app"
+  )
+  if (TARGET oakvulkan)
+    add_custom_command(TARGET olive-editor POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:oakvulkan> $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS/
+    )
+  endif()
 elseif(UNIX)
   # Set Linux-specific properties for application
   install(TARGETS olive-editor RUNTIME DESTINATION bin)

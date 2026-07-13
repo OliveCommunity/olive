@@ -51,6 +51,10 @@
 #include "render/colorprocessor.h"
 #include "render/colortransform.h"
 
+#ifdef Q_OS_MACOS
+void HideWorkerDockIcon();
+#endif
+
 namespace
 {
 
@@ -520,6 +524,11 @@ int main(int argc, char *argv[])
 	InstallSurfaceFormat();
 
 	QGuiApplication app(argc, argv);
+
+#ifdef Q_OS_MACOS
+	HideWorkerDockIcon();
+#endif
+
 	QCoreApplication::setOrganizationName(QStringLiteral("oakvideoeditor.org"));
 	QCoreApplication::setApplicationName(QStringLiteral("olive-render-worker"));
 

@@ -34,6 +34,7 @@
 #include "undo/undocommand.h"
 #include "common/Current.h"
 #include <iostream>
+#include <mutex>
 #include <qlogging.h>
 namespace olive
 {
@@ -104,6 +105,7 @@ protected:
 	std::shared_ptr<PluginNode>   _node;
 	OFX::Host::Param::Descriptor& _descriptor;
 	QString id;
+	mutable std::mutex no_node_mutex_;
 	bool has_value_ = false;
 	int value_ = 0;
 public:
@@ -129,6 +131,7 @@ public:
 	OfxStatus get(int &a)
 	{
 		if (!_node) {
+			std::lock_guard<std::mutex> lock(no_node_mutex_);
 			a = has_value_ ? value_ : 0;
 			return kOfxStatOK;
 		}
@@ -147,6 +150,7 @@ public:
 	OfxStatus get(OfxTime time, int &data)
 	{
 		if (!_node) {
+			std::lock_guard<std::mutex> lock(no_node_mutex_);
 			data = has_value_ ? value_ : 0;
 			return kOfxStatOK;
 		}
@@ -164,6 +168,7 @@ public:
 	OfxStatus set(int data)
 	{
 		if (!_node) {
+			std::lock_guard<std::mutex> lock(no_node_mutex_);
 			value_ = data;
 			has_value_ = true;
 			return kOfxStatOK;
@@ -179,6 +184,7 @@ public:
 	OfxStatus set(OfxTime time, int data)
 	{
 		if (!_node) {
+			std::lock_guard<std::mutex> lock(no_node_mutex_);
 			value_ = data;
 			has_value_ = true;
 			return kOfxStatOK;

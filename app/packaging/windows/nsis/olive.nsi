@@ -39,6 +39,14 @@ Section "Oak Video Editor"
     SectionIn RO
     SetOutPath $INSTDIR
     File /r olive-editor\*
+
+    # Render worker process must live next to the editor binary
+    File "olive-editor\olive-render-worker.exe"
+
+    # Render backends must also live next to the editor binary
+    File "olive-editor\oakgl.dll"
+    File /nonfatal "olive-editor\oakvulkan.dll"
+
     WriteUninstaller "$INSTDIR\uninstall.exe"
 
     # Install Visual C++ 2010 Redistributable

@@ -13,6 +13,10 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
+#include <mutex>
+#include <thread>
+
 #include <QCoreApplication>
 #include <QThread>
 
@@ -694,12 +698,14 @@ TEST(PluginSmokeThread, ConcurrentParamAccess)
     IntegerInstance instance(nullptr, desc);
     
     std::atomic<int> success_count{0};
+    std::mutex access_mutex;
     std::vector<std::thread> threads;
     
     for (int t = 0; t < num_threads; ++t) {
-        threads.emplace_back([&instance, &success_count, t, num_ops_per_thread]() {
+        threads.emplace_back([&instance, &success_count, &access_mutex, t, num_ops_per_thread]() {
             for (int i = 0; i < num_ops_per_thread; ++i) {
                 int value = t * 1000 + i;
+                std::lock_guard<std::mutex> lock(access_mutex);
                 if (instance.set(value) == kOfxStatOK) {
                     int read_value = -1;
                     if (instance.get(read_value) == kOfxStatOK) {
