@@ -33,6 +33,47 @@ extern "C" {
 namespace olive
 {
 
+/**
+ * @brief Ensure an AudioParams has a usable native channel layout mask.
+ *
+ * FFmpeg's abuffer/aformat filters reject channel_layout=0x0 / unspecified
+ * layouts (e.g. when the user config or a source stream reports a mask of 0).
+ * If the provided layout is not a valid native mask, fall back to a default
+ * layout derived from the channel count (stereo when unknown).
+ */
+static AudioParams FixChannelLayout(const AudioParams &params)
+{
+  AudioParams result = params;
+  const AVChannelLayout &layout = params.channel_layout();
+
+  bool needs_fix = false;
+  if (!av_channel_layout_check(&layout)) {
+    needs_fix = true;
+  } else if (layout.order != AV_CHANNEL_ORDER_NATIVE) {
+    needs_fix = true;
+  } else if (layout.u.mask == 0) {
+    needs_fix = true;
+  }
+
+  if (needs_fix) {
+    int channels = params.channel_count();
+    if (channels <= 0) {
+      channels = 2;
+    }
+
+    qWarning() << "AudioProcessor: fixing invalid/unspecified channel layout"
+               << "(channels=" << params.channel_count() << ") -> default"
+               << channels << "channel layout";
+
+    AVChannelLayout fallback;
+    av_channel_layout_default(&fallback, channels);
+    result.set_channel_layout(fallback);
+    av_channel_layout_uninit(&fallback);
+  }
+
+  return result;
+}
+
 AudioProcessor::AudioProcessor()
 {
 	filter_graph_ = nullptr;
@@ -59,16 +100,25 @@ bool AudioProcessor::Open(const AudioParams &from, const AudioParams &to,
 		return false;
 	}
 
-	from_fmt_ = FFmpegUtils::GetFFmpegSampleFormat(from.format());
-	to_fmt_ = FFmpegUtils::GetFFmpegSampleFormat(to.format());
+	AudioParams from_fixed = FixChannelLayout(from);
+	AudioParams to_fixed = FixChannelLayout(to);
+
+	qDebug() << "AudioProcessor::Open: from sample_rate="
+			 << from_fixed.sample_rate() << "channels="
+			 << from_fixed.channel_count() << "layout_mask=0x" << Qt::hex
+			 << from_fixed.channel_layout().u.mask << "to sample_rate="
+			 << to_fixed.sample_rate() << "channels=" << to_fixed.channel_count()
+			 << "layout_mask=0x" << to_fixed.channel_layout().u.mask << Qt::dec;
 
 	// Set up audio buffer args
 	char filter_args[200];
+	from_fmt_ = FFmpegUtils::GetFFmpegSampleFormat(from_fixed.format());
+	to_fmt_ = FFmpegUtils::GetFFmpegSampleFormat(to_fixed.format());
 	snprintf(
 		filter_args, 200,
 		"time_base=%d/%d:sample_rate=%d:sample_fmt=%d:channel_layout=0x%" PRIx64,
-		1, from.sample_rate(), from.sample_rate(), from_fmt_,
-		from.channel_layout().u.mask);
+		1, from_fixed.sample_rate(), from_fixed.sample_rate(), from_fmt_,
+		from_fixed.channel_layout().u.mask);
 
 	int r;
 
@@ -120,18 +170,19 @@ bool AudioProcessor::Open(const AudioParams &from, const AudioParams &to,
 	}
 
 	// Create conversion filter
-	auto ch1 = from.channel_layout();
-	auto ch2 = to.channel_layout();
-	if (from.sample_rate() != to.sample_rate() ||
-		av_channel_layout_compare(&ch1, &ch2) || from.format() != to.format() ||
-		(to.format().is_planar() &&
+	auto ch1 = from_fixed.channel_layout();
+	auto ch2 = to_fixed.channel_layout();
+	if (from_fixed.sample_rate() != to_fixed.sample_rate() ||
+		av_channel_layout_compare(&ch1, &ch2) ||
+		from_fixed.format() != to_fixed.format() ||
+		(to_fixed.format().is_planar() &&
 		 create_tempo)) { // Tempo processor automatically converts to packed,
 		// so if the desired output is planar, it'll need
 		// to be converted
 		snprintf(filter_args, 200,
 				 "sample_fmts=%s:sample_rates=%d:channel_layouts=0x%" PRIx64,
-				 av_get_sample_fmt_name(to_fmt_), to.sample_rate(),
-				 to.channel_layout().u.mask);
+				 av_get_sample_fmt_name(to_fmt_), to_fixed.sample_rate(),
+				 to_fixed.channel_layout().u.mask);
 
 		AVFilterContext *c;
 		r = avfilter_graph_create_filter(&c, avfilter_get_by_name("aformat"),
@@ -182,9 +233,9 @@ bool AudioProcessor::Open(const AudioParams &from, const AudioParams &to,
 
 	in_frame_ = av_frame_alloc();
 	if (in_frame_) {
-		in_frame_->sample_rate = from.sample_rate();
+		in_frame_->sample_rate = from_fixed.sample_rate();
 		in_frame_->format = from_fmt_;
-		in_frame_->ch_layout = from.channel_layout();
+		in_frame_->ch_layout = from_fixed.channel_layout();
 		in_frame_->pts = 0;
 	} else {
 		qCritical() << "Failed to allocate input frame";
@@ -199,8 +250,8 @@ bool AudioProcessor::Open(const AudioParams &from, const AudioParams &to,
 		return false;
 	}
 
-	from_ = from;
-	to_ = to;
+	from_ = from_fixed;
+	to_ = to_fixed;
 
 	return true;
 }

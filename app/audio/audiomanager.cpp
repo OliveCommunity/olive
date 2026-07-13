@@ -93,6 +93,11 @@ int InputCallback(const void *input, void *output, unsigned long frameCount,
 bool AudioManager::PushToOutput(const AudioParams &params,
 								const QByteArray &samples, QString *error)
 {
+	qDebug() << "AudioManager::PushToOutput: device=" << output_device_
+			 << "sample_rate=" << params.sample_rate()
+			 << "channels=" << params.channel_count()
+			 << "bytes=" << samples.size();
+
 	if (output_device_ == paNoDevice) {
 		if (error)
 			*error = tr("No output device is set");
@@ -113,10 +118,14 @@ bool AudioManager::PushToOutput(const AudioParams &params,
 		if (r != paNoError) {
 			// Unhandled error
 			//qCritical() << "Failed to open output stream:" << Pa_GetErrorText(r);
+			qCritical() << "AudioManager::PushToOutput: Pa_OpenStream failed:"
+					   << Pa_GetErrorText(r);
 			if (error)
 				*error = Pa_GetErrorText(r);
 			return false;
 		}
+		qDebug() << "AudioManager::PushToOutput: opened stream with"
+				 << params.channel_count() << "channels";
 
 		output_buffer_->set_bytes_per_frame(output_params_.samples_to_bytes(1));
 	}
@@ -124,7 +133,9 @@ bool AudioManager::PushToOutput(const AudioParams &params,
 	output_buffer_->write(samples);
 
 	if (!Pa_IsStreamActive(output_stream_)) {
-		Pa_StartStream(output_stream_);
+		PaError r = Pa_StartStream(output_stream_);
+		qDebug() << "AudioManager::PushToOutput: Pa_StartStream returned"
+				 << r << Pa_GetErrorText(r);
 	}
 
 	return true;
@@ -364,6 +375,9 @@ AudioManager::AudioManager()
 	// Get device from config
 	PaDeviceIndex output_device = FindConfigDeviceByName(true);
 	PaDeviceIndex input_device = FindConfigDeviceByName(false);
+
+	qDebug() << "AudioManager: selected output device index=" << output_device
+			 << "input device index=" << input_device;
 
 	SetOutputDevice(output_device);
 	SetInputDevice(input_device);
