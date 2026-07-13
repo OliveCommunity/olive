@@ -4,9 +4,9 @@
 !define MUI_UNICON "uninstall icon.ico"
 
 !define APP_NAME "Oak Video Editor"
-!define APP_TARGET "olive-editor"
+!define APP_TARGET "oak-editor"
 
-!define MUI_FINISHPAGE_RUN "$INSTDIR\olive-editor.exe"
+!define MUI_FINISHPAGE_RUN "$INSTDIR\oak-editor.exe"
 
 SetCompressor lzma
 
@@ -38,7 +38,15 @@ InstallDir "$PROGRAMFILES32\${APP_NAME}"
 Section "Oak Video Editor"
     SectionIn RO
     SetOutPath $INSTDIR
-    File /r olive-editor\*
+    File /r oak-editor\*
+
+    # Render worker process must live next to the editor binary
+    File "oak-editor\oak-render-worker.exe"
+
+    # Render backends must also live next to the editor binary
+    File "oak-editor\oakgl.dll"
+    File /nonfatal "oak-editor\oakvulkan.dll"
+
     WriteUninstaller "$INSTDIR\uninstall.exe"
 
     # Install Visual C++ 2010 Redistributable
@@ -61,8 +69,8 @@ Section "Associate *.ove files with Oak Video Editor"
     WriteRegStr HKCR ".ove" "" "OakEditor.OVEFile"
     WriteRegStr HKCR ".ove" "Content Type" "application/vnd.olive-project"
     WriteRegStr HKCR "OakEditor.OVEFile" "" "Oak project file"
-    WriteRegStr HKCR "OakEditor.OVEFile\DefaultIcon" "" "$INSTDIR\olive-editor.exe,1"
-    WriteRegStr HKCR "OakEditor.OVEFile\shell\open\command" "" "$\"$INSTDIR\olive-editor.exe$\" $\"%1$\""
+    WriteRegStr HKCR "OakEditor.OVEFile\DefaultIcon" "" "$INSTDIR\oak-editor.exe,1"
+    WriteRegStr HKCR "OakEditor.OVEFile\shell\open\command" "" "$\"$INSTDIR\oak-editor.exe$\" $\"%1$\""
     System::Call 'shell32.dll::SHChangeNotify(i, i, i, i) v (0x08000000, 0, 0, 0)'
 SectionEnd
 

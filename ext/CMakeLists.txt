@@ -18,4 +18,7 @@ add_subdirectory(core EXCLUDE_FROM_ALL)
 
 set(KDDockWidgets_STATIC ON CACHE INTERNAL "Force KDDockWidgets to build statically")
 set(KDDockWidgets_QT6 ${BUILD_QT6} CACHE INTERNAL "Conform KDDockWidgets' Qt 6 setting to ours")
+# Oak only uses the QtWidgets frontend; building the QtQuick frontend causes
+# duplicate QML module registration on macOS and pulls in unused dependencies.
+set(KDDockWidgets_FRONTENDS "qtwidgets" CACHE INTERNAL "Only build the QtWidgets frontend for Oak")
 add_subdirectory(KDDockWidgets EXCLUDE_FROM_ALL)

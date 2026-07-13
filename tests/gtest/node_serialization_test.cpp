@@ -10,7 +10,8 @@
 #include "node/value.h"
 #include "render/diskmanager.h"
 
-namespace {
+namespace
+{
 class TestNode final : public olive::Node {
 public:
 	TestNode()
@@ -55,7 +56,8 @@ public:
 
 TEST(NodeSerialization, SaveAndLoadInput)
 {
-	const bool created_disk_manager = (olive::DiskManager::instance() == nullptr);
+	const bool created_disk_manager =
+		(olive::DiskManager::instance() == nullptr);
 	if (created_disk_manager) {
 		olive::DiskManager::CreateInstance();
 	}
@@ -87,7 +89,9 @@ TEST(NodeSerialization, SaveAndLoadInput)
 	EXPECT_EQ(loaded.GetLabel(), QStringLiteral("MyNode"));
 	EXPECT_EQ(loaded.GetOverrideColor(), 2);
 	EXPECT_DOUBLE_EQ(loaded.GetSplitStandardValue(QStringLiteral("Value"), -1)
-		.first().toDouble(), 3.5);
+						 .first()
+						 .toDouble(),
+					 3.5);
 
 	if (created_disk_manager) {
 		olive::DiskManager::DestroyInstance();

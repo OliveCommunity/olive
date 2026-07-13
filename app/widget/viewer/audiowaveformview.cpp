@@ -69,7 +69,9 @@ void AudioWaveformView::SetViewer(ViewerOutput *playback)
 
 		rational tb = playback_->GetVideoParams().frame_rate_as_time_base();
 		if (tb.isNull()) {
-			tb = OLIVE_CONFIG("DefaultSequenceFrameRate").value<rational>().flipped();
+			tb = OLIVE_CONFIG("DefaultSequenceFrameRate")
+					 .value<rational>()
+					 .flipped();
 		}
 		SetTimebase(tb);
 		UpdateSceneRect();

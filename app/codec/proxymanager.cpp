@@ -52,14 +52,12 @@ QString ProxyManager::GetProxyFilename(const QString &cache_path,
 	const QString proxy_dir = GetProxyDirectory(cache_path);
 	const QString extension =
 		params.extension.isEmpty() ? QStringLiteral("mp4") : params.extension;
-	const QString filename = QStringLiteral("%1-%2.%3x%4.v%5.%6")
-								 .arg(FileFunctions::GetUniqueFileIdentifier(
-										  source_filename),
-									  QString::number(stream_index),
-									  QString::number(params.width),
-									  QString::number(params.height),
-									  QString::number(params.version),
-									  extension);
+	const QString filename =
+		QStringLiteral("%1-%2.%3x%4.v%5.%6")
+			.arg(FileFunctions::GetUniqueFileIdentifier(source_filename),
+				 QString::number(stream_index), QString::number(params.width),
+				 QString::number(params.height),
+				 QString::number(params.version), extension);
 
 	return QDir(proxy_dir).filePath(filename);
 }
@@ -119,9 +117,10 @@ ProxyManager::ProxyStateFromString(const QString &state)
 	return kProxyMissing;
 }
 
-ProxyManager::Proxy ProxyManager::GetOrStartProxy(
-	const QString &cache_path, const QString &source_filename,
-	int stream_index, const ProxyParams &params)
+ProxyManager::Proxy
+ProxyManager::GetOrStartProxy(const QString &cache_path,
+							  const QString &source_filename, int stream_index,
+							  const ProxyParams &params)
 {
 	QMutexLocker locker(&mutex_);
 
@@ -145,10 +144,9 @@ ProxyManager::Proxy ProxyManager::GetOrStartProxy(
 	}
 
 	const QString working_filename = GetWorkingProxyFilename(filename);
-	ProxyTask *task = new ProxyTask(source_filename, stream_index, params,
-									working_filename);
-	connect(task, &Task::Finished, this,
-			&ProxyManager::ProxyTaskFinished);
+	ProxyTask *task =
+		new ProxyTask(source_filename, stream_index, params, working_filename);
+	connect(task, &Task::Finished, this, &ProxyManager::ProxyTaskFinished);
 	task->moveToThread(TaskManager::instance()->thread());
 	QMetaObject::invokeMethod(TaskManager::instance(), "AddTask",
 							  Qt::QueuedConnection, Q_ARG(Task *, task));

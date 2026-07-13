@@ -5,24 +5,39 @@
 
 TEST(ModuleSmoke, ToolAddableObjectNames)
 {
-	EXPECT_FALSE(olive::Tool::GetAddableObjectName(olive::Tool::kAddableEmpty).isEmpty());
-	EXPECT_FALSE(olive::Tool::GetAddableObjectName(olive::Tool::kAddableBars).isEmpty());
-	EXPECT_FALSE(olive::Tool::GetAddableObjectName(olive::Tool::kAddableShape).isEmpty());
-	EXPECT_FALSE(olive::Tool::GetAddableObjectName(olive::Tool::kAddableSolid).isEmpty());
-	EXPECT_FALSE(olive::Tool::GetAddableObjectName(olive::Tool::kAddableTitle).isEmpty());
-	EXPECT_FALSE(olive::Tool::GetAddableObjectName(olive::Tool::kAddableTone).isEmpty());
-	EXPECT_FALSE(olive::Tool::GetAddableObjectName(olive::Tool::kAddableSubtitle).isEmpty());
+	EXPECT_FALSE(
+		olive::Tool::GetAddableObjectName(olive::Tool::kAddableEmpty).isEmpty());
+	EXPECT_FALSE(
+		olive::Tool::GetAddableObjectName(olive::Tool::kAddableBars).isEmpty());
+	EXPECT_FALSE(
+		olive::Tool::GetAddableObjectName(olive::Tool::kAddableShape).isEmpty());
+	EXPECT_FALSE(
+		olive::Tool::GetAddableObjectName(olive::Tool::kAddableSolid).isEmpty());
+	EXPECT_FALSE(
+		olive::Tool::GetAddableObjectName(olive::Tool::kAddableTitle).isEmpty());
+	EXPECT_FALSE(
+		olive::Tool::GetAddableObjectName(olive::Tool::kAddableTone).isEmpty());
+	EXPECT_FALSE(
+		olive::Tool::GetAddableObjectName(olive::Tool::kAddableSubtitle)
+			.isEmpty());
 }
 
 TEST(ModuleSmoke, ToolAddableObjectIds)
 {
-	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableEmpty), QStringLiteral("empty"));
-	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableBars), QStringLiteral("bars"));
-	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableShape), QStringLiteral("shape"));
-	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableSolid), QStringLiteral("solid"));
-	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableTitle), QStringLiteral("title"));
-	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableTone), QStringLiteral("tone"));
-	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableSubtitle), QStringLiteral("subtitle"));
+	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableEmpty),
+			  QStringLiteral("empty"));
+	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableBars),
+			  QStringLiteral("bars"));
+	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableShape),
+			  QStringLiteral("shape"));
+	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableSolid),
+			  QStringLiteral("solid"));
+	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableTitle),
+			  QStringLiteral("title"));
+	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableTone),
+			  QStringLiteral("tone"));
+	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableSubtitle),
+			  QStringLiteral("subtitle"));
 }
 
 TEST(ModuleSmoke, HumanStringsSampleRate)
@@ -33,12 +48,16 @@ TEST(ModuleSmoke, HumanStringsSampleRate)
 
 TEST(ModuleSmoke, HumanStringsChannelLayout)
 {
-	EXPECT_FALSE(olive::HumanStrings::ChannelLayoutToString(AV_CH_LAYOUT_MONO).isEmpty());
-	EXPECT_FALSE(olive::HumanStrings::ChannelLayoutToString(AV_CH_LAYOUT_STEREO).isEmpty());
+	EXPECT_FALSE(
+		olive::HumanStrings::ChannelLayoutToString(AV_CH_LAYOUT_MONO).isEmpty());
+	EXPECT_FALSE(olive::HumanStrings::ChannelLayoutToString(AV_CH_LAYOUT_STEREO)
+					 .isEmpty());
 }
 
 TEST(ModuleSmoke, HumanStringsFormat)
 {
-	EXPECT_FALSE(olive::HumanStrings::FormatToString(olive::SampleFormat::U8).isEmpty());
-	EXPECT_FALSE(olive::HumanStrings::FormatToString(olive::SampleFormat::F32).isEmpty());
+	EXPECT_FALSE(
+		olive::HumanStrings::FormatToString(olive::SampleFormat::U8).isEmpty());
+	EXPECT_FALSE(
+		olive::HumanStrings::FormatToString(olive::SampleFormat::F32).isEmpty());
 }

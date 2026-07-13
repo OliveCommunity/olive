@@ -24,7 +24,6 @@
 #include <QGridLayout>
 #include <QLabel>
 
-
 namespace olive
 {
 

@@ -12,7 +12,8 @@ using namespace olive;
 
 TEST(FFmpegDecoderHW, H264_422_10bit_CPUFrame_IsNotBlack)
 {
-	const QString path = QStringLiteral("/home/mikesolar/Videos/dual_system_video.MOV");
+	const QString path =
+		QStringLiteral("/home/mikesolar/Videos/dual_system_video.MOV");
 
 	if (!QFileInfo::exists(path)) {
 		GTEST_SKIP() << "Test footage not available: " << path.toStdString();

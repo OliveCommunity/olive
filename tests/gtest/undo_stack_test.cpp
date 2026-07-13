@@ -5,7 +5,8 @@
 #include "undo/undostack.h"
 #include "undo/undocommand.h"
 
-namespace {
+namespace
+{
 class TestCommand final : public olive::UndoCommand {
 public:
 	explicit TestCommand(int *value)

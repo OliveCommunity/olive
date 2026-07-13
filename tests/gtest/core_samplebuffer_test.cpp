@@ -208,7 +208,7 @@ TEST(CoreSampleBuffer, Set)
 {
 	AudioParams params = MakeParams();
 	SampleBuffer b(params, 4);
-	float data[2] = {0.3f, 0.4f};
+	float data[2] = { 0.3f, 0.4f };
 	b.set(0, data, 1, 2);
 	EXPECT_FLOAT_EQ(b.data(0)[1], 0.3f);
 	EXPECT_FLOAT_EQ(b.data(0)[2], 0.4f);

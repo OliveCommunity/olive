@@ -34,7 +34,8 @@
 #include "texture.h"
 
 // Forward declarations to keep the render core header lightweight
-namespace olive {
+namespace olive
+{
 class ColorTransformJob;
 class Node;
 }
@@ -57,17 +58,16 @@ public:
 
 	void DestroyTexture(Texture *texture);
 
-	virtual void BlitToTexture(QVariant shader, olive::AcceleratedJob& job,
-					   olive::Texture *destination,
-					   bool clear_destination = true)
+	virtual void BlitToTexture(QVariant shader, olive::AcceleratedJob &job,
+							   olive::Texture *destination,
+							   bool clear_destination = true)
 	{
 		Blit(shader, job, destination, destination->params(),
 			 clear_destination);
-
 	}
 
-	void Blit(QVariant shader, olive::AcceleratedJob& job, olive::VideoParams params,
-			  bool clear_destination = true)
+	void Blit(QVariant shader, olive::AcceleratedJob &job,
+			  olive::VideoParams params, bool clear_destination = true)
 	{
 		Blit(shader, job, nullptr, params, clear_destination);
 	}
@@ -147,10 +147,12 @@ public:
 	 *
 	 * Default implementation is a no-op.
 	 */
-	virtual void DetachOutputTexture() {}
+	virtual void DetachOutputTexture()
+	{
+	}
 
 protected:
-	virtual void Blit(QVariant shader, olive::AcceleratedJob& job,
+	virtual void Blit(QVariant shader, olive::AcceleratedJob &job,
 					  olive::Texture *destination,
 					  olive::VideoParams destination_params,
 					  bool clear_destination) = 0;
@@ -164,7 +166,7 @@ protected:
 	virtual void DestroyInternal() = 0;
 
 private:
-	std::atomic<bool> destroyed_{false};
+	std::atomic<bool> destroyed_{ false };
 	std::shared_ptr<RendererLifetime> lifetime_;
 	struct ColorContext {
 		struct LUT {

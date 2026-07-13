@@ -22,6 +22,6 @@ add_subdirectory(ociolut)
 add_subdirectory(threewaycolor)
 
 set(OLIVE_SOURCES
-  ${OLIVE_SOURCES}
-  PARENT_SCOPE
+        ${OLIVE_SOURCES}
+        PARENT_SCOPE
 )

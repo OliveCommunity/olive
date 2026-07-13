@@ -25,31 +25,31 @@
 
 class Current {
 public:
-	static Current& getInstance()
+	static Current &getInstance()
 	{
 		return current;
 	}
-	olive::VideoParams& currentVideoParams()
+	olive::VideoParams &currentVideoParams()
 	{
 		return currentVideoParams_;
 	}
-	olive::AudioParams& currentAudioParams()
+	olive::AudioParams &currentAudioParams()
 	{
 		return currentAudioParams_;
 	}
-	void setCurrentVideoParams(olive::VideoParams& params)
+	void setCurrentVideoParams(olive::VideoParams &params)
 	{
 		currentVideoParams_ = params;
 	}
-	void setCurrentAudioParams(olive::AudioParams& params)
+	void setCurrentAudioParams(olive::AudioParams &params)
 	{
 		currentAudioParams_ = params;
 	}
-	void setCurrentVideoParams(olive::VideoParams&& params)
+	void setCurrentVideoParams(olive::VideoParams &&params)
 	{
 		currentVideoParams_ = params;
 	}
-	void setCurrentAudioParams(olive::AudioParams&& params)
+	void setCurrentAudioParams(olive::AudioParams &&params)
 	{
 		currentAudioParams_ = params;
 	}
@@ -73,10 +73,12 @@ public:
 		return plugin_cache_;
 	}
 
-	void setPluginCache(std::shared_ptr<OFX::Host::ImageEffect::PluginCache> cache)
+	void
+	setPluginCache(std::shared_ptr<OFX::Host::ImageEffect::PluginCache> cache)
 	{
 		plugin_cache_ = cache;
 	}
+
 private:
 	static Current current;
 	olive::VideoParams currentVideoParams_;
@@ -84,7 +86,5 @@ private:
 	std::shared_ptr<olive::plugin::OliveHost> myHost;
 	std::shared_ptr<OFX::Host::ImageEffect::PluginCache> plugin_cache_;
 };
-
-
 
 #endif //CURRENT_H

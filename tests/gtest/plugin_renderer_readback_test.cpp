@@ -8,9 +8,8 @@ TEST(PluginRendererReadback, BytesToPixels)
 							  olive::core::rational(1, 1),
 							  olive::VideoParams::kInterlaceNone, 1);
 
-	const int bytes_per_pixel =
-		olive::VideoParams::GetBytesPerPixel(params.format(),
-											 params.channel_count());
+	const int bytes_per_pixel = olive::VideoParams::GetBytesPerPixel(
+		params.format(), params.channel_count());
 	ASSERT_EQ(bytes_per_pixel, 4);
 
 	EXPECT_EQ(olive::plugin::detail::BytesToPixels(64, params), 16);

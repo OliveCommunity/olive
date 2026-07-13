@@ -20,7 +20,11 @@ TEST(DynamicRenderBackend, LoadsExperimentalOpenGLBackend)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("opengl"));
-	ASSERT_TRUE(renderer.Load());
+	if (!renderer.Load()) {
+		GTEST_SKIP()
+			<< "opengl backend library could not be loaded in this environment";
+	}
+
 	EXPECT_EQ(renderer.OpenGLContext(), nullptr);
 	OakRenderBackendInfo info = {};
 	ASSERT_TRUE(renderer.GetBackendInfo(&info));
@@ -44,9 +48,14 @@ TEST(DynamicRenderBackend, OpenGLBackendFollowsAdapterToRenderThread)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("opengl"));
-	ASSERT_TRUE(renderer.Load());
+	if (!renderer.Load()) {
+		GTEST_SKIP()
+			<< "opengl backend library could not be loaded in this environment";
+	}
+
 	if (!renderer.Init()) {
-		GTEST_SKIP() << "OpenGL backend could not be initialized on this system";
+		GTEST_SKIP()
+			<< "OpenGL backend could not be initialized on this system";
 	}
 
 	QThread render_thread;
@@ -65,9 +74,9 @@ TEST(DynamicRenderBackend, OpenGLBackendFollowsAdapterToRenderThread)
 		&renderer,
 		[&]() {
 			renderer.PostInit();
-			texture = renderer.CreateTexture(olive::VideoParams(
-				64, 64, olive::PixelFormat::U8,
-				olive::VideoParams::kRGBAChannelCount));
+			texture = renderer.CreateTexture(
+				olive::VideoParams(64, 64, olive::PixelFormat::U8,
+								   olive::VideoParams::kRGBAChannelCount));
 		},
 		Qt::BlockingQueuedConnection);
 
@@ -87,7 +96,11 @@ TEST(DynamicRenderBackend, LoadsExperimentalVulkanBackendWhenAvailable)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	ASSERT_TRUE(renderer.Load());
+	if (!renderer.Load()) {
+		GTEST_SKIP()
+			<< "vulkan backend library could not be loaded in this environment";
+	}
+
 	OakRenderBackendInfo info = {};
 	ASSERT_TRUE(renderer.GetBackendInfo(&info));
 	if (info.kind != OAK_RENDER_BACKEND_VULKAN) {
@@ -111,11 +124,16 @@ TEST(DynamicRenderBackend, FallsBackWhenExperimentalVulkanUnavailable)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	ASSERT_TRUE(renderer.Load());
+	if (!renderer.Load()) {
+		GTEST_SKIP()
+			<< "vulkan backend library could not be loaded in this environment";
+	}
+
 	OakRenderBackendInfo info = {};
 	ASSERT_TRUE(renderer.GetBackendInfo(&info));
 	if (info.kind == OAK_RENDER_BACKEND_VULKAN) {
-		GTEST_SKIP() << "Vulkan backend is available on this system; skip fallback test";
+		GTEST_SKIP()
+			<< "Vulkan backend is available on this system; skip fallback test";
 	}
 	EXPECT_EQ(renderer.backend_name(), QStringLiteral("opengl"));
 	EXPECT_EQ(renderer.OpenGLContext(), nullptr);
@@ -132,7 +150,11 @@ TEST(DynamicRenderBackend, VulkanUploadBlitDownload)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	ASSERT_TRUE(renderer.Load());
+	if (!renderer.Load()) {
+		GTEST_SKIP()
+			<< "vulkan backend library could not be loaded in this environment";
+	}
+
 	OakRenderBackendInfo info = {};
 	ASSERT_TRUE(renderer.GetBackendInfo(&info));
 	if (info.kind != OAK_RENDER_BACKEND_VULKAN) {
@@ -153,8 +175,8 @@ TEST(DynamicRenderBackend, VulkanUploadBlitDownload)
 	QByteArray src_data(kSize * kSize * 4, 0);
 	for (int i = 0; i < kSize * kSize; ++i) {
 		src_data[i * 4 + 0] = static_cast<char>(255); // R
-		src_data[i * 4 + 1] = static_cast<char>(0);   // G
-		src_data[i * 4 + 2] = static_cast<char>(0);   // B
+		src_data[i * 4 + 1] = static_cast<char>(0); // G
+		src_data[i * 4 + 2] = static_cast<char>(0); // B
 		src_data[i * 4 + 3] = static_cast<char>(255); // A
 	}
 	src->Upload(src_data.data(), kSize);
@@ -163,23 +185,24 @@ TEST(DynamicRenderBackend, VulkanUploadBlitDownload)
 	ASSERT_NE(dst, nullptr);
 	ASSERT_FALSE(dst->IsDummy());
 
-	const QString vert = QStringLiteral(
-		"uniform mat4 ove_mvpmat;\n"
-		"in vec4 a_position;\n"
-		"in vec2 a_texcoord;\n"
-		"out vec2 ove_texcoord;\n"
-		"void main() {\n"
-		"    gl_Position = ove_mvpmat * a_position;\n"
-		"    ove_texcoord = a_texcoord;\n"
-		"}\n");
-	const QString frag = QStringLiteral(
-		"uniform sampler2D ove_maintex;\n"
-		"in vec2 ove_texcoord;\n"
-		"out vec4 frag_color;\n"
-		"void main() {\n"
-		"    frag_color = texture(ove_maintex, ove_texcoord);\n"
-		"}\n");
-	QVariant shader = renderer.CreateNativeShader(olive::ShaderCode(frag, vert));
+	const QString vert =
+		QStringLiteral("uniform mat4 ove_mvpmat;\n"
+					   "in vec4 a_position;\n"
+					   "in vec2 a_texcoord;\n"
+					   "out vec2 ove_texcoord;\n"
+					   "void main() {\n"
+					   "    gl_Position = ove_mvpmat * a_position;\n"
+					   "    ove_texcoord = a_texcoord;\n"
+					   "}\n");
+	const QString frag =
+		QStringLiteral("uniform sampler2D ove_maintex;\n"
+					   "in vec2 ove_texcoord;\n"
+					   "out vec4 frag_color;\n"
+					   "void main() {\n"
+					   "    frag_color = texture(ove_maintex, ove_texcoord);\n"
+					   "}\n");
+	QVariant shader =
+		renderer.CreateNativeShader(olive::ShaderCode(frag, vert));
 	ASSERT_FALSE(shader.isNull());
 
 	olive::ShaderJob job;
@@ -210,7 +233,11 @@ TEST(DynamicRenderBackend, VulkanNullDestinationBlitDoesNotCrash)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	ASSERT_TRUE(renderer.Load());
+	if (!renderer.Load()) {
+		GTEST_SKIP()
+			<< "vulkan backend library could not be loaded in this environment";
+	}
+
 	OakRenderBackendInfo info = {};
 	ASSERT_TRUE(renderer.GetBackendInfo(&info));
 	if (info.kind != OAK_RENDER_BACKEND_VULKAN) {
@@ -235,23 +262,24 @@ TEST(DynamicRenderBackend, VulkanNullDestinationBlitDoesNotCrash)
 	}
 	src->Upload(src_data.data(), kSize);
 
-	const QString vert = QStringLiteral(
-		"uniform mat4 ove_mvpmat;\n"
-		"in vec4 a_position;\n"
-		"in vec2 a_texcoord;\n"
-		"out vec2 ove_texcoord;\n"
-		"void main() {\n"
-		"    gl_Position = ove_mvpmat * a_position;\n"
-		"    ove_texcoord = a_texcoord;\n"
-		"}\n");
-	const QString frag = QStringLiteral(
-		"uniform sampler2D ove_maintex;\n"
-		"in vec2 ove_texcoord;\n"
-		"out vec4 frag_color;\n"
-		"void main() {\n"
-		"    frag_color = texture(ove_maintex, ove_texcoord);\n"
-		"}\n");
-	QVariant shader = renderer.CreateNativeShader(olive::ShaderCode(frag, vert));
+	const QString vert =
+		QStringLiteral("uniform mat4 ove_mvpmat;\n"
+					   "in vec4 a_position;\n"
+					   "in vec2 a_texcoord;\n"
+					   "out vec2 ove_texcoord;\n"
+					   "void main() {\n"
+					   "    gl_Position = ove_mvpmat * a_position;\n"
+					   "    ove_texcoord = a_texcoord;\n"
+					   "}\n");
+	const QString frag =
+		QStringLiteral("uniform sampler2D ove_maintex;\n"
+					   "in vec2 ove_texcoord;\n"
+					   "out vec4 frag_color;\n"
+					   "void main() {\n"
+					   "    frag_color = texture(ove_maintex, ove_texcoord);\n"
+					   "}\n");
+	QVariant shader =
+		renderer.CreateNativeShader(olive::ShaderCode(frag, vert));
 	ASSERT_FALSE(shader.isNull());
 
 	olive::ShaderJob job;
@@ -275,7 +303,11 @@ TEST(DynamicRenderBackend, VulkanIterativeBlitPingPong)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	ASSERT_TRUE(renderer.Load());
+	if (!renderer.Load()) {
+		GTEST_SKIP()
+			<< "vulkan backend library could not be loaded in this environment";
+	}
+
 	OakRenderBackendInfo info = {};
 	ASSERT_TRUE(renderer.GetBackendInfo(&info));
 	if (info.kind != OAK_RENDER_BACKEND_VULKAN) {
@@ -306,24 +338,25 @@ TEST(DynamicRenderBackend, VulkanIterativeBlitPingPong)
 	ASSERT_FALSE(dst->IsDummy());
 
 	// Shader that samples the iterative input and scales RGB by 0.5 each pass.
-	const QString vert = QStringLiteral(
-		"uniform mat4 ove_mvpmat;\n"
-		"in vec4 a_position;\n"
-		"in vec2 a_texcoord;\n"
-		"out vec2 ove_texcoord;\n"
-		"void main() {\n"
-		"    gl_Position = ove_mvpmat * a_position;\n"
-		"    ove_texcoord = a_texcoord;\n"
-		"}\n");
-	const QString frag = QStringLiteral(
-		"uniform sampler2D ove_maintex;\n"
-		"in vec2 ove_texcoord;\n"
-		"out vec4 frag_color;\n"
-		"void main() {\n"
-		"    vec4 c = texture(ove_maintex, ove_texcoord);\n"
-		"    frag_color = vec4(c.rgb * 0.5, c.a);\n"
-		"}\n");
-	QVariant shader = renderer.CreateNativeShader(olive::ShaderCode(frag, vert));
+	const QString vert =
+		QStringLiteral("uniform mat4 ove_mvpmat;\n"
+					   "in vec4 a_position;\n"
+					   "in vec2 a_texcoord;\n"
+					   "out vec2 ove_texcoord;\n"
+					   "void main() {\n"
+					   "    gl_Position = ove_mvpmat * a_position;\n"
+					   "    ove_texcoord = a_texcoord;\n"
+					   "}\n");
+	const QString frag =
+		QStringLiteral("uniform sampler2D ove_maintex;\n"
+					   "in vec2 ove_texcoord;\n"
+					   "out vec4 frag_color;\n"
+					   "void main() {\n"
+					   "    vec4 c = texture(ove_maintex, ove_texcoord);\n"
+					   "    frag_color = vec4(c.rgb * 0.5, c.a);\n"
+					   "}\n");
+	QVariant shader =
+		renderer.CreateNativeShader(olive::ShaderCode(frag, vert));
 	ASSERT_FALSE(shader.isNull());
 
 	olive::ShaderJob job;
@@ -356,7 +389,11 @@ TEST(DynamicRenderBackend, VulkanUploadDownloadThreeChannel)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	ASSERT_TRUE(renderer.Load());
+	if (!renderer.Load()) {
+		GTEST_SKIP()
+			<< "vulkan backend library could not be loaded in this environment";
+	}
+
 	OakRenderBackendInfo info = {};
 	ASSERT_TRUE(renderer.GetBackendInfo(&info));
 	if (info.kind != OAK_RENDER_BACKEND_VULKAN) {

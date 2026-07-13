@@ -7,8 +7,8 @@
 # (at your option) any later version.
 
 set(OLIVE_SOURCES
-  ${OLIVE_SOURCES}
-  node/color/ociolut/ociolut.cpp
-  node/color/ociolut/ociolut.h
-  PARENT_SCOPE
+        ${OLIVE_SOURCES}
+        node/color/ociolut/ociolut.cpp
+        node/color/ociolut/ociolut.h
+        PARENT_SCOPE
 )

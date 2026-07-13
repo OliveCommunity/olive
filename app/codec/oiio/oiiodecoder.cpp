@@ -185,7 +185,8 @@ FramePtr OIIODecoder::RetrieveVideoFrameInternal(const RetrieveVideoParams &p)
 	if (!frame->allocate()) {
 		return nullptr;
 	}
-	memcpy(frame->data(), buffer_.const_data(), size_t(buffer_.allocated_size()));
+	memcpy(frame->data(), buffer_.const_data(),
+		   size_t(buffer_.allocated_size()));
 	return frame;
 }
 

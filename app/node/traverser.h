@@ -147,7 +147,9 @@ protected:
 		return SampleBuffer();
 	}
 
-	virtual TexturePtr ProcessPluginJob(TexturePtr texture, TexturePtr destination, const Node *node);
+	virtual TexturePtr ProcessPluginJob(TexturePtr texture,
+										TexturePtr destination,
+										const Node *node);
 	SampleBuffer CreateSampleBuffer(const AudioParams &params,
 									const rational &length)
 	{

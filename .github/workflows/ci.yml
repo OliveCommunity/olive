@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [warp-ubuntu-latest-x64-16x, warp-macos-15-arm64-12x, warp-windows-latest-x64-16x]
+        os: [warp-ubuntu-latest-x64-16x, warp-macos-15-arm64-12x, warp-windows-latest-x64-32x]
     env:
       CMAKE_BUILD_TYPE: Release
       # Enable OFX integration tests that require external plugin bundles

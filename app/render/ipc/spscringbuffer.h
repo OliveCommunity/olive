@@ -174,11 +174,12 @@ private:
 	std::atomic<uint32_t> tail_;
 	uint32_t capacity_;
 
-	static_assert(sizeof(std::atomic<uint32_t>) == sizeof(uint32_t),
-				  "atomic<uint32_t> must be lock-free POD-sized for shared memory use");
+	static_assert(
+		sizeof(std::atomic<uint32_t>) == sizeof(uint32_t),
+		"atomic<uint32_t> must be lock-free POD-sized for shared memory use");
 };
 
-}  // namespace ipc
-}  // namespace olive
+} // namespace ipc
+} // namespace olive
 
-#endif  // IPC_SPSCRINGBUFFER_H
+#endif // IPC_SPSCRINGBUFFER_H

@@ -54,7 +54,8 @@ ManagedDisplayWidget::ManagedDisplayWidget(QWidget *parent)
 				RenderManager::instance()->requested_backend()),
 			this);
 		if (!dynamic_renderer->Load()) {
-			qWarning() << "Failed to load dynamic render backend for viewer, falling back to OpenGL";
+			qWarning()
+				<< "Failed to load dynamic render backend for viewer, falling back to OpenGL";
 			delete dynamic_renderer;
 			attached_renderer_ = new OpenGLRenderer(this);
 		} else {

@@ -78,10 +78,9 @@ bool FootageDescription::Load(const QString &filename)
 						const QStringList split =
 							reader.readElementText().split('/');
 						if (split.size() == 2) {
-							SetSourceStartTime(
-								rational(split.at(0).toInt(),
-										 split.at(1).toInt()),
-								source);
+							SetSourceStartTime(rational(split.at(0).toInt(),
+														split.at(1).toInt()),
+											   source);
 						}
 					} else if (reader.name() == QStringLiteral("streams")) {
 						{

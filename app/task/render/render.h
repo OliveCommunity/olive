@@ -125,7 +125,8 @@ private:
 					 const rational &time, RenderMode::Mode mode,
 					 FrameHashCache *cache, const QSize &force_size,
 					 const QMatrix4x4 &force_matrix, PixelFormat force_format,
-					 int force_channel_count, ColorProcessorPtr force_color_output,
+					 int force_channel_count,
+					 ColorProcessorPtr force_color_output,
 					 const ColorTransform &force_color_transform);
 
 	ViewerOutput *viewer_;

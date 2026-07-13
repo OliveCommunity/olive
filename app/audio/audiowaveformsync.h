@@ -38,8 +38,8 @@ public:
 		bool valid = false;
 	};
 
-	static QVector<double>
-	ExtractRmsEnvelope(const core::SampleBuffer &samples, size_t window_samples);
+	static QVector<double> ExtractRmsEnvelope(const core::SampleBuffer &samples,
+											  size_t window_samples);
 
 	static OffsetResult EstimateOffset(const core::SampleBuffer &reference,
 									   const core::SampleBuffer &candidate,

@@ -23,7 +23,6 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
-
 namespace olive
 {
 

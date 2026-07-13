@@ -4,10 +4,10 @@
 #include "ofxhClip.h"
 #include "pluginSupport/OliveClip.h"
 
-namespace {
+namespace
+{
 olive::VideoParams MakeParams(int width, int height,
-							  olive::core::PixelFormat format,
-							  int channels,
+							  olive::core::PixelFormat format, int channels,
 							  bool premultiplied)
 {
 	olive::VideoParams params;
@@ -64,16 +64,14 @@ TEST(PluginSupportClip, GetImageClampsBoundsAndCachesOutput)
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
 	OfxRectD optional_bounds = { -10.0, -10.0, 200.0, 200.0 };
-	OFX::Host::ImageEffect::Image *image =
-		clip.getImage(0.0, &optional_bounds);
+	OFX::Host::ImageEffect::Image *image = clip.getImage(0.0, &optional_bounds);
 	ASSERT_NE(image, nullptr);
 
 	auto *olive_image = static_cast<olive::plugin::Image *>(image);
 	EXPECT_EQ(olive_image->width(), 100);
 	EXPECT_EQ(olive_image->height(), 80);
 
-	OFX::Host::ImageEffect::Image *image_again =
-		clip.getImage(0.0, nullptr);
+	OFX::Host::ImageEffect::Image *image_again = clip.getImage(0.0, nullptr);
 	EXPECT_EQ(image, image_again);
 }
 

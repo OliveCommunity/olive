@@ -51,7 +51,8 @@ protected:
 	virtual bool OpenInternal() override;
 	virtual TexturePtr
 	RetrieveVideoInternal(const RetrieveVideoParams &p) override;
-	virtual FramePtr RetrieveVideoFrameInternal(const RetrieveVideoParams &p) override;
+	virtual FramePtr
+	RetrieveVideoFrameInternal(const RetrieveVideoParams &p) override;
 	virtual void CloseInternal() override;
 
 private:

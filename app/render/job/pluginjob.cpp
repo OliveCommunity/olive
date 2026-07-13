@@ -19,7 +19,9 @@
 
 #include "pluginjob.h"
 
-namespace olive {
-namespace plugin {
+namespace olive
+{
+namespace plugin
+{
 } // plugin
 } // olive

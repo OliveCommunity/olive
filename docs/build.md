@@ -179,6 +179,7 @@ sudo pacman -S --needed \
   vulkan-headers \
   vulkan-icd-loader \
   libxkbcommon \
+  fmt \
   gcc
 ```
 
@@ -199,9 +200,9 @@ ctest --test-dir build --output-on-failure -C Release
 
 ---
 
-## macOS (Non-Official Support)
+## macOS
 
-Note: macOS support is **non-official**. We only run CI automation on macOS and do not perform manual testing.
+macOS is now a fully supported platform. See [`build_macos.md`](build_macos.md) for a dedicated, step-by-step guide.
 
 Install dependencies:
 

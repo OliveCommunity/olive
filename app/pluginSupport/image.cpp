@@ -23,8 +23,10 @@
 
 #include <algorithm>
 
-namespace olive {
-namespace plugin {
+namespace olive
+{
+namespace plugin
+{
 
 static const char *PixelDepthToOfx(core::PixelFormat format)
 {
@@ -69,16 +71,14 @@ Image::Image(OFX::Host::ImageEffect::ClipInstance &clip_instance)
 	, premultiplied_alpha_(false)
 	, channel_count_(0)
 	, row_bytes_(0)
-	, bounds_{0, 0, 0, 0}
-	, rod_{0, 0, 0, 0}
+	, bounds_{ 0, 0, 0, 0 }
+	, rod_{ 0, 0, 0, 0 }
 {
 }
 
 Image::Image(OFX::Host::ImageEffect::ClipInstance &clip_instance,
-			 const VideoParams &params,
-			 const OfxRectI &bounds,
-			 const OfxRectI &rod,
-			 bool clear)
+			 const VideoParams &params, const OfxRectI &bounds,
+			 const OfxRectI &rod, bool clear)
 	: OFX::Host::ImageEffect::Image(clip_instance)
 	, width_(0)
 	, height_(0)
@@ -86,8 +86,8 @@ Image::Image(OFX::Host::ImageEffect::ClipInstance &clip_instance,
 	, premultiplied_alpha_(false)
 	, channel_count_(0)
 	, row_bytes_(0)
-	, bounds_{0, 0, 0, 0}
-	, rod_{0, 0, 0, 0}
+	, bounds_{ 0, 0, 0, 0 }
+	, rod_{ 0, 0, 0, 0 }
 {
 	AllocateFromParams(params, bounds, rod, clear);
 }
@@ -97,24 +97,17 @@ Image::~Image()
 }
 
 void Image::AllocateFromParams(const VideoParams &params,
-							   const OfxRectI &bounds,
-							   const OfxRectI &rod,
+							   const OfxRectI &bounds, const OfxRectI &rod,
 							   bool clear)
 {
-	Allocate(bounds.x2 - bounds.x1,
-			 bounds.y2 - bounds.y1,
-			 params.format(),
-			 params.channel_count(),
-			 params.premultiplied_alpha(),
-			 bounds,
-			 rod,
+	Allocate(bounds.x2 - bounds.x1, bounds.y2 - bounds.y1, params.format(),
+			 params.channel_count(), params.premultiplied_alpha(), bounds, rod,
 			 clear);
 }
 
 void Image::EnsureAllocatedFromParams(const VideoParams &params,
 									  const OfxRectI &bounds,
-									  const OfxRectI &rod,
-									  bool clear)
+									  const OfxRectI &rod, bool clear)
 {
 	bool same = (width_ == bounds.x2 - bounds.x1) &&
 				(height_ == bounds.y2 - bounds.y1) &&
@@ -133,14 +126,9 @@ void Image::EnsureAllocatedFromParams(const VideoParams &params,
 	}
 }
 
-void Image::Allocate(int width,
-				  int height,
-				  core::PixelFormat format,
-				  int channel_count,
-				  bool premultiplied_alpha,
-				  const OfxRectI &bounds,
-				  const OfxRectI &rod,
-				  bool clear)
+void Image::Allocate(int width, int height, core::PixelFormat format,
+					 int channel_count, bool premultiplied_alpha,
+					 const OfxRectI &bounds, const OfxRectI &rod, bool clear)
 {
 	width_ = width;
 	height_ = height;
@@ -173,12 +161,11 @@ void Image::Allocate(int width,
 	setIntProperty(kOfxImagePropRegionOfDefinition, rod.x2, 2);
 	setIntProperty(kOfxImagePropRegionOfDefinition, rod.y2, 3);
 	setStringProperty(kOfxImageEffectPropComponents,
-					 ComponentsToOfx(channel_count_));
-	setStringProperty(kOfxImageEffectPropPixelDepth,
-					 PixelDepthToOfx(format_));
+					  ComponentsToOfx(channel_count_));
+	setStringProperty(kOfxImageEffectPropPixelDepth, PixelDepthToOfx(format_));
 	setStringProperty(kOfxImageEffectPropPreMultiplication,
-					 premultiplied_alpha_ ? kOfxImagePreMultiplied
-											  : kOfxImageUnPreMultiplied);
+					  premultiplied_alpha_ ? kOfxImagePreMultiplied :
+											 kOfxImageUnPreMultiplied);
 }
 
 core::PixelFormat Image::pixel_format()
@@ -212,7 +199,7 @@ bool Image::premultiplied_alpha()
 
 int Image::width()
 {
-	int bounds[4] = {0};
+	int bounds[4] = { 0 };
 	getIntPropertyN(kOfxImagePropBounds, bounds, 4);
 	width_ = bounds[2] - bounds[0];
 	return width_;
@@ -220,7 +207,7 @@ int Image::width()
 
 int Image::height()
 {
-	int bounds[4] = {0};
+	int bounds[4] = { 0 };
 	getIntPropertyN(kOfxImagePropBounds, bounds, 4);
 	height_ = bounds[3] - bounds[1];
 	return height_;

@@ -59,7 +59,6 @@ TEST(CommonXmlUtils, ReadNextStartElementSkipsUnknown)
 	EXPECT_EQ(reader.name().toString(), QStringLiteral("known"));
 }
 
-
 TEST(CommonXmlUtils, ReadNextStartElementWithCancel)
 {
 	QByteArray xml = "<root><child/></root>";

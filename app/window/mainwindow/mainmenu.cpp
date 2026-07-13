@@ -787,8 +787,8 @@ void MainMenu::SequenceCacheClearTriggered()
 
 void MainMenu::HelpFeedbackTriggered()
 {
-	QDesktopServices::openUrl(
-		QStringLiteral("https://github.com/olive-editor/olive/issues"));
+	QDesktopServices::openUrl(QStringLiteral(
+		"https://github.com/OakVideoEditorCommunity/oak/issues"));
 }
 
 void MainMenu::Retranslate()

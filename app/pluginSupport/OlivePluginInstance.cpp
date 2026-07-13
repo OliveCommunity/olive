@@ -43,7 +43,8 @@ namespace olive
 {
 namespace plugin
 {
-namespace {
+namespace
+{
 const std::string kImageFieldNoneStr(kOfxImageFieldNone);
 const std::string kImageFieldUpperStr(kOfxImageFieldUpper);
 const std::string kImageFieldLowerStr(kOfxImageFieldLower);
@@ -62,7 +63,8 @@ QString FormatOfxMessage(const char *format, va_list args)
 		return QString::fromUtf8(buffer);
 	}
 	QByteArray dynamic_buffer(needed + 1, 0);
-	const int written = vsnprintf(dynamic_buffer.data(), dynamic_buffer.size(), format, args);
+	const int written =
+		vsnprintf(dynamic_buffer.data(), dynamic_buffer.size(), format, args);
 	if (written < 0) {
 		return QString();
 	}
@@ -136,7 +138,8 @@ ViewerOutput *GetActiveViewerOutput()
 		}
 	}
 
-	QList<TimelinePanel *> timelines = manager->GetPanelsOfType<TimelinePanel>();
+	QList<TimelinePanel *> timelines =
+		manager->GetPanelsOfType<TimelinePanel>();
 	for (TimelinePanel *panel : timelines) {
 		if (panel && panel->GetConnectedViewer()) {
 			return panel->GetConnectedViewer();
@@ -166,7 +169,7 @@ void OlivePluginInstance::setNode(std::shared_ptr<PluginNode> node)
 }
 
 OfxStatus OlivePluginInstance::vmessage(const char *type, const char *id,
-								  const char *format, va_list args)
+										const char *format, va_list args)
 {
 	const QString message = FormatOfxMessage(format, args);
 	if (message.isEmpty()) {
@@ -180,7 +183,8 @@ OfxStatus OlivePluginInstance::vmessage(const char *type, const char *id,
 		if (is_question) {
 			const auto ret = QMessageBox::question(
 				nullptr, "", message, QMessageBox::Ok, QMessageBox::Cancel);
-			result = (ret == QMessageBox::Ok) ? kOfxStatReplyYes : kOfxStatReplyNo;
+			result = (ret == QMessageBox::Ok) ? kOfxStatReplyYes :
+												kOfxStatReplyNo;
 		} else {
 			QMessageBox::information(nullptr, "", message);
 			result = kOfxStatOK;
@@ -191,7 +195,8 @@ OfxStatus OlivePluginInstance::vmessage(const char *type, const char *id,
 		show_message();
 	} else if (auto *app = QCoreApplication::instance()) {
 		if (is_question) {
-			QMetaObject::invokeMethod(app, show_message, Qt::BlockingQueuedConnection);
+			QMetaObject::invokeMethod(app, show_message,
+									  Qt::BlockingQueuedConnection);
 		} else {
 			QMetaObject::invokeMethod(app, show_message, Qt::QueuedConnection);
 		}
@@ -201,8 +206,10 @@ OfxStatus OlivePluginInstance::vmessage(const char *type, const char *id,
 
 	return result;
 }
-OfxStatus OlivePluginInstance::setPersistentMessage(const char *type, const char *id,
-											  const char *format, va_list args)
+OfxStatus OlivePluginInstance::setPersistentMessage(const char *type,
+													const char *id,
+													const char *format,
+													va_list args)
 {
 	const QString message = FormatOfxMessage(format, args);
 	if (message.isEmpty()) {
@@ -215,11 +222,13 @@ OfxStatus OlivePluginInstance::setPersistentMessage(const char *type, const char
 		error_type = ErrorType::Error;
 	}
 	// A warning
-	else if (strncmp(type, kOfxMessageWarning, strlen(kOfxMessageWarning)) == 0) {
+	else if (strncmp(type, kOfxMessageWarning, strlen(kOfxMessageWarning)) ==
+			 0) {
 		error_type = ErrorType::Warning;
 	}
 	// A simple information
-	else if (strncmp(type, kOfxMessageMessage, strlen(kOfxMessageMessage)) == 0) {
+	else if (strncmp(type, kOfxMessageMessage, strlen(kOfxMessageMessage)) ==
+			 0) {
 		error_type = ErrorType::Message;
 	} else {
 		return kOfxStatFailed;
@@ -272,7 +281,8 @@ void OlivePluginInstance::getProjectSize(double &xSize, double &ySize) const
 	xSize = params_.width() * par;
 	ySize = params_.height();
 }
-void OlivePluginInstance::getProjectOffset(double &xOffset, double &yOffset) const
+void OlivePluginInstance::getProjectOffset(double &xOffset,
+										   double &yOffset) const
 {
 	double par = params_.pixel_aspect_ratio().toDouble();
 	xOffset = params_.x() * par;
@@ -317,7 +327,7 @@ void OlivePluginInstance::getRenderScaleRecursive(double &x, double &y) const
 }
 OFX::Host::Param::Instance *
 OlivePluginInstance::newParam(const std::string &name,
-						OFX::Host::Param::Descriptor &desc)
+							  OFX::Host::Param::Descriptor &desc)
 {
 	const std::string &type = desc.getType();
 
@@ -343,8 +353,7 @@ OlivePluginInstance::newParam(const std::string &name,
 		return new Double3DInstance(node_, name, desc, this);
 	} else if (type == kOfxParamTypeInteger3D) {
 		return new Integer3DInstance(node_, name, desc, this);
-	} else if (type == kOfxParamTypeCustom ||
-			   type == kOfxParamTypeBytes) {
+	} else if (type == kOfxParamTypeCustom || type == kOfxParamTypeBytes) {
 		return new CustomInstance(node_, name, desc, this);
 	} else if (type == kOfxParamTypeGroup) {
 		return new GroupInstance(desc, this);
@@ -366,8 +375,7 @@ OfxStatus OlivePluginInstance::editBegin(const std::string &name)
 		edit_param_count_ = 0;
 		if (!name.empty()) {
 			edit_first_label_ =
-				QCoreApplication::translate(
-					"OlivePluginInstance", "Change %1")
+				QCoreApplication::translate("OlivePluginInstance", "Change %1")
 					.arg(QString::fromStdString(name));
 		}
 	}
@@ -383,15 +391,14 @@ OfxStatus OlivePluginInstance::editEnd()
 		if (label.isEmpty()) {
 			if (edit_param_count_ <= 1 && !edit_first_label_.isEmpty()) {
 				label = edit_first_label_;
-			} else if (edit_param_count_ > 1 &&
-					   !edit_first_label_.isEmpty()) {
-				label = QCoreApplication::translate(
-							"OlivePluginInstance", "%1 (+%2)")
+			} else if (edit_param_count_ > 1 && !edit_first_label_.isEmpty()) {
+				label = QCoreApplication::translate("OlivePluginInstance",
+													"%1 (+%2)")
 							.arg(edit_first_label_)
 							.arg(edit_param_count_ - 1);
 			} else {
-				label = QCoreApplication::translate(
-					"OlivePluginInstance", "Edit Parameters");
+				label = QCoreApplication::translate("OlivePluginInstance",
+													"Edit Parameters");
 			}
 		}
 		Core::instance()->undo_stack()->push(edit_command_, label);
@@ -450,9 +457,8 @@ void OlivePluginInstance::progressStart(const std::string &message,
 		progress_dialog_->deleteLater();
 	}
 
-	QString dialog_message = message.empty()
-		? QStringLiteral("Processing...")
-		: QString::fromStdString(message);
+	QString dialog_message = message.empty() ? QStringLiteral("Processing...") :
+											   QString::fromStdString(message);
 
 	progress_dialog_ = new ::olive::ProgressDialog(
 		dialog_message, QStringLiteral("OpenFX"), nullptr);
@@ -547,17 +553,17 @@ void OlivePluginInstance::setCustomInArgs(const std::string &action,
 
 OFX::Host::ImageEffect::ClipInstance *OlivePluginInstance::newClipInstance(
 	OFX::Host::ImageEffect::Instance *plugin,
-	OFX::Host::ImageEffect::ClipDescriptor *descriptor,
-	int index)
+	OFX::Host::ImageEffect::ClipDescriptor *descriptor, int index)
 {
 	// Create a new clip instance
-	OliveClipInstance* clipInstance = new OliveClipInstance(plugin, *descriptor, params_);
+	OliveClipInstance *clipInstance =
+		new OliveClipInstance(plugin, *descriptor, params_);
 
 	// Initialize base class clip properties from VideoParams so that
 	// setupClipPreferencesArgs and plugin constructors (which may fetch
 	// clips and query their properties before getClipPreferences is called)
 	// have valid defaults instead of kOfxImageComponentNone / kOfxBitDepthNone.
-	std::string depth = kOfxBitDepthFloat;  // host default
+	std::string depth = kOfxBitDepthFloat; // host default
 	std::string comp = kOfxImageComponentRGBA; // host default
 
 	switch (params_.format()) {

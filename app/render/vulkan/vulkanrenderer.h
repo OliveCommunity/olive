@@ -51,8 +51,8 @@ public:
 
 	// Clears either a texture render target or the currently bound output target.
 	virtual void ClearDestination(olive::Texture *texture = nullptr,
-							  double r = 0.0, double g = 0.0,
-							  double b = 0.0, double a = 0.0) override;
+								  double r = 0.0, double g = 0.0,
+								  double b = 0.0, double a = 0.0) override;
 
 	// Compiles GLSL to SPIR-V, creates shader modules, and prepares descriptor
 	// metadata for later blits.
@@ -63,12 +63,12 @@ public:
 
 	// Uploads CPU pixel data to a Vulkan image via a staging buffer.
 	virtual void UploadToTexture(const QVariant &handle,
-							 const VideoParams &params, const void *data,
-							 int linesize) override;
+								 const VideoParams &params, const void *data,
+								 int linesize) override;
 	// Downloads a Vulkan image to CPU memory via a staging buffer.
 	virtual void DownloadFromTexture(const QVariant &handle,
-								 const VideoParams &params, void *data,
-								 int linesize) override;
+									 const VideoParams &params, void *data,
+									 int linesize) override;
 
 	// Waits for outstanding device work to complete.
 	virtual void Flush() override;
@@ -80,7 +80,7 @@ public:
 
 	// Reads a single texture pixel using a one-pixel transfer readback.
 	virtual Color GetPixelFromTexture(olive::Texture *texture,
-								  const QPointF &pt) override;
+									  const QPointF &pt) override;
 
 	bool IsAvailable() const
 	{
@@ -90,14 +90,15 @@ public:
 protected:
 	// Runs one or more fullscreen shader passes into the destination texture.
 	virtual void Blit(QVariant shader, olive::AcceleratedJob &job,
-				  olive::Texture *destination, VideoParams destination_params,
-				  bool clear_destination) override;
+					  olive::Texture *destination,
+					  VideoParams destination_params,
+					  bool clear_destination) override;
 	// Creates a Vulkan image/view/memory bundle and optionally uploads initial
 	// pixel data.
 	virtual QVariant CreateNativeTexture(int width, int height, int depth,
-								 PixelFormat format, int channel_count,
-								 const void *data = nullptr,
-								 int linesize = 0) override;
+										 PixelFormat format, int channel_count,
+										 const void *data = nullptr,
+										 int linesize = 0) override;
 	// Releases a Vulkan texture bundle.
 	virtual void DestroyNativeTexture(QVariant texture) override;
 	// Releases all Vulkan device resources owned by this renderer.
@@ -172,10 +173,10 @@ private:
 	float GetFormatMaxAlpha(PixelFormat format) const;
 	// Repackages tightly packed pixels when the requested CPU channel count
 	// differs from the selected GPU format channel count.
-	void CopyPixelsWithChannelConversion(const void *src, void *dst,
-									 int width, int height, int depth,
-									 int src_channels, int dst_channels,
-									 PixelFormat format) const;
+	void CopyPixelsWithChannelConversion(const void *src, void *dst, int width,
+										 int height, int depth,
+										 int src_channels, int dst_channels,
+										 PixelFormat format) const;
 	// Rounds a size up to the requested alignment.
 	VkDeviceSize AlignSize(VkDeviceSize size, VkDeviceSize alignment) const;
 
@@ -187,11 +188,13 @@ private:
 	bool CompileGlslToSpv(const QString &glsl, VkShaderStageFlagBits stage,
 						  QByteArray *out_spv);
 	// Rewrites an Oak GLSL shader into Vulkan-compatible GLSL.
-	QString ConvertGlslToVulkan(const QString &glsl, VkShaderStageFlagBits stage);
+	QString ConvertGlslToVulkan(const QString &glsl,
+								VkShaderStageFlagBits stage);
 	// Ensures a shader declares a Vulkan-compatible GLSL version.
 	QString EnsureGlslVersion450(const QString &glsl) const;
 	// Extracts uniforms and sampler names from GLSL declarations.
-	void ExtractUniforms(const QString &glsl, QVector<UniformInfo> *out_uniforms,
+	void ExtractUniforms(const QString &glsl,
+						 QVector<UniformInfo> *out_uniforms,
 						 QVector<QString> *out_samplers) const;
 	// Computes std140 offsets and total UBO size for extracted uniforms.
 	void ComputeUniformLayout(QVector<UniformInfo> *uniforms) const;
@@ -199,9 +202,10 @@ private:
 	QString BuildUboBlock(const QVector<UniformInfo> &uniforms) const;
 	// Rewrites standalone uniforms and samplers into explicit UBO/sampler
 	// bindings accepted by Vulkan GLSL.
-	QString RewriteShaderWithUbo(const QString &glsl,
-							   const QVector<UniformInfo> &all_uniforms,
-							   const QHash<QString, int> &sampler_bindings) const;
+	QString
+	RewriteShaderWithUbo(const QString &glsl,
+						 const QVector<UniformInfo> &all_uniforms,
+						 const QHash<QString, int> &sampler_bindings) const;
 	// Returns std140 storage size for a supported GLSL type.
 	VkDeviceSize GetStd140Size(const QString &type) const;
 	// Returns std140 alignment for a supported GLSL type.
@@ -225,8 +229,8 @@ private:
 	void BlitPass(VulkanShader *shader, VulkanTexture *dest_tex,
 				  const QVector<TextureBinding> &bindings,
 				  const QByteArray &ubo_data,
-				  const VideoParams &destination_params,
-				  bool clear_destination, int iteration);
+				  const VideoParams &destination_params, bool clear_destination,
+				  int iteration);
 
 	VkInstance instance_ = VK_NULL_HANDLE;
 	VkDebugUtilsMessengerEXT debug_messenger_ = VK_NULL_HANDLE;

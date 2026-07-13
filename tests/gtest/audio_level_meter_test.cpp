@@ -11,7 +11,8 @@ extern "C" {
 #include <libavutil/channel_layout.h>
 }
 
-namespace {
+namespace
+{
 
 olive::core::AudioParams MakeStereoParams()
 {

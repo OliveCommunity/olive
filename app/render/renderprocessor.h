@@ -32,7 +32,8 @@
 namespace olive
 {
 
-namespace plugin {
+namespace plugin
+{
 class PluginRenderer;
 }
 

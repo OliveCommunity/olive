@@ -63,7 +63,7 @@ constexpr const char *kCancel = "cancel";
 constexpr const char *kGraphUpdate = "graph_update";
 constexpr const char *kShutdown = "shutdown";
 constexpr const char *kError = "error";
-}  // namespace msgtype
+} // namespace msgtype
 
 /**
  * @brief Write one NDJSON message line to `device`.
@@ -92,29 +92,34 @@ bool ReadMessage(QByteArray *buffer, QJsonObject *out, bool *ok = nullptr);
 
 struct HandshakeMsg {
 	int protocol_version = 0;
-	QString shm_key;          ///< Worker->main output shared-memory segment key.
-	QString input_shm_key;    ///< Main->worker input shared-memory segment key (optional).
-	int input_slots = 0;      ///< Number of main->worker input frame slots.
-	int output_slots = 0;     ///< Number of worker->main output frame slots.
-	qint64 slot_data_bytes = 0;        ///< Per-output-slot pixel block size.
-	qint64 input_slot_data_bytes = 0;  ///< Per-input-slot pixel block size.
+	QString shm_key; ///< Worker->main output shared-memory segment key.
+	QString
+		input_shm_key; ///< Main->worker input shared-memory segment key (optional).
+	int input_slots = 0; ///< Number of main->worker input frame slots.
+	int output_slots = 0; ///< Number of worker->main output frame slots.
+	qint64 slot_data_bytes = 0; ///< Per-output-slot pixel block size.
+	qint64 input_slot_data_bytes = 0; ///< Per-input-slot pixel block size.
 
 	QJsonObject ToJson() const;
 	static bool FromJson(const QJsonObject &o, HandshakeMsg *out);
 };
 
 struct RenderFrameMsg {
-	qint64 ticket_id = 0;     ///< Correlates this request with the eventual frame_ready.
-	QString node_uuid;        ///< Output/viewer node to render, by stable uuid in the loaded graph.
+	qint64 ticket_id =
+		0; ///< Correlates this request with the eventual frame_ready.
+	QString
+		node_uuid; ///< Output/viewer node to render, by stable uuid in the loaded graph.
 	qint64 time_num = 0;
 	qint64 time_den = 1;
-	int width = 0;            ///< Forced output size (0 = use graph default).
+	int width = 0; ///< Forced output size (0 = use graph default).
 	int height = 0;
-	int format = -1;          ///< Forced PixelFormat::Format (-1 = default/INVALID).
-	int channel_count = 0;    ///< 0 = default.
-	int mode = 0;             ///< RenderMode::Mode.
-	int input_slot = -1;      ///< Optional main->worker decoded input slot for footage nodes.
-	QVector<int> input_slots; ///< Optional ordered decoded input slots for footage nodes.
+	int format = -1; ///< Forced PixelFormat::Format (-1 = default/INVALID).
+	int channel_count = 0; ///< 0 = default.
+	int mode = 0; ///< RenderMode::Mode.
+	int input_slot =
+		-1; ///< Optional main->worker decoded input slot for footage nodes.
+	QVector<int>
+		input_slots; ///< Optional ordered decoded input slots for footage nodes.
 
 	// Output color transform to apply before returning the frame. When empty,
 	// the worker returns the image in the project's reference space.
@@ -130,7 +135,7 @@ struct RenderFrameMsg {
 
 struct FrameReadyMsg {
 	qint64 ticket_id = 0;
-	int output_slot = 0;      ///< Index into the worker->main output FrameSlotPool.
+	int output_slot = 0; ///< Index into the worker->main output FrameSlotPool.
 
 	QJsonObject ToJson() const;
 	static bool FromJson(const QJsonObject &o, FrameReadyMsg *out);
@@ -144,13 +149,13 @@ struct CancelMsg {
 };
 
 struct LoadGraphMsg {
-	QString path;             ///< Temporary file holding the serialized node graph.
+	QString path; ///< Temporary file holding the serialized node graph.
 
 	QJsonObject ToJson() const;
 	static bool FromJson(const QJsonObject &o, LoadGraphMsg *out);
 };
 
-}  // namespace ipc
-}  // namespace olive
+} // namespace ipc
+} // namespace olive
 
-#endif  // IPC_IPCMESSAGE_H
+#endif // IPC_IPCMESSAGE_H

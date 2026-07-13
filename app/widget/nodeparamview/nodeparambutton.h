@@ -23,25 +23,25 @@
 
 #include <QPushButton>
 
-class NodeParamButton : public QPushButton{
-Q_OBJECT
+class NodeParamButton : public QPushButton {
+	Q_OBJECT
 public:
-	NodeParamButton(QString name, QWidget *parent = nullptr):QPushButton(parent)
+	NodeParamButton(QString name, QWidget *parent = nullptr)
+		: QPushButton(parent)
 	{
-		this->name_=name;
+		this->name_ = name;
 		connect(this, &QPushButton::clicked, this, &NodeParamButton::pressed);
 	}
 signals:
 	void onPressed(QString name);
 private slots:
-	void pressed(){
+	void pressed()
+	{
 		emit onPressed(name_);
 	}
+
 private:
 	QString name_;
-
 };
-
-
 
 #endif //NODEPARAMBUTTON_H

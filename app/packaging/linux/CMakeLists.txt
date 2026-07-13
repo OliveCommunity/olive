@@ -15,34 +15,34 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-if(GIT_FOUND)
-  set(APPDATA_RELEASE_VERSION ${PROJECT_VERSION}-${GIT_HASH})
-  execute_process(COMMAND ${GIT_EXECUTABLE} log -1 --pretty=%cd --date=short
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    OUTPUT_VARIABLE APPDATA_RELEASE_DATE
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-  )
-else()
-  set(APPDATA_RELEASE_VERSION ${PROJECT_VERSION})
-  file(TIMESTAMP "${CMAKE_SOURCE_DIR}/CMakeLists.txt" APPDATA_RELEASE_DATE "%Y-%m-%d")
-endif()
+if (GIT_FOUND)
+    set(APPDATA_RELEASE_VERSION ${PROJECT_VERSION}-${GIT_HASH})
+    execute_process(COMMAND ${GIT_EXECUTABLE} log -1 --pretty=%cd --date=short
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            OUTPUT_VARIABLE APPDATA_RELEASE_DATE
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+else ()
+    set(APPDATA_RELEASE_VERSION ${PROJECT_VERSION})
+    file(TIMESTAMP "${CMAKE_SOURCE_DIR}/CMakeLists.txt" APPDATA_RELEASE_DATE "%Y-%m-%d")
+endif ()
 
 configure_file(
-  org.oakvideoeditor.Oak.appdata.xml.in
-  org.oakvideoeditor.Oak.appdata.xml
+        org.oakvideoeditor.Oak.appdata.xml.in
+        org.oakvideoeditor.Oak.appdata.xml
 )
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/org.oakvideoeditor.Oak.appdata.xml DESTINATION share/metainfo)
 
 install(FILES org.oakvideoeditor.Oak.desktop DESTINATION share/applications)
 install(FILES org.oakvideoeditor.Oak.xml DESTINATION share/mime/packages)
 
-foreach(size 16 32 48 64 128 256 512)
-  install(
-    FILES icons/${size}x${size}/org.oakvideoeditor.Oak.png
-    DESTINATION share/icons/hicolor/${size}x${size}/apps
-  )
-  install(
-    FILES icons/${size}x${size}/application-vnd.olive-project.png
-    DESTINATION share/icons/hicolor/${size}x${size}/mimetypes
-  )
-endforeach()
+foreach (size 16 32 48 64 128 256 512)
+    install(
+            FILES icons/${size}x${size}/org.oakvideoeditor.Oak.png
+            DESTINATION share/icons/hicolor/${size}x${size}/apps
+    )
+    install(
+            FILES icons/${size}x${size}/application-vnd.olive-project.png
+            DESTINATION share/icons/hicolor/${size}x${size}/mimetypes
+    )
+endforeach ()

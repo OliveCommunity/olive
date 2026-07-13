@@ -25,11 +25,11 @@ extern "C" {
 #include <libavutil/pixdesc.h>
 }
 
-namespace olive {
+namespace olive
+{
 
 static FramePtr CopyPackedAVFrameToFrame(const AVFramePtr &src,
-										 PixelFormat format,
-										 int channel_count,
+										 PixelFormat format, int channel_count,
 										 const rational &timestamp)
 {
 	if (!src || !src->data[0]) {
@@ -48,8 +48,7 @@ static FramePtr CopyPackedAVFrameToFrame(const AVFramePtr &src,
 						  VideoParams::GetBytesPerPixel(format, channel_count);
 	for (int y = 0; y < frame->height(); y++) {
 		memcpy(frame->data() + y * frame->linesize_bytes(),
-			   src->data[0] + y * src->linesize[0],
-			   size_t(row_bytes));
+			   src->data[0] + y * src->linesize[0], size_t(row_bytes));
 	}
 
 	return frame;
@@ -97,7 +96,8 @@ namespace olive
 QVariant Yuv2RgbShader;
 QVariant DeinterlaceShader;
 
-namespace {
+namespace
+{
 
 constexpr int64_t kAnalyzeDurationUs = 5000000;
 constexpr int64_t kProbeSizeBytes = 20000000;
@@ -133,8 +133,9 @@ void DiscardSubtitleStreams(AVFormatContext *ctx)
 	}
 }
 
-TimecodeMetadata::SourceTime ExtractSourceStartTime(
-	AVDictionary *metadata, const rational &timebase, int sample_rate)
+TimecodeMetadata::SourceTime ExtractSourceStartTime(AVDictionary *metadata,
+													const rational &timebase,
+													int sample_rate)
 {
 	if (!metadata) {
 		return TimecodeMetadata::SourceTime();
@@ -423,7 +424,7 @@ TexturePtr FFmpegDecoder::RetrieveVideoInternal(const RetrieveVideoParams &p)
 
 		// Perform any CPU processing required
 		AVFramePtr ptr = PreProcessFrame(f, p);
-		f=std::move(ptr);
+		f = std::move(ptr);
 		if (!f) {
 			qWarning() << "PreProcessFrame failed";
 			return nullptr;
@@ -458,14 +459,15 @@ FramePtr FFmpegDecoder::RetrieveVideoFrameInternal(const RetrieveVideoParams &p)
 		AVFramePtr dest = CreateAVFramePtr();
 		dest->width = f->width;
 		dest->height = f->height;
-		dest->format = p.maximum_format == PixelFormat::U8
-						   ? AV_PIX_FMT_RGBA
-						   : AV_PIX_FMT_RGBA64;
+		dest->format = p.maximum_format == PixelFormat::U8 ? AV_PIX_FMT_RGBA :
+															 AV_PIX_FMT_RGBA64;
 		dest->color_range = f->color_range;
 		dest->colorspace = f->colorspace;
 		if (p.divider > 1) {
-			dest->width = VideoParams::GetScaledDimension(dest->width, p.divider);
-			dest->height = VideoParams::GetScaledDimension(dest->height, p.divider);
+			dest->width =
+				VideoParams::GetScaledDimension(dest->width, p.divider);
+			dest->height =
+				VideoParams::GetScaledDimension(dest->height, p.divider);
 		}
 
 		int r = av_frame_get_buffer(dest.get(), 0);
@@ -504,8 +506,8 @@ FramePtr FFmpegDecoder::RetrieveVideoFrameInternal(const RetrieveVideoParams &p)
 		// zero-initializes the destination, leaving alpha at 0. The color
 		// management shader later multiplies RGB by alpha, producing black.
 		// Ensure alpha is opaque for source formats that have no alpha.
-		const AVPixFmtDescriptor *src_desc = av_pix_fmt_desc_get(
-			static_cast<AVPixelFormat>(f->format));
+		const AVPixFmtDescriptor *src_desc =
+			av_pix_fmt_desc_get(static_cast<AVPixelFormat>(f->format));
 		if (src_desc && !(src_desc->flags & AV_PIX_FMT_FLAG_ALPHA)) {
 			const int bpc = (dest->format == AV_PIX_FMT_RGBA) ? 1 : 2;
 			const int stride = dest->linesize[0];
@@ -522,11 +524,10 @@ FramePtr FFmpegDecoder::RetrieveVideoFrameInternal(const RetrieveVideoParams &p)
 		}
 
 		return CopyPackedAVFrameToFrame(dest,
-										dest->format == AV_PIX_FMT_RGBA
-											? PixelFormat::U8
-											: PixelFormat::U16,
-										VideoParams::kRGBAChannelCount,
-										p.time);
+										dest->format == AV_PIX_FMT_RGBA ?
+											PixelFormat::U8 :
+											PixelFormat::U16,
+										VideoParams::kRGBAChannelCount, p.time);
 	}
 
 	return nullptr;
@@ -580,7 +581,8 @@ FootageDescription FFmpegDecoder::Probe(const QString &filename,
 	AVFormatContext *fmt_ctx = nullptr;
 	AVDictionary *format_opts = nullptr;
 	ApplyFormatOpenOptions(&format_opts);
-	error_code = avformat_open_input(&fmt_ctx, filename_c, nullptr, &format_opts);
+	error_code =
+		avformat_open_input(&fmt_ctx, filename_c, nullptr, &format_opts);
 	av_dict_free(&format_opts);
 	TuneFormatContext(fmt_ctx);
 	DiscardSubtitleStreams(fmt_ctx);
@@ -591,9 +593,8 @@ FootageDescription FFmpegDecoder::Probe(const QString &filename,
 		avformat_find_stream_info(fmt_ctx, nullptr);
 
 		int64_t footage_duration = fmt_ctx->duration;
-		TimecodeMetadata::SourceTime source_start_time =
-			ExtractSourceStartTime(fmt_ctx->metadata, rational(1, AV_TIME_BASE),
-								   0);
+		TimecodeMetadata::SourceTime source_start_time = ExtractSourceStartTime(
+			fmt_ctx->metadata, rational(1, AV_TIME_BASE), 0);
 
 		bool duration_guessed_from_bitrate =
 			(fmt_ctx->duration_estimation_method ==
@@ -625,77 +626,86 @@ FootageDescription FFmpegDecoder::Probe(const QString &filename,
 				 avstream->codecpar->codec_type == AVMEDIA_TYPE_SUBTITLE)) {
 				if (avstream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
 					{
-					    // Read at least two frames to get more information about this video stream
-					    AVPacket *pkt = av_packet_alloc();
-					    AVFrame  *frame = av_frame_alloc();
+						// Read at least two frames to get more information about this video stream
+						AVPacket *pkt = av_packet_alloc();
+						AVFrame *frame = av_frame_alloc();
 
-					    VideoParams::Interlacing interlacing = VideoParams::kInterlaceNone;
-					    AVRational pixel_aspect_ratio = {1, 1};
-					    AVRational frame_rate = avstream->avg_frame_rate;
-					    AVPixelFormat compatible_pix_fmt =
-					        FFmpegUtils::GetCompatiblePixelFormat(
-					            static_cast<AVPixelFormat>(avstream->codecpar->format));
-					    bool image_is_still = false;
+						VideoParams::Interlacing interlacing =
+							VideoParams::kInterlaceNone;
+						AVRational pixel_aspect_ratio = { 1, 1 };
+						AVRational frame_rate = avstream->avg_frame_rate;
+						AVPixelFormat compatible_pix_fmt =
+							FFmpegUtils::GetCompatiblePixelFormat(
+								static_cast<AVPixelFormat>(
+									avstream->codecpar->format));
+						bool image_is_still = false;
 
-					    {
-					        Instance instance;
-					        if (instance.Open(filename_c, avstream->index) != 0)
-					            goto cleanup;
+						{
+							Instance instance;
+							if (instance.Open(filename_c, avstream->index) != 0)
+								goto cleanup;
 
-					        AVCodecContext *avctx = instance.codec_ctx();
-					        interlacing = FFmpegFieldOrderToOlive(avctx->field_order);
+							AVCodecContext *avctx = instance.codec_ctx();
+							interlacing =
+								FFmpegFieldOrderToOlive(avctx->field_order);
 
-					        if (instance.GetFrame(pkt, frame) >= 0) {
-					            pixel_aspect_ratio =
-					                av_guess_sample_aspect_ratio(instance.fmt_ctx(),
-					                                             instance.avstream(), frame);
-					            frame_rate =
-					                av_guess_frame_rate(instance.fmt_ctx(),
-					                                    instance.avstream(), frame);
-					        }
+							if (instance.GetFrame(pkt, frame) >= 0) {
+								pixel_aspect_ratio =
+									av_guess_sample_aspect_ratio(
+										instance.fmt_ctx(), instance.avstream(),
+										frame);
+								frame_rate = av_guess_frame_rate(
+									instance.fmt_ctx(), instance.avstream(),
+									frame);
+							}
 
-					        int ret = instance.GetFrame(pkt, frame);
-					        if (ret == AVERROR_EOF) {
-					            image_is_still = true;
-					        } else if (avstream->duration == AV_NOPTS_VALUE ||
-					                   duration_guessed_from_bitrate) {
-					            int64_t last_ts = frame->best_effort_timestamp;
-					            while (instance.GetFrame(pkt, frame) >= 0 &&
-					                   (!cancelled || !cancelled->IsCancelled()))
-					                last_ts = frame->best_effort_timestamp;
-					            avstream->duration = last_ts;
-					        }
+							int ret = instance.GetFrame(pkt, frame);
+							if (ret == AVERROR_EOF) {
+								image_is_still = true;
+							} else if (avstream->duration == AV_NOPTS_VALUE ||
+									   duration_guessed_from_bitrate) {
+								int64_t last_ts = frame->best_effort_timestamp;
+								while (
+									instance.GetFrame(pkt, frame) >= 0 &&
+									(!cancelled || !cancelled->IsCancelled()))
+									last_ts = frame->best_effort_timestamp;
+								avstream->duration = last_ts;
+							}
 
-					        instance.Close();
-					    }
+							instance.Close();
+						}
 
-					cleanup:
-					    av_frame_free(&frame);
-					    av_packet_free(&pkt);
+cleanup:
+						av_frame_free(&frame);
+						av_packet_free(&pkt);
 
-					    VideoParams stream;
-					    stream.set_stream_index(i);
-					    stream.set_width(avstream->codecpar->width);
-					    stream.set_height(avstream->codecpar->height);
-					    stream.set_video_type(image_is_still ? VideoParams::kVideoTypeStill
-					                                         : VideoParams::kVideoTypeVideo);
-					    stream.set_format(GetNativePixelFormat(compatible_pix_fmt));
-					    stream.set_channel_count(GetNativeChannelCount(compatible_pix_fmt));
-					    stream.set_interlacing(interlacing);          // <-- 已正确填充
-					    stream.set_pixel_aspect_ratio(pixel_aspect_ratio);
-					    stream.set_frame_rate(frame_rate);
-					    stream.set_start_time(avstream->start_time);
-					    stream.set_time_base(avstream->time_base);
-					    stream.set_duration(avstream->duration);
-					    stream.set_color_range(avstream->codecpar->color_range == AVCOL_RANGE_JPEG
-					                               ? VideoParams::kColorRangeFull
-					                               : VideoParams::kColorRangeLimited);
-					    stream.set_premultiplied_alpha(false);
+						VideoParams stream;
+						stream.set_stream_index(i);
+						stream.set_width(avstream->codecpar->width);
+						stream.set_height(avstream->codecpar->height);
+						stream.set_video_type(image_is_still ?
+												  VideoParams::kVideoTypeStill :
+												  VideoParams::kVideoTypeVideo);
+						stream.set_format(
+							GetNativePixelFormat(compatible_pix_fmt));
+						stream.set_channel_count(
+							GetNativeChannelCount(compatible_pix_fmt));
+						stream.set_interlacing(interlacing); // <-- 已正确填充
+						stream.set_pixel_aspect_ratio(pixel_aspect_ratio);
+						stream.set_frame_rate(frame_rate);
+						stream.set_start_time(avstream->start_time);
+						stream.set_time_base(avstream->time_base);
+						stream.set_duration(avstream->duration);
+						stream.set_color_range(
+							avstream->codecpar->color_range ==
+									AVCOL_RANGE_JPEG ?
+								VideoParams::kColorRangeFull :
+								VideoParams::kColorRangeLimited);
+						stream.set_premultiplied_alpha(false);
 
-					    desc.AddVideoStream(stream);
-					    image_is_still ? still_streams++ : video_streams++;
+						desc.AddVideoStream(stream);
+						image_is_still ? still_streams++ : video_streams++;
 					}
-
 
 				} else if (avstream->codecpar->codec_type ==
 						   AVMEDIA_TYPE_AUDIO) {
@@ -837,7 +847,7 @@ bool FFmpegDecoder::ConformAudioInternal(const QVector<QString> &filenames,
 	}
 	// Create resampling context
 	AVChannelLayout layout = params.channel_layout();
-	SwrContext *resampler=NULL;
+	SwrContext *resampler = NULL;
 	swr_alloc_set_opts2(
 		&resampler, &layout,
 		FFmpegUtils::GetFFmpegSampleFormat(params.format()),
@@ -1270,14 +1280,14 @@ AVFramePtr FFmpegDecoder::RetrieveFrame(const rational &time,
 
 AVFramePtr FFmpegDecoder::TransferHardwareFrame(AVFramePtr f)
 {
-	if (!instance_.hwaccel_enabled() ||
-		f->format != instance_.hw_pix_fmt()) {
+	if (!instance_.hwaccel_enabled() || f->format != instance_.hw_pix_fmt()) {
 		return f;
 	}
 
 	AVFrame *sw_frame = av_frame_alloc();
 	if (!sw_frame) {
-		qCritical() << "Failed to allocate software frame for hardware transfer";
+		qCritical()
+			<< "Failed to allocate software frame for hardware transfer";
 		return nullptr;
 	}
 
@@ -1291,8 +1301,9 @@ AVFramePtr FFmpegDecoder::TransferHardwareFrame(AVFramePtr f)
 
 	ret = av_frame_copy_props(sw_frame, f.get());
 	if (ret < 0) {
-		qWarning() << "Failed to copy frame properties during hardware transfer:"
-				   << FFmpegError(ret);
+		qWarning()
+			<< "Failed to copy frame properties during hardware transfer:"
+			<< FFmpegError(ret);
 	}
 
 	return CreateAVFramePtr(sw_frame);
@@ -1372,7 +1383,8 @@ bool FFmpegDecoder::Instance::Open(const char *filename, int stream_index)
 	// Open file in a format context
 	AVDictionary *format_opts = nullptr;
 	ApplyFormatOpenOptions(&format_opts);
-	int error_code = avformat_open_input(&fmt_ctx_, filename, nullptr, &format_opts);
+	int error_code =
+		avformat_open_input(&fmt_ctx_, filename, nullptr, &format_opts);
 	av_dict_free(&format_opts);
 	TuneFormatContext(fmt_ctx_);
 	DiscardSubtitleStreams(fmt_ctx_);
@@ -1420,7 +1432,7 @@ bool FFmpegDecoder::Instance::Open(const char *filename, int stream_index)
 	// Handle failure to copy parameters
 	if (error_code < 0) {
 		qCritical()
-		<< "Failed to copy parameters from AVStream to AVCodecContext";
+			<< "Failed to copy parameters from AVStream to AVCodecContext";
 		return false;
 	}
 
@@ -1437,13 +1449,14 @@ bool FFmpegDecoder::Instance::Open(const char *filename, int stream_index)
 		error_code = avcodec_open2(codec_ctx_, codec, &opts_);
 		if (error_code == 0) {
 			hwaccel_enabled_ = true;
-			qDebug() << "Hardware decoding enabled for" << filename
-					 << "using" << av_hwdevice_get_type_name(hw_device_type_)
+			qDebug() << "Hardware decoding enabled for" << filename << "using"
+					 << av_hwdevice_get_type_name(hw_device_type_)
 					 << "pixel format" << av_get_pix_fmt_name(hw_pix_fmt_);
 			return true;
 		}
 
-		qWarning() << "Failed to open hardware codec, falling back to software decoding:";
+		qWarning()
+			<< "Failed to open hardware codec, falling back to software decoding:";
 		char buf[512];
 		av_strerror(error_code, buf, 512);
 		qWarning() << FFmpegError(error_code) << buf;
@@ -1454,11 +1467,13 @@ bool FFmpegDecoder::Instance::Open(const char *filename, int stream_index)
 
 		codec_ctx_ = avcodec_alloc_context3(codec);
 		if (codec_ctx_ == nullptr) {
-			qCritical() << "Failed to allocate codec context for software fallback";
+			qCritical()
+				<< "Failed to allocate codec context for software fallback";
 			return false;
 		}
 
-		error_code = avcodec_parameters_to_context(codec_ctx_, avstream_->codecpar);
+		error_code =
+			avcodec_parameters_to_context(codec_ctx_, avstream_->codecpar);
 		if (error_code < 0) {
 			qCritical()
 				<< "Failed to copy parameters from AVStream to AVCodecContext";
@@ -1494,25 +1509,26 @@ AVHWDeviceType FFmpegDecoder::Instance::ChooseHardwareDevice()
 		}
 	}
 #elif defined(Q_OS_WIN)
-	for (AVHWDeviceType type : { AV_HWDEVICE_TYPE_D3D11VA, AV_HWDEVICE_TYPE_DXVA2,
-								 AV_HWDEVICE_TYPE_CUDA }) {
+	for (AVHWDeviceType type :
+		 { AV_HWDEVICE_TYPE_D3D11VA, AV_HWDEVICE_TYPE_DXVA2,
+		   AV_HWDEVICE_TYPE_CUDA }) {
 		if (av_hwdevice_find_type_by_name(av_hwdevice_get_type_name(type)) !=
 			AV_HWDEVICE_TYPE_NONE) {
 			return type;
 		}
 	}
 #elif defined(Q_OS_MACOS)
-	if (av_hwdevice_find_type_by_name(
-			av_hwdevice_get_type_name(AV_HWDEVICE_TYPE_VIDEOTOOLBOX)) !=
-		AV_HWDEVICE_TYPE_NONE) {
+	if (av_hwdevice_find_type_by_name(av_hwdevice_get_type_name(
+			AV_HWDEVICE_TYPE_VIDEOTOOLBOX)) != AV_HWDEVICE_TYPE_NONE) {
 		return AV_HWDEVICE_TYPE_VIDEOTOOLBOX;
 	}
 #endif
 	return AV_HWDEVICE_TYPE_NONE;
 }
 
-AVPixelFormat FFmpegDecoder::Instance::GetHardwareFormat(
-	AVCodecContext *ctx, const AVPixelFormat *pix_fmts)
+AVPixelFormat
+FFmpegDecoder::Instance::GetHardwareFormat(AVCodecContext *ctx,
+										   const AVPixelFormat *pix_fmts)
 {
 	const Instance *inst = static_cast<const Instance *>(ctx->opaque);
 	for (const AVPixelFormat *p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
@@ -1521,7 +1537,8 @@ AVPixelFormat FFmpegDecoder::Instance::GetHardwareFormat(
 		}
 	}
 
-	qWarning() << "Hardware pixel format not supported by decoder, using first software format";
+	qWarning()
+		<< "Hardware pixel format not supported by decoder, using first software format";
 	return pix_fmts[0];
 }
 
@@ -1547,9 +1564,9 @@ bool FFmpegDecoder::Instance::InitHardwareAcceleration(const AVCodec *codec)
 	}
 
 	if (hw_pix_fmt_ == AV_PIX_FMT_NONE) {
-		qDebug() << "Codec" << codec->id
-				 << "does not support hardware device type"
-				 << av_hwdevice_get_type_name(device_type);
+		qDebug()
+			<< "Codec" << codec->id << "does not support hardware device type"
+			<< av_hwdevice_get_type_name(device_type);
 		return false;
 	}
 

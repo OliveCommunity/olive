@@ -265,8 +265,8 @@ void OpenGLRenderer::AttachTextureAsDestination(const QVariant &texture)
 void OpenGLRenderer::DetachTextureAsDestination()
 {
 	// QOpenGLWidget renders to a non-zero default FBO.
-	const GLuint default_fbo =
-		context_ ? context_->defaultFramebufferObject() : 0;
+	const GLuint default_fbo = context_ ? context_->defaultFramebufferObject() :
+										  0;
 	functions_->glBindFramebuffer(GL_FRAMEBUFFER, default_fbo);
 }
 
@@ -504,8 +504,8 @@ struct TextureToBind {
 	Texture::Interpolation interpolation;
 };
 
-void OpenGLRenderer::Blit(QVariant s, AcceleratedJob& a_job, Texture *destination,
-						  VideoParams destination_params,
+void OpenGLRenderer::Blit(QVariant s, AcceleratedJob &a_job,
+						  Texture *destination, VideoParams destination_params,
 						  bool clear_destination)
 {
 	GL_PREAMBLE;
@@ -519,7 +519,7 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob& a_job, Texture *destinatio
 			functions_->glBindFramebuffer(GL_FRAMEBUFFER, fbo);
 		}
 
-		ShaderJob &s_job=dynamic_cast<ShaderJob &>(a_job);
+		ShaderJob &s_job = dynamic_cast<ShaderJob &>(a_job);
 		ShaderJob job(s_job);
 		// If this node is iterative, we'll pick up which input here
 		QMap<QString, GLuint> texture_index_map;
@@ -585,7 +585,8 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob& a_job, Texture *destinatio
 			case NodeValue::kColor: {
 				Color color = value.toColor();
 				functions_->glUniform4f(variable_location, color.red(),
-										color.green(), color.blue(), color.alpha());
+										color.green(), color.blue(),
+										color.alpha());
 				break;
 			}
 			case NodeValue::kBoolean:
@@ -595,7 +596,8 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob& a_job, Texture *destinatio
 				TexturePtr texture = value.toTexture();
 
 				// Set value to bound texture
-				functions_->glUniform1i(variable_location, textures_to_bind.size());
+				functions_->glUniform1i(variable_location,
+										textures_to_bind.size());
 
 				texture_index_map.insert(it.key(), textures_to_bind.size());
 
@@ -605,8 +607,10 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob& a_job, Texture *destinatio
 				// Set enable flag if shader wants it
 				GLuint tex_id = texture ? texture->id().value<GLuint>() : 0;
 				int enable_param_location = functions_->glGetUniformLocation(
-					shader,
-					QStringLiteral("%1_enabled").arg(it.key()).toUtf8().constData());
+					shader, QStringLiteral("%1_enabled")
+								.arg(it.key())
+								.toUtf8()
+								.constData());
 				if (enable_param_location > -1) {
 					functions_->glUniform1i(enable_param_location, tex_id > 0);
 				}
@@ -637,8 +641,9 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob& a_job, Texture *destinatio
 
 			functions_->glActiveTexture(GL_TEXTURE0 + i);
 
-			GLenum target = (texture && texture->params().is_3d()) ? GL_TEXTURE_3D :
-																	 GL_TEXTURE_2D;
+			GLenum target = (texture && texture->params().is_3d()) ?
+								GL_TEXTURE_3D :
+								GL_TEXTURE_2D;
 			functions_->glBindTexture(target, tex_id);
 
 			if (tex_id) {
@@ -647,12 +652,12 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob& a_job, Texture *destinatio
 				if (texture->channel_count() == 1 &&
 					destination_params.channel_count() != 1) {
 					// Interpret this texture as a grayscale texture
-					functions_->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_R,
-												GL_RED);
-					functions_->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G,
-												GL_RED);
-					functions_->glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B,
-												GL_RED);
+					functions_->glTexParameteri(GL_TEXTURE_2D,
+												GL_TEXTURE_SWIZZLE_R, GL_RED);
+					functions_->glTexParameteri(GL_TEXTURE_2D,
+												GL_TEXTURE_SWIZZLE_G, GL_RED);
+					functions_->glTexParameteri(GL_TEXTURE_2D,
+												GL_TEXTURE_SWIZZLE_B, GL_RED);
 				}
 			}
 		}
@@ -683,7 +688,8 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob& a_job, Texture *destinatio
 		if (!job.GetVertexCoordinates().isEmpty()) {
 			Q_ASSERT(job.GetVertexCoordinates().size() == 18);
 			vert_vbo_.allocate(job.GetVertexCoordinates().constData(),
-							   job.GetVertexCoordinates().size() * sizeof(float));
+							   job.GetVertexCoordinates().size() *
+								   sizeof(float));
 		} else {
 			vert_vbo_.allocate(blit_vertices.constData(),
 							   blit_vertices.size() * sizeof(GLfloat));
@@ -707,12 +713,13 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob& a_job, Texture *destinatio
 			vert_vbo_.release();
 		}
 
-		GLint tex_location = functions_->glGetAttribLocation(shader, "a_texcoord");
+		GLint tex_location =
+			functions_->glGetAttribLocation(shader, "a_texcoord");
 		if (tex_location != -1) {
 			frag_vbo_.bind();
 			functions_->glEnableVertexAttribArray(tex_location);
-			functions_->glVertexAttribPointer(tex_location, 2, GL_FLOAT, GL_FALSE,
-											  0, nullptr);
+			functions_->glVertexAttribPointer(tex_location, 2, GL_FLOAT,
+											  GL_FALSE, 0, nullptr);
 			frag_vbo_.release();
 		}
 
@@ -788,9 +795,9 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob& a_job, Texture *destinatio
 			// Blit this texture through this shader
 			{
 				PRINT_GL_ERRORS;
-				functions_->glDrawArrays(GL_TRIANGLES, 0, blit_vertices.size() / 3);
+				functions_->glDrawArrays(GL_TRIANGLES, 0,
+										 blit_vertices.size() / 3);
 			}
-
 		}
 
 		if (destination) {
@@ -801,8 +808,9 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob& a_job, Texture *destinatio
 		// Release any textures we bound before
 		for (int i = textures_to_bind.size() - 1; i >= 0; i--) {
 			TexturePtr texture = textures_to_bind.at(i).texture;
-			GLenum target = (texture && texture->params().is_3d()) ? GL_TEXTURE_3D :
-																	 GL_TEXTURE_2D;
+			GLenum target = (texture && texture->params().is_3d()) ?
+								GL_TEXTURE_3D :
+								GL_TEXTURE_2D;
 			functions_->glActiveTexture(GL_TEXTURE0 + i);
 			functions_->glBindTexture(target, 0);
 		}
@@ -815,9 +823,8 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob& a_job, Texture *destinatio
 		vert_vbo_.destroy();
 		vao_.release();
 		vao_.destroy();
+	} catch (std::bad_cast e) {
 	}
-	catch (std::bad_cast e){}
-
 }
 
 GLint OpenGLRenderer::GetInternalFormat(PixelFormat format, int channel_layout)
@@ -965,12 +972,12 @@ GLuint OpenGLRenderer::CompileShader(GLenum type, const QString &code)
 	const int major = context_ ? context_->format().majorVersion() : 0;
 	const int minor = context_ ? context_->format().minorVersion() : 0;
 	const bool is_gles2 = is_gles && (major < 3);
-	const QString gles_preamble = is_gles2
-		? QStringLiteral("#version 100\n\n"
-						 "precision highp float;\n\n"
-						 "#define frag_color gl_FragColor\n")
-		: QStringLiteral("#version 300 es\n\n"
-						 "precision highp float;\n\n");
+	const QString gles_preamble =
+		is_gles2 ? QStringLiteral("#version 100\n\n"
+								  "precision highp float;\n\n"
+								  "#define frag_color gl_FragColor\n") :
+				   QStringLiteral("#version 300 es\n\n"
+								  "precision highp float;\n\n");
 	const QString desktop_preamble =
 		// Use appropriate GL 3.2 shader header
 		QStringLiteral("#version 150\n\n"
@@ -991,7 +998,8 @@ GLuint OpenGLRenderer::CompileShader(GLenum type, const QString &code)
 
 	QString complete_code;
 	if (base_code.startsWith(QStringLiteral("#version"))) {
-		if (is_gles || !desktop_preamble.startsWith(QStringLiteral("#version"))) {
+		if (is_gles ||
+			!desktop_preamble.startsWith(QStringLiteral("#version"))) {
 			int newline = base_code.indexOf('\n');
 			if (newline >= 0) {
 				complete_code = shader_preamble + base_code.mid(newline + 1);
@@ -1007,18 +1015,22 @@ GLuint OpenGLRenderer::CompileShader(GLenum type, const QString &code)
 
 	if (is_gles2) {
 		if (type == GL_VERTEX_SHADER) {
-			complete_code.replace(QRegularExpression(QStringLiteral("\\bin\\b")),
-								  QStringLiteral("attribute"));
-			complete_code.replace(QRegularExpression(QStringLiteral("\\bout\\b")),
-								  QStringLiteral("varying"));
+			complete_code.replace(
+				QRegularExpression(QStringLiteral("\\bin\\b")),
+				QStringLiteral("attribute"));
+			complete_code.replace(
+				QRegularExpression(QStringLiteral("\\bout\\b")),
+				QStringLiteral("varying"));
 		} else if (type == GL_FRAGMENT_SHADER) {
-			complete_code.replace(QRegularExpression(QStringLiteral("\\bin\\b")),
-								  QStringLiteral("varying"));
-			complete_code.replace(QRegularExpression(
-									  QStringLiteral("\\bout\\s+vec4\\s+frag_color\\s*;")),
+			complete_code.replace(
+				QRegularExpression(QStringLiteral("\\bin\\b")),
+				QStringLiteral("varying"));
+			complete_code.replace(QRegularExpression(QStringLiteral(
+									  "\\bout\\s+vec4\\s+frag_color\\s*;")),
 								  QStringLiteral("// frag_color output"));
-			complete_code.replace(QRegularExpression(QStringLiteral("\\btexture\\b")),
-								  QStringLiteral("texture2D"));
+			complete_code.replace(
+				QRegularExpression(QStringLiteral("\\btexture\\b")),
+				QStringLiteral("texture2D"));
 		}
 	}
 
@@ -1058,7 +1070,8 @@ bool OpenGLRenderer::EnsureContextCurrent(const char *caller)
 	// paint code can receive textures produced by a render-thread OpenGL
 	// renderer, so guard here before makeCurrent() can crash inside Qt/GL.
 	if (context_->thread() != QThread::currentThread()) {
-		qWarning() << caller << "called from the wrong thread for this OpenGL context";
+		qWarning()
+			<< caller << "called from the wrong thread for this OpenGL context";
 		return false;
 	}
 

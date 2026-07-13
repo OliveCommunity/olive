@@ -22,10 +22,11 @@ TEST(NodeProject, FilenameAndNameUpdate)
 {
 	olive::Project project;
 
-	project.set_filename(QStringLiteral("/tmp/test_project.ove"));
-	EXPECT_EQ(project.filename(), QStringLiteral("/tmp/test_project.ove"));
+	const QString filename = QStringLiteral("test_project.ove");
+	project.set_filename(filename);
+	EXPECT_EQ(project.filename(), filename);
 	EXPECT_EQ(project.name(), QStringLiteral("test_project"));
-	EXPECT_EQ(project.pretty_filename(), QStringLiteral("/tmp/test_project.ove"));
+	EXPECT_EQ(project.pretty_filename(), filename);
 	EXPECT_FALSE(project.is_new());
 }
 
@@ -46,8 +47,9 @@ TEST(NodeProject, SettingsRoundTrip)
 {
 	olive::Project project;
 
-	project.SetSetting(olive::Project::kCacheLocationSettingKey,
-					   QString::number(olive::Project::kCacheStoreAlongsideProject));
+	project.SetSetting(
+		olive::Project::kCacheLocationSettingKey,
+		QString::number(olive::Project::kCacheStoreAlongsideProject));
 	EXPECT_EQ(project.GetCacheLocationSetting(),
 			  olive::Project::kCacheStoreAlongsideProject);
 
@@ -61,7 +63,8 @@ TEST(NodeProject, SettingsRoundTrip)
 	EXPECT_EQ(project.GetDefaultInputColorSpace(), QStringLiteral("ACEScg"));
 
 	project.SetColorReferenceSpace(QStringLiteral("ACES - ACEScg"));
-	EXPECT_EQ(project.GetColorReferenceSpace(), QStringLiteral("ACES - ACEScg"));
+	EXPECT_EQ(project.GetColorReferenceSpace(),
+			  QStringLiteral("ACES - ACEScg"));
 }
 
 TEST(NodeProject, InitializeCreatesRoot)

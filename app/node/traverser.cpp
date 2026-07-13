@@ -502,19 +502,20 @@ void NodeTraverser::ResolveJobs(NodeValue &val)
 						}
 
 						val.set_value(tex);
-					}
-					else if (plugin::PluginJob* plugin_job=dynamic_cast<plugin::PluginJob*>(base_job)) {
+					} else if (plugin::PluginJob *plugin_job =
+								   dynamic_cast<plugin::PluginJob *>(
+									   base_job)) {
 						VideoParams tex_params = job_tex->params();
 						// Force internal working format (F32) for plugin processing,
 						// matching FootageJob/GenerateJob behavior.
 						tex_params.set_format(GetCacheVideoParams().format());
-						tex_params.set_channel_count(VideoParams::kRGBAChannelCount);
+						tex_params.set_channel_count(
+							VideoParams::kRGBAChannelCount);
 
 						TexturePtr tex = CreateTexture(tex_params);
 
 						ProcessPluginJob(job_tex, tex, val.source());
 						val.set_value(tex);
-
 					}
 
 					// Cache resolved value

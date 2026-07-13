@@ -23,6 +23,7 @@
 
 #include <QHash>
 #include <QMutex>
+#include <QSet>
 #include <QThread>
 #include <QVector>
 #include <QWaitCondition>
@@ -113,8 +114,7 @@ private:
 	};
 
 	bool PrepareJob(RenderTicketPtr ticket,
-					const RenderManager::RenderVideoParams &params,
-					Job *job);
+					const RenderManager::RenderVideoParams &params, Job *job);
 	bool WriteGraphSnapshot(Project *project, QString *path);
 	bool IsSupported(const RenderManager::RenderVideoParams &params) const;
 
@@ -123,24 +123,30 @@ private:
 	void ProcessJob(const Job &job, int worker_index,
 					std::vector<std::unique_ptr<PooledWorker>> *local_pool);
 	JobResult ProcessJobAttempt(const Job &job, int worker_index,
-								int attempt_index,
-								PooledWorker *worker);
+								int attempt_index, PooledWorker *worker);
 	void FinishWithFrame(RenderTicketPtr ticket, const ipc::FrameSlotPool &pool,
 						 uint32_t slot);
 	void CleanupGraphFile(const QString &path);
+	void AddGraphPathRef(const QString &path);
+	void AddGraphPathRefLocked(const QString &path);
+	void ReleaseGraphPathRef(const QString &path);
+	void ReleaseGraphPathRefLocked(const QString &path);
+	void SetGraphPathCached(const QString &path, bool cached);
+	void SetGraphPathCachedLocked(const QString &path, bool cached);
 	void CancelActiveProcess(qint64 process_id);
 	void SetActiveWorker(int worker_index, RenderTicketPtr ticket,
 						 QProcess *worker, qint64 ticket_id);
 	void ClearActiveWorker(int worker_index, qint64 process_id);
 	int WorkerCount() const;
 
-	std::unique_ptr<PooledWorker> AcquireWorker(
-		std::vector<std::unique_ptr<PooledWorker>> *local_pool,
-		const QString &graph_path);
+	std::unique_ptr<PooledWorker>
+	AcquireWorker(std::vector<std::unique_ptr<PooledWorker>> *local_pool,
+				  const QString &graph_path);
 	void ReturnWorker(std::vector<std::unique_ptr<PooledWorker>> *local_pool,
 					  std::unique_ptr<PooledWorker> worker, bool keep_alive);
 	void ShutdownWorker(PooledWorker *worker);
-	void ShutdownLocalPool(std::vector<std::unique_ptr<PooledWorker>> *local_pool);
+	void
+	ShutdownLocalPool(std::vector<std::unique_ptr<PooledWorker>> *local_pool);
 	void ClearGraphCache();
 
 	DecoderCache *decoder_cache_;
@@ -151,6 +157,8 @@ private:
 	bool stopping_ = false;
 	QVector<ActiveJob> active_jobs_;
 	QHash<QUuid, CachedGraph> graph_cache_;
+	QHash<QString, int> graph_path_ref_count_;
+	QSet<QString> cached_graph_paths_;
 
 	static constexpr uint32_t kOutputSlots = 2;
 	static constexpr int kMaxAttempts = 2;

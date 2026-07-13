@@ -265,7 +265,9 @@ void ProjectCopier::InsertIntoCopyMap(Node *node, Node *copy)
 	if (Footage *src_footage = dynamic_cast<Footage *>(node)) {
 		if (dynamic_cast<Footage *>(copy)) {
 			connect(src_footage, &Footage::ProxySettingsChanged, this,
-					[this, src_footage]() { SyncFootageProxySettings(src_footage); });
+					[this, src_footage]() {
+						SyncFootageProxySettings(src_footage);
+					});
 			SyncFootageProxySettings(src_footage);
 		}
 	}
@@ -279,14 +281,15 @@ void ProjectCopier::SyncFootageProxySettings(Footage *source)
 	Footage *copy = GetCopy(source);
 	if (!copy) {
 		qWarning() << "ProjectCopier::SyncFootageProxySettings: no copy for"
-				  << source->filename();
+				   << source->filename();
 		return;
 	}
 
-	qDebug() << "ProjectCopier::SyncFootageProxySettings:" << source->filename()
-			 << "enabled=" << source->proxy_enabled() << "->"
-			 << copy->proxy_enabled() << "state="
-			 << ProxyManager::ProxyStateToString(source->proxy_state());
+	qDebug()
+		<< "ProjectCopier::SyncFootageProxySettings:" << source->filename()
+		<< "enabled=" << source->proxy_enabled() << "->"
+		<< copy->proxy_enabled()
+		<< "state=" << ProxyManager::ProxyStateToString(source->proxy_state());
 
 	copy->SetProxy(source->proxy_path(), source->proxy_state(),
 				   source->proxy_video_stream_index(),

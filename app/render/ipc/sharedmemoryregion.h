@@ -110,14 +110,14 @@ private:
 	QString error_;
 
 #if defined(Q_OS_WIN)
-	void *handle_;  // HANDLE from CreateFileMapping/OpenFileMapping
+	void *handle_; // HANDLE from CreateFileMapping/OpenFileMapping
 #else
-	int fd_;        // file descriptor from shm_open
-	QString shm_name_;  // the platform-prefixed name actually passed to shm_open
+	int fd_; // file descriptor from shm_open
+	QString shm_name_; // the platform-prefixed name actually passed to shm_open
 #endif
 };
 
-}  // namespace ipc
-}  // namespace olive
+} // namespace ipc
+} // namespace olive
 
-#endif  // IPC_SHAREDMEMORYREGION_H
+#endif // IPC_SHAREDMEMORYREGION_H

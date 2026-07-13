@@ -62,8 +62,8 @@ struct FootageInput {
 
 class FootageInputCollector : public NodeTraverser {
 public:
-	QVector<FootageInput> Collect(const RenderManager::RenderVideoParams &params,
-								  CancelAtom *cancel)
+	QVector<FootageInput>
+	Collect(const RenderManager::RenderVideoParams &params, CancelAtom *cancel)
 	{
 		SetCancelPointer(cancel);
 		VideoParams cache_params = params.video_params;
@@ -75,17 +75,15 @@ public:
 		if (cache_params.interlacing() != VideoParams::kInterlaceNone) {
 			frame_length /= 2;
 		}
-		NodeValueTable table = GenerateTable(params.node,
-											 TimeRange(params.time,
-													   params.time + frame_length));
+		NodeValueTable table = GenerateTable(
+			params.node, TimeRange(params.time, params.time + frame_length));
 		NodeValue texture = table.Get(NodeValue::kTexture);
 		ResolveJobs(texture);
 
 		if (cache_params.interlacing() != VideoParams::kInterlaceNone) {
-			NodeValueTable second_table =
-				GenerateTable(params.node,
-							  TimeRange(params.time + frame_length,
-										params.time + frame_length * 2));
+			NodeValueTable second_table = GenerateTable(
+				params.node, TimeRange(params.time + frame_length,
+									   params.time + frame_length * 2));
 			NodeValue second_texture = second_table.Get(NodeValue::kTexture);
 			ResolveJobs(second_texture);
 		}
@@ -94,13 +92,12 @@ public:
 	}
 
 protected:
-	void ProcessVideoFootage(TexturePtr destination,
-							 const FootageJob *stream,
+	void ProcessVideoFootage(TexturePtr destination, const FootageJob *stream,
 							 const rational &input_time) override
 	{
 		Q_UNUSED(destination)
 		if (stream) {
-			inputs_.append({*stream, input_time});
+			inputs_.append({ *stream, input_time });
 		}
 	}
 
@@ -140,8 +137,7 @@ DecoderPtr ResolveDecoderFromCache(DecoderCache *decoder_cache,
 }
 
 FramePtr DecodeInputFrame(DecoderCache *decoder_cache,
-						  const FootageInput &input,
-						  CancelAtom *cancel)
+						  const FootageInput &input, CancelAtom *cancel)
 {
 	VideoParams stream_data = input.job.video_params();
 	QString filename = input.job.filename();
@@ -162,19 +158,17 @@ FramePtr DecodeInputFrame(DecoderCache *decoder_cache,
 	case VideoParams::kVideoTypeVideo:
 	case VideoParams::kVideoTypeStill:
 		decoder = ResolveDecoderFromCache(
-			decoder_cache,
-			decoder_id,
+			decoder_cache, decoder_id,
 			Decoder::CodecStream(filename, stream_index, nullptr));
 		break;
 	case VideoParams::kVideoTypeImageSequence: {
 		const int64_t frame_number =
 			stream_data.get_time_in_timebase_units(input.time);
-		filename = Decoder::TransformImageSequenceFileName(filename, frame_number);
+		filename =
+			Decoder::TransformImageSequenceFileName(filename, frame_number);
 		decoder = Decoder::CreateFromID(decoder_id);
-		if (decoder &&
-			!decoder->Open(Decoder::CodecStream(filename,
-												stream_index,
-												nullptr))) {
+		if (decoder && !decoder->Open(Decoder::CodecStream(
+						   filename, stream_index, nullptr))) {
 			decoder = nullptr;
 		}
 		break;
@@ -188,9 +182,9 @@ FramePtr DecodeInputFrame(DecoderCache *decoder_cache,
 	Decoder::RetrieveVideoParams retrieve;
 	retrieve.divider = stream_data.divider();
 	retrieve.maximum_format = PixelFormat::U16;
-	retrieve.time = stream_data.video_type() == VideoParams::kVideoTypeVideo
-						? input.time
-						: Decoder::kAnyTimecode;
+	retrieve.time = stream_data.video_type() == VideoParams::kVideoTypeVideo ?
+						input.time :
+						Decoder::kAnyTimecode;
 	retrieve.cancelled = cancel;
 	retrieve.force_range = stream_data.color_range();
 	retrieve.src_interlacing = stream_data.interlacing();
@@ -207,15 +201,13 @@ FramePtr DecodeInputFrame(DecoderCache *decoder_cache,
 			frame_params.set_colorspace(stream_data.colorspace());
 			frame->set_video_params(frame_params);
 		}
-
 	}
 	return frame;
 }
 
 bool DecodeInputFrames(DecoderCache *decoder_cache,
 					   const RenderManager::RenderVideoParams &params,
-					   CancelAtom *cancel,
-					   QVector<FramePtr> *frames)
+					   CancelAtom *cancel, QVector<FramePtr> *frames)
 {
 	frames->clear();
 
@@ -241,9 +233,9 @@ bool DecodeInputFrames(DecoderCache *decoder_cache,
 QString WorkerProgramPath()
 {
 #if defined(Q_OS_WIN)
-	const QString file = QStringLiteral("olive-render-worker.exe");
+	const QString file = QStringLiteral("oak-render-worker.exe");
 #else
-	const QString file = QStringLiteral("olive-render-worker");
+	const QString file = QStringLiteral("oak-render-worker");
 #endif
 
 	const QString app_dir = QCoreApplication::applicationDirPath();
@@ -271,7 +263,8 @@ bool WriteControlMessage(QProcess *process, const QJsonObject &obj)
 		return false;
 	}
 
-	const QByteArray line = QJsonDocument(obj).toJson(QJsonDocument::Compact) + '\n';
+	const QByteArray line =
+		QJsonDocument(obj).toJson(QJsonDocument::Compact) + '\n';
 	const qint64 written = process->write(line);
 	if (written != line.size()) {
 		return false;
@@ -285,7 +278,8 @@ void TryWriteControlMessage(QProcess *process, const QJsonObject &obj)
 		return;
 	}
 
-	const QByteArray line = QJsonDocument(obj).toJson(QJsonDocument::Compact) + '\n';
+	const QByteArray line =
+		QJsonDocument(obj).toJson(QJsonDocument::Compact) + '\n';
 	process->write(line);
 }
 
@@ -315,12 +309,14 @@ bool IsProcessAlive(qint64 process_id)
 	}
 
 #if defined(Q_OS_WIN)
-	HANDLE handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, DWORD(process_id));
+	HANDLE handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE,
+								DWORD(process_id));
 	if (!handle) {
 		return false;
 	}
 	DWORD exit_code = 0;
-	const bool alive = GetExitCodeProcess(handle, &exit_code) && exit_code == STILL_ACTIVE;
+	const bool alive = GetExitCodeProcess(handle, &exit_code) &&
+					   exit_code == STILL_ACTIVE;
 	CloseHandle(handle);
 	return alive;
 #else
@@ -334,11 +330,11 @@ QString WorkerProcessDetails(const QProcess *process)
 		return QStringLiteral("worker process unavailable");
 	}
 
-	const QString exit_status =
-		process->exitStatus() == QProcess::CrashExit
-			? QStringLiteral("crash")
-			: QStringLiteral("normal");
-	return QStringLiteral("state=%1 exit_status=%2 exit_code=%3 process_error=%4 error=\"%5\"")
+	const QString exit_status = process->exitStatus() == QProcess::CrashExit ?
+									QStringLiteral("crash") :
+									QStringLiteral("normal");
+	return QStringLiteral(
+			   "state=%1 exit_status=%2 exit_code=%3 process_error=%4 error=\"%5\"")
 		.arg(int(process->state()))
 		.arg(exit_status)
 		.arg(process->exitCode())
@@ -355,8 +351,9 @@ bool ReadControlMessage(QProcess *process, QJsonObject *out, QString *error,
 				*error = QStringLiteral("worker exited before response: %1")
 							 .arg(WorkerProcessDetails(process));
 			} else {
-				*error = QStringLiteral("timeout waiting for worker response: %1")
-							 .arg(WorkerProcessDetails(process));
+				*error =
+					QStringLiteral("timeout waiting for worker response: %1")
+						.arg(WorkerProcessDetails(process));
 			}
 		}
 		return false;
@@ -372,7 +369,8 @@ bool ReadControlMessage(QProcess *process, QJsonObject *out, QString *error,
 		const QJsonDocument doc = QJsonDocument::fromJson(line, &parse_error);
 		if (parse_error.error != QJsonParseError::NoError || !doc.isObject()) {
 			if (error) {
-				*error = QStringLiteral("worker emitted malformed control JSON");
+				*error =
+					QStringLiteral("worker emitted malformed control JSON");
 			}
 			return false;
 		}
@@ -394,11 +392,10 @@ bool ReadControlMessage(QProcess *process, QJsonObject *out, QString *error,
 	return false;
 }
 
-}  // namespace
+} // namespace
 
 RenderWorkerPool::RenderWorkerPool(DecoderCache *decoder_cache,
-								   const QString &gpu_backend,
-								   QObject *parent)
+								   const QString &gpu_backend, QObject *parent)
 	: QThread(parent)
 	, decoder_cache_(decoder_cache)
 	, gpu_backend_(gpu_backend)
@@ -410,8 +407,8 @@ RenderWorkerPool::~RenderWorkerPool()
 	Shutdown();
 }
 
-bool RenderWorkerPool::SubmitFrame(RenderTicketPtr ticket,
-								   const RenderManager::RenderVideoParams &params)
+bool RenderWorkerPool::SubmitFrame(
+	RenderTicketPtr ticket, const RenderManager::RenderVideoParams &params)
 {
 	Job job(ticket, params);
 	if (!PrepareJob(ticket, params, &job)) {
@@ -460,7 +457,7 @@ bool RenderWorkerPool::RemoveTicket(RenderTicketPtr ticket)
 	}
 
 	if (!queued_graph_path.isEmpty()) {
-		CleanupGraphFile(queued_graph_path);
+		ReleaseGraphPathRef(queued_graph_path);
 		return true;
 	}
 
@@ -469,8 +466,6 @@ bool RenderWorkerPool::RemoveTicket(RenderTicketPtr ticket)
 
 void RenderWorkerPool::Shutdown()
 {
-	QVector<QString> graph_paths_to_clean;
-
 	{
 		QMutexLocker locker(&mutex_);
 		stopping_ = true;
@@ -478,6 +473,7 @@ void RenderWorkerPool::Shutdown()
 			if (job.ticket) {
 				job.ticket->Cancel();
 			}
+			ReleaseGraphPathRefLocked(job.graph_path);
 		}
 		queue_.clear();
 		for (ActiveJob &active : active_jobs_) {
@@ -487,14 +483,10 @@ void RenderWorkerPool::Shutdown()
 			}
 		}
 		for (auto it = graph_cache_.begin(); it != graph_cache_.end(); ++it) {
-			graph_paths_to_clean.append(it->path);
+			SetGraphPathCachedLocked(it->path, false);
 		}
 		graph_cache_.clear();
 		wait_.wakeAll();
-	}
-
-	for (const QString &path : graph_paths_to_clean) {
-		CleanupGraphFile(path);
 	}
 
 	if (isRunning()) {
@@ -510,13 +502,13 @@ void RenderWorkerPool::run()
 		active_jobs_.resize(worker_count);
 	}
 
-	std::vector<std::vector<std::unique_ptr<PooledWorker>>> local_pools(worker_count);
+	std::vector<std::vector<std::unique_ptr<PooledWorker>>> local_pools(
+		worker_count);
 	std::vector<std::thread> workers;
 	workers.reserve(size_t(worker_count));
 	for (int i = 0; i < worker_count; i++) {
-		workers.emplace_back([this, i, &local_pools]() {
-			WorkerLoop(i, &local_pools[i]);
-		});
+		workers.emplace_back(
+			[this, i, &local_pools]() { WorkerLoop(i, &local_pools[i]); });
 	}
 
 	for (std::thread &worker : workers) {
@@ -534,8 +526,7 @@ void RenderWorkerPool::run()
 }
 
 void RenderWorkerPool::WorkerLoop(
-	int worker_index,
-	std::vector<std::unique_ptr<PooledWorker>> *local_pool)
+	int worker_index, std::vector<std::unique_ptr<PooledWorker>> *local_pool)
 {
 	while (true) {
 		mutex_.lock();
@@ -552,6 +543,7 @@ void RenderWorkerPool::WorkerLoop(
 		mutex_.unlock();
 
 		ProcessJob(job, worker_index, local_pool);
+		ReleaseGraphPathRef(job.graph_path);
 	}
 }
 
@@ -565,7 +557,8 @@ bool RenderWorkerPool::PrepareJob(RenderTicketPtr ticket,
 
 	Project *project = Project::GetProjectFromObject(params.node);
 	if (!project) {
-		qWarning() << "RenderWorkerPool could not resolve project for render node";
+		qWarning()
+			<< "RenderWorkerPool could not resolve project for render node";
 		return false;
 	}
 
@@ -585,13 +578,16 @@ bool RenderWorkerPool::PrepareJob(RenderTicketPtr ticket,
 		auto it = graph_cache_.find(project_uuid);
 		if (it != graph_cache_.end() && !project->is_modified()) {
 			graph_path = it->path;
-			//qDebug() << "RenderWorkerPool::PrepareJob: using cached graph snapshot"
-			//		 << graph_path;
+			AddGraphPathRefLocked(graph_path);
+			qDebug()
+				<< "RenderWorkerPool::PrepareJob: using cached graph snapshot"
+				<< graph_path;
 		} else {
 			if (it != graph_cache_.end()) {
-				qDebug() << "RenderWorkerPool::PrepareJob: graph stale, rewriting"
-						 << project->is_modified();
-				CleanupGraphFile(it->path);
+				qDebug()
+					<< "RenderWorkerPool::PrepareJob: graph stale, rewriting"
+					<< project->is_modified();
+				SetGraphPathCachedLocked(it->path, false);
 				graph_cache_.erase(it);
 			}
 			locker.unlock();
@@ -606,7 +602,9 @@ bool RenderWorkerPool::PrepareJob(RenderTicketPtr ticket,
 				project->set_modified(false);
 			}
 			locker.relock();
-			graph_cache_.insert(project_uuid, {graph_path});
+			graph_cache_.insert(project_uuid, { graph_path });
+			SetGraphPathCachedLocked(graph_path, true);
+			AddGraphPathRefLocked(graph_path);
 		}
 	}
 
@@ -621,17 +619,26 @@ bool RenderWorkerPool::PrepareJob(RenderTicketPtr ticket,
 
 bool RenderWorkerPool::WriteGraphSnapshot(Project *project, QString *path)
 {
-	QTemporaryFile file(QDir::temp().filePath(QStringLiteral("oak-render-graph-XXXXXX.ove")));
+	// Keep snapshots in the system temp directory. The previous bug was not the
+	// temp location itself, but stale snapshots being deleted while queued jobs
+	// still referenced them.
+	const QString graph_dir = QDir::tempPath();
+
+	QTemporaryFile file(QDir(graph_dir).filePath(
+		QStringLiteral("oak-render-graph-XXXXXX.ove")));
 	file.setAutoRemove(false);
 	if (!file.open()) {
-		qWarning() << "RenderWorkerPool failed to create graph snapshot temp file"
-				   << file.errorString();
+		qWarning()
+			<< "RenderWorkerPool failed to create graph snapshot temp file"
+			<< file.errorString();
 		return false;
 	}
 
 	QXmlStreamWriter writer(&file);
-	ProjectSerializer::SaveData data(ProjectSerializer::kProject, project, file.fileName());
-	const ProjectSerializer::Result result = ProjectSerializer::Save(&writer, data);
+	ProjectSerializer::SaveData data(ProjectSerializer::kProject, project,
+									 file.fileName());
+	const ProjectSerializer::Result result =
+		ProjectSerializer::Save(&writer, data);
 	file.close();
 
 	if (result.code() != ProjectSerializer::kSuccess || writer.hasError()) {
@@ -641,11 +648,15 @@ bool RenderWorkerPool::WriteGraphSnapshot(Project *project, QString *path)
 		return false;
 	}
 
+	qDebug() << "RenderWorkerPool wrote graph snapshot" << file.fileName()
+			 << "size" << QFileInfo(file.fileName()).size();
+
 	*path = file.fileName();
 	return true;
 }
 
-bool RenderWorkerPool::IsSupported(const RenderManager::RenderVideoParams &params) const
+bool RenderWorkerPool::IsSupported(
+	const RenderManager::RenderVideoParams &params) const
 {
 	return params.node && params.return_type == RenderManager::kFrame &&
 		   params.video_params.is_valid();
@@ -655,7 +666,8 @@ void RenderWorkerPool::ProcessJob(
 	const Job &job, int worker_index,
 	std::vector<std::unique_ptr<PooledWorker>> *local_pool)
 {
-	const qint64 ticket_id = qint64(reinterpret_cast<quintptr>(job.ticket.get()));
+	const qint64 ticket_id =
+		qint64(reinterpret_cast<quintptr>(job.ticket.get()));
 	SetActiveWorker(worker_index, job.ticket, nullptr, ticket_id);
 
 	job.ticket->Start();
@@ -665,7 +677,8 @@ void RenderWorkerPool::ProcessJob(
 		return;
 	}
 
-	std::unique_ptr<PooledWorker> worker = AcquireWorker(local_pool, job.graph_path);
+	std::unique_ptr<PooledWorker> worker =
+		AcquireWorker(local_pool, job.graph_path);
 	if (!worker) {
 		qWarning() << "RenderWorkerPool failed to acquire worker for ticket"
 				   << ticket_id;
@@ -678,22 +691,24 @@ void RenderWorkerPool::ProcessJob(
 		if (attempt > 0) {
 			worker = AcquireWorker(local_pool, job.graph_path);
 			if (!worker) {
-				qWarning() << "RenderWorkerPool failed to acquire worker for retry"
-						   << ticket_id;
+				qWarning()
+					<< "RenderWorkerPool failed to acquire worker for retry"
+					<< ticket_id;
 				break;
 			}
 		}
 
-		const JobResult result = ProcessJobAttempt(job, worker_index, attempt,
-												   worker.get());
-		const qint64 worker_pid = worker && worker->process
-			? worker->process->processId()
-			: 0;
+		const JobResult result =
+			ProcessJobAttempt(job, worker_index, attempt, worker.get());
+		const qint64 worker_pid =
+			worker && worker->process ? worker->process->processId() : 0;
 		const bool process_state_running = worker && worker->process &&
-			worker->process->state() == QProcess::Running;
+										   worker->process->state() ==
+											   QProcess::Running;
 		const bool os_alive = worker_pid > 0 && IsProcessAlive(worker_pid);
 		const bool worker_healthy = process_state_running || os_alive;
-		const bool keep_alive = (result == JobResult::kFinished) && worker_healthy;
+		const bool keep_alive = (result == JobResult::kFinished) &&
+								worker_healthy;
 
 		ReturnWorker(local_pool, std::move(worker), keep_alive);
 		worker.reset();
@@ -726,11 +741,12 @@ void RenderWorkerPool::ProcessJob(
 	ClearActiveWorker(worker_index, 0);
 }
 
-RenderWorkerPool::JobResult RenderWorkerPool::ProcessJobAttempt(
-	const Job &job, int worker_index, int attempt_index,
-	PooledWorker *worker)
+RenderWorkerPool::JobResult
+RenderWorkerPool::ProcessJobAttempt(const Job &job, int worker_index,
+									int attempt_index, PooledWorker *worker)
 {
-	const qint64 ticket_id = qint64(reinterpret_cast<quintptr>(job.ticket.get()));
+	const qint64 ticket_id =
+		qint64(reinterpret_cast<quintptr>(job.ticket.get()));
 	if (job.ticket->IsCancelled()) {
 		return JobResult::kCancelled;
 	}
@@ -741,27 +757,25 @@ RenderWorkerPool::JobResult RenderWorkerPool::ProcessJobAttempt(
 
 	const qint64 worker_process_id = worker->process->processId();
 
-	const int output_width = job.params.force_size.width() > 0
-		? job.params.force_size.width()
-		: job.params.video_params.effective_width();
-	const int output_height = job.params.force_size.height() > 0
-		? job.params.force_size.height()
-		: job.params.video_params.effective_height();
+	const int output_width = job.params.force_size.width() > 0 ?
+								 job.params.force_size.width() :
+								 job.params.video_params.effective_width();
+	const int output_height = job.params.force_size.height() > 0 ?
+								  job.params.force_size.height() :
+								  job.params.video_params.effective_height();
 	const PixelFormat::Format output_format =
-		job.params.force_format != PixelFormat::INVALID
-			? PixelFormat::Format(job.params.force_format)
-			: PixelFormat::F32;
-	const int output_channels = job.params.force_channel_count > 0
-		? job.params.force_channel_count
-		: VideoParams::kRGBAChannelCount;
-	const int output_linesize =
-		Frame::generate_linesize_bytes(output_width, output_format,
-									   output_channels);
+		job.params.force_format != PixelFormat::INVALID ?
+			PixelFormat::Format(job.params.force_format) :
+			PixelFormat::F32;
+	const int output_channels = job.params.force_channel_count > 0 ?
+									job.params.force_channel_count :
+									VideoParams::kRGBAChannelCount;
+	const int output_linesize = Frame::generate_linesize_bytes(
+		output_width, output_format, output_channels);
 	const size_t estimated_output_slot_bytes =
 		size_t(output_linesize) * size_t(output_height);
-	const int f32_rgba_linesize =
-		Frame::generate_linesize_bytes(output_width, PixelFormat::F32,
-									   VideoParams::kRGBAChannelCount);
+	const int f32_rgba_linesize = Frame::generate_linesize_bytes(
+		output_width, PixelFormat::F32, VideoParams::kRGBAChannelCount);
 	const size_t f32_rgba_slot_bytes =
 		size_t(f32_rgba_linesize) * size_t(output_height);
 	const size_t output_slot_bytes =
@@ -788,10 +802,11 @@ RenderWorkerPool::JobResult RenderWorkerPool::ProcessJobAttempt(
 				QStringLiteral("-out");
 		}
 		if (!worker->output_region.Open(worker->output_shm_key,
-												output_region_bytes,
-												ipc::SharedMemoryRegion::kCreate)) {
-			qWarning() << "RenderWorkerPool failed to create output shared memory"
-					   << worker->output_region.error();
+										output_region_bytes,
+										ipc::SharedMemoryRegion::kCreate)) {
+			qWarning()
+				<< "RenderWorkerPool failed to create output shared memory"
+				<< worker->output_region.error();
 			return JobResult::kFatalFailure;
 		}
 		worker->output_pool = ipc::FrameSlotPool::Create(
@@ -816,17 +831,19 @@ RenderWorkerPool::JobResult RenderWorkerPool::ProcessJobAttempt(
 					ipc::SharedMemoryRegion::MakeKey(worker_process_id, 1) +
 					QStringLiteral("-in");
 			}
-			const size_t input_region_bytes =
-				ipc::FrameSlotPool::BytesNeeded(input_slot_count, input_slot_bytes);
+			const size_t input_region_bytes = ipc::FrameSlotPool::BytesNeeded(
+				input_slot_count, input_slot_bytes);
 			if (!worker->input_region.Open(worker->input_shm_key,
-												   input_region_bytes,
-												   ipc::SharedMemoryRegion::kCreate)) {
-				qWarning() << "RenderWorkerPool failed to create input shared memory"
-						   << worker->input_region.error();
+										   input_region_bytes,
+										   ipc::SharedMemoryRegion::kCreate)) {
+				qWarning()
+					<< "RenderWorkerPool failed to create input shared memory"
+					<< worker->input_region.error();
 				return JobResult::kFatalFailure;
 			}
-			worker->input_pool = ipc::FrameSlotPool::Create(
-				worker->input_region.data(), input_slot_count, input_slot_bytes);
+			worker->input_pool =
+				ipc::FrameSlotPool::Create(worker->input_region.data(),
+										   input_slot_count, input_slot_bytes);
 			worker->input_slot_bytes = input_slot_bytes;
 		}
 	}
@@ -836,7 +853,8 @@ RenderWorkerPool::JobResult RenderWorkerPool::ProcessJobAttempt(
 	if (input_slot_count > 0) {
 		for (const FramePtr &frame : job.input_frames) {
 			if (frame->allocated_size() > int(worker->input_slot_bytes)) {
-				qWarning() << "RenderWorkerPool decoded input frame exceeds slot size";
+				qWarning()
+					<< "RenderWorkerPool decoded input frame exceeds slot size";
 				return JobResult::kFatalFailure;
 			}
 
@@ -862,9 +880,9 @@ RenderWorkerPool::JobResult RenderWorkerPool::ProcessJobAttempt(
 			const QString cs = frame->video_params().colorspace();
 			if (!cs.isEmpty()) {
 				const QByteArray cs_utf8 = cs.toUtf8();
-				const size_t copy_len = qMin(
-					static_cast<size_t>(cs_utf8.size()),
-					sizeof(meta->colorspace) - 1);
+				const size_t copy_len =
+					qMin(static_cast<size_t>(cs_utf8.size()),
+						 sizeof(meta->colorspace) - 1);
 				memcpy(meta->colorspace, cs_utf8.constData(), copy_len);
 				meta->colorspace[copy_len] = '\0';
 			}
@@ -898,16 +916,16 @@ RenderWorkerPool::JobResult RenderWorkerPool::ProcessJobAttempt(
 	handshake.input_slots = input_slots.size();
 	handshake.output_slots = int(kOutputSlots);
 	handshake.slot_data_bytes = qint64(output_slot_bytes);
-	handshake.input_slot_data_bytes = input_slots.isEmpty()
-		? 0
-		: qint64(input_slot_bytes);
+	handshake.input_slot_data_bytes =
+		input_slots.isEmpty() ? 0 : qint64(input_slot_bytes);
 	if (!WriteControlMessage(worker->process, handshake.ToJson())) {
 		if (!job.ticket->IsCancelled()) {
-			qWarning() << "RenderWorkerPool failed to send shared-memory handshake";
+			qWarning()
+				<< "RenderWorkerPool failed to send shared-memory handshake";
 		}
 		ClearActiveWorker(worker_index, worker_process_id);
-		return job.ticket->IsCancelled() ? JobResult::kCancelled
-												 : JobResult::kRetryableFailure;
+		return job.ticket->IsCancelled() ? JobResult::kCancelled :
+										   JobResult::kRetryableFailure;
 	}
 
 	if (worker->loaded_graph_path != job.graph_path) {
@@ -922,12 +940,11 @@ RenderWorkerPool::JobResult RenderWorkerPool::ProcessJobAttempt(
 						   << error << worker->process->readAllStandardError();
 			}
 			ClearActiveWorker(worker_index, worker_process_id);
-			return job.ticket->IsCancelled() ? JobResult::kCancelled
-													 : JobResult::kRetryableFailure;
+			return job.ticket->IsCancelled() ? JobResult::kCancelled :
+											   JobResult::kRetryableFailure;
 		}
 		worker->loaded_graph_path = job.graph_path;
-
-}
+	}
 	ipc::RenderFrameMsg render;
 	render.ticket_id = ticket_id;
 	render.node_uuid = job.node_token;
@@ -953,8 +970,8 @@ RenderWorkerPool::JobResult RenderWorkerPool::ProcessJobAttempt(
 			qWarning() << "RenderWorkerPool failed to send render_frame";
 		}
 		ClearActiveWorker(worker_index, worker_process_id);
-		return job.ticket->IsCancelled() ? JobResult::kCancelled
-												 : JobResult::kRetryableFailure;
+		return job.ticket->IsCancelled() ? JobResult::kCancelled :
+										   JobResult::kRetryableFailure;
 	}
 
 	QString error;
@@ -967,8 +984,8 @@ RenderWorkerPool::JobResult RenderWorkerPool::ProcessJobAttempt(
 						   << error << worker->process->readAllStandardError();
 			}
 			ClearActiveWorker(worker_index, worker_process_id);
-			return job.ticket->IsCancelled() ? JobResult::kCancelled
-													 : JobResult::kRetryableFailure;
+			return job.ticket->IsCancelled() ? JobResult::kCancelled :
+											   JobResult::kRetryableFailure;
 		}
 
 		if (ipc::FrameReadyMsg::FromJson(response, &ready)) {
@@ -1061,8 +1078,8 @@ std::unique_ptr<RenderWorkerPool::PooledWorker> RenderWorkerPool::AcquireWorker(
 			local_pool->erase(local_pool->begin() + i);
 			continue;
 		}
-		const bool candidate_state_running =
-			candidate->process->state() == QProcess::Running;
+		const bool candidate_state_running = candidate->process->state() ==
+											 QProcess::Running;
 		const bool candidate_os_alive =
 			IsProcessAlive(candidate->process->processId());
 		if (!candidate_state_running && !candidate_os_alive) {
@@ -1078,7 +1095,8 @@ std::unique_ptr<RenderWorkerPool::PooledWorker> RenderWorkerPool::AcquireWorker(
 		if (best_index < 0 ||
 			(!candidate->loaded_graph_path.isEmpty() &&
 			 candidate->loaded_graph_path == graph_path &&
-			 ((*local_pool)[size_t(best_index)]->loaded_graph_path != graph_path))) {
+			 ((*local_pool)[size_t(best_index)]->loaded_graph_path !=
+			  graph_path))) {
 			best_index = int(i);
 		}
 		++i;
@@ -1093,16 +1111,16 @@ std::unique_ptr<RenderWorkerPool::PooledWorker> RenderWorkerPool::AcquireWorker(
 		return worker;
 	}
 
-
 	// No idle worker available: start a new one.
 	auto *process = new QProcess();
 	process->setProgram(WorkerProgramPath());
-	process->setArguments({QStringLiteral("--backend"), gpu_backend_});
+	process->setArguments({ QStringLiteral("--backend"), gpu_backend_ });
 
-	const QString worker_stderr_path = QDir(QDir::tempPath()).filePath(
-		QStringLiteral("oak-render-worker-%1-%2.stderr.log")
-			.arg(QCoreApplication::applicationPid())
-			.arg(QDateTime::currentMSecsSinceEpoch()));
+	const QString worker_stderr_path =
+		QDir(QDir::tempPath())
+			.filePath(QStringLiteral("oak-render-worker-%1-%2.stderr.log")
+						  .arg(QCoreApplication::applicationPid())
+						  .arg(QDateTime::currentMSecsSinceEpoch()));
 	process->setStandardErrorFile(worker_stderr_path);
 
 	process->start();
@@ -1133,8 +1151,7 @@ std::unique_ptr<RenderWorkerPool::PooledWorker> RenderWorkerPool::AcquireWorker(
 
 void RenderWorkerPool::ReturnWorker(
 	std::vector<std::unique_ptr<PooledWorker>> *local_pool,
-	std::unique_ptr<PooledWorker> worker,
-	bool keep_alive)
+	std::unique_ptr<PooledWorker> worker, bool keep_alive)
 {
 	if (!worker || !worker->process) {
 		return;
@@ -1190,9 +1207,11 @@ void RenderWorkerPool::ClearGraphCache()
 {
 	QMutexLocker locker(&mutex_);
 	for (auto it = graph_cache_.begin(); it != graph_cache_.end(); ++it) {
-		CleanupGraphFile(it->path);
+		SetGraphPathCachedLocked(it->path, false);
 	}
 	graph_cache_.clear();
+	graph_path_ref_count_.clear();
+	cached_graph_paths_.clear();
 }
 
 void RenderWorkerPool::FinishWithFrame(RenderTicketPtr ticket,
@@ -1207,8 +1226,7 @@ void RenderWorkerPool::FinishWithFrame(RenderTicketPtr ticket,
 	}
 
 	VideoParams params(meta->width, meta->height,
-					   PixelFormat::Format(meta->format),
-					   meta->channel_count);
+					   PixelFormat::Format(meta->format), meta->channel_count);
 	FramePtr frame = Frame::Create();
 	frame->set_timestamp(rational(int(meta->time_num), int(meta->time_den)));
 	frame->set_video_params(params);
@@ -1224,8 +1242,68 @@ void RenderWorkerPool::FinishWithFrame(RenderTicketPtr ticket,
 void RenderWorkerPool::CleanupGraphFile(const QString &path)
 {
 	if (!path.isEmpty()) {
+		qDebug() << "RenderWorkerPool cleaning up graph file" << path;
 		QFile::remove(path);
 	}
 }
 
-}  // namespace olive
+void RenderWorkerPool::AddGraphPathRef(const QString &path)
+{
+	QMutexLocker locker(&mutex_);
+	AddGraphPathRefLocked(path);
+}
+
+void RenderWorkerPool::AddGraphPathRefLocked(const QString &path)
+{
+	if (path.isEmpty()) {
+		return;
+	}
+	++graph_path_ref_count_[path];
+}
+
+void RenderWorkerPool::ReleaseGraphPathRef(const QString &path)
+{
+	QMutexLocker locker(&mutex_);
+	ReleaseGraphPathRefLocked(path);
+}
+
+void RenderWorkerPool::ReleaseGraphPathRefLocked(const QString &path)
+{
+	if (path.isEmpty()) {
+		return;
+	}
+	auto it = graph_path_ref_count_.find(path);
+	if (it == graph_path_ref_count_.end()) {
+		return;
+	}
+	if (--(*it) <= 0) {
+		graph_path_ref_count_.erase(it);
+		if (!cached_graph_paths_.contains(path)) {
+			CleanupGraphFile(path);
+		}
+	}
+}
+
+void RenderWorkerPool::SetGraphPathCached(const QString &path, bool cached)
+{
+	QMutexLocker locker(&mutex_);
+	SetGraphPathCachedLocked(path, cached);
+}
+
+void RenderWorkerPool::SetGraphPathCachedLocked(const QString &path,
+												bool cached)
+{
+	if (path.isEmpty()) {
+		return;
+	}
+	if (cached) {
+		cached_graph_paths_.insert(path);
+	} else {
+		cached_graph_paths_.remove(path);
+		if (!graph_path_ref_count_.contains(path)) {
+			CleanupGraphFile(path);
+		}
+	}
+}
+
+} // namespace olive

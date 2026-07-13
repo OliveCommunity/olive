@@ -40,13 +40,13 @@ TEST(SpscRingBuffer, BasicPushPopAndCapacity)
 	EXPECT_TRUE(ring->IsEmptyApprox());
 
 	uint32_t v = 0;
-	EXPECT_FALSE(ring->Pop(&v));  // empty
+	EXPECT_FALSE(ring->Pop(&v)); // empty
 
 	// Capacity 4 holds at most 3 entries (one slot reserved to disambiguate full/empty).
 	EXPECT_TRUE(ring->Push(10));
 	EXPECT_TRUE(ring->Push(20));
 	EXPECT_TRUE(ring->Push(30));
-	EXPECT_FALSE(ring->Push(40));  // full
+	EXPECT_FALSE(ring->Push(40)); // full
 
 	EXPECT_TRUE(ring->Pop(&v));
 	EXPECT_EQ(v, 10u);
@@ -54,7 +54,7 @@ TEST(SpscRingBuffer, BasicPushPopAndCapacity)
 	EXPECT_EQ(v, 20u);
 	EXPECT_TRUE(ring->Pop(&v));
 	EXPECT_EQ(v, 30u);
-	EXPECT_FALSE(ring->Pop(&v));  // empty again
+	EXPECT_FALSE(ring->Pop(&v)); // empty again
 }
 
 TEST(SpscRingBuffer, WrapAround)
@@ -75,17 +75,18 @@ TEST(SpscRingBuffer, WrapAround)
 TEST(SpscRingBuffer, ConcurrentProducerConsumer)
 {
 	constexpr uint32_t kCapacity = 1024;
-	constexpr uint32_t kCount = 2'000'000;  // values 0..kCount-1 streamed through the ring
+	constexpr uint32_t kCount =
+		2'000'000; // values 0..kCount-1 streamed through the ring
 
 	std::vector<uint8_t> mem(SpscRingBuffer::BytesNeeded(kCapacity));
 	SpscRingBuffer *ring = SpscRingBuffer::Create(mem.data(), kCapacity);
 
-	std::atomic<bool> order_ok{true};
+	std::atomic<bool> order_ok{ true };
 
 	std::thread producer([&] {
 		for (uint32_t i = 0; i < kCount; i++) {
 			while (!ring->Push(i)) {
-				std::this_thread::yield();  // buffer full, spin until consumer drains
+				std::this_thread::yield(); // buffer full, spin until consumer drains
 			}
 		}
 	});
@@ -124,7 +125,8 @@ TEST(FrameSlotPool, SingleThreadedHandoff)
 	constexpr size_t kSlotBytes = 256;
 
 	std::vector<uint8_t> mem(FrameSlotPool::BytesNeeded(kSlots, kSlotBytes));
-	FrameSlotPool filler = FrameSlotPool::Create(mem.data(), kSlots, kSlotBytes);
+	FrameSlotPool filler =
+		FrameSlotPool::Create(mem.data(), kSlots, kSlotBytes);
 	FrameSlotPool drainer = FrameSlotPool::Attach(mem.data());
 
 	ASSERT_TRUE(filler.IsValid());
@@ -156,7 +158,8 @@ TEST(FrameSlotPool, SingleThreadedHandoff)
 	EXPECT_EQ(got_meta->id, 4242);
 	EXPECT_EQ(got_meta->width, 16);
 
-	const auto *got_data = static_cast<const uint8_t *>(drainer.SlotData(got_idx));
+	const auto *got_data =
+		static_cast<const uint8_t *>(drainer.SlotData(got_idx));
 	for (size_t i = 0; i < kSlotBytes; i++) {
 		ASSERT_EQ(got_data[i], uint8_t(i & 0xFF));
 	}
@@ -180,7 +183,7 @@ TEST(FrameSlotPool, ExhaustionAndRefill)
 		held.push_back(a);
 	}
 	uint32_t overflow = 0;
-	EXPECT_FALSE(pool.Acquire(&overflow));  // pool exhausted
+	EXPECT_FALSE(pool.Acquire(&overflow)); // pool exhausted
 
 	// Publishing then consuming + releasing returns the slots to the free pool.
 	for (uint32_t idx : held) {
@@ -192,7 +195,7 @@ TEST(FrameSlotPool, ExhaustionAndRefill)
 		ASSERT_TRUE(pool.Release(c));
 	}
 	uint32_t again = 0;
-	EXPECT_TRUE(pool.Acquire(&again));  // free again
+	EXPECT_TRUE(pool.Acquire(&again)); // free again
 }
 
 TEST(FrameSlotPool, ConcurrentFillDrainIntegrity)
@@ -202,10 +205,11 @@ TEST(FrameSlotPool, ConcurrentFillDrainIntegrity)
 	constexpr int64_t kFrames = 200'000;
 
 	std::vector<uint8_t> mem(FrameSlotPool::BytesNeeded(kSlots, kSlotBytes));
-	FrameSlotPool filler = FrameSlotPool::Create(mem.data(), kSlots, kSlotBytes);
+	FrameSlotPool filler =
+		FrameSlotPool::Create(mem.data(), kSlots, kSlotBytes);
 	FrameSlotPool drainer = FrameSlotPool::Attach(mem.data());
 
-	std::atomic<bool> integrity_ok{true};
+	std::atomic<bool> integrity_ok{ true };
 
 	// Filler: for each frame id, acquire a slot, stamp the id into meta and a pattern into the data,
 	// publish. Spins when no slot is free (this is the natural backpressure path).
@@ -220,7 +224,7 @@ TEST(FrameSlotPool, ConcurrentFillDrainIntegrity)
 			const uint8_t pat = uint8_t(id & 0xFF);
 			memset(d, pat, kSlotBytes);
 			while (!filler.Publish(idx)) {
-				std::this_thread::yield();  // ready ring transiently full
+				std::this_thread::yield(); // ready ring transiently full
 			}
 		}
 	});
@@ -292,7 +296,7 @@ TEST(IpcMessage, TypedRoundTrip)
 	rf.channel_count = 4;
 	rf.mode = 1;
 	rf.input_slot = 2;
-	rf.input_slots = {2, 3};
+	rf.input_slots = { 2, 3 };
 	ASSERT_TRUE(WriteMessage(&dev, rf.ToJson()));
 
 	FrameReadyMsg fr;
@@ -349,7 +353,8 @@ TEST(IpcMessage, PartialFrameByteByByte)
 	CancelMsg c;
 	c.ticket_id = 7;
 	const QByteArray full =
-		QByteArray(QJsonDocument(c.ToJson()).toJson(QJsonDocument::Compact)) + '\n';
+		QByteArray(QJsonDocument(c.ToJson()).toJson(QJsonDocument::Compact)) +
+		'\n';
 
 	// Feed the bytes one at a time; ReadMessage must return false until the terminating '\n'.
 	QByteArray reader;
@@ -357,9 +362,9 @@ TEST(IpcMessage, PartialFrameByteByByte)
 	bool ok = false;
 	for (int i = 0; i < full.size() - 1; i++) {
 		reader.append(full.at(i));
-		ASSERT_FALSE(ReadMessage(&reader, &obj, &ok));  // no complete line yet
+		ASSERT_FALSE(ReadMessage(&reader, &obj, &ok)); // no complete line yet
 	}
-	reader.append(full.at(full.size() - 1));  // the trailing newline
+	reader.append(full.at(full.size() - 1)); // the trailing newline
 	ASSERT_TRUE(ReadMessage(&reader, &obj, &ok));
 	ASSERT_TRUE(ok);
 

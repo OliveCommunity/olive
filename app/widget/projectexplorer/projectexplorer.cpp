@@ -47,7 +47,8 @@
 namespace olive
 {
 
-namespace {
+namespace
+{
 QVector<Footage *> GetSelectedProxyFootage(const QVector<Node *> &items)
 {
 	QVector<Footage *> footage;
@@ -452,23 +453,21 @@ void ProjectExplorer::ShowContextMenu()
 			connect(use_proxy, &QAction::triggered, this,
 					&ProjectExplorer::SetSelectedFootageProxyEnabled);
 
-			QAction *reveal_proxy =
-				proxy_menu->addAction(tr("Reveal Proxy"));
-			reveal_proxy->setEnabled(std::any_of(
-				proxy_footage.cbegin(), proxy_footage.cend(),
-				[](const Footage *footage) {
-					return !footage->proxy_path().isEmpty();
-				}));
+			QAction *reveal_proxy = proxy_menu->addAction(tr("Reveal Proxy"));
+			reveal_proxy->setEnabled(
+				std::any_of(proxy_footage.cbegin(), proxy_footage.cend(),
+							[](const Footage *footage) {
+								return !footage->proxy_path().isEmpty();
+							}));
 			connect(reveal_proxy, &QAction::triggered, this,
 					&ProjectExplorer::RevealProxyForSelectedFootage);
 
-			QAction *delete_proxy =
-				proxy_menu->addAction(tr("Delete Proxy"));
-			delete_proxy->setEnabled(std::any_of(
-				proxy_footage.cbegin(), proxy_footage.cend(),
-				[](const Footage *footage) {
-					return !footage->proxy_path().isEmpty();
-				}));
+			QAction *delete_proxy = proxy_menu->addAction(tr("Delete Proxy"));
+			delete_proxy->setEnabled(
+				std::any_of(proxy_footage.cbegin(), proxy_footage.cend(),
+							[](const Footage *footage) {
+								return !footage->proxy_path().isEmpty();
+							}));
 			connect(delete_proxy, &QAction::triggered, this,
 					&ProjectExplorer::DeleteProxiesForSelectedFootage);
 		}
@@ -548,9 +547,9 @@ void ProjectExplorer::ReplaceSelectedFootage()
 {
 	Footage *footage = static_cast<Footage *>(context_menu_items_.first());
 
-	QString file = QFileDialog::getOpenFileName(
-		this, tr("Replace Footage"), QString(),
-		Core::FootageFileDialogFilter());
+	QString file =
+		QFileDialog::getOpenFileName(this, tr("Replace Footage"), QString(),
+									 Core::FootageFileDialogFilter());
 	if (!file.isEmpty()) {
 		if (!Core::IsFootageExtensionAllowed(file)) {
 			QMessageBox::warning(
@@ -593,19 +592,22 @@ void ProjectExplorer::OpenContextMenuItemInNewWindow()
 void ProjectExplorer::GenerateProxiesForSelectedFootage()
 {
 	if (!ProxyManager::instance() || !project()) {
-		qWarning() << "GenerateProxiesForSelectedFootage: ProxyManager or project unavailable";
+		qWarning()
+			<< "GenerateProxiesForSelectedFootage: ProxyManager or project unavailable";
 		return;
 	}
 
 	const QVector<Footage *> footage =
 		GetSelectedProxyFootage(context_menu_items_);
-	qDebug() << "GenerateProxiesForSelectedFootage: starting proxy generation for"
-			   << footage.size() << "footage item(s)";
+	qDebug()
+		<< "GenerateProxiesForSelectedFootage: starting proxy generation for"
+		<< footage.size() << "footage item(s)";
 	for (Footage *item : footage) {
 		const VideoParams video = item->GetFirstEnabledVideoStream();
 		if (!video.is_valid()) {
-			qWarning() << "GenerateProxiesForSelectedFootage: skipping item with no valid video stream"
-						   << item->filename();
+			qWarning()
+				<< "GenerateProxiesForSelectedFootage: skipping item with no valid video stream"
+				<< item->filename();
 			continue;
 		}
 
@@ -619,9 +621,9 @@ void ProjectExplorer::GenerateProxiesForSelectedFootage()
 				item->project()->cache_path(), item->filename(),
 				video.stream_index(), params);
 		qDebug() << "GenerateProxiesForSelectedFootage: proxy state="
-				   << ProxyManager::ProxyStateToString(proxy.state)
-				   << "file=" << proxy.filename
-				   << "cache=" << item->project()->cache_path();
+				 << ProxyManager::ProxyStateToString(proxy.state)
+				 << "file=" << proxy.filename
+				 << "cache=" << item->project()->cache_path();
 		item->SetProxy(proxy.filename, proxy.state, video.stream_index(),
 					   params.version, true);
 		item->InvalidateAll(Footage::kFilenameInput);
@@ -633,11 +635,11 @@ void ProjectExplorer::SetSelectedFootageProxyEnabled(bool enabled)
 	const QVector<Footage *> footage =
 		GetSelectedProxyFootage(context_menu_items_);
 	qDebug() << "ProjectExplorer::SetSelectedFootageProxyEnabled:" << enabled
-			   << "footage count=" << footage.size();
+			 << "footage count=" << footage.size();
 	for (Footage *item : footage) {
 		if (item->proxy_path().isEmpty()) {
-			qDebug() << "  skipping item with empty proxy path"
-						   << item->filename();
+			qDebug()
+				<< "  skipping item with empty proxy path" << item->filename();
 			continue;
 		}
 

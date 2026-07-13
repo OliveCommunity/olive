@@ -80,37 +80,37 @@
 #include "widget/menu/menushared.h"
 #include "window/mainwindow/mainwindow.h"
 
-namespace {
+namespace
+{
 
 QStringList FootageVideoExtensions()
 {
 	return QStringList{
-		QStringLiteral("mp4"),  QStringLiteral("mov"),  QStringLiteral("m4v"),
-		QStringLiteral("avi"),  QStringLiteral("mpg"),  QStringLiteral("mpeg"),
-		QStringLiteral("m2ts"), QStringLiteral("mts"),  QStringLiteral("ts"),
-		QStringLiteral("webm"), QStringLiteral("wmv"),  QStringLiteral("flv"),
-		QStringLiteral("3gp"),  QStringLiteral("3g2"),  QStringLiteral("mxf")
+		QStringLiteral("mp4"),	QStringLiteral("mov"), QStringLiteral("m4v"),
+		QStringLiteral("avi"),	QStringLiteral("mpg"), QStringLiteral("mpeg"),
+		QStringLiteral("m2ts"), QStringLiteral("mts"), QStringLiteral("ts"),
+		QStringLiteral("webm"), QStringLiteral("wmv"), QStringLiteral("flv"),
+		QStringLiteral("3gp"),	QStringLiteral("3g2"), QStringLiteral("mxf")
 	};
 }
 
 QStringList FootageAudioExtensions()
 {
-	return QStringList{
-		QStringLiteral("wav"),  QStringLiteral("mp3"), QStringLiteral("flac"),
-		QStringLiteral("aac"),  QStringLiteral("ogg"), QStringLiteral("opus"),
-		QStringLiteral("m4a"),  QStringLiteral("alac"), QStringLiteral("aif"),
-		QStringLiteral("aiff"), QStringLiteral("aifc"), QStringLiteral("wma")
-	};
+	return QStringList{ QStringLiteral("wav"),	QStringLiteral("mp3"),
+						QStringLiteral("flac"), QStringLiteral("aac"),
+						QStringLiteral("ogg"),	QStringLiteral("opus"),
+						QStringLiteral("m4a"),	QStringLiteral("alac"),
+						QStringLiteral("aif"),	QStringLiteral("aiff"),
+						QStringLiteral("aifc"), QStringLiteral("wma") };
 }
 
 QStringList FootageImageExtensions()
 {
-	return QStringList{
-		QStringLiteral("png"),  QStringLiteral("jpg"),  QStringLiteral("jpeg"),
-		QStringLiteral("tif"),  QStringLiteral("tiff"), QStringLiteral("bmp"),
-		QStringLiteral("gif"),  QStringLiteral("exr"),  QStringLiteral("dpx"),
-		QStringLiteral("webp")
-	};
+	return QStringList{ QStringLiteral("png"),	QStringLiteral("jpg"),
+						QStringLiteral("jpeg"), QStringLiteral("tif"),
+						QStringLiteral("tiff"), QStringLiteral("bmp"),
+						QStringLiteral("gif"),	QStringLiteral("exr"),
+						QStringLiteral("dpx"),	QStringLiteral("webp") };
 }
 
 QString BuildFootageFilterGroup(const QString &label,
@@ -122,8 +122,8 @@ QString BuildFootageFilterGroup(const QString &label,
 		patterns.append(QStringLiteral("*.%1").arg(ext));
 	}
 
-	return QStringLiteral("%1 (%2)")
-		.arg(label, patterns.join(QLatin1Char(' ')));
+	return QStringLiteral("%1 (%2)").arg(label,
+										 patterns.join(QLatin1Char(' ')));
 }
 
 QString BuildFootageFileDialogFilter()
@@ -457,9 +457,9 @@ void Core::DialogAboutShow()
 void Core::DialogImportShow()
 {
 	// Open dialog for user to select files
-	QStringList files = QFileDialog::getOpenFileNames(
-		main_window_, tr("Import footage..."), QString(),
-		FootageFileDialogFilter());
+	QStringList files =
+		QFileDialog::getOpenFileNames(main_window_, tr("Import footage..."),
+									  QString(), FootageFileDialogFilter());
 
 	// Check if the user actually selected files to import
 	if (!files.isEmpty()) {

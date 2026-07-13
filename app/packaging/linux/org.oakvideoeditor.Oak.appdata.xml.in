@@ -28,8 +28,8 @@
     <p xml:lang="id">Oak Video Editor adalah aplikasi edit video bersifat non-linier yang bebas dan gratis, bertujuan untuk memberikan alternatif yang lengkap untuk aplikasi edit video profesional. Ini adalah fork komunitas dari Olive Video Editor.</p>
     <p xml:lang="fr">Oak Video Editor est un éditeur vidéo non linéaire libre visant à fournir une alternative complète aux logiciels de montage vidéo professionnels haut de gamme. Il s'agit d'un fork communautaire d'Olive Video Editor.</p>
   </description>
-  <url type="homepage">https://github.com/olive-editor/olive</url>
-  <url type="bugtracker">https://github.com/olive-editor/olive/issues</url>
+  <url type="homepage">https://github.com/OakVideoEditorCommunity/oak</url>
+  <url type="bugtracker">https://github.com/OakVideoEditorCommunity/oak/issues</url>
   <screenshots>
     <screenshot type="default"><image>https://olivevideoeditor.org/img/screenshot.1600.jpg</image></screenshot>
   </screenshots>

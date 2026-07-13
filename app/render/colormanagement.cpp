@@ -114,7 +114,7 @@ bool Renderer::GetColorContext(const ColorTransformJob &color_job,
 			color_ctx.lut3d_textures[i].name = sampler_name;
 			color_ctx.lut3d_textures[i].interpolation =
 				(interpolation == OCIO::INTERP_NEAREST) ? Texture::kNearest :
-													  Texture::kLinear;
+														  Texture::kLinear;
 		}
 
 		color_ctx.lut1d_textures.resize(shader_desc->getNumTextures());
@@ -125,7 +125,8 @@ bool Renderer::GetColorContext(const ColorTransformJob &color_job,
 			OCIO::GpuShaderDesc::TextureType channel =
 				OCIO::GpuShaderDesc::TEXTURE_RGB_CHANNEL;
 			OCIO::Interpolation interpolation = OCIO::INTERP_LINEAR;
-#if OCIO_VERSION_MAJOR > 2 || (OCIO_VERSION_MAJOR == 2 && OCIO_VERSION_MINOR >= 3)
+#if OCIO_VERSION_MAJOR > 2 || \
+	(OCIO_VERSION_MAJOR == 2 && OCIO_VERSION_MINOR >= 3)
 			OCIO::GpuShaderDesc::TextureDimensions dimensions =
 				OCIO::GpuShaderDesc::TEXTURE_2D;
 			shader_desc->getTexture(i, tex_name, sampler_name, width, height,
@@ -149,16 +150,18 @@ bool Renderer::GetColorContext(const ColorTransformJob &color_job,
 			}
 
 			// Allocate 1D LUT
-			int lut_channels = (channel ==
-								OCIO::GpuShaderDesc::TEXTURE_RED_CHANNEL) ?
-								   1 :
-								   VideoParams::kRGBChannelCount;
-			VideoParams lut_params(width, height, PixelFormat::F32, lut_channels);
-			color_ctx.lut1d_textures[i].texture = CreateTexture(lut_params, values);
+			int lut_channels =
+				(channel == OCIO::GpuShaderDesc::TEXTURE_RED_CHANNEL) ?
+					1 :
+					VideoParams::kRGBChannelCount;
+			VideoParams lut_params(width, height, PixelFormat::F32,
+								   lut_channels);
+			color_ctx.lut1d_textures[i].texture =
+				CreateTexture(lut_params, values);
 			color_ctx.lut1d_textures[i].name = sampler_name;
 			color_ctx.lut1d_textures[i].interpolation =
 				(interpolation == OCIO::INTERP_NEAREST) ? Texture::kNearest :
-													  Texture::kLinear;
+														  Texture::kLinear;
 		}
 
 		locker.relock();
@@ -176,9 +179,9 @@ void Renderer::BlitColorManaged(const ColorTransformJob &color_job,
 		ShaderJob fallback_job;
 		fallback_job.Insert(QStringLiteral("ove_maintex"),
 							color_job.GetInputTexture());
-		fallback_job.Insert(
-			QStringLiteral("ove_mvpmat"),
-			NodeValue(NodeValue::kMatrix, color_job.GetTransformMatrix()));
+		fallback_job.Insert(QStringLiteral("ove_mvpmat"),
+							NodeValue(NodeValue::kMatrix,
+									  color_job.GetTransformMatrix()));
 
 		if (destination) {
 			BlitToTexture(GetDefaultShader(), fallback_job, destination,
@@ -206,12 +209,12 @@ void Renderer::BlitColorManaged(const ColorTransformJob &color_job,
 
 	foreach (const ColorContext::LUT &l, color_ctx.lut3d_textures) {
 		job.Insert(l.name, NodeValue(NodeValue::kTexture,
-								   QVariant::fromValue(l.texture)));
+									 QVariant::fromValue(l.texture)));
 		job.SetInterpolation(l.name, l.interpolation);
 	}
 	foreach (const ColorContext::LUT &l, color_ctx.lut1d_textures) {
 		job.Insert(l.name, NodeValue(NodeValue::kTexture,
-								   QVariant::fromValue(l.texture)));
+									 QVariant::fromValue(l.texture)));
 		job.SetInterpolation(l.name, l.interpolation);
 	}
 

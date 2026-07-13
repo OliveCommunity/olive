@@ -455,10 +455,9 @@ void NodeViewItem::paint(QPainter *painter,
 			int badge_width = qMax(text_width + pad * 2, text_height + pad);
 			int badge_height = text_height + pad;
 
-			QRectF badge_rect(
-				single_unit_rect.right() - badge_width - 4,
-				single_unit_rect.top() + 4,
-				badge_width, badge_height);
+			QRectF badge_rect(single_unit_rect.right() - badge_width - 4,
+							  single_unit_rect.top() + 4, badge_width,
+							  badge_height);
 
 			painter->setPen(Qt::NoPen);
 			painter->setBrush(QColor(220, 50, 47));

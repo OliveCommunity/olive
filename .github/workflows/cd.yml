@@ -14,7 +14,7 @@ jobs:
   # Windows Installer (MSYS2)
   # ------------------------------------------------------------------
   windows:
-    runs-on: warp-windows-latest-x64-16x
+    runs-on: warp-windows-latest-x64-32x
     steps:
       - uses: actions/checkout@v4
         with:
@@ -57,13 +57,21 @@ jobs:
       - name: Deploy dependencies
         shell: msys2 {0}
         run: |
-          mkdir -p app/packaging/windows/nsis/olive-editor
-          cp build/app/olive-editor.exe app/packaging/windows/nsis/olive-editor/
-          windeployqt6 app/packaging/windows/nsis/olive-editor/olive-editor.exe
-          # Copy all non-Qt MSYS2 DLLs recursively
-          cd app/packaging/windows/nsis/olive-editor
-          for l in $(ntldd -R olive-editor.exe | grep -E 'mingw64|ucrt64|clang64' | sed 's/^[ \t]*//' | cut -d' ' -f3); do
-            cp -v "$l" .
+          mkdir -p app/packaging/windows/nsis/oak-editor
+          cp build/app/oak-editor.exe app/packaging/windows/nsis/oak-editor/
+          cp build/app/oak-render-worker.exe app/packaging/windows/nsis/oak-editor/
+          cp build/app/oakgl.dll app/packaging/windows/nsis/oak-editor/
+          if [ -f build/app/oakvulkan.dll ]; then
+            cp build/app/oakvulkan.dll app/packaging/windows/nsis/oak-editor/
+          fi
+          windeployqt6 app/packaging/windows/nsis/oak-editor/oak-editor.exe
+          # Copy all non-Qt MSYS2 DLLs recursively for every binary we ship
+          cd app/packaging/windows/nsis/oak-editor
+          for binary in oak-editor.exe oak-render-worker.exe oakgl.dll oakvulkan.dll; do
+            [ -f "$binary" ] || continue
+            for l in $(ntldd -R "$binary" | grep -E 'mingw64|ucrt64|clang64' | sed 's/^[ \t]*//' | cut -d' ' -f3); do
+              cp -v "$l" .
+            done
           done
 
       - name: Build installer
@@ -71,7 +79,7 @@ jobs:
         run: |
           cd app/packaging/windows/nsis
           cp "${GITHUB_WORKSPACE}"/LICENSE .
-          makensis olive.nsi
+          makensis oak.nsi
           mv setup.exe "${GITHUB_WORKSPACE}"/Oak-Video-Editor-Windows-x64.exe
 
       - name: Upload artifact
@@ -122,20 +130,36 @@ jobs:
       - name: Deploy Qt dependencies
         run: |
           export PATH="$(brew --prefix qt@6)/bin:$PATH"
-          macdeployqt build/app/Olive.app
+          macdeployqt build/app/Oak.app \
+            -verbose=2 \
+            -executable=build/app/Oak.app/Contents/MacOS/oak-render-worker
           # Re-sign after macdeployqt (it breaks signatures when modifying libs)
-          codesign --force --deep --sign - build/app/Olive.app
+          codesign --force --deep --sign - build/app/Oak.app
+
+      - name: Verify macOS bundle plugins
+        run: |
+          ls -la build/app/Oak.app/Contents/PlugIns/platforms/ || (echo "Missing platform plugins!" && exit 1)
+          ls -la build/app/Oak.app/Contents/PlugIns/imageformats/ || true
+          echo "=== otool -L main binary ==="
+          otool -L build/app/Oak.app/Contents/MacOS/Oak | head -30
+          echo "=== otool -L worker ==="
+          otool -L build/app/Oak.app/Contents/MacOS/oak-render-worker | head -30
 
       - name: Bundle non-Qt libraries
         run: |
-          mkdir -p build/app/Olive.app/Contents/Frameworks
+          mkdir -p build/app/Oak.app/Contents/Frameworks
           python3 << 'PYEOF'
           import os, shutil, subprocess
 
-          APP = "build/app/Olive.app"
-          BINARY = f"{APP}/Contents/MacOS/Olive"
+          APP = "build/app/Oak.app"
+          MACOS_DIR = f"{APP}/Contents/MacOS"
           DEST = f"{APP}/Contents/Frameworks"
           os.makedirs(DEST, exist_ok=True)
+
+          QT_PREFIXES = ("Qt", "libQt")
+
+          def is_qt_lib(name):
+              return name.startswith(QT_PREFIXES)
 
           def get_rpaths(binary):
               out = subprocess.run(["otool", "-l", binary], capture_output=True, text=True).stdout
@@ -178,42 +202,55 @@ jobs:
                       return p
               return None
 
-          EXEC_RPATHS = get_rpaths(BINARY)
           PROCESSED = set()
 
-          def process(target):
+          def process(target, exec_rpaths):
               tdir = os.path.dirname(target)
               print(f"Processing: {target}")
               for dep in get_deps(target):
-                  resolved = resolve(dep, EXEC_RPATHS if target == BINARY else [], tdir)
+                  # Skip Qt frameworks and Qt dylibs; macdeployqt already deploys them.
+                  dep_base = os.path.basename(dep)
+                  if is_qt_lib(dep_base):
+                      continue
+                  resolved = resolve(dep, exec_rpaths, tdir)
                   if not resolved or not os.path.isfile(resolved):
                       continue
                   resolved = os.path.realpath(resolved)
                   if not (resolved.startswith("/opt/homebrew/") or resolved.startswith("/usr/local/") or resolved.startswith(os.path.realpath(os.getcwd()))):
                       continue
                   base = os.path.basename(resolved)
+                  if is_qt_lib(base):
+                      continue
                   if base in PROCESSED:
                       subprocess.run(["install_name_tool", "-change", dep, f"@rpath/{base}", target], capture_output=True)
                       continue
                   PROCESSED.add(base)
                   dst = os.path.join(DEST, base)
                   if os.path.abspath(resolved) == os.path.abspath(dst):
-                      # Already in Frameworks (likely copied by macdeployqt), just fix paths
                       subprocess.run(["install_name_tool", "-id", f"@rpath/{base}", dst], capture_output=True)
                       subprocess.run(["install_name_tool", "-change", dep, f"@rpath/{base}", target], capture_output=True)
-                      process(dst)
+                      process(dst, exec_rpaths)
                       continue
                   print(f"  Copying: {resolved} -> {dst}")
                   shutil.copy2(resolved, dst)
                   subprocess.run(["install_name_tool", "-id", f"@rpath/{base}", dst], capture_output=True)
                   subprocess.run(["install_name_tool", "-change", dep, f"@rpath/{base}", target], capture_output=True)
-                  process(dst)
+                  process(dst, exec_rpaths)
 
-          process(BINARY)
+          binaries = [os.path.join(MACOS_DIR, f) for f in os.listdir(MACOS_DIR)
+                      if os.path.isfile(os.path.join(MACOS_DIR, f))]
+          if not binaries:
+              raise RuntimeError(f"No binaries found in {MACOS_DIR}")
 
-          for rp in EXEC_RPATHS:
-              subprocess.run(["install_name_tool", "-delete_rpath", rp, BINARY], capture_output=True)
-          subprocess.run(["install_name_tool", "-add_rpath", "@executable_path/../Frameworks", BINARY], capture_output=True)
+          main_binary = os.path.join(MACOS_DIR, "Oak")
+          main_rpaths = get_rpaths(main_binary)
+
+          for binary in binaries:
+              process(binary, main_rpaths)
+              # Ensure every binary can find libraries in Frameworks
+              for rp in get_rpaths(binary):
+                  subprocess.run(["install_name_tool", "-delete_rpath", rp, binary], capture_output=True)
+              subprocess.run(["install_name_tool", "-add_rpath", "@executable_path/../Frameworks", binary], capture_output=True)
 
           subprocess.run(["codesign", "--force", "--deep", "--sign", "-", APP], check=True)
           print("Done. Frameworks:")
@@ -224,16 +261,19 @@ jobs:
       - name: Debug bundle contents
         run: |
           echo "=== otool -L ==="
-          otool -L build/app/Olive.app/Contents/MacOS/Olive
+          otool -L build/app/Oak.app/Contents/MacOS/Oak
           echo "=== Frameworks dir ==="
-          ls -la build/app/Olive.app/Contents/Frameworks/ || echo "(empty)"
+          ls -la build/app/Oak.app/Contents/Frameworks/ || echo "(empty)"
           echo "=== App bundle size ==="
-          du -sh build/app/Olive.app
+          du -sh build/app/Oak.app
 
       - name: Create DMG
         run: |
+          mkdir -p build/app/dmg-staging
+          cp -R build/app/Oak.app build/app/dmg-staging/
+          ln -s /Applications build/app/dmg-staging/Applications
           hdiutil create \
-            -srcfolder build/app/Olive.app \
+            -srcfolder build/app/dmg-staging \
             -volname "Oak Video Editor" \
             -fs HFS+ \
             -format UDZO \
@@ -318,10 +358,156 @@ jobs:
           path: Oak_Video_Editor-*.AppImage
 
   # ------------------------------------------------------------------
+  # Debian package (.deb)
+  # ------------------------------------------------------------------
+  deb:
+    runs-on: warp-ubuntu-latest-x64-16x
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build pkg-config \
+            qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
+            libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
+            portaudio19-dev libgl1-mesa-dev libxkbcommon-dev
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_QT6=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON
+          cmake --build build
+
+      - name: Create DEB package
+        run: |
+          cd build
+          cpack -G DEB
+          mv *.deb "${GITHUB_WORKSPACE}/"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oak-deb-package
+          path: oak-video-editor_*.deb
+
+  # ------------------------------------------------------------------
+  # RPM package (.rpm)
+  # ------------------------------------------------------------------
+  rpm:
+    runs-on: warp-ubuntu-latest-x64-16x
+    container:
+      image: fedora:latest
+    steps:
+      - name: Install Git
+        run: dnf install -y git
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install dependencies
+        run: |
+          dnf install -y \
+            cmake ninja-build pkgconf-pkg-config \
+            qt6-qtbase-devel qt6-qtbase-private-devel qt6-qttools-devel \
+            ffmpeg-free-devel \
+            OpenImageIO-devel \
+            OpenColorIO-devel \
+            openexr-devel \
+            expat-devel \
+            portaudio-devel \
+            mesa-libGL-devel \
+            vulkan-headers \
+            vulkan-loader-devel \
+            libxkbcommon-devel \
+            gcc-c++ \
+            bzip2-devel \
+            rpm-build
+
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/usr \
+            -DBUILD_QT6=ON \
+            -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON
+          cmake --build build
+
+      - name: Create RPM package
+        run: |
+          cd build
+          cpack -G RPM
+          mv *.rpm "${GITHUB_WORKSPACE}/"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oak-rpm-package
+          path: oak-video-editor-*.rpm
+
+  # ------------------------------------------------------------------
+  # Arch Linux package (.pkg.tar.zst)
+  # ------------------------------------------------------------------
+  archlinux:
+    runs-on: warp-ubuntu-latest-x64-16x
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Prepare source tarball and PKGBUILD
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Arch pkgver cannot contain hyphens
+          PKGVER="${VERSION//-/_}"
+          TARBALL="oak-video-editor-${PKGVER}.tar.gz"
+          tar czf "/tmp/${TARBALL}" \
+            --transform "s,^,oak-video-editor-${PKGVER}/," \
+            --exclude='.git' \
+            --exclude='build' \
+            --exclude='*.tar.gz' \
+            .
+          mv "/tmp/${TARBALL}" "${TARBALL}"
+          sed "s/@VERSION@/${PKGVER}/g" app/packaging/arch/PKGBUILD.in > PKGBUILD
+
+      - name: Build package in Arch Linux container
+        run: |
+          docker run --rm \
+            -v "${PWD}:/build" \
+            -w /build \
+            archlinux:base-devel \
+            bash -c '
+              set -e
+              pacman-key --init
+              pacman -Syu --noconfirm
+              pacman -S --noconfirm --needed \
+                cmake ninja git pkgconf \
+                qt6-base qt6-tools ffmpeg openimageio opencolorio openexr expat portaudio \
+                mesa vulkan-icd-loader libxkbcommon fmt
+              useradd -m builder
+              chown -R builder /build
+              su builder -c "makepkg -s --noconfirm"
+            '
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oak-arch-package
+          path: oak-video-editor-*.pkg.tar.zst
+
+  # ------------------------------------------------------------------
   # Create Draft Release
   # ------------------------------------------------------------------
   release:
-    needs: [windows, macos, appimage]
+    needs: [windows, macos, appimage, deb, rpm, archlinux]
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts

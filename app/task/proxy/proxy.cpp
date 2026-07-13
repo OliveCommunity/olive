@@ -29,8 +29,7 @@
 namespace olive
 {
 
-ProxyTask::ProxyTask(const QString &source_filename,
-					 int stream_index,
+ProxyTask::ProxyTask(const QString &source_filename, int stream_index,
 					 const ProxyManager::ProxyParams &params,
 					 const QString &output_filename)
 	: source_filename_(source_filename)
@@ -44,9 +43,11 @@ ProxyTask::ProxyTask(const QString &source_filename,
 
 bool ProxyTask::Run()
 {
-	const QString ffmpeg = QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
+	const QString ffmpeg =
+		QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
 	if (ffmpeg.isEmpty()) {
-		SetError(tr("Failed to generate proxy: ffmpeg executable was not found"));
+		SetError(
+			tr("Failed to generate proxy: ffmpeg executable was not found"));
 		qWarning() << "ProxyTask: ffmpeg executable not found";
 		return false;
 	}
@@ -55,36 +56,34 @@ bool ProxyTask::Run()
 	if (!output_dir.exists() && !output_dir.mkpath(QStringLiteral("."))) {
 		SetError(tr("Failed to create proxy output directory"));
 		qWarning() << "ProxyTask: failed to create output directory"
-				 << output_dir.absolutePath();
+				   << output_dir.absolutePath();
 		return false;
 	}
 
-	qDebug() << "ProxyTask: starting ffmpeg proxy generation:"
-			 << source_filename_ << "->" << output_filename_;
+	qDebug()
+		<< "ProxyTask: starting ffmpeg proxy generation:" << source_filename_
+		<< "->" << output_filename_;
 
 	QFile::remove(output_filename_);
 
-	const QString scale_filter = QStringLiteral(
-		"scale=w=%1:h=%2:force_original_aspect_ratio=decrease")
-							 .arg(QString::number(params_.width),
-								  QString::number(params_.height));
+	const QString scale_filter =
+		QStringLiteral("scale=w=%1:h=%2:force_original_aspect_ratio=decrease")
+			.arg(QString::number(params_.width),
+				 QString::number(params_.height));
 
 	const QString container_format =
 		params_.extension.isEmpty() ? QStringLiteral("mp4") : params_.extension;
 
 	QStringList args;
-	args << QStringLiteral("-y")
-		 << QStringLiteral("-i") << source_filename_
+	args << QStringLiteral("-y") << QStringLiteral("-i") << source_filename_
 		 << QStringLiteral("-map") << QStringLiteral("0:%1").arg(stream_index_)
-		 << QStringLiteral("-an")
-		 << QStringLiteral("-vf") << scale_filter
+		 << QStringLiteral("-an") << QStringLiteral("-vf") << scale_filter
 		 << QStringLiteral("-c:v") << QStringLiteral("libx264")
 		 << QStringLiteral("-preset") << params_.preset
 		 << QStringLiteral("-crf") << QString::number(params_.crf)
 		 << QStringLiteral("-pix_fmt") << QStringLiteral("yuv420p")
 		 << QStringLiteral("-movflags") << QStringLiteral("+faststart")
-		 << QStringLiteral("-f") << container_format
-		 << output_filename_;
+		 << QStringLiteral("-f") << container_format << output_filename_;
 
 	QProcess process;
 	process.setProgram(ffmpeg);
@@ -94,7 +93,8 @@ bool ProxyTask::Run()
 
 	if (!process.waitForStarted()) {
 		SetError(tr("Failed to start ffmpeg for proxy generation"));
-		qWarning() << "ProxyTask: failed to start ffmpeg" << process.errorString();
+		qWarning()
+			<< "ProxyTask: failed to start ffmpeg" << process.errorString();
 		return false;
 	}
 
@@ -108,19 +108,20 @@ bool ProxyTask::Run()
 		}
 	}
 
-	if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+	if (process.exitStatus() != QProcess::NormalExit ||
+		process.exitCode() != 0) {
 		const QString output = QString::fromUtf8(process.readAll()).trimmed();
 		QFile::remove(output_filename_);
 		SetError(tr("ffmpeg failed to generate proxy: %1").arg(output));
-		qWarning() << "ProxyTask: ffmpeg failed with exit code" << process.exitCode()
-				 << "output:" << output;
+		qWarning() << "ProxyTask: ffmpeg failed with exit code"
+				   << process.exitCode() << "output:" << output;
 		return false;
 	}
 
 	if (!QFileInfo::exists(output_filename_)) {
 		SetError(tr("ffmpeg finished but proxy file was not created"));
 		qWarning() << "ProxyTask: ffmpeg finished but output file missing"
-				 << output_filename_;
+				   << output_filename_;
 		return false;
 	}
 

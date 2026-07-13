@@ -254,8 +254,11 @@ NodeParamViewItemBody::NodeParamViewItemBody(
 								   { n, input });
 
 		if (!(n->GetInputFlags(input) & kInputFlagHidden)) {
-			QString page_label = n->GetInputProperty(input, QStringLiteral("ui_page")).toString();
-			QString group_label = n->GetInputProperty(input, QStringLiteral("ui_group")).toString();
+			QString page_label =
+				n->GetInputProperty(input, QStringLiteral("ui_page")).toString();
+			QString group_label =
+				n->GetInputProperty(input, QStringLiteral("ui_group"))
+					.toString();
 			if (!page_label.isEmpty() && page_label != current_page) {
 				QLabel *page_title = new QLabel(page_label, this);
 				QFont f = page_title->font();

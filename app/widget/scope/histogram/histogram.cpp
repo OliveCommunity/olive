@@ -190,7 +190,8 @@ void HistogramScope::DrawScopeSoftware(QPainter &p, const QImage &image)
 		max_count = qMax(max_count, b_counts[i]);
 	}
 
-	auto draw_channel = [&](const std::array<int, 256> &counts, const QColor &color) {
+	auto draw_channel = [&](const std::array<int, 256> &counts,
+							const QColor &color) {
 		QPen pen(color);
 		pen.setWidth(2);
 		p.setPen(pen);
@@ -198,8 +199,8 @@ void HistogramScope::DrawScopeSoftware(QPainter &p, const QImage &image)
 		QVector<QPointF> points;
 		points.reserve(256);
 		for (int i = 0; i < 256; ++i) {
-			float x = histogram_start_dim_x +
-					  (float(i) / 255.0f) * histogram_dim_x;
+			float x =
+				histogram_start_dim_x + (float(i) / 255.0f) * histogram_dim_x;
 			float normalized = float(counts[i]) / float(max_count);
 			float y = histogram_start_dim_y +
 					  histogram_dim_y *

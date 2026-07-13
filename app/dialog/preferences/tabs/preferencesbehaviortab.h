@@ -49,7 +49,8 @@ public:
 
 	static QString BehaviorPrefTr(const char *text)
 	{
-		return QCoreApplication::translate("olive::PreferencesBehaviorTab", text);
+		return QCoreApplication::translate("olive::PreferencesBehaviorTab",
+										   text);
 	}
 
 private:

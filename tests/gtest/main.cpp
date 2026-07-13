@@ -10,10 +10,10 @@ int main(int argc, char **argv)
 {
 	Q_INIT_RESOURCE(ocioconf);
 	if (qEnvironmentVariableIsEmpty("OCIO")) {
-		qputenv("OCIO", QFile::encodeName(
-						 QDir(QStringLiteral(OAK_TEST_SOURCE_DIR))
-							 .filePath(QStringLiteral(
-								 "app/render/ocioconf/config.ocio"))));
+		qputenv("OCIO",
+				QFile::encodeName(QDir(QStringLiteral(OAK_TEST_SOURCE_DIR))
+									  .filePath(QStringLiteral(
+										  "app/render/ocioconf/config.ocio"))));
 	}
 	if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) {
 		qputenv("QT_QPA_PLATFORM", "offscreen");

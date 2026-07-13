@@ -41,7 +41,8 @@ extern "C" {
 #include <libswscale/swscale.h>
 #include <libavutil/pixdesc.h>
 }
-namespace {
+namespace
+{
 const std::string kBitDepthNoneStr(kOfxBitDepthNone);
 const std::string kBitDepthByteStr(kOfxBitDepthByte);
 const std::string kBitDepthShortStr(kOfxBitDepthShort);
@@ -117,16 +118,16 @@ static bool PackedDstInfo(AVPixelFormat fmt, int *channels,
 	}
 }
 
-static olive::AVFramePtr ReadbackTextureToFrame(olive::TexturePtr texture,
-												const olive::VideoParams &params)
+static olive::AVFramePtr
+ReadbackTextureToFrame(olive::TexturePtr texture,
+					   const olive::VideoParams &params)
 {
 	if (!texture || texture->IsDummy() || !texture->renderer()) {
 		return nullptr;
 	}
 
-	AVPixelFormat pix_fmt =
-		olive::FFmpegUtils::GetFFmpegPixelFormat(params.format(),
-										  params.channel_count());
+	AVPixelFormat pix_fmt = olive::FFmpegUtils::GetFFmpegPixelFormat(
+		params.format(), params.channel_count());
 	if (pix_fmt == AV_PIX_FMT_NONE) {
 		return nullptr;
 	}
@@ -145,15 +146,15 @@ static olive::AVFramePtr ReadbackTextureToFrame(olive::TexturePtr texture,
 			return nullptr;
 		}
 		const int linesize_pixels = BytesToPixels(frame->linesize[0], params);
-		texture->renderer()->DownloadFromTexture(texture->id(), params,
-												 frame->data[0],
-												 linesize_pixels);
+		texture->renderer()->DownloadFromTexture(
+			texture->id(), params, frame->data[0], linesize_pixels);
 		return frame;
 	}
 
-	olive::VideoParams rgba_params(
-		params.width(), params.height(), olive::core::PixelFormat::U8, 4,
-		params.pixel_aspect_ratio(), params.interlacing(), params.divider());
+	olive::VideoParams rgba_params(params.width(), params.height(),
+								   olive::core::PixelFormat::U8, 4,
+								   params.pixel_aspect_ratio(),
+								   params.interlacing(), params.divider());
 
 	olive::AVFramePtr rgba_frame = olive::CreateAVFramePtr();
 	rgba_frame->format = AV_PIX_FMT_RGBA;
@@ -165,9 +166,8 @@ static olive::AVFramePtr ReadbackTextureToFrame(olive::TexturePtr texture,
 
 	const int linesize_pixels =
 		BytesToPixels(rgba_frame->linesize[0], rgba_params);
-	texture->renderer()->DownloadFromTexture(texture->id(), rgba_params,
-											 rgba_frame->data[0],
-											 linesize_pixels);
+	texture->renderer()->DownloadFromTexture(
+		texture->id(), rgba_params, rgba_frame->data[0], linesize_pixels);
 
 	olive::AVFramePtr dst = olive::CreateAVFramePtr();
 	dst->format = pix_fmt;
@@ -179,9 +179,8 @@ static olive::AVFramePtr ReadbackTextureToFrame(olive::TexturePtr texture,
 
 	SwsContext *sws_ctx = sws_getContext(
 		rgba_frame->width, rgba_frame->height,
-		static_cast<AVPixelFormat>(rgba_frame->format),
-		dst->width, dst->height, pix_fmt, SWS_POINT,
-		nullptr, nullptr, nullptr);
+		static_cast<AVPixelFormat>(rgba_frame->format), dst->width, dst->height,
+		pix_fmt, SWS_POINT, nullptr, nullptr, nullptr);
 	if (!sws_ctx) {
 		return rgba_frame;
 	}
@@ -218,9 +217,7 @@ static olive::AVFramePtr ConvertPackedFloatFrame(olive::AVFramePtr src,
 		return nullptr;
 	}
 
-	auto clamp01 = [](float v) -> float {
-		return std::clamp(v, 0.0f, 1.0f);
-	};
+	auto clamp01 = [](float v) -> float { return std::clamp(v, 0.0f, 1.0f); };
 
 	for (int y = 0; y < src->height; ++y) {
 		const float *src_row = reinterpret_cast<const float *>(
@@ -242,18 +239,14 @@ static olive::AVFramePtr ConvertPackedFloatFrame(olive::AVFramePtr src,
 					continue;
 				}
 				dst_row_u16[x * dst_channels + 0] =
-					static_cast<uint16_t>(
-						std::lround(clamp01(r) * 65535.0f));
+					static_cast<uint16_t>(std::lround(clamp01(r) * 65535.0f));
 				dst_row_u16[x * dst_channels + 1] =
-					static_cast<uint16_t>(
-						std::lround(clamp01(g) * 65535.0f));
+					static_cast<uint16_t>(std::lround(clamp01(g) * 65535.0f));
 				dst_row_u16[x * dst_channels + 2] =
-					static_cast<uint16_t>(
-						std::lround(clamp01(b) * 65535.0f));
+					static_cast<uint16_t>(std::lround(clamp01(b) * 65535.0f));
 				if (dst_channels == 4) {
-					dst_row_u16[x * dst_channels + 3] =
-						static_cast<uint16_t>(
-							std::lround(clamp01(a) * 65535.0f));
+					dst_row_u16[x * dst_channels + 3] = static_cast<uint16_t>(
+						std::lround(clamp01(a) * 65535.0f));
 				}
 			}
 		} else {
@@ -270,18 +263,14 @@ static olive::AVFramePtr ConvertPackedFloatFrame(olive::AVFramePtr src,
 					continue;
 				}
 				dst_row[x * dst_channels + 0] =
-					static_cast<uint8_t>(
-						std::lround(clamp01(r) * 255.0f));
+					static_cast<uint8_t>(std::lround(clamp01(r) * 255.0f));
 				dst_row[x * dst_channels + 1] =
-					static_cast<uint8_t>(
-						std::lround(clamp01(g) * 255.0f));
+					static_cast<uint8_t>(std::lround(clamp01(g) * 255.0f));
 				dst_row[x * dst_channels + 2] =
-					static_cast<uint8_t>(
-						std::lround(clamp01(b) * 255.0f));
+					static_cast<uint8_t>(std::lround(clamp01(b) * 255.0f));
 				if (dst_channels == 4) {
 					dst_row[x * dst_channels + 3] =
-						static_cast<uint8_t>(
-							std::lround(clamp01(a) * 255.0f));
+						static_cast<uint8_t>(std::lround(clamp01(a) * 255.0f));
 				}
 			}
 		}
@@ -385,7 +374,7 @@ bool olive::plugin::OliveClipInstance::getConnected() const
 			return true;
 		}
 #endif
-		if(images_.empty())
+		if (images_.empty())
 			return false;
 		return true;
 	}
@@ -394,7 +383,7 @@ bool olive::plugin::OliveClipInstance::getConnected() const
 		return true;
 	}
 #endif
-	if(images_.empty())
+	if (images_.empty())
 		return false;
 	return true;
 }
@@ -427,8 +416,9 @@ olive::plugin::OliveClipInstance::getImage(OfxTime time,
 	if (name_ == "Output") {
 		if (!images_.contains(time)) {
 			// make a new ref counted image
-			images_.insert(time, new Image(*const_cast<OliveClipInstance *>(this),
-											 params_, bounds, rod, true));
+			images_.insert(time,
+						   new Image(*const_cast<OliveClipInstance *>(this),
+									 params_, bounds, rod, true));
 		}
 
 		// add another reference to the member image for this fetch
@@ -443,7 +433,7 @@ olive::plugin::OliveClipInstance::getImage(OfxTime time,
 		return images_[time];
 	} else {
 		if (images_.contains(time)) {
-			Image* image = images_.value(time);
+			Image *image = images_.value(time);
 			image->EnsureAllocatedFromParams(params_, bounds, rod, false);
 			image->addReference();
 			return image;
@@ -468,13 +458,13 @@ olive::plugin::OliveClipInstance::getImage(OfxTime time,
 			preferred_params.channel_count() <= 0) {
 			return nullptr;
 		}
-		
+
 		Image *image = new Image(*this, preferred_params, bounds, rod, true);
 		return image;
 	}
 }
 
-OFX::Host::ImageEffect::Image*
+OFX::Host::ImageEffect::Image *
 olive::plugin::OliveClipInstance::getOutputImage(OfxTime time)
 {
 	if (images_.contains(time)) {
@@ -504,10 +494,11 @@ olive::plugin::OliveClipInstance::getOutputImage(OfxTime time)
 	return image;
 }
 
-olive::VideoParams olive::plugin::OliveClipInstance::getPluginPreferredParams() const
+olive::VideoParams
+olive::plugin::OliveClipInstance::getPluginPreferredParams() const
 {
 	VideoParams result = params_;
-	
+
 	// Get format from base class _pixelDepth (set by getClipPreferences)
 	const std::string &depth = getPixelDepth();
 	if (!depth.empty()) {
@@ -521,7 +512,7 @@ olive::VideoParams olive::plugin::OliveClipInstance::getPluginPreferredParams() 
 			result.set_format(core::PixelFormat::F32);
 		}
 	}
-	
+
 	// Get channel count from base class _components (set by getClipPreferences)
 	const std::string &comp = getComponents();
 	if (!comp.empty()) {
@@ -533,7 +524,7 @@ olive::VideoParams olive::plugin::OliveClipInstance::getPluginPreferredParams() 
 			result.set_channel_count(1);
 		}
 	}
-	
+
 	return result;
 }
 OfxRectD
@@ -584,21 +575,24 @@ void olive::plugin::OliveClipInstance::setParams(const VideoParams &params)
 	setComponents(getUnmappedComponents());
 }
 
-void olive::plugin::OliveClipInstance::setInputTexture(TexturePtr texture, OfxTime time, bool readback_cpu){
+void olive::plugin::OliveClipInstance::setInputTexture(TexturePtr texture,
+													   OfxTime time,
+													   bool readback_cpu)
+{
 	if (!texture) {
 		return;
 	}
 	VideoParams incoming = texture->params();
-	
+
 	// Preserve time-related properties from the host/project.
 	// The frame rate of an OFX clip should reflect the project's frame rate,
 	// not the individual input texture's frame rate. If different inputs
 	// have different frame rates, setupClipPreferencesArgs throws an exception.
 	rational saved_frame_rate = params_.frame_rate();
 	rational saved_time_base = params_.time_base();
-	
+
 	this->params_ = incoming;
-	
+
 	params_.set_frame_rate(saved_frame_rate);
 	params_.set_time_base(saved_time_base);
 	// Note: We do NOT call setPixelDepth/setComponents here because
@@ -622,9 +616,8 @@ void olive::plugin::OliveClipInstance::setInputTexture(TexturePtr texture, OfxTi
 	if (!frame || !frame->data[0]) {
 		frame = ReadbackTextureToFrame(texture, params_);
 	}
-	AVPixelFormat expected_fmt =
-		FFmpegUtils::GetFFmpegPixelFormat(params_.format(),
-										  params_.channel_count());
+	AVPixelFormat expected_fmt = FFmpegUtils::GetFFmpegPixelFormat(
+		params_.format(), params_.channel_count());
 	if (expected_fmt == AV_PIX_FMT_NONE) {
 		return;
 	}
@@ -635,21 +628,20 @@ void olive::plugin::OliveClipInstance::setInputTexture(TexturePtr texture, OfxTi
 									static_cast<int>(std::ceil(rod_d.x2)),
 									static_cast<int>(std::ceil(rod_d.y2)) };
 
-	Image* image;
+	Image *image;
 	if (images_.contains(time)) {
 		image = images_.value(time);
 		image->EnsureAllocatedFromParams(params_, bounds, regionOfDefinition,
 										 false);
 	} else {
 		pruneImagesCache();
-		image = new Image(*this, params_, bounds,
-										regionOfDefinition, false);
+		image = new Image(*this, params_, bounds, regionOfDefinition, false);
 		image->EnsureAllocatedFromParams(params_, bounds, regionOfDefinition,
 										 false);
 		images_.insert(time, image);
 	}
 
-	uint8_t *dst = (uint8_t*)image->data();
+	uint8_t *dst = (uint8_t *)image->data();
 	if (!dst) {
 		return;
 	}
@@ -665,36 +657,38 @@ void olive::plugin::OliveClipInstance::setInputTexture(TexturePtr texture, OfxTi
 	// and SIGSEGV on Apple Silicon (where (int)NaN often evaluates to 0 or
 	// INT_MIN, causing huge offsets into bgrid._data).
 	if (params_.format() == core::PixelFormat::F32) {
-		const float *fptr = reinterpret_cast<const float*>(frame->data[0]);
+		const float *fptr = reinterpret_cast<const float *>(frame->data[0]);
 		int row_floats = frame->linesize[0] / static_cast<int>(sizeof(float));
 		bool has_nan = false;
 		for (int y = 0; y < params_.height() && !has_nan; ++y) {
-			for (int x = 0; x < params_.width() * params_.channel_count(); ++x) {
+			for (int x = 0; x < params_.width() * params_.channel_count();
+				 ++x) {
 				float v = fptr[y * row_floats + x];
 				if (std::isnan(v) || std::isinf(v)) {
-					qWarning() << "[PLUGIN] NaN/Inf detected in input frame at pixel ("
-							   << x / params_.channel_count() << "," << y
-							   << ") channel=" << (x % params_.channel_count())
-							   << " value=" << v;
+					qWarning()
+						<< "[PLUGIN] NaN/Inf detected in input frame at pixel ("
+						<< x / params_.channel_count() << "," << y
+						<< ") channel=" << (x % params_.channel_count())
+						<< " value=" << v;
 					has_nan = true;
 					break;
 				}
 			}
 		}
 		if (has_nan) {
-			qWarning() << "[PLUGIN] Filling corrupted input frame with black to avoid CImg crash";
+			qWarning()
+				<< "[PLUGIN] Filling corrupted input frame with black to avoid CImg crash";
 			std::memset(dst, 0, image->row_bytes() * image->height());
 			return;
 		}
 	}
 
 	AVFramePtr src_frame = frame;
-	if (frame->format != expected_fmt ||
-		frame->width != params_.width() ||
+	if (frame->format != expected_fmt || frame->width != params_.width() ||
 		frame->height != params_.height()) {
-		if (PackedFloatChannels(static_cast<AVPixelFormat>(frame->format)) > 0) {
-			AVFramePtr converted =
-				ConvertPackedFloatFrame(frame, expected_fmt);
+		if (PackedFloatChannels(static_cast<AVPixelFormat>(frame->format)) >
+			0) {
+			AVFramePtr converted = ConvertPackedFloatFrame(frame, expected_fmt);
 			if (converted) {
 				src_frame = converted;
 				goto copy_pixels;
@@ -710,9 +704,8 @@ void olive::plugin::OliveClipInstance::setInputTexture(TexturePtr texture, OfxTi
 
 		SwsContext *sws_ctx = sws_getContext(
 			frame->width, frame->height,
-			static_cast<AVPixelFormat>(frame->format),
-			converted->width, converted->height,
-			static_cast<AVPixelFormat>(converted->format),
+			static_cast<AVPixelFormat>(frame->format), converted->width,
+			converted->height, static_cast<AVPixelFormat>(converted->format),
 			SWS_POINT, nullptr, nullptr, nullptr);
 		if (!sws_ctx) {
 			return;
@@ -727,18 +720,18 @@ void olive::plugin::OliveClipInstance::setInputTexture(TexturePtr texture, OfxTi
 
 copy_pixels:
 	int bytes_per_component = params_.format().byte_count();
-	int bytes_per_row = params_.width() * params_.channel_count() *
-						bytes_per_component;
+	int bytes_per_row =
+		params_.width() * params_.channel_count() * bytes_per_component;
 	int src_row_bytes = src_frame->linesize[0];
 	int dst_row_bytes = image->row_bytes();
-	int copy_bytes = std::min(bytes_per_row,
-							  std::min(src_row_bytes, dst_row_bytes));
+	int copy_bytes =
+		std::min(bytes_per_row, std::min(src_row_bytes, dst_row_bytes));
 	int copy_height = std::min(image->height(), src_frame->height);
 
 	const uint8_t *src = src_frame->data[0];
 	if (params_.format() == core::PixelFormat::F32) {
-		const float *src_f = reinterpret_cast<const float*>(src);
-		float *dst_f = reinterpret_cast<float*>(dst);
+		const float *src_f = reinterpret_cast<const float *>(src);
+		float *dst_f = reinterpret_cast<float *>(dst);
 		int src_stride = src_row_bytes / static_cast<int>(sizeof(float));
 		int dst_stride = dst_row_bytes / static_cast<int>(sizeof(float));
 		int floats_per_row = copy_bytes / static_cast<int>(sizeof(float));
@@ -754,7 +747,8 @@ copy_pixels:
 			}
 		}
 		if (has_nan) {
-			qWarning() << "[PLUGIN] NaN/Inf scrubbed from input frame data during copy";
+			qWarning()
+				<< "[PLUGIN] NaN/Inf scrubbed from input frame data during copy";
 		}
 	} else if (dst_row_bytes == src_row_bytes && src_row_bytes == copy_bytes) {
 		std::memcpy(dst, src, copy_bytes * copy_height);
@@ -764,8 +758,6 @@ copy_pixels:
 						copy_bytes);
 		}
 	}
-
-	
 }
 
 void olive::plugin::OliveClipInstance::setOutputTexture(TexturePtr texture,
@@ -818,18 +810,18 @@ olive::plugin::OliveClipInstance::loadTexture(OfxTime time, const char *format,
 	bounds.x2 = std::min(bounds.x2, rod.x2);
 	bounds.y2 = std::min(bounds.y2, rod.y2);
 
-	const int bytes_per_row =
-		params_.width() * params_.channel_count() * params_.format().byte_count();
+	const int bytes_per_row = params_.width() * params_.channel_count() *
+							  params_.format().byte_count();
 	const std::string &field = getFieldOrder();
-	const std::string unique_id = std::to_string(
-		reinterpret_cast<uintptr_t>(gl_texture.get())) + "_" +
+	const std::string unique_id =
+		std::to_string(reinterpret_cast<uintptr_t>(gl_texture.get())) + "_" +
 		std::to_string(static_cast<long long>(time));
 
 	const int texture_id = gl_texture->id().value<GLuint>();
 	OFX::Host::ImageEffect::Texture *texture =
-		new OFX::Host::ImageEffect::Texture(
-			*this, 1.0, 1.0, texture_id, GL_TEXTURE_2D, bounds, rod,
-			bytes_per_row, field, unique_id);
+		new OFX::Host::ImageEffect::Texture(*this, 1.0, 1.0, texture_id,
+											GL_TEXTURE_2D, bounds, rod,
+											bytes_per_row, field, unique_id);
 	texture->addReference();
 	return texture;
 }

@@ -4,13 +4,13 @@
 
 TEST(CommonDebug, DebugHandlerFormatsAllLevels)
 {
-  // Install handler and restore after test
-  QtMessageHandler old = qInstallMessageHandler(olive::DebugHandler);
+	// Install handler and restore after test
+	QtMessageHandler old = qInstallMessageHandler(olive::DebugHandler);
 
-  qDebug() << "debug message";
-  qInfo() << "info message";
-  qWarning() << "warning message";
-  qCritical() << "critical message";
+	qDebug() << "debug message";
+	qInfo() << "info message";
+	qWarning() << "warning message";
+	qCritical() << "critical message";
 
-  qInstallMessageHandler(old);
+	qInstallMessageHandler(old);
 }

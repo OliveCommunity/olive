@@ -581,12 +581,12 @@ void ViewerOutput::set_parameters_from_footage(
 				found_video_params = true;
 			}
 
-			SetVideoParams(VideoParams(
-				s.width(), s.height(), using_timebase,
-				static_cast<PixelFormat::Format>(
-					OLIVE_CONFIG("OfflinePixelFormat").toInt()),
-				VideoParams::kInternalChannelCount, s.pixel_aspect_ratio(),
-				s.interlacing(), 1));
+			SetVideoParams(
+				VideoParams(s.width(), s.height(), using_timebase,
+							static_cast<PixelFormat::Format>(
+								OLIVE_CONFIG("OfflinePixelFormat").toInt()),
+							VideoParams::kInternalChannelCount,
+							s.pixel_aspect_ratio(), s.interlacing(), 1));
 
 			if (found_video_params) {
 				break;

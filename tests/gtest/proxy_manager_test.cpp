@@ -18,14 +18,14 @@ TEST(ProxyManager, BuildsStableProxyFilename)
 	params.version = 1;
 
 	const QString first = olive::ProxyManager::GetProxyFilename(
-		QStringLiteral("/tmp/oak-cache"),
-		QStringLiteral("/media/source.mov"), 0, params);
+		QStringLiteral("/tmp/oak-cache"), QStringLiteral("/media/source.mov"),
+		0, params);
 	const QString second = olive::ProxyManager::GetProxyFilename(
-		QStringLiteral("/tmp/oak-cache"),
-		QStringLiteral("/media/source.mov"), 0, params);
+		QStringLiteral("/tmp/oak-cache"), QStringLiteral("/media/source.mov"),
+		0, params);
 	const QString other_stream = olive::ProxyManager::GetProxyFilename(
-		QStringLiteral("/tmp/oak-cache"),
-		QStringLiteral("/media/source.mov"), 1, params);
+		QStringLiteral("/tmp/oak-cache"), QStringLiteral("/media/source.mov"),
+		1, params);
 
 	EXPECT_EQ(first, second);
 	EXPECT_NE(first, other_stream);
@@ -48,11 +48,11 @@ TEST(ProxyManager, ProxyFilenameIncludesPresetParameters)
 	mov_540p.extension = QStringLiteral("mov");
 
 	const QString first = olive::ProxyManager::GetProxyFilename(
-		QStringLiteral("/tmp/oak-cache"),
-		QStringLiteral("/media/source.mov"), 0, mp4_720p);
+		QStringLiteral("/tmp/oak-cache"), QStringLiteral("/media/source.mov"),
+		0, mp4_720p);
 	const QString second = olive::ProxyManager::GetProxyFilename(
-		QStringLiteral("/tmp/oak-cache"),
-		QStringLiteral("/media/source.mov"), 0, mov_540p);
+		QStringLiteral("/tmp/oak-cache"), QStringLiteral("/media/source.mov"),
+		0, mov_540p);
 
 	EXPECT_NE(first, second);
 	EXPECT_TRUE(first.contains(QStringLiteral(".1280x720.v1.")));
@@ -117,21 +117,21 @@ TEST(ProxyManager, ConvertsProxyStateToAndFromStrings)
 				  olive::ProxyManager::kProxyFailed),
 			  QStringLiteral("failed"));
 
-	EXPECT_EQ(olive::ProxyManager::ProxyStateFromString(
-				  QStringLiteral("missing")),
-			  olive::ProxyManager::kProxyMissing);
-	EXPECT_EQ(olive::ProxyManager::ProxyStateFromString(
-				  QStringLiteral("generating")),
-			  olive::ProxyManager::kProxyGenerating);
-	EXPECT_EQ(olive::ProxyManager::ProxyStateFromString(
-				  QStringLiteral("ready")),
-			  olive::ProxyManager::kProxyReady);
-	EXPECT_EQ(olive::ProxyManager::ProxyStateFromString(
-				  QStringLiteral("failed")),
-			  olive::ProxyManager::kProxyFailed);
-	EXPECT_EQ(olive::ProxyManager::ProxyStateFromString(
-				  QStringLiteral("unknown")),
-			  olive::ProxyManager::kProxyMissing);
+	EXPECT_EQ(
+		olive::ProxyManager::ProxyStateFromString(QStringLiteral("missing")),
+		olive::ProxyManager::kProxyMissing);
+	EXPECT_EQ(
+		olive::ProxyManager::ProxyStateFromString(QStringLiteral("generating")),
+		olive::ProxyManager::kProxyGenerating);
+	EXPECT_EQ(
+		olive::ProxyManager::ProxyStateFromString(QStringLiteral("ready")),
+		olive::ProxyManager::kProxyReady);
+	EXPECT_EQ(
+		olive::ProxyManager::ProxyStateFromString(QStringLiteral("failed")),
+		olive::ProxyManager::kProxyFailed);
+	EXPECT_EQ(
+		olive::ProxyManager::ProxyStateFromString(QStringLiteral("unknown")),
+		olive::ProxyManager::kProxyMissing);
 }
 
 TEST(ProxyManager, FootagePersistsProxyMetadata)
@@ -225,10 +225,10 @@ TEST(ProxyManager, EmitsProxyFinishedState)
 			received_state = state;
 		});
 
-	emit olive::ProxyManager::instance()->ProxyFinished(
-		QStringLiteral("/media/source.mov"), 0,
-		QStringLiteral("/cache/proxy/example.mp4"),
-		olive::ProxyManager::kProxyFailed);
+	emit olive::ProxyManager::instance()
+		-> ProxyFinished(QStringLiteral("/media/source.mov"), 0,
+						 QStringLiteral("/cache/proxy/example.mp4"),
+						 olive::ProxyManager::kProxyFailed);
 
 	EXPECT_TRUE(received);
 	EXPECT_EQ(received_source, QStringLiteral("/media/source.mov"));
@@ -241,10 +241,8 @@ TEST(ProxyManager, EmitsProxyFinishedState)
 
 TEST(ProxyManager, WorkingProxyFilenamePrependsExtension)
 {
-	const QString proxy =
-		QStringLiteral("/cache/proxy/example.mp4");
-	const QString working =
-		olive::ProxyManager::GetWorkingProxyFilename(proxy);
+	const QString proxy = QStringLiteral("/cache/proxy/example.mp4");
+	const QString working = olive::ProxyManager::GetWorkingProxyFilename(proxy);
 
 	EXPECT_EQ(working, QStringLiteral("/cache/proxy/example.mp4.working.mp4"));
 }

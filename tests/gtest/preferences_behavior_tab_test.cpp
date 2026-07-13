@@ -45,16 +45,16 @@ TEST(PreferencesBehaviorTab, BehaviorPrefTrProvidesTranslations)
 {
 	QStringList keys;
 	keys << QStringLiteral("Enable hover focus")
-		  << QStringLiteral("Select also selects all children in the graph")
-		  << QStringLiteral("Double-clicking a node opens its properties")
-		  << QStringLiteral("Auto-Seek to Beginning of Sequence")
-		  << QStringLiteral("Scroll wheel zooms instead of scrolling")
-		  << QStringLiteral("Enable audio scrubbing");
+		 << QStringLiteral("Select also selects all children in the graph")
+		 << QStringLiteral("Double-clicking a node opens its properties")
+		 << QStringLiteral("Auto-Seek to Beginning of Sequence")
+		 << QStringLiteral("Scroll wheel zooms instead of scrolling")
+		 << QStringLiteral("Enable audio scrubbing");
 
 	foreach (const QString &key, keys) {
 		EXPECT_FALSE(
-			PreferencesBehaviorTab::BehaviorPrefTr(
-				key.toUtf8().constData()).isEmpty())
+			PreferencesBehaviorTab::BehaviorPrefTr(key.toUtf8().constData())
+				.isEmpty())
 			<< key.toStdString();
 	}
 }
@@ -76,8 +76,8 @@ TEST(PreferencesGeneralTab, ContainsHoverFocusOption)
 
 	bool found = false;
 	foreach (QCheckBox *box, boxes) {
-		if (box->text() == PreferencesBehaviorTab::BehaviorPrefTr(
-				"Enable hover focus")) {
+		if (box->text() ==
+			PreferencesBehaviorTab::BehaviorPrefTr("Enable hover focus")) {
 			found = true;
 			break;
 		}
@@ -96,7 +96,7 @@ TEST(PreferencesAudioTab, AudioScrubbingCheckboxUsesBehaviorTranslation)
 		bool found = false;
 		foreach (QCheckBox *box, boxes) {
 			if (box->text() == PreferencesBehaviorTab::BehaviorPrefTr(
-					"Enable audio scrubbing")) {
+								   "Enable audio scrubbing")) {
 				found = true;
 				break;
 			}

@@ -38,10 +38,19 @@ struct ViewerPlaybackFrame {
 
 class ViewerQueue : public std::list<ViewerPlaybackFrame> {
 public:
-	ViewerQueue() : mutex_(new QMutex()) {}
+	ViewerQueue()
+		: mutex_(new QMutex())
+	{
+	}
 	ViewerQueue(const ViewerQueue &other)
-		: std::list<ViewerPlaybackFrame>(other), mutex_(new QMutex()) {}
-	~ViewerQueue() { delete mutex_; }
+		: std::list<ViewerPlaybackFrame>(other)
+		, mutex_(new QMutex())
+	{
+	}
+	~ViewerQueue()
+	{
+		delete mutex_;
+	}
 	ViewerQueue &operator=(const ViewerQueue &other)
 	{
 		std::list<ViewerPlaybackFrame>::operator=(other);

@@ -20,16 +20,16 @@
 
 APPDIR=$(readlink -f $(dirname "$0"))
 
-# Custom AppRun that ensures the AppImage doesn't dismount before olive-crashhandler exits
+# Custom AppRun that ensures the AppImage doesn't dismount before oak-crashhandler exits
 
 # Run main program
-"$APPDIR/usr/bin/olive-editor" "$@"
+"$APPDIR/usr/bin/oak-editor" "$@"
 
 # Wait arbitrary amount of time
 sleep 5
 
-# While olive-crashhandler exists, keep sleeping
-while [[ $(ps -aux | grep olive-crashhandler | grep -v grep) ]]
+# While oak-crashhandler exists, keep sleeping
+while [[ $(ps -aux | grep oak-crashhandler | grep -v grep) ]]
 do
 	sleep 5
 done
