@@ -20,6 +20,7 @@
 ***/
 
 #include "timelinewidget.h"
+#include "timelinewidgetwaveformsync.h"
 
 #include <algorithm>
 #include <cfloat>
@@ -76,19 +77,14 @@ namespace olive
 
 #define super TimeBasedWidget
 
+using namespace TimelineWaveformSync;
+
 namespace {
 
 struct SourceSyncClip {
 	ClipBlock *clip = nullptr;
 	AudioSynchronizer::SourceClip source;
 	rational source_head;
-};
-
-struct WaveformSyncClip {
-	ClipBlock *clip = nullptr;
-	const AudioWaveformCache *waveform = nullptr;
-	TimeRange media_range;
-	int sample_rate = 0;
 };
 
 bool GetSourceSyncClip(Block *block, SourceSyncClip *out)
@@ -124,44 +120,6 @@ QVector<SourceSyncClip> GetSelectedSourceSyncClips(
 	return clips;
 }
 
-bool GetWaveformSyncClip(Block *block, WaveformSyncClip *out)
-{
-	ClipBlock *clip = dynamic_cast<ClipBlock *>(block);
-	if (!clip || !clip->waveform()) {
-		return false;
-	}
-
-	const TimeRange media_range = clip->media_range();
-	if (media_range.length().isNull()) {
-		return false;
-	}
-
-	const AudioWaveformCache *waveform = clip->waveform();
-	if (waveform->GetParameters().sample_rate() <= 0 ||
-		!waveform->GetInvalidatedRanges(media_range).isEmpty()) {
-		return false;
-	}
-
-	out->clip = clip;
-	out->waveform = waveform;
-	out->media_range = media_range;
-	out->sample_rate = waveform->GetParameters().sample_rate();
-	return true;
-}
-
-QVector<WaveformSyncClip> GetSelectedWaveformSyncClips(
-	const QVector<Block *> &blocks)
-{
-	QVector<WaveformSyncClip> clips;
-	for (Block *block : blocks) {
-		WaveformSyncClip sync_clip;
-		if (GetWaveformSyncClip(block, &sync_clip)) {
-			clips.append(sync_clip);
-		}
-	}
-	return clips;
-}
-
 QVector<Footage *> GetSelectedProxyFootage(const QVector<Block *> &blocks)
 {
 	QVector<Footage *> footage;
@@ -180,34 +138,6 @@ QVector<Footage *> GetSelectedProxyFootage(const QVector<Block *> &blocks)
 		footage.append(candidate);
 	}
 	return footage;
-}
-
-QVector<double> ExtractWaveformCacheEnvelope(const WaveformSyncClip &clip,
-											 int sample_rate,
-											 size_t window_samples)
-{
-	QVector<double> envelope;
-	if (sample_rate <= 0 || !window_samples) {
-		return envelope;
-	}
-
-	const rational window_time(static_cast<int>(window_samples), sample_rate);
-	for (rational t = clip.media_range.in(); t < clip.media_range.out();
-		 t += window_time) {
-		const rational length = qMin(window_time, clip.media_range.out() - t);
-		const AudioVisualWaveform::Sample summary =
-			clip.waveform->GetSummaryFromTime(t, length);
-
-		double peak = 0.0;
-		for (const AudioVisualWaveform::SamplePerChannel &channel : summary) {
-			const double channel_peak =
-				std::max(std::abs(static_cast<double>(channel.min)),
-						 std::abs(static_cast<double>(channel.max)));
-			peak = std::max(peak, channel_peak);
-		}
-		envelope.append(peak);
-	}
-	return envelope;
 }
 
 } // namespace

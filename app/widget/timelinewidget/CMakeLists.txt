@@ -26,5 +26,7 @@ set(OLIVE_SOURCES
   widget/timelinewidget/timelinewidget.h
   widget/timelinewidget/timelinewidgetselections.cpp
   widget/timelinewidget/timelinewidgetselections.h
+  widget/timelinewidget/timelinewidgetwaveformsync.cpp
+  widget/timelinewidget/timelinewidgetwaveformsync.h
   PARENT_SCOPE
 )

@@ -72,6 +72,7 @@ add_executable(olive-gtest
   timecode_metadata_test.cpp
   timebased_widget_test.cpp
   timeline_coordinate_test.cpp
+  timeline_waveform_sync_test.cpp
   timeline_workarea_test.cpp
 )
 
