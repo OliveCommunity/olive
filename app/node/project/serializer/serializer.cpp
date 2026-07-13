@@ -96,7 +96,10 @@ ProjectSerializer::Result ProjectSerializer::Load(Project *project,
 			return inner_result;
 		}
 	} else {
-		return kFileError;
+		Result r(kFileError);
+		r.SetDetails(QStringLiteral("Unable to open '%1': %2")
+					 .arg(filename, project_file.errorString()));
+		return r;
 	}
 }
 

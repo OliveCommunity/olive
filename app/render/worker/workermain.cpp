@@ -24,6 +24,7 @@
 #include <optional>
 
 #include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -263,6 +264,22 @@ private:
 
 	bool LoadGraph(const QString &path)
 	{
+		{
+			QFileInfo fi(path);
+			if (!fi.exists()) {
+				LogError(QStringLiteral("LoadGraph: graph file does not exist: %1").arg(path));
+				return Write(ErrorMessage(QStringLiteral("graph file does not exist: %1").arg(path)));
+			}
+			if (fi.size() == 0) {
+				LogError(QStringLiteral("LoadGraph: graph file is empty: %1").arg(path));
+				return Write(ErrorMessage(QStringLiteral("graph file is empty: %1").arg(path)));
+			}
+			LogError(QStringLiteral("LoadGraph: loading %1 (%2 bytes, readable=%3)")
+					 .arg(path)
+					 .arg(fi.size())
+					 .arg(fi.isReadable()));
+		}
+
 		auto loaded = std::make_unique<olive::Project>();
 		// Do not call Initialize() here: project serializers expect a blank
 		// project (root_ == nullptr) and will set root themselves. Calling
