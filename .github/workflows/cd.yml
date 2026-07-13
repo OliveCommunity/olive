@@ -144,15 +144,22 @@ jobs:
           otool -L build/app/Oak.app/Contents/MacOS/Oak | head -30
           echo "=== otool -L worker ==="
           otool -L build/app/Oak.app/Contents/MacOS/oak-render-worker | head -30
+
+      - name: Bundle non-Qt libraries
         run: |
           mkdir -p build/app/Oak.app/Contents/Frameworks
           python3 << 'PYEOF'
           import os, shutil, subprocess
 
           APP = "build/app/Oak.app"
-          BINARY = f"{APP}/Contents/MacOS/Oak"
+          MACOS_DIR = f"{APP}/Contents/MacOS"
           DEST = f"{APP}/Contents/Frameworks"
           os.makedirs(DEST, exist_ok=True)
+
+          QT_PREFIXES = ("Qt", "libQt")
+
+          def is_qt_lib(name):
+              return name.startswith(QT_PREFIXES)
 
           def get_rpaths(binary):
               out = subprocess.run(["otool", "-l", binary], capture_output=True, text=True).stdout
@@ -195,42 +202,55 @@ jobs:
                       return p
               return None
 
-          EXEC_RPATHS = get_rpaths(BINARY)
           PROCESSED = set()
 
-          def process(target):
+          def process(target, exec_rpaths):
               tdir = os.path.dirname(target)
               print(f"Processing: {target}")
               for dep in get_deps(target):
-                  resolved = resolve(dep, EXEC_RPATHS if target == BINARY else [], tdir)
+                  # Skip Qt frameworks and Qt dylibs; macdeployqt already deploys them.
+                  dep_base = os.path.basename(dep)
+                  if is_qt_lib(dep_base):
+                      continue
+                  resolved = resolve(dep, exec_rpaths, tdir)
                   if not resolved or not os.path.isfile(resolved):
                       continue
                   resolved = os.path.realpath(resolved)
                   if not (resolved.startswith("/opt/homebrew/") or resolved.startswith("/usr/local/") or resolved.startswith(os.path.realpath(os.getcwd()))):
                       continue
                   base = os.path.basename(resolved)
+                  if is_qt_lib(base):
+                      continue
                   if base in PROCESSED:
                       subprocess.run(["install_name_tool", "-change", dep, f"@rpath/{base}", target], capture_output=True)
                       continue
                   PROCESSED.add(base)
                   dst = os.path.join(DEST, base)
                   if os.path.abspath(resolved) == os.path.abspath(dst):
-                      # Already in Frameworks (likely copied by macdeployqt), just fix paths
                       subprocess.run(["install_name_tool", "-id", f"@rpath/{base}", dst], capture_output=True)
                       subprocess.run(["install_name_tool", "-change", dep, f"@rpath/{base}", target], capture_output=True)
-                      process(dst)
+                      process(dst, exec_rpaths)
                       continue
                   print(f"  Copying: {resolved} -> {dst}")
                   shutil.copy2(resolved, dst)
                   subprocess.run(["install_name_tool", "-id", f"@rpath/{base}", dst], capture_output=True)
                   subprocess.run(["install_name_tool", "-change", dep, f"@rpath/{base}", target], capture_output=True)
-                  process(dst)
+                  process(dst, exec_rpaths)
 
-          process(BINARY)
+          binaries = [os.path.join(MACOS_DIR, f) for f in os.listdir(MACOS_DIR)
+                      if os.path.isfile(os.path.join(MACOS_DIR, f))]
+          if not binaries:
+              raise RuntimeError(f"No binaries found in {MACOS_DIR}")
 
-          for rp in EXEC_RPATHS:
-              subprocess.run(["install_name_tool", "-delete_rpath", rp, BINARY], capture_output=True)
-          subprocess.run(["install_name_tool", "-add_rpath", "@executable_path/../Frameworks", BINARY], capture_output=True)
+          main_binary = os.path.join(MACOS_DIR, "Oak")
+          main_rpaths = get_rpaths(main_binary)
+
+          for binary in binaries:
+              process(binary, main_rpaths)
+              # Ensure every binary can find libraries in Frameworks
+              for rp in get_rpaths(binary):
+                  subprocess.run(["install_name_tool", "-delete_rpath", rp, binary], capture_output=True)
+              subprocess.run(["install_name_tool", "-add_rpath", "@executable_path/../Frameworks", binary], capture_output=True)
 
           subprocess.run(["codesign", "--force", "--deep", "--sign", "-", APP], check=True)
           print("Done. Frameworks:")
