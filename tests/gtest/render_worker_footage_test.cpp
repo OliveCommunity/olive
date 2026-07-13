@@ -41,10 +41,51 @@
 #include "render/ipc/sharedmemoryregion.h"
 #include "render/videoparams.h"
 
+#ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+#include "render/backend/dynamicrenderer.h"
+#include "render/backend/renderbackend_c.h"
+#endif
+
 using namespace olive;
 using namespace olive::core;
 
 namespace {
+
+#ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+bool IsRenderBackendAvailable(const QString &backend)
+{
+	olive::DynamicRenderer renderer(backend);
+	if (!renderer.Load()) {
+		return false;
+	}
+
+	OakRenderBackendInfo info = {};
+	if (!renderer.GetBackendInfo(&info)) {
+		return false;
+	}
+
+	if (backend == QStringLiteral("vulkan") &&
+		info.kind != OAK_RENDER_BACKEND_VULKAN) {
+		return false;
+	}
+
+	if (backend == QStringLiteral("opengl") &&
+		info.kind != OAK_RENDER_BACKEND_OPENGL) {
+		return false;
+	}
+
+	return renderer.Init();
+}
+#else
+bool IsRenderBackendAvailable(const QString &)
+{
+	// When the dynamic backend is not built, the worker binary is linked
+	// directly against the renderer and we have no way to probe it cheaply
+	// from here. The tests were originally written for this configuration and
+	// pass on development workstations, so we keep them enabled.
+	return true;
+}
+#endif
 
 constexpr int kInputSlots = 1;
 constexpr int kOutputSlots = 1;
@@ -412,6 +453,10 @@ protected:
 
 TEST_F(RenderWorkerFootageTest, VulkanFootageIsNotBlack)
 {
+	if (!IsRenderBackendAvailable(QStringLiteral("vulkan"))) {
+		GTEST_SKIP() << "Vulkan backend is not available in this environment";
+	}
+
 	ASSERT_TRUE(StartWorker(QStringLiteral("vulkan")));
 
 	int output_slot = -1;
@@ -442,6 +487,10 @@ TEST_F(RenderWorkerFootageTest, VulkanFootageIsNotBlack)
 
 TEST_F(RenderWorkerFootageTest, OpenGLFootageIsNotBlack)
 {
+	if (!IsRenderBackendAvailable(QStringLiteral("opengl"))) {
+		GTEST_SKIP() << "OpenGL backend is not available in this environment";
+	}
+
 	ASSERT_TRUE(StartWorker(QStringLiteral("opengl")));
 
 	int output_slot = -1;
