@@ -1,8016 +1,4515 @@
-<?xml version = "1.0"
-encoding = "utf-8" ?
->
-<!DOCTYPE TS >
-<TS version = "2.1"
-language = "zh_CN" >
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.1" language="zh_CN">
 <context>
-    <name>AudioParams < /name>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "28" / >
-    <source> % 1
-Hz < /source>
-< translation > % 1
-Hz < /translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "35" / >
-<source>Mono < /source>
-< translation > 单声道 < /translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "37" / >
-<source>Stereo < /source>
-< translation > 立体声 < /translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "39" / >
-<source>2.1 < /source>
-< translation > 2.1 < /translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "41" / >
-<source>5.1 < /source>
-< translation > 5.1 < /translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "43" / >
-<source>7.1 < /source>
-< translation > 7.1 < /translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "45" / >
-<location filename = "../ui/humanstrings.cpp"
-line = "95" / >
-    <source>Unknown(0
-x % 1
-)
-</source>
-< translation > 未知(0
-x % 1
-)
-</translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "54" / >
-    <source>Unsigned
-8 - bit(Packed) < /source>
-< translation > 无符号8位（压缩）</translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "57" / >
-    <source>Signed
-16 - bit(Packed) < /source>
-< translation > 有符号16位（压缩）</translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "60" / >
-    <source>Signed
-32 - bit(Packed) < /source>
-< translation > 有符号32位（压缩）</translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "63" / >
-    <source>Signed
-64 - bit(Packed) < /source>
-< translation > 有符号64位（压缩）</translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "66" / >
-    <source>Float
-32 - bit(Packed) < /source>
-< translation > 浮点32位（压缩）</translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "69" / >
-    <source>Float
-64 - bit(Packed) < /source>
-< translation > 浮点64位（压缩）</translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "72" / >
-    <source>Unsigned
-8 - bit(Planar) < /source>
-< translation > 无符号8位（平面）</translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "75" / >
-    <source>Signed
-16 - bit(Planar) < /source>
-< translation > 有符号16位（平面）</translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "78" / >
-    <source>Signed
-32 - bit(Planar) < /source>
-< translation > 有符号32位（平面）</translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "81" / >
-    <source>Signed
-64 - bit(Planar) < /source>
-< translation > 有符号64位（平面）</translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "84" / >
-    <source>Float
-32 - bit(Planar) < /source>
-< translation > 浮点32位（平面）</translation>
-< /message>
-< message >
-<location filename = "../ui/humanstrings.cpp"
-line = "87" / >
-    <source>Float
-64 - bit(Planar) < /source>
-< translation > 浮点64位（平面）</translation>
-< /message>
-< /context>
-< context >
-<name>Config < /name>
-< message >
-<location filename = "../config/config.cpp"
-line = "348" / >
-    <source>Error
-loading
-settings < /source>
-< translation > 加载设置时出错 < /translation>
-< /message>
-< message >
-<location filename = "../config/config.cpp"
-line = "349" / >
-    <source>Failed
-to
-load
-application
-settings.This
-session
-will
-use
-defaults.
+    <name>AudioParams</name>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="28"/>
+        <source>%1 Hz</source>
+        <translation>%1 Hz</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="35"/>
+        <source>Mono</source>
+        <translation>单声道</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="37"/>
+        <source>Stereo</source>
+        <translation>立体声</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="39"/>
+        <source>2.1</source>
+        <translation>2.1</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="41"/>
+        <source>5.1</source>
+        <translation>5.1</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="43"/>
+        <source>7.1</source>
+        <translation>7.1</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="45"/>
+        <location filename="../ui/humanstrings.cpp" line="95"/>
+        <source>Unknown (0x%1)</source>
+        <translation>未知 (0x%1)</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="54"/>
+        <source>Unsigned 8-bit (Packed)</source>
+        <translation>无符号8位（压缩）</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="57"/>
+        <source>Signed 16-bit (Packed)</source>
+        <translation>有符号16位（压缩）</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="60"/>
+        <source>Signed 32-bit (Packed)</source>
+        <translation>有符号32位（压缩）</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="63"/>
+        <source>Signed 64-bit (Packed)</source>
+        <translation>有符号64位（压缩）</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="66"/>
+        <source>Float 32-bit (Packed)</source>
+        <translation>浮点32位（压缩）</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="69"/>
+        <source>Float 64-bit (Packed)</source>
+        <translation>浮点64位（压缩）</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="72"/>
+        <source>Unsigned 8-bit (Planar)</source>
+        <translation>无符号8位（平面）</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="75"/>
+        <source>Signed 16-bit (Planar)</source>
+        <translation>有符号16位（平面）</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="78"/>
+        <source>Signed 32-bit (Planar)</source>
+        <translation>有符号32位（平面）</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="81"/>
+        <source>Signed 64-bit (Planar)</source>
+        <translation>有符号64位（平面）</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="84"/>
+        <source>Float 32-bit (Planar)</source>
+        <translation>浮点32位（平面）</translation>
+    </message>
+    <message>
+        <location filename="../ui/humanstrings.cpp" line="87"/>
+        <source>Float 64-bit (Planar)</source>
+        <translation>浮点64位（平面）</translation>
+    </message>
+</context>
+<context>
+    <name>Config</name>
+    <message>
+        <location filename="../config/config.cpp" line="348"/>
+        <source>Error loading settings</source>
+        <translation>加载设置时出错</translation>
+    </message>
+    <message>
+        <location filename="../config/config.cpp" line="349"/>
+        <source>Failed to load application settings. This session will use defaults.
 
-% 1 < /source>
-< translation > 无法加载应用程序设置，此会话将使用默认设置。
+%1</source>
+        <translation>无法加载应用程序设置，此会话将使用默认设置。
 
-%
-1 < /translation>
-< /message>
-< message >
-<location filename = "../config/config.cpp"
-line = "372" / >
-    <source>Error
-saving
-settings < /source>
-< translation > 保存设置时出错 < /translation>
-< /message>
-< message >
-<source>Failed
-to
-save
-application
-settings.The
-application
-may
-lack
-write
-permissions
-to
-this
-location. < /source>
-< translation
-type = "obsolete" > 无法保存应用程序设置。应用程序可能没有对此位置的写入权限。</translation>
-< /message>
-< message >
-<location filename = "../config/config.cpp"
-line = "373" / >
-    <source>Failed
-to
-save
-application
-settings.The
-application
-may
-lack
-write
-permissions
-for this location. < /source>
-< translation > 未能保存应用程序设置。应用程序可能缺少此位置的写入权限. < /translation>
-< /message>
-< /context>
-< context >
-<name>Footage < /name>
-< message >
-<source> % 1
-FPS < /source>
-< translation
-type = "obsolete" > % 1
-FPS < /translation>
-< /message>
-< message >
-<source> % 1
-Hz < /source>
-< translation
-type = "obsolete" > % 1
-Hz < /translation>
-< /message>
-< message >
-<source>Filename
-: %
-1 < /source>
-< translation
-type = "obsolete" > 文件名：%
-1 < /translation>
-< /message>
-< message >
-<source>This
-footage
-is
-not
-valid
-for use < /source>
-    < translation type = "obsolete" > 此素材不能用 < /translation>
-< /message>
-< /context>
-< context >
-<name>ImportTool < /name>
-< message >
-<location filename = "../widget/timelinewidget/tool/import.cpp"
-line = "358" / >
-    <source>Don & apos;
-t
-ask
-me
-again < /source>
-< translation > 不再询问 < /translation>
-< /message>
-< message >
-<location filename = "../widget/timelinewidget/tool/import.cpp"
-line = "364" / >
-    <source>No
-Active
-Sequence < /source>
-< translation > 没有活动序列 < /translation>
-< /message>
-< message >
-<location filename = "../widget/timelinewidget/tool/import.cpp"
-line = "366" / >
-    <source>No
-sequence
-is
-currently
-open.Would
-you
-like
-to
-create
-one ? </source>
-    < translation > 没有打开的序列。您要创建一个序列吗？</translation>
-< /message>
-< message >
-<location filename = "../widget/timelinewidget/tool/import.cpp"
-line = "372" / >
-    <source>Automatically
-Detect
-Parameters
-From
-Footage < /source>
-< translation > 自动检测素材参数 < /translation>
-< /message>
-< message >
-<location filename = "../widget/timelinewidget/tool/import.cpp"
-line = "377" / >
-    <source>Set
-Parameters
-Manually < /source>
-< translation > 手动设置参数 < /translation>
-< /message>
-< /context>
-< context >
-<name>MoveItemCommand < /name>
-< message >
-<source>Move
-Item < /source>
-< translation
-type = "obsolete" > 移动项 < /translation>
-    < /message>
-    < /context>
-    < context >
-    <name>NodeCopyPasteWidget < /name>
-    < message >
-    <source>Error
-pasting
-nodes < /source>
-< translation
-type = "obsolete" > 粘贴节点时出错 < /translation>
-    < /message>
-    < message >
-    <source>Failed
-to
-paste
-nodes: %
-1 < /source>
-< translation
-type = "obsolete" > 无法粘贴节点：%
-1 < /translation>
-< /message>
-< /context>
-< context >
-<name>NodeFactory < /name>
-< message >
-<location filename = "../node/factory.cpp"
-line = "177" / >
-<source>None < /source>
-< translation > 无 < /translation>
-< /message>
-< /context>
-< context >
-<name>NodeValue < /name>
-< message >
-<location filename = "../node/value.cpp"
-line = "260" / >
-<source>None < /source>
-< translation > 无 < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "263" / >
-<source>Integer < /source>
-< translation > 整数 < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "265" / >
-<source>Float < /source>
-< translation > 浮点数 < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "267" / >
-<source>Rational < /source>
-< translation > 有理数 < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "269" / >
-<source>Boolean < /source>
-< translation > 布尔值 < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "271" / >
-<source>Color < /source>
-< translation > 颜色 < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "273" / >
-<source>Matrix < /source>
-< translation > 矩阵 < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "275" / >
-<source>Text < /source>
-< translation > 文字 < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "277" / >
-<source>Font < /source>
-< translation > 字体 < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "279" / >
-<source>File < /source>
-< translation > 文件 < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "281" / >
-<source>Texture < /source>
-< translation > 纹理 < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "283" / >
-<source>Samples < /source>
-< translation > 采样 < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "285" / >
-    <source>Vector
-2
-D < /source>
-< translation > 矢量
-2
-D < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "287" / >
-    <source>Vector
-3
-D < /source>
-< translation > 矢量
-3
-D < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "289" / >
-    <source>Vector
-4
-D < /source>
-< translation > 矢量
-4
-D < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "291" / >
-<source>Bezier < /source>
-< translation > 贝塞尔曲线 < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "293" / >
-    <source>Video
-Parameters < /source>
-< translation > 视频参数 < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "295" / >
-    <source>Audio
-Parameters < /source>
-< translation > 音频参数 < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "297" / >
-    <source>Subtitle
-Parameters < /source>
-< translation > 字幕参数 < /translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "299" / >
-    <source>Binary < /source>
-    < translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../node/value.cpp"
-line = "305" / >
-<source>Unknown < /source>
-< translation > 未知 < /translation>
-< /message>
-< /context>
-< context >
-<name>NodeViewContext < /name>
-< message >
-<location filename = "../widget/nodeview/nodeviewcontext.cpp"
-line = "53" / >
-    <source> % 1 [ % 2
-]
-:: % 3 - % 4 < /source>
-< translation > % 1 [ % 2
-]
-:: % 3 - % 4 < /translation>
-< /message>
-< /context>
-< context >
-<name>NodeViewItem < /name>
-< message >
-<location filename = "../widget/nodeview/nodeviewitem.cpp"
-line = "597" / >
-<source> % 1... < /source>
-< translation > % 1... < /translation>
-< /message>
-< message >
-<location filename = "../widget/nodeview/nodeviewitem.cpp"
-line = "387" / >
-<source>Output < /source>
-< translation > 输出 < /translation>
-< /message>
-< /context>
-< context >
-<name>OlivePluginInstance < /name>
-< message >
-<location filename = "../pluginSupport/OlivePluginInstance.cpp"
-line = "369" / >
-<source>Change % 1 < /source>
-< translation > 更改 % 1 < /translation>
-< /message>
-< message >
-<location filename = "../pluginSupport/OlivePluginInstance.cpp"
-line = "388" / >
-    <source> % 1(+ % 2) < /source>
-    < translation > % 1（+ % 2）</translation>
-< /message>
-< message >
-<location filename = "../pluginSupport/OlivePluginInstance.cpp"
-line = "393" / >
-    <source>Edit
-Parameters < /source>
-< translation > 编辑参数 < /translation>
-< /message>
-< /context>
-< context >
-<name>PresetManager < /name>
-< message >
-<location filename = "../dialog/sequence/presetmanager.h"
-line = "139" / >
-    <source>Save
-Preset < /source>
-< translation > 保存预设 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/sequence/presetmanager.h"
-line = "140" / >
-    <source>Set
-preset
-name:</source>
-< translation > 设置预设名称：</translation>
-< /message>
-< message >
-<location filename = "../dialog/sequence/presetmanager.h"
-line = "153" / >
-    <source>Invalid
-preset
-name < /source>
-< translation > 无效的预设名称 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/sequence/presetmanager.h"
-line = "155" / >
-    <source>You
-must
-enter
-a
-preset
-name < /source>
-< translation > 您必须输入预设名称 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/sequence/presetmanager.h"
-line = "193" / >
-    <source>Preset
-exists < /source>
-< translation > 预设存在 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/sequence/presetmanager.h"
-line = "195" / >
-    <source>A
-preset
-with this name
-already
-exists.Would
-you
-like
-to
-replace
-it ? </source>
-    < translation > 存在具有此名称的预设。您要替换它吗？</translation>
-< /message>
-< /context>
-< context >
-<name>QObject < /name>
-< message >
-<location filename = "../core.cpp"
-line = "136" / >
-    <source>Common
-Media
-Files < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "137" / >
-    <source>Video
-Files < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "139" / >
-    <source>Audio
-Files < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "141" / >
-    <source>Image
-Files < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../render/plugin/pluginrenderer.cpp"
-line = "1312" / >
-    <source>Plugin
-Error < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../render/plugin/pluginrenderer.cpp"
-line = "1552" / >
-    <source>Plugin % 1
-failed
-because
-connected
-inputs
-have
-different
-frame
-rates.The
-last
-operation
-has
-been
-undone. < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../render/plugin/pluginrenderer.cpp"
-line = "1562" / >
-    <source>Plugin % 1
-encountered
-an
-error: %
-2
-The
-last
-operation
-has
-been
-undone. < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../render/plugin/pluginrenderer.cpp"
-line = "1573" / >
-    <source>Plugin % 1
-failed
-to
-get
-clip
-preferences.The
-last
-operation
-has
-been
-undone. < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< /context>
-< context >
-<name>RatioDialog < /name>
-< message >
-<location filename = "../common/ratiodialog.cpp"
-line = "41" / >
-    <source>Enter
-custom
-ratio(e.g. & quot;
-4
-:
-3 & quot;
-, &
-quot;
-16 / 9 & quot;
-,
-etc.
-):
-</source>
-< translation > 输入自定义比率(例如“4
-:
-3”、“16 / 9”，等
-)：</translation>
-< /message>
-< message >
-<location filename = "../common/ratiodialog.cpp"
-line = "85" / >
-    <source>Invalid
-custom
-ratio < /source>
-< translation > 无效的自定义比率 < /translation>
-< /message>
-< message >
-<location filename = "../common/ratiodialog.cpp"
-line = "86" / >
-    <source>Failed
-to
-parse & quot;
-%
-1 & quot;
-into
-an
-aspect
-ratio.Please
-format
-a
-rational
-fraction
-with a & apos;
-:&
-apos;
-or
-a & apos;
-/&apos; separator.</s
-ource >
-<translation>无法将“%
-1”解析为宽高比，请使用‘:’或‘/’分隔符组成的有理分式。</
-translation >
-</message>
-< /context>
-< context >
-<name>RenameItemCommand < /name>
-< message >
-<source>Rename
-Item < /source>
-< translation
-type = "obsolete" > 重命名项 < /translation>
-    < /message>
-    < /context>
-    < context >
-    <name>Sequence < /name>
-    < message >
-    <source> % 1
-FPS < /source>
-< translation
-type = "obsolete" > % 1
-FPS < /translation>
-< /message>
-< /context>
-< context >
-<name>Serializer < /name>
-< message >
-<location filename = "../node/project/serializer/serializer.cpp"
-line = "302" / >
-    <source> % 1
-on
-line % 2 < /source>
-< translation > % 1
-在线 % 2 < /translation>
-< /message>
-< /context>
-< context >
-<name>Stream < /name>
-< message >
-<source> % 1
-:
-Audio - % 2
-Channels,
-%
-3
-Hz < /source>
-< translation
-type = "obsolete" > % 1：音频 - % 2
-声道，%
-3
-Hz < /translation>
-< /message>
-< message >
-<source> % 1
-:
-Unknown < /source>
-< translation
-type = "obsolete" > % 1：未知 < /translation>
-< /message>
-< message >
-<source> % 1
-:
-Image - % 2
-x % 3 < /source>
-< translation
-type = "obsolete" > % 1：图像 - % 2
-x % 3 < /translation>
-< /message>
-< message >
-<source> % 1
-:
-Video - % 2
-x % 3 < /source>
-< translation
-type = "obsolete" > % 1：视频 - % 2
-x % 3 < /translation>
-< /message>
-< /context>
-< context >
-<name>TimelineViewBlockItem < /name>
-< message >
-<source> % 1
+%1</translation>
+    </message>
+    <message>
+        <location filename="../config/config.cpp" line="372"/>
+        <source>Error saving settings</source>
+        <translation>保存设置时出错</translation>
+    </message>
+    <message>
+        <source>Failed to save application settings. The application may lack write permissions to this location.</source>
+        <translation type="obsolete">无法保存应用程序设置。应用程序可能没有对此位置的写入权限。</translation>
+    </message>
+    <message>
+        <location filename="../config/config.cpp" line="373"/>
+        <source>Failed to save application settings. The application may lack write permissions for this location.</source>
+        <translation>未能保存应用程序设置。应用程序可能缺少此位置的写入权限.</translation>
+    </message>
+</context>
+<context>
+    <name>Footage</name>
+    <message>
+        <source>%1 FPS</source>
+        <translation type="obsolete">%1 FPS</translation>
+    </message>
+    <message>
+        <source>%1 Hz</source>
+        <translation type="obsolete">%1 Hz</translation>
+    </message>
+    <message>
+        <source>Filename: %1</source>
+        <translation type="obsolete">文件名：%1</translation>
+    </message>
+    <message>
+        <source>This footage is not valid for use</source>
+        <translation type="obsolete">此素材不能用</translation>
+    </message>
+</context>
+<context>
+    <name>ImportTool</name>
+    <message>
+        <location filename="../widget/timelinewidget/tool/import.cpp" line="358"/>
+        <source>Don&apos;t ask me again</source>
+        <translation>不再询问</translation>
+    </message>
+    <message>
+        <location filename="../widget/timelinewidget/tool/import.cpp" line="364"/>
+        <source>No Active Sequence</source>
+        <translation>没有活动序列</translation>
+    </message>
+    <message>
+        <location filename="../widget/timelinewidget/tool/import.cpp" line="366"/>
+        <source>No sequence is currently open. Would you like to create one?</source>
+        <translation>没有打开的序列。您要创建一个序列吗？</translation>
+    </message>
+    <message>
+        <location filename="../widget/timelinewidget/tool/import.cpp" line="372"/>
+        <source>Automatically Detect Parameters From Footage</source>
+        <translation>自动检测素材参数</translation>
+    </message>
+    <message>
+        <location filename="../widget/timelinewidget/tool/import.cpp" line="377"/>
+        <source>Set Parameters Manually</source>
+        <translation>手动设置参数</translation>
+    </message>
+</context>
+<context>
+    <name>MoveItemCommand</name>
+    <message>
+        <source>Move Item</source>
+        <translation type="obsolete">移动项</translation>
+    </message>
+</context>
+<context>
+    <name>NodeCopyPasteWidget</name>
+    <message>
+        <source>Error pasting nodes</source>
+        <translation type="obsolete">粘贴节点时出错</translation>
+    </message>
+    <message>
+        <source>Failed to paste nodes: %1</source>
+        <translation type="obsolete">无法粘贴节点：%1</translation>
+    </message>
+</context>
+<context>
+    <name>NodeFactory</name>
+    <message>
+        <location filename="../node/factory.cpp" line="177"/>
+        <source>None</source>
+        <translation>无</translation>
+    </message>
+</context>
+<context>
+    <name>NodeValue</name>
+    <message>
+        <location filename="../node/value.cpp" line="260"/>
+        <source>None</source>
+        <translation>无</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="263"/>
+        <source>Integer</source>
+        <translation>整数</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="265"/>
+        <source>Float</source>
+        <translation>浮点数</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="267"/>
+        <source>Rational</source>
+        <translation>有理数</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="269"/>
+        <source>Boolean</source>
+        <translation>布尔值</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="271"/>
+        <source>Color</source>
+        <translation>颜色</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="273"/>
+        <source>Matrix</source>
+        <translation>矩阵</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="275"/>
+        <source>Text</source>
+        <translation>文字</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="277"/>
+        <source>Font</source>
+        <translation>字体</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="279"/>
+        <source>File</source>
+        <translation>文件</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="281"/>
+        <source>Texture</source>
+        <translation>纹理</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="283"/>
+        <source>Samples</source>
+        <translation>采样</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="285"/>
+        <source>Vector 2D</source>
+        <translation>矢量 2D</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="287"/>
+        <source>Vector 3D</source>
+        <translation>矢量 3D</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="289"/>
+        <source>Vector 4D</source>
+        <translation>矢量 4D</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="291"/>
+        <source>Bezier</source>
+        <translation>贝塞尔曲线</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="293"/>
+        <source>Video Parameters</source>
+        <translation>视频参数</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="295"/>
+        <source>Audio Parameters</source>
+        <translation>音频参数</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="297"/>
+        <source>Subtitle Parameters</source>
+        <translation>字幕参数</translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="299"/>
+        <source>Binary</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../node/value.cpp" line="305"/>
+        <source>Unknown</source>
+        <translation>未知</translation>
+    </message>
+</context>
+<context>
+    <name>NodeViewContext</name>
+    <message>
+        <location filename="../widget/nodeview/nodeviewcontext.cpp" line="53"/>
+        <source>%1 [%2] :: %3 - %4</source>
+        <translation>%1 [%2] :: %3 - %4</translation>
+    </message>
+</context>
+<context>
+    <name>NodeViewItem</name>
+    <message>
+        <location filename="../widget/nodeview/nodeviewitem.cpp" line="597"/>
+        <source>%1...</source>
+        <translation>%1...</translation>
+    </message>
+    <message>
+        <location filename="../widget/nodeview/nodeviewitem.cpp" line="387"/>
+        <source>Output</source>
+        <translation>输出</translation>
+    </message>
+</context>
+<context>
+    <name>OlivePluginInstance</name>
+    <message>
+        <location filename="../pluginSupport/OlivePluginInstance.cpp" line="369"/>
+        <source>Change %1</source>
+        <translation>更改 %1</translation>
+    </message>
+    <message>
+        <location filename="../pluginSupport/OlivePluginInstance.cpp" line="388"/>
+        <source>%1 (+%2)</source>
+        <translation>%1（+%2）</translation>
+    </message>
+    <message>
+        <location filename="../pluginSupport/OlivePluginInstance.cpp" line="393"/>
+        <source>Edit Parameters</source>
+        <translation>编辑参数</translation>
+    </message>
+</context>
+<context>
+    <name>PresetManager</name>
+    <message>
+        <location filename="../dialog/sequence/presetmanager.h" line="139"/>
+        <source>Save Preset</source>
+        <translation>保存预设</translation>
+    </message>
+    <message>
+        <location filename="../dialog/sequence/presetmanager.h" line="140"/>
+        <source>Set preset name:</source>
+        <translation>设置预设名称：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/sequence/presetmanager.h" line="153"/>
+        <source>Invalid preset name</source>
+        <translation>无效的预设名称</translation>
+    </message>
+    <message>
+        <location filename="../dialog/sequence/presetmanager.h" line="155"/>
+        <source>You must enter a preset name</source>
+        <translation>您必须输入预设名称</translation>
+    </message>
+    <message>
+        <location filename="../dialog/sequence/presetmanager.h" line="193"/>
+        <source>Preset exists</source>
+        <translation>预设存在</translation>
+    </message>
+    <message>
+        <location filename="../dialog/sequence/presetmanager.h" line="195"/>
+        <source>A preset with this name already exists. Would you like to replace it?</source>
+        <translation>存在具有此名称的预设。您要替换它吗？</translation>
+    </message>
+</context>
+<context>
+    <name>QObject</name>
+    <message>
+        <location filename="../core.cpp" line="136"/>
+        <source>Common Media Files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="137"/>
+        <source>Video Files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="139"/>
+        <source>Audio Files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="141"/>
+        <source>Image Files</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../render/plugin/pluginrenderer.cpp" line="1312"/>
+        <source>Plugin Error</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../render/plugin/pluginrenderer.cpp" line="1552"/>
+        <source>Plugin %1 failed because connected inputs have different frame rates.
+The last operation has been undone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../render/plugin/pluginrenderer.cpp" line="1562"/>
+        <source>Plugin %1 encountered an error: %2
+The last operation has been undone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../render/plugin/pluginrenderer.cpp" line="1573"/>
+        <source>Plugin %1 failed to get clip preferences.
+The last operation has been undone.</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>RatioDialog</name>
+    <message>
+        <location filename="../common/ratiodialog.cpp" line="41"/>
+        <source>Enter custom ratio (e.g. &quot;4:3&quot;, &quot;16/9&quot;, etc.):</source>
+        <translation>输入自定义比率 (例如“4:3”、“16/9”，等)：</translation>
+    </message>
+    <message>
+        <location filename="../common/ratiodialog.cpp" line="85"/>
+        <source>Invalid custom ratio</source>
+        <translation>无效的自定义比率</translation>
+    </message>
+    <message>
+        <location filename="../common/ratiodialog.cpp" line="86"/>
+        <source>Failed to parse &quot;%1&quot; into an aspect ratio. Please format a rational fraction with a &apos;:&apos; or a &apos;/&apos; separator.</source>
+        <translation>无法将“%1”解析为宽高比，请使用‘:’或‘/’分隔符组成的有理分式。</translation>
+    </message>
+</context>
+<context>
+    <name>RenameItemCommand</name>
+    <message>
+        <source>Rename Item</source>
+        <translation type="obsolete">重命名项</translation>
+    </message>
+</context>
+<context>
+    <name>Sequence</name>
+    <message>
+        <source>%1 FPS</source>
+        <translation type="obsolete">%1 FPS</translation>
+    </message>
+</context>
+<context>
+    <name>Serializer</name>
+    <message>
+        <location filename="../node/project/serializer/serializer.cpp" line="302"/>
+        <source>%1 on line %2</source>
+        <translation>%1 在线 %2</translation>
+    </message>
+</context>
+<context>
+    <name>Stream</name>
+    <message>
+        <source>%1: Audio - %2 Channels, %3Hz</source>
+        <translation type="obsolete">%1：音频 - %2 声道，%3Hz</translation>
+    </message>
+    <message>
+        <source>%1: Unknown</source>
+        <translation type="obsolete">%1：未知</translation>
+    </message>
+    <message>
+        <source>%1: Image - %2x%3</source>
+        <translation type="obsolete">%1：图像 - %2x%3</translation>
+    </message>
+    <message>
+        <source>%1: Video - %2x%3</source>
+        <translation type="obsolete">%1：视频 - %2x%3</translation>
+    </message>
+</context>
+<context>
+    <name>TimelineViewBlockItem</name>
+    <message>
+        <source>%1
 
-In: %
-2
-Out: %
-3
-Length: %
-4 < /source>
-< translation
-type = "obsolete" > % 1
+In: %2
+Out: %3
+Length: %4</source>
+        <translation type="obsolete">%1
 
-入: %
-2
-出: %
-3
-长度: %
-4 < /translation>
-< /message>
-< /context>
-< context >
-<name>Tool < /name>
-< message >
-<location filename = "../tool/tool.h"
-line = "117" / >
-<source>Empty < /source>
-< translation > 空白 < /translation>
-< /message>
-< message >
-<location filename = "../tool/tool.h"
-line = "119" / >
-<source>Bars < /source>
-< translation > 彩条 < /translation>
-< /message>
-< message >
-<location filename = "../tool/tool.h"
-line = "123" / >
-<source>Solid < /source>
-< translation > 纯色 < /translation>
-< /message>
-< message >
-<location filename = "../tool/tool.h"
-line = "125" / >
-<source>Title < /source>
-< translation > 标题 < /translation>
-< /message>
-< message >
-<location filename = "../tool/tool.h"
-line = "127" / >
-<source>Tone < /source>
-< translation > 音调 < /translation>
-< /message>
-< message >
-<location filename = "../tool/tool.h"
-line = "134" / >
-<source>Unknown < /source>
-< translation > 未知 < /translation>
-< /message>
-< message >
-<location filename = "../tool/tool.h"
-line = "121" / >
-<source>Shape < /source>
-< translation > 形状 < /translation>
-< /message>
-< message >
-<location filename = "../tool/tool.h"
-line = "129" / >
-<source>Subtitle < /source>
-< translation > 字幕 < /translation>
-< /message>
-< /context>
-< context >
-<name>UndoStack < /name>
-< message >
-<location filename = "../undo/undostack.cpp"
-line = "183" / >
-<source>Undo % 1 < /source>
-< translation > 撤销 % 1 < /translation>
-< /message>
-< message >
-<location filename = "../undo/undostack.cpp"
-line = "186" / >
-<source>Redo % 1 < /source>
-< translation > 重做 % 1 < /translation>
-< /message>
-< /context>
-< context >
-<name>VideoParams < /name>
-< message >
-<location filename = "../render/videoparams.cpp"
-line = "246" / >
-    <source>8 - bit < /source>
-    < translation > 8
-位 < /translation>
-< /message>
-< message >
-<location filename = "../render/videoparams.cpp"
-line = "248" / >
-    <source>10 - bit
-Packed < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../render/videoparams.cpp"
-line = "250" / >
-    <source>16 - bit
-Integer < /source>
-< translation > 16
-位整型 < /translation>
-< /message>
-< message >
-<location filename = "../render/videoparams.cpp"
-line = "252" / >
-    <source>Half - Float(16 - bit) < /source>
-    < translation > 半精度浮点型（16
-位）</translation>
-< /message>
-< message >
-<location filename = "../render/videoparams.cpp"
-line = "255" / >
-    <source>Full - Float(32 - bit) < /source>
-    < translation > 全精度浮点型（32
-位）</translation>
-< /message>
-< message >
-<location filename = "../render/videoparams.cpp"
-line = "262" / >
-    <source>Unknown(0
-x % 1
-)
-</source>
-< translation > 未知(0
-x % 1
-)
-</translation>
-< /message>
-< message >
-<location filename = "../render/videoparams.cpp"
-line = "330" / >
-    <source> % 1
-FPS < /source>
-< translation > % 1
-FPS < /translation>
-< /message>
-< message >
-<location filename = "../render/videoparams.cpp"
-line = "337" / >
-    <source>Square
-Pixels( % 1
-)
-</source>
-< translation > 正方形像素( % 1
-)
-</translation>
-< /message>
-< message >
-<location filename = "../render/videoparams.cpp"
-line = "338" / >
-    <source>NTSC
-Standard( % 1
-)
-</source>
-< translation > NTSC
-标准( % 1
-)
-</translation>
-< /message>
-< message >
-<location filename = "../render/videoparams.cpp"
-line = "339" / >
-    <source>NTSC
-Widescreen( % 1
-)
-</source>
-< translation > NTSC
-宽屏( % 1
-)
-</translation>
-< /message>
-< message >
-<location filename = "../render/videoparams.cpp"
-line = "340" / >
-    <source>PAL
-Standard( % 1
-)
-</source>
-< translation > PAL
-标准( % 1
-)
-</translation>
-< /message>
-< message >
-<location filename = "../render/videoparams.cpp"
-line = "341" / >
-    <source>PAL
-Widescreen( % 1
-)
-</source>
-< translation > PAL
-宽屏( % 1
-)
-</translation>
-< /message>
-< message >
-<location filename = "../render/videoparams.cpp"
-line = "342" / >
-    <source>HD
-Anamorphic
-1080( % 1
-)
-</source>
-< translation > HD
-变形
-1080( % 1
-)
-</translation>
-< /message>
-< message >
-<location filename = "../render/videoparams.cpp"
-line = "236" / >
-<source>Full < /source>
-< translation > 完全 < /translation>
-< /message>
-< message >
-<location filename = "../render/videoparams.cpp"
-line = "238" / >
-<source>1 / % 1 < /source>
-< translation > 1 / % 1 < /translation>
-< /message>
-< /context>
-< context >
-<name>main < /name>
-< message >
-<location filename = "../main.cpp"
-line = "64" / >
-    <source>No
-project
-filename
-set
-to
-decompress < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../main.cpp"
-line = "74" / >
-    <source>Failed
-to
-open
-file & quot;
-%
-1 & quot;
-</source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../main.cpp"
-line = "82" / >
-    <source>Decompressing
-project
-...
-</source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../main.cpp"
-line = "88" / >
-<location filename = "../main.cpp"
-line = "103" / >
-    <source>Failed
-to
-decompress, project
-may
-be
-corrupt < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../main.cpp"
-line = "124" / >
-    <source>Outputting
-to
-file & quot;
-%
-1 & quot;
-</source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../main.cpp"
-line = "131" / >
-    <source>Failed
-to
-open
-output
-file & quot;
-%
-1 & quot;
-</source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../main.cpp"
-line = "143" / >
-    <source>Decompressed
-successfully < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../main.cpp"
-line = "194" / >
-    <source>Show
-this
-help
-text < /source>
-< translation > 显示此帮助文本 < /translation>
-< /message>
-< message >
-<location filename = "../main.cpp"
-line = "198" / >
-    <source>Show
-application
-version < /source>
-< translation > 显示应用程序版本 < /translation>
-< /message>
-< message >
-<location filename = "../main.cpp"
-line = "202" / >
-    <source>Start in full - screen
-mode < /source>
-< translation > 以全屏模式启动 < /translation>
-< /message>
-< message >
-<location filename = "../main.cpp"
-line = "206" / >
-    <source>Export
-only(No
-GUI
-)
-</source>
-< translation > 仅导出(无
-GUI
-)
-</translation>
-< /message>
-< message >
-<location filename = "../main.cpp"
-line = "210" / >
-    <source>Override
-language
-with file < /source>
-< translation > 使用文件覆盖语言 < /translation>
-< /message>
-< message >
-<location filename = "../main.cpp" line = "211" / >
-<source>qm - file < /source>
-< translation > qm文件 < /translation>
-< /message>
-< message >
-<location filename = "../main.cpp"
-line = "215" / >
-    <source>Decompress
-project
-file(No
-GUI
-)
-</source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../main.cpp"
-line = "226" / >
-    <source>Project
-to
-open
-on
-startup < /source>
-< translation > 在启动时打开的项目 < /translation>
-< /message>
-< message >
-<location filename = "../main.cpp"
-line = "230" / >
-    <source>Don & apos;
-t
-load
-plugins < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../main.cpp"
-line = "389" / >
-    <source>Your
-computer & apos;
-s
-graphics
-driver
-does
-not
-appear
-to
-support
-framebuffers.This
-most
-likely
-means
-either
-your
-graphics
-driver
-is
-not
-up - to - date
-or
-your
-graphics
-card
-is
-too
-old
-to
-run
-Oak
-Video
-Editor.Please
-update
-your
-graphics
-driver
-to
-the
-latest
-version
-and
-try
-again.Current
-driver
-information: %
-1 % 2 % 3 < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../main.cpp"
-line = "221" / >
-    <source>Launch
-with debug console < /source>
-< translation > 使用调试控制台启动 < /translation>
-< /message>
-< message >
-<source>Your
-computer & apos;
-s
-graphics
-driver
-does
-not
-appear
-to
-support
-framebuffers.This
-most
-likely
-means
-either
-your
-graphics
-driver
-is
-not
-up - to - date
-or
-your
-graphics
-card
-is
-too
-old
-to
-run
-Olive.Please
-update
-your
-graphics
-driver
-to
-the
-latest
-version
-and
-try
-again.Current
-driver
-information: %
-1 % 2 % 3 < /source>
-< translation
-type = "vanished" > 计算机的图形驱动程序似乎不支持帧缓冲区。这很可能意味着您的图形驱动程序不是最新的，或者您的图形卡太旧，无法运行Olive。
+入: %2
+出: %3
+长度: %4</translation>
+    </message>
+</context>
+<context>
+    <name>Tool</name>
+    <message>
+        <location filename="../tool/tool.h" line="117"/>
+        <source>Empty</source>
+        <translation>空白</translation>
+    </message>
+    <message>
+        <location filename="../tool/tool.h" line="119"/>
+        <source>Bars</source>
+        <translation>彩条</translation>
+    </message>
+    <message>
+        <location filename="../tool/tool.h" line="123"/>
+        <source>Solid</source>
+        <translation>纯色</translation>
+    </message>
+    <message>
+        <location filename="../tool/tool.h" line="125"/>
+        <source>Title</source>
+        <translation>标题</translation>
+    </message>
+    <message>
+        <location filename="../tool/tool.h" line="127"/>
+        <source>Tone</source>
+        <translation>音调</translation>
+    </message>
+    <message>
+        <location filename="../tool/tool.h" line="134"/>
+        <source>Unknown</source>
+        <translation>未知</translation>
+    </message>
+    <message>
+        <location filename="../tool/tool.h" line="121"/>
+        <source>Shape</source>
+        <translation>形状</translation>
+    </message>
+    <message>
+        <location filename="../tool/tool.h" line="129"/>
+        <source>Subtitle</source>
+        <translation>字幕</translation>
+    </message>
+</context>
+<context>
+    <name>UndoStack</name>
+    <message>
+        <location filename="../undo/undostack.cpp" line="183"/>
+        <source>Undo %1</source>
+        <translation>撤销 %1</translation>
+    </message>
+    <message>
+        <location filename="../undo/undostack.cpp" line="186"/>
+        <source>Redo %1</source>
+        <translation>重做 %1</translation>
+    </message>
+</context>
+<context>
+    <name>VideoParams</name>
+    <message>
+        <location filename="../render/videoparams.cpp" line="246"/>
+        <source>8-bit</source>
+        <translation>8 位</translation>
+    </message>
+    <message>
+        <location filename="../render/videoparams.cpp" line="248"/>
+        <source>10-bit Packed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../render/videoparams.cpp" line="250"/>
+        <source>16-bit Integer</source>
+        <translation>16 位整型</translation>
+    </message>
+    <message>
+        <location filename="../render/videoparams.cpp" line="252"/>
+        <source>Half-Float (16-bit)</source>
+        <translation>半精度浮点型（16位）</translation>
+    </message>
+    <message>
+        <location filename="../render/videoparams.cpp" line="255"/>
+        <source>Full-Float (32-bit)</source>
+        <translation>全精度浮点型（32位）</translation>
+    </message>
+    <message>
+        <location filename="../render/videoparams.cpp" line="262"/>
+        <source>Unknown (0x%1)</source>
+        <translation>未知 (0x%1)</translation>
+    </message>
+    <message>
+        <location filename="../render/videoparams.cpp" line="330"/>
+        <source>%1 FPS</source>
+        <translation>%1 FPS</translation>
+    </message>
+    <message>
+        <location filename="../render/videoparams.cpp" line="337"/>
+        <source>Square Pixels (%1)</source>
+        <translation>正方形像素 (%1)</translation>
+    </message>
+    <message>
+        <location filename="../render/videoparams.cpp" line="338"/>
+        <source>NTSC Standard (%1)</source>
+        <translation>NTSC 标准 (%1)</translation>
+    </message>
+    <message>
+        <location filename="../render/videoparams.cpp" line="339"/>
+        <source>NTSC Widescreen (%1)</source>
+        <translation>NTSC 宽屏 (%1)</translation>
+    </message>
+    <message>
+        <location filename="../render/videoparams.cpp" line="340"/>
+        <source>PAL Standard (%1)</source>
+        <translation>PAL 标准 (%1)</translation>
+    </message>
+    <message>
+        <location filename="../render/videoparams.cpp" line="341"/>
+        <source>PAL Widescreen (%1)</source>
+        <translation>PAL 宽屏 (%1)</translation>
+    </message>
+    <message>
+        <location filename="../render/videoparams.cpp" line="342"/>
+        <source>HD Anamorphic 1080 (%1)</source>
+        <translation>HD 变形 1080 (%1)</translation>
+    </message>
+    <message>
+        <location filename="../render/videoparams.cpp" line="236"/>
+        <source>Full</source>
+        <translation>完全</translation>
+    </message>
+    <message>
+        <location filename="../render/videoparams.cpp" line="238"/>
+        <source>1/%1</source>
+        <translation>1/%1</translation>
+    </message>
+</context>
+<context>
+    <name>main</name>
+    <message>
+        <location filename="../main.cpp" line="64"/>
+        <source>No project filename set to decompress</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="74"/>
+        <source>Failed to open file &quot;%1&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="82"/>
+        <source>Decompressing project...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="88"/>
+        <location filename="../main.cpp" line="103"/>
+        <source>Failed to decompress, project may be corrupt</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="124"/>
+        <source>Outputting to file &quot;%1&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="131"/>
+        <source>Failed to open output file &quot;%1&quot;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="143"/>
+        <source>Decompressed successfully</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="194"/>
+        <source>Show this help text</source>
+        <translation>显示此帮助文本</translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="198"/>
+        <source>Show application version</source>
+        <translation>显示应用程序版本</translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="202"/>
+        <source>Start in full-screen mode</source>
+        <translation>以全屏模式启动</translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="206"/>
+        <source>Export only (No GUI)</source>
+        <translation>仅导出 (无 GUI)</translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="210"/>
+        <source>Override language with file</source>
+        <translation>使用文件覆盖语言</translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="211"/>
+        <source>qm-file</source>
+        <translation>qm文件</translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="215"/>
+        <source>Decompress project file (No GUI)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="226"/>
+        <source>Project to open on startup</source>
+        <translation>在启动时打开的项目</translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="230"/>
+        <source>Don&apos;t load plugins</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="389"/>
+        <source>Your computer&apos;s graphics driver does not appear to support framebuffers. This most likely means either your graphics driver is not up-to-date or your graphics card is too old to run Oak Video Editor.
+
+Please update your graphics driver to the latest version and try again.
+
+Current driver information: %1 %2 %3</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../main.cpp" line="221"/>
+        <source>Launch with debug console</source>
+        <translation>使用调试控制台启动</translation>
+    </message>
+    <message>
+        <source>Your computer&apos;s graphics driver does not appear to support framebuffers. This most likely means either your graphics driver is not up-to-date or your graphics card is too old to run Olive.
+
+Please update your graphics driver to the latest version and try again.
+
+Current driver information: %1 %2 %3</source>
+        <translation type="vanished">计算机的图形驱动程序似乎不支持帧缓冲区。这很可能意味着您的图形驱动程序不是最新的，或者您的图形卡太旧，无法运行Olive。
 
 请将图形驱动程序更新到最新版本，然后重试。
 
-当前驱动程序信息：%
-1 % 2 % 3 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive < /name>
-< message >
-<source>Center
-:
-</source>
-< translation
-type = "vanished" > 居中
-:
-</translation>
-< /message>
-< message >
-<source>Bezier < /source>
-< translation
-type = "vanished" > 贝塞尔曲线 < /translation>
-    < /message>
-    < message >
-    <source>In
-:
-</source>
-< translation
-type = "vanished" > 入：</translation>
-< /message>
-< message >
-<source>Out
-:
-</source>
-< translation
-type = "vanished" > 出：</translation>
-< /message>
-< /context>
-< context >
-<name>olive::AV1Section < /name>
-< message >
-<location filename = "../dialog/export/codec/av1section.cpp"
-line = "47" / >
-    <source>Preset
-:
-</source>
-< translation
-type = "unfinished" > 预设：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/av1section.cpp"
-line = "50" / >
-    <source>This
-parameter
-governs
-the
-efficiency / encode - time
-trade - off.Lower
-presets
-will
-result in an
-output
-with better quality
-for a given
-file
-size, but
-will
-take
-longer
-to
-encode.Higher
-presets
-can
-result in a
-very
-fast
-encode, but
-will
-make
-some
-compromises
-on
-visual
-quality
-for a given
-crf
-value. < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/av1section.cpp"
-line = "64" / >
-    <source>Compression
-Method:</source>
-< translation
-type = "unfinished" > 压缩方式：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/av1section.cpp"
-line = "67" / >
-    <source>This
-parameter
-governs
-the
-quality / size
-trade - off.Higher
-CRF
-values
-will
-result in a
-final
-output
-that
-takes
-less
-space, but
-begins
-to
-lose
-detail.Lower
-CRF
-values
-retain
-more
-detail
-at
-the
-cost
-of
-larger
-file
-sizes.The
-possible
-range
-of
-CRF in SVT - AV1
-is
-1 - 63. < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/av1section.cpp"
-line = "74" / >
-    <source>Constant
-Rate
-Factor < /source>
-< translation
-type = "unfinished" > 恒定速率因子（CRF）</translation>
-< /message>
-< /context>
-< context >
-<name>olive::AboutDialog < /name>
-< message >
-<location filename = "../dialog/about/about.cpp"
-line = "43" / >
-<source>About % 1 < /source>
-< translation > 关于 % 1 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/about/about.cpp"
-line = "71" / >
-    <source>Oak
-Video
-Editor
-is
-a
-free
-open
-source
-non - linear
-video
-editor.This
-software
-is
-licensed
-under
-the
-GNU
-GPL
-Version
-3. < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../dialog/about/about.cpp"
-line = "73" / >
-    <source>This
-project
-is
-a
-fork
-of &lt; a
-href =
-&
-quot;
-https://github.com/olive-editor/olive&quot;&gt;Olive Video Editor&lt;/a&gt;.</source>
-    <translation type = "unfinished" > </translation>
-    < /message>
-    < message >
-    <location filename = "../dialog/about/about.cpp"
-line = "94" / >
-    <source>&lt;b&gt;Oak
-Video
-Editor
-relies
-on
-support
-from
-the
-community
-to
-continue its
-development. &lt; /b&gt;</s
-ource >
-<translation type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../dialog/about/about.cpp"
-line = "97" / >
-    <source>Oak
-Video
-Editor
-wouldn & apos;
-t
-be
-possible
-without
-the
-support
-of
-gracious
-donations
-from
-the
-following
-people. < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../dialog/about/about.cpp"
-line = "102" / >
-    <source>&lt;html&gt; % 1
-If
-you
-like
-this
-project, please
-consider
-making
-a
-one - time
-donation
-or
-pledging
-monthly
-to
-support
-its
-development. &lt; /html&gt;</s
-ource >
-<translation type = "unfinished" > </translation>
-    < /message>
-    < message >
-    <source>Olive
-is
-a
-non - linear
-video
-editor.This
-software
-is
-free
-and
-protected
-by
-the
-GNU
-GPL. < /source>
-< translation
-type = "obsolete" > Olive
-是免费的非线性视频编辑器。此应用程序基于
-GNU
-通用公共许可证（GNU
-GPL）条款发布。</translation>
-< /message>
-< message >
-<source>Olive
-Team
-is
-obliged
-to
-inform
-users
-that
-Olive
-source
-code
-is
-available
-for download from
-its
-website. < /source>
-< translation
-type = "obsolete" > Olive
-团队有义务告知用户可以从官网下载
-Olive
-的源码。翻译者已尝试用通俗易明的方式进行翻译，希望大家使用愉快。请支持自由开源软件，谢谢。</translation>
-< /message>
-< message >
-<location filename = "../dialog/about/about.cpp"
-line = "41" / >
-    <source>Welcome
-to % 1 < /source>
-< translation > 欢迎来到 % 1 < /translation>
-< /message>
-< message >
-<source>Olive
-is
-a
-free
-open
-source
-non - linear
-video
-editor.This
-software
-is
-licensed
-under
-the
-GNU
-GPL
-Version
-3. < /source>
-< translation
-type = "vanished" > Olive是免费开源非线性视频编辑器.此软件在GNU
-GPL3下获得许可。</translation>
-< /message>
-< message >
-<source>&lt;b&gt;Olive
-relies
-on
-support
-from
-the
-community
-to
-continue its
-development. &lt; /b&gt;</s
-ource >
-<translation type = "vanished" > &lt;b&gt;Olive的发展依靠社区的支持 &lt; /b&gt;</
-translation >
-</message>
-< message >
-<source>Olive
-wouldn & apos;
-t
-be
-possible
-without
-the
-support
-of
-gracious
-donations
-from
-the
-following
-people. < /source>
-< translation
-type = "vanished" > 如果没有以下人士的慷慨捐赠，Olive不可能发展。</translation>
-< /message>
-< message >
-<source>&lt;html&gt; % 1
-If
-you
-like
-this
-project, please
-consider
-making
-a &lt; a
-href =
-&
-apos;
-https://olivevideoeditor.org/donate.php&apos;&gt;one-time donation&lt;/a&gt; or &lt;a href=&apos;https://www.patreon.com/olivevideoeditor&apos;&gt;pledging monthly&lt;/a&gt; to support its development.&lt;/html&gt;</source>
-    <translation type = "vanished" > &lt;html&gt; % 1
-如果您喜欢这个项目，请考虑给予 &lt; a
-href =
-&
-apos;
-https://olivevideoeditor.org/donate.php&apos;&gt;一次捐赠&lt;/a&gt;或&lt;a href=&apos;https://www.patreon.com/olivevideoeditor&apos;&gt;成为会员&lt;/a&gt;支持其发展&lt;/html&gt;</translation>
+当前驱动程序信息：%1 %2 %3</translation>
     </message>
-    < message >
-    <location filename = "../dialog/about/about.cpp"
-line = "125" / >
-    <source>Don & apos;
-t
-show
-this
-message
-again < /source>
-< translation > 不再显示信息 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::ActionSearch < /name>
-< message >
-<location filename = "../dialog/actionsearch/actionsearch.cpp"
-line = "60" / >
-    <source>Search
-for action...
-</source>
-< translation > 操作搜索
-...
-</translation>
-< /message>
-< /context>
-< context >
-<name>olive::AudioInput < /name>
-< message >
-<source>Audio
-Input < /source>
-< translation
-type = "obsolete" > 音频输入 < /translation>
-    < /message>
-    < message >
-    <source>Audio < /source>
-    < translation
-type = "obsolete" > 音频 < /translation>
-    < /message>
-    < message >
-    <source>Import
-an
-audio
-footage
-stream. < /source>
-< translation
-type = "obsolete" > 导入音频素材流。</translation>
-< /message>
-< /context>
-< context >
-<name>olive::AudioManager < /name>
-< message >
-<location filename = "../audio/audiomanager.cpp"
-line = "98" / >
-    <source>No
-output
-device
-is
-set < /source>
-< translation > 未设置输出设备 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::AudioMonitorPanel < /name>
-< message >
-<location filename = "../panel/audiomonitor/audiomonitor.cpp"
-line = "43" / >
-    <source>Audio
-Monitor < /source>
-< translation > 音频监视器 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::AutoRecoveryDialog < /name>
-< message >
-<location filename = "../dialog/autorecovery/autorecoverydialog.cpp"
-line = "64" / >
-<source>Auto - Recovery < /source>
-< translation > 自动恢复 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/autorecovery/autorecoverydialog.cpp"
-line = "74" / >
-<source>Load < /source>
-< translation > 加载 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::BezierWidget < /name>
-< message >
-<location filename = "../widget/bezier/bezierwidget.cpp"
-line = "37" / >
-    <source>Center
-:
-</source>
-< translation
-type = "unfinished" > 居中
-:
-</translation>
-< /message>
-< message >
-<location filename = "../widget/bezier/bezierwidget.cpp"
-line = "51" / >
-    <source>Bezier < /source>
-    < translation
-type = "unfinished" > 贝塞尔曲线 < /translation>
-< /message>
-< message >
-<location filename = "../widget/bezier/bezierwidget.cpp"
-line = "58" / >
-    <source>In
-:
-</source>
-< translation
-type = "unfinished" > 入：</translation>
-< /message>
-< message >
-<location filename = "../widget/bezier/bezierwidget.cpp"
-line = "72" / >
-    <source>Out
-:
-</source>
-< translation
-type = "unfinished" > 出：</translation>
-< /message>
-< /context>
-< context >
-<name>olive::Block < /name>
-< message >
-<location filename = "../node/block/block.cpp"
-line = "117" / >
-    <source>Length < /source>
-    < translation > 长度 < /translation>
-    < /message>
-    < message >
-    <source>Media
-In < /source>
-< translation
-type = "obsolete" > 媒体输入 < /translation>
-< /message>
-< message >
-<location filename = "../node/block/block.cpp"
-line = "118" / >
-    <source>Enabled < /source>
-    < translation > 已启用 < /translation>
-    < /message>
-    < message >
-    <source>Speed < /source>
-    < translation
-type = "obsolete" > 速度 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::BlurFilterNode < /name>
-< message >
-<location filename = "../node/filter/blur/blur.cpp"
-line = "89" / >
-<source>Blur < /source>
-< translation > 模糊 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/blur/blur.cpp"
-line = "104" / >
-    <source>Blurs
-an
-image. < /source>
-< translation > 使图像变模糊。</translation>
-< /message>
-< message >
-<location filename = "../node/filter/blur/blur.cpp"
-line = "111" / >
-<source>Input < /source>
-< translation > 输入 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/blur/blur.cpp"
-line = "112" / >
-<source>Method < /source>
-< translation > 方法 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/blur/blur.cpp"
-line = "113" / >
-<source>Box < /source>
-< translation > 盒式 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/blur/blur.cpp"
-line = "113" / >
-<source>Gaussian < /source>
-< translation > 高斯 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/blur/blur.cpp"
-line = "115" / >
-<source>Radius < /source>
-< translation > 半径 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/blur/blur.cpp"
-line = "116" / >
-<source>Horizontal < /source>
-< translation > 水平 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/blur/blur.cpp"
-line = "117" / >
-<source>Vertical < /source>
-< translation > 垂直 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/blur/blur.cpp"
-line = "118" / >
-    <source>Repeat
-Edge
-Pixels < /source>
-< translation > 重复边缘像素 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/blur/blur.cpp"
-line = "114" / >
-<source>Directional < /source>
-< translation > 方向 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/blur/blur.cpp"
-line = "114" / >
-<source>Radial < /source>
-< translation > 圆角 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/blur/blur.cpp"
-line = "120" / >
-<source>Direction < /source>
-< translation > 方向 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/blur/blur.cpp"
-line = "121" / >
-<source>Center < /source>
-< translation > 居中 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::ChromaKeyNode < /name>
-< message >
-<location filename = "../node/keying/chromakey/chromakey.cpp"
-line = "77" / >
-    <source>Chroma
-Key < /source>
-< translation > 色度键 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/chromakey/chromakey.cpp"
-line = "92" / >
-    <source>A
-simple
-color
-key
-based
-on
-the
-distance
-from
-the
-chroma
-of
-a
-selected
-color. < /source>
-< translation > 基于与选定颜色的色度的距离的简单颜色键。</translation>
-< /message>
-< message >
-<location filename = "../node/keying/chromakey/chromakey.cpp"
-line = "99" / >
-<source>Input < /source>
-< translation > 输入 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/chromakey/chromakey.cpp"
-line = "100" / >
-    <source>Garbage
-Matte < /source>
-< translation > 垃圾遮片 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/chromakey/chromakey.cpp"
-line = "101" / >
-    <source>Core
-Matte < /source>
-< translation > 核心遮片 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/chromakey/chromakey.cpp"
-line = "102" / >
-    <source>Key
-Color < /source>
-< translation > 基本色调 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/chromakey/chromakey.cpp"
-line = "103" / >
-<source>Shadows < /source>
-< translation > 阴影 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/chromakey/chromakey.cpp"
-line = "104" / >
-<source>Highlights < /source>
-< translation > 高光 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/chromakey/chromakey.cpp"
-line = "105" / >
-    <source>Upper
-Tolerance < /source>
-< translation > 上限公差 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/chromakey/chromakey.cpp"
-line = "106" / >
-    <source>Lower
-Tolerance < /source>
-< translation > 下限公差 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/chromakey/chromakey.cpp"
-line = "107" / >
-    <source>Invert
-Mask < /source>
-< translation > 反转遮罩 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/chromakey/chromakey.cpp"
-line = "108" / >
-    <source>Show
-Mask
-Only < /source>
-< translation > 只显示遮罩 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::CineformSection < /name>
-< message >
-<location filename = "../dialog/export/codec/cineformsection.cpp"
-line = "39" / >
-    <source>Quality
-:
-</source>
-< translation > 质量：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/cineformsection.cpp"
-line = "62" / >
-    <source>Film
-Scan
-3 + </source>
-< translation > 胶片扫描3 + </translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/cineformsection.cpp"
-line = "63" / >
-    <source>Film
-Scan
-3 < /source>
-< translatorcomment > 胶片扫描2 + </translatorcomment>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/cineformsection.cpp"
-line = "64" / >
-    <source>Film
-Scan
-2 + </source>
-< translation > 胶片扫描2 + </translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/cineformsection.cpp"
-line = "65" / >
-    <source>Film
-Scan
-2 < /source>
-< translation > 胶片扫描2 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/cineformsection.cpp"
-line = "66" / >
-    <source>Film
-Scan
-1.5 < /source>
-< translation > 胶片扫描1
-.5 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/cineformsection.cpp"
-line = "67" / >
-    <source>Film
-Scan
-1 + </source>
-< translation > 胶片扫描1 + </translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/cineformsection.cpp"
-line = "68" / >
-    <source>Film
-Scan
-1 < /source>
-< translation > 胶片扫描1 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/cineformsection.cpp"
-line = "69" / >
-<source>High + </source>
-< translation > 高 + </translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/cineformsection.cpp"
-line = "70" / >
-<source>High < /source>
-< translation > 高 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/cineformsection.cpp"
-line = "71" / >
-<source>Medium + </source>
-< translation > 中等 + </translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/cineformsection.cpp"
-line = "72" / >
-<source>Medium < /source>
-< translation > 中等 + </translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/cineformsection.cpp"
-line = "73" / >
-<source>Low + </source>
-< translation > 低 + </translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/cineformsection.cpp"
-line = "74" / >
-<source>Low < /source>
-< translation > 低 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::ClipBlock < /name>
-< message >
-<location filename = "../node/block/clip/clip.cpp"
-line = "94" / >
-<source>Clip < /source>
-< translation > 片段 < /translation>
-< /message>
-< message >
-<location filename = "../node/block/clip/clip.cpp"
-line = "104" / >
-    <source>A
-time - based
-node
-that
-represents
-a
-media
-source. < /source>
-< translation > 基于时间的节点，表示一段媒体源。</translation>
-< /message>
-< message >
-<location filename = "../node/block/clip/clip.cpp"
-line = "581" / >
-<source>Buffer < /source>
-< translation > 缓冲区 < /translation>
-< /message>
-< message >
-<location filename = "../node/block/clip/clip.cpp"
-line = "88" / >
-    <source>Video
-Clip < /source>
-< translation > 视频片段 < /translation>
-< /message>
-< message >
-<location filename = "../node/block/clip/clip.cpp"
-line = "90" / >
-    <source>Audio
-Clip < /source>
-< translation > 音频片段 < /translation>
-< /message>
-< message >
-<location filename = "../node/block/clip/clip.cpp"
-line = "582" / >
-    <source>Media
-In < /source>
-< translation > 媒体输入 < /translation>
-< /message>
-< message >
-<location filename = "../node/block/clip/clip.cpp"
-line = "583" / >
-<source>Speed < /source>
-< translation > 速度 < /translation>
-< /message>
-< message >
-<location filename = "../node/block/clip/clip.cpp"
-line = "584" / >
-<source>Reverse < /source>
-< translation > 颠倒 < /translation>
-< /message>
-< message >
-<location filename = "../node/block/clip/clip.cpp"
-line = "585" / >
-    <source>Maintain
-Audio
-Pitch < /source>
-< translation > 保持音频音调 < /translation>
-< /message>
-< message >
-<location filename = "../node/block/clip/clip.cpp"
-line = "586" / >
-<location filename = "../node/block/clip/clip.cpp"
-line = "587" / >
-<source>Loop < /source>
-< translation > 循环 < /translation>
-< /message>
-< message >
-<location filename = "../node/block/clip/clip.cpp"
-line = "587" / >
-<source>None < /source>
-< translation > 无 < /translation>
-< /message>
-< message >
-<location filename = "../node/block/clip/clip.cpp"
-line = "587" / >
-<source>Clamp < /source>
-< translation > 夹钳 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::ColorCoding < /name>
-< message >
-<location filename = "../ui/colorcoding.cpp"
-line = "43" / >
-<source>Red < /source>
-< translation > 红色 < /translation>
-< /message>
-< message >
-<location filename = "../ui/colorcoding.cpp"
-line = "45" / >
-<source>Maroon < /source>
-< translation > 紫褐色 < /translation>
-< /message>
-< message >
-<location filename = "../ui/colorcoding.cpp"
-line = "47" / >
-<source>Orange < /source>
-< translation > 橙色 < /translation>
-< /message>
-< message >
-<location filename = "../ui/colorcoding.cpp"
-line = "49" / >
-<source>Brown < /source>
-< translation > 棕色 < /translation>
-< /message>
-< message >
-<location filename = "../ui/colorcoding.cpp"
-line = "51" / >
-    <source>Yellow < /source>
-    < translation > 黄色 < /translation>
-    < /message>
-    < message >
-    <source>Olive < /source>
-    < translation
-type = "vanished" > 橄榄 < /translation>
-< /message>
-< message >
-<location filename = "../ui/colorcoding.cpp"
-line = "53" / >
-    <source>Oak < /source>
-    < translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../ui/colorcoding.cpp"
-line = "55" / >
-<source>Lime < /source>
-< translation > 石灰 < /translation>
-< /message>
-< message >
-<location filename = "../ui/colorcoding.cpp"
-line = "57" / >
-<source>Green < /source>
-< translation > 绿色 < /translation>
-< /message>
-< message >
-<location filename = "../ui/colorcoding.cpp"
-line = "59" / >
-<source>Cyan < /source>
-< translation > 青色 < /translation>
-< /message>
-< message >
-<location filename = "../ui/colorcoding.cpp"
-line = "61" / >
-<source>Teal < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../ui/colorcoding.cpp"
-line = "63" / >
-<source>Blue < /source>
-< translation > 蓝色 < /translation>
-< /message>
-< message >
-<location filename = "../ui/colorcoding.cpp"
-line = "65" / >
-<source>Navy < /source>
-< translation > 深蓝色 < /translation>
-< /message>
-< message >
-<location filename = "../ui/colorcoding.cpp"
-line = "67" / >
-<source>Pink < /source>
-< translation > 粉色 < /translation>
-< /message>
-< message >
-<location filename = "../ui/colorcoding.cpp"
-line = "69" / >
-<source>Purple < /source>
-< translation > 紫色 < /translation>
-< /message>
-< message >
-<location filename = "../ui/colorcoding.cpp"
-line = "71" / >
-<source>Silver < /source>
-< translation > 银色 < /translation>
-< /message>
-< message >
-<location filename = "../ui/colorcoding.cpp"
-line = "73" / >
-<source>Gray < /source>
-< translation > 灰色 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::ColorDialog < /name>
-< message >
-<location filename = "../dialog/color/colordialog.cpp"
-line = "38" / >
-    <source>Select
-Color < /source>
-< translation > 选择颜色 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::ColorDifferenceKeyNode < /name>
-< message >
-<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
-line = "66" / >
-    <source>Color
-Difference
-Key < /source>
-< translation > 色差键 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
-line = "81" / >
-    <source>A
-simple
-color
-key
-based
-on
-the
-distance
-of
-one
-color
-from
-other
-colors. < /source>
-< translation > 基于一种颜色与其他颜色的距离的简单颜色键. < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
-line = "89" / >
-<source>Input < /source>
-< translation > 输入 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
-line = "90" / >
-    <source>Garbage
-Matte < /source>
-< translation > 垃圾遮片 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
-line = "91" / >
-    <source>Core
-Matte < /source>
-< translation > 核心遮片 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
-line = "92" / >
-    <source>Key
-Color < /source>
-< translation > 基本色调 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
-line = "93" / >
-<source>Green < /source>
-< translation > 绿色 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
-line = "93" / >
-<source>Blue < /source>
-< translation > 蓝色 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
-line = "94" / >
-<source>Shadows < /source>
-< translation > 阴影 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
-line = "95" / >
-<source>Highlights < /source>
-< translation > 高光 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/colordifferencekey/colordifferencekey.cpp"
-line = "96" / >
-    <source>Show
-Mask
-Only < /source>
-< translation > 只显示遮罩 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::ColorLabelMenu < /name>
-< message >
-<location filename = "../widget/colorlabelmenu/colorlabelmenu.cpp"
-line = "71" / >
-    <source>Color < /source>
-    < translation > 颜色 < /translation>
-    < /message>
-    < /context>
-    < context >
-    <name>olive::ColorManager < /name>
-    < message >
-    <source>Configuration < /source>
-    < translation
-type = "vanished" > 配置 < /translation>
-    < /message>
-    < message >
-    <source>Default
-Input < /source>
-< translation
-type = "vanished" > 默认输入 < /translation>
-    < /message>
-    < message >
-    <source>Reference
-Space < /source>
-< translation
-type = "vanished" > 参考空间 < /translation>
-    < /message>
-    < message >
-    <source>Scene
-Linear < /source>
-< translation
-type = "vanished" > 场景线性 < /translation>
-    < /message>
-    < message >
-    <source>Compositing
-Log < /source>
-< translation
-type = "vanished" > 合成日志 < /translation>
-    < /message>
-    < message >
-    <source>(built - in) < /source>
-    < translation
-type = "vanished" > 内置 < /translation>
-    < /message>
-    < message >
-    <source>Color
-Manager < /source>
-< translation
-type = "vanished" > 色彩管理 < /translation>
-    < /message>
-    < message >
-    <source>Color
-management
-configuration
-for project. < /source>
-    < translation type = "vanished" > 项目色彩配置. < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::ColorSpaceChooser < /name>
-< message >
-<location filename = "../widget/colorwheel/colorspacechooser.cpp"
-line = "39" / >
-    <source>Color
-Management < /source>
-< translation > 颜色管理 < /translation>
-< /message>
-< message >
-<location filename = "../widget/colorwheel/colorspacechooser.cpp"
-line = "48" / >
-    <source>Input
-:
-</source>
-< translation > 输入：</translation>
-< /message>
-< message >
-<location filename = "../widget/colorwheel/colorspacechooser.cpp"
-line = "51" / >
-    <source>Color
-Space:</source>
-< translation > 颜色空间：</translation>
-< /message>
-< message >
-<location filename = "../widget/colorwheel/colorspacechooser.cpp"
-line = "80" / >
-    <source>Display
-:
-</source>
-< translation > 显示：</translation>
-< /message>
-< message >
-<location filename = "../widget/colorwheel/colorspacechooser.cpp"
-line = "101" / >
-    <source>View
-:
-</source>
-< translation > 视图：</translation>
-< /message>
-< message >
-<location filename = "../widget/colorwheel/colorspacechooser.cpp"
-line = "115" / >
-    <source>Look
-:
-</source>
-< translation > 风格：</translation>
-< /message>
-< message >
-<location filename = "../widget/colorwheel/colorspacechooser.cpp"
-line = "122" / >
-<source>(None) < /source>
-< translation > (无) < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::ColorSwatchChooser < /name>
-< message >
-<location filename = "../widget/colorwheel/colorswatchchooser.cpp"
-line = "94" / >
-    <source>Save
-Color
-Here < /source>
-< translation > 在这保存颜色 < /translation>
-< /message>
-< message >
-<location filename = "../widget/colorwheel/colorswatchchooser.cpp"
-line = "100" / >
-    <source>Reset
-To
-Default < /source>
-< translation > 恢复默认 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::ColorValuesTab < /name>
-< message >
-<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
-line = "268" / >
-<source>Red < /source>
-< translation > 红色 < /translation>
-< /message>
-< message >
-<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
-line = "276" / >
-<source>Green < /source>
-< translation > 绿色 < /translation>
-< /message>
-< message >
-<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
-line = "284" / >
-<source>Blue < /source>
-< translation > 蓝色 < /translation>
-< /message>
-< message >
-<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
-line = "255" / >
-    <source>Use
-legacy(8 - bit)
-values < /source>
-< translation > 使用传统（8
-位）值 < /translation>
-< /message>
-< message >
-<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
-line = "292" / >
-<source>Web < /source>
-< translation > 网络 < /translation>
-< /message>
-< message >
-<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
-line = "421" / >
-<source>(Invalid) < /source>
-< translation > 无效的 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::ColorValuesWidget < /name>
-< message >
-<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
-line = "51" / >
-<source>Preview < /source>
-< translation > 预览 < /translation>
-< /message>
-< message >
-<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
-line = "76" / >
-<source>Input < /source>
-< translation > 输入 < /translation>
-< /message>
-< message >
-<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
-line = "85" / >
-<source>Reference < /source>
-< translation > 参考 < /translation>
-< /message>
-< message >
-<location filename = "../widget/colorwheel/colorvalueswidget.cpp"
-line = "90" / >
-<source>Display < /source>
-< translation > 显示 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::ConfigDialogBase < /name>
-< message >
-<location filename = "../dialog/configbase/configdialogbase.cpp"
-line = "79" / >
-    <source>Set
-Configuration < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< /context>
-< context >
-<name>olive::ConformTask < /name>
-< message >
-<location filename = "../task/conform/conform.cpp"
-line = "36" / >
-    <source>Conforming
-Audio % 1
-:%
-2 < /source>
-< translation > 确认音频 % 1
-:%
-2 < /translation>
-< /message>
-< message >
-<location filename = "../task/conform/conform.cpp"
-line = "45" / >
-    <source>Failed
-to
-open
-decoder
-for audio conform < /source>
-< translation > 无法打开解码器以符合音频 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::Core < /name>
-< message >
-<location filename = "../core.cpp"
-line = "338" / >
-    <source>Import
-error < /source>
-< translation > 导入出错 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "339" / >
-    <source>Nothing
-to
-import
+</context>
+<context>
+    <name>olive</name>
+    <message>
+        <source>Center:</source>
+        <translation type="vanished">居中:</translation>
+    </message>
+    <message>
+        <source>Bezier</source>
+        <translation type="vanished">贝塞尔曲线</translation>
+    </message>
+    <message>
+        <source>In:</source>
+        <translation type="vanished">入：</translation>
+    </message>
+    <message>
+        <source>Out:</source>
+        <translation type="vanished">出：</translation>
+    </message>
+</context>
+<context>
+    <name>olive::AV1Section</name>
+    <message>
+        <location filename="../dialog/export/codec/av1section.cpp" line="47"/>
+        <source>Preset:</source>
+        <translation type="unfinished">预设：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/av1section.cpp" line="50"/>
+        <source>This parameter governs the efficiency/encode-time trade-off.
+Lower presets will result in an output with better quality for a given file size, but will take longer to encode.
+Higher presets can result in a very fast encode, but will make some compromises on visual quality for a given crf value.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/av1section.cpp" line="64"/>
+        <source>Compression Method:</source>
+        <translation type="unfinished">压缩方式：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/av1section.cpp" line="67"/>
+        <source>This parameter governs the quality/size trade-off.
+Higher CRF values will result in a final output that takes less space, but begins to lose detail.
+Lower CRF values retain more detail at the cost of larger file sizes.
+The possible range of CRF in SVT-AV1 is 1-63.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/av1section.cpp" line="74"/>
+        <source>Constant Rate Factor</source>
+        <translation type="unfinished">恒定速率因子（CRF）</translation>
+    </message>
+</context>
+<context>
+    <name>olive::AboutDialog</name>
+    <message>
+        <location filename="../dialog/about/about.cpp" line="43"/>
+        <source>About %1</source>
+        <translation>关于 %1</translation>
+    </message>
+    <message>
+        <location filename="../dialog/about/about.cpp" line="71"/>
+        <source>Oak Video Editor is a free open source non-linear video editor. This software is licensed under the GNU GPL Version 3.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../dialog/about/about.cpp" line="73"/>
+        <source>This project is a fork of &lt;a href=&quot;https://github.com/olive-editor/olive&quot;&gt;Olive Video Editor&lt;/a&gt;.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../dialog/about/about.cpp" line="94"/>
+        <source>&lt;b&gt;Oak Video Editor relies on support from the community to continue its development.&lt;/b&gt;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../dialog/about/about.cpp" line="97"/>
+        <source>Oak Video Editor wouldn&apos;t be possible without the support of gracious donations from the following people.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../dialog/about/about.cpp" line="102"/>
+        <source>&lt;html&gt;%1 If you like this project, please consider making a one-time donation or pledging monthly to support its development.&lt;/html&gt;</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Olive is a non-linear video editor. This software is free and protected by the GNU GPL.</source>
+        <translation type="obsolete">Olive 是免费的非线性视频编辑器。此应用程序基于 GNU 通用公共许可证（GNU GPL）条款发布。</translation>
+    </message>
+    <message>
+        <source>Olive Team is obliged to inform users that Olive source code is available for download from its website.</source>
+        <translation type="obsolete">Olive 团队有义务告知用户可以从官网下载 Olive 的源码。翻译者已尝试用通俗易明的方式进行翻译，希望大家使用愉快。请支持自由开源软件，谢谢。</translation>
+    </message>
+    <message>
+        <location filename="../dialog/about/about.cpp" line="41"/>
+        <source>Welcome to %1</source>
+        <translation>欢迎来到  %1</translation>
+    </message>
+    <message>
+        <source>Olive is a free open source non-linear video editor. This software is licensed under the GNU GPL Version 3.</source>
+        <translation type="vanished">Olive是免费开源非线性视频编辑器.此软件在GNU GPL3下获得许可。</translation>
+    </message>
+    <message>
+        <source>&lt;b&gt;Olive relies on support from the community to continue its development.&lt;/b&gt;</source>
+        <translation type="vanished">&lt;b&gt;Olive的发展依靠社区的支持&lt;/b&gt;</translation>
+    </message>
+    <message>
+        <source>Olive wouldn&apos;t be possible without the support of gracious donations from the following people.</source>
+        <translation type="vanished">如果没有以下人士的慷慨捐赠，Olive不可能发展。</translation>
+    </message>
+    <message>
+        <source>&lt;html&gt;%1 If you like this project, please consider making a &lt;a href=&apos;https://olivevideoeditor.org/donate.php&apos;&gt;one-time donation&lt;/a&gt; or &lt;a href=&apos;https://www.patreon.com/olivevideoeditor&apos;&gt;pledging monthly&lt;/a&gt; to support its development.&lt;/html&gt;</source>
+        <translation type="vanished">&lt;html&gt;%1如果您喜欢这个项目，请考虑给予&lt;a href=&apos;https://olivevideoeditor.org/donate.php&apos;&gt;一次捐赠&lt;/a&gt;或&lt;a href=&apos;https://www.patreon.com/olivevideoeditor&apos;&gt;成为会员&lt;/a&gt;支持其发展&lt;/html&gt;</translation>
+    </message>
+    <message>
+        <location filename="../dialog/about/about.cpp" line="125"/>
+        <source>Don&apos;t show this message again</source>
+        <translation>不再显示信息</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ActionSearch</name>
+    <message>
+        <location filename="../dialog/actionsearch/actionsearch.cpp" line="60"/>
+        <source>Search for action...</source>
+        <translation>操作搜索...</translation>
+    </message>
+</context>
+<context>
+    <name>olive::AudioInput</name>
+    <message>
+        <source>Audio Input</source>
+        <translation type="obsolete">音频输入</translation>
+    </message>
+    <message>
+        <source>Audio</source>
+        <translation type="obsolete">音频</translation>
+    </message>
+    <message>
+        <source>Import an audio footage stream.</source>
+        <translation type="obsolete">导入音频素材流。</translation>
+    </message>
+</context>
+<context>
+    <name>olive::AudioManager</name>
+    <message>
+        <location filename="../audio/audiomanager.cpp" line="98"/>
+        <source>No output device is set</source>
+        <translation>未设置输出设备</translation>
+    </message>
+</context>
+<context>
+    <name>olive::AudioMonitorPanel</name>
+    <message>
+        <location filename="../panel/audiomonitor/audiomonitor.cpp" line="43"/>
+        <source>Audio Monitor</source>
+        <translation>音频监视器</translation>
+    </message>
+</context>
+<context>
+    <name>olive::AutoRecoveryDialog</name>
+    <message>
+        <location filename="../dialog/autorecovery/autorecoverydialog.cpp" line="64"/>
+        <source>Auto-Recovery</source>
+        <translation>自动恢复</translation>
+    </message>
+    <message>
+        <location filename="../dialog/autorecovery/autorecoverydialog.cpp" line="74"/>
+        <source>Load</source>
+        <translation>加载</translation>
+    </message>
+</context>
+<context>
+    <name>olive::BezierWidget</name>
+    <message>
+        <location filename="../widget/bezier/bezierwidget.cpp" line="37"/>
+        <source>Center:</source>
+        <translation type="unfinished">居中:</translation>
+    </message>
+    <message>
+        <location filename="../widget/bezier/bezierwidget.cpp" line="51"/>
+        <source>Bezier</source>
+        <translation type="unfinished">贝塞尔曲线</translation>
+    </message>
+    <message>
+        <location filename="../widget/bezier/bezierwidget.cpp" line="58"/>
+        <source>In:</source>
+        <translation type="unfinished">入：</translation>
+    </message>
+    <message>
+        <location filename="../widget/bezier/bezierwidget.cpp" line="72"/>
+        <source>Out:</source>
+        <translation type="unfinished">出：</translation>
+    </message>
+</context>
+<context>
+    <name>olive::Block</name>
+    <message>
+        <location filename="../node/block/block.cpp" line="117"/>
+        <source>Length</source>
+        <translation>长度</translation>
+    </message>
+    <message>
+        <source>Media In</source>
+        <translation type="obsolete">媒体输入</translation>
+    </message>
+    <message>
+        <location filename="../node/block/block.cpp" line="118"/>
+        <source>Enabled</source>
+        <translation>已启用</translation>
+    </message>
+    <message>
+        <source>Speed</source>
+        <translation type="obsolete">速度</translation>
+    </message>
+</context>
+<context>
+    <name>olive::BlurFilterNode</name>
+    <message>
+        <location filename="../node/filter/blur/blur.cpp" line="89"/>
+        <source>Blur</source>
+        <translation>模糊</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/blur/blur.cpp" line="104"/>
+        <source>Blurs an image.</source>
+        <translation>使图像变模糊。</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/blur/blur.cpp" line="111"/>
+        <source>Input</source>
+        <translation>输入</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/blur/blur.cpp" line="112"/>
+        <source>Method</source>
+        <translation>方法</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/blur/blur.cpp" line="113"/>
+        <source>Box</source>
+        <translation>盒式</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/blur/blur.cpp" line="113"/>
+        <source>Gaussian</source>
+        <translation>高斯</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/blur/blur.cpp" line="115"/>
+        <source>Radius</source>
+        <translation>半径</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/blur/blur.cpp" line="116"/>
+        <source>Horizontal</source>
+        <translation>水平</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/blur/blur.cpp" line="117"/>
+        <source>Vertical</source>
+        <translation>垂直</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/blur/blur.cpp" line="118"/>
+        <source>Repeat Edge Pixels</source>
+        <translation>重复边缘像素</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/blur/blur.cpp" line="114"/>
+        <source>Directional</source>
+        <translation>方向</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/blur/blur.cpp" line="114"/>
+        <source>Radial</source>
+        <translation>圆角</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/blur/blur.cpp" line="120"/>
+        <source>Direction</source>
+        <translation>方向</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/blur/blur.cpp" line="121"/>
+        <source>Center</source>
+        <translation>居中</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ChromaKeyNode</name>
+    <message>
+        <location filename="../node/keying/chromakey/chromakey.cpp" line="77"/>
+        <source>Chroma Key</source>
+        <translation>色度键</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/chromakey/chromakey.cpp" line="92"/>
+        <source>A simple color key based on the distance from the chroma of a selected color.</source>
+        <translation>基于与选定颜色的色度的距离的简单颜色键。</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/chromakey/chromakey.cpp" line="99"/>
+        <source>Input</source>
+        <translation>输入</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/chromakey/chromakey.cpp" line="100"/>
+        <source>Garbage Matte</source>
+        <translation>垃圾遮片</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/chromakey/chromakey.cpp" line="101"/>
+        <source>Core Matte</source>
+        <translation>核心遮片</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/chromakey/chromakey.cpp" line="102"/>
+        <source>Key Color</source>
+        <translation>基本色调</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/chromakey/chromakey.cpp" line="103"/>
+        <source>Shadows</source>
+        <translation>阴影</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/chromakey/chromakey.cpp" line="104"/>
+        <source>Highlights</source>
+        <translation>高光</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/chromakey/chromakey.cpp" line="105"/>
+        <source>Upper Tolerance</source>
+        <translation>上限公差</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/chromakey/chromakey.cpp" line="106"/>
+        <source>Lower Tolerance</source>
+        <translation>下限公差</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/chromakey/chromakey.cpp" line="107"/>
+        <source>Invert Mask</source>
+        <translation>反转遮罩</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/chromakey/chromakey.cpp" line="108"/>
+        <source>Show Mask Only</source>
+        <translation>只显示遮罩</translation>
+    </message>
+</context>
+<context>
+    <name>olive::CineformSection</name>
+    <message>
+        <location filename="../dialog/export/codec/cineformsection.cpp" line="39"/>
+        <source>Quality:</source>
+        <translation>质量：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/cineformsection.cpp" line="62"/>
+        <source>Film Scan 3+</source>
+        <translation>胶片扫描3+</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/cineformsection.cpp" line="63"/>
+        <source>Film Scan 3</source>
+        <translatorcomment>胶片扫描2+</translatorcomment>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/cineformsection.cpp" line="64"/>
+        <source>Film Scan 2+</source>
+        <translation>胶片扫描2+</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/cineformsection.cpp" line="65"/>
+        <source>Film Scan 2</source>
+        <translation>胶片扫描2</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/cineformsection.cpp" line="66"/>
+        <source>Film Scan 1.5</source>
+        <translation>胶片扫描1.5</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/cineformsection.cpp" line="67"/>
+        <source>Film Scan 1+</source>
+        <translation>胶片扫描1+</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/cineformsection.cpp" line="68"/>
+        <source>Film Scan 1</source>
+        <translation>胶片扫描1</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/cineformsection.cpp" line="69"/>
+        <source>High+</source>
+        <translation>高+</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/cineformsection.cpp" line="70"/>
+        <source>High</source>
+        <translation>高</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/cineformsection.cpp" line="71"/>
+        <source>Medium+</source>
+        <translation>中等+</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/cineformsection.cpp" line="72"/>
+        <source>Medium</source>
+        <translation>中等+</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/cineformsection.cpp" line="73"/>
+        <source>Low+</source>
+        <translation>低+</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/cineformsection.cpp" line="74"/>
+        <source>Low</source>
+        <translation>低</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ClipBlock</name>
+    <message>
+        <location filename="../node/block/clip/clip.cpp" line="94"/>
+        <source>Clip</source>
+        <translation>片段</translation>
+    </message>
+    <message>
+        <location filename="../node/block/clip/clip.cpp" line="104"/>
+        <source>A time-based node that represents a media source.</source>
+        <translation>基于时间的节点，表示一段媒体源。</translation>
+    </message>
+    <message>
+        <location filename="../node/block/clip/clip.cpp" line="581"/>
+        <source>Buffer</source>
+        <translation>缓冲区</translation>
+    </message>
+    <message>
+        <location filename="../node/block/clip/clip.cpp" line="88"/>
+        <source>Video Clip</source>
+        <translation>视频片段</translation>
+    </message>
+    <message>
+        <location filename="../node/block/clip/clip.cpp" line="90"/>
+        <source>Audio Clip</source>
+        <translation>音频片段</translation>
+    </message>
+    <message>
+        <location filename="../node/block/clip/clip.cpp" line="582"/>
+        <source>Media In</source>
+        <translation>媒体输入</translation>
+    </message>
+    <message>
+        <location filename="../node/block/clip/clip.cpp" line="583"/>
+        <source>Speed</source>
+        <translation>速度</translation>
+    </message>
+    <message>
+        <location filename="../node/block/clip/clip.cpp" line="584"/>
+        <source>Reverse</source>
+        <translation>颠倒</translation>
+    </message>
+    <message>
+        <location filename="../node/block/clip/clip.cpp" line="585"/>
+        <source>Maintain Audio Pitch</source>
+        <translation>保持音频音调</translation>
+    </message>
+    <message>
+        <location filename="../node/block/clip/clip.cpp" line="586"/>
+        <location filename="../node/block/clip/clip.cpp" line="587"/>
+        <source>Loop</source>
+        <translation>循环</translation>
+    </message>
+    <message>
+        <location filename="../node/block/clip/clip.cpp" line="587"/>
+        <source>None</source>
+        <translation>无</translation>
+    </message>
+    <message>
+        <location filename="../node/block/clip/clip.cpp" line="587"/>
+        <source>Clamp</source>
+        <translation>夹钳</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ColorCoding</name>
+    <message>
+        <location filename="../ui/colorcoding.cpp" line="43"/>
+        <source>Red</source>
+        <translation>红色</translation>
+    </message>
+    <message>
+        <location filename="../ui/colorcoding.cpp" line="45"/>
+        <source>Maroon</source>
+        <translation>紫褐色</translation>
+    </message>
+    <message>
+        <location filename="../ui/colorcoding.cpp" line="47"/>
+        <source>Orange</source>
+        <translation>橙色</translation>
+    </message>
+    <message>
+        <location filename="../ui/colorcoding.cpp" line="49"/>
+        <source>Brown</source>
+        <translation>棕色</translation>
+    </message>
+    <message>
+        <location filename="../ui/colorcoding.cpp" line="51"/>
+        <source>Yellow</source>
+        <translation>黄色</translation>
+    </message>
+    <message>
+        <source>Olive</source>
+        <translation type="vanished">橄榄</translation>
+    </message>
+    <message>
+        <location filename="../ui/colorcoding.cpp" line="53"/>
+        <source>Oak</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../ui/colorcoding.cpp" line="55"/>
+        <source>Lime</source>
+        <translation>石灰</translation>
+    </message>
+    <message>
+        <location filename="../ui/colorcoding.cpp" line="57"/>
+        <source>Green</source>
+        <translation>绿色</translation>
+    </message>
+    <message>
+        <location filename="../ui/colorcoding.cpp" line="59"/>
+        <source>Cyan</source>
+        <translation>青色</translation>
+    </message>
+    <message>
+        <location filename="../ui/colorcoding.cpp" line="61"/>
+        <source>Teal</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../ui/colorcoding.cpp" line="63"/>
+        <source>Blue</source>
+        <translation>蓝色</translation>
+    </message>
+    <message>
+        <location filename="../ui/colorcoding.cpp" line="65"/>
+        <source>Navy</source>
+        <translation>深蓝色</translation>
+    </message>
+    <message>
+        <location filename="../ui/colorcoding.cpp" line="67"/>
+        <source>Pink</source>
+        <translation>粉色</translation>
+    </message>
+    <message>
+        <location filename="../ui/colorcoding.cpp" line="69"/>
+        <source>Purple</source>
+        <translation>紫色</translation>
+    </message>
+    <message>
+        <location filename="../ui/colorcoding.cpp" line="71"/>
+        <source>Silver</source>
+        <translation>银色</translation>
+    </message>
+    <message>
+        <location filename="../ui/colorcoding.cpp" line="73"/>
+        <source>Gray</source>
+        <translation>灰色</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ColorDialog</name>
+    <message>
+        <location filename="../dialog/color/colordialog.cpp" line="38"/>
+        <source>Select Color</source>
+        <translation>选择颜色</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ColorDifferenceKeyNode</name>
+    <message>
+        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="66"/>
+        <source>Color Difference Key</source>
+        <translation>色差键</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="81"/>
+        <source>A simple color key based on the distance of one color from other colors.</source>
+        <translation>基于一种颜色与其他颜色的距离的简单颜色键.</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="89"/>
+        <source>Input</source>
+        <translation>输入</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="90"/>
+        <source>Garbage Matte</source>
+        <translation>垃圾遮片</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="91"/>
+        <source>Core Matte</source>
+        <translation>核心遮片</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="92"/>
+        <source>Key Color</source>
+        <translation>基本色调</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="93"/>
+        <source>Green</source>
+        <translation>绿色</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="93"/>
+        <source>Blue</source>
+        <translation>蓝色</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="94"/>
+        <source>Shadows</source>
+        <translation>阴影</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="95"/>
+        <source>Highlights</source>
+        <translation>高光</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/colordifferencekey/colordifferencekey.cpp" line="96"/>
+        <source>Show Mask Only</source>
+        <translation>只显示遮罩</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ColorLabelMenu</name>
+    <message>
+        <location filename="../widget/colorlabelmenu/colorlabelmenu.cpp" line="71"/>
+        <source>Color</source>
+        <translation>颜色</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ColorManager</name>
+    <message>
+        <source>Configuration</source>
+        <translation type="vanished">配置</translation>
+    </message>
+    <message>
+        <source>Default Input</source>
+        <translation type="vanished">默认输入</translation>
+    </message>
+    <message>
+        <source>Reference Space</source>
+        <translation type="vanished">参考空间</translation>
+    </message>
+    <message>
+        <source>Scene Linear</source>
+        <translation type="vanished">场景线性</translation>
+    </message>
+    <message>
+        <source>Compositing Log</source>
+        <translation type="vanished">合成日志</translation>
+    </message>
+    <message>
+        <source>(built-in)</source>
+        <translation type="vanished">内置</translation>
+    </message>
+    <message>
+        <source>Color Manager</source>
+        <translation type="vanished">色彩管理</translation>
+    </message>
+    <message>
+        <source>Color management configuration for project.</source>
+        <translation type="vanished">项目色彩配置.</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ColorSpaceChooser</name>
+    <message>
+        <location filename="../widget/colorwheel/colorspacechooser.cpp" line="39"/>
+        <source>Color Management</source>
+        <translation>颜色管理</translation>
+    </message>
+    <message>
+        <location filename="../widget/colorwheel/colorspacechooser.cpp" line="48"/>
+        <source>Input:</source>
+        <translation>输入：</translation>
+    </message>
+    <message>
+        <location filename="../widget/colorwheel/colorspacechooser.cpp" line="51"/>
+        <source>Color Space:</source>
+        <translation>颜色空间：</translation>
+    </message>
+    <message>
+        <location filename="../widget/colorwheel/colorspacechooser.cpp" line="80"/>
+        <source>Display:</source>
+        <translation>显示：</translation>
+    </message>
+    <message>
+        <location filename="../widget/colorwheel/colorspacechooser.cpp" line="101"/>
+        <source>View:</source>
+        <translation>视图：</translation>
+    </message>
+    <message>
+        <location filename="../widget/colorwheel/colorspacechooser.cpp" line="115"/>
+        <source>Look:</source>
+        <translation>风格：</translation>
+    </message>
+    <message>
+        <location filename="../widget/colorwheel/colorspacechooser.cpp" line="122"/>
+        <source>(None)</source>
+        <translation>(无)</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ColorSwatchChooser</name>
+    <message>
+        <location filename="../widget/colorwheel/colorswatchchooser.cpp" line="94"/>
+        <source>Save Color Here</source>
+        <translation>在这保存颜色</translation>
+    </message>
+    <message>
+        <location filename="../widget/colorwheel/colorswatchchooser.cpp" line="100"/>
+        <source>Reset To Default</source>
+        <translation>恢复默认</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ColorValuesTab</name>
+    <message>
+        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="268"/>
+        <source>Red</source>
+        <translation>红色</translation>
+    </message>
+    <message>
+        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="276"/>
+        <source>Green</source>
+        <translation>绿色</translation>
+    </message>
+    <message>
+        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="284"/>
+        <source>Blue</source>
+        <translation>蓝色</translation>
+    </message>
+    <message>
+        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="255"/>
+        <source>Use legacy (8-bit) values</source>
+        <translation>使用传统（8位）值</translation>
+    </message>
+    <message>
+        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="292"/>
+        <source>Web</source>
+        <translation>网络</translation>
+    </message>
+    <message>
+        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="421"/>
+        <source>(Invalid)</source>
+        <translation>无效的</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ColorValuesWidget</name>
+    <message>
+        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="51"/>
+        <source>Preview</source>
+        <translation>预览</translation>
+    </message>
+    <message>
+        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="76"/>
+        <source>Input</source>
+        <translation>输入</translation>
+    </message>
+    <message>
+        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="85"/>
+        <source>Reference</source>
+        <translation>参考</translation>
+    </message>
+    <message>
+        <location filename="../widget/colorwheel/colorvalueswidget.cpp" line="90"/>
+        <source>Display</source>
+        <translation>显示</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ConfigDialogBase</name>
+    <message>
+        <location filename="../dialog/configbase/configdialogbase.cpp" line="79"/>
+        <source>Set Configuration</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>olive::ConformTask</name>
+    <message>
+        <location filename="../task/conform/conform.cpp" line="36"/>
+        <source>Conforming Audio %1:%2</source>
+        <translation>确认音频 %1:%2</translation>
+    </message>
+    <message>
+        <location filename="../task/conform/conform.cpp" line="45"/>
+        <source>Failed to open decoder for audio conform</source>
+        <translation>无法打开解码器以符合音频</translation>
+    </message>
+</context>
+<context>
+    <name>olive::Core</name>
+    <message>
+        <location filename="../core.cpp" line="338"/>
+        <source>Import error</source>
+        <translation>导入出错</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="339"/>
+        <source>Nothing to import</source>
+        <translation>没有可导出的内容</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="357"/>
+        <source>Unsupported media</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="358"/>
+        <source>Skipped %1 file(s) that are not allowed by the current media type filter.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="376"/>
+        <source>Importing...</source>
+        <translation>正在导入...</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="461"/>
+        <source>Import footage...</source>
+        <translation>导入素材...</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="475"/>
+        <source>Failed to import footage</source>
+        <translation>无法导入素材</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="476"/>
+        <source>Failed to find active Project panel</source>
+        <translation>找不到活动项目面板</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="502"/>
+        <source>No Active Project</source>
+        <translation>没有活动项目</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="503"/>
+        <source>No project is currently open to set the properties for</source>
+        <translation>当前没有用于设置属性的已打开项目</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="534"/>
+        <source>Failed to create new folder</source>
+        <translation>无法创建新文件夹</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="535"/>
+        <location filename="../core.cpp" line="566"/>
+        <source>Failed to find active project</source>
+        <translation>找不到活动项目</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="546"/>
+        <source>New Folder</source>
+        <translation>新建文件夹</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="554"/>
+        <source>Created New Folder</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="565"/>
+        <source>Failed to create new sequence</source>
+        <translation>无法创建新序列</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="594"/>
+        <source>Created New Sequence</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="721"/>
+        <source>Imported %1 File(s)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="731"/>
+        <source>Possible image sequence detected</source>
+        <translation>检测到可能的图像序列</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="732"/>
+        <source>The file &apos;%1&apos; looks like it might be part of an image sequence. Would you like to import it as such?</source>
+        <translation>文件“%1”可能是图像序列的一部分。您要如此导入它吗？</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="753"/>
+        <source>You must specify a project file to export</source>
+        <translation>您必须指定要导出的项目文件</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="758"/>
+        <source>Specified project does not exist</source>
+        <translation>指定的项目不存在</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1189"/>
+        <source>Failed to save auto-recovery to &quot;%1&quot;. Oak Video Editor may not have permission to this directory.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1264"/>
+        <source>Oak Project</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1267"/>
+        <source>Oak Project (Uncompressed XML)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1614"/>
+        <source>Renamed %1 Node(s)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Project contains no sequences, nothing to export</source>
+        <translation type="obsolete">项目不包含任何序列，没有可导出的内容</translation>
+    </message>
+    <message>
+        <source>This project has multiple sequences. Which do you wish to export?</source>
+        <translation type="obsolete">此项目有多个序列。您要导出哪一个？</translation>
+    </message>
+    <message>
+        <source>Enter number (or %1 to cancel): </source>
+        <translation type="obsolete">输入数字 (或%1来取消): </translation>
+    </message>
+    <message>
+        <source>Invalid sequence number</source>
+        <translation type="obsolete">无效序列数字</translation>
+    </message>
+    <message>
+        <source>Export succeeded</source>
+        <translation type="obsolete">导出成功</translation>
+    </message>
+    <message>
+        <source>Export failed: %1</source>
+        <translation type="obsolete">导出失败：%1</translation>
+    </message>
+    <message>
+        <source>Project failed to load: %1</source>
+        <translation type="obsolete">项目无法加载：%1</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="842"/>
+        <source>Failed to open startup file</source>
+        <translation>无法打开启动文件</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="843"/>
+        <source>The project &quot;%1&quot; doesn&apos;t exist. A new project will be started instead.</source>
+        <translation>项目“%1”不存在。将打开一个新建项目。</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="961"/>
+        <location filename="../core.cpp" line="1529"/>
+        <source>Missing OpenTimelineIO Libraries</source>
+        <translation>缺失 OpenTimelineIO 库</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="962"/>
+        <location filename="../core.cpp" line="1530"/>
+        <source>This build was compiled without OpenTimelineIO and therefore cannot open OpenTimelineIO files.</source>
+        <translation>本构建未使用 OpenTimelineIO 编译，所以无法打开 OpenTimelineIO 文件。</translation>
+    </message>
+    <message>
+        <source>Save Project</source>
+        <translation type="obsolete">保存项目</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1014"/>
+        <location filename="../core.cpp" line="1022"/>
+        <source>Error</source>
+        <translation>错误</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1015"/>
+        <source>This Sequence is empty. There is nothing to export.</source>
+        <translation>此序列是空的。没有可导出的内容。</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1023"/>
+        <source>No valid sequence detected.
 
-</source>
-< translation > 没有可导出的内容 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "357" / >
-    <source>Unsupported
-media < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "358" / >
-    <source>Skipped % 1
-file(s)
-that
-are
-not
-allowed
-by
-the
-current
-media
-type filter
-.
-</source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "376" / >
-    <source>Importing
-...
-</source>
-< translation > 正在导入
-...
-</translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "461" / >
-    <source>Import
-footage
-...
-</source>
-< translation > 导入素材
-...
-</translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "475" / >
-    <source>Failed
-to
-import footage
-
-</source>
-< translation > 无法导入素材 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "476" / >
-    <source>Failed
-to
-find
-active
-Project
-panel < /source>
-< translation > 找不到活动项目面板 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "502" / >
-    <source>No
-Active
-Project < /source>
-< translation > 没有活动项目 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "503" / >
-    <source>No
-project
-is
-currently
-open
-to
-set
-the
-properties
-for</source>
-   < translation > 当前没有用于设置属性的已打开项目 < /translation>
-   < /message>
-   < message >
-   <location filename = "../core.cpp" line = "534" / >
-    <source>Failed
-to
-create
-new folder < /source>
-< translation > 无法创建新文件夹 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "535" / >
-<location filename = "../core.cpp"
-line = "566" / >
-    <source>Failed
-to
-find
-active
-project < /source>
-< translation > 找不到活动项目 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "546" / >
-    <source>New
-Folder < /source>
-< translation > 新建文件夹 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "554" / >
-    <source>Created
-New
-Folder < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "565" / >
-    <source>Failed
-to
-create
-new sequence < /source>
-< translation > 无法创建新序列 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "594" / >
-    <source>Created
-New
-Sequence < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "721" / >
-    <source>Imported % 1
-File(s) < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "731" / >
-    <source>Possible
-image
-sequence
-detected < /source>
-< translation > 检测到可能的图像序列 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "732" / >
-    <source>The
-file & apos;
-%
-1 & apos;
-looks
-like
-it
-might
-be
-part
-of
-an
-image
-sequence.Would
-you
-like
-to
-import it
-
-as
-such ? </source>
-    < translation > 文件“%
-1”可能是图像序列的一部分。您要如此导入它吗？</translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "753" / >
-    <source>You
-must
-specify
-a
-project
-file
-to
-export
-</source>
-< translation > 您必须指定要导出的项目文件 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "758" / >
-    <source>Specified
-project
-does
-not
-exist < /source>
-< translation > 指定的项目不存在 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1189" / >
-    <source>Failed
-to
-save
-auto - recovery
-to & quot;
-%
-1 & quot;
-.
-Oak
-Video
-Editor
-may
-not
-have
-permission
-to
-this
-directory. < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1264" / >
-    <source>Oak
-Project < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1267" / >
-    <source>Oak
-Project(Uncompressed
-XML
-)
-</source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1614" / >
-    <source>Renamed % 1
-Node(s) < /source>
-< translation
-type = "unfinished" > </translation>
-    < /message>
-    < message >
-    <source>Project
-contains
-no
-sequences, nothing
-to
-export
-</source>
-< translation
-type = "obsolete" > 项目不包含任何序列，没有可导出的内容 < /translation>
-< /message>
-< message >
-<source>This
-project
-has
-multiple
-sequences.Which
-do you wish
-to
-export
-? </source>
-    < translation type = "obsolete" > 此项目有多个序列。您要导出哪一个？</translation>
-< /message>
-< message >
-<source>Enter
-number(or % 1
-to
-cancel
-):
-</source>
-< translation
-type = "obsolete" > 输入数字(或 % 1
-来取消
-):
-</translation>
-< /message>
-< message >
-<source>Invalid
-sequence
-number < /source>
-< translation
-type = "obsolete" > 无效序列数字 < /translation>
-    < /message>
-    < message >
-    <source>Export
-succeeded < /source>
-< translation
-type = "obsolete" > 导出成功 < /translation>
-    < /message>
-    < message >
-    <source>Export
-failed: %
-1 < /source>
-< translation
-type = "obsolete" > 导出失败：%
-1 < /translation>
-< /message>
-< message >
-<source>Project
-failed
-to
-load: %
-1 < /source>
-< translation
-type = "obsolete" > 项目无法加载：%
-1 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "842" / >
-    <source>Failed
-to
-open
-startup
-file < /source>
-< translation > 无法打开启动文件 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "843" / >
-    <source>The
-project & quot;
-%
-1 & quot;
-doesn & apos;
-t
-exist.A
-new project
-will
-be
-started
-instead. < /source>
-< translation > 项目“%
-1”不存在。将打开一个新建项目。</translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "961" / >
-<location filename = "../core.cpp"
-line = "1529" / >
-    <source>Missing
-OpenTimelineIO
-Libraries < /source>
-< translation > 缺失
-OpenTimelineIO
-库 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "962" / >
-<location filename = "../core.cpp"
-line = "1530" / >
-    <source>This
-build
-was
-compiled
-without
-OpenTimelineIO
-and
-therefore
-cannot
-open
-OpenTimelineIO
-files. < /source>
-< translation > 本构建未使用
-OpenTimelineIO
-编译，所以无法打开
-OpenTimelineIO
-文件。</translation>
-< /message>
-< message >
-<source>Save
-Project < /source>
-< translation
-type = "obsolete" > 保存项目 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1014" / >
-<location filename = "../core.cpp"
-line = "1022" / >
-<source>Error < /source>
-< translation > 错误 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1015" / >
-    <source>This
-Sequence
-is
-empty.There
-is
-nothing
-to
-export.
-</source>
-< translation > 此序列是空的。没有可导出的内容。</translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1023" / >
-    <source>No
-valid
-sequence
-detected.Make
-sure
-a
-sequence
-is
-loaded
-and
-it
-has
-a
-connected
-Viewer
-node. < /source>
-< translation > 未检测到有效的序列。
+Make sure a sequence is loaded and it has a connected Viewer node.</source>
+        <translation>未检测到有效的序列。
 
 请确保序列已加载并连接到查看器节点。</translation>
-< /message>
-< message >
-<source>Olive
-Project < /source>
-< translation
-type = "vanished" > Olive
-项目 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1271" / >
-<source>OpenTimelineIO < /source>
-< translation > OpenTimelineIO < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1378" / >
-    <source>The
-following
-projects
-had
-unsaved
-changes
-when
-Oak
-Video
-Editor
-forcefully
-quit.Would
-you
-like
-to
-load
-them ? </source>
-    < translation type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1435" / >
-    <source>The
-disk
-cache
-is
-currently
-full
-and
-Oak
-Video
-Editor
-is
-having
-to
-delete old
-frames
-to
-keep
-it
-within
-the
-limits
-set in the
-Disk
-preferences.This
-will
-result in SIGNIFICANTLY
-reduced
-cache
-performance.To
-remedy
-this, please
-do one of
-the
-following:
+    </message>
+    <message>
+        <source>Olive Project</source>
+        <translation type="vanished">Olive 项目</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1271"/>
+        <source>OpenTimelineIO</source>
+        <translation>OpenTimelineIO</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1378"/>
+        <source>The following projects had unsaved changes when Oak Video Editor forcefully quit. Would you like to load them?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1435"/>
+        <source>The disk cache is currently full and Oak Video Editor is having to delete old frames to keep it within the limits set in the Disk preferences. This will result in SIGNIFICANTLY reduced cache performance.
 
-    1.
-Manually
-clear
-the
-disk
-cache in Disk
-preferences.
-2.
-Increase
-the
-maximum
-disk
-cache
-size in Disk
-preferences.
-3.
-Reduce
-usage
-of
-the
-disk
-cache(e.g.disable
-auto - cache
-or
-only
-cache
-specific
-sections
-of
-your
-sequence
-).
-</source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1447" / >
-    <source>Save
-Project
-As < /source>
-< translation > 另存项目为 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1540" / >
-    <source>Load
-Project < /source>
-< translation > 加载项目 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1599" / >
-    <source>Label
-Node < /source>
-< translation > 标签节点 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1600" / >
-    <source>Set
-node
-label < /source>
-< translation > 设置节点标签 < /translation>
-< /message>
-< message >
-<location filename = "../core.h"
-line = "260" / >
-<source>Sequence % 1 < /source>
-< translation > 序列 % 1 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1648" / >
-    <source>Cannot
-open
-recent
-project < /source>
-< translation > 无法打开最近项目 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1649" / >
-    <source>The
-project & quot;
-%
-1 & quot;
-doesn & apos;
-t
-exist.Would
-you
-like
-to
-remove
-this
-file
-from
-the
-recent
-list ? </source>
-    < translation > 项目“%
-1”不存在。您要从最近列表移除此文件吗？</translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1668" / >
-    <source>Unsaved
-Changes < /source>
-< translation > 未保存的更改 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1670" / >
-    <source>The
-project & apos;
-%
-1 & apos;
-has
-unsaved
-changes.Would
-you
-like
-to
-save
-them ? </source>
-    < translation > 项目“%
-1”有未保存的更改。您要保存吗？</translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1674" / >
-    <source>Save < /source>
-    < translation > 保存 < /translation>
-    < /message>
-    < message >
-    <source>Save
-All < /source>
-< translation
-type = "vanished" > 全部保存 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1676" / >
-    <source>Don & apos;
-t
-Save < /source>
-< translation > 不保存 < /translation>
-< /message>
-< message >
-<source>Don & apos;
-t
-Save
-All < /source>
-< translation
-type = "vanished" > 全部不保存 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1738" / >
-    <source>Failed
-to
-cache
-sequence < /source>
-< translation > 无法缓存序列 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1739" / >
-    <source>No
-active
-viewer
-found
-with this sequence. < /source>
-< translation > 没有找到此序列的活动查看器。</translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1836" / >
-    <source>Open
-Project < /source>
-< translation > 打开项目 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "682" / >
-    <source>Multi - Layer
-Image < /source>
-< translation > 多层图像 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "684" / >
-    <source>The
-file & apos;
-%
-1 & apos;
-has
-multiple
-layers.Would
-you
-like
-these
-layers
-to
-be
-separated
-across
-multiple
-tracks
-or
-merged
-into
-a
-single
-image ? </source>
-    < translation > 文件“%
-1”有多个层。您希望这些层跨多个轨迹分离还是合并到单个图像中 ? </translation>
-< /message>
-< message >
-<location filename = "../core.cpp" line = "689" / >
-    <source>Multiple
-Layers < /source>
-< translation > 多层 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "691" / >
-    <source>Single
-Layer < /source>
-< translation > 单层 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1070" / >
-<location filename = "../core.cpp"
-line = "1087" / >
-<source>Revert < /source>
-< translation > 还原 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1071" / >
-    <source>This
-project
-has
-not
-yet
-been
-saved, therefore
-there
-is
-no
-last
-saved
-state
-to
-revert
-to. < /source>
-< translation > 此项目尚未保存，因此没有要恢复到的上次保存状态. < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1077" / >
-    <source>The
-project & quot;
-%
-1 & quot;
-is
-already
-open.By
-re - opening
-it, the
-project
-will
-revert
-to
-its
-last
-saved
-state.Any
-unsaved
-changes
-will
-be
-lost.Do
-you
-wish
-to
-continue
-? </source>
-    < translation > 项目“%
-1”已打开。通过重新打开它，项目将恢复到上次保存的状态。任何未保存的更改都将丢失。是否要继续？</translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1082" / >
-    <source>This
-will
-revert
-the
-project & quot;
-%
-1 & quot;
-back
-to
-its
-last
-saved
-state.All
-unsaved
-changes
-will
-be
-lost.Do
-you
-wish
-to
-continue
-? </source>
-    < translation > 这将使项目“%
-1”恢复到上次保存的状态。所有未保存的更改都将丢失。是否要继续？</translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1188" / >
-<location filename = "../core.cpp"
-line = "1389" / >
-    <source>Auto - Recovery
-Error < /source>
-< translation > 自动恢复错误 < /translation>
-< /message>
-< message >
-<source>Failed
-to
-save
-auto - recovery
-to & quot;
-%
-1 & quot;
-.
-Olive
-may
-not
-have
-permission
-to
-this
-directory. < /source>
-< translation
-type = "vanished" > 无法将自动恢复保存到“%
-1”。Olive可能没有此目录的权限。</translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1211" / >
-    <source>Saved
-to & quot;
-%
-1 & quot;
-successfully < /source>
-< translation > 已成功保存到“%
-1”</translation>
-< /message>
-< message >
-<source>Olive
-Project(Uncompressed
-XML
-)
-</source>
-< translation
-type = "vanished" > Olive项目（未压缩的XML）</translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1284" / >
-    <source>All
-Supported
-Projects < /source>
-< translation > 所有支持的项目 < /translation>
-< /message>
-< message >
-<source>The
-following
-projects
-had
-unsaved
-changes
-when
-Olive
-forcefully
-quit.Would
-you
-like
-to
-load
-them ? </source>
-    < translation type = "vanished" > 当Olive强制退出时，以下项目有未保存的更改。是否要加载它们？</translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1390" / >
-    <source>Found
-auto - recoveries
-but
-failed
-to
-load
-the
-auto - recovery
-index.Auto - recover
-projects
-will
-have
-to
-be
-opened
-manually.Your
-recoverable
-projects
-are
-still
-available
-at: %
-1 < /source>
-< translation > 找到了自动恢复，但未能加载自动恢复索引。必须手动打开自动恢复项目。
-您的可恢复项目仍位于：%
-1 < /translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1402" / >
-    <source>The
-following
-project
-versions
-have
-been
-auto - saved
-:
-</source>
-< translation > 以下项目版本已自动保存：</translation>
-< /message>
-< message >
-<location filename = "../core.cpp"
-line = "1434" / >
-    <source>Disk
-Cache
-Full < /source>
-< translation > 磁盘缓存已满 < /translation>
-< /message>
-< message >
-<source>The
-disk
-cache
-is
-currently
-full
-and
-Olive
-is
-having
-to
-delete old
-frames
-to
-keep
-it
-within
-the
-limits
-set in the
-Disk
-preferences.This
-will
-result in SIGNIFICANTLY
-reduced
-cache
-performance.To
-remedy
-this, please
-do one of
-the
-following:
+To remedy this, please do one of the following:
 
-    1.
-Manually
-clear
-the
-disk
-cache in Disk
-preferences.
-2.
-Increase
-the
-maximum
-disk
-cache
-size in Disk
-preferences.
-3.
-Reduce
-usage
-of
-the
-disk
-cache(e.g.disable
-auto - cache
-or
-only
-cache
-specific
-sections
-of
-your
-sequence
-).
-</source>
-< translation
-type = "vanished" > 磁盘缓存当前已满，Olive必须删除旧帧以将其保持在磁盘首选项中设置的限制范围内。这将导致缓存性能显著降低。
+1. Manually clear the disk cache in Disk preferences.
+2. Increase the maximum disk cache size in Disk preferences.
+3. Reduce usage of the disk cache (e.g. disable auto-cache or only cache specific sections of your sequence).</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1447"/>
+        <source>Save Project As</source>
+        <translation>另存项目为</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1540"/>
+        <source>Load Project</source>
+        <translation>加载项目</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1599"/>
+        <source>Label Node</source>
+        <translation>标签节点</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1600"/>
+        <source>Set node label</source>
+        <translation>设置节点标签</translation>
+    </message>
+    <message>
+        <location filename="../core.h" line="260"/>
+        <source>Sequence %1</source>
+        <translation>序列 %1</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1648"/>
+        <source>Cannot open recent project</source>
+        <translation>无法打开最近项目</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1649"/>
+        <source>The project &quot;%1&quot; doesn&apos;t exist. Would you like to remove this file from the recent list?</source>
+        <translation>项目“%1”不存在。您要从最近列表移除此文件吗？</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1668"/>
+        <source>Unsaved Changes</source>
+        <translation>未保存的更改</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1670"/>
+        <source>The project &apos;%1&apos; has unsaved changes. Would you like to save them?</source>
+        <translation>项目“%1”有未保存的更改。您要保存吗？</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1674"/>
+        <source>Save</source>
+        <translation>保存</translation>
+    </message>
+    <message>
+        <source>Save All</source>
+        <translation type="vanished">全部保存</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1676"/>
+        <source>Don&apos;t Save</source>
+        <translation>不保存</translation>
+    </message>
+    <message>
+        <source>Don&apos;t Save All</source>
+        <translation type="vanished">全部不保存</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1738"/>
+        <source>Failed to cache sequence</source>
+        <translation>无法缓存序列</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1739"/>
+        <source>No active viewer found with this sequence.</source>
+        <translation>没有找到此序列的活动查看器。</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1836"/>
+        <source>Open Project</source>
+        <translation>打开项目</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="682"/>
+        <source>Multi-Layer Image</source>
+        <translation>多层图像</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="684"/>
+        <source>The file &apos;%1&apos; has multiple layers. Would you like these layers to be separated across multiple tracks or merged into a single image?</source>
+        <translation>文件“%1”有多个层。您希望这些层跨多个轨迹分离还是合并到单个图像中?</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="689"/>
+        <source>Multiple Layers</source>
+        <translation>多层</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="691"/>
+        <source>Single Layer</source>
+        <translation>单层</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1070"/>
+        <location filename="../core.cpp" line="1087"/>
+        <source>Revert</source>
+        <translation>还原</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1071"/>
+        <source>This project has not yet been saved, therefore there is no last saved state to revert to.</source>
+        <translation>此项目尚未保存，因此没有要恢复到的上次保存状态.</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1077"/>
+        <source>The project &quot;%1&quot; is already open. By re-opening it, the project will revert to its last saved state. Any unsaved changes will be lost. Do you wish to continue?</source>
+        <translation>项目“%1”已打开。通过重新打开它，项目将恢复到上次保存的状态。任何未保存的更改都将丢失。是否要继续？</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1082"/>
+        <source>This will revert the project &quot;%1&quot; back to its last saved state. All unsaved changes will be lost. Do you wish to continue?</source>
+        <translation>这将使项目“%1”恢复到上次保存的状态。所有未保存的更改都将丢失。是否要继续？</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1188"/>
+        <location filename="../core.cpp" line="1389"/>
+        <source>Auto-Recovery Error</source>
+        <translation>自动恢复错误</translation>
+    </message>
+    <message>
+        <source>Failed to save auto-recovery to &quot;%1&quot;. Olive may not have permission to this directory.</source>
+        <translation type="vanished">无法将自动恢复保存到“%1”。Olive可能没有此目录的权限。</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1211"/>
+        <source>Saved to &quot;%1&quot; successfully</source>
+        <translation>已成功保存到“%1”</translation>
+    </message>
+    <message>
+        <source>Olive Project (Uncompressed XML)</source>
+        <translation type="vanished">Olive项目（未压缩的XML）</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1284"/>
+        <source>All Supported Projects</source>
+        <translation>所有支持的项目</translation>
+    </message>
+    <message>
+        <source>The following projects had unsaved changes when Olive forcefully quit. Would you like to load them?</source>
+        <translation type="vanished">当Olive强制退出时，以下项目有未保存的更改。是否要加载它们？</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1390"/>
+        <source>Found auto-recoveries but failed to load the auto-recovery index. Auto-recover projects will have to be opened manually.
+
+Your recoverable projects are still available at: %1</source>
+        <translation>找到了自动恢复，但未能加载自动恢复索引。必须手动打开自动恢复项目。
+您的可恢复项目仍位于：%1</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1402"/>
+        <source>The following project versions have been auto-saved:</source>
+        <translation>以下项目版本已自动保存：</translation>
+    </message>
+    <message>
+        <location filename="../core.cpp" line="1434"/>
+        <source>Disk Cache Full</source>
+        <translation>磁盘缓存已满</translation>
+    </message>
+    <message>
+        <source>The disk cache is currently full and Olive is having to delete old frames to keep it within the limits set in the Disk preferences. This will result in SIGNIFICANTLY reduced cache performance.
+
+To remedy this, please do one of the following:
+
+1. Manually clear the disk cache in Disk preferences.
+2. Increase the maximum disk cache size in Disk preferences.
+3. Reduce usage of the disk cache (e.g. disable auto-cache or only cache specific sections of your sequence).</source>
+        <translation type="vanished">磁盘缓存当前已满，Olive必须删除旧帧以将其保持在磁盘首选项中设置的限制范围内。这将导致缓存性能显著降低。
 
 
 要解决此问题，请执行以下操作之一：
 
 
-1.
-手动清除磁盘首选项中的磁盘缓存。
+1.手动清除磁盘首选项中的磁盘缓存。
 
-2.
-在磁盘首选项中增加最大磁盘缓存大小。
+2.在磁盘首选项中增加最大磁盘缓存大小。
 
-3.
-减少磁盘缓存的使用（例如，禁用自动缓存或仅缓存序列的特定部分）。</translation>
-< /message>
-< /context>
-< context >
-<name>olive::CornerPinDistortNode < /name>
-< message >
-<location filename = "../node/distort/cornerpin/cornerpindistortnode.cpp"
-line = "78" / >
-<source>Texture < /source>
-< translation > 纹理 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/cornerpin/cornerpindistortnode.cpp"
-line = "79" / >
-<source>Perspective < /source>
-< translation > 透视 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/cornerpin/cornerpindistortnode.cpp"
-line = "80" / >
-    <source>Top
-Left < /source>
-< translation > 左上方 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/cornerpin/cornerpindistortnode.cpp"
-line = "81" / >
-    <source>Top
-Right < /source>
-< translation > 右上方 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/cornerpin/cornerpindistortnode.cpp"
-line = "82" / >
-    <source>Bottom
-Right < /source>
-< translation > 右下角 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/cornerpin/cornerpindistortnode.cpp"
-line = "83" / >
-    <source>Bottom
-Left < /source>
-< translation > 左下角 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/cornerpin/cornerpindistortnode.h"
-line = "43" / >
-    <source>Corner
-Pin < /source>
-< translation > 边角 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/cornerpin/cornerpindistortnode.h"
-line = "58" / >
-    <source>Distort
-the
-image
-by
-dragging
-the
-corners. < /source>
-< translation > 通过拖动角来扭曲图像. < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::CrashHandlerDialog < /name>
-< message >
-<source>Olive < /source>
-< translation
-type = "vanished" > Olive < /translation>
-    < /message>
-    < message >
-    <source>We & apos;
-re
-sorry, Olive
-has
-crashed.Please
-help
-us
-fix
-it
-by
-sending
-an
-error
-report. < /source>
-< translation
-type = "vanished" > 抱歉，Olive
-崩溃了。请发送错误报告帮助我们修复它。</translation>
-< /message>
-< message >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "67" / >
-    <source>Describe
-what
-you
-were
-doing in as
-much
-detail as possible.If
-you
-can, provide
-steps
-to
-reproduce
-this
-crash. < /source>
-< translation > 尽可能详细地描述您正在进行的操作。 如果可以，请您提供能重现此崩溃的步骤。</translation>
-< /message>
-< message >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "76" / >
-    <source>Crash
-Report:</source>
-< translation > 崩溃报告：</translation>
-< /message>
-< message >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "89" / >
-    <source>Send
-Error
-Report < /source>
-< translation > 发送错误报告 < /translation>
-< /message>
-< message >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "94" / >
-    <source>Don & apos;
-t
-Send < /source>
-< translation > 不发送 < /translation>
-< /message>
-< message >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "104" / >
-    <source>Waiting
-for crash report
-to
-be
-generated
-...
-</source>
-< translation > 正在等待崩溃报告生成
-...
-</translation>
-< /message>
-< message >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "167" / >
-    <source>Upload
-Failed < /source>
-< translation > 上传失败 < /translation>
-< /message>
-< message >
-<source>Failed
-to
-send
-error
-report.Please
-try
-again
-later. < /source>
-< translation
-type = "obsolete" > 无法发送错误报告。请稍后重试。</translation>
-< /message>
-< message >
-<source>No
-Crash
-Summary < /source>
-< translation
-type = "obsolete" > 没有崩溃摘要 < /translation>
-    < /message>
-    < message >
-    <source>Are
-you
-sure
-you
-want
-to
-send
-an
-error
-report
-with no crash
-summary ? </source>
-    < translation type = "obsolete" > 确定要发送没有崩溃摘要的错误报告？</translation>
-< /message>
-< message >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "49" / >
-    <source>Oak
-Video
-Editor < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "58" / >
-    <source>We & apos;
-re
-sorry, Oak
-Video
-Editor
-has
-crashed.Please
-help
-us
-fix
-it
-by
-sending
-an
-error
-report. < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "169" / >
-    <source>Failed
-to
-send
-error
-report( % 1
-).
-Please
-try
-again
-later. < /source>
-< translation > 无法发送错误报告（%
-1）。请稍后再试。</translation>
-< /message>
-< message >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "189" / >
-    <source>SSL
-Error < /source>
-< translation > SSL错误 < /translation>
-< /message>
-< message >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "190" / >
-    <source>Encountered
-the
-following
-SSL
-errors:
+3.减少磁盘缓存的使用（例如，禁用自动缓存或仅缓存序列的特定部分）。</translation>
+    </message>
+</context>
+<context>
+    <name>olive::CornerPinDistortNode</name>
+    <message>
+        <location filename="../node/distort/cornerpin/cornerpindistortnode.cpp" line="78"/>
+        <source>Texture</source>
+        <translation>纹理</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/cornerpin/cornerpindistortnode.cpp" line="79"/>
+        <source>Perspective</source>
+        <translation>透视</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/cornerpin/cornerpindistortnode.cpp" line="80"/>
+        <source>Top Left</source>
+        <translation>左上方</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/cornerpin/cornerpindistortnode.cpp" line="81"/>
+        <source>Top Right</source>
+        <translation>右上方</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/cornerpin/cornerpindistortnode.cpp" line="82"/>
+        <source>Bottom Right</source>
+        <translation>右下角</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/cornerpin/cornerpindistortnode.cpp" line="83"/>
+        <source>Bottom Left</source>
+        <translation>左下角</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/cornerpin/cornerpindistortnode.h" line="43"/>
+        <source>Corner Pin</source>
+        <translation>边角</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/cornerpin/cornerpindistortnode.h" line="58"/>
+        <source>Distort the image by dragging the corners.</source>
+        <translation>通过拖动角来扭曲图像.</translation>
+    </message>
+</context>
+<context>
+    <name>olive::CrashHandlerDialog</name>
+    <message>
+        <source>Olive</source>
+        <translation type="vanished">Olive</translation>
+    </message>
+    <message>
+        <source>We&apos;re sorry, Olive has crashed. Please help us fix it by sending an error report.</source>
+        <translation type="vanished">抱歉，Olive 崩溃了。请发送错误报告帮助我们修复它。</translation>
+    </message>
+    <message>
+        <location filename="../crashhandler/crashhandler.cpp" line="67"/>
+        <source>Describe what you were doing in as much detail as possible. If you can, provide steps to reproduce this crash.</source>
+        <translation>尽可能详细地描述您正在进行的操作。 如果可以，请您提供能重现此崩溃的步骤。</translation>
+    </message>
+    <message>
+        <location filename="../crashhandler/crashhandler.cpp" line="76"/>
+        <source>Crash Report:</source>
+        <translation>崩溃报告：</translation>
+    </message>
+    <message>
+        <location filename="../crashhandler/crashhandler.cpp" line="89"/>
+        <source>Send Error Report</source>
+        <translation>发送错误报告</translation>
+    </message>
+    <message>
+        <location filename="../crashhandler/crashhandler.cpp" line="94"/>
+        <source>Don&apos;t Send</source>
+        <translation>不发送</translation>
+    </message>
+    <message>
+        <location filename="../crashhandler/crashhandler.cpp" line="104"/>
+        <source>Waiting for crash report to be generated...</source>
+        <translation>正在等待崩溃报告生成...</translation>
+    </message>
+    <message>
+        <location filename="../crashhandler/crashhandler.cpp" line="167"/>
+        <source>Upload Failed</source>
+        <translation>上传失败</translation>
+    </message>
+    <message>
+        <source>Failed to send error report. Please try again later.</source>
+        <translation type="obsolete">无法发送错误报告。请稍后重试。</translation>
+    </message>
+    <message>
+        <source>No Crash Summary</source>
+        <translation type="obsolete">没有崩溃摘要</translation>
+    </message>
+    <message>
+        <source>Are you sure you want to send an error report with no crash summary?</source>
+        <translation type="obsolete">确定要发送没有崩溃摘要的错误报告？</translation>
+    </message>
+    <message>
+        <location filename="../crashhandler/crashhandler.cpp" line="49"/>
+        <source>Oak Video Editor</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../crashhandler/crashhandler.cpp" line="58"/>
+        <source>We&apos;re sorry, Oak Video Editor has crashed. Please help us fix it by sending an error report.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../crashhandler/crashhandler.cpp" line="169"/>
+        <source>Failed to send error report (%1). Please try again later.</source>
+        <translation>无法发送错误报告（%1）。请稍后再试。</translation>
+    </message>
+    <message>
+        <location filename="../crashhandler/crashhandler.cpp" line="189"/>
+        <source>SSL Error</source>
+        <translation>SSL错误</translation>
+    </message>
+    <message>
+        <location filename="../crashhandler/crashhandler.cpp" line="190"/>
+        <source>Encountered the following SSL errors:
 
-    %
-1 < /source>
-< translation > 遇到以下SSL错误：
+%1</source>
+        <translation>遇到以下SSL错误：
 
-%
-1 < /translation>
-< /message>
-< message >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "227" / >
-    <source>You
-must
-write
-a
-description
-to
-submit
-this
-crash
-report. < /source>
-< translation > 您必须写一个描述才能提交此崩溃报告。</translation>
-< /message>
-< message >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "311" / >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "341" / >
-    <source>Failed
-to
-send
-report < /source>
-< translation > 无法发送报告 < /translation>
-< /message>
-< message >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "312" / >
-    <source>Failed
-to
-find
-symbols
-necessary
-to
-send
-report.This
-is
-a
-packaging
-issue.Please
-notify
-the
-maintainers
-of
-this
-package. < /source>
-< translation > 未能找到发送报告所需的符号。这是一个包装问题。请通知此包的维护人员。</translation>
-< /message>
-< message >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "342" / >
-    <source>Failed
-to
-open
-symbol
-file.You
-may
-not
-have
-permission
-to
-access
-it. < /source>
-< translation > 未能打开符号文件。您可能无权访问它。</translation>
-< /message>
-< message >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "366" / >
-    <source>Confirm
-Close < /source>
-< translation > 确认关闭 < /translation>
-< /message>
-< message >
-<location filename = "../crashhandler/crashhandler.cpp"
-line = "368" / >
-    <source>Crash
-report
-is
-still
-uploading.Closing
-now
-may
-result in no
-report
-being
-sent.Are
-you
-sure
-you
-wish
-to
-close ? </source>
-    < translation > 崩溃报告仍在上传。现在关闭可能导致不发送报告。您确定要关闭吗？</translation>
-< /message>
-< /context>
-< context >
-<name>olive::CropDistortNode < /name>
-< message >
-<location filename = "../node/distort/crop/cropdistortnode.cpp"
-line = "82" / >
-<source>Texture < /source>
-< translation > 纹理 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/crop/cropdistortnode.cpp"
-line = "83" / >
-<source>Left < /source>
-< translation > 左 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/crop/cropdistortnode.cpp"
-line = "84" / >
-<source>Top < /source>
-< translation > 顶部 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/crop/cropdistortnode.cpp"
-line = "85" / >
-<source>Right < /source>
-< translation > 右 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/crop/cropdistortnode.cpp"
-line = "86" / >
-<source>Bottom < /source>
-< translation > 底部 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/crop/cropdistortnode.cpp"
-line = "87" / >
-<source>Feather < /source>
-< translation > 羽毛 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/crop/cropdistortnode.h"
-line = "44" / >
-<source>Crop < /source>
-< translation > 裁剪 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/crop/cropdistortnode.h"
-line = "59" / >
-    <source>Crop
-the
-edges
-of
-an
-image. < /source>
-< translation > 裁剪图像的边缘。</translation>
-< /message>
-< /context>
-< context >
-<name>olive::CrossDissolveTransition < /name>
-< message >
-<location filename = "../node/block/transition/crossdissolve/crossdissolvetransition.cpp"
-line = "33" / >
-    <source>Cross
-Dissolve < /source>
-< translation > 交叉溶解 < /translation>
-< /message>
-< message >
-<location filename = "../node/block/transition/crossdissolve/crossdissolvetransition.cpp"
-line = "48" / >
-    <source>Smoothly
-transition
-between
-two
-clips. < /source>
-< translation > 两个片段之间平滑转场。</translation>
-< /message>
-< /context>
-< context >
-<name>olive::CurvePanel < /name>
-< message >
-<location filename = "../panel/curve/curve.cpp"
-line = "73" / >
-    <source>Curve
-Editor < /source>
-< translation > 曲线编辑器 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::CurveView < /name>
-< message >
-<location filename = "../widget/curvewidget/curveview.cpp"
-line = "266" / >
-    <source>Zoom
-to
-Fit < /source>
-< translatorcomment > 适屏缩放 < /translatorcomment>
-< translation > 缩放到合适大小 < /translation>
-< /message>
-< message >
-<location filename = "../widget/curvewidget/curveview.cpp"
-line = "269" / >
-    <source>Zoom
-to
-Fit
-Selected < /source>
-< translation > 缩放以适合选定对象 < /translation>
-< /message>
-< message >
-<location filename = "../widget/curvewidget/curveview.cpp"
-line = "273" / >
-    <source>Reset
-Zoom < /source>
-< translation > 重置缩放 < /translation>
-< /message>
-< message >
-<location filename = "../widget/curvewidget/curveview.cpp"
-line = "434" / >
-    <source>Moved
-Keyframe
-Bezier
-Control
-Point < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< /context>
-< context >
-<name>olive::CurveWidget < /name>
-< message >
-<location filename = "../widget/curvewidget/curvewidget.cpp"
-line = "68" / >
-<source>Linear < /source>
-< translation > 线性 < /translation>
-< /message>
-< message >
-<location filename = "../widget/curvewidget/curvewidget.cpp"
-line = "75" / >
-<source>Bezier < /source>
-< translation > 贝塞尔曲线 < /translation>
-< /message>
-< message >
-<location filename = "../widget/curvewidget/curvewidget.cpp"
-line = "82" / >
-<source>Hold < /source>
-< translation > 保留 < /translation>
-< /message>
-< message >
-<location filename = "../widget/curvewidget/curvewidget.cpp"
-line = "351" / >
-    <source>Changed
-Type
-of % 1
-Keyframe(s)
-to % 2 < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< /context>
-< context >
-<name>olive::CustomCacheTask < /name>
-< message >
-<location filename = "../task/customcache/customcachetask.cpp"
-line = "30" / >
-    <source>Caching
-custom
-range
-for &
-quot;
-%
-1 & quot;
-</source>
-< translation > 正在缓存“%
-1”的自定义范围 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::DespillNode < /name>
-< message >
-<location filename = "../node/keying/despill/despill.cpp"
-line = "49" / >
-<source>Despill < /source>
-< translation > 去除溢色 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/despill/despill.cpp"
-line = "64" / >
-    <source>Selection
-of
-simple
-depsill
-operations < /source>
-< translation > 选择简单的去除溢色操作 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/despill/despill.cpp"
-line = "71" / >
-<source>Input < /source>
-< translation > 输入 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/despill/despill.cpp"
-line = "73" / >
-    <source>Key
-Color < /source>
-< translation > 关键颜色 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/despill/despill.cpp"
-line = "74" / >
-<source>Green < /source>
-< translation > 绿色 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/despill/despill.cpp"
-line = "74" / >
-<source>Blue < /source>
-< translation > 蓝色 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/despill/despill.cpp"
-line = "76" / >
-<source>Method < /source>
-< translation > 方法 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/despill/despill.cpp"
-line = "77" / >
-<source>Average < /source>
-< translation > 平均的 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/despill/despill.cpp"
-line = "77" / >
-    <source>Double
-Red
-Average < /source>
-< translation > 双倍红色平均值 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/despill/despill.cpp"
-line = "78" / >
-    <source>Double
-Average < /source>
-< translation > 双倍平均值 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/despill/despill.cpp"
-line = "78" / >
-<source>Limit < /source>
-< translation > 限制 < /translation>
-< /message>
-< message >
-<location filename = "../node/keying/despill/despill.cpp"
-line = "80" / >
-    <source>Preserve
-Luminance < /source>
-< translation > 保持亮度 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::DipToColorTransition < /name>
-< message >
-<location filename = "../node/block/transition/diptocolor/diptocolortransition.cpp"
-line = "39" / >
-    <source>Dip
-To
-Color < /source>
-< translation > 浸入颜色 < /translation>
-< /message>
-< message >
-<location filename = "../node/block/transition/diptocolor/diptocolortransition.cpp"
-line = "54" / >
-    <source>Transition
-between
-clips
-by
-dipping
-to
-a
-color. < /source>
-< translation > 通过浸入颜色在两个片段之间转场。</translation>
-< /message>
-< message >
-<location filename = "../node/block/transition/diptocolor/diptocolortransition.cpp"
-line = "71" / >
-<source>Color < /source>
-< translation > 颜色 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::DiskCacheDialog < /name>
-< message >
-<location filename = "../dialog/diskcache/diskcachedialog.cpp"
-line = "41" / >
-    <source>Disk
-Cache: %
-1 < /source>
-< translation > 磁盘缓存：%
-1 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/diskcache/diskcachedialog.cpp"
-line = "43" / >
-    <source>Disk
-Cache
-Settings < /source>
-< translation > 磁盘缓存设置 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/diskcache/diskcachedialog.cpp"
-line = "47" / >
-    <source>Maximum
-Disk
-Cache:</source>
-< translation > 最大磁盘缓存：</translation>
-< /message>
-< message >
-<location filename = "../dialog/diskcache/diskcachedialog.cpp"
-line = "50" / >
-    <source> % 1
-GB < /source>
-< translation > % 1
-GB < /translation>
-< /message>
-< message >
-<location filename = "../dialog/diskcache/diskcachedialog.cpp"
-line = "58" / >
-<location filename = "../dialog/diskcache/diskcachedialog.cpp"
-line = "106" / >
-<location filename = "../dialog/diskcache/diskcachedialog.cpp"
-line = "118" / >
-    <source>Clear
-Disk
-Cache < /source>
-< translation > 清除磁盘缓存 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/diskcache/diskcachedialog.cpp"
-line = "67" / >
-    <source>Automatically
-clear
-disk
-cache
-on
-close < /source>
-< translation > 关闭时自动清除磁盘缓存 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/diskcache/diskcachedialog.cpp"
-line = "107" / >
-    <source>Are
-you
-sure
-you
-want
-to
-clear
-the
-disk
-cache in & apos;
-%
-1 & apos;
-    ? </source>
-    < translation > 您确定要清除“%
-1”中的磁盘缓存？</translation>
-< /message>
-< message >
-<location filename = "../dialog/diskcache/diskcachedialog.cpp"
-line = "115" / >
-    <source>Disk
-Cache
-Cleared < /source>
-< translation > 磁盘缓存已清除 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/diskcache/diskcachedialog.cpp"
-line = "119" / >
-    <source>Disk
-cache
-failed
-to
-fully
-clear.You
-may
-have
-to
-delete the
-cache
-files
-manually. < /source>
-< translation > 磁盘缓存无法完全清除。您可能需要手动删除缓存文件。</translation>
-< /message>
-< message >
-<location filename = "../dialog/diskcache/diskcachedialog.cpp"
-line = "122" / >
-    <source>Disk
-Cache
-Partially
-Cleared < /source>
-< translation > 磁盘缓存已部分清除 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::DiskManager < /name>
-< message >
-<location filename = "../render/diskmanager.cpp"
-line = "53" / >
-<location filename = "../render/diskmanager.cpp"
-line = "196" / >
-    <source>Disk
-Cache
-Error < /source>
-< translation > 磁盘缓存错误 < /translation>
-< /message>
-< message >
-<location filename = "../render/diskmanager.cpp"
-line = "54" / >
-    <source>Unable
-to
-set
-custom
-application
-disk
-cache.Using
-default
-instead. < /source>
-< translation > 无法设置自定义应用程序磁盘缓存。使用默认设置。</translation>
-< /message>
-< message >
-<location filename = "../render/diskmanager.cpp"
-line = "165" / >
-    <source>Disk
-Cache < /source>
-< translation > 磁盘缓存 < /translation>
-< /message>
-< message >
-<location filename = "../render/diskmanager.cpp"
-line = "166" / >
-    <source>You & apos;
-ve
-chosen
-to
-change
-the
-default
-disk
-cache
-location.This
-will
-invalidate
-your
-current
-cache.Would
-you
-like
-to
-continue
-? </source>
-    < translation > 您已选择更改默认磁盘缓存位置。这将使当前缓存无效。您要继续吗？</translation>
-< /message>
-< message >
-<location filename = "../render/diskmanager.cpp"
-line = "197" / >
-    <source>Failed
-to
-open
-disk
-cache
-at & quot;
-%
-1 & quot;
-.
-Try
-a
-different
-folder. < /source>
-< translation > 无法打开位于 & quot;
-%
-1 & quot;
-的磁盘缓存。请尝试其他文件夹。</translation>
-< /message>
-< /context>
-< context >
-<name>olive::DisplayTransformNode < /name>
-< message >
-<location filename = "../node/color/displaytransform/displaytransform.cpp"
-line = "50" / >
-    <source>Display
-Transform < /source>
-< translation > 显示变换 < /translation>
-< /message>
-< message >
-<location filename = "../node/color/displaytransform/displaytransform.cpp"
-line = "65" / >
-    <source>Converts
-an
-image
-to
-or
-from
-a
-display
-color
-space. < /source>
-< translation > Converts
-an
-image
-to
-or
-from
-a
-display
-color
-space. < /translation>
-< /message>
-< message >
-<location filename = "../node/color/displaytransform/displaytransform.cpp"
-line = "72" / >
-<source>Input < /source>
-< translation > 输入 < /translation>
-< /message>
-< message >
-<location filename = "../node/color/displaytransform/displaytransform.cpp"
-line = "73" / >
-<source>Display < /source>
-< translation > 显示 < /translation>
-< /message>
-< message >
-<location filename = "../node/color/displaytransform/displaytransform.cpp"
-line = "74" / >
-<source>View < /source>
-< translation > 视图 < /translation>
-< /message>
-< message >
-<location filename = "../node/color/displaytransform/displaytransform.cpp"
-line = "75" / >
-<source>Direction < /source>
-< translation > 方向 < /translation>
-< /message>
-< message >
-<location filename = "../node/color/displaytransform/displaytransform.cpp"
-line = "76" / >
-<source>Forward < /source>
-< translation > 向前 < /translation>
-< /message>
-< message >
-<location filename = "../node/color/displaytransform/displaytransform.cpp"
-line = "76" / >
-<source>Inverse < /source>
-< translation > 反转 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::DropShadowFilter < /name>
-< message >
-<location filename = "../node/filter/dropshadow/dropshadowfilter.cpp"
-line = "69" / >
-<source>Texture < /source>
-< translation > 纹理 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/dropshadow/dropshadowfilter.cpp"
-line = "70" / >
-<source>Color < /source>
-< translation > 颜色 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/dropshadow/dropshadowfilter.cpp"
-line = "71" / >
-<source>Distance < /source>
-< translation > 距离 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/dropshadow/dropshadowfilter.cpp"
-line = "72" / >
-<source>Angle < /source>
-< translation > 角 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/dropshadow/dropshadowfilter.cpp"
-line = "73" / >
-<source>Softness < /source>
-< translation > 柔化 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/dropshadow/dropshadowfilter.cpp"
-line = "74" / >
-<source>Opacity < /source>
-< translation > 不透明度 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/dropshadow/dropshadowfilter.cpp"
-line = "75" / >
-    <source>Faster(Lower
-Quality
-)
-</source>
-< translation > 更快（质量更低）</translation>
-< /message>
-< message >
-<location filename = "../node/filter/dropshadow/dropshadowfilter.h"
-line = "39" / >
-    <source>Drop
-Shadow < /source>
-< translation > 放置阴影 < /translation>
-< /message>
-< message >
-<location filename = "../node/filter/dropshadow/dropshadowfilter.h"
-line = "51" / >
-    <source>Adds
-a
-drop
-shadow
-to
-an
-image. < /source>
-< translation > 向图像添加放置阴影。</translation>
-< /message>
-< /context>
-< context >
-<name>olive::ElapsedCounterWidget < /name>
-< message >
-<location filename = "../widget/taskview/elapsedcounterwidget.cpp"
-line = "95" / >
-    <source>Elapsed
-: %
-1 < /source>
-< translation > 经过：%
-1 < /translation>
-< /message>
-< message >
-<location filename = "../widget/taskview/elapsedcounterwidget.cpp"
-line = "97" / >
-    <source>Remaining
-: %
-1 < /source>
-< translation > 剩余：%
-1 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::ExportAdvancedVideoDialog < /name>
-< message >
-<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
-line = "33" / >
-<source>Advanced < /source>
-< translation > 高级 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
-line = "41" / >
-<source>Pixel < /source>
-< translation > 像素 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
-line = "47" / >
-    <source>Pixel
-Format:</source>
-< translation > 像素格式：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
-line = "67" / >
-<source>Performance < /source>
-< translation > 性能 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
-line = "73" / >
-    <source>Threads
-:
-</source>
-< translation > 线程：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
-line = "55" / >
-    <source>YUV
-Color
-Range:</source>
-< translation > YUV颜色范围：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
-line = "59" / >
-    <source>Limited(16 - 235) < /source>
-    < translation > 有限（16 - 235）</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
-line = "59" / >
-    <source>Full(0 - 255) < /source>
-    < translation > 完整（0 - 255）</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportadvancedvideodialog.cpp"
-line = "78" / >
-<source>Auto < /source>
-< translation > 自动 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::ExportAudioTab < /name>
-< message >
-<location filename = "../dialog/export/exportaudiotab.cpp"
-line = "43" / >
-    <source>Codec
-:
-</source>
-< translation > 编解码器：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportaudiotab.cpp"
-line = "58" / >
-    <source>Sample
-Rate:</source>
-< translation > 采样率：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportaudiotab.cpp"
-line = "65" / >
-    <source>Channel
-Layout:</source>
-< translation > 通道布局：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportaudiotab.cpp"
-line = "72" / >
-    <source>Format
-:
-</source>
-< translation > 格式：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportaudiotab.cpp"
-line = "79" / >
-    <source>Bit
-Rate:</source>
-< translation > 比特率：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportaudiotab.cpp"
-line = "85" / >
-    <source> % 1
-kbps < /source>
-< translation > </translation>
-< /message>
-< /context>
-< context >
-<name>olive::ExportCodec < /name>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "34" / >
-<source>DNxHD < /source>
-< translation > DNxHD < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "36" / >
-    <source>H
-.264 < /source>
-< translation > H
-.264 < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "40" / >
-    <source>H
-.265 < /source>
-< translation > H
-.265 < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "42" / >
-<source>OpenEXR < /source>
-< translation > OpenEXR < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "44" / >
-<source>PNG < /source>
-< translation > PNG < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "46" / >
-<source>ProRes < /source>
-< translation > ProRes < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "50" / >
-<source>TIFF < /source>
-< translation > TIFF < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "52" / >
-<source>MP2 < /source>
-< translation > MP2 < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "54" / >
-<source>MP3 < /source>
-< translation > MP3 < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "56" / >
-<source>AAC < /source>
-< translation > AAC < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "58" / >
-<source>PCM(Uncompressed) < /source>
-< translation > PCM(Uncompressed) < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "68" / >
-    <source>AV1 < /source>
-    < translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "75" / >
-<source>Unknown < /source>
-< translation > 未知 < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "38" / >
-    <source>H
-.264
-RGB < /source>
-< translation > H
-.264
-RGB < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "48" / >
-<source>Cineform < /source>
-< translation > Cineform < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "60" / >
-<source>FLAC < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "62" / >
-<source>Opus < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "64" / >
-<source>Vorbis < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "66" / >
-<source>VP9 < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../codec/exportcodec.cpp"
-line = "70" / >
-    <source>SubRip
-SRT < /source>
-< translation > </translation>
-< /message>
-< /context>
-< context >
-<name>olive::ExportDialog < /name>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "68" / >
-    <source>Filename
-:
-</source>
-< translation > 文件名：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "78" / >
-    <source>Browse
-for exported file
-filename < /source>
-< translation > 浏览已导出的文件名 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "85" / >
-    <source>Preset
-:
-</source>
-< translation > 预设：</translation>
-< /message>
-< message >
-<source>Same
-As
-Source - High
-Quality < /source>
-< translation
-type = "obsolete" > 与源相同 - 高质量 < /translation>
-    < /message>
-    < message >
-    <source>Same
-As
-Source - Medium
-Quality < /source>
-< translation
-type = "obsolete" > 与源相同 - 中等质量 < /translation>
-    < /message>
-    < message >
-    <source>Same
-As
-Source - Low
-Quality < /source>
-< translation
-type = "obsolete" > 与源相同 - 低质量 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "115" / >
-    <source>Range
-:
-</source>
-< translation > 范围：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "118" / >
-    <source>Entire
-Sequence < /source>
-< translation > 整个序列 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "119" / >
-    <source>In
-to
-Out < /source>
-< translation > 入点至出点 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "131" / >
-    <source>Format
-:
-</source>
-< translation > 格式
-:
-</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "139" / >
-    <source>Export
-Video < /source>
-< translation > 导出视频 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "142" / >
-    <source>Export
-Audio < /source>
-< translation > 导出音频 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "156" / >
-<source>Video < /source>
-< translation > 视频 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "166" / >
-<source>Audio < /source>
-< translation > 音频 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "184" / >
-    <source>Exporting in the
-background
-allows
-you
-to
-continue using
-Oak
-Video
-Editor
-while exporting, but may
-result in slower
-export
-speeds, and
-mayseverely
-impact
-editing
-and
-playback
-performance. < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "206" / >
-<location filename = "../dialog/export/export.cpp"
-line = "409" / >
-<source>Export < /source>
-< translation > 导出 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "221" / >
-<source>Preview < /source>
-< translation > 预览 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "312" / >
-    <source>Invalid
-parameters < /source>
-< translation > 无效的参数 < /translation>
-< /message>
-< message >
-<source>Both
-video
-and
-audio
-are
-disabled.There & apos;
-s
-nothing
-to
-export.
-</source>
-< translation
-type = "obsolete" > 视频和音频都已禁用。没有可导出的内容。</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "326" / >
-<location filename = "../dialog/export/export.cpp"
-line = "357" / >
-<location filename = "../dialog/export/export.cpp"
-line = "369" / >
-    <source>Invalid
-filename < /source>
-< translation > 无效文件名 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "327" / >
-    <source>The
-filename
-must
-contain
-the
-extension & quot;
-%
-1 & quot;
-.
-Would
-you
-like
-to
-append
-it
-automatically ? </source>
-    < translation > 文件名必须包含扩展名“%
-1”。您要自动附加扩展名吗？</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "346" / >
-    <source>Failed
-to
-create
-output
-directory < /source>
-< translation > 无法创建输出目录 < /translation>
-< /message>
-< message >
-<source>The
-intended
-output
-directory
-doesn & apos;
-t
-exist
-and
-Olive
-couldn & apos;
-t
-create
-it.Please
-choose
-a
-different
-filename. < /source>
-< translation
-type = "vanished" > 指定的输出目录不存在且
-Olive
-无法创建它。请选择一个其他的文件名。</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "381" / >
-    <source>Confirm
-Overwrite < /source>
-< translation > 确认覆盖 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "382" / >
-    <source>The
-file & quot;
-%
-1 & quot;
-already
-exists.Do
-you
-want
-to
-overwrite
-it ? </source>
-    < translation > 文件“%
-1”已存在。您要覆盖它吗？</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "395" / >
-    <source>Invalid
-Parameters < /source>
-< translation > 无效的参数 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "396" / >
-    <source>Width
-and
-height
-must
-be
-multiples
-of
-2. < /source>
-< translation > 宽度和高度必须是2的倍数。</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "145" / >
-    <source>Export
-Subtitles < /source>
-< translation > 导出字幕 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "169" / >
-<source>Subtitles < /source>
-< translation > 字幕 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "183" / >
-    <source>Run
-In
-Background < /source>
-< translation > 在后台运行 < /translation>
-< /message>
-< message >
-<source>Exporting in the
-background
-allows
-you
-to
-continue using
-Olive
-while exporting, but may
-result in slower
-export
-speeds, and
-mayseverely
-impact
-editing
-and
-playback
-performance. < /source>
-< translation
-type = "vanished" > 在后台导出允许您在导出时继续使用Olive，但可能会导致导出速度变慢，并可能严重影响编辑和播放性能。</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "191" / >
-    <source>Import
-Result
-After
-Export < /source>
-< translation > Import
-Result
-After
-Export < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "211" / >
-<source>Cancel < /source>
-< translation > 取消 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "313" / >
-    <source>Video, audio, and
-subtitles
-are
-disabled.There & apos;
-s
-nothing
-to
-export.
-</source>
-< translation > 已经禁用视频、音频和字幕。没有可以导出的东西。</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "347" / >
-    <source>The
-intended
-output
-directory
-doesn & apos;
-t
-exist
-and
-Oak
-Video
-Editor
-couldn & apos;
-t
-create
-it.Please
-choose
-a
-different
-filename. < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "358" / >
-    <source>Export
-is
-set
-to
-an
-image
-sequence, but
-the
-filename
-does
-not
-have
-a
-section
-for digits(formatted as [#
-####]
-where
-the
-amount
-of
-#
-is
-the
-amount
-of
-digits
-).
-</source>
-< translation > 导出设置为图像序列，但文件名没有数字部分（格式为[
-######]，其中
-#的数量是数字的数量）。</translation>
-< /message>
-< message
-numerus = "yes" >
-<location filename = "../dialog/export/export.cpp"
-line = "370" / >
-    <source>Filename
-doesn & apos;
-t
-contain
-enough
-digits
-for the amount
-of
-frames
-this
-export
-will
-need(need % 1
-for %
-n
-frame(s)
-).
-</source>
-< translation
-type = "unfinished" >
-    <numerusform>文件名包含的位数不足，无法满足此导出所需的帧数（对于 % n帧，需要 % 1）。</numerusform>
-< /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "582" / >
-<source>Default < /source>
-< translation > 默认 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/export.cpp"
-line = "585" / >
-    <source>Last
-Used < /source>
-< translation > 最后使用的 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::ExportFormat < /name>
-< message >
-<location filename = "../codec/exportformat.cpp"
-line = "33" / >
-<source>DNxHD < /source>
-< translation > DNxHD < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportformat.cpp"
-line = "35" / >
-    <source>Matroska
-Video < /source>
-< translation > Matroska
-Video < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportformat.cpp"
-line = "37" / >
-    <source>MPEG - 4
-Video < /source>
-< translation > MPEG - 4
-Video < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportformat.cpp"
-line = "41" / >
-<source>OpenEXR < /source>
-< translation > OpenEXR < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportformat.cpp"
-line = "43" / >
-<source>PNG < /source>
-< translation > PNG < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportformat.cpp"
-line = "45" / >
-<source>TIFF < /source>
-< translation > TIFF < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportformat.cpp"
-line = "47" / >
-<source>QuickTime < /source>
-< translation > QuickTime < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportformat.cpp"
-line = "67" / >
-<source>Unknown < /source>
-< translation > 未知 < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportformat.cpp"
-line = "39" / >
-    <source>MPEG - 4
-Audio < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../codec/exportformat.cpp"
-line = "49" / >
-    <source>Wave
-Audio < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../codec/exportformat.cpp"
-line = "51" / >
-<source>AIFF < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../codec/exportformat.cpp"
-line = "53" / >
-<source>MP3 < /source>
-< translation > MP3 < /translation>
-< /message>
-< message >
-<location filename = "../codec/exportformat.cpp"
-line = "55" / >
-<source>FLAC < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../codec/exportformat.cpp"
-line = "57" / >
-<source>Ogg < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../codec/exportformat.cpp"
-line = "59" / >
-<source>WebM < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../codec/exportformat.cpp"
-line = "61" / >
-    <source>SubRip
-SRT < /source>
-< translation > </translation>
-< /message>
-< /context>
-< context >
-<name>olive::ExportFormatComboBox < /name>
-< message >
-<location filename = "../dialog/export/exportformatcombobox.cpp"
-line = "40" / >
-<source>Video < /source>
-< translation > 视频 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportformatcombobox.cpp"
-line = "44" / >
-<source>Audio < /source>
-< translation > 音频 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportformatcombobox.cpp"
-line = "48" / >
-<source>Subtitle < /source>
-< translation > 字幕 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::ExportSavePresetDialog < /name>
-< message >
-<location filename = "../dialog/export/exportsavepresetdialog.cpp"
-line = "56" / >
-    <source>Name
-:
-</source>
-< translation > 名称：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportsavepresetdialog.cpp"
-line = "69" / >
-    <source>Save
-Export
-Preset < /source>
-< translation > 保存导出预设 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportsavepresetdialog.cpp"
-line = "76" / >
-    <source>Invalid
-Name < /source>
-< translation > 无效的名称 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportsavepresetdialog.cpp"
-line = "77" / >
-    <source>You
-must
-enter
-a
-name
-to
-save
-an
-export
-preset. < /source>
-< translation > 必须输入名称才能保存导出预设。</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportsavepresetdialog.cpp"
-line = "89" / >
-    <source>Overwrite
-Preset < /source>
-< translation > 覆盖预设 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportsavepresetdialog.cpp"
-line = "90" / >
-    <source>A
-preset
-with the name & quot;
-%
-1 & quot;
-already
-exists.Do
-you
-wish
-to
-overwrite
-it ? </source>
-    < translation > 名为“%
-1”的预设已存在。是否要覆盖它？</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportsavepresetdialog.cpp"
-line = "99" / >
-    <source>Write
-Error < /source>
-< translation > 写入错误 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportsavepresetdialog.cpp"
-line = "100" / >
-    <source>Failed
-to
-open
-file & quot;
-%
-1 & quot;
-for writing. < /source>
-    < translation > 无法打开文件“
-%
-1”进行写入。</translation>
-< /message>
-< /context>
-< context >
-<name>olive::ExportSubtitlesTab < /name>
-< message >
-<location filename = "../dialog/export/exportsubtitlestab.cpp"
-line = "36" / >
-    <source>Export
-to
-sidecar
-file < /source>
-< translation > 导出到附加文件 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportsubtitlestab.cpp"
-line = "41" / >
-    <source>Sidecar
-Format:</source>
-< translation > 附加格式：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportsubtitlestab.cpp"
-line = "52" / >
-    <source>Codec
-:
-</source>
-< translation > 编解码器：</translation>
-< /message>
-< /context>
-< context >
-<name>olive::ExportTask < /name>
-< message >
-<location filename = "../task/export/export.cpp"
-line = "49" / >
-    <source>Exporting & quot;
-%
-1 & quot;
-</source>
-< translation > 正在导出 & quot;
-%
-1 & quot;
-</translation>
-< /message>
-< message >
-<location filename = "../task/export/export.cpp"
-line = "74" / >
-    <source>Failed
-to
-create
-encoder < /source>
-< translation > 无法创建编码器 < /translation>
-< /message>
-< message >
-<source>Failed
-to
-open
-file < /source>
-< translation
-type = "obsolete" > 无法打开文件 < /translation>
-< /message>
-< message >
-<location filename = "../task/export/export.cpp"
-line = "203" / >
-    <source>Failed
-to
-overwrite & quot;
-%
-1 & quot;
-.
-Export
-has
-been
-saved as &quot;
-%
-2 & quot;
-instead. < /source>
-< translation > 无法覆盖“%
-1”。导出将被保存为“%
-2”。</translation>
-< /message>
-< message >
-<location filename = "../task/export/export.cpp"
-line = "79" / >
-    <source>Failed
-to
-open
-file: %
-1 < /source>
-< translation > 无法打开文件：%
-1 < /translation>
-< /message>
-< message >
-<location filename = "../task/export/export.cpp"
-line = "102" / >
-    <source>Failed
-to
-create
-subtitle
-encoder < /source>
-< translation > 无法创建字幕编码器 < /translation>
-< /message>
-< message >
-<location filename = "../task/export/export.cpp"
-line = "107" / >
-    <source>Failed
-to
-open
-subtitle
-sidecar
-file: %
-1 < /source>
-< translation > 无法打开字幕侧边栏文件：%
-1 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::ExportVideoTab < /name>
-< message >
-<source>Basic < /source>
-< translatorcomment > Would & quot;
-基本 & quot;
-/ &quot;基本的&quot; be more appropriate?</
-translatorcomment >
-<translation type = "obsolete" > 基本设置 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportvideotab.cpp"
-line = "91" / >
-    <source>Width
-:
-</source>
-< translation > 宽度：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportvideotab.cpp"
-line = "99" / >
-    <source>Height
-:
-</source>
-< translation > 高度：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportvideotab.cpp"
-line = "107" / >
-    <source>Maintain
-Aspect
-Ratio:</source>
-< translation > 保持宽高比：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportvideotab.cpp"
-line = "115" / >
-    <source>Scaling
-Method:</source>
-< translation > 缩放方式：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportvideotab.cpp"
-line = "119" / >
-<source>Fit < /source>
-< translation > 适合 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportvideotab.cpp"
-line = "120" / >
-<source>Stretch < /source>
-< translation > 拉伸 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportvideotab.cpp"
-line = "121" / >
-<source>Crop < /source>
-< translation > 裁剪 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportvideotab.cpp"
-line = "130" / >
-    <source>Frame
-Rate:</source>
-< translation > 帧率：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportvideotab.cpp"
-line = "139" / >
-    <source>Pixel
-Aspect
-Ratio:</source>
-< translation > 像素宽高比：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportvideotab.cpp"
-line = "146" / >
-    <source>Interlacing
-:
-</source>
-< translation > 交错：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportvideotab.cpp"
-line = "153" / >
-    <source>Quality
-:
-</source>
-< translation > 质量：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportvideotab.cpp"
-line = "174" / >
-<source>Codec < /source>
-< translation > 编解码器 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportvideotab.cpp"
-line = "178" / >
-    <source>Codec
-:
-</source>
-< translation > 编解码器：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportvideotab.cpp"
-line = "211" / >
-<source>Advanced < /source>
-< translation > 高级 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/exportvideotab.cpp"
-line = "87" / >
-<source>General < /source>
-< translation > 常规 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::FFmpegEncoder < /name>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "128" / >
-    <source>Failed
-to
-allocate
-output
-context < /source>
-< translation > 无法分配输出上下文 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "156" / >
-    <source>Failed
-to
-find
-suitable
-pixel
-format
-for this buffer < /source>
-< translation > 未能找到适合此缓冲区的像素格式 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "228" / >
-    <source>Failed
-to
-configure
-filter
-graph < /source>
-< translation > 无法配置筛选器图表 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "255" / >
-    <source>Failed
-to
-open
-IO
-context < /source>
-< translation > 无法打开IO上下文 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "262" / >
-    <source>Failed
-to
-write
-format
-header < /source>
-< translation > 无法写入格式标头 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "295" / >
-    <source>Failed
-to
-add
-frame
-to
-filter
-graph < /source>
-< translation > 未能将框架添加到筛选器图 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "302" / >
-    <source>Failed
-to
-retrieve
-frame
-from
-buffer
-sink < /source>
-< translation > 无法从缓冲区接收器检索帧 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "337" / >
-    <source>Failed
-to
-allocate
-sample
-array < /source>
-< translation > 未能分配样本数组 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "423" / >
-    <source>Failed
-to
-resample
-audio < /source>
-< translation > 无法重新采样音频 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "482" / >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "646" / >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "881" / >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "904" / >
-    <source>Failed
-to
-write
-interleaved
-packet < /source>
-< translation > 写入交错数据包失败 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "606" / >
-    <source> % 1
-: %
-2 % 3 < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "617" / >
-    <source>Failed
-to
-send
-frame
-to
-encoder < /source>
-< translation > 无法将帧发送到编码器 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "633" / >
-    <source>Failed
-to
-receive
-packet
-from
-decoder < /source>
-< translation > 无法从解码器接收数据包 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "668" / >
-    <source>Cannot
-initialize
-a
-stream
-that
-is
-not
-a
-video, audio, or
-subtitle
-type < /source>
-< translation > 无法初始化非视频、音频或字幕类型的流 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "677" / >
-    <source>Failed
-to
-find
-codec
-for 0x % 1 < /source>
-< translation > 找不到0x % 1
-的编解码器 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "683" / >
-    <source>Retrieved
-unexpected
-codec
-type % 1
-for codec % 2 < /source>
-    < translation > 已检索到编解码器 % 2的意外编解码器类型 % 1 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "809" / >
-    <source>Failed
-to
-allocate
-AVStream < /source>
-< translation > 分配AVStream失败 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "816" / >
-    <source>Failed
-to
-allocate
-AVCodecContext < /source>
-< translation > 无法分配AVCodecContext < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "846" / >
-    <source>Failed
-to
-open
-encoder < /source>
-< translation > 无法打开编码器 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "853" / >
-    <source>Failed
-to
-copy
-codec
-parameters
-to
-stream < /source>
-< translation > 无法将编解码器参数复制到流 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "931" / >
-    <source>Failed
-to
-create
-resampling
-context < /source>
-< translation > 无法创建重新采样上下文 < /translation>
-< /message>
-< message >
-<location filename = "../codec/ffmpeg/ffmpegencoder.cpp"
-line = "959" / >
-    <source>Failed
-to
-create
-audio
-frame < /source>
-< translation > 无法创建音频帧 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::FileField < /name>
-< message >
-<location filename = "../widget/filefield/filefield.cpp"
-line = "60" / >
-    <source>Open
-Directory < /source>
-< translation > 打开目录 < /translation>
-< /message>
-< message >
-<location filename = "../widget/filefield/filefield.cpp"
-line = "62" / >
-    <source>Open
-File < /source>
-< translation > 打开文件 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::FlipDistortNode < /name>
-< message >
-<location filename = "../node/distort/flip/flipdistortnode.cpp"
-line = "48" / >
-<source>Flip < /source>
-< translation > 翻转 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/flip/flipdistortnode.cpp"
-line = "63" / >
-    <source>Flips
-an
-image
-horizontally
-or
-vertically < /source>
-< translation > 水平或垂直翻转图像 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/flip/flipdistortnode.cpp"
-line = "70" / >
-<source>Input < /source>
-< translation > 输入 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/flip/flipdistortnode.cpp"
-line = "71" / >
-<source>Horizontal < /source>
-< translation > 水平 < /translation>
-< /message>
-< message >
-<location filename = "../node/distort/flip/flipdistortnode.cpp"
-line = "72" / >
-<source>Vertical < /source>
-< translation > 垂直 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::FloatSlider < /name>
-< message >
-<location filename = "../widget/slider/floatslider.cpp"
-line = "75" / >
-    <source> % 1
-dB < /source>
-< translation > % 1
-dB < /translation>
-< /message>
-< message >
-<location filename = "../widget/slider/floatslider.cpp"
-line = "78" / >
-<source> % 1 % </source>
-< translation > % 1 % </translation>
-< /message>
-< message >
-<location filename = "../widget/slider/floatslider.cpp"
-line = "121" / >
-    <source>∞</source>
-< translation
-type = "unfinished" > </translation>
-    < /message>
-    < message >
-    <source>â < /source>
-    < translation
-type = "vanished" >♪</translation>
-< /message>
-< /context>
-< context >
-<name>olive::Folder < /name>
-< message >
-<location filename = "../node/project/folder/folder.cpp"
-line = "58" / >
-<source>Children < /source>
-< translation > 孩子 < /translation>
-< /message>
-< message >
-<location filename = "../node/project/folder/folder.h"
-line = "45" / >
-<source>Folder < /source>
-< translation > 文件夹 < /translation>
-< /message>
-< message >
-<location filename = "../node/project/folder/folder.h"
-line = "60" / >
-    <source>Organize
-several
-items
-into
-a
-single
-collection. < /source>
-< translation > 将多个项目组织成一个集合. < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::Footage < /name>
-< message >
-<location filename = "../node/project/footage/footage.cpp"
-line = "82" / >
-<source>Filename < /source>
-< translation > 文件名 < /translation>
-< /message>
-< message >
-<location filename = "../node/project/footage/footage.cpp"
-line = "278" / >
-    <source> % 1
-:
-Image - % 2
-x % 3 < /source>
-< translation > % 1：图像 - % 2
-x % 3 < /translation>
-< /message>
-< message >
-<location filename = "../node/project/footage/footage.cpp"
-line = "283" / >
-    <source> % 1
-:
-Video - % 2
-x % 3 < /source>
-< translation > % 1：视频 - % 2
-x % 3 < /translation>
-< /message>
-< message
-numerus = "yes" >
-<location filename = "../node/project/footage/footage.cpp"
-line = "292" / >
-    <source> % 1
-:
-Audio - % n
-Channel(s),
-%
-2
-Hz < /source>
-< translation
-type = "unfinished" >
-    <numerusform> % 1
-:
-音频 - % n频道，%
-2
-Hz < /numerusform>
-< /translation>
-< /message>
-< message >
-<location filename = "../node/project/footage/footage.cpp"
-line = "300" / >
-    <source> % 1
-:
-Subtitle < /source>
-< translation > % 1：字幕 < /translation>
-< /message>
-< message >
-<location filename = "../node/project/footage/footage.cpp"
-line = "370" / >
-<source>Video < /source>
-< translation > 视频 < /translation>
-< /message>
-< message >
-<location filename = "../node/project/footage/footage.cpp"
-line = "372" / >
-<source>Audio < /source>
-< translation > 音频 < /translation>
-< /message>
-< message >
-<location filename = "../node/project/footage/footage.cpp"
-line = "374" / >
-<source>Subtitle < /source>
-< translation > 字幕 < /translation>
-< /message>
-< message >
-<location filename = "../node/project/footage/footage.cpp"
-line = "380" / >
-<source>Unknown < /source>
-< translation > 未知 < /translation>
-< /message>
-< message >
-<location filename = "../node/project/footage/footage.cpp"
-line = "482" / >
-    <source>Filename
-: %
-1 < /source>
-< translation > 文件名：%
-1 < /translation>
-< /message>
-< message >
-<location filename = "../node/project/footage/footage.cpp"
-line = "516" / >
-<source>Invalid < /source>
-< translation > 无效的 < /translation>
-< /message>
-< message >
-<location filename = "../node/project/footage/footage.h"
-line = "58" / >
-<source>Media < /source>
-< translation > 媒体 < /translation>
-< /message>
-< message >
-<location filename = "../node/project/footage/footage.h"
-line = "73" / >
-    <source>Import
-video, audio, or
-still
-image
-files
-into
-the
-composition. < /source>
-< translation > 将视频、音频或静止图像文件导入合成。</translation>
-< /message>
-< /context>
-< context >
-<name>olive::FootagePropertiesDialog < /name>
-< message >
-<location filename = "../dialog/footageproperties/footageproperties.cpp"
-line = "50" / >
-    <source> & quot;
-%
-1 & quot;
-Properties < /source>
-< translation > & quot;
-%
-1 & quot;
-属性 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/footageproperties/footageproperties.cpp"
-line = "55" / >
-    <source>Name
-:
-</source>
-< translation > 名称：</translation>
-< /message>
-< message >
-<location filename = "../dialog/footageproperties/footageproperties.cpp"
-line = "61" / >
-    <source>Tracks
-:
-</source>
-< translation > 轨道：</translation>
-< /message>
-< message >
-<location filename = "../dialog/footageproperties/footageproperties.cpp"
-line = "205" / >
-    <source>Set
-Footage & quot;
-%
-1 & quot;
-Properties < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../dialog/footageproperties/footageproperties.cpp"
-line = "104" / >
-<source>Subtitles < /source>
-< translation > 字幕 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/footageproperties/footageproperties.cpp"
-line = "109" / >
-<source>Unknown < /source>
-< translation > 未知 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::FootageRelinkDialog < /name>
-< message >
-<location filename = "../dialog/footagerelink/footagerelinkdialog.cpp"
-line = "53" / >
-<source>Footage < /source>
-< translation > 素材 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/footagerelink/footagerelinkdialog.cpp"
-line = "53" / >
-<source>Filename < /source>
-< translation > 文件名 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/footagerelink/footagerelinkdialog.cpp"
-line = "53" / >
-<source>Actions < /source>
-< translation > 操作 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/footagerelink/footagerelinkdialog.cpp"
-line = "69" / >
-<source>Browse < /source>
-< translation > 浏览 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/footagerelink/footagerelinkdialog.cpp"
-line = "94" / >
-    <source>Relink
-Footage < /source>
-< translation > 重新链接素材 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/footagerelink/footagerelinkdialog.cpp"
-line = "113" / >
-    <source>Relink & quot;
-%
-1 & quot;
-</source>
-< translation > 重新链接 & quot;
-%
-1 & quot;
-</translation>
-< /message>
-< message >
-<location filename = "../dialog/footagerelink/footagerelinkdialog.cpp"
-line = "129" / >
-    <source>Unsupported
-media < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../dialog/footagerelink/footagerelinkdialog.cpp"
-line = "130" / >
-    <source>This
-file
-type is
-not
-allowed
-by
-the
-current
-media
-type filter
-.
-</source>
-< translation
-type = "unfinished" > </translation>
-    < /message>
-    < message >
-    <source>All
-Files < /source>
-< translation
-type = "obsolete" > 全部文件 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::FootageViewerPanel < /name>
-< message >
-<location filename = "../panel/footageviewer/footageviewer.cpp"
-line = "63" / >
-    <source>Footage
-Viewer < /source>
-< translation > 素材查看器 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::FrameRateComboBox < /name>
-< message >
-<location filename = "../widget/standardcombos/frameratecombobox.h"
-line = "113" / >
-    <source>Custom
-Frame
-Rate < /source>
-< translation > 自定义帧速率 < /translation>
-< /message>
-< message >
-<location filename = "../widget/standardcombos/frameratecombobox.h"
-line = "114" / >
-    <source>Enter
-custom
-frame
-rate:</source>
-< translation > 输入自定义帧速率：</translation>
-< /message>
-< message >
-<location filename = "../widget/standardcombos/frameratecombobox.h"
-line = "141" / >
-    <source>Invalid
-Input < /source>
-< translation > 无效的输入 < /translation>
-< /message>
-< message >
-<location filename = "../widget/standardcombos/frameratecombobox.h"
-line = "142" / >
-    <source>Failed
-to
-convert & quot;
-%
-1 & quot;
-to
-a
-frame
-rate. < /source>
-< translation > 无法将“%
-1”转换为帧速率。</translation>
-< /message>
-< message >
-<location filename = "../widget/standardcombos/frameratecombobox.h"
-line = "173" / >
-    <source>Custom
-...
-</source>
-< translation > 自定义
-...
-</translation>
-< /message>
-< message >
-<location filename = "../widget/standardcombos/frameratecombobox.h"
-line = "176" / >
-    <source>Custom( % 1
-)
-</source>
-< translation > 自定义( % 1
-)
-</translation>
-< /message>
-< /context>
-< context >
-<name>olive::GapBlock < /name>
-< message >
-<location filename = "../node/block/gap/gap.cpp"
-line = "33" / >
-<source>Gap < /source>
-< translation > 空隙 < /translation>
-< /message>
-< message >
-<location filename = "../node/block/gap/gap.cpp"
-line = "43" / >
-    <source>A
-time - based
-node
-that
-represents
-an
-empty
-space. < /source>
-< translation > 基于时间的节点，表示一段空白空间。</translation>
-< /message>
-< /context>
-< context >
-<name>olive::GeneratorWithMerge < /name>
-< message >
-<location filename = "../node/generator/shape/generatorwithmerge.cpp"
-line = "45" / >
-<source>Base < /source>
-< translation > 底色 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::H264BitRateSection < /name>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "225" / >
-    <source>Target
-Bit
-Rate(Mbps)
-:
-</source>
-< translation > 目标码率(Mbps)：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "233" / >
-    <source>Maximum
-Bit
-Rate(Mbps)
-:
-</source>
-< translation > 最大码率(Mbps)：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "241" / >
-<source>Two - Pass < /source>
-< translation > Two - Pass < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::H264FileSizeSection < /name>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "279" / >
-    <source>Target
-File
-Size(MB)
-:
-</source>
-< translation > 目标文件大小(MB)：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "287" / >
-<source>Two - Pass < /source>
-< translation > Two - Pass < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::H264Section < /name>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "73" / >
-    <source>Compression
-Method:</source>
-< translation > 压缩方式：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "78" / >
-    <source>Constant
-Rate
-Factor < /source>
-< translation > 恒定速率因子（CRF）</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "79" / >
-    <source>Target
-Bit
-Rate < /source>
-< translation > 目标码率 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "80" / >
-    <source>Target
-File
-Size < /source>
-< translation > 目标文件大小 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "47" / >
-    <source>Encode
-Speed:</source>
-< translation > 编码速度：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "50" / >
-    <source>This
-setting
-allows
-you
-to
-tweak
-the
-ratio
-of
-export
-speed
-to
-compression
-quality.If
-using Constant
-Rate
-Factor, slower
-speeds
-will
-result in smaller
-file
-sizes
-for the same
-quality.If
-using Target
-Bit
-Rate
-or
-Target
-File
-Size, slower
-speeds
-will
-result in higher
-quality
-for the same
-bitrate / filesize.This
-setting
-is
-equivalent
-to
-the`preset`
-setting in libx264. < /source>
-< translation > 此设置允许您调整导出速度与压缩质量的比率。
+%1</translation>
+    </message>
+    <message>
+        <location filename="../crashhandler/crashhandler.cpp" line="227"/>
+        <source>You must write a description to submit this crash report.</source>
+        <translation>您必须写一个描述才能提交此崩溃报告。</translation>
+    </message>
+    <message>
+        <location filename="../crashhandler/crashhandler.cpp" line="311"/>
+        <location filename="../crashhandler/crashhandler.cpp" line="341"/>
+        <source>Failed to send report</source>
+        <translation>无法发送报告</translation>
+    </message>
+    <message>
+        <location filename="../crashhandler/crashhandler.cpp" line="312"/>
+        <source>Failed to find symbols necessary to send report. This is a packaging issue. Please notify the maintainers of this package.</source>
+        <translation>未能找到发送报告所需的符号。这是一个包装问题。请通知此包的维护人员。</translation>
+    </message>
+    <message>
+        <location filename="../crashhandler/crashhandler.cpp" line="342"/>
+        <source>Failed to open symbol file. You may not have permission to access it.</source>
+        <translation>未能打开符号文件。您可能无权访问它。</translation>
+    </message>
+    <message>
+        <location filename="../crashhandler/crashhandler.cpp" line="366"/>
+        <source>Confirm Close</source>
+        <translation>确认关闭</translation>
+    </message>
+    <message>
+        <location filename="../crashhandler/crashhandler.cpp" line="368"/>
+        <source>Crash report is still uploading. Closing now may result in no report being sent. Are you sure you wish to close?</source>
+        <translation>崩溃报告仍在上传。现在关闭可能导致不发送报告。您确定要关闭吗？</translation>
+    </message>
+</context>
+<context>
+    <name>olive::CropDistortNode</name>
+    <message>
+        <location filename="../node/distort/crop/cropdistortnode.cpp" line="82"/>
+        <source>Texture</source>
+        <translation>纹理</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/crop/cropdistortnode.cpp" line="83"/>
+        <source>Left</source>
+        <translation>左</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/crop/cropdistortnode.cpp" line="84"/>
+        <source>Top</source>
+        <translation>顶部</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/crop/cropdistortnode.cpp" line="85"/>
+        <source>Right</source>
+        <translation>右</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/crop/cropdistortnode.cpp" line="86"/>
+        <source>Bottom</source>
+        <translation>底部</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/crop/cropdistortnode.cpp" line="87"/>
+        <source>Feather</source>
+        <translation>羽毛</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/crop/cropdistortnode.h" line="44"/>
+        <source>Crop</source>
+        <translation>裁剪</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/crop/cropdistortnode.h" line="59"/>
+        <source>Crop the edges of an image.</source>
+        <translation>裁剪图像的边缘。</translation>
+    </message>
+</context>
+<context>
+    <name>olive::CrossDissolveTransition</name>
+    <message>
+        <location filename="../node/block/transition/crossdissolve/crossdissolvetransition.cpp" line="33"/>
+        <source>Cross Dissolve</source>
+        <translation>交叉溶解</translation>
+    </message>
+    <message>
+        <location filename="../node/block/transition/crossdissolve/crossdissolvetransition.cpp" line="48"/>
+        <source>Smoothly transition between two clips.</source>
+        <translation>两个片段之间平滑转场。</translation>
+    </message>
+</context>
+<context>
+    <name>olive::CurvePanel</name>
+    <message>
+        <location filename="../panel/curve/curve.cpp" line="73"/>
+        <source>Curve Editor</source>
+        <translation>曲线编辑器</translation>
+    </message>
+</context>
+<context>
+    <name>olive::CurveView</name>
+    <message>
+        <location filename="../widget/curvewidget/curveview.cpp" line="266"/>
+        <source>Zoom to Fit</source>
+        <translatorcomment>适屏缩放</translatorcomment>
+        <translation>缩放到合适大小</translation>
+    </message>
+    <message>
+        <location filename="../widget/curvewidget/curveview.cpp" line="269"/>
+        <source>Zoom to Fit Selected</source>
+        <translation>缩放以适合选定对象</translation>
+    </message>
+    <message>
+        <location filename="../widget/curvewidget/curveview.cpp" line="273"/>
+        <source>Reset Zoom</source>
+        <translation>重置缩放</translation>
+    </message>
+    <message>
+        <location filename="../widget/curvewidget/curveview.cpp" line="434"/>
+        <source>Moved Keyframe Bezier Control Point</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>olive::CurveWidget</name>
+    <message>
+        <location filename="../widget/curvewidget/curvewidget.cpp" line="68"/>
+        <source>Linear</source>
+        <translation>线性</translation>
+    </message>
+    <message>
+        <location filename="../widget/curvewidget/curvewidget.cpp" line="75"/>
+        <source>Bezier</source>
+        <translation>贝塞尔曲线</translation>
+    </message>
+    <message>
+        <location filename="../widget/curvewidget/curvewidget.cpp" line="82"/>
+        <source>Hold</source>
+        <translation>保留</translation>
+    </message>
+    <message>
+        <location filename="../widget/curvewidget/curvewidget.cpp" line="351"/>
+        <source>Changed Type of %1 Keyframe(s) to %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>olive::CustomCacheTask</name>
+    <message>
+        <location filename="../task/customcache/customcachetask.cpp" line="30"/>
+        <source>Caching custom range for &quot;%1&quot;</source>
+        <translation>正在缓存“%1”的自定义范围</translation>
+    </message>
+</context>
+<context>
+    <name>olive::DespillNode</name>
+    <message>
+        <location filename="../node/keying/despill/despill.cpp" line="49"/>
+        <source>Despill</source>
+        <translation>去除溢色</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/despill/despill.cpp" line="64"/>
+        <source>Selection of simple depsill operations</source>
+        <translation>选择简单的去除溢色操作</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/despill/despill.cpp" line="71"/>
+        <source>Input</source>
+        <translation>输入</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/despill/despill.cpp" line="73"/>
+        <source>Key Color</source>
+        <translation>关键颜色</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/despill/despill.cpp" line="74"/>
+        <source>Green</source>
+        <translation>绿色</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/despill/despill.cpp" line="74"/>
+        <source>Blue</source>
+        <translation>蓝色</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/despill/despill.cpp" line="76"/>
+        <source>Method</source>
+        <translation>方法</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/despill/despill.cpp" line="77"/>
+        <source>Average</source>
+        <translation>平均的</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/despill/despill.cpp" line="77"/>
+        <source>Double Red Average</source>
+        <translation>双倍红色平均值</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/despill/despill.cpp" line="78"/>
+        <source>Double Average</source>
+        <translation>双倍平均值</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/despill/despill.cpp" line="78"/>
+        <source>Limit</source>
+        <translation>限制</translation>
+    </message>
+    <message>
+        <location filename="../node/keying/despill/despill.cpp" line="80"/>
+        <source>Preserve Luminance</source>
+        <translation>保持亮度</translation>
+    </message>
+</context>
+<context>
+    <name>olive::DipToColorTransition</name>
+    <message>
+        <location filename="../node/block/transition/diptocolor/diptocolortransition.cpp" line="39"/>
+        <source>Dip To Color</source>
+        <translation>浸入颜色</translation>
+    </message>
+    <message>
+        <location filename="../node/block/transition/diptocolor/diptocolortransition.cpp" line="54"/>
+        <source>Transition between clips by dipping to a color.</source>
+        <translation>通过浸入颜色在两个片段之间转场。</translation>
+    </message>
+    <message>
+        <location filename="../node/block/transition/diptocolor/diptocolortransition.cpp" line="71"/>
+        <source>Color</source>
+        <translation>颜色</translation>
+    </message>
+</context>
+<context>
+    <name>olive::DiskCacheDialog</name>
+    <message>
+        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="41"/>
+        <source>Disk Cache: %1</source>
+        <translation>磁盘缓存：%1</translation>
+    </message>
+    <message>
+        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="43"/>
+        <source>Disk Cache Settings</source>
+        <translation>磁盘缓存设置</translation>
+    </message>
+    <message>
+        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="47"/>
+        <source>Maximum Disk Cache:</source>
+        <translation>最大磁盘缓存：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="50"/>
+        <source>%1 GB</source>
+        <translation>%1 GB</translation>
+    </message>
+    <message>
+        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="58"/>
+        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="106"/>
+        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="118"/>
+        <source>Clear Disk Cache</source>
+        <translation>清除磁盘缓存</translation>
+    </message>
+    <message>
+        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="67"/>
+        <source>Automatically clear disk cache on close</source>
+        <translation>关闭时自动清除磁盘缓存</translation>
+    </message>
+    <message>
+        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="107"/>
+        <source>Are you sure you want to clear the disk cache in &apos;%1&apos;?</source>
+        <translation>您确定要清除“%1”中的磁盘缓存？</translation>
+    </message>
+    <message>
+        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="115"/>
+        <source>Disk Cache Cleared</source>
+        <translation>磁盘缓存已清除</translation>
+    </message>
+    <message>
+        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="119"/>
+        <source>Disk cache failed to fully clear. You may have to delete the cache files manually.</source>
+        <translation>磁盘缓存无法完全清除。您可能需要手动删除缓存文件。</translation>
+    </message>
+    <message>
+        <location filename="../dialog/diskcache/diskcachedialog.cpp" line="122"/>
+        <source>Disk Cache Partially Cleared</source>
+        <translation>磁盘缓存已部分清除</translation>
+    </message>
+</context>
+<context>
+    <name>olive::DiskManager</name>
+    <message>
+        <location filename="../render/diskmanager.cpp" line="53"/>
+        <location filename="../render/diskmanager.cpp" line="196"/>
+        <source>Disk Cache Error</source>
+        <translation>磁盘缓存错误</translation>
+    </message>
+    <message>
+        <location filename="../render/diskmanager.cpp" line="54"/>
+        <source>Unable to set custom application disk cache. Using default instead.</source>
+        <translation>无法设置自定义应用程序磁盘缓存。使用默认设置。</translation>
+    </message>
+    <message>
+        <location filename="../render/diskmanager.cpp" line="165"/>
+        <source>Disk Cache</source>
+        <translation>磁盘缓存</translation>
+    </message>
+    <message>
+        <location filename="../render/diskmanager.cpp" line="166"/>
+        <source>You&apos;ve chosen to change the default disk cache location. This will invalidate your current cache. Would you like to continue?</source>
+        <translation>您已选择更改默认磁盘缓存位置。这将使当前缓存无效。您要继续吗？</translation>
+    </message>
+    <message>
+        <location filename="../render/diskmanager.cpp" line="197"/>
+        <source>Failed to open disk cache at &quot;%1&quot;. Try a different folder.</source>
+        <translation>无法打开位于 &quot;%1&quot; 的磁盘缓存。请尝试其他文件夹。</translation>
+    </message>
+</context>
+<context>
+    <name>olive::DisplayTransformNode</name>
+    <message>
+        <location filename="../node/color/displaytransform/displaytransform.cpp" line="50"/>
+        <source>Display Transform</source>
+        <translation>显示变换</translation>
+    </message>
+    <message>
+        <location filename="../node/color/displaytransform/displaytransform.cpp" line="65"/>
+        <source>Converts an image to or from a display color space.</source>
+        <translation>Converts an image to or from a display color space.</translation>
+    </message>
+    <message>
+        <location filename="../node/color/displaytransform/displaytransform.cpp" line="72"/>
+        <source>Input</source>
+        <translation>输入</translation>
+    </message>
+    <message>
+        <location filename="../node/color/displaytransform/displaytransform.cpp" line="73"/>
+        <source>Display</source>
+        <translation>显示</translation>
+    </message>
+    <message>
+        <location filename="../node/color/displaytransform/displaytransform.cpp" line="74"/>
+        <source>View</source>
+        <translation>视图</translation>
+    </message>
+    <message>
+        <location filename="../node/color/displaytransform/displaytransform.cpp" line="75"/>
+        <source>Direction</source>
+        <translation>方向</translation>
+    </message>
+    <message>
+        <location filename="../node/color/displaytransform/displaytransform.cpp" line="76"/>
+        <source>Forward</source>
+        <translation>向前</translation>
+    </message>
+    <message>
+        <location filename="../node/color/displaytransform/displaytransform.cpp" line="76"/>
+        <source>Inverse</source>
+        <translation>反转</translation>
+    </message>
+</context>
+<context>
+    <name>olive::DropShadowFilter</name>
+    <message>
+        <location filename="../node/filter/dropshadow/dropshadowfilter.cpp" line="69"/>
+        <source>Texture</source>
+        <translation>纹理</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/dropshadow/dropshadowfilter.cpp" line="70"/>
+        <source>Color</source>
+        <translation>颜色</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/dropshadow/dropshadowfilter.cpp" line="71"/>
+        <source>Distance</source>
+        <translation>距离</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/dropshadow/dropshadowfilter.cpp" line="72"/>
+        <source>Angle</source>
+        <translation>角</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/dropshadow/dropshadowfilter.cpp" line="73"/>
+        <source>Softness</source>
+        <translation>柔化</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/dropshadow/dropshadowfilter.cpp" line="74"/>
+        <source>Opacity</source>
+        <translation>不透明度</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/dropshadow/dropshadowfilter.cpp" line="75"/>
+        <source>Faster (Lower Quality)</source>
+        <translation>更快（质量更低）</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/dropshadow/dropshadowfilter.h" line="39"/>
+        <source>Drop Shadow</source>
+        <translation>放置阴影</translation>
+    </message>
+    <message>
+        <location filename="../node/filter/dropshadow/dropshadowfilter.h" line="51"/>
+        <source>Adds a drop shadow to an image.</source>
+        <translation>向图像添加放置阴影。</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ElapsedCounterWidget</name>
+    <message>
+        <location filename="../widget/taskview/elapsedcounterwidget.cpp" line="95"/>
+        <source>Elapsed: %1</source>
+        <translation>经过：%1</translation>
+    </message>
+    <message>
+        <location filename="../widget/taskview/elapsedcounterwidget.cpp" line="97"/>
+        <source>Remaining: %1</source>
+        <translation>剩余：%1</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ExportAdvancedVideoDialog</name>
+    <message>
+        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="33"/>
+        <source>Advanced</source>
+        <translation>高级</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="41"/>
+        <source>Pixel</source>
+        <translation>像素</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="47"/>
+        <source>Pixel Format:</source>
+        <translation>像素格式：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="67"/>
+        <source>Performance</source>
+        <translation>性能</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="73"/>
+        <source>Threads:</source>
+        <translation>线程：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="55"/>
+        <source>YUV Color Range:</source>
+        <translation>YUV颜色范围：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="59"/>
+        <source>Limited (16-235)</source>
+        <translation>有限（16-235）</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="59"/>
+        <source>Full (0-255)</source>
+        <translation>完整（0-255）</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportadvancedvideodialog.cpp" line="78"/>
+        <source>Auto</source>
+        <translation>自动</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ExportAudioTab</name>
+    <message>
+        <location filename="../dialog/export/exportaudiotab.cpp" line="43"/>
+        <source>Codec:</source>
+        <translation>编解码器：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportaudiotab.cpp" line="58"/>
+        <source>Sample Rate:</source>
+        <translation>采样率：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportaudiotab.cpp" line="65"/>
+        <source>Channel Layout:</source>
+        <translation>通道布局：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportaudiotab.cpp" line="72"/>
+        <source>Format:</source>
+        <translation>格式：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportaudiotab.cpp" line="79"/>
+        <source>Bit Rate:</source>
+        <translation>比特率：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportaudiotab.cpp" line="85"/>
+        <source>%1 kbps</source>
+        <translation></translation>
+    </message>
+</context>
+<context>
+    <name>olive::ExportCodec</name>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="34"/>
+        <source>DNxHD</source>
+        <translation>DNxHD</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="36"/>
+        <source>H.264</source>
+        <translation>H.264</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="40"/>
+        <source>H.265</source>
+        <translation>H.265</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="42"/>
+        <source>OpenEXR</source>
+        <translation>OpenEXR</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="44"/>
+        <source>PNG</source>
+        <translation>PNG</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="46"/>
+        <source>ProRes</source>
+        <translation>ProRes</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="50"/>
+        <source>TIFF</source>
+        <translation>TIFF</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="52"/>
+        <source>MP2</source>
+        <translation>MP2</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="54"/>
+        <source>MP3</source>
+        <translation>MP3</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="56"/>
+        <source>AAC</source>
+        <translation>AAC</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="58"/>
+        <source>PCM (Uncompressed)</source>
+        <translation>PCM (Uncompressed)</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="68"/>
+        <source>AV1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="75"/>
+        <source>Unknown</source>
+        <translation>未知</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="38"/>
+        <source>H.264 RGB</source>
+        <translation>H.264 RGB</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="48"/>
+        <source>Cineform</source>
+        <translation>Cineform</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="60"/>
+        <source>FLAC</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="62"/>
+        <source>Opus</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="64"/>
+        <source>Vorbis</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="66"/>
+        <source>VP9</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../codec/exportcodec.cpp" line="70"/>
+        <source>SubRip SRT</source>
+        <translation></translation>
+    </message>
+</context>
+<context>
+    <name>olive::ExportDialog</name>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="68"/>
+        <source>Filename:</source>
+        <translation>文件名：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="78"/>
+        <source>Browse for exported file filename</source>
+        <translation>浏览已导出的文件名</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="85"/>
+        <source>Preset:</source>
+        <translation>预设：</translation>
+    </message>
+    <message>
+        <source>Same As Source - High Quality</source>
+        <translation type="obsolete">与源相同 - 高质量</translation>
+    </message>
+    <message>
+        <source>Same As Source - Medium Quality</source>
+        <translation type="obsolete">与源相同 - 中等质量</translation>
+    </message>
+    <message>
+        <source>Same As Source - Low Quality</source>
+        <translation type="obsolete">与源相同 - 低质量</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="115"/>
+        <source>Range:</source>
+        <translation>范围：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="118"/>
+        <source>Entire Sequence</source>
+        <translation>整个序列</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="119"/>
+        <source>In to Out</source>
+        <translation>入点至出点</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="131"/>
+        <source>Format:</source>
+        <translation>格式:</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="139"/>
+        <source>Export Video</source>
+        <translation>导出视频</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="142"/>
+        <source>Export Audio</source>
+        <translation>导出音频</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="156"/>
+        <source>Video</source>
+        <translation>视频</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="166"/>
+        <source>Audio</source>
+        <translation>音频</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="184"/>
+        <source>Exporting in the background allows you to continue using Oak Video Editor while exporting, but may result in slower export speeds, and mayseverely impact editing and playback performance.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="206"/>
+        <location filename="../dialog/export/export.cpp" line="409"/>
+        <source>Export</source>
+        <translation>导出</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="221"/>
+        <source>Preview</source>
+        <translation>预览</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="312"/>
+        <source>Invalid parameters</source>
+        <translation>无效的参数</translation>
+    </message>
+    <message>
+        <source>Both video and audio are disabled. There&apos;s nothing to export.</source>
+        <translation type="obsolete">视频和音频都已禁用。没有可导出的内容。</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="326"/>
+        <location filename="../dialog/export/export.cpp" line="357"/>
+        <location filename="../dialog/export/export.cpp" line="369"/>
+        <source>Invalid filename</source>
+        <translation>无效文件名</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="327"/>
+        <source>The filename must contain the extension &quot;%1&quot;. Would you like to append it automatically?</source>
+        <translation>文件名必须包含扩展名“%1”。您要自动附加扩展名吗？</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="346"/>
+        <source>Failed to create output directory</source>
+        <translation>无法创建输出目录</translation>
+    </message>
+    <message>
+        <source>The intended output directory doesn&apos;t exist and Olive couldn&apos;t create it. Please choose a different filename.</source>
+        <translation type="vanished">指定的输出目录不存在且 Olive 无法创建它。请选择一个其他的文件名。</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="381"/>
+        <source>Confirm Overwrite</source>
+        <translation>确认覆盖</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="382"/>
+        <source>The file &quot;%1&quot; already exists. Do you want to overwrite it?</source>
+        <translation>文件“%1”已存在。您要覆盖它吗？</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="395"/>
+        <source>Invalid Parameters</source>
+        <translation>无效的参数</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="396"/>
+        <source>Width and height must be multiples of 2.</source>
+        <translation>宽度和高度必须是2的倍数。</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="145"/>
+        <source>Export Subtitles</source>
+        <translation>导出字幕</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="169"/>
+        <source>Subtitles</source>
+        <translation>字幕</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="183"/>
+        <source>Run In Background</source>
+        <translation>在后台运行</translation>
+    </message>
+    <message>
+        <source>Exporting in the background allows you to continue using Olive while exporting, but may result in slower export speeds, and mayseverely impact editing and playback performance.</source>
+        <translation type="vanished">在后台导出允许您在导出时继续使用Olive，但可能会导致导出速度变慢，并可能严重影响编辑和播放性能。</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="191"/>
+        <source>Import Result After Export</source>
+        <translation>Import Result After Export</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="211"/>
+        <source>Cancel</source>
+        <translation>取消</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="313"/>
+        <source>Video, audio, and subtitles are disabled. There&apos;s nothing to export.</source>
+        <translation>已经禁用视频、音频和字幕。没有可以导出的东西。</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="347"/>
+        <source>The intended output directory doesn&apos;t exist and Oak Video Editor couldn&apos;t create it. Please choose a different filename.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="358"/>
+        <source>Export is set to an image sequence, but the filename does not have a section for digits (formatted as [#####] where the amount of # is the amount of digits).</source>
+        <translation>导出设置为图像序列，但文件名没有数字部分（格式为[######]，其中#的数量是数字的数量）。</translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../dialog/export/export.cpp" line="370"/>
+        <source>Filename doesn&apos;t contain enough digits for the amount of frames this export will need (need %1 for %n frame(s)).</source>
+        <translation type="unfinished">
+            <numerusform>文件名包含的位数不足，无法满足此导出所需的帧数（对于%n帧，需要%1）。</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="582"/>
+        <source>Default</source>
+        <translation>默认</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/export.cpp" line="585"/>
+        <source>Last Used</source>
+        <translation>最后使用的</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ExportFormat</name>
+    <message>
+        <location filename="../codec/exportformat.cpp" line="33"/>
+        <source>DNxHD</source>
+        <translation>DNxHD</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportformat.cpp" line="35"/>
+        <source>Matroska Video</source>
+        <translation>Matroska Video</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportformat.cpp" line="37"/>
+        <source>MPEG-4 Video</source>
+        <translation>MPEG-4 Video</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportformat.cpp" line="41"/>
+        <source>OpenEXR</source>
+        <translation>OpenEXR</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportformat.cpp" line="43"/>
+        <source>PNG</source>
+        <translation>PNG</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportformat.cpp" line="45"/>
+        <source>TIFF</source>
+        <translation>TIFF</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportformat.cpp" line="47"/>
+        <source>QuickTime</source>
+        <translation>QuickTime</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportformat.cpp" line="67"/>
+        <source>Unknown</source>
+        <translation>未知</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportformat.cpp" line="39"/>
+        <source>MPEG-4 Audio</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../codec/exportformat.cpp" line="49"/>
+        <source>Wave Audio</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../codec/exportformat.cpp" line="51"/>
+        <source>AIFF</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../codec/exportformat.cpp" line="53"/>
+        <source>MP3</source>
+        <translation>MP3</translation>
+    </message>
+    <message>
+        <location filename="../codec/exportformat.cpp" line="55"/>
+        <source>FLAC</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../codec/exportformat.cpp" line="57"/>
+        <source>Ogg</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../codec/exportformat.cpp" line="59"/>
+        <source>WebM</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../codec/exportformat.cpp" line="61"/>
+        <source>SubRip SRT</source>
+        <translation></translation>
+    </message>
+</context>
+<context>
+    <name>olive::ExportFormatComboBox</name>
+    <message>
+        <location filename="../dialog/export/exportformatcombobox.cpp" line="40"/>
+        <source>Video</source>
+        <translation>视频</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportformatcombobox.cpp" line="44"/>
+        <source>Audio</source>
+        <translation>音频</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportformatcombobox.cpp" line="48"/>
+        <source>Subtitle</source>
+        <translation>字幕</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ExportSavePresetDialog</name>
+    <message>
+        <location filename="../dialog/export/exportsavepresetdialog.cpp" line="56"/>
+        <source>Name:</source>
+        <translation>名称：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportsavepresetdialog.cpp" line="69"/>
+        <source>Save Export Preset</source>
+        <translation>保存导出预设</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportsavepresetdialog.cpp" line="76"/>
+        <source>Invalid Name</source>
+        <translation>无效的名称</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportsavepresetdialog.cpp" line="77"/>
+        <source>You must enter a name to save an export preset.</source>
+        <translation>必须输入名称才能保存导出预设。</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportsavepresetdialog.cpp" line="89"/>
+        <source>Overwrite Preset</source>
+        <translation>覆盖预设</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportsavepresetdialog.cpp" line="90"/>
+        <source>A preset with the name &quot;%1&quot; already exists. Do you wish to overwrite it?</source>
+        <translation>名为“%1”的预设已存在。是否要覆盖它？</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportsavepresetdialog.cpp" line="99"/>
+        <source>Write Error</source>
+        <translation>写入错误</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportsavepresetdialog.cpp" line="100"/>
+        <source>Failed to open file &quot;%1&quot; for writing.</source>
+        <translation>无法打开文件“%1”进行写入。</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ExportSubtitlesTab</name>
+    <message>
+        <location filename="../dialog/export/exportsubtitlestab.cpp" line="36"/>
+        <source>Export to sidecar file</source>
+        <translation>导出到附加文件</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportsubtitlestab.cpp" line="41"/>
+        <source>Sidecar Format:</source>
+        <translation>附加格式：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportsubtitlestab.cpp" line="52"/>
+        <source>Codec:</source>
+        <translation>编解码器：</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ExportTask</name>
+    <message>
+        <location filename="../task/export/export.cpp" line="49"/>
+        <source>Exporting &quot;%1&quot;</source>
+        <translation>正在导出 &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <location filename="../task/export/export.cpp" line="74"/>
+        <source>Failed to create encoder</source>
+        <translation>无法创建编码器</translation>
+    </message>
+    <message>
+        <source>Failed to open file</source>
+        <translation type="obsolete">无法打开文件</translation>
+    </message>
+    <message>
+        <location filename="../task/export/export.cpp" line="203"/>
+        <source>Failed to overwrite &quot;%1&quot;. Export has been saved as &quot;%2&quot; instead.</source>
+        <translation>无法覆盖“%1”。导出将被保存为“%2”。</translation>
+    </message>
+    <message>
+        <location filename="../task/export/export.cpp" line="79"/>
+        <source>Failed to open file: %1</source>
+        <translation>无法打开文件：%1</translation>
+    </message>
+    <message>
+        <location filename="../task/export/export.cpp" line="102"/>
+        <source>Failed to create subtitle encoder</source>
+        <translation>无法创建字幕编码器</translation>
+    </message>
+    <message>
+        <location filename="../task/export/export.cpp" line="107"/>
+        <source>Failed to open subtitle sidecar file: %1</source>
+        <translation>无法打开字幕侧边栏文件：%1</translation>
+    </message>
+</context>
+<context>
+    <name>olive::ExportVideoTab</name>
+    <message>
+        <source>Basic</source>
+        <translatorcomment>Would &quot;基本&quot; / &quot;基本的&quot; be more appropriate?</translatorcomment>
+        <translation type="obsolete">基本设置</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportvideotab.cpp" line="91"/>
+        <source>Width:</source>
+        <translation>宽度：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportvideotab.cpp" line="99"/>
+        <source>Height:</source>
+        <translation>高度：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportvideotab.cpp" line="107"/>
+        <source>Maintain Aspect Ratio:</source>
+        <translation>保持宽高比：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportvideotab.cpp" line="115"/>
+        <source>Scaling Method:</source>
+        <translation>缩放方式：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportvideotab.cpp" line="119"/>
+        <source>Fit</source>
+        <translation>适合</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportvideotab.cpp" line="120"/>
+        <source>Stretch</source>
+        <translation>拉伸</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportvideotab.cpp" line="121"/>
+        <source>Crop</source>
+        <translation>裁剪</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportvideotab.cpp" line="130"/>
+        <source>Frame Rate:</source>
+        <translation>帧率：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportvideotab.cpp" line="139"/>
+        <source>Pixel Aspect Ratio:</source>
+        <translation>像素宽高比：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportvideotab.cpp" line="146"/>
+        <source>Interlacing:</source>
+        <translation>交错：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportvideotab.cpp" line="153"/>
+        <source>Quality:</source>
+        <translation>质量：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportvideotab.cpp" line="174"/>
+        <source>Codec</source>
+        <translation>编解码器</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportvideotab.cpp" line="178"/>
+        <source>Codec:</source>
+        <translation>编解码器：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportvideotab.cpp" line="211"/>
+        <source>Advanced</source>
+        <translation>高级</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/exportvideotab.cpp" line="87"/>
+        <source>General</source>
+        <translation>常规</translation>
+    </message>
+</context>
+<context>
+    <name>olive::FFmpegEncoder</name>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="128"/>
+        <source>Failed to allocate output context</source>
+        <translation>无法分配输出上下文</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="156"/>
+        <source>Failed to find suitable pixel format for this buffer</source>
+        <translation>未能找到适合此缓冲区的像素格式</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="228"/>
+        <source>Failed to configure filter graph</source>
+        <translation>无法配置筛选器图表</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="255"/>
+        <source>Failed to open IO context</source>
+        <translation>无法打开IO上下文</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="262"/>
+        <source>Failed to write format header</source>
+        <translation>无法写入格式标头</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="295"/>
+        <source>Failed to add frame to filter graph</source>
+        <translation>未能将框架添加到筛选器图</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="302"/>
+        <source>Failed to retrieve frame from buffer sink</source>
+        <translation>无法从缓冲区接收器检索帧</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="337"/>
+        <source>Failed to allocate sample array</source>
+        <translation>未能分配样本数组</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="423"/>
+        <source>Failed to resample audio</source>
+        <translation>无法重新采样音频</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="482"/>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="646"/>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="881"/>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="904"/>
+        <source>Failed to write interleaved packet</source>
+        <translation>写入交错数据包失败</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="606"/>
+        <source>%1: %2 %3</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="617"/>
+        <source>Failed to send frame to encoder</source>
+        <translation>无法将帧发送到编码器</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="633"/>
+        <source>Failed to receive packet from decoder</source>
+        <translation>无法从解码器接收数据包</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="668"/>
+        <source>Cannot initialize a stream that is not a video, audio, or subtitle type</source>
+        <translation>无法初始化非视频、音频或字幕类型的流</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="677"/>
+        <source>Failed to find codec for 0x%1</source>
+        <translation>找不到0x%1的编解码器</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="683"/>
+        <source>Retrieved unexpected codec type %1 for codec %2</source>
+        <translation>已检索到编解码器%2的意外编解码器类型%1</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="809"/>
+        <source>Failed to allocate AVStream</source>
+        <translation>分配AVStream失败</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="816"/>
+        <source>Failed to allocate AVCodecContext</source>
+        <translation>无法分配AVCodecContext</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="846"/>
+        <source>Failed to open encoder</source>
+        <translation>无法打开编码器</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="853"/>
+        <source>Failed to copy codec parameters to stream</source>
+        <translation>无法将编解码器参数复制到流</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="931"/>
+        <source>Failed to create resampling context</source>
+        <translation>无法创建重新采样上下文</translation>
+    </message>
+    <message>
+        <location filename="../codec/ffmpeg/ffmpegencoder.cpp" line="959"/>
+        <source>Failed to create audio frame</source>
+        <translation>无法创建音频帧</translation>
+    </message>
+</context>
+<context>
+    <name>olive::FileField</name>
+    <message>
+        <location filename="../widget/filefield/filefield.cpp" line="60"/>
+        <source>Open Directory</source>
+        <translation>打开目录</translation>
+    </message>
+    <message>
+        <location filename="../widget/filefield/filefield.cpp" line="62"/>
+        <source>Open File</source>
+        <translation>打开文件</translation>
+    </message>
+</context>
+<context>
+    <name>olive::FlipDistortNode</name>
+    <message>
+        <location filename="../node/distort/flip/flipdistortnode.cpp" line="48"/>
+        <source>Flip</source>
+        <translation>翻转</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/flip/flipdistortnode.cpp" line="63"/>
+        <source>Flips an image horizontally or vertically</source>
+        <translation>水平或垂直翻转图像</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/flip/flipdistortnode.cpp" line="70"/>
+        <source>Input</source>
+        <translation>输入</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/flip/flipdistortnode.cpp" line="71"/>
+        <source>Horizontal</source>
+        <translation>水平</translation>
+    </message>
+    <message>
+        <location filename="../node/distort/flip/flipdistortnode.cpp" line="72"/>
+        <source>Vertical</source>
+        <translation>垂直</translation>
+    </message>
+</context>
+<context>
+    <name>olive::FloatSlider</name>
+    <message>
+        <location filename="../widget/slider/floatslider.cpp" line="75"/>
+        <source>%1 dB</source>
+        <translation>%1 dB</translation>
+    </message>
+    <message>
+        <location filename="../widget/slider/floatslider.cpp" line="78"/>
+        <source>%1%</source>
+        <translation>%1%</translation>
+    </message>
+    <message>
+        <location filename="../widget/slider/floatslider.cpp" line="121"/>
+        <source>∞</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>â</source>
+        <translation type="vanished">♪</translation>
+    </message>
+</context>
+<context>
+    <name>olive::Folder</name>
+    <message>
+        <location filename="../node/project/folder/folder.cpp" line="58"/>
+        <source>Children</source>
+        <translation>孩子</translation>
+    </message>
+    <message>
+        <location filename="../node/project/folder/folder.h" line="45"/>
+        <source>Folder</source>
+        <translation>文件夹</translation>
+    </message>
+    <message>
+        <location filename="../node/project/folder/folder.h" line="60"/>
+        <source>Organize several items into a single collection.</source>
+        <translation>将多个项目组织成一个集合.</translation>
+    </message>
+</context>
+<context>
+    <name>olive::Footage</name>
+    <message>
+        <location filename="../node/project/footage/footage.cpp" line="82"/>
+        <source>Filename</source>
+        <translation>文件名</translation>
+    </message>
+    <message>
+        <location filename="../node/project/footage/footage.cpp" line="278"/>
+        <source>%1: Image - %2x%3</source>
+        <translation>%1：图像 - %2x%3</translation>
+    </message>
+    <message>
+        <location filename="../node/project/footage/footage.cpp" line="283"/>
+        <source>%1: Video - %2x%3</source>
+        <translation>%1：视频 - %2x%3</translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../node/project/footage/footage.cpp" line="292"/>
+        <source>%1: Audio - %n Channel(s), %2Hz</source>
+        <translation type="unfinished">
+            <numerusform>%1:音频-%n频道，%2Hz</numerusform>
+        </translation>
+    </message>
+    <message>
+        <location filename="../node/project/footage/footage.cpp" line="300"/>
+        <source>%1: Subtitle</source>
+        <translation>%1：字幕</translation>
+    </message>
+    <message>
+        <location filename="../node/project/footage/footage.cpp" line="370"/>
+        <source>Video</source>
+        <translation>视频</translation>
+    </message>
+    <message>
+        <location filename="../node/project/footage/footage.cpp" line="372"/>
+        <source>Audio</source>
+        <translation>音频</translation>
+    </message>
+    <message>
+        <location filename="../node/project/footage/footage.cpp" line="374"/>
+        <source>Subtitle</source>
+        <translation>字幕</translation>
+    </message>
+    <message>
+        <location filename="../node/project/footage/footage.cpp" line="380"/>
+        <source>Unknown</source>
+        <translation>未知</translation>
+    </message>
+    <message>
+        <location filename="../node/project/footage/footage.cpp" line="482"/>
+        <source>Filename: %1</source>
+        <translation>文件名：%1</translation>
+    </message>
+    <message>
+        <location filename="../node/project/footage/footage.cpp" line="516"/>
+        <source>Invalid</source>
+        <translation>无效的</translation>
+    </message>
+    <message>
+        <location filename="../node/project/footage/footage.h" line="58"/>
+        <source>Media</source>
+        <translation>媒体</translation>
+    </message>
+    <message>
+        <location filename="../node/project/footage/footage.h" line="73"/>
+        <source>Import video, audio, or still image files into the composition.</source>
+        <translation>将视频、音频或静止图像文件导入合成。</translation>
+    </message>
+</context>
+<context>
+    <name>olive::FootagePropertiesDialog</name>
+    <message>
+        <location filename="../dialog/footageproperties/footageproperties.cpp" line="50"/>
+        <source>&quot;%1&quot; Properties</source>
+        <translation>&quot;%1&quot; 属性</translation>
+    </message>
+    <message>
+        <location filename="../dialog/footageproperties/footageproperties.cpp" line="55"/>
+        <source>Name:</source>
+        <translation>名称：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/footageproperties/footageproperties.cpp" line="61"/>
+        <source>Tracks:</source>
+        <translation>轨道：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/footageproperties/footageproperties.cpp" line="205"/>
+        <source>Set Footage &quot;%1&quot; Properties</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../dialog/footageproperties/footageproperties.cpp" line="104"/>
+        <source>Subtitles</source>
+        <translation>字幕</translation>
+    </message>
+    <message>
+        <location filename="../dialog/footageproperties/footageproperties.cpp" line="109"/>
+        <source>Unknown</source>
+        <translation>未知</translation>
+    </message>
+</context>
+<context>
+    <name>olive::FootageRelinkDialog</name>
+    <message>
+        <location filename="../dialog/footagerelink/footagerelinkdialog.cpp" line="53"/>
+        <source>Footage</source>
+        <translation>素材</translation>
+    </message>
+    <message>
+        <location filename="../dialog/footagerelink/footagerelinkdialog.cpp" line="53"/>
+        <source>Filename</source>
+        <translation>文件名</translation>
+    </message>
+    <message>
+        <location filename="../dialog/footagerelink/footagerelinkdialog.cpp" line="53"/>
+        <source>Actions</source>
+        <translation>操作</translation>
+    </message>
+    <message>
+        <location filename="../dialog/footagerelink/footagerelinkdialog.cpp" line="69"/>
+        <source>Browse</source>
+        <translation>浏览</translation>
+    </message>
+    <message>
+        <location filename="../dialog/footagerelink/footagerelinkdialog.cpp" line="94"/>
+        <source>Relink Footage</source>
+        <translation>重新链接素材</translation>
+    </message>
+    <message>
+        <location filename="../dialog/footagerelink/footagerelinkdialog.cpp" line="113"/>
+        <source>Relink &quot;%1&quot;</source>
+        <translation>重新链接 &quot;%1&quot;</translation>
+    </message>
+    <message>
+        <location filename="../dialog/footagerelink/footagerelinkdialog.cpp" line="129"/>
+        <source>Unsupported media</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../dialog/footagerelink/footagerelinkdialog.cpp" line="130"/>
+        <source>This file type is not allowed by the current media type filter.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>All Files</source>
+        <translation type="obsolete">全部文件</translation>
+    </message>
+</context>
+<context>
+    <name>olive::FootageViewerPanel</name>
+    <message>
+        <location filename="../panel/footageviewer/footageviewer.cpp" line="63"/>
+        <source>Footage Viewer</source>
+        <translation>素材查看器</translation>
+    </message>
+</context>
+<context>
+    <name>olive::FrameRateComboBox</name>
+    <message>
+        <location filename="../widget/standardcombos/frameratecombobox.h" line="113"/>
+        <source>Custom Frame Rate</source>
+        <translation>自定义帧速率</translation>
+    </message>
+    <message>
+        <location filename="../widget/standardcombos/frameratecombobox.h" line="114"/>
+        <source>Enter custom frame rate:</source>
+        <translation>输入自定义帧速率：</translation>
+    </message>
+    <message>
+        <location filename="../widget/standardcombos/frameratecombobox.h" line="141"/>
+        <source>Invalid Input</source>
+        <translation>无效的输入</translation>
+    </message>
+    <message>
+        <location filename="../widget/standardcombos/frameratecombobox.h" line="142"/>
+        <source>Failed to convert &quot;%1&quot; to a frame rate.</source>
+        <translation>无法将“%1”转换为帧速率。</translation>
+    </message>
+    <message>
+        <location filename="../widget/standardcombos/frameratecombobox.h" line="173"/>
+        <source>Custom...</source>
+        <translation>自定义...</translation>
+    </message>
+    <message>
+        <location filename="../widget/standardcombos/frameratecombobox.h" line="176"/>
+        <source>Custom (%1)</source>
+        <translation>自定义 (%1)</translation>
+    </message>
+</context>
+<context>
+    <name>olive::GapBlock</name>
+    <message>
+        <location filename="../node/block/gap/gap.cpp" line="33"/>
+        <source>Gap</source>
+        <translation>空隙</translation>
+    </message>
+    <message>
+        <location filename="../node/block/gap/gap.cpp" line="43"/>
+        <source>A time-based node that represents an empty space.</source>
+        <translation>基于时间的节点，表示一段空白空间。</translation>
+    </message>
+</context>
+<context>
+    <name>olive::GeneratorWithMerge</name>
+    <message>
+        <location filename="../node/generator/shape/generatorwithmerge.cpp" line="45"/>
+        <source>Base</source>
+        <translation>底色</translation>
+    </message>
+</context>
+<context>
+    <name>olive::H264BitRateSection</name>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="225"/>
+        <source>Target Bit Rate (Mbps):</source>
+        <translation>目标码率 (Mbps)：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="233"/>
+        <source>Maximum Bit Rate (Mbps):</source>
+        <translation>最大码率 (Mbps)：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="241"/>
+        <source>Two-Pass</source>
+        <translation>Two-Pass</translation>
+    </message>
+</context>
+<context>
+    <name>olive::H264FileSizeSection</name>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="279"/>
+        <source>Target File Size (MB):</source>
+        <translation>目标文件大小 (MB)：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="287"/>
+        <source>Two-Pass</source>
+        <translation>Two-Pass</translation>
+    </message>
+</context>
+<context>
+    <name>olive::H264Section</name>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="73"/>
+        <source>Compression Method:</source>
+        <translation>压缩方式：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="78"/>
+        <source>Constant Rate Factor</source>
+        <translation>恒定速率因子（CRF）</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="79"/>
+        <source>Target Bit Rate</source>
+        <translation>目标码率</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="80"/>
+        <source>Target File Size</source>
+        <translation>目标文件大小</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="47"/>
+        <source>Encode Speed:</source>
+        <translation>编码速度：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="50"/>
+        <source>This setting allows you to tweak the ratio of export speed to compression quality. 
+
+If using Constant Rate Factor, slower speeds will result in smaller file sizes for the same quality. 
+
+If using Target Bit Rate or Target File Size, slower speeds will result in higher quality for the same bitrate/filesize. 
+
+This setting is equivalent to the `preset` setting in libx264.</source>
+        <translation>此设置允许您调整导出速度与压缩质量的比率。
 
 
-如果使用“恒定速率因子”（Constant
-Rate
-Factor），较慢的速度将导致相同质量的文件大小变小。
+如果使用“恒定速率因子”（Constant Rate Factor），较慢的速度将导致相同质量的文件大小变小。
 
 
-如果使用“目标比特率”或“目标文件大小”，则速度较慢将导致相同比特率 / 文件大小的质量更高。
+如果使用“目标比特率”或“目标文件大小”，则速度较慢将导致相同比特率/文件大小的质量更高。
 
 
 此设置相当于libx264中的“预设”设置。</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "56" / >
-    <source>Ultra
-Fast < /source>
-< translation > 极致快 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "57" / >
-    <source>Super
-Fast < /source>
-< translation > 超快 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "58" / >
-    <source>Very
-Fast < /source>
-< translation > 非常快 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "59" / >
-<source>Faster < /source>
-< translation > 更快 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "60" / >
-<source>Fast < /source>
-< translation > 快 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "61" / >
-<source>Medium < /source>
-< translation > 中等 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "62" / >
-<source>Slow < /source>
-< translation > 慢 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "63" / >
-<source>Slower < /source>
-< translation > 更慢 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/h264section.cpp"
-line = "64" / >
-    <source>Very
-Slow < /source>
-< translation > 非常慢 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::HistoryPanel < /name>
-< message >
-<location filename = "../panel/history/historypanel.cpp"
-line = "39" / >
-    <source>History < /source>
-    < translation
-type = "unfinished" > </translation>
-< /message>
-< /context>
-< context >
-<name>olive::ImageSection < /name>
-< message >
-<location filename = "../dialog/export/codec/imagesection.cpp"
-line = "38" / >
-    <source>Image
-Sequence:</source>
-< translation > 图像序列：</translation>
-< /message>
-< message >
-<location filename = "../dialog/export/codec/imagesection.cpp"
-line = "47" / >
-    <source>Frame
-to
-Export:</source>
-< translation > 要导出的框架：</translation>
-< /message>
-< /context>
-< context >
-<name>olive::InterlacedComboBox < /name>
-< message >
-<location filename = "../widget/standardcombos/interlacedcombobox.h"
-line = "39" / >
-<source>None(Progressive) < /source>
-< translation > 无(渐进) < /translation>
-< /message>
-< message >
-<location filename = "../widget/standardcombos/interlacedcombobox.h"
-line = "40" / >
-    <source>Top - Field
-First < /source>
-< translation > 上场优先 < /translation>
-< /message>
-< message >
-<location filename = "../widget/standardcombos/interlacedcombobox.h"
-line = "41" / >
-    <source>Bottom - Field
-First < /source>
-< translation > 下场优先 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::KeyframePropertiesDialog < /name>
-< message >
-<location filename = "../dialog/keyframeproperties/keyframeproperties.cpp"
-line = "41" / >
-    <source>Keyframe
-Properties < /source>
-< translation > 关键帧属性 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/keyframeproperties/keyframeproperties.cpp"
-line = "70" / >
-    <source>In
-:
-</source>
-< translation > 入：</translation>
-< /message>
-< message >
-<location filename = "../dialog/keyframeproperties/keyframeproperties.cpp"
-line = "78" / >
-    <source>Out
-:
-</source>
-< translation > 出：</translation>
-< /message>
-< message >
-<location filename = "../dialog/keyframeproperties/keyframeproperties.cpp"
-line = "168" / >
-<source>Linear < /source>
-< translation > 线性 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/keyframeproperties/keyframeproperties.cpp"
-line = "169" / >
-<source>Hold < /source>
-< translation > 保留 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/keyframeproperties/keyframeproperties.cpp"
-line = "170" / >
-<source>Bezier < /source>
-< translation > 贝塞尔曲线 < /translation>
-< /message>
-< message >
-<location filename = "../dialog/keyframeproperties/keyframeproperties.cpp"
-line = "236" / >
-    <source>Set
-Keyframe
-Properties < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< /context>
-< context >
-<name>olive::KeyframeView < /name>
-< message >
-<location filename = "../widget/keyframeview/keyframeview.cpp"
-line = "69" / >
-    <source>Deleted % 1
-Keyframe(s) < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../widget/keyframeview/keyframeview.cpp"
-line = "275" / >
-    <source>Pasted % 1
-Keyframe(s) < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../widget/keyframeview/keyframeview.cpp"
-line = "350" / >
-    <source>Moved % 1
-Keyframe(s) < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../widget/keyframeview/keyframeview.cpp"
-line = "599" / >
-<source>Linear < /source>
-< translation > 线性 < /translation>
-< /message>
-< message >
-<location filename = "../widget/keyframeview/keyframeview.cpp"
-line = "600" / >
-<source>Bezier < /source>
-< translation > 贝塞尔曲线 < /translation>
-< /message>
-< message >
-<location filename = "../widget/keyframeview/keyframeview.cpp"
-line = "601" / >
-<source>Hold < /source>
-< translation > 保留 < /translation>
-< /message>
-< message >
-<location filename = "../widget/keyframeview/keyframeview.cpp"
-line = "627" / >
-    <source>P &amp; roperties < /source>
-    < translation > 属性( &amp; R
-)
-</translation>
-< /message>
-< message >
-<location filename = "../widget/keyframeview/keyframeview.cpp"
-line = "653" / >
-    <source>Set
-Type
-of % 1
-Keyframe(s) < /source>
-< translation
-type = "unfinished" > </translation>
-    < /message>
-    < /context>
-    < context >
-    <name>olive::KeyframeViewBase < /name>
-    < message >
-    <source>Linear < /source>
-    < translation
-type = "obsolete" > 线性 < /translation>
-    < /message>
-    < message >
-    <source>Bezier < /source>
-    < translation
-type = "obsolete" > 贝塞尔曲线 < /translation>
-    < /message>
-    < message >
-    <source>Hold < /source>
-    < translation
-type = "obsolete" > 保留 < /translation>
-    < /message>
-    < message >
-    <source>P &amp; roperties < /source>
-    < translation
-type = "obsolete" > 属性( &amp; R
-)
-</translation>
-< /message>
-< /context>
-< context >
-<name>olive::LoadOTIOTask < /name>
-< message >
-<source>Failed
-to
-load
-OpenTimelineIO
-from
-file & quot;
-%
-1 & quot;
-</source>
-< translation
-type = "obsolete" > 无法从文件 & quot;
-%
-1 & quot;
-加载
-OpenTimelineIO < /translation>
-< /message>
-< message >
-<location filename = "../task/project/loadotio/loadotio.cpp"
-line = "96" / >
-    <source>Unknown
-OpenTimelineIO
-root
-element < /source>
-< translation > 未知的
-OpenTimelineIO
-根元素 < /translation>
-< /message>
-< message >
-<location filename = "../task/project/loadotio/loadotio.cpp"
-line = "188" / >
-    <source>Failed
-to
-load
-clip < /source>
-< translation > 无法加载片段 < /translation>
-< /message>
-< message >
-<location filename = "../task/project/loadotio/loadotio.cpp"
-line = "68" / >
-    <source>Failed
-to
-load
-OpenTimelineIO
-from
-file & quot;
-%
-1 & quot;
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="56"/>
+        <source>Ultra Fast</source>
+        <translation>极致快</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="57"/>
+        <source>Super Fast</source>
+        <translation>超快</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="58"/>
+        <source>Very Fast</source>
+        <translation>非常快</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="59"/>
+        <source>Faster</source>
+        <translation>更快</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="60"/>
+        <source>Fast</source>
+        <translation>快</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="61"/>
+        <source>Medium</source>
+        <translation>中等</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="62"/>
+        <source>Slow</source>
+        <translation>慢</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="63"/>
+        <source>Slower</source>
+        <translation>更慢</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/h264section.cpp" line="64"/>
+        <source>Very Slow</source>
+        <translation>非常慢</translation>
+    </message>
+</context>
+<context>
+    <name>olive::HistoryPanel</name>
+    <message>
+        <location filename="../panel/history/historypanel.cpp" line="39"/>
+        <source>History</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>olive::ImageSection</name>
+    <message>
+        <location filename="../dialog/export/codec/imagesection.cpp" line="38"/>
+        <source>Image Sequence:</source>
+        <translation>图像序列：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/export/codec/imagesection.cpp" line="47"/>
+        <source>Frame to Export:</source>
+        <translation>要导出的框架：</translation>
+    </message>
+</context>
+<context>
+    <name>olive::InterlacedComboBox</name>
+    <message>
+        <location filename="../widget/standardcombos/interlacedcombobox.h" line="39"/>
+        <source>None (Progressive)</source>
+        <translation>无 (渐进)</translation>
+    </message>
+    <message>
+        <location filename="../widget/standardcombos/interlacedcombobox.h" line="40"/>
+        <source>Top-Field First</source>
+        <translation>上场优先</translation>
+    </message>
+    <message>
+        <location filename="../widget/standardcombos/interlacedcombobox.h" line="41"/>
+        <source>Bottom-Field First</source>
+        <translation>下场优先</translation>
+    </message>
+</context>
+<context>
+    <name>olive::KeyframePropertiesDialog</name>
+    <message>
+        <location filename="../dialog/keyframeproperties/keyframeproperties.cpp" line="41"/>
+        <source>Keyframe Properties</source>
+        <translation>关键帧属性</translation>
+    </message>
+    <message>
+        <location filename="../dialog/keyframeproperties/keyframeproperties.cpp" line="70"/>
+        <source>In:</source>
+        <translation>入：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/keyframeproperties/keyframeproperties.cpp" line="78"/>
+        <source>Out:</source>
+        <translation>出：</translation>
+    </message>
+    <message>
+        <location filename="../dialog/keyframeproperties/keyframeproperties.cpp" line="168"/>
+        <source>Linear</source>
+        <translation>线性</translation>
+    </message>
+    <message>
+        <location filename="../dialog/keyframeproperties/keyframeproperties.cpp" line="169"/>
+        <source>Hold</source>
+        <translation>保留</translation>
+    </message>
+    <message>
+        <location filename="../dialog/keyframeproperties/keyframeproperties.cpp" line="170"/>
+        <source>Bezier</source>
+        <translation>贝塞尔曲线</translation>
+    </message>
+    <message>
+        <location filename="../dialog/keyframeproperties/keyframeproperties.cpp" line="236"/>
+        <source>Set Keyframe Properties</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>olive::KeyframeView</name>
+    <message>
+        <location filename="../widget/keyframeview/keyframeview.cpp" line="69"/>
+        <source>Deleted %1 Keyframe(s)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../widget/keyframeview/keyframeview.cpp" line="275"/>
+        <source>Pasted %1 Keyframe(s)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../widget/keyframeview/keyframeview.cpp" line="350"/>
+        <source>Moved %1 Keyframe(s)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../widget/keyframeview/keyframeview.cpp" line="599"/>
+        <source>Linear</source>
+        <translation>线性</translation>
+    </message>
+    <message>
+        <location filename="../widget/keyframeview/keyframeview.cpp" line="600"/>
+        <source>Bezier</source>
+        <translation>贝塞尔曲线</translation>
+    </message>
+    <message>
+        <location filename="../widget/keyframeview/keyframeview.cpp" line="601"/>
+        <source>Hold</source>
+        <translation>保留</translation>
+    </message>
+    <message>
+        <location filename="../widget/keyframeview/keyframeview.cpp" line="627"/>
+        <source>P&amp;roperties</source>
+        <translation>属性(&amp;R)</translation>
+    </message>
+    <message>
+        <location filename="../widget/keyframeview/keyframeview.cpp" line="653"/>
+        <source>Set Type of %1 Keyframe(s)</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>olive::KeyframeViewBase</name>
+    <message>
+        <source>Linear</source>
+        <translation type="obsolete">线性</translation>
+    </message>
+    <message>
+        <source>Bezier</source>
+        <translation type="obsolete">贝塞尔曲线</translation>
+    </message>
+    <message>
+        <source>Hold</source>
+        <translation type="obsolete">保留</translation>
+    </message>
+    <message>
+        <source>P&amp;roperties</source>
+        <translation type="obsolete">属性(&amp;R)</translation>
+    </message>
+</context>
+<context>
+    <name>olive::LoadOTIOTask</name>
+    <message>
+        <source>Failed to load OpenTimelineIO from file &quot;%1&quot;</source>
+        <translation type="obsolete">无法从文件 &quot;%1&quot; 加载 OpenTimelineIO</translation>
+    </message>
+    <message>
+        <location filename="../task/project/loadotio/loadotio.cpp" line="96"/>
+        <source>Unknown OpenTimelineIO root element</source>
+        <translation>未知的 OpenTimelineIO 根元素</translation>
+    </message>
+    <message>
+        <location filename="../task/project/loadotio/loadotio.cpp" line="188"/>
+        <source>Failed to load clip</source>
+        <translation>无法加载片段</translation>
+    </message>
+    <message>
+        <location filename="../task/project/loadotio/loadotio.cpp" line="68"/>
+        <source>Failed to load OpenTimelineIO from file &quot;%1&quot; 
 
-OpenTimelineIO
-Error:
+OpenTimelineIO Error:
 
-    %
-2 < /source>
-< translation > 无法从文件“%
-1”加载OpenTimelineIO
+%2</source>
+        <translation>无法从文件“%1”加载OpenTimelineIO
 
 OpenTimelineIO错误：
 
-%
-2 < /translation>
-< /message>
-< message >
-<location filename = "../task/project/loadotio/loadotio.cpp"
-line = "118" / >
-<source>Sequence % 1 < /source>
-< translation > 序列 % 1 < /translation>
-< /message>
-< /context>
-< context >
-<name>olive::MainMenu < /name>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "426" / >
-    <source> &amp; Save & apos;
-%
-1 & apos;
-</source>
-< translation > 保存 & apos;
-%
-1 & apos;
-( &amp; S
-)
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "428" / >
-    <source>Save & apos;
-%
-1 & apos;
-&amp;
-As < /source>
-< translation > 另存 & apos;
-%
-1 & apos;
-为( &amp; A
-)
-</translation>
-< /message>
-< message >
-<source>Close & apos;
-%
-1 & apos;
-</source>
-< translation
-type = "vanished" > 关闭 & apos;
-%
-1 & apos;
-</translation>
-< /message>
-< message >
-<source>Close
-All
-Except & apos;
-%
-1 & apos;
-</source>
-< translation
-type = "vanished" > 除‘%
-1’外关闭所有 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "430" / >
-    <source> &amp; Save
-Project < /source>
-< translation > 保存项目( &amp; S
-)
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "431" / >
-    <source>Save
-Project &amp; As < /source>
-< translation > 另存项目为( &amp; A
-)
-</translation>
-< /message>
-< message >
-<source>Close
-Project < /source>
-< translation
-type = "vanished" > 关闭项目 < /translation>
-    < /message>
-    < message >
-    <source>Close
-All
-Except
-Current
-Project < /source>
-< translation
-type = "vanished" > 除当前项目外关闭所有 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "532" / >
-<source>(None) < /source>
-< translation > (无) < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "800" / >
-    <source> &amp; File < /source>
-    < translation > 文件( &amp; F
-)
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "801" / >
-    <source> &amp; New < /source>
-    < translation > 新建( &amp; N
-)
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "802" / >
-    <source> &amp; Open
-Project < /source>
-< translation > 打开项目( &amp; O
-)
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "803" / >
-    <source>Open &amp; Recent < /source>
-    < translation > 打开最近( &amp; R
-)
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "804" / >
-    <source> &amp; Clear
-Recent
-List < /source>
-< translation > 清除最近列表( &amp; C
-)
-</translation>
-< /message>
-< message >
-<source>Sa &amp; ve
-All
-Projects < /source>
-< translation
-type = "vanished" > 保存所有项目( &amp; V
-)
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "806" / >
-    <source> &amp; Import
-...
-</source>
-< translation > 导入( &amp; I
-)...
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "807" / >
-    <source> &amp; Export < /source>
-    < translation > 导出( &amp; E
-)
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "808" / >
-    <source> &amp; Media
-...
-</source>
-< translation > 媒体( &amp; M
-)...
-</translation>
-< /message>
-< message >
-<source> &amp; Project
-Properties
-...
-</source>
-< translation
-type = "obsolete" > 项目属性( &amp; P
-)...
-</translation>
-< /message>
-< message >
-<source>Close
-All
-Projects < /source>
-< translation
-type = "vanished" > 关闭所有项目 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "810" / >
-    <source>E &amp; xit < /source>
-    < translation > 退出( &amp; X
-)
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "813" / >
-    <source> &amp; Edit < /source>
-    < translation > 编辑( &amp; E
-)
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "816" / >
-<source>Insert < /source>
-< translation > 插入 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "817" / >
-<source>Overwrite < /source>
-< translation > 覆盖 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "818" / >
-    <source>Select &amp; All < /source>
-    < translation > 全选( &amp; A
-)
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "819" / >
-    <source>Deselect
-All < /source>
-< translation > 取消全选 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "820" / >
-    <source>Ripple
-to
-In
-Point < /source>
-< translation > 涟漪删除至入点 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "821" / >
-    <source>Ripple
-to
-Out
-Point < /source>
-< translation > 涟漪删除至出点 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "822" / >
-    <source>Edit
-to
-In
-Point < /source>
-< translation > 剪辑至入点 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "823" / >
-    <source>Edit
-to
-Out
-Point < /source>
-< translation > 剪辑至出点 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "828" / >
-    <source>Delete
-In / Out
-Point < /source>
-< translation > 删除入点 / 出点 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "829" / >
-    <source>Ripple
-Delete
-In / Out
-Point < /source>
-< translation > 涟漪删除入点 / 出点 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "830" / >
-    <source>Set / Edit
-Marker < /source>
-< translation > 设置 / 编辑标记 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "833" / >
-    <source> &amp; View < /source>
-    < translation > 视图( &amp; V
-)
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "834" / >
-    <source>Zoom
-In < /source>
-< translation > 放大 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "835" / >
-    <source>Zoom
-Out < /source>
-< translation > 缩小 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "836" / >
-    <source>Increase
-Track
-Height < /source>
-< translation > 增加轨道高度 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "837" / >
-    <source>Decrease
-Track
-Height < /source>
-< translation > 降低轨道高度 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "838" / >
-    <source>Toggle
-Show
-All < /source>
-< translation > 轨道全部显示 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "841" / >
-    <source>Full
-Screen < /source>
-< translation > 全屏 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "842" / >
-    <source>Full
-Screen
-Viewer < /source>
-< translation > 全屏查看器 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "845" / >
-    <source> &amp; Playback < /source>
-    < translation > 回放( &amp; P
-)
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "846" / >
-    <source>Go
-to
-Start < /source>
-< translation > 回到起始帧 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "847" / >
-    <source>Previous
-Frame < /source>
-< translation > 前一帧 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "848" / >
-<source>Play / Pause < /source>
-< translation > 播放 / 暂停 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "849" / >
-    <source>Play
-In
-to
-Out < /source>
-< translation > 播放入点至出点 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "850" / >
-    <source>Next
-Frame < /source>
-< translation > 后一帧 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "851" / >
-    <source>Go
-to
-End < /source>
-< translation > 转到结束帧 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "852" / >
-    <source>Go
-to
-Previous
-Cut < /source>
-< translation > 转到前一切点 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "853" / >
-    <source>Go
-to
-Next
-Cut < /source>
-< translation > 转到后一切点 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "854" / >
-    <source>Go
-to
-In
-Point < /source>
-< translation > 转到入点 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "855" / >
-    <source>Go
-to
-Out
-Point < /source>
-< translation > 转到出点 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "856" / >
-    <source>Shuttle
-Left < /source>
-< translation > 向左播放 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "857" / >
-    <source>Shuttle
-Stop < /source>
-< translation > 停止播放 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "858" / >
-    <source>Shuttle
-Right < /source>
-< translation > 向右播放 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "859" / >
-<source>Loop < /source>
-< translation > 循环 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "862" / >
-    <source> &amp; Sequence < /source>
-    < translation > 序列( &amp; S
-)
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "863" / >
-    <source>Cache
-Entire
-Sequence < /source>
-< translation > 缓存整个序列 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "864" / >
-    <source>Cache
-Sequence
-In / Out < /source>
-< translation > 缓存序列入点 / 出点 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "869" / >
-    <source>Maximize
-Panel < /source>
-< translation > 最大化面板 < /translation>
-< /message>
-< message >
-<source>Lock
-Panels < /source>
-< translation
-type = "vanished" > 锁定面板 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "870" / >
-    <source>Reset
-to
-Default
-Layout < /source>
-< translation > 重置为默认布局 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "873" / >
-    <source> &amp; Tools < /source>
-    < translation > 工具( &amp; T
-)
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "874" / >
-    <source>Pointer
-Tool < /source>
-< translation > 指针工具 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "876" / >
-    <source>Edit
-Tool < /source>
-< translation > 编辑工具 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "877" / >
-    <source>Ripple
-Tool < /source>
-< translation > 涟漪工具 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "878" / >
-    <source>Rolling
-Tool < /source>
-< translation > 滚动工具 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "879" / >
-    <source>Razor
-Tool < /source>
-< translation > 刀片工具 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "880" / >
-    <source>Slip
-Tool < /source>
-< translation > 滑移工具 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "881" / >
-    <source>Slide
-Tool < /source>
-< translation > 滑动工具 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "882" / >
-    <source>Hand
-Tool < /source>
-< translation > 手形工具 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "883" / >
-    <source>Zoom
-Tool < /source>
-< translation > 缩放工具 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "884" / >
-    <source>Transition
-Tool < /source>
-< translation > 转场工具 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "887" / >
-    <source>Enable
-Snapping < /source>
-< translation > 启用吸附 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "888" / >
-    <source>Proxy
-Settings
-...
-</source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "889" / >
-<source>Preferences < /source>
-< translation > 首选项 < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "890" / >
-    <source>Add
-Tool
-Item < /source>
-< translation
-type = "unfinished" > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "896" / >
-    <source> &amp; Help < /source>
-    < translation > 帮助( &amp; H
-)
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "897" / >
-    <source>A &amp; ction
-Search < /source>
-< translation > 操作搜索( &amp; C
-)
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "898" / >
-    <source>Send &amp; Feedback
-...
-</source>
-< translation > 发送反馈( &amp; F
-)...
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "899" / >
-    <source> &amp; About
-...
-</source>
-< translation > 关于( &amp; A
-)...
-</translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "54" / >
-<source>Ctrl + O < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "60" / >
-<source>Ctrl + S < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "63" / >
-<source>Ctrl + Shift + S < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "66" / >
-<source>F12 < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "69" / >
-<source>Ctrl + I < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "73" / >
-<source>Ctrl + M < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "77" / >
-<source>Shift + F10 < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "92" / >
-<source>Ctrl + Z < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "95" / >
-<source>Ctrl + Shift + Z < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "106" / >
-<source>Backspace < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "116" / >
-<source>Ctrl + A < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "119" / >
-<source>Ctrl + Shift + A < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "124" / >
-    <source>, </source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "126" / >
-    <source>
-.
-</source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "129" / >
-<source>Q < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "131" / >
-<source>W < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "133" / >
-<source>Ctrl + Alt + Q < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "135" / >
-<source>Ctrl + Alt + W < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "138" / >
-<source>Alt + Left < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "140" / >
-<source>Alt + Right < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "143" / >
-<source>[</source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp" line = "146" / >
-    <source>] < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "150" / >
-    <source>;
-</source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "153" / >
-    <source> & apos;
-</source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "156" / >
-<source>M < /source>
-< translation > M < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "163" / >
-<source> = </source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "165" / >
-<source>-</source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "167" / >
-<source>Ctrl += </source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "170" / >
-<source>Ctrl + -</source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "172" / >
-    <source>\</source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "178" / >
-<source>F11 < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "189" / >
-<source>Home < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "191" / >
-<source>Left < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "193" / >
-<source>Space < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "196" / >
-<source>Shift + Space < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "198" / >
-<source>Right < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "200" / >
-<source>End < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "205" / >
-<source>Up < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "207" / >
-<source>Down < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "212" / >
-<source>Shift + I < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "214" / >
-<source>Shift + O < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "219" / >
-<source>J < /source>
-< translation > J < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "221" / >
-<source>K < /source>
-< translation > </translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "223" / >
-<source>L < /source>
-< translation > L < /translation>
-< /message>
-< message >
-<location filename = "../window/mainwindow/mainmenu.cpp"
-line = "256" / >
-    <source>`</source>
+%2</translation>
+    </message>
+    <message>
+        <location filename="../task/project/loadotio/loadotio.cpp" line="118"/>
+        <source>Sequence %1</source>
+        <translation>序列 %1</translation>
+    </message>
+</context>
+<context>
+    <name>olive::MainMenu</name>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="426"/>
+        <source>&amp;Save &apos;%1&apos;</source>
+        <translation>保存 &apos;%1&apos;(&amp;S)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="428"/>
+        <source>Save &apos;%1&apos; &amp;As</source>
+        <translation>另存 &apos;%1&apos; 为(&amp;A)</translation>
+    </message>
+    <message>
+        <source>Close &apos;%1&apos;</source>
+        <translation type="vanished">关闭 &apos;%1&apos;</translation>
+    </message>
+    <message>
+        <source>Close All Except &apos;%1&apos;</source>
+        <translation type="vanished">除‘%1’外关闭所有</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="430"/>
+        <source>&amp;Save Project</source>
+        <translation>保存项目(&amp;S)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="431"/>
+        <source>Save Project &amp;As</source>
+        <translation>另存项目为(&amp;A)</translation>
+    </message>
+    <message>
+        <source>Close Project</source>
+        <translation type="vanished">关闭项目</translation>
+    </message>
+    <message>
+        <source>Close All Except Current Project</source>
+        <translation type="vanished">除当前项目外关闭所有</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="532"/>
+        <source>(None)</source>
+        <translation>(无)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="800"/>
+        <source>&amp;File</source>
+        <translation>文件(&amp;F)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="801"/>
+        <source>&amp;New</source>
+        <translation>新建(&amp;N)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="802"/>
+        <source>&amp;Open Project</source>
+        <translation>打开项目(&amp;O)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="803"/>
+        <source>Open &amp;Recent</source>
+        <translation>打开最近(&amp;R)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="804"/>
+        <source>&amp;Clear Recent List</source>
+        <translation>清除最近列表(&amp;C)</translation>
+    </message>
+    <message>
+        <source>Sa&amp;ve All Projects</source>
+        <translation type="vanished">保存所有项目(&amp;V)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="806"/>
+        <source>&amp;Import...</source>
+        <translation>导入(&amp;I)...</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="807"/>
+        <source>&amp;Export</source>
+        <translation>导出(&amp;E)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="808"/>
+        <source>&amp;Media...</source>
+        <translation>媒体(&amp;M)...</translation>
+    </message>
+    <message>
+        <source>&amp;Project Properties...</source>
+        <translation type="obsolete">项目属性(&amp;P)...</translation>
+    </message>
+    <message>
+        <source>Close All Projects</source>
+        <translation type="vanished">关闭所有项目</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="810"/>
+        <source>E&amp;xit</source>
+        <translation>退出(&amp;X)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="813"/>
+        <source>&amp;Edit</source>
+        <translation>编辑(&amp;E)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="816"/>
+        <source>Insert</source>
+        <translation>插入</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="817"/>
+        <source>Overwrite</source>
+        <translation>覆盖</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="818"/>
+        <source>Select &amp;All</source>
+        <translation>全选(&amp;A)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="819"/>
+        <source>Deselect All</source>
+        <translation>取消全选</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="820"/>
+        <source>Ripple to In Point</source>
+        <translation>涟漪删除至入点</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="821"/>
+        <source>Ripple to Out Point</source>
+        <translation>涟漪删除至出点</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="822"/>
+        <source>Edit to In Point</source>
+        <translation>剪辑至入点</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="823"/>
+        <source>Edit to Out Point</source>
+        <translation>剪辑至出点</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="828"/>
+        <source>Delete In/Out Point</source>
+        <translation>删除入点/出点</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="829"/>
+        <source>Ripple Delete In/Out Point</source>
+        <translation>涟漪删除入点/出点</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="830"/>
+        <source>Set/Edit Marker</source>
+        <translation>设置/编辑标记</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="833"/>
+        <source>&amp;View</source>
+        <translation>视图(&amp;V)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="834"/>
+        <source>Zoom In</source>
+        <translation>放大</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="835"/>
+        <source>Zoom Out</source>
+        <translation>缩小</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="836"/>
+        <source>Increase Track Height</source>
+        <translation>增加轨道高度</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="837"/>
+        <source>Decrease Track Height</source>
+        <translation>降低轨道高度</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="838"/>
+        <source>Toggle Show All</source>
+        <translation>轨道全部显示</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="841"/>
+        <source>Full Screen</source>
+        <translation>全屏</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="842"/>
+        <source>Full Screen Viewer</source>
+        <translation>全屏查看器</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="845"/>
+        <source>&amp;Playback</source>
+        <translation>回放(&amp;P)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="846"/>
+        <source>Go to Start</source>
+        <translation>回到起始帧</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="847"/>
+        <source>Previous Frame</source>
+        <translation>前一帧</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="848"/>
+        <source>Play/Pause</source>
+        <translation>播放/暂停</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="849"/>
+        <source>Play In to Out</source>
+        <translation>播放入点至出点</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="850"/>
+        <source>Next Frame</source>
+        <translation>后一帧</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="851"/>
+        <source>Go to End</source>
+        <translation>转到结束帧</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="852"/>
+        <source>Go to Previous Cut</source>
+        <translation>转到前一切点</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="853"/>
+        <source>Go to Next Cut</source>
+        <translation>转到后一切点</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="854"/>
+        <source>Go to In Point</source>
+        <translation>转到入点</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="855"/>
+        <source>Go to Out Point</source>
+        <translation>转到出点</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="856"/>
+        <source>Shuttle Left</source>
+        <translation>向左播放</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="857"/>
+        <source>Shuttle Stop</source>
+        <translation>停止播放</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="858"/>
+        <source>Shuttle Right</source>
+        <translation>向右播放</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="859"/>
+        <source>Loop</source>
+        <translation>循环</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="862"/>
+        <source>&amp;Sequence</source>
+        <translation>序列(&amp;S)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="863"/>
+        <source>Cache Entire Sequence</source>
+        <translation>缓存整个序列</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="864"/>
+        <source>Cache Sequence In/Out</source>
+        <translation>缓存序列入点/出点</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="869"/>
+        <source>Maximize Panel</source>
+        <translation>最大化面板</translation>
+    </message>
+    <message>
+        <source>Lock Panels</source>
+        <translation type="vanished">锁定面板</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="870"/>
+        <source>Reset to Default Layout</source>
+        <translation>重置为默认布局</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="873"/>
+        <source>&amp;Tools</source>
+        <translation>工具(&amp;T)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="874"/>
+        <source>Pointer Tool</source>
+        <translation>指针工具</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="876"/>
+        <source>Edit Tool</source>
+        <translation>编辑工具</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="877"/>
+        <source>Ripple Tool</source>
+        <translation>涟漪工具</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="878"/>
+        <source>Rolling Tool</source>
+        <translation>滚动工具</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="879"/>
+        <source>Razor Tool</source>
+        <translation>刀片工具</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="880"/>
+        <source>Slip Tool</source>
+        <translation>滑移工具</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="881"/>
+        <source>Slide Tool</source>
+        <translation>滑动工具</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="882"/>
+        <source>Hand Tool</source>
+        <translation>手形工具</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="883"/>
+        <source>Zoom Tool</source>
+        <translation>缩放工具</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="884"/>
+        <source>Transition Tool</source>
+        <translation>转场工具</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="887"/>
+        <source>Enable Snapping</source>
+        <translation>启用吸附</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="888"/>
+        <source>Proxy Settings...</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="889"/>
+        <source>Preferences</source>
+        <translation>首选项</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="890"/>
+        <source>Add Tool Item</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="896"/>
+        <source>&amp;Help</source>
+        <translation>帮助(&amp;H)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="897"/>
+        <source>A&amp;ction Search</source>
+        <translation>操作搜索(&amp;C)</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="898"/>
+        <source>Send &amp;Feedback...</source>
+        <translation>发送反馈(&amp;F)...</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="899"/>
+        <source>&amp;About...</source>
+        <translation>关于(&amp;A)...</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="54"/>
+        <source>Ctrl+O</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="60"/>
+        <source>Ctrl+S</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="63"/>
+        <source>Ctrl+Shift+S</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="66"/>
+        <source>F12</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="69"/>
+        <source>Ctrl+I</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="73"/>
+        <source>Ctrl+M</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="77"/>
+        <source>Shift+F10</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="92"/>
+        <source>Ctrl+Z</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="95"/>
+        <source>Ctrl+Shift+Z</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="106"/>
+        <source>Backspace</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="116"/>
+        <source>Ctrl+A</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="119"/>
+        <source>Ctrl+Shift+A</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="124"/>
+        <source>,</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="126"/>
+        <source>.</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="129"/>
+        <source>Q</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="131"/>
+        <source>W</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="133"/>
+        <source>Ctrl+Alt+Q</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="135"/>
+        <source>Ctrl+Alt+W</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="138"/>
+        <source>Alt+Left</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="140"/>
+        <source>Alt+Right</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="143"/>
+        <source>[</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="146"/>
+        <source>]</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="150"/>
+        <source>;</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="153"/>
+        <source>&apos;</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="156"/>
+        <source>M</source>
+        <translation>M</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="163"/>
+        <source>=</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="165"/>
+        <source>-</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="167"/>
+        <source>Ctrl+=</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="170"/>
+        <source>Ctrl+-</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="172"/>
+        <source>\</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="178"/>
+        <source>F11</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="189"/>
+        <source>Home</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="191"/>
+        <source>Left</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="193"/>
+        <source>Space</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="196"/>
+        <source>Shift+Space</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="198"/>
+        <source>Right</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="200"/>
+        <source>End</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="205"/>
+        <source>Up</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="207"/>
+        <source>Down</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="212"/>
+        <source>Shift+I</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="214"/>
+        <source>Shift+O</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="219"/>
+        <source>J</source>
+        <translation>J</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="221"/>
+        <source>K</source>
+        <translation></translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="223"/>
+        <source>L</source>
+        <translation>L</translation>
+    </message>
+    <message>
+        <location filename="../window/mainwindow/mainmenu.cpp" line="256"/>
+        <source>`</source>
         <translation></translation>
     </message>
     <message>
