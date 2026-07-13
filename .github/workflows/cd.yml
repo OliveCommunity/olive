@@ -130,10 +130,7 @@ jobs:
       - name: Deploy Qt dependencies
         run: |
           export PATH="$(brew --prefix qt@6)/bin:$PATH"
-          macdeployqt build/app/Oak.app \
-            -qmldir=app \
-            -qmldir=ext/KDDockWidgets/src/qtquick/views/qml \
-            -verbose=2
+          macdeployqt build/app/Oak.app
           # Re-sign after macdeployqt (it breaks signatures when modifying libs)
           codesign --force --deep --sign - build/app/Oak.app
 
