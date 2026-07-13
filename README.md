@@ -13,7 +13,7 @@ This project is a community-maintained fork of Olive Video Editor.
 
 The binary can be downloaded here:
 
-[v0.3.0](https://github.com/OakVideoEditorCommunity/oak/releases/tag/v0.3.0-alpha)
+[v0.4.0-alpha](https://github.com/OakVideoEditorCommunity/oak/releases/tag/v0.4.0-alpha)
 
 ## Building from Source
 
