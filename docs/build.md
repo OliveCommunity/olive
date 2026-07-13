@@ -201,7 +201,7 @@ ctest --test-dir build --output-on-failure -C Release
 
 ## macOS
 
-macOS is a fully supported platform. See [`build-macos.md`](build-macos.md) for a dedicated, step-by-step guide.
+macOS is now a fully supported platform. See [`build_macos.md`](build_macos.md) for a dedicated, step-by-step guide.
 
 Install dependencies:
 

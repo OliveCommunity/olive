@@ -201,7 +201,7 @@ ctest --test-dir build --output-on-failure -C Release
 
 ## macOS
 
-macOS 是正式支持的平台。更详细的逐步指南请参见 [`build-macos-zh.md`](build-macos-zh.md)。
+macOS 现在是正式支持的平台。更详细的逐步指南请参见 [`build_macos-zh.md`](build_macos-zh.md)。
 
 安装依赖：
 
