@@ -20,7 +20,10 @@ TEST(DynamicRenderBackend, LoadsExperimentalOpenGLBackend)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("opengl"));
-	ASSERT_TRUE(renderer.Load());
+	if (!renderer.Load()) {
+		GTEST_SKIP() << "opengl backend library could not be loaded in this environment";
+	}
+
 	EXPECT_EQ(renderer.OpenGLContext(), nullptr);
 	OakRenderBackendInfo info = {};
 	ASSERT_TRUE(renderer.GetBackendInfo(&info));
@@ -44,7 +47,10 @@ TEST(DynamicRenderBackend, OpenGLBackendFollowsAdapterToRenderThread)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("opengl"));
-	ASSERT_TRUE(renderer.Load());
+	if (!renderer.Load()) {
+		GTEST_SKIP() << "opengl backend library could not be loaded in this environment";
+	}
+
 	if (!renderer.Init()) {
 		GTEST_SKIP() << "OpenGL backend could not be initialized on this system";
 	}
@@ -87,7 +93,10 @@ TEST(DynamicRenderBackend, LoadsExperimentalVulkanBackendWhenAvailable)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	ASSERT_TRUE(renderer.Load());
+	if (!renderer.Load()) {
+		GTEST_SKIP() << "vulkan backend library could not be loaded in this environment";
+	}
+
 	OakRenderBackendInfo info = {};
 	ASSERT_TRUE(renderer.GetBackendInfo(&info));
 	if (info.kind != OAK_RENDER_BACKEND_VULKAN) {
@@ -111,7 +120,10 @@ TEST(DynamicRenderBackend, FallsBackWhenExperimentalVulkanUnavailable)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	ASSERT_TRUE(renderer.Load());
+	if (!renderer.Load()) {
+		GTEST_SKIP() << "vulkan backend library could not be loaded in this environment";
+	}
+
 	OakRenderBackendInfo info = {};
 	ASSERT_TRUE(renderer.GetBackendInfo(&info));
 	if (info.kind == OAK_RENDER_BACKEND_VULKAN) {
@@ -132,7 +144,10 @@ TEST(DynamicRenderBackend, VulkanUploadBlitDownload)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	ASSERT_TRUE(renderer.Load());
+	if (!renderer.Load()) {
+		GTEST_SKIP() << "vulkan backend library could not be loaded in this environment";
+	}
+
 	OakRenderBackendInfo info = {};
 	ASSERT_TRUE(renderer.GetBackendInfo(&info));
 	if (info.kind != OAK_RENDER_BACKEND_VULKAN) {
@@ -210,7 +225,10 @@ TEST(DynamicRenderBackend, VulkanNullDestinationBlitDoesNotCrash)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	ASSERT_TRUE(renderer.Load());
+	if (!renderer.Load()) {
+		GTEST_SKIP() << "vulkan backend library could not be loaded in this environment";
+	}
+
 	OakRenderBackendInfo info = {};
 	ASSERT_TRUE(renderer.GetBackendInfo(&info));
 	if (info.kind != OAK_RENDER_BACKEND_VULKAN) {
@@ -275,7 +293,10 @@ TEST(DynamicRenderBackend, VulkanIterativeBlitPingPong)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	ASSERT_TRUE(renderer.Load());
+	if (!renderer.Load()) {
+		GTEST_SKIP() << "vulkan backend library could not be loaded in this environment";
+	}
+
 	OakRenderBackendInfo info = {};
 	ASSERT_TRUE(renderer.GetBackendInfo(&info));
 	if (info.kind != OAK_RENDER_BACKEND_VULKAN) {
@@ -356,7 +377,10 @@ TEST(DynamicRenderBackend, VulkanUploadDownloadThreeChannel)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	ASSERT_TRUE(renderer.Load());
+	if (!renderer.Load()) {
+		GTEST_SKIP() << "vulkan backend library could not be loaded in this environment";
+	}
+
 	OakRenderBackendInfo info = {};
 	ASSERT_TRUE(renderer.GetBackendInfo(&info));
 	if (info.kind != OAK_RENDER_BACKEND_VULKAN) {

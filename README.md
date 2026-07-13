@@ -1,4 +1,4 @@
-# Oak Video Editor[![Build status](https://github.com/OakVideoEditorCommunity/oak/workflows/CI/badge.svg?branch=master)](https://github.com/OakVideoEditorCommunity/oak/actions?query=branch%3Amaster)
+# Oak Video Editor[![CI](https://github.com/OakVideoEditorCommunity/oak/actions/workflows/ci.yml/badge.svg)](https://github.com/OakVideoEditorCommunity/oak/actions/workflows/ci.yml)
  [中文](docs/zh/README.md)
 
 Oak Video Editor is a free non-linear video editor for Windows, macOS, and Linux.
