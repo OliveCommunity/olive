@@ -960,7 +960,7 @@ void TimelineWidget::SynchronizeSelectedClipsBySourceTime()
 	}
 
 	const QVector<SourceSyncClip> sync_clips =
-		GetSelectedSourceSyncClips(selected_blocks_);
+		GetSelectedSourceSyncClips(GetSelectedBlocks());
 	if (sync_clips.size() < 2) {
 		return;
 	}
@@ -1027,7 +1027,7 @@ void TimelineWidget::SynchronizeSelectedClipsByWaveform()
 	}
 
 	const QVector<WaveformSyncClip> sync_clips =
-		GetSelectedWaveformSyncClips(selected_blocks_);
+		GetSelectedWaveformSyncClips(GetSelectedBlocks());
 	if (sync_clips.size() < 2) {
 		return;
 	}
@@ -1676,6 +1676,10 @@ void TimelineWidget::ShowContextMenu()
 			menu.addAction(tr("Synchronize by Waveform"));
 		sync_by_waveform->setEnabled(
 			GetSelectedWaveformSyncClips(selected).size() >= 2);
+		sync_by_waveform->setShortcut(
+			QKeySequence(QStringLiteral("Ctrl+Shift+W")));
+		sync_by_waveform->setShortcutContext(Qt::WidgetShortcut);
+		this->addAction(sync_by_waveform);
 		connect(sync_by_waveform, &QAction::triggered, this,
 				&TimelineWidget::SynchronizeSelectedClipsByWaveform);
 
