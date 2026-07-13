@@ -14,7 +14,7 @@ jobs:
   # Windows Installer (MSYS2)
   # ------------------------------------------------------------------
   windows:
-    runs-on: warp-windows-latest-x64-16x
+    runs-on: warp-windows-latest-x64-32x
     steps:
       - uses: actions/checkout@v4
         with:
