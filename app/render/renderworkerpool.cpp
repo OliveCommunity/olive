@@ -28,6 +28,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
+#include <QStandardPaths>
 #include <QTemporaryFile>
 #include <QXmlStreamWriter>
 #include <algorithm>
@@ -621,7 +622,20 @@ bool RenderWorkerPool::PrepareJob(RenderTicketPtr ticket,
 
 bool RenderWorkerPool::WriteGraphSnapshot(Project *project, QString *path)
 {
-	QTemporaryFile file(QDir::temp().filePath(QStringLiteral("oak-render-graph-XXXXXX.ove")));
+	// Write the snapshot into the application's persistent data directory so
+	// that the worker process can always reach it, regardless of sandbox
+	// restrictions or working directory. System temp directories are not
+	// reliably shared between the editor and its child worker on macOS.
+	const QString base_dir = QStandardPaths::writableLocation(
+		QStandardPaths::AppLocalDataLocation);
+	const QString graph_dir = QDir(base_dir).filePath(QStringLiteral("render-graphs"));
+	if (!QDir(graph_dir).mkpath(QStringLiteral("."))) {
+		qWarning() << "RenderWorkerPool failed to create graph snapshot directory"
+				   << graph_dir;
+		return false;
+	}
+
+	QTemporaryFile file(QDir(graph_dir).filePath(QStringLiteral("oak-render-graph-XXXXXX.ove")));
 	file.setAutoRemove(false);
 	if (!file.open()) {
 		qWarning() << "RenderWorkerPool failed to create graph snapshot temp file"
