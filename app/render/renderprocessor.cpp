@@ -317,6 +317,12 @@ RenderProcessor::ResolveDecoderFromInput(const QString &decoder_id,
 		return nullptr;
 	}
 
+	if (!decoder_cache_) {
+		qWarning() << "Cannot resolve decoder for" << stream.filename()
+				   << "without a decoder cache";
+		return nullptr;
+	}
+
 	QMutexLocker locker(decoder_cache_->mutex());
 
 	DecoderPair decoder = decoder_cache_->value(stream);
@@ -599,6 +605,12 @@ void RenderProcessor::ProcessAudioFootage(SampleBuffer &destination,
 										  const FootageJob *stream,
 										  const TimeRange &input_time)
 {
+	// The worker process has no decoder cache and does not decode audio. Bail
+	// out gracefully rather than letting ResolveDecoderFromInput crash.
+	if (!decoder_cache_) {
+		return;
+	}
+
 	DecoderPtr decoder = ResolveDecoderFromInput(
 		stream->decoder(),
 		Decoder::CodecStream(stream->filename(),

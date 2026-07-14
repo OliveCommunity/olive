@@ -281,12 +281,26 @@ void AudioManager::StopRecording()
 }
 
 #ifdef Q_OS_LINUX
+static bool IsPreferredLinuxAudioHostApi(const PaHostApiInfo *info)
+{
+	if (!info) {
+		return false;
+	}
+
+	const QString name = QString::fromLatin1(info->name);
+	return name.contains(QStringLiteral("PipeWire"), Qt::CaseInsensitive) ||
+		   name.contains(QStringLiteral("JACK"), Qt::CaseInsensitive) ||
+		   name.contains(QStringLiteral("PulseAudio"), Qt::CaseInsensitive);
+}
+
 static PaDeviceIndex GetPreferredLinuxAudioDevice(bool is_output_device)
 {
-	// Prefer PipeWire, then PulseAudio. Both provide mixing; plain ALSA/JACK
-	// defaults often fail to share the device on modern Linux desktops.
+	// Prefer sound servers that provide mixing and desktop integration
+	// (PipeWire, JACK, PulseAudio) over plain ALSA defaults, which often
+	// fail to share the device on modern Linux desktops.
 	const QStringList preferred_host_apis = {
 		QStringLiteral("PipeWire"),
+		QStringLiteral("JACK"),
 		QStringLiteral("PulseAudio"),
 	};
 
@@ -325,21 +339,60 @@ PaDeviceIndex AudioManager::FindConfigDeviceByName(bool is_output_device)
 PaDeviceIndex AudioManager::FindDeviceByName(const QString &s,
 											 bool is_output_device)
 {
+	PaDeviceIndex exact_match = paNoDevice;
+
 	if (!s.isEmpty()) {
 		for (PaDeviceIndex i = 0, end = Pa_GetDeviceCount(); i < end; i++) {
 			const PaDeviceInfo *device = Pa_GetDeviceInfo(i);
+			if (!device) {
+				continue;
+			}
 
 			if (((is_output_device && device->maxOutputChannels) ||
 				 (!is_output_device && device->maxInputChannels)) &&
 				!s.compare(device->name)) {
-				return i;
+				exact_match = i;
+				break;
 			}
 		}
 	}
 
 #ifdef Q_OS_LINUX
+	// Even if the user/config picked a device by name, upgrade to a preferred
+	// host API (PipeWire/JACK/PulseAudio) when one is available. This avoids
+	// getting stuck on an ALSA device that cannot share the hardware.
+	if (exact_match != paNoDevice) {
+		const PaDeviceInfo *matched_info = Pa_GetDeviceInfo(exact_match);
+		if (matched_info) {
+			const PaHostApiInfo *host_api =
+				Pa_GetHostApiInfo(matched_info->hostApi);
+			if (IsPreferredLinuxAudioHostApi(host_api)) {
+				// Keep an explicit choice that already uses a preferred API.
+				return exact_match;
+			}
+
+			// Upgrade a non-preferred (e.g. ALSA) match to a preferred backend
+			// when one is available.
+			PaDeviceIndex preferred =
+				GetPreferredLinuxAudioDevice(is_output_device);
+			if (preferred != paNoDevice) {
+				qInfo() << "Overriding saved audio device" << s
+						<< "with preferred Linux audio device"
+						<< Pa_GetDeviceInfo(preferred)->name;
+				return preferred;
+			}
+
+			// No preferred backend available; keep the saved device.
+			return exact_match;
+		}
+	}
+
 	return GetPreferredLinuxAudioDevice(is_output_device);
 #else
+	if (exact_match != paNoDevice) {
+		return exact_match;
+	}
+
 	return is_output_device ? Pa_GetDefaultOutputDevice() :
 							  Pa_GetDefaultInputDevice();
 #endif

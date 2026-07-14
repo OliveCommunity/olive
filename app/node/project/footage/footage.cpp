@@ -584,6 +584,11 @@ bool Footage::LoadCustom(QXmlStreamReader *reader, SerializedData *data)
 		}
 	}
 
+	// The cached lengths are not serialized. Recompute them from the stream
+	// parameters that were just loaded so that worker processes and any code
+	// that reads GetLength() before InvalidateCache() runs sees valid values.
+	VerifyLength();
+
 	return true;
 }
 

@@ -20,6 +20,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <csignal>
 #include <memory>
 #include <optional>
 
@@ -31,6 +32,11 @@
 #include <QMatrix4x4>
 #include <QOpenGLContext>
 #include <QSurfaceFormat>
+
+#ifdef Q_OS_LINUX
+#include <execinfo.h>
+#include <unistd.h>
+#endif
 
 #include "common/qtutils.h"
 #include "config/config.h"
@@ -58,6 +64,18 @@ void HideWorkerDockIcon();
 
 namespace
 {
+
+#ifdef Q_OS_LINUX
+void PrintBacktrace(int sig)
+{
+	void *array[50];
+	size_t size = backtrace(array, 50);
+	fprintf(stderr, "worker: caught signal %d, backtrace:\n", sig);
+	backtrace_symbols_fd(array, size, STDERR_FILENO);
+	fflush(stderr);
+	_exit(128 + sig);
+}
+#endif
 
 constexpr int kProtocolVersion = 1;
 constexpr int kDefaultWidth = 1920;
@@ -605,6 +623,12 @@ int main(int argc, char *argv[])
 			++i;
 		}
 	}
+
+#ifdef Q_OS_LINUX
+	std::signal(SIGSEGV, PrintBacktrace);
+	std::signal(SIGABRT, PrintBacktrace);
+	std::signal(SIGFPE, PrintBacktrace);
+#endif
 
 	QFile in;
 	QFile out;
