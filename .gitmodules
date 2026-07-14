@@ -1,8 +1,4 @@
-[submodule "ext/core"]
-	path = ext/core
-	url = https://github.com/OliveCommunity/core.git
-	branch = dev
-[submodule "ext/KDDockWidgets"]
-	path = ext/KDDockWidgets
+[submodule "third_party/KDDockWidgets"]
+	path = third_party/KDDockWidgets
 	url = https://github.com/OliveCommunity/KDDockWidgets.git
 	branch = main

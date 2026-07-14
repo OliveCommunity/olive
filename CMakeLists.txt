@@ -133,7 +133,7 @@ list(APPEND OLIVE_INCLUDE_DIRS ${OPENEXR_INCLUDES})
 
 # Link Olive
 list(APPEND OLIVE_LIBRARIES olivecore)
-list(APPEND OLIVE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/ext/core/include)
+list(APPEND OLIVE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/core/include)
 
 
 # Link Qt
@@ -327,9 +327,17 @@ if(BUILD_DOXYGEN)
 endif()
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
-list(APPEND OLIVE_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/ext)
+list(APPEND OLIVE_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/third_party)
 
-add_subdirectory(ext)
+add_subdirectory(core EXCLUDE_FROM_ALL)
+
+set(KDDockWidgets_STATIC ON CACHE INTERNAL "Force KDDockWidgets to build statically")
+set(KDDockWidgets_QT6 ${BUILD_QT6} CACHE INTERNAL "Conform KDDockWidgets' Qt 6 setting to ours")
+# Oak only uses the QtWidgets frontend; building the QtQuick frontend causes
+# duplicate QML module registration on macOS and pulls in unused dependencies.
+set(KDDockWidgets_FRONTENDS "qtwidgets" CACHE INTERNAL "Only build the QtWidgets frontend for Oak")
+add_subdirectory(third_party/KDDockWidgets EXCLUDE_FROM_ALL)
+
 add_subdirectory(third_party/openfx/HostSupport)
 add_subdirectory(app)
 
