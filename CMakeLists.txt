@@ -223,6 +223,10 @@ list(APPEND OLIVE_LIBRARIES
   FFMPEG::swresample
 )
 
+# FFmpeg isolation: all FFmpeg access is being moved behind this shared
+# library's pure C API. Built early so the app can link it.
+add_subdirectory(ffmpeg_bridge)
+
 # Detect FFmpeg pixel formats that may not exist in all versions
 include(CheckCXXSourceCompiles)
 set(CMAKE_REQUIRED_INCLUDES ${FFMPEG_INCLUDE_DIRS})
