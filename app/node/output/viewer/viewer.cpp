@@ -236,12 +236,10 @@ void ViewerOutput::set_default_parameters()
 		OLIVE_CONFIG("DefaultSequenceInterlacing")
 			.value<VideoParams::Interlacing>(),
 		1));
-	AVChannelLayout layout;
-	av_channel_layout_from_mask(
-		&layout, OLIVE_CONFIG("DefaultSequenceAudioLayout").toULongLong());
 	SetAudioParams(
 		AudioParams(OLIVE_CONFIG("DefaultSequenceAudioFrequency").toInt(),
-					layout, kDefaultSampleFormat));
+					OLIVE_CONFIG("DefaultSequenceAudioLayout").toULongLong(),
+					kDefaultSampleFormat));
 }
 
 void ViewerOutput::InvalidateCache(const TimeRange &range, const QString &from,

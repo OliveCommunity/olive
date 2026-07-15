@@ -22,10 +22,6 @@
 #ifndef DECODER_H
 #define DECODER_H
 
-extern "C" {
-#include <libswresample/swresample.h>
-}
-
 #include <QFileInfo>
 #include <QMutex>
 #include <QObject>

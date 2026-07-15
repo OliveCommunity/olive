@@ -204,7 +204,8 @@ void Config::SetDefaults()
 	SetEntryInternal(QStringLiteral("AudioOutputSampleRate"), NodeValue::kInt,
 					 48000);
 	SetEntryInternal(QStringLiteral("AudioOutputChannelLayout"),
-					 NodeValue::kInt, AV_CH_LAYOUT_STEREO);
+					 NodeValue::kInt,
+					 QVariant::fromValue(static_cast<int64_t>(kChannelLayoutStereo)));
 	SetEntryInternal(
 		QStringLiteral("AudioOutputSampleFormat"), NodeValue::kText,
 		QString::fromStdString(SampleFormat(SampleFormat::S16).to_string()));
@@ -216,7 +217,8 @@ void Config::SetDefaults()
 	SetEntryInternal(QStringLiteral("AudioRecordingSampleRate"),
 					 NodeValue::kInt, 48000);
 	SetEntryInternal(QStringLiteral("AudioRecordingChannelLayout"),
-					 NodeValue::kInt, AV_CH_LAYOUT_STEREO);
+					 NodeValue::kInt,
+					 QVariant::fromValue(static_cast<int64_t>(kChannelLayoutStereo)));
 	SetEntryInternal(
 		QStringLiteral("AudioRecordingSampleFormat"), NodeValue::kText,
 		QString::fromStdString(SampleFormat(SampleFormat::S16).to_string()));
@@ -251,7 +253,7 @@ void Config::SetDefaults()
 					 NodeValue::kInt, 48000);
 	SetEntryInternal(
 		QStringLiteral("DefaultSequenceAudioLayout"), NodeValue::kInt,
-		QVariant::fromValue(static_cast<int64_t>(AV_CH_LAYOUT_STEREO)));
+		QVariant::fromValue(static_cast<int64_t>(kChannelLayoutStereo)));
 
 	// Online/offline settings
 	SetEntryInternal(QStringLiteral("OnlinePixelFormat"), NodeValue::kInt,

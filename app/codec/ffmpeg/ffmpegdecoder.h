@@ -22,17 +22,9 @@
 #ifndef FFMPEGDECODER_H
 #define FFMPEGDECODER_H
 
-// Fixes weird define issue when including <avfilter.h>
 #include <inttypes.h>
 
-extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavfilter/avfilter.h>
-#include <libavformat/avformat.h>
-#include <libavutil/hwcontext.h>
-#include <libswscale/swscale.h>
-#include <libswresample/swresample.h>
-}
+#include <ffmpeg_bridge/ffmpeg_bridge.h>
 
 #include <QTimer>
 #include <QVector>
@@ -45,7 +37,10 @@ namespace olive
 {
 
 /**
- * @brief A Decoder derivative that wraps FFmpeg functions as on Olive decoder
+ * @brief A Decoder derivative that uses the ffmpeg_bridge library as an Olive decoder
+ *
+ * All media access goes through the pure C API of the ffmpeg_bridge shared
+ * library; this class never sees an FFmpeg structure or function.
  */
 class FFmpegDecoder : public Decoder {
 	Q_OBJECT
@@ -84,88 +79,10 @@ protected:
 	virtual rational GetAudioStartOffset() const override;
 
 private:
-	class Instance {
-	public:
-		Instance();
-
-		~Instance()
-		{
-			Close();
-		}
-
-		bool Open(const char *filename, int stream_index);
-
-		bool IsOpen() const
-		{
-			return fmt_ctx_;
-		}
-
-		void Close();
-
-		/**
-     * @brief Uses the FFmpeg API to retrieve a packet (stored in pkt_) and decode it (stored in frame_)
-     *
-     * @return
-     *
-     * An FFmpeg error code, or >= 0 on success
-     */
-		int GetFrame(AVPacket *pkt, AVFrame *frame);
-
-		const char *GetSubtitleHeader() const;
-
-		int GetSubtitle(AVPacket *pkt, AVSubtitle *sub);
-
-		int GetPacket(AVPacket *pkt);
-
-		void Seek(int64_t timestamp);
-
-		AVFormatContext *fmt_ctx() const
-		{
-			return fmt_ctx_;
-		}
-
-		AVStream *avstream() const
-		{
-			return avstream_;
-		}
-		AVCodecContext *codec_ctx()
-		{
-			return codec_ctx_;
-		}
-
-		bool hwaccel_enabled() const
-		{
-			return hwaccel_enabled_;
-		}
-
-		AVPixelFormat hw_pix_fmt() const
-		{
-			return hw_pix_fmt_;
-		}
-
-	private:
-		static AVHWDeviceType ChooseHardwareDevice();
-		static AVPixelFormat GetHardwareFormat(AVCodecContext *ctx,
-											   const AVPixelFormat *pix_fmts);
-
-		bool InitHardwareAcceleration(const AVCodec *codec);
-		void CleanupHardwareAcceleration();
-
-		AVFormatContext *fmt_ctx_;
-		AVCodecContext *codec_ctx_;
-		AVStream *avstream_;
-		AVDictionary *opts_;
-
-		AVBufferRef *hw_device_ctx_;
-		AVHWDeviceType hw_device_type_;
-		AVPixelFormat hw_pix_fmt_;
-		bool hwaccel_enabled_;
-	};
-
 	/**
-   * @brief Handle an FFmpeg error code
+   * @brief Handle a bridge error code
    *
-   * Uses the FFmpeg API to retrieve a descriptive string for this error code and sends it to Error(). As such, this
+   * Uses the bridge API to retrieve a descriptive string for this error code and sends it to Error(). As such, this
    * function also automatically closes the Decoder.
    *
    * @param error_code
@@ -176,15 +93,10 @@ private:
 
 	AVFramePtr TransferHardwareFrame(AVFramePtr f);
 
-	static PixelFormat GetNativePixelFormat(AVPixelFormat pix_fmt);
-	static int GetNativeChannelCount(AVPixelFormat pix_fmt);
+	static PixelFormat GetNativePixelFormat(int pix_fmt);
+	static int GetNativeChannelCount(int pix_fmt);
 
-	static AVChannelLayout ValidateChannelLayout(AVStream *stream);
-
-	static const char *
-	GetInterlacingModeInFFmpeg(VideoParams::Interlacing interlacing);
-
-	static bool IsPixelFormatGLSLCompatible(AVPixelFormat f);
+	static bool IsPixelFormatGLSLCompatible(int f);
 
 	AVFramePtr GetFrameFromCache(const int64_t &t) const;
 
@@ -202,17 +114,17 @@ private:
 
 	static int MaximumQueueSize();
 
-	SwsContext *sws_ctx_;
-	int sws_src_width_;
-	int sws_src_height_;
-	AVPixelFormat sws_src_format_;
-	int sws_dst_width_;
-	int sws_dst_height_;
-	AVPixelFormat sws_dst_format_;
-	AVColorRange sws_colrange_;
-	AVColorSpace sws_colspace_;
+	FBScaler *scaler_;
+	int scaler_src_width_;
+	int scaler_src_height_;
+	int scaler_src_format_;
+	int scaler_dst_width_;
+	int scaler_dst_height_;
+	int scaler_dst_format_;
+	int scaler_colrange_;
+	int scaler_colspace_;
 
-	AVPacket *working_packet_;
+	FBPacket *working_packet_;
 
 	int64_t second_ts_;
 
@@ -221,7 +133,17 @@ private:
 	bool cache_at_zero_;
 	bool cache_at_eof_;
 
-	Instance instance_;
+	FBDecoder *instance_;
+
+	// Stream parameters cached on open (the stream object itself lives
+	// inside the bridge library)
+	rational stream_time_base_;
+	int64_t stream_start_time_;
+	int64_t stream_duration_;
+	int64_t format_start_time_;
+	int input_sample_format_;
+	int input_sample_rate_;
+	uint64_t input_channel_layout_mask_;
 };
 
 }

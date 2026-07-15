@@ -172,7 +172,8 @@ int fb_pix_fmt_component_size(int pix_fmt)
 	if (!desc || desc->nb_components == 0) {
 		return 0;
 	}
-	return desc->comp[0].step;
+	// Bytes used to store one component: 1 for 8-bit formats, 2 for 9-16bit
+	return (desc->comp[0].depth + 7) / 8;
 }
 
 int fb_find_best_pix_fmt_of_list(const int *list, int pix_fmt)

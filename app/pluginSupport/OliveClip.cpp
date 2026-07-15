@@ -37,12 +37,16 @@
 #endif
 #include "common/ffmpegutils.h"
 #include "render/renderer.h"
-extern "C" {
-#include <libswscale/swscale.h>
-#include <libavutil/pixdesc.h>
-}
+#include <ffmpeg_bridge/ffmpeg_bridge.h>
 namespace
 {
+// The bridge header only defines the little-endian pixel formats. FFmpeg
+// numbers each big-endian variant immediately before its little-endian
+// counterpart (BE == LE - 1), so derive the BE constants used below.
+constexpr int FB_PIX_FMT_GRAYF32BE = FB_PIX_FMT_GRAYF32LE - 1;
+constexpr int FB_PIX_FMT_RGBF32BE = FB_PIX_FMT_RGBF32LE - 1;
+constexpr int FB_PIX_FMT_RGBAF32BE = FB_PIX_FMT_RGBAF32LE - 1;
+
 const std::string kBitDepthNoneStr(kOfxBitDepthNone);
 const std::string kBitDepthByteStr(kOfxBitDepthByte);
 const std::string kBitDepthShortStr(kOfxBitDepthShort);
@@ -68,48 +72,48 @@ static int BytesToPixels(int byte_linesize, const olive::VideoParams &params)
 	return byte_linesize / bytes_per_pixel;
 }
 
-static int PackedFloatChannels(AVPixelFormat fmt)
+static int PackedFloatChannels(int fmt)
 {
 	switch (fmt) {
-	case AV_PIX_FMT_GRAYF32LE:
-	case AV_PIX_FMT_GRAYF32BE:
+	case FB_PIX_FMT_GRAYF32LE:
+	case FB_PIX_FMT_GRAYF32BE:
 		return 1;
-	case AV_PIX_FMT_RGBF32LE:
-	case AV_PIX_FMT_RGBF32BE:
+	case FB_PIX_FMT_RGBF32LE:
+	case FB_PIX_FMT_RGBF32BE:
 		return 3;
-	case AV_PIX_FMT_RGBAF32LE:
-	case AV_PIX_FMT_RGBAF32BE:
+	case FB_PIX_FMT_RGBAF32LE:
+	case FB_PIX_FMT_RGBAF32BE:
 		return 4;
 	default:
 		return 0;
 	}
 }
 
-static bool PackedDstInfo(AVPixelFormat fmt, int *channels,
+static bool PackedDstInfo(int fmt, int *channels,
 						  int *bytes_per_component)
 {
 	switch (fmt) {
-	case AV_PIX_FMT_GRAY8:
+	case FB_PIX_FMT_GRAY8:
 		*channels = 1;
 		*bytes_per_component = 1;
 		return true;
-	case AV_PIX_FMT_RGB24:
+	case FB_PIX_FMT_RGB24:
 		*channels = 3;
 		*bytes_per_component = 1;
 		return true;
-	case AV_PIX_FMT_RGBA:
+	case FB_PIX_FMT_RGBA:
 		*channels = 4;
 		*bytes_per_component = 1;
 		return true;
-	case AV_PIX_FMT_GRAY16LE:
+	case FB_PIX_FMT_GRAY16LE:
 		*channels = 1;
 		*bytes_per_component = 2;
 		return true;
-	case AV_PIX_FMT_RGB48LE:
+	case FB_PIX_FMT_RGB48LE:
 		*channels = 3;
 		*bytes_per_component = 2;
 		return true;
-	case AV_PIX_FMT_RGBA64LE:
+	case FB_PIX_FMT_RGBA64LE:
 		*channels = 4;
 		*bytes_per_component = 2;
 		return true;
@@ -126,28 +130,23 @@ ReadbackTextureToFrame(olive::TexturePtr texture,
 		return nullptr;
 	}
 
-	AVPixelFormat pix_fmt = olive::FFmpegUtils::GetFFmpegPixelFormat(
+	int pix_fmt = olive::FFmpegUtils::GetFFmpegPixelFormat(
 		params.format(), params.channel_count());
-	if (pix_fmt == AV_PIX_FMT_NONE) {
+	if (pix_fmt == FB_PIX_FMT_NONE) {
 		return nullptr;
 	}
 
-	const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(pix_fmt);
-	if (!desc) {
-		return nullptr;
-	}
-
-	if (!(desc->flags & AV_PIX_FMT_FLAG_PLANAR)) {
+	if (!fb_pix_fmt_is_planar(pix_fmt)) {
 		olive::AVFramePtr frame = olive::CreateAVFramePtr();
-		frame->format = pix_fmt;
-		frame->width = params.width();
-		frame->height = params.height();
-		if (av_frame_get_buffer(frame.get(), 0) < 0) {
+		frame->set_format(pix_fmt);
+		frame->set_width(params.width());
+		frame->set_height(params.height());
+		if (frame->get_buffer(0) < 0) {
 			return nullptr;
 		}
-		const int linesize_pixels = BytesToPixels(frame->linesize[0], params);
+		const int linesize_pixels = BytesToPixels(frame->linesize(0), params);
 		texture->renderer()->DownloadFromTexture(
-			texture->id(), params, frame->data[0], linesize_pixels);
+			texture->id(), params, frame->data(0), linesize_pixels);
 		return frame;
 	}
 
@@ -157,48 +156,57 @@ ReadbackTextureToFrame(olive::TexturePtr texture,
 								   params.interlacing(), params.divider());
 
 	olive::AVFramePtr rgba_frame = olive::CreateAVFramePtr();
-	rgba_frame->format = AV_PIX_FMT_RGBA;
-	rgba_frame->width = params.width();
-	rgba_frame->height = params.height();
-	if (av_frame_get_buffer(rgba_frame.get(), 0) < 0) {
+	rgba_frame->set_format(FB_PIX_FMT_RGBA);
+	rgba_frame->set_width(params.width());
+	rgba_frame->set_height(params.height());
+	if (rgba_frame->get_buffer(0) < 0) {
 		return nullptr;
 	}
 
 	const int linesize_pixels =
-		BytesToPixels(rgba_frame->linesize[0], rgba_params);
+		BytesToPixels(rgba_frame->linesize(0), rgba_params);
 	texture->renderer()->DownloadFromTexture(
-		texture->id(), rgba_params, rgba_frame->data[0], linesize_pixels);
+		texture->id(), rgba_params, rgba_frame->data(0), linesize_pixels);
 
 	olive::AVFramePtr dst = olive::CreateAVFramePtr();
-	dst->format = pix_fmt;
-	dst->width = params.width();
-	dst->height = params.height();
-	if (av_frame_get_buffer(dst.get(), 0) < 0) {
+	dst->set_format(pix_fmt);
+	dst->set_width(params.width());
+	dst->set_height(params.height());
+	if (dst->get_buffer(0) < 0) {
 		return rgba_frame;
 	}
 
-	SwsContext *sws_ctx = sws_getContext(
-		rgba_frame->width, rgba_frame->height,
-		static_cast<AVPixelFormat>(rgba_frame->format), dst->width, dst->height,
-		pix_fmt, SWS_POINT, nullptr, nullptr, nullptr);
-	if (!sws_ctx) {
+	FBScaler *scaler = fb_scaler_create(
+		rgba_frame->width(), rgba_frame->height(), rgba_frame->format(),
+		dst->width(), dst->height(), pix_fmt, FB_SCALER_POINT);
+	if (!scaler) {
 		return rgba_frame;
 	}
 
-	sws_scale(sws_ctx, rgba_frame->data, rgba_frame->linesize, 0,
-			  rgba_frame->height, dst->data, dst->linesize);
-	sws_freeContext(sws_ctx);
+	uint8_t *src_data[4];
+	int src_linesize[4];
+	uint8_t *dst_data[4];
+	int dst_linesize[4];
+	for (int i = 0; i < 4; ++i) {
+		src_data[i] = rgba_frame->data(i);
+		src_linesize[i] = rgba_frame->linesize(i);
+		dst_data[i] = dst->data(i);
+		dst_linesize[i] = dst->linesize(i);
+	}
+	fb_scaler_scale_slices(scaler, src_data, src_linesize,
+						   rgba_frame->height(), dst_data, dst_linesize);
+	fb_scaler_free(&scaler);
 	return dst;
 }
 
 static olive::AVFramePtr ConvertPackedFloatFrame(olive::AVFramePtr src,
-												 AVPixelFormat dst_fmt)
+												 int dst_fmt)
 {
-	if (!src || !src->data[0]) {
+	if (!src || !src->data(0)) {
 		return nullptr;
 	}
 	const int src_channels =
-		PackedFloatChannels(static_cast<AVPixelFormat>(src->format));
+		PackedFloatChannels(src->format());
 	if (src_channels == 0) {
 		return nullptr;
 	}
@@ -210,23 +218,23 @@ static olive::AVFramePtr ConvertPackedFloatFrame(olive::AVFramePtr src,
 	}
 
 	olive::AVFramePtr dst = olive::CreateAVFramePtr();
-	dst->format = dst_fmt;
-	dst->width = src->width;
-	dst->height = src->height;
-	if (av_frame_get_buffer(dst.get(), 0) < 0) {
+	dst->set_format(dst_fmt);
+	dst->set_width(src->width());
+	dst->set_height(src->height());
+	if (dst->get_buffer(0) < 0) {
 		return nullptr;
 	}
 
 	auto clamp01 = [](float v) -> float { return std::clamp(v, 0.0f, 1.0f); };
 
-	for (int y = 0; y < src->height; ++y) {
+	for (int y = 0; y < src->height(); ++y) {
 		const float *src_row = reinterpret_cast<const float *>(
-			src->data[0] + y * src->linesize[0]);
-		uint8_t *dst_row = dst->data[0] + y * dst->linesize[0];
+			src->data(0) + y * src->linesize(0));
+		uint8_t *dst_row = dst->data(0) + y * dst->linesize(0);
 
 		if (bytes_per_component == 2) {
 			auto *dst_row_u16 = reinterpret_cast<uint16_t *>(dst_row);
-			for (int x = 0; x < src->width; ++x) {
+			for (int x = 0; x < src->width(); ++x) {
 				const float *pix = src_row + x * src_channels;
 				float r = pix[0];
 				float g = (src_channels > 1) ? pix[1] : r;
@@ -250,7 +258,7 @@ static olive::AVFramePtr ConvertPackedFloatFrame(olive::AVFramePtr src,
 				}
 			}
 		} else {
-			for (int x = 0; x < src->width; ++x) {
+			for (int x = 0; x < src->width(); ++x) {
 				const float *pix = src_row + x * src_channels;
 				float r = pix[0];
 				float g = (src_channels > 1) ? pix[1] : r;
@@ -613,12 +621,12 @@ void olive::plugin::OliveClipInstance::setInputTexture(TexturePtr texture,
 	}
 
 	AVFramePtr frame = texture->frame();
-	if (!frame || !frame->data[0]) {
+	if (!frame || !frame->data(0)) {
 		frame = ReadbackTextureToFrame(texture, params_);
 	}
-	AVPixelFormat expected_fmt = FFmpegUtils::GetFFmpegPixelFormat(
+	int expected_fmt = FFmpegUtils::GetFFmpegPixelFormat(
 		params_.format(), params_.channel_count());
-	if (expected_fmt == AV_PIX_FMT_NONE) {
+	if (expected_fmt == FB_PIX_FMT_NONE) {
 		return;
 	}
 	OfxRectI bounds = { 0, 0, params_.width(), params_.height() };
@@ -646,7 +654,7 @@ void olive::plugin::OliveClipInstance::setInputTexture(TexturePtr texture,
 		return;
 	}
 
-	if (!frame || !frame->data[0]) {
+	if (!frame || !frame->data(0)) {
 		std::memset(dst, 0, image->row_bytes() * image->height());
 		return;
 	}
@@ -657,8 +665,8 @@ void olive::plugin::OliveClipInstance::setInputTexture(TexturePtr texture,
 	// and SIGSEGV on Apple Silicon (where (int)NaN often evaluates to 0 or
 	// INT_MIN, causing huge offsets into bgrid._data).
 	if (params_.format() == core::PixelFormat::F32) {
-		const float *fptr = reinterpret_cast<const float *>(frame->data[0]);
-		int row_floats = frame->linesize[0] / static_cast<int>(sizeof(float));
+		const float *fptr = reinterpret_cast<const float *>(frame->data(0));
+		int row_floats = frame->linesize(0) / static_cast<int>(sizeof(float));
 		bool has_nan = false;
 		for (int y = 0; y < params_.height() && !has_nan; ++y) {
 			for (int x = 0; x < params_.width() * params_.channel_count();
@@ -684,9 +692,9 @@ void olive::plugin::OliveClipInstance::setInputTexture(TexturePtr texture,
 	}
 
 	AVFramePtr src_frame = frame;
-	if (frame->format != expected_fmt || frame->width != params_.width() ||
-		frame->height != params_.height()) {
-		if (PackedFloatChannels(static_cast<AVPixelFormat>(frame->format)) >
+	if (frame->format() != expected_fmt || frame->width() != params_.width() ||
+		frame->height() != params_.height()) {
+		if (PackedFloatChannels(frame->format()) >
 			0) {
 			AVFramePtr converted = ConvertPackedFloatFrame(frame, expected_fmt);
 			if (converted) {
@@ -695,25 +703,34 @@ void olive::plugin::OliveClipInstance::setInputTexture(TexturePtr texture,
 			}
 		}
 		AVFramePtr converted = CreateAVFramePtr();
-		converted->format = expected_fmt;
-		converted->width = params_.width();
-		converted->height = params_.height();
-		if (av_frame_get_buffer(converted.get(), 0) < 0) {
+		converted->set_format(expected_fmt);
+		converted->set_width(params_.width());
+		converted->set_height(params_.height());
+		if (converted->get_buffer(0) < 0) {
 			return;
 		}
 
-		SwsContext *sws_ctx = sws_getContext(
-			frame->width, frame->height,
-			static_cast<AVPixelFormat>(frame->format), converted->width,
-			converted->height, static_cast<AVPixelFormat>(converted->format),
-			SWS_POINT, nullptr, nullptr, nullptr);
-		if (!sws_ctx) {
+		FBScaler *scaler = fb_scaler_create(
+			frame->width(), frame->height(), frame->format(),
+			converted->width(), converted->height(), converted->format(),
+			FB_SCALER_POINT);
+		if (!scaler) {
 			return;
 		}
 
-		sws_scale(sws_ctx, frame->data, frame->linesize, 0, frame->height,
-				  converted->data, converted->linesize);
-		sws_freeContext(sws_ctx);
+		uint8_t *src_data[4];
+		int src_linesize[4];
+		uint8_t *dst_data[4];
+		int dst_linesize[4];
+		for (int i = 0; i < 4; ++i) {
+			src_data[i] = frame->data(i);
+			src_linesize[i] = frame->linesize(i);
+			dst_data[i] = converted->data(i);
+			dst_linesize[i] = converted->linesize(i);
+		}
+		fb_scaler_scale_slices(scaler, src_data, src_linesize, frame->height(),
+							   dst_data, dst_linesize);
+		fb_scaler_free(&scaler);
 
 		src_frame = converted;
 	}
@@ -722,13 +739,13 @@ copy_pixels:
 	int bytes_per_component = params_.format().byte_count();
 	int bytes_per_row =
 		params_.width() * params_.channel_count() * bytes_per_component;
-	int src_row_bytes = src_frame->linesize[0];
+	int src_row_bytes = src_frame->linesize(0);
 	int dst_row_bytes = image->row_bytes();
 	int copy_bytes =
 		std::min(bytes_per_row, std::min(src_row_bytes, dst_row_bytes));
-	int copy_height = std::min(image->height(), src_frame->height);
+	int copy_height = std::min(image->height(), src_frame->height());
 
-	const uint8_t *src = src_frame->data[0];
+	const uint8_t *src = src_frame->data(0);
 	if (params_.format() == core::PixelFormat::F32) {
 		const float *src_f = reinterpret_cast<const float *>(src);
 		float *dst_f = reinterpret_cast<float *>(dst);

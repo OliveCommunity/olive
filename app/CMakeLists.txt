@@ -313,14 +313,16 @@ elseif (APPLE)
             OUTPUT_NAME "Oak"
     )
 
-    # Copy the render worker and dynamic render backends into the app bundle.
-    # They are looked up in QCoreApplication::applicationDirPath(), which on
-    # macOS points to Oak.app/Contents/MacOS.
+    # Copy the render worker, dynamic render backends, and the FFmpeg bridge
+    # library into the app bundle. They are looked up in
+    # QCoreApplication::applicationDirPath(), which on macOS points to
+    # Oak.app/Contents/MacOS.
     add_custom_command(TARGET olive-editor POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS
             COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:olive-render-worker> $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS/
             COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:oakgl> $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS/
-            COMMENT "Copying oak-render-worker and render backends into Oak.app"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ffmpeg_bridge> $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS/
+            COMMENT "Copying oak-render-worker, render backends, and ffmpeg_bridge into Oak.app"
     )
     if (TARGET oakvulkan)
         add_custom_command(TARGET olive-editor POST_BUILD
@@ -336,6 +338,30 @@ endif ()
 target_link_libraries(olive-editor PRIVATE ${OLIVE_LIBRARIES})
 target_link_libraries(libolive-editor PRIVATE ${OLIVE_LIBRARIES})
 target_link_libraries(olive-render-worker PRIVATE ${OLIVE_LIBRARIES})
+
+# The ffmpeg_bridge shared library ships next to the binaries: inside the
+# macOS app bundle (Contents/MacOS, resolved via @loader_path), and in
+# ffmpeg_bridge/bin beside bin/ on other platforms. (Build-tree binaries get
+# the correct RPATH from CMake automatically.)
+if (APPLE)
+    # macOS bundles are distributed via POST_BUILD copies (not install()), so
+    # @loader_path must already be in the build-tree binaries' RPATH.
+    set(OLIVE_FB_RPATH "@loader_path")
+    set_target_properties(olive-editor olive-render-worker PROPERTIES
+            BUILD_RPATH "@loader_path")
+elseif (UNIX)
+    set(OLIVE_FB_RPATH "$ORIGIN/../ffmpeg_bridge/bin")
+endif ()
+if (OLIVE_FB_RPATH)
+    set_target_properties(olive-editor olive-render-worker PROPERTIES
+            INSTALL_RPATH "${OLIVE_FB_RPATH}")
+    if (TARGET oakgl)
+        set_target_properties(oakgl PROPERTIES INSTALL_RPATH "${OLIVE_FB_RPATH}")
+    endif ()
+    if (TARGET oakvulkan)
+        set_target_properties(oakvulkan PROPERTIES INSTALL_RPATH "${OLIVE_FB_RPATH}")
+    endif ()
+endif ()
 
 # Set compile options
 target_compile_options(olive-editor PRIVATE ${OLIVE_COMPILE_OPTIONS})

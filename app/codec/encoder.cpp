@@ -300,7 +300,7 @@ void EncodingParams::Save(QXmlStreamWriter *writer) const
 
 		writer->writeTextElement(
 			QStringLiteral("channellayout"),
-			QString::number(audio_params().channel_layout().u.mask));
+			QString::number(audio_params().channel_layout()));
 		writer->writeTextElement(
 			QStringLiteral("format"),
 			QString::fromStdString(audio_params_.format().to_string()));
@@ -542,12 +542,8 @@ bool EncodingParams::LoadV1(QXmlStreamReader *reader)
 					audio_params_.set_sample_rate(
 						reader->readElementText().toInt());
 				} else if (reader->name() == QStringLiteral("channellayout")) {
-					AVChannelLayout av_channel_layout;
-					av_channel_layout_from_mask(
-						&av_channel_layout,
+					audio_params_.set_channel_layout(
 						reader->readElementText().toLongLong());
-					audio_params_.set_channel_layout(av_channel_layout);
-					av_channel_layout_uninit(&av_channel_layout);
 				} else if (reader->name() == QStringLiteral("format")) {
 					audio_params_.set_format(SampleFormat::from_string(
 						reader->readElementText().toStdString()));

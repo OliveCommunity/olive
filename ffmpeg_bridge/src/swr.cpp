@@ -81,3 +81,14 @@ int fb_resampler_convert(FBResampler *resampler, uint8_t **out, int out_count,
 	}
 	return swr_convert(resampler->ctx, out, out_count, in, in_count);
 }
+
+int fb_resampler_convert_frame(FBResampler *resampler, uint8_t **out,
+							   int out_count, const FBFrame *in_frame)
+{
+	if (!resampler || !in_frame || !in_frame->frame) {
+		return AVERROR(EINVAL);
+	}
+	return swr_convert(resampler->ctx, out, out_count,
+					   (const uint8_t **)in_frame->frame->extended_data,
+					   in_frame->frame->nb_samples);
+}

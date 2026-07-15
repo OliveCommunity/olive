@@ -31,15 +31,15 @@ QString HumanStrings::SampleRateToString(const int &sample_rate)
 QString HumanStrings::ChannelLayoutToString(const uint64_t &layout)
 {
 	switch (layout) {
-	case AV_CH_LAYOUT_MONO:
+	case kChannelLayoutMono:
 		return QCoreApplication::translate("AudioParams", "Mono");
-	case AV_CH_LAYOUT_STEREO:
+	case kChannelLayoutStereo:
 		return QCoreApplication::translate("AudioParams", "Stereo");
-	case AV_CH_LAYOUT_2_1:
+	case kChannelLayout2_1:
 		return QCoreApplication::translate("AudioParams", "2.1");
-	case AV_CH_LAYOUT_5POINT1:
+	case kChannelLayout5Point1:
 		return QCoreApplication::translate("AudioParams", "5.1");
-	case AV_CH_LAYOUT_7POINT1:
+	case kChannelLayout7Point1:
 		return QCoreApplication::translate("AudioParams", "7.1");
 	default:
 		return QCoreApplication::translate("AudioParams", "Unknown (0x%1)")

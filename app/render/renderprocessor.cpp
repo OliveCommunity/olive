@@ -758,7 +758,7 @@ TexturePtr RenderProcessor::ProcessPluginJob(TexturePtr texture,
 			return true;
 		}
 		AVFramePtr frame = tex->frame();
-		return frame && frame->data[0];
+		return frame && frame->data(0);
 	};
 
 	TexturePtr src = nullptr;

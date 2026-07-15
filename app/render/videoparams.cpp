@@ -21,9 +21,7 @@
 
 #include "videoparams.h"
 
-extern "C" {
-#include <libavutil/avutil.h>
-}
+#include <cstdint>
 
 #include <QCoreApplication>
 #include <QtMath>
@@ -365,7 +363,7 @@ int VideoParams::GetScaledDimension(int dim, int divider)
 int64_t VideoParams::get_time_in_timebase_units(const rational &time) const
 {
 	if (time_base_.isNull()) {
-		return AV_NOPTS_VALUE;
+		return INT64_MIN; // AV_NOPTS_VALUE
 	}
 
 	return Timecode::time_to_timestamp(time, time_base_) + start_time_;

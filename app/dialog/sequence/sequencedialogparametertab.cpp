@@ -145,14 +145,12 @@ void SequenceDialogParameterTab::PresetChanged(const SequencePreset &preset)
 
 void SequenceDialogParameterTab::SavePresetClicked()
 {
-	AVChannelLayout layout = GetSelectedAudioChannelLayout();
 	emit SaveParametersAsPreset(SequencePreset(
 		QString(), GetSelectedVideoWidth(), GetSelectedVideoHeight(),
 		GetSelectedVideoFrameRate(), GetSelectedVideoPixelAspect(),
-		GetSelectedVideoInterlacingMode(), GetSelectedAudioSampleRate(), layout,
-		GetSelectedPreviewResolution(), GetSelectedPreviewFormat(),
-		GetSelectedPreviewAutoCache()));
-	av_channel_layout_uninit(&layout);
+		GetSelectedVideoInterlacingMode(), GetSelectedAudioSampleRate(),
+		GetSelectedAudioChannelLayout(), GetSelectedPreviewResolution(),
+		GetSelectedPreviewFormat(), GetSelectedPreviewAutoCache()));
 }
 
 void SequenceDialogParameterTab::UpdatePreviewResolutionLabel()

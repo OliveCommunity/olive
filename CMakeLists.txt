@@ -203,68 +203,11 @@ list(APPEND OLIVE_LIBRARIES
 # Link OFX HostSupport wherever libolive-editor objects are used.
 list(APPEND OLIVE_LIBRARIES OfxHost)
 
-# Link FFmpeg
-find_package(FFMPEG 6.0 REQUIRED
-  COMPONENTS
-  avutil
-  avcodec
-  avformat
-  avfilter
-  swscale
-  swresample
-)
-list(APPEND OLIVE_INCLUDE_DIRS ${FFMPEG_INCLUDE_DIRS})
-list(APPEND OLIVE_LIBRARIES
-  FFMPEG::avutil
-  FFMPEG::avcodec
-  FFMPEG::avformat
-  FFMPEG::avfilter
-  FFMPEG::swscale
-  FFMPEG::swresample
-)
-
-# FFmpeg isolation: all FFmpeg access is being moved behind this shared
-# library's pure C API. Built early so the app can link it.
+# FFmpeg isolation: all FFmpeg access in the editor goes through this shared
+# library's pure C API. It is the only component that links FFmpeg.
 add_subdirectory(ffmpeg_bridge)
-
-# Detect FFmpeg pixel formats that may not exist in all versions
-include(CheckCXXSourceCompiles)
-set(CMAKE_REQUIRED_INCLUDES ${FFMPEG_INCLUDE_DIRS})
-check_cxx_source_compiles("
-#include <libavutil/pixfmt.h>
-int main() { AVPixelFormat f = AV_PIX_FMT_GRAYF16; (void)f; return 0; }
-" HAVE_AV_PIX_FMT_GRAYF16)
-check_cxx_source_compiles("
-#include <libavutil/pixfmt.h>
-int main() { AVPixelFormat f = AV_PIX_FMT_RGBF16; (void)f; return 0; }
-" HAVE_AV_PIX_FMT_RGBF16)
-check_cxx_source_compiles("
-#include <libavutil/pixfmt.h>
-int main() { AVPixelFormat f = AV_PIX_FMT_RGBAF16; (void)f; return 0; }
-" HAVE_AV_PIX_FMT_RGBAF16)
-unset(CMAKE_REQUIRED_INCLUDES)
-
-if(HAVE_AV_PIX_FMT_GRAYF16)
-  add_compile_definitions(HAVE_AV_PIX_FMT_GRAYF16)
-endif()
-if(HAVE_AV_PIX_FMT_RGBF16)
-  add_compile_definitions(HAVE_AV_PIX_FMT_RGBF16)
-endif()
-if(HAVE_AV_PIX_FMT_RGBAF16)
-  add_compile_definitions(HAVE_AV_PIX_FMT_RGBAF16)
-endif()
-
-# Static FFmpeg (e.g. our Linux CI build) needs system libs for libavcodec/libavformat.
-find_package(ZLIB REQUIRED)
-list(APPEND OLIVE_LIBRARIES ZLIB::ZLIB)
-
-find_package(BZip2 REQUIRED)
-list(APPEND OLIVE_LIBRARIES BZip2::BZip2)
-
-find_package(LibLZMA)
-if (LIBLZMA_FOUND)
-  list(APPEND OLIVE_LIBRARIES ${LIBLZMA_LIBRARIES})
-endif()
+list(APPEND OLIVE_LIBRARIES ffmpeg_bridge)
+list(APPEND OLIVE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/ffmpeg_bridge/include)
 
 # Link PortAudio
 find_package(PortAudio REQUIRED)

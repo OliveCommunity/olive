@@ -17,7 +17,6 @@
 
 target_sources(libolive-editor PRIVATE
         cancelableobject.h
-        channellayout.h
         commandlineparser.cpp
         commandlineparser.h
         crashpadinterface.cpp

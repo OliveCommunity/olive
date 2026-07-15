@@ -603,10 +603,10 @@ void ViewerWidget::UpdateAudioProcessor()
 
 		qDebug() << "ViewerWidget::UpdateAudioProcessor: from sample_rate="
 				 << ap.sample_rate() << "channels=" << ap.channel_count()
-				 << "layout_mask=0x" << Qt::hex << ap.channel_layout().u.mask
+				 << "layout_mask=0x" << Qt::hex << ap.channel_layout()
 				 << "to sample_rate=" << packed.sample_rate()
 				 << "channels=" << packed.channel_count()
-				 << "layout_mask=0x" << packed.channel_layout().u.mask
+				 << "layout_mask=0x" << packed.channel_layout()
 				 << Qt::dec;
 
 		audio_processor_.Open(

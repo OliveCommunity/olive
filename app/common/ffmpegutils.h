@@ -22,15 +22,10 @@
 #ifndef FFMPEGABSTRACTION_H
 #define FFMPEGABSTRACTION_H
 
-extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libswscale/swscale.h>
-}
+#include <ffmpeg_bridge/ffmpeg_bridge.h>
 
 #include <olive/core/core.h>
 
-#include "common/avframeptr.h"
 #include "render/videoparams.h"
 
 namespace olive
@@ -38,43 +33,46 @@ namespace olive
 
 using namespace core;
 
+/**
+ * @brief C++ adapter mapping Olive's native enums to bridge pixel/sample
+ * formats
+ *
+ * All "FFmpeg" formats here are actually the opaque FBPixelFormat /
+ * FBSampleFormat constants of the ffmpeg_bridge library; no FFmpeg header
+ * or structure is ever seen by the editor.
+ */
 class FFmpegUtils {
 public:
 	/**
-   * @brief Returns an AVPixelFormat that can be used to convert a frame to a data type Olive supports with minimal data loss
+   * @brief Returns a bridge pixel format that can be used to convert a frame to a data type Olive supports with minimal data loss
+   *
+   * Named distinctly from the native PixelFormat overload below: with both
+   * taking a single argument, an unscoped enum argument would silently
+   * prefer an int overload over the PixelFormat one.
    */
-	static AVPixelFormat
-	GetCompatiblePixelFormat(const AVPixelFormat &pix_fmt,
-							 PixelFormat maximum = PixelFormat::INVALID);
+	static int GetCompatibleBridgePixelFormat(
+		int pix_fmt, PixelFormat maximum = PixelFormat::INVALID);
 
 	/**
-   * @brief Returns a native pixel format that can be used to convert from a native frame to an AVFrame with minimal data loss
+   * @brief Returns a native pixel format that can be used to convert from a native frame to a bridge frame with minimal data loss
    */
 	static PixelFormat GetCompatiblePixelFormat(const PixelFormat &pix_fmt);
 
 	/**
-   * @brief Returns an FFmpeg pixel format for a given native pixel format
+   * @brief Returns a bridge pixel format for a given native pixel format
    */
-	static AVPixelFormat GetFFmpegPixelFormat(const PixelFormat &pix_fmt,
-											  int channel_layout);
+	static int GetFFmpegPixelFormat(const PixelFormat &pix_fmt,
+									int channel_layout);
 
 	/**
-   * @brief Returns a native sample format type for a given AVSampleFormat
+   * @brief Returns a native sample format type for a given bridge sample format
    */
-	static SampleFormat GetNativeSampleFormat(const AVSampleFormat &smp_fmt);
+	static SampleFormat GetNativeSampleFormat(int smp_fmt);
 
 	/**
-   * @brief Returns an FFmpeg sample format type for a given native type
+   * @brief Returns a bridge sample format type for a given native type
    */
-	static AVSampleFormat GetFFmpegSampleFormat(const SampleFormat &smp_fmt);
-
-	/**
-   * @brief Returns an SWS_CS_* macro from an AVColorSpace enum member
-   *
-   * Why aren't these the same thing anyway? And for that matter, why doesn't FFmpeg provide a
-   * convenience function to do this conversion for us? Who knows, but here we are.
-   */
-	static int GetSwsColorspaceFromAVColorSpace(AVColorSpace cs);
+	static int GetFFmpegSampleFormat(const SampleFormat &smp_fmt);
 
 	/**
    * @brief Convert "JPEG"/full-range colorspace to its regular counterpart
@@ -83,7 +81,7 @@ public:
    * time being, FFmpeg still uses these JPEG spaces, so for simplicity (since we *are* color_range
    * aware), we use this function.
    */
-	static AVPixelFormat ConvertJPEGSpaceToRegularSpace(AVPixelFormat f);
+	static int ConvertJPEGSpaceToRegularSpace(int f);
 };
 
 }

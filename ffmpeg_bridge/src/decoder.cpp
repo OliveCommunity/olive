@@ -456,6 +456,14 @@ int64_t fb_decoder_get_format_start_time(const FBDecoder *decoder)
 	return decoder->fmt_ctx->start_time;
 }
 
+int64_t fb_decoder_get_format_duration(const FBDecoder *decoder)
+{
+	if (!decoder || !decoder->fmt_ctx) {
+		return FB_NOPTS_VALUE;
+	}
+	return decoder->fmt_ctx->duration;
+}
+
 int fb_decoder_guess_sample_aspect_ratio(const FBDecoder *decoder,
 										 FBFrame *frame, int *num, int *den)
 {

@@ -21,60 +21,7 @@
 
 #include "ffmpegdecoder.h"
 
-extern "C" {
-#include <libavutil/pixdesc.h>
-}
-
-namespace olive
-{
-
-static FramePtr CopyPackedAVFrameToFrame(const AVFramePtr &src,
-										 PixelFormat format, int channel_count,
-										 const rational &timestamp)
-{
-	if (!src || !src->data[0]) {
-		return nullptr;
-	}
-
-	VideoParams params(src->width, src->height, format, channel_count);
-	FramePtr frame = Frame::Create();
-	frame->set_video_params(params);
-	frame->set_timestamp(timestamp);
-	if (!frame->allocate()) {
-		return nullptr;
-	}
-
-	const int row_bytes = params.effective_width() *
-						  VideoParams::GetBytesPerPixel(format, channel_count);
-	for (int y = 0; y < frame->height(); y++) {
-		memcpy(frame->data() + y * frame->linesize_bytes(),
-			   src->data[0] + y * src->linesize[0], size_t(row_bytes));
-	}
-
-	return frame;
-}
-
-static VideoParams::Interlacing FFmpegFieldOrderToOlive(AVFieldOrder fo)
-{
-	switch (fo) {
-	case AV_FIELD_TT:
-		return VideoParams::kInterlacedTopFirst;
-	case AV_FIELD_BB:
-		return VideoParams::kInterlacedBottomFirst;
-	case AV_FIELD_PROGRESSIVE:
-	default:
-		return VideoParams::kInterlaceNone;
-	}
-}
-
-}
-
-extern "C" {
-#include <libavcodec/avcodec.h>
-#include <libavformat/avformat.h>
-#include <libavutil/avutil.h>
-#include <libavutil/frame.h>
-}
+#include <cstring>
 
 #include <QDebug>
 #include <QFile>
@@ -93,69 +40,79 @@ extern "C" {
 namespace olive
 {
 
+static FramePtr CopyPackedAVFrameToFrame(const AVFramePtr &src,
+										 PixelFormat format, int channel_count,
+										 const rational &timestamp)
+{
+	if (!src || !src->data(0)) {
+		return nullptr;
+	}
+
+	VideoParams params(src->width(), src->height(), format, channel_count);
+	FramePtr frame = Frame::Create();
+	frame->set_video_params(params);
+	frame->set_timestamp(timestamp);
+	if (!frame->allocate()) {
+		return nullptr;
+	}
+
+	const int row_bytes = params.effective_width() *
+						  VideoParams::GetBytesPerPixel(format, channel_count);
+	for (int y = 0; y < frame->height(); y++) {
+		memcpy(frame->data() + y * frame->linesize_bytes(),
+			   src->data(0) + y * src->linesize(0), size_t(row_bytes));
+	}
+
+	return frame;
+}
+
+static VideoParams::Interlacing FFmpegFieldOrderToOlive(int fo)
+{
+	switch (fo) {
+	case FB_FIELD_ORDER_TT:
+		return VideoParams::kInterlacedTopFirst;
+	case FB_FIELD_ORDER_BB:
+		return VideoParams::kInterlacedBottomFirst;
+	case FB_FIELD_ORDER_PROGRESSIVE:
+	default:
+		return VideoParams::kInterlaceNone;
+	}
+}
+
 QVariant Yuv2RgbShader;
 QVariant DeinterlaceShader;
 
 namespace
 {
 
-constexpr int64_t kAnalyzeDurationUs = 5000000;
-constexpr int64_t kProbeSizeBytes = 20000000;
-
-void ApplyFormatOpenOptions(AVDictionary **opts)
+int CancelThunk(void *userdata)
 {
-	av_dict_set_int(opts, "analyzeduration", kAnalyzeDurationUs, 0);
-	av_dict_set_int(opts, "probesize", kProbeSizeBytes, 0);
+	CancelAtom *cancelled = static_cast<CancelAtom *>(userdata);
+	return (cancelled && cancelled->IsCancelled()) ? 1 : 0;
 }
 
-void TuneFormatContext(AVFormatContext *ctx)
-{
-	if (!ctx) {
-		return;
-	}
-
-	ctx->probesize = kProbeSizeBytes;
-	ctx->max_analyze_duration = kAnalyzeDurationUs;
-}
-
-void DiscardSubtitleStreams(AVFormatContext *ctx)
-{
-	if (!ctx) {
-		return;
-	}
-
-	for (unsigned int i = 0; i < ctx->nb_streams; i++) {
-		AVStream *stream = ctx->streams[i];
-		if (stream && stream->codecpar &&
-			stream->codecpar->codec_type == AVMEDIA_TYPE_SUBTITLE) {
-			stream->discard = AVDISCARD_ALL;
-		}
-	}
-}
-
-TimecodeMetadata::SourceTime ExtractSourceStartTime(AVDictionary *metadata,
+TimecodeMetadata::SourceTime ExtractSourceStartTime(FBProbe *probe,
+													int stream_index,
 													const rational &timebase,
 													int sample_rate)
 {
-	if (!metadata) {
-		return TimecodeMetadata::SourceTime();
-	}
+	char buf[1024];
 
-	if (AVDictionaryEntry *entry =
-			av_dict_get(metadata, "timecode", nullptr, AV_DICT_IGNORE_SUFFIX)) {
+	if (fb_probe_get_metadata(probe, stream_index, "timecode", buf,
+							  sizeof(buf)) == 1) {
 		TimecodeMetadata::SourceTime parsed =
-			TimecodeMetadata::FromTimecodeString(
-				QString::fromUtf8(entry->value), timebase);
+			TimecodeMetadata::FromTimecodeString(QString::fromUtf8(buf),
+												 timebase);
 		if (parsed.valid) {
 			return parsed;
 		}
 	}
 
-	if (AVDictionaryEntry *entry = av_dict_get(
-			metadata, "time_reference", nullptr, AV_DICT_IGNORE_SUFFIX)) {
+	if (fb_probe_get_metadata(probe, stream_index, "time_reference", buf,
+							  sizeof(buf)) == 1) {
 		TimecodeMetadata::SourceTime parsed =
-			TimecodeMetadata::FromBwfTimeReference(
-				QString::fromUtf8(entry->value), sample_rate);
+			TimecodeMetadata::FromBwfTimeReference(QString::fromUtf8(buf),
+												   sample_rate);
 		if (parsed.valid) {
 			return parsed;
 		}
@@ -164,28 +121,73 @@ TimecodeMetadata::SourceTime ExtractSourceStartTime(AVDictionary *metadata,
 	return TimecodeMetadata::SourceTime();
 }
 
+struct SubtitleReadContext {
+	SubtitleParams *sub;
+	rational time_base;
+};
+
+void SubtitleReadThunk(int64_t pts, int64_t duration, const char *text,
+					   int text_size, void *userdata)
+{
+	SubtitleReadContext *ctx = static_cast<SubtitleReadContext *>(userdata);
+
+	TimeRange time(Timecode::timestamp_to_time(pts, ctx->time_base),
+				   Timecode::timestamp_to_time(pts + duration, ctx->time_base));
+
+	ctx->sub->push_back(
+		Subtitle(time, QString::fromUtf8(text, text_size)));
+}
+
 } // namespace
 
 FFmpegDecoder::FFmpegDecoder()
-	: sws_ctx_(nullptr)
+	: scaler_(nullptr)
 	, working_packet_(nullptr)
 	, cache_at_zero_(false)
 	, cache_at_eof_(false)
+	, instance_(nullptr)
+	, stream_start_time_(0)
+	, stream_duration_(0)
+	, format_start_time_(FB_NOPTS_VALUE)
+	, input_sample_format_(FB_SAMPLE_FMT_NONE)
+	, input_sample_rate_(0)
+	, input_channel_layout_mask_(0)
 {
 }
 
 bool FFmpegDecoder::OpenInternal()
 {
-	if (instance_.Open(stream().filename().toUtf8(), stream().stream())) {
-		AVStream *s = instance_.avstream();
+	instance_ = fb_decoder_create();
+	if (!instance_) {
+		return false;
+	}
+
+	if (fb_decoder_open(instance_, stream().filename().toUtf8(),
+						stream().stream()) == 0) {
+		// Cache the stream parameters the decoder logic needs; the stream
+		// object itself always lives inside the bridge library
+		FBStreamInfo info;
+		if (fb_decoder_get_stream_info(instance_, &info) != 0) {
+			fb_decoder_free(&instance_);
+			return false;
+		}
+
+		stream_time_base_ = rational(info.time_base_num, info.time_base_den);
+		stream_start_time_ = info.start_time;
+		stream_duration_ = info.duration;
+		format_start_time_ = fb_decoder_get_format_start_time(instance_);
+		input_sample_format_ = info.sample_format;
+		input_sample_rate_ = info.sample_rate;
+		input_channel_layout_mask_ = info.channel_layout_mask;
 
 		// Store one second in the source's timebase
-		second_ts_ = qRound64(av_q2d(av_inv_q(s->time_base)));
+		second_ts_ = qRound64(stream_time_base_.flipped().toDouble());
 
-		working_packet_ = av_packet_alloc();
+		working_packet_ = fb_packet_alloc();
 		return true;
 	}
 
+	fb_decoder_free(&instance_);
 	return false;
 }
 
@@ -194,29 +196,35 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 												  const AVFramePtr original)
 {
 	// Determine native format
-	AVPixelFormat ideal_fmt = FFmpegUtils::GetCompatiblePixelFormat(
-		static_cast<AVPixelFormat>(f->format));
+	int ideal_fmt = FFmpegUtils::GetCompatibleBridgePixelFormat(f->format());
 	PixelFormat native_fmt = GetNativePixelFormat(ideal_fmt);
 	int native_channels = GetNativeChannelCount(ideal_fmt);
 
+	// Determine pixel aspect ratio
+	int sar_num, sar_den;
+	rational pixel_aspect_ratio(1, 1);
+	if (fb_decoder_guess_sample_aspect_ratio(instance_, nullptr, &sar_num,
+											 &sar_den) == 0 &&
+		sar_den != 0) {
+		pixel_aspect_ratio = rational(sar_num, sar_den);
+	}
+
 	// Set up video params
-	VideoParams vp(original->width, original->height, native_fmt,
-				   native_channels,
-				   av_guess_sample_aspect_ratio(instance_.fmt_ctx(),
-												instance_.avstream(), nullptr),
+	VideoParams vp(original->width(), original->height(), native_fmt,
+				   native_channels, pixel_aspect_ratio,
 				   VideoParams::kInterlaceNone, p.divider);
 
 	// For YUV formats, force the output texture to F32 RGBA for maximum precision
-	switch (f->format) {
-	case AV_PIX_FMT_YUV420P:
-	case AV_PIX_FMT_YUV422P:
-	case AV_PIX_FMT_YUV444P:
-	case AV_PIX_FMT_YUV420P10LE:
-	case AV_PIX_FMT_YUV422P10LE:
-	case AV_PIX_FMT_YUV444P10LE:
-	case AV_PIX_FMT_YUV420P12LE:
-	case AV_PIX_FMT_YUV422P12LE:
-	case AV_PIX_FMT_YUV444P12LE:
+	switch (f->format()) {
+	case FB_PIX_FMT_YUV420P:
+	case FB_PIX_FMT_YUV422P:
+	case FB_PIX_FMT_YUV444P:
+	case FB_PIX_FMT_YUV420P10LE:
+	case FB_PIX_FMT_YUV422P10LE:
+	case FB_PIX_FMT_YUV444P10LE:
+	case FB_PIX_FMT_YUV420P12LE:
+	case FB_PIX_FMT_YUV422P12LE:
+	case FB_PIX_FMT_YUV444P12LE:
 		vp.set_format(PixelFormat::F32);
 		vp.set_channel_count(VideoParams::kRGBAChannelCount);
 		break;
@@ -227,16 +235,16 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 	// Create texture
 	TexturePtr tex = p.renderer->CreateTexture(vp);
 
-	switch (f->format) {
-	case AV_PIX_FMT_YUV420P:
-	case AV_PIX_FMT_YUV422P:
-	case AV_PIX_FMT_YUV444P:
-	case AV_PIX_FMT_YUV420P10LE:
-	case AV_PIX_FMT_YUV422P10LE:
-	case AV_PIX_FMT_YUV444P10LE:
-	case AV_PIX_FMT_YUV420P12LE:
-	case AV_PIX_FMT_YUV422P12LE:
-	case AV_PIX_FMT_YUV444P12LE: {
+	switch (f->format()) {
+	case FB_PIX_FMT_YUV420P:
+	case FB_PIX_FMT_YUV422P:
+	case FB_PIX_FMT_YUV444P:
+	case FB_PIX_FMT_YUV420P10LE:
+	case FB_PIX_FMT_YUV422P10LE:
+	case FB_PIX_FMT_YUV444P10LE:
+	case FB_PIX_FMT_YUV420P12LE:
+	case FB_PIX_FMT_YUV422P12LE:
+	case FB_PIX_FMT_YUV444P12LE: {
 		// Run through YUV to RGB shader
 		if (Yuv2RgbShader.isNull()) {
 			// Compile shader
@@ -250,23 +258,23 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 
 		int px_size;
 		int bits_per_pixel;
-		switch (f->format) {
-		case AV_PIX_FMT_YUV420P:
-		case AV_PIX_FMT_YUV422P:
-		case AV_PIX_FMT_YUV444P:
+		switch (f->format()) {
+		case FB_PIX_FMT_YUV420P:
+		case FB_PIX_FMT_YUV422P:
+		case FB_PIX_FMT_YUV444P:
 		default:
 			px_size = 1;
 			bits_per_pixel = 8;
 			break;
-		case AV_PIX_FMT_YUV420P10LE:
-		case AV_PIX_FMT_YUV422P10LE:
-		case AV_PIX_FMT_YUV444P10LE:
+		case FB_PIX_FMT_YUV420P10LE:
+		case FB_PIX_FMT_YUV422P10LE:
+		case FB_PIX_FMT_YUV444P10LE:
 			px_size = 2;
 			bits_per_pixel = 10;
 			break;
-		case AV_PIX_FMT_YUV420P12LE:
-		case AV_PIX_FMT_YUV422P12LE:
-		case AV_PIX_FMT_YUV444P12LE:
+		case FB_PIX_FMT_YUV420P12LE:
+		case FB_PIX_FMT_YUV422P12LE:
+		case FB_PIX_FMT_YUV444P12LE:
 			px_size = 2;
 			bits_per_pixel = 12;
 			break;
@@ -279,33 +287,33 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 		plane_params.set_format(native_fmt);
 
 		TexturePtr y_plane = p.renderer->CreateTexture(
-			plane_params, hw_in->data[0], hw_in->linesize[0] / px_size);
+			plane_params, hw_in->data(0), hw_in->linesize(0) / px_size);
 		y_plane->handleFrame(hw_in);
-		switch (f->format) {
-		case AV_PIX_FMT_YUV420P:
-		case AV_PIX_FMT_YUV422P:
-		case AV_PIX_FMT_YUV420P10LE:
-		case AV_PIX_FMT_YUV422P10LE:
-		case AV_PIX_FMT_YUV420P12LE:
-		case AV_PIX_FMT_YUV422P12LE:
+		switch (f->format()) {
+		case FB_PIX_FMT_YUV420P:
+		case FB_PIX_FMT_YUV422P:
+		case FB_PIX_FMT_YUV420P10LE:
+		case FB_PIX_FMT_YUV422P10LE:
+		case FB_PIX_FMT_YUV420P12LE:
+		case FB_PIX_FMT_YUV422P12LE:
 			plane_params.set_width(plane_params.width() / 2);
 			break;
 		}
 
-		switch (f->format) {
-		case AV_PIX_FMT_YUV420P:
-		case AV_PIX_FMT_YUV420P10LE:
-		case AV_PIX_FMT_YUV420P12LE:
+		switch (f->format()) {
+		case FB_PIX_FMT_YUV420P:
+		case FB_PIX_FMT_YUV420P10LE:
+		case FB_PIX_FMT_YUV420P12LE:
 			plane_params.set_height(plane_params.height() / 2);
 			break;
 		}
 
 		TexturePtr u_plane = p.renderer->CreateTexture(
-			plane_params, hw_in->data[1], hw_in->linesize[1] / px_size);
+			plane_params, hw_in->data(1), hw_in->linesize(1) / px_size);
 		u_plane->handleFrame(hw_in);
 
 		TexturePtr v_plane = p.renderer->CreateTexture(
-			plane_params, hw_in->data[2], hw_in->linesize[2] / px_size);
+			plane_params, hw_in->data(2), hw_in->linesize(2) / px_size);
 		v_plane->handleFrame(hw_in);
 
 		ShaderJob job;
@@ -322,33 +330,33 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 				   NodeValue(NodeValue::kInt, bits_per_pixel));
 		job.Insert(QStringLiteral("full_range"),
 				   NodeValue(NodeValue::kBoolean,
-							 hw_in->color_range == AVCOL_RANGE_JPEG));
+							 hw_in->color_range() == FB_COLOR_RANGE_JPEG));
 
-		const int *yuv_coeffs = sws_getCoefficients(
-			FFmpegUtils::GetSwsColorspaceFromAVColorSpace(hw_in->colorspace));
+		double yuv_coeffs[4];
+		fb_get_yuv_coefficients(hw_in->colorspace(), yuv_coeffs);
 		job.Insert(QStringLiteral("yuv_crv"),
-				   NodeValue(NodeValue::kFloat, yuv_coeffs[0] / 65536.0));
+				   NodeValue(NodeValue::kFloat, yuv_coeffs[0]));
 		job.Insert(QStringLiteral("yuv_cgu"),
-				   NodeValue(NodeValue::kFloat, yuv_coeffs[2] / 65536.0));
+				   NodeValue(NodeValue::kFloat, yuv_coeffs[2]));
 		job.Insert(QStringLiteral("yuv_cgv"),
-				   NodeValue(NodeValue::kFloat, yuv_coeffs[3] / 65536.0));
+				   NodeValue(NodeValue::kFloat, yuv_coeffs[3]));
 		job.Insert(QStringLiteral("yuv_cbu"),
-				   NodeValue(NodeValue::kFloat, yuv_coeffs[1] / 65536.0));
+				   NodeValue(NodeValue::kFloat, yuv_coeffs[1]));
 
 		tex = p.renderer->CreateTexture(vp);
 		p.renderer->BlitToTexture(Yuv2RgbShader, job, tex.get(), false);
 		break;
 	}
-	case AV_PIX_FMT_RGBA:
-	case AV_PIX_FMT_RGBA64LE:
+	case FB_PIX_FMT_RGBA:
+	case FB_PIX_FMT_RGBA64LE:
 		// RGBA can be uploaded directly to the texture
 		tex->handleFrame(f);
-		tex->Upload(f->data[0], f->linesize[0] / vp.GetBytesPerPixel());
+		tex->Upload(f->data(0), f->linesize(0) / vp.GetBytesPerPixel());
 		break;
-	case AV_PIX_FMT_RGBAF32:
+	case FB_PIX_FMT_RGBAF32LE:
 		// RGBA F32 can be uploaded directly to the texture
 		tex->handleFrame(f);
-		tex->Upload(f->data[0], f->linesize[0] / vp.GetBytesPerPixel());
+		tex->Upload(f->data(0), f->linesize(0) / vp.GetBytesPerPixel());
 		break;
 	}
 
@@ -364,8 +372,13 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 			}
 		}
 
-		rational frame_rate_tb = av_guess_frame_rate(
-			instance_.fmt_ctx(), instance_.avstream(), original.get());
+		int fr_num, fr_den;
+		rational frame_rate_tb;
+		if (fb_decoder_guess_frame_rate(instance_, original->handle(), &fr_num,
+										&fr_den) == 0 &&
+			fr_num != 0) {
+			frame_rate_tb = rational(fr_num, fr_den);
+		}
 
 		// Double frame rate for interlaced fields
 		frame_rate_tb *= 2;
@@ -374,10 +387,10 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 		frame_rate_tb.flip();
 
 		int64_t req = Timecode::time_to_timestamp(
-			p.time + rational(instance_.fmt_ctx()->start_time, AV_TIME_BASE),
-			frame_rate_tb);
-		int64_t frm = Timecode::rescale_timestamp(
-			original->pts, instance_.avstream()->time_base, frame_rate_tb);
+			p.time + rational(format_start_time_, FB_TIME_BASE), frame_rate_tb);
+		int64_t frm = Timecode::rescale_timestamp(original->pts(),
+												  stream_time_base_,
+												  frame_rate_tb);
 
 		bool first = (req == frm);
 		bool top_first =
@@ -393,7 +406,7 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 		job.Insert(QStringLiteral("interlacing"),
 				   NodeValue(NodeValue::kInt, interlacing));
 		job.Insert(QStringLiteral("pixel_height"),
-				   NodeValue(NodeValue::kInt, original->height));
+				   NodeValue(NodeValue::kInt, original->height()));
 
 		p.renderer->BlitToTexture(DeinterlaceShader, job, deinterlaced.get(),
 								  false);
@@ -414,13 +427,12 @@ TexturePtr FFmpegDecoder::RetrieveVideoInternal(const RetrieveVideoParams &p)
 		AVFramePtr original = f;
 
 		// Disregard "JPEG" pixel formats because we allow the user to override that
-		f->format = FFmpegUtils::ConvertJPEGSpaceToRegularSpace(
-			static_cast<AVPixelFormat>(f->format));
+		f->set_format(FFmpegUtils::ConvertJPEGSpaceToRegularSpace(f->format()));
 
 		// Force frame's color range to whatever it's set to in Olive
-		f->color_range = p.force_range == VideoParams::kColorRangeFull ?
-							 AVCOL_RANGE_JPEG :
-							 AVCOL_RANGE_MPEG;
+		f->set_color_range(p.force_range == VideoParams::kColorRangeFull ?
+							   FB_COLOR_RANGE_JPEG :
+							   FB_COLOR_RANGE_MPEG);
 
 		// Perform any CPU processing required
 		AVFramePtr ptr = PreProcessFrame(f, p);
@@ -450,70 +462,62 @@ FramePtr FFmpegDecoder::RetrieveVideoFrameInternal(const RetrieveVideoParams &p)
 			return nullptr;
 		}
 
-		f->format = FFmpegUtils::ConvertJPEGSpaceToRegularSpace(
-			static_cast<AVPixelFormat>(f->format));
-		f->color_range = p.force_range == VideoParams::kColorRangeFull ?
-							 AVCOL_RANGE_JPEG :
-							 AVCOL_RANGE_MPEG;
+		f->set_format(FFmpegUtils::ConvertJPEGSpaceToRegularSpace(f->format()));
+		f->set_color_range(p.force_range == VideoParams::kColorRangeFull ?
+							   FB_COLOR_RANGE_JPEG :
+							   FB_COLOR_RANGE_MPEG);
 
 		AVFramePtr dest = CreateAVFramePtr();
-		dest->width = f->width;
-		dest->height = f->height;
-		dest->format = p.maximum_format == PixelFormat::U8 ? AV_PIX_FMT_RGBA :
-															 AV_PIX_FMT_RGBA64;
-		dest->color_range = f->color_range;
-		dest->colorspace = f->colorspace;
+		dest->set_width(f->width());
+		dest->set_height(f->height());
+		dest->set_format(p.maximum_format == PixelFormat::U8 ?
+							 FB_PIX_FMT_RGBA :
+							 FB_PIX_FMT_RGBA64LE);
+		dest->set_color_range(f->color_range());
+		dest->set_colorspace(f->colorspace());
 		if (p.divider > 1) {
-			dest->width =
-				VideoParams::GetScaledDimension(dest->width, p.divider);
-			dest->height =
-				VideoParams::GetScaledDimension(dest->height, p.divider);
+			dest->set_width(
+				VideoParams::GetScaledDimension(dest->width(), p.divider));
+			dest->set_height(
+				VideoParams::GetScaledDimension(dest->height(), p.divider));
 		}
 
-		int r = av_frame_get_buffer(dest.get(), 0);
+		int r = dest->get_buffer(0);
 		if (r < 0) {
 			FFmpegError(r);
 			return nullptr;
 		}
 
-		SwsContext *cpu_sws = sws_getContext(
-			f->width, f->height, static_cast<AVPixelFormat>(f->format),
-			dest->width, dest->height, static_cast<AVPixelFormat>(dest->format),
-			SWS_POINT, nullptr, nullptr, nullptr);
-		if (!cpu_sws) {
+		FBScaler *cpu_scaler = fb_scaler_create(f->width(), f->height(),
+												f->format(), dest->width(),
+												dest->height(), dest->format(),
+												FB_SCALER_POINT);
+		if (!cpu_scaler) {
 			qCritical() << "Failed to create CPU frame conversion context";
 			return nullptr;
 		}
 
-		sws_setColorspaceDetails(
-			cpu_sws,
-			sws_getCoefficients(FFmpegUtils::GetSwsColorspaceFromAVColorSpace(
-				dest->colorspace)),
-			dest->color_range == AVCOL_RANGE_JPEG ? 1 : 0,
-			sws_getCoefficients(FFmpegUtils::GetSwsColorspaceFromAVColorSpace(
-				dest->colorspace)),
-			dest->color_range == AVCOL_RANGE_JPEG ? 1 : 0, 0, 0x10000, 0x10000);
+		fb_scaler_set_colorspace(cpu_scaler, dest->colorspace(),
+								 dest->color_range() == FB_COLOR_RANGE_JPEG);
 
-		r = sws_scale_frame(cpu_sws, dest.get(), f.get());
-		sws_freeContext(cpu_sws);
+		r = fb_scaler_scale_frame(cpu_scaler, dest->handle(), f->handle());
+		fb_scaler_free(&cpu_scaler);
 		if (r < 0) {
 			FFmpegError(r);
 			return nullptr;
 		}
 
 		// sws_scale does not initialize the alpha channel when converting
-		// from non-alpha source formats (e.g. YUV). av_frame_get_buffer
+		// from non-alpha source formats (e.g. YUV). fb_frame_get_buffer
 		// zero-initializes the destination, leaving alpha at 0. The color
 		// management shader later multiplies RGB by alpha, producing black.
 		// Ensure alpha is opaque for source formats that have no alpha.
-		const AVPixFmtDescriptor *src_desc =
-			av_pix_fmt_desc_get(static_cast<AVPixelFormat>(f->format));
-		if (src_desc && !(src_desc->flags & AV_PIX_FMT_FLAG_ALPHA)) {
-			const int bpc = (dest->format == AV_PIX_FMT_RGBA) ? 1 : 2;
-			const int stride = dest->linesize[0];
-			for (int y = 0; y < dest->height; ++y) {
-				uchar *row = dest->data[0] + y * stride;
-				for (int x = 0; x < dest->width; ++x) {
+		if (!fb_pix_fmt_has_alpha(f->format())) {
+			const int bpc = (dest->format() == FB_PIX_FMT_RGBA) ? 1 : 2;
+			const int stride = dest->linesize(0);
+			for (int y = 0; y < dest->height(); ++y) {
+				uchar *row = dest->data(0) + y * stride;
+				for (int x = 0; x < dest->width(); ++x) {
 					if (bpc == 1) {
 						row[x * 4 + 3] = 0xFF;
 					} else {
@@ -524,7 +528,7 @@ FramePtr FFmpegDecoder::RetrieveVideoFrameInternal(const RetrieveVideoParams &p)
 		}
 
 		return CopyPackedAVFrameToFrame(dest,
-										dest->format == AV_PIX_FMT_RGBA ?
+										dest->format() == FB_PIX_FMT_RGBA ?
 											PixelFormat::U8 :
 											PixelFormat::U16,
 										VideoParams::kRGBAChannelCount, p.time);
@@ -536,24 +540,23 @@ FramePtr FFmpegDecoder::RetrieveVideoFrameInternal(const RetrieveVideoParams &p)
 void FFmpegDecoder::CloseInternal()
 {
 	if (working_packet_) {
-		av_packet_free(&working_packet_);
+		fb_packet_free(&working_packet_);
 		working_packet_ = nullptr;
 	}
 
 	ClearFrameCache();
 	FreeScaler();
 
-	instance_.Close();
+	if (instance_) {
+		fb_decoder_free(&instance_);
+	}
 }
 
 rational FFmpegDecoder::GetAudioStartOffset() const
 {
-	auto f = instance_.fmt_ctx();
-	if (f) {
-		rational fmt_start =
-			rational(instance_.fmt_ctx()->start_time, AV_TIME_BASE);
-		rational str_start = rational(instance_.avstream()->time_base) *
-							 instance_.avstream()->start_time;
+	if (instance_) {
+		rational fmt_start = rational(format_start_time_, FB_TIME_BASE);
+		rational str_start = stream_time_base_ * stream_start_time_;
 		return str_start - fmt_start;
 	} else {
 		return 0;
@@ -571,34 +574,24 @@ FootageDescription FFmpegDecoder::Probe(const QString &filename,
 	// Return value
 	FootageDescription desc(id());
 
-	// Variable for receiving errors from FFmpeg
+	// Variable for receiving errors from the bridge
 	int error_code;
 
 	// Convert QString to a C string
 	QByteArray filename_c = filename.toUtf8();
 
-	// Open file in a format context
-	AVFormatContext *fmt_ctx = nullptr;
-	AVDictionary *format_opts = nullptr;
-	ApplyFormatOpenOptions(&format_opts);
-	error_code =
-		avformat_open_input(&fmt_ctx, filename_c, nullptr, &format_opts);
-	av_dict_free(&format_opts);
-	TuneFormatContext(fmt_ctx);
-	DiscardSubtitleStreams(fmt_ctx);
+	// Open file in the bridge library
+	FBProbe *probe = fb_probe_create();
+	error_code = fb_probe_open(probe, filename_c);
 
-	// Handle format context error
+	// Handle open error
 	if (error_code == 0) {
-		// Retrieve metadata about the media
-		avformat_find_stream_info(fmt_ctx, nullptr);
-
-		int64_t footage_duration = fmt_ctx->duration;
+		int64_t footage_duration = fb_probe_get_duration(probe);
 		TimecodeMetadata::SourceTime source_start_time = ExtractSourceStartTime(
-			fmt_ctx->metadata, rational(1, AV_TIME_BASE), 0);
+			probe, -1, rational(1, FB_TIME_BASE), 0);
 
 		bool duration_guessed_from_bitrate =
-			(fmt_ctx->duration_estimation_method ==
-			 AVFMT_DURATION_FROM_BITRATE);
+			fb_probe_duration_from_bitrate(probe) != 0;
 		if (duration_guessed_from_bitrate) {
 			qWarning()
 				<< "Unreliable duration detected - we will manually determine it ourselves (this may take some time)";
@@ -607,198 +600,135 @@ FootageDescription FFmpegDecoder::Probe(const QString &filename,
 		// Dump it into the Footage object
 		int video_streams = 0, audio_streams = 0, still_streams = 0;
 
-		for (unsigned int i = 0; i < fmt_ctx->nb_streams; i++) {
-			// FFmpeg AVStream
-			AVStream *avstream = fmt_ctx->streams[i];
-			if (!source_start_time.valid) {
-				source_start_time = ExtractSourceStartTime(
-					avstream->metadata, avstream->time_base,
-					avstream->codecpar->sample_rate);
+		int stream_count = fb_probe_get_stream_count(probe);
+		for (int i = 0; i < stream_count; i++) {
+			FBStreamInfo info;
+			if (fb_probe_get_stream_info(probe, i, &info) != 0) {
+				continue;
 			}
 
-			// Find decoder for this stream, if it exists we can proceed
-			const AVCodec *decoder =
-				avcodec_find_decoder(avstream->codecpar->codec_id);
+			rational stream_tb(info.time_base_num, info.time_base_den);
 
-			if (decoder &&
-				(avstream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO ||
-				 avstream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO ||
-				 avstream->codecpar->codec_type == AVMEDIA_TYPE_SUBTITLE)) {
-				if (avstream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-					{
-						// Read at least two frames to get more information about this video stream
-						AVPacket *pkt = av_packet_alloc();
-						AVFrame *frame = av_frame_alloc();
+			if (!source_start_time.valid) {
+				source_start_time = ExtractSourceStartTime(probe, i, stream_tb,
+														   info.sample_rate);
+			}
 
-						VideoParams::Interlacing interlacing =
-							VideoParams::kInterlaceNone;
-						AVRational pixel_aspect_ratio = { 1, 1 };
-						AVRational frame_rate = avstream->avg_frame_rate;
-						AVPixelFormat compatible_pix_fmt =
-							FFmpegUtils::GetCompatiblePixelFormat(
-								static_cast<AVPixelFormat>(
-									avstream->codecpar->format));
-						bool image_is_still = false;
+			// Only proceed if a decoder exists for this stream
+			if (!info.has_decoder) {
+				continue;
+			}
 
-						{
-							Instance instance;
-							if (instance.Open(filename_c, avstream->index) != 0)
-								goto cleanup;
+			if (info.codec_type == FB_MEDIA_TYPE_VIDEO) {
+				// Read at least two frames to get more information about this video stream
+				VideoParams::Interlacing interlacing =
+					VideoParams::kInterlaceNone;
+				rational pixel_aspect_ratio(1, 1);
+				rational frame_rate(info.avg_frame_rate_num,
+									info.avg_frame_rate_den);
+				int compatible_pix_fmt =
+					FFmpegUtils::GetCompatibleBridgePixelFormat(info.pixel_format);
+				bool image_is_still = false;
+				int64_t stream_duration = info.duration;
 
-							AVCodecContext *avctx = instance.codec_ctx();
-							interlacing =
-								FFmpegFieldOrderToOlive(avctx->field_order);
+				int decode_full_duration =
+					(info.duration == FB_NOPTS_VALUE ||
+					 duration_guessed_from_bitrate) ?
+						1 :
+						0;
 
-							if (instance.GetFrame(pkt, frame) >= 0) {
-								pixel_aspect_ratio =
-									av_guess_sample_aspect_ratio(
-										instance.fmt_ctx(), instance.avstream(),
-										frame);
-								frame_rate = av_guess_frame_rate(
-									instance.fmt_ctx(), instance.avstream(),
-									frame);
-							}
-
-							int ret = instance.GetFrame(pkt, frame);
-							if (ret == AVERROR_EOF) {
-								image_is_still = true;
-							} else if (avstream->duration == AV_NOPTS_VALUE ||
-									   duration_guessed_from_bitrate) {
-								int64_t last_ts = frame->best_effort_timestamp;
-								while (
-									instance.GetFrame(pkt, frame) >= 0 &&
-									(!cancelled || !cancelled->IsCancelled()))
-									last_ts = frame->best_effort_timestamp;
-								avstream->duration = last_ts;
-							}
-
-							instance.Close();
-						}
-
-cleanup:
-						av_frame_free(&frame);
-						av_packet_free(&pkt);
-
-						VideoParams stream;
-						stream.set_stream_index(i);
-						stream.set_width(avstream->codecpar->width);
-						stream.set_height(avstream->codecpar->height);
-						stream.set_video_type(image_is_still ?
-												  VideoParams::kVideoTypeStill :
-												  VideoParams::kVideoTypeVideo);
-						stream.set_format(
-							GetNativePixelFormat(compatible_pix_fmt));
-						stream.set_channel_count(
-							GetNativeChannelCount(compatible_pix_fmt));
-						stream.set_interlacing(interlacing); // <-- 已正确填充
-						stream.set_pixel_aspect_ratio(pixel_aspect_ratio);
-						stream.set_frame_rate(frame_rate);
-						stream.set_start_time(avstream->start_time);
-						stream.set_time_base(avstream->time_base);
-						stream.set_duration(avstream->duration);
-						stream.set_color_range(
-							avstream->codecpar->color_range ==
-									AVCOL_RANGE_JPEG ?
-								VideoParams::kColorRangeFull :
-								VideoParams::kColorRangeLimited);
-						stream.set_premultiplied_alpha(false);
-
-						desc.AddVideoStream(stream);
-						image_is_still ? still_streams++ : video_streams++;
+				FBVideoStreamDetails details;
+				if (fb_probe_video_stream_details(filename_c, i, &details,
+												  decode_full_duration,
+												  CancelThunk,
+												  cancelled) == 0) {
+					interlacing = FFmpegFieldOrderToOlive(details.field_order);
+					if (details.pixel_aspect_den != 0) {
+						pixel_aspect_ratio = rational(details.pixel_aspect_num,
+													  details.pixel_aspect_den);
 					}
-
-				} else if (avstream->codecpar->codec_type ==
-						   AVMEDIA_TYPE_AUDIO) {
-					// Create an audio stream object
-					AVChannelLayout &channel_layout =
-						avstream->codecpar->ch_layout;
-					if (!av_channel_layout_check(&channel_layout)) {
-						av_channel_layout_default(
-							&channel_layout,
-							avstream->codecpar->ch_layout.nb_channels);
+					if (details.frame_rate_num != 0 &&
+						details.frame_rate_den != 0) {
+						frame_rate = rational(details.frame_rate_num,
+											  details.frame_rate_den);
 					}
+					image_is_still = details.is_still != 0;
+					if (details.decoded_duration != FB_NOPTS_VALUE) {
+						stream_duration = details.decoded_duration;
+					}
+				}
 
-					if (avstream->duration == AV_NOPTS_VALUE ||
+				VideoParams stream;
+				stream.set_stream_index(i);
+				stream.set_width(info.width);
+				stream.set_height(info.height);
+				stream.set_video_type(image_is_still ?
+										  VideoParams::kVideoTypeStill :
+										  VideoParams::kVideoTypeVideo);
+				stream.set_format(GetNativePixelFormat(compatible_pix_fmt));
+				stream.set_channel_count(
+					GetNativeChannelCount(compatible_pix_fmt));
+				stream.set_interlacing(interlacing);
+				stream.set_pixel_aspect_ratio(pixel_aspect_ratio);
+				stream.set_frame_rate(frame_rate);
+				stream.set_start_time(info.start_time);
+				stream.set_time_base(stream_tb);
+				stream.set_duration(stream_duration);
+				stream.set_color_range(info.color_range == FB_COLOR_RANGE_JPEG ?
+										   VideoParams::kColorRangeFull :
+										   VideoParams::kColorRangeLimited);
+				stream.set_premultiplied_alpha(false);
+
+				desc.AddVideoStream(stream);
+				image_is_still ? still_streams++ : video_streams++;
+
+			} else if (info.codec_type == FB_MEDIA_TYPE_AUDIO) {
+				int64_t stream_duration = info.duration;
+
+				if (stream_duration == FB_NOPTS_VALUE ||
+					duration_guessed_from_bitrate) {
+					// Loop through stream until we get the whole duration
+					if (footage_duration == FB_NOPTS_VALUE ||
 						duration_guessed_from_bitrate) {
-						// Loop through stream until we get the whole duration
-						if (footage_duration == AV_NOPTS_VALUE ||
-							duration_guessed_from_bitrate) {
-							Instance instance;
-							instance.Open(filename_c, avstream->index);
-
-							AVPacket *pkt = av_packet_alloc();
-							AVFrame *frame = av_frame_alloc();
-
-							int64_t new_dur;
-
-							do {
-								new_dur = frame->best_effort_timestamp;
-							} while (instance.GetFrame(pkt, frame) >= 0 &&
-									 (!cancelled || !cancelled->IsCancelled()));
-
-							avstream->duration = new_dur;
-
-							av_frame_free(&frame);
-							av_packet_free(&pkt);
-
-							instance.Close();
-						} else {
-							avstream->duration =
-								Timecode::rescale_timestamp_ceil(
-									footage_duration, rational(1, AV_TIME_BASE),
-									avstream->time_base);
+						int64_t decoded_duration = FB_NOPTS_VALUE;
+						if (fb_probe_audio_stream_duration(
+								filename_c, i, &decoded_duration, CancelThunk,
+								cancelled) == 0) {
+							stream_duration = decoded_duration;
 						}
+					} else {
+						stream_duration = Timecode::rescale_timestamp_ceil(
+							footage_duration, rational(1, FB_TIME_BASE),
+							stream_tb);
 					}
+				}
 
-					AudioParams stream;
-					stream.set_stream_index(i);
-					stream.set_channel_layout(channel_layout);
-					stream.set_sample_rate(avstream->codecpar->sample_rate);
-					stream.set_format(FFmpegUtils::GetNativeSampleFormat(
-						static_cast<AVSampleFormat>(
-							avstream->codecpar->format)));
-					stream.set_time_base(avstream->time_base);
-					stream.set_duration(avstream->duration);
-					desc.AddAudioStream(stream);
+				AudioParams stream;
+				stream.set_stream_index(i);
+				stream.set_channel_layout(info.channel_layout_mask);
+				stream.set_sample_rate(info.sample_rate);
+				stream.set_format(
+					FFmpegUtils::GetNativeSampleFormat(info.sample_format));
+				stream.set_time_base(stream_tb);
+				stream.set_duration(stream_duration);
+				desc.AddAudioStream(stream);
 
-					audio_streams++;
+				audio_streams++;
 
-				} else if (avstream->codecpar->codec_type ==
-						   AVMEDIA_TYPE_SUBTITLE) {
-					// Limit to SRT for now...
-					if (avstream->codecpar->codec_id == AV_CODEC_ID_SUBRIP) {
-						SubtitleParams sub;
+			} else if (info.codec_type == FB_MEDIA_TYPE_SUBTITLE) {
+				// The bridge limits this to SRT, matching our historical behavior
+				SubtitleParams sub;
+				SubtitleReadContext ctx = { &sub, stream_tb };
 
-						AVPacket *pkt = av_packet_alloc();
-						{
-							Instance instance;
-							instance.Open(filename_c, avstream->index);
-
-							while (instance.GetPacket(pkt) >= 0) {
-								TimeRange time(Timecode::timestamp_to_time(
-												   pkt->pts,
-												   avstream->time_base),
-											   Timecode::timestamp_to_time(
-												   pkt->pts + pkt->duration,
-												   avstream->time_base));
-
-								QString text = QString::fromUtf8(
-									(const char *)pkt->data, pkt->size);
-
-								sub.push_back(Subtitle(time, text));
-							}
-
-							instance.Close();
-						}
-						av_packet_free(&pkt);
-
-						desc.AddSubtitleStream(sub);
-					}
+				if (fb_probe_read_subtitle_stream(filename_c, i,
+												  SubtitleReadThunk,
+												  &ctx) == 0) {
+					desc.AddSubtitleStream(sub);
 				}
 			}
 		}
 
-		desc.SetStreamCount(fmt_ctx->nb_streams);
+		desc.SetStreamCount(stream_count);
 		if (source_start_time.valid) {
 			desc.SetSourceStartTime(source_start_time.time,
 									source_start_time.source);
@@ -816,7 +746,7 @@ cleanup:
 	}
 
 	// Free all memory
-	avformat_close_input(&fmt_ctx);
+	fb_probe_free(&probe);
 
 	return desc;
 }
@@ -824,7 +754,7 @@ cleanup:
 QString FFmpegDecoder::FFmpegError(int error_code)
 {
 	char err[1024];
-	av_strerror(error_code, err, 512);
+	fb_error_string(error_code, err, 512);
 	return QStringLiteral("%1 %2").arg(QString::number(error_code), err);
 }
 
@@ -835,42 +765,39 @@ bool FFmpegDecoder::ConformAudioInternal(const QVector<QString> &filenames,
 	// Iterate through each audio frame and extract the PCM data
 
 	// Seek to starting point
-	instance_.Seek(0);
+	fb_decoder_seek(instance_, 0);
 
-	// Handle NULL channel layout
-	AVChannelLayout channel_layout =
-		ValidateChannelLayout(instance_.avstream());
-	if (!av_channel_layout_check(&channel_layout)) {
+	// The channel layout was validated by the bridge when the stream info was read
+	if (!input_channel_layout_mask_) {
 		qCritical()
 			<< "Failed to determine channel layout of audio file, could not conform";
 		return false;
 	}
-	// Create resampling context
-	AVChannelLayout layout = params.channel_layout();
-	SwrContext *resampler = NULL;
-	swr_alloc_set_opts2(
-		&resampler, &layout,
-		FFmpegUtils::GetFFmpegSampleFormat(params.format()),
-		params.sample_rate(), &channel_layout,
-		static_cast<AVSampleFormat>(instance_.avstream()->codecpar->format),
-		instance_.avstream()->codecpar->sample_rate, 0, nullptr);
-	av_channel_layout_uninit(&layout);
-	swr_init(resampler);
 
-	AVPacket *pkt = av_packet_alloc();
-	AVFrame *frame = av_frame_alloc();
+	// Create resampler
+	FBResampler *resampler = fb_resampler_create(
+		params.channel_layout(),
+		FFmpegUtils::GetFFmpegSampleFormat(params.format()),
+		params.sample_rate(), input_channel_layout_mask_, input_sample_format_,
+		input_sample_rate_);
+	if (!resampler) {
+		qCritical() << "Failed to create resampler, could not conform";
+		return false;
+	}
+
+	FBPacket *pkt = fb_packet_alloc();
+	FBFrame *frame = fb_frame_alloc();
 	int ret;
 
 	bool success = false;
 
-	int64_t duration = instance_.avstream()->duration;
-	if (duration == 0 || duration == AV_NOPTS_VALUE) {
-		duration = instance_.fmt_ctx()->duration;
-		if (!(duration == 0 || duration == AV_NOPTS_VALUE)) {
-			// Rescale from AVFormatContext timebase to AVStream timebase
-			duration = av_rescale_q_rnd(duration, { 1, AV_TIME_BASE },
-										instance_.avstream()->time_base,
-										AV_ROUND_UP);
+	int64_t duration = stream_duration_;
+	if (duration == 0 || duration == FB_NOPTS_VALUE) {
+		duration = fb_decoder_get_format_duration(instance_);
+		if (!(duration == 0 || duration == FB_NOPTS_VALUE)) {
+			// Rescale from format timebase to stream timebase
+			duration = Timecode::rescale_timestamp_ceil(
+				duration, rational(1, FB_TIME_BASE), stream_time_base_);
 		}
 	}
 
@@ -886,32 +813,33 @@ bool FFmpegDecoder::ConformAudioInternal(const QVector<QString> &filenames,
 				break;
 			}
 
-			ret = instance_.GetFrame(pkt, frame);
+			ret = fb_decoder_get_frame(instance_, pkt, frame);
 
 			if (ret < 0) {
-				if (ret == AVERROR_EOF) {
+				if (ret == FB_ERROR_EOF) {
 					success = true;
 				} else {
 					char err_str[512];
-					av_strerror(ret, err_str, 512);
+					fb_error_string(ret, err_str, 512);
 					qWarning() << "Failed to conform:" << ret << err_str;
 				}
 				break;
 			}
 
 			// Allocate buffers
-			int nb_samples = swr_get_out_samples(resampler, frame->nb_samples);
+			int nb_samples =
+				fb_resampler_get_out_samples(resampler,
+											 fb_frame_get_nb_samples(frame));
 			int nb_bytes_per_channel =
 				params.samples_to_bytes(nb_samples) / nb_channels;
 			data.set_sample_count(nb_bytes_per_channel);
 			data.allocate();
 
 			// Resample audio to our destination parameters
-			nb_samples = swr_convert(
+			nb_samples = fb_resampler_convert_frame(
 				resampler,
 				reinterpret_cast<uint8_t **>(data.to_raw_ptrs().data()),
-				nb_samples, const_cast<const uint8_t **>(frame->data),
-				frame->nb_samples);
+				nb_samples, frame);
 
 			// If no error, write to files
 			if (nb_samples > 0) {
@@ -932,13 +860,14 @@ bool FFmpegDecoder::ConformAudioInternal(const QVector<QString> &filenames,
 			// Handle error now after freeing
 			if (nb_samples < 0) {
 				char err_str[512];
-				av_strerror(nb_samples, err_str, 512);
+				fb_error_string(nb_samples, err_str, 512);
 				qWarning() << "libswresample failed with error:" << nb_samples
 						   << err_str;
 				break;
 			}
 
-			SignalProcessingProgress(frame->best_effort_timestamp, duration);
+			SignalProcessingProgress(fb_frame_get_best_effort_timestamp(frame),
+									 duration);
 		}
 
 		wave_out.close();
@@ -946,84 +875,64 @@ bool FFmpegDecoder::ConformAudioInternal(const QVector<QString> &filenames,
 		qWarning() << "Failed to open WAVE output for indexing";
 	}
 
-	swr_free(&resampler);
+	fb_resampler_free(&resampler);
 
-	av_frame_free(&frame);
-	av_packet_free(&pkt);
+	fb_frame_free(&frame);
+	fb_packet_free(&pkt);
 
 	return success;
 }
 
-PixelFormat FFmpegDecoder::GetNativePixelFormat(AVPixelFormat pix_fmt)
+PixelFormat FFmpegDecoder::GetNativePixelFormat(int pix_fmt)
 {
 	switch (pix_fmt) {
-	case AV_PIX_FMT_RGB24:
-	case AV_PIX_FMT_RGBA:
+	case FB_PIX_FMT_RGB24:
+	case FB_PIX_FMT_RGBA:
 		return PixelFormat::U8;
-	case AV_PIX_FMT_RGB48:
-	case AV_PIX_FMT_RGBA64:
+	case FB_PIX_FMT_RGB48LE:
+	case FB_PIX_FMT_RGBA64LE:
 		return PixelFormat::U16;
-	case AV_PIX_FMT_RGBF32:
-	case AV_PIX_FMT_RGBAF32:
+	case FB_PIX_FMT_RGBF32LE:
+	case FB_PIX_FMT_RGBAF32LE:
 		return PixelFormat::F32;
 	default:
 		return PixelFormat::INVALID;
 	}
 }
 
-int FFmpegDecoder::GetNativeChannelCount(AVPixelFormat pix_fmt)
+int FFmpegDecoder::GetNativeChannelCount(int pix_fmt)
 {
 	switch (pix_fmt) {
-	case AV_PIX_FMT_RGB24:
-	case AV_PIX_FMT_RGB48:
-	case AV_PIX_FMT_RGBF32:
+	case FB_PIX_FMT_RGB24:
+	case FB_PIX_FMT_RGB48LE:
+	case FB_PIX_FMT_RGBF32LE:
 		return VideoParams::kRGBChannelCount;
-	case AV_PIX_FMT_RGBA:
-	case AV_PIX_FMT_RGBA64:
-	case AV_PIX_FMT_RGBAF32:
+	case FB_PIX_FMT_RGBA:
+	case FB_PIX_FMT_RGBA64LE:
+	case FB_PIX_FMT_RGBAF32LE:
 		return VideoParams::kRGBAChannelCount;
 	default:
 		return 0;
 	}
 }
 
-AVChannelLayout FFmpegDecoder::ValidateChannelLayout(AVStream *stream)
-{
-	if (av_channel_layout_check(&stream->codecpar->ch_layout)) {
-		return stream->codecpar->ch_layout;
-	}
-	AVChannelLayout layout;
-	av_channel_layout_default(&layout, stream->codecpar->ch_layout.nb_channels);
-	return layout;
-}
-
-const char *
-FFmpegDecoder::GetInterlacingModeInFFmpeg(VideoParams::Interlacing interlacing)
-{
-	if (interlacing == VideoParams::kInterlacedTopFirst) {
-		return "tff";
-	} else {
-		return "bff";
-	}
-}
-
-bool FFmpegDecoder::IsPixelFormatGLSLCompatible(AVPixelFormat f)
+bool FFmpegDecoder::IsPixelFormatGLSLCompatible(int f)
 {
 	// NOTE: We don't include RGB24 or RGB48 here because those are slow on the GPU and performance
 	//       should be better if we convert to RGBA on the CPU beforehand
 	switch (f) {
-	case AV_PIX_FMT_YUV420P:
-	case AV_PIX_FMT_YUV422P:
-	case AV_PIX_FMT_YUV444P:
-	case AV_PIX_FMT_YUV420P10LE:
-	case AV_PIX_FMT_YUV422P10LE:
-	case AV_PIX_FMT_YUV444P10LE:
-	case AV_PIX_FMT_YUV420P12LE:
-	case AV_PIX_FMT_YUV422P12LE:
-	case AV_PIX_FMT_YUV444P12LE:
-	case AV_PIX_FMT_RGBA:
-	case AV_PIX_FMT_RGBA64LE:
-	case AV_PIX_FMT_RGBAF32:
+	case FB_PIX_FMT_YUV420P:
+	case FB_PIX_FMT_YUV422P:
+	case FB_PIX_FMT_YUV444P:
+	case FB_PIX_FMT_YUV420P10LE:
+	case FB_PIX_FMT_YUV422P10LE:
+	case FB_PIX_FMT_YUV444P10LE:
+	case FB_PIX_FMT_YUV420P12LE:
+	case FB_PIX_FMT_YUV422P12LE:
+	case FB_PIX_FMT_YUV444P12LE:
+	case FB_PIX_FMT_RGBA:
+	case FB_PIX_FMT_RGBA64LE:
+	case FB_PIX_FMT_RGBAF32LE:
 		return true;
 	default:
 		return false;
@@ -1046,8 +955,7 @@ AVFramePtr FFmpegDecoder::PreProcessFrame(AVFramePtr f,
 	//   - If a divider is being used, scale down the image
 	//   - If a pixel format is not compatible with the GLSL shader, convert it to RGBA ourselves
 
-	if (p.divider == 1 &&
-		IsPixelFormatGLSLCompatible(static_cast<AVPixelFormat>(f->format))) {
+	if (p.divider == 1 && IsPixelFormatGLSLCompatible(f->format())) {
 		// No CPU processing required, the user wants this in full resolution and the pixel format can
 		// be converted on the GPU
 		return f;
@@ -1056,70 +964,68 @@ AVFramePtr FFmpegDecoder::PreProcessFrame(AVFramePtr f,
 	// Some scaling and/or format conversion needs to be done
 	AVFramePtr dest = CreateAVFramePtr();
 
-	dest->width = f->width;
-	dest->height = f->height;
-	dest->format = f->format;
-	dest->color_range = f->color_range;
-	dest->colorspace = f->colorspace;
-	dest->hw_frames_ctx = nullptr;
+	dest->set_width(f->width());
+	dest->set_height(f->height());
+	dest->set_format(f->format());
+	dest->set_color_range(f->color_range());
+	dest->set_colorspace(f->colorspace());
 	if (p.divider > 1) {
-		dest->width = VideoParams::GetScaledDimension(dest->width, p.divider);
-		dest->height = VideoParams::GetScaledDimension(dest->height, p.divider);
+		dest->set_width(
+			VideoParams::GetScaledDimension(dest->width(), p.divider));
+		dest->set_height(
+			VideoParams::GetScaledDimension(dest->height(), p.divider));
 	}
 
-	if (!IsPixelFormatGLSLCompatible(
-			static_cast<AVPixelFormat>(dest->format))) {
-		dest->format = FFmpegUtils::GetCompatiblePixelFormat(
-			static_cast<AVPixelFormat>(dest->format), p.maximum_format);
+	if (!IsPixelFormatGLSLCompatible(dest->format())) {
+		dest->set_format(FFmpegUtils::GetCompatibleBridgePixelFormat(dest->format(),
+															   p.maximum_format));
 	}
 
 	// swscale does not support RGBAF32 as output, fallback to RGBA64
-	if (dest->format == AV_PIX_FMT_RGBAF32) {
-		dest->format = AV_PIX_FMT_RGBA64;
+	if (dest->format() == FB_PIX_FMT_RGBAF32LE) {
+		dest->set_format(FB_PIX_FMT_RGBA64LE);
 	}
 
-	int r = av_frame_get_buffer(dest.get(), 0);
+	int r = dest->get_buffer(0);
 	if (r < 0) {
 		FFmpegError(r);
 		return nullptr;
 	}
 
-	if (!sws_ctx_ || sws_src_width_ != f->width ||
-		sws_src_height_ != f->height || sws_src_format_ != f->format ||
-		sws_dst_width_ != dest->width || sws_dst_height_ != dest->height ||
-		sws_dst_format_ != dest->format || sws_colrange_ != dest->color_range ||
-		sws_colspace_ != dest->colorspace) {
-		// SwsContext must be recreated, destroy current if it exists
+	if (!scaler_ || scaler_src_width_ != f->width() ||
+		scaler_src_height_ != f->height() ||
+		scaler_src_format_ != f->format() ||
+		scaler_dst_width_ != dest->width() ||
+		scaler_dst_height_ != dest->height() ||
+		scaler_dst_format_ != dest->format() ||
+		scaler_colrange_ != dest->color_range() ||
+		scaler_colspace_ != dest->colorspace()) {
+		// Scaler must be recreated, destroy current if it exists
 		FreeScaler();
 
 		// Cache info
-		sws_src_width_ = f->width;
-		sws_src_height_ = f->height;
-		sws_src_format_ = static_cast<AVPixelFormat>(f->format);
-		sws_dst_width_ = dest->width;
-		sws_dst_height_ = dest->height;
-		sws_dst_format_ = static_cast<AVPixelFormat>(dest->format);
-		sws_colrange_ = dest->color_range;
-		sws_colspace_ = dest->colorspace;
+		scaler_src_width_ = f->width();
+		scaler_src_height_ = f->height();
+		scaler_src_format_ = f->format();
+		scaler_dst_width_ = dest->width();
+		scaler_dst_height_ = dest->height();
+		scaler_dst_format_ = dest->format();
+		scaler_colrange_ = dest->color_range();
+		scaler_colspace_ = dest->colorspace();
 
 		// Create new scaler
-		sws_ctx_ = sws_getContext(sws_src_width_, sws_src_height_,
-								  sws_src_format_, sws_dst_width_,
-								  sws_dst_height_, sws_dst_format_, SWS_POINT,
-								  nullptr, nullptr, nullptr);
+		scaler_ = fb_scaler_create(scaler_src_width_, scaler_src_height_,
+								   scaler_src_format_, scaler_dst_width_,
+								   scaler_dst_height_, scaler_dst_format_,
+								   FB_SCALER_POINT);
 
-		// Set swscale's colorspace details
-		sws_setColorspaceDetails(
-			sws_ctx_,
-			sws_getCoefficients(FFmpegUtils::GetSwsColorspaceFromAVColorSpace(
-				dest->colorspace)),
-			dest->color_range == AVCOL_RANGE_JPEG ? 1 : 0,
-			sws_getCoefficients(FFmpegUtils::GetSwsColorspaceFromAVColorSpace(
-				dest->colorspace)),
-			dest->color_range == AVCOL_RANGE_JPEG ? 1 : 0, 0, 0x10000, 0x10000);
+		// Set the scaler's colorspace details
+		fb_scaler_set_colorspace(
+			scaler_, scaler_colspace_,
+			scaler_colrange_ == FB_COLOR_RANGE_JPEG);
 	}
 
-	r = sws_scale_frame(sws_ctx_, dest.get(), f.get());
+	r = fb_scaler_scale_frame(scaler_, dest->handle(), f->handle());
 
 	if (r < 0) {
 		FFmpegError(r);
@@ -1132,13 +1038,12 @@ AVFramePtr FFmpegDecoder::PreProcessFrame(AVFramePtr f,
 AVFramePtr FFmpegDecoder::RetrieveFrame(const rational &time,
 										CancelAtom *cancelled)
 {
-	int64_t target_ts =
-		Timecode::time_to_timestamp(time, instance_.avstream()->time_base);
+	int64_t target_ts = Timecode::time_to_timestamp(time, stream_time_base_);
 
-	if (instance_.fmt_ctx()->start_time != AV_NOPTS_VALUE) {
-		target_ts += av_rescale_q(instance_.fmt_ctx()->start_time,
-								  { 1, AV_TIME_BASE },
-								  instance_.avstream()->time_base);
+	if (format_start_time_ != FB_NOPTS_VALUE) {
+		target_ts += Timecode::rescale_timestamp(format_start_time_,
+												 rational(1, FB_TIME_BASE),
+												 stream_time_base_);
 	}
 
 	const int64_t min_seek = 0;
@@ -1148,11 +1053,11 @@ AVFramePtr FFmpegDecoder::RetrieveFrame(const rational &time,
 	if (time != kAnyTimecode) {
 		// If the frame wasn't in the frame cache, see if this frame cache is too old to use
 		if (cached_frames_.empty() ||
-			(target_ts < cached_frames_.front()->pts ||
-			 target_ts > cached_frames_.back()->pts + 2 * second_ts_)) {
+			(target_ts < cached_frames_.front()->pts() ||
+			 target_ts > cached_frames_.back()->pts() + 2 * second_ts_)) {
 			ClearFrameCache();
 
-			instance_.Seek(seek_ts);
+			fb_decoder_seek(instance_, seek_ts);
 			if (seek_ts == min_seek) {
 				cache_at_zero_ = true;
 			}
@@ -1183,14 +1088,15 @@ AVFramePtr FFmpegDecoder::RetrieveFrame(const rational &time,
 		}
 
 		// Pull from the decoder
-		ret = instance_.GetFrame(working_packet_, filtered.get());
+		ret = fb_decoder_get_frame(instance_, working_packet_,
+								   filtered->handle());
 
 		if (cancelled && cancelled->IsCancelled()) {
 			break;
 		}
 
 		// Handle any errors that aren't EOF (EOF is handled later on)
-		if (ret < 0 && ret != AVERROR_EOF) {
+		if (ret < 0 && ret != FB_ERROR_EOF) {
 			qCritical() << "Failed to retrieve frame:" << ret;
 			break;
 		}
@@ -1199,10 +1105,10 @@ AVFramePtr FFmpegDecoder::RetrieveFrame(const rational &time,
 			// Handle a failure to seek (occurs on some media)
 			// We'll only be here if the frame cache was emptied earlier
 			if (!cache_at_zero_ &&
-				(ret == AVERROR_EOF ||
-				 filtered->best_effort_timestamp > target_ts)) {
+				(ret == FB_ERROR_EOF ||
+				 filtered->best_effort_timestamp() > target_ts)) {
 				seek_ts = qMax(min_seek, seek_ts - second_ts_);
-				instance_.Seek(seek_ts);
+				fb_decoder_seek(instance_, seek_ts);
 				if (seek_ts == min_seek) {
 					cache_at_zero_ = true;
 				}
@@ -1213,7 +1119,7 @@ AVFramePtr FFmpegDecoder::RetrieveFrame(const rational &time,
 			}
 		}
 
-		if (ret == AVERROR_EOF) {
+		if (ret == FB_ERROR_EOF) {
 			// Handle an "expected" EOF by using the last frame of our cache
 			cache_at_eof_ = true;
 
@@ -1221,7 +1127,7 @@ AVFramePtr FFmpegDecoder::RetrieveFrame(const rational &time,
 				if (!retried_after_eof) {
 					retried_after_eof = true;
 					ClearFrameCache();
-					instance_.Seek(min_seek);
+					fb_decoder_seek(instance_, min_seek);
 					cache_at_zero_ = true;
 					still_seeking = true;
 					continue;
@@ -1256,10 +1162,10 @@ AVFramePtr FFmpegDecoder::RetrieveFrame(const rational &time,
 			cached_frames_.push_back(filtered);
 
 			// If this is a valid frame, see if this or the frame before it are the one we need
-			if (filtered->pts == target_ts || time == kAnyTimecode) {
+			if (filtered->pts() == target_ts || time == kAnyTimecode) {
 				return_frame = filtered;
 				break;
-			} else if (filtered->pts > target_ts) {
+			} else if (filtered->pts() > target_ts) {
 				if (!previous && cache_at_zero_) {
 					return_frame = filtered;
 					break;
@@ -1273,33 +1179,34 @@ AVFramePtr FFmpegDecoder::RetrieveFrame(const rational &time,
 		filtered = nullptr;
 	}
 
-	av_packet_unref(working_packet_);
+	fb_packet_unref(working_packet_);
 
 	return return_frame;
 }
 
 AVFramePtr FFmpegDecoder::TransferHardwareFrame(AVFramePtr f)
 {
-	if (!instance_.hwaccel_enabled() || f->format != instance_.hw_pix_fmt()) {
+	if (!fb_decoder_hwaccel_enabled(instance_) ||
+		f->format() != fb_decoder_hw_pix_fmt(instance_)) {
 		return f;
 	}
 
-	AVFrame *sw_frame = av_frame_alloc();
+	FBFrame *sw_frame = fb_frame_alloc();
 	if (!sw_frame) {
 		qCritical()
 			<< "Failed to allocate software frame for hardware transfer";
 		return nullptr;
 	}
 
-	int ret = av_hwframe_transfer_data(sw_frame, f.get(), 0);
+	int ret = fb_frame_hw_transfer_data(sw_frame, f->handle());
 	if (ret < 0) {
 		qWarning() << "Failed to transfer hardware frame to system memory:"
 				   << FFmpegError(ret);
-		av_frame_free(&sw_frame);
+		fb_frame_free(&sw_frame);
 		return nullptr;
 	}
 
-	ret = av_frame_copy_props(sw_frame, f.get());
+	ret = fb_frame_copy_props(sw_frame, f->handle());
 	if (ret < 0) {
 		qWarning()
 			<< "Failed to copy frame properties during hardware transfer:"
@@ -1311,20 +1218,19 @@ AVFramePtr FFmpegDecoder::TransferHardwareFrame(AVFramePtr f)
 
 void FFmpegDecoder::FreeScaler()
 {
-	if (sws_ctx_) {
-		sws_freeContext(sws_ctx_);
-		sws_ctx_ = nullptr;
+	if (scaler_) {
+		fb_scaler_free(&scaler_);
 	}
 }
 
 AVFramePtr FFmpegDecoder::GetFrameFromCache(const int64_t &t) const
 {
-	if (t < cached_frames_.front()->pts) {
+	if (t < cached_frames_.front()->pts()) {
 		if (cache_at_zero_) {
 			return cached_frames_.front();
 		}
 
-	} else if (t > cached_frames_.back()->pts) {
+	} else if (t > cached_frames_.back()->pts()) {
 		if (cache_at_eof_) {
 			return cached_frames_.back();
 		}
@@ -1338,10 +1244,10 @@ AVFramePtr FFmpegDecoder::GetFrameFromCache(const int64_t &t) const
 			auto next = it;
 			next++;
 
-			if (this_frame->pts == t // Test for an exact match
+			if (this_frame->pts() == t // Test for an exact match
 				||
 				(next != cached_frames_.cend() &&
-				 (*next)->pts > t)) { // Or for this frame to be the "closest"
+				 (*next)->pts() > t)) { // Or for this frame to be the "closest"
 
 				return this_frame;
 			}
@@ -1364,342 +1270,6 @@ int FFmpegDecoder::MaximumQueueSize()
 	// that's no longer a concern. Now, this value could technically be 1, but some memory cache
 	// may be useful for reversing. This value may be tweaked over time.
 	return 2;
-}
-
-FFmpegDecoder::Instance::Instance()
-	: fmt_ctx_(nullptr)
-	, codec_ctx_(nullptr)
-	, avstream_(nullptr)
-	, opts_(nullptr)
-	, hw_device_ctx_(nullptr)
-	, hw_device_type_(AV_HWDEVICE_TYPE_NONE)
-	, hw_pix_fmt_(AV_PIX_FMT_NONE)
-	, hwaccel_enabled_(false)
-{
-}
-
-bool FFmpegDecoder::Instance::Open(const char *filename, int stream_index)
-{
-	// Open file in a format context
-	AVDictionary *format_opts = nullptr;
-	ApplyFormatOpenOptions(&format_opts);
-	int error_code =
-		avformat_open_input(&fmt_ctx_, filename, nullptr, &format_opts);
-	av_dict_free(&format_opts);
-	TuneFormatContext(fmt_ctx_);
-	DiscardSubtitleStreams(fmt_ctx_);
-
-	// Handle format context error
-	if (error_code != 0) {
-		qCritical()
-			<< "Failed to open input:" << filename << FFmpegError(error_code);
-		return false;
-	}
-
-	// Get stream information from format
-	error_code = avformat_find_stream_info(fmt_ctx_, nullptr);
-
-	// Handle get stream information error
-	if (error_code < 0) {
-		qCritical() << "Failed to find stream info:" << FFmpegError(error_code);
-		return false;
-	}
-
-	// Get reference to correct AVStream
-	avstream_ = fmt_ctx_->streams[stream_index];
-
-	// Find decoder
-	const AVCodec *codec = avcodec_find_decoder(avstream_->codecpar->codec_id);
-
-	// Handle failure to find decoder
-	if (codec == nullptr) {
-		qCritical()
-			<< "Failed to find appropriate decoder for this codec:" << filename
-			<< stream_index << avstream_->codecpar->codec_id;
-		return false;
-	}
-
-	// Allocate context for the decoder
-	codec_ctx_ = avcodec_alloc_context3(codec);
-	if (codec_ctx_ == nullptr) {
-		qCritical() << "Failed to allocate codec context";
-		return false;
-	}
-
-	// Copy parameters from the AVStream to the AVCodecContext
-	error_code = avcodec_parameters_to_context(codec_ctx_, avstream_->codecpar);
-
-	// Handle failure to copy parameters
-	if (error_code < 0) {
-		qCritical()
-			<< "Failed to copy parameters from AVStream to AVCodecContext";
-		return false;
-	}
-
-	// Set multithreading setting
-	error_code = av_dict_set(&opts_, "threads", "auto", 0);
-
-	// Handle failure to set multithreaded decoding
-	if (error_code < 0) {
-		qCritical() << "Failed to set codec options, performance may suffer";
-	}
-
-	// Attempt hardware accelerated decoding first, then fall back to software.
-	if (InitHardwareAcceleration(codec)) {
-		error_code = avcodec_open2(codec_ctx_, codec, &opts_);
-		if (error_code == 0) {
-			hwaccel_enabled_ = true;
-			qDebug() << "Hardware decoding enabled for" << filename << "using"
-					 << av_hwdevice_get_type_name(hw_device_type_)
-					 << "pixel format" << av_get_pix_fmt_name(hw_pix_fmt_);
-			return true;
-		}
-
-		qWarning()
-			<< "Failed to open hardware codec, falling back to software decoding:";
-		char buf[512];
-		av_strerror(error_code, buf, 512);
-		qWarning() << FFmpegError(error_code) << buf;
-
-		// Free the failed context and recreate it for software decoding.
-		avcodec_free_context(&codec_ctx_);
-		CleanupHardwareAcceleration();
-
-		codec_ctx_ = avcodec_alloc_context3(codec);
-		if (codec_ctx_ == nullptr) {
-			qCritical()
-				<< "Failed to allocate codec context for software fallback";
-			return false;
-		}
-
-		error_code =
-			avcodec_parameters_to_context(codec_ctx_, avstream_->codecpar);
-		if (error_code < 0) {
-			qCritical()
-				<< "Failed to copy parameters from AVStream to AVCodecContext";
-			return false;
-		}
-	}
-
-	// Open codec (software path, or if hardware was not available)
-	error_code = avcodec_open2(codec_ctx_, codec, &opts_);
-	if (error_code < 0) {
-		char buf[512];
-		av_strerror(error_code, buf, 512);
-		qCritical() << "Failed to open codec" << codec->id << error_code << buf;
-		return false;
-	}
-
-	return true;
-}
-
-AVHWDeviceType FFmpegDecoder::Instance::ChooseHardwareDevice()
-{
-	if (qEnvironmentVariableIsSet("OAK_DISABLE_HWACCEL")) {
-		return AV_HWDEVICE_TYPE_NONE;
-	}
-
-#ifdef Q_OS_LINUX
-	// Prefer NVIDIA's NVDEC where available, then VAAPI/VDPAU.
-	for (AVHWDeviceType type : { AV_HWDEVICE_TYPE_CUDA, AV_HWDEVICE_TYPE_VAAPI,
-								 AV_HWDEVICE_TYPE_VDPAU }) {
-		if (av_hwdevice_find_type_by_name(av_hwdevice_get_type_name(type)) !=
-			AV_HWDEVICE_TYPE_NONE) {
-			return type;
-		}
-	}
-#elif defined(Q_OS_WIN)
-	for (AVHWDeviceType type :
-		 { AV_HWDEVICE_TYPE_D3D11VA, AV_HWDEVICE_TYPE_DXVA2,
-		   AV_HWDEVICE_TYPE_CUDA }) {
-		if (av_hwdevice_find_type_by_name(av_hwdevice_get_type_name(type)) !=
-			AV_HWDEVICE_TYPE_NONE) {
-			return type;
-		}
-	}
-#elif defined(Q_OS_MACOS)
-	if (av_hwdevice_find_type_by_name(av_hwdevice_get_type_name(
-			AV_HWDEVICE_TYPE_VIDEOTOOLBOX)) != AV_HWDEVICE_TYPE_NONE) {
-		return AV_HWDEVICE_TYPE_VIDEOTOOLBOX;
-	}
-#endif
-	return AV_HWDEVICE_TYPE_NONE;
-}
-
-AVPixelFormat
-FFmpegDecoder::Instance::GetHardwareFormat(AVCodecContext *ctx,
-										   const AVPixelFormat *pix_fmts)
-{
-	const Instance *inst = static_cast<const Instance *>(ctx->opaque);
-	for (const AVPixelFormat *p = pix_fmts; *p != AV_PIX_FMT_NONE; p++) {
-		if (*p == inst->hw_pix_fmt_) {
-			return *p;
-		}
-	}
-
-	qWarning()
-		<< "Hardware pixel format not supported by decoder, using first software format";
-	return pix_fmts[0];
-}
-
-bool FFmpegDecoder::Instance::InitHardwareAcceleration(const AVCodec *codec)
-{
-	const AVHWDeviceType device_type = ChooseHardwareDevice();
-	if (device_type == AV_HWDEVICE_TYPE_NONE) {
-		return false;
-	}
-
-	// Find the pixel format associated with this device type for this codec.
-	hw_pix_fmt_ = AV_PIX_FMT_NONE;
-	for (int i = 0;; i++) {
-		const AVCodecHWConfig *config = avcodec_get_hw_config(codec, i);
-		if (!config) {
-			break;
-		}
-		if ((config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX) &&
-			config->device_type == device_type) {
-			hw_pix_fmt_ = config->pix_fmt;
-			break;
-		}
-	}
-
-	if (hw_pix_fmt_ == AV_PIX_FMT_NONE) {
-		qDebug()
-			<< "Codec" << codec->id << "does not support hardware device type"
-			<< av_hwdevice_get_type_name(device_type);
-		return false;
-	}
-
-	hw_device_type_ = device_type;
-
-	int ret = av_hwdevice_ctx_create(&hw_device_ctx_, device_type, nullptr,
-									 nullptr, 0);
-	if (ret < 0) {
-		qWarning() << "Failed to create hardware device context for"
-				   << av_hwdevice_get_type_name(device_type) << ":"
-				   << FFmpegError(ret);
-		CleanupHardwareAcceleration();
-		return false;
-	}
-
-	codec_ctx_->hw_device_ctx = av_buffer_ref(hw_device_ctx_);
-	codec_ctx_->opaque = this;
-	codec_ctx_->get_format = GetHardwareFormat;
-	// Most hardware decoders do not support frame threading.
-	av_dict_set(&opts_, "threads", "1", 0);
-
-	return true;
-}
-
-void FFmpegDecoder::Instance::CleanupHardwareAcceleration()
-{
-	hwaccel_enabled_ = false;
-	hw_device_type_ = AV_HWDEVICE_TYPE_NONE;
-	hw_pix_fmt_ = AV_PIX_FMT_NONE;
-
-	if (hw_device_ctx_) {
-		av_buffer_unref(&hw_device_ctx_);
-		hw_device_ctx_ = nullptr;
-	}
-}
-
-void FFmpegDecoder::Instance::Close()
-{
-	if (opts_) {
-		av_dict_free(&opts_);
-		opts_ = nullptr;
-	}
-
-	if (codec_ctx_) {
-		avcodec_free_context(&codec_ctx_);
-		codec_ctx_ = nullptr;
-	}
-
-	CleanupHardwareAcceleration();
-
-	if (fmt_ctx_) {
-		avformat_close_input(&fmt_ctx_);
-		fmt_ctx_ = nullptr;
-	}
-}
-
-int FFmpegDecoder::Instance::GetFrame(AVPacket *pkt, AVFrame *frame)
-{
-	bool eof = false;
-
-	int ret;
-
-	// Clear any previous frames
-	av_frame_unref(frame);
-
-	while ((ret = avcodec_receive_frame(codec_ctx_, frame)) ==
-			   AVERROR(EAGAIN) &&
-		   !eof) {
-		// Find next packet in the correct stream index
-		ret = GetPacket(pkt);
-
-		if (ret == AVERROR_EOF) {
-			// Don't break so that receive gets called again, but don't try to read again
-			eof = true;
-
-			// Send a null packet to signal end of
-			avcodec_send_packet(codec_ctx_, nullptr);
-		} else if (ret < 0) {
-			// Handle other error by breaking loop and returning the code we received
-			break;
-		} else {
-			// Successful read, send the packet
-			ret = avcodec_send_packet(codec_ctx_, pkt);
-
-			// We don't need the packet anymore, so free it
-			av_packet_unref(pkt);
-
-			if (ret < 0) {
-				break;
-			}
-		}
-	}
-
-	return ret;
-}
-
-const char *FFmpegDecoder::Instance::GetSubtitleHeader() const
-{
-	return reinterpret_cast<const char *>(codec_ctx_->subtitle_header);
-}
-
-int FFmpegDecoder::Instance::GetSubtitle(AVPacket *pkt, AVSubtitle *sub)
-{
-	int ret = GetPacket(pkt);
-
-	if (ret >= 0) {
-		int got_sub;
-		ret = avcodec_decode_subtitle2(codec_ctx_, sub, &got_sub, pkt);
-		if (!got_sub) {
-			ret = -1;
-		}
-	}
-
-	return ret;
-}
-
-int FFmpegDecoder::Instance::GetPacket(AVPacket *pkt)
-{
-	int ret;
-
-	do {
-		av_packet_unref(pkt);
-
-		ret = av_read_frame(fmt_ctx_, pkt);
-	} while (pkt->stream_index != avstream_->index && ret >= 0);
-
-	return ret;
-}
-
-void FFmpegDecoder::Instance::Seek(int64_t timestamp)
-{
-	avcodec_flush_buffers(codec_ctx_);
-	av_seek_frame(fmt_ctx_, avstream_->index, timestamp, AVSEEK_FLAG_BACKWARD);
 }
 
 }

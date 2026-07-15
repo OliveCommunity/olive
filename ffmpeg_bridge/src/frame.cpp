@@ -59,6 +59,14 @@ int fb_frame_get_buffer(FBFrame *frame, int align)
 	return av_frame_get_buffer(frame->frame, align);
 }
 
+int fb_frame_make_writable(FBFrame *frame)
+{
+	if (!frame || !frame->frame) {
+		return AVERROR(EINVAL);
+	}
+	return av_frame_make_writable(frame->frame);
+}
+
 int fb_frame_copy_props(FBFrame *dst, const FBFrame *src)
 {
 	if (!dst || !src) {

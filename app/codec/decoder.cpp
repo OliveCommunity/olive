@@ -252,7 +252,7 @@ DecoderPtr Decoder::CreateFromID(const QString &id)
 
 void Decoder::SignalProcessingProgress(int64_t ts, int64_t duration)
 {
-	if (duration != AV_NOPTS_VALUE && duration != 0) {
+	if (duration != FB_NOPTS_VALUE && duration != 0) {
 		emit IndexProgress(static_cast<double>(ts) /
 						   static_cast<double>(duration));
 	}

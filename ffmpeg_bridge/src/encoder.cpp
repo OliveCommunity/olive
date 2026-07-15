@@ -566,6 +566,8 @@ int fb_encoder_write_audio(FBEncoder *e, const uint8_t *const *channel_data,
 
 	int bytes_per_sample =
 		av_get_bytes_per_sample(static_cast<AVSampleFormat>(sample_format));
+	int planar =
+		av_sample_fmt_is_planar(static_cast<AVSampleFormat>(sample_format));
 
 	bool result = true;
 
@@ -588,10 +590,16 @@ int fb_encoder_write_audio(FBEncoder *e, const uint8_t *const *channel_data,
 			e->SetError("Failed to allocate sample array", r);
 			return r;
 		} else {
-			for (int i = 0; i < channels; i++) {
-				memcpy(input_data[i],
-					   channel_data[i] + start * size_t(bytes_per_sample),
-					   input_sample_count * size_t(bytes_per_sample));
+			if (planar) {
+				for (int i = 0; i < channels; i++) {
+					memcpy(input_data[i],
+						   channel_data[i] + start * size_t(bytes_per_sample),
+						   input_sample_count * size_t(bytes_per_sample));
+				}
+			} else {
+				size_t stride = size_t(bytes_per_sample) * size_t(channels);
+				memcpy(input_data[0], channel_data[0] + start * stride,
+					   input_sample_count * stride);
 			}
 
 			start += input_sample_count;

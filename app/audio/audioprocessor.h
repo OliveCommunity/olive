@@ -26,9 +26,7 @@
 #include <olive/core/core.h>
 #include <QByteArray>
 
-extern "C" {
-#include <libavfilter/avfilter.h>
-}
+#include <ffmpeg_bridge/ffmpeg_bridge.h>
 
 #include "common/define.h"
 
@@ -52,7 +50,7 @@ public:
 
 	bool IsOpen() const
 	{
-		return filter_graph_;
+		return graph_;
 	}
 
 	using Buffer = QVector<QByteArray>;
@@ -70,25 +68,13 @@ public:
 	}
 
 private:
-	static AVFilterContext *CreateTempoFilter(AVFilterGraph *graph,
-											  AVFilterContext *link,
-											  const double &tempo);
-
-	AVFilterGraph *filter_graph_;
-
-	AVFilterContext *buffersrc_ctx_;
-
-	AVFilterContext *buffersink_ctx_;
+	FBAudioGraph *graph_;
 
 	AudioParams from_;
-	AVSampleFormat from_fmt_;
 
 	AudioParams to_;
-	AVSampleFormat to_fmt_;
 
-	AVFrame *in_frame_;
-
-	AVFrame *out_frame_;
+	FBFrame *out_frame_;
 };
 
 }

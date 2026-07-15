@@ -309,6 +309,14 @@ int fb_probe_read_subtitle_stream(const char *filename, int stream_index,
 		return AVERROR_EXTERNAL;
 	}
 
+	// Limit to SRT for now (mirrors the editor's historical behavior)
+	FBStreamInfo stream_info;
+	if (fb_decoder_get_stream_info(decoder, &stream_info) < 0 ||
+		stream_info.codec_id != (int)AV_CODEC_ID_SUBRIP) {
+		fb_decoder_free(&decoder);
+		return AVERROR(EINVAL);
+	}
+
 	FBPacket *pkt = fb_packet_alloc();
 
 	while (fb_decoder_get_packet(decoder, pkt) >= 0) {

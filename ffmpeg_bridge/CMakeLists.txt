@@ -93,10 +93,16 @@ set_target_properties(ffmpeg_bridge PROPERTIES
 
 if (WIN32)
   set_target_properties(ffmpeg_bridge PROPERTIES PREFIX "")
+  # Windows has no RPATH: the DLL must sit next to the executables
+  install(TARGETS ffmpeg_bridge
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION bin
+    ARCHIVE DESTINATION ffmpeg_bridge/lib
+  )
+else()
+  install(TARGETS ffmpeg_bridge
+    RUNTIME DESTINATION ffmpeg_bridge/bin
+    LIBRARY DESTINATION ffmpeg_bridge/bin
+    ARCHIVE DESTINATION ffmpeg_bridge/lib
+  )
 endif ()
-
-install(TARGETS ffmpeg_bridge
-  RUNTIME DESTINATION ffmpeg_bridge/bin
-  LIBRARY DESTINATION ffmpeg_bridge/bin
-  ARCHIVE DESTINATION ffmpeg_bridge/lib
-)

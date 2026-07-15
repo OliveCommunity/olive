@@ -87,6 +87,7 @@ typedef enum FBPixelFormat {
 	FB_PIX_FMT_YUVJ444P = 14,
 	FB_PIX_FMT_RGBA = 26,
 	FB_PIX_FMT_GRAY16LE = 30,
+	FB_PIX_FMT_YUV440P = 31,
 	FB_PIX_FMT_YUVJ440P = 32,
 	FB_PIX_FMT_RGB48LE = 35,
 	FB_PIX_FMT_YUV420P10LE = 62,
@@ -254,6 +255,8 @@ FB_API void fb_frame_free(FBFrame **frame);
 FB_API void fb_frame_unref(FBFrame *frame);
 /** Allocate the frame's buffer(s) from its width/height/format fields. */
 FB_API int fb_frame_get_buffer(FBFrame *frame, int align);
+/** Ensure the frame's data is writable (mirrors av_frame_make_writable). */
+FB_API int fb_frame_make_writable(FBFrame *frame);
 FB_API int fb_frame_copy_props(FBFrame *dst, const FBFrame *src);
 /** Transfer data between a hardware frame and a software frame. */
 FB_API int fb_frame_hw_transfer_data(FBFrame *dst, const FBFrame *src);
@@ -351,6 +354,7 @@ FB_API void fb_decoder_seek(FBDecoder *decoder, int64_t timestamp);
 FB_API int fb_decoder_get_stream_info(const FBDecoder *decoder,
 									  FBStreamInfo *out);
 FB_API int64_t fb_decoder_get_format_start_time(const FBDecoder *decoder);
+FB_API int64_t fb_decoder_get_format_duration(const FBDecoder *decoder);
 
 FB_API int fb_decoder_guess_sample_aspect_ratio(const FBDecoder *decoder,
 												FBFrame *frame, int *num,
@@ -467,6 +471,9 @@ FB_API int fb_resampler_get_out_samples(FBResampler *resampler,
 FB_API int fb_resampler_convert(FBResampler *resampler, uint8_t **out,
 								int out_count, const uint8_t **in,
 								int in_count);
+/** Same as fb_resampler_convert but takes the input directly from a frame. */
+FB_API int fb_resampler_convert_frame(FBResampler *resampler, uint8_t **out,
+									  int out_count, const FBFrame *in_frame);
 
 /* ------------------------------------------------------------------------- */
 /* Audio filter graph (abuffer/aformat/atempo/abuffersink wrapper)            */

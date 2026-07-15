@@ -28,10 +28,6 @@
  */
 
 #include "OliveHost.h"
-extern "C" {
-#include <libavformat/avformat.h>
-#include <libavfilter/avfilter.h>
-}
 
 #include <csignal>
 
@@ -404,14 +400,6 @@ int main(int argc, char *argv[])
 
 		return 1;
 	}
-#endif
-
-	// Register FFmpeg codecs and filters (deprecated in 4.0+)
-#if LIBAVFORMAT_VERSION_INT < AV_VERSION_INT(58, 9, 100)
-	av_register_all();
-#endif
-#if LIBAVFILTER_VERSION_INT < AV_VERSION_INT(7, 14, 100)
-	avfilter_register_all();
 #endif
 
 	// Enable Google Crashpad if compiled with it

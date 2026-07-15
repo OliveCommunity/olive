@@ -114,8 +114,7 @@ SequenceDialogPresetTab::CreateHDPresetFolder(const QString &name, int width,
 		OLIVE_CONFIG("OfflinePixelFormat").toInt());
 	const bool default_autocache = false;
 	QTreeWidgetItem *parent = CreateFolder(name);
-	AVChannelLayout layout;
-	av_channel_layout_from_mask(&layout, AV_CH_LAYOUT_STEREO);
+	const uint64_t layout = kChannelLayoutStereo;
 	AddStandardItem(parent,
 					std::make_shared<SequencePreset>(
 						tr("%1 23.976 FPS").arg(name), width, height,
@@ -146,7 +145,6 @@ SequenceDialogPresetTab::CreateHDPresetFolder(const QString &name, int width,
 						rational(60000, 1001), VideoParams::kPixelAspectSquare,
 						VideoParams::kInterlaceNone, 48000, layout, divider,
 						default_format, default_autocache));
-	av_channel_layout_uninit(&layout);
 	return parent;
 }
 
@@ -159,8 +157,7 @@ QTreeWidgetItem *SequenceDialogPresetTab::CreateSDPresetFolder(
 	const bool default_autocache = false;
 	QTreeWidgetItem *parent = CreateFolder(name);
 	preset_tree_->addTopLevelItem(parent);
-	AVChannelLayout layout;
-	av_channel_layout_from_mask(&layout, AV_CH_LAYOUT_STEREO);
+	const uint64_t layout = kChannelLayoutStereo;
 	AddStandardItem(
 		parent, std::make_shared<SequencePreset>(
 					tr("%1 Standard").arg(name), width, height, frame_rate,
@@ -171,7 +168,6 @@ QTreeWidgetItem *SequenceDialogPresetTab::CreateSDPresetFolder(
 					tr("%1 Widescreen").arg(name), width, height, frame_rate,
 					wide_par, VideoParams::kInterlacedBottomFirst, 48000,
 					layout, divider, default_format, default_autocache));
-	av_channel_layout_uninit(&layout);
 	return parent;
 }
 

@@ -68,6 +68,7 @@ static_assert(FB_PIX_FMT_YUVJ422P == AV_PIX_FMT_YUVJ422P, "pixfmt mismatch");
 static_assert(FB_PIX_FMT_YUVJ444P == AV_PIX_FMT_YUVJ444P, "pixfmt mismatch");
 static_assert(FB_PIX_FMT_RGBA == AV_PIX_FMT_RGBA, "pixfmt mismatch");
 static_assert(FB_PIX_FMT_GRAY16LE == AV_PIX_FMT_GRAY16LE, "pixfmt mismatch");
+static_assert(FB_PIX_FMT_YUV440P == AV_PIX_FMT_YUV440P, "pixfmt mismatch");
 static_assert(FB_PIX_FMT_YUVJ440P == AV_PIX_FMT_YUVJ440P, "pixfmt mismatch");
 static_assert(FB_PIX_FMT_RGB48LE == AV_PIX_FMT_RGB48LE, "pixfmt mismatch");
 static_assert(FB_PIX_FMT_YUV420P10LE == AV_PIX_FMT_YUV420P10LE, "pixfmt mismatch");
