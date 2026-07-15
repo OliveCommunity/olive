@@ -22,10 +22,7 @@
 #ifndef LIBOLIVECORE_RATIONAL_H
 #define LIBOLIVECORE_RATIONAL_H
 
-extern "C" {
-#include <libavutil/rational.h>
-}
-
+#include <climits>
 #include <iostream>
 
 #ifdef USE_OTIO
@@ -39,27 +36,20 @@ class rational {
 public:
 	rational(const int &numerator = 0)
 	{
-		r_.num = numerator;
-		r_.den = 1;
+		num_ = numerator;
+		den_ = 1;
 	}
 
 	rational(const int &numerator, const int &denominator)
 	{
-		r_.num = numerator;
-		r_.den = denominator;
+		num_ = numerator;
+		den_ = denominator;
 
 		fix_signs();
 		reduce();
 	}
 
 	rational(const rational &rhs) = default;
-
-	rational(const AVRational &r)
-	{
-		r_ = r;
-
-		fix_signs();
-	}
 
 	static rational fromDouble(const double &flt, bool *ok = nullptr);
 	static rational fromString(const std::string &str, bool *ok = nullptr);
@@ -94,17 +84,15 @@ public:
 	}
 	rational operator-() const
 	{
-		return rational(r_.num, -r_.den);
+		return rational(num_, -den_);
 	}
 	bool operator!() const
 	{
-		return !r_.num;
+		return !num_;
 	}
 
 	//Function: convert to double
 	double toDouble() const;
-
-	AVRational toAVRational() const;
 
 #ifdef USE_OTIO
 	static rational fromRationalTime(const opentime::RationalTime &t)
@@ -126,29 +114,29 @@ public:
 	// A NaN is always a null, but a null is not always a NaN
 	bool isNull() const
 	{
-		return r_.num == 0;
+		return num_ == 0;
 	}
 
 	// Returns whether this rational is not a valid number (denominator == 0)
 	bool isNaN() const
 	{
-		return r_.den == 0;
+		return den_ == 0;
 	}
 
 	const int &numerator() const
 	{
-		return r_.num;
+		return num_;
 	}
 	const int &denominator() const
 	{
-		return r_.den;
+		return den_;
 	}
 
 	std::string toString() const;
 
 	friend std::ostream &operator<<(std::ostream &out, const rational &value)
 	{
-		out << value.r_.num << '/' << value.r_.den;
+		out << value.num_ << '/' << value.den_;
 
 		return out;
 	}
@@ -157,7 +145,8 @@ private:
 	void fix_signs();
 	void reduce();
 
-	AVRational r_;
+	int num_;
+	int den_;
 };
 
 #define RATIONAL_MIN rational(INT_MIN)

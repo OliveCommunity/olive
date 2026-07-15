@@ -22,7 +22,13 @@
 #include "util/rational.h"
 
 #include <math.h>
+#include <stdint.h>
 
+#include <algorithm>
+#include <climits>
+#include <limits>
+
+#include "util/fractionutils.h"
 #include "util/stringutils.h"
 
 namespace olive::core
@@ -39,22 +45,45 @@ rational rational::fromDouble(const double &flt, bool *ok)
 		return NaN;
 	}
 
-	// Use FFmpeg function for the time being
-	AVRational r = av_d2q(flt, INT_MAX);
+	if (fabs(flt) > double(INT_MAX) + 3.0) {
+		// Value is out of range for a rational, return NaN
+		if (ok) {
+			*ok = false;
+		}
+		return NaN;
+	}
 
-	if (r.den == 0) {
+	// Continued fraction conversion (ported from FFmpeg's av_d2q)
+	int exponent;
+	frexp(flt, &exponent);
+	exponent = std::max(exponent - 1, 0);
+	int64_t den = 1LL << (62 - exponent);
+	int64_t num = int64_t(floor(flt * den + 0.5));
+
+	int64_t rnum = num, rden = den;
+	ReduceFraction(rnum, rden, INT_MAX);
+
+	if ((!rnum || !rden) && flt) {
+		// Value was too small to represent above, retry with maximum precision
+		rnum = int64_t(flt * double(INT64_MAX));
+		rden = INT64_MAX;
+		ReduceFraction(rnum, rden, INT_MAX);
+	}
+
+	if (rden == 0) {
 		// If den == 0, we were unable to convert to a rational
 		if (ok) {
 			*ok = false;
 		}
-	} else {
-		// Otherwise, assume we received a real rational
-		if (ok) {
-			*ok = true;
-		}
+		return NaN;
 	}
 
-	return r;
+	// Otherwise, assume we received a real rational
+	if (ok) {
+		*ok = true;
+	}
+
+	return rational(int(rnum), int(rden));
 }
 
 rational rational::fromString(const std::string &str, bool *ok)
@@ -80,16 +109,11 @@ rational rational::fromString(const std::string &str, bool *ok)
 
 double rational::toDouble() const
 {
-	if (r_.den != 0) {
-		return av_q2d(r_);
+	if (den_ != 0) {
+		return double(num_) / double(den_);
 	} else {
 		return std::numeric_limits<double>::quiet_NaN();
 	}
-}
-
-AVRational rational::toAVRational() const
-{
-	return r_;
 }
 
 #ifdef USE_OTIO
@@ -98,7 +122,7 @@ opentime::RationalTime rational::toRationalTime(double framerate) const
 	// Is this the best way of doing this?
 	// Olive can store rationals as 0/0 which causes errors in OTIO
 	opentime::RationalTime time =
-		opentime::RationalTime(r_.num, r_.den == 0 ? 1 : r_.den);
+		opentime::RationalTime(num_, den_ == 0 ? 1 : den_);
 	return time.rescaled_to(framerate);
 }
 #endif
@@ -113,41 +137,45 @@ rational rational::flipped() const
 void rational::flip()
 {
 	if (!isNull()) {
-		std::swap(r_.den, r_.num);
+		std::swap(den_, num_);
 		fix_signs();
 	}
 }
 
 std::string rational::toString() const
 {
-	return StringUtils::format("%d/%d", r_.num, r_.den);
+	return StringUtils::format("%d/%d", num_, den_);
 }
 
 void rational::fix_signs()
 {
-	if (r_.den < 0) {
+	if (den_ < 0) {
 		// Normalize so that denominator is always positive
-		r_.den = -r_.den;
-		r_.num = -r_.num;
-	} else if (r_.den == 0) {
+		den_ = -den_;
+		num_ = -num_;
+	} else if (den_ == 0) {
 		// Normalize to 0/0 (aka NaN) if denominator is zero
-		r_.num = 0;
-	} else if (r_.num == 0) {
+		num_ = 0;
+	} else if (num_ == 0) {
 		// Normalize to 0/1 if numerator is zero
-		r_.den = 1;
+		den_ = 1;
 	}
 }
 
 void rational::reduce()
 {
-	av_reduce(&r_.num, &r_.den, r_.num, r_.den, INT_MAX);
+	int64_t n = num_, d = den_;
+	ReduceFraction(n, d, INT_MAX);
+	num_ = int(n);
+	den_ = int(d);
 }
 
 //Assignment Operators
 
 const rational &rational::operator=(const rational &rhs)
 {
-	r_ = rhs.r_;
+	num_ = rhs.num_;
+	den_ = rhs.den_;
 	return *this;
 }
 
@@ -160,7 +188,11 @@ const rational &rational::operator+=(const rational &rhs)
 		if (rhs.isNaN()) {
 			*this = NaN;
 		} else {
-			r_ = av_add_q(r_, rhs.r_);
+			int64_t n = num_ * int64_t(rhs.den_) + rhs.num_ * int64_t(den_);
+			int64_t d = den_ * int64_t(rhs.den_);
+			ReduceFraction(n, d, INT_MAX);
+			num_ = int(n);
+			den_ = int(d);
 			fix_signs();
 		}
 	}
@@ -177,7 +209,11 @@ const rational &rational::operator-=(const rational &rhs)
 		if (rhs.isNaN()) {
 			*this = NaN;
 		} else {
-			r_ = av_sub_q(r_, rhs.r_);
+			int64_t n = num_ * int64_t(rhs.den_) - rhs.num_ * int64_t(den_);
+			int64_t d = den_ * int64_t(rhs.den_);
+			ReduceFraction(n, d, INT_MAX);
+			num_ = int(n);
+			den_ = int(d);
 			fix_signs();
 		}
 	}
@@ -194,7 +230,11 @@ const rational &rational::operator*=(const rational &rhs)
 		if (rhs.isNaN()) {
 			*this = NaN;
 		} else {
-			r_ = av_mul_q(r_, rhs.r_);
+			int64_t n = num_ * int64_t(rhs.num_);
+			int64_t d = den_ * int64_t(rhs.den_);
+			ReduceFraction(n, d, INT_MAX);
+			num_ = int(n);
+			den_ = int(d);
 			fix_signs();
 		}
 	}
@@ -211,7 +251,11 @@ const rational &rational::operator/=(const rational &rhs)
 		if (rhs.isNaN()) {
 			*this = NaN;
 		} else {
-			r_ = av_div_q(r_, rhs.r_);
+			int64_t n = num_ * int64_t(rhs.den_);
+			int64_t d = den_ * int64_t(rhs.num_);
+			ReduceFraction(n, d, INT_MAX);
+			num_ = int(n);
+			den_ = int(d);
 			fix_signs();
 		}
 	}
@@ -253,29 +297,29 @@ rational rational::operator*(const rational &rhs) const
 
 bool rational::operator<(const rational &rhs) const
 {
-	return av_cmp_q(r_, rhs.r_) == -1;
+	return CompareFractions(num_, den_, rhs.num_, rhs.den_) == -1;
 }
 
 bool rational::operator<=(const rational &rhs) const
 {
-	int cmp = av_cmp_q(r_, rhs.r_);
+	int cmp = CompareFractions(num_, den_, rhs.num_, rhs.den_);
 	return cmp == 0 || cmp == -1;
 }
 
 bool rational::operator>(const rational &rhs) const
 {
-	return av_cmp_q(r_, rhs.r_) == 1;
+	return CompareFractions(num_, den_, rhs.num_, rhs.den_) == 1;
 }
 
 bool rational::operator>=(const rational &rhs) const
 {
-	int cmp = av_cmp_q(r_, rhs.r_);
+	int cmp = CompareFractions(num_, den_, rhs.num_, rhs.den_);
 	return cmp == 0 || cmp == 1;
 }
 
 bool rational::operator==(const rational &rhs) const
 {
-	return av_cmp_q(r_, rhs.r_) == 0;
+	return CompareFractions(num_, den_, rhs.num_, rhs.den_) == 0;
 }
 
 bool rational::operator!=(const rational &rhs) const

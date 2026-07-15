@@ -27,11 +27,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-# Link avutil
-find_package(FFMPEG 6.0 REQUIRED
-  COMPONENTS avutil
-)
-
 # Link Imath
 find_package(Imath REQUIRED CONFIG)
 
@@ -46,6 +41,7 @@ add_library(olivecore
   src/render/samplebuffer.cpp
   src/util/bezier.cpp
   src/util/color.cpp
+  src/util/fractionutils.cpp
   src/util/rational.cpp
   src/util/stringutils.cpp
   src/util/tests.cpp
@@ -55,7 +51,6 @@ add_library(olivecore
 )
 
 target_include_directories(olivecore PRIVATE
-  ${FFMPEG_INCLUDE_DIRS}
   "${CMAKE_CURRENT_SOURCE_DIR}/include/olive/core"
   "${CMAKE_SOURCE_DIR}/third_party/openfx/include/"
 )
@@ -63,7 +58,6 @@ target_include_directories(olivecore PRIVATE
 target_link_libraries(olivecore PRIVATE
   OpenGL::GL
   Imath::Imath
-  FFMPEG::avutil
 )
 
 # Link OpenTimelineIO (optional)

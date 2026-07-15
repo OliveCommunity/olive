@@ -21,10 +21,10 @@
 
 #include "util/timecodefunctions.h"
 
-extern "C" {
-#include <libavutil/mathematics.h>
-}
+#include <climits>
+#include <cmath>
 
+#include "util/fractionutils.h"
 #include "util/stringutils.h"
 
 namespace olive::core
@@ -334,11 +334,9 @@ rational Timecode::timestamp_to_time(const int64_t &timestamp,
 	int64_t num = int64_t(timebase.numerator()) * timestamp;
 	int64_t den = timebase.denominator();
 
-	int num_r, den_r;
+	ReduceFraction(num, den, INT_MAX);
 
-	av_reduce(&num_r, &den_r, num, den, INT_MAX);
-
-	return rational(num_r, den_r);
+	return rational(int(num), int(den));
 }
 
 bool Timecode::timebase_is_drop_frame(const rational &timebase)
@@ -389,7 +387,9 @@ int64_t Timecode::rescale_timestamp(const int64_t &ts, const rational &source,
 		return ts;
 	}
 
-	return av_rescale_q(ts, source.toAVRational(), dest.toAVRational());
+	return RescaleRnd(ts, source.numerator() * int64_t(dest.denominator()),
+					  source.denominator() * int64_t(dest.numerator()),
+					  FractionRounding::kNearInf);
 }
 
 int64_t Timecode::rescale_timestamp_ceil(const int64_t &ts,
@@ -400,8 +400,9 @@ int64_t Timecode::rescale_timestamp_ceil(const int64_t &ts,
 		return ts;
 	}
 
-	return av_rescale_q_rnd(ts, source.toAVRational(), dest.toAVRational(),
-							AV_ROUND_UP);
+	return RescaleRnd(ts, source.numerator() * int64_t(dest.denominator()),
+					  source.denominator() * int64_t(dest.numerator()),
+					  FractionRounding::kUp);
 }
 
 }
