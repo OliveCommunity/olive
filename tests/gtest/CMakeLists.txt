@@ -40,6 +40,9 @@ add_executable(olive-gtest
   render_ipc_test.cpp
   render_ticket_test.cpp
   render_worker_footage_test.cpp
+  render_direct_connection_test.cpp
+  render_clip_buffer_hint_test.cpp
+  viewer_display_repro_test.cpp
   project_serializer_test.cpp
   proxy_manager_test.cpp
   timeline_marker_test.cpp

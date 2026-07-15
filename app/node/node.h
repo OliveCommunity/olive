@@ -802,7 +802,8 @@ public:
 		return value_hints_;
 	}
 
-	ValueHint GetValueHintForInput(const QString &input, int element = -1) const
+	virtual ValueHint GetValueHintForInput(const QString &input,
+										   int element = -1) const
 	{
 		return value_hints_.value({ input, element });
 	}

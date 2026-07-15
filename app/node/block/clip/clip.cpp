@@ -141,6 +141,30 @@ rational ClipBlock::media_in() const
 	return GetStandardValue(kMediaInInput).value<rational>();
 }
 
+Node::ValueHint ClipBlock::GetValueHintForInput(const QString &input,
+												int element) const
+{
+	if (input == kBufferIn) {
+		// The buffer input takes whatever the connected node provides, so it
+		// is declared as kNone and carries no stored hint. When the connected
+		// node pushes more than one value type (a footage pushes both a
+		// kTexture job and a kSamples job), a typeless lookup falls back to
+		// the last value in the table, which may feed audio samples into a
+		// video clip and produce a black frame. Prefer the value type that
+		// matches this clip's track.
+		switch (GetTrackType()) {
+		case Track::kVideo:
+			return ValueHint(QVector<NodeValue::Type>{ NodeValue::kTexture });
+		case Track::kAudio:
+			return ValueHint(QVector<NodeValue::Type>{ NodeValue::kSamples });
+		default:
+			break;
+		}
+	}
+
+	return super::GetValueHintForInput(input, element);
+}
+
 void ClipBlock::set_media_in(const rational &media_in)
 {
 	SetStandardValue(kMediaInInput, QVariant::fromValue(media_in));

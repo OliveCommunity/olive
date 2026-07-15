@@ -59,6 +59,9 @@ public:
 		}
 	}
 
+	virtual Node::ValueHint
+	GetValueHintForInput(const QString &input, int element = -1) const override;
+
 	rational media_in() const;
 	void set_media_in(const rational &media_in);
 
