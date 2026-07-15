@@ -82,13 +82,6 @@ TEST(CoreRational, ToString)
 	EXPECT_EQ(rational(1, 2).toString(), "1/2");
 }
 
-TEST(CoreRational, ToAVRational)
-{
-	AVRational av = rational(3, 4).toAVRational();
-	EXPECT_EQ(av.num, 3);
-	EXPECT_EQ(av.den, 4);
-}
-
 TEST(CoreRational, Arithmetic)
 {
 	rational a(1, 2);

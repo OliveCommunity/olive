@@ -7,11 +7,11 @@ TEST(RenderAudioParams, ValidityAndEquality)
 	olive::core::AudioParams invalid;
 	EXPECT_FALSE(invalid.is_valid());
 
-	olive::core::AudioParams params(48000, AV_CH_LAYOUT_STEREO,
+	olive::core::AudioParams params(48000, olive::core::kChannelLayoutStereo,
 									olive::core::SampleFormat::S16);
 	EXPECT_TRUE(params.is_valid());
 
-	olive::core::AudioParams other(48000, AV_CH_LAYOUT_STEREO,
+	olive::core::AudioParams other(48000, olive::core::kChannelLayoutStereo,
 								   olive::core::SampleFormat::S16);
 	EXPECT_TRUE(params == other);
 
@@ -21,7 +21,7 @@ TEST(RenderAudioParams, ValidityAndEquality)
 
 TEST(RenderAudioParams, TimeAndSampleConversions)
 {
-	olive::core::AudioParams params(48000, AV_CH_LAYOUT_STEREO,
+	olive::core::AudioParams params(48000, olive::core::kChannelLayoutStereo,
 									olive::core::SampleFormat::S16);
 
 	EXPECT_EQ(params.channel_count(), 2);
@@ -43,33 +43,33 @@ TEST(RenderAudioParams, TimeAndSampleConversions)
 
 TEST(RenderAudioParams, ChannelLayoutCount)
 {
-	olive::core::AudioParams mono(48000, AV_CH_LAYOUT_MONO,
+	olive::core::AudioParams mono(48000, olive::core::kChannelLayoutMono,
 								  olive::core::SampleFormat::F32);
 	EXPECT_EQ(mono.channel_count(), 1);
 
-	olive::core::AudioParams surround(48000, AV_CH_LAYOUT_5POINT1,
+	olive::core::AudioParams surround(48000, olive::core::kChannelLayout5Point1,
 									  olive::core::SampleFormat::F32);
 	EXPECT_EQ(surround.channel_count(), 6);
 }
 
 TEST(RenderAudioParams, SampleFormatSizes)
 {
-	olive::core::AudioParams u8(48000, AV_CH_LAYOUT_MONO,
+	olive::core::AudioParams u8(48000, olive::core::kChannelLayoutMono,
 								olive::core::SampleFormat::U8);
 	EXPECT_EQ(u8.bytes_per_sample_per_channel(), 1);
 
-	olive::core::AudioParams f32(48000, AV_CH_LAYOUT_MONO,
+	olive::core::AudioParams f32(48000, olive::core::kChannelLayoutMono,
 								 olive::core::SampleFormat::F32);
 	EXPECT_EQ(f32.bytes_per_sample_per_channel(), 4);
 
-	olive::core::AudioParams f64(48000, AV_CH_LAYOUT_MONO,
+	olive::core::AudioParams f64(48000, olive::core::kChannelLayoutMono,
 								 olive::core::SampleFormat::F64);
 	EXPECT_EQ(f64.bytes_per_sample_per_channel(), 8);
 }
 
 TEST(RenderAudioParams, CopyAndAssignment)
 {
-	olive::core::AudioParams params(96000, AV_CH_LAYOUT_STEREO,
+	olive::core::AudioParams params(96000, olive::core::kChannelLayoutStereo,
 									olive::core::SampleFormat::F32);
 
 	olive::core::AudioParams copy(params);
@@ -85,7 +85,7 @@ TEST(RenderAudioParams, CopyAndAssignment)
 
 TEST(RenderAudioParams, SettersModifyState)
 {
-	olive::core::AudioParams params(44100, AV_CH_LAYOUT_MONO,
+	olive::core::AudioParams params(44100, olive::core::kChannelLayoutMono,
 									olive::core::SampleFormat::S16);
 	EXPECT_TRUE(params.is_valid());
 

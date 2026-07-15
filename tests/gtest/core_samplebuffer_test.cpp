@@ -6,7 +6,7 @@ using namespace olive::core;
 
 static AudioParams MakeParams(int channels = 2, int sample_rate = 48000)
 {
-	AudioParams params(sample_rate, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(sample_rate, kChannelLayoutStereo, SampleFormat::F32P);
 	return params;
 }
 

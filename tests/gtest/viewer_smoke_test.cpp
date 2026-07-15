@@ -323,7 +323,7 @@ TEST(ViewerSmokeAudioCache, ParameterSetters)
 {
 	AudioPlaybackCache cache;
 
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	cache.SetParameters(params);
 
 	// Parameters should be retrievable

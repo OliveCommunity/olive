@@ -43,10 +43,6 @@
 #include "node/value.h"
 #include "common/ffmpegutils.h"
 
-extern "C" {
-#include <libavutil/frame.h>
-}
-
 namespace olive
 {
 namespace plugin
@@ -77,23 +73,23 @@ static TexturePtr CreateTestTexture(const VideoParams &params,
 									uint8_t fill_value = 0x7f)
 {
 	AVFramePtr frame = CreateAVFramePtr();
-	frame->format = FFmpegUtils::GetFFmpegPixelFormat(params.format(),
-													  params.channel_count());
-	frame->width = params.width();
-	frame->height = params.height();
-	if (frame->format == AV_PIX_FMT_NONE) {
+	frame->set_format(FFmpegUtils::GetFFmpegPixelFormat(params.format(),
+														params.channel_count()));
+	frame->set_width(params.width());
+	frame->set_height(params.height());
+	if (frame->format() == FB_PIX_FMT_NONE) {
 		return nullptr;
 	}
-	if (av_frame_get_buffer(frame.get(), 0) < 0) {
+	if (frame->get_buffer(0) < 0) {
 		return nullptr;
 	}
-	if (av_frame_make_writable(frame.get()) < 0) {
+	if (frame->make_writable() < 0) {
 		return nullptr;
 	}
 
-	const int linesize = frame->linesize[0];
-	for (int y = 0; y < frame->height; ++y) {
-		std::memset(frame->data[0] + y * linesize, fill_value, linesize);
+	const int linesize = frame->linesize(0);
+	for (int y = 0; y < frame->height(); ++y) {
+		std::memset(frame->data(0) + y * linesize, fill_value, linesize);
 	}
 
 	TexturePtr texture = std::make_shared<Texture>(params);

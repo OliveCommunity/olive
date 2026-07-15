@@ -7,10 +7,6 @@
 
 #include <cmath>
 
-extern "C" {
-#include <libavutil/channel_layout.h>
-}
-
 #include "audio/audiovisualwaveform.h"
 #include "node/block/clip/clip.h"
 #include "node/node.h"
@@ -29,7 +25,7 @@ namespace
 
 AudioParams MakeMonoParams(int sample_rate)
 {
-	return AudioParams(sample_rate, static_cast<uint64_t>(AV_CH_LAYOUT_MONO),
+	return AudioParams(sample_rate, static_cast<uint64_t>(kChannelLayoutMono),
 					   SampleFormat::F32P);
 }
 

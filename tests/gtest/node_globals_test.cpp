@@ -17,7 +17,7 @@ TEST(NodeGlobals, ConstructedWithParams)
 	olive::VideoParams video_params(1920, 1080, olive::PixelFormat::F32, 4);
 	olive::AudioParams audio_params;
 	audio_params.set_sample_rate(48000);
-	audio_params.set_channel_layout(AV_CH_LAYOUT_STEREO);
+	audio_params.set_channel_layout(olive::core::kChannelLayoutStereo);
 
 	olive::TimeRange time(olive::core::rational(1, 24),
 						  olive::core::rational(2, 24));

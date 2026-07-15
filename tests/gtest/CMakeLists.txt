@@ -11,6 +11,7 @@ add_executable(olive-gtest
   common_digit_test.cpp
   common_jobtime_test.cpp
   common_ffmpegutils_test.cpp
+  ffmpeg_bridge_test.cpp
   config_test.cpp
   audio_level_meter_test.cpp
   audio_synchronizer_test.cpp

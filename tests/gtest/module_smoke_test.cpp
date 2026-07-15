@@ -49,8 +49,8 @@ TEST(ModuleSmoke, HumanStringsSampleRate)
 TEST(ModuleSmoke, HumanStringsChannelLayout)
 {
 	EXPECT_FALSE(
-		olive::HumanStrings::ChannelLayoutToString(AV_CH_LAYOUT_MONO).isEmpty());
-	EXPECT_FALSE(olive::HumanStrings::ChannelLayoutToString(AV_CH_LAYOUT_STEREO)
+		olive::HumanStrings::ChannelLayoutToString(olive::core::kChannelLayoutMono).isEmpty());
+	EXPECT_FALSE(olive::HumanStrings::ChannelLayoutToString(olive::core::kChannelLayoutStereo)
 					 .isEmpty());
 }
 

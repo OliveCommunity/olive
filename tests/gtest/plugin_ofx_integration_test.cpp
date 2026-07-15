@@ -2,10 +2,6 @@
 
 #include <cstdlib>
 
-extern "C" {
-#include <libavutil/frame.h>
-}
-
 #include "common/ffmpegutils.h"
 #include "node/value.h"
 #include "pluginSupport/OliveHost.h"
@@ -21,23 +17,23 @@ namespace
 olive::TexturePtr CreateSolidTexture(const olive::VideoParams &params)
 {
 	olive::AVFramePtr frame = olive::CreateAVFramePtr();
-	frame->format = olive::FFmpegUtils::GetFFmpegPixelFormat(
-		params.format(), params.channel_count());
-	frame->width = params.width();
-	frame->height = params.height();
-	if (frame->format == AV_PIX_FMT_NONE) {
+	frame->set_format(olive::FFmpegUtils::GetFFmpegPixelFormat(
+		params.format(), params.channel_count()));
+	frame->set_width(params.width());
+	frame->set_height(params.height());
+	if (frame->format() == FB_PIX_FMT_NONE) {
 		return nullptr;
 	}
-	if (av_frame_get_buffer(frame.get(), 0) < 0) {
+	if (frame->get_buffer(0) < 0) {
 		return nullptr;
 	}
-	if (av_frame_make_writable(frame.get()) < 0) {
+	if (frame->make_writable() < 0) {
 		return nullptr;
 	}
 
-	const int linesize = frame->linesize[0];
-	for (int y = 0; y < frame->height; ++y) {
-		std::memset(frame->data[0] + y * linesize, 0x7f, linesize);
+	const int linesize = frame->linesize(0);
+	for (int y = 0; y < frame->height(); ++y) {
+		std::memset(frame->data(0) + y * linesize, 0x7f, linesize);
 	}
 
 	olive::TexturePtr texture = std::make_shared<olive::Texture>(params);

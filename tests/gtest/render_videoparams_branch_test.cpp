@@ -1,8 +1,6 @@
 #include <gtest/gtest.h>
 
-extern "C" {
-#include <libavutil/avutil.h>
-}
+#include <cstdint>
 
 #include <QBuffer>
 #include <QXmlStreamReader>
@@ -86,7 +84,7 @@ TEST(RenderVideoParams, ValidityAndTimebase)
 	olive::VideoParams params;
 	EXPECT_FALSE(params.is_valid());
 	EXPECT_EQ(params.get_time_in_timebase_units(olive::core::rational(1, 1)),
-			  AV_NOPTS_VALUE);
+			  INT64_MIN /* AV_NOPTS_VALUE */);
 
 	params.set_width(1920);
 	params.set_height(1080);

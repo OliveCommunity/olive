@@ -7,16 +7,12 @@
 #include "olive/core/render/samplebuffer.h"
 #include "olive/core/render/sampleformat.h"
 
-extern "C" {
-#include <libavutil/channel_layout.h>
-}
-
 namespace
 {
 
 olive::core::AudioParams MakeStereoParams()
 {
-	return olive::core::AudioParams(48000, AV_CH_LAYOUT_STEREO,
+	return olive::core::AudioParams(48000, olive::core::kChannelLayoutStereo,
 									olive::core::SampleFormat::F32P);
 }
 

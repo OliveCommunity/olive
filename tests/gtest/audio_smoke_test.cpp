@@ -26,10 +26,6 @@
 #include "olive/core/render/audioparams.h"
 #include "olive/core/render/sampleformat.h"
 
-extern "C" {
-#include <libavutil/channel_layout.h>
-}
-
 using namespace olive;
 using namespace olive::core;
 
@@ -75,7 +71,7 @@ TEST(AudioSmokeParams, DefaultConstruction)
 
 TEST(AudioSmokeParams, ValidConstruction)
 {
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 
 	EXPECT_TRUE(params.is_valid());
 	EXPECT_EQ(params.sample_rate(), 48000);
@@ -87,7 +83,7 @@ TEST(AudioSmokeParams, ValidConstruction)
 
 TEST(AudioSmokeParams, MonoChannelLayout)
 {
-	AudioParams params(44100, AV_CH_LAYOUT_MONO, SampleFormat::S16);
+	AudioParams params(44100, kChannelLayoutMono, SampleFormat::S16);
 
 	EXPECT_TRUE(params.is_valid());
 	EXPECT_EQ(params.sample_rate(), 44100);
@@ -96,7 +92,7 @@ TEST(AudioSmokeParams, MonoChannelLayout)
 
 TEST(AudioSmokeParams, SurroundChannelLayout)
 {
-	AudioParams params(48000, AV_CH_LAYOUT_5POINT1, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayout5Point1, SampleFormat::F32P);
 
 	EXPECT_TRUE(params.is_valid());
 	EXPECT_EQ(params.channel_count(), 6);
@@ -104,7 +100,7 @@ TEST(AudioSmokeParams, SurroundChannelLayout)
 
 TEST(AudioSmokeParams, TimeConversions)
 {
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 
 	// Time to samples
 	EXPECT_EQ(params.time_to_samples(1.0), 48000);
@@ -121,11 +117,11 @@ TEST(AudioSmokeParams, TimeConversions)
 
 TEST(AudioSmokeParams, EqualityOperators)
 {
-	AudioParams params1(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
-	AudioParams params2(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
-	AudioParams params3(44100, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
-	AudioParams params4(48000, AV_CH_LAYOUT_MONO, SampleFormat::F32P);
-	AudioParams params5(48000, AV_CH_LAYOUT_STEREO, SampleFormat::S16);
+	AudioParams params1(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params2(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params3(44100, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params4(48000, kChannelLayoutMono, SampleFormat::F32P);
+	AudioParams params5(48000, kChannelLayoutStereo, SampleFormat::S16);
 
 	EXPECT_TRUE(params1 == params2);
 	EXPECT_FALSE(params1 != params2);
@@ -137,7 +133,7 @@ TEST(AudioSmokeParams, EqualityOperators)
 
 TEST(AudioSmokeParams, CopyConstruction)
 {
-	AudioParams original(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams original(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	AudioParams copy(original);
 
 	EXPECT_TRUE(copy.is_valid());
@@ -153,7 +149,7 @@ TEST(AudioSmokeParams, CopyConstruction)
 
 TEST(AudioSmokeParams, CopyAssignment)
 {
-	AudioParams original(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams original(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	AudioParams copy;
 	copy = original;
 
@@ -165,15 +161,15 @@ TEST(AudioSmokeParams, CopyAssignment)
 
 TEST(AudioSmokeParams, ChannelLayoutModification)
 {
-	AudioParams params(48000, AV_CH_LAYOUT_MONO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutMono, SampleFormat::F32P);
 	EXPECT_EQ(params.channel_count(), 1);
 
 	// Change to stereo
-	params.set_channel_layout(AV_CH_LAYOUT_STEREO);
+	params.set_channel_layout(kChannelLayoutStereo);
 	EXPECT_EQ(params.channel_count(), 2);
 
 	// Change to 5.1
-	params.set_channel_layout(AV_CH_LAYOUT_5POINT1);
+	params.set_channel_layout(kChannelLayout5Point1);
 	EXPECT_EQ(params.channel_count(), 6);
 }
 
@@ -191,7 +187,7 @@ TEST(AudioSmokeBuffer, DefaultConstruction)
 
 TEST(AudioSmokeBuffer, Allocation)
 {
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	SampleBuffer buffer(params, size_t(48000)); // 1 second of samples
 
 	EXPECT_TRUE(buffer.is_allocated());
@@ -201,7 +197,7 @@ TEST(AudioSmokeBuffer, Allocation)
 
 TEST(AudioSmokeBuffer, DataAccess)
 {
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	SampleBuffer buffer(params, size_t(100));
 
 	// Fill with test data
@@ -218,7 +214,7 @@ TEST(AudioSmokeBuffer, DataAccess)
 
 TEST(AudioSmokeBuffer, Silence)
 {
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	SampleBuffer buffer(params, size_t(100));
 
 	// Fill with non-zero values
@@ -238,7 +234,7 @@ TEST(AudioSmokeBuffer, Silence)
 
 TEST(AudioSmokeBuffer, VolumeTransform)
 {
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	SampleBuffer buffer(params, size_t(100));
 
 	// Fill with 1.0
@@ -258,7 +254,7 @@ TEST(AudioSmokeBuffer, VolumeTransform)
 
 TEST(AudioSmokeBuffer, Clamp)
 {
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	SampleBuffer buffer(params, size_t(100));
 
 	// Fill with values outside [-1, 1]
@@ -284,7 +280,7 @@ TEST(AudioSmokeBuffer, Clamp)
 
 TEST(AudioSmokeBuffer, FastSet)
 {
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	SampleBuffer source(params, size_t(100));
 	SampleBuffer dest(params, size_t(100));
 
@@ -303,7 +299,7 @@ TEST(AudioSmokeBuffer, FastSet)
 
 TEST(AudioSmokeBuffer, RipChannel)
 {
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	SampleBuffer buffer(params, size_t(100));
 
 	// Fill channel 0 with 0.5, channel 1 with 0.25
@@ -353,7 +349,7 @@ TEST(AudioSmokeWaveform, OverwriteSamples)
 	waveform.set_channel_count(2);
 
 	// Create sample buffer with sine wave-like data
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	SampleBuffer buffer(params, size_t(4800)); // 0.1 seconds
 
 	for (int ch = 0; ch < buffer.channel_count(); ++ch) {
@@ -375,7 +371,7 @@ TEST(AudioSmokeWaveform, OverwriteSilence)
 	waveform.set_channel_count(2);
 
 	// First add some samples
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	SampleBuffer buffer(params, size_t(4800));
 	FillSampleBuffer(buffer, 0.5f);
 	waveform.OverwriteSamples(buffer, 48000, rational(0));
@@ -395,7 +391,7 @@ TEST(AudioSmokeWaveform, TrimIn)
 	waveform.set_channel_count(2);
 
 	// Add samples
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	SampleBuffer buffer(params, size_t(48000)); // 1 second
 	FillSampleBuffer(buffer, 0.5f);
 	waveform.OverwriteSamples(buffer, 48000, rational(0));
@@ -414,7 +410,7 @@ TEST(AudioSmokeWaveform, Resize)
 	waveform.set_channel_count(2);
 
 	// Add samples
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	SampleBuffer buffer(params, size_t(48000));
 	FillSampleBuffer(buffer, 0.5f);
 	waveform.OverwriteSamples(buffer, 48000, rational(0));
@@ -433,7 +429,7 @@ TEST(AudioSmokeWaveform, TrimRange)
 	waveform.set_channel_count(2);
 
 	// Add 2 seconds of samples
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	SampleBuffer buffer(params, size_t(96000));
 	FillSampleBuffer(buffer, 0.5f);
 	waveform.OverwriteSamples(buffer, 48000, rational(0));
@@ -452,7 +448,7 @@ TEST(AudioSmokeWaveform, Mid)
 	waveform.set_channel_count(2);
 
 	// Add 2 seconds of samples
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	SampleBuffer buffer(params, size_t(96000));
 	FillSampleBuffer(buffer, 0.5f);
 	waveform.OverwriteSamples(buffer, 48000, rational(0));
@@ -470,7 +466,7 @@ TEST(AudioSmokeWaveform, GetSummaryFromTime)
 	waveform.set_channel_count(2);
 
 	// Add samples with varying values
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	SampleBuffer buffer(params, size_t(4800));
 	for (int ch = 0; ch < buffer.channel_count(); ++ch) {
 		float *data = buffer.data(ch);
@@ -491,7 +487,7 @@ TEST(AudioSmokeWaveform, GetSummaryFromTime)
 
 TEST(AudioSmokeWaveform, SumSamples)
 {
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	SampleBuffer buffer(params, size_t(100));
 
 	// Fill with known pattern
@@ -543,8 +539,8 @@ TEST(AudioSmokeProcessor, OpenClose)
 {
 	AudioProcessor processor;
 
-	AudioParams from(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
-	AudioParams to(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams from(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams to(48000, kChannelLayoutStereo, SampleFormat::F32P);
 
 	EXPECT_TRUE(processor.Open(from, to, 1.0));
 	EXPECT_TRUE(processor.IsOpen());
@@ -557,8 +553,8 @@ TEST(AudioSmokeProcessor, SampleRateConversion)
 {
 	AudioProcessor processor;
 
-	AudioParams from(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
-	AudioParams to(44100, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams from(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams to(44100, kChannelLayoutStereo, SampleFormat::F32P);
 
 	EXPECT_TRUE(processor.Open(from, to, 1.0));
 	EXPECT_TRUE(processor.IsOpen());
@@ -570,8 +566,8 @@ TEST(AudioSmokeProcessor, ChannelLayoutConversion)
 {
 	AudioProcessor processor;
 
-	AudioParams from(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
-	AudioParams to(48000, AV_CH_LAYOUT_MONO, SampleFormat::F32P);
+	AudioParams from(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams to(48000, kChannelLayoutMono, SampleFormat::F32P);
 
 	EXPECT_TRUE(processor.Open(from, to, 1.0));
 	EXPECT_TRUE(processor.IsOpen());
@@ -583,8 +579,8 @@ TEST(AudioSmokeProcessor, FormatConversion)
 {
 	AudioProcessor processor;
 
-	AudioParams from(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
-	AudioParams to(48000, AV_CH_LAYOUT_STEREO, SampleFormat::S16P);
+	AudioParams from(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams to(48000, kChannelLayoutStereo, SampleFormat::S16P);
 
 	EXPECT_TRUE(processor.Open(from, to, 1.0));
 	EXPECT_TRUE(processor.IsOpen());
@@ -594,8 +590,8 @@ TEST(AudioSmokeProcessor, TempoChange)
 {
 	AudioProcessor processor;
 
-	AudioParams from(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
-	AudioParams to(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams from(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams to(48000, kChannelLayoutStereo, SampleFormat::F32P);
 
 	// Open with 2x tempo
 	EXPECT_TRUE(processor.Open(from, to, 2.0));
@@ -607,8 +603,8 @@ TEST(AudioSmokeProcessor, InvalidOpen)
 	AudioProcessor processor;
 
 	// Open with valid params
-	AudioParams from(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
-	AudioParams to(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams from(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams to(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	EXPECT_TRUE(processor.Open(from, to, 1.0));
 
 	// Try to open again while already open (should fail)
@@ -756,7 +752,7 @@ TEST(AudioSmokeThread, ConcurrentWaveformAccess)
 	waveform.set_channel_count(2);
 
 	// Pre-populate with data
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	SampleBuffer buffer(params, size_t(4800));
 	FillSampleBuffer(buffer, 0.5f);
 	waveform.OverwriteSamples(buffer, 48000, rational(0));
@@ -791,7 +787,7 @@ TEST(AudioSmokeThread, ConcurrentSampleBufferOperations)
 {
 	const int num_threads = 4;
 
-	AudioParams params(48000, AV_CH_LAYOUT_STEREO, SampleFormat::F32P);
+	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	SampleBuffer buffer(params, size_t(1000));
 	FillSampleBuffer(buffer, 0.5f);
 
