@@ -17,11 +17,11 @@
 
 cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
 
-project(olive-editor VERSION 0.4.0 LANGUAGES CXX)
-set(PROJECT_VERSION "0.4.0-alpha")
+project(olive-editor VERSION 0.4.1 LANGUAGES CXX)
+set(PROJECT_VERSION "0.4.1-alpha")
 
 
-set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} -DOFX_SUPPORTS_OPENGLRENDER)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DOFX_SUPPORTS_OPENGLRENDER")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DOFX_SUPPORTS_OPENGLRENDER")
 option(BUILD_QT6 "Build with Qt 6 over 5 (experimental)" ON)
 option(BUILD_DOXYGEN "Build Doxygen documentation" OFF)
