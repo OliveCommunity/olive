@@ -69,7 +69,14 @@ function(olive_add_test GROUP NAME SOURCE)
     add_test("Olive.${GROUP}.${NAME}" ${NAME})
   else()
     add_test(${NAME} ${NAME})
-endif()
+  endif()
+
+  if (WIN32)
+    # Windows has no RPATH: ffmpeg_bridge.dll must sit next to the executable
+    add_custom_command(TARGET ${NAME} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_FILE:ffmpeg_bridge> $<TARGET_FILE_DIR:${NAME}>)
+  endif()
 endfunction()
 
 include(FetchContent)

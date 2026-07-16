@@ -188,8 +188,11 @@ protected:
 
 	void TearDown() override
 	{
-		RenderManager::instance()->GetCacher()->SetProject(nullptr);
-		RenderManager::DestroyInstance();
+		// May be null when SetUp() skipped before creating the instance.
+		if (RenderManager::instance()) {
+			RenderManager::instance()->GetCacher()->SetProject(nullptr);
+			RenderManager::DestroyInstance();
+		}
 		project_.reset();
 	}
 
