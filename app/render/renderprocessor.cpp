@@ -611,10 +611,23 @@ void RenderProcessor::ProcessAudioFootage(SampleBuffer &destination,
 		return;
 	}
 
+	// Mirror the video path: use the proxy (when enabled, ready, and containing
+	// audio) for offline renders only, never for export
+	const bool use_proxy =
+		static_cast<RenderMode::Mode>(ticket_->property("mode").toInt()) ==
+			RenderMode::kOffline &&
+		stream->has_proxy() && QFileInfo::exists(stream->proxy_filename());
+	const QString decode_filename = use_proxy ? stream->proxy_filename() :
+												stream->filename();
+	const QString decoder_id = use_proxy ? stream->proxy_decoder() :
+										   stream->decoder();
+	const int stream_index = use_proxy ?
+								 stream->proxy_stream_index() :
+								 stream->audio_params().stream_index();
+
 	DecoderPtr decoder = ResolveDecoderFromInput(
-		stream->decoder(),
-		Decoder::CodecStream(stream->filename(),
-							 stream->audio_params().stream_index(), nullptr));
+		decoder_id,
+		Decoder::CodecStream(decode_filename, stream_index, nullptr));
 
 	if (decoder) {
 		const AudioParams &audio_params = GetCacheAudioParams();

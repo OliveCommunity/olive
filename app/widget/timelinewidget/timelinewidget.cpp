@@ -1154,11 +1154,7 @@ void TimelineWidget::GenerateProxiesForSelectedClips()
 			continue;
 		}
 
-		ProxyManager::ProxyParams params;
-		params.width = OLIVE_CONFIG("ProxyWidth").value<int>();
-		params.height = OLIVE_CONFIG("ProxyHeight").value<int>();
-		params.crf = OLIVE_CONFIG("ProxyCRF").value<int>();
-		params.preset = OLIVE_CONFIG("ProxyPreset").toString();
+		ProxyManager::ProxyParams params = item->GetEffectiveProxyParams();
 		const ProxyManager::Proxy proxy =
 			ProxyManager::instance()->GetOrStartProxy(
 				item->project()->cache_path(), item->filename(),

@@ -205,6 +205,36 @@ public:
 
 	void ClearProxy();
 
+	/**
+	 * @brief Returns true if this footage uses its own proxy parameters
+	 * instead of the global proxy settings
+	 */
+	bool has_custom_proxy_params() const
+	{
+		return has_custom_proxy_params_;
+	}
+
+	const ProxyManager::ProxyParams &custom_proxy_params() const
+	{
+		return custom_proxy_params_;
+	}
+
+	/**
+	 * @brief Sets per-footage proxy parameters, overriding the global settings
+	 */
+	void SetCustomProxyParams(const ProxyManager::ProxyParams &params);
+
+	/**
+	 * @brief Reverts this footage to using the global proxy settings
+	 */
+	void ClearCustomProxyParams();
+
+	/**
+	 * @brief Returns the custom proxy parameters if set, otherwise the
+	 * parameters from the global application config
+	 */
+	ProxyManager::ProxyParams GetEffectiveProxyParams() const;
+
 	static QString DescribeVideoStream(const VideoParams &params);
 	static QString DescribeAudioStream(const AudioParams &params);
 	static QString DescribeSubtitleStream(const SubtitleParams &params);
@@ -282,6 +312,10 @@ private:
 	int proxy_video_stream_index_;
 
 	int proxy_preset_version_;
+
+	bool has_custom_proxy_params_;
+
+	ProxyManager::ProxyParams custom_proxy_params_;
 
 	bool valid_;
 

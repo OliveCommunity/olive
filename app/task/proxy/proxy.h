@@ -32,6 +32,18 @@ public:
 			  const ProxyManager::ProxyParams &params,
 			  const QString &output_filename);
 
+	/**
+	 * @brief Builds the ffmpeg command line for a proxy generation run
+	 *
+	 * Extracted for testability. The video stream is always mapped first so
+	 * that it is stream 0 in the proxy file; audio streams (when enabled)
+	 * follow in source order.
+	 */
+	static QStringList BuildArguments(const QString &source_filename,
+									  int stream_index,
+									  const ProxyManager::ProxyParams &params,
+									  const QString &output_filename);
+
 protected:
 	virtual bool Run() override;
 

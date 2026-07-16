@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
@@ -7,8 +8,20 @@
 #include <QXmlStreamWriter>
 
 #include "codec/proxymanager.h"
+#include "config/config.h"
 #include "node/project/footage/footage.h"
 #include "render/job/footagejob.h"
+#include "task/proxy/proxy.h"
+
+namespace
+{
+
+QVariant ProxyConfigValue(const char *key)
+{
+	return olive::Config::Current()[QString::fromUtf8(key)];
+}
+
+} // namespace
 
 TEST(ProxyManager, BuildsStableProxyFilename)
 {
@@ -274,4 +287,190 @@ TEST(ProxyManager, FootageJobWithoutProxyHasEmptyProxyFields)
 	EXPECT_TRUE(job.proxy_filename().isEmpty());
 	EXPECT_TRUE(job.proxy_decoder().isEmpty());
 	EXPECT_EQ(job.proxy_stream_index(), -1);
+}
+
+TEST(ProxyManager, ProxyFilenameIncludesAudioFlag)
+{
+	olive::ProxyManager::ProxyParams params;
+	params.include_audio = true;
+
+	const QString with_audio = olive::ProxyManager::GetProxyFilename(
+		QStringLiteral("/tmp/oak-cache"), QStringLiteral("/media/source.mov"),
+		0, params);
+	EXPECT_TRUE(with_audio.contains(QStringLiteral(".a1.")));
+	EXPECT_TRUE(olive::ProxyManager::ProxyFilenameHasAudio(with_audio));
+
+	params.include_audio = false;
+	const QString without_audio = olive::ProxyManager::GetProxyFilename(
+		QStringLiteral("/tmp/oak-cache"), QStringLiteral("/media/source.mov"),
+		0, params);
+	EXPECT_TRUE(without_audio.contains(QStringLiteral(".a0.")));
+	EXPECT_FALSE(olive::ProxyManager::ProxyFilenameHasAudio(without_audio));
+
+	// Legacy proxy filenames (no audio marker) must be treated as video-only
+	EXPECT_FALSE(olive::ProxyManager::ProxyFilenameHasAudio(
+		QStringLiteral("/tmp/oak-cache/proxy/abc-0.1280x720.v1.mp4")));
+
+	// The audio flag distinguishes otherwise identical proxy filenames
+	EXPECT_NE(with_audio, without_audio);
+}
+
+TEST(ProxyManager, ProxyParamsFromConfigReadsDefaults)
+{
+	const olive::ProxyManager::ProxyParams params =
+		olive::ProxyManager::ProxyParamsFromConfig();
+
+	EXPECT_EQ(params.width, ProxyConfigValue("ProxyWidth").value<int>());
+	EXPECT_EQ(params.height, ProxyConfigValue("ProxyHeight").value<int>());
+	EXPECT_EQ(params.crf, ProxyConfigValue("ProxyCRF").value<int>());
+	EXPECT_EQ(params.preset, ProxyConfigValue("ProxyPreset").toString());
+	EXPECT_EQ(params.include_audio,
+			  ProxyConfigValue("ProxyIncludeAudio").toBool());
+}
+
+TEST(ProxyManager, FindFFmpegExecutablePrefersConfiguredPath)
+{
+	// The test executable itself is guaranteed to be an existing executable
+	// file, making it a safe stand-in for an ffmpeg binary
+	const QString self = QCoreApplication::applicationFilePath();
+	ASSERT_FALSE(self.isEmpty());
+
+	EXPECT_EQ(olive::ProxyManager::FindFFmpegExecutable(self), self);
+}
+
+TEST(ProxyManager, FindFFmpegExecutableRejectsInvalidConfiguredPath)
+{
+	const QString bogus = QStringLiteral("/nonexistent/ffmpeg-binary");
+	const QString result = olive::ProxyManager::FindFFmpegExecutable(bogus);
+
+	// Must not return the invalid configured path; any fallback is acceptable
+	EXPECT_NE(result, bogus);
+}
+
+TEST(ProxyTask, BuildArgumentsIncludesAudioWhenEnabled)
+{
+	olive::ProxyManager::ProxyParams params;
+	params.include_audio = true;
+
+	const QStringList args = olive::ProxyTask::BuildArguments(
+		QStringLiteral("/media/source.mov"), 1, params,
+		QStringLiteral("/cache/proxy/out.mp4"));
+
+	EXPECT_FALSE(args.contains(QStringLiteral("-an")));
+	const int audio_map = args.indexOf(QStringLiteral("0:a?"));
+	EXPECT_GE(audio_map, 0);
+	EXPECT_GT(audio_map, args.indexOf(QStringLiteral("-map")));
+	EXPECT_TRUE(args.contains(QStringLiteral("-c:a")));
+	EXPECT_TRUE(args.contains(QStringLiteral("aac")));
+	// The requested video stream must be mapped before the audio streams
+	EXPECT_LT(args.indexOf(QStringLiteral("0:1")), audio_map);
+}
+
+TEST(ProxyTask, BuildArgumentsDisablesAudioWhenDisabled)
+{
+	olive::ProxyManager::ProxyParams params;
+	params.include_audio = false;
+
+	const QStringList args = olive::ProxyTask::BuildArguments(
+		QStringLiteral("/media/source.mov"), 1, params,
+		QStringLiteral("/cache/proxy/out.mp4"));
+
+	EXPECT_TRUE(args.contains(QStringLiteral("-an")));
+	EXPECT_FALSE(args.contains(QStringLiteral("0:a?")));
+}
+
+TEST(ProxyManager, FootagePersistsCustomProxyParams)
+{
+	olive::Footage footage;
+	olive::ProxyManager::ProxyParams params;
+	params.width = 640;
+	params.height = 360;
+	params.crf = 30;
+	params.preset = QStringLiteral("faster");
+	params.extension = QStringLiteral("mov");
+	params.include_audio = false;
+	footage.SetCustomProxyParams(params);
+	footage.SetProxy(QStringLiteral("/cache/proxy/example.mp4"),
+					 olive::ProxyManager::kProxyReady, 0, 1, true);
+
+	QString xml;
+	QXmlStreamWriter writer(&xml);
+	writer.writeStartDocument();
+	writer.writeStartElement(QStringLiteral("custom"));
+	footage.SaveCustom(&writer);
+	writer.writeEndElement();
+	writer.writeEndDocument();
+
+	EXPECT_TRUE(xml.contains(QStringLiteral("custom=\"1\"")));
+	EXPECT_TRUE(xml.contains(QStringLiteral("pwidth=\"640\"")));
+	EXPECT_TRUE(xml.contains(QStringLiteral("pheight=\"360\"")));
+	EXPECT_TRUE(xml.contains(QStringLiteral("pcrf=\"30\"")));
+	EXPECT_TRUE(xml.contains(QStringLiteral("ppreset=\"faster\"")));
+	EXPECT_TRUE(xml.contains(QStringLiteral("pext=\"mov\"")));
+	EXPECT_TRUE(xml.contains(QStringLiteral("paudio=\"0\"")));
+
+	QXmlStreamReader reader(xml);
+	ASSERT_TRUE(reader.readNextStartElement());
+	ASSERT_EQ(reader.name(), QStringLiteral("custom"));
+
+	olive::Footage loaded;
+	ASSERT_TRUE(loaded.LoadCustom(&reader, nullptr));
+	ASSERT_TRUE(loaded.has_custom_proxy_params());
+	EXPECT_EQ(loaded.custom_proxy_params().width, 640);
+	EXPECT_EQ(loaded.custom_proxy_params().height, 360);
+	EXPECT_EQ(loaded.custom_proxy_params().crf, 30);
+	EXPECT_EQ(loaded.custom_proxy_params().preset, QStringLiteral("faster"));
+	EXPECT_EQ(loaded.custom_proxy_params().extension, QStringLiteral("mov"));
+	EXPECT_FALSE(loaded.custom_proxy_params().include_audio);
+}
+
+TEST(ProxyManager, FootageWithoutCustomParamsOmitsThemFromXml)
+{
+	olive::Footage footage;
+	footage.SetProxy(QStringLiteral("/cache/proxy/example.mp4"),
+					 olive::ProxyManager::kProxyReady, 0, 1, true);
+
+	QString xml;
+	QXmlStreamWriter writer(&xml);
+	writer.writeStartDocument();
+	writer.writeStartElement(QStringLiteral("custom"));
+	footage.SaveCustom(&writer);
+	writer.writeEndElement();
+	writer.writeEndDocument();
+
+	EXPECT_FALSE(xml.contains(QStringLiteral("custom=")));
+
+	// Loading old project files without custom params must not enable them
+	QXmlStreamReader reader(xml);
+	ASSERT_TRUE(reader.readNextStartElement());
+	olive::Footage loaded;
+	ASSERT_TRUE(loaded.LoadCustom(&reader, nullptr));
+	EXPECT_FALSE(loaded.has_custom_proxy_params());
+}
+
+TEST(ProxyManager, FootageEffectiveProxyParams)
+{
+	olive::Footage footage;
+
+	// Without custom params, the global config values apply
+	const olive::ProxyManager::ProxyParams global_params =
+		footage.GetEffectiveProxyParams();
+	EXPECT_EQ(global_params.width, ProxyConfigValue("ProxyWidth").value<int>());
+	EXPECT_EQ(global_params.include_audio,
+			  ProxyConfigValue("ProxyIncludeAudio").toBool());
+
+	// Custom params take precedence
+	olive::ProxyManager::ProxyParams custom;
+	custom.width = 320;
+	custom.height = 180;
+	footage.SetCustomProxyParams(custom);
+	EXPECT_TRUE(footage.has_custom_proxy_params());
+	EXPECT_EQ(footage.GetEffectiveProxyParams().width, 320);
+	EXPECT_EQ(footage.GetEffectiveProxyParams().height, 180);
+
+	// Clearing reverts to the global config values
+	footage.ClearCustomProxyParams();
+	EXPECT_FALSE(footage.has_custom_proxy_params());
+	EXPECT_EQ(footage.GetEffectiveProxyParams().width,
+			  ProxyConfigValue("ProxyWidth").value<int>());
 }

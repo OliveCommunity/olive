@@ -235,6 +235,10 @@ void Config::SetDefaults()
 	SetEntryInternal(QStringLiteral("ProxyCRF"), NodeValue::kInt, 23);
 	SetEntryInternal(QStringLiteral("ProxyPreset"), NodeValue::kText,
 					 QStringLiteral("veryfast"));
+	SetEntryInternal(QStringLiteral("ProxyIncludeAudio"), NodeValue::kBoolean,
+					 true);
+	SetEntryInternal(QStringLiteral("FFmpegPath"), NodeValue::kText,
+					 QString());
 
 	SetEntryInternal(QStringLiteral("DefaultSequenceWidth"), NodeValue::kInt,
 					 1920);

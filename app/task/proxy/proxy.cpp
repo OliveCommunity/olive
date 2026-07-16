@@ -26,6 +26,8 @@
 #include <QProcess>
 #include <QStandardPaths>
 
+#include "config/config.h"
+
 namespace olive
 {
 
@@ -41,13 +43,53 @@ ProxyTask::ProxyTask(const QString &source_filename, int stream_index,
 				 .arg(source_filename_, QString::number(stream_index_)));
 }
 
+QStringList ProxyTask::BuildArguments(const QString &source_filename,
+									  int stream_index,
+									  const ProxyManager::ProxyParams &params,
+									  const QString &output_filename)
+{
+	const QString scale_filter =
+		QStringLiteral("scale=w=%1:h=%2:force_original_aspect_ratio=decrease")
+			.arg(QString::number(params.width),
+				 QString::number(params.height));
+
+	const QString container_format =
+		params.extension.isEmpty() ? QStringLiteral("mp4") : params.extension;
+
+	QStringList args;
+	args << QStringLiteral("-y") << QStringLiteral("-i") << source_filename
+		 // Map the requested video stream first so it is stream 0 in the proxy
+		 << QStringLiteral("-map") << QStringLiteral("0:%1").arg(stream_index);
+
+	if (params.include_audio) {
+		// Keep the source audio (if any) so the proxy can also be used for
+		// audio preview. Audio streams follow the video stream in source order.
+		args << QStringLiteral("-map") << QStringLiteral("0:a?")
+			 << QStringLiteral("-c:a") << QStringLiteral("aac")
+			 << QStringLiteral("-b:a") << QStringLiteral("128k");
+	} else {
+		args << QStringLiteral("-an");
+	}
+
+	args << QStringLiteral("-vf") << scale_filter << QStringLiteral("-c:v")
+		 << QStringLiteral("libx264") << QStringLiteral("-preset")
+		 << params.preset << QStringLiteral("-crf")
+		 << QString::number(params.crf) << QStringLiteral("-pix_fmt")
+		 << QStringLiteral("yuv420p") << QStringLiteral("-movflags")
+		 << QStringLiteral("+faststart") << QStringLiteral("-f")
+		 << container_format << output_filename;
+
+	return args;
+}
+
 bool ProxyTask::Run()
 {
-	const QString ffmpeg =
-		QStandardPaths::findExecutable(QStringLiteral("ffmpeg"));
+	const QString ffmpeg = ProxyManager::FindFFmpegExecutable(
+		OLIVE_CONFIG("FFmpegPath").toString());
 	if (ffmpeg.isEmpty()) {
 		SetError(
-			tr("Failed to generate proxy: ffmpeg executable was not found"));
+			tr("Failed to generate proxy: ffmpeg executable was not found. Set "
+			   "the ffmpeg path in Preferences > Disk > Proxy Settings."));
 		qWarning() << "ProxyTask: ffmpeg executable not found";
 		return false;
 	}
@@ -66,24 +108,8 @@ bool ProxyTask::Run()
 
 	QFile::remove(output_filename_);
 
-	const QString scale_filter =
-		QStringLiteral("scale=w=%1:h=%2:force_original_aspect_ratio=decrease")
-			.arg(QString::number(params_.width),
-				 QString::number(params_.height));
-
-	const QString container_format =
-		params_.extension.isEmpty() ? QStringLiteral("mp4") : params_.extension;
-
-	QStringList args;
-	args << QStringLiteral("-y") << QStringLiteral("-i") << source_filename_
-		 << QStringLiteral("-map") << QStringLiteral("0:%1").arg(stream_index_)
-		 << QStringLiteral("-an") << QStringLiteral("-vf") << scale_filter
-		 << QStringLiteral("-c:v") << QStringLiteral("libx264")
-		 << QStringLiteral("-preset") << params_.preset
-		 << QStringLiteral("-crf") << QString::number(params_.crf)
-		 << QStringLiteral("-pix_fmt") << QStringLiteral("yuv420p")
-		 << QStringLiteral("-movflags") << QStringLiteral("+faststart")
-		 << QStringLiteral("-f") << container_format << output_filename_;
+	const QStringList args = BuildArguments(source_filename_, stream_index_,
+											params_, output_filename_);
 
 	QProcess process;
 	process.setProgram(ffmpeg);

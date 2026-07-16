@@ -50,6 +50,7 @@ Footage::Footage(const QString &filename)
 	, proxy_state_(ProxyManager::kProxyMissing)
 	, proxy_video_stream_index_(-1)
 	, proxy_preset_version_(0)
+	, has_custom_proxy_params_(false)
 	, valid_(false)
 	, cancelled_(nullptr)
 	, total_stream_count_(0)
@@ -269,6 +270,37 @@ void Footage::ClearProxy()
 	emit ProxySettingsChanged();
 }
 
+void Footage::SetCustomProxyParams(const ProxyManager::ProxyParams &params)
+{
+	custom_proxy_params_ = params;
+	has_custom_proxy_params_ = true;
+	if (Project *p = project()) {
+		p->set_modified(true);
+	}
+	emit ProxySettingsChanged();
+}
+
+void Footage::ClearCustomProxyParams()
+{
+	if (has_custom_proxy_params_) {
+		has_custom_proxy_params_ = false;
+		custom_proxy_params_ = ProxyManager::ProxyParams();
+		if (Project *p = project()) {
+			p->set_modified(true);
+		}
+		emit ProxySettingsChanged();
+	}
+}
+
+ProxyManager::ProxyParams Footage::GetEffectiveProxyParams() const
+{
+	if (has_custom_proxy_params_) {
+		return custom_proxy_params_;
+	}
+
+	return ProxyManager::ProxyParamsFromConfig();
+}
+
 QString Footage::DescribeVideoStream(const VideoParams &params)
 {
 	if (params.video_type() == VideoParams::kVideoTypeStill) {
@@ -352,6 +384,26 @@ void Footage::Value(const NodeValueRow &value, const NodeGlobals &globals,
 				AudioParams ap = GetAudioParams(ref.index());
 				job.set_audio_params(ap);
 				job.set_cache_path(project()->cache_path());
+
+				// Proxies generated with audio contain the video stream at
+				// index 0 followed by all source audio streams in source order
+				if (proxy_enabled_ && !proxy_path_.isEmpty() &&
+					ProxyManager::GetProxyState(proxy_path_) ==
+						ProxyManager::kProxyReady &&
+					ProxyManager::ProxyFilenameHasAudio(proxy_path_)) {
+					int audio_rank = 0;
+					for (int i = 0; i < GetTotalStreamCount(); i++) {
+						const Track::Reference other =
+							GetReferenceFromRealIndex(i);
+						if (other.type() == Track::kAudio &&
+							GetAudioParams(other.index()).stream_index() <
+								ap.stream_index()) {
+							audio_rank++;
+						}
+					}
+					job.set_proxy(proxy_path_, QStringLiteral("ffmpeg"),
+								  audio_rank + 1);
+				}
 
 				table->Push(NodeValue::kSamples, QVariant::fromValue(job), this,
 							ref.ToString());
@@ -530,6 +582,8 @@ bool Footage::LoadCustom(QXmlStreamReader *reader, SerializedData *data)
 			ProxyManager::ProxyState state = ProxyManager::kProxyMissing;
 			int stream = -1;
 			int preset_version = 0;
+			bool has_custom_params = false;
+			ProxyManager::ProxyParams custom_params;
 			{
 				XMLAttributeLoop(reader, attr)
 				{
@@ -543,8 +597,30 @@ bool Footage::LoadCustom(QXmlStreamReader *reader, SerializedData *data)
 						stream = attr.value().toInt();
 					} else if (attr.name() == QStringLiteral("preset")) {
 						preset_version = attr.value().toInt();
+					} else if (attr.name() == QStringLiteral("custom")) {
+						has_custom_params =
+							(attr.value() == QStringLiteral("1") ||
+							 attr.value() == QStringLiteral("true"));
+					} else if (attr.name() == QStringLiteral("pwidth")) {
+						custom_params.width = attr.value().toInt();
+					} else if (attr.name() == QStringLiteral("pheight")) {
+						custom_params.height = attr.value().toInt();
+					} else if (attr.name() == QStringLiteral("pcrf")) {
+						custom_params.crf = attr.value().toInt();
+					} else if (attr.name() == QStringLiteral("ppreset")) {
+						custom_params.preset = attr.value().toString();
+					} else if (attr.name() == QStringLiteral("pext")) {
+						custom_params.extension = attr.value().toString();
+					} else if (attr.name() == QStringLiteral("paudio")) {
+						custom_params.include_audio =
+							(attr.value() == QStringLiteral("1") ||
+							 attr.value() == QStringLiteral("true"));
 					}
 				}
+			}
+
+			if (has_custom_params) {
+				SetCustomProxyParams(custom_params);
 			}
 
 			const QString path = reader->readElementText();
@@ -608,6 +684,27 @@ void Footage::SaveCustom(QXmlStreamWriter *writer) const
 							   QString::number(proxy_video_stream_index_));
 		writer->writeAttribute(QStringLiteral("preset"),
 							   QString::number(proxy_preset_version_));
+		if (has_custom_proxy_params_) {
+			writer->writeAttribute(QStringLiteral("custom"),
+								   QStringLiteral("1"));
+			writer->writeAttribute(
+				QStringLiteral("pwidth"),
+				QString::number(custom_proxy_params_.width));
+			writer->writeAttribute(
+				QStringLiteral("pheight"),
+				QString::number(custom_proxy_params_.height));
+			writer->writeAttribute(
+				QStringLiteral("pcrf"),
+				QString::number(custom_proxy_params_.crf));
+			writer->writeAttribute(QStringLiteral("ppreset"),
+								   custom_proxy_params_.preset);
+			writer->writeAttribute(QStringLiteral("pext"),
+								   custom_proxy_params_.extension);
+			writer->writeAttribute(
+				QStringLiteral("paudio"),
+				custom_proxy_params_.include_audio ? QStringLiteral("1") :
+													 QStringLiteral("0"));
+		}
 		writer->writeCharacters(proxy_path_);
 		writer->writeEndElement();
 	}
