@@ -40,6 +40,7 @@
 #include "codec/proxymanager.h"
 #include "core.h"
 #include "common/range.h"
+#include "dialog/proxy/proxydialog.h"
 #include "dialog/sequence/sequence.h"
 #include "dialog/speedduration/speeddurationdialog.h"
 #include "node/block/transition/transition.h"
@@ -1236,6 +1237,12 @@ void TimelineWidget::DeleteProxiesForSelectedClips()
 	}
 }
 
+void TimelineWidget::ShowProxyDialogForSelectedClips()
+{
+	ProxyDialog d(this, GetSelectedProxyFootage(selected_blocks_));
+	d.exec();
+}
+
 void TimelineWidget::RecordingCallback(const QString &filename,
 									   const TimeRange &time,
 									   const Track::Reference &track)
@@ -1784,6 +1791,11 @@ void TimelineWidget::ShowContextMenu()
 								}));
 				connect(delete_proxy, &QAction::triggered, this,
 						&TimelineWidget::DeleteProxiesForSelectedClips);
+
+				QAction *proxy_settings =
+					proxy_menu->addAction(tr("Proxy Settings..."));
+				connect(proxy_settings, &QAction::triggered, this,
+						&TimelineWidget::ShowProxyDialogForSelectedClips);
 			}
 
 			if (clip->connected_viewer()) {

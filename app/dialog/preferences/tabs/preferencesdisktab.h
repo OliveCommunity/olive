@@ -58,6 +58,8 @@ private:
 	IntegerSlider *proxy_height_slider_;
 	IntegerSlider *proxy_crf_slider_;
 	QComboBox *proxy_preset_combo_;
+	QCheckBox *proxy_include_audio_checkbox_;
+	QLineEdit *proxy_ffmpeg_path_edit_;
 };
 
 }

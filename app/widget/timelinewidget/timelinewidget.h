@@ -117,6 +117,8 @@ public:
 
 	void DeleteProxiesForSelectedClips();
 
+	void ShowProxyDialogForSelectedClips();
+
 	void RecordingCallback(const QString &filename, const TimeRange &time,
 						   const Track::Reference &track);
 

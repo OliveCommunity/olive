@@ -33,6 +33,7 @@
 #include "common/define.h"
 #include "core.h"
 #include "dialog/footageproperties/footageproperties.h"
+#include "dialog/proxy/proxydialog.h"
 #include "dialog/sequence/sequence.h"
 #include "projectexplorerundo.h"
 #include "codec/proxymanager.h"
@@ -470,6 +471,11 @@ void ProjectExplorer::ShowContextMenu()
 							}));
 			connect(delete_proxy, &QAction::triggered, this,
 					&ProjectExplorer::DeleteProxiesForSelectedFootage);
+
+			QAction *proxy_settings =
+				proxy_menu->addAction(tr("Proxy Settings..."));
+			connect(proxy_settings, &QAction::triggered, this,
+					&ProjectExplorer::ShowProxyDialogForSelectedFootage);
 		}
 
 		Q_UNUSED(all_items_are_footage_or_sequence)
@@ -688,6 +694,12 @@ void ProjectExplorer::DeleteProxiesForSelectedFootage()
 		item->ClearProxy();
 		item->InvalidateAll(Footage::kFilenameInput);
 	}
+}
+
+void ProjectExplorer::ShowProxyDialogForSelectedFootage()
+{
+	ProxyDialog d(this, GetSelectedProxyFootage(context_menu_items_));
+	d.exec();
 }
 
 void ProjectExplorer::ViewSelectionChanged()

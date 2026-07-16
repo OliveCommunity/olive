@@ -30,6 +30,7 @@
 #include "core.h"
 #include "dialog/actionsearch/actionsearch.h"
 #include "dialog/diskcache/diskcachedialog.h"
+#include "dialog/proxy/proxydialog.h"
 #include "dialog/task/task.h"
 #include "panel/panelmanager.h"
 #include "tool/tool.h"
@@ -362,8 +363,10 @@ MainMenu::MainMenu(MainWindow *parent)
 
 	tools_proxy_settings_item_ = new QAction(this);
 	Menu::ConformItem(tools_proxy_settings_item_, "proxysettings");
-	connect(tools_proxy_settings_item_, &QAction::triggered, this,
-			[]() { Core::instance()->DialogPreferencesShow(3); });
+	connect(tools_proxy_settings_item_, &QAction::triggered, this, [this]() {
+		ProxyDialog d(this);
+		d.exec();
+	});
 	tools_menu_->addAction(tools_proxy_settings_item_);
 
 	tools_preferences_item_ = tools_menu_->AddItem(

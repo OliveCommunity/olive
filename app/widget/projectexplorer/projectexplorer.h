@@ -198,6 +198,8 @@ private slots:
 
 	void DeleteProxiesForSelectedFootage();
 
+	void ShowProxyDialogForSelectedFootage();
+
 	void ViewSelectionChanged();
 };
 

@@ -139,6 +139,33 @@ PreferencesDiskTab::PreferencesDiskTab()
 	proxy_preset_combo_->setCurrentText(OLIVE_CONFIG("ProxyPreset").toString());
 	proxy_layout->addWidget(proxy_preset_combo_, proxy_row, 3);
 
+	proxy_row++;
+
+	proxy_include_audio_checkbox_ =
+		new QCheckBox(tr("Include audio in proxies"));
+	proxy_include_audio_checkbox_->setChecked(
+		OLIVE_CONFIG("ProxyIncludeAudio").toBool());
+	proxy_layout->addWidget(proxy_include_audio_checkbox_, proxy_row, 0, 1, 2);
+
+	proxy_row++;
+
+	proxy_layout->addWidget(new QLabel(tr("ffmpeg Executable:")), proxy_row,
+							0);
+	proxy_ffmpeg_path_edit_ =
+		new QLineEdit(OLIVE_CONFIG("FFmpegPath").toString());
+	proxy_ffmpeg_path_edit_->setPlaceholderText(tr("Auto-detect"));
+	proxy_layout->addWidget(proxy_ffmpeg_path_edit_, proxy_row, 1);
+
+	QPushButton *ffmpeg_browse_btn = new QPushButton(tr("Browse..."));
+	connect(ffmpeg_browse_btn, &QPushButton::clicked, this, [this]() {
+		const QString file = QFileDialog::getOpenFileName(
+			this, tr("Select ffmpeg Executable"));
+		if (!file.isEmpty()) {
+			proxy_ffmpeg_path_edit_->setText(file);
+		}
+	});
+	proxy_layout->addWidget(ffmpeg_browse_btn, proxy_row, 2);
+
 	outer_layout->addStretch();
 }
 
@@ -183,6 +210,9 @@ void PreferencesDiskTab::Accept(MultiUndoCommand *command)
 		static_cast<int>(proxy_height_slider_->GetValue());
 	OLIVE_CONFIG("ProxyCRF") = static_cast<int>(proxy_crf_slider_->GetValue());
 	OLIVE_CONFIG("ProxyPreset") = proxy_preset_combo_->currentText();
+	OLIVE_CONFIG("ProxyIncludeAudio") =
+		proxy_include_audio_checkbox_->isChecked();
+	OLIVE_CONFIG("FFmpegPath") = proxy_ffmpeg_path_edit_->text().trimmed();
 }
 
 }
