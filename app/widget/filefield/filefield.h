@@ -58,6 +58,17 @@ public:
 		name_filter_ = filter;
 	}
 
+	/**
+	 * @brief Sets extra sidebar shortcuts (e.g. a library directory) for the
+	 * browse dialog
+	 *
+	 * Note: setting sidebar URLs requires Qt's non-native file dialog.
+	 */
+	void SetSidebarUrls(const QList<QUrl> &urls)
+	{
+		sidebar_urls_ = urls;
+	}
+
 signals:
 	void FilenameChanged(const QString &filename);
 
@@ -69,6 +80,8 @@ private:
 	bool directory_mode_;
 
 	QString name_filter_;
+
+	QList<QUrl> sidebar_urls_;
 
 private slots:
 	void BrowseBtnClicked();

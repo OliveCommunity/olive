@@ -50,6 +50,18 @@ public:
 	static const QString kFileInput;
 	static const QString kDirectionInput;
 
+	/**
+	 * @brief Human-readable description of why no LUT processor is active
+	 *
+	 * Empty when a valid LUT processor is in use or no LUT file has been
+	 * selected yet. This allows the UI (and tests) to surface silent
+	 * passthrough states (missing file, unsupported extension, OCIO errors).
+	 */
+	const QString &last_error() const
+	{
+		return last_error_;
+	}
+
 protected slots:
 	virtual void ConfigChanged() override;
 
@@ -58,11 +70,14 @@ private:
 	void EnsureProcessor() const;
 	bool CreateProcessorFromInputs() const;
 
+	void SetLastError(const QString &error) const;
+
 	mutable QMutex gen_mutex_;
 	mutable bool processor_dirty_ = true;
 	mutable QString last_path_;
 	mutable int last_direction_ = -1;
 	mutable ColorProcessorPtr last_processor_;
+	mutable QString last_error_;
 };
 
 } // namespace olive

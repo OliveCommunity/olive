@@ -23,6 +23,7 @@
 
 #include <QCheckBox>
 #include <QFontComboBox>
+#include <QUrl>
 #include <QVector2D>
 #include <QVector3D>
 #include <QVector4D>
@@ -36,6 +37,7 @@
 #include "node/project/sequence/sequence.h"
 #include "nodeparamviewarraywidget.h"
 #include "nodeparamviewtextedit.h"
+#include "render/lutlibrary.h"
 #include "undo/undostack.h"
 #include "widget/bezier/bezierwidget.h"
 #include "widget/colorbutton/colorbutton.h"
@@ -938,6 +940,16 @@ void NodeParamViewWidgetBridge::SetProperty(const QString &key,
 			ff->SetDirectoryMode(value.toBool());
 		} else if (key == QStringLiteral("filter")) {
 			ff->SetNameFilter(value.toString());
+		} else if (key == QStringLiteral("lut_library") && value.toBool()) {
+			// Offer the global LUT library directories as sidebar shortcuts in
+			// the browse dialog
+			QList<QUrl> sidebar_urls;
+			for (const QString &dir : LUTLibrary::GetDirectories()) {
+				sidebar_urls.append(QUrl::fromLocalFile(dir));
+			}
+			if (!sidebar_urls.isEmpty()) {
+				ff->SetSidebarUrls(sidebar_urls);
+			}
 		}
 	}
 

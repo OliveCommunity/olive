@@ -240,6 +240,9 @@ void Config::SetDefaults()
 	SetEntryInternal(QStringLiteral("FFmpegPath"), NodeValue::kText,
 					 QString());
 
+	SetEntryInternal(QStringLiteral("LUTLibraryPaths"), NodeValue::kText,
+					 QString());
+
 	SetEntryInternal(QStringLiteral("DefaultSequenceWidth"), NodeValue::kInt,
 					 1920);
 	SetEntryInternal(QStringLiteral("DefaultSequenceHeight"), NodeValue::kInt,

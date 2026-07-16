@@ -24,6 +24,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QUrl>
 
 #include "ui/icons/icons.h"
 
@@ -56,11 +57,30 @@ void FileField::BrowseBtnClicked()
 {
 	QString s;
 
-	if (directory_mode_) {
-		s = QFileDialog::getExistingDirectory(this, tr("Open Directory"));
+	if (sidebar_urls_.isEmpty()) {
+		if (directory_mode_) {
+			s = QFileDialog::getExistingDirectory(this, tr("Open Directory"));
+		} else {
+			s = QFileDialog::getOpenFileName(this, tr("Open File"), QString(),
+											 name_filter_);
+		}
 	} else {
-		s = QFileDialog::getOpenFileName(this, tr("Open File"), QString(),
-										 name_filter_);
+		// Sidebar URLs require the non-static dialog API
+		QFileDialog dialog(this, tr("Open File"));
+		dialog.setFileMode(directory_mode_ ? QFileDialog::Directory :
+											 QFileDialog::ExistingFile);
+		dialog.setAcceptMode(QFileDialog::AcceptOpen);
+		if (!directory_mode_ && !name_filter_.isEmpty()) {
+			dialog.setNameFilter(name_filter_);
+		}
+		dialog.setSidebarUrls(sidebar_urls_);
+		if (directory_mode_) {
+			dialog.setOption(QFileDialog::ShowDirsOnly, true);
+		}
+
+		if (dialog.exec() == QDialog::Accepted && !dialog.selectedFiles().isEmpty()) {
+			s = dialog.selectedFiles().first();
+		}
 	}
 
 	if (!s.isEmpty()) {

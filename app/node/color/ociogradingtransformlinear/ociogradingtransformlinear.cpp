@@ -92,10 +92,10 @@ OCIOGradingTransformLinearNode::OCIOGradingTransformLinearNode()
 					 GetStandardValue(kClampWhiteEnableInput).toBool());
 	SetInputProperty(kClampWhiteInput, QStringLiteral("base"), 0.01);
 
-	// FIXME: Temporarily disabled. This will break if "clamp black" is keyframed or connected to
-	//        something and there's currently no solution to remedy that. If there is in the future,
-	//        we can look into re-enabling this.
-	//SetInputProperty(kClampWhiteInput, QStringLiteral("min"), GetStandardValue(kClampBlackInput).toDouble() + 0.000001);
+	// Constrain the white clamp minimum to just above the (static) black clamp
+	// as per OCIO::GradingPrimary::validate. When the black clamp is keyframed
+	// or connected, Value() enforces the invariant per frame instead.
+	UpdateClampWhiteMinimum();
 }
 
 QString OCIOGradingTransformLinearNode::Name() const
@@ -149,14 +149,47 @@ void OCIOGradingTransformLinearNode::InputValueChangedEvent(
 		SetInputProperty(kClampBlackInput, QStringLiteral("enabled"),
 						 GetStandardValue(kClampBlackEnableInput).toBool());
 	} else if (input == kClampBlackInput) {
-		// Ensure the white clamp is always greater than the black clamp as per OCIO::GradingPrimary::validate
-		// FIXME: Temporarily disabled. This will break if "clamp black" is keyframed or connected to
-		//        something and there's currently no solution to remedy that. If there is in the future,
-		//        we can look into re-enabling this.
-		//SetInputProperty(kClampWhiteInput, QStringLiteral("min"), GetStandardValue(kClampBlackInput).toDouble() + 0.000001);
+		// Ensure the white clamp is always greater than the black clamp as per
+		// OCIO::GradingPrimary::validate
+		UpdateClampWhiteMinimum();
 	}
 
 	GenerateProcessor();
+}
+
+void OCIOGradingTransformLinearNode::InputConnectedEvent(const QString &input,
+														 int element, Node *output)
+{
+	super::InputConnectedEvent(input, element, output);
+
+	if (input == kClampBlackInput) {
+		UpdateClampWhiteMinimum();
+	}
+}
+
+void OCIOGradingTransformLinearNode::InputDisconnectedEvent(const QString &input,
+															int element,
+															Node *output)
+{
+	super::InputDisconnectedEvent(input, element, output);
+
+	if (input == kClampBlackInput) {
+		UpdateClampWhiteMinimum();
+	}
+}
+
+void OCIOGradingTransformLinearNode::UpdateClampWhiteMinimum()
+{
+	// A static UI minimum cannot follow an animated black clamp; for keyframed
+	// or connected values the white>black invariant is enforced per frame in
+	// Value() instead
+	if (IsInputKeyframing(kClampBlackInput) ||
+		IsInputConnected(kClampBlackInput)) {
+		return;
+	}
+
+	SetInputProperty(kClampWhiteInput, QStringLiteral("min"),
+					 GetStandardValue(kClampBlackInput).toDouble() + 0.000001);
 }
 
 void OCIOGradingTransformLinearNode::GenerateProcessor()
@@ -239,6 +272,21 @@ void OCIOGradingTransformLinearNode::Value(const NodeValueRow &value,
 				job.Insert(kClampWhiteInput,
 						   NodeValue(NodeValue::kFloat,
 									 OCIO::GradingPrimary::NoClampWhite()));
+			}
+
+			if (value[kClampBlackEnableInput].toBool() &&
+				value[kClampWhiteEnableInput].toBool()) {
+				// OCIO::GradingPrimary::validate requires the white clamp to be
+				// greater than the black clamp. Keyframed or connected values
+				// can violate this at arbitrary times, so enforce the invariant
+				// per frame here.
+				const double clamp_black = value[kClampBlackInput].toDouble();
+				const double clamp_white = value[kClampWhiteInput].toDouble();
+				if (clamp_white <= clamp_black) {
+					job.Insert(kClampWhiteInput,
+							   NodeValue(NodeValue::kFloat,
+										 clamp_black + 0.000001));
+				}
 			}
 
 			table->Push(NodeValue::kTexture, tex->toJob(job), this);

@@ -43,6 +43,10 @@ public:
 	virtual void Retranslate() override;
 	virtual void InputValueChangedEvent(const QString &input,
 										int element) override;
+	virtual void InputConnectedEvent(const QString &input, int element,
+									 Node *output) override;
+	virtual void InputDisconnectedEvent(const QString &input, int element,
+										Node *output) override;
 	void GenerateProcessor();
 
 	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
@@ -63,6 +67,16 @@ protected slots:
 
 private:
 	void SetVec4InputColors(const QString &input);
+
+	/**
+	 * @brief Constrains the white clamp UI minimum to just above the black
+	 * clamp, as required by OCIO::GradingPrimary::validate
+	 *
+	 * Only applies while the black clamp is a static value; when it is
+	 * keyframed or connected the invariant is enforced per frame in Value()
+	 * instead.
+	 */
+	void UpdateClampWhiteMinimum();
 };
 
 } // olive

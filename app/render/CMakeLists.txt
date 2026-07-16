@@ -40,6 +40,8 @@ set(OLIVE_SOURCES
         render/framehashcache.h
         render/framemanager.cpp
         render/framemanager.h
+        render/lutlibrary.cpp
+        render/lutlibrary.h
         render/interlacetexture.cpp
         render/loopmode.h
         render/managedcolor.cpp

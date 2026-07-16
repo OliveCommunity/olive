@@ -192,21 +192,21 @@ void ColorDialog::ColorSpaceChanged(const QString &input,
 	ColorProcessorPtr ref_to_input = ColorProcessor::Create(
 		color_manager_, color_manager_->GetReferenceColorSpace(), input);
 
-	// FIXME: For some reason, using OCIO::TRANSFORM_DIR_INVERSE (wrapped by ColorProcessor::kInverse) causes OCIO to
-	//        crash. We've disabled that functionality for now (also disabling display_tab_ in ColorValuesWidget)
-
-	/*ColorProcessorPtr display_to_ref = ColorProcessor::Create(color_manager_->GetConfig(),
-                                                            color_manager_->GetReferenceColorSpace(),
-                                                            display,
-                                                            view,
-                                                            look,
-                                                            ColorProcessor::kInverse);*/
+	// Display -> reference is the inverse of the display transform. Older OCIO
+	// versions crashed on TRANSFORM_DIR_INVERSE; guard by requiring a valid
+	// processor and fall back to disabling the display tab if creation fails.
+	ColorProcessorPtr display_to_ref = ColorProcessor::Create(
+		color_manager_, color_manager_->GetReferenceColorSpace(), output,
+		ColorProcessor::kInverse);
+	if (display_to_ref && !display_to_ref->GetProcessor()) {
+		display_to_ref = nullptr;
+	}
 
 	color_wheel_->SetColorProcessor(input_to_ref_processor_, ref_to_display);
 	hsv_value_gradient_->SetColorProcessor(input_to_ref_processor_,
 										   ref_to_display);
 	color_values_widget_->SetColorProcessor(
-		input_to_ref_processor_, ref_to_display, nullptr, ref_to_input);
+		input_to_ref_processor_, ref_to_display, display_to_ref, ref_to_input);
 }
 
 }

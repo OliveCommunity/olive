@@ -33,6 +33,7 @@
 #include "tabs/preferencesdisktab.h"
 #include "tabs/preferencesaudiotab.h"
 #include "tabs/preferenceskeyboardtab.h"
+#include "tabs/preferencesluttab.h"
 #include "window/mainwindow/mainwindow.h"
 
 namespace olive
@@ -60,6 +61,7 @@ PreferencesDialog::PreferencesDialog(MainWindow *main_window, int start_tab)
 		new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryRendering),
 		tr("Rendering"));
 	AddTab(new PreferencesDiskTab(), tr("Disk"));
+	AddTab(new PreferencesLutTab(), tr("LUT"));
 	AddTab(new PreferencesKeyboardTab(main_window), tr("Keyboard"));
 
 	SetCurrentTab(start_tab);

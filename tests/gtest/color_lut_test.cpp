@@ -8,13 +8,17 @@
 
 #include <OpenColorIO/OpenColorIO.h>
 
+#include "config/config.h"
 #include "node/color/ociolut/ociolut.h"
+#include "node/color/colormanager/colormanager.h"
+#include "node/color/ociogradingtransformlinear/ociogradingtransformlinear.h"
 #include "node/color/threewaycolor/threewaycolor.h"
 #include "node/factory.h"
 #include "node/generator/solid/solid.h"
 #include "node/project.h"
 #include "node/traverser.h"
 #include "render/colorprocessor.h"
+#include "render/lutlibrary.h"
 
 namespace OCIO = OCIO_NAMESPACE;
 
@@ -747,4 +751,356 @@ TEST(ColorLutNode, SwitchingBackToOriginalFileRestoresOriginalPixels)
 	EXPECT_NEAR(restored_out.red(), invert_out.red(), 0.02f);
 	EXPECT_NEAR(restored_out.green(), invert_out.green(), 0.02f);
 	EXPECT_NEAR(restored_out.blue(), invert_out.blue(), 0.02f);
+}
+
+// -----------------------------------------------------------------------------
+// Error reporting: silent passthrough states must be observable.
+// -----------------------------------------------------------------------------
+
+TEST(ColorLutNode, MissingFileSetsLastError)
+{
+	olive::ColorManager::SetUpDefaultConfig();
+
+	olive::Project project;
+	project.Initialize();
+
+	auto *lut = new olive::OCIOLutNode();
+	lut->setParent(&project);
+	lut->SetStandardValue(olive::OCIOLutNode::kFileInput,
+						  QStringLiteral("/nonexistent/path/lut.cube"));
+
+	EXPECT_FALSE(lut->last_error().isEmpty());
+}
+
+TEST(ColorLutNode, UnsupportedExtensionSetsLastError)
+{
+	olive::ColorManager::SetUpDefaultConfig();
+
+	olive::Project project;
+	project.Initialize();
+
+	QTemporaryDir dir;
+	ASSERT_TRUE(dir.isValid());
+	const QString path = QDir(dir.path()).filePath(QStringLiteral("lut.txt"));
+	QFile file(path);
+	ASSERT_TRUE(file.open(QIODevice::WriteOnly));
+	file.close();
+
+	auto *lut = new olive::OCIOLutNode();
+	lut->setParent(&project);
+	lut->SetStandardValue(olive::OCIOLutNode::kFileInput, path);
+
+	EXPECT_FALSE(lut->last_error().isEmpty());
+}
+
+TEST(ColorLutNode, ValidFileClearsLastError)
+{
+	olive::ColorManager::SetUpDefaultConfig();
+
+	olive::Project project;
+	project.Initialize();
+
+	QTemporaryDir dir;
+	ASSERT_TRUE(dir.isValid());
+	const QString path = WriteTestCubeLut(&dir, "invert", 0.0f, 1.0f);
+	ASSERT_FALSE(path.isEmpty());
+
+	auto *lut = new olive::OCIOLutNode();
+	lut->setParent(&project);
+
+	lut->SetStandardValue(olive::OCIOLutNode::kFileInput,
+						  QStringLiteral("/nonexistent/path/lut.cube"));
+	EXPECT_FALSE(lut->last_error().isEmpty());
+
+	lut->SetStandardValue(olive::OCIOLutNode::kFileInput, path);
+	EXPECT_TRUE(lut->last_error().isEmpty());
+}
+
+TEST(ColorLutNode, EmptyPathClearsLastError)
+{
+	olive::ColorManager::SetUpDefaultConfig();
+
+	olive::Project project;
+	project.Initialize();
+
+	auto *lut = new olive::OCIOLutNode();
+	lut->setParent(&project);
+
+	lut->SetStandardValue(olive::OCIOLutNode::kFileInput,
+						  QStringLiteral("/nonexistent/path/lut.cube"));
+	EXPECT_FALSE(lut->last_error().isEmpty());
+
+	lut->SetStandardValue(olive::OCIOLutNode::kFileInput, QString());
+	EXPECT_TRUE(lut->last_error().isEmpty());
+}
+
+// -----------------------------------------------------------------------------
+// Global LUT library
+// -----------------------------------------------------------------------------
+
+TEST(LUTLibrary, SupportsCubeAnd3dlExtensions)
+{
+	EXPECT_TRUE(olive::LUTLibrary::IsSupportedExtension(QStringLiteral("cube")));
+	EXPECT_TRUE(
+		olive::LUTLibrary::IsSupportedExtension(QStringLiteral(".cube")));
+	EXPECT_TRUE(olive::LUTLibrary::IsSupportedExtension(QStringLiteral("CUBE")));
+	EXPECT_TRUE(olive::LUTLibrary::IsSupportedExtension(QStringLiteral("3dl")));
+	EXPECT_TRUE(olive::LUTLibrary::IsSupportedExtension(QStringLiteral(".3dl")));
+	EXPECT_FALSE(olive::LUTLibrary::IsSupportedExtension(QStringLiteral("txt")));
+	EXPECT_FALSE(olive::LUTLibrary::IsSupportedExtension(QString()));
+}
+
+TEST(LUTLibrary, DirectoryRoundTripCleansAndDeduplicates)
+{
+	const QString previous =
+		olive::Config::Current()[QStringLiteral("LUTLibraryPaths")].toString();
+
+	olive::LUTLibrary::SetDirectories(
+		{ QStringLiteral("/a/luts"), QStringLiteral(" /a/luts "),
+		  QStringLiteral("/b/luts"), QString() });
+
+	EXPECT_EQ(olive::LUTLibrary::GetDirectories(),
+			  (QStringList{ QStringLiteral("/a/luts"),
+							QStringLiteral("/b/luts") }));
+
+	olive::Config::Current()[QStringLiteral("LUTLibraryPaths")] = previous;
+}
+
+TEST(LUTLibrary, ScansDirectoriesRecursivelyForSupportedLuts)
+{
+	const QString previous =
+		olive::Config::Current()[QStringLiteral("LUTLibraryPaths")].toString();
+
+	QTemporaryDir dir;
+	ASSERT_TRUE(dir.isValid());
+
+	const QString cube_path =
+		QDir(dir.path()).filePath(QStringLiteral("top.cube"));
+	const QString sub_dir = QDir(dir.path()).filePath(QStringLiteral("sub"));
+	const QString three_dl_path =
+		QDir(sub_dir).filePath(QStringLiteral("nested.3dl"));
+	const QString text_path =
+		QDir(dir.path()).filePath(QStringLiteral("skip.txt"));
+
+	ASSERT_TRUE(QDir().mkpath(sub_dir));
+	for (const QString &p : { cube_path, three_dl_path, text_path }) {
+		QFile file(p);
+		ASSERT_TRUE(file.open(QIODevice::WriteOnly));
+		file.close();
+	}
+
+	olive::LUTLibrary::SetDirectories({ dir.path() });
+
+	const QStringList files = olive::LUTLibrary::GetLutFiles();
+	EXPECT_EQ(files.size(), 2);
+	EXPECT_TRUE(files.contains(cube_path));
+	EXPECT_TRUE(files.contains(three_dl_path));
+	EXPECT_FALSE(files.contains(text_path));
+
+	olive::Config::Current()[QStringLiteral("LUTLibraryPaths")] = previous;
+}
+
+// -----------------------------------------------------------------------------
+// Display -> reference inverse transform (previously disabled over an OCIO
+// crash; covered here so the ColorDialog conversion can stay enabled).
+// -----------------------------------------------------------------------------
+
+TEST(ColorProcessor, InverseDisplayTransformRoundTripsColor)
+{
+	olive::ColorManager::SetUpDefaultConfig();
+
+	olive::Project project;
+	project.Initialize();
+
+	olive::ColorManager *color_manager = project.color_manager();
+	ASSERT_NE(color_manager, nullptr);
+
+	const QString display = color_manager->GetDefaultDisplay();
+	const QString view = color_manager->GetDefaultView(display);
+	ASSERT_FALSE(display.isEmpty());
+	ASSERT_FALSE(view.isEmpty());
+
+	const olive::ColorTransform output_transform(display, view, QString());
+
+	olive::ColorProcessorPtr ref_to_display = olive::ColorProcessor::Create(
+		color_manager, color_manager->GetReferenceColorSpace(),
+		output_transform);
+	ASSERT_NE(ref_to_display, nullptr);
+	ASSERT_NE(ref_to_display->GetProcessor(), nullptr);
+
+	olive::ColorProcessorPtr display_to_ref = olive::ColorProcessor::Create(
+		color_manager, color_manager->GetReferenceColorSpace(),
+		output_transform, olive::ColorProcessor::kInverse);
+	ASSERT_NE(display_to_ref, nullptr);
+	ASSERT_NE(display_to_ref->GetProcessor(), nullptr);
+
+	const olive::Color reference(0.2f, 0.4f, 0.6f, 1.0f);
+	const olive::Color display_color = ref_to_display->ConvertColor(reference);
+	const olive::Color round_trip = display_to_ref->ConvertColor(display_color);
+
+	EXPECT_NEAR(round_trip.red(), reference.red(), 0.001f);
+	EXPECT_NEAR(round_trip.green(), reference.green(), 0.001f);
+	EXPECT_NEAR(round_trip.blue(), reference.blue(), 0.001f);
+	EXPECT_NEAR(round_trip.alpha(), reference.alpha(), 0.001f);
+}
+
+// -----------------------------------------------------------------------------
+// OCIOGradingTransformLinearNode clamp invariant
+// -----------------------------------------------------------------------------
+
+namespace
+{
+
+class ClampCaptureTraverser : public PixelColorTransformTraverser {
+public:
+	bool captured_white_clamp = false;
+	double white_clamp_value = 0.0;
+
+protected:
+	virtual void
+	ProcessColorTransform(olive::TexturePtr destination, const olive::Node *node,
+						  const olive::ColorTransformJob *job) override
+	{
+		const olive::NodeValueRow &values = job->GetValues();
+		if (values.contains(
+				olive::OCIOGradingTransformLinearNode::kClampWhiteInput)) {
+			white_clamp_value =
+				values
+					.value(olive::OCIOGradingTransformLinearNode::
+							   kClampWhiteInput)
+					.toDouble();
+			captured_white_clamp = true;
+		}
+		PixelColorTransformTraverser::ProcessColorTransform(destination, node,
+														  job);
+	}
+};
+
+} // namespace
+
+TEST(ColorGradingLinear, InvalidClampRangeIsCorrectedPerFrame)
+{
+	olive::ColorManager::SetUpDefaultConfig();
+
+	olive::Project project;
+	project.Initialize();
+
+	auto *solid = new olive::SolidGenerator();
+	solid->setParent(&project);
+	solid->SetStandardValue(
+		olive::SolidGenerator::kColorInput,
+		QVariant::fromValue(olive::Color(0.25f, 0.50f, 0.75f, 1.0f)));
+
+	auto *grading = new olive::OCIOGradingTransformLinearNode();
+	grading->setParent(&project);
+	grading->SetStandardValue(
+		olive::OCIOGradingTransformLinearNode::kClampBlackEnableInput, true);
+	grading->SetStandardValue(
+		olive::OCIOGradingTransformLinearNode::kClampWhiteEnableInput, true);
+	grading->SetStandardValue(
+		olive::OCIOGradingTransformLinearNode::kClampBlackInput, 0.5);
+	// Invalid: white clamp below black clamp
+	grading->SetStandardValue(
+		olive::OCIOGradingTransformLinearNode::kClampWhiteInput, 0.0);
+
+	olive::Node::ConnectEdge(
+		solid,
+		olive::NodeInput(
+			grading,
+			olive::OCIOGradingTransformLinearNode::kTextureInput));
+
+	const olive::VideoParams params(16, 16, olive::core::PixelFormat::F32,
+									olive::VideoParams::kRGBAChannelCount);
+
+	ClampCaptureTraverser traverser;
+	traverser.SetCacheVideoParams(params);
+	olive::NodeValueTable table = traverser.GenerateTable(
+		grading, olive::TimeRange(olive::core::rational(0),
+								  olive::core::rational(1, 30)));
+	olive::NodeValue tex_val = table.Get(olive::NodeValue::kTexture);
+	traverser.Resolve(tex_val);
+
+	// The node must have corrected the white clamp to just above the black
+	// clamp instead of feeding an invalid grading primary to OCIO
+	ASSERT_TRUE(traverser.captured_white_clamp);
+	EXPECT_NEAR(traverser.white_clamp_value, 0.500001, 1e-9);
+
+	// And rendering must not crash or drop the frame
+	ASSERT_TRUE(traverser.output_frame);
+}
+
+TEST(ColorGradingLinear, ValidClampRangeIsLeftUntouched)
+{
+	olive::ColorManager::SetUpDefaultConfig();
+
+	olive::Project project;
+	project.Initialize();
+
+	auto *solid = new olive::SolidGenerator();
+	solid->setParent(&project);
+	solid->SetStandardValue(
+		olive::SolidGenerator::kColorInput,
+		QVariant::fromValue(olive::Color(0.25f, 0.50f, 0.75f, 1.0f)));
+
+	auto *grading = new olive::OCIOGradingTransformLinearNode();
+	grading->setParent(&project);
+	grading->SetStandardValue(
+		olive::OCIOGradingTransformLinearNode::kClampBlackEnableInput, true);
+	grading->SetStandardValue(
+		olive::OCIOGradingTransformLinearNode::kClampWhiteEnableInput, true);
+	grading->SetStandardValue(
+		olive::OCIOGradingTransformLinearNode::kClampBlackInput, 0.1);
+	grading->SetStandardValue(
+		olive::OCIOGradingTransformLinearNode::kClampWhiteInput, 0.9);
+
+	olive::Node::ConnectEdge(
+		solid,
+		olive::NodeInput(
+			grading,
+			olive::OCIOGradingTransformLinearNode::kTextureInput));
+
+	const olive::VideoParams params(16, 16, olive::core::PixelFormat::F32,
+									olive::VideoParams::kRGBAChannelCount);
+
+	ClampCaptureTraverser traverser;
+	traverser.SetCacheVideoParams(params);
+	olive::NodeValueTable table = traverser.GenerateTable(
+		grading, olive::TimeRange(olive::core::rational(0),
+								  olive::core::rational(1, 30)));
+	olive::NodeValue tex_val = table.Get(olive::NodeValue::kTexture);
+	traverser.Resolve(tex_val);
+
+	ASSERT_TRUE(traverser.captured_white_clamp);
+	EXPECT_NEAR(traverser.white_clamp_value, 0.9, 1e-9);
+
+	ASSERT_TRUE(traverser.output_frame);
+}
+
+TEST(ColorGradingLinear, StaticBlackClampConstrainsWhiteMinimum)
+{
+	olive::ColorManager::SetUpDefaultConfig();
+
+	olive::Project project;
+	project.Initialize();
+
+	auto *grading = new olive::OCIOGradingTransformLinearNode();
+	grading->setParent(&project);
+
+	// Default black clamp is 0, so the white minimum starts just above it
+	EXPECT_NEAR(grading
+					->GetInputProperty(
+						olive::OCIOGradingTransformLinearNode::kClampWhiteInput,
+						QStringLiteral("min"))
+					.toDouble(),
+				0.000001, 1e-9);
+
+	// Changing the static black clamp updates the white minimum
+	grading->SetStandardValue(
+		olive::OCIOGradingTransformLinearNode::kClampBlackInput, 0.25);
+	EXPECT_NEAR(grading
+					->GetInputProperty(
+						olive::OCIOGradingTransformLinearNode::kClampWhiteInput,
+						QStringLiteral("min"))
+					.toDouble(),
+				0.250001, 1e-9);
 }

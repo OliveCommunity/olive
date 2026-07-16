@@ -25,7 +25,9 @@
 
 #include <QApplication>
 
+#include "core.h"
 #include "node/color/colormanager/colormanager.h"
+#include "render/lutlibrary.h"
 #include "render/previewautocacher.h"
 #include "render/rendermanager.h"
 
@@ -39,12 +41,6 @@ const QString OCIOLutNode::kDirectionInput = QStringLiteral("lut_dir_in");
 
 namespace
 {
-
-bool IsSupportedLutExtension(const QString &suffix)
-{
-	const QString lower = suffix.toLower();
-	return lower == QStringLiteral("cube") || lower == QStringLiteral("3dl");
-}
 
 bool IsMainProcess()
 {
@@ -86,6 +82,8 @@ OCIOLutNode::OCIOLutNode()
 		tr("LUT Files (*.cube *.3dl);;Cube LUT (*.cube);;3DL LUT (*.3dl);;All Files (*)"));
 	SetInputProperty(kFileInput, QStringLiteral("placeholder"),
 					 tr("Select a .cube or .3dl LUT file"));
+	// Allow the UI to offer the global LUT library for this input
+	SetInputProperty(kFileInput, QStringLiteral("lut_library"), true);
 
 	AddInput(kDirectionInput, NodeValue::kCombo, 0,
 			 InputFlags(kInputFlagNotKeyframable | kInputFlagNotConnectable));
@@ -194,6 +192,21 @@ void OCIOLutNode::EnsureProcessor() const
 	CreateProcessorFromInputs();
 }
 
+void OCIOLutNode::SetLastError(const QString &error) const
+{
+	if (last_error_ == error) {
+		return;
+	}
+
+	last_error_ = error;
+
+	// Make the error visible to the user instead of failing silently, but only
+	// from the main process (the render worker has no status bar)
+	if (!error.isEmpty() && IsMainProcess() && Core::instance()) {
+		Core::instance()->ShowStatusBarMessage(error, 10000);
+	}
+}
+
 bool OCIOLutNode::CreateProcessorFromInputs() const
 {
 	if (!manager()) {
@@ -214,6 +227,7 @@ bool OCIOLutNode::CreateProcessorFromInputs() const
 		last_path_.clear();
 		last_direction_ = -1;
 		processor_dirty_ = false;
+		SetLastError(QString());
 		return false;
 	}
 
@@ -231,17 +245,22 @@ bool OCIOLutNode::CreateProcessorFromInputs() const
 		last_path_.clear();
 		last_direction_ = -1;
 		processor_dirty_ = false;
+		SetLastError(tr("OCIO LUT: file does not exist: %1").arg(path));
 		return false;
 	}
 
 	const QString suffix = info.suffix();
-	if (!IsSupportedLutExtension(suffix)) {
+	if (!LUTLibrary::IsSupportedExtension(suffix)) {
 		qWarning() << "Unsupported OCIO LUT file extension:" << path;
 		const_cast<OCIOLutNode *>(this)->set_processor(nullptr);
 		last_processor_.reset();
 		last_path_.clear();
 		last_direction_ = -1;
 		processor_dirty_ = false;
+		SetLastError(
+			tr("OCIO LUT: unsupported LUT file extension (expected .cube or "
+			   ".3dl): %1")
+				.arg(path));
 		return false;
 	}
 
@@ -265,6 +284,12 @@ bool OCIOLutNode::CreateProcessorFromInputs() const
 	} catch (const std::exception &e) {
 		qWarning() << "OCIO LUT processor error:" << e.what();
 		processor = nullptr;
+	}
+
+	if (!processor) {
+		SetLastError(tr("OCIO LUT: failed to load LUT file: %1").arg(path));
+	} else {
+		SetLastError(QString());
 	}
 
 	last_path_ = path;
