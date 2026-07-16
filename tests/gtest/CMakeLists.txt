@@ -63,6 +63,10 @@ add_executable(olive-gtest
   render_workerpool_ipc_test.cpp
   node_inputimmediate_test.cpp
   project_factory_test.cpp
+  render_processor_test.cpp
+  node_time_test.cpp
+  node_color_test.cpp
+  plugin_node_test.cpp
   timeline_marker_test.cpp
   undo_stack_test.cpp
   plugin_support_test.cpp
