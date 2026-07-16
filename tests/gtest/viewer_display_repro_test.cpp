@@ -1,7 +1,9 @@
 /*
- * TEMPORARY scratch test for the direct-connection black screen
- * investigation. Not meant for commit. Drives the real ViewerWidget display
- * path offscreen and checks the pixels the display widget actually paints.
+ * Regression test for the direct-connection black screen bug. Drives the real
+ * ViewerWidget display path offscreen and checks the pixels the display
+ * widget actually paints, for both the direct (footage -> output) and
+ * indirect (footage -> effect -> output) wiring, plus runtime rewiring
+ * between the two.
  */
 
 #include <gtest/gtest.h>
@@ -36,6 +38,11 @@
 #include "widget/viewer/viewer.h"
 #include "widget/viewer/viewerdisplay.h"
 
+#ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+#include "render/backend/dynamicrenderer.h"
+#include "render/backend/renderbackend_c.h"
+#endif
+
 using namespace olive;
 
 namespace
@@ -57,6 +64,39 @@ QString WorkerBinaryPathT()
 	return dir.filePath(QStringLiteral("oak-render-worker.exe"));
 #else
 	return dir.filePath(QStringLiteral("oak-render-worker"));
+#endif
+}
+
+// Loads and initializes the requested render backend the same way the
+// application does, verifying that the loaded backend is actually of the
+// requested kind (a Vulkan request that fell back to OpenGL does not count).
+bool IsRenderBackendAvailable(const QString &backend)
+{
+#ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+	olive::DynamicRenderer renderer(backend);
+	if (!renderer.Load()) {
+		return false;
+	}
+
+	OakRenderBackendInfo info = {};
+	if (!renderer.GetBackendInfo(&info)) {
+		return false;
+	}
+
+	if (backend == QStringLiteral("vulkan") &&
+		info.kind != OAK_RENDER_BACKEND_VULKAN) {
+		return false;
+	}
+
+	if (backend == QStringLiteral("opengl") &&
+		info.kind != OAK_RENDER_BACKEND_OPENGL) {
+		return false;
+	}
+
+	return renderer.Init();
+#else
+	Q_UNUSED(backend)
+	return false;
 #endif
 }
 
@@ -134,6 +174,10 @@ protected:
 		backend_ = GetParam();
 		if (backend_ != QStringLiteral("vulkan")) {
 			GTEST_SKIP() << "offscreen QOpenGLWidget cannot paint; Vulkan only";
+		}
+		if (!IsRenderBackendAvailable(backend_)) {
+			GTEST_SKIP() << "Render backend is not available: "
+						 << backend_.toStdString();
 		}
 		Config::Current()[QStringLiteral("GraphicsBackend")] = backend_;
 
