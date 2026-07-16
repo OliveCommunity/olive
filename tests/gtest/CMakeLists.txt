@@ -67,6 +67,10 @@ add_executable(olive-gtest
   node_time_test.cpp
   node_color_test.cpp
   plugin_node_test.cpp
+  sequence_test.cpp
+  node_generator_test.cpp
+  render_misc_test.cpp
+  multicam_serializer_test.cpp
   timeline_marker_test.cpp
   undo_stack_test.cpp
   plugin_support_test.cpp
