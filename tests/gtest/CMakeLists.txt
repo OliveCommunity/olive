@@ -59,6 +59,10 @@ add_executable(olive-gtest
   node_core_test.cpp
   clip_traverser_test.cpp
   audio_manager_viewer_test.cpp
+  footage_test.cpp
+  render_workerpool_ipc_test.cpp
+  node_inputimmediate_test.cpp
+  project_factory_test.cpp
   timeline_marker_test.cpp
   undo_stack_test.cpp
   plugin_support_test.cpp

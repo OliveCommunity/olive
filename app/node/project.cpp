@@ -478,7 +478,7 @@ QString Project::cache_path() const
 		break;
 	case kCacheCustomPath: {
 		QString cache_path = GetCustomCachePath();
-		if (cache_path.isEmpty()) {
+		if (!cache_path.isEmpty()) {
 			return cache_path;
 		}
 		break;
