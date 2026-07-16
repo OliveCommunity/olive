@@ -38,6 +38,16 @@ public:
 		bool valid = false;
 	};
 
+	struct StretchOffsetResult {
+		// Playback rate the candidate must be played at to align with the
+		// reference (e.g. 2.0 = candidate runs at half speed and needs to be
+		// sped up 2x)
+		double rate = 1.0;
+		int64_t offset_samples = 0;
+		double confidence = 0.0;
+		bool valid = false;
+	};
+
 	static QVector<double> ExtractRmsEnvelope(const core::SampleBuffer &samples,
 											  size_t window_samples);
 
@@ -50,6 +60,41 @@ public:
 											   const QVector<double> &candidate,
 											   size_t window_samples,
 											   int64_t max_offset_windows);
+
+	/**
+	 * @brief Offset estimation that ignores windows flagged as invalid
+	 *
+	 * @p reference_valid and @p candidate_valid mark which envelope windows
+	 * contain real data (e.g. actually cached waveform regions). Windows
+	 * flagged false on either side are excluded from the correlation instead
+	 * of being treated as silence, which improves accuracy when parts of the
+	 * waveform cache have not been generated yet. Empty masks are treated as
+	 * "all windows valid".
+	 */
+	static OffsetResult EstimateEnvelopeOffset(const QVector<double> &reference,
+											   const QVector<double> &candidate,
+											   const QVector<bool> &reference_valid,
+											   const QVector<bool> &candidate_valid,
+											   size_t window_samples,
+											   int64_t max_offset_windows);
+
+	/**
+	 * @brief Estimates a playback-rate change plus offset aligning the
+	 * candidate to the reference
+	 *
+	 * The candidate envelope is resampled at each candidate rate in
+	 * [min_rate, max_rate] (step rate_step) and correlated against the
+	 * reference. rate > 1 means the candidate runs slower than the reference
+	 * and must be sped up. The search is O(rates * lags * overlap), so
+	 * callers should bound max_offset_windows to a sensible range.
+	 */
+	static StretchOffsetResult
+	EstimateStretchAndOffset(const QVector<double> &reference,
+							 const QVector<double> &candidate,
+							 const QVector<bool> &reference_valid,
+							 const QVector<bool> &candidate_valid, size_t window_samples,
+							 int64_t max_offset_windows, double min_rate,
+							 double max_rate, double rate_step);
 };
 
 }

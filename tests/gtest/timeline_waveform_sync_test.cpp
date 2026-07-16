@@ -95,6 +95,36 @@ TEST(TimelineWaveformSync, ExtractEnvelopeUsesOnlyValidatedRanges)
 	EXPECT_DOUBLE_EQ(envelope.at(59), 0.0);
 }
 
+TEST(TimelineWaveformSync, ExtractEnvelopeReportsValidityMask)
+{
+	constexpr int kSampleRate = 48000;
+	constexpr size_t kWindowSamples = kSampleRate / 20; // 50 ms windows
+
+	AudioWaveformCache cache;
+	WritePartialWaveform(&cache, kSampleRate);
+
+	WaveformSyncClip clip;
+	clip.waveform = &cache;
+	clip.media_range = TimeRange(0, 3);
+	clip.sample_rate = kSampleRate;
+
+	QVector<bool> valid_mask;
+	const QVector<double> envelope =
+		TimelineWaveformSync::ExtractWaveformCacheEnvelope(
+			clip, kSampleRate, kWindowSamples, &valid_mask);
+
+	// One flag per envelope window
+	ASSERT_EQ(valid_mask.size(), envelope.size());
+
+	// Windows outside the validated second are flagged invalid, windows
+	// inside it are flagged valid
+	EXPECT_FALSE(valid_mask.at(0));
+	EXPECT_FALSE(valid_mask.at(59));
+	for (int i = 20; i < 40; ++i) {
+		EXPECT_TRUE(valid_mask.at(i));
+	}
+}
+
 TEST(TimelineWaveformSync, PartialCacheIsConsideredReady)
 {
 	constexpr int kSampleRate = 48000;

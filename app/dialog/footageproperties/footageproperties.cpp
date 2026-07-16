@@ -22,6 +22,7 @@
 #include "footageproperties.h"
 
 #include <QGridLayout>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QComboBox>
 #include <QLineEdit>
@@ -56,6 +57,48 @@ FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
 
 	footage_name_field_ = new QLineEdit(footage_->GetLabel());
 	layout->addWidget(footage_name_field_, row, 1);
+	row++;
+
+	// Manual source start time: audio/timecode sync relies on this value,
+	// which is otherwise only auto-detected from file metadata
+	layout->addWidget(new QLabel(tr("Source Start Time:")), row, 0);
+
+	{
+		QHBoxLayout *start_time_layout = new QHBoxLayout();
+
+		source_start_time_enable_ = new QCheckBox(tr("Set"));
+		source_start_time_enable_->setChecked(footage_->HasSourceStartTime());
+		start_time_layout->addWidget(source_start_time_enable_);
+
+		source_start_time_spin_ = new QDoubleSpinBox();
+		source_start_time_spin_->setRange(-86400.0, 86400.0);
+		source_start_time_spin_->setDecimals(3);
+		source_start_time_spin_->setSuffix(QStringLiteral(" s"));
+		source_start_time_spin_->setValue(
+			footage_->HasSourceStartTime() ?
+				footage_->source_start_time().toDouble() :
+				0.0);
+		source_start_time_spin_->setEnabled(
+			source_start_time_enable_->isChecked());
+		start_time_layout->addWidget(source_start_time_spin_, 1);
+
+		QString detection_note;
+		if (footage_->HasSourceStartTime()) {
+			const QString &source = footage_->source_start_time_source();
+			detection_note =
+				(source == QStringLiteral("manual")) ?
+					tr("(set manually)") :
+					tr("(auto-detected: %1)").arg(source);
+		} else {
+			detection_note = tr("(not detected)");
+		}
+		start_time_layout->addWidget(new QLabel(detection_note));
+
+		connect(source_start_time_enable_, &QCheckBox::toggled,
+				source_start_time_spin_, &QDoubleSpinBox::setEnabled);
+
+		layout->addLayout(start_time_layout, row, 1);
+	}
 	row++;
 
 	layout->addWidget(new QLabel(tr("Tracks:")), row, 0, 1, 2);
@@ -163,6 +206,18 @@ void FootagePropertiesDialog::accept()
 		NodeRenameCommand *nrc = new NodeRenameCommand();
 		nrc->AddNode(footage_, footage_name_field_->text());
 		command->add_child(nrc);
+	}
+
+	// Apply source start time changes
+	{
+		const bool new_enabled = source_start_time_enable_->isChecked();
+		const rational new_time =
+			rational::fromDouble(source_start_time_spin_->value());
+		if (new_enabled != footage_->HasSourceStartTime() ||
+			(new_enabled && new_time != footage_->source_start_time())) {
+			command->add_child(new FootageSetSourceStartTimeCommand(
+				footage_, new_enabled, new_time, QStringLiteral("manual")));
+		}
 	}
 
 	for (int i = 0; i < footage_->GetTotalStreamCount(); i++) {
@@ -276,6 +331,46 @@ void FootagePropertiesDialog::StreamEnableChangeCommand::undo()
 	case Track::kNone:
 	case Track::kCount:
 		break;
+	}
+}
+
+FootagePropertiesDialog::FootageSetSourceStartTimeCommand::
+	FootageSetSourceStartTimeCommand(Footage *footage, bool enabled,
+									 const rational &time,
+									 const QString &source)
+	: footage_(footage)
+	, new_enabled_(enabled)
+	, new_time_(time)
+	, new_source_(source)
+{
+}
+
+Project *
+FootagePropertiesDialog::FootageSetSourceStartTimeCommand::GetRelevantProject()
+	const
+{
+	return footage_->project();
+}
+
+void FootagePropertiesDialog::FootageSetSourceStartTimeCommand::redo()
+{
+	old_enabled_ = footage_->HasSourceStartTime();
+	old_time_ = footage_->source_start_time();
+	old_source_ = footage_->source_start_time_source();
+
+	if (new_enabled_) {
+		footage_->SetSourceStartTime(new_time_, new_source_);
+	} else {
+		footage_->ClearSourceStartTime();
+	}
+}
+
+void FootagePropertiesDialog::FootageSetSourceStartTimeCommand::undo()
+{
+	if (old_enabled_) {
+		footage_->SetSourceStartTime(old_time_, old_source_);
+	} else {
+		footage_->ClearSourceStartTime();
 	}
 }
 

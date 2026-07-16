@@ -79,6 +79,30 @@ private:
 		bool new_enabled_;
 	};
 
+	class FootageSetSourceStartTimeCommand : public UndoCommand {
+	public:
+		FootageSetSourceStartTimeCommand(Footage *footage, bool enabled,
+										 const rational &time,
+										 const QString &source);
+
+		virtual Project *GetRelevantProject() const override;
+
+	protected:
+		virtual void redo() override;
+		virtual void undo() override;
+
+	private:
+		Footage *footage_;
+
+		bool new_enabled_;
+		rational new_time_;
+		QString new_source_;
+
+		bool old_enabled_;
+		rational old_time_;
+		QString old_source_;
+	};
+
 	/**
    * @brief Stack of widgets that changes based on whether the stream is a video or audio stream
    */
@@ -88,6 +112,16 @@ private:
    * @brief Media name text field
    */
 	QLineEdit *footage_name_field_;
+
+	/**
+   * @brief Whether a manual source start time should be used
+   */
+	QCheckBox *source_start_time_enable_;
+
+	/**
+   * @brief Source start time in seconds
+   */
+	QDoubleSpinBox *source_start_time_spin_;
 
 	/**
    * @brief Internal pointer to Media object (set in constructor)

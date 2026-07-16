@@ -1024,6 +1024,17 @@ void TimelineWidget::SynchronizeSelectedClipsBySourceTime()
 
 void TimelineWidget::SynchronizeSelectedClipsByWaveform()
 {
+	SynchronizeSelectedClipsByWaveformInternal(false);
+}
+
+void TimelineWidget::SynchronizeSelectedClipsByWaveformWithSpeed()
+{
+	SynchronizeSelectedClipsByWaveformInternal(true);
+}
+
+void TimelineWidget::SynchronizeSelectedClipsByWaveformInternal(
+	bool allow_speed)
+{
 	if (!GetConnectedNode()) {
 		return;
 	}
@@ -1052,8 +1063,10 @@ void TimelineWidget::SynchronizeSelectedClipsByWaveform()
 		static_cast<int64_t>(sample_rate) * 10 * 60;
 	const int64_t max_offset_windows =
 		max_offset_samples / static_cast<int64_t>(window_samples);
-	const QVector<double> reference_envelope =
-		ExtractWaveformCacheEnvelope(reference, sample_rate, window_samples);
+
+	QVector<bool> reference_valid;
+	const QVector<double> reference_envelope = ExtractWaveformCacheEnvelope(
+		reference, sample_rate, window_samples, &reference_valid);
 
 	qDebug() << "TimelineWidget::SynchronizeSelectedClipsByWaveform: sample_rate="
 			 << sample_rate << "window_samples=" << window_samples
@@ -1063,27 +1076,62 @@ void TimelineWidget::SynchronizeSelectedClipsByWaveform()
 	struct SyncPlacement {
 		ClipBlock *clip = nullptr;
 		rational timeline_in;
+		double speed = 1.0;
 	};
 
 	QVector<SyncPlacement> placements;
-	placements.append({ reference.clip, reference.clip->in() });
+	placements.append({ reference.clip, reference.clip->in(), 1.0 });
 	for (const WaveformSyncClip &sync_clip : sync_clips) {
 		if (sync_clip.clip == reference.clip) {
 			continue;
 		}
 
+		QVector<bool> candidate_valid;
 		const QVector<double> candidate_envelope = ExtractWaveformCacheEnvelope(
-			sync_clip, sample_rate, window_samples);
-		const AudioWaveformSync::OffsetResult offset =
-			AudioWaveformSync::EstimateEnvelopeOffset(reference_envelope,
-																  candidate_envelope,
-																  window_samples,
-																  max_offset_windows);
+			sync_clip, sample_rate, window_samples, &candidate_valid);
+
+		// Skip uncached (zero-filled) windows on both sides so partially
+		// cached waveforms don't drag the correlation down
+		AudioWaveformSync::OffsetResult offset =
+			AudioWaveformSync::EstimateEnvelopeOffset(
+				reference_envelope, candidate_envelope, reference_valid,
+				candidate_valid, window_samples, max_offset_windows);
+
+		double speed = 1.0;
+
+		if (allow_speed && (!offset.valid || offset.confidence < 0.6)) {
+			// Plain offset alignment is inconclusive; the clips may run at
+			// different speeds (e.g. 24fps vs 25fps pull-down). Search a
+			// rate range with a tighter offset radius to keep the search
+			// interactive.
+			const int64_t stretch_radius_windows = std::min<int64_t>(
+				max_offset_windows,
+				(static_cast<int64_t>(sample_rate) * 30) /
+					static_cast<int64_t>(window_samples));
+			const AudioWaveformSync::StretchOffsetResult stretch =
+				AudioWaveformSync::EstimateStretchAndOffset(
+					reference_envelope, candidate_envelope, reference_valid,
+					candidate_valid, window_samples, stretch_radius_windows,
+					0.75, 1.34, 0.005);
+			qDebug() << "TimelineWidget::SynchronizeSelectedClipsByWaveform: "
+						"stretch estimate valid="
+					 << stretch.valid << "rate=" << stretch.rate
+					 << "confidence=" << stretch.confidence;
+
+			if (stretch.valid &&
+				stretch.confidence > (offset.valid ? offset.confidence : 0.0)) {
+				speed = stretch.rate;
+				offset.valid = true;
+				offset.confidence = stretch.confidence;
+				offset.offset_samples = stretch.offset_samples;
+			}
+		}
+
 		qDebug() << "TimelineWidget::SynchronizeSelectedClipsByWaveform: candidate"
 				 << sync_clip.clip << "envelope_size="
-				 << candidate_envelope.size() << "offset_valid="
-				 << offset.valid << "offset_samples=" << offset.offset_samples
-				 << "confidence=" << offset.confidence;
+				 << candidate_envelope.size() << "offset_valid=" << offset.valid
+				 << "offset_samples=" << offset.offset_samples
+				 << "confidence=" << offset.confidence << "speed=" << speed;
 		if (!offset.valid) {
 			continue;
 		}
@@ -1095,7 +1143,7 @@ void TimelineWidget::SynchronizeSelectedClipsByWaveform()
 				 << "valid=" << placement.valid << "timeline_in="
 				 << placement.timeline_in.toDouble();
 		if (placement.valid && placement.timeline_in >= 0) {
-			placements.append({ sync_clip.clip, placement.timeline_in });
+			placements.append({ sync_clip.clip, placement.timeline_in, speed });
 		}
 	}
 
@@ -1111,6 +1159,13 @@ void TimelineWidget::SynchronizeSelectedClipsByWaveform()
 	for (const SyncPlacement &placement : placements) {
 		command->add_child(new TrackReplaceBlockWithGapCommand(
 			placement.clip->track(), placement.clip, false));
+
+		if (placement.speed != 1.0) {
+			command->add_child(new NodeParamSetStandardValueCommand(
+				NodeKeyframeTrackReference(
+					NodeInput(placement.clip, ClipBlock::kSpeedInput)),
+				placement.clip->speed() * placement.speed));
+		}
 	}
 
 	TimelineWidgetSelections new_selections;
@@ -1120,9 +1175,15 @@ void TimelineWidget::SynchronizeSelectedClipsByWaveform()
 			placement.clip->track()->Index(), placement.clip,
 			placement.timeline_in));
 
+		// A speed change scales the clip's timeline length accordingly
+		const rational placed_length =
+			placement.speed == 1.0 ?
+				placement.clip->length() :
+				rational::fromDouble(placement.clip->length().toDouble() /
+									 placement.speed);
 		new_selections[placement.clip->track()->ToReference()].insert(
 			TimeRange(placement.timeline_in,
-					  placement.timeline_in + placement.clip->length()));
+					  placement.timeline_in + placed_length));
 	}
 
 	command->add_child(
@@ -1718,6 +1779,13 @@ void TimelineWidget::ShowContextMenu()
 		this->addAction(sync_by_waveform);
 		connect(sync_by_waveform, &QAction::triggered, this,
 				&TimelineWidget::SynchronizeSelectedClipsByWaveform);
+
+		QAction *sync_by_waveform_speed =
+			menu.addAction(tr("Synchronize by Waveform (Adjust Speed)"));
+		sync_by_waveform_speed->setEnabled(
+			GetSelectedWaveformSyncClips(selected).size() >= 2);
+		connect(sync_by_waveform_speed, &QAction::triggered, this,
+				&TimelineWidget::SynchronizeSelectedClipsByWaveformWithSpeed);
 
 		menu.addSeparator();
 

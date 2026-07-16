@@ -87,10 +87,24 @@ AudioWaveformSync::OffsetResult AudioWaveformSync::EstimateEnvelopeOffset(
 	const QVector<double> &reference, const QVector<double> &candidate,
 	size_t window_samples, int64_t max_offset_windows)
 {
+	return EstimateEnvelopeOffset(reference, candidate, QVector<bool>(),
+								  QVector<bool>(), window_samples,
+								  max_offset_windows);
+}
+
+AudioWaveformSync::OffsetResult AudioWaveformSync::EstimateEnvelopeOffset(
+	const QVector<double> &reference, const QVector<double> &candidate,
+	const QVector<bool> &reference_valid, const QVector<bool> &candidate_valid,
+	size_t window_samples, int64_t max_offset_windows)
+{
 	OffsetResult result;
 	if (reference.isEmpty() || candidate.isEmpty() || !window_samples) {
 		return result;
 	}
+
+	const auto is_valid = [](const QVector<bool> &mask, int size, int index) {
+		return mask.size() != size || mask.at(index);
+	};
 
 	double best_score = -2.0;
 	int64_t best_lag = 0;
@@ -106,23 +120,45 @@ AudioWaveformSync::OffsetResult AudioWaveformSync::EstimateEnvelopeOffset(
 			continue;
 		}
 
+		// Only windows marked valid on both sides participate in the score
 		double reference_mean = 0.0;
 		double candidate_mean = 0.0;
+		int valid_count = 0;
 		for (int i = 0; i < overlap; i++) {
-			reference_mean += reference.at(reference_start + i);
-			candidate_mean += candidate.at(candidate_start + i);
+			const int reference_index = reference_start + i;
+			const int candidate_index = candidate_start + i;
+			if (!is_valid(reference_valid, reference.size(),
+						  reference_index) ||
+				!is_valid(candidate_valid, candidate.size(), candidate_index)) {
+				continue;
+			}
+			reference_mean += reference.at(reference_index);
+			candidate_mean += candidate.at(candidate_index);
+			valid_count++;
 		}
-		reference_mean /= static_cast<double>(overlap);
-		candidate_mean /= static_cast<double>(overlap);
+
+		if (valid_count < 2) {
+			continue;
+		}
+
+		reference_mean /= static_cast<double>(valid_count);
+		candidate_mean /= static_cast<double>(valid_count);
 
 		double numerator = 0.0;
 		double reference_energy = 0.0;
 		double candidate_energy = 0.0;
 		for (int i = 0; i < overlap; i++) {
+			const int reference_index = reference_start + i;
+			const int candidate_index = candidate_start + i;
+			if (!is_valid(reference_valid, reference.size(),
+						  reference_index) ||
+				!is_valid(candidate_valid, candidate.size(), candidate_index)) {
+				continue;
+			}
 			const double reference_value =
-				reference.at(reference_start + i) - reference_mean;
+				reference.at(reference_index) - reference_mean;
 			const double candidate_value =
-				candidate.at(candidate_start + i) - candidate_mean;
+				candidate.at(candidate_index) - candidate_mean;
 			numerator += reference_value * candidate_value;
 			reference_energy += reference_value * reference_value;
 			candidate_energy += candidate_value * candidate_value;
@@ -144,6 +180,63 @@ AudioWaveformSync::OffsetResult AudioWaveformSync::EstimateEnvelopeOffset(
 		result.valid = true;
 		result.confidence = std::max(0.0, best_score);
 		result.offset_samples = best_lag * static_cast<int64_t>(window_samples);
+	}
+
+	return result;
+}
+
+AudioWaveformSync::StretchOffsetResult AudioWaveformSync::EstimateStretchAndOffset(
+	const QVector<double> &reference, const QVector<double> &candidate,
+	const QVector<bool> &reference_valid, const QVector<bool> &candidate_valid,
+	size_t window_samples, int64_t max_offset_windows, double min_rate,
+	double max_rate, double rate_step)
+{
+	StretchOffsetResult result;
+	if (reference.isEmpty() || candidate.isEmpty() || !window_samples ||
+		min_rate <= 0.0 || max_rate < min_rate || rate_step <= 0.0) {
+		return result;
+	}
+
+	double best_confidence = -2.0;
+
+	for (double rate = min_rate; rate <= max_rate + rate_step * 0.5;
+		 rate += rate_step) {
+		// Resample the candidate envelope so that window i of the resampled
+		// envelope corresponds to window i*rate of the original
+		const int resampled_size =
+			static_cast<int>(candidate.size() / rate);
+		if (resampled_size < 2) {
+			continue;
+		}
+
+		QVector<double> resampled(resampled_size);
+		QVector<bool> resampled_valid(resampled_size);
+		for (int i = 0; i < resampled_size; i++) {
+			const double position = i * rate;
+			const int lower = static_cast<int>(position);
+			const int upper =
+				std::min(lower + 1, static_cast<int>(candidate.size()) - 1);
+			const double fraction = position - lower;
+
+			resampled[i] = candidate.at(lower) * (1.0 - fraction) +
+						   candidate.at(upper) * fraction;
+
+			resampled_valid[i] =
+				(candidate_valid.size() != candidate.size() ||
+				 (candidate_valid.at(lower) && candidate_valid.at(upper)));
+		}
+
+		const OffsetResult offset = EstimateEnvelopeOffset(
+			reference, resampled, reference_valid, resampled_valid,
+			window_samples, max_offset_windows);
+
+		if (offset.valid && offset.confidence > best_confidence) {
+			best_confidence = offset.confidence;
+			result.valid = true;
+			result.rate = rate;
+			result.confidence = offset.confidence;
+			result.offset_samples = offset.offset_samples;
+		}
 	}
 
 	return result;

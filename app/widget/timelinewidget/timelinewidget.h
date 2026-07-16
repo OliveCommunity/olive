@@ -109,6 +109,8 @@ public:
 
 	void SynchronizeSelectedClipsByWaveform();
 
+	void SynchronizeSelectedClipsByWaveformWithSpeed();
+
 	void GenerateProxiesForSelectedClips();
 
 	void SetSelectedClipsProxyEnabled(bool enabled);
@@ -344,6 +346,8 @@ private:
 	void UpdateViewports(const Track::Type &type = Track::kNone);
 
 	bool PasteInternal(bool insert);
+
+	void SynchronizeSelectedClipsByWaveformInternal(bool allow_speed);
 
 	TimelineAndTrackView *AddTimelineAndTrackView(Qt::Alignment alignment);
 

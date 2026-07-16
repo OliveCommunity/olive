@@ -129,3 +129,32 @@ TEST(TimecodeMetadata, FootagePersistsSourceStartTime)
 	EXPECT_EQ(footage.source_start_time(), olive::core::rational(3600));
 	EXPECT_EQ(footage.source_start_time_source(), QStringLiteral("timecode"));
 }
+
+TEST(TimecodeMetadata, FootageClearSourceStartTime)
+{
+	olive::Footage footage;
+	footage.SetSourceStartTime(olive::core::rational(3600),
+							   QStringLiteral("manual"));
+	ASSERT_TRUE(footage.HasSourceStartTime());
+
+	footage.ClearSourceStartTime();
+
+	EXPECT_FALSE(footage.HasSourceStartTime());
+	EXPECT_EQ(footage.source_start_time(), olive::core::rational());
+	EXPECT_TRUE(footage.source_start_time_source().isEmpty());
+}
+
+TEST(TimecodeMetadata, FootageSetSourceStartTimeOverridesPreviousValue)
+{
+	olive::Footage footage;
+	footage.SetSourceStartTime(olive::core::rational(3600),
+							   QStringLiteral("timecode"));
+
+	// A manual edit replaces both the value and the recorded source
+	footage.SetSourceStartTime(olive::core::rational(1800),
+							   QStringLiteral("manual"));
+
+	EXPECT_TRUE(footage.HasSourceStartTime());
+	EXPECT_EQ(footage.source_start_time(), olive::core::rational(1800));
+	EXPECT_EQ(footage.source_start_time_source(), QStringLiteral("manual"));
+}

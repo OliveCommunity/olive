@@ -231,6 +231,13 @@ void Footage::SetSourceStartTime(const rational &time, const QString &source)
 	has_source_start_time_ = true;
 }
 
+void Footage::ClearSourceStartTime()
+{
+	source_start_time_ = rational();
+	source_start_time_source_.clear();
+	has_source_start_time_ = false;
+}
+
 void Footage::set_proxy_enabled(bool enabled)
 {
 	if (proxy_enabled_ != enabled) {

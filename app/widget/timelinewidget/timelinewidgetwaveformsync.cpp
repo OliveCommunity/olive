@@ -81,11 +81,16 @@ GetSelectedWaveformSyncClips(const QVector<Block *> &blocks)
 
 QVector<double> ExtractWaveformCacheEnvelope(const WaveformSyncClip &clip,
 											 int sample_rate,
-											 size_t window_samples)
+											 size_t window_samples,
+											 QVector<bool> *valid_mask)
 {
 	QVector<double> envelope;
 	if (sample_rate <= 0 || !window_samples) {
 		return envelope;
+	}
+
+	if (valid_mask) {
+		valid_mask->clear();
 	}
 
 	const rational window_time(static_cast<int>(window_samples), sample_rate);
@@ -93,8 +98,9 @@ QVector<double> ExtractWaveformCacheEnvelope(const WaveformSyncClip &clip,
 	// Only trust regions that have actually been validated. Unvalidated cache
 	// returns zero samples, which both drags the correlation score down and
 	// can produce false peaks if one clip happens to have more cached data
-	// than another. Using zero placeholders keeps every envelope aligned to
-	// the same absolute timeline.
+	// than another. Zero placeholders keep every envelope aligned to the same
+	// absolute timeline, while the validity mask lets the correlation skip
+	// those placeholders entirely.
 	const TimeRangeList validated_ranges =
 		clip.waveform->GetValidatedRanges().Intersects(clip.media_range);
 
@@ -103,8 +109,10 @@ QVector<double> ExtractWaveformCacheEnvelope(const WaveformSyncClip &clip,
 		const rational length = qMin(window_time, clip.media_range.out() - t);
 		const TimeRange window(t, t + length);
 
+		const bool window_valid = validated_ranges.contains(window);
+
 		double peak = 0.0;
-		if (validated_ranges.contains(window)) {
+		if (window_valid) {
 			const AudioVisualWaveform::Sample summary =
 				clip.waveform->GetSummaryFromTime(t, length);
 
@@ -118,6 +126,9 @@ QVector<double> ExtractWaveformCacheEnvelope(const WaveformSyncClip &clip,
 		}
 
 		envelope.append(peak);
+		if (valid_mask) {
+			valid_mask->append(window_valid);
+		}
 	}
 	return envelope;
 }

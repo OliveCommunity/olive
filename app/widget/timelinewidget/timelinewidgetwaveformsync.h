@@ -71,11 +71,15 @@ GetSelectedWaveformSyncClips(const QVector<Block *> &blocks);
  * @brief Extract a peak envelope from the validated regions of a waveform cache.
  *
  * Windows that have not been cached yet are filled with zero so that every
- * envelope stays aligned to the same absolute timeline.
+ * envelope stays aligned to the same absolute timeline; when @p valid_mask is
+ * provided it receives one flag per window marking whether the window was
+ * actually cached, allowing the correlation to skip uncached regions instead
+ * of treating them as silence.
  */
 QVector<double> ExtractWaveformCacheEnvelope(const WaveformSyncClip &clip,
 											 int sample_rate,
-											 size_t window_samples);
+											 size_t window_samples,
+											 QVector<bool> *valid_mask = nullptr);
 
 } // namespace TimelineWaveformSync
 

@@ -173,6 +173,11 @@ public:
 
 	void SetSourceStartTime(const rational &time, const QString &source);
 
+	/**
+	 * @brief Removes any source start time (auto-detected or manual)
+	 */
+	void ClearSourceStartTime();
+
 	bool proxy_enabled() const
 	{
 		return proxy_enabled_;
