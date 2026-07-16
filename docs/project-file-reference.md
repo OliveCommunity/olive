@@ -352,6 +352,7 @@ Default `Node::SaveCustom()` writes nothing. Specific node subclasses may overri
 <custom>
   <timestamp>1740000000</timestamp>
   <proxy enabled="1" state="ready" stream="0" preset="1">/path/to/proxy.mp4</proxy>
+  <proxy enabled="1" state="ready" stream="0" preset="1" custom="1" pwidth="960" pheight="540" pcrf="20" ppreset="fast" pext="mov" paudio="0">/path/to/proxy.mov</proxy>
   <sourcestarttime source="timecode">1/25</sourcestarttime>
   <viewer>...</viewer>
 </custom>
@@ -370,12 +371,24 @@ Default `Node::SaveCustom()` writes nothing. Specific node subclasses may overri
     - `stream`：代理使用的视频流索引。
     - `preset`: proxy preset version.
     - `preset`：代理预设版本。
+    - `custom` (optional): `1` when the footage uses per-footage custom proxy parameters instead of the global settings.
+    - `custom`（可选）：为 `1` 表示该素材使用独立的自定义代理参数，而不是全局设置。
+    - `pwidth`, `pheight` (optional, requires `custom="1"`): custom proxy dimensions.
+    - `pwidth`、`pheight`（可选，需 `custom="1"`）：自定义代理分辨率。
+    - `pcrf` (optional): custom x264 CRF value.
+    - `pcrf`（可选）：自定义 x264 CRF 值。
+    - `ppreset` (optional): custom x264 preset name.
+    - `ppreset`（可选）：自定义 x264 预设名称。
+    - `pext` (optional): custom proxy container extension (e.g. `mp4`, `mov`).
+    - `pext`（可选）：自定义代理容器扩展名（如 `mp4`、`mov`）。
+    - `paudio` (optional): `1` if the proxy includes audio streams, `0` for video-only. Proxies generated with audio store the video stream at index 0 followed by the source audio streams in source order.
+    - `paudio`（可选）：`1` 表示代理包含音频流，`0` 表示仅视频。包含音频的代理将视频流放在索引 0，其后按源顺序跟随音频流。
   - Text content: proxy file path (may be empty if `enabled` is true but proxy is not yet generated).
   - 文本内容：代理文件路径（如果 `enabled` 为 true 但代理尚未生成，则可能为空）。
 - `<sourcestarttime>`: source start time offset.
   - `<sourcestarttime>`：源起始时间偏移。
-  - `source` attribute: source identifier (e.g. `timecode`).
-  - `source` 属性：源标识符（如 `timecode`）。
+  - `source` attribute: source identifier (e.g. `timecode`, `bwf_time_reference`, or `manual` when entered by the user).
+  - `source` 属性：源标识符（如 `timecode`、`bwf_time_reference`，或用户手动输入时的 `manual`）。
   - Text: rational `numerator/denominator`.
   - 文本：有理数 `numerator/denominator`。
 - `<viewer>`: see `ViewerOutput` below.

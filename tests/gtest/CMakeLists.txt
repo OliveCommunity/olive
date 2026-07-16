@@ -46,6 +46,7 @@ add_executable(olive-gtest
   project_serializer_test.cpp
   proxy_manager_test.cpp
   proxy_dialog_test.cpp
+  lut_file_field_test.cpp
   timeline_marker_test.cpp
   undo_stack_test.cpp
   plugin_support_test.cpp

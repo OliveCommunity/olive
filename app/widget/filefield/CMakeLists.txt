@@ -18,5 +18,7 @@ set(OLIVE_SOURCES
         ${OLIVE_SOURCES}
         widget/filefield/filefield.cpp
         widget/filefield/filefield.h
+        widget/filefield/lutfilefield.cpp
+        widget/filefield/lutfilefield.h
         PARENT_SCOPE
 )

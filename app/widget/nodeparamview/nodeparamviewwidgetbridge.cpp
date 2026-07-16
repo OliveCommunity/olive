@@ -42,6 +42,7 @@
 #include "widget/bezier/bezierwidget.h"
 #include "widget/colorbutton/colorbutton.h"
 #include "widget/filefield/filefield.h"
+#include "widget/filefield/lutfilefield.h"
 #include "widget/slider/floatslider.h"
 #include "widget/slider/integerslider.h"
 #include "widget/slider/rationalslider.h"
@@ -141,7 +142,15 @@ void NodeParamViewWidgetBridge::CreateWidgets()
 			break;
 		}
 		case NodeValue::kFile: {
-			FileField *file_field = new FileField(parent);
+			FileField *file_field;
+			if (GetInnerInput().GetProperty(QStringLiteral("lut_library"))
+					.toBool()) {
+				// File inputs that accept LUTs get a combo box for picking
+				// from the global LUT library
+				file_field = new LutFileField(parent);
+			} else {
+				file_field = new FileField(parent);
+			}
 			widgets_.append(file_field);
 			connect(file_field, &FileField::FilenameChanged, this,
 					&NodeParamViewWidgetBridge::WidgetCallback);

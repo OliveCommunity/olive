@@ -38,7 +38,7 @@ public:
 		return line_edit_->text();
 	}
 
-	void SetFilename(const QString &s)
+	virtual void SetFilename(const QString &s)
 	{
 		line_edit_->setText(s);
 	}
