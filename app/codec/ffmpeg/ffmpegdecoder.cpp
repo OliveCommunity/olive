@@ -1187,7 +1187,7 @@ AVFramePtr FFmpegDecoder::RetrieveFrame(const rational &time,
 AVFramePtr FFmpegDecoder::TransferHardwareFrame(AVFramePtr f)
 {
 	if (!fb_decoder_hwaccel_enabled(instance_) ||
-		f->format() != fb_decoder_hw_pix_fmt(instance_)) {
+		!fb_frame_is_hw(f->handle())) {
 		return f;
 	}
 

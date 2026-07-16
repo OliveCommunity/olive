@@ -114,13 +114,14 @@ void fb_frame_set_height(FBFrame *frame, int height)
 
 int fb_frame_get_format(const FBFrame *frame)
 {
-	return frame ? frame->frame->format : FB_PIX_FMT_NONE;
+	return frame ? fb::PixFmtFromAV(AVPixelFormat(frame->frame->format)) :
+				   FB_PIX_FMT_NONE;
 }
 
 void fb_frame_set_format(FBFrame *frame, int format)
 {
 	if (frame) {
-		frame->frame->format = format;
+		frame->frame->format = fb::PixFmtToAV(format);
 	}
 }
 

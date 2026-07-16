@@ -431,7 +431,7 @@ int fb_decoder_get_stream_info(const FBDecoder *decoder, FBStreamInfo *out)
 	out->has_decoder = 1; // stream is open, so a decoder was found
 	out->width = par->width;
 	out->height = par->height;
-	out->pixel_format = par->format;
+	out->pixel_format = fb::PixFmtFromAV(AVPixelFormat(par->format));
 	out->field_order = decoder->codec_ctx ? decoder->codec_ctx->field_order :
 											AV_FIELD_UNKNOWN;
 	out->color_range = par->color_range;
@@ -499,5 +499,8 @@ int fb_decoder_hwaccel_enabled(const FBDecoder *decoder)
 
 int fb_decoder_hw_pix_fmt(const FBDecoder *decoder)
 {
-	return decoder ? int(decoder->hw_pix_fmt) : FB_PIX_FMT_NONE;
+	// Hardware pixel formats have no static FB_PIX_FMT_* identifier, so this
+	// returns a process-local dynamic id for them. Use fb_frame_is_hw() to
+	// detect hardware frames.
+	return decoder ? fb::PixFmtFromAV(decoder->hw_pix_fmt) : FB_PIX_FMT_NONE;
 }

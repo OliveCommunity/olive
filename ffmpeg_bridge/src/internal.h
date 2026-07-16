@@ -56,35 +56,6 @@ static_assert(FB_TIME_BASE == AV_TIME_BASE, "FB_TIME_BASE mismatch");
 static_assert(FB_SCALER_POINT == SWS_POINT, "FB_SCALER_POINT mismatch");
 
 static_assert(FB_PIX_FMT_NONE == AV_PIX_FMT_NONE, "FB_PIX_FMT_NONE mismatch");
-static_assert(FB_PIX_FMT_YUV420P == AV_PIX_FMT_YUV420P, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_RGB24 == AV_PIX_FMT_RGB24, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_YUV422P == AV_PIX_FMT_YUV422P, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_YUV444P == AV_PIX_FMT_YUV444P, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_YUV410P == AV_PIX_FMT_YUV410P, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_YUV411P == AV_PIX_FMT_YUV411P, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_GRAY8 == AV_PIX_FMT_GRAY8, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_YUVJ420P == AV_PIX_FMT_YUVJ420P, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_YUVJ422P == AV_PIX_FMT_YUVJ422P, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_YUVJ444P == AV_PIX_FMT_YUVJ444P, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_RGBA == AV_PIX_FMT_RGBA, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_GRAY16LE == AV_PIX_FMT_GRAY16LE, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_YUV440P == AV_PIX_FMT_YUV440P, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_YUVJ440P == AV_PIX_FMT_YUVJ440P, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_RGB48LE == AV_PIX_FMT_RGB48LE, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_YUV420P10LE == AV_PIX_FMT_YUV420P10LE, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_YUV422P10LE == AV_PIX_FMT_YUV422P10LE, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_YUV444P10LE == AV_PIX_FMT_YUV444P10LE, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_RGBA64LE == AV_PIX_FMT_RGBA64LE, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_YUV420P12LE == AV_PIX_FMT_YUV420P12LE, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_YUV422P12LE == AV_PIX_FMT_YUV422P12LE, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_YUV444P12LE == AV_PIX_FMT_YUV444P12LE, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_YUVJ411P == AV_PIX_FMT_YUVJ411P, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_GRAYF32LE == AV_PIX_FMT_GRAYF32LE, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_RGBAF16LE == AV_PIX_FMT_RGBAF16LE, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_RGBF32LE == AV_PIX_FMT_RGBF32LE, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_RGBAF32LE == AV_PIX_FMT_RGBAF32LE, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_RGBF16LE == AV_PIX_FMT_RGBF16LE, "pixfmt mismatch");
-static_assert(FB_PIX_FMT_GRAYF16LE == AV_PIX_FMT_GRAYF16LE, "pixfmt mismatch");
 
 static_assert(FB_SAMPLE_FMT_NONE == AV_SAMPLE_FMT_NONE, "samplefmt mismatch");
 static_assert(FB_SAMPLE_FMT_U8 == AV_SAMPLE_FMT_U8, "samplefmt mismatch");
@@ -161,6 +132,24 @@ uint64_t ValidateStreamChannelLayoutMask(const AVStream *stream);
 
 /** Map an AVColorSpace to the corresponding SWS_CS_* constant. */
 int SwsColorspaceFromAVColorSpace(AVColorSpace cs);
+
+/**
+ * Translate an FB_PIX_FMT_* value to the AVPixelFormat of the FFmpeg build
+ * this library was compiled against. AVPixelFormat enum values shift between
+ * FFmpeg releases (new formats are inserted mid-enum), so the public FB
+ * values are fixed identifiers resolved by pixel format name. Returns
+ * AV_PIX_FMT_NONE for FB_PIX_FMT_NONE and for static FB formats unknown to
+ * this FFmpeg build (e.g. rgbf16le/grayf16le on FFmpeg < 7.1).
+ */
+AVPixelFormat PixFmtToAV(int fb_fmt);
+
+/**
+ * Reverse of PixFmtToAV. Returns FB_PIX_FMT_NONE for AV_PIX_FMT_NONE.
+ * Formats without a static FB_PIX_FMT_* identifier (hardware-download
+ * formats such as p210le, etc.) receive a process-local dynamic id >= 1000
+ * so they can still round-trip through the API.
+ */
+int PixFmtFromAV(AVPixelFormat fmt);
 
 void SetError(char *error_buffer, size_t error_buffer_size, const char *context,
 			  int error_code);

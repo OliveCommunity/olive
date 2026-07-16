@@ -735,8 +735,10 @@ TEST(FFmpegBridgeEncoder, WritePngVideoAndProbeBack)
 	const int height = 64;
 	const int frame_count = 5;
 
+	const QByteArray filename = path.toUtf8();
+
 	FBEncoderConfig config = {};
-	config.filename = path.toUtf8().constData();
+	config.filename = filename.constData();
 	config.video_enabled = 1;
 	config.video_codec = FB_CODEC_PNG;
 	config.video_width = width;
@@ -799,8 +801,10 @@ TEST(FFmpegBridgeEncoder, WritePcmAudioAndProbeBack)
 	const QString path = TempFilePath(QStringLiteral("fb_bridge_test.wav"));
 	QFile::remove(path);
 
+	const QByteArray filename = path.toUtf8();
+
 	FBEncoderConfig config = {};
-	config.filename = path.toUtf8().constData();
+	config.filename = filename.constData();
 	config.audio_enabled = 1;
 	config.audio_codec = FB_CODEC_PCM;
 	config.audio_sample_rate = 44100;

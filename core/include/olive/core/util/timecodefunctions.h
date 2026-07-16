@@ -24,6 +24,8 @@
 
 #include "rational.h"
 
+#include <cstdint>
+
 namespace olive::core
 {
 

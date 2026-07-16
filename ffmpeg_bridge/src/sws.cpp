@@ -30,8 +30,8 @@ FBScaler *fb_scaler_create(int src_width, int src_height, int src_format,
 						   int flags)
 {
 	SwsContext *ctx = sws_getContext(
-		src_width, src_height, static_cast<AVPixelFormat>(src_format),
-		dst_width, dst_height, static_cast<AVPixelFormat>(dst_format), flags,
+		src_width, src_height, fb::PixFmtToAV(src_format),
+		dst_width, dst_height, fb::PixFmtToAV(dst_format), flags,
 		nullptr, nullptr, nullptr);
 	if (!ctx) {
 		return nullptr;

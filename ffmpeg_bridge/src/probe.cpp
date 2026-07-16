@@ -45,7 +45,7 @@ void FillStreamInfo(const AVStream *s, int has_decoder, FBStreamInfo *out)
 	out->has_decoder = has_decoder;
 	out->width = par->width;
 	out->height = par->height;
-	out->pixel_format = par->format;
+	out->pixel_format = fb::PixFmtFromAV(AVPixelFormat(par->format));
 	out->field_order = FB_FIELD_ORDER_UNKNOWN;
 	out->color_range = par->color_range;
 	out->sample_rate = par->sample_rate;

@@ -143,6 +143,7 @@ struct FBEncoder {
 	int video_frame_rate_num = 0;
 	int video_frame_rate_den = 1;
 	std::string video_pix_fmt;
+	// In AVPixelFormat space (translated from the FB config value at create)
 	int video_src_pix_fmt = FB_PIX_FMT_NONE;
 	int video_color_range = FB_COLOR_RANGE_UNSPEC;
 	int video_field_order = FB_FIELD_ORDER_PROGRESSIVE;
@@ -239,7 +240,9 @@ FBEncoder *fb_encoder_create(const FBEncoderConfig *config)
 	if (config->video_pix_fmt) {
 		e->video_pix_fmt = config->video_pix_fmt;
 	}
-	e->video_src_pix_fmt = config->video_src_pix_fmt;
+	// Stored in AVPixelFormat space; the public config value is an
+	// FB_PIX_FMT_* identifier.
+	e->video_src_pix_fmt = fb::PixFmtToAV(config->video_src_pix_fmt);
 	e->video_color_range = config->video_color_range;
 	e->video_field_order = config->video_field_order;
 	e->video_bit_rate = config->video_bit_rate;
@@ -429,7 +432,7 @@ int fb_encoder_write_video_frame(FBEncoder *e, int width, int height,
 
 	input_frame->width = width;
 	input_frame->height = height;
-	input_frame->format = pix_fmt;
+	input_frame->format = fb::PixFmtToAV(pix_fmt);
 	input_frame->data[0] = const_cast<uint8_t *>(data);
 	input_frame->linesize[0] = linesize;
 

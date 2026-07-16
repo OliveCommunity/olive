@@ -25,8 +25,127 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <mutex>
+#include <utility>
+#include <vector>
+
 namespace fb
 {
+
+namespace
+{
+
+/**
+ * The public FB_PIX_FMT_* values are fixed identifiers (the host app never
+ * sees AVPixelFormat). AVPixelFormat enum values shift between FFmpeg
+ * releases because new formats are inserted mid-enum, so the mapping is
+ * resolved through pixel format names, which are stable. Formats unknown to
+ * the FFmpeg build this library was compiled against resolve to
+ * AV_PIX_FMT_NONE.
+ */
+struct PixFmtName {
+	int fb_fmt;
+	const char *av_name;
+};
+
+constexpr PixFmtName kPixFmtNames[] = {
+	{ FB_PIX_FMT_YUV420P, "yuv420p" },
+	{ FB_PIX_FMT_RGB24, "rgb24" },
+	{ FB_PIX_FMT_YUV422P, "yuv422p" },
+	{ FB_PIX_FMT_YUV444P, "yuv444p" },
+	{ FB_PIX_FMT_YUV410P, "yuv410p" },
+	{ FB_PIX_FMT_YUV411P, "yuv411p" },
+	{ FB_PIX_FMT_GRAY8, "gray8" },
+	{ FB_PIX_FMT_YUVJ420P, "yuvj420p" },
+	{ FB_PIX_FMT_YUVJ422P, "yuvj422p" },
+	{ FB_PIX_FMT_YUVJ444P, "yuvj444p" },
+	{ FB_PIX_FMT_NV12, "nv12" },
+	{ FB_PIX_FMT_RGBA, "rgba" },
+	{ FB_PIX_FMT_GRAY16LE, "gray16le" },
+	{ FB_PIX_FMT_YUV440P, "yuv440p" },
+	{ FB_PIX_FMT_YUVJ440P, "yuvj440p" },
+	{ FB_PIX_FMT_RGB48LE, "rgb48le" },
+	{ FB_PIX_FMT_YUV420P10LE, "yuv420p10le" },
+	{ FB_PIX_FMT_YUV422P10LE, "yuv422p10le" },
+	{ FB_PIX_FMT_YUV444P10LE, "yuv444p10le" },
+	{ FB_PIX_FMT_RGBA64LE, "rgba64le" },
+	{ FB_PIX_FMT_YUV420P12LE, "yuv420p12le" },
+	{ FB_PIX_FMT_YUV422P12LE, "yuv422p12le" },
+	{ FB_PIX_FMT_YUV444P12LE, "yuv444p12le" },
+	{ FB_PIX_FMT_YUVJ411P, "yuvj411p" },
+	{ FB_PIX_FMT_P010LE, "p010le" },
+	{ FB_PIX_FMT_GRAYF32LE, "grayf32le" },
+	{ FB_PIX_FMT_RGBAF16LE, "rgbaf16le" },
+	{ FB_PIX_FMT_RGBF32LE, "rgbf32le" },
+	{ FB_PIX_FMT_RGBAF32LE, "rgbaf32le" },
+	{ FB_PIX_FMT_RGBF16LE, "rgbf16le" },
+	{ FB_PIX_FMT_GRAYF16LE, "grayf16le" },
+};
+
+} // namespace
+
+namespace
+{
+
+/**
+ * Formats outside the static table (hardware-download formats like p210le,
+ * or anything else a decoder produces) receive process-local identifiers so
+ * they still round-trip through the API (e.g. into the scaler) instead of
+ * collapsing to FB_PIX_FMT_NONE. Dynamic ids start above every static
+ * FB_PIX_FMT_* value and are not stable across runs, which is fine because
+ * callers treat the values as opaque.
+ */
+constexpr int kDynamicPixFmtBase = 1000;
+std::mutex g_dynamic_pix_fmt_mutex;
+std::vector<std::pair<int, AVPixelFormat>> g_dynamic_pix_fmts;
+
+} // namespace
+
+AVPixelFormat PixFmtToAV(int fb_fmt)
+{
+	if (fb_fmt == FB_PIX_FMT_NONE) {
+		return AV_PIX_FMT_NONE;
+	}
+	for (const PixFmtName &entry : kPixFmtNames) {
+		if (entry.fb_fmt == fb_fmt) {
+			return av_get_pix_fmt(entry.av_name);
+		}
+	}
+	if (fb_fmt >= kDynamicPixFmtBase) {
+		std::lock_guard<std::mutex> lock(g_dynamic_pix_fmt_mutex);
+		for (const auto &entry : g_dynamic_pix_fmts) {
+			if (entry.first == fb_fmt) {
+				return entry.second;
+			}
+		}
+	}
+	return AV_PIX_FMT_NONE;
+}
+
+int PixFmtFromAV(AVPixelFormat fmt)
+{
+	if (fmt == AV_PIX_FMT_NONE) {
+		return FB_PIX_FMT_NONE;
+	}
+	const char *name = av_get_pix_fmt_name(fmt);
+	if (name) {
+		for (const PixFmtName &entry : kPixFmtNames) {
+			if (strcmp(name, entry.av_name) == 0) {
+				return entry.fb_fmt;
+			}
+		}
+	}
+
+	std::lock_guard<std::mutex> lock(g_dynamic_pix_fmt_mutex);
+	for (const auto &entry : g_dynamic_pix_fmts) {
+		if (entry.second == fmt) {
+			return entry.first;
+		}
+	}
+	const int id = kDynamicPixFmtBase + int(g_dynamic_pix_fmts.size());
+	g_dynamic_pix_fmts.emplace_back(id, fmt);
+	return id;
+}
 
 void ChannelLayoutFromMask(AVChannelLayout *layout, uint64_t mask,
 						   int fallback_channels)
@@ -133,18 +252,18 @@ const char *fb_version_string(void)
 
 const char *fb_pix_fmt_name(int pix_fmt)
 {
-	return av_get_pix_fmt_name(static_cast<AVPixelFormat>(pix_fmt));
+	return av_get_pix_fmt_name(fb::PixFmtToAV(pix_fmt));
 }
 
 int fb_pix_fmt_from_name(const char *name)
 {
-	return av_get_pix_fmt(name);
+	return fb::PixFmtFromAV(av_get_pix_fmt(name));
 }
 
 int fb_pix_fmt_bits_per_pixel(int pix_fmt)
 {
 	const AVPixFmtDescriptor *desc =
-		av_pix_fmt_desc_get(static_cast<AVPixelFormat>(pix_fmt));
+		av_pix_fmt_desc_get(fb::PixFmtToAV(pix_fmt));
 	if (!desc) {
 		return 0;
 	}
@@ -154,21 +273,21 @@ int fb_pix_fmt_bits_per_pixel(int pix_fmt)
 int fb_pix_fmt_has_alpha(int pix_fmt)
 {
 	const AVPixFmtDescriptor *desc =
-		av_pix_fmt_desc_get(static_cast<AVPixelFormat>(pix_fmt));
+		av_pix_fmt_desc_get(fb::PixFmtToAV(pix_fmt));
 	return desc && (desc->flags & AV_PIX_FMT_FLAG_ALPHA);
 }
 
 int fb_pix_fmt_is_planar(int pix_fmt)
 {
 	const AVPixFmtDescriptor *desc =
-		av_pix_fmt_desc_get(static_cast<AVPixelFormat>(pix_fmt));
+		av_pix_fmt_desc_get(fb::PixFmtToAV(pix_fmt));
 	return desc && (desc->flags & AV_PIX_FMT_FLAG_PLANAR);
 }
 
 int fb_pix_fmt_component_size(int pix_fmt)
 {
 	const AVPixFmtDescriptor *desc =
-		av_pix_fmt_desc_get(static_cast<AVPixelFormat>(pix_fmt));
+		av_pix_fmt_desc_get(fb::PixFmtToAV(pix_fmt));
 	if (!desc || desc->nb_components == 0) {
 		return 0;
 	}
@@ -178,15 +297,29 @@ int fb_pix_fmt_component_size(int pix_fmt)
 
 int fb_find_best_pix_fmt_of_list(const int *list, int pix_fmt)
 {
-	// Count the list
-	int count = 0;
-	while (list[count] != FB_PIX_FMT_NONE) {
-		count++;
+	// Translate the FB_PIX_FMT_NONE-terminated list to AVPixelFormat values,
+	// skipping formats unknown to this FFmpeg build
+	std::vector<AVPixelFormat> av_list;
+	for (int i = 0; list[i] != FB_PIX_FMT_NONE; i++) {
+		AVPixelFormat fmt = fb::PixFmtToAV(list[i]);
+		if (fmt != AV_PIX_FMT_NONE) {
+			av_list.push_back(fmt);
+		}
+	}
+	if (av_list.empty()) {
+		return FB_PIX_FMT_NONE;
 	}
 
-	return avcodec_find_best_pix_fmt_of_list(
-		reinterpret_cast<const AVPixelFormat *>(list),
-		static_cast<AVPixelFormat>(pix_fmt), 1, nullptr);
+	// With an unknown source format there is no loss metric to compare
+	// against; prefer the first (most desirable) list entry
+	AVPixelFormat av_src = fb::PixFmtToAV(pix_fmt);
+	if (av_src == AV_PIX_FMT_NONE) {
+		return list[0];
+	}
+
+	av_list.push_back(AV_PIX_FMT_NONE);
+	return fb::PixFmtFromAV(avcodec_find_best_pix_fmt_of_list(
+		av_list.data(), av_src, 1, nullptr));
 }
 
 int fb_channel_layout_get_channels(uint64_t mask)

@@ -69,9 +69,12 @@ extern "C" {
 #define FB_SCALER_POINT 0x10
 
 /**
- * Pixel formats. Values deliberately mirror AVPixelFormat so that the library
- * can use them directly; every value is static_assert'ed against the real
- * FFmpeg headers inside the library. Callers must treat them as opaque.
+ * Pixel formats. These are fixed identifiers; the library maps them to the
+ * AVPixelFormat values of whatever FFmpeg build it was compiled against
+ * (AVPixelFormat enum values shift between FFmpeg releases). Callers must
+ * treat them as opaque. A format may be unknown to an older FFmpeg build,
+ * in which case library calls reject it gracefully. Decoded frames whose
+ * format has no entry here receive an opaque process-local id >= 1000.
  */
 typedef enum FBPixelFormat {
 	FB_PIX_FMT_NONE = -1,
@@ -85,6 +88,7 @@ typedef enum FBPixelFormat {
 	FB_PIX_FMT_YUVJ420P = 12,
 	FB_PIX_FMT_YUVJ422P = 13,
 	FB_PIX_FMT_YUVJ444P = 14,
+	FB_PIX_FMT_NV12 = 23,
 	FB_PIX_FMT_RGBA = 26,
 	FB_PIX_FMT_GRAY16LE = 30,
 	FB_PIX_FMT_YUV440P = 31,
@@ -98,6 +102,7 @@ typedef enum FBPixelFormat {
 	FB_PIX_FMT_YUV422P12LE = 127,
 	FB_PIX_FMT_YUV444P12LE = 131,
 	FB_PIX_FMT_YUVJ411P = 138,
+	FB_PIX_FMT_P010LE = 158,
 	FB_PIX_FMT_GRAYF32LE = 183,
 	FB_PIX_FMT_RGBAF16LE = 207,
 	FB_PIX_FMT_RGBF32LE = 218,
