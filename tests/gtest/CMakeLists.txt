@@ -75,6 +75,10 @@ add_executable(olive-gtest
   node_distort_test.cpp
   node_filter_keying_test.cpp
   node_math_transition_test.cpp
+  node_save_load_test.cpp
+  node_polygon_folder_test.cpp
+  footage_probe_test.cpp
+  render_tail_test.cpp
   timeline_marker_test.cpp
   undo_stack_test.cpp
   plugin_support_test.cpp

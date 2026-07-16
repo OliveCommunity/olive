@@ -99,7 +99,9 @@ bool AudioPlaybackCache::WritePartOfSampleBuffer(const SampleBuffer &samples,
 		int64_t segment_end = segment_start + kDefaultSegmentSizePerChannel;
 
 		int64_t offset_in_segment = current_cache_offset - segment_start;
-		int64_t write_len = segment_end - offset_in_segment;
+		// Never write past the end of the requested range
+		int64_t write_len = std::min(segment_end - current_cache_offset,
+									 end_cache_offset - current_cache_offset);
 		int64_t max_buffer_len = end_buffer_offset - current_buffer_offset;
 		int64_t zero_len = 0;
 
@@ -119,13 +121,17 @@ bool AudioPlaybackCache::WritePartOfSampleBuffer(const SampleBuffer &samples,
 			QFile f(filename);
 			if (f.open(QFile::ReadWrite)) {
 				f.seek(offset_in_segment);
-				f.write(reinterpret_cast<const char *>(samples.data(channel)) +
-							current_buffer_offset,
-						write_len);
+				if (write_len > 0) {
+					f.write(reinterpret_cast<const char *>(samples.data(channel)) +
+								current_buffer_offset,
+							write_len);
+				}
 
 				if (zero_len > 0) {
+					// NOTE: the length must be passed explicitly; write(const
+					// char*) would treat the zeros as an empty C string
 					QByteArray b(zero_len, 0);
-					f.write(b.constData());
+					f.write(b.constData(), b.size());
 				}
 
 				f.close();
@@ -134,7 +140,7 @@ bool AudioPlaybackCache::WritePartOfSampleBuffer(const SampleBuffer &samples,
 			}
 		}
 
-		current_cache_offset += write_len;
+		current_cache_offset += write_len + zero_len;
 		current_buffer_offset += write_len;
 	}
 
