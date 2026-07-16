@@ -331,7 +331,9 @@ elseif (APPLE)
     endif ()
 elseif (UNIX)
     # Set Linux-specific properties for application
-    install(TARGETS olive-editor RUNTIME DESTINATION bin)
+    # The render worker must ship next to oak-editor: RenderWorkerPool spawns
+    # it from QCoreApplication::applicationDirPath()
+    install(TARGETS olive-editor olive-render-worker RUNTIME DESTINATION bin)
 endif ()
 
 # Set link libraries
