@@ -71,6 +71,10 @@ add_executable(olive-gtest
   node_generator_test.cpp
   render_misc_test.cpp
   multicam_serializer_test.cpp
+  node_audio_test.cpp
+  node_distort_test.cpp
+  node_filter_keying_test.cpp
+  node_math_transition_test.cpp
   timeline_marker_test.cpp
   undo_stack_test.cpp
   plugin_support_test.cpp
