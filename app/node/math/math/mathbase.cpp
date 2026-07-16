@@ -279,10 +279,29 @@ void MathNodeBase::ValueInternal(
 	case kPairVecVec: {
 		// We convert all vectors to QVector4D just for simplicity and exploit the fact that kVec4 is higher than kVec2 in
 		// the enum to find the largest data type
+		QVector4D vec_a = RetrieveVector(val_a);
+		QVector4D vec_b = RetrieveVector(val_b);
+
+		if (operation == kOpDivide) {
+			// Lower-dimensional vectors are padded with zeros; dividing the
+			// padding components would be 0/0 (assert in Qt debug builds, NaN
+			// otherwise). Force those components to 0/1 so the result is a
+			// well-defined zero, which is discarded by PushVector anyway.
+			const NodeValue::Type max_type = qMax(val_a.type(), val_b.type());
+			if (max_type == NodeValue::kVec2) {
+				vec_a.setZ(0.0f);
+				vec_a.setW(0.0f);
+				vec_b.setZ(1.0f);
+				vec_b.setW(1.0f);
+			} else if (max_type == NodeValue::kVec3) {
+				vec_a.setW(0.0f);
+				vec_b.setW(1.0f);
+			}
+		}
+
 		PushVector(output, qMax(val_a.type(), val_b.type()),
-				   PerformAddSubMultDiv<QVector4D, QVector4D>(
-					   operation, RetrieveVector(val_a),
-					   RetrieveVector(val_b)));
+				   PerformAddSubMultDiv<QVector4D, QVector4D>(operation, vec_a,
+															  vec_b));
 		break;
 	}
 

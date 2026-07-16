@@ -47,6 +47,18 @@ add_executable(olive-gtest
   proxy_manager_test.cpp
   proxy_dialog_test.cpp
   lut_file_field_test.cpp
+  node_math_test.cpp
+  node_undo_test.cpp
+  track_test.cpp
+  render_diskcache_test.cpp
+  node_group_test.cpp
+  plugin_paraminstance_test.cpp
+  audio_waveform_test.cpp
+  node_value_extended_test.cpp
+  render_projectcopier_test.cpp
+  node_core_test.cpp
+  clip_traverser_test.cpp
+  audio_manager_viewer_test.cpp
   timeline_marker_test.cpp
   undo_stack_test.cpp
   plugin_support_test.cpp

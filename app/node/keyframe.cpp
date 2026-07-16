@@ -46,8 +46,14 @@ NodeKeyframe::NodeKeyframe(const rational &time, const QVariant &value,
 }
 
 NodeKeyframe::NodeKeyframe()
+	: type_(NodeKeyframe::kLinear)
+	, bezier_control_in_(QPointF(0.0, 0.0))
+	, bezier_control_out_(QPointF(0.0, 0.0))
+	, track_(-1)
+	, element_(-1)
+	, previous_(nullptr)
+	, next_(nullptr)
 {
-	type_ = NodeKeyframe::kLinear;
 }
 
 NodeKeyframe::~NodeKeyframe()
