@@ -368,6 +368,10 @@ MainMenu::MainMenu(MainWindow *parent)
 
 	tools_preferences_item_ = tools_menu_->AddItem(
 		"prefs", Core::instance(), &Core::DialogPreferencesShow, tr("Ctrl+,"));
+	// On macOS, Qt's text heuristic would relocate an English "Preferences"
+	// action to the application menu, making it disappear from the Tools menu.
+	// Pin it to this menu on all platforms.
+	tools_preferences_item_->setMenuRole(QAction::NoRole);
 
 #ifndef NDEBUG
 	tools_magic_item_ =
