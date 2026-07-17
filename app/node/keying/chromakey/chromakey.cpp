@@ -28,9 +28,9 @@ const QString ChromaKeyNode::kColorInput = QStringLiteral("color_key");
 const QString ChromaKeyNode::kMaskOnlyInput = QStringLiteral("mask_only_in");
 const QString ChromaKeyNode::kInvertInput = QStringLiteral("invert_in");
 const QString ChromaKeyNode::kUpperToleranceInput =
-	QStringLiteral("upper_tolerence_in");
+	QStringLiteral("upper_tolerance_in");
 const QString ChromaKeyNode::kLowerToleranceInput =
-	QStringLiteral("lower_tolerence_in");
+	QStringLiteral("lower_tolerance_in");
 const QString ChromaKeyNode::kGarbageMatteInput = QStringLiteral("garbage_in");
 const QString ChromaKeyNode::kCoreMatteInput = QStringLiteral("core_in");
 const QString ChromaKeyNode::kShadowsInput = QStringLiteral("shadows_in");
@@ -161,6 +161,19 @@ void ChromaKeyNode::Value(const NodeValueRow &value, const NodeGlobals &globals,
 void ChromaKeyNode::ConfigChanged()
 {
 	GenerateProcessor();
+}
+
+QString ChromaKeyNode::GetInputIDForLegacyID(const QString &id) const
+{
+	// Older project files used the misspelled "tolerence" input IDs
+	if (id == QStringLiteral("upper_tolerence_in")) {
+		return kUpperToleranceInput;
+	}
+	if (id == QStringLiteral("lower_tolerence_in")) {
+		return kLowerToleranceInput;
+	}
+
+	return super::GetInputIDForLegacyID(id);
 }
 
 } // namespace olive

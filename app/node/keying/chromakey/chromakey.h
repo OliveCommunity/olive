@@ -46,6 +46,10 @@ public:
 
 	virtual void ConfigChanged() override;
 
+	// Maps the misspelled tolerance input IDs from old project files onto the
+	// corrected ones
+	virtual QString GetInputIDForLegacyID(const QString &id) const override;
+
 	static const QString kColorInput;
 	static const QString kInvertInput;
 	static const QString kMaskOnlyInput;

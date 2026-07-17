@@ -61,7 +61,7 @@ QString SwirlDistortNode::Name() const
 
 QString SwirlDistortNode::id() const
 {
-	return QStringLiteral("org.oliveeditor.Olive.swirl");
+	return QStringLiteral("org.olivevideoeditor.Olive.swirl");
 }
 
 QVector<Node::CategoryID> SwirlDistortNode::Category() const

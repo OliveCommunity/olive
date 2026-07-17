@@ -1094,6 +1094,14 @@ public:
 	bool LoadInput(QXmlStreamReader *reader, SerializedData *data);
 	void SaveInput(QXmlStreamWriter *writer, const QString &id) const;
 
+	/**
+	 * @brief Maps an input ID read from an old project file to its current ID
+	 *
+	 * Nodes whose input IDs have been renamed override this so old projects
+	 * keep loading. The default implementation returns the ID unchanged.
+	 */
+	virtual QString GetInputIDForLegacyID(const QString &id) const;
+
 	bool LoadImmediate(QXmlStreamReader *reader, const QString &input,
 					   int element, SerializedData *data);
 	void SaveImmediate(QXmlStreamWriter *writer, const QString &input,

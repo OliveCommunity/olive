@@ -67,7 +67,7 @@ QString RippleDistortNode::Name() const
 
 QString RippleDistortNode::id() const
 {
-	return QStringLiteral("org.oliveeditor.Olive.ripple");
+	return QStringLiteral("org.olivevideoeditor.Olive.ripple");
 }
 
 QVector<Node::CategoryID> RippleDistortNode::Category() const

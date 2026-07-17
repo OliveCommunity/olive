@@ -16,6 +16,7 @@
 #include "node/generator/solid/solid.h"
 #include "node/generator/text/textv3.h"
 #include "node/keyframe.h"
+#include "node/keying/chromakey/chromakey.h"
 #include "node/math/math/math.h"
 #include "node/node.h"
 #include "node/project.h"
@@ -616,4 +617,41 @@ TEST_F(NodeSaveLoadTest, ConnectionsLinksAndPositionsResolveAfterProjectLoad)
 	EXPECT_FALSE(loaded_root->IsNodeExpandedInContext(loaded_dst));
 
 	olive::NodeFactory::Destroy();
+}
+
+TEST_F(NodeSaveLoadTest, LegacyMisspelledChromaKeyIDsAreMapped)
+{
+	auto *src = AddNode<olive::ChromaKeyNode>();
+	src->SetStandardValue(olive::ChromaKeyNode::kUpperToleranceInput, 42.0);
+	src->SetStandardValue(olive::ChromaKeyNode::kLowerToleranceInput, 7.0);
+
+	auto *math = AddNode<olive::MathNode>();
+	olive::Node::ConnectEdge(
+		math, olive::NodeInput(src, olive::ChromaKeyNode::kUpperToleranceInput));
+
+	QString xml = SaveNodeXml(src);
+
+	// Simulate an old project file written with the misspelled "tolerence" IDs
+	xml.replace(QStringLiteral("upper_tolerance_in"),
+				QStringLiteral("upper_tolerence_in"));
+	xml.replace(QStringLiteral("lower_tolerance_in"),
+				QStringLiteral("lower_tolerence_in"));
+
+	olive::ChromaKeyNode loaded;
+	olive::SerializedData data;
+	ASSERT_TRUE(LoadNodeXml(&loaded, xml, &data));
+
+	EXPECT_DOUBLE_EQ(
+		loaded.GetStandardValue(olive::ChromaKeyNode::kUpperToleranceInput)
+			.toDouble(),
+		42.0);
+	EXPECT_DOUBLE_EQ(
+		loaded.GetStandardValue(olive::ChromaKeyNode::kLowerToleranceInput)
+			.toDouble(),
+		7.0);
+
+	// Connections to the renamed inputs are remapped too
+	ASSERT_EQ(data.desired_connections.size(), 1);
+	EXPECT_EQ(data.desired_connections.first().input.input(),
+			  olive::ChromaKeyNode::kUpperToleranceInput);
 }

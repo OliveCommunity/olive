@@ -660,9 +660,8 @@ TEST(FlipDistortNode, MetadataIsCorrect)
 {
 	olive::FlipDistortNode node;
 	// NOTE: unlike most Olive nodes ("org.olivevideoeditor.Olive.*"), the
-	// flip/ripple/swirl/tile/wave nodes use the "org.oliveeditor.Olive.*"
 	// domain (inconsistent ID, documented here as a suspected bug)
-	EXPECT_EQ(node.id(), QStringLiteral("org.oliveeditor.Olive.flip"));
+	EXPECT_EQ(node.id(), QStringLiteral("org.olivevideoeditor.Olive.flip"));
 	EXPECT_EQ(node.Name(), QStringLiteral("Flip"));
 	EXPECT_FALSE(node.Description().isEmpty());
 	EXPECT_TRUE(node.Category().contains(olive::Node::kCategoryDistort));
@@ -1226,8 +1225,7 @@ TEST(MaskDistortNode, ValueWithFeatherNestsBlurJob)
 TEST(RippleDistortNode, MetadataIsCorrect)
 {
 	olive::RippleDistortNode node;
-	// NOTE: "org.oliveeditor.*" domain, inconsistent with most Olive nodes
-	EXPECT_EQ(node.id(), QStringLiteral("org.oliveeditor.Olive.ripple"));
+	EXPECT_EQ(node.id(), QStringLiteral("org.olivevideoeditor.Olive.ripple"));
 	EXPECT_EQ(node.Name(), QStringLiteral("Ripple"));
 	EXPECT_FALSE(node.Description().isEmpty());
 	EXPECT_TRUE(node.Category().contains(olive::Node::kCategoryDistort));
@@ -1359,8 +1357,7 @@ TEST(RippleDistortNode, ValueWithIntensityPushesShaderJob)
 TEST(SwirlDistortNode, MetadataIsCorrect)
 {
 	olive::SwirlDistortNode node;
-	// NOTE: "org.oliveeditor.*" domain, inconsistent with most Olive nodes
-	EXPECT_EQ(node.id(), QStringLiteral("org.oliveeditor.Olive.swirl"));
+	EXPECT_EQ(node.id(), QStringLiteral("org.olivevideoeditor.Olive.swirl"));
 	EXPECT_EQ(node.Name(), QStringLiteral("Swirl"));
 	EXPECT_EQ(node.Description(),
 			  QStringLiteral("Distorts an image by swirling it around a center point."));
@@ -1497,8 +1494,7 @@ TEST(SwirlDistortNode, ValueWithAngleAndRadiusPushesShaderJob)
 TEST(TileDistortNode, MetadataIsCorrect)
 {
 	olive::TileDistortNode node;
-	// NOTE: "org.oliveeditor.*" domain, inconsistent with most Olive nodes
-	EXPECT_EQ(node.id(), QStringLiteral("org.oliveeditor.Olive.tile"));
+	EXPECT_EQ(node.id(), QStringLiteral("org.olivevideoeditor.Olive.tile"));
 	EXPECT_EQ(node.Name(), QStringLiteral("Tile"));
 	EXPECT_FALSE(node.Description().isEmpty());
 	EXPECT_TRUE(node.Category().contains(olive::Node::kCategoryDistort));
@@ -1649,8 +1645,7 @@ TEST(TileDistortNode, ValueWithNonUnitScalePushesShaderJob)
 TEST(WaveDistortNode, MetadataIsCorrect)
 {
 	olive::WaveDistortNode node;
-	// NOTE: "org.oliveeditor.*" domain, inconsistent with most Olive nodes
-	EXPECT_EQ(node.id(), QStringLiteral("org.oliveeditor.Olive.wave"));
+	EXPECT_EQ(node.id(), QStringLiteral("org.olivevideoeditor.Olive.wave"));
 	EXPECT_EQ(node.Name(), QStringLiteral("Wave"));
 	EXPECT_FALSE(node.Description().isEmpty());
 	EXPECT_TRUE(node.Category().contains(olive::Node::kCategoryDistort));

@@ -50,7 +50,7 @@ QString FlipDistortNode::Name() const
 
 QString FlipDistortNode::id() const
 {
-	return QStringLiteral("org.oliveeditor.Olive.flip");
+	return QStringLiteral("org.olivevideoeditor.Olive.flip");
 }
 
 QVector<Node::CategoryID> FlipDistortNode::Category() const

@@ -69,7 +69,7 @@ QString TileDistortNode::Name() const
 
 QString TileDistortNode::id() const
 {
-	return QStringLiteral("org.oliveeditor.Olive.tile");
+	return QStringLiteral("org.olivevideoeditor.Olive.tile");
 }
 
 QVector<Node::CategoryID> TileDistortNode::Category() const

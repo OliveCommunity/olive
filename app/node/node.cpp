@@ -1351,6 +1351,10 @@ bool Node::Load(QXmlStreamReader *reader, SerializedData *data)
 						}
 					}
 
+					// Translate IDs renamed after older project files were
+					// written
+					param_id = GetInputIDForLegacyID(param_id);
+
 					QString output_node_id;
 
 					while (XMLReadNextStartElement(reader)) {
@@ -1573,6 +1577,11 @@ void Node::PostLoadEvent(SerializedData *data)
 	}
 }
 
+QString Node::GetInputIDForLegacyID(const QString &id) const
+{
+	return id;
+}
+
 bool Node::LoadInput(QXmlStreamReader *reader, SerializedData *data)
 {
 	if (dynamic_cast<NodeGroup *>(this)) {
@@ -1597,6 +1606,9 @@ bool Node::LoadInput(QXmlStreamReader *reader, SerializedData *data)
 		reader->skipCurrentElement();
 		return false;
 	}
+
+	// Translate IDs renamed after older project files were written
+	param_id = GetInputIDForLegacyID(param_id);
 
 	if (!this->HasInputWithID(param_id)) {
 		qWarning() << "Failed to load parameter that didn't exist:" << param_id;

@@ -587,3 +587,36 @@ TEST(NodeFactory, CreateMenuRestrictedToCategory)
 
 	olive::NodeFactory::Destroy();
 }
+
+TEST(NodeFactory, LegacyDistortIdsResolveToRenamedNodes)
+{
+	olive::NodeFactory::Initialize();
+
+	const QList<QPair<QString, QString>> legacy_ids = {
+		{ QStringLiteral("org.oliveeditor.Olive.flip"),
+		  QStringLiteral("org.olivevideoeditor.Olive.flip") },
+		{ QStringLiteral("org.oliveeditor.Olive.ripple"),
+		  QStringLiteral("org.olivevideoeditor.Olive.ripple") },
+		{ QStringLiteral("org.oliveeditor.Olive.swirl"),
+		  QStringLiteral("org.olivevideoeditor.Olive.swirl") },
+		{ QStringLiteral("org.oliveeditor.Olive.tile"),
+		  QStringLiteral("org.olivevideoeditor.Olive.tile") },
+		{ QStringLiteral("org.oliveeditor.Olive.wave"),
+		  QStringLiteral("org.olivevideoeditor.Olive.wave") },
+	};
+
+	for (const auto &pair : legacy_ids) {
+		std::unique_ptr<olive::Node> node(
+			olive::NodeFactory::CreateFromID(pair.first));
+		ASSERT_NE(node, nullptr) << pair.first.toStdString();
+		EXPECT_EQ(node->id(), pair.second);
+
+		// The current id resolves directly as well
+		std::unique_ptr<olive::Node> current(
+			olive::NodeFactory::CreateFromID(pair.second));
+		ASSERT_NE(current, nullptr) << pair.second.toStdString();
+		EXPECT_EQ(current->id(), pair.second);
+	}
+
+	olive::NodeFactory::Destroy();
+}

@@ -54,7 +54,7 @@ QString WaveDistortNode::Name() const
 
 QString WaveDistortNode::id() const
 {
-	return QStringLiteral("org.oliveeditor.Olive.wave");
+	return QStringLiteral("org.olivevideoeditor.Olive.wave");
 }
 
 QVector<Node::CategoryID> WaveDistortNode::Category() const

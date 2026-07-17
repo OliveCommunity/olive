@@ -22,6 +22,7 @@
 #include "factory.h"
 
 #include <QCoreApplication>
+#include <QHash>
 
 #include "audio/pan/pan.h"
 #include "audio/volume/volume.h"
@@ -224,8 +225,25 @@ QString NodeFactory::GetNameFromID(const QString &id)
 
 Node *NodeFactory::CreateFromID(const QString &id)
 {
+	QString resolved_id = id;
+
+	// Node IDs renamed after older project files were written
+	static const QHash<QString, QString> kLegacyIDs = {
+		{ QStringLiteral("org.oliveeditor.Olive.flip"),
+		  QStringLiteral("org.olivevideoeditor.Olive.flip") },
+		{ QStringLiteral("org.oliveeditor.Olive.ripple"),
+		  QStringLiteral("org.olivevideoeditor.Olive.ripple") },
+		{ QStringLiteral("org.oliveeditor.Olive.swirl"),
+		  QStringLiteral("org.olivevideoeditor.Olive.swirl") },
+		{ QStringLiteral("org.oliveeditor.Olive.tile"),
+		  QStringLiteral("org.olivevideoeditor.Olive.tile") },
+		{ QStringLiteral("org.oliveeditor.Olive.wave"),
+		  QStringLiteral("org.olivevideoeditor.Olive.wave") },
+	};
+	resolved_id = kLegacyIDs.value(id, id);
+
 	foreach (Node *n, library_) {
-		if (n->id() == id) {
+		if (n->id() == resolved_id) {
 			return n->copy();
 		}
 	}
