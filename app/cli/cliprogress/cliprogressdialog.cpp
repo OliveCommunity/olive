@@ -86,15 +86,20 @@ void CLIProgressDialog::Update()
 
 	std::cout << "] ";
 
-	if (progress_ < 100) {
+	// Pad the percentage so single/double/triple digit values all occupy the
+	// same width. Note progress_ is normalized (0.0-1.0), so the percentage
+	// must be computed before comparing against 10/100.
+	const int percent = qRound(progress_ * 100.0);
+
+	if (percent < 100) {
 		std::cout << " ";
 	}
 
-	if (progress_ < 10) {
+	if (percent < 10) {
 		std::cout << " ";
 	}
 
-	std::cout << qRound(progress_ * 100.0) << "% " << std::endl << std::flush;
+	std::cout << percent << "% " << std::endl << std::flush;
 }
 
 void CLIProgressDialog::SetProgress(double p)

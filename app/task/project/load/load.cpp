@@ -82,6 +82,7 @@ bool ProjectLoadTask::Run()
 		return true;
 	} else {
 		delete project_;
+		project_ = nullptr;
 		return false;
 	}
 }

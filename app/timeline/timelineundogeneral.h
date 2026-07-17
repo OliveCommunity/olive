@@ -25,6 +25,7 @@
 #include "config/config.h"
 #include "node/block/clip/clip.h"
 #include "node/block/gap/gap.h"
+#include "node/block/transition/transition.h"
 #include "node/output/track/track.h"
 #include "node/output/track/tracklist.h"
 #include "node/output/viewer/viewer.h"
@@ -201,6 +202,7 @@ class TransitionRemoveCommand : public UndoCommand {
 public:
 	TransitionRemoveCommand(TransitionBlock *block, bool remove_from_graph)
 		: block_(block)
+		, track_(block->track())
 		, remove_from_graph_(remove_from_graph)
 		, remove_command_(nullptr)
 	{

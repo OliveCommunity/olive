@@ -52,6 +52,7 @@ public:
 		, mode_(mode)
 		, deleted_adjacent_command_(nullptr)
 		, trim_is_a_roll_edit_(false)
+		, remove_block_from_graph_(true)
 	{
 	}
 

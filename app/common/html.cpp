@@ -356,9 +356,9 @@ QTextCharFormat Html::ReadCharFormat(const QXmlStreamAttributes &attributes)
 						QStringList rgba = vals_only.split(',');
 						if (rgba.size() == 4) {
 							QColor c;
-							c.setRedF(rgba.at(0).toDouble());
-							c.setGreenF(rgba.at(1).toDouble());
-							c.setBlueF(rgba.at(2).toDouble());
+							c.setRed(rgba.at(0).toInt()); // Writer emits 0-255 RGB (CSS rgba() convention)
+							c.setGreen(rgba.at(1).toInt());
+							c.setBlue(rgba.at(2).toInt());
 							c.setAlphaF(rgba.at(3).toDouble());
 							fmt.setForeground(c);
 						}
