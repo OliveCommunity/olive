@@ -32,12 +32,17 @@ TEST(UIIcons, CreateLoadsAllSizes)
 	EXPECT_FALSE(icon.pixmap(QSize(32, 32)).isNull());
 }
 
-TEST(UIIcons, CreateWithUnknownNameIsNull)
+TEST(UIIcons, CreateWithUnknownNameYieldsNoUsableIcon)
 {
 	QIcon icon = olive::icon::Create(QStringLiteral(":/style/olive-dark"),
 									 QStringLiteral("no-such-icon"));
-	EXPECT_TRUE(icon.isNull());
+
+	// QIcon::addFile() differs across Qt builds in whether entries for
+	// nonexistent files keep the icon "null". What matters is that no usable
+	// pixmap can be produced for an unknown icon name.
 	EXPECT_TRUE(icon.availableSizes().isEmpty());
+	EXPECT_TRUE(icon.pixmap(QSize(16, 16)).isNull());
+	EXPECT_TRUE(icon.pixmap(32, 32, QIcon::Disabled).isNull());
 }
 
 TEST(UIIcons, LoadAllPopulatesGlobalIcons)
