@@ -583,7 +583,11 @@ TEST(FFmpegBridgeDecoder, DecodeFirstFrame)
 	EXPECT_EQ(fb_frame_get_width(frame), 1920);
 	EXPECT_EQ(fb_frame_get_height(frame), 1080);
 	EXPECT_NE(fb_frame_get_format(frame), FB_PIX_FMT_NONE);
-	EXPECT_NE(fb_frame_get_data(frame, 0), nullptr);
+	// Software frames must have CPU-accessible data. Hardware frames live in
+	// device memory, so their data is checked after the transfer below.
+	if (!fb_frame_is_hw(frame)) {
+		EXPECT_NE(fb_frame_get_data(frame, 0), nullptr);
+	}
 
 	// Hardware frames live in device memory: transfer to a software frame
 	// before reading pixels
