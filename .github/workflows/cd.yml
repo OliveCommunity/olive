@@ -309,7 +309,7 @@ jobs:
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
             libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
             portaudio19-dev libgl1-mesa-dev libxkbcommon-dev \
-            libvulkan-dev vulkan-headers \
+            libvulkan-dev \
             wget fuse3 desktop-file-utils
 
       - name: Build
@@ -400,7 +400,7 @@ jobs:
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
             libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
             portaudio19-dev libgl1-mesa-dev libxkbcommon-dev \
-            libvulkan-dev vulkan-headers
+            libvulkan-dev
 
       - name: Build
         run: |
