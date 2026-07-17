@@ -48,10 +48,10 @@ void MainWindowLayoutInfo::toXml(QXmlStreamWriter *writer) const
 
 	writer->writeStartElement(QStringLiteral("viewers"));
 
-	foreach (Sequence *sequence, open_sequences_) {
+	foreach (ViewerOutput *viewer, open_viewers_) {
 		writer->writeTextElement(
 			QStringLiteral("viewer"),
-			QString::number(reinterpret_cast<quintptr>(sequence)));
+			QString::number(reinterpret_cast<quintptr>(viewer)));
 	}
 
 	writer->writeEndElement(); // viewers
@@ -124,6 +124,19 @@ MainWindowLayoutInfo::fromXml(QXmlStreamReader *reader,
 					Sequence *open_seq =
 						static_cast<Sequence *>(node_ptrs.value(item_id));
 					info.open_sequences_.push_back(open_seq);
+				} else {
+					reader->skipCurrentElement();
+				}
+			}
+
+		} else if (reader->name() == QStringLiteral("viewers")) {
+			while (XMLReadNextStartElement(reader)) {
+				if (reader->name() == QStringLiteral("viewer")) {
+					quintptr item_id = reader->readElementText().toULongLong();
+
+					ViewerOutput *open_viewer =
+						static_cast<ViewerOutput *>(node_ptrs.value(item_id));
+					info.open_viewers_.push_back(open_viewer);
 				} else {
 					reader->skipCurrentElement();
 				}

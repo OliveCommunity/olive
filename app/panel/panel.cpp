@@ -42,6 +42,11 @@ PanelWidget::PanelWidget(const QString &object_name)
 	, border_visible_(false)
 	, signal_instead_of_close_(false)
 {
+	// KDDockWidgets stores object_name as its uniqueName but does not set it
+	// as the QObject::objectName; PanelManager::GetPanelWithName() (and layout
+	// restore in MainWindow) look panels up by objectName, so mirror it here
+	setObjectName(object_name);
+
 	View<QWidget>::setFocusPolicy(Qt::ClickFocus);
 
 	connect(this, &PanelWidget::shown, this,

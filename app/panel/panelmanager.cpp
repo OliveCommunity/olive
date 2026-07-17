@@ -98,6 +98,7 @@ void PanelManager::CreateInstance()
 void PanelManager::DestroyInstance()
 {
 	delete instance_;
+	instance_ = nullptr;
 }
 
 PanelManager *PanelManager::instance()
