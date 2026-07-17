@@ -76,6 +76,13 @@ TimeRuler::TimeRuler(bool text_visible, bool cache_status_visible,
 	setAlignment(Qt::AlignLeft | Qt::AlignTop);
 }
 
+void TimeRuler::SetCenteredText(bool c)
+{
+	centered_text_ = c;
+
+	update();
+}
+
 void TimeRuler::SetPlaybackCache(PlaybackCache *cache)
 {
 	if (!show_cache_status_) {
