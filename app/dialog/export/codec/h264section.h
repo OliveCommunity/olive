@@ -40,12 +40,12 @@ public:
 	int GetValue() const;
 	void SetValue(int c);
 
-	static const int kDefaultH264CRF = 18;
-	static const int kDefaultH265CRF = 23;
+	static constexpr int kDefaultH264CRF = 18;
+	static constexpr int kDefaultH265CRF = 23;
 
 private:
-	static const int kMinimumCRF = 0;
-	static const int kMaximumCRF = 51;
+	static constexpr int kMinimumCRF = 0;
+	static constexpr int kMaximumCRF = 51;
 
 	QSlider *crf_slider_;
 };

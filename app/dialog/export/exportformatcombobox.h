@@ -71,7 +71,7 @@ private:
 
 	Menu *custom_menu_;
 
-	ExportFormat::Format current_;
+	ExportFormat::Format current_ = ExportFormat::kFormatCount;
 };
 
 }

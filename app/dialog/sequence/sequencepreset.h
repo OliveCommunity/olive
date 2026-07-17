@@ -70,7 +70,10 @@ public:
 			} else if (reader->name() == QStringLiteral("pixelaspect")) {
 				pixel_aspect_ = rational::fromString(
 					reader->readElementText().toStdString());
-			} else if (reader->name() == QStringLiteral("interlacing")) {
+			} else if (reader->name() == QStringLiteral("interlacing") ||
+					   reader->name() == QStringLiteral("interlacing_")) {
+				// "interlacing_" is the element name mistakenly written by
+				// older versions of Save(); accept it for backward compatibility
 				interlacing_ = static_cast<VideoParams::Interlacing>(
 					reader->readElementText().toInt());
 			} else if (reader->name() == QStringLiteral("samplerate")) {
@@ -103,7 +106,7 @@ public:
 		writer->writeTextElement(
 			QStringLiteral("pixelaspect"),
 			QString::fromStdString(pixel_aspect_.toString()));
-		writer->writeTextElement(QStringLiteral("interlacing_"),
+		writer->writeTextElement(QStringLiteral("interlacing"),
 								 QString::number(interlacing_));
 		writer->writeTextElement(QStringLiteral("samplerate"),
 								 QString::number(sample_rate_));

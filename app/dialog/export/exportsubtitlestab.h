@@ -44,7 +44,7 @@ public:
 	}
 	void SetSidecarEnabled(bool e)
 	{
-		sidecar_checkbox_->setEnabled(e);
+		sidecar_checkbox_->setChecked(e);
 	}
 
 	ExportFormat::Format GetSidecarFormat() const
