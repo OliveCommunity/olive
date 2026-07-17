@@ -2,6 +2,8 @@
 
 #include <OpenImageIO/imagebuf.h>
 
+#include <cstring>
+
 #include "codec/frame.h"
 #include "common/oiioutils.h"
 
