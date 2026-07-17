@@ -112,6 +112,19 @@ add_executable(olive-gtest
   timeline_coordinate_test.cpp
   timeline_waveform_sync_test.cpp
   timeline_workarea_test.cpp
+  common_html_test.cpp
+  common_oiioutils_test.cpp
+  ui_humanstrings_test.cpp
+  cli_test.cpp
+  timeline_undo_test.cpp
+  timeline_undo_general_test.cpp
+  task_project_test.cpp
+  task_cache_test.cpp
+  codec_oiio_test.cpp
+  codec_planarfiledevice_test.cpp
+  codec_ffmpegencoder_test.cpp
+  ui_icons_test.cpp
+  ui_style_test.cpp
 )
 
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
