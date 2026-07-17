@@ -268,10 +268,10 @@ private:
 	bool LoadV1(QXmlStreamReader *reader);
 
 	QString filename_;
-	ExportFormat::Format format_;
+	ExportFormat::Format format_ = ExportFormat::kFormatCount;
 
 	bool video_enabled_;
-	ExportCodec::Codec video_codec_;
+	ExportCodec::Codec video_codec_ = ExportCodec::kCodecCount;
 	VideoParams video_params_;
 	QHash<QString, QString> video_opts_;
 	int64_t video_bit_rate_;
@@ -284,14 +284,14 @@ private:
 	ColorTransform color_transform_;
 
 	bool audio_enabled_;
-	ExportCodec::Codec audio_codec_;
+	ExportCodec::Codec audio_codec_ = ExportCodec::kCodecCount;
 	AudioParams audio_params_;
 	int64_t audio_bit_rate_;
 
 	bool subtitles_enabled_;
 	bool subtitles_are_sidecar_;
-	ExportFormat::Format subtitle_sidecar_fmt_;
-	ExportCodec::Codec subtitles_codec_;
+	ExportFormat::Format subtitle_sidecar_fmt_ = ExportFormat::kFormatCount;
+	ExportCodec::Codec subtitles_codec_ = ExportCodec::kCodecCount;
 
 	rational export_length_;
 	VideoScalingMethod video_scaling_method_;
