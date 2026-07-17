@@ -128,6 +128,10 @@ add_executable(olive-gtest
   dialog_editing_test.cpp
   dialog_misc_test.cpp
   dialog_export_test.cpp
+  widget_slider_test.cpp
+  widget_layout_test.cpp
+  widget_combos_test.cpp
+  widget_misc_test.cpp
 )
 
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
