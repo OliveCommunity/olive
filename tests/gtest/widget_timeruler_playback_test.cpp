@@ -100,6 +100,20 @@ TEST(TimeRuler, SeekToScenePointWithoutTimebaseIsNoOp)
 	SUCCEED();
 }
 
+TEST(TimeRuler, SeekToScenePointWithoutViewerIsNoOp)
+{
+	EnsureAppSingletons();
+
+	// Timebase set but no viewer connected: previously dereferenced a null
+	// GetViewerNode() and crashed.
+	TimeRuler ruler;
+	ruler.SetTimebase(rational(1, 30));
+	ruler.SetScale(100.0);
+
+	ruler.SeekToScenePoint(150.0);
+	SUCCEED();
+}
+
 class PlaybackControlsTest : public ::testing::Test {
 protected:
 	void SetUp() override

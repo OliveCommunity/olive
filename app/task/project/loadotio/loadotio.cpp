@@ -94,6 +94,8 @@ bool LoadOTIOTask::Run()
 	} else {
 		// Unknown root, we don't know what to do with this
 		SetError(tr("Unknown OpenTimelineIO root element"));
+		delete project_;
+		project_ = nullptr;
 		return false;
 	}
 

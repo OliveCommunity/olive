@@ -344,6 +344,34 @@ TEST_F(CurveViewTest, SetKeyframeTrackColorAppliesToBrush)
 	EXPECT_EQ(connection->GetBrush().color(), QColor(Qt::blue));
 }
 
+TEST_F(CurveViewTest, SelectKeyframesOfInputSelectsOnlyRequestedTrack)
+{
+	class SelectionProbeCurveView : public CurveView {
+	public:
+		using KeyframeView::IsKeyframeSelected;
+	};
+
+	SelectionProbeCurveView view;
+	view.ConnectInput(ColorTrackRef(0));
+	view.ConnectInput(ColorTrackRef(1));
+
+	NodeKeyframe *key0 =
+		InsertKeyframe(solid_, SolidGenerator::kColorInput, rational(0), 0.5, 0);
+	NodeKeyframe *key1 =
+		InsertKeyframe(solid_, SolidGenerator::kColorInput, rational(1), 0.6, 1);
+
+	// Previously the reference was ignored and keyframes of every connected
+	// track got selected.
+	view.SelectKeyframesOfInput(ColorTrackRef(0));
+	EXPECT_TRUE(view.IsKeyframeSelected(key0));
+	EXPECT_FALSE(view.IsKeyframeSelected(key1));
+
+	// Selecting the other track replaces the selection (DeselectAll first)
+	view.SelectKeyframesOfInput(ColorTrackRef(1));
+	EXPECT_FALSE(view.IsKeyframeSelected(key0));
+	EXPECT_TRUE(view.IsKeyframeSelected(key1));
+}
+
 TEST(CurveWidget, VerticalScaleRoundTripsThroughView)
 {
 	ColorManager::SetUpDefaultConfig();

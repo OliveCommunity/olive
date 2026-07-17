@@ -712,3 +712,22 @@ TEST_F(RenderMiscAutoCacherTest, CacheProxyTaskCancelledClearsPendingJobs)
 
 	cacher.SetProject(nullptr);
 }
+
+// With an unknown/dummy graphics backend the RenderManager never creates the
+// GPU-side objects. Those pointers must be null (previously they were left
+// uninitialized, so callers such as ViewerWidget dereferenced garbage and
+// crashed).
+TEST(RenderManagerDummyBackend, GpuMembersAreNullRatherThanUninitialized)
+{
+	const QVariant previous =
+		olive::Config::Current()[QStringLiteral("GraphicsBackend")];
+	olive::Config::Current()[QStringLiteral("GraphicsBackend")] =
+		QStringLiteral("dummy");
+
+	olive::RenderManager::CreateInstance();
+
+	EXPECT_EQ(olive::RenderManager::instance()->GetCacher(), nullptr);
+
+	olive::RenderManager::DestroyInstance();
+	olive::Config::Current()[QStringLiteral("GraphicsBackend")] = previous;
+}

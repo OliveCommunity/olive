@@ -91,7 +91,7 @@ void CurveView::SelectKeyframesOfInput(const NodeKeyframeTrackReference &ref)
 {
 	DeselectAll();
 
-	foreach (KeyframeViewInputConnection *con, track_connections_) {
+	if (KeyframeViewInputConnection *con = track_connections_.value(ref)) {
 		foreach (NodeKeyframe *key, con->GetKeyframes()) {
 			SelectKeyframe(key);
 		}

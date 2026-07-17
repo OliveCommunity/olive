@@ -433,8 +433,9 @@ void SeekableWidget::SeekToScenePoint(qreal scene)
 		playhead_time += movement;
 	}
 
-	if (playhead_time != GetViewerNode()->GetPlayhead()) {
-		GetViewerNode()->SetPlayhead(playhead_time);
+	ViewerOutput *viewer = GetViewerNode();
+	if (viewer && playhead_time != viewer->GetPlayhead()) {
+		viewer->SetPlayhead(playhead_time);
 	}
 }
 

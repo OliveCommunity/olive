@@ -63,11 +63,11 @@ private:
 
 	bool cancelled_;
 
-	Renderer *context_;
+	Renderer *context_ = nullptr;
 
-	DecoderCache *decoder_cache_;
+	DecoderCache *decoder_cache_ = nullptr;
 
-	ShaderCache *shader_cache_;
+	ShaderCache *shader_cache_ = nullptr;
 };
 
 class RenderWorkerPool;
@@ -239,21 +239,21 @@ private:
 
 	static RenderManager *instance_;
 
-	Renderer *context_;
+	Renderer *context_ = nullptr;
 
 	Backend backend_;
 	Backend requested_backend_;
 
-	DecoderCache *decoder_cache_;
+	DecoderCache *decoder_cache_ = nullptr;
 
-	ShaderCache *shader_cache_;
+	ShaderCache *shader_cache_ = nullptr;
 
 	static constexpr auto kDecoderMaximumInactivityAggressive = 1000;
 	static constexpr auto kDecoderMaximumInactivity = 5000;
 
-	int aggressive_gc_;
+	int aggressive_gc_ = 0;
 
-	QTimer *decoder_clear_timer_;
+	QTimer *decoder_clear_timer_ = nullptr;
 
 	RenderThread *dry_run_thread_ = nullptr;
 	RenderThread *audio_thread_ = nullptr;
@@ -263,9 +263,9 @@ private:
 
 	std::list<RenderThread *> render_threads_;
 
-	PreviewAutoCacher *auto_cacher_;
+	PreviewAutoCacher *auto_cacher_ = nullptr;
 
-	RenderWorkerPool *worker_pool_;
+	RenderWorkerPool *worker_pool_ = nullptr;
 
 private slots:
 	void ClearOldDecoders();
