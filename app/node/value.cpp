@@ -261,6 +261,8 @@ QString NodeValue::GetPrettyDataTypeName(Type type)
 	case kInt:
 	case kCombo:
 		return QCoreApplication::translate("NodeValue", "Integer");
+	case kStrCombo:
+		return QCoreApplication::translate("NodeValue", "String Combo");
 	case kFloat:
 		return QCoreApplication::translate("NodeValue", "Float");
 	case kRational:
@@ -297,6 +299,8 @@ QString NodeValue::GetPrettyDataTypeName(Type type)
 		return QCoreApplication::translate("NodeValue", "Subtitle Parameters");
 	case kBinary:
 		return QCoreApplication::translate("NodeValue", "Binary");
+	case kPushButton:
+		return QCoreApplication::translate("NodeValue", "Push Button");
 
 	case kDataTypeCount:
 		break;
@@ -314,6 +318,8 @@ QString NodeValue::GetDataTypeName(Type type)
 		return QStringLiteral("int");
 	case kCombo:
 		return QStringLiteral("combo");
+	case kStrCombo:
+		return QStringLiteral("strcombo");
 	case kFloat:
 		return QStringLiteral("float");
 	case kRational:
@@ -350,6 +356,8 @@ QString NodeValue::GetDataTypeName(Type type)
 		return QStringLiteral("sparam");
 	case kBinary:
 		return QStringLiteral("binary");
+	case kPushButton:
+		return QStringLiteral("pushbutton");
 	case kDataTypeCount:
 		break;
 	}
@@ -399,7 +407,7 @@ bool NodeValueTable::Has(NodeValue::Type type) const
 	for (int i = values_.size() - 1; i >= 0; i--) {
 		const NodeValue &v = values_.at(i);
 
-		if (v.type() & type) {
+		if (v.type() == type) {
 			return true;
 		}
 	}
@@ -463,12 +471,9 @@ int NodeValueTable::GetValueIndex(const QVector<NodeValue::Type> &types,
 	for (int i = values_.size() - 1; i >= 0; i--) {
 		const NodeValue &v = values_.at(i);
 
-		if (types.contains(v.type())) {
+		if (types.contains(v.type()) && (tag.isEmpty() || tag == v.tag())) {
 			index = i;
-
-			if (tag.isEmpty() || tag == v.tag()) {
-				break;
-			}
+			break;
 		}
 	}
 

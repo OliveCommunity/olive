@@ -70,6 +70,7 @@ public:
 
 private:
 	rational GetRemappedTime(const rational &input) const;
+	rational GetRemappedOutputTime(const rational &input) const;
 };
 
 }

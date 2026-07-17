@@ -129,15 +129,12 @@ TEST_F(NodeGroupTest, AddInputPassthroughGeneratesUniqueIdForDuplicateInputId)
 	EXPECT_EQ(id_a, olive::MathNode::kParamAIn);
 
 	// A second passthrough of the same input ID (on a different node) must
-	// not collide with the first
-	math_b->Retranslate();
+	// not collide with the first; the suffix is derived from the input ID
 	const QString id_b = group->AddInputPassthrough(
 		olive::NodeInput(math_b, olive::MathNode::kParamAIn));
 
-	// NOTE: the suffix is derived from the input's display name rather than
-	// its ID, so a retranslated MathNode param becomes "Value_2"
 	EXPECT_NE(id_a, id_b);
-	EXPECT_EQ(id_b, QStringLiteral("Value_2"));
+	EXPECT_EQ(id_b, QStringLiteral("param_a_in_2"));
 
 	ASSERT_EQ(group->GetInputPassthroughs().size(), 2);
 	EXPECT_TRUE(group->HasInputWithID(id_b));

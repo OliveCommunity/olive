@@ -40,9 +40,6 @@ public:
 	QString SubCategory() const override;
 	QString Description() const override;
 
-	void AddPushButton();
-	void AddPage();
-
 	Node *copy() const override;
 	/**
    * @brief The main processing function

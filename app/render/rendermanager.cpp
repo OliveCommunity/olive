@@ -220,7 +220,12 @@ RenderTicketPtr RenderManager::RenderFrame(const RenderVideoParams &params)
 	}
 
 	if (worker_params.return_type == ReturnType::kNull) {
-		dry_run_thread_->AddTicket(ticket);
+		if (dry_run_thread_) {
+			dry_run_thread_->AddTicket(ticket);
+		} else {
+			// No render threads (e.g. dummy backend), finish without a result
+			ticket->Finish();
+		}
 	} else if (worker_pool_ &&
 			   worker_pool_->SubmitFrame(ticket, worker_params)) {
 		return ticket;
@@ -247,13 +252,16 @@ RenderTicketPtr RenderManager::RenderAudio(const RenderAudioParams &params)
 	ticket->setProperty("aparam", QVariant::fromValue(params.audio_params));
 	ticket->setProperty("mode", params.mode);
 
-	if (params.generate_waveforms) {
+	if (params.generate_waveforms && !waveform_threads_.empty()) {
 		size_t thread_index = last_waveform_thread_ % waveform_threads_.size();
 		RenderThread *thread = waveform_threads_[thread_index];
 		thread->AddTicket(ticket);
 		last_waveform_thread_++;
-	} else {
+	} else if (audio_thread_) {
 		audio_thread_->AddTicket(ticket);
+	} else {
+		// No render threads (e.g. dummy backend), finish without a result
+		ticket->Finish();
 	}
 
 	return ticket;
@@ -278,6 +286,11 @@ void RenderManager::SetAggressiveGarbageCollection(bool enabled)
 {
 	aggressive_gc_ += enabled ? 1 : -1;
 
+	// Clamp at zero so unbalanced disable calls can't drive the counter negative
+	if (aggressive_gc_ < 0) {
+		aggressive_gc_ = 0;
+	}
+
 	if (aggressive_gc_ > 0) {
 		decoder_clear_timer_->setInterval(kDecoderMaximumInactivityAggressive);
 	} else {
@@ -287,6 +300,11 @@ void RenderManager::SetAggressiveGarbageCollection(bool enabled)
 
 void RenderManager::ClearOldDecoders()
 {
+	if (!decoder_cache_) {
+		// No decoder cache exists on backends without a renderer (e.g. dummy)
+		return;
+	}
+
 	QMutexLocker locker(decoder_cache_->mutex());
 
 	qint64 min_age =

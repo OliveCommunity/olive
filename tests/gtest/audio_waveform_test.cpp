@@ -225,10 +225,9 @@ TEST(AudioVisualWaveform, OverwriteSamplesBeforeExistingDataPrependsZeros)
 	ASSERT_EQ(summary.size(), 1);
 	ExpectSummary(summary, 0, 0.75f, 0.75f);
 
-	// BUG: the data now spans [0, 3), but prepending via a negative TrimIn
-	// subtracts the negated length from length_ instead of keeping the
-	// absolute end time, so length() reports 1 instead of 3
-	EXPECT_EQ(waveform.length(), olive::core::rational(1));
+	// The data now spans [0, 3): prepending via a negative TrimIn keeps the
+	// absolute end time tracked by length()
+	EXPECT_EQ(waveform.length(), olive::core::rational(3));
 }
 
 // ---------------------------------------------------------------------------

@@ -184,21 +184,33 @@ TEST_F(NodeTimeTest, TimeOffsetZeroOffsetIsIdentity)
 			  range);
 }
 
-TEST_F(NodeTimeTest, TimeOffsetOutputAdjustmentPassesThrough)
+TEST_F(NodeTimeTest, TimeOffsetOutputAdjustmentAppliesInverseOffset)
 {
 	auto *offset = AddNode<olive::TimeOffsetNode>();
 	offset->SetStandardValue(olive::TimeOffsetNode::kTimeInput,
 							 QVariant::fromValue(olive::core::rational(3)));
 
-	// The inverse mapping is not implemented, so output time is never
-	// adjusted
+	// The inverse mapping subtracts the offset again: input-side times are
+	// mapped back to the output by the negated offset
+	EXPECT_EQ(offset->OutputTimeAdjustment(
+				  olive::TimeOffsetNode::kInputInput, -1,
+				  olive::TimeRange(olive::core::rational(2),
+								   olive::core::rational(4))),
+			  olive::TimeRange(olive::core::rational(-1),
+							   olive::core::rational(1)));
+
+	// Non-input inputs never adjust time
 	const olive::TimeRange range(olive::core::rational(2),
 								 olive::core::rational(4));
-	EXPECT_EQ(offset->OutputTimeAdjustment(olive::TimeOffsetNode::kInputInput,
-										   -1, range),
-			  range);
 	EXPECT_EQ(offset->OutputTimeAdjustment(olive::TimeOffsetNode::kTimeInput,
 										   -1, range),
+			  range);
+
+	// Round trip through both adjustments returns the original range
+	EXPECT_EQ(offset->OutputTimeAdjustment(
+				  olive::TimeOffsetNode::kInputInput, -1,
+				  offset->InputTimeAdjustment(
+					  olive::TimeOffsetNode::kInputInput, -1, range, true)),
 			  range);
 }
 

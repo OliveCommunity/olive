@@ -504,8 +504,16 @@ void PreviewAutoCacher::CancelAudioTasks(bool and_wait_for_them_to_finish)
 
 bool PreviewAutoCacher::IsRenderingCustomRange() const
 {
-	/*const VideoCacheData &d = video_cache_data_.value(viewer_node_);
-  return d.iterator.IsCustomRange() && d.iterator.HasNext();*/
+	if (!use_custom_range_) {
+		return false;
+	}
+
+	for (const VideoJob &job : pending_video_jobs_) {
+		if (job.range == custom_autocache_range_ && job.iterator.HasNext()) {
+			return true;
+		}
+	}
+
 	return false;
 }
 

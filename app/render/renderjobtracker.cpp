@@ -26,7 +26,7 @@ namespace olive
 
 void RenderJobTracker::insert(const TimeRange &range, JobTime job_time)
 {
-	// First remove any ranges with this (code copied
+	// First remove any ranges that overlap this one (code copied from TimeRangeList::remove)
 	TimeRangeList::util_remove(&jobs_, range);
 
 	// Now append the job

@@ -59,8 +59,8 @@ void MosaicFilterNode::Value(const NodeValueRow &value,
 							 NodeValueTable *table) const
 {
 	if (TexturePtr texture = value[kTextureInput].toTexture()) {
-		if (texture && value[kHorizInput].toInt() != texture->width() &&
-			value[kVertInput].toInt() != texture->height()) {
+		if (texture && (value[kHorizInput].toInt() != texture->width() ||
+						value[kVertInput].toInt() != texture->height())) {
 			ShaderJob job(value);
 
 			// Mipmapping makes this look weird, so we just use bilinear for finding the color of each block

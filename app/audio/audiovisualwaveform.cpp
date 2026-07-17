@@ -168,8 +168,9 @@ void AudioVisualWaveform::OverwriteSums(const AudioVisualWaveform &sums,
 		size_t our_start_index =
 			time_to_samples(dest - virtual_start_, rate_dbl);
 
-		// Get our source sample
-		size_t their_start_index = time_to_samples(offset, rate_dbl);
+		// Get our source sample, indexing with the SOURCE's channel count
+		size_t their_start_index = std::floor(offset.toDouble() * rate_dbl) *
+								   sums.channel_count();
 		if (their_start_index >= their_arr.size()) {
 			continue;
 		}
@@ -260,7 +261,11 @@ void AudioVisualWaveform::TrimIn(rational length)
 		}
 	}
 
-	length_ = qMax(rational(0), length_ - length);
+	if (!negative) {
+		length_ = qMax(rational(0), length_ - length);
+	}
+	// Prepending grows the data before the existing start, so the absolute
+	// end (which length_ tracks) is unchanged
 }
 
 AudioVisualWaveform AudioVisualWaveform::Mid(const rational &offset) const
@@ -321,14 +326,16 @@ AudioVisualWaveform::GetSummaryFromTime(const rational &start,
 
 	const Sample &mipmap_data = using_mipmap->second;
 
-	// Determine if the array actually has this sample
-	sample_length = qMin(sample_length, mipmap_data.size() - start_sample);
+	// Determine if the array actually has this sample. Compare in signed
+	// arithmetic so a start past the end of the data doesn't underflow.
+	qint64 available = qint64(mipmap_data.size()) - qint64(start_sample);
+	if (available > 0) {
+		sample_length = qMin(sample_length, size_t(available));
 
-	// Based on the above `min`, if sample length <= 0, that means start_sample >= the size of the
-	// array and nothing can be returned.
-	if (sample_length > 0) {
-		return ReSumSamples(&mipmap_data.data()[start_sample], sample_length,
-							channels_);
+		if (sample_length > 0) {
+			return ReSumSamples(&mipmap_data.data()[start_sample],
+								sample_length, channels_);
+		}
 	}
 
 	// Return null samples

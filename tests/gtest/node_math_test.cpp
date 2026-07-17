@@ -214,16 +214,14 @@ TEST(MathNode, RetranslateSetsInputNamesAndComboStrings)
 		math.GetInputProperty(olive::MathNode::kMethodIn,
 							  QStringLiteral("combo_str"))
 			.toStringList();
-	ASSERT_EQ(operations.size(), 6);
+	ASSERT_EQ(operations.size(), 5);
 	EXPECT_EQ(operations.at(0), QStringLiteral("Add"));
 	EXPECT_EQ(operations.at(1), QStringLiteral("Subtract"));
 	EXPECT_EQ(operations.at(2), QStringLiteral("Multiply"));
 	EXPECT_EQ(operations.at(3), QStringLiteral("Divide"));
-	// NOTE: kOpPower == 4, but the combo list has an empty string at index 4
-	// and "Power" at index 5, so the combo box is misaligned with the
-	// Operation enum (suspected bug, documented here).
-	EXPECT_TRUE(operations.at(4).isEmpty());
-	EXPECT_EQ(operations.at(5), QStringLiteral("Power"));
+	// The combo list matches the Operation enum exactly, so kOpPower == 4
+	// selects "Power"
+	EXPECT_EQ(operations.at(4), QStringLiteral("Power"));
 }
 
 TEST(MathNode, AddNumbers)
@@ -720,7 +718,7 @@ TEST(MathNode, AddVectorAndNumberIsNoOp)
 	EXPECT_FLOAT_EQ(result.toVec2().y(), 2.0f);
 }
 
-TEST(MathNode, NumberTimesVectorYieldsNoComputedValue)
+TEST(MathNode, NumberTimesVectorScalesVector)
 {
 	olive::ColorManager::SetUpDefaultConfig();
 	olive::Project project;
@@ -736,18 +734,17 @@ TEST(MathNode, NumberTimesVectorYieldsNoComputedValue)
 						 QVector4D(1.0f, 2.0f, 3.0f, 4.0f)));
 	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
 
-	// NOTE: With the number in parameter A and the vector in parameter B,
-	// ValueInternal() picks the *vector* as the number operand (the
-	// `val_a.type() & NodeValue::kMatrix` check is true for kFloat) and then
-	// pushes the result with type kFloat, which PushVector() drops. No
-	// computed value is produced, and nothing passes through into the output
-	// table either (suspected bug, documented here).
+	// With the number in parameter A and the vector in parameter B, the
+	// number is still picked as the number operand and the vector is scaled,
+	// mirroring MultiplyVectorByNumber with the operands swapped
 	olive::NodeValueTable table = GenerateMathTable(math);
-
-	EXPECT_EQ(table.Get(olive::NodeValue::kVec4).type(),
-			  olive::NodeValue::kNone);
-	EXPECT_EQ(table.Get(olive::NodeValue::kFloat).type(),
-			  olive::NodeValue::kNone);
+	olive::NodeValue result = table.Get(olive::NodeValue::kVec4);
+	ASSERT_EQ(result.type(), olive::NodeValue::kVec4);
+	const QVector4D vec = result.toVec4();
+	EXPECT_FLOAT_EQ(vec.x(), 2.0f);
+	EXPECT_FLOAT_EQ(vec.y(), 4.0f);
+	EXPECT_FLOAT_EQ(vec.z(), 6.0f);
+	EXPECT_FLOAT_EQ(vec.w(), 8.0f);
 }
 
 TEST(MathNode, MultiplyMatrixByVector)

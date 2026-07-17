@@ -37,9 +37,16 @@ DynamicRenderer::~DynamicRenderer()
 // system libGL/libvulkan loader is never mistaken for an Oak render backend.
 QString DynamicRenderer::LibraryFilename() const
 {
-	const QString base = backend_ == QStringLiteral("vulkan") ?
-							 QStringLiteral("oakvulkan") :
-							 QStringLiteral("oakgl");
+	QString base;
+	if (backend_ == QStringLiteral("opengl")) {
+		base = QStringLiteral("oakgl");
+	} else if (backend_ == QStringLiteral("vulkan")) {
+		base = QStringLiteral("oakvulkan");
+	} else {
+		// Unknown backend: use the name verbatim so the load fails and the
+		// caller's OpenGL fallback engages
+		base = backend_;
+	}
 #if defined(Q_OS_WIN)
 	const QString filename = base + QStringLiteral(".dll");
 #elif defined(Q_OS_MAC)

@@ -836,6 +836,28 @@ TEST(MosaicFilterNode, ValueWithMatchingResolutionPassesTextureThrough)
 	EXPECT_FALSE(out->IsJob());
 }
 
+TEST(MosaicFilterNode, ValueWithSingleAxisMatchingResolutionRunsJob)
+{
+	olive::MosaicFilterNode node;
+
+	// Only one axis matching the texture size still changes the image, so
+	// the effect must run; passthrough requires BOTH axes to match.
+	olive::TexturePtr tex = MakeDummyTexture();
+	olive::NodeValueRow row =
+		MakeTextureRow(olive::MosaicFilterNode::kTextureInput, tex);
+	row.insert(olive::MosaicFilterNode::kHorizInput, FloatValue(16.0));
+	row.insert(olive::MosaicFilterNode::kVertInput, FloatValue(8.0));
+
+	olive::NodeValueTable table;
+	node.Value(row, olive::NodeGlobals(), &table);
+
+	ASSERT_EQ(table.Count(), 1);
+	const olive::TexturePtr out =
+		table.Get(olive::NodeValue::kTexture).toTexture();
+	ASSERT_TRUE(out);
+	EXPECT_TRUE(out->IsJob());
+}
+
 TEST(MosaicFilterNode, ValuePushesJobWithLinearInterpolation)
 {
 	olive::MosaicFilterNode node;
@@ -1444,8 +1466,6 @@ TEST(DespillNode, ShaderCodeLoadsFragmentResource)
 
 TEST(DespillNode, ValueInProjectWithoutTexturePushesNothing)
 {
-	// DespillNode::Value() unconditionally queries the project's color
-	// manager, so it can only be exercised with the node in a project.
 	olive::ColorManager::SetUpDefaultConfig();
 
 	olive::Project project;
@@ -1500,4 +1520,35 @@ TEST(DespillNode, ValueInProjectPushesJobWithLumaCoefficients)
 
 	EXPECT_EQ(values.value(olive::DespillNode::kTextureInput).toTexture(),
 			  tex);
+}
+
+TEST(DespillNode, ValueWithoutProjectUsesRec709LumaFallback)
+{
+	// A graph-less node has no project color manager; it must fall back to
+	// Rec. 709 luma coefficients instead of crashing.
+	olive::DespillNode node;
+
+	olive::TexturePtr tex = MakeDummyTexture();
+	olive::NodeValueRow row =
+		MakeTextureRow(olive::DespillNode::kTextureInput, tex);
+
+	olive::NodeValueTable table;
+	node.Value(row, olive::NodeGlobals(), &table);
+
+	ASSERT_EQ(table.Count(), 1);
+	const olive::TexturePtr out =
+		table.Get(olive::NodeValue::kTexture).toTexture();
+	ASSERT_TRUE(out);
+	ASSERT_TRUE(out->IsJob());
+
+	auto *job = static_cast<olive::ShaderJob *>(out->job());
+	ASSERT_NE(job, nullptr);
+
+	const olive::NodeValueRow &values = job->GetValues();
+	ASSERT_TRUE(values.contains(QStringLiteral("luma_coeffs")));
+	const QVector3D coeffs =
+		values.value(QStringLiteral("luma_coeffs")).toVec3();
+	EXPECT_NEAR(coeffs.x(), 0.2126f, 0.0001f);
+	EXPECT_NEAR(coeffs.y(), 0.7152f, 0.0001f);
+	EXPECT_NEAR(coeffs.z(), 0.0722f, 0.0001f);
 }

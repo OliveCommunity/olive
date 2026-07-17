@@ -566,6 +566,38 @@ TEST(PluginClipInstance, RegionOfDefinitionPerTimeOverride)
 	EXPECT_DOUBLE_EQ(at_four.y2, 80.0);
 }
 
+TEST(PluginClipInstance, RegionOfDefinitionFallsBackToStoredDefault)
+{
+	OFX::Host::ImageEffect::ClipDescriptor desc(kOfxImageEffectOutputClipName);
+
+	// Zero-sized params yield no usable params-derived region, so the stored
+	// default is used.
+	olive::VideoParams empty_params =
+		MakeParams(0, 0, olive::core::PixelFormat::U8, 4, false);
+	olive::plugin::OliveClipInstance empty_clip(nullptr, desc, empty_params);
+
+	OfxRectD stored = { 2.0, 4.0, 202.0, 104.0 };
+	empty_clip.setDefaultRegionOfDefinition(stored);
+
+	OfxRectD fallback = empty_clip.getRegionOfDefinition(0.0);
+	EXPECT_DOUBLE_EQ(fallback.x1, 2.0);
+	EXPECT_DOUBLE_EQ(fallback.y1, 4.0);
+	EXPECT_DOUBLE_EQ(fallback.x2, 202.0);
+	EXPECT_DOUBLE_EQ(fallback.y2, 104.0);
+
+	// A params-derived region still takes precedence over the stored default.
+	olive::VideoParams params =
+		MakeParams(100, 80, olive::core::PixelFormat::U8, 4, false);
+	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
+	clip.setDefaultRegionOfDefinition(stored);
+
+	OfxRectD derived = clip.getRegionOfDefinition(0.0);
+	EXPECT_DOUBLE_EQ(derived.x1, 0.0);
+	EXPECT_DOUBLE_EQ(derived.y1, 0.0);
+	EXPECT_DOUBLE_EQ(derived.x2, 100.0);
+	EXPECT_DOUBLE_EQ(derived.y2, 80.0);
+}
+
 TEST(PluginClipInstance, OutputImageBoundsFollowRegionOfDefinition)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc(kOfxImageEffectOutputClipName);
@@ -787,11 +819,11 @@ TEST(PluginClipInstance, PruneImagesCacheEvictsOldestInputImages)
 	}
 	clip.pruneImagesCache();
 
-	// The oldest entry (time 1) was evicted and is recreated on demand,
-	// while later entries remain cached.
+	// The oldest entry (time 1) was evicted; its on-demand recreation is
+	// cached again, while later entries remained cached throughout.
 	OFX::Host::ImageEffect::Image *evicted_a = clip.getImage(1.0, nullptr);
 	OFX::Host::ImageEffect::Image *evicted_b = clip.getImage(1.0, nullptr);
-	EXPECT_NE(evicted_a, evicted_b);
+	EXPECT_EQ(evicted_a, evicted_b);
 
 	OFX::Host::ImageEffect::Image *cached_a = clip.getImage(2.0, nullptr);
 	OFX::Host::ImageEffect::Image *cached_b = clip.getImage(2.0, nullptr);

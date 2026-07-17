@@ -120,9 +120,11 @@ ProjectSerializer::Result ProjectSerializer::Load(Project *project,
 				if (attr.name() ==
 					QStringLiteral("version")) { // 230220+ projects
 					version = attr.value().toUInt();
-				} else if (reader->name() ==
+				} else if (attr.name() ==
 						   QStringLiteral("url")) { // 230220+ projects
-					project->SetSavedURL(attr.value().toString());
+					if (project) {
+						project->SetSavedURL(attr.value().toString());
+					}
 				}
 			}
 

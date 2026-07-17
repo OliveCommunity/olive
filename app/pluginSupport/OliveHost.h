@@ -44,7 +44,7 @@ struct HostPersistentMessage {
 void loadPlugins(QString path);
 class OliveHost : public OFX::Host::ImageEffect::Host {
 public:
-	OliveHost() = default;
+	OliveHost();
 	~OliveHost() override;
 	void destroyInstance(OFX::Host::ImageEffect::Instance *instance);
 

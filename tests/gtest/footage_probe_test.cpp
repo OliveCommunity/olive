@@ -439,9 +439,8 @@ TEST_F(FootageProbeTest, CheckFootageOnlyRespondsWithActiveWindow)
 	EXPECT_TRUE(footage->IsValid());
 
 	// With an active window, CheckFootage notices the missing file and
-	// re-probes. The re-probe resets the timestamp but, because Reprobe()
-	// never clears existing state for a missing file, the (now stale) probe
-	// data is kept until the filename itself changes.
+	// re-probes. The re-probe clears the existing state first, and since the
+	// file no longer exists, the footage is left invalid with no streams.
 	{
 		QWidget window;
 		window.show();
@@ -455,8 +454,8 @@ TEST_F(FootageProbeTest, CheckFootageOnlyRespondsWithActiveWindow)
 	ASSERT_EQ(qApp->activeWindow(), nullptr);
 
 	EXPECT_EQ(footage->timestamp(), 0);
-	EXPECT_TRUE(footage->IsValid());
-	EXPECT_EQ(footage->GetVideoStreamCount(), 1);
+	EXPECT_FALSE(footage->IsValid());
+	EXPECT_EQ(footage->GetVideoStreamCount(), 0);
 }
 
 TEST_F(FootageProbeTest, ProbingExistingButInvalidMediaStaysInvalid)
@@ -480,7 +479,7 @@ TEST_F(FootageProbeTest, ProbingExistingButInvalidMediaStaysInvalid)
 	EXPECT_EQ(footage->GetAudioStreamCount(), 0);
 	EXPECT_EQ(footage->GetSubtitleStreamCount(), 0);
 
-	// Note: Reprobe caches even this failed probe result, so future reprobes
-	// of the same path reload the invalid description instead of re-probing
-	EXPECT_TRUE(QFileInfo::exists(MetadataCacheFileFor(path)));
+	// A failed probe is not written to the metadata cache, so future reprobes
+	// of the same path probe again instead of reloading an invalid description
+	EXPECT_FALSE(QFileInfo::exists(MetadataCacheFileFor(path)));
 }

@@ -109,7 +109,7 @@ void NodeSetPositionAndDependenciesRecursivelyCommand::move_recursively(
 {
 	Node::Position pos = context_->GetNodePositionDataInContext(node);
 	pos += diff;
-	commands_.append(new NodeSetPositionCommand(node_, context_, pos));
+	commands_.append(new NodeSetPositionCommand(node, context_, pos));
 
 	for (auto it = node->input_connections().cbegin();
 		 it != node->input_connections().cend(); it++) {
@@ -610,6 +610,10 @@ void NodeImmediateRemoveAllKeyframesCommand::prepare()
 	for (const NodeKeyframeTrack &track : immediate_->keyframe_tracks()) {
 		keys_.append(track);
 	}
+
+	if (!keys_.isEmpty()) {
+		node_ = keys_.first()->parent();
+	}
 }
 
 void NodeImmediateRemoveAllKeyframesCommand::redo()
@@ -622,7 +626,7 @@ void NodeImmediateRemoveAllKeyframesCommand::redo()
 void NodeImmediateRemoveAllKeyframesCommand::undo()
 {
 	for (auto it = keys_.crbegin(); it != keys_.crend(); it++) {
-		(*it)->setParent(&memory_manager_);
+		(*it)->setParent(node_);
 	}
 }
 

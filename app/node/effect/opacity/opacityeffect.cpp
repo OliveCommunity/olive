@@ -32,6 +32,7 @@ const QString OpacityEffect::kValueInput = QStringLiteral("opacity_in");
 OpacityEffect::OpacityEffect()
 {
 	MathNode *math = new MathNode();
+	math->setParent(this);
 
 	math->SetOperation(MathNode::kOpMultiply);
 

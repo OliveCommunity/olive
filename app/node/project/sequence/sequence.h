@@ -70,6 +70,9 @@ public:
 
 	Track *GetTrackFromReference(const Track::Reference &track_ref) const
 	{
+		if (track_ref.type() < 0 || track_ref.type() >= track_lists_.size()) {
+			return nullptr;
+		}
 		return track_lists_.at(track_ref.type())->GetTrackAt(track_ref.index());
 	}
 

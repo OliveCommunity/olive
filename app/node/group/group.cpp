@@ -262,7 +262,7 @@ QString NodeGroup::AddInputPassthrough(const NodeInput &input,
 		id = input.input();
 		int i = 2;
 		while (HasInputWithID(id)) {
-			id = QStringLiteral("%1_%2").arg(input.name(), QString::number(i));
+			id = QStringLiteral("%1_%2").arg(input.input(), QString::number(i));
 			i++;
 		}
 	} else {
@@ -334,6 +334,9 @@ QString NodeGroup::GetInputName(const QString &id) const
 
 	// Call GetInputName of passed through node, which may be another group
 	NodeInput pass = GetInputFromID(id);
+	if (!pass.IsValid()) {
+		return QString();
+	}
 	return pass.node()->GetInputName(pass.input());
 }
 

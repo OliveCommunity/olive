@@ -323,11 +323,14 @@ void MathNodeBase::ValueInternal(
 		QVector4D vec = (NodeValue::type_is_vector(val_a.type()) ?
 							 RetrieveVector(val_a) :
 							 RetrieveVector(val_b));
-		float number =
-			RetrieveNumber((val_a.type() & NodeValue::kMatrix) ? val_b : val_a);
+		float number = RetrieveNumber(NodeValue::type_is_vector(val_a.type()) ?
+										  val_b :
+										  val_a);
 
 		// Only multiply and divide are valid operations
-		PushVector(output, val_a.type(),
+		PushVector(output,
+				   NodeValue::type_is_vector(val_a.type()) ? val_a.type() :
+															 val_b.type(),
 				   PerformMultDiv<QVector4D, float>(operation, vec, number));
 		break;
 	}

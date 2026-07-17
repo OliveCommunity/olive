@@ -61,7 +61,7 @@ QVector<Node::CategoryID> DespillNode::Category() const
 
 QString DespillNode::Description() const
 {
-	return tr("Selection of simple depsill operations");
+	return tr("Selection of simple despill operations");
 }
 
 void DespillNode::Retranslate()
@@ -95,7 +95,13 @@ void DespillNode::Value(const NodeValueRow &value, const NodeGlobals &globals,
 
 	// Set luma coefficients
 	double luma_coeffs[3] = { 0.0f, 0.0f, 0.0f };
-	project()->color_manager()->GetDefaultLumaCoefs(luma_coeffs);
+	if (project() && project()->color_manager()) {
+		project()->color_manager()->GetDefaultLumaCoefs(luma_coeffs);
+	} else {
+		luma_coeffs[0] = 0.2126;
+		luma_coeffs[1] = 0.7152;
+		luma_coeffs[2] = 0.0722;
+	}
 	job.Insert(
 		QStringLiteral("luma_coeffs"),
 		NodeValue(NodeValue::kVec3,

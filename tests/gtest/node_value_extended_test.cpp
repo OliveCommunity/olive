@@ -416,14 +416,14 @@ TEST(NodeValueExtended, PrettyDataTypeNames)
 				  olive::NodeValue::kDataTypeCount),
 			  QStringLiteral("Unknown"));
 
-	// NOTE: kStrCombo and kPushButton have no dedicated pretty name and fall
-	// through to "Unknown" (naming gap, documented here).
+	// kStrCombo and kPushButton have dedicated pretty names like every other
+	// type
 	EXPECT_EQ(
 		olive::NodeValue::GetPrettyDataTypeName(olive::NodeValue::kStrCombo),
-		QStringLiteral("Unknown"));
+		QStringLiteral("String Combo"));
 	EXPECT_EQ(
 		olive::NodeValue::GetPrettyDataTypeName(olive::NodeValue::kPushButton),
-		QStringLiteral("Unknown"));
+		QStringLiteral("Push Button"));
 }
 
 TEST(NodeValueExtended, TypeClassificationRemainingCases)
@@ -463,14 +463,12 @@ TEST(NodeValueExtended, TypeClassificationRemainingCases)
 	EXPECT_FALSE(olive::NodeValue::type_is_buffer(olive::NodeValue::kFloat));
 }
 
-TEST(NodeValueExtended, UnnamedTypesHaveEmptyDataTypeNames)
+TEST(NodeValueExtended, AllRealTypesHaveDataTypeNames)
 {
-	EXPECT_TRUE(
-		olive::NodeValue::GetDataTypeName(olive::NodeValue::kStrCombo)
-			.isEmpty());
-	EXPECT_TRUE(
-		olive::NodeValue::GetDataTypeName(olive::NodeValue::kPushButton)
-			.isEmpty());
+	EXPECT_EQ(olive::NodeValue::GetDataTypeName(olive::NodeValue::kStrCombo),
+			  QStringLiteral("strcombo"));
+	EXPECT_EQ(olive::NodeValue::GetDataTypeName(olive::NodeValue::kPushButton),
+			  QStringLiteral("pushbutton"));
 	EXPECT_TRUE(
 		olive::NodeValue::GetDataTypeName(olive::NodeValue::kDataTypeCount)
 			.isEmpty());
@@ -479,11 +477,17 @@ TEST(NodeValueExtended, UnnamedTypesHaveEmptyDataTypeNames)
 				  QStringLiteral("not-a-type")),
 			  olive::NodeValue::kNone);
 
-	// NOTE: an empty name matches the first type with an empty serialized
-	// name (kStrCombo) rather than producing kNone (suspected bug, documented
-	// here).
+	// An empty name matches no type
 	EXPECT_EQ(olive::NodeValue::GetDataTypeFromName(QString()),
-			  olive::NodeValue::kStrCombo);
+			  olive::NodeValue::kNone);
+
+	// The newly named types round-trip
+	EXPECT_EQ(
+		olive::NodeValue::GetDataTypeFromName(QStringLiteral("strcombo")),
+		olive::NodeValue::kStrCombo);
+	EXPECT_EQ(
+		olive::NodeValue::GetDataTypeFromName(QStringLiteral("pushbutton")),
+		olive::NodeValue::kPushButton);
 }
 
 TEST(NodeValueExtended, ArrayValuesRoundTrip)
@@ -536,13 +540,14 @@ TEST(NodeValueTableExtended, GetWithTagSelectsMatchingValue)
 								  QStringLiteral("b")),
 			  1);
 
-	// NOTE: an unknown tag does not yield an empty value; the search keeps
-	// scanning and returns the oldest value of the type instead (suspected
-	// bug, documented here).
-	EXPECT_DOUBLE_EQ(
-		table.Get(olive::NodeValue::kFloat, QStringLiteral("missing"))
-			.toDouble(),
-		1.0);
+	// An unknown tag yields an empty value; the fallback to the oldest value
+	// of the type only applies when no tag is requested
+	olive::NodeValue missing =
+		table.Get(olive::NodeValue::kFloat, QStringLiteral("missing"));
+	EXPECT_EQ(missing.type(), olive::NodeValue::kNone);
+	EXPECT_EQ(table.GetValueIndex({ olive::NodeValue::kFloat },
+								  QStringLiteral("missing")),
+			  -1);
 }
 
 TEST(NodeValueTableExtended, GetWithMultipleTypes)
@@ -603,12 +608,13 @@ TEST(NodeValueTableExtended, TakeWithTagAndMissingType)
 	EXPECT_EQ(absent.type(), olive::NodeValue::kNone);
 	EXPECT_EQ(table.Count(), 1);
 
-	// NOTE: like Get(), an unmatched tag falls back to the oldest value of
-	// the type (suspected bug, documented here).
+	// Taking with an unmatched tag returns an empty value and leaves the table
+	// unchanged; the oldest value of the type is not used as a fallback
 	olive::NodeValue fallback =
 		table.Take(olive::NodeValue::kText, QStringLiteral("missing"));
-	EXPECT_EQ(fallback.toString(), QStringLiteral("b"));
-	EXPECT_TRUE(table.isEmpty());
+	EXPECT_EQ(fallback.type(), olive::NodeValue::kNone);
+	ASSERT_EQ(table.Count(), 1);
+	EXPECT_EQ(table.at(0).toString(), QStringLiteral("b"));
 }
 
 TEST(NodeValueTableExtended, TakeWithMultipleTypes)
@@ -657,24 +663,21 @@ TEST(NodeValueTableExtended, RemoveDeletesNewestEqualValue)
 	EXPECT_EQ(table.Count(), 2);
 }
 
-TEST(NodeValueTableExtended, HasUsesBitmaskComparison)
+TEST(NodeValueTableExtended, HasUsesExactTypeMatch)
 {
 	olive::NodeValueTable table;
 	table.Push(olive::NodeValue(olive::NodeValue::kFloat, 1.0));
 	EXPECT_TRUE(table.Has(olive::NodeValue::kFloat));
 	EXPECT_FALSE(table.Has(olive::NodeValue::kInt));
 
-	// NOTE: Has() compares types with a bitwise AND even though Type is a
-	// sequential enum, so unrelated types alias: kFloat (2) also satisfies
-	// kRational (3) and kText (7) because 2 & 3 != 0 and 2 & 7 != 0
-	// (suspected bug, documented here).
-	EXPECT_TRUE(table.Has(olive::NodeValue::kRational));
-	EXPECT_TRUE(table.Has(olive::NodeValue::kText));
+	// Type is a sequential enum, so no other type aliases kFloat
+	EXPECT_FALSE(table.Has(olive::NodeValue::kRational));
+	EXPECT_FALSE(table.Has(olive::NodeValue::kText));
 
-	// kNone is zero, so a table holding a kNone value never reports it
+	// A table holding a kNone value reports it too
 	olive::NodeValueTable none_table;
 	none_table.Push(olive::NodeValue());
-	EXPECT_FALSE(none_table.Has(olive::NodeValue::kNone));
+	EXPECT_TRUE(none_table.Has(olive::NodeValue::kNone));
 }
 
 TEST(NodeValueTableExtended, PushTableAppendsAllValues)

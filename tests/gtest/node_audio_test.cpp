@@ -364,7 +364,7 @@ TEST(PanNode, NoSamplesInputProducesNoOutput)
 			  olive::NodeValue::kNone);
 }
 
-TEST(PanNode, KeyframedPanProducesSampleJobButLosesPanValue)
+TEST(PanNode, KeyframedPanProducesSampleJobWithPanValue)
 {
 	olive::ColorManager::SetUpDefaultConfig();
 	olive::Project project;
@@ -383,22 +383,22 @@ TEST(PanNode, KeyframedPanProducesSampleJobButLosesPanValue)
 	ASSERT_EQ(result.type(), olive::NodeValue::kSamples);
 	ASSERT_TRUE(result.canConvert<olive::SampleJob>());
 
-	// NOTE: Unlike VolumeNode, PanNode::Value() never inserts the panning
-	// value into the SampleJob, so the job's value map is empty and
-	// ProcessSamples() always sees a pan of 0 (a plain copy). The production
-	// RenderProcessor only re-evaluates inputs present in the job, so
-	// keyframed pan is silently ignored (suspected bug, documented here).
+	// Like VolumeNode, PanNode::Value() inserts the panning value into the
+	// SampleJob so ProcessSamples() sees the keyframed pan
 	const olive::SampleJob job = result.value<olive::SampleJob>();
-	EXPECT_FALSE(job.GetValues().contains(olive::PanNode::kPanningInput));
+	ASSERT_TRUE(job.GetValues().contains(olive::PanNode::kPanningInput));
+	EXPECT_DOUBLE_EQ(job.GetValues().value(olive::PanNode::kPanningInput).toDouble(),
+					 1.0);
 
 	SampleResolvingTraverser resolver;
 	resolver.Resolve(result);
 
+	// Pan 1.0 (full right) silences the left channel and leaves the right
 	const olive::core::SampleBuffer out = result.toSamples();
 	ASSERT_TRUE(out.is_allocated());
 	ASSERT_EQ(out.sample_count(), 4u);
 	for (int i = 0; i < 4; i++) {
-		EXPECT_FLOAT_EQ(out.data(0)[i], float(i + 1));
+		EXPECT_FLOAT_EQ(out.data(0)[i], 0.0f);
 		EXPECT_FLOAT_EQ(out.data(1)[i], float(i + 5));
 	}
 }

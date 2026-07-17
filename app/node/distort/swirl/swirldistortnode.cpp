@@ -71,7 +71,7 @@ QVector<Node::CategoryID> SwirlDistortNode::Category() const
 
 QString SwirlDistortNode::Description() const
 {
-	return tr("Distorts an image along a sine wave.");
+	return tr("Distorts an image by swirling it around a center point.");
 }
 
 void SwirlDistortNode::Retranslate()

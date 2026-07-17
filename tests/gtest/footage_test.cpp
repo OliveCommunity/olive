@@ -301,6 +301,23 @@ TEST(FootageStatic, AdjustTimeByLoopModeLoopsAroundLength)
 			  olive::rational(5));
 }
 
+TEST(FootageStatic, AdjustTimeByLoopModeWithEmptyRangeReturnsNaN)
+{
+	// Looping an empty range would never terminate; return NaN instead
+	EXPECT_TRUE(olive::Footage::AdjustTimeByLoopMode(
+					olive::rational(1), olive::LoopMode::kLoopModeLoop,
+					olive::rational(0), olive::VideoParams::kVideoTypeVideo,
+					olive::rational(1, 24))
+					.isNaN());
+
+	// Clamping a range shorter than one frame has no frame to clamp to
+	EXPECT_TRUE(olive::Footage::AdjustTimeByLoopMode(
+					olive::rational(1), olive::LoopMode::kLoopModeClamp,
+					olive::rational(0), olive::VideoParams::kVideoTypeVideo,
+					olive::rational(1, 24))
+					.isNaN());
+}
+
 TEST(FootageStatic, RetranslateSetsInputNames)
 {
 	TestableFootage footage;
@@ -374,6 +391,12 @@ TEST_F(FootageTest, ManuallyAddedStreamsMapBetweenReferencesAndIndices)
 			  5);
 	EXPECT_EQ(footage.GetStreamIndex(olive::Track::kNone, 0), -1);
 	EXPECT_EQ(footage.GetStreamIndex(olive::Track::kCount, 0), -1);
+
+	// Out-of-range indices report -1 rather than a default-constructed stream
+	EXPECT_EQ(footage.GetStreamIndex(olive::Track::kVideo, 1), -1);
+	EXPECT_EQ(footage.GetStreamIndex(olive::Track::kVideo, -1), -1);
+	EXPECT_EQ(footage.GetStreamIndex(olive::Track::kAudio, 1), -1);
+	EXPECT_EQ(footage.GetStreamIndex(olive::Track::kSubtitle, 1), -1);
 
 	EXPECT_EQ(footage.GetReferenceFromRealIndex(5),
 			  olive::Track::Reference(olive::Track::kVideo, 0));

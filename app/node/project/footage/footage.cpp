@@ -182,11 +182,20 @@ int Footage::GetStreamIndex(Track::Type type, int index) const
 {
 	switch (type) {
 	case Track::kVideo:
-		return GetVideoParams(index).stream_index();
+		if (index >= 0 && index < GetVideoStreamCount()) {
+			return GetVideoParams(index).stream_index();
+		}
+		break;
 	case Track::kAudio:
-		return GetAudioParams(index).stream_index();
+		if (index >= 0 && index < GetAudioStreamCount()) {
+			return GetAudioParams(index).stream_index();
+		}
+		break;
 	case Track::kSubtitle:
-		return GetSubtitleParams(index).stream_index();
+		if (index >= 0 && index < GetSubtitleStreamCount()) {
+			return GetSubtitleParams(index).stream_index();
+		}
+		break;
 	case Track::kNone:
 	case Track::kCount:
 		break;
@@ -476,18 +485,29 @@ rational Footage::AdjustTimeByLoopMode(rational time, LoopMode loop_mode,
 			time = rational::NaN;
 			break;
 		case LoopMode::kLoopModeClamp:
-			// Clamp footage time to length
-			time = std::clamp(time, rational(0), length - timebase);
+			if (length < timebase) {
+				// No full frame fits in the range, so there is nothing to clamp to
+				time = rational::NaN;
+			} else {
+				// Clamp footage time to length
+				time = std::clamp(time, rational(0), length - timebase);
+			}
 			break;
 		case LoopMode::kLoopModeLoop:
-			// Loop footage time around job length
-			do {
-				if (time >= length) {
-					time -= length;
-				} else {
-					time += length;
-				}
-			} while (TimeIsOutOfBounds(time, length));
+			if (length <= 0) {
+				// Cannot loop around an empty range
+				time = rational::NaN;
+			} else {
+				// Loop footage time around job length
+				do {
+					if (time >= length) {
+						time -= length;
+					} else {
+						time += length;
+					}
+				} while (TimeIsOutOfBounds(time, length));
+			}
+			break;
 		}
 	}
 
@@ -797,7 +817,10 @@ void Footage::Reprobe()
 				}
 
 				if (!cancelled_ || !cancelled_->HeardCancel()) {
-					if (!footage_info.Save(meta_cache_file)) {
+					// Only cache successful probes; caching a failed probe
+					// would make every future load re-use the invalid metadata
+					if (footage_info.IsValid() &&
+						!footage_info.Save(meta_cache_file)) {
 						qWarning()
 							<< "Failed to save stream cache, footage will have to be re-probed";
 					}
@@ -898,6 +921,7 @@ void Footage::CheckFootage()
 
 			if (current_file_timestamp != timestamp()) {
 				// File has changed!
+				Clear();
 				Reprobe();
 				InvalidateAll(kFilenameInput);
 			}

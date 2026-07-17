@@ -73,10 +73,12 @@ TEST(Project, FilenameNamePrettyAndSignals)
 					 [&name_changes]() { ++name_changes; });
 
 	const QString filename = QStringLiteral("/tmp/some/dir/my_edit.ove");
+	// Project::set_filename converts to native separators on Windows
+	const QString stored_filename = QDir::toNativeSeparators(filename);
 	project.set_filename(filename);
-	EXPECT_EQ(project.filename(), filename);
+	EXPECT_EQ(project.filename(), stored_filename);
 	EXPECT_EQ(project.name(), QStringLiteral("my_edit"));
-	EXPECT_EQ(project.pretty_filename(), filename);
+	EXPECT_EQ(project.pretty_filename(), stored_filename);
 	EXPECT_FALSE(project.is_new());
 	EXPECT_EQ(name_changes, 1);
 

@@ -184,23 +184,19 @@ TEST(TrigonometryNode, RetranslateSetsInputNamesAndComboStrings)
 		node.GetInputProperty(olive::TrigonometryNode::kMethodIn,
 							  QStringLiteral("combo_str"))
 			.toStringList();
-	ASSERT_EQ(methods.size(), 11);
+	ASSERT_EQ(methods.size(), 9);
 	EXPECT_EQ(methods.at(0), QStringLiteral("Sine"));
 	EXPECT_EQ(methods.at(1), QStringLiteral("Cosine"));
 	EXPECT_EQ(methods.at(2), QStringLiteral("Tangent"));
-	EXPECT_TRUE(methods.at(3).isEmpty());
-	EXPECT_EQ(methods.at(4), QStringLiteral("Inverse Sine"));
-	EXPECT_EQ(methods.at(5), QStringLiteral("Inverse Cosine"));
-	EXPECT_EQ(methods.at(6), QStringLiteral("Inverse Tangent"));
-	EXPECT_TRUE(methods.at(7).isEmpty());
-	EXPECT_EQ(methods.at(8), QStringLiteral("Hyperbolic Sine"));
-	EXPECT_EQ(methods.at(9), QStringLiteral("Hyperbolic Cosine"));
-	EXPECT_EQ(methods.at(10), QStringLiteral("Hyperbolic Tangent"));
+	EXPECT_EQ(methods.at(3), QStringLiteral("Inverse Sine"));
+	EXPECT_EQ(methods.at(4), QStringLiteral("Inverse Cosine"));
+	EXPECT_EQ(methods.at(5), QStringLiteral("Inverse Tangent"));
+	EXPECT_EQ(methods.at(6), QStringLiteral("Hyperbolic Sine"));
+	EXPECT_EQ(methods.at(7), QStringLiteral("Hyperbolic Cosine"));
+	EXPECT_EQ(methods.at(8), QStringLiteral("Hyperbolic Tangent"));
 
-	// NOTE: The combo list contains separator entries at indexes 3 and 7 that
-	// the Operation enum used by Value() does not have, so combo indexes 4
-	// and above no longer match the enum (suspected bug, documented here and
-	// in ComboIndexBeyondSeparatorComputesWrongFunction).
+	// The combo list contains no separator entries, so combo indexes match
+	// the Operation enum used by Value() exactly
 }
 
 TEST(TrigonometryNode, SineCosineTangent)
@@ -264,7 +260,7 @@ TEST(TrigonometryNode, HyperbolicOperations)
 	EXPECT_NEAR(GenerateTrigResult(node), std::tanh(1.0), 1e-12);
 }
 
-TEST(TrigonometryNode, ComboIndexBeyondSeparatorComputesWrongFunction)
+TEST(TrigonometryNode, ComboIndexMatchesOperationEnum)
 {
 	olive::ColorManager::SetUpDefaultConfig();
 	olive::Project project;
@@ -272,15 +268,20 @@ TEST(TrigonometryNode, ComboIndexBeyondSeparatorComputesWrongFunction)
 
 	auto *node = AddNode<olive::TrigonometryNode>(&project);
 
-	// NOTE: The combo box labels index 4 as "Inverse Sine", but Value()
-	// casts the index to the Operation enum where 4 is kOpArcCosine, because
-	// the combo string list contains separator entries that the enum does
-	// not have (suspected bug, test documents current behavior).
+	// The combo list has no separator entries, so a combo index selects the
+	// Operation enum value with the same index
+	node->SetStandardValue(olive::TrigonometryNode::kMethodIn, 3);
+	node->SetStandardValue(olive::TrigonometryNode::kXIn, 0.5);
+	EXPECT_NEAR(GenerateTrigResult(node), std::asin(0.5), 1e-12);
+
 	node->SetStandardValue(olive::TrigonometryNode::kMethodIn, 4);
 	node->SetStandardValue(olive::TrigonometryNode::kXIn, 0.5);
 	EXPECT_NEAR(GenerateTrigResult(node), std::acos(0.5), 1e-12);
 
-	// Index 8 is labeled "Hyperbolic Sine" but computes hyperbolic tangent
+	node->SetStandardValue(olive::TrigonometryNode::kMethodIn, 6);
+	node->SetStandardValue(olive::TrigonometryNode::kXIn, 1.0);
+	EXPECT_NEAR(GenerateTrigResult(node), std::sinh(1.0), 1e-12);
+
 	node->SetStandardValue(olive::TrigonometryNode::kMethodIn, 8);
 	node->SetStandardValue(olive::TrigonometryNode::kXIn, 1.0);
 	EXPECT_NEAR(GenerateTrigResult(node), std::tanh(1.0), 1e-12);

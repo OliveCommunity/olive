@@ -243,8 +243,15 @@ TEST_F(NodeUndoTest, SetPositionCommandRestoresPreviousPosition)
 
 TEST_F(NodeUndoTest, SetPositionAndDependenciesRecursivelyMovesNode)
 {
+	auto *dep = AddNode<olive::MathNode>();
 	auto *node = AddNode<olive::MathNode>();
 	auto *context = AddNode<olive::Folder>();
+
+	olive::Node::ConnectEdge(
+		dep, olive::NodeInput(node, olive::MathNode::kParamAIn));
+
+	context->SetNodePositionInContext(
+		dep, olive::Node::Position(QPointF(1.0, 1.0)));
 	context->SetNodePositionInContext(
 		node, olive::Node::Position(QPointF(2.0, 3.0)));
 
@@ -253,9 +260,12 @@ TEST_F(NodeUndoTest, SetPositionAndDependenciesRecursivelyMovesNode)
 
 	cmd.redo_now();
 	EXPECT_EQ(context->GetNodePositionInContext(node), QPointF(8.0, 9.0));
+	// The dependency moves by the same delta as the node
+	EXPECT_EQ(context->GetNodePositionInContext(dep), QPointF(7.0, 7.0));
 
 	cmd.undo_now();
 	EXPECT_EQ(context->GetNodePositionInContext(node), QPointF(2.0, 3.0));
+	EXPECT_EQ(context->GetNodePositionInContext(dep), QPointF(1.0, 1.0));
 }
 
 TEST_F(NodeUndoTest, RemovePositionFromContextCommandRestoresPosition)
@@ -909,4 +919,12 @@ TEST_F(NodeUndoTest, ImmediateRemoveAllKeyframesCommandRemovesKeys)
 	EXPECT_TRUE(immediate->keyframe_tracks().at(0).isEmpty());
 	EXPECT_NE(key_a->parent(), node);
 	EXPECT_NE(key_b->parent(), node);
+
+	cmd.undo_now();
+	// Undo restores the keyframes to the node and its tracks
+	ASSERT_EQ(immediate->keyframe_tracks().at(0).size(), 2);
+	EXPECT_EQ(immediate->keyframe_tracks().at(0).at(0), key_a);
+	EXPECT_EQ(immediate->keyframe_tracks().at(0).at(1), key_b);
+	EXPECT_EQ(key_a->parent(), node);
+	EXPECT_EQ(key_b->parent(), node);
 }

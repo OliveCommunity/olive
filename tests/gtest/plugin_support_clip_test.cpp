@@ -75,19 +75,24 @@ TEST(PluginSupportClip, GetImageClampsBoundsAndCachesOutput)
 	EXPECT_EQ(image, image_again);
 }
 
-TEST(PluginSupportClip, GetImageReturnsNewImageForNonOutput)
+TEST(PluginSupportClip, GetImageCachesImageForNonOutput)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc("Source");
 	olive::VideoParams params =
 		MakeParams(64, 64, olive::core::PixelFormat::U8, 4, false);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
+	EXPECT_FALSE(clip.getConnected());
+
 	OFX::Host::ImageEffect::Image *first = clip.getImage(0.0, nullptr);
 	OFX::Host::ImageEffect::Image *second = clip.getImage(0.0, nullptr);
 
 	EXPECT_NE(first, nullptr);
 	EXPECT_NE(second, nullptr);
-	EXPECT_NE(first, second);
+	// On-demand images are cached per time, so both fetches return the
+	// same image and the clip now reports as connected.
+	EXPECT_EQ(first, second);
+	EXPECT_TRUE(clip.getConnected());
 
 	first->releaseReference();
 	second->releaseReference();

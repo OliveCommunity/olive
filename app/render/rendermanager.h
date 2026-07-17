@@ -255,11 +255,11 @@ private:
 
 	QTimer *decoder_clear_timer_;
 
-	RenderThread *dry_run_thread_;
-	RenderThread *audio_thread_;
+	RenderThread *dry_run_thread_ = nullptr;
+	RenderThread *audio_thread_ = nullptr;
 
 	std::vector<RenderThread *> waveform_threads_;
-	size_t last_waveform_thread_;
+	size_t last_waveform_thread_ = 0;
 
 	std::list<RenderThread *> render_threads_;
 

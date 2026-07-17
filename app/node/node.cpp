@@ -497,8 +497,19 @@ QVariant Node::GetSplitValueAtTimeOnTrack(const QString &input,
 
 				double before_val, after_val, interpolated;
 				if (type == NodeValue::kRational) {
-					before_val = before->value().value<rational>().toDouble();
-					after_val = after->value().value<rational>().toDouble();
+					// Keys for rational inputs usually hold rationals, but may
+					// hold plain doubles, in which case we convert to rational
+					// first to preserve the value
+					before_val = (before->value().canConvert<rational>() ?
+									  before->value().value<rational>() :
+									  rational::fromDouble(
+										  before->value().toDouble()))
+									 .toDouble();
+					after_val = (after->value().canConvert<rational>() ?
+									 after->value().value<rational>() :
+									 rational::fromDouble(
+										 after->value().toDouble()))
+									.toDouble();
 				} else {
 					before_val = before->value().toDouble();
 					after_val = after->value().toDouble();
@@ -1724,7 +1735,10 @@ bool Node::LoadImmediate(QXmlStreamReader *reader, const QString &input,
 							key->set_element(element);
 							key->set_track(track);
 
-							key->load(reader, data_type);
+							if (!key->load(reader, data_type)) {
+								delete key;
+								return false;
+							}
 							key->setParent(this);
 						} else {
 							reader->skipCurrentElement();

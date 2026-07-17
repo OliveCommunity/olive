@@ -23,6 +23,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QGuiApplication>
 #include <QTemporaryDir>
 
 #include "ofxCore.h"
@@ -34,6 +35,7 @@
 #include "common/Current.h"
 #include "node/plugins/Plugin.h"
 #include "pluginSupport/OliveHost.h"
+#include "version.h"
 
 namespace
 {
@@ -202,11 +204,12 @@ TEST(OliveHost, DestroyInstanceIgnoresNull)
 }
 
 // ============================================================================
-// OliveHost message routing (error paths only)
+// OliveHost message routing
 //
-// The successful vmessage/setPersistentMessage paths pop modal QMessageBox
-// dialogs whenever a QApplication exists, which a headless test cannot
-// dismiss, so only the early-return failure paths are exercised here.
+// With a QApplication on a non-offscreen platform the successful
+// vmessage/setPersistentMessage paths pop modal QMessageBox dialogs, which a
+// headless test cannot dismiss; on the offscreen platform they log to stderr
+// instead, so those paths are exercised here behind a platform check.
 // ============================================================================
 
 TEST(OliveHost, VMessageRejectsNullArguments)
@@ -234,6 +237,44 @@ TEST(OliveHost, SetPersistentMessageRejectsUnknownType)
 	EXPECT_EQ(CallSetPersistentMessage(host, "OfxMessageBogus", "id", "%s",
 									   "hello"),
 			  kOfxStatFailed);
+}
+
+TEST(OliveHost, VMessageOffscreenLogsInsteadOfDialog)
+{
+	if (QGuiApplication::platformName() != QLatin1String("offscreen")) {
+		GTEST_SKIP() << "requires the offscreen QPA platform";
+	}
+
+	olive::plugin::OliveHost host;
+	// No modal dialog is shown on the offscreen platform; the message is
+	// logged to stderr and acknowledged.
+	EXPECT_EQ(CallVMessage(host, kOfxMessageError, "id", "%s", "boom"),
+			  kOfxStatOK);
+	EXPECT_EQ(CallVMessage(host, kOfxMessageWarning, "id", "%s", "boom"),
+			  kOfxStatOK);
+	EXPECT_EQ(CallVMessage(host, kOfxMessageMessage, "id", "%s", "boom"),
+			  kOfxStatOK);
+	// A question cannot be answered headlessly, so it is a "no".
+	EXPECT_EQ(CallVMessage(host, kOfxMessageQuestion, "id", "%s", "boom"),
+			  kOfxStatReplyNo);
+}
+
+TEST(OliveHost, SetPersistentMessageOffscreenSucceeds)
+{
+	if (QGuiApplication::platformName() != QLatin1String("offscreen")) {
+		GTEST_SKIP() << "requires the offscreen QPA platform";
+	}
+
+	olive::plugin::OliveHost host;
+	EXPECT_EQ(CallSetPersistentMessage(host, kOfxMessageError, "id", "%s",
+									   "boom"),
+			  kOfxStatOK);
+	EXPECT_EQ(CallSetPersistentMessage(host, kOfxMessageWarning, "id", "%s",
+									   "boom"),
+			  kOfxStatOK);
+	EXPECT_EQ(CallSetPersistentMessage(host, kOfxMessageMessage, "id", "%s",
+									   "boom"),
+			  kOfxStatOK);
 }
 
 TEST(OliveHost, ClearPersistentMessageSucceeds)
@@ -266,6 +307,29 @@ TEST(OliveHost, HostPropertiesIdentifyAsOfxHost)
 	// (ofxhHost.cpp hostStuffs), not kOfxTypeImageEffectHost.
 	olive::plugin::OliveHost host;
 	EXPECT_EQ(host.getProperties().getStringProperty(kOfxPropType), "Host");
+}
+
+TEST(OliveHost, HostPropertiesIdentifyApplication)
+{
+	// The ctor stamps the app identity over HostSupport's "UNKNOWN" defaults
+	// so plugins querying the host description see real values.
+	olive::plugin::OliveHost host;
+	const auto &props = host.getProperties();
+
+	EXPECT_EQ(props.getStringProperty(kOfxPropName), "Oak Video Editor");
+	EXPECT_EQ(props.getStringProperty(kOfxPropLabel), "Oak Video Editor");
+	EXPECT_EQ(props.getStringProperty(kOfxPropVersionLabel),
+			  olive::kAppVersion.toStdString());
+
+	const QStringList version_parts =
+		olive::kAppVersion.section(QLatin1Char('-'), 0, 0)
+			.split(QLatin1Char('.'));
+	EXPECT_EQ(props.getIntProperty(kOfxPropVersion, 0),
+			  version_parts.value(0).toInt());
+	EXPECT_EQ(props.getIntProperty(kOfxPropVersion, 1),
+			  version_parts.value(1).toInt());
+	EXPECT_EQ(props.getIntProperty(kOfxPropVersion, 2),
+			  version_parts.value(2).toInt());
 }
 
 #ifdef OFX_SUPPORTS_OPENGLRENDER

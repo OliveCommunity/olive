@@ -823,6 +823,7 @@ class NodeImmediateRemoveAllKeyframesCommand : public UndoCommand {
 public:
 	NodeImmediateRemoveAllKeyframesCommand(NodeInputImmediate *immediate)
 		: immediate_(immediate)
+		, node_(nullptr)
 	{
 	}
 
@@ -840,6 +841,8 @@ protected:
 
 private:
 	NodeInputImmediate *immediate_;
+
+	Node *node_;
 
 	QObject memory_manager_;
 

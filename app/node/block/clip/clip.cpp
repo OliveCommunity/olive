@@ -250,8 +250,8 @@ rational ClipBlock::MediaToSequenceTime(const rational &media_time) const
 
 	double speed_value = speed();
 	if (qIsNull(speed_value)) {
-		// I don't know what to return here yet...
-		sequence_time = rational::NaN;
+		// Speed zero holds the frame at the in point, so map to that frame
+		sequence_time = media_in();
 	} else if (!qFuzzyCompare(speed_value, 1.0)) {
 		// Divide time
 		sequence_time =

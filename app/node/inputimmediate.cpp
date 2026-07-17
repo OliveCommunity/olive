@@ -23,6 +23,7 @@
 
 #include "common/lerp.h"
 #include "common/tohex.h"
+#include "node.h"
 
 namespace olive
 {
@@ -289,11 +290,21 @@ void NodeInputImmediate::remove_keyframe(NodeKeyframe *key)
 void NodeInputImmediate::delete_all_keyframes(QObject *parent)
 {
 	for (NodeKeyframeTrack &track : keyframe_tracks_) {
-		while (!track.isEmpty()) {
+		// Iterate over a copy of the track, since the keyframes may be removed
+		// from it as we go
+		const NodeKeyframeTrack copy = track;
+
+		for (NodeKeyframe *key : copy) {
+			if (!dynamic_cast<Node *>(key->QObject::parent())) {
+				// Keyframe isn't parented to a node, so reparenting/deleting it
+				// won't remove it from the track automatically
+				remove_keyframe(key);
+			}
+
 			if (parent) {
-				track.first()->setParent(parent);
+				key->setParent(parent);
 			} else {
-				delete track.first();
+				delete key;
 			}
 		}
 	}

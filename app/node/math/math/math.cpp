@@ -85,7 +85,6 @@ void MathNode::Retranslate()
 							   GetOperationName(kOpSubtract),
 							   GetOperationName(kOpMultiply),
 							   GetOperationName(kOpDivide),
-							   QString(),
 							   GetOperationName(kOpPower) };
 
 	SetComboBoxStrings(kMethodIn, operations);

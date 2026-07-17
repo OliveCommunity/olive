@@ -384,6 +384,33 @@ TEST(IpcMessage, MalformedLineIsSkipped)
 	EXPECT_TRUE(reader.isEmpty());
 }
 
+TEST(IpcMessage, BlankLinesAreSkippedSilently)
+{
+	CancelMsg c;
+	c.ticket_id = 7;
+	const QByteArray line =
+		QByteArray(QJsonDocument(c.ToJson()).toJson(QJsonDocument::Compact)) +
+		'\n';
+
+	// Blank lines (even repeated) are consumed without flagging an error, and
+	// the following real message is still parsed.
+	QByteArray reader = QByteArray("\n \n\n") + line;
+	QJsonObject obj;
+	bool ok = false;
+	ASSERT_TRUE(ReadMessage(&reader, &obj, &ok));
+	EXPECT_TRUE(ok);
+
+	CancelMsg c2;
+	ASSERT_TRUE(CancelMsg::FromJson(obj, &c2));
+	EXPECT_EQ(c2.ticket_id, 7);
+
+	// Only blank lines left: nothing more to read, but still not an error.
+	ok = true;
+	EXPECT_FALSE(ReadMessage(&reader, &obj, &ok));
+	EXPECT_TRUE(ok);
+	EXPECT_TRUE(reader.isEmpty());
+}
+
 TEST(IpcMessage, WrongTypeRejected)
 {
 	// FromJson must reject an object whose "type" does not match the target struct.

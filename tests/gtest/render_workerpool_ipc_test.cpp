@@ -646,16 +646,12 @@ TEST(IpcMessage, ReadMessageSkipsBlankLines)
 	const QByteArray line =
 		QJsonDocument(cancel.ToJson()).toJson(QJsonDocument::Compact);
 
-	// A reader loop sees: blank line, whitespace-only line, then a real message.
+	// A reader loop sees: blank line, whitespace-only line, then a real
+	// message. Blank lines are skipped silently.
 	QByteArray reader = QByteArray("\n   \n") + line + '\n';
 
 	QJsonObject obj;
 	bool ok = true;
-	EXPECT_FALSE(olive::ipc::ReadMessage(&reader, &obj, &ok)); // blank
-	EXPECT_FALSE(ok);
-	EXPECT_FALSE(olive::ipc::ReadMessage(&reader, &obj, &ok)); // whitespace
-	EXPECT_FALSE(ok);
-
 	ASSERT_TRUE(olive::ipc::ReadMessage(&reader, &obj, &ok));
 	EXPECT_TRUE(ok);
 	olive::ipc::CancelMsg back;

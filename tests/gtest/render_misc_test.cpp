@@ -216,9 +216,10 @@ TEST(DynamicRenderer, ConstructorNormalizesBackendName)
 	EXPECT_FALSE(vk.IsOpenGL());
 }
 
-// Documents that an unrecognized backend name is kept verbatim (even though
-// LibraryFilename() silently maps it to the OpenGL library basename), so the
-// IsOpenGL()/IsVulkan() predicates both report false for it.
+// Documents that an unrecognized backend name is kept verbatim (and
+// LibraryFilename() uses that verbatim name as the library basename, so Load()
+// fails and the OpenGL fallback engages), so the IsOpenGL()/IsVulkan()
+// predicates both report false for it.
 TEST(DynamicRenderer, UnknownBackendNameIsReportedVerbatim)
 {
 	olive::DynamicRenderer renderer(QStringLiteral("Metal"));

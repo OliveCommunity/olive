@@ -41,8 +41,11 @@ bool FootageDescription::Load(const QString &filename)
 	if (file.open(QFile::ReadOnly)) {
 		QXmlStreamReader reader(&file);
 
+		bool found_streamcache = false;
+
 		while (XMLReadNextStartElement(&reader)) {
 			if (reader.name() == QStringLiteral("streamcache")) {
+				found_streamcache = true;
 				// Default to first version of metadata (which wasn't versioned at all)
 				unsigned version = 1;
 
@@ -126,7 +129,8 @@ bool FootageDescription::Load(const QString &filename)
 			qWarning() << "Failed to load footage description for" << filename
 					   << reader.errorString();
 		} else {
-			return true;
+			// Only accept files whose root element is the one Save() writes
+			return found_streamcache;
 		}
 	}
 

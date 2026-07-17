@@ -460,7 +460,7 @@ void ViewerOutput::Value(const NodeValueRow &value, const NodeGlobals &globals,
 	if (HasInputWithID(kSamplesInput)) {
 		NodeValue repush = value[kSamplesInput];
 		repush.set_tag(Track::Reference(Track::kAudio, 0).ToString());
-		table->Push(value[kSamplesInput]);
+		table->Push(repush);
 	}
 }
 

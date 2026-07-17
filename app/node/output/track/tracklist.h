@@ -22,6 +22,7 @@
 #ifndef TRACKLIST_H
 #define TRACKLIST_H
 
+#include <QHash>
 #include <QObject>
 
 #include "node/output/track/track.h"
@@ -112,6 +113,11 @@ private:
    */
 	QVector<Track *> track_cache_;
 	QVector<int> track_array_indexes_;
+
+	/**
+   * @brief Stored TrackHeightChanged connections so they can be disconnected again
+   */
+	QHash<Track *, QMetaObject::Connection> track_height_connections_;
 
 	QString track_input_;
 

@@ -116,7 +116,7 @@ add_executable(olive-gtest
 
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
 
-target_sources(olive-gtest PRIVATE $<TARGET_OBJECTS:libolive-editor>)
+target_sources(olive-gtest PRIVATE $<TARGET_OBJECTS:libolive-editor> $<TARGET_OBJECTS:olive-version-obj>)
 
 target_include_directories(
   olive-gtest

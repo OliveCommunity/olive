@@ -467,7 +467,14 @@ olive::plugin::OliveClipInstance::getImage(OfxTime time,
 			return nullptr;
 		}
 
+		// Cache the on-demand image like the output path does, so repeated
+		// fetches at the same time reuse it and getConnected() reflects it.
+		// The extra reference keeps the cached image alive when the plugin
+		// releases its own.
+		pruneImagesCache();
 		Image *image = new Image(*this, preferred_params, bounds, rod, true);
+		images_.insert(time, image);
+		image->addReference();
 		return image;
 	}
 }
@@ -546,6 +553,11 @@ olive::plugin::OliveClipInstance::getRegionOfDefinition(OfxTime time) const
 	double par = params_.pixel_aspect_ratio().toDouble();
 	regionOfDefinition.x2 = params_.width() * par;
 	regionOfDefinition.y2 = params_.height();
+	if (regionOfDefinition.x2 <= 0 || regionOfDefinition.y2 <= 0) {
+		// The params provide no usable region; fall back to the default set
+		// via setDefaultRegionOfDefinition().
+		return defaultRegionOfDefinitions_;
+	}
 	return regionOfDefinition;
 }
 void olive::plugin::OliveClipInstance::setRegionOfDefinition(

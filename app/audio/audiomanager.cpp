@@ -197,6 +197,8 @@ void AudioManager::SetOutputDevice(PaDeviceIndex device)
 {
 	if (device == paNoDevice) {
 		qInfo() << "No output device found";
+	} else if (device < 0 || device >= Pa_GetDeviceCount()) {
+		qWarning() << "Invalid output audio device index:" << device;
 	} else {
 		qInfo() << "Setting output audio device to"
 				<< Pa_GetDeviceInfo(device)->name;
@@ -205,12 +207,16 @@ void AudioManager::SetOutputDevice(PaDeviceIndex device)
 	output_device_ = device;
 
 	CloseOutputStream();
+
+	emit OutputParamsChanged();
 }
 
 void AudioManager::SetInputDevice(PaDeviceIndex device)
 {
 	if (device == paNoDevice) {
 		qInfo() << "No input device found";
+	} else if (device < 0 || device >= Pa_GetDeviceCount()) {
+		qWarning() << "Invalid input audio device index:" << device;
 	} else {
 		qInfo() << "Setting input audio device to"
 				<< Pa_GetDeviceInfo(device)->name;
@@ -407,7 +413,12 @@ PaStreamParameters AudioManager::GetPortAudioParams(const AudioParams &params,
 	p.device = device;
 	p.hostApiSpecificStreamInfo = nullptr;
 	p.sampleFormat = GetPortAudioSampleFormat(params.format());
-	p.suggestedLatency = Pa_GetDeviceInfo(device)->defaultLowOutputLatency;
+
+	if (device >= 0 && device < Pa_GetDeviceCount()) {
+		p.suggestedLatency = Pa_GetDeviceInfo(device)->defaultLowOutputLatency;
+	} else {
+		p.suggestedLatency = 0;
+	}
 
 	return p;
 }

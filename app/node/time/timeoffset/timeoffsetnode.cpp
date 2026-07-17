@@ -66,14 +66,14 @@ TimeRange
 TimeOffsetNode::OutputTimeAdjustment(const QString &input, int element,
 									 const TimeRange &input_time) const
 {
-	/*if (input == kInputInput) {
-    rational target_time = GetValueAtTime(kTimeInput, input_time.in()).value<rational>();
-
-    return TimeRange(target_time, target_time + input_time.length());
-  } else {
-    return super::OutputTimeAdjustment(input, element, input_time);
-  }*/
-	return super::OutputTimeAdjustment(input, element, input_time);
+	if (input == kInputInput) {
+		// The inverse of InputTimeAdjustment(): times at the input are mapped
+		// back to the output by subtracting the offset again
+		return TimeRange(GetRemappedOutputTime(input_time.in()),
+						 GetRemappedOutputTime(input_time.out()));
+	} else {
+		return super::OutputTimeAdjustment(input, element, input_time);
+	}
 }
 
 void TimeOffsetNode::Value(const NodeValueRow &value,
@@ -86,6 +86,11 @@ void TimeOffsetNode::Value(const NodeValueRow &value,
 rational TimeOffsetNode::GetRemappedTime(const rational &input) const
 {
 	return input + GetValueAtTime(kTimeInput, input).value<rational>();
+}
+
+rational TimeOffsetNode::GetRemappedOutputTime(const rational &input) const
+{
+	return input - GetValueAtTime(kTimeInput, input).value<rational>();
 }
 
 }

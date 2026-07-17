@@ -129,16 +129,24 @@ QVariant Renderer::GetDefaultShader()
 
 void Renderer::Destroy()
 {
-	destroyed_ = true;
-	if (lifetime_) {
-		lifetime_->alive = false;
-	}
 	if (!default_shader_.isNull()) {
 		DestroyNativeShader(default_shader_);
 		default_shader_.clear();
 	}
 
-	color_cache_.clear();
+	{
+		QMutexLocker locker(&color_cache_mutex_);
+
+		// Destroy the cached native shaders explicitly. The LUT textures are
+		// TexturePtrs whose destructors call DestroyTexture(), so the cache must
+		// be cleared while the renderer is still alive for those to be honored.
+		for (auto it = color_cache_.begin(); it != color_cache_.end(); it++) {
+			if (!it->compiled_shader.isNull()) {
+				DestroyNativeShader(it->compiled_shader);
+			}
+		}
+		color_cache_.clear();
+	}
 
 	if (!interlace_texture_.isNull()) {
 		DestroyNativeShader(interlace_texture_);
@@ -149,6 +157,11 @@ void Renderer::Destroy()
 		DestroyNativeTexture(it->handle);
 	}
 	texture_cache_.clear();
+
+	destroyed_ = true;
+	if (lifetime_) {
+		lifetime_->alive = false;
+	}
 
 	DestroyInternal();
 }

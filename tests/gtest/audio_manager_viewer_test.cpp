@@ -583,9 +583,12 @@ TEST_F(ViewerOutputTest, ValueRepushTagsStreams)
 	EXPECT_EQ(table.Get(olive::NodeValue::kTexture, video_tag).type(),
 			  olive::NodeValue::kTexture);
 
-	// The samples value is re-pushed and stays retrievable
-	EXPECT_EQ(table.Get(olive::NodeValue::kSamples).type(),
+	// The samples value is re-pushed tagged as audio stream 0
+	const QString audio_tag =
+		olive::Track::Reference(olive::Track::kAudio, 0).ToString();
+	EXPECT_EQ(table.Get(olive::NodeValue::kSamples, audio_tag).type(),
 			  olive::NodeValue::kSamples);
+	EXPECT_EQ(table.Get(olive::NodeValue::kSamples).tag(), audio_tag);
 }
 
 TEST_F(ViewerOutputTest, LastUsedEncodingParamsRoundTrip)

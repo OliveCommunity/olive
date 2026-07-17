@@ -64,11 +64,9 @@ void TrigonometryNode::Retranslate()
 	QStringList strings = { tr("Sine"),
 							tr("Cosine"),
 							tr("Tangent"),
-							QString(),
 							tr("Inverse Sine"),
 							tr("Inverse Cosine"),
 							tr("Inverse Tangent"),
-							QString(),
 							tr("Hyperbolic Sine"),
 							tr("Hyperbolic Cosine"),
 							tr("Hyperbolic Tangent") };

@@ -166,6 +166,26 @@ bool SharedMemoryRegion::Open(const QString &key, size_t size, Mode mode)
 			shm_unlink(name_bytes.constData());
 			return false;
 		}
+	} else {
+		// mmap() succeeds even beyond the real segment size and only faults
+		// (SIGBUS) on access, so verify the segment is large enough up front.
+		struct stat st;
+		if (fstat(fd_, &st) != 0) {
+			error_ = QStringLiteral("fstat failed: %1")
+						 .arg(QString::fromUtf8(strerror(errno)));
+			::close(fd_);
+			fd_ = -1;
+			return false;
+		}
+		if (st.st_size < off_t(size)) {
+			error_ = QStringLiteral(
+						 "shared memory segment is %1 bytes, smaller than the requested %2")
+						 .arg(qint64(st.st_size))
+						 .arg(qint64(size));
+			::close(fd_);
+			fd_ = -1;
+			return false;
+		}
 	}
 
 	data_ = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, 0);

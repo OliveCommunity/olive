@@ -90,8 +90,9 @@ void PanNode::Value(const NodeValueRow &value, const NodeGlobals &globals,
 				table->Push(NodeValue(NodeValue::kSamples, samples, this));
 			} else {
 				// Requires job
-				table->Push(NodeValue::kSamples,
-							SampleJob(globals.time(), kSamplesInput, value),
+				SampleJob job(globals.time(), kSamplesInput, value);
+				job.Insert(kPanningInput, value);
+				table->Push(NodeValue::kSamples, QVariant::fromValue(job),
 							this);
 			}
 		} else {

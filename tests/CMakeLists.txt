@@ -40,7 +40,7 @@ function(olive_add_test GROUP NAME SOURCE)
   string(APPEND TEST_FILE_CONTENT "\n${TEST_BODY}")
   file(WRITE "${OUTPUT_FILE}" "${TEST_FILE_CONTENT}")
 
-  add_executable(${NAME} ${OUTPUT_FILE} $<TARGET_OBJECTS:libolive-editor>)
+  add_executable(${NAME} ${OUTPUT_FILE} $<TARGET_OBJECTS:libolive-editor> $<TARGET_OBJECTS:olive-version-obj>)
   target_include_directories(
     ${NAME}
     PRIVATE

@@ -33,6 +33,7 @@
 #include "OlivePluginInstance.h"
 #include "common/Current.h"
 #include "ofxMessage.h"
+#include "version.h"
 #include <QMessageBox>
 using namespace OFX::Host;
 using namespace olive::plugin;
@@ -113,6 +114,26 @@ void olive::plugin::loadPlugins(QString path)
 	}
 	cache->scanPluginFiles();
 }
+OliveHost::OliveHost()
+{
+	// Identify the host to plugins; HostSupport seeds these with "UNKNOWN".
+	_properties.setStringProperty(kOfxPropName, "Oak Video Editor");
+	_properties.setStringProperty(kOfxPropLabel, "Oak Video Editor");
+	_properties.setStringProperty(kOfxPropVersionLabel,
+								  olive::kAppVersion.toStdString());
+
+	// Numeric version for plugins that query kOfxPropVersion directly.
+	const QStringList version_parts =
+		olive::kAppVersion.section(QLatin1Char('-'), 0, 0)
+			.split(QLatin1Char('.'));
+	_properties.setIntProperty(kOfxPropVersion,
+							   version_parts.value(0).toInt(), 0);
+	_properties.setIntProperty(kOfxPropVersion,
+							   version_parts.value(1).toInt(), 1);
+	_properties.setIntProperty(kOfxPropVersion,
+							   version_parts.value(2).toInt(), 2);
+}
+
 OliveHost::~OliveHost()
 {
 }
@@ -184,7 +205,9 @@ OfxStatus olive::plugin::OliveHost::vmessage(const char *type, const char *id,
 	QString message(buffer);
 
 	auto *app = qobject_cast<QApplication *>(QCoreApplication::instance());
-	if (!app) {
+	// A modal dialog would hang a headless (offscreen) session, so log to
+	// stderr instead of showing one.
+	if (!app || QGuiApplication::platformName() == QLatin1String("offscreen")) {
 		qWarning().noquote() << "OFX message:" << type << message;
 		if (strcmp(type, kOfxMessageQuestion) == 0) {
 			return kOfxStatReplyNo;
@@ -223,15 +246,32 @@ OfxStatus olive::plugin::OliveHost::setPersistentMessage(const char *type,
 	vsnprintf(buffer, sizeof(buffer), format, args);
 	QString message(buffer);
 
+	// A modal dialog would hang a headless (offscreen) session, so log to
+	// stderr instead of showing one.
+	const bool headless =
+		QGuiApplication::platformName() == QLatin1String("offscreen");
+
 	if (strcmp(type, kOfxMessageError) == 0) {
 		persistent_messages_.append({ HostMessageType::Error, message });
-		QMessageBox::critical(nullptr, "", message);
+		if (headless) {
+			qWarning().noquote() << "OFX error:" << message;
+		} else {
+			QMessageBox::critical(nullptr, "", message);
+		}
 	} else if (strcmp(type, kOfxMessageWarning) == 0) {
 		persistent_messages_.append({ HostMessageType::Warning, message });
-		QMessageBox::warning(nullptr, "", message);
+		if (headless) {
+			qWarning().noquote() << "OFX warning:" << message;
+		} else {
+			QMessageBox::warning(nullptr, "", message);
+		}
 	} else if (strcmp(type, kOfxMessageMessage) == 0) {
 		persistent_messages_.append({ HostMessageType::Message, message });
-		QMessageBox::information(nullptr, "", message);
+		if (headless) {
+			qWarning().noquote() << "OFX message:" << message;
+		} else {
+			QMessageBox::information(nullptr, "", message);
+		}
 	} else {
 		return kOfxStatFailed;
 	}

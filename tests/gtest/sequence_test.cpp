@@ -97,6 +97,14 @@ TEST(Sequence, DefaultState)
 				  olive::Track::Reference(olive::Track::kVideo, 0)),
 			  nullptr);
 
+	// Invalid and out-of-range reference types return null instead of crashing
+	EXPECT_EQ(sequence.GetTrackFromReference(
+				  olive::Track::Reference(olive::Track::kNone, 0)),
+			  nullptr);
+	EXPECT_EQ(sequence.GetTrackFromReference(
+				  olive::Track::Reference(olive::Track::kCount, 0)),
+			  nullptr);
+
 	// Length verification over empty track lists keeps everything at zero
 	sequence.VerifyLength();
 	EXPECT_EQ(sequence.GetLength(), olive::core::rational(0));
@@ -282,6 +290,15 @@ TEST(Sequence, TrackDisconnectResetsTrackState)
 						 ++sequence_removed;
 					 });
 
+	// While connected, track height changes are forwarded by the list
+	int height_changed = 0;
+	QObject::connect(list, &olive::TrackList::TrackHeightChanged,
+					 [&height_changed](olive::Track *, int) {
+						 ++height_changed;
+					 });
+	first->SetTrackHeight(first->GetTrackHeight() + 1.0);
+	EXPECT_EQ(height_changed, 1);
+
 	olive::Node::DisconnectEdge(first, list->track_input(0));
 
 	EXPECT_EQ(list_removed, 1);
@@ -311,6 +328,10 @@ TEST(Sequence, TrackDisconnectResetsTrackState)
 	EXPECT_EQ(sequence->GetTrackFromReference(
 				  olive::Track::Reference(olive::Track::kVideo, 1)),
 			  nullptr);
+
+	// Height changes on the removed track must no longer be forwarded
+	first->SetTrackHeight(first->GetTrackHeight() + 1.0);
+	EXPECT_EQ(height_changed, 1);
 }
 
 TEST(TrackList, CacheOrderFollowsArrayIndex)

@@ -38,37 +38,36 @@ bool WriteMessage(QIODevice *device, const QJsonObject &obj)
 
 bool ReadMessage(QByteArray *buffer, QJsonObject *out, bool *ok)
 {
-	const int newline = buffer->indexOf('\n');
-	if (newline < 0) {
-		// No complete line buffered yet.
-		return false;
-	}
-
-	const QByteArray line = buffer->left(newline);
-	buffer->remove(0, newline + 1);
-
-	// Skip blank lines silently (e.g. a stray newline) without flagging an error.
-	if (line.trimmed().isEmpty()) {
-		if (ok) {
-			*ok = false;
+	while (true) {
+		const int newline = buffer->indexOf('\n');
+		if (newline < 0) {
+			// No complete line buffered yet.
+			return false;
 		}
-		return false;
-	}
 
-	QJsonParseError err;
-	const QJsonDocument doc = QJsonDocument::fromJson(line, &err);
-	if (err.error != QJsonParseError::NoError || !doc.isObject()) {
-		if (ok) {
-			*ok = false;
+		const QByteArray line = buffer->left(newline);
+		buffer->remove(0, newline + 1);
+
+		// Skip blank lines silently (e.g. a stray newline) without flagging an error.
+		if (line.trimmed().isEmpty()) {
+			continue;
 		}
-		return false;
-	}
 
-	*out = doc.object();
-	if (ok) {
-		*ok = true;
+		QJsonParseError err;
+		const QJsonDocument doc = QJsonDocument::fromJson(line, &err);
+		if (err.error != QJsonParseError::NoError || !doc.isObject()) {
+			if (ok) {
+				*ok = false;
+			}
+			return false;
+		}
+
+		*out = doc.object();
+		if (ok) {
+			*ok = true;
+		}
+		return true;
 	}
-	return true;
 }
 
 // ---- HandshakeMsg ---------------------------------------------------------------------------

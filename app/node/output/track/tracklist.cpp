@@ -85,10 +85,11 @@ void TrackList::TrackConnected(Node *node, int element)
 
 	connect(track, &Track::TrackLengthChanged, this,
 			&TrackList::UpdateTotalLength);
-	connect(track, &Track::TrackHeightChanged, this, [this]() {
-		Track *t = static_cast<Track *>(sender());
-		emit TrackHeightChanged(t, t->GetTrackHeightInPixels());
-	});
+	track_height_connections_.insert(
+		track, connect(track, &Track::TrackHeightChanged, this, [this]() {
+			Track *t = static_cast<Track *>(sender());
+			emit TrackHeightChanged(t, t->GetTrackHeightInPixels());
+		}));
 
 	track->set_type(type_);
 	track->set_sequence(parent());
@@ -134,6 +135,7 @@ void TrackList::TrackDisconnected(Node *node, int element)
 
 	disconnect(track, &Track::TrackLengthChanged, this,
 			   &TrackList::UpdateTotalLength);
+	disconnect(track_height_connections_.take(track));
 
 	emit TrackListChanged();
 

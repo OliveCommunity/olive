@@ -1362,9 +1362,8 @@ TEST(SwirlDistortNode, MetadataIsCorrect)
 	// NOTE: "org.oliveeditor.*" domain, inconsistent with most Olive nodes
 	EXPECT_EQ(node.id(), QStringLiteral("org.oliveeditor.Olive.swirl"));
 	EXPECT_EQ(node.Name(), QStringLiteral("Swirl"));
-	// NOTE: the description reads "Distorts an image along a sine wave.",
-	// identical to WaveDistortNode's (copy-paste, documented here)
-	EXPECT_FALSE(node.Description().isEmpty());
+	EXPECT_EQ(node.Description(),
+			  QStringLiteral("Distorts an image by swirling it around a center point."));
 	EXPECT_TRUE(node.Category().contains(olive::Node::kCategoryDistort));
 
 	EXPECT_TRUE(node.GetFlags() & olive::Node::kVideoEffect);
