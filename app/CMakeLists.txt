@@ -342,9 +342,8 @@ target_link_libraries(libolive-editor PRIVATE ${OLIVE_LIBRARIES})
 target_link_libraries(olive-render-worker PRIVATE ${OLIVE_LIBRARIES})
 
 # The ffmpeg_bridge shared library ships next to the binaries: inside the
-# macOS app bundle (Contents/MacOS, resolved via @loader_path), and in
-# ffmpeg_bridge/bin beside bin/ on other platforms. (Build-tree binaries get
-# the correct RPATH from CMake automatically.)
+# macOS app bundle (Contents/MacOS, resolved via @loader_path), and in the
+# standard lib directory on other platforms.
 if (APPLE)
     # macOS bundles are distributed via POST_BUILD copies (not install()), so
     # @loader_path must already be in the build-tree binaries' RPATH.
@@ -352,7 +351,7 @@ if (APPLE)
     set_target_properties(olive-editor olive-render-worker PROPERTIES
             BUILD_RPATH "@loader_path")
 elseif (UNIX)
-    set(OLIVE_FB_RPATH "$ORIGIN/../ffmpeg_bridge/bin")
+    set(OLIVE_FB_RPATH "$ORIGIN/../lib")
 endif ()
 if (OLIVE_FB_RPATH)
     set_target_properties(olive-editor olive-render-worker PROPERTIES

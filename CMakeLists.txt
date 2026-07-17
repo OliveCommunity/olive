@@ -331,14 +331,14 @@ set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Oak Video Editor Team")
 set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS OFF)
 set(CPACK_DEBIAN_PACKAGE_DEPENDS
-  "libqt6core6, libqt6gui6, libqt6widgets6, libqt6opengl6, libqt6openglwidgets6, libqt6network6, libqt6concurrent6, libavcodec60, libavformat60, libavutil58, libswscale7, libswresample4, libavfilter9, libopenimageio2.4, libopencolorio2, libopenexr-3-1-30, libexpat1, libportaudio2, libgl1, libxkbcommon0")
+  "libqt6core6, libqt6gui6, libqt6widgets6, libqt6opengl6, libqt6openglwidgets6, libqt6network6, libqt6concurrent6, libavcodec60, libavformat60, libavutil58, libswscale7, libswresample4, libavfilter9, libopenimageio2.4, libopencolorio2, libopenexr-3-1-30, libexpat1, libportaudio2, libgl1, libvulkan1, libxkbcommon0")
 
 # RPM
 set(CPACK_RPM_PACKAGE_LICENSE "GPLv3")
 set(CPACK_RPM_PACKAGE_GROUP "Applications/Multimedia")
 set(CPACK_RPM_PACKAGE_URL "https://oakvideoeditor.org")
 set(CPACK_RPM_PACKAGE_REQUIRES
-  "qt6-qtbase >= 6.0, qt6-qtbase-gui >= 6.0, qt6-qttools, ffmpeg-libs >= 6.0, OpenImageIO >= 2.4, OpenColorIO >= 2.0, openexr >= 3.1, expat, portaudio, mesa-libGL, libxkbcommon")
+  "qt6-qtbase >= 6.0, qt6-qtbase-gui >= 6.0, qt6-qttools, ffmpeg-libs >= 6.0, OpenImageIO >= 2.4, OpenColorIO >= 2.0, openexr >= 3.1, expat, portaudio, mesa-libGL, vulkan-loader, libxkbcommon")
 
 include(CPack)
 

@@ -66,7 +66,21 @@ brew install openimageio opencolorio openexr
 brew install portaudio expat
 ```
 
-### 7. 安装测试框架（可选）
+### 7. 安装 Vulkan 后端依赖（可选）
+
+仅在需要 Vulkan 渲染后端时需要。Oak 始终构建 OpenGL 后端，当 Vulkan 不可用时会自动回退到它：
+
+```bash
+brew install molten-vk vulkan-headers vulkan-loader
+```
+
+让 CMake 能找到 loader，使 `find_package(Vulkan)` 成功（经常构建的话可以写入 `~/.zshrc`）：
+
+```bash
+export VULKAN_SDK="$(brew --prefix vulkan-loader)"
+```
+
+### 8. 安装测试框架（可选）
 
 仅在需要构建和运行测试时需要：
 

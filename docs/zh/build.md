@@ -208,7 +208,7 @@ macOS 现在是正式支持的平台。更详细的逐步指南请参见 [`build
 
 ```bash
 brew update
-brew install cmake ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat molten-vk vulkan-headers
+brew install cmake ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat molten-vk vulkan-headers vulkan-loader
 ```
 
 构建 OpenTimelineIO（可选，如需 OTIO 支持）：
@@ -231,6 +231,9 @@ export PATH="$(brew --prefix qt@6)/bin:$PATH"
 export CMAKE_PREFIX_PATH="$(brew --prefix qt@6)"
 export OTIO_LOCATION="${PWD}/otio-install"
 export OCIO_LOCATION="$(brew --prefix opencolorio)"
+# 让 CMake 的 FindVulkan 找到 Homebrew 的 Vulkan loader（可选，
+# 启用 Vulkan 渲染后端）
+export VULKAN_SDK="$(brew --prefix vulkan-loader)"
 
 cmake -S . -B build -G Ninja -DBUILD_TESTS=ON -DBUILD_QT6=ON \
   -DOTIO_LOCATION="${OTIO_LOCATION}" \

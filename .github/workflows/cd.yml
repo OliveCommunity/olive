@@ -104,7 +104,7 @@ jobs:
       - name: Install dependencies
         run: |
           brew update
-          brew install cmake ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat molten-vk vulkan-headers dylibbundler
+          brew install cmake ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat molten-vk vulkan-headers vulkan-loader dylibbundler
 
       - name: Build OpenTimelineIO
         run: |
@@ -121,6 +121,8 @@ jobs:
         run: |
           export PATH="$(brew --prefix qt@6)/bin:$PATH"
           export CMAKE_PREFIX_PATH="$(brew --prefix qt@6)"
+          # CMake's FindVulkan locates the Homebrew loader via VULKAN_SDK
+          export VULKAN_SDK="$(brew --prefix vulkan-loader)"
           cmake -S . -B build -G Ninja \
             -DBUILD_QT6=ON \
             -DCMAKE_BUILD_TYPE=Release \
@@ -307,6 +309,7 @@ jobs:
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
             libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
             portaudio19-dev libgl1-mesa-dev libxkbcommon-dev \
+            libvulkan-dev vulkan-headers \
             wget fuse3 desktop-file-utils
 
       - name: Build
@@ -314,8 +317,7 @@ jobs:
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
-            -DBUILD_QT6=ON \
-            -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON
+            -DBUILD_QT6=ON
           cmake --build build
 
       - name: Install to AppDir
@@ -333,9 +335,16 @@ jobs:
           wget -q "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
           chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-qt-x86_64.AppImage appimagetool-x86_64.AppImage
           export PATH="${PWD}:${PATH}"
+          DEPLOY_ARGS=""
+          # The Vulkan backend is dlopen'ed at runtime, so linuxdeploy cannot
+          # discover it (and its dependencies) from the executable alone
+          if [ -f AppDir/usr/lib/liboakvulkan.so ]; then
+            DEPLOY_ARGS="--library AppDir/usr/lib/liboakvulkan.so"
+          fi
           ./linuxdeploy-x86_64.AppImage \
             --appdir AppDir \
             --plugin qt \
+            $DEPLOY_ARGS \
             --desktop-file AppDir/usr/share/applications/org.oakvideoeditor.Oak.desktop \
             --icon-file AppDir/usr/share/icons/hicolor/512x512/apps/org.oakvideoeditor.Oak.png \
             --output appimage
@@ -357,11 +366,14 @@ jobs:
           ls AppDir/usr/bin/oak-editor                       || (echo "Missing oak-editor" && exit 1)
           ls AppDir/usr/bin/oak-render-worker                || (echo "Missing oak-render-worker" && exit 1)
           ls AppDir/usr/lib/liboakgl.so                      || (echo "Missing liboakgl.so" && exit 1)
-          ls AppDir/usr/ffmpeg_bridge/bin/libffmpeg_bridge.so || (echo "Missing libffmpeg_bridge.so" && exit 1)
+          ls AppDir/usr/lib/liboakvulkan.so                  || (echo "Missing liboakvulkan.so" && exit 1)
+          ls AppDir/usr/lib/libvulkan.so*                    || (echo "Missing libvulkan" && exit 1)
+          ls AppDir/usr/lib/libffmpeg_bridge.so              || (echo "Missing libffmpeg_bridge.so" && exit 1)
           # Ensure every shipped binary resolves all of its dependencies
           ! ldd AppDir/usr/bin/oak-editor | grep "not found"
           ! ldd AppDir/usr/bin/oak-render-worker | grep "not found"
           ! ldd AppDir/usr/lib/liboakgl.so | grep "not found"
+          ! ldd AppDir/usr/lib/liboakvulkan.so | grep "not found"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -387,15 +399,15 @@ jobs:
             qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
             libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
-            portaudio19-dev libgl1-mesa-dev libxkbcommon-dev
+            portaudio19-dev libgl1-mesa-dev libxkbcommon-dev \
+            libvulkan-dev vulkan-headers
 
       - name: Build
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
-            -DBUILD_QT6=ON \
-            -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON
+            -DBUILD_QT6=ON
           cmake --build build
 
       - name: Create DEB package
@@ -449,8 +461,7 @@ jobs:
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
-            -DBUILD_QT6=ON \
-            -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON
+            -DBUILD_QT6=ON
           cmake --build build
 
       - name: Create RPM package
@@ -503,7 +514,7 @@ jobs:
               pacman -S --noconfirm --needed \
                 cmake ninja git pkgconf \
                 qt6-base qt6-tools ffmpeg openimageio opencolorio openexr expat portaudio \
-                mesa vulkan-icd-loader libxkbcommon fmt
+                mesa vulkan-headers vulkan-icd-loader libxkbcommon fmt
               useradd -m builder
               chown -R builder /build
               su builder -c "makepkg -s --noconfirm"

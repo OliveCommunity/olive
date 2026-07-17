@@ -208,7 +208,7 @@ Install dependencies:
 
 ```bash
 brew update
-brew install cmake ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat molten-vk vulkan-headers
+brew install cmake ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat molten-vk vulkan-headers vulkan-loader
 ```
 
 Build OpenTimelineIO (optional, required for OTIO support):
@@ -231,6 +231,9 @@ export PATH="$(brew --prefix qt@6)/bin:$PATH"
 export CMAKE_PREFIX_PATH="$(brew --prefix qt@6)"
 export OTIO_LOCATION="${PWD}/otio-install"
 export OCIO_LOCATION="$(brew --prefix opencolorio)"
+# Let CMake's FindVulkan locate the Homebrew Vulkan loader (optional,
+# enables the Vulkan render backend)
+export VULKAN_SDK="$(brew --prefix vulkan-loader)"
 
 cmake -S . -B build -G Ninja -DBUILD_TESTS=ON -DBUILD_QT6=ON \
   -DOTIO_LOCATION="${OTIO_LOCATION}" \

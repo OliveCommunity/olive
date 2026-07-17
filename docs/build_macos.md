@@ -66,7 +66,21 @@ brew install openimageio opencolorio openexr
 brew install portaudio expat
 ```
 
-### 7. Install Test Framework (Optional)
+### 7. Install Vulkan Backend Dependencies (Optional)
+
+Only needed for the Vulkan render backend. Oak builds the OpenGL backend regardless and falls back to it at runtime if Vulkan is unavailable:
+
+```bash
+brew install molten-vk vulkan-headers vulkan-loader
+```
+
+Point CMake at the loader so `find_package(Vulkan)` succeeds (add to `~/.zshrc` if you build regularly):
+
+```bash
+export VULKAN_SDK="$(brew --prefix vulkan-loader)"
+```
+
+### 8. Install Test Framework (Optional)
 
 Only needed if you plan to build and run tests:
 

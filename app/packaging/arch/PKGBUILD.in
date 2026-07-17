@@ -7,7 +7,7 @@ arch=('x86_64')
 url="https://oakvideoeditor.org"
 license=('GPL3')
 depends=('qt6-base' 'qt6-tools' 'ffmpeg' 'openimageio' 'opencolorio' 'openexr' 'expat' 'portaudio' 'mesa' 'vulkan-icd-loader' 'libxkbcommon' 'fmt')
-makedepends=('cmake' 'ninja' 'git' 'pkgconf')
+makedepends=('cmake' 'ninja' 'git' 'pkgconf' 'vulkan-headers')
 source=("${pkgname}-${pkgver}.tar.gz")
 md5sums=('SKIP')
 
@@ -16,8 +16,7 @@ build() {
   cmake -S . -B build -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=/usr \
-    -DBUILD_QT6=ON \
-    -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON
+    -DBUILD_QT6=ON
   cmake --build build
 }
 

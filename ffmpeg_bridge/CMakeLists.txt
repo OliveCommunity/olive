@@ -101,8 +101,8 @@ if (WIN32)
   )
 else()
   install(TARGETS ffmpeg_bridge
-    RUNTIME DESTINATION ffmpeg_bridge/bin
-    LIBRARY DESTINATION ffmpeg_bridge/bin
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
     ARCHIVE DESTINATION ffmpeg_bridge/lib
   )
 endif ()
