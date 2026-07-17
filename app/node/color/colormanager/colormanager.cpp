@@ -68,6 +68,13 @@ QString ColorManager::GetConfigFilename() const
 
 OCIO::ConstConfigRcPtr ColorManager::GetDefaultConfig()
 {
+	// Set up on first use: Project construction calls ColorManager::Init()
+	// unconditionally, so without this any Project created before
+	// SetUpDefaultConfig() crashed dereferencing a null config.
+	if (!default_config_) {
+		SetUpDefaultConfig();
+	}
+
 	return default_config_;
 }
 
