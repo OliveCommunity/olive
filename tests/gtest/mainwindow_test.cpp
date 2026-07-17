@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
 #include <QProgressBar>
+#include <QOffscreenSurface>
+#include <QOpenGLContext>
 #include <QSignalSpy>
 #include <QTest>
 #include <QXmlStreamReader>
@@ -248,6 +250,21 @@ TEST(MainWindowStatusBar, DoubleClickEmitsSignal)
 // MainWindow directly.
 TEST(MainWindow, ConstructsOffscreenWithPanelsAndMenus)
 {
+	// MainWindow instantiates viewer panels containing QOpenGLWidget. On
+	// platforms without a usable OpenGL implementation (e.g. headless CI
+	// runners on the offscreen QPA), constructing it crashes in GL code
+	// ("QOpenGLFunctions created with non-current context"). Probe first and
+	// skip where GL is unavailable.
+	QOffscreenSurface probe_surface;
+	probe_surface.create();
+	QOpenGLContext probe_context;
+	const bool gl_available =
+		probe_context.create() && probe_context.makeCurrent(&probe_surface);
+	probe_context.doneCurrent();
+	if (!gl_available) {
+		GTEST_SKIP() << "OpenGL is not usable on this platform";
+	}
+
 	// Must precede RenderManager creation: PreviewAutoCacher constructs a
 	// Project whose ColorManager dereferences the default OCIO config
 	ColorManager::SetUpDefaultConfig();
