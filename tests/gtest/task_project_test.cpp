@@ -312,7 +312,9 @@ TEST_F(TaskProjectLoadTest, LoadingValidProjectSucceeds)
 
 	olive::Project *loaded = task.GetLoadedProject();
 	ASSERT_NE(loaded, nullptr);
-	EXPECT_EQ(loaded->filename(), path);
+	// Project::set_filename() stores native separators on Windows
+	EXPECT_EQ(QDir::fromNativeSeparators(loaded->filename()),
+			  QDir::fromNativeSeparators(path));
 	EXPECT_FALSE(loaded->nodes().isEmpty());
 
 	delete loaded;

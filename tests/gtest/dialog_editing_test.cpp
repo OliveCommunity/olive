@@ -9,6 +9,7 @@
 #include <QGroupBox>
 #include <QLineEdit>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 #include <QTreeWidget>
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
@@ -803,8 +804,13 @@ TEST(DialogProjectProperties, OcioValidationTogglesOnInvalidFilename)
 	auto *ocio_edit = dialog.findChild<QLineEdit *>();
 	ASSERT_NE(ocio_edit, nullptr);
 
-	// A bad config path flags the line edit as invalid (red text)
-	ocio_edit->setText(QStringLiteral("/definitely/not/a/config.ocio"));
+	// A bad config path flags the line edit as invalid (red text). Use a
+	// nonexistent file inside a temp dir: a fixed absolute path is not
+	// guaranteed to stay nonexistent on every platform (e.g. an earlier test
+	// may have created parts of it on a writable drive).
+	QTemporaryDir dir;
+	ASSERT_TRUE(dir.isValid());
+	ocio_edit->setText(dir.filePath(QStringLiteral("nonexistent.ocio")));
 	EXPECT_TRUE(ocio_edit->styleSheet().contains(QStringLiteral("red")));
 
 	// Restoring an empty (default) filename clears the error again

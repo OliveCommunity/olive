@@ -168,7 +168,8 @@ bool FileFunctions::DirectoryIsValid(const QDir &d,
 									 bool try_to_create_if_not_exists)
 {
 	// Return whether the directory exists, or whether it could be created if it doesn't
-	return d.exists() || d.mkpath(QStringLiteral("."));
+	return d.exists() ||
+		   (try_to_create_if_not_exists && d.mkpath(QStringLiteral(".")));
 }
 
 QString FileFunctions::EnsureFilenameExtension(QString fn,
