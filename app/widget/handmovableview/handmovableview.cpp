@@ -34,6 +34,7 @@ namespace olive
 HandMovableView::HandMovableView(QWidget *parent)
 	: super(parent)
 	, dragging_hand_(false)
+	, default_drag_mode_(NoDrag)
 	, is_timeline_axes_(false)
 {
 	connect(Core::instance(), &Core::ToolChanged, this,

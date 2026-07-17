@@ -177,7 +177,9 @@ private:
 					.arg(VideoParams::FrameRateToString(custom_rate_)));
 		}
 
-		inner_->setCurrentIndex(temp_index);
+		// On the first populate there is no current index (-1); select the
+		// first standard rate so GetFrameRate() matches what's displayed
+		inner_->setCurrentIndex(qMax(temp_index, 0));
 
 		inner_->blockSignals(false);
 	}
