@@ -132,6 +132,10 @@ add_executable(olive-gtest
   widget_layout_test.cpp
   widget_combos_test.cpp
   widget_misc_test.cpp
+  widget_curve_keyframe_test.cpp
+  widget_timeruler_playback_test.cpp
+  widget_projectexplorer_test.cpp
+  widget_panels_model_test.cpp
 )
 
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
