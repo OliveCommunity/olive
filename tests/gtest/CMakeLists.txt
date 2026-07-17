@@ -125,6 +125,9 @@ add_executable(olive-gtest
   codec_ffmpegencoder_test.cpp
   ui_icons_test.cpp
   ui_style_test.cpp
+  dialog_editing_test.cpp
+  dialog_misc_test.cpp
+  dialog_export_test.cpp
 )
 
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
