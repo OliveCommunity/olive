@@ -1336,7 +1336,11 @@ bool Core::SaveProject()
 
 void Core::ShowStatusBarMessage(const QString &s, int timeout)
 {
-	main_window_->statusBar()->showMessage(s, timeout);
+	// The main window only exists after StartGUI(); in tests and other
+	// contexts that construct Core without a window, do nothing.
+	if (main_window_) {
+		main_window_->statusBar()->showMessage(s, timeout);
+	}
 }
 
 void Core::ClearStatusBarMessage()
