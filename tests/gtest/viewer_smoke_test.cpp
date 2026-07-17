@@ -95,20 +95,30 @@ TEST(ViewerSmokeTimer, PlaybackSpeedReverse)
 
 TEST(ViewerSmokeTimer, DifferentTimebases)
 {
-	ViewerPlaybackTimer timer;
+	// Frame counts track wall time at each timebase's rate. Measure the
+	// actual interval so scheduling jitter on loaded CI runners (observed on
+	// macOS, where msleep(100) overslept ~2.5x) can't break the comparison.
+	for (double fps : { 24.0, 60.0 }) {
+		ViewerPlaybackTimer timer;
+		QElapsedTimer wall;
+		timer.Start(0, 1, 1.0 / fps);
+		wall.start();
+		QThread::msleep(100);
 
-	// Test with 24fps
-	timer.Start(0, 1, 1.0 / 24.0);
+		const int64_t ts = timer.GetTimestampNow();
+		const int64_t expected =
+			qFloor(static_cast<double>(wall.elapsed()) / (1000.0 / fps));
+		EXPECT_NEAR(ts, expected, 1) << "fps=" << fps;
+	}
+
+	// With highly distinct timebases the faster one always produces more
+	// frames in the same interval, even on heavily loaded machines
+	ViewerPlaybackTimer slow, fast;
+	slow.Start(0, 1, 1.0);
+	fast.Start(0, 1, 1.0 / 240.0);
 	QThread::msleep(100);
-	int64_t ts24 = timer.GetTimestampNow();
 
-	// Test with 60fps
-	timer.Start(0, 1, 1.0 / 60.0);
-	QThread::msleep(100);
-	int64_t ts60 = timer.GetTimestampNow();
-
-	// At same real time, 60fps should have more frames than 24fps
-	EXPECT_GT(ts60, ts24);
+	EXPECT_LT(slow.GetTimestampNow(), fast.GetTimestampNow());
 }
 
 TEST(ViewerSmokeTimer, ZeroSpeed)
