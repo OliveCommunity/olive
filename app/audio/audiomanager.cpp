@@ -93,11 +93,6 @@ int InputCallback(const void *input, void *output, unsigned long frameCount,
 bool AudioManager::PushToOutput(const AudioParams &params,
 								const QByteArray &samples, QString *error)
 {
-	qDebug() << "AudioManager::PushToOutput: device=" << output_device_
-			 << "sample_rate=" << params.sample_rate()
-			 << "channels=" << params.channel_count()
-			 << "bytes=" << samples.size();
-
 	if (output_device_ == paNoDevice) {
 		if (error)
 			*error = tr("No output device is set");

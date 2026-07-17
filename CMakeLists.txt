@@ -18,7 +18,15 @@
 cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
 
 project(olive-editor VERSION 0.4.1 LANGUAGES CXX)
-set(PROJECT_VERSION "0.4.1-alpha")
+# Fallback version used only when git is unavailable (e.g. source tarball);
+# normally overridden by the git tag / commit hash logic further below.
+# Edit version.txt to change it.
+if(EXISTS "${CMAKE_SOURCE_DIR}/version.txt")
+  file(STRINGS "${CMAKE_SOURCE_DIR}/version.txt" PROJECT_VERSION LIMIT_COUNT 1)
+  string(STRIP "${PROJECT_VERSION}" PROJECT_VERSION)
+else()
+  set(PROJECT_VERSION "0.0.0-unknown")
+endif()
 
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DOFX_SUPPORTS_OPENGLRENDER")
@@ -253,18 +261,32 @@ elseif(UNIX)
   list(APPEND OLIVE_LIBRARIES Qt${QT_VERSION_MAJOR}::DBus)
 endif()
 
-# Generate Git hash
+# Determine version from git: the tag name if HEAD is exactly on a tag,
+# otherwise the first 8 hex digits of the commit hash. Falls back to
+# version.txt (read above) when git is unavailable (e.g. tarball).
 set(PROJECT_LONG_VERSION ${PROJECT_VERSION})
 if(EXISTS "${CMAKE_SOURCE_DIR}/.git")
   find_package(Git)
   if(GIT_FOUND)
-    execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short=8 HEAD
+    execute_process(COMMAND ${GIT_EXECUTABLE} describe --exact-match --tags HEAD
       WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-      OUTPUT_VARIABLE GIT_HASH
+      OUTPUT_VARIABLE GIT_TAG
       OUTPUT_STRIP_TRAILING_WHITESPACE
+      ERROR_QUIET
     )
 
-    set(PROJECT_LONG_VERSION ${PROJECT_VERSION}-${GIT_HASH})
+    if(GIT_TAG)
+      # Tags are named like "v0.4.1-alpha"; drop the leading "v"
+      string(REGEX REPLACE "^v" "" PROJECT_VERSION "${GIT_TAG}")
+    else()
+      execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse --short=8 HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE PROJECT_VERSION
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+      )
+    endif()
+
+    set(PROJECT_LONG_VERSION ${PROJECT_VERSION})
   endif()
 endif()
 

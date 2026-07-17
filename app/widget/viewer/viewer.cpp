@@ -852,14 +852,9 @@ void ViewerWidget::QueueNextAudioBuffer()
 	// Clamp queue end by zero and the audio length
 	queue_end = std::clamp(queue_end, rational(0),
 						   GetConnectedNode()->GetAudioLength());
-	qDebug() << "ViewerWidget::QueueNextAudioBuffer: time="
-			 << audio_playback_queue_time_.toDouble() << "end="
-			 << queue_end.toDouble()
-			 << "audio_length=" << GetConnectedNode()->GetAudioLength().toDouble();
 	if ((playback_speed_ > 0 && queue_end <= audio_playback_queue_time_) ||
 		(playback_speed_ < 0 && queue_end >= audio_playback_queue_time_)) {
 		// This will queue nothing, so stop the loop here
-		qDebug() << "ViewerWidget::QueueNextAudioBuffer: nothing to queue";
 		if (prequeuing_audio_) {
 			DecrementPrequeuedAudio();
 		}
@@ -878,8 +873,6 @@ void ViewerWidget::QueueNextAudioBuffer()
 
 void ViewerWidget::ReceivedAudioBufferForPlayback()
 {
-	qDebug() << "ViewerWidget::ReceivedAudioBufferForPlayback: queue_size="
-			 << audio_playback_queue_.size();
 	while (!audio_playback_queue_.empty() &&
 		   audio_playback_queue_.front()->HasResult()) {
 		RenderTicketWatcher *watcher = audio_playback_queue_.front();
@@ -887,10 +880,6 @@ void ViewerWidget::ReceivedAudioBufferForPlayback()
 
 		if (watcher->HasResult()) {
 			SampleBuffer samples = watcher->Get().value<SampleBuffer>();
-			qDebug() << "ViewerWidget::ReceivedAudioBufferForPlayback: got buffer"
-					 << "allocated=" << samples.is_allocated()
-					 << "sample_count=" << samples.sample_count()
-					 << "channels=" << samples.audio_params().channel_count();
 			if (samples.is_allocated()) {
 				// If the samples must be reversed, reverse them now
 				if (playback_speed_ < 0) {
@@ -901,16 +890,11 @@ void ViewerWidget::ReceivedAudioBufferForPlayback()
 				AudioProcessor::Buffer buf;
 				int r = audio_processor_.Convert(samples.to_raw_ptrs().data(),
 															 samples.sample_count(), &buf);
-				qDebug() << "ViewerWidget::ReceivedAudioBufferForPlayback: Convert"
-						 << "returned=" << r << "buf_size=" << buf.size();
 
 				// TempoProcessor may have emptied the array
 				if (r >= 0) {
 					if (!buf.empty()) {
 						const QByteArray &pack = buf.at(0);
-						qDebug() << "ViewerWidget::ReceivedAudioBufferForPlayback: pushing"
-									 << pack.size() << "bytes prequeuing="
-									 << prequeuing_audio_;
 						if (prequeuing_audio_) {
 							// Add to prequeued audio buffer
 							prequeued_audio_.append(pack);
