@@ -65,6 +65,7 @@ AboutDialog::AboutDialog(bool welcome_dialog, QWidget *parent)
 					   "<p><b>%1</b> %2</p>" // AppName (version identifier)
 					   "<p>%3</p>" // Description
 					   "<p>%4</p>" // Fork notice
+					   "<p>%5</p>" // Special thanks
 					   "</body></html>")
 			.arg(
 				QApplication::applicationName(),
@@ -72,7 +73,10 @@ AboutDialog::AboutDialog(bool welcome_dialog, QWidget *parent)
 				tr("Oak Video Editor is a free open source non-linear video editor. "
 				   "This software is licensed under the GNU GPL Version 3."),
 				tr("This project is a fork of "
-				   "<a href=\"https://github.com/olive-editor/olive\">Olive Video Editor</a>.")));
+				   "<a href=\"https://github.com/olive-editor/olive\">Olive Video Editor</a>."),
+				tr("Special thanks to Enzo GD, administrator of the Olive "
+				   "Facebook user group, for his generous support in spreading "
+				   "the word about this project in its early days.")));
 
 	// Set text formatting
 	label->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);

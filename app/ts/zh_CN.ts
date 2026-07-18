@@ -688,6 +688,10 @@ The possible range of CRF in SVT-AV1 is 1-63.</source>
         <translation>关于 %1</translation>
     </message>
     <message>
+        <source>Special thanks to Enzo GD, administrator of the Olive Facebook user group, for his generous support in spreading the word about this project in its early days.</source>
+        <translation>特别感谢 Olive Facebook 用户群组管理员 Enzo GD，在项目早期为宣传推广所给予的慷慨支持。</translation>
+    </message>
+    <message>
         <location line="+29" />
         <source>Oak Video Editor is a free open source non-linear video editor. This software is licensed under the GNU GPL Version 3.</source>
         <translation type="unfinished" />
