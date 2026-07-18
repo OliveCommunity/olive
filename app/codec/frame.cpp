@@ -90,9 +90,9 @@ FramePtr Frame::Interlace(FramePtr top, FramePtr bottom)
 int Frame::generate_linesize_bytes(int width, PixelFormat format,
 								   int channel_count)
 {
-	// Align to 32 bytes (not sure if this is necessary?)
-	return VideoParams::GetBytesPerPixel(format, channel_count) *
-		   ((width + 31) & ~31);
+	// Calculate the raw bytes required for the image row  and Align to a multiple of 4 bytes.
+    int row_bytes = VideoParams::GetBytesPerPixel(format, channel_count) * width;
+    return (row_bytes + 3) & ~3;
 }
 
 Color Frame::get_pixel(int x, int y) const
