@@ -108,7 +108,20 @@ jobs:
       # flags below pick it up on all three platforms
       # ------------------------------------------------------------------
       - name: Restore ccache
+        if: runner.os != 'Windows'
         uses: WarpBuilds/cache@v1
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ github.ref_name }}-
+            ccache-${{ runner.os }}-
+
+      # WarpBuilds/cache does not support Windows runners; use GitHub's
+      # cache service there (separate backend, same keys)
+      - name: Restore ccache (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
         with:
           path: ${{ github.workspace }}/.ccache
           key: ccache-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
