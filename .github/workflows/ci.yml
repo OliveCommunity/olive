@@ -10,9 +10,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [warp-ubuntu-latest-x64-16x, warp-macos-15-arm64-12x, warp-windows-latest-x64-32x]
+        os: [warp-ubuntu-latest-x64-8x, warp-macos-15-arm64-12x, warp-windows-latest-x64-8x]
     env:
       CMAKE_BUILD_TYPE: Release
+      CCACHE_DIR: ${{ runner.temp }}/ccache
+      CCACHE_MAXSIZE: 1G
       # Enable OFX integration tests that require external plugin bundles
       RUN_OFX_ITEST: "1"
       # Enable plugin subsystem smoke tests
@@ -35,7 +37,7 @@ jobs:
             qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
             libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
-            portaudio19-dev libgl1-mesa-dev libxkbcommon-dev
+            portaudio19-dev libgl1-mesa-dev libxkbcommon-dev ccache
 
       # ------------------------------------------------------------------
       # macOS dependencies
@@ -44,12 +46,24 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew update
-          brew install ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat molten-vk vulkan-headers
+          brew install ninja pkg-config ccache qt@6 ffmpeg openimageio opencolorio openexr portaudio expat molten-vk vulkan-headers
           echo "$(brew --prefix qt@6)/bin" >> "$GITHUB_PATH"
           echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@6)" >> "$GITHUB_ENV"
 
-      - name: Build OpenTimelineIO (macOS)
+      - name: Cache OpenTimelineIO (macOS)
         if: runner.os == 'macOS'
+        id: otio-cache
+        uses: WarpBuilds/cache@v1
+        with:
+          path: otio-install
+          key: otio-0.16.0-${{ runner.os }}-v1
+
+      - name: Set OTIO location (macOS)
+        if: runner.os == 'macOS'
+        run: echo "OTIO_LOCATION=${PWD}/otio-install" >> "$GITHUB_ENV"
+
+      - name: Build OpenTimelineIO (macOS)
+        if: runner.os == 'macOS' && steps.otio-cache.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
           cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
@@ -87,6 +101,20 @@ jobs:
             mingw-w64-ucrt-x86_64-vulkan-headers
             mingw-w64-ucrt-x86_64-vulkan-loader
             mingw-w64-ucrt-x86_64-make
+            mingw-w64-ucrt-x86_64-ccache
+
+      # ------------------------------------------------------------------
+      # Compile cache (ccache) — restored before configure so the launcher
+      # flags below pick it up on all three platforms
+      # ------------------------------------------------------------------
+      - name: Restore ccache
+        uses: WarpBuilds/cache@v1
+        with:
+          path: ${{ runner.temp }}/ccache
+          key: ccache-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ github.ref_name }}-
+            ccache-${{ runner.os }}-
 
       # ------------------------------------------------------------------
       # Configure
@@ -99,6 +127,8 @@ jobs:
             -DBUILD_QT6=ON \
             -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON \
             -DOCIO_LOCATION=/usr \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
 
       - name: Configure (macOS)
@@ -109,6 +139,8 @@ jobs:
             -DBUILD_QT6=ON \
             -DOCIO_LOCATION=$(brew --prefix opencolorio) \
             -DOTIO_LOCATION=${OTIO_LOCATION} \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
 
       - name: Configure (Windows)
@@ -118,6 +150,8 @@ jobs:
           cmake -S . -B build -G Ninja \
             -DBUILD_TESTS=ON \
             -DBUILD_QT6=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
 
       # ------------------------------------------------------------------
@@ -125,12 +159,16 @@ jobs:
       # ------------------------------------------------------------------
       - name: Build
         if: runner.os != 'Windows'
-        run: cmake --build build --config ${{ env.CMAKE_BUILD_TYPE }}
+        run: |
+          cmake --build build --config ${{ env.CMAKE_BUILD_TYPE }}
+          ccache -s
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: cmake --build build --config ${{ env.CMAKE_BUILD_TYPE }}
+        run: |
+          cmake --build build --config ${{ env.CMAKE_BUILD_TYPE }}
+          ccache -s
 
       # ------------------------------------------------------------------
       # Clone and build OpenFX-Misc plugins (used by OFX integration tests)
@@ -142,7 +180,7 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           cd openfx-misc
-          make -j16
+          make -j8
           sudo make install
           PLUGIN_FILE=$(find /usr/OFX/Plugins /usr/local/OFX/Plugins . -name "*.ofx.bundle" -print -quit 2>/dev/null | head -1)
           if [ -n "$PLUGIN_FILE" ]; then
@@ -234,10 +272,12 @@ jobs:
   # Experimental dynamic render backend (Linux only)
   # ------------------------------------------------------------------
   build-test-dynamic-backend:
-    runs-on: warp-ubuntu-latest-x64-16x
+    runs-on: warp-ubuntu-latest-x64-8x
     env:
       CMAKE_BUILD_TYPE: Release
       QT_QPA_PLATFORM: offscreen
+      CCACHE_DIR: ${{ runner.temp }}/ccache
+      CCACHE_MAXSIZE: 1G
 
     steps:
       - uses: actions/checkout@v4
@@ -252,7 +292,16 @@ jobs:
             qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
             libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
-            portaudio19-dev libgl1-mesa-dev libxkbcommon-dev
+            portaudio19-dev libgl1-mesa-dev libxkbcommon-dev ccache
+
+      - name: Restore ccache
+        uses: WarpBuilds/cache@v1
+        with:
+          path: ${{ runner.temp }}/ccache
+          key: ccache-${{ runner.os }}-dynamic-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-${{ runner.os }}-dynamic-${{ github.ref_name }}-
+            ccache-${{ runner.os }}-dynamic-
 
       - name: Configure
         run: |
@@ -262,10 +311,14 @@ jobs:
             -DOAK_ENABLE_DYNAMIC_RENDER_BACKEND=ON \
             -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON \
             -DOCIO_LOCATION=/usr \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
 
       - name: Build
-        run: cmake --build build --config ${{ env.CMAKE_BUILD_TYPE }}
+        run: |
+          cmake --build build --config ${{ env.CMAKE_BUILD_TYPE }}
+          ccache -s
 
       - name: Test
         run: ctest --test-dir build --output-on-failure -C ${{ env.CMAKE_BUILD_TYPE }}
