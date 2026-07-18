@@ -3,6 +3,9 @@ name: CI
 on:
   push:
   pull_request:
+  schedule:
+    # Daily at 03:17 UTC to keep ccache/dependency caches warm
+    - cron: '17 3 * * *'
 
 jobs:
   build-test:
@@ -10,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [warp-ubuntu-latest-x64-8x, warp-macos-15-arm64-12x, warp-windows-latest-x64-8x]
+        os: [ubuntu-24.04, macos-15, windows-latest]
     env:
       CMAKE_BUILD_TYPE: Release
       CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -180,7 +183,7 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           cd openfx-misc
-          make -j8
+          make -j"$(nproc)"
           sudo make install
           PLUGIN_FILE=$(find /usr/OFX/Plugins /usr/local/OFX/Plugins . -name "*.ofx.bundle" -print -quit 2>/dev/null | head -1)
           if [ -n "$PLUGIN_FILE" ]; then
