@@ -86,7 +86,7 @@ sudo apt-get install -y \
   cmake ninja-build pkg-config nasm \
   qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
   libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
-  portaudio19-dev libgl1-mesa-dev libvulkan-dev vulkan-headers libxkbcommon-dev
+  portaudio19-dev libgl1-mesa-dev libvulkan-dev libxkbcommon-dev
 ```
 
 Build FFmpeg 8.0+ from source:
