@@ -180,6 +180,16 @@ static void test_sequence_and_save_load(void)
 	assert(oakengine_sequence_get_frame_rate(seq, &num, &den) == OAKENGINE_OK);
 	assert(num == 30000 && den == 1001);
 
+	// Default video dimensions (Config's DefaultSequenceWidth/Height) and
+	// square pixels
+	int width = -1, height = -1, par_num = -1, par_den = -1;
+	assert(oakengine_sequence_get_video_params(seq, &width, &height, &par_num,
+											   &par_den) == OAKENGINE_OK);
+	assert(width == 1920 && height == 1080);
+	assert(par_num == 1 && par_den == 1);
+	assert(oakengine_sequence_get_video_params(NULL, NULL, NULL, NULL, NULL) ==
+		   OAKENGINE_E_INVALID);
+
 	// Fresh sequences have no tracks.
 	int video = -1, audio = -1, subtitle = -1;
 	assert(oakengine_sequence_track_count(seq, &video, &audio, &subtitle) ==

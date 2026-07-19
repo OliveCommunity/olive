@@ -191,6 +191,30 @@ int oakengine_sequence_get_frame_rate(const OakEngineSequence *self, int *num,
 	return OAKENGINE_OK;
 }
 
+int oakengine_sequence_get_video_params(const OakEngineSequence *self,
+										int *width, int *height, int *par_num,
+										int *par_den)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::VideoParams params = impl(self)->get_video_params();
+	if (width) {
+		*width = params.width();
+	}
+	if (height) {
+		*height = params.height();
+	}
+	const olive::Rational par = params.pixel_aspect_ratio();
+	if (par_num) {
+		*par_num = par.numerator();
+	}
+	if (par_den) {
+		*par_den = par.denominator();
+	}
+	return OAKENGINE_OK;
+}
+
 int oakengine_sequence_track_count(const OakEngineSequence *self, int *video,
 								   int *audio, int *subtitle)
 {

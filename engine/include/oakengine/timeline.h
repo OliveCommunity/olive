@@ -110,6 +110,14 @@ oakengine_sequence_get_frame_rate(const OakEngineSequence *self, int *num,
 								  int *den);
 
 /**
+ * @brief Sequence video dimensions and pixel aspect ratio
+ * (ViewerOutput::get_video_params()). Any output pointer may be NULL.
+ */
+OAKENGINE_API int
+oakengine_sequence_get_video_params(const OakEngineSequence *self, int *width,
+									int *height, int *par_num, int *par_den);
+
+/**
  * @brief Number of tracks per track type (Sequence::track_list(type)->
  * get_track_count()). Any of `video`/`audio`/`subtitle` may be NULL.
  */

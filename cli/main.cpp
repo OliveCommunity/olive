@@ -61,11 +61,6 @@ constexpr int k_exit_error = 1;
 constexpr int k_exit_render_unavailable = 2;
 constexpr int k_exit_usage = 64;
 
-// The facade does not expose sequence dimensions yet, so rendering uses the
-// application's default sequence size (also the native size of the demo
-// assets).
-constexpr int k_render_width = 1920;
-constexpr int k_render_height = 1080;
 constexpr int k_pixel_format_f32 = 4; // olive::core::PixelFormat::f32
 
 void print_usage(FILE *out)
@@ -390,9 +385,18 @@ int cmd_render(const char *path, const char *start_str, const char *end_str,
 			break;
 		}
 
-		renderer = oakengine_renderer_create(seq, k_render_width,
-											 k_render_height, k_pixel_format_f32,
-											 fr_num, fr_den, nullptr);
+		int width = 0, height = 0;
+		if (oakengine_sequence_get_video_params(seq, &width, &height, nullptr,
+												nullptr) != OAKENGINE_OK ||
+			width <= 0 || height <= 0) {
+			fprintf(stderr, "error: sequence has no valid video dimensions\n");
+			rc = k_exit_error;
+			break;
+		}
+
+		renderer = oakengine_renderer_create(seq, width, height,
+											 k_pixel_format_f32, fr_num, fr_den,
+											 nullptr);
 		if (!renderer) {
 			fprintf(stderr, "error: failed to create renderer\n");
 			rc = k_exit_error;
