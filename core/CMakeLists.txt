@@ -74,6 +74,13 @@ set_target_properties(olivecore PROPERTIES
 # OAKCORE_BUILD marks the library side of the export macros (dllexport)
 target_compile_definitions(olivecore PRIVATE OAKCORE_BUILD)
 
+# Export only the C ABI (oakcore_*), nothing else — not even symbols from
+# statically linked runtime libraries
+if (UNIX AND NOT APPLE)
+  target_link_options(olivecore PRIVATE
+    "LINKER:--version-script,${CMAKE_CURRENT_SOURCE_DIR}/oakcore.map")
+endif ()
+
 # The library builds against its internal implementation headers
 # (src/oliveimpl); consumers only ever see the public C API and wrapper
 # headers (include/olive/core). oliveimpl must come first so that internal

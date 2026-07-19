@@ -1,0 +1,6 @@
+{
+  global:
+    oakcore_*;
+  local:
+    *;
+};
