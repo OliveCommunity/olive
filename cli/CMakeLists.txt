@@ -81,6 +81,15 @@ if (BUILD_TESTS)
     set_tests_properties(oak_cli_render PROPERTIES
             SKIP_RETURN_CODE 2
     )
+
+    # probe is headless and always runs; the output must mention the demo
+    # file's 1920x1080 video and 48000 Hz audio.
+    add_test(NAME oak_cli_probe
+            COMMAND oak-cli probe ${CMAKE_SOURCE_DIR}/tests/demo.mp4
+    )
+    set_tests_properties(oak_cli_probe PROPERTIES
+            PASS_REGULAR_EXPRESSION "1920.*48000"
+    )
     # Rendering needs the render worker and the dynamic backend plugins.
     if (TARGET olive-render-worker)
         add_dependencies(oak-cli olive-render-worker)

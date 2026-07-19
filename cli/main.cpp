@@ -48,6 +48,7 @@
 #include <string>
 #include <vector>
 
+#include "oakengine/footage.h"
 #include "oakengine/init.h"
 #include "oakengine/project.h"
 #include "oakengine/renderer.h"
@@ -76,12 +77,15 @@ void print_usage(FILE *out)
 			"      Render the first sequence to PPM frames (P6, 8-bit RGB) and the\n"
 			"      audio range to a PCM s16 WAV file in <out_dir>.\n"
 			"\n"
+			"  oak-cli probe <mediafile>\n"
+			"      Probe a media file: decoder, duration, video and audio streams.\n"
+			"\n"
 			"  oak-cli --help\n"
 			"      Show this text.\n"
 			"\n"
 			"Exit codes:\n"
 			"  0   success\n"
-			"  1   general error (bad project file, no sequence, I/O failure)\n"
+			"  1   general error (bad project/media file, no sequence, I/O failure)\n"
 			"  2   rendering unavailable or failed (e.g. no GL render backend)\n"
 			"  64  usage error\n");
 }
@@ -460,6 +464,79 @@ int cmd_render(const char *path, const char *start_str, const char *end_str,
 	return rc;
 }
 
+int cmd_probe(const char *path)
+{
+	if (oakengine_init(OAKENGINE_INIT_HEADLESS) != OAKENGINE_OK) {
+		fprintf(stderr, "error: failed to initialize the engine\n");
+		return k_exit_error;
+	}
+
+	int rc = k_exit_ok;
+	OakEngineFootage *f = oakengine_footage_probe(path);
+	if (!f) {
+		char err[1024];
+		fprintf(stderr, "error: %s\n",
+				oakengine_footage_last_error(err, sizeof(err)) > 0 ?
+					err :
+					"probe failed");
+		rc = k_exit_error;
+	} else {
+		char decoder[64];
+		oakengine_footage_get_decoder_name(f, decoder, sizeof(decoder));
+		double duration = 0.0;
+		oakengine_footage_get_duration(f, &duration);
+		printf("Decoder: %s\n", decoder);
+		printf("Duration: %.6f s\n", duration);
+
+		const int videos = oakengine_footage_get_video_stream_count(f);
+		printf("Video streams: %d\n", videos);
+		for (int i = 0; i < videos; i++) {
+			oak_footage_video_info vi;
+			if (oakengine_footage_get_video_stream_info(f, i, &vi) !=
+				OAKENGINE_OK) {
+				continue;
+			}
+			const double secs = vi.time_base_den ?
+				double(vi.duration_ts) * vi.time_base_num / vi.time_base_den :
+				0.0;
+			const double fps = vi.frame_rate_den ?
+				double(vi.frame_rate_num) / vi.frame_rate_den :
+				0.0;
+			printf("  [%d] stream %d: %dx%d, %d/%d fps (%.3f), duration "
+				   "%lld/%d (%f s), primaries=%d trc=%d, %s\n",
+				   i, vi.stream_index, vi.width, vi.height,
+				   vi.frame_rate_num, vi.frame_rate_den, fps,
+				   (long long)vi.duration_ts, vi.time_base_den, secs,
+				   vi.color_primaries, vi.color_trc,
+				   vi.interlaced ? "interlaced" : "progressive");
+		}
+
+		const int audios = oakengine_footage_get_audio_stream_count(f);
+		printf("Audio streams: %d\n", audios);
+		for (int i = 0; i < audios; i++) {
+			oak_footage_audio_info ai;
+			if (oakengine_footage_get_audio_stream_info(f, i, &ai) !=
+				OAKENGINE_OK) {
+				continue;
+			}
+			const double secs = ai.time_base_den ?
+				double(ai.duration_ts) * ai.time_base_num / ai.time_base_den :
+				0.0;
+			printf("  [%d] stream %d: %d Hz, %d channels, duration %lld/%d "
+				   "(%f s)\n",
+				   i, ai.stream_index, ai.sample_rate, ai.channel_count,
+				   (long long)ai.duration_ts, ai.time_base_den, secs);
+		}
+
+		printf("Subtitle streams: %d\n",
+			   oakengine_footage_get_subtitle_stream_count(f));
+		oakengine_footage_free(f);
+	}
+
+	oakengine_shutdown();
+	return rc;
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -487,6 +564,13 @@ int main(int argc, char *argv[])
 			return k_exit_usage;
 		}
 		return cmd_render(argv[2], argv[3], argv[4], argv[5]);
+	}
+	if (command == "probe") {
+		if (argc != 3) {
+			print_usage(stderr);
+			return k_exit_usage;
+		}
+		return cmd_probe(argv[2]);
 	}
 
 	fprintf(stderr, "error: unknown command \"%s\"\n", argv[1]);
