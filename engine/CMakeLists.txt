@@ -233,4 +233,35 @@ if (BUILD_TESTS)
     target_compile_definitions(oakengine_init_test PRIVATE
             OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
+
+    make_oakengine_test(oakengine_renderer_test)
+    # The renderer test builds sequence content through the engine C++ API
+    # (allowed for engine-internal tests) and probes the dynamic render
+    # backend the same way the gtest harness does, so it needs the internal
+    # include paths and backend definitions (mirrors tests/gtest).
+    target_include_directories(oakengine_renderer_test PRIVATE
+            ${CMAKE_SOURCE_DIR}/third_party/openfx/include
+            ${CMAKE_SOURCE_DIR}/third_party/openfx/HostSupport/include
+            ${OLIVE_INCLUDE_DIRS}
+    )
+    target_compile_definitions(oakengine_renderer_test PRIVATE
+            ${OLIVE_DEFINITIONS}
+            OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    )
+    target_compile_options(oakengine_renderer_test PRIVATE
+            ${OLIVE_COMPILE_OPTIONS}
+    )
+    if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
+        target_compile_definitions(oakengine_renderer_test PRIVATE
+                OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
+        add_dependencies(oakengine_renderer_test oakgl)
+        if (TARGET oakvulkan)
+            add_dependencies(oakengine_renderer_test oakvulkan)
+        endif ()
+    endif ()
+    # render_frame goes through the render worker pool; make sure the worker
+    # binary in the build tree is up to date.
+    if (TARGET olive-render-worker)
+        add_dependencies(oakengine_renderer_test olive-render-worker)
+    endif ()
 endif ()

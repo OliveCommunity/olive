@@ -25,8 +25,10 @@ set(OLIVE_SOURCES
         include/oakengine/init.h
         include/oakengine/project.h
         include/oakengine/timeline.h
+        include/oakengine/renderer.h
         src/capi/init.cpp
         src/capi/project.cpp
         src/capi/timeline.cpp
+        src/capi/renderer.cpp
         PARENT_SCOPE
 )
