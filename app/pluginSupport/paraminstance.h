@@ -30,7 +30,6 @@
 #include "ofxhParam.h"
 #include "node/nodeundo.h"
 #include "node/plugins/plugin.h"
-#include "core.h"
 #include "undo/undocommand.h"
 #include "common/current.h"
 #include <iostream>

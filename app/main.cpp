@@ -43,6 +43,7 @@
 #include "common/debug.h"
 #include "node/project/serializer/serializer.h"
 #include "version.h"
+#include "window/mainwindow/mainwindow.h"
 
 #ifdef _WIN32
 #include <QOffscreenSurface>

@@ -21,7 +21,7 @@
 
 #include "text.h"
 
-#include "core.h"
+#include "coreengine.h"
 #include "undo/undocommand.h"
 
 namespace olive
@@ -45,7 +45,7 @@ void TextGizmo::update_input_html(const QString &s, const Rational &time)
 		MultiUndoCommand *command = new MultiUndoCommand();
 		Node::set_value_at_time(input_.input(), time, s, input_.track(), command,
 							 true);
-		Core::instance()->undo_stack()->push(command, tr("Edit Text"));
+		EngineCore::instance()->undo_stack()->push(command, tr("Edit Text"));
 	}
 }
 

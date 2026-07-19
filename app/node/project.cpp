@@ -27,7 +27,6 @@
 #include "common/current.h"
 #include "common/qtutils.h"
 #include "common/xmlutils.h"
-#include "core.h"
 #include "node/color/ociobase/ociobase.h"
 #include "node/factory.h"
 #include "node/group/group.h"

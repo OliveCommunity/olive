@@ -19,6 +19,8 @@
 set(OLIVE_SOURCES
         core.h
         core.cpp
+        coreengine.h
+        coreengine.cpp
 )
 
 #set(OLIVE_RESOURCES)

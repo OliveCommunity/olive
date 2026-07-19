@@ -25,7 +25,7 @@
 #include <QMetaObject>
 
 
-#include "core.h"
+#include "coreengine.h"
 #include "node/color/colormanager/colormanager.h"
 #include "render/lutlibrary.h"
 #include "render/previewautocacher.h"
@@ -204,8 +204,8 @@ void OCIOLutNode::set_last_error(const QString &error) const
 
 	// Make the error visible to the user instead of failing silently, but only
 	// from the main process (the render worker has no status bar)
-	if (!error.isEmpty() && is_main_process() && Core::instance()) {
-		Core::instance()->show_status_bar_message(error, 10000);
+	if (!error.isEmpty() && is_main_process() && EngineCore::instance()) {
+		EngineCore::instance()->show_status_bar_message(error, 10000);
 	}
 }
 

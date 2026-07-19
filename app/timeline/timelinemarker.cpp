@@ -26,7 +26,7 @@
 #include "common/qtutils.h"
 #include "common/xmlutils.h"
 #include "config/config.h"
-#include "core.h"
+#include "node/project.h"
 #include "ui/colorcoding.h"
 
 namespace olive

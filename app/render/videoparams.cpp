@@ -26,7 +26,7 @@
 #include <QCoreApplication>
 #include <QtMath>
 
-#include "core.h"
+#include "common/xmlutils.h"
 #include "ofxImageEffect.h"
 
 namespace olive

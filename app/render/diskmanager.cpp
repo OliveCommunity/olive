@@ -30,7 +30,7 @@
 
 #include "common/filefunctions.h"
 #include "config/config.h"
-#include "core.h"
+#include "coreengine.h"
 #include "dialog/diskcache/diskcachedialog.h"
 
 namespace olive
@@ -370,7 +370,7 @@ bool DiskCacheFolder::delete_least_recent()
 		bool e = delete_file_internal(hash_to_delete);
 
 		if (e) {
-			Core::instance()->warn_cache_full();
+			EngineCore::instance()->warn_cache_full();
 		}
 
 		return e;

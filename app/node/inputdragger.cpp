@@ -21,7 +21,6 @@
 
 #include "inputdragger.h"
 
-#include "core.h"
 #include "node.h"
 #include "nodeundo.h"
 

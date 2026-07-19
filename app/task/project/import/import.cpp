@@ -25,7 +25,7 @@
 #include <QFileInfo>
 
 #include "config/config.h"
-#include "core.h"
+#include "coreengine.h"
 #include "node/nodeundo.h"
 #include "node/project/footage/footage.h"
 
@@ -41,7 +41,7 @@ ProjectImportTask::ProjectImportTask(Folder *folder,
 		filenames_.append(QFileInfo(f));
 	}
 
-	file_count_ = Core::count_files_in_file_list(filenames_);
+	file_count_ = EngineCore::count_files_in_file_list(filenames_);
 
 	set_title(tr("Importing %n file(s)", nullptr, file_count_));
 }
@@ -176,7 +176,7 @@ void ProjectImportTask::validate_image_sequence(Footage *footage,
 			// user just in case...
 			bool is_sequence;
 
-			QMetaObject::invokeMethod(Core::instance(), "confirm_image_sequence",
+			QMetaObject::invokeMethod(EngineCore::instance(), "confirm_image_sequence",
 									  Qt::BlockingQueuedConnection,
 									  Q_RETURN_ARG(bool, is_sequence),
 									  Q_ARG(QString, footage->filename()));

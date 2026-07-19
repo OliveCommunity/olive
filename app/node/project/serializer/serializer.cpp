@@ -26,7 +26,7 @@
 #include <QXmlStreamReader>
 
 #include "common/xmlutils.h"
-#include "core.h"
+#include "coreengine.h"
 #include "node/group/group.h"
 #include "serializer190219.h"
 #include "serializer210528.h"
@@ -156,7 +156,7 @@ ProjectSerializer::Result ProjectSerializer::load(Project *project,
 ProjectSerializer::Result ProjectSerializer::paste(LoadType load_type,
 												   Project *project)
 {
-	QString clipboard = Core::paste_string_from_clipboard();
+	QString clipboard = EngineCore::paste_string_from_clipboard();
 	if (clipboard.isEmpty()) {
 		return k_no_data;
 	}
@@ -257,7 +257,7 @@ ProjectSerializer::Result ProjectSerializer::copy(const SaveData &data)
 	ProjectSerializer::Result res = ProjectSerializer::save(&writer, data);
 
 	if (res == k_success) {
-		Core::copy_string_to_clipboard(copy_str);
+		EngineCore::copy_string_to_clipboard(copy_str);
 	}
 
 	return res;

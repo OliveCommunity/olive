@@ -26,7 +26,7 @@
 #include <QTextDocument>
 
 #include "common/html.h"
-#include "core.h"
+#include "coreengine.h"
 #include "node/project.h"
 #include "node/nodeundo.h"
 
@@ -300,7 +300,7 @@ void TextGeneratorV3::gizmo_deactivated()
 
 void TextGeneratorV3::set_vertical_alignment_undoable(Qt::Alignment a)
 {
-	Core::instance()->undo_stack()->push(
+	EngineCore::instance()->undo_stack()->push(
 		new NodeParamSetStandardValueCommand(NodeInput(this,
 													   k_vertical_alignment_input),
 											 get_our_alignment_from_qts(a)),

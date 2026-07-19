@@ -27,13 +27,15 @@
 #include <QImage>
 #include <QPainter>
 #include <QStandardPaths>
+#include <QTimer>
 
 #include "codec/decoder.h"
 #include "common/filefunctions.h"
 #include "common/qtutils.h"
 #include "common/xmlutils.h"
 #include "config/config.h"
-#include "core.h"
+#include "node/color/colormanager/colormanager.h"
+#include "node/project.h"
 #include "render/job/footagejob.h"
 #include "ui/icons/icons.h"
 

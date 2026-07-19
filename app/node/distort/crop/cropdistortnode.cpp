@@ -22,7 +22,6 @@
 #include "cropdistortnode.h"
 
 #include "common/util.h"
-#include "core.h"
 #include "node/sliderdisplaytype.h"
 
 namespace olive

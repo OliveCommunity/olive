@@ -22,7 +22,7 @@
 #include "ofxCore.h"
 #include "ofxMessage.h"
 #include "common/current.h"
-#include "core.h"
+#include "coreengine.h"
 #include "dialog/progress/progress.h"
 #include "node/output/viewer/viewer.h"
 #include "panel/panelmanager.h"
@@ -401,7 +401,7 @@ OfxStatus OlivePluginInstance::editEnd()
 													"Edit Parameters");
 			}
 		}
-		Core::instance()->undo_stack()->push(edit_command_, label);
+		EngineCore::instance()->undo_stack()->push(edit_command_, label);
 		edit_command_ = nullptr;
 		edit_label_.clear();
 		edit_first_label_.clear();
@@ -437,7 +437,7 @@ void OlivePluginInstance::submit_undo_command(UndoCommand *command,
 		return;
 	}
 
-	Core::instance()->undo_stack()->push(command, label);
+	EngineCore::instance()->undo_stack()->push(command, label);
 }
 
 void OlivePluginInstance::progressStart(const std::string &message,

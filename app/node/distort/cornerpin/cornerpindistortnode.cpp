@@ -22,7 +22,6 @@
 #include "cornerpindistortnode.h"
 
 #include "common/lerp.h"
-#include "core.h"
 
 namespace olive
 {

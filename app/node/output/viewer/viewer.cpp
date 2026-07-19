@@ -22,7 +22,7 @@
 #include "viewer.h"
 
 #include "config/config.h"
-#include "core.h"
+#include "coreengine.h"
 #include "node/traverser.h"
 
 namespace olive
@@ -107,7 +107,7 @@ QVariant ViewerOutput::data(const DataType &d) const
 	case duration: {
 		Rational using_timebase;
 		Timecode::Display using_display =
-			Core::instance()->get_timecode_display();
+			EngineCore::instance()->get_timecode_display();
 
 		// Get first enabled streams
 		VideoParams video = get_first_enabled_video_stream();

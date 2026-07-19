@@ -33,7 +33,7 @@
 #include <QFileInfo>
 #include <QThread>
 
-#include "core.h"
+#include "coreengine.h"
 #include "node/audio/volume/volume.h"
 #include "node/block/clip/clip.h"
 #include "node/block/gap/gap.h"
@@ -134,7 +134,7 @@ bool LoadOTIOTask::Run()
 	// Dialog has to be called from the main thread so we pass the list of sequences here.
 	bool accepted = false;
 	QMetaObject::invokeMethod(
-		Core::instance(), "DialogImportOTIOShow", Qt::BlockingQueuedConnection,
+		EngineCore::instance(), "show_otio_import_dialog", Qt::BlockingQueuedConnection,
 		Q_RETURN_ARG(bool, accepted),
 		Q_ARG(QList<Sequence *>, timeline_sequnce_map.values()));
 

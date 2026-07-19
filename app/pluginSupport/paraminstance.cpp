@@ -19,6 +19,7 @@
 
 #include "paraminstance.h"
 
+#include "coreengine.h"
 #include "oliveplugininstance.h"
 
 namespace olive
@@ -47,7 +48,7 @@ void submit_undo_command(const std::shared_ptr<PluginNode> &node,
 		return;
 	}
 
-	Core::instance()->undo_stack()->push(command, label);
+	EngineCore::instance()->undo_stack()->push(command, label);
 }
 }
 }

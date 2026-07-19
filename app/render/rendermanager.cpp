@@ -25,7 +25,6 @@
 #include <QThread>
 
 #include "config/config.h"
-#include "core.h"
 #ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
 #include "render/backend/dynamicrenderer.h"
 #endif

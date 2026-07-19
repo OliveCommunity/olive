@@ -26,7 +26,6 @@
 #include <QXmlStreamWriter>
 
 #include "common/filefunctions.h"
-#include "core.h"
 #include "node/project/serializer/serializer.h"
 
 namespace olive

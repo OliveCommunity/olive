@@ -56,6 +56,14 @@ public:
 
 	static void set_error_handler(ErrorHandler handler);
 
+	/**
+	 * @brief Report an error through the registered error handler
+	 *
+	 * Public so engine-layer code (e.g. EngineCore) can surface errors to
+	 * the user without depending on the UI itself.
+	 */
+	static void report_error(const QString &title, const QString &message);
+
 	QVariant operator[](const QString &) const;
 
 	QVariant &operator[](const QString &);
@@ -78,8 +86,6 @@ private:
 	static Config current_config;
 
 	static ErrorHandler error_handler_;
-
-	static void report_error(const QString &title, const QString &message);
 
 	static QString get_config_file_path();
 };

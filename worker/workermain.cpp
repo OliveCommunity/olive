@@ -40,7 +40,7 @@
 
 #include "common/qtutils.h"
 #include "config/config.h"
-#include "core.h"
+#include "coreengine.h"
 #include "node/factory.h"
 #include "node/input/multicam/multicamnode.h"
 #include "node/project/serializer/serializer.h"
@@ -128,11 +128,13 @@ public:
 
 	bool initialize_runtime()
 	{
-		// Create a minimal Core instance so that code paths calling Core::instance()
-		// (e.g. ViewerOutput::data for timecode display) do not dereference null.
-		// The worker is short-lived; leaking this on exit is harmless.
-		if (!olive::Core::instance()) {
-			new olive::Core(olive::Core::CoreParams());
+		// Create a minimal EngineCore instance so that code paths calling
+		// EngineCore::instance() (e.g. ViewerOutput::data for timecode display)
+		// do not dereference null. The worker has no UI, so the plain engine
+		// core is sufficient. The worker is short-lived; leaking this on exit
+		// is harmless.
+		if (!olive::EngineCore::instance()) {
+			new olive::EngineCore(olive::EngineCore::CoreParams());
 		}
 
 		olive::Config::load();

@@ -32,7 +32,6 @@
 #include "common/dropworkflowbehavior.h"
 #include "common/filefunctions.h"
 #include "common/xmlutils.h"
-#include "core.h"
 #include "timeline/timelinecommon.h"
 #include "ui/colorcoding.h"
 

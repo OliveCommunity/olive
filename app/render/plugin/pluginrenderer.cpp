@@ -41,7 +41,7 @@
 #include <QVector3D>
 #include <QVector4D>
 #include "pluginrenderer.h"
-#include "core.h"
+#include "coreengine.h"
 #include "undo/undostack.h"
 #include "pluginSupport/oliveclip.h"
 #include "pluginSupport/oliveplugininstance.h"
@@ -1350,7 +1350,7 @@ static void mark_render_failure(olive::TexturePtr destination)
 /// Show an error dialog and undo the last operation. Must be called from the GUI thread.
 static void show_error_dialog_and_undo(const QString &message)
 {
-	if (auto *core = olive::Core::instance()) {
+	if (auto *core = olive::EngineCore::instance()) {
 		if (auto *stack = core->undo_stack()) {
 			if (stack->can_undo()) {
 				stack->undo();

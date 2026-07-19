@@ -21,7 +21,7 @@
 
 #include "undocommand.h"
 
-#include "core.h"
+#include "node/project.h"
 
 namespace olive
 {

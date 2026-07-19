@@ -27,7 +27,6 @@
 #include <QFile>
 
 #include "common/lerp.h"
-#include "core.h"
 #include "config/config.h"
 #include "node/group/group.h"
 #include "node/project/serializer/typeserializer.h"

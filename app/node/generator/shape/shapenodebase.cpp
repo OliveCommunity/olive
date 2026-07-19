@@ -25,7 +25,6 @@
 #include <QVector2D>
 
 #include "common/util.h"
-#include "core.h"
 #include "node/nodeundo.h"
 
 namespace olive

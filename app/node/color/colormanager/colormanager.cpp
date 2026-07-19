@@ -27,7 +27,7 @@
 #include "common/define.h"
 #include "common/filefunctions.h"
 #include "config/config.h"
-#include "core.h"
+#include "node/project.h"
 
 namespace olive
 {
