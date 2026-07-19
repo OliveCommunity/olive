@@ -50,28 +50,6 @@ QFrame *QtUtils::create_vertical_line()
 	return l;
 }
 
-int QtUtils::msg_box(QWidget *parent, QMessageBox::Icon icon,
-					const QString &title, const QString &message,
-					QMessageBox::StandardButtons buttons)
-{
-	QMessageBox b(parent);
-	b.setIcon(icon);
-	b.setWindowModality(Qt::WindowModal);
-	b.setWindowTitle(title);
-	b.setText(message);
-
-	uint mask = QMessageBox::FirstButton;
-	while (mask <= QMessageBox::LastButton) {
-		uint sb = buttons & mask;
-		if (sb) {
-			b.addButton(static_cast<QMessageBox::StandardButton>(sb));
-		}
-		mask <<= 1;
-	}
-
-	return b.exec();
-}
-
 QDateTime QtUtils::get_creation_date(const QFileInfo &info)
 {
 #if QT_VERSION < QT_VERSION_CHECK(5, 10, 0)

@@ -33,6 +33,7 @@
 
 #include "common/digit.h"
 #include "common/qtutils.h"
+#include "dialog/msgbox.h"
 #include "dialog/task/task.h"
 #include "exportsavepresetdialog.h"
 #include "node/project.h"
@@ -308,7 +309,7 @@ void ExportDialog::start_export()
 {
 	if (!video_enabled_->isChecked() && !audio_enabled_->isChecked() &&
 		!subtitles_enabled_->isChecked()) {
-		QtUtils::msg_box(
+		msg_box(
 			this, QMessageBox::Critical, tr("Invalid parameters"),
 			tr("Video, audio, and subtitles are disabled. There's nothing to export."));
 		return;
@@ -322,7 +323,7 @@ void ExportDialog::start_export()
 
 	// If it doesn't, see if the user wants to append it automatically. If not, we don't abort the export.
 	if (!proposed_filename.endsWith(necessary_ext, Qt::CaseInsensitive)) {
-		if (QtUtils::msg_box(
+		if (msg_box(
 				this, QMessageBox::Warning, tr("Invalid filename"),
 				tr("The filename must contain the extension \"%1\". Would you like to append it "
 				   "automatically?")
@@ -341,7 +342,7 @@ void ExportDialog::start_export()
 	// If the directory does not exist, try to create it
 	QDir dest_dir(file_info.path());
 	if (!FileFunctions::directory_is_valid(dest_dir)) {
-		QtUtils::msg_box(
+		msg_box(
 			this, QMessageBox::Critical,
 			tr("Failed to create output directory"),
 			tr("The intended output directory doesn't exist and Oak Video Editor couldn't create it. "
@@ -353,7 +354,7 @@ void ExportDialog::start_export()
 	if (video_tab_->is_image_sequence_set()) {
 		// Ensure filename contains digits
 		if (!Encoder::filename_contains_digit_placeholder(proposed_filename)) {
-			QtUtils::msg_box(
+			msg_box(
 				this, QMessageBox::Critical, tr("Invalid filename"),
 				tr("Export is set to an image sequence, but the filename does not have a section for digits "
 				   "(formatted as [#####] where the amount of # is the amount of digits)."));
@@ -365,7 +366,7 @@ void ExportDialog::start_export()
 		int current_digit_count =
 			Encoder::get_image_sequence_placeholder_digit_count(proposed_filename);
 		if (current_digit_count < needed_digit_count) {
-			QtUtils::msg_box(
+			msg_box(
 				this, QMessageBox::Critical, tr("Invalid filename"),
 				tr("Filename doesn't contain enough digits for the amount of frames "
 				   "this export will need (need %1 for %n frame(s)).",
@@ -377,7 +378,7 @@ void ExportDialog::start_export()
 
 	// Validate if the file exists and whether the user wishes to overwrite it
 	if (file_info.exists()) {
-		if (QtUtils::msg_box(
+		if (msg_box(
 				this, QMessageBox::Warning, tr("Confirm Overwrite"),
 				tr("The file \"%1\" already exists. Do you want to overwrite it?")
 					.arg(proposed_filename),
@@ -392,7 +393,7 @@ void ExportDialog::start_export()
 		 video_tab_->get_selected_codec() == ExportCodec::k_codec_h265) &&
 		(video_tab_->width_slider()->get_value() % 2 != 0 ||
 		 video_tab_->height_slider()->get_value() % 2 != 0)) {
-		QtUtils::msg_box(this, QMessageBox::Critical, tr("Invalid Parameters"),
+		msg_box(this, QMessageBox::Critical, tr("Invalid Parameters"),
 						tr("Width and height must be multiples of 2."));
 		return;
 	}

@@ -33,6 +33,7 @@
 #include "config/config.h"
 #include "core.h"
 #include "common/qtutils.h"
+#include "dialog/msgbox.h"
 #include "undo/undostack.h"
 
 namespace olive
@@ -107,7 +108,7 @@ void SequenceDialog::set_name_is_editable(bool e)
 void SequenceDialog::accept()
 {
 	if (name_field_->isEnabled() && name_field_->text().isEmpty()) {
-		QtUtils::msg_box(this, QMessageBox::Critical,
+		msg_box(this, QMessageBox::Critical,
 						tr("Error editing Sequence"),
 						tr("Please enter a name for this Sequence."));
 		return;
@@ -178,7 +179,7 @@ void SequenceDialog::accept()
 
 void SequenceDialog::set_as_default_clicked()
 {
-	if (QtUtils::msg_box(
+	if (msg_box(
 			this, QMessageBox::Question, tr("Confirm Set As Default"),
 			tr("Are you sure you want to set the current parameters as defaults?"),
 			QMessageBox::Yes | QMessageBox::No) == QMessageBox::Yes) {

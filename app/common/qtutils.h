@@ -28,7 +28,6 @@
 #include <QFileInfo>
 #include <QFontMetrics>
 #include <QFrame>
-#include <QMessageBox>
 
 namespace olive
 {
@@ -47,10 +46,6 @@ public:
 	static QFrame *create_horizontal_line();
 
 	static QFrame *create_vertical_line();
-
-	static int msg_box(QWidget *parent, QMessageBox::Icon icon,
-					  const QString &title, const QString &message,
-					  QMessageBox::StandardButtons buttons = QMessageBox::Ok);
 
 	static QDateTime get_creation_date(const QFileInfo &info);
 
