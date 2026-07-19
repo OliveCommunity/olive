@@ -703,6 +703,8 @@ bool Footage::load_custom(QXmlStreamReader *reader, SerializedData *data)
 						custom_params.width = attr.value().toInt();
 					} else if (attr.name() == QStringLiteral("pheight")) {
 						custom_params.height = attr.value().toInt();
+					} else if (attr.name() == QStringLiteral("pdivider")) {
+						custom_params.divider = attr.value().toInt();
 					} else if (attr.name() == QStringLiteral("pcrf")) {
 						custom_params.crf = attr.value().toInt();
 					} else if (attr.name() == QStringLiteral("ppreset")) {
@@ -791,6 +793,9 @@ void Footage::save_custom(QXmlStreamWriter *writer) const
 			writer->writeAttribute(
 				QStringLiteral("pheight"),
 				QString::number(custom_proxy_params_.height));
+			writer->writeAttribute(
+				QStringLiteral("pdivider"),
+				QString::number(custom_proxy_params_.divider));
 			writer->writeAttribute(
 				QStringLiteral("pcrf"),
 				QString::number(custom_proxy_params_.crf));
