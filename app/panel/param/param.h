@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PARAM_H
-#define PARAM_H
+#ifndef OAK_PARAM_H
+#define OAK_PARAM_H
 
 #include "panel/curve/curve.h"
 #include "panel/timebased/timebased.h"
@@ -34,46 +34,46 @@ class ParamPanel : public TimeBasedPanel {
 public:
 	ParamPanel();
 
-	NodeParamView *GetParamView() const
+	NodeParamView *get_param_view() const
 	{
-		return static_cast<NodeParamView *>(GetTimeBasedWidget());
+		return static_cast<NodeParamView *>(get_time_based_widget());
 	}
 
-	const QVector<Node *> &GetContexts() const
+	const QVector<Node *> &get_contexts() const
 	{
-		return GetParamView()->GetContexts();
+		return get_param_view()->get_contexts();
 	}
 
-	void CloseContextsBelongingToProject(Project *p)
+	void close_contexts_belonging_to_project(Project *p)
 	{
-		GetParamView()->CloseContextsBelongingToProject(p);
+		get_param_view()->close_contexts_belonging_to_project(p);
 	}
 
 public slots:
-	void SetSelectedNodes(const QVector<Node::ContextPair> &nodes)
+	void set_selected_nodes(const QVector<Node::ContextPair> &nodes)
 	{
-		GetParamView()->SetSelectedNodes(nodes, false);
+		get_param_view()->set_selected_nodes(nodes, false);
 	}
 
-	virtual void DeleteSelected() override;
+	virtual void delete_selected() override;
 
-	virtual void SelectAll() override;
+	virtual void select_all() override;
 
-	virtual void DeselectAll() override;
+	virtual void deselect_all() override;
 
-	void SetContexts(const QVector<Node *> &contexts);
+	void set_contexts(const QVector<Node *> &contexts);
 
 signals:
-	void FocusedNodeChanged(Node *n);
+	void focused_node_changed(Node *n);
 
-	void SelectedNodesChanged(const QVector<Node::ContextPair> &nodes);
+	void selected_nodes_changed(const QVector<Node::ContextPair> &nodes);
 
-	void RequestViewerToStartEditingText();
+	void request_viewer_to_start_editing_text();
 
 protected:
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 };
 
 }
 
-#endif // PARAM_H
+#endif // OAK_PARAM_H

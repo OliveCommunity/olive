@@ -28,133 +28,133 @@
 namespace olive
 {
 
-const QString CropDistortNode::kTextureInput = QStringLiteral("tex_in");
-const QString CropDistortNode::kLeftInput = QStringLiteral("left_in");
-const QString CropDistortNode::kTopInput = QStringLiteral("top_in");
-const QString CropDistortNode::kRightInput = QStringLiteral("right_in");
-const QString CropDistortNode::kBottomInput = QStringLiteral("bottom_in");
-const QString CropDistortNode::kFeatherInput = QStringLiteral("feather_in");
+const QString CropDistortNode::k_texture_input = QStringLiteral("tex_in");
+const QString CropDistortNode::k_left_input = QStringLiteral("left_in");
+const QString CropDistortNode::k_top_input = QStringLiteral("top_in");
+const QString CropDistortNode::k_right_input = QStringLiteral("right_in");
+const QString CropDistortNode::k_bottom_input = QStringLiteral("bottom_in");
+const QString CropDistortNode::k_feather_input = QStringLiteral("feather_in");
 
 #define super Node
 
 CropDistortNode::CropDistortNode()
 {
-	AddInput(kTextureInput, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_texture_input, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	CreateCropSideInput(kLeftInput);
-	CreateCropSideInput(kTopInput);
-	CreateCropSideInput(kRightInput);
-	CreateCropSideInput(kBottomInput);
+	create_crop_side_input(k_left_input);
+	create_crop_side_input(k_top_input);
+	create_crop_side_input(k_right_input);
+	create_crop_side_input(k_bottom_input);
 
-	AddInput(kFeatherInput, NodeValue::kFloat, 0.0);
-	SetInputProperty(kFeatherInput, QStringLiteral("min"), 0.0);
+	add_input(k_feather_input, NodeValue::k_float, 0.0);
+	set_input_property(k_feather_input, QStringLiteral("min"), 0.0);
 
 	// Initiate gizmos
-	poly_gizmo_ = AddDraggableGizmo<PolygonGizmo>(
-		{ kLeftInput, kTopInput, kRightInput, kBottomInput });
+	poly_gizmo_ = add_draggable_gizmo<PolygonGizmo>(
+		{ k_left_input, k_top_input, k_right_input, k_bottom_input });
 
-	point_gizmo_[kGizmoScaleTopLeft] =
-		AddDraggableGizmo<PointGizmo>({ kLeftInput, kTopInput });
-	point_gizmo_[kGizmoScaleTopCenter] =
-		AddDraggableGizmo<PointGizmo>({ kTopInput });
-	point_gizmo_[kGizmoScaleTopRight] =
-		AddDraggableGizmo<PointGizmo>({ kRightInput, kTopInput });
-	point_gizmo_[kGizmoScaleBottomLeft] =
-		AddDraggableGizmo<PointGizmo>({ kLeftInput, kBottomInput });
-	point_gizmo_[kGizmoScaleBottomCenter] =
-		AddDraggableGizmo<PointGizmo>({ kBottomInput });
-	point_gizmo_[kGizmoScaleBottomRight] =
-		AddDraggableGizmo<PointGizmo>({ kRightInput, kBottomInput });
-	point_gizmo_[kGizmoScaleCenterLeft] =
-		AddDraggableGizmo<PointGizmo>({ kLeftInput });
-	point_gizmo_[kGizmoScaleCenterRight] =
-		AddDraggableGizmo<PointGizmo>({ kRightInput });
+	point_gizmo_[k_gizmo_scale_top_left] =
+		add_draggable_gizmo<PointGizmo>({ k_left_input, k_top_input });
+	point_gizmo_[k_gizmo_scale_top_center] =
+		add_draggable_gizmo<PointGizmo>({ k_top_input });
+	point_gizmo_[k_gizmo_scale_top_right] =
+		add_draggable_gizmo<PointGizmo>({ k_right_input, k_top_input });
+	point_gizmo_[k_gizmo_scale_bottom_left] =
+		add_draggable_gizmo<PointGizmo>({ k_left_input, k_bottom_input });
+	point_gizmo_[k_gizmo_scale_bottom_center] =
+		add_draggable_gizmo<PointGizmo>({ k_bottom_input });
+	point_gizmo_[k_gizmo_scale_bottom_right] =
+		add_draggable_gizmo<PointGizmo>({ k_right_input, k_bottom_input });
+	point_gizmo_[k_gizmo_scale_center_left] =
+		add_draggable_gizmo<PointGizmo>({ k_left_input });
+	point_gizmo_[k_gizmo_scale_center_right] =
+		add_draggable_gizmo<PointGizmo>({ k_right_input });
 
-	SetFlag(kVideoEffect);
-	SetEffectInput(kTextureInput);
+	set_flag(k_video_effect);
+	set_effect_input(k_texture_input);
 }
 
-void CropDistortNode::Retranslate()
+void CropDistortNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kTextureInput, tr("Texture"));
-	SetInputName(kLeftInput, tr("Left"));
-	SetInputName(kTopInput, tr("Top"));
-	SetInputName(kRightInput, tr("Right"));
-	SetInputName(kBottomInput, tr("Bottom"));
-	SetInputName(kFeatherInput, tr("Feather"));
+	set_input_name(k_texture_input, tr("Texture"));
+	set_input_name(k_left_input, tr("Left"));
+	set_input_name(k_top_input, tr("Top"));
+	set_input_name(k_right_input, tr("Right"));
+	set_input_name(k_bottom_input, tr("Bottom"));
+	set_input_name(k_feather_input, tr("Feather"));
 }
 
-void CropDistortNode::Value(const NodeValueRow &value,
+void CropDistortNode::value(const NodeValueRow &value,
 							const NodeGlobals &globals,
 							NodeValueTable *table) const
 {
 	ShaderJob job;
-	job.Insert(value);
+	job.insert(value);
 
-	if (TexturePtr texture = job.Get(kTextureInput).toTexture()) {
-		job.Insert(QStringLiteral("resolution_in"),
-				   NodeValue(NodeValue::kVec2,
+	if (TexturePtr texture = job.get(k_texture_input).to_texture()) {
+		job.insert(QStringLiteral("resolution_in"),
+				   NodeValue(NodeValue::k_vec2,
 							 QVector2D(texture->params().width(),
 									   texture->params().height()),
 							 this));
 
-		if (!qIsNull(job.Get(kLeftInput).toDouble()) ||
-			!qIsNull(job.Get(kRightInput).toDouble()) ||
-			!qIsNull(job.Get(kTopInput).toDouble()) ||
-			!qIsNull(job.Get(kBottomInput).toDouble())) {
-			table->Push(NodeValue::kTexture, texture->toJob(job), this);
+		if (!qIsNull(job.get(k_left_input).to_double()) ||
+			!qIsNull(job.get(k_right_input).to_double()) ||
+			!qIsNull(job.get(k_top_input).to_double()) ||
+			!qIsNull(job.get(k_bottom_input).to_double())) {
+			table->push(NodeValue::k_texture, texture->to_job(job), this);
 		} else {
-			table->Push(job.Get(kTextureInput));
+			table->push(job.get(k_texture_input));
 		}
 	}
 }
 
-ShaderCode CropDistortNode::GetShaderCode(const ShaderRequest &request) const
+ShaderCode CropDistortNode::get_shader_code(const ShaderRequest &request) const
 {
 	Q_UNUSED(request)
 	return ShaderCode(
-		FileFunctions::ReadFileAsString(QStringLiteral(":/shaders/crop.frag")));
+		FileFunctions::read_file_as_string(QStringLiteral(":/shaders/crop.frag")));
 }
 
-void CropDistortNode::UpdateGizmoPositions(const NodeValueRow &row,
+void CropDistortNode::update_gizmo_positions(const NodeValueRow &row,
 										   const NodeGlobals &globals)
 {
-	if (TexturePtr tex = row[kTextureInput].toTexture()) {
+	if (TexturePtr tex = row[k_texture_input].to_texture()) {
 		const QVector2D &resolution = tex->virtual_resolution();
 		temp_resolution_ = resolution;
 
-		double left_pt = resolution.x() * row[kLeftInput].toDouble();
-		double top_pt = resolution.y() * row[kTopInput].toDouble();
-		double right_pt = resolution.x() * (1.0 - row[kRightInput].toDouble());
+		double left_pt = resolution.x() * row[k_left_input].to_double();
+		double top_pt = resolution.y() * row[k_top_input].to_double();
+		double right_pt = resolution.x() * (1.0 - row[k_right_input].to_double());
 		double bottom_pt =
-			resolution.y() * (1.0 - row[kBottomInput].toDouble());
+			resolution.y() * (1.0 - row[k_bottom_input].to_double());
 		double center_x_pt = mid(left_pt, right_pt);
 		double center_y_pt = mid(top_pt, bottom_pt);
 
-		point_gizmo_[kGizmoScaleTopLeft]->SetPoint(QPointF(left_pt, top_pt));
-		point_gizmo_[kGizmoScaleTopCenter]->SetPoint(
+		point_gizmo_[k_gizmo_scale_top_left]->set_point(QPointF(left_pt, top_pt));
+		point_gizmo_[k_gizmo_scale_top_center]->set_point(
 			QPointF(center_x_pt, top_pt));
-		point_gizmo_[kGizmoScaleTopRight]->SetPoint(QPointF(right_pt, top_pt));
-		point_gizmo_[kGizmoScaleBottomLeft]->SetPoint(
+		point_gizmo_[k_gizmo_scale_top_right]->set_point(QPointF(right_pt, top_pt));
+		point_gizmo_[k_gizmo_scale_bottom_left]->set_point(
 			QPointF(left_pt, bottom_pt));
-		point_gizmo_[kGizmoScaleBottomCenter]->SetPoint(
+		point_gizmo_[k_gizmo_scale_bottom_center]->set_point(
 			QPointF(center_x_pt, bottom_pt));
-		point_gizmo_[kGizmoScaleBottomRight]->SetPoint(
+		point_gizmo_[k_gizmo_scale_bottom_right]->set_point(
 			QPointF(right_pt, bottom_pt));
-		point_gizmo_[kGizmoScaleCenterLeft]->SetPoint(
+		point_gizmo_[k_gizmo_scale_center_left]->set_point(
 			QPointF(left_pt, center_y_pt));
-		point_gizmo_[kGizmoScaleCenterRight]->SetPoint(
+		point_gizmo_[k_gizmo_scale_center_right]->set_point(
 			QPointF(right_pt, center_y_pt));
 
-		poly_gizmo_->SetPolygon(
+		poly_gizmo_->set_polygon(
 			QRectF(left_pt, top_pt, right_pt - left_pt, bottom_pt - top_pt));
 	}
 }
 
-void CropDistortNode::GizmoDragMove(double x_diff, double y_diff,
+void CropDistortNode::gizmo_drag_move(double x_diff, double y_diff,
 									const Qt::KeyboardModifiers &modifiers)
 {
 	DraggableGizmo *gizmo = static_cast<DraggableGizmo *>(sender());
@@ -163,27 +163,27 @@ void CropDistortNode::GizmoDragMove(double x_diff, double y_diff,
 	x_diff /= res.x();
 	y_diff /= res.y();
 
-	for (int j = 0; j < gizmo->GetDraggers().size(); j++) {
-		NodeInputDragger &i = gizmo->GetDraggers()[j];
-		double s = i.GetStartValue().toDouble();
-		if (i.GetInput().input().input() == kLeftInput) {
-			i.Drag(s + x_diff);
-		} else if (i.GetInput().input().input() == kTopInput) {
-			i.Drag(s + y_diff);
-		} else if (i.GetInput().input().input() == kRightInput) {
-			i.Drag(s - x_diff);
-		} else if (i.GetInput().input().input() == kBottomInput) {
-			i.Drag(s - y_diff);
+	for (int j = 0; j < gizmo->get_draggers().size(); j++) {
+		NodeInputDragger &i = gizmo->get_draggers()[j];
+		double s = i.get_start_value().toDouble();
+		if (i.get_input().input().input() == k_left_input) {
+			i.drag(s + x_diff);
+		} else if (i.get_input().input().input() == k_top_input) {
+			i.drag(s + y_diff);
+		} else if (i.get_input().input().input() == k_right_input) {
+			i.drag(s - x_diff);
+		} else if (i.get_input().input().input() == k_bottom_input) {
+			i.drag(s - y_diff);
 		}
 	}
 }
 
-void CropDistortNode::CreateCropSideInput(const QString &id)
+void CropDistortNode::create_crop_side_input(const QString &id)
 {
-	AddInput(id, NodeValue::kFloat, 0.0);
-	SetInputProperty(id, QStringLiteral("min"), 0.0);
-	SetInputProperty(id, QStringLiteral("max"), 1.0);
-	SetInputProperty(id, QStringLiteral("view"), FloatSlider::kPercentage);
+	add_input(id, NodeValue::k_float, 0.0);
+	set_input_property(id, QStringLiteral("min"), 0.0);
+	set_input_property(id, QStringLiteral("max"), 1.0);
+	set_input_property(id, QStringLiteral("view"), FloatSlider::k_percentage);
 }
 
 }

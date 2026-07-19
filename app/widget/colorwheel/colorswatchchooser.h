@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLORSWATCHCHOOSER_H
-#define COLORSWATCHCHOOSER_H
+#ifndef OAK_COLORSWATCHCHOOSER_H
+#define OAK_COLORSWATCHCHOOSER_H
 
 #include "node/color/colormanager/colormanager.h"
 #include "widget/colorbutton/colorbutton.h"
@@ -34,40 +34,40 @@ public:
 	ColorSwatchChooser(ColorManager *manager, QWidget *parent = nullptr);
 
 public slots:
-	void SetCurrentColor(const ManagedColor &c)
+	void set_current_color(const ManagedColor &c)
 	{
 		current_ = c;
 	}
 
 signals:
-	void ColorClicked(const ManagedColor &c);
+	void color_clicked(const ManagedColor &c);
 
 private:
-	void SetDefaultColor(int index);
+	void set_default_color(int index);
 
-	static QString GetSwatchFilename();
+	static QString get_swatch_filename();
 
-	void LoadSwatches();
-	void SaveSwatches();
+	void load_swatches();
+	void save_swatches();
 
-	static const int kRowCount = 4;
-	static const int kColCount = 8;
-	static const int kBtnCount = kRowCount * kColCount;
-	ColorButton *buttons_[kBtnCount];
+	static const int k_row_count = 4;
+	static const int k_col_count = 8;
+	static const int k_btn_count = k_row_count * k_col_count;
+	ColorButton *buttons_[k_btn_count];
 
 	ManagedColor current_;
 	ColorButton *menu_btn_;
 
 private slots:
-	void HandleButtonClick();
+	void handle_button_click();
 
-	void HandleContextMenu();
+	void handle_context_menu();
 
-	void SaveCurrentColor();
+	void save_current_color();
 
-	void ResetMenuButton();
+	void reset_menu_button();
 };
 
 }
 
-#endif // COLORSWATCHCHOOSER_H
+#endif // OAK_COLORSWATCHCHOOSER_H

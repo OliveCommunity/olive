@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINEVIEWBASE_H
-#define TIMELINEVIEWBASE_H
+#ifndef OAK_TIMELINEVIEWBASE_H
+#define OAK_TIMELINEVIEWBASE_H
 
 #include <QGraphicsView>
 #include <vector>
@@ -39,26 +39,26 @@ class TimeBasedView : public HandMovableView, public TimeScaledObject {
 public:
 	TimeBasedView(QWidget *parent = nullptr);
 
-	void EnableSnap(const std::vector<rational> &points);
-	void DisableSnap();
-	bool IsSnapped() const
+	void enable_snap(const std::vector<Rational> &points);
+	void disable_snap();
+	bool is_snapped() const
 	{
 		return snapped_;
 	}
 
-	TimeBasedWidget *GetSnapService() const
+	TimeBasedWidget *get_snap_service() const
 	{
 		return snap_service_;
 	}
-	void SetSnapService(TimeBasedWidget *service)
+	void set_snap_service(TimeBasedWidget *service)
 	{
 		snap_service_ = service;
 	}
 
-	const double &GetYScale() const;
-	void SetYScale(const double &y_scale);
+	const double &get_y_scale() const;
+	void set_y_scale(const double &y_scale);
 
-	virtual bool IsDraggingPlayhead() const
+	virtual bool is_dragging_playhead() const
 	{
 		return dragging_playhead_;
 	}
@@ -71,26 +71,26 @@ public:
 	{
 	}
 
-	ViewerOutput *GetViewerNode() const
+	ViewerOutput *get_viewer_node() const
 	{
 		return viewer_;
 	}
 
-	void SetViewerNode(ViewerOutput *v);
+	void set_viewer_node(ViewerOutput *v);
 
-	QPointF ScalePoint(const QPointF &p) const;
-	QPointF UnscalePoint(const QPointF &p) const;
+	QPointF scale_point(const QPointF &p) const;
+	QPointF unscale_point(const QPointF &p) const;
 
 public slots:
-	void SetEndTime(const rational &length);
+	void set_end_time(const Rational &length);
 
 	/**
    * @brief Slot called whenever the view resizes or the scene contents change to enforce minimum scene sizes
    */
-	void UpdateSceneRect();
+	void update_scene_rect();
 
 signals:
-	void ScaleChanged(double scale);
+	void scale_changed(double scale);
 
 protected:
 	virtual void drawForeground(QPainter *painter, const QRectF &rect) override;
@@ -105,27 +105,27 @@ protected:
 
 	virtual void VerticalScaleChangedEvent(double scale);
 
-	virtual void ZoomIntoCursorPosition(QWheelEvent *event, double multiplier,
+	virtual void zoom_into_cursor_position(QWheelEvent *event, double multiplier,
 										const QPointF &cursor_pos) override;
 
-	bool PlayheadPress(QMouseEvent *event);
-	bool PlayheadMove(QMouseEvent *event);
-	bool PlayheadRelease(QMouseEvent *event);
+	bool playhead_press(QMouseEvent *event);
+	bool playhead_move(QMouseEvent *event);
+	bool playhead_release(QMouseEvent *event);
 
-	virtual void TimebaseChangedEvent(const rational &) override;
+	virtual void TimebaseChangedEvent(const Rational &) override;
 
-	bool IsYAxisEnabled() const
+	bool is_y_axis_enabled() const
 	{
 		return y_axis_enabled_;
 	}
 
-	void SetYAxisEnabled(bool e)
+	void set_y_axis_enabled(bool e)
 	{
 		y_axis_enabled_ = e;
 	}
 
 private:
-	qreal GetPlayheadX();
+	qreal get_playhead_x();
 
 	double playhead_scene_left_;
 	double playhead_scene_right_;
@@ -135,9 +135,9 @@ private:
 	QGraphicsScene scene_;
 
 	bool snapped_;
-	std::vector<rational> snap_time_;
+	std::vector<Rational> snap_time_;
 
-	rational end_time_;
+	Rational end_time_;
 
 	TimeBasedWidget *snap_service_;
 
@@ -150,4 +150,4 @@ private:
 
 }
 
-#endif // TIMELINEVIEWBASE_H
+#endif // OAK_TIMELINEVIEWBASE_H

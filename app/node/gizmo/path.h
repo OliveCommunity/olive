@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PATHGIZMO_H
-#define PATHGIZMO_H
+#ifndef OAK_PATHGIZMO_H
+#define OAK_PATHGIZMO_H
 
 #include <QPainterPath>
 
@@ -34,16 +34,16 @@ class PathGizmo : public DraggableGizmo {
 public:
 	explicit PathGizmo(QObject *parent = nullptr);
 
-	const QPainterPath &GetPath() const
+	const QPainterPath &get_path() const
 	{
 		return path_;
 	}
-	void SetPath(const QPainterPath &path)
+	void set_path(const QPainterPath &path)
 	{
 		path_ = path;
 	}
 
-	virtual void Draw(QPainter *p) const override;
+	virtual void draw(QPainter *p) const override;
 
 private:
 	QPainterPath path_;
@@ -51,4 +51,4 @@ private:
 
 }
 
-#endif // PATHGIZMO_H
+#endif // OAK_PATHGIZMO_H

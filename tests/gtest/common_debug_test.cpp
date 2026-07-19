@@ -6,7 +6,7 @@ TEST(CommonDebug, DebugHandlerFormatsAllLevels)
 {
 	// DebugHandler writes "[LEVEL] message" lines to stderr
 	testing::internal::CaptureStderr();
-	QtMessageHandler old = qInstallMessageHandler(olive::DebugHandler);
+	QtMessageHandler old = qInstallMessageHandler(olive::debug_handler);
 
 	qDebug() << "debug message";
 	qInfo() << "info message";

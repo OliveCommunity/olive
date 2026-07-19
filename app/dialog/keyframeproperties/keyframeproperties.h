@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef KEYFRAMEPROPERTIESDIALOG_H
-#define KEYFRAMEPROPERTIESDIALOG_H
+#ifndef OAK_KEYFRAMEPROPERTIESDIALOG_H
+#define OAK_KEYFRAMEPROPERTIESDIALOG_H
 
 #include <QComboBox>
 #include <QDialog>
@@ -37,18 +37,18 @@ class KeyframePropertiesDialog : public QDialog {
 	Q_OBJECT
 public:
 	KeyframePropertiesDialog(const std::vector<NodeKeyframe *> &keys,
-							 const rational &timebase,
+							 const Rational &timebase,
 							 QWidget *parent = nullptr);
 
 public slots:
 	virtual void accept() override;
 
 private:
-	void SetUpBezierSlider(FloatSlider *slider, bool all_same, double value);
+	void set_up_bezier_slider(FloatSlider *slider, bool all_same, double value);
 
 	const std::vector<NodeKeyframe *> &keys_;
 
-	rational timebase_;
+	Rational timebase_;
 
 	RationalSlider *time_slider_;
 
@@ -65,9 +65,9 @@ private:
 	FloatSlider *bezier_out_y_slider_;
 
 private slots:
-	void KeyTypeChanged(int index);
+	void key_type_changed(int index);
 };
 
 }
 
-#endif // KEYFRAMEPROPERTIESDIALOG_H
+#endif // OAK_KEYFRAMEPROPERTIESDIALOG_H

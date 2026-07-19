@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef VIEWER_PANEL_H
-#define VIEWER_PANEL_H
+#ifndef OAK_VIEWER_PANEL_H
+#define OAK_VIEWER_PANEL_H
 
 #include <QOpenGLFunctions>
 
@@ -38,9 +38,9 @@ public:
 	ViewerPanel(const QString &object_name);
 
 protected:
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 };
 
 }
 
-#endif // VIEWER_PANEL_H
+#endif // OAK_VIEWER_PANEL_H

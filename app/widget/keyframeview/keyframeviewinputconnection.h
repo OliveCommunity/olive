@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef KEYFRAMEVIEWINPUTCONNECTION_H
-#define KEYFRAMEVIEWINPUTCONNECTION_H
+#ifndef OAK_KEYFRAMEVIEWINPUTCONNECTION_H
+#define OAK_KEYFRAMEVIEWINPUTCONNECTION_H
 
 #include <QObject>
 
@@ -38,41 +38,41 @@ public:
 	KeyframeViewInputConnection(const NodeKeyframeTrackReference &input,
 								KeyframeView *parent);
 
-	const int &GetKeyframeY() const
+	const int &get_keyframe_y() const
 	{
 		return y_;
 	}
 
-	void SetKeyframeY(int y);
+	void set_keyframe_y(int y);
 
-	enum YBehavior { kSingleRow, kValueIsHeight };
+	enum YBehavior { k_single_row, k_value_is_height };
 
-	void SetYBehavior(YBehavior e);
+	void set_y_behavior(YBehavior e);
 
-	const QVector<NodeKeyframe *> &GetKeyframes() const
+	const QVector<NodeKeyframe *> &get_keyframes() const
 	{
 		return input_.input()
 			.node()
-			->GetKeyframeTracks(input_.input())
+			->get_keyframe_tracks(input_.input())
 			.at(input_.track());
 	}
 
-	const QBrush &GetBrush() const
+	const QBrush &get_brush() const
 	{
 		return brush_;
 	}
 
-	const NodeKeyframeTrackReference &GetReference() const
+	const NodeKeyframeTrackReference &get_reference() const
 	{
 		return input_;
 	}
 
-	void SetBrush(const QBrush &brush);
+	void set_brush(const QBrush &brush);
 
 signals:
-	void RequireUpdate();
+	void require_update();
 
-	void TypeChanged();
+	void type_changed();
 
 private:
 	KeyframeView *keyframe_view_;
@@ -86,15 +86,15 @@ private:
 	QBrush brush_;
 
 private slots:
-	void AddKeyframe(NodeKeyframe *key);
+	void add_keyframe(NodeKeyframe *key);
 
-	void RemoveKeyframe(NodeKeyframe *key);
+	void remove_keyframe(NodeKeyframe *key);
 
-	void KeyframeChanged(NodeKeyframe *key);
+	void keyframe_changed(NodeKeyframe *key);
 
-	void KeyframeTypeChanged(NodeKeyframe *key);
+	void keyframe_type_changed(NodeKeyframe *key);
 };
 
 }
 
-#endif // KEYFRAMEVIEWINPUTCONNECTION_H
+#endif // OAK_KEYFRAMEVIEWINPUTCONNECTION_H

@@ -24,32 +24,32 @@
 namespace olive
 {
 
-const QString MathNode::kMethodIn = QStringLiteral("method_in");
-const QString MathNode::kParamAIn = QStringLiteral("param_a_in");
-const QString MathNode::kParamBIn = QStringLiteral("param_b_in");
-const QString MathNode::kParamCIn = QStringLiteral("param_c_in");
+const QString MathNode::k_method_in = QStringLiteral("method_in");
+const QString MathNode::k_param_a_in = QStringLiteral("param_a_in");
+const QString MathNode::k_param_b_in = QStringLiteral("param_b_in");
+const QString MathNode::k_param_c_in = QStringLiteral("param_c_in");
 
 #define super MathNodeBase
 
 MathNode::MathNode()
 {
-	AddInput(kMethodIn, NodeValue::kCombo,
-			 InputFlags(kInputFlagNotConnectable | kInputFlagNotKeyframable));
+	add_input(k_method_in, NodeValue::k_combo,
+			 InputFlags(k_input_flag_not_connectable | k_input_flag_not_keyframable));
 
-	AddInput(kParamAIn, NodeValue::kFloat, 0.0);
-	SetInputProperty(kParamAIn, QStringLiteral("decimalplaces"), 8);
-	SetInputProperty(kParamAIn, QStringLiteral("autotrim"), true);
+	add_input(k_param_a_in, NodeValue::k_float, 0.0);
+	set_input_property(k_param_a_in, QStringLiteral("decimalplaces"), 8);
+	set_input_property(k_param_a_in, QStringLiteral("autotrim"), true);
 
-	AddInput(kParamBIn, NodeValue::kFloat, 0.0);
-	SetInputProperty(kParamBIn, QStringLiteral("decimalplaces"), 8);
-	SetInputProperty(kParamBIn, QStringLiteral("autotrim"), true);
+	add_input(k_param_b_in, NodeValue::k_float, 0.0);
+	set_input_property(k_param_b_in, QStringLiteral("decimalplaces"), 8);
+	set_input_property(k_param_b_in, QStringLiteral("autotrim"), true);
 }
 
-QString MathNode::Name() const
+QString MathNode::name() const
 {
 	// Default to naming after the operation
 	if (parent()) {
-		QString op_name = GetOperationName(GetOperation());
+		QString op_name = get_operation_name(get_operation());
 		if (!op_name.isEmpty()) {
 			return op_name;
 		}
@@ -63,63 +63,63 @@ QString MathNode::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.math");
 }
 
-QVector<Node::CategoryID> MathNode::Category() const
+QVector<Node::CategoryID> MathNode::category() const
 {
-	return { kCategoryMath };
+	return { k_category_math };
 }
 
-QString MathNode::Description() const
+QString MathNode::description() const
 {
 	return tr("Perform a mathematical operation between two values.");
 }
 
-void MathNode::Retranslate()
+void MathNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kMethodIn, tr("Method"));
-	SetInputName(kParamAIn, tr("Value"));
-	SetInputName(kParamBIn, tr("Value"));
+	set_input_name(k_method_in, tr("Method"));
+	set_input_name(k_param_a_in, tr("Value"));
+	set_input_name(k_param_b_in, tr("Value"));
 
-	QStringList operations = { GetOperationName(kOpAdd),
-							   GetOperationName(kOpSubtract),
-							   GetOperationName(kOpMultiply),
-							   GetOperationName(kOpDivide),
-							   GetOperationName(kOpPower) };
+	QStringList operations = { get_operation_name(k_op_add),
+							   get_operation_name(k_op_subtract),
+							   get_operation_name(k_op_multiply),
+							   get_operation_name(k_op_divide),
+							   get_operation_name(k_op_power) };
 
-	SetComboBoxStrings(kMethodIn, operations);
+	set_combo_box_strings(k_method_in, operations);
 }
 
-ShaderCode MathNode::GetShaderCode(const ShaderRequest &request) const
+ShaderCode MathNode::get_shader_code(const ShaderRequest &request) const
 {
-	return GetShaderCodeInternal(request.id, kParamAIn, kParamBIn);
+	return get_shader_code_internal(request.id, k_param_a_in, k_param_b_in);
 }
 
-void MathNode::Value(const NodeValueRow &value, const NodeGlobals &globals,
+void MathNode::value(const NodeValueRow &value, const NodeGlobals &globals,
 					 NodeValueTable *table) const
 {
 	// Auto-detect what values to operate with
 	// FIXME: Very inefficient
 	NodeValueTable at, bt;
-	at.Push(value[kParamAIn]);
-	bt.Push(value[kParamBIn]);
+	at.push(value[k_param_a_in]);
+	bt.push(value[k_param_b_in]);
 	PairingCalculator calc(at, bt);
 
 	// Do nothing if no pairing was found
-	if (!calc.FoundMostLikelyPairing()) {
+	if (!calc.found_most_likely_pairing()) {
 		return;
 	}
 
-	return ValueInternal(GetOperation(), calc.GetMostLikelyPairing(), kParamAIn,
-						 calc.GetMostLikelyValueA(), kParamBIn,
-						 calc.GetMostLikelyValueB(), globals, table);
+	return value_internal(get_operation(), calc.get_most_likely_pairing(), k_param_a_in,
+						 calc.get_most_likely_value_a(), k_param_b_in,
+						 calc.get_most_likely_value_b(), globals, table);
 }
 
-void MathNode::ProcessSamples(const NodeValueRow &values,
+void MathNode::process_samples(const NodeValueRow &values,
 							  const SampleBuffer &input, SampleBuffer &output,
 							  int index) const
 {
-	return ProcessSamplesInternal(values, GetOperation(), kParamAIn, kParamBIn,
+	return process_samples_internal(values, get_operation(), k_param_a_in, k_param_b_in,
 								  input, output, index);
 }
 

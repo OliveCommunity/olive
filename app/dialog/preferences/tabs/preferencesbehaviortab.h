@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PREFERENCESBEHAVIORTAB_H
-#define PREFERENCESBEHAVIORTAB_H
+#ifndef OAK_PREFERENCESBEHAVIORTAB_H
+#define OAK_PREFERENCESBEHAVIORTAB_H
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -36,18 +36,18 @@ class PreferencesBehaviorTab : public ConfigDialogBaseTab {
 	Q_OBJECT
 public:
 	enum Category {
-		kCategoryTimeline,
-		kCategoryPlayback,
-		kCategoryProject,
-		kCategoryNodes,
-		kCategoryRendering
+		k_category_timeline,
+		k_category_playback,
+		k_category_project,
+		k_category_nodes,
+		k_category_rendering
 	};
 
 	PreferencesBehaviorTab(Category category);
 
-	virtual void Accept(MultiUndoCommand *command) override;
+	virtual void accept(MultiUndoCommand *command) override;
 
-	static QString BehaviorPrefTr(const char *text)
+	static QString behavior_pref_tr(const char *text)
 	{
 		return QCoreApplication::translate("olive::PreferencesBehaviorTab",
 										   text);
@@ -60,8 +60,8 @@ private:
 		QString tooltip = QString();
 	};
 
-	void AddItems(const QVector<Item> &items);
-	QCheckBox *AddItem(const QString &text, const QString &config_key,
+	void add_items(const QVector<Item> &items);
+	QCheckBox *add_item(const QString &text, const QString &config_key,
 					   const QString &tooltip = QString());
 
 	QMap<QCheckBox *, QString> config_map_;
@@ -73,4 +73,4 @@ private:
 
 }
 
-#endif // PREFERENCESBEHAVIORTAB_H
+#endif // OAK_PREFERENCESBEHAVIORTAB_H

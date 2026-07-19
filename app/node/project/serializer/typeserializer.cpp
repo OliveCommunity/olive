@@ -24,11 +24,11 @@
 namespace olive
 {
 
-AudioParams TypeSerializer::LoadAudioParams(QXmlStreamReader *reader)
+AudioParams TypeSerializer::load_audio_params(QXmlStreamReader *reader)
 {
 	AudioParams a;
 
-	while (XMLReadNextStartElement(reader)) {
+	while (xml_read_next_start_element(reader)) {
 		if (reader->name() == QStringLiteral("samplerate")) {
 			a.set_sample_rate(reader->readElementText().toInt());
 		} else if (reader->name() == QStringLiteral("channellayout")) {
@@ -44,7 +44,7 @@ AudioParams TypeSerializer::LoadAudioParams(QXmlStreamReader *reader)
 			a.set_duration(reader->readElementText().toLongLong());
 		} else if (reader->name() == QStringLiteral("timebase")) {
 			a.set_time_base(
-				rational::fromString(reader->readElementText().toStdString()));
+				Rational::from_string(reader->readElementText().toStdString()));
 		} else {
 			reader->skipCurrentElement();
 		}
@@ -53,7 +53,7 @@ AudioParams TypeSerializer::LoadAudioParams(QXmlStreamReader *reader)
 	return a;
 }
 
-void TypeSerializer::SaveAudioParams(QXmlStreamWriter *writer,
+void TypeSerializer::save_audio_params(QXmlStreamWriter *writer,
 									 const AudioParams &a)
 {
 	writer->writeTextElement(QStringLiteral("samplerate"),
@@ -69,7 +69,7 @@ void TypeSerializer::SaveAudioParams(QXmlStreamWriter *writer,
 	writer->writeTextElement(QStringLiteral("duration"),
 							 QString::number(a.duration()));
 	writer->writeTextElement(QStringLiteral("timebase"),
-							 QString::fromStdString(a.time_base().toString()));
+							 QString::fromStdString(a.time_base().to_string()));
 }
 
 }

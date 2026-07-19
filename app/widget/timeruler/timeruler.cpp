@@ -51,18 +51,18 @@ TimeRuler::TimeRuler(bool text_visible, bool cache_status_visible,
 
 	// Get the "minimum" space allowed between two line markers on the ruler (in screen pixels)
 	// Mediocre but reliable way of scaling UI objects by font/DPI size
-	minimum_gap_between_lines_ = QtUtils::QFontMetricsWidth(fm, "H");
+	minimum_gap_between_lines_ = QtUtils::q_font_metrics_width(fm, "H");
 
 	// Text visibility affects height, so we set that here
-	UpdateHeight();
+	update_height();
 
 	// Force update if the default timecode display mode changes
-	connect(Core::instance(), &Core::TimecodeDisplayChanged, this,
+	connect(Core::instance(), &Core::timecode_display_changed, this,
 			static_cast<void (TimeRuler::*)()>(&TimeRuler::update));
 
 	// Connect context menu
 	connect(this, &TimeRuler::customContextMenuRequested, this,
-			&TimeRuler::ShowContextMenu);
+			&TimeRuler::show_context_menu);
 
 	setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 	//horizontalScrollBar()->setVisible(false);
@@ -76,32 +76,32 @@ TimeRuler::TimeRuler(bool text_visible, bool cache_status_visible,
 	setAlignment(Qt::AlignLeft | Qt::AlignTop);
 }
 
-void TimeRuler::SetCenteredText(bool c)
+void TimeRuler::set_centered_text(bool c)
 {
 	centered_text_ = c;
 
 	update();
 }
 
-void TimeRuler::SetPlaybackCache(PlaybackCache *cache)
+void TimeRuler::set_playback_cache(PlaybackCache *cache)
 {
 	if (!show_cache_status_) {
 		return;
 	}
 
 	if (playback_cache_) {
-		disconnect(playback_cache_, &PlaybackCache::Invalidated, viewport(),
+		disconnect(playback_cache_, &PlaybackCache::invalidated, viewport(),
 				   static_cast<void (QWidget::*)()>(&QWidget::update));
-		disconnect(playback_cache_, &PlaybackCache::Validated, viewport(),
+		disconnect(playback_cache_, &PlaybackCache::validated, viewport(),
 				   static_cast<void (QWidget::*)()>(&QWidget::update));
 	}
 
 	playback_cache_ = cache;
 
 	if (playback_cache_) {
-		connect(playback_cache_, &PlaybackCache::Invalidated, viewport(),
+		connect(playback_cache_, &PlaybackCache::invalidated, viewport(),
 				static_cast<void (QWidget::*)()>(&QWidget::update));
-		connect(playback_cache_, &PlaybackCache::Validated, viewport(),
+		connect(playback_cache_, &PlaybackCache::validated, viewport(),
 				static_cast<void (QWidget::*)()>(&QWidget::update));
 	}
 
@@ -116,16 +116,16 @@ void TimeRuler::drawForeground(QPainter *p, const QRectF &rect)
 	}
 
 	// Draw timeline points if connected
-	int marker_height = TimelineMarker::GetMarkerHeight(p->fontMetrics());
-	DrawWorkArea(p);
-	DrawMarkers(p, marker_height);
+	int marker_height = TimelineMarker::get_marker_height(p->fontMetrics());
+	draw_work_area(p);
+	draw_markers(p, marker_height);
 
-	double width_of_frame = timebase_dbl() * GetScale();
+	double width_of_frame = timebase_dbl() * get_scale();
 	double width_of_second = 0;
 	do {
 		width_of_second += timebase_dbl();
 	} while (width_of_second < 1.0);
-	width_of_second *= GetScale();
+	width_of_second *= get_scale();
 	double width_of_minute = width_of_second * 60;
 	double width_of_hour = width_of_minute * 60;
 	double width_of_day = width_of_hour * 24;
@@ -195,7 +195,7 @@ void TimeRuler::drawForeground(QPainter *p, const QRectF &rect)
 	int line_bottom = height();
 
 	if (show_cache_status_) {
-		line_bottom -= PlaybackCache::GetCacheIndicatorHeight();
+		line_bottom -= PlaybackCache::get_cache_indicator_height();
 	}
 
 	int long_height = fm.height();
@@ -209,10 +209,10 @@ void TimeRuler::drawForeground(QPainter *p, const QRectF &rect)
 	int last_text_draw = INT_MIN;
 
 	// FIXME: Hardcoded number
-	const int kAverageTextWidth = 200;
+	const int k_average_text_width = 200;
 
-	for (int i = GetScroll() - kAverageTextWidth;
-		 i < GetScroll() + width() + kAverageTextWidth; i++) {
+	for (int i = get_scroll() - k_average_text_width;
+		 i < get_scroll() + width() + k_average_text_width; i++) {
 		double screen_pt = static_cast<double>(i);
 
 		if (long_interval > -1) {
@@ -225,20 +225,20 @@ void TimeRuler::drawForeground(QPainter *p, const QRectF &rect)
 					Qt::Alignment text_align;
 					QString timecode_str =
 						QString::fromStdString(Timecode::time_to_timecode(
-							SceneToTime(i), timebase(),
-							Core::instance()->GetTimecodeDisplay()));
+							scene_to_time(i), timebase(),
+							Core::instance()->get_timecode_display()));
 					int timecode_width =
-						QtUtils::QFontMetricsWidth(fm, timecode_str);
+						QtUtils::q_font_metrics_width(fm, timecode_str);
 					int timecode_left;
 
 					if (centered_text_) {
-						text_rect = QRect(i - kAverageTextWidth / 2,
-										  marker_height, kAverageTextWidth,
+						text_rect = QRect(i - k_average_text_width / 2,
+										  marker_height, k_average_text_width,
 										  fm.height());
 						text_align = Qt::AlignCenter;
 						timecode_left = i - timecode_width / 2;
 					} else {
-						text_rect = QRect(i, marker_height, kAverageTextWidth,
+						text_rect = QRect(i, marker_height, k_average_text_width,
 										  fm.height());
 						text_align = Qt::AlignLeft | Qt::AlignVCenter;
 						timecode_left = i;
@@ -275,53 +275,53 @@ void TimeRuler::drawForeground(QPainter *p, const QRectF &rect)
 
 	// If cache status is enabled
 	if (show_cache_status_ && playback_cache_ &&
-		playback_cache_->HasValidatedRanges()) {
+		playback_cache_->has_validated_ranges()) {
 		// FIXME: Hardcoded to get video length, if we ever need audio length, this will have to change
-		int h = PlaybackCache::GetCacheIndicatorHeight();
+		int h = PlaybackCache::get_cache_indicator_height();
 		QRect cache_rect(0, height() - h, width(), h);
 
 		if (ViewerOutput *viewer =
 				dynamic_cast<ViewerOutput *>(playback_cache_->parent())) {
-			int right = TimeToScene(viewer->GetVideoLength());
+			int right = time_to_scene(viewer->get_video_length());
 			cache_rect.setWidth(std::max(0, right));
 		}
 
 		if (cache_rect.width() > 0) {
-			playback_cache_->Draw(p, SceneToTime(GetScroll()), GetScale(),
+			playback_cache_->draw(p, scene_to_time(get_scroll()), get_scale(),
 								  cache_rect);
 		}
 	}
 
 	// Draw the playhead if it's on screen at the moment
-	int playhead_pos = TimeToScene(GetViewerNode()->GetPlayhead());
+	int playhead_pos = time_to_scene(get_viewer_node()->get_playhead());
 	p->setPen(Qt::NoPen);
 	p->setBrush(PLAYHEAD_COLOR);
-	DrawPlayhead(p, playhead_pos, line_bottom);
+	draw_playhead(p, playhead_pos, line_bottom);
 }
 
-void TimeRuler::TimebaseChangedEvent(const rational &tb)
+void TimeRuler::TimebaseChangedEvent(const Rational &tb)
 {
 	super::TimebaseChangedEvent(tb);
 
-	timebase_flipped_dbl_ = tb.flipped().toDouble();
+	timebase_flipped_dbl_ = tb.flipped().to_double();
 
 	update();
 }
 
-int TimeRuler::CacheStatusHeight() const
+int TimeRuler::cache_status_height() const
 {
 	return fontMetrics().height() / 4;
 }
 
-bool TimeRuler::ShowContextMenu(const QPoint &p)
+bool TimeRuler::show_context_menu(const QPoint &p)
 {
-	if (super::ShowContextMenu(p)) {
+	if (super::show_context_menu(p)) {
 		return true;
 	} else {
 		Menu m(this);
 
-		MenuShared::instance()->AddItemsForTimeRulerMenu(&m);
-		MenuShared::instance()->AboutToShowTimeRulerActions(timebase());
+		MenuShared::instance()->add_items_for_time_ruler_menu(&m);
+		MenuShared::instance()->about_to_show_time_ruler_actions(timebase());
 
 		m.exec(mapToGlobal(p));
 
@@ -329,7 +329,7 @@ bool TimeRuler::ShowContextMenu(const QPoint &p)
 	}
 }
 
-void TimeRuler::UpdateHeight()
+void TimeRuler::update_height()
 {
 	int height = text_height();
 
@@ -340,11 +340,11 @@ void TimeRuler::UpdateHeight()
 
 	// Add cache status height
 	if (show_cache_status_) {
-		height += PlaybackCache::GetCacheIndicatorHeight();
+		height += PlaybackCache::get_cache_indicator_height();
 	}
 
 	// Add marker height
-	height += TimelineMarker::GetMarkerHeight(fontMetrics());
+	height += TimelineMarker::get_marker_height(fontMetrics());
 
 	setFixedHeight(height);
 }

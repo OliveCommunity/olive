@@ -53,47 +53,47 @@ namespace olive
 namespace
 {
 
-constexpr int kProtocolVersion = 1;
+constexpr int k_protocol_version = 1;
 
 struct FootageInput {
 	FootageJob job;
-	rational time;
+	Rational time;
 };
 
 class FootageInputCollector : public NodeTraverser {
 public:
 	QVector<FootageInput>
-	Collect(const RenderManager::RenderVideoParams &params, CancelAtom *cancel)
+	collect(const RenderManager::RenderVideoParams &params, CancelAtom *cancel)
 	{
-		SetCancelPointer(cancel);
+		set_cancel_pointer(cancel);
 		VideoParams cache_params = params.video_params;
-		cache_params.set_format(PixelFormat::F32);
-		SetCacheVideoParams(cache_params);
-		SetCacheAudioParams(params.audio_params);
+		cache_params.set_format(PixelFormat::f32);
+		set_cache_video_params(cache_params);
+		set_cache_audio_params(params.audio_params);
 
-		rational frame_length = cache_params.frame_rate_as_time_base();
-		if (cache_params.interlacing() != VideoParams::kInterlaceNone) {
+		Rational frame_length = cache_params.frame_rate_as_time_base();
+		if (cache_params.interlacing() != VideoParams::k_interlace_none) {
 			frame_length /= 2;
 		}
-		NodeValueTable table = GenerateTable(
+		NodeValueTable table = generate_table(
 			params.node, TimeRange(params.time, params.time + frame_length));
-		NodeValue texture = table.Get(NodeValue::kTexture);
-		ResolveJobs(texture);
+		NodeValue texture = table.get(NodeValue::k_texture);
+		resolve_jobs(texture);
 
-		if (cache_params.interlacing() != VideoParams::kInterlaceNone) {
-			NodeValueTable second_table = GenerateTable(
+		if (cache_params.interlacing() != VideoParams::k_interlace_none) {
+			NodeValueTable second_table = generate_table(
 				params.node, TimeRange(params.time + frame_length,
 									   params.time + frame_length * 2));
-			NodeValue second_texture = second_table.Get(NodeValue::kTexture);
-			ResolveJobs(second_texture);
+			NodeValue second_texture = second_table.get(NodeValue::k_texture);
+			resolve_jobs(second_texture);
 		}
 
 		return inputs_;
 	}
 
 protected:
-	void ProcessVideoFootage(TexturePtr destination, const FootageJob *stream,
-							 const rational &input_time) override
+	void process_video_footage(TexturePtr destination, const FootageJob *stream,
+							 const Rational &input_time) override
 	{
 		Q_UNUSED(destination)
 		if (stream) {
@@ -105,11 +105,11 @@ private:
 	QVector<FootageInput> inputs_;
 };
 
-DecoderPtr ResolveDecoderFromCache(DecoderCache *decoder_cache,
+DecoderPtr resolve_decoder_from_cache(DecoderCache *decoder_cache,
 								   const QString &decoder_id,
 								   const Decoder::CodecStream &stream)
 {
-	if (!decoder_cache || !stream.IsValid()) {
+	if (!decoder_cache || !stream.is_valid()) {
 		return nullptr;
 	}
 
@@ -122,12 +122,12 @@ DecoderPtr ResolveDecoderFromCache(DecoderCache *decoder_cache,
 		return decoder.decoder;
 	}
 
-	decoder.decoder = Decoder::CreateFromID(decoder_id);
+	decoder.decoder = Decoder::create_from_id(decoder_id);
 	decoder.last_modified = file_last_modified;
 	decoder_cache->insert(stream, decoder);
 	locker.unlock();
 
-	if (!decoder.decoder || !decoder.decoder->Open(stream)) {
+	if (!decoder.decoder || !decoder.decoder->open(stream)) {
 		qWarning() << "RenderWorkerPool failed to open decoder for"
 				   << stream.filename() << "::" << stream.stream();
 		return nullptr;
@@ -136,7 +136,7 @@ DecoderPtr ResolveDecoderFromCache(DecoderCache *decoder_cache,
 	return decoder.decoder;
 }
 
-FramePtr DecodeInputFrame(DecoderCache *decoder_cache,
+FramePtr decode_input_frame(DecoderCache *decoder_cache,
 						  const FootageInput &input, CancelAtom *cancel)
 {
 	VideoParams stream_data = input.job.video_params();
@@ -155,19 +155,19 @@ FramePtr DecodeInputFrame(DecoderCache *decoder_cache,
 	DecoderPtr decoder;
 
 	switch (stream_data.video_type()) {
-	case VideoParams::kVideoTypeVideo:
-	case VideoParams::kVideoTypeStill:
-		decoder = ResolveDecoderFromCache(
+	case VideoParams::k_video_type_video:
+	case VideoParams::k_video_type_still:
+		decoder = resolve_decoder_from_cache(
 			decoder_cache, decoder_id,
 			Decoder::CodecStream(filename, stream_index, nullptr));
 		break;
-	case VideoParams::kVideoTypeImageSequence: {
+	case VideoParams::k_video_type_image_sequence: {
 		const int64_t frame_number =
 			stream_data.get_time_in_timebase_units(input.time);
 		filename =
-			Decoder::TransformImageSequenceFileName(filename, frame_number);
-		decoder = Decoder::CreateFromID(decoder_id);
-		if (decoder && !decoder->Open(Decoder::CodecStream(
+			Decoder::transform_image_sequence_file_name(filename, frame_number);
+		decoder = Decoder::create_from_id(decoder_id);
+		if (decoder && !decoder->open(Decoder::CodecStream(
 						   filename, stream_index, nullptr))) {
 			decoder = nullptr;
 		}
@@ -181,14 +181,14 @@ FramePtr DecodeInputFrame(DecoderCache *decoder_cache,
 
 	Decoder::RetrieveVideoParams retrieve;
 	retrieve.divider = stream_data.divider();
-	retrieve.maximum_format = PixelFormat::U16;
-	retrieve.time = stream_data.video_type() == VideoParams::kVideoTypeVideo ?
+	retrieve.maximum_format = PixelFormat::u16;
+	retrieve.time = stream_data.video_type() == VideoParams::k_video_type_video ?
 						input.time :
-						Decoder::kAnyTimecode;
+						Decoder::k_any_timecode;
 	retrieve.cancelled = cancel;
 	retrieve.force_range = stream_data.color_range();
 	retrieve.src_interlacing = stream_data.interlacing();
-	FramePtr frame = decoder->RetrieveVideoFrame(retrieve);
+	FramePtr frame = decoder->retrieve_video_frame(retrieve);
 	if (frame) {
 		frame->set_timestamp(input.time);
 
@@ -205,21 +205,21 @@ FramePtr DecodeInputFrame(DecoderCache *decoder_cache,
 	return frame;
 }
 
-bool DecodeInputFrames(DecoderCache *decoder_cache,
+bool decode_input_frames(DecoderCache *decoder_cache,
 					   const RenderManager::RenderVideoParams &params,
 					   CancelAtom *cancel, QVector<FramePtr> *frames)
 {
 	frames->clear();
 
 	FootageInputCollector collector;
-	const QVector<FootageInput> inputs = collector.Collect(params, cancel);
+	const QVector<FootageInput> inputs = collector.collect(params, cancel);
 	frames->reserve(inputs.size());
 	for (const FootageInput &input : inputs) {
-		if (cancel && cancel->IsCancelled()) {
+		if (cancel && cancel->is_cancelled()) {
 			return false;
 		}
 
-		FramePtr frame = DecodeInputFrame(decoder_cache, input, cancel);
+		FramePtr frame = decode_input_frame(decoder_cache, input, cancel);
 		if (!frame || !frame->is_allocated()) {
 			frames->clear();
 			return false;
@@ -230,7 +230,7 @@ bool DecodeInputFrames(DecoderCache *decoder_cache,
 	return true;
 }
 
-QString WorkerProgramPath()
+QString worker_program_path()
 {
 #if defined(Q_OS_WIN)
 	const QString file = QStringLiteral("oak-render-worker.exe");
@@ -257,7 +257,7 @@ QString WorkerProgramPath()
 	return candidates.first();
 }
 
-bool WriteControlMessage(QProcess *process, const QJsonObject &obj)
+bool write_control_message(QProcess *process, const QJsonObject &obj)
 {
 	if (!process || process->state() != QProcess::Running) {
 		return false;
@@ -272,7 +272,7 @@ bool WriteControlMessage(QProcess *process, const QJsonObject &obj)
 	return process->waitForBytesWritten(5000);
 }
 
-void TryWriteControlMessage(QProcess *process, const QJsonObject &obj)
+void try_write_control_message(QProcess *process, const QJsonObject &obj)
 {
 	if (!process || process->state() != QProcess::Running) {
 		return;
@@ -283,7 +283,7 @@ void TryWriteControlMessage(QProcess *process, const QJsonObject &obj)
 	process->write(line);
 }
 
-bool KillProcessById(qint64 process_id)
+bool kill_process_by_id(qint64 process_id)
 {
 	if (process_id <= 0) {
 		return false;
@@ -302,7 +302,7 @@ bool KillProcessById(qint64 process_id)
 #endif
 }
 
-bool IsProcessAlive(qint64 process_id)
+bool is_process_alive(qint64 process_id)
 {
 	if (process_id <= 0) {
 		return false;
@@ -324,7 +324,7 @@ bool IsProcessAlive(qint64 process_id)
 #endif
 }
 
-QString WorkerProcessDetails(const QProcess *process)
+QString worker_process_details(const QProcess *process)
 {
 	if (!process) {
 		return QStringLiteral("worker process unavailable");
@@ -342,18 +342,18 @@ QString WorkerProcessDetails(const QProcess *process)
 		.arg(process->errorString());
 }
 
-bool ReadControlMessage(QProcess *process, QJsonObject *out, QString *error,
+bool read_control_message(QProcess *process, QJsonObject *out, QString *error,
 						int timeout_ms = 10000)
 {
 	if (!process->waitForReadyRead(timeout_ms)) {
 		if (error) {
 			if (process->state() == QProcess::NotRunning) {
 				*error = QStringLiteral("worker exited before response: %1")
-							 .arg(WorkerProcessDetails(process));
+							 .arg(worker_process_details(process));
 			} else {
 				*error =
 					QStringLiteral("timeout waiting for worker response: %1")
-						.arg(WorkerProcessDetails(process));
+						.arg(worker_process_details(process));
 			}
 		}
 		return false;
@@ -377,7 +377,7 @@ bool ReadControlMessage(QProcess *process, QJsonObject *out, QString *error,
 
 		*out = doc.object();
 		if (out->value(QStringLiteral("type")).toString() ==
-			QLatin1String(ipc::msgtype::kError)) {
+			QLatin1String(ipc::msgtype::k_error)) {
 			if (error) {
 				*error = out->value(QStringLiteral("message")).toString();
 			}
@@ -404,14 +404,14 @@ RenderWorkerPool::RenderWorkerPool(DecoderCache *decoder_cache,
 
 RenderWorkerPool::~RenderWorkerPool()
 {
-	Shutdown();
+	shutdown();
 }
 
-bool RenderWorkerPool::SubmitFrame(
+bool RenderWorkerPool::submit_frame(
 	RenderTicketPtr ticket, const RenderManager::RenderVideoParams &params)
 {
 	Job job(ticket, params);
-	if (!PrepareJob(ticket, params, &job)) {
+	if (!prepare_job(ticket, params, &job)) {
 		return false;
 	}
 
@@ -423,7 +423,7 @@ bool RenderWorkerPool::SubmitFrame(
 	return true;
 }
 
-bool RenderWorkerPool::RemoveTicket(RenderTicketPtr ticket)
+bool RenderWorkerPool::remove_ticket(RenderTicketPtr ticket)
 {
 	if (!ticket) {
 		return false;
@@ -444,8 +444,8 @@ bool RenderWorkerPool::RemoveTicket(RenderTicketPtr ticket)
 		} else {
 			for (const ActiveJob &active : active_jobs_) {
 				if (active.ticket == ticket) {
-					ticket->Cancel();
-					CancelActiveProcess(active.process_id);
+					ticket->cancel();
+					cancel_active_process(active.process_id);
 					matched_active = true;
 					break;
 				}
@@ -457,33 +457,33 @@ bool RenderWorkerPool::RemoveTicket(RenderTicketPtr ticket)
 	}
 
 	if (!queued_graph_path.isEmpty()) {
-		ReleaseGraphPathRef(queued_graph_path);
+		release_graph_path_ref(queued_graph_path);
 		return true;
 	}
 
 	return true;
 }
 
-void RenderWorkerPool::Shutdown()
+void RenderWorkerPool::shutdown()
 {
 	{
 		QMutexLocker locker(&mutex_);
 		stopping_ = true;
 		for (Job &job : queue_) {
 			if (job.ticket) {
-				job.ticket->Cancel();
+				job.ticket->cancel();
 			}
-			ReleaseGraphPathRefLocked(job.graph_path);
+			release_graph_path_ref_locked(job.graph_path);
 		}
 		queue_.clear();
 		for (ActiveJob &active : active_jobs_) {
 			if (active.ticket) {
-				active.ticket->Cancel();
-				CancelActiveProcess(active.process_id);
+				active.ticket->cancel();
+				cancel_active_process(active.process_id);
 			}
 		}
 		for (auto it = graph_cache_.begin(); it != graph_cache_.end(); ++it) {
-			SetGraphPathCachedLocked(it->path, false);
+			set_graph_path_cached_locked(it->path, false);
 		}
 		graph_cache_.clear();
 		wait_.wakeAll();
@@ -496,19 +496,18 @@ void RenderWorkerPool::Shutdown()
 
 void RenderWorkerPool::run()
 {
-	const int worker_count = WorkerCount();
+	const int count = worker_count();
 	{
 		QMutexLocker locker(&mutex_);
-		active_jobs_.resize(worker_count);
+		active_jobs_.resize(count);
 	}
 
-	std::vector<std::vector<std::unique_ptr<PooledWorker>>> local_pools(
-		worker_count);
+	std::vector<std::vector<std::unique_ptr<PooledWorker>>> local_pools(count);
 	std::vector<std::thread> workers;
-	workers.reserve(size_t(worker_count));
-	for (int i = 0; i < worker_count; i++) {
+	workers.reserve(size_t(count));
+	for (int i = 0; i < count; i++) {
 		workers.emplace_back(
-			[this, i, &local_pools]() { WorkerLoop(i, &local_pools[i]); });
+			[this, i, &local_pools]() { worker_loop(i, &local_pools[i]); });
 	}
 
 	for (std::thread &worker : workers) {
@@ -516,16 +515,16 @@ void RenderWorkerPool::run()
 	}
 
 	for (auto &local_pool : local_pools) {
-		ShutdownLocalPool(&local_pool);
+		shutdown_local_pool(&local_pool);
 	}
 
-	ClearGraphCache();
+	clear_graph_cache();
 
 	QMutexLocker locker(&mutex_);
 	active_jobs_.clear();
 }
 
-void RenderWorkerPool::WorkerLoop(
+void RenderWorkerPool::worker_loop(
 	int worker_index, std::vector<std::unique_ptr<PooledWorker>> *local_pool)
 {
 	while (true) {
@@ -542,20 +541,20 @@ void RenderWorkerPool::WorkerLoop(
 		queue_.pop_front();
 		mutex_.unlock();
 
-		ProcessJob(job, worker_index, local_pool);
-		ReleaseGraphPathRef(job.graph_path);
+		process_job(job, worker_index, local_pool);
+		release_graph_path_ref(job.graph_path);
 	}
 }
 
-bool RenderWorkerPool::PrepareJob(RenderTicketPtr ticket,
+bool RenderWorkerPool::prepare_job(RenderTicketPtr ticket,
 								  const RenderManager::RenderVideoParams &params,
 								  Job *job)
 {
-	if (!IsSupported(params)) {
+	if (!is_supported(params)) {
 		return false;
 	}
 
-	Project *project = Project::GetProjectFromObject(params.node);
+	Project *project = Project::get_project_from_object(params.node);
 	if (!project) {
 		qWarning()
 			<< "RenderWorkerPool could not resolve project for render node";
@@ -563,7 +562,7 @@ bool RenderWorkerPool::PrepareJob(RenderTicketPtr ticket,
 	}
 
 	QVector<FramePtr> input_frames;
-	if (!DecodeInputFrames(decoder_cache_, params, ticket->GetCancelAtom(),
+	if (!decode_input_frames(decoder_cache_, params, ticket->get_cancel_atom(),
 						   &input_frames)) {
 		qWarning() << "RenderWorkerPool could not predecode footage inputs;"
 				   << "falling back to in-process render";
@@ -573,19 +572,19 @@ bool RenderWorkerPool::PrepareJob(RenderTicketPtr ticket,
 	QString graph_path;
 	bool wrote_new_snapshot = false;
 	{
-		const QUuid project_uuid = project->GetUuid();
+		const QUuid project_uuid = project->get_uuid();
 		QMutexLocker locker(&mutex_);
 		auto it = graph_cache_.find(project_uuid);
 		if (it != graph_cache_.end() && !project->is_modified()) {
 			graph_path = it->path;
-			AddGraphPathRefLocked(graph_path);
+			add_graph_path_ref_locked(graph_path);
 		} else {
 			if (it != graph_cache_.end()) {
-				SetGraphPathCachedLocked(it->path, false);
+				set_graph_path_cached_locked(it->path, false);
 				graph_cache_.erase(it);
 			}
 			locker.unlock();
-			if (!WriteGraphSnapshot(project, &graph_path)) {
+			if (!write_graph_snapshot(project, &graph_path)) {
 				return false;
 			}
 			wrote_new_snapshot = true;
@@ -597,8 +596,8 @@ bool RenderWorkerPool::PrepareJob(RenderTicketPtr ticket,
 			}
 			locker.relock();
 			graph_cache_.insert(project_uuid, { graph_path });
-			SetGraphPathCachedLocked(graph_path, true);
-			AddGraphPathRefLocked(graph_path);
+			set_graph_path_cached_locked(graph_path, true);
+			add_graph_path_ref_locked(graph_path);
 		}
 	}
 
@@ -611,7 +610,7 @@ bool RenderWorkerPool::PrepareJob(RenderTicketPtr ticket,
 	return true;
 }
 
-bool RenderWorkerPool::WriteGraphSnapshot(Project *project, QString *path)
+bool RenderWorkerPool::write_graph_snapshot(Project *project, QString *path)
 {
 	// Keep snapshots in the system temp directory. The previous bug was not the
 	// temp location itself, but stale snapshots being deleted while queued jobs
@@ -629,15 +628,15 @@ bool RenderWorkerPool::WriteGraphSnapshot(Project *project, QString *path)
 	}
 
 	QXmlStreamWriter writer(&file);
-	ProjectSerializer::SaveData data(ProjectSerializer::kProject, project,
+	ProjectSerializer::SaveData data(ProjectSerializer::k_project, project,
 									 file.fileName());
 	const ProjectSerializer::Result result =
-		ProjectSerializer::Save(&writer, data);
+		ProjectSerializer::save(&writer, data);
 	file.close();
 
-	if (result.code() != ProjectSerializer::kSuccess || writer.hasError()) {
+	if (result.code() != ProjectSerializer::k_success || writer.hasError()) {
 		qWarning() << "RenderWorkerPool failed to serialize graph snapshot"
-				   << result.GetDetails();
+				   << result.get_details();
 		QFile::remove(file.fileName());
 		return false;
 	}
@@ -646,41 +645,41 @@ bool RenderWorkerPool::WriteGraphSnapshot(Project *project, QString *path)
 	return true;
 }
 
-bool RenderWorkerPool::IsSupported(
+bool RenderWorkerPool::is_supported(
 	const RenderManager::RenderVideoParams &params) const
 {
-	return params.node && params.return_type == RenderManager::kFrame &&
+	return params.node && params.return_type == RenderManager::k_frame &&
 		   params.video_params.is_valid();
 }
 
-void RenderWorkerPool::ProcessJob(
+void RenderWorkerPool::process_job(
 	const Job &job, int worker_index,
 	std::vector<std::unique_ptr<PooledWorker>> *local_pool)
 {
 	const qint64 ticket_id =
 		qint64(reinterpret_cast<quintptr>(job.ticket.get()));
-	SetActiveWorker(worker_index, job.ticket, nullptr, ticket_id);
+	set_active_worker(worker_index, job.ticket, nullptr, ticket_id);
 
-	job.ticket->Start();
-	if (job.ticket->IsCancelled()) {
-		job.ticket->Finish();
-		ClearActiveWorker(worker_index, 0);
+	job.ticket->start();
+	if (job.ticket->is_cancelled()) {
+		job.ticket->finish();
+		clear_active_worker(worker_index, 0);
 		return;
 	}
 
 	std::unique_ptr<PooledWorker> worker =
-		AcquireWorker(local_pool, job.graph_path);
+		acquire_worker(local_pool, job.graph_path);
 	if (!worker) {
 		qWarning() << "RenderWorkerPool failed to acquire worker for ticket"
 				   << ticket_id;
-		job.ticket->Finish();
-		ClearActiveWorker(worker_index, 0);
+		job.ticket->finish();
+		clear_active_worker(worker_index, 0);
 		return;
 	}
 
-	for (int attempt = 0; attempt < kMaxAttempts; attempt++) {
+	for (int attempt = 0; attempt < k_max_attempts; attempt++) {
 		if (attempt > 0) {
-			worker = AcquireWorker(local_pool, job.graph_path);
+			worker = acquire_worker(local_pool, job.graph_path);
 			if (!worker) {
 				qWarning()
 					<< "RenderWorkerPool failed to acquire worker for retry"
@@ -690,60 +689,60 @@ void RenderWorkerPool::ProcessJob(
 		}
 
 		const JobResult result =
-			ProcessJobAttempt(job, worker_index, attempt, worker.get());
+			process_job_attempt(job, worker_index, attempt, worker.get());
 		const qint64 worker_pid =
 			worker && worker->process ? worker->process->processId() : 0;
 		const bool process_state_running = worker && worker->process &&
 										   worker->process->state() ==
 											   QProcess::Running;
-		const bool os_alive = worker_pid > 0 && IsProcessAlive(worker_pid);
+		const bool os_alive = worker_pid > 0 && is_process_alive(worker_pid);
 		const bool worker_healthy = process_state_running || os_alive;
-		const bool keep_alive = (result == JobResult::kFinished) &&
+		const bool keep_alive = (result == JobResult::k_finished) &&
 								worker_healthy;
 
-		ReturnWorker(local_pool, std::move(worker), keep_alive);
+		return_worker(local_pool, std::move(worker), keep_alive);
 		worker.reset();
 
-		if (result == JobResult::kFinished) {
-			ClearActiveWorker(worker_index, 0);
+		if (result == JobResult::k_finished) {
+			clear_active_worker(worker_index, 0);
 			return;
 		}
-		if (result == JobResult::kCancelled) {
-			job.ticket->Finish();
-			ClearActiveWorker(worker_index, 0);
+		if (result == JobResult::k_cancelled) {
+			job.ticket->finish();
+			clear_active_worker(worker_index, 0);
 			return;
 		}
-		if (result == JobResult::kFatalFailure) {
+		if (result == JobResult::k_fatal_failure) {
 			break;
 		}
-		if (attempt + 1 < kMaxAttempts && !job.ticket->IsCancelled()) {
+		if (attempt + 1 < k_max_attempts && !job.ticket->is_cancelled()) {
 			qWarning() << "RenderWorkerPool retrying render worker for ticket"
 					   << ticket_id << "after worker failure";
 		}
 	}
 
-	if (job.ticket->IsCancelled()) {
-		job.ticket->Finish();
+	if (job.ticket->is_cancelled()) {
+		job.ticket->finish();
 	} else {
 		qWarning() << "RenderWorkerPool exhausted worker retries for ticket"
 				   << ticket_id;
-		job.ticket->Finish();
+		job.ticket->finish();
 	}
-	ClearActiveWorker(worker_index, 0);
+	clear_active_worker(worker_index, 0);
 }
 
 RenderWorkerPool::JobResult
-RenderWorkerPool::ProcessJobAttempt(const Job &job, int worker_index,
+RenderWorkerPool::process_job_attempt(const Job &job, int worker_index,
 									int attempt_index, PooledWorker *worker)
 {
 	const qint64 ticket_id =
 		qint64(reinterpret_cast<quintptr>(job.ticket.get()));
-	if (job.ticket->IsCancelled()) {
-		return JobResult::kCancelled;
+	if (job.ticket->is_cancelled()) {
+		return JobResult::k_cancelled;
 	}
 
 	if (!worker || !worker->process) {
-		return JobResult::kRetryableFailure;
+		return JobResult::k_retryable_failure;
 	}
 
 	const qint64 worker_process_id = worker->process->processId();
@@ -755,18 +754,18 @@ RenderWorkerPool::ProcessJobAttempt(const Job &job, int worker_index,
 								  job.params.force_size.height() :
 								  job.params.video_params.effective_height();
 	const PixelFormat::Format output_format =
-		job.params.force_format != PixelFormat::INVALID ?
+		job.params.force_format != PixelFormat::invalid ?
 			PixelFormat::Format(job.params.force_format) :
-			PixelFormat::F32;
+			PixelFormat::f32;
 	const int output_channels = job.params.force_channel_count > 0 ?
 									job.params.force_channel_count :
-									VideoParams::kRGBAChannelCount;
+									VideoParams::k_rgba_channel_count;
 	const int output_linesize = Frame::generate_linesize_bytes(
 		output_width, output_format, output_channels);
 	const size_t estimated_output_slot_bytes =
 		size_t(output_linesize) * size_t(output_height);
 	const int f32_rgba_linesize = Frame::generate_linesize_bytes(
-		output_width, PixelFormat::F32, VideoParams::kRGBAChannelCount);
+		output_width, PixelFormat::f32, VideoParams::k_rgba_channel_count);
 	const size_t f32_rgba_slot_bytes =
 		size_t(f32_rgba_linesize) * size_t(output_height);
 	const size_t output_slot_bytes =
@@ -779,29 +778,29 @@ RenderWorkerPool::ProcessJobAttempt(const Job &job, int worker_index,
 		}
 	}
 	const size_t output_region_bytes =
-		ipc::FrameSlotPool::BytesNeeded(kOutputSlots, output_slot_bytes);
+		ipc::FrameSlotPool::bytes_needed(k_output_slots, output_slot_bytes);
 
-	if (!worker->output_region.IsValid() ||
+	if (!worker->output_region.is_valid() ||
 		worker->output_slot_bytes < output_slot_bytes) {
-		if (worker->output_region.IsValid()) {
-			worker->output_region.Close();
+		if (worker->output_region.is_valid()) {
+			worker->output_region.close();
 			worker->output_pool = ipc::FrameSlotPool();
 		}
 		if (worker->output_shm_key.isEmpty()) {
 			worker->output_shm_key =
-				ipc::SharedMemoryRegion::MakeKey(worker_process_id, 0) +
+				ipc::SharedMemoryRegion::make_key(worker_process_id, 0) +
 				QStringLiteral("-out");
 		}
-		if (!worker->output_region.Open(worker->output_shm_key,
+		if (!worker->output_region.open(worker->output_shm_key,
 										output_region_bytes,
-										ipc::SharedMemoryRegion::kCreate)) {
+										ipc::SharedMemoryRegion::k_create)) {
 			qWarning()
 				<< "RenderWorkerPool failed to create output shared memory"
 				<< worker->output_region.error();
-			return JobResult::kFatalFailure;
+			return JobResult::k_fatal_failure;
 		}
-		worker->output_pool = ipc::FrameSlotPool::Create(
-			worker->output_region.data(), kOutputSlots, output_slot_bytes);
+		worker->output_pool = ipc::FrameSlotPool::create(
+			worker->output_region.data(), k_output_slots, output_slot_bytes);
 		worker->output_slot_bytes = output_slot_bytes;
 	}
 	const QString shm_key = worker->output_shm_key;
@@ -810,30 +809,30 @@ RenderWorkerPool::ProcessJobAttempt(const Job &job, int worker_index,
 	const uint32_t input_slot_count =
 		job.input_frames.isEmpty() ? 0 : uint32_t(job.input_frames.size());
 	if (input_slot_count > 0) {
-		if (!worker->input_region.IsValid() ||
+		if (!worker->input_region.is_valid() ||
 			worker->input_slot_bytes < input_slot_bytes ||
 			worker->input_pool.slot_count() < input_slot_count) {
-			if (worker->input_region.IsValid()) {
-				worker->input_region.Close();
+			if (worker->input_region.is_valid()) {
+				worker->input_region.close();
 				worker->input_pool = ipc::FrameSlotPool();
 			}
 			if (worker->input_shm_key.isEmpty()) {
 				worker->input_shm_key =
-					ipc::SharedMemoryRegion::MakeKey(worker_process_id, 1) +
+					ipc::SharedMemoryRegion::make_key(worker_process_id, 1) +
 					QStringLiteral("-in");
 			}
-			const size_t input_region_bytes = ipc::FrameSlotPool::BytesNeeded(
+			const size_t input_region_bytes = ipc::FrameSlotPool::bytes_needed(
 				input_slot_count, input_slot_bytes);
-			if (!worker->input_region.Open(worker->input_shm_key,
+			if (!worker->input_region.open(worker->input_shm_key,
 										   input_region_bytes,
-										   ipc::SharedMemoryRegion::kCreate)) {
+										   ipc::SharedMemoryRegion::k_create)) {
 				qWarning()
 					<< "RenderWorkerPool failed to create input shared memory"
 					<< worker->input_region.error();
-				return JobResult::kFatalFailure;
+				return JobResult::k_fatal_failure;
 			}
 			worker->input_pool =
-				ipc::FrameSlotPool::Create(worker->input_region.data(),
+				ipc::FrameSlotPool::create(worker->input_region.data(),
 										   input_slot_count, input_slot_bytes);
 			worker->input_slot_bytes = input_slot_bytes;
 		}
@@ -846,18 +845,18 @@ RenderWorkerPool::ProcessJobAttempt(const Job &job, int worker_index,
 			if (frame->allocated_size() > int(worker->input_slot_bytes)) {
 				qWarning()
 					<< "RenderWorkerPool decoded input frame exceeds slot size";
-				return JobResult::kFatalFailure;
+				return JobResult::k_fatal_failure;
 			}
 
 			uint32_t slot = 0;
-			if (!input_pool.Acquire(&slot)) {
+			if (!input_pool.acquire(&slot)) {
 				qWarning() << "RenderWorkerPool input pool had no free slot";
-				return JobResult::kFatalFailure;
+				return JobResult::k_fatal_failure;
 			}
 
-			memcpy(input_pool.SlotData(slot), frame->const_data(),
+			memcpy(input_pool.slot_data(slot), frame->const_data(),
 				   size_t(frame->allocated_size()));
-			ipc::FrameSlotMeta *meta = input_pool.Meta(slot);
+			ipc::FrameSlotMeta *meta = input_pool.meta(slot);
 			meta->id = qint64(input_slots.size());
 			meta->time_num = frame->timestamp().numerator();
 			meta->time_den = frame->timestamp().denominator();
@@ -877,9 +876,9 @@ RenderWorkerPool::ProcessJobAttempt(const Job &job, int worker_index,
 				memcpy(meta->colorspace, cs_utf8.constData(), copy_len);
 				meta->colorspace[copy_len] = '\0';
 			}
-			if (!input_pool.Publish(slot)) {
+			if (!input_pool.publish(slot)) {
 				qWarning() << "RenderWorkerPool failed to publish input slot";
-				return JobResult::kFatalFailure;
+				return JobResult::k_fatal_failure;
 			}
 			input_slots.append(int(slot));
 		}
@@ -887,36 +886,36 @@ RenderWorkerPool::ProcessJobAttempt(const Job &job, int worker_index,
 		if (input_slots.size() != job.input_frames.size()) {
 			qWarning() << "RenderWorkerPool failed to publish all input frames;"
 					   << "aborting worker render";
-			return JobResult::kFatalFailure;
+			return JobResult::k_fatal_failure;
 		}
 	}
 
-	SetActiveWorker(worker_index, job.ticket, worker->process, ticket_id);
-	if (job.ticket->IsCancelled()) {
+	set_active_worker(worker_index, job.ticket, worker->process, ticket_id);
+	if (job.ticket->is_cancelled()) {
 		ipc::CancelMsg cancel;
 		cancel.ticket_id = ticket_id;
-		TryWriteControlMessage(worker->process, cancel.ToJson());
-		ClearActiveWorker(worker_index, worker_process_id);
-		return JobResult::kCancelled;
+		try_write_control_message(worker->process, cancel.to_json());
+		clear_active_worker(worker_index, worker_process_id);
+		return JobResult::k_cancelled;
 	}
 
 	ipc::HandshakeMsg handshake;
-	handshake.protocol_version = kProtocolVersion;
+	handshake.protocol_version = k_protocol_version;
 	handshake.shm_key = shm_key;
 	handshake.input_shm_key = input_slots.isEmpty() ? QString() : input_shm_key;
 	handshake.input_slots = input_slots.size();
-	handshake.output_slots = int(kOutputSlots);
+	handshake.output_slots = int(k_output_slots);
 	handshake.slot_data_bytes = qint64(output_slot_bytes);
 	handshake.input_slot_data_bytes =
 		input_slots.isEmpty() ? 0 : qint64(input_slot_bytes);
-	if (!WriteControlMessage(worker->process, handshake.ToJson())) {
-		if (!job.ticket->IsCancelled()) {
+	if (!write_control_message(worker->process, handshake.to_json())) {
+		if (!job.ticket->is_cancelled()) {
 			qWarning()
 				<< "RenderWorkerPool failed to send shared-memory handshake";
 		}
-		ClearActiveWorker(worker_index, worker_process_id);
-		return job.ticket->IsCancelled() ? JobResult::kCancelled :
-										   JobResult::kRetryableFailure;
+		clear_active_worker(worker_index, worker_process_id);
+		return job.ticket->is_cancelled() ? JobResult::k_cancelled :
+										   JobResult::k_retryable_failure;
 	}
 
 	if (worker->loaded_graph_path != job.graph_path) {
@@ -924,15 +923,15 @@ RenderWorkerPool::ProcessJobAttempt(const Job &job, int worker_index,
 		load.path = job.graph_path;
 		QString error;
 		QJsonObject response;
-		if (!WriteControlMessage(worker->process, load.ToJson()) ||
-			!ReadControlMessage(worker->process, &response, &error)) {
-			if (!job.ticket->IsCancelled()) {
+		if (!write_control_message(worker->process, load.to_json()) ||
+			!read_control_message(worker->process, &response, &error)) {
+			if (!job.ticket->is_cancelled()) {
 				qWarning() << "RenderWorkerPool failed to load graph in worker"
 						   << error << worker->process->readAllStandardError();
 			}
-			ClearActiveWorker(worker_index, worker_process_id);
-			return job.ticket->IsCancelled() ? JobResult::kCancelled :
-											   JobResult::kRetryableFailure;
+			clear_active_worker(worker_index, worker_process_id);
+			return job.ticket->is_cancelled() ? JobResult::k_cancelled :
+											   JobResult::k_retryable_failure;
 		}
 		worker->loaded_graph_path = job.graph_path;
 	}
@@ -956,62 +955,62 @@ RenderWorkerPool::ProcessJobAttempt(const Job &job, int worker_index,
 	render.color_view = ct.view();
 	render.color_look = ct.look();
 
-	if (!WriteControlMessage(worker->process, render.ToJson())) {
-		if (!job.ticket->IsCancelled()) {
+	if (!write_control_message(worker->process, render.to_json())) {
+		if (!job.ticket->is_cancelled()) {
 			qWarning() << "RenderWorkerPool failed to send render_frame";
 		}
-		ClearActiveWorker(worker_index, worker_process_id);
-		return job.ticket->IsCancelled() ? JobResult::kCancelled :
-										   JobResult::kRetryableFailure;
+		clear_active_worker(worker_index, worker_process_id);
+		return job.ticket->is_cancelled() ? JobResult::k_cancelled :
+										   JobResult::k_retryable_failure;
 	}
 
 	QString error;
 	QJsonObject response;
 	ipc::FrameReadyMsg ready;
 	while (true) {
-		if (!ReadControlMessage(worker->process, &response, &error, 30000)) {
-			if (!job.ticket->IsCancelled()) {
+		if (!read_control_message(worker->process, &response, &error, 30000)) {
+			if (!job.ticket->is_cancelled()) {
 				qWarning() << "RenderWorkerPool failed waiting for frame_ready"
 						   << error << worker->process->readAllStandardError();
 			}
-			ClearActiveWorker(worker_index, worker_process_id);
-			return job.ticket->IsCancelled() ? JobResult::kCancelled :
-											   JobResult::kRetryableFailure;
+			clear_active_worker(worker_index, worker_process_id);
+			return job.ticket->is_cancelled() ? JobResult::k_cancelled :
+											   JobResult::k_retryable_failure;
 		}
 
-		if (ipc::FrameReadyMsg::FromJson(response, &ready)) {
+		if (ipc::FrameReadyMsg::from_json(response, &ready)) {
 			break;
 		}
 	}
 
-	if (job.ticket->IsCancelled()) {
-		ClearActiveWorker(worker_index, worker_process_id);
-		return JobResult::kCancelled;
+	if (job.ticket->is_cancelled()) {
+		clear_active_worker(worker_index, worker_process_id);
+		return JobResult::k_cancelled;
 	}
 
 	uint32_t consumed_slot = 0;
-	if (!output_pool.Consume(&consumed_slot)) {
+	if (!output_pool.consume(&consumed_slot)) {
 		qWarning() << "RenderWorkerPool failed to consume output slot";
-		ClearActiveWorker(worker_index, worker_process_id);
-		return JobResult::kRetryableFailure;
+		clear_active_worker(worker_index, worker_process_id);
+		return JobResult::k_retryable_failure;
 	}
 	if (int(consumed_slot) != ready.output_slot) {
 		qWarning() << "RenderWorkerPool output slot mismatch: consumed"
 				   << consumed_slot << "expected" << ready.output_slot;
 	}
-	FinishWithFrame(job.ticket, output_pool, consumed_slot);
-	output_pool.Release(consumed_slot);
-	ClearActiveWorker(worker_index, worker_process_id);
+	finish_with_frame(job.ticket, output_pool, consumed_slot);
+	output_pool.release(consumed_slot);
+	clear_active_worker(worker_index, worker_process_id);
 
-	return JobResult::kFinished;
+	return JobResult::k_finished;
 }
 
-void RenderWorkerPool::CancelActiveProcess(qint64 process_id)
+void RenderWorkerPool::cancel_active_process(qint64 process_id)
 {
-	KillProcessById(process_id);
+	kill_process_by_id(process_id);
 }
 
-void RenderWorkerPool::SetActiveWorker(int worker_index, RenderTicketPtr ticket,
+void RenderWorkerPool::set_active_worker(int worker_index, RenderTicketPtr ticket,
 									   QProcess *worker, qint64 ticket_id)
 {
 	QMutexLocker locker(&mutex_);
@@ -1025,7 +1024,7 @@ void RenderWorkerPool::SetActiveWorker(int worker_index, RenderTicketPtr ticket,
 	active.ticket_id = ticket_id;
 }
 
-void RenderWorkerPool::ClearActiveWorker(int worker_index, qint64 process_id)
+void RenderWorkerPool::clear_active_worker(int worker_index, qint64 process_id)
 {
 	QMutexLocker locker(&mutex_);
 	if (worker_index < 0 || worker_index >= active_jobs_.size()) {
@@ -1042,7 +1041,7 @@ void RenderWorkerPool::ClearActiveWorker(int worker_index, qint64 process_id)
 	}
 }
 
-int RenderWorkerPool::WorkerCount() const
+int RenderWorkerPool::worker_count() const
 {
 	// GPU rendering is the bottleneck for video frames; too many workers just
 	// multiply first-frame warmup (shader/OCIO cache creation) and compete for
@@ -1051,7 +1050,7 @@ int RenderWorkerPool::WorkerCount() const
 	return std::max(1, std::min(ideal - 2, 4));
 }
 
-std::unique_ptr<RenderWorkerPool::PooledWorker> RenderWorkerPool::AcquireWorker(
+std::unique_ptr<RenderWorkerPool::PooledWorker> RenderWorkerPool::acquire_worker(
 	std::vector<std::unique_ptr<PooledWorker>> *local_pool,
 	const QString &graph_path)
 {
@@ -1072,14 +1071,14 @@ std::unique_ptr<RenderWorkerPool::PooledWorker> RenderWorkerPool::AcquireWorker(
 		const bool candidate_state_running = candidate->process->state() ==
 											 QProcess::Running;
 		const bool candidate_os_alive =
-			IsProcessAlive(candidate->process->processId());
+			is_process_alive(candidate->process->processId());
 		if (!candidate_state_running && !candidate_os_alive) {
-			ShutdownWorker(candidate);
+			shutdown_worker(candidate);
 			local_pool->erase(local_pool->begin() + i);
 			continue;
 		}
-		if (now - candidate->last_used_ms > kWorkerIdleTimeoutMs) {
-			ShutdownWorker(candidate);
+		if (now - candidate->last_used_ms > k_worker_idle_timeout_ms) {
+			shutdown_worker(candidate);
 			local_pool->erase(local_pool->begin() + i);
 			continue;
 		}
@@ -1104,7 +1103,7 @@ std::unique_ptr<RenderWorkerPool::PooledWorker> RenderWorkerPool::AcquireWorker(
 
 	// No idle worker available: start a new one.
 	auto *process = new QProcess();
-	process->setProgram(WorkerProgramPath());
+	process->setProgram(worker_program_path());
 	process->setArguments({ QStringLiteral("--backend"), gpu_backend_ });
 
 	const QString worker_stderr_path =
@@ -1124,7 +1123,7 @@ std::unique_ptr<RenderWorkerPool::PooledWorker> RenderWorkerPool::AcquireWorker(
 
 	QString error;
 	QJsonObject response;
-	if (!ReadControlMessage(process, &response, &error)) {
+	if (!read_control_message(process, &response, &error)) {
 		qWarning() << "RenderWorkerPool did not receive startup handshake"
 				   << error << process->readAllStandardError();
 		process->kill();
@@ -1140,7 +1139,7 @@ std::unique_ptr<RenderWorkerPool::PooledWorker> RenderWorkerPool::AcquireWorker(
 	return worker;
 }
 
-void RenderWorkerPool::ReturnWorker(
+void RenderWorkerPool::return_worker(
 	std::vector<std::unique_ptr<PooledWorker>> *local_pool,
 	std::unique_ptr<PooledWorker> worker, bool keep_alive)
 {
@@ -1148,9 +1147,9 @@ void RenderWorkerPool::ReturnWorker(
 		return;
 	}
 
-	const bool pool_full = worker->use_count >= kWorkerMaxUses;
+	const bool pool_full = worker->use_count >= k_worker_max_uses;
 	if (!keep_alive || stopping_ || pool_full) {
-		ShutdownWorker(worker.get());
+		shutdown_worker(worker.get());
 		return;
 	}
 
@@ -1158,7 +1157,7 @@ void RenderWorkerPool::ReturnWorker(
 	local_pool->push_back(std::move(worker));
 }
 
-void RenderWorkerPool::ShutdownWorker(PooledWorker *worker)
+void RenderWorkerPool::shutdown_worker(PooledWorker *worker)
 {
 	if (!worker || !worker->process) {
 		return;
@@ -1171,8 +1170,8 @@ void RenderWorkerPool::ShutdownWorker(PooledWorker *worker)
 
 	if (process->state() == QProcess::Running) {
 		QJsonObject shutdown;
-		shutdown[QStringLiteral("type")] = ipc::msgtype::kShutdown;
-		TryWriteControlMessage(process, shutdown);
+		shutdown[QStringLiteral("type")] = ipc::msgtype::k_shutdown;
+		try_write_control_message(process, shutdown);
 		process->closeWriteChannel();
 		if (!process->waitForFinished(5000)) {
 			process->kill();
@@ -1182,68 +1181,68 @@ void RenderWorkerPool::ShutdownWorker(PooledWorker *worker)
 	delete process;
 }
 
-void RenderWorkerPool::ShutdownLocalPool(
+void RenderWorkerPool::shutdown_local_pool(
 	std::vector<std::unique_ptr<PooledWorker>> *local_pool)
 {
 	if (!local_pool) {
 		return;
 	}
 	for (std::unique_ptr<PooledWorker> &worker : *local_pool) {
-		ShutdownWorker(worker.get());
+		shutdown_worker(worker.get());
 	}
 	local_pool->clear();
 }
 
-void RenderWorkerPool::ClearGraphCache()
+void RenderWorkerPool::clear_graph_cache()
 {
 	QMutexLocker locker(&mutex_);
 	for (auto it = graph_cache_.begin(); it != graph_cache_.end(); ++it) {
-		SetGraphPathCachedLocked(it->path, false);
+		set_graph_path_cached_locked(it->path, false);
 	}
 	graph_cache_.clear();
 	graph_path_ref_count_.clear();
 	cached_graph_paths_.clear();
 }
 
-void RenderWorkerPool::FinishWithFrame(RenderTicketPtr ticket,
+void RenderWorkerPool::finish_with_frame(RenderTicketPtr ticket,
 									   const ipc::FrameSlotPool &pool,
 									   uint32_t slot)
 {
-	const ipc::FrameSlotMeta *meta = pool.Meta(slot);
+	const ipc::FrameSlotMeta *meta = pool.meta(slot);
 	if (!meta || meta->data_size <= 0 ||
 		meta->data_size > int(pool.slot_data_bytes())) {
-		ticket->Finish();
+		ticket->finish();
 		return;
 	}
 
 	VideoParams params(meta->width, meta->height,
 					   PixelFormat::Format(meta->format), meta->channel_count);
-	FramePtr frame = Frame::Create();
-	frame->set_timestamp(rational(int(meta->time_num), int(meta->time_den)));
+	FramePtr frame = Frame::create();
+	frame->set_timestamp(Rational(int(meta->time_num), int(meta->time_den)));
 	frame->set_video_params(params);
 	if (!frame->allocate() || frame->allocated_size() < meta->data_size) {
-		ticket->Finish();
+		ticket->finish();
 		return;
 	}
 
-	memcpy(frame->data(), pool.SlotData(slot), size_t(meta->data_size));
-	ticket->Finish(QVariant::fromValue(frame));
+	memcpy(frame->data(), pool.slot_data(slot), size_t(meta->data_size));
+	ticket->finish(QVariant::fromValue(frame));
 }
 
-void RenderWorkerPool::CleanupGraphFile(const QString &path)
+void RenderWorkerPool::cleanup_graph_file(const QString &path)
 {
 	if (!path.isEmpty()) {
 		QFile::remove(path);
 	}
 }
 
-void RenderWorkerPool::AddGraphPathRef(const QString &path)
+void RenderWorkerPool::add_graph_path_ref(const QString &path)
 {
 	QMutexLocker locker(&mutex_);
-	AddGraphPathRefLocked(path);
+	add_graph_path_ref_locked(path);
 }
 
-void RenderWorkerPool::AddGraphPathRefLocked(const QString &path)
+void RenderWorkerPool::add_graph_path_ref_locked(const QString &path)
 {
 	if (path.isEmpty()) {
 		return;
@@ -1251,13 +1250,13 @@ void RenderWorkerPool::AddGraphPathRefLocked(const QString &path)
 	++graph_path_ref_count_[path];
 }
 
-void RenderWorkerPool::ReleaseGraphPathRef(const QString &path)
+void RenderWorkerPool::release_graph_path_ref(const QString &path)
 {
 	QMutexLocker locker(&mutex_);
-	ReleaseGraphPathRefLocked(path);
+	release_graph_path_ref_locked(path);
 }
 
-void RenderWorkerPool::ReleaseGraphPathRefLocked(const QString &path)
+void RenderWorkerPool::release_graph_path_ref_locked(const QString &path)
 {
 	if (path.isEmpty()) {
 		return;
@@ -1269,18 +1268,18 @@ void RenderWorkerPool::ReleaseGraphPathRefLocked(const QString &path)
 	if (--(*it) <= 0) {
 		graph_path_ref_count_.erase(it);
 		if (!cached_graph_paths_.contains(path)) {
-			CleanupGraphFile(path);
+			cleanup_graph_file(path);
 		}
 	}
 }
 
-void RenderWorkerPool::SetGraphPathCached(const QString &path, bool cached)
+void RenderWorkerPool::set_graph_path_cached(const QString &path, bool cached)
 {
 	QMutexLocker locker(&mutex_);
-	SetGraphPathCachedLocked(path, cached);
+	set_graph_path_cached_locked(path, cached);
 }
 
-void RenderWorkerPool::SetGraphPathCachedLocked(const QString &path,
+void RenderWorkerPool::set_graph_path_cached_locked(const QString &path,
 												bool cached)
 {
 	if (path.isEmpty()) {
@@ -1291,7 +1290,7 @@ void RenderWorkerPool::SetGraphPathCachedLocked(const QString &path,
 	} else {
 		cached_graph_paths_.remove(path);
 		if (!graph_path_ref_count_.contains(path)) {
-			CleanupGraphFile(path);
+			cleanup_graph_file(path);
 		}
 	}
 }

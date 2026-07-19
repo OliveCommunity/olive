@@ -19,22 +19,22 @@
 
 ***/
 
-#ifndef OLIVECOMMONDEFINE_H
-#define OLIVECOMMONDEFINE_H
+#ifndef OAK_OLIVECOMMONDEFINE_H
+#define OAK_OLIVECOMMONDEFINE_H
 
 namespace olive
 {
 
 /// The minimum size an icon in ProjectExplorer can be
-const int kProjectIconSizeMinimum = 16;
+const int k_project_icon_size_minimum = 16;
 
 /// The maximum size an icon in ProjectExplorer can be
-const int kProjectIconSizeMaximum = 256;
+const int k_project_icon_size_maximum = 256;
 
 /// The default size an icon in ProjectExplorer can be
-const int kProjectIconSizeDefault = 64;
+const int k_project_icon_size_default = 64;
 
-const int kBytesInGigabyte = 1073741824;
+const int k_bytes_in_gigabyte = 1073741824;
 
 }
 
@@ -65,4 +65,4 @@ const int kBytesInGigabyte = 1073741824;
 	DISABLE_COPY(Class)          \
 	DISABLE_MOVE(Class)
 
-#endif // OLIVECOMMONDEFINE_H
+#endif // OAK_OLIVECOMMONDEFINE_H

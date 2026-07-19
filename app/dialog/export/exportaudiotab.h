@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef EXPORTAUDIOTAB_H
-#define EXPORTAUDIOTAB_H
+#ifndef OAK_EXPORTAUDIOTAB_H
+#define OAK_EXPORTAUDIOTAB_H
 
 #include <QComboBox>
 #include <QWidget>
@@ -38,13 +38,13 @@ class ExportAudioTab : public QWidget {
 public:
 	ExportAudioTab(QWidget *parent = nullptr);
 
-	ExportCodec::Codec GetCodec() const
+	ExportCodec::Codec get_codec() const
 	{
 		return static_cast<ExportCodec::Codec>(
 			codec_combobox_->currentData().toInt());
 	}
 
-	void SetCodec(ExportCodec::Codec c)
+	void set_codec(ExportCodec::Codec c)
 	{
 		for (int i = 0; i < codec_combobox_->count(); i++) {
 			if (codec_combobox_->itemData(i) == c) {
@@ -75,7 +75,7 @@ public:
 	}
 
 public slots:
-	int SetFormat(ExportFormat::Format format);
+	int set_format(ExportFormat::Format format);
 
 private:
 	ExportFormat::Format fmt_;
@@ -85,14 +85,14 @@ private:
 	SampleFormatComboBox *sample_format_combobox_;
 	IntegerSlider *bit_rate_slider_;
 
-	static const int kDefaultBitRate;
+	static const int k_default_bit_rate;
 
 private slots:
-	void UpdateSampleFormats();
+	void update_sample_formats();
 
-	void UpdateBitRateEnabled();
+	void update_bit_rate_enabled();
 };
 
 }
 
-#endif // EXPORTAUDIOTAB_H
+#endif // OAK_EXPORTAUDIOTAB_H

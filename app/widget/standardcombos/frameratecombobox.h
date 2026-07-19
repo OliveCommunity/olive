@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FRAMERATECOMBOBOX_H
-#define FRAMERATECOMBOBOX_H
+#ifndef OAK_FRAMERATECOMBOBOX_H
+#define OAK_FRAMERATECOMBOBOX_H
 
 #include <QComboBox>
 #include <QEvent>
@@ -46,33 +46,33 @@ public:
 		layout->setContentsMargins(0, 0, 0, 0);
 		layout->addWidget(inner_);
 
-		RepopulateList();
+		repopulate_list();
 
 		old_index_ = 0;
 
 		connect(inner_,
 				static_cast<void (QComboBox::*)(int)>(
 					&QComboBox::currentIndexChanged),
-				this, &FrameRateComboBox::IndexChanged);
+				this, &FrameRateComboBox::index_changed);
 	}
 
-	rational GetFrameRate() const
+	Rational get_frame_rate() const
 	{
 		if (inner_->currentIndex() == inner_->count() - 1) {
 			return custom_rate_;
 		} else {
-			return inner_->currentData().value<rational>();
+			return inner_->currentData().value<Rational>();
 		}
 	}
 
-	void SetFrameRate(const rational &r)
+	void set_frame_rate(const Rational &r)
 	{
 		int standard_rates = inner_->count() - 1;
 		for (int i = 0; i < standard_rates; i++) {
-			if (inner_->itemData(i).value<rational>() == r) {
+			if (inner_->itemData(i).value<Rational>() == r) {
 				// Set standard frame rate
 				old_index_ = i;
-				SetInnerIndexWithoutSignal(i);
+				set_inner_index_without_signal(i);
 				return;
 			}
 		}
@@ -80,12 +80,12 @@ public:
 		// If we're here, set a custom rate
 		custom_rate_ = r;
 		old_index_ = inner_->count() - 1;
-		SetInnerIndexWithoutSignal(old_index_);
-		RepopulateList();
+		set_inner_index_without_signal(old_index_);
+		repopulate_list();
 	}
 
 signals:
-	void FrameRateChanged(const rational &frame_rate);
+	void frame_rate_changed(const Rational &frame_rate);
 
 protected:
 	virtual void changeEvent(QEvent *event) override
@@ -93,12 +93,12 @@ protected:
 		QWidget::changeEvent(event);
 
 		if (event->type() == QEvent::LanguageChange) {
-			RepopulateList();
+			repopulate_list();
 		}
 	}
 
 private slots:
-	void IndexChanged(int index)
+	void index_changed(int index)
 	{
 		if (index == inner_->count() - 1) {
 			// Custom
@@ -106,7 +106,7 @@ private slots:
 			bool ok;
 
 			if (!custom_rate_.isNull()) {
-				s = QString::number(custom_rate_.toDouble());
+				s = QString::number(custom_rate_.to_double());
 			}
 
 			while (true) {
@@ -115,24 +115,24 @@ private slots:
 										  QLineEdit::Normal, s, &ok);
 
 				if (ok) {
-					rational r;
+					Rational r;
 
 					// Try converting to double, assuming most users will input frame rates this way
 					double d = s.toDouble(&ok);
 
 					if (ok) {
 						// Try converting from double
-						r = rational::fromDouble(d, &ok);
+						r = Rational::from_double(d, &ok);
 					} else {
-						// Try converting to rational in case someone formatted that way
-						r = rational::fromString(s.toStdString(), &ok);
+						// Try converting to Rational in case someone formatted that way
+						r = Rational::from_string(s.toStdString(), &ok);
 					}
 
 					if (ok) {
 						custom_rate_ = r;
-						emit FrameRateChanged(r);
+						emit frame_rate_changed(r);
 						old_index_ = index;
-						RepopulateList();
+						repopulate_list();
 						break;
 
 					} else {
@@ -145,18 +145,18 @@ private slots:
 
 				} else {
 					// User cancelled, revert to original value
-					SetInnerIndexWithoutSignal(old_index_);
+					set_inner_index_without_signal(old_index_);
 					break;
 				}
 			}
 		} else {
 			old_index_ = index;
-			emit FrameRateChanged(GetFrameRate());
+			emit frame_rate_changed(get_frame_rate());
 		}
 	}
 
 private:
-	void RepopulateList()
+	void repopulate_list()
 	{
 		int temp_index = inner_->currentIndex();
 
@@ -164,8 +164,8 @@ private:
 
 		inner_->clear();
 
-		foreach (const rational &fr, VideoParams::kSupportedFrameRates) {
-			inner_->addItem(VideoParams::FrameRateToString(fr),
+		foreach (const Rational &fr, VideoParams::k_supported_frame_rates) {
+			inner_->addItem(VideoParams::frame_rate_to_string(fr),
 							QVariant::fromValue(fr));
 		}
 
@@ -174,7 +174,7 @@ private:
 		} else {
 			inner_->addItem(
 				tr("Custom (%1)")
-					.arg(VideoParams::FrameRateToString(custom_rate_)));
+					.arg(VideoParams::frame_rate_to_string(custom_rate_)));
 		}
 
 		// On the first populate there is no current index (-1); select the
@@ -184,7 +184,7 @@ private:
 		inner_->blockSignals(false);
 	}
 
-	void SetInnerIndexWithoutSignal(int index)
+	void set_inner_index_without_signal(int index)
 	{
 		inner_->blockSignals(true);
 		inner_->setCurrentIndex(index);
@@ -193,11 +193,11 @@ private:
 
 	QComboBox *inner_;
 
-	rational custom_rate_;
+	Rational custom_rate_;
 
 	int old_index_;
 };
 
 }
 
-#endif // FRAMERATECOMBOBOX_H
+#endif // OAK_FRAMERATECOMBOBOX_H

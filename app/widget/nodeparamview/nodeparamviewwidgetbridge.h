@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEPARAMVIEWWIDGETBRIDGE_H
-#define NODEPARAMVIEWWIDGETBRIDGE_H
+#ifndef OAK_NODEPARAMVIEWWIDGETBRIDGE_H
+#define OAK_NODEPARAMVIEWWIDGETBRIDGE_H
 
 #include <QObject>
 
@@ -48,61 +48,61 @@ public:
 	}
 
 	// Set the timebase of certain Timebased widgets
-	void SetTimebase(const rational &timebase);
+	void set_timebase(const Rational &timebase);
 
 signals:
-	void ArrayWidgetDoubleClicked();
+	void array_widget_double_clicked();
 
-	void WidgetsRecreated(const NodeInput &input);
+	void widgets_recreated(const NodeInput &input);
 
-	void RequestEditTextInViewer();
+	void request_edit_text_in_viewer();
 
 protected:
 	virtual void TimeTargetDisconnectEvent(ViewerOutput *v) override;
 	virtual void TimeTargetConnectEvent(ViewerOutput *v) override;
 
 private:
-	void CreateWidgets();
+	void create_widgets();
 
-	void SetInputValue(const QVariant &value, int track);
+	void set_input_value(const QVariant &value, int track);
 
-	void SetInputValueInternal(const QVariant &value, int track,
+	void set_input_value_internal(const QVariant &value, int track,
 							   MultiUndoCommand *command,
 							   bool insert_on_all_tracks_if_no_key);
 
-	void ProcessSlider(NumericSliderBase *slider, int slider_track,
+	void process_slider(NumericSliderBase *slider, int slider_track,
 					   const QVariant &value);
-	void ProcessSlider(NumericSliderBase *slider, const QVariant &value)
+	void process_slider(NumericSliderBase *slider, const QVariant &value)
 	{
-		ProcessSlider(slider, widgets_.indexOf(slider), value);
+		process_slider(slider, widgets_.indexOf(slider), value);
 	}
 
-	void SetProperty(const QString &key, const QVariant &value);
+	void set_property(const QString &key, const QVariant &value);
 
-	template <typename T> void CreateSliders(int count, QWidget *parent);
+	template <typename T> void create_sliders(int count, QWidget *parent);
 
-	void UpdateWidgetValues();
+	void update_widget_values();
 
-	rational GetCurrentTimeAsNodeTime() const;
+	Rational get_current_time_as_node_time() const;
 
-	const NodeInput &GetOuterInput() const
+	const NodeInput &get_outer_input() const
 	{
 		return input_hierarchy_.first();
 	}
 
-	const NodeInput &GetInnerInput() const
+	const NodeInput &get_inner_input() const
 	{
 		return input_hierarchy_.last();
 	}
 
-	QString GetCommandName() const;
+	QString get_command_name() const;
 
-	NodeValue::Type GetDataType() const
+	NodeValue::Type get_data_type() const
 	{
-		return GetOuterInput().GetDataType();
+		return get_outer_input().get_data_type();
 	}
 
-	void UpdateProperties();
+	void update_properties();
 
 	QVector<NodeInput> input_hierarchy_;
 
@@ -113,16 +113,16 @@ private:
 	NodeParamViewScrollBlocker scroll_filter_;
 
 private slots:
-	void WidgetCallback();
+	void widget_callback();
 
-	void InputValueChanged(const NodeInput &input, const TimeRange &range);
+	void input_value_changed(const NodeInput &input, const TimeRange &range);
 
-	void InputDataTypeChanged(const QString &input, NodeValue::Type type);
+	void input_data_type_changed(const QString &input, NodeValue::Type type);
 
-	void PropertyChanged(const QString &input, const QString &key,
+	void property_changed(const QString &input, const QString &key,
 						 const QVariant &value);
 };
 
 }
 
-#endif // NODEPARAMVIEWWIDGETBRIDGE_H
+#endif // OAK_NODEPARAMVIEWWIDGETBRIDGE_H

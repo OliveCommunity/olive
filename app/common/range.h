@@ -19,12 +19,12 @@
 
 ***/
 
-#ifndef RANGE_H
-#define RANGE_H
+#ifndef OAK_RANGE_H
+#define OAK_RANGE_H
 
-template <typename T> bool InRange(T a, T b, T range)
+template <typename T> bool in_range(T a, T b, T range)
 {
 	return (a >= b - range && a <= b + range);
 }
 
-#endif // RANGE_H
+#endif // OAK_RANGE_H

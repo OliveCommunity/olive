@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef RENDERPROCESSOR_H
-#define RENDERPROCESSOR_H
+#ifndef OAK_RENDERPROCESSOR_H
+#define OAK_RENDERPROCESSOR_H
 
 #include "node/block/clip/clip.h"
 #include <memory>
@@ -39,10 +39,10 @@ class PluginRenderer;
 
 class RenderProcessor : public NodeTraverser {
 public:
-	virtual NodeValueDatabase GenerateDatabase(const Node *node,
+	virtual NodeValueDatabase generate_database(const Node *node,
 											   const TimeRange &range) override;
 
-	static void Process(RenderTicketPtr ticket, Renderer *render_ctx,
+	static void process(RenderTicketPtr ticket, Renderer *render_ctx,
 						DecoderCache *decoder_cache, ShaderCache *shader_cache);
 
 	struct RenderedWaveform {
@@ -53,60 +53,60 @@ public:
 	};
 
 protected:
-	virtual void ProcessVideoFootage(TexturePtr destination,
+	virtual void process_video_footage(TexturePtr destination,
 									 const FootageJob *stream,
-									 const rational &input_time) override;
+									 const Rational &input_time) override;
 
-	virtual void ProcessAudioFootage(SampleBuffer &destination,
+	virtual void process_audio_footage(SampleBuffer &destination,
 									 const FootageJob *stream,
 									 const TimeRange &input_time) override;
 
-	virtual void ProcessShader(TexturePtr destination, const Node *node,
+	virtual void process_shader(TexturePtr destination, const Node *node,
 							   const ShaderJob *job) override;
 
-	virtual void ProcessSamples(SampleBuffer &destination, const Node *node,
+	virtual void process_samples(SampleBuffer &destination, const Node *node,
 								const TimeRange &range,
 								const SampleJob &job) override;
 
-	virtual void ProcessColorTransform(TexturePtr destination, const Node *node,
+	virtual void process_color_transform(TexturePtr destination, const Node *node,
 									   const ColorTransformJob *job) override;
 
-	virtual void ProcessFrameGeneration(TexturePtr destination,
+	virtual void process_frame_generation(TexturePtr destination,
 										const Node *node,
 										const GenerateJob *job) override;
 
-	virtual TexturePtr ProcessPluginJob(TexturePtr texture,
+	virtual TexturePtr process_plugin_job(TexturePtr texture,
 										TexturePtr destination,
 										const Node *node) override;
 
-	virtual TexturePtr ProcessVideoCacheJob(const CacheJob *val) override;
+	virtual TexturePtr process_video_cache_job(const CacheJob *val) override;
 
-	virtual TexturePtr CreateTexture(const VideoParams &p) override;
+	virtual TexturePtr create_texture(const VideoParams &p) override;
 
-	virtual SampleBuffer CreateSampleBuffer(const AudioParams &params,
+	virtual SampleBuffer create_sample_buffer(const AudioParams &params,
 											int sample_count) override
 	{
 		return SampleBuffer(params, sample_count);
 	}
 
-	virtual void ConvertToReferenceSpace(TexturePtr destination,
+	virtual void convert_to_reference_space(TexturePtr destination,
 										 TexturePtr source,
 										 const QString &input_cs) override;
 
-	virtual bool UseCache() const override;
+	virtual bool use_cache() const override;
 
 private:
 	RenderProcessor(RenderTicketPtr ticket, Renderer *render_ctx,
 					DecoderCache *decoder_cache, ShaderCache *shader_cache);
 
-	TexturePtr GenerateTexture(const rational &time,
-							   const rational &frame_length);
+	TexturePtr generate_texture(const Rational &time,
+							   const Rational &frame_length);
 
-	FramePtr GenerateFrame(TexturePtr texture, const rational &time);
+	FramePtr generate_frame(TexturePtr texture, const Rational &time);
 
-	void Run();
+	void run();
 
-	DecoderPtr ResolveDecoderFromInput(const QString &decoder_id,
+	DecoderPtr resolve_decoder_from_input(const QString &decoder_id,
 									   const Decoder::CodecStream &stream);
 
 	RenderTicketPtr ticket_;
@@ -124,4 +124,4 @@ private:
 
 Q_DECLARE_METATYPE(olive::RenderProcessor::RenderedWaveform)
 
-#endif // RENDERPROCESSOR_H
+#endif // OAK_RENDERPROCESSOR_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLORBUTTON_H
-#define COLORBUTTON_H
+#ifndef OAK_COLORBUTTON_H
+#define OAK_COLORBUTTON_H
 
 #include <QPushButton>
 
@@ -40,21 +40,21 @@ public:
 	{
 	}
 
-	const ManagedColor &GetColor() const;
+	const ManagedColor &get_color() const;
 
 public slots:
-	void SetColor(const ManagedColor &c);
+	void set_color(const ManagedColor &c);
 
 signals:
-	void ColorChanged(const ManagedColor &c);
+	void color_changed(const ManagedColor &c);
 
 private slots:
-	void ShowColorDialog();
+	void show_color_dialog();
 
-	void ColorDialogFinished(int e);
+	void color_dialog_finished(int e);
 
 private:
-	void UpdateColor();
+	void update_color();
 
 	ColorManager *color_manager_;
 
@@ -67,4 +67,4 @@ private:
 
 }
 
-#endif // COLORBUTTON_H
+#endif // OAK_COLORBUTTON_H

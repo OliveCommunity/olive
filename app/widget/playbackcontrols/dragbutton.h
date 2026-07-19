@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef DRAGBUTTON_H
-#define DRAGBUTTON_H
+#ifndef OAK_DRAGBUTTON_H
+#define OAK_DRAGBUTTON_H
 
 #include <QPushButton>
 
@@ -35,7 +35,7 @@ public:
 	DragButton(QWidget *parent = nullptr);
 
 signals:
-	void DragStarted();
+	void drag_started();
 
 protected:
 	virtual void mousePressEvent(QMouseEvent *event) override;
@@ -50,4 +50,4 @@ private:
 
 }
 
-#endif // DRAGBUTTON_H
+#endif // OAK_DRAGBUTTON_H

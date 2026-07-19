@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SEQUENCE_H
-#define SEQUENCE_H
+#ifndef OAK_SEQUENCE_H
+#define OAK_SEQUENCE_H
 
 #include "node/output/track/tracklist.h"
 #include "node/output/viewer/viewer.h"
@@ -38,7 +38,7 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(Sequence)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return tr("Sequence");
 	}
@@ -48,12 +48,12 @@ public:
 		return QStringLiteral("org.olivevideoeditor.Olive.sequence");
 	}
 
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
-		return { kCategoryProject };
+		return { k_category_project };
 	}
 
-	virtual QString Description() const override
+	virtual QString description() const override
 	{
 		return tr(
 			"A series of cuts that result in an edited video. Also called a timeline.");
@@ -63,36 +63,36 @@ public:
 
 	virtual QVariant data(const DataType &d) const override;
 
-	const QVector<Track *> &GetTracks() const
+	const QVector<Track *> &get_tracks() const
 	{
 		return track_cache_;
 	}
 
-	Track *GetTrackFromReference(const Track::Reference &track_ref) const
+	Track *get_track_from_reference(const Track::Reference &track_ref) const
 	{
 		if (track_ref.type() < 0 || track_ref.type() >= track_lists_.size()) {
 			return nullptr;
 		}
-		return track_lists_.at(track_ref.type())->GetTrackAt(track_ref.index());
+		return track_lists_.at(track_ref.type())->get_track_at(track_ref.index());
 	}
 
 	/**
    * @brief Same as GetTracks() but omits tracks that are locked.
    */
-	QVector<Track *> GetUnlockedTracks() const;
+	QVector<Track *> get_unlocked_tracks() const;
 
 	TrackList *track_list(Track::Type type) const
 	{
 		return track_lists_.at(type);
 	}
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual void InvalidateCache(const TimeRange &range, const QString &from,
+	virtual void invalidate_cache(const TimeRange &range, const QString &from,
 								 int element,
 								 InvalidateCacheOptions options) override;
 
-	static const QString kTrackInputFormat;
+	static const QString k_track_input_format;
 
 protected:
 	virtual void InputConnectedEvent(const QString &input, int element,
@@ -101,13 +101,13 @@ protected:
 	virtual void InputDisconnectedEvent(const QString &input, int element,
 										Node *output) override;
 
-	virtual rational VerifyLengthInternal(Track::Type type) const override;
+	virtual Rational verify_length_internal(Track::Type type) const override;
 
 signals:
-	void TrackAdded(Track *track);
-	void TrackRemoved(Track *track);
+	void track_added(Track *track);
+	void track_removed(Track *track);
 
-	void SubtitlesChanged(const TimeRange &range);
+	void subtitles_changed(const TimeRange &range);
 
 private:
 	QVector<TrackList *> track_lists_;
@@ -115,9 +115,9 @@ private:
 	QVector<Track *> track_cache_;
 
 private slots:
-	void UpdateTrackCache();
+	void update_track_cache();
 };
 
 }
 
-#endif // SEQUENCE_H
+#endif // OAK_SEQUENCE_H

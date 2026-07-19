@@ -26,30 +26,30 @@ namespace olive
 
 #define super ClipBlock
 
-const QString SubtitleBlock::kTextIn = QStringLiteral("text_in");
+const QString SubtitleBlock::k_text_in = QStringLiteral("text_in");
 
 SubtitleBlock::SubtitleBlock()
 {
-	AddInput(kTextIn, NodeValue::kText,
-			 InputFlags(kInputFlagNotConnectable | kInputFlagNotKeyframable));
+	add_input(k_text_in, NodeValue::k_text,
+			 InputFlags(k_input_flag_not_connectable | k_input_flag_not_keyframable));
 
-	SetInputFlag(kBufferIn, kInputFlagHidden);
-	SetInputFlag(kLengthInput, kInputFlagHidden);
-	SetInputFlag(kMediaInInput, kInputFlagHidden);
-	SetInputFlag(kSpeedInput, kInputFlagHidden);
-	SetInputFlag(kReverseInput, kInputFlagHidden);
-	SetInputFlag(kMaintainAudioPitchInput, kInputFlagHidden);
+	set_input_flag(k_buffer_in, k_input_flag_hidden);
+	set_input_flag(k_length_input, k_input_flag_hidden);
+	set_input_flag(k_media_in_input, k_input_flag_hidden);
+	set_input_flag(k_speed_input, k_input_flag_hidden);
+	set_input_flag(k_reverse_input, k_input_flag_hidden);
+	set_input_flag(k_maintain_audio_pitch_input, k_input_flag_hidden);
 
 	// Undo block flag that hides in param view
-	SetFlag(kDontShowInParamView, false);
+	set_flag(k_dont_show_in_param_view, false);
 }
 
-QString SubtitleBlock::Name() const
+QString SubtitleBlock::name() const
 {
-	if (GetText().isEmpty()) {
+	if (get_text().isEmpty()) {
 		return tr("Subtitle");
 	} else {
-		return GetText();
+		return get_text();
 	}
 }
 
@@ -58,17 +58,17 @@ QString SubtitleBlock::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.subtitle");
 }
 
-QString SubtitleBlock::Description() const
+QString SubtitleBlock::description() const
 {
 	return tr(
 		"A time-based node representing a single subtitle element for a certain period of time.");
 }
 
-void SubtitleBlock::Retranslate()
+void SubtitleBlock::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kTextIn, tr("Text"));
+	set_input_name(k_text_in, tr("Text"));
 }
 
 }

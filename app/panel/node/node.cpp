@@ -29,26 +29,26 @@ NodePanel::NodePanel()
 {
 	node_widget_ = new NodeWidget(this);
 	connect(this, &NodePanel::shown, node_widget_->view(),
-			&NodeView::CenterOnItemsBoundingRect);
+			&NodeView::center_on_items_bounding_rect);
 
-	connect(node_widget_->view(), &NodeView::NodesSelected, this,
-			&NodePanel::NodesSelected);
-	connect(node_widget_->view(), &NodeView::NodesDeselected, this,
-			&NodePanel::NodesDeselected);
-	connect(node_widget_->view(), &NodeView::NodeSelectionChanged, this,
-			&NodePanel::NodeSelectionChanged);
-	connect(node_widget_->view(), &NodeView::NodeSelectionChangedWithContexts,
-			this, &NodePanel::NodeSelectionChangedWithContexts);
-	connect(node_widget_->view(), &NodeView::NodeGroupOpened, this,
-			&NodePanel::NodeGroupOpened);
-	connect(node_widget_->view(), &NodeView::NodeGroupClosed, this,
-			&NodePanel::NodeGroupClosed);
+	connect(node_widget_->view(), &NodeView::nodes_selected, this,
+			&NodePanel::nodes_selected);
+	connect(node_widget_->view(), &NodeView::nodes_deselected, this,
+			&NodePanel::nodes_deselected);
+	connect(node_widget_->view(), &NodeView::node_selection_changed, this,
+			&NodePanel::node_selection_changed);
+	connect(node_widget_->view(), &NodeView::node_selection_changed_with_contexts,
+			this, &NodePanel::node_selection_changed_with_contexts);
+	connect(node_widget_->view(), &NodeView::node_group_opened, this,
+			&NodePanel::node_group_opened);
+	connect(node_widget_->view(), &NodeView::node_group_closed, this,
+			&NodePanel::node_group_closed);
 
 	// Set it as the main widget of this panel
-	SetWidgetWithPadding(node_widget_);
+	set_widget_with_padding(node_widget_);
 
 	// Set strings
-	Retranslate();
+	retranslate();
 }
 
 }

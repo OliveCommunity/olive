@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEPARAMVIEWKEYFRAMECONTROL_H
-#define NODEPARAMVIEWKEYFRAMECONTROL_H
+#ifndef OAK_NODEPARAMVIEWKEYFRAMECONTROL_H
+#define OAK_NODEPARAMVIEWKEYFRAMECONTROL_H
 
 #include <QPushButton>
 #include <QWidget>
@@ -40,25 +40,25 @@ public:
 	{
 	}
 
-	const NodeInput &GetConnectedInput() const
+	const NodeInput &get_connected_input() const
 	{
 		return input_;
 	}
 
-	void SetInput(const NodeInput &input);
+	void set_input(const NodeInput &input);
 
 protected:
 	virtual void TimeTargetDisconnectEvent(ViewerOutput *v) override;
 	virtual void TimeTargetConnectEvent(ViewerOutput *v) override;
 
 private:
-	QPushButton *CreateNewToolButton(const QIcon &icon) const;
+	QPushButton *create_new_tool_button(const QIcon &icon) const;
 
-	void SetButtonsEnabled(bool e);
+	void set_buttons_enabled(bool e);
 
-	rational GetCurrentTimeAsNodeTime() const;
+	Rational get_current_time_as_node_time() const;
 
-	rational ConvertToViewerTime(const rational &r) const;
+	Rational convert_to_viewer_time(const Rational &r) const;
 
 	QPushButton *prev_key_btn_;
 	QPushButton *toggle_key_btn_;
@@ -68,21 +68,21 @@ private:
 	NodeInput input_;
 
 private slots:
-	void ShowButtonsFromKeyframeEnable(bool e);
+	void show_buttons_from_keyframe_enable(bool e);
 
-	void ToggleKeyframe(bool e);
+	void toggle_keyframe(bool e);
 
-	void UpdateState();
+	void update_state();
 
-	void GoToPreviousKey();
+	void go_to_previous_key();
 
-	void GoToNextKey();
+	void go_to_next_key();
 
-	void KeyframeEnableBtnClicked(bool e);
+	void keyframe_enable_btn_clicked(bool e);
 
-	void KeyframeEnableChanged(const NodeInput &input, bool e);
+	void keyframe_enable_changed(const NodeInput &input, bool e);
 };
 
 }
 
-#endif // NODEPARAMVIEWKEYFRAMECONTROL_H
+#endif // OAK_NODEPARAMVIEWKEYFRAMECONTROL_H

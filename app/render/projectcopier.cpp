@@ -35,7 +35,7 @@ ProjectCopier::ProjectCopier(QObject *parent)
 	copy_->setParent(this);
 }
 
-void ProjectCopier::SetProject(Project *project)
+void ProjectCopier::set_project(Project *project)
 {
 	if (original_) {
 		// Clear current project
@@ -44,20 +44,20 @@ void ProjectCopier::SetProject(Project *project)
 		copy_map_.clear();
 		graph_update_queue_.clear();
 
-		disconnect(original_, &Project::NodeAdded, this,
-				   &ProjectCopier::QueueNodeAdd);
-		disconnect(original_, &Project::NodeRemoved, this,
-				   &ProjectCopier::QueueNodeRemove);
-		disconnect(original_, &Project::InputConnected, this,
-				   &ProjectCopier::QueueEdgeAdd);
-		disconnect(original_, &Project::InputDisconnected, this,
-				   &ProjectCopier::QueueEdgeRemove);
-		disconnect(original_, &Project::ValueChanged, this,
-				   &ProjectCopier::QueueValueChange);
-		disconnect(original_, &Project::InputValueHintChanged, this,
-				   &ProjectCopier::QueueValueHintChange);
-		disconnect(original_, &Project::SettingChanged, this,
-				   &ProjectCopier::QueueProjectSettingChange);
+		disconnect(original_, &Project::node_added, this,
+				   &ProjectCopier::queue_node_add);
+		disconnect(original_, &Project::node_removed, this,
+				   &ProjectCopier::queue_node_remove);
+		disconnect(original_, &Project::input_connected, this,
+				   &ProjectCopier::queue_edge_add);
+		disconnect(original_, &Project::input_disconnected, this,
+				   &ProjectCopier::queue_edge_remove);
+		disconnect(original_, &Project::value_changed, this,
+				   &ProjectCopier::queue_value_change);
+		disconnect(original_, &Project::input_value_hint_changed, this,
+				   &ProjectCopier::queue_value_hint_change);
+		disconnect(original_, &Project::setting_changed, this,
+				   &ProjectCopier::queue_project_setting_change);
 	}
 
 	original_ = project;
@@ -70,49 +70,49 @@ void ProjectCopier::SetProject(Project *project)
 
 		// Add all nodes
 		for (int i = 0; i < copy_->nodes().size(); i++) {
-			InsertIntoCopyMap(original_->nodes().at(i), copy_->nodes().at(i));
+			insert_into_copy_map(original_->nodes().at(i), copy_->nodes().at(i));
 		}
 
 		for (int i = copy_->nodes().size(); i < original_->nodes().size();
 			 i++) {
-			DoNodeAdd(original_->nodes().at(i));
+			do_node_add(original_->nodes().at(i));
 		}
 
 		// Add all connections
 		foreach (Node *node, original_->nodes()) {
 			for (auto it = node->input_connections().cbegin();
 				 it != node->input_connections().cend(); it++) {
-				DoEdgeAdd(it->second, it->first);
+				do_edge_add(it->second, it->first);
 			}
 		}
 
 		// Copy project settings
-		Project::CopySettings(original_, copy_);
+		Project::copy_settings(original_, copy_);
 
 		// Ensure graph change value is just before the sync value
-		UpdateGraphChangeValue();
-		UpdateLastSyncedValue();
+		update_graph_change_value();
+		update_last_synced_value();
 
 		// Connect signals for future node additions/deletions
-		connect(original_, &Project::NodeAdded, this,
-				&ProjectCopier::QueueNodeAdd, Qt::DirectConnection);
-		connect(original_, &Project::NodeRemoved, this,
-				&ProjectCopier::QueueNodeRemove, Qt::DirectConnection);
-		connect(original_, &Project::InputConnected, this,
-				&ProjectCopier::QueueEdgeAdd, Qt::DirectConnection);
-		connect(original_, &Project::InputDisconnected, this,
-				&ProjectCopier::QueueEdgeRemove, Qt::DirectConnection);
-		connect(original_, &Project::ValueChanged, this,
-				&ProjectCopier::QueueValueChange, Qt::DirectConnection);
-		connect(original_, &Project::InputValueHintChanged, this,
-				&ProjectCopier::QueueValueHintChange, Qt::DirectConnection);
-		connect(original_, &Project::SettingChanged, this,
-				&ProjectCopier::QueueProjectSettingChange,
+		connect(original_, &Project::node_added, this,
+				&ProjectCopier::queue_node_add, Qt::DirectConnection);
+		connect(original_, &Project::node_removed, this,
+				&ProjectCopier::queue_node_remove, Qt::DirectConnection);
+		connect(original_, &Project::input_connected, this,
+				&ProjectCopier::queue_edge_add, Qt::DirectConnection);
+		connect(original_, &Project::input_disconnected, this,
+				&ProjectCopier::queue_edge_remove, Qt::DirectConnection);
+		connect(original_, &Project::value_changed, this,
+				&ProjectCopier::queue_value_change, Qt::DirectConnection);
+		connect(original_, &Project::input_value_hint_changed, this,
+				&ProjectCopier::queue_value_hint_change, Qt::DirectConnection);
+		connect(original_, &Project::setting_changed, this,
+				&ProjectCopier::queue_project_setting_change,
 				Qt::DirectConnection);
 	}
 }
 
-void ProjectCopier::ProcessUpdateQueue()
+void ProjectCopier::process_update_queue()
 {
 	bool copy_changed = false;
 
@@ -123,26 +123,26 @@ void ProjectCopier::ProcessUpdateQueue()
 		copy_changed = true;
 
 		switch (job.type) {
-		case QueuedJob::kNodeAdded:
-			DoNodeAdd(job.node);
+		case QueuedJob::k_node_added:
+			do_node_add(job.node);
 			break;
-		case QueuedJob::kNodeRemoved:
-			DoNodeRemove(job.node);
+		case QueuedJob::k_node_removed:
+			do_node_remove(job.node);
 			break;
-		case QueuedJob::kEdgeAdded:
-			DoEdgeAdd(job.output, job.input);
+		case QueuedJob::k_edge_added:
+			do_edge_add(job.output, job.input);
 			break;
-		case QueuedJob::kEdgeRemoved:
-			DoEdgeRemove(job.output, job.input);
+		case QueuedJob::k_edge_removed:
+			do_edge_remove(job.output, job.input);
 			break;
-		case QueuedJob::kValueChanged:
-			DoValueChange(job.input);
+		case QueuedJob::k_value_changed:
+			do_value_change(job.input);
 			break;
-		case QueuedJob::kValueHintChanged:
-			DoValueHintChange(job.input);
+		case QueuedJob::k_value_hint_changed:
+			do_value_hint_change(job.input);
 			break;
-		case QueuedJob::kProjectSettingChanged:
-			DoProjectSettingChange(job.key, job.value);
+		case QueuedJob::k_project_setting_changed:
+			do_project_setting_change(job.key, job.value);
 			break;
 		}
 	}
@@ -156,10 +156,10 @@ void ProjectCopier::ProcessUpdateQueue()
 
 	// Indicate that we have synchronized to this point, which is compared with the graph change
 	// time to see if our copied graph is up to date
-	UpdateLastSyncedValue();
+	update_last_synced_value();
 }
 
-void ProjectCopier::DoNodeAdd(Node *node)
+void ProjectCopier::do_node_add(Node *node)
 {
 	if (dynamic_cast<NodeGroup *>(node)) {
 		// Group nodes are just dummy nodes, no need to copy them
@@ -173,25 +173,25 @@ void ProjectCopier::DoNodeAdd(Node *node)
 	copy->setParent(copy_);
 
 	// Disable caches for copy
-	copy->SetCachesEnabled(false);
+	copy->set_caches_enabled(false);
 
 	// Copy cache UUIDs
-	copy->CopyCacheUuidsFrom(node);
+	copy->copy_cache_uuids_from(node);
 
 	// Insert into map
-	InsertIntoCopyMap(node, copy);
+	insert_into_copy_map(node, copy);
 
 	// Keep track of our nodes
 	created_nodes_.append(copy);
 }
 
-void ProjectCopier::DoNodeRemove(Node *node)
+void ProjectCopier::do_node_remove(Node *node)
 {
 	// Find our copy and remove it
 	Node *copy = copy_map_.take(node);
 
 	// Disconnect from node's caches
-	emit RemovedNode(node);
+	emit removed_node(node);
 
 	// Remove from created list
 	created_nodes_.removeOne(copy);
@@ -200,27 +200,27 @@ void ProjectCopier::DoNodeRemove(Node *node)
 	delete copy;
 }
 
-void ProjectCopier::DoEdgeAdd(Node *output, const NodeInput &input)
+void ProjectCopier::do_edge_add(Node *output, const NodeInput &input)
 {
 	// Create same connection with our copied graph
 	Node *our_output = copy_map_.value(output);
 	Node *our_input = copy_map_.value(input.node());
 
-	Node::ConnectEdge(our_output,
+	Node::connect_edge(our_output,
 					  NodeInput(our_input, input.input(), input.element()));
 }
 
-void ProjectCopier::DoEdgeRemove(Node *output, const NodeInput &input)
+void ProjectCopier::do_edge_remove(Node *output, const NodeInput &input)
 {
 	// Remove same connection with our copied graph
 	Node *our_output = copy_map_.value(output);
 	Node *our_input = copy_map_.value(input.node());
 
-	Node::DisconnectEdge(our_output,
+	Node::disconnect_edge(our_output,
 						 NodeInput(our_input, input.input(), input.element()));
 }
 
-void ProjectCopier::DoValueChange(const NodeInput &input)
+void ProjectCopier::do_value_change(const NodeInput &input)
 {
 	if (dynamic_cast<NodeGroup *>(input.node())) {
 		// Group nodes are just dummy nodes, no need to copy them
@@ -229,11 +229,11 @@ void ProjectCopier::DoValueChange(const NodeInput &input)
 
 	// Copy all values to our graph
 	Node *our_input = copy_map_.value(input.node());
-	Node::CopyValuesOfElement(input.node(), our_input, input.input(),
+	Node::copy_values_of_element(input.node(), our_input, input.input(),
 							  input.element());
 }
 
-void ProjectCopier::DoValueHintChange(const NodeInput &input)
+void ProjectCopier::do_value_hint_change(const NodeInput &input)
 {
 	if (dynamic_cast<NodeGroup *>(input.node())) {
 		// Group nodes are just dummy nodes, no need to copy them
@@ -243,42 +243,42 @@ void ProjectCopier::DoValueHintChange(const NodeInput &input)
 	// Copy value hint to our graph
 	Node *our_input = copy_map_.value(input.node());
 	Node::ValueHint hint =
-		input.node()->GetValueHintForInput(input.input(), input.element());
-	our_input->SetValueHintForInput(input.input(), hint, input.element());
+		input.node()->get_value_hint_for_input(input.input(), input.element());
+	our_input->set_value_hint_for_input(input.input(), hint, input.element());
 }
 
-void ProjectCopier::DoProjectSettingChange(const QString &key,
+void ProjectCopier::do_project_setting_change(const QString &key,
 										   const QString &value)
 {
-	copy_->SetSetting(key, value);
+	copy_->set_setting(key, value);
 }
 
-void ProjectCopier::InsertIntoCopyMap(Node *node, Node *copy)
+void ProjectCopier::insert_into_copy_map(Node *node, Node *copy)
 {
 	// Insert into map
 	copy_map_.insert(node, copy);
 
 	// Copy parameters
-	Node::CopyInputs(node, copy, false);
+	Node::copy_inputs(node, copy, false);
 
 	// Sync Footage proxy state (which is not stored as a Node input)
 	if (Footage *src_footage = dynamic_cast<Footage *>(node)) {
 		if (dynamic_cast<Footage *>(copy)) {
-			connect(src_footage, &Footage::ProxySettingsChanged, this,
+			connect(src_footage, &Footage::proxy_settings_changed, this,
 					[this, src_footage]() {
-						SyncFootageProxySettings(src_footage);
+						sync_footage_proxy_settings(src_footage);
 					});
-			SyncFootageProxySettings(src_footage);
+			sync_footage_proxy_settings(src_footage);
 		}
 	}
 
 	// Connect to node's cache
-	emit AddedNode(node);
+	emit added_node(node);
 }
 
-void ProjectCopier::SyncFootageProxySettings(Footage *source)
+void ProjectCopier::sync_footage_proxy_settings(Footage *source)
 {
-	Footage *copy = GetCopy(source);
+	Footage *copy = get_copy(source);
 	if (!copy) {
 		qWarning() << "ProjectCopier::SyncFootageProxySettings: no copy for"
 				   << source->filename();
@@ -289,9 +289,9 @@ void ProjectCopier::SyncFootageProxySettings(Footage *source)
 		<< "ProjectCopier::SyncFootageProxySettings:" << source->filename()
 		<< "enabled=" << source->proxy_enabled() << "->"
 		<< copy->proxy_enabled()
-		<< "state=" << ProxyManager::ProxyStateToString(source->proxy_state());
+		<< "state=" << ProxyManager::proxy_state_to_string(source->proxy_state());
 
-	copy->SetProxy(source->proxy_path(), source->proxy_state(),
+	copy->set_proxy(source->proxy_path(), source->proxy_state(),
 				   source->proxy_video_stream_index(),
 				   source->proxy_preset_version(), source->proxy_enabled());
 
@@ -300,35 +300,35 @@ void ProjectCopier::SyncFootageProxySettings(Footage *source)
 	}
 }
 
-void ProjectCopier::QueueNodeAdd(Node *node)
+void ProjectCopier::queue_node_add(Node *node)
 {
-	graph_update_queue_.push_back({ QueuedJob::kNodeAdded, node, NodeInput(),
+	graph_update_queue_.push_back({ QueuedJob::k_node_added, node, NodeInput(),
 									nullptr, QString(), QString() });
-	UpdateGraphChangeValue();
+	update_graph_change_value();
 }
 
-void ProjectCopier::QueueNodeRemove(Node *node)
+void ProjectCopier::queue_node_remove(Node *node)
 {
-	graph_update_queue_.push_back({ QueuedJob::kNodeRemoved, node, NodeInput(),
+	graph_update_queue_.push_back({ QueuedJob::k_node_removed, node, NodeInput(),
 									nullptr, QString(), QString() });
-	UpdateGraphChangeValue();
+	update_graph_change_value();
 }
 
-void ProjectCopier::QueueEdgeAdd(Node *output, const NodeInput &input)
+void ProjectCopier::queue_edge_add(Node *output, const NodeInput &input)
 {
-	graph_update_queue_.push_back({ QueuedJob::kEdgeAdded, nullptr, input,
+	graph_update_queue_.push_back({ QueuedJob::k_edge_added, nullptr, input,
 									output, QString(), QString() });
-	UpdateGraphChangeValue();
+	update_graph_change_value();
 }
 
-void ProjectCopier::QueueEdgeRemove(Node *output, const NodeInput &input)
+void ProjectCopier::queue_edge_remove(Node *output, const NodeInput &input)
 {
-	graph_update_queue_.push_back({ QueuedJob::kEdgeRemoved, nullptr, input,
+	graph_update_queue_.push_back({ QueuedJob::k_edge_removed, nullptr, input,
 									output, QString(), QString() });
-	UpdateGraphChangeValue();
+	update_graph_change_value();
 }
 
-void ProjectCopier::QueueValueChange(const NodeInput &input)
+void ProjectCopier::queue_value_change(const NodeInput &input)
 {
 	/*for (auto it = graph_update_queue_.begin(); it != graph_update_queue_.end(); ) {
     if (it->type == QueuedJob::kValueChanged && it->input == input) {
@@ -338,34 +338,34 @@ void ProjectCopier::QueueValueChange(const NodeInput &input)
     }
   }*/
 
-	graph_update_queue_.push_back({ QueuedJob::kValueChanged, nullptr, input,
+	graph_update_queue_.push_back({ QueuedJob::k_value_changed, nullptr, input,
 									nullptr, QString(), QString() });
-	UpdateGraphChangeValue();
+	update_graph_change_value();
 }
 
-void ProjectCopier::QueueValueHintChange(const NodeInput &input)
+void ProjectCopier::queue_value_hint_change(const NodeInput &input)
 {
-	graph_update_queue_.push_back({ QueuedJob::kValueHintChanged, nullptr,
+	graph_update_queue_.push_back({ QueuedJob::k_value_hint_changed, nullptr,
 									input, nullptr, QString(), QString() });
-	UpdateGraphChangeValue();
+	update_graph_change_value();
 }
 
-void ProjectCopier::QueueProjectSettingChange(const QString &key,
+void ProjectCopier::queue_project_setting_change(const QString &key,
 											  const QString &value)
 {
-	graph_update_queue_.push_back({ QueuedJob::kProjectSettingChanged, nullptr,
+	graph_update_queue_.push_back({ QueuedJob::k_project_setting_changed, nullptr,
 									NodeInput(), nullptr, key, value });
-	UpdateGraphChangeValue();
+	update_graph_change_value();
 }
 
-void ProjectCopier::UpdateGraphChangeValue()
+void ProjectCopier::update_graph_change_value()
 {
-	graph_changed_time_.Acquire();
+	graph_changed_time_.acquire();
 }
 
-void ProjectCopier::UpdateLastSyncedValue()
+void ProjectCopier::update_last_synced_value()
 {
-	last_update_time_.Acquire();
+	last_update_time_.acquire();
 }
 
 }

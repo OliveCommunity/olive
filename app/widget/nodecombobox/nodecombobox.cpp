@@ -39,56 +39,56 @@ NodeComboBox::NodeComboBox(QWidget *parent)
 
 void NodeComboBox::showPopup()
 {
-	Menu *m = NodeFactory::CreateMenu(this, true);
+	Menu *m = NodeFactory::create_menu(this, true);
 
 	QAction *selected = m->exec(parentWidget()->mapToGlobal(pos()));
 
 	if (selected) {
 		QString new_id = NodeFactory::GetIDFromMenuAction(selected);
 
-		SetNodeInternal(new_id, true);
+		set_node_internal(new_id, true);
 	}
 
 	delete m;
 }
 
-const QString &NodeComboBox::GetSelectedNode() const
+const QString &NodeComboBox::get_selected_node() const
 {
 	return selected_id_;
 }
 
-void NodeComboBox::SetNode(const QString &id)
+void NodeComboBox::set_node(const QString &id)
 {
-	SetNodeInternal(id, false);
+	set_node_internal(id, false);
 }
 
 void NodeComboBox::changeEvent(QEvent *e)
 {
 	if (e->type() == QEvent::LanguageChange) {
-		UpdateText();
+		update_text();
 	}
 
 	QComboBox::changeEvent(e);
 }
 
-void NodeComboBox::UpdateText()
+void NodeComboBox::update_text()
 {
 	clear();
 
 	if (!selected_id_.isEmpty()) {
-		addItem(NodeFactory::GetNameFromID(selected_id_));
+		addItem(NodeFactory::get_name_from_id(selected_id_));
 	}
 }
 
-void NodeComboBox::SetNodeInternal(const QString &id, bool emit_signal)
+void NodeComboBox::set_node_internal(const QString &id, bool emit_signal)
 {
 	if (selected_id_ != id) {
 		selected_id_ = id;
 
-		UpdateText();
+		update_text();
 
 		if (emit_signal) {
-			emit NodeChanged(selected_id_);
+			emit node_changed(selected_id_);
 		}
 	}
 }

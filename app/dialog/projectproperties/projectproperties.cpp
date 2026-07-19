@@ -82,10 +82,10 @@ ProjectPropertiesDialog::ProjectPropertiesDialog(Project *p, QWidget *parent)
 		color_layout->addWidget(new QLabel(tr("Reference Space:")), row, 0);
 
 		reference_space_ = new QComboBox(this);
-		reference_space_->addItem(tr("Scene Linear"), OCIO::ROLE_SCENE_LINEAR);
+		reference_space_->addItem(tr("Scene Linear"), ocio::ROLE_SCENE_LINEAR);
 		reference_space_->addItem(tr("Compositing Log"),
-								  OCIO::ROLE_COMPOSITING_LOG);
-		QtUtils::SetComboBoxData(reference_space_, p->GetColorReferenceSpace());
+								  ocio::ROLE_COMPOSITING_LOG);
+		QtUtils::set_combo_box_data(reference_space_, p->get_color_reference_space());
 		color_layout->addWidget(reference_space_, row, 1, 1, 2);
 
 		row++;
@@ -93,14 +93,14 @@ ProjectPropertiesDialog::ProjectPropertiesDialog(Project *p, QWidget *parent)
 		QPushButton *browse_btn = new QPushButton(tr("Browse"));
 		color_layout->addWidget(browse_btn, 0, 2);
 		connect(browse_btn, &QPushButton::clicked, this,
-				&ProjectPropertiesDialog::BrowseForOCIOConfig);
+				&ProjectPropertiesDialog::browse_for_ocio_config);
 
 		ocio_filename_->setText(
-			working_project_->color_manager()->GetConfigFilename());
+			working_project_->color_manager()->get_config_filename());
 
 		connect(ocio_filename_, &QLineEdit::textChanged, this,
-				&ProjectPropertiesDialog::OCIOFilenameUpdated);
-		OCIOFilenameUpdated();
+				&ProjectPropertiesDialog::ocio_filename_updated);
+		ocio_filename_updated();
 
 		tabs->addTab(color_group, tr("Color Management"));
 
@@ -116,37 +116,37 @@ ProjectPropertiesDialog::ProjectPropertiesDialog(Project *p, QWidget *parent)
 		QButtonGroup *disk_cache_btn_group = new QButtonGroup();
 
 		// Create radio buttons and add to widget and button group
-		disk_cache_radios_[Project::kCacheUseDefaultLocation] =
+		disk_cache_radios_[Project::k_cache_use_default_location] =
 			new QRadioButton(tr("Use Default Location"));
-		disk_cache_radios_[Project::kCacheStoreAlongsideProject] =
+		disk_cache_radios_[Project::k_cache_store_alongside_project] =
 			new QRadioButton(tr("Store Alongside Project"));
-		disk_cache_radios_[Project::kCacheCustomPath] =
+		disk_cache_radios_[Project::k_cache_custom_path] =
 			new QRadioButton(tr("Use Custom Location:"));
-		for (int i = 0; i < kDiskCacheRadioCount; i++) {
+		for (int i = 0; i < k_disk_cache_radio_count; i++) {
 			disk_cache_btn_group->addButton(disk_cache_radios_[i]);
 			cache_layout->addWidget(disk_cache_radios_[i]);
 		}
 
 		// Create custom cache path widget
 		custom_cache_path_ =
-			new PathWidget(working_project_->GetCustomCachePath(), this);
+			new PathWidget(working_project_->get_custom_cache_path(), this);
 		custom_cache_path_->setEnabled(false);
 		cache_layout->addWidget(custom_cache_path_);
 
 		// Ensure custom cache path "enabled" is tied to the radio button being checked
-		connect(disk_cache_radios_[Project::kCacheCustomPath],
+		connect(disk_cache_radios_[Project::k_cache_custom_path],
 				&QRadioButton::toggled, custom_cache_path_,
 				&PathWidget::setEnabled);
 
 		// Check the radio button that should currently be active
-		disk_cache_radios_[working_project_->GetCacheLocationSetting()]
+		disk_cache_radios_[working_project_->get_cache_location_setting()]
 			->setChecked(true);
 
 		// Add disk cache settings button
 		QPushButton *disk_cache_settings_btn =
 			new QPushButton(tr("Disk Cache Settings"));
 		connect(disk_cache_settings_btn, &QPushButton::clicked, this,
-				&ProjectPropertiesDialog::OpenDiskCacheSettings);
+				&ProjectPropertiesDialog::open_disk_cache_settings);
 		cache_layout->addWidget(disk_cache_settings_btn);
 
 		tabs->addTab(cache_group, tr("Disk Cache"));
@@ -175,57 +175,57 @@ void ProjectPropertiesDialog::accept()
 		return;
 	}
 
-	if (disk_cache_radios_[Project::kCacheUseDefaultLocation]->isChecked()) {
+	if (disk_cache_radios_[Project::k_cache_use_default_location]->isChecked()) {
 		// Keep new cache path empty, which means default
-	} else if (disk_cache_radios_[Project::kCacheStoreAlongsideProject]
+	} else if (disk_cache_radios_[Project::k_cache_store_alongside_project]
 				   ->isChecked()) {
 		// Ensure alongside project path is valid
-		if (!VerifyPathAndWarnIfBad(
+		if (!verify_path_and_warn_if_bad(
 				working_project_->get_cache_alongside_project_path())) {
 			return;
 		}
 	} else {
 		// Ensure custom path is valid
-		if (!VerifyPathAndWarnIfBad(custom_cache_path_->text())) {
+		if (!verify_path_and_warn_if_bad(custom_cache_path_->text())) {
 			return;
 		}
 	}
 
-	if (custom_cache_path_->text() != working_project_->GetCustomCachePath()) {
+	if (custom_cache_path_->text() != working_project_->get_custom_cache_path()) {
 		// Check if the user is okay with invalidating the current cache
-		if (!DiskManager::ShowDiskCacheChangeConfirmationDialog(this)) {
+		if (!DiskManager::show_disk_cache_change_confirmation_dialog(this)) {
 			return;
 		}
 
-		working_project_->SetCustomCachePath(custom_cache_path_->text());
+		working_project_->set_custom_cache_path(custom_cache_path_->text());
 
-		emit DiskManager::instance() -> InvalidateProject(working_project_);
+		emit DiskManager::instance() -> invalidate_project(working_project_);
 	}
 
 	// This should ripple changes throughout the graph/cache that the color config has changed, and
 	// therefore should be done after the cache path is changed
-	if (working_project_->color_manager()->GetConfigFilename() !=
+	if (working_project_->color_manager()->get_config_filename() !=
 		ocio_filename_->text()) {
-		working_project_->color_manager()->SetConfigFilename(
+		working_project_->color_manager()->set_config_filename(
 			ocio_filename_->text());
 	}
-	if (working_project_->color_manager()->GetDefaultInputColorSpace() !=
+	if (working_project_->color_manager()->get_default_input_color_space() !=
 		default_input_colorspace_->currentText()) {
-		working_project_->color_manager()->SetDefaultInputColorSpace(
+		working_project_->color_manager()->set_default_input_color_space(
 			default_input_colorspace_->currentText());
 	}
-	if (working_project_->GetColorReferenceSpace() !=
+	if (working_project_->get_color_reference_space() !=
 		reference_space_->currentData().toString()) {
-		working_project_->SetColorReferenceSpace(
+		working_project_->set_color_reference_space(
 			reference_space_->currentData().toString());
 	}
 
 	super::accept();
 }
 
-bool ProjectPropertiesDialog::VerifyPathAndWarnIfBad(const QString &path)
+bool ProjectPropertiesDialog::verify_path_and_warn_if_bad(const QString &path)
 {
-	if (!FileFunctions::DirectoryIsValid(path)) {
+	if (!FileFunctions::directory_is_valid(path)) {
 		QMessageBox mb(this);
 		mb.setWindowModality(Qt::WindowModal);
 		mb.setIcon(QMessageBox::Critical);
@@ -240,7 +240,7 @@ bool ProjectPropertiesDialog::VerifyPathAndWarnIfBad(const QString &path)
 	return true;
 }
 
-void ProjectPropertiesDialog::BrowseForOCIOConfig()
+void ProjectPropertiesDialog::browse_for_ocio_config()
 {
 	QString fn = QFileDialog::getOpenFileName(
 		this, tr("Browse for OpenColorIO configuration"));
@@ -249,35 +249,35 @@ void ProjectPropertiesDialog::BrowseForOCIOConfig()
 	}
 }
 
-void ProjectPropertiesDialog::OCIOFilenameUpdated()
+void ProjectPropertiesDialog::ocio_filename_updated()
 {
 	default_input_colorspace_->clear();
 
 	try {
-		OCIO::ConstConfigRcPtr c;
+		ocio::ConstConfigRcPtr c;
 
 		if (ocio_filename_->text().isEmpty()) {
-			c = ColorManager::GetDefaultConfig();
+			c = ColorManager::get_default_config();
 		} else {
-			c = ColorManager::CreateConfigFromFile(ocio_filename_->text());
+			c = ColorManager::create_config_from_file(ocio_filename_->text());
 		}
 
 		ocio_filename_->setStyleSheet(QString());
 		ocio_config_is_valid_ = true;
 
 		// List input color spaces
-		QStringList input_cs = ColorManager::ListAvailableColorspaces(c);
+		QStringList input_cs = ColorManager::list_available_colorspaces(c);
 
 		foreach (QString cs, input_cs) {
 			default_input_colorspace_->addItem(cs);
 
 			if (cs ==
-				working_project_->color_manager()->GetDefaultInputColorSpace()) {
+				working_project_->color_manager()->get_default_input_color_space()) {
 				default_input_colorspace_->setCurrentIndex(
 					default_input_colorspace_->count() - 1);
 			}
 		}
-	} catch (OCIO::Exception &e) {
+	} catch (ocio::Exception &e) {
 		ocio_config_is_valid_ = false;
 		ocio_filename_->setStyleSheet(
 			QStringLiteral("QLineEdit {color: red;}"));
@@ -285,17 +285,17 @@ void ProjectPropertiesDialog::OCIOFilenameUpdated()
 	}
 }
 
-void ProjectPropertiesDialog::OpenDiskCacheSettings()
+void ProjectPropertiesDialog::open_disk_cache_settings()
 {
-	if (disk_cache_radios_[Project::kCacheUseDefaultLocation]->isChecked()) {
-		DiskManager::instance()->ShowDiskCacheSettingsDialog(
-			DiskManager::instance()->GetDefaultCacheFolder(), this);
-	} else if (disk_cache_radios_[Project::kCacheStoreAlongsideProject]
+	if (disk_cache_radios_[Project::k_cache_use_default_location]->isChecked()) {
+		DiskManager::instance()->show_disk_cache_settings_dialog(
+			DiskManager::instance()->get_default_cache_folder(), this);
+	} else if (disk_cache_radios_[Project::k_cache_store_alongside_project]
 				   ->isChecked()) {
-		DiskManager::instance()->ShowDiskCacheSettingsDialog(
+		DiskManager::instance()->show_disk_cache_settings_dialog(
 			working_project_->get_cache_alongside_project_path(), this);
 	} else {
-		DiskManager::instance()->ShowDiskCacheSettingsDialog(
+		DiskManager::instance()->show_disk_cache_settings_dialog(
 			custom_cache_path_->text(), this);
 	}
 }

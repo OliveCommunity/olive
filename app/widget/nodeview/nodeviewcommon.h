@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEVIEWCOMMON_H
-#define NODEVIEWCOMMON_H
+#ifndef OAK_NODEVIEWCOMMON_H
+#define OAK_NODEVIEWCOMMON_H
 
 #include <QtGlobal>
 
@@ -32,45 +32,45 @@ namespace olive
 class NodeViewCommon {
 public:
 	enum FlowDirection {
-		kInvalidDirection = -1,
-		kTopToBottom,
-		kBottomToTop,
-		kLeftToRight,
-		kRightToLeft
+		k_invalid_direction = -1,
+		k_top_to_bottom,
+		k_bottom_to_top,
+		k_left_to_right,
+		k_right_to_left
 	};
 
-	static Qt::Orientation GetFlowOrientation(FlowDirection dir)
+	static Qt::Orientation get_flow_orientation(FlowDirection dir)
 	{
-		if (dir == kTopToBottom || dir == kBottomToTop) {
+		if (dir == k_top_to_bottom || dir == k_bottom_to_top) {
 			return Qt::Vertical;
 		} else {
 			return Qt::Horizontal;
 		}
 	}
 
-	static bool IsFlowVertical(FlowDirection dir)
+	static bool is_flow_vertical(FlowDirection dir)
 	{
-		return dir == kTopToBottom || dir == kBottomToTop;
+		return dir == k_top_to_bottom || dir == k_bottom_to_top;
 	}
 
-	static bool IsFlowHorizontal(FlowDirection dir)
+	static bool is_flow_horizontal(FlowDirection dir)
 	{
-		return dir == kLeftToRight || dir == kRightToLeft;
+		return dir == k_left_to_right || dir == k_right_to_left;
 	}
 
-	static bool DirectionsAreOpposing(FlowDirection a, FlowDirection b)
+	static bool directions_are_opposing(FlowDirection a, FlowDirection b)
 	{
-		return ((a == NodeViewCommon::kLeftToRight &&
-				 b == NodeViewCommon::kRightToLeft) ||
-				(a == NodeViewCommon::kRightToLeft &&
-				 b == NodeViewCommon::kLeftToRight) ||
-				(a == NodeViewCommon::kTopToBottom &&
-				 b == NodeViewCommon::kBottomToTop) ||
-				(a == NodeViewCommon::kBottomToTop &&
-				 b == NodeViewCommon::kTopToBottom));
+		return ((a == NodeViewCommon::k_left_to_right &&
+				 b == NodeViewCommon::k_right_to_left) ||
+				(a == NodeViewCommon::k_right_to_left &&
+				 b == NodeViewCommon::k_left_to_right) ||
+				(a == NodeViewCommon::k_top_to_bottom &&
+				 b == NodeViewCommon::k_bottom_to_top) ||
+				(a == NodeViewCommon::k_bottom_to_top &&
+				 b == NodeViewCommon::k_top_to_bottom));
 	}
 };
 
 }
 
-#endif // NODEVIEWCOMMON_H
+#endif // OAK_NODEVIEWCOMMON_H

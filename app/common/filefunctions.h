@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FILEFUNCTIONS_H
-#define FILEFUNCTIONS_H
+#ifndef OAK_FILEFUNCTIONS_H
+#define OAK_FILEFUNCTIONS_H
 
 #include <QDir>
 #include <QString>
@@ -41,23 +41,23 @@ public:
    * In portable mode, any persistent configuration files should be made in a path relative to the application rather
    * than in the user's home folder.
    */
-	static bool IsPortable();
+	static bool is_portable();
 
-	static QString GetUniqueFileIdentifier(const QString &filename);
+	static QString get_unique_file_identifier(const QString &filename);
 
-	static QString GetConfigurationLocation();
+	static QString get_configuration_location();
 
-	static QString GetApplicationPath();
+	static QString get_application_path();
 
-	static QString GetTempFilePath();
+	static QString get_temp_file_path();
 
-	static bool CanCopyDirectoryWithoutOverwriting(const QString &source,
+	static bool can_copy_directory_without_overwriting(const QString &source,
 												   const QString &dest);
 
-	static void CopyDirectory(const QString &source, const QString &dest,
+	static void copy_directory(const QString &source, const QString &dest,
 							  bool overwrite = false);
 
-	static bool DirectoryIsValid(const QDir &dir,
+	static bool directory_is_valid(const QDir &dir,
 								 bool try_to_create_if_not_exists = true);
 
 	/**
@@ -69,10 +69,10 @@ public:
 
    * @return The filename provided either untouched or with the extension appended to it.
    */
-	static QString EnsureFilenameExtension(QString fn,
+	static QString ensure_filename_extension(QString fn,
 										   const QString &extension);
 
-	static QString ReadFileAsString(const QString &filename);
+	static QString read_file_as_string(const QString &filename);
 
 	/**
    * @brief Returns a temporary filename that can be used while writing rather than the original
@@ -84,15 +84,15 @@ public:
    * This function returns a slight variant of the filename provided that's guaranteed to not exist
    * and therefore won't overwrite anything important.
    */
-	static QString GetSafeTemporaryFilename(const QString &original);
+	static QString get_safe_temporary_filename(const QString &original);
 
 	/**
    * @brief Renames a file from `from` to `to`, deleting `to` if such a file already exists first
    */
-	static bool RenameFileAllowOverwrite(const QString &from,
+	static bool rename_file_allow_overwrite(const QString &from,
 										 const QString &to);
 
-	inline static QString GetFormattedExecutableForPlatform(QString unformatted)
+	inline static QString get_formatted_executable_for_platform(QString unformatted)
 	{
 #ifdef Q_OS_WINDOWS
 		unformatted.append(QStringLiteral(".exe"));
@@ -101,9 +101,9 @@ public:
 		return unformatted;
 	}
 
-	static QString GetAutoRecoveryRoot();
+	static QString get_auto_recovery_root();
 };
 
 }
 
-#endif // FILEFUNCTIONS_H
+#endif // OAK_FILEFUNCTIONS_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PREFERENCESAPPEARANCETAB_H
-#define PREFERENCESAPPEARANCETAB_H
+#ifndef OAK_PREFERENCESAPPEARANCETAB_H
+#define OAK_PREFERENCESAPPEARANCETAB_H
 
 #include <QComboBox>
 #include <QLineEdit>
@@ -38,7 +38,7 @@ class PreferencesAppearanceTab : public ConfigDialogBaseTab {
 public:
 	PreferencesAppearanceTab();
 
-	virtual void Accept(MultiUndoCommand *command) override;
+	virtual void accept(MultiUndoCommand *command) override;
 
 private:
 	/**
@@ -53,4 +53,4 @@ private:
 
 }
 
-#endif // PREFERENCESAPPEARANCETAB_H
+#endif // OAK_PREFERENCESAPPEARANCETAB_H

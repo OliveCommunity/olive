@@ -43,7 +43,7 @@ ProxyDialog::ProxyDialog(QWidget *parent, const QVector<Footage *> &footage)
 	setWindowTitle(tr("Proxy Settings"));
 
 	const ProxyManager::ProxyParams params =
-		ProxyManager::ProxyParamsFromConfig();
+		ProxyManager::proxy_params_from_config();
 
 	QVBoxLayout *layout = new QVBoxLayout(this);
 
@@ -56,7 +56,7 @@ ProxyDialog::ProxyDialog(QWidget *parent, const QVector<Footage *> &footage)
 		footage_tree_->setHeaderLabels({ tr("Footage"), tr("Proxy State") });
 		footage_tree_->setRootIsDecorated(false);
 		footage_layout->addWidget(footage_tree_);
-		RefreshFootageList();
+		refresh_footage_list();
 
 		custom_params_checkbox_ =
 			new QCheckBox(tr("Use custom settings for selected footage"));
@@ -79,25 +79,25 @@ ProxyDialog::ProxyDialog(QWidget *parent, const QVector<Footage *> &footage)
 
 	settings_layout->addWidget(new QLabel(tr("Proxy Width:")), row, 0);
 	width_slider_ = new IntegerSlider();
-	width_slider_->SetMinimum(160);
-	width_slider_->SetMaximum(4096);
-	width_slider_->SetValue(params.width);
+	width_slider_->set_minimum(160);
+	width_slider_->set_maximum(4096);
+	width_slider_->set_value(params.width);
 	settings_layout->addWidget(width_slider_, row, 1);
 
 	settings_layout->addWidget(new QLabel(tr("Proxy Height:")), row, 2);
 	height_slider_ = new IntegerSlider();
-	height_slider_->SetMinimum(120);
-	height_slider_->SetMaximum(2160);
-	height_slider_->SetValue(params.height);
+	height_slider_->set_minimum(120);
+	height_slider_->set_maximum(2160);
+	height_slider_->set_value(params.height);
 	settings_layout->addWidget(height_slider_, row, 3);
 
 	row++;
 
 	settings_layout->addWidget(new QLabel(tr("Proxy CRF:")), row, 0);
 	crf_slider_ = new IntegerSlider();
-	crf_slider_->SetMinimum(0);
-	crf_slider_->SetMaximum(51);
-	crf_slider_->SetValue(params.crf);
+	crf_slider_->set_minimum(0);
+	crf_slider_->set_maximum(51);
+	crf_slider_->set_value(params.crf);
 	settings_layout->addWidget(crf_slider_, row, 1);
 
 	settings_layout->addWidget(new QLabel(tr("Proxy Preset:")), row, 2);
@@ -124,13 +124,13 @@ ProxyDialog::ProxyDialog(QWidget *parent, const QVector<Footage *> &footage)
 	row++;
 
 	settings_layout->addWidget(new QLabel(tr("ffmpeg Executable:")), row, 0);
-	ffmpeg_path_edit_ = new QLineEdit(OLIVE_CONFIG("FFmpegPath").toString());
+	ffmpeg_path_edit_ = new QLineEdit(OAK_CONFIG("FFmpegPath").toString());
 	ffmpeg_path_edit_->setPlaceholderText(tr("Auto-detect"));
 	settings_layout->addWidget(ffmpeg_path_edit_, row, 1);
 
 	QPushButton *ffmpeg_browse_btn = new QPushButton(tr("Browse..."));
 	connect(ffmpeg_browse_btn, &QPushButton::clicked, this,
-			&ProxyDialog::BrowseForFFmpeg);
+			&ProxyDialog::browse_for_f_fmpeg);
 	settings_layout->addWidget(ffmpeg_browse_btn, row, 2);
 
 	QHBoxLayout *button_layout = new QHBoxLayout();
@@ -139,12 +139,12 @@ ProxyDialog::ProxyDialog(QWidget *parent, const QVector<Footage *> &footage)
 	if (!footage_.isEmpty()) {
 		QPushButton *generate_btn = new QPushButton(tr("Generate Proxies"));
 		connect(generate_btn, &QPushButton::clicked, this,
-				&ProxyDialog::GenerateProxies);
+				&ProxyDialog::generate_proxies);
 		button_layout->addWidget(generate_btn);
 
 		QPushButton *delete_btn = new QPushButton(tr("Delete Proxies"));
 		connect(delete_btn, &QPushButton::clicked, this,
-				&ProxyDialog::DeleteProxies);
+				&ProxyDialog::delete_proxies);
 		button_layout->addWidget(delete_btn);
 	}
 
@@ -157,14 +157,14 @@ ProxyDialog::ProxyDialog(QWidget *parent, const QVector<Footage *> &footage)
 
 void ProxyDialog::accept()
 {
-	SaveGlobalSettings();
+	save_global_settings();
 
 	if (!footage_.isEmpty()) {
 		for (Footage *item : footage_) {
 			if (custom_params_checkbox_->isChecked()) {
-				item->SetCustomProxyParams(CurrentParams());
+				item->set_custom_proxy_params(current_params());
 			} else {
-				item->ClearCustomProxyParams();
+				item->clear_custom_proxy_params();
 			}
 		}
 	}
@@ -172,88 +172,88 @@ void ProxyDialog::accept()
 	QDialog::accept();
 }
 
-int ProxyDialog::ProxyWidth() const
+int ProxyDialog::proxy_width() const
 {
-	return static_cast<int>(width_slider_->GetValue());
+	return static_cast<int>(width_slider_->get_value());
 }
 
-int ProxyDialog::ProxyHeight() const
+int ProxyDialog::proxy_height() const
 {
-	return static_cast<int>(height_slider_->GetValue());
+	return static_cast<int>(height_slider_->get_value());
 }
 
-int ProxyDialog::ProxyCRF() const
+int ProxyDialog::proxy_crf() const
 {
-	return static_cast<int>(crf_slider_->GetValue());
+	return static_cast<int>(crf_slider_->get_value());
 }
 
-QString ProxyDialog::ProxyPreset() const
+QString ProxyDialog::proxy_preset() const
 {
 	return preset_combo_->currentText();
 }
 
-bool ProxyDialog::ProxyIncludeAudio() const
+bool ProxyDialog::proxy_include_audio() const
 {
 	return include_audio_checkbox_->isChecked();
 }
 
-QString ProxyDialog::FFmpegPath() const
+QString ProxyDialog::f_fmpeg_path() const
 {
 	return ffmpeg_path_edit_->text();
 }
 
-void ProxyDialog::SetProxyWidth(int width)
+void ProxyDialog::set_proxy_width(int width)
 {
-	width_slider_->SetValue(width);
+	width_slider_->set_value(width);
 }
 
-void ProxyDialog::SetProxyHeight(int height)
+void ProxyDialog::set_proxy_height(int height)
 {
-	height_slider_->SetValue(height);
+	height_slider_->set_value(height);
 }
 
-void ProxyDialog::SetProxyCRF(int crf)
+void ProxyDialog::set_proxy_crf(int crf)
 {
-	crf_slider_->SetValue(crf);
+	crf_slider_->set_value(crf);
 }
 
-void ProxyDialog::SetProxyPreset(const QString &preset)
+void ProxyDialog::set_proxy_preset(const QString &preset)
 {
 	preset_combo_->setCurrentText(preset);
 }
 
-void ProxyDialog::SetProxyIncludeAudio(bool include_audio)
+void ProxyDialog::set_proxy_include_audio(bool include_audio)
 {
 	include_audio_checkbox_->setChecked(include_audio);
 }
 
-void ProxyDialog::SetFFmpegPath(const QString &path)
+void ProxyDialog::set_f_fmpeg_path(const QString &path)
 {
 	ffmpeg_path_edit_->setText(path);
 }
 
-ProxyManager::ProxyParams ProxyDialog::CurrentParams() const
+ProxyManager::ProxyParams ProxyDialog::current_params() const
 {
-	ProxyManager::ProxyParams params = ProxyManager::ProxyParamsFromConfig();
-	params.width = static_cast<int>(width_slider_->GetValue());
-	params.height = static_cast<int>(height_slider_->GetValue());
-	params.crf = static_cast<int>(crf_slider_->GetValue());
+	ProxyManager::ProxyParams params = ProxyManager::proxy_params_from_config();
+	params.width = static_cast<int>(width_slider_->get_value());
+	params.height = static_cast<int>(height_slider_->get_value());
+	params.crf = static_cast<int>(crf_slider_->get_value());
 	params.preset = preset_combo_->currentText();
 	params.include_audio = include_audio_checkbox_->isChecked();
 	return params;
 }
 
-void ProxyDialog::SaveGlobalSettings()
+void ProxyDialog::save_global_settings()
 {
-	OLIVE_CONFIG("ProxyWidth") = static_cast<int>(width_slider_->GetValue());
-	OLIVE_CONFIG("ProxyHeight") = static_cast<int>(height_slider_->GetValue());
-	OLIVE_CONFIG("ProxyCRF") = static_cast<int>(crf_slider_->GetValue());
-	OLIVE_CONFIG("ProxyPreset") = preset_combo_->currentText();
-	OLIVE_CONFIG("ProxyIncludeAudio") = include_audio_checkbox_->isChecked();
-	OLIVE_CONFIG("FFmpegPath") = ffmpeg_path_edit_->text().trimmed();
+	OAK_CONFIG("ProxyWidth") = static_cast<int>(width_slider_->get_value());
+	OAK_CONFIG("ProxyHeight") = static_cast<int>(height_slider_->get_value());
+	OAK_CONFIG("ProxyCRF") = static_cast<int>(crf_slider_->get_value());
+	OAK_CONFIG("ProxyPreset") = preset_combo_->currentText();
+	OAK_CONFIG("ProxyIncludeAudio") = include_audio_checkbox_->isChecked();
+	OAK_CONFIG("FFmpegPath") = ffmpeg_path_edit_->text().trimmed();
 }
 
-void ProxyDialog::RefreshFootageList()
+void ProxyDialog::refresh_footage_list()
 {
 	if (!footage_tree_) {
 		return;
@@ -263,7 +263,7 @@ void ProxyDialog::RefreshFootageList()
 	for (const Footage *item : footage_) {
 		QTreeWidgetItem *tree_item = new QTreeWidgetItem(footage_tree_);
 		tree_item->setText(0, item->filename());
-		QString state = ProxyManager::ProxyStateToString(item->proxy_state());
+		QString state = ProxyManager::proxy_state_to_string(item->proxy_state());
 		if (item->has_custom_proxy_params()) {
 			state = tr("%1 (custom settings)").arg(state);
 		}
@@ -271,7 +271,7 @@ void ProxyDialog::RefreshFootageList()
 	}
 }
 
-void ProxyDialog::GenerateProxies()
+void ProxyDialog::generate_proxies()
 {
 	if (!ProxyManager::instance()) {
 		qWarning() << "ProxyDialog::GenerateProxies: ProxyManager unavailable";
@@ -279,7 +279,7 @@ void ProxyDialog::GenerateProxies()
 	}
 
 	for (Footage *item : footage_) {
-		const VideoParams video = item->GetFirstEnabledVideoStream();
+		const VideoParams video = item->get_first_enabled_video_stream();
 		if (!video.is_valid()) {
 			qWarning()
 				<< "ProxyDialog::GenerateProxies: skipping item with no valid video stream"
@@ -288,21 +288,21 @@ void ProxyDialog::GenerateProxies()
 		}
 
 		const ProxyManager::ProxyParams params =
-			custom_params_checkbox_->isChecked() ? CurrentParams()
-												 : item->GetEffectiveProxyParams();
+			custom_params_checkbox_->isChecked() ? current_params()
+												 : item->get_effective_proxy_params();
 		const ProxyManager::Proxy proxy =
-			ProxyManager::instance()->GetOrStartProxy(
+			ProxyManager::instance()->get_or_start_proxy(
 				item->project()->cache_path(), item->filename(),
 				video.stream_index(), params);
-		item->SetProxy(proxy.filename, proxy.state, video.stream_index(),
+		item->set_proxy(proxy.filename, proxy.state, video.stream_index(),
 					   params.version, true);
-		item->InvalidateAll(Footage::kFilenameInput);
+		item->invalidate_all(Footage::k_filename_input);
 	}
 
-	RefreshFootageList();
+	refresh_footage_list();
 }
 
-void ProxyDialog::DeleteProxies()
+void ProxyDialog::delete_proxies()
 {
 	for (Footage *item : footage_) {
 		if (item->proxy_path().isEmpty()) {
@@ -310,15 +310,15 @@ void ProxyDialog::DeleteProxies()
 		}
 
 		QFile::remove(item->proxy_path());
-		QFile::remove(ProxyManager::GetWorkingProxyFilename(item->proxy_path()));
-		item->ClearProxy();
-		item->InvalidateAll(Footage::kFilenameInput);
+		QFile::remove(ProxyManager::get_working_proxy_filename(item->proxy_path()));
+		item->clear_proxy();
+		item->invalidate_all(Footage::k_filename_input);
 	}
 
-	RefreshFootageList();
+	refresh_footage_list();
 }
 
-void ProxyDialog::BrowseForFFmpeg()
+void ProxyDialog::browse_for_f_fmpeg()
 {
 	const QString file =
 		QFileDialog::getOpenFileName(this, tr("Select ffmpeg Executable"));

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef DECIBEL_H
-#define DECIBEL_H
+#ifndef OAK_DECIBEL_H
+#define OAK_DECIBEL_H
 
 #include <QtGlobal>
 #include <cmath>
@@ -33,20 +33,20 @@ namespace olive
 class Decibel {
 public:
 	// In basically all circumstances, this should calculate to 0.0 linear
-	static constexpr double MINIMUM = -200.0;
+	static constexpr double minimum = -200.0;
 
-	static double fromLinear(double linear)
+	static double from_linear(double linear)
 	{
 		double v = double(20.0) * std::log10(linear);
 #ifndef ALLOW_RETURNING_INFINITY
 		if (std::isinf(v)) {
-			return MINIMUM;
+			return minimum;
 		}
 #endif
 		return v;
 	}
 
-	static double toLinear(double decibel)
+	static double to_linear(double decibel)
 	{
 		double to_linear = std::pow(double(10.0), decibel / double(20.0));
 
@@ -58,47 +58,47 @@ public:
 		}
 	}
 
-	static double fromLogarithmic(double logarithmic)
+	static double from_logarithmic(double logarithmic)
 	{
 		if (logarithmic < 0.001)
 #ifdef ALLOW_RETURNING_INFINITY
 			return std::numeric_limits<double>::infinity();
 #else
-			return MINIMUM;
+			return minimum;
 #endif
 		else if (logarithmic > 0.99)
 			return 0;
 		else
-			return 20.0 * std::log10(-std::log(1 - logarithmic) / LOG100);
+			return 20.0 * std::log10(-std::log(1 - logarithmic) / lo_g100);
 	}
 
-	static double toLogarithmic(double decibel)
+	static double to_logarithmic(double decibel)
 	{
 		if (qFuzzyIsNull(decibel)) {
 			return 1;
 		} else {
-			return 1 - std::exp(-std::pow(10.0, decibel / 20.0) * LOG100);
+			return 1 - std::exp(-std::pow(10.0, decibel / 20.0) * lo_g100);
 		}
 	}
 
-	static double LinearToLogarithmic(double linear)
+	static double linear_to_logarithmic(double linear)
 	{
-		return 1 - std::exp(-linear * LOG100);
+		return 1 - std::exp(-linear * lo_g100);
 	}
 
-	static double LogarithmicToLinear(double logarithmic)
+	static double logarithmic_to_linear(double logarithmic)
 	{
 		if (logarithmic > 0.99) {
 			return 1;
 		} else {
-			return -std::log(1 - logarithmic) / LOG100;
+			return -std::log(1 - logarithmic) / lo_g100;
 		}
 	}
 
 private:
-	static constexpr double LOG100 = 4.60517018599;
+	static constexpr double lo_g100 = 4.60517018599;
 };
 
 }
 
-#endif // DECIBEL_H
+#endif // OAK_DECIBEL_H

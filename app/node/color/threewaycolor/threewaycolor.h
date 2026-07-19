@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef THREEWAYCOLORNODE_H
-#define THREEWAYCOLORNODE_H
+#ifndef OAK_THREEWAYCOLORNODE_H
+#define OAK_THREEWAYCOLORNODE_H
 
 #include "node/node.h"
 
@@ -34,7 +34,7 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(ThreeWayColorNode)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return tr("Three-Way Color");
 	}
@@ -44,34 +44,34 @@ public:
 		return QStringLiteral("org.olivevideoeditor.Olive.threewaycolor");
 	}
 
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
-		return { kCategoryColor };
+		return { k_category_color };
 	}
 
-	virtual QString Description() const override
+	virtual QString description() const override
 	{
 		return tr("Adjusts shadows, midtones, and highlights separately.");
 	}
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
+	get_shader_code(const ShaderRequest &request) const override;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	static const QString kTextureInput;
-	static const QString kShadowsColorInput;
-	static const QString kMidtonesColorInput;
-	static const QString kHighlightsColorInput;
-	static const QString kShadowsAmountInput;
-	static const QString kMidtonesAmountInput;
-	static const QString kHighlightsAmountInput;
-	static const QString kLumaCoefficientsInput;
+	static const QString k_texture_input;
+	static const QString k_shadows_color_input;
+	static const QString k_midtones_color_input;
+	static const QString k_highlights_color_input;
+	static const QString k_shadows_amount_input;
+	static const QString k_midtones_amount_input;
+	static const QString k_highlights_amount_input;
+	static const QString k_luma_coefficients_input;
 };
 
 }
 
-#endif // THREEWAYCOLORNODE_H
+#endif // OAK_THREEWAYCOLORNODE_H

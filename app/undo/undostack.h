@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef UNDOSTACK_H
-#define UNDOSTACK_H
+#ifndef OAK_UNDOSTACK_H
+#define OAK_UNDOSTACK_H
 
 #include <QAction>
 #include <QAbstractItemModel>
@@ -44,14 +44,14 @@ public:
 
 	void clear();
 
-	bool CanUndo() const;
+	bool can_undo() const;
 
-	bool CanRedo() const
+	bool can_redo() const
 	{
 		return !undone_commands_.empty();
 	}
 
-	void UpdateActions();
+	void update_actions();
 
 	QAction *GetUndoAction()
 	{
@@ -79,7 +79,7 @@ public:
 	hasChildren(const QModelIndex &parent = QModelIndex()) const override;
 
 signals:
-	void indexChanged(int i);
+	void index_changed(int i);
 
 public slots:
 	void undo();
@@ -87,7 +87,7 @@ public slots:
 	void redo();
 
 private:
-	static const int kMaxUndoCommands;
+	static const int k_max_undo_commands;
 
 	struct CommandEntry {
 		UndoCommand *command;
@@ -105,4 +105,4 @@ private:
 
 }
 
-#endif // UNDOSTACK_H
+#endif // OAK_UNDOSTACK_H

@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef NODEVALUETREE_H
-#define NODEVALUETREE_H
+#ifndef OAK_NODEVALUETREE_H
+#define OAK_NODEVALUETREE_H
 
 #include <QRadioButton>
 #include <QTreeWidget>
@@ -32,18 +32,18 @@ class NodeValueTree : public QTreeWidget {
 public:
 	NodeValueTree(QWidget *parent = nullptr);
 
-	void SetNode(const NodeInput &input, const rational &time);
+	void set_node(const NodeInput &input, const Rational &time);
 
 protected:
 	virtual void changeEvent(QEvent *event) override;
 
 private:
-	void Retranslate();
+	void retranslate();
 
 private slots:
-	void RadioButtonChecked(bool e);
+	void radio_button_checked(bool e);
 };
 
 }
 
-#endif // NODEVALUETREE_H
+#endif // OAK_NODEVALUETREE_H

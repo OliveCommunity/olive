@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef EXPORTCODEC_H
-#define EXPORTCODEC_H
+#ifndef OAK_EXPORTCODEC_H
+#define OAK_EXPORTCODEC_H
 
 #include <QObject>
 #include <QString>
@@ -36,36 +36,36 @@ class ExportCodec : public QObject {
 public:
 	// Only append to this list (never insert) because indexes are used in serialized files
 	enum Codec {
-		kCodecDNxHD,
-		kCodecH264,
-		kCodecH264rgb,
-		kCodecH265,
-		kCodecOpenEXR,
-		kCodecPNG,
-		kCodecProRes,
-		kCodecCineform,
-		kCodecTIFF,
-		kCodecVP9,
-		kCodecMP2,
-		kCodecMP3,
-		kCodecAAC,
-		kCodecPCM,
-		kCodecOpus,
-		kCodecVorbis,
-		kCodecFLAC,
-		kCodecSRT,
-		kCodecAV1,
+		k_codec_d_nx_hd,
+		k_codec_h264,
+		k_codec_h264rgb,
+		k_codec_h265,
+		k_codec_open_exr,
+		k_codec_png,
+		k_codec_pro_res,
+		k_codec_cineform,
+		k_codec_tiff,
+		k_codec_v_p9,
+		k_codec_m_p2,
+		k_codec_m_p3,
+		k_codec_aac,
+		k_codec_pcm,
+		k_codec_opus,
+		k_codec_vorbis,
+		k_codec_flac,
+		k_codec_srt,
+		k_codec_a_v1,
 
-		kCodecCount
+		k_codec_count
 	};
 
-	static QString GetCodecName(Codec c);
+	static QString get_codec_name(Codec c);
 
-	static bool IsCodecAStillImage(Codec c);
+	static bool is_codec_a_still_image(Codec c);
 
-	static bool IsCodecLossless(Codec c);
+	static bool is_codec_lossless(Codec c);
 };
 
 }
 
-#endif // EXPORTCODEC_H
+#endif // OAK_EXPORTCODEC_H

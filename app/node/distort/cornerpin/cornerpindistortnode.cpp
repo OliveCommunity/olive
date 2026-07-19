@@ -28,95 +28,95 @@
 namespace olive
 {
 
-const QString CornerPinDistortNode::kTextureInput = QStringLiteral("tex_in");
-const QString CornerPinDistortNode::kTopLeftInput =
+const QString CornerPinDistortNode::k_texture_input = QStringLiteral("tex_in");
+const QString CornerPinDistortNode::k_top_left_input =
 	QStringLiteral("top_left_in");
-const QString CornerPinDistortNode::kTopRightInput =
+const QString CornerPinDistortNode::k_top_right_input =
 	QStringLiteral("top_right_in");
-const QString CornerPinDistortNode::kBottomRightInput =
+const QString CornerPinDistortNode::k_bottom_right_input =
 	QStringLiteral("bottom_right_in");
-const QString CornerPinDistortNode::kBottomLeftInput =
+const QString CornerPinDistortNode::k_bottom_left_input =
 	QStringLiteral("bottom_left_in");
-const QString CornerPinDistortNode::kPerspectiveInput =
+const QString CornerPinDistortNode::k_perspective_input =
 	QStringLiteral("perspective_in");
 
 #define super Node
 
 CornerPinDistortNode::CornerPinDistortNode()
 {
-	AddInput(kTextureInput, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
-	AddInput(kPerspectiveInput, NodeValue::kBoolean, true);
-	AddInput(kTopLeftInput, NodeValue::kVec2, QVector2D(0.0, 0.0));
-	AddInput(kTopRightInput, NodeValue::kVec2, QVector2D(0.0, 0.0));
-	AddInput(kBottomRightInput, NodeValue::kVec2, QVector2D(0.0, 0.0));
-	AddInput(kBottomLeftInput, NodeValue::kVec2, QVector2D(0.0, 0.0));
+	add_input(k_texture_input, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
+	add_input(k_perspective_input, NodeValue::k_boolean, true);
+	add_input(k_top_left_input, NodeValue::k_vec2, QVector2D(0.0, 0.0));
+	add_input(k_top_right_input, NodeValue::k_vec2, QVector2D(0.0, 0.0));
+	add_input(k_bottom_right_input, NodeValue::k_vec2, QVector2D(0.0, 0.0));
+	add_input(k_bottom_left_input, NodeValue::k_vec2, QVector2D(0.0, 0.0));
 
 	// Initiate gizmos
-	gizmo_whole_rect_ = AddDraggableGizmo<PolygonGizmo>();
-	gizmo_resize_handle_[0] = AddDraggableGizmo<PointGizmo>(
-		{ NodeKeyframeTrackReference(NodeInput(this, kTopLeftInput), 0),
-		  NodeKeyframeTrackReference(NodeInput(this, kTopLeftInput), 1) });
-	gizmo_resize_handle_[1] = AddDraggableGizmo<PointGizmo>(
-		{ NodeKeyframeTrackReference(NodeInput(this, kTopRightInput), 0),
-		  NodeKeyframeTrackReference(NodeInput(this, kTopRightInput), 1) });
-	gizmo_resize_handle_[2] = AddDraggableGizmo<PointGizmo>(
-		{ NodeKeyframeTrackReference(NodeInput(this, kBottomRightInput), 0),
-		  NodeKeyframeTrackReference(NodeInput(this, kBottomRightInput), 1) });
-	gizmo_resize_handle_[3] = AddDraggableGizmo<PointGizmo>(
-		{ NodeKeyframeTrackReference(NodeInput(this, kBottomLeftInput), 0),
-		  NodeKeyframeTrackReference(NodeInput(this, kBottomLeftInput), 1) });
+	gizmo_whole_rect_ = add_draggable_gizmo<PolygonGizmo>();
+	gizmo_resize_handle_[0] = add_draggable_gizmo<PointGizmo>(
+		{ NodeKeyframeTrackReference(NodeInput(this, k_top_left_input), 0),
+		  NodeKeyframeTrackReference(NodeInput(this, k_top_left_input), 1) });
+	gizmo_resize_handle_[1] = add_draggable_gizmo<PointGizmo>(
+		{ NodeKeyframeTrackReference(NodeInput(this, k_top_right_input), 0),
+		  NodeKeyframeTrackReference(NodeInput(this, k_top_right_input), 1) });
+	gizmo_resize_handle_[2] = add_draggable_gizmo<PointGizmo>(
+		{ NodeKeyframeTrackReference(NodeInput(this, k_bottom_right_input), 0),
+		  NodeKeyframeTrackReference(NodeInput(this, k_bottom_right_input), 1) });
+	gizmo_resize_handle_[3] = add_draggable_gizmo<PointGizmo>(
+		{ NodeKeyframeTrackReference(NodeInput(this, k_bottom_left_input), 0),
+		  NodeKeyframeTrackReference(NodeInput(this, k_bottom_left_input), 1) });
 
-	SetFlag(kVideoEffect);
-	SetEffectInput(kTextureInput);
+	set_flag(k_video_effect);
+	set_effect_input(k_texture_input);
 }
 
-void CornerPinDistortNode::Retranslate()
+void CornerPinDistortNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kTextureInput, tr("Texture"));
-	SetInputName(kPerspectiveInput, tr("Perspective"));
-	SetInputName(kTopLeftInput, tr("Top Left"));
-	SetInputName(kTopRightInput, tr("Top Right"));
-	SetInputName(kBottomRightInput, tr("Bottom Right"));
-	SetInputName(kBottomLeftInput, tr("Bottom Left"));
+	set_input_name(k_texture_input, tr("Texture"));
+	set_input_name(k_perspective_input, tr("Perspective"));
+	set_input_name(k_top_left_input, tr("Top Left"));
+	set_input_name(k_top_right_input, tr("Top Right"));
+	set_input_name(k_bottom_right_input, tr("Bottom Right"));
+	set_input_name(k_bottom_left_input, tr("Bottom Left"));
 }
 
-void CornerPinDistortNode::Value(const NodeValueRow &value,
+void CornerPinDistortNode::value(const NodeValueRow &value,
 								 const NodeGlobals &globals,
 								 NodeValueTable *table) const
 {
 	// If no texture do nothing
-	if (TexturePtr tex = value[kTextureInput].toTexture()) {
+	if (TexturePtr tex = value[k_texture_input].to_texture()) {
 		// In the special case that all sliders are in their default position just
 		// push the texture.
-		if (!(value[kTopLeftInput].toVec2().isNull() &&
-			  value[kTopRightInput].toVec2().isNull() &&
-			  value[kBottomRightInput].toVec2().isNull() &&
-			  value[kBottomLeftInput].toVec2().isNull())) {
+		if (!(value[k_top_left_input].to_vec2().isNull() &&
+			  value[k_top_right_input].to_vec2().isNull() &&
+			  value[k_bottom_right_input].to_vec2().isNull() &&
+			  value[k_bottom_left_input].to_vec2().isNull())) {
 			ShaderJob job(value);
-			job.Insert(QStringLiteral("resolution_in"),
-					   NodeValue(NodeValue::kVec2, tex->virtual_resolution(),
+			job.insert(QStringLiteral("resolution_in"),
+					   NodeValue(NodeValue::k_vec2, tex->virtual_resolution(),
 								 this));
 
 			// Convert slider values to their pixel values and then convert to clip space (-1.0 ... 1.0) for overriding the
 			// vertex coordinates.
 			const QVector2D &resolution = tex->virtual_resolution();
 			QVector2D half_resolution = resolution * 0.5;
-			QVector2D top_left = QVector2D(ValueToPixel(0, value, resolution)) /
+			QVector2D top_left = QVector2D(value_to_pixel(0, value, resolution)) /
 									 half_resolution -
 								 QVector2D(1.0, 1.0);
 			QVector2D top_right =
-				QVector2D(ValueToPixel(1, value, resolution)) /
+				QVector2D(value_to_pixel(1, value, resolution)) /
 					half_resolution -
 				QVector2D(1.0, 1.0);
 			QVector2D bottom_right =
-				QVector2D(ValueToPixel(2, value, resolution)) /
+				QVector2D(value_to_pixel(2, value, resolution)) /
 					half_resolution -
 				QVector2D(1.0, 1.0);
 			QVector2D bottom_left =
-				QVector2D(ValueToPixel(3, value, resolution)) /
+				QVector2D(value_to_pixel(3, value, resolution)) /
 					half_resolution -
 				QVector2D(1.0, 1.0);
 
@@ -130,27 +130,27 @@ void CornerPinDistortNode::Value(const NodeValueRow &value,
 				bottom_left.x(),  bottom_left.y(),	0.0f,
 				bottom_right.x(), bottom_right.y(), 0.0f
 			};
-			job.SetVertexCoordinates(adjusted_vertices);
+			job.set_vertex_coordinates(adjusted_vertices);
 
-			table->Push(NodeValue::kTexture, tex->toJob(job), this);
+			table->push(NodeValue::k_texture, tex->to_job(job), this);
 		} else {
-			table->Push(value[kTextureInput]);
+			table->push(value[k_texture_input]);
 		}
 	}
 }
 
 ShaderCode
-CornerPinDistortNode::GetShaderCode(const ShaderRequest &request) const
+CornerPinDistortNode::get_shader_code(const ShaderRequest &request) const
 {
 	Q_UNUSED(request)
 
-	return ShaderCode(FileFunctions::ReadFileAsString(
+	return ShaderCode(FileFunctions::read_file_as_string(
 						  QStringLiteral(":/shaders/cornerpin.frag")),
-					  FileFunctions::ReadFileAsString(
+					  FileFunctions::read_file_as_string(
 						  QStringLiteral(":/shaders/cornerpin.vert")));
 }
 
-QPointF CornerPinDistortNode::ValueToPixel(int value, const NodeValueRow &row,
+QPointF CornerPinDistortNode::value_to_pixel(int value, const NodeValueRow &row,
 										   const QVector2D &resolution) const
 {
 	Q_ASSERT(value >= 0 && value <= 3);
@@ -159,65 +159,65 @@ QPointF CornerPinDistortNode::ValueToPixel(int value, const NodeValueRow &row,
 
 	switch (value) {
 	case 0: // Top left
-		v = row[kTopLeftInput].toVec2();
+		v = row[k_top_left_input].to_vec2();
 		return QPointF(v.x(), v.y());
 	case 1: // Top right
-		v = row[kTopRightInput].toVec2();
+		v = row[k_top_right_input].to_vec2();
 		return QPointF(resolution.x() + v.x(), v.y());
 	case 2: // Bottom right
-		v = row[kBottomRightInput].toVec2();
+		v = row[k_bottom_right_input].to_vec2();
 		return QPointF(resolution.x() + v.x(), resolution.y() + v.y());
 	case 3: //Bottom left
-		v = row[kBottomLeftInput].toVec2();
+		v = row[k_bottom_left_input].to_vec2();
 		return QPointF(v.x(), v.y() + resolution.y());
 	default: // We should never get here
 		return QPointF();
 	}
 }
 
-void CornerPinDistortNode::GizmoDragMove(double x, double y,
+void CornerPinDistortNode::gizmo_drag_move(double x, double y,
 										 const Qt::KeyboardModifiers &modifiers)
 {
 	DraggableGizmo *gizmo = static_cast<DraggableGizmo *>(sender());
 
 	if (gizmo != gizmo_whole_rect_) {
-		gizmo->GetDraggers()[0].Drag(
-			gizmo->GetDraggers()[0].GetStartValue().toDouble() + x);
-		gizmo->GetDraggers()[1].Drag(
-			gizmo->GetDraggers()[1].GetStartValue().toDouble() + y);
+		gizmo->get_draggers()[0].drag(
+			gizmo->get_draggers()[0].get_start_value().toDouble() + x);
+		gizmo->get_draggers()[1].drag(
+			gizmo->get_draggers()[1].get_start_value().toDouble() + y);
 	}
 }
 
-void CornerPinDistortNode::UpdateGizmoPositions(const NodeValueRow &row,
+void CornerPinDistortNode::update_gizmo_positions(const NodeValueRow &row,
 												const NodeGlobals &globals)
 {
-	if (TexturePtr tex = row[kTextureInput].toTexture()) {
+	if (TexturePtr tex = row[k_texture_input].to_texture()) {
 		const QVector2D &resolution = tex->virtual_resolution();
 
-		QPointF top_left = ValueToPixel(0, row, resolution);
-		QPointF top_right = ValueToPixel(1, row, resolution);
-		QPointF bottom_right = ValueToPixel(2, row, resolution);
-		QPointF bottom_left = ValueToPixel(3, row, resolution);
+		QPointF top_left = value_to_pixel(0, row, resolution);
+		QPointF top_right = value_to_pixel(1, row, resolution);
+		QPointF bottom_right = value_to_pixel(2, row, resolution);
+		QPointF bottom_left = value_to_pixel(3, row, resolution);
 
 		// Add the correct offset to each slider
-		SetInputProperty(kTopLeftInput, QStringLiteral("offset"),
+		set_input_property(k_top_left_input, QStringLiteral("offset"),
 						 QVector2D(0.0, 0.0));
-		SetInputProperty(kTopRightInput, QStringLiteral("offset"),
+		set_input_property(k_top_right_input, QStringLiteral("offset"),
 						 QVector2D(resolution.x(), 0.0));
-		SetInputProperty(kBottomRightInput, QStringLiteral("offset"),
+		set_input_property(k_bottom_right_input, QStringLiteral("offset"),
 						 resolution);
-		SetInputProperty(kBottomLeftInput, QStringLiteral("offset"),
+		set_input_property(k_bottom_left_input, QStringLiteral("offset"),
 						 QVector2D(0.0, resolution.y()));
 
 		// Draw bounding box
-		gizmo_whole_rect_->SetPolygon(QPolygonF(
+		gizmo_whole_rect_->set_polygon(QPolygonF(
 			{ top_left, top_right, bottom_right, bottom_left, top_left }));
 
 		// Create handles
-		gizmo_resize_handle_[0]->SetPoint(top_left);
-		gizmo_resize_handle_[1]->SetPoint(top_right);
-		gizmo_resize_handle_[2]->SetPoint(bottom_right);
-		gizmo_resize_handle_[3]->SetPoint(bottom_left);
+		gizmo_resize_handle_[0]->set_point(top_left);
+		gizmo_resize_handle_[1]->set_point(top_right);
+		gizmo_resize_handle_[2]->set_point(bottom_right);
+		gizmo_resize_handle_[3]->set_point(bottom_left);
 	}
 }
 

@@ -34,200 +34,200 @@ RationalSlider::RationalSlider(QWidget *parent)
 	: super(parent)
 	, lock_display_type_(false)
 {
-	connect(Core::instance(), &Core::TimecodeDisplayChanged, this,
-			&RationalSlider::UpdateLabel);
+	connect(Core::instance(), &Core::timecode_display_changed, this,
+			&RationalSlider::update_label);
 	connect(SliderBase::label(), &SliderLabel::customContextMenuRequested, this,
-			&RationalSlider::ShowDisplayTypeMenu);
+			&RationalSlider::show_display_type_menu);
 
-	SetDisplayType(kFloat);
+	set_display_type(k_float);
 
-	SetValue(rational(0, 0));
+	set_value(Rational(0, 0));
 }
 
-rational RationalSlider::GetValue()
+Rational RationalSlider::get_value()
 {
-	return GetValueInternal().value<rational>();
+	return get_value_internal().value<Rational>();
 }
 
-void RationalSlider::SetValue(const rational &d)
+void RationalSlider::set_value(const Rational &d)
 {
-	SetValueInternal(QVariant::fromValue(d));
+	set_value_internal(QVariant::fromValue(d));
 }
 
-void RationalSlider::SetDefaultValue(const rational &r)
+void RationalSlider::SetDefaultValue(const Rational &r)
 {
-	super::SetDefaultValue(QVariant::fromValue(r));
+	super::set_default_value(QVariant::fromValue(r));
 }
 
-void RationalSlider::SetMinimum(const rational &d)
+void RationalSlider::set_minimum(const Rational &d)
 {
-	SetMinimumInternal(QVariant::fromValue(d));
+	set_minimum_internal(QVariant::fromValue(d));
 }
 
-void RationalSlider::SetMaximum(const rational &d)
+void RationalSlider::set_maximum(const Rational &d)
 {
-	SetMaximumInternal(QVariant::fromValue(d));
+	set_maximum_internal(QVariant::fromValue(d));
 }
 
-void RationalSlider::SetTimebase(const rational &timebase)
+void RationalSlider::set_timebase(const Rational &timebase)
 {
 	timebase_ = timebase;
 
 	// Refresh label since we have a new timebase to generate a timecode with
-	UpdateLabel();
+	update_label();
 }
 
-void RationalSlider::SetDisplayType(const RationalSlider::DisplayType &type)
+void RationalSlider::set_display_type(const RationalSlider::DisplayType &type)
 {
 	display_type_ = type;
 
-	UpdateLabel();
+	update_label();
 }
 
-void RationalSlider::SetLockDisplayType(bool e)
+void RationalSlider::set_lock_display_type(bool e)
 {
 	lock_display_type_ = e;
 }
 
-bool RationalSlider::GetLockDisplayType()
+bool RationalSlider::get_lock_display_type()
 {
 	return lock_display_type_;
 }
 
-void RationalSlider::DisableDisplayType(RationalSlider::DisplayType type)
+void RationalSlider::disable_display_type(RationalSlider::DisplayType type)
 {
 	disabled_.append(type);
 }
 
-QString RationalSlider::ValueToString(const QVariant &v) const
+QString RationalSlider::value_to_string(const QVariant &v) const
 {
-	rational r = v.value<rational>();
+	Rational r = v.value<Rational>();
 
 	if (r.isNaN()) {
 		return tr("NaN");
 	} else {
-		double val = r.toDouble() + GetOffset().value<rational>().toDouble();
+		double val = r.to_double() + get_offset().value<Rational>().to_double();
 
 		switch (display_type_) {
-		case kTime:
+		case k_time:
 			return QString::fromStdString(Timecode::time_to_timecode(
-				r, timebase_, Core::instance()->GetTimecodeDisplay()));
-		case kFloat:
-			return FloatToString(val, GetDecimalPlaces(),
-								 GetAutoTrimDecimalPlaces());
-		case kRational:
-			return QString::fromStdString(v.value<rational>().toString());
+				r, timebase_, Core::instance()->get_timecode_display()));
+		case k_float:
+			return float_to_string(val, get_decimal_places(),
+								 get_auto_trim_decimal_places());
+		case k_rational:
+			return QString::fromStdString(v.value<Rational>().to_string());
 		}
 
 		return v.toString();
 	}
 }
 
-QVariant RationalSlider::StringToValue(const QString &s, bool *ok) const
+QVariant RationalSlider::string_to_value(const QString &s, bool *ok) const
 {
-	rational r;
+	Rational r;
 	*ok = false;
 
 	switch (display_type_) {
-	case kTime: {
+	case k_time: {
 		r = Timecode::timecode_to_time(s.toStdString(), timebase_,
-									   Core::instance()->GetTimecodeDisplay(),
+									   Core::instance()->get_timecode_display(),
 									   ok);
 		break;
 	}
-	case kFloat: {
+	case k_float: {
 		// First, convert to a double
 		double d = s.toDouble(ok);
 		if (!(*ok)) {
 			break;
 		}
 
-		// If double conversion succeeded, convert to a rational
-		r = rational::fromDouble(d, ok);
+		// If double conversion succeeded, convert to a Rational
+		r = Rational::from_double(d, ok);
 		break;
 	}
-	case kRational:
-		r = rational::fromString(s.toStdString(), ok);
+	case k_rational:
+		r = Rational::from_string(s.toStdString(), ok);
 		break;
 	}
 
-	//return QVariant::fromValue(r - GetOffset().value<rational>());
+	//return QVariant::fromValue(r - GetOffset().value<Rational>());
 	return QVariant::fromValue(r);
 }
 
-QVariant RationalSlider::AdjustDragDistanceInternal(const QVariant &start,
+QVariant RationalSlider::adjust_drag_distance_internal(const QVariant &start,
 													const double &drag) const
 {
 	// Assume we want smallest increment to be timebase or 1 frame
-	return QVariant::fromValue(start.value<rational>() +
-							   rational::fromDouble(drag) * timebase_);
+	return QVariant::fromValue(start.value<Rational>() +
+							   Rational::from_double(drag) * timebase_);
 }
 
-void RationalSlider::ValueSignalEvent(const QVariant &v)
+void RationalSlider::value_signal_event(const QVariant &v)
 {
-	emit ValueChanged(v.value<rational>());
+	emit value_changed(v.value<Rational>());
 }
 
-bool RationalSlider::ValueGreaterThan(const QVariant &lhs,
+bool RationalSlider::value_greater_than(const QVariant &lhs,
 									  const QVariant &rhs) const
 {
-	return lhs.value<rational>() > rhs.value<rational>();
+	return lhs.value<Rational>() > rhs.value<Rational>();
 }
 
-bool RationalSlider::ValueLessThan(const QVariant &lhs,
+bool RationalSlider::value_less_than(const QVariant &lhs,
 								   const QVariant &rhs) const
 {
-	return lhs.value<rational>() < rhs.value<rational>();
+	return lhs.value<Rational>() < rhs.value<Rational>();
 }
 
-void RationalSlider::ShowDisplayTypeMenu()
+void RationalSlider::show_display_type_menu()
 {
 	Menu m(this);
 
-	if (!GetLockDisplayType()) {
-		if (!disabled_.contains(kFloat)) {
+	if (!get_lock_display_type()) {
+		if (!disabled_.contains(k_float)) {
 			QAction *float_action = m.addAction(tr("Float"));
-			float_action->setData(kFloat);
+			float_action->setData(k_float);
 			connect(float_action, &QAction::triggered, this,
-					&RationalSlider::SetDisplayTypeFromMenu);
+					&RationalSlider::set_display_type_from_menu);
 		}
 
-		if (!disabled_.contains(kRational)) {
+		if (!disabled_.contains(k_rational)) {
 			QAction *rational_action = m.addAction(tr("Rational"));
-			rational_action->setData(kRational);
+			rational_action->setData(k_rational);
 			connect(rational_action, &QAction::triggered, this,
-					&RationalSlider::SetDisplayTypeFromMenu);
+					&RationalSlider::set_display_type_from_menu);
 		}
 
-		if (!disabled_.contains(kTime)) {
+		if (!disabled_.contains(k_time)) {
 			QAction *time_action = m.addAction(tr("Time"));
-			time_action->setData(kTime);
+			time_action->setData(k_time);
 			connect(time_action, &QAction::triggered, this,
-					&RationalSlider::SetDisplayTypeFromMenu);
+					&RationalSlider::set_display_type_from_menu);
 		}
 	}
 
-	if (display_type_ == kTime) {
+	if (display_type_ == k_time) {
 		if (!m.actions().isEmpty()) {
 			m.addSeparator();
 		}
-		MenuShared::instance()->AddItemsForTimeRulerMenu(&m);
-		MenuShared::instance()->AboutToShowTimeRulerActions(timebase_);
+		MenuShared::instance()->add_items_for_time_ruler_menu(&m);
+		MenuShared::instance()->about_to_show_time_ruler_actions(timebase_);
 	}
 
 	if (!m.actions().isEmpty()) {
 		m.exec(QCursor::pos());
-		UpdateLabel();
+		update_label();
 	}
 }
 
-void RationalSlider::SetDisplayTypeFromMenu()
+void RationalSlider::set_display_type_from_menu()
 {
 	QAction *action = static_cast<QAction *>(sender());
 
 	DisplayType type = static_cast<DisplayType>(action->data().toInt());
 
-	SetDisplayType(type);
+	set_display_type(type);
 }
 
 }

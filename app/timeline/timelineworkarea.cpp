@@ -26,8 +26,8 @@
 namespace olive
 {
 
-const rational TimelineWorkArea::kResetIn = 0;
-const rational TimelineWorkArea::kResetOut = RATIONAL_MAX;
+const Rational TimelineWorkArea::k_reset_in = 0;
+const Rational TimelineWorkArea::k_reset_out = RATIONAL_MAX;
 
 TimelineWorkArea::TimelineWorkArea(QObject *parent)
 	: QObject(parent)
@@ -43,7 +43,7 @@ bool TimelineWorkArea::enabled() const
 void TimelineWorkArea::set_enabled(bool e)
 {
 	workarea_enabled_ = e;
-	emit EnabledChanged(workarea_enabled_);
+	emit enabled_changed(workarea_enabled_);
 }
 
 const TimeRange &TimelineWorkArea::range() const
@@ -54,13 +54,13 @@ const TimeRange &TimelineWorkArea::range() const
 void TimelineWorkArea::set_range(const TimeRange &range)
 {
 	workarea_range_ = range;
-	emit RangeChanged(workarea_range_);
+	emit range_changed(workarea_range_);
 }
 
 bool TimelineWorkArea::load(QXmlStreamReader *reader)
 {
-	rational range_in = this->in();
-	rational range_out = this->out();
+	Rational range_in = this->in();
+	Rational range_out = this->out();
 
 	uint version = 0;
 	XMLAttributeLoop(reader, attr)
@@ -71,15 +71,15 @@ bool TimelineWorkArea::load(QXmlStreamReader *reader)
 	}
 	Q_UNUSED(version)
 
-	while (XMLReadNextStartElement(reader)) {
+	while (xml_read_next_start_element(reader)) {
 		if (reader->name() == QStringLiteral("enabled")) {
 			this->set_enabled(reader->readElementText() != QStringLiteral("0"));
 		} else if (reader->name() == QStringLiteral("in")) {
 			range_in =
-				rational::fromString(reader->readElementText().toStdString());
+				Rational::from_string(reader->readElementText().toStdString());
 		} else if (reader->name() == QStringLiteral("out")) {
 			range_out =
-				rational::fromString(reader->readElementText().toStdString());
+				Rational::from_string(reader->readElementText().toStdString());
 		} else {
 			reader->skipCurrentElement();
 		}
@@ -101,22 +101,22 @@ void TimelineWorkArea::save(QXmlStreamWriter *writer) const
 	writer->writeTextElement(QStringLiteral("enabled"),
 							 QString::number(this->enabled()));
 	writer->writeTextElement(QStringLiteral("in"),
-							 QString::fromStdString(this->in().toString()));
+							 QString::fromStdString(this->in().to_string()));
 	writer->writeTextElement(QStringLiteral("out"),
-							 QString::fromStdString(this->out().toString()));
+							 QString::fromStdString(this->out().to_string()));
 }
 
-const rational &TimelineWorkArea::in() const
+const Rational &TimelineWorkArea::in() const
 {
 	return workarea_range_.in();
 }
 
-const rational &TimelineWorkArea::out() const
+const Rational &TimelineWorkArea::out() const
 {
 	return workarea_range_.out();
 }
 
-const rational &TimelineWorkArea::length() const
+const Rational &TimelineWorkArea::length() const
 {
 	return workarea_range_.length();
 }

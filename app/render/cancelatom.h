@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef CANCELATOM_H
-#define CANCELATOM_H
+#ifndef OAK_CANCELATOM_H
+#define OAK_CANCELATOM_H
 
 #include <QMutex>
 
@@ -32,7 +32,7 @@ public:
 	{
 	}
 
-	bool IsCancelled()
+	bool is_cancelled()
 	{
 		QMutexLocker locker(&mutex_);
 		if (cancelled_) {
@@ -41,13 +41,13 @@ public:
 		return cancelled_;
 	}
 
-	void Cancel()
+	void cancel()
 	{
 		QMutexLocker locker(&mutex_);
 		cancelled_ = true;
 	}
 
-	bool HeardCancel()
+	bool heard_cancel()
 	{
 		QMutexLocker locker(&mutex_);
 		return heard_;
@@ -63,4 +63,4 @@ private:
 
 }
 
-#endif // CANCELATOM_H
+#endif // OAK_CANCELATOM_H

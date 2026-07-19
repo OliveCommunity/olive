@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PANELFOCUSMANAGER_H
-#define PANELFOCUSMANAGER_H
+#ifndef OAK_PANELFOCUSMANAGER_H
+#define OAK_PANELFOCUSMANAGER_H
 
 #include <QObject>
 #include <QList>
@@ -41,7 +41,7 @@ namespace olive
  * aims to be less specific than a single QPushButton or QLineEdit, and rather specific to the panel widgets like
  * that belong to.
  *
- * PanelFocusManager's SLOT(FocusChanged()) connects to the QApplication instance's SIGNAL(focusChanged()) so that
+ * PanelFocusManager's SLOT(focus_changed()) connects to the QApplication instance_'s SIGNAL(focusChanged()) so that
  * it always knows when focus has changed within the application.
  */
 class PanelManager : public QObject {
@@ -54,7 +54,7 @@ public:
    *
    * Should only be used on application exit to cleanly free all panels.
    */
-	void DeleteAllPanels();
+	void delete_all_panels();
 
 	/**
    * @brief Get a list of all existing panels
@@ -68,14 +68,14 @@ public:
    *
    * This result == CurrentlyFocused() if HoverFocus is true and panel is hovered
    */
-	PanelWidget *CurrentlyFocused(bool enable_hover = true) const;
+	PanelWidget *currently_focused(bool enable_hover = true) const;
 
 	/**
    * @brief Return the widget that the mouse is currently hovering over, or nullptr if nothing is hovered over
    */
-	PanelWidget *CurrentlyHovered() const;
+	PanelWidget *currently_hovered() const;
 
-	PanelWidget *GetPanelWithName(const QString &name) const;
+	PanelWidget *get_panel_with_name(const QString &name) const;
 
 	template <class T>
 	/**
@@ -85,22 +85,22 @@ public:
    *
    * The most recently focused panel of the specified type, or nullptr if none exists
    */
-	T *MostRecentlyFocused();
+	T *most_recently_focused();
 
 	/**
-   * @brief Create PanelManager singleton instance
+   * @brief Create PanelManager singleton instance_
    */
-	static void CreateInstance();
+	static void create_instance();
 
 	/**
-   * @brief Destroy PanelManager singleton instance
+   * @brief Destroy PanelManager singleton instance_
    *
    * If no PanelManager was created, this is a no-op.
    */
-	static void DestroyInstance();
+	static void destroy_instance();
 
 	/**
-   * @brief Access to PanelManager singleton instance
+   * @brief Access to PanelManager singleton instance_
    */
 	static PanelManager *instance();
 
@@ -108,19 +108,19 @@ public:
 	/**
    * @brief Get a list of panels of a certain type
    */
-	QList<T *> GetPanelsOfType();
+	QList<T *> get_panels_of_type();
 
 	/**
    * @brief Panel should call this upon construction so it can be kept track of
    */
-	void RegisterPanel(PanelWidget *panel);
+	void register_panel(PanelWidget *panel);
 
 	/**
    * @brief Panel should call this upon destruction so no invalid pointers will be kept for it
    */
-	void UnregisterPanel(PanelWidget *panel);
+	void unregister_panel(PanelWidget *panel);
 
-	void SetSuppressChangedSignal(bool e)
+	void set_suppress_changed_signal(bool e)
 	{
 		suppress_changed_signal_ = e;
 	}
@@ -131,13 +131,13 @@ public slots:
    *
    * Interprets focus information to determine the currently focused panel
    */
-	void FocusChanged(QWidget *old, QWidget *now);
+	void focus_changed(QWidget *old, QWidget *now);
 
 signals:
 	/**
    * @brief Signal emitted when the currently focused panel changes
    */
-	void FocusedPanelChanged(PanelWidget *panel);
+	void focused_panel_changed(PanelWidget *panel);
 
 private:
 	/**
@@ -146,14 +146,14 @@ private:
 	QList<PanelWidget *> focus_history_;
 
 	/**
-   * @brief PanelManager singleton instance
+   * @brief PanelManager singleton instance_
    */
 	static PanelManager *instance_;
 
 	bool suppress_changed_signal_;
 };
 
-template <class T> T *PanelManager::MostRecentlyFocused()
+template <class T> T *PanelManager::most_recently_focused()
 {
 	T *cast_test;
 
@@ -168,7 +168,7 @@ template <class T> T *PanelManager::MostRecentlyFocused()
 	return nullptr;
 }
 
-template <class T> QList<T *> PanelManager::GetPanelsOfType()
+template <class T> QList<T *> PanelManager::get_panels_of_type()
 {
 	QList<T *> panels;
 
@@ -187,4 +187,4 @@ template <class T> QList<T *> PanelManager::GetPanelsOfType()
 
 }
 
-#endif // PANELFOCUSMANAGER_H
+#endif // OAK_PANELFOCUSMANAGER_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TOOLBAR_H
-#define TOOLBAR_H
+#ifndef OAK_TOOLBAR_H
+#define OAK_TOOLBAR_H
 
 #include <QPushButton>
 
@@ -37,8 +37,8 @@ namespace olive
  * Buttons are displayed in a FlowLayout that
  * adjusts and wraps (like text) depending on the widget's size.
  *
- * By default, this Toolbar is not connected to anything. It's recommended to connect SLOT(SetTool()) and
- * SIGNAL(ToolChanged()) to Core (corresponding SIGNAL(ToolChanged()) and SLOT(SetTool()) respectively) so that the
+ * By default, this Toolbar is not connected to anything. It's recommended to connect SLOT(set_tool()) and
+ * SIGNAL(tool_changed()) to Core (corresponding SIGNAL(tool_changed()) and SLOT(set_tool()) respectively) so that the
  * Toolbar updates the current tool application-wide, and is also automatically updated when the tool is changed
  * elsewhere.
  */
@@ -68,7 +68,7 @@ public slots:
    *
    * Tool to show as selected
    */
-	void SetTool(const Tool::Item &tool);
+	void set_tool(const Tool::Item &tool);
 
 	/**
    * @brief Set snapping checked value
@@ -78,7 +78,7 @@ public slots:
    *
    * @param snapping
    */
-	void SetSnapping(const bool &snapping);
+	void set_snapping(const bool &snapping);
 
 protected:
 	/**
@@ -100,7 +100,7 @@ signals:
    *
    * Tool that was selected
    */
-	void ToolChanged(const Tool::Item &t);
+	void tool_changed(const Tool::Item &t);
 
 	/**
    * @brief Emitted whenever the snapping setting is changed
@@ -109,23 +109,23 @@ signals:
    *
    * New snapping enabled setting
    */
-	void SnappingChanged(const bool &b);
+	void snapping_changed(const bool &b);
 
 	/**
    * @brief Emitted when the selected transition is changed from the transition tool menu
    */
-	void SelectedTransitionChanged(const QString &id);
+	void selected_transition_changed(const QString &id);
 
 private:
 	/**
    * @brief Reset all strings based on the currently selected language
    */
-	void Retranslate();
+	void retranslate();
 
 	/**
    * @brief Update icons after a style change
    */
-	void UpdateIcons();
+	void update_icons();
 
 	/**
    * @brief Internal convenience function for creating tool buttons quickly
@@ -140,7 +140,7 @@ private:
    *
    * The created ToolbarButton. The button parent is automatically set to `this`.
    */
-	ToolbarButton *CreateToolButton(const Tool::Item &tool);
+	ToolbarButton *create_tool_button(const Tool::Item &tool);
 
 	/**
    * @brief Internal convenience function for creating buttons quickly
@@ -153,7 +153,7 @@ private:
    *
    * The created ToolbarButton. The button parent is automatically set to `this`.
    */
-	ToolbarButton *CreateNonToolButton();
+	ToolbarButton *create_non_tool_button();
 
 	/**
    * @brief Internal layout used for buttons
@@ -193,7 +193,7 @@ private slots:
    * and emit a signal indicating that the tool has changed to the newly selected tool. This function static_casts
    * the sender to ToolbarButton so you should not connect any other class type to this slot.
    */
-	void ToolButtonClicked();
+	void tool_button_clicked();
 
 	/**
    * @brief Receiver for the snapping toggle button
@@ -205,28 +205,28 @@ private slots:
    *
    * The new snapping value received from the sender's clicked signal
    */
-	void SnappingButtonClicked(bool b);
+	void snapping_button_clicked(bool b);
 
 	/**
    * @brief Receiver for the add button
    *
    * The add button pops up a list for which object to create.
    */
-	void AddButtonClicked();
+	void add_button_clicked();
 
 	/**
    * @brief Receiver for the transition button
    *
    * The transition button pops up a list for which transition to create.
    */
-	void TransitionButtonClicked();
+	void transition_button_clicked();
 
 	/**
    * @brief Receiver for the menu created by TransitionButtonClicked()
    */
-	void TransitionMenuItemTriggered(QAction *a);
+	void transition_menu_item_triggered(QAction *a);
 };
 
 }
 
-#endif // TOOLBAR_H
+#endif // OAK_TOOLBAR_H

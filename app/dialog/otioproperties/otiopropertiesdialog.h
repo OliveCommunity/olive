@@ -17,8 +17,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef OTIOPROPERTIESDIALOG_H
-#define OTIOPROPERTIESDIALOG_H
+#ifndef OAK_OTIOPROPERTIESDIALOG_H
+#define OAK_OTIOPROPERTIESDIALOG_H
 
 #include <QDialog>
 #include <QTreeWidget>
@@ -56,4 +56,4 @@ private slots:
 
 } //namespace olive
 
-#endif // OTIOPROPERTIESDIALOG_H
+#endif // OAK_OTIOPROPERTIESDIALOG_H

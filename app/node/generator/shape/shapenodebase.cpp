@@ -33,60 +33,60 @@ namespace olive
 
 #define super GeneratorWithMerge
 
-const QString ShapeNodeBase::kPositionInput = QStringLiteral("pos_in");
-const QString ShapeNodeBase::kSizeInput = QStringLiteral("size_in");
-const QString ShapeNodeBase::kColorInput = QStringLiteral("color_in");
+const QString ShapeNodeBase::k_position_input = QStringLiteral("pos_in");
+const QString ShapeNodeBase::k_size_input = QStringLiteral("size_in");
+const QString ShapeNodeBase::k_color_input = QStringLiteral("color_in");
 
 ShapeNodeBase::ShapeNodeBase(bool create_color_input)
 {
-	AddInput(kPositionInput, NodeValue::kVec2, QVector2D(0, 0));
-	AddInput(kSizeInput, NodeValue::kVec2, QVector2D(100, 100));
-	SetInputProperty(kSizeInput, QStringLiteral("min"), QVector2D(0, 0));
+	add_input(k_position_input, NodeValue::k_vec2, QVector2D(0, 0));
+	add_input(k_size_input, NodeValue::k_vec2, QVector2D(100, 100));
+	set_input_property(k_size_input, QStringLiteral("min"), QVector2D(0, 0));
 
 	if (create_color_input) {
-		AddInput(kColorInput, NodeValue::kColor,
+		add_input(k_color_input, NodeValue::k_color,
 				 QVariant::fromValue(Color(1.0, 0.0, 0.0, 1.0)));
 	}
 
 	// Initiate gizmos
 	QVector<NodeKeyframeTrackReference> pos_n_sz = {
-		NodeKeyframeTrackReference(NodeInput(this, kPositionInput), 0),
-		NodeKeyframeTrackReference(NodeInput(this, kPositionInput), 1),
-		NodeKeyframeTrackReference(NodeInput(this, kSizeInput), 0),
-		NodeKeyframeTrackReference(NodeInput(this, kSizeInput), 1)
+		NodeKeyframeTrackReference(NodeInput(this, k_position_input), 0),
+		NodeKeyframeTrackReference(NodeInput(this, k_position_input), 1),
+		NodeKeyframeTrackReference(NodeInput(this, k_size_input), 0),
+		NodeKeyframeTrackReference(NodeInput(this, k_size_input), 1)
 	};
-	poly_gizmo_ = AddDraggableGizmo<PolygonGizmo>({
-		NodeKeyframeTrackReference(NodeInput(this, kPositionInput), 0),
-		NodeKeyframeTrackReference(NodeInput(this, kPositionInput), 1),
+	poly_gizmo_ = add_draggable_gizmo<PolygonGizmo>({
+		NodeKeyframeTrackReference(NodeInput(this, k_position_input), 0),
+		NodeKeyframeTrackReference(NodeInput(this, k_position_input), 1),
 	});
-	for (int i = 0; i < kGizmoScaleCount; i++) {
+	for (int i = 0; i < k_gizmo_scale_count; i++) {
 		point_gizmo_[i] =
-			AddDraggableGizmo<PointGizmo>(pos_n_sz, PointGizmo::kAbsolute);
+			add_draggable_gizmo<PointGizmo>(pos_n_sz, PointGizmo::k_absolute);
 	}
 }
 
-void ShapeNodeBase::Retranslate()
+void ShapeNodeBase::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kPositionInput, tr("Position"));
-	SetInputName(kSizeInput, tr("Size"));
+	set_input_name(k_position_input, tr("Position"));
+	set_input_name(k_size_input, tr("Size"));
 
-	if (HasInputWithID(kColorInput)) {
-		SetInputName(kColorInput, tr("Color"));
+	if (has_input_with_id(k_color_input)) {
+		set_input_name(k_color_input, tr("Color"));
 	}
 }
 
-void ShapeNodeBase::UpdateGizmoPositions(const NodeValueRow &row,
+void ShapeNodeBase::update_gizmo_positions(const NodeValueRow &row,
 										 const NodeGlobals &globals)
 {
 	// Use offsets to make the appearance of values that start in the top left, even though we
 	// really anchor around the center
 	QVector2D center_pt = globals.square_resolution() * 0.5;
-	SetInputProperty(kPositionInput, QStringLiteral("offset"), center_pt);
+	set_input_property(k_position_input, QStringLiteral("offset"), center_pt);
 
-	QVector2D pos = row[kPositionInput].toVec2();
-	QVector2D sz = row[kSizeInput].toVec2();
+	QVector2D pos = row[k_position_input].to_vec2();
+	QVector2D sz = row[k_size_input].to_vec2();
 	QVector2D half_sz = sz * 0.5;
 
 	double left_pt = pos.x() + center_pt.x() - half_sz.x();
@@ -96,32 +96,32 @@ void ShapeNodeBase::UpdateGizmoPositions(const NodeValueRow &row,
 	double center_x_pt = mid(left_pt, right_pt);
 	double center_y_pt = mid(top_pt, bottom_pt);
 
-	point_gizmo_[kGizmoScaleTopLeft]->SetPoint(QPointF(left_pt, top_pt));
-	point_gizmo_[kGizmoScaleTopCenter]->SetPoint(QPointF(center_x_pt, top_pt));
-	point_gizmo_[kGizmoScaleTopRight]->SetPoint(QPointF(right_pt, top_pt));
-	point_gizmo_[kGizmoScaleBottomLeft]->SetPoint(QPointF(left_pt, bottom_pt));
-	point_gizmo_[kGizmoScaleBottomCenter]->SetPoint(
+	point_gizmo_[k_gizmo_scale_top_left]->set_point(QPointF(left_pt, top_pt));
+	point_gizmo_[k_gizmo_scale_top_center]->set_point(QPointF(center_x_pt, top_pt));
+	point_gizmo_[k_gizmo_scale_top_right]->set_point(QPointF(right_pt, top_pt));
+	point_gizmo_[k_gizmo_scale_bottom_left]->set_point(QPointF(left_pt, bottom_pt));
+	point_gizmo_[k_gizmo_scale_bottom_center]->set_point(
 		QPointF(center_x_pt, bottom_pt));
-	point_gizmo_[kGizmoScaleBottomRight]->SetPoint(
+	point_gizmo_[k_gizmo_scale_bottom_right]->set_point(
 		QPointF(right_pt, bottom_pt));
-	point_gizmo_[kGizmoScaleCenterLeft]->SetPoint(
+	point_gizmo_[k_gizmo_scale_center_left]->set_point(
 		QPointF(left_pt, center_y_pt));
-	point_gizmo_[kGizmoScaleCenterRight]->SetPoint(
+	point_gizmo_[k_gizmo_scale_center_right]->set_point(
 		QPointF(right_pt, center_y_pt));
 
-	poly_gizmo_->SetPolygon(
+	poly_gizmo_->set_polygon(
 		QRectF(left_pt, top_pt, right_pt - left_pt, bottom_pt - top_pt));
 }
 
-void ShapeNodeBase::SetRect(QRectF rect, const VideoParams &sequence_res,
+void ShapeNodeBase::set_rect(QRectF rect, const VideoParams &sequence_res,
 							MultiUndoCommand *command)
 {
 	// Normalize around center of sequence
 	rect.translate(-sequence_res.width() * 0.5, -sequence_res.height() * 0.5);
 	rect.translate(rect.width() * 0.5, rect.height() * 0.5);
 
-	NodeInput pos(this, ShapeNodeBase::kPositionInput);
-	NodeInput sz(this, ShapeNodeBase::kSizeInput);
+	NodeInput pos(this, ShapeNodeBase::k_position_input);
+	NodeInput sz(this, ShapeNodeBase::k_size_input);
 
 	command->add_child(new NodeParamSetStandardValueCommand(
 		NodeKeyframeTrackReference(sz, 0), rect.width()));
@@ -133,40 +133,40 @@ void ShapeNodeBase::SetRect(QRectF rect, const VideoParams &sequence_res,
 		NodeKeyframeTrackReference(pos, 1), rect.y()));
 }
 
-void ShapeNodeBase::GizmoDragMove(double x, double y,
+void ShapeNodeBase::gizmo_drag_move(double x, double y,
 								  const Qt::KeyboardModifiers &modifiers)
 {
 	DraggableGizmo *gizmo = static_cast<DraggableGizmo *>(sender());
 
-	NodeInputDragger &x_drag = gizmo->GetDraggers()[0];
-	NodeInputDragger &y_drag = gizmo->GetDraggers()[1];
+	NodeInputDragger &x_drag = gizmo->get_draggers()[0];
+	NodeInputDragger &y_drag = gizmo->get_draggers()[1];
 
 	if (gizmo == poly_gizmo_) {
-		x_drag.Drag(x_drag.GetStartValue().toDouble() + x);
-		y_drag.Drag(y_drag.GetStartValue().toDouble() + y);
+		x_drag.drag(x_drag.get_start_value().toDouble() + x);
+		y_drag.drag(y_drag.get_start_value().toDouble() + y);
 	} else {
 		bool from_center = modifiers & Qt::AltModifier;
 		bool keep_ratio = modifiers & Qt::ShiftModifier;
 
-		NodeInputDragger &w_drag = gizmo->GetDraggers()[2];
-		NodeInputDragger &h_drag = gizmo->GetDraggers()[3];
+		NodeInputDragger &w_drag = gizmo->get_draggers()[2];
+		NodeInputDragger &h_drag = gizmo->get_draggers()[3];
 
-		QVector2D gizmo_sz_start(w_drag.GetStartValue().toDouble(),
-								 h_drag.GetStartValue().toDouble());
-		QVector2D gizmo_pos_start(x_drag.GetStartValue().toDouble(),
-								  y_drag.GetStartValue().toDouble());
-		QVector2D gizmo_half_res = gizmo->GetGlobals().square_resolution() / 2;
+		QVector2D gizmo_sz_start(w_drag.get_start_value().toDouble(),
+								 h_drag.get_start_value().toDouble());
+		QVector2D gizmo_pos_start(x_drag.get_start_value().toDouble(),
+								  y_drag.get_start_value().toDouble());
+		QVector2D gizmo_half_res = gizmo->get_globals().square_resolution() / 2;
 		QVector2D adjusted_pt(x, y);
 		QVector2D new_size;
 		QVector2D new_pos;
 		QVector2D anchor;
-		static const int kXYCount = 2;
-		bool negative[kXYCount] = { false };
+		static const int k_xy_count = 2;
+		bool negative[k_xy_count] = { false };
 
 		double original_ratio;
 		if (keep_ratio) {
-			original_ratio = w_drag.GetStartValue().toDouble() /
-							 h_drag.GetStartValue().toDouble();
+			original_ratio = w_drag.get_start_value().toDouble() /
+							 h_drag.get_start_value().toDouble();
 		}
 
 		// Calculate new size
@@ -174,11 +174,11 @@ void ShapeNodeBase::GizmoDragMove(double x, double y,
 			// Calculate new size by using distance from center and doubling it
 			new_size = (adjusted_pt - gizmo_half_res - gizmo_pos_start) * 2;
 
-			if (IsGizmoTop(gizmo)) {
+			if (is_gizmo_top(gizmo)) {
 				new_size.setY(-new_size.y());
 			}
 
-			if (IsGizmoLeft(gizmo)) {
+			if (is_gizmo_left(gizmo)) {
 				new_size.setX(-new_size.x());
 			}
 		} else {
@@ -186,7 +186,7 @@ void ShapeNodeBase::GizmoDragMove(double x, double y,
 			// from the gizmo being dragged
 			adjusted_pt -= gizmo_half_res;
 
-			anchor = GenerateGizmoAnchor(gizmo_pos_start, gizmo_sz_start, gizmo,
+			anchor = generate_gizmo_anchor(gizmo_pos_start, gizmo_sz_start, gizmo,
 										 &adjusted_pt) +
 					 gizmo_half_res;
 
@@ -196,7 +196,7 @@ void ShapeNodeBase::GizmoDragMove(double x, double y,
 			new_size = adjusted_pt - anchor;
 
 			// Abs size so neither coord is negative
-			for (int i = 0; i < kXYCount; i++) {
+			for (int i = 0; i < k_xy_count; i++) {
 				if (new_size[i] < 0) {
 					negative[i] = true;
 					new_size[i] = -new_size[i];
@@ -205,7 +205,7 @@ void ShapeNodeBase::GizmoDragMove(double x, double y,
 		}
 
 		// Restrict sizes by constraints
-		if (IsGizmoVerticalCenter(gizmo)) {
+		if (is_gizmo_vertical_center(gizmo)) {
 			if (keep_ratio) {
 				// Calculate width from new height
 				new_size.setX(new_size.y() * original_ratio);
@@ -215,7 +215,7 @@ void ShapeNodeBase::GizmoDragMove(double x, double y,
 			}
 		}
 
-		if (IsGizmoHorizontalCenter(gizmo)) {
+		if (is_gizmo_horizontal_center(gizmo)) {
 			if (keep_ratio) {
 				// Calculate height from new width
 				new_size.setY(new_size.x() / original_ratio);
@@ -225,7 +225,7 @@ void ShapeNodeBase::GizmoDragMove(double x, double y,
 			}
 		}
 
-		if (IsGizmoCorner(gizmo)) {
+		if (is_gizmo_corner(gizmo)) {
 			if (keep_ratio) {
 				float hypot = std::hypot(new_size.x(), new_size.y());
 
@@ -245,34 +245,34 @@ void ShapeNodeBase::GizmoDragMove(double x, double y,
 			QVector2D using_size = new_size;
 
 			// Un-abs size
-			for (int i = 0; i < kXYCount; i++) {
+			for (int i = 0; i < k_xy_count; i++) {
 				if (negative[i]) {
 					using_size[i] = -using_size[i];
 				}
 			}
 
 			// I'm pretty sure there's an algorithmic way of doing this, but I'm tired and this works
-			if (IsGizmoHorizontalCenter(gizmo)) {
+			if (is_gizmo_horizontal_center(gizmo)) {
 				using_size.setY(0);
 			}
 
-			if (IsGizmoVerticalCenter(gizmo)) {
+			if (is_gizmo_vertical_center(gizmo)) {
 				using_size.setX(0);
 			}
 
 			new_pos =
-				GenerateGizmoAnchor(gizmo_pos_start, gizmo_sz_start, gizmo) +
+				generate_gizmo_anchor(gizmo_pos_start, gizmo_sz_start, gizmo) +
 				using_size / 2;
 		}
 
-		x_drag.Drag(new_pos.x());
-		y_drag.Drag(new_pos.y());
-		w_drag.Drag(new_size.x());
-		h_drag.Drag(new_size.y());
+		x_drag.drag(new_pos.x());
+		y_drag.drag(new_pos.y());
+		w_drag.drag(new_size.x());
+		h_drag.drag(new_size.y());
 	}
 }
 
-QVector2D ShapeNodeBase::GenerateGizmoAnchor(const QVector2D &pos,
+QVector2D ShapeNodeBase::generate_gizmo_anchor(const QVector2D &pos,
 											 const QVector2D &size,
 											 NodeGizmo *gizmo,
 											 QVector2D *pt) const
@@ -280,28 +280,28 @@ QVector2D ShapeNodeBase::GenerateGizmoAnchor(const QVector2D &pos,
 	QVector2D anchor = pos;
 	QVector2D half_sz = size / 2;
 
-	if (IsGizmoLeft(gizmo)) {
+	if (is_gizmo_left(gizmo)) {
 		anchor.setX(anchor.x() + half_sz.x());
 		if (pt && pt->x() > anchor.x()) {
 			pt->setX(anchor.x());
 		}
 	}
 
-	if (IsGizmoRight(gizmo)) {
+	if (is_gizmo_right(gizmo)) {
 		anchor.setX(anchor.x() - half_sz.x());
 		if (pt && pt->x() < anchor.x()) {
 			pt->setX(anchor.x());
 		}
 	}
 
-	if (IsGizmoTop(gizmo)) {
+	if (is_gizmo_top(gizmo)) {
 		anchor.setY(anchor.y() + half_sz.y());
 		if (pt && pt->y() > anchor.y()) {
 			pt->setY(anchor.y());
 		}
 	}
 
-	if (IsGizmoBottom(gizmo)) {
+	if (is_gizmo_bottom(gizmo)) {
 		anchor.setY(anchor.y() - half_sz.y());
 		if (pt && pt->y() < anchor.y()) {
 			pt->setY(anchor.y());
@@ -311,52 +311,52 @@ QVector2D ShapeNodeBase::GenerateGizmoAnchor(const QVector2D &pos,
 	return anchor;
 }
 
-bool ShapeNodeBase::IsGizmoTop(NodeGizmo *g) const
+bool ShapeNodeBase::is_gizmo_top(NodeGizmo *g) const
 {
-	return g == point_gizmo_[kGizmoScaleTopCenter] ||
-		   g == point_gizmo_[kGizmoScaleTopLeft] ||
-		   g == point_gizmo_[kGizmoScaleTopRight];
+	return g == point_gizmo_[k_gizmo_scale_top_center] ||
+		   g == point_gizmo_[k_gizmo_scale_top_left] ||
+		   g == point_gizmo_[k_gizmo_scale_top_right];
 }
 
-bool ShapeNodeBase::IsGizmoBottom(NodeGizmo *g) const
+bool ShapeNodeBase::is_gizmo_bottom(NodeGizmo *g) const
 {
-	return g == point_gizmo_[kGizmoScaleBottomCenter] ||
-		   g == point_gizmo_[kGizmoScaleBottomLeft] ||
-		   g == point_gizmo_[kGizmoScaleBottomRight];
+	return g == point_gizmo_[k_gizmo_scale_bottom_center] ||
+		   g == point_gizmo_[k_gizmo_scale_bottom_left] ||
+		   g == point_gizmo_[k_gizmo_scale_bottom_right];
 }
 
-bool ShapeNodeBase::IsGizmoLeft(NodeGizmo *g) const
+bool ShapeNodeBase::is_gizmo_left(NodeGizmo *g) const
 {
-	return g == point_gizmo_[kGizmoScaleTopLeft] ||
-		   g == point_gizmo_[kGizmoScaleCenterLeft] ||
-		   g == point_gizmo_[kGizmoScaleBottomLeft];
+	return g == point_gizmo_[k_gizmo_scale_top_left] ||
+		   g == point_gizmo_[k_gizmo_scale_center_left] ||
+		   g == point_gizmo_[k_gizmo_scale_bottom_left];
 }
 
-bool ShapeNodeBase::IsGizmoRight(NodeGizmo *g) const
+bool ShapeNodeBase::is_gizmo_right(NodeGizmo *g) const
 {
-	return g == point_gizmo_[kGizmoScaleTopRight] ||
-		   g == point_gizmo_[kGizmoScaleCenterRight] ||
-		   g == point_gizmo_[kGizmoScaleBottomRight];
+	return g == point_gizmo_[k_gizmo_scale_top_right] ||
+		   g == point_gizmo_[k_gizmo_scale_center_right] ||
+		   g == point_gizmo_[k_gizmo_scale_bottom_right];
 }
 
-bool ShapeNodeBase::IsGizmoHorizontalCenter(NodeGizmo *g) const
+bool ShapeNodeBase::is_gizmo_horizontal_center(NodeGizmo *g) const
 {
-	return g == point_gizmo_[kGizmoScaleCenterLeft] ||
-		   g == point_gizmo_[kGizmoScaleCenterRight];
+	return g == point_gizmo_[k_gizmo_scale_center_left] ||
+		   g == point_gizmo_[k_gizmo_scale_center_right];
 }
 
-bool ShapeNodeBase::IsGizmoVerticalCenter(NodeGizmo *g) const
+bool ShapeNodeBase::is_gizmo_vertical_center(NodeGizmo *g) const
 {
-	return g == point_gizmo_[kGizmoScaleTopCenter] ||
-		   g == point_gizmo_[kGizmoScaleBottomCenter];
+	return g == point_gizmo_[k_gizmo_scale_top_center] ||
+		   g == point_gizmo_[k_gizmo_scale_bottom_center];
 }
 
-bool ShapeNodeBase::IsGizmoCorner(NodeGizmo *g) const
+bool ShapeNodeBase::is_gizmo_corner(NodeGizmo *g) const
 {
-	return g == point_gizmo_[kGizmoScaleTopLeft] ||
-		   g == point_gizmo_[kGizmoScaleTopRight] ||
-		   g == point_gizmo_[kGizmoScaleBottomRight] ||
-		   g == point_gizmo_[kGizmoScaleBottomLeft];
+	return g == point_gizmo_[k_gizmo_scale_top_left] ||
+		   g == point_gizmo_[k_gizmo_scale_top_right] ||
+		   g == point_gizmo_[k_gizmo_scale_bottom_right] ||
+		   g == point_gizmo_[k_gizmo_scale_bottom_left];
 }
 
 }

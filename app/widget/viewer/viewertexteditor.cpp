@@ -58,9 +58,9 @@ ViewerTextEditor::ViewerTextEditor(double scale, QWidget *parent)
 	setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 	setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 	connect(horizontalScrollBar(), &QScrollBar::rangeChanged, this,
-			&ViewerTextEditor::LockScrollBarMaximumToZero);
+			&ViewerTextEditor::lock_scroll_bar_maximum_to_zero);
 	connect(verticalScrollBar(), &QScrollBar::rangeChanged, this,
-			&ViewerTextEditor::LockScrollBarMaximumToZero);
+			&ViewerTextEditor::lock_scroll_bar_maximum_to_zero);
 
 	// Force DPI to the same one that we're using in the actual render
 	dpi_force_ = QImage(1, 1, QImage::Format_RGBA8888_Premultiplied);
@@ -71,51 +71,51 @@ ViewerTextEditor::ViewerTextEditor(double scale, QWidget *parent)
 	document()->documentLayout()->setPaintDevice(&dpi_force_);
 
 	connect(this, &QTextEdit::currentCharFormatChanged, this,
-			&ViewerTextEditor::FormatChanged);
+			&ViewerTextEditor::format_changed);
 	connect(document(), &QTextDocument::contentsChanged, this,
-			&ViewerTextEditor::DocumentChanged, Qt::QueuedConnection);
+			&ViewerTextEditor::document_changed, Qt::QueuedConnection);
 
 	setAcceptRichText(false);
 }
 
-void ViewerTextEditor::ConnectToolBar(ViewerTextEditorToolBar *toolbar)
+void ViewerTextEditor::connect_tool_bar(ViewerTextEditorToolBar *toolbar)
 {
-	connect(toolbar, &ViewerTextEditorToolBar::FamilyChanged, this,
-			&ViewerTextEditor::SetFamily);
-	connect(toolbar, &ViewerTextEditorToolBar::SizeChanged, this,
+	connect(toolbar, &ViewerTextEditorToolBar::family_changed, this,
+			&ViewerTextEditor::set_family);
+	connect(toolbar, &ViewerTextEditorToolBar::size_changed, this,
 			&ViewerTextEditor::setFontPointSize);
-	connect(toolbar, &ViewerTextEditorToolBar::StyleChanged, this,
-			&ViewerTextEditor::SetStyle);
-	connect(toolbar, &ViewerTextEditorToolBar::UnderlineChanged, this,
+	connect(toolbar, &ViewerTextEditorToolBar::style_changed, this,
+			&ViewerTextEditor::set_style);
+	connect(toolbar, &ViewerTextEditorToolBar::underline_changed, this,
 			&ViewerTextEditor::setFontUnderline);
-	connect(toolbar, &ViewerTextEditorToolBar::StrikethroughChanged, this,
-			&ViewerTextEditor::SetFontStrikethrough);
-	connect(toolbar, &ViewerTextEditorToolBar::ColorChanged, this,
+	connect(toolbar, &ViewerTextEditorToolBar::strikethrough_changed, this,
+			&ViewerTextEditor::set_font_strikethrough);
+	connect(toolbar, &ViewerTextEditorToolBar::color_changed, this,
 			&ViewerTextEditor::setTextColor);
-	connect(toolbar, &ViewerTextEditorToolBar::SmallCapsChanged, this,
-			&ViewerTextEditor::SetSmallCaps);
-	connect(toolbar, &ViewerTextEditorToolBar::StretchChanged, this,
-			&ViewerTextEditor::SetFontStretch);
-	connect(toolbar, &ViewerTextEditorToolBar::KerningChanged, this,
-			&ViewerTextEditor::SetFontKerning);
-	connect(toolbar, &ViewerTextEditorToolBar::LineHeightChanged, this,
-			&ViewerTextEditor::SetLineHeight);
-	connect(toolbar, &ViewerTextEditorToolBar::AlignmentChanged, this,
+	connect(toolbar, &ViewerTextEditorToolBar::small_caps_changed, this,
+			&ViewerTextEditor::set_small_caps);
+	connect(toolbar, &ViewerTextEditorToolBar::stretch_changed, this,
+			&ViewerTextEditor::set_font_stretch);
+	connect(toolbar, &ViewerTextEditorToolBar::kerning_changed, this,
+			&ViewerTextEditor::set_font_kerning);
+	connect(toolbar, &ViewerTextEditorToolBar::line_height_changed, this,
+			&ViewerTextEditor::set_line_height);
+	connect(toolbar, &ViewerTextEditorToolBar::alignment_changed, this,
 			[this](Qt::Alignment a) {
 				this->setAlignment(a);
 
 				// Ensure no buttons are checked that shouldn't be
-				static_cast<ViewerTextEditorToolBar *>(sender())->SetAlignment(
+				static_cast<ViewerTextEditorToolBar *>(sender())->set_alignment(
 					a);
 			});
 
-	UpdateToolBar(toolbar, this->currentCharFormat(),
+	update_tool_bar(toolbar, this->currentCharFormat(),
 				  this->textCursor().blockFormat(), this->alignment());
 
 	toolbars_.append(toolbar);
 }
 
-void ViewerTextEditor::Paint(QPainter *p, Qt::Alignment valign)
+void ViewerTextEditor::paint(QPainter *p, Qt::Alignment valign)
 {
 	QAbstractTextDocumentLayout::PaintContext ctx;
 
@@ -171,7 +171,7 @@ void ViewerTextEditor::paintEvent(QPaintEvent *e)
 	// Disable painting
 }
 
-void ViewerTextEditor::UpdateToolBar(ViewerTextEditorToolBar *toolbar,
+void ViewerTextEditor::update_tool_bar(ViewerTextEditorToolBar *toolbar,
 									 const QTextCharFormat &f,
 									 const QTextBlockFormat &b,
 									 Qt::Alignment alignment)
@@ -201,25 +201,25 @@ void ViewerTextEditor::UpdateToolBar(ViewerTextEditorToolBar *toolbar,
 		}
 	}
 
-	toolbar->SetFontFamily(family);
-	toolbar->SetFontSize(f.fontPointSize());
-	toolbar->SetStyle(style);
-	toolbar->SetUnderline(f.fontUnderline());
-	toolbar->SetStrikethrough(f.fontStrikeOut());
-	toolbar->SetAlignment(alignment);
-	toolbar->SetColor(f.foreground().color());
-	toolbar->SetSmallCaps(f.fontCapitalization() == QFont::SmallCaps);
-	toolbar->SetStretch(f.fontStretch() == 0 ? 100 : f.fontStretch());
-	toolbar->SetKerning(f.fontLetterSpacing() == 0.0 ? 100 :
+	toolbar->set_font_family(family);
+	toolbar->set_font_size(f.fontPointSize());
+	toolbar->set_style(style);
+	toolbar->set_underline(f.fontUnderline());
+	toolbar->set_strikethrough(f.fontStrikeOut());
+	toolbar->set_alignment(alignment);
+	toolbar->set_color(f.foreground().color());
+	toolbar->set_small_caps(f.fontCapitalization() == QFont::SmallCaps);
+	toolbar->set_stretch(f.fontStretch() == 0 ? 100 : f.fontStretch());
+	toolbar->set_kerning(f.fontLetterSpacing() == 0.0 ? 100 :
 													   f.fontLetterSpacing());
-	toolbar->SetLineHeight(b.lineHeight() == 0.0 ? 100 : b.lineHeight());
+	toolbar->set_line_height(b.lineHeight() == 0.0 ? 100 : b.lineHeight());
 }
 
-void ViewerTextEditor::FormatChanged(const QTextCharFormat &f)
+void ViewerTextEditor::format_changed(const QTextCharFormat &f)
 {
 	if (!block_update_toolbar_signal_) {
 		foreach (ViewerTextEditorToolBar *toolbar, toolbars_) {
-			UpdateToolBar(toolbar, f, textCursor().blockFormat(),
+			update_tool_bar(toolbar, f, textCursor().blockFormat(),
 						  this->alignment());
 		}
 	}
@@ -230,7 +230,7 @@ void ViewerTextEditor::FormatChanged(const QTextCharFormat &f)
 	}
 }
 
-void ViewerTextEditor::SetFamily(const QString &s)
+void ViewerTextEditor::set_family(const QString &s)
 {
 	ViewerTextEditorToolBar *toolbar =
 		static_cast<ViewerTextEditorToolBar *>(sender());
@@ -238,52 +238,52 @@ void ViewerTextEditor::SetFamily(const QString &s)
 	QTextCharFormat f;
 	f.setFontFamilies({ s });
 
-	ApplyStyle(&f, s, toolbar->GetFontStyleName());
+	apply_style(&f, s, toolbar->get_font_style_name());
 
-	MergeCharFormat(f);
+	merge_char_format(f);
 }
 
-void ViewerTextEditor::SetStyle(const QString &s)
+void ViewerTextEditor::set_style(const QString &s)
 {
 	ViewerTextEditorToolBar *toolbar =
 		static_cast<ViewerTextEditorToolBar *>(sender());
 
 	QTextCharFormat f;
 
-	ApplyStyle(&f, toolbar->GetFontFamily(), s);
+	apply_style(&f, toolbar->get_font_family(), s);
 
-	MergeCharFormat(f);
+	merge_char_format(f);
 }
 
-void ViewerTextEditor::SetFontStrikethrough(bool e)
+void ViewerTextEditor::set_font_strikethrough(bool e)
 {
 	QTextCharFormat f;
 	f.setFontStrikeOut(e);
-	MergeCharFormat(f);
+	merge_char_format(f);
 }
 
-void ViewerTextEditor::SetSmallCaps(bool e)
+void ViewerTextEditor::set_small_caps(bool e)
 {
 	QTextCharFormat f;
 	f.setFontCapitalization(e ? QFont::SmallCaps : QFont::MixedCase);
-	MergeCharFormat(f);
+	merge_char_format(f);
 }
 
-void ViewerTextEditor::SetFontStretch(int i)
+void ViewerTextEditor::set_font_stretch(int i)
 {
 	QTextCharFormat f;
 	f.setFontStretch(i);
-	MergeCharFormat(f);
+	merge_char_format(f);
 }
 
-void ViewerTextEditor::SetFontKerning(qreal i)
+void ViewerTextEditor::set_font_kerning(qreal i)
 {
 	QTextCharFormat f;
 	f.setFontLetterSpacing(i);
-	MergeCharFormat(f);
+	merge_char_format(f);
 }
 
-void ViewerTextEditor::MergeCharFormat(const QTextCharFormat &fmt)
+void ViewerTextEditor::merge_char_format(const QTextCharFormat &fmt)
 {
 	// mergeCurrentCharFormat throws a currentCharFormatChanged signal that updates the toolbar,
 	// this can be undesirable if the user is currently typing a font
@@ -293,7 +293,7 @@ void ViewerTextEditor::MergeCharFormat(const QTextCharFormat &fmt)
 	block_update_toolbar_signal_ = false;
 }
 
-void ViewerTextEditor::ApplyStyle(QTextCharFormat *format,
+void ViewerTextEditor::apply_style(QTextCharFormat *format,
 								  const QString &family, const QString &style)
 {
 	// NOTE: Windows appears to require setting weight and italic manually, while macOS and Linux are
@@ -304,19 +304,19 @@ void ViewerTextEditor::ApplyStyle(QTextCharFormat *format,
 	format->setFontStyleName(style);
 }
 
-void ViewerTextEditor::SetLineHeight(qreal i)
+void ViewerTextEditor::set_line_height(qreal i)
 {
 	QTextBlockFormat f = this->textCursor().blockFormat();
 	f.setLineHeight(i, QTextBlockFormat::ProportionalHeight);
 	this->textCursor().setBlockFormat(f);
 }
 
-void ViewerTextEditor::LockScrollBarMaximumToZero()
+void ViewerTextEditor::lock_scroll_bar_maximum_to_zero()
 {
 	static_cast<QScrollBar *>(sender())->setMaximum(0);
 }
 
-void ViewerTextEditor::DocumentChanged()
+void ViewerTextEditor::document_changed()
 {
 	if (document()->blockCount() == 1 &&
 		document()->firstBlock().text().isEmpty()) {
@@ -363,7 +363,7 @@ ViewerTextEditorToolBar::ViewerTextEditorToolBar(QWidget *parent)
 	QVBoxLayout *outer_layout = new QVBoxLayout(this);
 
 	const int advanced_slider_width =
-		QtUtils::QFontMetricsWidth(fontMetrics(), QStringLiteral("9999.9%"));
+		QtUtils::q_font_metrics_width(fontMetrics(), QStringLiteral("9999.9%"));
 
 	{
 		QHBoxLayout *row_layout = new QHBoxLayout();
@@ -373,40 +373,40 @@ ViewerTextEditorToolBar::ViewerTextEditorToolBar(QWidget *parent)
 		font_combo_ = new QFontComboBox();
 		connect(
 			font_combo_, &QFontComboBox::currentTextChanged, this,
-			&ViewerTextEditorToolBar::UpdateFontStyleListAndEmitFamilyChanged);
+			&ViewerTextEditorToolBar::update_font_style_list_and_emit_family_changed);
 		row_layout->addWidget(font_combo_);
 
 		font_sz_slider_ = new FloatSlider();
-		font_sz_slider_->SetMinimum(0.1);
-		font_sz_slider_->SetMaximum(9999.9);
-		font_sz_slider_->SetDecimalPlaces(1);
-		font_sz_slider_->SetAlignment(Qt::AlignCenter);
+		font_sz_slider_->set_minimum(0.1);
+		font_sz_slider_->set_maximum(9999.9);
+		font_sz_slider_->set_decimal_places(1);
+		font_sz_slider_->set_alignment(Qt::AlignCenter);
 		font_sz_slider_->setFixedWidth(advanced_slider_width);
-		connect(font_sz_slider_, &FloatSlider::ValueChanged, this,
-				&ViewerTextEditorToolBar::SizeChanged);
-		font_sz_slider_->SetLadderElementCount(2);
+		connect(font_sz_slider_, &FloatSlider::value_changed, this,
+				&ViewerTextEditorToolBar::size_changed);
+		font_sz_slider_->set_ladder_element_count(2);
 		row_layout->addWidget(font_sz_slider_);
 
 		style_combo_ = new QComboBox();
 		connect(style_combo_, &QComboBox::currentTextChanged, this,
-				&ViewerTextEditorToolBar::StyleChanged);
+				&ViewerTextEditorToolBar::style_changed);
 		row_layout->addWidget(style_combo_);
 
 		underline_btn_ = new QPushButton();
 		connect(underline_btn_, &QPushButton::clicked, this,
-				&ViewerTextEditorToolBar::UnderlineChanged);
+				&ViewerTextEditorToolBar::underline_changed);
 		underline_btn_->setCheckable(true);
-		underline_btn_->setIcon(icon::TextUnderline);
+		underline_btn_->setIcon(icon::text_underline);
 		row_layout->addWidget(underline_btn_);
 
 		strikethrough_btn_ = new QPushButton();
 		connect(strikethrough_btn_, &QPushButton::clicked, this,
-				&ViewerTextEditorToolBar::StrikethroughChanged);
+				&ViewerTextEditorToolBar::strikethrough_changed);
 		strikethrough_btn_->setCheckable(true);
-		strikethrough_btn_->setIcon(icon::TextStrikethrough);
+		strikethrough_btn_->setIcon(icon::text_strikethrough);
 		row_layout->addWidget(strikethrough_btn_);
 
-		AddSpacer(row_layout);
+		add_spacer(row_layout);
 
 		color_btn_ = new QPushButton();
 		color_btn_->setAutoFillBackground(true);
@@ -416,8 +416,8 @@ ViewerTextEditorToolBar::ViewerTextEditorToolBar(QWidget *parent)
 			QColorDialog cd(c, this);
 			if (cd.exec() == QDialog::Accepted) {
 				c = cd.selectedColor();
-				SetColor(c);
-				emit ColorChanged(c);
+				set_color(c);
+				emit color_changed(c);
 			}
 		});
 		row_layout->addWidget(color_btn_);
@@ -432,102 +432,102 @@ ViewerTextEditorToolBar::ViewerTextEditorToolBar(QWidget *parent)
 
 		align_left_btn_ = new QPushButton();
 		align_left_btn_->setCheckable(true);
-		align_left_btn_->setIcon(icon::TextAlignLeft);
+		align_left_btn_->setIcon(icon::text_align_left);
 		connect(align_left_btn_, &QPushButton::clicked, this,
-				[this] { emit AlignmentChanged(Qt::AlignLeft); });
+				[this] { emit alignment_changed(Qt::AlignLeft); });
 		row_layout->addWidget(align_left_btn_);
 
 		align_center_btn_ = new QPushButton();
 		align_center_btn_->setCheckable(true);
-		align_center_btn_->setIcon(icon::TextAlignCenter);
+		align_center_btn_->setIcon(icon::text_align_center);
 		connect(align_center_btn_, &QPushButton::clicked, this,
-				[this] { emit AlignmentChanged(Qt::AlignHCenter); });
+				[this] { emit alignment_changed(Qt::AlignHCenter); });
 		row_layout->addWidget(align_center_btn_);
 
 		align_right_btn_ = new QPushButton();
 		align_right_btn_->setCheckable(true);
-		align_right_btn_->setIcon(icon::TextAlignRight);
+		align_right_btn_->setIcon(icon::text_align_right);
 		connect(align_right_btn_, &QPushButton::clicked, this,
-				[this] { emit AlignmentChanged(Qt::AlignRight); });
+				[this] { emit alignment_changed(Qt::AlignRight); });
 		row_layout->addWidget(align_right_btn_);
 
 		align_justify_btn_ = new QPushButton();
 		align_justify_btn_->setCheckable(true);
-		align_justify_btn_->setIcon(icon::TextAlignJustify);
+		align_justify_btn_->setIcon(icon::text_align_justify);
 		connect(align_justify_btn_, &QPushButton::clicked, this,
-				[this] { emit AlignmentChanged(Qt::AlignJustify); });
+				[this] { emit alignment_changed(Qt::AlignJustify); });
 		row_layout->addWidget(align_justify_btn_);
 
-		AddSpacer(row_layout);
+		add_spacer(row_layout);
 
 		align_top_btn_ = new QPushButton();
 		align_top_btn_->setCheckable(true);
-		align_top_btn_->setIcon(icon::TextAlignTop);
+		align_top_btn_->setIcon(icon::text_align_top);
 		connect(align_top_btn_, &QPushButton::clicked, this,
-				[this] { emit VerticalAlignmentChanged(Qt::AlignTop); });
+				[this] { emit vertical_alignment_changed(Qt::AlignTop); });
 		row_layout->addWidget(align_top_btn_);
 
 		align_middle_btn_ = new QPushButton();
 		align_middle_btn_->setCheckable(true);
-		align_middle_btn_->setIcon(icon::TextAlignMiddle);
+		align_middle_btn_->setIcon(icon::text_align_middle);
 		connect(align_middle_btn_, &QPushButton::clicked, this,
-				[this] { emit VerticalAlignmentChanged(Qt::AlignVCenter); });
+				[this] { emit vertical_alignment_changed(Qt::AlignVCenter); });
 		row_layout->addWidget(align_middle_btn_);
 
 		align_bottom_btn_ = new QPushButton();
 		align_bottom_btn_->setCheckable(true);
-		align_bottom_btn_->setIcon(icon::TextAlignBottom);
+		align_bottom_btn_->setIcon(icon::text_align_bottom);
 		connect(align_bottom_btn_, &QPushButton::clicked, this,
-				[this] { emit VerticalAlignmentChanged(Qt::AlignBottom); });
+				[this] { emit vertical_alignment_changed(Qt::AlignBottom); });
 		row_layout->addWidget(align_bottom_btn_);
 
-		AddSpacer(row_layout);
+		add_spacer(row_layout);
 
 		small_caps_btn_ = new QPushButton();
-		small_caps_btn_->setIcon(icon::TextSmallCaps);
+		small_caps_btn_->setIcon(icon::text_small_caps);
 		small_caps_btn_->setCheckable(true);
 		connect(small_caps_btn_, &QPushButton::clicked, this,
-				&ViewerTextEditorToolBar::SmallCapsChanged);
+				&ViewerTextEditorToolBar::small_caps_changed);
 		row_layout->addWidget(small_caps_btn_);
 
-		AddSpacer(row_layout);
+		add_spacer(row_layout);
 
 		row_layout->addWidget(
 			new QLabel(tr("Stretch: "))); // FIXME: Procure icon
 
 		stretch_slider_ = new IntegerSlider();
-		stretch_slider_->SetMinimum(0);
+		stretch_slider_->set_minimum(0);
 		stretch_slider_->SetDefaultValue(100);
 		stretch_slider_->setFixedWidth(advanced_slider_width);
-		stretch_slider_->SetFormat(tr("%1%"));
-		connect(stretch_slider_, &IntegerSlider::ValueChanged, this,
-				&ViewerTextEditorToolBar::StretchChanged);
+		stretch_slider_->set_format(tr("%1%"));
+		connect(stretch_slider_, &IntegerSlider::value_changed, this,
+				&ViewerTextEditorToolBar::stretch_changed);
 		row_layout->addWidget(stretch_slider_);
 
 		row_layout->addWidget(
 			new QLabel(tr("Kerning: "))); // FIXME: Procure icon
 
 		kerning_slider_ = new FloatSlider();
-		kerning_slider_->SetMinimum(0);
+		kerning_slider_->set_minimum(0);
 		kerning_slider_->SetDefaultValue(100);
-		kerning_slider_->SetDecimalPlaces(1);
+		kerning_slider_->set_decimal_places(1);
 		kerning_slider_->setFixedWidth(advanced_slider_width);
-		kerning_slider_->SetFormat(tr("%1%"));
-		connect(kerning_slider_, &FloatSlider::ValueChanged, this,
-				&ViewerTextEditorToolBar::KerningChanged);
+		kerning_slider_->set_format(tr("%1%"));
+		connect(kerning_slider_, &FloatSlider::value_changed, this,
+				&ViewerTextEditorToolBar::kerning_changed);
 		row_layout->addWidget(kerning_slider_);
 
 		row_layout->addWidget(
 			new QLabel(tr("Line Height: "))); // FIXME: Procure icon
 
 		line_height_slider_ = new FloatSlider();
-		line_height_slider_->SetMinimum(0);
+		line_height_slider_->set_minimum(0);
 		line_height_slider_->SetDefaultValue(100);
-		line_height_slider_->SetDecimalPlaces(1);
+		line_height_slider_->set_decimal_places(1);
 		line_height_slider_->setFixedWidth(advanced_slider_width);
-		line_height_slider_->SetFormat(tr("%1%"));
-		connect(line_height_slider_, &FloatSlider::ValueChanged, this,
-				&ViewerTextEditorToolBar::LineHeightChanged);
+		line_height_slider_->set_format(tr("%1%"));
+		connect(line_height_slider_, &FloatSlider::value_changed, this,
+				&ViewerTextEditorToolBar::line_height_changed);
 		row_layout->addWidget(line_height_slider_);
 
 		row_layout->addStretch();
@@ -538,7 +538,7 @@ ViewerTextEditorToolBar::ViewerTextEditorToolBar(QWidget *parent)
 	resize(sizeHint());
 }
 
-void ViewerTextEditorToolBar::SetAlignment(Qt::Alignment a)
+void ViewerTextEditorToolBar::set_alignment(Qt::Alignment a)
 {
 	align_left_btn_->setChecked(a == Qt::AlignLeft);
 	align_center_btn_->setChecked(a == Qt::AlignHCenter);
@@ -546,14 +546,14 @@ void ViewerTextEditorToolBar::SetAlignment(Qt::Alignment a)
 	align_justify_btn_->setChecked(a == Qt::AlignJustify);
 }
 
-void ViewerTextEditorToolBar::SetVerticalAlignment(Qt::Alignment a)
+void ViewerTextEditorToolBar::set_vertical_alignment(Qt::Alignment a)
 {
 	align_top_btn_->setChecked(a == Qt::AlignTop);
 	align_middle_btn_->setChecked(a == Qt::AlignVCenter);
 	align_bottom_btn_->setChecked(a == Qt::AlignBottom);
 }
 
-void ViewerTextEditorToolBar::SetColor(const QColor &c)
+void ViewerTextEditorToolBar::set_color(const QColor &c)
 {
 	color_btn_->setProperty("color", c);
 	color_btn_->setStyleSheet(
@@ -568,27 +568,27 @@ void ViewerTextEditorToolBar::closeEvent(QCloseEvent *event)
 void ViewerTextEditorToolBar::paintEvent(QPaintEvent *event)
 {
 	if (!painted_) {
-		emit FirstPaint();
+		emit first_paint();
 		painted_ = true;
 	}
 	QWidget::paintEvent(event);
 }
 
-void ViewerTextEditorToolBar::AddSpacer(QLayout *l)
+void ViewerTextEditorToolBar::add_spacer(QLayout *l)
 {
 	const int spacing = this->fontMetrics().height() / 4;
 	QWidget *a = new QWidget();
 	a->setFixedSize(spacing, 1);
 	l->addWidget(a);
 
-	l->addWidget(QtUtils::CreateVerticalLine());
+	l->addWidget(QtUtils::create_vertical_line());
 
 	QWidget *b = new QWidget();
 	b->setFixedSize(spacing, 1);
 	l->addWidget(b);
 }
 
-void ViewerTextEditorToolBar::UpdateFontStyleList(const QString &family)
+void ViewerTextEditorToolBar::update_font_style_list(const QString &family)
 {
 	QString temp = style_combo_->currentText();
 
@@ -602,12 +602,12 @@ void ViewerTextEditorToolBar::UpdateFontStyleList(const QString &family)
 	style_combo_->blockSignals(false);
 }
 
-void ViewerTextEditorToolBar::UpdateFontStyleListAndEmitFamilyChanged(
+void ViewerTextEditorToolBar::update_font_style_list_and_emit_family_changed(
 	const QString &family)
 {
 	// Ensures correct ordering of commands
-	UpdateFontStyleList(family);
-	emit FamilyChanged(family);
+	update_font_style_list(family);
+	emit family_changed(family);
 }
 
 void ViewerTextEditorToolBar::mousePressEvent(QMouseEvent *event)

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef MARKERPROPERTIESDIALOG_H
-#define MARKERPROPERTIESDIALOG_H
+#ifndef OAK_MARKERPROPERTIESDIALOG_H
+#define OAK_MARKERPROPERTIESDIALOG_H
 
 #include <QDialog>
 #include <QLineEdit>
@@ -44,18 +44,18 @@ protected:
 	virtual void focusInEvent(QFocusEvent *e) override
 	{
 		QLineEdit::focusInEvent(e);
-		emit Focused();
+		emit focused();
 	}
 
 signals:
-	void Focused();
+	void focused();
 };
 
 class MarkerPropertiesDialog : public QDialog {
 	Q_OBJECT
 public:
 	MarkerPropertiesDialog(const std::vector<TimelineMarker *> &markers,
-						   const rational &timebase, QWidget *parent = nullptr);
+						   const Rational &timebase, QWidget *parent = nullptr);
 
 public slots:
 	virtual void accept() override;
@@ -74,4 +74,4 @@ private:
 
 }
 
-#endif // MARKERPROPERTIESDIALOG_H
+#endif // OAK_MARKERPROPERTIESDIALOG_H

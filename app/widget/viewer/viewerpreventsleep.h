@@ -16,14 +16,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef VIEWERPREVENTSLEEP_H
-#define VIEWERPREVENTSLEEP_H
+#ifndef OAK_VIEWERPREVENTSLEEP_H
+#define OAK_VIEWERPREVENTSLEEP_H
 
 namespace olive
 {
 
-void PreventSleep(bool on);
+void prevent_sleep(bool on);
 
 }
 
-#endif // VIEWERPREVENTSLEEP_H
+#endif // OAK_VIEWERPREVENTSLEEP_H

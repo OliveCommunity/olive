@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CURVEWIDGET_H
-#define CURVEWIDGET_H
+#ifndef OAK_CURVEWIDGET_H
+#define OAK_CURVEWIDGET_H
 
 #include <QCheckBox>
 #include <QHBoxLayout>
@@ -41,32 +41,32 @@ class CurveWidget : public TimeBasedWidget, public TimeTargetObject {
 public:
 	CurveWidget(QWidget *parent = nullptr);
 
-	const double &GetVerticalScale();
-	void SetVerticalScale(const double &vscale);
+	const double &get_vertical_scale();
+	void set_vertical_scale(const double &vscale);
 
 	void DeleteSelected();
 
-	void SelectAll()
+	void select_all()
 	{
-		view_->SelectAll();
+		view_->select_all();
 	}
 
-	void DeselectAll()
+	void deselect_all()
 	{
-		view_->DeselectAll();
+		view_->deselect_all();
 	}
 
-	Node *GetSelectedNodeWithID(const QString &id);
+	Node *get_selected_node_with_id(const QString &id);
 
-	virtual bool CopySelected(bool cut) override;
+	virtual bool copy_selected(bool cut) override;
 
-	virtual bool Paste() override;
+	virtual bool paste() override;
 
 public slots:
-	void SetNodes(const QVector<Node *> &nodes);
+	void set_nodes(const QVector<Node *> &nodes);
 
 protected:
-	virtual void TimebaseChangedEvent(const rational &) override;
+	virtual void TimebaseChangedEvent(const Rational &) override;
 	virtual void ScaleChangedEvent(const double &) override;
 
 	virtual void TimeTargetChangedEvent(ViewerOutput *target) override;
@@ -74,32 +74,32 @@ protected:
 	virtual void ConnectedNodeChangeEvent(ViewerOutput *n) override;
 
 	virtual const QVector<KeyframeViewInputConnection *> *
-	GetSnapKeyframes() const override
+	get_snap_keyframes() const override
 	{
-		return &view_->GetKeyframeTracks();
+		return &view_->get_keyframe_tracks();
 	}
 
-	virtual const TimeTargetObject *GetKeyframeTimeTarget() const override
+	virtual const TimeTargetObject *get_keyframe_time_target() const override
 	{
 		return view_;
 	}
 
 	virtual const std::vector<NodeKeyframe *> *
-	GetSnapIgnoreKeyframes() const override
+	get_snap_ignore_keyframes() const override
 	{
-		return &view_->GetSelectedKeyframes();
+		return &view_->get_selected_keyframes();
 	}
 
 private:
-	void SetKeyframeButtonEnabled(bool enable);
+	void set_keyframe_button_enabled(bool enable);
 
-	void SetKeyframeButtonChecked(bool checked);
+	void set_keyframe_button_checked(bool checked);
 
-	void SetKeyframeButtonCheckedFromType(NodeKeyframe::Type type);
+	void set_keyframe_button_checked_from_type(NodeKeyframe::Type type);
 
-	void ConnectInput(Node *node, const QString &input, int element);
+	void connect_input(Node *node, const QString &input, int element);
 
-	void ConnectInputInternal(Node *node, const QString &input, int element);
+	void connect_input_internal(Node *node, const QString &input, int element);
 
 	QHash<NodeKeyframeTrackReference, QColor> keyframe_colors_;
 
@@ -120,16 +120,16 @@ private:
 	QVector<NodeKeyframeTrackReference> selected_tracks_;
 
 private slots:
-	void SelectionChanged();
+	void selection_changed();
 
-	void KeyframeTypeButtonTriggered(bool checked);
+	void keyframe_type_button_triggered(bool checked);
 
-	void InputSelectionChanged(const NodeKeyframeTrackReference &ref);
+	void input_selection_changed(const NodeKeyframeTrackReference &ref);
 
-	void KeyframeViewDragged(int x, int y);
-	void KeyframeViewReleased();
+	void keyframe_view_dragged(int x, int y);
+	void keyframe_view_released();
 };
 
 }
 
-#endif // CURVEWIDGET_H
+#endif // OAK_CURVEWIDGET_H

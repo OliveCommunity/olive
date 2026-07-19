@@ -4,9 +4,9 @@
 
 using namespace olive::core;
 
-static AudioParams MakeParams(int channels = 2, int sample_rate = 48000)
+static AudioParams make_params(int channels = 2, int sample_rate = 48000)
 {
-	AudioParams params(sample_rate, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(sample_rate, k_channel_layout_stereo, SampleFormat::f32_p);
 	return params;
 }
 
@@ -20,8 +20,8 @@ TEST(CoreSampleBuffer, DefaultConstruction)
 
 TEST(CoreSampleBuffer, AllocateByLength)
 {
-	AudioParams params = MakeParams();
-	SampleBuffer b(params, rational(1, 24));
+	AudioParams params = make_params();
+	SampleBuffer b(params, Rational(1, 24));
 	EXPECT_TRUE(b.is_allocated());
 	EXPECT_EQ(b.channel_count(), 2);
 	EXPECT_EQ(b.sample_count(), 2000u);
@@ -29,7 +29,7 @@ TEST(CoreSampleBuffer, AllocateByLength)
 
 TEST(CoreSampleBuffer, AllocateBySampleCount)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 1024);
 	EXPECT_TRUE(b.is_allocated());
 	EXPECT_EQ(b.sample_count(), 1024u);
@@ -44,14 +44,14 @@ TEST(CoreSampleBuffer, AllocateInvalidParams)
 
 TEST(CoreSampleBuffer, AllocateZeroSampleCount)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 0);
 	EXPECT_FALSE(b.is_allocated());
 }
 
 TEST(CoreSampleBuffer, Destroy)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 100);
 	EXPECT_TRUE(b.is_allocated());
 	b.destroy();
@@ -60,7 +60,7 @@ TEST(CoreSampleBuffer, Destroy)
 
 TEST(CoreSampleBuffer, SetAudioParamsBeforeAllocate)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b;
 	b.set_audio_params(params);
 	b.set_sample_count(100);
@@ -70,7 +70,7 @@ TEST(CoreSampleBuffer, SetAudioParamsBeforeAllocate)
 
 TEST(CoreSampleBuffer, SetParamsOnAllocatedIsIgnored)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 100);
 	AudioParams other;
 	b.set_audio_params(other);
@@ -79,7 +79,7 @@ TEST(CoreSampleBuffer, SetParamsOnAllocatedIsIgnored)
 
 TEST(CoreSampleBuffer, SetSampleCountOnAllocatedIsIgnored)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 100);
 	b.set_sample_count(200);
 	EXPECT_EQ(b.sample_count(), 100u);
@@ -87,7 +87,7 @@ TEST(CoreSampleBuffer, SetSampleCountOnAllocatedIsIgnored)
 
 TEST(CoreSampleBuffer, DataAccess)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 4);
 	b.data(0)[0] = 0.1f;
 	b.data(0)[1] = 0.2f;
@@ -97,7 +97,7 @@ TEST(CoreSampleBuffer, DataAccess)
 
 TEST(CoreSampleBuffer, ToRawPtrs)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 4);
 	std::vector<float *> ptrs = b.to_raw_ptrs();
 	EXPECT_EQ(ptrs.size(), 2u);
@@ -107,7 +107,7 @@ TEST(CoreSampleBuffer, ToRawPtrs)
 
 TEST(CoreSampleBuffer, RipChannel)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 4);
 	b.data(0)[0] = 0.5f;
 	b.data(1)[0] = 0.7f;
@@ -119,7 +119,7 @@ TEST(CoreSampleBuffer, RipChannel)
 
 TEST(CoreSampleBuffer, RipChannelVector)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 4);
 	b.data(0)[0] = 0.3f;
 
@@ -130,7 +130,7 @@ TEST(CoreSampleBuffer, RipChannelVector)
 
 TEST(CoreSampleBuffer, TransformVolume)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 4);
 	b.data(0)[0] = 0.5f;
 	b.transform_volume(2.0f);
@@ -139,7 +139,7 @@ TEST(CoreSampleBuffer, TransformVolume)
 
 TEST(CoreSampleBuffer, TransformVolumeForChannel)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 4);
 	b.data(0)[0] = 0.5f;
 	b.data(1)[0] = 0.5f;
@@ -150,7 +150,7 @@ TEST(CoreSampleBuffer, TransformVolumeForChannel)
 
 TEST(CoreSampleBuffer, TransformVolumeStatic)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer in(params, 4);
 	SampleBuffer out(params, 4);
 	in.data(0)[0] = 0.5f;
@@ -160,7 +160,7 @@ TEST(CoreSampleBuffer, TransformVolumeStatic)
 
 TEST(CoreSampleBuffer, TransformVolumeForSample)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 4);
 	b.data(0)[0] = 0.5f;
 	b.data(1)[0] = 0.5f;
@@ -171,7 +171,7 @@ TEST(CoreSampleBuffer, TransformVolumeForSample)
 
 TEST(CoreSampleBuffer, Clamp)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 4);
 	b.data(0)[0] = 2.0f;
 	b.data(0)[1] = -2.0f;
@@ -182,7 +182,7 @@ TEST(CoreSampleBuffer, Clamp)
 
 TEST(CoreSampleBuffer, Silence)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 4);
 	b.data(0)[0] = 1.0f;
 	b.silence();
@@ -191,7 +191,7 @@ TEST(CoreSampleBuffer, Silence)
 
 TEST(CoreSampleBuffer, SilenceRange)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 4);
 	b.data(0)[0] = 1.0f;
 	b.data(0)[1] = 1.0f;
@@ -206,7 +206,7 @@ TEST(CoreSampleBuffer, SilenceRange)
 
 TEST(CoreSampleBuffer, Set)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 4);
 	float data[2] = { 0.3f, 0.4f };
 	b.set(0, data, 1, 2);
@@ -216,7 +216,7 @@ TEST(CoreSampleBuffer, Set)
 
 TEST(CoreSampleBuffer, FastSet)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer src(params, 4);
 	SampleBuffer dst(params, 4);
 	src.data(1)[0] = 0.9f;
@@ -226,7 +226,7 @@ TEST(CoreSampleBuffer, FastSet)
 
 TEST(CoreSampleBuffer, Reverse)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 4);
 	b.data(0)[0] = 0.1f;
 	b.data(0)[1] = 0.2f;
@@ -239,7 +239,7 @@ TEST(CoreSampleBuffer, Reverse)
 
 TEST(CoreSampleBuffer, Speed)
 {
-	AudioParams params = MakeParams();
+	AudioParams params = make_params();
 	SampleBuffer b(params, 4);
 	b.data(0)[0] = 0.1f;
 	b.data(0)[1] = 0.2f;

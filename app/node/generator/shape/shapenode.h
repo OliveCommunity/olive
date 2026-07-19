@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SHAPENODE_H
-#define SHAPENODE_H
+#ifndef OAK_SHAPENODE_H
+#define OAK_SHAPENODE_H
 
 #include "shapenodebase.h"
 
@@ -32,24 +32,24 @@ class ShapeNode : public ShapeNodeBase {
 public:
 	ShapeNode();
 
-	enum Type { kRectangle, kEllipse, kRoundedRectangle };
+	enum Type { k_rectangle, k_ellipse, k_rounded_rectangle };
 
 	NODE_DEFAULT_FUNCTIONS(ShapeNode)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	get_shader_code(const ShaderRequest &request) const override;
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	static QString kTypeInput;
-	static QString kRadiusInput;
+	static QString k_type_input;
+	static QString k_radius_input;
 
 protected:
 	virtual void InputValueChangedEvent(const QString &input,
@@ -58,4 +58,4 @@ protected:
 
 }
 
-#endif // SHAPENODE_H
+#endif // OAK_SHAPENODE_H

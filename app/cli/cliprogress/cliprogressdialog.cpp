@@ -32,10 +32,10 @@ CLIProgressDialog::CLIProgressDialog(const QString &title, QObject *parent)
 	, progress_(-1)
 	, drawn_(false)
 {
-	SetProgress(0);
+	set_progress(0);
 }
 
-void CLIProgressDialog::Update()
+void CLIProgressDialog::update()
 {
 	if (drawn_) {
 		// We've been here before, do a carriage return back to the start of the terminal line
@@ -102,12 +102,12 @@ void CLIProgressDialog::Update()
 	std::cout << percent << "% " << std::endl << std::flush;
 }
 
-void CLIProgressDialog::SetProgress(double p)
+void CLIProgressDialog::set_progress(double p)
 {
 	if (progress_ != p) {
 		progress_ = p;
 
-		Update();
+		update();
 	}
 }
 

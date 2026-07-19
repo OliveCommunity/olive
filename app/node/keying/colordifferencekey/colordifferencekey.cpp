@@ -19,49 +19,49 @@
 namespace olive
 {
 
-const QString ColorDifferenceKeyNode::kTextureInput = QStringLiteral("tex_in");
-const QString ColorDifferenceKeyNode::kGarbageMatteInput =
+const QString ColorDifferenceKeyNode::k_texture_input = QStringLiteral("tex_in");
+const QString ColorDifferenceKeyNode::k_garbage_matte_input =
 	QStringLiteral("garbage_in");
-const QString ColorDifferenceKeyNode::kCoreMatteInput =
+const QString ColorDifferenceKeyNode::k_core_matte_input =
 	QStringLiteral("core_in");
-const QString ColorDifferenceKeyNode::kColorInput = QStringLiteral("color_in");
-const QString ColorDifferenceKeyNode::kShadowsInput =
+const QString ColorDifferenceKeyNode::k_color_input = QStringLiteral("color_in");
+const QString ColorDifferenceKeyNode::k_shadows_input =
 	QStringLiteral("shadows_in");
-const QString ColorDifferenceKeyNode::kHighlightsInput =
+const QString ColorDifferenceKeyNode::k_highlights_input =
 	QStringLiteral("highlights_in");
-const QString ColorDifferenceKeyNode::kMaskOnlyInput =
+const QString ColorDifferenceKeyNode::k_mask_only_input =
 	QStringLiteral("mask_only_in");
 
 #define super Node
 
 ColorDifferenceKeyNode::ColorDifferenceKeyNode()
 {
-	AddInput(kTextureInput, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_texture_input, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	AddInput(kGarbageMatteInput, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_garbage_matte_input, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	AddInput(kCoreMatteInput, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_core_matte_input, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	AddInput(kColorInput, NodeValue::kCombo, 0);
+	add_input(k_color_input, NodeValue::k_combo, 0);
 
-	AddInput(kHighlightsInput, NodeValue::kFloat, 1.0f);
-	SetInputProperty(kHighlightsInput, QStringLiteral("min"), 0.0);
-	SetInputProperty(kHighlightsInput, QStringLiteral("base"), 0.01);
+	add_input(k_highlights_input, NodeValue::k_float, 1.0f);
+	set_input_property(k_highlights_input, QStringLiteral("min"), 0.0);
+	set_input_property(k_highlights_input, QStringLiteral("base"), 0.01);
 
-	AddInput(kShadowsInput, NodeValue::kFloat, 1.0f);
-	SetInputProperty(kShadowsInput, QStringLiteral("min"), 0.0);
-	SetInputProperty(kShadowsInput, QStringLiteral("base"), 0.01);
+	add_input(k_shadows_input, NodeValue::k_float, 1.0f);
+	set_input_property(k_shadows_input, QStringLiteral("min"), 0.0);
+	set_input_property(k_shadows_input, QStringLiteral("base"), 0.01);
 
-	AddInput(kMaskOnlyInput, NodeValue::kBoolean, false);
+	add_input(k_mask_only_input, NodeValue::k_boolean, false);
 
-	SetFlag(kVideoEffect);
-	SetEffectInput(kTextureInput);
+	set_flag(k_video_effect);
+	set_effect_input(k_texture_input);
 }
 
-QString ColorDifferenceKeyNode::Name() const
+QString ColorDifferenceKeyNode::name() const
 {
 	return tr("Color Difference Key");
 }
@@ -71,48 +71,48 @@ QString ColorDifferenceKeyNode::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.colordifferencekey");
 }
 
-QVector<Node::CategoryID> ColorDifferenceKeyNode::Category() const
+QVector<Node::CategoryID> ColorDifferenceKeyNode::category() const
 {
-	return { kCategoryKeying };
+	return { k_category_keying };
 }
 
-QString ColorDifferenceKeyNode::Description() const
+QString ColorDifferenceKeyNode::description() const
 {
 	return tr(
 		"A simple color key based on the distance of one color from other colors.");
 }
 
-void ColorDifferenceKeyNode::Retranslate()
+void ColorDifferenceKeyNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kTextureInput, tr("Input"));
-	SetInputName(kGarbageMatteInput, tr("Garbage Matte"));
-	SetInputName(kCoreMatteInput, tr("Core Matte"));
-	SetInputName(kColorInput, tr("Key Color"));
-	SetComboBoxStrings(kColorInput, { tr("Green"), tr("Blue") });
-	SetInputName(kShadowsInput, tr("Shadows"));
-	SetInputName(kHighlightsInput, tr("Highlights"));
-	SetInputName(kMaskOnlyInput, tr("Show Mask Only"));
+	set_input_name(k_texture_input, tr("Input"));
+	set_input_name(k_garbage_matte_input, tr("Garbage Matte"));
+	set_input_name(k_core_matte_input, tr("Core Matte"));
+	set_input_name(k_color_input, tr("Key Color"));
+	set_combo_box_strings(k_color_input, { tr("Green"), tr("Blue") });
+	set_input_name(k_shadows_input, tr("Shadows"));
+	set_input_name(k_highlights_input, tr("Highlights"));
+	set_input_name(k_mask_only_input, tr("Show Mask Only"));
 }
 
 ShaderCode
-ColorDifferenceKeyNode::GetShaderCode(const ShaderRequest &request) const
+ColorDifferenceKeyNode::get_shader_code(const ShaderRequest &request) const
 {
 	Q_UNUSED(request)
 	return ShaderCode(
-		FileFunctions::ReadFileAsString(":/shaders/colordifferencekey.frag"));
+		FileFunctions::read_file_as_string(":/shaders/colordifferencekey.frag"));
 }
 
-void ColorDifferenceKeyNode::Value(const NodeValueRow &value,
+void ColorDifferenceKeyNode::value(const NodeValueRow &value,
 								   const NodeGlobals &globals,
 								   NodeValueTable *table) const
 {
 	// If there's no texture, no need to run an operation
-	if (TexturePtr tex = value[kTextureInput].toTexture()) {
+	if (TexturePtr tex = value[k_texture_input].to_texture()) {
 		ShaderJob job;
-		job.Insert(value);
-		table->Push(NodeValue::kTexture, tex->toJob(job), this);
+		job.insert(value);
+		table->push(NodeValue::k_texture, tex->to_job(job), this);
 	}
 }
 

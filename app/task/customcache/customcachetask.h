@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CUSTOMCACHETASK_H
-#define CUSTOMCACHETASK_H
+#ifndef OAK_CUSTOMCACHETASK_H
+#define OAK_CUSTOMCACHETASK_H
 
 #include <QMutex>
 #include <QWaitCondition>
@@ -35,13 +35,13 @@ class CustomCacheTask : public Task {
 public:
 	CustomCacheTask(const QString &sequence_name);
 
-	void Finish();
+	void finish();
 
 signals:
-	void Cancelled();
+	void cancelled();
 
 protected:
-	virtual bool Run() override;
+	virtual bool run() override;
 
 	virtual void CancelEvent() override;
 
@@ -55,4 +55,4 @@ private:
 
 }
 
-#endif // CUSTOMCACHETASK_H
+#endif // OAK_CUSTOMCACHETASK_H

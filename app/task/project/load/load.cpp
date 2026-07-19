@@ -33,51 +33,51 @@ ProjectLoadTask::ProjectLoadTask(const QString &filename)
 {
 }
 
-bool ProjectLoadTask::Run()
+bool ProjectLoadTask::run()
 {
 	project_ = new Project();
 
-	project_->set_filename(GetFilename());
+	project_->set_filename(get_filename());
 
-	ProjectSerializer::Result result = ProjectSerializer::Load(
-		project_, GetFilename(), ProjectSerializer::kProject);
+	ProjectSerializer::Result result = ProjectSerializer::load(
+		project_, get_filename(), ProjectSerializer::k_project);
 
-	layout_ = result.GetLoadData().layout;
+	layout_ = result.get_load_data().layout;
 
 	switch (result.code()) {
-	case ProjectSerializer::kSuccess:
+	case ProjectSerializer::k_success:
 		break;
-	case ProjectSerializer::kProjectTooOld:
-		SetError(tr(
+	case ProjectSerializer::k_project_too_old:
+		set_error(tr(
 			"This project is from a version of Oak Video Editor that is no longer supported in this version."));
 		break;
-	case ProjectSerializer::kProjectTooNew:
-		SetError(tr(
+	case ProjectSerializer::k_project_too_new:
+		set_error(tr(
 			"This project is from a newer version of Oak Video Editor and cannot be opened in this version."));
 		break;
-	case ProjectSerializer::kUnknownVersion:
-		SetError(tr("Failed to determine project version."));
+	case ProjectSerializer::k_unknown_version:
+		set_error(tr("Failed to determine project version."));
 		break;
-	case ProjectSerializer::kFileError:
-		SetError(
-			tr("Failed to read file \"%1\" for reading.").arg(GetFilename()));
+	case ProjectSerializer::k_file_error:
+		set_error(
+			tr("Failed to read file \"%1\" for reading.").arg(get_filename()));
 		break;
-	case ProjectSerializer::kXmlError:
-		SetError(
+	case ProjectSerializer::k_xml_error:
+		set_error(
 			tr("Failed to read XML document. File may be corrupt. Error was: %1")
-				.arg(result.GetDetails()));
+				.arg(result.get_details()));
 		break;
-	case ProjectSerializer::kNoData:
-		SetError(tr("Failed to find any data to parse."));
+	case ProjectSerializer::k_no_data:
+		set_error(tr("Failed to find any data to parse."));
 		break;
 
 		// Errors that should never be thrown by a load
-	case ProjectSerializer::kOverwriteError:
-		SetError(tr("Unknown error."));
+	case ProjectSerializer::k_overwrite_error:
+		set_error(tr("Unknown error."));
 		break;
 	}
 
-	if (result == ProjectSerializer::kSuccess) {
+	if (result == ProjectSerializer::k_success) {
 		project_->moveToThread(qApp->thread());
 		return true;
 	} else {

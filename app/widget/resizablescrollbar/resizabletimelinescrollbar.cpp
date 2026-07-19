@@ -48,16 +48,16 @@ ResizableTimelineScrollBar::ResizableTimelineScrollBar(
 {
 }
 
-void ResizableTimelineScrollBar::ConnectMarkers(TimelineMarkerList *markers)
+void ResizableTimelineScrollBar::connect_markers(TimelineMarkerList *markers)
 {
 	if (markers_) {
-		disconnect(markers_, &TimelineMarkerList::MarkerAdded, this,
+		disconnect(markers_, &TimelineMarkerList::marker_added, this,
 				   static_cast<void (ResizableTimelineScrollBar::*)()>(
 					   &ResizableTimelineScrollBar::update));
-		disconnect(markers_, &TimelineMarkerList::MarkerRemoved, this,
+		disconnect(markers_, &TimelineMarkerList::marker_removed, this,
 				   static_cast<void (ResizableTimelineScrollBar::*)()>(
 					   &ResizableTimelineScrollBar::update));
-		disconnect(markers_, &TimelineMarkerList::MarkerModified, this,
+		disconnect(markers_, &TimelineMarkerList::marker_modified, this,
 				   static_cast<void (ResizableTimelineScrollBar::*)()>(
 					   &ResizableTimelineScrollBar::update));
 	}
@@ -65,13 +65,13 @@ void ResizableTimelineScrollBar::ConnectMarkers(TimelineMarkerList *markers)
 	markers_ = markers;
 
 	if (markers_) {
-		connect(markers_, &TimelineMarkerList::MarkerAdded, this,
+		connect(markers_, &TimelineMarkerList::marker_added, this,
 				static_cast<void (ResizableTimelineScrollBar::*)()>(
 					&ResizableTimelineScrollBar::update));
-		connect(markers_, &TimelineMarkerList::MarkerRemoved, this,
+		connect(markers_, &TimelineMarkerList::marker_removed, this,
 				static_cast<void (ResizableTimelineScrollBar::*)()>(
 					&ResizableTimelineScrollBar::update));
-		connect(markers_, &TimelineMarkerList::MarkerModified, this,
+		connect(markers_, &TimelineMarkerList::marker_modified, this,
 				static_cast<void (ResizableTimelineScrollBar::*)()>(
 					&ResizableTimelineScrollBar::update));
 	}
@@ -79,13 +79,13 @@ void ResizableTimelineScrollBar::ConnectMarkers(TimelineMarkerList *markers)
 	update();
 }
 
-void ResizableTimelineScrollBar::ConnectWorkArea(TimelineWorkArea *workarea)
+void ResizableTimelineScrollBar::connect_work_area(TimelineWorkArea *workarea)
 {
 	if (workarea_) {
-		disconnect(workarea_, &TimelineWorkArea::RangeChanged, this,
+		disconnect(workarea_, &TimelineWorkArea::range_changed, this,
 				   static_cast<void (ResizableTimelineScrollBar::*)()>(
 					   &ResizableTimelineScrollBar::update));
-		disconnect(workarea_, &TimelineWorkArea::EnabledChanged, this,
+		disconnect(workarea_, &TimelineWorkArea::enabled_changed, this,
 				   static_cast<void (ResizableTimelineScrollBar::*)()>(
 					   &ResizableTimelineScrollBar::update));
 	}
@@ -93,10 +93,10 @@ void ResizableTimelineScrollBar::ConnectWorkArea(TimelineWorkArea *workarea)
 	workarea_ = workarea;
 
 	if (workarea_) {
-		connect(workarea_, &TimelineWorkArea::RangeChanged, this,
+		connect(workarea_, &TimelineWorkArea::range_changed, this,
 				static_cast<void (ResizableTimelineScrollBar::*)()>(
 					&ResizableTimelineScrollBar::update));
-		connect(workarea_, &TimelineWorkArea::EnabledChanged, this,
+		connect(workarea_, &TimelineWorkArea::enabled_changed, this,
 				static_cast<void (ResizableTimelineScrollBar::*)()>(
 					&ResizableTimelineScrollBar::update));
 	}
@@ -133,14 +133,14 @@ void ResizableTimelineScrollBar::paintEvent(QPaintEvent *event)
 			workarea_color.setAlpha(128);
 
 			qint64 in =
-				qMax(qint64(0), qRound64(ratio * TimeToScene(workarea_->in())));
+				qMax(qint64(0), qRound64(ratio * time_to_scene(workarea_->in())));
 
 			qint64 out;
 			if (workarea_->out() == RATIONAL_MAX) {
 				out = gr.width();
 			} else {
 				out = qMin(qint64(gr.width()),
-						   qRound64(ratio * TimeToScene(workarea_->out())));
+						   qRound64(ratio * time_to_scene(workarea_->out())));
 			}
 
 			qint64 length = qMax(qint64(1), out - in);
@@ -154,10 +154,10 @@ void ResizableTimelineScrollBar::paintEvent(QPaintEvent *event)
 				TimelineMarker *marker = *it;
 
 				QColor marker_color =
-					QtUtils::toQColor(ColorCoding::GetColor(marker->color()));
-				int64_t in = qRound64(ratio * TimeToScene(marker->time().in()));
+					QtUtils::to_q_color(ColorCoding::get_color(marker->color()));
+				int64_t in = qRound64(ratio * time_to_scene(marker->time().in()));
 				int64_t out =
-					qRound64(ratio * TimeToScene(marker->time().out()));
+					qRound64(ratio * time_to_scene(marker->time().out()));
 				int64_t length = qMax(int64_t(1), out - in);
 
 				p.fillRect(gr.x() + in, 0, length, height(), marker_color);

@@ -24,20 +24,20 @@
 namespace olive
 {
 
-const QString TrigonometryNode::kMethodIn = QStringLiteral("method_in");
-const QString TrigonometryNode::kXIn = QStringLiteral("x_in");
+const QString TrigonometryNode::k_method_in = QStringLiteral("method_in");
+const QString TrigonometryNode::k_x_in = QStringLiteral("x_in");
 
 #define super Node
 
 TrigonometryNode::TrigonometryNode()
 {
-	AddInput(kMethodIn, NodeValue::kCombo,
-			 InputFlags(kInputFlagNotConnectable | kInputFlagNotKeyframable));
+	add_input(k_method_in, NodeValue::k_combo,
+			 InputFlags(k_input_flag_not_connectable | k_input_flag_not_keyframable));
 
-	AddInput(kXIn, NodeValue::kFloat, 0.0);
+	add_input(k_x_in, NodeValue::k_float, 0.0);
 }
 
-QString TrigonometryNode::Name() const
+QString TrigonometryNode::name() const
 {
 	return tr("Trigonometry");
 }
@@ -47,19 +47,19 @@ QString TrigonometryNode::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.trigonometry");
 }
 
-QVector<Node::CategoryID> TrigonometryNode::Category() const
+QVector<Node::CategoryID> TrigonometryNode::category() const
 {
-	return { kCategoryMath };
+	return { k_category_math };
 }
 
-QString TrigonometryNode::Description() const
+QString TrigonometryNode::description() const
 {
 	return tr("Perform a trigonometry operation on a value.");
 }
 
-void TrigonometryNode::Retranslate()
+void TrigonometryNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
 	QStringList strings = { tr("Sine"),
 							tr("Cosine"),
@@ -71,50 +71,50 @@ void TrigonometryNode::Retranslate()
 							tr("Hyperbolic Cosine"),
 							tr("Hyperbolic Tangent") };
 
-	SetComboBoxStrings(kMethodIn, strings);
+	set_combo_box_strings(k_method_in, strings);
 
-	SetInputName(kMethodIn, tr("Method"));
+	set_input_name(k_method_in, tr("Method"));
 
-	SetInputName(kXIn, tr("Value"));
+	set_input_name(k_x_in, tr("Value"));
 }
 
-void TrigonometryNode::Value(const NodeValueRow &value,
+void TrigonometryNode::value(const NodeValueRow &value,
 							 const NodeGlobals &globals,
 							 NodeValueTable *table) const
 {
-	double x = value[kXIn].toDouble();
+	double x = value[k_x_in].to_double();
 
-	switch (static_cast<Operation>(GetStandardValue(kMethodIn).toInt())) {
-	case kOpSine:
+	switch (static_cast<Operation>(get_standard_value(k_method_in).toInt())) {
+	case k_op_sine:
 		x = std::sin(x);
 		break;
-	case kOpCosine:
+	case k_op_cosine:
 		x = std::cos(x);
 		break;
-	case kOpTangent:
+	case k_op_tangent:
 		x = std::tan(x);
 		break;
-	case kOpArcSine:
+	case k_op_arc_sine:
 		x = std::asin(x);
 		break;
-	case kOpArcCosine:
+	case k_op_arc_cosine:
 		x = std::acos(x);
 		break;
-	case kOpArcTangent:
+	case k_op_arc_tangent:
 		x = std::atan(x);
 		break;
-	case kOpHypSine:
+	case k_op_hyp_sine:
 		x = std::sinh(x);
 		break;
-	case kOpHypCosine:
+	case k_op_hyp_cosine:
 		x = std::cosh(x);
 		break;
-	case kOpHypTangent:
+	case k_op_hyp_tangent:
 		x = std::tanh(x);
 		break;
 	}
 
-	table->Push(NodeValue::kFloat, x, this);
+	table->push(NodeValue::k_float, x, this);
 }
 
 }

@@ -11,9 +11,9 @@ namespace
 
 class PluginJobTraverser : public olive::NodeTraverser {
 public:
-	void Resolve(olive::NodeValue &value)
+	void resolve(olive::NodeValue &value)
 	{
-		ResolveJobs(value);
+		resolve_jobs(value);
 	}
 
 	bool called() const
@@ -22,7 +22,7 @@ public:
 	}
 
 protected:
-	olive::TexturePtr ProcessPluginJob(olive::TexturePtr /*texture*/,
+	olive::TexturePtr process_plugin_job(olive::TexturePtr /*texture*/,
 									   olive::TexturePtr destination,
 									   const olive::Node * /*node*/) override
 	{
@@ -38,18 +38,18 @@ private:
 
 TEST(PluginRenderPipeline, PluginJobIsResolved)
 {
-	olive::VideoParams params(320, 240, olive::core::PixelFormat::U8, 4);
+	olive::VideoParams params(320, 240, olive::core::PixelFormat::u8, 4);
 
 	olive::plugin::PluginJob job(nullptr, nullptr, olive::NodeValueRow());
-	olive::TexturePtr job_tex = olive::Texture::Job(params, job);
+	olive::TexturePtr job_tex = olive::Texture::job(params, job);
 
-	olive::NodeValue val(olive::NodeValue::kTexture, job_tex);
+	olive::NodeValue val(olive::NodeValue::k_texture, job_tex);
 
 	PluginJobTraverser traverser;
-	traverser.SetCacheVideoParams(params);
-	traverser.Resolve(val);
+	traverser.set_cache_video_params(params);
+	traverser.resolve(val);
 
 	EXPECT_TRUE(traverser.called());
-	ASSERT_TRUE(val.toTexture());
-	EXPECT_NE(val.toTexture().get(), job_tex.get());
+	ASSERT_TRUE(val.to_texture());
+	EXPECT_NE(val.to_texture().get(), job_tex.get());
 }

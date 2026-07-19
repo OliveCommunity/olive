@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SCOPEBASE_H
-#define SCOPEBASE_H
+#ifndef OAK_SCOPEBASE_H
+#define OAK_SCOPEBASE_H
 
 #include "codec/frame.h"
 #include "render/colorprocessor.h"
@@ -36,26 +36,26 @@ public:
 	MANAGEDDISPLAYWIDGET_DEFAULT_DESTRUCTOR(ScopeBase)
 
 public slots:
-	void SetBuffer(TexturePtr frame);
+	void set_buffer(TexturePtr frame);
 
 protected slots:
-	virtual void OnInit() override;
+	virtual void on_init() override;
 
-	virtual void OnPaint() override;
+	virtual void on_paint() override;
 
-	virtual void OnDestroy() override;
+	virtual void on_destroy() override;
 
 protected:
 	virtual void showEvent(QShowEvent *e) override;
 
-	virtual ShaderCode GenerateShaderCode() = 0;
+	virtual ShaderCode generate_shader_code() = 0;
 
 	/**
    * @brief GPU-accelerated draw function used on OpenGL backends.
    *
    * Override this if your sub-class scope needs extra drawing.
    */
-	virtual void DrawScope(TexturePtr managed_tex, QVariant pipeline);
+	virtual void draw_scope(TexturePtr managed_tex, QVariant pipeline);
 
 	/**
    * @brief Software draw function used on backend-neutral paths (e.g. Vulkan).
@@ -63,10 +63,10 @@ protected:
    * Implementations receive an 8-bit sRGB/display-ready image and should draw
    * the scope visualization with QPainter.
    */
-	virtual void DrawScopeSoftware(QPainter &p, const QImage &image) = 0;
+	virtual void draw_scope_software(QPainter &p, const QImage &image) = 0;
 
 private:
-	void UpdateSoftwareImage();
+	void update_software_image();
 
 	QVariant pipeline_;
 
@@ -86,4 +86,4 @@ private:
 
 }
 
-#endif // SCOPEBASE_H
+#endif // OAK_SCOPEBASE_H

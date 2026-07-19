@@ -33,60 +33,60 @@ TrackSelectTool::TrackSelectTool(TimelineWidget *parent)
 {
 }
 
-void TrackSelectTool::MousePress(TimelineViewMouseEvent *event)
+void TrackSelectTool::mouse_press(TimelineViewMouseEvent *event)
 {
 	QVector<Block *> blocks;
-	bool forward = !(event->GetModifiers() & Qt::ControlModifier);
+	bool forward = !(event->get_modifiers() & Qt::ControlModifier);
 
-	parent()->DeselectAll();
+	parent()->deselect_all();
 
-	if (event->GetModifiers() & Qt::ShiftModifier) {
+	if (event->get_modifiers() & Qt::ShiftModifier) {
 		// Track only
-		Track *track = parent()->GetTrackFromReference(event->GetTrack());
+		Track *track = parent()->get_track_from_reference(event->get_track());
 		if (track) {
-			SelectBlocksOnTrack(track, event, &blocks, forward);
+			select_blocks_on_track(track, event, &blocks, forward);
 		}
 	} else {
 		// All tracks
-		foreach (Track *track, parent()->sequence()->GetTracks()) {
-			SelectBlocksOnTrack(track, event, &blocks, forward);
+		foreach (Track *track, parent()->sequence()->get_tracks()) {
+			select_blocks_on_track(track, event, &blocks, forward);
 		}
 	}
 
 	if (!blocks.isEmpty()) {
-		parent()->SignalSelectedBlocks(blocks);
-		set_drag_movement_mode(Timeline::kMove);
-		SetClickedItem(blocks.first());
-		drag_start_ = event->GetCoordinates();
+		parent()->signal_selected_blocks(blocks);
+		set_drag_movement_mode(Timeline::k_move);
+		set_clicked_item(blocks.first());
+		drag_start_ = event->get_coordinates();
 	} else {
-		set_drag_movement_mode(Timeline::kNone);
+		set_drag_movement_mode(Timeline::k_none);
 	}
 }
 
-void TrackSelectTool::SelectBlocksOnTrack(Track *track,
+void TrackSelectTool::select_blocks_on_track(Track *track,
 										  TimelineViewMouseEvent *event,
 										  QVector<Block *> *blocks,
 										  bool forward)
 {
-	Block *b = track->NearestBlockBeforeOrAt(event->GetFrame());
+	Block *b = track->nearest_block_before_or_at(event->get_frame());
 
-	if (!b && !track->Blocks().isEmpty() && !forward) {
+	if (!b && !track->blocks().isEmpty() && !forward) {
 		// Fallback to first or last block in track
-		b = track->Blocks().last();
+		b = track->blocks().last();
 	}
 
 	while (b) {
 		if (!dynamic_cast<GapBlock *>(b)) {
 			if (!blocks->contains(b)) {
-				parent()->AddSelection(b);
+				parent()->add_selection(b);
 				blocks->append(b);
 			}
 
-			if (!(event->GetModifiers() & Qt::AltModifier)) {
+			if (!(event->get_modifiers() & Qt::AltModifier)) {
 				if (ClipBlock *clip = dynamic_cast<ClipBlock *>(b)) {
 					foreach (Block *link, clip->block_links()) {
 						if (!blocks->contains(link)) {
-							parent()->AddSelection(link);
+							parent()->add_selection(link);
 							blocks->append(link);
 						}
 					}

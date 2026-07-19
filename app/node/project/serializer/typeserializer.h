@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TYPESERIALIZER_H
-#define TYPESERIALIZER_H
+#ifndef OAK_TYPESERIALIZER_H
+#define OAK_TYPESERIALIZER_H
 
 #include <olive/core/core.h>
 #include <QXmlStreamReader>
@@ -37,10 +37,10 @@ class TypeSerializer {
 public:
 	TypeSerializer() = default;
 
-	static AudioParams LoadAudioParams(QXmlStreamReader *reader);
-	static void SaveAudioParams(QXmlStreamWriter *writer, const AudioParams &a);
+	static AudioParams load_audio_params(QXmlStreamReader *reader);
+	static void save_audio_params(QXmlStreamWriter *writer, const AudioParams &a);
 };
 
 }
 
-#endif // TYPESERIALIZER_H
+#endif // OAK_TYPESERIALIZER_H

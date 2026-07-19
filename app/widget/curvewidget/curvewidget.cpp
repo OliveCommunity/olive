@@ -47,10 +47,10 @@ CurveWidget::CurveWidget(QWidget *parent)
 	outer_layout->addWidget(splitter);
 
 	tree_view_ = new NodeTreeView();
-	tree_view_->SetOnlyShowKeyframable(true);
-	tree_view_->SetShowKeyframeTracksAsRows(true);
-	connect(tree_view_, &NodeTreeView::InputSelectionChanged, this,
-			&CurveWidget::InputSelectionChanged);
+	tree_view_->set_only_show_keyframable(true);
+	tree_view_->set_show_keyframe_tracks_as_rows(true);
+	connect(tree_view_, &NodeTreeView::input_selection_changed, this,
+			&CurveWidget::input_selection_changed);
 	splitter->addWidget(tree_view_);
 
 	QWidget *workarea = new QWidget();
@@ -70,21 +70,21 @@ CurveWidget::CurveWidget(QWidget *parent)
 	linear_button_->setEnabled(false);
 	top_controls->addWidget(linear_button_);
 	connect(linear_button_, &QPushButton::clicked, this,
-			&CurveWidget::KeyframeTypeButtonTriggered);
+			&CurveWidget::keyframe_type_button_triggered);
 
 	bezier_button_ = new QPushButton(tr("Bezier"));
 	bezier_button_->setCheckable(true);
 	bezier_button_->setEnabled(false);
 	top_controls->addWidget(bezier_button_);
 	connect(bezier_button_, &QPushButton::clicked, this,
-			&CurveWidget::KeyframeTypeButtonTriggered);
+			&CurveWidget::keyframe_type_button_triggered);
 
 	hold_button_ = new QPushButton(tr("Hold"));
 	hold_button_->setCheckable(true);
 	hold_button_->setEnabled(false);
 	top_controls->addWidget(hold_button_);
 	connect(hold_button_, &QPushButton::clicked, this,
-			&CurveWidget::KeyframeTypeButtonTriggered);
+			&CurveWidget::keyframe_type_button_triggered);
 
 	layout->addLayout(top_controls);
 
@@ -96,19 +96,19 @@ CurveWidget::CurveWidget(QWidget *parent)
 	ruler_view_layout->addWidget(ruler());
 
 	view_ = new CurveView();
-	ConnectTimelineView(view_);
-	view_->SetSnapService(this);
+	connect_timeline_view(view_);
+	view_->set_snap_service(this);
 	ruler_view_layout->addWidget(view_);
 
 	layout->addLayout(ruler_view_layout);
 
 	// Connect ruler and view together
-	connect(view_, &CurveView::SelectionChanged, this,
-			&CurveWidget::SelectionChanged);
-	connect(view_, &CurveView::Dragged, this,
-			&CurveWidget::KeyframeViewDragged);
-	connect(view_, &CurveView::Released, this,
-			&CurveWidget::KeyframeViewReleased);
+	connect(view_, &CurveView::selection_changed, this,
+			&CurveWidget::selection_changed);
+	connect(view_, &CurveView::dragged, this,
+			&CurveWidget::keyframe_view_dragged);
+	connect(view_, &CurveView::released, this,
+			&CurveWidget::keyframe_view_released);
 
 	// TimeBasedWidget's scrollbar has extra functionality that we can take advantage of
 	view_->setHorizontalScrollBar(scrollbar());
@@ -119,25 +119,25 @@ CurveWidget::CurveWidget(QWidget *parent)
 	SetScale(120.0);
 }
 
-const double &CurveWidget::GetVerticalScale()
+const double &CurveWidget::get_vertical_scale()
 {
-	return view_->GetYScale();
+	return view_->get_y_scale();
 }
 
-void CurveWidget::SetVerticalScale(const double &vscale)
+void CurveWidget::set_vertical_scale(const double &vscale)
 {
-	view_->SetYScale(vscale);
+	view_->set_y_scale(vscale);
 }
 
 void CurveWidget::DeleteSelected()
 {
-	view_->DeleteSelected();
+	view_->delete_selected();
 }
 
-Node *CurveWidget::GetSelectedNodeWithID(const QString &id)
+Node *CurveWidget::get_selected_node_with_id(const QString &id)
 {
-	for (auto it = view_->GetConnections().cbegin();
-		 it != view_->GetConnections().cend(); it++) {
+	for (auto it = view_->get_connections().cbegin();
+		 it != view_->get_connections().cend(); it++) {
 		Node *n = it.key().input().node();
 		if (n->id() == id) {
 			return n;
@@ -147,28 +147,28 @@ Node *CurveWidget::GetSelectedNodeWithID(const QString &id)
 	return nullptr;
 }
 
-bool CurveWidget::CopySelected(bool cut)
+bool CurveWidget::copy_selected(bool cut)
 {
-	if (super::CopySelected(cut)) {
+	if (super::copy_selected(cut)) {
 		return true;
 	}
 
-	return view_->CopySelected(cut);
+	return view_->copy_selected(cut);
 }
 
-bool CurveWidget::Paste()
+bool CurveWidget::paste()
 {
-	if (super::Paste()) {
+	if (super::paste()) {
 		return true;
 	}
 
-	return view_->Paste(std::bind(&CurveWidget::GetSelectedNodeWithID, this,
+	return view_->paste(std::bind(&CurveWidget::get_selected_node_with_id, this,
 								  std::placeholders::_1));
 }
 
-void CurveWidget::SetNodes(const QVector<Node *> &nodes)
+void CurveWidget::set_nodes(const QVector<Node *> &nodes)
 {
-	tree_view_->SetNodes(nodes);
+	tree_view_->set_nodes(nodes);
 
 	// Save new node list
 	nodes_ = nodes;
@@ -176,13 +176,13 @@ void CurveWidget::SetNodes(const QVector<Node *> &nodes)
 	// Generate colors
 	foreach (Node *node, nodes_) {
 		foreach (const QString &input, node->inputs()) {
-			if (node->IsInputKeyframable(input) &&
-				!node->IsInputHidden(input)) {
-				int arr_sz = node->InputArraySize(input);
+			if (node->is_input_keyframable(input) &&
+				!node->is_input_hidden(input)) {
+				int arr_sz = node->input_array_size(input);
 				for (int i = -1; i < arr_sz; i++) {
 					// Generate a random color for this input
 					const QVector<NodeKeyframeTrack> &tracks =
-						node->GetKeyframeTracks(input, i);
+						node->get_keyframe_tracks(input, i);
 
 					for (int j = 0; j < tracks.size(); j++) {
 						NodeKeyframeTrackReference ref(
@@ -193,8 +193,8 @@ void CurveWidget::SetNodes(const QVector<Node *> &nodes)
 								QColor::fromHsl(std::rand() % 360, 255, 160);
 
 							keyframe_colors_.insert(ref, c);
-							tree_view_->SetKeyframeTrackColor(ref, c);
-							view_->SetKeyframeTrackColor(ref, c);
+							tree_view_->set_keyframe_track_color(ref, c);
+							view_->set_keyframe_track_color(ref, c);
 						}
 					}
 				}
@@ -203,92 +203,92 @@ void CurveWidget::SetNodes(const QVector<Node *> &nodes)
 	}
 }
 
-void CurveWidget::TimebaseChangedEvent(const rational &timebase)
+void CurveWidget::TimebaseChangedEvent(const Rational &timebase)
 {
 	super::TimebaseChangedEvent(timebase);
 
-	view_->SetTimebase(timebase);
+	view_->set_timebase(timebase);
 }
 
 void CurveWidget::ScaleChangedEvent(const double &scale)
 {
 	super::ScaleChangedEvent(scale);
 
-	view_->SetScale(scale);
+	view_->set_scale(scale);
 }
 
 void CurveWidget::TimeTargetChangedEvent(ViewerOutput *target)
 {
 	TimeTargetObject::TimeTargetChangedEvent(target);
 
-	key_control_->SetTimeTarget(target);
+	key_control_->set_time_target(target);
 
-	view_->SetTimeTarget(target);
+	view_->set_time_target(target);
 }
 
 void CurveWidget::ConnectedNodeChangeEvent(ViewerOutput *n)
 {
 	super::ConnectedNodeChangeEvent(n);
 
-	key_control_->SetTimeTarget(n);
+	key_control_->set_time_target(n);
 
-	SetTimeTarget(n);
+	set_time_target(n);
 }
 
-void CurveWidget::SetKeyframeButtonEnabled(bool enable)
+void CurveWidget::set_keyframe_button_enabled(bool enable)
 {
 	linear_button_->setEnabled(enable);
 	bezier_button_->setEnabled(enable);
 	hold_button_->setEnabled(enable);
 }
 
-void CurveWidget::SetKeyframeButtonChecked(bool checked)
+void CurveWidget::set_keyframe_button_checked(bool checked)
 {
 	linear_button_->setChecked(checked);
 	bezier_button_->setChecked(checked);
 	hold_button_->setChecked(checked);
 }
 
-void CurveWidget::SetKeyframeButtonCheckedFromType(NodeKeyframe::Type type)
+void CurveWidget::set_keyframe_button_checked_from_type(NodeKeyframe::Type type)
 {
-	linear_button_->setChecked(type == NodeKeyframe::kLinear);
-	bezier_button_->setChecked(type == NodeKeyframe::kBezier);
-	hold_button_->setChecked(type == NodeKeyframe::kHold);
+	linear_button_->setChecked(type == NodeKeyframe::k_linear);
+	bezier_button_->setChecked(type == NodeKeyframe::k_bezier);
+	hold_button_->setChecked(type == NodeKeyframe::k_hold);
 }
 
-void CurveWidget::ConnectInput(Node *node, const QString &input, int element)
+void CurveWidget::connect_input(Node *node, const QString &input, int element)
 {
-	if (element == -1 && node->InputIsArray(input)) {
+	if (element == -1 && node->input_is_array(input)) {
 		// This is the root element, connect all elements (if applicable)
-		int arr_sz = node->InputArraySize(input);
+		int arr_sz = node->input_array_size(input);
 		for (int i = -1; i < arr_sz; i++) {
-			ConnectInputInternal(node, input, i);
+			connect_input_internal(node, input, i);
 		}
 	} else {
 		// This is a single element, just connect it as-is
-		ConnectInputInternal(node, input, element);
+		connect_input_internal(node, input, element);
 	}
 }
 
-void CurveWidget::ConnectInputInternal(Node *node, const QString &input,
+void CurveWidget::connect_input_internal(Node *node, const QString &input,
 									   int element)
 {
 	NodeInput input_ref(node, input, element);
 	int track_count =
-		NodeValue::get_number_of_keyframe_tracks(input_ref.GetDataType());
+		NodeValue::get_number_of_keyframe_tracks(input_ref.get_data_type());
 	for (int i = 0; i < track_count; i++) {
 		NodeKeyframeTrackReference track_ref(input_ref, i);
-		view_->ConnectInput(track_ref);
+		view_->connect_input(track_ref);
 		selected_tracks_.append(track_ref);
 	}
 }
 
-void CurveWidget::SelectionChanged()
+void CurveWidget::selection_changed()
 {
-	const std::vector<NodeKeyframe *> &selected = view_->GetSelectedKeyframes();
+	const std::vector<NodeKeyframe *> &selected = view_->get_selected_keyframes();
 
-	SetKeyframeButtonChecked(false);
-	SetKeyframeButtonEnabled(!selected.empty());
+	set_keyframe_button_checked(false);
+	set_keyframe_button_enabled(!selected.empty());
 
 	if (!selected.empty()) {
 		bool all_same_type = true;
@@ -305,12 +305,12 @@ void CurveWidget::SelectionChanged()
 		}
 
 		if (all_same_type) {
-			SetKeyframeButtonCheckedFromType(type);
+			set_keyframe_button_checked_from_type(type);
 		}
 	}
 }
 
-void CurveWidget::KeyframeTypeButtonTriggered(bool checked)
+void CurveWidget::keyframe_type_button_triggered(bool checked)
 {
 	QPushButton *key_btn = static_cast<QPushButton *>(sender());
 
@@ -321,7 +321,7 @@ void CurveWidget::KeyframeTypeButtonTriggered(bool checked)
 	}
 
 	// Get selected items and do nothing if there are none
-	const std::vector<NodeKeyframe *> &selected = view_->GetSelectedKeyframes();
+	const std::vector<NodeKeyframe *> &selected = view_->get_selected_keyframes();
 	if (selected.empty()) {
 		return;
 	}
@@ -331,15 +331,15 @@ void CurveWidget::KeyframeTypeButtonTriggered(bool checked)
 
 	// Determine which type to set
 	if (key_btn == bezier_button_) {
-		new_type = NodeKeyframe::kBezier;
+		new_type = NodeKeyframe::k_bezier;
 	} else if (key_btn == hold_button_) {
-		new_type = NodeKeyframe::kHold;
+		new_type = NodeKeyframe::k_hold;
 	} else {
-		new_type = NodeKeyframe::kLinear;
+		new_type = NodeKeyframe::k_linear;
 	}
 
 	// Ensure only the appropriate button is checked
-	SetKeyframeButtonCheckedFromType(new_type);
+	set_keyframe_button_checked_from_type(new_type);
 
 	MultiUndoCommand *command = new MultiUndoCommand();
 
@@ -351,47 +351,47 @@ void CurveWidget::KeyframeTypeButtonTriggered(bool checked)
 		command, tr("Changed Type of %1 Keyframe(s) to %2"));
 }
 
-void CurveWidget::InputSelectionChanged(const NodeKeyframeTrackReference &ref)
+void CurveWidget::input_selection_changed(const NodeKeyframeTrackReference &ref)
 {
-	key_control_->SetInput(ref.input());
+	key_control_->set_input(ref.input());
 
 	foreach (const NodeKeyframeTrackReference &c, selected_tracks_) {
-		view_->DisconnectInput(c);
+		view_->disconnect_input(c);
 	}
 
 	selected_tracks_.clear();
 
-	if (ref.IsValid() && !ref.input().IsArray()) {
+	if (ref.is_valid() && !ref.input().is_array()) {
 		// This reference is a track, connect it only
-		view_->ConnectInput(ref);
+		view_->connect_input(ref);
 		selected_tracks_.append(ref);
-	} else if (ref.input().IsValid()) {
+	} else if (ref.input().is_valid()) {
 		// This reference is a input, connect all tracks
-		ConnectInput(ref.input().node(), ref.input().input(),
+		connect_input(ref.input().node(), ref.input().input(),
 					 ref.input().element());
 	} else if (Node *node = ref.input().node()) {
 		// This is a node, add all inputs
 		foreach (const QString &input, node->inputs()) {
-			if (node->IsInputKeyframable(input) &&
-				!node->IsInputHidden(input)) {
-				ConnectInput(node, input, -1);
+			if (node->is_input_keyframable(input) &&
+				!node->is_input_hidden(input)) {
+				connect_input(node, input, -1);
 			}
 		}
 	}
 
-	view_->ZoomToFit();
+	view_->zoom_to_fit();
 }
 
-void CurveWidget::KeyframeViewDragged(int x, int y)
+void CurveWidget::keyframe_view_dragged(int x, int y)
 {
-	SetCatchUpScrollValue(x);
-	SetCatchUpScrollValue(view_->verticalScrollBar(), y, view_->height());
+	set_catch_up_scroll_value(x);
+	set_catch_up_scroll_value(view_->verticalScrollBar(), y, view_->height());
 }
 
-void CurveWidget::KeyframeViewReleased()
+void CurveWidget::keyframe_view_released()
 {
-	StopCatchUpScrollTimer();
-	StopCatchUpScrollTimer(view_->verticalScrollBar());
+	stop_catch_up_scroll_timer();
+	stop_catch_up_scroll_timer(view_->verticalScrollBar());
 }
 
 }

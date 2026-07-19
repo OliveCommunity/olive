@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef RENDERTASK_H
-#define RENDERTASK_H
+#ifndef OAK_RENDERTASK_H
+#define OAK_RENDERTASK_H
 
 #include <QtConcurrent/QtConcurrent>
 
@@ -41,25 +41,25 @@ public:
 	virtual ~RenderTask() override;
 
 protected:
-	bool Render(ColorManager *manager, const TimeRangeList &video_range,
+	bool render(ColorManager *manager, const TimeRangeList &video_range,
 				const TimeRangeList &audio_range,
 				const TimeRange &subtitle_range, RenderMode::Mode mode,
 				FrameHashCache *cache, const QSize &force_size = QSize(0, 0),
 				const QMatrix4x4 &force_matrix = QMatrix4x4(),
-				PixelFormat force_format = PixelFormat::INVALID,
+				PixelFormat force_format = PixelFormat::invalid,
 				int force_channel_count = 0,
 				ColorProcessorPtr force_color_output = nullptr,
 				const ColorTransform &force_color_transform = ColorTransform());
 
-	virtual bool DownloadFrame(QThread *thread, FramePtr frame,
-							   const rational &time);
+	virtual bool download_frame(QThread *thread, FramePtr frame,
+							   const Rational &time);
 
-	virtual bool FrameDownloaded(FramePtr frame, const rational &time) = 0;
+	virtual bool frame_downloaded(FramePtr frame, const Rational &time) = 0;
 
-	virtual bool AudioDownloaded(const TimeRange &range,
+	virtual bool audio_downloaded(const TimeRange &range,
 								 const SampleBuffer &samples) = 0;
 
-	virtual bool EncodeSubtitle(const SubtitleBlock *subtitle);
+	virtual bool encode_subtitle(const SubtitleBlock *subtitle);
 
 	ViewerOutput *viewer() const
 	{
@@ -98,12 +98,12 @@ protected:
 		finished_watcher_mutex_.unlock();
 	}
 
-	virtual bool TwoStepFrameRendering() const
+	virtual bool two_step_frame_rendering() const
 	{
 		return true;
 	}
 
-	void SetNativeProgressSignallingEnabled(bool e)
+	void set_native_progress_signalling_enabled(bool e)
 	{
 		native_progress_signalling_ = e;
 	}
@@ -111,18 +111,18 @@ protected:
 	/**
    * @brief Only valid after Render() is called
    */
-	int64_t GetTotalNumberOfFrames() const
+	int64_t get_total_number_of_frames() const
 	{
 		return total_number_of_frames_;
 	}
 
 private:
-	void PrepareWatcher(RenderTicketWatcher *watcher, QThread *thread);
+	void prepare_watcher(RenderTicketWatcher *watcher, QThread *thread);
 
-	void IncrementRunningTickets();
+	void increment_running_tickets();
 
-	void StartTicket(QThread *watcher_thread, ColorManager *manager,
-					 const rational &time, RenderMode::Mode mode,
+	void start_ticket(QThread *watcher_thread, ColorManager *manager,
+					 const Rational &time, RenderMode::Mode mode,
 					 FrameHashCache *cache, const QSize &force_size,
 					 const QMatrix4x4 &force_matrix, PixelFormat force_format,
 					 int force_channel_count,
@@ -146,9 +146,9 @@ private:
 	int64_t total_number_of_frames_;
 
 private slots:
-	void TicketDone(RenderTicketWatcher *watcher);
+	void ticket_done(RenderTicketWatcher *watcher);
 };
 
 }
 
-#endif // RENDERTASK_H
+#endif // OAK_RENDERTASK_H

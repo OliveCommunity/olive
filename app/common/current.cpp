@@ -17,6 +17,6 @@
  *
  */
 
-#include "Current.h"
+#include "current.h"
 
 Current Current::current;

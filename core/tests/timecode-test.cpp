@@ -28,10 +28,10 @@ using namespace olive::core;
 
 bool timecodefunctions_time_to_timecode_test()
 {
-	rational drop_frame_30(1001, 30000);
+	Rational drop_frame_30(1001, 30000);
 
 	std::string timecode = Timecode::time_to_timecode(
-		rational(1), drop_frame_30, Timecode::kTimecodeDropFrame);
+		Rational(1), drop_frame_30, Timecode::kTimecodeDropFrame);
 	if (strcmp(timecode.c_str(), "00:00:01;00") != 0) {
 		return false;
 	}
@@ -41,10 +41,10 @@ bool timecodefunctions_time_to_timecode_test()
 
 bool timecodefunctions_time_to_timecode_test2()
 {
-	rational bizarre_timebase(156632219);
+	Rational bizarre_timebase(156632219);
 
 	std::string timecode = Timecode::time_to_timecode(
-		rational(0), bizarre_timebase, Timecode::kTimecodeDropFrame);
+		Rational(0), bizarre_timebase, Timecode::kTimecodeDropFrame);
 	if (strcmp(timecode.c_str(), "INVALID TIMEBASE") != 0) {
 		return false;
 	}

@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef LIBOLIVECORE_CPUOPTIMIZE_H
-#define LIBOLIVECORE_CPUOPTIMIZE_H
+#ifndef OAK_LIBOLIVECORE_CPUOPTIMIZE_H
+#define OAK_LIBOLIVECORE_CPUOPTIMIZE_H
 
 #if defined(__x86_64__) || defined(__i386__)
 #define OLIVE_PROCESSOR_X86
@@ -27,4 +27,4 @@
 #include "sse2neon.h"
 #endif
 
-#endif // LIBOLIVECORE_CPUOPTIMIZE_H
+#endif // OAK_LIBOLIVECORE_CPUOPTIMIZE_H

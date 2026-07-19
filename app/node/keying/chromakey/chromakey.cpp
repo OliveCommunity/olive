@@ -24,55 +24,55 @@ namespace olive
 
 #define super OCIOBaseNode
 
-const QString ChromaKeyNode::kColorInput = QStringLiteral("color_key");
-const QString ChromaKeyNode::kMaskOnlyInput = QStringLiteral("mask_only_in");
-const QString ChromaKeyNode::kInvertInput = QStringLiteral("invert_in");
-const QString ChromaKeyNode::kUpperToleranceInput =
+const QString ChromaKeyNode::k_color_input = QStringLiteral("color_key");
+const QString ChromaKeyNode::k_mask_only_input = QStringLiteral("mask_only_in");
+const QString ChromaKeyNode::k_invert_input = QStringLiteral("invert_in");
+const QString ChromaKeyNode::k_upper_tolerance_input =
 	QStringLiteral("upper_tolerance_in");
-const QString ChromaKeyNode::kLowerToleranceInput =
+const QString ChromaKeyNode::k_lower_tolerance_input =
 	QStringLiteral("lower_tolerance_in");
-const QString ChromaKeyNode::kGarbageMatteInput = QStringLiteral("garbage_in");
-const QString ChromaKeyNode::kCoreMatteInput = QStringLiteral("core_in");
-const QString ChromaKeyNode::kShadowsInput = QStringLiteral("shadows_in");
-const QString ChromaKeyNode::kHighlightsInput = QStringLiteral("highlights_in");
+const QString ChromaKeyNode::k_garbage_matte_input = QStringLiteral("garbage_in");
+const QString ChromaKeyNode::k_core_matte_input = QStringLiteral("core_in");
+const QString ChromaKeyNode::k_shadows_input = QStringLiteral("shadows_in");
+const QString ChromaKeyNode::k_highlights_input = QStringLiteral("highlights_in");
 
 ChromaKeyNode::ChromaKeyNode()
 {
-	AddInput(kColorInput, NodeValue::kColor,
+	add_input(k_color_input, NodeValue::k_color,
 			 QVariant::fromValue(Color(0.0f, 1.0f, 0.0f, 1.0f)));
 
-	AddInput(kLowerToleranceInput, NodeValue::kFloat, 5.0);
-	SetInputProperty(kLowerToleranceInput, QStringLiteral("min"), 0.0);
-	SetInputProperty(kLowerToleranceInput, QStringLiteral("base"), 0.1);
+	add_input(k_lower_tolerance_input, NodeValue::k_float, 5.0);
+	set_input_property(k_lower_tolerance_input, QStringLiteral("min"), 0.0);
+	set_input_property(k_lower_tolerance_input, QStringLiteral("base"), 0.1);
 
-	AddInput(kUpperToleranceInput, NodeValue::kFloat, 25.0);
-	SetInputProperty(kUpperToleranceInput, QStringLiteral("base"), 0.1);
+	add_input(k_upper_tolerance_input, NodeValue::k_float, 25.0);
+	set_input_property(k_upper_tolerance_input, QStringLiteral("base"), 0.1);
 
 	// FIXME: Temporarily disabled. This will break if "lower tolerance" is keyframed or connected to
 	//        something and there's currently no solution to remedy that. If there is in the future,
 	//        we can look into re-enabling this.
 	//SetInputProperty(kUpperToleranceInput, QStringLiteral("min"), GetStandardValue(kLowerToleranceInput).toDouble());
 
-	AddInput(kGarbageMatteInput, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_garbage_matte_input, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	AddInput(kCoreMatteInput, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_core_matte_input, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	AddInput(kHighlightsInput, NodeValue::kFloat, 100.0f);
-	SetInputProperty(kHighlightsInput, QStringLiteral("min"), 0.0);
-	SetInputProperty(kHighlightsInput, QStringLiteral("base"), 0.1);
+	add_input(k_highlights_input, NodeValue::k_float, 100.0f);
+	set_input_property(k_highlights_input, QStringLiteral("min"), 0.0);
+	set_input_property(k_highlights_input, QStringLiteral("base"), 0.1);
 
-	AddInput(kShadowsInput, NodeValue::kFloat, 100.0f);
-	SetInputProperty(kShadowsInput, QStringLiteral("min"), 0.0);
-	SetInputProperty(kShadowsInput, QStringLiteral("base"), 0.1);
+	add_input(k_shadows_input, NodeValue::k_float, 100.0f);
+	set_input_property(k_shadows_input, QStringLiteral("min"), 0.0);
+	set_input_property(k_shadows_input, QStringLiteral("base"), 0.1);
 
-	AddInput(kInvertInput, NodeValue::kBoolean, false);
+	add_input(k_invert_input, NodeValue::k_boolean, false);
 
-	AddInput(kMaskOnlyInput, NodeValue::kBoolean, false);
+	add_input(k_mask_only_input, NodeValue::k_boolean, false);
 }
 
-QString ChromaKeyNode::Name() const
+QString ChromaKeyNode::name() const
 {
 	return tr("Chroma Key");
 }
@@ -82,98 +82,98 @@ QString ChromaKeyNode::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.chromakey");
 }
 
-QVector<Node::CategoryID> ChromaKeyNode::Category() const
+QVector<Node::CategoryID> ChromaKeyNode::category() const
 {
-	return { kCategoryKeying };
+	return { k_category_keying };
 }
 
-QString ChromaKeyNode::Description() const
+QString ChromaKeyNode::description() const
 {
 	return tr(
 		"A simple color key based on the distance from the chroma of a selected color.");
 }
 
-void ChromaKeyNode::Retranslate()
+void ChromaKeyNode::retranslate()
 {
-	super::Retranslate();
-	SetInputName(kTextureInput, tr("Input"));
-	SetInputName(kGarbageMatteInput, tr("Garbage Matte"));
-	SetInputName(kCoreMatteInput, tr("Core Matte"));
-	SetInputName(kColorInput, tr("Key Color"));
-	SetInputName(kShadowsInput, tr("Shadows"));
-	SetInputName(kHighlightsInput, tr("Highlights"));
-	SetInputName(kUpperToleranceInput, tr("Upper Tolerance"));
-	SetInputName(kLowerToleranceInput, tr("Lower Tolerance"));
-	SetInputName(kInvertInput, tr("Invert Mask"));
-	SetInputName(kMaskOnlyInput, tr("Show Mask Only"));
+	super::retranslate();
+	set_input_name(k_texture_input, tr("Input"));
+	set_input_name(k_garbage_matte_input, tr("Garbage Matte"));
+	set_input_name(k_core_matte_input, tr("Core Matte"));
+	set_input_name(k_color_input, tr("Key Color"));
+	set_input_name(k_shadows_input, tr("Shadows"));
+	set_input_name(k_highlights_input, tr("Highlights"));
+	set_input_name(k_upper_tolerance_input, tr("Upper Tolerance"));
+	set_input_name(k_lower_tolerance_input, tr("Lower Tolerance"));
+	set_input_name(k_invert_input, tr("Invert Mask"));
+	set_input_name(k_mask_only_input, tr("Show Mask Only"));
 }
 
 void ChromaKeyNode::InputValueChangedEvent(const QString &input, int element)
 {
 	Q_UNUSED(element);
-	if (input == kLowerToleranceInput) {
+	if (input == k_lower_tolerance_input) {
 		// FIXME: Temporarily disabled. This will break if "lower tolerance" is keyframed or connected to
 		//        something and there's currently no solution to remedy that. If there is in the future,
 		//        we can look into re-enabling this.
 		//SetInputProperty(kUpperToleranceInput, QStringLiteral("min"), GetStandardValue(kLowerToleranceInput).toDouble());
 	}
 
-	GenerateProcessor();
+	generate_processor();
 }
 
-ShaderCode ChromaKeyNode::GetShaderCode(const ShaderRequest &request) const
+ShaderCode ChromaKeyNode::get_shader_code(const ShaderRequest &request) const
 {
-	return ShaderCode(FileFunctions::ReadFileAsString(
+	return ShaderCode(FileFunctions::read_file_as_string(
 						  QStringLiteral(":/shaders/chromakey.frag"))
 						  .arg(request.stub));
 }
 
-void ChromaKeyNode::GenerateProcessor()
+void ChromaKeyNode::generate_processor()
 {
 	if (manager()) {
 		try {
 			ColorTransform transform("cie_xyz_d65_interchange");
-			set_processor(ColorProcessor::Create(
-				manager(), manager()->GetReferenceColorSpace(), transform));
-		} catch (const OCIO::Exception &e) {
+			set_processor(ColorProcessor::create(
+				manager(), manager()->get_reference_color_space(), transform));
+		} catch (const ocio::Exception &e) {
 			std::cerr << std::endl << e.what() << std::endl;
 		}
 	}
 }
 
-void ChromaKeyNode::Value(const NodeValueRow &value, const NodeGlobals &globals,
+void ChromaKeyNode::value(const NodeValueRow &value, const NodeGlobals &globals,
 						  NodeValueTable *table) const
 {
-	if (TexturePtr tex = value[kTextureInput].toTexture()) {
+	if (TexturePtr tex = value[k_texture_input].to_texture()) {
 		if (processor()) {
 			ColorTransformJob job(value);
 
-			job.SetColorProcessor(processor());
-			job.SetInputTexture(value[kTextureInput]);
-			job.SetNeedsCustomShader(this);
-			job.SetFunctionName(QStringLiteral("SceneLinearToCIEXYZ_d65"));
+			job.set_color_processor(processor());
+			job.set_input_texture(value[k_texture_input]);
+			job.set_needs_custom_shader(this);
+			job.set_function_name(QStringLiteral("SceneLinearToCIEXYZ_d65"));
 
-			table->Push(NodeValue::kTexture, tex->toJob(job), this);
+			table->push(NodeValue::k_texture, tex->to_job(job), this);
 		}
 	}
 }
 
-void ChromaKeyNode::ConfigChanged()
+void ChromaKeyNode::config_changed()
 {
-	GenerateProcessor();
+	generate_processor();
 }
 
-QString ChromaKeyNode::GetInputIDForLegacyID(const QString &id) const
+QString ChromaKeyNode::get_input_id_for_legacy_id(const QString &id) const
 {
 	// Older project files used the misspelled "tolerence" input IDs
 	if (id == QStringLiteral("upper_tolerence_in")) {
-		return kUpperToleranceInput;
+		return k_upper_tolerance_input;
 	}
 	if (id == QStringLiteral("lower_tolerence_in")) {
-		return kLowerToleranceInput;
+		return k_lower_tolerance_input;
 	}
 
-	return super::GetInputIDForLegacyID(id);
+	return super::get_input_id_for_legacy_id(id);
 }
 
 } // namespace olive

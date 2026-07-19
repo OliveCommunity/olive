@@ -37,7 +37,7 @@ IOPMAssertionID assertionID = 0;
 
 #endif
 
-void PreventSleep(bool on)
+void prevent_sleep(bool on)
 {
 #if defined(Q_OS_WINDOWS)
 	SetThreadExecutionState(on ? ES_DISPLAY_REQUIRED | ES_CONTINUOUS :

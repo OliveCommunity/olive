@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEPARAMVIEWTEXTEDIT_H
-#define NODEPARAMVIEWTEXTEDIT_H
+#ifndef OAK_NODEPARAMVIEWTEXTEDIT_H
+#define OAK_NODEPARAMVIEWTEXTEDIT_H
 
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -41,7 +41,7 @@ public:
 		return line_edit_->toPlainText();
 	}
 
-	void SetEditInViewerOnlyMode(bool on);
+	void set_edit_in_viewer_only_mode(bool on);
 
 public slots:
 	void setText(const QString &s)
@@ -66,9 +66,9 @@ public slots:
 	}
 
 signals:
-	void textEdited(const QString &);
+	void text_edited(const QString &);
 
-	void RequestEditInViewer();
+	void request_edit_in_viewer();
 
 private:
 	QPlainTextEdit *line_edit_;
@@ -78,11 +78,11 @@ private:
 	QPushButton *edit_in_viewer_btn_;
 
 private slots:
-	void ShowTextDialog();
+	void show_text_dialog();
 
-	void InnerWidgetTextChanged();
+	void inner_widget_text_changed();
 };
 
 }
 
-#endif // NODEPARAMVIEWTEXTEDIT_H
+#endif // OAK_NODEPARAMVIEWTEXTEDIT_H

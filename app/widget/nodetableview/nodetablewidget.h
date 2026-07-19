@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODETABLEWIDGET_H
-#define NODETABLEWIDGET_H
+#ifndef OAK_NODETABLEWIDGET_H
+#define OAK_NODETABLEWIDGET_H
 
 #include "nodetableview.h"
 #include "widget/timebased/timebasedwidget.h"
@@ -32,20 +32,20 @@ class NodeTableWidget : public TimeBasedWidget {
 public:
 	NodeTableWidget(QWidget *parent = nullptr);
 
-	void SelectNodes(const QVector<Node *> &nodes)
+	void select_nodes(const QVector<Node *> &nodes)
 	{
-		view_->SelectNodes(nodes);
+		view_->select_nodes(nodes);
 	}
 
-	void DeselectNodes(const QVector<Node *> &nodes)
+	void deselect_nodes(const QVector<Node *> &nodes)
 	{
-		view_->DeselectNodes(nodes);
+		view_->deselect_nodes(nodes);
 	}
 
 protected:
-	virtual void TimeChangedEvent(const rational &time) override
+	virtual void TimeChangedEvent(const Rational &time) override
 	{
-		view_->SetTime(time);
+		view_->set_time(time);
 	}
 
 private:
@@ -54,4 +54,4 @@ private:
 
 }
 
-#endif // NODETABLEWIDGET_H
+#endif // OAK_NODETABLEWIDGET_H

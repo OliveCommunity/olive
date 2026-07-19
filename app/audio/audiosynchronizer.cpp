@@ -23,9 +23,9 @@
 namespace olive
 {
 
-AudioSynchronizer::Placement AudioSynchronizer::PlaceBySourceTime(
+AudioSynchronizer::Placement AudioSynchronizer::place_by_source_time(
 	const SourceClip &reference, const SourceClip &candidate,
-	const core::rational &reference_timeline_in)
+	const core::Rational &reference_timeline_in)
 {
 	Placement placement;
 	if (!reference.has_source_start_time || !candidate.has_source_start_time ||
@@ -34,9 +34,9 @@ AudioSynchronizer::Placement AudioSynchronizer::PlaceBySourceTime(
 		return placement;
 	}
 
-	const core::rational reference_head_source =
+	const core::Rational reference_head_source =
 		reference.source_start_time + reference.media_in;
-	const core::rational candidate_head_source =
+	const core::Rational candidate_head_source =
 		candidate.source_start_time + candidate.media_in;
 
 	placement.timeline_in =
@@ -45,8 +45,8 @@ AudioSynchronizer::Placement AudioSynchronizer::PlaceBySourceTime(
 	return placement;
 }
 
-AudioSynchronizer::Placement AudioSynchronizer::PlaceByWaveformOffset(
-	const core::rational &reference_timeline_in,
+AudioSynchronizer::Placement AudioSynchronizer::place_by_waveform_offset(
+	const core::Rational &reference_timeline_in,
 	int64_t candidate_offset_samples, int sample_rate)
 {
 	Placement placement;
@@ -55,7 +55,7 @@ AudioSynchronizer::Placement AudioSynchronizer::PlaceByWaveformOffset(
 	}
 
 	placement.timeline_in = reference_timeline_in +
-							core::rational::fromDouble(
+							core::Rational::from_double(
 								static_cast<double>(candidate_offset_samples) /
 								static_cast<double>(sample_rate));
 	placement.valid = !placement.timeline_in.isNaN();

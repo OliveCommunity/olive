@@ -31,15 +31,15 @@ namespace olive
 RollingTool::RollingTool(TimelineWidget *parent)
 	: PointerTool(parent)
 {
-	SetMovementAllowed(false);
-	SetGapTrimmingAllowed(true);
+	set_movement_allowed(false);
+	set_gap_trimming_allowed(true);
 }
 
-void RollingTool::InitiateDrag(Block *clicked_item,
+void RollingTool::initiate_drag(Block *clicked_item,
 							   Timeline::MovementMode trim_mode,
 							   Qt::KeyboardModifiers modifiers)
 {
-	InitiateDragInternal(clicked_item, trim_mode, modifiers, false, true,
+	initiate_drag_internal(clicked_item, trim_mode, modifiers, false, true,
 						 false);
 }
 

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PREVIEWAUDIODEVICE_H
-#define PREVIEWAUDIODEVICE_H
+#ifndef OAK_PREVIEWAUDIODEVICE_H
+#define OAK_PREVIEWAUDIODEVICE_H
 
 #include <olive/core/render/audioparams.h>
 
@@ -36,18 +36,18 @@ public:
 
 	virtual ~PreviewAudioDevice() override;
 
-	void StartQueuing();
+	void start_queuing();
 
 	virtual bool isSequential() const override;
 
-	virtual qint64 readData(char *data, qint64 maxSize) override;
+	virtual qint64 readData(char *data, qint64 max_size) override;
 
 	virtual qint64 writeData(const char *data, qint64 length) override;
 
 	// Derives the frame size from the audio format (bytes per sample per
 	// channel * channel count). Until params are set, bytes_per_frame()
 	// reports 0, i.e. "unknown".
-	void SetParams(const core::AudioParams &params);
+	void set_params(const core::AudioParams &params);
 
 	int bytes_per_frame() const
 	{
@@ -67,7 +67,7 @@ public:
 	void clear();
 
 signals:
-	void Notify();
+	void notify();
 
 private:
 	QMutex lock_;
@@ -83,4 +83,4 @@ private:
 
 }
 
-#endif // PREVIEWAUDIODEVICE_H
+#endif // OAK_PREVIEWAUDIODEVICE_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SHAPENODEBASE_H
-#define SHAPENODEBASE_H
+#ifndef OAK_SHAPENODEBASE_H
+#define OAK_SHAPENODEBASE_H
 
 #include "generatorwithmerge.h"
 #include "node/gizmo/point.h"
@@ -36,17 +36,17 @@ class ShapeNodeBase : public GeneratorWithMerge {
 public:
 	ShapeNodeBase(bool create_color_input = true);
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual void UpdateGizmoPositions(const NodeValueRow &row,
+	virtual void update_gizmo_positions(const NodeValueRow &row,
 									  const NodeGlobals &globals) override;
 
-	void SetRect(QRectF rect, const VideoParams &sequence_res,
+	void set_rect(QRectF rect, const VideoParams &sequence_res,
 				 MultiUndoCommand *command);
 
-	static const QString kPositionInput;
-	static const QString kSizeInput;
-	static const QString kColorInput;
+	static const QString k_position_input;
+	static const QString k_size_input;
+	static const QString k_color_input;
 
 protected:
 	PolygonGizmo *poly_gizmo() const
@@ -55,28 +55,28 @@ protected:
 	}
 
 protected slots:
-	virtual void GizmoDragMove(double x, double y,
+	virtual void gizmo_drag_move(double x, double y,
 							   const Qt::KeyboardModifiers &modifiers) override;
 
 private:
-	QVector2D GenerateGizmoAnchor(const QVector2D &pos, const QVector2D &size,
+	QVector2D generate_gizmo_anchor(const QVector2D &pos, const QVector2D &size,
 								  NodeGizmo *gizmo,
 								  QVector2D *pt = nullptr) const;
 
-	bool IsGizmoTop(NodeGizmo *g) const;
-	bool IsGizmoBottom(NodeGizmo *g) const;
-	bool IsGizmoLeft(NodeGizmo *g) const;
-	bool IsGizmoRight(NodeGizmo *g) const;
-	bool IsGizmoHorizontalCenter(NodeGizmo *g) const;
-	bool IsGizmoVerticalCenter(NodeGizmo *g) const;
-	bool IsGizmoCorner(NodeGizmo *g) const;
+	bool is_gizmo_top(NodeGizmo *g) const;
+	bool is_gizmo_bottom(NodeGizmo *g) const;
+	bool is_gizmo_left(NodeGizmo *g) const;
+	bool is_gizmo_right(NodeGizmo *g) const;
+	bool is_gizmo_horizontal_center(NodeGizmo *g) const;
+	bool is_gizmo_vertical_center(NodeGizmo *g) const;
+	bool is_gizmo_corner(NodeGizmo *g) const;
 
 	// Gizmo variables
-	static const int kGizmoWholeRect = kGizmoScaleCount;
-	PointGizmo *point_gizmo_[kGizmoScaleCount];
+	static const int k_gizmo_whole_rect = k_gizmo_scale_count;
+	PointGizmo *point_gizmo_[k_gizmo_scale_count];
 	PolygonGizmo *poly_gizmo_;
 };
 
 }
 
-#endif // SHAPENODEBASE_H
+#endif // OAK_SHAPENODEBASE_H

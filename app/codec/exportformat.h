@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef EXPORTFORMAT_H
-#define EXPORTFORMAT_H
+#ifndef OAK_EXPORTFORMAT_H
+#define OAK_EXPORTFORMAT_H
 
 #include <QList>
 #include <QString>
@@ -36,36 +36,36 @@ class ExportFormat : public QObject {
 public:
 	// Only append to this list (never insert) because indexes are used in serialized files
 	enum Format {
-		kFormatDNxHD,
-		kFormatMatroska,
-		kFormatMPEG4Video,
-		kFormatOpenEXR,
-		kFormatQuickTime,
-		kFormatPNG,
-		kFormatTIFF,
-		kFormatWAV,
-		kFormatAIFF,
-		kFormatMP3,
-		kFormatFLAC,
-		kFormatOgg,
-		kFormatWebM,
-		kFormatSRT,
-		kFormatMPEG4Audio,
+		k_format_d_nx_hd,
+		k_format_matroska,
+		k_format_mpe_g4_video,
+		k_format_open_exr,
+		k_format_quick_time,
+		k_format_png,
+		k_format_tiff,
+		k_format_wav,
+		k_format_aiff,
+		k_format_m_p3,
+		k_format_flac,
+		k_format_ogg,
+		k_format_web_m,
+		k_format_srt,
+		k_format_mpe_g4_audio,
 
-		kFormatCount
+		k_format_count
 	};
 
-	static QString GetName(Format f);
-	static QString GetExtension(Format f);
-	static QList<ExportCodec::Codec> GetVideoCodecs(ExportFormat::Format f);
-	static QList<ExportCodec::Codec> GetAudioCodecs(ExportFormat::Format f);
-	static QList<ExportCodec::Codec> GetSubtitleCodecs(ExportFormat::Format f);
+	static QString get_name(Format f);
+	static QString get_extension(Format f);
+	static QList<ExportCodec::Codec> get_video_codecs(ExportFormat::Format f);
+	static QList<ExportCodec::Codec> get_audio_codecs(ExportFormat::Format f);
+	static QList<ExportCodec::Codec> get_subtitle_codecs(ExportFormat::Format f);
 
-	static QStringList GetPixelFormatsForCodec(Format f, ExportCodec::Codec c);
+	static QStringList get_pixel_formats_for_codec(Format f, ExportCodec::Codec c);
 	static std::vector<SampleFormat>
-	GetSampleFormatsForCodec(Format f, ExportCodec::Codec c);
+	get_sample_formats_for_codec(Format f, ExportCodec::Codec c);
 };
 
 }
 
-#endif // EXPORTFORMAT_H
+#endif // OAK_EXPORTFORMAT_H

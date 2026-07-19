@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef LIBOLIVECORE_TIMERANGE_H
-#define LIBOLIVECORE_TIMERANGE_H
+#ifndef OAK_LIBOLIVECORE_TIMERANGE_H
+#define OAK_LIBOLIVECORE_TIMERANGE_H
 
 #include <list>
 #include <vector>
@@ -33,7 +33,7 @@ namespace olive::core
 class TimeRange {
 public:
 	TimeRange() = default;
-	TimeRange(const rational &in, const rational &out);
+	TimeRange(const Rational &in, const Rational &out);
 	TimeRange(const TimeRange &r)
 		: TimeRange(r.in(), r.out())
 	{
@@ -45,42 +45,42 @@ public:
 		return *this;
 	}
 
-	const rational &in() const;
-	const rational &out() const;
-	const rational &length() const;
+	const Rational &in() const;
+	const Rational &out() const;
+	const Rational &length() const;
 
-	void set_in(const rational &in);
-	void set_out(const rational &out);
-	void set_range(const rational &in, const rational &out);
+	void set_in(const Rational &in);
+	void set_out(const Rational &out);
+	void set_range(const Rational &in, const Rational &out);
 
 	bool operator==(const TimeRange &r) const;
 	bool operator!=(const TimeRange &r) const;
 
-	bool OverlapsWith(const TimeRange &a, bool in_inclusive = true,
+	bool overlaps_with(const TimeRange &a, bool in_inclusive = true,
 					  bool out_inclusive = true) const;
-	bool Contains(const TimeRange &a, bool in_inclusive = true,
+	bool contains(const TimeRange &a, bool in_inclusive = true,
 				  bool out_inclusive = true) const;
-	bool Contains(const rational &r) const;
+	bool contains(const Rational &r) const;
 
-	TimeRange Combined(const TimeRange &a) const;
-	static TimeRange Combine(const TimeRange &a, const TimeRange &b);
-	TimeRange Intersected(const TimeRange &a) const;
-	static TimeRange Intersect(const TimeRange &a, const TimeRange &b);
+	TimeRange combined(const TimeRange &a) const;
+	static TimeRange combine(const TimeRange &a, const TimeRange &b);
+	TimeRange intersected(const TimeRange &a) const;
+	static TimeRange intersect(const TimeRange &a, const TimeRange &b);
 
-	TimeRange operator+(const rational &rhs) const;
-	TimeRange operator-(const rational &rhs) const;
+	TimeRange operator+(const Rational &rhs) const;
+	TimeRange operator-(const Rational &rhs) const;
 
-	const TimeRange &operator+=(const rational &rhs);
-	const TimeRange &operator-=(const rational &rhs);
+	const TimeRange &operator+=(const Rational &rhs);
+	const TimeRange &operator-=(const Rational &rhs);
 
-	std::list<TimeRange> Split(const int &chunk_size) const;
+	std::list<TimeRange> split(const int &chunk_size) const;
 
 private:
 	void normalize();
 
-	rational in_;
-	rational out_;
-	rational length_;
+	Rational in_;
+	Rational out_;
+	Rational length_;
 };
 
 class TimeRangeList {
@@ -106,11 +106,11 @@ public:
 		for (auto it = list->begin(); it != list->end();) {
 			T &compare = *it;
 
-			if (remove.Contains(compare)) {
+			if (remove.contains(compare)) {
 				// This element is entirely encompassed in this range, remove it
 				it = list->erase(it);
 			} else {
-				if (compare.Contains(remove, false, false)) {
+				if (compare.contains(remove, false, false)) {
 					// The remove range is within this element, only choice is to split the element into two
 					T new_range = compare;
 					new_range.set_in(remove.out());
@@ -140,10 +140,10 @@ public:
 	bool contains(const TimeRange &range, bool in_inclusive = true,
 				  bool out_inclusive = true) const;
 
-	bool contains(const rational &r) const
+	bool contains(const Rational &r) const
 	{
 		for (const TimeRange &range : array_) {
-			if (range.Contains(r)) {
+			if (range.contains(r)) {
 				return true;
 			}
 		}
@@ -151,11 +151,11 @@ public:
 		return false;
 	}
 
-	bool OverlapsWith(const TimeRange &r, bool in_inclusive = true,
+	bool overlaps_with(const TimeRange &r, bool in_inclusive = true,
 					  bool out_inclusive = true) const
 	{
 		for (const TimeRange &range : array_) {
-			if (range.OverlapsWith(r, in_inclusive, out_inclusive)) {
+			if (range.overlaps_with(r, in_inclusive, out_inclusive)) {
 				return true;
 			}
 		}
@@ -178,13 +178,13 @@ public:
 		return array_.size();
 	}
 
-	void shift(const rational &diff);
+	void shift(const Rational &diff);
 
-	void trim_in(const rational &diff);
+	void trim_in(const Rational &diff);
 
-	void trim_out(const rational &diff);
+	void trim_out(const Rational &diff);
 
-	TimeRangeList Intersects(const TimeRange &range) const;
+	TimeRangeList intersects(const TimeRange &range) const;
 
 	using const_iterator = std::vector<TimeRange>::const_iterator;
 
@@ -241,20 +241,20 @@ class TimeRangeListFrameIterator {
 public:
 	TimeRangeListFrameIterator();
 	TimeRangeListFrameIterator(const TimeRangeList &list,
-							   const rational &timebase);
+							   const Rational &timebase);
 
-	rational Snap(const rational &r) const;
+	Rational snap(const Rational &r) const;
 
-	bool GetNext(rational *out);
+	bool get_next(Rational *out);
 
-	bool HasNext() const;
+	bool has_next() const;
 
-	std::vector<rational> ToVector() const
+	std::vector<Rational> to_vector() const
 	{
 		TimeRangeListFrameIterator copy(list_, timebase_);
-		std::vector<rational> times;
-		rational r;
-		while (copy.GetNext(&r)) {
+		std::vector<Rational> times;
+		Rational r;
+		while (copy.get_next(&r)) {
 			times.push_back(r);
 		}
 		return times;
@@ -277,12 +277,12 @@ public:
 		list_.insert(list);
 	}
 
-	bool IsCustomRange() const
+	bool is_custom_range() const
 	{
 		return custom_range_;
 	}
 
-	void SetCustomRange(bool e)
+	void set_custom_range(bool e)
 	{
 		custom_range_ = e;
 	}
@@ -293,13 +293,13 @@ public:
 	}
 
 private:
-	void UpdateIndexIfNecessary();
+	void update_index_if_necessary();
 
 	TimeRangeList list_;
 
-	rational timebase_;
+	Rational timebase_;
 
-	rational current_;
+	Rational current_;
 
 	int range_index_;
 
@@ -312,4 +312,4 @@ private:
 
 }
 
-#endif // LIBOLIVECORE_TIMERANGE_H
+#endif // OAK_LIBOLIVECORE_TIMERANGE_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef WAVEDISTORTNODE_H
-#define WAVEDISTORTNODE_H
+#ifndef OAK_WAVEDISTORTNODE_H
+#define OAK_WAVEDISTORTNODE_H
 
 #include "node/node.h"
 
@@ -34,25 +34,25 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(WaveDistortNode)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	get_shader_code(const ShaderRequest &request) const override;
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	static const QString kTextureInput;
-	static const QString kFrequencyInput;
-	static const QString kIntensityInput;
-	static const QString kEvolutionInput;
-	static const QString kVerticalInput;
+	static const QString k_texture_input;
+	static const QString k_frequency_input;
+	static const QString k_intensity_input;
+	static const QString k_evolution_input;
+	static const QString k_vertical_input;
 };
 
 }
 
-#endif // WAVEDISTORTNODE_H
+#endif // OAK_WAVEDISTORTNODE_H

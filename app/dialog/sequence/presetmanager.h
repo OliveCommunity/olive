@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PRESETMANAGER_H
-#define PRESETMANAGER_H
+#ifndef OAK_PRESETMANAGER_H
+#define OAK_PRESETMANAGER_H
 
 #include <memory>
 #include <QCoreApplication>
@@ -47,19 +47,19 @@ public:
 	{
 	}
 
-	const QString &GetName() const
+	const QString &get_name() const
 	{
 		return name_;
 	}
 
-	void SetName(const QString &s)
+	void set_name(const QString &s)
 	{
 		name_ = s;
 	}
 
-	virtual void Load(QXmlStreamReader *reader) = 0;
+	virtual void load(QXmlStreamReader *reader) = 0;
 
-	virtual void Save(QXmlStreamWriter *writer) const = 0;
+	virtual void save(QXmlStreamWriter *writer) const = 0;
 
 private:
 	QString name_;
@@ -74,17 +74,17 @@ public:
 		, parent_(parent)
 	{
 		// Load custom preset data from file
-		QFile preset_file(GetCustomPresetFilename());
+		QFile preset_file(get_custom_preset_filename());
 		if (preset_file.open(QFile::ReadOnly)) {
 			QXmlStreamReader reader(&preset_file);
 
-			while (XMLReadNextStartElement(&reader)) {
+			while (xml_read_next_start_element(&reader)) {
 				if (reader.name() == QStringLiteral("presets")) {
-					while (XMLReadNextStartElement(&reader)) {
+					while (xml_read_next_start_element(&reader)) {
 						if (reader.name() == QStringLiteral("preset")) {
 							PresetPtr p = std::make_unique<T>();
 
-							p->Load(&reader);
+							p->load(&reader);
 
 							custom_preset_data_.append(p);
 						} else {
@@ -103,7 +103,7 @@ public:
 	~PresetManager()
 	{
 		// Save custom presets to disk
-		QFile preset_file(GetCustomPresetFilename());
+		QFile preset_file(get_custom_preset_filename());
 		if (preset_file.open(QFile::WriteOnly)) {
 			QXmlStreamWriter writer(&preset_file);
 			writer.setAutoFormatting(true);
@@ -115,7 +115,7 @@ public:
 			foreach (PresetPtr p, custom_preset_data_) {
 				writer.writeStartElement(QStringLiteral("preset"));
 
-				p->Save(&writer);
+				p->save(&writer);
 
 				writer.writeEndElement(); // preset
 			}
@@ -128,7 +128,7 @@ public:
 		}
 	}
 
-	QString GetPresetName(QString start) const
+	QString get_preset_name(QString start) const
 	{
 		bool ok;
 
@@ -163,25 +163,25 @@ public:
 		return start;
 	}
 
-	enum SaveStatus { kAppended, kReplaced, kNotSaved };
+	enum SaveStatus { k_appended, k_replaced, k_not_saved };
 
-	SaveStatus SavePreset(PresetPtr preset)
+	SaveStatus save_preset(PresetPtr preset)
 	{
 		QString preset_name;
 		int existing_preset;
 
 		forever
 		{
-			preset_name = GetPresetName(preset_name);
+			preset_name = get_preset_name(preset_name);
 
 			if (preset_name.isEmpty()) {
 				// Dialog cancelled - leave function entirely
-				return kNotSaved;
+				return k_not_saved;
 			}
 
 			existing_preset = -1;
 			for (int i = 0; i < custom_preset_data_.size(); i++) {
-				if (custom_preset_data_.at(i)->GetName() == preset_name) {
+				if (custom_preset_data_.at(i)->get_name() == preset_name) {
 					existing_preset = i;
 					break;
 				}
@@ -200,39 +200,39 @@ public:
 			}
 		}
 
-		preset->SetName(preset_name);
+		preset->set_name(preset_name);
 
 		if (existing_preset >= 0) {
 			custom_preset_data_.replace(existing_preset, preset);
-			return kReplaced;
+			return k_replaced;
 		} else {
 			custom_preset_data_.append(preset);
-			return kAppended;
+			return k_appended;
 		}
 	}
 
-	QString GetCustomPresetFilename() const
+	QString get_custom_preset_filename() const
 	{
-		return QDir(FileFunctions::GetConfigurationLocation())
+		return QDir(FileFunctions::get_configuration_location())
 			.filePath(preset_name_);
 	}
 
-	PresetPtr GetPreset(int index)
+	PresetPtr get_preset(int index)
 	{
 		return custom_preset_data_.at(index);
 	}
 
-	void DeletePreset(int index)
+	void delete_preset(int index)
 	{
 		custom_preset_data_.removeAt(index);
 	}
 
-	int GetNumberOfPresets() const
+	int get_number_of_presets() const
 	{
 		return custom_preset_data_.size();
 	}
 
-	const QVector<PresetPtr> &GetPresetData() const
+	const QVector<PresetPtr> &get_preset_data() const
 	{
 		return custom_preset_data_;
 	}
@@ -247,4 +247,4 @@ private:
 
 }
 
-#endif // PRESETMANAGER_H
+#endif // OAK_PRESETMANAGER_H

@@ -25,165 +25,165 @@ namespace olive
 {
 
 /// Works in conjunction with `genicons.sh` to generate and utilize icons of specific sizes
-const int ICON_SIZE_COUNT = 4;
-const int ICON_SIZES[] = { 16, 32, 64, 128 };
+const int icon_size_count = 4;
+const int icon_sizes[] = { 16, 32, 64, 128 };
 
 /// Internal icon library for use throughout Olive without having to regenerate constantly
-QIcon icon::GoToStart;
-QIcon icon::PrevFrame;
-QIcon icon::Play;
-QIcon icon::Pause;
-QIcon icon::NextFrame;
-QIcon icon::GoToEnd;
+QIcon icon::go_to_start;
+QIcon icon::prev_frame;
+QIcon icon::play;
+QIcon icon::pause;
+QIcon icon::next_frame;
+QIcon icon::go_to_end;
 QIcon icon::New;
-QIcon icon::Open;
-QIcon icon::Save;
-QIcon icon::Undo;
-QIcon icon::Redo;
-QIcon icon::TreeView;
-QIcon icon::ListView;
-QIcon icon::IconView;
-QIcon icon::ToolPointer;
-QIcon icon::ToolEdit;
-QIcon icon::ToolRipple;
-QIcon icon::ToolRolling;
-QIcon icon::ToolRazor;
-QIcon icon::ToolSlip;
-QIcon icon::ToolSlide;
-QIcon icon::ToolHand;
-QIcon icon::ToolTransition;
-QIcon icon::ToolTrackSelect;
-QIcon icon::Folder;
-QIcon icon::Sequence;
-QIcon icon::Video;
-QIcon icon::Audio;
-QIcon icon::Image;
-QIcon icon::MiniMap;
-QIcon icon::TriUp;
-QIcon icon::TriLeft;
-QIcon icon::TriDown;
-QIcon icon::TriRight;
-QIcon icon::TextBold;
-QIcon icon::TextItalic;
-QIcon icon::TextUnderline;
-QIcon icon::TextStrikethrough;
-QIcon icon::TextSmallCaps;
-QIcon icon::TextAlignLeft;
-QIcon icon::TextAlignRight;
-QIcon icon::TextAlignCenter;
-QIcon icon::TextAlignJustify;
-QIcon icon::TextAlignTop;
-QIcon icon::TextAlignBottom;
-QIcon icon::TextAlignMiddle;
-QIcon icon::Snapping;
-QIcon icon::ZoomIn;
-QIcon icon::ZoomOut;
-QIcon icon::Record;
-QIcon icon::Add;
-QIcon icon::Error;
-QIcon icon::DirUp;
-QIcon icon::Clock;
-QIcon icon::Diamond;
-QIcon icon::Plus;
-QIcon icon::Minus;
-QIcon icon::AddEffect;
-QIcon icon::EyeOpened;
-QIcon icon::EyeClosed;
-QIcon icon::LockOpened;
-QIcon icon::LockClosed;
-QIcon icon::Pencil;
-QIcon icon::Subtitles;
-QIcon icon::ColorPicker;
+QIcon icon::open;
+QIcon icon::save;
+QIcon icon::undo;
+QIcon icon::redo;
+QIcon icon::tree_view;
+QIcon icon::list_view;
+QIcon icon::icon_view;
+QIcon icon::tool_pointer;
+QIcon icon::tool_edit;
+QIcon icon::tool_ripple;
+QIcon icon::tool_rolling;
+QIcon icon::tool_razor;
+QIcon icon::tool_slip;
+QIcon icon::tool_slide;
+QIcon icon::tool_hand;
+QIcon icon::tool_transition;
+QIcon icon::tool_track_select;
+QIcon icon::folder;
+QIcon icon::sequence;
+QIcon icon::video;
+QIcon icon::audio;
+QIcon icon::image;
+QIcon icon::mini_map;
+QIcon icon::tri_up;
+QIcon icon::tri_left;
+QIcon icon::tri_down;
+QIcon icon::tri_right;
+QIcon icon::text_bold;
+QIcon icon::text_italic;
+QIcon icon::text_underline;
+QIcon icon::text_strikethrough;
+QIcon icon::text_small_caps;
+QIcon icon::text_align_left;
+QIcon icon::text_align_right;
+QIcon icon::text_align_center;
+QIcon icon::text_align_justify;
+QIcon icon::text_align_top;
+QIcon icon::text_align_bottom;
+QIcon icon::text_align_middle;
+QIcon icon::snapping;
+QIcon icon::zoom_in;
+QIcon icon::zoom_out;
+QIcon icon::record;
+QIcon icon::add;
+QIcon icon::error;
+QIcon icon::dir_up;
+QIcon icon::clock;
+QIcon icon::diamond;
+QIcon icon::plus;
+QIcon icon::minus;
+QIcon icon::add_effect;
+QIcon icon::eye_opened;
+QIcon icon::eye_closed;
+QIcon icon::lock_opened;
+QIcon icon::lock_closed;
+QIcon icon::pencil;
+QIcon icon::subtitles;
+QIcon icon::color_picker;
 
-void icon::LoadAll(const QString &theme)
+void icon::load_all(const QString &theme)
 {
-	GoToStart = Create(theme, "prev");
-	PrevFrame = Create(theme, "rew");
-	Play = Create(theme, "play");
-	Pause = Create(theme, "pause");
-	NextFrame = Create(theme, "ff");
-	GoToEnd = Create(theme, "next");
+	go_to_start = create(theme, "prev");
+	prev_frame = create(theme, "rew");
+	play = create(theme, "play");
+	pause = create(theme, "pause");
+	next_frame = create(theme, "ff");
+	go_to_end = create(theme, "next");
 
-	New = Create(theme, "new");
-	Open = Create(theme, "open");
-	Save = Create(theme, "save");
-	Undo = Create(theme, "undo");
-	Redo = Create(theme, "redo");
-	TreeView = Create(theme, "treeview");
-	ListView = Create(theme, "listview");
-	IconView = Create(theme, "iconview");
+	New = create(theme, "new");
+	open = create(theme, "open");
+	save = create(theme, "save");
+	undo = create(theme, "undo");
+	redo = create(theme, "redo");
+	tree_view = create(theme, "treeview");
+	list_view = create(theme, "listview");
+	icon_view = create(theme, "iconview");
 
-	ToolPointer = Create(theme, "arrow");
-	ToolEdit = Create(theme, "beam");
-	ToolRipple = Create(theme, "ripple");
-	ToolRolling = Create(theme, "rolling");
-	ToolRazor = Create(theme, "razor");
-	ToolSlip = Create(theme, "slip");
-	ToolSlide = Create(theme, "slide");
-	ToolHand = Create(theme, "hand");
-	ToolTransition = Create(theme, "transition-tool");
-	ToolTrackSelect = Create(theme, "track-tool");
+	tool_pointer = create(theme, "arrow");
+	tool_edit = create(theme, "beam");
+	tool_ripple = create(theme, "ripple");
+	tool_rolling = create(theme, "rolling");
+	tool_razor = create(theme, "razor");
+	tool_slip = create(theme, "slip");
+	tool_slide = create(theme, "slide");
+	tool_hand = create(theme, "hand");
+	tool_transition = create(theme, "transition-tool");
+	tool_track_select = create(theme, "track-tool");
 
-	Folder = Create(theme, "folder");
-	Sequence = Create(theme, "sequence");
-	Video = Create(theme, "videosource");
-	Audio = Create(theme, "audiosource");
-	Image = Create(theme, "imagesource");
+	folder = create(theme, "folder");
+	sequence = create(theme, "sequence");
+	video = create(theme, "videosource");
+	audio = create(theme, "audiosource");
+	image = create(theme, "imagesource");
 
-	MiniMap = Create(theme, "map");
+	mini_map = create(theme, "map");
 
-	TriUp = Create(theme, "tri-up");
-	TriLeft = Create(theme, "tri-left");
-	TriDown = Create(theme, "tri-down");
-	TriRight = Create(theme, "tri-right");
+	tri_up = create(theme, "tri-up");
+	tri_left = create(theme, "tri-left");
+	tri_down = create(theme, "tri-down");
+	tri_right = create(theme, "tri-right");
 
-	TextBold = Create(theme, "text-bold");
-	TextItalic = Create(theme, "text-italic");
-	TextUnderline = Create(theme, "text-underline");
-	TextStrikethrough = Create(theme, "text-strikethrough");
-	TextSmallCaps = Create(theme, "text-small-caps");
-	TextAlignLeft = Create(theme, "align-left");
-	TextAlignRight = Create(theme, "align-right");
-	TextAlignCenter = Create(theme, "align-center");
-	TextAlignJustify = Create(theme, "align-justify-all");
-	TextAlignTop = Create(theme, "align-v-top");
-	TextAlignBottom = Create(theme, "align-v-bottom");
-	TextAlignMiddle = Create(theme, "align-v-middle");
+	text_bold = create(theme, "text-bold");
+	text_italic = create(theme, "text-italic");
+	text_underline = create(theme, "text-underline");
+	text_strikethrough = create(theme, "text-strikethrough");
+	text_small_caps = create(theme, "text-small-caps");
+	text_align_left = create(theme, "align-left");
+	text_align_right = create(theme, "align-right");
+	text_align_center = create(theme, "align-center");
+	text_align_justify = create(theme, "align-justify-all");
+	text_align_top = create(theme, "align-v-top");
+	text_align_bottom = create(theme, "align-v-bottom");
+	text_align_middle = create(theme, "align-v-middle");
 
-	Snapping = Create(theme, "magnet");
-	ZoomIn = Create(theme, "zoomin");
-	ZoomOut = Create(theme, "zoomout");
-	Record = Create(theme, "record");
-	Add = Create(theme, "add-button");
-	Error = Create(theme, "error");
-	DirUp = Create(theme, "dirup");
-	Clock = Create(theme, "clock");
-	Diamond = Create(theme, "diamond");
-	Plus = Create(theme, "plus");
-	Minus = Create(theme, "minus");
-	AddEffect = Create(theme, "add-effect");
-	ColorPicker = Create(theme, "color-picker");
+	snapping = create(theme, "magnet");
+	zoom_in = create(theme, "zoomin");
+	zoom_out = create(theme, "zoomout");
+	record = create(theme, "record");
+	add = create(theme, "add-button");
+	error = create(theme, "error");
+	dir_up = create(theme, "dirup");
+	clock = create(theme, "clock");
+	diamond = create(theme, "diamond");
+	plus = create(theme, "plus");
+	minus = create(theme, "minus");
+	add_effect = create(theme, "add-effect");
+	color_picker = create(theme, "color-picker");
 
-	EyeOpened = Create(theme, "eye-opened");
-	EyeClosed = Create(theme, "eye-closed");
-	LockOpened = Create(theme, "lock-opened");
-	LockClosed = Create(theme, "lock-closed");
+	eye_opened = create(theme, "eye-opened");
+	eye_closed = create(theme, "eye-closed");
+	lock_opened = create(theme, "lock-opened");
+	lock_closed = create(theme, "lock-closed");
 
-	Pencil = Create(theme, "text-edit");
-	Subtitles = Create(theme, "subtitles");
+	pencil = create(theme, "text-edit");
+	subtitles = create(theme, "subtitles");
 }
 
-QIcon icon::Create(const QString &theme, const QString &name)
+QIcon icon::create(const QString &theme, const QString &name)
 {
 	QIcon icon;
 
-	for (int i = 0; i < ICON_SIZE_COUNT; i++) {
+	for (int i = 0; i < icon_size_count; i++) {
 		icon.addFile(QStringLiteral("%1/png/%2.%3.png")
-						 .arg(theme, name, QString::number(ICON_SIZES[i])),
-					 QSize(ICON_SIZES[i], ICON_SIZES[i]), QIcon::Normal);
+						 .arg(theme, name, QString::number(icon_sizes[i])),
+					 QSize(icon_sizes[i], icon_sizes[i]), QIcon::Normal);
 		icon.addFile(QStringLiteral("%1/png/%2.%3.disabled.png")
-						 .arg(theme, name, QString::number(ICON_SIZES[i])),
-					 QSize(ICON_SIZES[i], ICON_SIZES[i]), QIcon::Disabled);
+						 .arg(theme, name, QString::number(icon_sizes[i])),
+					 QSize(icon_sizes[i], icon_sizes[i]), QIcon::Disabled);
 	}
 
 	return icon;

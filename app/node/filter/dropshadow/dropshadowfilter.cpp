@@ -28,79 +28,79 @@ namespace olive
 
 #define super Node
 
-const QString DropShadowFilter::kTextureInput = QStringLiteral("tex_in");
-const QString DropShadowFilter::kColorInput = QStringLiteral("color_in");
-const QString DropShadowFilter::kDistanceInput = QStringLiteral("distance_in");
-const QString DropShadowFilter::kAngleInput = QStringLiteral("angle_in");
-const QString DropShadowFilter::kSoftnessInput = QStringLiteral("radius_in");
-const QString DropShadowFilter::kOpacityInput = QStringLiteral("opacity_in");
-const QString DropShadowFilter::kFastInput = QStringLiteral("fast_in");
+const QString DropShadowFilter::k_texture_input = QStringLiteral("tex_in");
+const QString DropShadowFilter::k_color_input = QStringLiteral("color_in");
+const QString DropShadowFilter::k_distance_input = QStringLiteral("distance_in");
+const QString DropShadowFilter::k_angle_input = QStringLiteral("angle_in");
+const QString DropShadowFilter::k_softness_input = QStringLiteral("radius_in");
+const QString DropShadowFilter::k_opacity_input = QStringLiteral("opacity_in");
+const QString DropShadowFilter::k_fast_input = QStringLiteral("fast_in");
 
 DropShadowFilter::DropShadowFilter()
 {
-	AddInput(kTextureInput, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_texture_input, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	AddInput(kColorInput, NodeValue::kColor,
+	add_input(k_color_input, NodeValue::k_color,
 			 QVariant::fromValue(Color(0.0, 0.0, 0.0)));
 
-	AddInput(kDistanceInput, NodeValue::kFloat, 10.0);
+	add_input(k_distance_input, NodeValue::k_float, 10.0);
 
-	AddInput(kAngleInput, NodeValue::kFloat, 135.0);
+	add_input(k_angle_input, NodeValue::k_float, 135.0);
 
-	AddInput(kSoftnessInput, NodeValue::kFloat, 10.0);
-	SetInputProperty(kSoftnessInput, QStringLiteral("min"), 0.0);
+	add_input(k_softness_input, NodeValue::k_float, 10.0);
+	set_input_property(k_softness_input, QStringLiteral("min"), 0.0);
 
-	AddInput(kOpacityInput, NodeValue::kFloat, 1.0);
-	SetInputProperty(kOpacityInput, QStringLiteral("min"), 0.0);
-	SetInputProperty(kOpacityInput, QStringLiteral("view"),
-					 FloatSlider::kPercentage);
+	add_input(k_opacity_input, NodeValue::k_float, 1.0);
+	set_input_property(k_opacity_input, QStringLiteral("min"), 0.0);
+	set_input_property(k_opacity_input, QStringLiteral("view"),
+					 FloatSlider::k_percentage);
 
-	AddInput(kFastInput, NodeValue::kBoolean, false);
+	add_input(k_fast_input, NodeValue::k_boolean, false);
 
-	SetEffectInput(kTextureInput);
-	SetFlag(kVideoEffect);
+	set_effect_input(k_texture_input);
+	set_flag(k_video_effect);
 }
 
-void DropShadowFilter::Retranslate()
+void DropShadowFilter::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kTextureInput, tr("Texture"));
-	SetInputName(kColorInput, tr("Color"));
-	SetInputName(kDistanceInput, tr("Distance"));
-	SetInputName(kAngleInput, tr("Angle"));
-	SetInputName(kSoftnessInput, tr("Softness"));
-	SetInputName(kOpacityInput, tr("Opacity"));
-	SetInputName(kFastInput, tr("Faster (Lower Quality)"));
+	set_input_name(k_texture_input, tr("Texture"));
+	set_input_name(k_color_input, tr("Color"));
+	set_input_name(k_distance_input, tr("Distance"));
+	set_input_name(k_angle_input, tr("Angle"));
+	set_input_name(k_softness_input, tr("Softness"));
+	set_input_name(k_opacity_input, tr("Opacity"));
+	set_input_name(k_fast_input, tr("Faster (Lower Quality)"));
 }
 
-ShaderCode DropShadowFilter::GetShaderCode(const ShaderRequest &request) const
+ShaderCode DropShadowFilter::get_shader_code(const ShaderRequest &request) const
 {
 	Q_UNUSED(request)
 	return ShaderCode(
-		FileFunctions::ReadFileAsString(":/shaders/dropshadow.frag"));
+		FileFunctions::read_file_as_string(":/shaders/dropshadow.frag"));
 }
 
-void DropShadowFilter::Value(const NodeValueRow &value,
+void DropShadowFilter::value(const NodeValueRow &value,
 							 const NodeGlobals &globals,
 							 NodeValueTable *table) const
 {
-	if (TexturePtr tex = value[kTextureInput].toTexture()) {
+	if (TexturePtr tex = value[k_texture_input].to_texture()) {
 		ShaderJob job(value);
 
 		QString iterative = QStringLiteral("previous_iteration_in");
 
-		job.Insert(QStringLiteral("resolution_in"),
-				   NodeValue(NodeValue::kVec2, tex->virtual_resolution(),
+		job.insert(QStringLiteral("resolution_in"),
+				   NodeValue(NodeValue::k_vec2, tex->virtual_resolution(),
 							 this));
-		job.Insert(iterative, value[kTextureInput]);
+		job.insert(iterative, value[k_texture_input]);
 
-		if (!qIsNull(value[kSoftnessInput].toDouble())) {
-			job.SetIterations(3, iterative);
+		if (!qIsNull(value[k_softness_input].to_double())) {
+			job.set_iterations(3, iterative);
 		}
 
-		table->Push(NodeValue::kTexture, tex->toJob(job), this);
+		table->push(NodeValue::k_texture, tex->to_job(job), this);
 	}
 }
 

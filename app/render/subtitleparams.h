@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SUBTITLEPARAMS_H
-#define SUBTITLEPARAMS_H
+#ifndef OAK_SUBTITLEPARAMS_H
+#define OAK_SUBTITLEPARAMS_H
 
 #include <olive/core/core.h>
 #include <QRect>
@@ -75,18 +75,18 @@ public:
 		enabled_ = true;
 	}
 
-	static QString GenerateASSHeader();
+	static QString generate_ass_header();
 
-	void Load(QXmlStreamReader *reader);
+	void load(QXmlStreamReader *reader);
 
-	void Save(QXmlStreamWriter *writer) const;
+	void save(QXmlStreamWriter *writer) const;
 
 	bool is_valid() const
 	{
 		return !this->empty();
 	}
 
-	rational duration() const
+	Rational duration() const
 	{
 		if (this->empty()) {
 			return 0;
@@ -124,4 +124,4 @@ private:
 Q_DECLARE_METATYPE(olive::Subtitle)
 Q_DECLARE_METATYPE(olive::SubtitleParams)
 
-#endif // SUBTITLEPARAMS_H
+#endif // OAK_SUBTITLEPARAMS_H

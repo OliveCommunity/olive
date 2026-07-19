@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef AVFRAMEPTR_H
-#define AVFRAMEPTR_H
+#ifndef OAK_AVFRAMEPTR_H
+#define OAK_AVFRAMEPTR_H
 
 #include <stdint.h>
 
@@ -124,16 +124,16 @@ private:
 
 using AVFramePtr = std::shared_ptr<AVFrame>;
 
-inline AVFramePtr CreateAVFramePtr(FBFrame *f)
+inline AVFramePtr create_av_frame_ptr(FBFrame *f)
 {
 	return std::make_shared<AVFrame>(f);
 }
 
-inline AVFramePtr CreateAVFramePtr()
+inline AVFramePtr create_av_frame_ptr()
 {
 	return std::make_shared<AVFrame>();
 }
 
 }
 
-#endif // AVFRAMEPTR_H
+#endif // OAK_AVFRAMEPTR_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TRANSITIONBLOCK_H
-#define TRANSITIONBLOCK_H
+#ifndef OAK_TRANSITIONBLOCK_H
+#define OAK_TRANSITIONBLOCK_H
 
 #include "node/block/block.h"
 
@@ -34,10 +34,10 @@ class TransitionBlock : public Block {
 public:
 	TransitionBlock();
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	rational in_offset() const;
-	rational out_offset() const;
+	Rational in_offset() const;
+	Rational out_offset() const;
 
 	/**
    * @brief Return the "middle point" of the transition, relative to the transition
@@ -47,11 +47,11 @@ public:
    * 0 means the center of the transition is right in the middle and the in and out offsets will
    * be equal.
    */
-	rational offset_center() const;
-	void set_offset_center(const rational &r);
+	Rational offset_center() const;
+	void set_offset_center(const Rational &r);
 
-	void set_offsets_and_length(const rational &in_offset,
-								const rational &out_offset);
+	void set_offsets_and_length(const Rational &in_offset,
+								const Rational &out_offset);
 
 	bool is_dual_transition() const
 	{
@@ -61,21 +61,21 @@ public:
 	Block *connected_out_block() const;
 	Block *connected_in_block() const;
 
-	double GetTotalProgress(const double &time) const;
-	double GetOutProgress(const double &time) const;
-	double GetInProgress(const double &time) const;
+	double get_total_progress(const double &time) const;
+	double get_out_progress(const double &time) const;
+	double get_in_progress(const double &time) const;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	virtual void InvalidateCache(
+	virtual void invalidate_cache(
 		const TimeRange &range, const QString &from, int element = -1,
 		InvalidateCacheOptions options = InvalidateCacheOptions()) override;
 
-	static const QString kOutBlockInput;
-	static const QString kInBlockInput;
-	static const QString kCurveInput;
-	static const QString kCenterInput;
+	static const QString k_out_block_input;
+	static const QString k_in_block_input;
+	static const QString k_curve_input;
+	static const QString k_center_input;
 
 protected:
 	virtual void ShaderJobEvent(const NodeValueRow &value, ShaderJob *job) const
@@ -88,7 +88,7 @@ protected:
 	{
 	}
 
-	double TransformCurve(double linear) const;
+	double transform_curve(double linear) const;
 
 	virtual void InputConnectedEvent(const QString &input, int element,
 									 Node *output) override;
@@ -96,20 +96,20 @@ protected:
 	virtual void InputDisconnectedEvent(const QString &input, int element,
 										Node *output) override;
 
-	virtual TimeRange InputTimeAdjustment(const QString &input, int element,
+	virtual TimeRange input_time_adjustment(const QString &input, int element,
 										  const TimeRange &input_time,
 										  bool clamp) const override;
 
 	virtual TimeRange
-	OutputTimeAdjustment(const QString &input, int element,
+	output_time_adjustment(const QString &input, int element,
 						 const TimeRange &input_time) const override;
 
 private:
-	enum CurveType { kLinear, kExponential, kLogarithmic };
+	enum CurveType { k_linear, k_exponential, k_logarithmic };
 
-	double GetInternalTransitionTime(const double &time) const;
+	double get_internal_transition_time(const double &time) const;
 
-	void InsertTransitionTimes(AcceleratedJob *job, const double &time) const;
+	void insert_transition_times(AcceleratedJob *job, const double &time) const;
 
 	ClipBlock *connected_out_block_;
 
@@ -118,4 +118,4 @@ private:
 
 }
 
-#endif // TRANSITIONBLOCK_H
+#endif // OAK_TRANSITIONBLOCK_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef GAPBLOCK_H
-#define GAPBLOCK_H
+#ifndef OAK_GAPBLOCK_H
+#define OAK_GAPBLOCK_H
 
 #include "node/block/block.h"
 
@@ -37,9 +37,9 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(GapBlock)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QString Description() const override;
+	virtual QString description() const override;
 };
 
 }

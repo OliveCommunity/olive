@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef STYLEMANAGER_H
-#define STYLEMANAGER_H
+#ifndef OAK_STYLEMANAGER_H
+#define OAK_STYLEMANAGER_H
 
 #include <QSettings>
 #include <QWidget>
@@ -32,13 +32,13 @@ namespace olive
 
 class StyleManager : public QObject {
 public:
-	static void Init();
+	static void init();
 
-	static const QString &GetStyle();
+	static const QString &get_style();
 
-	static void SetStyle(const QString &style_path);
+	static void set_style(const QString &style_path);
 
-	inline static const char *kDefaultStyle = "olive-dark";
+	inline static const char *k_default_style = "olive-dark";
 
 	static const QMap<QString, QString> &available_themes()
 	{
@@ -46,20 +46,20 @@ public:
 	}
 
 private:
-	static QPalette ParsePalette(const QString &ini_path);
+	static QPalette parse_palette(const QString &ini_path);
 
-	static void ParsePaletteGroup(QSettings *ini, QPalette *palette,
+	static void parse_palette_group(QSettings *ini, QPalette *palette,
 								  QPalette::ColorGroup group);
 
-	static void ParsePaletteColor(QSettings *ini, QPalette *palette,
+	static void parse_palette_color(QSettings *ini, QPalette *palette,
 								  QPalette::ColorGroup group,
 								  const QString &role_name);
 
-	static QString current_style_;
+	static QString current_style;
 
 	static QMap<QString, QString> available_themes_;
 };
 
 }
 
-#endif // STYLEMANAGER_H
+#endif // OAK_STYLEMANAGER_H

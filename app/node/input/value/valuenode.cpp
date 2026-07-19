@@ -24,56 +24,56 @@
 namespace olive
 {
 
-const QString ValueNode::kTypeInput = QStringLiteral("type_in");
-const QString ValueNode::kValueInput = QStringLiteral("value_in");
-const QVector<NodeValue::Type> ValueNode::kSupportedTypes = {
-	NodeValue::kFloat, NodeValue::kInt,		NodeValue::kRational,
-	NodeValue::kVec2,  NodeValue::kVec3,	NodeValue::kVec4,
-	NodeValue::kColor, NodeValue::kText,	NodeValue::kMatrix,
-	NodeValue::kFont,  NodeValue::kBoolean,
+const QString ValueNode::k_type_input = QStringLiteral("type_in");
+const QString ValueNode::k_value_input = QStringLiteral("value_in");
+const QVector<NodeValue::Type> ValueNode::k_supported_types = {
+	NodeValue::k_float, NodeValue::k_int,		NodeValue::k_rational,
+	NodeValue::k_vec2,  NodeValue::k_vec3,	NodeValue::k_vec4,
+	NodeValue::k_color, NodeValue::k_text,	NodeValue::k_matrix,
+	NodeValue::k_font,  NodeValue::k_boolean,
 };
 
 #define super Node
 
 ValueNode::ValueNode()
 {
-	AddInput(kTypeInput, NodeValue::kCombo, 0,
-			 InputFlags(kInputFlagNotConnectable | kInputFlagNotKeyframable));
+	add_input(k_type_input, NodeValue::k_combo, 0,
+			 InputFlags(k_input_flag_not_connectable | k_input_flag_not_keyframable));
 
-	AddInput(kValueInput, kSupportedTypes.first(), QVariant(),
-			 InputFlags(kInputFlagNotConnectable));
+	add_input(k_value_input, k_supported_types.first(), QVariant(),
+			 InputFlags(k_input_flag_not_connectable));
 }
 
-void ValueNode::Retranslate()
+void ValueNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kTypeInput, QStringLiteral("Type"));
-	SetInputName(kValueInput, QStringLiteral("Value"));
+	set_input_name(k_type_input, QStringLiteral("Type"));
+	set_input_name(k_value_input, QStringLiteral("Value"));
 
 	QStringList type_names;
-	type_names.reserve(kSupportedTypes.size());
-	foreach (NodeValue::Type type, kSupportedTypes) {
-		type_names.append(NodeValue::GetPrettyDataTypeName(type));
+	type_names.reserve(k_supported_types.size());
+	foreach (NodeValue::Type type, k_supported_types) {
+		type_names.append(NodeValue::get_pretty_data_type_name(type));
 	}
-	SetComboBoxStrings(kTypeInput, type_names);
+	set_combo_box_strings(k_type_input, type_names);
 }
 
-void ValueNode::Value(const NodeValueRow &value, const NodeGlobals &globals,
+void ValueNode::value(const NodeValueRow &value, const NodeGlobals &globals,
 					  NodeValueTable *table) const
 {
 	Q_UNUSED(globals)
 
 	// Ensure value is pushed onto the table
-	table->Push(value[kValueInput]);
+	table->push(value[k_value_input]);
 }
 
 void ValueNode::InputValueChangedEvent(const QString &input, int element)
 {
-	if (input == kTypeInput) {
-		SetInputDataType(
-			kValueInput,
-			kSupportedTypes.at(GetStandardValue(kTypeInput).toInt()));
+	if (input == k_type_input) {
+		set_input_data_type(
+			k_value_input,
+			k_supported_types.at(get_standard_value(k_type_input).toInt()));
 	}
 
 	super::InputValueChangedEvent(input, element);

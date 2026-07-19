@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef AUDIOWAVEFORMVIEW_H
-#define AUDIOWAVEFORMVIEW_H
+#ifndef OAK_AUDIOWAVEFORMVIEW_H
+#define OAK_AUDIOWAVEFORMVIEW_H
 
 #include <QtConcurrent/QtConcurrent>
 #include <QWidget>
@@ -36,7 +36,7 @@ class AudioWaveformView : public SeekableWidget {
 public:
 	AudioWaveformView(QWidget *parent = nullptr);
 
-	void SetViewer(ViewerOutput *playback);
+	void set_viewer(ViewerOutput *playback);
 
 protected:
 	virtual void drawForeground(QPainter *painter, const QRectF &rect) override;
@@ -49,4 +49,4 @@ private:
 
 }
 
-#endif // AUDIOWAVEFORMVIEW_H
+#endif // OAK_AUDIOWAVEFORMVIEW_H

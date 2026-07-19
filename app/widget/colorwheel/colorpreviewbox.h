@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLORPREVIEWBOX_H
-#define COLORPREVIEWBOX_H
+#ifndef OAK_COLORPREVIEWBOX_H
+#define OAK_COLORPREVIEWBOX_H
 
 #include <QWidget>
 
@@ -34,11 +34,11 @@ class ColorPreviewBox : public QWidget {
 public:
 	ColorPreviewBox(QWidget *parent = nullptr);
 
-	void SetColorProcessor(ColorProcessorPtr to_ref,
+	void set_color_processor(ColorProcessorPtr to_ref,
 						   ColorProcessorPtr to_display);
 
 public slots:
-	void SetColor(const Color &c);
+	void set_color(const Color &c);
 
 protected:
 	virtual void paintEvent(QPaintEvent *e) override;
@@ -53,4 +53,4 @@ private:
 
 }
 
-#endif // COLORPREVIEWBOX_H
+#endif // OAK_COLORPREVIEWBOX_H

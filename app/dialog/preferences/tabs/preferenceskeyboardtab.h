@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PREFERENCESKEYBOARDTAB_H
-#define PREFERENCESKEYBOARDTAB_H
+#ifndef OAK_PREFERENCESKEYBOARDTAB_H
+#define OAK_PREFERENCESKEYBOARDTAB_H
 
 #include <QMenuBar>
 #include <QTreeWidget>
@@ -38,7 +38,7 @@ class PreferencesKeyboardTab : public ConfigDialogBaseTab {
 public:
 	PreferencesKeyboardTab(MainWindow *main_window);
 
-	virtual void Accept(MultiUndoCommand *command) override;
+	virtual void accept(MultiUndoCommand *command) override;
 
 private slots:
 	/**
@@ -142,4 +142,4 @@ private:
 
 }
 
-#endif // PREFERENCESKEYBOARDTAB_H
+#endif // OAK_PREFERENCESKEYBOARDTAB_H

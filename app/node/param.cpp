@@ -28,153 +28,153 @@ namespace olive
 
 QString NodeInput::name() const
 {
-	if (IsValid()) {
-		return node_->GetInputName(input_);
+	if (is_valid()) {
+		return node_->get_input_name(input_);
 	} else {
 		return QString();
 	}
 }
 
-bool NodeInput::IsHidden() const
+bool NodeInput::is_hidden() const
 {
-	if (IsValid()) {
-		return node_->IsInputHidden(input_);
+	if (is_valid()) {
+		return node_->is_input_hidden(input_);
 	} else {
 		return false;
 	}
 }
 
-bool NodeInput::IsConnected() const
+bool NodeInput::is_connected() const
 {
-	if (IsValid()) {
-		return node_->IsInputConnected(*this);
+	if (is_valid()) {
+		return node_->is_input_connected(*this);
 	} else {
 		return false;
 	}
 }
 
-bool NodeInput::IsKeyframing() const
+bool NodeInput::is_keyframing() const
 {
-	if (IsValid()) {
-		return node_->IsInputKeyframing(*this);
+	if (is_valid()) {
+		return node_->is_input_keyframing(*this);
 	} else {
 		return false;
 	}
 }
 
-bool NodeInput::IsArray() const
+bool NodeInput::is_array() const
 {
-	if (IsValid()) {
-		return node_->InputIsArray(input_);
+	if (is_valid()) {
+		return node_->input_is_array(input_);
 	} else {
 		return false;
 	}
 }
 
-InputFlags NodeInput::GetFlags() const
+InputFlags NodeInput::get_flags() const
 {
-	if (IsValid()) {
-		return node_->GetInputFlags(input_);
+	if (is_valid()) {
+		return node_->get_input_flags(input_);
 	} else {
-		return InputFlags(kInputFlagNormal);
+		return InputFlags(k_input_flag_normal);
 	}
 }
 
-QString NodeInput::GetInputName() const
+QString NodeInput::get_input_name() const
 {
-	if (IsValid()) {
-		return node_->GetInputName(input_);
+	if (is_valid()) {
+		return node_->get_input_name(input_);
 	} else {
 		return QString();
 	}
 }
 
-Node *NodeInput::GetConnectedOutput() const
+Node *NodeInput::get_connected_output() const
 {
-	if (IsValid()) {
-		return node_->GetConnectedOutput(*this);
+	if (is_valid()) {
+		return node_->get_connected_output(*this);
 	} else {
 		return nullptr;
 	}
 }
 
-NodeValue::Type NodeInput::GetDataType() const
+NodeValue::Type NodeInput::get_data_type() const
 {
-	if (IsValid()) {
-		return node_->GetInputDataType(input_);
+	if (is_valid()) {
+		return node_->get_input_data_type(input_);
 	} else {
-		return NodeValue::kNone;
+		return NodeValue::k_none;
 	}
 }
 
-QVariant NodeInput::GetDefaultValue() const
+QVariant NodeInput::get_default_value() const
 {
-	if (IsValid()) {
-		return node_->GetDefaultValue(input_);
+	if (is_valid()) {
+		return node_->get_default_value(input_);
 	} else {
 		return QVariant();
 	}
 }
 
-QStringList NodeInput::GetComboBoxStrings() const
+QStringList NodeInput::get_combo_box_strings() const
 {
-	if (IsValid()) {
-		return node_->GetComboBoxStrings(input_);
+	if (is_valid()) {
+		return node_->get_combo_box_strings(input_);
 	} else {
 		return QStringList();
 	}
 }
 
-QVariant NodeInput::GetProperty(const QString &key) const
+QVariant NodeInput::get_property(const QString &key) const
 {
-	if (IsValid()) {
-		return node_->GetInputProperty(input_, key);
+	if (is_valid()) {
+		return node_->get_input_property(input_, key);
 	} else {
 		return QVariant();
 	}
 }
 
-QHash<QString, QVariant> NodeInput::GetProperties() const
+QHash<QString, QVariant> NodeInput::get_properties() const
 {
-	if (IsValid()) {
-		return node_->GetInputProperties(input_);
+	if (is_valid()) {
+		return node_->get_input_properties(input_);
 	} else {
 		return QHash<QString, QVariant>();
 	}
 }
 
-QVariant NodeInput::GetValueAtTime(const rational &time) const
+QVariant NodeInput::get_value_at_time(const Rational &time) const
 {
-	if (IsValid()) {
-		return node_->GetValueAtTime(*this, time);
+	if (is_valid()) {
+		return node_->get_value_at_time(*this, time);
 	} else {
 		return QVariant();
 	}
 }
 
-NodeKeyframe *NodeInput::GetKeyframeAtTimeOnTrack(const rational &time,
+NodeKeyframe *NodeInput::get_keyframe_at_time_on_track(const Rational &time,
 												  int track) const
 {
-	if (IsValid()) {
-		return node_->GetKeyframeAtTimeOnTrack(*this, time, track);
+	if (is_valid()) {
+		return node_->get_keyframe_at_time_on_track(*this, time, track);
 	} else {
 		return nullptr;
 	}
 }
 
-QVariant NodeInput::GetSplitDefaultValueForTrack(int track) const
+QVariant NodeInput::get_split_default_value_for_track(int track) const
 {
-	if (IsValid()) {
-		return node_->GetSplitDefaultValueOnTrack(input_, track);
+	if (is_valid()) {
+		return node_->get_split_default_value_on_track(input_, track);
 	} else {
 		return QVariant();
 	}
 }
 
-int NodeInput::GetArraySize() const
+int NodeInput::get_array_size() const
 {
-	if (IsValid() && element_ == -1) {
-		return node_->InputArraySize(input_);
+	if (is_valid() && element_ == -1) {
+		return node_->input_array_size(input_);
 	} else {
 		return 0;
 	}

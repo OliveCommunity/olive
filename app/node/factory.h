@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEFACTORY_H
-#define NODEFACTORY_H
+#ifndef OAK_NODEFACTORY_H
+#define OAK_NODEFACTORY_H
 
 #include <QList>
 
@@ -33,88 +33,88 @@ namespace olive
 class NodeFactory {
 public:
 	enum InternalID {
-		kViewerOutput,
-		kClipBlock,
-		kGapBlock,
-		kPolygonGenerator,
-		kMatrixGenerator,
-		kTransformDistort,
-		kTrackOutput,
-		kAudioVolume,
-		kAudioPanning,
-		kMath,
-		kTime,
-		kTrigonometry,
-		kBlurFilter,
-		kSolidGenerator,
-		kMerge,
-		kStrokeFilter,
-		kTextGeneratorV1,
-		kTextGeneratorV2,
-		kTextGeneratorV3,
-		kCrossDissolveTransition,
-		kDipToColorTransition,
-		kMosaicFilter,
-		kCropDistort,
-		kProjectFootage,
-		kProjectFolder,
-		kProjectSequence,
-		kValueNode,
-		kTimeRemapNode,
-		kSubtitleBlock,
-		kShapeGenerator,
-		kColorDifferenceKeyKeying,
-		kDespillKeying,
-		kGroupNode,
-		kOpacityEffect,
-		kFlipDistort,
-		kNoiseGenerator,
-		kTimeOffsetNode,
-		kCornerPinDistort,
-		kDisplayTransform,
-		kOCIOGradingTransformLinear,
-		kOCIOLut,
-		kThreeWayColor,
-		kChromaKey,
-		kMaskDistort,
-		kDropShadowFilter,
-		kTimeFormat,
-		kWaveDistort,
-		kRippleDistort,
-		kTileDistort,
-		kSwirlDistort,
-		kMulticamNode,
+		k_viewer_output,
+		k_clip_block,
+		k_gap_block,
+		k_polygon_generator,
+		k_matrix_generator,
+		k_transform_distort,
+		k_track_output,
+		k_audio_volume,
+		k_audio_panning,
+		k_math,
+		k_time,
+		k_trigonometry,
+		k_blur_filter,
+		k_solid_generator,
+		k_merge,
+		k_stroke_filter,
+		k_text_generator_v1,
+		k_text_generator_v2,
+		k_text_generator_v3,
+		k_cross_dissolve_transition,
+		k_dip_to_color_transition,
+		k_mosaic_filter,
+		k_crop_distort,
+		k_project_footage,
+		k_project_folder,
+		k_project_sequence,
+		k_value_node,
+		k_time_remap_node,
+		k_subtitle_block,
+		k_shape_generator,
+		k_color_difference_key_keying,
+		k_despill_keying,
+		k_group_node,
+		k_opacity_effect,
+		k_flip_distort,
+		k_noise_generator,
+		k_time_offset_node,
+		k_corner_pin_distort,
+		k_display_transform,
+		k_ocio_grading_transform_linear,
+		k_ocio_lut,
+		k_three_way_color,
+		k_chroma_key,
+		k_mask_distort,
+		k_drop_shadow_filter,
+		k_time_format,
+		k_wave_distort,
+		k_ripple_distort,
+		k_tile_distort,
+		k_swirl_distort,
+		k_multicam_node,
 
 		// Count value
-		kInternalNodeCount
+		k_internal_node_count
 	};
 
 	NodeFactory() = default;
 
-	static void Initialize();
+	static void initialize();
 
-	static void Destroy();
+	static void destroy();
 
 	static Menu *
-	CreateMenu(QWidget *parent, bool create_none_item = false,
-			   Node::CategoryID restrict_to = Node::kCategoryUnknown,
+	create_menu(QWidget *parent, bool create_none_item = false,
+			   Node::CategoryID restrict_to = Node::k_category_unknown,
 			   uint64_t restrict_flags = 0);
 
 	static Node *CreateFromMenuAction(QAction *action);
 
 	static QString GetIDFromMenuAction(QAction *action);
 
-	static QString GetNameFromID(const QString &id);
+	static QString get_name_from_id(const QString &id);
 
-	static Node *CreateFromID(const QString &id);
-	static void RegisterPluginNodes();
+	static Node *create_from_id(const QString &id);
+	static void register_plugin_nodes();
 
-	static Node *CreateFromFactoryIndex(const InternalID &id);
+	static Node *create_from_factory_index(const InternalID &id);
 
 private:
-	static QList<Node *> library_;
+	static QList<Node *> library;
 };
 
 }
 
-#endif // NODEFACTORY_H
+#endif // OAK_NODEFACTORY_H

@@ -30,42 +30,42 @@ EditTool::EditTool(TimelineWidget *parent)
 {
 }
 
-void EditTool::MousePress(TimelineViewMouseEvent *event)
+void EditTool::mouse_press(TimelineViewMouseEvent *event)
 {
-	if (!(event->GetModifiers() & Qt::ShiftModifier)) {
-		parent()->DeselectAll();
+	if (!(event->get_modifiers() & Qt::ShiftModifier)) {
+		parent()->deselect_all();
 	}
 }
 
-void EditTool::MouseMove(TimelineViewMouseEvent *event)
+void EditTool::mouse_move(TimelineViewMouseEvent *event)
 {
 	if (dragging_) {
-		rational end_frame = event->GetFrame(true);
+		Rational end_frame = event->get_frame(true);
 
 		if (Core::instance()->snapping()) {
-			rational movement;
-			parent()->SnapPoint({ end_frame }, &movement);
+			Rational movement;
+			parent()->snap_point({ end_frame }, &movement);
 			if (!movement.isNull()) {
 				end_frame += movement;
 			}
 		}
 
-		parent()->SetSelections(start_selections_, false);
-		parent()->AddSelection(TimeRange(start_coord_.GetFrame(), end_frame),
-							   start_coord_.GetTrack());
+		parent()->set_selections(start_selections_, false);
+		parent()->add_selection(TimeRange(start_coord_.get_frame(), end_frame),
+							   start_coord_.get_track());
 	} else {
-		start_selections_ = parent()->GetSelections();
+		start_selections_ = parent()->get_selections();
 
 		dragging_ = true;
 
-		start_coord_ = event->GetCoordinates(true);
+		start_coord_ = event->get_coordinates(true);
 
 		// Snap if we're snapping
 		if (Core::instance()->snapping()) {
-			rational movement;
-			parent()->SnapPoint({ start_coord_.GetFrame() }, &movement);
+			Rational movement;
+			parent()->snap_point({ start_coord_.get_frame() }, &movement);
 			if (!movement.isNull()) {
-				start_coord_.SetFrame(start_coord_.GetFrame() + movement);
+				start_coord_.set_frame(start_coord_.get_frame() + movement);
 			}
 		}
 
@@ -73,21 +73,21 @@ void EditTool::MouseMove(TimelineViewMouseEvent *event)
 	}
 }
 
-void EditTool::MouseRelease(TimelineViewMouseEvent *event)
+void EditTool::mouse_release(TimelineViewMouseEvent *event)
 {
-	auto current_sel = parent()->GetSelections();
-	parent()->SetSelections(start_selections_, false);
-	parent()->SetSelections(current_sel, true);
+	auto current_sel = parent()->get_selections();
+	parent()->set_selections(start_selections_, false);
+	parent()->set_selections(current_sel, true);
 
 	dragging_ = false;
 }
 
-void EditTool::MouseDoubleClick(TimelineViewMouseEvent *event)
+void EditTool::mouse_double_click(TimelineViewMouseEvent *event)
 {
-	Block *item = parent()->GetItemAtScenePos(event->GetCoordinates());
+	Block *item = parent()->get_item_at_scene_pos(event->get_coordinates());
 
-	if (item && !item->track()->IsLocked()) {
-		parent()->AddSelection(item);
+	if (item && !item->track()->is_locked()) {
+		parent()->add_selection(item);
 	}
 }
 

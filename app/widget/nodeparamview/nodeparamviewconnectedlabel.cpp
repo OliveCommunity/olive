@@ -51,7 +51,7 @@ NodeParamViewConnectedLabel::NodeParamViewConnectedLabel(const NodeInput &input,
 	// Set up label area
 	QHBoxLayout *label_layout = new QHBoxLayout();
 	label_layout->setSpacing(
-		QtUtils::QFontMetricsWidth(fontMetrics(), QStringLiteral(" ")));
+		QtUtils::q_font_metrics_width(fontMetrics(), QStringLiteral(" ")));
 	label_layout->setContentsMargins(0, 0, 0, 0);
 	layout->addLayout(label_layout);
 
@@ -64,10 +64,10 @@ NodeParamViewConnectedLabel::NodeParamViewConnectedLabel(const NodeInput &input,
 	connected_to_lbl_ = new ClickableLabel(this);
 	connected_to_lbl_->setCursor(Qt::PointingHandCursor);
 	connected_to_lbl_->setContextMenuPolicy(Qt::CustomContextMenu);
-	connect(connected_to_lbl_, &ClickableLabel::MouseClicked, this,
-			&NodeParamViewConnectedLabel::ConnectionClicked);
+	connect(connected_to_lbl_, &ClickableLabel::mouse_clicked, this,
+			&NodeParamViewConnectedLabel::connection_clicked);
 	connect(connected_to_lbl_, &ClickableLabel::customContextMenuRequested,
-			this, &NodeParamViewConnectedLabel::ShowLabelContextMenu);
+			this, &NodeParamViewConnectedLabel::show_label_context_menu);
 	label_layout->addWidget(connected_to_lbl_);
 
 	label_layout->addStretch();
@@ -78,47 +78,47 @@ NodeParamViewConnectedLabel::NodeParamViewConnectedLabel(const NodeInput &input,
 	connected_to_lbl_->setForegroundRole(QPalette::Link);
 	connected_to_lbl_->setFont(link_font);
 
-	if (input_.IsConnected()) {
-		InputConnected(input_.GetConnectedOutput(), input_);
+	if (input_.is_connected()) {
+		input_connected(input_.get_connected_output(), input_);
 	} else {
-		InputDisconnected(nullptr, input_);
+		input_disconnected(nullptr, input_);
 	}
 
-	connect(input_.node(), &Node::InputConnected, this,
-			&NodeParamViewConnectedLabel::InputConnected);
-	connect(input_.node(), &Node::InputDisconnected, this,
-			&NodeParamViewConnectedLabel::InputDisconnected);
+	connect(input_.node(), &Node::input_connected, this,
+			&NodeParamViewConnectedLabel::input_connected);
+	connect(input_.node(), &Node::input_disconnected, this,
+			&NodeParamViewConnectedLabel::input_disconnected);
 
 	// Creating the tree is expensive, hold off until the user specifically requests it
 	value_tree_ = nullptr;
 	connect(collapse_btn, &CollapseButton::toggled, this,
-			&NodeParamViewConnectedLabel::SetValueTreeVisible);
+			&NodeParamViewConnectedLabel::set_value_tree_visible);
 }
 
-void NodeParamViewConnectedLabel::SetViewerNode(ViewerOutput *viewer)
+void NodeParamViewConnectedLabel::set_viewer_node(ViewerOutput *viewer)
 {
 	if (viewer_) {
-		disconnect(viewer_, &ViewerOutput::PlayheadChanged, this,
-				   &NodeParamViewConnectedLabel::UpdateValueTree);
+		disconnect(viewer_, &ViewerOutput::playhead_changed, this,
+				   &NodeParamViewConnectedLabel::update_value_tree);
 	}
 
 	viewer_ = viewer;
 
 	if (viewer_) {
-		connect(viewer_, &ViewerOutput::PlayheadChanged, this,
-				&NodeParamViewConnectedLabel::UpdateValueTree);
-		UpdateValueTree();
+		connect(viewer_, &ViewerOutput::playhead_changed, this,
+				&NodeParamViewConnectedLabel::update_value_tree);
+		update_value_tree();
 	}
 }
 
-void NodeParamViewConnectedLabel::CreateTree()
+void NodeParamViewConnectedLabel::create_tree()
 {
 	// Set up table area
 	value_tree_ = new NodeValueTree(this);
 	layout()->addWidget(value_tree_);
 }
 
-void NodeParamViewConnectedLabel::InputConnected(Node *output,
+void NodeParamViewConnectedLabel::input_connected(Node *output,
 												 const NodeInput &input)
 {
 	if (input_ != input) {
@@ -127,10 +127,10 @@ void NodeParamViewConnectedLabel::InputConnected(Node *output,
 
 	connected_node_ = output;
 
-	UpdateLabel();
+	update_label();
 }
 
-void NodeParamViewConnectedLabel::InputDisconnected(Node *output,
+void NodeParamViewConnectedLabel::input_disconnected(Node *output,
 													const NodeInput &input)
 {
 	if (input_ != input) {
@@ -141,10 +141,10 @@ void NodeParamViewConnectedLabel::InputDisconnected(Node *output,
 
 	connected_node_ = nullptr;
 
-	UpdateLabel();
+	update_label();
 }
 
-void NodeParamViewConnectedLabel::ShowLabelContextMenu()
+void NodeParamViewConnectedLabel::show_label_context_menu()
 {
 	Menu m(this);
 
@@ -152,25 +152,25 @@ void NodeParamViewConnectedLabel::ShowLabelContextMenu()
 	connect(disconnect_action, &QAction::triggered, this, [this]() {
 		Core::instance()->undo_stack()->push(
 			new NodeEdgeRemoveCommand(connected_node_, input_),
-			Node::GetDisconnectCommandString(connected_node_, input_));
+			Node::get_disconnect_command_string(connected_node_, input_));
 	});
 
 	m.exec(QCursor::pos());
 }
 
-void NodeParamViewConnectedLabel::ConnectionClicked()
+void NodeParamViewConnectedLabel::connection_clicked()
 {
 	if (connected_node_) {
-		emit RequestSelectNode(connected_node_);
+		emit request_select_node(connected_node_);
 	}
 }
 
-void NodeParamViewConnectedLabel::UpdateLabel()
+void NodeParamViewConnectedLabel::update_label()
 {
 	QString s;
 
 	if (connected_node_) {
-		s = connected_node_->Name();
+		s = connected_node_->name();
 	} else {
 		s = tr("Nothing");
 	}
@@ -178,14 +178,14 @@ void NodeParamViewConnectedLabel::UpdateLabel()
 	connected_to_lbl_->setText(s);
 }
 
-void NodeParamViewConnectedLabel::UpdateValueTree()
+void NodeParamViewConnectedLabel::update_value_tree()
 {
 	if (value_tree_ && viewer_ && value_tree_->isVisible()) {
-		value_tree_->SetNode(input_, viewer_->GetPlayhead());
+		value_tree_->set_node(input_, viewer_->get_playhead());
 	}
 }
 
-void NodeParamViewConnectedLabel::SetValueTreeVisible(bool e)
+void NodeParamViewConnectedLabel::set_value_tree_visible(bool e)
 {
 	if (value_tree_) {
 		value_tree_->setVisible(e);
@@ -193,11 +193,11 @@ void NodeParamViewConnectedLabel::SetValueTreeVisible(bool e)
 
 	if (e) {
 		if (!value_tree_) {
-			CreateTree();
+			create_tree();
 			value_tree_->setVisible(true);
 		}
 
-		UpdateValueTree();
+		update_value_tree();
 	}
 }
 

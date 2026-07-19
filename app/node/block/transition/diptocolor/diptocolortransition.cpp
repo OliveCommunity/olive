@@ -24,17 +24,17 @@
 namespace olive
 {
 
-const QString DipToColorTransition::kColorInput = QStringLiteral("color_in");
+const QString DipToColorTransition::k_color_input = QStringLiteral("color_in");
 
 #define super TransitionBlock
 
 DipToColorTransition::DipToColorTransition()
 {
-	AddInput(kColorInput, NodeValue::kColor,
+	add_input(k_color_input, NodeValue::k_color,
 			 QVariant::fromValue(Color(0, 0, 0)));
 }
 
-QString DipToColorTransition::Name() const
+QString DipToColorTransition::name() const
 {
 	return tr("Dip To Color");
 }
@@ -44,37 +44,37 @@ QString DipToColorTransition::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.diptocolor");
 }
 
-QVector<Node::CategoryID> DipToColorTransition::Category() const
+QVector<Node::CategoryID> DipToColorTransition::category() const
 {
-	return { kCategoryTransition };
+	return { k_category_transition };
 }
 
-QString DipToColorTransition::Description() const
+QString DipToColorTransition::description() const
 {
 	return tr("Transition between clips by dipping to a color.");
 }
 
 ShaderCode
-DipToColorTransition::GetShaderCode(const ShaderRequest &request) const
+DipToColorTransition::get_shader_code(const ShaderRequest &request) const
 {
 	Q_UNUSED(request)
 
 	return ShaderCode(
-		FileFunctions::ReadFileAsString(":/shaders/diptoblack.frag"),
+		FileFunctions::read_file_as_string(":/shaders/diptoblack.frag"),
 		QString());
 }
 
-void DipToColorTransition::Retranslate()
+void DipToColorTransition::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kColorInput, tr("Color"));
+	set_input_name(k_color_input, tr("Color"));
 }
 
 void DipToColorTransition::ShaderJobEvent(const NodeValueRow &value,
 										  ShaderJob *job) const
 {
-	job->Insert(kColorInput, value);
+	job->insert(k_color_input, value);
 }
 
 }

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef MERGENODE_H
-#define MERGENODE_H
+#ifndef OAK_MERGENODE_H
+#define OAK_MERGENODE_H
 
 #include "node/node.h"
 
@@ -34,20 +34,20 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(MergeNode)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	get_shader_code(const ShaderRequest &request) const override;
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	static const QString kBaseIn;
-	static const QString kBlendIn;
+	static const QString k_base_in;
+	static const QString k_blend_in;
 
 private:
 	NodeInput *base_in_;
@@ -57,4 +57,4 @@ private:
 
 }
 
-#endif // MERGENODE_H
+#endif // OAK_MERGENODE_H

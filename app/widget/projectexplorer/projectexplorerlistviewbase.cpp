@@ -52,7 +52,7 @@ void ProjectExplorerListViewBase::mouseDoubleClickEvent(QMouseEvent *event)
 
 	// QAbstractItemView already has a doubleClicked() signal, but we emit another here for double clicking empty space
 	if (!item_at_location) {
-		emit DoubleClickedEmptyArea();
+		emit double_clicked_empty_area();
 	}
 }
 

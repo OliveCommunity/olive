@@ -29,7 +29,7 @@
 namespace olive
 {
 
-bool LUTLibrary::IsSupportedExtension(const QString &suffix)
+bool LUTLibrary::is_supported_extension(const QString &suffix)
 {
 	QString s = suffix;
 	if (s.startsWith(QLatin1Char('.'))) {
@@ -40,9 +40,9 @@ bool LUTLibrary::IsSupportedExtension(const QString &suffix)
 	return lower == QStringLiteral("cube") || lower == QStringLiteral("3dl");
 }
 
-QStringList LUTLibrary::GetDirectories()
+QStringList LUTLibrary::get_directories()
 {
-	const QString serialized = OLIVE_CONFIG("LUTLibraryPaths").toString();
+	const QString serialized = OAK_CONFIG("LUTLibraryPaths").toString();
 
 	QStringList dirs = serialized.split(QLatin1Char(';'), Qt::SkipEmptyParts);
 	for (QString &dir : dirs) {
@@ -51,7 +51,7 @@ QStringList LUTLibrary::GetDirectories()
 	return dirs;
 }
 
-void LUTLibrary::SetDirectories(const QStringList &dirs)
+void LUTLibrary::set_directories(const QStringList &dirs)
 {
 	QStringList cleaned;
 	for (const QString &dir : dirs) {
@@ -61,19 +61,19 @@ void LUTLibrary::SetDirectories(const QStringList &dirs)
 		}
 	}
 
-	Config::Current()[QStringLiteral("LUTLibraryPaths")] =
+	Config::current()[QStringLiteral("LUTLibraryPaths")] =
 		cleaned.join(QLatin1Char(';'));
 }
 
-QStringList LUTLibrary::GetLutFiles()
+QStringList LUTLibrary::get_lut_files()
 {
 	QStringList files;
 
-	static const QStringList kFilters = { QStringLiteral("*.cube"),
+	static const QStringList k_filters = { QStringLiteral("*.cube"),
 										  QStringLiteral("*.3dl") };
 
-	for (const QString &dir : GetDirectories()) {
-		QDirIterator it(dir, kFilters, QDir::Files,
+	for (const QString &dir : get_directories()) {
+		QDirIterator it(dir, k_filters, QDir::Files,
 						QDirIterator::Subdirectories);
 		while (it.hasNext()) {
 			files.append(it.next());

@@ -43,12 +43,12 @@ Renderer::~Renderer()
 	}
 }
 
-TexturePtr Renderer::CreateTexture(const VideoParams &params, const void *data,
+TexturePtr Renderer::create_texture(const VideoParams &params, const void *data,
 								   int linesize)
 {
 	QVariant v;
 
-	if (USE_TEXTURE_CACHE) {
+	if (use_texture_cache) {
 		QMutexLocker locker(&texture_cache_lock_);
 		for (auto it = texture_cache_.begin(); it != texture_cache_.end();
 			 it++) {
@@ -65,25 +65,25 @@ TexturePtr Renderer::CreateTexture(const VideoParams &params, const void *data,
 	}
 
 	if (v.isNull()) {
-		v = CreateNativeTexture(params.effective_width(),
+		v = create_native_texture(params.effective_width(),
 								params.effective_height(),
 								params.effective_depth(), params.format(),
 								params.channel_count(), data, linesize);
 	} else if (data) {
-		UploadToTexture(v, params, data, linesize);
+		upload_to_texture(v, params, data, linesize);
 	} else {
-		this->Flush();
+		this->flush();
 	}
 
-	return CreateTextureFromNativeHandle(v, params);
+	return create_texture_from_native_handle(v, params);
 }
 
-void Renderer::DestroyTexture(Texture *texture)
+void Renderer::destroy_texture(Texture *texture)
 {
 	if (destroyed_) {
 		return;
 	}
-	if (USE_TEXTURE_CACHE) {
+	if (use_texture_cache) {
 		// HACK: Dirty, dirty hack. OpenGL uses "contexts" to store all of its data, and each context
 		//       can only be used by the thread that created it. However there are also "shared contexts"
 		//       where assets from one context can be used in another. We use shared contexts so that
@@ -109,28 +109,28 @@ void Renderer::DestroyTexture(Texture *texture)
 		texture_cache_lock_.unlock();
 
 		if (QThread::currentThread() == this->thread()) {
-			ClearOldTextures();
+			clear_old_textures();
 		}
 	} else {
-		DestroyNativeTexture(texture->id());
+		destroy_native_texture(texture->id());
 	}
 }
 
-QVariant Renderer::GetDefaultShader()
+QVariant Renderer::get_default_shader()
 {
 	QMutexLocker locker(&color_cache_mutex_);
 
 	if (default_shader_.isNull()) {
-		default_shader_ = CreateNativeShader(ShaderCode(QString(), QString()));
+		default_shader_ = create_native_shader(ShaderCode(QString(), QString()));
 	}
 
 	return default_shader_;
 }
 
-void Renderer::Destroy()
+void Renderer::destroy()
 {
 	if (!default_shader_.isNull()) {
-		DestroyNativeShader(default_shader_);
+		destroy_native_shader(default_shader_);
 		default_shader_.clear();
 	}
 
@@ -142,19 +142,19 @@ void Renderer::Destroy()
 		// be cleared while the renderer is still alive for those to be honored.
 		for (auto it = color_cache_.begin(); it != color_cache_.end(); it++) {
 			if (!it->compiled_shader.isNull()) {
-				DestroyNativeShader(it->compiled_shader);
+				destroy_native_shader(it->compiled_shader);
 			}
 		}
 		color_cache_.clear();
 	}
 
 	if (!interlace_texture_.isNull()) {
-		DestroyNativeShader(interlace_texture_);
+		destroy_native_shader(interlace_texture_);
 		interlace_texture_.clear();
 	}
 
 	for (auto it = texture_cache_.begin(); it != texture_cache_.end(); it++) {
-		DestroyNativeTexture(it->handle);
+		destroy_native_texture(it->handle);
 	}
 	texture_cache_.clear();
 
@@ -163,10 +163,10 @@ void Renderer::Destroy()
 		lifetime_->alive = false;
 	}
 
-	DestroyInternal();
+	destroy_internal();
 }
 
-TexturePtr Renderer::CreateTextureFromNativeHandle(const QVariant &v,
+TexturePtr Renderer::create_texture_from_native_handle(const QVariant &v,
 												   const VideoParams &params)
 {
 	if (v.isNull()) {
@@ -176,14 +176,14 @@ TexturePtr Renderer::CreateTextureFromNativeHandle(const QVariant &v,
 	return std::make_shared<Texture>(this, v, params, lifetime_);
 }
 
-void Renderer::ClearOldTextures()
+void Renderer::clear_old_textures()
 {
 	QMutexLocker locker(&texture_cache_lock_);
 
 	for (auto it = texture_cache_.begin(); it != texture_cache_.end();) {
 		if (it->accessed <
-			QDateTime::currentMSecsSinceEpoch() - MAX_TEXTURE_LIFE) {
-			DestroyNativeTexture(it->handle);
+			QDateTime::currentMSecsSinceEpoch() - max_texture_life) {
+			destroy_native_texture(it->handle);
 			it = texture_cache_.erase(it);
 		} else {
 			it++;

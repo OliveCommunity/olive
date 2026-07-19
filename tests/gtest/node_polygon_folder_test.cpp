@@ -42,7 +42,7 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(ConstantTextureNode)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return QStringLiteral("Test Texture");
 	}
@@ -52,71 +52,71 @@ public:
 		return QStringLiteral("org.oak.test.constant_texture");
 	}
 
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
-		return { kCategoryGenerator };
+		return { k_category_generator };
 	}
 
-	void SetTexture(const olive::TexturePtr &texture)
+	void set_texture(const olive::TexturePtr &texture)
 	{
 		texture_ = texture;
 	}
 
-	virtual void Value(const olive::NodeValueRow &value,
+	virtual void value(const olive::NodeValueRow &value,
 					   const olive::NodeGlobals &globals,
 					   olive::NodeValueTable *table) const override
 	{
 		Q_UNUSED(value)
 		Q_UNUSED(globals)
 
-		table->Push(olive::NodeValue(olive::NodeValue::kTexture, texture_, this));
+		table->push(olive::NodeValue(olive::NodeValue::k_texture, texture_, this));
 	}
 
 private:
 	olive::TexturePtr texture_;
 };
 
-template <typename T> T *AddNode(olive::Project *project)
+template <typename T> T *add_node(olive::Project *project)
 {
 	T *node = new T();
 	node->setParent(project);
 	return node;
 }
 
-olive::TimeRange FirstFrame()
+olive::TimeRange first_frame()
 {
-	return olive::TimeRange(olive::rational(0), olive::rational(1, 30));
+	return olive::TimeRange(olive::Rational(0), olive::Rational(1, 30));
 }
 
 // A fresh traverser per call: NodeTraverser caches tables per node/range, so
 // reusing one would return stale results after changing standard values.
-olive::NodeValueTable GenerateTable(const olive::Node *node,
+olive::NodeValueTable generate_table(const olive::Node *node,
 									const olive::VideoParams &vparams)
 {
 	olive::NodeTraverser traverser;
-	traverser.SetCacheVideoParams(vparams);
-	return traverser.GenerateTable(node, FirstFrame());
+	traverser.set_cache_video_params(vparams);
+	return traverser.generate_table(node, first_frame());
 }
 
-olive::NodeValueRow GenerateRow(const olive::Node *node)
+olive::NodeValueRow generate_row(const olive::Node *node)
 {
 	olive::NodeTraverser traverser;
-	return traverser.GenerateRow(node, FirstFrame());
+	return traverser.generate_row(node, first_frame());
 }
 
-olive::TexturePtr GetOutputTexture(const olive::NodeValueTable &table)
+olive::TexturePtr get_output_texture(const olive::NodeValueTable &table)
 {
-	return table.Get(olive::NodeValue::kTexture).toTexture();
+	return table.get(olive::NodeValue::k_texture).to_texture();
 }
 
 // Project save/load touches the DiskManager singleton, which itself touches Core
-void EnsureAppSingletons()
+void ensure_app_singletons()
 {
 	if (!olive::Core::instance()) {
 		new olive::Core(olive::Core::CoreParams()); // intentionally leaked
 	}
 	if (!olive::DiskManager::instance()) {
-		olive::DiskManager::CreateInstance();
+		olive::DiskManager::create_instance();
 	}
 }
 
@@ -126,34 +126,34 @@ TEST(Folder, MetadataAndChildInputDefinition)
 {
 	olive::Folder folder;
 	EXPECT_EQ(folder.id(), QStringLiteral("org.olivevideoeditor.Olive.folder"));
-	EXPECT_EQ(folder.Name(), QStringLiteral("Folder"));
-	EXPECT_FALSE(folder.Description().isEmpty());
-	EXPECT_TRUE(folder.Category().contains(olive::Node::kCategoryProject));
-	EXPECT_TRUE(folder.IsItem());
+	EXPECT_EQ(folder.name(), QStringLiteral("Folder"));
+	EXPECT_FALSE(folder.description().isEmpty());
+	EXPECT_TRUE(folder.category().contains(olive::Node::k_category_project));
+	EXPECT_TRUE(folder.is_item());
 
 	// The child input is a non-keyframable array that accepts any node
-	EXPECT_TRUE(folder.HasInputWithID(olive::Folder::kChildInput));
-	EXPECT_TRUE(folder.InputIsArray(olive::Folder::kChildInput));
-	EXPECT_EQ(int(folder.GetInputDataType(olive::Folder::kChildInput)),
-			  int(olive::NodeValue::kNone));
-	EXPECT_FALSE(folder.IsInputKeyframable(olive::Folder::kChildInput));
+	EXPECT_TRUE(folder.has_input_with_id(olive::Folder::k_child_input));
+	EXPECT_TRUE(folder.input_is_array(olive::Folder::k_child_input));
+	EXPECT_EQ(int(folder.get_input_data_type(olive::Folder::k_child_input)),
+			  int(olive::NodeValue::k_none));
+	EXPECT_FALSE(folder.is_input_keyframable(olive::Folder::k_child_input));
 
 	// Folders provide their own icon; every other data type falls through to
 	// the Node base implementation
-	EXPECT_TRUE(folder.data(olive::Node::ICON).isValid());
-	EXPECT_FALSE(folder.data(olive::Node::TOOLTIP).isValid());
+	EXPECT_TRUE(folder.data(olive::Node::icon).isValid());
+	EXPECT_FALSE(folder.data(olive::Node::tooltip).isValid());
 }
 
 TEST(Folder, RetranslateSetsChildInputName)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *folder = AddNode<olive::Folder>(&project);
-	folder->Retranslate();
+	auto *folder = add_node<olive::Folder>(&project);
+	folder->retranslate();
 
-	EXPECT_EQ(folder->GetInputName(olive::Folder::kChildInput),
+	EXPECT_EQ(folder->get_input_name(olive::Folder::k_child_input),
 			  QStringLiteral("Children"));
 }
 
@@ -164,20 +164,20 @@ TEST(Folder, AddChildAppendsAndEmitsSignals)
 	QVector<int> inserted_indices;
 	int insert_ends = 0;
 
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	olive::Folder *folder = project.root();
-	auto *child = AddNode<olive::SolidGenerator>(&project);
+	auto *child = add_node<olive::SolidGenerator>(&project);
 
-	QObject::connect(folder, &olive::Folder::BeginInsertItem,
+	QObject::connect(folder, &olive::Folder::begin_insert_item,
 					 [&inserted_items, &inserted_indices](olive::Node *n,
 														 int index) {
 						 inserted_items.append(n);
 						 inserted_indices.append(index);
 					 });
-	QObject::connect(folder, &olive::Folder::EndInsertItem,
+	QObject::connect(folder, &olive::Folder::end_insert_item,
 					 [&insert_ends]() { ++insert_ends; });
 
 	olive::FolderAddChild(folder, child).redo_now();
@@ -204,20 +204,20 @@ TEST(Folder, AddChildUndoRemovesChildAndEmitsSignals)
 	QVector<int> removed_indices;
 	int remove_ends = 0;
 
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	olive::Folder *folder = project.root();
-	auto *child = AddNode<olive::SolidGenerator>(&project);
+	auto *child = add_node<olive::SolidGenerator>(&project);
 
-	QObject::connect(folder, &olive::Folder::BeginRemoveItem,
+	QObject::connect(folder, &olive::Folder::begin_remove_item,
 					 [&removed_items, &removed_indices](olive::Node *n,
 														int index) {
 						 removed_items.append(n);
 						 removed_indices.append(index);
 					 });
-	QObject::connect(folder, &olive::Folder::EndRemoveItem,
+	QObject::connect(folder, &olive::Folder::end_remove_item,
 					 [&remove_ends]() { ++remove_ends; });
 
 	olive::FolderAddChild add(folder, child);
@@ -243,18 +243,18 @@ TEST(Folder, RemoveElementCommandRemovesAndRestores)
 	QVector<olive::Node *> removed_items;
 	QVector<int> removed_indices;
 
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	olive::Folder *folder = project.root();
-	auto *first = AddNode<olive::Folder>(&project);
-	auto *second = AddNode<olive::Folder>(&project);
+	auto *first = add_node<olive::Folder>(&project);
+	auto *second = add_node<olive::Folder>(&project);
 	olive::FolderAddChild(folder, first).redo_now();
 	olive::FolderAddChild(folder, second).redo_now();
 	ASSERT_EQ(folder->item_child_count(), 2);
 
-	QObject::connect(folder, &olive::Folder::BeginRemoveItem,
+	QObject::connect(folder, &olive::Folder::begin_remove_item,
 					 [&removed_items, &removed_indices](olive::Node *n,
 														int index) {
 						 removed_items.append(n);
@@ -288,13 +288,13 @@ TEST(Folder, RemoveElementCommandRemovesAndRestores)
 
 TEST(Folder, RemoveElementCommandIgnoresForeignChild)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	olive::Folder *folder = project.root();
-	auto *child = AddNode<olive::Folder>(&project);
-	auto *stranger = AddNode<olive::Folder>(&project);
+	auto *child = add_node<olive::Folder>(&project);
+	auto *stranger = add_node<olive::Folder>(&project);
 	olive::FolderAddChild(folder, child).redo_now();
 	ASSERT_EQ(folder->item_child_count(), 1);
 
@@ -311,58 +311,58 @@ TEST(Folder, RemoveElementCommandIgnoresForeignChild)
 
 TEST(Folder, GetChildWithNameFindsNestedChildren)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	olive::Folder *folder = project.root();
-	auto *sub = AddNode<olive::Folder>(&project);
-	sub->SetLabel(QStringLiteral("Sub"));
-	auto *nested = AddNode<olive::SolidGenerator>(&project);
-	nested->SetLabel(QStringLiteral("Nested"));
+	auto *sub = add_node<olive::Folder>(&project);
+	sub->set_label(QStringLiteral("Sub"));
+	auto *nested = add_node<olive::SolidGenerator>(&project);
+	nested->set_label(QStringLiteral("Nested"));
 
 	olive::FolderAddChild(folder, sub).redo_now();
 	olive::FolderAddChild(sub, nested).redo_now();
 
 	// Lookup by label recurses into subfolders
-	EXPECT_EQ(folder->GetChildWithName(QStringLiteral("Sub")), sub);
-	EXPECT_EQ(folder->GetChildWithName(QStringLiteral("Nested")), nested);
-	EXPECT_TRUE(folder->ChildExistsWithName(QStringLiteral("Nested")));
+	EXPECT_EQ(folder->get_child_with_name(QStringLiteral("Sub")), sub);
+	EXPECT_EQ(folder->get_child_with_name(QStringLiteral("Nested")), nested);
+	EXPECT_TRUE(folder->child_exists_with_name(QStringLiteral("Nested")));
 
-	EXPECT_EQ(folder->GetChildWithName(QStringLiteral("Missing")), nullptr);
-	EXPECT_FALSE(folder->ChildExistsWithName(QStringLiteral("Missing")));
+	EXPECT_EQ(folder->get_child_with_name(QStringLiteral("Missing")), nullptr);
+	EXPECT_FALSE(folder->child_exists_with_name(QStringLiteral("Missing")));
 }
 
 TEST(Folder, HasChildRecursiveFindsNestedChildren)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	olive::Folder *folder = project.root();
-	auto *sub = AddNode<olive::Folder>(&project);
-	auto *nested = AddNode<olive::Folder>(&project);
-	auto *outsider = AddNode<olive::Folder>(&project);
+	auto *sub = add_node<olive::Folder>(&project);
+	auto *nested = add_node<olive::Folder>(&project);
+	auto *outsider = add_node<olive::Folder>(&project);
 
 	olive::FolderAddChild(folder, sub).redo_now();
 	olive::FolderAddChild(sub, nested).redo_now();
 
-	EXPECT_TRUE(folder->HasChildRecursive(sub));
-	EXPECT_TRUE(folder->HasChildRecursive(nested));
-	EXPECT_FALSE(folder->HasChildRecursive(outsider));
-	EXPECT_FALSE(folder->HasChildRecursive(folder));
+	EXPECT_TRUE(folder->has_child_recursive(sub));
+	EXPECT_TRUE(folder->has_child_recursive(nested));
+	EXPECT_FALSE(folder->has_child_recursive(outsider));
+	EXPECT_FALSE(folder->has_child_recursive(folder));
 }
 
 TEST(Folder, ListChildrenOfTypeRecursesIntoSubfolders)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	olive::Folder *folder = project.root();
-	auto *sub = AddNode<olive::Folder>(&project);
-	auto *nested = AddNode<olive::Folder>(&project);
-	auto *item = AddNode<olive::SolidGenerator>(&project);
+	auto *sub = add_node<olive::Folder>(&project);
+	auto *nested = add_node<olive::Folder>(&project);
+	auto *item = add_node<olive::SolidGenerator>(&project);
 
 	olive::FolderAddChild(folder, sub).redo_now();
 	olive::FolderAddChild(sub, nested).redo_now();
@@ -370,56 +370,56 @@ TEST(Folder, ListChildrenOfTypeRecursesIntoSubfolders)
 
 	// Folders are collected recursively while other items are skipped
 	const QVector<olive::Folder *> folders =
-		folder->ListChildrenOfType<olive::Folder>();
+		folder->list_children_of_type<olive::Folder>();
 	ASSERT_EQ(folders.size(), 2);
 	EXPECT_TRUE(folders.contains(sub));
 	EXPECT_TRUE(folders.contains(nested));
 	EXPECT_FALSE(folders.contains(static_cast<olive::Node *>(item)));
 
 	const QVector<olive::SolidGenerator *> solids =
-		folder->ListChildrenOfType<olive::SolidGenerator>();
+		folder->list_children_of_type<olive::SolidGenerator>();
 	ASSERT_EQ(solids.size(), 1);
 	EXPECT_EQ(solids.first(), item);
 }
 
 TEST(Folder, ChildStructureSurvivesSerializationRoundTrip)
 {
-	EnsureAppSingletons();
-	olive::ColorManager::SetUpDefaultConfig();
-	olive::NodeFactory::Initialize();
+	ensure_app_singletons();
+	olive::ColorManager::set_up_default_config();
+	olive::NodeFactory::initialize();
 	// Guard against serializer instances left over by another test
-	olive::ProjectSerializer::Destroy();
-	olive::ProjectSerializer::Initialize();
+	olive::ProjectSerializer::destroy();
+	olive::ProjectSerializer::initialize();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *sub = AddNode<olive::Folder>(&project);
-	sub->SetLabel(QStringLiteral("Sub"));
+	auto *sub = add_node<olive::Folder>(&project);
+	sub->set_label(QStringLiteral("Sub"));
 	olive::FolderAddChild(project.root(), sub).redo_now();
 
-	auto *nested = AddNode<olive::Folder>(&project);
-	nested->SetLabel(QStringLiteral("Nested"));
+	auto *nested = add_node<olive::Folder>(&project);
+	nested->set_label(QStringLiteral("Nested"));
 	olive::FolderAddChild(sub, nested).redo_now();
 
 	olive::ProjectSerializer::SaveData save_data(
-		olive::ProjectSerializer::kProject, &project, QString());
+		olive::ProjectSerializer::k_project, &project, QString());
 
 	QByteArray xml;
 	QBuffer buffer(&xml);
 	buffer.open(QIODevice::WriteOnly);
 	QXmlStreamWriter writer(&buffer);
-	ASSERT_EQ(olive::ProjectSerializer::Save(&writer, save_data).code(),
-			  olive::ProjectSerializer::kSuccess);
+	ASSERT_EQ(olive::ProjectSerializer::save(&writer, save_data).code(),
+			  olive::ProjectSerializer::k_success);
 	buffer.close();
 
 	olive::Project loaded_project;
 	QBuffer read_buffer(&xml);
 	read_buffer.open(QIODevice::ReadOnly);
 	QXmlStreamReader reader(&read_buffer);
-	olive::ProjectSerializer::Result result = olive::ProjectSerializer::Load(
-		&loaded_project, &reader, olive::ProjectSerializer::kProject);
-	ASSERT_EQ(result.code(), olive::ProjectSerializer::kSuccess);
+	olive::ProjectSerializer::Result result = olive::ProjectSerializer::load(
+		&loaded_project, &reader, olive::ProjectSerializer::k_project);
+	ASSERT_EQ(result.code(), olive::ProjectSerializer::k_success);
 
 	// The child connections of kChildInput are re-established on load,
 	// rebuilding the folder hierarchy
@@ -428,44 +428,44 @@ TEST(Folder, ChildStructureSurvivesSerializationRoundTrip)
 	ASSERT_EQ(loaded_root->item_child_count(), 1);
 
 	olive::Node *loaded_sub = loaded_root->item_child(0);
-	EXPECT_EQ(loaded_sub->GetLabel(), QStringLiteral("Sub"));
+	EXPECT_EQ(loaded_sub->get_label(), QStringLiteral("Sub"));
 	EXPECT_EQ(loaded_sub->folder(), loaded_root);
 
 	auto *loaded_sub_folder = dynamic_cast<olive::Folder *>(loaded_sub);
 	ASSERT_NE(loaded_sub_folder, nullptr);
 	ASSERT_EQ(loaded_sub_folder->item_child_count(), 1);
-	EXPECT_EQ(loaded_sub_folder->item_child(0)->GetLabel(),
+	EXPECT_EQ(loaded_sub_folder->item_child(0)->get_label(),
 			  QStringLiteral("Nested"));
 	EXPECT_EQ(loaded_sub_folder->item_child(0)->folder(), loaded_sub_folder);
 
-	EXPECT_EQ(loaded_root->GetChildWithName(QStringLiteral("Nested")),
+	EXPECT_EQ(loaded_root->get_child_with_name(QStringLiteral("Nested")),
 			  loaded_sub_folder->item_child(0));
 	EXPECT_TRUE(
-		loaded_root->HasChildRecursive(loaded_sub_folder->item_child(0)));
+		loaded_root->has_child_recursive(loaded_sub_folder->item_child(0)));
 
-	olive::ProjectSerializer::Destroy();
+	olive::ProjectSerializer::destroy();
 }
 
 TEST(PolygonGenerator, GenerateFrameRasterizesDefaultPentagon)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::PolygonGenerator>(&project);
+	auto *node = add_node<olive::PolygonGenerator>(&project);
 
-	const olive::VideoParams vparams(320, 240, olive::core::PixelFormat::U8,
-									 olive::VideoParams::kRGBAChannelCount);
-	olive::FramePtr frame = olive::Frame::Create();
+	const olive::VideoParams vparams(320, 240, olive::core::PixelFormat::u8,
+									 olive::VideoParams::k_rgba_channel_count);
+	olive::FramePtr frame = olive::Frame::create();
 	frame->set_video_params(vparams);
 	frame->allocate();
 
-	node->GenerateFrame(frame, olive::GenerateJob(GenerateRow(node)));
+	node->generate_frame(frame, olive::GenerateJob(generate_row(node)));
 
 	auto pixel = [&frame](int x, int y) -> const uchar * {
 		return reinterpret_cast<const uchar *>(frame->data()) +
 			   y * frame->linesize_bytes() +
-			   x * olive::VideoParams::kRGBAChannelCount;
+			   x * olive::VideoParams::k_rgba_channel_count;
 	};
 
 	// The pentagon is filled white: the frame center is well inside it
@@ -489,26 +489,26 @@ TEST(PolygonGenerator, GenerateFrameRasterizesDefaultPentagon)
 
 TEST(PolygonGenerator, UpdateGizmoPositionsCreatesHandlesForEachPoint)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::PolygonGenerator>(&project);
+	auto *node = add_node<olive::PolygonGenerator>(&project);
 
 	// Only the path gizmo exists before the first update
-	ASSERT_EQ(node->GetGizmos().size(), 1);
+	ASSERT_EQ(node->get_gizmos().size(), 1);
 
-	const olive::VideoParams vparams(320, 240, olive::core::PixelFormat::F32,
-									 olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams vparams(320, 240, olive::core::PixelFormat::f32,
+									 olive::VideoParams::k_rgba_channel_count);
 	const olive::NodeGlobals globals(vparams, olive::core::AudioParams(),
-									 olive::rational(0),
-									 olive::LoopMode::kLoopModeOff);
+									 olive::Rational(0),
+									 olive::LoopMode::k_loop_mode_off);
 
-	node->UpdateGizmoPositions(GenerateRow(node), globals);
+	node->update_gizmo_positions(generate_row(node), globals);
 
 	// Path gizmo + one position handle, two bezier handles and two bezier
 	// lines per point of the default pentagon
-	ASSERT_EQ(node->GetGizmos().size(), 1 + 5 + 10 + 10);
+	ASSERT_EQ(node->get_gizmos().size(), 1 + 5 + 10 + 10);
 
 	// Without a base texture the gizmos are anchored at half the sequence
 	// resolution on top of each point
@@ -517,171 +517,171 @@ TEST(PolygonGenerator, UpdateGizmoPositionsCreatesHandlesForEachPoint)
 	};
 	for (int i = 0; i < 5; i++) {
 		auto *position =
-			static_cast<olive::PointGizmo *>(node->GetGizmos().at(1 + i));
-		EXPECT_EQ(position->GetPoint(),
+			static_cast<olive::PointGizmo *>(node->get_gizmos().at(1 + i));
+		EXPECT_EQ(position->get_point(),
 				  QPointF(expected[i][0] + 160, expected[i][1] + 120))
 			<< "Wrong position handle for point " << i;
 	}
 
 	// Bezier handles default to the point position (zero control point offsets)
-	auto *bezier = static_cast<olive::PointGizmo *>(node->GetGizmos().at(6));
-	EXPECT_EQ(int(bezier->GetShape()), int(olive::PointGizmo::kCircle));
-	EXPECT_EQ(bezier->GetPoint(), QPointF(160, -15));
+	auto *bezier = static_cast<olive::PointGizmo *>(node->get_gizmos().at(6));
+	EXPECT_EQ(int(bezier->get_shape()), int(olive::PointGizmo::k_circle));
+	EXPECT_EQ(bezier->get_point(), QPointF(160, -15));
 
-	auto *line = static_cast<olive::LineGizmo *>(node->GetGizmos().at(16));
-	EXPECT_EQ(line->GetLine(), QLineF(QPointF(160, -15), QPointF(160, -15)));
+	auto *line = static_cast<olive::LineGizmo *>(node->get_gizmos().at(16));
+	EXPECT_EQ(line->get_line(), QLineF(QPointF(160, -15), QPointF(160, -15)));
 
-	auto *path = dynamic_cast<olive::PathGizmo *>(node->GetGizmos().first());
+	auto *path = dynamic_cast<olive::PathGizmo *>(node->get_gizmos().first());
 	ASSERT_NE(path, nullptr);
 	// moveTo plus one cubic segment (3 elements) per edge of the pentagon
-	EXPECT_EQ(path->GetPath().elementCount(), 16);
+	EXPECT_EQ(path->get_path().elementCount(), 16);
 
 	// Shrinking the point array shrinks the gizmo vectors with it
-	node->InputArrayResize(olive::PolygonGenerator::kPointsInput, 3);
-	node->UpdateGizmoPositions(GenerateRow(node), globals);
-	EXPECT_EQ(node->GetGizmos().size(), 1 + 3 + 6 + 6);
+	node->input_array_resize(olive::PolygonGenerator::k_points_input, 3);
+	node->update_gizmo_positions(generate_row(node), globals);
+	EXPECT_EQ(node->get_gizmos().size(), 1 + 3 + 6 + 6);
 
 	// With a base texture connected the gizmos anchor at half the texture's
 	// virtual resolution instead of the sequence's
 	const olive::TexturePtr base = std::make_shared<olive::Texture>(
-		olive::VideoParams(64, 48, olive::core::PixelFormat::U8,
-						   olive::VideoParams::kRGBAChannelCount));
-	olive::NodeValueRow row = GenerateRow(node);
-	row.insert(olive::GeneratorWithMerge::kBaseInput,
-			   olive::NodeValue(olive::NodeValue::kTexture, base));
-	node->UpdateGizmoPositions(row, globals);
+		olive::VideoParams(64, 48, olive::core::PixelFormat::u8,
+						   olive::VideoParams::k_rgba_channel_count));
+	olive::NodeValueRow row = generate_row(node);
+	row.insert(olive::GeneratorWithMerge::k_base_input,
+			   olive::NodeValue(olive::NodeValue::k_texture, base));
+	node->update_gizmo_positions(row, globals);
 
 	auto *position =
-		static_cast<olive::PointGizmo *>(node->GetGizmos().at(1));
-	EXPECT_EQ(position->GetPoint(), QPointF(32, -111));
+		static_cast<olive::PointGizmo *>(node->get_gizmos().at(1));
+	EXPECT_EQ(position->get_point(), QPointF(32, -111));
 }
 
 TEST(PolygonGenerator, DraggingPositionGizmoUpdatesPointTracks)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::PolygonGenerator>(&project);
+	auto *node = add_node<olive::PolygonGenerator>(&project);
 
-	const olive::NodeValueRow row = GenerateRow(node);
-	node->UpdateGizmoPositions(row, olive::NodeGlobals());
-	ASSERT_EQ(node->GetGizmos().size(), 26);
+	const olive::NodeValueRow row = generate_row(node);
+	node->update_gizmo_positions(row, olive::NodeGlobals());
+	ASSERT_EQ(node->get_gizmos().size(), 26);
 
 	// The first position handle drives the X/Y tracks of the first point
-	auto *gizmo = static_cast<olive::PointGizmo *>(node->GetGizmos().at(1));
-	gizmo->DragStart(row, 0, 0, olive::rational(0));
-	gizmo->DragMove(10, -20, Qt::NoModifier);
+	auto *gizmo = static_cast<olive::PointGizmo *>(node->get_gizmos().at(1));
+	gizmo->drag_start(row, 0, 0, olive::Rational(0));
+	gizmo->drag_move(10, -20, Qt::NoModifier);
 
-	EXPECT_DOUBLE_EQ(node->GetSplitStandardValueOnTrack(
-						 olive::PolygonGenerator::kPointsInput, 0, 0)
+	EXPECT_DOUBLE_EQ(node->get_split_standard_value_on_track(
+						 olive::PolygonGenerator::k_points_input, 0, 0)
 						 .toDouble(),
 					 10.0);
-	EXPECT_DOUBLE_EQ(node->GetSplitStandardValueOnTrack(
-						 olive::PolygonGenerator::kPointsInput, 1, 0)
+	EXPECT_DOUBLE_EQ(node->get_split_standard_value_on_track(
+						 olive::PolygonGenerator::k_points_input, 1, 0)
 						 .toDouble(),
 					 -155.0);
 
 	// The other points are untouched
-	EXPECT_DOUBLE_EQ(node->GetSplitStandardValueOnTrack(
-						 olive::PolygonGenerator::kPointsInput, 0, 1)
+	EXPECT_DOUBLE_EQ(node->get_split_standard_value_on_track(
+						 olive::PolygonGenerator::k_points_input, 0, 1)
 						 .toDouble(),
 					 135.0);
 
 	olive::MultiUndoCommand command;
-	gizmo->DragEnd(&command);
+	gizmo->drag_end(&command);
 }
 
 TEST(TextGeneratorV2, MetadataIsCorrect)
 {
 	olive::TextGeneratorV2 node;
 	EXPECT_EQ(node.id(), QStringLiteral("org.olivevideoeditor.Olive.text2"));
-	EXPECT_EQ(node.Name(), QStringLiteral("Text (Legacy)"));
-	EXPECT_FALSE(node.Description().isEmpty());
-	EXPECT_TRUE(node.Category().contains(olive::Node::kCategoryGenerator));
+	EXPECT_EQ(node.name(), QStringLiteral("Text (Legacy)"));
+	EXPECT_FALSE(node.description().isEmpty());
+	EXPECT_TRUE(node.category().contains(olive::Node::k_category_generator));
 
 	// Hidden from the create menu: superseded by TextGeneratorV3
-	EXPECT_TRUE(node.GetFlags() & olive::Node::kDontShowInCreateMenu);
+	EXPECT_TRUE(node.get_flags() & olive::Node::k_dont_show_in_create_menu);
 }
 
 TEST(TextGeneratorV2, InputDefaults)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TextGeneratorV2>(&project);
+	auto *node = add_node<olive::TextGeneratorV2>(&project);
 
-	EXPECT_EQ(node->GetStandardValue(olive::TextGeneratorV2::kTextInput)
+	EXPECT_EQ(node->get_standard_value(olive::TextGeneratorV2::k_text_input)
 				  .toString(),
 			  QStringLiteral("Sample Text"));
 
-	EXPECT_EQ(int(node->GetInputDataType(olive::TextGeneratorV2::kHtmlInput)),
-			  int(olive::NodeValue::kBoolean));
-	EXPECT_FALSE(node->GetStandardValue(olive::TextGeneratorV2::kHtmlInput)
+	EXPECT_EQ(int(node->get_input_data_type(olive::TextGeneratorV2::k_html_input)),
+			  int(olive::NodeValue::k_boolean));
+	EXPECT_FALSE(node->get_standard_value(olive::TextGeneratorV2::k_html_input)
 					 .toBool());
 
-	EXPECT_EQ(int(node->GetInputDataType(olive::TextGeneratorV2::kVAlignInput)),
-			  int(olive::NodeValue::kCombo));
-	EXPECT_EQ(node->GetStandardValue(olive::TextGeneratorV2::kVAlignInput)
+	EXPECT_EQ(int(node->get_input_data_type(olive::TextGeneratorV2::k_v_align_input)),
+			  int(olive::NodeValue::k_combo));
+	EXPECT_EQ(node->get_standard_value(olive::TextGeneratorV2::k_v_align_input)
 				  .toInt(),
 			  0);
 
-	EXPECT_EQ(int(node->GetInputDataType(olive::TextGeneratorV2::kFontInput)),
-			  int(olive::NodeValue::kFont));
+	EXPECT_EQ(int(node->get_input_data_type(olive::TextGeneratorV2::k_font_input)),
+			  int(olive::NodeValue::k_font));
 
 	EXPECT_EQ(
-		int(node->GetInputDataType(olive::TextGeneratorV2::kFontSizeInput)),
-		int(olive::NodeValue::kFloat));
-	EXPECT_DOUBLE_EQ(node->GetStandardValue(olive::TextGeneratorV2::kFontSizeInput)
+		int(node->get_input_data_type(olive::TextGeneratorV2::k_font_size_input)),
+		int(olive::NodeValue::k_float));
+	EXPECT_DOUBLE_EQ(node->get_standard_value(olive::TextGeneratorV2::k_font_size_input)
 						 .toDouble(),
 					 72.0);
 
 	// From ShapeNodeBase: white text on a 400x300 box
 	const olive::core::Color color =
-		node->GetStandardValue(olive::ShapeNodeBase::kColorInput)
+		node->get_standard_value(olive::ShapeNodeBase::k_color_input)
 			.value<olive::core::Color>();
 	EXPECT_FLOAT_EQ(color.red(), 1.0f);
 	EXPECT_FLOAT_EQ(color.green(), 1.0f);
 	EXPECT_FLOAT_EQ(color.blue(), 1.0f);
 	EXPECT_FLOAT_EQ(color.alpha(), 1.0f);
-	EXPECT_EQ(node->GetStandardValue(olive::ShapeNodeBase::kSizeInput)
+	EXPECT_EQ(node->get_standard_value(olive::ShapeNodeBase::k_size_input)
 				  .value<QVector2D>(),
 			  QVector2D(400.0f, 300.0f));
 }
 
 TEST(TextGeneratorV2, RetranslateSetsNamesAndComboStrings)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TextGeneratorV2>(&project);
-	node->Retranslate();
+	auto *node = add_node<olive::TextGeneratorV2>(&project);
+	node->retranslate();
 
-	EXPECT_EQ(node->GetInputName(olive::TextGeneratorV2::kTextInput),
+	EXPECT_EQ(node->get_input_name(olive::TextGeneratorV2::k_text_input),
 			  QStringLiteral("Text"));
-	EXPECT_EQ(node->GetInputName(olive::TextGeneratorV2::kHtmlInput),
+	EXPECT_EQ(node->get_input_name(olive::TextGeneratorV2::k_html_input),
 			  QStringLiteral("Enable HTML"));
-	EXPECT_EQ(node->GetInputName(olive::TextGeneratorV2::kFontInput),
+	EXPECT_EQ(node->get_input_name(olive::TextGeneratorV2::k_font_input),
 			  QStringLiteral("Font"));
-	EXPECT_EQ(node->GetInputName(olive::TextGeneratorV2::kFontSizeInput),
+	EXPECT_EQ(node->get_input_name(olive::TextGeneratorV2::k_font_size_input),
 			  QStringLiteral("Font Size"));
-	EXPECT_EQ(node->GetInputName(olive::TextGeneratorV2::kVAlignInput),
+	EXPECT_EQ(node->get_input_name(olive::TextGeneratorV2::k_v_align_input),
 			  QStringLiteral("Vertical Align"));
 
 	// Inherited names from ShapeNodeBase and GeneratorWithMerge
-	EXPECT_EQ(node->GetInputName(olive::ShapeNodeBase::kPositionInput),
+	EXPECT_EQ(node->get_input_name(olive::ShapeNodeBase::k_position_input),
 			  QStringLiteral("Position"));
-	EXPECT_EQ(node->GetInputName(olive::ShapeNodeBase::kSizeInput),
+	EXPECT_EQ(node->get_input_name(olive::ShapeNodeBase::k_size_input),
 			  QStringLiteral("Size"));
-	EXPECT_EQ(node->GetInputName(olive::ShapeNodeBase::kColorInput),
+	EXPECT_EQ(node->get_input_name(olive::ShapeNodeBase::k_color_input),
 			  QStringLiteral("Color"));
-	EXPECT_EQ(node->GetInputName(olive::GeneratorWithMerge::kBaseInput),
+	EXPECT_EQ(node->get_input_name(olive::GeneratorWithMerge::k_base_input),
 			  QStringLiteral("Base"));
 
 	const QStringList aligns =
-		node->GetComboBoxStrings(olive::TextGeneratorV2::kVAlignInput);
+		node->get_combo_box_strings(olive::TextGeneratorV2::k_v_align_input);
 	ASSERT_EQ(aligns.size(), 3);
 	EXPECT_EQ(aligns.at(0), QStringLiteral("Top"));
 	EXPECT_EQ(aligns.at(1), QStringLiteral("Center"));
@@ -690,79 +690,79 @@ TEST(TextGeneratorV2, RetranslateSetsNamesAndComboStrings)
 
 TEST(TextGeneratorV2, ValuePushesFloatTextureWithGenerateJob)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TextGeneratorV2>(&project);
+	auto *node = add_node<olive::TextGeneratorV2>(&project);
 
-	const olive::VideoParams vparams(320, 240, olive::core::PixelFormat::U8,
-									 olive::VideoParams::kRGBAChannelCount);
-	olive::NodeValueTable table = GenerateTable(node, vparams);
+	const olive::VideoParams vparams(320, 240, olive::core::PixelFormat::u8,
+									 olive::VideoParams::k_rgba_channel_count);
+	olive::NodeValueTable table = generate_table(node, vparams);
 
 	// Text always renders to a 32-bit float buffer regardless of sequence depth
-	olive::TexturePtr texture = GetOutputTexture(table);
+	olive::TexturePtr texture = get_output_texture(table);
 	ASSERT_TRUE(texture);
-	ASSERT_TRUE(texture->IsJob());
+	ASSERT_TRUE(texture->is_job());
 	EXPECT_EQ(texture->params().width(), vparams.width());
 	EXPECT_EQ(texture->params().height(), vparams.height());
 	EXPECT_EQ(int(texture->params().format()),
-			  int(olive::core::PixelFormat::F32));
+			  int(olive::core::PixelFormat::f32));
 
 	auto *job = dynamic_cast<olive::GenerateJob *>(texture->job());
 	ASSERT_TRUE(job);
-	EXPECT_EQ(job->Get(olive::TextGeneratorV2::kTextInput).toString(),
+	EXPECT_EQ(job->get(olive::TextGeneratorV2::k_text_input).to_string(),
 			  QStringLiteral("Sample Text"));
-	EXPECT_DOUBLE_EQ(job->Get(olive::TextGeneratorV2::kFontSizeInput).toDouble(),
+	EXPECT_DOUBLE_EQ(job->get(olive::TextGeneratorV2::k_font_size_input).to_double(),
 					 72.0);
-	EXPECT_EQ(job->Get(olive::TextGeneratorV2::kVAlignInput).toInt(), 0);
-	EXPECT_EQ(job->Get(olive::ShapeNodeBase::kSizeInput).toVec2(),
+	EXPECT_EQ(job->get(olive::TextGeneratorV2::k_v_align_input).to_int(), 0);
+	EXPECT_EQ(job->get(olive::ShapeNodeBase::k_size_input).to_vec2(),
 			  QVector2D(400.0f, 300.0f));
 }
 
 TEST(TextGeneratorV2, EmptyTextPushesNothing)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TextGeneratorV2>(&project);
-	node->SetStandardValue(olive::TextGeneratorV2::kTextInput, QString());
+	auto *node = add_node<olive::TextGeneratorV2>(&project);
+	node->set_standard_value(olive::TextGeneratorV2::k_text_input, QString());
 
-	olive::NodeValueTable table = GenerateTable(
-		node, olive::VideoParams(320, 240, olive::core::PixelFormat::U8,
-								 olive::VideoParams::kRGBAChannelCount));
+	olive::NodeValueTable table = generate_table(
+		node, olive::VideoParams(320, 240, olive::core::PixelFormat::u8,
+								 olive::VideoParams::k_rgba_channel_count));
 
-	EXPECT_TRUE(GetOutputTexture(table) == nullptr);
+	EXPECT_TRUE(get_output_texture(table) == nullptr);
 }
 
 TEST(TextGeneratorV2, ValueIgnoresBaseInput)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TextGeneratorV2>(&project);
-	auto *constant = AddNode<ConstantTextureNode>(&project);
+	auto *node = add_node<olive::TextGeneratorV2>(&project);
+	auto *constant = add_node<ConstantTextureNode>(&project);
 
 	const olive::TexturePtr base = std::make_shared<olive::Texture>(
-		olive::VideoParams(64, 48, olive::core::PixelFormat::U8,
-						   olive::VideoParams::kRGBAChannelCount));
-	constant->SetTexture(base);
-	olive::Node::ConnectEdge(constant,
+		olive::VideoParams(64, 48, olive::core::PixelFormat::u8,
+						   olive::VideoParams::k_rgba_channel_count));
+	constant->set_texture(base);
+	olive::Node::connect_edge(constant,
 							 olive::NodeInput(
-								 node, olive::GeneratorWithMerge::kBaseInput));
+								 node, olive::GeneratorWithMerge::k_base_input));
 
-	olive::NodeValueTable table = GenerateTable(
-		node, olive::VideoParams(320, 240, olive::core::PixelFormat::F32,
-								 olive::VideoParams::kRGBAChannelCount));
+	olive::NodeValueTable table = generate_table(
+		node, olive::VideoParams(320, 240, olive::core::PixelFormat::f32,
+								 olive::VideoParams::k_rgba_channel_count));
 
 	// Unlike TextGeneratorV3, which composites its text over the base input,
 	// the legacy V2 node never looks at it: the output is its own generate
 	// job at sequence params, not a merge with the base
-	olive::TexturePtr texture = GetOutputTexture(table);
+	olive::TexturePtr texture = get_output_texture(table);
 	ASSERT_TRUE(texture);
-	ASSERT_TRUE(texture->IsJob());
+	ASSERT_TRUE(texture->is_job());
 	EXPECT_EQ(texture->params().width(), 320);
 	EXPECT_EQ(texture->params().height(), 240);
 	EXPECT_TRUE(dynamic_cast<olive::GenerateJob *>(texture->job()));
@@ -770,35 +770,35 @@ TEST(TextGeneratorV2, ValueIgnoresBaseInput)
 
 TEST(TextGeneratorV2, GenerateFrameWithEmptyTextLeavesFrameTransparent)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TextGeneratorV2>(&project);
-	node->SetStandardValue(olive::TextGeneratorV2::kTextInput, QString());
+	auto *node = add_node<olive::TextGeneratorV2>(&project);
+	node->set_standard_value(olive::TextGeneratorV2::k_text_input, QString());
 
 	// Walk the vertical alignment switch and the HTML branch with empty text:
 	// no glyphs are drawn, so the transplant loop writes pure zeros
-	olive::NodeValueRow row = GenerateRow(node);
+	olive::NodeValueRow row = generate_row(node);
 	for (int valign = 0; valign <= 2; valign++) {
 		for (int html = 0; html <= 1; html++) {
-			row[olive::TextGeneratorV2::kVAlignInput] =
-				olive::NodeValue(olive::NodeValue::kCombo, valign);
-			row[olive::TextGeneratorV2::kHtmlInput] =
-				olive::NodeValue(olive::NodeValue::kBoolean, bool(html));
+			row[olive::TextGeneratorV2::k_v_align_input] =
+				olive::NodeValue(olive::NodeValue::k_combo, valign);
+			row[olive::TextGeneratorV2::k_html_input] =
+				olive::NodeValue(olive::NodeValue::k_boolean, bool(html));
 
-			olive::FramePtr frame = olive::Frame::Create();
+			olive::FramePtr frame = olive::Frame::create();
 			frame->set_video_params(
-				olive::VideoParams(64, 48, olive::core::PixelFormat::F32,
-								   olive::VideoParams::kRGBAChannelCount));
+				olive::VideoParams(64, 48, olive::core::PixelFormat::f32,
+								   olive::VideoParams::k_rgba_channel_count));
 			frame->allocate();
 
-			node->GenerateFrame(frame, olive::GenerateJob(row));
+			node->generate_frame(frame, olive::GenerateJob(row));
 
 			const float *data = reinterpret_cast<const float *>(frame->data());
 			const int pixel_count =
 				frame->linesize_pixels() * frame->height() *
-				olive::VideoParams::kRGBAChannelCount;
+				olive::VideoParams::k_rgba_channel_count;
 			float max_abs = 0.0f;
 			for (int i = 0; i < pixel_count; i++) {
 				max_abs = qMax(max_abs, qAbs(data[i]));
@@ -811,22 +811,22 @@ TEST(TextGeneratorV2, GenerateFrameWithEmptyTextLeavesFrameTransparent)
 
 TEST(TextGeneratorV2, GenerateFrameRasterizesTextInColor)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TextGeneratorV2>(&project);
-	node->SetStandardValue(
-		olive::ShapeNodeBase::kColorInput,
+	auto *node = add_node<olive::TextGeneratorV2>(&project);
+	node->set_standard_value(
+		olive::ShapeNodeBase::k_color_input,
 		QVariant::fromValue(olive::core::Color(1.0f, 0.0f, 0.0f, 1.0f)));
 
-	olive::FramePtr frame = olive::Frame::Create();
+	olive::FramePtr frame = olive::Frame::create();
 	frame->set_video_params(
-		olive::VideoParams(320, 240, olive::core::PixelFormat::F32,
-						   olive::VideoParams::kRGBAChannelCount));
+		olive::VideoParams(320, 240, olive::core::PixelFormat::f32,
+						   olive::VideoParams::k_rgba_channel_count));
 	frame->allocate();
 
-	node->GenerateFrame(frame, olive::GenerateJob(GenerateRow(node)));
+	node->generate_frame(frame, olive::GenerateJob(generate_row(node)));
 
 	// The alpha mask of the rendered glyphs is tinted by the color input:
 	// red premultiplied text has red == alpha and zero green/blue everywhere
@@ -838,7 +838,7 @@ TEST(TextGeneratorV2, GenerateFrameRasterizesTextInColor)
 		for (int x = 0; x < frame->width(); x++) {
 			const float *px = data +
 							  (y * frame->linesize_pixels() + x) *
-								  olive::VideoParams::kRGBAChannelCount;
+								  olive::VideoParams::k_rgba_channel_count;
 			any_alpha |= px[3] > 0.0f;
 			any_green_or_blue |= (px[1] != 0.0f || px[2] != 0.0f);
 			red_matches_alpha &= (px[0] == px[3]);
@@ -854,35 +854,35 @@ TEST(TextGeneratorV1, MetadataIsCorrect)
 	olive::TextGeneratorV1 node;
 	EXPECT_EQ(node.id(),
 			  QStringLiteral("org.olivevideoeditor.Olive.textgenerator"));
-	EXPECT_EQ(node.Name(), QStringLiteral("Text (Legacy)"));
-	EXPECT_FALSE(node.Description().isEmpty());
-	EXPECT_TRUE(node.Category().contains(olive::Node::kCategoryGenerator));
+	EXPECT_EQ(node.name(), QStringLiteral("Text (Legacy)"));
+	EXPECT_FALSE(node.description().isEmpty());
+	EXPECT_TRUE(node.category().contains(olive::Node::k_category_generator));
 
 	// Hidden from the create menu: superseded by TextGeneratorV3
-	EXPECT_TRUE(node.GetFlags() & olive::Node::kDontShowInCreateMenu);
+	EXPECT_TRUE(node.get_flags() & olive::Node::k_dont_show_in_create_menu);
 }
 
 TEST(TextGeneratorV1, InputDefaults)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TextGeneratorV1>(&project);
+	auto *node = add_node<olive::TextGeneratorV1>(&project);
 
-	EXPECT_EQ(node->GetStandardValue(olive::TextGeneratorV1::kTextInput)
+	EXPECT_EQ(node->get_standard_value(olive::TextGeneratorV1::k_text_input)
 				  .toString(),
 			  QStringLiteral("Sample Text"));
 
-	EXPECT_EQ(int(node->GetInputDataType(olive::TextGeneratorV1::kHtmlInput)),
-			  int(olive::NodeValue::kBoolean));
-	EXPECT_FALSE(node->GetStandardValue(olive::TextGeneratorV1::kHtmlInput)
+	EXPECT_EQ(int(node->get_input_data_type(olive::TextGeneratorV1::k_html_input)),
+			  int(olive::NodeValue::k_boolean));
+	EXPECT_FALSE(node->get_standard_value(olive::TextGeneratorV1::k_html_input)
 					 .toBool());
 
-	EXPECT_EQ(int(node->GetInputDataType(olive::TextGeneratorV1::kColorInput)),
-			  int(olive::NodeValue::kColor));
+	EXPECT_EQ(int(node->get_input_data_type(olive::TextGeneratorV1::k_color_input)),
+			  int(olive::NodeValue::k_color));
 	const olive::core::Color color =
-		node->GetStandardValue(olive::TextGeneratorV1::kColorInput)
+		node->get_standard_value(olive::TextGeneratorV1::k_color_input)
 			.value<olive::core::Color>();
 	EXPECT_FLOAT_EQ(color.red(), 1.0f);
 	EXPECT_FLOAT_EQ(color.green(), 1.0f);
@@ -890,44 +890,44 @@ TEST(TextGeneratorV1, InputDefaults)
 	EXPECT_FLOAT_EQ(color.alpha(), 1.0f);
 
 	// Unlike V2, V1 defaults to centered vertical alignment
-	EXPECT_EQ(int(node->GetInputDataType(olive::TextGeneratorV1::kVAlignInput)),
-			  int(olive::NodeValue::kCombo));
-	EXPECT_EQ(node->GetStandardValue(olive::TextGeneratorV1::kVAlignInput)
+	EXPECT_EQ(int(node->get_input_data_type(olive::TextGeneratorV1::k_v_align_input)),
+			  int(olive::NodeValue::k_combo));
+	EXPECT_EQ(node->get_standard_value(olive::TextGeneratorV1::k_v_align_input)
 				  .toInt(),
 			  1);
 
 	EXPECT_EQ(
-		int(node->GetInputDataType(olive::TextGeneratorV1::kFontSizeInput)),
-		int(olive::NodeValue::kFloat));
-	EXPECT_DOUBLE_EQ(node->GetStandardValue(olive::TextGeneratorV1::kFontSizeInput)
+		int(node->get_input_data_type(olive::TextGeneratorV1::k_font_size_input)),
+		int(olive::NodeValue::k_float));
+	EXPECT_DOUBLE_EQ(node->get_standard_value(olive::TextGeneratorV1::k_font_size_input)
 						 .toDouble(),
 					 72.0);
 }
 
 TEST(TextGeneratorV1, RetranslateSetsNamesAndComboStrings)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TextGeneratorV1>(&project);
-	node->Retranslate();
+	auto *node = add_node<olive::TextGeneratorV1>(&project);
+	node->retranslate();
 
-	EXPECT_EQ(node->GetInputName(olive::TextGeneratorV1::kTextInput),
+	EXPECT_EQ(node->get_input_name(olive::TextGeneratorV1::k_text_input),
 			  QStringLiteral("Text"));
-	EXPECT_EQ(node->GetInputName(olive::TextGeneratorV1::kHtmlInput),
+	EXPECT_EQ(node->get_input_name(olive::TextGeneratorV1::k_html_input),
 			  QStringLiteral("Enable HTML"));
-	EXPECT_EQ(node->GetInputName(olive::TextGeneratorV1::kFontInput),
+	EXPECT_EQ(node->get_input_name(olive::TextGeneratorV1::k_font_input),
 			  QStringLiteral("Font"));
-	EXPECT_EQ(node->GetInputName(olive::TextGeneratorV1::kFontSizeInput),
+	EXPECT_EQ(node->get_input_name(olive::TextGeneratorV1::k_font_size_input),
 			  QStringLiteral("Font Size"));
-	EXPECT_EQ(node->GetInputName(olive::TextGeneratorV1::kColorInput),
+	EXPECT_EQ(node->get_input_name(olive::TextGeneratorV1::k_color_input),
 			  QStringLiteral("Color"));
-	EXPECT_EQ(node->GetInputName(olive::TextGeneratorV1::kVAlignInput),
+	EXPECT_EQ(node->get_input_name(olive::TextGeneratorV1::k_v_align_input),
 			  QStringLiteral("Vertical Align"));
 
 	const QStringList aligns =
-		node->GetComboBoxStrings(olive::TextGeneratorV1::kVAlignInput);
+		node->get_combo_box_strings(olive::TextGeneratorV1::k_v_align_input);
 	ASSERT_EQ(aligns.size(), 3);
 	EXPECT_EQ(aligns.at(0), QStringLiteral("Top"));
 	EXPECT_EQ(aligns.at(1), QStringLiteral("Center"));
@@ -936,80 +936,80 @@ TEST(TextGeneratorV1, RetranslateSetsNamesAndComboStrings)
 
 TEST(TextGeneratorV1, ValuePushesTextureAtSequenceParams)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TextGeneratorV1>(&project);
+	auto *node = add_node<olive::TextGeneratorV1>(&project);
 
-	const olive::VideoParams vparams(320, 240, olive::core::PixelFormat::U8,
-									 olive::VideoParams::kRGBAChannelCount);
-	olive::NodeValueTable table = GenerateTable(node, vparams);
+	const olive::VideoParams vparams(320, 240, olive::core::PixelFormat::u8,
+									 olive::VideoParams::k_rgba_channel_count);
+	olive::NodeValueTable table = generate_table(node, vparams);
 
 	// Unlike V2, V1 keeps the sequence pixel format for its output
-	olive::TexturePtr texture = GetOutputTexture(table);
+	olive::TexturePtr texture = get_output_texture(table);
 	ASSERT_TRUE(texture);
-	ASSERT_TRUE(texture->IsJob());
+	ASSERT_TRUE(texture->is_job());
 	EXPECT_EQ(texture->params().width(), vparams.width());
 	EXPECT_EQ(texture->params().height(), vparams.height());
 	EXPECT_EQ(int(texture->params().format()),
-			  int(olive::core::PixelFormat::U8));
+			  int(olive::core::PixelFormat::u8));
 
 	auto *job = dynamic_cast<olive::GenerateJob *>(texture->job());
 	ASSERT_TRUE(job);
-	EXPECT_EQ(job->Get(olive::TextGeneratorV1::kTextInput).toString(),
+	EXPECT_EQ(job->get(olive::TextGeneratorV1::k_text_input).to_string(),
 			  QStringLiteral("Sample Text"));
-	EXPECT_DOUBLE_EQ(job->Get(olive::TextGeneratorV1::kFontSizeInput).toDouble(),
+	EXPECT_DOUBLE_EQ(job->get(olive::TextGeneratorV1::k_font_size_input).to_double(),
 					 72.0);
 }
 
 TEST(TextGeneratorV1, EmptyTextPushesNothing)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TextGeneratorV1>(&project);
-	node->SetStandardValue(olive::TextGeneratorV1::kTextInput, QString());
+	auto *node = add_node<olive::TextGeneratorV1>(&project);
+	node->set_standard_value(olive::TextGeneratorV1::k_text_input, QString());
 
-	olive::NodeValueTable table = GenerateTable(
-		node, olive::VideoParams(320, 240, olive::core::PixelFormat::U8,
-								 olive::VideoParams::kRGBAChannelCount));
+	olive::NodeValueTable table = generate_table(
+		node, olive::VideoParams(320, 240, olive::core::PixelFormat::u8,
+								 olive::VideoParams::k_rgba_channel_count));
 
-	EXPECT_TRUE(GetOutputTexture(table) == nullptr);
+	EXPECT_TRUE(get_output_texture(table) == nullptr);
 }
 
 TEST(TextGeneratorV1, GenerateFrameWithEmptyTextLeavesFrameBlack)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TextGeneratorV1>(&project);
-	node->SetStandardValue(olive::TextGeneratorV1::kTextInput, QString());
+	auto *node = add_node<olive::TextGeneratorV1>(&project);
+	node->set_standard_value(olive::TextGeneratorV1::k_text_input, QString());
 
 	// Walk the vertical alignment switch and the HTML branch with empty text:
 	// no glyphs are drawn, so every pixel is set to transparent black
-	olive::NodeValueRow row = GenerateRow(node);
+	olive::NodeValueRow row = generate_row(node);
 	for (int valign = 0; valign <= 2; valign++) {
 		for (int html = 0; html <= 1; html++) {
-			row[olive::TextGeneratorV1::kVAlignInput] =
-				olive::NodeValue(olive::NodeValue::kCombo, valign);
-			row[olive::TextGeneratorV1::kHtmlInput] =
-				olive::NodeValue(olive::NodeValue::kBoolean, bool(html));
+			row[olive::TextGeneratorV1::k_v_align_input] =
+				olive::NodeValue(olive::NodeValue::k_combo, valign);
+			row[olive::TextGeneratorV1::k_html_input] =
+				olive::NodeValue(olive::NodeValue::k_boolean, bool(html));
 
-			olive::FramePtr frame = olive::Frame::Create();
+			olive::FramePtr frame = olive::Frame::create();
 			frame->set_video_params(
-				olive::VideoParams(64, 48, olive::core::PixelFormat::F32,
-								   olive::VideoParams::kRGBAChannelCount));
+				olive::VideoParams(64, 48, olive::core::PixelFormat::f32,
+								   olive::VideoParams::k_rgba_channel_count));
 			frame->allocate();
 
-			node->GenerateFrame(frame, olive::GenerateJob(row));
+			node->generate_frame(frame, olive::GenerateJob(row));
 
 			const float *data = reinterpret_cast<const float *>(frame->data());
 			const int pixel_count =
 				frame->linesize_pixels() * frame->height() *
-				olive::VideoParams::kRGBAChannelCount;
+				olive::VideoParams::k_rgba_channel_count;
 			float max_abs = 0.0f;
 			for (int i = 0; i < pixel_count; i++) {
 				max_abs = qMax(max_abs, qAbs(data[i]));
@@ -1022,19 +1022,19 @@ TEST(TextGeneratorV1, GenerateFrameWithEmptyTextLeavesFrameBlack)
 
 TEST(TextGeneratorV1, GenerateFrameRasterizesTextPixels)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TextGeneratorV1>(&project);
+	auto *node = add_node<olive::TextGeneratorV1>(&project);
 
-	olive::FramePtr frame = olive::Frame::Create();
+	olive::FramePtr frame = olive::Frame::create();
 	frame->set_video_params(
-		olive::VideoParams(320, 240, olive::core::PixelFormat::F32,
-						   olive::VideoParams::kRGBAChannelCount));
+		olive::VideoParams(320, 240, olive::core::PixelFormat::f32,
+						   olive::VideoParams::k_rgba_channel_count));
 	frame->allocate();
 
-	node->GenerateFrame(frame, olive::GenerateJob(GenerateRow(node)));
+	node->generate_frame(frame, olive::GenerateJob(generate_row(node)));
 
 	// The default white text is written premultiplied: any covered pixel has
 	// all channels equal to its alpha
@@ -1045,7 +1045,7 @@ TEST(TextGeneratorV1, GenerateFrameRasterizesTextPixels)
 		for (int x = 0; x < frame->width(); x++) {
 			const float *px = data +
 							  (y * frame->linesize_pixels() + x) *
-								  olive::VideoParams::kRGBAChannelCount;
+								  olive::VideoParams::k_rgba_channel_count;
 			any_alpha |= px[3] > 0.0f;
 			channels_match_alpha &=
 				(px[0] == px[3] && px[1] == px[3] && px[2] == px[3]);

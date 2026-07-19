@@ -37,7 +37,7 @@ public:
 	}
 };
 
-QList<int> MenuFormatData(const olive::ExportFormatComboBox &combo)
+QList<int> menu_format_data(const olive::ExportFormatComboBox &combo)
 {
 	QList<int> formats;
 	// custom_menu_ is an olive::Menu (a QMenu without its own Q_OBJECT)
@@ -63,51 +63,51 @@ TEST(DialogExportFormatComboBox, GetSetFormatRoundTrip)
 	olive::ExportFormatComboBox combo;
 
 	// Before any selection the format is the invalid placeholder
-	EXPECT_EQ(combo.GetFormat(), olive::ExportFormat::kFormatCount);
+	EXPECT_EQ(combo.get_format(), olive::ExportFormat::k_format_count);
 
-	combo.SetFormat(olive::ExportFormat::kFormatMatroska);
-	EXPECT_EQ(combo.GetFormat(), olive::ExportFormat::kFormatMatroska);
+	combo.set_format(olive::ExportFormat::k_format_matroska);
+	EXPECT_EQ(combo.get_format(), olive::ExportFormat::k_format_matroska);
 	EXPECT_EQ(combo.currentText(),
-			  olive::ExportFormat::GetName(olive::ExportFormat::kFormatMatroska));
+			  olive::ExportFormat::get_name(olive::ExportFormat::k_format_matroska));
 }
 
 TEST(DialogExportFormatComboBox, MenuSelectionEmitsFormatChanged)
 {
 	olive::ExportFormatComboBox combo;
-	QSignalSpy spy(&combo, &olive::ExportFormatComboBox::FormatChanged);
+	QSignalSpy spy(&combo, &olive::ExportFormatComboBox::format_changed);
 
 	QAction action(QStringLiteral("QuickTime"), &combo);
-	action.setData(static_cast<int>(olive::ExportFormat::kFormatQuickTime));
+	action.setData(static_cast<int>(olive::ExportFormat::k_format_quick_time));
 
-	QMetaObject::invokeMethod(&combo, "HandleIndexChange",
+	QMetaObject::invokeMethod(&combo, "handle_index_change",
 							  Q_ARG(QAction *, &action));
 
-	EXPECT_EQ(combo.GetFormat(), olive::ExportFormat::kFormatQuickTime);
+	EXPECT_EQ(combo.get_format(), olive::ExportFormat::k_format_quick_time);
 	ASSERT_EQ(spy.count(), 1);
 	EXPECT_EQ(spy.first().first().toInt(),
-			  static_cast<int>(olive::ExportFormat::kFormatQuickTime));
+			  static_cast<int>(olive::ExportFormat::k_format_quick_time));
 }
 
 TEST(DialogExportFormatComboBox, AudioOnlyModeListsOnlyAudioFormats)
 {
 	olive::ExportFormatComboBox combo(
-		olive::ExportFormatComboBox::kShowAudioOnly);
+		olive::ExportFormatComboBox::k_show_audio_only);
 
-	const QList<int> formats = MenuFormatData(combo);
+	const QList<int> formats = menu_format_data(combo);
 	EXPECT_FALSE(formats.isEmpty());
 
 	foreach (int f, formats) {
 		const auto fmt = static_cast<olive::ExportFormat::Format>(f);
-		EXPECT_TRUE(olive::ExportFormat::GetVideoCodecs(fmt).isEmpty())
+		EXPECT_TRUE(olive::ExportFormat::get_video_codecs(fmt).isEmpty())
 			<< "Format " << f << " should not have video codecs";
-		EXPECT_FALSE(olive::ExportFormat::GetAudioCodecs(fmt).isEmpty())
+		EXPECT_FALSE(olive::ExportFormat::get_audio_codecs(fmt).isEmpty())
 			<< "Format " << f << " should have audio codecs";
 	}
 
 	EXPECT_TRUE(formats.contains(
-		static_cast<int>(olive::ExportFormat::kFormatWAV)));
+		static_cast<int>(olive::ExportFormat::k_format_wav)));
 	EXPECT_FALSE(formats.contains(
-		static_cast<int>(olive::ExportFormat::kFormatMatroska)));
+		static_cast<int>(olive::ExportFormat::k_format_matroska)));
 }
 
 //
@@ -118,30 +118,30 @@ TEST(DialogExportAudioTab, SetFormatPopulatesCodecs)
 	olive::ExportAudioTab tab;
 
 	const QList<olive::ExportCodec::Codec> codecs =
-		olive::ExportFormat::GetAudioCodecs(olive::ExportFormat::kFormatMatroska);
+		olive::ExportFormat::get_audio_codecs(olive::ExportFormat::k_format_matroska);
 	ASSERT_FALSE(codecs.isEmpty());
 
-	EXPECT_EQ(tab.SetFormat(olive::ExportFormat::kFormatMatroska),
+	EXPECT_EQ(tab.set_format(olive::ExportFormat::k_format_matroska),
 			  codecs.size());
 
 	// The first codec is auto-selected
-	EXPECT_EQ(tab.GetCodec(), codecs.first());
+	EXPECT_EQ(tab.get_codec(), codecs.first());
 }
 
 TEST(DialogExportAudioTab, LosslessCodecDisablesBitRate)
 {
 	olive::ExportAudioTab tab;
-	tab.SetFormat(olive::ExportFormat::kFormatMatroska);
+	tab.set_format(olive::ExportFormat::k_format_matroska);
 
-	tab.SetCodec(olive::ExportCodec::kCodecAAC);
+	tab.set_codec(olive::ExportCodec::k_codec_aac);
 	EXPECT_TRUE(tab.bit_rate_slider()->isEnabled());
-	EXPECT_EQ(tab.GetCodec(), olive::ExportCodec::kCodecAAC);
+	EXPECT_EQ(tab.get_codec(), olive::ExportCodec::k_codec_aac);
 
 	// PCM is lossless, so no bit rate setting applies
-	tab.SetCodec(olive::ExportCodec::kCodecPCM);
-	EXPECT_EQ(tab.GetCodec(), olive::ExportCodec::kCodecPCM);
+	tab.set_codec(olive::ExportCodec::k_codec_pcm);
+	EXPECT_EQ(tab.get_codec(), olive::ExportCodec::k_codec_pcm);
 	EXPECT_FALSE(tab.bit_rate_slider()->isEnabled());
-	EXPECT_TRUE(tab.bit_rate_slider()->IsTristate());
+	EXPECT_TRUE(tab.bit_rate_slider()->is_tristate());
 }
 
 TEST(DialogExportAudioTab, FormatWithoutAudioCodecsDisablesTab)
@@ -149,7 +149,7 @@ TEST(DialogExportAudioTab, FormatWithoutAudioCodecsDisablesTab)
 	olive::ExportAudioTab tab;
 
 	// PNG carries no audio
-	EXPECT_EQ(tab.SetFormat(olive::ExportFormat::kFormatPNG), 0);
+	EXPECT_EQ(tab.set_format(olive::ExportFormat::k_format_png), 0);
 	EXPECT_FALSE(tab.isEnabled());
 }
 
@@ -159,32 +159,32 @@ TEST(DialogExportAudioTab, FormatWithoutAudioCodecsDisablesTab)
 TEST(DialogExportSubtitlesTab, SidecarStateFollowsFormatCapabilities)
 {
 	olive::ExportSubtitlesTab tab;
-	tab.SetSidecarFormat(olive::ExportFormat::kFormatSRT);
+	tab.set_sidecar_format(olive::ExportFormat::k_format_srt);
 
 	auto *sidecar_box = tab.findChild<QCheckBox *>();
 	ASSERT_NE(sidecar_box, nullptr);
 
 	// Matroska can embed subtitles: sidecar is optional and off by default
-	tab.SetFormat(olive::ExportFormat::kFormatMatroska);
+	tab.set_format(olive::ExportFormat::k_format_matroska);
 	EXPECT_TRUE(sidecar_box->isEnabled());
-	EXPECT_FALSE(tab.GetSidecarEnabled());
-	EXPECT_EQ(tab.GetSubtitleCodec(), olive::ExportCodec::kCodecSRT);
+	EXPECT_FALSE(tab.get_sidecar_enabled());
+	EXPECT_EQ(tab.get_subtitle_codec(), olive::ExportCodec::k_codec_srt);
 
 	// SetSidecarEnabled toggles the check state (used to restore params)
-	tab.SetSidecarEnabled(true);
-	EXPECT_TRUE(tab.GetSidecarEnabled());
-	tab.SetSidecarEnabled(false);
-	EXPECT_FALSE(tab.GetSidecarEnabled());
+	tab.set_sidecar_enabled(true);
+	EXPECT_TRUE(tab.get_sidecar_enabled());
+	tab.set_sidecar_enabled(false);
+	EXPECT_FALSE(tab.get_sidecar_enabled());
 
 	// SRT is a subtitles-only format: sidecar makes no sense, forced off
-	tab.SetFormat(olive::ExportFormat::kFormatSRT);
+	tab.set_format(olive::ExportFormat::k_format_srt);
 	EXPECT_FALSE(sidecar_box->isEnabled());
-	EXPECT_FALSE(tab.GetSidecarEnabled());
+	EXPECT_FALSE(tab.get_sidecar_enabled());
 
 	// WAV cannot carry subtitles at all: sidecar is forced on
-	tab.SetFormat(olive::ExportFormat::kFormatWAV);
+	tab.set_format(olive::ExportFormat::k_format_wav);
 	EXPECT_FALSE(sidecar_box->isEnabled());
-	EXPECT_TRUE(tab.GetSidecarEnabled());
+	EXPECT_TRUE(tab.get_sidecar_enabled());
 }
 
 //
@@ -192,61 +192,61 @@ TEST(DialogExportSubtitlesTab, SidecarStateFollowsFormatCapabilities)
 //
 TEST(DialogExportVideoTab, SetFormatPopulatesCodecs)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
 
 	olive::ExportVideoTab tab(project.color_manager());
 
 	const QList<olive::ExportCodec::Codec> codecs =
-		olive::ExportFormat::GetVideoCodecs(olive::ExportFormat::kFormatMatroska);
+		olive::ExportFormat::get_video_codecs(olive::ExportFormat::k_format_matroska);
 	ASSERT_FALSE(codecs.isEmpty());
 
-	EXPECT_EQ(tab.SetFormat(olive::ExportFormat::kFormatMatroska),
+	EXPECT_EQ(tab.set_format(olive::ExportFormat::k_format_matroska),
 			  codecs.size());
-	EXPECT_EQ(tab.GetSelectedCodec(), codecs.first());
+	EXPECT_EQ(tab.get_selected_codec(), codecs.first());
 
-	tab.SetSelectedCodec(olive::ExportCodec::kCodecH265);
-	EXPECT_EQ(tab.GetSelectedCodec(), olive::ExportCodec::kCodecH265);
+	tab.set_selected_codec(olive::ExportCodec::k_codec_h265);
+	EXPECT_EQ(tab.get_selected_codec(), olive::ExportCodec::k_codec_h265);
 }
 
 TEST(DialogExportVideoTab, CodecSelectsMatchingSection)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
 
 	olive::ExportVideoTab tab(project.color_manager());
-	tab.SetFormat(olive::ExportFormat::kFormatMatroska);
+	tab.set_format(olive::ExportFormat::k_format_matroska);
 
 	// First Matroska codec is H.264, which has a dedicated section
-	tab.VideoCodecChanged();
-	EXPECT_NE(tab.GetCodecSection(), nullptr);
+	tab.video_codec_changed();
+	EXPECT_NE(tab.get_codec_section(), nullptr);
 
 	// Still image codecs get the image section instead
-	tab.SetFormat(olive::ExportFormat::kFormatPNG);
-	tab.VideoCodecChanged();
-	EXPECT_NE(dynamic_cast<olive::ImageSection *>(tab.GetCodecSection()),
+	tab.set_format(olive::ExportFormat::k_format_png);
+	tab.video_codec_changed();
+	EXPECT_NE(dynamic_cast<olive::ImageSection *>(tab.get_codec_section()),
 			  nullptr);
 }
 
 TEST(DialogExportVideoTab, ImageSequenceCheckboxRoundTrips)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
 
 	olive::ExportVideoTab tab(project.color_manager());
-	tab.SetFormat(olive::ExportFormat::kFormatPNG);
-	tab.VideoCodecChanged();
+	tab.set_format(olive::ExportFormat::k_format_png);
+	tab.video_codec_changed();
 
-	tab.SetImageSequence(true);
-	EXPECT_TRUE(tab.IsImageSequenceSet());
+	tab.set_image_sequence(true);
+	EXPECT_TRUE(tab.is_image_sequence_set());
 
-	tab.SetImageSequence(false);
-	EXPECT_FALSE(tab.IsImageSequenceSet());
+	tab.set_image_sequence(false);
+	EXPECT_FALSE(tab.is_image_sequence_set());
 }
 
 TEST(DialogExportVideoTab, MaintainAspectTogglesScalingMethod)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
 
 	olive::ExportVideoTab tab(project.color_manager());
@@ -263,29 +263,29 @@ TEST(DialogExportVideoTab, MaintainAspectTogglesScalingMethod)
 //
 TEST(DialogExportH264CRFSection, ValueRoundTripsAndClamps)
 {
-	olive::H264CRFSection section(olive::H264CRFSection::kDefaultH264CRF);
+	olive::H264CRFSection section(olive::H264CRFSection::k_default_h264_crf);
 
-	EXPECT_EQ(section.GetValue(), olive::H264CRFSection::kDefaultH264CRF);
+	EXPECT_EQ(section.get_value(), olive::H264CRFSection::k_default_h264_crf);
 
-	section.SetValue(30);
-	EXPECT_EQ(section.GetValue(), 30);
+	section.set_value(30);
+	EXPECT_EQ(section.get_value(), 30);
 
-	section.SetValue(99);
-	EXPECT_EQ(section.GetValue(), 51);
+	section.set_value(99);
+	EXPECT_EQ(section.get_value(), 51);
 
-	section.SetValue(-5);
-	EXPECT_EQ(section.GetValue(), 0);
+	section.set_value(-5);
+	EXPECT_EQ(section.get_value(), 0);
 }
 
 TEST(DialogExportH264BitRateSection, BitRateRoundTripsInBits)
 {
 	olive::H264BitRateSection section;
 
-	section.SetTargetBitRate(8000000);
-	EXPECT_EQ(section.GetTargetBitRate(), 8000000);
+	section.set_target_bit_rate(8000000);
+	EXPECT_EQ(section.get_target_bit_rate(), 8000000);
 
-	section.SetMaximumBitRate(16000000);
-	EXPECT_EQ(section.GetMaximumBitRate(), 16000000);
+	section.set_maximum_bit_rate(16000000);
+	EXPECT_EQ(section.get_maximum_bit_rate(), 16000000);
 }
 
 //
@@ -302,8 +302,8 @@ TEST(DialogExportAdvancedVideo, FieldsRoundTrip)
 	dialog.set_pix_fmt(QStringLiteral("yuv422p"));
 	EXPECT_EQ(dialog.pix_fmt(), QStringLiteral("yuv422p"));
 
-	dialog.set_yuv_range(olive::VideoParams::kColorRangeFull);
-	EXPECT_EQ(dialog.yuv_range(), olive::VideoParams::kColorRangeFull);
+	dialog.set_yuv_range(olive::VideoParams::k_color_range_full);
+	EXPECT_EQ(dialog.yuv_range(), olive::VideoParams::k_color_range_full);
 }
 
 //
@@ -321,16 +321,16 @@ TEST(DialogExportSavePreset, AcceptWritesPresetFile)
 	ASSERT_NE(name_edit, nullptr);
 	name_edit->setText(QStringLiteral("oak-test-preset"));
 
-	EXPECT_EQ(dialog.GetSelectedPresetName(),
+	EXPECT_EQ(dialog.get_selected_preset_name(),
 			  QStringLiteral("oak-test-preset"));
 
 	dialog.accept();
 	EXPECT_EQ(dialog.result(), QDialog::Accepted);
 
-	EXPECT_TRUE(olive::EncodingParams::GetListOfPresets().contains(
+	EXPECT_TRUE(olive::EncodingParams::get_list_of_presets().contains(
 		QStringLiteral("oak-test-preset")));
 
 	// Clean up the preset file written to the test config location
-	QFile::remove(QDir(olive::EncodingParams::GetPresetPath())
+	QFile::remove(QDir(olive::EncodingParams::get_preset_path())
 					  .filePath(QStringLiteral("oak-test-preset")));
 }

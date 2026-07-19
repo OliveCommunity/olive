@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef MEMORYPOOL_H
-#define MEMORYPOOL_H
+#ifndef OAK_MEMORYPOOL_H
+#define OAK_MEMORYPOOL_H
 
 #include <memory>
 #include <QApplication>
@@ -435,4 +435,4 @@ private slots:
 
 }
 
-#endif // MEMORYPOOL_H
+#endif // OAK_MEMORYPOOL_H

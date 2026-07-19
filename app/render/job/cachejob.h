@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CACHEJOB_H
-#define CACHEJOB_H
+#ifndef OAK_CACHEJOB_H
+#define OAK_CACHEJOB_H
 
 #include <QString>
 #include <QVariant>
@@ -39,20 +39,20 @@ public:
 		filename_ = filename;
 	}
 
-	const QString &GetFilename() const
+	const QString &get_filename() const
 	{
 		return filename_;
 	}
-	void SetFilename(const QString &s)
+	void set_filename(const QString &s)
 	{
 		filename_ = s;
 	}
 
-	const NodeValue &GetFallback() const
+	const NodeValue &get_fallback() const
 	{
 		return fallback_;
 	}
-	void SetFallback(const NodeValue &val)
+	void set_fallback(const NodeValue &val)
 	{
 		fallback_ = val;
 	}
@@ -65,4 +65,4 @@ private:
 
 }
 
-#endif // CACHEJOB_H
+#endif // OAK_CACHEJOB_H

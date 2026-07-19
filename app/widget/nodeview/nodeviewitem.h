@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEVIEWITEM_H
-#define NODEVIEWITEM_H
+#ifndef OAK_NODEVIEWITEM_H
+#define OAK_NODEVIEWITEM_H
 
 #include <QFontMetrics>
 #include <QGraphicsRectItem>
@@ -56,27 +56,27 @@ public:
 
 	virtual ~NodeViewItem() override;
 
-	Node::Position GetNodePositionData() const;
-	QPointF GetNodePosition() const;
-	void SetNodePosition(const QPointF &pos);
-	void SetNodePosition(const Node::Position &pos);
+	Node::Position get_node_position_data() const;
+	QPointF get_node_position() const;
+	void set_node_position(const QPointF &pos);
+	void set_node_position(const Node::Position &pos);
 
-	QVector<NodeViewEdge *> GetAllEdgesRecursively() const;
+	QVector<NodeViewEdge *> get_all_edges_recursively() const;
 
 	/**
    * @brief Get currently attached node
    */
-	Node *GetNode() const
+	Node *get_node() const
 	{
 		return node_;
 	}
 
-	NodeInput GetInput() const
+	NodeInput get_input() const
 	{
 		return NodeInput(node_, input_, element_);
 	}
 
-	Node *GetContext() const
+	Node *get_context() const
 	{
 		return context_;
 	}
@@ -84,7 +84,7 @@ public:
 	/**
    * @brief Get expanded state
    */
-	bool IsExpanded() const
+	bool is_expanded() const
 	{
 		return expanded_;
 	}
@@ -97,65 +97,65 @@ public:
 	/**
    * @brief Set expanded state
    */
-	void SetExpanded(bool e, bool hide_titlebar = false);
-	void ToggleExpanded();
+	void set_expanded(bool e, bool hide_titlebar = false);
+	void toggle_expanded();
 
-	QPointF GetInputPoint() const;
-	QPointF GetOutputPoint() const;
+	QPointF get_input_point() const;
+	QPointF get_output_point() const;
 
 	/**
    * @brief Sets the direction nodes are flowing
    */
-	void SetFlowDirection(NodeViewCommon::FlowDirection dir);
+	void set_flow_direction(NodeViewCommon::FlowDirection dir);
 
-	NodeViewCommon::FlowDirection GetFlowDirection() const
+	NodeViewCommon::FlowDirection get_flow_direction() const
 	{
 		return flow_dir_;
 	}
 
-	static int DefaultTextPadding();
+	static int default_text_padding();
 
-	static int DefaultItemHeight();
+	static int default_item_height();
 
-	static int DefaultItemWidth();
+	static int default_item_width();
 
-	static int DefaultItemBorder();
+	static int default_item_border();
 
-	static QPointF NodeToScreenPoint(QPointF p,
+	static QPointF node_to_screen_point(QPointF p,
 									 NodeViewCommon::FlowDirection direction);
-	static QPointF ScreenToNodePoint(QPointF p,
+	static QPointF screen_to_node_point(QPointF p,
 									 NodeViewCommon::FlowDirection direction);
 
 	static qreal
-	DefaultItemHorizontalPadding(NodeViewCommon::FlowDirection dir);
-	static qreal DefaultItemVerticalPadding(NodeViewCommon::FlowDirection dir);
-	qreal DefaultItemHorizontalPadding() const;
-	qreal DefaultItemVerticalPadding() const;
+	default_item_horizontal_padding(NodeViewCommon::FlowDirection dir);
+	static qreal default_item_vertical_padding(NodeViewCommon::FlowDirection dir);
+	qreal default_item_horizontal_padding() const;
+	qreal default_item_vertical_padding() const;
 
-	void AddEdge(NodeViewEdge *edge);
-	void RemoveEdge(NodeViewEdge *edge);
+	void add_edge(NodeViewEdge *edge);
+	void remove_edge(NodeViewEdge *edge);
 
-	bool IsLabelledAsOutputOfContext() const
+	bool is_labelled_as_output_of_context() const
 	{
 		return label_as_output_;
 	}
 
-	void SetLabelAsOutput(bool e);
+	void set_label_as_output(bool e);
 
-	void SetHighlighted(bool e);
+	void set_highlighted(bool e);
 
-	NodeViewItem *GetItemForInput(NodeInput input);
+	NodeViewItem *get_item_for_input(NodeInput input);
 
-	bool IsOutputItem() const
+	bool is_output_item() const
 	{
 		return input_.isEmpty();
 	}
 
-	void ReadjustAllEdges();
+	void readjust_all_edges();
 
-	void UpdateFlowDirectionOfInputItem(NodeViewItem *child);
+	void update_flow_direction_of_input_item(NodeViewItem *child);
 
-	bool CanBeExpanded() const;
+	bool can_be_expanded() const;
 
 protected:
 	virtual void paint(QPainter *painter,
@@ -170,28 +170,28 @@ protected:
 								const QVariant &value) override;
 
 private:
-	void UpdateContextRect();
+	void update_context_rect();
 
-	void DrawNodeTitle(QPainter *painter, QString text, const QRectF &rect,
+	void draw_node_title(QPainter *painter, QString text, const QRectF &rect,
 					   Qt::Alignment vertical_align, int icon_full_size);
 
-	int DrawExpandArrow(QPainter *painter);
+	int draw_expand_arrow(QPainter *painter);
 
 	/**
    * @brief Internal update function when logical position changes
    */
-	void UpdateNodePosition();
+	void update_node_position();
 
-	void UpdateInputConnectorPosition();
-	void UpdateOutputConnectorPosition();
+	void update_input_connector_position();
+	void update_output_connector_position();
 
-	bool IsInputValid(const QString &input);
+	bool is_input_valid(const QString &input);
 
-	void SetRectSize(int height_units = 1);
+	void set_rect_size(int height_units = 1);
 
-	void UpdateChildrenPositions();
+	void update_children_positions();
 
-	int GetLogicalHeightWithChildren() const;
+	int get_logical_height_with_children() const;
 
 	/**
    * @brief Reference to attached Node
@@ -234,13 +234,13 @@ private:
 	bool label_as_output_;
 
 private slots:
-	void NodeAppearanceChanged();
+	void node_appearance_changed();
 
-	void RepopulateInputs();
+	void repopulate_inputs();
 
-	void InputArraySizeChanged(const QString &input);
+	void input_array_size_changed(const QString &input);
 };
 
 }
 
-#endif // NODEVIEWITEM_H
+#endif // OAK_NODEVIEWITEM_H

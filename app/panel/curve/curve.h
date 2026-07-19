@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CURVEPANEL_H
-#define CURVEPANEL_H
+#ifndef OAK_CURVEPANEL_H
+#define OAK_CURVEPANEL_H
 
 #include "panel/timebased/timebased.h"
 #include "widget/curvewidget/curvewidget.h"
@@ -33,14 +33,14 @@ class CurvePanel : public TimeBasedPanel {
 public:
 	CurvePanel();
 
-	virtual void DeleteSelected() override;
+	virtual void delete_selected() override;
 
-	virtual void SelectAll() override;
+	virtual void select_all() override;
 
-	virtual void DeselectAll() override;
+	virtual void deselect_all() override;
 
 public slots:
-	void SetNode(Node *node)
+	void set_node(Node *node)
 	{
 		// Convert single pointer to either an empty vector or a vector of one
 		QVector<Node *> nodes;
@@ -49,19 +49,19 @@ public slots:
 			nodes.append(node);
 		}
 
-		SetNodes(nodes);
+		set_nodes(nodes);
 	}
 
-	void SetNodes(const QVector<Node *> &nodes);
+	void set_nodes(const QVector<Node *> &nodes);
 
-	virtual void IncreaseTrackHeight() override;
+	virtual void increase_track_height() override;
 
-	virtual void DecreaseTrackHeight() override;
+	virtual void decrease_track_height() override;
 
 protected:
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 };
 
 }
 
-#endif // CURVEPANEL_H
+#endif // OAK_CURVEPANEL_H

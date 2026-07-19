@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef LERP_H
-#define LERP_H
+#ifndef OAK_LERP_H
+#define OAK_LERP_H
 
 template <typename T>
 /**
@@ -39,4 +39,4 @@ template <typename T> T lerp(T a, T b, float t)
 	return (a * (1.0f - t)) + (b * t);
 }
 
-#endif // LERP_H
+#endif // OAK_LERP_H

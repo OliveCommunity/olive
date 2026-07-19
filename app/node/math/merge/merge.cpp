@@ -26,23 +26,23 @@
 namespace olive
 {
 
-const QString MergeNode::kBaseIn = QStringLiteral("base_in");
-const QString MergeNode::kBlendIn = QStringLiteral("blend_in");
+const QString MergeNode::k_base_in = QStringLiteral("base_in");
+const QString MergeNode::k_blend_in = QStringLiteral("blend_in");
 
 #define super Node
 
 MergeNode::MergeNode()
 {
-	AddInput(kBaseIn, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_base_in, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	AddInput(kBlendIn, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_blend_in, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	SetFlag(kDontShowInParamView);
+	set_flag(k_dont_show_in_param_view);
 }
 
-QString MergeNode::Name() const
+QString MergeNode::name() const
 {
 	return tr("Merge");
 }
@@ -52,49 +52,49 @@ QString MergeNode::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.merge");
 }
 
-QVector<Node::CategoryID> MergeNode::Category() const
+QVector<Node::CategoryID> MergeNode::category() const
 {
-	return { kCategoryMath };
+	return { k_category_math };
 }
 
-QString MergeNode::Description() const
+QString MergeNode::description() const
 {
 	return tr("Merge two textures together.");
 }
 
-void MergeNode::Retranslate()
+void MergeNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kBaseIn, tr("Base"));
+	set_input_name(k_base_in, tr("Base"));
 
-	SetInputName(kBlendIn, tr("Blend"));
+	set_input_name(k_blend_in, tr("Blend"));
 }
 
-ShaderCode MergeNode::GetShaderCode(const ShaderRequest &request) const
+ShaderCode MergeNode::get_shader_code(const ShaderRequest &request) const
 {
 	Q_UNUSED(request)
 
 	return ShaderCode(
-		FileFunctions::ReadFileAsString(":/shaders/alphaover.frag"));
+		FileFunctions::read_file_as_string(":/shaders/alphaover.frag"));
 }
 
-void MergeNode::Value(const NodeValueRow &value, const NodeGlobals &globals,
+void MergeNode::value(const NodeValueRow &value, const NodeGlobals &globals,
 					  NodeValueTable *table) const
 {
-	TexturePtr base_tex = value[kBaseIn].toTexture();
-	TexturePtr blend_tex = value[kBlendIn].toTexture();
+	TexturePtr base_tex = value[k_base_in].to_texture();
+	TexturePtr blend_tex = value[k_blend_in].to_texture();
 
 	if (base_tex || blend_tex) {
 		if (!base_tex || (blend_tex && blend_tex->channel_count() <
-										   VideoParams::kRGBAChannelCount)) {
+										   VideoParams::k_rgba_channel_count)) {
 			// We only have a blend texture or the blend texture is RGB only, no need to alpha over
-			table->Push(value[kBlendIn]);
+			table->push(value[k_blend_in]);
 		} else if (!blend_tex) {
 			// We only have a base texture, no need to alpha over
-			table->Push(value[kBaseIn]);
+			table->push(value[k_base_in]);
 		} else {
-			table->Push(NodeValue::kTexture, base_tex->toJob(ShaderJob(value)),
+			table->push(NodeValue::k_texture, base_tex->to_job(ShaderJob(value)),
 						this);
 		}
 	}

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECTTOOLBAR_H
-#define PROJECTTOOLBAR_H
+#ifndef OAK_PROJECTTOOLBAR_H
+#define OAK_PROJECTTOOLBAR_H
 
 #include <QWidget>
 #include <QLineEdit>
@@ -44,26 +44,26 @@ class ProjectToolbar : public QWidget {
 public:
 	ProjectToolbar(QWidget *parent);
 
-	enum ViewType { TreeView, ListView, IconView };
+	enum ViewType { tree_view, list_view, icon_view };
 
 public slots:
-	void SetView(ViewType type);
+	void set_view(ViewType type);
 
 protected:
 	void changeEvent(QEvent *) override;
 
 signals:
-	void NewClicked();
-	void OpenClicked();
-	void SaveClicked();
+	void new_clicked();
+	void open_clicked();
+	void save_clicked();
 
-	void SearchChanged(const QString &);
+	void search_changed(const QString &);
 
-	void ViewChanged(ViewType type);
+	void view_changed(ViewType type);
 
 private:
-	void Retranslate();
-	void UpdateIcons();
+	void retranslate();
+	void update_icons();
 
 	QPushButton *new_button_;
 	QPushButton *open_button_;
@@ -76,9 +76,9 @@ private:
 	QPushButton *icon_button_;
 
 private slots:
-	void ViewButtonClicked();
+	void view_button_clicked();
 };
 
 }
 
-#endif // PROJECTTOOLBAR_H
+#endif // OAK_PROJECTTOOLBAR_H

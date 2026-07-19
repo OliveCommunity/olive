@@ -14,8 +14,8 @@
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
 ***/
 
-#ifndef COLORDIFFERENCEKEYNODE_H
-#define COLORDIFFERENCEKEYNODE_H
+#ifndef OAK_COLORDIFFERENCEKEYNODE_H
+#define OAK_COLORDIFFERENCEKEYNODE_H
 
 #include "node/node.h"
 
@@ -28,27 +28,27 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(ColorDifferenceKeyNode)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	get_shader_code(const ShaderRequest &request) const override;
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	static const QString kTextureInput;
-	static const QString kGarbageMatteInput;
-	static const QString kCoreMatteInput;
-	static const QString kColorInput;
-	static const QString kShadowsInput;
-	static const QString kHighlightsInput;
-	static const QString kMaskOnlyInput;
+	static const QString k_texture_input;
+	static const QString k_garbage_matte_input;
+	static const QString k_core_matte_input;
+	static const QString k_color_input;
+	static const QString k_shadows_input;
+	static const QString k_highlights_input;
+	static const QString k_mask_only_input;
 };
 
 } // namespace olive
 
-#endif // COLORDIFFERENCEKEYNODE_H
+#endif // OAK_COLORDIFFERENCEKEYNODE_H

@@ -32,41 +32,41 @@ namespace olive
 
 #define super Node
 
-const QString Folder::kChildInput = QStringLiteral("child_in");
+const QString Folder::k_child_input = QStringLiteral("child_in");
 
 Folder::Folder()
 {
-	SetFlag(kIsItem);
+	set_flag(k_is_item);
 
-	AddInput(kChildInput, NodeValue::kNone,
-			 InputFlags(kInputFlagArray | kInputFlagNotKeyframable));
+	add_input(k_child_input, NodeValue::k_none,
+			 InputFlags(k_input_flag_array | k_input_flag_not_keyframable));
 }
 
 QVariant Folder::data(const DataType &d) const
 {
-	if (d == ICON) {
-		return icon::Folder;
+	if (d == icon) {
+		return icon::folder;
 	}
 
 	return super::data(d);
 }
 
-void Folder::Retranslate()
+void Folder::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kChildInput, tr("Children"));
+	set_input_name(k_child_input, tr("Children"));
 }
 
-Node *GetChildWithNameInternal(const Folder *n, const QString &s)
+Node *get_child_with_name_internal(const Folder *n, const QString &s)
 {
 	for (int i = 0; i < n->item_child_count(); i++) {
 		Node *child = n->item_child(i);
 
-		if (child->GetLabel() == s) {
+		if (child->get_label() == s) {
 			return child;
 		} else if (Folder *subfolder = dynamic_cast<Folder *>(child)) {
-			if (Node *n2 = GetChildWithNameInternal(subfolder, s)) {
+			if (Node *n2 = get_child_with_name_internal(subfolder, s)) {
 				return n2;
 			}
 		}
@@ -75,18 +75,18 @@ Node *GetChildWithNameInternal(const Folder *n, const QString &s)
 	return nullptr;
 }
 
-Node *Folder::GetChildWithName(const QString &s) const
+Node *Folder::get_child_with_name(const QString &s) const
 {
-	return GetChildWithNameInternal(this, s);
+	return get_child_with_name_internal(this, s);
 }
 
-bool Folder::HasChildRecursive(Node *child) const
+bool Folder::has_child_recursive(Node *child) const
 {
 	for (Node *i : item_children_) {
 		if (i == child) {
 			return true;
 		} else if (Folder *f = dynamic_cast<Folder *>(i)) {
-			if (f->HasChildRecursive(child)) {
+			if (f->has_child_recursive(child)) {
 				return true;
 			}
 		}
@@ -109,31 +109,31 @@ int Folder::index_of_child_in_array(Node *item) const
 void Folder::InputConnectedEvent(const QString &input, int element,
 								 Node *output)
 {
-	if (input == kChildInput && element != -1) {
+	if (input == k_child_input && element != -1) {
 		Node *item = output;
 
 		// The insert index is always our "count" because we only support appending in our internal
 		// model. For sorting/organizing, a QSortFilterProxyModel is used instead.
-		emit BeginInsertItem(item, item_child_count());
+		emit begin_insert_item(item, item_child_count());
 		item_children_.append(item);
 		item_element_index_.append(element);
-		item->SetFolder(this);
-		emit EndInsertItem();
+		item->set_folder(this);
+		emit end_insert_item();
 	}
 }
 
 void Folder::InputDisconnectedEvent(const QString &input, int element,
 									Node *output)
 {
-	if (input == kChildInput && element != -1) {
+	if (input == k_child_input && element != -1) {
 		Node *item = output;
 
 		int child_index = item_children_.indexOf(item);
-		emit BeginRemoveItem(item, child_index);
+		emit begin_remove_item(item, child_index);
 		item_children_.removeAt(child_index);
 		item_element_index_.removeAt(child_index);
-		item->SetFolder(nullptr);
-		emit EndRemoveItem();
+		item->set_folder(nullptr);
+		emit end_remove_item();
 	}
 }
 
@@ -143,25 +143,25 @@ FolderAddChild::FolderAddChild(Folder *folder, Node *child)
 {
 }
 
-Project *FolderAddChild::GetRelevantProject() const
+Project *FolderAddChild::get_relevant_project() const
 {
 	return folder_->project();
 }
 
 void FolderAddChild::redo()
 {
-	int array_index = folder_->InputArraySize(Folder::kChildInput);
-	folder_->InputArrayAppend(Folder::kChildInput);
-	Node::ConnectEdge(child_,
-					  NodeInput(folder_, Folder::kChildInput, array_index));
+	int array_index = folder_->input_array_size(Folder::k_child_input);
+	folder_->input_array_append(Folder::k_child_input);
+	Node::connect_edge(child_,
+					  NodeInput(folder_, Folder::k_child_input, array_index));
 }
 
 void FolderAddChild::undo()
 {
-	Node::DisconnectEdge(
-		child_, NodeInput(folder_, Folder::kChildInput,
-						  folder_->InputArraySize(Folder::kChildInput) - 1));
-	folder_->InputArrayRemoveLast(Folder::kChildInput);
+	Node::disconnect_edge(
+		child_, NodeInput(folder_, Folder::k_child_input,
+						  folder_->input_array_size(Folder::k_child_input) - 1));
+	folder_->input_array_remove_last(Folder::k_child_input);
 }
 
 void Folder::RemoveElementCommand::redo()
@@ -169,13 +169,13 @@ void Folder::RemoveElementCommand::redo()
 	if (!subcommand_) {
 		remove_index_ = folder_->index_of_child_in_array(child_);
 		if (remove_index_ != -1) {
-			NodeInput connected_input(folder_, Folder::kChildInput,
+			NodeInput connected_input(folder_, Folder::k_child_input,
 									  remove_index_);
 			subcommand_ = new MultiUndoCommand();
 			subcommand_->add_child(new NodeEdgeRemoveCommand(
-				folder_->GetConnectedOutput(connected_input), connected_input));
+				folder_->get_connected_output(connected_input), connected_input));
 			subcommand_->add_child(new NodeArrayRemoveCommand(
-				folder_, Folder::kChildInput, remove_index_));
+				folder_, Folder::k_child_input, remove_index_));
 		}
 	}
 

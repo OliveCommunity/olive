@@ -19,12 +19,12 @@
 
 ***/
 
-#ifndef UTIL_H
-#define UTIL_H
+#ifndef OAK_UTIL_H
+#define OAK_UTIL_H
 
 template <typename T> inline T mid(T a, T b)
 {
 	return (a + b) * 0.5;
 }
 
-#endif // UTIL_H
+#endif // OAK_UTIL_H

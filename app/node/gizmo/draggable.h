@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef DRAGGABLEGIZMO_H
-#define DRAGGABLEGIZMO_H
+#ifndef OAK_DRAGGABLEGIZMO_H
+#define OAK_DRAGGABLEGIZMO_H
 
 #include "gizmo.h"
 #include "node/inputdragger.h"
@@ -35,49 +35,49 @@ public:
 	/// Changes what the X/Y coordinates emitted from HandleMovement specify
 	enum DragValueBehavior {
 		/// X/Y will be the exact mouse coordinates (in sequence pixels)
-		kAbsolute,
+		k_absolute,
 
 		/// X/Y will be the movement since the last time HandleMovement was called
-		kDeltaFromPrevious,
+		k_delta_from_previous,
 
 		/// X/Y will be the movement from the start of the drag
-		kDeltaFromStart
+		k_delta_from_start
 	};
 
 	explicit DraggableGizmo(QObject *parent = nullptr);
 
-	void DragStart(const NodeValueRow &row, double abs_x, double abs_y,
-				   const olive::core::rational &time);
+	void drag_start(const NodeValueRow &row, double abs_x, double abs_y,
+				   const olive::core::Rational &time);
 
-	void DragMove(double x, double y, const Qt::KeyboardModifiers &modifiers);
+	void drag_move(double x, double y, const Qt::KeyboardModifiers &modifiers);
 
-	void DragEnd(olive::MultiUndoCommand *command);
+	void drag_end(olive::MultiUndoCommand *command);
 
-	void AddInput(const NodeKeyframeTrackReference &input)
+	void add_input(const NodeKeyframeTrackReference &input)
 	{
 		inputs_.append(input);
 		draggers_.append(NodeInputDragger());
 	}
 
-	QVector<NodeInputDragger> &GetDraggers()
+	QVector<NodeInputDragger> &get_draggers()
 	{
 		return draggers_;
 	}
 
-	DragValueBehavior GetDragValueBehavior() const
+	DragValueBehavior get_drag_value_behavior() const
 	{
 		return drag_value_behavior_;
 	}
-	void SetDragValueBehavior(DragValueBehavior d)
+	void set_drag_value_behavior(DragValueBehavior d)
 	{
 		drag_value_behavior_ = d;
 	}
 
 signals:
-	void HandleStart(const olive::NodeValueRow &row, double x, double y,
-					 const olive::core::rational &time);
+	void handle_start(const olive::NodeValueRow &row, double x, double y,
+					 const olive::core::Rational &time);
 
-	void HandleMovement(double x, double y,
+	void handle_movement(double x, double y,
 						const Qt::KeyboardModifiers &modifiers);
 
 private:
@@ -90,4 +90,4 @@ private:
 
 }
 
-#endif // DRAGGABLEGIZMO_H
+#endif // OAK_DRAGGABLEGIZMO_H

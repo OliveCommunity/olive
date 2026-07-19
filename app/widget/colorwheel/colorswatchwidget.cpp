@@ -35,33 +35,33 @@ ColorSwatchWidget::ColorSwatchWidget(QWidget *parent)
 {
 }
 
-const Color &ColorSwatchWidget::GetSelectedColor() const
+const Color &ColorSwatchWidget::get_selected_color() const
 {
 	return selected_color_;
 }
 
-void ColorSwatchWidget::SetColorProcessor(ColorProcessorPtr to_linear,
+void ColorSwatchWidget::set_color_processor(ColorProcessorPtr to_linear,
 										  ColorProcessorPtr to_display)
 {
 	to_linear_processor_ = to_linear;
 	to_display_processor_ = to_display;
 
 	// Force full update
-	SelectedColorChangedEvent(GetSelectedColor(), true);
+	SelectedColorChangedEvent(get_selected_color(), true);
 	update();
 }
 
-void ColorSwatchWidget::SetSelectedColor(const Color &c)
+void ColorSwatchWidget::set_selected_color(const Color &c)
 {
-	SetSelectedColorInternal(c, true);
+	set_selected_color_internal(c, true);
 }
 
 void ColorSwatchWidget::mousePressEvent(QMouseEvent *e)
 {
 	QWidget::mousePressEvent(e);
 
-	SetSelectedColorInternal(GetColorFromScreenPos(e->pos()), false);
-	emit SelectedColorChanged(GetSelectedColor());
+	set_selected_color_internal(get_color_from_screen_pos(e->pos()), false);
+	emit selected_color_changed(get_selected_color());
 }
 
 void ColorSwatchWidget::mouseMoveEvent(QMouseEvent *e)
@@ -69,8 +69,8 @@ void ColorSwatchWidget::mouseMoveEvent(QMouseEvent *e)
 	QWidget::mouseMoveEvent(e);
 
 	if (e->buttons() & Qt::LeftButton) {
-		SetSelectedColorInternal(GetColorFromScreenPos(e->pos()), false);
-		emit SelectedColorChanged(GetSelectedColor());
+		set_selected_color_internal(get_color_from_screen_pos(e->pos()), false);
+		emit selected_color_changed(get_selected_color());
 	}
 }
 
@@ -78,22 +78,22 @@ void ColorSwatchWidget::SelectedColorChangedEvent(const Color &, bool)
 {
 }
 
-Qt::GlobalColor ColorSwatchWidget::GetUISelectorColor() const
+Qt::GlobalColor ColorSwatchWidget::get_ui_selector_color() const
 {
-	return ColorCoding::GetUISelectorColor(GetSelectedColor());
+	return ColorCoding::get_ui_selector_color(get_selected_color());
 }
 
-Color ColorSwatchWidget::GetManagedColor(const Color &input) const
+Color ColorSwatchWidget::get_managed_color(const Color &input) const
 {
 	if (to_linear_processor_ && to_display_processor_) {
-		return to_display_processor_->ConvertColor(
-			to_linear_processor_->ConvertColor(input));
+		return to_display_processor_->convert_color(
+			to_linear_processor_->convert_color(input));
 	}
 
 	return input;
 }
 
-void ColorSwatchWidget::SetSelectedColorInternal(const Color &c, bool external)
+void ColorSwatchWidget::set_selected_color_internal(const Color &c, bool external)
 {
 	selected_color_ = c;
 	SelectedColorChangedEvent(c, external);

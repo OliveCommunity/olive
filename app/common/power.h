@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef POWER_H
-#define POWER_H
+#ifndef OAK_POWER_H
+#define OAK_POWER_H
 
 #include <stdint.h>
 
@@ -55,4 +55,4 @@ uint32_t floor_to_power_of_2(uint32_t x)
 
 }
 
-#endif // POWER_H
+#endif // OAK_POWER_H

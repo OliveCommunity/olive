@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SAMPLEFORMATCOMBOBOX_H
-#define SAMPLEFORMATCOMBOBOX_H
+#ifndef OAK_SAMPLEFORMATCOMBOBOX_H
+#define OAK_SAMPLEFORMATCOMBOBOX_H
 
 #include <olive/core/core.h>
 #include <QComboBox>
@@ -41,54 +41,54 @@ public:
 	{
 	}
 
-	void SetAttemptToRestoreFormat(bool e)
+	void set_attempt_to_restore_format(bool e)
 	{
 		attempt_to_restore_format_ = e;
 	}
 
-	void SetAvailableFormats(const std::vector<SampleFormat> &formats)
+	void set_available_formats(const std::vector<SampleFormat> &formats)
 	{
-		SampleFormat tmp = SampleFormat::INVALID;
+		SampleFormat tmp = SampleFormat::invalid;
 
 		if (attempt_to_restore_format_) {
-			tmp = GetSampleFormat();
+			tmp = get_sample_format();
 		}
 
 		clear();
 		foreach (const SampleFormat &of, formats) {
-			AddFormatItem(of);
+			add_format_item(of);
 		}
 
 		if (attempt_to_restore_format_) {
-			SetSampleFormat(tmp);
+			set_sample_format(tmp);
 		}
 	}
 
-	void SetPackedFormats()
+	void set_packed_formats()
 	{
-		SampleFormat tmp = SampleFormat::INVALID;
+		SampleFormat tmp = SampleFormat::invalid;
 
 		if (attempt_to_restore_format_) {
-			tmp = GetSampleFormat();
+			tmp = get_sample_format();
 		}
 
 		clear();
-		for (int i = SampleFormat::PACKED_START; i < SampleFormat::PACKED_END;
+		for (int i = SampleFormat::packed_start; i < SampleFormat::packed_end;
 			 i++) {
-			AddFormatItem(static_cast<SampleFormat::Format>(i));
+			add_format_item(static_cast<SampleFormat::Format>(i));
 		}
 
 		if (attempt_to_restore_format_) {
-			SetSampleFormat(tmp);
+			set_sample_format(tmp);
 		}
 	}
 
-	SampleFormat GetSampleFormat() const
+	SampleFormat get_sample_format() const
 	{
 		return static_cast<SampleFormat::Format>(this->currentData().toInt());
 	}
 
-	void SetSampleFormat(SampleFormat fmt)
+	void set_sample_format(SampleFormat fmt)
 	{
 		for (int i = 0; i < this->count(); i++) {
 			if (this->itemData(i).toInt() == fmt) {
@@ -99,9 +99,9 @@ public:
 	}
 
 private:
-	void AddFormatItem(SampleFormat f)
+	void add_format_item(SampleFormat f)
 	{
-		this->addItem(HumanStrings::FormatToString(f),
+		this->addItem(HumanStrings::format_to_string(f),
 					  static_cast<SampleFormat::Format>(f));
 	}
 
@@ -110,4 +110,4 @@ private:
 
 }
 
-#endif // SAMPLEFORMATCOMBOBOX_H
+#endif // OAK_SAMPLEFORMATCOMBOBOX_H

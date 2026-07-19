@@ -24,37 +24,37 @@
 namespace olive
 {
 
-const QString SwirlDistortNode::kTextureInput = QStringLiteral("tex_in");
-const QString SwirlDistortNode::kRadiusInput = QStringLiteral("radius_in");
-const QString SwirlDistortNode::kAngleInput = QStringLiteral("angle_in");
-const QString SwirlDistortNode::kPositionInput = QStringLiteral("pos_in");
+const QString SwirlDistortNode::k_texture_input = QStringLiteral("tex_in");
+const QString SwirlDistortNode::k_radius_input = QStringLiteral("radius_in");
+const QString SwirlDistortNode::k_angle_input = QStringLiteral("angle_in");
+const QString SwirlDistortNode::k_position_input = QStringLiteral("pos_in");
 
 #define super Node
 
 SwirlDistortNode::SwirlDistortNode()
 {
-	AddInput(kTextureInput, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_texture_input, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	AddInput(kRadiusInput, NodeValue::kFloat, 200);
-	SetInputProperty(kRadiusInput, QStringLiteral("min"), 0);
+	add_input(k_radius_input, NodeValue::k_float, 200);
+	set_input_property(k_radius_input, QStringLiteral("min"), 0);
 
-	AddInput(kAngleInput, NodeValue::kFloat, 10);
-	SetInputProperty(kAngleInput, QStringLiteral("base"), 0.1);
+	add_input(k_angle_input, NodeValue::k_float, 10);
+	set_input_property(k_angle_input, QStringLiteral("base"), 0.1);
 
-	AddInput(kPositionInput, NodeValue::kVec2, QVector2D(0, 0));
+	add_input(k_position_input, NodeValue::k_vec2, QVector2D(0, 0));
 
-	SetFlag(kVideoEffect);
-	SetEffectInput(kTextureInput);
+	set_flag(k_video_effect);
+	set_effect_input(k_texture_input);
 
-	gizmo_ = AddDraggableGizmo<PointGizmo>({
-		NodeKeyframeTrackReference(NodeInput(this, kPositionInput), 0),
-		NodeKeyframeTrackReference(NodeInput(this, kPositionInput), 1),
+	gizmo_ = add_draggable_gizmo<PointGizmo>({
+		NodeKeyframeTrackReference(NodeInput(this, k_position_input), 0),
+		NodeKeyframeTrackReference(NodeInput(this, k_position_input), 1),
 	});
-	gizmo_->SetShape(PointGizmo::kAnchorPoint);
+	gizmo_->set_shape(PointGizmo::k_anchor_point);
 }
 
-QString SwirlDistortNode::Name() const
+QString SwirlDistortNode::name() const
 {
 	return tr("Swirl");
 }
@@ -64,70 +64,70 @@ QString SwirlDistortNode::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.swirl");
 }
 
-QVector<Node::CategoryID> SwirlDistortNode::Category() const
+QVector<Node::CategoryID> SwirlDistortNode::category() const
 {
-	return { kCategoryDistort };
+	return { k_category_distort };
 }
 
-QString SwirlDistortNode::Description() const
+QString SwirlDistortNode::description() const
 {
 	return tr("Distorts an image by swirling it around a center point.");
 }
 
-void SwirlDistortNode::Retranslate()
+void SwirlDistortNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kTextureInput, tr("Input"));
-	SetInputName(kRadiusInput, tr("Radius"));
-	SetInputName(kAngleInput, tr("Angle"));
-	SetInputName(kPositionInput, tr("Position"));
+	set_input_name(k_texture_input, tr("Input"));
+	set_input_name(k_radius_input, tr("Radius"));
+	set_input_name(k_angle_input, tr("Angle"));
+	set_input_name(k_position_input, tr("Position"));
 }
 
-ShaderCode SwirlDistortNode::GetShaderCode(const ShaderRequest &request) const
+ShaderCode SwirlDistortNode::get_shader_code(const ShaderRequest &request) const
 {
 	Q_UNUSED(request)
-	return ShaderCode(FileFunctions::ReadFileAsString(":/shaders/swirl.frag"));
+	return ShaderCode(FileFunctions::read_file_as_string(":/shaders/swirl.frag"));
 }
 
-void SwirlDistortNode::Value(const NodeValueRow &value,
+void SwirlDistortNode::value(const NodeValueRow &value,
 							 const NodeGlobals &globals,
 							 NodeValueTable *table) const
 {
 	// If there's no texture, no need to run an operation
-	if (TexturePtr tex = value[kTextureInput].toTexture()) {
+	if (TexturePtr tex = value[k_texture_input].to_texture()) {
 		// Only run shader if at least one of flip or flop are selected
-		if (!qIsNull(value[kAngleInput].toDouble()) &&
-			!qIsNull(value[kRadiusInput].toDouble())) {
+		if (!qIsNull(value[k_angle_input].to_double()) &&
+			!qIsNull(value[k_radius_input].to_double())) {
 			ShaderJob job(value);
-			job.Insert(QStringLiteral("resolution_in"),
-					   NodeValue(NodeValue::kVec2, tex->virtual_resolution(),
+			job.insert(QStringLiteral("resolution_in"),
+					   NodeValue(NodeValue::k_vec2, tex->virtual_resolution(),
 								 this));
-			table->Push(NodeValue::kTexture, tex->toJob(job), this);
+			table->push(NodeValue::k_texture, tex->to_job(job), this);
 		} else {
 			// If we're not flipping or flopping just push the texture
-			table->Push(value[kTextureInput]);
+			table->push(value[k_texture_input]);
 		}
 	}
 }
 
-void SwirlDistortNode::UpdateGizmoPositions(const NodeValueRow &row,
+void SwirlDistortNode::update_gizmo_positions(const NodeValueRow &row,
 											const NodeGlobals &globals)
 {
 	QPointF half_res(globals.square_resolution().x() / 2,
 					 globals.square_resolution().y() / 2);
 
-	gizmo_->SetPoint(half_res + row[kPositionInput].toVec2().toPointF());
+	gizmo_->set_point(half_res + row[k_position_input].to_vec2().toPointF());
 }
 
-void SwirlDistortNode::GizmoDragMove(double x, double y,
+void SwirlDistortNode::gizmo_drag_move(double x, double y,
 									 const Qt::KeyboardModifiers &modifiers)
 {
-	NodeInputDragger &x_drag = gizmo_->GetDraggers()[0];
-	NodeInputDragger &y_drag = gizmo_->GetDraggers()[1];
+	NodeInputDragger &x_drag = gizmo_->get_draggers()[0];
+	NodeInputDragger &y_drag = gizmo_->get_draggers()[1];
 
-	x_drag.Drag(x_drag.GetStartValue().toDouble() + x);
-	y_drag.Drag(y_drag.GetStartValue().toDouble() + y);
+	x_drag.drag(x_drag.get_start_value().toDouble() + x);
+	y_drag.drag(y_drag.get_start_value().toDouble() + y);
 }
 
 }

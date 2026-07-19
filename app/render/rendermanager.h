@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef RENDERBACKEND_H
-#define RENDERBACKEND_H
+#ifndef OAK_RENDERBACKEND_H
+#define OAK_RENDERBACKEND_H
 
 #include <QtConcurrent/QtConcurrent>
 
@@ -45,9 +45,9 @@ public:
 	RenderThread(Renderer *renderer, DecoderCache *decoder_cache,
 				 ShaderCache *shader_cache, QObject *parent = nullptr);
 
-	void AddTicket(RenderTicketPtr ticket);
+	void add_ticket(RenderTicketPtr ticket);
 
-	bool RemoveTicket(RenderTicketPtr ticket);
+	bool remove_ticket(RenderTicketPtr ticket);
 
 	void quit();
 
@@ -77,24 +77,24 @@ class RenderManager : public QObject {
 public:
 	enum Backend {
 		/// Graphics acceleration provided by OpenGL
-		kOpenGL,
+		k_open_gl,
 
 		/// Vulkan requested by the user. Falls back to OpenGL until VulkanRenderer is implemented.
-		kVulkan,
+		k_vulkan,
 
 		/// Video frames are rendered by an external oak-render-worker process.
-		kMultiProcess,
+		k_multi_process,
 
 		/// No graphics rendering - used to test core threading logic
-		kDummy
+		k_dummy
 	};
 
-	static void CreateInstance()
+	static void create_instance()
 	{
 		instance_ = new RenderManager();
 	}
 
-	static void DestroyInstance()
+	static void destroy_instance()
 	{
 		delete instance_;
 		instance_ = nullptr;
@@ -105,11 +105,11 @@ public:
 		return instance_;
 	}
 
-	enum ReturnType { kTexture, kFrame, kNull };
+	enum ReturnType { k_texture, k_frame, k_null };
 
 	struct RenderVideoParams {
 		RenderVideoParams(Node *n, const VideoParams &vparam,
-						  const AudioParams &aparam, const rational &t,
+						  const AudioParams &aparam, const Rational &t,
 						  ColorManager *colorman, RenderMode::Mode m)
 		{
 			node = n;
@@ -118,8 +118,8 @@ public:
 			time = t;
 			color_manager = colorman;
 			use_cache = false;
-			return_type = kFrame;
-			force_format = PixelFormat::INVALID;
+			return_type = k_frame;
+			force_format = PixelFormat::invalid;
 			force_color_output = nullptr;
 			force_color_transform = ColorTransform();
 			force_size = QSize(0, 0);
@@ -128,17 +128,17 @@ public:
 			multicam = nullptr;
 		}
 
-		void AddCache(FrameHashCache *cache)
+		void add_cache(FrameHashCache *cache)
 		{
-			cache_dir = cache->GetCacheDirectory();
-			cache_timebase = cache->GetTimebase();
-			cache_id = cache->GetUuid().toString();
+			cache_dir = cache->get_cache_directory();
+			cache_timebase = cache->get_timebase();
+			cache_id = cache->get_uuid().toString();
 		}
 
 		Node *node;
 		VideoParams video_params;
 		AudioParams audio_params;
-		rational time;
+		Rational time;
 		ColorManager *color_manager;
 		bool use_cache;
 		ReturnType return_type;
@@ -146,7 +146,7 @@ public:
 		MultiCamNode *multicam;
 
 		QString cache_dir;
-		rational cache_timebase;
+		Rational cache_timebase;
 		QString cache_id;
 
 		QSize force_size;
@@ -157,7 +157,7 @@ public:
 		ColorTransform force_color_transform;
 	};
 
-	static const rational kDryRunInterval;
+	static const Rational k_dry_run_interval;
 
 	/**
    * @brief Asynchronously generate a frame at a given time
@@ -167,7 +167,7 @@ public:
    *
    * This function is thread-safe.
    */
-	RenderTicketPtr RenderFrame(const RenderVideoParams &params);
+	RenderTicketPtr render_frame(const RenderVideoParams &params);
 
 	struct RenderAudioParams {
 		RenderAudioParams(Node *n, const TimeRange &time,
@@ -196,11 +196,11 @@ public:
    *
    * This function is thread-safe.
    */
-	RenderTicketPtr RenderAudio(const RenderAudioParams &params);
+	RenderTicketPtr render_audio(const RenderAudioParams &params);
 
-	bool RemoveTicket(RenderTicketPtr ticket);
+	bool remove_ticket(RenderTicketPtr ticket);
 
-	enum TicketType { kTypeVideo, kTypeAudio };
+	enum TicketType { k_type_video, k_type_audio };
 
 	Backend backend() const
 	{
@@ -212,21 +212,21 @@ public:
 		return requested_backend_;
 	}
 
-	static Backend BackendFromString(const QString &backend);
-	static QString BackendToString(Backend backend);
+	static Backend backend_from_string(const QString &backend);
+	static QString backend_to_string(Backend backend);
 
-	PreviewAutoCacher *GetCacher() const
+	PreviewAutoCacher *get_cacher() const
 	{
 		return auto_cacher_;
 	}
 
-	void SetProject(Project *p)
+	void set_project(Project *p)
 	{
-		auto_cacher_->SetProject(p);
+		auto_cacher_->set_project(p);
 	}
 
 public slots:
-	void SetAggressiveGarbageCollection(bool enabled);
+	void set_aggressive_garbage_collection(bool enabled);
 
 signals:
 
@@ -235,7 +235,7 @@ private:
 
 	virtual ~RenderManager() override;
 
-	RenderThread *CreateThread(Renderer *renderer = nullptr);
+	RenderThread *create_thread(Renderer *renderer = nullptr);
 
 	static RenderManager *instance_;
 
@@ -248,8 +248,8 @@ private:
 
 	ShaderCache *shader_cache_ = nullptr;
 
-	static constexpr auto kDecoderMaximumInactivityAggressive = 1000;
-	static constexpr auto kDecoderMaximumInactivity = 5000;
+	static constexpr auto k_decoder_maximum_inactivity_aggressive = 1000;
+	static constexpr auto k_decoder_maximum_inactivity = 5000;
 
 	int aggressive_gc_ = 0;
 
@@ -268,11 +268,11 @@ private:
 	RenderWorkerPool *worker_pool_ = nullptr;
 
 private slots:
-	void ClearOldDecoders();
+	void clear_old_decoders();
 };
 
 }
 
 Q_DECLARE_METATYPE(olive::RenderManager::TicketType)
 
-#endif // RENDERBACKEND_H
+#endif // OAK_RENDERBACKEND_H

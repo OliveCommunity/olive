@@ -41,20 +41,20 @@ NodeParamViewArrayWidget::NodeParamViewArrayWidget(Node *node,
 	count_lbl_ = new QLabel();
 	layout->addWidget(count_lbl_);
 
-	connect(node_, &Node::InputArraySizeChanged, this,
-			&NodeParamViewArrayWidget::UpdateCounter);
+	connect(node_, &Node::input_array_size_changed, this,
+			&NodeParamViewArrayWidget::update_counter);
 
-	UpdateCounter(input_, 0, node_->InputArraySize(input_));
+	update_counter(input_, 0, node_->input_array_size(input_));
 }
 
 void NodeParamViewArrayWidget::mouseDoubleClickEvent(QMouseEvent *event)
 {
 	QWidget::mouseDoubleClickEvent(event);
 
-	emit DoubleClicked();
+	emit double_clicked();
 }
 
-void NodeParamViewArrayWidget::UpdateCounter(const QString &input, int old_size,
+void NodeParamViewArrayWidget::update_counter(const QString &input, int old_size,
 											 int new_size)
 {
 	Q_UNUSED(old_size)
@@ -68,7 +68,7 @@ NodeParamViewArrayButton::NodeParamViewArrayButton(
 	: QPushButton(parent)
 	, type_(type)
 {
-	Retranslate();
+	retranslate();
 
 	int sz = sizeHint().height() / 3 * 2;
 	setFixedSize(sz, sz);
@@ -77,15 +77,15 @@ NodeParamViewArrayButton::NodeParamViewArrayButton(
 void NodeParamViewArrayButton::changeEvent(QEvent *event)
 {
 	if (event->type() == QEvent::LanguageChange) {
-		Retranslate();
+		retranslate();
 	}
 
 	QPushButton::changeEvent(event);
 }
 
-void NodeParamViewArrayButton::Retranslate()
+void NodeParamViewArrayButton::retranslate()
 {
-	if (type_ == kAdd) {
+	if (type_ == k_add) {
 		setText(tr("+"));
 	} else {
 		setText(tr("-"));

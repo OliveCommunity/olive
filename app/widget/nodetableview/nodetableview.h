@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODETABLEVIEW_H
-#define NODETABLEVIEW_H
+#ifndef OAK_NODETABLEVIEW_H
+#define OAK_NODETABLEVIEW_H
 
 #include <QTreeWidget>
 
@@ -34,18 +34,18 @@ class NodeTableView : public QTreeWidget {
 public:
 	NodeTableView(QWidget *parent = nullptr);
 
-	void SelectNodes(const QVector<Node *> &nodes);
+	void select_nodes(const QVector<Node *> &nodes);
 
-	void DeselectNodes(const QVector<Node *> &nodes);
+	void deselect_nodes(const QVector<Node *> &nodes);
 
-	void SetTime(const rational &time);
+	void set_time(const Rational &time);
 
 private:
 	QMap<Node *, QTreeWidgetItem *> top_level_item_map_;
 
-	rational last_time_;
+	Rational last_time_;
 };
 
 }
 
-#endif // NODETABLEVIEW_H
+#endif // OAK_NODETABLEVIEW_H

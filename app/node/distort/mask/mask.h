@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef MASKDISTORTNODE_H
-#define MASKDISTORTNODE_H
+#ifndef OAK_MASKDISTORTNODE_H
+#define OAK_MASKDISTORTNODE_H
 
 #include "node/generator/polygon/polygon.h"
 
@@ -34,7 +34,7 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(MaskDistortNode)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return tr("Mask");
 	}
@@ -44,28 +44,28 @@ public:
 		return QStringLiteral("org.olivevideoeditor.Olive.mask");
 	}
 
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
-		return { kCategoryDistort };
+		return { k_category_distort };
 	}
 
-	virtual QString Description() const override
+	virtual QString description() const override
 	{
 		return tr("Apply a polygonal mask.");
 	}
 
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
+	get_shader_code(const ShaderRequest &request) const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	static const QString kInvertInput;
-	static const QString kFeatherInput;
+	static const QString k_invert_input;
+	static const QString k_feather_input;
 };
 
 }
 
-#endif // MASKDISTORTNODE_H
+#endif // OAK_MASKDISTORTNODE_H

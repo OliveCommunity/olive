@@ -21,30 +21,30 @@
 namespace olive
 {
 
-const QString DespillNode::kTextureInput = QStringLiteral("tex_in");
-const QString DespillNode::kColorInput = QStringLiteral("color_in");
-const QString DespillNode::kMethodInput = QStringLiteral("method_in");
-const QString DespillNode::kPreserveLuminanceInput =
+const QString DespillNode::k_texture_input = QStringLiteral("tex_in");
+const QString DespillNode::k_color_input = QStringLiteral("color_in");
+const QString DespillNode::k_method_input = QStringLiteral("method_in");
+const QString DespillNode::k_preserve_luminance_input =
 	QStringLiteral("preserve_luminance_input");
 
 #define super Node
 
 DespillNode::DespillNode()
 {
-	AddInput(kTextureInput, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_texture_input, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	AddInput(kColorInput, NodeValue::kCombo, 0);
+	add_input(k_color_input, NodeValue::k_combo, 0);
 
-	AddInput(kMethodInput, NodeValue::kCombo, 0);
+	add_input(k_method_input, NodeValue::k_combo, 0);
 
-	AddInput(kPreserveLuminanceInput, NodeValue::kBoolean, false);
+	add_input(k_preserve_luminance_input, NodeValue::k_boolean, false);
 
-	SetFlag(kVideoEffect);
-	SetEffectInput(kTextureInput);
+	set_flag(k_video_effect);
+	set_effect_input(k_texture_input);
 }
 
-QString DespillNode::Name() const
+QString DespillNode::name() const
 {
 	return tr("Despill");
 }
@@ -54,62 +54,62 @@ QString DespillNode::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.despill");
 }
 
-QVector<Node::CategoryID> DespillNode::Category() const
+QVector<Node::CategoryID> DespillNode::category() const
 {
-	return { kCategoryKeying };
+	return { k_category_keying };
 }
 
-QString DespillNode::Description() const
+QString DespillNode::description() const
 {
 	return tr("Selection of simple despill operations");
 }
 
-void DespillNode::Retranslate()
+void DespillNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kTextureInput, tr("Input"));
+	set_input_name(k_texture_input, tr("Input"));
 
-	SetInputName(kColorInput, tr("Key Color"));
-	SetComboBoxStrings(kColorInput, { tr("Green"), tr("Blue") });
+	set_input_name(k_color_input, tr("Key Color"));
+	set_combo_box_strings(k_color_input, { tr("Green"), tr("Blue") });
 
-	SetInputName(kMethodInput, tr("Method"));
-	SetComboBoxStrings(kMethodInput, { tr("Average"), tr("Double Red Average"),
+	set_input_name(k_method_input, tr("Method"));
+	set_combo_box_strings(k_method_input, { tr("Average"), tr("Double Red Average"),
 									   tr("Double Average"), tr("Limit") });
 
-	SetInputName(kPreserveLuminanceInput, tr("Preserve Luminance"));
+	set_input_name(k_preserve_luminance_input, tr("Preserve Luminance"));
 }
 
-ShaderCode DespillNode::GetShaderCode(const ShaderRequest &request) const
+ShaderCode DespillNode::get_shader_code(const ShaderRequest &request) const
 {
 	Q_UNUSED(request)
 	return ShaderCode(
-		FileFunctions::ReadFileAsString(":/shaders/despill.frag"));
+		FileFunctions::read_file_as_string(":/shaders/despill.frag"));
 }
 
-void DespillNode::Value(const NodeValueRow &value, const NodeGlobals &globals,
+void DespillNode::value(const NodeValueRow &value, const NodeGlobals &globals,
 						NodeValueTable *table) const
 {
 	ShaderJob job;
-	job.Insert(value);
+	job.insert(value);
 
 	// Set luma coefficients
 	double luma_coeffs[3] = { 0.0f, 0.0f, 0.0f };
 	if (project() && project()->color_manager()) {
-		project()->color_manager()->GetDefaultLumaCoefs(luma_coeffs);
+		project()->color_manager()->get_default_luma_coefs(luma_coeffs);
 	} else {
 		luma_coeffs[0] = 0.2126;
 		luma_coeffs[1] = 0.7152;
 		luma_coeffs[2] = 0.0722;
 	}
-	job.Insert(
+	job.insert(
 		QStringLiteral("luma_coeffs"),
-		NodeValue(NodeValue::kVec3,
+		NodeValue(NodeValue::k_vec3,
 				  QVector3D(luma_coeffs[0], luma_coeffs[1], luma_coeffs[2])));
 
 	// If there's no texture, no need to run an operation
-	if (TexturePtr tex = job.Get(kTextureInput).toTexture()) {
-		table->Push(NodeValue::kTexture, tex->toJob(job), this);
+	if (TexturePtr tex = job.get(k_texture_input).to_texture()) {
+		table->push(NodeValue::k_texture, tex->to_job(job), this);
 	}
 }
 

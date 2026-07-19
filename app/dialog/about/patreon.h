@@ -16,11 +16,11 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef PATREON_H
-#define PATREON_H
+#ifndef OAK_PATREON_H
+#define OAK_PATREON_H
 
 #include <QStringList>
 
 QStringList patrons;
 
-#endif // PATREON_H
+#endif // OAK_PATREON_H

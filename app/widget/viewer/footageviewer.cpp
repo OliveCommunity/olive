@@ -35,41 +35,41 @@ namespace olive
 FootageViewerWidget::FootageViewerWidget(QWidget *parent)
 	: super(parent)
 {
-	connect(display_widget(), &ViewerDisplayWidget::DragStarted, this,
-			&FootageViewerWidget::StartFootageDrag);
+	connect(display_widget(), &ViewerDisplayWidget::drag_started, this,
+			&FootageViewerWidget::start_footage_drag);
 
-	controls_->SetAudioVideoDragButtonsVisible(true);
-	connect(controls_, &PlaybackControls::VideoClicked, this,
-			&FootageViewerWidget::VideoButtonClicked);
-	connect(controls_, &PlaybackControls::AudioClicked, this,
-			&FootageViewerWidget::AudioButtonClicked);
-	connect(controls_, &PlaybackControls::VideoDragged, this,
-			&FootageViewerWidget::StartVideoDrag);
-	connect(controls_, &PlaybackControls::AudioDragged, this,
-			&FootageViewerWidget::StartAudioDrag);
+	controls_->set_audio_video_drag_buttons_visible(true);
+	connect(controls_, &PlaybackControls::video_clicked, this,
+			&FootageViewerWidget::video_button_clicked);
+	connect(controls_, &PlaybackControls::audio_clicked, this,
+			&FootageViewerWidget::audio_button_clicked);
+	connect(controls_, &PlaybackControls::video_dragged, this,
+			&FootageViewerWidget::start_video_drag);
+	connect(controls_, &PlaybackControls::audio_dragged, this,
+			&FootageViewerWidget::start_audio_drag);
 
 	override_workarea_ = new TimelineWorkArea(this);
 }
 
-void FootageViewerWidget::OverrideWorkArea(const TimeRange &r)
+void FootageViewerWidget::override_work_area(const TimeRange &r)
 {
 	override_workarea_->set_enabled(true);
 	override_workarea_->set_range(r);
-	this->ConnectWorkArea(override_workarea_);
+	this->connect_work_area(override_workarea_);
 }
 
-void FootageViewerWidget::ResetWorkArea()
+void FootageViewerWidget::reset_work_area()
 {
-	if (GetConnectedWorkArea() == override_workarea_) {
-		this->ConnectWorkArea(
-			GetConnectedNode() ? GetConnectedNode()->GetWorkArea() : nullptr);
+	if (get_connected_work_area() == override_workarea_) {
+		this->connect_work_area(
+			get_connected_node() ? get_connected_node()->get_work_area() : nullptr);
 	}
 }
 
-void FootageViewerWidget::StartFootageDragInternal(bool enable_video,
+void FootageViewerWidget::start_footage_drag_internal(bool enable_video,
 												   bool enable_audio)
 {
-	if (!GetConnectedNode()) {
+	if (!get_connected_node()) {
 		return;
 	}
 
@@ -80,15 +80,15 @@ void FootageViewerWidget::StartFootageDragInternal(bool enable_video,
 	QDataStream data_stream(&encoded_data, QIODevice::WriteOnly);
 
 	QVector<Track::Reference> streams =
-		GetConnectedNode()->GetEnabledStreamsAsReferences();
+		get_connected_node()->get_enabled_streams_as_references();
 
 	// Disable streams that have been disabled
 	if (!enable_video || !enable_audio) {
 		for (int i = 0; i < streams.size(); i++) {
 			const Track::Reference &ref = streams.at(i);
 
-			if ((ref.type() == Track::kVideo && !enable_video) ||
-				(ref.type() == Track::kAudio && !enable_audio)) {
+			if ((ref.type() == Track::k_video && !enable_video) ||
+				(ref.type() == Track::k_audio && !enable_audio)) {
 				streams.removeAt(i);
 				i--;
 			}
@@ -97,38 +97,38 @@ void FootageViewerWidget::StartFootageDragInternal(bool enable_video,
 
 	if (!streams.isEmpty()) {
 		data_stream << streams
-					<< reinterpret_cast<quintptr>(GetConnectedNode());
+					<< reinterpret_cast<quintptr>(get_connected_node());
 
-		mimedata->setData(Project::kItemMimeType, encoded_data);
+		mimedata->setData(Project::k_item_mime_type, encoded_data);
 		drag->setMimeData(mimedata);
 
 		drag->exec();
 	}
 }
 
-void FootageViewerWidget::StartFootageDrag()
+void FootageViewerWidget::start_footage_drag()
 {
-	StartFootageDragInternal(true, true);
+	start_footage_drag_internal(true, true);
 }
 
-void FootageViewerWidget::StartVideoDrag()
+void FootageViewerWidget::start_video_drag()
 {
-	StartFootageDragInternal(true, false);
+	start_footage_drag_internal(true, false);
 }
 
-void FootageViewerWidget::StartAudioDrag()
+void FootageViewerWidget::start_audio_drag()
 {
-	StartFootageDragInternal(false, true);
+	start_footage_drag_internal(false, true);
 }
 
-void FootageViewerWidget::VideoButtonClicked()
+void FootageViewerWidget::video_button_clicked()
 {
-	this->SetWaveformMode(kWFAutomatic);
+	this->set_waveform_mode(k_wf_automatic);
 }
 
-void FootageViewerWidget::AudioButtonClicked()
+void FootageViewerWidget::audio_button_clicked()
 {
-	this->SetWaveformMode(kWFWaveformOnly);
+	this->set_waveform_mode(k_wf_waveform_only);
 }
 
 }

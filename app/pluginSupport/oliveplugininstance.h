@@ -15,13 +15,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef OLIVE_INSTANCE_H
-#define OLIVE_INSTANCE_H
+#ifndef OAK_OLIVE_INSTANCE_H
+#define OAK_OLIVE_INSTANCE_H
 #include "ofxCore.h"
 #include "ofxImageEffect.h"
 #include <QString>
 #include "ofxhImageEffect.h"
-#include "node/plugins/Plugin.h"
+#include "node/plugins/plugin.h"
 #include "render/videoparams.h"
 #include "undo/undocommand.h"
 
@@ -36,7 +36,7 @@
 namespace olive
 {
 
-inline bool IsGuiThread()
+inline bool is_gui_thread()
 {
 	if (auto *app = QCoreApplication::instance()) {
 		return QThread::currentThread() == app->thread();
@@ -47,7 +47,7 @@ class ProgressDialog;
 namespace plugin
 {
 class PluginNode;
-enum class ErrorType { Error, Warning, Message };
+enum class ErrorType { error, warning, message };
 struct PersistentErrors {
 	ErrorType type;
 	QString message;
@@ -108,18 +108,18 @@ public:
 								   const char *format, va_list args) override;
 
 	OfxStatus clearPersistentMessage() override;
-	int persistentMessageCount() const
+	int persistent_message_count() const
 	{
 		return persistentErrors_.size();
 	}
-	const QList<PersistentErrors> &persistentMessages() const
+	const QList<PersistentErrors> &persistent_messages() const
 	{
 		return persistentErrors_;
 	}
 
-	void getProjectSize(double &xSize, double &ySize) const override;
-	void getProjectOffset(double &xOffset, double &yOffset) const override;
-	void getProjectExtent(double &xSize, double &ySize) const override;
+	void getProjectSize(double &x_size, double &y_size) const override;
+	void getProjectOffset(double &x_offset, double &y_offset) const override;
+	void getProjectExtent(double &x_size, double &y_size) const override;
 	// The pixel aspect ratio of the current project
 	double getProjectPixelAspectRatio() const override;
 
@@ -148,9 +148,9 @@ public:
 	/// Client host code needs to implement this
 	OFX::Host::Param::Instance *
 	newParam(const std::string &name,
-			 OFX::Host::Param::Descriptor &Descriptor) override;
+			 OFX::Host::Param::Descriptor &descriptor) override;
 
-	void SubmitUndoCommand(UndoCommand *command, const QString &label);
+	void submit_undo_command(UndoCommand *command, const QString &label);
 
 	/// Triggered when the plug-in calls OfxParameterSuiteV1::paramEditBegin
 	///
@@ -203,7 +203,7 @@ public:
 	virtual void timeLineGetBounds(double &t1, double &t2);
 
 	void setCustomInArgs(const std::string &action,
-						 OFX::Host::Property::Set &inArgs) override;
+						 OFX::Host::Property::Set &in_args) override;
 
 private:
 	QList<PersistentErrors> persistentErrors_;

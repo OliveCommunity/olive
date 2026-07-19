@@ -38,9 +38,9 @@
 namespace olive
 {
 
-const int kDataIsPreset = Qt::UserRole;
-const int kDataPresetIsCustomRole = Qt::UserRole + 1;
-const int kDataPresetDataRole = Qt::UserRole + 2;
+const int k_data_is_preset = Qt::UserRole;
+const int k_data_preset_is_custom_role = Qt::UserRole + 1;
+const int k_data_preset_data_role = Qt::UserRole + 2;
 
 SequenceDialogPresetTab::SequenceDialogPresetTab(QWidget *parent)
 	: QWidget(parent)
@@ -54,124 +54,124 @@ SequenceDialogPresetTab::SequenceDialogPresetTab(QWidget *parent)
 	preset_tree_->setHeaderLabel(tr("Preset"));
 	preset_tree_->setContextMenuPolicy(Qt::CustomContextMenu);
 	connect(preset_tree_, &QTreeWidget::customContextMenuRequested, this,
-			&SequenceDialogPresetTab::ShowContextMenu);
+			&SequenceDialogPresetTab::show_context_menu);
 	outer_layout->addWidget(preset_tree_);
 	connect(preset_tree_, &QTreeWidget::currentItemChanged, this,
-			&SequenceDialogPresetTab::SelectedItemChanged);
+			&SequenceDialogPresetTab::selected_item_changed);
 	connect(preset_tree_, &QTreeWidget::itemDoubleClicked, this,
-			&SequenceDialogPresetTab::ItemDoubleClicked);
+			&SequenceDialogPresetTab::item_double_clicked);
 
 	// Add "my presets" folder
-	my_presets_folder_ = CreateFolder(tr("My Presets"));
+	my_presets_folder_ = create_folder(tr("My Presets"));
 	preset_tree_->addTopLevelItem(my_presets_folder_);
 
 	// Add presets
 	preset_tree_->addTopLevelItem(
-		CreateHDPresetFolder(tr("4K UHD"), 3840, 2160, 2));
+		create_hd_preset_folder(tr("4K UHD"), 3840, 2160, 2));
 	preset_tree_->addTopLevelItem(
-		CreateHDPresetFolder(tr("1080p"), 1920, 1080, 1));
+		create_hd_preset_folder(tr("1080p"), 1920, 1080, 1));
 	preset_tree_->addTopLevelItem(
-		CreateHDPresetFolder(tr("720p"), 1280, 720, 1));
+		create_hd_preset_folder(tr("720p"), 1280, 720, 1));
 
 	preset_tree_->addTopLevelItem(
-		CreateSDPresetFolder(tr("NTSC"), 720, 480, rational(30000, 1001),
-							 VideoParams::kPixelAspectNTSCStandard,
-							 VideoParams::kPixelAspectNTSCWidescreen, 1));
+		create_sd_preset_folder(tr("NTSC"), 720, 480, Rational(30000, 1001),
+							 VideoParams::k_pixel_aspect_ntsc_standard,
+							 VideoParams::k_pixel_aspect_ntsc_widescreen, 1));
 	preset_tree_->addTopLevelItem(
-		CreateSDPresetFolder(tr("PAL"), 720, 576, rational(25, 1),
-							 VideoParams::kPixelAspectPALStandard,
-							 VideoParams::kPixelAspectPALWidescreen, 1));
+		create_sd_preset_folder(tr("PAL"), 720, 576, Rational(25, 1),
+							 VideoParams::k_pixel_aspect_pal_standard,
+							 VideoParams::k_pixel_aspect_pal_widescreen, 1));
 
 	// Load custom presets
-	for (int i = 0; i < GetNumberOfPresets(); i++) {
-		AddCustomItem(my_presets_folder_, GetPreset(i), i);
+	for (int i = 0; i < get_number_of_presets(); i++) {
+		add_custom_item(my_presets_folder_, get_preset(i), i);
 	}
 }
 
-void SequenceDialogPresetTab::SaveParametersAsPreset(SequencePreset preset)
+void SequenceDialogPresetTab::save_parameters_as_preset(SequencePreset preset)
 {
 	PresetPtr preset_ptr = std::make_shared<SequencePreset>(preset);
 
 	// If replaced, no need to make another item. If not saved, shared ptr will delete itself
-	if (SavePreset(preset_ptr) == kAppended) {
-		AddCustomItem(my_presets_folder_, preset_ptr, GetNumberOfPresets() - 1);
+	if (save_preset(preset_ptr) == k_appended) {
+		add_custom_item(my_presets_folder_, preset_ptr, get_number_of_presets() - 1);
 	}
 }
 
-QTreeWidgetItem *SequenceDialogPresetTab::CreateFolder(const QString &name)
+QTreeWidgetItem *SequenceDialogPresetTab::create_folder(const QString &name)
 {
 	QTreeWidgetItem *folder = new QTreeWidgetItem();
 	folder->setText(0, name);
-	folder->setIcon(0, icon::Folder);
+	folder->setIcon(0, icon::folder);
 	return folder;
 }
 
 QTreeWidgetItem *
-SequenceDialogPresetTab::CreateHDPresetFolder(const QString &name, int width,
+SequenceDialogPresetTab::create_hd_preset_folder(const QString &name, int width,
 											  int height, int divider)
 {
 	const PixelFormat default_format = static_cast<PixelFormat::Format>(
-		OLIVE_CONFIG("OfflinePixelFormat").toInt());
+		OAK_CONFIG("OfflinePixelFormat").toInt());
 	const bool default_autocache = false;
-	QTreeWidgetItem *parent = CreateFolder(name);
-	const uint64_t layout = kChannelLayoutStereo;
-	AddStandardItem(parent,
+	QTreeWidgetItem *parent = create_folder(name);
+	const uint64_t layout = k_channel_layout_stereo;
+	add_standard_item(parent,
 					std::make_shared<SequencePreset>(
 						tr("%1 23.976 FPS").arg(name), width, height,
-						rational(24000, 1001), VideoParams::kPixelAspectSquare,
-						VideoParams::kInterlaceNone, 48000, layout, divider,
+						Rational(24000, 1001), VideoParams::k_pixel_aspect_square,
+						VideoParams::k_interlace_none, 48000, layout, divider,
 						default_format, default_autocache));
-	AddStandardItem(parent,
+	add_standard_item(parent,
 					std::make_shared<SequencePreset>(
 						tr("%1 25 FPS").arg(name), width, height,
-						rational(25, 1), VideoParams::kPixelAspectSquare,
-						VideoParams::kInterlaceNone, 48000, layout, divider,
+						Rational(25, 1), VideoParams::k_pixel_aspect_square,
+						VideoParams::k_interlace_none, 48000, layout, divider,
 						default_format, default_autocache));
-	AddStandardItem(parent,
+	add_standard_item(parent,
 					std::make_shared<SequencePreset>(
 						tr("%1 29.97 FPS").arg(name), width, height,
-						rational(30000, 1001), VideoParams::kPixelAspectSquare,
-						VideoParams::kInterlaceNone, 48000, layout, divider,
+						Rational(30000, 1001), VideoParams::k_pixel_aspect_square,
+						VideoParams::k_interlace_none, 48000, layout, divider,
 						default_format, default_autocache));
-	AddStandardItem(parent,
+	add_standard_item(parent,
 					std::make_shared<SequencePreset>(
 						tr("%1 50 FPS").arg(name), width, height,
-						rational(50, 1), VideoParams::kPixelAspectSquare,
-						VideoParams::kInterlaceNone, 48000, layout, divider,
+						Rational(50, 1), VideoParams::k_pixel_aspect_square,
+						VideoParams::k_interlace_none, 48000, layout, divider,
 						default_format, default_autocache));
-	AddStandardItem(parent,
+	add_standard_item(parent,
 					std::make_shared<SequencePreset>(
 						tr("%1 59.94 FPS").arg(name), width, height,
-						rational(60000, 1001), VideoParams::kPixelAspectSquare,
-						VideoParams::kInterlaceNone, 48000, layout, divider,
+						Rational(60000, 1001), VideoParams::k_pixel_aspect_square,
+						VideoParams::k_interlace_none, 48000, layout, divider,
 						default_format, default_autocache));
 	return parent;
 }
 
-QTreeWidgetItem *SequenceDialogPresetTab::CreateSDPresetFolder(
-	const QString &name, int width, int height, const rational &frame_rate,
-	const rational &standard_par, const rational &wide_par, int divider)
+QTreeWidgetItem *SequenceDialogPresetTab::create_sd_preset_folder(
+	const QString &name, int width, int height, const Rational &frame_rate,
+	const Rational &standard_par, const Rational &wide_par, int divider)
 {
 	const PixelFormat default_format = static_cast<PixelFormat::Format>(
-		OLIVE_CONFIG("OfflinePixelFormat").toInt());
+		OAK_CONFIG("OfflinePixelFormat").toInt());
 	const bool default_autocache = false;
-	QTreeWidgetItem *parent = CreateFolder(name);
+	QTreeWidgetItem *parent = create_folder(name);
 	preset_tree_->addTopLevelItem(parent);
-	const uint64_t layout = kChannelLayoutStereo;
-	AddStandardItem(
+	const uint64_t layout = k_channel_layout_stereo;
+	add_standard_item(
 		parent, std::make_shared<SequencePreset>(
 					tr("%1 Standard").arg(name), width, height, frame_rate,
-					standard_par, VideoParams::kInterlacedBottomFirst, 48000,
+					standard_par, VideoParams::k_interlaced_bottom_first, 48000,
 					layout, divider, default_format, default_autocache));
-	AddStandardItem(
+	add_standard_item(
 		parent, std::make_shared<SequencePreset>(
 					tr("%1 Widescreen").arg(name), width, height, frame_rate,
-					wide_par, VideoParams::kInterlacedBottomFirst, 48000,
+					wide_par, VideoParams::k_interlaced_bottom_first, 48000,
 					layout, divider, default_format, default_autocache));
 	return parent;
 }
 
-QTreeWidgetItem *SequenceDialogPresetTab::GetSelectedItem()
+QTreeWidgetItem *SequenceDialogPresetTab::get_selected_item()
 {
 	QList<QTreeWidgetItem *> selected_items = preset_tree_->selectedItems();
 
@@ -182,114 +182,114 @@ QTreeWidgetItem *SequenceDialogPresetTab::GetSelectedItem()
 	}
 }
 
-QTreeWidgetItem *SequenceDialogPresetTab::GetSelectedCustomPreset()
+QTreeWidgetItem *SequenceDialogPresetTab::get_selected_custom_preset()
 {
-	QTreeWidgetItem *sel = GetSelectedItem();
+	QTreeWidgetItem *sel = get_selected_item();
 
-	if (sel && sel->data(0, kDataIsPreset).toBool() &&
-		sel->data(0, kDataPresetIsCustomRole).toBool()) {
+	if (sel && sel->data(0, k_data_is_preset).toBool() &&
+		sel->data(0, k_data_preset_is_custom_role).toBool()) {
 		return sel;
 	}
 
 	return nullptr;
 }
 
-void SequenceDialogPresetTab::AddStandardItem(QTreeWidgetItem *folder,
+void SequenceDialogPresetTab::add_standard_item(QTreeWidgetItem *folder,
 											  PresetPtr preset,
 											  const QString &description)
 {
 	int index = default_preset_data_.size();
 	default_preset_data_.append(preset);
-	AddItemInternal(folder, preset, false, index, description);
+	add_item_internal(folder, preset, false, index, description);
 }
 
-void SequenceDialogPresetTab::AddCustomItem(QTreeWidgetItem *folder,
+void SequenceDialogPresetTab::add_custom_item(QTreeWidgetItem *folder,
 											PresetPtr preset, int index,
 											const QString &description)
 {
-	AddItemInternal(folder, preset, true, index, description);
+	add_item_internal(folder, preset, true, index, description);
 }
 
-void SequenceDialogPresetTab::AddItemInternal(QTreeWidgetItem *folder,
+void SequenceDialogPresetTab::add_item_internal(QTreeWidgetItem *folder,
 											  PresetPtr preset, bool is_custom,
 											  int index,
 											  const QString &description)
 {
 	QTreeWidgetItem *item = new QTreeWidgetItem();
 
-	item->setText(0, preset->GetName());
-	item->setIcon(0, icon::Video);
+	item->setText(0, preset->get_name());
+	item->setIcon(0, icon::video);
 	item->setToolTip(0, description);
-	item->setData(0, kDataIsPreset, true);
-	item->setData(0, kDataPresetIsCustomRole, is_custom);
-	item->setData(0, kDataPresetDataRole, index);
+	item->setData(0, k_data_is_preset, true);
+	item->setData(0, k_data_preset_is_custom_role, is_custom);
+	item->setData(0, k_data_preset_data_role, index);
 
 	folder->addChild(item);
 }
 
-void SequenceDialogPresetTab::SelectedItemChanged(QTreeWidgetItem *current,
+void SequenceDialogPresetTab::selected_item_changed(QTreeWidgetItem *current,
 												  QTreeWidgetItem *previous)
 {
 	Q_UNUSED(previous)
 
-	if (current->data(0, kDataIsPreset).toBool()) {
-		int preset_index = current->data(0, kDataPresetDataRole).toInt();
+	if (current->data(0, k_data_is_preset).toBool()) {
+		int preset_index = current->data(0, k_data_preset_data_role).toInt();
 
 		PresetPtr preset_data =
-			(current->data(0, kDataPresetIsCustomRole).toBool()) ?
-				GetPreset(preset_index) :
+			(current->data(0, k_data_preset_is_custom_role).toBool()) ?
+				get_preset(preset_index) :
 				default_preset_data_.at(preset_index);
 
-		emit PresetChanged(*static_cast<SequencePreset *>(preset_data.get()));
+		emit preset_changed(*static_cast<SequencePreset *>(preset_data.get()));
 	}
 }
 
-void SequenceDialogPresetTab::ItemDoubleClicked(QTreeWidgetItem *item,
+void SequenceDialogPresetTab::item_double_clicked(QTreeWidgetItem *item,
 												int column)
 {
 	Q_UNUSED(column)
 
-	if (item->data(0, kDataIsPreset).toBool()) {
-		emit PresetAccepted();
+	if (item->data(0, k_data_is_preset).toBool()) {
+		emit preset_accepted();
 	}
 }
 
-void SequenceDialogPresetTab::ShowContextMenu()
+void SequenceDialogPresetTab::show_context_menu()
 {
-	QTreeWidgetItem *sel = GetSelectedCustomPreset();
+	QTreeWidgetItem *sel = get_selected_custom_preset();
 
 	if (sel) {
 		Menu m(this);
 
 		QAction *delete_action = m.addAction(tr("Delete Preset"));
 		connect(delete_action, &QAction::triggered, this,
-				&SequenceDialogPresetTab::DeleteSelectedPreset);
+				&SequenceDialogPresetTab::delete_selected_preset);
 
 		m.exec(QCursor::pos());
 	}
 }
 
-void SequenceDialogPresetTab::DeleteSelectedPreset()
+void SequenceDialogPresetTab::delete_selected_preset()
 {
-	QTreeWidgetItem *sel = GetSelectedCustomPreset();
+	QTreeWidgetItem *sel = get_selected_custom_preset();
 
 	if (sel) {
-		int preset_index = sel->data(0, kDataPresetDataRole).toInt();
+		int preset_index = sel->data(0, k_data_preset_data_role).toInt();
 
 		// Shift all items whose index was after this preset forward
 		for (int i = 0; i < my_presets_folder_->childCount(); i++) {
 			QTreeWidgetItem *custom_item = my_presets_folder_->child(i);
 			int this_item_index =
-				custom_item->data(0, kDataPresetDataRole).toInt();
+				custom_item->data(0, k_data_preset_data_role).toInt();
 
 			if (this_item_index > preset_index) {
-				custom_item->setData(0, kDataPresetDataRole,
+				custom_item->setData(0, k_data_preset_data_role,
 									 this_item_index - 1);
 			}
 		}
 
 		// Remove the preset
-		DeletePreset(preset_index);
+		delete_preset(preset_index);
 
 		// Delete the item
 		delete sel;

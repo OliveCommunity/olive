@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SPEEDDURATIONDIALOG_H
-#define SPEEDDURATIONDIALOG_H
+#ifndef OAK_SPEEDDURATIONDIALOG_H
+#define OAK_SPEEDDURATIONDIALOG_H
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -39,7 +39,7 @@ class SpeedDurationDialog : public QDialog {
 	Q_OBJECT
 public:
 	explicit SpeedDurationDialog(const QVector<ClipBlock *> &clips,
-								 const rational &timebase,
+								 const Rational &timebase,
 								 QWidget *parent = nullptr);
 
 public slots:
@@ -48,13 +48,13 @@ public slots:
 signals:
 
 private:
-	static rational GetLengthAdjustment(const rational &original_length,
+	static Rational get_length_adjustment(const Rational &original_length,
 										double original_speed, double new_speed,
-										const rational &timebase);
+										const Rational &timebase);
 
-	static double GetSpeedAdjustment(double original_speed,
-									 const rational &original_length,
-									 const rational &new_length);
+	static double get_speed_adjustment(double original_speed,
+									 const Rational &original_length,
+									 const Rational &new_length);
 
 	QVector<ClipBlock *> clips_;
 
@@ -78,18 +78,18 @@ private:
 
 	double start_speed_;
 
-	rational start_duration_;
+	Rational start_duration_;
 
 	int start_loop_;
 
-	rational timebase_;
+	Rational timebase_;
 
 private slots:
-	void SpeedChanged(double s);
+	void speed_changed(double s);
 
-	void DurationChanged(const rational &r);
+	void duration_changed(const Rational &r);
 };
 
 }
 
-#endif // SPEEDDURATIONDIALOG_H
+#endif // OAK_SPEEDDURATIONDIALOG_H

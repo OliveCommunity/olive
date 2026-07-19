@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef MULTICAMWIDGET_H
-#define MULTICAMWIDGET_H
+#ifndef OAK_MULTICAMWIDGET_H
+#define OAK_MULTICAMWIDGET_H
 
 #include "multicamdisplay.h"
 #include "node/input/multicam/multicamnode.h"
@@ -34,24 +34,24 @@ class MulticamWidget : public TimeBasedWidget {
 public:
 	explicit MulticamWidget(QWidget *parent = nullptr);
 
-	MulticamDisplay *GetDisplayWidget() const
+	MulticamDisplay *get_display_widget() const
 	{
 		return display_;
 	}
 
-	void SetMulticamNode(ViewerOutput *viewer, MultiCamNode *n, ClipBlock *clip,
-						 const rational &time);
+	void set_multicam_node(ViewerOutput *viewer, MultiCamNode *n, ClipBlock *clip,
+						 const Rational &time);
 
 protected:
 	virtual void ConnectNodeEvent(ViewerOutput *n) override;
 	virtual void DisconnectNodeEvent(ViewerOutput *n) override;
-	virtual void TimeChangedEvent(const rational &t) override;
+	virtual void TimeChangedEvent(const Rational &t) override;
 
 signals:
-	void Switched();
+	void switched();
 
 private:
-	void SetMulticamNodeInternal(ViewerOutput *viewer, MultiCamNode *n,
+	void set_multicam_node_internal(ViewerOutput *viewer, MultiCamNode *n,
 								 ClipBlock *clip);
 
 	void Switch(int source, bool split_clip);
@@ -65,7 +65,7 @@ private:
 	ClipBlock *clip_;
 
 	struct MulticamNodeQueue {
-		rational time;
+		Rational time;
 		ViewerOutput *viewer;
 		MultiCamNode *node;
 		ClipBlock *clip;
@@ -74,9 +74,9 @@ private:
 	std::list<MulticamNodeQueue> play_queue_;
 
 private slots:
-	void DisplayClicked(const QPoint &p);
+	void display_clicked(const QPoint &p);
 };
 
 }
 
-#endif // MULTICAMWIDGET_H
+#endif // OAK_MULTICAMWIDGET_H

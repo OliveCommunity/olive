@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FOOTAGERELINKDIALOG_H
-#define FOOTAGERELINKDIALOG_H
+#ifndef OAK_FOOTAGERELINKDIALOG_H
+#define OAK_FOOTAGERELINKDIALOG_H
 
 #include <QDialog>
 #include <QTreeWidget>
@@ -37,16 +37,16 @@ public:
 						QWidget *parent = nullptr);
 
 private:
-	void UpdateFootageItem(int index);
+	void update_footage_item(int index);
 
 	QTreeWidget *table_;
 
 	QVector<Footage *> footage_;
 
 private slots:
-	void BrowseForFootage();
+	void browse_for_footage();
 };
 
 }
 
-#endif // FOOTAGERELINKDIALOG_H
+#endif // OAK_FOOTAGERELINKDIALOG_H

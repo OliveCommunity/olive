@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef VIDEOSTREAMPROPERTIES_H
-#define VIDEOSTREAMPROPERTIES_H
+#ifndef OAK_VIDEOSTREAMPROPERTIES_H
+#define OAK_VIDEOSTREAMPROPERTIES_H
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -38,9 +38,9 @@ class VideoStreamProperties : public StreamProperties {
 public:
 	VideoStreamProperties(Footage *footage, int video_index);
 
-	virtual void Accept(MultiUndoCommand *parent) override;
+	virtual void accept(MultiUndoCommand *parent) override;
 
-	virtual bool SanityCheck() override;
+	virtual bool sanity_check() override;
 
 private:
 	Footage *footage_;
@@ -92,10 +92,10 @@ private:
 		VideoStreamChangeCommand(Footage *footage, int video_index,
 								 bool premultiplied, QString colorspace,
 								 VideoParams::Interlacing interlacing,
-								 const rational &pixel_ar,
+								 const Rational &pixel_ar,
 								 VideoParams::ColorRange range);
 
-		virtual Project *GetRelevantProject() const override;
+		virtual Project *get_relevant_project() const override;
 
 	protected:
 		virtual void redo() override;
@@ -108,13 +108,13 @@ private:
 		bool new_premultiplied_;
 		QString new_colorspace_;
 		VideoParams::Interlacing new_interlacing_;
-		rational new_pixel_ar_;
+		Rational new_pixel_ar_;
 		VideoParams::ColorRange new_range_;
 
 		bool old_premultiplied_;
 		QString old_colorspace_;
 		VideoParams::Interlacing old_interlacing_;
-		rational old_pixel_ar_;
+		Rational old_pixel_ar_;
 		VideoParams::ColorRange old_range_;
 	};
 
@@ -122,9 +122,9 @@ private:
 	public:
 		ImageSequenceChangeCommand(Footage *footage, int video_index,
 								   int64_t start_index, int64_t duration,
-								   const rational &frame_rate);
+								   const Rational &frame_rate);
 
-		virtual Project *GetRelevantProject() const override;
+		virtual Project *get_relevant_project() const override;
 
 	protected:
 		virtual void redo() override;
@@ -140,11 +140,11 @@ private:
 		int64_t new_duration_;
 		int64_t old_duration_;
 
-		rational new_frame_rate_;
-		rational old_frame_rate_;
+		Rational new_frame_rate_;
+		Rational old_frame_rate_;
 	};
 };
 
 }
 
-#endif // VIDEOSTREAMPROPERTIES_H
+#endif // OAK_VIDEOSTREAMPROPERTIES_H

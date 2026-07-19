@@ -32,77 +32,77 @@ KeyframeViewInputConnection::KeyframeViewInputConnection(
 	, keyframe_view_(parent)
 	, input_(input)
 	, y_(0)
-	, y_behavior_(kSingleRow)
+	, y_behavior_(k_single_row)
 	, brush_(Qt::white)
 {
 	Node *n = input.input().node();
 
-	connect(n, &Node::KeyframeAdded, this,
-			&KeyframeViewInputConnection::AddKeyframe);
-	connect(n, &Node::KeyframeRemoved, this,
-			&KeyframeViewInputConnection::RemoveKeyframe);
-	connect(n, &Node::KeyframeTimeChanged, this,
-			&KeyframeViewInputConnection::KeyframeChanged);
-	connect(n, &Node::KeyframeTypeChanged, this,
-			&KeyframeViewInputConnection::KeyframeChanged);
-	connect(n, &Node::KeyframeTypeChanged, this,
-			&KeyframeViewInputConnection::KeyframeTypeChanged);
-	connect(n, &Node::KeyframeValueChanged, this,
-			&KeyframeViewInputConnection::KeyframeChanged);
+	connect(n, &Node::keyframe_added, this,
+			&KeyframeViewInputConnection::add_keyframe);
+	connect(n, &Node::keyframe_removed, this,
+			&KeyframeViewInputConnection::remove_keyframe);
+	connect(n, &Node::keyframe_time_changed, this,
+			&KeyframeViewInputConnection::keyframe_changed);
+	connect(n, &Node::keyframe_type_changed, this,
+			&KeyframeViewInputConnection::keyframe_changed);
+	connect(n, &Node::keyframe_type_changed, this,
+			&KeyframeViewInputConnection::keyframe_type_changed);
+	connect(n, &Node::keyframe_value_changed, this,
+			&KeyframeViewInputConnection::keyframe_changed);
 }
 
-void KeyframeViewInputConnection::SetKeyframeY(int y)
+void KeyframeViewInputConnection::set_keyframe_y(int y)
 {
 	if (y_ != y) {
 		y_ = y;
 
-		emit RequireUpdate();
+		emit require_update();
 	}
 }
 
-void KeyframeViewInputConnection::SetYBehavior(YBehavior e)
+void KeyframeViewInputConnection::set_y_behavior(YBehavior e)
 {
 	if (y_behavior_ != e) {
 		y_behavior_ = e;
 
-		emit RequireUpdate();
+		emit require_update();
 	}
 }
 
-void KeyframeViewInputConnection::SetBrush(const QBrush &brush)
+void KeyframeViewInputConnection::set_brush(const QBrush &brush)
 {
 	if (brush_ != brush) {
 		brush_ = brush;
 
-		emit RequireUpdate();
+		emit require_update();
 	}
 }
 
-void KeyframeViewInputConnection::AddKeyframe(NodeKeyframe *key)
+void KeyframeViewInputConnection::add_keyframe(NodeKeyframe *key)
 {
 	if (key->key_track_ref() == input_) {
-		emit RequireUpdate();
+		emit require_update();
 	}
 }
 
-void KeyframeViewInputConnection::RemoveKeyframe(NodeKeyframe *key)
+void KeyframeViewInputConnection::remove_keyframe(NodeKeyframe *key)
 {
 	if (key->key_track_ref() == input_) {
-		emit RequireUpdate();
+		emit require_update();
 	}
 }
 
-void KeyframeViewInputConnection::KeyframeChanged(NodeKeyframe *key)
+void KeyframeViewInputConnection::keyframe_changed(NodeKeyframe *key)
 {
 	if (key->key_track_ref() == input_) {
-		emit RequireUpdate();
+		emit require_update();
 	}
 }
 
-void KeyframeViewInputConnection::KeyframeTypeChanged(NodeKeyframe *key)
+void KeyframeViewInputConnection::keyframe_type_changed(NodeKeyframe *key)
 {
 	if (key->key_track_ref() == input_) {
-		emit TypeChanged();
+		emit type_changed();
 	}
 }
 

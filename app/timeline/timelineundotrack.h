@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINEUNDOTRACK_H
-#define TIMELINEUNDOTRACK_H
+#ifndef OAK_TIMELINEUNDOTRACK_H
+#define OAK_TIMELINEUNDOTRACK_H
 
 #include "node/output/track/track.h"
 
@@ -35,7 +35,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return track_->project();
 	}
@@ -44,12 +44,12 @@ protected:
 	virtual void redo() override
 	{
 		before_ = block_->previous();
-		track_->RippleRemoveBlock(block_);
+		track_->ripple_remove_block(block_);
 	}
 
 	virtual void undo() override
 	{
-		track_->InsertBlockAfter(block_, before_);
+		track_->insert_block_after(block_, before_);
 	}
 
 private:
@@ -68,7 +68,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return track_->project();
 	}
@@ -76,12 +76,12 @@ public:
 protected:
 	virtual void redo() override
 	{
-		track_->PrependBlock(block_);
+		track_->prepend_block(block_);
 	}
 
 	virtual void undo() override
 	{
-		track_->RippleRemoveBlock(block_);
+		track_->ripple_remove_block(block_);
 	}
 
 private:
@@ -98,7 +98,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return block_->project();
 	}
@@ -106,12 +106,12 @@ public:
 protected:
 	virtual void redo() override
 	{
-		track_->InsertBlockAfter(block_, before_);
+		track_->insert_block_after(block_, before_);
 	}
 
 	virtual void undo() override
 	{
-		track_->RippleRemoveBlock(block_);
+		track_->ripple_remove_block(block_);
 	}
 
 private:
@@ -136,7 +136,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return track_->project();
 	}
@@ -144,12 +144,12 @@ public:
 protected:
 	virtual void redo() override
 	{
-		track_->ReplaceBlock(old_, replace_);
+		track_->replace_block(old_, replace_);
 	}
 
 	virtual void undo() override
 	{
-		track_->ReplaceBlock(replace_, old_);
+		track_->replace_block(replace_, old_);
 	}
 
 private:
@@ -160,4 +160,4 @@ private:
 
 }
 
-#endif // TIMELINEUNDOTRACK_H
+#endif // OAK_TIMELINEUNDOTRACK_H

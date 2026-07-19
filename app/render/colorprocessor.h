@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLORPROCESSOR_H
-#define COLORPROCESSOR_H
+#ifndef OAK_COLORPROCESSOR_H
+#define OAK_COLORPROCESSOR_H
 
 #include "codec/frame.h"
 #include "common/ocioutils.h"
@@ -36,26 +36,26 @@ using ColorProcessorPtr = std::shared_ptr<ColorProcessor>;
 
 class ColorProcessor {
 public:
-	enum Direction { kNormal, kInverse };
+	enum Direction { k_normal, k_inverse };
 
 	ColorProcessor(ColorManager *config, const QString &input,
 				   const ColorTransform &dest_space,
-				   Direction direction = kNormal);
-	ColorProcessor(OCIO::ConstProcessorRcPtr processor);
+				   Direction direction = k_normal);
+	ColorProcessor(ocio::ConstProcessorRcPtr processor);
 
 	DISABLE_COPY_MOVE(ColorProcessor)
 
-	static ColorProcessorPtr Create(ColorManager *config, const QString &input,
+	static ColorProcessorPtr create(ColorManager *config, const QString &input,
 									const ColorTransform &dest_space,
-									Direction direction = kNormal);
-	static ColorProcessorPtr Create(OCIO::ConstProcessorRcPtr processor);
+									Direction direction = k_normal);
+	static ColorProcessorPtr create(ocio::ConstProcessorRcPtr processor);
 
-	OCIO::ConstProcessorRcPtr GetProcessor();
+	ocio::ConstProcessorRcPtr get_processor();
 
-	void ConvertFrame(FramePtr f);
-	void ConvertFrame(Frame *f);
+	void convert_frame(FramePtr f);
+	void convert_frame(Frame *f);
 
-	Color ConvertColor(const Color &in);
+	Color convert_color(const Color &in);
 
 	const char *id() const
 	{
@@ -63,9 +63,9 @@ public:
 	}
 
 private:
-	OCIO::ConstProcessorRcPtr processor_;
+	ocio::ConstProcessorRcPtr processor_;
 
-	OCIO::ConstCPUProcessorRcPtr cpu_processor_;
+	ocio::ConstCPUProcessorRcPtr cpu_processor_;
 };
 
 using ColorProcessorChain = QVector<ColorProcessorPtr>;
@@ -74,4 +74,4 @@ using ColorProcessorChain = QVector<ColorProcessorPtr>;
 
 Q_DECLARE_METATYPE(olive::ColorProcessorPtr)
 
-#endif // COLORPROCESSOR_H
+#endif // OAK_COLORPROCESSOR_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SEQUENCEPARAM_H
-#define SEQUENCEPARAM_H
+#ifndef OAK_SEQUENCEPARAM_H
+#define OAK_SEQUENCEPARAM_H
 
 #include <olive/core/core.h>
 #include <QXmlStreamWriter>
@@ -37,7 +37,7 @@ public:
 	SequencePreset() = default;
 
 	SequencePreset(const QString &name, int width, int height,
-				   const rational &frame_rate, const rational &pixel_aspect,
+				   const Rational &frame_rate, const Rational &pixel_aspect,
 				   VideoParams::Interlacing interlacing, int sample_rate,
 				   uint64_t channel_layout, int preview_divider,
 				   PixelFormat preview_format, bool preview_autocache)
@@ -52,23 +52,23 @@ public:
 		, preview_format_(preview_format)
 		, preview_autocache_(preview_autocache)
 	{
-		SetName(name);
+		set_name(name);
 	}
 
-	virtual void Load(QXmlStreamReader *reader) override
+	virtual void load(QXmlStreamReader *reader) override
 	{
-		while (XMLReadNextStartElement(reader)) {
+		while (xml_read_next_start_element(reader)) {
 			if (reader->name() == QStringLiteral("name")) {
-				SetName(reader->readElementText());
+				set_name(reader->readElementText());
 			} else if (reader->name() == QStringLiteral("width")) {
 				width_ = reader->readElementText().toInt();
 			} else if (reader->name() == QStringLiteral("height")) {
 				height_ = reader->readElementText().toInt();
 			} else if (reader->name() == QStringLiteral("framerate")) {
-				frame_rate_ = rational::fromString(
+				frame_rate_ = Rational::from_string(
 					reader->readElementText().toStdString());
 			} else if (reader->name() == QStringLiteral("pixelaspect")) {
-				pixel_aspect_ = rational::fromString(
+				pixel_aspect_ = Rational::from_string(
 					reader->readElementText().toStdString());
 			} else if (reader->name() == QStringLiteral("interlacing") ||
 					   reader->name() == QStringLiteral("interlacing_")) {
@@ -93,19 +93,19 @@ public:
 		}
 	}
 
-	virtual void Save(QXmlStreamWriter *writer) const override
+	virtual void save(QXmlStreamWriter *writer) const override
 	{
-		writer->writeTextElement(QStringLiteral("name"), GetName());
+		writer->writeTextElement(QStringLiteral("name"), get_name());
 		writer->writeTextElement(QStringLiteral("width"),
 								 QString::number(width_));
 		writer->writeTextElement(QStringLiteral("height"),
 								 QString::number(height_));
 		writer->writeTextElement(
 			QStringLiteral("framerate"),
-			QString::fromStdString(frame_rate_.toString()));
+			QString::fromStdString(frame_rate_.to_string()));
 		writer->writeTextElement(
 			QStringLiteral("pixelaspect"),
-			QString::fromStdString(pixel_aspect_.toString()));
+			QString::fromStdString(pixel_aspect_.to_string()));
 		writer->writeTextElement(QStringLiteral("interlacing"),
 								 QString::number(interlacing_));
 		writer->writeTextElement(QStringLiteral("samplerate"),
@@ -130,12 +130,12 @@ public:
 		return height_;
 	}
 
-	const rational &frame_rate() const
+	const Rational &frame_rate() const
 	{
 		return frame_rate_;
 	}
 
-	const rational &pixel_aspect() const
+	const Rational &pixel_aspect() const
 	{
 		return pixel_aspect_;
 	}
@@ -173,8 +173,8 @@ public:
 private:
 	int width_;
 	int height_;
-	rational frame_rate_;
-	rational pixel_aspect_;
+	Rational frame_rate_;
+	Rational pixel_aspect_;
 	VideoParams::Interlacing interlacing_;
 	int sample_rate_;
 	uint64_t channel_layout_;
@@ -185,4 +185,4 @@ private:
 
 }
 
-#endif // SEQUENCEPARAM_H
+#endif // OAK_SEQUENCEPARAM_H

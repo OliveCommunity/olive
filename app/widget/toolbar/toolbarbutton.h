@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TOOLBARBUTTON_H
-#define TOOLBARBUTTON_H
+#ifndef OAK_TOOLBARBUTTON_H
+#define OAK_TOOLBARBUTTON_H
 
 #include <QPushButton>
 
@@ -63,4 +63,4 @@ private:
 
 }
 
-#endif // TOOLBARBUTTON_H
+#endif // OAK_TOOLBARBUTTON_H

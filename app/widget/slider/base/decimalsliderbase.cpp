@@ -33,14 +33,14 @@ DecimalSliderBase::DecimalSliderBase(QWidget *parent)
 {
 }
 
-void DecimalSliderBase::SetAutoTrimDecimalPlaces(bool e)
+void DecimalSliderBase::set_auto_trim_decimal_places(bool e)
 {
 	autotrim_decimal_places_ = e;
 
-	UpdateLabel();
+	update_label();
 }
 
-QString DecimalSliderBase::FloatToString(double val, int decimal_places,
+QString DecimalSliderBase::float_to_string(double val, int decimal_places,
 										 bool autotrim_decimal_places)
 {
 	QString s = QString::number(val, 'f', decimal_places);
@@ -54,11 +54,11 @@ QString DecimalSliderBase::FloatToString(double val, int decimal_places,
 	return s;
 }
 
-void DecimalSliderBase::SetDecimalPlaces(int i)
+void DecimalSliderBase::set_decimal_places(int i)
 {
 	decimal_places_ = i;
 
-	UpdateLabel();
+	update_label();
 }
 
 }

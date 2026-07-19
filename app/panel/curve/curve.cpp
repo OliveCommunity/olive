@@ -28,49 +28,49 @@ CurvePanel::CurvePanel()
 	: TimeBasedPanel(QStringLiteral("CurvePanel"))
 {
 	// Create main widget and set it
-	SetTimeBasedWidget(new CurveWidget(this));
+	set_time_based_widget(new CurveWidget(this));
 
 	// Set strings
-	Retranslate();
+	retranslate();
 }
 
-void CurvePanel::DeleteSelected()
+void CurvePanel::delete_selected()
 {
-	static_cast<CurveWidget *>(GetTimeBasedWidget())->DeleteSelected();
+	static_cast<CurveWidget *>(get_time_based_widget())->DeleteSelected();
 }
 
-void CurvePanel::SelectAll()
+void CurvePanel::select_all()
 {
-	static_cast<CurveWidget *>(GetTimeBasedWidget())->SelectAll();
+	static_cast<CurveWidget *>(get_time_based_widget())->select_all();
 }
 
-void CurvePanel::DeselectAll()
+void CurvePanel::deselect_all()
 {
-	static_cast<CurveWidget *>(GetTimeBasedWidget())->DeselectAll();
+	static_cast<CurveWidget *>(get_time_based_widget())->deselect_all();
 }
 
-void CurvePanel::SetNodes(const QVector<Node *> &nodes)
+void CurvePanel::set_nodes(const QVector<Node *> &nodes)
 {
-	static_cast<CurveWidget *>(GetTimeBasedWidget())->SetNodes(nodes);
+	static_cast<CurveWidget *>(get_time_based_widget())->set_nodes(nodes);
 }
 
-void CurvePanel::IncreaseTrackHeight()
+void CurvePanel::increase_track_height()
 {
-	CurveWidget *c = static_cast<CurveWidget *>(GetTimeBasedWidget());
-	c->SetVerticalScale(c->GetVerticalScale() * 2);
+	CurveWidget *c = static_cast<CurveWidget *>(get_time_based_widget());
+	c->set_vertical_scale(c->get_vertical_scale() * 2);
 }
 
-void CurvePanel::DecreaseTrackHeight()
+void CurvePanel::decrease_track_height()
 {
-	CurveWidget *c = static_cast<CurveWidget *>(GetTimeBasedWidget());
-	c->SetVerticalScale(c->GetVerticalScale() * 0.5);
+	CurveWidget *c = static_cast<CurveWidget *>(get_time_based_widget());
+	c->set_vertical_scale(c->get_vertical_scale() * 0.5);
 }
 
-void CurvePanel::Retranslate()
+void CurvePanel::retranslate()
 {
-	TimeBasedPanel::Retranslate();
+	TimeBasedPanel::retranslate();
 
-	SetTitle(tr("Curve Editor"));
+	set_title(tr("Curve Editor"));
 }
 
 }

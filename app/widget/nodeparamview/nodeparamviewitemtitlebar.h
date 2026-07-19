@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEPARAMVIEWITEMTITLEBAR_H
-#define NODEPARAMVIEWITEMTITLEBAR_H
+#ifndef OAK_NODEPARAMVIEWITEMTITLEBAR_H
+#define OAK_NODEPARAMVIEWITEMTITLEBAR_H
 
 #include <QCheckBox>
 #include <QLabel>
@@ -36,51 +36,51 @@ class NodeParamViewItemTitleBar : public QWidget {
 public:
 	NodeParamViewItemTitleBar(QWidget *parent = nullptr);
 
-	bool IsExpanded() const
+	bool is_expanded() const
 	{
 		return collapse_btn_->isChecked();
 	}
 
 public slots:
-	void SetExpanded(bool e);
+	void set_expanded(bool e);
 
-	void SetText(const QString &s)
+	void set_text(const QString &s)
 	{
 		lbl_->setText(s);
 		lbl_->setToolTip(s);
 		lbl_->setMinimumWidth(1);
 	}
 
-	void SetPinButtonVisible(bool e)
+	void set_pin_button_visible(bool e)
 	{
 		pin_btn_->setVisible(e);
 	}
 
-	void SetAddEffectButtonVisible(bool e)
+	void set_add_effect_button_visible(bool e)
 	{
 		add_fx_btn_->setVisible(e);
 	}
 
-	void SetEnabledCheckBoxVisible(bool e)
+	void set_enabled_check_box_visible(bool e)
 	{
 		enabled_checkbox_->setVisible(e);
 	}
 
-	void SetEnabledCheckBoxChecked(bool e)
+	void set_enabled_check_box_checked(bool e)
 	{
 		enabled_checkbox_->setChecked(e);
 	}
 
 signals:
-	void ExpandedStateChanged(bool e);
+	void expanded_state_changed(bool e);
 
-	void PinToggled(bool e);
+	void pin_toggled(bool e);
 
-	void AddEffectButtonClicked();
+	void add_effect_button_clicked();
 
-	void EnabledCheckBoxClicked(bool e);
+	void enabled_check_box_clicked(bool e);
 
-	void Clicked();
+	void clicked();
 
 protected:
 	virtual void paintEvent(QPaintEvent *event) override;
@@ -104,4 +104,4 @@ private:
 
 }
 
-#endif // NODEPARAMVIEWITEMTITLEBAR_H
+#endif // OAK_NODEPARAMVIEWITEMTITLEBAR_H

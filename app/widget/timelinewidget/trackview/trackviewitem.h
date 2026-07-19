@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TRACKVIEWITEM_H
-#define TRACKVIEWITEM_H
+#ifndef OAK_TRACKVIEWITEM_H
+#define OAK_TRACKVIEWITEM_H
 
 #include <QPushButton>
 #include <QStackedWidget>
@@ -40,10 +40,10 @@ public:
 	TrackViewItem(Track *track, QWidget *parent = nullptr);
 
 signals:
-	void AboutToDeleteTrack(Track *track);
+	void about_to_delete_track(Track *track);
 
 private:
-	QPushButton *CreateMSLButton(const QColor &checked_color) const;
+	QPushButton *create_msl_button(const QColor &checked_color) const;
 
 	QStackedWidget *stack_;
 
@@ -57,25 +57,25 @@ private:
 	Track *track_;
 
 private slots:
-	void LabelClicked();
+	void label_clicked();
 
-	void LineEditConfirmed();
+	void line_edit_confirmed();
 
-	void LineEditCancelled();
+	void line_edit_cancelled();
 
-	void UpdateLabel();
+	void update_label();
 
-	void ShowContextMenu(const QPoint &p);
+	void show_context_menu(const QPoint &p);
 
-	void DeleteTrack();
+	void delete_track();
 
-	void DeleteAllEmptyTracks();
+	void delete_all_empty_tracks();
 
-	void UpdateMuteButton(bool e);
+	void update_mute_button(bool e);
 
-	void UpdateLockButton(bool e);
+	void update_lock_button(bool e);
 };
 
 }
 
-#endif // TRACKVIEWITEM_H
+#endif // OAK_TRACKVIEWITEM_H

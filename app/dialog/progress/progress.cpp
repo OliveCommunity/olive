@@ -65,20 +65,20 @@ ProgressDialog::ProgressDialog(const QString &message, const QString &title,
 	QPushButton *cancel_btn = new QPushButton(tr("Cancel"));
 
 	// Signal that derivatives can connect to
-	connect(cancel_btn, &QPushButton::clicked, this, &ProgressDialog::Cancelled,
+	connect(cancel_btn, &QPushButton::clicked, this, &ProgressDialog::cancelled,
 			Qt::DirectConnection);
 
 	// Stop updating the elapsed/remaining timers
 	connect(cancel_btn, &QPushButton::clicked, elapsed_timer_lbl_,
-			&ElapsedCounterWidget::Stop);
+			&ElapsedCounterWidget::stop);
 
 	// Disable the button so that users know they don't need to keep clicking it
 	connect(cancel_btn, &QPushButton::clicked, this,
-			&ProgressDialog::DisableSenderWidget);
+			&ProgressDialog::disable_sender_widget);
 
 	// Prevent the progress bar from continuing to move
 	connect(cancel_btn, &QPushButton::clicked, this,
-			&ProgressDialog::DisableProgressWidgets);
+			&ProgressDialog::disable_progress_widgets);
 
 	cancel_layout->addWidget(cancel_btn);
 
@@ -90,10 +90,10 @@ void ProgressDialog::showEvent(QShowEvent *e)
 	super::showEvent(e);
 
 	if (first_show_) {
-		elapsed_timer_lbl_->Start();
+		elapsed_timer_lbl_->start();
 
-		Core::instance()->main_window()->SetApplicationProgressStatus(
-			MainWindow::kProgressShow);
+		Core::instance()->main_window()->set_application_progress_status(
+			MainWindow::k_progress_show);
 
 		first_show_ = false;
 	}
@@ -103,15 +103,15 @@ void ProgressDialog::closeEvent(QCloseEvent *e)
 {
 	super::closeEvent(e);
 
-	Core::instance()->main_window()->SetApplicationProgressStatus(
-		MainWindow::kProgressNone);
+	Core::instance()->main_window()->set_application_progress_status(
+		MainWindow::k_progress_none);
 
-	elapsed_timer_lbl_->Stop();
+	elapsed_timer_lbl_->stop();
 
 	first_show_ = true;
 }
 
-void ProgressDialog::SetProgress(double value)
+void ProgressDialog::set_progress(double value)
 {
 	if (!show_progress_) {
 		return;
@@ -120,16 +120,16 @@ void ProgressDialog::SetProgress(double value)
 	int percent = qRound(100.0 * value);
 
 	bar_->setValue(percent);
-	elapsed_timer_lbl_->SetProgress(value);
+	elapsed_timer_lbl_->set_progress(value);
 
-	Core::instance()->main_window()->SetApplicationProgressValue(percent);
+	Core::instance()->main_window()->set_application_progress_value(percent);
 }
 
-void ProgressDialog::ShowErrorMessage(const QString &title,
+void ProgressDialog::show_error_message(const QString &title,
 									  const QString &message)
 {
-	Core::instance()->main_window()->SetApplicationProgressStatus(
-		MainWindow::kProgressError);
+	Core::instance()->main_window()->set_application_progress_status(
+		MainWindow::k_progress_error);
 
 	QMessageBox b(this);
 	b.setIcon(QMessageBox::Critical);
@@ -140,12 +140,12 @@ void ProgressDialog::ShowErrorMessage(const QString &title,
 	b.exec();
 }
 
-void ProgressDialog::DisableSenderWidget()
+void ProgressDialog::disable_sender_widget()
 {
 	static_cast<QWidget *>(sender())->setEnabled(false);
 }
 
-void ProgressDialog::DisableProgressWidgets()
+void ProgressDialog::disable_progress_widgets()
 {
 	show_progress_ = false;
 }

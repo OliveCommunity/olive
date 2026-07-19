@@ -26,27 +26,27 @@
 namespace
 {
 
-constexpr double kPi = 3.14159265358979323846;
+constexpr double k_pi = 3.14159265358979323846;
 
 // A "dummy" texture has no renderer backend and is therefore safe to pass
 // around in a headless, CPU-only test.
 olive::TexturePtr
-MakeDummyTexture(int channels = olive::VideoParams::kRGBAChannelCount)
+make_dummy_texture(int channels = olive::VideoParams::k_rgba_channel_count)
 {
 	return std::make_shared<olive::Texture>(
-		olive::VideoParams(64, 64, olive::core::PixelFormat::F32, channels));
+		olive::VideoParams(64, 64, olive::core::PixelFormat::f32, channels));
 }
 
-olive::core::AudioParams TestAudioParams()
+olive::core::AudioParams test_audio_params()
 {
-	return olive::core::AudioParams(48000, olive::core::kChannelLayoutStereo,
-									olive::core::SampleFormat::F32P);
+	return olive::core::AudioParams(48000, olive::core::k_channel_layout_stereo,
+									olive::core::SampleFormat::f32_p);
 }
 
 // Stereo buffer with every sample in both channels set to the same value
-olive::core::SampleBuffer MakeConstantBuffer(float value, size_t sample_count)
+olive::core::SampleBuffer make_constant_buffer(float value, size_t sample_count)
 {
-	olive::core::SampleBuffer buffer(TestAudioParams(), sample_count);
+	olive::core::SampleBuffer buffer(test_audio_params(), sample_count);
 	for (size_t i = 0; i < sample_count; i++) {
 		buffer.data(0)[i] = value;
 		buffer.data(1)[i] = value;
@@ -54,33 +54,33 @@ olive::core::SampleBuffer MakeConstantBuffer(float value, size_t sample_count)
 	return buffer;
 }
 
-olive::NodeValue SampleValue(const olive::core::SampleBuffer &buffer)
+olive::NodeValue sample_value(const olive::core::SampleBuffer &buffer)
 {
-	return olive::NodeValue(olive::NodeValue::kSamples,
+	return olive::NodeValue(olive::NodeValue::k_samples,
 							QVariant::fromValue(buffer));
 }
 
 // Globals for the audio path of TransitionBlock::Value, mixing over [in, out)
-olive::NodeGlobals AudioGlobals(const olive::core::rational &in,
-								const olive::core::rational &out)
+olive::NodeGlobals audio_globals(const olive::core::Rational &in,
+								const olive::core::Rational &out)
 {
-	return olive::NodeGlobals(olive::VideoParams(), TestAudioParams(),
+	return olive::NodeGlobals(olive::VideoParams(), test_audio_params(),
 							  olive::TimeRange(in, out),
-							  olive::LoopMode::kLoopModeOff);
+							  olive::LoopMode::k_loop_mode_off);
 }
 
 // A fresh traverser per call: NodeTraverser caches tables per node/range, so
 // reusing one would return stale results after changing standard values.
-double GenerateTrigResult(olive::TrigonometryNode *node)
+double generate_trig_result(olive::TrigonometryNode *node)
 {
 	olive::NodeTraverser traverser;
-	olive::NodeValueTable table = traverser.GenerateTable(
-		node, olive::TimeRange(olive::core::rational(0),
-							   olive::core::rational(1, 30)));
-	return table.Get(olive::NodeValue::kFloat).toDouble();
+	olive::NodeValueTable table = traverser.generate_table(
+		node, olive::TimeRange(olive::core::Rational(0),
+							   olive::core::Rational(1, 30)));
+	return table.get(olive::NodeValue::k_float).to_double();
 }
 
-template <typename T> T *AddNode(olive::Project *project)
+template <typename T> T *add_node(olive::Project *project)
 {
 	T *node = new T();
 	node->setParent(project);
@@ -95,7 +95,7 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(GlobalsProbeNode)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return QStringLiteral("Globals Probe");
 	}
@@ -105,12 +105,12 @@ public:
 		return QStringLiteral("org.oak.test.globalsprobe");
 	}
 
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
 		return {};
 	}
 
-	virtual void Value(const olive::NodeValueRow &value,
+	virtual void value(const olive::NodeValueRow &value,
 					   const olive::NodeGlobals &globals,
 					   olive::NodeValueTable *table) const override
 	{
@@ -118,7 +118,7 @@ public:
 
 		last_vparams_ = globals.vparams();
 		last_aparams_ = globals.aparams();
-		table->Push(olive::NodeValue::kFloat, 0.0, this);
+		table->push(olive::NodeValue::k_float, 0.0, this);
 	}
 
 	const olive::VideoParams &last_vparams() const
@@ -148,40 +148,40 @@ TEST(TrigonometryNode, MetadataIsCorrect)
 
 	EXPECT_EQ(node.id(),
 			  QStringLiteral("org.olivevideoeditor.Olive.trigonometry"));
-	EXPECT_EQ(node.Name(), QStringLiteral("Trigonometry"));
-	EXPECT_FALSE(node.Description().isEmpty());
-	EXPECT_TRUE(node.Category().contains(olive::Node::kCategoryMath));
+	EXPECT_EQ(node.name(), QStringLiteral("Trigonometry"));
+	EXPECT_FALSE(node.description().isEmpty());
+	EXPECT_TRUE(node.category().contains(olive::Node::k_category_math));
 
-	EXPECT_EQ(int(node.GetInputDataType(olive::TrigonometryNode::kMethodIn)),
-			  int(olive::NodeValue::kCombo));
-	EXPECT_EQ(int(node.GetInputDataType(olive::TrigonometryNode::kXIn)),
-			  int(olive::NodeValue::kFloat));
+	EXPECT_EQ(int(node.get_input_data_type(olive::TrigonometryNode::k_method_in)),
+			  int(olive::NodeValue::k_combo));
+	EXPECT_EQ(int(node.get_input_data_type(olive::TrigonometryNode::k_x_in)),
+			  int(olive::NodeValue::k_float));
 
 	// Method defaults to sine, value defaults to zero
-	EXPECT_EQ(node.GetStandardValue(olive::TrigonometryNode::kMethodIn).toInt(),
+	EXPECT_EQ(node.get_standard_value(olive::TrigonometryNode::k_method_in).toInt(),
 			  0);
 	EXPECT_DOUBLE_EQ(
-		node.GetStandardValue(olive::TrigonometryNode::kXIn).toDouble(), 0.0);
+		node.get_standard_value(olive::TrigonometryNode::k_x_in).toDouble(), 0.0);
 
 	// The method is a static UI choice: neither connectable nor keyframable
 	EXPECT_FALSE(
-		node.IsInputConnectable(olive::TrigonometryNode::kMethodIn));
+		node.is_input_connectable(olive::TrigonometryNode::k_method_in));
 	EXPECT_FALSE(
-		node.IsInputKeyframable(olive::TrigonometryNode::kMethodIn));
+		node.is_input_keyframable(olive::TrigonometryNode::k_method_in));
 }
 
 TEST(TrigonometryNode, RetranslateSetsInputNamesAndComboStrings)
 {
 	olive::TrigonometryNode node;
-	node.Retranslate();
+	node.retranslate();
 
-	EXPECT_EQ(node.GetInputName(olive::TrigonometryNode::kMethodIn),
+	EXPECT_EQ(node.get_input_name(olive::TrigonometryNode::k_method_in),
 			  QStringLiteral("Method"));
-	EXPECT_EQ(node.GetInputName(olive::TrigonometryNode::kXIn),
+	EXPECT_EQ(node.get_input_name(olive::TrigonometryNode::k_x_in),
 			  QStringLiteral("Value"));
 
 	const QStringList methods =
-		node.GetInputProperty(olive::TrigonometryNode::kMethodIn,
+		node.get_input_property(olive::TrigonometryNode::k_method_in,
 							  QStringLiteral("combo_str"))
 			.toStringList();
 	ASSERT_EQ(methods.size(), 9);
@@ -201,90 +201,90 @@ TEST(TrigonometryNode, RetranslateSetsInputNamesAndComboStrings)
 
 TEST(TrigonometryNode, SineCosineTangent)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TrigonometryNode>(&project);
+	auto *node = add_node<olive::TrigonometryNode>(&project);
 
-	node->SetStandardValue(olive::TrigonometryNode::kMethodIn, 0);
-	node->SetStandardValue(olive::TrigonometryNode::kXIn, kPi / 2);
-	EXPECT_NEAR(GenerateTrigResult(node), 1.0, 1e-12);
+	node->set_standard_value(olive::TrigonometryNode::k_method_in, 0);
+	node->set_standard_value(olive::TrigonometryNode::k_x_in, k_pi / 2);
+	EXPECT_NEAR(generate_trig_result(node), 1.0, 1e-12);
 
-	node->SetStandardValue(olive::TrigonometryNode::kMethodIn, 1);
-	node->SetStandardValue(olive::TrigonometryNode::kXIn, kPi);
-	EXPECT_NEAR(GenerateTrigResult(node), -1.0, 1e-12);
+	node->set_standard_value(olive::TrigonometryNode::k_method_in, 1);
+	node->set_standard_value(olive::TrigonometryNode::k_x_in, k_pi);
+	EXPECT_NEAR(generate_trig_result(node), -1.0, 1e-12);
 
-	node->SetStandardValue(olive::TrigonometryNode::kMethodIn, 2);
-	node->SetStandardValue(olive::TrigonometryNode::kXIn, kPi / 4);
-	EXPECT_NEAR(GenerateTrigResult(node), 1.0, 1e-12);
+	node->set_standard_value(olive::TrigonometryNode::k_method_in, 2);
+	node->set_standard_value(olive::TrigonometryNode::k_x_in, k_pi / 4);
+	EXPECT_NEAR(generate_trig_result(node), 1.0, 1e-12);
 }
 
 TEST(TrigonometryNode, InverseOperations)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TrigonometryNode>(&project);
+	auto *node = add_node<olive::TrigonometryNode>(&project);
 
-	node->SetStandardValue(olive::TrigonometryNode::kMethodIn, 3);
-	node->SetStandardValue(olive::TrigonometryNode::kXIn, 1.0);
-	EXPECT_NEAR(GenerateTrigResult(node), kPi / 2, 1e-12);
+	node->set_standard_value(olive::TrigonometryNode::k_method_in, 3);
+	node->set_standard_value(olive::TrigonometryNode::k_x_in, 1.0);
+	EXPECT_NEAR(generate_trig_result(node), k_pi / 2, 1e-12);
 
-	node->SetStandardValue(olive::TrigonometryNode::kMethodIn, 4);
-	node->SetStandardValue(olive::TrigonometryNode::kXIn, -1.0);
-	EXPECT_NEAR(GenerateTrigResult(node), kPi, 1e-12);
+	node->set_standard_value(olive::TrigonometryNode::k_method_in, 4);
+	node->set_standard_value(olive::TrigonometryNode::k_x_in, -1.0);
+	EXPECT_NEAR(generate_trig_result(node), k_pi, 1e-12);
 
-	node->SetStandardValue(olive::TrigonometryNode::kMethodIn, 5);
-	node->SetStandardValue(olive::TrigonometryNode::kXIn, 1.0);
-	EXPECT_NEAR(GenerateTrigResult(node), kPi / 4, 1e-12);
+	node->set_standard_value(olive::TrigonometryNode::k_method_in, 5);
+	node->set_standard_value(olive::TrigonometryNode::k_x_in, 1.0);
+	EXPECT_NEAR(generate_trig_result(node), k_pi / 4, 1e-12);
 }
 
 TEST(TrigonometryNode, HyperbolicOperations)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TrigonometryNode>(&project);
-	node->SetStandardValue(olive::TrigonometryNode::kXIn, 1.0);
+	auto *node = add_node<olive::TrigonometryNode>(&project);
+	node->set_standard_value(olive::TrigonometryNode::k_x_in, 1.0);
 
-	node->SetStandardValue(olive::TrigonometryNode::kMethodIn, 6);
-	EXPECT_NEAR(GenerateTrigResult(node), std::sinh(1.0), 1e-12);
+	node->set_standard_value(olive::TrigonometryNode::k_method_in, 6);
+	EXPECT_NEAR(generate_trig_result(node), std::sinh(1.0), 1e-12);
 
-	node->SetStandardValue(olive::TrigonometryNode::kMethodIn, 7);
-	EXPECT_NEAR(GenerateTrigResult(node), std::cosh(1.0), 1e-12);
+	node->set_standard_value(olive::TrigonometryNode::k_method_in, 7);
+	EXPECT_NEAR(generate_trig_result(node), std::cosh(1.0), 1e-12);
 
-	node->SetStandardValue(olive::TrigonometryNode::kMethodIn, 8);
-	EXPECT_NEAR(GenerateTrigResult(node), std::tanh(1.0), 1e-12);
+	node->set_standard_value(olive::TrigonometryNode::k_method_in, 8);
+	EXPECT_NEAR(generate_trig_result(node), std::tanh(1.0), 1e-12);
 }
 
 TEST(TrigonometryNode, ComboIndexMatchesOperationEnum)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TrigonometryNode>(&project);
+	auto *node = add_node<olive::TrigonometryNode>(&project);
 
 	// The combo list has no separator entries, so a combo index selects the
 	// Operation enum value with the same index
-	node->SetStandardValue(olive::TrigonometryNode::kMethodIn, 3);
-	node->SetStandardValue(olive::TrigonometryNode::kXIn, 0.5);
-	EXPECT_NEAR(GenerateTrigResult(node), std::asin(0.5), 1e-12);
+	node->set_standard_value(olive::TrigonometryNode::k_method_in, 3);
+	node->set_standard_value(olive::TrigonometryNode::k_x_in, 0.5);
+	EXPECT_NEAR(generate_trig_result(node), std::asin(0.5), 1e-12);
 
-	node->SetStandardValue(olive::TrigonometryNode::kMethodIn, 4);
-	node->SetStandardValue(olive::TrigonometryNode::kXIn, 0.5);
-	EXPECT_NEAR(GenerateTrigResult(node), std::acos(0.5), 1e-12);
+	node->set_standard_value(olive::TrigonometryNode::k_method_in, 4);
+	node->set_standard_value(olive::TrigonometryNode::k_x_in, 0.5);
+	EXPECT_NEAR(generate_trig_result(node), std::acos(0.5), 1e-12);
 
-	node->SetStandardValue(olive::TrigonometryNode::kMethodIn, 6);
-	node->SetStandardValue(olive::TrigonometryNode::kXIn, 1.0);
-	EXPECT_NEAR(GenerateTrigResult(node), std::sinh(1.0), 1e-12);
+	node->set_standard_value(olive::TrigonometryNode::k_method_in, 6);
+	node->set_standard_value(olive::TrigonometryNode::k_x_in, 1.0);
+	EXPECT_NEAR(generate_trig_result(node), std::sinh(1.0), 1e-12);
 
-	node->SetStandardValue(olive::TrigonometryNode::kMethodIn, 8);
-	node->SetStandardValue(olive::TrigonometryNode::kXIn, 1.0);
-	EXPECT_NEAR(GenerateTrigResult(node), std::tanh(1.0), 1e-12);
+	node->set_standard_value(olive::TrigonometryNode::k_method_in, 8);
+	node->set_standard_value(olive::TrigonometryNode::k_x_in, 1.0);
+	EXPECT_NEAR(generate_trig_result(node), std::tanh(1.0), 1e-12);
 }
 
 // -----------------------------------------------------------------------------
@@ -296,30 +296,30 @@ TEST(MergeNode, MetadataIsCorrect)
 	olive::MergeNode node;
 
 	EXPECT_EQ(node.id(), QStringLiteral("org.olivevideoeditor.Olive.merge"));
-	EXPECT_EQ(node.Name(), QStringLiteral("Merge"));
-	EXPECT_FALSE(node.Description().isEmpty());
-	EXPECT_TRUE(node.Category().contains(olive::Node::kCategoryMath));
+	EXPECT_EQ(node.name(), QStringLiteral("Merge"));
+	EXPECT_FALSE(node.description().isEmpty());
+	EXPECT_TRUE(node.category().contains(olive::Node::k_category_math));
 
-	EXPECT_EQ(int(node.GetInputDataType(olive::MergeNode::kBaseIn)),
-			  int(olive::NodeValue::kTexture));
-	EXPECT_EQ(int(node.GetInputDataType(olive::MergeNode::kBlendIn)),
-			  int(olive::NodeValue::kTexture));
+	EXPECT_EQ(int(node.get_input_data_type(olive::MergeNode::k_base_in)),
+			  int(olive::NodeValue::k_texture));
+	EXPECT_EQ(int(node.get_input_data_type(olive::MergeNode::k_blend_in)),
+			  int(olive::NodeValue::k_texture));
 
 	// Textures cannot be keyframed, and the merge node is an internal
 	// compositing building block hidden from the param view
-	EXPECT_FALSE(node.IsInputKeyframable(olive::MergeNode::kBaseIn));
-	EXPECT_FALSE(node.IsInputKeyframable(olive::MergeNode::kBlendIn));
-	EXPECT_TRUE(node.GetFlags() & olive::Node::kDontShowInParamView);
+	EXPECT_FALSE(node.is_input_keyframable(olive::MergeNode::k_base_in));
+	EXPECT_FALSE(node.is_input_keyframable(olive::MergeNode::k_blend_in));
+	EXPECT_TRUE(node.get_flags() & olive::Node::k_dont_show_in_param_view);
 }
 
 TEST(MergeNode, RetranslateSetsInputNames)
 {
 	olive::MergeNode node;
-	node.Retranslate();
+	node.retranslate();
 
-	EXPECT_EQ(node.GetInputName(olive::MergeNode::kBaseIn),
+	EXPECT_EQ(node.get_input_name(olive::MergeNode::k_base_in),
 			  QStringLiteral("Base"));
-	EXPECT_EQ(node.GetInputName(olive::MergeNode::kBlendIn),
+	EXPECT_EQ(node.get_input_name(olive::MergeNode::k_blend_in),
 			  QStringLiteral("Blend"));
 }
 
@@ -328,7 +328,7 @@ TEST(MergeNode, ShaderCodeLoadsAlphaOver)
 	olive::MergeNode node;
 
 	const olive::ShaderCode code =
-		node.GetShaderCode(olive::Node::ShaderRequest(QStringLiteral("x")));
+		node.get_shader_code(olive::Node::ShaderRequest(QStringLiteral("x")));
 	EXPECT_FALSE(code.frag_code().isEmpty());
 }
 
@@ -337,39 +337,39 @@ TEST(MergeNode, ValueWithNoTexturesPushesNothing)
 	olive::MergeNode node;
 
 	olive::NodeValueTable table;
-	node.Value(olive::NodeValueRow(), olive::NodeGlobals(), &table);
+	node.value(olive::NodeValueRow(), olive::NodeGlobals(), &table);
 
-	EXPECT_EQ(table.Count(), 0);
+	EXPECT_EQ(table.count(), 0);
 }
 
 TEST(MergeNode, ValueWithOnlyBasePassesBaseThrough)
 {
 	olive::MergeNode node;
 
-	olive::TexturePtr base = MakeDummyTexture();
+	olive::TexturePtr base = make_dummy_texture();
 	olive::NodeValueRow row;
-	row.insert(olive::MergeNode::kBaseIn,
-			   olive::NodeValue(olive::NodeValue::kTexture, base));
+	row.insert(olive::MergeNode::k_base_in,
+			   olive::NodeValue(olive::NodeValue::k_texture, base));
 
 	olive::NodeValueTable table;
-	node.Value(row, olive::NodeGlobals(), &table);
+	node.value(row, olive::NodeGlobals(), &table);
 
-	EXPECT_EQ(table.Get(olive::NodeValue::kTexture).toTexture(), base);
+	EXPECT_EQ(table.get(olive::NodeValue::k_texture).to_texture(), base);
 }
 
 TEST(MergeNode, ValueWithOnlyBlendPassesBlendThrough)
 {
 	olive::MergeNode node;
 
-	olive::TexturePtr blend = MakeDummyTexture();
+	olive::TexturePtr blend = make_dummy_texture();
 	olive::NodeValueRow row;
-	row.insert(olive::MergeNode::kBlendIn,
-			   olive::NodeValue(olive::NodeValue::kTexture, blend));
+	row.insert(olive::MergeNode::k_blend_in,
+			   olive::NodeValue(olive::NodeValue::k_texture, blend));
 
 	olive::NodeValueTable table;
-	node.Value(row, olive::NodeGlobals(), &table);
+	node.value(row, olive::NodeGlobals(), &table);
 
-	EXPECT_EQ(table.Get(olive::NodeValue::kTexture).toTexture(), blend);
+	EXPECT_EQ(table.get(olive::NodeValue::k_texture).to_texture(), blend);
 }
 
 TEST(MergeNode, ValueWithRgbBlendPassesBlendThrough)
@@ -378,43 +378,43 @@ TEST(MergeNode, ValueWithRgbBlendPassesBlendThrough)
 
 	// An RGB blend texture has no alpha channel, so alpha-over is skipped
 	// and the blend passes through even when a base is present
-	olive::TexturePtr base = MakeDummyTexture();
-	olive::TexturePtr blend = MakeDummyTexture(3);
+	olive::TexturePtr base = make_dummy_texture();
+	olive::TexturePtr blend = make_dummy_texture(3);
 	olive::NodeValueRow row;
-	row.insert(olive::MergeNode::kBaseIn,
-			   olive::NodeValue(olive::NodeValue::kTexture, base));
-	row.insert(olive::MergeNode::kBlendIn,
-			   olive::NodeValue(olive::NodeValue::kTexture, blend));
+	row.insert(olive::MergeNode::k_base_in,
+			   olive::NodeValue(olive::NodeValue::k_texture, base));
+	row.insert(olive::MergeNode::k_blend_in,
+			   olive::NodeValue(olive::NodeValue::k_texture, blend));
 
 	olive::NodeValueTable table;
-	node.Value(row, olive::NodeGlobals(), &table);
+	node.value(row, olive::NodeGlobals(), &table);
 
-	EXPECT_EQ(table.Get(olive::NodeValue::kTexture).toTexture(), blend);
+	EXPECT_EQ(table.get(olive::NodeValue::k_texture).to_texture(), blend);
 }
 
 TEST(MergeNode, ValueWithBaseAndRgbaBlendPushesAlphaOverJob)
 {
 	olive::MergeNode node;
 
-	olive::TexturePtr base = MakeDummyTexture();
-	olive::TexturePtr blend = MakeDummyTexture();
+	olive::TexturePtr base = make_dummy_texture();
+	olive::TexturePtr blend = make_dummy_texture();
 	olive::NodeValueRow row;
-	row.insert(olive::MergeNode::kBaseIn,
-			   olive::NodeValue(olive::NodeValue::kTexture, base));
-	row.insert(olive::MergeNode::kBlendIn,
-			   olive::NodeValue(olive::NodeValue::kTexture, blend));
+	row.insert(olive::MergeNode::k_base_in,
+			   olive::NodeValue(olive::NodeValue::k_texture, base));
+	row.insert(olive::MergeNode::k_blend_in,
+			   olive::NodeValue(olive::NodeValue::k_texture, blend));
 
 	olive::NodeValueTable table;
-	node.Value(row, olive::NodeGlobals(), &table);
+	node.value(row, olive::NodeGlobals(), &table);
 
-	olive::TexturePtr out = table.Get(olive::NodeValue::kTexture).toTexture();
+	olive::TexturePtr out = table.get(olive::NodeValue::k_texture).to_texture();
 	ASSERT_TRUE(out);
-	ASSERT_TRUE(out->IsJob());
+	ASSERT_TRUE(out->is_job());
 
 	auto *job = dynamic_cast<olive::ShaderJob *>(out->job());
 	ASSERT_TRUE(job);
-	EXPECT_EQ(job->Get(olive::MergeNode::kBaseIn).toTexture(), base);
-	EXPECT_EQ(job->Get(olive::MergeNode::kBlendIn).toTexture(), blend);
+	EXPECT_EQ(job->get(olive::MergeNode::k_base_in).to_texture(), base);
+	EXPECT_EQ(job->get(olive::MergeNode::k_blend_in).to_texture(), blend);
 
 	// The job texture inherits the base texture's parameters
 	EXPECT_EQ(out->params().width(), base->params().width());
@@ -431,46 +431,46 @@ TEST(TransitionBlock, MetadataIsCorrect)
 	olive::CrossDissolveTransition cross;
 	EXPECT_EQ(cross.id(),
 			  QStringLiteral("org.olivevideoeditor.Olive.crossdissolve"));
-	EXPECT_EQ(cross.Name(), QStringLiteral("Cross Dissolve"));
-	EXPECT_FALSE(cross.Description().isEmpty());
-	EXPECT_TRUE(cross.Category().contains(olive::Node::kCategoryTransition));
+	EXPECT_EQ(cross.name(), QStringLiteral("Cross Dissolve"));
+	EXPECT_FALSE(cross.description().isEmpty());
+	EXPECT_TRUE(cross.category().contains(olive::Node::k_category_transition));
 
 	olive::DipToColorTransition dip;
 	EXPECT_EQ(dip.id(),
 			  QStringLiteral("org.olivevideoeditor.Olive.diptocolor"));
-	EXPECT_EQ(dip.Name(), QStringLiteral("Dip To Color"));
-	EXPECT_FALSE(dip.Description().isEmpty());
-	EXPECT_TRUE(dip.Category().contains(olive::Node::kCategoryTransition));
+	EXPECT_EQ(dip.name(), QStringLiteral("Dip To Color"));
+	EXPECT_FALSE(dip.description().isEmpty());
+	EXPECT_TRUE(dip.category().contains(olive::Node::k_category_transition));
 
-	EXPECT_EQ(int(cross.GetInputDataType(
-				  olive::TransitionBlock::kOutBlockInput)),
-			  int(olive::NodeValue::kNone));
-	EXPECT_EQ(int(cross.GetInputDataType(
-				  olive::TransitionBlock::kInBlockInput)),
-			  int(olive::NodeValue::kNone));
+	EXPECT_EQ(int(cross.get_input_data_type(
+				  olive::TransitionBlock::k_out_block_input)),
+			  int(olive::NodeValue::k_none));
+	EXPECT_EQ(int(cross.get_input_data_type(
+				  olive::TransitionBlock::k_in_block_input)),
+			  int(olive::NodeValue::k_none));
 	EXPECT_EQ(
-		int(cross.GetInputDataType(olive::TransitionBlock::kCurveInput)),
-		int(olive::NodeValue::kCombo));
+		int(cross.get_input_data_type(olive::TransitionBlock::k_curve_input)),
+		int(olive::NodeValue::k_combo));
 	EXPECT_EQ(
-		int(cross.GetInputDataType(olive::TransitionBlock::kCenterInput)),
-		int(olive::NodeValue::kRational));
+		int(cross.get_input_data_type(olive::TransitionBlock::k_center_input)),
+		int(olive::NodeValue::k_rational));
 
 	// The curve is a static UI choice defaulting to linear
 	EXPECT_FALSE(
-		cross.IsInputConnectable(olive::TransitionBlock::kCurveInput));
+		cross.is_input_connectable(olive::TransitionBlock::k_curve_input));
 	EXPECT_FALSE(
-		cross.IsInputKeyframable(olive::TransitionBlock::kCurveInput));
-	EXPECT_EQ(cross.GetStandardValue(olive::TransitionBlock::kCurveInput)
+		cross.is_input_keyframable(olive::TransitionBlock::k_curve_input));
+	EXPECT_EQ(cross.get_standard_value(olive::TransitionBlock::k_curve_input)
 				  .toInt(),
 			  0);
-	EXPECT_EQ(cross.offset_center(), olive::core::rational(0));
+	EXPECT_EQ(cross.offset_center(), olive::core::Rational(0));
 
 	// Blocks hide from the param view by default, transitions re-enable it
-	EXPECT_FALSE(cross.GetFlags() & olive::Node::kDontShowInParamView);
+	EXPECT_FALSE(cross.get_flags() & olive::Node::k_dont_show_in_param_view);
 
 	// Dip To Color adds a color parameter defaulting to black
 	const olive::core::Color color =
-		dip.GetStandardValue(olive::DipToColorTransition::kColorInput)
+		dip.get_standard_value(olive::DipToColorTransition::k_color_input)
 			.value<olive::core::Color>();
 	EXPECT_FLOAT_EQ(color.red(), 0.0f);
 	EXPECT_FLOAT_EQ(color.green(), 0.0f);
@@ -480,19 +480,19 @@ TEST(TransitionBlock, MetadataIsCorrect)
 TEST(TransitionBlock, RetranslateSetsInputNamesAndCurveStrings)
 {
 	olive::CrossDissolveTransition cross;
-	cross.Retranslate();
+	cross.retranslate();
 
-	EXPECT_EQ(cross.GetInputName(olive::TransitionBlock::kOutBlockInput),
+	EXPECT_EQ(cross.get_input_name(olive::TransitionBlock::k_out_block_input),
 			  QStringLiteral("From"));
-	EXPECT_EQ(cross.GetInputName(olive::TransitionBlock::kInBlockInput),
+	EXPECT_EQ(cross.get_input_name(olive::TransitionBlock::k_in_block_input),
 			  QStringLiteral("To"));
-	EXPECT_EQ(cross.GetInputName(olive::TransitionBlock::kCurveInput),
+	EXPECT_EQ(cross.get_input_name(olive::TransitionBlock::k_curve_input),
 			  QStringLiteral("Curve"));
-	EXPECT_EQ(cross.GetInputName(olive::TransitionBlock::kCenterInput),
+	EXPECT_EQ(cross.get_input_name(olive::TransitionBlock::k_center_input),
 			  QStringLiteral("Center Offset"));
 
 	const QStringList curves =
-		cross.GetInputProperty(olive::TransitionBlock::kCurveInput,
+		cross.get_input_property(olive::TransitionBlock::k_curve_input,
 							   QStringLiteral("combo_str"))
 			.toStringList();
 	ASSERT_EQ(curves.size(), 3);
@@ -501,8 +501,8 @@ TEST(TransitionBlock, RetranslateSetsInputNamesAndCurveStrings)
 	EXPECT_EQ(curves.at(2), QStringLiteral("Logarithmic"));
 
 	olive::DipToColorTransition dip;
-	dip.Retranslate();
-	EXPECT_EQ(dip.GetInputName(olive::DipToColorTransition::kColorInput),
+	dip.retranslate();
+	EXPECT_EQ(dip.get_input_name(olive::DipToColorTransition::k_color_input),
 			  QStringLiteral("Color"));
 }
 
@@ -510,13 +510,13 @@ TEST(TransitionBlock, ShaderCodeLoadsTransitionShaders)
 {
 	olive::CrossDissolveTransition cross;
 	EXPECT_FALSE(
-		cross.GetShaderCode(olive::Node::ShaderRequest(QStringLiteral("x")))
+		cross.get_shader_code(olive::Node::ShaderRequest(QStringLiteral("x")))
 			.frag_code()
 			.isEmpty());
 
 	olive::DipToColorTransition dip;
 	EXPECT_FALSE(
-		dip.GetShaderCode(olive::Node::ShaderRequest(QStringLiteral("x")))
+		dip.get_shader_code(olive::Node::ShaderRequest(QStringLiteral("x")))
 			.frag_code()
 			.isEmpty());
 }
@@ -524,299 +524,299 @@ TEST(TransitionBlock, ShaderCodeLoadsTransitionShaders)
 TEST(TransitionBlock, OffsetsWithoutConnectedBlocksAreZero)
 {
 	olive::CrossDissolveTransition trans;
-	trans.set_length_and_media_out(olive::core::rational(2));
+	trans.set_length_and_media_out(olive::core::Rational(2));
 
 	EXPECT_FALSE(trans.is_dual_transition());
 	EXPECT_EQ(trans.connected_out_block(), nullptr);
 	EXPECT_EQ(trans.connected_in_block(), nullptr);
-	EXPECT_EQ(trans.in_offset(), olive::core::rational(0));
-	EXPECT_EQ(trans.out_offset(), olive::core::rational(0));
+	EXPECT_EQ(trans.in_offset(), olive::core::Rational(0));
+	EXPECT_EQ(trans.out_offset(), olive::core::Rational(0));
 
 	// With zero offsets only the total progress is meaningful
-	EXPECT_DOUBLE_EQ(trans.GetTotalProgress(0.5), 0.25);
-	EXPECT_DOUBLE_EQ(trans.GetOutProgress(0.5), 0.0);
-	EXPECT_DOUBLE_EQ(trans.GetInProgress(0.5), 0.0);
+	EXPECT_DOUBLE_EQ(trans.get_total_progress(0.5), 0.25);
+	EXPECT_DOUBLE_EQ(trans.get_out_progress(0.5), 0.0);
+	EXPECT_DOUBLE_EQ(trans.get_in_progress(0.5), 0.0);
 }
 
 TEST(TransitionBlock, DualTransitionOffsetsAndProgress)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *trans = AddNode<olive::CrossDissolveTransition>(&project);
-	auto *out_clip = AddNode<olive::ClipBlock>(&project);
-	auto *in_clip = AddNode<olive::ClipBlock>(&project);
+	auto *trans = add_node<olive::CrossDissolveTransition>(&project);
+	auto *out_clip = add_node<olive::ClipBlock>(&project);
+	auto *in_clip = add_node<olive::ClipBlock>(&project);
 
-	trans->set_length_and_media_out(olive::core::rational(2));
+	trans->set_length_and_media_out(olive::core::Rational(2));
 
-	olive::Node::ConnectEdge(
+	olive::Node::connect_edge(
 		out_clip,
-		olive::NodeInput(trans, olive::TransitionBlock::kOutBlockInput));
-	olive::Node::ConnectEdge(
-		in_clip, olive::NodeInput(trans, olive::TransitionBlock::kInBlockInput));
+		olive::NodeInput(trans, olive::TransitionBlock::k_out_block_input));
+	olive::Node::connect_edge(
+		in_clip, olive::NodeInput(trans, olive::TransitionBlock::k_in_block_input));
 
 	ASSERT_TRUE(trans->is_dual_transition());
 	EXPECT_EQ(trans->connected_out_block(), out_clip);
 	EXPECT_EQ(trans->connected_in_block(), in_clip);
 
 	// A centered dual transition splits its length evenly on both sides
-	EXPECT_EQ(trans->in_offset(), olive::core::rational(1));
-	EXPECT_EQ(trans->out_offset(), olive::core::rational(1));
+	EXPECT_EQ(trans->in_offset(), olive::core::Rational(1));
+	EXPECT_EQ(trans->out_offset(), olive::core::Rational(1));
 
-	EXPECT_DOUBLE_EQ(trans->GetTotalProgress(0.0), 0.0);
-	EXPECT_DOUBLE_EQ(trans->GetTotalProgress(0.5), 0.25);
-	EXPECT_DOUBLE_EQ(trans->GetTotalProgress(1.5), 0.75);
+	EXPECT_DOUBLE_EQ(trans->get_total_progress(0.0), 0.0);
+	EXPECT_DOUBLE_EQ(trans->get_total_progress(0.5), 0.25);
+	EXPECT_DOUBLE_EQ(trans->get_total_progress(1.5), 0.75);
 
 	// Out progress runs from 1 to 0 over the out offset
-	EXPECT_DOUBLE_EQ(trans->GetOutProgress(0.0), 1.0);
-	EXPECT_DOUBLE_EQ(trans->GetOutProgress(0.5), 0.5);
-	EXPECT_DOUBLE_EQ(trans->GetOutProgress(1.5), 0.0);
+	EXPECT_DOUBLE_EQ(trans->get_out_progress(0.0), 1.0);
+	EXPECT_DOUBLE_EQ(trans->get_out_progress(0.5), 0.5);
+	EXPECT_DOUBLE_EQ(trans->get_out_progress(1.5), 0.0);
 
 	// In progress runs from 0 to 1 over the in offset and is clamped
-	EXPECT_DOUBLE_EQ(trans->GetInProgress(0.5), 0.0);
-	EXPECT_DOUBLE_EQ(trans->GetInProgress(1.5), 0.5);
-	EXPECT_DOUBLE_EQ(trans->GetInProgress(2.5), 1.0);
+	EXPECT_DOUBLE_EQ(trans->get_in_progress(0.5), 0.0);
+	EXPECT_DOUBLE_EQ(trans->get_in_progress(1.5), 0.5);
+	EXPECT_DOUBLE_EQ(trans->get_in_progress(2.5), 1.0);
 }
 
 TEST(TransitionBlock, OffsetCenterShiftsInOutOffsets)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *trans = AddNode<olive::CrossDissolveTransition>(&project);
-	auto *out_clip = AddNode<olive::ClipBlock>(&project);
-	auto *in_clip = AddNode<olive::ClipBlock>(&project);
+	auto *trans = add_node<olive::CrossDissolveTransition>(&project);
+	auto *out_clip = add_node<olive::ClipBlock>(&project);
+	auto *in_clip = add_node<olive::ClipBlock>(&project);
 
-	trans->set_length_and_media_out(olive::core::rational(2));
-	olive::Node::ConnectEdge(
+	trans->set_length_and_media_out(olive::core::Rational(2));
+	olive::Node::connect_edge(
 		out_clip,
-		olive::NodeInput(trans, olive::TransitionBlock::kOutBlockInput));
-	olive::Node::ConnectEdge(
-		in_clip, olive::NodeInput(trans, olive::TransitionBlock::kInBlockInput));
+		olive::NodeInput(trans, olive::TransitionBlock::k_out_block_input));
+	olive::Node::connect_edge(
+		in_clip, olive::NodeInput(trans, olive::TransitionBlock::k_in_block_input));
 
-	trans->set_offset_center(olive::core::rational(1, 2));
-	EXPECT_EQ(trans->offset_center(), olive::core::rational(1, 2));
+	trans->set_offset_center(olive::core::Rational(1, 2));
+	EXPECT_EQ(trans->offset_center(), olive::core::Rational(1, 2));
 
 	// A positive center offset moves the midpoint towards the out clip
-	EXPECT_EQ(trans->in_offset(), olive::core::rational(3, 2));
-	EXPECT_EQ(trans->out_offset(), olive::core::rational(1, 2));
+	EXPECT_EQ(trans->in_offset(), olive::core::Rational(3, 2));
+	EXPECT_EQ(trans->out_offset(), olive::core::Rational(1, 2));
 
-	EXPECT_DOUBLE_EQ(trans->GetOutProgress(0.25), 0.5);
-	EXPECT_DOUBLE_EQ(trans->GetInProgress(1.25), 0.5);
+	EXPECT_DOUBLE_EQ(trans->get_out_progress(0.25), 0.5);
+	EXPECT_DOUBLE_EQ(trans->get_in_progress(1.25), 0.5);
 }
 
 TEST(TransitionBlock, SingleSidedTransitionOffsets)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	// Only an outgoing clip: the whole length is the out offset (fade out)
-	auto *out_trans = AddNode<olive::CrossDissolveTransition>(&project);
-	auto *out_clip = AddNode<olive::ClipBlock>(&project);
-	out_trans->set_length_and_media_out(olive::core::rational(2));
-	olive::Node::ConnectEdge(
+	auto *out_trans = add_node<olive::CrossDissolveTransition>(&project);
+	auto *out_clip = add_node<olive::ClipBlock>(&project);
+	out_trans->set_length_and_media_out(olive::core::Rational(2));
+	olive::Node::connect_edge(
 		out_clip,
-		olive::NodeInput(out_trans, olive::TransitionBlock::kOutBlockInput));
+		olive::NodeInput(out_trans, olive::TransitionBlock::k_out_block_input));
 
 	EXPECT_FALSE(out_trans->is_dual_transition());
-	EXPECT_EQ(out_trans->out_offset(), olive::core::rational(2));
-	EXPECT_EQ(out_trans->in_offset(), olive::core::rational(0));
-	EXPECT_DOUBLE_EQ(out_trans->GetOutProgress(1.0), 0.5);
-	EXPECT_DOUBLE_EQ(out_trans->GetInProgress(1.0), 0.0);
+	EXPECT_EQ(out_trans->out_offset(), olive::core::Rational(2));
+	EXPECT_EQ(out_trans->in_offset(), olive::core::Rational(0));
+	EXPECT_DOUBLE_EQ(out_trans->get_out_progress(1.0), 0.5);
+	EXPECT_DOUBLE_EQ(out_trans->get_in_progress(1.0), 0.0);
 
 	// Only an incoming clip: the whole length is the in offset (fade in)
-	auto *in_trans = AddNode<olive::CrossDissolveTransition>(&project);
-	auto *in_clip = AddNode<olive::ClipBlock>(&project);
-	in_trans->set_length_and_media_out(olive::core::rational(2));
-	olive::Node::ConnectEdge(
+	auto *in_trans = add_node<olive::CrossDissolveTransition>(&project);
+	auto *in_clip = add_node<olive::ClipBlock>(&project);
+	in_trans->set_length_and_media_out(olive::core::Rational(2));
+	olive::Node::connect_edge(
 		in_clip,
-		olive::NodeInput(in_trans, olive::TransitionBlock::kInBlockInput));
+		olive::NodeInput(in_trans, olive::TransitionBlock::k_in_block_input));
 
 	EXPECT_FALSE(in_trans->is_dual_transition());
-	EXPECT_EQ(in_trans->in_offset(), olive::core::rational(2));
-	EXPECT_EQ(in_trans->out_offset(), olive::core::rational(0));
-	EXPECT_DOUBLE_EQ(in_trans->GetInProgress(1.0), 0.5);
-	EXPECT_DOUBLE_EQ(in_trans->GetOutProgress(1.0), 0.0);
+	EXPECT_EQ(in_trans->in_offset(), olive::core::Rational(2));
+	EXPECT_EQ(in_trans->out_offset(), olive::core::Rational(0));
+	EXPECT_DOUBLE_EQ(in_trans->get_in_progress(1.0), 0.5);
+	EXPECT_DOUBLE_EQ(in_trans->get_out_progress(1.0), 0.0);
 }
 
 TEST(TransitionBlock, SetOffsetsAndLengthSetsLengthAndCenter)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *trans = AddNode<olive::CrossDissolveTransition>(&project);
-	auto *out_clip = AddNode<olive::ClipBlock>(&project);
-	auto *in_clip = AddNode<olive::ClipBlock>(&project);
-	olive::Node::ConnectEdge(
+	auto *trans = add_node<olive::CrossDissolveTransition>(&project);
+	auto *out_clip = add_node<olive::ClipBlock>(&project);
+	auto *in_clip = add_node<olive::ClipBlock>(&project);
+	olive::Node::connect_edge(
 		out_clip,
-		olive::NodeInput(trans, olive::TransitionBlock::kOutBlockInput));
-	olive::Node::ConnectEdge(
-		in_clip, olive::NodeInput(trans, olive::TransitionBlock::kInBlockInput));
+		olive::NodeInput(trans, olive::TransitionBlock::k_out_block_input));
+	olive::Node::connect_edge(
+		in_clip, olive::NodeInput(trans, olive::TransitionBlock::k_in_block_input));
 
-	trans->set_offsets_and_length(olive::core::rational(1, 4),
-								  olive::core::rational(3, 4));
+	trans->set_offsets_and_length(olive::core::Rational(1, 4),
+								  olive::core::Rational(3, 4));
 
 	// The length is always the sum of both offsets
-	EXPECT_EQ(trans->length(), olive::core::rational(1));
-	EXPECT_EQ(trans->offset_center(), olive::core::rational(1, 4));
+	EXPECT_EQ(trans->length(), olive::core::Rational(1));
+	EXPECT_EQ(trans->offset_center(), olive::core::Rational(1, 4));
 
 	// The offset arguments are named from the adjoining clips' perspective
 	// (OTIO convention): the in_offset argument describes the overlap with
 	// the previous clip, which is the transition's out side
-	EXPECT_EQ(trans->out_offset(), olive::core::rational(1, 4));
-	EXPECT_EQ(trans->in_offset(), olive::core::rational(3, 4));
+	EXPECT_EQ(trans->out_offset(), olive::core::Rational(1, 4));
+	EXPECT_EQ(trans->in_offset(), olive::core::Rational(3, 4));
 }
 
 TEST(TransitionBlock, ConnectAndDisconnectUpdateLinkedClips)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *trans = AddNode<olive::CrossDissolveTransition>(&project);
-	auto *clip = AddNode<olive::ClipBlock>(&project);
+	auto *trans = add_node<olive::CrossDissolveTransition>(&project);
+	auto *clip = add_node<olive::ClipBlock>(&project);
 
-	olive::Node::ConnectEdge(
-		clip, olive::NodeInput(trans, olive::TransitionBlock::kOutBlockInput));
+	olive::Node::connect_edge(
+		clip, olive::NodeInput(trans, olive::TransitionBlock::k_out_block_input));
 	EXPECT_EQ(trans->connected_out_block(), clip);
 	EXPECT_EQ(clip->out_transition(), trans);
 
-	olive::Node::DisconnectEdge(
-		clip, olive::NodeInput(trans, olive::TransitionBlock::kOutBlockInput));
+	olive::Node::disconnect_edge(
+		clip, olive::NodeInput(trans, olive::TransitionBlock::k_out_block_input));
 	EXPECT_EQ(trans->connected_out_block(), nullptr);
 	EXPECT_EQ(clip->out_transition(), nullptr);
 
 	// Connecting a node that is not a clip leaves the linked block null
-	auto *not_a_clip = AddNode<GlobalsProbeNode>(&project);
-	olive::Node::ConnectEdge(
+	auto *not_a_clip = add_node<GlobalsProbeNode>(&project);
+	olive::Node::connect_edge(
 		not_a_clip,
-		olive::NodeInput(trans, olive::TransitionBlock::kOutBlockInput));
+		olive::NodeInput(trans, olive::TransitionBlock::k_out_block_input));
 	EXPECT_EQ(trans->connected_out_block(), nullptr);
-	olive::Node::DisconnectEdge(
+	olive::Node::disconnect_edge(
 		not_a_clip,
-		olive::NodeInput(trans, olive::TransitionBlock::kOutBlockInput));
+		olive::NodeInput(trans, olive::TransitionBlock::k_out_block_input));
 }
 
 TEST(TransitionBlock, TextureValuePushesJobWithTransitionProgress)
 {
 	olive::CrossDissolveTransition trans;
-	trans.set_length_and_media_out(olive::core::rational(2));
+	trans.set_length_and_media_out(olive::core::Rational(2));
 
-	olive::TexturePtr out_tex = MakeDummyTexture();
-	olive::TexturePtr in_tex = MakeDummyTexture();
+	olive::TexturePtr out_tex = make_dummy_texture();
+	olive::TexturePtr in_tex = make_dummy_texture();
 
 	olive::NodeValueRow row;
-	row.insert(olive::TransitionBlock::kOutBlockInput,
-			   olive::NodeValue(olive::NodeValue::kTexture, out_tex));
-	row.insert(olive::TransitionBlock::kInBlockInput,
-			   olive::NodeValue(olive::NodeValue::kTexture, in_tex));
-	row.insert(olive::TransitionBlock::kCurveInput,
-			   olive::NodeValue(olive::NodeValue::kCombo, 0));
+	row.insert(olive::TransitionBlock::k_out_block_input,
+			   olive::NodeValue(olive::NodeValue::k_texture, out_tex));
+	row.insert(olive::TransitionBlock::k_in_block_input,
+			   olive::NodeValue(olive::NodeValue::k_texture, in_tex));
+	row.insert(olive::TransitionBlock::k_curve_input,
+			   olive::NodeValue(olive::NodeValue::k_combo, 0));
 
 	// Half-way through a two second transition
 	const olive::NodeGlobals globals(
-		olive::VideoParams(64, 64, olive::core::PixelFormat::F32,
-						   olive::VideoParams::kRGBAChannelCount),
+		olive::VideoParams(64, 64, olive::core::PixelFormat::f32,
+						   olive::VideoParams::k_rgba_channel_count),
 		olive::core::AudioParams(),
-		olive::TimeRange(olive::core::rational(1), olive::core::rational(2)),
-		olive::LoopMode::kLoopModeOff);
+		olive::TimeRange(olive::core::Rational(1), olive::core::Rational(2)),
+		olive::LoopMode::k_loop_mode_off);
 
 	olive::NodeValueTable table;
-	trans.Value(row, globals, &table);
+	trans.value(row, globals, &table);
 
 	olive::TexturePtr job_tex =
-		table.Get(olive::NodeValue::kTexture).toTexture();
+		table.get(olive::NodeValue::k_texture).to_texture();
 	ASSERT_TRUE(job_tex);
-	ASSERT_TRUE(job_tex->IsJob());
+	ASSERT_TRUE(job_tex->is_job());
 	EXPECT_EQ(job_tex->params().width(), 64);
 
 	auto *job = dynamic_cast<olive::ShaderJob *>(job_tex->job());
 	ASSERT_TRUE(job);
-	EXPECT_EQ(job->Get(olive::TransitionBlock::kOutBlockInput).toTexture(),
+	EXPECT_EQ(job->get(olive::TransitionBlock::k_out_block_input).to_texture(),
 			  out_tex);
-	EXPECT_EQ(job->Get(olive::TransitionBlock::kInBlockInput).toTexture(),
+	EXPECT_EQ(job->get(olive::TransitionBlock::k_in_block_input).to_texture(),
 			  in_tex);
-	EXPECT_EQ(job->Get(olive::TransitionBlock::kCurveInput).toInt(), 0);
+	EXPECT_EQ(job->get(olive::TransitionBlock::k_curve_input).to_int(), 0);
 
 	// Without connected clips the in/out offsets are zero, so only the total
 	// transition progress is meaningful
-	EXPECT_DOUBLE_EQ(job->Get(QStringLiteral("ove_tprog_all")).toDouble(),
+	EXPECT_DOUBLE_EQ(job->get(QStringLiteral("ove_tprog_all")).to_double(),
 					 0.5);
-	EXPECT_DOUBLE_EQ(job->Get(QStringLiteral("ove_tprog_out")).toDouble(),
+	EXPECT_DOUBLE_EQ(job->get(QStringLiteral("ove_tprog_out")).to_double(),
 					 0.0);
-	EXPECT_DOUBLE_EQ(job->Get(QStringLiteral("ove_tprog_in")).toDouble(),
+	EXPECT_DOUBLE_EQ(job->get(QStringLiteral("ove_tprog_in")).to_double(),
 					 0.0);
 }
 
 TEST(TransitionBlock, TextureValueInsertsNullTextureForMissingSide)
 {
 	olive::CrossDissolveTransition trans;
-	trans.set_length_and_media_out(olive::core::rational(2));
+	trans.set_length_and_media_out(olive::core::Rational(2));
 
-	olive::TexturePtr in_tex = MakeDummyTexture();
+	olive::TexturePtr in_tex = make_dummy_texture();
 
 	olive::NodeValueRow row;
-	row.insert(olive::TransitionBlock::kInBlockInput,
-			   olive::NodeValue(olive::NodeValue::kTexture, in_tex));
-	row.insert(olive::TransitionBlock::kCurveInput,
-			   olive::NodeValue(olive::NodeValue::kCombo, 0));
+	row.insert(olive::TransitionBlock::k_in_block_input,
+			   olive::NodeValue(olive::NodeValue::k_texture, in_tex));
+	row.insert(olive::TransitionBlock::k_curve_input,
+			   olive::NodeValue(olive::NodeValue::k_combo, 0));
 
 	olive::NodeValueTable table;
-	trans.Value(row, olive::NodeGlobals(), &table);
+	trans.value(row, olive::NodeGlobals(), &table);
 
 	olive::TexturePtr job_tex =
-		table.Get(olive::NodeValue::kTexture).toTexture();
+		table.get(olive::NodeValue::k_texture).to_texture();
 	ASSERT_TRUE(job_tex);
-	ASSERT_TRUE(job_tex->IsJob());
+	ASSERT_TRUE(job_tex->is_job());
 
 	auto *job = dynamic_cast<olive::ShaderJob *>(job_tex->job());
 	ASSERT_TRUE(job);
-	EXPECT_EQ(job->Get(olive::TransitionBlock::kInBlockInput).toTexture(),
+	EXPECT_EQ(job->get(olive::TransitionBlock::k_in_block_input).to_texture(),
 			  in_tex);
 
 	// The missing "from" side is still inserted, as a null texture
 	const olive::NodeValue out_side =
-		job->Get(olive::TransitionBlock::kOutBlockInput);
-	EXPECT_EQ(out_side.type(), olive::NodeValue::kTexture);
-	EXPECT_TRUE(out_side.toTexture() == nullptr);
+		job->get(olive::TransitionBlock::k_out_block_input);
+	EXPECT_EQ(out_side.type(), olive::NodeValue::k_texture);
+	EXPECT_TRUE(out_side.to_texture() == nullptr);
 }
 
 TEST(TransitionBlock, DipToColorValueInsertsColorIntoJob)
 {
 	olive::DipToColorTransition trans;
-	trans.set_length_and_media_out(olive::core::rational(2));
+	trans.set_length_and_media_out(olive::core::Rational(2));
 
-	olive::TexturePtr out_tex = MakeDummyTexture();
-	olive::TexturePtr in_tex = MakeDummyTexture();
+	olive::TexturePtr out_tex = make_dummy_texture();
+	olive::TexturePtr in_tex = make_dummy_texture();
 
 	olive::NodeValueRow row;
-	row.insert(olive::TransitionBlock::kOutBlockInput,
-			   olive::NodeValue(olive::NodeValue::kTexture, out_tex));
-	row.insert(olive::TransitionBlock::kInBlockInput,
-			   olive::NodeValue(olive::NodeValue::kTexture, in_tex));
-	row.insert(olive::TransitionBlock::kCurveInput,
-			   olive::NodeValue(olive::NodeValue::kCombo, 0));
-	row.insert(olive::DipToColorTransition::kColorInput,
-			   olive::NodeValue(olive::NodeValue::kColor,
+	row.insert(olive::TransitionBlock::k_out_block_input,
+			   olive::NodeValue(olive::NodeValue::k_texture, out_tex));
+	row.insert(olive::TransitionBlock::k_in_block_input,
+			   olive::NodeValue(olive::NodeValue::k_texture, in_tex));
+	row.insert(olive::TransitionBlock::k_curve_input,
+			   olive::NodeValue(olive::NodeValue::k_combo, 0));
+	row.insert(olive::DipToColorTransition::k_color_input,
+			   olive::NodeValue(olive::NodeValue::k_color,
 								QVariant::fromValue(olive::core::Color(
 									0.25f, 0.5f, 0.75f, 1.0f))));
 
 	olive::NodeValueTable table;
-	trans.Value(row, olive::NodeGlobals(), &table);
+	trans.value(row, olive::NodeGlobals(), &table);
 
 	olive::TexturePtr job_tex =
-		table.Get(olive::NodeValue::kTexture).toTexture();
+		table.get(olive::NodeValue::k_texture).to_texture();
 	ASSERT_TRUE(job_tex);
-	ASSERT_TRUE(job_tex->IsJob());
+	ASSERT_TRUE(job_tex->is_job());
 
 	auto *job = dynamic_cast<olive::ShaderJob *>(job_tex->job());
 	ASSERT_TRUE(job);
 	const olive::core::Color color =
-		job->Get(olive::DipToColorTransition::kColorInput).toColor();
+		job->get(olive::DipToColorTransition::k_color_input).to_color();
 	EXPECT_FLOAT_EQ(color.red(), 0.25f);
 	EXPECT_FLOAT_EQ(color.green(), 0.5f);
 	EXPECT_FLOAT_EQ(color.blue(), 0.75f);
@@ -826,27 +826,27 @@ TEST(TransitionBlock, DipToColorValueInsertsColorIntoJob)
 TEST(TransitionBlock, AudioValueMixesLinearCrossfade)
 {
 	olive::CrossDissolveTransition trans;
-	trans.set_length_and_media_out(olive::core::rational(1));
+	trans.set_length_and_media_out(olive::core::Rational(1));
 
 	// Half a second at 48 kHz
 	const size_t sample_count = 24000;
 	const olive::core::SampleBuffer from =
-		MakeConstantBuffer(1.0f, sample_count);
-	const olive::core::SampleBuffer to = MakeConstantBuffer(0.5f, sample_count);
+		make_constant_buffer(1.0f, sample_count);
+	const olive::core::SampleBuffer to = make_constant_buffer(0.5f, sample_count);
 
 	olive::NodeValueRow row;
-	row.insert(olive::TransitionBlock::kOutBlockInput, SampleValue(from));
-	row.insert(olive::TransitionBlock::kInBlockInput, SampleValue(to));
+	row.insert(olive::TransitionBlock::k_out_block_input, sample_value(from));
+	row.insert(olive::TransitionBlock::k_in_block_input, sample_value(to));
 
 	olive::NodeValueTable table;
-	trans.Value(row,
-				AudioGlobals(olive::core::rational(0),
-							 olive::core::rational(1, 2)),
+	trans.value(row,
+				audio_globals(olive::core::Rational(0),
+							 olive::core::Rational(1, 2)),
 				&table);
 
-	const olive::NodeValue out_val = table.Get(olive::NodeValue::kSamples);
-	ASSERT_EQ(out_val.type(), olive::NodeValue::kSamples);
-	const olive::core::SampleBuffer out = out_val.toSamples();
+	const olive::NodeValue out_val = table.get(olive::NodeValue::k_samples);
+	ASSERT_EQ(out_val.type(), olive::NodeValue::k_samples);
+	const olive::core::SampleBuffer out = out_val.to_samples();
 	ASSERT_TRUE(out.is_allocated());
 	EXPECT_EQ(out.sample_count(), sample_count);
 
@@ -860,26 +860,26 @@ TEST(TransitionBlock, AudioValueMixesLinearCrossfade)
 TEST(TransitionBlock, AudioValueMixesExponentialCrossfade)
 {
 	olive::CrossDissolveTransition trans;
-	trans.set_length_and_media_out(olive::core::rational(1));
-	trans.SetStandardValue(olive::TransitionBlock::kCurveInput, 1);
+	trans.set_length_and_media_out(olive::core::Rational(1));
+	trans.set_standard_value(olive::TransitionBlock::k_curve_input, 1);
 
 	const size_t sample_count = 24000;
 	const olive::core::SampleBuffer from =
-		MakeConstantBuffer(1.0f, sample_count);
-	const olive::core::SampleBuffer to = MakeConstantBuffer(0.5f, sample_count);
+		make_constant_buffer(1.0f, sample_count);
+	const olive::core::SampleBuffer to = make_constant_buffer(0.5f, sample_count);
 
 	olive::NodeValueRow row;
-	row.insert(olive::TransitionBlock::kOutBlockInput, SampleValue(from));
-	row.insert(olive::TransitionBlock::kInBlockInput, SampleValue(to));
+	row.insert(olive::TransitionBlock::k_out_block_input, sample_value(from));
+	row.insert(olive::TransitionBlock::k_in_block_input, sample_value(to));
 
 	olive::NodeValueTable table;
-	trans.Value(row,
-				AudioGlobals(olive::core::rational(0),
-							 olive::core::rational(1, 2)),
+	trans.value(row,
+				audio_globals(olive::core::Rational(0),
+							 olive::core::Rational(1, 2)),
 				&table);
 
 	const olive::core::SampleBuffer out =
-		table.Get(olive::NodeValue::kSamples).toSamples();
+		table.get(olive::NodeValue::k_samples).to_samples();
 	ASSERT_TRUE(out.is_allocated());
 
 	// The exponential curve squares the linear progress: at 25% the mix is
@@ -891,26 +891,26 @@ TEST(TransitionBlock, AudioValueMixesExponentialCrossfade)
 TEST(TransitionBlock, AudioValueMixesLogarithmicCrossfade)
 {
 	olive::CrossDissolveTransition trans;
-	trans.set_length_and_media_out(olive::core::rational(1));
-	trans.SetStandardValue(olive::TransitionBlock::kCurveInput, 2);
+	trans.set_length_and_media_out(olive::core::Rational(1));
+	trans.set_standard_value(olive::TransitionBlock::k_curve_input, 2);
 
 	const size_t sample_count = 24000;
 	const olive::core::SampleBuffer from =
-		MakeConstantBuffer(1.0f, sample_count);
-	const olive::core::SampleBuffer to = MakeConstantBuffer(0.5f, sample_count);
+		make_constant_buffer(1.0f, sample_count);
+	const olive::core::SampleBuffer to = make_constant_buffer(0.5f, sample_count);
 
 	olive::NodeValueRow row;
-	row.insert(olive::TransitionBlock::kOutBlockInput, SampleValue(from));
-	row.insert(olive::TransitionBlock::kInBlockInput, SampleValue(to));
+	row.insert(olive::TransitionBlock::k_out_block_input, sample_value(from));
+	row.insert(olive::TransitionBlock::k_in_block_input, sample_value(to));
 
 	olive::NodeValueTable table;
-	trans.Value(row,
-				AudioGlobals(olive::core::rational(0),
-							 olive::core::rational(1, 2)),
+	trans.value(row,
+				audio_globals(olive::core::Rational(0),
+							 olive::core::Rational(1, 2)),
 				&table);
 
 	const olive::core::SampleBuffer out =
-		table.Get(olive::NodeValue::kSamples).toSamples();
+		table.get(olive::NodeValue::k_samples).to_samples();
 	ASSERT_TRUE(out.is_allocated());
 
 	// The logarithmic curve square-roots the linear progress: at 25% the mix
@@ -923,41 +923,41 @@ TEST(TransitionBlock, AudioValueWithSingleSideFades)
 {
 	// Only a "from" buffer: fade out
 	olive::CrossDissolveTransition fade_out;
-	fade_out.set_length_and_media_out(olive::core::rational(1));
+	fade_out.set_length_and_media_out(olive::core::Rational(1));
 
 	const size_t sample_count = 24000;
 	olive::NodeValueRow out_row;
-	out_row.insert(olive::TransitionBlock::kOutBlockInput,
-				   SampleValue(MakeConstantBuffer(1.0f, sample_count)));
+	out_row.insert(olive::TransitionBlock::k_out_block_input,
+				   sample_value(make_constant_buffer(1.0f, sample_count)));
 
 	olive::NodeValueTable out_table;
-	fade_out.Value(out_row,
-				   AudioGlobals(olive::core::rational(0),
-								olive::core::rational(1, 2)),
+	fade_out.value(out_row,
+				   audio_globals(olive::core::Rational(0),
+								olive::core::Rational(1, 2)),
 				   &out_table);
 
 	const olive::core::SampleBuffer faded_out =
-		out_table.Get(olive::NodeValue::kSamples).toSamples();
+		out_table.get(olive::NodeValue::k_samples).to_samples();
 	ASSERT_TRUE(faded_out.is_allocated());
 	EXPECT_FLOAT_EQ(faded_out.data(0)[0], 1.0f);
 	EXPECT_FLOAT_EQ(faded_out.data(0)[12000], 0.75f);
 
 	// Only a "to" buffer: fade in
 	olive::CrossDissolveTransition fade_in;
-	fade_in.set_length_and_media_out(olive::core::rational(1));
+	fade_in.set_length_and_media_out(olive::core::Rational(1));
 
 	olive::NodeValueRow in_row;
-	in_row.insert(olive::TransitionBlock::kInBlockInput,
-				  SampleValue(MakeConstantBuffer(0.5f, sample_count)));
+	in_row.insert(olive::TransitionBlock::k_in_block_input,
+				  sample_value(make_constant_buffer(0.5f, sample_count)));
 
 	olive::NodeValueTable in_table;
-	fade_in.Value(in_row,
-				  AudioGlobals(olive::core::rational(0),
-							   olive::core::rational(1, 2)),
+	fade_in.value(in_row,
+				  audio_globals(olive::core::Rational(0),
+							   olive::core::Rational(1, 2)),
 				  &in_table);
 
 	const olive::core::SampleBuffer faded_in =
-		in_table.Get(olive::NodeValue::kSamples).toSamples();
+		in_table.get(olive::NodeValue::k_samples).to_samples();
 	ASSERT_TRUE(faded_in.is_allocated());
 	EXPECT_FLOAT_EQ(faded_in.data(0)[0], 0.0f);
 	EXPECT_FLOAT_EQ(faded_in.data(0)[12000], 0.125f);
@@ -966,12 +966,12 @@ TEST(TransitionBlock, AudioValueWithSingleSideFades)
 TEST(TransitionBlock, ValueWithNoInputsPushesNothing)
 {
 	olive::CrossDissolveTransition trans;
-	trans.set_length_and_media_out(olive::core::rational(1));
+	trans.set_length_and_media_out(olive::core::Rational(1));
 
 	olive::NodeValueTable table;
-	trans.Value(olive::NodeValueRow(), olive::NodeGlobals(), &table);
+	trans.value(olive::NodeValueRow(), olive::NodeGlobals(), &table);
 
-	EXPECT_EQ(table.Count(), 0);
+	EXPECT_EQ(table.count(), 0);
 }
 
 // -----------------------------------------------------------------------------
@@ -984,55 +984,55 @@ TEST(SubtitleBlock, MetadataIsCorrect)
 
 	EXPECT_EQ(node.id(),
 			  QStringLiteral("org.olivevideoeditor.Olive.subtitle"));
-	EXPECT_EQ(node.Name(), QStringLiteral("Subtitle"));
-	EXPECT_FALSE(node.Description().isEmpty());
-	EXPECT_TRUE(node.Category().contains(olive::Node::kCategoryTimeline));
+	EXPECT_EQ(node.name(), QStringLiteral("Subtitle"));
+	EXPECT_FALSE(node.description().isEmpty());
+	EXPECT_TRUE(node.category().contains(olive::Node::k_category_timeline));
 }
 
 TEST(SubtitleBlock, NameFollowsText)
 {
 	olive::SubtitleBlock node;
 
-	EXPECT_TRUE(node.GetText().isEmpty());
-	EXPECT_EQ(node.Name(), QStringLiteral("Subtitle"));
+	EXPECT_TRUE(node.get_text().isEmpty());
+	EXPECT_EQ(node.name(), QStringLiteral("Subtitle"));
 
-	node.SetText(QStringLiteral("Hello World"));
-	EXPECT_EQ(node.GetText(), QStringLiteral("Hello World"));
-	EXPECT_EQ(node.Name(), QStringLiteral("Hello World"));
+	node.set_text(QStringLiteral("Hello World"));
+	EXPECT_EQ(node.get_text(), QStringLiteral("Hello World"));
+	EXPECT_EQ(node.name(), QStringLiteral("Hello World"));
 
-	node.SetText(QString());
-	EXPECT_EQ(node.Name(), QStringLiteral("Subtitle"));
+	node.set_text(QString());
+	EXPECT_EQ(node.name(), QStringLiteral("Subtitle"));
 }
 
 TEST(SubtitleBlock, TextInputFlagsAndHiddenClipInputs)
 {
 	olive::SubtitleBlock node;
 
-	EXPECT_EQ(int(node.GetInputDataType(olive::SubtitleBlock::kTextIn)),
-			  int(olive::NodeValue::kText));
+	EXPECT_EQ(int(node.get_input_data_type(olive::SubtitleBlock::k_text_in)),
+			  int(olive::NodeValue::k_text));
 
 	// The text is edited inline: neither connectable nor keyframable
-	EXPECT_FALSE(node.IsInputConnectable(olive::SubtitleBlock::kTextIn));
-	EXPECT_FALSE(node.IsInputKeyframable(olive::SubtitleBlock::kTextIn));
+	EXPECT_FALSE(node.is_input_connectable(olive::SubtitleBlock::k_text_in));
+	EXPECT_FALSE(node.is_input_keyframable(olive::SubtitleBlock::k_text_in));
 
 	// The inherited clip inputs are meaningless for a subtitle and hidden
-	EXPECT_TRUE(node.IsInputHidden(olive::ClipBlock::kBufferIn));
-	EXPECT_TRUE(node.IsInputHidden(olive::Block::kLengthInput));
-	EXPECT_TRUE(node.IsInputHidden(olive::ClipBlock::kMediaInInput));
-	EXPECT_TRUE(node.IsInputHidden(olive::ClipBlock::kSpeedInput));
-	EXPECT_TRUE(node.IsInputHidden(olive::ClipBlock::kReverseInput));
-	EXPECT_TRUE(node.IsInputHidden(olive::ClipBlock::kMaintainAudioPitchInput));
+	EXPECT_TRUE(node.is_input_hidden(olive::ClipBlock::k_buffer_in));
+	EXPECT_TRUE(node.is_input_hidden(olive::Block::k_length_input));
+	EXPECT_TRUE(node.is_input_hidden(olive::ClipBlock::k_media_in_input));
+	EXPECT_TRUE(node.is_input_hidden(olive::ClipBlock::k_speed_input));
+	EXPECT_TRUE(node.is_input_hidden(olive::ClipBlock::k_reverse_input));
+	EXPECT_TRUE(node.is_input_hidden(olive::ClipBlock::k_maintain_audio_pitch_input));
 
 	// Blocks hide from the param view by default, subtitles re-enable it
-	EXPECT_FALSE(node.GetFlags() & olive::Node::kDontShowInParamView);
+	EXPECT_FALSE(node.get_flags() & olive::Node::k_dont_show_in_param_view);
 }
 
 TEST(SubtitleBlock, RetranslateSetsInputName)
 {
 	olive::SubtitleBlock node;
-	node.Retranslate();
+	node.retranslate();
 
-	EXPECT_EQ(node.GetInputName(olive::SubtitleBlock::kTextIn),
+	EXPECT_EQ(node.get_input_name(olive::SubtitleBlock::k_text_in),
 			  QStringLiteral("Text"));
 }
 
@@ -1042,23 +1042,23 @@ TEST(SubtitleBlock, RetranslateSetsInputName)
 
 TEST(NodeTraverser, GenerateTablePassesCacheParamsToNodeGlobals)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *probe = AddNode<GlobalsProbeNode>(&project);
+	auto *probe = add_node<GlobalsProbeNode>(&project);
 
 	olive::NodeTraverser traverser;
-	traverser.SetCacheVideoParams(
-		olive::VideoParams(1920, 1080, olive::core::PixelFormat::F32,
-						   olive::VideoParams::kRGBAChannelCount));
-	traverser.SetCacheAudioParams(
-		olive::core::AudioParams(44100, olive::core::kChannelLayoutStereo,
-								 olive::core::SampleFormat::F32P));
+	traverser.set_cache_video_params(
+		olive::VideoParams(1920, 1080, olive::core::PixelFormat::f32,
+						   olive::VideoParams::k_rgba_channel_count));
+	traverser.set_cache_audio_params(
+		olive::core::AudioParams(44100, olive::core::k_channel_layout_stereo,
+								 olive::core::SampleFormat::f32_p));
 
-	traverser.GenerateTable(probe,
-							olive::TimeRange(olive::core::rational(0),
-											 olive::core::rational(1, 30)));
+	traverser.generate_table(probe,
+							olive::TimeRange(olive::core::Rational(0),
+											 olive::core::Rational(1, 30)));
 
 	EXPECT_EQ(probe->last_vparams().width(), 1920);
 	EXPECT_EQ(probe->last_vparams().height(), 1080);
@@ -1067,37 +1067,37 @@ TEST(NodeTraverser, GenerateTablePassesCacheParamsToNodeGlobals)
 
 TEST(NodeTraverser, GenerateTableCachesResultsPerNodeAndRange)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	auto *node = AddNode<olive::TrigonometryNode>(&project);
-	node->SetStandardValue(olive::TrigonometryNode::kXIn, 1.0);
+	auto *node = add_node<olive::TrigonometryNode>(&project);
+	node->set_standard_value(olive::TrigonometryNode::k_x_in, 1.0);
 
-	const olive::TimeRange range(olive::core::rational(0),
-								 olive::core::rational(1, 30));
+	const olive::TimeRange range(olive::core::Rational(0),
+								 olive::core::Rational(1, 30));
 
 	olive::NodeTraverser traverser;
 	const double first =
-		traverser.GenerateTable(node, range)
-			.Get(olive::NodeValue::kFloat)
-			.toDouble();
+		traverser.generate_table(node, range)
+			.get(olive::NodeValue::k_float)
+			.to_double();
 	EXPECT_NEAR(first, std::sin(1.0), 1e-12);
 
 	// The same traverser returns the cached table for the same node and
 	// range, even after the node's inputs change
-	node->SetStandardValue(olive::TrigonometryNode::kXIn, 0.0);
+	node->set_standard_value(olive::TrigonometryNode::k_x_in, 0.0);
 	const double cached =
-		traverser.GenerateTable(node, range)
-			.Get(olive::NodeValue::kFloat)
-			.toDouble();
+		traverser.generate_table(node, range)
+			.get(olive::NodeValue::k_float)
+			.to_double();
 	EXPECT_DOUBLE_EQ(cached, first);
 
 	// A fresh traverser recomputes
 	olive::NodeTraverser fresh;
 	const double updated =
-		fresh.GenerateTable(node, range)
-			.Get(olive::NodeValue::kFloat)
-			.toDouble();
+		fresh.generate_table(node, range)
+			.get(olive::NodeValue::k_float)
+			.to_double();
 	EXPECT_DOUBLE_EQ(updated, 0.0);
 }

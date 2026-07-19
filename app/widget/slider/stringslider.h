@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef STRINGSLIDER_H
-#define STRINGSLIDER_H
+#ifndef OAK_STRINGSLIDER_H
+#define OAK_STRINGSLIDER_H
 
 #include "base/sliderbase.h"
 
@@ -34,23 +34,23 @@ public:
 
 	void SetDragMultiplier(const double &d) = delete;
 
-	QString GetValue() const;
+	QString get_value() const;
 
-	void SetValue(const QString &v);
+	void set_value(const QString &v);
 
 	void SetDefaultValue(const QString &v);
 
 signals:
-	void ValueChanged(const QString &str);
+	void value_changed(const QString &str);
 
 protected:
-	virtual QString ValueToString(const QVariant &value) const override;
+	virtual QString value_to_string(const QVariant &value) const override;
 
-	virtual QVariant StringToValue(const QString &s, bool *ok) const override;
+	virtual QVariant string_to_value(const QString &s, bool *ok) const override;
 
-	virtual void ValueSignalEvent(const QVariant &value) override;
+	virtual void value_signal_event(const QVariant &value) override;
 };
 
 }
 
-#endif // STRINGSLIDER_H
+#endif // OAK_STRINGSLIDER_H

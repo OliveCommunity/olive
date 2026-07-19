@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEVIEWMINIMAP_H
-#define NODEVIEWMINIMAP_H
+#ifndef OAK_NODEVIEWMINIMAP_H
+#define OAK_NODEVIEWMINIMAP_H
 
 #include <QGraphicsView>
 
@@ -35,12 +35,12 @@ public:
 	NodeViewMiniMap(NodeViewScene *scene, QWidget *parent = nullptr);
 
 public slots:
-	void SetViewportRect(const QPolygonF &rect);
+	void set_viewport_rect(const QPolygonF &rect);
 
 signals:
-	void Resized();
+	void resized();
 
-	void MoveToScenePoint(const QPointF &pos);
+	void move_to_scene_point(const QPointF &pos);
 
 protected:
 	virtual void drawForeground(QPainter *painter, const QRectF &rect) override;
@@ -55,14 +55,14 @@ protected:
 	}
 
 private slots:
-	void SceneChanged(const QRectF &bounding);
+	void scene_changed(const QRectF &bounding);
 
-	void SetDefaultSize();
+	void set_default_size();
 
 private:
-	bool MouseInsideResizeTriangle(QMouseEvent *event);
+	bool mouse_inside_resize_triangle(QMouseEvent *event);
 
-	void EmitMoveSignal(QMouseEvent *event);
+	void emit_move_signal(QMouseEvent *event);
 
 	int resize_triangle_sz_;
 
@@ -75,4 +75,4 @@ private:
 
 }
 
-#endif // NODEVIEWMINIMAP_H
+#endif // OAK_NODEVIEWMINIMAP_H

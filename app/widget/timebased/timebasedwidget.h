@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMEBASEDWIDGET_H
-#define TIMEBASEDWIDGET_H
+#ifndef OAK_TIMEBASEDWIDGET_H
+#define OAK_TIMEBASEDWIDGET_H
 
 #include <QPointer>
 #include <QWidget>
@@ -45,94 +45,94 @@ public:
 					bool ruler_cache_status_visible = false,
 					QWidget *parent = nullptr);
 
-	void ZoomIn();
+	void zoom_in();
 
-	void ZoomOut();
+	void zoom_out();
 
-	ViewerOutput *GetConnectedNode() const;
+	ViewerOutput *get_connected_node() const;
 
-	void ConnectViewerNode(ViewerOutput *node);
+	void connect_viewer_node(ViewerOutput *node);
 
-	TimelineWorkArea *GetConnectedWorkArea() const
+	TimelineWorkArea *get_connected_work_area() const
 	{
 		return workarea_;
 	}
-	TimelineMarkerList *GetConnectedMarkers() const
+	TimelineMarkerList *get_connected_markers() const
 	{
 		return markers_;
 	}
-	void ConnectWorkArea(TimelineWorkArea *workarea);
-	void ConnectMarkers(TimelineMarkerList *markers);
+	void connect_work_area(TimelineWorkArea *workarea);
+	void connect_markers(TimelineMarkerList *markers);
 
-	void SetScaleAndCenterOnPlayhead(const double &scale);
+	void set_scale_and_center_on_playhead(const double &scale);
 
 	TimeRuler *ruler() const;
 
 	using SnapMask = uint32_t;
 	enum SnapPoints {
-		kSnapToClips = 0x1,
-		kSnapToPlayhead = 0x2,
-		kSnapToMarkers = 0x4,
-		kSnapToKeyframes = 0x8,
-		kSnapToWorkarea = 0x10,
-		kSnapAll = UINT32_MAX
+		k_snap_to_clips = 0x1,
+		k_snap_to_playhead = 0x2,
+		k_snap_to_markers = 0x4,
+		k_snap_to_keyframes = 0x8,
+		k_snap_to_workarea = 0x10,
+		k_snap_all = UINT32_MAX
 	};
 
 	/**
    * @brief Snaps point `start_point` that is moving by `movement` to currently existing clips
    */
-	bool SnapPoint(const std::vector<rational> &start_times, rational *movement,
-				   SnapMask snap_points = kSnapAll);
-	void ShowSnaps(const std::vector<rational> &times);
-	void HideSnaps();
+	bool snap_point(const std::vector<Rational> &start_times, Rational *movement,
+				   SnapMask snap_points = k_snap_all);
+	void show_snaps(const std::vector<Rational> &times);
+	void hide_snaps();
 
-	virtual bool CopySelected(bool cut);
+	virtual bool copy_selected(bool cut);
 
-	virtual bool Paste();
+	virtual bool paste();
 
 public slots:
-	void SetTimebase(const rational &timebase);
+	void SetTimebase(const Rational &timebase);
 
 	void SetScale(const double &scale);
 
-	void GoToStart();
+	void go_to_start();
 
-	void PrevFrame();
+	void prev_frame();
 
-	void NextFrame();
+	void next_frame();
 
-	void GoToEnd();
+	void go_to_end();
 
-	void GoToPrevCut();
+	void go_to_prev_cut();
 
-	void GoToNextCut();
+	void go_to_next_cut();
 
-	void SetInAtPlayhead();
+	void set_in_at_playhead();
 
-	void SetOutAtPlayhead();
+	void set_out_at_playhead();
 
-	void ResetIn();
+	void reset_in();
 
-	void ResetOut();
+	void reset_out();
 
-	void ClearInOutPoints();
+	void clear_in_out_points();
 
-	void SetMarker();
+	void set_marker();
 
-	void ToggleShowAll();
+	void toggle_show_all();
 
-	void GoToIn();
+	void go_to_in();
 
-	void GoToOut();
+	void go_to_out();
 
-	void DeleteSelected();
+	void delete_selected();
 
 protected:
 	ResizableTimelineScrollBar *scrollbar() const;
 
-	virtual void TimebaseChangedEvent(const rational &) override;
+	virtual void TimebaseChangedEvent(const Rational &) override;
 
-	virtual void TimeChangedEvent(const rational &)
+	virtual void TimeChangedEvent(const Rational &)
 	{
 	}
 
@@ -157,33 +157,33 @@ protected:
 	{
 	}
 
-	void SetAutoMaxScrollBar(bool e);
+	void set_auto_max_scroll_bar(bool e);
 
 	virtual void resizeEvent(QResizeEvent *event) override;
 
-	void ConnectTimelineView(TimeBasedView *base);
+	void connect_timeline_view(TimeBasedView *base);
 
-	void SetCatchUpScrollValue(QScrollBar *b, int v, int maximum);
-	void StopCatchUpScrollTimer(QScrollBar *b);
+	void set_catch_up_scroll_value(QScrollBar *b, int v, int maximum);
+	void stop_catch_up_scroll_timer(QScrollBar *b);
 
-	virtual const QVector<Block *> *GetSnapBlocks() const
+	virtual const QVector<Block *> *get_snap_blocks() const
 	{
 		return nullptr;
 	}
 	virtual const QVector<KeyframeViewInputConnection *> *
-	GetSnapKeyframes() const
+	get_snap_keyframes() const
 	{
 		return nullptr;
 	}
-	virtual const TimeTargetObject *GetKeyframeTimeTarget() const
+	virtual const TimeTargetObject *get_keyframe_time_target() const
 	{
 		return nullptr;
 	}
-	virtual const std::vector<NodeKeyframe *> *GetSnapIgnoreKeyframes() const
+	virtual const std::vector<NodeKeyframe *> *get_snap_ignore_keyframes() const
 	{
 		return nullptr;
 	}
-	virtual const std::vector<TimelineMarker *> *GetSnapIgnoreMarkers() const
+	virtual const std::vector<TimelineMarker *> *get_snap_ignore_markers() const
 	{
 		return nullptr;
 	}
@@ -192,28 +192,28 @@ protected slots:
 	/**
    * @brief Slot to center the horizontal scroll bar on the playhead's current position
    */
-	void CenterScrollOnPlayhead();
+	void center_scroll_on_playhead();
 
 	/**
    * @brief By default, TimeBasedWidget will set the timebase to the viewer node's video timebase.
    * Set this to false if you want to set your own timebase.
    */
-	void SetAutoSetTimebase(bool e);
+	void set_auto_set_timebase(bool e);
 
-	static void PageScrollInternal(QScrollBar *bar, int maximum,
+	static void page_scroll_internal(QScrollBar *bar, int maximum,
 								   int screen_position, bool whole_page_scroll);
 
-	void StopCatchUpScrollTimer()
+	void stop_catch_up_scroll_timer()
 	{
-		StopCatchUpScrollTimer(scrollbar_);
+		stop_catch_up_scroll_timer(scrollbar_);
 	}
 
-	void SetCatchUpScrollValue(int v);
+	void set_catch_up_scroll_value(int v);
 
 signals:
-	void TimebaseChanged(const rational &);
+	void timebase_changed(const Rational &);
 
-	void ConnectedNodeChanged(ViewerOutput *old, ViewerOutput *now);
+	void connected_node_changed(ViewerOutput *old, ViewerOutput *now);
 
 protected slots:
 	virtual void SendCatchUpScrollEvent();
@@ -226,7 +226,7 @@ private:
    *
    * Set to kTrimIn or kTrimOut for setting the in point or out point respectively.
    */
-	void SetPoint(Timeline::MovementMode m, const rational &time);
+	void set_point(Timeline::MovementMode m, const Rational &time);
 
 	/**
    * @brief Reset either the in or out point
@@ -237,11 +237,11 @@ private:
    *
    * Set to kTrimIn or kTrimOut for setting the in point or out point respectively.
    */
-	void ResetPoint(Timeline::MovementMode m);
+	void reset_point(Timeline::MovementMode m);
 
-	void PageScrollInternal(int screen_position, bool whole_page_scroll);
+	void page_scroll_internal(int screen_position, bool whole_page_scroll);
 
-	bool UserIsDraggingPlayhead() const;
+	bool user_is_dragging_playhead() const;
 
 	QPointer<ViewerOutput> viewer_node_;
 
@@ -277,11 +277,11 @@ private:
 	QMap<QScrollBar *, CatchUpScrollData> catchup_scroll_values_;
 
 private slots:
-	void UpdateMaximumScroll();
+	void update_maximum_scroll();
 
-	void ScrollBarResizeBegan(int current_bar_width, bool top_handle);
+	void scroll_bar_resize_began(int current_bar_width, bool top_handle);
 
-	void ScrollBarResizeMoved(int new_bar_width);
+	void scroll_bar_resize_moved(int new_bar_width);
 
 	/**
    * @brief Slot to handle page scrolling of the playhead
@@ -289,21 +289,21 @@ private slots:
    * If the playhead is outside the current scroll bounds, this function will scroll to where it is. Otherwise it will
    * do nothing.
    */
-	void PageScrollToPlayhead();
+	void page_scroll_to_playhead();
 
-	void CatchUpScrollToPlayhead();
+	void catch_up_scroll_to_playhead();
 
-	void CatchUpScrollToPoint(int point);
+	void catch_up_scroll_to_point(int point);
 
-	void CatchUpTimerTimeout();
+	void catch_up_timer_timeout();
 
-	void AutoUpdateTimebase();
+	void auto_update_timebase();
 
-	void ConnectedNodeRemovedFromGraph();
+	void connected_node_removed_from_graph();
 
-	void PlayheadTimeChanged(const rational &time);
+	void playhead_time_changed(const Rational &time);
 };
 
 }
 
-#endif // TIMEBASEDWIDGET_H
+#endif // OAK_TIMEBASEDWIDGET_H

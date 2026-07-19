@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEINPUTIMMEDIATE_H
-#define NODEINPUTIMMEDIATE_H
+#ifndef OAK_NODEINPUTIMMEDIATE_H
+#define OAK_NODEINPUTIMMEDIATE_H
 
 #include "common/xmlutils.h"
 #include "node/keyframe.h"
@@ -67,7 +67,7 @@ public:
    *
    * List may be empty if this input is not keyframing or has no keyframes at this time.
    */
-	QVector<NodeKeyframe *> get_keyframe_at_time(const rational &time) const;
+	QVector<NodeKeyframe *> get_keyframe_at_time(const Rational &time) const;
 
 	/**
    * @brief Retrieve the keyframe object at a given time for a given track
@@ -76,7 +76,7 @@ public:
    *
    * The keyframe object at this time or nullptr if there isn't one or if is_keyframing() is false.
    */
-	NodeKeyframe *get_keyframe_at_time_on_track(const rational &time,
+	NodeKeyframe *get_keyframe_at_time_on_track(const Rational &time,
 												int track) const;
 
 	/**
@@ -84,7 +84,7 @@ public:
    *
    * If is_keyframing() is false or keyframes_ is empty, this will return nullptr.
    */
-	NodeKeyframe *get_closest_keyframe_to_time_on_track(const rational &time,
+	NodeKeyframe *get_closest_keyframe_to_time_on_track(const Rational &time,
 														int track) const;
 
 	/**
@@ -92,19 +92,19 @@ public:
    *
    * If no keyframe is before this time, returns nullptr.
    */
-	NodeKeyframe *get_closest_keyframe_before_time(const rational &time) const;
+	NodeKeyframe *get_closest_keyframe_before_time(const Rational &time) const;
 
 	/**
    * @brief Get closest keyframe that's before the time on any track
    *
    * If no keyframe is before this time, returns nullptr.
    */
-	NodeKeyframe *get_closest_keyframe_after_time(const rational &time) const;
+	NodeKeyframe *get_closest_keyframe_after_time(const Rational &time) const;
 
 	/**
    * @brief A heuristic to determine what type a keyframe should be if it's inserted at a certain time (between keyframes)
    */
-	NodeKeyframe::Type get_best_keyframe_type_for_time(const rational &time,
+	NodeKeyframe::Type get_best_keyframe_type_for_time(const Rational &time,
 													   int track) const;
 
 	/**
@@ -147,7 +147,7 @@ public:
    * If is_keyframing() is false, this will always return false. This checks all tracks and will return true if *any*
    * track has a keyframe.
    */
-	bool has_keyframe_at_time(const rational &time) const;
+	bool has_keyframe_at_time(const Rational &time) const;
 
 	bool is_using_standard_value(int track) const
 	{
@@ -182,4 +182,4 @@ private:
 
 }
 
-#endif // NODEINPUTIMMEDIATE_H
+#endif // OAK_NODEINPUTIMMEDIATE_H

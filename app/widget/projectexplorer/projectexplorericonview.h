@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECTEXPLORERICONVIEW_H
-#define PROJECTEXPLORERICONVIEW_H
+#ifndef OAK_PROJECTEXPLORERICONVIEW_H
+#define OAK_PROJECTEXPLORERICONVIEW_H
 
 #include "projectexplorerlistviewbase.h"
 #include "projectexplorericonviewitemdelegate.h"
@@ -42,4 +42,4 @@ private:
 
 }
 
-#endif // PROJECTEXPLORERICONVIEW_H
+#endif // OAK_PROJECTEXPLORERICONVIEW_H

@@ -40,12 +40,12 @@ SequenceDialogParameterTab::SequenceDialogParameterTab(Sequence *sequence,
 	QGridLayout *video_layout = new QGridLayout(video_group);
 	video_layout->addWidget(new QLabel(tr("Width:")), row, 0);
 	width_slider_ = new IntegerSlider();
-	width_slider_->SetMinimum(0);
+	width_slider_->set_minimum(0);
 	video_layout->addWidget(width_slider_, row, 1);
 	row++;
 	video_layout->addWidget(new QLabel(tr("Height:")), row, 0);
 	height_slider_ = new IntegerSlider();
-	height_slider_->SetMinimum(0);
+	height_slider_->set_minimum(0);
 	video_layout->addWidget(height_slider_, row, 1);
 	row++;
 	video_layout->addWidget(new QLabel(tr("Frame Rate:")), row, 0);
@@ -101,64 +101,64 @@ SequenceDialogParameterTab::SequenceDialogParameterTab(Sequence *sequence,
 	layout->addWidget(preview_group);
 
 	// Set values based on input sequence
-	VideoParams vp = sequence->GetVideoParams();
-	AudioParams ap = sequence->GetAudioParams();
-	width_slider_->SetValue(vp.width());
-	height_slider_->SetValue(vp.height());
-	framerate_combo_->SetFrameRate(vp.time_base().flipped());
-	pixelaspect_combo_->SetPixelAspectRatio(vp.pixel_aspect_ratio());
-	interlacing_combo_->SetInterlaceMode(vp.interlacing());
-	preview_resolution_field_->SetDivider(vp.divider());
-	preview_format_field_->SetPixelFormat(vp.format());
-	preview_autocache_field_->setChecked(sequence->IsVideoAutoCacheEnabled());
-	audio_sample_rate_field_->SetSampleRate(ap.sample_rate());
-	audio_channels_field_->SetChannelLayout(ap.channel_layout());
+	VideoParams vp = sequence->get_video_params();
+	AudioParams ap = sequence->get_audio_params();
+	width_slider_->set_value(vp.width());
+	height_slider_->set_value(vp.height());
+	framerate_combo_->set_frame_rate(vp.time_base().flipped());
+	pixelaspect_combo_->set_pixel_aspect_ratio(vp.pixel_aspect_ratio());
+	interlacing_combo_->set_interlace_mode(vp.interlacing());
+	preview_resolution_field_->set_divider(vp.divider());
+	preview_format_field_->set_pixel_format(vp.format());
+	preview_autocache_field_->setChecked(sequence->is_video_auto_cache_enabled());
+	audio_sample_rate_field_->set_sample_rate(ap.sample_rate());
+	audio_channels_field_->set_channel_layout(ap.channel_layout());
 
 	connect(
 		preview_resolution_field_,
 		static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
-		this, &SequenceDialogParameterTab::UpdatePreviewResolutionLabel);
+		this, &SequenceDialogParameterTab::update_preview_resolution_label);
 
 	layout->addStretch();
 
 	QPushButton *save_preset_btn = new QPushButton(tr("Save Preset"));
 	connect(save_preset_btn, &QPushButton::clicked, this,
-			&SequenceDialogParameterTab::SavePresetClicked);
+			&SequenceDialogParameterTab::save_preset_clicked);
 	layout->addWidget(save_preset_btn);
 
-	UpdatePreviewResolutionLabel();
+	update_preview_resolution_label();
 }
 
-void SequenceDialogParameterTab::PresetChanged(const SequencePreset &preset)
+void SequenceDialogParameterTab::preset_changed(const SequencePreset &preset)
 {
-	width_slider_->SetValue(preset.width());
-	height_slider_->SetValue(preset.height());
-	framerate_combo_->SetFrameRate(preset.frame_rate());
-	pixelaspect_combo_->SetPixelAspectRatio(preset.pixel_aspect());
-	interlacing_combo_->SetInterlaceMode(preset.interlacing());
-	audio_sample_rate_field_->SetSampleRate(preset.sample_rate());
-	audio_channels_field_->SetChannelLayout(preset.channel_layout());
-	preview_resolution_field_->SetDivider(preset.preview_divider());
-	preview_format_field_->SetPixelFormat(preset.preview_format());
+	width_slider_->set_value(preset.width());
+	height_slider_->set_value(preset.height());
+	framerate_combo_->set_frame_rate(preset.frame_rate());
+	pixelaspect_combo_->set_pixel_aspect_ratio(preset.pixel_aspect());
+	interlacing_combo_->set_interlace_mode(preset.interlacing());
+	audio_sample_rate_field_->set_sample_rate(preset.sample_rate());
+	audio_channels_field_->set_channel_layout(preset.channel_layout());
+	preview_resolution_field_->set_divider(preset.preview_divider());
+	preview_format_field_->set_pixel_format(preset.preview_format());
 	preview_autocache_field_->setChecked(preset.preview_autocache());
 }
 
-void SequenceDialogParameterTab::SavePresetClicked()
+void SequenceDialogParameterTab::save_preset_clicked()
 {
-	emit SaveParametersAsPreset(SequencePreset(
-		QString(), GetSelectedVideoWidth(), GetSelectedVideoHeight(),
-		GetSelectedVideoFrameRate(), GetSelectedVideoPixelAspect(),
-		GetSelectedVideoInterlacingMode(), GetSelectedAudioSampleRate(),
-		GetSelectedAudioChannelLayout(), GetSelectedPreviewResolution(),
-		GetSelectedPreviewFormat(), GetSelectedPreviewAutoCache()));
+	emit save_parameters_as_preset(SequencePreset(
+		QString(), get_selected_video_width(), get_selected_video_height(),
+		get_selected_video_frame_rate(), get_selected_video_pixel_aspect(),
+		get_selected_video_interlacing_mode(), get_selected_audio_sample_rate(),
+		get_selected_audio_channel_layout(), get_selected_preview_resolution(),
+		get_selected_preview_format(), get_selected_preview_auto_cache()));
 }
 
-void SequenceDialogParameterTab::UpdatePreviewResolutionLabel()
+void SequenceDialogParameterTab::update_preview_resolution_label()
 {
-	VideoParams test_param(GetSelectedVideoWidth(), GetSelectedVideoHeight(),
-						   PixelFormat::INVALID,
-						   VideoParams::kInternalChannelCount, rational(1),
-						   VideoParams::kInterlaceNone,
+	VideoParams test_param(get_selected_video_width(), get_selected_video_height(),
+						   PixelFormat::invalid,
+						   VideoParams::k_internal_channel_count, Rational(1),
+						   VideoParams::k_interlace_none,
 						   preview_resolution_field_->currentData().toInt());
 
 	preview_resolution_label_->setText(

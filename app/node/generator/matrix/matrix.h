@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef MATRIXGENERATOR_H
-#define MATRIXGENERATOR_H
+#ifndef OAK_MATRIXGENERATOR_H
+#define OAK_MATRIXGENERATOR_H
 
 #include <QVector2D>
 
@@ -37,28 +37,28 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(MatrixGenerator)
 
-	virtual QString Name() const override;
-	virtual QString ShortName() const override;
+	virtual QString name() const override;
+	virtual QString short_name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	static const QString kPositionInput;
-	static const QString kRotationInput;
-	static const QString kScaleInput;
-	static const QString kUniformScaleInput;
-	static const QString kAnchorInput;
+	static const QString k_position_input;
+	static const QString k_rotation_input;
+	static const QString k_scale_input;
+	static const QString k_uniform_scale_input;
+	static const QString k_anchor_input;
 
 protected:
-	QMatrix4x4 GenerateMatrix(const NodeValueRow &value, bool ignore_anchor,
+	QMatrix4x4 generate_matrix(const NodeValueRow &value, bool ignore_anchor,
 							  bool ignore_position, bool ignore_scale,
 							  const QMatrix4x4 &mat) const;
-	static QMatrix4x4 GenerateMatrix(const QVector2D &pos, const float &rot,
+	static QMatrix4x4 generate_matrix(const QVector2D &pos, const float &rot,
 									 const QVector2D &scale, bool uniform_scale,
 									 const QVector2D &anchor, QMatrix4x4 mat);
 

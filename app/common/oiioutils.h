@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef OIIOUTILS_H
-#define OIIOUTILS_H
+#ifndef OAK_OIIOUTILS_H
+#define OAK_OIIOUTILS_H
 
 #include <OpenImageIO/imagebuf.h>
 #include <OpenImageIO/typedesc.h>
@@ -34,36 +34,36 @@ namespace olive
 class OIIOUtils {
 public:
 	static OIIO::TypeDesc::BASETYPE
-	GetOIIOBaseTypeFromFormat(PixelFormat format)
+	get_oiio_base_type_from_format(PixelFormat format)
 	{
 		switch (format) {
-		case PixelFormat::U8:
+		case PixelFormat::u8:
 			return OIIO::TypeDesc::UINT8;
-		case PixelFormat::U10:
+		case PixelFormat::u10:
 			return OIIO::TypeDesc::UNKNOWN;
-		case PixelFormat::U16:
+		case PixelFormat::u16:
 			return OIIO::TypeDesc::UINT16;
-		case PixelFormat::F16:
+		case PixelFormat::f16:
 			return OIIO::TypeDesc::HALF;
-		case PixelFormat::F32:
+		case PixelFormat::f32:
 			return OIIO::TypeDesc::FLOAT;
-		case PixelFormat::INVALID:
-		case PixelFormat::COUNT:
+		case PixelFormat::invalid:
+		case PixelFormat::count:
 			break;
 		}
 
 		return OIIO::TypeDesc::UNKNOWN;
 	}
 
-	static void FrameToBuffer(const Frame *frame, OIIO::ImageBuf *buf);
+	static void frame_to_buffer(const Frame *frame, OIIO::ImageBuf *buf);
 
-	static void BufferToFrame(OIIO::ImageBuf *buf, Frame *frame);
+	static void buffer_to_frame(OIIO::ImageBuf *buf, Frame *frame);
 
-	static PixelFormat GetFormatFromOIIOBasetype(OIIO::TypeDesc::BASETYPE type);
+	static PixelFormat get_format_from_oiio_basetype(OIIO::TypeDesc::BASETYPE type);
 
-	static rational GetPixelAspectRatioFromOIIO(const OIIO::ImageSpec &spec);
+	static Rational get_pixel_aspect_ratio_from_oiio(const OIIO::ImageSpec &spec);
 };
 
 }
 
-#endif // OIIOUTILS_H
+#endif // OAK_OIIOUTILS_H

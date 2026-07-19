@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef MAINWINDOWUNDO_H
-#define MAINWINDOWUNDO_H
+#ifndef OAK_MAINWINDOWUNDO_H
+#define OAK_MAINWINDOWUNDO_H
 
 #include "node/project/sequence/sequence.h"
 
@@ -34,7 +34,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return nullptr;
 	}
@@ -55,7 +55,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return nullptr;
 	}
@@ -71,4 +71,4 @@ private:
 
 }
 
-#endif // MAINWINDOWUNDO_H
+#endif // OAK_MAINWINDOWUNDO_H

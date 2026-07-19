@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINEWIDGET_H
-#define TIMELINEWIDGET_H
+#ifndef OAK_TIMELINEWIDGET_H
+#define OAK_TIMELINEWIDGET_H
 
 #include <QScrollBar>
 #include <QRubberBand>
@@ -53,103 +53,103 @@ public:
 
 	virtual ~TimelineWidget() override;
 
-	void Clear();
+	void clear();
 
-	void SelectAll();
+	void select_all();
 
-	void DeselectAll();
+	void deselect_all();
 
-	void RippleToIn();
+	void ripple_to_in();
 
-	void RippleToOut();
+	void ripple_to_out();
 
-	void EditToIn();
+	void edit_to_in();
 
-	void EditToOut();
+	void edit_to_out();
 
-	void SplitAtPlayhead();
+	void split_at_playhead();
 
 	void DeleteSelected(bool ripple = false);
 
-	void IncreaseTrackHeight();
+	void increase_track_height();
 
-	void DecreaseTrackHeight();
+	void decrease_track_height();
 
-	void InsertFootageAtPlayhead(const QVector<ViewerOutput *> &footage);
+	void insert_footage_at_playhead(const QVector<ViewerOutput *> &footage);
 
-	void OverwriteFootageAtPlayhead(const QVector<ViewerOutput *> &footage);
+	void overwrite_footage_at_playhead(const QVector<ViewerOutput *> &footage);
 
-	void ToggleLinksOnSelected();
+	void toggle_links_on_selected();
 
-	void AddDefaultTransitionsToSelected();
+	void add_default_transitions_to_selected();
 
-	virtual bool CopySelected(bool cut) override;
+	virtual bool copy_selected(bool cut) override;
 
-	virtual bool Paste() override;
+	virtual bool paste() override;
 
-	void PasteInsert();
+	void paste_insert();
 
-	void DeleteInToOut(bool ripple);
+	void delete_in_to_out(bool ripple);
 
-	void ToggleSelectedEnabled();
+	void toggle_selected_enabled();
 
-	void SetColorLabel(int index);
+	void set_color_label(int index);
 
-	void NudgeLeft();
+	void nudge_left();
 
-	void NudgeRight();
+	void nudge_right();
 
-	void MoveInToPlayhead();
+	void move_in_to_playhead();
 
-	void MoveOutToPlayhead();
+	void move_out_to_playhead();
 
-	void ShowSpeedDurationDialogForSelectedClips();
+	void show_speed_duration_dialog_for_selected_clips();
 
-	void SynchronizeSelectedClipsBySourceTime();
+	void synchronize_selected_clips_by_source_time();
 
-	void SynchronizeSelectedClipsByWaveform();
+	void synchronize_selected_clips_by_waveform();
 
-	void SynchronizeSelectedClipsByWaveformWithSpeed();
+	void synchronize_selected_clips_by_waveform_with_speed();
 
-	void GenerateProxiesForSelectedClips();
+	void generate_proxies_for_selected_clips();
 
-	void SetSelectedClipsProxyEnabled(bool enabled);
+	void set_selected_clips_proxy_enabled(bool enabled);
 
-	void RevealProxyForSelectedClips();
+	void reveal_proxy_for_selected_clips();
 
-	void DeleteProxiesForSelectedClips();
+	void delete_proxies_for_selected_clips();
 
-	void ShowProxyDialogForSelectedClips();
+	void show_proxy_dialog_for_selected_clips();
 
-	void RecordingCallback(const QString &filename, const TimeRange &time,
+	void recording_callback(const QString &filename, const TimeRange &time,
 						   const Track::Reference &track);
 
-	void EnableRecordingOverlay(const TimelineCoordinate &coord);
+	void enable_recording_overlay(const TimelineCoordinate &coord);
 
-	void DisableRecordingOverlay();
+	void disable_recording_overlay();
 
-	void AddTentativeSubtitleTrack();
+	void add_tentative_subtitle_track();
 
-	void NestSelectedClips();
+	void nest_selected_clips();
 
 	/**
    * @brief Timelines should always be connected to sequences
    */
 	Sequence *sequence() const
 	{
-		return static_cast<Sequence *>(GetConnectedNode());
+		return static_cast<Sequence *>(get_connected_node());
 	}
 
-	const QVector<Block *> &GetSelectedBlocks() const
+	const QVector<Block *> &get_selected_blocks() const
 	{
 		return selected_blocks_;
 	}
 
-	QByteArray SaveSplitterState() const;
+	QByteArray save_splitter_state() const;
 
-	void RestoreSplitterState(const QByteArray &state);
+	void restore_splitter_state(const QByteArray &state);
 
-	static void ReplaceBlocksWithGaps(const QVector<Block *> &blocks,
+	static void replace_blocks_with_gaps(const QVector<Block *> &blocks,
 									  bool remove_from_graph,
 									  MultiUndoCommand *command,
 									  bool handle_transitions = true);
@@ -160,65 +160,65 @@ public:
    * Requires a float-based scene position. If you have a screen position, use GetScenePos() first to convert it to a
    * scene position
    */
-	Block *GetItemAtScenePos(const TimelineCoordinate &coord);
+	Block *get_item_at_scene_pos(const TimelineCoordinate &coord);
 
-	void AddSelection(const TimeRange &time, const Track::Reference &track);
-	void AddSelection(Block *item);
+	void add_selection(const TimeRange &time, const Track::Reference &track);
+	void add_selection(Block *item);
 
-	void RemoveSelection(const TimeRange &time, const Track::Reference &track);
-	void RemoveSelection(Block *item);
+	void remove_selection(const TimeRange &time, const Track::Reference &track);
+	void remove_selection(Block *item);
 
-	const TimelineWidgetSelections &GetSelections() const
+	const TimelineWidgetSelections &get_selections() const
 	{
 		return selections_;
 	}
 
-	void SetSelections(const TimelineWidgetSelections &s,
+	void set_selections(const TimelineWidgetSelections &s,
 					   bool process_block_changes);
 
-	Track *GetTrackFromReference(const Track::Reference &ref) const;
+	Track *get_track_from_reference(const Track::Reference &ref) const;
 
-	void SetViewBeamCursor(const TimelineCoordinate &coord);
-	void SetViewTransitionOverlay(ClipBlock *out, ClipBlock *in);
+	void set_view_beam_cursor(const TimelineCoordinate &coord);
+	void set_view_transition_overlay(ClipBlock *out, ClipBlock *in);
 
-	const QVector<TimelineViewGhostItem *> &GetGhostItems() const
+	const QVector<TimelineViewGhostItem *> &get_ghost_items() const
 	{
 		return ghost_items_;
 	}
 
-	void InsertGapsAt(const rational &time, const rational &length,
+	void insert_gaps_at(const Rational &time, const Rational &length,
 					  MultiUndoCommand *command);
 
-	void StartRubberBandSelect(const QPoint &global_cursor_start);
-	void MoveRubberBandSelect(bool enable_selecting, bool select_links);
-	void EndRubberBandSelect();
+	void start_rubber_band_select(const QPoint &global_cursor_start);
+	void move_rubber_band_select(bool enable_selecting, bool select_links);
+	void end_rubber_band_select();
 
-	int GetTrackY(const Track::Reference &ref);
-	int GetTrackHeight(const Track::Reference &ref);
+	int get_track_y(const Track::Reference &ref);
+	int get_track_height(const Track::Reference &ref);
 
-	void AddGhost(TimelineViewGhostItem *ghost);
+	void add_ghost(TimelineViewGhostItem *ghost);
 
-	void ClearGhosts();
+	void clear_ghosts();
 
-	bool HasGhosts() const
+	bool has_ghosts() const
 	{
 		return !ghost_items_.isEmpty();
 	}
 
-	bool IsBlockSelected(Block *b) const
+	bool is_block_selected(Block *b) const
 	{
 		return selected_blocks_.contains(b);
 	}
 
-	void SetBlockLinksSelected(ClipBlock *block, bool selected);
+	void set_block_links_selected(ClipBlock *block, bool selected);
 
-	void QueueScroll(int value);
+	void queue_scroll(int value);
 
-	TimelineView *GetFirstTimelineView();
+	TimelineView *get_first_timeline_view();
 
-	rational GetTimebaseForTrackType(Track::Type type);
+	Rational get_timebase_for_track_type(Track::Type type);
 
-	const QRect &GetRubberBandGeometry() const;
+	const QRect &get_rubber_band_geometry() const;
 
 	/**
    * @brief Track blocks that have newly been selected (this is preferred over emitting BlocksSelected directly)
@@ -236,25 +236,25 @@ public:
    * this is preferable and should only be set to FALSE if the list is guaranteed not to contain
    * already selected blocks (and therefore filtering can be skipped to save time).
    */
-	void SignalSelectedBlocks(QVector<Block *> selected_blocks,
+	void signal_selected_blocks(QVector<Block *> selected_blocks,
 							  bool filter = true);
 
 	/**
    * @brief Track blocks that have been newly deselected
    */
-	void SignalDeselectedBlocks(const QVector<Block *> &deselected_blocks);
+	void signal_deselected_blocks(const QVector<Block *> &deselected_blocks);
 
 	/**
    * @brief Convenience function to deselect all blocks and signal them
    */
-	void SignalDeselectedAllBlocks();
+	void signal_deselected_all_blocks();
 
-	void Refresh()
+	void refresh()
 	{
-		UpdateViewports();
+		update_viewports();
 	}
 
-	MultiUndoCommand *TakeSubtitleSectionCommand()
+	MultiUndoCommand *take_subtitle_section_command()
 	{
 		// Copy pointer
 		MultiUndoCommand *c = subtitle_show_command_;
@@ -280,7 +280,7 @@ public:
 		{
 		}
 
-		virtual Project *GetRelevantProject() const override
+		virtual Project *get_relevant_project() const override
 		{
 			return nullptr;
 		}
@@ -288,12 +288,12 @@ public:
 	protected:
 		virtual void redo() override
 		{
-			timeline_->SetSelections(now_, process_block_changes_);
+			timeline_->set_selections(now_, process_block_changes_);
 		}
 
 		virtual void undo() override
 		{
-			timeline_->SetSelections(old_, process_block_changes_);
+			timeline_->set_selections(old_, process_block_changes_);
 		}
 
 	private:
@@ -304,30 +304,30 @@ public:
 	};
 
 public slots:
-	void ClearTentativeSubtitleTrack();
+	void clear_tentative_subtitle_track();
 
-	void RenameSelectedBlocks();
+	void rename_selected_blocks();
 
 signals:
-	void BlockSelectionChanged(const QVector<Block *> &selected_blocks);
+	void block_selection_changed(const QVector<Block *> &selected_blocks);
 
-	void RequestCaptureStart(const TimeRange &time,
+	void request_capture_start(const TimeRange &time,
 							 const Track::Reference &track);
 
-	void RevealViewerInFootageViewer(ViewerOutput *r, const TimeRange &range);
-	void RevealViewerInProject(ViewerOutput *r);
+	void reveal_viewer_in_footage_viewer(ViewerOutput *r, const TimeRange &range);
+	void reveal_viewer_in_project(ViewerOutput *r);
 
 protected:
 	virtual void resizeEvent(QResizeEvent *event) override;
 
-	virtual void TimeChangedEvent(const rational &) override;
-	virtual void TimebaseChangedEvent(const rational &) override;
+	virtual void TimeChangedEvent(const Rational &) override;
+	virtual void TimebaseChangedEvent(const Rational &) override;
 	virtual void ScaleChangedEvent(const double &) override;
 
 	virtual void ConnectNodeEvent(ViewerOutput *n) override;
 	virtual void DisconnectNodeEvent(ViewerOutput *n) override;
 
-	virtual const QVector<Block *> *GetSnapBlocks() const override
+	virtual const QVector<Block *> *get_snap_blocks() const override
 	{
 		return &added_blocks_;
 	}
@@ -336,23 +336,23 @@ protected slots:
 	virtual void SendCatchUpScrollEvent() override;
 
 private:
-	QVector<Timeline::EditToInfo> GetEditToInfo(const rational &playhead_time,
+	QVector<Timeline::EditToInfo> get_edit_to_info(const Rational &playhead_time,
 												Timeline::MovementMode mode);
 
-	void RippleTo(Timeline::MovementMode mode);
+	void ripple_to(Timeline::MovementMode mode);
 
-	void EditTo(Timeline::MovementMode mode);
+	void edit_to(Timeline::MovementMode mode);
 
-	void UpdateViewports(const Track::Type &type = Track::kNone);
+	void update_viewports(const Track::Type &type = Track::k_none);
 
-	bool PasteInternal(bool insert);
+	bool paste_internal(bool insert);
 
-	void SynchronizeSelectedClipsByWaveformInternal(bool allow_speed);
+	void synchronize_selected_clips_by_waveform_internal(bool allow_speed);
 
-	TimelineAndTrackView *AddTimelineAndTrackView(Qt::Alignment alignment);
+	TimelineAndTrackView *add_timeline_and_track_view(Qt::Alignment alignment);
 
 	QHash<Node *, Node *>
-	GenerateExistingPasteMap(const ProjectSerializer::Result &r);
+	generate_existing_paste_map(const ProjectSerializer::Result &r);
 
 	QRubberBand rubberband_;
 	QVector<QPointF> rubberband_scene_pos_;
@@ -363,7 +363,7 @@ private:
 
 	TimelineWidgetSelections selections_;
 
-	TimelineTool *GetActiveTool();
+	TimelineTool *get_active_tool();
 
 	QVector<TimelineTool *> tools_;
 
@@ -400,7 +400,7 @@ private:
 		{
 		}
 
-		virtual Project *GetRelevantProject() const override
+		virtual Project *get_relevant_project() const override
 		{
 			return nullptr;
 		}
@@ -415,78 +415,78 @@ private:
 		QList<int> old_sizes_;
 	};
 
-	void CenterOn(qreal scene_pos);
+	void center_on(qreal scene_pos);
 
-	void UpdateViewTimebases();
+	void update_view_timebases();
 
-	void NudgeInternal(rational amount);
+	void nudge_internal(Rational amount);
 
-	void MoveToPlayheadInternal(bool out);
+	void move_to_playhead_internal(bool out);
 
 private slots:
-	void ViewMousePressed(TimelineViewMouseEvent *event);
-	void ViewMouseMoved(TimelineViewMouseEvent *event);
-	void ViewMouseReleased(TimelineViewMouseEvent *event);
-	void ViewMouseDoubleClicked(TimelineViewMouseEvent *event);
+	void view_mouse_pressed(TimelineViewMouseEvent *event);
+	void view_mouse_moved(TimelineViewMouseEvent *event);
+	void view_mouse_released(TimelineViewMouseEvent *event);
+	void view_mouse_double_clicked(TimelineViewMouseEvent *event);
 
-	void ViewDragEntered(TimelineViewMouseEvent *event);
-	void ViewDragMoved(TimelineViewMouseEvent *event);
-	void ViewDragLeft(QDragLeaveEvent *event);
-	void ViewDragDropped(TimelineViewMouseEvent *event);
+	void view_drag_entered(TimelineViewMouseEvent *event);
+	void view_drag_moved(TimelineViewMouseEvent *event);
+	void view_drag_left(QDragLeaveEvent *event);
+	void view_drag_dropped(TimelineViewMouseEvent *event);
 
-	void AddBlock(Block *block);
-	void RemoveBlock(Block *blocks);
+	void add_block(Block *block);
+	void remove_block(Block *blocks);
 
-	void AddTrack(Track *track);
-	void RemoveTrack(Track *track);
-	void TrackUpdated();
+	void add_track(Track *track);
+	void remove_track(Track *track);
+	void track_updated();
 
-	void BlockUpdated();
+	void block_updated();
 
-	void UpdateHorizontalSplitters();
+	void update_horizontal_splitters();
 
-	void UpdateTimecodeWidthFromSplitters(QSplitter *s);
+	void update_timecode_width_from_splitters(QSplitter *s);
 
-	void ShowContextMenu();
+	void show_context_menu();
 
 	void DeferredScrollAction();
 
-	void ShowSequenceDialog();
+	void show_sequence_dialog();
 
-	void SetUseAudioTimeUnits(bool use);
+	void set_use_audio_time_units(bool use);
 
-	void ToolChanged();
+	void tool_changed();
 
-	void AddableObjectChanged();
+	void addable_object_changed();
 
-	void SetViewWaveformsEnabled(bool e);
+	void set_view_waveforms_enabled(bool e);
 
-	void SetViewThumbnailsEnabled(QAction *action);
+	void set_view_thumbnails_enabled(QAction *action);
 
-	void FrameRateChanged();
+	void frame_rate_changed();
 
-	void SampleRateChanged();
+	void sample_rate_changed();
 
-	void TrackIndexChanged(int old, int now);
+	void track_index_changed(int old, int now);
 
-	void SignalBlockSelectionChange();
+	void signal_block_selection_change();
 
-	void RevealInFootageViewer();
-	void RevealInProject();
+	void reveal_in_footage_viewer();
+	void reveal_in_project();
 
-	void TrackAboutToBeDeleted(Track *track);
+	void track_about_to_be_deleted(Track *track);
 
-	void SetSelectedClipsAutocaching(bool e);
+	void set_selected_clips_autocaching(bool e);
 
-	void CacheClips();
-	void CacheClipsInOut();
-	void CacheDiscard();
+	void cache_clips();
+	void cache_clips_in_out();
+	void cache_discard();
 
-	void MulticamEnabledTriggered(bool e);
+	void multicam_enabled_triggered(bool e);
 
-	void ForceUpdateRubberBand();
+	void force_update_rubber_band();
 };
 
 }
 
-#endif // TIMELINEWIDGET_H
+#endif // OAK_TIMELINEWIDGET_H

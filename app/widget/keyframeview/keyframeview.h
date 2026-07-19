@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef KEYFRAMEVIEWBASE_H
-#define KEYFRAMEVIEWBASE_H
+#ifndef OAK_KEYFRAMEVIEWBASE_H
+#define OAK_KEYFRAMEVIEWBASE_H
 
 #include <functional>
 
@@ -39,35 +39,35 @@ class KeyframeView : public TimeBasedView, public TimeTargetObject {
 public:
 	KeyframeView(QWidget *parent = nullptr);
 
-	void DeleteSelected();
+	void delete_selected();
 
 	using ElementConnections = QVector<KeyframeViewInputConnection *>;
 	using InputConnections = QVector<ElementConnections>;
 	using NodeConnections = QMap<QString, InputConnections>;
 
-	NodeConnections AddKeyframesOfNode(Node *n);
+	NodeConnections add_keyframes_of_node(Node *n);
 
-	InputConnections AddKeyframesOfInput(Node *n, const QString &input);
+	InputConnections add_keyframes_of_input(Node *n, const QString &input);
 
-	ElementConnections AddKeyframesOfElement(const NodeInput &input);
+	ElementConnections add_keyframes_of_element(const NodeInput &input);
 
 	KeyframeViewInputConnection *
-	AddKeyframesOfTrack(const NodeKeyframeTrackReference &ref);
+	add_keyframes_of_track(const NodeKeyframeTrackReference &ref);
 
-	void RemoveKeyframesOfTrack(KeyframeViewInputConnection *connection);
+	void remove_keyframes_of_track(KeyframeViewInputConnection *connection);
 
-	void SelectAll();
+	void select_all();
 
-	void DeselectAll();
+	void deselect_all();
 
-	void Clear();
+	void clear();
 
-	const std::vector<NodeKeyframe *> &GetSelectedKeyframes() const
+	const std::vector<NodeKeyframe *> &get_selected_keyframes() const
 	{
-		return selection_manager_.GetSelectedObjects();
+		return selection_manager_.get_selected_objects();
 	}
 
-	const QVector<KeyframeViewInputConnection *> &GetKeyframeTracks() const
+	const QVector<KeyframeViewInputConnection *> &get_keyframe_tracks() const
 	{
 		return tracks_;
 	}
@@ -75,24 +75,24 @@ public:
 	virtual void SelectionManagerSelectEvent(void *obj) override;
 	virtual void SelectionManagerDeselectEvent(void *obj) override;
 
-	void SetMaxScroll(int i)
+	void set_max_scroll(int i)
 	{
 		max_scroll_ = i;
-		UpdateSceneRect();
+		update_scene_rect();
 	}
 
-	bool CopySelected(bool cut);
+	bool copy_selected(bool cut);
 
-	bool Paste(std::function<Node *(const QString &)> find_node_function);
+	bool paste(std::function<Node *(const QString &)> find_node_function);
 
 	virtual void CatchUpScrollEvent() override;
 
 signals:
-	void Dragged(int current_x, int current_y);
+	void dragged(int current_x, int current_y);
 
-	void SelectionChanged();
+	void selection_changed();
 
-	void Released();
+	void released();
 
 protected:
 	virtual void mousePressEvent(QMouseEvent *event) override;
@@ -101,7 +101,7 @@ protected:
 
 	virtual void drawForeground(QPainter *painter, const QRectF &rect) override;
 
-	virtual void DrawKeyframe(QPainter *painter, NodeKeyframe *key,
+	virtual void draw_keyframe(QPainter *painter, NodeKeyframe *key,
 							  KeyframeViewInputConnection *track,
 							  const QRectF &key_rect);
 
@@ -109,55 +109,55 @@ protected:
 
 	virtual void TimeTargetChangedEvent(ViewerOutput *v) override;
 
-	virtual void TimebaseChangedEvent(const rational &timebase) override;
+	virtual void TimebaseChangedEvent(const Rational &timebase) override;
 
 	virtual void ContextMenuEvent(Menu &m);
 
-	virtual bool FirstChanceMousePress(QMouseEvent *event)
+	virtual bool first_chance_mouse_press(QMouseEvent *event)
 	{
 		return false;
 	}
-	virtual void FirstChanceMouseMove(QMouseEvent *event)
+	virtual void first_chance_mouse_move(QMouseEvent *event)
 	{
 	}
-	virtual void FirstChanceMouseRelease(QMouseEvent *event)
+	virtual void first_chance_mouse_release(QMouseEvent *event)
 	{
 	}
 
-	virtual void KeyframeDragStart(QMouseEvent *event)
+	virtual void keyframe_drag_start(QMouseEvent *event)
 	{
 	}
-	virtual void KeyframeDragMove(QMouseEvent *event, QString &tip)
+	virtual void keyframe_drag_move(QMouseEvent *event, QString &tip)
 	{
 	}
-	virtual void KeyframeDragRelease(QMouseEvent *event,
+	virtual void keyframe_drag_release(QMouseEvent *event,
 									 MultiUndoCommand *command)
 	{
 	}
 
-	void SelectKeyframe(NodeKeyframe *key);
+	void select_keyframe(NodeKeyframe *key);
 
-	void DeselectKeyframe(NodeKeyframe *key);
+	void deselect_keyframe(NodeKeyframe *key);
 
-	bool IsKeyframeSelected(NodeKeyframe *key) const
+	bool is_keyframe_selected(NodeKeyframe *key) const
 	{
-		return selection_manager_.IsSelected(key);
+		return selection_manager_.is_selected(key);
 	}
 
-	rational GetUnadjustedKeyframeTime(NodeKeyframe *key, const rational &time);
-	rational GetUnadjustedKeyframeTime(NodeKeyframe *key)
+	Rational get_unadjusted_keyframe_time(NodeKeyframe *key, const Rational &time);
+	Rational get_unadjusted_keyframe_time(NodeKeyframe *key)
 	{
-		return GetUnadjustedKeyframeTime(key, key->time());
+		return get_unadjusted_keyframe_time(key, key->time());
 	}
 
-	rational GetAdjustedKeyframeTime(NodeKeyframe *key);
+	Rational get_adjusted_keyframe_time(NodeKeyframe *key);
 
-	double GetKeyframeSceneX(NodeKeyframe *key);
+	double get_keyframe_scene_x(NodeKeyframe *key);
 
-	virtual qreal GetKeyframeSceneY(KeyframeViewInputConnection *track,
+	virtual qreal get_keyframe_scene_y(KeyframeViewInputConnection *track,
 									NodeKeyframe *key);
 
-	void SetAutoSelectSiblings(bool e)
+	void set_auto_select_siblings(bool e)
 	{
 		autoselect_siblings_ = e;
 	}
@@ -165,10 +165,10 @@ protected:
 	virtual void SceneRectUpdateEvent(QRectF &rect) override;
 
 protected slots:
-	void Redraw();
+	void redraw();
 
 private:
-	rational CalculateNewTimeFromScreen(const rational &old_time,
+	Rational calculate_new_time_from_screen(const Rational &old_time,
 										double cursor_diff);
 
 	QVector<KeyframeViewInputConnection *> tracks_;
@@ -182,13 +182,13 @@ private:
 	bool first_chance_mouse_event_;
 
 private slots:
-	void ShowContextMenu();
+	void show_context_menu();
 
-	void ShowKeyframePropertiesDialog();
+	void show_keyframe_properties_dialog();
 
-	void UpdateRubberBandForScroll();
+	void update_rubber_band_for_scroll();
 };
 
 }
 
-#endif // KEYFRAMEVIEWBASE_H
+#endif // OAK_KEYFRAMEVIEWBASE_H

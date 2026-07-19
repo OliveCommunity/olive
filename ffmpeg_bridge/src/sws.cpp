@@ -30,8 +30,8 @@ FBScaler *fb_scaler_create(int src_width, int src_height, int src_format,
 						   int flags)
 {
 	SwsContext *ctx = sws_getContext(
-		src_width, src_height, fb::PixFmtToAV(src_format),
-		dst_width, dst_height, fb::PixFmtToAV(dst_format), flags,
+		src_width, src_height, fb::pix_fmt_to_av(src_format),
+		dst_width, dst_height, fb::pix_fmt_to_av(dst_format), flags,
 		nullptr, nullptr, nullptr);
 	if (!ctx) {
 		return nullptr;
@@ -58,7 +58,7 @@ int fb_scaler_set_colorspace(FBScaler *scaler, int colorspace, int jpeg_range)
 	}
 
 	const int *coeffs = sws_getCoefficients(
-		fb::SwsColorspaceFromAVColorSpace(static_cast<AVColorSpace>(colorspace)));
+		fb::sws_colorspace_from_av_color_space(static_cast<AVColorSpace>(colorspace)));
 	return sws_setColorspaceDetails(scaler->ctx, coeffs, jpeg_range, coeffs,
 									jpeg_range, 0, 0x10000, 0x10000);
 }
@@ -85,7 +85,7 @@ int fb_scaler_scale_slices(FBScaler *scaler, const uint8_t *const *src_data,
 void fb_get_yuv_coefficients(int colorspace, double out[4])
 {
 	const int *coeffs = sws_getCoefficients(
-		fb::SwsColorspaceFromAVColorSpace(static_cast<AVColorSpace>(colorspace)));
+		fb::sws_colorspace_from_av_color_space(static_cast<AVColorSpace>(colorspace)));
 	// Matches the historical usage order: crv, cbu, cgu, cgv
 	out[0] = coeffs[0] / 65536.0; // crv
 	out[1] = coeffs[1] / 65536.0; // cbu

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINETOOL_H
-#define TIMELINETOOL_H
+#ifndef OAK_TIMELINETOOL_H
+#define OAK_TIMELINETOOL_H
 
 #include <QDragLeaveEvent>
 
@@ -37,33 +37,33 @@ public:
 	TimelineTool(TimelineWidget *parent);
 	virtual ~TimelineTool();
 
-	virtual void MousePress(TimelineViewMouseEvent *)
+	virtual void mouse_press(TimelineViewMouseEvent *)
 	{
 	}
-	virtual void MouseMove(TimelineViewMouseEvent *)
+	virtual void mouse_move(TimelineViewMouseEvent *)
 	{
 	}
-	virtual void MouseRelease(TimelineViewMouseEvent *)
+	virtual void mouse_release(TimelineViewMouseEvent *)
 	{
 	}
-	virtual void MouseDoubleClick(TimelineViewMouseEvent *)
-	{
-	}
-
-	virtual void HoverMove(TimelineViewMouseEvent *)
+	virtual void mouse_double_click(TimelineViewMouseEvent *)
 	{
 	}
 
-	virtual void DragEnter(TimelineViewMouseEvent *)
+	virtual void hover_move(TimelineViewMouseEvent *)
 	{
 	}
-	virtual void DragMove(TimelineViewMouseEvent *)
+
+	virtual void drag_enter(TimelineViewMouseEvent *)
 	{
 	}
-	virtual void DragLeave(QDragLeaveEvent *)
+	virtual void drag_move(TimelineViewMouseEvent *)
 	{
 	}
-	virtual void DragDrop(TimelineViewMouseEvent *)
+	virtual void drag_leave(QDragLeaveEvent *)
+	{
+	}
+	virtual void drag_drop(TimelineViewMouseEvent *)
 	{
 	}
 
@@ -72,11 +72,11 @@ public:
 	Sequence *sequence();
 
 	static Timeline::MovementMode
-	FlipTrimMode(const Timeline::MovementMode &trim_mode);
+	flip_trim_mode(const Timeline::MovementMode &trim_mode);
 
-	static rational SnapMovementToTimebase(const rational &start,
-										   rational movement,
-										   const rational &timebase);
+	static Rational snap_movement_to_timebase(const Rational &start,
+										   Rational movement,
+										   const Rational &timebase);
 
 protected:
 	/**
@@ -85,27 +85,27 @@ protected:
    * Validation is the process of ensuring that whatever movements the user is making are "valid" and "legal". This
    * function's validation ensures that no Ghost's in point ends up in a negative timecode.
    */
-	rational ValidateTimeMovement(rational movement);
+	Rational validate_time_movement(Rational movement);
 
 	/**
    * @brief Validates Ghosts that are moving vertically (track-based)
    *
    * This function's validation ensures that no Ghost's track ends up in a negative (non-existent) track.
    */
-	int ValidateTrackMovement(int movement,
+	int validate_track_movement(int movement,
 							  const QVector<TimelineViewGhostItem *> &ghosts);
 
-	void GetGhostData(rational *earliest_point, rational *latest_point);
+	void get_ghost_data(Rational *earliest_point, Rational *latest_point);
 
-	void InsertGapsAtGhostDestination(MultiUndoCommand *command);
+	void insert_gaps_at_ghost_destination(MultiUndoCommand *command);
 
-	std::vector<rational> snap_points_;
+	std::vector<Rational> snap_points_;
 
 	bool dragging_;
 
 	TimelineCoordinate drag_start_;
 
-	static const int kDefaultDistanceFromOutput;
+	static const int k_default_distance_from_output;
 
 private:
 	TimelineWidget *parent_;
@@ -113,4 +113,4 @@ private:
 
 }
 
-#endif // TIMELINETOOL_H
+#endif // OAK_TIMELINETOOL_H

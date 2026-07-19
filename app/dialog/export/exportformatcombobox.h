@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef EXPORTFORMATCOMBOBOX_H
-#define EXPORTFORMATCOMBOBOX_H
+#ifndef OAK_EXPORTFORMATCOMBOBOX_H
+#define OAK_EXPORTFORMATCOMBOBOX_H
 
 #include <QComboBox>
 #include <QWidgetAction>
@@ -36,19 +36,19 @@ class ExportFormatComboBox : public QComboBox {
 	Q_OBJECT
 public:
 	enum Mode {
-		kShowAllFormats,
-		kShowAudioOnly,
-		kShowVideoOnly,
-		kShowSubtitlesOnly
+		k_show_all_formats,
+		k_show_audio_only,
+		k_show_video_only,
+		k_show_subtitles_only
 	};
 
 	ExportFormatComboBox(Mode mode, QWidget *parent = nullptr);
 	ExportFormatComboBox(QWidget *parent = nullptr)
-		: ExportFormatComboBox(kShowAllFormats, parent)
+		: ExportFormatComboBox(k_show_all_formats, parent)
 	{
 	}
 
-	ExportFormat::Format GetFormat() const
+	ExportFormat::Format get_format() const
 	{
 		return current_;
 	}
@@ -56,24 +56,24 @@ public:
 	void showPopup();
 
 signals:
-	void FormatChanged(ExportFormat::Format fmt);
+	void format_changed(ExportFormat::Format fmt);
 
 public slots:
-	void SetFormat(ExportFormat::Format fmt);
+	void set_format(ExportFormat::Format fmt);
 
 private slots:
-	void HandleIndexChange(QAction *a);
+	void handle_index_change(QAction *a);
 
 private:
-	void PopulateType(Track::Type type);
+	void populate_type(Track::Type type);
 
-	QWidgetAction *CreateHeader(const QIcon &icon, const QString &title);
+	QWidgetAction *create_header(const QIcon &icon, const QString &title);
 
 	Menu *custom_menu_;
 
-	ExportFormat::Format current_ = ExportFormat::kFormatCount;
+	ExportFormat::Format current_ = ExportFormat::k_format_count;
 };
 
 }
 
-#endif // EXPORTFORMATCOMBOBOX_H
+#endif // OAK_EXPORTFORMATCOMBOBOX_H

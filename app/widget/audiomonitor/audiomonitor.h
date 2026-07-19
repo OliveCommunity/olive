@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef AUDIOMONITORWIDGET_H
-#define AUDIOMONITORWIDGET_H
+#ifndef OAK_AUDIOMONITORWIDGET_H
+#define OAK_AUDIOMONITORWIDGET_H
 
 #include <QFile>
 #include <QOpenGLWidget>
@@ -40,42 +40,42 @@ public:
 
 	virtual ~AudioMonitor() override;
 
-	bool IsPlaying() const
+	bool is_playing() const
 	{
 		return waveform_;
 	}
 
-	static void StartWaveformOnAll(const AudioWaveformCache *waveform,
-								   const rational &start, int playback_speed)
+	static void start_waveform_on_all(const AudioWaveformCache *waveform,
+								   const Rational &start, int playback_speed)
 	{
-		foreach (AudioMonitor *m, instances_) {
-			m->StartWaveform(waveform, start, playback_speed);
+		foreach (AudioMonitor *m, instances) {
+			m->start_waveform(waveform, start, playback_speed);
 		}
 	}
 
-	static void StopOnAll()
+	static void stop_on_all()
 	{
-		foreach (AudioMonitor *m, instances_) {
-			m->Stop();
+		foreach (AudioMonitor *m, instances) {
+			m->stop();
 		}
 	}
 
-	static void PushSampleBufferOnAll(const SampleBuffer &d)
+	static void push_sample_buffer_on_all(const SampleBuffer &d)
 	{
-		foreach (AudioMonitor *m, instances_) {
-			m->PushSampleBuffer(d);
+		foreach (AudioMonitor *m, instances) {
+			m->push_sample_buffer(d);
 		}
 	}
 
 public slots:
-	void SetParams(const AudioParams &params);
+	void set_params(const AudioParams &params);
 
-	void Stop();
+	void stop();
 
-	void PushSampleBuffer(const SampleBuffer &samples);
+	void push_sample_buffer(const SampleBuffer &samples);
 
-	void StartWaveform(const AudioWaveformCache *waveform,
-					   const rational &start, int playback_speed);
+	void start_waveform(const AudioWaveformCache *waveform,
+					   const Rational &start, int playback_speed);
 
 protected:
 	virtual void paintGL() override;
@@ -83,26 +83,26 @@ protected:
 	virtual void mousePressEvent(QMouseEvent *event) override;
 
 private:
-	void SetUpdateLoop(bool e);
+	void set_update_loop(bool e);
 
-	void UpdateValuesFromWaveform(QVector<double> &v, qint64 delta_time);
+	void update_values_from_waveform(QVector<double> &v, qint64 delta_time);
 
-	void AudioVisualWaveformSampleToInternalValues(
+	void audio_visual_waveform_sample_to_internal_values(
 		const AudioVisualWaveform::Sample &in, QVector<double> &out);
 
-	void PushValue(const QVector<double> &v);
+	void push_value(const QVector<double> &v);
 
-	void BytesToSampleSummary(const QByteArray &bytes, QVector<double> &v);
+	void bytes_to_sample_summary(const QByteArray &bytes, QVector<double> &v);
 
-	QVector<double> GetAverages() const;
+	QVector<double> get_averages() const;
 
 	AudioParams params_;
 
 	qint64 last_time_;
 
 	const AudioWaveformCache *waveform_;
-	rational waveform_time_;
-	rational waveform_length_;
+	Rational waveform_time_;
+	Rational waveform_length_;
 
 	int playback_speed_;
 
@@ -112,9 +112,9 @@ private:
 	QPixmap cached_background_;
 	int cached_channels_;
 
-	static QVector<AudioMonitor *> instances_;
+	static QVector<AudioMonitor *> instances;
 };
 
 }
 
-#endif // AUDIOMONITORWIDGET_H
+#endif // OAK_AUDIOMONITORWIDGET_H

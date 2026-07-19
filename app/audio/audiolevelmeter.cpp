@@ -29,7 +29,7 @@ namespace olive
 {
 
 AudioLevelMeter::Stats
-AudioLevelMeter::AnalyzeSampleBuffer(const core::SampleBuffer &samples)
+AudioLevelMeter::analyze_sample_buffer(const core::SampleBuffer &samples)
 {
 	Stats stats;
 
@@ -63,9 +63,9 @@ AudioLevelMeter::AnalyzeSampleBuffer(const core::SampleBuffer &samples)
 
 		ChannelStats channel_stats;
 		channel_stats.peak_linear = peak;
-		channel_stats.peak_db = LinearToDb(peak);
+		channel_stats.peak_db = linear_to_db(peak);
 		channel_stats.rms_linear = rms;
-		channel_stats.rms_db = LinearToDb(rms);
+		channel_stats.rms_db = linear_to_db(rms);
 		channel_stats.vu_db = channel_stats.rms_db;
 		stats.channels[channel] = channel_stats;
 
@@ -76,24 +76,24 @@ AudioLevelMeter::AnalyzeSampleBuffer(const core::SampleBuffer &samples)
 
 	stats.silence = qFuzzyIsNull(stats.max_peak_linear);
 	stats.integrated_lufs =
-		PowerToLufs(total_square / static_cast<double>(total_samples));
+		power_to_lufs(total_square / static_cast<double>(total_samples));
 
 	return stats;
 }
 
-double AudioLevelMeter::LinearToDb(double linear)
+double AudioLevelMeter::linear_to_db(double linear)
 {
 	if (linear <= 0.0) {
-		return Decibel::MINIMUM;
+		return Decibel::minimum;
 	}
 
-	return Decibel::fromLinear(linear);
+	return Decibel::from_linear(linear);
 }
 
-double AudioLevelMeter::PowerToLufs(double mean_square)
+double AudioLevelMeter::power_to_lufs(double mean_square)
 {
 	if (mean_square <= 0.0) {
-		return Decibel::MINIMUM;
+		return Decibel::minimum;
 	}
 
 	// BS.1770 loudness uses K-weighted mean square. This first pass stores the

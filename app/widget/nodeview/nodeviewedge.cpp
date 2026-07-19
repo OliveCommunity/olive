@@ -45,11 +45,11 @@ NodeViewEdge::NodeViewEdge(Node *output, const NodeInput &input,
 	, from_item_(from_item)
 	, to_item_(to_item)
 {
-	Init();
-	SetConnected(true);
+	init();
+	set_connected(true);
 
-	from_item_->AddEdge(this);
-	to_item_->AddEdge(this);
+	from_item_->add_edge(this);
+	to_item_->add_edge(this);
 }
 
 NodeViewEdge::NodeViewEdge(QGraphicsItem *parent)
@@ -57,83 +57,83 @@ NodeViewEdge::NodeViewEdge(QGraphicsItem *parent)
 	, from_item_(nullptr)
 	, to_item_(nullptr)
 {
-	Init();
+	init();
 }
 
 NodeViewEdge::~NodeViewEdge()
 {
 	if (from_item_) {
-		from_item_->RemoveEdge(this);
+		from_item_->remove_edge(this);
 	}
 
 	if (to_item_) {
-		to_item_->RemoveEdge(this);
+		to_item_->remove_edge(this);
 	}
 }
 
 void NodeViewEdge::set_from_item(NodeViewItem *i)
 {
 	if (from_item_) {
-		from_item_->RemoveEdge(this);
+		from_item_->remove_edge(this);
 	}
 
 	from_item_ = i;
 
 	if (from_item_) {
-		from_item_->AddEdge(this);
+		from_item_->add_edge(this);
 	}
 
-	Adjust();
+	adjust();
 }
 
 void NodeViewEdge::set_to_item(NodeViewItem *i)
 {
 	if (to_item_) {
-		to_item_->RemoveEdge(this);
+		to_item_->remove_edge(this);
 	}
 
 	to_item_ = i;
 
 	if (to_item_) {
-		to_item_->AddEdge(this);
+		to_item_->add_edge(this);
 	}
 
-	Adjust();
+	adjust();
 }
 
-void NodeViewEdge::Adjust()
+void NodeViewEdge::adjust()
 {
 	// Draw a line between the two
-	SetPoints(from_item()->GetOutputPoint(), to_item()->GetInputPoint());
+	set_points(from_item()->get_output_point(), to_item()->get_input_point());
 }
 
-void NodeViewEdge::SetConnected(bool c)
+void NodeViewEdge::set_connected(bool c)
 {
 	connected_ = c;
 
 	update();
 }
 
-void NodeViewEdge::SetHighlighted(bool e)
+void NodeViewEdge::set_highlighted(bool e)
 {
 	highlighted_ = e;
 
 	update();
 }
 
-void NodeViewEdge::SetPoints(const QPointF &start, const QPointF &end)
+void NodeViewEdge::set_points(const QPointF &start, const QPointF &end)
 {
 	cached_start_ = start;
 	cached_end_ = end;
 
-	UpdateCurve();
+	update_curve();
 }
 
-void NodeViewEdge::SetCurved(bool e)
+void NodeViewEdge::set_curved(bool e)
 {
 	curved_ = e;
 
-	UpdateCurve();
+	update_curve();
 }
 
 void NodeViewEdge::paint(QPainter *painter,
@@ -162,7 +162,7 @@ void NodeViewEdge::paint(QPainter *painter,
 	painter->drawPath(path());
 }
 
-void NodeViewEdge::Init()
+void NodeViewEdge::init()
 {
 	connected_ = false;
 	highlighted_ = false;
@@ -177,7 +177,7 @@ void NodeViewEdge::Init()
 	edge_width_ = QFontMetrics(QFont()).height() / 12;
 }
 
-void NodeViewEdge::UpdateCurve()
+void NodeViewEdge::update_curve()
 {
 	const QPointF &start = cached_start_;
 	const QPointF &end = cached_end_;
@@ -194,30 +194,30 @@ void NodeViewEdge::UpdateCurve()
 		QPointF cp1, cp2;
 
 		NodeViewCommon::FlowDirection from_flow =
-			from_item_ ? from_item_->GetFlowDirection() :
-						 NodeViewCommon::kInvalidDirection;
+			from_item_ ? from_item_->get_flow_direction() :
+						 NodeViewCommon::k_invalid_direction;
 		NodeViewCommon::FlowDirection to_flow =
-			to_item_ ? to_item_->GetFlowDirection() :
-					   NodeViewCommon::kInvalidDirection;
+			to_item_ ? to_item_->get_flow_direction() :
+					   NodeViewCommon::k_invalid_direction;
 
-		if (from_flow == NodeViewCommon::kInvalidDirection &&
-			to_flow == NodeViewCommon::kInvalidDirection) {
+		if (from_flow == NodeViewCommon::k_invalid_direction &&
+			to_flow == NodeViewCommon::k_invalid_direction) {
 			// This is a technically unsupported scenario, but to avoid issues, we'll use a fallback
-			from_flow = NodeViewCommon::kLeftToRight;
-			to_flow = NodeViewCommon::kLeftToRight;
-		} else if (from_flow == NodeViewCommon::kInvalidDirection) {
+			from_flow = NodeViewCommon::k_left_to_right;
+			to_flow = NodeViewCommon::k_left_to_right;
+		} else if (from_flow == NodeViewCommon::k_invalid_direction) {
 			from_flow = to_flow;
-		} else if (to_flow == NodeViewCommon::kInvalidDirection) {
+		} else if (to_flow == NodeViewCommon::k_invalid_direction) {
 			to_flow = from_flow;
 		}
 
-		if (NodeViewCommon::GetFlowOrientation(from_flow) == Qt::Horizontal) {
+		if (NodeViewCommon::get_flow_orientation(from_flow) == Qt::Horizontal) {
 			cp1 = QPointF(half_x, start.y());
 		} else {
 			cp1 = QPointF(start.x(), half_y);
 		}
 
-		if (NodeViewCommon::GetFlowOrientation(to_flow) == Qt::Horizontal) {
+		if (NodeViewCommon::get_flow_orientation(to_flow) == Qt::Horizontal) {
 			cp2 = QPointF(half_x, end.y());
 		} else {
 			cp2 = QPointF(end.x(), half_y);
@@ -244,8 +244,8 @@ void NodeViewEdge::UpdateCurve()
 				std::swap(y2, y3);
 			}
 
-			double t = Bezier::CubicXtoT(continue_x, x1, x2, x3, x4);
-			double y = Bezier::CubicTtoY(y1, y2, y3, y4, t);
+			double t = Bezier::cubic_xto_t(continue_x, x1, x2, x3, x4);
+			double y = Bezier::cubic_tto_y(y1, y2, y3, y4, t);
 
 			angle = std::atan2(end.y() - y, end.x() - continue_x);
 		}

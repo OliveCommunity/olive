@@ -38,7 +38,7 @@
 namespace olive
 {
 
-const QString Footage::kFilenameInput = QStringLiteral("file_in");
+const QString Footage::k_filename_input = QStringLiteral("file_in");
 
 #define super ViewerOutput
 
@@ -47,7 +47,7 @@ Footage::Footage(const QString &filename)
 	, timestamp_(0)
 	, has_source_start_time_(false)
 	, proxy_enabled_(false)
-	, proxy_state_(ProxyManager::kProxyMissing)
+	, proxy_state_(ProxyManager::k_proxy_missing)
 	, proxy_video_stream_index_(-1)
 	, proxy_preset_version_(0)
 	, has_custom_proxy_params_(false)
@@ -55,13 +55,13 @@ Footage::Footage(const QString &filename)
 	, cancelled_(nullptr)
 	, total_stream_count_(0)
 {
-	SetFlag(kIsItem);
+	set_flag(k_is_item);
 
-	PrependInput(kFilenameInput, NodeValue::kFile,
-				 InputFlags(kInputFlagNotConnectable |
-							kInputFlagNotKeyframable));
+	prepend_input(k_filename_input, NodeValue::k_file,
+				 InputFlags(k_input_flag_not_connectable |
+							k_input_flag_not_keyframable));
 
-	Clear();
+	clear();
 
 	if (!filename.isEmpty()) {
 		set_filename(filename);
@@ -69,50 +69,50 @@ Footage::Footage(const QString &filename)
 
 	QTimer *check_timer = new QTimer(this);
 	check_timer->setInterval(5000);
-	connect(check_timer, &QTimer::timeout, this, &Footage::CheckFootage);
+	connect(check_timer, &QTimer::timeout, this, &Footage::check_footage);
 	check_timer->start();
 
-	connect(this->waveform_cache(), &AudioWaveformCache::Validated, this,
-			&ViewerOutput::ConnectedWaveformChanged);
+	connect(this->waveform_cache(), &AudioWaveformCache::validated, this,
+			&ViewerOutput::connected_waveform_changed);
 }
 
-void Footage::Retranslate()
+void Footage::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kFilenameInput, tr("Filename"));
+	set_input_name(k_filename_input, tr("Filename"));
 }
 
 void Footage::InputValueChangedEvent(const QString &input, int element)
 {
-	if (input == kFilenameInput) {
+	if (input == k_filename_input) {
 		// Reset internal stream cache
-		Clear();
+		clear();
 
-		Reprobe();
+		reprobe();
 	} else {
 		super::InputValueChangedEvent(input, element);
 	}
 }
 
-rational Footage::VerifyLengthInternal(Track::Type type) const
+Rational Footage::verify_length_internal(Track::Type type) const
 {
-	if (type == Track::kVideo) {
-		VideoParams first_stream = GetFirstEnabledVideoStream();
+	if (type == Track::k_video) {
+		VideoParams first_stream = get_first_enabled_video_stream();
 
 		if (first_stream.is_valid()) {
 			return Timecode::timestamp_to_time(first_stream.duration(),
 											   first_stream.time_base());
 		}
-	} else if (type == Track::kAudio) {
-		AudioParams first_stream = GetFirstEnabledAudioStream();
+	} else if (type == Track::k_audio) {
+		AudioParams first_stream = get_first_enabled_audio_stream();
 
 		if (first_stream.is_valid()) {
 			return Timecode::timestamp_to_time(first_stream.duration(),
 											   first_stream.time_base());
 		}
-	} else if (type == Track::kSubtitle) {
-		SubtitleParams first_stream = GetFirstEnabledSubtitleStream();
+	} else if (type == Track::k_subtitle) {
+		SubtitleParams first_stream = get_first_enabled_subtitle_stream();
 
 		if (first_stream.is_valid()) {
 			return first_stream.duration();
@@ -122,29 +122,29 @@ rational Footage::VerifyLengthInternal(Track::Type type) const
 	return 0;
 }
 
-QString Footage::GetColorspaceToUse(const VideoParams &params) const
+QString Footage::get_colorspace_to_use(const VideoParams &params) const
 {
 	if (params.colorspace().isEmpty()) {
-		return project()->color_manager()->GetDefaultInputColorSpace();
+		return project()->color_manager()->get_default_input_color_space();
 	} else {
 		return params.colorspace();
 	}
 }
 
-void Footage::Clear()
+void Footage::clear()
 {
 	// Clear all dynamically created inputs
-	InputArrayResize(kVideoParamsInput, 0);
-	InputArrayResize(kAudioParamsInput, 0);
-	InputArrayResize(kSubtitleParamsInput, 0);
+	input_array_resize(k_video_params_input, 0);
+	input_array_resize(k_audio_params_input, 0);
+	input_array_resize(k_subtitle_params_input, 0);
 
 	// Clear decoder link
 	decoder_.clear();
 
 	has_source_start_time_ = false;
-	source_start_time_ = rational();
+	source_start_time_ = Rational();
 	source_start_time_source_.clear();
-	ClearProxy();
+	clear_proxy();
 
 	// Clear total stream count
 	total_stream_count_ = 0;
@@ -153,19 +153,19 @@ void Footage::Clear()
 	valid_ = false;
 }
 
-void Footage::SetValid()
+void Footage::set_valid()
 {
 	valid_ = true;
 }
 
 QString Footage::filename() const
 {
-	return GetStandardValue(kFilenameInput).toString();
+	return get_standard_value(k_filename_input).toString();
 }
 
 void Footage::set_filename(const QString &s)
 {
-	SetStandardValue(kFilenameInput, s);
+	set_standard_value(k_filename_input, s);
 }
 
 const qint64 &Footage::timestamp() const
@@ -178,50 +178,50 @@ void Footage::set_timestamp(const qint64 &t)
 	timestamp_ = t;
 }
 
-int Footage::GetStreamIndex(Track::Type type, int index) const
+int Footage::get_stream_index(Track::Type type, int index) const
 {
 	switch (type) {
-	case Track::kVideo:
-		if (index >= 0 && index < GetVideoStreamCount()) {
-			return GetVideoParams(index).stream_index();
+	case Track::k_video:
+		if (index >= 0 && index < get_video_stream_count()) {
+			return get_video_params(index).stream_index();
 		}
 		break;
-	case Track::kAudio:
-		if (index >= 0 && index < GetAudioStreamCount()) {
-			return GetAudioParams(index).stream_index();
+	case Track::k_audio:
+		if (index >= 0 && index < get_audio_stream_count()) {
+			return get_audio_params(index).stream_index();
 		}
 		break;
-	case Track::kSubtitle:
-		if (index >= 0 && index < GetSubtitleStreamCount()) {
-			return GetSubtitleParams(index).stream_index();
+	case Track::k_subtitle:
+		if (index >= 0 && index < get_subtitle_stream_count()) {
+			return get_subtitle_params(index).stream_index();
 		}
 		break;
-	case Track::kNone:
-	case Track::kCount:
+	case Track::k_none:
+	case Track::k_count:
 		break;
 	}
 
 	return -1;
 }
 
-Track::Reference Footage::GetReferenceFromRealIndex(int real_index) const
+Track::Reference Footage::get_reference_from_real_index(int real_index) const
 {
 	// Check video streams
-	for (int i = 0; i < GetVideoStreamCount(); i++) {
-		if (GetVideoParams(i).stream_index() == real_index) {
-			return Track::Reference(Track::kVideo, i);
+	for (int i = 0; i < get_video_stream_count(); i++) {
+		if (get_video_params(i).stream_index() == real_index) {
+			return Track::Reference(Track::k_video, i);
 		}
 	}
 
-	for (int i = 0; i < GetAudioStreamCount(); i++) {
-		if (GetAudioParams(i).stream_index() == real_index) {
-			return Track::Reference(Track::kAudio, i);
+	for (int i = 0; i < get_audio_stream_count(); i++) {
+		if (get_audio_params(i).stream_index() == real_index) {
+			return Track::Reference(Track::k_audio, i);
 		}
 	}
 
-	for (int i = 0; i < GetSubtitleStreamCount(); i++) {
-		if (GetSubtitleParams(i).stream_index() == real_index) {
-			return Track::Reference(Track::kSubtitle, i);
+	for (int i = 0; i < get_subtitle_stream_count(); i++) {
+		if (get_subtitle_params(i).stream_index() == real_index) {
+			return Track::Reference(Track::k_subtitle, i);
 		}
 	}
 
@@ -233,16 +233,16 @@ const QString &Footage::decoder() const
 	return decoder_;
 }
 
-void Footage::SetSourceStartTime(const rational &time, const QString &source)
+void Footage::set_source_start_time(const Rational &time, const QString &source)
 {
 	source_start_time_ = time;
 	source_start_time_source_ = source;
 	has_source_start_time_ = true;
 }
 
-void Footage::ClearSourceStartTime()
+void Footage::clear_source_start_time()
 {
-	source_start_time_ = rational();
+	source_start_time_ = Rational();
 	source_start_time_source_.clear();
 	has_source_start_time_ = false;
 }
@@ -255,15 +255,15 @@ void Footage::set_proxy_enabled(bool enabled)
 		if (Project *p = project()) {
 			p->set_modified(true);
 		}
-		emit ProxySettingsChanged();
+		emit proxy_settings_changed();
 	}
 }
 
-void Footage::SetProxy(const QString &path, ProxyManager::ProxyState state,
+void Footage::set_proxy(const QString &path, ProxyManager::ProxyState state,
 					   int video_stream_index, int preset_version, bool enabled)
 {
 	qDebug() << "Footage::SetProxy:" << filename() << "enabled=" << enabled
-			 << "state=" << ProxyManager::ProxyStateToString(state)
+			 << "state=" << ProxyManager::proxy_state_to_string(state)
 			 << "path=" << path;
 	proxy_path_ = path;
 	proxy_state_ = state;
@@ -273,30 +273,30 @@ void Footage::SetProxy(const QString &path, ProxyManager::ProxyState state,
 	if (Project *p = project()) {
 		p->set_modified(true);
 	}
-	emit ProxySettingsChanged();
+	emit proxy_settings_changed();
 }
 
-void Footage::ClearProxy()
+void Footage::clear_proxy()
 {
 	proxy_enabled_ = false;
 	proxy_path_.clear();
-	proxy_state_ = ProxyManager::kProxyMissing;
+	proxy_state_ = ProxyManager::k_proxy_missing;
 	proxy_video_stream_index_ = -1;
 	proxy_preset_version_ = 0;
-	emit ProxySettingsChanged();
+	emit proxy_settings_changed();
 }
 
-void Footage::SetCustomProxyParams(const ProxyManager::ProxyParams &params)
+void Footage::set_custom_proxy_params(const ProxyManager::ProxyParams &params)
 {
 	custom_proxy_params_ = params;
 	has_custom_proxy_params_ = true;
 	if (Project *p = project()) {
 		p->set_modified(true);
 	}
-	emit ProxySettingsChanged();
+	emit proxy_settings_changed();
 }
 
-void Footage::ClearCustomProxyParams()
+void Footage::clear_custom_proxy_params()
 {
 	if (has_custom_proxy_params_) {
 		has_custom_proxy_params_ = false;
@@ -304,22 +304,22 @@ void Footage::ClearCustomProxyParams()
 		if (Project *p = project()) {
 			p->set_modified(true);
 		}
-		emit ProxySettingsChanged();
+		emit proxy_settings_changed();
 	}
 }
 
-ProxyManager::ProxyParams Footage::GetEffectiveProxyParams() const
+ProxyManager::ProxyParams Footage::get_effective_proxy_params() const
 {
 	if (has_custom_proxy_params_) {
 		return custom_proxy_params_;
 	}
 
-	return ProxyManager::ProxyParamsFromConfig();
+	return ProxyManager::proxy_params_from_config();
 }
 
-QString Footage::DescribeVideoStream(const VideoParams &params)
+QString Footage::describe_video_stream(const VideoParams &params)
 {
-	if (params.video_type() == VideoParams::kVideoTypeStill) {
+	if (params.video_type() == VideoParams::k_video_type_still) {
 		return tr("%1: Image - %2x%3")
 			.arg(QString::number(params.stream_index()),
 				 QString::number(params.width()),
@@ -332,7 +332,7 @@ QString Footage::DescribeVideoStream(const VideoParams &params)
 	}
 }
 
-QString Footage::DescribeAudioStream(const AudioParams &params)
+QString Footage::describe_audio_stream(const AudioParams &params)
 {
 	return tr("%1: Audio - %n Channel(s), %2Hz", nullptr,
 			  params.channel_count())
@@ -340,48 +340,48 @@ QString Footage::DescribeAudioStream(const AudioParams &params)
 			 QString::number(params.sample_rate()));
 }
 
-QString Footage::DescribeSubtitleStream(const SubtitleParams &params)
+QString Footage::describe_subtitle_stream(const SubtitleParams &params)
 {
 	return tr("%1: Subtitle").arg(QString::number(params.stream_index()));
 }
 
-void Footage::Value(const NodeValueRow &value, const NodeGlobals &globals,
+void Footage::value(const NodeValueRow &value, const NodeGlobals &globals,
 					NodeValueTable *table) const
 {
 	Q_UNUSED(globals)
 
 	// Pop filename from table
-	QString file = value[kFilenameInput].toString();
+	QString file = value[k_filename_input].to_string();
 
 	// If the file exists and the reference is valid, push a footage job to the renderer
 	if (QFileInfo::exists(file)) {
 		// Push length
-		table->Push(NodeValue::kRational, QVariant::fromValue(GetLength()),
+		table->push(NodeValue::k_rational, QVariant::fromValue(get_length()),
 					this, QStringLiteral("length"));
 
 		// Push each stream as a footage job
-		for (int i = 0; i < GetTotalStreamCount(); i++) {
-			Track::Reference ref = GetReferenceFromRealIndex(i);
+		for (int i = 0; i < get_total_stream_count(); i++) {
+			Track::Reference ref = get_reference_from_real_index(i);
 			FootageJob job(globals.time(), decoder_, filename(), ref.type(),
-						   GetLength(), globals.loop_mode());
+						   get_length(), globals.loop_mode());
 
-			if (ref.type() == Track::kVideo) {
-				VideoParams vp = GetVideoParams(ref.index());
+			if (ref.type() == Track::k_video) {
+				VideoParams vp = get_video_params(ref.index());
 
 				if (proxy_enabled_ && !proxy_path_.isEmpty() &&
 					proxy_video_stream_index_ == vp.stream_index() &&
-					ProxyManager::GetProxyState(proxy_path_) ==
-						ProxyManager::kProxyReady) {
+					ProxyManager::get_proxy_state(proxy_path_) ==
+						ProxyManager::k_proxy_ready) {
 					job.set_proxy(proxy_path_, QStringLiteral("ffmpeg"), 0);
 				}
 
 				// Ensure the colorspace is valid and not empty
-				vp.set_colorspace(GetColorspaceToUse(vp));
+				vp.set_colorspace(get_colorspace_to_use(vp));
 
 				// Adjust footage job's divider
 				if (globals.vparams().divider() > 1) {
 					// Use a divider appropriate for this target resolution
-					int calculated = VideoParams::GetDividerForTargetResolution(
+					int calculated = VideoParams::get_divider_for_target_resolution(
 						vp.width(), vp.height(),
 						globals.vparams().effective_width(),
 						globals.vparams().effective_height());
@@ -394,25 +394,25 @@ void Footage::Value(const NodeValueRow &value, const NodeGlobals &globals,
 
 				job.set_video_params(vp);
 
-				table->Push(NodeValue::kTexture, Texture::Job(vp, job), this,
-							ref.ToString());
-			} else if (ref.type() == Track::kAudio) {
-				AudioParams ap = GetAudioParams(ref.index());
+				table->push(NodeValue::k_texture, Texture::job(vp, job), this,
+							ref.to_string());
+			} else if (ref.type() == Track::k_audio) {
+				AudioParams ap = get_audio_params(ref.index());
 				job.set_audio_params(ap);
 				job.set_cache_path(project()->cache_path());
 
 				// Proxies generated with audio contain the video stream at
 				// index 0 followed by all source audio streams in source order
 				if (proxy_enabled_ && !proxy_path_.isEmpty() &&
-					ProxyManager::GetProxyState(proxy_path_) ==
-						ProxyManager::kProxyReady &&
-					ProxyManager::ProxyFilenameHasAudio(proxy_path_)) {
+					ProxyManager::get_proxy_state(proxy_path_) ==
+						ProxyManager::k_proxy_ready &&
+					ProxyManager::proxy_filename_has_audio(proxy_path_)) {
 					int audio_rank = 0;
-					for (int i = 0; i < GetTotalStreamCount(); i++) {
+					for (int i = 0; i < get_total_stream_count(); i++) {
 						const Track::Reference other =
-							GetReferenceFromRealIndex(i);
-						if (other.type() == Track::kAudio &&
-							GetAudioParams(other.index()).stream_index() <
+							get_reference_from_real_index(i);
+						if (other.type() == Track::k_audio &&
+							get_audio_params(other.index()).stream_index() <
 								ap.stream_index()) {
 							audio_rank++;
 						}
@@ -421,82 +421,82 @@ void Footage::Value(const NodeValueRow &value, const NodeGlobals &globals,
 								  audio_rank + 1);
 				}
 
-				table->Push(NodeValue::kSamples, QVariant::fromValue(job), this,
-							ref.ToString());
+				table->push(NodeValue::k_samples, QVariant::fromValue(job), this,
+							ref.to_string());
 			}
 		}
 	}
 }
 
-QString Footage::GetStreamTypeName(Track::Type type)
+QString Footage::get_stream_type_name(Track::Type type)
 {
 	switch (type) {
-	case Track::kVideo:
+	case Track::k_video:
 		return tr("Video");
-	case Track::kAudio:
+	case Track::k_audio:
 		return tr("Audio");
-	case Track::kSubtitle:
+	case Track::k_subtitle:
 		return tr("Subtitle");
-	case Track::kNone:
-	case Track::kCount:
+	case Track::k_none:
+	case Track::k_count:
 		break;
 	}
 
 	return tr("Unknown");
 }
 
-Node *Footage::GetConnectedTextureOutput()
+Node *Footage::get_connected_texture_output()
 {
-	if (GetVideoStreamCount() > 0) {
+	if (get_video_stream_count() > 0) {
 		return this;
 	} else {
 		return nullptr;
 	}
 }
 
-Node *Footage::GetConnectedSampleOutput()
+Node *Footage::get_connected_sample_output()
 {
-	if (GetAudioStreamCount() > 0) {
+	if (get_audio_stream_count() > 0) {
 		return this;
 	} else {
 		return nullptr;
 	}
 }
 
-bool TimeIsOutOfBounds(const rational &time, const rational &length)
+bool time_is_out_of_bounds(const Rational &time, const Rational &length)
 {
 	return time < 0 || time >= length;
 }
 
-rational Footage::AdjustTimeByLoopMode(rational time, LoopMode loop_mode,
-									   const rational &length,
+Rational Footage::adjust_time_by_loop_mode(Rational time, LoopMode loop_mode,
+									   const Rational &length,
 									   VideoParams::Type type,
-									   const rational &timebase)
+									   const Rational &timebase)
 {
-	if (type == VideoParams::kVideoTypeStill) {
+	if (type == VideoParams::k_video_type_still) {
 		// No looping for still images
 		return 0;
 	}
 
-	if (TimeIsOutOfBounds(time, length)) {
+	if (time_is_out_of_bounds(time, length)) {
 		switch (loop_mode) {
-		case LoopMode::kLoopModeOff:
+		case LoopMode::k_loop_mode_off:
 			// Return no time to indicate no frame should be shown here
-			time = rational::NaN;
+			time = Rational::na_n;
 			break;
-		case LoopMode::kLoopModeClamp:
+		case LoopMode::k_loop_mode_clamp:
 			if (length < timebase) {
 				// No full frame fits in the range, so there is nothing to clamp to
-				time = rational::NaN;
+				time = Rational::na_n;
 			} else {
 				// Clamp footage time to length
-				time = std::clamp(time, rational(0), length - timebase);
+				time = std::clamp(time, Rational(0), length - timebase);
 			}
 			break;
-		case LoopMode::kLoopModeLoop:
+		case LoopMode::k_loop_mode_loop:
 			if (length <= 0) {
 				// Cannot loop around an empty range
-				time = rational::NaN;
+				time = Rational::na_n;
 			} else {
 				// Loop footage time around job length
 				do {
@@ -505,7 +505,7 @@ rational Footage::AdjustTimeByLoopMode(rational time, LoopMode loop_mode,
 					} else {
 						time += length;
 					}
-				} while (TimeIsOutOfBounds(time, length));
+				} while (time_is_out_of_bounds(time, length));
 			}
 			break;
 		}
@@ -517,15 +517,15 @@ rational Footage::AdjustTimeByLoopMode(rational time, LoopMode loop_mode,
 QVariant Footage::data(const DataType &d) const
 {
 	switch (d) {
-	case CREATED_TIME: {
+	case created_time: {
 		QFileInfo info(filename());
 
 		if (info.exists()) {
-			return QtUtils::GetCreationDate(info).toSecsSinceEpoch();
+			return QtUtils::get_creation_date(info).toSecsSinceEpoch();
 		}
 		break;
 	}
-	case MODIFIED_TIME: {
+	case modified_time: {
 		QFileInfo info(filename());
 
 		if (info.exists()) {
@@ -533,57 +533,57 @@ QVariant Footage::data(const DataType &d) const
 		}
 		break;
 	}
-	case ICON: {
-		if (valid_ && GetTotalStreamCount()) {
+	case icon: {
+		if (valid_ && get_total_stream_count()) {
 			// Prioritize video > audio > image
-			VideoParams s = GetFirstEnabledVideoStream();
+			VideoParams s = get_first_enabled_video_stream();
 
 			if (s.is_valid() &&
-				s.video_type() != VideoParams::kVideoTypeStill) {
-				return icon::Video;
-			} else if (HasEnabledAudioStreams()) {
-				return icon::Audio;
+				s.video_type() != VideoParams::k_video_type_still) {
+				return icon::video;
+			} else if (has_enabled_audio_streams()) {
+				return icon::audio;
 			} else if (s.is_valid() &&
-					   s.video_type() == VideoParams::kVideoTypeStill) {
-				return icon::Image;
-			} else if (HasEnabledSubtitleStreams()) {
-				return icon::Subtitles;
+					   s.video_type() == VideoParams::k_video_type_still) {
+				return icon::image;
+			} else if (has_enabled_subtitle_streams()) {
+				return icon::subtitles;
 			}
 		}
 
-		return icon::Error;
+		return icon::error;
 	}
-	case TOOLTIP: {
+	case tooltip: {
 		if (valid_) {
 			QString tip = tr("Filename: %1").arg(filename());
 
-			int vp_sz = GetVideoStreamCount();
+			int vp_sz = get_video_stream_count();
 			for (int i = 0; i < vp_sz; i++) {
-				VideoParams p = GetVideoParams(i);
+				VideoParams p = get_video_params(i);
 
 				if (p.enabled()) {
 					tip.append("\n");
-					tip.append(DescribeVideoStream(p));
+					tip.append(describe_video_stream(p));
 				}
 			}
 
-			int ap_sz = GetAudioStreamCount();
+			int ap_sz = get_audio_stream_count();
 			for (int i = 0; i < ap_sz; i++) {
-				AudioParams p = GetAudioParams(i);
+				AudioParams p = get_audio_params(i);
 
 				if (p.enabled()) {
 					tip.append("\n");
-					tip.append(DescribeAudioStream(p));
+					tip.append(describe_audio_stream(p));
 				}
 			}
 
-			int sp_sz = GetSubtitleStreamCount();
+			int sp_sz = get_subtitle_stream_count();
 			for (int i = 0; i < sp_sz; i++) {
-				SubtitleParams p = GetSubtitleParams(i);
+				SubtitleParams p = get_subtitle_params(i);
 
 				if (p.enabled()) {
 					tip.append("\n");
-					tip.append(DescribeSubtitleStream(p));
+					tip.append(describe_subtitle_stream(p));
 				}
 			}
 
@@ -599,14 +599,14 @@ QVariant Footage::data(const DataType &d) const
 	return super::data(d);
 }
 
-bool Footage::LoadCustom(QXmlStreamReader *reader, SerializedData *data)
+bool Footage::load_custom(QXmlStreamReader *reader, SerializedData *data)
 {
-	while (XMLReadNextStartElement(reader)) {
+	while (xml_read_next_start_element(reader)) {
 		if (reader->name() == QStringLiteral("timestamp")) {
 			this->set_timestamp(reader->readElementText().toLongLong());
 		} else if (reader->name() == QStringLiteral("proxy")) {
 			bool enabled = false;
-			ProxyManager::ProxyState state = ProxyManager::kProxyMissing;
+			ProxyManager::ProxyState state = ProxyManager::k_proxy_missing;
 			int stream = -1;
 			int preset_version = 0;
 			bool has_custom_params = false;
@@ -618,7 +618,7 @@ bool Footage::LoadCustom(QXmlStreamReader *reader, SerializedData *data)
 						enabled = (attr.value() == QStringLiteral("1") ||
 								   attr.value() == QStringLiteral("true"));
 					} else if (attr.name() == QStringLiteral("state")) {
-						state = ProxyManager::ProxyStateFromString(
+						state = ProxyManager::proxy_state_from_string(
 							attr.value().toString());
 					} else if (attr.name() == QStringLiteral("stream")) {
 						stream = attr.value().toInt();
@@ -647,12 +647,12 @@ bool Footage::LoadCustom(QXmlStreamReader *reader, SerializedData *data)
 			}
 
 			if (has_custom_params) {
-				SetCustomProxyParams(custom_params);
+				set_custom_proxy_params(custom_params);
 			}
 
 			const QString path = reader->readElementText();
 			if (!path.isEmpty()) {
-				SetProxy(path, state, stream, preset_version, enabled);
+				set_proxy(path, state, stream, preset_version, enabled);
 			} else if (enabled) {
 				set_proxy_enabled(true);
 			}
@@ -674,12 +674,12 @@ bool Footage::LoadCustom(QXmlStreamReader *reader, SerializedData *data)
 				const int numerator = split.at(0).toInt(&numerator_ok);
 				const int denominator = split.at(1).toInt(&denominator_ok);
 				if (numerator_ok && denominator_ok && denominator) {
-					SetSourceStartTime(rational(numerator, denominator),
+					set_source_start_time(Rational(numerator, denominator),
 									   source);
 				}
 			}
 		} else if (reader->name() == QStringLiteral("viewer")) {
-			if (!ViewerOutput::LoadCustom(reader, data)) {
+			if (!ViewerOutput::load_custom(reader, data)) {
 				return false;
 			}
 		} else {
@@ -690,12 +690,12 @@ bool Footage::LoadCustom(QXmlStreamReader *reader, SerializedData *data)
 	// The cached lengths are not serialized. Recompute them from the stream
 	// parameters that were just loaded so that worker processes and any code
 	// that reads GetLength() before InvalidateCache() runs sees valid values.
-	VerifyLength();
+	verify_length();
 
 	return true;
 }
 
-void Footage::SaveCustom(QXmlStreamWriter *writer) const
+void Footage::save_custom(QXmlStreamWriter *writer) const
 {
 	writer->writeTextElement(QStringLiteral("timestamp"),
 							 QString::number(this->timestamp()));
@@ -706,7 +706,7 @@ void Footage::SaveCustom(QXmlStreamWriter *writer) const
 							   proxy_enabled_ ? QStringLiteral("1") :
 												QStringLiteral("0"));
 		writer->writeAttribute(QStringLiteral("state"),
-							   ProxyManager::ProxyStateToString(proxy_state_));
+							   ProxyManager::proxy_state_to_string(proxy_state_));
 		writer->writeAttribute(QStringLiteral("stream"),
 							   QString::number(proxy_video_stream_index_));
 		writer->writeAttribute(QStringLiteral("preset"),
@@ -748,36 +748,36 @@ void Footage::SaveCustom(QXmlStreamWriter *writer) const
 
 	writer->writeStartElement(QStringLiteral("viewer"));
 
-	ViewerOutput::SaveCustom(writer);
+	ViewerOutput::save_custom(writer);
 
 	writer->writeEndElement(); // viewer
 }
 
 void Footage::AddedToGraphEvent(Project *p)
 {
-	connect(p->color_manager(), &ColorManager::DefaultInputChanged, this,
-			&Footage::DefaultColorSpaceChanged);
+	connect(p->color_manager(), &ColorManager::default_input_changed, this,
+			&Footage::default_color_space_changed);
 	if (ProxyManager::instance()) {
-		connect(ProxyManager::instance(), &ProxyManager::ProxyReady, this,
-				&Footage::ProxyReady);
-		connect(ProxyManager::instance(), &ProxyManager::ProxyFinished, this,
-				&Footage::ProxyFinished);
+		connect(ProxyManager::instance(), &ProxyManager::proxy_ready, this,
+				&Footage::proxy_ready);
+		connect(ProxyManager::instance(), &ProxyManager::proxy_finished, this,
+				&Footage::proxy_finished);
 	}
 }
 
 void Footage::RemovedFromGraphEvent(Project *p)
 {
-	disconnect(p->color_manager(), &ColorManager::DefaultInputChanged, this,
-			   &Footage::DefaultColorSpaceChanged);
+	disconnect(p->color_manager(), &ColorManager::default_input_changed, this,
+			   &Footage::default_color_space_changed);
 	if (ProxyManager::instance()) {
-		disconnect(ProxyManager::instance(), &ProxyManager::ProxyReady, this,
-				   &Footage::ProxyReady);
-		disconnect(ProxyManager::instance(), &ProxyManager::ProxyFinished, this,
-				   &Footage::ProxyFinished);
+		disconnect(ProxyManager::instance(), &ProxyManager::proxy_ready, this,
+				   &Footage::proxy_ready);
+		disconnect(ProxyManager::instance(), &ProxyManager::proxy_finished, this,
+				   &Footage::proxy_finished);
 	}
 }
 
-void Footage::Reprobe()
+void Footage::reprobe()
 {
 	// Determine if file still exists
 	QString filename = this->filename();
@@ -797,91 +797,91 @@ void Footage::Reprobe()
 			QString meta_cache_file =
 				QDir(QStandardPaths::writableLocation(
 						 QStandardPaths::CacheLocation))
-					.filePath(FileFunctions::GetUniqueFileIdentifier(filename));
+					.filePath(FileFunctions::get_unique_file_identifier(filename));
 
 			FootageDescription footage_info;
 
 			// Try to load footage info from cache
 			if (!QFileInfo::exists(meta_cache_file) ||
-				!footage_info.Load(meta_cache_file)) {
+				!footage_info.load(meta_cache_file)) {
 				// Probe and create cache
 				QVector<DecoderPtr> decoder_list =
-					Decoder::ReceiveListOfAllDecoders();
+					Decoder::receive_list_of_all_decoders();
 
 				foreach (DecoderPtr decoder, decoder_list) {
-					footage_info = decoder->Probe(filename, cancelled_);
+					footage_info = decoder->probe(filename, cancelled_);
 
-					if (footage_info.IsValid()) {
+					if (footage_info.is_valid()) {
 						break;
 					}
 				}
 
-				if (!cancelled_ || !cancelled_->HeardCancel()) {
+				if (!cancelled_ || !cancelled_->heard_cancel()) {
 					// Only cache successful probes; caching a failed probe
 					// would make every future load re-use the invalid metadata
-					if (footage_info.IsValid() &&
-						!footage_info.Save(meta_cache_file)) {
+					if (footage_info.is_valid() &&
+						!footage_info.save(meta_cache_file)) {
 						qWarning()
 							<< "Failed to save stream cache, footage will have to be re-probed";
 					}
 				}
 			}
 
-			if (footage_info.IsValid()) {
+			if (footage_info.is_valid()) {
 				decoder_ = footage_info.decoder();
 
-				InputArrayResize(kVideoParamsInput,
-								 footage_info.GetVideoStreams().size());
-				for (int i = 0; i < footage_info.GetVideoStreams().size();
+				input_array_resize(k_video_params_input,
+								 footage_info.get_video_streams().size());
+				for (int i = 0; i < footage_info.get_video_streams().size();
 					 i++) {
 					VideoParams video_stream =
-						footage_info.GetVideoStreams().at(i);
+						footage_info.get_video_streams().at(i);
 
-					if (i < InputArraySize(kVideoParamsInput)) {
-						VideoParams existing = this->GetVideoParams(i);
+					if (i < input_array_size(k_video_params_input)) {
+						VideoParams existing = this->get_video_params(i);
 						if (existing.is_valid()) {
 							video_stream =
-								MergeVideoStream(video_stream, existing);
+								merge_video_stream(video_stream, existing);
 						}
 					}
 
-					SetStream(Track::kVideo, QVariant::fromValue(video_stream),
+					set_stream(Track::k_video, QVariant::fromValue(video_stream),
 							  i);
 				}
 
-				InputArrayResize(kAudioParamsInput,
-								 footage_info.GetAudioStreams().size());
-				for (int i = 0; i < footage_info.GetAudioStreams().size();
+				input_array_resize(k_audio_params_input,
+								 footage_info.get_audio_streams().size());
+				for (int i = 0; i < footage_info.get_audio_streams().size();
 					 i++) {
-					SetStream(Track::kAudio,
+					set_stream(Track::k_audio,
 							  QVariant::fromValue(
-								  footage_info.GetAudioStreams().at(i)),
+								  footage_info.get_audio_streams().at(i)),
 							  i);
 				}
 
-				InputArrayResize(kSubtitleParamsInput,
-								 footage_info.GetSubtitleStreams().size());
-				for (int i = 0; i < footage_info.GetSubtitleStreams().size();
+				input_array_resize(k_subtitle_params_input,
+								 footage_info.get_subtitle_streams().size());
+				for (int i = 0; i < footage_info.get_subtitle_streams().size();
 					 i++) {
-					SetStream(Track::kSubtitle,
+					set_stream(Track::k_subtitle,
 							  QVariant::fromValue(
-								  footage_info.GetSubtitleStreams().at(i)),
+								  footage_info.get_subtitle_streams().at(i)),
 							  i);
 				}
 
-				total_stream_count_ = footage_info.GetStreamCount();
-				if (footage_info.HasSourceStartTime()) {
-					SetSourceStartTime(footage_info.source_start_time(),
+				total_stream_count_ = footage_info.get_stream_count();
+				if (footage_info.has_source_start_time()) {
+					set_source_start_time(footage_info.source_start_time(),
 									   footage_info.source_start_time_source());
 				}
 
-				SetValid();
+				set_valid();
 			}
 		}
 	}
 }
 
-VideoParams Footage::MergeVideoStream(const VideoParams &base,
+VideoParams Footage::merge_video_stream(const VideoParams &base,
 									  const VideoParams &over)
 {
 	VideoParams merged = base;
@@ -892,7 +892,7 @@ VideoParams Footage::MergeVideoStream(const VideoParams &base,
 	merged.set_premultiplied_alpha(over.premultiplied_alpha());
 	merged.set_video_type(over.video_type());
 	merged.set_color_range(over.color_range());
-	if (merged.video_type() == VideoParams::kVideoTypeImageSequence) {
+	if (merged.video_type() == VideoParams::k_video_type_image_sequence) {
 		merged.set_start_time(over.start_time());
 		merged.set_duration(over.duration());
 		merged.set_frame_rate(over.frame_rate());
@@ -902,7 +902,7 @@ VideoParams Footage::MergeVideoStream(const VideoParams &base,
 	return merged;
 }
 
-void Footage::CheckFootage()
+void Footage::check_footage()
 {
 	// Don't check files if not the active window
 	if (qApp->activeWindow()) {
@@ -921,39 +921,39 @@ void Footage::CheckFootage()
 
 			if (current_file_timestamp != timestamp()) {
 				// File has changed!
-				Clear();
-				Reprobe();
-				InvalidateAll(kFilenameInput);
+				clear();
+				reprobe();
+				invalidate_all(k_filename_input);
 			}
 		}
 	}
 }
 
-void Footage::DefaultColorSpaceChanged()
+void Footage::default_color_space_changed()
 {
 	bool inv = false;
-	int sz = GetVideoStreamCount();
+	int sz = get_video_stream_count();
 	for (int i = 0; i < sz; i++) {
 		// Check if any of our streams are using the default colorspace
-		if (GetVideoParams(i).colorspace().isEmpty()) {
+		if (get_video_params(i).colorspace().isEmpty()) {
 			inv = true;
 			break;
 		}
 	}
 
 	if (inv) {
-		InvalidateAll(kVideoParamsInput);
+		invalidate_all(k_video_params_input);
 	}
 }
 
-void Footage::ProxyReady(const QString &source_filename, int stream_index,
+void Footage::proxy_ready(const QString &source_filename, int stream_index,
 						 const QString &proxy_filename)
 {
-	ProxyFinished(source_filename, stream_index, proxy_filename,
-				  ProxyManager::kProxyReady);
+	proxy_finished(source_filename, stream_index, proxy_filename,
+				  ProxyManager::k_proxy_ready);
 }
 
-void Footage::ProxyFinished(const QString &source_filename, int stream_index,
+void Footage::proxy_finished(const QString &source_filename, int stream_index,
 							const QString &proxy_filename,
 							ProxyManager::ProxyState state)
 {
@@ -964,7 +964,7 @@ void Footage::ProxyFinished(const QString &source_filename, int stream_index,
 	}
 
 	proxy_state_ = state;
-	InvalidateAll(kFilenameInput);
+	invalidate_all(k_filename_input);
 }
 
 }

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FFMPEG_BRIDGE_H
-#define FFMPEG_BRIDGE_H
+#ifndef OAK_FFMPEG_BRIDGE_H
+#define OAK_FFMPEG_BRIDGE_H
 
 /**
  * ffmpeg_bridge - pure C API isolating all FFmpeg access from the editor.
@@ -77,94 +77,94 @@ extern "C" {
  * format has no entry here receive an opaque process-local id >= 1000.
  */
 typedef enum FBPixelFormat {
-	FB_PIX_FMT_NONE = -1,
-	FB_PIX_FMT_YUV420P = 0,
-	FB_PIX_FMT_RGB24 = 2,
-	FB_PIX_FMT_YUV422P = 4,
-	FB_PIX_FMT_YUV444P = 5,
-	FB_PIX_FMT_YUV410P = 6,
-	FB_PIX_FMT_YUV411P = 7,
-	FB_PIX_FMT_GRAY8 = 8,
-	FB_PIX_FMT_YUVJ420P = 12,
-	FB_PIX_FMT_YUVJ422P = 13,
-	FB_PIX_FMT_YUVJ444P = 14,
-	FB_PIX_FMT_NV12 = 23,
-	FB_PIX_FMT_RGBA = 26,
-	FB_PIX_FMT_GRAY16LE = 30,
-	FB_PIX_FMT_YUV440P = 31,
-	FB_PIX_FMT_YUVJ440P = 32,
-	FB_PIX_FMT_RGB48LE = 35,
-	FB_PIX_FMT_YUV420P10LE = 62,
-	FB_PIX_FMT_YUV422P10LE = 64,
-	FB_PIX_FMT_YUV444P10LE = 68,
-	FB_PIX_FMT_RGBA64LE = 105,
-	FB_PIX_FMT_YUV420P12LE = 123,
-	FB_PIX_FMT_YUV422P12LE = 127,
-	FB_PIX_FMT_YUV444P12LE = 131,
-	FB_PIX_FMT_YUVJ411P = 138,
-	FB_PIX_FMT_P010LE = 158,
-	FB_PIX_FMT_GRAYF32LE = 183,
-	FB_PIX_FMT_RGBAF16LE = 207,
-	FB_PIX_FMT_RGBF32LE = 218,
-	FB_PIX_FMT_RGBAF32LE = 220,
-	FB_PIX_FMT_RGBF16LE = 234,
-	FB_PIX_FMT_GRAYF16LE = 248
+	fb_pix_fmt_none = -1,
+	fb_pix_fmt_yu_v420_p = 0,
+	fb_pix_fmt_rg_b24 = 2,
+	fb_pix_fmt_yu_v422_p = 4,
+	fb_pix_fmt_yu_v444_p = 5,
+	fb_pix_fmt_yu_v410_p = 6,
+	fb_pix_fmt_yu_v411_p = 7,
+	fb_pix_fmt_gra_y8 = 8,
+	fb_pix_fmt_yuv_j420_p = 12,
+	fb_pix_fmt_yuv_j422_p = 13,
+	fb_pix_fmt_yuv_j444_p = 14,
+	fb_pix_fmt_n_v12 = 23,
+	fb_pix_fmt_rgba = 26,
+	fb_pix_fmt_gra_y16_le = 30,
+	fb_pix_fmt_yu_v440_p = 31,
+	fb_pix_fmt_yuv_j440_p = 32,
+	fb_pix_fmt_rg_b48_le = 35,
+	fb_pix_fmt_yu_v420_p10_le = 62,
+	fb_pix_fmt_yu_v422_p10_le = 64,
+	fb_pix_fmt_yu_v444_p10_le = 68,
+	fb_pix_fmt_rgb_a64_le = 105,
+	fb_pix_fmt_yu_v420_p12_le = 123,
+	fb_pix_fmt_yu_v422_p12_le = 127,
+	fb_pix_fmt_yu_v444_p12_le = 131,
+	fb_pix_fmt_yuv_j411_p = 138,
+	fb_pix_fmt_p010_le = 158,
+	fb_pix_fmt_gray_f32_le = 183,
+	fb_pix_fmt_rgba_f16_le = 207,
+	fb_pix_fmt_rgb_f32_le = 218,
+	fb_pix_fmt_rgba_f32_le = 220,
+	fb_pix_fmt_rgb_f16_le = 234,
+	fb_pix_fmt_gray_f16_le = 248
 } FBPixelFormat;
 
 /**
  * Sample formats. Values mirror AVSampleFormat (static_assert'ed).
  */
 typedef enum FBSampleFormat {
-	FB_SAMPLE_FMT_NONE = -1,
-	FB_SAMPLE_FMT_U8 = 0,
-	FB_SAMPLE_FMT_S16 = 1,
-	FB_SAMPLE_FMT_S32 = 2,
-	FB_SAMPLE_FMT_FLT = 3,
-	FB_SAMPLE_FMT_DBL = 4,
-	FB_SAMPLE_FMT_U8P = 5,
-	FB_SAMPLE_FMT_S16P = 6,
-	FB_SAMPLE_FMT_S32P = 7,
-	FB_SAMPLE_FMT_FLTP = 8,
-	FB_SAMPLE_FMT_DBLP = 9,
-	FB_SAMPLE_FMT_S64 = 10,
-	FB_SAMPLE_FMT_S64P = 11
+	fb_sample_fmt_none = -1,
+	fb_sample_fmt_u8 = 0,
+	fb_sample_fmt_s16 = 1,
+	fb_sample_fmt_s32 = 2,
+	fb_sample_fmt_flt = 3,
+	fb_sample_fmt_dbl = 4,
+	fb_sample_fmt_u8_p = 5,
+	fb_sample_fmt_s16_p = 6,
+	fb_sample_fmt_s32_p = 7,
+	fb_sample_fmt_fltp = 8,
+	fb_sample_fmt_dblp = 9,
+	fb_sample_fmt_s64 = 10,
+	fb_sample_fmt_s64_p = 11
 } FBSampleFormat;
 
 /** Color ranges. Values mirror AVColorRange (static_assert'ed). */
 typedef enum FBColorRange {
-	FB_COLOR_RANGE_UNSPEC = 0,
-	FB_COLOR_RANGE_MPEG = 1,
-	FB_COLOR_RANGE_JPEG = 2
+	fb_color_range_unspec = 0,
+	fb_color_range_mpeg = 1,
+	fb_color_range_jpeg = 2
 } FBColorRange;
 
 /** Color spaces. Values mirror AVColorSpace (static_assert'ed). */
 typedef enum FBColorSpace {
-	FB_COL_SPC_RGB = 0,
-	FB_COL_SPC_BT709 = 1,
-	FB_COL_SPC_UNSPEC = 2,
-	FB_COL_SPC_FCC = 4,
-	FB_COL_SPC_BT470BG = 5,
-	FB_COL_SPC_SMPTE170M = 6,
-	FB_COL_SPC_SMPTE240M = 7,
-	FB_COL_SPC_BT2020_NCL = 9
+	fb_col_spc_rgb = 0,
+	fb_col_spc_b_t709 = 1,
+	fb_col_spc_unspec = 2,
+	fb_col_spc_fcc = 4,
+	fb_col_spc_b_t470_bg = 5,
+	fb_col_spc_smpt_e170_m = 6,
+	fb_col_spc_smpt_e240_m = 7,
+	fb_col_spc_b_t2020_ncl = 9
 } FBColorSpace;
 
 /** Media types. Values mirror AVMediaType (static_assert'ed). */
 typedef enum FBMediaType {
-	FB_MEDIA_TYPE_VIDEO = 0,
-	FB_MEDIA_TYPE_AUDIO = 1,
-	FB_MEDIA_TYPE_DATA = 2,
-	FB_MEDIA_TYPE_SUBTITLE = 3
+	fb_media_type_video = 0,
+	fb_media_type_audio = 1,
+	fb_media_type_data = 2,
+	fb_media_type_subtitle = 3
 } FBMediaType;
 
 /** Field orders. Values mirror AVFieldOrder (static_assert'ed). */
 typedef enum FBFieldOrder {
-	FB_FIELD_ORDER_UNKNOWN = 0,
-	FB_FIELD_ORDER_PROGRESSIVE = 1,
-	FB_FIELD_ORDER_TT = 2,
-	FB_FIELD_ORDER_BB = 3,
-	FB_FIELD_ORDER_TB = 4,
-	FB_FIELD_ORDER_BT = 5
+	fb_field_order_unknown = 0,
+	fb_field_order_progressive = 1,
+	fb_field_order_tt = 2,
+	fb_field_order_bb = 3,
+	fb_field_order_tb = 4,
+	fb_field_order_bt = 5
 } FBFieldOrder;
 
 /**
@@ -181,26 +181,26 @@ typedef enum FBFieldOrder {
  * caller's adapter layer (no value relationship with any app-side enum).
  */
 typedef enum FBCodec {
-	FB_CODEC_NONE = -1,
-	FB_CODEC_H264 = 0,
-	FB_CODEC_H264RGB,
-	FB_CODEC_DNXHD,
-	FB_CODEC_PRORES,
-	FB_CODEC_CINEFORM,
-	FB_CODEC_H265,
-	FB_CODEC_VP9,
-	FB_CODEC_AV1,
-	FB_CODEC_OPENEXR,
-	FB_CODEC_PNG,
-	FB_CODEC_TIFF,
-	FB_CODEC_MP2,
-	FB_CODEC_MP3,
-	FB_CODEC_AAC,
-	FB_CODEC_PCM,
-	FB_CODEC_FLAC,
-	FB_CODEC_OPUS,
-	FB_CODEC_VORBIS,
-	FB_CODEC_SRT
+	fb_codec_none = -1,
+	fb_codec_h264 = 0,
+	fb_codec_h264_rgb,
+	fb_codec_dnxhd,
+	fb_codec_prores,
+	fb_codec_cineform,
+	fb_codec_h265,
+	fb_codec_v_p9,
+	fb_codec_a_v1,
+	fb_codec_openexr,
+	fb_codec_png,
+	fb_codec_tiff,
+	fb_codec_m_p2,
+	fb_codec_m_p3,
+	fb_codec_aac,
+	fb_codec_pcm,
+	fb_codec_flac,
+	fb_codec_opus,
+	fb_codec_vorbis,
+	fb_codec_srt
 } FBCodec;
 
 /** Cancellation callback: return non-zero to request cancellation. */
@@ -602,4 +602,4 @@ FB_API int fb_encoder_codec_get_sample_formats(int codec, int *fmts,
 }
 #endif
 
-#endif // FFMPEG_BRIDGE_H
+#endif // OAK_FFMPEG_BRIDGE_H

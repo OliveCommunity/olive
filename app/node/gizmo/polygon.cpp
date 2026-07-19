@@ -29,7 +29,7 @@ PolygonGizmo::PolygonGizmo(QObject *parent)
 {
 }
 
-void PolygonGizmo::Draw(QPainter *p) const
+void PolygonGizmo::draw(QPainter *p) const
 {
 	// Draw transposed black
 	QPolygonF transposed = p->transform().map(polygon_);

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SLIPTIMELINETOOL_H
-#define SLIPTIMELINETOOL_H
+#ifndef OAK_SLIPTIMELINETOOL_H
+#define OAK_SLIPTIMELINETOOL_H
 
 #include "pointer.h"
 
@@ -32,10 +32,10 @@ public:
 	SlipTool(TimelineWidget *parent);
 
 protected:
-	virtual void ProcessDrag(const TimelineCoordinate &mouse_pos) override;
-	virtual void FinishDrag(TimelineViewMouseEvent *event) override;
+	virtual void process_drag(const TimelineCoordinate &mouse_pos) override;
+	virtual void finish_drag(TimelineViewMouseEvent *event) override;
 };
 
 }
 
-#endif // SLIPTIMELINETOOL_H
+#endif // OAK_SLIPTIMELINETOOL_H

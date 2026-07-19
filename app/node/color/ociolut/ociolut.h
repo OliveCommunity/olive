@@ -18,8 +18,8 @@
 
 ***/
 
-#ifndef OCIOLUTNODE_H
-#define OCIOLUTNODE_H
+#ifndef OAK_OCIOLUTNODE_H
+#define OAK_OCIOLUTNODE_H
 
 #include <QMutex>
 
@@ -36,19 +36,19 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(OCIOLutNode)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 	virtual void InputValueChangedEvent(const QString &input,
 										int element) override;
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	static const QString kFileInput;
-	static const QString kDirectionInput;
+	static const QString k_file_input;
+	static const QString k_direction_input;
 
 	/**
 	 * @brief Human-readable description of why no LUT processor is active
@@ -63,14 +63,14 @@ public:
 	}
 
 protected slots:
-	virtual void ConfigChanged() override;
+	virtual void config_changed() override;
 
 private:
-	void GenerateProcessor();
-	void EnsureProcessor() const;
-	bool CreateProcessorFromInputs() const;
+	void generate_processor();
+	void ensure_processor() const;
+	bool create_processor_from_inputs() const;
 
-	void SetLastError(const QString &error) const;
+	void set_last_error(const QString &error) const;
 
 	mutable QMutex gen_mutex_;
 	mutable bool processor_dirty_ = true;
@@ -82,4 +82,4 @@ private:
 
 } // namespace olive
 
-#endif // OCIOLUTNODE_H
+#endif // OAK_OCIOLUTNODE_H

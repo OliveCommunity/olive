@@ -31,36 +31,36 @@ FootageViewerPanel::FootageViewerPanel()
 {
 	// Set ViewerWidget as the central widget
 	FootageViewerWidget *fvw = new FootageViewerWidget(this);
-	SetViewerWidget(fvw);
+	set_viewer_widget(fvw);
 
 	// Set strings
-	Retranslate();
+	retranslate();
 
 	// Show and raise on connect
-	SetShowAndRaiseOnConnect();
+	set_show_and_raise_on_connect();
 }
 
-void FootageViewerPanel::OverrideWorkArea(const TimeRange &r)
+void FootageViewerPanel::override_work_area(const TimeRange &r)
 {
-	GetFootageViewerWidget()->OverrideWorkArea(r);
+	get_footage_viewer_widget()->override_work_area(r);
 }
 
-QVector<ViewerOutput *> FootageViewerPanel::GetSelectedFootage() const
+QVector<ViewerOutput *> FootageViewerPanel::get_selected_footage() const
 {
 	QVector<ViewerOutput *> list;
 
-	if (GetConnectedViewer()) {
-		list.append(GetConnectedViewer());
+	if (get_connected_viewer()) {
+		list.append(get_connected_viewer());
 	}
 
 	return list;
 }
 
-void FootageViewerPanel::Retranslate()
+void FootageViewerPanel::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetTitle(tr("Footage Viewer"));
+	set_title(tr("Footage Viewer"));
 }
 
 }

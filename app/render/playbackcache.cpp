@@ -29,7 +29,7 @@
 namespace olive
 {
 
-void PlaybackCache::Invalidate(const TimeRange &r)
+void PlaybackCache::invalidate(const TimeRange &r)
 {
 	if (r.in() == r.out()) {
 		qWarning() << "Tried to invalidate zero-length range";
@@ -44,10 +44,10 @@ void PlaybackCache::Invalidate(const TimeRange &r)
 
 	InvalidateEvent(r);
 
-	emit Invalidated(r);
+	emit invalidated(r);
 
 	if (saving_enabled_) {
-		SaveState();
+		save_state();
 	}
 }
 
@@ -56,20 +56,20 @@ Node *PlaybackCache::parent() const
 	return dynamic_cast<Node *>(QObject::parent());
 }
 
-QDir PlaybackCache::GetThisCacheDirectory() const
+QDir PlaybackCache::get_this_cache_directory() const
 {
-	return GetThisCacheDirectory(GetCacheDirectory(), GetUuid());
+	return get_this_cache_directory(get_cache_directory(), get_uuid());
 }
 
-QDir PlaybackCache::GetThisCacheDirectory(const QString &cache_path,
+QDir PlaybackCache::get_this_cache_directory(const QString &cache_path,
 										  const QUuid &cache_id)
 {
 	return QDir(cache_path).filePath(cache_id.toString());
 }
 
-void PlaybackCache::LoadState()
+void PlaybackCache::load_state()
 {
-	QDir cache_dir = GetThisCacheDirectory();
+	QDir cache_dir = get_this_cache_directory();
 	QFile f(cache_dir.filePath(QStringLiteral("state")));
 
 	if (!f.exists()) {
@@ -102,8 +102,8 @@ void PlaybackCache::LoadState()
 				s >> out_num;
 				s >> out_den;
 
-				validated_.insert(TimeRange(rational(in_num, in_den),
-											rational(out_num, out_den)));
+				validated_.insert(TimeRange(Rational(in_num, in_den),
+											Rational(out_num, out_den)));
 			}
 
 			s >> pass_count;
@@ -117,8 +117,8 @@ void PlaybackCache::LoadState()
 				s >> out_den;
 				s >> id;
 
-				Passthrough p = TimeRange(rational(in_num, in_den),
-										  rational(out_num, out_den));
+				Passthrough p = TimeRange(Rational(in_num, in_den),
+										  Rational(out_num, out_den));
 				p.cache = id;
 				passthroughs_.push_back(p);
 			}
@@ -133,20 +133,20 @@ void PlaybackCache::LoadState()
 	}
 }
 
-void PlaybackCache::SaveState()
+void PlaybackCache::save_state()
 {
 	if (!DiskManager::instance()) {
 		return;
 	}
 
-	QDir cache_dir = GetThisCacheDirectory();
+	QDir cache_dir = get_this_cache_directory();
 	QFile f(cache_dir.filePath(QStringLiteral("state")));
 	if (validated_.isEmpty() && passthroughs_.empty()) {
 		if (f.exists()) {
 			f.remove();
 		}
 	} else {
-		if (FileFunctions::DirectoryIsValid(cache_dir)) {
+		if (FileFunctions::directory_is_valid(cache_dir)) {
 			if (f.open(QFile::WriteOnly)) {
 				QDataStream s(&f);
 
@@ -186,19 +186,19 @@ void PlaybackCache::SaveState()
 	}
 }
 
-void PlaybackCache::Draw(QPainter *p, const rational &start, double scale,
+void PlaybackCache::draw(QPainter *p, const Rational &start, double scale,
 						 const QRect &rect) const
 {
 	p->fillRect(rect, Qt::red);
 
-	foreach (const TimeRange &range, GetValidatedRanges()) {
-		int range_left = rect.left() + (range.in() - start).toDouble() * scale;
+	foreach (const TimeRange &range, get_validated_ranges()) {
+		int range_left = rect.left() + (range.in() - start).to_double() * scale;
 		if (range_left >= rect.right()) {
 			continue;
 		}
 
 		int range_right =
-			rect.left() + (range.out() - start).toDouble() * scale;
+			rect.left() + (range.out() - start).to_double() * scale;
 		if (range_right < rect.left()) {
 			continue;
 		}
@@ -211,45 +211,45 @@ void PlaybackCache::Draw(QPainter *p, const rational &start, double scale,
 	}
 }
 
-void PlaybackCache::SetPassthrough(PlaybackCache *cache)
+void PlaybackCache::set_passthrough(PlaybackCache *cache)
 {
-	for (const TimeRange &r : cache->GetValidatedRanges()) {
+	for (const TimeRange &r : cache->get_validated_ranges()) {
 		Passthrough p = r;
-		p.cache = cache->GetUuid();
+		p.cache = cache->get_uuid();
 		passthroughs_.push_back(p);
 	}
 
-	passthroughs_.insert(passthroughs_.end(), cache->GetPassthroughs().begin(),
-						 cache->GetPassthroughs().end());
+	passthroughs_.insert(passthroughs_.end(), cache->get_passthroughs().begin(),
+						 cache->get_passthroughs().end());
 
 	if (saving_enabled_) {
-		SaveState();
+		save_state();
 	}
 }
 
-void PlaybackCache::InvalidateAll()
+void PlaybackCache::invalidate_all()
 {
-	Invalidate(TimeRange(0, RATIONAL_MAX));
+	invalidate(TimeRange(0, RATIONAL_MAX));
 }
 
-void PlaybackCache::Request(ViewerOutput *context, const TimeRange &r)
+void PlaybackCache::request(ViewerOutput *context, const TimeRange &r)
 {
 	request_context_ = context;
 	requested_.insert(r);
 
-	emit Requested(request_context_, r);
+	emit requested(request_context_, r);
 }
 
-void PlaybackCache::Validate(const TimeRange &r, bool signal)
+void PlaybackCache::validate(const TimeRange &r, bool signal)
 {
 	validated_.insert(r);
 
 	if (signal) {
-		emit Validated(r);
+		emit validated(r);
 	}
 
 	if (saving_enabled_) {
-		SaveState();
+		save_state();
 	}
 }
 
@@ -257,9 +257,9 @@ void PlaybackCache::InvalidateEvent(const TimeRange &)
 {
 }
 
-Project *PlaybackCache::GetProject() const
+Project *PlaybackCache::get_project() const
 {
-	return Project::GetProjectFromObject(this);
+	return Project::get_project_from_object(this);
 }
 
 PlaybackCache::PlaybackCache(QObject *parent)
@@ -270,21 +270,21 @@ PlaybackCache::PlaybackCache(QObject *parent)
 	uuid_ = QUuid::createUuid();
 }
 
-void PlaybackCache::SetUuid(const QUuid &u)
+void PlaybackCache::set_uuid(const QUuid &u)
 {
 	uuid_ = u;
 
-	LoadState();
+	load_state();
 }
 
-TimeRangeList PlaybackCache::GetInvalidatedRanges(TimeRange intersecting) const
+TimeRangeList PlaybackCache::get_invalidated_ranges(TimeRange intersecting) const
 {
 	TimeRangeList invalidated;
 
 	// Prevent TimeRange from being below 0, some other behavior in Olive relies on this behavior
 	// and it seemed reasonable to have safety code in here
-	intersecting.set_out(qMax(rational(0), intersecting.out()));
-	intersecting.set_in(qMax(rational(0), intersecting.in()));
+	intersecting.set_out(qMax(Rational(0), intersecting.out()));
+	intersecting.set_in(qMax(Rational(0), intersecting.in()));
 
 	invalidated.insert(intersecting);
 
@@ -299,19 +299,19 @@ TimeRangeList PlaybackCache::GetInvalidatedRanges(TimeRange intersecting) const
 	return invalidated;
 }
 
-bool PlaybackCache::HasInvalidatedRanges(const TimeRange &intersecting) const
+bool PlaybackCache::has_invalidated_ranges(const TimeRange &intersecting) const
 {
 	return !validated_.contains(intersecting);
 }
 
-QString PlaybackCache::GetCacheDirectory() const
+QString PlaybackCache::get_cache_directory() const
 {
-	Project *project = GetProject();
+	Project *project = get_project();
 
 	if (project) {
 		return project->cache_path();
 	} else {
-		return DiskManager::instance()->GetDefaultCachePath();
+		return DiskManager::instance()->get_default_cache_path();
 	}
 }
 

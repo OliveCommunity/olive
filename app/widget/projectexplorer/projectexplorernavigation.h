@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECTEXPLORERLISTVIEWTOOLBAR_H
-#define PROJECTEXPLORERLISTVIEWTOOLBAR_H
+#ifndef OAK_PROJECTEXPLORERLISTVIEWTOOLBAR_H
+#define OAK_PROJECTEXPLORERLISTVIEWTOOLBAR_H
 
 #include <QLabel>
 #include <QPushButton>
@@ -87,7 +87,7 @@ signals:
 	/**
    * @brief Signal emitted when the directory up button is clicked
    */
-	void DirectoryUpClicked();
+	void directory_up_clicked();
 
 	/**
    * @brief Signal emitted when the icon size slider changes value
@@ -96,15 +96,15 @@ signals:
    *
    * New size set in the slider
    */
-	void SizeChanged(int size);
+	void size_changed(int size);
 
 protected:
 	virtual void changeEvent(QEvent *) override;
 
 private:
-	void Retranslate();
+	void retranslate();
 
-	void UpdateIcons();
+	void update_icons();
 
 	QPushButton *dir_up_btn_;
 
@@ -115,4 +115,4 @@ private:
 
 }
 
-#endif // PROJECTEXPLORERLISTVIEWTOOLBAR_H
+#endif // OAK_PROJECTEXPLORERLISTVIEWTOOLBAR_H

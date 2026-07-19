@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TASKMANAGER_H
-#define TASKMANAGER_H
+#ifndef OAK_TASKMANAGER_H
+#define OAK_TASKMANAGER_H
 
 #include <QtConcurrent/QtConcurrent>
 #include <QVector>
@@ -54,17 +54,17 @@ public:
    */
 	virtual ~TaskManager();
 
-	static void CreateInstance();
+	static void create_instance();
 
-	static void DestroyInstance();
+	static void destroy_instance();
 
 	static TaskManager *instance();
 
-	int GetTaskCount() const;
+	int get_task_count() const;
 
-	Task *GetFirstTask() const;
+	Task *get_first_task() const;
 
-	void CancelTaskAndWait(Task *t);
+	void cancel_task_and_wait(Task *t);
 
 public slots:
 	/**
@@ -82,9 +82,9 @@ public slots:
    *
    * The task to add and run. TaskManager takes ownership of this Task and will be responsible for freeing it.
    */
-	void AddTask(Task *t);
+	void add_task(Task *t);
 
-	void CancelTask(Task *t);
+	void cancel_task(Task *t);
 
 signals:
 	/**
@@ -94,22 +94,22 @@ signals:
    *
    * Task that was added
    */
-	void TaskAdded(Task *t);
+	void task_added(Task *t);
 
 	/**
    * @brief Signal emitted when any change to the running task list has been made
    */
-	void TaskListChanged();
+	void task_list_changed();
 
 	/**
    * @brief Signal emitted when a task is deleted
    */
-	void TaskRemoved(Task *t);
+	void task_removed(Task *t);
 
 	/**
    * @brief Signal emitted when a task fails
    */
-	void TaskFailed(Task *t);
+	void task_failed(Task *t);
 
 private:
 	/**
@@ -128,14 +128,14 @@ private:
 	QThreadPool thread_pool_;
 
 	/**
-   * @brief TaskManager singleton instance
+   * @brief TaskManager singleton instance_
    */
 	static TaskManager *instance_;
 
 private slots:
-	void TaskFinished();
+	void task_finished();
 };
 
 }
 
-#endif // TASKMANAGER_H
+#endif // OAK_TASKMANAGER_H

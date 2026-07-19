@@ -45,36 +45,36 @@ NodeViewContext::NodeViewContext(Node *context, QGraphicsItem *item)
 {
 	Block *block = dynamic_cast<Block *>(context_);
 	if (block && block->track() && block->track()->sequence()) {
-		rational timebase = block->track()
+		Rational timebase = block->track()
 								->sequence()
-								->GetVideoParams()
+								->get_video_params()
 								.frame_rate_as_time_base();
 		lbl_ =
 			QCoreApplication::translate("NodeViewContext", "%1 [%2] :: %3 - %4")
-				.arg(block->GetLabelAndName(),
-					 Track::Reference::TypeToTranslatedString(
+				.arg(block->get_label_and_name(),
+					 Track::Reference::type_to_translated_string(
 						 block->track()->type()),
 					 QString::fromStdString(Timecode::time_to_timecode(
 						 block->in(), timebase,
-						 Core::instance()->GetTimecodeDisplay())),
+						 Core::instance()->get_timecode_display())),
 					 QString::fromStdString(Timecode::time_to_timecode(
 						 block->out(), timebase,
-						 Core::instance()->GetTimecodeDisplay())));
+						 Core::instance()->get_timecode_display())));
 	} else {
-		lbl_ = context_->GetLabelAndName();
+		lbl_ = context_->get_label_and_name();
 	}
 
-	const Node::PositionMap &map = context_->GetContextPositions();
+	const Node::PositionMap &map = context_->get_context_positions();
 	for (auto it = map.cbegin(); it != map.cend(); it++) {
-		AddChild(it.key());
+		add_child(it.key());
 	}
 
-	connect(context_, &Node::NodeAddedToContext, this,
-			&NodeViewContext::AddChild, Qt::DirectConnection);
-	connect(context_, &Node::NodePositionInContextChanged, this,
-			&NodeViewContext::SetChildPosition, Qt::DirectConnection);
-	connect(context_, &Node::NodeRemovedFromContext, this,
-			&NodeViewContext::RemoveChild, Qt::DirectConnection);
+	connect(context_, &Node::node_added_to_context, this,
+			&NodeViewContext::add_child, Qt::DirectConnection);
+	connect(context_, &Node::node_position_in_context_changed, this,
+			&NodeViewContext::set_child_position, Qt::DirectConnection);
+	connect(context_, &Node::node_removed_from_context, this,
+			&NodeViewContext::remove_child, Qt::DirectConnection);
 }
 
 NodeViewContext::~NodeViewContext()
@@ -84,50 +84,50 @@ NodeViewContext::~NodeViewContext()
 	edges_.clear();
 }
 
-void NodeViewContext::AddChild(Node *node)
+void NodeViewContext::add_child(Node *node)
 {
 	if (!context_) {
 		return;
 	}
 
 	NodeViewItem *item = new NodeViewItem(node, context_, this);
-	item->SetFlowDirection(flow_dir_);
+	item->set_flow_direction(flow_dir_);
 
-	AddNodeInternal(node, item);
+	add_node_internal(node, item);
 
 	if (NodeGroup *group = dynamic_cast<NodeGroup *>(node)) {
-		for (auto it = group->GetContextPositions().cbegin();
-			 it != group->GetContextPositions().cend(); it++) {
+		for (auto it = group->get_context_positions().cbegin();
+			 it != group->get_context_positions().cend(); it++) {
 			// Use this item as the representative for all of these nodes too
-			AddNodeInternal(it.key(), item);
+			add_node_internal(it.key(), item);
 		}
 
-		connect(group, &NodeGroup::NodeAddedToContext, this,
-				&NodeViewContext::GroupAddedNode);
-		connect(group, &NodeGroup::NodeRemovedFromContext, this,
-				&NodeViewContext::GroupRemovedNode);
+		connect(group, &NodeGroup::node_added_to_context, this,
+				&NodeViewContext::group_added_node);
+		connect(group, &NodeGroup::node_removed_from_context, this,
+				&NodeViewContext::group_removed_node);
 	}
 
-	UpdateRect();
+	update_rect();
 }
 
-void NodeViewContext::SetChildPosition(Node *node, const QPointF &pos)
+void NodeViewContext::set_child_position(Node *node, const QPointF &pos)
 {
-	item_map_.value(node)->SetNodePosition(pos);
+	item_map_.value(node)->set_node_position(pos);
 }
 
-void NodeViewContext::RemoveChild(Node *node)
+void NodeViewContext::remove_child(Node *node)
 {
-	disconnect(node, &Node::InputConnected, this,
-			   &NodeViewContext::ChildInputConnected);
-	disconnect(node, &Node::InputDisconnected, this,
-			   &NodeViewContext::ChildInputDisconnected);
+	disconnect(node, &Node::input_connected, this,
+			   &NodeViewContext::child_input_connected);
+	disconnect(node, &Node::input_disconnected, this,
+			   &NodeViewContext::child_input_disconnected);
 
 	if (NodeGroup *group = dynamic_cast<NodeGroup *>(node)) {
-		disconnect(group, &NodeGroup::NodeAddedToContext, this,
-				   &NodeViewContext::GroupAddedNode);
-		disconnect(group, &NodeGroup::NodeRemovedFromContext, this,
-				   &NodeViewContext::GroupRemovedNode);
+		disconnect(group, &NodeGroup::node_added_to_context, this,
+				   &NodeViewContext::group_added_node);
+		disconnect(group, &NodeGroup::node_removed_from_context, this,
+				   &NodeViewContext::group_removed_node);
 	}
 
 	NodeViewItem *item = item_map_.take(node);
@@ -136,22 +136,22 @@ void NodeViewContext::RemoveChild(Node *node)
 	// now can be handled before the item is destroyed
 	scene()->removeItem(item);
 
-	emit ItemAboutToBeDeleted(item);
+	emit item_about_to_be_deleted(item);
 
 	// Delete edges first because the edge destructor will try to reference item (maybe that should
 	// be changed...)
-	QVector<NodeViewEdge *> edges_to_remove = item->GetAllEdgesRecursively();
+	QVector<NodeViewEdge *> edges_to_remove = item->get_all_edges_recursively();
 	foreach (NodeViewEdge *edge, edges_to_remove) {
-		if (node == item->GetNode() || edge->output() == node ||
+		if (node == item->get_node() || edge->output() == node ||
 			edge->input().node() == node) {
-			ChildInputDisconnected(edge->output(), edge->input());
+			child_input_disconnected(edge->output(), edge->input());
 		}
 	}
 
 	// Check if this item is specifically for this node and the node is a group. If so, remove it for
 	// all other entries in the map.
-	if (item->GetNode() == node) {
-		if (dynamic_cast<NodeGroup *>(item->GetNode())) {
+	if (item->get_node() == node) {
+		if (dynamic_cast<NodeGroup *>(item->get_node())) {
 			for (auto it = item_map_.begin(); it != item_map_.end();) {
 				if (it.value() == item) {
 					it = item_map_.erase(it);
@@ -164,22 +164,22 @@ void NodeViewContext::RemoveChild(Node *node)
 		delete item;
 	}
 
-	UpdateRect();
+	update_rect();
 }
 
-void NodeViewContext::ChildInputConnected(Node *output, const NodeInput &input)
+void NodeViewContext::child_input_connected(Node *output, const NodeInput &input)
 {
 	// Add edge
-	if (!input.IsHidden()) {
+	if (!input.is_hidden()) {
 		if (NodeViewItem *output_item = item_map_.value(output)) {
-			AddEdgeInternal(
+			add_edge_internal(
 				output, input, output_item,
-				item_map_.value(input.node())->GetItemForInput(input));
+				item_map_.value(input.node())->get_item_for_input(input));
 		}
 	}
 }
 
-bool NodeViewContext::ChildInputDisconnected(Node *output,
+bool NodeViewContext::child_input_disconnected(Node *output,
 											 const NodeInput &input)
 {
 	// Remove edge
@@ -195,59 +195,59 @@ bool NodeViewContext::ChildInputDisconnected(Node *output,
 	return false;
 }
 
-qreal GetTextOffset(const QFontMetricsF &fm)
+qreal get_text_offset(const QFontMetricsF &fm)
 {
 	return fm.height() / 2;
 }
 
-void NodeViewContext::UpdateRect()
+void NodeViewContext::update_rect()
 {
 	QFont f;
 	QFontMetricsF fm(f);
-	qreal lbl_offset = GetTextOffset(fm);
+	qreal lbl_offset = get_text_offset(fm);
 
 	QRectF cbr = childrenBoundingRect();
 	QRectF rect = cbr;
-	int pad = NodeViewItem::DefaultItemHeight();
+	int pad = NodeViewItem::default_item_height();
 	rect.adjust(-pad, -lbl_offset * 2 - fm.height() - pad, pad, pad);
 	setRect(rect);
 
 	last_titlebar_height_ = rect.y() + (cbr.y() - rect.y()) - pad;
 }
 
-void NodeViewContext::SetFlowDirection(NodeViewCommon::FlowDirection dir)
+void NodeViewContext::set_flow_direction(NodeViewCommon::FlowDirection dir)
 {
 	flow_dir_ = dir;
 
 	foreach (NodeViewItem *item, item_map_) {
-		item->SetFlowDirection(dir);
+		item->set_flow_direction(dir);
 	}
 }
 
-void NodeViewContext::SetCurvedEdges(bool e)
+void NodeViewContext::set_curved_edges(bool e)
 {
 	curved_edges_ = e;
 
 	foreach (NodeViewEdge *edge, edges_) {
-		edge->SetCurved(e);
+		edge->set_curved(e);
 	}
 }
 
-int NodeViewContext::DeleteSelected(NodeViewDeleteCommand *command)
+int NodeViewContext::delete_selected(NodeViewDeleteCommand *command)
 {
 	int count = 0;
 
 	// Delete any selected edges
 	foreach (NodeViewEdge *edge, edges_) {
 		if (edge->isSelected()) {
-			command->AddEdge(edge->output(), edge->input());
+			command->add_edge(edge->output(), edge->input());
 		}
 	}
 
 	// Delete any selected nodes
 	foreach (NodeViewItem *node, item_map_) {
 		if (node->isSelected()) {
-			command->AddNode(node->GetNode(), context_);
+			command->add_node(node->get_node(), context_);
 			count++;
 		}
 	}
@@ -255,7 +255,7 @@ int NodeViewContext::DeleteSelected(NodeViewDeleteCommand *command)
 	return count;
 }
 
-void NodeViewContext::Select(const QVector<Node *> &nodes)
+void NodeViewContext::select(const QVector<Node *> &nodes)
 {
 	foreach (Node *n, nodes) {
 		if (NodeViewItem *item = item_map_.value(n)) {
@@ -264,7 +264,7 @@ void NodeViewContext::Select(const QVector<Node *> &nodes)
 	}
 }
 
-QVector<NodeViewItem *> NodeViewContext::GetSelectedItems() const
+QVector<NodeViewItem *> NodeViewContext::get_selected_items() const
 {
 	QVector<NodeViewItem *> items;
 
@@ -279,12 +279,12 @@ QVector<NodeViewItem *> NodeViewContext::GetSelectedItems() const
 	return items;
 }
 
-QPointF NodeViewContext::MapScenePosToNodePosInContext(const QPointF &pos) const
+QPointF NodeViewContext::map_scene_pos_to_node_pos_in_context(const QPointF &pos) const
 {
 	for (auto it = item_map_.cbegin(); it != item_map_.cend(); it++) {
 		QPointF pos_inside_parent =
 			it.value()->mapToParent(it.value()->mapFromScene(pos));
-		return NodeViewItem::ScreenToNodePoint(pos_inside_parent, flow_dir_);
+		return NodeViewItem::screen_to_node_point(pos_inside_parent, flow_dir_);
 	}
 	return QPointF(0, 0);
 }
@@ -295,7 +295,7 @@ void NodeViewContext::paint(QPainter *painter,
 {
 	// Set pen and brush
 	Color color = context_->color();
-	QColor c = QtUtils::toQColor(color);
+	QColor c = QtUtils::to_q_color(color);
 	QPen pen(c, 2);
 	if (option->state & QStyle::State_Selected) {
 		pen.setStyle(Qt::DotLine);
@@ -319,9 +319,9 @@ void NodeViewContext::paint(QPainter *painter,
 	painter->setClipping(false);
 
 	// Draw titlebar text
-	painter->setPen(ColorCoding::GetUISelectorColor(color));
+	painter->setPen(ColorCoding::get_ui_selector_color(color));
 
-	int offset = GetTextOffset(painter->fontMetrics());
+	int offset = get_text_offset(painter->fontMetrics());
 
 	QRectF text_rect = rect();
 	text_rect.adjust(offset, offset, -offset, -offset);
@@ -344,41 +344,41 @@ void NodeViewContext::mousePressEvent(QGraphicsSceneMouseEvent *event)
 	super::mousePressEvent(event);
 }
 
-void NodeViewContext::AddNodeInternal(Node *node, NodeViewItem *item)
+void NodeViewContext::add_node_internal(Node *node, NodeViewItem *item)
 {
-	connect(node, &Node::InputConnected, this,
-			&NodeViewContext::ChildInputConnected);
-	connect(node, &Node::InputDisconnected, this,
-			&NodeViewContext::ChildInputDisconnected);
+	connect(node, &Node::input_connected, this,
+			&NodeViewContext::child_input_connected);
+	connect(node, &Node::input_disconnected, this,
+			&NodeViewContext::child_input_disconnected);
 
 	item_map_.insert(node, item);
 
 	if (node == context_) {
-		item->SetLabelAsOutput(true);
+		item->set_label_as_output(true);
 	}
 
 	for (auto it = node->output_connections().cbegin();
 		 it != node->output_connections().cend(); it++) {
-		if (!it->second.IsHidden()) {
+		if (!it->second.is_hidden()) {
 			if (NodeViewItem *other_item = item_map_.value(it->second.node())) {
-				AddEdgeInternal(node, it->second, item,
-								other_item->GetItemForInput(it->second));
+				add_edge_internal(node, it->second, item,
+								other_item->get_item_for_input(it->second));
 			}
 		}
 	}
 
 	for (auto it = node->input_connections().cbegin();
 		 it != node->input_connections().cend(); it++) {
-		if (!it->first.IsHidden()) {
+		if (!it->first.is_hidden()) {
 			if (NodeViewItem *other_item = item_map_.value(it->second)) {
-				AddEdgeInternal(it->second, it->first, other_item,
-								item->GetItemForInput(it->first));
+				add_edge_internal(it->second, it->first, other_item,
+								item->get_item_for_input(it->first));
 			}
 		}
 	}
 }
 
-void NodeViewContext::AddEdgeInternal(Node *output, const NodeInput &input,
+void NodeViewContext::add_edge_internal(Node *output, const NodeInput &input,
 									  NodeViewItem *from, NodeViewItem *to)
 {
 	if (from == to) {
@@ -387,20 +387,20 @@ void NodeViewContext::AddEdgeInternal(Node *output, const NodeInput &input,
 
 	NodeViewEdge *edge_ui = new NodeViewEdge(output, input, from, to, this);
 
-	edge_ui->Adjust();
-	edge_ui->SetCurved(curved_edges_);
+	edge_ui->adjust();
+	edge_ui->set_curved(curved_edges_);
 
 	edges_.append(edge_ui);
 }
 
-void NodeViewContext::GroupAddedNode(Node *node)
+void NodeViewContext::group_added_node(Node *node)
 {
 	NodeGroup *group = static_cast<NodeGroup *>(sender());
 
-	AddNodeInternal(node, item_map_.value(group));
+	add_node_internal(node, item_map_.value(group));
 }
 
-void NodeViewContext::GroupRemovedNode(Node *node)
+void NodeViewContext::group_removed_node(Node *node)
 {
 	NodeGroup *group = static_cast<NodeGroup *>(sender());
 

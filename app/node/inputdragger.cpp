@@ -34,16 +34,16 @@ NodeInputDragger::NodeInputDragger()
 {
 }
 
-bool NodeInputDragger::IsStarted() const
+bool NodeInputDragger::is_started() const
 {
-	return input_.IsValid();
+	return input_.is_valid();
 }
 
-void NodeInputDragger::Start(const NodeKeyframeTrackReference &input,
-							 const rational &time,
+void NodeInputDragger::start(const NodeKeyframeTrackReference &input,
+							 const Rational &time,
 							 bool create_key_on_all_tracks)
 {
-	Q_ASSERT(!IsStarted());
+	Q_ASSERT(!is_started());
 
 	// Set up new drag
 	input_ = input;
@@ -52,32 +52,32 @@ void NodeInputDragger::Start(const NodeKeyframeTrackReference &input,
 	Node *node = input_.input().node();
 
 	// Cache current value
-	start_value_ = node->GetSplitValueAtTimeOnTrack(input_, time);
+	start_value_ = node->get_split_value_at_time_on_track(input_, time);
 	end_value_ = start_value_;
 
 	// Determine whether we are creating a keyframe or not
-	if (input_.input().IsKeyframing()) {
-		dragging_key_ = node->GetKeyframeAtTimeOnTrack(input_, time);
+	if (input_.input().is_keyframing()) {
+		dragging_key_ = node->get_keyframe_at_time_on_track(input_, time);
 
 		if (!dragging_key_) {
 			dragging_key_ = new NodeKeyframe(
 				time, start_value_,
-				node->GetBestKeyframeTypeForTimeOnTrack(input_, time),
+				node->get_best_keyframe_type_for_time_on_track(input_, time),
 				input_.track(), input_.input().element(),
 				input_.input().input(), node);
 			created_keys_.append(dragging_key_);
 
 			if (create_key_on_all_tracks) {
 				int nb_tracks = NodeValue::get_number_of_keyframe_tracks(
-					input.input().node()->GetInputDataType(
+					input.input().node()->get_input_data_type(
 						input.input().input()));
 				for (int i = 0; i < nb_tracks; i++) {
 					if (i != input.track()) {
 						NodeKeyframeTrackReference this_ref(input.input(), i);
 						created_keys_.append(new NodeKeyframe(
 							time,
-							node->GetSplitValueAtTimeOnTrack(this_ref, time),
-							node->GetBestKeyframeTypeForTimeOnTrack(this_ref,
+							node->get_split_value_at_time_on_track(this_ref, time),
+							node->get_best_keyframe_type_for_time_on_track(this_ref,
 																	time),
 							i, input.input().element(), input.input().input(),
 							node));
@@ -90,26 +90,26 @@ void NodeInputDragger::Start(const NodeKeyframeTrackReference &input,
 	input_being_dragged++;
 }
 
-void NodeInputDragger::Drag(QVariant value)
+void NodeInputDragger::drag(QVariant value)
 {
-	Q_ASSERT(IsStarted());
+	Q_ASSERT(is_started());
 
 	Node *node = input_.input().node();
 	const QString &input = input_.input().input();
 
-	if (node->HasInputProperty(input, QStringLiteral("min"))) {
+	if (node->has_input_property(input, QStringLiteral("min"))) {
 		// Assumes the value is a double of some kind
 		double min =
-			node->GetInputProperty(input, QStringLiteral("min")).toDouble();
+			node->get_input_property(input, QStringLiteral("min")).toDouble();
 		double v = value.toDouble();
 		if (v < min) {
 			value = min;
 		}
 	}
 
-	if (node->HasInputProperty(input, QStringLiteral("max"))) {
+	if (node->has_input_property(input, QStringLiteral("max"))) {
 		double max =
-			node->GetInputProperty(input, QStringLiteral("max")).toDouble();
+			node->get_input_property(input, QStringLiteral("max")).toDouble();
 		double v = value.toDouble();
 		if (v > max) {
 			value = max;
@@ -120,24 +120,24 @@ void NodeInputDragger::Drag(QVariant value)
 
 	//input_->blockSignals(true);
 
-	if (input_.input().IsKeyframing()) {
+	if (input_.input().is_keyframing()) {
 		dragging_key_->set_value(value);
 	} else {
-		node->SetSplitStandardValueOnTrack(input_, value);
+		node->set_split_standard_value_on_track(input_, value);
 	}
 
 	//input_->blockSignals(false);
 }
 
-void NodeInputDragger::End(MultiUndoCommand *command)
+void NodeInputDragger::end(MultiUndoCommand *command)
 {
-	if (!IsStarted()) {
+	if (!is_started()) {
 		return;
 	}
 
 	input_being_dragged--;
 
-	if (input_.input().node()->IsInputKeyframing(input_.input())) {
+	if (input_.input().node()->is_input_keyframing(input_.input())) {
 		for (int i = 0; i < created_keys_.size(); i++) {
 			// We created a keyframe in this process
 			command->add_child(new NodeParamInsertKeyframeCommand(
@@ -155,7 +155,7 @@ void NodeInputDragger::End(MultiUndoCommand *command)
 			input_, end_value_, start_value_));
 	}
 
-	input_.Reset();
+	input_.reset();
 	created_keys_.clear();
 }
 

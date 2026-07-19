@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINEVIEWGHOSTITEM_H
-#define TIMELINEVIEWGHOSTITEM_H
+#ifndef OAK_TIMELINEVIEWGHOSTITEM_H
+#define OAK_TIMELINEVIEWGHOSTITEM_H
 
 #include <QVariant>
 
@@ -38,12 +38,12 @@ namespace olive
 class TimelineViewGhostItem {
 public:
 	enum DataType {
-		kAttachedBlock,
-		kReferenceBlock,
-		kAttachedFootage,
-		kGhostIsSliding,
-		kTrimIsARollEdit,
-		kTrimShouldBeIgnored
+		k_attached_block,
+		k_reference_block,
+		k_attached_footage,
+		k_ghost_is_sliding,
+		k_trim_is_a_roll_edit,
+		k_trim_should_be_ignored
 	};
 
 	struct AttachedFootage {
@@ -53,24 +53,24 @@ public:
 
 	TimelineViewGhostItem()
 		: track_adj_(0)
-		, mode_(Timeline::kNone)
+		, mode_(Timeline::k_none)
 		, can_have_zero_length_(true)
 		, can_move_tracks_(true)
 		, invisible_(false)
 	{
 	}
 
-	static TimelineViewGhostItem *FromBlock(Block *block)
+	static TimelineViewGhostItem *from_block(Block *block)
 	{
 		TimelineViewGhostItem *ghost = new TimelineViewGhostItem();
 
-		ghost->SetIn(block->in());
-		ghost->SetOut(block->out());
+		ghost->set_in(block->in());
+		ghost->set_out(block->out());
 		if (dynamic_cast<ClipBlock *>(block)) {
-			ghost->SetMediaIn(static_cast<ClipBlock *>(block)->media_in());
+			ghost->set_media_in(static_cast<ClipBlock *>(block)->media_in());
 		}
-		ghost->SetTrack(block->track()->ToReference());
-		ghost->SetData(kAttachedBlock, QtUtils::PtrToValue(block));
+		ghost->set_track(block->track()->to_reference());
+		ghost->set_data(k_attached_block, QtUtils::ptr_to_value(block));
 
 		if (dynamic_cast<ClipBlock *>(block)) {
 			ghost->can_have_zero_length_ = false;
@@ -81,176 +81,176 @@ public:
 		return ghost;
 	}
 
-	bool CanHaveZeroLength() const
+	bool can_have_zero_length() const
 	{
 		return can_have_zero_length_;
 	}
 
-	bool GetCanMoveTracks() const
+	bool get_can_move_tracks() const
 	{
 		return can_move_tracks_;
 	}
 
-	void SetCanMoveTracks(bool e)
+	void set_can_move_tracks(bool e)
 	{
 		can_move_tracks_ = e;
 	}
 
-	const rational &GetIn() const
+	const Rational &get_in() const
 	{
 		return in_;
 	}
 
-	const rational &GetOut() const
+	const Rational &get_out() const
 	{
 		return out_;
 	}
 
-	const rational &GetMediaIn() const
+	const Rational &get_media_in() const
 	{
 		return media_in_;
 	}
 
-	rational GetLength() const
+	Rational get_length() const
 	{
 		return out_ - in_;
 	}
 
-	rational GetAdjustedLength() const
+	Rational get_adjusted_length() const
 	{
-		return GetAdjustedOut() - GetAdjustedIn();
+		return get_adjusted_out() - get_adjusted_in();
 	}
 
-	void SetIn(const rational &in)
+	void set_in(const Rational &in)
 	{
 		in_ = in;
 	}
 
-	void SetOut(const rational &out)
+	void set_out(const Rational &out)
 	{
 		out_ = out;
 	}
 
-	void SetMediaIn(const rational &media_in)
+	void set_media_in(const Rational &media_in)
 	{
 		media_in_ = media_in;
 	}
 
-	void SetInAdjustment(const rational &in_adj)
+	void set_in_adjustment(const Rational &in_adj)
 	{
 		in_adj_ = in_adj;
 	}
 
-	void SetOutAdjustment(const rational &out_adj)
+	void set_out_adjustment(const Rational &out_adj)
 	{
 		out_adj_ = out_adj;
 	}
 
-	void SetTrackAdjustment(const int &track_adj)
+	void set_track_adjustment(const int &track_adj)
 	{
 		track_adj_ = track_adj;
 	}
 
-	void SetMediaInAdjustment(const rational &media_in_adj)
+	void set_media_in_adjustment(const Rational &media_in_adj)
 	{
 		media_in_adj_ = media_in_adj;
 	}
 
-	const rational &GetInAdjustment() const
+	const Rational &get_in_adjustment() const
 	{
 		return in_adj_;
 	}
 
-	const rational &GetOutAdjustment() const
+	const Rational &get_out_adjustment() const
 	{
 		return out_adj_;
 	}
 
-	const rational &GetMediaInAdjustment() const
+	const Rational &get_media_in_adjustment() const
 	{
 		return media_in_adj_;
 	}
 
-	const int &GetTrackAdjustment() const
+	const int &get_track_adjustment() const
 	{
 		return track_adj_;
 	}
 
-	rational GetAdjustedIn() const
+	Rational get_adjusted_in() const
 	{
 		return in_ + in_adj_;
 	}
 
-	rational GetAdjustedOut() const
+	Rational get_adjusted_out() const
 	{
 		return out_ + out_adj_;
 	}
 
-	rational GetAdjustedMediaIn() const
+	Rational get_adjusted_media_in() const
 	{
 		return media_in_ + media_in_adj_;
 	}
 
-	Track::Reference GetAdjustedTrack() const
+	Track::Reference get_adjusted_track() const
 	{
 		return Track::Reference(track_.type(), track_.index() + track_adj_);
 	}
 
-	const Timeline::MovementMode &GetMode() const
+	const Timeline::MovementMode &get_mode() const
 	{
 		return mode_;
 	}
 
-	void SetMode(const Timeline::MovementMode &mode)
+	void set_mode(const Timeline::MovementMode &mode)
 	{
 		mode_ = mode;
 	}
 
-	bool HasBeenAdjusted() const
+	bool has_been_adjusted() const
 	{
-		return GetInAdjustment() != 0 || GetOutAdjustment() != 0 ||
-			   GetMediaInAdjustment() != 0 || GetTrackAdjustment() != 0;
+		return get_in_adjustment() != 0 || get_out_adjustment() != 0 ||
+			   get_media_in_adjustment() != 0 || get_track_adjustment() != 0;
 	}
 
-	QVariant GetData(int key) const
+	QVariant get_data(int key) const
 	{
 		return data_.value(key);
 	}
 
-	void SetData(int key, const QVariant &value)
+	void set_data(int key, const QVariant &value)
 	{
 		data_.insert(key, value);
 	}
 
-	const Track::Reference &GetTrack() const
+	const Track::Reference &get_track() const
 	{
 		return track_;
 	}
 
-	void SetTrack(const Track::Reference &track)
+	void set_track(const Track::Reference &track)
 	{
 		track_ = track;
 	}
 
-	bool IsInvisible() const
+	bool is_invisible() const
 	{
 		return invisible_;
 	}
 
-	void SetInvisible(bool e)
+	void set_invisible(bool e)
 	{
 		invisible_ = e;
 	}
 
 protected:
 private:
-	rational in_;
-	rational out_;
-	rational media_in_;
+	Rational in_;
+	Rational out_;
+	Rational media_in_;
 
-	rational in_adj_;
-	rational out_adj_;
-	rational media_in_adj_;
+	Rational in_adj_;
+	Rational out_adj_;
+	Rational media_in_adj_;
 
 	int track_adj_;
 
@@ -270,4 +270,4 @@ private:
 
 Q_DECLARE_METATYPE(olive::TimelineViewGhostItem::AttachedFootage)
 
-#endif // TIMELINEVIEWGHOSTITEM_H
+#endif // OAK_TIMELINEVIEWGHOSTITEM_H

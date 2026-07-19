@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef EXPORTADVANCEDVIDEODIALOG_H
-#define EXPORTADVANCEDVIDEODIALOG_H
+#ifndef OAK_EXPORTADVANCEDVIDEODIALOG_H
+#define OAK_EXPORTADVANCEDVIDEODIALOG_H
 
 #include <QComboBox>
 #include <QDialog>
@@ -36,12 +36,12 @@ public:
 
 	int threads() const
 	{
-		return static_cast<int>(thread_slider_->GetValue());
+		return static_cast<int>(thread_slider_->get_value());
 	}
 
 	void set_threads(int t)
 	{
-		thread_slider_->SetValue(t);
+		thread_slider_->set_value(t);
 	}
 
 	QString pix_fmt() const
@@ -75,4 +75,4 @@ private:
 
 }
 
-#endif // EXPORTADVANCEDVIDEODIALOG_H
+#endif // OAK_EXPORTADVANCEDVIDEODIALOG_H

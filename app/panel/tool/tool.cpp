@@ -32,26 +32,26 @@ ToolPanel::ToolPanel()
 {
 	Toolbar *t = new Toolbar(this);
 
-	t->SetTool(Core::instance()->tool());
-	t->SetSnapping(Core::instance()->snapping());
+	t->set_tool(Core::instance()->tool());
+	t->set_snapping(Core::instance()->snapping());
 
-	SetWidgetWithPadding(t);
+	set_widget_with_padding(t);
 
-	connect(t, &Toolbar::ToolChanged, Core::instance(), &Core::SetTool);
-	connect(Core::instance(), &Core::ToolChanged, t, &Toolbar::SetTool);
+	connect(t, &Toolbar::tool_changed, Core::instance(), &Core::set_tool);
+	connect(Core::instance(), &Core::tool_changed, t, &Toolbar::set_tool);
 
-	connect(t, &Toolbar::SnappingChanged, Core::instance(), &Core::SetSnapping);
-	connect(Core::instance(), &Core::SnappingChanged, t, &Toolbar::SetSnapping);
+	connect(t, &Toolbar::snapping_changed, Core::instance(), &Core::set_snapping);
+	connect(Core::instance(), &Core::snapping_changed, t, &Toolbar::set_snapping);
 
-	connect(t, &Toolbar::SelectedTransitionChanged, Core::instance(),
-			&Core::SetSelectedTransitionObject);
+	connect(t, &Toolbar::selected_transition_changed, Core::instance(),
+			&Core::set_selected_transition_object);
 
-	Retranslate();
+	retranslate();
 }
 
-void ToolPanel::Retranslate()
+void ToolPanel::retranslate()
 {
-	SetTitle(tr("Tools"));
+	set_title(tr("Tools"));
 }
 
 }

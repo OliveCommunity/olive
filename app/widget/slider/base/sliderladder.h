@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SLIDERLADDER_H
-#define SLIDERLADDER_H
+#ifndef OAK_SLIDERLADDER_H
+#define OAK_SLIDERLADDER_H
 
 #include <QLabel>
 #include <QTimer>
@@ -37,19 +37,19 @@ public:
 	SliderLadderElement(const double &multiplier, QString width_hint,
 						QWidget *parent = nullptr);
 
-	void SetHighlighted(bool e);
+	void set_highlighted(bool e);
 
-	void SetValue(const QString &value);
+	void set_value(const QString &value);
 
-	void SetMultiplierVisible(bool e);
+	void set_multiplier_visible(bool e);
 
-	double GetMultiplier() const
+	double get_multiplier() const
 	{
 		return multiplier_;
 	}
 
 private:
-	void UpdateLabel();
+	void update_label();
 
 	QLabel *label_;
 
@@ -69,9 +69,9 @@ public:
 
 	virtual ~SliderLadder() override;
 
-	void SetValue(const QString &s);
+	void set_value(const QString &s);
 
-	void StartListeningToMouseInput();
+	void start_listening_to_mouse_input();
 
 protected:
 	virtual void mouseReleaseEvent(QMouseEvent *event) override;
@@ -79,12 +79,12 @@ protected:
 	virtual void closeEvent(QCloseEvent *event) override;
 
 signals:
-	void DraggedByValue(int value, double multiplier);
+	void dragged_by_value(int value, double multiplier);
 
-	void Released();
+	void released();
 
 private:
-	bool UsingLadders() const;
+	bool using_ladders() const;
 
 	int drag_start_x_;
 	int drag_start_y_;
@@ -99,9 +99,9 @@ private:
 	QScreen *screen_;
 
 private slots:
-	void TimerUpdate();
+	void timer_update();
 };
 
 }
 
-#endif // SLIDERLADDER_H
+#endif // OAK_SLIDERLADDER_H

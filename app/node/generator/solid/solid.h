@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SOLIDGENERATOR_H
-#define SOLIDGENERATOR_H
+#ifndef OAK_SOLIDGENERATOR_H
+#define OAK_SOLIDGENERATOR_H
 
 #include "node/node.h"
 
@@ -34,21 +34,21 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(SolidGenerator)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
+	get_shader_code(const ShaderRequest &request) const override;
 
-	static const QString kColorInput;
+	static const QString k_color_input;
 };
 
 }
 
-#endif // SOLIDGENERATOR_H
+#endif // OAK_SOLIDGENERATOR_H

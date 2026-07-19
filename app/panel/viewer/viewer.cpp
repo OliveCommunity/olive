@@ -29,17 +29,17 @@ ViewerPanel::ViewerPanel(const QString &object_name)
 {
 	// Set ViewerWidget as the central widget
 	ViewerWidget *vw = new ViewerWidget(this);
-	SetViewerWidget(vw);
+	set_viewer_widget(vw);
 
 	// Set strings
-	Retranslate();
+	retranslate();
 }
 
-void ViewerPanel::Retranslate()
+void ViewerPanel::retranslate()
 {
-	ViewerPanelBase::Retranslate();
+	ViewerPanelBase::retranslate();
 
-	SetTitle(tr("Viewer"));
+	set_title(tr("Viewer"));
 }
 
 }

@@ -56,19 +56,19 @@ ColorSpaceChooser::ColorSpaceChooser(ColorManager *color_manager,
 		input_combobox_ = new QComboBox();
 		layout->addWidget(input_combobox_, row, 1);
 
-		QStringList input_spaces = color_manager->ListAvailableColorspaces();
+		QStringList input_spaces = color_manager->list_available_colorspaces();
 
 		foreach (const QString &s, input_spaces) {
 			input_combobox_->addItem(s);
 		}
 
-		if (!color_manager_->GetDefaultInputColorSpace().isEmpty()) {
+		if (!color_manager_->get_default_input_color_space().isEmpty()) {
 			input_combobox_->setCurrentText(
-				color_manager_->GetDefaultInputColorSpace());
+				color_manager_->get_default_input_color_space());
 		}
 
 		connect(input_combobox_, &QComboBox::currentTextChanged, this,
-				&ColorSpaceChooser::ComboBoxChanged);
+				&ColorSpaceChooser::combo_box_changed);
 
 		row++;
 	} else {
@@ -82,17 +82,17 @@ ColorSpaceChooser::ColorSpaceChooser(ColorManager *color_manager,
 			display_combobox_ = new QComboBox();
 			layout->addWidget(display_combobox_, row, 1);
 
-			QStringList display_spaces = color_manager->ListAvailableDisplays();
+			QStringList display_spaces = color_manager->list_available_displays();
 
 			foreach (const QString &s, display_spaces) {
 				display_combobox_->addItem(s);
 			}
 
 			display_combobox_->setCurrentText(
-				color_manager_->GetDefaultDisplay());
+				color_manager_->get_default_display());
 
 			connect(display_combobox_, &QComboBox::currentTextChanged, this,
-					&ColorSpaceChooser::ComboBoxChanged);
+					&ColorSpaceChooser::combo_box_changed);
 		}
 
 		row++;
@@ -103,10 +103,10 @@ ColorSpaceChooser::ColorSpaceChooser(ColorManager *color_manager,
 			view_combobox_ = new QComboBox();
 			layout->addWidget(view_combobox_, row, 1);
 
-			UpdateViews(display_combobox_->currentText());
+			update_views(display_combobox_->currentText());
 
 			connect(view_combobox_, &QComboBox::currentTextChanged, this,
-					&ColorSpaceChooser::ComboBoxChanged);
+					&ColorSpaceChooser::combo_box_changed);
 		}
 
 		row++;
@@ -117,7 +117,7 @@ ColorSpaceChooser::ColorSpaceChooser(ColorManager *color_manager,
 			look_combobox_ = new QComboBox();
 			layout->addWidget(look_combobox_, row, 1);
 
-			QStringList looks = color_manager->ListAvailableLooks();
+			QStringList looks = color_manager->list_available_looks();
 
 			look_combobox_->addItem(tr("(None)"), QString());
 
@@ -126,7 +126,7 @@ ColorSpaceChooser::ColorSpaceChooser(ColorManager *color_manager,
 			}
 
 			connect(look_combobox_, &QComboBox::currentTextChanged, this,
-					&ColorSpaceChooser::ComboBoxChanged);
+					&ColorSpaceChooser::combo_box_changed);
 		}
 	} else {
 		display_combobox_ = nullptr;
@@ -155,12 +155,12 @@ ColorTransform ColorSpaceChooser::output() const
 
 void ColorSpaceChooser::set_input(const QString &s)
 {
-	input_combobox_->setCurrentText(color_manager_->GetCompliantColorSpace(s));
+	input_combobox_->setCurrentText(color_manager_->get_compliant_color_space(s));
 }
 
 void ColorSpaceChooser::set_output(const ColorTransform &out)
 {
-	ColorTransform compliant = color_manager_->GetCompliantColorSpace(out);
+	ColorTransform compliant = color_manager_->get_compliant_color_space(out);
 
 	display_combobox_->setCurrentText(compliant.display());
 	view_combobox_->setCurrentText(compliant.view());
@@ -172,13 +172,13 @@ void ColorSpaceChooser::set_output(const ColorTransform &out)
 	}
 }
 
-void ColorSpaceChooser::UpdateViews(const QString &display)
+void ColorSpaceChooser::update_views(const QString &display)
 {
 	QString v = view_combobox_->currentText();
 
 	view_combobox_->clear();
 
-	QStringList views = color_manager_->ListAvailableViews(display);
+	QStringList views = color_manager_->list_available_views(display);
 
 	foreach (const QString &s, views) {
 		view_combobox_->addItem(s);
@@ -189,26 +189,26 @@ void ColorSpaceChooser::UpdateViews(const QString &display)
 		view_combobox_->setCurrentText(v);
 	} else {
 		// Otherwise reset to default view for this display
-		view_combobox_->setCurrentText(color_manager_->GetDefaultView(display));
+		view_combobox_->setCurrentText(color_manager_->get_default_view(display));
 	}
 }
 
-void ColorSpaceChooser::ComboBoxChanged()
+void ColorSpaceChooser::combo_box_changed()
 {
 	if (sender() == display_combobox_) {
-		UpdateViews(display_combobox_->currentText());
+		update_views(display_combobox_->currentText());
 	}
 
 	if (input_combobox_) {
-		emit InputColorSpaceChanged(input());
+		emit input_color_space_changed(input());
 	}
 
 	if (display_combobox_) {
-		emit OutputColorSpaceChanged(output());
+		emit output_color_space_changed(output());
 	}
 
 	if (input_combobox_ && display_combobox_) {
-		emit ColorSpaceChanged(input(), output());
+		emit color_space_changed(input(), output());
 	}
 }
 

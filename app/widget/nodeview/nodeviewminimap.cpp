@@ -33,7 +33,7 @@ NodeViewMiniMap::NodeViewMiniMap(NodeViewScene *scene, QWidget *parent)
 	, resizing_(false)
 {
 	connect(scene, &QGraphicsScene::sceneRectChanged, this,
-			&NodeViewMiniMap::SceneChanged);
+			&NodeViewMiniMap::scene_changed);
 	setScene(scene);
 
 	setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -43,13 +43,13 @@ NodeViewMiniMap::NodeViewMiniMap(NodeViewScene *scene, QWidget *parent)
 	setFrameShadow(QFrame::Plain);
 	setMouseTracking(true);
 
-	QMetaObject::invokeMethod(this, &NodeViewMiniMap::SetDefaultSize,
+	QMetaObject::invokeMethod(this, &NodeViewMiniMap::set_default_size,
 							  Qt::QueuedConnection);
 
 	resize_triangle_sz_ = fontMetrics().height() / 2;
 }
 
-void NodeViewMiniMap::SetViewportRect(const QPolygonF &rect)
+void NodeViewMiniMap::set_viewport_rect(const QPolygonF &rect)
 {
 	viewport_rect_ = rect;
 
@@ -85,20 +85,20 @@ void NodeViewMiniMap::resizeEvent(QResizeEvent *event)
 {
 	super::resizeEvent(event);
 
-	emit Resized();
+	emit resized();
 
-	SceneChanged(sceneRect());
+	scene_changed(sceneRect());
 }
 
 void NodeViewMiniMap::mousePressEvent(QMouseEvent *event)
 {
 	if (event->button() == Qt::LeftButton) {
-		if (MouseInsideResizeTriangle(event)) {
+		if (mouse_inside_resize_triangle(event)) {
 			// Resizing!
 			resizing_ = true;
 			resize_anchor_ = QCursor::pos();
 		} else {
-			EmitMoveSignal(event);
+			emit_move_signal(event);
 		}
 	}
 }
@@ -111,10 +111,10 @@ void NodeViewMiniMap::mouseMoveEvent(QMouseEvent *event)
 			resize(QSize(width() - movement.x(), height() - movement.y()));
 			resize_anchor_ = QCursor::pos();
 		} else {
-			EmitMoveSignal(event);
+			emit_move_signal(event);
 		}
 	} else {
-		if (MouseInsideResizeTriangle(event)) {
+		if (mouse_inside_resize_triangle(event)) {
 			setCursor(Qt::SizeFDiagCursor);
 		} else {
 			unsetCursor();
@@ -127,7 +127,7 @@ void NodeViewMiniMap::mouseReleaseEvent(QMouseEvent *event)
 	resizing_ = false;
 }
 
-void NodeViewMiniMap::SceneChanged(const QRectF &bounding)
+void NodeViewMiniMap::scene_changed(const QRectF &bounding)
 {
 	double x_scale = double(this->width()) / bounding.width();
 	double y_scale = double(this->height()) / bounding.height();
@@ -140,22 +140,22 @@ void NodeViewMiniMap::SceneChanged(const QRectF &bounding)
 	setTransform(transform);
 }
 
-void NodeViewMiniMap::SetDefaultSize()
+void NodeViewMiniMap::set_default_size()
 {
 	if (parentWidget()) {
 		resize(parentWidget()->width() / 4, parentWidget()->height() / 4);
 	}
 }
 
-bool NodeViewMiniMap::MouseInsideResizeTriangle(QMouseEvent *event)
+bool NodeViewMiniMap::mouse_inside_resize_triangle(QMouseEvent *event)
 {
 	return event->pos().x() <= resize_triangle_sz_ &&
 		   event->pos().y() <= resize_triangle_sz_;
 }
 
-void NodeViewMiniMap::EmitMoveSignal(QMouseEvent *event)
+void NodeViewMiniMap::emit_move_signal(QMouseEvent *event)
 {
-	emit MoveToScenePoint(mapToScene(event->pos()));
+	emit move_to_scene_point(mapToScene(event->pos()));
 }
 
 }

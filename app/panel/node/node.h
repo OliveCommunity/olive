@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEPANEL_H
-#define NODEPANEL_H
+#ifndef OAK_NODEPANEL_H
+#define OAK_NODEPANEL_H
 
 #include "panel/panel.h"
 #include "widget/nodeview/nodewidget.h"
@@ -36,109 +36,109 @@ class NodePanel : public PanelWidget {
 public:
 	NodePanel();
 
-	NodeWidget *GetNodeWidget() const
+	NodeWidget *get_node_widget() const
 	{
 		return node_widget_;
 	}
 
-	const QVector<Node *> &GetContexts() const
+	const QVector<Node *> &get_contexts() const
 	{
-		return node_widget_->view()->GetContexts();
+		return node_widget_->view()->get_contexts();
 	}
 
-	bool IsGroupOverlay() const
+	bool is_group_overlay() const
 	{
-		return node_widget_->view()->IsGroupOverlay();
+		return node_widget_->view()->is_group_overlay();
 	}
 
-	void SetContexts(const QVector<Node *> &nodes)
+	void set_contexts(const QVector<Node *> &nodes)
 	{
-		node_widget_->SetContexts(nodes);
+		node_widget_->set_contexts(nodes);
 	}
 
-	void CloseContextsBelongingToProject(Project *project)
+	void close_contexts_belonging_to_project(Project *project)
 	{
-		node_widget_->view()->CloseContextsBelongingToProject(project);
+		node_widget_->view()->close_contexts_belonging_to_project(project);
 	}
 
-	virtual void SelectAll() override
+	virtual void select_all() override
 	{
-		node_widget_->view()->SelectAll();
+		node_widget_->view()->select_all();
 	}
 
-	virtual void DeselectAll() override
+	virtual void deselect_all() override
 	{
-		node_widget_->view()->DeselectAll();
+		node_widget_->view()->deselect_all();
 	}
 
-	virtual void DeleteSelected() override
+	virtual void delete_selected() override
 	{
-		node_widget_->view()->DeleteSelected();
+		node_widget_->view()->delete_selected();
 	}
 
-	virtual void CutSelected() override
+	virtual void cut_selected() override
 	{
-		node_widget_->view()->CopySelected(true);
+		node_widget_->view()->copy_selected(true);
 	}
 
-	virtual void CopySelected() override
+	virtual void copy_selected() override
 	{
-		node_widget_->view()->CopySelected(false);
+		node_widget_->view()->copy_selected(false);
 	}
 
-	virtual void Paste() override
+	virtual void paste() override
 	{
-		node_widget_->view()->Paste();
+		node_widget_->view()->paste();
 	}
 
-	virtual void Duplicate() override
+	virtual void duplicate() override
 	{
-		node_widget_->view()->Duplicate();
+		node_widget_->view()->duplicate();
 	}
 
-	virtual void SetColorLabel(int index) override
+	virtual void set_color_label(int index) override
 	{
-		node_widget_->view()->SetColorLabel(index);
+		node_widget_->view()->set_color_label(index);
 	}
 
-	virtual void ZoomIn() override
+	virtual void zoom_in() override
 	{
-		node_widget_->view()->ZoomIn();
+		node_widget_->view()->zoom_in();
 	}
 
-	virtual void ZoomOut() override
+	virtual void zoom_out() override
 	{
-		node_widget_->view()->ZoomOut();
+		node_widget_->view()->zoom_out();
 	}
 
-	virtual void RenameSelected() override
+	virtual void rename_selected() override
 	{
-		node_widget_->view()->LabelSelectedNodes();
+		node_widget_->view()->label_selected_nodes();
 	}
 
 public slots:
-	void Select(const QVector<Node::ContextPair> &p)
+	void select(const QVector<Node::ContextPair> &p)
 	{
-		node_widget_->view()->Select(p, true);
+		node_widget_->view()->select(p, true);
 	}
 
 signals:
-	void NodesSelected(const QVector<Node *> &nodes);
+	void nodes_selected(const QVector<Node *> &nodes);
 
-	void NodesDeselected(const QVector<Node *> &nodes);
+	void nodes_deselected(const QVector<Node *> &nodes);
 
-	void NodeSelectionChanged(const QVector<Node *> &nodes);
+	void node_selection_changed(const QVector<Node *> &nodes);
 	void
-	NodeSelectionChangedWithContexts(const QVector<Node::ContextPair> &nodes);
+	node_selection_changed_with_contexts(const QVector<Node::ContextPair> &nodes);
 
-	void NodeGroupOpened(NodeGroup *group);
+	void node_group_opened(NodeGroup *group);
 
-	void NodeGroupClosed();
+	void node_group_closed();
 
 private:
-	virtual void Retranslate() override
+	virtual void retranslate() override
 	{
-		SetTitle(tr("Node Editor"));
+		set_title(tr("Node Editor"));
 	}
 
 	NodeWidget *node_widget_;
@@ -146,4 +146,4 @@ private:
 
 }
 
-#endif // NODEPANEL_H
+#endif // OAK_NODEPANEL_H

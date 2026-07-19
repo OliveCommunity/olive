@@ -42,18 +42,18 @@ PixelSamplerWidget::PixelSamplerWidget(QWidget *parent)
 
 	setTitle(tr("Color"));
 
-	UpdateLabelInternal();
+	update_label_internal();
 }
 
-void PixelSamplerWidget::SetValues(const Color &color)
+void PixelSamplerWidget::set_values(const Color &color)
 {
 	color_ = color;
-	UpdateLabelInternal();
+	update_label_internal();
 }
 
-void PixelSamplerWidget::UpdateLabelInternal()
+void PixelSamplerWidget::update_label_internal()
 {
-	box_->SetColor(color_);
+	box_->set_color(color_);
 
 	label_->setText(tr("<html>"
 					   "<font color='#FF8080'>R: %1 (%5)</font><br>"
@@ -86,11 +86,11 @@ ManagedPixelSamplerWidget::ManagedPixelSamplerWidget(QWidget *parent)
 	layout->addWidget(reference_view_);
 }
 
-void ManagedPixelSamplerWidget::SetValues(const Color &reference,
+void ManagedPixelSamplerWidget::set_values(const Color &reference,
 										  const Color &display)
 {
-	reference_view_->SetValues(reference);
-	display_view_->SetValues(display);
+	reference_view_->set_values(reference);
+	display_view_->set_values(display);
 }
 
 }

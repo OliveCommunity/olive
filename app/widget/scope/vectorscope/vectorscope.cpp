@@ -39,14 +39,14 @@ VectorscopeScope::VectorscopeScope(QWidget *parent)
 {
 }
 
-ShaderCode VectorscopeScope::GenerateShaderCode()
+ShaderCode VectorscopeScope::generate_shader_code()
 {
 	return ShaderCode(
-		FileFunctions::ReadFileAsString(":/shaders/rgbvectorscope.frag"),
-		FileFunctions::ReadFileAsString(":/shaders/rgbvectorscope.vert"));
+		FileFunctions::read_file_as_string(":/shaders/rgbvectorscope.frag"),
+		FileFunctions::read_file_as_string(":/shaders/rgbvectorscope.vert"));
 }
 
-void VectorscopeScope::DrawScope(TexturePtr managed_tex, QVariant pipeline)
+void VectorscopeScope::draw_scope(TexturePtr managed_tex, QVariant pipeline)
 {
 	float vectorscope_scale = 0.80f;
 	float vectorscope_gain = 1.45f;
@@ -56,32 +56,32 @@ void VectorscopeScope::DrawScope(TexturePtr managed_tex, QVariant pipeline)
 
 	ShaderJob job;
 
-	job.Insert(QStringLiteral("viewport"),
-			   NodeValue(NodeValue::kVec2, QVector2D(width(), height())));
+	job.insert(QStringLiteral("viewport"),
+			   NodeValue(NodeValue::k_vec2, QVector2D(width(), height())));
 
 	double luma_coeffs[3] = { 0.0f, 0.0f, 0.0f };
-	color_manager()->GetDefaultLumaCoefs(luma_coeffs);
-	job.Insert(
+	color_manager()->get_default_luma_coefs(luma_coeffs);
+	job.insert(
 		QStringLiteral("luma_coeffs"),
-		NodeValue(NodeValue::kVec3,
+		NodeValue(NodeValue::k_vec3,
 				  QVector3D(luma_coeffs[0], luma_coeffs[1], luma_coeffs[2])));
 
-	job.Insert(QStringLiteral("vectorscope_scale"),
-			   NodeValue(NodeValue::kFloat, vectorscope_scale));
-	job.Insert(QStringLiteral("vectorscope_gain"),
-			   NodeValue(NodeValue::kFloat, vectorscope_gain));
-	job.Insert(QStringLiteral("vectorscope_point_radius"),
-			   NodeValue(NodeValue::kFloat, vectorscope_point_radius));
-	job.Insert(QStringLiteral("vectorscope_intensity"),
-			   NodeValue(NodeValue::kFloat, vectorscope_intensity));
-	job.Insert(QStringLiteral("vectorscope_sample_grid"),
-			   NodeValue(NodeValue::kFloat, vectorscope_sample_grid));
+	job.insert(QStringLiteral("vectorscope_scale"),
+			   NodeValue(NodeValue::k_float, vectorscope_scale));
+	job.insert(QStringLiteral("vectorscope_gain"),
+			   NodeValue(NodeValue::k_float, vectorscope_gain));
+	job.insert(QStringLiteral("vectorscope_point_radius"),
+			   NodeValue(NodeValue::k_float, vectorscope_point_radius));
+	job.insert(QStringLiteral("vectorscope_intensity"),
+			   NodeValue(NodeValue::k_float, vectorscope_intensity));
+	job.insert(QStringLiteral("vectorscope_sample_grid"),
+			   NodeValue(NodeValue::k_float, vectorscope_sample_grid));
 
-	job.Insert(QStringLiteral("ove_maintex"),
-			   NodeValue(NodeValue::kTexture,
+	job.insert(QStringLiteral("ove_maintex"),
+			   NodeValue(NodeValue::k_texture,
 						 QVariant::fromValue(managed_tex)));
 
-	renderer()->Blit(pipeline, job, GetViewportParams());
+	renderer()->blit(pipeline, job, get_viewport_params());
 
 	QPainter p(paint_device());
 	QFont font = p.font();
@@ -113,10 +113,10 @@ void VectorscopeScope::DrawScope(TexturePtr managed_tex, QVariant pipeline)
 
 	const float label_radius = radius + 12.0f;
 	const float marker_radius = radius * 0.72f;
-	constexpr float kPi = 3.14159265358979323846f;
+	constexpr float k_pi = 3.14159265358979323846f;
 
 	for (const Target &target : targets) {
-		float radians = target.angle * kPi / 180.0f;
+		float radians = target.angle * k_pi / 180.0f;
 		QPointF direction(qCos(radians), -qSin(radians));
 		QPointF marker = center + direction * marker_radius;
 		QPointF label_pos = center + direction * label_radius;
@@ -124,12 +124,12 @@ void VectorscopeScope::DrawScope(TexturePtr managed_tex, QVariant pipeline)
 
 		p.drawEllipse(marker, 3.0, 3.0);
 		p.drawText(label_pos.x() -
-					   QtUtils::QFontMetricsWidth(font_metrics, label) * 0.5,
+					   QtUtils::q_font_metrics_width(font_metrics, label) * 0.5,
 				   label_pos.y() + font_metrics.capHeight() * 0.5, label);
 	}
 }
 
-void VectorscopeScope::DrawScopeSoftware(QPainter &p, const QImage &image)
+void VectorscopeScope::draw_scope_software(QPainter &p, const QImage &image)
 {
 	const float vectorscope_scale = 0.80f;
 	const float vectorscope_gain = 1.45f;
@@ -139,7 +139,7 @@ void VectorscopeScope::DrawScopeSoftware(QPainter &p, const QImage &image)
 	buf.fill(Qt::transparent);
 
 	double luma_coeffs[3] = { 0.0, 0.0, 0.0 };
-	color_manager()->GetDefaultLumaCoefs(luma_coeffs);
+	color_manager()->get_default_luma_coefs(luma_coeffs);
 
 	const int src_w = image.width();
 	const int src_h = image.height();
@@ -214,10 +214,10 @@ void VectorscopeScope::DrawScopeSoftware(QPainter &p, const QImage &image)
 
 	const float label_radius = radius + 12.0f;
 	const float marker_radius = radius * 0.72f;
-	constexpr float kPi = 3.14159265358979323846f;
+	constexpr float k_pi = 3.14159265358979323846f;
 
 	for (const Target &target : targets) {
-		float radians = target.angle * kPi / 180.0f;
+		float radians = target.angle * k_pi / 180.0f;
 		QPointF direction(qCos(radians), -qSin(radians));
 		QPointF marker = center + direction * marker_radius;
 		QPointF label_pos = center + direction * label_radius;
@@ -225,7 +225,7 @@ void VectorscopeScope::DrawScopeSoftware(QPainter &p, const QImage &image)
 
 		p.drawEllipse(marker, 3.0, 3.0);
 		p.drawText(label_pos.x() -
-					   QtUtils::QFontMetricsWidth(font_metrics, label) * 0.5,
+					   QtUtils::q_font_metrics_width(font_metrics, label) * 0.5,
 				   label_pos.y() + font_metrics.capHeight() * 0.5, label);
 	}
 }

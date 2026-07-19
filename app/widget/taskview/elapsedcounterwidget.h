@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef ELAPSEDCOUNTERWIDGET_H
-#define ELAPSEDCOUNTERWIDGET_H
+#ifndef OAK_ELAPSEDCOUNTERWIDGET_H
+#define OAK_ELAPSEDCOUNTERWIDGET_H
 
 #include <QLabel>
 #include <QTimer>
@@ -36,14 +36,14 @@ class ElapsedCounterWidget : public QWidget {
 public:
 	ElapsedCounterWidget(QWidget *parent = nullptr);
 
-	void SetProgress(double d);
+	void set_progress(double d);
 
 public slots:
-	void Start(qint64 start_time);
-	void Start();
+	void start(qint64 start_time);
+	void start();
 
 public slots:
-	void Stop();
+	void stop();
 
 private:
 	QLabel *elapsed_lbl_;
@@ -57,9 +57,9 @@ private:
 	qint64 start_time_;
 
 private slots:
-	void UpdateTimers();
+	void update_timers();
 };
 
 }
 
-#endif // ELAPSEDCOUNTERWIDGET_H
+#endif // OAK_ELAPSEDCOUNTERWIDGET_H

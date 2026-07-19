@@ -20,12 +20,15 @@ submitted should abide by the following standards:
   with the following project-specific exceptions and notes:
   * Indentation uses **tabs**, not spaces.
   * Documentation comments should use **Javadoc-style** (`/** ... */`) where appropriate.
-* The naming rules below are retained from the original Olive codebase:
-  * `lowercase_underscored_variable_names`
-  * `lowercase_underscored_functions()` or `SentenceCaseFunctions()`
-  * `class SentenceCaseClassesAndStructs {}`
-  * `kSentenceCaseConstants` prepended with a lowercase `k`
-  * `UPPERCASE_UNDERSCORED_MACROS` for variables or same style as functions for macro functions
-  * `class_member_variables_` end with a `_`
+* Naming rules (enforced by `readability-identifier-naming` in `.clang-tidy`):
+  * Types (`class`, `struct`, `enum`, type aliases, template parameters): `PascalCase`
+  * Functions, variables, member variables: `snake_case`
+  * Private/protected members: trailing underscore, `class_member_variables_`
+  * Constants and enum values: `snake_case` (e.g. `k_dry_run_interval`, `k_linear`); `ALL_CAPS` is reserved for macros — save the fear for things that are actually dangerous
+  * Macros: `OAK_ALL_CAPS` (project prefix), and avoid them when a constant or function will do
+  * File names: all lowercase, `mystring.h` / `mystring.cpp`
+  * Namespaces: short `snake_case`
+  * Getters: same name as the private member without the trailing underscore (`foo_` → `foo()`); setters: `set_foo()`
+  * Exception: Qt and third-party (e.g. OpenFX) virtual overrides and framework callbacks keep their original names (`paintEvent`, `getParams`, ...) — renaming them would break the override
 * 100 column limit (where it doesn't impair readability)
 * Unix line endings (only LF no CRLF)

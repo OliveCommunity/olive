@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PIXELSAMPLERPANEL_H
-#define PIXELSAMPLERPANEL_H
+#ifndef OAK_PIXELSAMPLERPANEL_H
+#define OAK_PIXELSAMPLERPANEL_H
 
 #include "panel/panel.h"
 #include "widget/pixelsampler/pixelsampler.h"
@@ -34,14 +34,14 @@ public:
 	PixelSamplerPanel();
 
 public slots:
-	void SetValues(const Color &reference, const Color &display);
+	void set_values(const Color &reference, const Color &display);
 
 private:
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 	ManagedPixelSamplerWidget *sampler_widget_;
 };
 
 }
 
-#endif // PIXELSAMPLERPANEL_H
+#endif // OAK_PIXELSAMPLERPANEL_H

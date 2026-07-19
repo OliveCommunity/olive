@@ -23,14 +23,14 @@ TEST(TaskCustomCache, CancelBeforeRunReturnsImmediately)
 	olive::CustomCacheTask task(QStringLiteral("Sequence"));
 
 	bool cancelled_emitted = false;
-	QObject::connect(&task, &olive::CustomCacheTask::Cancelled, &task,
+	QObject::connect(&task, &olive::CustomCacheTask::cancelled, &task,
 					 [&cancelled_emitted] { cancelled_emitted = true; });
 
 	task.Cancel();
 	EXPECT_TRUE(cancelled_emitted);
 
 	// Run() sees the cancel flag on entry and returns without ever blocking
-	EXPECT_TRUE(task.Start());
+	EXPECT_TRUE(task.start());
 }
 
 TEST(TaskCustomCache, RunBlocksUntilCancelled)
@@ -40,7 +40,7 @@ TEST(TaskCustomCache, RunBlocksUntilCancelled)
 	bool run_returned = false;
 	bool run_result = false;
 	QThread *thread = QThread::create([&] {
-		run_result = task.Start();
+		run_result = task.start();
 		run_returned = true;
 	});
 	thread->start();
@@ -50,7 +50,7 @@ TEST(TaskCustomCache, RunBlocksUntilCancelled)
 	EXPECT_FALSE(run_returned);
 
 	bool cancelled_emitted = false;
-	QObject::connect(&task, &olive::CustomCacheTask::Cancelled, &task,
+	QObject::connect(&task, &olive::CustomCacheTask::cancelled, &task,
 					 [&cancelled_emitted] { cancelled_emitted = true; });
 
 	task.Cancel();
@@ -67,16 +67,16 @@ TEST(TaskCustomCache, FinishWakesRunWithoutEmittingCancelled)
 {
 	olive::CustomCacheTask task(QStringLiteral("Sequence"));
 
-	QThread *thread = QThread::create([&] { task.Start(); });
+	QThread *thread = QThread::create([&] { task.start(); });
 	thread->start();
 
 	EXPECT_FALSE(thread->wait(200));
 
 	bool cancelled_emitted = false;
-	QObject::connect(&task, &olive::CustomCacheTask::Cancelled, &task,
+	QObject::connect(&task, &olive::CustomCacheTask::cancelled, &task,
 					 [&cancelled_emitted] { cancelled_emitted = true; });
 
-	task.Finish();
+	task.finish();
 
 	ASSERT_TRUE(thread->wait(5000));
 	EXPECT_FALSE(cancelled_emitted);
@@ -93,24 +93,24 @@ protected:
 			new olive::Core(olive::Core::CoreParams());
 		}
 
-		olive::ColorManager::SetUpDefaultConfig();
+		olive::ColorManager::set_up_default_config();
 
 		// Use the dummy render backend so no GPU is touched (matches
 		// preview_autocacher_test)
-		olive::Config::Current()[QStringLiteral("GraphicsBackend")] =
+		olive::Config::current()[QStringLiteral("GraphicsBackend")] =
 			QStringLiteral("dummy");
 
 		created_disk_manager_ = (olive::DiskManager::instance() == nullptr);
 		if (created_disk_manager_) {
-			olive::DiskManager::CreateInstance();
+			olive::DiskManager::create_instance();
 		}
 		created_conform_manager_ = (olive::ConformManager::instance() == nullptr);
 		if (created_conform_manager_) {
-			olive::ConformManager::CreateInstance();
+			olive::ConformManager::create_instance();
 		}
 		created_render_manager_ = (olive::RenderManager::instance() == nullptr);
 		if (created_render_manager_) {
-			olive::RenderManager::CreateInstance();
+			olive::RenderManager::create_instance();
 		}
 
 		// Sandbox the footage metadata cache so real probes write into the
@@ -123,20 +123,20 @@ protected:
 			QStandardPaths::writableLocation(QStandardPaths::CacheLocation));
 
 		project_ = std::make_unique<olive::Project>();
-		project_->Initialize();
+		project_->initialize();
 	}
 
 	void TearDown() override
 	{
 		project_.reset();
 		if (created_render_manager_) {
-			olive::RenderManager::DestroyInstance();
+			olive::RenderManager::destroy_instance();
 		}
 		if (created_conform_manager_) {
-			olive::ConformManager::DestroyInstance();
+			olive::ConformManager::destroy_instance();
 		}
 		if (created_disk_manager_) {
-			olive::DiskManager::DestroyInstance();
+			olive::DiskManager::destroy_instance();
 		}
 		if (had_cache_home_) {
 			qputenv("XDG_CACHE_HOME", old_cache_home_);
@@ -181,7 +181,7 @@ TEST_F(TaskPreCacheTest, ConstructorCopiesFootageIntoPrivateProject)
 
 	auto *footage = new olive::Footage(path);
 	footage->setParent(project_.get());
-	ASSERT_TRUE(footage->IsValid());
+	ASSERT_TRUE(footage->is_valid());
 
 	auto *sequence = new olive::Sequence();
 	sequence->setParent(project_.get());
@@ -192,19 +192,19 @@ TEST_F(TaskPreCacheTest, ConstructorCopiesFootageIntoPrivateProject)
 	// not exercised here since it requires live render workers.
 	InspectablePreCacheTask task(footage, 0, sequence);
 
-	EXPECT_TRUE(task.GetTitle().contains(path));
-	EXPECT_TRUE(task.GetTitle().contains(QStringLiteral(":0")));
+	EXPECT_TRUE(task.get_title().contains(path));
+	EXPECT_TRUE(task.get_title().contains(QStringLiteral(":0")));
 
 	// The private viewer must mirror the sequence's parameters
 	olive::ViewerOutput *viewer = task.viewer();
 	ASSERT_NE(viewer, nullptr);
-	EXPECT_EQ(task.video_params(), sequence->GetVideoParams());
-	EXPECT_EQ(viewer->GetVideoParams(), sequence->GetVideoParams());
+	EXPECT_EQ(task.video_params(), sequence->get_video_params());
+	EXPECT_EQ(viewer->get_video_params(), sequence->get_video_params());
 
 	// The viewer's texture input must be fed by a private copy of the footage:
 	// same file, different node, living in the task's private project rather
 	// than the caller's
-	olive::Node *connected = viewer->GetConnectedTextureOutput();
+	olive::Node *connected = viewer->get_connected_texture_output();
 	ASSERT_NE(connected, nullptr);
 	EXPECT_NE(connected, footage);
 

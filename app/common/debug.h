@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef DEBUG_H
-#define DEBUG_H
+#ifndef OAK_DEBUG_H
+#define OAK_DEBUG_H
 
 #include <QDebug>
 
@@ -29,9 +29,9 @@
 namespace olive
 {
 
-void DebugHandler(QtMsgType type, const QMessageLogContext &context,
+void debug_handler(QtMsgType type, const QMessageLogContext &context,
 				  const QString &msg);
 
 }
 
-#endif // DEBUG_H
+#endif // OAK_DEBUG_H

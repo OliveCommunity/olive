@@ -44,32 +44,32 @@ PreferencesDialog::PreferencesDialog(MainWindow *main_window, int start_tab)
 {
 	setWindowTitle(tr("Preferences"));
 
-	AddTab(new PreferencesGeneralTab(), tr("General"));
-	AddTab(new PreferencesAppearanceTab(), tr("Appearance"));
-	AddTab(new PreferencesAudioTab(), tr("Audio"));
-	AddTab(
-		new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryTimeline),
+	add_tab(new PreferencesGeneralTab(), tr("General"));
+	add_tab(new PreferencesAppearanceTab(), tr("Appearance"));
+	add_tab(new PreferencesAudioTab(), tr("Audio"));
+	add_tab(
+		new PreferencesBehaviorTab(PreferencesBehaviorTab::k_category_timeline),
 		tr("Timeline"));
-	AddTab(
-		new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryPlayback),
+	add_tab(
+		new PreferencesBehaviorTab(PreferencesBehaviorTab::k_category_playback),
 		tr("Playback"));
-	AddTab(new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryProject),
+	add_tab(new PreferencesBehaviorTab(PreferencesBehaviorTab::k_category_project),
 		   tr("Project"));
-	AddTab(new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryNodes),
+	add_tab(new PreferencesBehaviorTab(PreferencesBehaviorTab::k_category_nodes),
 		   tr("Nodes"));
-	AddTab(
-		new PreferencesBehaviorTab(PreferencesBehaviorTab::kCategoryRendering),
+	add_tab(
+		new PreferencesBehaviorTab(PreferencesBehaviorTab::k_category_rendering),
 		tr("Rendering"));
-	AddTab(new PreferencesDiskTab(), tr("Disk"));
-	AddTab(new PreferencesLutTab(), tr("LUT"));
-	AddTab(new PreferencesKeyboardTab(main_window), tr("Keyboard"));
+	add_tab(new PreferencesDiskTab(), tr("Disk"));
+	add_tab(new PreferencesLutTab(), tr("LUT"));
+	add_tab(new PreferencesKeyboardTab(main_window), tr("Keyboard"));
 
-	SetCurrentTab(start_tab);
+	set_current_tab(start_tab);
 }
 
 void PreferencesDialog::AcceptEvent()
 {
-	Config::Save();
+	Config::save();
 }
 
 }

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef VIEWERGLWIDGET_H
-#define VIEWERGLWIDGET_H
+#ifndef OAK_VIEWERGLWIDGET_H
+#define OAK_VIEWERGLWIDGET_H
 
 #include <QImage>
 #include <QMatrix4x4>
@@ -73,27 +73,27 @@ public:
 
 	virtual ~ViewerDisplayWidget() override;
 
-	const ViewerSafeMarginInfo &GetSafeMargin() const;
-	void SetSafeMargins(const ViewerSafeMarginInfo &safe_margin);
+	const ViewerSafeMarginInfo &get_safe_margin() const;
+	void set_safe_margins(const ViewerSafeMarginInfo &safe_margin);
 
-	void SetGizmos(Node *node);
+	void set_gizmos(Node *node);
 
-	const VideoParams &GetVideoParams() const
+	const VideoParams &get_video_params() const
 	{
 		return gizmo_params_;
 	}
-	void SetVideoParams(const VideoParams &params);
+	void set_video_params(const VideoParams &params);
 
-	const AudioParams &GetAudioParams() const
+	const AudioParams &get_audio_params() const
 	{
 		return gizmo_audio_params_;
 	}
-	void SetAudioParams(const AudioParams &p);
+	void set_audio_params(const AudioParams &p);
 
-	void SetTime(const rational &time);
-	void SetSubtitleTracks(Sequence *list);
+	void set_time(const Rational &time);
+	void set_subtitle_tracks(Sequence *list);
 
-	void SetShowWidgetBackground(bool e)
+	void set_show_widget_background(bool e)
 	{
 		show_widget_background_ = e;
 		update();
@@ -103,51 +103,51 @@ public:
    * @brief Transform a point from viewer space to the buffer space.
    * Multiplies by the inverted transform matrix to undo the scaling and translation.
    */
-	QPointF TransformViewerSpaceToBufferSpace(const QPointF &pos);
+	QPointF transform_viewer_space_to_buffer_space(const QPointF &pos);
 
-	bool IsDeinterlacing() const
+	bool is_deinterlacing() const
 	{
 		return deinterlace_;
 	}
 
-	void ResetFPSTimer();
+	void reset_fps_timer();
 
-	bool GetShowFPS() const
+	bool get_show_fps() const
 	{
 		return show_fps_;
 	}
 
-	bool GetShowSubtitles() const
+	bool get_show_subtitles() const
 	{
 		return show_subtitles_;
 	}
-	void SetShowSubtitles(bool e)
+	void set_show_subtitles(bool e)
 	{
 		show_subtitles_ = e;
 		update();
 	}
 
-	void IncrementSkippedFrames();
+	void increment_skipped_frames();
 
-	void IncrementFrameCount()
+	void increment_frame_count()
 	{
 		fps_timer_update_count_++;
 	}
 
-	TexturePtr GetCurrentTexture() const
+	TexturePtr get_current_texture() const
 	{
 		return texture_;
 	}
 
-	ColorProcessorPtr GetCurrentColorProcessor()
+	ColorProcessorPtr get_current_color_processor()
 	{
 		return color_service();
 	}
 
-	void Play(const int64_t &start_timestamp, const int &playback_speed,
-			  const rational &timebase, bool start_updating);
+	void play(const int64_t &start_timestamp, const int &playback_speed,
+			  const Rational &timebase, bool start_updating);
 
-	void Pause();
+	void pause();
 
 	ViewerQueue *queue()
 	{
@@ -159,7 +159,7 @@ public:
 		return &timer_;
 	}
 
-	QPointF ScreenToScenePoint(const QPoint &p);
+	QPointF screen_to_scene_point(const QPoint &p);
 
 	virtual bool eventFilter(QObject *o, QEvent *e) override;
 
@@ -169,14 +169,14 @@ public slots:
    *
    * Set this if you want the drawing to pass through some sort of transform (most of the time you won't want this).
    */
-	void SetMatrixTranslate(const QMatrix4x4 &mat);
+	void set_matrix_translate(const QMatrix4x4 &mat);
 
 	/**
   * @brief Set the scale matrix.
   */
-	void SetMatrixZoom(const QMatrix4x4 &mat);
+	void set_matrix_zoom(const QMatrix4x4 &mat);
 
-	void SetMatrixCrop(const QMatrix4x4 &mat);
+	void set_matrix_crop(const QMatrix4x4 &mat);
 
 	/**
    * @brief Enables or disables whether this color at the cursor should be emitted
@@ -185,91 +185,91 @@ public slots:
    * have an option for it. Ideally, this should be connected to a PixelSamplerPanel::visibilityChanged signal so that
    * it can automatically be enabled when the user is pixel sampling and disabled for optimization when they're not.
    */
-	void SetSignalCursorColorEnabled(bool e);
+	void set_signal_cursor_color_enabled(bool e);
 
-	void SetImage(const QVariant &buffer);
+	void set_image(const QVariant &buffer);
 
-	void SetBlank();
+	void set_blank();
 
 	/**
    * @brief Changes the pointer type if the tool is changed to the hand tool. Otherwise resets the pointer to it's
    * normal type.
    */
-	void UpdateCursor();
+	void update_cursor();
 
-	void ToolChanged();
+	void tool_changed();
 
 	/**
    * @brief Enables/disables a basic deinterlace on the viewer
    */
-	void SetDeinterlacing(bool e);
+	void set_deinterlacing(bool e);
 
-	void SetShowFPS(bool e);
+	void set_show_fps(bool e);
 
-	void RequestStartEditingText();
+	void request_start_editing_text();
 
 signals:
 	/**
    * @brief Signal emitted when the user starts dragging from the viewer
    */
-	void DragStarted(const QPoint &p);
+	void drag_started(const QPoint &p);
 
 	/**
    * @brief Signal emitted when a hand drag starts
    */
-	void HandDragStarted();
+	void hand_drag_started();
 
 	/**
    * @brief Signal emitted when a hand drag moves
    */
-	void HandDragMoved(int x, int y);
+	void hand_drag_moved(int x, int y);
 
 	/**
    * @brief Signal emitted when a hand drag ends
    */
-	void HandDragEnded();
+	void hand_drag_ended();
 
 	/**
    * @brief Signal emitted when cursor color is enabled and the user's mouse position changes
    */
-	void CursorColor(const Color &reference, const Color &display);
+	void cursor_color(const Color &reference, const Color &display);
 
-	void DragEntered(QDragEnterEvent *event);
+	void drag_entered(QDragEnterEvent *event);
 
-	void DragLeft(QDragLeaveEvent *event);
+	void drag_left(QDragLeaveEvent *event);
 
-	void Dropped(QDropEvent *event);
+	void dropped(QDropEvent *event);
 
-	void TextureChanged(TexturePtr texture);
+	void texture_changed(TexturePtr texture);
 
-	void QueueStarved();
+	void queue_starved();
 
-	void QueueNoLongerStarved();
+	void queue_no_longer_starved();
 
-	void CreateAddableAt(const QRectF &rect);
+	void create_addable_at(const QRectF &rect);
 
 protected:
-	QTransform GenerateWorldTransform();
+	QTransform generate_world_transform();
 
-	QTransform GenerateDisplayTransform();
+	QTransform generate_display_transform();
 
-	QTransform GenerateGizmoTransform(NodeTraverser &gt,
+	QTransform generate_gizmo_transform(NodeTraverser &gt,
 									  const TimeRange &range);
-	QTransform GenerateGizmoTransform()
+	QTransform generate_gizmo_transform()
 	{
 		NodeTraverser t;
-		t.SetCacheVideoParams(gizmo_params_);
-		return GenerateGizmoTransform(t, GenerateGizmoTime());
+		t.set_cache_video_params(gizmo_params_);
+		return generate_gizmo_transform(t, generate_gizmo_time());
 	}
 
-	TimeRange GenerateGizmoTime()
+	TimeRange generate_gizmo_time()
 	{
-		rational node_time = GetGizmoTime();
+		Rational node_time = get_gizmo_time();
 		return TimeRange(node_time,
 						 node_time + gizmo_params_.frame_rate_as_time_base());
 	}
 
-	virtual TexturePtr LoadCustomTextureFromFrame(const QVariant &v)
+	virtual TexturePtr load_custom_texture_from_frame(const QVariant &v)
 	{
 		return nullptr;
 	}
@@ -280,63 +280,63 @@ protected slots:
    *
    * Simple OpenGL drawing function for painting the texture on screen. Standardized around OpenGL ES 3.2 Core.
    */
-	virtual void OnPaint() override;
+	virtual void on_paint() override;
 
-	virtual void OnDestroy() override;
+	virtual void on_destroy() override;
 
 private:
-	QPointF GetTexturePosition(const QPoint &screen_pos);
-	QPointF GetTexturePosition(const QSize &size);
-	QPointF GetTexturePosition(const double &x, const double &y);
+	QPointF get_texture_position(const QPoint &screen_pos);
+	QPointF get_texture_position(const QSize &size);
+	QPointF get_texture_position(const double &x, const double &y);
 
-	static void DrawTextWithCrudeShadow(QPainter *painter, const QRect &rect,
+	static void draw_text_with_crude_shadow(QPainter *painter, const QRect &rect,
 										const QString &text,
 										const QTextOption &opt = QTextOption());
 
-	rational GetGizmoTime();
+	Rational get_gizmo_time();
 
-	bool IsHandDrag(QMouseEvent *event) const;
+	bool is_hand_drag(QMouseEvent *event) const;
 
-	void UpdateMatrix();
+	void update_matrix();
 
-	NodeGizmo *TryGizmoPress(const NodeValueRow &row, const QPointF &p);
+	NodeGizmo *try_gizmo_press(const NodeValueRow &row, const QPointF &p);
 
-	void OpenTextGizmo(TextGizmo *text, QMouseEvent *event = nullptr);
+	void open_text_gizmo(TextGizmo *text, QMouseEvent *event = nullptr);
 
-	bool OnMousePress(QMouseEvent *e);
-	bool OnMouseMove(QMouseEvent *e);
-	bool OnMouseRelease(QMouseEvent *e);
-	bool OnMouseDoubleClick(QMouseEvent *e);
+	bool on_mouse_press(QMouseEvent *e);
+	bool on_mouse_move(QMouseEvent *e);
+	bool on_mouse_release(QMouseEvent *e);
+	bool on_mouse_double_click(QMouseEvent *e);
 
-	bool OnKeyPress(QKeyEvent *e);
-	bool OnKeyRelease(QKeyEvent *e);
+	bool on_key_press(QKeyEvent *e);
+	bool on_key_release(QKeyEvent *e);
 
-	void EmitColorAtCursor(QMouseEvent *e);
+	void emit_color_at_cursor(QMouseEvent *e);
 
-	void DrawSubtitleTracks();
+	void draw_subtitle_tracks();
 
-	QPointF GetVirtualPosForTextEdit(const QPointF &p)
+	QPointF get_virtual_pos_for_text_edit(const QPointF &p)
 	{
 		return text_transform_inverted_.map(p) - text_edit_pos_;
 	}
 
-	template <typename T> void ForwardDragEventToTextEdit(T *event);
+	template <typename T> void forward_drag_event_to_text_edit(T *event);
 
-	bool ForwardMouseEventToTextEdit(QMouseEvent *event,
+	bool forward_mouse_event_to_text_edit(QMouseEvent *event,
 									 bool check_if_outside = false);
-	bool ForwardEventToTextEdit(QEvent *event);
+	bool forward_event_to_text_edit(QEvent *event);
 
-	QPointF AdjustPosByVAlign(QPointF p);
+	QPointF adjust_pos_by_v_align(QPointF p);
 
-	void CloseTextEditor();
+	void close_text_editor();
 
-	void GenerateGizmoTransforms();
+	void generate_gizmo_transforms();
 
-	void DrawBlank(const VideoParams &device_params);
+	void draw_blank(const VideoParams &device_params);
 
-	void DrawBackendNeutral(const ColorTransformJob &ctj, QPainter *painter);
-	bool DrawBackendNeutralFrame(const FramePtr &frame, QPainter *painter);
-	bool DrawBackendNeutralTexture(const TexturePtr &texture,
+	void draw_backend_neutral(const ColorTransformJob &ctj, QPainter *painter);
+	bool draw_backend_neutral_frame(const FramePtr &frame, QPainter *painter);
+	bool draw_backend_neutral_texture(const TexturePtr &texture,
 								   QPainter *painter);
 
 	/**
@@ -417,7 +417,7 @@ private:
 	bool show_subtitles_;
 	Sequence *subtitle_tracks_;
 
-	rational time_;
+	Rational time_;
 
 	/**
    * @brief Position of mouse to calculate delta from.
@@ -444,16 +444,16 @@ private:
 
 	enum PushMode {
 		/// New frame to push to internal texture
-		kPushFrame,
+		k_push_frame,
 
 		/// Internal texture reference is up to date, keep showing it
-		kPushUnnecessary,
+		k_push_unnecessary,
 
 		/// Draw blank/black screen
-		kPushBlank,
+		k_push_blank,
 
 		/// Draw nothing (not even a black frame)
-		kPushNull,
+		k_push_null,
 	};
 
 	PushMode push_mode_;
@@ -463,7 +463,7 @@ private:
 
 	ViewerPlaybackTimer timer_;
 
-	rational playback_timebase_;
+	Rational playback_timebase_;
 
 	bool add_band_;
 	QPoint add_band_start_;
@@ -479,18 +479,18 @@ private:
 	QTransform text_transform_inverted_;
 
 private slots:
-	void UpdateFromQueue();
+	void update_from_queue();
 
-	void TextEditChanged();
-	void TextEditDestroyed();
+	void text_edit_changed();
+	void text_edit_destroyed();
 
-	void SubtitlesChanged(const TimeRange &r);
+	void subtitles_changed(const TimeRange &r);
 
-	void FocusChanged(QWidget *old, QWidget *now);
+	void focus_changed(QWidget *old, QWidget *now);
 
-	QRectF UpdateActiveTextGizmoSize();
+	QRectF update_active_text_gizmo_size();
 };
 
 }
 
-#endif // VIEWERGLWIDGET_H
+#endif // OAK_VIEWERGLWIDGET_H

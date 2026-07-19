@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef VIEWERPANELBASE_H
-#define VIEWERPANELBASE_H
+#ifndef OAK_VIEWERPANELBASE_H
+#define OAK_VIEWERPANELBASE_H
 
 #include "panel/pixelsampler/pixelsamplerpanel.h"
 #include "panel/timebased/timebased.h"
@@ -34,95 +34,95 @@ class ViewerPanelBase : public TimeBasedPanel {
 public:
 	ViewerPanelBase(const QString &object_name);
 
-	ViewerWidget *GetViewerWidget() const
+	ViewerWidget *get_viewer_widget() const
 	{
-		return static_cast<ViewerWidget *>(GetTimeBasedWidget());
+		return static_cast<ViewerWidget *>(get_time_based_widget());
 	}
 
-	virtual void PlayPause() override;
+	virtual void play_pause() override;
 
-	virtual void PlayInToOut() override;
+	virtual void play_in_to_out() override;
 
-	virtual void ShuttleLeft() override;
+	virtual void shuttle_left() override;
 
-	virtual void ShuttleStop() override;
+	virtual void shuttle_stop() override;
 
-	virtual void ShuttleRight() override;
+	virtual void shuttle_right() override;
 
-	void ConnectTimeBasedPanel(TimeBasedPanel *panel);
+	void connect_time_based_panel(TimeBasedPanel *panel);
 
-	void DisconnectTimeBasedPanel(TimeBasedPanel *panel);
+	void disconnect_time_based_panel(TimeBasedPanel *panel);
 
 	/**
    * @brief Wrapper for ViewerWidget::SetFullScreen()
    */
-	void SetFullScreen(QScreen *screen = nullptr);
+	void set_full_screen(QScreen *screen = nullptr);
 
-	ColorManager *GetColorManager()
+	ColorManager *get_color_manager()
 	{
-		return GetViewerWidget()->color_manager();
+		return get_viewer_widget()->color_manager();
 	}
 
-	void UpdateTextureFromNode()
+	void update_texture_from_node()
 	{
-		GetViewerWidget()->UpdateTextureFromNode();
+		get_viewer_widget()->update_texture_from_node();
 	}
 
-	void AddPlaybackDevice(ViewerDisplayWidget *vw)
+	void add_playback_device(ViewerDisplayWidget *vw)
 	{
-		GetViewerWidget()->AddPlaybackDevice(vw);
+		get_viewer_widget()->add_playback_device(vw);
 	}
 
-	void SetTimelineSelectedBlocks(const QVector<Block *> &b)
+	void set_timeline_selected_blocks(const QVector<Block *> &b)
 	{
-		GetViewerWidget()->SetTimelineSelectedBlocks(b);
+		get_viewer_widget()->set_timeline_selected_blocks(b);
 	}
 
-	void SetNodeViewSelections(const QVector<Node *> &n)
+	void set_node_view_selections(const QVector<Node *> &n)
 	{
-		GetViewerWidget()->SetNodeViewSelections(n);
+		get_viewer_widget()->set_node_view_selections(n);
 	}
 
-	void ConnectMulticamWidget(MulticamWidget *p)
+	void connect_multicam_widget(MulticamWidget *p)
 	{
-		GetViewerWidget()->ConnectMulticamWidget(p);
+		get_viewer_widget()->connect_multicam_widget(p);
 	}
 
 public slots:
-	void SetGizmos(Node *node);
+	void set_gizmos(Node *node);
 
-	void CacheEntireSequence();
+	void cache_entire_sequence();
 
-	void CacheSequenceInOut();
+	void cache_sequence_in_out();
 
-	void RequestStartEditingText()
+	void request_start_editing_text()
 	{
-		GetViewerWidget()->RequestStartEditingText();
+		get_viewer_widget()->request_start_editing_text();
 	}
 
 signals:
 	/**
    * @brief Signal emitted when a new frame is loaded
    */
-	void TextureChanged(TexturePtr t);
+	void texture_changed(TexturePtr t);
 
 	/**
    * @brief Wrapper for ViewerGLWidget::ColorProcessorChanged()
    */
-	void ColorProcessorChanged(ColorProcessorPtr processor);
+	void color_processor_changed(ColorProcessorPtr processor);
 
 	/**
    * @brief Wrapper for ViewerGLWidget::ColorManagerChanged()
    */
-	void ColorManagerChanged(ColorManager *color_manager);
+	void color_manager_changed(ColorManager *color_manager);
 
 protected:
-	void SetViewerWidget(ViewerWidget *vw);
+	void set_viewer_widget(ViewerWidget *vw);
 
 private slots:
-	void FocusedPanelChanged(PanelWidget *panel);
+	void focused_panel_changed(PanelWidget *panel);
 };
 
 }
 
-#endif // VIEWERPANELBASE_H
+#endif // OAK_VIEWERPANELBASE_H

@@ -41,25 +41,25 @@ ProjectImportTask::ProjectImportTask(Folder *folder,
 		filenames_.append(QFileInfo(f));
 	}
 
-	file_count_ = Core::CountFilesInFileList(filenames_);
+	file_count_ = Core::count_files_in_file_list(filenames_);
 
-	SetTitle(tr("Importing %n file(s)", nullptr, file_count_));
+	set_title(tr("Importing %n file(s)", nullptr, file_count_));
 }
 
-const int &ProjectImportTask::GetFileCount() const
+const int &ProjectImportTask::get_file_count() const
 {
 	return file_count_;
 }
 
-bool ProjectImportTask::Run()
+bool ProjectImportTask::run()
 {
 	command_ = new MultiUndoCommand();
 
 	int imported = 0;
 
-	Import(folder_, filenames_, imported, command_);
+	import(folder_, filenames_, imported, command_);
 
-	if (IsCancelled()) {
+	if (is_cancelled()) {
 		delete command_;
 		command_ = nullptr;
 		return false;
@@ -68,15 +68,15 @@ bool ProjectImportTask::Run()
 	}
 }
 
-void ProjectImportTask::Import(Folder *folder, QFileInfoList import,
+void ProjectImportTask::import(Folder *folder, QFileInfoList entries,
 							   int &counter, MultiUndoCommand *parent_command)
 {
-	for (int i = 0; i < import.size(); i++) {
-		if (IsCancelled()) {
+	for (int i = 0; i < entries.size(); i++) {
+		if (is_cancelled()) {
 			break;
 		}
 
-		const QFileInfo &file_info = import.at(i);
+		const QFileInfo &file_info = entries.at(i);
 
 		// Check if this file is a directory
 		if (file_info.isDir()) {
@@ -99,31 +99,31 @@ void ProjectImportTask::Import(Folder *folder, QFileInfoList import,
 				// Create a folder corresponding to the directory
 				Folder *f = new Folder();
 
-				f->SetLabel(file_info.fileName());
+				f->set_label(file_info.fileName());
 
 				// Create undoable command that adds the items to the model
-				AddItemToFolder(folder, f, parent_command);
+				add_item_to_folder(folder, f, parent_command);
 
 				// Recursively follow this path
-				Import(f, entry_list, counter, parent_command);
+				import(f, entry_list, counter, parent_command);
 			}
 
 		} else {
 			Footage *footage = new Footage();
 
-			footage->SetCancelPointer(this->GetCancelAtom());
+			footage->set_cancel_pointer(this->get_cancel_atom());
 
 			footage->set_filename(file_info.absoluteFilePath());
-			footage->SetLabel(file_info.fileName());
+			footage->set_label(file_info.fileName());
 
-			footage->SetCancelPointer(nullptr);
+			footage->set_cancel_pointer(nullptr);
 
-			if (footage->IsValid()) {
+			if (footage->is_valid()) {
 				// See if this footage is an image sequence
-				ValidateImageSequence(footage, import, i);
+				validate_image_sequence(footage, entries, i);
 
 				// Create undoable command that adds the items to the model
-				AddItemToFolder(folder, footage, parent_command);
+				add_item_to_folder(folder, footage, parent_command);
 
 				// Add to vector
 				imported_footage_.push_back(footage);
@@ -136,13 +136,13 @@ void ProjectImportTask::Import(Folder *folder, QFileInfoList import,
 
 			counter++;
 
-			emit ProgressChanged(static_cast<double>(counter) /
+			emit progress_changed(static_cast<double>(counter) /
 								 static_cast<double>(file_count_));
 		}
 	}
 }
 
-void ProjectImportTask::ValidateImageSequence(Footage *footage,
+void ProjectImportTask::validate_image_sequence(Footage *footage,
 											  QFileInfoList &info_list,
 											  int index)
 {
@@ -150,51 +150,51 @@ void ProjectImportTask::ValidateImageSequence(Footage *footage,
 	//
 	// By this point we've established that video contains a single still image stream. Now we'll
 	// see if it ends with numbers.
-	if (Decoder::GetImageSequenceDigitCount(footage->filename()) > 0 &&
+	if (Decoder::get_image_sequence_digit_count(footage->filename()) > 0 &&
 		!image_sequence_ignore_files_.contains(footage->filename()) &&
-		footage->InputArraySize(Footage::kVideoParamsInput)) {
-		VideoParams video_stream = footage->GetVideoParams(0);
+		footage->input_array_size(Footage::k_video_params_input)) {
+		VideoParams video_stream = footage->get_video_params(0);
 		QSize dim(video_stream.width(), video_stream.height());
 
-		int64_t ind = Decoder::GetImageSequenceIndex(footage->filename());
+		int64_t ind = Decoder::get_image_sequence_index(footage->filename());
 
 		// Check if files around exist around it with that follow a sequence
-		QString previous_img_fn = Decoder::TransformImageSequenceFileName(
+		QString previous_img_fn = Decoder::transform_image_sequence_file_name(
 			footage->filename(), ind - 1);
-		QString next_img_fn = Decoder::TransformImageSequenceFileName(
+		QString next_img_fn = Decoder::transform_image_sequence_file_name(
 			footage->filename(), ind + 1);
 
 		Footage *previous_file = new Footage(previous_img_fn);
 		Footage *next_file = new Footage(next_img_fn);
 
 		// Finally see if these files have the same dimensions
-		if ((previous_file->IsValid() &&
-			 CompareStillImageSize(previous_file, dim)) ||
-			(next_file->IsValid() && CompareStillImageSize(next_file, dim))) {
+		if ((previous_file->is_valid() &&
+			 compare_still_image_size(previous_file, dim)) ||
+			(next_file->is_valid() && compare_still_image_size(next_file, dim))) {
 			// By this point, we've established this file is a still image with a number at the end of
 			// the filename surrounded by adjacent numbers. It could be a still image! But let's ask the
 			// user just in case...
 			bool is_sequence;
 
-			QMetaObject::invokeMethod(Core::instance(), "ConfirmImageSequence",
+			QMetaObject::invokeMethod(Core::instance(), "confirm_image_sequence",
 									  Qt::BlockingQueuedConnection,
 									  Q_RETURN_ARG(bool, is_sequence),
 									  Q_ARG(QString, footage->filename()));
 
 			int64_t seq_index =
-				Decoder::GetImageSequenceIndex(footage->filename());
+				Decoder::get_image_sequence_index(footage->filename());
 
 			// Heuristic to find the first and last images (users can always override this later in
 			// FootagePropertiesDialog)
 			int64_t start_index =
-				GetImageSequenceLimit(footage->filename(), seq_index, false);
+				get_image_sequence_limit(footage->filename(), seq_index, false);
 			int64_t end_index =
-				GetImageSequenceLimit(footage->filename(), seq_index, true);
+				get_image_sequence_limit(footage->filename(), seq_index, true);
 
 			// Depending on the user's choice, either remove them from the list or don't ask for the
 			// remainders
 			for (int64_t j = start_index; j <= end_index; j++) {
-				QString entry_fn = Decoder::TransformImageSequenceFileName(
+				QString entry_fn = Decoder::transform_image_sequence_file_name(
 					footage->filename(), j);
 
 				if (is_sequence) {
@@ -215,17 +215,17 @@ void ProjectImportTask::ValidateImageSequence(Footage *footage,
 			if (is_sequence) {
 				// User has confirmed it is a still image, let's set it accordingly.
 				video_stream.set_video_type(
-					VideoParams::kVideoTypeImageSequence);
+					VideoParams::k_video_type_image_sequence);
 
-				rational default_timebase =
-					OLIVE_CONFIG("DefaultSequenceFrameRate").value<rational>();
+				Rational default_timebase =
+					OAK_CONFIG("DefaultSequenceFrameRate").value<Rational>();
 				video_stream.set_time_base(default_timebase);
 				video_stream.set_frame_rate(default_timebase.flipped());
 
 				video_stream.set_start_time(start_index);
 				video_stream.set_duration(end_index - start_index + 1);
 
-				footage->SetVideoParams(video_stream, 0);
+				footage->set_video_params(video_stream, 0);
 			}
 		}
 
@@ -234,44 +234,44 @@ void ProjectImportTask::ValidateImageSequence(Footage *footage,
 	}
 }
 
-void ProjectImportTask::AddItemToFolder(Folder *folder, Node *item,
+void ProjectImportTask::add_item_to_folder(Folder *folder, Node *item,
 										MultiUndoCommand *command)
 {
 	// Create undoable command that adds the items to the model
 	Project *project = folder_->project();
 
 	NodeAddCommand *nac = new NodeAddCommand(project, item);
-	nac->PushToThread(project->thread());
+	nac->push_to_thread(project->thread());
 	command->add_child(nac);
 
 	command->add_child(new FolderAddChild(folder, item));
 }
 
-bool ProjectImportTask::ItemIsStillImageFootageOnly(Footage *footage)
+bool ProjectImportTask::item_is_still_image_footage_only(Footage *footage)
 {
-	if (footage->GetTotalStreamCount() != 1) {
+	if (footage->get_total_stream_count() != 1) {
 		// Footage with more than one stream (usually video+audio) most likely isn't an image sequence
 		return false;
 	}
 
-	VideoParams vp = footage->GetVideoParams(0);
+	VideoParams vp = footage->get_video_params(0);
 
 	// Footage must be valid and video stream must be a still image to be an image sequence
-	return vp.is_valid() && vp.video_type() == VideoParams::kVideoTypeStill;
+	return vp.is_valid() && vp.video_type() == VideoParams::k_video_type_still;
 }
 
-bool ProjectImportTask::CompareStillImageSize(Footage *footage, const QSize &sz)
+bool ProjectImportTask::compare_still_image_size(Footage *footage, const QSize &sz)
 {
-	if (!ItemIsStillImageFootageOnly(footage)) {
+	if (!item_is_still_image_footage_only(footage)) {
 		return false;
 	}
 
-	VideoParams stream = footage->GetVideoParams(0);
+	VideoParams stream = footage->get_video_params(0);
 
 	return stream.width() == sz.width() && stream.height() == sz.height();
 }
 
-int64_t ProjectImportTask::GetImageSequenceLimit(const QString &start_fn,
+int64_t ProjectImportTask::get_image_sequence_limit(const QString &start_fn,
 												 int64_t start, bool up)
 {
 	QString test_filename;
@@ -286,7 +286,7 @@ int64_t ProjectImportTask::GetImageSequenceLimit(const QString &start_fn,
 		}
 
 		test_filename =
-			Decoder::TransformImageSequenceFileName(start_fn, test_index);
+			Decoder::transform_image_sequence_file_name(start_fn, test_index);
 
 		if (!QFileInfo::exists(test_filename)) {
 			// Reached end of index

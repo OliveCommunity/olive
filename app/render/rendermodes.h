@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef RENDERMODE_H
-#define RENDERMODE_H
+#ifndef OAK_RENDERMODE_H
+#define OAK_RENDERMODE_H
 
 #include "common/define.h"
 
@@ -37,16 +37,16 @@ public:
      * This render is for realtime preview ONLY and does not need to be "perfect". Nodes can use lower-accuracy functions
      * to save performance when possible.
      */
-		kOffline,
+		k_offline,
 
 		/**
      * This render is some sort of export or master copy and Nodes should take time/bandwidth/system resources to produce
      * a higher accuracy version.
      */
-		kOnline
+		k_online
 	};
 };
 
 }
 
-#endif // RENDERMODE_H
+#endif // OAK_RENDERMODE_H

@@ -35,8 +35,8 @@ TEST(WidgetLayout, FlowLayoutSpacingGetters)
 	QWidget container;
 	FlowLayout *layout = new FlowLayout(&container, 0, 7, 9);
 
-	EXPECT_EQ(layout->horizontalSpacing(), 7);
-	EXPECT_EQ(layout->verticalSpacing(), 9);
+	EXPECT_EQ(layout->horizontal_spacing(), 7);
+	EXPECT_EQ(layout->vertical_spacing(), 9);
 }
 
 TEST(WidgetLayout, FlowLayoutWrapsAndComputesHeightForWidth)
@@ -44,8 +44,8 @@ TEST(WidgetLayout, FlowLayoutWrapsAndComputesHeightForWidth)
 	QWidget container;
 	FlowLayout *layout = new FlowLayout(&container, 0, 0, 0);
 
-	const int kButtonCount = 5;
-	for (int i = 0; i < kButtonCount; i++) {
+	const int k_button_count = 5;
+	for (int i = 0; i < k_button_count; i++) {
 		auto *b = new QPushButton(QStringLiteral("Btn"));
 		b->setFixedSize(100, 30);
 		layout->addWidget(b);
@@ -61,7 +61,7 @@ TEST(WidgetLayout, FlowLayoutWrapsAndComputesHeightForWidth)
 
 	// Lay out for real and inspect positions
 	layout->setGeometry(QRect(0, 0, 250, 90));
-	ASSERT_EQ(layout->count(), kButtonCount);
+	ASSERT_EQ(layout->count(), k_button_count);
 
 	EXPECT_EQ(layout->itemAt(0)->geometry().topLeft(), QPoint(0, 0));
 	EXPECT_EQ(layout->itemAt(1)->geometry().topLeft(), QPoint(100, 0));
@@ -83,10 +83,10 @@ TEST(WidgetLayout, ColumnedGridLayoutArrangesByMaximumColumns)
 	for (int i = 0; i < 7; i++) {
 		auto *b = new QPushButton(QString::number(i));
 		buttons.append(b);
-		layout->Add(b);
+		layout->add(b);
 	}
 
-	EXPECT_EQ(layout->MaximumColumns(), 3);
+	EXPECT_EQ(layout->maximum_columns(), 3);
 	EXPECT_EQ(layout->count(), 7);
 
 	// Widgets are placed row-major with at most three columns
@@ -99,8 +99,8 @@ TEST(WidgetLayout, ColumnedGridLayoutArrangesByMaximumColumns)
 	// Nothing beyond the last populated cell
 	EXPECT_EQ(layout->itemAtPosition(2, 1), nullptr);
 
-	layout->SetMaximumColumns(4);
-	EXPECT_EQ(layout->MaximumColumns(), 4);
+	layout->set_maximum_columns(4);
+	EXPECT_EQ(layout->maximum_columns(), 4);
 }
 
 TEST(WidgetLayout, ColumnedGridLayoutWithoutColumnLimitStillAdds)
@@ -108,12 +108,12 @@ TEST(WidgetLayout, ColumnedGridLayoutWithoutColumnLimitStillAdds)
 	QWidget container;
 	olive::ColumnedGridLayout *layout = new olive::ColumnedGridLayout(&container);
 
-	EXPECT_EQ(layout->MaximumColumns(), 0);
+	EXPECT_EQ(layout->maximum_columns(), 0);
 
 	auto *a = new QPushButton(QStringLiteral("A"));
 	auto *b = new QPushButton(QStringLiteral("B"));
-	layout->Add(a);
-	layout->Add(b);
+	layout->add(a);
+	layout->add(b);
 
 	EXPECT_EQ(layout->count(), 2);
 }

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TOOL_H
-#define TOOL_H
+#ifndef OAK_TOOL_H
+#define OAK_TOOL_H
 
 #include <QCoreApplication>
 #include <QString>
@@ -38,48 +38,48 @@ public:
 	enum Item {
 		/// No tool. This should never be set as the application tool, its only real purpose is to indicate the lack of
 		/// a tool somewhere similar to nullptr.
-		kNone,
+		k_none,
 
 		/// Pointer tool
-		kPointer,
+		k_pointer,
 
 		/// Edit tool
-		kEdit,
+		k_edit,
 
 		/// Ripple tool
-		kRipple,
+		k_ripple,
 
 		/// Rolling tool
-		kRolling,
+		k_rolling,
 
 		/// Razor tool
-		kRazor,
+		k_razor,
 
 		/// Slip tool
-		kSlip,
+		k_slip,
 
 		/// Slide tool
-		kSlide,
+		k_slide,
 
 		/// Hand tool
-		kHand,
+		k_hand,
 
 		/// Zoom tool
-		kZoom,
+		k_zoom,
 
 		/// Transition tool
-		kTransition,
+		k_transition,
 
 		/// Record tool
-		kRecord,
+		k_record,
 
 		/// Add tool
-		kAdd,
+		k_add,
 
 		/// Track select tool
-		kTrackSelect,
+		k_track_select,
 
-		kCount
+		k_count
 	};
 
 	/**
@@ -87,71 +87,71 @@ public:
    */
 	enum AddableObject {
 		/// An empty clip
-		kAddableEmpty,
+		k_addable_empty,
 
 		/// A video clip showing a generic video placeholder
-		kAddableBars,
+		k_addable_bars,
 
 		/// A video clip showing a primitive shape
-		kAddableShape,
+		k_addable_shape,
 
 		/// A video clip with a solid connected
-		kAddableSolid,
+		k_addable_solid,
 
 		/// A video clip with a title connected
-		kAddableTitle,
+		k_addable_title,
 
 		/// An audio clip with a sine connected to it
-		kAddableTone,
+		k_addable_tone,
 
 		/// A subtitle clip
-		kAddableSubtitle,
+		k_addable_subtitle,
 
-		kAddableCount
+		k_addable_count
 	};
 
-	static QString GetAddableObjectName(const AddableObject &a)
+	static QString get_addable_object_name(const AddableObject &a)
 	{
 		switch (a) {
-		case kAddableEmpty:
+		case k_addable_empty:
 			return QCoreApplication::translate("Tool", "Empty");
-		case kAddableBars:
+		case k_addable_bars:
 			return QCoreApplication::translate("Tool", "Bars");
-		case kAddableShape:
+		case k_addable_shape:
 			return QCoreApplication::translate("Tool", "Shape");
-		case kAddableSolid:
+		case k_addable_solid:
 			return QCoreApplication::translate("Tool", "Solid");
-		case kAddableTitle:
+		case k_addable_title:
 			return QCoreApplication::translate("Tool", "Title");
-		case kAddableTone:
+		case k_addable_tone:
 			return QCoreApplication::translate("Tool", "Tone");
-		case kAddableSubtitle:
+		case k_addable_subtitle:
 			return QCoreApplication::translate("Tool", "Subtitle");
-		case kAddableCount:
+		case k_addable_count:
 			break;
 		}
 
 		return QCoreApplication::translate("Tool", "Unknown");
 	}
 
-	static QString GetAddableObjectID(const AddableObject &a)
+	static QString get_addable_object_id(const AddableObject &a)
 	{
 		switch (a) {
-		case kAddableEmpty:
+		case k_addable_empty:
 			return QStringLiteral("empty");
-		case kAddableBars:
+		case k_addable_bars:
 			return QStringLiteral("bars");
-		case kAddableShape:
+		case k_addable_shape:
 			return QStringLiteral("shape");
-		case kAddableSolid:
+		case k_addable_solid:
 			return QStringLiteral("solid");
-		case kAddableTitle:
+		case k_addable_title:
 			return QStringLiteral("title");
-		case kAddableTone:
+		case k_addable_tone:
 			return QStringLiteral("tone");
-		case kAddableSubtitle:
+		case k_addable_subtitle:
 			return QStringLiteral("subtitle");
-		case kAddableCount:
+		case k_addable_count:
 			break;
 		}
 
@@ -161,4 +161,4 @@ public:
 
 }
 
-#endif // TOOL_H
+#endif // OAK_TOOL_H

@@ -19,14 +19,14 @@
 
 ***/
 
-#ifndef ALPHAASSOC_H
-#define ALPHAASSOC_H
+#ifndef OAK_ALPHAASSOC_H
+#define OAK_ALPHAASSOC_H
 
 namespace olive
 {
 
-enum AlphaAssociated { kAlphaNone, kAlphaUnassociated, kAlphaAssociated };
+enum AlphaAssociated { k_alpha_none, k_alpha_unassociated, k_alpha_associated };
 
 }
 
-#endif // ALPHAASSOC_H
+#endif // OAK_ALPHAASSOC_H

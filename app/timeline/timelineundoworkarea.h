@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINEUNDOWORKAREA_H
-#define TIMELINEUNDOWORKAREA_H
+#ifndef OAK_TIMELINEUNDOWORKAREA_H
+#define OAK_TIMELINEUNDOWORKAREA_H
 
 #include "node/project.h"
 
@@ -38,7 +38,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return project_;
 	}
@@ -79,9 +79,9 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
-		return Project::GetProjectFromObject(workarea_);
+		return Project::get_project_from_object(workarea_);
 	}
 
 protected:
@@ -105,4 +105,4 @@ private:
 
 }
 
-#endif // TIMELINEUNDOWORKAREA_H
+#endif // OAK_TIMELINEUNDOWORKAREA_H

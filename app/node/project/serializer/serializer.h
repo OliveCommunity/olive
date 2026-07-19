@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECTSERIALIZER_H
-#define PROJECTSERIALIZER_H
+#ifndef OAK_PROJECTSERIALIZER_H
+#define OAK_PROJECTSERIALIZER_H
 
 #include <vector>
 
@@ -40,11 +40,11 @@ namespace olive
 class ProjectSerializer {
 public:
 	enum LoadType {
-		kProject,
-		kOnlyNodes,
-		kOnlyClips,
-		kOnlyMarkers,
-		kOnlyKeyframes
+		k_project,
+		k_only_nodes,
+		k_only_clips,
+		k_only_markers,
+		k_only_keyframes
 	};
 
 	ProjectSerializer() = default;
@@ -56,14 +56,14 @@ public:
 	DISABLE_COPY_MOVE(ProjectSerializer)
 
 	enum ResultCode {
-		kSuccess,
-		kProjectTooOld,
-		kProjectTooNew,
-		kUnknownVersion,
-		kFileError,
-		kXmlError,
-		kOverwriteError,
-		kNoData
+		k_success,
+		k_project_too_old,
+		k_project_too_new,
+		k_unknown_version,
+		k_file_error,
+		k_xml_error,
+		k_overwrite_error,
+		k_no_data
 	};
 
 	using SerializedProperties = QHash<Node *, QMap<QString, QString>>;
@@ -111,22 +111,22 @@ public:
 			return code_;
 		}
 
-		const QString &GetDetails() const
+		const QString &get_details() const
 		{
 			return details_;
 		}
 
-		void SetDetails(const QString &s)
+		void set_details(const QString &s)
 		{
 			details_ = s;
 		}
 
-		const LoadData &GetLoadData() const
+		const LoadData &get_load_data() const
 		{
 			return load_data_;
 		}
 
-		void SetLoadData(const LoadData &p)
+		void set_load_data(const LoadData &p)
 		{
 			load_data_ = p;
 		}
@@ -149,20 +149,20 @@ public:
 			filename_ = filename;
 		}
 
-		Project *GetProject() const
+		Project *get_project() const
 		{
 			return project_;
 		}
-		void SetProject(Project *p)
+		void set_project(Project *p)
 		{
 			project_ = p;
 		}
 
-		const QString &GetFilename() const
+		const QString &get_filename() const
 		{
 			return filename_;
 		}
-		void SetFilename(const QString &s)
+		void set_filename(const QString &s)
 		{
 			filename_ = s;
 		}
@@ -172,48 +172,48 @@ public:
 			return type_;
 		}
 
-		const MainWindowLayoutInfo &GetLayout() const
+		const MainWindowLayoutInfo &get_layout() const
 		{
 			return layout_;
 		}
-		void SetLayout(const MainWindowLayoutInfo &layout)
+		void set_layout(const MainWindowLayoutInfo &layout)
 		{
 			layout_ = layout;
 		}
 
-		const QVector<Node *> &GetOnlySerializeNodes() const
+		const QVector<Node *> &get_only_serialize_nodes() const
 		{
 			return only_serialize_nodes_;
 		}
-		void SetOnlySerializeNodes(const QVector<Node *> &only)
+		void set_only_serialize_nodes(const QVector<Node *> &only)
 		{
 			only_serialize_nodes_ = only;
 		}
-		void SetOnlySerializeNodesAndResolveGroups(QVector<Node *> only);
+		void set_only_serialize_nodes_and_resolve_groups(QVector<Node *> only);
 
-		const std::vector<TimelineMarker *> &GetOnlySerializeMarkers() const
+		const std::vector<TimelineMarker *> &get_only_serialize_markers() const
 		{
 			return only_serialize_markers_;
 		}
-		void SetOnlySerializeMarkers(const std::vector<TimelineMarker *> &only)
+		void set_only_serialize_markers(const std::vector<TimelineMarker *> &only)
 		{
 			only_serialize_markers_ = only;
 		}
 
-		const std::vector<NodeKeyframe *> &GetOnlySerializeKeyframes() const
+		const std::vector<NodeKeyframe *> &get_only_serialize_keyframes() const
 		{
 			return only_serialize_keyframes_;
 		}
-		void SetOnlySerializeKeyframes(const std::vector<NodeKeyframe *> &only)
+		void set_only_serialize_keyframes(const std::vector<NodeKeyframe *> &only)
 		{
 			only_serialize_keyframes_ = only;
 		}
 
-		const SerializedProperties &GetProperties() const
+		const SerializedProperties &get_properties() const
 		{
 			return properties_;
 		}
-		void SetProperties(const SerializedProperties &p)
+		void set_properties(const SerializedProperties &p)
 		{
 			properties_ = p;
 		}
@@ -236,43 +236,43 @@ public:
 		std::vector<NodeKeyframe *> only_serialize_keyframes_;
 	};
 
-	static void Initialize();
+	static void initialize();
 
-	static void Destroy();
+	static void destroy();
 
-	static Result Load(Project *project, const QString &filename,
+	static Result load(Project *project, const QString &filename,
 					   LoadType load_type);
-	static Result Load(Project *project, QXmlStreamReader *read_device,
+	static Result load(Project *project, QXmlStreamReader *read_device,
 					   LoadType load_type);
-	static Result Paste(LoadType load_type, Project *project = nullptr);
+	static Result paste(LoadType load_type, Project *project = nullptr);
 
-	static Result Save(const SaveData &data, bool compress);
-	static Result Save(QXmlStreamWriter *write_device, const SaveData &data);
-	static Result Copy(const SaveData &data);
+	static Result save(const SaveData &data, bool compress);
+	static Result save(QXmlStreamWriter *write_device, const SaveData &data);
+	static Result copy(const SaveData &data);
 
-	static bool CheckCompressedID(QFile *file);
+	static bool check_compressed_id(QFile *file);
 
 protected:
-	virtual LoadData Load(Project *project, QXmlStreamReader *reader,
+	virtual LoadData load(Project *project, QXmlStreamReader *reader,
 						  LoadType load_type, void *reserved) const = 0;
 
-	virtual void Save(QXmlStreamWriter *writer, const SaveData &data,
+	virtual void save(QXmlStreamWriter *writer, const SaveData &data,
 					  void *reserved) const
 	{
 	}
 
-	virtual uint Version() const = 0;
+	virtual uint version() const = 0;
 
-	bool IsCancelled() const;
+	bool is_cancelled() const;
 
 private:
-	static Result LoadWithSerializerVersion(uint version, Project *project,
+	static Result load_with_serializer_version(uint version, Project *project,
 											QXmlStreamReader *reader,
 											LoadType load_type);
 
-	static QVector<ProjectSerializer *> instances_;
+	static QVector<ProjectSerializer *> instances;
 };
 
 }
 
-#endif // PROJECTSERIALIZER_H
+#endif // OAK_PROJECTSERIALIZER_H

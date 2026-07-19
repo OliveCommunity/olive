@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEWIDGET_H
-#define NODEWIDGET_H
+#ifndef OAK_NODEWIDGET_H
+#define OAK_NODEWIDGET_H
 
 #include <QWidget>
 
@@ -40,9 +40,9 @@ public:
 		return node_view_;
 	}
 
-	void SetContexts(const QVector<Node *> &nodes)
+	void set_contexts(const QVector<Node *> &nodes)
 	{
-		node_view_->SetContexts(nodes);
+		node_view_->set_contexts(nodes);
 		toolbar_->setEnabled(!nodes.isEmpty());
 	}
 
@@ -54,4 +54,4 @@ private:
 
 }
 
-#endif // NODEWIDGET_H
+#endif // OAK_NODEWIDGET_H

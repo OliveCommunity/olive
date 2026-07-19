@@ -26,38 +26,38 @@
 namespace olive
 {
 
-const QString StrokeFilterNode::kTextureInput = QStringLiteral("tex_in");
-const QString StrokeFilterNode::kColorInput = QStringLiteral("color_in");
-const QString StrokeFilterNode::kRadiusInput = QStringLiteral("radius_in");
-const QString StrokeFilterNode::kOpacityInput = QStringLiteral("opacity_in");
-const QString StrokeFilterNode::kInnerInput = QStringLiteral("inner_in");
+const QString StrokeFilterNode::k_texture_input = QStringLiteral("tex_in");
+const QString StrokeFilterNode::k_color_input = QStringLiteral("color_in");
+const QString StrokeFilterNode::k_radius_input = QStringLiteral("radius_in");
+const QString StrokeFilterNode::k_opacity_input = QStringLiteral("opacity_in");
+const QString StrokeFilterNode::k_inner_input = QStringLiteral("inner_in");
 
 #define super Node
 
 StrokeFilterNode::StrokeFilterNode()
 {
-	AddInput(kTextureInput, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_texture_input, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	AddInput(kColorInput, NodeValue::kColor,
+	add_input(k_color_input, NodeValue::k_color,
 			 QVariant::fromValue(Color(1.0f, 1.0f, 1.0f, 1.0f)));
 
-	AddInput(kRadiusInput, NodeValue::kFloat, 10.0);
-	SetInputProperty(kRadiusInput, QStringLiteral("min"), 0.0);
+	add_input(k_radius_input, NodeValue::k_float, 10.0);
+	set_input_property(k_radius_input, QStringLiteral("min"), 0.0);
 
-	AddInput(kOpacityInput, NodeValue::kFloat, 1.0f);
-	SetInputProperty(kOpacityInput, QStringLiteral("view"),
-					 FloatSlider::kPercentage);
-	SetInputProperty(kOpacityInput, QStringLiteral("min"), 0.0f);
-	SetInputProperty(kOpacityInput, QStringLiteral("max"), 1.0f);
+	add_input(k_opacity_input, NodeValue::k_float, 1.0f);
+	set_input_property(k_opacity_input, QStringLiteral("view"),
+					 FloatSlider::k_percentage);
+	set_input_property(k_opacity_input, QStringLiteral("min"), 0.0f);
+	set_input_property(k_opacity_input, QStringLiteral("max"), 1.0f);
 
-	AddInput(kInnerInput, NodeValue::kBoolean, false);
+	add_input(k_inner_input, NodeValue::k_boolean, false);
 
-	SetFlag(kVideoEffect);
-	SetEffectInput(kTextureInput);
+	set_flag(k_video_effect);
+	set_effect_input(k_texture_input);
 }
 
-QString StrokeFilterNode::Name() const
+QString StrokeFilterNode::name() const
 {
 	return tr("Stroke");
 }
@@ -67,50 +67,50 @@ QString StrokeFilterNode::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.stroke");
 }
 
-QVector<Node::CategoryID> StrokeFilterNode::Category() const
+QVector<Node::CategoryID> StrokeFilterNode::category() const
 {
-	return { kCategoryFilter };
+	return { k_category_filter };
 }
 
-QString StrokeFilterNode::Description() const
+QString StrokeFilterNode::description() const
 {
 	return tr("Creates a stroke outline around an image.");
 }
 
-void StrokeFilterNode::Retranslate()
+void StrokeFilterNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kTextureInput, tr("Input"));
-	SetInputName(kColorInput, tr("Color"));
-	SetInputName(kRadiusInput, tr("Radius"));
-	SetInputName(kOpacityInput, tr("Opacity"));
-	SetInputName(kInnerInput, tr("Inner"));
+	set_input_name(k_texture_input, tr("Input"));
+	set_input_name(k_color_input, tr("Color"));
+	set_input_name(k_radius_input, tr("Radius"));
+	set_input_name(k_opacity_input, tr("Opacity"));
+	set_input_name(k_inner_input, tr("Inner"));
 }
 
-void StrokeFilterNode::Value(const NodeValueRow &value,
+void StrokeFilterNode::value(const NodeValueRow &value,
 							 const NodeGlobals &globals,
 							 NodeValueTable *table) const
 {
-	if (TexturePtr tex = value[kTextureInput].toTexture()) {
-		if (value[kRadiusInput].toDouble() > 0.0 &&
-			value[kOpacityInput].toDouble() > 0.0) {
+	if (TexturePtr tex = value[k_texture_input].to_texture()) {
+		if (value[k_radius_input].to_double() > 0.0 &&
+			value[k_opacity_input].to_double() > 0.0) {
 			ShaderJob job(value);
-			job.Insert(QStringLiteral("resolution_in"),
-					   NodeValue(NodeValue::kVec2, tex->virtual_resolution(),
+			job.insert(QStringLiteral("resolution_in"),
+					   NodeValue(NodeValue::k_vec2, tex->virtual_resolution(),
 								 this));
-			table->Push(NodeValue::kTexture, tex->toJob(job), this);
+			table->push(NodeValue::k_texture, tex->to_job(job), this);
 		} else {
-			table->Push(value[kTextureInput]);
+			table->push(value[k_texture_input]);
 		}
 	}
 }
 
-ShaderCode StrokeFilterNode::GetShaderCode(const ShaderRequest &request) const
+ShaderCode StrokeFilterNode::get_shader_code(const ShaderRequest &request) const
 {
 	Q_UNUSED(request)
 
-	return ShaderCode(FileFunctions::ReadFileAsString(":/shaders/stroke.frag"));
+	return ShaderCode(FileFunctions::read_file_as_string(":/shaders/stroke.frag"));
 }
 
 }

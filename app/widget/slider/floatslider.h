@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FLOATSLIDER_H
-#define FLOATSLIDER_H
+#ifndef OAK_FLOATSLIDER_H
+#define OAK_FLOATSLIDER_H
 
 #include "base/decimalsliderbase.h"
 
@@ -32,41 +32,41 @@ class FloatSlider : public DecimalSliderBase {
 public:
 	FloatSlider(QWidget *parent = nullptr);
 
-	enum DisplayType { kNormal, kDecibel, kPercentage };
+	enum DisplayType { k_normal, k_decibel, k_percentage };
 
-	double GetValue() const;
+	double get_value() const;
 
-	void SetValue(const double &d);
+	void set_value(const double &d);
 
 	void SetDefaultValue(const double &d);
 
-	void SetMinimum(const double &d);
+	void set_minimum(const double &d);
 
-	void SetMaximum(const double &d);
+	void set_maximum(const double &d);
 
-	void SetDisplayType(const DisplayType &type);
+	void set_display_type(const DisplayType &type);
 
-	static double TransformValueToDisplay(double val, DisplayType display);
+	static double transform_value_to_display(double val, DisplayType display);
 
-	static double TransformDisplayToValue(double val, DisplayType display);
+	static double transform_display_to_value(double val, DisplayType display);
 
-	static QString ValueToString(double val, DisplayType display,
+	static QString value_to_string(double val, DisplayType display,
 								 int decimal_places,
 								 bool autotrim_decimal_places);
 
 protected:
-	virtual QString ValueToString(const QVariant &v) const override;
+	virtual QString value_to_string(const QVariant &v) const override;
 
-	virtual QVariant StringToValue(const QString &s, bool *ok) const override;
+	virtual QVariant string_to_value(const QString &s, bool *ok) const override;
 
 	virtual QVariant
-	AdjustDragDistanceInternal(const QVariant &start,
+	adjust_drag_distance_internal(const QVariant &start,
 							   const double &drag) const override;
 
-	virtual void ValueSignalEvent(const QVariant &value) override;
+	virtual void value_signal_event(const QVariant &value) override;
 
 signals:
-	void ValueChanged(double);
+	void value_changed(double);
 
 private:
 	DisplayType display_type_;
@@ -74,4 +74,4 @@ private:
 
 }
 
-#endif // FLOATSLIDER_H
+#endif // OAK_FLOATSLIDER_H

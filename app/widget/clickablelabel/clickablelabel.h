@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CLICKABLELABEL_H
-#define CLICKABLELABEL_H
+#ifndef OAK_CLICKABLELABEL_H
+#define OAK_CLICKABLELABEL_H
 
 #include <QLabel>
 
@@ -40,10 +40,10 @@ protected:
 	virtual void mouseDoubleClickEvent(QMouseEvent *event) override;
 
 signals:
-	void MouseClicked();
-	void MouseDoubleClicked();
+	void mouse_clicked();
+	void mouse_double_clicked();
 };
 
 }
 
-#endif // CLICKABLELABEL_H
+#endif // OAK_CLICKABLELABEL_H

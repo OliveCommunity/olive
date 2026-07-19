@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEEDGEITEM_H
-#define NODEEDGEITEM_H
+#ifndef OAK_NODEEDGEITEM_H
+#define OAK_NODEEDGEITEM_H
 
 #include <QGraphicsPathItem>
 #include <QPalette>
@@ -76,7 +76,7 @@ public:
 
 	void set_to_item(NodeViewItem *i);
 
-	void Adjust();
+	void adjust();
 
 	/**
    * @brief Set the connected state of this line
@@ -88,9 +88,9 @@ public:
    * Using SetEdge() automatically sets this to true. Under most circumstances this should be left alone, and only
    * be set when an edge is being created/dragged.
    */
-	void SetConnected(bool c);
+	void set_connected(bool c);
 
-	bool IsConnected() const
+	bool is_connected() const
 	{
 		return connected_;
 	}
@@ -100,17 +100,17 @@ public:
    *
    * Changes color of edge.
    */
-	void SetHighlighted(bool e);
+	void set_highlighted(bool e);
 
 	/**
    * @brief Set points to create curve from
    */
-	void SetPoints(const QPointF &start, const QPointF &end);
+	void set_points(const QPointF &start, const QPointF &end);
 
 	/**
    * @brief Set whether edges should be drawn as curved or as straight lines
    */
-	void SetCurved(bool e);
+	void set_curved(bool e);
 
 protected:
 	virtual void paint(QPainter *painter,
@@ -118,9 +118,9 @@ protected:
 					   QWidget *widget = nullptr) override;
 
 private:
-	void Init();
+	void init();
 
-	void UpdateCurve();
+	void update_curve();
 
 	Node *output_;
 
@@ -146,4 +146,4 @@ private:
 
 }
 
-#endif // NODEEDGEITEM_H
+#endif // OAK_NODEEDGEITEM_H

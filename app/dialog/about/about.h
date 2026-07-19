@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef ABOUTDIALOG_H
-#define ABOUTDIALOG_H
+#ifndef OAK_ABOUTDIALOG_H
+#define OAK_ABOUTDIALOG_H
 
 #include <QCheckBox>
 #include <QDialog>
@@ -59,4 +59,4 @@ private:
 
 }
 
-#endif // ABOUTDIALOG_H
+#endif // OAK_ABOUTDIALOG_H

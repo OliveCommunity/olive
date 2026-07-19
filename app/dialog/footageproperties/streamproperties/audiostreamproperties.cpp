@@ -30,7 +30,7 @@ AudioStreamProperties::AudioStreamProperties(Footage *footage, int audio_index)
 {
 }
 
-void AudioStreamProperties::Accept(MultiUndoCommand *)
+void AudioStreamProperties::accept(MultiUndoCommand *)
 {
 	Q_UNUSED(footage_)
 	Q_UNUSED(audio_index_)

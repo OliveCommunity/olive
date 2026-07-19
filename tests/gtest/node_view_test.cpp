@@ -12,10 +12,10 @@ class NodeViewTest : public ::testing::Test {
 protected:
 	void SetUp() override
 	{
-		ColorManager::SetUpDefaultConfig();
+		ColorManager::set_up_default_config();
 
 		project_ = std::make_unique<Project>();
-		project_->Initialize();
+		project_->initialize();
 	}
 
 	std::unique_ptr<Project> project_;
@@ -24,8 +24,8 @@ protected:
 TEST_F(NodeViewTest, ConstructionCreatesEmptyView)
 {
 	NodeView view;
-	EXPECT_TRUE(view.GetContexts().isEmpty());
-	EXPECT_FALSE(view.IsGroupOverlay());
+	EXPECT_TRUE(view.get_contexts().isEmpty());
+	EXPECT_FALSE(view.is_group_overlay());
 }
 
 TEST_F(NodeViewTest, SetContextsUpdatesContextList)
@@ -34,10 +34,10 @@ TEST_F(NodeViewTest, SetContextsUpdatesContextList)
 	solid->setParent(project_.get());
 
 	NodeView view;
-	view.SetContexts({ solid });
+	view.set_contexts({ solid });
 
-	EXPECT_EQ(view.GetContexts().size(), 1);
-	EXPECT_EQ(view.GetContexts().first(), solid);
+	EXPECT_EQ(view.get_contexts().size(), 1);
+	EXPECT_EQ(view.get_contexts().first(), solid);
 }
 
 TEST_F(NodeViewTest, ShowSelectedNodeInParamEditorNoSelectionIsNoOp)
@@ -45,7 +45,7 @@ TEST_F(NodeViewTest, ShowSelectedNodeInParamEditorNoSelectionIsNoOp)
 	NodeView view;
 
 	QSignalSpy changed_with_ctx_spy(
-		&view, &NodeView::NodeSelectionChangedWithContexts);
+		&view, &NodeView::node_selection_changed_with_contexts);
 
 	// The action must exist; silently skipping the trigger would make this
 	// test pass without exercising anything
@@ -71,9 +71,9 @@ TEST_F(NodeViewTest, ClearGraphRemovesContexts)
 	solid->setParent(project_.get());
 
 	NodeView view;
-	view.SetContexts({ solid });
-	EXPECT_FALSE(view.GetContexts().isEmpty());
+	view.set_contexts({ solid });
+	EXPECT_FALSE(view.get_contexts().isEmpty());
 
-	view.ClearGraph();
-	EXPECT_TRUE(view.GetContexts().isEmpty());
+	view.clear_graph();
+	EXPECT_TRUE(view.get_contexts().isEmpty());
 }

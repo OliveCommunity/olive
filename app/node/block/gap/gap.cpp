@@ -28,7 +28,7 @@ GapBlock::GapBlock()
 {
 }
 
-QString GapBlock::Name() const
+QString GapBlock::name() const
 {
 	return tr("Gap");
 }
@@ -38,7 +38,7 @@ QString GapBlock::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.gap");
 }
 
-QString GapBlock::Description() const
+QString GapBlock::description() const
 {
 	return tr("A time-based node that represents an empty space.");
 }

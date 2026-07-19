@@ -73,9 +73,9 @@ ExportAdvancedVideoDialog::ExportAdvancedVideoDialog(
 		performance_layout->addWidget(new QLabel(tr("Threads:")), row, 0);
 
 		thread_slider_ = new IntegerSlider();
-		thread_slider_->SetMinimum(0);
+		thread_slider_->set_minimum(0);
 		thread_slider_->SetDefaultValue(0);
-		thread_slider_->InsertLabelSubstitution(0, tr("Auto"));
+		thread_slider_->insert_label_substitution(0, tr("Auto"));
 		performance_layout->addWidget(thread_slider_, row, 1);
 
 		row++;

@@ -34,9 +34,9 @@ MulticamDisplay::MulticamDisplay(QWidget *parent)
 {
 }
 
-void MulticamDisplay::OnPaint()
+void MulticamDisplay::on_paint()
 {
-	super::OnPaint();
+	super::on_paint();
 
 	if (node_) {
 		QPainter p(paint_device());
@@ -45,43 +45,43 @@ void MulticamDisplay::OnPaint()
 		p.setBrush(Qt::NoBrush);
 
 		int rows, cols;
-		node_->GetRowsAndColumns(&rows, &cols);
+		node_->get_rows_and_columns(&rows, &cols);
 
 		int multi = std::max(rows, cols);
 		int cell_width = width() / multi;
 		int cell_height = height() / multi;
 
 		int col, row;
-		node_->IndexToRowCols(node_->GetCurrentSource(), rows, cols, &row,
+		node_->index_to_row_cols(node_->get_current_source(), rows, cols, &row,
 							  &col);
 
 		QRect r(cell_width * col, cell_height * row, cell_width, cell_height);
-		p.drawRect(GenerateWorldTransform().mapRect(r));
+		p.drawRect(generate_world_transform().mapRect(r));
 	}
 }
 
-void MulticamDisplay::OnDestroy()
+void MulticamDisplay::on_destroy()
 {
 	shader_ = QVariant();
 }
 
-TexturePtr MulticamDisplay::LoadCustomTextureFromFrame(const QVariant &v)
+TexturePtr MulticamDisplay::load_custom_texture_from_frame(const QVariant &v)
 {
 	if (v.canConvert<QVector<TexturePtr>>()) {
 		QVector<TexturePtr> tex = v.value<QVector<TexturePtr>>();
 
-		TexturePtr main = renderer()->CreateTexture(this->GetViewportParams());
+		TexturePtr main = renderer()->create_texture(this->get_viewport_params());
 
 		int rows, cols;
-		MultiCamNode::GetRowsAndColumns(tex.size(), &rows, &cols);
+		MultiCamNode::get_rows_and_columns(tex.size(), &rows, &cols);
 
 		if (shader_.isNull() || rows_ != rows || cols_ != cols) {
 			if (!shader_.isNull()) {
-				renderer()->DestroyNativeShader(shader_);
+				renderer()->destroy_native_shader(shader_);
 			}
 
-			shader_ = renderer()->CreateNativeShader(
-				ShaderCode(GenerateShaderCode(rows, cols)));
+			shader_ = renderer()->create_native_shader(
+				ShaderCode(generate_shader_code(rows, cols)));
 
 			rows_ = rows;
 			cols_ = cols;
@@ -91,26 +91,26 @@ TexturePtr MulticamDisplay::LoadCustomTextureFromFrame(const QVariant &v)
 
 		for (int i = 0; i < tex.size(); i++) {
 			int c, r;
-			MultiCamNode::IndexToRowCols(i, rows, cols, &r, &c);
-			job.Insert(QStringLiteral("tex_%1_%2")
+			MultiCamNode::index_to_row_cols(i, rows, cols, &r, &c);
+			job.insert(QStringLiteral("tex_%1_%2")
 						   .arg(QString::number(r), QString::number(c)),
-					   NodeValue(NodeValue::kTexture, tex.at(i)));
+					   NodeValue(NodeValue::k_texture, tex.at(i)));
 		}
 
-		renderer()->BlitToTexture(shader_, job, main.get());
+		renderer()->blit_to_texture(shader_, job, main.get());
 
 		return main;
 	} else {
-		return super::LoadCustomTextureFromFrame(v);
+		return super::load_custom_texture_from_frame(v);
 	}
 }
 
-QString dblToGlsl(double d)
+QString dbl_to_glsl(double d)
 {
 	return QString::number(d, 'f');
 }
 
-QString MulticamDisplay::GenerateShaderCode(int rows, int cols)
+QString MulticamDisplay::generate_shader_code(int rows, int cols)
 {
 	int multiplier = std::max(cols, rows);
 
@@ -139,7 +139,7 @@ QString MulticamDisplay::GenerateShaderCode(int rows, int cols)
 		} else {
 			shader.append(
 				QStringLiteral("  if (ove_texcoord.x < %1) {")
-					.arg(dblToGlsl(double(x + 1) / double(multiplier))));
+					.arg(dbl_to_glsl(double(x + 1) / double(multiplier))));
 		}
 
 		for (int y = 0; y < rows; y++) {
@@ -151,17 +151,17 @@ QString MulticamDisplay::GenerateShaderCode(int rows, int cols)
 			} else {
 				shader.append(
 					QStringLiteral("    if (ove_texcoord.y < %1) {")
-						.arg(dblToGlsl(double(y + 1) / double(multiplier))));
+						.arg(dbl_to_glsl(double(y + 1) / double(multiplier))));
 			}
 			QString input = QStringLiteral("tex_%1_%2")
 								.arg(QString::number(y), QString::number(x));
 			shader.append(
 				QStringLiteral(
 					"      vec2 coord = vec2((ove_texcoord.x+%1)*%2, (ove_texcoord.y+%3)*%4);")
-					.arg(dblToGlsl(-double(x) / double(multiplier)),
-						 dblToGlsl(multiplier),
-						 dblToGlsl(-double(y) / double(multiplier)),
-						 dblToGlsl(multiplier)));
+					.arg(dbl_to_glsl(-double(x) / double(multiplier)),
+						 dbl_to_glsl(multiplier),
+						 dbl_to_glsl(-double(y) / double(multiplier)),
+						 dbl_to_glsl(multiplier)));
 			shader.append(
 				QStringLiteral(
 					"      if (%1_enabled && coord.x >= 0.0 && coord.x < 1.0 && coord.y >= 0.0 && coord.y < 1.0) {")
@@ -183,7 +183,7 @@ QString MulticamDisplay::GenerateShaderCode(int rows, int cols)
 	return shader.join('\n');
 }
 
-void MulticamDisplay::SetMulticamNode(MultiCamNode *n)
+void MulticamDisplay::set_multicam_node(MultiCamNode *n)
 {
 	node_ = n;
 }

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEVIEWSCENE_H
-#define NODEVIEWSCENE_H
+#ifndef OAK_NODEVIEWSCENE_H
+#define OAK_NODEVIEWSCENE_H
 
 #include <QGraphicsScene>
 #include <QTimer>
@@ -39,38 +39,38 @@ class NodeViewScene : public QGraphicsScene {
 public:
 	NodeViewScene(QObject *parent = nullptr);
 
-	void SelectAll();
-	void DeselectAll();
+	void select_all();
+	void deselect_all();
 
-	QVector<NodeViewItem *> GetSelectedItems() const;
+	QVector<NodeViewItem *> get_selected_items() const;
 
 	const QHash<Node *, NodeViewContext *> &context_map() const
 	{
 		return context_map_;
 	}
 
-	Qt::Orientation GetFlowOrientation() const;
+	Qt::Orientation get_flow_orientation() const;
 
-	NodeViewCommon::FlowDirection GetFlowDirection() const
+	NodeViewCommon::FlowDirection get_flow_direction() const
 	{
 		return direction_;
 	}
 
-	void SetFlowDirection(NodeViewCommon::FlowDirection direction);
+	void set_flow_direction(NodeViewCommon::FlowDirection direction);
 
-	bool GetEdgesAreCurved() const
+	bool get_edges_are_curved() const
 	{
 		return curved_edges_;
 	}
 
 public slots:
-	NodeViewContext *AddContext(Node *node);
-	void RemoveContext(Node *node);
+	NodeViewContext *add_context(Node *node);
+	void remove_context(Node *node);
 
 	/**
    * @brief Set whether edges in this scene should be curved or not
    */
-	void SetEdgesAreCurved(bool curved);
+	void set_edges_are_curved(bool curved);
 
 private:
 	QHash<Node *, NodeViewContext *> context_map_;
@@ -84,4 +84,4 @@ private:
 
 }
 
-#endif // NODEVIEWSCENE_H
+#endif // OAK_NODEVIEWSCENE_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef MATHNODE_H
-#define MATHNODE_H
+#ifndef OAK_MATHNODE_H
+#define OAK_MATHNODE_H
 
 #include "mathbase.h"
 
@@ -34,39 +34,39 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(MathNode)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
+	get_shader_code(const ShaderRequest &request) const override;
 
-	Operation GetOperation() const
+	Operation get_operation() const
 	{
-		return static_cast<Operation>(GetStandardValue(kMethodIn).toInt());
+		return static_cast<Operation>(get_standard_value(k_method_in).toInt());
 	}
 
-	void SetOperation(Operation o)
+	void set_operation(Operation o)
 	{
-		SetStandardValue(kMethodIn, o);
+		set_standard_value(k_method_in, o);
 	}
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	virtual void ProcessSamples(const NodeValueRow &values,
+	virtual void process_samples(const NodeValueRow &values,
 								const SampleBuffer &input, SampleBuffer &output,
 								int index) const override;
 
-	static const QString kMethodIn;
-	static const QString kParamAIn;
-	static const QString kParamBIn;
-	static const QString kParamCIn;
+	static const QString k_method_in;
+	static const QString k_param_a_in;
+	static const QString k_param_b_in;
+	static const QString k_param_c_in;
 };
 
 }
 
-#endif // MATHNODE_H
+#endif // OAK_MATHNODE_H

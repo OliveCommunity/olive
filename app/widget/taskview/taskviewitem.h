@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TASKVIEWITEM_H
-#define TASKVIEWITEM_H
+#ifndef OAK_TASKVIEWITEM_H
+#define OAK_TASKVIEWITEM_H
 
 #include <QLabel>
 #include <QProgressBar>
@@ -48,10 +48,10 @@ class TaskViewItem : public QFrame {
 public:
 	TaskViewItem(Task *task, QWidget *parent = nullptr);
 
-	void Failed();
+	void failed();
 
 signals:
-	void TaskCancelled(Task *t);
+	void task_cancelled(Task *t);
 
 private:
 	QLabel *task_name_lbl_;
@@ -65,9 +65,9 @@ private:
 	Task *task_;
 
 private slots:
-	void UpdateProgress(double d);
+	void update_progress(double d);
 };
 
 }
 
-#endif // TASKVIEWITEM_H
+#endif // OAK_TASKVIEWITEM_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef RENDERCACHE_H
-#define RENDERCACHE_H
+#ifndef OAK_RENDERCACHE_H
+#define OAK_RENDERCACHE_H
 
 #include "codec/decoder.h"
 
@@ -48,4 +48,4 @@ using ShaderCache = RenderCache<QString, QVariant>;
 
 }
 
-#endif // RENDERCACHE_H
+#endif // OAK_RENDERCACHE_H

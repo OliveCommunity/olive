@@ -41,7 +41,7 @@ namespace ipc
 SharedMemoryRegion::SharedMemoryRegion()
 	: size_(0)
 	, data_(nullptr)
-	, mode_(kAttach)
+	, mode_(k_attach)
 #if defined(Q_OS_WIN)
 	, handle_(nullptr)
 #else
@@ -52,10 +52,10 @@ SharedMemoryRegion::SharedMemoryRegion()
 
 SharedMemoryRegion::~SharedMemoryRegion()
 {
-	Close();
+	close();
 }
 
-QString SharedMemoryRegion::MakeKey(qint64 owner_pid, int worker_index)
+QString SharedMemoryRegion::make_key(qint64 owner_pid, int worker_index)
 {
 	return QStringLiteral("olive-rw-%1-%2").arg(owner_pid).arg(worker_index);
 }
@@ -131,9 +131,9 @@ void SharedMemoryRegion::Close()
 
 #else // POSIX
 
-bool SharedMemoryRegion::Open(const QString &key, size_t size, Mode mode)
+bool SharedMemoryRegion::open(const QString &key, size_t size, Mode mode)
 {
-	Close();
+	close();
 
 	key_ = key;
 	size_ = size;
@@ -144,7 +144,7 @@ bool SharedMemoryRegion::Open(const QString &key, size_t size, Mode mode)
 	const QByteArray name_bytes = shm_name_.toUtf8();
 
 	int oflag = O_RDWR;
-	if (mode == kCreate) {
+	if (mode == k_create) {
 		oflag |= O_CREAT | O_EXCL;
 		// Clear any stale segment left by a crashed previous run with the same name.
 		shm_unlink(name_bytes.constData());
@@ -157,7 +157,7 @@ bool SharedMemoryRegion::Open(const QString &key, size_t size, Mode mode)
 		return false;
 	}
 
-	if (mode == kCreate) {
+	if (mode == k_create) {
 		if (ftruncate(fd_, off_t(size)) != 0) {
 			error_ = QStringLiteral("ftruncate failed: %1")
 						 .arg(QString::fromUtf8(strerror(errno)));
@@ -195,19 +195,19 @@ bool SharedMemoryRegion::Open(const QString &key, size_t size, Mode mode)
 		data_ = nullptr;
 		::close(fd_);
 		fd_ = -1;
-		if (mode == kCreate) {
+		if (mode == k_create) {
 			shm_unlink(name_bytes.constData());
 		}
 		return false;
 	}
 
-	if (mode == kCreate) {
+	if (mode == k_create) {
 		memset(data_, 0, size);
 	}
 	return true;
 }
 
-void SharedMemoryRegion::Close()
+void SharedMemoryRegion::close()
 {
 	if (data_) {
 		munmap(data_, size_);
@@ -217,7 +217,7 @@ void SharedMemoryRegion::Close()
 		::close(fd_);
 		fd_ = -1;
 	}
-	if (mode_ == kCreate && !shm_name_.isEmpty()) {
+	if (mode_ == k_create && !shm_name_.isEmpty()) {
 		// Only the owner unlinks, so the name is freed once both sides have unmapped.
 		shm_unlink(shm_name_.toUtf8().constData());
 		shm_name_.clear();

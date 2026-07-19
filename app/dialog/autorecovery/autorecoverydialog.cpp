@@ -40,24 +40,24 @@ AutoRecoveryDialog::AutoRecoveryDialog(const QString &message,
 									   bool autocheck_latest, QWidget *parent)
 	: QDialog(parent)
 {
-	Init(message);
+	init(message);
 
-	PopulateTree(recoveries, autocheck_latest);
+	populate_tree(recoveries, autocheck_latest);
 }
 
 void AutoRecoveryDialog::accept()
 {
 	foreach (QTreeWidgetItem *checkable, checkable_items_) {
 		if (checkable->checkState(0) == Qt::Checked) {
-			QString filename = checkable->data(0, kFilenameRole).toString();
-			Core::instance()->OpenRecoveryProject(filename);
+			QString filename = checkable->data(0, k_filename_role).toString();
+			Core::instance()->open_recovery_project(filename);
 		}
 	}
 
 	super::accept();
 }
 
-void AutoRecoveryDialog::Init(const QString &header_text)
+void AutoRecoveryDialog::init(const QString &header_text)
 {
 	QVBoxLayout *layout = new QVBoxLayout(this);
 
@@ -79,11 +79,11 @@ void AutoRecoveryDialog::Init(const QString &header_text)
 	layout->addWidget(buttons);
 }
 
-void AutoRecoveryDialog::PopulateTree(const QStringList &recoveries,
+void AutoRecoveryDialog::populate_tree(const QStringList &recoveries,
 									  bool autocheck_latest)
 {
 	// Each entry in `recoveries` is a directory with 1+ recovery projects in it
-	QDir autorecovery_root(FileFunctions::GetAutoRecoveryRoot());
+	QDir autorecovery_root(FileFunctions::get_auto_recovery_root());
 
 	foreach (const QString &recovery_folder, recoveries) {
 		QDir recovery_dir(autorecovery_root.filePath(recovery_folder));
@@ -137,7 +137,7 @@ void AutoRecoveryDialog::PopulateTree(const QStringList &recoveries,
 					}
 
 					entry_item->setText(0, entry_name);
-					entry_item->setData(0, kFilenameRole,
+					entry_item->setData(0, k_filename_role,
 										recovery_dir.filePath(entry));
 
 					// Allow to be checked, auto-checking the first entry

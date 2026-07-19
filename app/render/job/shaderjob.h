@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SHADERJOB_H
-#define SHADERJOB_H
+#ifndef OAK_SHADERJOB_H
+#define OAK_SHADERJOB_H
 
 #include <QMatrix4x4>
 #include <QVector>
@@ -42,66 +42,66 @@ public:
 	ShaderJob(const NodeValueRow &row)
 		: ShaderJob()
 	{
-		Insert(row);
+		insert(row);
 	}
 
-	const QString &GetShaderID() const
+	const QString &get_shader_id() const
 	{
 		return shader_id_;
 	}
 
-	void SetShaderID(const QString &id)
+	void set_shader_id(const QString &id)
 	{
 		shader_id_ = id;
 	}
 
-	void SetIterations(int iterations, const NodeInput &iterative_input)
+	void set_iterations(int iterations, const NodeInput &iterative_input)
 	{
-		SetIterations(iterations, iterative_input.input());
+		set_iterations(iterations, iterative_input.input());
 	}
 
-	void SetIterations(int iterations, const QString &iterative_input)
+	void set_iterations(int iterations, const QString &iterative_input)
 	{
 		iterations_ = iterations;
 		iterative_input_ = iterative_input;
 	}
 
-	int GetIterationCount() const
+	int get_iteration_count() const
 	{
 		return iterations_;
 	}
 
-	const QString &GetIterativeInput() const
+	const QString &get_iterative_input() const
 	{
 		return iterative_input_;
 	}
 
-	Texture::Interpolation GetInterpolation(const QString &id) const
+	Texture::Interpolation get_interpolation(const QString &id) const
 	{
-		return interpolation_.value(id, Texture::kDefaultInterpolation);
+		return interpolation_.value(id, Texture::k_default_interpolation);
 	}
 
-	const QHash<QString, Texture::Interpolation> &GetInterpolationMap() const
+	const QHash<QString, Texture::Interpolation> &get_interpolation_map() const
 	{
 		return interpolation_;
 	}
 
-	void SetInterpolation(const NodeInput &input, Texture::Interpolation interp)
+	void set_interpolation(const NodeInput &input, Texture::Interpolation interp)
 	{
 		interpolation_.insert(input.input(), interp);
 	}
 
-	void SetInterpolation(const QString &id, Texture::Interpolation interp)
+	void set_interpolation(const QString &id, Texture::Interpolation interp)
 	{
 		interpolation_.insert(id, interp);
 	}
 
-	void SetVertexCoordinates(const QVector<float> &vertex_coords)
+	void set_vertex_coordinates(const QVector<float> &vertex_coords)
 	{
 		vertex_overrides_ = vertex_coords;
 	}
 
-	const QVector<float> &GetVertexCoordinates()
+	const QVector<float> &get_vertex_coordinates()
 	{
 		return vertex_overrides_;
 	}
@@ -120,4 +120,4 @@ private:
 
 }
 
-#endif // SHADERJOB_H
+#endif // OAK_SHADERJOB_H

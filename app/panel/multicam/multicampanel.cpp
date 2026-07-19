@@ -26,16 +26,16 @@ namespace olive
 MulticamPanel::MulticamPanel()
 	: super(QStringLiteral("MultiCamPanel"))
 {
-	SetTimeBasedWidget(new MulticamWidget(this));
+	set_time_based_widget(new MulticamWidget(this));
 
-	Retranslate();
+	retranslate();
 }
 
-void MulticamPanel::Retranslate()
+void MulticamPanel::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetTitle(tr("Multi-Cam"));
+	set_title(tr("Multi-Cam"));
 }
 
 }

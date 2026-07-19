@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINECOMMON_H
-#define TIMELINECOMMON_H
+#ifndef OAK_TIMELINECOMMON_H
+#define OAK_TIMELINECOMMON_H
 
 #include <olive/core/core.h>
 
@@ -36,20 +36,20 @@ class Track;
 
 class Timeline {
 public:
-	enum MovementMode { kNone, kMove, kTrimIn, kTrimOut };
+	enum MovementMode { k_none, k_move, k_trim_in, k_trim_out };
 
-	enum ThumbnailMode { kThumbnailOff, kThumbnailInOut, kThumbnailOn };
+	enum ThumbnailMode { k_thumbnail_off, k_thumbnail_in_out, k_thumbnail_on };
 
-	enum WaveformMode { kWaveformsDisabled, kWaveformsEnabled };
+	enum WaveformMode { k_waveforms_disabled, k_waveforms_enabled };
 
-	static bool IsATrimMode(MovementMode mode)
+	static bool is_a_trim_mode(MovementMode mode)
 	{
-		return mode == kTrimIn || mode == kTrimOut;
+		return mode == k_trim_in || mode == k_trim_out;
 	}
 
 	struct EditToInfo {
 		Track *track;
-		rational nearest_time;
+		Rational nearest_time;
 		Block *nearest_block;
 	};
 };
@@ -58,4 +58,4 @@ public:
 
 }
 
-#endif // TIMELINECOMMON_H
+#endif // OAK_TIMELINECOMMON_H

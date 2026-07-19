@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef THREADSAFEMAP_H
-#define THREADSAFEMAP_H
+#ifndef OAK_THREADSAFEMAP_H
+#define OAK_THREADSAFEMAP_H
 
 #include <QMap>
 #include <QMutex>
@@ -39,4 +39,4 @@ private:
 	QMap<K, V> map_;
 };
 
-#endif // THREADSAFEMAP_H
+#endif // OAK_THREADSAFEMAP_H

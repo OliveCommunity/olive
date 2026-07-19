@@ -24,30 +24,30 @@
 namespace olive
 {
 
-const QString WaveDistortNode::kTextureInput = QStringLiteral("tex_in");
-const QString WaveDistortNode::kFrequencyInput = QStringLiteral("frequency_in");
-const QString WaveDistortNode::kIntensityInput = QStringLiteral("intensity_in");
-const QString WaveDistortNode::kEvolutionInput = QStringLiteral("evolution_in");
-const QString WaveDistortNode::kVerticalInput = QStringLiteral("vertical_in");
+const QString WaveDistortNode::k_texture_input = QStringLiteral("tex_in");
+const QString WaveDistortNode::k_frequency_input = QStringLiteral("frequency_in");
+const QString WaveDistortNode::k_intensity_input = QStringLiteral("intensity_in");
+const QString WaveDistortNode::k_evolution_input = QStringLiteral("evolution_in");
+const QString WaveDistortNode::k_vertical_input = QStringLiteral("vertical_in");
 
 #define super Node
 
 WaveDistortNode::WaveDistortNode()
 {
-	AddInput(kTextureInput, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_texture_input, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	AddInput(kFrequencyInput, NodeValue::kFloat, 10);
-	AddInput(kIntensityInput, NodeValue::kFloat, 10);
-	AddInput(kEvolutionInput, NodeValue::kFloat, 0);
+	add_input(k_frequency_input, NodeValue::k_float, 10);
+	add_input(k_intensity_input, NodeValue::k_float, 10);
+	add_input(k_evolution_input, NodeValue::k_float, 0);
 
-	AddInput(kVerticalInput, NodeValue::kCombo, false);
+	add_input(k_vertical_input, NodeValue::k_combo, false);
 
-	SetFlag(kVideoEffect);
-	SetEffectInput(kTextureInput);
+	set_flag(k_video_effect);
+	set_effect_input(k_texture_input);
 }
 
-QString WaveDistortNode::Name() const
+QString WaveDistortNode::name() const
 {
 	return tr("Wave");
 }
@@ -57,48 +57,48 @@ QString WaveDistortNode::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.wave");
 }
 
-QVector<Node::CategoryID> WaveDistortNode::Category() const
+QVector<Node::CategoryID> WaveDistortNode::category() const
 {
-	return { kCategoryDistort };
+	return { k_category_distort };
 }
 
-QString WaveDistortNode::Description() const
+QString WaveDistortNode::description() const
 {
 	return tr("Distorts an image along a sine wave.");
 }
 
-void WaveDistortNode::Retranslate()
+void WaveDistortNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kTextureInput, tr("Input"));
-	SetInputName(kFrequencyInput, tr("Frequency"));
-	SetInputName(kIntensityInput, tr("Intensity"));
-	SetInputName(kEvolutionInput, tr("Evolution"));
-	SetInputName(kVerticalInput, tr("Direction"));
-	SetComboBoxStrings(kVerticalInput, { tr("Horizontal"), tr("Vertical") });
+	set_input_name(k_texture_input, tr("Input"));
+	set_input_name(k_frequency_input, tr("Frequency"));
+	set_input_name(k_intensity_input, tr("Intensity"));
+	set_input_name(k_evolution_input, tr("Evolution"));
+	set_input_name(k_vertical_input, tr("Direction"));
+	set_combo_box_strings(k_vertical_input, { tr("Horizontal"), tr("Vertical") });
 }
 
-ShaderCode WaveDistortNode::GetShaderCode(const ShaderRequest &request) const
+ShaderCode WaveDistortNode::get_shader_code(const ShaderRequest &request) const
 {
 	Q_UNUSED(request)
-	return ShaderCode(FileFunctions::ReadFileAsString(":/shaders/wave.frag"));
+	return ShaderCode(FileFunctions::read_file_as_string(":/shaders/wave.frag"));
 }
 
-void WaveDistortNode::Value(const NodeValueRow &value,
+void WaveDistortNode::value(const NodeValueRow &value,
 							const NodeGlobals &globals,
 							NodeValueTable *table) const
 {
 	// If there's no texture, no need to run an operation
-	if (TexturePtr texture = value[kTextureInput].toTexture()) {
+	if (TexturePtr texture = value[k_texture_input].to_texture()) {
 		// Only run shader if at least one of flip or flop are selected
-		if (!qIsNull(value[kIntensityInput].toDouble())) {
-			table->Push(NodeValue::kTexture,
-						Texture::Job(texture->params(), ShaderJob(value)),
+		if (!qIsNull(value[k_intensity_input].to_double())) {
+			table->push(NodeValue::k_texture,
+						Texture::job(texture->params(), ShaderJob(value)),
 						this);
 		} else {
 			// If we're not flipping or flopping just push the texture
-			table->Push(value[kTextureInput]);
+			table->push(value[k_texture_input]);
 		}
 	}
 }

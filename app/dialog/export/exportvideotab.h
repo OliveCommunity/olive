@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef EXPORTVIDEOTAB_H
-#define EXPORTVIDEOTAB_H
+#ifndef OAK_EXPORTVIDEOTAB_H
+#define OAK_EXPORTVIDEOTAB_H
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -45,25 +45,25 @@ class ExportVideoTab : public QWidget {
 public:
 	ExportVideoTab(ColorManager *color_manager, QWidget *parent = nullptr);
 
-	int SetFormat(ExportFormat::Format format);
+	int set_format(ExportFormat::Format format);
 
-	bool IsImageSequenceSet() const;
-	void SetImageSequence(bool e) const;
+	bool is_image_sequence_set() const;
+	void set_image_sequence(bool e) const;
 
-	rational GetStillImageTime() const
+	Rational get_still_image_time() const
 	{
-		return image_section_->GetTime();
+		return image_section_->get_time();
 	}
 
-	ExportCodec::Codec GetSelectedCodec() const
+	ExportCodec::Codec get_selected_codec() const
 	{
 		return static_cast<ExportCodec::Codec>(
 			codec_combobox()->currentData().toInt());
 	}
 
-	void SetSelectedCodec(ExportCodec::Codec c)
+	void set_selected_codec(ExportCodec::Codec c)
 	{
-		QtUtils::SetComboBoxData(codec_combobox(), c);
+		QtUtils::set_combo_box_data(codec_combobox(), c);
 	}
 
 	QComboBox *codec_combobox() const
@@ -91,33 +91,33 @@ public:
 		return scaling_method_combobox_;
 	}
 
-	rational GetSelectedFrameRate() const
+	Rational get_selected_frame_rate() const
 	{
-		return frame_rate_combobox_->GetFrameRate();
+		return frame_rate_combobox_->get_frame_rate();
 	}
 
-	void SetSelectedFrameRate(const rational &fr)
+	void set_selected_frame_rate(const Rational &fr)
 	{
-		frame_rate_combobox_->SetFrameRate(fr);
-		UpdateFrameRate(fr);
+		frame_rate_combobox_->set_frame_rate(fr);
+		update_frame_rate(fr);
 	}
 
-	QString CurrentOCIOColorSpace()
+	QString current_ocio_color_space()
 	{
 		return color_space_chooser_->input();
 	}
 
-	void SetOCIOColorSpace(const QString &s)
+	void set_ocio_color_space(const QString &s)
 	{
 		color_space_chooser_->set_input(s);
 	}
 
-	CodecSection *GetCodecSection() const
+	CodecSection *get_codec_section() const
 	{
 		return static_cast<CodecSection *>(codec_stack_->currentWidget());
 	}
 
-	void SetCodecSection(CodecSection *section)
+	void set_codec_section(CodecSection *section)
 	{
 		if (section) {
 			codec_stack_->setVisible(true);
@@ -147,7 +147,7 @@ public:
 		return threads_;
 	}
 
-	void SetThreads(int t)
+	void set_threads(int t)
 	{
 		threads_ = t;
 	}
@@ -156,7 +156,7 @@ public:
 	{
 		return pix_fmt_;
 	}
-	void SetPixFmt(const QString &s)
+	void set_pix_fmt(const QString &s)
 	{
 		pix_fmt_ = s;
 	}
@@ -165,27 +165,27 @@ public:
 	{
 		return color_range_;
 	}
-	void SetColorRange(VideoParams::ColorRange c)
+	void set_color_range(VideoParams::ColorRange c)
 	{
 		color_range_ = c;
 	}
 
 public slots:
-	void VideoCodecChanged();
+	void video_codec_changed();
 
-	void SetTime(const rational &time);
+	void set_time(const Rational &time);
 
 signals:
-	void ColorSpaceChanged(const QString &colorspace);
+	void color_space_changed(const QString &colorspace);
 
-	void ImageSequenceCheckBoxChanged(bool e);
+	void image_sequence_check_box_changed(bool e);
 
-	void TimeChanged(const rational &time);
+	void time_changed(const Rational &time);
 
 private:
-	QWidget *SetupResolutionSection();
-	QWidget *SetupColorSection();
-	QWidget *SetupCodecSection();
+	QWidget *setup_resolution_section();
+	QWidget *setup_color_section();
+	QWidget *setup_codec_section();
 
 	QComboBox *codec_combobox_;
 	FrameRateComboBox *frame_rate_combobox_;
@@ -218,13 +218,13 @@ private:
 	ExportFormat::Format format_;
 
 private slots:
-	void MaintainAspectRatioChanged(bool val);
+	void maintain_aspect_ratio_changed(bool val);
 
-	void OpenAdvancedDialog();
+	void open_advanced_dialog();
 
-	void UpdateFrameRate(rational r);
+	void update_frame_rate(Rational r);
 };
 
 }
 
-#endif // EXPORTVIDEOTAB_H
+#endif // OAK_EXPORTVIDEOTAB_H

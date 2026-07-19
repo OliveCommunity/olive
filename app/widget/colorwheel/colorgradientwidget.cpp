@@ -37,12 +37,12 @@ ColorGradientWidget::ColorGradientWidget(Qt::Orientation orientation,
 {
 }
 
-Color ColorGradientWidget::GetColorFromScreenPos(const QPoint &p) const
+Color ColorGradientWidget::get_color_from_screen_pos(const QPoint &p) const
 {
 	if (orientation_ == Qt::Horizontal) {
-		return LerpColor(start_, end_, p.x(), width());
+		return lerp_color(start_, end_, p.x(), width());
 	} else {
-		return LerpColor(start_, end_, p.y(), height());
+		return lerp_color(start_, end_, p.y(), height());
 	}
 }
 
@@ -64,8 +64,8 @@ void ColorGradientWidget::paintEvent(QPaintEvent *e)
 	}
 
 	for (int i = 0; i < max; i++) {
-		p.setPen(QtUtils::toQColor(
-			GetManagedColor(LerpColor(start_, end_, i, max))));
+		p.setPen(QtUtils::to_q_color(
+			get_managed_color(lerp_color(start_, end_, i, max))));
 
 		if (orientation_ == Qt::Horizontal) {
 			p.drawLine(i, 0, i, height());
@@ -76,7 +76,7 @@ void ColorGradientWidget::paintEvent(QPaintEvent *e)
 
 	// Draw selector
 	int selector_radius = qMax(2, min / 8);
-	p.setPen(QPen(GetUISelectorColor(), qMax(1, selector_radius / 2)));
+	p.setPen(QPen(get_ui_selector_color(), qMax(1, selector_radius / 2)));
 	p.setBrush(Qt::NoBrush);
 
 	float clamped_val = std::clamp(val_, 0.0f, 1.0f);
@@ -95,15 +95,15 @@ void ColorGradientWidget::SelectedColorChangedEvent(const Color &c,
 {
 	float hue, sat;
 
-	c.toHsv(&hue, &sat, &val_);
+	c.to_hsv(&hue, &sat, &val_);
 
 	if (external) {
-		start_ = Color::fromHsv(hue, sat, 1.0);
-		end_ = Color::fromHsv(hue, sat, 0.0);
+		start_ = Color::from_hsv(hue, sat, 1.0);
+		end_ = Color::from_hsv(hue, sat, 0.0);
 	}
 }
 
-Color ColorGradientWidget::LerpColor(const Color &a, const Color &b, int i,
+Color ColorGradientWidget::lerp_color(const Color &a, const Color &b, int i,
 									 int max)
 {
 	float t =

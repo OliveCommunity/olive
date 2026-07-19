@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef MULTICAMDISPLAY_H
-#define MULTICAMDISPLAY_H
+#ifndef OAK_MULTICAMDISPLAY_H
+#define OAK_MULTICAMDISPLAY_H
 
 #include "node/input/multicam/multicamnode.h"
 #include "widget/viewer/viewerdisplay.h"
@@ -33,17 +33,17 @@ class MulticamDisplay : public ViewerDisplayWidget {
 public:
 	explicit MulticamDisplay(QWidget *parent = nullptr);
 
-	void SetMulticamNode(MultiCamNode *n);
+	void set_multicam_node(MultiCamNode *n);
 
 protected:
-	virtual void OnPaint() override;
+	virtual void on_paint() override;
 
-	virtual void OnDestroy() override;
+	virtual void on_destroy() override;
 
-	virtual TexturePtr LoadCustomTextureFromFrame(const QVariant &v) override;
+	virtual TexturePtr load_custom_texture_from_frame(const QVariant &v) override;
 
 private:
-	static QString GenerateShaderCode(int rows, int cols);
+	static QString generate_shader_code(int rows, int cols);
 
 	MultiCamNode *node_;
 
@@ -54,4 +54,4 @@ private:
 
 }
 
-#endif // MULTICAMDISPLAY_H
+#endif // OAK_MULTICAMDISPLAY_H

@@ -36,10 +36,10 @@ void FocusableLineEdit::keyPressEvent(QKeyEvent *e)
 	switch (e->key()) {
 	case Qt::Key_Return:
 	case Qt::Key_Enter:
-		emit Confirmed();
+		emit confirmed();
 		break;
 	case Qt::Key_Escape:
-		emit Cancelled();
+		emit cancelled();
 		break;
 	default:
 		QLineEdit::keyPressEvent(e);
@@ -50,7 +50,7 @@ void FocusableLineEdit::focusOutEvent(QFocusEvent *e)
 {
 	QLineEdit::focusOutEvent(e);
 
-	emit Confirmed();
+	emit confirmed();
 }
 
 }

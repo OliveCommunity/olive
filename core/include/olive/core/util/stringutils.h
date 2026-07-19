@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef LIBOLIVECORE_STRINGUTILS_H
-#define LIBOLIVECORE_STRINGUTILS_H
+#ifndef OAK_LIBOLIVECORE_STRINGUTILS_H
+#define OAK_LIBOLIVECORE_STRINGUTILS_H
 
 #include <algorithm>
 #include <regex>
@@ -208,4 +208,4 @@ public:
 
 }
 
-#endif // LIBOLIVECORE_STRINGUTILS_H
+#endif // OAK_LIBOLIVECORE_STRINGUTILS_H

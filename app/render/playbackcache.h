@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PLAYBACKCACHE_H
-#define PLAYBACKCACHE_H
+#ifndef OAK_PLAYBACKCACHE_H
+#define OAK_PLAYBACKCACHE_H
 
 #include <olive/core/core.h>
 #include <QDir>
@@ -45,64 +45,64 @@ class PlaybackCache : public QObject {
 public:
 	PlaybackCache(QObject *parent = nullptr);
 
-	const QUuid &GetUuid() const
+	const QUuid &get_uuid() const
 	{
 		return uuid_;
 	}
-	void SetUuid(const QUuid &u);
+	void set_uuid(const QUuid &u);
 
-	TimeRangeList GetInvalidatedRanges(TimeRange intersecting) const;
-	TimeRangeList GetInvalidatedRanges(const rational &length) const
+	TimeRangeList get_invalidated_ranges(TimeRange intersecting) const;
+	TimeRangeList get_invalidated_ranges(const Rational &length) const
 	{
-		return GetInvalidatedRanges(TimeRange(0, length));
+		return get_invalidated_ranges(TimeRange(0, length));
 	}
 
-	bool HasInvalidatedRanges(const TimeRange &intersecting) const;
-	bool HasInvalidatedRanges(const rational &length) const
+	bool has_invalidated_ranges(const TimeRange &intersecting) const;
+	bool has_invalidated_ranges(const Rational &length) const
 	{
-		return HasInvalidatedRanges(TimeRange(0, length));
+		return has_invalidated_ranges(TimeRange(0, length));
 	}
 
-	QString GetCacheDirectory() const;
+	QString get_cache_directory() const;
 
-	void Invalidate(const TimeRange &r);
+	void invalidate(const TimeRange &r);
 
-	bool HasValidatedRanges() const
+	bool has_validated_ranges() const
 	{
 		return !validated_.isEmpty();
 	}
-	const TimeRangeList &GetValidatedRanges() const
+	const TimeRangeList &get_validated_ranges() const
 	{
 		return validated_;
 	}
 
 	Node *parent() const;
 
-	QDir GetThisCacheDirectory() const;
-	static QDir GetThisCacheDirectory(const QString &cache_path,
+	QDir get_this_cache_directory() const;
+	static QDir get_this_cache_directory(const QString &cache_path,
 									  const QUuid &cache_id);
 
-	void LoadState();
-	void SaveState();
+	void load_state();
+	void save_state();
 
-	void Draw(QPainter *painter, const rational &start, double scale,
+	void draw(QPainter *painter, const Rational &start, double scale,
 			  const QRect &rect) const;
 
-	static int GetCacheIndicatorHeight()
+	static int get_cache_indicator_height()
 	{
 		return QFontMetrics(QFont()).height() / 4;
 	}
 
-	bool IsSavingEnabled() const
+	bool is_saving_enabled() const
 	{
 		return saving_enabled_;
 	}
-	void SetSavingEnabled(bool e)
+	void set_saving_enabled(bool e)
 	{
 		saving_enabled_ = e;
 	}
 
-	virtual void SetPassthrough(PlaybackCache *cache);
+	virtual void set_passthrough(PlaybackCache *cache);
 
 	QMutex *mutex()
 	{
@@ -119,39 +119,39 @@ public:
 		QUuid cache;
 	};
 
-	const std::vector<Passthrough> &GetPassthroughs() const
+	const std::vector<Passthrough> &get_passthroughs() const
 	{
 		return passthroughs_;
 	}
 
-	void ClearRequestRange(const TimeRange &r)
+	void clear_request_range(const TimeRange &r)
 	{
 		requested_.remove(r);
 	}
 
-	void ResignalRequests()
+	void resignal_requests()
 	{
 		for (const TimeRange &r : requested_) {
-			emit Requested(request_context_, r);
+			emit requested(request_context_, r);
 		}
 	}
 
 public slots:
-	void InvalidateAll();
+	void invalidate_all();
 
-	void Request(ViewerOutput *context, const TimeRange &r);
+	void request(ViewerOutput *context, const TimeRange &r);
 
 signals:
-	void Invalidated(const TimeRange &r);
+	void invalidated(const TimeRange &r);
 
-	void Validated(const TimeRange &r);
+	void validated(const TimeRange &r);
 
-	void Requested(ViewerOutput *context, const TimeRange &r);
+	void requested(ViewerOutput *context, const TimeRange &r);
 
-	void CancelAll();
+	void cancel_all();
 
 protected:
-	void Validate(const TimeRange &r, bool signal = true);
+	void validate(const TimeRange &r, bool signal = true);
 
 	virtual void InvalidateEvent(const TimeRange &range);
 
@@ -163,7 +163,7 @@ protected:
 	{
 	}
 
-	Project *GetProject() const;
+	Project *get_project() const;
 
 private:
 	TimeRangeList validated_;
@@ -184,4 +184,4 @@ private:
 
 }
 
-#endif // PLAYBACKCACHE_H
+#endif // OAK_PLAYBACKCACHE_H

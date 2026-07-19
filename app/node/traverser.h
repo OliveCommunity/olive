@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODETRAVERSER_H
-#define NODETRAVERSER_H
+#ifndef OAK_NODETRAVERSER_H
+#define OAK_NODETRAVERSER_H
 
 #include <QVector2D>
 
@@ -42,149 +42,149 @@ class NodeTraverser {
 public:
 	NodeTraverser();
 
-	NodeValueTable GenerateTable(const Node *n, const TimeRange &range,
+	NodeValueTable generate_table(const Node *n, const TimeRange &range,
 								 const Node *next_node = nullptr);
 
-	virtual NodeValueDatabase GenerateDatabase(const Node *node,
+	virtual NodeValueDatabase generate_database(const Node *node,
 											   const TimeRange &range);
 
-	NodeValueRow GenerateRow(NodeValueDatabase *database, const Node *node,
+	NodeValueRow generate_row(NodeValueDatabase *database, const Node *node,
 							 const TimeRange &range);
-	NodeValueRow GenerateRow(const Node *node, const TimeRange &range);
+	NodeValueRow generate_row(const Node *node, const TimeRange &range);
 
-	NodeValue GenerateRowValue(const Node *node, const QString &input,
+	NodeValue generate_row_value(const Node *node, const QString &input,
 							   NodeValueTable *table, const TimeRange &time);
-	NodeValue GenerateRowValueElement(const Node *node, const QString &input,
+	NodeValue generate_row_value_element(const Node *node, const QString &input,
 									  int element, NodeValueTable *table,
 									  const TimeRange &time);
-	int GenerateRowValueElementIndex(const Node::ValueHint &hint,
+	int generate_row_value_element_index(const Node::ValueHint &hint,
 									 NodeValue::Type preferred_type,
 									 const NodeValueTable *table);
-	int GenerateRowValueElementIndex(const Node *node, const QString &input,
+	int generate_row_value_element_index(const Node *node, const QString &input,
 									 int element, const NodeValueTable *table);
 
-	void Transform(QTransform *transform, const Node *start, const Node *end,
+	void transform(QTransform *transform, const Node *start, const Node *end,
 				   const TimeRange &range);
 
-	const VideoParams &GetCacheVideoParams() const
+	const VideoParams &get_cache_video_params() const
 	{
 		return video_params_;
 	}
 
-	void SetCacheVideoParams(const VideoParams &params)
+	void set_cache_video_params(const VideoParams &params)
 	{
 		video_params_ = params;
 	}
 
-	const AudioParams &GetCacheAudioParams() const
+	const AudioParams &get_cache_audio_params() const
 	{
 		return audio_params_;
 	}
 
-	void SetCacheAudioParams(const AudioParams &params)
+	void set_cache_audio_params(const AudioParams &params)
 	{
 		audio_params_ = params;
 	}
 
 protected:
-	NodeValueTable ProcessInput(const Node *node, const QString &input,
+	NodeValueTable process_input(const Node *node, const QString &input,
 								const TimeRange &range);
 
-	void ProcessInputElement(NodeValueTableArray &array_tbl, const Node *node,
+	void process_input_element(NodeValueTableArray &array_tbl, const Node *node,
 							 const QString &input, int element,
 							 const TimeRange &range);
 
-	virtual void ProcessVideoFootage(TexturePtr destination,
+	virtual void process_video_footage(TexturePtr destination,
 									 const FootageJob *stream,
-									 const rational &input_time)
+									 const Rational &input_time)
 	{
 	}
 
-	virtual void ProcessAudioFootage(SampleBuffer &destination,
+	virtual void process_audio_footage(SampleBuffer &destination,
 									 const FootageJob *stream,
 									 const TimeRange &input_time)
 	{
 	}
 
-	virtual void ProcessShader(TexturePtr destination, const Node *node,
+	virtual void process_shader(TexturePtr destination, const Node *node,
 							   const ShaderJob *job)
 	{
 	}
 
-	virtual void ProcessColorTransform(TexturePtr destination, const Node *node,
+	virtual void process_color_transform(TexturePtr destination, const Node *node,
 									   const ColorTransformJob *job)
 	{
 	}
 
-	virtual void ProcessSamples(SampleBuffer &destination, const Node *node,
+	virtual void process_samples(SampleBuffer &destination, const Node *node,
 								const TimeRange &range, const SampleJob &job)
 	{
 	}
 
-	virtual void ProcessFrameGeneration(TexturePtr destination,
+	virtual void process_frame_generation(TexturePtr destination,
 										const Node *node,
 										const GenerateJob *job)
 	{
 	}
 
-	virtual void ConvertToReferenceSpace(TexturePtr destination,
+	virtual void convert_to_reference_space(TexturePtr destination,
 										 TexturePtr source,
 										 const QString &input_cs)
 	{
 	}
 
-	virtual TexturePtr ProcessVideoCacheJob(const CacheJob *val);
+	virtual TexturePtr process_video_cache_job(const CacheJob *val);
 
-	virtual TexturePtr CreateTexture(const VideoParams &p)
+	virtual TexturePtr create_texture(const VideoParams &p)
 	{
-		return CreateDummyTexture(p);
+		return create_dummy_texture(p);
 	}
 
-	virtual SampleBuffer CreateSampleBuffer(const AudioParams &params,
+	virtual SampleBuffer create_sample_buffer(const AudioParams &params,
 											int sample_count)
 	{
 		// Return dummy by default
 		return SampleBuffer();
 	}
 
-	virtual TexturePtr ProcessPluginJob(TexturePtr texture,
+	virtual TexturePtr process_plugin_job(TexturePtr texture,
 										TexturePtr destination,
 										const Node *node);
-	SampleBuffer CreateSampleBuffer(const AudioParams &params,
-									const rational &length)
+	SampleBuffer create_sample_buffer(const AudioParams &params,
+									const Rational &length)
 	{
 		if (params.is_valid()) {
-			return CreateSampleBuffer(params, params.time_to_samples(length));
+			return create_sample_buffer(params, params.time_to_samples(length));
 		} else {
 			return SampleBuffer();
 		}
 	}
 
-	QVector2D GenerateResolution() const;
+	QVector2D generate_resolution() const;
 
-	bool IsCancelled()
+	bool is_cancelled()
 	{
-		return cancel_ && cancel_->IsCancelled();
+		return cancel_ && cancel_->is_cancelled();
 	}
 
-	bool HeardCancel() const
+	bool heard_cancel() const
 	{
-		return cancel_ && cancel_->HeardCancel();
+		return cancel_ && cancel_->heard_cancel();
 	}
 
-	CancelAtom *GetCancelPointer() const
+	CancelAtom *get_cancel_pointer() const
 	{
 		return cancel_;
 	}
-	void SetCancelPointer(CancelAtom *cancel)
+	void set_cancel_pointer(CancelAtom *cancel)
 	{
 		cancel_ = cancel;
 	}
 
-	void ResolveJobs(NodeValue &value);
-	void ResolveAudioJobs(NodeValue &value);
+	void resolve_jobs(NodeValue &value);
+	void resolve_audio_jobs(NodeValue &value);
 
-	Block *GetCurrentBlock() const
+	Block *get_current_block() const
 	{
 		return block_stack_.empty() ? nullptr : block_stack_.back();
 	}
@@ -194,13 +194,13 @@ protected:
 		return loop_mode_;
 	}
 
-	virtual bool UseCache() const
+	virtual bool use_cache() const
 	{
 		return false;
 	}
 
 private:
-	TexturePtr CreateDummyTexture(const VideoParams &p);
+	TexturePtr create_dummy_texture(const VideoParams &p);
 
 	VideoParams video_params_;
 
@@ -222,4 +222,4 @@ private:
 
 }
 
-#endif // NODETRAVERSER_H
+#endif // OAK_NODETRAVERSER_H

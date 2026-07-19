@@ -26,30 +26,30 @@
 namespace olive
 {
 
-const QString NoiseGeneratorNode::kBaseIn = QStringLiteral("base_in");
-const QString NoiseGeneratorNode::kColorInput = QStringLiteral("color_in");
-const QString NoiseGeneratorNode::kStrengthInput =
+const QString NoiseGeneratorNode::k_base_in = QStringLiteral("base_in");
+const QString NoiseGeneratorNode::k_color_input = QStringLiteral("color_in");
+const QString NoiseGeneratorNode::k_strength_input =
 	QStringLiteral("strength_in");
 
 #define super Node
 
 NoiseGeneratorNode::NoiseGeneratorNode()
 {
-	AddInput(kBaseIn, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_base_in, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	AddInput(kStrengthInput, NodeValue::kFloat, 0.2);
-	SetInputProperty(kStrengthInput, QStringLiteral("view"),
-					 FloatSlider::kPercentage);
-	SetInputProperty(kStrengthInput, QStringLiteral("min"), 0);
+	add_input(k_strength_input, NodeValue::k_float, 0.2);
+	set_input_property(k_strength_input, QStringLiteral("view"),
+					 FloatSlider::k_percentage);
+	set_input_property(k_strength_input, QStringLiteral("min"), 0);
 
-	AddInput(kColorInput, NodeValue::kBoolean, false);
+	add_input(k_color_input, NodeValue::k_boolean, false);
 
-	SetEffectInput(kBaseIn);
-	SetFlag(kVideoEffect);
+	set_effect_input(k_base_in);
+	set_flag(k_video_effect);
 }
 
-QString NoiseGeneratorNode::Name() const
+QString NoiseGeneratorNode::name() const
 {
 	return tr("Noise");
 }
@@ -59,45 +59,45 @@ QString NoiseGeneratorNode::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.noise");
 }
 
-QVector<Node::CategoryID> NoiseGeneratorNode::Category() const
+QVector<Node::CategoryID> NoiseGeneratorNode::category() const
 {
-	return { kCategoryGenerator };
+	return { k_category_generator };
 }
 
-QString NoiseGeneratorNode::Description() const
+QString NoiseGeneratorNode::description() const
 {
 	return tr("Generates noise patterns");
 }
 
-void NoiseGeneratorNode::Retranslate()
+void NoiseGeneratorNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kBaseIn, tr("Base"));
-	SetInputName(kStrengthInput, tr("Strength"));
-	SetInputName(kColorInput, tr("Color"));
+	set_input_name(k_base_in, tr("Base"));
+	set_input_name(k_strength_input, tr("Strength"));
+	set_input_name(k_color_input, tr("Color"));
 }
 
-ShaderCode NoiseGeneratorNode::GetShaderCode(const ShaderRequest &request) const
+ShaderCode NoiseGeneratorNode::get_shader_code(const ShaderRequest &request) const
 {
-	return ShaderCode(FileFunctions::ReadFileAsString(":/shaders/noise.frag"));
+	return ShaderCode(FileFunctions::read_file_as_string(":/shaders/noise.frag"));
 }
 
-void NoiseGeneratorNode::Value(const NodeValueRow &value,
+void NoiseGeneratorNode::value(const NodeValueRow &value,
 							   const NodeGlobals &globals,
 							   NodeValueTable *table) const
 {
 	ShaderJob job(value);
 
-	job.Insert(value);
-	job.Insert(QStringLiteral("time_in"),
-			   NodeValue(NodeValue::kFloat, globals.time().in().toDouble(),
+	job.insert(value);
+	job.insert(QStringLiteral("time_in"),
+			   NodeValue(NodeValue::k_float, globals.time().in().to_double(),
 						 this));
 
-	TexturePtr base = value[kBaseIn].toTexture();
+	TexturePtr base = value[k_base_in].to_texture();
 
-	table->Push(NodeValue::kTexture,
-				Texture::Job(base ? base->params() : globals.vparams(), job),
+	table->push(NodeValue::k_texture,
+				Texture::job(base ? base->params() : globals.vparams(), job),
 				this);
 }
 }

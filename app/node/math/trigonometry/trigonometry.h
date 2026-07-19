@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TRIGNODE_H
-#define TRIGNODE_H
+#ifndef OAK_TRIGNODE_H
+#define OAK_TRIGNODE_H
 
 #include "node/node.h"
 
@@ -34,33 +34,33 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(TrigonometryNode)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	static const QString kMethodIn;
-	static const QString kXIn;
+	static const QString k_method_in;
+	static const QString k_x_in;
 
 private:
 	enum Operation {
-		kOpSine,
-		kOpCosine,
-		kOpTangent,
-		kOpArcSine,
-		kOpArcCosine,
-		kOpArcTangent,
-		kOpHypSine,
-		kOpHypCosine,
-		kOpHypTangent
+		k_op_sine,
+		k_op_cosine,
+		k_op_tangent,
+		k_op_arc_sine,
+		k_op_arc_cosine,
+		k_op_arc_tangent,
+		k_op_hyp_sine,
+		k_op_hyp_cosine,
+		k_op_hyp_tangent
 	};
 };
 
 }
 
-#endif // TRIGNODE_H
+#endif // OAK_TRIGNODE_H

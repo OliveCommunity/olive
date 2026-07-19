@@ -42,7 +42,7 @@ QMenu *NodeParamViewDockArea::createPopupMenu()
 	return nullptr;
 }
 
-void NodeParamViewDockArea::AddItem(QDockWidget *item)
+void NodeParamViewDockArea::add_item(QDockWidget *item)
 {
 	item->setAllowedAreas(Qt::LeftDockWidgetArea);
 	item->setFeatures(QDockWidget::DockWidgetClosable |
@@ -50,7 +50,7 @@ void NodeParamViewDockArea::AddItem(QDockWidget *item)
 	addDockWidget(Qt::LeftDockWidgetArea, item);
 }
 
-void NodeParamViewDockArea::RemoveItem(QDockWidget *item)
+void NodeParamViewDockArea::remove_item(QDockWidget *item)
 {
 	if (!item) {
 		return;

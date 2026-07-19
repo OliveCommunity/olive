@@ -24,10 +24,10 @@
 namespace olive
 {
 
-void DebugHandler(QtMsgType type, const QMessageLogContext &context,
+void debug_handler(QtMsgType type, const QMessageLogContext &context,
 				  const QString &msg)
 {
-	QByteArray localMsg = msg.toLocal8Bit();
+	QByteArray local_msg = msg.toLocal8Bit();
 
 	const char *msg_type = "UNKNOWN";
 	switch (type) {
@@ -49,7 +49,7 @@ void DebugHandler(QtMsgType type, const QMessageLogContext &context,
 	}
 
 	//fprintf(stderr, "[%s] %s (%s:%u)\n", msg_type, localMsg.constData(), context.function, context.line);
-	fprintf(stderr, "[%s] %s\n", msg_type, localMsg.constData());
+	fprintf(stderr, "[%s] %s\n", msg_type, local_msg.constData());
 
 #ifdef Q_OS_WINDOWS
 	// Windows still seems to buffer stderr and we want to see debug messages immediately, so here we make sure each line

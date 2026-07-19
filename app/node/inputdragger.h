@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEINPUTDRAGGER_H
-#define NODEINPUTDRAGGER_H
+#ifndef OAK_NODEINPUTDRAGGER_H
+#define OAK_NODEINPUTDRAGGER_H
 
 #include "node/keyframe.h"
 #include "node/param.h"
@@ -33,31 +33,31 @@ class NodeInputDragger {
 public:
 	NodeInputDragger();
 
-	bool IsStarted() const;
+	bool is_started() const;
 
-	void Start(const NodeKeyframeTrackReference &input, const rational &time,
+	void start(const NodeKeyframeTrackReference &input, const Rational &time,
 			   bool create_key_on_all_tracks = true);
 
-	void Drag(QVariant value);
+	void drag(QVariant value);
 
-	void End(MultiUndoCommand *command);
+	void end(MultiUndoCommand *command);
 
-	static bool IsInputBeingDragged()
+	static bool is_input_being_dragged()
 	{
 		return input_being_dragged;
 	}
 
-	const QVariant &GetStartValue() const
+	const QVariant &get_start_value() const
 	{
 		return start_value_;
 	}
 
-	const NodeKeyframeTrackReference &GetInput() const
+	const NodeKeyframeTrackReference &get_input() const
 	{
 		return input_;
 	}
 
-	const rational &GetTime() const
+	const Rational &get_time() const
 	{
 		return time_;
 	}
@@ -65,7 +65,7 @@ public:
 private:
 	NodeKeyframeTrackReference input_;
 
-	rational time_;
+	Rational time_;
 
 	QVariant start_value_;
 
@@ -79,4 +79,4 @@ private:
 
 }
 
-#endif // NODEINPUTDRAGGER_H
+#endif // OAK_NODEINPUTDRAGGER_H

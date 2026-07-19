@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef BLOCK_H
-#define BLOCK_H
+#ifndef OAK_BLOCK_H
+#define OAK_BLOCK_H
 
 #include "node/node.h"
 #include "timeline/timelinecommon.h"
@@ -38,31 +38,31 @@ class Block : public Node {
 public:
 	Block();
 
-	virtual QVector<CategoryID> Category() const override;
+	virtual QVector<CategoryID> category() const override;
 
-	const rational &in() const
+	const Rational &in() const
 	{
 		return in_point_;
 	}
 
-	const rational &out() const
+	const Rational &out() const
 	{
 		return out_point_;
 	}
 
-	void set_in(const rational &in)
+	void set_in(const Rational &in)
 	{
 		in_point_ = in;
 	}
 
-	void set_out(const rational &out)
+	void set_out(const Rational &out)
 	{
 		out_point_ = out;
 	}
 
-	rational length() const;
-	virtual void set_length_and_media_out(const rational &length);
-	virtual void set_length_and_media_in(const rational &length);
+	Rational length() const;
+	virtual void set_length_and_media_out(const Rational &length);
+	virtual void set_length_and_media_in(const Rational &length);
 
 	TimeRange range() const
 	{
@@ -97,32 +97,32 @@ public:
 	void set_track(Track *track)
 	{
 		track_ = track;
-		emit TrackChanged(track_);
+		emit track_changed(track_);
 	}
 
 	bool is_enabled() const;
 	void set_enabled(bool e);
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual void InvalidateCache(
+	virtual void invalidate_cache(
 		const TimeRange &range, const QString &from, int element = -1,
 		InvalidateCacheOptions options = InvalidateCacheOptions()) override;
 
-	static const QString kLengthInput;
+	static const QString k_length_input;
 
 	static void set_previous_next(Block *previous, Block *next);
 
 public slots:
 
 signals:
-	void EnabledChanged();
+	void enabled_changed();
 
-	void LengthChanged();
+	void length_changed();
 
-	void PreviewChanged();
+	void preview_changed();
 
-	void TrackChanged(Track *track);
+	void track_changed(Track *track);
 
 protected:
 	virtual void InputValueChangedEvent(const QString &input,
@@ -132,15 +132,15 @@ protected:
 	Block *next_;
 
 private:
-	void set_length_internal(const rational &length);
+	void set_length_internal(const Rational &length);
 
-	rational in_point_;
-	rational out_point_;
+	Rational in_point_;
+	Rational out_point_;
 	Track *track_;
 
-	rational last_length_;
+	Rational last_length_;
 };
 
 }
 
-#endif // BLOCK_H
+#endif // OAK_BLOCK_H

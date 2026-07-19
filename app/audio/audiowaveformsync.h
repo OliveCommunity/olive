@@ -18,8 +18,8 @@
 
 ***/
 
-#ifndef AUDIOWAVEFORMSYNC_H
-#define AUDIOWAVEFORMSYNC_H
+#ifndef OAK_AUDIOWAVEFORMSYNC_H
+#define OAK_AUDIOWAVEFORMSYNC_H
 
 #include <cstdint>
 
@@ -48,15 +48,15 @@ public:
 		bool valid = false;
 	};
 
-	static QVector<double> ExtractRmsEnvelope(const core::SampleBuffer &samples,
+	static QVector<double> extract_rms_envelope(const core::SampleBuffer &samples,
 											  size_t window_samples);
 
-	static OffsetResult EstimateOffset(const core::SampleBuffer &reference,
+	static OffsetResult estimate_offset(const core::SampleBuffer &reference,
 									   const core::SampleBuffer &candidate,
 									   size_t window_samples,
 									   int64_t max_offset_samples);
 
-	static OffsetResult EstimateEnvelopeOffset(const QVector<double> &reference,
+	static OffsetResult estimate_envelope_offset(const QVector<double> &reference,
 											   const QVector<double> &candidate,
 											   size_t window_samples,
 											   int64_t max_offset_windows);
@@ -71,7 +71,7 @@ public:
 	 * waveform cache have not been generated yet. Empty masks are treated as
 	 * "all windows valid".
 	 */
-	static OffsetResult EstimateEnvelopeOffset(const QVector<double> &reference,
+	static OffsetResult estimate_envelope_offset(const QVector<double> &reference,
 											   const QVector<double> &candidate,
 											   const QVector<bool> &reference_valid,
 											   const QVector<bool> &candidate_valid,
@@ -89,7 +89,7 @@ public:
 	 * callers should bound max_offset_windows to a sensible range.
 	 */
 	static StretchOffsetResult
-	EstimateStretchAndOffset(const QVector<double> &reference,
+	estimate_stretch_and_offset(const QVector<double> &reference,
 							 const QVector<double> &candidate,
 							 const QVector<bool> &reference_valid,
 							 const QVector<bool> &candidate_valid, size_t window_samples,
@@ -99,4 +99,4 @@ public:
 
 }
 
-#endif // AUDIOWAVEFORMSYNC_H
+#endif // OAK_AUDIOWAVEFORMSYNC_H

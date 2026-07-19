@@ -26,7 +26,7 @@
 namespace
 {
 
-QString TestImagePath()
+QString test_image_path()
 {
 	return QDir(QStringLiteral(OAK_TEST_SOURCE_DIR))
 		.filePath(QStringLiteral("tests/img.png"));
@@ -45,7 +45,7 @@ protected:
 
 		created_disk_manager_ = (olive::DiskManager::instance() == nullptr);
 		if (created_disk_manager_) {
-			olive::DiskManager::CreateInstance();
+			olive::DiskManager::create_instance();
 		}
 
 		// Sandbox the footage metadata cache so real probes write into the
@@ -57,17 +57,17 @@ protected:
 		QDir().mkpath(
 			QStandardPaths::writableLocation(QStandardPaths::CacheLocation));
 
-		olive::ColorManager::SetUpDefaultConfig();
+		olive::ColorManager::set_up_default_config();
 
 		project_ = std::make_unique<olive::Project>();
-		project_->Initialize();
+		project_->initialize();
 	}
 
 	void TearDown() override
 	{
 		project_.reset();
 		if (created_disk_manager_) {
-			olive::DiskManager::DestroyInstance();
+			olive::DiskManager::destroy_instance();
 		}
 		if (had_cache_home_) {
 			qputenv("XDG_CACHE_HOME", old_cache_home_);
@@ -94,64 +94,64 @@ TEST_F(TaskProjectImportTest, ImportOfUnprobeableFileCollectsInvalidList)
 	}
 
 	olive::ProjectImportTask task(project_->root(), { path });
-	EXPECT_EQ(task.GetFileCount(), 1);
+	EXPECT_EQ(task.get_file_count(), 1);
 
 	double last_progress = -1.0;
-	QObject::connect(&task, &olive::Task::ProgressChanged, &task,
+	QObject::connect(&task, &olive::Task::progress_changed, &task,
 					 [&last_progress](double p) { last_progress = p; });
 
-	ASSERT_TRUE(task.Start());
+	ASSERT_TRUE(task.start());
 
-	EXPECT_TRUE(task.HasInvalidFiles());
-	ASSERT_EQ(task.GetInvalidFiles().size(), 1);
-	EXPECT_EQ(task.GetInvalidFiles().first(), path);
-	EXPECT_TRUE(task.GetImportedFootage().isEmpty());
+	EXPECT_TRUE(task.has_invalid_files());
+	ASSERT_EQ(task.get_invalid_files().size(), 1);
+	EXPECT_EQ(task.get_invalid_files().first(), path);
+	EXPECT_TRUE(task.get_imported_footage().isEmpty());
 	EXPECT_DOUBLE_EQ(last_progress, 1.0);
 
 	// The undo command exists but contains no children since nothing was added
-	ASSERT_NE(task.GetCommand(), nullptr);
-	EXPECT_EQ(task.GetCommand()->child_count(), 0);
-	delete task.GetCommand();
+	ASSERT_NE(task.get_command(), nullptr);
+	EXPECT_EQ(task.get_command()->child_count(), 0);
+	delete task.get_command();
 }
 
 TEST_F(TaskProjectImportTest, ImportOfImageFileAddsFootageThroughUndoCommand)
 {
-	const QString path = TestImagePath();
+	const QString path = test_image_path();
 	ASSERT_TRUE(QFileInfo::exists(path));
 
 	olive::ProjectImportTask task(project_->root(), { path });
-	EXPECT_EQ(task.GetFileCount(), 1);
+	EXPECT_EQ(task.get_file_count(), 1);
 
-	ASSERT_TRUE(task.Start());
+	ASSERT_TRUE(task.start());
 
-	EXPECT_FALSE(task.HasInvalidFiles());
-	ASSERT_EQ(task.GetImportedFootage().size(), 1);
+	EXPECT_FALSE(task.has_invalid_files());
+	ASSERT_EQ(task.get_imported_footage().size(), 1);
 
-	olive::Footage *footage = task.GetImportedFootage().first();
+	olive::Footage *footage = task.get_imported_footage().first();
 	EXPECT_EQ(footage->filename(), path);
-	EXPECT_EQ(footage->GetLabel(), QStringLiteral("img.png"));
-	EXPECT_TRUE(footage->IsValid());
+	EXPECT_EQ(footage->get_label(), QStringLiteral("img.png"));
+	EXPECT_TRUE(footage->is_valid());
 
 	// Nothing is in the folder until the command is redone
 	EXPECT_TRUE(project_->root()->children().isEmpty());
 
-	ASSERT_NE(task.GetCommand(), nullptr);
-	task.GetCommand()->redo_now();
+	ASSERT_NE(task.get_command(), nullptr);
+	task.get_command()->redo_now();
 
 	ASSERT_EQ(project_->root()->children().size(), 1);
 	EXPECT_EQ(project_->root()->children().first(),
 			  static_cast<olive::Node *>(footage));
 	EXPECT_TRUE(project_->nodes().contains(footage));
 
-	task.GetCommand()->undo_now();
+	task.get_command()->undo_now();
 	EXPECT_TRUE(project_->root()->children().isEmpty());
 
-	delete task.GetCommand();
+	delete task.get_command();
 }
 
 TEST_F(TaskProjectImportTest, ImportOfDirectoryCreatesFolderHierarchy)
 {
-	const QString src = TestImagePath();
+	const QString src = test_image_path();
 	ASSERT_TRUE(QFileInfo::exists(src));
 
 	const QString dir_path =
@@ -165,50 +165,50 @@ TEST_F(TaskProjectImportTest, ImportOfDirectoryCreatesFolderHierarchy)
 	ASSERT_TRUE(QFile::copy(src, second));
 
 	olive::ProjectImportTask task(project_->root(), { dir_path });
-	EXPECT_EQ(task.GetFileCount(), 2);
+	EXPECT_EQ(task.get_file_count(), 2);
 
-	ASSERT_TRUE(task.Start());
-	EXPECT_FALSE(task.HasInvalidFiles());
-	EXPECT_EQ(task.GetImportedFootage().size(), 2);
+	ASSERT_TRUE(task.start());
+	EXPECT_FALSE(task.has_invalid_files());
+	EXPECT_EQ(task.get_imported_footage().size(), 2);
 
-	ASSERT_NE(task.GetCommand(), nullptr);
-	task.GetCommand()->redo_now();
+	ASSERT_NE(task.get_command(), nullptr);
+	task.get_command()->redo_now();
 
 	// Importing a directory creates a folder named after it under the target
 	const QVector<olive::Node *> &root_children = project_->root()->children();
 	ASSERT_EQ(root_children.size(), 1);
 	auto *top_folder = dynamic_cast<olive::Folder *>(root_children.first());
 	ASSERT_NE(top_folder, nullptr);
-	EXPECT_EQ(top_folder->GetLabel(), QStringLiteral("media"));
+	EXPECT_EQ(top_folder->get_label(), QStringLiteral("media"));
 
 	// ...which holds the first image plus a subfolder with the second image
 	QVector<olive::Footage *> all_footage =
-		top_folder->ListChildrenOfType<olive::Footage>();
+		top_folder->list_children_of_type<olive::Footage>();
 	EXPECT_EQ(all_footage.size(), 2);
 
 	QVector<olive::Folder *> sub_folders =
-		top_folder->ListChildrenOfType<olive::Folder>();
+		top_folder->list_children_of_type<olive::Folder>();
 	ASSERT_EQ(sub_folders.size(), 1);
-	EXPECT_EQ(sub_folders.first()->GetLabel(), QStringLiteral("sub"));
+	EXPECT_EQ(sub_folders.first()->get_label(), QStringLiteral("sub"));
 
-	task.GetCommand()->undo_now();
+	task.get_command()->undo_now();
 	EXPECT_TRUE(project_->root()->children().isEmpty());
 
-	delete task.GetCommand();
+	delete task.get_command();
 }
 
 TEST_F(TaskProjectImportTest, CancelledBeforeRunReturnsFalseAndDropsCommand)
 {
-	const QString path = TestImagePath();
+	const QString path = test_image_path();
 	ASSERT_TRUE(QFileInfo::exists(path));
 
 	olive::ProjectImportTask task(project_->root(), { path });
 	task.Cancel();
 
-	EXPECT_FALSE(task.Start());
-	EXPECT_EQ(task.GetCommand(), nullptr);
-	EXPECT_TRUE(task.GetImportedFootage().isEmpty());
-	EXPECT_FALSE(task.HasInvalidFiles());
+	EXPECT_FALSE(task.start());
+	EXPECT_EQ(task.get_command(), nullptr);
+	EXPECT_TRUE(task.get_imported_footage().isEmpty());
+	EXPECT_FALSE(task.has_invalid_files());
 	EXPECT_TRUE(project_->root()->children().isEmpty());
 }
 
@@ -256,31 +256,31 @@ protected:
 	{
 		created_disk_manager_ = (olive::DiskManager::instance() == nullptr);
 		if (created_disk_manager_) {
-			olive::DiskManager::CreateInstance();
+			olive::DiskManager::create_instance();
 		}
 
-		olive::ColorManager::SetUpDefaultConfig();
-		olive::NodeFactory::Initialize();
-		olive::ProjectSerializer::Initialize();
+		olive::ColorManager::set_up_default_config();
+		olive::NodeFactory::initialize();
+		olive::ProjectSerializer::initialize();
 	}
 
 	void TearDown() override
 	{
-		olive::ProjectSerializer::Destroy();
+		olive::ProjectSerializer::destroy();
 		if (created_disk_manager_) {
-			olive::DiskManager::DestroyInstance();
+			olive::DiskManager::destroy_instance();
 		}
 	}
 
-	QString SaveProjectToTempFile(olive::Project *project,
+	QString save_project_to_temp_file(olive::Project *project,
 								  const QString &filename)
 	{
 		const QString path = QDir(temp_dir_.path()).filePath(filename);
 		olive::ProjectSerializer::SaveData data(
-			olive::ProjectSerializer::kProject, project, path);
+			olive::ProjectSerializer::k_project, project, path);
 		olive::ProjectSerializer::Result result =
-			olive::ProjectSerializer::Save(data, false);
-		if (result.code() != olive::ProjectSerializer::kSuccess) {
+			olive::ProjectSerializer::save(data, false);
+		if (result.code() != olive::ProjectSerializer::k_success) {
 			return QString();
 		}
 		return path;
@@ -293,24 +293,24 @@ protected:
 TEST_F(TaskProjectLoadTest, LoadingValidProjectSucceeds)
 {
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *node = new olive::TimeInput();
-	node->SetLabel(QStringLiteral("TimeInput"));
+	node->set_label(QStringLiteral("TimeInput"));
 	node->setParent(&project);
 
 	const QString path =
-		SaveProjectToTempFile(&project, QStringLiteral("project.ove"));
+		save_project_to_temp_file(&project, QStringLiteral("project.ove"));
 	ASSERT_FALSE(path.isEmpty());
 	ASSERT_TRUE(QFileInfo::exists(path));
 
 	olive::ProjectLoadTask task(path);
-	EXPECT_EQ(task.GetFilename(), path);
-	EXPECT_EQ(task.GetLoadedProject(), nullptr);
+	EXPECT_EQ(task.get_filename(), path);
+	EXPECT_EQ(task.get_loaded_project(), nullptr);
 
-	ASSERT_TRUE(task.Start()) << task.GetError().toStdString();
+	ASSERT_TRUE(task.start()) << task.get_error().toStdString();
 
-	olive::Project *loaded = task.GetLoadedProject();
+	olive::Project *loaded = task.get_loaded_project();
 	ASSERT_NE(loaded, nullptr);
 	// Project::set_filename() stores native separators on Windows
 	EXPECT_EQ(QDir::fromNativeSeparators(loaded->filename()),
@@ -327,9 +327,9 @@ TEST_F(TaskProjectLoadTest, LoadingMissingFileFails)
 
 	olive::ProjectLoadTask task(path);
 
-	EXPECT_FALSE(task.Start());
-	EXPECT_FALSE(task.GetError().isEmpty());
-	EXPECT_EQ(task.GetLoadedProject(), nullptr);
+	EXPECT_FALSE(task.start());
+	EXPECT_FALSE(task.get_error().isEmpty());
+	EXPECT_EQ(task.get_loaded_project(), nullptr);
 }
 
 TEST_F(TaskProjectLoadTest, LoadingCorruptFileFails)
@@ -344,7 +344,7 @@ TEST_F(TaskProjectLoadTest, LoadingCorruptFileFails)
 
 	olive::ProjectLoadTask task(path);
 
-	EXPECT_FALSE(task.Start());
-	EXPECT_FALSE(task.GetError().isEmpty());
-	EXPECT_EQ(task.GetLoadedProject(), nullptr);
+	EXPECT_FALSE(task.start());
+	EXPECT_FALSE(task.get_error().isEmpty());
+	EXPECT_EQ(task.get_loaded_project(), nullptr);
 }

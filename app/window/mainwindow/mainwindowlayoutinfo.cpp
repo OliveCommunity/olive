@@ -21,10 +21,10 @@
 namespace olive
 {
 
-void MainWindowLayoutInfo::toXml(QXmlStreamWriter *writer) const
+void MainWindowLayoutInfo::to_xml(QXmlStreamWriter *writer) const
 {
 	writer->writeAttribute(QStringLiteral("version"),
-						   QString::number(kVersion));
+						   QString::number(k_version));
 
 	writer->writeStartElement(QStringLiteral("folders"));
 
@@ -84,7 +84,7 @@ void MainWindowLayoutInfo::toXml(QXmlStreamWriter *writer) const
 }
 
 MainWindowLayoutInfo
-MainWindowLayoutInfo::fromXml(QXmlStreamReader *reader,
+MainWindowLayoutInfo::from_xml(QXmlStreamReader *reader,
 							  const QHash<quintptr, Node *> &node_ptrs)
 {
 	MainWindowLayoutInfo info;
@@ -99,12 +99,12 @@ MainWindowLayoutInfo::fromXml(QXmlStreamReader *reader,
 	}
 
 	// Really basic version checking, in the future we may use this to parse multiple versions
-	if (file_version != kVersion) {
+	if (file_version != k_version) {
 	}
 
-	while (XMLReadNextStartElement(reader)) {
+	while (xml_read_next_start_element(reader)) {
 		if (reader->name() == QStringLiteral("folders")) {
-			while (XMLReadNextStartElement(reader)) {
+			while (xml_read_next_start_element(reader)) {
 				if (reader->name() == QStringLiteral("folder")) {
 					quintptr item_id = reader->readElementText().toULongLong();
 
@@ -117,7 +117,7 @@ MainWindowLayoutInfo::fromXml(QXmlStreamReader *reader,
 			}
 
 		} else if (reader->name() == QStringLiteral("timeline")) {
-			while (XMLReadNextStartElement(reader)) {
+			while (xml_read_next_start_element(reader)) {
 				if (reader->name() == QStringLiteral("sequence")) {
 					quintptr item_id = reader->readElementText().toULongLong();
 
@@ -130,7 +130,7 @@ MainWindowLayoutInfo::fromXml(QXmlStreamReader *reader,
 			}
 
 		} else if (reader->name() == QStringLiteral("viewers")) {
-			while (XMLReadNextStartElement(reader)) {
+			while (xml_read_next_start_element(reader)) {
 				if (reader->name() == QStringLiteral("viewer")) {
 					quintptr item_id = reader->readElementText().toULongLong();
 
@@ -147,7 +147,7 @@ MainWindowLayoutInfo::fromXml(QXmlStreamReader *reader,
 				QByteArray::fromBase64(reader->readElementText().toLatin1());
 
 		} else if (reader->name() == QStringLiteral("data")) {
-			while (XMLReadNextStartElement(reader)) {
+			while (xml_read_next_start_element(reader)) {
 				if (reader->name() == QStringLiteral("panel")) {
 					QString id;
 					XMLAttributeLoop(reader, attr)
@@ -160,7 +160,7 @@ MainWindowLayoutInfo::fromXml(QXmlStreamReader *reader,
 					if (!id.isEmpty()) {
 						PanelWidget::Info i;
 
-						while (XMLReadNextStartElement(reader)) {
+						while (xml_read_next_start_element(reader)) {
 							if (reader->name() == QStringLiteral("option")) {
 								QString name;
 

@@ -25,18 +25,18 @@ namespace olive
 {
 
 TimelineCoordinate::TimelineCoordinate()
-	: track_(Track::kNone, 0)
+	: track_(Track::k_none, 0)
 {
 }
 
-TimelineCoordinate::TimelineCoordinate(const rational &frame,
+TimelineCoordinate::TimelineCoordinate(const Rational &frame,
 									   const Track::Reference &track)
 	: frame_(frame)
 	, track_(track)
 {
 }
 
-TimelineCoordinate::TimelineCoordinate(const rational &frame,
+TimelineCoordinate::TimelineCoordinate(const Rational &frame,
 									   const Track::Type &track_type,
 									   const int &track_index)
 	: frame_(frame)
@@ -44,22 +44,22 @@ TimelineCoordinate::TimelineCoordinate(const rational &frame,
 {
 }
 
-const rational &TimelineCoordinate::GetFrame() const
+const Rational &TimelineCoordinate::get_frame() const
 {
 	return frame_;
 }
 
-const Track::Reference &TimelineCoordinate::GetTrack() const
+const Track::Reference &TimelineCoordinate::get_track() const
 {
 	return track_;
 }
 
-void TimelineCoordinate::SetFrame(const rational &frame)
+void TimelineCoordinate::set_frame(const Rational &frame)
 {
 	frame_ = frame;
 }
 
-void TimelineCoordinate::SetTrack(const Track::Reference &track)
+void TimelineCoordinate::set_track(const Track::Reference &track)
 {
 	track_ = track;
 }

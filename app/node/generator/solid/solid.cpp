@@ -24,18 +24,18 @@
 namespace olive
 {
 
-const QString SolidGenerator::kColorInput = QStringLiteral("color_in");
+const QString SolidGenerator::k_color_input = QStringLiteral("color_in");
 
 #define super Node
 
 SolidGenerator::SolidGenerator()
 {
 	// Default to a color that isn't black
-	AddInput(kColorInput, NodeValue::kColor,
+	add_input(k_color_input, NodeValue::k_color,
 			 QVariant::fromValue(Color(1.0f, 0.0f, 0.0f, 1.0f)));
 }
 
-QString SolidGenerator::Name() const
+QString SolidGenerator::name() const
 {
 	return tr("Solid");
 }
@@ -45,36 +45,36 @@ QString SolidGenerator::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.solidgenerator");
 }
 
-QVector<Node::CategoryID> SolidGenerator::Category() const
+QVector<Node::CategoryID> SolidGenerator::category() const
 {
-	return { kCategoryGenerator };
+	return { k_category_generator };
 }
 
-QString SolidGenerator::Description() const
+QString SolidGenerator::description() const
 {
 	return tr("Generate a solid color.");
 }
 
-void SolidGenerator::Retranslate()
+void SolidGenerator::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kColorInput, tr("Color"));
+	set_input_name(k_color_input, tr("Color"));
 }
 
-void SolidGenerator::Value(const NodeValueRow &value,
+void SolidGenerator::value(const NodeValueRow &value,
 						   const NodeGlobals &globals,
 						   NodeValueTable *table) const
 {
-	table->Push(NodeValue::kTexture,
-				Texture::Job(globals.vparams(), ShaderJob(value)), this);
+	table->push(NodeValue::k_texture,
+				Texture::job(globals.vparams(), ShaderJob(value)), this);
 }
 
-ShaderCode SolidGenerator::GetShaderCode(const ShaderRequest &request) const
+ShaderCode SolidGenerator::get_shader_code(const ShaderRequest &request) const
 {
 	Q_UNUSED(request)
 
-	return ShaderCode(FileFunctions::ReadFileAsString(":/shaders/solid.frag"));
+	return ShaderCode(FileFunctions::read_file_as_string(":/shaders/solid.frag"));
 }
 
 }

@@ -50,51 +50,51 @@ SliderBase::SliderBase(QWidget *parent)
 	editor_ = new FocusableLineEdit(this);
 	addWidget(editor_);
 
-	connect(label_, &SliderLabel::focused, this, &SliderBase::ShowEditor);
-	connect(label_, &SliderLabel::RequestReset, this, &SliderBase::ResetValue);
-	connect(editor_, &FocusableLineEdit::Confirmed, this,
-			&SliderBase::LineEditConfirmed);
-	connect(editor_, &FocusableLineEdit::Cancelled, this,
-			&SliderBase::LineEditCancelled);
+	connect(label_, &SliderLabel::focused, this, &SliderBase::show_editor);
+	connect(label_, &SliderLabel::request_reset, this, &SliderBase::reset_value);
+	connect(editor_, &FocusableLineEdit::confirmed, this,
+			&SliderBase::line_edit_confirmed);
+	connect(editor_, &FocusableLineEdit::cancelled, this,
+			&SliderBase::line_edit_cancelled);
 }
 
-void SliderBase::SetAlignment(Qt::Alignment alignment)
+void SliderBase::set_alignment(Qt::Alignment alignment)
 {
 	label_->setAlignment(alignment);
 	editor_->setAlignment(alignment);
 }
 
-bool SliderBase::IsTristate() const
+bool SliderBase::is_tristate() const
 {
 	return tristate_;
 }
 
-void SliderBase::SetTristate()
+void SliderBase::set_tristate()
 {
 	tristate_ = true;
-	UpdateLabel();
+	update_label();
 }
 
-const QVariant &SliderBase::GetValueInternal() const
+const QVariant &SliderBase::get_value_internal() const
 {
 	return value_;
 }
 
-void SliderBase::SetValueInternal(const QVariant &v)
+void SliderBase::set_value_internal(const QVariant &v)
 {
-	if (!CanSetValue()) {
+	if (!can_set_value()) {
 		return;
 	}
 
-	value_ = AdjustValue(v);
+	value_ = adjust_value(v);
 
 	// Disable tristate
 	tristate_ = false;
 
-	UpdateLabel();
+	update_label();
 }
 
-void SliderBase::SetDefaultValue(const QVariant &v)
+void SliderBase::set_default_value(const QVariant &v)
 {
 	default_value_ = v;
 }
@@ -102,12 +102,12 @@ void SliderBase::SetDefaultValue(const QVariant &v)
 void SliderBase::changeEvent(QEvent *e)
 {
 	if (e->type() == QEvent::LanguageChange) {
-		UpdateLabel();
+		update_label();
 	}
 	super::changeEvent(e);
 }
 
-bool SliderBase::GetLabelSubstitution(const QVariant &v, QString *out) const
+bool SliderBase::get_label_substitution(const QVariant &v, QString *out) const
 {
 	for (auto it = label_substitutions_.constBegin();
 		 it != label_substitutions_.constEnd(); it++) {
@@ -120,41 +120,41 @@ bool SliderBase::GetLabelSubstitution(const QVariant &v, QString *out) const
 	return false;
 }
 
-void SliderBase::UpdateLabel()
+void SliderBase::update_label()
 {
 	QString s;
 
 	if (tristate_) {
 		s = tr("---");
-	} else if (GetLabelSubstitution(GetValueInternal(), &s)) {
+	} else if (get_label_substitution(get_value_internal(), &s)) {
 		// String will already be set, just pass through
 	} else {
-		s = GetFormattedValueToString();
+		s = get_formatted_value_to_string();
 	}
 
 	label_->setText(s);
 }
 
-QVariant SliderBase::AdjustValue(const QVariant &value) const
+QVariant SliderBase::adjust_value(const QVariant &value) const
 {
 	return value;
 }
 
-bool SliderBase::CanSetValue() const
+bool SliderBase::can_set_value() const
 {
 	return true;
 }
 
-void SliderBase::ValueSignalEvent(const QVariant &value)
+void SliderBase::value_signal_event(const QVariant &value)
 {
 	Q_UNUSED(value)
 }
 
-void SliderBase::ShowEditor()
+void SliderBase::show_editor()
 {
 	// This was a simple click
 	// Load label's text into editor
-	editor_->setText(ValueToString(value_));
+	editor_->setText(value_to_string(value_));
 
 	// Show editor
 	setCurrentWidget(editor_);
@@ -164,21 +164,21 @@ void SliderBase::ShowEditor()
 	editor_->selectAll();
 }
 
-void SliderBase::LineEditConfirmed()
+void SliderBase::line_edit_confirmed()
 {
 	bool is_valid = true;
-	QVariant test_val = StringToValue(editor_->text(), &is_valid);
+	QVariant test_val = string_to_value(editor_->text(), &is_valid);
 
 	// Ensure editor doesn't signal that the focus is lost
 	editor_->blockSignals(true);
 	label_->blockSignals(true);
 
 	if (is_valid) {
-		SetValueInternal(test_val);
+		set_value_internal(test_val);
 
 		setCurrentWidget(label_);
 
-		ValueSignalEvent(value_);
+		value_signal_event(value_);
 	} else {
 		QMessageBox::critical(
 			this, tr("Invalid Value"),
@@ -193,7 +193,7 @@ void SliderBase::LineEditConfirmed()
 	label_->blockSignals(false);
 }
 
-void SliderBase::LineEditCancelled()
+void SliderBase::line_edit_cancelled()
 {
 	// Ensure editor doesn't signal that the focus is lost
 	editor_->blockSignals(true);
@@ -206,33 +206,33 @@ void SliderBase::LineEditCancelled()
 	label_->blockSignals(false);
 }
 
-void SliderBase::ResetValue()
+void SliderBase::reset_value()
 {
 	if (default_value_.isValid()) {
-		SetValueInternal(default_value_);
-		ValueSignalEvent(value_);
+		set_value_internal(default_value_);
+		value_signal_event(value_);
 	}
 }
 
-void SliderBase::SetFormat(const QString &s, const bool plural)
+void SliderBase::set_format(const QString &s, const bool plural)
 {
 	custom_format_ = s;
 	format_plural_ = plural;
-	UpdateLabel();
+	update_label();
 }
 
-void SliderBase::ClearFormat()
+void SliderBase::clear_format()
 {
 	custom_format_.clear();
-	UpdateLabel();
+	update_label();
 }
 
-bool SliderBase::IsFormatPlural() const
+bool SliderBase::is_format_plural() const
 {
 	return format_plural_;
 }
 
-QString SliderBase::GetFormat() const
+QString SliderBase::get_format() const
 {
 	if (custom_format_.isEmpty()) {
 		return QStringLiteral("%1");
@@ -241,17 +241,17 @@ QString SliderBase::GetFormat() const
 	}
 }
 
-QString SliderBase::GetFormattedValueToString() const
+QString SliderBase::get_formatted_value_to_string() const
 {
-	return GetFormattedValueToString(GetValueInternal());
+	return get_formatted_value_to_string(get_value_internal());
 }
 
-QString SliderBase::GetFormattedValueToString(const QVariant &v) const
+QString SliderBase::get_formatted_value_to_string(const QVariant &v) const
 {
 	if (format_plural_) {
-		return tr(GetFormat().toUtf8().constData(), nullptr, v.toInt());
+		return tr(get_format().toUtf8().constData(), nullptr, v.toInt());
 	} else {
-		return GetFormat().arg(ValueToString(v));
+		return get_format().arg(value_to_string(v));
 	}
 }
 

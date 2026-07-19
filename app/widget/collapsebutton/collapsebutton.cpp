@@ -35,17 +35,17 @@ CollapseButton::CollapseButton(QWidget *parent)
 	setChecked(true);
 	setIconSize(QSize(fontMetrics().height() / 2, fontMetrics().height() / 2));
 
-	connect(this, &CollapseButton::toggled, this, &CollapseButton::UpdateIcon);
+	connect(this, &CollapseButton::toggled, this, &CollapseButton::update_icon);
 
-	UpdateIcon(isChecked());
+	update_icon(isChecked());
 }
 
-void CollapseButton::UpdateIcon(bool e)
+void CollapseButton::update_icon(bool e)
 {
 	if (e) {
-		setIcon(icon::TriDown);
+		setIcon(icon::tri_down);
 	} else {
-		setIcon(icon::TriRight);
+		setIcon(icon::tri_right);
 	}
 }
 

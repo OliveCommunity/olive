@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef OCIOBASENODE_H
-#define OCIOBASENODE_H
+#ifndef OAK_OCIOBASENODE_H
+#define OAK_OCIOBASENODE_H
 
 #include "node/node.h"
 #include "render/job/colortransformjob.h"
@@ -36,13 +36,13 @@ public:
 	virtual void AddedToGraphEvent(Project *p) override;
 	virtual void RemovedFromGraphEvent(Project *p) override;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	static const QString kTextureInput;
+	static const QString k_texture_input;
 
 protected slots:
-	virtual void ConfigChanged() = 0;
+	virtual void config_changed() = 0;
 
 protected:
 	ColorManager *manager() const
@@ -67,4 +67,4 @@ private:
 
 }
 
-#endif // OCIOBASENODE_H
+#endif // OAK_OCIOBASENODE_H

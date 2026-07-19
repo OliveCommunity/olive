@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TRACKVIEWSPLITTER_H
-#define TRACKVIEWSPLITTER_H
+#ifndef OAK_TRACKVIEWSPLITTER_H
+#define OAK_TRACKVIEWSPLITTER_H
 
 #include <QSplitter>
 
@@ -53,20 +53,20 @@ public:
 	TrackViewSplitter(Qt::Alignment vertical_alignment,
 					  QWidget *parent = nullptr);
 
-	void HandleReceiver(TrackViewSplitterHandle *h, int diff);
+	void handle_receiver(TrackViewSplitterHandle *h, int diff);
 
-	void SetHeightWithSizes(QList<int> sizes);
+	void set_height_with_sizes(QList<int> sizes);
 
-	void Insert(int index, int height, QWidget *item);
-	void Remove(int index);
+	void insert(int index, int height, QWidget *item);
+	void remove(int index);
 
-	void SetSpacerHeight(int height);
+	void set_spacer_height(int height);
 
 public slots:
-	void SetTrackHeight(int index, int h);
+	void set_track_height(int index, int h);
 
 signals:
-	void TrackHeightChanged(int index, int height);
+	void track_height_changed(int index, int height);
 
 protected:
 	virtual QSplitterHandle *createHandle() override;
@@ -79,4 +79,4 @@ private:
 
 }
 
-#endif // TRACKVIEWSPLITTER_H
+#endif // OAK_TRACKVIEWSPLITTER_H

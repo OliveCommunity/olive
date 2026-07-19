@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef VIEWERWINDOW_H
-#define VIEWERWINDOW_H
+#ifndef OAK_VIEWERWINDOW_H
+#define OAK_VIEWERWINDOW_H
 
 #include <QWidget>
 
@@ -41,17 +41,17 @@ public:
    * Equivalent to calling SetResolution and SetPixelAspectRatio, just slightly faster since we
    * only calculate the matrix once rather than twice.
    */
-	void SetVideoParams(const VideoParams &params);
+	void set_video_params(const VideoParams &params);
 
 	/**
    * @brief Used to adjust resulting picture to be the right aspect ratio
    */
-	void SetResolution(int width, int height);
+	void set_resolution(int width, int height);
 
 	/**
    * @brief Used to adjust resulting picture to be the right aspect ratio
    */
-	void SetPixelAspectRatio(const rational &pixel_aspect);
+	void set_pixel_aspect_ratio(const Rational &pixel_aspect);
 
 protected:
 	virtual void keyPressEvent(QKeyEvent *e) override;
@@ -59,7 +59,7 @@ protected:
 	virtual void closeEvent(QCloseEvent *e) override;
 
 private:
-	void UpdateMatrix();
+	void update_matrix();
 
 	int width_;
 
@@ -67,9 +67,9 @@ private:
 
 	ViewerDisplayWidget *display_widget_;
 
-	rational pixel_aspect_;
+	Rational pixel_aspect_;
 };
 
 }
 
-#endif // VIEWERWINDOW_H
+#endif // OAK_VIEWERWINDOW_H

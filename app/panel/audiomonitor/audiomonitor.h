@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef AUDIOMONITORPANEL_H
-#define AUDIOMONITORPANEL_H
+#ifndef OAK_AUDIOMONITORPANEL_H
+#define OAK_AUDIOMONITORPANEL_H
 
 #include "panel/panel.h"
 #include "widget/audiomonitor/audiomonitor.h"
@@ -36,22 +36,22 @@ class AudioMonitorPanel : public PanelWidget {
 public:
 	AudioMonitorPanel();
 
-	bool IsPlaying() const
+	bool is_playing() const
 	{
-		return audio_monitor_->IsPlaying();
+		return audio_monitor_->is_playing();
 	}
 
-	void SetParams(const AudioParams &params)
+	void set_params(const AudioParams &params)
 	{
-		audio_monitor_->SetParams(params);
+		audio_monitor_->set_params(params);
 	}
 
 private:
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 	AudioMonitor *audio_monitor_;
 };
 
 }
 
-#endif // AUDIOMONITORPANEL_H
+#endif // OAK_AUDIOMONITORPANEL_H

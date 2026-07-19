@@ -27,10 +27,10 @@ namespace olive
 CustomCacheTask::CustomCacheTask(const QString &sequence_name)
 	: cancelled_through_finish_(false)
 {
-	SetTitle(tr("Caching custom range for \"%1\"").arg(sequence_name));
+	set_title(tr("Caching custom range for \"%1\"").arg(sequence_name));
 }
 
-void CustomCacheTask::Finish()
+void CustomCacheTask::finish()
 {
 	mutex_.lock();
 
@@ -40,11 +40,11 @@ void CustomCacheTask::Finish()
 	mutex_.unlock();
 }
 
-bool CustomCacheTask::Run()
+bool CustomCacheTask::run()
 {
 	mutex_.lock();
 
-	while (!IsCancelled()) {
+	while (!is_cancelled()) {
 		wait_cond_.wait(&mutex_);
 	}
 
@@ -56,7 +56,7 @@ bool CustomCacheTask::Run()
 void CustomCacheTask::CancelEvent()
 {
 	if (!cancelled_through_finish_) {
-		emit Cancelled();
+		emit cancelled();
 	}
 	wait_cond_.wakeOne();
 }

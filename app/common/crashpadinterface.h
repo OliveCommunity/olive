@@ -18,8 +18,8 @@
 
 ***/
 
-#ifndef CRASHPAD_INTERFACE_H
-#define CRASHPAD_INTERFACE_H
+#ifndef OAK_CRASHPAD_INTERFACE_H
+#define OAK_CRASHPAD_INTERFACE_H
 
 #ifdef USE_CRASHPAD
 
@@ -30,4 +30,4 @@ bool InitializeCrashpad();
 
 #endif // USE_CRASHPAD
 
-#endif // CRASHPAD_INTERFACE_H
+#endif // OAK_CRASHPAD_INTERFACE_H

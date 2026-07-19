@@ -23,23 +23,23 @@
 namespace olive
 {
 
-QString HumanStrings::SampleRateToString(const int &sample_rate)
+QString HumanStrings::sample_rate_to_string(const int &sample_rate)
 {
 	return QCoreApplication::translate("AudioParams", "%1 Hz").arg(sample_rate);
 }
 
-QString HumanStrings::ChannelLayoutToString(const uint64_t &layout)
+QString HumanStrings::channel_layout_to_string(const uint64_t &layout)
 {
 	switch (layout) {
-	case kChannelLayoutMono:
+	case k_channel_layout_mono:
 		return QCoreApplication::translate("AudioParams", "Mono");
-	case kChannelLayoutStereo:
+	case k_channel_layout_stereo:
 		return QCoreApplication::translate("AudioParams", "Stereo");
-	case kChannelLayout2_1:
+	case k_channel_layout2_1:
 		return QCoreApplication::translate("AudioParams", "2.1");
-	case kChannelLayout5Point1:
+	case k_channel_layout5_point1:
 		return QCoreApplication::translate("AudioParams", "5.1");
-	case kChannelLayout7Point1:
+	case k_channel_layout7_point1:
 		return QCoreApplication::translate("AudioParams", "7.1");
 	default:
 		return QCoreApplication::translate("AudioParams", "Unknown (0x%1)")
@@ -47,48 +47,48 @@ QString HumanStrings::ChannelLayoutToString(const uint64_t &layout)
 	}
 }
 
-QString HumanStrings::FormatToString(const SampleFormat &f)
+QString HumanStrings::format_to_string(const SampleFormat &f)
 {
 	switch (f) {
-	case SampleFormat::U8:
+	case SampleFormat::u8:
 		return QCoreApplication::translate("AudioParams",
 										   "Unsigned 8-bit (Packed)");
-	case SampleFormat::S16:
+	case SampleFormat::s16:
 		return QCoreApplication::translate("AudioParams",
 										   "Signed 16-bit (Packed)");
-	case SampleFormat::S32:
+	case SampleFormat::s32:
 		return QCoreApplication::translate("AudioParams",
 										   "Signed 32-bit (Packed)");
-	case SampleFormat::S64:
+	case SampleFormat::s64:
 		return QCoreApplication::translate("AudioParams",
 										   "Signed 64-bit (Packed)");
-	case SampleFormat::F32:
+	case SampleFormat::f32:
 		return QCoreApplication::translate("AudioParams",
 										   "Float 32-bit (Packed)");
-	case SampleFormat::F64:
+	case SampleFormat::f64:
 		return QCoreApplication::translate("AudioParams",
 										   "Float 64-bit (Packed)");
-	case SampleFormat::U8P:
+	case SampleFormat::u8_p:
 		return QCoreApplication::translate("AudioParams",
 										   "Unsigned 8-bit (Planar)");
-	case SampleFormat::S16P:
+	case SampleFormat::s16_p:
 		return QCoreApplication::translate("AudioParams",
 										   "Signed 16-bit (Planar)");
-	case SampleFormat::S32P:
+	case SampleFormat::s32_p:
 		return QCoreApplication::translate("AudioParams",
 										   "Signed 32-bit (Planar)");
-	case SampleFormat::S64P:
+	case SampleFormat::s64_p:
 		return QCoreApplication::translate("AudioParams",
 										   "Signed 64-bit (Planar)");
-	case SampleFormat::F32P:
+	case SampleFormat::f32_p:
 		return QCoreApplication::translate("AudioParams",
 										   "Float 32-bit (Planar)");
-	case SampleFormat::F64P:
+	case SampleFormat::f64_p:
 		return QCoreApplication::translate("AudioParams",
 										   "Float 64-bit (Planar)");
 
-	case SampleFormat::INVALID:
-	case SampleFormat::COUNT:
+	case SampleFormat::invalid:
+	case SampleFormat::count:
 		break;
 	}
 

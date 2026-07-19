@@ -33,20 +33,20 @@ HistoryWidget::HistoryWidget(QWidget *parent)
 
 	this->setModel(stack_);
 	this->setRootIsDecorated(false);
-	connect(stack_, &UndoStack::indexChanged, this,
-			&HistoryWidget::indexChanged);
+	connect(stack_, &UndoStack::index_changed, this,
+			&HistoryWidget::index_changed);
 	connect(this->selectionModel(), &QItemSelectionModel::currentRowChanged,
-			this, &HistoryWidget::currentRowChanged);
+			this, &HistoryWidget::current_row_changed);
 }
 
-void HistoryWidget::indexChanged(int i)
+void HistoryWidget::index_changed(int i)
 {
 	this->selectionModel()->select(this->model()->index(i - 1, 0),
 								   QItemSelectionModel::ClearAndSelect |
 									   QItemSelectionModel::Rows);
 }
 
-void HistoryWidget::currentRowChanged(const QModelIndex &current,
+void HistoryWidget::current_row_changed(const QModelIndex &current,
 									  const QModelIndex &previous)
 {
 	size_t jump_to = (current.row() + 1);

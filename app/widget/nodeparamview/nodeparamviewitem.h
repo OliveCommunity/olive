@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEPARAMVIEWITEM_H
-#define NODEPARAMVIEWITEM_H
+#ifndef OAK_NODEPARAMVIEWITEM_H
+#define OAK_NODEPARAMVIEWITEM_H
 
 #include <QCheckBox>
 #include <QGridLayout>
@@ -43,9 +43,9 @@ namespace olive
 {
 
 enum NodeParamViewCheckBoxBehavior {
-	kNoCheckBoxes,
-	kCheckBoxesOn,
-	kCheckBoxesOnNonConnected
+	k_no_check_boxes,
+	k_check_boxes_on,
+	k_check_boxes_on_non_connected
 };
 
 class NodeParamViewItemBody : public QWidget {
@@ -55,36 +55,36 @@ public:
 						  NodeParamViewCheckBoxBehavior create_checkboxes,
 						  QWidget *parent = nullptr);
 
-	void SetTimeTarget(ViewerOutput *target);
+	void set_time_target(ViewerOutput *target);
 
-	void Retranslate();
+	void retranslate();
 
-	int GetElementY(NodeInput c) const;
+	int get_element_y(NodeInput c) const;
 
 	// Set the timebase of any timebased widgets contained here
-	void SetTimebase(const rational &timebase);
+	void set_timebase(const Rational &timebase);
 
-	void SetInputChecked(const NodeInput &input, bool e);
+	void set_input_checked(const NodeInput &input, bool e);
 
 signals:
-	void RequestSelectNode(Node *node);
+	void request_select_node(Node *node);
 
-	void ArrayExpandedChanged(bool e);
+	void array_expanded_changed(bool e);
 
-	void InputCheckedChanged(const NodeInput &input, bool e);
+	void input_checked_changed(const NodeInput &input, bool e);
 
-	void RequestEditTextInViewer();
+	void request_edit_text_in_viewer();
 
 private:
-	void CreateWidgets(QGridLayout *layout, Node *node, const QString &input,
+	void create_widgets(QGridLayout *layout, Node *node, const QString &input,
 					   int element, int row_index);
 
-	void UpdateUIForEdgeConnection(const NodeInput &input);
+	void update_ui_for_edge_connection(const NodeInput &input);
 
-	void PlaceWidgetsFromBridge(QGridLayout *layout,
+	void place_widgets_from_bridge(QGridLayout *layout,
 								NodeParamViewWidgetBridge *bridge, int row);
 
-	void InputArraySizeChangedInternal(Node *node, const QString &input,
+	void input_array_size_changed_internal(Node *node, const QString &input,
 									   int size);
 
 	struct InputUI {
@@ -111,8 +111,8 @@ private:
 		NodeParamViewArrayButton *append_btn;
 	};
 
-	void SetTimeTargetOnInputUI(const InputUI &ui);
-	void SetTimebaseOnInputUI(const InputUI &ui);
+	void set_time_target_on_input_ui(const InputUI &ui);
+	void set_timebase_on_input_ui(const InputUI &ui);
 
 	Node *node_;
 
@@ -120,7 +120,7 @@ private:
 
 	QHash<NodeInputPair, CollapseButton *> array_collapse_buttons_;
 
-	rational timebase_;
+	Rational timebase_;
 
 	ViewerOutput *time_target_;
 
@@ -134,38 +134,38 @@ private:
    * Serves as an effective "maximum column" index because the keyframe button is always aligned
    * to the right edge.
    */
-	static const int kKeyControlColumn;
+	static const int k_key_control_column;
 
-	static const int kArrayInsertColumn;
-	static const int kArrayRemoveColumn;
-	static const int kExtraButtonColumn;
+	static const int k_array_insert_column;
+	static const int k_array_remove_column;
+	static const int k_extra_button_column;
 
-	static const int kOptionalCheckBox;
-	static const int kArrayCollapseBtnColumn;
-	static const int kLabelColumn;
-	static const int kWidgetStartColumn;
-	static const int kMaxWidgetColumn;
+	static const int k_optional_check_box;
+	static const int k_array_collapse_btn_column;
+	static const int k_label_column;
+	static const int k_widget_start_column;
+	static const int k_max_widget_column;
 
 private slots:
-	void EdgeChanged(Node *output, const NodeInput &input);
+	void edge_changed(Node *output, const NodeInput &input);
 
-	void ArrayCollapseBtnPressed(bool checked);
+	void array_collapse_btn_pressed(bool checked);
 
-	void InputArraySizeChanged(const QString &input, int old_sz, int size);
+	void input_array_size_changed(const QString &input, int old_sz, int size);
 
-	void ArrayAppendClicked();
+	void array_append_clicked();
 
-	void ArrayInsertClicked();
+	void array_insert_clicked();
 
-	void ArrayRemoveClicked();
+	void array_remove_clicked();
 
-	void ToggleArrayExpanded();
+	void toggle_array_expanded();
 
-	void ReplaceWidgets(const NodeInput &input);
+	void replace_widgets(const NodeInput &input);
 
-	void ShowSpeedDurationDialogForNode();
+	void show_speed_duration_dialog_for_node();
 
-	void OptionalCheckBoxClicked(bool e);
+	void optional_check_box_clicked(bool e);
 };
 
 class NodeParamViewItem : public NodeParamViewItemBase {
@@ -175,63 +175,63 @@ public:
 					  NodeParamViewCheckBoxBehavior create_checkboxes,
 					  QWidget *parent = nullptr);
 
-	void SetTimeTarget(ViewerOutput *target)
+	void set_time_target(ViewerOutput *target)
 	{
 		time_target_ = target;
 
-		body_->SetTimeTarget(target);
+		body_->set_time_target(target);
 	}
 
-	void SetTimebase(const rational &timebase)
+	void set_timebase(const Rational &timebase)
 	{
 		timebase_ = timebase;
 
-		body_->SetTimebase(timebase);
+		body_->set_timebase(timebase);
 	}
 
-	Node *GetContext() const
+	Node *get_context() const
 	{
 		return ctx_;
 	}
 
-	void SetContext(Node *ctx)
+	void set_context(Node *ctx)
 	{
 		ctx_ = ctx;
 	}
 
-	Node *GetNode() const
+	Node *get_node() const
 	{
 		return node_;
 	}
 
-	int GetElementY(const NodeInput &c) const;
+	int get_element_y(const NodeInput &c) const;
 
-	void SetInputChecked(const NodeInput &input, bool e);
+	void set_input_checked(const NodeInput &input, bool e);
 
-	KeyframeView::NodeConnections &GetKeyframeConnections()
+	KeyframeView::NodeConnections &get_keyframe_connections()
 	{
 		return keyframe_connections_;
 	}
 
-	void SetKeyframeConnections(const KeyframeView::NodeConnections &c)
+	void set_keyframe_connections(const KeyframeView::NodeConnections &c)
 	{
 		keyframe_connections_ = c;
 	}
 
 signals:
-	void RequestSelectNode(Node *node);
+	void request_select_node(Node *node);
 
-	void ArrayExpandedChanged(bool e);
+	void array_expanded_changed(bool e);
 
-	void InputCheckedChanged(const NodeInput &input, bool e);
+	void input_checked_changed(const NodeInput &input, bool e);
 
-	void RequestEditTextInViewer();
+	void request_edit_text_in_viewer();
 
-	void InputArraySizeChanged(const QString &input, int old_size,
+	void input_array_size_changed(const QString &input, int old_size,
 							   int new_size);
 
 protected slots:
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 private:
 	NodeParamViewItemBody *body_;
@@ -247,16 +247,16 @@ private:
 
 	ViewerOutput *time_target_;
 
-	rational timebase_;
+	Rational timebase_;
 
 	KeyframeView::NodeConnections keyframe_connections_;
 
 private slots:
-	void RecreateBody();
-	void UpdateMessagePanel();
-	void ClearMessages();
+	void recreate_body();
+	void update_message_panel();
+	void clear_messages();
 };
 
 }
 
-#endif // NODEPARAMVIEWITEM_H
+#endif // OAK_NODEPARAMVIEWITEM_H

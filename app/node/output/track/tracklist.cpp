@@ -39,7 +39,7 @@ TrackList::TrackList(Sequence *parent, const Track::Type &type,
 {
 }
 
-Track *TrackList::GetTrackAt(int index) const
+Track *TrackList::get_track_at(int index) const
 {
 	if (index >= 0 && index < track_cache_.size()) {
 		return track_cache_.at(index);
@@ -48,10 +48,10 @@ Track *TrackList::GetTrackAt(int index) const
 	}
 }
 
-void TrackList::TrackConnected(Node *node, int element)
+void TrackList::track_connected(Node *node, int element)
 {
 	if (element == -1) {
-		parent()->InvalidateAll(track_input(), element);
+		parent()->invalidate_all(track_input(), element);
 		return;
 	}
 
@@ -63,9 +63,9 @@ void TrackList::TrackConnected(Node *node, int element)
 
 	// Determine where in the cache this block will be
 	int cache_index = -1;
-	for (int i = element + 1; i < ArraySize(); i++) {
+	for (int i = element + 1; i < array_size(); i++) {
 		// Find next track because this will be the index we insert at
-		cache_index = GetCacheIndexFromArrayIndex(i);
+		cache_index = get_cache_index_from_array_index(i);
 
 		if (cache_index >= 0) {
 			break;
@@ -81,33 +81,33 @@ void TrackList::TrackConnected(Node *node, int element)
 	track_array_indexes_.insert(cache_index, element);
 
 	// Update track indexes in the list (including this track)
-	UpdateTrackIndexesFrom(cache_index);
+	update_track_indexes_from(cache_index);
 
-	connect(track, &Track::TrackLengthChanged, this,
-			&TrackList::UpdateTotalLength);
+	connect(track, &Track::track_length_changed, this,
+			&TrackList::update_total_length);
 	track_height_connections_.insert(
-		track, connect(track, &Track::TrackHeightChanged, this, [this]() {
+		track, connect(track, &Track::track_height_changed, this, [this]() {
 			Track *t = static_cast<Track *>(sender());
-			emit TrackHeightChanged(t, t->GetTrackHeightInPixels());
+			emit track_height_changed(t, t->get_track_height_in_pixels());
 		}));
 
 	track->set_type(type_);
 	track->set_sequence(parent());
 
-	emit TrackListChanged();
+	emit track_list_changed();
 
 	// This function must be called after the track is added to track_cache_, since it uses track_cache_ to determine
 	// the track's index
-	emit TrackAdded(track);
+	emit track_added(track);
 
-	UpdateTotalLength();
+	update_total_length();
 }
 
-void TrackList::TrackDisconnected(Node *node, int element)
+void TrackList::track_disconnected(Node *node, int element)
 {
 	if (element == -1) {
 		// User has replaced the entire array, we will invalidate everything
-		parent()->InvalidateAll(track_input(), element);
+		parent()->invalidate_all(track_input(), element);
 		return;
 	}
 
@@ -118,38 +118,38 @@ void TrackList::TrackDisconnected(Node *node, int element)
 	}
 
 	// Traverse through Tracks uncaching and disconnecting them
-	emit TrackRemoved(track);
+	emit track_removed(track);
 
-	int cache_index = GetCacheIndexFromArrayIndex(element);
+	int cache_index = get_cache_index_from_array_index(element);
 
 	// Remove track here
 	track_cache_.removeAt(cache_index);
 	track_array_indexes_.removeAt(cache_index);
 
 	// Update indices for all subsequent tracks
-	UpdateTrackIndexesFrom(cache_index);
+	update_track_indexes_from(cache_index);
 
-	track->SetIndex(-1);
-	track->set_type(Track::kNone);
+	track->set_index(-1);
+	track->set_type(Track::k_none);
 	track->set_sequence(nullptr);
 
-	disconnect(track, &Track::TrackLengthChanged, this,
-			   &TrackList::UpdateTotalLength);
+	disconnect(track, &Track::track_length_changed, this,
+			   &TrackList::update_total_length);
 	disconnect(track_height_connections_.take(track));
 
-	emit TrackListChanged();
+	emit track_list_changed();
 
-	UpdateTotalLength();
+	update_total_length();
 }
 
-void TrackList::UpdateTrackIndexesFrom(int index)
+void TrackList::update_track_indexes_from(int index)
 {
 	for (int i = index; i < track_cache_.size(); i++) {
-		track_cache_.at(i)->SetIndex(i);
+		track_cache_.at(i)->set_index(i);
 	}
 }
 
-Project *TrackList::GetParentGraph() const
+Project *TrackList::get_parent_graph() const
 {
 	return parent()->parent();
 }
@@ -169,22 +169,22 @@ Sequence *TrackList::parent() const
 	return static_cast<Sequence *>(QObject::parent());
 }
 
-int TrackList::ArraySize() const
+int TrackList::array_size() const
 {
-	return parent()->InputArraySize(track_input());
+	return parent()->input_array_size(track_input());
 }
 
-void TrackList::ArrayAppend()
+void TrackList::array_append()
 {
-	parent()->InputArrayAppend(track_input());
+	parent()->input_array_append(track_input());
 }
 
-void TrackList::ArrayRemoveLast()
+void TrackList::array_remove_last()
 {
-	parent()->InputArrayRemoveLast(track_input());
+	parent()->input_array_remove_last(track_input());
 }
 
-void TrackList::UpdateTotalLength()
+void TrackList::update_total_length()
 {
 	total_length_ = 0;
 
@@ -194,7 +194,7 @@ void TrackList::UpdateTotalLength()
 		}
 	}
 
-	emit LengthChanged(total_length_);
+	emit length_changed(total_length_);
 }
 
 }

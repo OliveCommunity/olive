@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef POINTERTIMELINETOOL_H
-#define POINTERTIMELINETOOL_H
+#ifndef OAK_POINTERTIMELINETOOL_H
+#define OAK_POINTERTIMELINETOOL_H
 
 #include "tool.h"
 
@@ -31,27 +31,27 @@ class PointerTool : public TimelineTool {
 public:
 	PointerTool(TimelineWidget *parent);
 
-	virtual void MousePress(TimelineViewMouseEvent *event) override;
-	virtual void MouseMove(TimelineViewMouseEvent *event) override;
-	virtual void MouseRelease(TimelineViewMouseEvent *event) override;
+	virtual void mouse_press(TimelineViewMouseEvent *event) override;
+	virtual void mouse_move(TimelineViewMouseEvent *event) override;
+	virtual void mouse_release(TimelineViewMouseEvent *event) override;
 
-	virtual void HoverMove(TimelineViewMouseEvent *event) override;
+	virtual void hover_move(TimelineViewMouseEvent *event) override;
 
 protected:
-	virtual void FinishDrag(TimelineViewMouseEvent *event);
+	virtual void finish_drag(TimelineViewMouseEvent *event);
 
-	virtual void InitiateDrag(Block *clicked_item,
+	virtual void initiate_drag(Block *clicked_item,
 							  Timeline::MovementMode trim_mode,
 							  Qt::KeyboardModifiers modifiers);
 
-	TimelineViewGhostItem *GetExistingGhostFromBlock(Block *block);
+	TimelineViewGhostItem *get_existing_ghost_from_block(Block *block);
 
-	TimelineViewGhostItem *AddGhostFromBlock(Block *block,
+	TimelineViewGhostItem *add_ghost_from_block(Block *block,
 											 Timeline::MovementMode mode,
 											 bool check_if_exists = false);
 
-	TimelineViewGhostItem *AddGhostFromNull(const rational &in,
-											const rational &out,
+	TimelineViewGhostItem *add_ghost_from_null(const Rational &in,
+											const Rational &out,
 											const Track::Reference &track,
 											Timeline::MovementMode mode);
 
@@ -61,7 +61,7 @@ protected:
    * Assumes ghost->data() is a Block. Ensures no Ghost's in point becomes a negative timecode. Also ensures no
    * Ghost's length becomes 0 or negative.
    */
-	rational ValidateInTrimming(rational movement);
+	Rational validate_in_trimming(Rational movement);
 
 	/**
    * @brief Validates Ghosts that are getting their out points trimmed
@@ -69,11 +69,11 @@ protected:
    * Assumes ghost->data() is a Block. Ensures no Ghost's in point becomes a negative timecode. Also ensures no
    * Ghost's length becomes 0 or negative.
    */
-	rational ValidateOutTrimming(rational movement);
+	Rational validate_out_trimming(Rational movement);
 
-	virtual void ProcessDrag(const TimelineCoordinate &mouse_pos);
+	virtual void process_drag(const TimelineCoordinate &mouse_pos);
 
-	void InitiateDragInternal(Block *clicked_item,
+	void initiate_drag_internal(Block *clicked_item,
 							  Timeline::MovementMode trim_mode,
 							  Qt::KeyboardModifiers modifiers,
 							  bool dont_roll_trims, bool allow_nongap_rolling,
@@ -88,46 +88,46 @@ protected:
 		drag_movement_mode_ = d;
 	}
 
-	static bool CanTransitionMove(TransitionBlock *transit,
+	static bool can_transition_move(TransitionBlock *transit,
 								  const QVector<Block *> &clips);
 
-	void SetMovementAllowed(bool e)
+	void set_movement_allowed(bool e)
 	{
 		movement_allowed_ = e;
 	}
 
-	void SetTrimmingAllowed(bool e)
+	void set_trimming_allowed(bool e)
 	{
 		trimming_allowed_ = e;
 	}
 
-	void SetTrackMovementAllowed(bool e)
+	void set_track_movement_allowed(bool e)
 	{
 		track_movement_allowed_ = e;
 	}
 
-	void SetGapTrimmingAllowed(bool e)
+	void set_gap_trimming_allowed(bool e)
 	{
 		gap_trimming_allowed_ = e;
 	}
 
-	void SetClickedItem(Block *b)
+	void set_clicked_item(Block *b)
 	{
 		clicked_item_ = b;
 	}
 
 private:
-	Timeline::MovementMode IsCursorInTrimHandle(Block *block, qreal cursor_x);
+	Timeline::MovementMode is_cursor_in_trim_handle(Block *block, qreal cursor_x);
 
-	void AddGhostInternal(TimelineViewGhostItem *ghost,
+	void add_ghost_internal(TimelineViewGhostItem *ghost,
 						  Timeline::MovementMode mode);
 
-	bool IsClipTrimmable(Block *clip, const QVector<Block *> &items,
+	bool is_clip_trimmable(Block *clip, const QVector<Block *> &items,
 						 const Timeline::MovementMode &mode);
 
-	void ProcessGhostsForSliding();
+	void process_ghosts_for_sliding();
 
-	void ProcessGhostsForRolling();
+	void process_ghosts_for_rolling();
 
 	bool movement_allowed_;
 	bool trimming_allowed_;
@@ -146,4 +146,4 @@ private:
 
 }
 
-#endif // POINTERTIMELINETOOL_H
+#endif // OAK_POINTERTIMELINETOOL_H

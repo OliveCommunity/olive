@@ -4,8 +4,8 @@
 
 #include "common/ffmpegutils.h"
 #include "node/value.h"
-#include "pluginSupport/OliveHost.h"
-#include "pluginSupport/OlivePluginInstance.h"
+#include "pluginSupport/olivehost.h"
+#include "pluginSupport/oliveplugininstance.h"
 #include "render/job/pluginjob.h"
 #include "render/plugin/pluginrenderer.h"
 #include "render/texture.h"
@@ -14,14 +14,14 @@
 namespace
 {
 
-olive::TexturePtr CreateSolidTexture(const olive::VideoParams &params)
+olive::TexturePtr create_solid_texture(const olive::VideoParams &params)
 {
-	olive::AVFramePtr frame = olive::CreateAVFramePtr();
-	frame->set_format(olive::FFmpegUtils::GetFFmpegPixelFormat(
+	olive::AVFramePtr frame = olive::create_av_frame_ptr();
+	frame->set_format(olive::FFmpegUtils::get_f_fmpeg_pixel_format(
 		params.format(), params.channel_count()));
 	frame->set_width(params.width());
 	frame->set_height(params.height());
-	if (frame->format() == FB_PIX_FMT_NONE) {
+	if (frame->format() == fb_pix_fmt_none) {
 		return nullptr;
 	}
 	if (frame->get_buffer(0) < 0) {
@@ -37,7 +37,7 @@ olive::TexturePtr CreateSolidTexture(const olive::VideoParams &params)
 	}
 
 	olive::TexturePtr texture = std::make_shared<olive::Texture>(params);
-	texture->handleFrame(frame);
+	texture->handle_frame(frame);
 	return texture;
 }
 
@@ -66,7 +66,7 @@ TEST(PluginIntegration, ChromaKeyerCreateAndRender)
 	const QChar separator = QDir::listSeparator();
 	const QStringList paths = raw.split(separator, Qt::SkipEmptyParts);
 	for (const QString &p : paths) {
-		olive::plugin::loadPlugins(p);
+		olive::plugin::load_plugins(p);
 	}
 
 	auto *cache = OFX::Host::PluginCache::getPluginCache();
@@ -101,23 +101,23 @@ TEST(PluginIntegration, ChromaKeyerCreateAndRender)
 	ASSERT_TRUE(olive_instance);
 
 	// Use U16 format as the ChromaKeyer plugin expects 16-bit input
-	olive::VideoParams params(320, 240, olive::core::PixelFormat::U16, 4);
+	olive::VideoParams params(320, 240, olive::core::PixelFormat::u16, 4);
 	olive_instance->setVideoParam(params);
 
-	olive::TexturePtr input = CreateSolidTexture(params);
+	olive::TexturePtr input = create_solid_texture(params);
 	ASSERT_TRUE(input);
 
 	olive::NodeValueRow row;
 	row.insert(QString::fromStdString(kOfxImageEffectSimpleSourceClipName),
-			   olive::NodeValue(olive::NodeValue::kTexture, input));
+			   olive::NodeValue(olive::NodeValue::k_texture, input));
 	row.insert(QStringLiteral("Bg"),
-			   olive::NodeValue(olive::NodeValue::kTexture, input));
+			   olive::NodeValue(olive::NodeValue::k_texture, input));
 
 	olive::plugin::PluginJob job(instance, nullptr, row);
 	olive::TexturePtr output = std::make_shared<olive::Texture>(params);
 
 	olive::plugin::PluginRenderer renderer(nullptr);
-	renderer.RenderPlugin(input, job, output, params, true, false);
+	renderer.render_plugin(input, job, output, params, true, false);
 
 	EXPECT_TRUE(output->frame());
 }

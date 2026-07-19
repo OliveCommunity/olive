@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECTPROPERTIESDIALOG_H
-#define PROJECTPROPERTIESDIALOG_H
+#ifndef OAK_PROJECTPROPERTIESDIALOG_H
+#define OAK_PROJECTPROPERTIESDIALOG_H
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -44,7 +44,7 @@ public slots:
 	virtual void accept() override;
 
 private:
-	bool VerifyPathAndWarnIfBad(const QString &path);
+	bool verify_path_and_warn_if_bad(const QString &path);
 
 	Project *working_project_;
 
@@ -60,17 +60,17 @@ private:
 
 	PathWidget *custom_cache_path_;
 
-	static const int kDiskCacheRadioCount = 3;
-	QRadioButton *disk_cache_radios_[kDiskCacheRadioCount];
+	static const int k_disk_cache_radio_count = 3;
+	QRadioButton *disk_cache_radios_[k_disk_cache_radio_count];
 
 private slots:
-	void BrowseForOCIOConfig();
+	void browse_for_ocio_config();
 
-	void OCIOFilenameUpdated();
+	void ocio_filename_updated();
 
-	void OpenDiskCacheSettings();
+	void open_disk_cache_settings();
 };
 
 }
 
-#endif // PROJECTPROPERTIESDIALOG_H
+#endif // OAK_PROJECTPROPERTIESDIALOG_H

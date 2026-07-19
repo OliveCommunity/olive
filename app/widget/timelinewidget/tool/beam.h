@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef BEAMTIMELINETOOL_H
-#define BEAMTIMELINETOOL_H
+#ifndef OAK_BEAMTIMELINETOOL_H
+#define OAK_BEAMTIMELINETOOL_H
 
 #include "tool.h"
 
@@ -31,12 +31,12 @@ class BeamTool : public TimelineTool {
 public:
 	BeamTool(TimelineWidget *parent);
 
-	virtual void HoverMove(TimelineViewMouseEvent *event) override;
+	virtual void hover_move(TimelineViewMouseEvent *event) override;
 
 protected:
-	TimelineCoordinate ValidatedCoordinate(TimelineCoordinate coord);
+	TimelineCoordinate validated_coordinate(TimelineCoordinate coord);
 };
 
 }
 
-#endif // BEAMTIMELINETOOL_H
+#endif // OAK_BEAMTIMELINETOOL_H

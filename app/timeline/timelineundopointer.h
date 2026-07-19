@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINEUNDOPOINTER_H
-#define TIMELINEUNDOPOINTER_H
+#ifndef OAK_TIMELINEUNDOPOINTER_H
+#define OAK_TIMELINEUNDOPOINTER_H
 
 #include "node/block/gap/gap.h"
 #include "node/output/track/track.h"
@@ -44,7 +44,7 @@ namespace olive
  */
 class BlockTrimCommand : public UndoCommand {
 public:
-	BlockTrimCommand(Track *track, Block *block, rational new_length,
+	BlockTrimCommand(Track *track, Block *block, Rational new_length,
 					 Timeline::MovementMode mode)
 		: track_(track)
 		, block_(block)
@@ -61,7 +61,7 @@ public:
 		delete deleted_adjacent_command_;
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return track_->project();
 	}
@@ -69,7 +69,7 @@ public:
 	/**
    * @brief Set this if the trim should always affect the adjacent clip and not create a gap
    */
-	void SetTrimIsARollEdit(bool e)
+	void set_trim_is_a_roll_edit(bool e)
 	{
 		trim_is_a_roll_edit_ = e;
 	}
@@ -81,7 +81,7 @@ public:
    * default it also gets removed from the whole graph. Set this to FALSE to disable that
    * functionality.
    */
-	void SetRemoveZeroLengthFromGraph(bool e)
+	void set_remove_zero_length_from_graph(bool e)
 	{
 		remove_block_from_graph_ = e;
 	}
@@ -93,12 +93,12 @@ protected:
 
 private:
 	bool doing_nothing_;
-	rational trim_diff_;
+	Rational trim_diff_;
 
 	Track *track_;
 	Block *block_;
-	rational old_length_;
-	rational new_length_;
+	Rational old_length_;
+	Rational new_length_;
 	Timeline::MovementMode mode_;
 
 	Block *adjacent_;
@@ -117,7 +117,7 @@ class TrackSlideCommand : public UndoCommand {
 public:
 	TrackSlideCommand(Track *track, const QList<Block *> &moving_blocks,
 					  Block *in_adjacent, Block *out_adjacent,
-					  const rational &movement)
+					  const Rational &movement)
 		: track_(track)
 		, blocks_(moving_blocks)
 		, movement_(movement)
@@ -137,7 +137,7 @@ public:
 		delete out_adjacent_remove_command_;
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return track_->project();
 	}
@@ -152,7 +152,7 @@ protected:
 private:
 	Track *track_;
 	QList<Block *> blocks_;
-	rational movement_;
+	Rational movement_;
 
 	bool we_created_in_adjacent_;
 	bool we_removed_in_adjacent_;
@@ -176,7 +176,7 @@ private:
 class TrackPlaceBlockCommand : public UndoCommand {
 public:
 	TrackPlaceBlockCommand(TrackList *timeline, int track, Block *block,
-						   rational in)
+						   Rational in)
 		: timeline_(timeline)
 		, track_index_(track)
 		, in_(in)
@@ -188,7 +188,7 @@ public:
 
 	virtual ~TrackPlaceBlockCommand() override;
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return timeline_->parent()->project();
 	}
@@ -201,7 +201,7 @@ protected:
 private:
 	TrackList *timeline_;
 	int track_index_;
-	rational in_;
+	Rational in_;
 	GapBlock *gap_;
 	Block *insert_;
 	QVector<TimelineAddTrackCommand *> add_track_commands_;
@@ -211,4 +211,4 @@ private:
 
 }
 
-#endif // TIMELINEUNDOPOINTER_H
+#endif // OAK_TIMELINEUNDOPOINTER_H

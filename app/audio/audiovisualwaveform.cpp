@@ -29,19 +29,19 @@
 namespace olive
 {
 
-const rational AudioVisualWaveform::kMinimumSampleRate = rational(1, 8);
-const rational AudioVisualWaveform::kMaximumSampleRate = 1024;
+const Rational AudioVisualWaveform::k_minimum_sample_rate = Rational(1, 8);
+const Rational AudioVisualWaveform::k_maximum_sample_rate = 1024;
 
 AudioVisualWaveform::AudioVisualWaveform()
 	: channels_(0)
 {
-	for (rational i = kMinimumSampleRate; i <= kMaximumSampleRate; i *= 2) {
+	for (Rational i = k_minimum_sample_rate; i <= k_maximum_sample_rate; i *= 2) {
 		mipmapped_data_.insert({ i, Sample() });
 	}
 }
 
-void AudioVisualWaveform::OverwriteSamplesFromBuffer(
-	const SampleBuffer &samples, int sample_rate, const rational &start,
+void AudioVisualWaveform::overwrite_samples_from_buffer(
+	const SampleBuffer &samples, int sample_rate, const Rational &start,
 	double target_rate, Sample &data, size_t &start_index,
 	size_t &samples_length)
 {
@@ -64,16 +64,16 @@ void AudioVisualWaveform::OverwriteSamplesFromBuffer(
 			size_t(qRound64((double(i + channels_) * chunk_size))) / channels_,
 			samples.sample_count());
 
-		Sample summary = SumSamples(samples, src_start, src_end - src_start);
+		Sample summary = sum_samples(samples, src_start, src_end - src_start);
 
 		memcpy(&data.data()[i + start_index], summary.data(),
 			   summary.size() * sizeof(SamplePerChannel));
 	}
 }
 
-void AudioVisualWaveform::OverwriteSamplesFromMipmap(
+void AudioVisualWaveform::overwrite_samples_from_mipmap(
 	const AudioVisualWaveform::Sample &input, double input_sample_rate,
-	size_t &input_start, size_t &input_length, const rational &start,
+	size_t &input_start, size_t &input_length, const Rational &start,
 	double output_rate, AudioVisualWaveform::Sample &output_data)
 {
 	size_t start_index = time_to_samples(start, output_rate);
@@ -91,7 +91,7 @@ void AudioVisualWaveform::OverwriteSamplesFromMipmap(
 
 	for (size_t i = 0; i < samples_length; i += channels_) {
 		Sample summary =
-			ReSumSamples(&input.data()[input_start + (i * chunk_size)],
+			re_sum_samples(&input.data()[input_start + (i * chunk_size)],
 						 chunk_size * channels_, channels_);
 
 		memcpy(&output_data.data()[i + start_index], summary.data(),
@@ -102,31 +102,31 @@ void AudioVisualWaveform::OverwriteSamplesFromMipmap(
 	input_length = samples_length;
 }
 
-void AudioVisualWaveform::ValidateVirtualStart(const rational &new_start)
+void AudioVisualWaveform::validate_virtual_start(const Rational &new_start)
 {
 	if (length_ == 0) {
 		virtual_start_ = new_start;
 	} else if (virtual_start_ > new_start) {
-		TrimIn(new_start - virtual_start_);
+		trim_in(new_start - virtual_start_);
 	}
 }
 
-void AudioVisualWaveform::OverwriteSamples(const SampleBuffer &samples,
+void AudioVisualWaveform::overwrite_samples(const SampleBuffer &samples,
 										   int sample_rate,
-										   const rational &start)
+										   const Rational &start)
 {
 	if (!channels_) {
 		qWarning() << "Failed to write samples - channel count is zero";
 		return;
 	}
 
-	ValidateVirtualStart(start);
+	validate_virtual_start(start);
 
 	// Process the largest mipmap directly for the samples
 	auto current_mipmap = mipmapped_data_.rbegin();
 	size_t input_start, input_length;
-	OverwriteSamplesFromBuffer(samples, sample_rate, start - virtual_start_,
-							   current_mipmap->first.toDouble(),
+	overwrite_samples_from_buffer(samples, sample_rate, start - virtual_start_,
+							   current_mipmap->first.to_double(),
 							   current_mipmap->second, input_start,
 							   input_length);
 
@@ -139,37 +139,37 @@ void AudioVisualWaveform::OverwriteSamples(const SampleBuffer &samples,
 			break;
 		}
 
-		OverwriteSamplesFromMipmap(
-			previous_mipmap->second, previous_mipmap->first.toDouble(),
+		overwrite_samples_from_mipmap(
+			previous_mipmap->second, previous_mipmap->first.to_double(),
 			input_start, input_length, start - virtual_start_,
-			current_mipmap->first.toDouble(), current_mipmap->second);
+			current_mipmap->first.to_double(), current_mipmap->second);
 	}
 
-	rational sample_length(samples.sample_count(), sample_rate);
+	Rational sample_length(samples.sample_count(), sample_rate);
 	length_ = qMax(length_, start + sample_length);
 }
 
-void AudioVisualWaveform::OverwriteSums(const AudioVisualWaveform &sums,
-										const rational &dest,
-										const rational &offset,
-										const rational &length)
+void AudioVisualWaveform::overwrite_sums(const AudioVisualWaveform &sums,
+										const Rational &dest,
+										const Rational &offset,
+										const Rational &length)
 {
-	ValidateVirtualStart(dest);
+	validate_virtual_start(dest);
 
 	for (auto it = mipmapped_data_.begin(); it != mipmapped_data_.end(); it++) {
-		rational rate = it->first;
+		Rational rate = it->first;
 
 		Sample &our_arr = it->second;
 		const Sample &their_arr = sums.mipmapped_data_.at(rate);
 
-		double rate_dbl = rate.toDouble();
+		double rate_dbl = rate.to_double();
 
 		// Get our destination sample
 		size_t our_start_index =
 			time_to_samples(dest - virtual_start_, rate_dbl);
 
 		// Get our source sample, indexing with the SOURCE's channel count
-		size_t their_start_index = std::floor(offset.toDouble() * rate_dbl) *
+		size_t their_start_index = std::floor(offset.to_double() * rate_dbl) *
 								   sums.channel_count();
 		if (their_start_index >= their_arr.size()) {
 			continue;
@@ -201,17 +201,17 @@ void AudioVisualWaveform::OverwriteSums(const AudioVisualWaveform &sums,
 														length));
 }
 
-void AudioVisualWaveform::OverwriteSilence(const rational &start,
-										   const rational &length)
+void AudioVisualWaveform::overwrite_silence(const Rational &start,
+										   const Rational &length)
 {
-	ValidateVirtualStart(start);
+	validate_virtual_start(start);
 
 	for (auto it = mipmapped_data_.begin(); it != mipmapped_data_.end(); it++) {
-		rational rate = it->first;
+		Rational rate = it->first;
 
 		Sample &our_arr = it->second;
 
-		double rate_dbl = rate.toDouble();
+		double rate_dbl = rate.to_double();
 
 		// Get our destination sample
 		size_t our_start_index =
@@ -231,7 +231,7 @@ void AudioVisualWaveform::OverwriteSilence(const rational &start,
 	length_ = qMax(length_, start + length);
 }
 
-void AudioVisualWaveform::TrimIn(rational length)
+void AudioVisualWaveform::trim_in(Rational length)
 {
 	if (length == 0) {
 		return;
@@ -245,8 +245,8 @@ void AudioVisualWaveform::TrimIn(rational length)
 	}
 
 	for (auto it = mipmapped_data_.begin(); it != mipmapped_data_.end(); it++) {
-		rational rate = it->first;
-		double rate_dbl = rate.toDouble();
+		Rational rate = it->first;
+		double rate_dbl = rate.to_double();
 		Sample &data = it->second;
 
 		size_t chop_length = time_to_samples(length, rate_dbl);
@@ -262,40 +262,40 @@ void AudioVisualWaveform::TrimIn(rational length)
 	}
 
 	if (!negative) {
-		length_ = qMax(rational(0), length_ - length);
+		length_ = qMax(Rational(0), length_ - length);
 	}
 	// Prepending grows the data before the existing start, so the absolute
 	// end (which length_ tracks) is unchanged
 }
 
-AudioVisualWaveform AudioVisualWaveform::Mid(const rational &offset) const
+AudioVisualWaveform AudioVisualWaveform::mid(const Rational &offset) const
 {
 	AudioVisualWaveform mid = *this;
 
-	mid.TrimIn(offset - virtual_start_);
+	mid.trim_in(offset - virtual_start_);
 
 	return mid;
 }
 
-AudioVisualWaveform AudioVisualWaveform::Mid(const rational &offset,
-											 const rational &length) const
+AudioVisualWaveform AudioVisualWaveform::mid(const Rational &offset,
+											 const Rational &length) const
 {
 	AudioVisualWaveform mid = *this;
 
-	mid.TrimRange(offset - virtual_start_, length);
+	mid.trim_range(offset - virtual_start_, length);
 
 	return mid;
 }
 
-void AudioVisualWaveform::Resize(const rational &length)
+void AudioVisualWaveform::resize(const Rational &length)
 {
 	if (length_ == length) {
 		return;
 	}
 
 	for (auto it = mipmapped_data_.begin(); it != mipmapped_data_.end(); it++) {
-		rational rate = it->first;
-		double rate_dbl = rate.toDouble();
+		Rational rate = it->first;
+		double rate_dbl = rate.to_double();
 		Sample &data = it->second;
 
 		size_t chop_length = time_to_samples(length, rate_dbl);
@@ -306,20 +306,20 @@ void AudioVisualWaveform::Resize(const rational &length)
 	length_ = length;
 }
 
-void AudioVisualWaveform::TrimRange(const rational &in, const rational &length)
+void AudioVisualWaveform::trim_range(const Rational &in, const Rational &length)
 {
-	TrimIn(in);
-	Resize(length);
+	trim_in(in);
+	resize(length);
 }
 
 AudioVisualWaveform::Sample
-AudioVisualWaveform::GetSummaryFromTime(const rational &start,
-										const rational &length) const
+AudioVisualWaveform::get_summary_from_time(const Rational &start,
+										const Rational &length) const
 {
 	// Find mipmap that requires
-	auto using_mipmap = GetMipmapForScale(length.flipped().toDouble());
+	auto using_mipmap = get_mipmap_for_scale(length.flipped().to_double());
 
-	double rate_dbl = using_mipmap->first.toDouble();
+	double rate_dbl = using_mipmap->first.to_double();
 
 	size_t start_sample = time_to_samples(start - virtual_start_, rate_dbl);
 	size_t sample_length = time_to_samples(length, rate_dbl);
@@ -333,7 +333,7 @@ AudioVisualWaveform::GetSummaryFromTime(const rational &start,
 		sample_length = qMin(sample_length, size_t(available));
 
 		if (sample_length > 0) {
-			return ReSumSamples(&mipmap_data.data()[start_sample],
+			return re_sum_samples(&mipmap_data.data()[start_sample],
 								sample_length, channels_);
 		}
 	}
@@ -342,7 +342,7 @@ AudioVisualWaveform::GetSummaryFromTime(const rational &start,
 	return AudioVisualWaveform::Sample(channel_count(), { 0, 0 });
 }
 
-void ExpandMinMaxChannel(const float *a, size_t length, float &min_val,
+void expand_min_max_channel(const float *a, size_t length, float &min_val,
 						 float &max_val)
 {
 #if defined(Q_PROCESSOR_X86) || defined(Q_PROCESSOR_ARM)
@@ -387,7 +387,7 @@ void ExpandMinMaxChannel(const float *a, size_t length, float &min_val,
 }
 
 AudioVisualWaveform::Sample
-AudioVisualWaveform::SumSamples(const SampleBuffer &samples, size_t start_index,
+AudioVisualWaveform::sum_samples(const SampleBuffer &samples, size_t start_index,
 								size_t length)
 {
 	int channels = samples.audio_params().channel_count();
@@ -395,7 +395,7 @@ AudioVisualWaveform::SumSamples(const SampleBuffer &samples, size_t start_index,
 
 	for (int channel = 0; channel < samples.audio_params().channel_count();
 		 channel++) {
-		ExpandMinMaxChannel(samples.data(channel) + start_index, length,
+		expand_min_max_channel(samples.data(channel) + start_index, length,
 							summed_samples[channel].min,
 							summed_samples[channel].max);
 	}
@@ -409,7 +409,7 @@ AudioVisualWaveform::SumSamples(const SampleBuffer &samples, size_t start_index,
 }
 
 AudioVisualWaveform::Sample
-AudioVisualWaveform::ReSumSamples(const SamplePerChannel *samples,
+AudioVisualWaveform::re_sum_samples(const SamplePerChannel *samples,
 								  size_t nb_samples, int nb_channels)
 {
 	AudioVisualWaveform::Sample summed_samples(nb_channels);
@@ -437,7 +437,7 @@ template <typename T> inline int round_away_from_zero(T t)
 	return (t < 0) ? std::floor(t) : std::ceil(t);
 }
 
-void AudioVisualWaveform::DrawSample(QPainter *painter, const Sample &sample,
+void AudioVisualWaveform::draw_sample(QPainter *painter, const Sample &sample,
 									 int x, int y, int height, bool rectified)
 {
 	if (sample.empty()) {
@@ -475,19 +475,19 @@ void AudioVisualWaveform::DrawSample(QPainter *painter, const Sample &sample,
 	}
 }
 
-void AudioVisualWaveform::DrawWaveform(QPainter *painter, const QRect &rect,
+void AudioVisualWaveform::draw_waveform(QPainter *painter, const QRect &rect,
 									   const double &scale,
 									   const AudioVisualWaveform &samples,
-									   const rational &start_time)
+									   const Rational &start_time)
 {
 	if (samples.mipmapped_data_.empty()) {
 		return;
 	}
 
-	auto using_mipmap = samples.GetMipmapForScale(scale);
+	auto using_mipmap = samples.get_mipmap_for_scale(scale);
 
-	rational rate = using_mipmap->first;
-	double rate_dbl = rate.toDouble();
+	Rational rate = using_mipmap->first;
+	double rate_dbl = rate.to_double();
 	const Sample &arr = using_mipmap->second;
 
 	size_t start_sample_index =
@@ -509,7 +509,7 @@ void AudioVisualWaveform::DrawWaveform(QPainter *painter, const QRect &rect,
 	size_t start = qMax(rect.x(), -top_left.x());
 	size_t end = qMin(rect.right(), -top_left.x() + viewport.width());
 
-	bool rectified = OLIVE_CONFIG("RectifiedWaveforms").toBool();
+	bool rectified = OAK_CONFIG("RectifiedWaveforms").toBool();
 
 	for (size_t i = start; i < end; i++) {
 		sample_index = next_sample_index;
@@ -526,7 +526,7 @@ void AudioVisualWaveform::DrawWaveform(QPainter *painter, const QRect &rect,
 					   samples.channel_count()));
 
 		if (summary_index != sample_index) {
-			summary = AudioVisualWaveform::ReSumSamples(
+			summary = AudioVisualWaveform::re_sum_samples(
 				&arr.at(sample_index),
 				qMax(size_t(samples.channel_count()),
 					 next_sample_index - sample_index),
@@ -534,14 +534,14 @@ void AudioVisualWaveform::DrawWaveform(QPainter *painter, const QRect &rect,
 			summary_index = sample_index;
 		}
 
-		DrawSample(painter, summary, i, rect.y(), rect.height(), rectified);
+		draw_sample(painter, summary, i, rect.y(), rect.height(), rectified);
 	}
 }
 
-size_t AudioVisualWaveform::time_to_samples(const rational &time,
+size_t AudioVisualWaveform::time_to_samples(const Rational &time,
 											double sample_rate) const
 {
-	return time_to_samples(time.toDouble(), sample_rate);
+	return time_to_samples(time.to_double(), sample_rate);
 }
 
 size_t AudioVisualWaveform::time_to_samples(const double &time,
@@ -550,13 +550,13 @@ size_t AudioVisualWaveform::time_to_samples(const double &time,
 	return std::floor(time * sample_rate) * channels_;
 }
 
-std::map<rational, AudioVisualWaveform::Sample>::const_iterator
-AudioVisualWaveform::GetMipmapForScale(double scale) const
+std::map<Rational, AudioVisualWaveform::Sample>::const_iterator
+AudioVisualWaveform::get_mipmap_for_scale(double scale) const
 {
 	// Find largest mipmap for this scale (or the largest if we don't find one sufficient)
 	for (auto it = mipmapped_data_.cbegin(); it != mipmapped_data_.cend();
 		 it++) {
-		if (it->first.toDouble() >= scale) {
+		if (it->first.to_double() >= scale) {
 			return it;
 		}
 	}

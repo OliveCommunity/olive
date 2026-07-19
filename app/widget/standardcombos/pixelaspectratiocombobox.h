@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PIXELASPECTRATIOCOMBOBOX_H
-#define PIXELASPECTRATIOCOMBOBOX_H
+#ifndef OAK_PIXELASPECTRATIOCOMBOBOX_H
+#define OAK_PIXELASPECTRATIOCOMBOBOX_H
 
 #include <QComboBox>
 
@@ -37,9 +37,9 @@ public:
 		: QComboBox(parent)
 		, dont_prompt_custom_par_(false)
 	{
-		QStringList par_names = VideoParams::GetStandardPixelAspectRatioNames();
-		for (int i = 0; i < VideoParams::kStandardPixelAspects.size(); i++) {
-			const rational &ratio = VideoParams::kStandardPixelAspects.at(i);
+		QStringList par_names = VideoParams::get_standard_pixel_aspect_ratio_names();
+		for (int i = 0; i < VideoParams::k_standard_pixel_aspects.size(); i++) {
+			const Rational &ratio = VideoParams::k_standard_pixel_aspects.at(i);
 
 			this->addItem(par_names.at(i), QVariant::fromValue(ratio));
 		}
@@ -47,39 +47,39 @@ public:
 		// Always add custom item last, much of the logic relies on this. Set this to the current AR so
 		// that if none of the above are ==, it will eventually select this item
 		this->addItem(QString());
-		UpdateCustomItem(rational());
+		update_custom_item(Rational());
 
 		// Pick up index signal to query for custom aspect ratio if requested
 		connect(this,
 				static_cast<void (QComboBox::*)(int)>(
 					&QComboBox::currentIndexChanged),
-				this, &PixelAspectRatioComboBox::IndexChanged);
+				this, &PixelAspectRatioComboBox::index_changed);
 	}
 
-	rational GetPixelAspectRatio() const
+	Rational get_pixel_aspect_ratio() const
 	{
-		return this->currentData().value<rational>();
+		return this->currentData().value<Rational>();
 	}
 
-	void SetPixelAspectRatio(const rational &r)
+	void set_pixel_aspect_ratio(const Rational &r)
 	{
 		// Determine which index to select on startup
 		for (int i = 0; i < this->count(); i++) {
-			if (this->itemData(i).value<rational>() == r) {
+			if (this->itemData(i).value<Rational>() == r) {
 				this->setCurrentIndex(i);
 				return;
 			}
 		}
 
 		// Must not have found the ratio, so it must be custom
-		UpdateCustomItem(r);
+		update_custom_item(r);
 		dont_prompt_custom_par_ = true;
 		this->setCurrentIndex(this->count() - 1);
 		dont_prompt_custom_par_ = false;
 	}
 
 private slots:
-	void IndexChanged(int index)
+	void index_changed(int index)
 	{
 		if (dont_prompt_custom_par_) {
 			return;
@@ -90,17 +90,17 @@ private slots:
 			// Query for custom pixel aspect ratio
 			bool ok;
 
-			double custom_ratio = GetFloatRatioFromUser(
+			double custom_ratio = get_float_ratio_from_user(
 				this, tr("Set Custom Pixel Aspect Ratio"), &ok);
 
 			if (ok) {
-				UpdateCustomItem(rational::fromDouble(custom_ratio));
+				update_custom_item(Rational::from_double(custom_ratio));
 			}
 		}
 	}
 
 private:
-	void UpdateCustomItem(const rational &ratio)
+	void update_custom_item(const Rational &ratio)
 	{
 		const int custom_index = this->count() - 1;
 
@@ -108,10 +108,10 @@ private:
 			this->setItemText(custom_index, tr("Custom..."));
 
 			// Use 1:1 to prevent any real chance of the PAR being set to 0
-			this->setItemData(custom_index, QVariant::fromValue(rational(1)));
+			this->setItemData(custom_index, QVariant::fromValue(Rational(1)));
 		} else {
 			this->setItemText(custom_index,
-							  VideoParams::FormatPixelAspectRatioString(
+							  VideoParams::format_pixel_aspect_ratio_string(
 								  tr("Custom (%1)"), ratio));
 			this->setItemData(custom_index, QVariant::fromValue(ratio));
 		}
@@ -122,4 +122,4 @@ private:
 
 }
 
-#endif // PIXELASPECTRATIOCOMBOBOX_H
+#endif // OAK_PIXELASPECTRATIOCOMBOBOX_H

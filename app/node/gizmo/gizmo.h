@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEGIZMO_H
-#define NODEGIZMO_H
+#ifndef OAK_NODEGIZMO_H
+#define OAK_NODEGIZMO_H
 
 #include <QObject>
 #include <QPainter>
@@ -36,24 +36,24 @@ public:
 	explicit NodeGizmo(QObject *parent = nullptr);
 	virtual ~NodeGizmo() override;
 
-	virtual void Draw(QPainter *p) const
+	virtual void draw(QPainter *p) const
 	{
 	}
 
-	const NodeGlobals &GetGlobals() const
+	const NodeGlobals &get_globals() const
 	{
 		return globals_;
 	}
-	void SetGlobals(const NodeGlobals &globals)
+	void set_globals(const NodeGlobals &globals)
 	{
 		globals_ = globals;
 	}
 
-	bool IsVisible() const
+	bool is_visible() const
 	{
 		return visible_;
 	}
-	void SetVisible(bool e)
+	void set_visible(bool e)
 	{
 		visible_ = e;
 	}
@@ -68,4 +68,4 @@ private:
 
 }
 
-#endif // NODEGIZMO_H
+#endif // OAK_NODEGIZMO_H

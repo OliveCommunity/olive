@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FOOTAGE_VIEWER_PANEL_H
-#define FOOTAGE_VIEWER_PANEL_H
+#ifndef OAK_FOOTAGE_VIEWER_PANEL_H
+#define OAK_FOOTAGE_VIEWER_PANEL_H
 
 #include <QOpenGLFunctions>
 
@@ -40,19 +40,19 @@ class FootageViewerPanel : public ViewerPanelBase,
 public:
 	FootageViewerPanel();
 
-	void OverrideWorkArea(const TimeRange &r);
+	void override_work_area(const TimeRange &r);
 
-	FootageViewerWidget *GetFootageViewerWidget() const
+	FootageViewerWidget *get_footage_viewer_widget() const
 	{
-		return static_cast<FootageViewerWidget *>(GetTimeBasedWidget());
+		return static_cast<FootageViewerWidget *>(get_time_based_widget());
 	}
 
-	virtual QVector<ViewerOutput *> GetSelectedFootage() const override;
+	virtual QVector<ViewerOutput *> get_selected_footage() const override;
 
 protected:
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 };
 
 }
 
-#endif // FOOTAGE_VIEWER_PANEL_H
+#endif // OAK_FOOTAGE_VIEWER_PANEL_H

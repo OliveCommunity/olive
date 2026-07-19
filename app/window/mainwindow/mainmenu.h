@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef MAINMENU_H
-#define MAINMENU_H
+#ifndef OAK_MAINMENU_H
+#define OAK_MAINMENU_H
 
 #include <QMainWindow>
 #include <QMenuBar>
@@ -60,140 +60,140 @@ private slots:
    * Assumes a QAction* sender() and its data() is a member of enum Tool::Item. Uses the data() to signal a
    * Tool change throughout the rest of the application.
    */
-	void ToolItemTriggered();
+	void tool_item_triggered();
 
 	/**
    * @brief Slot triggered just before the File menu shows
    */
-	void FileMenuAboutToShow();
+	void file_menu_about_to_show();
 
 	/**
    * @brief Slot triggered just before the Edit menu shows
    */
-	void EditMenuAboutToShow();
-	void EditMenuAboutToHide();
+	void edit_menu_about_to_show();
+	void edit_menu_about_to_hide();
 
 	/**
    * @brief Slot triggered just before the View menu shows
    */
-	void ViewMenuAboutToShow();
+	void view_menu_about_to_show();
 
 	/**
    * @brief Slot triggered just before the Tools menu shows
    */
-	void ToolsMenuAboutToShow();
+	void tools_menu_about_to_show();
 
 	/**
    * @brief Slot triggered just before the Playback menu shows
    */
-	void PlaybackMenuAboutToShow();
+	void playback_menu_about_to_show();
 
 	/**
    * @brief Slot triggered just before the Sequence menu shows
    */
-	void SequenceMenuAboutToShow();
+	void sequence_menu_about_to_show();
 
 	/**
    * @brief Slot triggered just before the Window menu shows
    */
-	void WindowMenuAboutToShow();
+	void window_menu_about_to_show();
 
 	/**
    * @brief Adds items to open recent menu
    */
-	void PopulateOpenRecent();
+	void populate_open_recent();
 
-	void RepopulateOpenRecent();
+	void repopulate_open_recent();
 
 	/**
    * @brief Clears open recent items when menu closes
    */
-	void CloseOpenRecentMenu();
+	void close_open_recent_menu();
 
 	/**
    * @brief Slot for zooming in
    *
    * Finds the currently focused panel and sends it a "zoom in" signal
    */
-	void ZoomInTriggered();
+	void zoom_in_triggered();
 
 	/**
    * @brief Slot for zooming out
    *
    * Finds the currently focused panel and sends it a "zoom out" signal
    */
-	void ZoomOutTriggered();
+	void zoom_out_triggered();
 
-	void IncreaseTrackHeightTriggered();
-	void DecreaseTrackHeightTriggered();
+	void increase_track_height_triggered();
+	void decrease_track_height_triggered();
 
-	void GoToStartTriggered();
-	void PrevFrameTriggered();
+	void go_to_start_triggered();
+	void prev_frame_triggered();
 
 	/**
    * @brief Slot for play/pause
    *
    * Finds the currently focused panel and sends it a "play/pause" signal
    */
-	void PlayPauseTriggered();
+	void play_pause_triggered();
 
-	void PlayInToOutTriggered();
+	void play_in_to_out_triggered();
 
-	void LoopTriggered(bool enabled);
+	void loop_triggered(bool enabled);
 
-	void NextFrameTriggered();
-	void GoToEndTriggered();
+	void next_frame_triggered();
+	void go_to_end_triggered();
 
-	void SelectAllTriggered();
-	void DeselectAllTriggered();
+	void select_all_triggered();
+	void deselect_all_triggered();
 
-	void InsertTriggered();
-	void OverwriteTriggered();
+	void insert_triggered();
+	void overwrite_triggered();
 
-	void RippleToInTriggered();
-	void RippleToOutTriggered();
-	void EditToInTriggered();
-	void EditToOutTriggered();
+	void ripple_to_in_triggered();
+	void ripple_to_out_triggered();
+	void edit_to_in_triggered();
+	void edit_to_out_triggered();
 
-	void NudgeLeftTriggered();
-	void NudgeRightTriggered();
-	void MoveInToPlayheadTriggered();
-	void MoveOutToPlayheadTriggered();
+	void nudge_left_triggered();
+	void nudge_right_triggered();
+	void move_in_to_playhead_triggered();
+	void move_out_to_playhead_triggered();
 
-	void ActionSearchTriggered();
+	void action_search_triggered();
 
-	void ShuttleLeftTriggered();
-	void ShuttleStopTriggered();
-	void ShuttleRightTriggered();
+	void shuttle_left_triggered();
+	void shuttle_stop_triggered();
+	void shuttle_right_triggered();
 
-	void GoToPrevCutTriggered();
-	void GoToNextCutTriggered();
+	void go_to_prev_cut_triggered();
+	void go_to_next_cut_triggered();
 
-	void SetMarkerTriggered();
+	void set_marker_triggered();
 
-	void FullScreenViewerTriggered();
+	void full_screen_viewer_triggered();
 
-	void ToggleShowAllTriggered();
+	void toggle_show_all_triggered();
 
-	void DeleteInOutTriggered();
-	void RippleDeleteInOutTriggered();
+	void delete_in_out_triggered();
+	void ripple_delete_in_out_triggered();
 
-	void GoToInTriggered();
-	void GoToOutTriggered();
+	void go_to_in_triggered();
+	void go_to_out_triggered();
 
-	void OpenRecentItemTriggered();
+	void open_recent_item_triggered();
 
-	void SequenceCacheTriggered();
-	void SequenceCacheInOutTriggered();
-	void SequenceCacheClearTriggered();
+	void sequence_cache_triggered();
+	void sequence_cache_in_out_triggered();
+	void sequence_cache_clear_triggered();
 
-	void HelpFeedbackTriggered();
+	void help_feedback_triggered();
 
 private:
 	/**
    * @brief Set strings based on the current application language.
    */
-	void Retranslate();
+	void retranslate();
 
 	Menu *file_menu_;
 	Menu *file_new_menu_;
@@ -297,4 +297,4 @@ private:
 
 }
 
-#endif // MAINMENU_H
+#endif // OAK_MAINMENU_H

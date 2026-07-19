@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CORE_H
-#define CORE_H
+#ifndef OAK_CORE_H
+#define OAK_CORE_H
 
 #include <olive/core/core.h>
 #include <QFileInfoList>
@@ -42,7 +42,7 @@ namespace olive
 class MainWindow;
 
 /**
- * @brief The main central Olive application instance
+ * @brief The main central Olive application instance_
  *
  * This runs both in GUI and CLI modes (and handles what to init based on that).
  * It also contains various global functions/variables for use throughout Olive.
@@ -57,7 +57,7 @@ public:
 	public:
 		CoreParams();
 
-		enum RunMode { kRunNormal, kHeadlessExport, kHeadlessPreCache };
+		enum RunMode { k_run_normal, k_headless_export, k_headless_pre_cache };
 
 		bool fullscreen() const
 		{
@@ -135,9 +135,9 @@ public:
    */
 	static Core *instance();
 
-	static QString FootageFileDialogFilter();
-	static QStringList AllowedFootageExtensions();
-	static bool IsFootageExtensionAllowed(const QString &path);
+	static QString footage_file_dialog_filter();
+	static QStringList allowed_footage_extensions();
+	static bool is_footage_extension_allowed(const QString &path);
 
 	const CoreParams &core_params() const
 	{
@@ -149,17 +149,17 @@ public:
    *
    * Main application launcher. Parses command line arguments and constructs main window (if entering a GUI mode).
    */
-	void Start();
+	void start();
 
 	/**
    * @brief Stop Olive Core
    *
    * Ends all threads and frees all memory ready for the application to exit.
    */
-	void Stop();
+	void stop();
 
 	/**
-   * @brief Retrieve main window instance
+   * @brief Retrieve main window instance_
    *
    * @return
    *
@@ -180,7 +180,7 @@ public:
    *
    * @param urls
    */
-	void ImportFiles(const QStringList &urls, Folder *parent);
+	void import_files(const QStringList &urls, Folder *parent);
 
 	/**
    * @brief Get the currently active tool
@@ -190,12 +190,12 @@ public:
 	/**
    * @brief Get the currently selected object that the add tool should make (if the add tool is active)
    */
-	const Tool::AddableObject &GetSelectedAddableObject() const;
+	const Tool::AddableObject &get_selected_addable_object() const;
 
 	/**
    * @brief Get the currently selected node that the transition tool should make (if the transition tool is active)
    */
-	const QString &GetSelectedTransition() const;
+	const QString &get_selected_transition() const;
 
 	/**
    * @brief Get current snapping value
@@ -205,7 +205,7 @@ public:
 	/**
    * @brief Returns a list of the most recently opened/saved projects
    */
-	const QStringList &GetRecentProjects() const;
+	const QStringList &get_recent_projects() const;
 
 	/**
    * @brief Get the currently active project
@@ -217,92 +217,92 @@ public:
    *
    * The active Project file, or nullptr if the heuristic couldn't find one.
    */
-	Project *GetActiveProject() const;
-	Folder *GetSelectedFolderInActiveProject() const;
+	Project *get_active_project() const;
+	Folder *get_selected_folder_in_active_project() const;
 
 	/**
    * @brief Gets current timecode display mode
    */
-	Timecode::Display GetTimecodeDisplay() const;
+	Timecode::Display get_timecode_display() const;
 
 	/**
    * @brief Sets current timecode display mode
    */
-	void SetTimecodeDisplay(Timecode::Display d);
+	void set_timecode_display(Timecode::Display d);
 
 	/**
    * @brief Set how frequently an autorecovery should be saved (if the project has changed, see SetProjectModified())
    */
-	void SetAutorecoveryInterval(int minutes);
+	void set_autorecovery_interval(int minutes);
 
-	static void CopyStringToClipboard(const QString &s);
+	static void copy_string_to_clipboard(const QString &s);
 
-	static QString PasteStringFromClipboard();
+	static QString paste_string_from_clipboard();
 
 	/**
    * @brief Recursively count files in a file/directory list
    */
-	static int CountFilesInFileList(const QFileInfoList &filenames);
+	static int count_files_in_file_list(const QFileInfoList &filenames);
 
 	/**
    * @brief Show a dialog to the user to rename a set of nodes
    */
-	bool LabelNodes(const QVector<Node *> &nodes,
+	bool label_nodes(const QVector<Node *> &nodes,
 					MultiUndoCommand *parent = nullptr);
 
 	/**
    * @brief Create a new sequence named appropriately for the active project
    */
-	static Sequence *CreateNewSequenceForProject(const QString &format,
+	static Sequence *create_new_sequence_for_project(const QString &format,
 												 Project *project);
-	static Sequence *CreateNewSequenceForProject(Project *project)
+	static Sequence *create_new_sequence_for_project(Project *project)
 	{
-		return CreateNewSequenceForProject(tr("Sequence %1"), project);
+		return create_new_sequence_for_project(tr("Sequence %1"), project);
 	}
 
 	/**
    * @brief Opens a project from the recently opened list
    */
-	void OpenProjectFromRecentList(int index);
+	void open_project_from_recent_list(int index);
 
 	/**
    * @brief Closes a project
    */
-	bool CloseProject(bool auto_open_new, bool ignore_modified = false);
+	bool close_project(bool auto_open_new, bool ignore_modified = false);
 
 	/**
    * @brief Runs a modal cache task on the currently active sequence
    */
-	void CacheActiveSequence(bool in_out_only);
+	void cache_active_sequence(bool in_out_only);
 
 	/**
    * @brief Check each footage object for whether it still exists or has changed
    */
-	bool ValidateFootageInLoadedProject(Project *project,
+	bool validate_footage_in_loaded_project(Project *project,
 										const QString &project_saved_url);
 
 	/**
    * @brief Changes the current language
    */
-	bool SetLanguage(const QString &locale);
+	bool set_language(const QString &locale);
 
 	/**
    * @brief Show message in main window's status bar
    *
    * Shorthand for Core::instance()->main_window()->statusBar()->showMessage();
    */
-	void ShowStatusBarMessage(const QString &s, int timeout = 0);
+	void show_status_bar_message(const QString &s, int timeout = 0);
 
-	void ClearStatusBarMessage();
+	void clear_status_bar_message();
 
-	void OpenRecoveryProject(const QString &filename);
+	void open_recovery_project(const QString &filename);
 
-	void OpenNodeInViewer(ViewerOutput *viewer);
+	void open_node_in_viewer(ViewerOutput *viewer);
 
-	void OpenExportDialogForViewer(ViewerOutput *viewer,
+	void open_export_dialog_for_viewer(ViewerOutput *viewer,
 								   bool start_still_image);
 
-	bool IsMagicEnabled() const
+	bool is_magic_enabled() const
 	{
 		return magic_;
 	}
@@ -311,56 +311,56 @@ public slots:
 	/**
    * @brief Starts an open file dialog to load a project from file
    */
-	void OpenProject();
+	void open_project();
 
 	/**
    * @brief Saves the current project
    */
-	bool SaveProject();
+	bool save_project();
 
 	/**
    * @brief Performs a "save as" on the current project
    */
-	bool SaveProjectAs();
+	bool save_project_as();
 
-	void RevertProject();
+	void revert_project();
 
 	/**
    * @brief Set the current application-wide tool
    *
    * @param tool
    */
-	void SetTool(const Tool::Item &tool);
+	void set_tool(const Tool::Item &tool);
 
 	/**
    * @brief Set the current snapping setting
    */
-	void SetSnapping(const bool &b);
+	void set_snapping(const bool &b);
 
 	/**
    * @brief Show an About dialog
    */
-	void DialogAboutShow();
+	void dialog_about_show();
 
 	/**
    * @brief Open the import footage dialog and import the files selected (runs ImportFiles())
    */
-	void DialogImportShow();
+	void dialog_import_show();
 
 	/**
    * @brief Show Preferences dialog
    */
-	void DialogPreferencesShow(int start_tab = 0);
+	void dialog_preferences_show(int start_tab = 0);
 
 	/**
    * @brief Show Project Properties dialog
    */
-	void DialogProjectPropertiesShow();
+	void dialog_project_properties_show();
 
 	/**
    * @brief Show Export dialog
    */
-	void DialogExportShow();
+	void dialog_export_show();
 
 	/**
    * @brief Show OTIO import dialog
@@ -372,42 +372,42 @@ public slots:
 	/**
    * @brief Create a new folder in the currently active project
    */
-	void CreateNewFolder();
+	void create_new_folder();
 
 	/**
    * @brief Create a new sequence in the currently active project
    */
-	void CreateNewSequence();
+	void create_new_sequence();
 
 	/**
    * @brief Set the currently selected object that the add tool should make
    */
-	void SetSelectedAddableObject(const Tool::AddableObject &obj);
+	void set_selected_addable_object(const Tool::AddableObject &obj);
 
 	/**
    * @brief Set the currently selected object that the add tool should make
    */
-	void SetSelectedTransitionObject(const QString &obj);
+	void set_selected_transition_object(const QString &obj);
 
 	/**
    * @brief Clears the list of recently opened/saved projects
    */
-	void ClearOpenRecentList();
+	void clear_open_recent_list();
 
 	/**
    * @brief Creates a new empty project and opens it
    */
-	void CreateNewProject();
+	void create_new_project();
 
-	void CheckForAutoRecoveries();
+	void check_for_auto_recoveries();
 
-	void BrowseAutoRecoveries();
+	void browse_auto_recoveries();
 
-	void RequestPixelSamplingInViewers(bool e);
+	void request_pixel_sampling_in_viewers(bool e);
 
-	void WarnCacheFull();
+	void warn_cache_full();
 
-	void SetMagic(bool e)
+	void set_magic(bool e)
 	{
 		magic_ = e;
 	}
@@ -416,60 +416,60 @@ signals:
 	/**
    * @brief Signal emitted when the tool is changed from somewhere
    */
-	void ToolChanged(const Tool::Item &tool);
+	void tool_changed(const Tool::Item &tool);
 
 	/**
    * @brief Signal emitted when addable object changes through SetSelectedAddableObject
    */
-	void AddableObjectChanged(Tool::AddableObject o);
+	void addable_object_changed(Tool::AddableObject o);
 
 	/**
    * @brief Signal emitted when the snapping setting is changed
    */
-	void SnappingChanged(const bool &b);
+	void snapping_changed(const bool &b);
 
 	/**
    * @brief Signal emitted when the default timecode display mode changed
    */
-	void TimecodeDisplayChanged(Timecode::Display d);
+	void timecode_display_changed(Timecode::Display d);
 
 	/**
    * @brief Signal emitted when a change is made to the open recent list
    */
-	void OpenRecentListChanged();
+	void open_recent_list_changed();
 
 	/**
    * @brief Enable mouse color sampling functionality on all viewers
    *
    * This can be slow, so we only turn it on when we need it.
    */
-	void ColorPickerEnabled(bool e);
+	void color_picker_enabled(bool e);
 
 	/**
    * @brief A viewer with color picked enabled has emitted a color
    */
-	void ColorPickerColorEmitted(const Color &reference, const Color &display);
+	void color_picker_color_emitted(const Color &reference, const Color &display);
 
 private:
 	/**
    * @brief Get the file filter than can be used with QFileDialog to open and save compatible projects
    */
-	static QString GetProjectFilter(bool include_any_filter);
+	static QString get_project_filter(bool include_any_filter);
 
 	/**
    * @brief Returns the filename where the recently opened/saved projects should be stored
    */
-	static QString GetRecentProjectsFilePath();
+	static QString get_recent_projects_file_path();
 
 	/**
    * @brief Called only on startup to set the locale
    */
-	void SetStartupLocale();
+	void set_startup_locale();
 
 	/**
    * @brief Adds a filename to the top of the recently opened projects list (or moves it if it already exists)
    */
-	void PushRecentlyOpenedProject(const QString &s);
+	void push_recently_opened_project(const QString &s);
 
 	/**
    * @brief Declare custom types/classes for Qt's signal/slot system
@@ -477,42 +477,42 @@ private:
    * Qt's signal/slot system requires types to be declared. In the interest of doing this only at startup, we contain
    * them all in a function here.
    */
-	void DeclareTypesForQt();
+	void declare_types_for_qt();
 
 	/**
    * @brief Start GUI portion of Olive
    *
    * Starts services and objects required for the GUI of Olive. It's guaranteed that running without this function will
-   * create an application instance that is completely valid minus the UI (e.g. for CLI modes).
+   * create an application instance_ that is completely valid minus the UI (e.g. for CLI modes).
    */
-	void StartGUI(bool full_screen);
+	void start_gui(bool full_screen);
 
 	/**
    * @brief Internal function for saving a project to a file
    */
-	void SaveProjectInternal(const QString &override_filename = QString());
+	void save_project_internal(const QString &override_filename = QString());
 
 	/**
    * @brief Retrieves the currently most active sequence for exporting
    */
-	ViewerOutput *GetSequenceToExport();
+	ViewerOutput *get_sequence_to_export();
 
-	static QString GetAutoRecoveryIndexFilename();
+	static QString get_auto_recovery_index_filename();
 
-	void SaveUnrecoveredList();
+	void save_unrecovered_list();
 
-	bool RevertProjectInternal(bool by_opening_existing);
+	bool revert_project_internal(bool by_opening_existing);
 
-	void SaveRecentProjectsList();
+	void save_recent_projects_list();
 
 	/**
    * @brief Adds a project to the "open projects" list
    */
-	void AddOpenProject(olive::Project *p, bool add_to_recents = false);
+	void add_open_project(olive::Project *p, bool add_to_recents = false);
 
-	bool AddOpenProjectFromTask(Task *task, bool add_to_recents);
+	bool add_open_project_from_task(Task *task, bool add_to_recents);
 
-	void SetActiveProject(Project *p);
+	void set_active_project(Project *p);
 
 	/**
    * @brief Internal main window object
@@ -550,7 +550,7 @@ private:
 	QTimer autorecovery_timer_;
 
 	/**
-   * @brief Application-wide undo stack instance
+   * @brief Application-wide undo stack instance_
    */
 	UndoStack undo_stack_;
 
@@ -565,7 +565,7 @@ private:
 	CoreParams core_params_;
 
 	/**
-   * @brief Static singleton core instance
+   * @brief Static singleton core instance_
    */
 	static Core *instance_;
 
@@ -592,36 +592,36 @@ private:
 	bool shown_cache_full_warning_;
 
 private slots:
-	void SaveAutorecovery();
+	void save_autorecovery();
 
-	void ProjectSaveSucceeded(Task *task);
+	void project_save_succeeded(Task *task);
 
-	bool AddOpenProjectFromTaskAndAddToRecents(Task *task)
+	bool add_open_project_from_task_and_add_to_recents(Task *task)
 	{
-		return AddOpenProjectFromTask(task, true);
+		return add_open_project_from_task(task, true);
 	}
 
-	void ImportTaskComplete(Task *task);
+	void import_task_complete(Task *task);
 
-	bool ConfirmImageSequence(const QString &filename);
+	bool confirm_image_sequence(const QString &filename);
 
-	void ProjectWasModified(bool e);
+	void project_was_modified(bool e);
 
-	bool StartHeadlessExport();
+	bool start_headless_export();
 
-	void OpenStartupProject();
+	void open_startup_project();
 
-	void AddRecoveryProjectFromTask(Task *task);
+	void add_recovery_project_from_task(Task *task);
 
 	/**
    * @brief Internal project open
    */
-	void OpenProjectInternal(const QString &filename,
+	void open_project_internal(const QString &filename,
 							 bool recovery_project = false);
 
-	void ImportSingleFile(const QString &f);
+	void import_single_file(const QString &f);
 };
 
 }
 
-#endif // CORE_H
+#endif // OAK_CORE_H

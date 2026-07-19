@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef LIBOLIVECORE_RATIONAL_H
-#define LIBOLIVECORE_RATIONAL_H
+#ifndef OAK_LIBOLIVECORE_RATIONAL_H
+#define OAK_LIBOLIVECORE_RATIONAL_H
 
 #include <climits>
 #include <iostream>
@@ -32,15 +32,15 @@
 namespace olive::core
 {
 
-class rational {
+class Rational {
 public:
-	rational(const int &numerator = 0)
+	Rational(const int &numerator = 0)
 	{
 		num_ = numerator;
 		den_ = 1;
 	}
 
-	rational(const int &numerator, const int &denominator)
+	Rational(const int &numerator, const int &denominator)
 	{
 		num_ = numerator;
 		den_ = denominator;
@@ -49,42 +49,42 @@ public:
 		reduce();
 	}
 
-	rational(const rational &rhs) = default;
+	Rational(const Rational &rhs) = default;
 
-	static rational fromDouble(const double &flt, bool *ok = nullptr);
-	static rational fromString(const std::string &str, bool *ok = nullptr);
+	static Rational from_double(const double &flt, bool *ok = nullptr);
+	static Rational from_string(const std::string &str, bool *ok = nullptr);
 
-	static const rational NaN;
+	static const Rational na_n;
 
 	//Assignment Operators
-	const rational &operator=(const rational &rhs);
-	const rational &operator+=(const rational &rhs);
-	const rational &operator-=(const rational &rhs);
-	const rational &operator/=(const rational &rhs);
-	const rational &operator*=(const rational &rhs);
+	const Rational &operator=(const Rational &rhs);
+	const Rational &operator+=(const Rational &rhs);
+	const Rational &operator-=(const Rational &rhs);
+	const Rational &operator/=(const Rational &rhs);
+	const Rational &operator*=(const Rational &rhs);
 
 	//Binary math operators
-	rational operator+(const rational &rhs) const;
-	rational operator-(const rational &rhs) const;
-	rational operator/(const rational &rhs) const;
-	rational operator*(const rational &rhs) const;
+	Rational operator+(const Rational &rhs) const;
+	Rational operator-(const Rational &rhs) const;
+	Rational operator/(const Rational &rhs) const;
+	Rational operator*(const Rational &rhs) const;
 
 	//Relational and equality operators
-	bool operator<(const rational &rhs) const;
-	bool operator<=(const rational &rhs) const;
-	bool operator>(const rational &rhs) const;
-	bool operator>=(const rational &rhs) const;
-	bool operator==(const rational &rhs) const;
-	bool operator!=(const rational &rhs) const;
+	bool operator<(const Rational &rhs) const;
+	bool operator<=(const Rational &rhs) const;
+	bool operator>(const Rational &rhs) const;
+	bool operator>=(const Rational &rhs) const;
+	bool operator==(const Rational &rhs) const;
+	bool operator!=(const Rational &rhs) const;
 
 	//Unary operators
-	const rational &operator+() const
+	const Rational &operator+() const
 	{
 		return *this;
 	}
-	rational operator-() const
+	Rational operator-() const
 	{
-		return rational(num_, -den_);
+		return Rational(num_, -den_);
 	}
 	bool operator!() const
 	{
@@ -92,10 +92,10 @@ public:
 	}
 
 	//Function: convert to double
-	double toDouble() const;
+	double to_double() const;
 
 #ifdef USE_OTIO
-	static rational fromRationalTime(const opentime::RationalTime &t)
+	static Rational fromRationalTime(const opentime::RationalTime &t)
 	{
 		// Is this the best way to do this?
 		return fromDouble(t.to_seconds());
@@ -106,10 +106,10 @@ public:
 #endif
 
 	// Produce "flipped" version
-	rational flipped() const;
+	Rational flipped() const;
 	void flip();
 
-	// Returns whether the rational is valid but equal to zero or not
+	// Returns whether the Rational is valid but equal to zero or not
 	//
 	// A NaN is always a null, but a null is not always a NaN
 	bool isNull() const
@@ -117,7 +117,7 @@ public:
 		return num_ == 0;
 	}
 
-	// Returns whether this rational is not a valid number (denominator == 0)
+	// Returns whether this Rational is not a valid number (denominator == 0)
 	bool isNaN() const
 	{
 		return den_ == 0;
@@ -132,9 +132,9 @@ public:
 		return den_;
 	}
 
-	std::string toString() const;
+	std::string to_string() const;
 
-	friend std::ostream &operator<<(std::ostream &out, const rational &value)
+	friend std::ostream &operator<<(std::ostream &out, const Rational &value)
 	{
 		out << value.num_ << '/' << value.den_;
 
@@ -149,9 +149,9 @@ private:
 	int den_;
 };
 
-#define RATIONAL_MIN rational(INT_MIN)
-#define RATIONAL_MAX rational(INT_MAX)
+#define RATIONAL_MIN Rational(INT_MIN)
+#define RATIONAL_MAX Rational(INT_MAX)
 
 }
 
-#endif // LIBOLIVECORE_RATIONAL_H
+#endif // OAK_LIBOLIVECORE_RATIONAL_H

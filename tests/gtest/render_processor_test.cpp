@@ -59,7 +59,7 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(ConstantSampleNode)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return QStringLiteral("Constant Sample Node");
 	}
@@ -69,12 +69,12 @@ public:
 		return QStringLiteral("org.oak.test.constant_sample_node");
 	}
 
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
 		return {};
 	}
 
-	virtual void Value(const olive::NodeValueRow &value,
+	virtual void value(const olive::NodeValueRow &value,
 					   const olive::NodeGlobals &globals,
 					   olive::NodeValueTable *table) const override
 	{
@@ -92,53 +92,53 @@ public:
 			}
 		}
 
-		table->Push(olive::NodeValue::kSamples, QVariant::fromValue(buffer),
+		table->push(olive::NodeValue::k_samples, QVariant::fromValue(buffer),
 					this);
 	}
 };
 
-olive::RenderTicketPtr MakeVideoTicket(olive::Node *node)
+olive::RenderTicketPtr make_video_ticket(olive::Node *node)
 {
 	olive::RenderTicketPtr ticket = std::make_shared<olive::RenderTicket>();
-	ticket->setProperty("node", olive::QtUtils::PtrToValue(node));
-	ticket->setProperty("time", QVariant::fromValue(olive::rational(0)));
+	ticket->setProperty("node", olive::QtUtils::ptr_to_value(node));
+	ticket->setProperty("time", QVariant::fromValue(olive::Rational(0)));
 	ticket->setProperty(
-		"type", QVariant::fromValue(olive::RenderManager::kTypeVideo));
+		"type", QVariant::fromValue(olive::RenderManager::k_type_video));
 	ticket->setProperty(
 		"vparam",
-		QVariant::fromValue(olive::VideoParams(64, 64, olive::rational(1, 30),
-											   olive::core::PixelFormat::U8,
+		QVariant::fromValue(olive::VideoParams(64, 64, olive::Rational(1, 30),
+											   olive::core::PixelFormat::u8,
 											   4)));
 	ticket->setProperty("aparam",
 						QVariant::fromValue(olive::core::AudioParams()));
-	ticket->setProperty("mode", int(olive::RenderMode::kOnline));
+	ticket->setProperty("mode", int(olive::RenderMode::k_online));
 	return ticket;
 }
 
-olive::RenderTicketPtr MakeAudioTicket(olive::Node *node, bool waveforms,
+olive::RenderTicketPtr make_audio_ticket(olive::Node *node, bool waveforms,
 									   bool clamp)
 {
 	olive::RenderTicketPtr ticket = std::make_shared<olive::RenderTicket>();
-	ticket->setProperty("node", olive::QtUtils::PtrToValue(node));
+	ticket->setProperty("node", olive::QtUtils::ptr_to_value(node));
 	ticket->setProperty(
 		"time",
-		QVariant::fromValue(olive::TimeRange(olive::rational(0),
-											 olive::rational(1))));
+		QVariant::fromValue(olive::TimeRange(olive::Rational(0),
+											 olive::Rational(1))));
 	ticket->setProperty(
-		"type", QVariant::fromValue(olive::RenderManager::kTypeAudio));
+		"type", QVariant::fromValue(olive::RenderManager::k_type_audio));
 	ticket->setProperty("enablewaveforms", waveforms);
 	ticket->setProperty("clamp", clamp);
 	ticket->setProperty(
 		"aparam",
 		QVariant::fromValue(olive::core::AudioParams(
-			48000, olive::core::kChannelLayoutStereo,
-			olive::core::SampleFormat::F32P)));
+			48000, olive::core::k_channel_layout_stereo,
+			olive::core::SampleFormat::f32_p)));
 	ticket->setProperty(
 		"vparam",
-		QVariant::fromValue(olive::VideoParams(64, 64, olive::rational(1, 30),
-											   olive::core::PixelFormat::U8,
+		QVariant::fromValue(olive::VideoParams(64, 64, olive::Rational(1, 30),
+											   olive::core::PixelFormat::u8,
 											   4)));
-	ticket->setProperty("mode", int(olive::RenderMode::kOnline));
+	ticket->setProperty("mode", int(olive::RenderMode::k_online));
 	return ticket;
 }
 
@@ -150,21 +150,21 @@ olive::RenderTicketPtr MakeAudioTicket(olive::Node *node, bool waveforms,
 
 TEST(RenderProcessor, AudioTicketRendersAndClampsSamples)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *node = new ConstantSampleNode();
 	node->setParent(&project);
 
-	olive::RenderTicketPtr ticket = MakeAudioTicket(node, false, true);
-	ticket->Start();
+	olive::RenderTicketPtr ticket = make_audio_ticket(node, false, true);
+	ticket->start();
 
-	olive::RenderProcessor::Process(ticket, nullptr, nullptr, nullptr);
+	olive::RenderProcessor::process(ticket, nullptr, nullptr, nullptr);
 
-	ASSERT_TRUE(ticket->HasResult());
+	ASSERT_TRUE(ticket->has_result());
 	olive::core::SampleBuffer samples =
-		ticket->Get().value<olive::core::SampleBuffer>();
+		ticket->get().value<olive::core::SampleBuffer>();
 	ASSERT_TRUE(samples.is_allocated());
 	EXPECT_EQ(samples.channel_count(), 2);
 	EXPECT_EQ(samples.sample_count(), size_t(48000));
@@ -180,21 +180,21 @@ TEST(RenderProcessor, AudioTicketRendersAndClampsSamples)
 
 TEST(RenderProcessor, AudioTicketWithoutClampKeepsSamples)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *node = new ConstantSampleNode();
 	node->setParent(&project);
 
-	olive::RenderTicketPtr ticket = MakeAudioTicket(node, false, false);
-	ticket->Start();
+	olive::RenderTicketPtr ticket = make_audio_ticket(node, false, false);
+	ticket->start();
 
-	olive::RenderProcessor::Process(ticket, nullptr, nullptr, nullptr);
+	olive::RenderProcessor::process(ticket, nullptr, nullptr, nullptr);
 
-	ASSERT_TRUE(ticket->HasResult());
+	ASSERT_TRUE(ticket->has_result());
 	olive::core::SampleBuffer samples =
-		ticket->Get().value<olive::core::SampleBuffer>();
+		ticket->get().value<olive::core::SampleBuffer>();
 	ASSERT_TRUE(samples.is_allocated());
 	ASSERT_GT(samples.sample_count(), size_t(0));
 
@@ -206,19 +206,19 @@ TEST(RenderProcessor, AudioTicketWithoutClampKeepsSamples)
 
 TEST(RenderProcessor, AudioTicketGeneratesWaveformWhenRequested)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *node = new ConstantSampleNode();
 	node->setParent(&project);
 
-	olive::RenderTicketPtr ticket = MakeAudioTicket(node, true, true);
-	ticket->Start();
+	olive::RenderTicketPtr ticket = make_audio_ticket(node, true, true);
+	ticket->start();
 
-	olive::RenderProcessor::Process(ticket, nullptr, nullptr, nullptr);
+	olive::RenderProcessor::process(ticket, nullptr, nullptr, nullptr);
 
-	ASSERT_TRUE(ticket->HasResult());
+	ASSERT_TRUE(ticket->has_result());
 
 	const QVariant waveform_var = ticket->property("waveform");
 	ASSERT_TRUE(waveform_var.isValid());
@@ -229,70 +229,70 @@ TEST(RenderProcessor, AudioTicketGeneratesWaveformWhenRequested)
 
 TEST(RenderProcessor, AudioTicketWithoutNodeReturnsEmptyBuffer)
 {
-	olive::RenderTicketPtr ticket = MakeAudioTicket(nullptr, true, true);
-	ticket->Start();
+	olive::RenderTicketPtr ticket = make_audio_ticket(nullptr, true, true);
+	ticket->start();
 
-	olive::RenderProcessor::Process(ticket, nullptr, nullptr, nullptr);
+	olive::RenderProcessor::process(ticket, nullptr, nullptr, nullptr);
 
 	// With no node to traverse the processor still finishes with a (null)
 	// SampleBuffer, and skips both clamping and waveform generation.
-	ASSERT_TRUE(ticket->HasResult());
+	ASSERT_TRUE(ticket->has_result());
 	const olive::core::SampleBuffer samples =
-		ticket->Get().value<olive::core::SampleBuffer>();
+		ticket->get().value<olive::core::SampleBuffer>();
 	EXPECT_FALSE(samples.is_allocated());
 	EXPECT_FALSE(ticket->property("waveform").isValid());
 }
 
 TEST(RenderProcessor, VideoTicketWithoutRendererFinishesWithoutResult)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *solid = new olive::SolidGenerator();
 	solid->setParent(&project);
 
-	olive::RenderTicketPtr ticket = MakeVideoTicket(solid);
-	ticket->Start();
+	olive::RenderTicketPtr ticket = make_video_ticket(solid);
+	ticket->start();
 
 	// A null render context is the "dry run": the graph is traversed (Solid
 	// emits a shader job which is skipped) and the ticket finishes empty.
-	olive::RenderProcessor::Process(ticket, nullptr, nullptr, nullptr);
+	olive::RenderProcessor::process(ticket, nullptr, nullptr, nullptr);
 
-	EXPECT_FALSE(ticket->IsRunning());
-	EXPECT_EQ(ticket->GetFinishCount(), 1);
-	EXPECT_FALSE(ticket->HasResult());
+	EXPECT_FALSE(ticket->is_running());
+	EXPECT_EQ(ticket->get_finish_count(), 1);
+	EXPECT_FALSE(ticket->has_result());
 }
 
 TEST(RenderProcessor, VideoTicketWithoutNodeFinishesWithoutResult)
 {
-	olive::RenderTicketPtr ticket = MakeVideoTicket(nullptr);
-	ticket->Start();
+	olive::RenderTicketPtr ticket = make_video_ticket(nullptr);
+	ticket->start();
 
-	olive::RenderProcessor::Process(ticket, nullptr, nullptr, nullptr);
+	olive::RenderProcessor::process(ticket, nullptr, nullptr, nullptr);
 
-	EXPECT_FALSE(ticket->IsRunning());
-	EXPECT_EQ(ticket->GetFinishCount(), 1);
-	EXPECT_FALSE(ticket->HasResult());
+	EXPECT_FALSE(ticket->is_running());
+	EXPECT_EQ(ticket->get_finish_count(), 1);
+	EXPECT_FALSE(ticket->has_result());
 }
 
 TEST(RenderProcessor, CancelledTicketFinishesImmediately)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *solid = new olive::SolidGenerator();
 	solid->setParent(&project);
 
-	olive::RenderTicketPtr ticket = MakeVideoTicket(solid);
-	ticket->Start();
-	ticket->Cancel();
+	olive::RenderTicketPtr ticket = make_video_ticket(solid);
+	ticket->start();
+	ticket->cancel();
 
-	olive::RenderProcessor::Process(ticket, nullptr, nullptr, nullptr);
+	olive::RenderProcessor::process(ticket, nullptr, nullptr, nullptr);
 
-	EXPECT_EQ(ticket->GetFinishCount(), 1);
-	EXPECT_FALSE(ticket->HasResult());
+	EXPECT_EQ(ticket->get_finish_count(), 1);
+	EXPECT_FALSE(ticket->has_result());
 }
 
 // ============================================================================
@@ -301,23 +301,23 @@ TEST(RenderProcessor, CancelledTicketFinishesImmediately)
 
 TEST(RenderManagerParams, RenderVideoParamsDefaults)
 {
-	const olive::VideoParams vparams(1920, 1080, olive::core::PixelFormat::U8,
+	const olive::VideoParams vparams(1920, 1080, olive::core::PixelFormat::u8,
 									 4);
 	const olive::core::AudioParams aparams;
 
 	olive::RenderManager::RenderVideoParams params(nullptr, vparams, aparams,
-												   olive::rational(5), nullptr,
-												   olive::RenderMode::kOnline);
+												   olive::Rational(5), nullptr,
+												   olive::RenderMode::k_online);
 
 	EXPECT_EQ(params.node, nullptr);
 	EXPECT_EQ(params.video_params, vparams);
 	EXPECT_EQ(params.audio_params, aparams);
-	EXPECT_EQ(params.time, olive::rational(5));
+	EXPECT_EQ(params.time, olive::Rational(5));
 	EXPECT_EQ(params.color_manager, nullptr);
-	EXPECT_EQ(params.mode, olive::RenderMode::kOnline);
+	EXPECT_EQ(params.mode, olive::RenderMode::k_online);
 
 	EXPECT_FALSE(params.use_cache);
-	EXPECT_EQ(params.return_type, olive::RenderManager::kFrame);
+	EXPECT_EQ(params.return_type, olive::RenderManager::k_frame);
 	EXPECT_EQ(params.multicam, nullptr);
 
 	EXPECT_TRUE(params.cache_dir.isEmpty());
@@ -327,7 +327,7 @@ TEST(RenderManagerParams, RenderVideoParamsDefaults)
 	EXPECT_EQ(params.force_channel_count, 0);
 	EXPECT_TRUE(params.force_matrix.isIdentity());
 	EXPECT_EQ(int(params.force_format),
-			  int(olive::core::PixelFormat::INVALID));
+			  int(olive::core::PixelFormat::invalid));
 	EXPECT_TRUE(params.force_color_output == nullptr);
 	EXPECT_FALSE(params.force_color_transform.is_display());
 	EXPECT_TRUE(params.force_color_transform.output().isEmpty());
@@ -336,25 +336,25 @@ TEST(RenderManagerParams, RenderVideoParamsDefaults)
 TEST(RenderManagerParams, RenderAudioParamsDefaults)
 {
 	const olive::core::AudioParams aparams(
-		48000, olive::core::kChannelLayoutStereo,
-		olive::core::SampleFormat::F32P);
-	const olive::TimeRange range(olive::rational(2), olive::rational(7));
+		48000, olive::core::k_channel_layout_stereo,
+		olive::core::SampleFormat::f32_p);
+	const olive::TimeRange range(olive::Rational(2), olive::Rational(7));
 
 	olive::RenderManager::RenderAudioParams params(nullptr, range, aparams,
-												   olive::RenderMode::kOffline);
+												   olive::RenderMode::k_offline);
 
 	EXPECT_EQ(params.node, nullptr);
 	EXPECT_EQ(params.range, range);
 	EXPECT_EQ(params.audio_params, aparams);
 	EXPECT_FALSE(params.generate_waveforms);
 	EXPECT_TRUE(params.clamp);
-	EXPECT_EQ(params.mode, olive::RenderMode::kOffline);
+	EXPECT_EQ(params.mode, olive::RenderMode::k_offline);
 }
 
 TEST(RenderManagerParams, DryRunIntervalIsTenSeconds)
 {
-	EXPECT_EQ(olive::rational(olive::RenderManager::kDryRunInterval),
-			  olive::rational(10));
+	EXPECT_EQ(olive::Rational(olive::RenderManager::k_dry_run_interval),
+			  olive::Rational(10));
 }
 
 // ============================================================================
@@ -366,7 +366,7 @@ TEST(RenderJobTracker, EmptyTrackerIsNeverCurrent)
 	olive::RenderJobTracker tracker;
 	const olive::JobTime job;
 
-	EXPECT_FALSE(tracker.isCurrent(olive::rational(0), job));
+	EXPECT_FALSE(tracker.isCurrent(olive::Rational(0), job));
 	EXPECT_TRUE(
 		tracker.getCurrentSubRanges(olive::TimeRange(0, 10), job).isEmpty());
 }
@@ -380,8 +380,8 @@ TEST(RenderJobTracker, InsertedRangeIsCurrentForSameAndNewerJobs)
 	tracker.insert(olive::TimeRange(0, 10), older);
 
 	// A range rendered at job time T satisfies queries at T and later.
-	EXPECT_TRUE(tracker.isCurrent(olive::rational(5), older));
-	EXPECT_TRUE(tracker.isCurrent(olive::rational(5), newer));
+	EXPECT_TRUE(tracker.isCurrent(olive::Rational(5), older));
+	EXPECT_TRUE(tracker.isCurrent(olive::Rational(5), newer));
 }
 
 TEST(RenderJobTracker, IsCurrentRespectsRangeBoundaries)
@@ -391,11 +391,11 @@ TEST(RenderJobTracker, IsCurrentRespectsRangeBoundaries)
 
 	tracker.insert(olive::TimeRange(0, 10), job);
 
-	EXPECT_TRUE(tracker.isCurrent(olive::rational(0), job));
-	EXPECT_FALSE(tracker.isCurrent(olive::rational(-1), job));
+	EXPECT_TRUE(tracker.isCurrent(olive::Rational(0), job));
+	EXPECT_FALSE(tracker.isCurrent(olive::Rational(-1), job));
 	// The out point is exclusive.
-	EXPECT_FALSE(tracker.isCurrent(olive::rational(10), job));
-	EXPECT_FALSE(tracker.isCurrent(olive::rational(11), job));
+	EXPECT_FALSE(tracker.isCurrent(olive::Rational(10), job));
+	EXPECT_FALSE(tracker.isCurrent(olive::Rational(11), job));
 }
 
 TEST(RenderJobTracker, ReinsertingSameRangeBumpsJobTime)
@@ -405,13 +405,13 @@ TEST(RenderJobTracker, ReinsertingSameRangeBumpsJobTime)
 	const olive::JobTime newer;
 
 	tracker.insert(olive::TimeRange(0, 10), older);
-	EXPECT_TRUE(tracker.isCurrent(olive::rational(5), older));
+	EXPECT_TRUE(tracker.isCurrent(olive::Rational(5), older));
 
 	tracker.insert(olive::TimeRange(0, 10), newer);
 
 	// The older job no longer describes the cached content.
-	EXPECT_FALSE(tracker.isCurrent(olive::rational(5), older));
-	EXPECT_TRUE(tracker.isCurrent(olive::rational(5), newer));
+	EXPECT_FALSE(tracker.isCurrent(olive::Rational(5), older));
+	EXPECT_TRUE(tracker.isCurrent(olive::Rational(5), newer));
 }
 
 TEST(RenderJobTracker, InsertSplitsExistingRange)
@@ -424,10 +424,10 @@ TEST(RenderJobTracker, InsertSplitsExistingRange)
 	tracker.insert(olive::TimeRange(4, 6), newer);
 
 	// The original range is split around the new one, keeping its job time.
-	EXPECT_TRUE(tracker.isCurrent(olive::rational(2), older));
-	EXPECT_TRUE(tracker.isCurrent(olive::rational(8), older));
-	EXPECT_FALSE(tracker.isCurrent(olive::rational(5), older));
-	EXPECT_TRUE(tracker.isCurrent(olive::rational(5), newer));
+	EXPECT_TRUE(tracker.isCurrent(olive::Rational(2), older));
+	EXPECT_TRUE(tracker.isCurrent(olive::Rational(8), older));
+	EXPECT_FALSE(tracker.isCurrent(olive::Rational(5), older));
+	EXPECT_TRUE(tracker.isCurrent(olive::Rational(5), newer));
 }
 
 TEST(RenderJobTracker, InsertTrimsOverlappingRangeEnds)
@@ -439,11 +439,11 @@ TEST(RenderJobTracker, InsertTrimsOverlappingRangeEnds)
 	tracker.insert(olive::TimeRange(0, 10), older);
 	tracker.insert(olive::TimeRange(5, 15), newer);
 
-	EXPECT_TRUE(tracker.isCurrent(olive::rational(2), older));
-	EXPECT_FALSE(tracker.isCurrent(olive::rational(7), older));
-	EXPECT_TRUE(tracker.isCurrent(olive::rational(7), newer));
-	EXPECT_TRUE(tracker.isCurrent(olive::rational(12), newer));
-	EXPECT_FALSE(tracker.isCurrent(olive::rational(16), newer));
+	EXPECT_TRUE(tracker.isCurrent(olive::Rational(2), older));
+	EXPECT_FALSE(tracker.isCurrent(olive::Rational(7), older));
+	EXPECT_TRUE(tracker.isCurrent(olive::Rational(7), newer));
+	EXPECT_TRUE(tracker.isCurrent(olive::Rational(12), newer));
+	EXPECT_FALSE(tracker.isCurrent(olive::Rational(16), newer));
 }
 
 TEST(RenderJobTracker, InsertRangeListTagsAllRanges)
@@ -456,9 +456,9 @@ TEST(RenderJobTracker, InsertRangeListTagsAllRanges)
 	ranges.insert(olive::TimeRange(10, 15));
 	tracker.insert(ranges, job);
 
-	EXPECT_TRUE(tracker.isCurrent(olive::rational(2), job));
-	EXPECT_TRUE(tracker.isCurrent(olive::rational(12), job));
-	EXPECT_FALSE(tracker.isCurrent(olive::rational(7), job));
+	EXPECT_TRUE(tracker.isCurrent(olive::Rational(2), job));
+	EXPECT_TRUE(tracker.isCurrent(olive::Rational(12), job));
+	EXPECT_FALSE(tracker.isCurrent(olive::Rational(7), job));
 }
 
 TEST(RenderJobTracker, GetCurrentSubRangesClipsToQueryRange)
@@ -509,10 +509,10 @@ TEST(RenderJobTracker, ClearDropsAllJobs)
 	const olive::JobTime job;
 
 	tracker.insert(olive::TimeRange(0, 10), job);
-	EXPECT_TRUE(tracker.isCurrent(olive::rational(5), job));
+	EXPECT_TRUE(tracker.isCurrent(olive::Rational(5), job));
 
 	tracker.clear();
-	EXPECT_FALSE(tracker.isCurrent(olive::rational(5), job));
+	EXPECT_FALSE(tracker.isCurrent(olive::Rational(5), job));
 }
 
 // ============================================================================
@@ -524,7 +524,7 @@ TEST(SubtitleParams, DefaultsAreEmptyEnabledStreamZero)
 	const olive::SubtitleParams params;
 
 	EXPECT_FALSE(params.is_valid());
-	EXPECT_EQ(params.duration(), olive::rational(0));
+	EXPECT_EQ(params.duration(), olive::Rational(0));
 	EXPECT_EQ(params.stream_index(), 0);
 	EXPECT_TRUE(params.enabled());
 }
@@ -538,7 +538,7 @@ TEST(SubtitleParams, DurationFollowsLastSubtitle)
 		olive::Subtitle(olive::TimeRange(3, 5), QStringLiteral("two")));
 
 	EXPECT_TRUE(params.is_valid());
-	EXPECT_EQ(params.duration(), olive::rational(5));
+	EXPECT_EQ(params.duration(), olive::Rational(5));
 
 	params.set_stream_index(3);
 	params.set_enabled(false);
@@ -563,7 +563,7 @@ TEST(SubtitleParams, SubtitleAccessorsRoundTrip)
 
 TEST(SubtitleParams, GenerateAssHeaderContainsRequiredSections)
 {
-	const QString header = olive::SubtitleParams::GenerateASSHeader();
+	const QString header = olive::SubtitleParams::generate_ass_header();
 
 	EXPECT_TRUE(header.contains(QStringLiteral("[Script Info]\r\n")));
 	EXPECT_TRUE(header.contains(QStringLiteral("ScriptType: v4.00+\r\n")));
@@ -588,17 +588,17 @@ TEST(SubtitleParams, SaveLoadRoundTrip)
 	params.set_stream_index(2);
 	params.set_enabled(false);
 	params.push_back(olive::Subtitle(
-		olive::TimeRange(olive::rational(0), olive::rational(1, 2)),
+		olive::TimeRange(olive::Rational(0), olive::Rational(1, 2)),
 		QStringLiteral("Hello, world!")));
 	params.push_back(olive::Subtitle(
-		olive::TimeRange(olive::rational(3, 4), olive::rational(2)),
+		olive::TimeRange(olive::Rational(3, 4), olive::Rational(2)),
 		QStringLiteral("Second <line> & more")));
 
 	QString xml;
 	{
 		QXmlStreamWriter writer(&xml);
 		writer.writeStartElement(QStringLiteral("root"));
-		params.Save(&writer);
+		params.save(&writer);
 		writer.writeEndElement();
 	}
 
@@ -609,16 +609,16 @@ TEST(SubtitleParams, SaveLoadRoundTrip)
 
 	QXmlStreamReader reader(xml);
 	ASSERT_TRUE(reader.readNextStartElement()); // position on <root>
-	loaded.Load(&reader);
+	loaded.load(&reader);
 
 	EXPECT_EQ(loaded.stream_index(), 2);
 	EXPECT_FALSE(loaded.enabled());
 	ASSERT_EQ(loaded.size(), size_t(2));
-	EXPECT_EQ(loaded.at(0).time().in(), olive::rational(0));
-	EXPECT_EQ(loaded.at(0).time().out(), olive::rational(1, 2));
+	EXPECT_EQ(loaded.at(0).time().in(), olive::Rational(0));
+	EXPECT_EQ(loaded.at(0).time().out(), olive::Rational(1, 2));
 	EXPECT_EQ(loaded.at(0).text(), QStringLiteral("Hello, world!"));
-	EXPECT_EQ(loaded.at(1).time().in(), olive::rational(3, 4));
-	EXPECT_EQ(loaded.at(1).time().out(), olive::rational(2));
+	EXPECT_EQ(loaded.at(1).time().in(), olive::Rational(3, 4));
+	EXPECT_EQ(loaded.at(1).time().out(), olive::Rational(2));
 	EXPECT_EQ(loaded.at(1).text(), QStringLiteral("Second <line> & more"));
 }
 
@@ -663,7 +663,7 @@ TEST(ManagedColor, ColorCopyConstructorPreservesChannels)
 TEST(ManagedColor, RawDataConstructorDecodesU8)
 {
 	const char data[4] = { char(255), char(128), char(0), char(64) };
-	const olive::ManagedColor color(data, olive::core::PixelFormat::U8, 4);
+	const olive::ManagedColor color(data, olive::core::PixelFormat::u8, 4);
 
 	EXPECT_FLOAT_EQ(color.red(), 1.0f);
 	EXPECT_NEAR(color.green(), 128.0 / 255.0, 1e-6);
@@ -697,30 +697,30 @@ TEST(ManagedColor, ColorInputAndOutputRoundTrip)
 
 TEST(RenderTexture, DummyTextureExposesParams)
 {
-	const olive::VideoParams params(320, 240, olive::core::PixelFormat::U8, 4);
+	const olive::VideoParams params(320, 240, olive::core::PixelFormat::u8, 4);
 	olive::Texture texture(params);
 
-	EXPECT_TRUE(texture.IsDummy());
+	EXPECT_TRUE(texture.is_dummy());
 	EXPECT_EQ(texture.renderer(), nullptr);
 	EXPECT_EQ(texture.params(), params);
 	EXPECT_EQ(texture.width(), 320);
 	EXPECT_EQ(texture.height(), 240);
 	EXPECT_EQ(texture.channel_count(), 4);
 	EXPECT_EQ(texture.divider(), 1);
-	EXPECT_EQ(texture.pixel_aspect_ratio(), olive::rational(1));
+	EXPECT_EQ(texture.pixel_aspect_ratio(), olive::Rational(1));
 	EXPECT_EQ(texture.virtual_resolution(), QVector2D(320, 240));
-	EXPECT_EQ(int(texture.format()), int(olive::core::PixelFormat::U8));
+	EXPECT_EQ(int(texture.format()), int(olive::core::PixelFormat::u8));
 	EXPECT_FALSE(texture.id().isValid());
-	EXPECT_FALSE(texture.IsJob());
+	EXPECT_FALSE(texture.is_job());
 	EXPECT_EQ(texture.job(), nullptr);
 	EXPECT_TRUE(texture.frame() == nullptr);
 }
 
 TEST(RenderTexture, DummyTextureHonorsDivider)
 {
-	const olive::VideoParams params(320, 240, olive::core::PixelFormat::U8, 4,
-									olive::rational(1),
-									olive::VideoParams::kInterlaceNone, 2);
+	const olive::VideoParams params(320, 240, olive::core::PixelFormat::u8, 4,
+									olive::Rational(1),
+									olive::VideoParams::k_interlace_none, 2);
 	const olive::Texture texture(params);
 
 	EXPECT_EQ(texture.divider(), 2);
@@ -730,52 +730,52 @@ TEST(RenderTexture, DummyTextureHonorsDivider)
 
 TEST(RenderTexture, JobTextureCarriesJobAndParams)
 {
-	const olive::VideoParams params(64, 64, olive::core::PixelFormat::F32, 4);
+	const olive::VideoParams params(64, 64, olive::core::PixelFormat::f32, 4);
 
 	olive::AcceleratedJob job;
-	job.Insert(QStringLiteral("value_in"),
-			   olive::NodeValue(olive::NodeValue::kFloat, 2.5));
+	job.insert(QStringLiteral("value_in"),
+			   olive::NodeValue(olive::NodeValue::k_float, 2.5));
 
-	const olive::TexturePtr texture = olive::Texture::Job(params, job);
+	const olive::TexturePtr texture = olive::Texture::job(params, job);
 	ASSERT_TRUE(texture != nullptr);
-	EXPECT_TRUE(texture->IsDummy());
-	EXPECT_TRUE(texture->IsJob());
+	EXPECT_TRUE(texture->is_dummy());
+	EXPECT_TRUE(texture->is_job());
 	ASSERT_TRUE(texture->job() != nullptr);
 	EXPECT_TRUE(
-		texture->job()->GetValues().contains(QStringLiteral("value_in")));
-	EXPECT_EQ(texture->job()->Get(QStringLiteral("value_in")).toDouble(), 2.5);
+		texture->job()->get_values().contains(QStringLiteral("value_in")));
+	EXPECT_EQ(texture->job()->get(QStringLiteral("value_in")).to_double(), 2.5);
 	EXPECT_EQ(texture->params(), params);
 }
 
 TEST(RenderTexture, ToJobCreatesJobTextureWithSameParams)
 {
-	const olive::VideoParams params(128, 72, olive::core::PixelFormat::U8, 4);
+	const olive::VideoParams params(128, 72, olive::core::PixelFormat::u8, 4);
 	olive::Texture dummy(params);
 
 	const olive::AcceleratedJob job;
-	const olive::TexturePtr job_tex = dummy.toJob(job);
+	const olive::TexturePtr job_tex = dummy.to_job(job);
 
 	ASSERT_TRUE(job_tex != nullptr);
-	EXPECT_FALSE(dummy.IsJob());
-	EXPECT_TRUE(job_tex->IsJob());
+	EXPECT_FALSE(dummy.is_job());
+	EXPECT_TRUE(job_tex->is_job());
 	EXPECT_EQ(job_tex->params(), dummy.params());
 }
 
 TEST(RenderTexture, UploadDownloadOnDummyAreNoOps)
 {
-	const olive::VideoParams params(16, 16, olive::core::PixelFormat::U8, 4);
+	const olive::VideoParams params(16, 16, olive::core::PixelFormat::u8, 4);
 	olive::Texture texture(params);
 
 	// With no renderer backend both calls must return without touching data.
 	uint8_t buffer[16 * 16 * 4];
 	memset(buffer, 0xAB, sizeof(buffer));
-	texture.Upload(buffer, 16 * 4);
-	texture.Download(buffer, 16 * 4);
+	texture.upload(buffer, 16 * 4);
+	texture.download(buffer, 16 * 4);
 	EXPECT_EQ(buffer[0], uint8_t(0xAB));
 }
 
 TEST(RenderTexture, DefaultInterpolationIsMipmappedLinear)
 {
-	EXPECT_EQ(int(olive::Texture::kDefaultInterpolation),
-			  int(olive::Texture::kMipmappedLinear));
+	EXPECT_EQ(int(olive::Texture::k_default_interpolation),
+			  int(olive::Texture::k_mipmapped_linear));
 }

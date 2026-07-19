@@ -37,7 +37,7 @@ DiskCacheDialog::DiskCacheDialog(DiskCacheFolder *folder, QWidget *parent)
 
 	int row = 0;
 
-	layout->addWidget(new QLabel(tr("Disk Cache: %1").arg(folder->GetPath())),
+	layout->addWidget(new QLabel(tr("Disk Cache: %1").arg(folder->get_path())),
 					  row, 0, 1, 2);
 	setWindowTitle(tr("Disk Cache Settings"));
 
@@ -46,10 +46,10 @@ DiskCacheDialog::DiskCacheDialog(DiskCacheFolder *folder, QWidget *parent)
 	layout->addWidget(new QLabel(tr("Maximum Disk Cache:")), row, 0);
 
 	maximum_cache_slider_ = new FloatSlider();
-	maximum_cache_slider_->SetFormat(tr("%1 GB"));
-	maximum_cache_slider_->SetMinimum(1.0);
-	maximum_cache_slider_->SetValue(static_cast<double>(folder->GetLimit()) /
-									static_cast<double>(kBytesInGigabyte));
+	maximum_cache_slider_->set_format(tr("%1 GB"));
+	maximum_cache_slider_->set_minimum(1.0);
+	maximum_cache_slider_->set_value(static_cast<double>(folder->get_limit()) /
+									static_cast<double>(k_bytes_in_gigabyte));
 	layout->addWidget(maximum_cache_slider_, row, 1);
 
 	row++;
@@ -57,14 +57,14 @@ DiskCacheDialog::DiskCacheDialog(DiskCacheFolder *folder, QWidget *parent)
 	clear_cache_btn_ = new QPushButton(tr("Clear Disk Cache"));
 	connect(clear_cache_btn_, &QPushButton::clicked, this,
 			static_cast<void (DiskCacheDialog::*)()>(
-				&DiskCacheDialog::ClearDiskCache));
+				&DiskCacheDialog::clear_disk_cache));
 	layout->addWidget(clear_cache_btn_, row, 1);
 
 	row++;
 
 	clear_disk_cache_ =
 		new QCheckBox(tr("Automatically clear disk cache on close"));
-	clear_disk_cache_->setChecked(folder->GetClearOnClose());
+	clear_disk_cache_->setChecked(folder->get_clear_on_close());
 	layout->addWidget(clear_disk_cache_, row, 1);
 
 	row++;
@@ -81,24 +81,24 @@ DiskCacheDialog::DiskCacheDialog(DiskCacheFolder *folder, QWidget *parent)
 void DiskCacheDialog::accept()
 {
 	qint64 new_disk_cache_limit =
-		qRound64(maximum_cache_slider_->GetValue() * kBytesInGigabyte);
-	if (new_disk_cache_limit != folder_->GetLimit()) {
-		folder_->SetLimit(new_disk_cache_limit);
+		qRound64(maximum_cache_slider_->get_value() * k_bytes_in_gigabyte);
+	if (new_disk_cache_limit != folder_->get_limit()) {
+		folder_->set_limit(new_disk_cache_limit);
 	}
 
-	if (folder_->GetClearOnClose() != clear_disk_cache_->isChecked()) {
-		folder_->SetClearOnClose(clear_disk_cache_->isChecked());
+	if (folder_->get_clear_on_close() != clear_disk_cache_->isChecked()) {
+		folder_->set_clear_on_close(clear_disk_cache_->isChecked());
 	}
 
 	QDialog::accept();
 }
 
-void DiskCacheDialog::ClearDiskCache()
+void DiskCacheDialog::clear_disk_cache()
 {
-	ClearDiskCache(folder_->GetPath(), this, clear_cache_btn_);
+	clear_disk_cache(folder_->get_path(), this, clear_cache_btn_);
 }
 
-void DiskCacheDialog::ClearDiskCache(const QString &path, QWidget *parent,
+void DiskCacheDialog::clear_disk_cache(const QString &path, QWidget *parent,
 									 QPushButton *clear_btn)
 {
 	if (QMessageBox::question(
@@ -109,7 +109,7 @@ void DiskCacheDialog::ClearDiskCache(const QString &path, QWidget *parent,
 		if (clear_btn)
 			clear_btn->setEnabled(false);
 
-		if (DiskManager::instance()->ClearDiskCache(path)) {
+		if (DiskManager::instance()->clear_disk_cache(path)) {
 			if (clear_btn)
 				clear_btn->setText(tr("Disk Cache Cleared"));
 		} else {

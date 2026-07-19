@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FOOTAGE_H
-#define FOOTAGE_H
+#ifndef OAK_FOOTAGE_H
+#define OAK_FOOTAGE_H
 
 #include <olive/core/core.h>
 #include <QList>
@@ -53,7 +53,7 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(Footage)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return tr("Media");
 	}
@@ -63,18 +63,18 @@ public:
 		return QStringLiteral("org.olivevideoeditor.Olive.footage");
 	}
 
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
-		return { kCategoryProject };
+		return { k_category_project };
 	}
 
-	virtual QString Description() const override
+	virtual QString description() const override
 	{
 		return tr(
 			"Import video, audio, or still image files into the composition.");
 	}
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 	/**
    * @brief Reset Footage state ready for running through Probe() again
@@ -86,9 +86,9 @@ public:
    * In most cases, you'll be using olive::ProbeMedia() for re-probing which already runs Clear(), so you won't need
    * to worry about this.
    */
-	void Clear();
+	void clear();
 
-	bool IsValid() const
+	bool is_valid() const
 	{
 		return valid_;
 	}
@@ -96,7 +96,7 @@ public:
 	/**
    * @brief Sets this footage to valid and ready to use
    */
-	void SetValid();
+	void set_valid();
 
 	/**
    * @brief Return the current filename of this Footage object
@@ -134,18 +134,18 @@ public:
    */
 	void set_timestamp(const qint64 &t);
 
-	void SetCancelPointer(CancelAtom *c)
+	void set_cancel_pointer(CancelAtom *c)
 	{
 		cancelled_ = c;
 	}
 
-	int GetStreamIndex(Track::Type type, int index) const;
-	int GetStreamIndex(const Track::Reference &ref) const
+	int get_stream_index(Track::Type type, int index) const;
+	int get_stream_index(const Track::Reference &ref) const
 	{
-		return GetStreamIndex(ref.type(), ref.index());
+		return get_stream_index(ref.type(), ref.index());
 	}
 
-	Track::Reference GetReferenceFromRealIndex(int real_index) const;
+	Track::Reference get_reference_from_real_index(int real_index) const;
 
 	/**
    * @brief Get the Decoder ID set when this Footage was probed
@@ -156,12 +156,12 @@ public:
    */
 	const QString &decoder() const;
 
-	bool HasSourceStartTime() const
+	bool has_source_start_time() const
 	{
 		return has_source_start_time_;
 	}
 
-	const rational &source_start_time() const
+	const Rational &source_start_time() const
 	{
 		return source_start_time_;
 	}
@@ -171,12 +171,12 @@ public:
 		return source_start_time_source_;
 	}
 
-	void SetSourceStartTime(const rational &time, const QString &source);
+	void set_source_start_time(const Rational &time, const QString &source);
 
 	/**
 	 * @brief Removes any source start time (auto-detected or manual)
 	 */
-	void ClearSourceStartTime();
+	void clear_source_start_time();
 
 	bool proxy_enabled() const
 	{
@@ -205,10 +205,10 @@ public:
 		return proxy_state_;
 	}
 
-	void SetProxy(const QString &path, ProxyManager::ProxyState state,
+	void set_proxy(const QString &path, ProxyManager::ProxyState state,
 				  int video_stream_index, int preset_version, bool enabled);
 
-	void ClearProxy();
+	void clear_proxy();
 
 	/**
 	 * @brief Returns true if this footage uses its own proxy parameters
@@ -227,53 +227,53 @@ public:
 	/**
 	 * @brief Sets per-footage proxy parameters, overriding the global settings
 	 */
-	void SetCustomProxyParams(const ProxyManager::ProxyParams &params);
+	void set_custom_proxy_params(const ProxyManager::ProxyParams &params);
 
 	/**
 	 * @brief Reverts this footage to using the global proxy settings
 	 */
-	void ClearCustomProxyParams();
+	void clear_custom_proxy_params();
 
 	/**
 	 * @brief Returns the custom proxy parameters if set, otherwise the
 	 * parameters from the global application config
 	 */
-	ProxyManager::ProxyParams GetEffectiveProxyParams() const;
+	ProxyManager::ProxyParams get_effective_proxy_params() const;
 
-	static QString DescribeVideoStream(const VideoParams &params);
-	static QString DescribeAudioStream(const AudioParams &params);
-	static QString DescribeSubtitleStream(const SubtitleParams &params);
+	static QString describe_video_stream(const VideoParams &params);
+	static QString describe_audio_stream(const AudioParams &params);
+	static QString describe_subtitle_stream(const SubtitleParams &params);
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	static QString GetStreamTypeName(Track::Type type);
+	static QString get_stream_type_name(Track::Type type);
 
-	virtual Node *GetConnectedTextureOutput() override;
+	virtual Node *get_connected_texture_output() override;
 
-	virtual Node *GetConnectedSampleOutput() override;
+	virtual Node *get_connected_sample_output() override;
 
-	static rational AdjustTimeByLoopMode(rational time, LoopMode loop_mode,
-										 const rational &length,
+	static Rational adjust_time_by_loop_mode(Rational time, LoopMode loop_mode,
+										 const Rational &length,
 										 VideoParams::Type type,
-										 const rational &timebase);
+										 const Rational &timebase);
 
 	virtual QVariant data(const DataType &d) const override;
 
-	virtual int GetTotalStreamCount() const override
+	virtual int get_total_stream_count() const override
 	{
 		return total_stream_count_;
 	}
 
-	virtual bool LoadCustom(QXmlStreamReader *reader,
+	virtual bool load_custom(QXmlStreamReader *reader,
 							SerializedData *data) override;
-	virtual void SaveCustom(QXmlStreamWriter *writer) const override;
+	virtual void save_custom(QXmlStreamWriter *writer) const override;
 
 signals:
-	void ProxySettingsChanged();
+	void proxy_settings_changed();
 
 public:
-	static const QString kFilenameInput;
+	static const QString k_filename_input;
 
 	virtual void AddedToGraphEvent(Project *p) override;
 	virtual void RemovedFromGraphEvent(Project *p) override;
@@ -282,14 +282,14 @@ protected:
 	virtual void InputValueChangedEvent(const QString &input,
 										int element) override;
 
-	virtual rational VerifyLengthInternal(Track::Type type) const override;
+	virtual Rational verify_length_internal(Track::Type type) const override;
 
 private:
-	QString GetColorspaceToUse(const VideoParams &params) const;
+	QString get_colorspace_to_use(const VideoParams &params) const;
 
-	void Reprobe();
+	void reprobe();
 
-	VideoParams MergeVideoStream(const VideoParams &base,
+	VideoParams merge_video_stream(const VideoParams &base,
 								 const VideoParams &over);
 
 	/**
@@ -302,7 +302,7 @@ private:
    */
 	QString decoder_;
 
-	rational source_start_time_;
+	Rational source_start_time_;
 
 	QString source_start_time_source_;
 
@@ -329,17 +329,17 @@ private:
 	int total_stream_count_;
 
 private slots:
-	void CheckFootage();
+	void check_footage();
 
-	void DefaultColorSpaceChanged();
+	void default_color_space_changed();
 
-	void ProxyReady(const QString &source_filename, int stream_index,
+	void proxy_ready(const QString &source_filename, int stream_index,
 					const QString &proxy_filename);
-	void ProxyFinished(const QString &source_filename, int stream_index,
+	void proxy_finished(const QString &source_filename, int stream_index,
 					   const QString &proxy_filename,
 					   ProxyManager::ProxyState state);
 };
 
 }
 
-#endif // FOOTAGE_H
+#endif // OAK_FOOTAGE_H

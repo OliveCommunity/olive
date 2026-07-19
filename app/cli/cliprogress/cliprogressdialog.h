@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CLIPROGRESSDIALOG_H
-#define CLIPROGRESSDIALOG_H
+#ifndef OAK_CLIPROGRESSDIALOG_H
+#define OAK_CLIPROGRESSDIALOG_H
 
 #include <QObject>
 #include <QTimer>
@@ -35,10 +35,10 @@ public:
 	CLIProgressDialog(const QString &title, QObject *parent = nullptr);
 
 public slots:
-	void SetProgress(double p);
+	void set_progress(double p);
 
 private:
-	void Update();
+	void update();
 
 	QString title_;
 
@@ -49,4 +49,4 @@ private:
 
 }
 
-#endif // CLIPROGRESSDIALOG_H
+#endif // OAK_CLIPROGRESSDIALOG_H

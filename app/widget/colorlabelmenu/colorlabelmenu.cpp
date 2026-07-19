@@ -44,41 +44,41 @@ ColorLabelMenu::ColorLabelMenu(QWidget *parent)
 		QPainter painter(&p);
 		painter.setPen(Qt::black);
 		painter.setBrush(
-			QtUtils::toQColor(ColorCoding::standard_colors().at(i)));
+			QtUtils::to_q_color(ColorCoding::standard_colors().at(i)));
 		painter.drawRect(p.rect().adjusted(0, 0, -1, -1));
 
-		QAction *a = AddItem(QStringLiteral("colorlabel%1").arg(i), this,
-							 &ColorLabelMenu::ActionTriggered);
+		QAction *a = add_item(QStringLiteral("colorlabel%1").arg(i), this,
+							 &ColorLabelMenu::action_triggered);
 		a->setIcon(p);
 		a->setData(i);
 		color_items_.replace(i, a);
 	}
 
-	Retranslate();
+	retranslate();
 }
 
 void ColorLabelMenu::changeEvent(QEvent *event)
 {
 	if (event->type() == QEvent::LanguageChange) {
-		Retranslate();
+		retranslate();
 	}
 
 	Menu::changeEvent(event);
 }
 
-void ColorLabelMenu::Retranslate()
+void ColorLabelMenu::retranslate()
 {
 	this->setTitle(tr("Color"));
 
 	for (int i = 0; i < color_items_.size(); i++) {
-		color_items_.at(i)->setText(ColorCoding::GetColorName(i));
+		color_items_.at(i)->setText(ColorCoding::get_color_name(i));
 	}
 }
 
-void ColorLabelMenu::ActionTriggered()
+void ColorLabelMenu::action_triggered()
 {
 	QAction *a = static_cast<QAction *>(sender());
-	emit ColorSelected(a->data().toInt());
+	emit color_selected(a->data().toInt());
 }
 
 }

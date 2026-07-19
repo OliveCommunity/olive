@@ -26,25 +26,25 @@
 namespace olive
 {
 
-void OIIOUtils::FrameToBuffer(const Frame *frame, OIIO::ImageBuf *buf)
+void OIIOUtils::frame_to_buffer(const Frame *frame, OIIO::ImageBuf *buf)
 {
 	buf->set_pixels(OIIO::ROI(), buf->spec().format, frame->const_data(),
 					OIIO::AutoStride, frame->linesize_bytes());
 }
 
-void OIIOUtils::BufferToFrame(OIIO::ImageBuf *buf, Frame *frame)
+void OIIOUtils::buffer_to_frame(OIIO::ImageBuf *buf, Frame *frame)
 {
 	buf->get_pixels(OIIO::ROI(), buf->spec().format, frame->data(),
 					OIIO::AutoStride, frame->linesize_bytes());
 }
 
-rational OIIOUtils::GetPixelAspectRatioFromOIIO(const OIIO::ImageSpec &spec)
+Rational OIIOUtils::get_pixel_aspect_ratio_from_oiio(const OIIO::ImageSpec &spec)
 {
-	return rational::fromDouble(
+	return Rational::from_double(
 		spec.get_float_attribute("PixelAspectRatio", 1));
 }
 
-PixelFormat OIIOUtils::GetFormatFromOIIOBasetype(OIIO::TypeDesc::BASETYPE type)
+PixelFormat OIIOUtils::get_format_from_oiio_basetype(OIIO::TypeDesc::BASETYPE type)
 {
 	switch (type) {
 	case OIIO::TypeDesc::UNKNOWN:
@@ -65,16 +65,16 @@ PixelFormat OIIOUtils::GetFormatFromOIIOBasetype(OIIO::TypeDesc::BASETYPE type)
 		break;
 
 	case OIIO::TypeDesc::UINT8:
-		return PixelFormat::U8;
+		return PixelFormat::u8;
 	case OIIO::TypeDesc::UINT16:
-		return PixelFormat::U16;
+		return PixelFormat::u16;
 	case OIIO::TypeDesc::HALF:
-		return PixelFormat::F16;
+		return PixelFormat::f16;
 	case OIIO::TypeDesc::FLOAT:
-		return PixelFormat::F32;
+		return PixelFormat::f32;
 	}
 
-	return PixelFormat::INVALID;
+	return PixelFormat::invalid;
 }
 
 }

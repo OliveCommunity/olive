@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef RENDERCANCELDIALOG_H
-#define RENDERCANCELDIALOG_H
+#ifndef OAK_RENDERCANCELDIALOG_H
+#define OAK_RENDERCANCELDIALOG_H
 
 #include "dialog/progress/progress.h"
 
@@ -32,20 +32,20 @@ class RenderCancelDialog : public ProgressDialog {
 public:
 	RenderCancelDialog(QWidget *parent = nullptr);
 
-	void RunIfWorkersAreBusy();
+	void run_if_workers_are_busy();
 
-	void SetWorkerCount(int count);
+	void set_worker_count(int count);
 
-	void WorkerStarted();
+	void worker_started();
 
 public slots:
-	void WorkerDone();
+	void worker_done();
 
 protected:
 	virtual void showEvent(QShowEvent *event) override;
 
 private:
-	void UpdateProgress();
+	void update_progress();
 
 	int busy_workers_;
 
@@ -56,4 +56,4 @@ private:
 
 }
 
-#endif // RENDERCANCELDIALOG_H
+#endif // OAK_RENDERCANCELDIALOG_H

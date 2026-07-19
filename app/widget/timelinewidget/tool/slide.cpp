@@ -31,16 +31,16 @@ namespace olive
 SlideTool::SlideTool(TimelineWidget *parent)
 	: PointerTool(parent)
 {
-	SetTrimmingAllowed(false);
-	SetTrackMovementAllowed(false);
-	SetGapTrimmingAllowed(true);
+	set_trimming_allowed(false);
+	set_track_movement_allowed(false);
+	set_gap_trimming_allowed(true);
 }
 
-void SlideTool::InitiateDrag(Block *clicked_item,
+void SlideTool::initiate_drag(Block *clicked_item,
 							 Timeline::MovementMode trim_mode,
 							 Qt::KeyboardModifiers modifiers)
 {
-	InitiateDragInternal(clicked_item, trim_mode, modifiers, false, true, true);
+	initiate_drag_internal(clicked_item, trim_mode, modifiers, false, true, true);
 }
 
 }

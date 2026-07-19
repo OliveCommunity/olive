@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PREFERENCESTAB_H
-#define PREFERENCESTAB_H
+#ifndef OAK_PREFERENCESTAB_H
+#define OAK_PREFERENCESTAB_H
 
 #include <QWidget>
 
@@ -34,11 +34,11 @@ class ConfigDialogBaseTab : public QWidget {
 public:
 	ConfigDialogBaseTab() = default;
 
-	virtual bool Validate();
+	virtual bool validate();
 
-	virtual void Accept(MultiUndoCommand *parent) = 0;
+	virtual void accept(MultiUndoCommand *parent) = 0;
 };
 
 }
 
-#endif // PREFERENCESTAB_H
+#endif // OAK_PREFERENCESTAB_H

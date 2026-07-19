@@ -27,7 +27,7 @@ namespace olive
 {
 
 QVector<double>
-AudioWaveformSync::ExtractRmsEnvelope(const core::SampleBuffer &samples,
+AudioWaveformSync::extract_rms_envelope(const core::SampleBuffer &samples,
 									  size_t window_samples)
 {
 	QVector<double> envelope;
@@ -64,7 +64,7 @@ AudioWaveformSync::ExtractRmsEnvelope(const core::SampleBuffer &samples,
 	return envelope;
 }
 
-AudioWaveformSync::OffsetResult AudioWaveformSync::EstimateOffset(
+AudioWaveformSync::OffsetResult AudioWaveformSync::estimate_offset(
 	const core::SampleBuffer &reference, const core::SampleBuffer &candidate,
 	size_t window_samples, int64_t max_offset_samples)
 {
@@ -73,26 +73,26 @@ AudioWaveformSync::OffsetResult AudioWaveformSync::EstimateOffset(
 	}
 
 	const QVector<double> reference_envelope =
-		ExtractRmsEnvelope(reference, window_samples);
+		extract_rms_envelope(reference, window_samples);
 	const QVector<double> candidate_envelope =
-		ExtractRmsEnvelope(candidate, window_samples);
+		extract_rms_envelope(candidate, window_samples);
 	const int64_t max_offset_windows =
 		max_offset_samples / static_cast<int64_t>(window_samples);
 
-	return EstimateEnvelopeOffset(reference_envelope, candidate_envelope,
+	return estimate_envelope_offset(reference_envelope, candidate_envelope,
 								  window_samples, max_offset_windows);
 }
 
-AudioWaveformSync::OffsetResult AudioWaveformSync::EstimateEnvelopeOffset(
+AudioWaveformSync::OffsetResult AudioWaveformSync::estimate_envelope_offset(
 	const QVector<double> &reference, const QVector<double> &candidate,
 	size_t window_samples, int64_t max_offset_windows)
 {
-	return EstimateEnvelopeOffset(reference, candidate, QVector<bool>(),
+	return estimate_envelope_offset(reference, candidate, QVector<bool>(),
 								  QVector<bool>(), window_samples,
 								  max_offset_windows);
 }
 
-AudioWaveformSync::OffsetResult AudioWaveformSync::EstimateEnvelopeOffset(
+AudioWaveformSync::OffsetResult AudioWaveformSync::estimate_envelope_offset(
 	const QVector<double> &reference, const QVector<double> &candidate,
 	const QVector<bool> &reference_valid, const QVector<bool> &candidate_valid,
 	size_t window_samples, int64_t max_offset_windows)
@@ -185,7 +185,7 @@ AudioWaveformSync::OffsetResult AudioWaveformSync::EstimateEnvelopeOffset(
 	return result;
 }
 
-AudioWaveformSync::StretchOffsetResult AudioWaveformSync::EstimateStretchAndOffset(
+AudioWaveformSync::StretchOffsetResult AudioWaveformSync::estimate_stretch_and_offset(
 	const QVector<double> &reference, const QVector<double> &candidate,
 	const QVector<bool> &reference_valid, const QVector<bool> &candidate_valid,
 	size_t window_samples, int64_t max_offset_windows, double min_rate,
@@ -226,7 +226,7 @@ AudioWaveformSync::StretchOffsetResult AudioWaveformSync::EstimateStretchAndOffs
 				 (candidate_valid.at(lower) && candidate_valid.at(upper)));
 		}
 
-		const OffsetResult offset = EstimateEnvelopeOffset(
+		const OffsetResult offset = estimate_envelope_offset(
 			reference, resampled, reference_valid, resampled_valid,
 			window_samples, max_offset_windows);
 

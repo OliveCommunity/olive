@@ -38,12 +38,12 @@ FFmpegEncoder::FFmpegEncoder(const EncodingParams &params)
 {
 }
 
-QStringList FFmpegEncoder::GetPixelFormatsForCodec(ExportCodec::Codec c) const
+QStringList FFmpegEncoder::get_pixel_formats_for_codec(ExportCodec::Codec c) const
 {
 	QStringList pix_fmts;
 
-	int bridge_codec = ExportCodecToBridge(c);
-	if (bridge_codec != FB_CODEC_NONE) {
+	int bridge_codec = export_codec_to_bridge(c);
+	if (bridge_codec != fb_codec_none) {
 		int count =
 			fb_encoder_codec_get_pixel_formats(bridge_codec, nullptr, 0);
 		if (count > 0) {
@@ -60,19 +60,19 @@ QStringList FFmpegEncoder::GetPixelFormatsForCodec(ExportCodec::Codec c) const
 }
 
 std::vector<SampleFormat>
-FFmpegEncoder::GetSampleFormatsForCodec(ExportCodec::Codec c) const
+FFmpegEncoder::get_sample_formats_for_codec(ExportCodec::Codec c) const
 {
 	std::vector<SampleFormat> f;
 
-	if (c == ExportCodec::kCodecPCM) {
+	if (c == ExportCodec::k_codec_pcm) {
 		// FFmpeg lists these as separate codecs so we need custom functionality here
 		// We list signed 16 first because ExportDialog will always use the first element by default
 		// (because first element is the "default" in FFmpeg)
-		f = { SampleFormat::S16, SampleFormat::U8,	SampleFormat::S32,
-			  SampleFormat::S64, SampleFormat::F32, SampleFormat::F64 };
+		f = { SampleFormat::s16, SampleFormat::u8,	SampleFormat::s32,
+			  SampleFormat::s64, SampleFormat::f32, SampleFormat::f64 };
 	} else {
-		int bridge_codec = ExportCodecToBridge(c);
-		if (bridge_codec != FB_CODEC_NONE) {
+		int bridge_codec = export_codec_to_bridge(c);
+		if (bridge_codec != fb_codec_none) {
 			int count =
 				fb_encoder_codec_get_sample_formats(bridge_codec, nullptr, 0);
 			if (count > 0) {
@@ -81,8 +81,8 @@ FFmpegEncoder::GetSampleFormatsForCodec(ExportCodec::Codec c) const
 													count);
 				for (int fmt : fmts) {
 					SampleFormat native =
-						FFmpegUtils::GetNativeSampleFormat(fmt);
-					if (native != SampleFormat::INVALID) {
+						FFmpegUtils::get_native_sample_format(fmt);
+					if (native != SampleFormat::invalid) {
 						f.push_back(native);
 					}
 				}
@@ -93,7 +93,7 @@ FFmpegEncoder::GetSampleFormatsForCodec(ExportCodec::Codec c) const
 	return f;
 }
 
-bool FFmpegEncoder::Open()
+bool FFmpegEncoder::open()
 {
 	if (open_) {
 		return true;
@@ -117,7 +117,7 @@ bool FFmpegEncoder::Open()
 	// Set up video if it's enabled
 	if (params().video_enabled()) {
 		config.video_enabled = 1;
-		config.video_codec = ExportCodecToBridge(params().video_codec());
+		config.video_codec = export_codec_to_bridge(params().video_codec());
 		config.video_width = params().video_params().width();
 		config.video_height = params().video_params().height();
 		config.video_pixel_aspect_num =
@@ -141,17 +141,17 @@ bool FFmpegEncoder::Open()
 
 		// This is the format we will need to convert the frame to for the bridge to understand it
 		video_conversion_fmt_ =
-			FFmpegUtils::GetCompatiblePixelFormat(native_pixel_fmt);
+			FFmpegUtils::get_compatible_pixel_format(native_pixel_fmt);
 
 		// These are the equivalent pixel formats as bridge pixel formats
-		int src_alpha_pix_fmt = FFmpegUtils::GetFFmpegPixelFormat(
-			video_conversion_fmt_, VideoParams::kRGBAChannelCount);
-		int src_noalpha_pix_fmt = FFmpegUtils::GetFFmpegPixelFormat(
-			video_conversion_fmt_, VideoParams::kRGBChannelCount);
+		int src_alpha_pix_fmt = FFmpegUtils::get_f_fmpeg_pixel_format(
+			video_conversion_fmt_, VideoParams::k_rgba_channel_count);
+		int src_noalpha_pix_fmt = FFmpegUtils::get_f_fmpeg_pixel_format(
+			video_conversion_fmt_, VideoParams::k_rgb_channel_count);
 
-		if (src_alpha_pix_fmt == FB_PIX_FMT_NONE ||
-			src_noalpha_pix_fmt == FB_PIX_FMT_NONE) {
-			SetError(
+		if (src_alpha_pix_fmt == fb_pix_fmt_none ||
+			src_noalpha_pix_fmt == fb_pix_fmt_none) {
+			set_error(
 				tr("Failed to find suitable pixel format for this buffer"));
 			return false;
 		}
@@ -160,19 +160,19 @@ bool FFmpegEncoder::Open()
 
 		config.video_color_range =
 			params().video_params().color_range() ==
-					VideoParams::kColorRangeFull ?
-				FB_COLOR_RANGE_JPEG :
-				FB_COLOR_RANGE_MPEG;
+					VideoParams::k_color_range_full ?
+				fb_color_range_jpeg :
+				fb_color_range_mpeg;
 
 		switch (params().video_params().interlacing()) {
-		case VideoParams::kInterlacedTopFirst:
-			config.video_field_order = FB_FIELD_ORDER_TT;
+		case VideoParams::k_interlaced_top_first:
+			config.video_field_order = fb_field_order_tt;
 			break;
-		case VideoParams::kInterlacedBottomFirst:
-			config.video_field_order = FB_FIELD_ORDER_BB;
+		case VideoParams::k_interlaced_bottom_first:
+			config.video_field_order = fb_field_order_bb;
 			break;
 		default:
-			config.video_field_order = FB_FIELD_ORDER_PROGRESSIVE;
+			config.video_field_order = fb_field_order_progressive;
 			break;
 		}
 
@@ -207,11 +207,11 @@ bool FFmpegEncoder::Open()
 	// Set up audio if it's enabled
 	if (params().audio_enabled()) {
 		config.audio_enabled = 1;
-		config.audio_codec = ExportCodecToBridge(params().audio_codec());
+		config.audio_codec = export_codec_to_bridge(params().audio_codec());
 		config.audio_sample_rate = params().audio_params().sample_rate();
 		config.audio_channel_layout_mask =
 			params().audio_params().channel_layout();
-		config.audio_sample_format = FFmpegUtils::GetFFmpegSampleFormat(
+		config.audio_sample_format = FFmpegUtils::get_f_fmpeg_sample_format(
 			params().audio_params().format());
 		config.audio_bit_rate = params().audio_bit_rate();
 	}
@@ -219,8 +219,8 @@ bool FFmpegEncoder::Open()
 	// Set up subtitles if they're enabled
 	if (params().subtitles_enabled()) {
 		config.subtitles_enabled = 1;
-		config.subtitle_codec = ExportCodecToBridge(params().subtitles_codec());
-		subtitle_header = SubtitleParams::GenerateASSHeader().toUtf8();
+		config.subtitle_codec = export_codec_to_bridge(params().subtitles_codec());
+		subtitle_header = SubtitleParams::generate_ass_header().toUtf8();
 		config.subtitle_header =
 			reinterpret_cast<const uint8_t *>(subtitle_header.constData());
 		config.subtitle_header_size = subtitle_header.size();
@@ -228,12 +228,12 @@ bool FFmpegEncoder::Open()
 
 	encoder_ = fb_encoder_create(&config);
 	if (!encoder_) {
-		SetError(tr("Failed to create encoder"));
+		set_error(tr("Failed to create encoder"));
 		return false;
 	}
 
 	if (fb_encoder_open(encoder_) != 0) {
-		SetErrorFromBridge();
+		set_error_from_bridge();
 		fb_encoder_free(&encoder_);
 		return false;
 	}
@@ -242,29 +242,29 @@ bool FFmpegEncoder::Open()
 	return true;
 }
 
-bool FFmpegEncoder::WriteFrame(FramePtr frame, rational time)
+bool FFmpegEncoder::write_frame(FramePtr frame, Rational time)
 {
 	// We may need to convert this frame to a frame that the bridge will understand
 	if (frame->format() != video_conversion_fmt_) {
 		frame = frame->convert(video_conversion_fmt_);
 	}
 
-	int src_pix_fmt = FFmpegUtils::GetFFmpegPixelFormat(frame->format(),
+	int src_pix_fmt = FFmpegUtils::get_f_fmpeg_pixel_format(frame->format(),
 														frame->channel_count());
 
 	int r = fb_encoder_write_video_frame(
 		encoder_, frame->width(), frame->height(), src_pix_fmt,
 		reinterpret_cast<const uint8_t *>(frame->data()),
-		frame->linesize_bytes(), time.toDouble());
+		frame->linesize_bytes(), time.to_double());
 	if (r != 0) {
-		SetErrorFromBridge();
+		set_error_from_bridge();
 		return false;
 	}
 
 	return true;
 }
 
-bool FFmpegEncoder::WriteAudio(const SampleBuffer &audio)
+bool FFmpegEncoder::write_audio(const SampleBuffer &audio)
 {
 	if (!audio.is_allocated()) {
 		return true;
@@ -284,50 +284,50 @@ bool FFmpegEncoder::WriteAudio(const SampleBuffer &audio)
 	int r = fb_encoder_write_audio(
 		encoder_, channel_data.data(),
 		audio.audio_params().channel_count(),
-		FFmpegUtils::GetFFmpegSampleFormat(audio.audio_params().format()),
+		FFmpegUtils::get_f_fmpeg_sample_format(audio.audio_params().format()),
 		audio_params.sample_rate(), audio_params.channel_layout(),
 		int64_t(audio.sample_count()));
 	if (r != 0) {
-		SetErrorFromBridge();
+		set_error_from_bridge();
 		return false;
 	}
 
 	return true;
 }
 
-bool FFmpegEncoder::WriteAudioData(const AudioParams &audio_params,
+bool FFmpegEncoder::write_audio_data(const AudioParams &audio_params,
 								   const uint8_t **data,
 								   int input_sample_count)
 {
 	int r = fb_encoder_write_audio(
 		encoder_, data, audio_params.channel_count(),
-		FFmpegUtils::GetFFmpegSampleFormat(audio_params.format()),
+		FFmpegUtils::get_f_fmpeg_sample_format(audio_params.format()),
 		audio_params.sample_rate(), audio_params.channel_layout(),
 		input_sample_count);
 	if (r != 0) {
-		SetErrorFromBridge();
+		set_error_from_bridge();
 		return false;
 	}
 
 	return true;
 }
 
-bool FFmpegEncoder::WriteSubtitle(const SubtitleBlock *sub_block)
+bool FFmpegEncoder::write_subtitle(const SubtitleBlock *sub_block)
 {
-	QByteArray utf8_sub = sub_block->GetText().toUtf8();
+	QByteArray utf8_sub = sub_block->get_text().toUtf8();
 
 	int r = fb_encoder_write_subtitle(encoder_, utf8_sub.constData(),
-									  sub_block->in().toDouble(),
-									  sub_block->length().toDouble());
+									  sub_block->in().to_double(),
+									  sub_block->length().to_double());
 	if (r != 0) {
-		SetErrorFromBridge();
+		set_error_from_bridge();
 		return false;
 	}
 
 	return true;
 }
 
-void FFmpegEncoder::Close()
+void FFmpegEncoder::close()
 {
 	if (encoder_) {
 		// Flushes encoders, writes the trailer, and frees everything
@@ -337,57 +337,57 @@ void FFmpegEncoder::Close()
 	open_ = false;
 }
 
-void FFmpegEncoder::SetErrorFromBridge()
+void FFmpegEncoder::set_error_from_bridge()
 {
-	SetError(QString::fromUtf8(fb_encoder_get_error(encoder_)));
+	set_error(QString::fromUtf8(fb_encoder_get_error(encoder_)));
 }
 
-int FFmpegEncoder::ExportCodecToBridge(ExportCodec::Codec c)
+int FFmpegEncoder::export_codec_to_bridge(ExportCodec::Codec c)
 {
 	switch (c) {
-	case ExportCodec::kCodecH264:
-		return FB_CODEC_H264;
-	case ExportCodec::kCodecH264rgb:
-		return FB_CODEC_H264RGB;
-	case ExportCodec::kCodecDNxHD:
-		return FB_CODEC_DNXHD;
-	case ExportCodec::kCodecProRes:
-		return FB_CODEC_PRORES;
-	case ExportCodec::kCodecCineform:
-		return FB_CODEC_CINEFORM;
-	case ExportCodec::kCodecH265:
-		return FB_CODEC_H265;
-	case ExportCodec::kCodecVP9:
-		return FB_CODEC_VP9;
-	case ExportCodec::kCodecAV1:
-		return FB_CODEC_AV1;
-	case ExportCodec::kCodecOpenEXR:
-		return FB_CODEC_OPENEXR;
-	case ExportCodec::kCodecPNG:
-		return FB_CODEC_PNG;
-	case ExportCodec::kCodecTIFF:
-		return FB_CODEC_TIFF;
-	case ExportCodec::kCodecMP2:
-		return FB_CODEC_MP2;
-	case ExportCodec::kCodecMP3:
-		return FB_CODEC_MP3;
-	case ExportCodec::kCodecAAC:
-		return FB_CODEC_AAC;
-	case ExportCodec::kCodecPCM:
-		return FB_CODEC_PCM;
-	case ExportCodec::kCodecFLAC:
-		return FB_CODEC_FLAC;
-	case ExportCodec::kCodecOpus:
-		return FB_CODEC_OPUS;
-	case ExportCodec::kCodecVorbis:
-		return FB_CODEC_VORBIS;
-	case ExportCodec::kCodecSRT:
-		return FB_CODEC_SRT;
-	case ExportCodec::kCodecCount:
+	case ExportCodec::k_codec_h264:
+		return fb_codec_h264;
+	case ExportCodec::k_codec_h264rgb:
+		return fb_codec_h264_rgb;
+	case ExportCodec::k_codec_d_nx_hd:
+		return fb_codec_dnxhd;
+	case ExportCodec::k_codec_pro_res:
+		return fb_codec_prores;
+	case ExportCodec::k_codec_cineform:
+		return fb_codec_cineform;
+	case ExportCodec::k_codec_h265:
+		return fb_codec_h265;
+	case ExportCodec::k_codec_v_p9:
+		return fb_codec_v_p9;
+	case ExportCodec::k_codec_a_v1:
+		return fb_codec_a_v1;
+	case ExportCodec::k_codec_open_exr:
+		return fb_codec_openexr;
+	case ExportCodec::k_codec_png:
+		return fb_codec_png;
+	case ExportCodec::k_codec_tiff:
+		return fb_codec_tiff;
+	case ExportCodec::k_codec_m_p2:
+		return fb_codec_m_p2;
+	case ExportCodec::k_codec_m_p3:
+		return fb_codec_m_p3;
+	case ExportCodec::k_codec_aac:
+		return fb_codec_aac;
+	case ExportCodec::k_codec_pcm:
+		return fb_codec_pcm;
+	case ExportCodec::k_codec_flac:
+		return fb_codec_flac;
+	case ExportCodec::k_codec_opus:
+		return fb_codec_opus;
+	case ExportCodec::k_codec_vorbis:
+		return fb_codec_vorbis;
+	case ExportCodec::k_codec_srt:
+		return fb_codec_srt;
+	case ExportCodec::k_codec_count:
 		break;
 	}
 
-	return FB_CODEC_NONE;
+	return fb_codec_none;
 }
 
 }

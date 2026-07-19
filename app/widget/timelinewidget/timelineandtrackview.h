@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINEANDTRACKVIEW_H
-#define TIMELINEANDTRACKVIEW_H
+#ifndef OAK_TIMELINEANDTRACKVIEW_H
+#define OAK_TIMELINEANDTRACKVIEW_H
 
 #include <QSplitter>
 #include <QWidget>
@@ -50,11 +50,11 @@ private:
 	TrackView *track_view_;
 
 private slots:
-	void ViewValueChanged(int v);
+	void view_value_changed(int v);
 
-	void TracksValueChanged(int v);
+	void tracks_value_changed(int v);
 };
 
 }
 
-#endif // TIMELINEANDTRACKVIEW_H
+#endif // OAK_TIMELINEANDTRACKVIEW_H

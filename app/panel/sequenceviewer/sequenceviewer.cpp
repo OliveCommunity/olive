@@ -29,22 +29,22 @@ SequenceViewerPanel::SequenceViewerPanel()
 	: ViewerPanel(QStringLiteral("SequenceViewerPanel"))
 {
 	// Set strings
-	Retranslate();
+	retranslate();
 }
 
-void SequenceViewerPanel::StartCapture(const TimeRange &time,
+void SequenceViewerPanel::start_capture(const TimeRange &time,
 									   const Track::Reference &track)
 {
 	TimelinePanel *tp = static_cast<TimelinePanel *>(sender());
-	static_cast<ViewerWidget *>(GetTimeBasedWidget())
-		->StartCapture(tp->timeline_widget(), time, track);
+	static_cast<ViewerWidget *>(get_time_based_widget())
+		->start_capture(tp->timeline_widget(), time, track);
 }
 
-void SequenceViewerPanel::Retranslate()
+void SequenceViewerPanel::retranslate()
 {
-	ViewerPanel::Retranslate();
+	ViewerPanel::retranslate();
 
-	SetTitle(tr("Sequence Viewer"));
+	set_title(tr("Sequence Viewer"));
 }
 
 }

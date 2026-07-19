@@ -19,15 +19,15 @@
 
 ***/
 
-#ifndef DIGIT_H
-#define DIGIT_H
+#ifndef OAK_DIGIT_H
+#define OAK_DIGIT_H
 
 #include <stdint.h>
 
 namespace olive
 {
 
-inline int64_t GetDigitCount(int64_t input)
+inline int64_t get_digit_count(int64_t input)
 {
 	input = std::abs(input);
 
@@ -44,4 +44,4 @@ inline int64_t GetDigitCount(int64_t input)
 
 }
 
-#endif // DIGIT_H
+#endif // OAK_DIGIT_H

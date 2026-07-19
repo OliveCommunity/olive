@@ -25,7 +25,7 @@ namespace olive
 {
 
 ProjectSerializer::LoadData
-ProjectSerializer190219::Load(Project *project, QXmlStreamReader *reader,
+ProjectSerializer190219::load(Project *project, QXmlStreamReader *reader,
 							  LoadType load_type, void *reserved) const
 {
 	return LoadData();

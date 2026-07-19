@@ -23,20 +23,20 @@ TEST(FFmpegDecoderHW, H264_422_10bit_CPUFrame_IsNotBlack)
 		GTEST_SKIP() << "Test footage not available: " << path.toStdString();
 	}
 
-	DecoderPtr decoder = Decoder::CreateFromID(QStringLiteral("ffmpeg"));
+	DecoderPtr decoder = Decoder::create_from_id(QStringLiteral("ffmpeg"));
 	ASSERT_TRUE(decoder);
 
 	Footage footage(path);
-	ASSERT_TRUE(footage.IsValid());
+	ASSERT_TRUE(footage.is_valid());
 
-	Decoder::CodecStream stream(path, footage.GetStreamIndex(Track::kVideo, 0),
+	Decoder::CodecStream stream(path, footage.get_stream_index(Track::k_video, 0),
 								nullptr);
-	ASSERT_TRUE(decoder->Open(stream));
+	ASSERT_TRUE(decoder->open(stream));
 
 	Decoder::RetrieveVideoParams params;
-	params.time = rational(0);
-	params.maximum_format = PixelFormat::U16;
-	FramePtr frame = decoder->RetrieveVideoFrame(params);
+	params.time = Rational(0);
+	params.maximum_format = PixelFormat::u16;
+	FramePtr frame = decoder->retrieve_video_frame(params);
 	ASSERT_TRUE(frame);
 	ASSERT_TRUE(frame->is_allocated());
 
@@ -47,7 +47,7 @@ TEST(FFmpegDecoderHW, H264_422_10bit_CPUFrame_IsNotBlack)
 
 	double avg = 0.0;
 	int samples = 0;
-	const int bpc = VideoParams::GetBytesPerChannel(frame->format());
+	const int bpc = VideoParams::get_bytes_per_channel(frame->format());
 	const int stride = frame->linesize_bytes();
 	for (int y = 0; y < height && y < 1080; y += 120) {
 		for (int x = 0; x < width && x < 1920; x += 240) {

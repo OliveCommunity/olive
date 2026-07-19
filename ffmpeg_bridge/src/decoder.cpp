@@ -30,26 +30,26 @@
 namespace
 {
 
-constexpr int64_t kAnalyzeDurationUs = 5000000;
-constexpr int64_t kProbeSizeBytes = 20000000;
+constexpr int64_t k_analyze_duration_us = 5000000;
+constexpr int64_t k_probe_size_bytes = 20000000;
 
-void ApplyFormatOpenOptions(AVDictionary **opts)
+void apply_format_open_options(AVDictionary **opts)
 {
-	av_dict_set_int(opts, "analyzeduration", kAnalyzeDurationUs, 0);
-	av_dict_set_int(opts, "probesize", kProbeSizeBytes, 0);
+	av_dict_set_int(opts, "analyzeduration", k_analyze_duration_us, 0);
+	av_dict_set_int(opts, "probesize", k_probe_size_bytes, 0);
 }
 
-void TuneFormatContext(AVFormatContext *ctx)
+void tune_format_context(AVFormatContext *ctx)
 {
 	if (!ctx) {
 		return;
 	}
 
-	ctx->probesize = kProbeSizeBytes;
-	ctx->max_analyze_duration = kAnalyzeDurationUs;
+	ctx->probesize = k_probe_size_bytes;
+	ctx->max_analyze_duration = k_analyze_duration_us;
 }
 
-void DiscardSubtitleStreams(AVFormatContext *ctx)
+void discard_subtitle_streams(AVFormatContext *ctx)
 {
 	if (!ctx) {
 		return;
@@ -77,14 +77,14 @@ struct FBDecoder {
 	AVPixelFormat hw_pix_fmt = AV_PIX_FMT_NONE;
 	bool hwaccel_enabled = false;
 
-	bool Open(const char *filename, int stream_index);
-	void Close();
+	bool open(const char *filename, int stream_index);
+	void close();
 
-	static AVHWDeviceType ChooseHardwareDevice();
-	static AVPixelFormat GetHardwareFormat(AVCodecContext *ctx,
+	static AVHWDeviceType choose_hardware_device();
+	static AVPixelFormat get_hardware_format(AVCodecContext *ctx,
 										   const AVPixelFormat *pix_fmts);
-	bool InitHardwareAcceleration(const AVCodec *codec);
-	void CleanupHardwareAcceleration();
+	bool init_hardware_acceleration(const AVCodec *codec);
+	void cleanup_hardware_acceleration();
 };
 
 FBDecoder *fb_decoder_create(void)
@@ -95,21 +95,21 @@ FBDecoder *fb_decoder_create(void)
 void fb_decoder_free(FBDecoder **decoder)
 {
 	if (decoder && *decoder) {
-		(*decoder)->Close();
+		(*decoder)->close();
 		delete *decoder;
 		*decoder = nullptr;
 	}
 }
 
-bool FBDecoder::Open(const char *filename, int stream_index)
+bool FBDecoder::open(const char *filename, int stream_index)
 {
 	// Open file in a format context
 	AVDictionary *format_opts = nullptr;
-	ApplyFormatOpenOptions(&format_opts);
+	apply_format_open_options(&format_opts);
 	int error_code = avformat_open_input(&fmt_ctx, filename, nullptr, &format_opts);
 	av_dict_free(&format_opts);
-	TuneFormatContext(fmt_ctx);
-	DiscardSubtitleStreams(fmt_ctx);
+	tune_format_context(fmt_ctx);
+	discard_subtitle_streams(fmt_ctx);
 
 	if (error_code != 0) {
 		fprintf(stderr, "ffmpeg_bridge: failed to open input %s (%d)\n", filename,
@@ -158,7 +158,7 @@ bool FBDecoder::Open(const char *filename, int stream_index)
 	}
 
 	// Attempt hardware accelerated decoding first, then fall back to software.
-	if (InitHardwareAcceleration(codec)) {
+	if (init_hardware_acceleration(codec)) {
 		error_code = avcodec_open2(codec_ctx, codec, &opts);
 		if (error_code == 0) {
 			hwaccel_enabled = true;
@@ -171,7 +171,7 @@ bool FBDecoder::Open(const char *filename, int stream_index)
 
 		// Free the failed context and recreate it for software decoding.
 		avcodec_free_context(&codec_ctx);
-		CleanupHardwareAcceleration();
+		cleanup_hardware_acceleration();
 
 		codec_ctx = avcodec_alloc_context3(codec);
 		if (codec_ctx == nullptr) {
@@ -198,7 +198,7 @@ bool FBDecoder::Open(const char *filename, int stream_index)
 	return true;
 }
 
-AVHWDeviceType FBDecoder::ChooseHardwareDevice()
+AVHWDeviceType FBDecoder::choose_hardware_device()
 {
 	if (getenv("OAK_DISABLE_HWACCEL") != nullptr) {
 		return AV_HWDEVICE_TYPE_NONE;
@@ -231,7 +231,7 @@ AVHWDeviceType FBDecoder::ChooseHardwareDevice()
 	return AV_HWDEVICE_TYPE_NONE;
 }
 
-AVPixelFormat FBDecoder::GetHardwareFormat(AVCodecContext *ctx,
+AVPixelFormat FBDecoder::get_hardware_format(AVCodecContext *ctx,
 										   const AVPixelFormat *pix_fmts)
 {
 	const FBDecoder *inst = static_cast<const FBDecoder *>(ctx->opaque);
@@ -246,9 +246,9 @@ AVPixelFormat FBDecoder::GetHardwareFormat(AVCodecContext *ctx,
 	return pix_fmts[0];
 }
 
-bool FBDecoder::InitHardwareAcceleration(const AVCodec *codec)
+bool FBDecoder::init_hardware_acceleration(const AVCodec *codec)
 {
-	const AVHWDeviceType device_type = ChooseHardwareDevice();
+	const AVHWDeviceType device_type = choose_hardware_device();
 	if (device_type == AV_HWDEVICE_TYPE_NONE) {
 		return false;
 	}
@@ -279,20 +279,20 @@ bool FBDecoder::InitHardwareAcceleration(const AVCodec *codec)
 		fprintf(stderr,
 				"ffmpeg_bridge: failed to create hardware device context (%d)\n",
 				ret);
-		CleanupHardwareAcceleration();
+		cleanup_hardware_acceleration();
 		return false;
 	}
 
 	codec_ctx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
 	codec_ctx->opaque = this;
-	codec_ctx->get_format = GetHardwareFormat;
+	codec_ctx->get_format = get_hardware_format;
 	// Most hardware decoders do not support frame threading.
 	av_dict_set(&opts, "threads", "1", 0);
 
 	return true;
 }
 
-void FBDecoder::CleanupHardwareAcceleration()
+void FBDecoder::cleanup_hardware_acceleration()
 {
 	hwaccel_enabled = false;
 	hw_device_type = AV_HWDEVICE_TYPE_NONE;
@@ -304,7 +304,7 @@ void FBDecoder::CleanupHardwareAcceleration()
 	}
 }
 
-void FBDecoder::Close()
+void FBDecoder::close()
 {
 	if (opts) {
 		av_dict_free(&opts);
@@ -316,7 +316,7 @@ void FBDecoder::Close()
 		codec_ctx = nullptr;
 	}
 
-	CleanupHardwareAcceleration();
+	cleanup_hardware_acceleration();
 
 	if (fmt_ctx) {
 		avformat_close_input(&fmt_ctx);
@@ -331,13 +331,13 @@ int fb_decoder_open(FBDecoder *decoder, const char *filename, int stream_index)
 	if (!decoder || !filename) {
 		return AVERROR(EINVAL);
 	}
-	return decoder->Open(filename, stream_index) ? 0 : AVERROR_EXTERNAL;
+	return decoder->open(filename, stream_index) ? 0 : AVERROR_EXTERNAL;
 }
 
 void fb_decoder_close(FBDecoder *decoder)
 {
 	if (decoder) {
-		decoder->Close();
+		decoder->close();
 	}
 }
 
@@ -431,13 +431,13 @@ int fb_decoder_get_stream_info(const FBDecoder *decoder, FBStreamInfo *out)
 	out->has_decoder = 1; // stream is open, so a decoder was found
 	out->width = par->width;
 	out->height = par->height;
-	out->pixel_format = fb::PixFmtFromAV(AVPixelFormat(par->format));
+	out->pixel_format = fb::pix_fmt_from_av(AVPixelFormat(par->format));
 	out->field_order = decoder->codec_ctx ? decoder->codec_ctx->field_order :
 											AV_FIELD_UNKNOWN;
 	out->color_range = par->color_range;
 	out->sample_rate = par->sample_rate;
 	out->sample_format = par->format;
-	out->channel_layout_mask = fb::ValidateStreamChannelLayoutMask(s);
+	out->channel_layout_mask = fb::validate_stream_channel_layout_mask(s);
 	out->start_time = s->start_time;
 	out->duration = s->duration;
 	out->time_base_num = s->time_base.num;
@@ -502,5 +502,5 @@ int fb_decoder_hw_pix_fmt(const FBDecoder *decoder)
 	// Hardware pixel formats have no static FB_PIX_FMT_* identifier, so this
 	// returns a process-local dynamic id for them. Use fb_frame_is_hw() to
 	// detect hardware frames.
-	return decoder ? fb::PixFmtFromAV(decoder->hw_pix_fmt) : FB_PIX_FMT_NONE;
+	return decoder ? fb::pix_fmt_from_av(decoder->hw_pix_fmt) : fb_pix_fmt_none;
 }

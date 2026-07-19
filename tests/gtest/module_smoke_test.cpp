@@ -5,36 +5,36 @@
 TEST(ModuleSmoke, ToolAddableObjectNames)
 {
 	EXPECT_FALSE(
-		olive::Tool::GetAddableObjectName(olive::Tool::kAddableEmpty).isEmpty());
+		olive::Tool::get_addable_object_name(olive::Tool::k_addable_empty).isEmpty());
 	EXPECT_FALSE(
-		olive::Tool::GetAddableObjectName(olive::Tool::kAddableBars).isEmpty());
+		olive::Tool::get_addable_object_name(olive::Tool::k_addable_bars).isEmpty());
 	EXPECT_FALSE(
-		olive::Tool::GetAddableObjectName(olive::Tool::kAddableShape).isEmpty());
+		olive::Tool::get_addable_object_name(olive::Tool::k_addable_shape).isEmpty());
 	EXPECT_FALSE(
-		olive::Tool::GetAddableObjectName(olive::Tool::kAddableSolid).isEmpty());
+		olive::Tool::get_addable_object_name(olive::Tool::k_addable_solid).isEmpty());
 	EXPECT_FALSE(
-		olive::Tool::GetAddableObjectName(olive::Tool::kAddableTitle).isEmpty());
+		olive::Tool::get_addable_object_name(olive::Tool::k_addable_title).isEmpty());
 	EXPECT_FALSE(
-		olive::Tool::GetAddableObjectName(olive::Tool::kAddableTone).isEmpty());
+		olive::Tool::get_addable_object_name(olive::Tool::k_addable_tone).isEmpty());
 	EXPECT_FALSE(
-		olive::Tool::GetAddableObjectName(olive::Tool::kAddableSubtitle)
+		olive::Tool::get_addable_object_name(olive::Tool::k_addable_subtitle)
 			.isEmpty());
 }
 
 TEST(ModuleSmoke, ToolAddableObjectIds)
 {
-	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableEmpty),
+	EXPECT_EQ(olive::Tool::get_addable_object_id(olive::Tool::k_addable_empty),
 			  QStringLiteral("empty"));
-	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableBars),
+	EXPECT_EQ(olive::Tool::get_addable_object_id(olive::Tool::k_addable_bars),
 			  QStringLiteral("bars"));
-	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableShape),
+	EXPECT_EQ(olive::Tool::get_addable_object_id(olive::Tool::k_addable_shape),
 			  QStringLiteral("shape"));
-	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableSolid),
+	EXPECT_EQ(olive::Tool::get_addable_object_id(olive::Tool::k_addable_solid),
 			  QStringLiteral("solid"));
-	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableTitle),
+	EXPECT_EQ(olive::Tool::get_addable_object_id(olive::Tool::k_addable_title),
 			  QStringLiteral("title"));
-	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableTone),
+	EXPECT_EQ(olive::Tool::get_addable_object_id(olive::Tool::k_addable_tone),
 			  QStringLiteral("tone"));
-	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableSubtitle),
+	EXPECT_EQ(olive::Tool::get_addable_object_id(olive::Tool::k_addable_subtitle),
 			  QStringLiteral("subtitle"));
 }

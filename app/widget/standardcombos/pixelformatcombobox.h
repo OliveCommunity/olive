@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PIXELFORMATCOMBOBOX_H
-#define PIXELFORMATCOMBOBOX_H
+#ifndef OAK_PIXELFORMATCOMBOBOX_H
+#define OAK_PIXELFORMATCOMBOBOX_H
 
 #include <QComboBox>
 
@@ -36,22 +36,22 @@ public:
 		: QComboBox(parent)
 	{
 		// Set up preview formats
-		for (int i = 0; i < PixelFormat::COUNT; i++) {
+		for (int i = 0; i < PixelFormat::count; i++) {
 			PixelFormat pix_fmt = static_cast<PixelFormat::Format>(i);
 
 			if (!float_only || pix_fmt.is_float()) {
-				this->addItem(VideoParams::GetFormatName(pix_fmt),
+				this->addItem(VideoParams::get_format_name(pix_fmt),
 							  static_cast<PixelFormat::Format>(pix_fmt));
 			}
 		}
 	}
 
-	PixelFormat GetPixelFormat() const
+	PixelFormat get_pixel_format() const
 	{
 		return static_cast<PixelFormat::Format>(this->currentData().toInt());
 	}
 
-	void SetPixelFormat(PixelFormat fmt)
+	void set_pixel_format(PixelFormat fmt)
 	{
 		for (int i = 0; i < this->count(); i++) {
 			if (this->itemData(i).toInt() == fmt) {
@@ -64,4 +64,4 @@ public:
 
 }
 
-#endif // PIXELFORMATCOMBOBOX_H
+#endif // OAK_PIXELFORMATCOMBOBOX_H

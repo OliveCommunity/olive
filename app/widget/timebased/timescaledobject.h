@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINESCALEDOBJECT_H
-#define TIMELINESCALEDOBJECT_H
+#ifndef OAK_TIMELINESCALEDOBJECT_H
+#define OAK_TIMELINESCALEDOBJECT_H
 
 #include <olive/core/core.h>
 #include <QWidget>
@@ -38,34 +38,34 @@ public:
 	TimeScaledObject();
 	virtual ~TimeScaledObject() = default;
 
-	void SetTimebase(const rational &timebase);
+	void set_timebase(const Rational &timebase);
 
-	const rational &timebase() const;
+	const Rational &timebase() const;
 	const double &timebase_dbl() const;
 
-	static rational SceneToTime(const double &x, const double &x_scale,
-								const rational &timebase, bool round = false);
-	static rational SceneToTimeNoGrid(const double &x, const double &x_scale);
+	static Rational scene_to_time(const double &x, const double &x_scale,
+								const Rational &timebase, bool round = false);
+	static Rational scene_to_time_no_grid(const double &x, const double &x_scale);
 
-	const double &GetScale() const;
-	const double &GetMaximumScale() const
+	const double &get_scale() const;
+	const double &get_maximum_scale() const
 	{
 		return max_scale_;
 	}
 
-	void SetScale(const double &scale);
+	void set_scale(const double &scale);
 
-	void SetScaleFromDimensions(double viewport_width, double content_width);
-	static double CalculateScaleFromDimensions(double viewport_sz,
+	void set_scale_from_dimensions(double viewport_width, double content_width);
+	static double calculate_scale_from_dimensions(double viewport_sz,
 											   double content_sz);
-	static double CalculatePaddingFromDimensionScale(double viewport_sz);
+	static double calculate_padding_from_dimension_scale(double viewport_sz);
 
-	double TimeToScene(const rational &time) const;
-	rational SceneToTime(const double &x, bool round = false) const;
-	rational SceneToTimeNoGrid(const double &x) const;
+	double time_to_scene(const Rational &time) const;
+	Rational scene_to_time(const double &x, bool round = false) const;
+	Rational scene_to_time_no_grid(const double &x) const;
 
 protected:
-	virtual void TimebaseChangedEvent(const rational &)
+	virtual void TimebaseChangedEvent(const Rational &)
 	{
 	}
 
@@ -73,12 +73,12 @@ protected:
 	{
 	}
 
-	void SetMaximumScale(const double &max);
+	void set_maximum_scale(const double &max);
 
-	void SetMinimumScale(const double &min);
+	void set_minimum_scale(const double &min);
 
 private:
-	rational timebase_;
+	Rational timebase_;
 
 	double timebase_dbl_;
 
@@ -88,7 +88,7 @@ private:
 
 	double max_scale_;
 
-	static const int kCalculateDimensionsPadding;
+	static const int k_calculate_dimensions_padding;
 };
 
 class TimelineScaledWidget : public QWidget, public TimeScaledObject {
@@ -99,4 +99,4 @@ public:
 
 }
 
-#endif // TIMELINESCALEDOBJECT_H
+#endif // OAK_TIMELINESCALEDOBJECT_H

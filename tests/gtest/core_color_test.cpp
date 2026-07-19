@@ -38,7 +38,7 @@ TEST(CoreColor, SettersAndDataAccess)
 
 TEST(CoreColor, FromHsvRed)
 {
-	Color c = Color::fromHsv(0.0f, 1.0f, 1.0f);
+	Color c = Color::from_hsv(0.0f, 1.0f, 1.0f);
 	EXPECT_NEAR(c.red(), 1.0f, 0.001f);
 	EXPECT_NEAR(c.green(), 0.0f, 0.001f);
 	EXPECT_NEAR(c.blue(), 0.0f, 0.001f);
@@ -46,7 +46,7 @@ TEST(CoreColor, FromHsvRed)
 
 TEST(CoreColor, FromHsvGreen)
 {
-	Color c = Color::fromHsv(120.0f, 1.0f, 1.0f);
+	Color c = Color::from_hsv(120.0f, 1.0f, 1.0f);
 	EXPECT_NEAR(c.red(), 0.0f, 0.001f);
 	EXPECT_NEAR(c.green(), 1.0f, 0.001f);
 	EXPECT_NEAR(c.blue(), 0.0f, 0.001f);
@@ -54,7 +54,7 @@ TEST(CoreColor, FromHsvGreen)
 
 TEST(CoreColor, FromHsvBlue)
 {
-	Color c = Color::fromHsv(240.0f, 1.0f, 1.0f);
+	Color c = Color::from_hsv(240.0f, 1.0f, 1.0f);
 	EXPECT_NEAR(c.red(), 0.0f, 0.001f);
 	EXPECT_NEAR(c.green(), 0.0f, 0.001f);
 	EXPECT_NEAR(c.blue(), 1.0f, 0.001f);
@@ -64,7 +64,7 @@ TEST(CoreColor, HsvRoundTrip)
 {
 	Color original(0.8f, 0.4f, 0.2f);
 	float h, s, v;
-	original.toHsv(&h, &s, &v);
+	original.to_hsv(&h, &s, &v);
 
 	// Independently derived expectation: max=0.8 (red), delta=0.6, so
 	// h = 60*(g-b)/delta = 20, s = delta/max = 0.75, v = max = 0.8
@@ -73,7 +73,7 @@ TEST(CoreColor, HsvRoundTrip)
 	EXPECT_NEAR(v, 0.8f, 0.0001f);
 
 	// True round trip: converting the HSV values back must restore the color
-	Color restored = Color::fromHsv(h, s, v);
+	Color restored = Color::from_hsv(h, s, v);
 	EXPECT_NEAR(restored.red(), original.red(), 0.0001f);
 	EXPECT_NEAR(restored.green(), original.green(), 0.0001f);
 	EXPECT_NEAR(restored.blue(), original.blue(), 0.0001f);
@@ -83,7 +83,7 @@ TEST(CoreColor, HslRoundTrip)
 {
 	Color original(0.2f, 0.5f, 0.8f);
 	float h, s, l;
-	original.toHsl(&h, &s, &l);
+	original.to_hsl(&h, &s, &l);
 
 	// Color has no fromHsl(), so instead of a round trip check the HSL
 	// values against independently derived expectations: min=0.2, max=0.8,
@@ -128,25 +128,25 @@ TEST(CoreColor, CompoundAssignment)
 TEST(CoreColor, GetRoughLuminance)
 {
 	Color white(1.0f, 1.0f, 1.0f);
-	EXPECT_FLOAT_EQ(white.GetRoughLuminance(), 1.0f);
+	EXPECT_FLOAT_EQ(white.get_rough_luminance(), 1.0f);
 
 	Color black(0.0f, 0.0f, 0.0f);
-	EXPECT_FLOAT_EQ(black.GetRoughLuminance(), 0.0f);
+	EXPECT_FLOAT_EQ(black.get_rough_luminance(), 0.0f);
 }
 
 TEST(CoreColor, ToDataAndFromDataU8)
 {
 	Color c(1.0f, 0.5f, 0.0f, 1.0f);
 	uint8_t data[4];
-	c.toData(reinterpret_cast<char *>(data), PixelFormat::U8, 4);
+	c.to_data(reinterpret_cast<char *>(data), PixelFormat::u8, 4);
 
 	EXPECT_EQ(data[0], 255u);
 	EXPECT_EQ(data[1], 127u);
 	EXPECT_EQ(data[2], 0u);
 	EXPECT_EQ(data[3], 255u);
 
-	Color restored = Color::fromData(reinterpret_cast<const char *>(data),
-									 PixelFormat::U8, 4);
+	Color restored = Color::from_data(reinterpret_cast<const char *>(data),
+									 PixelFormat::u8, 4);
 	EXPECT_NEAR(restored.red(), 1.0f, 0.01f);
 	EXPECT_NEAR(restored.green(), 0.5f, 0.01f);
 }
@@ -155,15 +155,15 @@ TEST(CoreColor, ToDataAndFromDataF32)
 {
 	Color c(0.25f, 0.5f, 0.75f, 1.0f);
 	float data[4];
-	c.toData(reinterpret_cast<char *>(data), PixelFormat::F32, 4);
+	c.to_data(reinterpret_cast<char *>(data), PixelFormat::f32, 4);
 
 	EXPECT_FLOAT_EQ(data[0], 0.25f);
 	EXPECT_FLOAT_EQ(data[1], 0.5f);
 	EXPECT_FLOAT_EQ(data[2], 0.75f);
 	EXPECT_FLOAT_EQ(data[3], 1.0f);
 
-	Color restored = Color::fromData(reinterpret_cast<const char *>(data),
-									 PixelFormat::F32, 4);
+	Color restored = Color::from_data(reinterpret_cast<const char *>(data),
+									 PixelFormat::f32, 4);
 	EXPECT_FLOAT_EQ(restored.red(), 0.25f);
 }
 
@@ -171,10 +171,10 @@ TEST(CoreColor, ToDataAndFromDataU10)
 {
 	Color c(1.0f, 0.5f, 0.0f, 1.0f);
 	uint32_t data;
-	c.toData(reinterpret_cast<char *>(&data), PixelFormat::U10, 4);
+	c.to_data(reinterpret_cast<char *>(&data), PixelFormat::u10, 4);
 
-	Color restored = Color::fromData(reinterpret_cast<const char *>(&data),
-									 PixelFormat::U10, 4);
+	Color restored = Color::from_data(reinterpret_cast<const char *>(&data),
+									 PixelFormat::u10, 4);
 	EXPECT_NEAR(restored.red(), 1.0f, 0.001f);
 	EXPECT_NEAR(restored.green(), 0.5f, 0.001f);
 	EXPECT_NEAR(restored.blue(), 0.0f, 0.001f);

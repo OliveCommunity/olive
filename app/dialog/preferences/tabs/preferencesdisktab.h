@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PREFERENCESDISKTAB_H
-#define PREFERENCESDISKTAB_H
+#ifndef OAK_PREFERENCESDISKTAB_H
+#define OAK_PREFERENCESDISKTAB_H
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -41,9 +41,9 @@ class PreferencesDiskTab : public ConfigDialogBaseTab {
 public:
 	PreferencesDiskTab();
 
-	virtual bool Validate() override;
+	virtual bool validate() override;
 
-	virtual void Accept(MultiUndoCommand *command) override;
+	virtual void accept(MultiUndoCommand *command) override;
 
 private:
 	PathWidget *disk_cache_location_;
@@ -64,4 +64,4 @@ private:
 
 }
 
-#endif // PREFERENCESDISKTAB_H
+#endif // OAK_PREFERENCESDISKTAB_H

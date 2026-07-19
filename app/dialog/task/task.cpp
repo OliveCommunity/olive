@@ -30,7 +30,7 @@ namespace olive
 #define super ProgressDialog
 
 TaskDialog::TaskDialog(Task *task, const QString &title, QWidget *parent)
-	: super(task->GetTitle(), title, parent)
+	: super(task->get_title(), title, parent)
 	, task_(task)
 	, destroy_on_close_(true)
 	, already_shown_(false)
@@ -40,12 +40,12 @@ TaskDialog::TaskDialog(Task *task, const QString &title, QWidget *parent)
 	task_->setParent(this);
 
 	// Connect the save manager progress signal to the progress bar update on the dialog
-	connect(task_, &Task::ProgressChanged, this, &TaskDialog::SetProgress,
+	connect(task_, &Task::progress_changed, this, &TaskDialog::set_progress,
 			Qt::QueuedConnection);
 
 	// Connect cancel signal (must be a direct connection or it'll be queued after the task has
 	// already finished)
-	connect(this, &TaskDialog::Cancelled, task_, &Task::Cancel,
+	connect(this, &TaskDialog::cancelled, task_, &Task::Cancel,
 			Qt::DirectConnection);
 }
 
@@ -59,12 +59,12 @@ void TaskDialog::showEvent(QShowEvent *e)
 
 		// Listen for when the task finishes
 		connect(task_watcher, &QFutureWatcher<bool>::finished, this,
-				&TaskDialog::TaskFinished, Qt::QueuedConnection);
+				&TaskDialog::task_finished, Qt::QueuedConnection);
 
 		// Run task in another thread with QtConcurrent
 		task_watcher->setFuture(
 #if QT_VERSION_MAJOR >= 6
-			QtConcurrent::run(&Task::Start, task_)
+			QtConcurrent::run(&Task::start, task_)
 #else
 			QtConcurrent::run(task_, &Task::Start)
 #endif
@@ -94,7 +94,7 @@ void TaskDialog::closeEvent(QCloseEvent *e)
 	}
 }
 
-void TaskDialog::TaskFinished()
+void TaskDialog::task_finished()
 {
 	QFutureWatcher<bool> *task_watcher =
 		static_cast<QFutureWatcher<bool> *>(sender());
@@ -102,10 +102,10 @@ void TaskDialog::TaskFinished()
 	task_finished_ = true;
 
 	if (task_watcher->result()) {
-		emit TaskSucceeded(task_);
+		emit task_succeeded(task_);
 	} else {
-		ShowErrorMessage(tr("Task Failed"), task_->GetError());
-		emit TaskFailed(task_);
+		show_error_message(tr("Task Failed"), task_->get_error());
+		emit task_failed(task_);
 	}
 
 	task_watcher->deleteLater();

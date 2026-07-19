@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef PROXYTASK_H
-#define PROXYTASK_H
+#ifndef OAK_PROXYTASK_H
+#define OAK_PROXYTASK_H
 
 #include "codec/proxymanager.h"
 #include "task/task.h"
@@ -39,13 +39,13 @@ public:
 	 * that it is stream 0 in the proxy file; audio streams (when enabled)
 	 * follow in source order.
 	 */
-	static QStringList BuildArguments(const QString &source_filename,
+	static QStringList build_arguments(const QString &source_filename,
 									  int stream_index,
 									  const ProxyManager::ProxyParams &params,
 									  const QString &output_filename);
 
 protected:
-	virtual bool Run() override;
+	virtual bool run() override;
 
 private:
 	QString source_filename_;
@@ -56,4 +56,4 @@ private:
 
 }
 
-#endif // PROXYTASK_H
+#endif // OAK_PROXYTASK_H

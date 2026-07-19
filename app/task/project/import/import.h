@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECTIMPORTMANAGER_H
-#define PROJECTIMPORTMANAGER_H
+#ifndef OAK_PROJECTIMPORTMANAGER_H
+#define OAK_PROJECTIMPORTMANAGER_H
 
 #include <QFileInfoList>
 #include <QUndoCommand>
@@ -37,45 +37,45 @@ class ProjectImportTask : public Task {
 public:
 	ProjectImportTask(Folder *folder, const QStringList &filenames);
 
-	const int &GetFileCount() const;
+	const int &get_file_count() const;
 
-	MultiUndoCommand *GetCommand() const
+	MultiUndoCommand *get_command() const
 	{
 		return command_;
 	}
 
-	const QStringList &GetInvalidFiles() const
+	const QStringList &get_invalid_files() const
 	{
 		return invalid_files_;
 	}
 
-	bool HasInvalidFiles() const
+	bool has_invalid_files() const
 	{
 		return !invalid_files_.isEmpty();
 	}
 
-	const QVector<Footage *> &GetImportedFootage() const
+	const QVector<Footage *> &get_imported_footage() const
 	{
 		return imported_footage_;
 	}
 
 protected:
-	virtual bool Run() override;
+	virtual bool run() override;
 
 private:
-	void Import(Folder *folder, QFileInfoList import, int &counter,
+	void import(Folder *folder, QFileInfoList entries, int &counter,
 				MultiUndoCommand *parent_command);
 
-	void ValidateImageSequence(Footage *footage, QFileInfoList &info_list,
+	void validate_image_sequence(Footage *footage, QFileInfoList &info_list,
 							   int index);
 
-	void AddItemToFolder(Folder *folder, Node *item, MultiUndoCommand *command);
+	void add_item_to_folder(Folder *folder, Node *item, MultiUndoCommand *command);
 
-	static bool ItemIsStillImageFootageOnly(Footage *footage);
+	static bool item_is_still_image_footage_only(Footage *footage);
 
-	static bool CompareStillImageSize(Footage *footage, const QSize &sz);
+	static bool compare_still_image_size(Footage *footage, const QSize &sz);
 
-	static int64_t GetImageSequenceLimit(const QString &start_fn, int64_t start,
+	static int64_t get_image_sequence_limit(const QString &start_fn, int64_t start,
 										 bool up);
 
 	MultiUndoCommand *command_;
@@ -95,4 +95,4 @@ private:
 
 }
 
-#endif // PROJECTIMPORTMANAGER_H
+#endif // OAK_PROJECTIMPORTMANAGER_H

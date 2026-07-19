@@ -27,109 +27,109 @@ extern "C" {
 namespace olive
 {
 
-QString ExportCodec::GetCodecName(ExportCodec::Codec c)
+QString ExportCodec::get_codec_name(ExportCodec::Codec c)
 {
 	switch (c) {
-	case kCodecDNxHD:
+	case k_codec_d_nx_hd:
 		return tr("DNxHD");
-	case kCodecH264:
+	case k_codec_h264:
 		return tr("H.264");
-	case kCodecH264rgb:
+	case k_codec_h264rgb:
 		return tr("H.264 RGB");
-	case kCodecH265:
+	case k_codec_h265:
 		return tr("H.265");
-	case kCodecOpenEXR:
+	case k_codec_open_exr:
 		return tr("OpenEXR");
-	case kCodecPNG:
+	case k_codec_png:
 		return tr("PNG");
-	case kCodecProRes:
+	case k_codec_pro_res:
 		return tr("ProRes");
-	case kCodecCineform:
+	case k_codec_cineform:
 		return tr("Cineform");
-	case kCodecTIFF:
+	case k_codec_tiff:
 		return tr("TIFF");
-	case kCodecMP2:
+	case k_codec_m_p2:
 		return tr("MP2");
-	case kCodecMP3:
+	case k_codec_m_p3:
 		return tr("MP3");
-	case kCodecAAC:
+	case k_codec_aac:
 		return tr("AAC");
-	case kCodecPCM:
+	case k_codec_pcm:
 		return tr("PCM (Uncompressed)");
-	case kCodecFLAC:
+	case k_codec_flac:
 		return tr("FLAC");
-	case kCodecOpus:
+	case k_codec_opus:
 		return tr("Opus");
-	case kCodecVorbis:
+	case k_codec_vorbis:
 		return tr("Vorbis");
-	case kCodecVP9:
+	case k_codec_v_p9:
 		return tr("VP9");
-	case kCodecAV1:
+	case k_codec_a_v1:
 		return tr("AV1");
-	case kCodecSRT:
+	case k_codec_srt:
 		return tr("SubRip SRT");
-	case kCodecCount:
+	case k_codec_count:
 		break;
 	}
 
 	return tr("Unknown");
 }
 
-bool ExportCodec::IsCodecAStillImage(ExportCodec::Codec c)
+bool ExportCodec::is_codec_a_still_image(ExportCodec::Codec c)
 {
 	switch (c) {
-	case kCodecDNxHD:
-	case kCodecH264:
-	case kCodecH264rgb:
-	case kCodecH265:
-	case kCodecProRes:
-	case kCodecCineform:
-	case kCodecMP2:
-	case kCodecMP3:
-	case kCodecAAC:
-	case kCodecPCM:
-	case kCodecVorbis:
-	case kCodecOpus:
-	case kCodecFLAC:
-	case kCodecVP9:
-	case kCodecAV1:
-	case kCodecSRT:
+	case k_codec_d_nx_hd:
+	case k_codec_h264:
+	case k_codec_h264rgb:
+	case k_codec_h265:
+	case k_codec_pro_res:
+	case k_codec_cineform:
+	case k_codec_m_p2:
+	case k_codec_m_p3:
+	case k_codec_aac:
+	case k_codec_pcm:
+	case k_codec_vorbis:
+	case k_codec_opus:
+	case k_codec_flac:
+	case k_codec_v_p9:
+	case k_codec_a_v1:
+	case k_codec_srt:
 		return false;
-	case kCodecOpenEXR:
-	case kCodecPNG:
-	case kCodecTIFF:
+	case k_codec_open_exr:
+	case k_codec_png:
+	case k_codec_tiff:
 		return true;
-	case kCodecCount:
+	case k_codec_count:
 		break;
 	}
 
 	return false;
 }
 
-bool ExportCodec::IsCodecLossless(Codec c)
+bool ExportCodec::is_codec_lossless(Codec c)
 {
 	switch (c) {
-	case kCodecPCM:
-	case kCodecFLAC:
+	case k_codec_pcm:
+	case k_codec_flac:
 		return true;
-	case kCodecDNxHD:
-	case kCodecH264:
-	case kCodecH264rgb:
-	case kCodecH265:
-	case kCodecProRes:
-	case kCodecCineform:
-	case kCodecMP2:
-	case kCodecMP3:
-	case kCodecAAC:
-	case kCodecVorbis:
-	case kCodecOpus:
-	case kCodecVP9:
-	case kCodecAV1:
-	case kCodecSRT:
-	case kCodecOpenEXR:
-	case kCodecPNG:
-	case kCodecTIFF:
-	case kCodecCount:
+	case k_codec_d_nx_hd:
+	case k_codec_h264:
+	case k_codec_h264rgb:
+	case k_codec_h265:
+	case k_codec_pro_res:
+	case k_codec_cineform:
+	case k_codec_m_p2:
+	case k_codec_m_p3:
+	case k_codec_aac:
+	case k_codec_vorbis:
+	case k_codec_opus:
+	case k_codec_v_p9:
+	case k_codec_a_v1:
+	case k_codec_srt:
+	case k_codec_open_exr:
+	case k_codec_png:
+	case k_codec_tiff:
+	case k_codec_count:
 		break;
 	}
 

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef RENDERJOBTRACKER_H
-#define RENDERJOBTRACKER_H
+#ifndef OAK_RENDERJOBTRACKER_H
+#define OAK_RENDERJOBTRACKER_H
 
 #include <olive/core/core.h>
 
@@ -40,7 +40,7 @@ public:
 
 	void clear();
 
-	bool isCurrent(const rational &time, JobTime job_time) const;
+	bool isCurrent(const Rational &time, JobTime job_time) const;
 
 	TimeRangeList getCurrentSubRanges(const TimeRange &range,
 									  const JobTime &job_time) const;
@@ -55,11 +55,11 @@ private:
 			job_time_ = job_time;
 		}
 
-		JobTime GetJobTime() const
+		JobTime get_job_time() const
 		{
 			return job_time_;
 		}
-		void SetJobTime(JobTime jt)
+		void set_job_time(JobTime jt)
 		{
 			job_time_ = jt;
 		}
@@ -73,4 +73,4 @@ private:
 
 }
 
-#endif // RENDERJOBTRACKER_H
+#endif // OAK_RENDERJOBTRACKER_H

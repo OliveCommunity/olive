@@ -30,7 +30,7 @@
 namespace olive
 {
 
-ShaderCode MathNodeBase::GetShaderCodeInternal(const QString &shader_id,
+ShaderCode MathNodeBase::get_shader_code_internal(const QString &shader_id,
 											   const QString &param_a_in,
 											   const QString &param_b_in) const
 {
@@ -45,11 +45,11 @@ ShaderCode MathNodeBase::GetShaderCodeInternal(const QString &shader_id,
 
 	QString operation, frag, vert;
 
-	if (pairing == kPairTextureMatrix && op == kOpMultiply) {
+	if (pairing == k_pair_texture_matrix && op == k_op_multiply) {
 		// Override the operation for this operation since we multiply texture COORDS by the matrix rather than
-		const QString &tex_in = (type_a == NodeValue::kTexture) ? param_a_in :
+		const QString &tex_in = (type_a == NodeValue::k_texture) ? param_a_in :
 																  param_b_in;
-		const QString &mat_in = (type_a == NodeValue::kTexture) ? param_b_in :
+		const QString &mat_in = (type_a == NodeValue::k_texture) ? param_b_in :
 																  param_a_in;
 
 		// No-op frag shader (can we return QString() instead?)
@@ -70,20 +70,20 @@ ShaderCode MathNodeBase::GetShaderCodeInternal(const QString &shader_id,
 
 	} else {
 		switch (op) {
-		case kOpAdd:
+		case k_op_add:
 			operation = QStringLiteral("%1 + %2");
 			break;
-		case kOpSubtract:
+		case k_op_subtract:
 			operation = QStringLiteral("%1 - %2");
 			break;
-		case kOpMultiply:
+		case k_op_multiply:
 			operation = QStringLiteral("%1 * %2");
 			break;
-		case kOpDivide:
+		case k_op_divide:
 			operation = QStringLiteral("%1 / %2");
 			break;
-		case kOpPower:
-			if (pairing == kPairTextureNumber) {
+		case k_op_power:
+			if (pairing == k_pair_texture_number) {
 				// The "number" in this operation has to be declared a vec4
 				if (NodeValue::type_is_numeric(type_a)) {
 					operation = QStringLiteral("pow(%2, vec4(%1))");
@@ -96,8 +96,8 @@ ShaderCode MathNodeBase::GetShaderCodeInternal(const QString &shader_id,
 			break;
 		}
 
-		operation = operation.arg(GetShaderVariableCall(param_a_in, type_a),
-								  GetShaderVariableCall(param_b_in, type_b));
+		operation = operation.arg(get_shader_variable_call(param_a_in, type_a),
+								  get_shader_variable_call(param_b_in, type_b));
 	}
 
 	frag =
@@ -113,31 +113,31 @@ ShaderCode MathNodeBase::GetShaderCodeInternal(const QString &shader_id,
 			"    c.a = clamp(c.a, 0.0, 1.0);\n" // Ensure alpha is between 0.0 and 1.0
 			"    frag_color = c;\n"
 			"}\n")
-			.arg(GetShaderUniformType(type_a), GetShaderUniformType(type_b),
+			.arg(get_shader_uniform_type(type_a), get_shader_uniform_type(type_b),
 				 param_a_in, param_b_in, operation);
 
 	return ShaderCode(frag, vert);
 }
 
-QString MathNodeBase::GetShaderUniformType(const olive::NodeValue::Type &type)
+QString MathNodeBase::get_shader_uniform_type(const olive::NodeValue::Type &type)
 {
 	switch (type) {
-	case NodeValue::kTexture:
+	case NodeValue::k_texture:
 		return QStringLiteral("sampler2D");
-	case NodeValue::kColor:
+	case NodeValue::k_color:
 		return QStringLiteral("vec4");
-	case NodeValue::kMatrix:
+	case NodeValue::k_matrix:
 		return QStringLiteral("mat4");
 	default:
 		return QStringLiteral("float");
 	}
 }
 
-QString MathNodeBase::GetShaderVariableCall(const QString &input_id,
+QString MathNodeBase::get_shader_variable_call(const QString &input_id,
 											const NodeValue::Type &type,
 											const QString &coord_op)
 {
-	if (type == NodeValue::kTexture) {
+	if (type == NodeValue::k_texture) {
 		return QStringLiteral("texture(%1, ove_texcoord%2)")
 			.arg(input_id, coord_op);
 	}
@@ -145,67 +145,67 @@ QString MathNodeBase::GetShaderVariableCall(const QString &input_id,
 	return input_id;
 }
 
-QVector4D MathNodeBase::RetrieveVector(const NodeValue &val)
+QVector4D MathNodeBase::retrieve_vector(const NodeValue &val)
 {
 	// QVariant doesn't know that QVector*D can convert themselves so we do it here
 	switch (val.type()) {
-	case NodeValue::kVec2:
-		return QVector4D(val.toVec2());
-	case NodeValue::kVec3:
-		return QVector4D(val.toVec3());
-	case NodeValue::kVec4:
+	case NodeValue::k_vec2:
+		return QVector4D(val.to_vec2());
+	case NodeValue::k_vec3:
+		return QVector4D(val.to_vec3());
+	case NodeValue::k_vec4:
 	default:
-		return val.toVec4();
+		return val.to_vec4();
 	}
 }
 
-void MathNodeBase::PushVector(NodeValueTable *output,
+void MathNodeBase::push_vector(NodeValueTable *output,
 							  olive::NodeValue::Type type,
 							  const QVector4D &vec) const
 {
 	switch (type) {
-	case NodeValue::kVec2:
-		output->Push(type, QVector2D(vec), this);
+	case NodeValue::k_vec2:
+		output->push(type, QVector2D(vec), this);
 		break;
-	case NodeValue::kVec3:
-		output->Push(type, QVector3D(vec), this);
+	case NodeValue::k_vec3:
+		output->push(type, QVector3D(vec), this);
 		break;
-	case NodeValue::kVec4:
-		output->Push(type, vec, this);
+	case NodeValue::k_vec4:
+		output->push(type, vec, this);
 		break;
 	default:
 		break;
 	}
 }
 
-QString MathNodeBase::GetOperationName(Operation o)
+QString MathNodeBase::get_operation_name(Operation o)
 {
 	switch (o) {
-	case kOpAdd:
+	case k_op_add:
 		return tr("Add");
-	case kOpSubtract:
+	case k_op_subtract:
 		return tr("Subtract");
-	case kOpMultiply:
+	case k_op_multiply:
 		return tr("Multiply");
-	case kOpDivide:
+	case k_op_divide:
 		return tr("Divide");
-	case kOpPower:
+	case k_op_power:
 		return tr("Power");
 	}
 
 	return QString();
 }
 
-void MathNodeBase::PerformAllOnFloatBuffer(Operation operation, float *a,
+void MathNodeBase::perform_all_on_float_buffer(Operation operation, float *a,
 										   float b, int start, int end)
 {
 	for (int j = start; j < end; j++) {
-		a[j] = PerformAll(operation, a[j], b);
+		a[j] = perform_all(operation, a[j], b);
 	}
 }
 
 #if defined(Q_PROCESSOR_X86) || defined(Q_PROCESSOR_ARM)
-void MathNodeBase::PerformAllOnFloatBufferSSE(Operation operation, float *a,
+void MathNodeBase::perform_all_on_float_buffer_sse(Operation operation, float *a,
 											  float b, int start, int end)
 {
 	int end_divisible_4 = (end / 4) * 4;
@@ -214,32 +214,32 @@ void MathNodeBase::PerformAllOnFloatBufferSSE(Operation operation, float *a,
 	__m128 mult = _mm_load1_ps(&b);
 
 	switch (operation) {
-	case kOpAdd:
+	case k_op_add:
 		// Loop all values
 		for (int j = 0; j < end_divisible_4; j += 4) {
 			_mm_storeu_ps(a + start + j,
 						  _mm_add_ps(_mm_loadu_ps(a + start + j), mult));
 		}
 		break;
-	case kOpSubtract:
+	case k_op_subtract:
 		for (int j = 0; j < end_divisible_4; j += 4) {
 			_mm_storeu_ps(a + start + j,
 						  _mm_sub_ps(_mm_loadu_ps(a + start + j), mult));
 		}
 		break;
-	case kOpMultiply:
+	case k_op_multiply:
 		for (int j = 0; j < end_divisible_4; j += 4) {
 			_mm_storeu_ps(a + start + j,
 						  _mm_mul_ps(_mm_loadu_ps(a + start + j), mult));
 		}
 		break;
-	case kOpDivide:
+	case k_op_divide:
 		for (int j = 0; j < end_divisible_4; j += 4) {
 			_mm_storeu_ps(a + start + j,
 						  _mm_div_ps(_mm_loadu_ps(a + start + j), mult));
 		}
 		break;
-	case kOpPower:
+	case k_op_power:
 		// Fallback for operations we can't support here
 		end_divisible_4 = 0;
 		break;
@@ -247,133 +247,133 @@ void MathNodeBase::PerformAllOnFloatBufferSSE(Operation operation, float *a,
 
 	// Handle last 1-3 bytes if necessary, or all bytes if we couldn't
 	// support this op on SSE
-	PerformAllOnFloatBuffer(operation, a, b, end_divisible_4, end);
+	perform_all_on_float_buffer(operation, a, b, end_divisible_4, end);
 }
 #endif
 
-void MathNodeBase::ValueInternal(
+void MathNodeBase::value_internal(
 	Operation operation, Pairing pairing, const QString &param_a_in,
 	const NodeValue &val_a, const QString &param_b_in, const NodeValue &val_b,
 	const NodeGlobals &globals, NodeValueTable *output) const
 {
 	switch (pairing) {
-	case kPairNumberNumber: {
-		if (val_a.type() == NodeValue::kRational &&
-			val_b.type() == NodeValue::kRational && operation != kOpPower) {
+	case k_pair_number_number: {
+		if (val_a.type() == NodeValue::k_rational &&
+			val_b.type() == NodeValue::k_rational && operation != k_op_power) {
 			// Preserve rationals
-			output->Push(
-				NodeValue::kRational,
-				QVariant::fromValue(PerformAddSubMultDiv<rational, rational>(
-					operation, val_a.toRational(), val_b.toRational())),
+			output->push(
+				NodeValue::k_rational,
+				QVariant::fromValue(perform_add_sub_mult_div<Rational, Rational>(
+					operation, val_a.to_rational(), val_b.to_rational())),
 				this);
 		} else {
-			output->Push(NodeValue::kFloat,
-						 PerformAll<float, float>(operation,
-												  RetrieveNumber(val_a),
-												  RetrieveNumber(val_b)),
+			output->push(NodeValue::k_float,
+						 perform_all<float, float>(operation,
+												  retrieve_number(val_a),
+												  retrieve_number(val_b)),
 						 this);
 		}
 		break;
 	}
 
-	case kPairVecVec: {
+	case k_pair_vec_vec: {
 		// We convert all vectors to QVector4D just for simplicity and exploit the fact that kVec4 is higher than kVec2 in
 		// the enum to find the largest data type
-		QVector4D vec_a = RetrieveVector(val_a);
-		QVector4D vec_b = RetrieveVector(val_b);
+		QVector4D vec_a = retrieve_vector(val_a);
+		QVector4D vec_b = retrieve_vector(val_b);
 
-		if (operation == kOpDivide) {
+		if (operation == k_op_divide) {
 			// Lower-dimensional vectors are padded with zeros; dividing the
 			// padding components would be 0/0 (assert in Qt debug builds, NaN
 			// otherwise). Force those components to 0/1 so the result is a
 			// well-defined zero, which is discarded by PushVector anyway.
 			const NodeValue::Type max_type = qMax(val_a.type(), val_b.type());
-			if (max_type == NodeValue::kVec2) {
+			if (max_type == NodeValue::k_vec2) {
 				vec_a.setZ(0.0f);
 				vec_a.setW(0.0f);
 				vec_b.setZ(1.0f);
 				vec_b.setW(1.0f);
-			} else if (max_type == NodeValue::kVec3) {
+			} else if (max_type == NodeValue::k_vec3) {
 				vec_a.setW(0.0f);
 				vec_b.setW(1.0f);
 			}
 		}
 
-		PushVector(output, qMax(val_a.type(), val_b.type()),
-				   PerformAddSubMultDiv<QVector4D, QVector4D>(operation, vec_a,
+		push_vector(output, qMax(val_a.type(), val_b.type()),
+				   perform_add_sub_mult_div<QVector4D, QVector4D>(operation, vec_a,
 															  vec_b));
 		break;
 	}
 
-	case kPairMatrixVec: {
-		QMatrix4x4 matrix = (val_a.type() == NodeValue::kMatrix) ?
-								val_a.toMatrix() :
-								val_b.toMatrix();
-		QVector4D vec = (val_a.type() == NodeValue::kMatrix) ?
-							RetrieveVector(val_b) :
-							RetrieveVector(val_a);
+	case k_pair_matrix_vec: {
+		QMatrix4x4 matrix = (val_a.type() == NodeValue::k_matrix) ?
+								val_a.to_matrix() :
+								val_b.to_matrix();
+		QVector4D vec = (val_a.type() == NodeValue::k_matrix) ?
+							retrieve_vector(val_b) :
+							retrieve_vector(val_a);
 
 		// Only valid operation is multiply
-		PushVector(output, qMax(val_a.type(), val_b.type()),
-				   PerformMult<QVector4D, QMatrix4x4>(operation, vec, matrix));
+		push_vector(output, qMax(val_a.type(), val_b.type()),
+				   perform_mult<QVector4D, QMatrix4x4>(operation, vec, matrix));
 		break;
 	}
 
-	case kPairVecNumber: {
+	case k_pair_vec_number: {
 		QVector4D vec = (NodeValue::type_is_vector(val_a.type()) ?
-							 RetrieveVector(val_a) :
-							 RetrieveVector(val_b));
-		float number = RetrieveNumber(NodeValue::type_is_vector(val_a.type()) ?
+							 retrieve_vector(val_a) :
+							 retrieve_vector(val_b));
+		float number = retrieve_number(NodeValue::type_is_vector(val_a.type()) ?
 										  val_b :
 										  val_a);
 
 		// Only multiply and divide are valid operations
-		PushVector(output,
+		push_vector(output,
 				   NodeValue::type_is_vector(val_a.type()) ? val_a.type() :
 															 val_b.type(),
-				   PerformMultDiv<QVector4D, float>(operation, vec, number));
+				   perform_mult_div<QVector4D, float>(operation, vec, number));
 		break;
 	}
 
-	case kPairMatrixMatrix: {
-		QMatrix4x4 mat_a = val_a.toMatrix();
-		QMatrix4x4 mat_b = val_b.toMatrix();
-		output->Push(NodeValue::kMatrix,
-					 PerformAddSubMult<QMatrix4x4, QMatrix4x4>(operation, mat_a,
+	case k_pair_matrix_matrix: {
+		QMatrix4x4 mat_a = val_a.to_matrix();
+		QMatrix4x4 mat_b = val_b.to_matrix();
+		output->push(NodeValue::k_matrix,
+					 perform_add_sub_mult<QMatrix4x4, QMatrix4x4>(operation, mat_a,
 															   mat_b),
 					 this);
 		break;
 	}
 
-	case kPairColorColor: {
-		Color col_a = val_a.toColor();
-		Color col_b = val_b.toColor();
+	case k_pair_color_color: {
+		Color col_a = val_a.to_color();
+		Color col_b = val_b.to_color();
 
 		// Only add and subtract are valid operations
-		output->Push(NodeValue::kColor,
+		output->push(NodeValue::k_color,
 					 QVariant::fromValue(
-						 PerformAddSub<Color, Color>(operation, col_a, col_b)),
+						 perform_add_sub<Color, Color>(operation, col_a, col_b)),
 					 this);
 		break;
 	}
 
-	case kPairNumberColor: {
-		Color col = (val_a.type() == NodeValue::kColor) ? val_a.toColor() :
-														  val_b.toColor();
-		float num = (val_a.type() == NodeValue::kColor) ? val_b.toDouble() :
-														  val_a.toDouble();
+	case k_pair_number_color: {
+		Color col = (val_a.type() == NodeValue::k_color) ? val_a.to_color() :
+														  val_b.to_color();
+		float num = (val_a.type() == NodeValue::k_color) ? val_b.to_double() :
+														  val_a.to_double();
 
 		// Only multiply and divide are valid operations
-		output->Push(
-			NodeValue::kColor,
-			QVariant::fromValue(PerformMult<Color, float>(operation, col, num)),
+		output->push(
+			NodeValue::k_color,
+			QVariant::fromValue(perform_mult<Color, float>(operation, col, num)),
 			this);
 		break;
 	}
 
-	case kPairSampleSample: {
-		SampleBuffer samples_a = val_a.toSamples();
-		SampleBuffer samples_b = val_b.toSamples();
+	case k_pair_sample_sample: {
+		SampleBuffer samples_a = val_a.to_samples();
+		SampleBuffer samples_b = val_b.to_samples();
 
 		size_t max_samples =
 			qMax(samples_a.sample_count(), samples_b.sample_count());
@@ -386,7 +386,7 @@ void MathNodeBase::ValueInternal(
 		for (int i = 0; i < mixed_samples.audio_params().channel_count(); i++) {
 			// Mix samples that are in both buffers
 			for (size_t j = 0; j < min_samples; j++) {
-				mixed_samples.data(i)[j] = PerformAll<float, float>(
+				mixed_samples.data(i)[j] = perform_all<float, float>(
 					operation, samples_a.data(i)[j], samples_b.data(i)[j]);
 			}
 		}
@@ -407,94 +407,94 @@ void MathNodeBase::ValueInternal(
 			}
 		}
 
-		output->Push(NodeValue::kSamples, QVariant::fromValue(mixed_samples),
+		output->push(NodeValue::k_samples, QVariant::fromValue(mixed_samples),
 					 this);
 		break;
 	}
 
-	case kPairTextureColor:
-	case kPairTextureNumber:
-	case kPairTextureTexture:
-	case kPairTextureMatrix: {
+	case k_pair_texture_color:
+	case k_pair_texture_number:
+	case k_pair_texture_texture:
+	case k_pair_texture_matrix: {
 		ShaderJob job;
-		job.SetShaderID(QStringLiteral("%1.%2.%3.%4")
+		job.set_shader_id(QStringLiteral("%1.%2.%3.%4")
 							.arg(QString::number(operation),
 								 QString::number(pairing),
 								 QString::number(val_a.type()),
 								 QString::number(val_b.type())));
 
-		job.Insert(param_a_in, val_a);
-		job.Insert(param_b_in, val_b);
+		job.insert(param_a_in, val_a);
+		job.insert(param_b_in, val_b);
 
 		bool operation_is_noop = false;
 
 		const NodeValue &number_val =
-			val_a.type() == NodeValue::kTexture ? val_b : val_a;
+			val_a.type() == NodeValue::k_texture ? val_b : val_a;
 		const NodeValue &texture_val =
-			val_a.type() == NodeValue::kTexture ? val_a : val_b;
-		TexturePtr texture = texture_val.toTexture();
+			val_a.type() == NodeValue::k_texture ? val_a : val_b;
+		TexturePtr texture = texture_val.to_texture();
 
 		if (!texture) {
 			operation_is_noop = true;
-		} else if (pairing == kPairTextureNumber) {
-			if (NumberIsNoOp(operation, RetrieveNumber(number_val))) {
+		} else if (pairing == k_pair_texture_number) {
+			if (number_is_no_op(operation, retrieve_number(number_val))) {
 				operation_is_noop = true;
 			}
-		} else if (pairing == kPairTextureMatrix) {
+		} else if (pairing == k_pair_texture_matrix) {
 			// Only allow matrix multiplication
 			const QVector2D &sequence_res = globals.nonsquare_resolution();
 			QVector2D texture_res(texture->params().width() *
-									  texture->pixel_aspect_ratio().toDouble(),
+									  texture->pixel_aspect_ratio().to_double(),
 								  texture->params().height());
 
 			QMatrix4x4 adjusted_matrix =
-				TransformDistortNode::AdjustMatrixByResolutions(
-					number_val.toMatrix(), sequence_res,
+				TransformDistortNode::adjust_matrix_by_resolutions(
+					number_val.to_matrix(), sequence_res,
 					texture->params().offset(), texture_res);
 
-			if (operation != kOpMultiply || adjusted_matrix.isIdentity()) {
+			if (operation != k_op_multiply || adjusted_matrix.isIdentity()) {
 				operation_is_noop = true;
 			} else {
 				// Replace with adjusted matrix
-				job.Insert(val_a.type() == NodeValue::kTexture ? param_b_in :
+				job.insert(val_a.type() == NodeValue::k_texture ? param_b_in :
 																 param_a_in,
-						   NodeValue(NodeValue::kMatrix, adjusted_matrix,
+						   NodeValue(NodeValue::k_matrix, adjusted_matrix,
 									 this));
 			}
 		}
 
 		if (operation_is_noop) {
 			// Just push texture as-is
-			output->Push(texture_val);
+			output->push(texture_val);
 		} else {
 			// Push shader job
-			output->Push(NodeValue::kTexture,
-						 Texture::Job(globals.vparams(), job), this);
+			output->push(NodeValue::k_texture,
+						 Texture::job(globals.vparams(), job), this);
 		}
 		break;
 	}
 
-	case kPairSampleNumber: {
+	case k_pair_sample_number: {
 		// Queue a sample job
 		const NodeValue &number_val =
-			val_a.type() == NodeValue::kSamples ? val_b : val_a;
+			val_a.type() == NodeValue::k_samples ? val_b : val_a;
 		const QString &number_param =
-			val_a.type() == NodeValue::kSamples ? param_b_in : param_a_in;
+			val_a.type() == NodeValue::k_samples ? param_b_in : param_a_in;
 
-		float number = RetrieveNumber(number_val);
+		float number = retrieve_number(number_val);
 
-		SampleBuffer buffer = val_a.type() == NodeValue::kSamples ?
-								  val_a.toSamples() :
-								  val_b.toSamples();
+		SampleBuffer buffer = val_a.type() == NodeValue::k_samples ?
+								  val_a.to_samples() :
+								  val_b.to_samples();
 
 		if (buffer.is_allocated()) {
-			if (IsInputStatic(number_param)) {
-				if (!NumberIsNoOp(operation, number)) {
+			if (is_input_static(number_param)) {
+				if (!number_is_no_op(operation, number)) {
 					for (int i = 0; i < buffer.audio_params().channel_count();
 						 i++) {
 #if defined(Q_PROCESSOR_X86) || defined(Q_PROCESSOR_ARM)
 						// Use SSE instructions for optimization
-						PerformAllOnFloatBufferSSE(operation, buffer.data(i),
+						perform_all_on_float_buffer_sse(operation, buffer.data(i),
 												   number, 0,
 												   buffer.sample_count());
 #else
@@ -505,28 +505,28 @@ void MathNodeBase::ValueInternal(
 					}
 				}
 
-				output->Push(NodeValue::kSamples, QVariant::fromValue(buffer),
+				output->push(NodeValue::k_samples, QVariant::fromValue(buffer),
 							 this);
 			} else {
 				SampleJob job(globals.time(),
-							  val_a.type() == NodeValue::kSamples ? val_a :
+							  val_a.type() == NodeValue::k_samples ? val_a :
 																	val_b);
-				job.Insert(number_param,
-						   NodeValue(NodeValue::kFloat, number, this));
-				output->Push(NodeValue::kSamples, QVariant::fromValue(job),
+				job.insert(number_param,
+						   NodeValue(NodeValue::k_float, number, this));
+				output->push(NodeValue::k_samples, QVariant::fromValue(job),
 							 this);
 			}
 		}
 		break;
 	}
 
-	case kPairNone:
-	case kPairCount:
+	case k_pair_none:
+	case k_pair_count:
 		break;
 	}
 }
 
-void MathNodeBase::ProcessSamplesInternal(const NodeValueRow &values,
+void MathNodeBase::process_samples_internal(const NodeValueRow &values,
 										  MathNodeBase::Operation operation,
 										  const QString &param_a_in,
 										  const QString &param_b_in,
@@ -537,44 +537,44 @@ void MathNodeBase::ProcessSamplesInternal(const NodeValueRow &values,
 	// This function is only used for sample+number pairing
 	NodeValue number_val = values[param_a_in];
 
-	if (number_val.type() == NodeValue::kNone) {
+	if (number_val.type() == NodeValue::k_none) {
 		number_val = values[param_b_in];
 
-		if (number_val.type() == NodeValue::kNone) {
+		if (number_val.type() == NodeValue::k_none) {
 			return;
 		}
 	}
 
-	float number_flt = RetrieveNumber(number_val);
+	float number_flt = retrieve_number(number_val);
 
 	for (int i = 0; i < output.audio_params().channel_count(); i++) {
-		output.data(i)[index] = PerformAll<float, float>(
+		output.data(i)[index] = perform_all<float, float>(
 			operation, input.data(i)[index], number_flt);
 	}
 }
 
-float MathNodeBase::RetrieveNumber(const NodeValue &val)
+float MathNodeBase::retrieve_number(const NodeValue &val)
 {
-	if (val.type() == NodeValue::kRational) {
-		return val.toRational().toDouble();
+	if (val.type() == NodeValue::k_rational) {
+		return val.to_rational().to_double();
 	} else {
-		return val.toDouble();
+		return val.to_double();
 	}
 }
 
-bool MathNodeBase::NumberIsNoOp(const MathNodeBase::Operation &op,
+bool MathNodeBase::number_is_no_op(const MathNodeBase::Operation &op,
 								const float &number)
 {
 	switch (op) {
-	case kOpAdd:
-	case kOpSubtract:
+	case k_op_add:
+	case k_op_subtract:
 		if (qIsNull(number)) {
 			return true;
 		}
 		break;
-	case kOpMultiply:
-	case kOpDivide:
-	case kOpPower:
+	case k_op_multiply:
+	case k_op_divide:
+	case k_op_power:
 		if (qFuzzyCompare(number, 1.0f)) {
 			return true;
 		}
@@ -587,15 +587,15 @@ bool MathNodeBase::NumberIsNoOp(const MathNodeBase::Operation &op,
 MathNodeBase::PairingCalculator::PairingCalculator(
 	const NodeValueTable &table_a, const NodeValueTable &table_b)
 {
-	QVector<int> pair_likelihood_a = GetPairLikelihood(table_a);
-	QVector<int> pair_likelihood_b = GetPairLikelihood(table_b);
+	QVector<int> pair_likelihood_a = get_pair_likelihood(table_a);
+	QVector<int> pair_likelihood_b = get_pair_likelihood(table_b);
 
-	int weight_a = qMax(0, table_b.Count() - table_a.Count());
-	int weight_b = qMax(0, table_a.Count() - table_b.Count());
+	int weight_a = qMax(0, table_b.count() - table_a.count());
+	int weight_b = qMax(0, table_a.count() - table_b.count());
 
-	QVector<int> likelihoods(kPairCount);
+	QVector<int> likelihoods(k_pair_count);
 
-	for (int i = 0; i < kPairCount; i++) {
+	for (int i = 0; i < k_pair_count; i++) {
 		if (pair_likelihood_a.at(i) == -1 || pair_likelihood_b.at(i) == -1) {
 			likelihoods.replace(i, -1);
 		} else {
@@ -604,18 +604,18 @@ MathNodeBase::PairingCalculator::PairingCalculator(
 		}
 	}
 
-	most_likely_pairing_ = kPairNone;
+	most_likely_pairing_ = k_pair_none;
 
 	for (int i = 0; i < likelihoods.size(); i++) {
 		if (likelihoods.at(i) > -1) {
-			if (most_likely_pairing_ == kPairNone ||
+			if (most_likely_pairing_ == k_pair_none ||
 				likelihoods.at(i) > likelihoods.at(most_likely_pairing_)) {
 				most_likely_pairing_ = static_cast<Pairing>(i);
 			}
 		}
 	}
 
-	if (most_likely_pairing_ != kPairNone) {
+	if (most_likely_pairing_ != k_pair_none) {
 		most_likely_value_a_ =
 			table_a.at(pair_likelihood_a.at(most_likely_pairing_));
 		most_likely_value_b_ =
@@ -624,82 +624,82 @@ MathNodeBase::PairingCalculator::PairingCalculator(
 }
 
 QVector<int>
-MathNodeBase::PairingCalculator::GetPairLikelihood(const NodeValueTable &table)
+MathNodeBase::PairingCalculator::get_pair_likelihood(const NodeValueTable &table)
 {
-	QVector<int> likelihood(kPairCount, -1);
+	QVector<int> likelihood(k_pair_count, -1);
 
-	for (int i = 0; i < table.Count(); i++) {
+	for (int i = 0; i < table.count(); i++) {
 		NodeValue::Type type = table.at(i).type();
 
 		int weight = i;
 
 		if (NodeValue::type_is_vector(type)) {
-			likelihood.replace(kPairVecVec, weight);
-			likelihood.replace(kPairVecNumber, weight);
-			likelihood.replace(kPairMatrixVec, weight);
-		} else if (type == NodeValue::kMatrix) {
-			likelihood.replace(kPairMatrixMatrix, weight);
-			likelihood.replace(kPairMatrixVec, weight);
-			likelihood.replace(kPairTextureMatrix, weight);
-		} else if (type == NodeValue::kColor) {
-			likelihood.replace(kPairColorColor, weight);
-			likelihood.replace(kPairNumberColor, weight);
-			likelihood.replace(kPairTextureColor, weight);
+			likelihood.replace(k_pair_vec_vec, weight);
+			likelihood.replace(k_pair_vec_number, weight);
+			likelihood.replace(k_pair_matrix_vec, weight);
+		} else if (type == NodeValue::k_matrix) {
+			likelihood.replace(k_pair_matrix_matrix, weight);
+			likelihood.replace(k_pair_matrix_vec, weight);
+			likelihood.replace(k_pair_texture_matrix, weight);
+		} else if (type == NodeValue::k_color) {
+			likelihood.replace(k_pair_color_color, weight);
+			likelihood.replace(k_pair_number_color, weight);
+			likelihood.replace(k_pair_texture_color, weight);
 		} else if (NodeValue::type_is_numeric(type)) {
-			likelihood.replace(kPairNumberNumber, weight);
-			likelihood.replace(kPairVecNumber, weight);
-			likelihood.replace(kPairNumberColor, weight);
-			likelihood.replace(kPairTextureNumber, weight);
-			likelihood.replace(kPairSampleNumber, weight);
-		} else if (type == NodeValue::kSamples) {
-			likelihood.replace(kPairSampleSample, weight);
-			likelihood.replace(kPairSampleNumber, weight);
-		} else if (type == NodeValue::kTexture) {
-			likelihood.replace(kPairTextureTexture, weight);
-			likelihood.replace(kPairTextureNumber, weight);
-			likelihood.replace(kPairTextureColor, weight);
-			likelihood.replace(kPairTextureMatrix, weight);
+			likelihood.replace(k_pair_number_number, weight);
+			likelihood.replace(k_pair_vec_number, weight);
+			likelihood.replace(k_pair_number_color, weight);
+			likelihood.replace(k_pair_texture_number, weight);
+			likelihood.replace(k_pair_sample_number, weight);
+		} else if (type == NodeValue::k_samples) {
+			likelihood.replace(k_pair_sample_sample, weight);
+			likelihood.replace(k_pair_sample_number, weight);
+		} else if (type == NodeValue::k_texture) {
+			likelihood.replace(k_pair_texture_texture, weight);
+			likelihood.replace(k_pair_texture_number, weight);
+			likelihood.replace(k_pair_texture_color, weight);
+			likelihood.replace(k_pair_texture_matrix, weight);
 		}
 	}
 
 	return likelihood;
 }
 
-bool MathNodeBase::PairingCalculator::FoundMostLikelyPairing() const
+bool MathNodeBase::PairingCalculator::found_most_likely_pairing() const
 {
-	return (most_likely_pairing_ > kPairNone &&
-			most_likely_pairing_ < kPairCount);
+	return (most_likely_pairing_ > k_pair_none &&
+			most_likely_pairing_ < k_pair_count);
 }
 
 MathNodeBase::Pairing
-MathNodeBase::PairingCalculator::GetMostLikelyPairing() const
+MathNodeBase::PairingCalculator::get_most_likely_pairing() const
 {
 	return most_likely_pairing_;
 }
 
-const NodeValue &MathNodeBase::PairingCalculator::GetMostLikelyValueA() const
+const NodeValue &MathNodeBase::PairingCalculator::get_most_likely_value_a() const
 {
 	return most_likely_value_a_;
 }
 
-const NodeValue &MathNodeBase::PairingCalculator::GetMostLikelyValueB() const
+const NodeValue &MathNodeBase::PairingCalculator::get_most_likely_value_b() const
 {
 	return most_likely_value_b_;
 }
 
 template <typename T, typename U>
-T MathNodeBase::PerformAll(Operation operation, T a, U b)
+T MathNodeBase::perform_all(Operation operation, T a, U b)
 {
 	switch (operation) {
-	case kOpAdd:
+	case k_op_add:
 		return a + b;
-	case kOpSubtract:
+	case k_op_subtract:
 		return a - b;
-	case kOpMultiply:
+	case k_op_multiply:
 		return a * b;
-	case kOpDivide:
+	case k_op_divide:
 		return a / b;
-	case kOpPower:
+	case k_op_power:
 		return std::pow(a, b);
 	}
 
@@ -707,16 +707,16 @@ T MathNodeBase::PerformAll(Operation operation, T a, U b)
 }
 
 template <typename T, typename U>
-T MathNodeBase::PerformMultDiv(Operation operation, T a, U b)
+T MathNodeBase::perform_mult_div(Operation operation, T a, U b)
 {
 	switch (operation) {
-	case kOpMultiply:
+	case k_op_multiply:
 		return a * b;
-	case kOpDivide:
+	case k_op_divide:
 		return a / b;
-	case kOpAdd:
-	case kOpSubtract:
-	case kOpPower:
+	case k_op_add:
+	case k_op_subtract:
+	case k_op_power:
 		break;
 	}
 
@@ -724,16 +724,16 @@ T MathNodeBase::PerformMultDiv(Operation operation, T a, U b)
 }
 
 template <typename T, typename U>
-T MathNodeBase::PerformAddSub(Operation operation, T a, U b)
+T MathNodeBase::perform_add_sub(Operation operation, T a, U b)
 {
 	switch (operation) {
-	case kOpAdd:
+	case k_op_add:
 		return a + b;
-	case kOpSubtract:
+	case k_op_subtract:
 		return a - b;
-	case kOpMultiply:
-	case kOpDivide:
-	case kOpPower:
+	case k_op_multiply:
+	case k_op_divide:
+	case k_op_power:
 		break;
 	}
 
@@ -741,15 +741,15 @@ T MathNodeBase::PerformAddSub(Operation operation, T a, U b)
 }
 
 template <typename T, typename U>
-T MathNodeBase::PerformMult(Operation operation, T a, U b)
+T MathNodeBase::perform_mult(Operation operation, T a, U b)
 {
 	switch (operation) {
-	case kOpMultiply:
+	case k_op_multiply:
 		return a * b;
-	case kOpAdd:
-	case kOpSubtract:
-	case kOpDivide:
-	case kOpPower:
+	case k_op_add:
+	case k_op_subtract:
+	case k_op_divide:
+	case k_op_power:
 		break;
 	}
 
@@ -757,17 +757,17 @@ T MathNodeBase::PerformMult(Operation operation, T a, U b)
 }
 
 template <typename T, typename U>
-T MathNodeBase::PerformAddSubMult(Operation operation, T a, U b)
+T MathNodeBase::perform_add_sub_mult(Operation operation, T a, U b)
 {
 	switch (operation) {
-	case kOpAdd:
+	case k_op_add:
 		return a + b;
-	case kOpSubtract:
+	case k_op_subtract:
 		return a - b;
-	case kOpMultiply:
+	case k_op_multiply:
 		return a * b;
-	case kOpDivide:
-	case kOpPower:
+	case k_op_divide:
+	case k_op_power:
 		break;
 	}
 
@@ -775,18 +775,18 @@ T MathNodeBase::PerformAddSubMult(Operation operation, T a, U b)
 }
 
 template <typename T, typename U>
-T MathNodeBase::PerformAddSubMultDiv(Operation operation, T a, U b)
+T MathNodeBase::perform_add_sub_mult_div(Operation operation, T a, U b)
 {
 	switch (operation) {
-	case kOpAdd:
+	case k_op_add:
 		return a + b;
-	case kOpSubtract:
+	case k_op_subtract:
 		return a - b;
-	case kOpMultiply:
+	case k_op_multiply:
 		return a * b;
-	case kOpDivide:
+	case k_op_divide:
 		return a / b;
-	case kOpPower:
+	case k_op_power:
 		break;
 	}
 

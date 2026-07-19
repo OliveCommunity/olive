@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PREFERENCESDIALOG_H
-#define PREFERENCESDIALOG_H
+#ifndef OAK_PREFERENCESDIALOG_H
+#define OAK_PREFERENCESDIALOG_H
 
 #include <QCheckBox>
 #include <QDialog>
@@ -53,4 +53,4 @@ protected:
 
 }
 
-#endif // PREFERENCESDIALOG_H
+#endif // OAK_PREFERENCESDIALOG_H

@@ -30,8 +30,8 @@ namespace
 // so tests can populate streams without probing real media
 class TestableFootage : public olive::Footage {
 public:
-	using olive::ViewerOutput::AddStream;
-	using olive::ViewerOutput::SetStream;
+	using olive::ViewerOutput::add_stream;
+	using olive::ViewerOutput::set_stream;
 };
 
 // Temporarily overrides an environment variable, restoring the previous state
@@ -62,57 +62,57 @@ private:
 	bool had_value_;
 };
 
-olive::VideoParams MakeVideoStream(int stream_index)
+olive::VideoParams make_video_stream(int stream_index)
 {
-	olive::VideoParams params(1920, 1080, olive::rational(1, 24),
-							  olive::core::PixelFormat::U8, 4);
+	olive::VideoParams params(1920, 1080, olive::Rational(1, 24),
+							  olive::core::PixelFormat::u8, 4);
 	params.set_stream_index(stream_index);
 	params.set_duration(48); // 2 seconds at 24 fps
 	return params;
 }
 
-olive::core::AudioParams MakeAudioStream(int stream_index)
+olive::core::AudioParams make_audio_stream(int stream_index)
 {
-	olive::core::AudioParams params(48000, olive::core::kChannelLayoutStereo,
-									olive::core::SampleFormat::F32P);
+	olive::core::AudioParams params(48000, olive::core::k_channel_layout_stereo,
+									olive::core::SampleFormat::f32_p);
 	params.set_stream_index(stream_index);
 	params.set_duration(96000); // 2 seconds at 48 kHz
 	return params;
 }
 
-olive::SubtitleParams MakeSubtitleStream(int stream_index)
+olive::SubtitleParams make_subtitle_stream(int stream_index)
 {
 	olive::SubtitleParams params;
 	params.set_stream_index(stream_index);
 	params.push_back(olive::Subtitle(
-		olive::TimeRange(olive::rational(0), olive::rational(3)),
+		olive::TimeRange(olive::Rational(0), olive::Rational(3)),
 		QStringLiteral("subtitle text")));
 	return params;
 }
 
 // Two video streams (one with an explicit colorspace, one without) and one
 // audio stream, reported as three source streams in total
-olive::FootageDescription MakeStandardDescription()
+olive::FootageDescription make_standard_description()
 {
 	olive::FootageDescription desc(QStringLiteral("fakedecoder"));
 
-	olive::VideoParams video0 = MakeVideoStream(0);
-	desc.AddVideoStream(video0);
+	olive::VideoParams video0 = make_video_stream(0);
+	desc.add_video_stream(video0);
 
-	olive::VideoParams video1(1280, 720, olive::rational(1, 24),
-							  olive::core::PixelFormat::U8, 4);
+	olive::VideoParams video1(1280, 720, olive::Rational(1, 24),
+							  olive::core::PixelFormat::u8, 4);
 	video1.set_stream_index(1);
 	video1.set_duration(48);
 	video1.set_colorspace(QStringLiteral("ExplicitSpace"));
-	desc.AddVideoStream(video1);
+	desc.add_video_stream(video1);
 
-	desc.AddAudioStream(MakeAudioStream(2));
+	desc.add_audio_stream(make_audio_stream(2));
 
-	desc.SetStreamCount(3);
+	desc.set_stream_count(3);
 	return desc;
 }
 
-QString CreateFakeMediaFile(QTemporaryDir &dir, const QString &name)
+QString create_fake_media_file(QTemporaryDir &dir, const QString &name)
 {
 	const QString path = QDir(dir.path()).filePath(name);
 	QFile file(path);
@@ -129,7 +129,7 @@ QString CreateFakeMediaFile(QTemporaryDir &dir, const QString &name)
 // running any real decoders. The caller is responsible for redirecting
 // QStandardPaths::CacheLocation into a temporary directory first. Returns
 // nullptr if the cache file could not be written.
-TestableFootage *ProbeFootageFromCache(olive::Project *project,
+TestableFootage *probe_footage_from_cache(olive::Project *project,
 									   const QString &media_path,
 									   const olive::FootageDescription &desc)
 {
@@ -141,8 +141,8 @@ TestableFootage *ProbeFootageFromCache(olive::Project *project,
 
 	const QString cache_file =
 		QDir(cache_location)
-			.filePath(olive::FileFunctions::GetUniqueFileIdentifier(media_path));
-	if (!desc.Save(cache_file)) {
+			.filePath(olive::FileFunctions::get_unique_file_identifier(media_path));
+	if (!desc.save(cache_file)) {
 		return nullptr;
 	}
 
@@ -152,59 +152,59 @@ TestableFootage *ProbeFootageFromCache(olive::Project *project,
 	return footage;
 }
 
-olive::NodeGlobals MakeGlobals(
-	olive::LoopMode loop_mode = olive::LoopMode::kLoopModeOff, int divider = 1)
+olive::NodeGlobals make_globals(
+	olive::LoopMode loop_mode = olive::LoopMode::k_loop_mode_off, int divider = 1)
 {
-	olive::VideoParams vparams(64, 64, olive::rational(1, 24),
-							   olive::core::PixelFormat::U8, 4);
+	olive::VideoParams vparams(64, 64, olive::Rational(1, 24),
+							   olive::core::PixelFormat::u8, 4);
 	vparams.set_divider(divider);
 	return olive::NodeGlobals(vparams, olive::core::AudioParams(),
-							  olive::rational(0), loop_mode);
+							  olive::Rational(0), loop_mode);
 }
 
 } // namespace
 
 TEST(FootageStatic, DescribeVideoStreamFormatsVideoAndStillStreams)
 {
-	olive::VideoParams video = MakeVideoStream(0);
-	EXPECT_EQ(olive::Footage::DescribeVideoStream(video),
+	olive::VideoParams video = make_video_stream(0);
+	EXPECT_EQ(olive::Footage::describe_video_stream(video),
 			  QStringLiteral("0: Video - 1920x1080"));
 
-	video.set_video_type(olive::VideoParams::kVideoTypeStill);
+	video.set_video_type(olive::VideoParams::k_video_type_still);
 	video.set_stream_index(3);
-	EXPECT_EQ(olive::Footage::DescribeVideoStream(video),
+	EXPECT_EQ(olive::Footage::describe_video_stream(video),
 			  QStringLiteral("3: Image - 1920x1080"));
 }
 
 TEST(FootageStatic, DescribeAudioStreamContainsIndexAndRate)
 {
-	olive::core::AudioParams audio = MakeAudioStream(1);
+	olive::core::AudioParams audio = make_audio_stream(1);
 
 	// The %n plural marker is only substituted when a translation is loaded,
 	// so assert on the stable parts of the description instead
-	const QString description = olive::Footage::DescribeAudioStream(audio);
+	const QString description = olive::Footage::describe_audio_stream(audio);
 	EXPECT_TRUE(description.startsWith(QStringLiteral("1: Audio")));
 	EXPECT_TRUE(description.contains(QStringLiteral("48000Hz")));
 }
 
 TEST(FootageStatic, DescribeSubtitleStreamContainsIndex)
 {
-	olive::SubtitleParams subs = MakeSubtitleStream(4);
-	EXPECT_EQ(olive::Footage::DescribeSubtitleStream(subs),
+	olive::SubtitleParams subs = make_subtitle_stream(4);
+	EXPECT_EQ(olive::Footage::describe_subtitle_stream(subs),
 			  QStringLiteral("4: Subtitle"));
 }
 
 TEST(FootageStatic, GetStreamTypeNameCoversAllTrackTypes)
 {
-	EXPECT_EQ(olive::Footage::GetStreamTypeName(olive::Track::kVideo),
+	EXPECT_EQ(olive::Footage::get_stream_type_name(olive::Track::k_video),
 			  QStringLiteral("Video"));
-	EXPECT_EQ(olive::Footage::GetStreamTypeName(olive::Track::kAudio),
+	EXPECT_EQ(olive::Footage::get_stream_type_name(olive::Track::k_audio),
 			  QStringLiteral("Audio"));
-	EXPECT_EQ(olive::Footage::GetStreamTypeName(olive::Track::kSubtitle),
+	EXPECT_EQ(olive::Footage::get_stream_type_name(olive::Track::k_subtitle),
 			  QStringLiteral("Subtitle"));
-	EXPECT_EQ(olive::Footage::GetStreamTypeName(olive::Track::kNone),
+	EXPECT_EQ(olive::Footage::get_stream_type_name(olive::Track::k_none),
 			  QStringLiteral("Unknown"));
-	EXPECT_EQ(olive::Footage::GetStreamTypeName(olive::Track::kCount),
+	EXPECT_EQ(olive::Footage::get_stream_type_name(olive::Track::k_count),
 			  QStringLiteral("Unknown"));
 }
 
@@ -212,125 +212,125 @@ TEST(FootageStatic, AdjustTimeByLoopModeReturnsZeroForStillImages)
 {
 	// Still images never loop, clamp, or drop: the adjusted time is always 0,
 	// even for in-bounds times
-	EXPECT_EQ(olive::Footage::AdjustTimeByLoopMode(
-				  olive::rational(3), olive::LoopMode::kLoopModeOff,
-				  olive::rational(10), olive::VideoParams::kVideoTypeStill,
-				  olive::rational(1, 24)),
-			  olive::rational(0));
-	EXPECT_EQ(olive::Footage::AdjustTimeByLoopMode(
-				  olive::rational(30), olive::LoopMode::kLoopModeLoop,
-				  olive::rational(10), olive::VideoParams::kVideoTypeStill,
-				  olive::rational(1, 24)),
-			  olive::rational(0));
-	EXPECT_EQ(olive::Footage::AdjustTimeByLoopMode(
-				  olive::rational(-1), olive::LoopMode::kLoopModeClamp,
-				  olive::rational(10), olive::VideoParams::kVideoTypeStill,
-				  olive::rational(1, 24)),
-			  olive::rational(0));
+	EXPECT_EQ(olive::Footage::adjust_time_by_loop_mode(
+				  olive::Rational(3), olive::LoopMode::k_loop_mode_off,
+				  olive::Rational(10), olive::VideoParams::k_video_type_still,
+				  olive::Rational(1, 24)),
+			  olive::Rational(0));
+	EXPECT_EQ(olive::Footage::adjust_time_by_loop_mode(
+				  olive::Rational(30), olive::LoopMode::k_loop_mode_loop,
+				  olive::Rational(10), olive::VideoParams::k_video_type_still,
+				  olive::Rational(1, 24)),
+			  olive::Rational(0));
+	EXPECT_EQ(olive::Footage::adjust_time_by_loop_mode(
+				  olive::Rational(-1), olive::LoopMode::k_loop_mode_clamp,
+				  olive::Rational(10), olive::VideoParams::k_video_type_still,
+				  olive::Rational(1, 24)),
+			  olive::Rational(0));
 }
 
 TEST(FootageStatic, AdjustTimeByLoopModeKeepsInBoundsTime)
 {
-	for (olive::LoopMode mode : { olive::LoopMode::kLoopModeOff,
-								  olive::LoopMode::kLoopModeClamp,
-								  olive::LoopMode::kLoopModeLoop }) {
-		EXPECT_EQ(olive::Footage::AdjustTimeByLoopMode(
-					  olive::rational(3), mode, olive::rational(10),
-					  olive::VideoParams::kVideoTypeVideo,
-					  olive::rational(1, 24)),
-				  olive::rational(3));
+	for (olive::LoopMode mode : { olive::LoopMode::k_loop_mode_off,
+								  olive::LoopMode::k_loop_mode_clamp,
+								  olive::LoopMode::k_loop_mode_loop }) {
+		EXPECT_EQ(olive::Footage::adjust_time_by_loop_mode(
+					  olive::Rational(3), mode, olive::Rational(10),
+					  olive::VideoParams::k_video_type_video,
+					  olive::Rational(1, 24)),
+				  olive::Rational(3));
 	}
 }
 
 TEST(FootageStatic, AdjustTimeByLoopModeOffDropsOutOfBoundsTime)
 {
-	const olive::rational negative = olive::Footage::AdjustTimeByLoopMode(
-		olive::rational(-1), olive::LoopMode::kLoopModeOff, olive::rational(10),
-		olive::VideoParams::kVideoTypeVideo, olive::rational(1, 24));
+	const olive::Rational negative = olive::Footage::adjust_time_by_loop_mode(
+		olive::Rational(-1), olive::LoopMode::k_loop_mode_off, olive::Rational(10),
+		olive::VideoParams::k_video_type_video, olive::Rational(1, 24));
 	EXPECT_TRUE(negative.isNaN());
 
 	// The length itself is already out of bounds
-	const olive::rational at_length = olive::Footage::AdjustTimeByLoopMode(
-		olive::rational(10), olive::LoopMode::kLoopModeOff, olive::rational(10),
-		olive::VideoParams::kVideoTypeVideo, olive::rational(1, 24));
+	const olive::Rational at_length = olive::Footage::adjust_time_by_loop_mode(
+		olive::Rational(10), olive::LoopMode::k_loop_mode_off, olive::Rational(10),
+		olive::VideoParams::k_video_type_video, olive::Rational(1, 24));
 	EXPECT_TRUE(at_length.isNaN());
 }
 
 TEST(FootageStatic, AdjustTimeByLoopModeClampsToLength)
 {
 	// Beyond the end, clamp to the last frame (length - timebase)
-	EXPECT_EQ(olive::Footage::AdjustTimeByLoopMode(
-				  olive::rational(10), olive::LoopMode::kLoopModeClamp,
-				  olive::rational(10), olive::VideoParams::kVideoTypeVideo,
-				  olive::rational(1, 24)),
-			  olive::rational(239, 24));
+	EXPECT_EQ(olive::Footage::adjust_time_by_loop_mode(
+				  olive::Rational(10), olive::LoopMode::k_loop_mode_clamp,
+				  olive::Rational(10), olive::VideoParams::k_video_type_video,
+				  olive::Rational(1, 24)),
+			  olive::Rational(239, 24));
 
 	// Before the start, clamp to 0
-	EXPECT_EQ(olive::Footage::AdjustTimeByLoopMode(
-				  olive::rational(-5), olive::LoopMode::kLoopModeClamp,
-				  olive::rational(10), olive::VideoParams::kVideoTypeVideo,
-				  olive::rational(1, 24)),
-			  olive::rational(0));
+	EXPECT_EQ(olive::Footage::adjust_time_by_loop_mode(
+				  olive::Rational(-5), olive::LoopMode::k_loop_mode_clamp,
+				  olive::Rational(10), olive::VideoParams::k_video_type_video,
+				  olive::Rational(1, 24)),
+			  olive::Rational(0));
 }
 
 TEST(FootageStatic, AdjustTimeByLoopModeLoopsAroundLength)
 {
 	// Single wrap past the end
-	EXPECT_EQ(olive::Footage::AdjustTimeByLoopMode(
-				  olive::rational(12), olive::LoopMode::kLoopModeLoop,
-				  olive::rational(10), olive::VideoParams::kVideoTypeVideo,
-				  olive::rational(1, 24)),
-			  olive::rational(2));
+	EXPECT_EQ(olive::Footage::adjust_time_by_loop_mode(
+				  olive::Rational(12), olive::LoopMode::k_loop_mode_loop,
+				  olive::Rational(10), olive::VideoParams::k_video_type_video,
+				  olive::Rational(1, 24)),
+			  olive::Rational(2));
 
 	// Multiple wraps past the end
-	EXPECT_EQ(olive::Footage::AdjustTimeByLoopMode(
-				  olive::rational(25), olive::LoopMode::kLoopModeLoop,
-				  olive::rational(10), olive::VideoParams::kVideoTypeVideo,
-				  olive::rational(1, 24)),
-			  olive::rational(5));
+	EXPECT_EQ(olive::Footage::adjust_time_by_loop_mode(
+				  olive::Rational(25), olive::LoopMode::k_loop_mode_loop,
+				  olive::Rational(10), olive::VideoParams::k_video_type_video,
+				  olive::Rational(1, 24)),
+			  olive::Rational(5));
 
 	// Wraps from before the start
-	EXPECT_EQ(olive::Footage::AdjustTimeByLoopMode(
-				  olive::rational(-3), olive::LoopMode::kLoopModeLoop,
-				  olive::rational(10), olive::VideoParams::kVideoTypeVideo,
-				  olive::rational(1, 24)),
-			  olive::rational(7));
-	EXPECT_EQ(olive::Footage::AdjustTimeByLoopMode(
-				  olive::rational(-25), olive::LoopMode::kLoopModeLoop,
-				  olive::rational(10), olive::VideoParams::kVideoTypeVideo,
-				  olive::rational(1, 24)),
-			  olive::rational(5));
+	EXPECT_EQ(olive::Footage::adjust_time_by_loop_mode(
+				  olive::Rational(-3), olive::LoopMode::k_loop_mode_loop,
+				  olive::Rational(10), olive::VideoParams::k_video_type_video,
+				  olive::Rational(1, 24)),
+			  olive::Rational(7));
+	EXPECT_EQ(olive::Footage::adjust_time_by_loop_mode(
+				  olive::Rational(-25), olive::LoopMode::k_loop_mode_loop,
+				  olive::Rational(10), olive::VideoParams::k_video_type_video,
+				  olive::Rational(1, 24)),
+			  olive::Rational(5));
 }
 
 TEST(FootageStatic, AdjustTimeByLoopModeWithEmptyRangeReturnsNaN)
 {
 	// Looping an empty range would never terminate; return NaN instead
-	EXPECT_TRUE(olive::Footage::AdjustTimeByLoopMode(
-					olive::rational(1), olive::LoopMode::kLoopModeLoop,
-					olive::rational(0), olive::VideoParams::kVideoTypeVideo,
-					olive::rational(1, 24))
+	EXPECT_TRUE(olive::Footage::adjust_time_by_loop_mode(
+					olive::Rational(1), olive::LoopMode::k_loop_mode_loop,
+					olive::Rational(0), olive::VideoParams::k_video_type_video,
+					olive::Rational(1, 24))
 					.isNaN());
 
 	// Clamping a range shorter than one frame has no frame to clamp to
-	EXPECT_TRUE(olive::Footage::AdjustTimeByLoopMode(
-					olive::rational(1), olive::LoopMode::kLoopModeClamp,
-					olive::rational(0), olive::VideoParams::kVideoTypeVideo,
-					olive::rational(1, 24))
+	EXPECT_TRUE(olive::Footage::adjust_time_by_loop_mode(
+					olive::Rational(1), olive::LoopMode::k_loop_mode_clamp,
+					olive::Rational(0), olive::VideoParams::k_video_type_video,
+					olive::Rational(1, 24))
 					.isNaN());
 }
 
 TEST(FootageStatic, RetranslateSetsInputNames)
 {
 	TestableFootage footage;
-	footage.Retranslate();
+	footage.retranslate();
 
-	EXPECT_EQ(footage.GetInputName(olive::Footage::kFilenameInput),
+	EXPECT_EQ(footage.get_input_name(olive::Footage::k_filename_input),
 			  QStringLiteral("Filename"));
-	EXPECT_EQ(footage.GetInputName(olive::ViewerOutput::kVideoParamsInput),
+	EXPECT_EQ(footage.get_input_name(olive::ViewerOutput::k_video_params_input),
 			  QStringLiteral("Video Parameters"));
-	EXPECT_EQ(footage.GetInputName(olive::ViewerOutput::kAudioParamsInput),
+	EXPECT_EQ(footage.get_input_name(olive::ViewerOutput::k_audio_params_input),
 			  QStringLiteral("Audio Parameters"));
-	EXPECT_EQ(footage.GetInputName(olive::ViewerOutput::kSubtitleParamsInput),
+	EXPECT_EQ(footage.get_input_name(olive::ViewerOutput::k_subtitle_params_input),
 			  QStringLiteral("Subtitle Parameters"));
 }
 
@@ -346,21 +346,21 @@ protected:
 
 		// Footage::Value() resolves Project::cache_path(), which goes through
 		// the DiskManager singleton
-		olive::DiskManager::CreateInstance();
+		olive::DiskManager::create_instance();
 
-		olive::ColorManager::SetUpDefaultConfig();
+		olive::ColorManager::set_up_default_config();
 
 		project_ = std::make_unique<olive::Project>();
-		project_->Initialize();
+		project_->initialize();
 	}
 
 	void TearDown() override
 	{
 		project_.reset();
-		olive::DiskManager::DestroyInstance();
+		olive::DiskManager::destroy_instance();
 	}
 
-	olive::Footage *AddFootage()
+	olive::Footage *add_footage()
 	{
 		auto *footage = new olive::Footage();
 		footage->setParent(project_.get());
@@ -374,41 +374,41 @@ TEST_F(FootageTest, ManuallyAddedStreamsMapBetweenReferencesAndIndices)
 {
 	TestableFootage footage;
 
-	EXPECT_EQ(footage.AddStream(olive::Track::kVideo,
-								QVariant::fromValue(MakeVideoStream(5))),
+	EXPECT_EQ(footage.add_stream(olive::Track::k_video,
+								QVariant::fromValue(make_video_stream(5))),
 			  0);
-	EXPECT_EQ(footage.AddStream(olive::Track::kAudio,
-								QVariant::fromValue(MakeAudioStream(2))),
+	EXPECT_EQ(footage.add_stream(olive::Track::k_audio,
+								QVariant::fromValue(make_audio_stream(2))),
 			  0);
-	EXPECT_EQ(footage.AddStream(olive::Track::kSubtitle,
-								QVariant::fromValue(MakeSubtitleStream(7))),
+	EXPECT_EQ(footage.add_stream(olive::Track::k_subtitle,
+								QVariant::fromValue(make_subtitle_stream(7))),
 			  0);
 
-	EXPECT_EQ(footage.GetStreamIndex(olive::Track::kVideo, 0), 5);
-	EXPECT_EQ(footage.GetStreamIndex(olive::Track::kAudio, 0), 2);
-	EXPECT_EQ(footage.GetStreamIndex(olive::Track::kSubtitle, 0), 7);
-	EXPECT_EQ(footage.GetStreamIndex(
-				  olive::Track::Reference(olive::Track::kVideo, 0)),
+	EXPECT_EQ(footage.get_stream_index(olive::Track::k_video, 0), 5);
+	EXPECT_EQ(footage.get_stream_index(olive::Track::k_audio, 0), 2);
+	EXPECT_EQ(footage.get_stream_index(olive::Track::k_subtitle, 0), 7);
+	EXPECT_EQ(footage.get_stream_index(
+				  olive::Track::Reference(olive::Track::k_video, 0)),
 			  5);
-	EXPECT_EQ(footage.GetStreamIndex(olive::Track::kNone, 0), -1);
-	EXPECT_EQ(footage.GetStreamIndex(olive::Track::kCount, 0), -1);
+	EXPECT_EQ(footage.get_stream_index(olive::Track::k_none, 0), -1);
+	EXPECT_EQ(footage.get_stream_index(olive::Track::k_count, 0), -1);
 
 	// Out-of-range indices report -1 rather than a default-constructed stream
-	EXPECT_EQ(footage.GetStreamIndex(olive::Track::kVideo, 1), -1);
-	EXPECT_EQ(footage.GetStreamIndex(olive::Track::kVideo, -1), -1);
-	EXPECT_EQ(footage.GetStreamIndex(olive::Track::kAudio, 1), -1);
-	EXPECT_EQ(footage.GetStreamIndex(olive::Track::kSubtitle, 1), -1);
+	EXPECT_EQ(footage.get_stream_index(olive::Track::k_video, 1), -1);
+	EXPECT_EQ(footage.get_stream_index(olive::Track::k_video, -1), -1);
+	EXPECT_EQ(footage.get_stream_index(olive::Track::k_audio, 1), -1);
+	EXPECT_EQ(footage.get_stream_index(olive::Track::k_subtitle, 1), -1);
 
-	EXPECT_EQ(footage.GetReferenceFromRealIndex(5),
-			  olive::Track::Reference(olive::Track::kVideo, 0));
-	EXPECT_EQ(footage.GetReferenceFromRealIndex(2),
-			  olive::Track::Reference(olive::Track::kAudio, 0));
-	EXPECT_EQ(footage.GetReferenceFromRealIndex(7),
-			  olive::Track::Reference(olive::Track::kSubtitle, 0));
+	EXPECT_EQ(footage.get_reference_from_real_index(5),
+			  olive::Track::Reference(olive::Track::k_video, 0));
+	EXPECT_EQ(footage.get_reference_from_real_index(2),
+			  olive::Track::Reference(olive::Track::k_audio, 0));
+	EXPECT_EQ(footage.get_reference_from_real_index(7),
+			  olive::Track::Reference(olive::Track::k_subtitle, 0));
 
 	const olive::Track::Reference unknown =
-		footage.GetReferenceFromRealIndex(99);
-	EXPECT_EQ(unknown.type(), olive::Track::kNone);
+		footage.get_reference_from_real_index(99);
+	EXPECT_EQ(unknown.type(), olive::Track::k_none);
 	EXPECT_EQ(unknown.index(), -1);
 }
 
@@ -416,18 +416,18 @@ TEST_F(FootageTest, ConnectedOutputsReflectStreamTypes)
 {
 	TestableFootage footage;
 
-	EXPECT_EQ(footage.GetConnectedTextureOutput(), nullptr);
-	EXPECT_EQ(footage.GetConnectedSampleOutput(), nullptr);
+	EXPECT_EQ(footage.get_connected_texture_output(), nullptr);
+	EXPECT_EQ(footage.get_connected_sample_output(), nullptr);
 
-	footage.AddStream(olive::Track::kVideo,
-					  QVariant::fromValue(MakeVideoStream(0)));
-	EXPECT_EQ(footage.GetConnectedTextureOutput(),
+	footage.add_stream(olive::Track::k_video,
+					  QVariant::fromValue(make_video_stream(0)));
+	EXPECT_EQ(footage.get_connected_texture_output(),
 			  static_cast<olive::Node *>(&footage));
-	EXPECT_EQ(footage.GetConnectedSampleOutput(), nullptr);
+	EXPECT_EQ(footage.get_connected_sample_output(), nullptr);
 
-	footage.AddStream(olive::Track::kAudio,
-					  QVariant::fromValue(MakeAudioStream(1)));
-	EXPECT_EQ(footage.GetConnectedSampleOutput(),
+	footage.add_stream(olive::Track::k_audio,
+					  QVariant::fromValue(make_audio_stream(1)));
+	EXPECT_EQ(footage.get_connected_sample_output(),
 			  static_cast<olive::Node *>(&footage));
 }
 
@@ -435,14 +435,14 @@ TEST_F(FootageTest, DataRolesForInvalidFootage)
 {
 	TestableFootage footage;
 
-	EXPECT_EQ(footage.data(olive::Node::TOOLTIP).toString(),
+	EXPECT_EQ(footage.data(olive::Node::tooltip).toString(),
 			  QStringLiteral("Invalid"));
-	EXPECT_TRUE(footage.data(olive::Node::ICON).canConvert<QIcon>());
+	EXPECT_TRUE(footage.data(olive::Node::icon).canConvert<QIcon>());
 
 	// With no existing file behind the footage, the time roles fall through
 	// to the base class and stay invalid
-	EXPECT_FALSE(footage.data(olive::Node::CREATED_TIME).isValid());
-	EXPECT_FALSE(footage.data(olive::Node::MODIFIED_TIME).isValid());
+	EXPECT_FALSE(footage.data(olive::Node::created_time).isValid());
+	EXPECT_FALSE(footage.data(olive::Node::modified_time).isValid());
 }
 
 TEST_F(FootageTest, TooltipDescribesEnabledStreams)
@@ -451,24 +451,24 @@ TEST_F(FootageTest, TooltipDescribesEnabledStreams)
 	// The file does not exist, so the filename change clears the footage
 	// without probing anything
 	footage.set_filename(QStringLiteral("/nonexistent/media.mkv"));
-	footage.AddStream(olive::Track::kVideo,
-					  QVariant::fromValue(MakeVideoStream(0)));
-	footage.AddStream(olive::Track::kAudio,
-					  QVariant::fromValue(MakeAudioStream(1)));
-	footage.SetValid();
+	footage.add_stream(olive::Track::k_video,
+					  QVariant::fromValue(make_video_stream(0)));
+	footage.add_stream(olive::Track::k_audio,
+					  QVariant::fromValue(make_audio_stream(1)));
+	footage.set_valid();
 
-	QString tip = footage.data(olive::Node::TOOLTIP).toString();
+	QString tip = footage.data(olive::Node::tooltip).toString();
 	EXPECT_TRUE(
 		tip.contains(QStringLiteral("Filename: /nonexistent/media.mkv")));
 	EXPECT_TRUE(tip.contains(QStringLiteral("0: Video - 1920x1080")));
 	EXPECT_TRUE(tip.contains(QStringLiteral("Audio")));
 
 	// Disabled streams are omitted from the tooltip
-	olive::VideoParams disabled = footage.GetVideoParams(0);
+	olive::VideoParams disabled = footage.get_video_params(0);
 	disabled.set_enabled(false);
-	footage.SetStream(olive::Track::kVideo, QVariant::fromValue(disabled), 0);
+	footage.set_stream(olive::Track::k_video, QVariant::fromValue(disabled), 0);
 
-	tip = footage.data(olive::Node::TOOLTIP).toString();
+	tip = footage.data(olive::Node::tooltip).toString();
 	EXPECT_FALSE(tip.contains(QStringLiteral("0: Video")));
 	EXPECT_TRUE(tip.contains(QStringLiteral("Audio")));
 }
@@ -477,12 +477,12 @@ TEST_F(FootageTest, IconReflectsPrioritizedStreamType)
 {
 	// The icon globals must be loaded for the returned icons to be
 	// distinguishable (null icons all share the same cache key)
-	olive::icon::LoadAll(QStringLiteral(":/style/olive-dark"));
-	ASSERT_FALSE(olive::icon::Video.isNull());
-	ASSERT_FALSE(olive::icon::Audio.isNull());
-	ASSERT_FALSE(olive::icon::Image.isNull());
-	ASSERT_FALSE(olive::icon::Subtitles.isNull());
-	ASSERT_FALSE(olive::icon::Error.isNull());
+	olive::icon::load_all(QStringLiteral(":/style/olive-dark"));
+	ASSERT_FALSE(olive::icon::video.isNull());
+	ASSERT_FALSE(olive::icon::audio.isNull());
+	ASSERT_FALSE(olive::icon::image.isNull());
+	ASSERT_FALSE(olive::icon::subtitles.isNull());
+	ASSERT_FALSE(olive::icon::error.isNull());
 
 	// Footage::data(ICON) only inspects streams once the footage has been
 	// probed (total_stream_count_ is set by Reprobe), so each variant is
@@ -495,85 +495,85 @@ TEST_F(FootageTest, IconReflectsPrioritizedStreamType)
 
 	auto probe = [&](const QString &name,
 					 const olive::FootageDescription &desc) {
-		const QString media = CreateFakeMediaFile(dir, name);
+		const QString media = create_fake_media_file(dir, name);
 		EXPECT_FALSE(media.isEmpty());
 		TestableFootage *footage =
-			ProbeFootageFromCache(project_.get(), media, desc);
+			probe_footage_from_cache(project_.get(), media, desc);
 		EXPECT_NE(footage, nullptr);
 		return footage;
 	};
 
 	// Invalid footage gets the error icon
 	TestableFootage invalid;
-	EXPECT_EQ(invalid.data(olive::Node::ICON).value<QIcon>().cacheKey(),
-			  olive::icon::Error.cacheKey());
+	EXPECT_EQ(invalid.data(olive::Node::icon).value<QIcon>().cacheKey(),
+			  olive::icon::error.cacheKey());
 
 	// Real video streams take priority over audio
 	olive::FootageDescription video_audio(QStringLiteral("fakedecoder"));
-	video_audio.AddVideoStream(MakeVideoStream(0));
-	video_audio.AddAudioStream(MakeAudioStream(1));
-	video_audio.SetStreamCount(2);
+	video_audio.add_video_stream(make_video_stream(0));
+	video_audio.add_audio_stream(make_audio_stream(1));
+	video_audio.set_stream_count(2);
 	TestableFootage *footage = probe(QStringLiteral("video-audio.mkv"), video_audio);
 	ASSERT_NE(footage, nullptr);
-	const QIcon video_icon = footage->data(olive::Node::ICON).value<QIcon>();
-	EXPECT_EQ(video_icon.cacheKey(), olive::icon::Video.cacheKey());
-	EXPECT_NE(video_icon.cacheKey(), olive::icon::Audio.cacheKey());
-	EXPECT_NE(video_icon.cacheKey(), olive::icon::Error.cacheKey());
+	const QIcon video_icon = footage->data(olive::Node::icon).value<QIcon>();
+	EXPECT_EQ(video_icon.cacheKey(), olive::icon::video.cacheKey());
+	EXPECT_NE(video_icon.cacheKey(), olive::icon::audio.cacheKey());
+	EXPECT_NE(video_icon.cacheKey(), olive::icon::error.cacheKey());
 
 	// Audio still takes priority over a still image stream
-	olive::VideoParams still_stream = MakeVideoStream(0);
-	still_stream.set_video_type(olive::VideoParams::kVideoTypeStill);
+	olive::VideoParams still_stream = make_video_stream(0);
+	still_stream.set_video_type(olive::VideoParams::k_video_type_still);
 	olive::FootageDescription still_audio(QStringLiteral("fakedecoder"));
-	still_audio.AddVideoStream(still_stream);
-	still_audio.AddAudioStream(MakeAudioStream(1));
-	still_audio.SetStreamCount(2);
+	still_audio.add_video_stream(still_stream);
+	still_audio.add_audio_stream(make_audio_stream(1));
+	still_audio.set_stream_count(2);
 	TestableFootage *still_and_audio =
 		probe(QStringLiteral("still-audio.mkv"), still_audio);
 	ASSERT_NE(still_and_audio, nullptr);
 	const QIcon still_audio_icon =
-		still_and_audio->data(olive::Node::ICON).value<QIcon>();
-	EXPECT_EQ(still_audio_icon.cacheKey(), olive::icon::Audio.cacheKey());
-	EXPECT_NE(still_audio_icon.cacheKey(), olive::icon::Image.cacheKey());
+		still_and_audio->data(olive::Node::icon).value<QIcon>();
+	EXPECT_EQ(still_audio_icon.cacheKey(), olive::icon::audio.cacheKey());
+	EXPECT_NE(still_audio_icon.cacheKey(), olive::icon::image.cacheKey());
 
 	// A still image without audio hits the image branch
 	olive::FootageDescription stills(QStringLiteral("fakedecoder"));
-	stills.AddVideoStream(still_stream);
-	stills.SetStreamCount(1);
+	stills.add_video_stream(still_stream);
+	stills.set_stream_count(1);
 	TestableFootage *still_only = probe(QStringLiteral("still.mkv"), stills);
 	ASSERT_NE(still_only, nullptr);
-	EXPECT_EQ(still_only->data(olive::Node::ICON).value<QIcon>().cacheKey(),
-			  olive::icon::Image.cacheKey());
+	EXPECT_EQ(still_only->data(olive::Node::icon).value<QIcon>().cacheKey(),
+			  olive::icon::image.cacheKey());
 
 	// Audio-only footage
 	olive::FootageDescription audio(QStringLiteral("fakedecoder"));
-	audio.AddAudioStream(MakeAudioStream(0));
-	audio.SetStreamCount(1);
+	audio.add_audio_stream(make_audio_stream(0));
+	audio.set_stream_count(1);
 	TestableFootage *audio_only = probe(QStringLiteral("audio.mkv"), audio);
 	ASSERT_NE(audio_only, nullptr);
-	EXPECT_EQ(audio_only->data(olive::Node::ICON).value<QIcon>().cacheKey(),
-			  olive::icon::Audio.cacheKey());
+	EXPECT_EQ(audio_only->data(olive::Node::icon).value<QIcon>().cacheKey(),
+			  olive::icon::audio.cacheKey());
 
 	// Subtitle-only footage
 	olive::FootageDescription subs(QStringLiteral("fakedecoder"));
-	subs.AddSubtitleStream(MakeSubtitleStream(0));
-	subs.SetStreamCount(1);
+	subs.add_subtitle_stream(make_subtitle_stream(0));
+	subs.set_stream_count(1);
 	TestableFootage *subs_only = probe(QStringLiteral("subs.mkv"), subs);
 	ASSERT_NE(subs_only, nullptr);
-	EXPECT_EQ(subs_only->data(olive::Node::ICON).value<QIcon>().cacheKey(),
-			  olive::icon::Subtitles.cacheKey());
+	EXPECT_EQ(subs_only->data(olive::Node::icon).value<QIcon>().cacheKey(),
+			  olive::icon::subtitles.cacheKey());
 }
 
 TEST_F(FootageTest, ProxyChangesMarkProjectModifiedAndEmitSignal)
 {
-	olive::Footage *footage = AddFootage();
+	olive::Footage *footage = add_footage();
 	ASSERT_FALSE(project_->is_modified());
 
 	int emissions = 0;
-	QObject::connect(footage, &olive::Footage::ProxySettingsChanged,
+	QObject::connect(footage, &olive::Footage::proxy_settings_changed,
 					 [&emissions]() { ++emissions; });
 
-	footage->SetProxy(QStringLiteral("/cache/proxy/example.mp4"),
-					  olive::ProxyManager::kProxyReady, 0, 1, true);
+	footage->set_proxy(QStringLiteral("/cache/proxy/example.mp4"),
+					  olive::ProxyManager::k_proxy_ready, 0, 1, true);
 	EXPECT_EQ(emissions, 1);
 	EXPECT_TRUE(project_->is_modified());
 
@@ -597,37 +597,37 @@ TEST_F(FootageTest, ReprobeRestoresStreamsFromMetadataCache)
 		"XDG_CACHE_HOME",
 		QDir(dir.path()).filePath(QStringLiteral("xdg")).toUtf8());
 
-	const QString media = CreateFakeMediaFile(dir, QStringLiteral("fake.mkv"));
+	const QString media = create_fake_media_file(dir, QStringLiteral("fake.mkv"));
 	ASSERT_FALSE(media.isEmpty());
 
-	TestableFootage *footage = ProbeFootageFromCache(
-		project_.get(), media, MakeStandardDescription());
+	TestableFootage *footage = probe_footage_from_cache(
+		project_.get(), media, make_standard_description());
 	ASSERT_NE(footage, nullptr);
 
-	EXPECT_TRUE(footage->IsValid());
+	EXPECT_TRUE(footage->is_valid());
 	EXPECT_EQ(footage->decoder(), QStringLiteral("fakedecoder"));
-	EXPECT_EQ(footage->GetTotalStreamCount(), 3);
-	EXPECT_EQ(footage->GetVideoStreamCount(), 2);
-	EXPECT_EQ(footage->GetAudioStreamCount(), 1);
-	EXPECT_EQ(footage->GetSubtitleStreamCount(), 0);
+	EXPECT_EQ(footage->get_total_stream_count(), 3);
+	EXPECT_EQ(footage->get_video_stream_count(), 2);
+	EXPECT_EQ(footage->get_audio_stream_count(), 1);
+	EXPECT_EQ(footage->get_subtitle_stream_count(), 0);
 
-	EXPECT_EQ(footage->GetStreamIndex(olive::Track::kVideo, 0), 0);
-	EXPECT_EQ(footage->GetStreamIndex(olive::Track::kVideo, 1), 1);
-	EXPECT_EQ(footage->GetStreamIndex(olive::Track::kAudio, 0), 2);
-	EXPECT_EQ(footage->GetReferenceFromRealIndex(2),
-			  olive::Track::Reference(olive::Track::kAudio, 0));
+	EXPECT_EQ(footage->get_stream_index(olive::Track::k_video, 0), 0);
+	EXPECT_EQ(footage->get_stream_index(olive::Track::k_video, 1), 1);
+	EXPECT_EQ(footage->get_stream_index(olive::Track::k_audio, 0), 2);
+	EXPECT_EQ(footage->get_reference_from_real_index(2),
+			  olive::Track::Reference(olive::Track::k_audio, 0));
 
-	EXPECT_EQ(footage->GetConnectedTextureOutput(),
+	EXPECT_EQ(footage->get_connected_texture_output(),
 			  static_cast<olive::Node *>(footage));
-	EXPECT_EQ(footage->GetConnectedSampleOutput(),
+	EXPECT_EQ(footage->get_connected_sample_output(),
 			  static_cast<olive::Node *>(footage));
 
 	// The file behind the footage exists, so both time roles are reported
-	const QVariant modified = footage->data(olive::Node::MODIFIED_TIME);
+	const QVariant modified = footage->data(olive::Node::modified_time);
 	ASSERT_TRUE(modified.isValid());
 	EXPECT_EQ(modified.toLongLong(),
 			  QFileInfo(media).lastModified().toSecsSinceEpoch());
-	EXPECT_TRUE(footage->data(olive::Node::CREATED_TIME).isValid());
+	EXPECT_TRUE(footage->data(olive::Node::created_time).isValid());
 }
 
 TEST_F(FootageTest, VerifyLengthUsesStreamDurations)
@@ -638,18 +638,18 @@ TEST_F(FootageTest, VerifyLengthUsesStreamDurations)
 		"XDG_CACHE_HOME",
 		QDir(dir.path()).filePath(QStringLiteral("xdg")).toUtf8());
 
-	const QString media = CreateFakeMediaFile(dir, QStringLiteral("fake.mkv"));
+	const QString media = create_fake_media_file(dir, QStringLiteral("fake.mkv"));
 	ASSERT_FALSE(media.isEmpty());
 
-	TestableFootage *footage = ProbeFootageFromCache(
-		project_.get(), media, MakeStandardDescription());
+	TestableFootage *footage = probe_footage_from_cache(
+		project_.get(), media, make_standard_description());
 	ASSERT_NE(footage, nullptr);
 
 	// Both streams describe two seconds of media
-	footage->VerifyLength();
-	EXPECT_EQ(footage->GetVideoLength(), olive::rational(2));
-	EXPECT_EQ(footage->GetAudioLength(), olive::rational(2));
-	EXPECT_EQ(footage->GetLength(), olive::rational(2));
+	footage->verify_length();
+	EXPECT_EQ(footage->get_video_length(), olive::Rational(2));
+	EXPECT_EQ(footage->get_audio_length(), olive::Rational(2));
+	EXPECT_EQ(footage->get_length(), olive::Rational(2));
 }
 
 TEST_F(FootageTest, ValueSkipsMissingFiles)
@@ -657,12 +657,12 @@ TEST_F(FootageTest, ValueSkipsMissingFiles)
 	TestableFootage footage;
 
 	olive::NodeValueRow row;
-	row.insert(olive::Footage::kFilenameInput,
-			   olive::NodeValue(olive::NodeValue::kFile,
+	row.insert(olive::Footage::k_filename_input,
+			   olive::NodeValue(olive::NodeValue::k_file,
 								QStringLiteral("/nonexistent/media.mkv")));
 
 	olive::NodeValueTable table;
-	footage.Value(row, MakeGlobals(), &table);
+	footage.value(row, make_globals(), &table);
 
 	EXPECT_TRUE(table.isEmpty());
 }
@@ -671,25 +671,25 @@ TEST_F(FootageTest, ValuePushesOnlyLengthWhenNoStreams)
 {
 	QTemporaryDir dir;
 	ASSERT_TRUE(dir.isValid());
-	const QString media = CreateFakeMediaFile(dir, QStringLiteral("empty.mkv"));
+	const QString media = create_fake_media_file(dir, QStringLiteral("empty.mkv"));
 	ASSERT_FALSE(media.isEmpty());
 
 	TestableFootage footage;
 
 	olive::NodeValueRow row;
-	row.insert(olive::Footage::kFilenameInput,
-			   olive::NodeValue(olive::NodeValue::kFile, media));
+	row.insert(olive::Footage::k_filename_input,
+			   olive::NodeValue(olive::NodeValue::k_file, media));
 
 	olive::NodeValueTable table;
-	footage.Value(row, MakeGlobals(), &table);
+	footage.value(row, make_globals(), &table);
 
 	// The file exists but no streams were ever probed, so only the (zero)
 	// length is pushed
-	ASSERT_EQ(table.Count(), 1);
+	ASSERT_EQ(table.count(), 1);
 	const olive::NodeValue length =
-		table.Get(olive::NodeValue::kRational, QStringLiteral("length"));
-	EXPECT_EQ(length.type(), olive::NodeValue::kRational);
-	EXPECT_EQ(length.toRational(), olive::rational(0));
+		table.get(olive::NodeValue::k_rational, QStringLiteral("length"));
+	EXPECT_EQ(length.type(), olive::NodeValue::k_rational);
+	EXPECT_EQ(length.to_rational(), olive::Rational(0));
 	EXPECT_EQ(length.source(), static_cast<const olive::Node *>(&footage));
 }
 
@@ -701,44 +701,44 @@ TEST_F(FootageTest, ValuePushesStreamJobs)
 		"XDG_CACHE_HOME",
 		QDir(dir.path()).filePath(QStringLiteral("xdg")).toUtf8());
 
-	const QString media = CreateFakeMediaFile(dir, QStringLiteral("fake.mkv"));
+	const QString media = create_fake_media_file(dir, QStringLiteral("fake.mkv"));
 	ASSERT_FALSE(media.isEmpty());
 
-	TestableFootage *footage = ProbeFootageFromCache(
-		project_.get(), media, MakeStandardDescription());
+	TestableFootage *footage = probe_footage_from_cache(
+		project_.get(), media, make_standard_description());
 	ASSERT_NE(footage, nullptr);
-	footage->VerifyLength();
+	footage->verify_length();
 
 	// The colorspace fallback reads the project default, and the audio cache
 	// path comes from the project's cache settings
-	project_->SetDefaultInputColorSpace(QStringLiteral("TestInputSpace"));
-	project_->SetCacheLocationSetting(olive::Project::kCacheCustomPath);
+	project_->set_default_input_color_space(QStringLiteral("TestInputSpace"));
+	project_->set_cache_location_setting(olive::Project::k_cache_custom_path);
 	const QString cache_path =
 		QDir(dir.path()).filePath(QStringLiteral("cache"));
-	project_->SetCustomCachePath(cache_path);
+	project_->set_custom_cache_path(cache_path);
 
 	olive::NodeValueRow row;
-	row.insert(olive::Footage::kFilenameInput,
-			   olive::NodeValue(olive::NodeValue::kFile, media));
+	row.insert(olive::Footage::k_filename_input,
+			   olive::NodeValue(olive::NodeValue::k_file, media));
 
 	// A divider > 1 routes through the target-resolution divider calculation
 	const olive::NodeGlobals globals =
-		MakeGlobals(olive::LoopMode::kLoopModeLoop, 2);
+		make_globals(olive::LoopMode::k_loop_mode_loop, 2);
 
 	olive::NodeValueTable table;
-	footage->Value(row, globals, &table);
+	footage->value(row, globals, &table);
 
 	// Length, two texture jobs, and one sample job
-	EXPECT_EQ(table.Count(), 4);
+	EXPECT_EQ(table.count(), 4);
 
 	const olive::NodeValue length =
-		table.Get(olive::NodeValue::kRational, QStringLiteral("length"));
-	EXPECT_EQ(length.toRational(), olive::rational(2));
+		table.get(olive::NodeValue::k_rational, QStringLiteral("length"));
+	EXPECT_EQ(length.to_rational(), olive::Rational(2));
 
 	// A stream without a colorspace falls back to the project default
 	const olive::TexturePtr tex0 =
-		table.Get(olive::NodeValue::kTexture, QStringLiteral("v:0"))
-			.toTexture();
+		table.get(olive::NodeValue::k_texture, QStringLiteral("v:0"))
+			.to_texture();
 	ASSERT_NE(tex0, nullptr);
 	EXPECT_EQ(tex0->params().colorspace(), QStringLiteral("TestInputSpace"));
 	// min(calculated divider for 32x32 from 1920x1080, requested 2)
@@ -746,31 +746,31 @@ TEST_F(FootageTest, ValuePushesStreamJobs)
 
 	// An explicit colorspace survives
 	const olive::TexturePtr tex1 =
-		table.Get(olive::NodeValue::kTexture, QStringLiteral("v:1"))
-			.toTexture();
+		table.get(olive::NodeValue::k_texture, QStringLiteral("v:1"))
+			.to_texture();
 	ASSERT_NE(tex1, nullptr);
 	EXPECT_EQ(tex1->params().colorspace(), QStringLiteral("ExplicitSpace"));
 
 	const olive::NodeValue samples =
-		table.Get(olive::NodeValue::kSamples, QStringLiteral("a:0"));
-	ASSERT_EQ(samples.type(), olive::NodeValue::kSamples);
+		table.get(olive::NodeValue::k_samples, QStringLiteral("a:0"));
+	ASSERT_EQ(samples.type(), olive::NodeValue::k_samples);
 	const olive::FootageJob audio_job =
 		samples.data().value<olive::FootageJob>();
 	EXPECT_EQ(audio_job.filename(), media);
 	EXPECT_EQ(audio_job.decoder(), QStringLiteral("fakedecoder"));
-	EXPECT_EQ(audio_job.type(), olive::Track::kAudio);
+	EXPECT_EQ(audio_job.type(), olive::Track::k_audio);
 	EXPECT_EQ(audio_job.audio_params().sample_rate(), 48000);
-	EXPECT_EQ(audio_job.length(), olive::rational(2));
-	EXPECT_EQ(audio_job.loop_mode(), olive::LoopMode::kLoopModeLoop);
+	EXPECT_EQ(audio_job.length(), olive::Rational(2));
+	EXPECT_EQ(audio_job.loop_mode(), olive::LoopMode::k_loop_mode_loop);
 	EXPECT_EQ(audio_job.time(), globals.time());
 	EXPECT_EQ(audio_job.cache_path(), cache_path);
 
 	// With a divider of 1, everything renders at full resolution
 	olive::NodeValueTable full_res;
-	footage->Value(row, MakeGlobals(), &full_res);
+	footage->value(row, make_globals(), &full_res);
 	const olive::TexturePtr full_res_tex =
-		full_res.Get(olive::NodeValue::kTexture, QStringLiteral("v:0"))
-			.toTexture();
+		full_res.get(olive::NodeValue::k_texture, QStringLiteral("v:0"))
+			.to_texture();
 	ASSERT_NE(full_res_tex, nullptr);
 	EXPECT_EQ(full_res_tex->params().divider(), 1);
 }
@@ -783,13 +783,13 @@ TEST_F(FootageTest, ValueAttachesReadyProxyToJobs)
 		"XDG_CACHE_HOME",
 		QDir(dir.path()).filePath(QStringLiteral("xdg")).toUtf8());
 
-	const QString media = CreateFakeMediaFile(dir, QStringLiteral("fake.mkv"));
+	const QString media = create_fake_media_file(dir, QStringLiteral("fake.mkv"));
 	ASSERT_FALSE(media.isEmpty());
 
-	TestableFootage *footage = ProbeFootageFromCache(
-		project_.get(), media, MakeStandardDescription());
+	TestableFootage *footage = probe_footage_from_cache(
+		project_.get(), media, make_standard_description());
 	ASSERT_NE(footage, nullptr);
-	footage->VerifyLength();
+	footage->verify_length();
 
 	// A ready proxy is simply an existing proxy file with no .working
 	// sibling; the .a1. marker declares that it contains audio
@@ -800,19 +800,19 @@ TEST_F(FootageTest, ValueAttachesReadyProxyToJobs)
 		QFile proxy_file(proxy);
 		ASSERT_TRUE(proxy_file.open(QFile::WriteOnly));
 	}
-	footage->SetProxy(proxy, olive::ProxyManager::kProxyReady, 0, 1, true);
+	footage->set_proxy(proxy, olive::ProxyManager::k_proxy_ready, 0, 1, true);
 
 	olive::NodeValueRow row;
-	row.insert(olive::Footage::kFilenameInput,
-			   olive::NodeValue(olive::NodeValue::kFile, media));
+	row.insert(olive::Footage::k_filename_input,
+			   olive::NodeValue(olive::NodeValue::k_file, media));
 
 	olive::NodeValueTable table;
-	footage->Value(row, MakeGlobals(), &table);
+	footage->value(row, make_globals(), &table);
 
 	// The proxied video stream (real index 0) gets the proxy at stream 0
 	const olive::TexturePtr tex0 =
-		table.Get(olive::NodeValue::kTexture, QStringLiteral("v:0"))
-			.toTexture();
+		table.get(olive::NodeValue::k_texture, QStringLiteral("v:0"))
+			.to_texture();
 	ASSERT_NE(tex0, nullptr);
 	const auto *video0_job =
 		static_cast<const olive::FootageJob *>(tex0->job());
@@ -824,8 +824,8 @@ TEST_F(FootageTest, ValueAttachesReadyProxyToJobs)
 
 	// Other video streams are unaffected
 	const olive::TexturePtr tex1 =
-		table.Get(olive::NodeValue::kTexture, QStringLiteral("v:1"))
-			.toTexture();
+		table.get(olive::NodeValue::k_texture, QStringLiteral("v:1"))
+			.to_texture();
 	ASSERT_NE(tex1, nullptr);
 	const auto *video1_job =
 		static_cast<const olive::FootageJob *>(tex1->job());
@@ -834,7 +834,7 @@ TEST_F(FootageTest, ValueAttachesReadyProxyToJobs)
 
 	// The first audio stream follows the video stream inside the proxy file
 	const olive::FootageJob audio_job =
-		table.Get(olive::NodeValue::kSamples, QStringLiteral("a:0"))
+		table.get(olive::NodeValue::k_samples, QStringLiteral("a:0"))
 			.data()
 			.value<olive::FootageJob>();
 	EXPECT_TRUE(audio_job.has_proxy());
@@ -844,10 +844,10 @@ TEST_F(FootageTest, ValueAttachesReadyProxyToJobs)
 	// Disabling the proxy detaches it from subsequent jobs
 	footage->set_proxy_enabled(false);
 	olive::NodeValueTable no_proxy;
-	footage->Value(row, MakeGlobals(), &no_proxy);
+	footage->value(row, make_globals(), &no_proxy);
 	const olive::TexturePtr no_proxy_tex =
-		no_proxy.Get(olive::NodeValue::kTexture, QStringLiteral("v:0"))
-			.toTexture();
+		no_proxy.get(olive::NodeValue::k_texture, QStringLiteral("v:0"))
+			.to_texture();
 	ASSERT_NE(no_proxy_tex, nullptr);
 	const auto *no_proxy_job =
 		static_cast<const olive::FootageJob *>(no_proxy_tex->job());
@@ -859,13 +859,13 @@ TEST_F(FootageTest, SaveCustomPersistsSourceStartTime)
 {
 	olive::Footage footage;
 	footage.set_timestamp(7);
-	footage.SetSourceStartTime(olive::rational(3600), QStringLiteral("manual"));
+	footage.set_source_start_time(olive::Rational(3600), QStringLiteral("manual"));
 
 	QString xml;
 	QXmlStreamWriter writer(&xml);
 	writer.writeStartDocument();
 	writer.writeStartElement(QStringLiteral("custom"));
-	footage.SaveCustom(&writer);
+	footage.save_custom(&writer);
 	writer.writeEndElement();
 	writer.writeEndDocument();
 
@@ -878,9 +878,9 @@ TEST_F(FootageTest, SaveCustomPersistsSourceStartTime)
 	ASSERT_EQ(reader.name(), QStringLiteral("custom"));
 
 	olive::Footage loaded;
-	ASSERT_TRUE(loaded.LoadCustom(&reader, nullptr));
-	ASSERT_TRUE(loaded.HasSourceStartTime());
-	EXPECT_EQ(loaded.source_start_time(), olive::rational(3600));
+	ASSERT_TRUE(loaded.load_custom(&reader, nullptr));
+	ASSERT_TRUE(loaded.has_source_start_time());
+	EXPECT_EQ(loaded.source_start_time(), olive::Rational(3600));
 	EXPECT_EQ(loaded.source_start_time_source(), QStringLiteral("manual"));
 	EXPECT_EQ(loaded.timestamp(), 7);
 }

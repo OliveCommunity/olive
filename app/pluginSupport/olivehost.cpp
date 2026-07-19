@@ -28,10 +28,10 @@
 #include <QApplication>
 #include <QCoreApplication>
 #include <QDir>
-#include "OliveHost.h"
+#include "olivehost.h"
 
-#include "OlivePluginInstance.h"
-#include "common/Current.h"
+#include "oliveplugininstance.h"
+#include "common/current.h"
 #include "ofxMessage.h"
 #include "version.h"
 #include <QMessageBox>
@@ -48,7 +48,7 @@ class PluginNode;
 
 namespace
 {
-void AddPluginPath(OFX::Host::PluginCache *cache, const QString &path,
+void add_plugin_path(OFX::Host::PluginCache *cache, const QString &path,
 				   bool recurse = true)
 {
 	if (!cache || path.isEmpty()) {
@@ -61,7 +61,7 @@ void AddPluginPath(OFX::Host::PluginCache *cache, const QString &path,
 	cache->addFileToPath(dir.canonicalPath().toStdString(), recurse);
 }
 
-void AddPluginPathsFromEnv(OFX::Host::PluginCache *cache, const char *env_var)
+void add_plugin_paths_from_env(OFX::Host::PluginCache *cache, const char *env_var)
 {
 	QString raw = qEnvironmentVariable(env_var);
 	if (raw.isEmpty()) {
@@ -70,47 +70,47 @@ void AddPluginPathsFromEnv(OFX::Host::PluginCache *cache, const char *env_var)
 	const QChar separator = QDir::listSeparator();
 	const QStringList paths = raw.split(separator, Qt::SkipEmptyParts);
 	for (const QString &path : paths) {
-		AddPluginPath(cache, path);
+		add_plugin_path(cache, path);
 	}
 }
 }
 
-void olive::plugin::loadPlugins(QString path)
+void olive::plugin::load_plugins(QString path)
 {
-	std::shared_ptr<OliveHost> host = Current::getInstance().pluginHost();
-	std::shared_ptr<ImageEffect::PluginCache> imageEffectPluginCache =
-		Current::getInstance().pluginCache();
+	std::shared_ptr<OliveHost> host = Current::getInstance().plugin_host();
+	std::shared_ptr<ImageEffect::PluginCache> image_effect_plugin_cache =
+		Current::getInstance().plugin_cache();
 
-	if (!host || !imageEffectPluginCache) {
+	if (!host || !image_effect_plugin_cache) {
 		host = std::make_shared<OliveHost>();
 		Current::getInstance().setPluginHost(host);
 
-		imageEffectPluginCache =
+		image_effect_plugin_cache =
 			std::make_shared<ImageEffect::PluginCache>(*host);
-		Current::getInstance().setPluginCache(imageEffectPluginCache);
+		Current::getInstance().setPluginCache(image_effect_plugin_cache);
 
-		imageEffectPluginCache->registerInCache(
+		image_effect_plugin_cache->registerInCache(
 			*OFX::Host::PluginCache::getPluginCache());
 	}
 	OFX::Host::PluginCache *cache = OFX::Host::PluginCache::getPluginCache();
 	cache->setPluginHostPath("Olive");
 
 	const QString home_path = QDir::homePath();
-	AddPluginPath(cache, QDir(home_path).filePath(".OFX/Plugins"));
-	AddPluginPath(cache, QDir(home_path).filePath(".local/share/OFX/Plugins"));
-	AddPluginPath(cache,
+	add_plugin_path(cache, QDir(home_path).filePath(".OFX/Plugins"));
+	add_plugin_path(cache, QDir(home_path).filePath(".local/share/OFX/Plugins"));
+	add_plugin_path(cache,
 				  QDir(home_path).filePath(".local/share/olive/ofx/Plugins"));
 
 	const QString app_dir = QCoreApplication::applicationDirPath();
-	AddPluginPath(cache, QDir(app_dir).filePath("../OFX/Plugins"));
-	AddPluginPath(cache, QDir(app_dir).filePath("../share/olive/ofx/Plugins"));
-	AddPluginPath(cache, QDir(app_dir).filePath("../lib/olive/ofx/Plugins"));
+	add_plugin_path(cache, QDir(app_dir).filePath("../OFX/Plugins"));
+	add_plugin_path(cache, QDir(app_dir).filePath("../share/olive/ofx/Plugins"));
+	add_plugin_path(cache, QDir(app_dir).filePath("../lib/olive/ofx/Plugins"));
 
-	AddPluginPathsFromEnv(cache, "OLIVE_OFX_PLUGIN_PATH");
-	AddPluginPathsFromEnv(cache, "OLIVE_PLUGIN_PATH");
+	add_plugin_paths_from_env(cache, "OLIVE_OFX_PLUGIN_PATH");
+	add_plugin_paths_from_env(cache, "OLIVE_PLUGIN_PATH");
 
 	if (!path.isEmpty()) {
-		AddPluginPath(cache, path, true);
+		add_plugin_path(cache, path, true);
 	}
 	cache->scanPluginFiles();
 }
@@ -120,11 +120,11 @@ OliveHost::OliveHost()
 	_properties.setStringProperty(kOfxPropName, "Oak Video Editor");
 	_properties.setStringProperty(kOfxPropLabel, "Oak Video Editor");
 	_properties.setStringProperty(kOfxPropVersionLabel,
-								  olive::kAppVersion.toStdString());
+								  olive::k_app_version.toStdString());
 
 	// Numeric version for plugins that query kOfxPropVersion directly.
 	const QStringList version_parts =
-		olive::kAppVersion.section(QLatin1Char('-'), 0, 0)
+		olive::k_app_version.section(QLatin1Char('-'), 0, 0)
 			.split(QLatin1Char('.'));
 	_properties.setIntProperty(kOfxPropVersion,
 							   version_parts.value(0).toInt(), 0);
@@ -138,7 +138,7 @@ OliveHost::~OliveHost()
 {
 }
 
-void OliveHost::destroyInstance(OFX::Host::ImageEffect::Instance *instance)
+void OliveHost::destroy_instance(OFX::Host::ImageEffect::Instance *instance)
 {
 	if (!instance) {
 		return;
@@ -159,33 +159,33 @@ OliveHost::makeDescriptor(ImageEffect::ImageEffectPlugin *plugin)
 	return desc;
 }
 std::shared_ptr<OFX::Host::ImageEffect::Descriptor>
-OliveHost::makeDescriptor(const ImageEffect::Descriptor &rootContext,
+OliveHost::makeDescriptor(const ImageEffect::Descriptor &root_context,
 						  ImageEffect::ImageEffectPlugin *plugin)
 {
 	std::shared_ptr<OFX::Host::ImageEffect::Descriptor> desc =
-		std::make_shared<ImageEffect::Descriptor>(rootContext, plugin);
+		std::make_shared<ImageEffect::Descriptor>(root_context, plugin);
 	descriptors_.append(std::shared_ptr<ImageEffect::Descriptor>(desc));
 	return desc;
 }
 std::shared_ptr<OFX::Host::ImageEffect::Descriptor>
-OliveHost::makeDescriptor(const std::string &bundlePath,
+OliveHost::makeDescriptor(const std::string &bundle_path,
 						  ImageEffect::ImageEffectPlugin *plugin)
 {
 	std::shared_ptr<OFX::Host::ImageEffect::Descriptor> desc =
-		std::make_shared<ImageEffect::Descriptor>(bundlePath, plugin);
+		std::make_shared<ImageEffect::Descriptor>(bundle_path, plugin);
 	descriptors_.append(std::shared_ptr<ImageEffect::Descriptor>(desc));
 	return desc;
 }
 
 ImageEffect::Instance *
-OliveHost::newInstance(void *clientData, ImageEffect::ImageEffectPlugin *plugin,
+OliveHost::newInstance(void *client_data, ImageEffect::ImageEffectPlugin *plugin,
 					   ImageEffect::Descriptor &desc,
 					   const std::string &context)
 {
 	auto *instance = new OlivePluginInstance(
 		plugin, desc, context, Current::getInstance().interactive());
-	if (clientData) {
-		auto *node = static_cast<PluginNode *>(clientData);
+	if (client_data) {
+		auto *node = static_cast<PluginNode *>(client_data);
 		instance->setNode(
 			std::shared_ptr<PluginNode>(node, [](PluginNode *) {}));
 	}
@@ -252,21 +252,21 @@ OfxStatus olive::plugin::OliveHost::setPersistentMessage(const char *type,
 		QGuiApplication::platformName() == QLatin1String("offscreen");
 
 	if (strcmp(type, kOfxMessageError) == 0) {
-		persistent_messages_.append({ HostMessageType::Error, message });
+		persistent_messages_.append({ HostMessageType::error, message });
 		if (headless) {
 			qWarning().noquote() << "OFX error:" << message;
 		} else {
 			QMessageBox::critical(nullptr, "", message);
 		}
 	} else if (strcmp(type, kOfxMessageWarning) == 0) {
-		persistent_messages_.append({ HostMessageType::Warning, message });
+		persistent_messages_.append({ HostMessageType::warning, message });
 		if (headless) {
 			qWarning().noquote() << "OFX warning:" << message;
 		} else {
 			QMessageBox::warning(nullptr, "", message);
 		}
 	} else if (strcmp(type, kOfxMessageMessage) == 0) {
-		persistent_messages_.append({ HostMessageType::Message, message });
+		persistent_messages_.append({ HostMessageType::message, message });
 		if (headless) {
 			qWarning().noquote() << "OFX message:" << message;
 		} else {

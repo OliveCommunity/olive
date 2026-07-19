@@ -34,59 +34,59 @@ namespace olive
 
 #define super Block
 
-const QString ClipBlock::kBufferIn = QStringLiteral("buffer_in");
-const QString ClipBlock::kMediaInInput = QStringLiteral("media_in_in");
-const QString ClipBlock::kSpeedInput = QStringLiteral("speed_in");
-const QString ClipBlock::kReverseInput = QStringLiteral("reverse_in");
-const QString ClipBlock::kMaintainAudioPitchInput =
+const QString ClipBlock::k_buffer_in = QStringLiteral("buffer_in");
+const QString ClipBlock::k_media_in_input = QStringLiteral("media_in_in");
+const QString ClipBlock::k_speed_input = QStringLiteral("speed_in");
+const QString ClipBlock::k_reverse_input = QStringLiteral("reverse_in");
+const QString ClipBlock::k_maintain_audio_pitch_input =
 	QStringLiteral("maintain_audio_pitch_in");
-const QString ClipBlock::kAutoCacheInput = QStringLiteral("autocache_in");
-const QString ClipBlock::kLoopModeInput = QStringLiteral("loop_in");
+const QString ClipBlock::k_auto_cache_input = QStringLiteral("autocache_in");
+const QString ClipBlock::k_loop_mode_input = QStringLiteral("loop_in");
 
 ClipBlock::ClipBlock()
 	: in_transition_(nullptr)
 	, out_transition_(nullptr)
 	, connected_viewer_(nullptr)
 {
-	AddInput(kMediaInInput, NodeValue::kRational,
-			 InputFlags(kInputFlagNotConnectable | kInputFlagNotKeyframable));
-	SetInputProperty(kMediaInInput, QStringLiteral("view"),
-					 RationalSlider::kTime);
-	SetInputProperty(kMediaInInput, QStringLiteral("viewlock"), true);
+	add_input(k_media_in_input, NodeValue::k_rational,
+			 InputFlags(k_input_flag_not_connectable | k_input_flag_not_keyframable));
+	set_input_property(k_media_in_input, QStringLiteral("view"),
+					 RationalSlider::k_time);
+	set_input_property(k_media_in_input, QStringLiteral("viewlock"), true);
 
-	AddInput(kSpeedInput, NodeValue::kFloat, 1.0,
-			 InputFlags(kInputFlagNotConnectable | kInputFlagNotKeyframable));
-	SetInputProperty(kSpeedInput, QStringLiteral("view"),
-					 FloatSlider::kPercentage);
-	SetInputProperty(kSpeedInput, QStringLiteral("min"), 0.0);
+	add_input(k_speed_input, NodeValue::k_float, 1.0,
+			 InputFlags(k_input_flag_not_connectable | k_input_flag_not_keyframable));
+	set_input_property(k_speed_input, QStringLiteral("view"),
+					 FloatSlider::k_percentage);
+	set_input_property(k_speed_input, QStringLiteral("min"), 0.0);
 
-	AddInput(kReverseInput, NodeValue::kBoolean, false,
-			 InputFlags(kInputFlagNotConnectable | kInputFlagNotKeyframable));
+	add_input(k_reverse_input, NodeValue::k_boolean, false,
+			 InputFlags(k_input_flag_not_connectable | k_input_flag_not_keyframable));
 
-	AddInput(kMaintainAudioPitchInput, NodeValue::kBoolean, false,
-			 InputFlags(kInputFlagNotConnectable | kInputFlagNotKeyframable));
+	add_input(k_maintain_audio_pitch_input, NodeValue::k_boolean, false,
+			 InputFlags(k_input_flag_not_connectable | k_input_flag_not_keyframable));
 
-	AddInput(kAutoCacheInput, NodeValue::kBoolean, false,
-			 InputFlags(kInputFlagNotConnectable | kInputFlagNotKeyframable));
+	add_input(k_auto_cache_input, NodeValue::k_boolean, false,
+			 InputFlags(k_input_flag_not_connectable | k_input_flag_not_keyframable));
 
-	PrependInput(kBufferIn, NodeValue::kNone,
-				 InputFlags(kInputFlagNotKeyframable));
+	prepend_input(k_buffer_in, NodeValue::k_none,
+				 InputFlags(k_input_flag_not_keyframable));
 	//SetValueHintForInput(kBufferIn, ValueHint(NodeValue::kBuffer));
 
-	SetEffectInput(kBufferIn);
+	set_effect_input(k_buffer_in);
 
-	AddInput(kLoopModeInput, NodeValue::kCombo, 0,
-			 InputFlags(kInputFlagNotConnectable | kInputFlagNotKeyframable));
+	add_input(k_loop_mode_input, NodeValue::k_combo, 0,
+			 InputFlags(k_input_flag_not_connectable | k_input_flag_not_keyframable));
 }
 
-QString ClipBlock::Name() const
+QString ClipBlock::name() const
 {
-	if (connected_viewer_ && !connected_viewer_->GetLabel().isEmpty()) {
-		return connected_viewer_->GetLabel();
+	if (connected_viewer_ && !connected_viewer_->get_label().isEmpty()) {
+		return connected_viewer_->get_label();
 	} else if (track()) {
-		if (track()->type() == Track::kVideo) {
+		if (track()->type() == Track::k_video) {
 			return tr("Video Clip");
-		} else if (track()->type() == Track::kAudio) {
+		} else if (track()->type() == Track::k_audio) {
 			return tr("Audio Clip");
 		}
 	}
@@ -99,12 +99,12 @@ QString ClipBlock::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.clip");
 }
 
-QString ClipBlock::Description() const
+QString ClipBlock::description() const
 {
 	return tr("A time-based node that represents a media source.");
 }
 
-void ClipBlock::set_length_and_media_out(const rational &length)
+void ClipBlock::set_length_and_media_out(const Rational &length)
 {
 	if (length == this->length()) {
 		return;
@@ -112,39 +112,39 @@ void ClipBlock::set_length_and_media_out(const rational &length)
 
 	if (reverse()) {
 		// Calculate media_in adjustment
-		rational proposed_media_in = SequenceToMediaTime(
-			this->length() - length, kSTMIgnoreReverse | kSTMIgnoreLoop);
+		Rational proposed_media_in = sequence_to_media_time(
+			this->length() - length, k_stm_ignore_reverse | k_stm_ignore_loop);
 		set_media_in(proposed_media_in);
 	}
 
 	super::set_length_and_media_out(length);
 }
 
-void ClipBlock::set_length_and_media_in(const rational &length)
+void ClipBlock::set_length_and_media_in(const Rational &length)
 {
 	if (length == this->length()) {
 		return;
 	}
 
-	rational old_length = this->length();
+	Rational old_length = this->length();
 
 	super::set_length_and_media_in(length);
 
 	if (!reverse()) {
 		// Calculate media_in adjustment
-		set_media_in(SequenceToMediaTime(old_length - length, kSTMIgnoreLoop));
+		set_media_in(sequence_to_media_time(old_length - length, k_stm_ignore_loop));
 	}
 }
 
-rational ClipBlock::media_in() const
+Rational ClipBlock::media_in() const
 {
-	return GetStandardValue(kMediaInInput).value<rational>();
+	return get_standard_value(k_media_in_input).value<Rational>();
 }
 
-Node::ValueHint ClipBlock::GetValueHintForInput(const QString &input,
+Node::ValueHint ClipBlock::get_value_hint_for_input(const QString &input,
 												int element) const
 {
-	if (input == kBufferIn) {
+	if (input == k_buffer_in) {
 		// The buffer input takes whatever the connected node provides, so it
 		// is declared as kNone and carries no stored hint. When the connected
 		// node pushes more than one value type (a footage pushes both a
@@ -152,46 +152,46 @@ Node::ValueHint ClipBlock::GetValueHintForInput(const QString &input,
 		// the last value in the table, which may feed audio samples into a
 		// video clip and produce a black frame. Prefer the value type that
 		// matches this clip's track.
-		switch (GetTrackType()) {
-		case Track::kVideo:
-			return ValueHint(QVector<NodeValue::Type>{ NodeValue::kTexture });
-		case Track::kAudio:
-			return ValueHint(QVector<NodeValue::Type>{ NodeValue::kSamples });
+		switch (get_track_type()) {
+		case Track::k_video:
+			return ValueHint(QVector<NodeValue::Type>{ NodeValue::k_texture });
+		case Track::k_audio:
+			return ValueHint(QVector<NodeValue::Type>{ NodeValue::k_samples });
 		default:
 			break;
 		}
 	}
 
-	return super::GetValueHintForInput(input, element);
+	return super::get_value_hint_for_input(input, element);
 }
 
-void ClipBlock::set_media_in(const rational &media_in)
+void ClipBlock::set_media_in(const Rational &media_in)
 {
-	SetStandardValue(kMediaInInput, QVariant::fromValue(media_in));
+	set_standard_value(k_media_in_input, QVariant::fromValue(media_in));
 
-	RequestInvalidatedFromConnected();
+	request_invalidated_from_connected();
 }
 
-void ClipBlock::SetAutocache(bool e)
+void ClipBlock::set_autocache(bool e)
 {
-	SetStandardValue(kAutoCacheInput, e);
+	set_standard_value(k_auto_cache_input, e);
 }
 
-void ClipBlock::DiscardCache()
+void ClipBlock::discard_cache()
 {
-	if (Node *connected = GetConnectedOutput(kBufferIn)) {
-		Track::Type type = GetTrackType();
-		if (type == Track::kVideo) {
-			connected->video_frame_cache()->Invalidate(
+	if (Node *connected = get_connected_output(k_buffer_in)) {
+		Track::Type type = get_track_type();
+		if (type == Track::k_video) {
+			connected->video_frame_cache()->invalidate(
 				TimeRange(RATIONAL_MIN, RATIONAL_MAX));
-		} else if (type == Track::kAudio) {
-			connected->audio_playback_cache()->Invalidate(
+		} else if (type == Track::k_audio) {
+			connected->audio_playback_cache()->invalidate(
 				TimeRange(RATIONAL_MIN, RATIONAL_MAX));
 		}
 	}
 }
 
-rational ClipBlock::SequenceToMediaTime(const rational &sequence_time,
+Rational ClipBlock::sequence_to_media_time(const Rational &sequence_time,
 										uint64_t flags) const
 {
 	// These constants are not considered "values" per se, so we don't modify them
@@ -199,13 +199,13 @@ rational ClipBlock::SequenceToMediaTime(const rational &sequence_time,
 		return sequence_time;
 	}
 
-	rational media_time = sequence_time;
+	Rational media_time = sequence_time;
 
-	if (reverse() && !(flags & kSTMIgnoreReverse)) {
+	if (reverse() && !(flags & k_stm_ignore_reverse)) {
 		media_time = length() - media_time;
 	}
 
-	if (!(flags & kSTMIgnoreSpeed)) {
+	if (!(flags & k_stm_ignore_speed)) {
 		double speed_value = speed();
 		if (qIsNull(speed_value)) {
 			// Effectively holds the frame at the in point
@@ -213,7 +213,7 @@ rational ClipBlock::SequenceToMediaTime(const rational &sequence_time,
 		} else if (!qFuzzyCompare(speed_value, 1.0)) {
 			// Multiply time
 			media_time =
-				rational::fromDouble(media_time.toDouble() * speed_value);
+				Rational::from_double(media_time.to_double() * speed_value);
 		}
 	}
 
@@ -232,21 +232,21 @@ rational ClipBlock::SequenceToMediaTime(const rational &sequence_time,
         media_time -= connected_viewer_->GetLength();
       }
     } else if (loop_mode() == kLoopModeClamp) {
-      media_time = std::clamp(media_time, rational(0), connected_viewer_->GetLength()-connected_viewer_->GetVideoParams().frame_rate_as_time_base());
+      media_time = std::clamp(media_time, Rational(0), connected_viewer_->GetLength()-connected_viewer_->GetVideoParams().frame_rate_as_time_base());
     }
   }*/
 
 	return media_time;
 }
 
-rational ClipBlock::MediaToSequenceTime(const rational &media_time) const
+Rational ClipBlock::media_to_sequence_time(const Rational &media_time) const
 {
 	// These constants are not considered "values" per se, so we don't modify them
 	if (media_time == RATIONAL_MIN || media_time == RATIONAL_MAX) {
 		return media_time;
 	}
 
-	rational sequence_time = media_time - media_in();
+	Rational sequence_time = media_time - media_in();
 
 	double speed_value = speed();
 	if (qIsNull(speed_value)) {
@@ -255,7 +255,7 @@ rational ClipBlock::MediaToSequenceTime(const rational &media_time) const
 	} else if (!qFuzzyCompare(speed_value, 1.0)) {
 		// Divide time
 		sequence_time =
-			rational::fromDouble(sequence_time.toDouble() / speed_value);
+			Rational::from_double(sequence_time.to_double() / speed_value);
 	}
 
 	if (reverse()) {
@@ -265,80 +265,80 @@ rational ClipBlock::MediaToSequenceTime(const rational &media_time) const
 	return sequence_time;
 }
 
-void ClipBlock::RequestRangeFromConnected(const TimeRange &range)
+void ClipBlock::request_range_from_connected(const TimeRange &range)
 {
-	Track::Type type = GetTrackType();
+	Track::Type type = get_track_type();
 
-	if (type == Track::kVideo || type == Track::kAudio) {
-		if (Node *connected = GetConnectedOutput(kBufferIn)) {
+	if (type == Track::k_video || type == Track::k_audio) {
+		if (Node *connected = get_connected_output(k_buffer_in)) {
 			TimeRange max_range = media_range();
-			if (type == Track::kVideo) {
+			if (type == Track::k_video) {
 				// Handle thumbnails
-				RequestRangeForCache(connected->thumbnail_cache(), max_range,
+				request_range_for_cache(connected->thumbnail_cache(), max_range,
 									 range, true, false);
 				{
-					TimeRange thumb_range = range.Intersected(max_range);
-					if (GetAdjustedThumbnailRange(&thumb_range)) {
-						connected->thumbnail_cache()->Request(
+					TimeRange thumb_range = range.intersected(max_range);
+					if (get_adjusted_thumbnail_range(&thumb_range)) {
+						connected->thumbnail_cache()->request(
 							this->track()->sequence(), thumb_range);
 					}
 				}
 
 				// Handle video cache
-				RequestRangeForCache(connected->video_frame_cache(), max_range,
-									 range, true, IsAutocaching());
-			} else if (type == Track::kAudio) {
+				request_range_for_cache(connected->video_frame_cache(), max_range,
+									 range, true, is_autocaching());
+			} else if (type == Track::k_audio) {
 				// Handle waveforms
-				RequestRangeForCache(
+				request_range_for_cache(
 					connected->waveform_cache(), max_range, range, true,
-					(OLIVE_CONFIG("TimelineWaveformMode").toInt() ==
-					 Timeline::kWaveformsEnabled));
+					(OAK_CONFIG("TimelineWaveformMode").toInt() ==
+					 Timeline::k_waveforms_enabled));
 
 				// Handle audio cache
-				RequestRangeForCache(connected->audio_playback_cache(),
-									 max_range, range, true, IsAutocaching());
+				request_range_for_cache(connected->audio_playback_cache(),
+									 max_range, range, true, is_autocaching());
 			}
 		}
 	}
 }
 
-void ClipBlock::RequestInvalidatedFromConnected(bool force_all,
+void ClipBlock::request_invalidated_from_connected(bool force_all,
 												const TimeRange &intersect)
 {
-	Track::Type type = GetTrackType();
+	Track::Type type = get_track_type();
 
-	if (type == Track::kVideo || type == Track::kAudio) {
-		if (Node *connected = GetConnectedOutput(kBufferIn)) {
+	if (type == Track::k_video || type == Track::k_audio) {
+		if (Node *connected = get_connected_output(k_buffer_in)) {
 			TimeRange max_range = media_range();
 
 			if (!intersect.length().isNull()) {
-				max_range = max_range.Intersected(intersect);
+				max_range = max_range.intersected(intersect);
 			}
 
-			if (type == Track::kVideo) {
+			if (type == Track::k_video) {
 				// Handle thumbnails
 				TimeRange thumb_range = max_range;
-				if (GetAdjustedThumbnailRange(&thumb_range)) {
-					RequestInvalidatedForCache(connected->thumbnail_cache(),
+				if (get_adjusted_thumbnail_range(&thumb_range)) {
+					request_invalidated_for_cache(connected->thumbnail_cache(),
 											   thumb_range);
 				}
 
 				// Handle video cache
-				if (IsAutocaching() || force_all) {
-					RequestInvalidatedForCache(connected->video_frame_cache(),
+				if (is_autocaching() || force_all) {
+					request_invalidated_for_cache(connected->video_frame_cache(),
 											   max_range);
 				}
-			} else if (type == Track::kAudio) {
+			} else if (type == Track::k_audio) {
 				// Handle waveforms
-				if (OLIVE_CONFIG("TimelineWaveformMode").toInt() ==
-					Timeline::kWaveformsEnabled) {
-					RequestInvalidatedForCache(connected->waveform_cache(),
+				if (OAK_CONFIG("TimelineWaveformMode").toInt() ==
+					Timeline::k_waveforms_enabled) {
+					request_invalidated_for_cache(connected->waveform_cache(),
 											   max_range);
 				}
 
 				// Handle audio cache
-				if (IsAutocaching() || force_all) {
-					RequestInvalidatedForCache(
+				if (is_autocaching() || force_all) {
+					request_invalidated_for_cache(
 						connected->audio_playback_cache(), max_range);
 				}
 			}
@@ -346,56 +346,56 @@ void ClipBlock::RequestInvalidatedFromConnected(bool force_all,
 	}
 }
 
-void ClipBlock::RequestRangeForCache(PlaybackCache *cache,
+void ClipBlock::request_range_for_cache(PlaybackCache *cache,
 									 const TimeRange &max_range,
 									 const TimeRange &range, bool invalidate,
 									 bool request)
 {
-	TimeRange r = range.Intersected(max_range);
+	TimeRange r = range.intersected(max_range);
 
 	if (invalidate) {
-		cache->Invalidate(r);
+		cache->invalidate(r);
 	}
 
 	if (request) {
-		cache->Request(this->track()->sequence(), r);
+		cache->request(this->track()->sequence(), r);
 	}
 }
 
-void ClipBlock::RequestInvalidatedForCache(PlaybackCache *cache,
+void ClipBlock::request_invalidated_for_cache(PlaybackCache *cache,
 										   const TimeRange &max_range)
 {
-	TimeRangeList invalid = cache->GetInvalidatedRanges(max_range);
+	TimeRangeList invalid = cache->get_invalidated_ranges(max_range);
 
-	for (const PlaybackCache::Passthrough &p : cache->GetPassthroughs()) {
+	for (const PlaybackCache::Passthrough &p : cache->get_passthroughs()) {
 		invalid.remove(p);
 	}
 
 	for (const TimeRange &r : invalid) {
-		RequestRangeForCache(cache, max_range, r, false, true);
+		request_range_for_cache(cache, max_range, r, false, true);
 	}
 }
 
-bool ClipBlock::GetAdjustedThumbnailRange(TimeRange *r) const
+bool ClipBlock::get_adjusted_thumbnail_range(TimeRange *r) const
 {
 	switch (static_cast<Timeline::ThumbnailMode>(
-		OLIVE_CONFIG("TimelineThumbnailMode").toInt())) {
-	case Timeline::kThumbnailOff:
+		OAK_CONFIG("TimelineThumbnailMode").toInt())) {
+	case Timeline::k_thumbnail_off:
 		// Don't cache any range
 		return false;
-	case Timeline::kThumbnailInOut: {
+	case Timeline::k_thumbnail_in_out: {
 		// Only cache in point
-		rational in = this->media_range().in();
-		if (r->Contains(in)) {
+		Rational in = this->media_range().in();
+		if (r->contains(in)) {
 			// Cache only the in point
-			*r = TimeRange(in, in + thumbnail_cache()->GetTimebase());
+			*r = TimeRange(in, in + thumbnail_cache()->get_timebase());
 			return true;
 		} else {
 			// Cache nothing
 			return false;
 		}
 	}
-	case Timeline::kThumbnailOn:
+	case Timeline::k_thumbnail_on:
 		// Cache entire range
 		return true;
 	}
@@ -404,16 +404,16 @@ bool ClipBlock::GetAdjustedThumbnailRange(TimeRange *r) const
 	return true;
 }
 
-void ClipBlock::InvalidateCache(const TimeRange &range, const QString &from,
+void ClipBlock::invalidate_cache(const TimeRange &range, const QString &from,
 								int element, InvalidateCacheOptions options)
 {
 	Q_UNUSED(element)
 
 	// If signal is from texture input, transform all times from media time to sequence time
-	if (from == kBufferIn) {
+	if (from == k_buffer_in) {
 		// Render caches where necessary
-		if (AreCachesEnabled()) {
-			RequestRangeFromConnected(range);
+		if (are_caches_enabled()) {
+			request_range_from_connected(range);
 		}
 
 		// Adjust range from media time to sequence time
@@ -424,48 +424,48 @@ void ClipBlock::InvalidateCache(const TimeRange &range, const QString &from,
 			// Handle 0 speed by invalidating the whole clip
 			adj = TimeRange(RATIONAL_MIN, RATIONAL_MAX);
 		} else {
-			adj = TimeRange(MediaToSequenceTime(range.in()),
-							MediaToSequenceTime(range.out()));
+			adj = TimeRange(media_to_sequence_time(range.in()),
+							media_to_sequence_time(range.out()));
 		}
 
 		// Find connected viewer node
-		auto viewers = FindInputNodesConnectedToInput<ViewerOutput>(
-			NodeInput(this, kBufferIn), 1);
+		auto viewers = find_input_nodes_connected_to_input<ViewerOutput>(
+			NodeInput(this, k_buffer_in), 1);
 		ViewerOutput *new_connected_viewer =
 			viewers.isEmpty() ? nullptr : viewers.first();
 
 		if (new_connected_viewer != connected_viewer_) {
 			if (connected_viewer_) {
-				disconnect(connected_viewer_->GetMarkers(),
-						   &TimelineMarkerList::MarkerAdded, this,
-						   &ClipBlock::PreviewChanged);
-				disconnect(connected_viewer_->GetMarkers(),
-						   &TimelineMarkerList::MarkerRemoved, this,
-						   &ClipBlock::PreviewChanged);
-				disconnect(connected_viewer_->GetMarkers(),
-						   &TimelineMarkerList::MarkerModified, this,
-						   &ClipBlock::PreviewChanged);
+				disconnect(connected_viewer_->get_markers(),
+						   &TimelineMarkerList::marker_added, this,
+						   &ClipBlock::preview_changed);
+				disconnect(connected_viewer_->get_markers(),
+						   &TimelineMarkerList::marker_removed, this,
+						   &ClipBlock::preview_changed);
+				disconnect(connected_viewer_->get_markers(),
+						   &TimelineMarkerList::marker_modified, this,
+						   &ClipBlock::preview_changed);
 			}
 
 			connected_viewer_ = new_connected_viewer;
 
 			if (connected_viewer_) {
-				connect(connected_viewer_->GetMarkers(),
-						&TimelineMarkerList::MarkerAdded, this,
-						&ClipBlock::PreviewChanged);
-				connect(connected_viewer_->GetMarkers(),
-						&TimelineMarkerList::MarkerRemoved, this,
-						&ClipBlock::PreviewChanged);
-				connect(connected_viewer_->GetMarkers(),
-						&TimelineMarkerList::MarkerModified, this,
-						&ClipBlock::PreviewChanged);
+				connect(connected_viewer_->get_markers(),
+						&TimelineMarkerList::marker_added, this,
+						&ClipBlock::preview_changed);
+				connect(connected_viewer_->get_markers(),
+						&TimelineMarkerList::marker_removed, this,
+						&ClipBlock::preview_changed);
+				connect(connected_viewer_->get_markers(),
+						&TimelineMarkerList::marker_modified, this,
+						&ClipBlock::preview_changed);
 			}
 		}
 
-		super::InvalidateCache(adj, from, element, options);
+		super::invalidate_cache(adj, from, element, options);
 	} else {
 		// Otherwise, pass signal along normally
-		super::InvalidateCache(range, from, element, options);
+		super::invalidate_cache(range, from, element, options);
 	}
 }
 
@@ -487,23 +487,23 @@ void ClipBlock::InputConnectedEvent(const QString &input, int element,
 {
 	super::InputConnectedEvent(input, element, output);
 
-	if (input == kBufferIn) {
-		connect(output->thumbnail_cache(), &FrameHashCache::Invalidated, this,
-				&Block::PreviewChanged);
-		connect(output->waveform_cache(), &AudioPlaybackCache::Invalidated,
-				this, &Block::PreviewChanged);
-		connect(output->video_frame_cache(), &FrameHashCache::Invalidated, this,
-				&Block::PreviewChanged);
+	if (input == k_buffer_in) {
+		connect(output->thumbnail_cache(), &FrameHashCache::invalidated, this,
+				&Block::preview_changed);
+		connect(output->waveform_cache(), &AudioPlaybackCache::invalidated,
+				this, &Block::preview_changed);
+		connect(output->video_frame_cache(), &FrameHashCache::invalidated, this,
+				&Block::preview_changed);
 		connect(output->audio_playback_cache(),
-				&AudioPlaybackCache::Invalidated, this, &Block::PreviewChanged);
-		connect(output->thumbnail_cache(), &FrameHashCache::Validated, this,
-				&Block::PreviewChanged);
-		connect(output->waveform_cache(), &AudioPlaybackCache::Validated, this,
-				&Block::PreviewChanged);
-		connect(output->video_frame_cache(), &FrameHashCache::Validated, this,
-				&Block::PreviewChanged);
-		connect(output->audio_playback_cache(), &AudioPlaybackCache::Validated,
-				this, &Block::PreviewChanged);
+				&AudioPlaybackCache::invalidated, this, &Block::preview_changed);
+		connect(output->thumbnail_cache(), &FrameHashCache::validated, this,
+				&Block::preview_changed);
+		connect(output->waveform_cache(), &AudioPlaybackCache::validated, this,
+				&Block::preview_changed);
+		connect(output->video_frame_cache(), &FrameHashCache::validated, this,
+				&Block::preview_changed);
+		connect(output->audio_playback_cache(), &AudioPlaybackCache::validated,
+				this, &Block::preview_changed);
 	}
 }
 
@@ -512,25 +512,25 @@ void ClipBlock::InputDisconnectedEvent(const QString &input, int element,
 {
 	super::InputDisconnectedEvent(input, element, output);
 
-	if (input == kBufferIn) {
-		disconnect(output->thumbnail_cache(), &FrameHashCache::Invalidated,
-				   this, &Block::PreviewChanged);
-		disconnect(output->waveform_cache(), &AudioPlaybackCache::Invalidated,
-				   this, &Block::PreviewChanged);
-		disconnect(output->video_frame_cache(), &FrameHashCache::Invalidated,
-				   this, &Block::PreviewChanged);
+	if (input == k_buffer_in) {
+		disconnect(output->thumbnail_cache(), &FrameHashCache::invalidated,
+				   this, &Block::preview_changed);
+		disconnect(output->waveform_cache(), &AudioPlaybackCache::invalidated,
+				   this, &Block::preview_changed);
+		disconnect(output->video_frame_cache(), &FrameHashCache::invalidated,
+				   this, &Block::preview_changed);
 		disconnect(output->audio_playback_cache(),
-				   &AudioPlaybackCache::Invalidated, this,
-				   &Block::PreviewChanged);
-		disconnect(output->thumbnail_cache(), &FrameHashCache::Validated, this,
-				   &Block::PreviewChanged);
-		disconnect(output->waveform_cache(), &AudioPlaybackCache::Validated,
-				   this, &Block::PreviewChanged);
-		disconnect(output->video_frame_cache(), &FrameHashCache::Validated,
-				   this, &Block::PreviewChanged);
+				   &AudioPlaybackCache::invalidated, this,
+				   &Block::preview_changed);
+		disconnect(output->thumbnail_cache(), &FrameHashCache::validated, this,
+				   &Block::preview_changed);
+		disconnect(output->waveform_cache(), &AudioPlaybackCache::validated,
+				   this, &Block::preview_changed);
+		disconnect(output->video_frame_cache(), &FrameHashCache::validated,
+				   this, &Block::preview_changed);
 		disconnect(output->audio_playback_cache(),
-				   &AudioPlaybackCache::Validated, this,
-				   &Block::PreviewChanged);
+				   &AudioPlaybackCache::validated, this,
+				   &Block::preview_changed);
 	}
 }
 
@@ -538,120 +538,120 @@ void ClipBlock::InputValueChangedEvent(const QString &input, int element)
 {
 	super::InputValueChangedEvent(input, element);
 
-	if (input == kAutoCacheInput) {
-		if (IsAutocaching()) {
-			RequestInvalidatedFromConnected();
+	if (input == k_auto_cache_input) {
+		if (is_autocaching()) {
+			request_invalidated_from_connected();
 		} else {
-			Track::Type type = GetTrackType();
+			Track::Type type = get_track_type();
 
-			if (Node *connected = GetConnectedOutput(kBufferIn)) {
-				if (type == Track::kVideo) {
-					emit connected->video_frame_cache()->CancelAll();
-				} else if (type == Track::kAudio) {
-					emit connected->audio_playback_cache()->CancelAll();
+			if (Node *connected = get_connected_output(k_buffer_in)) {
+				if (type == Track::k_video) {
+					emit connected->video_frame_cache()->cancel_all();
+				} else if (type == Track::k_audio) {
+					emit connected->audio_playback_cache()->cancel_all();
 				}
 			}
 		}
-	} else if (input == kLoopModeInput) {
-		emit PreviewChanged();
+	} else if (input == k_loop_mode_input) {
+		emit preview_changed();
 	}
 }
 
-TimeRange ClipBlock::InputTimeAdjustment(const QString &input, int element,
+TimeRange ClipBlock::input_time_adjustment(const QString &input, int element,
 										 const TimeRange &input_time,
 										 bool clamp) const
 {
 	Q_UNUSED(element)
 
-	if (input == kBufferIn) {
-		return TimeRange(SequenceToMediaTime(input_time.in()),
-						 SequenceToMediaTime(input_time.out()));
+	if (input == k_buffer_in) {
+		return TimeRange(sequence_to_media_time(input_time.in()),
+						 sequence_to_media_time(input_time.out()));
 	}
 
-	return super::InputTimeAdjustment(input, element, input_time, clamp);
+	return super::input_time_adjustment(input, element, input_time, clamp);
 }
 
-TimeRange ClipBlock::OutputTimeAdjustment(const QString &input, int element,
+TimeRange ClipBlock::output_time_adjustment(const QString &input, int element,
 										  const TimeRange &input_time) const
 {
 	Q_UNUSED(element)
 
-	if (input == kBufferIn) {
-		return TimeRange(MediaToSequenceTime(input_time.in()),
-						 MediaToSequenceTime(input_time.out()));
+	if (input == k_buffer_in) {
+		return TimeRange(media_to_sequence_time(input_time.in()),
+						 media_to_sequence_time(input_time.out()));
 	}
 
-	return super::OutputTimeAdjustment(input, element, input_time);
+	return super::output_time_adjustment(input, element, input_time);
 }
 
-void ClipBlock::Value(const NodeValueRow &value, const NodeGlobals &globals,
+void ClipBlock::value(const NodeValueRow &value, const NodeGlobals &globals,
 					  NodeValueTable *table) const
 {
 	Q_UNUSED(globals)
 
 	// We discard most values here except for the buffer we received
-	NodeValue data = value[kBufferIn];
+	NodeValue data = value[k_buffer_in];
 
-	table->Clear();
-	if (data.type() != NodeValue::kNone) {
-		table->Push(data);
+	table->clear();
+	if (data.type() != NodeValue::k_none) {
+		table->push(data);
 	}
 }
 
-void ClipBlock::Retranslate()
+void ClipBlock::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kBufferIn, tr("Buffer"));
-	SetInputName(kMediaInInput, tr("Media In"));
-	SetInputName(kSpeedInput, tr("Speed"));
-	SetInputName(kReverseInput, tr("Reverse"));
-	SetInputName(kMaintainAudioPitchInput, tr("Maintain Audio Pitch"));
-	SetInputName(kLoopModeInput, tr("Loop"));
-	SetComboBoxStrings(kLoopModeInput, { tr("None"), tr("Loop"), tr("Clamp") });
+	set_input_name(k_buffer_in, tr("Buffer"));
+	set_input_name(k_media_in_input, tr("Media In"));
+	set_input_name(k_speed_input, tr("Speed"));
+	set_input_name(k_reverse_input, tr("Reverse"));
+	set_input_name(k_maintain_audio_pitch_input, tr("Maintain Audio Pitch"));
+	set_input_name(k_loop_mode_input, tr("Loop"));
+	set_combo_box_strings(k_loop_mode_input, { tr("None"), tr("Loop"), tr("Clamp") });
 }
 
-void ClipBlock::AddCachePassthroughFrom(ClipBlock *other)
+void ClipBlock::add_cache_passthrough_from(ClipBlock *other)
 {
 	if (auto tc = this->video_frame_cache()) {
 		if (auto oc = other->video_frame_cache()) {
-			tc->SetPassthrough(oc);
+			tc->set_passthrough(oc);
 		}
 	}
 
 	if (auto tc = this->audio_playback_cache()) {
 		if (auto oc = other->audio_playback_cache()) {
-			tc->SetPassthrough(oc);
+			tc->set_passthrough(oc);
 		}
 	}
 
 	if (auto tc = this->thumbnails()) {
 		if (auto oc = other->thumbnails()) {
-			tc->SetPassthrough(oc);
+			tc->set_passthrough(oc);
 		}
 	}
 
 	if (auto tc = this->waveform()) {
 		if (auto oc = other->waveform()) {
-			tc->SetPassthrough(oc);
+			tc->set_passthrough(oc);
 		}
 	}
 }
 
 void ClipBlock::ConnectedToPreviewEvent()
 {
-	RequestInvalidatedFromConnected();
+	request_invalidated_from_connected();
 }
 
 TimeRange ClipBlock::media_range() const
 {
-	return InputTimeAdjustment(kBufferIn, -1, TimeRange(0, length()), false);
+	return input_time_adjustment(k_buffer_in, -1, TimeRange(0, length()), false);
 }
 
-MultiCamNode *ClipBlock::FindMulticam()
+MultiCamNode *ClipBlock::find_multicam()
 {
-	auto v = FindInputNodesConnectedToInput<MultiCamNode>(
-		NodeInput(this, kBufferIn), 1);
+	auto v = find_input_nodes_connected_to_input<MultiCamNode>(
+		NodeInput(this, k_buffer_in), 1);
 	if (v.empty()) {
 		return nullptr;
 	} else {

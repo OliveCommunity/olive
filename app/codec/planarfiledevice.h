@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PLANARFILEDEVICE_H
-#define PLANARFILEDEVICE_H
+#ifndef OAK_PLANARFILEDEVICE_H
+#define OAK_PLANARFILEDEVICE_H
 
 #include <olive/core/core.h>
 #include <QFile>
@@ -62,4 +62,4 @@ private:
 
 }
 
-#endif // PLANARFILEDEVICE_H
+#endif // OAK_PLANARFILEDEVICE_H

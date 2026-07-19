@@ -32,11 +32,11 @@ struct FBAudioGraph {
 
 	int in_channels = 0;
 	int in_sample_rate = 0;
-	int in_sample_format = FB_SAMPLE_FMT_NONE;
+	int in_sample_format = fb_sample_fmt_none;
 	int64_t in_pts = 0;
 };
 
-static AVFilterContext *CreateTempoFilter(AVFilterGraph *graph,
+static AVFilterContext *create_tempo_filter(AVFilterGraph *graph,
 										  AVFilterContext *link, double tempo)
 {
 	char speed_param[20];
@@ -67,9 +67,9 @@ FBAudioGraph *fb_audio_graph_create(const FBAudioGraphConfig *config)
 	}
 
 	AVChannelLayout in_layout, out_layout;
-	fb::ChannelLayoutFromMask(&in_layout, config->in_channel_layout_mask,
+	fb::channel_layout_from_mask(&in_layout, config->in_channel_layout_mask,
 							  config->in_channels);
-	fb::ChannelLayoutFromMask(&out_layout, config->out_channel_layout_mask,
+	fb::channel_layout_from_mask(&out_layout, config->out_channel_layout_mask,
 							  config->out_channels);
 
 	char filter_args[200];
@@ -104,7 +104,7 @@ FBAudioGraph *fb_audio_graph_create(const FBAudioGraphConfig *config)
 		for (int i = 0; i <= whole; i++) {
 			double filter_tempo = (i == whole) ? pow(base, speed_log) : base;
 			previous_filter =
-				CreateTempoFilter(g->graph, previous_filter, filter_tempo);
+				create_tempo_filter(g->graph, previous_filter, filter_tempo);
 			if (!previous_filter) {
 				av_channel_layout_uninit(&in_layout);
 				av_channel_layout_uninit(&out_layout);

@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef LOG_H
-#define LOG_H
+#ifndef OAK_LOG_H
+#define OAK_LOG_H
 
 #include <iostream>
 
@@ -42,22 +42,22 @@ public:
 		return *this;
 	}
 
-	static Log Debug()
+	static Log debug()
 	{
 		return Log("DEBUG");
 	}
 
-	static Log Info()
+	static Log info()
 	{
 		return Log("INFO");
 	}
 
-	static Log Warning()
+	static Log warning()
 	{
 		return Log("WARNING");
 	}
 
-	static Log Error()
+	static Log error()
 	{
 		return Log("ERROR");
 	}
@@ -65,4 +65,4 @@ public:
 
 }
 
-#endif // LOG_H
+#endif // OAK_LOG_H

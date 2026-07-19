@@ -54,12 +54,12 @@ SequenceDialog::SequenceDialog(Sequence *s, Type t, QWidget *parent)
 	parameter_tab_ = new SequenceDialogParameterTab(sequence_);
 	splitter->addWidget(parameter_tab_);
 
-	connect(preset_tab_, &SequenceDialogPresetTab::PresetChanged,
-			parameter_tab_, &SequenceDialogParameterTab::PresetChanged);
-	connect(preset_tab_, &SequenceDialogPresetTab::PresetAccepted, this,
+	connect(preset_tab_, &SequenceDialogPresetTab::preset_changed,
+			parameter_tab_, &SequenceDialogParameterTab::preset_changed);
+	connect(preset_tab_, &SequenceDialogPresetTab::preset_accepted, this,
 			&SequenceDialog::accept);
-	connect(parameter_tab_, &SequenceDialogParameterTab::SaveParametersAsPreset,
-			preset_tab_, &SequenceDialogPresetTab::SaveParametersAsPreset);
+	connect(parameter_tab_, &SequenceDialogParameterTab::save_parameters_as_preset,
+			preset_tab_, &SequenceDialogPresetTab::save_parameters_as_preset);
 
 	// Set up name section
 	QHBoxLayout *name_layout = new QHBoxLayout();
@@ -78,28 +78,28 @@ SequenceDialog::SequenceDialog(Sequence *s, Type t, QWidget *parent)
 	connect(buttons, &QDialogButtonBox::rejected, this,
 			&SequenceDialog::reject);
 	connect(default_btn, &QPushButton::clicked, this,
-			&SequenceDialog::SetAsDefaultClicked);
+			&SequenceDialog::set_as_default_clicked);
 	layout->addWidget(buttons);
 
 	// Set window title based on type
 	switch (t) {
-	case kNew:
+	case k_new:
 		setWindowTitle(tr("New Sequence"));
 		break;
-	case kExisting:
-		setWindowTitle(tr("Editing \"%1\"").arg(sequence_->GetLabel()));
+	case k_existing:
+		setWindowTitle(tr("Editing \"%1\"").arg(sequence_->get_label()));
 		break;
 	}
 
-	name_field_->setText(sequence_->GetLabel());
+	name_field_->setText(sequence_->get_label());
 }
 
-void SequenceDialog::SetUndoable(bool u)
+void SequenceDialog::set_undoable(bool u)
 {
 	make_undoable_ = u;
 }
 
-void SequenceDialog::SetNameIsEditable(bool e)
+void SequenceDialog::set_name_is_editable(bool e)
 {
 	name_field_->setEnabled(e);
 }
@@ -107,24 +107,24 @@ void SequenceDialog::SetNameIsEditable(bool e)
 void SequenceDialog::accept()
 {
 	if (name_field_->isEnabled() && name_field_->text().isEmpty()) {
-		QtUtils::MsgBox(this, QMessageBox::Critical,
+		QtUtils::msg_box(this, QMessageBox::Critical,
 						tr("Error editing Sequence"),
 						tr("Please enter a name for this Sequence."));
 		return;
 	}
 
-	if (!VideoParams::FormatIsFloat(
-			parameter_tab_->GetSelectedPreviewFormat()) &&
-		!OLIVE_CONFIG("PreviewNonFloatDontAskAgain").toBool()) {
+	if (!VideoParams::format_is_float(
+			parameter_tab_->get_selected_preview_format()) &&
+		!OAK_CONFIG("PreviewNonFloatDontAskAgain").toBool()) {
 		QMessageBox b(this);
-		QCheckBox *dont_show_again_ = new QCheckBox(tr("Don't ask me again"));
+		QCheckBox *dont_show_again = new QCheckBox(tr("Don't ask me again"));
 
 		b.setIcon(QMessageBox::Warning);
 		b.setWindowTitle(tr("Low Quality Preview"));
 		b.setText(tr(
 			"The preview resolution has been set to a non-float format. This may cause banding and clipping artifacts in the preview.\n\n"
 			"Do you wish to continue?"));
-		b.setCheckBox(dont_show_again_);
+		b.setCheckBox(dont_show_again);
 
 		b.addButton(QMessageBox::Yes);
 		b.addButton(QMessageBox::No);
@@ -133,70 +133,70 @@ void SequenceDialog::accept()
 			return;
 		}
 
-		if (dont_show_again_->isChecked()) {
-			OLIVE_CONFIG("PreviewNonFloatDontAskAgain") = true;
+		if (dont_show_again->isChecked()) {
+			OAK_CONFIG("PreviewNonFloatDontAskAgain") = true;
 		}
 	}
 
 	// Generate video and audio parameter structs from data
 	VideoParams video_params =
-		VideoParams(parameter_tab_->GetSelectedVideoWidth(),
-					parameter_tab_->GetSelectedVideoHeight(),
-					parameter_tab_->GetSelectedVideoFrameRate().flipped(),
-					parameter_tab_->GetSelectedPreviewFormat(),
-					VideoParams::kInternalChannelCount,
-					parameter_tab_->GetSelectedVideoPixelAspect(),
-					parameter_tab_->GetSelectedVideoInterlacingMode(),
-					parameter_tab_->GetSelectedPreviewResolution());
+		VideoParams(parameter_tab_->get_selected_video_width(),
+					parameter_tab_->get_selected_video_height(),
+					parameter_tab_->get_selected_video_frame_rate().flipped(),
+					parameter_tab_->get_selected_preview_format(),
+					VideoParams::k_internal_channel_count,
+					parameter_tab_->get_selected_video_pixel_aspect(),
+					parameter_tab_->get_selected_video_interlacing_mode(),
+					parameter_tab_->get_selected_preview_resolution());
 
 	AudioParams audio_params =
-		AudioParams(parameter_tab_->GetSelectedAudioSampleRate(),
-					parameter_tab_->GetSelectedAudioChannelLayout(),
-					Sequence::kDefaultSampleFormat);
+		AudioParams(parameter_tab_->get_selected_audio_sample_rate(),
+					parameter_tab_->get_selected_audio_channel_layout(),
+					Sequence::k_default_sample_format);
 
 	if (make_undoable_) {
 		// Make undoable command to change the parameters
 		SequenceParamCommand *param_command = new SequenceParamCommand(
 			sequence_, video_params, audio_params, name_field_->text(),
-			parameter_tab_->GetSelectedPreviewAutoCache());
+			parameter_tab_->get_selected_preview_auto_cache());
 
 		Core::instance()->undo_stack()->push(
 			param_command,
-			tr("Set Sequence Parameters For \"%1\"").arg(sequence_->GetLabel()));
+			tr("Set Sequence Parameters For \"%1\"").arg(sequence_->get_label()));
 
 	} else {
 		// Set sequence values directly with no undo command
-		sequence_->SetVideoParams(video_params);
-		sequence_->SetAudioParams(audio_params);
-		sequence_->SetLabel(name_field_->text());
-		sequence_->SetVideoAutoCacheEnabled(
-			parameter_tab_->GetSelectedPreviewAutoCache());
+		sequence_->set_video_params(video_params);
+		sequence_->set_audio_params(audio_params);
+		sequence_->set_label(name_field_->text());
+		sequence_->set_video_auto_cache_enabled(
+			parameter_tab_->get_selected_preview_auto_cache());
 	}
 
 	QDialog::accept();
 }
 
-void SequenceDialog::SetAsDefaultClicked()
+void SequenceDialog::set_as_default_clicked()
 {
-	if (QtUtils::MsgBox(
+	if (QtUtils::msg_box(
 			this, QMessageBox::Question, tr("Confirm Set As Default"),
 			tr("Are you sure you want to set the current parameters as defaults?"),
 			QMessageBox::Yes | QMessageBox::No) == QMessageBox::Yes) {
 		// Maybe replace with Preset system
-		OLIVE_CONFIG("DefaultSequenceWidth") =
-			parameter_tab_->GetSelectedVideoWidth();
-		OLIVE_CONFIG("DefaultSequenceHeight") =
-			parameter_tab_->GetSelectedVideoHeight();
-		OLIVE_CONFIG("DefaultSequencePixelAspect") =
-			QVariant::fromValue(parameter_tab_->GetSelectedVideoPixelAspect());
-		OLIVE_CONFIG("DefaultSequenceFrameRate") = QVariant::fromValue(
-			parameter_tab_->GetSelectedVideoFrameRate().flipped());
-		OLIVE_CONFIG("DefaultSequenceInterlacing") =
-			parameter_tab_->GetSelectedVideoInterlacingMode();
-		OLIVE_CONFIG("DefaultSequenceAudioFrequency") =
-			parameter_tab_->GetSelectedAudioSampleRate();
-		OLIVE_CONFIG("DefaultSequenceAudioLayout") = QVariant::fromValue(
-			parameter_tab_->GetSelectedAudioChannelLayout());
+		OAK_CONFIG("DefaultSequenceWidth") =
+			parameter_tab_->get_selected_video_width();
+		OAK_CONFIG("DefaultSequenceHeight") =
+			parameter_tab_->get_selected_video_height();
+		OAK_CONFIG("DefaultSequencePixelAspect") =
+			QVariant::fromValue(parameter_tab_->get_selected_video_pixel_aspect());
+		OAK_CONFIG("DefaultSequenceFrameRate") = QVariant::fromValue(
+			parameter_tab_->get_selected_video_frame_rate().flipped());
+		OAK_CONFIG("DefaultSequenceInterlacing") =
+			parameter_tab_->get_selected_video_interlacing_mode();
+		OAK_CONFIG("DefaultSequenceAudioFrequency") =
+			parameter_tab_->get_selected_audio_sample_rate();
+		OAK_CONFIG("DefaultSequenceAudioLayout") = QVariant::fromValue(
+			parameter_tab_->get_selected_audio_channel_layout());
 	}
 }
 
@@ -208,40 +208,40 @@ SequenceDialog::SequenceParamCommand::SequenceParamCommand(
 	, new_audio_params_(audio_params)
 	, new_name_(name)
 	, new_autocache_(autocache)
-	, old_video_params_(s->GetVideoParams())
-	, old_audio_params_(s->GetAudioParams())
-	, old_name_(s->GetLabel())
-	, old_autocache_(s->IsVideoAutoCacheEnabled())
+	, old_video_params_(s->get_video_params())
+	, old_audio_params_(s->get_audio_params())
+	, old_name_(s->get_label())
+	, old_autocache_(s->is_video_auto_cache_enabled())
 {
 }
 
-Project *SequenceDialog::SequenceParamCommand::GetRelevantProject() const
+Project *SequenceDialog::SequenceParamCommand::get_relevant_project() const
 {
 	return sequence_->project();
 }
 
 void SequenceDialog::SequenceParamCommand::redo()
 {
-	if (sequence_->GetVideoParams() != new_video_params_) {
-		sequence_->SetVideoParams(new_video_params_);
+	if (sequence_->get_video_params() != new_video_params_) {
+		sequence_->set_video_params(new_video_params_);
 	}
-	if (sequence_->GetAudioParams() != new_audio_params_) {
-		sequence_->SetAudioParams(new_audio_params_);
+	if (sequence_->get_audio_params() != new_audio_params_) {
+		sequence_->set_audio_params(new_audio_params_);
 	}
-	sequence_->SetLabel(new_name_);
-	sequence_->SetVideoAutoCacheEnabled(new_autocache_);
+	sequence_->set_label(new_name_);
+	sequence_->set_video_auto_cache_enabled(new_autocache_);
 }
 
 void SequenceDialog::SequenceParamCommand::undo()
 {
-	if (sequence_->GetVideoParams() != old_video_params_) {
-		sequence_->SetVideoParams(old_video_params_);
+	if (sequence_->get_video_params() != old_video_params_) {
+		sequence_->set_video_params(old_video_params_);
 	}
-	if (sequence_->GetAudioParams() != old_audio_params_) {
-		sequence_->SetAudioParams(old_audio_params_);
+	if (sequence_->get_audio_params() != old_audio_params_) {
+		sequence_->set_audio_params(old_audio_params_);
 	}
-	sequence_->SetLabel(old_name_);
-	sequence_->SetVideoAutoCacheEnabled(old_autocache_);
+	sequence_->set_label(old_name_);
+	sequence_->set_video_auto_cache_enabled(old_autocache_);
 }
 
 }

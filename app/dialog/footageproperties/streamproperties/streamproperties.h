@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef STREAMPROPERTIES_H
-#define STREAMPROPERTIES_H
+#ifndef OAK_STREAMPROPERTIES_H
+#define OAK_STREAMPROPERTIES_H
 
 #include <QWidget>
 
@@ -34,11 +34,11 @@ class StreamProperties : public QWidget {
 public:
 	StreamProperties(QWidget *parent = nullptr);
 
-	virtual void Accept(MultiUndoCommand *)
+	virtual void accept(MultiUndoCommand *)
 	{
 	}
 
-	virtual bool SanityCheck()
+	virtual bool sanity_check()
 	{
 		return true;
 	}
@@ -46,4 +46,4 @@ public:
 
 }
 
-#endif // STREAMPROPERTIES_H
+#endif // OAK_STREAMPROPERTIES_H

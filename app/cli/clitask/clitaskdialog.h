@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CLITASKDIALOG_H
-#define CLITASKDIALOG_H
+#ifndef OAK_CLITASKDIALOG_H
+#define OAK_CLITASKDIALOG_H
 
 #include "cli/cliprogress/cliprogressdialog.h"
 #include "task/task.h"
@@ -33,7 +33,7 @@ class CLITaskDialog : public CLIProgressDialog {
 public:
 	CLITaskDialog(Task *task, QObject *parent = nullptr);
 
-	bool Run();
+	bool run();
 
 private:
 	Task *task_;
@@ -41,4 +41,4 @@ private:
 
 }
 
-#endif // CLITASKDIALOG_H
+#endif // OAK_CLITASKDIALOG_H

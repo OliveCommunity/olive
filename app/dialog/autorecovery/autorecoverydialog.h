@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef AUTORECOVERYDIALOG_H
-#define AUTORECOVERYDIALOG_H
+#ifndef OAK_AUTORECOVERYDIALOG_H
+#define OAK_AUTORECOVERYDIALOG_H
 
 #include <QDialog>
 #include <QTreeWidget>
@@ -40,17 +40,17 @@ public slots:
 	virtual void accept() override;
 
 private:
-	void Init(const QString &header_text);
+	void init(const QString &header_text);
 
-	void PopulateTree(const QStringList &recoveries, bool autocheck);
+	void populate_tree(const QStringList &recoveries, bool autocheck);
 
 	QTreeWidget *tree_widget_;
 
 	QVector<QTreeWidgetItem *> checkable_items_;
 
-	enum DataRole { kFilenameRole = Qt::UserRole };
+	enum DataRole { k_filename_role = Qt::UserRole };
 };
 
 }
 
-#endif // AUTORECOVERYDIALOG_H
+#endif // OAK_AUTORECOVERYDIALOG_H

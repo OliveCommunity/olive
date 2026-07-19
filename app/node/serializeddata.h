@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SERIALIZEDDATA_H
-#define SERIALIZEDDATA_H
+#ifndef OAK_SERIALIZEDDATA_H
+#define OAK_SERIALIZEDDATA_H
 
 #include <QHash>
 #include <QVariant>
@@ -66,4 +66,4 @@ struct SerializedData {
 
 }
 
-#endif // SERIALIZEDDATA_H
+#endif // OAK_SERIALIZEDDATA_H

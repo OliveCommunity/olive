@@ -11,8 +11,8 @@ TEST(TimelineWorkArea, DefaultsAndSetters)
 	olive::TimelineWorkArea workarea;
 	EXPECT_FALSE(workarea.enabled());
 
-	olive::core::TimeRange range(olive::core::rational(5, 1),
-								 olive::core::rational(10, 1));
+	olive::core::TimeRange range(olive::core::Rational(5, 1),
+								 olive::core::Rational(10, 1));
 	workarea.set_enabled(true);
 	workarea.set_range(range);
 
@@ -27,8 +27,8 @@ TEST(TimelineWorkArea, SaveLoadRoundTrip)
 {
 	olive::TimelineWorkArea workarea;
 	workarea.set_enabled(true);
-	workarea.set_range(olive::core::TimeRange(olive::core::rational(2, 1),
-											  olive::core::rational(6, 1)));
+	workarea.set_range(olive::core::TimeRange(olive::core::Rational(2, 1),
+											  olive::core::Rational(6, 1)));
 
 	QByteArray xml;
 	QBuffer buffer(&xml);
@@ -50,16 +50,16 @@ TEST(TimelineWorkArea, SaveLoadRoundTrip)
 
 	EXPECT_TRUE(loaded.enabled());
 	EXPECT_EQ(loaded.range(),
-			  olive::core::TimeRange(olive::core::rational(2, 1),
-									 olive::core::rational(6, 1)));
+			  olive::core::TimeRange(olive::core::Rational(2, 1),
+									 olive::core::Rational(6, 1)));
 }
 
 TEST(TimelineWorkArea, DisabledWorkAreaRoundTrip)
 {
 	olive::TimelineWorkArea workarea;
 	workarea.set_enabled(false);
-	workarea.set_range(olive::core::TimeRange(olive::core::rational(0, 1),
-											  olive::core::rational(10, 1)));
+	workarea.set_range(olive::core::TimeRange(olive::core::Rational(0, 1),
+											  olive::core::Rational(10, 1)));
 
 	QByteArray xml;
 	QBuffer buffer(&xml);
@@ -81,17 +81,17 @@ TEST(TimelineWorkArea, DisabledWorkAreaRoundTrip)
 
 	EXPECT_FALSE(loaded.enabled());
 	EXPECT_EQ(loaded.range(),
-			  olive::core::TimeRange(olive::core::rational(0, 1),
-									 olive::core::rational(10, 1)));
+			  olive::core::TimeRange(olive::core::Rational(0, 1),
+									 olive::core::Rational(10, 1)));
 }
 
 TEST(TimelineWorkArea, SetRangeUpdatesInOut)
 {
 	olive::TimelineWorkArea workarea;
-	workarea.set_range(olive::core::TimeRange(olive::core::rational(3, 1),
-											  olive::core::rational(8, 1)));
+	workarea.set_range(olive::core::TimeRange(olive::core::Rational(3, 1),
+											  olive::core::Rational(8, 1)));
 
-	EXPECT_EQ(workarea.in(), olive::core::rational(3, 1));
-	EXPECT_EQ(workarea.out(), olive::core::rational(8, 1));
-	EXPECT_EQ(workarea.length(), olive::core::rational(5, 1));
+	EXPECT_EQ(workarea.in(), olive::core::Rational(3, 1));
+	EXPECT_EQ(workarea.out(), olive::core::Rational(8, 1));
+	EXPECT_EQ(workarea.length(), olive::core::Rational(5, 1));
 }

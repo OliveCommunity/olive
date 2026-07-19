@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef ZOOMTIMELINETOOL_H
-#define ZOOMTIMELINETOOL_H
+#ifndef OAK_ZOOMTIMELINETOOL_H
+#define OAK_ZOOMTIMELINETOOL_H
 
 #include "tool.h"
 
@@ -31,9 +31,9 @@ class ZoomTool : public TimelineTool {
 public:
 	ZoomTool(TimelineWidget *parent);
 
-	virtual void MousePress(TimelineViewMouseEvent *event) override;
-	virtual void MouseMove(TimelineViewMouseEvent *event) override;
-	virtual void MouseRelease(TimelineViewMouseEvent *event) override;
+	virtual void mouse_press(TimelineViewMouseEvent *event) override;
+	virtual void mouse_move(TimelineViewMouseEvent *event) override;
+	virtual void mouse_release(TimelineViewMouseEvent *event) override;
 
 private:
 	QPoint drag_global_start_;
@@ -41,4 +41,4 @@ private:
 
 }
 
-#endif // ZOOMTIMELINETOOL_H
+#endif // OAK_ZOOMTIMELINETOOL_H

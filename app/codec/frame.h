@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FRAME_H
-#define FRAME_H
+#ifndef OAK_FRAME_H
+#define OAK_FRAME_H
 
 #include <memory>
 #include <olive/core/core.h>
@@ -46,12 +46,12 @@ public:
 
 	DISABLE_COPY_MOVE(Frame)
 
-	static FramePtr Create();
+	static FramePtr create();
 
 	const VideoParams &video_params() const;
 	void set_video_params(const VideoParams &params);
 
-	static FramePtr Interlace(FramePtr top, FramePtr bottom);
+	static FramePtr interlace(FramePtr top, FramePtr bottom);
 
 	static int generate_linesize_bytes(int width, PixelFormat format,
 									   int channel_count);
@@ -93,14 +93,14 @@ public:
 	/**
    * @brief Get frame's timestamp.
    *
-   * This timestamp is always a rational that will equate to the time in seconds.
+   * This timestamp is always a Rational that will equate to the time in seconds.
    */
-	const rational &timestamp() const
+	const Rational &timestamp() const
 	{
 		return timestamp_;
 	}
 
-	void set_timestamp(const rational &timestamp)
+	void set_timestamp(const Rational &timestamp)
 	{
 		timestamp_ = timestamp;
 	}
@@ -161,7 +161,7 @@ private:
 	char *data_;
 	int data_size_;
 
-	rational timestamp_;
+	Rational timestamp_;
 
 	int linesize_;
 
@@ -172,4 +172,4 @@ private:
 
 Q_DECLARE_METATYPE(olive::FramePtr)
 
-#endif // FRAME_H
+#endif // OAK_FRAME_H

@@ -37,13 +37,13 @@ HandMovableView::HandMovableView(QWidget *parent)
 	, default_drag_mode_(NoDrag)
 	, is_timeline_axes_(false)
 {
-	connect(Core::instance(), &Core::ToolChanged, this,
-			&HandMovableView::ApplicationToolChanged);
+	connect(Core::instance(), &Core::tool_changed, this,
+			&HandMovableView::application_tool_changed);
 }
 
-void HandMovableView::ApplicationToolChanged(Tool::Item tool)
+void HandMovableView::application_tool_changed(Tool::Item tool)
 {
-	if (tool == Tool::kHand) {
+	if (tool == Tool::k_hand) {
 		setDragMode(ScrollHandDrag);
 		setInteractive(false);
 	} else {
@@ -54,7 +54,7 @@ void HandMovableView::ApplicationToolChanged(Tool::Item tool)
 	ToolChangedEvent(tool);
 }
 
-bool HandMovableView::HandPress(QMouseEvent *event)
+bool HandMovableView::hand_press(QMouseEvent *event)
 {
 	if (event->button() == Qt::MiddleButton) {
 		pre_hand_drag_mode_ = dragMode();
@@ -77,7 +77,7 @@ bool HandMovableView::HandPress(QMouseEvent *event)
 	return false;
 }
 
-bool HandMovableView::HandMove(QMouseEvent *event)
+bool HandMovableView::hand_move(QMouseEvent *event)
 {
 	if (dragging_hand_) {
 		// Transform mouse event to act like the left button is pressed
@@ -112,7 +112,7 @@ bool HandMovableView::HandMove(QMouseEvent *event)
 	return dragging_hand_;
 }
 
-bool HandMovableView::HandRelease(QMouseEvent *event)
+bool HandMovableView::hand_release(QMouseEvent *event)
 {
 	if (dragging_hand_) {
 		// Transform mouse event to act like the left button is pressed
@@ -134,13 +134,13 @@ bool HandMovableView::HandRelease(QMouseEvent *event)
 	return false;
 }
 
-void HandMovableView::SetDefaultDragMode(HandMovableView::DragMode mode)
+void HandMovableView::set_default_drag_mode(HandMovableView::DragMode mode)
 {
 	default_drag_mode_ = mode;
 	setDragMode(default_drag_mode_);
 }
 
-const HandMovableView::DragMode &HandMovableView::GetDefaultDragMode() const
+const HandMovableView::DragMode &HandMovableView::get_default_drag_mode() const
 {
 	return default_drag_mode_;
 }
@@ -148,10 +148,10 @@ const HandMovableView::DragMode &HandMovableView::GetDefaultDragMode() const
 bool HandMovableView::WheelEventIsAZoomEvent(QWheelEvent *event)
 {
 	return (static_cast<bool>(event->modifiers() & Qt::ControlModifier) ==
-			!OLIVE_CONFIG("ScrollZooms").toBool());
+			!OAK_CONFIG("ScrollZooms").toBool());
 }
 
-qreal HandMovableView::GetScrollZoomMultiplier(QWheelEvent *event)
+qreal HandMovableView::get_scroll_zoom_multiplier(QWheelEvent *event)
 {
 	qreal v =
 		(static_cast<qreal>(event->angleDelta().x() + event->angleDelta().y()) *
@@ -166,7 +166,7 @@ void HandMovableView::wheelEvent(QWheelEvent *event)
 {
 	if (WheelEventIsAZoomEvent(event)) {
 		if (!event->angleDelta().isNull()) {
-			qreal multiplier = GetScrollZoomMultiplier(event);
+			qreal multiplier = get_scroll_zoom_multiplier(event);
 
 			QPointF cursor_pos;
 #if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
@@ -175,14 +175,14 @@ void HandMovableView::wheelEvent(QWheelEvent *event)
 			cursor_pos = event->posF();
 #endif
 
-			ZoomIntoCursorPosition(event, multiplier, cursor_pos);
+			zoom_into_cursor_position(event, multiplier, cursor_pos);
 		}
 	} else if (is_timeline_axes_) {
 #if (QT_VERSION >= QT_VERSION_CHECK(5, 12, 0))
 
 		QPoint angle_delta = event->angleDelta();
 
-		if (OLIVE_CONFIG("InvertTimelineScrollAxes")
+		if (OAK_CONFIG("InvertTimelineScrollAxes")
 				.toBool() // Check if config is set to invert timeline axes
 			&&
 			event->source() !=
@@ -204,7 +204,7 @@ void HandMovableView::wheelEvent(QWheelEvent *event)
 
 		Qt::Orientation orientation = event->orientation();
 
-		if (OLIVE_CONFIG("InvertTimelineScrollAxes").toBool()) {
+		if (OAK_CONFIG("InvertTimelineScrollAxes").toBool()) {
 			orientation = (orientation == Qt::Horizontal) ? Qt::Vertical :
 															Qt::Horizontal;
 		}
@@ -220,7 +220,7 @@ void HandMovableView::wheelEvent(QWheelEvent *event)
 	}
 }
 
-void HandMovableView::ZoomIntoCursorPosition(QWheelEvent *event,
+void HandMovableView::zoom_into_cursor_position(QWheelEvent *event,
 											 double multiplier,
 											 const QPointF &cursor_pos)
 {

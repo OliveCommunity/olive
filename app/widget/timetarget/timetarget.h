@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMETARGETOBJECT_H
-#define TIMETARGETOBJECT_H
+#ifndef OAK_TIMETARGETOBJECT_H
+#define OAK_TIMETARGETOBJECT_H
 
 #include "node/output/viewer/viewer.h"
 
@@ -31,14 +31,14 @@ class TimeTargetObject {
 public:
 	TimeTargetObject();
 
-	ViewerOutput *GetTimeTarget() const;
-	void SetTimeTarget(ViewerOutput *target);
+	ViewerOutput *get_time_target() const;
+	void set_time_target(ViewerOutput *target);
 
-	void SetPathIndex(int index);
+	void set_path_index(int index);
 
-	rational GetAdjustedTime(Node *from, Node *to, const rational &r,
+	Rational get_adjusted_time(Node *from, Node *to, const Rational &r,
 							 Node::TransformTimeDirection dir) const;
-	TimeRange GetAdjustedTime(Node *from, Node *to, const TimeRange &r,
+	TimeRange get_adjusted_time(Node *from, Node *to, const TimeRange &r,
 							  Node::TransformTimeDirection dir) const;
 
 	//int GetNumberOfPathAdjustments(Node* from, NodeParam::Type direction) const;
@@ -62,4 +62,4 @@ private:
 
 }
 
-#endif // TIMETARGETOBJECT_H
+#endif // OAK_TIMETARGETOBJECT_H

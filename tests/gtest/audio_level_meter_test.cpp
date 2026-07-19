@@ -10,21 +10,21 @@
 namespace
 {
 
-olive::core::AudioParams MakeStereoParams()
+olive::core::AudioParams make_stereo_params()
 {
-	return olive::core::AudioParams(48000, olive::core::kChannelLayoutStereo,
-									olive::core::SampleFormat::F32P);
+	return olive::core::AudioParams(48000, olive::core::k_channel_layout_stereo,
+									olive::core::SampleFormat::f32_p);
 }
 
 }
 
 TEST(AudioLevelMeter, Silence)
 {
-	olive::core::SampleBuffer samples(MakeStereoParams(), size_t(480));
+	olive::core::SampleBuffer samples(make_stereo_params(), size_t(480));
 	samples.silence();
 
 	const olive::AudioLevelMeter::Stats stats =
-		olive::AudioLevelMeter::AnalyzeSampleBuffer(samples);
+		olive::AudioLevelMeter::analyze_sample_buffer(samples);
 
 	ASSERT_EQ(stats.channels.size(), 2);
 	EXPECT_TRUE(stats.silence);
@@ -36,7 +36,7 @@ TEST(AudioLevelMeter, Silence)
 
 TEST(AudioLevelMeter, ConstantSignal)
 {
-	olive::core::SampleBuffer samples(MakeStereoParams(), size_t(480));
+	olive::core::SampleBuffer samples(make_stereo_params(), size_t(480));
 	for (int channel = 0; channel < samples.channel_count(); channel++) {
 		float *data = samples.data(channel);
 		for (size_t i = 0; i < samples.sample_count(); i++) {
@@ -45,7 +45,7 @@ TEST(AudioLevelMeter, ConstantSignal)
 	}
 
 	const olive::AudioLevelMeter::Stats stats =
-		olive::AudioLevelMeter::AnalyzeSampleBuffer(samples);
+		olive::AudioLevelMeter::analyze_sample_buffer(samples);
 
 	ASSERT_EQ(stats.channels.size(), 2);
 	EXPECT_FALSE(stats.silence);
@@ -58,14 +58,14 @@ TEST(AudioLevelMeter, ConstantSignal)
 
 TEST(AudioLevelMeter, PerChannelPeaksAndRms)
 {
-	olive::core::SampleBuffer samples(MakeStereoParams(), size_t(4));
+	olive::core::SampleBuffer samples(make_stereo_params(), size_t(4));
 	float left[] = { 0.0f, 0.25f, -0.5f, 1.0f };
 	float right[] = { 0.0f, -0.25f, 0.25f, -0.25f };
 	samples.set(0, left, 4);
 	samples.set(1, right, 4);
 
 	const olive::AudioLevelMeter::Stats stats =
-		olive::AudioLevelMeter::AnalyzeSampleBuffer(samples);
+		olive::AudioLevelMeter::analyze_sample_buffer(samples);
 
 	ASSERT_EQ(stats.channels.size(), 2);
 	EXPECT_DOUBLE_EQ(stats.channels.at(0).peak_linear, 1.0);

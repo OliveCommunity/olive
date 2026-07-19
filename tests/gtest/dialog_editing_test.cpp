@@ -43,29 +43,29 @@ namespace
 
 // Several of these dialogs push undo commands to the global undo stack on
 // accept(), which requires the Core singleton (see project_factory_test.cpp)
-void EnsureAppSingletons()
+void ensure_app_singletons()
 {
 	if (!olive::Core::instance()) {
 		new olive::Core(olive::Core::CoreParams()); // intentionally leaked
 	}
 	if (!olive::DiskManager::instance()) {
-		olive::DiskManager::CreateInstance();
+		olive::DiskManager::create_instance();
 	}
 }
 
-void ClearUndoStack()
+void clear_undo_stack()
 {
 	if (olive::Core::instance()) {
 		olive::Core::instance()->undo_stack()->clear();
 	}
 }
 
-std::unique_ptr<olive::Project> CreateProject()
+std::unique_ptr<olive::Project> create_project()
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	auto project = std::make_unique<olive::Project>();
-	project->Initialize();
+	project->initialize();
 	return project;
 }
 
@@ -84,8 +84,8 @@ public:
 	}
 };
 
-olive::ClipBlock *CreateClip(olive::Project *project,
-							 const olive::rational &length)
+olive::ClipBlock *create_clip(olive::Project *project,
+							 const olive::Rational &length)
 {
 	auto *clip = new olive::ClipBlock();
 	clip->setParent(project);
@@ -93,12 +93,12 @@ olive::ClipBlock *CreateClip(olive::Project *project,
 	return clip;
 }
 
-olive::Track *CreateTrackWithClip(olive::Project *project,
+olive::Track *create_track_with_clip(olive::Project *project,
 								  olive::ClipBlock *clip)
 {
 	auto *track = new olive::Track();
 	track->setParent(project);
-	track->AppendBlock(clip);
+	track->append_block(clip);
 	return track;
 }
 
@@ -109,138 +109,138 @@ olive::Track *CreateTrackWithClip(olive::Project *project,
 //
 TEST(DialogSpeedDuration, InitialValuesReflectSingleClip)
 {
-	EnsureAppSingletons();
-	auto project = CreateProject();
-	auto *clip = CreateClip(project.get(), olive::rational(4));
-	CreateTrackWithClip(project.get(), clip);
+	ensure_app_singletons();
+	auto project = create_project();
+	auto *clip = create_clip(project.get(), olive::Rational(4));
+	create_track_with_clip(project.get(), clip);
 
-	olive::SpeedDurationDialog dialog({ clip }, olive::rational(1, 24));
+	olive::SpeedDurationDialog dialog({ clip }, olive::Rational(1, 24));
 
 	auto *speed_slider = dialog.findChild<olive::FloatSlider *>();
 	auto *dur_slider = dialog.findChild<olive::RationalSlider *>();
 	ASSERT_NE(speed_slider, nullptr);
 	ASSERT_NE(dur_slider, nullptr);
 
-	EXPECT_DOUBLE_EQ(speed_slider->GetValue(), 1.0);
-	EXPECT_EQ(dur_slider->GetValue(), olive::rational(4));
-	EXPECT_FALSE(speed_slider->IsTristate());
-	EXPECT_FALSE(dur_slider->IsTristate());
+	EXPECT_DOUBLE_EQ(speed_slider->get_value(), 1.0);
+	EXPECT_EQ(dur_slider->get_value(), olive::Rational(4));
+	EXPECT_FALSE(speed_slider->is_tristate());
+	EXPECT_FALSE(dur_slider->is_tristate());
 }
 
 TEST(DialogSpeedDuration, LinkedSpeedChangeUpdatesDuration)
 {
-	EnsureAppSingletons();
-	auto project = CreateProject();
-	auto *clip = CreateClip(project.get(), olive::rational(4));
-	CreateTrackWithClip(project.get(), clip);
+	ensure_app_singletons();
+	auto project = create_project();
+	auto *clip = create_clip(project.get(), olive::Rational(4));
+	create_track_with_clip(project.get(), clip);
 
-	olive::SpeedDurationDialog dialog({ clip }, olive::rational(1, 24));
+	olive::SpeedDurationDialog dialog({ clip }, olive::Rational(1, 24));
 
 	auto *speed_slider = dialog.findChild<olive::FloatSlider *>();
 	auto *dur_slider = dialog.findChild<olive::RationalSlider *>();
 
 	// Programmatic SetValue() does not emit ValueChanged (only user edits
 	// do), so emit the signal explicitly to drive the linked update
-	speed_slider->SetValue(2.0);
-	emit speed_slider->ValueChanged(2.0);
-	EXPECT_EQ(dur_slider->GetValue(), olive::rational(2));
+	speed_slider->set_value(2.0);
+	emit speed_slider->value_changed(2.0);
+	EXPECT_EQ(dur_slider->get_value(), olive::Rational(2));
 
-	speed_slider->SetValue(0.5);
-	emit speed_slider->ValueChanged(0.5);
-	EXPECT_EQ(dur_slider->GetValue(), olive::rational(8));
+	speed_slider->set_value(0.5);
+	emit speed_slider->value_changed(0.5);
+	EXPECT_EQ(dur_slider->get_value(), olive::Rational(8));
 }
 
 TEST(DialogSpeedDuration, LinkedDurationChangeUpdatesSpeed)
 {
-	EnsureAppSingletons();
-	auto project = CreateProject();
-	auto *clip = CreateClip(project.get(), olive::rational(4));
-	CreateTrackWithClip(project.get(), clip);
+	ensure_app_singletons();
+	auto project = create_project();
+	auto *clip = create_clip(project.get(), olive::Rational(4));
+	create_track_with_clip(project.get(), clip);
 
-	olive::SpeedDurationDialog dialog({ clip }, olive::rational(1, 24));
+	olive::SpeedDurationDialog dialog({ clip }, olive::Rational(1, 24));
 
 	auto *speed_slider = dialog.findChild<olive::FloatSlider *>();
 	auto *dur_slider = dialog.findChild<olive::RationalSlider *>();
 
 	// Programmatic SetValue() does not emit ValueChanged (only user edits
 	// do), so emit the signal explicitly to drive the linked update
-	dur_slider->SetValue(olive::rational(2));
-	emit dur_slider->ValueChanged(olive::rational(2));
-	EXPECT_DOUBLE_EQ(speed_slider->GetValue(), 2.0);
+	dur_slider->set_value(olive::Rational(2));
+	emit dur_slider->value_changed(olive::Rational(2));
+	EXPECT_DOUBLE_EQ(speed_slider->get_value(), 2.0);
 
-	dur_slider->SetValue(olive::rational(16));
-	emit dur_slider->ValueChanged(olive::rational(16));
-	EXPECT_DOUBLE_EQ(speed_slider->GetValue(), 0.25);
+	dur_slider->set_value(olive::Rational(16));
+	emit dur_slider->value_changed(olive::Rational(16));
+	EXPECT_DOUBLE_EQ(speed_slider->get_value(), 0.25);
 }
 
 TEST(DialogSpeedDuration, AcceptAppliesSpeedAndLength)
 {
-	EnsureAppSingletons();
-	auto project = CreateProject();
-	auto *clip = CreateClip(project.get(), olive::rational(4));
-	CreateTrackWithClip(project.get(), clip);
+	ensure_app_singletons();
+	auto project = create_project();
+	auto *clip = create_clip(project.get(), olive::Rational(4));
+	create_track_with_clip(project.get(), clip);
 
 	{
-		olive::SpeedDurationDialog dialog({ clip }, olive::rational(1, 24));
+		olive::SpeedDurationDialog dialog({ clip }, olive::Rational(1, 24));
 
 		// Doubling the speed with the link checked halves the duration
 		auto *speed_slider = dialog.findChild<olive::FloatSlider *>();
-		speed_slider->SetValue(2.0);
-		emit speed_slider->ValueChanged(2.0);
+		speed_slider->set_value(2.0);
+		emit speed_slider->value_changed(2.0);
 
 		dialog.accept();
 	}
 
 	EXPECT_DOUBLE_EQ(clip->speed(), 2.0);
-	EXPECT_EQ(clip->length(), olive::rational(2));
+	EXPECT_EQ(clip->length(), olive::Rational(2));
 
-	ClearUndoStack();
+	clear_undo_stack();
 }
 
 TEST(DialogSpeedDuration, DifferingSpeedsAcrossClipsProduceTristate)
 {
-	EnsureAppSingletons();
-	auto project = CreateProject();
-	auto *clip_a = CreateClip(project.get(), olive::rational(4));
-	auto *clip_b = CreateClip(project.get(), olive::rational(4));
-	CreateTrackWithClip(project.get(), clip_a);
-	clip_b->SetStandardValue(olive::ClipBlock::kSpeedInput, 2.0);
-	CreateTrackWithClip(project.get(), clip_b);
+	ensure_app_singletons();
+	auto project = create_project();
+	auto *clip_a = create_clip(project.get(), olive::Rational(4));
+	auto *clip_b = create_clip(project.get(), olive::Rational(4));
+	create_track_with_clip(project.get(), clip_a);
+	clip_b->set_standard_value(olive::ClipBlock::k_speed_input, 2.0);
+	create_track_with_clip(project.get(), clip_b);
 
 	olive::SpeedDurationDialog dialog({ clip_a, clip_b },
-									  olive::rational(1, 24));
+									  olive::Rational(1, 24));
 
-	EXPECT_TRUE(dialog.findChild<olive::FloatSlider *>()->IsTristate());
+	EXPECT_TRUE(dialog.findChild<olive::FloatSlider *>()->is_tristate());
 	// Durations are identical, so the duration slider must not be tristate
-	EXPECT_FALSE(dialog.findChild<olive::RationalSlider *>()->IsTristate());
+	EXPECT_FALSE(dialog.findChild<olive::RationalSlider *>()->is_tristate());
 }
 
 TEST(DialogSpeedDuration, AcceptDerivesPerClipSpeedFromDuration)
 {
-	EnsureAppSingletons();
-	auto project = CreateProject();
-	auto *clip_a = CreateClip(project.get(), olive::rational(4));
-	auto *clip_b = CreateClip(project.get(), olive::rational(4));
-	CreateTrackWithClip(project.get(), clip_a);
-	clip_b->SetStandardValue(olive::ClipBlock::kSpeedInput, 2.0);
-	CreateTrackWithClip(project.get(), clip_b);
+	ensure_app_singletons();
+	auto project = create_project();
+	auto *clip_a = create_clip(project.get(), olive::Rational(4));
+	auto *clip_b = create_clip(project.get(), olive::Rational(4));
+	create_track_with_clip(project.get(), clip_a);
+	clip_b->set_standard_value(olive::ClipBlock::k_speed_input, 2.0);
+	create_track_with_clip(project.get(), clip_b);
 
 	{
 		olive::SpeedDurationDialog dialog({ clip_a, clip_b },
-										  olive::rational(1, 24));
+										  olive::Rational(1, 24));
 		// Speed is tristate, so accept() must compute each clip's speed
 		// from its own length/speed ratio: speed = old_speed * old_len / new_len
-		dialog.findChild<olive::RationalSlider *>()->SetValue(
-			olive::rational(2));
+		dialog.findChild<olive::RationalSlider *>()->set_value(
+			olive::Rational(2));
 		dialog.accept();
 	}
 
-	EXPECT_EQ(clip_a->length(), olive::rational(2));
-	EXPECT_EQ(clip_b->length(), olive::rational(2));
+	EXPECT_EQ(clip_a->length(), olive::Rational(2));
+	EXPECT_EQ(clip_b->length(), olive::Rational(2));
 	EXPECT_DOUBLE_EQ(clip_a->speed(), 2.0);
 	EXPECT_DOUBLE_EQ(clip_b->speed(), 4.0);
 
-	ClearUndoStack();
+	clear_undo_stack();
 }
 
 //
@@ -248,21 +248,21 @@ TEST(DialogSpeedDuration, AcceptDerivesPerClipSpeedFromDuration)
 //
 TEST(DialogKeyframeProperties, SingleKeyAcceptWritesAllFields)
 {
-	EnsureAppSingletons();
-	auto project = CreateProject();
+	ensure_app_singletons();
+	auto project = create_project();
 
 	auto *node = new olive::MathNode();
 	node->setParent(project.get());
-	auto *key = new olive::NodeKeyframe(olive::rational(0), 1.0,
-										olive::NodeKeyframe::kLinear, 0, -1,
-										olive::MathNode::kParamAIn);
+	auto *key = new olive::NodeKeyframe(olive::Rational(0), 1.0,
+										olive::NodeKeyframe::k_linear, 0, -1,
+										olive::MathNode::k_param_a_in);
 	key->setParent(node);
 
 	// The dialog stores the keyframe vector by reference, so it must outlive it
 	std::vector<olive::NodeKeyframe *> keys = { key };
 
 	{
-		olive::KeyframePropertiesDialog dialog(keys, olive::rational(1, 24));
+		olive::KeyframePropertiesDialog dialog(keys, olive::Rational(1, 24));
 
 		auto *time_slider = dialog.findChild<olive::RationalSlider *>();
 		auto *type_select = dialog.findChild<QComboBox *>();
@@ -273,53 +273,53 @@ TEST(DialogKeyframeProperties, SingleKeyAcceptWritesAllFields)
 
 		// Initial state reflects the keyframe
 		EXPECT_TRUE(time_slider->isEnabled());
-		EXPECT_EQ(time_slider->GetValue(), olive::rational(0));
+		EXPECT_EQ(time_slider->get_value(), olive::Rational(0));
 		ASSERT_EQ(type_select->count(), 3);
-		EXPECT_EQ(type_select->currentData().toInt(), olive::NodeKeyframe::kLinear);
+		EXPECT_EQ(type_select->currentData().toInt(), olive::NodeKeyframe::k_linear);
 		EXPECT_FALSE(bezier_group->isEnabled());
 
 		// Switching to Bezier enables the bezier handle editors
 		type_select->setCurrentIndex(2);
 		ASSERT_EQ(type_select->currentData().toInt(),
-				  olive::NodeKeyframe::kBezier);
+				  olive::NodeKeyframe::k_bezier);
 		EXPECT_TRUE(bezier_group->isEnabled());
 
-		time_slider->SetValue(olive::rational(1, 2));
+		time_slider->set_value(olive::Rational(1, 2));
 
 		const QList<olive::FloatSlider *> sliders =
 			dialog.findChildren<olive::FloatSlider *>();
 		ASSERT_EQ(sliders.size(), 4);
-		sliders.at(0)->SetValue(0.1); // bezier in x
-		sliders.at(1)->SetValue(0.2); // bezier in y
-		sliders.at(2)->SetValue(0.3); // bezier out x
-		sliders.at(3)->SetValue(0.4); // bezier out y
+		sliders.at(0)->set_value(0.1); // bezier in x
+		sliders.at(1)->set_value(0.2); // bezier in y
+		sliders.at(2)->set_value(0.3); // bezier out x
+		sliders.at(3)->set_value(0.4); // bezier out y
 
 		dialog.accept();
 	}
 
-	EXPECT_EQ(key->time(), olive::rational(1, 2));
-	EXPECT_EQ(key->type(), olive::NodeKeyframe::kBezier);
+	EXPECT_EQ(key->time(), olive::Rational(1, 2));
+	EXPECT_EQ(key->type(), olive::NodeKeyframe::k_bezier);
 	EXPECT_DOUBLE_EQ(key->bezier_control_in().x(), 0.1);
 	EXPECT_DOUBLE_EQ(key->bezier_control_in().y(), 0.2);
 	EXPECT_DOUBLE_EQ(key->bezier_control_out().x(), 0.3);
 	EXPECT_DOUBLE_EQ(key->bezier_control_out().y(), 0.4);
 
-	ClearUndoStack();
+	clear_undo_stack();
 }
 
 TEST(DialogKeyframeProperties, MixedTypesAddPlaceholderItem)
 {
-	EnsureAppSingletons();
-	auto project = CreateProject();
+	ensure_app_singletons();
+	auto project = create_project();
 
 	auto *node = new olive::MathNode();
 	node->setParent(project.get());
-	auto *key_a = new olive::NodeKeyframe(olive::rational(0), 1.0,
-										  olive::NodeKeyframe::kLinear, 0, -1,
-										  olive::MathNode::kParamAIn);
-	auto *key_b = new olive::NodeKeyframe(olive::rational(1), 2.0,
-										  olive::NodeKeyframe::kHold, 0, -1,
-										  olive::MathNode::kParamAIn);
+	auto *key_a = new olive::NodeKeyframe(olive::Rational(0), 1.0,
+										  olive::NodeKeyframe::k_linear, 0, -1,
+										  olive::MathNode::k_param_a_in);
+	auto *key_b = new olive::NodeKeyframe(olive::Rational(1), 2.0,
+										  olive::NodeKeyframe::k_hold, 0, -1,
+										  olive::MathNode::k_param_a_in);
 	key_a->setParent(node);
 	key_b->setParent(node);
 
@@ -327,7 +327,7 @@ TEST(DialogKeyframeProperties, MixedTypesAddPlaceholderItem)
 	std::vector<olive::NodeKeyframe *> keys = { key_a, key_b };
 
 	{
-		olive::KeyframePropertiesDialog dialog(keys, olive::rational(1, 24));
+		olive::KeyframePropertiesDialog dialog(keys, olive::Rational(1, 24));
 
 		auto *type_select = dialog.findChild<QComboBox *>();
 		// An "--" placeholder item with data -1 is prepended for mixed types
@@ -339,32 +339,32 @@ TEST(DialogKeyframeProperties, MixedTypesAddPlaceholderItem)
 	}
 
 	// Accepting with the placeholder selected must not change key types
-	EXPECT_EQ(key_a->type(), olive::NodeKeyframe::kLinear);
-	EXPECT_EQ(key_b->type(), olive::NodeKeyframe::kHold);
+	EXPECT_EQ(key_a->type(), olive::NodeKeyframe::k_linear);
+	EXPECT_EQ(key_b->type(), olive::NodeKeyframe::k_hold);
 
-	ClearUndoStack();
+	clear_undo_stack();
 }
 
 TEST(DialogKeyframeProperties, KeysOnSameTrackDisableTimeEdit)
 {
-	EnsureAppSingletons();
-	auto project = CreateProject();
+	ensure_app_singletons();
+	auto project = create_project();
 
 	auto *node = new olive::MathNode();
 	node->setParent(project.get());
-	auto *key_a = new olive::NodeKeyframe(olive::rational(0), 1.0,
-										  olive::NodeKeyframe::kLinear, 0, -1,
-										  olive::MathNode::kParamAIn);
-	auto *key_b = new olive::NodeKeyframe(olive::rational(1), 2.0,
-										  olive::NodeKeyframe::kLinear, 0, -1,
-										  olive::MathNode::kParamAIn);
+	auto *key_a = new olive::NodeKeyframe(olive::Rational(0), 1.0,
+										  olive::NodeKeyframe::k_linear, 0, -1,
+										  olive::MathNode::k_param_a_in);
+	auto *key_b = new olive::NodeKeyframe(olive::Rational(1), 2.0,
+										  olive::NodeKeyframe::k_linear, 0, -1,
+										  olive::MathNode::k_param_a_in);
 	key_a->setParent(node);
 	key_b->setParent(node);
 
 	// The dialog stores the keyframe vector by reference, so it must outlive it
 	std::vector<olive::NodeKeyframe *> keys = { key_a, key_b };
 
-	olive::KeyframePropertiesDialog dialog(keys, olive::rational(1, 24));
+	olive::KeyframePropertiesDialog dialog(keys, olive::Rational(1, 24));
 
 	// Moving two keys of the same track in time could reorder them, so the
 	// time editor must be disabled
@@ -376,16 +376,16 @@ TEST(DialogKeyframeProperties, KeysOnSameTrackDisableTimeEdit)
 //
 TEST(DialogMarkerProperties, SingleMarkerAcceptWritesFields)
 {
-	EnsureAppSingletons();
+	ensure_app_singletons();
 
 	olive::TimelineMarker marker(
 		3,
-		olive::TimeRange(olive::rational(1), olive::rational(2)),
+		olive::TimeRange(olive::Rational(1), olive::Rational(2)),
 		QStringLiteral("Marker A"));
 
 	{
 		olive::MarkerPropertiesDialog dialog({ &marker },
-											 olive::rational(1, 24));
+											 olive::Rational(1, 24));
 
 		auto *label_edit = dialog.findChild<QLineEdit *>();
 		auto *color_menu = dialog.findChild<olive::ColorCodingComboBox *>();
@@ -396,41 +396,41 @@ TEST(DialogMarkerProperties, SingleMarkerAcceptWritesFields)
 		ASSERT_EQ(sliders.size(), 2);
 
 		EXPECT_EQ(label_edit->text(), QStringLiteral("Marker A"));
-		EXPECT_EQ(color_menu->GetSelectedColor(), 3);
-		EXPECT_EQ(sliders.at(0)->GetValue(), olive::rational(1));
-		EXPECT_EQ(sliders.at(1)->GetValue(), olive::rational(2));
+		EXPECT_EQ(color_menu->get_selected_color(), 3);
+		EXPECT_EQ(sliders.at(0)->get_value(), olive::Rational(1));
+		EXPECT_EQ(sliders.at(1)->get_value(), olive::Rational(2));
 
 		label_edit->setText(QStringLiteral("Renamed"));
-		sliders.at(0)->SetValue(olive::rational(1, 2));
-		sliders.at(1)->SetValue(olive::rational(3, 2));
+		sliders.at(0)->set_value(olive::Rational(1, 2));
+		sliders.at(1)->set_value(olive::Rational(3, 2));
 
 		dialog.accept();
 	}
 
 	EXPECT_EQ(marker.name(), QStringLiteral("Renamed"));
-	EXPECT_EQ(marker.time().in(), olive::rational(1, 2));
-	EXPECT_EQ(marker.time().out(), olive::rational(3, 2));
+	EXPECT_EQ(marker.time().in(), olive::Rational(1, 2));
+	EXPECT_EQ(marker.time().out(), olive::Rational(3, 2));
 	EXPECT_EQ(marker.color(), 3);
 
-	ClearUndoStack();
+	clear_undo_stack();
 }
 
 TEST(DialogMarkerProperties, MultipleMarkersDisableTimeAndShowPlaceholder)
 {
-	EnsureAppSingletons();
+	ensure_app_singletons();
 
 	olive::TimelineMarker marker_a(
 		1,
-		olive::TimeRange(olive::rational(1), olive::rational(2)),
+		olive::TimeRange(olive::Rational(1), olive::Rational(2)),
 		QStringLiteral("Alpha"));
 	olive::TimelineMarker marker_b(
 		2,
-		olive::TimeRange(olive::rational(5), olive::rational(6)),
+		olive::TimeRange(olive::Rational(5), olive::Rational(6)),
 		QStringLiteral("Beta"));
 
 	{
 		olive::MarkerPropertiesDialog dialog({ &marker_a, &marker_b },
-											 olive::rational(1, 24));
+											 olive::Rational(1, 24));
 
 		auto *label_edit = dialog.findChild<QLineEdit *>();
 		auto *color_menu = dialog.findChild<olive::ColorCodingComboBox *>();
@@ -439,16 +439,16 @@ TEST(DialogMarkerProperties, MultipleMarkersDisableTimeAndShowPlaceholder)
 
 		// Time cannot be edited for multiple markers
 		EXPECT_FALSE(sliders.at(0)->isEnabled());
-		EXPECT_TRUE(sliders.at(0)->IsTristate());
+		EXPECT_TRUE(sliders.at(0)->is_tristate());
 		EXPECT_FALSE(sliders.at(1)->isEnabled());
-		EXPECT_TRUE(sliders.at(1)->IsTristate());
+		EXPECT_TRUE(sliders.at(1)->is_tristate());
 
 		// Differing names show a placeholder instead of text
 		EXPECT_TRUE(label_edit->text().isEmpty());
 		EXPECT_FALSE(label_edit->placeholderText().isEmpty());
 
 		// Differing colors are represented by -1
-		EXPECT_EQ(color_menu->GetSelectedColor(), -1);
+		EXPECT_EQ(color_menu->get_selected_color(), -1);
 
 		dialog.accept();
 	}
@@ -459,7 +459,7 @@ TEST(DialogMarkerProperties, MultipleMarkersDisableTimeAndShowPlaceholder)
 	EXPECT_EQ(marker_a.color(), 1);
 	EXPECT_EQ(marker_b.color(), 2);
 
-	ClearUndoStack();
+	clear_undo_stack();
 }
 
 //
@@ -468,10 +468,10 @@ TEST(DialogMarkerProperties, MultipleMarkersDisableTimeAndShowPlaceholder)
 TEST(DialogSequencePreset, SaveLoadRoundTrip)
 {
 	olive::SequencePreset preset(QStringLiteral("Test Preset"), 1920, 1080,
-								 olive::rational(24, 1), olive::rational(1, 1),
-								 olive::VideoParams::kInterlacedTopFirst, 48000,
-								 olive::core::kChannelLayoutStereo, 2,
-								 olive::PixelFormat::F16, true);
+								 olive::Rational(24, 1), olive::Rational(1, 1),
+								 olive::VideoParams::k_interlaced_top_first, 48000,
+								 olive::core::k_channel_layout_stereo, 2,
+								 olive::PixelFormat::f16, true);
 
 	QByteArray xml;
 	QBuffer buffer(&xml);
@@ -479,7 +479,7 @@ TEST(DialogSequencePreset, SaveLoadRoundTrip)
 	QXmlStreamWriter writer(&buffer);
 	writer.writeStartDocument();
 	writer.writeStartElement(QStringLiteral("preset"));
-	preset.Save(&writer);
+	preset.save(&writer);
 	writer.writeEndElement();
 	writer.writeEndDocument();
 	buffer.close();
@@ -490,18 +490,18 @@ TEST(DialogSequencePreset, SaveLoadRoundTrip)
 	QXmlStreamReader reader(&read_buffer);
 	ASSERT_TRUE(reader.readNextStartElement());
 	ASSERT_EQ(reader.name().toString(), QStringLiteral("preset"));
-	loaded.Load(&reader);
+	loaded.load(&reader);
 
-	EXPECT_EQ(loaded.GetName(), QStringLiteral("Test Preset"));
+	EXPECT_EQ(loaded.get_name(), QStringLiteral("Test Preset"));
 	EXPECT_EQ(loaded.width(), 1920);
 	EXPECT_EQ(loaded.height(), 1080);
-	EXPECT_EQ(loaded.frame_rate(), olive::rational(24, 1));
-	EXPECT_EQ(loaded.pixel_aspect(), olive::rational(1, 1));
-	EXPECT_EQ(loaded.interlacing(), olive::VideoParams::kInterlacedTopFirst);
+	EXPECT_EQ(loaded.frame_rate(), olive::Rational(24, 1));
+	EXPECT_EQ(loaded.pixel_aspect(), olive::Rational(1, 1));
+	EXPECT_EQ(loaded.interlacing(), olive::VideoParams::k_interlaced_top_first);
 	EXPECT_EQ(loaded.sample_rate(), 48000);
-	EXPECT_EQ(loaded.channel_layout(), olive::core::kChannelLayoutStereo);
+	EXPECT_EQ(loaded.channel_layout(), olive::core::k_channel_layout_stereo);
 	EXPECT_EQ(loaded.preview_divider(), 2);
-	EXPECT_EQ(loaded.preview_format(), olive::PixelFormat::F16);
+	EXPECT_EQ(loaded.preview_format(), olive::PixelFormat::f16);
 	EXPECT_TRUE(loaded.preview_autocache());
 }
 
@@ -529,9 +529,9 @@ TEST(DialogSequencePreset, LoadsLegacyInterlacingElement)
 	QXmlStreamReader reader(&read_buffer);
 	ASSERT_TRUE(reader.readNextStartElement());
 	ASSERT_EQ(reader.name().toString(), QStringLiteral("preset"));
-	loaded.Load(&reader);
+	loaded.load(&reader);
 
-	EXPECT_EQ(loaded.GetName(), QStringLiteral("Legacy"));
+	EXPECT_EQ(loaded.get_name(), QStringLiteral("Legacy"));
 	EXPECT_EQ(loaded.width(), 1280);
 	EXPECT_EQ(loaded.interlacing(),
 			  static_cast<olive::VideoParams::Interlacing>(2));
@@ -539,92 +539,92 @@ TEST(DialogSequencePreset, LoadsLegacyInterlacingElement)
 
 TEST(DialogSequenceParameterTab, ReflectsSequenceParameters)
 {
-	auto project = CreateProject();
+	auto project = create_project();
 
 	auto *sequence = new olive::Sequence();
 	sequence->setParent(project.get());
-	sequence->SetVideoParams(olive::VideoParams(
-		1920, 1080, olive::rational(1001, 30000), olive::PixelFormat::F32,
-		olive::VideoParams::kInternalChannelCount, olive::rational(1, 1),
-		olive::VideoParams::kInterlaceNone, 2));
-	sequence->SetAudioParams(olive::AudioParams(
-		48000, olive::core::kChannelLayoutStereo,
-		olive::Sequence::kDefaultSampleFormat));
+	sequence->set_video_params(olive::VideoParams(
+		1920, 1080, olive::Rational(1001, 30000), olive::PixelFormat::f32,
+		olive::VideoParams::k_internal_channel_count, olive::Rational(1, 1),
+		olive::VideoParams::k_interlace_none, 2));
+	sequence->set_audio_params(olive::AudioParams(
+		48000, olive::core::k_channel_layout_stereo,
+		olive::Sequence::k_default_sample_format));
 
 	olive::SequenceDialogParameterTab tab(sequence);
 
-	EXPECT_EQ(tab.GetSelectedVideoWidth(), 1920);
-	EXPECT_EQ(tab.GetSelectedVideoHeight(), 1080);
-	EXPECT_EQ(tab.GetSelectedVideoFrameRate(), olive::rational(30000, 1001));
-	EXPECT_EQ(tab.GetSelectedVideoPixelAspect(), olive::rational(1, 1));
-	EXPECT_EQ(tab.GetSelectedVideoInterlacingMode(),
-			  olive::VideoParams::kInterlaceNone);
-	EXPECT_EQ(tab.GetSelectedPreviewResolution(), 2);
-	EXPECT_EQ(tab.GetSelectedPreviewFormat(), olive::PixelFormat::F32);
-	EXPECT_EQ(tab.GetSelectedAudioSampleRate(), 48000);
-	EXPECT_EQ(tab.GetSelectedAudioChannelLayout(),
-			  olive::core::kChannelLayoutStereo);
+	EXPECT_EQ(tab.get_selected_video_width(), 1920);
+	EXPECT_EQ(tab.get_selected_video_height(), 1080);
+	EXPECT_EQ(tab.get_selected_video_frame_rate(), olive::Rational(30000, 1001));
+	EXPECT_EQ(tab.get_selected_video_pixel_aspect(), olive::Rational(1, 1));
+	EXPECT_EQ(tab.get_selected_video_interlacing_mode(),
+			  olive::VideoParams::k_interlace_none);
+	EXPECT_EQ(tab.get_selected_preview_resolution(), 2);
+	EXPECT_EQ(tab.get_selected_preview_format(), olive::PixelFormat::f32);
+	EXPECT_EQ(tab.get_selected_audio_sample_rate(), 48000);
+	EXPECT_EQ(tab.get_selected_audio_channel_layout(),
+			  olive::core::k_channel_layout_stereo);
 }
 
 TEST(DialogSequenceParameterTab, PresetChangedAppliesValues)
 {
-	auto project = CreateProject();
+	auto project = create_project();
 
 	auto *sequence = new olive::Sequence();
 	sequence->setParent(project.get());
-	sequence->SetVideoParams(olive::VideoParams(
-		1920, 1080, olive::rational(1, 24), olive::PixelFormat::F32,
-		olive::VideoParams::kInternalChannelCount, olive::rational(1, 1),
-		olive::VideoParams::kInterlaceNone, 1));
-	sequence->SetAudioParams(olive::AudioParams(
-		48000, olive::core::kChannelLayoutStereo,
-		olive::Sequence::kDefaultSampleFormat));
+	sequence->set_video_params(olive::VideoParams(
+		1920, 1080, olive::Rational(1, 24), olive::PixelFormat::f32,
+		olive::VideoParams::k_internal_channel_count, olive::Rational(1, 1),
+		olive::VideoParams::k_interlace_none, 1));
+	sequence->set_audio_params(olive::AudioParams(
+		48000, olive::core::k_channel_layout_stereo,
+		olive::Sequence::k_default_sample_format));
 
 	olive::SequenceDialogParameterTab tab(sequence);
 
-	tab.PresetChanged(olive::SequencePreset(
-		QStringLiteral("Preset"), 1280, 720, olive::rational(24, 1),
-		olive::rational(1, 1), olive::VideoParams::kInterlacedTopFirst, 44100,
-		olive::core::kChannelLayoutStereo, 4, olive::PixelFormat::F16, false));
+	tab.preset_changed(olive::SequencePreset(
+		QStringLiteral("Preset"), 1280, 720, olive::Rational(24, 1),
+		olive::Rational(1, 1), olive::VideoParams::k_interlaced_top_first, 44100,
+		olive::core::k_channel_layout_stereo, 4, olive::PixelFormat::f16, false));
 
-	EXPECT_EQ(tab.GetSelectedVideoWidth(), 1280);
-	EXPECT_EQ(tab.GetSelectedVideoHeight(), 720);
-	EXPECT_EQ(tab.GetSelectedVideoFrameRate(), olive::rational(24, 1));
-	EXPECT_EQ(tab.GetSelectedVideoInterlacingMode(),
-			  olive::VideoParams::kInterlacedTopFirst);
-	EXPECT_EQ(tab.GetSelectedAudioSampleRate(), 44100);
-	EXPECT_EQ(tab.GetSelectedPreviewResolution(), 4);
-	EXPECT_EQ(tab.GetSelectedPreviewFormat(), olive::PixelFormat::F16);
+	EXPECT_EQ(tab.get_selected_video_width(), 1280);
+	EXPECT_EQ(tab.get_selected_video_height(), 720);
+	EXPECT_EQ(tab.get_selected_video_frame_rate(), olive::Rational(24, 1));
+	EXPECT_EQ(tab.get_selected_video_interlacing_mode(),
+			  olive::VideoParams::k_interlaced_top_first);
+	EXPECT_EQ(tab.get_selected_audio_sample_rate(), 44100);
+	EXPECT_EQ(tab.get_selected_preview_resolution(), 4);
+	EXPECT_EQ(tab.get_selected_preview_format(), olive::PixelFormat::f16);
 }
 
 TEST(DialogSequenceDialog, AcceptNonUndoableAppliesParameters)
 {
 	StandardPathsTestModeGuard test_mode;
-	EnsureAppSingletons();
-	auto project = CreateProject();
+	ensure_app_singletons();
+	auto project = create_project();
 
 	auto *sequence = new olive::Sequence();
 	sequence->setParent(project.get());
-	sequence->SetLabel(QStringLiteral("Seq A"));
-	sequence->SetVideoParams(olive::VideoParams(
-		1920, 1080, olive::rational(1, 24), olive::PixelFormat::F32,
-		olive::VideoParams::kInternalChannelCount, olive::rational(1, 1),
-		olive::VideoParams::kInterlaceNone, 1));
-	sequence->SetAudioParams(olive::AudioParams(
-		48000, olive::core::kChannelLayoutStereo,
-		olive::Sequence::kDefaultSampleFormat));
+	sequence->set_label(QStringLiteral("Seq A"));
+	sequence->set_video_params(olive::VideoParams(
+		1920, 1080, olive::Rational(1, 24), olive::PixelFormat::f32,
+		olive::VideoParams::k_internal_channel_count, olive::Rational(1, 1),
+		olive::VideoParams::k_interlace_none, 1));
+	sequence->set_audio_params(olive::AudioParams(
+		48000, olive::core::k_channel_layout_stereo,
+		olive::Sequence::k_default_sample_format));
 
 	{
-		olive::SequenceDialog dialog(sequence, olive::SequenceDialog::kExisting);
-		dialog.SetUndoable(false);
+		olive::SequenceDialog dialog(sequence, olive::SequenceDialog::k_existing);
+		dialog.set_undoable(false);
 
 		auto *tab = dialog.findChild<olive::SequenceDialogParameterTab *>();
 		ASSERT_NE(tab, nullptr);
-		tab->PresetChanged(olive::SequencePreset(
-			QStringLiteral("Preset"), 1280, 720, olive::rational(24, 1),
-			olive::rational(1, 1), olive::VideoParams::kInterlacedTopFirst,
-			44100, olive::core::kChannelLayoutStereo, 4,
-			olive::PixelFormat::F32, false));
+		tab->preset_changed(olive::SequencePreset(
+			QStringLiteral("Preset"), 1280, 720, olive::Rational(24, 1),
+			olive::Rational(1, 1), olive::VideoParams::k_interlaced_top_first,
+			44100, olive::core::k_channel_layout_stereo, 4,
+			olive::PixelFormat::f32, false));
 
 		auto *name_field = dialog.findChild<QLineEdit *>();
 		ASSERT_NE(name_field, nullptr);
@@ -634,64 +634,64 @@ TEST(DialogSequenceDialog, AcceptNonUndoableAppliesParameters)
 		EXPECT_EQ(dialog.result(), QDialog::Accepted);
 	}
 
-	EXPECT_EQ(sequence->GetLabel(), QStringLiteral("Seq B"));
-	EXPECT_EQ(sequence->GetVideoParams().width(), 1280);
-	EXPECT_EQ(sequence->GetVideoParams().height(), 720);
-	EXPECT_EQ(sequence->GetVideoParams().frame_rate(), olive::rational(24, 1));
-	EXPECT_EQ(sequence->GetVideoParams().interlacing(),
-			  olive::VideoParams::kInterlacedTopFirst);
-	EXPECT_EQ(sequence->GetVideoParams().divider(), 4);
-	EXPECT_EQ(sequence->GetAudioParams().sample_rate(), 44100);
+	EXPECT_EQ(sequence->get_label(), QStringLiteral("Seq B"));
+	EXPECT_EQ(sequence->get_video_params().width(), 1280);
+	EXPECT_EQ(sequence->get_video_params().height(), 720);
+	EXPECT_EQ(sequence->get_video_params().frame_rate(), olive::Rational(24, 1));
+	EXPECT_EQ(sequence->get_video_params().interlacing(),
+			  olive::VideoParams::k_interlaced_top_first);
+	EXPECT_EQ(sequence->get_video_params().divider(), 4);
+	EXPECT_EQ(sequence->get_audio_params().sample_rate(), 44100);
 }
 
 TEST(DialogSequenceDialog, AcceptUndoablePushesCommand)
 {
 	StandardPathsTestModeGuard test_mode;
-	EnsureAppSingletons();
-	auto project = CreateProject();
+	ensure_app_singletons();
+	auto project = create_project();
 
 	auto *sequence = new olive::Sequence();
 	sequence->setParent(project.get());
-	sequence->SetLabel(QStringLiteral("Seq A"));
-	sequence->SetVideoParams(olive::VideoParams(
-		1920, 1080, olive::rational(1, 24), olive::PixelFormat::F32,
-		olive::VideoParams::kInternalChannelCount, olive::rational(1, 1),
-		olive::VideoParams::kInterlaceNone, 1));
-	sequence->SetAudioParams(olive::AudioParams(
-		48000, olive::core::kChannelLayoutStereo,
-		olive::Sequence::kDefaultSampleFormat));
+	sequence->set_label(QStringLiteral("Seq A"));
+	sequence->set_video_params(olive::VideoParams(
+		1920, 1080, olive::Rational(1, 24), olive::PixelFormat::f32,
+		olive::VideoParams::k_internal_channel_count, olive::Rational(1, 1),
+		olive::VideoParams::k_interlace_none, 1));
+	sequence->set_audio_params(olive::AudioParams(
+		48000, olive::core::k_channel_layout_stereo,
+		olive::Sequence::k_default_sample_format));
 
 	{
-		olive::SequenceDialog dialog(sequence, olive::SequenceDialog::kExisting);
+		olive::SequenceDialog dialog(sequence, olive::SequenceDialog::k_existing);
 
 		auto *tab = dialog.findChild<olive::SequenceDialogParameterTab *>();
 		ASSERT_NE(tab, nullptr);
-		tab->PresetChanged(olive::SequencePreset(
-			QStringLiteral("Preset"), 640, 360, olive::rational(24, 1),
-			olive::rational(1, 1), olive::VideoParams::kInterlaceNone, 48000,
-			olive::core::kChannelLayoutStereo, 1, olive::PixelFormat::F32,
+		tab->preset_changed(olive::SequencePreset(
+			QStringLiteral("Preset"), 640, 360, olive::Rational(24, 1),
+			olive::Rational(1, 1), olive::VideoParams::k_interlace_none, 48000,
+			olive::core::k_channel_layout_stereo, 1, olive::PixelFormat::f32,
 			false));
 
 		dialog.accept();
 		EXPECT_EQ(dialog.result(), QDialog::Accepted);
 	}
 
-	EXPECT_EQ(sequence->GetVideoParams().width(), 640);
-	EXPECT_EQ(sequence->GetVideoParams().height(), 360);
+	EXPECT_EQ(sequence->get_video_params().width(), 640);
+	EXPECT_EQ(sequence->get_video_params().height(), 360);
 
-	ClearUndoStack();
+	clear_undo_stack();
 }
 
 TEST(DialogSequenceDialog, PresetTabListsDefaultPresets)
 {
 	StandardPathsTestModeGuard test_mode;
-	EnsureAppSingletons();
-	auto project = CreateProject();
+	ensure_app_singletons();
+	auto project = create_project();
 
 	auto *sequence = new olive::Sequence();
 	sequence->setParent(project.get());
 
-	olive::SequenceDialog dialog(sequence, olive::SequenceDialog::kExisting);
+	olive::SequenceDialog dialog(sequence, olive::SequenceDialog::k_existing);
 
 	auto *tree = dialog.findChild<QTreeWidget *>();
 	ASSERT_NE(tree, nullptr);
@@ -704,12 +704,12 @@ TEST(DialogSequenceDialog, PresetTabListsDefaultPresets)
 //
 TEST(DialogFootageProperties, AcceptRenamesAndSetsSourceStartTime)
 {
-	EnsureAppSingletons();
-	auto project = CreateProject();
+	ensure_app_singletons();
+	auto project = create_project();
 
 	auto *footage = new olive::Footage();
 	footage->setParent(project.get());
-	footage->SetLabel(QStringLiteral("Clip A"));
+	footage->set_label(QStringLiteral("Clip A"));
 	footage->set_filename(QStringLiteral("/tmp/oak-nonexistent.mp4"));
 
 	{
@@ -735,9 +735,9 @@ TEST(DialogFootageProperties, AcceptRenamesAndSetsSourceStartTime)
 		QMetaObject::invokeMethod(&dialog, "accept");
 	}
 
-	EXPECT_EQ(footage->GetLabel(), QStringLiteral("Clip B"));
-	EXPECT_TRUE(footage->HasSourceStartTime());
-	EXPECT_EQ(footage->source_start_time(), olive::rational(25, 2));
+	EXPECT_EQ(footage->get_label(), QStringLiteral("Clip B"));
+	EXPECT_TRUE(footage->has_source_start_time());
+	EXPECT_EQ(footage->source_start_time(), olive::Rational(25, 2));
 	EXPECT_EQ(footage->source_start_time_source(), QStringLiteral("manual"));
 
 	{
@@ -753,9 +753,9 @@ TEST(DialogFootageProperties, AcceptRenamesAndSetsSourceStartTime)
 		QMetaObject::invokeMethod(&dialog, "accept");
 	}
 
-	EXPECT_FALSE(footage->HasSourceStartTime());
+	EXPECT_FALSE(footage->has_source_start_time());
 
-	ClearUndoStack();
+	clear_undo_stack();
 }
 
 //
@@ -763,16 +763,16 @@ TEST(DialogFootageProperties, AcceptRenamesAndSetsSourceStartTime)
 //
 TEST(DialogFootageRelink, TableListsFootageAndFilenames)
 {
-	auto project = CreateProject();
+	auto project = create_project();
 
 	auto *footage_a = new olive::Footage();
 	footage_a->setParent(project.get());
-	footage_a->SetLabel(QStringLiteral("Footage A"));
+	footage_a->set_label(QStringLiteral("Footage A"));
 	footage_a->set_filename(QStringLiteral("/old/path/a.mp4"));
 
 	auto *footage_b = new olive::Footage();
 	footage_b->setParent(project.get());
-	footage_b->SetLabel(QStringLiteral("Footage B"));
+	footage_b->set_label(QStringLiteral("Footage B"));
 	footage_b->set_filename(QStringLiteral("/old/path/b.mp4"));
 
 	olive::FootageRelinkDialog dialog({ footage_a, footage_b });
@@ -793,8 +793,8 @@ TEST(DialogFootageRelink, TableListsFootageAndFilenames)
 //
 TEST(DialogProjectProperties, OcioValidationTogglesOnInvalidFilename)
 {
-	EnsureAppSingletons();
-	auto project = CreateProject();
+	ensure_app_singletons();
+	auto project = create_project();
 
 	olive::ProjectPropertiesDialog dialog(project.get(), nullptr);
 
@@ -830,8 +830,8 @@ TEST(DialogProjectProperties, OcioValidationTogglesOnInvalidFilename)
 
 TEST(DialogProjectProperties, AcceptWithDefaultsClosesDialog)
 {
-	EnsureAppSingletons();
-	auto project = CreateProject();
+	ensure_app_singletons();
+	auto project = create_project();
 
 	olive::ProjectPropertiesDialog dialog(project.get(), nullptr);
 	dialog.accept();

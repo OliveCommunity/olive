@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SCOPE_PANEL_H
-#define SCOPE_PANEL_H
+#ifndef OAK_SCOPE_PANEL_H
+#define OAK_SCOPE_PANEL_H
 
 #include <QComboBox>
 #include <QStackedWidget>
@@ -38,33 +38,33 @@ class ScopePanel : public PanelWidget {
 	Q_OBJECT
 public:
 	enum Type {
-		kTypeWaveform,
-		kTypeVectorscope,
-		kTypeHistogram,
+		k_type_waveform,
+		k_type_vectorscope,
+		k_type_histogram,
 
-		kTypeCount
+		k_type_count
 	};
 
 	ScopePanel();
 
-	void SetType(Type t);
+	void set_type(Type t);
 
-	static QString TypeToName(Type t);
+	static QString type_to_name(Type t);
 
-	void SetViewerPanel(ViewerPanelBase *vp);
+	void set_viewer_panel(ViewerPanelBase *vp);
 
-	ViewerPanelBase *GetConnectedViewerPanel() const
+	ViewerPanelBase *get_connected_viewer_panel() const
 	{
 		return viewer_;
 	}
 
 public slots:
-	void SetReferenceBuffer(TexturePtr frame);
+	void set_reference_buffer(TexturePtr frame);
 
-	void SetColorManager(ColorManager *manager);
+	void set_color_manager(ColorManager *manager);
 
 protected:
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 private:
 	Type type_;
@@ -84,4 +84,4 @@ private:
 
 }
 
-#endif // SCOPE_PANEL_H
+#endif // OAK_SCOPE_PANEL_H

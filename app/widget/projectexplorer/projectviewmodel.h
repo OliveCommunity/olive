@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef VIEWMODEL_H
-#define VIEWMODEL_H
+#ifndef OAK_VIEWMODEL_H
+#define OAK_VIEWMODEL_H
 
 #include <QAbstractItemModel>
 
@@ -44,25 +44,25 @@ class ProjectViewModel : public QAbstractItemModel {
 public:
 	enum ColumnType {
 		/// Media name
-		kName,
+		k_name,
 
 		/// Media duration
-		kDuration,
+		k_duration,
 
 		/// Media rate (frame rate for video, sample rate for audio)
-		kRate,
+		k_rate,
 
 		/// Last modified time (for footage/files)
-		kLastModified,
+		k_last_modified,
 
 		/// Creation time (for footage/files)
-		kCreatedTime,
+		k_created_time,
 
 		/// Count
-		kColumnCount
+		k_column_count
 	};
 
-	static const int kInnerTextRole = Qt::UserRole + 1;
+	static const int k_inner_text_role = Qt::UserRole + 1;
 
 	/**
    * @brief ProjectViewModel Constructor
@@ -124,7 +124,7 @@ public:
 	/**
    * @brief Convenience function for creating QModelIndexes from an Item object
    */
-	QModelIndex CreateIndexFromItem(Node *item, int column = 0);
+	QModelIndex create_index_from_item(Node *item, int column = 0);
 
 private:
 	/**
@@ -137,40 +137,40 @@ private:
    *
    * Index of the specified item, or -1 if the item is root (in which case it has no parent).
    */
-	int IndexOfChild(Node *item) const;
+	int index_of_child(Node *item) const;
 
 	/**
    * @brief Retrieves the Item object from a given index
    *
    * A convenience function for retrieving Item objects. If the index is not valid, this returns the root Item.
    */
-	Node *GetItemObjectFromIndex(const QModelIndex &index) const;
+	Node *get_item_object_from_index(const QModelIndex &index) const;
 
 	/**
    * @brief Check if an Item is a parent of a Child
    *
    * Checks entire "parent hierarchy" of `child` to see if `parent` is one of its parents.
    */
-	bool ItemIsParentOfChild(Folder *parent, Node *child) const;
+	bool item_is_parent_of_child(Folder *parent, Node *child) const;
 
-	void ConnectItem(Node *n);
+	void connect_item(Node *n);
 
-	void DisconnectItem(Node *n);
+	void disconnect_item(Node *n);
 
 	Project *project_;
 
 private slots:
-	void FolderBeginInsertItem(Node *n, int insert_index);
+	void folder_begin_insert_item(Node *n, int insert_index);
 
-	void FolderEndInsertItem();
+	void folder_end_insert_item();
 
-	void FolderBeginRemoveItem(Node *n, int child_index);
+	void folder_begin_remove_item(Node *n, int child_index);
 
-	void FolderEndRemoveItem();
+	void folder_end_remove_item();
 
-	void ItemRenamed();
+	void item_renamed();
 };
 
 }
 
-#endif // VIEWMODEL_H
+#endif // OAK_VIEWMODEL_H

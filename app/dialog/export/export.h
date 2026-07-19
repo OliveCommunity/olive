@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef EXPORTDIALOG_H
-#define EXPORTDIALOG_H
+#ifndef OAK_EXPORTDIALOG_H
+#define OAK_EXPORTDIALOG_H
 
 #include <QComboBox>
 #include <QDialog>
@@ -51,11 +51,11 @@ public:
 	{
 	}
 
-	rational GetSelectedTimebase() const;
-	void SetSelectedTimebase(const rational &r);
+	Rational get_selected_timebase() const;
+	void set_selected_timebase(const Rational &r);
 
-	EncodingParams GenerateParams() const;
-	void SetParams(const EncodingParams &e);
+	EncodingParams generate_params() const;
+	void set_params(const EncodingParams &e);
 
 	virtual bool eventFilter(QObject *o, QEvent *e) override;
 
@@ -63,30 +63,30 @@ public slots:
 	virtual void done(int r) override;
 
 signals:
-	void RequestImportFile(const QString &s);
+	void request_import_file(const QString &s);
 
 private:
-	void AddPreferencesTab(QWidget *inner_widget, const QString &title);
+	void add_preferences_tab(QWidget *inner_widget, const QString &title);
 
-	void LoadPresets();
-	void SetDefaultFilename();
+	void load_presets();
+	void set_default_filename();
 
-	bool SequenceHasSubtitles() const;
+	bool sequence_has_subtitles() const;
 
-	void SetDefaults();
+	void set_defaults();
 
 	ViewerOutput *viewer_node_;
 
 	ExportFormat::Format previously_selected_format_;
 
-	rational GetExportLength() const;
-	int64_t GetExportLengthInTimebaseUnits() const;
+	Rational get_export_length() const;
+	int64_t get_export_length_in_timebase_units() const;
 
-	enum RangeSelection { kRangeEntireSequence, kRangeInToOut };
+	enum RangeSelection { k_range_entire_sequence, k_range_in_to_out };
 
 	enum AutoPreset {
-		kPresetDefault = -1,
-		kPresetLastUsed = -2,
+		k_preset_default = -1,
+		k_preset_last_used = -2,
 	};
 
 	QTabWidget *preferences_tabs_;
@@ -120,25 +120,25 @@ private:
 	bool loading_presets_;
 
 private slots:
-	void BrowseFilename();
+	void browse_filename();
 
-	void FormatChanged(ExportFormat::Format current_format);
+	void format_changed(ExportFormat::Format current_format);
 
-	void ResolutionChanged();
+	void resolution_changed();
 
-	void UpdateViewerDimensions();
+	void update_viewer_dimensions();
 
-	void StartExport();
+	void start_export();
 
-	void ExportFinished();
+	void export_finished();
 
-	void ImageSequenceCheckBoxChanged(bool e);
+	void image_sequence_check_box_changed(bool e);
 
-	void SavePreset();
+	void save_preset();
 
-	void PresetComboBoxChanged();
+	void preset_combo_box_changed();
 };
 
 }
 
-#endif // EXPORTDIALOG_H
+#endif // OAK_EXPORTDIALOG_H

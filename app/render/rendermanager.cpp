@@ -41,36 +41,36 @@ namespace olive
 {
 
 RenderManager *RenderManager::instance_ = nullptr;
-const rational RenderManager::kDryRunInterval = rational(10);
+const Rational RenderManager::k_dry_run_interval = Rational(10);
 
-RenderManager::Backend RenderManager::BackendFromString(const QString &backend)
+RenderManager::Backend RenderManager::backend_from_string(const QString &backend)
 {
 	const QString lower = backend.toLower();
 	if (lower == QStringLiteral("vulkan")) {
-		return kVulkan;
+		return k_vulkan;
 	}
 
 	if (lower == QStringLiteral("multiprocess")) {
-		return kMultiProcess;
+		return k_multi_process;
 	}
 
 	if (lower == QStringLiteral("dummy")) {
-		return kDummy;
+		return k_dummy;
 	}
 
-	return kOpenGL;
+	return k_open_gl;
 }
 
-QString RenderManager::BackendToString(Backend backend)
+QString RenderManager::backend_to_string(Backend backend)
 {
 	switch (backend) {
-	case kOpenGL:
+	case k_open_gl:
 		return QStringLiteral("opengl");
-	case kVulkan:
+	case k_vulkan:
 		return QStringLiteral("vulkan");
-	case kMultiProcess:
+	case k_multi_process:
 		return QStringLiteral("multiprocess");
-	case kDummy:
+	case k_dummy:
 		return QStringLiteral("dummy");
 	}
 
@@ -78,12 +78,12 @@ QString RenderManager::BackendToString(Backend backend)
 }
 
 RenderManager::RenderManager(QObject *parent)
-	: backend_(BackendFromString(OLIVE_CONFIG("GraphicsBackend").toString()))
+	: backend_(backend_from_string(OAK_CONFIG("GraphicsBackend").toString()))
 	, requested_backend_(backend_)
 	, aggressive_gc_(0)
 	, worker_pool_(nullptr)
 {
-	if (backend_ == kVulkan) {
+	if (backend_ == k_vulkan) {
 #ifndef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
 		qWarning()
 			<< "Vulkan backend requested but dynamic render backend is not enabled. Falling back to OpenGL.";
@@ -91,27 +91,27 @@ RenderManager::RenderManager(QObject *parent)
 #endif
 	}
 
-	if (backend_ == kOpenGL || backend_ == kVulkan) {
+	if (backend_ == k_open_gl || backend_ == k_vulkan) {
 #ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
 		auto *dynamic_renderer =
-			new DynamicRenderer(BackendToString(requested_backend_));
-		if (!dynamic_renderer->Load()) {
+			new DynamicRenderer(backend_to_string(requested_backend_));
+		if (!dynamic_renderer->load()) {
 			qWarning() << "Failed to load dynamic render backend"
-					   << BackendToString(requested_backend_)
+					   << backend_to_string(requested_backend_)
 					   << ", falling back to OpenGL";
 			delete dynamic_renderer;
-			backend_ = kOpenGL;
+			backend_ = k_open_gl;
 			context_ = new OpenGLRenderer();
 		} else {
 			context_ = dynamic_renderer;
 			// DynamicRenderer may internally fall back (e.g. Vulkan -> OpenGL).
 			// Synchronize RenderManager's view of the actual runtime backend.
 			Backend actual_backend =
-				BackendFromString(dynamic_renderer->backend_name());
+				backend_from_string(dynamic_renderer->backend_name());
 			if (actual_backend != backend_) {
 				qWarning() << "Dynamic render backend fell back from"
-						   << BackendToString(backend_) << "to"
-						   << BackendToString(actual_backend);
+						   << backend_to_string(backend_) << "to"
+						   << backend_to_string(actual_backend);
 				backend_ = actual_backend;
 			}
 		}
@@ -127,26 +127,26 @@ RenderManager::RenderManager(QObject *parent)
 	}
 
 	if (context_) {
-		dry_run_thread_ = CreateThread();
-		audio_thread_ = CreateThread();
+		dry_run_thread_ = create_thread();
+		audio_thread_ = create_thread();
 
 		waveform_threads_.resize(QThread::idealThreadCount());
 		for (size_t i = 0; i < waveform_threads_.size(); i++) {
-			waveform_threads_[i] = CreateThread();
+			waveform_threads_[i] = create_thread();
 		}
 
 		auto_cacher_ = new PreviewAutoCacher(this);
 
 		worker_pool_ = new RenderWorkerPool(
-			decoder_cache_, BackendToString(requested_backend_), this);
+			decoder_cache_, backend_to_string(requested_backend_), this);
 		worker_pool_->start(QThread::NormalPriority);
-		backend_ = kMultiProcess;
+		backend_ = k_multi_process;
 	}
 
 	decoder_clear_timer_ = new QTimer(this);
-	decoder_clear_timer_->setInterval(kDecoderMaximumInactivity);
+	decoder_clear_timer_->setInterval(k_decoder_maximum_inactivity);
 	connect(decoder_clear_timer_, &QTimer::timeout, this,
-			&RenderManager::ClearOldDecoders);
+			&RenderManager::clear_old_decoders);
 	decoder_clear_timer_->start();
 }
 
@@ -154,7 +154,7 @@ RenderManager::~RenderManager()
 {
 	if (context_) {
 		if (worker_pool_) {
-			worker_pool_->Shutdown();
+			worker_pool_->shutdown();
 			delete worker_pool_;
 			worker_pool_ = nullptr;
 		}
@@ -167,12 +167,12 @@ RenderManager::~RenderManager()
 			rt->wait();
 		}
 
-		context_->PostDestroy();
+		context_->post_destroy();
 		delete context_;
 	}
 }
 
-RenderThread *RenderManager::CreateThread(Renderer *renderer)
+RenderThread *RenderManager::create_thread(Renderer *renderer)
 {
 	auto t = new RenderThread(renderer, decoder_cache_, shader_cache_, this);
 	render_threads_.push_back(t);
@@ -180,12 +180,12 @@ RenderThread *RenderManager::CreateThread(Renderer *renderer)
 	return t;
 }
 
-RenderTicketPtr RenderManager::RenderFrame(const RenderVideoParams &params)
+RenderTicketPtr RenderManager::render_frame(const RenderVideoParams &params)
 {
 	// Create ticket
 	RenderTicketPtr ticket = std::make_shared<RenderTicket>();
 
-	ticket->setProperty("node", QtUtils::PtrToValue(params.node));
+	ticket->setProperty("node", QtUtils::ptr_to_value(params.node));
 	ticket->setProperty("time", QVariant::fromValue(params.time));
 	ticket->setProperty("size", params.force_size);
 	ticket->setProperty("matrix", params.force_matrix);
@@ -194,9 +194,9 @@ RenderTicketPtr RenderManager::RenderFrame(const RenderVideoParams &params)
 	ticket->setProperty("usecache", params.use_cache);
 	ticket->setProperty("channelcount", params.force_channel_count);
 	ticket->setProperty("mode", params.mode);
-	ticket->setProperty("type", kTypeVideo);
+	ticket->setProperty("type", k_type_video);
 	ticket->setProperty("colormanager",
-						QtUtils::PtrToValue(params.color_manager));
+						QtUtils::ptr_to_value(params.color_manager));
 	ticket->setProperty("coloroutput",
 						QVariant::fromValue(params.force_color_output));
 	ticket->setProperty("colortransform",
@@ -209,44 +209,44 @@ RenderTicketPtr RenderManager::RenderFrame(const RenderVideoParams &params)
 	ticket->setProperty("cachetimebase",
 						QVariant::fromValue(params.cache_timebase));
 	ticket->setProperty("cacheid", QVariant::fromValue(params.cache_id));
-	ticket->setProperty("multicam", QtUtils::PtrToValue(params.multicam));
+	ticket->setProperty("multicam", QtUtils::ptr_to_value(params.multicam));
 
 	// Video frames are always rendered by the worker pool. GPU textures cannot
 	// be shared across the process boundary (or across independent Vulkan
 	// instances), so texture-return requests are downgraded to CPU frames.
 	RenderVideoParams worker_params = params;
-	if (worker_params.return_type == ReturnType::kTexture) {
-		worker_params.return_type = ReturnType::kFrame;
+	if (worker_params.return_type == ReturnType::k_texture) {
+		worker_params.return_type = ReturnType::k_frame;
 	}
 
-	if (worker_params.return_type == ReturnType::kNull) {
+	if (worker_params.return_type == ReturnType::k_null) {
 		if (dry_run_thread_) {
-			dry_run_thread_->AddTicket(ticket);
+			dry_run_thread_->add_ticket(ticket);
 		} else {
 			// No render threads (e.g. dummy backend), finish without a result
-			ticket->Finish();
+			ticket->finish();
 		}
 	} else if (worker_pool_ &&
-			   worker_pool_->SubmitFrame(ticket, worker_params)) {
+			   worker_pool_->submit_frame(ticket, worker_params)) {
 		return ticket;
 	} else {
 		qWarning()
 			<< "RenderManager: worker pool unavailable, finishing ticket "
 			   "without result";
-		ticket->Finish();
+		ticket->finish();
 	}
 
 	return ticket;
 }
 
-RenderTicketPtr RenderManager::RenderAudio(const RenderAudioParams &params)
+RenderTicketPtr RenderManager::render_audio(const RenderAudioParams &params)
 {
 	// Create ticket
 	RenderTicketPtr ticket = std::make_shared<RenderTicket>();
 
-	ticket->setProperty("node", QtUtils::PtrToValue(params.node));
+	ticket->setProperty("node", QtUtils::ptr_to_value(params.node));
 	ticket->setProperty("time", QVariant::fromValue(params.range));
-	ticket->setProperty("type", kTypeAudio);
+	ticket->setProperty("type", k_type_audio);
 	ticket->setProperty("enablewaveforms", params.generate_waveforms);
 	ticket->setProperty("clamp", params.clamp);
 	ticket->setProperty("aparam", QVariant::fromValue(params.audio_params));
@@ -255,26 +255,26 @@ RenderTicketPtr RenderManager::RenderAudio(const RenderAudioParams &params)
 	if (params.generate_waveforms && !waveform_threads_.empty()) {
 		size_t thread_index = last_waveform_thread_ % waveform_threads_.size();
 		RenderThread *thread = waveform_threads_[thread_index];
-		thread->AddTicket(ticket);
+		thread->add_ticket(ticket);
 		last_waveform_thread_++;
 	} else if (audio_thread_) {
-		audio_thread_->AddTicket(ticket);
+		audio_thread_->add_ticket(ticket);
 	} else {
 		// No render threads (e.g. dummy backend), finish without a result
-		ticket->Finish();
+		ticket->finish();
 	}
 
 	return ticket;
 }
 
-bool RenderManager::RemoveTicket(RenderTicketPtr ticket)
+bool RenderManager::remove_ticket(RenderTicketPtr ticket)
 {
-	if (worker_pool_ && worker_pool_->RemoveTicket(ticket)) {
+	if (worker_pool_ && worker_pool_->remove_ticket(ticket)) {
 		return true;
 	}
 
 	for (RenderThread *rt : render_threads_) {
-		if (rt->RemoveTicket(ticket)) {
+		if (rt->remove_ticket(ticket)) {
 			return true;
 		}
 	}
@@ -282,7 +282,7 @@ bool RenderManager::RemoveTicket(RenderTicketPtr ticket)
 	return false;
 }
 
-void RenderManager::SetAggressiveGarbageCollection(bool enabled)
+void RenderManager::set_aggressive_garbage_collection(bool enabled)
 {
 	aggressive_gc_ += enabled ? 1 : -1;
 
@@ -292,13 +292,13 @@ void RenderManager::SetAggressiveGarbageCollection(bool enabled)
 	}
 
 	if (aggressive_gc_ > 0) {
-		decoder_clear_timer_->setInterval(kDecoderMaximumInactivityAggressive);
+		decoder_clear_timer_->setInterval(k_decoder_maximum_inactivity_aggressive);
 	} else {
-		decoder_clear_timer_->setInterval(kDecoderMaximumInactivity);
+		decoder_clear_timer_->setInterval(k_decoder_maximum_inactivity);
 	}
 }
 
-void RenderManager::ClearOldDecoders()
+void RenderManager::clear_old_decoders()
 {
 	if (!decoder_cache_) {
 		// No decoder cache exists on backends without a renderer (e.g. dummy)
@@ -308,13 +308,13 @@ void RenderManager::ClearOldDecoders()
 	QMutexLocker locker(decoder_cache_->mutex());
 
 	qint64 min_age =
-		QDateTime::currentMSecsSinceEpoch() - kDecoderMaximumInactivity;
+		QDateTime::currentMSecsSinceEpoch() - k_decoder_maximum_inactivity;
 
 	for (auto it = decoder_cache_->begin(); it != decoder_cache_->end();) {
 		DecoderPair decoder = it.value();
 
-		if (decoder.decoder->GetLastAccessedTime() < min_age) {
-			decoder.decoder->Close();
+		if (decoder.decoder->get_last_accessed_time() < min_age) {
+			decoder.decoder->close();
 			it = decoder_cache_->erase(it);
 		} else {
 			it++;
@@ -331,12 +331,12 @@ RenderThread::RenderThread(Renderer *renderer, DecoderCache *decoder_cache,
 	, shader_cache_(shader_cache)
 {
 	if (context_) {
-		context_->Init();
+		context_->init();
 		context_->moveToThread(this);
 	}
 }
 
-void RenderThread::AddTicket(RenderTicketPtr ticket)
+void RenderThread::add_ticket(RenderTicketPtr ticket)
 {
 	QMutexLocker locker(&mutex_);
 	ticket->moveToThread(this);
@@ -344,7 +344,7 @@ void RenderThread::AddTicket(RenderTicketPtr ticket)
 	wait_.wakeOne();
 }
 
-bool RenderThread::RemoveTicket(RenderTicketPtr ticket)
+bool RenderThread::remove_ticket(RenderTicketPtr ticket)
 {
 	QMutexLocker locker(&mutex_);
 
@@ -367,7 +367,7 @@ void RenderThread::quit()
 void RenderThread::run()
 {
 	if (context_) {
-		context_->PostInit();
+		context_->post_init();
 	}
 
 	QMutexLocker locker(&mutex_);
@@ -388,12 +388,12 @@ void RenderThread::run()
 			locker.unlock();
 
 			// Setup the ticket for ::Process
-			ticket->Start();
+			ticket->start();
 
-			if (ticket->IsCancelled()) {
-				ticket->Finish();
+			if (ticket->is_cancelled()) {
+				ticket->finish();
 			} else {
-				RenderProcessor::Process(ticket, context_, decoder_cache_,
+				RenderProcessor::process(ticket, context_, decoder_cache_,
 										 shader_cache_);
 			}
 
@@ -402,7 +402,7 @@ void RenderThread::run()
 	}
 
 	if (context_) {
-		context_->Destroy();
+		context_->destroy();
 		context_->moveToThread(this->thread());
 	}
 }

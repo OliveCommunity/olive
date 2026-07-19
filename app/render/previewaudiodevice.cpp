@@ -42,16 +42,16 @@ bool PreviewAudioDevice::isSequential() const
 	return true;
 }
 
-void PreviewAudioDevice::SetParams(const core::AudioParams &params)
+void PreviewAudioDevice::set_params(const core::AudioParams &params)
 {
 	set_bytes_per_frame(params.samples_to_bytes(1));
 }
 
-qint64 PreviewAudioDevice::readData(char *data, qint64 maxSize)
+qint64 PreviewAudioDevice::readData(char *data, qint64 max_size)
 {
 	QMutexLocker locker(&lock_);
 
-	qint64 copy_length = qMin(maxSize, qint64(buffer_.size()));
+	qint64 copy_length = qMin(max_size, qint64(buffer_.size()));
 
 	if (copy_length) {
 		qint64 new_bytes_read = bytes_read_ + copy_length;
@@ -59,7 +59,7 @@ qint64 PreviewAudioDevice::readData(char *data, qint64 maxSize)
 		if (notify_interval_ > 0) {
 			if ((bytes_read_ / notify_interval_) !=
 				(new_bytes_read / notify_interval_)) {
-				emit Notify();
+				emit notify();
 			}
 		}
 

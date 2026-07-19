@@ -40,12 +40,12 @@ NodeParamViewItemBase::NodeParamViewItemBase(QWidget *parent)
 	this->setTitleBarWidget(title_bar_);
 
 	// Connect title bar to this
-	connect(title_bar_, &NodeParamViewItemTitleBar::ExpandedStateChanged, this,
-			&NodeParamViewItemBase::SetExpanded);
-	connect(title_bar_, &NodeParamViewItemTitleBar::PinToggled, this,
-			&NodeParamViewItemBase::PinToggled);
-	connect(title_bar_, &NodeParamViewItemTitleBar::Clicked, this,
-			&NodeParamViewItemBase::Clicked);
+	connect(title_bar_, &NodeParamViewItemTitleBar::expanded_state_changed, this,
+			&NodeParamViewItemBase::set_expanded);
+	connect(title_bar_, &NodeParamViewItemTitleBar::pin_toggled, this,
+			&NodeParamViewItemBase::pin_toggled);
+	connect(title_bar_, &NodeParamViewItemTitleBar::clicked, this,
+			&NodeParamViewItemBase::clicked);
 
 	// Use dummy QWidget to retain width when not expanded (QDockWidget seems to ignore the titlebar
 	// size hints and will shrink as small as possible if the body is hidden)
@@ -60,26 +60,26 @@ NodeParamViewItemBase::NodeParamViewItemBase(QWidget *parent)
 	setFocusPolicy(Qt::ClickFocus);
 }
 
-bool NodeParamViewItemBase::IsExpanded() const
+bool NodeParamViewItemBase::is_expanded() const
 {
-	return title_bar_->IsExpanded();
+	return title_bar_->is_expanded();
 }
 
-QString NodeParamViewItemBase::GetTitleBarTextFromNode(Node *n)
+QString NodeParamViewItemBase::get_title_bar_text_from_node(Node *n)
 {
-	if (n->GetLabel().isEmpty()) {
-		return n->Name();
+	if (n->get_label().isEmpty()) {
+		return n->name();
 	} else {
-		return tr("%1 (%2)").arg(n->GetLabel(), n->Name());
+		return tr("%1 (%2)").arg(n->get_label(), n->name());
 	}
 }
 
-void NodeParamViewItemBase::SetBody(QWidget *body)
+void NodeParamViewItemBase::set_body(QWidget *body)
 {
 	body_ = body;
 	body_->setParent(this);
 
-	if (title_bar_->IsExpanded()) {
+	if (title_bar_->is_expanded()) {
 		setWidget(body_);
 	}
 }
@@ -97,18 +97,18 @@ void NodeParamViewItemBase::paintEvent(QPaintEvent *event)
 	}
 }
 
-void NodeParamViewItemBase::SetExpanded(bool e)
+void NodeParamViewItemBase::set_expanded(bool e)
 {
 	setWidget(e ? body_ : hidden_body_);
-	title_bar_->SetExpanded(e);
+	title_bar_->set_expanded(e);
 
-	emit ExpandedChanged(e);
+	emit expanded_changed(e);
 }
 
 void NodeParamViewItemBase::changeEvent(QEvent *e)
 {
 	if (e->type() == QEvent::LanguageChange) {
-		Retranslate();
+		retranslate();
 	}
 
 	super::changeEvent(e);
@@ -118,14 +118,14 @@ void NodeParamViewItemBase::moveEvent(QMoveEvent *event)
 {
 	super::moveEvent(event);
 
-	emit Moved();
+	emit moved();
 }
 
 void NodeParamViewItemBase::mousePressEvent(QMouseEvent *e)
 {
 	super::mousePressEvent(e);
 
-	emit Clicked();
+	emit clicked();
 }
 
 }

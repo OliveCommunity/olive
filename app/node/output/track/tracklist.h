@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TRACKLIST_H
-#define TRACKLIST_H
+#ifndef OAK_TRACKLIST_H
+#define OAK_TRACKLIST_H
 
 #include <QHash>
 #include <QObject>
@@ -44,41 +44,41 @@ public:
 		return type_;
 	}
 
-	const QVector<Track *> &GetTracks() const
+	const QVector<Track *> &get_tracks() const
 	{
 		return track_cache_;
 	}
 
-	Track *GetTrackAt(int index) const;
+	Track *get_track_at(int index) const;
 
-	const rational &GetTotalLength() const
+	const Rational &get_total_length() const
 	{
 		return total_length_;
 	}
 
-	int GetTrackCount() const
+	int get_track_count() const
 	{
 		return track_cache_.size();
 	}
 
-	Project *GetParentGraph() const;
+	Project *get_parent_graph() const;
 
 	const QString &track_input() const;
 	NodeInput track_input(int element) const;
 
 	Sequence *parent() const;
 
-	int ArraySize() const;
+	int array_size() const;
 
-	void ArrayAppend();
-	void ArrayRemoveLast();
+	void array_append();
+	void array_remove_last();
 
-	int GetArrayIndexFromCacheIndex(int index) const
+	int get_array_index_from_cache_index(int index) const
 	{
 		return track_array_indexes_.at(index);
 	}
 
-	int GetCacheIndexFromArrayIndex(int index) const
+	int get_cache_index_from_array_index(int index) const
 	{
 		return track_array_indexes_.indexOf(index);
 	}
@@ -87,26 +87,26 @@ public slots:
 	/**
    * @brief Slot for when the track connection is added
    */
-	void TrackConnected(Node *node, int element);
+	void track_connected(Node *node, int element);
 
 	/**
    * @brief Slot for when the track connection is removed
    */
-	void TrackDisconnected(Node *node, int element);
+	void track_disconnected(Node *node, int element);
 
 signals:
-	void TrackListChanged();
+	void track_list_changed();
 
-	void LengthChanged(const rational &length);
+	void length_changed(const Rational &length);
 
-	void TrackAdded(Track *track);
+	void track_added(Track *track);
 
-	void TrackRemoved(Track *track);
+	void track_removed(Track *track);
 
-	void TrackHeightChanged(Track *track, int height);
+	void track_height_changed(Track *track, int height);
 
 private:
-	void UpdateTrackIndexesFrom(int index);
+	void update_track_indexes_from(int index);
 
 	/**
    * @brief A cache of connected Tracks
@@ -121,7 +121,7 @@ private:
 
 	QString track_input_;
 
-	rational total_length_;
+	Rational total_length_;
 
 	enum Track::Type type_;
 
@@ -129,9 +129,9 @@ private slots:
 	/**
    * @brief Slot for when any of the track's length changes so we can update the length of the tracklist
    */
-	void UpdateTotalLength();
+	void update_total_length();
 };
 
 }
 
-#endif // TRACKLIST_H
+#endif // OAK_TRACKLIST_H

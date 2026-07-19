@@ -34,7 +34,7 @@ namespace olive
 
 ProxyManager *ProxyManager::instance_ = nullptr;
 
-bool ProxyParamsEqual(const ProxyManager::ProxyParams &a,
+bool proxy_params_equal(const ProxyManager::ProxyParams &a,
 					  const ProxyManager::ProxyParams &b)
 {
 	return a.width == b.width && a.height == b.height &&
@@ -43,22 +43,22 @@ bool ProxyParamsEqual(const ProxyManager::ProxyParams &a,
 		   a.include_audio == b.include_audio;
 }
 
-QString ProxyManager::GetProxyDirectory(const QString &cache_path)
+QString ProxyManager::get_proxy_directory(const QString &cache_path)
 {
 	return QDir(cache_path).filePath(QStringLiteral("proxy"));
 }
 
-QString ProxyManager::GetProxyFilename(const QString &cache_path,
+QString ProxyManager::get_proxy_filename(const QString &cache_path,
 									   const QString &source_filename,
 									   int stream_index,
 									   const ProxyParams &params)
 {
-	const QString proxy_dir = GetProxyDirectory(cache_path);
+	const QString proxy_dir = get_proxy_directory(cache_path);
 	const QString extension =
 		params.extension.isEmpty() ? QStringLiteral("mp4") : params.extension;
 	const QString filename =
 		QStringLiteral("%1-%2.%3x%4.v%5.a%6.%7")
-			.arg(FileFunctions::GetUniqueFileIdentifier(source_filename),
+			.arg(FileFunctions::get_unique_file_identifier(source_filename),
 				 QString::number(stream_index), QString::number(params.width),
 				 QString::number(params.height), QString::number(params.version),
 				 params.include_audio ? QStringLiteral("1") : QStringLiteral("0"),
@@ -67,7 +67,7 @@ QString ProxyManager::GetProxyFilename(const QString &cache_path,
 	return QDir(proxy_dir).filePath(filename);
 }
 
-QString ProxyManager::GetWorkingProxyFilename(const QString &proxy_filename)
+QString ProxyManager::get_working_proxy_filename(const QString &proxy_filename)
 {
 	// Append a recognizable suffix while keeping a standard container extension
 	// so ffmpeg can infer the output format.
@@ -75,29 +75,29 @@ QString ProxyManager::GetWorkingProxyFilename(const QString &proxy_filename)
 }
 
 ProxyManager::ProxyState
-ProxyManager::GetProxyState(const QString &proxy_filename)
+ProxyManager::get_proxy_state(const QString &proxy_filename)
 {
 	if (QFileInfo::exists(proxy_filename)) {
-		return kProxyReady;
+		return k_proxy_ready;
 	}
 
-	if (QFileInfo::exists(GetWorkingProxyFilename(proxy_filename))) {
-		return kProxyGenerating;
+	if (QFileInfo::exists(get_working_proxy_filename(proxy_filename))) {
+		return k_proxy_generating;
 	}
 
-	return kProxyMissing;
+	return k_proxy_missing;
 }
 
-QString ProxyManager::ProxyStateToString(ProxyState state)
+QString ProxyManager::proxy_state_to_string(ProxyState state)
 {
 	switch (state) {
-	case kProxyMissing:
+	case k_proxy_missing:
 		return QStringLiteral("missing");
-	case kProxyGenerating:
+	case k_proxy_generating:
 		return QStringLiteral("generating");
-	case kProxyReady:
+	case k_proxy_ready:
 		return QStringLiteral("ready");
-	case kProxyFailed:
+	case k_proxy_failed:
 		return QStringLiteral("failed");
 	}
 
@@ -105,41 +105,41 @@ QString ProxyManager::ProxyStateToString(ProxyState state)
 }
 
 ProxyManager::ProxyState
-ProxyManager::ProxyStateFromString(const QString &state)
+ProxyManager::proxy_state_from_string(const QString &state)
 {
 	if (state == QStringLiteral("generating")) {
-		return kProxyGenerating;
+		return k_proxy_generating;
 	}
 
 	if (state == QStringLiteral("ready")) {
-		return kProxyReady;
+		return k_proxy_ready;
 	}
 
 	if (state == QStringLiteral("failed")) {
-		return kProxyFailed;
+		return k_proxy_failed;
 	}
 
-	return kProxyMissing;
+	return k_proxy_missing;
 }
 
-bool ProxyManager::ProxyFilenameHasAudio(const QString &proxy_filename)
+bool ProxyManager::proxy_filename_has_audio(const QString &proxy_filename)
 {
 	return QFileInfo(proxy_filename).fileName().contains(
 		QStringLiteral(".a1."));
 }
 
-ProxyManager::ProxyParams ProxyManager::ProxyParamsFromConfig()
+ProxyManager::ProxyParams ProxyManager::proxy_params_from_config()
 {
 	ProxyParams params;
-	params.width = OLIVE_CONFIG("ProxyWidth").value<int>();
-	params.height = OLIVE_CONFIG("ProxyHeight").value<int>();
-	params.crf = OLIVE_CONFIG("ProxyCRF").value<int>();
-	params.preset = OLIVE_CONFIG("ProxyPreset").toString();
-	params.include_audio = OLIVE_CONFIG("ProxyIncludeAudio").toBool();
+	params.width = OAK_CONFIG("ProxyWidth").value<int>();
+	params.height = OAK_CONFIG("ProxyHeight").value<int>();
+	params.crf = OAK_CONFIG("ProxyCRF").value<int>();
+	params.preset = OAK_CONFIG("ProxyPreset").toString();
+	params.include_audio = OAK_CONFIG("ProxyIncludeAudio").toBool();
 	return params;
 }
 
-QString ProxyManager::FindFFmpegExecutable(const QString &configured_path)
+QString ProxyManager::find_f_fmpeg_executable(const QString &configured_path)
 {
 	// An explicitly configured path takes precedence if it is usable
 	if (!configured_path.isEmpty()) {
@@ -187,46 +187,46 @@ QString ProxyManager::FindFFmpegExecutable(const QString &configured_path)
 }
 
 ProxyManager::Proxy
-ProxyManager::GetOrStartProxy(const QString &cache_path,
+ProxyManager::get_or_start_proxy(const QString &cache_path,
 							  const QString &source_filename, int stream_index,
 							  const ProxyParams &params)
 {
 	QMutexLocker locker(&mutex_);
 
 	const QString filename =
-		GetProxyFilename(cache_path, source_filename, stream_index, params);
-	const ProxyState file_state = GetProxyState(filename);
-	if (file_state == kProxyReady) {
-		return { kProxyReady, filename, nullptr };
+		get_proxy_filename(cache_path, source_filename, stream_index, params);
+	const ProxyState file_state = get_proxy_state(filename);
+	if (file_state == k_proxy_ready) {
+		return { k_proxy_ready, filename, nullptr };
 	}
 
 	for (const ProxyData &data : proxying_) {
 		if (data.source_filename == source_filename &&
 			data.stream_index == stream_index &&
-			ProxyParamsEqual(data.params, params)) {
-			return { kProxyGenerating, filename, data.task };
+			proxy_params_equal(data.params, params)) {
+			return { k_proxy_generating, filename, data.task };
 		}
 	}
 
-	if (file_state == kProxyGenerating) {
-		QFile::remove(GetWorkingProxyFilename(filename));
+	if (file_state == k_proxy_generating) {
+		QFile::remove(get_working_proxy_filename(filename));
 	}
 
-	const QString working_filename = GetWorkingProxyFilename(filename);
+	const QString working_filename = get_working_proxy_filename(filename);
 	ProxyTask *task =
 		new ProxyTask(source_filename, stream_index, params, working_filename);
-	connect(task, &Task::Finished, this, &ProxyManager::ProxyTaskFinished);
+	connect(task, &Task::finished, this, &ProxyManager::proxy_task_finished);
 	task->moveToThread(TaskManager::instance()->thread());
-	QMetaObject::invokeMethod(TaskManager::instance(), "AddTask",
+	QMetaObject::invokeMethod(TaskManager::instance(), "add_task",
 							  Qt::QueuedConnection, Q_ARG(Task *, task));
 
 	proxying_.append({ source_filename, stream_index, params, task,
 					   working_filename, filename });
 
-	return { kProxyGenerating, filename, task };
+	return { k_proxy_generating, filename, task };
 }
 
-void ProxyManager::ProxyTaskFinished(Task *task, bool succeeded)
+void ProxyManager::proxy_task_finished(Task *task, bool succeeded)
 {
 	QMutexLocker locker(&mutex_);
 
@@ -250,18 +250,18 @@ void ProxyManager::ProxyTaskFinished(Task *task, bool succeeded)
 		QFile::remove(data.finished_filename);
 		if (QFile::rename(data.working_filename, data.finished_filename)) {
 			locker.unlock();
-			emit ProxyReady(data.source_filename, data.stream_index,
+			emit proxy_ready(data.source_filename, data.stream_index,
 							data.finished_filename);
-			emit ProxyFinished(data.source_filename, data.stream_index,
-							   data.finished_filename, kProxyReady);
+			emit proxy_finished(data.source_filename, data.stream_index,
+							   data.finished_filename, k_proxy_ready);
 			return;
 		}
 	}
 
 	QFile::remove(data.working_filename);
 	locker.unlock();
-	emit ProxyFinished(data.source_filename, data.stream_index,
-					   data.finished_filename, kProxyFailed);
+	emit proxy_finished(data.source_filename, data.stream_index,
+					   data.finished_filename, k_proxy_failed);
 }
 
 }

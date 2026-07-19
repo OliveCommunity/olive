@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef AUDIOPROCESSOR_H
-#define AUDIOPROCESSOR_H
+#ifndef OAK_AUDIOPROCESSOR_H
+#define OAK_AUDIOPROCESSOR_H
 
 #include <inttypes.h>
 #include <olive/core/core.h>
@@ -43,20 +43,20 @@ public:
 
 	DISABLE_COPY_MOVE(AudioProcessor)
 
-	bool Open(const AudioParams &from, const AudioParams &to,
+	bool open(const AudioParams &from, const AudioParams &to,
 			  double tempo = 1.0);
 
-	void Close();
+	void close();
 
-	bool IsOpen() const
+	bool is_open() const
 	{
 		return graph_;
 	}
 
 	using Buffer = QVector<QByteArray>;
-	int Convert(float **in, int nb_in_samples, AudioProcessor::Buffer *output);
+	int convert(float **in, int nb_in_samples, AudioProcessor::Buffer *output);
 
-	void Flush();
+	void flush();
 
 	const AudioParams &from() const
 	{
@@ -79,4 +79,4 @@ private:
 
 }
 
-#endif // AUDIOPROCESSOR_H
+#endif // OAK_AUDIOPROCESSOR_H

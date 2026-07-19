@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLLAPSEBUTTON_H
-#define COLLAPSEBUTTON_H
+#ifndef OAK_COLLAPSEBUTTON_H
+#define OAK_COLLAPSEBUTTON_H
 
 #include <QPushButton>
 
@@ -35,9 +35,9 @@ public:
 	CollapseButton(QWidget *parent = nullptr);
 
 private slots:
-	void UpdateIcon(bool e);
+	void update_icon(bool e);
 };
 
 }
 
-#endif // COLLAPSEBUTTON_H
+#endif // OAK_COLLAPSEBUTTON_H

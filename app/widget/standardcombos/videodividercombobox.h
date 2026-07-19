@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef VIDEODIVIDERCOMBOBOX_H
-#define VIDEODIVIDERCOMBOBOX_H
+#ifndef OAK_VIDEODIVIDERCOMBOBOX_H
+#define OAK_VIDEODIVIDERCOMBOBOX_H
 
 #include <QComboBox>
 
@@ -35,17 +35,17 @@ public:
 	VideoDividerComboBox(QWidget *parent = nullptr)
 		: QComboBox(parent)
 	{
-		foreach (int d, VideoParams::kSupportedDividers) {
-			this->addItem(VideoParams::GetNameForDivider(d), d);
+		foreach (int d, VideoParams::k_supported_dividers) {
+			this->addItem(VideoParams::get_name_for_divider(d), d);
 		}
 	}
 
-	int GetDivider() const
+	int get_divider() const
 	{
 		return this->currentData().toInt();
 	}
 
-	void SetDivider(int d)
+	void set_divider(int d)
 	{
 		for (int i = 0; i < this->count(); i++) {
 			if (this->itemData(i).toInt() == d) {
@@ -58,4 +58,4 @@ public:
 
 }
 
-#endif // VIDEODIVIDERCOMBOBOX_H
+#endif // OAK_VIDEODIVIDERCOMBOBOX_H

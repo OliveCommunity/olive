@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef WAVEFORMSCOPE_H
-#define WAVEFORMSCOPE_H
+#ifndef OAK_WAVEFORMSCOPE_H
+#define OAK_WAVEFORMSCOPE_H
 
 #include "widget/scope/scopebase/scopebase.h"
 
@@ -35,13 +35,13 @@ public:
 	MANAGEDDISPLAYWIDGET_DEFAULT_DESTRUCTOR(WaveformScope)
 
 protected:
-	virtual ShaderCode GenerateShaderCode() override;
+	virtual ShaderCode generate_shader_code() override;
 
-	virtual void DrawScope(TexturePtr managed_tex, QVariant pipeline) override;
+	virtual void draw_scope(TexturePtr managed_tex, QVariant pipeline) override;
 
-	virtual void DrawScopeSoftware(QPainter &p, const QImage &image) override;
+	virtual void draw_scope_software(QPainter &p, const QImage &image) override;
 };
 
 }
 
-#endif // WAVEFORMSCOPE_H
+#endif // OAK_WAVEFORMSCOPE_H

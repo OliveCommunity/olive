@@ -31,10 +31,10 @@ struct FBProbe {
 namespace
 {
 
-constexpr int64_t kAnalyzeDurationUs = 5000000;
-constexpr int64_t kProbeSizeBytes = 20000000;
+constexpr int64_t k_analyze_duration_us = 5000000;
+constexpr int64_t k_probe_size_bytes = 20000000;
 
-void FillStreamInfo(const AVStream *s, int has_decoder, FBStreamInfo *out)
+void fill_stream_info(const AVStream *s, int has_decoder, FBStreamInfo *out)
 {
 	const AVCodecParameters *par = s->codecpar;
 
@@ -45,12 +45,12 @@ void FillStreamInfo(const AVStream *s, int has_decoder, FBStreamInfo *out)
 	out->has_decoder = has_decoder;
 	out->width = par->width;
 	out->height = par->height;
-	out->pixel_format = fb::PixFmtFromAV(AVPixelFormat(par->format));
-	out->field_order = FB_FIELD_ORDER_UNKNOWN;
+	out->pixel_format = fb::pix_fmt_from_av(AVPixelFormat(par->format));
+	out->field_order = fb_field_order_unknown;
 	out->color_range = par->color_range;
 	out->sample_rate = par->sample_rate;
 	out->sample_format = par->format;
-	out->channel_layout_mask = fb::ValidateStreamChannelLayoutMask(s);
+	out->channel_layout_mask = fb::validate_stream_channel_layout_mask(s);
 	out->start_time = s->start_time;
 	out->duration = s->duration;
 	out->time_base_num = s->time_base.num;
@@ -59,7 +59,7 @@ void FillStreamInfo(const AVStream *s, int has_decoder, FBStreamInfo *out)
 	out->avg_frame_rate_den = s->avg_frame_rate.den;
 }
 
-bool IsCancelled(FBCancelCallback cancel, void *userdata)
+bool is_cancelled(FBCancelCallback cancel, void *userdata)
 {
 	return cancel && cancel(userdata);
 }
@@ -87,16 +87,16 @@ int fb_probe_open(FBProbe *probe, const char *filename)
 	}
 
 	AVDictionary *format_opts = nullptr;
-	av_dict_set_int(&format_opts, "analyzeduration", kAnalyzeDurationUs, 0);
-	av_dict_set_int(&format_opts, "probesize", kProbeSizeBytes, 0);
+	av_dict_set_int(&format_opts, "analyzeduration", k_analyze_duration_us, 0);
+	av_dict_set_int(&format_opts, "probesize", k_probe_size_bytes, 0);
 
 	AVFormatContext *ctx = nullptr;
 	int error_code = avformat_open_input(&ctx, filename, nullptr, &format_opts);
 	av_dict_free(&format_opts);
 
 	if (ctx) {
-		ctx->probesize = kProbeSizeBytes;
-		ctx->max_analyze_duration = kAnalyzeDurationUs;
+		ctx->probesize = k_probe_size_bytes;
+		ctx->max_analyze_duration = k_analyze_duration_us;
 
 		// Subtitle streams are read on demand, don't let them slow down probing
 		for (unsigned int i = 0; i < ctx->nb_streams; i++) {
@@ -144,7 +144,7 @@ int fb_probe_get_stream_info(const FBProbe *probe, int stream_index,
 
 	const AVStream *s = probe->fmt_ctx->streams[stream_index];
 	int has_decoder = avcodec_find_decoder(s->codecpar->codec_id) != nullptr;
-	FillStreamInfo(s, has_decoder, out);
+	fill_stream_info(s, has_decoder, out);
 	return 0;
 }
 
@@ -210,7 +210,7 @@ int fb_probe_video_stream_details(const char *filename, int stream_index,
 	}
 
 	memset(out, 0, sizeof(*out));
-	out->field_order = FB_FIELD_ORDER_PROGRESSIVE;
+	out->field_order = fb_field_order_progressive;
 	out->pixel_aspect_num = 1;
 	out->pixel_aspect_den = 1;
 	out->decoded_duration = FB_NOPTS_VALUE;
@@ -250,7 +250,7 @@ int fb_probe_video_stream_details(const char *filename, int stream_index,
 		// Decode until the end to determine the true duration
 		int64_t last_ts = fb_frame_get_best_effort_timestamp(frame);
 		while (fb_decoder_get_frame(decoder, pkt, frame) >= 0 &&
-			   !IsCancelled(cancel, cancel_userdata)) {
+			   !is_cancelled(cancel, cancel_userdata)) {
 			last_ts = fb_frame_get_best_effort_timestamp(frame);
 		}
 		out->decoded_duration = last_ts;
@@ -285,7 +285,7 @@ int fb_probe_audio_stream_duration(const char *filename, int stream_index,
 	do {
 		duration = fb_frame_get_best_effort_timestamp(frame);
 	} while (fb_decoder_get_frame(decoder, pkt, frame) >= 0 &&
-			 !IsCancelled(cancel, cancel_userdata));
+			 !is_cancelled(cancel, cancel_userdata));
 
 	fb_frame_free(&frame);
 	fb_packet_free(&pkt);

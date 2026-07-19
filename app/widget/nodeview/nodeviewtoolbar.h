@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef NODEVIEWTOOLBAR_H
-#define NODEVIEWTOOLBAR_H
+#ifndef OAK_NODEVIEWTOOLBAR_H
+#define OAK_NODEVIEWTOOLBAR_H
 
 #include <QPushButton>
 #include <QWidget>
@@ -31,23 +31,23 @@ public:
 	NodeViewToolBar(QWidget *parent = nullptr);
 
 public slots:
-	void SetMiniMapEnabled(bool e)
+	void set_mini_map_enabled(bool e)
 	{
 		minimap_btn_->setChecked(e);
 	}
 
 signals:
-	void AddNodeClicked();
+	void add_node_clicked();
 
-	void MiniMapEnabledToggled(bool e);
+	void mini_map_enabled_toggled(bool e);
 
 protected:
 	virtual void changeEvent(QEvent *e) override;
 
 private:
-	void Retranslate();
+	void retranslate();
 
-	void UpdateIcons();
+	void update_icons();
 
 	QPushButton *add_node_btn_;
 
@@ -56,4 +56,4 @@ private:
 
 }
 
-#endif // NODEVIEWTOOLBAR_H
+#endif // OAK_NODEVIEWTOOLBAR_H

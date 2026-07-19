@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef VALUENODE_H
-#define VALUENODE_H
+#ifndef OAK_VALUENODE_H
+#define OAK_VALUENODE_H
 
 #include "node/node.h"
 
@@ -34,7 +34,7 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(ValueNode)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return tr("Value");
 	}
@@ -44,23 +44,23 @@ public:
 		return QStringLiteral("org.olivevideoeditor.Olive.value");
 	}
 
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
-		return { kCategoryGenerator };
+		return { k_category_generator };
 	}
 
-	virtual QString Description() const override
+	virtual QString description() const override
 	{
 		return tr(
 			"Create a single value that can be connected to various other inputs.");
 	}
 
-	static const QString kTypeInput;
-	static const QString kValueInput;
+	static const QString k_type_input;
+	static const QString k_value_input;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
 protected:
@@ -68,9 +68,9 @@ protected:
 										int element) override;
 
 private:
-	static const QVector<NodeValue::Type> kSupportedTypes;
+	static const QVector<NodeValue::Type> k_supported_types;
 };
 
 }
 
-#endif // VALUENODE_H
+#endif // OAK_VALUENODE_H

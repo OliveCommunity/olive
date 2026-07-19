@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef VECTORSCOPESCOPE_H
-#define VECTORSCOPESCOPE_H
+#ifndef OAK_VECTORSCOPESCOPE_H
+#define OAK_VECTORSCOPESCOPE_H
 
 #include "widget/scope/scopebase/scopebase.h"
 
@@ -35,13 +35,13 @@ public:
 	MANAGEDDISPLAYWIDGET_DEFAULT_DESTRUCTOR(VectorscopeScope)
 
 protected:
-	virtual ShaderCode GenerateShaderCode() override;
+	virtual ShaderCode generate_shader_code() override;
 
-	virtual void DrawScope(TexturePtr managed_tex, QVariant pipeline) override;
+	virtual void draw_scope(TexturePtr managed_tex, QVariant pipeline) override;
 
-	virtual void DrawScopeSoftware(QPainter &p, const QImage &image) override;
+	virtual void draw_scope_software(QPainter &p, const QImage &image) override;
 };
 
 }
 
-#endif // VECTORSCOPESCOPE_H
+#endif // OAK_VECTORSCOPESCOPE_H

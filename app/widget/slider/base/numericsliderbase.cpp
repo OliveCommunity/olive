@@ -28,7 +28,7 @@
 namespace olive
 {
 
-bool NumericSliderBase::effects_slider_is_being_dragged_ = false;
+bool NumericSliderBase::effects_slider_is_being_dragged = false;
 
 NumericSliderBase::NumericSliderBase(QWidget *parent)
 	: SliderBase(parent)
@@ -44,60 +44,60 @@ NumericSliderBase::NumericSliderBase(QWidget *parent)
 	// Numeric sliders are draggable, so we have a cursor that indicates that
 	setCursor(Qt::SizeHorCursor);
 
-	connect(label(), &SliderLabel::LabelPressed, this,
-			&NumericSliderBase::LabelPressed);
+	connect(label(), &SliderLabel::label_pressed, this,
+			&NumericSliderBase::label_pressed);
 }
 
-void NumericSliderBase::SetDragMultiplier(const double &d)
+void NumericSliderBase::set_drag_multiplier(const double &d)
 {
 	drag_multiplier_ = d;
 }
 
-void NumericSliderBase::LabelPressed()
+void NumericSliderBase::label_pressed()
 {
 	drag_ladder_ = new SliderLadder(drag_multiplier_, ladder_element_count_,
-									GetFormattedValueToString(99999999));
-	connect(drag_ladder_, &SliderLadder::DraggedByValue, this,
-			&NumericSliderBase::LadderDragged);
-	connect(drag_ladder_, &SliderLadder::Released, this,
-			&NumericSliderBase::LadderReleased);
+									get_formatted_value_to_string(99999999));
+	connect(drag_ladder_, &SliderLadder::dragged_by_value, this,
+			&NumericSliderBase::ladder_dragged);
+	connect(drag_ladder_, &SliderLadder::released, this,
+			&NumericSliderBase::ladder_released);
 
-	drag_ladder_->SetValue(GetFormattedValueToString());
+	drag_ladder_->set_value(get_formatted_value_to_string());
 	drag_ladder_->resize(drag_ladder_->sizeHint());
-	RepositionLadder();
+	reposition_ladder();
 	drag_ladder_->show();
 
-	drag_start_value_ = GetValueInternal();
+	drag_start_value_ = get_value_internal();
 }
 
-void NumericSliderBase::LadderDragged(int value, double multiplier)
+void NumericSliderBase::ladder_dragged(int value, double multiplier)
 {
 	dragged_ = true;
 
 	dragged_diff_ += value * multiplier;
 
 	// Store current value to try and prevent any unnecessary signalling if the value doesn't change
-	QVariant pre_set_value = GetValueInternal();
+	QVariant pre_set_value = get_value_internal();
 
 	setting_drag_value_ = true;
-	SetValueInternal(
-		AdjustDragDistanceInternal(drag_start_value_, dragged_diff_));
+	set_value_internal(
+		adjust_drag_distance_internal(drag_start_value_, dragged_diff_));
 	setting_drag_value_ = false;
 
-	if (GetValueInternal() != pre_set_value) {
+	if (get_value_internal() != pre_set_value) {
 		// We retrieve the value instead of storing it ourselves because SetValueInternal may do extra
 		// processing (such as clamping).
-		drag_ladder_->SetValue(GetFormattedValueToString());
+		drag_ladder_->set_value(get_formatted_value_to_string());
 
-		if (!UsingLadders()) {
-			RepositionLadder();
+		if (!using_ladders()) {
+			reposition_ladder();
 		}
 
-		ValueSignalEvent(GetValueInternal());
+		value_signal_event(get_value_internal());
 	}
 }
 
-void NumericSliderBase::LadderReleased()
+void NumericSliderBase::ladder_released()
 {
 	drag_ladder_->deleteLater();
 	drag_ladder_ = nullptr;
@@ -105,24 +105,24 @@ void NumericSliderBase::LadderReleased()
 
 	if (dragged_) {
 		// This was a drag, send another value changed event
-		ValueSignalEvent(GetValueInternal());
+		value_signal_event(get_value_internal());
 
 		dragged_ = false;
 	} else {
-		ShowEditor();
+		show_editor();
 	}
 }
 
-void NumericSliderBase::RepositionLadder()
+void NumericSliderBase::reposition_ladder()
 {
 	if (drag_ladder_) {
-		if (UsingLadders()) {
+		if (using_ladders()) {
 			drag_ladder_->move(
 				QCursor::pos() -
 				QPoint(drag_ladder_->width() / 2, drag_ladder_->height() / 2));
 		} else {
 			QPoint label_global_pos = label()->mapToGlobal(label()->pos());
-			int text_width = QtUtils::QFontMetricsWidth(label()->fontMetrics(),
+			int text_width = QtUtils::q_font_metrics_width(label()->fontMetrics(),
 														label()->text());
 
 			if (label()->alignment() & Qt::AlignRight) {
@@ -141,83 +141,83 @@ void NumericSliderBase::RepositionLadder()
 			drag_ladder_->move(ladder_x, ladder_y);
 		}
 
-		drag_ladder_->StartListeningToMouseInput();
+		drag_ladder_->start_listening_to_mouse_input();
 	}
 }
 
-bool NumericSliderBase::IsDragging() const
+bool NumericSliderBase::is_dragging() const
 {
 	return drag_ladder_;
 }
 
-bool NumericSliderBase::UsingLadders() const
+bool NumericSliderBase::using_ladders() const
 {
 	return ladder_element_count_ > 0 &&
-		   OLIVE_CONFIG("UseSliderLadders").toBool();
+		   OAK_CONFIG("UseSliderLadders").toBool();
 }
 
-QVariant NumericSliderBase::AdjustValue(const QVariant &value) const
+QVariant NumericSliderBase::adjust_value(const QVariant &value) const
 {
 	// Clamps between min/max
-	if (has_min_ && ValueLessThan(value, min_value_)) {
+	if (has_min_ && value_less_than(value, min_value_)) {
 		return min_value_;
-	} else if (has_max_ && ValueGreaterThan(value, max_value_)) {
+	} else if (has_max_ && value_greater_than(value, max_value_)) {
 		return max_value_;
 	}
 
 	return value;
 }
 
-void NumericSliderBase::SetOffset(const QVariant &v)
+void NumericSliderBase::set_offset(const QVariant &v)
 {
 	offset_ = v;
 
-	UpdateLabel();
+	update_label();
 }
 
-QVariant NumericSliderBase::AdjustDragDistanceInternal(const QVariant &start,
+QVariant NumericSliderBase::adjust_drag_distance_internal(const QVariant &start,
 													   const double &drag) const
 {
 	return start.toDouble() + drag;
 }
 
-void NumericSliderBase::SetMinimumInternal(const QVariant &v)
+void NumericSliderBase::set_minimum_internal(const QVariant &v)
 {
 	min_value_ = v;
 	has_min_ = true;
 
 	// Limit value by this new minimum value
-	if (ValueLessThan(GetValueInternal(), min_value_)) {
-		SetValueInternal(min_value_);
+	if (value_less_than(get_value_internal(), min_value_)) {
+		set_value_internal(min_value_);
 	}
 }
 
-void NumericSliderBase::SetMaximumInternal(const QVariant &v)
+void NumericSliderBase::set_maximum_internal(const QVariant &v)
 {
 	max_value_ = v;
 	has_max_ = true;
 
 	// Limit value by this new maximum value
-	if (ValueGreaterThan(GetValueInternal(), max_value_)) {
-		SetValueInternal(max_value_);
+	if (value_greater_than(get_value_internal(), max_value_)) {
+		set_value_internal(max_value_);
 	}
 }
 
-bool NumericSliderBase::ValueGreaterThan(const QVariant &lhs,
+bool NumericSliderBase::value_greater_than(const QVariant &lhs,
 										 const QVariant &rhs) const
 {
 	return lhs.toDouble() > rhs.toDouble();
 }
 
-bool NumericSliderBase::ValueLessThan(const QVariant &lhs,
+bool NumericSliderBase::value_less_than(const QVariant &lhs,
 									  const QVariant &rhs) const
 {
 	return lhs.toDouble() < rhs.toDouble();
 }
 
-bool NumericSliderBase::CanSetValue() const
+bool NumericSliderBase::can_set_value() const
 {
-	return !IsDragging() || setting_drag_value_;
+	return !is_dragging() || setting_drag_value_;
 }
 
 }

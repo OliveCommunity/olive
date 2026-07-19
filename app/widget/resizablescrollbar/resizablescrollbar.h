@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef RESIZABLESCROLLBAR_H
-#define RESIZABLESCROLLBAR_H
+#ifndef OAK_RESIZABLESCROLLBAR_H
+#define OAK_RESIZABLESCROLLBAR_H
 
 #include <QScrollBar>
 
@@ -36,11 +36,11 @@ public:
 	ResizableScrollBar(Qt::Orientation orientation, QWidget *parent = nullptr);
 
 signals:
-	void ResizeBegan(int old_bar_width, bool top_handle);
+	void resize_began(int old_bar_width, bool top_handle);
 
-	void ResizeMoved(int movement);
+	void resize_moved(int movement);
 
-	void ResizeEnded();
+	void resize_ended();
 
 protected:
 	virtual void mousePressEvent(QMouseEvent *event) override;
@@ -50,17 +50,17 @@ protected:
 	virtual void mouseReleaseEvent(QMouseEvent *event) override;
 
 private:
-	QRect GetScrollBarRect();
+	QRect get_scroll_bar_rect();
 
-	static const int kHandleWidth;
+	static const int k_handle_width;
 
-	enum MouseHandleState { kNotInHandle, kInTopHandle, kInBottomHandle };
+	enum MouseHandleState { k_not_in_handle, k_in_top_handle, k_in_bottom_handle };
 
-	void Init();
+	void init();
 
-	int GetActiveMousePos(QMouseEvent *event);
+	int get_active_mouse_pos(QMouseEvent *event);
 
-	int GetActiveBarSize();
+	int get_active_bar_size();
 
 	MouseHandleState mouse_handle_state_;
 
@@ -71,4 +71,4 @@ private:
 
 }
 
-#endif // RESIZABLESCROLLBAR_H
+#endif // OAK_RESIZABLESCROLLBAR_H

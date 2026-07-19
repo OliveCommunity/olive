@@ -33,7 +33,7 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(ConstantValueNode)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return QStringLiteral("Test Constant");
 	}
@@ -43,24 +43,24 @@ public:
 		return QStringLiteral("org.oak.test.constant");
 	}
 
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
-		return { kCategoryMath };
+		return { k_category_math };
 	}
 
-	void SetOutput(const olive::NodeValue &value)
+	void set_output(const olive::NodeValue &value)
 	{
 		output_ = value;
 	}
 
-	virtual void Value(const olive::NodeValueRow &value,
+	virtual void value(const olive::NodeValueRow &value,
 					   const olive::NodeGlobals &globals,
 					   olive::NodeValueTable *table) const override
 	{
 		Q_UNUSED(value)
 		Q_UNUSED(globals)
 
-		table->Push(output_);
+		table->push(output_);
 	}
 
 private:
@@ -71,20 +71,20 @@ private:
 // non-static number path of MathNode can be verified end to end.
 class SampleResolvingTraverser : public olive::NodeTraverser {
 public:
-	void Resolve(olive::NodeValue &value)
+	void resolve(olive::NodeValue &value)
 	{
-		ResolveJobs(value);
+		resolve_jobs(value);
 	}
 
 protected:
 	virtual olive::core::SampleBuffer
-	CreateSampleBuffer(const olive::core::AudioParams &params,
+	create_sample_buffer(const olive::core::AudioParams &params,
 					   int sample_count) override
 	{
 		return olive::core::SampleBuffer(params, size_t(sample_count));
 	}
 
-	virtual void ProcessSamples(olive::core::SampleBuffer &destination,
+	virtual void process_samples(olive::core::SampleBuffer &destination,
 								const olive::Node *node,
 								const olive::TimeRange &range,
 								const olive::SampleJob &job) override
@@ -92,48 +92,48 @@ protected:
 		Q_UNUSED(range)
 
 		for (size_t i = 0; i < destination.sample_count(); i++) {
-			node->ProcessSamples(job.GetValues(), job.samples(), destination,
+			node->process_samples(job.get_values(), job.samples(), destination,
 								 int(i));
 		}
 	}
 };
 
-olive::MathNode *CreateMathNode(olive::Project *project)
+olive::MathNode *create_math_node(olive::Project *project)
 {
 	auto *math = new olive::MathNode();
 	math->setParent(project);
 	return math;
 }
 
-ConstantValueNode *CreateConstant(olive::Project *project,
+ConstantValueNode *create_constant(olive::Project *project,
 								  const olive::NodeValue &value)
 {
 	auto *node = new ConstantValueNode();
 	node->setParent(project);
-	node->SetOutput(value);
+	node->set_output(value);
 	return node;
 }
 
-olive::NodeValueTable GenerateMathTable(olive::MathNode *math)
+olive::NodeValueTable generate_math_table(olive::MathNode *math)
 {
 	olive::NodeTraverser traverser;
-	return traverser.GenerateTable(
-		math, olive::TimeRange(olive::core::rational(0),
-							   olive::core::rational(1, 30)));
+	return traverser.generate_table(
+		math, olive::TimeRange(olive::core::Rational(0),
+							   olive::core::Rational(1, 30)));
 }
 
-olive::core::AudioParams TestAudioParams()
+olive::core::AudioParams test_audio_params()
 {
-	return olive::core::AudioParams(48000, olive::core::kChannelLayoutStereo,
-									olive::core::SampleFormat::F32P);
+	return olive::core::AudioParams(48000, olive::core::k_channel_layout_stereo,
+									olive::core::SampleFormat::f32_p);
 }
 
 // Creates a stereo buffer with the given per-channel samples. Both channels
 // must have the same number of samples.
-olive::core::SampleBuffer MakeSampleBuffer(const std::vector<float> &channel0,
+olive::core::SampleBuffer make_sample_buffer(const std::vector<float> &channel0,
 										   const std::vector<float> &channel1)
 {
-	olive::core::SampleBuffer buffer(TestAudioParams(), channel0.size());
+	olive::core::SampleBuffer buffer(test_audio_params(), channel0.size());
 	for (size_t i = 0; i < channel0.size(); i++) {
 		buffer.data(0)[i] = channel0[i];
 	}
@@ -143,9 +143,9 @@ olive::core::SampleBuffer MakeSampleBuffer(const std::vector<float> &channel0,
 	return buffer;
 }
 
-olive::NodeValue SampleValue(const olive::core::SampleBuffer &buffer)
+olive::NodeValue sample_value(const olive::core::SampleBuffer &buffer)
 {
-	return olive::NodeValue(olive::NodeValue::kSamples,
+	return olive::NodeValue(olive::NodeValue::k_samples,
 							QVariant::fromValue(buffer));
 }
 
@@ -156,44 +156,44 @@ TEST(MathNode, MetadataIsCorrect)
 	olive::MathNode unparented;
 	EXPECT_EQ(unparented.id(),
 			  QStringLiteral("org.olivevideoeditor.Olive.math"));
-	EXPECT_FALSE(unparented.Description().isEmpty());
+	EXPECT_FALSE(unparented.description().isEmpty());
 	EXPECT_TRUE(
-		unparented.Category().contains(olive::Node::kCategoryMath));
-	EXPECT_EQ(unparented.GetOperation(), olive::MathNode::kOpAdd);
+		unparented.category().contains(olive::Node::k_category_math));
+	EXPECT_EQ(unparented.get_operation(), olive::MathNode::k_op_add);
 
 	// Without a parent the node is just called "Math"
-	EXPECT_EQ(unparented.Name(), QStringLiteral("Math"));
+	EXPECT_EQ(unparented.name(), QStringLiteral("Math"));
 
 	// Parented nodes are named after their operation
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	EXPECT_EQ(math->Name(), QStringLiteral("Add"));
+	olive::MathNode *math = create_math_node(&project);
+	EXPECT_EQ(math->name(), QStringLiteral("Add"));
 
-	math->SetOperation(olive::MathNode::kOpSubtract);
-	EXPECT_EQ(math->GetOperation(), olive::MathNode::kOpSubtract);
-	EXPECT_EQ(math->Name(), QStringLiteral("Subtract"));
+	math->set_operation(olive::MathNode::k_op_subtract);
+	EXPECT_EQ(math->get_operation(), olive::MathNode::k_op_subtract);
+	EXPECT_EQ(math->name(), QStringLiteral("Subtract"));
 }
 
 TEST(MathNode, OperationNames)
 {
-	EXPECT_EQ(olive::MathNodeBase::GetOperationName(olive::MathNode::kOpAdd),
+	EXPECT_EQ(olive::MathNodeBase::get_operation_name(olive::MathNode::k_op_add),
 			  QStringLiteral("Add"));
 	EXPECT_EQ(
-		olive::MathNodeBase::GetOperationName(olive::MathNode::kOpSubtract),
+		olive::MathNodeBase::get_operation_name(olive::MathNode::k_op_subtract),
 		QStringLiteral("Subtract"));
 	EXPECT_EQ(
-		olive::MathNodeBase::GetOperationName(olive::MathNode::kOpMultiply),
+		olive::MathNodeBase::get_operation_name(olive::MathNode::k_op_multiply),
 		QStringLiteral("Multiply"));
-	EXPECT_EQ(olive::MathNodeBase::GetOperationName(olive::MathNode::kOpDivide),
+	EXPECT_EQ(olive::MathNodeBase::get_operation_name(olive::MathNode::k_op_divide),
 			  QStringLiteral("Divide"));
-	EXPECT_EQ(olive::MathNodeBase::GetOperationName(olive::MathNode::kOpPower),
+	EXPECT_EQ(olive::MathNodeBase::get_operation_name(olive::MathNode::k_op_power),
 			  QStringLiteral("Power"));
 
 	// Out-of-range operations produce an empty name
-	EXPECT_TRUE(olive::MathNodeBase::GetOperationName(
+	EXPECT_TRUE(olive::MathNodeBase::get_operation_name(
 					static_cast<olive::MathNode::Operation>(-1))
 					.isEmpty());
 }
@@ -201,17 +201,17 @@ TEST(MathNode, OperationNames)
 TEST(MathNode, RetranslateSetsInputNamesAndComboStrings)
 {
 	olive::MathNode math;
-	math.Retranslate();
+	math.retranslate();
 
-	EXPECT_EQ(math.GetInputName(olive::MathNode::kMethodIn),
+	EXPECT_EQ(math.get_input_name(olive::MathNode::k_method_in),
 			  QStringLiteral("Method"));
-	EXPECT_EQ(math.GetInputName(olive::MathNode::kParamAIn),
+	EXPECT_EQ(math.get_input_name(olive::MathNode::k_param_a_in),
 			  QStringLiteral("Value"));
-	EXPECT_EQ(math.GetInputName(olive::MathNode::kParamBIn),
+	EXPECT_EQ(math.get_input_name(olive::MathNode::k_param_b_in),
 			  QStringLiteral("Value"));
 
 	const QStringList operations =
-		math.GetInputProperty(olive::MathNode::kMethodIn,
+		math.get_input_property(olive::MathNode::k_method_in,
 							  QStringLiteral("combo_str"))
 			.toStringList();
 	ASSERT_EQ(operations.size(), 5);
@@ -226,122 +226,122 @@ TEST(MathNode, RetranslateSetsInputNamesAndComboStrings)
 
 TEST(MathNode, AddNumbers)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpAdd);
-	math->SetStandardValue(olive::MathNode::kParamAIn, 2.0);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 3.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_add);
+	math->set_standard_value(olive::MathNode::k_param_a_in, 2.0);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 3.0);
 
-	olive::NodeValueTable table = GenerateMathTable(math);
-	EXPECT_FLOAT_EQ(table.Get(olive::NodeValue::kFloat).toDouble(), 5.0);
+	olive::NodeValueTable table = generate_math_table(math);
+	EXPECT_FLOAT_EQ(table.get(olive::NodeValue::k_float).to_double(), 5.0);
 }
 
 TEST(MathNode, SubtractNumbers)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpSubtract);
-	math->SetStandardValue(olive::MathNode::kParamAIn, 7.0);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 10.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_subtract);
+	math->set_standard_value(olive::MathNode::k_param_a_in, 7.0);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 10.0);
 
-	olive::NodeValueTable table = GenerateMathTable(math);
-	EXPECT_FLOAT_EQ(table.Get(olive::NodeValue::kFloat).toDouble(), -3.0);
+	olive::NodeValueTable table = generate_math_table(math);
+	EXPECT_FLOAT_EQ(table.get(olive::NodeValue::k_float).to_double(), -3.0);
 }
 
 TEST(MathNode, MultiplyNumbers)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpMultiply);
-	math->SetStandardValue(olive::MathNode::kParamAIn, 2.5);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 4.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_multiply);
+	math->set_standard_value(olive::MathNode::k_param_a_in, 2.5);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 4.0);
 
-	olive::NodeValueTable table = GenerateMathTable(math);
-	EXPECT_FLOAT_EQ(table.Get(olive::NodeValue::kFloat).toDouble(), 10.0);
+	olive::NodeValueTable table = generate_math_table(math);
+	EXPECT_FLOAT_EQ(table.get(olive::NodeValue::k_float).to_double(), 10.0);
 }
 
 TEST(MathNode, DivideNumbers)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpDivide);
-	math->SetStandardValue(olive::MathNode::kParamAIn, 7.0);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 2.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_divide);
+	math->set_standard_value(olive::MathNode::k_param_a_in, 7.0);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 2.0);
 
-	olive::NodeValueTable table = GenerateMathTable(math);
-	EXPECT_FLOAT_EQ(table.Get(olive::NodeValue::kFloat).toDouble(), 3.5);
+	olive::NodeValueTable table = generate_math_table(math);
+	EXPECT_FLOAT_EQ(table.get(olive::NodeValue::k_float).to_double(), 3.5);
 }
 
 TEST(MathNode, PowerNumbers)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpPower);
-	math->SetStandardValue(olive::MathNode::kParamAIn, 2.0);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 10.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_power);
+	math->set_standard_value(olive::MathNode::k_param_a_in, 2.0);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 10.0);
 
-	olive::NodeValueTable table = GenerateMathTable(math);
-	EXPECT_FLOAT_EQ(table.Get(olive::NodeValue::kFloat).toDouble(), 1024.0);
+	olive::NodeValueTable table = generate_math_table(math);
+	EXPECT_FLOAT_EQ(table.get(olive::NodeValue::k_float).to_double(), 1024.0);
 }
 
 TEST(MathNode, DivideByZeroProducesInfinity)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpDivide);
-	math->SetStandardValue(olive::MathNode::kParamAIn, 1.0);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 0.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_divide);
+	math->set_standard_value(olive::MathNode::k_param_a_in, 1.0);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 0.0);
 
-	olive::NodeValueTable table = GenerateMathTable(math);
-	const double result = table.Get(olive::NodeValue::kFloat).toDouble();
+	olive::NodeValueTable table = generate_math_table(math);
+	const double result = table.get(olive::NodeValue::k_float).to_double();
 	EXPECT_TRUE(std::isinf(result));
 	EXPECT_GT(result, 0.0);
 
 	// 0 / 0 yields NaN
-	math->SetStandardValue(olive::MathNode::kParamAIn, 0.0);
-	table = GenerateMathTable(math);
-	EXPECT_TRUE(std::isnan(table.Get(olive::NodeValue::kFloat).toDouble()));
+	math->set_standard_value(olive::MathNode::k_param_a_in, 0.0);
+	table = generate_math_table(math);
+	EXPECT_TRUE(std::isnan(table.get(olive::NodeValue::k_float).to_double()));
 }
 
 TEST(MathNode, ChangingOperationChangesResult)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetStandardValue(olive::MathNode::kParamAIn, 2.0);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 3.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_standard_value(olive::MathNode::k_param_a_in, 2.0);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 3.0);
 
 	const olive::MathNode::Operation ops[] = {
-		olive::MathNode::kOpAdd,	olive::MathNode::kOpSubtract,
-		olive::MathNode::kOpMultiply, olive::MathNode::kOpDivide,
-		olive::MathNode::kOpPower
+		olive::MathNode::k_op_add,	olive::MathNode::k_op_subtract,
+		olive::MathNode::k_op_multiply, olive::MathNode::k_op_divide,
+		olive::MathNode::k_op_power
 	};
 	const double expected[] = { 5.0, -1.0, 6.0, 2.0 / 3.0, 8.0 };
 
 	for (int i = 0; i < 5; i++) {
-		math->SetOperation(ops[i]);
-		olive::NodeValueTable table = GenerateMathTable(math);
-		EXPECT_NEAR(table.Get(olive::NodeValue::kFloat).toDouble(), expected[i],
+		math->set_operation(ops[i]);
+		olive::NodeValueTable table = generate_math_table(math);
+		EXPECT_NEAR(table.get(olive::NodeValue::k_float).to_double(), expected[i],
 					1e-6)
 			<< "Failed at operation index " << i;
 	}
@@ -349,203 +349,203 @@ TEST(MathNode, ChangingOperationChangesResult)
 
 TEST(MathNode, AddSubtractRationalsPreserveRationalType)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
+	olive::MathNode *math = create_math_node(&project);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kRational,
-						 QVariant::fromValue(olive::core::rational(1, 2))));
-	ConstantValueNode *b = CreateConstant(
+		olive::NodeValue(olive::NodeValue::k_rational,
+						 QVariant::fromValue(olive::core::Rational(1, 2))));
+	ConstantValueNode *b = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kRational,
-						 QVariant::fromValue(olive::core::rational(1, 4))));
+		olive::NodeValue(olive::NodeValue::k_rational,
+						 QVariant::fromValue(olive::core::Rational(1, 4))));
 
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
-	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
+	olive::Node::connect_edge(b, olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
-	math->SetOperation(olive::MathNode::kOpAdd);
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kRational);
-	ASSERT_EQ(result.type(), olive::NodeValue::kRational);
-	EXPECT_EQ(result.toRational(), olive::core::rational(3, 4));
+	math->set_operation(olive::MathNode::k_op_add);
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_rational);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_rational);
+	EXPECT_EQ(result.to_rational(), olive::core::Rational(3, 4));
 
-	math->SetOperation(olive::MathNode::kOpSubtract);
-	table = GenerateMathTable(math);
-	result = table.Get(olive::NodeValue::kRational);
-	ASSERT_EQ(result.type(), olive::NodeValue::kRational);
-	EXPECT_EQ(result.toRational(), olive::core::rational(1, 4));
+	math->set_operation(olive::MathNode::k_op_subtract);
+	table = generate_math_table(math);
+	result = table.get(olive::NodeValue::k_rational);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_rational);
+	EXPECT_EQ(result.to_rational(), olive::core::Rational(1, 4));
 }
 
 TEST(MathNode, MultiplyDivideRationalsPreserveRationalType)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
+	olive::MathNode *math = create_math_node(&project);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kRational,
-						 QVariant::fromValue(olive::core::rational(1, 2))));
-	ConstantValueNode *b = CreateConstant(
+		olive::NodeValue(olive::NodeValue::k_rational,
+						 QVariant::fromValue(olive::core::Rational(1, 2))));
+	ConstantValueNode *b = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kRational,
-						 QVariant::fromValue(olive::core::rational(1, 4))));
+		olive::NodeValue(olive::NodeValue::k_rational,
+						 QVariant::fromValue(olive::core::Rational(1, 4))));
 
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
-	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
+	olive::Node::connect_edge(b, olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
-	math->SetOperation(olive::MathNode::kOpMultiply);
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kRational);
-	ASSERT_EQ(result.type(), olive::NodeValue::kRational);
-	EXPECT_EQ(result.toRational(), olive::core::rational(1, 8));
+	math->set_operation(olive::MathNode::k_op_multiply);
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_rational);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_rational);
+	EXPECT_EQ(result.to_rational(), olive::core::Rational(1, 8));
 
-	math->SetOperation(olive::MathNode::kOpDivide);
-	table = GenerateMathTable(math);
-	result = table.Get(olive::NodeValue::kRational);
-	ASSERT_EQ(result.type(), olive::NodeValue::kRational);
-	EXPECT_EQ(result.toRational(), olive::core::rational(2));
+	math->set_operation(olive::MathNode::k_op_divide);
+	table = generate_math_table(math);
+	result = table.get(olive::NodeValue::k_rational);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_rational);
+	EXPECT_EQ(result.to_rational(), olive::core::Rational(2));
 }
 
 TEST(MathNode, PowerOnRationalsProducesFloat)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpPower);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_power);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kRational,
-						 QVariant::fromValue(olive::core::rational(1, 2))));
-	ConstantValueNode *b = CreateConstant(
+		olive::NodeValue(olive::NodeValue::k_rational,
+						 QVariant::fromValue(olive::core::Rational(1, 2))));
+	ConstantValueNode *b = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kRational,
-						 QVariant::fromValue(olive::core::rational(2))));
+		olive::NodeValue(olive::NodeValue::k_rational,
+						 QVariant::fromValue(olive::core::Rational(2))));
 
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
-	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
+	olive::Node::connect_edge(b, olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
 	// Power is not supported on rationals, so the result falls back to float
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kFloat);
-	ASSERT_EQ(result.type(), olive::NodeValue::kFloat);
-	EXPECT_FLOAT_EQ(result.toDouble(), 0.25);
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_float);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_float);
+	EXPECT_FLOAT_EQ(result.to_double(), 0.25);
 }
 
 TEST(MathNode, RationalDividedByZeroProducesNaN)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpDivide);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_divide);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kRational,
-						 QVariant::fromValue(olive::core::rational(1, 2))));
-	ConstantValueNode *b = CreateConstant(
+		olive::NodeValue(olive::NodeValue::k_rational,
+						 QVariant::fromValue(olive::core::Rational(1, 2))));
+	ConstantValueNode *b = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kRational,
-						 QVariant::fromValue(olive::core::rational(0))));
+		olive::NodeValue(olive::NodeValue::k_rational,
+						 QVariant::fromValue(olive::core::Rational(0))));
 
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
-	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
+	olive::Node::connect_edge(b, olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kRational);
-	ASSERT_EQ(result.type(), olive::NodeValue::kRational);
-	EXPECT_TRUE(result.toRational().isNaN());
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_rational);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_rational);
+	EXPECT_TRUE(result.to_rational().isNaN());
 }
 
 TEST(MathNode, MixedRationalAndFloatProducesFloat)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpAdd);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 0.5);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_add);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 0.5);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kRational,
-						 QVariant::fromValue(olive::core::rational(1, 2))));
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
+		olive::NodeValue(olive::NodeValue::k_rational,
+						 QVariant::fromValue(olive::core::Rational(1, 2))));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
 
-	// Only rational+rational preserves the rational type
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kFloat);
-	ASSERT_EQ(result.type(), olive::NodeValue::kFloat);
-	EXPECT_FLOAT_EQ(result.toDouble(), 1.0);
+	// Only Rational+Rational preserves the Rational type
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_float);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_float);
+	EXPECT_FLOAT_EQ(result.to_double(), 1.0);
 }
 
 TEST(MathNode, IntegerInputsProduceFloatResult)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
+	olive::MathNode *math = create_math_node(&project);
 
-	ConstantValueNode *a = CreateConstant(
-		&project, olive::NodeValue(olive::NodeValue::kInt, int64_t(7)));
-	ConstantValueNode *b = CreateConstant(
-		&project, olive::NodeValue(olive::NodeValue::kInt, int64_t(6)));
+	ConstantValueNode *a = create_constant(
+		&project, olive::NodeValue(olive::NodeValue::k_int, int64_t(7)));
+	ConstantValueNode *b = create_constant(
+		&project, olive::NodeValue(olive::NodeValue::k_int, int64_t(6)));
 
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
-	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
+	olive::Node::connect_edge(b, olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
-	math->SetOperation(olive::MathNode::kOpMultiply);
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kFloat);
-	ASSERT_EQ(result.type(), olive::NodeValue::kFloat);
-	EXPECT_FLOAT_EQ(result.toDouble(), 42.0);
+	math->set_operation(olive::MathNode::k_op_multiply);
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_float);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_float);
+	EXPECT_FLOAT_EQ(result.to_double(), 42.0);
 
 	// Mixed int and float
-	olive::Node::DisconnectEdge(b,
-								olive::NodeInput(math, olive::MathNode::kParamBIn));
-	math->SetStandardValue(olive::MathNode::kParamBIn, 0.5);
-	math->SetOperation(olive::MathNode::kOpAdd);
-	table = GenerateMathTable(math);
-	EXPECT_FLOAT_EQ(table.Get(olive::NodeValue::kFloat).toDouble(), 7.5);
+	olive::Node::disconnect_edge(b,
+								olive::NodeInput(math, olive::MathNode::k_param_b_in));
+	math->set_standard_value(olive::MathNode::k_param_b_in, 0.5);
+	math->set_operation(olive::MathNode::k_op_add);
+	table = generate_math_table(math);
+	EXPECT_FLOAT_EQ(table.get(olive::NodeValue::k_float).to_double(), 7.5);
 }
 
 TEST(MathNode, AddVectorsPromotesToLargerType)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpAdd);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_add);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kVec2, QVector2D(1.0f, 2.0f)));
-	ConstantValueNode *b = CreateConstant(
+		olive::NodeValue(olive::NodeValue::k_vec2, QVector2D(1.0f, 2.0f)));
+	ConstantValueNode *b = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kVec3,
+		olive::NodeValue(olive::NodeValue::k_vec3,
 						 QVector3D(10.0f, 20.0f, 30.0f)));
 
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
-	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
+	olive::Node::connect_edge(b, olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kVec3);
-	ASSERT_EQ(result.type(), olive::NodeValue::kVec3);
-	const QVector3D vec = result.toVec3();
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_vec3);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_vec3);
+	const QVector3D vec = result.to_vec3();
 	EXPECT_FLOAT_EQ(vec.x(), 11.0f);
 	EXPECT_FLOAT_EQ(vec.y(), 22.0f);
 	EXPECT_FLOAT_EQ(vec.z(), 30.0f);
@@ -553,29 +553,29 @@ TEST(MathNode, AddVectorsPromotesToLargerType)
 
 TEST(MathNode, SubtractVec4)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpSubtract);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_subtract);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kVec4,
+		olive::NodeValue(olive::NodeValue::k_vec4,
 						 QVector4D(5.0f, 7.0f, 9.0f, 11.0f)));
-	ConstantValueNode *b = CreateConstant(
+	ConstantValueNode *b = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kVec4,
+		olive::NodeValue(olive::NodeValue::k_vec4,
 						 QVector4D(1.0f, 2.0f, 3.0f, 4.0f)));
 
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
-	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
+	olive::Node::connect_edge(b, olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kVec4);
-	ASSERT_EQ(result.type(), olive::NodeValue::kVec4);
-	const QVector4D vec = result.toVec4();
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_vec4);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_vec4);
+	const QVector4D vec = result.to_vec4();
 	EXPECT_FLOAT_EQ(vec.x(), 4.0f);
 	EXPECT_FLOAT_EQ(vec.y(), 5.0f);
 	EXPECT_FLOAT_EQ(vec.z(), 6.0f);
@@ -584,85 +584,85 @@ TEST(MathNode, SubtractVec4)
 
 TEST(MathNode, MultiplyDivideVectorsComponentwise)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
+	olive::MathNode *math = create_math_node(&project);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kVec2, QVector2D(2.0f, 3.0f)));
-	ConstantValueNode *b = CreateConstant(
+		olive::NodeValue(olive::NodeValue::k_vec2, QVector2D(2.0f, 3.0f)));
+	ConstantValueNode *b = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kVec2, QVector2D(4.0f, 5.0f)));
+		olive::NodeValue(olive::NodeValue::k_vec2, QVector2D(4.0f, 5.0f)));
 
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
-	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
+	olive::Node::connect_edge(b, olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
-	math->SetOperation(olive::MathNode::kOpMultiply);
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kVec2);
-	ASSERT_EQ(result.type(), olive::NodeValue::kVec2);
-	EXPECT_FLOAT_EQ(result.toVec2().x(), 8.0f);
-	EXPECT_FLOAT_EQ(result.toVec2().y(), 15.0f);
+	math->set_operation(olive::MathNode::k_op_multiply);
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_vec2);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_vec2);
+	EXPECT_FLOAT_EQ(result.to_vec2().x(), 8.0f);
+	EXPECT_FLOAT_EQ(result.to_vec2().y(), 15.0f);
 
-	math->SetOperation(olive::MathNode::kOpDivide);
-	table = GenerateMathTable(math);
-	result = table.Get(olive::NodeValue::kVec2);
-	ASSERT_EQ(result.type(), olive::NodeValue::kVec2);
-	EXPECT_FLOAT_EQ(result.toVec2().x(), 0.5f);
-	EXPECT_FLOAT_EQ(result.toVec2().y(), 0.6f);
+	math->set_operation(olive::MathNode::k_op_divide);
+	table = generate_math_table(math);
+	result = table.get(olive::NodeValue::k_vec2);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_vec2);
+	EXPECT_FLOAT_EQ(result.to_vec2().x(), 0.5f);
+	EXPECT_FLOAT_EQ(result.to_vec2().y(), 0.6f);
 }
 
 TEST(MathNode, VectorPowerReturnsFirstInputUnchanged)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpPower);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_power);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kVec2, QVector2D(2.0f, 3.0f)));
-	ConstantValueNode *b = CreateConstant(
+		olive::NodeValue(olive::NodeValue::k_vec2, QVector2D(2.0f, 3.0f)));
+	ConstantValueNode *b = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kVec2, QVector2D(4.0f, 5.0f)));
+		olive::NodeValue(olive::NodeValue::k_vec2, QVector2D(4.0f, 5.0f)));
 
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
-	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
+	olive::Node::connect_edge(b, olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
 	// Power is not implemented for vector/vector, the first vector is
 	// returned unchanged
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kVec2);
-	ASSERT_EQ(result.type(), olive::NodeValue::kVec2);
-	EXPECT_FLOAT_EQ(result.toVec2().x(), 2.0f);
-	EXPECT_FLOAT_EQ(result.toVec2().y(), 3.0f);
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_vec2);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_vec2);
+	EXPECT_FLOAT_EQ(result.to_vec2().x(), 2.0f);
+	EXPECT_FLOAT_EQ(result.to_vec2().y(), 3.0f);
 }
 
 TEST(MathNode, MultiplyVectorByNumber)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpMultiply);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 2.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_multiply);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 2.0);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kVec4,
+		olive::NodeValue(olive::NodeValue::k_vec4,
 						 QVector4D(1.0f, 2.0f, 3.0f, 4.0f)));
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
 
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kVec4);
-	ASSERT_EQ(result.type(), olive::NodeValue::kVec4);
-	const QVector4D vec = result.toVec4();
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_vec4);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_vec4);
+	const QVector4D vec = result.to_vec4();
 	EXPECT_FLOAT_EQ(vec.x(), 2.0f);
 	EXPECT_FLOAT_EQ(vec.y(), 4.0f);
 	EXPECT_FLOAT_EQ(vec.z(), 6.0f);
@@ -671,24 +671,24 @@ TEST(MathNode, MultiplyVectorByNumber)
 
 TEST(MathNode, DivideVectorByNumber)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpDivide);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 2.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_divide);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 2.0);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kVec3,
+		olive::NodeValue(olive::NodeValue::k_vec3,
 						 QVector3D(2.0f, 4.0f, 6.0f)));
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
 
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kVec3);
-	ASSERT_EQ(result.type(), olive::NodeValue::kVec3);
-	const QVector3D vec = result.toVec3();
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_vec3);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_vec3);
+	const QVector3D vec = result.to_vec3();
 	EXPECT_FLOAT_EQ(vec.x(), 1.0f);
 	EXPECT_FLOAT_EQ(vec.y(), 2.0f);
 	EXPECT_FLOAT_EQ(vec.z(), 3.0f);
@@ -696,51 +696,51 @@ TEST(MathNode, DivideVectorByNumber)
 
 TEST(MathNode, AddVectorAndNumberIsNoOp)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpAdd);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 5.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_add);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 5.0);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kVec2, QVector2D(1.0f, 2.0f)));
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
+		olive::NodeValue(olive::NodeValue::k_vec2, QVector2D(1.0f, 2.0f)));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
 
 	// Only multiply/divide are implemented for vector+number; add returns
 	// the vector unchanged
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kVec2);
-	ASSERT_EQ(result.type(), olive::NodeValue::kVec2);
-	EXPECT_FLOAT_EQ(result.toVec2().x(), 1.0f);
-	EXPECT_FLOAT_EQ(result.toVec2().y(), 2.0f);
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_vec2);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_vec2);
+	EXPECT_FLOAT_EQ(result.to_vec2().x(), 1.0f);
+	EXPECT_FLOAT_EQ(result.to_vec2().y(), 2.0f);
 }
 
 TEST(MathNode, NumberTimesVectorScalesVector)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpMultiply);
-	math->SetStandardValue(olive::MathNode::kParamAIn, 2.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_multiply);
+	math->set_standard_value(olive::MathNode::k_param_a_in, 2.0);
 
-	ConstantValueNode *b = CreateConstant(
+	ConstantValueNode *b = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kVec4,
+		olive::NodeValue(olive::NodeValue::k_vec4,
 						 QVector4D(1.0f, 2.0f, 3.0f, 4.0f)));
-	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
+	olive::Node::connect_edge(b, olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
 	// With the number in parameter A and the vector in parameter B, the
 	// number is still picked as the number operand and the vector is scaled,
 	// mirroring MultiplyVectorByNumber with the operands swapped
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kVec4);
-	ASSERT_EQ(result.type(), olive::NodeValue::kVec4);
-	const QVector4D vec = result.toVec4();
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_vec4);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_vec4);
+	const QVector4D vec = result.to_vec4();
 	EXPECT_FLOAT_EQ(vec.x(), 2.0f);
 	EXPECT_FLOAT_EQ(vec.y(), 4.0f);
 	EXPECT_FLOAT_EQ(vec.z(), 6.0f);
@@ -749,30 +749,30 @@ TEST(MathNode, NumberTimesVectorScalesVector)
 
 TEST(MathNode, MultiplyMatrixByVector)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpMultiply);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_multiply);
 
 	QMatrix4x4 matrix;
 	matrix.scale(2.0f, 3.0f, 4.0f);
 
-	ConstantValueNode *a = CreateConstant(
-		&project, olive::NodeValue(olive::NodeValue::kMatrix, matrix));
-	ConstantValueNode *b = CreateConstant(
+	ConstantValueNode *a = create_constant(
+		&project, olive::NodeValue(olive::NodeValue::k_matrix, matrix));
+	ConstantValueNode *b = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kVec4,
+		olive::NodeValue(olive::NodeValue::k_vec4,
 						 QVector4D(1.0f, 2.0f, 3.0f, 1.0f)));
 
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
-	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
+	olive::Node::connect_edge(b, olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kVec4);
-	ASSERT_EQ(result.type(), olive::NodeValue::kVec4);
-	const QVector4D vec = result.toVec4();
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_vec4);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_vec4);
+	const QVector4D vec = result.to_vec4();
 	EXPECT_FLOAT_EQ(vec.x(), 2.0f);
 	EXPECT_FLOAT_EQ(vec.y(), 6.0f);
 	EXPECT_FLOAT_EQ(vec.z(), 12.0f);
@@ -781,40 +781,40 @@ TEST(MathNode, MultiplyMatrixByVector)
 
 TEST(MathNode, MatrixMatrixAddAndMultiply)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
+	olive::MathNode *math = create_math_node(&project);
 
 	QMatrix4x4 mat_a;
 	mat_a.scale(2.0f, 3.0f, 4.0f);
 	QMatrix4x4 mat_b;
 	mat_b.scale(3.0f, 4.0f, 5.0f);
 
-	ConstantValueNode *a = CreateConstant(
-		&project, olive::NodeValue(olive::NodeValue::kMatrix, mat_a));
-	ConstantValueNode *b = CreateConstant(
-		&project, olive::NodeValue(olive::NodeValue::kMatrix, mat_b));
+	ConstantValueNode *a = create_constant(
+		&project, olive::NodeValue(olive::NodeValue::k_matrix, mat_a));
+	ConstantValueNode *b = create_constant(
+		&project, olive::NodeValue(olive::NodeValue::k_matrix, mat_b));
 
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
-	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
+	olive::Node::connect_edge(b, olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
-	math->SetOperation(olive::MathNode::kOpMultiply);
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kMatrix);
-	ASSERT_EQ(result.type(), olive::NodeValue::kMatrix);
-	const QMatrix4x4 product = result.toMatrix();
+	math->set_operation(olive::MathNode::k_op_multiply);
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_matrix);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_matrix);
+	const QMatrix4x4 product = result.to_matrix();
 	EXPECT_FLOAT_EQ(product(0, 0), 6.0f);
 	EXPECT_FLOAT_EQ(product(1, 1), 12.0f);
 	EXPECT_FLOAT_EQ(product(2, 2), 20.0f);
 	EXPECT_FLOAT_EQ(product(3, 3), 1.0f);
 
-	math->SetOperation(olive::MathNode::kOpAdd);
-	table = GenerateMathTable(math);
-	result = table.Get(olive::NodeValue::kMatrix);
-	ASSERT_EQ(result.type(), olive::NodeValue::kMatrix);
-	const QMatrix4x4 sum = result.toMatrix();
+	math->set_operation(olive::MathNode::k_op_add);
+	table = generate_math_table(math);
+	result = table.get(olive::NodeValue::k_matrix);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_matrix);
+	const QMatrix4x4 sum = result.to_matrix();
 	EXPECT_FLOAT_EQ(sum(0, 0), 5.0f);
 	EXPECT_FLOAT_EQ(sum(1, 1), 7.0f);
 	EXPECT_FLOAT_EQ(sum(2, 2), 9.0f);
@@ -823,31 +823,31 @@ TEST(MathNode, MatrixMatrixAddAndMultiply)
 
 TEST(MathNode, MatrixDivideReturnsFirstInputUnchanged)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpDivide);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_divide);
 
 	QMatrix4x4 mat_a;
 	mat_a.scale(2.0f, 3.0f, 4.0f);
 	QMatrix4x4 mat_b;
 	mat_b.scale(9.0f, 9.0f, 9.0f);
 
-	ConstantValueNode *a = CreateConstant(
-		&project, olive::NodeValue(olive::NodeValue::kMatrix, mat_a));
-	ConstantValueNode *b = CreateConstant(
-		&project, olive::NodeValue(olive::NodeValue::kMatrix, mat_b));
+	ConstantValueNode *a = create_constant(
+		&project, olive::NodeValue(olive::NodeValue::k_matrix, mat_a));
+	ConstantValueNode *b = create_constant(
+		&project, olive::NodeValue(olive::NodeValue::k_matrix, mat_b));
 
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
-	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
+	olive::Node::connect_edge(b, olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
 	// Divide is not implemented for matrices, the first matrix is returned
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kMatrix);
-	ASSERT_EQ(result.type(), olive::NodeValue::kMatrix);
-	const QMatrix4x4 out = result.toMatrix();
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_matrix);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_matrix);
+	const QMatrix4x4 out = result.to_matrix();
 	EXPECT_FLOAT_EQ(out(0, 0), 2.0f);
 	EXPECT_FLOAT_EQ(out(1, 1), 3.0f);
 	EXPECT_FLOAT_EQ(out(2, 2), 4.0f);
@@ -855,41 +855,41 @@ TEST(MathNode, MatrixDivideReturnsFirstInputUnchanged)
 
 TEST(MathNode, AddAndSubtractColors)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
+	olive::MathNode *math = create_math_node(&project);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kColor,
+		olive::NodeValue(olive::NodeValue::k_color,
 						 QVariant::fromValue(
 							 olive::core::Color(0.1f, 0.2f, 0.3f, 0.4f))));
-	ConstantValueNode *b = CreateConstant(
+	ConstantValueNode *b = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kColor,
+		olive::NodeValue(olive::NodeValue::k_color,
 						 QVariant::fromValue(
 							 olive::core::Color(0.4f, 0.3f, 0.2f, 0.1f))));
 
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
-	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
+	olive::Node::connect_edge(b, olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
-	math->SetOperation(olive::MathNode::kOpAdd);
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kColor);
-	ASSERT_EQ(result.type(), olive::NodeValue::kColor);
-	const olive::core::Color sum = result.toColor();
+	math->set_operation(olive::MathNode::k_op_add);
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_color);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_color);
+	const olive::core::Color sum = result.to_color();
 	EXPECT_FLOAT_EQ(sum.red(), 0.5f);
 	EXPECT_FLOAT_EQ(sum.green(), 0.5f);
 	EXPECT_FLOAT_EQ(sum.blue(), 0.5f);
 	EXPECT_FLOAT_EQ(sum.alpha(), 0.5f);
 
-	math->SetOperation(olive::MathNode::kOpSubtract);
-	table = GenerateMathTable(math);
-	result = table.Get(olive::NodeValue::kColor);
-	ASSERT_EQ(result.type(), olive::NodeValue::kColor);
-	const olive::core::Color diff = result.toColor();
+	math->set_operation(olive::MathNode::k_op_subtract);
+	table = generate_math_table(math);
+	result = table.get(olive::NodeValue::k_color);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_color);
+	const olive::core::Color diff = result.to_color();
 	EXPECT_FLOAT_EQ(diff.red(), -0.3f);
 	EXPECT_FLOAT_EQ(diff.green(), -0.1f);
 	EXPECT_FLOAT_EQ(diff.blue(), 0.1f);
@@ -898,33 +898,33 @@ TEST(MathNode, AddAndSubtractColors)
 
 TEST(MathNode, MultiplyColorsReturnsFirstInputUnchanged)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpMultiply);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_multiply);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kColor,
+		olive::NodeValue(olive::NodeValue::k_color,
 						 QVariant::fromValue(
 							 olive::core::Color(0.1f, 0.2f, 0.3f, 1.0f))));
-	ConstantValueNode *b = CreateConstant(
+	ConstantValueNode *b = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kColor,
+		olive::NodeValue(olive::NodeValue::k_color,
 						 QVariant::fromValue(
 							 olive::core::Color(0.4f, 0.5f, 0.6f, 1.0f))));
 
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
-	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
+	olive::Node::connect_edge(b, olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
 	// Only add/subtract are implemented for colors, the first color is
 	// returned unchanged
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kColor);
-	ASSERT_EQ(result.type(), olive::NodeValue::kColor);
-	const olive::core::Color out = result.toColor();
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_color);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_color);
+	const olive::core::Color out = result.to_color();
 	EXPECT_FLOAT_EQ(out.red(), 0.1f);
 	EXPECT_FLOAT_EQ(out.green(), 0.2f);
 	EXPECT_FLOAT_EQ(out.blue(), 0.3f);
@@ -933,25 +933,25 @@ TEST(MathNode, MultiplyColorsReturnsFirstInputUnchanged)
 
 TEST(MathNode, MultiplyColorByNumber)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpMultiply);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 4.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_multiply);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 4.0);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kColor,
+		olive::NodeValue(olive::NodeValue::k_color,
 						 QVariant::fromValue(
 							 olive::core::Color(0.25f, 0.5f, 0.75f, 1.0f))));
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
 
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kColor);
-	ASSERT_EQ(result.type(), olive::NodeValue::kColor);
-	const olive::core::Color out = result.toColor();
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_color);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_color);
+	const olive::core::Color out = result.to_color();
 	EXPECT_FLOAT_EQ(out.red(), 1.0f);
 	EXPECT_FLOAT_EQ(out.green(), 2.0f);
 	EXPECT_FLOAT_EQ(out.blue(), 3.0f);
@@ -960,27 +960,27 @@ TEST(MathNode, MultiplyColorByNumber)
 
 TEST(MathNode, DivideColorByNumberIsNoOp)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpDivide);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 4.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_divide);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 4.0);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		olive::NodeValue(olive::NodeValue::kColor,
+		olive::NodeValue(olive::NodeValue::k_color,
 						 QVariant::fromValue(
 							 olive::core::Color(0.25f, 0.5f, 0.75f, 1.0f))));
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
 
 	// Only multiply is implemented for color+number, the color is returned
 	// unchanged
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kColor);
-	ASSERT_EQ(result.type(), olive::NodeValue::kColor);
-	const olive::core::Color out = result.toColor();
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_color);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_color);
+	const olive::core::Color out = result.to_color();
 	EXPECT_FLOAT_EQ(out.red(), 0.25f);
 	EXPECT_FLOAT_EQ(out.green(), 0.5f);
 	EXPECT_FLOAT_EQ(out.blue(), 0.75f);
@@ -989,65 +989,65 @@ TEST(MathNode, DivideColorByNumberIsNoOp)
 
 TEST(MathNode, NoPairingForNoneInputLeavesInputsUntouched)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpAdd);
-	math->SetStandardValue(olive::MathNode::kParamAIn, 42.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_add);
+	math->set_standard_value(olive::MathNode::k_param_a_in, 42.0);
 
 	// A kNone value has no valid pairing, so Value() returns without pushing
 	// a result; the inputs do not leak into the output table either
-	ConstantValueNode *b = CreateConstant(&project, olive::NodeValue());
-	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
+	ConstantValueNode *b = create_constant(&project, olive::NodeValue());
+	olive::Node::connect_edge(b, olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
-	olive::NodeValueTable table = GenerateMathTable(math);
-	EXPECT_EQ(table.Get(olive::NodeValue::kFloat).type(),
-			  olive::NodeValue::kNone);
-	EXPECT_EQ(table.Get(olive::NodeValue::kVec4).type(),
-			  olive::NodeValue::kNone);
+	olive::NodeValueTable table = generate_math_table(math);
+	EXPECT_EQ(table.get(olive::NodeValue::k_float).type(),
+			  olive::NodeValue::k_none);
+	EXPECT_EQ(table.get(olive::NodeValue::k_vec4).type(),
+			  olive::NodeValue::k_none);
 }
 
 TEST(MathNode, DisabledNodeDoesNotComputeResult)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpAdd);
-	math->SetStandardValue(olive::MathNode::kParamAIn, 2.0);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 3.0);
-	math->SetStandardValue(olive::Node::kEnabledInput, false);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_add);
+	math->set_standard_value(olive::MathNode::k_param_a_in, 2.0);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 3.0);
+	math->set_standard_value(olive::Node::k_enabled_input, false);
 
 	// The node is bypassed, so the result is one of the inputs rather than
 	// their sum (merged input order is unspecified)
-	olive::NodeValueTable table = GenerateMathTable(math);
-	const double result = table.Get(olive::NodeValue::kFloat).toDouble();
+	olive::NodeValueTable table = generate_math_table(math);
+	const double result = table.get(olive::NodeValue::k_float).to_double();
 	EXPECT_TRUE(result == 2.0 || result == 3.0);
 }
 
 TEST(MathNode, MultiplySamplesByStaticNumber)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpMultiply);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 2.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_multiply);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 2.0);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		SampleValue(MakeSampleBuffer({ 1.0f, 2.0f, 3.0f, 4.0f },
+		sample_value(make_sample_buffer({ 1.0f, 2.0f, 3.0f, 4.0f },
 									 { 5.0f, 6.0f, 7.0f, 8.0f })));
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
 
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kSamples);
-	ASSERT_EQ(result.type(), olive::NodeValue::kSamples);
-	const olive::core::SampleBuffer out = result.toSamples();
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_samples);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_samples);
+	const olive::core::SampleBuffer out = result.to_samples();
 	ASSERT_TRUE(out.is_allocated());
 	ASSERT_EQ(out.sample_count(), 4u);
 	for (int i = 0; i < 4; i++) {
@@ -1058,25 +1058,25 @@ TEST(MathNode, MultiplySamplesByStaticNumber)
 
 TEST(MathNode, AddZeroToSamplesIsNoOpButStillPushesBuffer)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpAdd);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 0.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_add);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 0.0);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		SampleValue(MakeSampleBuffer({ 1.0f, 2.0f, 3.0f, 4.0f },
+		sample_value(make_sample_buffer({ 1.0f, 2.0f, 3.0f, 4.0f },
 									 { 5.0f, 6.0f, 7.0f, 8.0f })));
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
 
 	// Adding 0 is a no-op, but the (unmodified) buffer is still pushed
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kSamples);
-	ASSERT_EQ(result.type(), olive::NodeValue::kSamples);
-	const olive::core::SampleBuffer out = result.toSamples();
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_samples);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_samples);
+	const olive::core::SampleBuffer out = result.to_samples();
 	ASSERT_TRUE(out.is_allocated());
 	for (int i = 0; i < 4; i++) {
 		EXPECT_FLOAT_EQ(out.data(0)[i], float(i + 1));
@@ -1086,23 +1086,23 @@ TEST(MathNode, AddZeroToSamplesIsNoOpButStillPushesBuffer)
 
 TEST(MathNode, DivideSamplesByZeroProducesInfinity)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpDivide);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 0.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_divide);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 0.0);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		SampleValue(MakeSampleBuffer({ 1.0f, -1.0f, 0.0f, 2.0f },
+		sample_value(make_sample_buffer({ 1.0f, -1.0f, 0.0f, 2.0f },
 									 { 1.0f, -1.0f, 0.0f, 2.0f })));
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
 
-	olive::NodeValueTable table = GenerateMathTable(math);
+	olive::NodeValueTable table = generate_math_table(math);
 	const olive::core::SampleBuffer out =
-		table.Get(olive::NodeValue::kSamples).toSamples();
+		table.get(olive::NodeValue::k_samples).to_samples();
 	ASSERT_TRUE(out.is_allocated());
 	for (int channel = 0; channel < 2; channel++) {
 		EXPECT_TRUE(std::isinf(out.data(channel)[0]));
@@ -1114,23 +1114,23 @@ TEST(MathNode, DivideSamplesByZeroProducesInfinity)
 
 TEST(MathNode, PowerSamplesByStaticNumber)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpPower);
-	math->SetStandardValue(olive::MathNode::kParamBIn, 2.0);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_power);
+	math->set_standard_value(olive::MathNode::k_param_b_in, 2.0);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		SampleValue(MakeSampleBuffer({ 1.0f, 2.0f, 3.0f, 4.0f },
+		sample_value(make_sample_buffer({ 1.0f, 2.0f, 3.0f, 4.0f },
 									 { 5.0f, 6.0f, 7.0f, 8.0f })));
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
 
-	olive::NodeValueTable table = GenerateMathTable(math);
+	olive::NodeValueTable table = generate_math_table(math);
 	const olive::core::SampleBuffer out =
-		table.Get(olive::NodeValue::kSamples).toSamples();
+		table.get(olive::NodeValue::k_samples).to_samples();
 	ASSERT_TRUE(out.is_allocated());
 	for (int i = 0; i < 4; i++) {
 		EXPECT_FLOAT_EQ(out.data(0)[i], std::pow(float(i + 1), 2.0f));
@@ -1140,29 +1140,29 @@ TEST(MathNode, PowerSamplesByStaticNumber)
 
 TEST(MathNode, AddSampleBuffersMixesAndKeepsRemainder)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpAdd);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_add);
 
-	ConstantValueNode *a = CreateConstant(
+	ConstantValueNode *a = create_constant(
 		&project,
-		SampleValue(MakeSampleBuffer({ 1.0f, 2.0f, 3.0f, 4.0f },
+		sample_value(make_sample_buffer({ 1.0f, 2.0f, 3.0f, 4.0f },
 									 { 5.0f, 6.0f, 7.0f, 8.0f })));
-	ConstantValueNode *b = CreateConstant(
+	ConstantValueNode *b = create_constant(
 		&project,
-		SampleValue(MakeSampleBuffer({ 10.0f, 20.0f }, { 50.0f, 60.0f })));
+		sample_value(make_sample_buffer({ 10.0f, 20.0f }, { 50.0f, 60.0f })));
 
-	olive::Node::ConnectEdge(a, olive::NodeInput(math, olive::MathNode::kParamAIn));
-	olive::Node::ConnectEdge(b, olive::NodeInput(math, olive::MathNode::kParamBIn));
+	olive::Node::connect_edge(a, olive::NodeInput(math, olive::MathNode::k_param_a_in));
+	olive::Node::connect_edge(b, olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
 	// The output is as long as the longer buffer: overlapping samples are
 	// mixed, the remainder is copied from the longer buffer
-	olive::NodeValueTable table = GenerateMathTable(math);
+	olive::NodeValueTable table = generate_math_table(math);
 	const olive::core::SampleBuffer out =
-		table.Get(olive::NodeValue::kSamples).toSamples();
+		table.get(olive::NodeValue::k_samples).to_samples();
 	ASSERT_TRUE(out.is_allocated());
 	ASSERT_EQ(out.sample_count(), 4u);
 	EXPECT_FLOAT_EQ(out.data(0)[0], 11.0f);
@@ -1177,37 +1177,37 @@ TEST(MathNode, AddSampleBuffersMixesAndKeepsRemainder)
 
 TEST(MathNode, ConnectedNumberProducesSampleJob)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
-	olive::MathNode *math = CreateMathNode(&project);
-	math->SetOperation(olive::MathNode::kOpMultiply);
+	olive::MathNode *math = create_math_node(&project);
+	math->set_operation(olive::MathNode::k_op_multiply);
 
 	// A connected (non-static) number produces a SampleJob instead of
 	// processing the buffer immediately
-	ConstantValueNode *number = CreateConstant(
-		&project, olive::NodeValue(olive::NodeValue::kFloat, 3.0));
-	ConstantValueNode *samples = CreateConstant(
+	ConstantValueNode *number = create_constant(
+		&project, olive::NodeValue(olive::NodeValue::k_float, 3.0));
+	ConstantValueNode *samples = create_constant(
 		&project,
-		SampleValue(MakeSampleBuffer({ 1.0f, 2.0f, 3.0f, 4.0f },
+		sample_value(make_sample_buffer({ 1.0f, 2.0f, 3.0f, 4.0f },
 									 { 5.0f, 6.0f, 7.0f, 8.0f })));
 
-	olive::Node::ConnectEdge(number,
-							 olive::NodeInput(math, olive::MathNode::kParamAIn));
-	olive::Node::ConnectEdge(samples,
-							 olive::NodeInput(math, olive::MathNode::kParamBIn));
+	olive::Node::connect_edge(number,
+							 olive::NodeInput(math, olive::MathNode::k_param_a_in));
+	olive::Node::connect_edge(samples,
+							 olive::NodeInput(math, olive::MathNode::k_param_b_in));
 
-	olive::NodeValueTable table = GenerateMathTable(math);
-	olive::NodeValue result = table.Get(olive::NodeValue::kSamples);
-	ASSERT_EQ(result.type(), olive::NodeValue::kSamples);
+	olive::NodeValueTable table = generate_math_table(math);
+	olive::NodeValue result = table.get(olive::NodeValue::k_samples);
+	ASSERT_EQ(result.type(), olive::NodeValue::k_samples);
 	ASSERT_TRUE(result.canConvert<olive::SampleJob>());
 
 	// Resolve the job on the CPU and verify the processed samples
 	SampleResolvingTraverser resolver;
-	resolver.Resolve(result);
+	resolver.resolve(result);
 
-	const olive::core::SampleBuffer out = result.toSamples();
+	const olive::core::SampleBuffer out = result.to_samples();
 	ASSERT_TRUE(out.is_allocated());
 	ASSERT_EQ(out.sample_count(), 4u);
 	for (int i = 0; i < 4; i++) {
@@ -1219,21 +1219,21 @@ TEST(MathNode, ConnectedNumberProducesSampleJob)
 TEST(MathNode, ProcessSamplesAppliesOperationPerSample)
 {
 	olive::MathNode math;
-	math.SetOperation(olive::MathNode::kOpMultiply);
+	math.set_operation(olive::MathNode::k_op_multiply);
 
 	olive::NodeValueRow row;
-	row.insert(olive::MathNode::kParamAIn,
-			   olive::NodeValue(olive::NodeValue::kFloat, 3.0));
+	row.insert(olive::MathNode::k_param_a_in,
+			   olive::NodeValue(olive::NodeValue::k_float, 3.0));
 
-	olive::core::SampleBuffer input(TestAudioParams(), 2);
-	olive::core::SampleBuffer output(TestAudioParams(), 2);
+	olive::core::SampleBuffer input(test_audio_params(), 2);
+	olive::core::SampleBuffer output(test_audio_params(), 2);
 	input.data(0)[0] = 1.5f;
 	input.data(0)[1] = -2.0f;
 	input.data(1)[0] = 0.25f;
 	input.data(1)[1] = 8.0f;
 
-	math.ProcessSamples(row, input, output, 0);
-	math.ProcessSamples(row, input, output, 1);
+	math.process_samples(row, input, output, 0);
+	math.process_samples(row, input, output, 1);
 
 	EXPECT_FLOAT_EQ(output.data(0)[0], 4.5f);
 	EXPECT_FLOAT_EQ(output.data(0)[1], -6.0f);
@@ -1244,18 +1244,18 @@ TEST(MathNode, ProcessSamplesAppliesOperationPerSample)
 TEST(MathNode, ProcessSamplesUsesSecondParamWhenFirstMissing)
 {
 	olive::MathNode math;
-	math.SetOperation(olive::MathNode::kOpSubtract);
+	math.set_operation(olive::MathNode::k_op_subtract);
 
 	olive::NodeValueRow row;
-	row.insert(olive::MathNode::kParamBIn,
-			   olive::NodeValue(olive::NodeValue::kFloat, 4.0));
+	row.insert(olive::MathNode::k_param_b_in,
+			   olive::NodeValue(olive::NodeValue::k_float, 4.0));
 
-	olive::core::SampleBuffer input(TestAudioParams(), 1);
-	olive::core::SampleBuffer output(TestAudioParams(), 1);
+	olive::core::SampleBuffer input(test_audio_params(), 1);
+	olive::core::SampleBuffer output(test_audio_params(), 1);
 	input.data(0)[0] = 10.0f;
 	input.data(1)[0] = 1.0f;
 
-	math.ProcessSamples(row, input, output, 0);
+	math.process_samples(row, input, output, 0);
 
 	EXPECT_FLOAT_EQ(output.data(0)[0], 6.0f);
 	EXPECT_FLOAT_EQ(output.data(1)[0], -3.0f);
@@ -1264,18 +1264,18 @@ TEST(MathNode, ProcessSamplesUsesSecondParamWhenFirstMissing)
 TEST(MathNode, ProcessSamplesWithoutNumberLeavesOutputUntouched)
 {
 	olive::MathNode math;
-	math.SetOperation(olive::MathNode::kOpMultiply);
+	math.set_operation(olive::MathNode::k_op_multiply);
 
 	// Neither parameter carries a number: output must not be written
 	olive::NodeValueRow row;
 
-	olive::core::SampleBuffer input(TestAudioParams(), 1);
-	olive::core::SampleBuffer output(TestAudioParams(), 1);
+	olive::core::SampleBuffer input(test_audio_params(), 1);
+	olive::core::SampleBuffer output(test_audio_params(), 1);
 	input.data(0)[0] = 10.0f;
 	output.data(0)[0] = 123.0f;
 	output.data(1)[0] = 45.0f;
 
-	math.ProcessSamples(row, input, output, 0);
+	math.process_samples(row, input, output, 0);
 
 	EXPECT_FLOAT_EQ(output.data(0)[0], 123.0f);
 	EXPECT_FLOAT_EQ(output.data(1)[0], 45.0f);
@@ -1286,7 +1286,7 @@ TEST(MathNode, ShaderCodeForNumberAdd)
 	olive::MathNode math;
 
 	const olive::ShaderCode code =
-		math.GetShaderCode(olive::Node::ShaderRequest(QStringLiteral("0.0.2.2")));
+		math.get_shader_code(olive::Node::ShaderRequest(QStringLiteral("0.0.2.2")));
 
 	EXPECT_TRUE(code.vert_code().isEmpty());
 	EXPECT_TRUE(code.frag_code().contains(
@@ -1303,7 +1303,7 @@ TEST(MathNode, ShaderCodeForTextureNumberPower)
 
 	// kOpPower / kPairTextureNumber / kTexture / kFloat
 	const olive::ShaderCode code =
-		math.GetShaderCode(olive::Node::ShaderRequest(QStringLiteral("4.8.10.2")));
+		math.get_shader_code(olive::Node::ShaderRequest(QStringLiteral("4.8.10.2")));
 
 	EXPECT_TRUE(code.vert_code().isEmpty());
 	EXPECT_TRUE(code.frag_code().contains(
@@ -1320,7 +1320,7 @@ TEST(MathNode, ShaderCodeForColorPairUsesVec4Uniforms)
 
 	// kOpAdd / kPairColorColor / kColor / kColor
 	const olive::ShaderCode code =
-		math.GetShaderCode(olive::Node::ShaderRequest(QStringLiteral("0.7.5.5")));
+		math.get_shader_code(olive::Node::ShaderRequest(QStringLiteral("0.7.5.5")));
 
 	EXPECT_TRUE(code.vert_code().isEmpty());
 	EXPECT_TRUE(code.frag_code().contains(
@@ -1337,7 +1337,7 @@ TEST(MathNode, ShaderCodeForTextureMatrixMultiplyHasVertexShader)
 
 	// kOpMultiply / kPairTextureMatrix / kTexture / kMatrix
 	olive::ShaderCode code =
-		math.GetShaderCode(olive::Node::ShaderRequest(QStringLiteral("2.10.10.6")));
+		math.get_shader_code(olive::Node::ShaderRequest(QStringLiteral("2.10.10.6")));
 
 	EXPECT_TRUE(code.frag_code().contains(
 		QStringLiteral("texture(param_a_in, ove_texcoord)")));
@@ -1347,7 +1347,7 @@ TEST(MathNode, ShaderCodeForTextureMatrixMultiplyHasVertexShader)
 		QStringLiteral("gl_Position = param_b_in * a_position;")));
 
 	// Reversed operand order swaps the roles of the parameters
-	code = math.GetShaderCode(
+	code = math.get_shader_code(
 		olive::Node::ShaderRequest(QStringLiteral("2.10.6.10")));
 
 	EXPECT_TRUE(code.frag_code().contains(

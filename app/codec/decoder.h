@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef DECODER_H
-#define DECODER_H
+#ifndef OAK_DECODER_H
+#define OAK_DECODER_H
 
 #include <QFileInfo>
 #include <QMutex>
@@ -43,7 +43,7 @@ using DecoderPtr = std::shared_ptr<Decoder>;
 #define DECODER_DEFAULT_DESTRUCTOR(x) \
 	virtual ~x() override             \
 	{                                 \
-		CloseInternal();              \
+		close_internal();              \
 	}
 
 /**
@@ -65,7 +65,7 @@ using DecoderPtr = std::shared_ptr<Decoder>;
 class Decoder : public QObject {
 	Q_OBJECT
 public:
-	enum RetrieveState { kReady, kFailedToOpen, kIndexUnavailable };
+	enum RetrieveState { k_ready, k_failed_to_open, k_index_unavailable };
 
 	Decoder();
 
@@ -74,16 +74,16 @@ public:
    */
 	virtual QString id() const = 0;
 
-	virtual bool SupportsVideo()
+	virtual bool supports_video()
 	{
 		return false;
 	}
-	virtual bool SupportsAudio()
+	virtual bool supports_audio()
 	{
 		return false;
 	}
 
-	void IncrementAccessTime(qint64 t);
+	void increment_access_time(qint64 t);
 
 	class CodecStream {
 	public:
@@ -100,17 +100,17 @@ public:
 		{
 		}
 
-		bool IsValid() const
+		bool is_valid() const
 		{
 			return !filename_.isEmpty() && stream_ >= 0;
 		}
 
-		bool Exists() const
+		bool exists() const
 		{
 			return QFileInfo::exists(filename_);
 		}
 
-		void Reset()
+		void reset()
 		{
 			*this = CodecStream();
 		}
@@ -152,18 +152,18 @@ public:
    * already open and the stream == the stream provided. Returns FALSE if the stream couldn't
    * be opened OR if already open and the stream is NOT the same.
    */
-	bool Open(const CodecStream &stream);
+	bool open(const CodecStream &stream);
 
-	static const rational kAnyTimecode;
+	static const Rational k_any_timecode;
 
 	struct RetrieveVideoParams {
 		Renderer *renderer = nullptr;
-		rational time;
+		Rational time;
 		int divider = 1;
-		PixelFormat maximum_format = PixelFormat::INVALID;
+		PixelFormat maximum_format = PixelFormat::invalid;
 		CancelAtom *cancelled = nullptr;
-		VideoParams::ColorRange force_range = VideoParams::kColorRangeDefault;
-		VideoParams::Interlacing src_interlacing = VideoParams::kInterlaceNone;
+		VideoParams::ColorRange force_range = VideoParams::k_color_range_default;
+		VideoParams::Interlacing src_interlacing = VideoParams::k_interlace_none;
 	};
 
 	/**
@@ -176,7 +176,7 @@ public:
    *
    * This function is thread safe and can only run while the decoder is open. \see Open()
    */
-	TexturePtr RetrieveVideo(const RetrieveVideoParams &p);
+	TexturePtr retrieve_video(const RetrieveVideoParams &p);
 
 	/**
    * @brief Retrieves a decoded video frame in CPU memory.
@@ -184,13 +184,13 @@ public:
    * Used by render-process isolation to decode media in the main process and pass packed pixel
    * data to workers through shared memory.
    */
-	FramePtr RetrieveVideoFrame(const RetrieveVideoParams &p);
+	FramePtr retrieve_video_frame(const RetrieveVideoParams &p);
 
 	enum RetrieveAudioStatus {
-		kInvalid = -1,
-		kOK,
-		kWaitingForConform,
-		kUnknownError
+		k_invalid = -1,
+		k_ok,
+		k_waiting_for_conform,
+		k_unknown_error
 	};
 
 	/**
@@ -202,14 +202,14 @@ public:
    * This function is thread safe and can only run while the decoder is open. \see Open()
    */
 	RetrieveAudioStatus
-	RetrieveAudio(SampleBuffer &dest, const TimeRange &range,
+	retrieve_audio(SampleBuffer &dest, const TimeRange &range,
 				  const AudioParams &params, const QString &cache_path,
 				  LoopMode loop_mode, RenderMode::Mode mode);
 
 	/**
    * @brief Determine the last time this decoder instance was used in any way
    */
-	qint64 GetLastAccessedTime();
+	qint64 get_last_accessed_time();
 
 	/**
    * @brief Generate a Footage object from a file
@@ -222,7 +222,7 @@ public:
    *
    * This function is re-entrant.
    */
-	virtual FootageDescription Probe(const QString &filename,
+	virtual FootageDescription probe(const QString &filename,
 									 CancelAtom *cancelled) const = 0;
 
 	/**
@@ -230,12 +230,12 @@ public:
    *
    * This function is thread safe and can only run while the decoder is open. \see Open()
    */
-	void Close();
+	void close();
 
 	/**
    * @brief Conform audio stream
    */
-	bool ConformAudio(const QVector<QString> &output_filenames,
+	bool conform_audio(const QVector<QString> &output_filenames,
 					  const AudioParams &params,
 					  CancelAtom *cancelled = nullptr);
 
@@ -246,16 +246,16 @@ public:
    *
    * A Decoder instance or nullptr if a Decoder with this ID does not exist
    */
-	static DecoderPtr CreateFromID(const QString &id);
+	static DecoderPtr create_from_id(const QString &id);
 
-	static QString TransformImageSequenceFileName(const QString &filename,
+	static QString transform_image_sequence_file_name(const QString &filename,
 												  const int64_t &number);
 
-	static int GetImageSequenceDigitCount(const QString &filename);
+	static int get_image_sequence_digit_count(const QString &filename);
 
-	static int64_t GetImageSequenceIndex(const QString &filename);
+	static int64_t get_image_sequence_index(const QString &filename);
 
-	static QVector<DecoderPtr> ReceiveListOfAllDecoders();
+	static QVector<DecoderPtr> receive_list_of_all_decoders();
 
 protected:
 	/**
@@ -267,10 +267,10 @@ protected:
    * decoder is not open yet and that the footage stream was from that sub-classes probe function.
    *
    * Return TRUE if everything opened successfully and the decoder is ready to work. Otherwise,
-   * return FALSE. If this function returns false, Decoder will call CloseInternal to clean any
+   * return FALSE. If this function returns false, Decoder will call close_internal to clean any
    * memory allocated during OpenInternal.
    */
-	virtual bool OpenInternal() = 0;
+	virtual bool open_internal() = 0;
 
 	/**
    * @brief Internal close function
@@ -278,7 +278,7 @@ protected:
    * Sub-classes must override this function. Function should be able to safely clear all allocated
    * memory. It may be called even if Open() didn't complete or RetrieveVideo() was never called.
    */
-	virtual void CloseInternal() = 0;
+	virtual void close_internal() = 0;
 
 	/**
    * @brief Internal frame retrieval function
@@ -286,15 +286,15 @@ protected:
    * Sub-classes must override this function IF they support video. Function is already mutexed
    * so sub-classes don't need to worry about thread safety.
    */
-	virtual TexturePtr RetrieveVideoInternal(const RetrieveVideoParams &p);
+	virtual TexturePtr retrieve_video_internal(const RetrieveVideoParams &p);
 
-	virtual FramePtr RetrieveVideoFrameInternal(const RetrieveVideoParams &p);
+	virtual FramePtr retrieve_video_frame_internal(const RetrieveVideoParams &p);
 
-	virtual bool ConformAudioInternal(const QVector<QString> &filenames,
+	virtual bool conform_audio_internal(const QVector<QString> &filenames,
 									  const AudioParams &params,
 									  CancelAtom *cancelled);
 
-	void SignalProcessingProgress(int64_t ts, int64_t duration);
+	void signal_processing_progress(int64_t ts, int64_t duration);
 
 	/**
    * @brief Return currently open stream
@@ -306,7 +306,7 @@ protected:
 		return stream_;
 	}
 
-	virtual rational GetAudioStartOffset() const
+	virtual Rational get_audio_start_offset() const
 	{
 		return 0;
 	}
@@ -316,12 +316,12 @@ signals:
    * @brief While indexing, this signal will provide progress as a percentage (0-100 inclusive) if
    * available
    */
-	void IndexProgress(double);
+	void index_progress(double);
 
 private:
-	void UpdateLastAccessed();
+	void update_last_accessed();
 
-	bool RetrieveAudioFromConform(SampleBuffer &sample_buffer,
+	bool retrieve_audio_from_conform(SampleBuffer &sample_buffer,
 								  const QVector<QString> &conform_filenames,
 								  TimeRange range, LoopMode loop_mode,
 								  const AudioParams &params);
@@ -333,7 +333,7 @@ private:
 	std::atomic_int64_t last_accessed_;
 
 	TexturePtr cached_texture_;
-	rational cached_time_;
+	Rational cached_time_;
 	int cached_divider_;
 };
 
@@ -343,4 +343,4 @@ uint qHash(Decoder::CodecStream stream, uint seed = 0);
 
 Q_DECLARE_METATYPE(olive::Decoder::RetrieveState)
 
-#endif // DECODER_H
+#endif // OAK_DECODER_H

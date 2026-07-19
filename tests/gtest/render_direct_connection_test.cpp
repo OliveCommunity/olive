@@ -47,13 +47,13 @@ using namespace olive;
 namespace
 {
 
-QString DemoVideoPath()
+QString demo_video_path()
 {
 	return QDir(QStringLiteral(OAK_TEST_SOURCE_DIR))
 		.filePath(QStringLiteral("tests/demo.mp4"));
 }
 
-QString WorkerBinaryPath()
+QString worker_binary_path()
 {
 	// The test binary lives in cmake-build-debug/tests/gtest; the worker is in
 	// cmake-build-debug/app.
@@ -68,30 +68,30 @@ QString WorkerBinaryPath()
 #endif
 }
 
-bool IsRenderBackendAvailable(const QString &backend)
+bool is_render_backend_available(const QString &backend)
 {
 #ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
 	olive::DynamicRenderer renderer(backend);
-	if (!renderer.Load()) {
+	if (!renderer.load()) {
 		return false;
 	}
 
 	OakRenderBackendInfo info = {};
-	if (!renderer.GetBackendInfo(&info)) {
+	if (!renderer.get_backend_info(&info)) {
 		return false;
 	}
 
 	if (backend == QStringLiteral("vulkan") &&
-		info.kind != OAK_RENDER_BACKEND_VULKAN) {
+		info.kind != oak_render_backend_vulkan) {
 		return false;
 	}
 
 	if (backend == QStringLiteral("opengl") &&
-		info.kind != OAK_RENDER_BACKEND_OPENGL) {
+		info.kind != oak_render_backend_opengl) {
 		return false;
 	}
 
-	return renderer.Init();
+	return renderer.init();
 #else
 	Q_UNUSED(backend)
 	return false;
@@ -100,7 +100,7 @@ bool IsRenderBackendAvailable(const QString &backend)
 
 // Returns the number of non-zero bytes sampled from the frame buffer, or -1
 // when the frame is invalid.
-int CountNonZeroBytes(const FramePtr &frame)
+int count_non_zero_bytes(const FramePtr &frame)
 {
 	if (!frame || !frame->is_allocated()) {
 		return -1;
@@ -128,17 +128,17 @@ protected:
 	{
 		// Mirror Core::Start()'s singleton initialization order (RenderManager
 		// is created per-test instead, so that each backend gets a fresh one).
-		NodeFactory::Initialize();
-		ColorManager::SetUpDefaultConfig();
-		TaskManager::CreateInstance();
-		ConformManager::CreateInstance();
-		ProxyManager::CreateInstance();
-		FrameManager::CreateInstance();
-		ProjectSerializer::Initialize();
-		DiskManager::CreateInstance();
+		NodeFactory::initialize();
+		ColorManager::set_up_default_config();
+		TaskManager::create_instance();
+		ConformManager::create_instance();
+		ProxyManager::create_instance();
+		FrameManager::create_instance();
+		ProjectSerializer::initialize();
+		DiskManager::create_instance();
 
 		// Point the worker pool at the built worker binary.
-		const QString worker = WorkerBinaryPath();
+		const QString worker = worker_binary_path();
 		if (QFileInfo::exists(worker)) {
 			qputenv("OAK_RENDER_WORKER", QFile::encodeName(worker));
 		}
@@ -146,69 +146,69 @@ protected:
 
 	static void TearDownTestSuite()
 	{
-		DiskManager::DestroyInstance();
-		ProjectSerializer::Destroy();
-		FrameManager::DestroyInstance();
-		ProxyManager::DestroyInstance();
-		ConformManager::DestroyInstance();
-		TaskManager::DestroyInstance();
-		NodeFactory::Destroy();
+		DiskManager::destroy_instance();
+		ProjectSerializer::destroy();
+		FrameManager::destroy_instance();
+		ProxyManager::destroy_instance();
+		ConformManager::destroy_instance();
+		TaskManager::destroy_instance();
+		NodeFactory::destroy();
 	}
 
 	void SetUp() override
 	{
 		backend_ = GetParam();
-		if (!IsRenderBackendAvailable(backend_)) {
+		if (!is_render_backend_available(backend_)) {
 			GTEST_SKIP() << "Render backend is not available: "
 						 << backend_.toStdString();
 		}
 
-		const QString worker = WorkerBinaryPath();
+		const QString worker = worker_binary_path();
 		if (!QFileInfo::exists(worker)) {
 			GTEST_SKIP() << "worker binary not found at "
 						 << worker.toStdString();
 		}
 
-		demo_path_ = DemoVideoPath();
+		demo_path_ = demo_video_path();
 		ASSERT_TRUE(QFileInfo::exists(demo_path_));
 
-		Config::Current()[QStringLiteral("GraphicsBackend")] = backend_;
+		Config::current()[QStringLiteral("GraphicsBackend")] = backend_;
 
 		project_ = std::make_unique<Project>();
-		project_->Initialize();
+		project_->initialize();
 
 		footage_ = new Footage(demo_path_);
 		footage_->setParent(project_.get());
-		ASSERT_TRUE(footage_->IsValid())
+		ASSERT_TRUE(footage_->is_valid())
 			<< "Footage failed to probe " << demo_path_.toStdString();
 
-		RenderManager::CreateInstance();
-		RenderManager::instance()->GetCacher()->SetProject(project_.get());
+		RenderManager::create_instance();
+		RenderManager::instance()->get_cacher()->set_project(project_.get());
 	}
 
 	void TearDown() override
 	{
 		// May be null when SetUp() skipped before creating the instance.
 		if (RenderManager::instance()) {
-			RenderManager::instance()->GetCacher()->SetProject(nullptr);
-			RenderManager::DestroyInstance();
+			RenderManager::instance()->get_cacher()->set_project(nullptr);
+			RenderManager::destroy_instance();
 		}
 		project_.reset();
 	}
 
 	// Renders one frame through the application's preview path and returns the
 	// resulting CPU frame (nullptr on failure/timeout).
-	FramePtr RenderOneFrame(ViewerOutput *viewer)
+	FramePtr render_one_frame(ViewerOutput *viewer)
 	{
 		RenderTicketPtr ticket =
-			RenderManager::instance()->GetCacher()->GetSingleFrame(
-				viewer, rational(0), false);
+			RenderManager::instance()->get_cacher()->get_single_frame(
+				viewer, Rational(0), false);
 		if (!ticket) {
 			return nullptr;
 		}
 
 		std::atomic<bool> finished{ false };
-		QObject::connect(ticket.get(), &RenderTicket::Finished,
+		QObject::connect(ticket.get(), &RenderTicket::finished,
 						 [&finished]() { finished = true; });
 
 		QElapsedTimer timer;
@@ -218,11 +218,11 @@ protected:
 			QThread::msleep(5);
 		}
 
-		if (!finished.load() || !ticket->HasResult()) {
+		if (!finished.load() || !ticket->has_result()) {
 			return nullptr;
 		}
 
-		return ticket->Get().value<FramePtr>();
+		return ticket->get().value<FramePtr>();
 	}
 
 	QString backend_;
@@ -239,20 +239,20 @@ TEST_P(RenderDirectConnectionTest, DirectConnectionIsNotBlack)
 	viewer->setParent(project_.get());
 
 	// Direct connection: footage -> viewer
-	Node::ConnectEdge(footage_, NodeInput(viewer, ViewerOutput::kTextureInput));
+	Node::connect_edge(footage_, NodeInput(viewer, ViewerOutput::k_texture_input));
 
-	FramePtr frame = RenderOneFrame(viewer);
+	FramePtr frame = render_one_frame(viewer);
 	ASSERT_TRUE(frame != nullptr)
 		<< "Direct connection render produced no frame (timeout or empty "
 		   "ticket)";
 	ASSERT_TRUE(frame->is_allocated());
 
-	int nonzero = CountNonZeroBytes(frame);
+	int nonzero = count_non_zero_bytes(frame);
 	EXPECT_GT(nonzero, 0)
 		<< "Direct connection render is BLACK (all sampled bytes are zero)";
 
-	Node::DisconnectEdge(footage_,
-						 NodeInput(viewer, ViewerOutput::kTextureInput));
+	Node::disconnect_edge(footage_,
+						 NodeInput(viewer, ViewerOutput::k_texture_input));
 }
 
 // Same as above but with an effect node between footage and viewer. This is
@@ -266,16 +266,16 @@ TEST_P(RenderDirectConnectionTest, IndirectConnectionIsNotBlack)
 	opacity->setParent(project_.get());
 
 	// Indirect connection: footage -> opacity -> viewer
-	Node::ConnectEdge(footage_,
-					  NodeInput(opacity, OpacityEffect::kTextureInput));
-	Node::ConnectEdge(opacity, NodeInput(viewer, ViewerOutput::kTextureInput));
+	Node::connect_edge(footage_,
+					  NodeInput(opacity, OpacityEffect::k_texture_input));
+	Node::connect_edge(opacity, NodeInput(viewer, ViewerOutput::k_texture_input));
 
-	FramePtr frame = RenderOneFrame(viewer);
+	FramePtr frame = render_one_frame(viewer);
 	ASSERT_TRUE(frame != nullptr) << "Indirect connection render produced no "
 									 "frame (timeout or empty ticket)";
 	ASSERT_TRUE(frame->is_allocated());
 
-	int nonzero = CountNonZeroBytes(frame);
+	int nonzero = count_non_zero_bytes(frame);
 	EXPECT_GT(nonzero, 0)
 		<< "Indirect connection render is BLACK (all sampled bytes are zero)";
 }
@@ -288,26 +288,26 @@ INSTANTIATE_TEST_SUITE_P(Backends, RenderDirectConnectionTest,
 // 1280x720, forcing a rescale when the frame is downloaded in the worker.
 class RenderResolutionMismatchTest : public RenderDirectConnectionTest {
 protected:
-	ViewerOutput *CreateSmallViewer()
+	ViewerOutput *create_small_viewer()
 	{
 		ViewerOutput *viewer = new ViewerOutput();
 		viewer->setParent(project_.get());
-		viewer->SetVideoParams(VideoParams(
-			1280, 720, rational(24),
+		viewer->set_video_params(VideoParams(
+			1280, 720, Rational(24),
 			static_cast<PixelFormat::Format>(
-				Config::Current()[QStringLiteral("OfflinePixelFormat")]
+				Config::current()[QStringLiteral("OfflinePixelFormat")]
 					.toInt()),
-			VideoParams::kInternalChannelCount, rational(1),
-			VideoParams::kInterlaceNone, 1));
+			VideoParams::k_internal_channel_count, Rational(1),
+			VideoParams::k_interlace_none, 1));
 		return viewer;
 	}
 
-	void ExpectFrameNotBlack(FramePtr frame, const char *what)
+	void expect_frame_not_black(FramePtr frame, const char *what)
 	{
 		ASSERT_TRUE(frame != nullptr)
 			<< what << " render produced no frame (timeout or empty ticket)";
 		ASSERT_TRUE(frame->is_allocated());
-		EXPECT_GT(CountNonZeroBytes(frame), 0)
+		EXPECT_GT(count_non_zero_bytes(frame), 0)
 			<< what << " render is BLACK (all sampled bytes are zero)";
 	}
 };
@@ -316,30 +316,30 @@ protected:
 // footage-sized texture into the viewer-sized output frame.
 TEST_P(RenderResolutionMismatchTest, DirectConnectionNotBlack)
 {
-	ViewerOutput *viewer = CreateSmallViewer();
-	Node::ConnectEdge(footage_, NodeInput(viewer, ViewerOutput::kTextureInput));
+	ViewerOutput *viewer = create_small_viewer();
+	Node::connect_edge(footage_, NodeInput(viewer, ViewerOutput::k_texture_input));
 
-	ExpectFrameNotBlack(RenderOneFrame(viewer),
+	expect_frame_not_black(render_one_frame(viewer),
 						"Direct connection (resolution mismatch)");
 
-	Node::DisconnectEdge(footage_,
-						 NodeInput(viewer, ViewerOutput::kTextureInput));
+	Node::disconnect_edge(footage_,
+						 NodeInput(viewer, ViewerOutput::k_texture_input));
 }
 
 // Opacity passes the footage-sized texture through, so the worker still has
 // to rescale at download time. Control case for the direct test above.
 TEST_P(RenderResolutionMismatchTest, IndirectOpacityNotBlack)
 {
-	ViewerOutput *viewer = CreateSmallViewer();
+	ViewerOutput *viewer = create_small_viewer();
 
 	OpacityEffect *opacity = new OpacityEffect();
 	opacity->setParent(project_.get());
 
-	Node::ConnectEdge(footage_,
-					  NodeInput(opacity, OpacityEffect::kTextureInput));
-	Node::ConnectEdge(opacity, NodeInput(viewer, ViewerOutput::kTextureInput));
+	Node::connect_edge(footage_,
+					  NodeInput(opacity, OpacityEffect::k_texture_input));
+	Node::connect_edge(opacity, NodeInput(viewer, ViewerOutput::k_texture_input));
 
-	ExpectFrameNotBlack(RenderOneFrame(viewer),
+	expect_frame_not_black(render_one_frame(viewer),
 						"Indirect opacity (resolution mismatch)");
 }
 
@@ -347,19 +347,19 @@ TEST_P(RenderResolutionMismatchTest, IndirectOpacityNotBlack)
 // rescale is needed at download time. This mirrors the timeline chain.
 TEST_P(RenderResolutionMismatchTest, IndirectTransformNotBlack)
 {
-	ViewerOutput *viewer = CreateSmallViewer();
+	ViewerOutput *viewer = create_small_viewer();
 
 	TransformDistortNode *transform = new TransformDistortNode();
 	transform->setParent(project_.get());
 	// 1 = Fit
-	transform->SetStandardValue(TransformDistortNode::kAutoscaleInput, 1);
+	transform->set_standard_value(TransformDistortNode::k_autoscale_input, 1);
 
-	Node::ConnectEdge(footage_,
-					  NodeInput(transform, TransformDistortNode::kTextureInput));
-	Node::ConnectEdge(transform,
-					  NodeInput(viewer, ViewerOutput::kTextureInput));
+	Node::connect_edge(footage_,
+					  NodeInput(transform, TransformDistortNode::k_texture_input));
+	Node::connect_edge(transform,
+					  NodeInput(viewer, ViewerOutput::k_texture_input));
 
-	ExpectFrameNotBlack(RenderOneFrame(viewer),
+	expect_frame_not_black(render_one_frame(viewer),
 						"Indirect transform (resolution mismatch)");
 }
 

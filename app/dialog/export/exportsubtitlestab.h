@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef EXPORTSUBTITLESTAB_H
-#define EXPORTSUBTITLESTAB_H
+#ifndef OAK_EXPORTSUBTITLESTAB_H
+#define OAK_EXPORTSUBTITLESTAB_H
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -38,35 +38,35 @@ class ExportSubtitlesTab : public QWidget {
 public:
 	ExportSubtitlesTab(QWidget *parent = nullptr);
 
-	bool GetSidecarEnabled() const
+	bool get_sidecar_enabled() const
 	{
 		return sidecar_checkbox_->isChecked();
 	}
-	void SetSidecarEnabled(bool e)
+	void set_sidecar_enabled(bool e)
 	{
 		sidecar_checkbox_->setChecked(e);
 	}
 
-	ExportFormat::Format GetSidecarFormat() const
+	ExportFormat::Format get_sidecar_format() const
 	{
-		return sidecar_format_combobox_->GetFormat();
+		return sidecar_format_combobox_->get_format();
 	}
-	void SetSidecarFormat(ExportFormat::Format f)
+	void set_sidecar_format(ExportFormat::Format f)
 	{
-		sidecar_format_combobox_->SetFormat(f);
+		sidecar_format_combobox_->set_format(f);
 	}
 
-	int SetFormat(ExportFormat::Format format);
+	int set_format(ExportFormat::Format format);
 
-	ExportCodec::Codec GetSubtitleCodec()
+	ExportCodec::Codec get_subtitle_codec()
 	{
 		return static_cast<ExportCodec::Codec>(
 			codec_combobox_->currentData().toInt());
 	}
 
-	void SetSubtitleCodec(ExportCodec::Codec c)
+	void set_subtitle_codec(ExportCodec::Codec c)
 	{
-		QtUtils::SetComboBoxData(codec_combobox_, c);
+		QtUtils::set_combo_box_data(codec_combobox_, c);
 	}
 
 private:
@@ -80,4 +80,4 @@ private:
 
 }
 
-#endif // EXPORTSUBTITLESTAB_H
+#endif // OAK_EXPORTSUBTITLESTAB_H

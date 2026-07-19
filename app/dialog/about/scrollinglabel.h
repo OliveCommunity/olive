@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SCROLLINGLABEL_H
-#define SCROLLINGLABEL_H
+#ifndef OAK_SCROLLINGLABEL_H
+#define OAK_SCROLLINGLABEL_H
 
 #include <QTimer>
 #include <QWidget>
@@ -34,14 +34,14 @@ public:
 	ScrollingLabel(QWidget *parent = nullptr);
 	ScrollingLabel(const QStringList &text, QWidget *parent = nullptr);
 
-	void SetText(const QStringList &text);
+	void set_text(const QStringList &text);
 
-	void StartAnimating()
+	void start_animating()
 	{
 		timer_.start();
 	}
 
-	void StopAnimating()
+	void stop_animating()
 	{
 		timer_.stop();
 	}
@@ -50,10 +50,10 @@ protected:
 	virtual void paintEvent(QPaintEvent *e) override;
 
 private:
-	static void SetOpacityOfScanLine(uchar *scan_line, int width, int channels,
+	static void set_opacity_of_scan_line(uchar *scan_line, int width, int channels,
 									 double mul);
 
-	static const int kMinLineHeight;
+	static const int k_min_line_height;
 
 	QStringList text_;
 
@@ -64,9 +64,9 @@ private:
 	int animate_;
 
 private slots:
-	void AnimationUpdate();
+	void animation_update();
 };
 
 }
 
-#endif // SCROLLINGLABEL_H
+#endif // OAK_SCROLLINGLABEL_H

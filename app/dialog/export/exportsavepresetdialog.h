@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef EXPORTSAVEPRESETDIALOG_H
-#define EXPORTSAVEPRESETDIALOG_H
+#ifndef OAK_EXPORTSAVEPRESETDIALOG_H
+#define OAK_EXPORTSAVEPRESETDIALOG_H
 
 #include <QDialog>
 #include <QLineEdit>
@@ -36,7 +36,7 @@ class ExportSavePresetDialog : public QDialog {
 public:
 	ExportSavePresetDialog(const EncodingParams &p, QWidget *parent = nullptr);
 
-	QString GetSelectedPresetName() const
+	QString get_selected_preset_name() const
 	{
 		return name_edit_->text();
 	}
@@ -52,4 +52,4 @@ private:
 
 }
 
-#endif // EXPORTSAVEPRESETDIALOG_H
+#endif // OAK_EXPORTSAVEPRESETDIALOG_H

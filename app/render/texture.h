@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef RENDERTEXTURE_H
-#define RENDERTEXTURE_H
+#ifndef OAK_RENDERTEXTURE_H
+#define OAK_RENDERTEXTURE_H
 
 #include "common/avframeptr.h"
 
@@ -44,9 +44,9 @@ using TexturePtr = std::shared_ptr<Texture>;
 
 class Texture {
 public:
-	enum Interpolation { kNearest, kLinear, kMipmappedLinear };
+	enum Interpolation { k_nearest, k_linear, k_mipmapped_linear };
 
-	static const Interpolation kDefaultInterpolation;
+	static const Interpolation k_default_interpolation;
 
 	/**
    * @brief Construct a dummy texture with no renderer backend
@@ -93,21 +93,21 @@ public:
 	}
 
 	template <typename T>
-	static TexturePtr Job(const VideoParams &p, const T &j)
+	static TexturePtr job(const VideoParams &p, const T &j)
 	{
 		return std::make_shared<Texture>(p, j);
 	}
 
-	template <typename T> TexturePtr toJob(const T &job)
+	template <typename T> TexturePtr to_job(const T &job)
 	{
-		return Texture::Job(params_, job);
+		return Texture::job(params_, job);
 	}
 
-	void Upload(void *data, int linesize);
+	void upload(void *data, int linesize);
 
-	void Download(void *data, int linesize);
+	void download(void *data, int linesize);
 
-	bool IsDummy() const
+	bool is_dummy() const
 	{
 		return !renderer_;
 	}
@@ -142,7 +142,7 @@ public:
 		return params_.divider();
 	}
 
-	const rational &pixel_aspect_ratio() const
+	const Rational &pixel_aspect_ratio() const
 	{
 		return params_.pixel_aspect_ratio();
 	}
@@ -152,7 +152,7 @@ public:
 		return renderer_;
 	}
 
-	bool IsJob() const
+	bool is_job() const
 	{
 		return job_;
 	}
@@ -160,7 +160,7 @@ public:
 	{
 		return job_;
 	}
-	void handleFrame(AVFramePtr ptr)
+	void handle_frame(AVFramePtr ptr)
 	{
 		frame_ = ptr;
 	}
@@ -170,7 +170,7 @@ public:
 	}
 
 private:
-	bool IsRendererAlive() const
+	bool is_renderer_alive() const
 	{
 		return renderer_ &&
 			   (!renderer_lifetime_ || renderer_lifetime_->alive.load());
@@ -192,4 +192,4 @@ private:
 
 Q_DECLARE_METATYPE(olive::TexturePtr)
 
-#endif // RENDERTEXTURE_H
+#endif // OAK_RENDERTEXTURE_H

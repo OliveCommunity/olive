@@ -30,7 +30,7 @@ ColumnedGridLayout::ColumnedGridLayout(QWidget *parent, int maximum_columns)
 {
 }
 
-void ColumnedGridLayout::Add(QWidget *widget)
+void ColumnedGridLayout::add(QWidget *widget)
 {
 	if (maximum_columns_ > 0) {
 		int row = count() / maximum_columns_;
@@ -43,12 +43,12 @@ void ColumnedGridLayout::Add(QWidget *widget)
 	}
 }
 
-int ColumnedGridLayout::MaximumColumns() const
+int ColumnedGridLayout::maximum_columns() const
 {
 	return maximum_columns_;
 }
 
-void ColumnedGridLayout::SetMaximumColumns(int maximum_columns)
+void ColumnedGridLayout::set_maximum_columns(int maximum_columns)
 {
 	maximum_columns_ = maximum_columns;
 }

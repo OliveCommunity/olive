@@ -31,49 +31,49 @@
 namespace olive
 {
 
-const int ResizableScrollBar::kHandleWidth = 10;
+const int ResizableScrollBar::k_handle_width = 10;
 
 ResizableScrollBar::ResizableScrollBar(QWidget *parent)
 	: QScrollBar(parent)
 {
-	Init();
+	init();
 }
 
 ResizableScrollBar::ResizableScrollBar(Qt::Orientation orientation,
 									   QWidget *parent)
 	: QScrollBar(orientation, parent)
 {
-	Init();
+	init();
 }
 
 void ResizableScrollBar::mousePressEvent(QMouseEvent *event)
 {
-	if (mouse_handle_state_ == kNotInHandle) {
+	if (mouse_handle_state_ == k_not_in_handle) {
 		QScrollBar::mousePressEvent(event);
 	} else {
 		dragging_ = true;
 
-		drag_start_point_ = GetActiveMousePos(event);
+		drag_start_point_ = get_active_mouse_pos(event);
 
-		emit ResizeBegan(GetActiveBarSize(),
-						 (mouse_handle_state_ == kInTopHandle));
+		emit resize_began(get_active_bar_size(),
+						 (mouse_handle_state_ == k_in_top_handle));
 	}
 }
 
 void ResizableScrollBar::mouseMoveEvent(QMouseEvent *event)
 {
-	QRect sr = GetScrollBarRect();
+	QRect sr = get_scroll_bar_rect();
 
 	if (dragging_) {
 		// Determine how much the cursor has moved
-		int mouse_movement = GetActiveMousePos(event) - drag_start_point_;
+		int mouse_movement = get_active_mouse_pos(event) - drag_start_point_;
 
-		emit ResizeMoved(mouse_movement);
+		emit resize_moved(mouse_movement);
 
 	} else {
 		int mouse_pos, top, bottom;
 		Qt::CursorShape target_cursor;
-		mouse_pos = GetActiveMousePos(event);
+		mouse_pos = get_active_mouse_pos(event);
 
 		if (orientation() == Qt::Horizontal) {
 			top = sr.left();
@@ -85,15 +85,15 @@ void ResizableScrollBar::mouseMoveEvent(QMouseEvent *event)
 			target_cursor = Qt::SizeVerCursor;
 		}
 
-		if (InRange(mouse_pos, top, kHandleWidth)) {
-			mouse_handle_state_ = kInTopHandle;
-		} else if (InRange(mouse_pos, bottom, kHandleWidth)) {
-			mouse_handle_state_ = kInBottomHandle;
+		if (in_range(mouse_pos, top, k_handle_width)) {
+			mouse_handle_state_ = k_in_top_handle;
+		} else if (in_range(mouse_pos, bottom, k_handle_width)) {
+			mouse_handle_state_ = k_in_bottom_handle;
 		} else {
-			mouse_handle_state_ = kNotInHandle;
+			mouse_handle_state_ = k_not_in_handle;
 		}
 
-		if (mouse_handle_state_ == kNotInHandle) {
+		if (mouse_handle_state_ == k_not_in_handle) {
 			unsetCursor();
 		} else {
 			setCursor(target_cursor);
@@ -108,13 +108,13 @@ void ResizableScrollBar::mouseReleaseEvent(QMouseEvent *event)
 	if (dragging_) {
 		dragging_ = false;
 
-		emit ResizeEnded();
+		emit resize_ended();
 	} else {
 		QScrollBar::mouseReleaseEvent(event);
 	}
 }
 
-QRect ResizableScrollBar::GetScrollBarRect()
+QRect ResizableScrollBar::get_scroll_bar_rect()
 {
 	// Initialize "style option". I don't know what this does, I just ripped it straight from
 	// Qt source code
@@ -126,17 +126,17 @@ QRect ResizableScrollBar::GetScrollBarRect()
 								   QStyle::SC_ScrollBarSlider, this);
 }
 
-void ResizableScrollBar::Init()
+void ResizableScrollBar::init()
 {
 	setSingleStep(20);
 	setMaximum(0);
 	setMouseTracking(true);
 
-	mouse_handle_state_ = kNotInHandle;
+	mouse_handle_state_ = k_not_in_handle;
 	dragging_ = false;
 }
 
-int ResizableScrollBar::GetActiveMousePos(QMouseEvent *event)
+int ResizableScrollBar::get_active_mouse_pos(QMouseEvent *event)
 {
 	if (orientation() == Qt::Horizontal) {
 		return event->pos().x();
@@ -145,9 +145,9 @@ int ResizableScrollBar::GetActiveMousePos(QMouseEvent *event)
 	}
 }
 
-int ResizableScrollBar::GetActiveBarSize()
+int ResizableScrollBar::get_active_bar_size()
 {
-	QRect sr = GetScrollBarRect();
+	QRect sr = get_scroll_bar_rect();
 
 	if (orientation() == Qt::Horizontal) {
 		return sr.width();

@@ -34,14 +34,14 @@ namespace olive
 
 AudioManager *AudioManager::instance_ = nullptr;
 
-void AudioManager::CreateInstance()
+void AudioManager::create_instance()
 {
 	if (instance_ == nullptr) {
 		instance_ = new AudioManager();
 	}
 }
 
-void AudioManager::DestroyInstance()
+void AudioManager::destroy_instance()
 {
 	delete instance_;
 	instance_ = nullptr;
@@ -52,18 +52,18 @@ AudioManager *AudioManager::instance()
 	return instance_;
 }
 
-void AudioManager::SetOutputNotifyInterval(int n)
+void AudioManager::set_output_notify_interval(int n)
 {
 	output_buffer_->set_notify_interval(n);
 }
 
-int OutputCallback(const void *input, void *output, unsigned long frameCount,
-				   const PaStreamCallbackTimeInfo *timeInfo,
-				   PaStreamCallbackFlags statusFlags, void *userData)
+int output_callback(const void *input, void *output, unsigned long frame_count,
+				   const PaStreamCallbackTimeInfo *time_info,
+				   PaStreamCallbackFlags status_flags, void *user_data)
 {
-	PreviewAudioDevice *device = static_cast<PreviewAudioDevice *>(userData);
+	PreviewAudioDevice *device = static_cast<PreviewAudioDevice *>(user_data);
 
-	qint64 max_read = frameCount * device->bytes_per_frame();
+	qint64 max_read = frame_count * device->bytes_per_frame();
 	qint64 read_count =
 		device->read(reinterpret_cast<char *>(output), max_read);
 	if (read_count < max_read) {
@@ -74,23 +74,23 @@ int OutputCallback(const void *input, void *output, unsigned long frameCount,
 	return paContinue;
 }
 
-int InputCallback(const void *input, void *output, unsigned long frameCount,
-				  const PaStreamCallbackTimeInfo *timeInfo,
-				  PaStreamCallbackFlags statusFlags, void *userData)
+int input_callback(const void *input, void *output, unsigned long frame_count,
+				  const PaStreamCallbackTimeInfo *time_info,
+				  PaStreamCallbackFlags status_flags, void *user_data)
 {
-	FFmpegEncoder *f = static_cast<FFmpegEncoder *>(userData);
+	FFmpegEncoder *f = static_cast<FFmpegEncoder *>(user_data);
 
 	AudioParams our_params = f->params().audio_params();
 	our_params.set_format(
 		f->params().audio_params().format().to_packed_equivalent());
 
-	f->WriteAudioData(our_params, reinterpret_cast<const uint8_t **>(&input),
-					  frameCount);
+	f->write_audio_data(our_params, reinterpret_cast<const uint8_t **>(&input),
+					  frame_count);
 
 	return paContinue;
 }
 
-bool AudioManager::PushToOutput(const AudioParams &params,
+bool AudioManager::push_to_output(const AudioParams &params,
 								const QByteArray &samples, QString *error)
 {
 	if (output_device_ == paNoDevice) {
@@ -102,14 +102,14 @@ bool AudioManager::PushToOutput(const AudioParams &params,
 	if (output_params_ != params || output_stream_ == nullptr) {
 		output_params_ = params;
 
-		CloseOutputStream();
+		close_output_stream();
 
-		PaStreamParameters p = GetPortAudioParams(params, output_device_);
+		PaStreamParameters p = get_port_audio_params(params, output_device_);
 
 		PaError r = Pa_OpenStream(&output_stream_, nullptr, &p,
 								  output_params_.sample_rate(),
 								  paFramesPerBufferUnspecified, paNoFlag,
-								  OutputCallback, output_buffer_);
+								  output_callback, output_buffer_);
 		if (r != paNoError) {
 			// Unhandled error
 			//qCritical() << "Failed to open output stream:" << Pa_GetErrorText(r);
@@ -136,59 +136,59 @@ bool AudioManager::PushToOutput(const AudioParams &params,
 	return true;
 }
 
-void AudioManager::ClearBufferedOutput()
+void AudioManager::clear_buffered_output()
 {
 	output_buffer_->clear();
 }
 
-PaSampleFormat AudioManager::GetPortAudioSampleFormat(SampleFormat fmt)
+PaSampleFormat AudioManager::get_port_audio_sample_format(SampleFormat fmt)
 {
 	switch (fmt) {
-	case SampleFormat::U8:
-	case SampleFormat::U8P:
+	case SampleFormat::u8:
+	case SampleFormat::u8_p:
 		return paUInt8;
-	case SampleFormat::S16:
-	case SampleFormat::S16P:
+	case SampleFormat::s16:
+	case SampleFormat::s16_p:
 		return paInt16;
-	case SampleFormat::S32:
-	case SampleFormat::S32P:
+	case SampleFormat::s32:
+	case SampleFormat::s32_p:
 		return paInt32;
-	case SampleFormat::F32:
-	case SampleFormat::F32P:
+	case SampleFormat::f32:
+	case SampleFormat::f32_p:
 		return paFloat32;
-	case SampleFormat::S64:
-	case SampleFormat::S64P:
-	case SampleFormat::F64:
-	case SampleFormat::F64P:
-	case SampleFormat::INVALID:
-	case SampleFormat::COUNT:
+	case SampleFormat::s64:
+	case SampleFormat::s64_p:
+	case SampleFormat::f64:
+	case SampleFormat::f64_p:
+	case SampleFormat::invalid:
+	case SampleFormat::count:
 		break;
 	}
 
 	return 0;
 }
 
-void AudioManager::CloseOutputStream()
+void AudioManager::close_output_stream()
 {
 	if (output_stream_) {
 		if (Pa_IsStreamActive(output_stream_)) {
-			StopOutput();
+			stop_output();
 		}
 		Pa_CloseStream(output_stream_);
 		output_stream_ = nullptr;
 	}
 }
 
-void AudioManager::StopOutput()
+void AudioManager::stop_output()
 {
 	// Abort the stream so playback stops immediately
 	if (output_stream_) {
 		Pa_AbortStream(output_stream_);
-		ClearBufferedOutput();
+		clear_buffered_output();
 	}
 }
 
-void AudioManager::SetOutputDevice(PaDeviceIndex device)
+void AudioManager::set_output_device(PaDeviceIndex device)
 {
 	if (device == paNoDevice) {
 		qInfo() << "No output device found";
@@ -201,12 +201,12 @@ void AudioManager::SetOutputDevice(PaDeviceIndex device)
 
 	output_device_ = device;
 
-	CloseOutputStream();
+	close_output_stream();
 
-	emit OutputParamsChanged();
+	emit output_params_changed();
 }
 
-void AudioManager::SetInputDevice(PaDeviceIndex device)
+void AudioManager::set_input_device(PaDeviceIndex device)
 {
 	if (device == paNoDevice) {
 		qInfo() << "No input device found";
@@ -220,14 +220,14 @@ void AudioManager::SetInputDevice(PaDeviceIndex device)
 	input_device_ = device;
 }
 
-void AudioManager::HardReset()
+void AudioManager::hard_reset()
 {
-	CloseOutputStream();
+	close_output_stream();
 	Pa_Terminate();
 	Pa_Initialize();
 }
 
-bool AudioManager::StartRecording(const EncodingParams &params,
+bool AudioManager::start_recording(const EncodingParams &params,
 								  QString *error_str)
 {
 	if (input_device_ == paNoDevice) {
@@ -235,18 +235,18 @@ bool AudioManager::StartRecording(const EncodingParams &params,
 	}
 
 	input_encoder_ = new FFmpegEncoder(params);
-	if (!input_encoder_->Open()) {
+	if (!input_encoder_->open()) {
 		qCritical() << "Failed to open encoder for recording";
 		return false;
 	}
 
 	PaStreamParameters p =
-		GetPortAudioParams(params.audio_params(), input_device_);
+		get_port_audio_params(params.audio_params(), input_device_);
 
 	PaError r = Pa_OpenStream(&input_stream_, &p, nullptr,
 							  params.audio_params().sample_rate(),
 							  paFramesPerBufferUnspecified, paNoFlag,
-							  InputCallback, input_encoder_);
+							  input_callback, input_encoder_);
 	if (r == paNoError) {
 		//const PaStreamInfo* info = Pa_GetStreamInfo(input_stream_);
 		r = Pa_StartStream(input_stream_);
@@ -259,11 +259,11 @@ bool AudioManager::StartRecording(const EncodingParams &params,
 		*error_str = Pa_GetErrorText(r);
 	}
 
-	StopRecording();
+	stop_recording();
 	return false;
 }
 
-void AudioManager::StopRecording()
+void AudioManager::stop_recording()
 {
 	if (input_stream_) {
 		if (Pa_IsStreamActive(input_stream_)) {
@@ -275,14 +275,14 @@ void AudioManager::StopRecording()
 	}
 
 	if (input_encoder_) {
-		input_encoder_->Close();
+		input_encoder_->close();
 		delete input_encoder_;
 		input_encoder_ = nullptr;
 	}
 }
 
 #ifdef Q_OS_LINUX
-static bool IsPreferredLinuxAudioHostApi(const PaHostApiInfo *info)
+static bool is_preferred_linux_audio_host_api(const PaHostApiInfo *info)
 {
 	if (!info) {
 		return false;
@@ -294,7 +294,7 @@ static bool IsPreferredLinuxAudioHostApi(const PaHostApiInfo *info)
 		   name.contains(QStringLiteral("PulseAudio"), Qt::CaseInsensitive);
 }
 
-static PaDeviceIndex GetPreferredLinuxAudioDevice(bool is_output_device)
+static PaDeviceIndex get_preferred_linux_audio_device(bool is_output_device)
 {
 	// Prefer sound servers that provide mixing and desktop integration
 	// (PipeWire, JACK, PulseAudio) over plain ALSA defaults, which often
@@ -328,16 +328,16 @@ static PaDeviceIndex GetPreferredLinuxAudioDevice(bool is_output_device)
 }
 #endif
 
-PaDeviceIndex AudioManager::FindConfigDeviceByName(bool is_output_device)
+PaDeviceIndex AudioManager::find_config_device_by_name(bool is_output_device)
 {
 	QString entry = is_output_device ? QStringLiteral("AudioOutput") :
 									   QStringLiteral("AudioInput");
 
-	return FindDeviceByName(OLIVE_CONFIG_STR(entry).toString(),
+	return find_device_by_name(OAK_CONFIG_STR(entry).toString(),
 							is_output_device);
 }
 
-PaDeviceIndex AudioManager::FindDeviceByName(const QString &s,
+PaDeviceIndex AudioManager::find_device_by_name(const QString &s,
 											 bool is_output_device)
 {
 	PaDeviceIndex exact_match = paNoDevice;
@@ -367,7 +367,7 @@ PaDeviceIndex AudioManager::FindDeviceByName(const QString &s,
 		if (matched_info) {
 			const PaHostApiInfo *host_api =
 				Pa_GetHostApiInfo(matched_info->hostApi);
-			if (IsPreferredLinuxAudioHostApi(host_api)) {
+			if (is_preferred_linux_audio_host_api(host_api)) {
 				// Keep an explicit choice that already uses a preferred API.
 				return exact_match;
 			}
@@ -375,7 +375,7 @@ PaDeviceIndex AudioManager::FindDeviceByName(const QString &s,
 			// Upgrade a non-preferred (e.g. ALSA) match to a preferred backend
 			// when one is available.
 			PaDeviceIndex preferred =
-				GetPreferredLinuxAudioDevice(is_output_device);
+				get_preferred_linux_audio_device(is_output_device);
 			if (preferred != paNoDevice) {
 				qInfo() << "Overriding saved audio device" << s
 						<< "with preferred Linux audio device"
@@ -388,7 +388,7 @@ PaDeviceIndex AudioManager::FindDeviceByName(const QString &s,
 		}
 	}
 
-	return GetPreferredLinuxAudioDevice(is_output_device);
+	return get_preferred_linux_audio_device(is_output_device);
 #else
 	if (exact_match != paNoDevice) {
 		return exact_match;
@@ -399,7 +399,7 @@ PaDeviceIndex AudioManager::FindDeviceByName(const QString &s,
 #endif
 }
 
-PaStreamParameters AudioManager::GetPortAudioParams(const AudioParams &params,
+PaStreamParameters AudioManager::get_port_audio_params(const AudioParams &params,
 													PaDeviceIndex device)
 {
 	PaStreamParameters p;
@@ -407,7 +407,7 @@ PaStreamParameters AudioManager::GetPortAudioParams(const AudioParams &params,
 	p.channelCount = params.channel_count();
 	p.device = device;
 	p.hostApiSpecificStreamInfo = nullptr;
-	p.sampleFormat = GetPortAudioSampleFormat(params.format());
+	p.sampleFormat = get_port_audio_sample_format(params.format());
 
 	if (device >= 0 && device < Pa_GetDeviceCount()) {
 		p.suggestedLatency = Pa_GetDeviceInfo(device)->defaultLowOutputLatency;
@@ -432,24 +432,24 @@ AudioManager::AudioManager()
 	Pa_Initialize();
 
 	// Get device from config
-	PaDeviceIndex output_device = FindConfigDeviceByName(true);
-	PaDeviceIndex input_device = FindConfigDeviceByName(false);
+	PaDeviceIndex output_device = find_config_device_by_name(true);
+	PaDeviceIndex input_device = find_config_device_by_name(false);
 
 	qDebug() << "AudioManager: selected output device index=" << output_device
 			 << "input device index=" << input_device;
 
-	SetOutputDevice(output_device);
-	SetInputDevice(input_device);
+	set_output_device(output_device);
+	set_input_device(input_device);
 
 	output_buffer_ = new PreviewAudioDevice(this);
 	output_buffer_->open(PreviewAudioDevice::ReadWrite);
-	connect(output_buffer_, &PreviewAudioDevice::Notify, this,
-			&AudioManager::OutputNotify);
+	connect(output_buffer_, &PreviewAudioDevice::notify, this,
+			&AudioManager::output_notify);
 }
 
 AudioManager::~AudioManager()
 {
-	CloseOutputStream();
+	close_output_stream();
 
 	Pa_Terminate();
 }

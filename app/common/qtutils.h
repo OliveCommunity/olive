@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef QTVERSIONABSTRACTION_H
-#define QTVERSIONABSTRACTION_H
+#ifndef OAK_QTVERSIONABSTRACTION_H
+#define OAK_QTVERSIONABSTRACTION_H
 
 #include <olive/core/core.h>
 #include <QComboBox>
@@ -42,30 +42,30 @@ public:
    * latter was only introduced in 5.11+. This function wraps the latter for 5.11+ and the former for
    * earlier.
    */
-	static int QFontMetricsWidth(QFontMetrics fm, const QString &s);
+	static int q_font_metrics_width(QFontMetrics fm, const QString &s);
 
-	static QFrame *CreateHorizontalLine();
+	static QFrame *create_horizontal_line();
 
-	static QFrame *CreateVerticalLine();
+	static QFrame *create_vertical_line();
 
-	static int MsgBox(QWidget *parent, QMessageBox::Icon icon,
+	static int msg_box(QWidget *parent, QMessageBox::Icon icon,
 					  const QString &title, const QString &message,
 					  QMessageBox::StandardButtons buttons = QMessageBox::Ok);
 
-	static QDateTime GetCreationDate(const QFileInfo &info);
+	static QDateTime get_creation_date(const QFileInfo &info);
 
-	static QString GetFormattedDateTime(const QDateTime &dt);
+	static QString get_formatted_date_time(const QDateTime &dt);
 
-	static QStringList WordWrapString(const QString &s, const QFontMetrics &fm,
+	static QStringList word_wrap_string(const QString &s, const QFontMetrics &fm,
 									  int bounding_width);
 
 	static Qt::KeyboardModifiers
-	FlipControlAndShiftModifiers(Qt::KeyboardModifiers e);
+	flip_control_and_shift_modifiers(Qt::KeyboardModifiers e);
 
-	static void SetComboBoxData(QComboBox *cb, int data);
-	static void SetComboBoxData(QComboBox *cb, const QString &data);
+	static void set_combo_box_data(QComboBox *cb, int data);
+	static void set_combo_box_data(QComboBox *cb, const QString &data);
 
-	template <typename T> static T *GetParentOfType(const QObject *child)
+	template <typename T> static T *get_parent_of_type(const QObject *child)
 	{
 		QObject *t = child->parent();
 
@@ -79,12 +79,12 @@ public:
 		return nullptr;
 	}
 
-	static QColor toQColor(const core::Color &c);
+	static QColor to_q_color(const core::Color &c);
 
 	/**
    * @brief Convert a pointer to a value that can be sent between NodeParams
    */
-	static QVariant PtrToValue(void *ptr)
+	static QVariant ptr_to_value(void *ptr)
 	{
 		return reinterpret_cast<quintptr>(ptr);
 	}
@@ -92,7 +92,7 @@ public:
 	/**
    * @brief Convert a NodeParam value to a pointer of any kind
    */
-	template <class T> static T *ValueToPtr(const QVariant &ptr)
+	template <class T> static T *value_to_ptr(const QVariant &ptr)
 	{
 		return reinterpret_cast<T *>(ptr.value<quintptr>());
 	}
@@ -101,18 +101,18 @@ public:
 namespace core
 {
 
-uint qHash(const core::rational &r, uint seed = 0);
+uint qHash(const core::Rational &r, uint seed = 0);
 uint qHash(const core::TimeRange &r, uint seed = 0);
 
 }
 
 }
 
-Q_DECLARE_METATYPE(olive::core::rational)
+Q_DECLARE_METATYPE(olive::core::Rational)
 Q_DECLARE_METATYPE(olive::core::Color)
 Q_DECLARE_METATYPE(olive::core::TimeRange)
 Q_DECLARE_METATYPE(olive::core::Bezier)
 Q_DECLARE_METATYPE(olive::core::AudioParams)
 Q_DECLARE_METATYPE(olive::core::SampleBuffer)
 
-#endif // QTVERSIONABSTRACTION_H
+#endif // OAK_QTVERSIONABSTRACTION_H

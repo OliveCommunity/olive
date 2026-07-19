@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLORTRANSFORMJOB_H
-#define COLORTRANSFORMJOB_H
+#ifndef OAK_COLORTRANSFORMJOB_H
+#define OAK_COLORTRANSFORMJOB_H
 
 #include <QMatrix4x4>
 #include <QString>
@@ -41,7 +41,7 @@ public:
 	{
 		processor_ = nullptr;
 		custom_shader_src_ = nullptr;
-		input_alpha_association_ = kAlphaNone;
+		input_alpha_association_ = k_alpha_none;
 		clear_destination_ = true;
 		force_opaque_ = false;
 	}
@@ -49,7 +49,7 @@ public:
 	ColorTransformJob(const NodeValueRow &row)
 		: ColorTransformJob()
 	{
-		Insert(row);
+		insert(row);
 	}
 
 	QString id() const
@@ -61,98 +61,98 @@ public:
 		}
 	}
 
-	void SetOverrideID(const QString &id)
+	void set_override_id(const QString &id)
 	{
 		id_ = id;
 	}
 
-	const NodeValue &GetInputTexture() const
+	const NodeValue &get_input_texture() const
 	{
 		return input_texture_;
 	}
-	void SetInputTexture(const NodeValue &tex)
+	void set_input_texture(const NodeValue &tex)
 	{
 		input_texture_ = tex;
 	}
-	void SetInputTexture(TexturePtr tex)
+	void set_input_texture(TexturePtr tex)
 	{
-		Q_ASSERT(!tex->IsDummy());
-		input_texture_ = NodeValue(NodeValue::kTexture, tex);
+		Q_ASSERT(!tex->is_dummy());
+		input_texture_ = NodeValue(NodeValue::k_texture, tex);
 	}
 
-	ColorProcessorPtr GetColorProcessor() const
+	ColorProcessorPtr get_color_processor() const
 	{
 		return processor_;
 	}
-	void SetColorProcessor(ColorProcessorPtr p)
+	void set_color_processor(ColorProcessorPtr p)
 	{
 		processor_ = p;
 	}
 
-	const AlphaAssociated &GetInputAlphaAssociation() const
+	const AlphaAssociated &get_input_alpha_association() const
 	{
 		return input_alpha_association_;
 	}
-	void SetInputAlphaAssociation(const AlphaAssociated &e)
+	void set_input_alpha_association(const AlphaAssociated &e)
 	{
 		input_alpha_association_ = e;
 	}
 
-	const Node *CustomShaderSource() const
+	const Node *custom_shader_source() const
 	{
 		return custom_shader_src_;
 	}
-	const QString &CustomShaderID() const
+	const QString &custom_shader_id() const
 	{
 		return custom_shader_id_;
 	}
-	void SetNeedsCustomShader(const Node *node, const QString &id = QString())
+	void set_needs_custom_shader(const Node *node, const QString &id = QString())
 	{
 		custom_shader_src_ = node;
 		custom_shader_id_ = id;
 	}
 
-	bool IsClearDestinationEnabled() const
+	bool is_clear_destination_enabled() const
 	{
 		return clear_destination_;
 	}
-	void SetClearDestinationEnabled(bool e)
+	void set_clear_destination_enabled(bool e)
 	{
 		clear_destination_ = e;
 	}
 
-	const QMatrix4x4 &GetTransformMatrix() const
+	const QMatrix4x4 &get_transform_matrix() const
 	{
 		return matrix_;
 	}
-	void SetTransformMatrix(const QMatrix4x4 &m)
+	void set_transform_matrix(const QMatrix4x4 &m)
 	{
 		matrix_ = m;
 	}
 
-	const QMatrix4x4 &GetCropMatrix() const
+	const QMatrix4x4 &get_crop_matrix() const
 	{
 		return crop_matrix_;
 	}
-	void SetCropMatrix(const QMatrix4x4 &m)
+	void set_crop_matrix(const QMatrix4x4 &m)
 	{
 		crop_matrix_ = m;
 	}
 
-	const QString &GetFunctionName() const
+	const QString &get_function_name() const
 	{
 		return function_name_;
 	}
-	void SetFunctionName(const QString &function_name = QString())
+	void set_function_name(const QString &function_name = QString())
 	{
 		function_name_ = function_name;
 	};
 
-	bool GetForceOpaque() const
+	bool get_force_opaque() const
 	{
 		return force_opaque_;
 	}
-	void SetForceOpaque(bool e)
+	void set_force_opaque(bool e)
 	{
 		force_opaque_ = e;
 	}
@@ -181,4 +181,4 @@ private:
 
 }
 
-#endif // COLORTRANSFORMJOB_H
+#endif // OAK_COLORTRANSFORMJOB_H

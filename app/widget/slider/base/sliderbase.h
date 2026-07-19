@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SLIDERBASE_H
-#define SLIDERBASE_H
+#ifndef OAK_SLIDERBASE_H
+#define OAK_SLIDERBASE_H
 
 #include <QStackedWidget>
 
@@ -36,65 +36,65 @@ class SliderBase : public QStackedWidget {
 public:
 	SliderBase(QWidget *parent = nullptr);
 
-	void SetAlignment(Qt::Alignment alignment);
+	void set_alignment(Qt::Alignment alignment);
 
-	bool IsTristate() const;
-	void SetTristate();
+	bool is_tristate() const;
+	void set_tristate();
 
-	void SetFormat(const QString &s, const bool plural = false);
-	void ClearFormat();
+	void set_format(const QString &s, const bool plural = false);
+	void clear_format();
 
-	bool IsFormatPlural() const;
+	bool is_format_plural() const;
 
-	void SetDefaultValue(const QVariant &v);
+	void set_default_value(const QVariant &v);
 
-	QString GetFormattedValueToString(const QVariant &v) const;
+	QString get_formatted_value_to_string(const QVariant &v) const;
 
-	void InsertLabelSubstitution(const QVariant &value, const QString &label)
+	void insert_label_substitution(const QVariant &value, const QString &label)
 	{
 		label_substitutions_.append({ value, label });
-		UpdateLabel();
+		update_label();
 	}
 
-	void SetColor(const QColor &c)
+	void set_color(const QColor &c)
 	{
-		label_->SetColor(c);
+		label_->set_color(c);
 	}
 
 public slots:
-	void ShowEditor();
+	void show_editor();
 
 protected slots:
-	void UpdateLabel();
+	void update_label();
 
 protected:
-	const QVariant &GetValueInternal() const;
+	const QVariant &get_value_internal() const;
 
-	void SetValueInternal(const QVariant &v);
+	void set_value_internal(const QVariant &v);
 
-	QString GetFormat() const;
+	QString get_format() const;
 
-	QString GetFormattedValueToString() const;
+	QString get_formatted_value_to_string() const;
 
 	SliderLabel *label()
 	{
 		return label_;
 	}
 
-	virtual QString ValueToString(const QVariant &v) const = 0;
+	virtual QString value_to_string(const QVariant &v) const = 0;
 
-	virtual QVariant StringToValue(const QString &s, bool *ok) const = 0;
+	virtual QVariant string_to_value(const QString &s, bool *ok) const = 0;
 
-	virtual QVariant AdjustValue(const QVariant &value) const;
+	virtual QVariant adjust_value(const QVariant &value) const;
 
-	virtual bool CanSetValue() const;
+	virtual bool can_set_value() const;
 
-	virtual void ValueSignalEvent(const QVariant &value) = 0;
+	virtual void value_signal_event(const QVariant &value) = 0;
 
 	virtual void changeEvent(QEvent *e) override;
 
 private:
-	bool GetLabelSubstitution(const QVariant &v, QString *out) const;
+	bool get_label_substitution(const QVariant &v, QString *out) const;
 
 	SliderLabel *label_;
 
@@ -112,13 +112,13 @@ private:
 	QVector<QPair<QVariant, QString>> label_substitutions_;
 
 private slots:
-	void LineEditConfirmed();
+	void line_edit_confirmed();
 
-	void LineEditCancelled();
+	void line_edit_cancelled();
 
-	void ResetValue();
+	void reset_value();
 };
 
 }
 
-#endif // SLIDERBASE_H
+#endif // OAK_SLIDERBASE_H

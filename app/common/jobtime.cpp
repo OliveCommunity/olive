@@ -28,10 +28,10 @@ QMutex job_time_mutex;
 
 JobTime::JobTime()
 {
-	Acquire();
+	acquire();
 }
 
-void JobTime::Acquire()
+void JobTime::acquire()
 {
 	job_time_mutex.lock();
 

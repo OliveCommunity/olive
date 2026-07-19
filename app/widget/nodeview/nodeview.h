@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEVIEW_H
-#define NODEVIEW_H
+#ifndef OAK_NODEVIEW_H
+#define OAK_NODEVIEW_H
 
 #include <QGraphicsView>
 #include <QTimer>
@@ -50,85 +50,85 @@ public:
 
 	virtual ~NodeView() override;
 
-	void SetContexts(const QVector<Node *> &nodes);
+	void set_contexts(const QVector<Node *> &nodes);
 
-	const QVector<Node *> &GetContexts() const
+	const QVector<Node *> &get_contexts() const
 	{
 		if (overlay_view_) {
-			return overlay_view_->GetContexts();
+			return overlay_view_->get_contexts();
 		} else {
 			return contexts_;
 		}
 	}
 
-	bool IsGroupOverlay() const
+	bool is_group_overlay() const
 	{
 		return overlay_view_;
 	}
 
-	void CloseContextsBelongingToProject(Project *project);
+	void close_contexts_belonging_to_project(Project *project);
 
-	void ClearGraph();
+	void clear_graph();
 
 	/**
    * @brief Delete selected nodes from graph (user-friendly/undoable)
    */
-	void DeleteSelected();
+	void delete_selected();
 
-	void SelectAll();
-	void DeselectAll();
+	void select_all();
+	void deselect_all();
 
-	void Select(const QVector<Node::ContextPair> &nodes,
+	void select(const QVector<Node::ContextPair> &nodes,
 				bool center_view_on_item);
 
-	void CopySelected(bool cut);
-	void Paste();
+	void copy_selected(bool cut);
+	void paste();
 
-	void Duplicate();
+	void duplicate();
 
-	void SetColorLabel(int index);
+	void set_color_label(int index);
 
-	void ZoomIn();
+	void zoom_in();
 
-	void ZoomOut();
+	void zoom_out();
 
-	const QVector<Node *> &GetCurrentContexts() const
+	const QVector<Node *> &get_current_contexts() const
 	{
 		return contexts_;
 	}
 
 public slots:
-	void SetMiniMapEnabled(bool e)
+	void set_mini_map_enabled(bool e)
 	{
 		minimap_->setVisible(e);
 	}
 
-	void ShowAddMenu()
+	void show_add_menu()
 	{
-		Menu *m = CreateAddMenu(nullptr);
+		Menu *m = create_add_menu(nullptr);
 		m->exec(QCursor::pos());
 		delete m;
 	}
 
-	void CenterOnItemsBoundingRect();
+	void center_on_items_bounding_rect();
 
-	void CenterOnNode(olive::Node *n);
+	void center_on_node(olive::Node *n);
 
-	void LabelSelectedNodes();
+	void label_selected_nodes();
 
 signals:
-	void NodesSelected(const QVector<Node *> &nodes);
+	void nodes_selected(const QVector<Node *> &nodes);
 
-	void NodesDeselected(const QVector<Node *> &nodes);
+	void nodes_deselected(const QVector<Node *> &nodes);
 
-	void NodeSelectionChanged(const QVector<Node *> &nodes);
+	void node_selection_changed(const QVector<Node *> &nodes);
 	void
-	NodeSelectionChangedWithContexts(const QVector<Node::ContextPair> &nodes);
+	node_selection_changed_with_contexts(const QVector<Node::ContextPair> &nodes);
 
-	void NodeGroupOpened(NodeGroup *group);
-	void NodeGroupClosed();
+	void node_group_opened(NodeGroup *group);
+	void node_group_closed();
 
-	void EscPressed();
+	void esc_pressed();
 
 protected:
 	virtual void keyPressEvent(QKeyEvent *event) override;
@@ -145,7 +145,7 @@ protected:
 
 	virtual void resizeEvent(QResizeEvent *event) override;
 
-	virtual void ZoomIntoCursorPosition(QWheelEvent *event, double multiplier,
+	virtual void zoom_into_cursor_position(QWheelEvent *event, double multiplier,
 										const QPointF &cursor_pos) override;
 
 	virtual bool event(QEvent *event) override;
@@ -155,54 +155,54 @@ protected:
 	virtual void changeEvent(QEvent *e) override;
 
 private:
-	void DetachItemsFromCursor(bool delete_nodes_too = true);
+	void detach_items_from_cursor(bool delete_nodes_too = true);
 
-	void SetFlowDirection(NodeViewCommon::FlowDirection dir);
+	void set_flow_direction(NodeViewCommon::FlowDirection dir);
 
-	void MoveAttachedNodesToCursor(const QPoint &p);
-	void ProcessMovingAttachedNodes(const QPoint &pos);
-	QVector<Node *> ProcessDroppingAttachedNodes(MultiUndoCommand *command,
+	void move_attached_nodes_to_cursor(const QPoint &p);
+	void process_moving_attached_nodes(const QPoint &pos);
+	QVector<Node *> process_dropping_attached_nodes(MultiUndoCommand *command,
 												 Node *select_context,
 												 const QPoint &pos);
-	Node *GetContextAtMousePos(const QPoint &p);
+	Node *get_context_at_mouse_pos(const QPoint &p);
 
-	void ConnectSelectionChangedSignal();
-	void DisconnectSelectionChangedSignal();
+	void connect_selection_changed_signal();
+	void disconnect_selection_changed_signal();
 
-	void ZoomFromKeyboard(double multiplier);
+	void zoom_from_keyboard(double multiplier);
 
-	void ClearCreateEdgeInputIfNecessary();
+	void clear_create_edge_input_if_necessary();
 
-	QPointF GetEstimatedPositionForContext(NodeViewItem *item,
+	QPointF get_estimated_position_for_context(NodeViewItem *item,
 										   Node *context) const;
 
-	NodeViewItem *GetAssumedItemForSelectedNode(Node *node);
-	bool GetAssumedPositionForSelectedNode(Node *node, Node::Position *pos);
+	NodeViewItem *get_assumed_item_for_selected_node(Node *node);
+	bool get_assumed_position_for_selected_node(Node *node, Node::Position *pos);
 
-	Menu *CreateAddMenu(Menu *parent);
+	Menu *create_add_menu(Menu *parent);
 
-	void PositionNewEdge(const QPoint &pos);
+	void position_new_edge(const QPoint &pos);
 
-	void AddContext(Node *n);
+	void add_context(Node *n);
 
-	void RemoveContext(Node *n);
+	void remove_context(Node *n);
 
-	bool IsItemAttachedToCursor(NodeViewItem *item) const;
+	bool is_item_attached_to_cursor(NodeViewItem *item) const;
 
-	void ExpandItem(NodeViewItem *item);
+	void expand_item(NodeViewItem *item);
 
-	void CollapseItem(NodeViewItem *item);
+	void collapse_item(NodeViewItem *item);
 
-	void EndEdgeDrag(bool cancel = false);
+	void end_edge_drag(bool cancel = false);
 
-	void PostPaste(const QVector<Node *> &new_nodes,
+	void post_paste(const QVector<Node *> &new_nodes,
 				   const Node::PositionMap &map);
 
-	void ResizeOverlay();
+	void resize_overlay();
 
 	NodeViewMiniMap *minimap_;
 
-	NodeViewContext *GetContextItemFromNodeItem(NodeViewItem *item);
+	NodeViewContext *get_context_item_from_node_item(NodeViewItem *item);
 
 	struct AttachedItem {
 		NodeViewItem *item;
@@ -210,7 +210,7 @@ private:
 		QPointF original_pos;
 	};
 
-	void SetAttachedItems(const QVector<AttachedItem> &items);
+	void set_attached_items(const QVector<AttachedItem> &items);
 	QVector<AttachedItem> attached_items_;
 
 	NodeViewEdge *drop_edge_;
@@ -243,59 +243,59 @@ private:
 
 	QAction *show_in_param_editor_action_;
 
-	static const double kMinimumScale;
+	static const double k_minimum_scale;
 
-	static const int kMaximumContexts;
+	static const int k_maximum_contexts;
 
 private slots:
 	/**
    * @brief Receiver for when the scene's selected items change
    */
-	void UpdateSelectionCache();
+	void update_selection_cache();
 
 	/**
    * @brief Receiver for when the user right clicks (or otherwise requests a context menu)
    */
-	void ShowContextMenu(const QPoint &pos);
+	void show_context_menu(const QPoint &pos);
 
 	/**
    * @brief Receiver for when the user requests a new node from the add menu
    */
-	void CreateNodeSlot(QAction *action);
+	void create_node_slot(QAction *action);
 
 	/**
    * @brief Receiver for setting the direction from the context menu
    */
-	void ContextMenuSetDirection(QAction *action);
+	void context_menu_set_direction(QAction *action);
 
 	/**
    * @brief Opens the selected node in a Viewer
    */
-	void OpenSelectedNodeInViewer();
+	void open_selected_node_in_viewer();
 
-	void UpdateSceneBoundingRect();
+	void update_scene_bounding_rect();
 
-	void RepositionMiniMap();
+	void reposition_mini_map();
 
-	void UpdateViewportOnMiniMap();
+	void update_viewport_on_mini_map();
 
-	void MoveToScenePoint(const QPointF &pos);
+	void move_to_scene_point(const QPointF &pos);
 
-	void NodeRemovedFromGraph();
+	void node_removed_from_graph();
 
-	void GroupNodes();
+	void group_nodes();
 
-	void UngroupNodes();
+	void ungroup_nodes();
 
-	void ShowNodeProperties();
+	void show_node_properties();
 
-	void ShowSelectedNodeInParamEditor();
+	void show_selected_node_in_param_editor();
 
-	void ItemAboutToBeDeleted(NodeViewItem *item);
+	void item_about_to_be_deleted(NodeViewItem *item);
 
-	void CloseOverlay();
+	void close_overlay();
 };
 
 }
 
-#endif // NODEVIEW_H
+#endif // OAK_NODEVIEW_H

@@ -69,11 +69,11 @@ FootageRelinkDialog::FootageRelinkDialog(const QVector<Footage *> &footage,
 		QPushButton *item_browse_btn = new QPushButton(tr("Browse"));
 		item_browse_btn->setProperty("index", i);
 		connect(item_browse_btn, &QPushButton::clicked, this,
-				&FootageRelinkDialog::BrowseForFootage);
+				&FootageRelinkDialog::browse_for_footage);
 		item_actions_layout->addWidget(item_browse_btn);
 
-		item->setIcon(0, f->data(Node::ICON).value<QIcon>());
-		item->setText(0, f->GetLabel());
+		item->setIcon(0, f->data(Node::icon).value<QIcon>());
+		item->setText(0, f->get_label());
 		item->setText(1, f->filename());
 
 		table_->addTopLevelItem(item);
@@ -94,15 +94,15 @@ FootageRelinkDialog::FootageRelinkDialog(const QVector<Footage *> &footage,
 	setWindowTitle(tr("Relink Footage"));
 }
 
-void FootageRelinkDialog::UpdateFootageItem(int index)
+void FootageRelinkDialog::update_footage_item(int index)
 {
 	Footage *f = footage_.at(index);
 	QTreeWidgetItem *item = table_->topLevelItem(index);
-	item->setIcon(0, f->data(Node::ICON).value<QIcon>());
+	item->setIcon(0, f->data(Node::icon).value<QIcon>());
 	item->setText(1, f->filename());
 }
 
-void FootageRelinkDialog::BrowseForFootage()
+void FootageRelinkDialog::browse_for_footage()
 {
 	int index = sender()->property("index").toInt();
 	Footage *f = footage_.at(index);
@@ -110,8 +110,8 @@ void FootageRelinkDialog::BrowseForFootage()
 	QFileInfo info(f->filename());
 
 	QString new_fn = QFileDialog::getOpenFileName(
-		this, tr("Relink \"%1\"").arg(f->GetLabel()), info.absolutePath(),
-		Core::FootageFileDialogFilter());
+		this, tr("Relink \"%1\"").arg(f->get_label()), info.absolutePath(),
+		Core::footage_file_dialog_filter());
 
 	// Originally, this function would attempt to filter to the exact filename of the missing file.
 	// However, this would break on Windows if the filename had any spaces in it. The reason is
@@ -124,7 +124,7 @@ void FootageRelinkDialog::BrowseForFootage()
 
 	// We received a new filename
 	if (!new_fn.isEmpty()) {
-		if (!Core::IsFootageExtensionAllowed(new_fn)) {
+		if (!Core::is_footage_extension_allowed(new_fn)) {
 			QMessageBox::warning(
 				this, tr("Unsupported media"),
 				tr("This file type is not allowed by the current media type "
@@ -142,17 +142,17 @@ void FootageRelinkDialog::BrowseForFootage()
 		// but otherwise we assume the user knows what they're doing here.
 
 		// Set footage to valid and update icon
-		f->SetValid();
+		f->set_valid();
 
 		// Update item visually
-		UpdateFootageItem(index);
+		update_footage_item(index);
 
 		// Check all other footage files for matches
 		for (int it = 0; it < footage_.size(); it++) {
 			Footage *other_footage = footage_.at(it);
 
 			// Ignore current footage file and footage that's already valid of course
-			if (index != it && !other_footage->IsValid()) {
+			if (index != it && !other_footage->is_valid()) {
 				// Get footage path relative to original directory
 				QString relative_to_original =
 					original_dir.relativeFilePath(other_footage->filename());
@@ -168,8 +168,8 @@ void FootageRelinkDialog::BrowseForFootage()
 				// Check if file exists
 				if (QFileInfo::exists(absolute_to_new)) {
 					other_footage->set_filename(absolute_to_new);
-					other_footage->SetValid();
-					UpdateFootageItem(it);
+					other_footage->set_valid();
+					update_footage_item(it);
 				}
 			}
 		}
@@ -179,7 +179,7 @@ void FootageRelinkDialog::BrowseForFootage()
 	// jump to that footage so the user knows where it is.
 	int next_invalid = -1;
 	for (int i = 0; i < footage_.size(); i++) {
-		if (!footage_.at(i)->IsValid()) {
+		if (!footage_.at(i)->is_valid()) {
 			next_invalid = i;
 			break;
 		}

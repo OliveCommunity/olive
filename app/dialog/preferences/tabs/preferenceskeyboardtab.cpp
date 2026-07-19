@@ -81,7 +81,7 @@ PreferencesKeyboardTab::PreferencesKeyboardTab(MainWindow *main_window)
 	setup_kbd_shortcuts(main_window_->menuBar());
 }
 
-void PreferencesKeyboardTab::Accept(MultiUndoCommand *command)
+void PreferencesKeyboardTab::accept(MultiUndoCommand *command)
 {
 	Q_UNUSED(command)
 
@@ -90,7 +90,7 @@ void PreferencesKeyboardTab::Accept(MultiUndoCommand *command)
 		key_shortcut_fields_.at(i)->set_action_shortcut();
 	}
 
-	main_window_->SaveLayout();
+	main_window_->save_layout();
 }
 
 void PreferencesKeyboardTab::setup_kbd_shortcuts(QMenuBar *menubar)

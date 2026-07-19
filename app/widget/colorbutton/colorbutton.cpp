@@ -37,52 +37,52 @@ ColorButton::ColorButton(ColorManager *color_manager, bool show_dialog_on_click,
 
 	if (show_dialog_on_click) {
 		connect(this, &ColorButton::clicked, this,
-				&ColorButton::ShowColorDialog);
+				&ColorButton::show_color_dialog);
 	}
 
-	SetColor(Color(1.0f, 1.0f, 1.0f));
+	set_color(Color(1.0f, 1.0f, 1.0f));
 }
 
-const ManagedColor &ColorButton::GetColor() const
+const ManagedColor &ColorButton::get_color() const
 {
 	return color_;
 }
 
-void ColorButton::SetColor(const ManagedColor &c)
+void ColorButton::set_color(const ManagedColor &c)
 {
 	color_ = c;
 
 	color_.set_color_input(
-		color_manager_->GetCompliantColorSpace(color_.color_input()));
+		color_manager_->get_compliant_color_space(color_.color_input()));
 	color_.set_color_output(
-		color_manager_->GetCompliantColorSpace(color_.color_output()));
+		color_manager_->get_compliant_color_space(color_.color_output()));
 
-	UpdateColor();
+	update_color();
 }
 
-void ColorButton::ShowColorDialog()
+void ColorButton::show_color_dialog()
 {
 	if (!dialog_open_) {
 		dialog_open_ = true;
 		ColorDialog *cd = new ColorDialog(color_manager_, color_, this);
 
 		connect(cd, &ColorDialog::finished, this,
-				&ColorButton::ColorDialogFinished);
+				&ColorButton::color_dialog_finished);
 
 		cd->show();
 	}
 }
 
-void ColorButton::ColorDialogFinished(int e)
+void ColorButton::color_dialog_finished(int e)
 {
 	ColorDialog *cd = static_cast<ColorDialog *>(sender());
 
 	if (e == QDialog::Accepted) {
-		color_ = cd->GetSelectedColor();
+		color_ = cd->get_selected_color();
 
-		UpdateColor();
+		update_color();
 
-		emit ColorChanged(color_);
+		emit color_changed(color_);
 	}
 
 	cd->deleteLater();
@@ -90,12 +90,12 @@ void ColorButton::ColorDialogFinished(int e)
 	dialog_open_ = false;
 }
 
-void ColorButton::UpdateColor()
+void ColorButton::update_color()
 {
-	color_processor_ = ColorProcessor::Create(
+	color_processor_ = ColorProcessor::create(
 		color_manager_, color_.color_input(), color_.color_output());
 
-	QColor managed = QtUtils::toQColor(color_processor_->ConvertColor(color_));
+	QColor managed = QtUtils::to_q_color(color_processor_->convert_color(color_));
 
 	setStyleSheet(QStringLiteral("%1--ColorButton {background: %2;}")
 					  .arg(MACRO_VAL_AS_STR(olive), managed.name()));

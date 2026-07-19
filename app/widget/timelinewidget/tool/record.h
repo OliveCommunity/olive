@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef RECORDTIMELINETOOL_H
-#define RECORDTIMELINETOOL_H
+#ifndef OAK_RECORDTIMELINETOOL_H
+#define OAK_RECORDTIMELINETOOL_H
 
 #include "beam.h"
 
@@ -31,16 +31,16 @@ class RecordTool : public BeamTool {
 public:
 	RecordTool(TimelineWidget *parent);
 
-	virtual void MousePress(TimelineViewMouseEvent *event) override;
-	virtual void MouseMove(TimelineViewMouseEvent *event) override;
-	virtual void MouseRelease(TimelineViewMouseEvent *event) override;
+	virtual void mouse_press(TimelineViewMouseEvent *event) override;
+	virtual void mouse_move(TimelineViewMouseEvent *event) override;
+	virtual void mouse_release(TimelineViewMouseEvent *event) override;
 
 protected:
-	void MouseMoveInternal(const rational &cursor_frame, bool outwards);
+	void mouse_move_internal(const Rational &cursor_frame, bool outwards);
 
 	TimelineViewGhostItem *ghost_;
 
-	rational drag_start_point_;
+	Rational drag_start_point_;
 };
 
 }

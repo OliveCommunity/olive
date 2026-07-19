@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef ROLLINGTIMELINETOOL_H
-#define ROLLINGTIMELINETOOL_H
+#ifndef OAK_ROLLINGTIMELINETOOL_H
+#define OAK_ROLLINGTIMELINETOOL_H
 
 #include "pointer.h"
 
@@ -32,11 +32,11 @@ public:
 	RollingTool(TimelineWidget *parent);
 
 protected:
-	virtual void InitiateDrag(Block *clicked_item,
+	virtual void initiate_drag(Block *clicked_item,
 							  Timeline::MovementMode trim_mode,
 							  Qt::KeyboardModifiers modifiers) override;
 };
 
 }
 
-#endif // ROLLINGTIMELINETOOL_H
+#endif // OAK_ROLLINGTIMELINETOOL_H

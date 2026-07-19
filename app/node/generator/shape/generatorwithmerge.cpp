@@ -28,50 +28,50 @@ namespace olive
 
 #define super Node
 
-const QString GeneratorWithMerge::kBaseInput = QStringLiteral("base_in");
+const QString GeneratorWithMerge::k_base_input = QStringLiteral("base_in");
 
 GeneratorWithMerge::GeneratorWithMerge()
 {
-	AddInput(kBaseInput, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
-	SetEffectInput(kBaseInput);
-	SetFlag(kVideoEffect);
+	add_input(k_base_input, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
+	set_effect_input(k_base_input);
+	set_flag(k_video_effect);
 }
 
-void GeneratorWithMerge::Retranslate()
+void GeneratorWithMerge::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kBaseInput, tr("Base"));
+	set_input_name(k_base_input, tr("Base"));
 }
 
-ShaderCode GeneratorWithMerge::GetShaderCode(const ShaderRequest &request) const
+ShaderCode GeneratorWithMerge::get_shader_code(const ShaderRequest &request) const
 {
 	if (request.id == QStringLiteral("mrg")) {
 		return ShaderCode(
-			FileFunctions::ReadFileAsString(":/shaders/alphaover.frag"));
+			FileFunctions::read_file_as_string(":/shaders/alphaover.frag"));
 	}
 
 	return ShaderCode();
 }
 
-void GeneratorWithMerge::PushMergableJob(const NodeValueRow &value,
+void GeneratorWithMerge::push_mergable_job(const NodeValueRow &value,
 										 TexturePtr job,
 										 NodeValueTable *table) const
 {
-	if (TexturePtr base = value[kBaseInput].toTexture()) {
+	if (TexturePtr base = value[k_base_input].to_texture()) {
 		// Push as merge node
 		ShaderJob merge;
 
-		merge.SetShaderID(QStringLiteral("mrg"));
-		merge.Insert(MergeNode::kBaseIn, value[kBaseInput]);
-		merge.Insert(MergeNode::kBlendIn,
-					 NodeValue(NodeValue::kTexture, job, this));
+		merge.set_shader_id(QStringLiteral("mrg"));
+		merge.insert(MergeNode::k_base_in, value[k_base_input]);
+		merge.insert(MergeNode::k_blend_in,
+					 NodeValue(NodeValue::k_texture, job, this));
 
-		table->Push(NodeValue::kTexture, base->toJob(merge), this);
+		table->push(NodeValue::k_texture, base->to_job(merge), this);
 	} else {
 		// Just push generate job
-		table->Push(NodeValue::kTexture, job, this);
+		table->push(NodeValue::k_texture, job, this);
 	}
 }
 

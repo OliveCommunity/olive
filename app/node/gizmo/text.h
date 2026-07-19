@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TEXTGIZMO_H
-#define TEXTGIZMO_H
+#ifndef OAK_TEXTGIZMO_H
+#define OAK_TEXTGIZMO_H
 
 #include "gizmo.h"
 #include "node/param.h"
@@ -33,39 +33,39 @@ class TextGizmo : public NodeGizmo {
 public:
 	explicit TextGizmo(QObject *parent = nullptr);
 
-	const QRectF &GetRect() const
+	const QRectF &get_rect() const
 	{
 		return rect_;
 	}
-	void SetRect(const QRectF &r);
+	void set_rect(const QRectF &r);
 
-	const QString &GetHtml() const
+	const QString &get_html() const
 	{
 		return text_;
 	}
-	void SetHtml(const QString &t)
+	void set_html(const QString &t)
 	{
 		text_ = t;
 	}
 
-	void SetInput(const NodeKeyframeTrackReference &input)
+	void set_input(const NodeKeyframeTrackReference &input)
 	{
 		input_ = input;
 	}
 
-	void UpdateInputHtml(const QString &s, const rational &time);
+	void update_input_html(const QString &s, const Rational &time);
 
-	Qt::Alignment GetVerticalAlignment() const
+	Qt::Alignment get_vertical_alignment() const
 	{
 		return valign_;
 	}
-	void SetVerticalAlignment(Qt::Alignment va);
+	void set_vertical_alignment(Qt::Alignment va);
 
 signals:
-	void Activated();
-	void Deactivated();
-	void VerticalAlignmentChanged(Qt::Alignment va);
-	void RectChanged(const QRectF &r);
+	void activated();
+	void deactivated();
+	void vertical_alignment_changed(Qt::Alignment va);
+	void rect_changed(const QRectF &r);
 
 private:
 	QRectF rect_;
@@ -79,4 +79,4 @@ private:
 
 }
 
-#endif // TEXTGIZMO_H
+#endif // OAK_TEXTGIZMO_H

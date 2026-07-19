@@ -33,26 +33,26 @@
 namespace olive
 {
 
-const rational Decoder::kAnyTimecode = RATIONAL_MIN;
+const Rational Decoder::k_any_timecode = RATIONAL_MIN;
 
 Decoder::Decoder()
 	: cached_texture_(nullptr)
 {
-	UpdateLastAccessed();
+	update_last_accessed();
 }
 
-void Decoder::IncrementAccessTime(qint64 t)
+void Decoder::increment_access_time(qint64 t)
 {
 	last_accessed_ += t;
 }
 
-bool Decoder::Open(const CodecStream &stream)
+bool Decoder::open(const CodecStream &stream)
 {
 	QMutexLocker locker(&mutex_);
 
-	UpdateLastAccessed();
+	update_last_accessed();
 
-	if (stream_.IsValid()) {
+	if (stream_.is_valid()) {
 		// Decoder is already open. Return TRUE if the stream is the stream we have, or FALSE if not.
 		if (stream_ == stream) {
 			return true;
@@ -63,13 +63,13 @@ bool Decoder::Open(const CodecStream &stream)
 		}
 	} else {
 		// Stream was not open, try opening it now
-		if (!stream.IsValid()) {
+		if (!stream.is_valid()) {
 			// Cannot open null stream
 			qCritical() << "Decoder attempted to open null stream";
 			return false;
 		}
 
-		if (!stream.Exists()) {
+		if (!stream.exists()) {
 			// Cannot open file that doesn't exist
 			qCritical() << "Decoder attempted to open file that doesn't exist";
 			return false;
@@ -79,36 +79,36 @@ bool Decoder::Open(const CodecStream &stream)
 		stream_ = stream;
 
 		// Try open internal
-		if (OpenInternal()) {
+		if (open_internal()) {
 			return true;
 		} else {
 			// Unset stream
 			qCritical() << "Failed to open" << stream_.filename() << "stream"
 						<< stream_.stream();
-			CloseInternal();
-			stream_.Reset();
+			close_internal();
+			stream_.reset();
 			return false;
 		}
 	}
 }
 
-TexturePtr Decoder::RetrieveVideo(const RetrieveVideoParams &p)
+TexturePtr Decoder::retrieve_video(const RetrieveVideoParams &p)
 {
 	QMutexLocker locker(&mutex_);
 
-	UpdateLastAccessed();
+	update_last_accessed();
 
-	if (!stream_.IsValid()) {
+	if (!stream_.is_valid()) {
 		qCritical() << "Can't retrieve video on a closed decoder";
 		return nullptr;
 	}
 
-	if (!SupportsVideo()) {
+	if (!supports_video()) {
 		qCritical() << "Decoder doesn't support video";
 		return nullptr;
 	}
 
-	if (p.cancelled && p.cancelled->IsCancelled()) {
+	if (p.cancelled && p.cancelled->is_cancelled()) {
 		return nullptr;
 	}
 
@@ -117,110 +117,110 @@ TexturePtr Decoder::RetrieveVideo(const RetrieveVideoParams &p)
 		return cached_texture_;
 	}
 
-	cached_texture_ = RetrieveVideoInternal(p);
+	cached_texture_ = retrieve_video_internal(p);
 	cached_time_ = p.time;
 	cached_divider_ = p.divider;
 
 	return cached_texture_;
 }
 
-FramePtr Decoder::RetrieveVideoFrame(const RetrieveVideoParams &p)
+FramePtr Decoder::retrieve_video_frame(const RetrieveVideoParams &p)
 {
 	QMutexLocker locker(&mutex_);
 
-	UpdateLastAccessed();
+	update_last_accessed();
 
-	if (!stream_.IsValid()) {
+	if (!stream_.is_valid()) {
 		qCritical() << "Can't retrieve video frame on a closed decoder";
 		return nullptr;
 	}
 
-	if (!SupportsVideo()) {
+	if (!supports_video()) {
 		qCritical() << "Decoder doesn't support video";
 		return nullptr;
 	}
 
-	if (p.cancelled && p.cancelled->IsCancelled()) {
+	if (p.cancelled && p.cancelled->is_cancelled()) {
 		return nullptr;
 	}
 
-	return RetrieveVideoFrameInternal(p);
+	return retrieve_video_frame_internal(p);
 }
 
 Decoder::RetrieveAudioStatus
-Decoder::RetrieveAudio(SampleBuffer &dest, const TimeRange &range,
+Decoder::retrieve_audio(SampleBuffer &dest, const TimeRange &range,
 					   const AudioParams &params, const QString &cache_path,
 					   LoopMode loop_mode, RenderMode::Mode mode)
 {
 	QMutexLocker locker(&mutex_);
 
-	UpdateLastAccessed();
+	update_last_accessed();
 
-	if (!stream_.IsValid()) {
+	if (!stream_.is_valid()) {
 		qCritical() << "Can't retrieve audio on a closed decoder";
-		return kInvalid;
+		return k_invalid;
 	}
 
-	if (!SupportsAudio()) {
+	if (!supports_audio()) {
 		qCritical() << "Decoder doesn't support audio";
-		return kInvalid;
+		return k_invalid;
 	}
 
 	if (params.sample_rate() <= 0 || params.channel_count() <= 0) {
 		qWarning() << "Invalid audio parameters, skipping audio retrieve";
-		return kInvalid;
+		return k_invalid;
 	}
 
 	// Get conform state from ConformManager
 	ConformManager::Conform conform =
-		ConformManager::instance()->GetConformState(
-			id(), cache_path, stream_, params, (mode == RenderMode::kOnline));
-	if (conform.state == ConformManager::kConformGenerating) {
+		ConformManager::instance()->get_conform_state(
+			id(), cache_path, stream_, params, (mode == RenderMode::k_online));
+	if (conform.state == ConformManager::k_conform_generating) {
 		// If we need the task, it's available in `conform.task`
-		return kWaitingForConform;
+		return k_waiting_for_conform;
 	}
 
 	// See if we got the conform
-	if (RetrieveAudioFromConform(dest, conform.filenames, range, loop_mode,
+	if (retrieve_audio_from_conform(dest, conform.filenames, range, loop_mode,
 								 params)) {
-		return kOK;
+		return k_ok;
 	} else {
-		return kUnknownError;
+		return k_unknown_error;
 	}
 }
 
-qint64 Decoder::GetLastAccessedTime()
+qint64 Decoder::get_last_accessed_time()
 {
 	return last_accessed_;
 }
 
-void Decoder::Close()
+void Decoder::close()
 {
 	QMutexLocker locker(&mutex_);
 
-	UpdateLastAccessed();
+	update_last_accessed();
 
 	cached_texture_ = nullptr;
 
-	if (stream_.IsValid()) {
-		CloseInternal();
-		stream_.Reset();
+	if (stream_.is_valid()) {
+		close_internal();
+		stream_.reset();
 	} else {
 		qWarning() << "Tried to close a decoder that wasn't open";
 	}
 }
 
-bool Decoder::ConformAudio(const QVector<QString> &output_filenames,
+bool Decoder::conform_audio(const QVector<QString> &output_filenames,
 						   const AudioParams &params, CancelAtom *cancelled)
 {
-	return ConformAudioInternal(output_filenames, params, cancelled);
+	return conform_audio_internal(output_filenames, params, cancelled);
 }
 
 /*
  * DECODER STATIC PUBLIC MEMBERS
  */
 
-QVector<DecoderPtr> Decoder::ReceiveListOfAllDecoders()
+QVector<DecoderPtr> Decoder::receive_list_of_all_decoders()
 {
 	QVector<DecoderPtr> decoders;
 
@@ -232,14 +232,14 @@ QVector<DecoderPtr> Decoder::ReceiveListOfAllDecoders()
 	return decoders;
 }
 
-DecoderPtr Decoder::CreateFromID(const QString &id)
+DecoderPtr Decoder::create_from_id(const QString &id)
 {
 	if (id.isEmpty()) {
 		return nullptr;
 	}
 
 	// Create list to iterate through
-	QVector<DecoderPtr> decoder_list = ReceiveListOfAllDecoders();
+	QVector<DecoderPtr> decoder_list = receive_list_of_all_decoders();
 
 	foreach (DecoderPtr d, decoder_list) {
 		if (d->id() == id) {
@@ -250,18 +250,18 @@ DecoderPtr Decoder::CreateFromID(const QString &id)
 	return nullptr;
 }
 
-void Decoder::SignalProcessingProgress(int64_t ts, int64_t duration)
+void Decoder::signal_processing_progress(int64_t ts, int64_t duration)
 {
 	if (duration != FB_NOPTS_VALUE && duration != 0) {
-		emit IndexProgress(static_cast<double>(ts) /
+		emit index_progress(static_cast<double>(ts) /
 						   static_cast<double>(duration));
 	}
 }
 
-QString Decoder::TransformImageSequenceFileName(const QString &filename,
+QString Decoder::transform_image_sequence_file_name(const QString &filename,
 												const int64_t &number)
 {
-	int digit_count = GetImageSequenceDigitCount(filename);
+	int digit_count = get_image_sequence_digit_count(filename);
 
 	QFileInfo file_info(filename);
 
@@ -276,7 +276,7 @@ QString Decoder::TransformImageSequenceFileName(const QString &filename,
 		file_info.fileName().replace(original_basename, new_basename));
 }
 
-int Decoder::GetImageSequenceDigitCount(const QString &filename)
+int Decoder::get_image_sequence_digit_count(const QString &filename)
 {
 	QString basename = QFileInfo(filename).completeBaseName();
 
@@ -294,9 +294,9 @@ int Decoder::GetImageSequenceDigitCount(const QString &filename)
 	return digit_count;
 }
 
-int64_t Decoder::GetImageSequenceIndex(const QString &filename)
+int64_t Decoder::get_image_sequence_index(const QString &filename)
 {
-	int digit_count = GetImageSequenceDigitCount(filename);
+	int digit_count = get_image_sequence_digit_count(filename);
 
 	QFileInfo file_info(filename);
 
@@ -308,19 +308,19 @@ int64_t Decoder::GetImageSequenceIndex(const QString &filename)
 	return number_only.toLongLong();
 }
 
-TexturePtr Decoder::RetrieveVideoInternal(const RetrieveVideoParams &p)
+TexturePtr Decoder::retrieve_video_internal(const RetrieveVideoParams &p)
 {
 	Q_UNUSED(p)
 	return nullptr;
 }
 
-FramePtr Decoder::RetrieveVideoFrameInternal(const RetrieveVideoParams &p)
+FramePtr Decoder::retrieve_video_frame_internal(const RetrieveVideoParams &p)
 {
 	Q_UNUSED(p)
 	return nullptr;
 }
 
-bool Decoder::ConformAudioInternal(const QVector<QString> &filenames,
+bool Decoder::conform_audio_internal(const QVector<QString> &filenames,
 								   const AudioParams &params,
 								   CancelAtom *cancelled)
 {
@@ -330,14 +330,14 @@ bool Decoder::ConformAudioInternal(const QVector<QString> &filenames,
 	return false;
 }
 
-bool Decoder::RetrieveAudioFromConform(
+bool Decoder::retrieve_audio_from_conform(
 	SampleBuffer &sample_buffer, const QVector<QString> &conform_filenames,
 	TimeRange range, LoopMode loop_mode, const AudioParams &input_params)
 {
 	PlanarFileDevice input;
 	if (input.open(conform_filenames, QFile::ReadOnly)) {
 		// Offset range by audio start offset
-		range -= GetAudioStartOffset();
+		range -= get_audio_start_offset();
 
 		qint64 read_index = input_params.time_to_bytes(range.in()) /
 							input_params.channel_count();
@@ -348,7 +348,7 @@ bool Decoder::RetrieveAudioFromConform(
 			input_params.bytes_per_sample_per_channel();
 
 		while (write_index < buffer_length_in_bytes) {
-			if (loop_mode == LoopMode::kLoopModeLoop) {
+			if (loop_mode == LoopMode::k_loop_mode_loop) {
 				while (read_index >= input.size()) {
 					read_index -= input.size();
 				}
@@ -391,7 +391,7 @@ bool Decoder::RetrieveAudioFromConform(
 	return false;
 }
 
-void Decoder::UpdateLastAccessed()
+void Decoder::update_last_accessed()
 {
 	last_accessed_ = QDateTime::currentMSecsSinceEpoch();
 }

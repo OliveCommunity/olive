@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COMMANDLINEPARSER_H
-#define COMMANDLINEPARSER_H
+#ifndef OAK_COMMANDLINEPARSER_H
+#define OAK_COMMANDLINEPARSER_H
 
 #include <QStringList>
 #include <QVector>
@@ -47,12 +47,12 @@ public:
 	public:
 		PositionalArgument() = default;
 
-		const QString &GetSetting() const
+		const QString &get_setting() const
 		{
 			return setting_;
 		}
 
-		void SetSetting(const QString &s)
+		void set_setting(const QString &s)
 		{
 			setting_ = s;
 		}
@@ -68,12 +68,12 @@ public:
 			is_set_ = false;
 		}
 
-		bool IsSet() const
+		bool is_set() const
 		{
 			return is_set_;
 		}
 
-		void Set()
+		void set()
 		{
 			is_set_ = true;
 		}
@@ -84,18 +84,18 @@ public:
 
 	CommandLineParser() = default;
 
-	const Option *AddOption(const QStringList &strings,
+	const Option *add_option(const QStringList &strings,
 							const QString &description, bool takes_arg = false,
 							const QString &arg_placeholder = QString(),
 							bool hidden = false);
 
-	const PositionalArgument *AddPositionalArgument(const QString &name,
+	const PositionalArgument *add_positional_argument(const QString &name,
 													const QString &description,
 													bool required = false);
 
-	void Process(const QVector<QString> &argv);
+	void process(const QVector<QString> &argv);
 
-	void PrintHelp(const char *filename);
+	void print_help(const char *filename);
 
 private:
 	struct KnownOption {
@@ -119,4 +119,4 @@ private:
 	QVector<KnownPositionalArgument> positional_args_;
 };
 
-#endif // COMMANDLINEPARSER_H
+#endif // OAK_COMMANDLINEPARSER_H

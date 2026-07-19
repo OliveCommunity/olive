@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef DECIMALSLIDERBASE_H
-#define DECIMALSLIDERBASE_H
+#ifndef OAK_DECIMALSLIDERBASE_H
+#define OAK_DECIMALSLIDERBASE_H
 
 #include "numericsliderbase.h"
 
@@ -31,19 +31,19 @@ class DecimalSliderBase : public NumericSliderBase {
 public:
 	DecimalSliderBase(QWidget *parent = nullptr);
 
-	int GetDecimalPlaces() const
+	int get_decimal_places() const
 	{
 		return decimal_places_;
 	}
-	void SetDecimalPlaces(int i);
+	void set_decimal_places(int i);
 
-	bool GetAutoTrimDecimalPlaces() const
+	bool get_auto_trim_decimal_places() const
 	{
 		return autotrim_decimal_places_;
 	};
-	void SetAutoTrimDecimalPlaces(bool e);
+	void set_auto_trim_decimal_places(bool e);
 
-	static QString FloatToString(double val, int decimal_places,
+	static QString float_to_string(double val, int decimal_places,
 								 bool autotrim_decimal_places);
 
 private:
@@ -54,4 +54,4 @@ private:
 
 }
 
-#endif // DECIMALSLIDERBASE_H
+#endif // OAK_DECIMALSLIDERBASE_H

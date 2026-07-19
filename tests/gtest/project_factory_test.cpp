@@ -36,11 +36,11 @@
 namespace
 {
 
-void CollectLeafActions(QMenu *menu, QList<QAction *> *leaves)
+void collect_leaf_actions(QMenu *menu, QList<QAction *> *leaves)
 {
 	for (QAction *action : menu->actions()) {
 		if (action->menu()) {
-			CollectLeafActions(action->menu(), leaves);
+			collect_leaf_actions(action->menu(), leaves);
 		} else if (!action->isSeparator()) {
 			leaves->append(action);
 		}
@@ -50,13 +50,13 @@ void CollectLeafActions(QMenu *menu, QList<QAction *> *leaves)
 
 // Project save/load and cache paths go through the DiskManager singleton,
 // which itself touches Core
-void EnsureAppSingletons()
+void ensure_app_singletons()
 {
 	if (!olive::Core::instance()) {
 		new olive::Core(olive::Core::CoreParams()); // intentionally leaked
 	}
 	if (!olive::DiskManager::instance()) {
-		olive::DiskManager::CreateInstance();
+		olive::DiskManager::create_instance();
 	}
 }
 
@@ -64,12 +64,12 @@ void EnsureAppSingletons()
 
 TEST(Project, FilenameNamePrettyAndSignals)
 {
-	olive::ColorManager::SetUpDefaultConfig();
-	EnsureAppSingletons();
+	olive::ColorManager::set_up_default_config();
+	ensure_app_singletons();
 	olive::Project project;
 
 	int name_changes = 0;
-	QObject::connect(&project, &olive::Project::NameChanged,
+	QObject::connect(&project, &olive::Project::name_changed,
 					 [&name_changes]() { ++name_changes; });
 
 	const QString filename = QStringLiteral("/tmp/some/dir/my_edit.ove");
@@ -86,8 +86,8 @@ TEST(Project, FilenameNamePrettyAndSignals)
 	project.set_filename(filename);
 	EXPECT_EQ(name_changes, 2);
 
-	project.SetSavedURL(QStringLiteral("/tmp/some/dir"));
-	EXPECT_EQ(project.GetSavedURL(), QStringLiteral("/tmp/some/dir"));
+	project.set_saved_url(QStringLiteral("/tmp/some/dir"));
+	EXPECT_EQ(project.get_saved_url(), QStringLiteral("/tmp/some/dir"));
 
 	// A filename alone does not mark the project modified
 	EXPECT_FALSE(project.is_modified());
@@ -95,12 +95,12 @@ TEST(Project, FilenameNamePrettyAndSignals)
 
 TEST(Project, ModifiedAndAutoRecoverySignals)
 {
-	olive::ColorManager::SetUpDefaultConfig();
-	EnsureAppSingletons();
+	olive::ColorManager::set_up_default_config();
+	ensure_app_singletons();
 	olive::Project project;
 
 	QVector<bool> states;
-	QObject::connect(&project, &olive::Project::ModifiedChanged,
+	QObject::connect(&project, &olive::Project::modified_changed,
 					 [&states](bool e) { states.append(e); });
 
 	project.set_modified(true);
@@ -124,52 +124,52 @@ TEST(Project, ModifiedAndAutoRecoverySignals)
 
 TEST(Project, SettingsEmitSignalsAndColorSideEffects)
 {
-	olive::ColorManager::SetUpDefaultConfig();
-	EnsureAppSingletons();
+	olive::ColorManager::set_up_default_config();
+	ensure_app_singletons();
 	olive::Project project;
 
 	QVector<QString> changed_keys;
-	QObject::connect(&project, &olive::Project::SettingChanged,
+	QObject::connect(&project, &olive::Project::setting_changed,
 					 [&changed_keys](const QString &key, const QString &) {
 						 changed_keys.append(key);
 					 });
 
 	QString reference_space;
 	QObject::connect(project.color_manager(),
-					 &olive::ColorManager::ReferenceSpaceChanged,
+					 &olive::ColorManager::reference_space_changed,
 					 [&reference_space](const QString &s) {
 						 reference_space = s;
 					 });
 	QString default_input;
 	QObject::connect(project.color_manager(),
-					 &olive::ColorManager::DefaultInputChanged,
+					 &olive::ColorManager::default_input_changed,
 					 [&default_input](const QString &s) { default_input = s; });
 
-	project.SetSetting(QStringLiteral("plain"), QStringLiteral("value"));
-	EXPECT_EQ(project.GetSetting(QStringLiteral("plain")),
+	project.set_setting(QStringLiteral("plain"), QStringLiteral("value"));
+	EXPECT_EQ(project.get_setting(QStringLiteral("plain")),
 			  QStringLiteral("value"));
 
-	project.SetColorReferenceSpace(QStringLiteral("ACES - ACEScg"));
-	EXPECT_EQ(project.GetColorReferenceSpace(),
+	project.set_color_reference_space(QStringLiteral("ACES - ACEScg"));
+	EXPECT_EQ(project.get_color_reference_space(),
 			  QStringLiteral("ACES - ACEScg"));
 	EXPECT_EQ(reference_space, QStringLiteral("ACES - ACEScg"));
 
-	project.SetDefaultInputColorSpace(QStringLiteral("Linear Rec.709"));
-	EXPECT_EQ(project.GetDefaultInputColorSpace(),
+	project.set_default_input_color_space(QStringLiteral("Linear Rec.709"));
+	EXPECT_EQ(project.get_default_input_color_space(),
 			  QStringLiteral("Linear Rec.709"));
 	EXPECT_EQ(default_input, QStringLiteral("Linear Rec.709"));
 
 	// A nonexistent config filename is stored; the failed OCIO load inside
 	// ColorManager::UpdateConfigFromFilename() is swallowed
-	project.SetColorConfigFilename(QStringLiteral("/nonexistent/config.ocio"));
-	EXPECT_EQ(project.GetColorConfigFilename(),
+	project.set_color_config_filename(QStringLiteral("/nonexistent/config.ocio"));
+	EXPECT_EQ(project.get_color_config_filename(),
 			  QStringLiteral("/nonexistent/config.ocio"));
 
 	EXPECT_TRUE(changed_keys.contains(QStringLiteral("plain")));
-	EXPECT_TRUE(changed_keys.contains(olive::Project::kColorReferenceSpace));
+	EXPECT_TRUE(changed_keys.contains(olive::Project::k_color_reference_space));
 	EXPECT_TRUE(
-		changed_keys.contains(olive::Project::kDefaultInputColorSpaceKey));
-	EXPECT_TRUE(changed_keys.contains(olive::Project::kColorConfigFilename));
+		changed_keys.contains(olive::Project::k_default_input_color_space_key));
+	EXPECT_TRUE(changed_keys.contains(olive::Project::k_color_config_filename));
 }
 
 TEST(Project, CachePathModes)
@@ -177,13 +177,13 @@ TEST(Project, CachePathModes)
 	const bool created_disk_manager =
 		(olive::DiskManager::instance() == nullptr);
 	if (created_disk_manager) {
-		olive::DiskManager::CreateInstance();
+		olive::DiskManager::create_instance();
 	}
 	const QString default_path =
-		olive::DiskManager::instance()->GetDefaultCachePath();
+		olive::DiskManager::instance()->get_default_cache_path();
 
-	olive::ColorManager::SetUpDefaultConfig();
-	EnsureAppSingletons();
+	olive::ColorManager::set_up_default_config();
+	ensure_app_singletons();
 
 	QTemporaryDir dir;
 	ASSERT_TRUE(dir.isValid());
@@ -196,48 +196,48 @@ TEST(Project, CachePathModes)
 	project.set_filename(filename);
 
 	// Default mode always returns the application-wide cache path
-	project.SetCacheLocationSetting(olive::Project::kCacheUseDefaultLocation);
-	EXPECT_EQ(project.GetCacheLocationSetting(),
-			  olive::Project::kCacheUseDefaultLocation);
+	project.set_cache_location_setting(olive::Project::k_cache_use_default_location);
+	EXPECT_EQ(project.get_cache_location_setting(),
+			  olive::Project::k_cache_use_default_location);
 	EXPECT_EQ(project.cache_path(), default_path);
 
 	// Alongside mode returns a "cache" directory next to the project file
-	project.SetCacheLocationSetting(
-		olive::Project::kCacheStoreAlongsideProject);
+	project.set_cache_location_setting(
+		olive::Project::k_cache_store_alongside_project);
 	EXPECT_EQ(project.get_cache_alongside_project_path(), alongside);
 	EXPECT_EQ(project.cache_path(), alongside);
 
 	// Without a filename there is no alongside location, so it falls back
 	olive::Project unsaved;
-	unsaved.SetCacheLocationSetting(
-		olive::Project::kCacheStoreAlongsideProject);
+	unsaved.set_cache_location_setting(
+		olive::Project::k_cache_store_alongside_project);
 	EXPECT_TRUE(unsaved.get_cache_alongside_project_path().isEmpty());
 	EXPECT_EQ(unsaved.cache_path(), default_path);
 
 	// A non-empty custom path is used verbatim; an empty one falls back to
 	// the default location (this branch used to be inverted)
 	olive::Project custom;
-	custom.SetCacheLocationSetting(olive::Project::kCacheCustomPath);
-	custom.SetCustomCachePath(QStringLiteral("/tmp/oak-custom-cache"));
-	EXPECT_EQ(custom.GetCustomCachePath(),
+	custom.set_cache_location_setting(olive::Project::k_cache_custom_path);
+	custom.set_custom_cache_path(QStringLiteral("/tmp/oak-custom-cache"));
+	EXPECT_EQ(custom.get_custom_cache_path(),
 			  QStringLiteral("/tmp/oak-custom-cache"));
 	EXPECT_EQ(custom.cache_path(), QStringLiteral("/tmp/oak-custom-cache"));
 
 	olive::Project custom_empty;
-	custom_empty.SetCacheLocationSetting(olive::Project::kCacheCustomPath);
+	custom_empty.set_cache_location_setting(olive::Project::k_cache_custom_path);
 	EXPECT_EQ(custom_empty.cache_path(), default_path);
 
 	if (created_disk_manager) {
-		olive::DiskManager::DestroyInstance();
+		olive::DiskManager::destroy_instance();
 	}
 }
 
 TEST(Project, NodeManagementSignalsAndClear)
 {
-	olive::ColorManager::SetUpDefaultConfig();
-	EnsureAppSingletons();
+	olive::ColorManager::set_up_default_config();
+	ensure_app_singletons();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	// The root folder created by Initialize() is part of the graph
 	ASSERT_EQ(project.nodes().size(), 1);
@@ -246,12 +246,12 @@ TEST(Project, NodeManagementSignalsAndClear)
 	int added = 0;
 	int removed = 0;
 	olive::Node *last_added = nullptr;
-	QObject::connect(&project, &olive::Project::NodeAdded,
+	QObject::connect(&project, &olive::Project::node_added,
 					 [&added, &last_added](olive::Node *n) {
 						 ++added;
 						 last_added = n;
 					 });
-	QObject::connect(&project, &olive::Project::NodeRemoved,
+	QObject::connect(&project, &olive::Project::node_removed,
 					 [&removed](olive::Node *) { ++removed; });
 
 	auto *math = new olive::MathNode();
@@ -272,7 +272,7 @@ TEST(Project, NodeManagementSignalsAndClear)
 	auto *b = new olive::MathNode();
 	b->setParent(&project);
 	ASSERT_EQ(project.nodes().size(), 3);
-	project.Clear();
+	project.clear();
 	EXPECT_TRUE(project.nodes().isEmpty());
 	// One removal from the earlier delete, plus root + 2 nodes from Clear()
 	EXPECT_EQ(removed, 4);
@@ -280,53 +280,53 @@ TEST(Project, NodeManagementSignalsAndClear)
 
 TEST(Project, ContextCounting)
 {
-	olive::ColorManager::SetUpDefaultConfig();
-	EnsureAppSingletons();
+	olive::ColorManager::set_up_default_config();
+	ensure_app_singletons();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *node = new olive::MathNode();
 	node->setParent(&project);
 	auto *folder = new olive::Folder();
 	folder->setParent(&project);
 
-	EXPECT_EQ(project.GetNumberOfContextsNodeIsIn(node), 0);
+	EXPECT_EQ(project.get_number_of_contexts_node_is_in(node), 0);
 
-	EXPECT_TRUE(folder->SetNodePositionInContext(
+	EXPECT_TRUE(folder->set_node_position_in_context(
 		node, olive::Node::Position(QPointF(1.0, 2.0), true)));
-	EXPECT_EQ(project.GetNumberOfContextsNodeIsIn(node), 1);
-	EXPECT_EQ(project.GetNumberOfContextsNodeIsIn(node, true), 1);
+	EXPECT_EQ(project.get_number_of_contexts_node_is_in(node), 1);
+	EXPECT_EQ(project.get_number_of_contexts_node_is_in(node, true), 1);
 
 	// except_itself only excludes the queried node when it acts as its own
 	// context
-	node->SetNodePositionInContext(node,
+	node->set_node_position_in_context(node,
 								   olive::Node::Position(QPointF(), true));
-	EXPECT_EQ(project.GetNumberOfContextsNodeIsIn(node, false), 2);
-	EXPECT_EQ(project.GetNumberOfContextsNodeIsIn(node, true), 1);
+	EXPECT_EQ(project.get_number_of_contexts_node_is_in(node, false), 2);
+	EXPECT_EQ(project.get_number_of_contexts_node_is_in(node, true), 1);
 }
 
 TEST(Project, CopySettingsCopiesEntireMap)
 {
-	olive::ColorManager::SetUpDefaultConfig();
-	EnsureAppSingletons();
+	olive::ColorManager::set_up_default_config();
+	ensure_app_singletons();
 	olive::Project from;
 	olive::Project to;
 
-	from.SetSetting(QStringLiteral("alpha"), QStringLiteral("1"));
-	from.SetCustomCachePath(QStringLiteral("/tmp/x"));
+	from.set_setting(QStringLiteral("alpha"), QStringLiteral("1"));
+	from.set_custom_cache_path(QStringLiteral("/tmp/x"));
 
-	EXPECT_TRUE(to.GetSetting(QStringLiteral("alpha")).isEmpty());
+	EXPECT_TRUE(to.get_setting(QStringLiteral("alpha")).isEmpty());
 
-	olive::Project::CopySettings(&from, &to);
-	EXPECT_EQ(to.GetSetting(QStringLiteral("alpha")), QStringLiteral("1"));
-	EXPECT_EQ(to.GetCustomCachePath(), QStringLiteral("/tmp/x"));
+	olive::Project::copy_settings(&from, &to);
+	EXPECT_EQ(to.get_setting(QStringLiteral("alpha")), QStringLiteral("1"));
+	EXPECT_EQ(to.get_custom_cache_path(), QStringLiteral("/tmp/x"));
 }
 
 TEST(Project, SaveLoadRoundTripPreservesUuidSettingsAndRoot)
 {
-	olive::ColorManager::SetUpDefaultConfig();
-	EnsureAppSingletons();
-	olive::NodeFactory::Initialize();
+	olive::ColorManager::set_up_default_config();
+	ensure_app_singletons();
+	olive::NodeFactory::initialize();
 
 	QTemporaryDir dir;
 	ASSERT_TRUE(dir.isValid());
@@ -338,9 +338,9 @@ TEST(Project, SaveLoadRoundTripPreservesUuidSettingsAndRoot)
 
 	{
 		olive::Project project;
-		project.Initialize();
-		project.SetUuid(fixed_uuid);
-		project.SetSetting(QStringLiteral("customkey"),
+		project.initialize();
+		project.set_uuid(fixed_uuid);
+		project.set_setting(QStringLiteral("customkey"),
 						   QStringLiteral("customvalue"));
 
 		QFile file(path);
@@ -348,7 +348,7 @@ TEST(Project, SaveLoadRoundTripPreservesUuidSettingsAndRoot)
 		QXmlStreamWriter writer(&file);
 		writer.writeStartDocument();
 		writer.writeStartElement(QStringLiteral("project"));
-		project.Save(&writer);
+		project.save(&writer);
 		writer.writeEndElement();
 		writer.writeEndDocument();
 		file.close();
@@ -363,29 +363,29 @@ TEST(Project, SaveLoadRoundTripPreservesUuidSettingsAndRoot)
 	QXmlStreamReader reader(&in);
 	ASSERT_TRUE(reader.readNextStartElement());
 	ASSERT_EQ(reader.name(), QStringLiteral("project"));
-	olive::SerializedData data = loaded.Load(&reader);
+	olive::SerializedData data = loaded.load(&reader);
 	in.close();
 
-	EXPECT_EQ(loaded.GetUuid(), fixed_uuid);
-	EXPECT_EQ(loaded.GetSetting(QStringLiteral("customkey")),
+	EXPECT_EQ(loaded.get_uuid(), fixed_uuid);
+	EXPECT_EQ(loaded.get_setting(QStringLiteral("customkey")),
 			  QStringLiteral("customvalue"));
 
 	// The root folder was re-created as a new instance and the root setting
 	// now points at it
 	ASSERT_NE(loaded.root(), nullptr);
 	EXPECT_TRUE(loaded.nodes().contains(loaded.root()));
-	EXPECT_EQ(loaded.GetSetting(olive::Project::kRootKey),
+	EXPECT_EQ(loaded.get_setting(olive::Project::k_root_key),
 			  QString::number(reinterpret_cast<quintptr>(loaded.root())));
 	EXPECT_FALSE(data.node_ptrs.isEmpty());
 
-	olive::NodeFactory::Destroy();
+	olive::NodeFactory::destroy();
 }
 
 TEST(Project, LoadSkipsUnknownAndEmptyNodeIds)
 {
-	olive::ColorManager::SetUpDefaultConfig();
-	EnsureAppSingletons();
-	olive::NodeFactory::Initialize();
+	olive::ColorManager::set_up_default_config();
+	ensure_app_singletons();
+	olive::NodeFactory::initialize();
 
 	const QString xml = QStringLiteral(
 		"<project>"
@@ -400,24 +400,24 @@ TEST(Project, LoadSkipsUnknownAndEmptyNodeIds)
 	QXmlStreamReader reader(xml);
 	ASSERT_TRUE(reader.readNextStartElement());
 	ASSERT_EQ(reader.name(), QStringLiteral("project"));
-	project.Load(&reader);
+	project.load(&reader);
 
 	// Only the node with a known, non-empty id made it into the graph
 	ASSERT_EQ(project.nodes().size(), 1);
 	EXPECT_EQ(project.nodes().first()->id(),
 			  QStringLiteral("org.olivevideoeditor.Olive.math"));
 
-	olive::NodeFactory::Destroy();
+	olive::NodeFactory::destroy();
 }
 
 TEST(NodeFactory, CreateFromFactoryIndexReturnsNonNullUniqueIds)
 {
 	QSet<QString> ids;
-	for (int i = 0; i < int(olive::NodeFactory::kInternalNodeCount); ++i) {
+	for (int i = 0; i < int(olive::NodeFactory::k_internal_node_count); ++i) {
 		const olive::NodeFactory::InternalID factory_id =
 			static_cast<olive::NodeFactory::InternalID>(i);
 		olive::Node *node =
-			olive::NodeFactory::CreateFromFactoryIndex(factory_id);
+			olive::NodeFactory::create_from_factory_index(factory_id);
 		ASSERT_NE(node, nullptr) << "factory index" << i << "returned null";
 		EXPECT_FALSE(node->id().isEmpty());
 		EXPECT_FALSE(ids.contains(node->id()))
@@ -425,114 +425,114 @@ TEST(NodeFactory, CreateFromFactoryIndexReturnsNonNullUniqueIds)
 		ids.insert(node->id());
 		delete node;
 	}
-	EXPECT_EQ(ids.size(), int(olive::NodeFactory::kInternalNodeCount));
+	EXPECT_EQ(ids.size(), int(olive::NodeFactory::k_internal_node_count));
 }
 
 TEST(NodeFactory, CreateFromFactoryIndexReturnsExpectedTypes)
 {
 	std::unique_ptr<olive::Node> footage(
-		olive::NodeFactory::CreateFromFactoryIndex(
-			olive::NodeFactory::kProjectFootage));
+		olive::NodeFactory::create_from_factory_index(
+			olive::NodeFactory::k_project_footage));
 	EXPECT_NE(dynamic_cast<olive::Footage *>(footage.get()), nullptr);
 
 	std::unique_ptr<olive::Node> sequence(
-		olive::NodeFactory::CreateFromFactoryIndex(
-			olive::NodeFactory::kProjectSequence));
+		olive::NodeFactory::create_from_factory_index(
+			olive::NodeFactory::k_project_sequence));
 	EXPECT_NE(dynamic_cast<olive::Sequence *>(sequence.get()), nullptr);
 
 	std::unique_ptr<olive::Node> folder(
-		olive::NodeFactory::CreateFromFactoryIndex(
-			olive::NodeFactory::kProjectFolder));
+		olive::NodeFactory::create_from_factory_index(
+			olive::NodeFactory::k_project_folder));
 	EXPECT_NE(dynamic_cast<olive::Folder *>(folder.get()), nullptr);
 
 	std::unique_ptr<olive::Node> track(
-		olive::NodeFactory::CreateFromFactoryIndex(
-			olive::NodeFactory::kTrackOutput));
+		olive::NodeFactory::create_from_factory_index(
+			olive::NodeFactory::k_track_output));
 	EXPECT_NE(dynamic_cast<olive::Track *>(track.get()), nullptr);
 
 	std::unique_ptr<olive::Node> viewer(
-		olive::NodeFactory::CreateFromFactoryIndex(
-			olive::NodeFactory::kViewerOutput));
+		olive::NodeFactory::create_from_factory_index(
+			olive::NodeFactory::k_viewer_output));
 	EXPECT_NE(dynamic_cast<olive::ViewerOutput *>(viewer.get()), nullptr);
 
 	std::unique_ptr<olive::Node> solid(
-		olive::NodeFactory::CreateFromFactoryIndex(
-			olive::NodeFactory::kSolidGenerator));
+		olive::NodeFactory::create_from_factory_index(
+			olive::NodeFactory::k_solid_generator));
 	EXPECT_NE(dynamic_cast<olive::SolidGenerator *>(solid.get()), nullptr);
 
 	std::unique_ptr<olive::Node> math(
-		olive::NodeFactory::CreateFromFactoryIndex(olive::NodeFactory::kMath));
+		olive::NodeFactory::create_from_factory_index(olive::NodeFactory::k_math));
 	EXPECT_NE(dynamic_cast<olive::MathNode *>(math.get()), nullptr);
 
 	std::unique_ptr<olive::Node> text(
-		olive::NodeFactory::CreateFromFactoryIndex(
-			olive::NodeFactory::kTextGeneratorV3));
+		olive::NodeFactory::create_from_factory_index(
+			olive::NodeFactory::k_text_generator_v3));
 	EXPECT_NE(dynamic_cast<olive::TextGeneratorV3 *>(text.get()), nullptr);
 
 	std::unique_ptr<olive::Node> clip(
-		olive::NodeFactory::CreateFromFactoryIndex(
-			olive::NodeFactory::kClipBlock));
+		olive::NodeFactory::create_from_factory_index(
+			olive::NodeFactory::k_clip_block));
 	EXPECT_NE(dynamic_cast<olive::ClipBlock *>(clip.get()), nullptr);
 
 	std::unique_ptr<olive::Node> gap(
-		olive::NodeFactory::CreateFromFactoryIndex(
-			olive::NodeFactory::kGapBlock));
+		olive::NodeFactory::create_from_factory_index(
+			olive::NodeFactory::k_gap_block));
 	EXPECT_NE(dynamic_cast<olive::GapBlock *>(gap.get()), nullptr);
 
 	std::unique_ptr<olive::Node> group(
-		olive::NodeFactory::CreateFromFactoryIndex(
-			olive::NodeFactory::kGroupNode));
+		olive::NodeFactory::create_from_factory_index(
+			olive::NodeFactory::k_group_node));
 	EXPECT_NE(dynamic_cast<olive::NodeGroup *>(group.get()), nullptr);
 }
 
 TEST(NodeFactory, CreateFromFactoryIndexCountReturnsNull)
 {
-	EXPECT_EQ(olive::NodeFactory::CreateFromFactoryIndex(
-				  olive::NodeFactory::kInternalNodeCount),
+	EXPECT_EQ(olive::NodeFactory::create_from_factory_index(
+				  olive::NodeFactory::k_internal_node_count),
 			  nullptr);
 }
 
 TEST(NodeFactory, LibraryRoundTripAfterInitialize)
 {
-	olive::NodeFactory::Initialize();
+	olive::NodeFactory::initialize();
 
-	for (int i = 0; i < int(olive::NodeFactory::kInternalNodeCount); ++i) {
+	for (int i = 0; i < int(olive::NodeFactory::k_internal_node_count); ++i) {
 		std::unique_ptr<olive::Node> probe(
-			olive::NodeFactory::CreateFromFactoryIndex(
+			olive::NodeFactory::create_from_factory_index(
 				static_cast<olive::NodeFactory::InternalID>(i)));
 		ASSERT_NE(probe, nullptr);
 
 		// Every internal type must be retrievable from the library by id
-		EXPECT_EQ(olive::NodeFactory::GetNameFromID(probe->id()),
-				  probe->Name())
+		EXPECT_EQ(olive::NodeFactory::get_name_from_id(probe->id()),
+				  probe->name())
 			<< probe->id().toStdString();
 
 		std::unique_ptr<olive::Node> copy(
-			olive::NodeFactory::CreateFromID(probe->id()));
+			olive::NodeFactory::create_from_id(probe->id()));
 		ASSERT_NE(copy, nullptr) << probe->id().toStdString();
 		EXPECT_EQ(copy->id(), probe->id());
 		EXPECT_NE(copy.get(), probe.get());
 	}
 
 	// Unknown and empty ids fail gracefully
-	EXPECT_EQ(olive::NodeFactory::CreateFromID(
+	EXPECT_EQ(olive::NodeFactory::create_from_id(
 				  QStringLiteral("org.example.nonexistent")),
 			  nullptr);
-	EXPECT_EQ(olive::NodeFactory::CreateFromID(QString()), nullptr);
-	EXPECT_TRUE(olive::NodeFactory::GetNameFromID(
+	EXPECT_EQ(olive::NodeFactory::create_from_id(QString()), nullptr);
+	EXPECT_TRUE(olive::NodeFactory::get_name_from_id(
 					QStringLiteral("org.example.nonexistent"))
 					.isEmpty());
-	EXPECT_TRUE(olive::NodeFactory::GetNameFromID(QString()).isEmpty());
+	EXPECT_TRUE(olive::NodeFactory::get_name_from_id(QString()).isEmpty());
 
-	olive::NodeFactory::Destroy();
+	olive::NodeFactory::destroy();
 }
 
 TEST(NodeFactory, CreateMenuWithNoneItem)
 {
-	olive::NodeFactory::Initialize();
+	olive::NodeFactory::initialize();
 
 	std::unique_ptr<olive::Menu> menu(
-		olive::NodeFactory::CreateMenu(nullptr, true));
+		olive::NodeFactory::create_menu(nullptr, true));
 	ASSERT_NE(menu, nullptr);
 	ASSERT_FALSE(menu->actions().isEmpty());
 
@@ -544,7 +544,7 @@ TEST(NodeFactory, CreateMenuWithNoneItem)
 
 	// Leaf actions carry a library index that maps back to node ids
 	QList<QAction *> leaves;
-	CollectLeafActions(menu.get(), &leaves);
+	collect_leaf_actions(menu.get(), &leaves);
 	ASSERT_GT(leaves.size(), 1);
 
 	int created = 0;
@@ -562,35 +562,35 @@ TEST(NodeFactory, CreateMenuWithNoneItem)
 	}
 	EXPECT_GT(created, 0);
 
-	olive::NodeFactory::Destroy();
+	olive::NodeFactory::destroy();
 }
 
 TEST(NodeFactory, CreateMenuRestrictedToCategory)
 {
-	olive::NodeFactory::Initialize();
+	olive::NodeFactory::initialize();
 
-	std::unique_ptr<olive::Menu> menu(olive::NodeFactory::CreateMenu(
-		nullptr, false, olive::Node::kCategoryMath));
+	std::unique_ptr<olive::Menu> menu(olive::NodeFactory::create_menu(
+		nullptr, false, olive::Node::k_category_math));
 	ASSERT_NE(menu, nullptr);
 
 	QList<QAction *> leaves;
-	CollectLeafActions(menu.get(), &leaves);
+	collect_leaf_actions(menu.get(), &leaves);
 	ASSERT_FALSE(leaves.isEmpty());
 
 	for (QAction *leaf : leaves) {
 		std::unique_ptr<olive::Node> node(
 			olive::NodeFactory::CreateFromMenuAction(leaf));
 		ASSERT_NE(node, nullptr);
-		EXPECT_TRUE(node->Category().contains(olive::Node::kCategoryMath))
+		EXPECT_TRUE(node->category().contains(olive::Node::k_category_math))
 			<< node->id().toStdString();
 	}
 
-	olive::NodeFactory::Destroy();
+	olive::NodeFactory::destroy();
 }
 
 TEST(NodeFactory, LegacyDistortIdsResolveToRenamedNodes)
 {
-	olive::NodeFactory::Initialize();
+	olive::NodeFactory::initialize();
 
 	const QList<QPair<QString, QString>> legacy_ids = {
 		{ QStringLiteral("org.oliveeditor.Olive.flip"),
@@ -607,16 +607,16 @@ TEST(NodeFactory, LegacyDistortIdsResolveToRenamedNodes)
 
 	for (const auto &pair : legacy_ids) {
 		std::unique_ptr<olive::Node> node(
-			olive::NodeFactory::CreateFromID(pair.first));
+			olive::NodeFactory::create_from_id(pair.first));
 		ASSERT_NE(node, nullptr) << pair.first.toStdString();
 		EXPECT_EQ(node->id(), pair.second);
 
 		// The current id resolves directly as well
 		std::unique_ptr<olive::Node> current(
-			olive::NodeFactory::CreateFromID(pair.second));
+			olive::NodeFactory::create_from_id(pair.second));
 		ASSERT_NE(current, nullptr) << pair.second.toStdString();
 		EXPECT_EQ(current->id(), pair.second);
 	}
 
-	olive::NodeFactory::Destroy();
+	olive::NodeFactory::destroy();
 }

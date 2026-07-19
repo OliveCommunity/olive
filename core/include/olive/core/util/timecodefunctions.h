@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef LIBOLIVECORE_TIMECODEFUNCTIONS_H
-#define LIBOLIVECORE_TIMECODEFUNCTIONS_H
+#ifndef OAK_LIBOLIVECORE_TIMECODEFUNCTIONS_H
+#define OAK_LIBOLIVECORE_TIMECODEFUNCTIONS_H
 
 #include "rational.h"
 
@@ -34,7 +34,7 @@ namespace olive::core
  *
  * Olive uses the following terminology through its code:
  *
- * `time` - time in seconds presented in a rational form
+ * `time` - time in seconds presented in a Rational form
  * `timebase` - the base time unit of an audio/video stream in seconds
  * `timestamp` - an integer representation of a time in timebase units (in many cases is used like a frame number)
  * `timecode` a user-friendly string representation of a time according to Timecode::Display
@@ -42,52 +42,52 @@ namespace olive::core
 class Timecode {
 public:
 	enum Display {
-		kTimecodeDropFrame,
-		kTimecodeNonDropFrame,
-		kTimecodeSeconds,
-		kFrames,
-		kMilliseconds
+		k_timecode_drop_frame,
+		k_timecode_non_drop_frame,
+		k_timecode_seconds,
+		k_frames,
+		k_milliseconds
 	};
 
-	enum Rounding { kCeil, kFloor, kRound };
+	enum Rounding { k_ceil, k_floor, k_round };
 
 	/**
-   * @brief Convert a timestamp (according to a rational timebase) to a user-friendly string representation
+   * @brief Convert a timestamp (according to a Rational timebase) to a user-friendly string representation
    */
-	static std::string time_to_timecode(const rational &time,
-										const rational &timebase,
+	static std::string time_to_timecode(const Rational &time,
+										const Rational &timebase,
 										const Display &display,
 										bool show_plus_if_positive = false);
-	static rational timecode_to_time(std::string timecode,
-									 const rational &timebase,
+	static Rational timecode_to_time(std::string timecode,
+									 const Rational &timebase,
 									 const Display &display,
 									 bool *ok = nullptr);
 
 	static std::string time_to_string(int64_t ms);
 
-	static rational snap_time_to_timebase(const rational &time,
-										  const rational &timebase,
-										  Rounding floor = kRound);
+	static Rational snap_time_to_timebase(const Rational &time,
+										  const Rational &timebase,
+										  Rounding floor = k_round);
 
-	static int64_t time_to_timestamp(const rational &time,
-									 const rational &timebase,
-									 Rounding floor = kRound);
+	static int64_t time_to_timestamp(const Rational &time,
+									 const Rational &timebase,
+									 Rounding floor = k_round);
 	static int64_t time_to_timestamp(const double &time,
-									 const rational &timebase,
-									 Rounding floor = kRound);
+									 const Rational &timebase,
+									 Rounding floor = k_round);
 
-	static int64_t rescale_timestamp(const int64_t &ts, const rational &source,
-									 const rational &dest);
+	static int64_t rescale_timestamp(const int64_t &ts, const Rational &source,
+									 const Rational &dest);
 	static int64_t rescale_timestamp_ceil(const int64_t &ts,
-										  const rational &source,
-										  const rational &dest);
+										  const Rational &source,
+										  const Rational &dest);
 
-	static rational timestamp_to_time(const int64_t &timestamp,
-									  const rational &timebase);
+	static Rational timestamp_to_time(const int64_t &timestamp,
+									  const Rational &timebase);
 
-	static bool timebase_is_drop_frame(const rational &timebase);
+	static bool timebase_is_drop_frame(const Rational &timebase);
 };
 
 }
 
-#endif // LIBOLIVECORE_TIMECODEFUNCTIONS_H
+#endif // OAK_LIBOLIVECORE_TIMECODEFUNCTIONS_H

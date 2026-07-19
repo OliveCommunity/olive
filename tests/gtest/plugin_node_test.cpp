@@ -32,9 +32,9 @@
 #include "ofxhImageEffect.h"
 #include "ofxhPluginCache.h"
 
-#include "common/Current.h"
-#include "node/plugins/Plugin.h"
-#include "pluginSupport/OliveHost.h"
+#include "common/current.h"
+#include "node/plugins/plugin.h"
+#include "pluginSupport/olivehost.h"
 #include "version.h"
 
 namespace
@@ -43,10 +43,10 @@ namespace
 // Paths that never exist on disk: the PluginBinary stats the file, marks
 // itself invalid, and every code path used below tolerates that without ever
 // calling dlopen().
-constexpr char kFakeBundlePath[] = "/nonexistent/Fake.ofx.bundle";
-constexpr char kFakeBinaryPath[] =
+constexpr char k_fake_bundle_path[] = "/nonexistent/Fake.ofx.bundle";
+constexpr char k_fake_binary_path[] =
 	"/nonexistent/Fake.ofx.bundle/Contents/Linux-x86-64/Fake.ofx";
-constexpr char kFakePluginId[] = "com.oak.test.FakePlugin";
+constexpr char k_fake_plugin_id[] = "com.oak.test.FakePlugin";
 
 // Builds an OliveHost, an ImageEffect::PluginCache bound to it (which sets
 // the global gImageEffectHost), an invalid PluginBinary, and a fake
@@ -69,17 +69,17 @@ struct FakePluginHarness {
 	HostGlobalSaver saver;
 	olive::plugin::OliveHost host;
 	OFX::Host::ImageEffect::PluginCache cache{ host };
-	OFX::Host::PluginBinary binary{ kFakeBinaryPath, kFakeBundlePath, 0, 0 };
+	OFX::Host::PluginBinary binary{ k_fake_binary_path, k_fake_bundle_path, 0, 0 };
 	OFX::Host::ImageEffect::ImageEffectPlugin plugin{ cache,	 &binary, 0,
 													  kOfxImageEffectPluginApi,
 													  1,
-													  kFakePluginId,
-													  kFakePluginId,
+													  k_fake_plugin_id,
+													  k_fake_plugin_id,
 													  1,
 													  0 };
 };
 
-OfxStatus CallVMessage(olive::plugin::OliveHost &host, const char *type,
+OfxStatus call_v_message(olive::plugin::OliveHost &host, const char *type,
 					   const char *id, const char *format, ...)
 {
 	va_list args;
@@ -89,7 +89,7 @@ OfxStatus CallVMessage(olive::plugin::OliveHost &host, const char *type,
 	return status;
 }
 
-OfxStatus CallSetPersistentMessage(olive::plugin::OliveHost &host,
+OfxStatus call_set_persistent_message(olive::plugin::OliveHost &host,
 								   const char *type, const char *id,
 								   const char *format, ...)
 {
@@ -139,14 +139,14 @@ TEST(OliveHost, FakePluginExposesConstructionMetadata)
 {
 	FakePluginHarness harness;
 
-	EXPECT_EQ(harness.plugin.getIdentifier(), kFakePluginId);
+	EXPECT_EQ(harness.plugin.getIdentifier(), k_fake_plugin_id);
 	EXPECT_EQ(harness.plugin.getVersionMajor(), 1);
 	EXPECT_EQ(harness.plugin.getVersionMinor(), 0);
 	// Construction went through OliveHost::makeDescriptor(plugin), which
 	// stamps the descriptor with the binary's bundle path.
 	EXPECT_EQ(harness.plugin.getDescriptor().getProps().getStringProperty(
 				  kOfxPluginPropFilePath),
-			  kFakeBundlePath);
+			  k_fake_bundle_path);
 }
 
 // ============================================================================
@@ -190,7 +190,7 @@ TEST(OliveHost, MakeDescriptorFromRootContextCopiesProperties)
 			  "Root Label");
 	// ... while the file path is stamped from the plugin's own binary.
 	EXPECT_EQ(desc->getProps().getStringProperty(kOfxPluginPropFilePath),
-			  kFakeBundlePath);
+			  k_fake_bundle_path);
 }
 
 // ============================================================================
@@ -200,7 +200,7 @@ TEST(OliveHost, MakeDescriptorFromRootContextCopiesProperties)
 TEST(OliveHost, DestroyInstanceIgnoresNull)
 {
 	olive::plugin::OliveHost host;
-	EXPECT_NO_THROW(host.destroyInstance(nullptr));
+	EXPECT_NO_THROW(host.destroy_instance(nullptr));
 }
 
 // ============================================================================
@@ -215,17 +215,17 @@ TEST(OliveHost, DestroyInstanceIgnoresNull)
 TEST(OliveHost, VMessageRejectsNullArguments)
 {
 	olive::plugin::OliveHost host;
-	EXPECT_EQ(CallVMessage(host, nullptr, "id", "%s", "x"), kOfxStatFailed);
-	EXPECT_EQ(CallVMessage(host, kOfxMessageError, "id", nullptr),
+	EXPECT_EQ(call_v_message(host, nullptr, "id", "%s", "x"), kOfxStatFailed);
+	EXPECT_EQ(call_v_message(host, kOfxMessageError, "id", nullptr),
 			  kOfxStatFailed);
 }
 
 TEST(OliveHost, SetPersistentMessageRejectsNullArguments)
 {
 	olive::plugin::OliveHost host;
-	EXPECT_EQ(CallSetPersistentMessage(host, nullptr, "id", "%s", "x"),
+	EXPECT_EQ(call_set_persistent_message(host, nullptr, "id", "%s", "x"),
 			  kOfxStatFailed);
-	EXPECT_EQ(CallSetPersistentMessage(host, kOfxMessageError, "id", nullptr),
+	EXPECT_EQ(call_set_persistent_message(host, kOfxMessageError, "id", nullptr),
 			  kOfxStatFailed);
 }
 
@@ -234,7 +234,7 @@ TEST(OliveHost, SetPersistentMessageRejectsUnknownType)
 	olive::plugin::OliveHost host;
 	// A type that is neither error, warning, nor message fails before any
 	// dialog would be shown.
-	EXPECT_EQ(CallSetPersistentMessage(host, "OfxMessageBogus", "id", "%s",
+	EXPECT_EQ(call_set_persistent_message(host, "OfxMessageBogus", "id", "%s",
 									   "hello"),
 			  kOfxStatFailed);
 }
@@ -248,14 +248,14 @@ TEST(OliveHost, VMessageOffscreenLogsInsteadOfDialog)
 	olive::plugin::OliveHost host;
 	// No modal dialog is shown on the offscreen platform; the message is
 	// logged to stderr and acknowledged.
-	EXPECT_EQ(CallVMessage(host, kOfxMessageError, "id", "%s", "boom"),
+	EXPECT_EQ(call_v_message(host, kOfxMessageError, "id", "%s", "boom"),
 			  kOfxStatOK);
-	EXPECT_EQ(CallVMessage(host, kOfxMessageWarning, "id", "%s", "boom"),
+	EXPECT_EQ(call_v_message(host, kOfxMessageWarning, "id", "%s", "boom"),
 			  kOfxStatOK);
-	EXPECT_EQ(CallVMessage(host, kOfxMessageMessage, "id", "%s", "boom"),
+	EXPECT_EQ(call_v_message(host, kOfxMessageMessage, "id", "%s", "boom"),
 			  kOfxStatOK);
 	// A question cannot be answered headlessly, so it is a "no".
-	EXPECT_EQ(CallVMessage(host, kOfxMessageQuestion, "id", "%s", "boom"),
+	EXPECT_EQ(call_v_message(host, kOfxMessageQuestion, "id", "%s", "boom"),
 			  kOfxStatReplyNo);
 }
 
@@ -266,13 +266,13 @@ TEST(OliveHost, SetPersistentMessageOffscreenSucceeds)
 	}
 
 	olive::plugin::OliveHost host;
-	EXPECT_EQ(CallSetPersistentMessage(host, kOfxMessageError, "id", "%s",
+	EXPECT_EQ(call_set_persistent_message(host, kOfxMessageError, "id", "%s",
 									   "boom"),
 			  kOfxStatOK);
-	EXPECT_EQ(CallSetPersistentMessage(host, kOfxMessageWarning, "id", "%s",
+	EXPECT_EQ(call_set_persistent_message(host, kOfxMessageWarning, "id", "%s",
 									   "boom"),
 			  kOfxStatOK);
-	EXPECT_EQ(CallSetPersistentMessage(host, kOfxMessageMessage, "id", "%s",
+	EXPECT_EQ(call_set_persistent_message(host, kOfxMessageMessage, "id", "%s",
 									   "boom"),
 			  kOfxStatOK);
 }
@@ -319,10 +319,10 @@ TEST(OliveHost, HostPropertiesIdentifyApplication)
 	EXPECT_EQ(props.getStringProperty(kOfxPropName), "Oak Video Editor");
 	EXPECT_EQ(props.getStringProperty(kOfxPropLabel), "Oak Video Editor");
 	EXPECT_EQ(props.getStringProperty(kOfxPropVersionLabel),
-			  olive::kAppVersion.toStdString());
+			  olive::k_app_version.toStdString());
 
 	const QStringList version_parts =
-		olive::kAppVersion.section(QLatin1Char('-'), 0, 0)
+		olive::k_app_version.section(QLatin1Char('-'), 0, 0)
 			.split(QLatin1Char('.'));
 	EXPECT_EQ(props.getIntProperty(kOfxPropVersion, 0),
 			  version_parts.value(0).toInt());
@@ -348,22 +348,22 @@ TEST(OliveHost, FlushOpenGLResourcesReportsFailure)
 
 TEST(OliveHost, LoadPluginsInitializesAndReusesCurrentHost)
 {
-	olive::plugin::loadPlugins(QString());
+	olive::plugin::load_plugins(QString());
 
 	std::shared_ptr<olive::plugin::OliveHost> host =
-		Current::getInstance().pluginHost();
+		Current::getInstance().plugin_host();
 	std::shared_ptr<OFX::Host::ImageEffect::PluginCache> cache =
-		Current::getInstance().pluginCache();
+		Current::getInstance().plugin_cache();
 	ASSERT_NE(host, nullptr);
 	ASSERT_NE(cache, nullptr);
 
 	// A second call must reuse the already-created host and cache.
 	QTemporaryDir dir;
 	ASSERT_TRUE(dir.isValid());
-	olive::plugin::loadPlugins(dir.path());
+	olive::plugin::load_plugins(dir.path());
 
-	EXPECT_EQ(Current::getInstance().pluginHost(), host);
-	EXPECT_EQ(Current::getInstance().pluginCache(), cache);
+	EXPECT_EQ(Current::getInstance().plugin_host(), host);
+	EXPECT_EQ(Current::getInstance().plugin_cache(), cache);
 }
 
 TEST(OliveHost, LoadPluginsScansBundleWithoutValidBinary)
@@ -382,7 +382,7 @@ TEST(OliveHost, LoadPluginsScansBundleWithoutValidBinary)
 	fake_binary.write("not a shared object");
 	fake_binary.close();
 
-	EXPECT_NO_THROW(olive::plugin::loadPlugins(dir.path()));
+	EXPECT_NO_THROW(olive::plugin::load_plugins(dir.path()));
 
 	EXPECT_NE(OFX::Host::PluginCache::getPluginCache(), nullptr);
 	// The invalid bundle must not have registered any plugin.
@@ -402,5 +402,5 @@ TEST(OliveHost, LoadPluginsScansBundleWithoutValidBinary)
 
 TEST(PluginNode, TextureInputFallbackIdIsStable)
 {
-	EXPECT_EQ(olive::plugin::kTextureInput, QStringLiteral("tex_in"));
+	EXPECT_EQ(olive::plugin::k_texture_input, QStringLiteral("tex_in"));
 }

@@ -115,7 +115,7 @@ AboutDialog::AboutDialog(bool welcome_dialog, QWidget *parent)
 
 	if (!patrons.isEmpty()) {
 		ScrollingLabel *scroll = new ScrollingLabel(patrons);
-		scroll->StartAnimating();
+		scroll->start_animating();
 		layout->addWidget(scroll);
 	}
 
@@ -150,7 +150,7 @@ AboutDialog::AboutDialog(bool welcome_dialog, QWidget *parent)
 void AboutDialog::accept()
 {
 	if (dont_show_again_checkbox_ && dont_show_again_checkbox_->isChecked()) {
-		OLIVE_CONFIG("ShowWelcomeDialog") = false;
+		OAK_CONFIG("ShowWelcomeDialog") = false;
 	}
 
 	QDialog::accept();

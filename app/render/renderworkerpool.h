@@ -18,8 +18,8 @@
 
 ***/
 
-#ifndef RENDERWORKERPOOL_H
-#define RENDERWORKERPOOL_H
+#ifndef OAK_RENDERWORKERPOOL_H
+#define OAK_RENDERWORKERPOOL_H
 
 #include <QHash>
 #include <QMutex>
@@ -52,12 +52,12 @@ public:
 							  QObject *parent = nullptr);
 	~RenderWorkerPool() override;
 
-	bool SubmitFrame(RenderTicketPtr ticket,
+	bool submit_frame(RenderTicketPtr ticket,
 					 const RenderManager::RenderVideoParams &params);
 
-	bool RemoveTicket(RenderTicketPtr ticket);
+	bool remove_ticket(RenderTicketPtr ticket);
 
-	void Shutdown();
+	void shutdown();
 
 protected:
 	void run() override;
@@ -78,10 +78,10 @@ private:
 	};
 
 	enum class JobResult {
-		kFinished,
-		kRetryableFailure,
-		kFatalFailure,
-		kCancelled
+		k_finished,
+		k_retryable_failure,
+		k_fatal_failure,
+		k_cancelled
 	};
 
 	struct ActiveJob {
@@ -113,41 +113,41 @@ private:
 		QString path;
 	};
 
-	bool PrepareJob(RenderTicketPtr ticket,
+	bool prepare_job(RenderTicketPtr ticket,
 					const RenderManager::RenderVideoParams &params, Job *job);
-	bool WriteGraphSnapshot(Project *project, QString *path);
-	bool IsSupported(const RenderManager::RenderVideoParams &params) const;
+	bool write_graph_snapshot(Project *project, QString *path);
+	bool is_supported(const RenderManager::RenderVideoParams &params) const;
 
-	void WorkerLoop(int worker_index,
+	void worker_loop(int worker_index,
 					std::vector<std::unique_ptr<PooledWorker>> *local_pool);
-	void ProcessJob(const Job &job, int worker_index,
+	void process_job(const Job &job, int worker_index,
 					std::vector<std::unique_ptr<PooledWorker>> *local_pool);
-	JobResult ProcessJobAttempt(const Job &job, int worker_index,
+	JobResult process_job_attempt(const Job &job, int worker_index,
 								int attempt_index, PooledWorker *worker);
-	void FinishWithFrame(RenderTicketPtr ticket, const ipc::FrameSlotPool &pool,
+	void finish_with_frame(RenderTicketPtr ticket, const ipc::FrameSlotPool &pool,
 						 uint32_t slot);
-	void CleanupGraphFile(const QString &path);
-	void AddGraphPathRef(const QString &path);
-	void AddGraphPathRefLocked(const QString &path);
-	void ReleaseGraphPathRef(const QString &path);
-	void ReleaseGraphPathRefLocked(const QString &path);
-	void SetGraphPathCached(const QString &path, bool cached);
-	void SetGraphPathCachedLocked(const QString &path, bool cached);
-	void CancelActiveProcess(qint64 process_id);
-	void SetActiveWorker(int worker_index, RenderTicketPtr ticket,
+	void cleanup_graph_file(const QString &path);
+	void add_graph_path_ref(const QString &path);
+	void add_graph_path_ref_locked(const QString &path);
+	void release_graph_path_ref(const QString &path);
+	void release_graph_path_ref_locked(const QString &path);
+	void set_graph_path_cached(const QString &path, bool cached);
+	void set_graph_path_cached_locked(const QString &path, bool cached);
+	void cancel_active_process(qint64 process_id);
+	void set_active_worker(int worker_index, RenderTicketPtr ticket,
 						 QProcess *worker, qint64 ticket_id);
-	void ClearActiveWorker(int worker_index, qint64 process_id);
-	int WorkerCount() const;
+	void clear_active_worker(int worker_index, qint64 process_id);
+	int worker_count() const;
 
 	std::unique_ptr<PooledWorker>
-	AcquireWorker(std::vector<std::unique_ptr<PooledWorker>> *local_pool,
+	acquire_worker(std::vector<std::unique_ptr<PooledWorker>> *local_pool,
 				  const QString &graph_path);
-	void ReturnWorker(std::vector<std::unique_ptr<PooledWorker>> *local_pool,
+	void return_worker(std::vector<std::unique_ptr<PooledWorker>> *local_pool,
 					  std::unique_ptr<PooledWorker> worker, bool keep_alive);
-	void ShutdownWorker(PooledWorker *worker);
+	void shutdown_worker(PooledWorker *worker);
 	void
-	ShutdownLocalPool(std::vector<std::unique_ptr<PooledWorker>> *local_pool);
-	void ClearGraphCache();
+	shutdown_local_pool(std::vector<std::unique_ptr<PooledWorker>> *local_pool);
+	void clear_graph_cache();
 
 	DecoderCache *decoder_cache_;
 	QString gpu_backend_;
@@ -160,14 +160,14 @@ private:
 	QHash<QString, int> graph_path_ref_count_;
 	QSet<QString> cached_graph_paths_;
 
-	static constexpr uint32_t kOutputSlots = 2;
-	static constexpr int kMaxAttempts = 2;
-	static constexpr int kMaxWidth = 4096;
-	static constexpr int kMaxHeight = 2160;
-	static constexpr int kWorkerIdleTimeoutMs = 30000;
-	static constexpr int kWorkerMaxUses = 100;
+	static constexpr uint32_t k_output_slots = 2;
+	static constexpr int k_max_attempts = 2;
+	static constexpr int k_max_width = 4096;
+	static constexpr int k_max_height = 2160;
+	static constexpr int k_worker_idle_timeout_ms = 30000;
+	static constexpr int k_worker_max_uses = 100;
 };
 
 }
 
-#endif // RENDERWORKERPOOL_H
+#endif // OAK_RENDERWORKERPOOL_H

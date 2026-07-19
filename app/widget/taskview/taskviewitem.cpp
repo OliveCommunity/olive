@@ -41,7 +41,7 @@ TaskViewItem::TaskViewItem(Task *task, QWidget *parent)
 
 	// Create header label
 	task_name_lbl_ = new QLabel(this);
-	task_name_lbl_->setText(task_->GetTitle());
+	task_name_lbl_->setText(task_->get_title());
 	layout->addWidget(task_name_lbl_);
 
 	// Create center layout (combines progress bar and a cancel button)
@@ -55,7 +55,7 @@ TaskViewItem::TaskViewItem(Task *task, QWidget *parent)
 
 	// Create cancel button
 	cancel_btn_ = new QPushButton(this);
-	cancel_btn_->setIcon(icon::Error);
+	cancel_btn_->setIcon(icon::error);
 	middle_layout->addWidget(cancel_btn_);
 
 	// Create stack with error label and elapsed/remaining time
@@ -75,24 +75,24 @@ TaskViewItem::TaskViewItem(Task *task, QWidget *parent)
 	status_stack_->setCurrentWidget(elapsed_timer_lbl_);
 
 	// Connect to the task
-	connect(task_, &Task::Started, elapsed_timer_lbl_,
-			qOverload<qint64>(&ElapsedCounterWidget::Start));
-	connect(task_, &Task::ProgressChanged, this, &TaskViewItem::UpdateProgress);
+	connect(task_, &Task::started, elapsed_timer_lbl_,
+			qOverload<qint64>(&ElapsedCounterWidget::start));
+	connect(task_, &Task::progress_changed, this, &TaskViewItem::update_progress);
 	connect(cancel_btn_, &QPushButton::clicked, this,
-			[this] { emit TaskCancelled(task_); });
+			[this] { emit task_cancelled(task_); });
 }
 
-void TaskViewItem::Failed()
+void TaskViewItem::failed()
 {
 	status_stack_->setCurrentWidget(task_error_lbl_);
 	task_error_lbl_->setStyleSheet("color: red");
-	task_error_lbl_->setText(tr("Error: %1").arg(task_->GetError()));
+	task_error_lbl_->setText(tr("Error: %1").arg(task_->get_error()));
 }
 
-void TaskViewItem::UpdateProgress(double d)
+void TaskViewItem::update_progress(double d)
 {
 	progress_bar_->setValue(qRound(100.0 * d));
-	elapsed_timer_lbl_->SetProgress(d);
+	elapsed_timer_lbl_->set_progress(d);
 }
 
 }

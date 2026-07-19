@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef HTML_H
-#define HTML_H
+#ifndef OAK_HTML_H
+#define OAK_HTML_H
 
 #include <QTextDocument>
 #include <QTextFragment>
@@ -45,39 +45,39 @@ namespace olive
  */
 class Html {
 public:
-	static QString DocToHtml(const QTextDocument *doc);
+	static QString doc_to_html(const QTextDocument *doc);
 
-	static void HtmlToDoc(QTextDocument *doc, const QString &html);
+	static void html_to_doc(QTextDocument *doc, const QString &html);
 
 private:
-	static void WriteBlock(QXmlStreamWriter *writer, const QTextBlock &block);
+	static void write_block(QXmlStreamWriter *writer, const QTextBlock &block);
 
-	static void WriteFragment(QXmlStreamWriter *writer,
+	static void write_fragment(QXmlStreamWriter *writer,
 							  const QTextFragment &fragment);
 
-	static void WriteCSSProperty(QString *style, const QString &key,
+	static void write_css_property(QString *style, const QString &key,
 								 const QStringList &value);
-	static void WriteCSSProperty(QString *style, const QString &key,
+	static void write_css_property(QString *style, const QString &key,
 								 const QString &value)
 	{
-		WriteCSSProperty(style, key, QStringList({ value }));
+		write_css_property(style, key, QStringList({ value }));
 	}
 
-	static void WriteCharFormat(QString *style, const QTextCharFormat &fmt);
+	static void write_char_format(QString *style, const QTextCharFormat &fmt);
 
 	static QTextCharFormat
-	ReadCharFormat(const QXmlStreamAttributes &attributes);
+	read_char_format(const QXmlStreamAttributes &attributes);
 
 	static QTextBlockFormat
-	ReadBlockFormat(const QXmlStreamAttributes &attributes);
+	read_block_format(const QXmlStreamAttributes &attributes);
 
-	static void AppendStringAutoSpace(QString *s, const QString &append);
+	static void append_string_auto_space(QString *s, const QString &append);
 
-	static QMap<QString, QStringList> GetCSSFromStyle(const QString &s);
+	static QMap<QString, QStringList> get_css_from_style(const QString &s);
 
-	static const QVector<QString> kBlockTags;
+	static const QVector<QString> k_block_tags;
 };
 
 }
 
-#endif // HTML_H
+#endif // OAK_HTML_H

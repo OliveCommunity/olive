@@ -83,7 +83,7 @@
 namespace
 {
 
-QStringList FootageVideoExtensions()
+QStringList footage_video_extensions()
 {
 	return QStringList{
 		QStringLiteral("mp4"),	QStringLiteral("mov"), QStringLiteral("m4v"),
@@ -94,7 +94,7 @@ QStringList FootageVideoExtensions()
 	};
 }
 
-QStringList FootageAudioExtensions()
+QStringList footage_audio_extensions()
 {
 	return QStringList{ QStringLiteral("wav"),	QStringLiteral("mp3"),
 						QStringLiteral("flac"), QStringLiteral("aac"),
@@ -104,7 +104,7 @@ QStringList FootageAudioExtensions()
 						QStringLiteral("aifc"), QStringLiteral("wma") };
 }
 
-QStringList FootageImageExtensions()
+QStringList footage_image_extensions()
 {
 	return QStringList{ QStringLiteral("png"),	QStringLiteral("jpg"),
 						QStringLiteral("jpeg"), QStringLiteral("tif"),
@@ -113,7 +113,7 @@ QStringList FootageImageExtensions()
 						QStringLiteral("dpx"),	QStringLiteral("webp") };
 }
 
-QString BuildFootageFilterGroup(const QString &label,
+QString build_footage_filter_group(const QString &label,
 								const QStringList &extensions)
 {
 	QStringList patterns;
@@ -126,20 +126,20 @@ QString BuildFootageFilterGroup(const QString &label,
 										 patterns.join(QLatin1Char(' ')));
 }
 
-QString BuildFootageFileDialogFilter()
+QString build_footage_file_dialog_filter()
 {
-	QStringList all = FootageVideoExtensions() + FootageAudioExtensions() +
-					  FootageImageExtensions();
+	QStringList all = footage_video_extensions() + footage_audio_extensions() +
+					  footage_image_extensions();
 	all.removeDuplicates();
 
 	QStringList groups;
-	groups << BuildFootageFilterGroup(QObject::tr("Common Media Files"), all);
-	groups << BuildFootageFilterGroup(QObject::tr("Video Files"),
-									  FootageVideoExtensions());
-	groups << BuildFootageFilterGroup(QObject::tr("Audio Files"),
-									  FootageAudioExtensions());
-	groups << BuildFootageFilterGroup(QObject::tr("Image Files"),
-									  FootageImageExtensions());
+	groups << build_footage_filter_group(QObject::tr("Common Media Files"), all);
+	groups << build_footage_filter_group(QObject::tr("Video Files"),
+									  footage_video_extensions());
+	groups << build_footage_filter_group(QObject::tr("Audio Files"),
+									  footage_audio_extensions());
+	groups << build_footage_filter_group(QObject::tr("Image Files"),
+									  footage_image_extensions());
 
 	return groups.join(QStringLiteral(";;"));
 }
@@ -154,8 +154,8 @@ Core *Core::instance_ = nullptr;
 Core::Core(const CoreParams &params)
 	: main_window_(nullptr)
 	, open_project_(nullptr)
-	, tool_(Tool::kPointer)
-	, addable_object_(Tool::kAddableEmpty)
+	, tool_(Tool::k_pointer)
+	, addable_object_(Tool::k_addable_empty)
 	, snapping_(true)
 	, core_params_(params)
 	, magic_(false)
@@ -174,32 +174,32 @@ Core *Core::instance()
 	return instance_;
 }
 
-QString Core::FootageFileDialogFilter()
+QString Core::footage_file_dialog_filter()
 {
-	return BuildFootageFileDialogFilter();
+	return build_footage_file_dialog_filter();
 }
 
-QStringList Core::AllowedFootageExtensions()
+QStringList Core::allowed_footage_extensions()
 {
-	QStringList all = FootageVideoExtensions() + FootageAudioExtensions() +
-					  FootageImageExtensions();
+	QStringList all = footage_video_extensions() + footage_audio_extensions() +
+					  footage_image_extensions();
 	all.removeDuplicates();
 	return all;
 }
 
-bool Core::IsFootageExtensionAllowed(const QString &path)
+bool Core::is_footage_extension_allowed(const QString &path)
 {
 	const QString ext = QFileInfo(path).suffix().toLower();
 	if (ext.isEmpty()) {
 		return false;
 	}
 
-	return AllowedFootageExtensions().contains(ext);
+	return allowed_footage_extensions().contains(ext);
 }
 
-void Core::DeclareTypesForQt()
+void Core::declare_types_for_qt()
 {
-	qRegisterMetaType<olive::core::rational>();
+	qRegisterMetaType<olive::core::Rational>();
 	qRegisterMetaType<NodeValue>();
 	qRegisterMetaType<NodeValueTable>();
 	qRegisterMetaType<NodeValueDatabase>();
@@ -217,40 +217,40 @@ void Core::DeclareTypesForQt()
 	qRegisterMetaType<olive::RenderTicketPtr>();
 }
 
-void Core::Start()
+void Core::start()
 {
 	// Load application config
-	Config::Load();
+	Config::load();
 
 	// Set locale based on either startup arg, config, or auto-detect
-	SetStartupLocale();
+	set_startup_locale();
 
 	// Declare custom types for Qt signal/slot system
-	DeclareTypesForQt();
+	declare_types_for_qt();
 
 	// Set up node factory/library
-	NodeFactory::Initialize();
+	NodeFactory::initialize();
 
 	// Set up color manager's default config
-	ColorManager::SetUpDefaultConfig();
+	ColorManager::set_up_default_config();
 
 	// Initialize task manager
-	TaskManager::CreateInstance();
+	TaskManager::create_instance();
 
 	// Initialize ConformManager
-	ConformManager::CreateInstance();
+	ConformManager::create_instance();
 
 	// Initialize ProxyManager
-	ProxyManager::CreateInstance();
+	ProxyManager::create_instance();
 
 	// Initialize RenderManager
-	RenderManager::CreateInstance();
+	RenderManager::create_instance();
 
 	// Initialize FrameManager
-	FrameManager::CreateInstance();
+	FrameManager::create_instance();
 
 	// Initialize project serializers
-	ProjectSerializer::Initialize();
+	ProjectSerializer::initialize();
 
 	//
 	// Start application
@@ -259,18 +259,18 @@ void Core::Start()
 	qInfo() << "Using Qt version:" << qVersion();
 
 	switch (core_params_.run_mode()) {
-	case CoreParams::kRunNormal:
+	case CoreParams::k_run_normal:
 		// Start GUI
-		StartGUI(core_params_.fullscreen());
+		start_gui(core_params_.fullscreen());
 
 		// If we have a startup
-		QMetaObject::invokeMethod(this, "OpenStartupProject",
+		QMetaObject::invokeMethod(this, "open_startup_project",
 								  Qt::QueuedConnection);
 		break;
-	case CoreParams::kHeadlessExport:
+	case CoreParams::k_headless_export:
 		qInfo() << "Headless export is not fully implemented yet";
 		break;
-	case CoreParams::kHeadlessPreCache:
+	case CoreParams::k_headless_pre_cache:
 		qInfo() << "Headless pre-cache is not fully implemented yet";
 		break;
 	}
@@ -287,36 +287,36 @@ void Core::Start()
 	}
 }
 
-void Core::Stop()
+void Core::stop()
 {
 	// Assume all projects have closed gracefully and no auto-recovery is necessary
 	autorecovered_projects_.clear();
-	SaveUnrecoveredList();
+	save_unrecovered_list();
 
 	// Save Config
-	Config::Save();
+	Config::save();
 
-	ProjectSerializer::Destroy();
+	ProjectSerializer::destroy();
 
-	ConformManager::DestroyInstance();
+	ConformManager::destroy_instance();
 
-	ProxyManager::DestroyInstance();
+	ProxyManager::destroy_instance();
 
-	FrameManager::DestroyInstance();
+	FrameManager::destroy_instance();
 
-	RenderManager::DestroyInstance();
+	RenderManager::destroy_instance();
 
-	MenuShared::DestroyInstance();
+	MenuShared::destroy_instance();
 
-	TaskManager::DestroyInstance();
+	TaskManager::destroy_instance();
 
-	PanelManager::DestroyInstance();
+	PanelManager::destroy_instance();
 
-	AudioManager::DestroyInstance();
+	AudioManager::destroy_instance();
 
-	DiskManager::DestroyInstance();
+	DiskManager::destroy_instance();
 
-	NodeFactory::Destroy();
+	NodeFactory::destroy();
 
 	delete main_window_;
 	main_window_ = nullptr;
@@ -332,7 +332,7 @@ UndoStack *Core::undo_stack()
 	return &undo_stack_;
 }
 
-void Core::ImportFiles(const QStringList &urls, Folder *parent)
+void Core::import_files(const QStringList &urls, Folder *parent)
 {
 	if (urls.isEmpty()) {
 		QMessageBox::critical(main_window_, tr("Import error"),
@@ -345,7 +345,7 @@ void Core::ImportFiles(const QStringList &urls, Folder *parent)
 	filtered_urls.reserve(urls.size());
 
 	for (const QString &url : urls) {
-		if (IsFootageExtensionAllowed(url)) {
+		if (is_footage_extension_allowed(url)) {
 			filtered_urls.append(url);
 		} else {
 			rejected_urls.append(url);
@@ -366,7 +366,7 @@ void Core::ImportFiles(const QStringList &urls, Folder *parent)
 
 	ProjectImportTask *pim = new ProjectImportTask(parent, filtered_urls);
 
-	if (!pim->GetFileCount()) {
+	if (!pim->get_file_count()) {
 		// No files to import
 		delete pim;
 		return;
@@ -375,8 +375,8 @@ void Core::ImportFiles(const QStringList &urls, Folder *parent)
 	TaskDialog *task_dialog =
 		new TaskDialog(pim, tr("Importing..."), main_window());
 
-	connect(task_dialog, &TaskDialog::TaskSucceeded, this,
-			&Core::ImportTaskComplete);
+	connect(task_dialog, &TaskDialog::task_succeeded, this,
+			&Core::import_task_complete);
 
 	task_dialog->open();
 }
@@ -386,41 +386,41 @@ const Tool::Item &Core::tool() const
 	return tool_;
 }
 
-const Tool::AddableObject &Core::GetSelectedAddableObject() const
+const Tool::AddableObject &Core::get_selected_addable_object() const
 {
 	return addable_object_;
 }
 
-const QString &Core::GetSelectedTransition() const
+const QString &Core::get_selected_transition() const
 {
 	return selected_transition_;
 }
 
-void Core::SetSelectedAddableObject(const Tool::AddableObject &obj)
+void Core::set_selected_addable_object(const Tool::AddableObject &obj)
 {
 	addable_object_ = obj;
-	emit AddableObjectChanged(addable_object_);
+	emit addable_object_changed(addable_object_);
 }
 
-void Core::SetSelectedTransitionObject(const QString &obj)
+void Core::set_selected_transition_object(const QString &obj)
 {
 	selected_transition_ = obj;
 }
 
-void Core::ClearOpenRecentList()
+void Core::clear_open_recent_list()
 {
 	recent_projects_.clear();
-	SaveRecentProjectsList();
-	emit OpenRecentListChanged();
+	save_recent_projects_list();
+	emit open_recent_list_changed();
 }
 
-void Core::CreateNewProject()
+void Core::create_new_project()
 {
 	// If we already have an empty/new project, switch to it
-	if (CloseProject(false)) {
+	if (close_project(false)) {
 		Project *p = new Project();
-		p->Initialize();
-		AddOpenProject(p);
+		p->initialize();
+		add_open_project(p);
 	}
 }
 
@@ -429,43 +429,43 @@ const bool &Core::snapping() const
 	return snapping_;
 }
 
-const QStringList &Core::GetRecentProjects() const
+const QStringList &Core::get_recent_projects() const
 {
 	return recent_projects_;
 }
 
-void Core::SetTool(const Tool::Item &tool)
+void Core::set_tool(const Tool::Item &tool)
 {
 	tool_ = tool;
 
-	emit ToolChanged(tool_);
+	emit tool_changed(tool_);
 }
 
-void Core::SetSnapping(const bool &b)
+void Core::set_snapping(const bool &b)
 {
 	snapping_ = b;
 
-	emit SnappingChanged(snapping_);
+	emit snapping_changed(snapping_);
 }
 
-void Core::DialogAboutShow()
+void Core::dialog_about_show()
 {
 	AboutDialog a(false, main_window_);
 	a.exec();
 }
 
-void Core::DialogImportShow()
+void Core::dialog_import_show()
 {
 	// Open dialog for user to select files
 	QStringList files =
 		QFileDialog::getOpenFileNames(main_window_, tr("Import footage..."),
-									  QString(), FootageFileDialogFilter());
+									  QString(), footage_file_dialog_filter());
 
 	// Check if the user actually selected files to import
 	if (!files.isEmpty()) {
 		// Locate the most recently focused Project panel (assume that's the panel the user wants to import into)
 		ProjectPanel *active_project_panel =
-			PanelManager::instance()->MostRecentlyFocused<ProjectPanel>();
+			PanelManager::instance()->most_recently_focused<ProjectPanel>();
 		Project *active_project;
 
 		if (active_project_panel ==
@@ -478,21 +478,21 @@ void Core::DialogImportShow()
 		}
 
 		// Get the selected folder in this panel
-		Folder *folder = active_project_panel->GetSelectedFolder();
+		Folder *folder = active_project_panel->get_selected_folder();
 
-		ImportFiles(files, folder);
+		import_files(files, folder);
 	}
 }
 
-void Core::DialogPreferencesShow(int start_tab)
+void Core::dialog_preferences_show(int start_tab)
 {
 	PreferencesDialog pd(main_window_, start_tab);
 	pd.exec();
 }
 
-void Core::DialogProjectPropertiesShow()
+void Core::dialog_project_properties_show()
 {
-	Project *proj = GetActiveProject();
+	Project *proj = get_active_project();
 
 	if (proj) {
 		ProjectPropertiesDialog ppd(proj, main_window_);
@@ -505,10 +505,10 @@ void Core::DialogProjectPropertiesShow()
 	}
 }
 
-void Core::DialogExportShow()
+void Core::dialog_export_show()
 {
-	if (ViewerOutput *viewer = GetSequenceToExport()) {
-		OpenExportDialogForViewer(viewer, false);
+	if (ViewerOutput *viewer = get_sequence_to_export()) {
+		open_export_dialog_for_viewer(viewer, false);
 	}
 }
 
@@ -521,11 +521,11 @@ bool Core::DialogImportOTIOShow(const QList<Sequence *> &sequences)
 }
 #endif
 
-void Core::CreateNewFolder()
+void Core::create_new_folder()
 {
 	// Locate the most recently focused Project panel (assume that's the panel the user wants to import into)
 	ProjectPanel *active_project_panel =
-		PanelManager::instance()->MostRecentlyFocused<ProjectPanel>();
+		PanelManager::instance()->most_recently_focused<ProjectPanel>();
 	Project *active_project;
 
 	if (active_project_panel == nullptr // Check that we found a Project panel
@@ -537,13 +537,13 @@ void Core::CreateNewFolder()
 	}
 
 	// Get the selected folder in this panel
-	Folder *folder = active_project_panel->GetSelectedFolder();
+	Folder *folder = active_project_panel->get_selected_folder();
 
 	// Create new folder
 	Folder *new_folder = new Folder();
 
 	// Set a default name
-	new_folder->SetLabel(tr("New Folder"));
+	new_folder->set_label(tr("New Folder"));
 
 	// Create an undoable command
 	MultiUndoCommand *command = new MultiUndoCommand();
@@ -554,12 +554,12 @@ void Core::CreateNewFolder()
 	Core::instance()->undo_stack()->push(command, tr("Created New Folder"));
 
 	// Trigger an automatic rename so users can enter the folder name
-	active_project_panel->Edit(new_folder);
+	active_project_panel->edit(new_folder);
 }
 
-void Core::CreateNewSequence()
+void Core::create_new_sequence()
 {
-	Project *active_project = GetActiveProject();
+	Project *active_project = get_active_project();
 
 	if (!active_project) {
 		QMessageBox::critical(main_window_, tr("Failed to create new sequence"),
@@ -568,13 +568,13 @@ void Core::CreateNewSequence()
 	}
 
 	// Create new sequence
-	Sequence *new_sequence = CreateNewSequenceForProject(active_project);
+	Sequence *new_sequence = create_new_sequence_for_project(active_project);
 
-	SequenceDialog sd(new_sequence, SequenceDialog::kNew, main_window_);
+	SequenceDialog sd(new_sequence, SequenceDialog::k_new, main_window_);
 
 	// Make sure SequenceDialog doesn't make an undo command for editing the sequence, since we make an undo command for
 	// adding it later on
-	sd.SetUndoable(false);
+	sd.set_undoable(false);
 
 	if (sd.exec() == QDialog::Accepted) {
 		// Create an undoable command
@@ -582,7 +582,7 @@ void Core::CreateNewSequence()
 
 		command->add_child(new NodeAddCommand(active_project, new_sequence));
 		command->add_child(new FolderAddChild(
-			GetSelectedFolderInActiveProject(), new_sequence));
+			get_selected_folder_in_active_project(), new_sequence));
 		command->add_child(new NodeSetPositionCommand(
 			new_sequence, new_sequence, Node::Position()));
 		command->add_child(new OpenSequenceCommand(new_sequence));
@@ -599,7 +599,7 @@ void Core::CreateNewSequence()
 	}
 }
 
-void Core::AddOpenProject(Project *p, bool add_to_recents)
+void Core::add_open_project(Project *p, bool add_to_recents)
 {
 	// Ensure project is not open at the moment
 	if (open_project_ == p) {
@@ -608,68 +608,68 @@ void Core::AddOpenProject(Project *p, bool add_to_recents)
 
 	// If we currently have an empty project, close it first
 	if (open_project_) {
-		CloseProject(false);
+		close_project(false);
 	}
 
-	SetActiveProject(p);
+	set_active_project(p);
 
 	if (!p->filename().isEmpty() && add_to_recents) {
-		PushRecentlyOpenedProject(p->filename());
+		push_recently_opened_project(p->filename());
 	}
 }
 
-bool Core::AddOpenProjectFromTask(Task *task, bool add_to_recents)
+bool Core::add_open_project_from_task(Task *task, bool add_to_recents)
 {
 	ProjectLoadBaseTask *load_task = static_cast<ProjectLoadBaseTask *>(task);
 
-	if (!load_task->IsCancelled()) {
-		Project *project = load_task->GetLoadedProject();
+	if (!load_task->is_cancelled()) {
+		Project *project = load_task->get_loaded_project();
 
-		if (ValidateFootageInLoadedProject(project, project->GetSavedURL())) {
-			AddOpenProject(project, add_to_recents);
-			main_window_->LoadLayout(load_task->GetLoadedLayout());
+		if (validate_footage_in_loaded_project(project, project->get_saved_url())) {
+			add_open_project(project, add_to_recents);
+			main_window_->load_layout(load_task->get_loaded_layout());
 
 			return true;
 		} else {
 			delete project;
-			CreateNewProject();
+			create_new_project();
 		}
 	}
 
 	return false;
 }
 
-void Core::SetActiveProject(Project *p)
+void Core::set_active_project(Project *p)
 {
 	if (open_project_) {
-		disconnect(open_project_, &Project::ModifiedChanged, this,
-				   &Core::ProjectWasModified);
+		disconnect(open_project_, &Project::modified_changed, this,
+				   &Core::project_was_modified);
 	}
 
 	open_project_ = p;
-	RenderManager::instance()->SetProject(p);
-	main_window_->SetProject(p);
+	RenderManager::instance()->set_project(p);
+	main_window_->set_project(p);
 
 	if (open_project_) {
-		connect(open_project_, &Project::ModifiedChanged, this,
-				&Core::ProjectWasModified);
+		connect(open_project_, &Project::modified_changed, this,
+				&Core::project_was_modified);
 	}
 }
 
-void Core::ImportTaskComplete(Task *task)
+void Core::import_task_complete(Task *task)
 {
 	ProjectImportTask *import_task = static_cast<ProjectImportTask *>(task);
 
-	MultiUndoCommand *command = import_task->GetCommand();
+	MultiUndoCommand *command = import_task->get_command();
 
-	foreach (Footage *f, import_task->GetImportedFootage()) {
+	foreach (Footage *f, import_task->get_imported_footage()) {
 		// Look for multi-layer images
-		if (f->GetAudioStreamCount() == 0 && f->GetVideoStreamCount() > 1) {
+		if (f->get_audio_stream_count() == 0 && f->get_video_stream_count() > 1) {
 			bool all_stills = true;
 
-			for (int i = 0; i < f->GetVideoStreamCount(); i++) {
-				const VideoParams &vs = f->GetVideoParams(i);
-				if (!(vs.video_type() == VideoParams::kVideoTypeStill &&
+			for (int i = 0; i < f->get_video_stream_count(); i++) {
+				const VideoParams &vs = f->get_video_params(i);
+				if (!(vs.video_type() == VideoParams::k_video_type_still &&
 					  vs.enabled() == (i == 0))) {
 					all_stills = false;
 				}
@@ -694,10 +694,10 @@ void Core::ImportTaskComplete(Task *task)
 				d.exec();
 
 				if (d.clickedButton() == multi_btn) {
-					for (int i = 0; i < f->GetVideoStreamCount(); i++) {
-						VideoParams vs = f->GetVideoParams(i);
+					for (int i = 0; i < f->get_video_stream_count(); i++) {
+						VideoParams vs = f->get_video_params(i);
 						vs.set_enabled(!vs.enabled());
-						f->SetVideoParams(vs, i);
+						f->set_video_params(vs, i);
 					}
 				} else if (d.clickedButton() == single_btn) {
 					// Do nothing, footage will already be set up this way
@@ -710,20 +710,20 @@ void Core::ImportTaskComplete(Task *task)
 		}
 	}
 
-	if (import_task->HasInvalidFiles()) {
-		ProjectImportErrorDialog d(import_task->GetInvalidFiles(),
+	if (import_task->has_invalid_files()) {
+		ProjectImportErrorDialog d(import_task->get_invalid_files(),
 								   main_window_);
 		d.exec();
 	}
 
 	undo_stack_.push(
 		command,
-		tr("Imported %1 File(s)").arg(import_task->GetImportedFootage().size()));
+		tr("Imported %1 File(s)").arg(import_task->get_imported_footage().size()));
 
-	main_window_->SelectFootage(import_task->GetImportedFootage());
+	main_window_->select_footage(import_task->get_imported_footage());
 }
 
-bool Core::ConfirmImageSequence(const QString &filename)
+bool Core::confirm_image_sequence(const QString &filename)
 {
 	QMessageBox mb(main_window_);
 
@@ -739,12 +739,12 @@ bool Core::ConfirmImageSequence(const QString &filename)
 	return (mb.exec() == QMessageBox::Yes);
 }
 
-void Core::ProjectWasModified(bool e)
+void Core::project_was_modified(bool e)
 {
 	main_window_->setWindowModified(e);
 }
 
-bool Core::StartHeadlessExport()
+bool Core::start_headless_export()
 {
 	const QString &startup_project = core_params_.startup_project();
 
@@ -831,7 +831,7 @@ bool Core::StartHeadlessExport()
 	return false;
 }
 
-void Core::OpenStartupProject()
+void Core::open_startup_project()
 {
 	const QString &startup_project = core_params_.startup_project();
 	bool startup_project_exists = !startup_project.isEmpty() &&
@@ -848,27 +848,27 @@ void Core::OpenStartupProject()
 
 	if (startup_project_exists) {
 		// If a startup project was set and exists, open it now
-		OpenProjectInternal(startup_project);
+		open_project_internal(startup_project);
 	} else {
 		// If no load project is set, create a new one on open
-		CreateNewProject();
+		create_new_project();
 	}
 }
 
-void Core::AddRecoveryProjectFromTask(Task *task)
+void Core::add_recovery_project_from_task(Task *task)
 {
-	if (AddOpenProjectFromTask(task, false)) {
+	if (add_open_project_from_task(task, false)) {
 		ProjectLoadBaseTask *load_task =
 			static_cast<ProjectLoadBaseTask *>(task);
 
-		Project *project = load_task->GetLoadedProject();
+		Project *project = load_task->get_loaded_project();
 
 		// Clearing the filename will force the user to re-save it somewhere else
 		project->set_filename(QString());
 
 		// Forcing a UUID regeneration will prevent it from saving auto-recoveries in the same place
 		// the original project did
-		project->RegenerateUuid();
+		project->regenerate_uuid();
 
 		// Setting modified will ensure that the program doesn't close and lose the project without
 		// prompting the user first
@@ -876,26 +876,26 @@ void Core::AddRecoveryProjectFromTask(Task *task)
 	}
 }
 
-void Core::StartGUI(bool full_screen)
+void Core::start_gui(bool full_screen)
 {
 	// Set UI style
-	StyleManager::Init();
+	StyleManager::init();
 
 	// Set up shared menus
-	MenuShared::CreateInstance();
+	MenuShared::create_instance();
 
 	// Since we're starting GUI mode, create a PanelFocusManager (auto-deletes with QObject)
-	PanelManager::CreateInstance();
+	PanelManager::create_instance();
 
 	// Initialize audio service
-	AudioManager::CreateInstance();
+	AudioManager::create_instance();
 
 	// Initialize disk service
-	DiskManager::CreateInstance();
+	DiskManager::create_instance();
 
 	// Connect the PanelFocusManager to the application's focus change signal
 	connect(qApp, &QApplication::focusChanged, PanelManager::instance(),
-			&PanelManager::FocusChanged);
+			&PanelManager::focus_changed);
 
 	KDDockWidgets::initFrontend(KDDockWidgets::FrontendType::QtWidgets);
 	// Set KDDockWidgets flags
@@ -927,14 +927,14 @@ void Core::StartGUI(bool full_screen)
 #endif
 
 	// Start autorecovery timer using the config value as its interval
-	SetAutorecoveryInterval(OLIVE_CONFIG("AutorecoveryInterval").toInt());
+	set_autorecovery_interval(OAK_CONFIG("AutorecoveryInterval").toInt());
 	connect(&autorecovery_timer_, &QTimer::timeout, this,
-			&Core::SaveAutorecovery);
+			&Core::save_autorecovery);
 	autorecovery_timer_.start();
 
 	// Load recently opened projects list
 	{
-		QFile recent_projects_file(GetRecentProjectsFilePath());
+		QFile recent_projects_file(get_recent_projects_file_path());
 		if (recent_projects_file.open(QFile::ReadOnly | QFile::Text)) {
 			QString r = QString::fromUtf8(recent_projects_file.readAll());
 			if (!r.isEmpty()) {
@@ -943,11 +943,11 @@ void Core::StartGUI(bool full_screen)
 			recent_projects_file.close();
 		}
 
-		emit OpenRecentListChanged();
+		emit open_recent_list_changed();
 	}
 }
 
-void Core::SaveProjectInternal(const QString &override_filename)
+void Core::save_project_internal(const QString &override_filename)
 {
 	// Create save manager
 	Task *psm;
@@ -967,12 +967,12 @@ void Core::SaveProjectInternal(const QString &override_filename)
 		bool use_compression = !open_project_->filename().endsWith(
 			QStringLiteral(".ovexml"), Qt::CaseInsensitive);
 		psm = new ProjectSaveTask(open_project_, use_compression);
-		static_cast<ProjectSaveTask *>(psm)->SetLayout(
-			main_window_->SaveLayout());
+		static_cast<ProjectSaveTask *>(psm)->set_layout(
+			main_window_->save_layout());
 
 		if (!override_filename.isEmpty()) {
 			// Set override filename if provided
-			static_cast<ProjectSaveTask *>(psm)->SetOverrideFilename(
+			static_cast<ProjectSaveTask *>(psm)->set_override_filename(
 				override_filename);
 		}
 	}
@@ -986,36 +986,36 @@ void Core::SaveProjectInternal(const QString &override_filename)
 	// Ideally we could do this in a background thread and show progress in the status bar like
 	// Microsoft Word, but that would be far more complex. If it becomes necessary in the future,
 	// we will look into an approach like that.
-	if (psm->Start()) {
+	if (psm->start()) {
 		if (override_filename.isEmpty()) {
-			ProjectSaveSucceeded(psm);
+			project_save_succeeded(psm);
 		}
 	}
 
 	psm->deleteLater();
 }
 
-ViewerOutput *Core::GetSequenceToExport()
+ViewerOutput *Core::get_sequence_to_export()
 {
 	// First try the most recently focused time based window
 	TimeBasedPanel *time_panel =
-		PanelManager::instance()->MostRecentlyFocused<TimeBasedPanel>();
+		PanelManager::instance()->most_recently_focused<TimeBasedPanel>();
 
 	// If that fails try defaulting to the first timeline (i.e. if a project has just been loaded).
-	if (!time_panel->GetConnectedViewer()) {
+	if (!time_panel->get_connected_viewer()) {
 		// Safe to assume there will always be one timeline.
 		time_panel =
-			PanelManager::instance()->GetPanelsOfType<TimelinePanel>().first();
+			PanelManager::instance()->get_panels_of_type<TimelinePanel>().first();
 	}
 
-	if (time_panel && time_panel->GetConnectedViewer()) {
-		if (time_panel->GetConnectedViewer()->GetLength() == 0) {
+	if (time_panel && time_panel->get_connected_viewer()) {
+		if (time_panel->get_connected_viewer()->get_length() == 0) {
 			QMessageBox::critical(
 				main_window_, tr("Error"),
 				tr("This Sequence is empty. There is nothing to export."),
 				QMessageBox::Ok);
 		} else {
-			return time_panel->GetConnectedViewer();
+			return time_panel->get_connected_viewer();
 		}
 	} else {
 		QMessageBox::critical(
@@ -1027,16 +1027,16 @@ ViewerOutput *Core::GetSequenceToExport()
 	return nullptr;
 }
 
-QString Core::GetAutoRecoveryIndexFilename()
+QString Core::get_auto_recovery_index_filename()
 {
 	return QDir(QStandardPaths::writableLocation(
 					QStandardPaths::AppLocalDataLocation))
 		.filePath(QStringLiteral("unrecovered"));
 }
 
-void Core::SaveUnrecoveredList()
+void Core::save_unrecovered_list()
 {
-	QFile autorecovery_index(GetAutoRecoveryIndexFilename());
+	QFile autorecovery_index(get_auto_recovery_index_filename());
 
 	if (autorecovered_projects_.isEmpty()) {
 		// Recovery list is empty, delete file if exists
@@ -1063,7 +1063,7 @@ void Core::SaveUnrecoveredList()
 	}
 }
 
-bool Core::RevertProjectInternal(bool by_opening_existing)
+bool Core::revert_project_internal(bool by_opening_existing)
 {
 	if (open_project_->filename().isEmpty()) {
 		QMessageBox::critical(
@@ -1091,12 +1091,12 @@ bool Core::RevertProjectInternal(bool by_opening_existing)
 			QString filename = open_project_->filename();
 
 			// Close project without prompting to save it
-			CloseProject(false, true);
+			close_project(false, true);
 
 			// NOTE: `open_project_` will be deleted now, so don't try accessing it
 
 			// Re-open project at the filename
-			OpenProjectInternal(filename);
+			open_project_internal(filename);
 
 			return true;
 		}
@@ -1105,37 +1105,37 @@ bool Core::RevertProjectInternal(bool by_opening_existing)
 	return false;
 }
 
-void Core::SaveRecentProjectsList()
+void Core::save_recent_projects_list()
 {
 	// Save recently opened projects
-	QFile recent_projects_file(GetRecentProjectsFilePath());
+	QFile recent_projects_file(get_recent_projects_file_path());
 	if (recent_projects_file.open(QFile::WriteOnly | QFile::Text)) {
 		recent_projects_file.write(recent_projects_.join('\n').toUtf8());
 		recent_projects_file.close();
 	}
 }
 
-void Core::SaveAutorecovery()
+void Core::save_autorecovery()
 {
-	if (OLIVE_CONFIG("AutorecoveryEnabled").toBool()) {
+	if (OAK_CONFIG("AutorecoveryEnabled").toBool()) {
 		if (open_project_ && !open_project_->has_autorecovery_been_saved()) {
 			QDir project_autorecovery_dir(
-				QDir(FileFunctions::GetAutoRecoveryRoot())
-					.filePath(open_project_->GetUuid().toString()));
-			if (FileFunctions::DirectoryIsValid(project_autorecovery_dir)) {
+				QDir(FileFunctions::get_auto_recovery_root())
+					.filePath(open_project_->get_uuid().toString()));
+			if (FileFunctions::directory_is_valid(project_autorecovery_dir)) {
 				QString this_autorecovery_path =
 					project_autorecovery_dir.filePath(
 						QStringLiteral("%1.ove").arg(QString::number(
 							QDateTime::currentSecsSinceEpoch())));
 
-				SaveProjectInternal(this_autorecovery_path);
+				save_project_internal(this_autorecovery_path);
 
 				open_project_->set_autorecovery_saved(true);
 
 				// Keep track of projects that where the "newest" save is the recovery project
 				if (!autorecovered_projects_.contains(
-						open_project_->GetUuid())) {
-					autorecovered_projects_.append(open_project_->GetUuid());
+						open_project_->get_uuid())) {
+					autorecovered_projects_.append(open_project_->get_uuid());
 				}
 
 				qDebug() << "Saved auto-recovery to:" << this_autorecovery_path;
@@ -1151,7 +1151,7 @@ void Core::SaveAutorecovery()
 				}
 
 				int64_t max_recoveries_per_file =
-					OLIVE_CONFIG("AutorecoveryMaximum").toLongLong();
+					OAK_CONFIG("AutorecoveryMaximum").toLongLong();
 
 				// Since we write an extra file, increment total allowed files by 1
 				max_recoveries_per_file++;
@@ -1193,73 +1193,73 @@ void Core::SaveAutorecovery()
 		}
 
 		// Save index
-		SaveUnrecoveredList();
+		save_unrecovered_list();
 	}
 }
 
-void Core::ProjectSaveSucceeded(Task *task)
+void Core::project_save_succeeded(Task *task)
 {
-	Project *p = static_cast<ProjectSaveTask *>(task)->GetProject();
+	Project *p = static_cast<ProjectSaveTask *>(task)->get_project();
 
-	PushRecentlyOpenedProject(p->filename());
+	push_recently_opened_project(p->filename());
 
 	p->set_modified(false);
 
-	autorecovered_projects_.removeOne(p->GetUuid());
-	SaveUnrecoveredList();
+	autorecovered_projects_.removeOne(p->get_uuid());
+	save_unrecovered_list();
 
-	ShowStatusBarMessage(tr("Saved to \"%1\" successfully").arg(p->filename()));
+	show_status_bar_message(tr("Saved to \"%1\" successfully").arg(p->filename()));
 }
 
-Project *Core::GetActiveProject() const
+Project *Core::get_active_project() const
 {
 	return open_project_;
 }
 
-Folder *Core::GetSelectedFolderInActiveProject() const
+Folder *Core::get_selected_folder_in_active_project() const
 {
 	ProjectPanel *active_project_panel =
-		PanelManager::instance()->MostRecentlyFocused<ProjectPanel>();
+		PanelManager::instance()->most_recently_focused<ProjectPanel>();
 
 	if (active_project_panel) {
-		return active_project_panel->GetSelectedFolder();
+		return active_project_panel->get_selected_folder();
 	} else {
 		return nullptr;
 	}
 }
 
-Timecode::Display Core::GetTimecodeDisplay() const
+Timecode::Display Core::get_timecode_display() const
 {
 	return static_cast<Timecode::Display>(
-		OLIVE_CONFIG("TimecodeDisplay").toInt());
+		OAK_CONFIG("TimecodeDisplay").toInt());
 }
 
-void Core::SetTimecodeDisplay(Timecode::Display d)
+void Core::set_timecode_display(Timecode::Display d)
 {
-	OLIVE_CONFIG("TimecodeDisplay") = d;
+	OAK_CONFIG("TimecodeDisplay") = d;
 
-	emit TimecodeDisplayChanged(d);
+	emit timecode_display_changed(d);
 }
 
-void Core::SetAutorecoveryInterval(int minutes)
+void Core::set_autorecovery_interval(int minutes)
 {
 	// Convert minutes to milliseconds
 	autorecovery_timer_.setInterval(minutes * 60000);
 }
 
-void Core::CopyStringToClipboard(const QString &s)
+void Core::copy_string_to_clipboard(const QString &s)
 {
 	QGuiApplication::clipboard()->setText(s);
 }
 
-QString Core::PasteStringFromClipboard()
+QString Core::paste_string_from_clipboard()
 {
 	return QGuiApplication::clipboard()->text();
 }
 
-QString Core::GetProjectFilter(bool include_any_filter)
+QString Core::get_project_filter(bool include_any_filter)
 {
-	static const QVector<QPair<QString, QString>> FILTERS = {
+	static const QVector<QPair<QString, QString>> filters = {
 		// Standard compressed Oak project
 		{ tr("Oak Project"), QStringLiteral("ove") },
 
@@ -1272,32 +1272,32 @@ QString Core::GetProjectFilter(bool include_any_filter)
 #endif
 	};
 
-	QStringList filters;
-	filters.reserve(FILTERS.size() + 1);
+	QStringList filter_strings;
+	filter_strings.reserve(filters.size() + 1);
 
 	if (include_any_filter) {
 		QStringList combined;
-		for (auto it = FILTERS.cbegin(); it != FILTERS.cend(); it++) {
+		for (auto it = filters.cbegin(); it != filters.cend(); it++) {
 			combined.append(QStringLiteral("*.%1").arg(it->second));
 		}
-		filters.append(QStringLiteral("%1 (%2)").arg(
+		filter_strings.append(QStringLiteral("%1 (%2)").arg(
 			tr("All Supported Projects"), combined.join(' ')));
 	}
 
-	for (auto it = FILTERS.cbegin(); it != FILTERS.cend(); it++) {
-		filters.append(QStringLiteral("%1 (*.%2)").arg(it->first, it->second));
+	for (auto it = filters.cbegin(); it != filters.cend(); it++) {
+		filter_strings.append(QStringLiteral("%1 (*.%2)").arg(it->first, it->second));
 	}
 
-	return filters.join(QStringLiteral(";;"));
+	return filter_strings.join(QStringLiteral(";;"));
 }
 
-QString Core::GetRecentProjectsFilePath()
+QString Core::get_recent_projects_file_path()
 {
-	return QDir(FileFunctions::GetConfigurationLocation())
+	return QDir(FileFunctions::get_configuration_location())
 		.filePath(QStringLiteral("recent"));
 }
 
-void Core::SetStartupLocale()
+void Core::set_startup_locale()
 {
 	// Set language
 	if (!core_params_.startup_language().isEmpty()) {
@@ -1310,31 +1310,31 @@ void Core::SetStartupLocale()
 		}
 	}
 
-	QString use_locale = OLIVE_CONFIG("Language").toString();
+	QString use_locale = OAK_CONFIG("Language").toString();
 
 	if (use_locale.isEmpty()) {
 		// No configured locale, auto-detect the system's locale
 		use_locale = QLocale::system().name();
 	}
 
-	if (!SetLanguage(use_locale)) {
+	if (!set_language(use_locale)) {
 		qWarning() << "Trying to use locale" << use_locale
 				   << "but couldn't find a translation for it";
 	}
 }
 
-bool Core::SaveProject()
+bool Core::save_project()
 {
 	if (open_project_->filename().isEmpty()) {
-		return SaveProjectAs();
+		return save_project_as();
 	} else {
-		SaveProjectInternal();
+		save_project_internal();
 
 		return true;
 	}
 }
 
-void Core::ShowStatusBarMessage(const QString &s, int timeout)
+void Core::show_status_bar_message(const QString &s, int timeout)
 {
 	// The main window only exists after StartGUI(); in tests and other
 	// contexts that construct Core without a window, do nothing.
@@ -1343,35 +1343,35 @@ void Core::ShowStatusBarMessage(const QString &s, int timeout)
 	}
 }
 
-void Core::ClearStatusBarMessage()
+void Core::clear_status_bar_message()
 {
 	main_window_->statusBar()->clearMessage();
 }
 
-void Core::OpenRecoveryProject(const QString &filename)
+void Core::open_recovery_project(const QString &filename)
 {
-	OpenProjectInternal(filename, true);
+	open_project_internal(filename, true);
 }
 
-void Core::OpenNodeInViewer(ViewerOutput *viewer)
+void Core::open_node_in_viewer(ViewerOutput *viewer)
 {
-	main_window_->OpenNodeInViewer(viewer);
+	main_window_->open_node_in_viewer(viewer);
 }
 
-void Core::OpenExportDialogForViewer(ViewerOutput *viewer,
+void Core::open_export_dialog_for_viewer(ViewerOutput *viewer,
 									 bool start_still_image)
 {
 	ExportDialog *ed =
 		new ExportDialog(viewer, start_still_image, main_window_);
 	connect(ed, &ExportDialog::finished, ed, &ExportDialog::deleteLater);
 	ed->open();
-	connect(ed, &ExportDialog::RequestImportFile, this,
-			&Core::ImportSingleFile);
+	connect(ed, &ExportDialog::request_import_file, this,
+			&Core::import_single_file);
 }
 
-void Core::CheckForAutoRecoveries()
+void Core::check_for_auto_recoveries()
 {
-	QFile autorecovery_index(GetAutoRecoveryIndexFilename());
+	QFile autorecovery_index(get_auto_recovery_index_filename());
 	if (autorecovery_index.exists()) {
 		// Uh-oh, we have auto-recoveries to prompt
 		if (autorecovery_index.open(QFile::ReadOnly)) {
@@ -1387,35 +1387,35 @@ void Core::CheckForAutoRecoveries()
 			autorecovery_index.close();
 
 			// Delete recovery index since we don't need it anymore
-			QFile::remove(GetAutoRecoveryIndexFilename());
+			QFile::remove(get_auto_recovery_index_filename());
 		} else {
 			QMessageBox::critical(
 				main_window_, tr("Auto-Recovery Error"),
 				tr("Found auto-recoveries but failed to load the auto-recovery index. "
 				   "Auto-recover projects will have to be opened manually.\n\n"
 				   "Your recoverable projects are still available at: %1")
-					.arg(FileFunctions::GetAutoRecoveryRoot()));
+					.arg(FileFunctions::get_auto_recovery_root()));
 		}
 	}
 }
 
-void Core::BrowseAutoRecoveries()
+void Core::browse_auto_recoveries()
 {
 	// List all auto-recovery entries
 	AutoRecoveryDialog ard(
 		tr("The following project versions have been auto-saved:"),
-		QDir(FileFunctions::GetAutoRecoveryRoot())
+		QDir(FileFunctions::get_auto_recovery_root())
 			.entryList(QDir::Dirs | QDir::NoDotAndDotDot),
 		false, main_window_);
 	ard.exec();
 }
 
-void Core::RequestPixelSamplingInViewers(bool e)
+void Core::request_pixel_sampling_in_viewers(bool e)
 {
 	if (e) {
 		if (pixel_sampling_users_ == 0) {
 			// Signal to start pixel sampling
-			emit ColorPickerEnabled(true);
+			emit color_picker_enabled(true);
 		}
 
 		pixel_sampling_users_++;
@@ -1424,12 +1424,12 @@ void Core::RequestPixelSamplingInViewers(bool e)
 
 		if (pixel_sampling_users_ == 0) {
 			// Signal to end pixel sampling
-			emit ColorPickerEnabled(false);
+			emit color_picker_enabled(false);
 		}
 	}
 }
 
-void Core::WarnCacheFull()
+void Core::warn_cache_full()
 {
 	if (!shown_cache_full_warning_ && main_window_) {
 		shown_cache_full_warning_ = true;
@@ -1446,12 +1446,12 @@ void Core::WarnCacheFull()
 	}
 }
 
-bool Core::SaveProjectAs()
+bool Core::save_project_as()
 {
 	QFileDialog fd(main_window_, tr("Save Project As"));
 
 	fd.setAcceptMode(QFileDialog::AcceptSave);
-	fd.setNameFilter(GetProjectFilter(false));
+	fd.setNameFilter(get_project_filter(false));
 
 	if (fd.exec() == QDialog::Accepted) {
 		QString fn = fd.selectedFiles().first();
@@ -1462,11 +1462,11 @@ bool Core::SaveProjectAs()
 		QString extension =
 			name_filter.mid(ext_index, name_filter.size() - ext_index - 1);
 
-		fn = FileFunctions::EnsureFilenameExtension(fn, extension);
+		fn = FileFunctions::ensure_filename_extension(fn, extension);
 
 		open_project_->set_filename(fn);
 
-		SaveProjectInternal();
+		save_project_internal();
 
 		return true;
 	}
@@ -1474,12 +1474,12 @@ bool Core::SaveProjectAs()
 	return false;
 }
 
-void Core::RevertProject()
+void Core::revert_project()
 {
-	RevertProjectInternal(false);
+	revert_project_internal(false);
 }
 
-void Core::PushRecentlyOpenedProject(const QString &s)
+void Core::push_recently_opened_project(const QString &s)
 {
 	if (s.isEmpty()) {
 		return;
@@ -1492,29 +1492,29 @@ void Core::PushRecentlyOpenedProject(const QString &s)
 	} else {
 		recent_projects_.prepend(s);
 
-		const int kMaximumRecentProjects = 10;
-		while (recent_projects_.size() > kMaximumRecentProjects) {
+		const int k_maximum_recent_projects = 10;
+		while (recent_projects_.size() > k_maximum_recent_projects) {
 			recent_projects_.removeLast();
 		}
 	}
 
-	SaveRecentProjectsList();
+	save_recent_projects_list();
 
-	emit OpenRecentListChanged();
+	emit open_recent_list_changed();
 }
 
-void Core::OpenProjectInternal(const QString &filename, bool recovery_project)
+void Core::open_project_internal(const QString &filename, bool recovery_project)
 {
 	if (open_project_) {
 		// Comparing QFileInfos will handle case insensitivity and both slash directions on platforms
 		// where this is necessary (not naming any names *cough* Windows)
 		if (QFileInfo(open_project_->filename()) == QFileInfo(filename)) {
 			// This project is already open
-			bool reverted = RevertProjectInternal(true);
+			bool reverted = revert_project_internal(true);
 
 			if (!reverted) {
 				// Calling this will focus attention to the project that the user just tried to re-open
-				AddOpenProject(open_project_);
+				add_open_project(open_project_);
 			}
 
 			// Don't do anything else
@@ -1544,24 +1544,24 @@ void Core::OpenProjectInternal(const QString &filename, bool recovery_project)
 		new TaskDialog(load_task, tr("Load Project"), main_window());
 
 	if (recovery_project) {
-		connect(task_dialog, &TaskDialog::TaskSucceeded, this,
-				&Core::AddRecoveryProjectFromTask);
+		connect(task_dialog, &TaskDialog::task_succeeded, this,
+				&Core::add_recovery_project_from_task);
 	} else {
-		connect(task_dialog, &TaskDialog::TaskSucceeded, this,
-				&Core::AddOpenProjectFromTaskAndAddToRecents);
+		connect(task_dialog, &TaskDialog::task_succeeded, this,
+				&Core::add_open_project_from_task_and_add_to_recents);
 	}
 
 	task_dialog->open();
 }
 
-void Core::ImportSingleFile(const QString &f)
+void Core::import_single_file(const QString &f)
 {
-	if (Project *p = GetActiveProject()) {
-		ImportFiles({ f }, p->root());
+	if (Project *p = get_active_project()) {
+		import_files({ f }, p->root());
 	}
 }
 
-int Core::CountFilesInFileList(const QFileInfoList &filenames)
+int Core::count_files_in_file_list(const QFileInfoList &filenames)
 {
 	int file_count = 0;
 
@@ -1573,7 +1573,7 @@ int Core::CountFilesInFileList(const QFileInfoList &filenames)
 			QFileInfoList info_list =
 				QDir(f.absoluteFilePath()).entryInfoList();
 
-			file_count += CountFilesInFileList(info_list);
+			file_count += count_files_in_file_list(info_list);
 		} else {
 			file_count++;
 		}
@@ -1582,7 +1582,7 @@ int Core::CountFilesInFileList(const QFileInfoList &filenames)
 	return file_count;
 }
 
-bool Core::LabelNodes(const QVector<Node *> &nodes, MultiUndoCommand *parent)
+bool Core::label_nodes(const QVector<Node *> &nodes, MultiUndoCommand *parent)
 {
 	if (nodes.isEmpty()) {
 		return false;
@@ -1590,10 +1590,10 @@ bool Core::LabelNodes(const QVector<Node *> &nodes, MultiUndoCommand *parent)
 
 	bool ok;
 
-	QString start_label = nodes.first()->GetLabel();
+	QString start_label = nodes.first()->get_label();
 
 	for (int i = 1; i < nodes.size(); i++) {
-		if (nodes.at(i)->GetLabel() != start_label) {
+		if (nodes.at(i)->get_label() != start_label) {
 			// Not all the nodes share the same name, so we'll start with a blank one
 			start_label.clear();
 			break;
@@ -1608,7 +1608,7 @@ bool Core::LabelNodes(const QVector<Node *> &nodes, MultiUndoCommand *parent)
 		NodeRenameCommand *rename_command = new NodeRenameCommand();
 
 		foreach (Node *n, nodes) {
-			rename_command->AddNode(n, s);
+			rename_command->add_node(n, s);
 		}
 
 		if (parent) {
@@ -1624,7 +1624,7 @@ bool Core::LabelNodes(const QVector<Node *> &nodes, MultiUndoCommand *parent)
 	return false;
 }
 
-Sequence *Core::CreateNewSequenceForProject(const QString &format,
+Sequence *Core::create_new_sequence_for_project(const QString &format,
 											Project *project)
 {
 	Sequence *new_sequence = new Sequence();
@@ -1635,18 +1635,18 @@ Sequence *Core::CreateNewSequenceForProject(const QString &format,
 	do {
 		sequence_name = format.arg(sequence_number);
 		sequence_number++;
-	} while (project->root()->ChildExistsWithName(sequence_name));
-	new_sequence->SetLabel(sequence_name);
+	} while (project->root()->child_exists_with_name(sequence_name));
+	new_sequence->set_label(sequence_name);
 
 	return new_sequence;
 }
 
-void Core::OpenProjectFromRecentList(int index)
+void Core::open_project_from_recent_list(int index)
 {
 	const QString &open_fn = recent_projects_.at(index);
 
 	if (QFileInfo::exists(open_fn)) {
-		OpenProjectInternal(open_fn);
+		open_project_internal(open_fn);
 	} else if (
 		QMessageBox::information(
 			main_window(), tr("Cannot open recent project"),
@@ -1655,13 +1655,13 @@ void Core::OpenProjectFromRecentList(int index)
 			QMessageBox::Yes | QMessageBox::No) == QMessageBox::Yes) {
 		recent_projects_.removeAt(index);
 
-		SaveRecentProjectsList();
+		save_recent_projects_list();
 
-		emit OpenRecentListChanged();
+		emit open_recent_list_changed();
 	}
 }
 
-bool Core::CloseProject(bool auto_open_new, bool ignore_modified)
+bool Core::close_project(bool auto_open_new, bool ignore_modified)
 {
 	if (open_project_) {
 		if (open_project_->is_modified() && !ignore_modified) {
@@ -1688,7 +1688,7 @@ bool Core::CloseProject(bool auto_open_new, bool ignore_modified)
 				return false;
 			}
 
-			if (mb.clickedButton() == yes_btn && !SaveProject()) {
+			if (mb.clickedButton() == yes_btn && !save_project()) {
 				// The save failed, stop closing projects
 				return false;
 			}
@@ -1698,34 +1698,34 @@ bool Core::CloseProject(bool auto_open_new, bool ignore_modified)
 		undo_stack_.clear();
 
 		Project *tmp = open_project_;
-		SetActiveProject(nullptr);
+		set_active_project(nullptr);
 		delete tmp;
 	}
 
 	// Ensure a project is always active
 	if (auto_open_new) {
-		CreateNewProject();
+		create_new_project();
 	}
 
 	return true;
 }
 
-void Core::CacheActiveSequence(bool in_out_only)
+void Core::cache_active_sequence(bool in_out_only)
 {
 	TimeBasedPanel *p =
-		PanelManager::instance()->MostRecentlyFocused<TimeBasedPanel>();
+		PanelManager::instance()->most_recently_focused<TimeBasedPanel>();
 
-	if (p && p->GetConnectedViewer()) {
+	if (p && p->get_connected_viewer()) {
 		// Hacky but works for now
 
 		// Find Viewer attached to this TimeBasedPanel
 		QList<ViewerPanel *> all_viewers =
-			PanelManager::instance()->GetPanelsOfType<ViewerPanel>();
+			PanelManager::instance()->get_panels_of_type<ViewerPanel>();
 
 		ViewerPanel *found_panel = nullptr;
 
 		foreach (ViewerPanel *viewer, all_viewers) {
-			if (viewer->GetConnectedViewer() == p->GetConnectedViewer()) {
+			if (viewer->get_connected_viewer() == p->get_connected_viewer()) {
 				found_panel = viewer;
 				break;
 			}
@@ -1733,9 +1733,9 @@ void Core::CacheActiveSequence(bool in_out_only)
 
 		if (found_panel) {
 			if (in_out_only) {
-				found_panel->CacheSequenceInOut();
+				found_panel->cache_sequence_in_out();
 			} else {
-				found_panel->CacheEntireSequence();
+				found_panel->cache_entire_sequence();
 			}
 		} else {
 			QMessageBox::critical(
@@ -1746,7 +1746,7 @@ void Core::CacheActiveSequence(bool in_out_only)
 	}
 }
 
-QString StripWindowsDriveLetter(QString s)
+QString strip_windows_drive_letter(QString s)
 {
 	// HACK: On Windows, absolute paths are saved with a drive letter (e.g. "C:\video.mp4"). Below,
 	//       we use Qt's relative path system to resolve when an entire project may be in a different
@@ -1768,15 +1768,15 @@ QString StripWindowsDriveLetter(QString s)
 	return s;
 }
 
-bool Core::ValidateFootageInLoadedProject(Project *project,
+bool Core::validate_footage_in_loaded_project(Project *project,
 										  const QString &project_saved_url)
 {
 	QVector<Footage *> footage_we_couldnt_validate;
 
 	for (Node *n : project->nodes()) {
 		if (Footage *footage = dynamic_cast<Footage *>(n)) {
-			QString footage_fn = StripWindowsDriveLetter(footage->filename());
-			QString project_fn = StripWindowsDriveLetter(project_saved_url);
+			QString footage_fn = strip_windows_drive_letter(footage->filename());
+			QString project_fn = strip_windows_drive_letter(project_saved_url);
 
 			if (!QFileInfo::exists(footage_fn) &&
 				!project_saved_url.isEmpty()) {
@@ -1804,7 +1804,7 @@ bool Core::ValidateFootageInLoadedProject(Project *project,
 
 			if (QFileInfo::exists(footage->filename())) {
 				// Assume valid
-				footage->SetValid();
+				footage->set_valid();
 			} else {
 				footage_we_couldnt_validate.append(footage);
 			}
@@ -1821,7 +1821,7 @@ bool Core::ValidateFootageInLoadedProject(Project *project,
 	return true;
 }
 
-bool Core::SetLanguage(const QString &locale)
+bool Core::set_language(const QString &locale)
 {
 	QApplication::removeTranslator(translator_);
 
@@ -1834,18 +1834,18 @@ bool Core::SetLanguage(const QString &locale)
 	return false;
 }
 
-void Core::OpenProject()
+void Core::open_project()
 {
 	QString file = QFileDialog::getOpenFileName(
-		main_window_, tr("Open Project"), QString(), GetProjectFilter(true));
+		main_window_, tr("Open Project"), QString(), get_project_filter(true));
 
 	if (!file.isEmpty()) {
-		OpenProjectInternal(file);
+		open_project_internal(file);
 	}
 }
 
 Core::CoreParams::CoreParams()
-	: mode_(kRunNormal)
+	: mode_(k_run_normal)
 	, run_fullscreen_(false)
 	, crash_(false)
 {

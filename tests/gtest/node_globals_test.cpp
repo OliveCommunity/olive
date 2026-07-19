@@ -14,35 +14,35 @@ TEST(NodeGlobals, DefaultConstruction)
 
 TEST(NodeGlobals, ConstructedWithParams)
 {
-	olive::VideoParams video_params(1920, 1080, olive::PixelFormat::F32, 4);
+	olive::VideoParams video_params(1920, 1080, olive::PixelFormat::f32, 4);
 	olive::AudioParams audio_params;
 	audio_params.set_sample_rate(48000);
-	audio_params.set_channel_layout(olive::core::kChannelLayoutStereo);
+	audio_params.set_channel_layout(olive::core::k_channel_layout_stereo);
 
-	olive::TimeRange time(olive::core::rational(1, 24),
-						  olive::core::rational(2, 24));
+	olive::TimeRange time(olive::core::Rational(1, 24),
+						  olive::core::Rational(2, 24));
 	olive::NodeGlobals globals(video_params, audio_params, time,
-							   olive::LoopMode::kLoopModeLoop);
+							   olive::LoopMode::k_loop_mode_loop);
 
 	EXPECT_EQ(globals.vparams().width(), 1920);
 	EXPECT_EQ(globals.vparams().height(), 1080);
 	EXPECT_EQ(globals.aparams().sample_rate(), 48000);
-	EXPECT_EQ(globals.loop_mode(), olive::LoopMode::kLoopModeLoop);
-	EXPECT_EQ(globals.time().in(), olive::core::rational(1, 24));
-	EXPECT_EQ(globals.time().out(), olive::core::rational(2, 24));
+	EXPECT_EQ(globals.loop_mode(), olive::LoopMode::k_loop_mode_loop);
+	EXPECT_EQ(globals.time().in(), olive::core::Rational(1, 24));
+	EXPECT_EQ(globals.time().out(), olive::core::Rational(2, 24));
 }
 
 TEST(NodeGlobals, RationalConstructorExpandsToFrame)
 {
-	olive::VideoParams video_params(1280, 720, olive::PixelFormat::F32, 4);
+	olive::VideoParams video_params(1280, 720, olive::PixelFormat::f32, 4);
 	video_params.set_frame_rate(24);
 	olive::AudioParams audio_params;
 	audio_params.set_sample_rate(44100);
 
 	olive::NodeGlobals globals(video_params, audio_params,
-							   olive::core::rational(0, 1),
-							   olive::LoopMode::kLoopModeClamp);
+							   olive::core::Rational(0, 1),
+							   olive::LoopMode::k_loop_mode_clamp);
 
-	EXPECT_EQ(globals.time().in(), olive::core::rational(0, 1));
-	EXPECT_EQ(globals.time().out(), olive::core::rational(1, 24));
+	EXPECT_EQ(globals.time().in(), olive::core::Rational(0, 1));
+	EXPECT_EQ(globals.time().out(), olive::core::Rational(1, 24));
 }

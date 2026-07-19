@@ -19,29 +19,29 @@ namespace
 
 // A "dummy" texture has no renderer backend and is therefore safe to pass
 // around in a headless, CPU-only test.
-olive::TexturePtr MakeDummyTexture()
+olive::TexturePtr make_dummy_texture()
 {
 	return std::make_shared<olive::Texture>(
-		olive::VideoParams(16, 16, olive::core::PixelFormat::F32,
-						   olive::VideoParams::kRGBAChannelCount));
+		olive::VideoParams(16, 16, olive::core::PixelFormat::f32,
+						   olive::VideoParams::k_rgba_channel_count));
 }
 
-olive::NodeValueRow MakeTextureRow(const QString &input,
+olive::NodeValueRow make_texture_row(const QString &input,
 								   const olive::TexturePtr &tex)
 {
 	olive::NodeValueRow row;
-	row.insert(input, olive::NodeValue(olive::NodeValue::kTexture, tex));
+	row.insert(input, olive::NodeValue(olive::NodeValue::k_texture, tex));
 	return row;
 }
 
-olive::NodeValue Vec4Value(const QVector4D &v)
+olive::NodeValue vec4_value(const QVector4D &v)
 {
-	return olive::NodeValue(olive::NodeValue::kVec4, v);
+	return olive::NodeValue(olive::NodeValue::k_vec4, v);
 }
 
-olive::NodeValue BoolValue(bool b)
+olive::NodeValue bool_value(bool b)
 {
-	return olive::NodeValue(olive::NodeValue::kBoolean, b);
+	return olive::NodeValue(olive::NodeValue::k_boolean, b);
 }
 
 } // namespace
@@ -56,17 +56,17 @@ TEST(OCIOBaseNode, PassesTextureThroughWhenProcessorMissing)
 {
 	olive::DisplayTransformNode node;
 
-	olive::TexturePtr tex = MakeDummyTexture();
+	olive::TexturePtr tex = make_dummy_texture();
 	olive::NodeValueRow row =
-		MakeTextureRow(olive::OCIOBaseNode::kTextureInput, tex);
+		make_texture_row(olive::OCIOBaseNode::k_texture_input, tex);
 
 	olive::NodeValueTable table;
-	node.Value(row, olive::NodeGlobals(), &table);
+	node.value(row, olive::NodeGlobals(), &table);
 
-	ASSERT_EQ(table.Count(), 1);
-	const olive::NodeValue out = table.Get(olive::NodeValue::kTexture);
-	EXPECT_EQ(out.type(), olive::NodeValue::kTexture);
-	EXPECT_EQ(out.toTexture(), tex);
+	ASSERT_EQ(table.count(), 1);
+	const olive::NodeValue out = table.get(olive::NodeValue::k_texture);
+	EXPECT_EQ(out.type(), olive::NodeValue::k_texture);
+	EXPECT_EQ(out.to_texture(), tex);
 }
 
 TEST(OCIOBaseNode, PushesNothingWhenTextureInputEmpty)
@@ -74,9 +74,9 @@ TEST(OCIOBaseNode, PushesNothingWhenTextureInputEmpty)
 	olive::DisplayTransformNode node;
 
 	olive::NodeValueTable table;
-	node.Value(olive::NodeValueRow(), olive::NodeGlobals(), &table);
+	node.value(olive::NodeValueRow(), olive::NodeGlobals(), &table);
 
-	EXPECT_EQ(table.Count(), 0);
+	EXPECT_EQ(table.count(), 0);
 }
 
 // -----------------------------------------------------------------------------
@@ -87,45 +87,45 @@ TEST(DisplayTransformNode, InputDefinitions)
 {
 	olive::DisplayTransformNode node;
 
-	EXPECT_TRUE(node.HasInputWithID(olive::OCIOBaseNode::kTextureInput));
-	EXPECT_TRUE(node.HasInputWithID(olive::DisplayTransformNode::kDisplayInput));
-	EXPECT_TRUE(node.HasInputWithID(olive::DisplayTransformNode::kViewInput));
+	EXPECT_TRUE(node.has_input_with_id(olive::OCIOBaseNode::k_texture_input));
+	EXPECT_TRUE(node.has_input_with_id(olive::DisplayTransformNode::k_display_input));
+	EXPECT_TRUE(node.has_input_with_id(olive::DisplayTransformNode::k_view_input));
 	EXPECT_TRUE(
-		node.HasInputWithID(olive::DisplayTransformNode::kDirectionInput));
+		node.has_input_with_id(olive::DisplayTransformNode::k_direction_input));
 
-	EXPECT_EQ(node.GetInputDataType(olive::DisplayTransformNode::kDisplayInput),
-			  olive::NodeValue::kCombo);
-	EXPECT_EQ(node.GetInputDataType(olive::DisplayTransformNode::kViewInput),
-			  olive::NodeValue::kCombo);
+	EXPECT_EQ(node.get_input_data_type(olive::DisplayTransformNode::k_display_input),
+			  olive::NodeValue::k_combo);
+	EXPECT_EQ(node.get_input_data_type(olive::DisplayTransformNode::k_view_input),
+			  olive::NodeValue::k_combo);
 	EXPECT_EQ(
-		node.GetInputDataType(olive::DisplayTransformNode::kDirectionInput),
-		olive::NodeValue::kCombo);
+		node.get_input_data_type(olive::DisplayTransformNode::k_direction_input),
+		olive::NodeValue::k_combo);
 
 	// Combo inputs are static UI choices: neither keyframable nor connectable.
 	EXPECT_FALSE(
-		node.IsInputKeyframable(olive::DisplayTransformNode::kDisplayInput));
+		node.is_input_keyframable(olive::DisplayTransformNode::k_display_input));
 	EXPECT_FALSE(
-		node.IsInputConnectable(olive::DisplayTransformNode::kDisplayInput));
+		node.is_input_connectable(olive::DisplayTransformNode::k_display_input));
 	EXPECT_FALSE(
-		node.IsInputKeyframable(olive::DisplayTransformNode::kViewInput));
+		node.is_input_keyframable(olive::DisplayTransformNode::k_view_input));
 	EXPECT_FALSE(
-		node.IsInputConnectable(olive::DisplayTransformNode::kViewInput));
+		node.is_input_connectable(olive::DisplayTransformNode::k_view_input));
 	EXPECT_FALSE(
-		node.IsInputKeyframable(olive::DisplayTransformNode::kDirectionInput));
+		node.is_input_keyframable(olive::DisplayTransformNode::k_direction_input));
 	EXPECT_FALSE(
-		node.IsInputConnectable(olive::DisplayTransformNode::kDirectionInput));
+		node.is_input_connectable(olive::DisplayTransformNode::k_direction_input));
 
-	EXPECT_EQ(node.GetStandardValue(olive::DisplayTransformNode::kDisplayInput)
+	EXPECT_EQ(node.get_standard_value(olive::DisplayTransformNode::k_display_input)
 				  .toInt(),
 			  0);
-	EXPECT_EQ(node.GetStandardValue(olive::DisplayTransformNode::kViewInput)
+	EXPECT_EQ(node.get_standard_value(olive::DisplayTransformNode::k_view_input)
 				  .toInt(),
 			  0);
-	EXPECT_EQ(node.GetStandardValue(olive::DisplayTransformNode::kDirectionInput)
+	EXPECT_EQ(node.get_standard_value(olive::DisplayTransformNode::k_direction_input)
 				  .toInt(),
 			  0);
 
-	EXPECT_EQ(node.GetEffectInputID(), olive::OCIOBaseNode::kTextureInput);
+	EXPECT_EQ(node.get_effect_input_id(), olive::OCIOBaseNode::k_texture_input);
 }
 
 TEST(DisplayTransformNode, Identity)
@@ -134,11 +134,11 @@ TEST(DisplayTransformNode, Identity)
 
 	EXPECT_EQ(node.id(),
 			  QStringLiteral("org.olivevideoeditor.Olive.displaytransform"));
-	EXPECT_FALSE(node.Name().isEmpty());
-	EXPECT_FALSE(node.Description().isEmpty());
+	EXPECT_FALSE(node.name().isEmpty());
+	EXPECT_FALSE(node.description().isEmpty());
 
-	ASSERT_EQ(node.Category().size(), 1);
-	EXPECT_EQ(int(node.Category().first()), int(olive::Node::kCategoryColor));
+	ASSERT_EQ(node.category().size(), 1);
+	EXPECT_EQ(int(node.category().first()), int(olive::Node::k_category_color));
 }
 
 TEST(DisplayTransformNode, DisplayAndViewEmptyWithoutProject)
@@ -146,52 +146,52 @@ TEST(DisplayTransformNode, DisplayAndViewEmptyWithoutProject)
 	olive::DisplayTransformNode node;
 
 	// No ColorManager is attached, so display/view cannot be resolved.
-	EXPECT_TRUE(node.GetDisplay().isEmpty());
-	EXPECT_TRUE(node.GetView().isEmpty());
-	EXPECT_EQ(int(node.GetDirection()), int(olive::ColorProcessor::kNormal));
+	EXPECT_TRUE(node.get_display().isEmpty());
+	EXPECT_TRUE(node.get_view().isEmpty());
+	EXPECT_EQ(int(node.get_direction()), int(olive::ColorProcessor::k_normal));
 }
 
 TEST(DisplayTransformNode, ResolvesDisplayAndViewInProject)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	olive::ColorManager *manager = project.color_manager();
 	ASSERT_NE(manager, nullptr);
 
-	const QStringList displays = manager->ListAvailableDisplays();
+	const QStringList displays = manager->list_available_displays();
 	ASSERT_FALSE(displays.isEmpty());
 
 	auto *node = new olive::DisplayTransformNode();
 	node->setParent(&project);
 
 	// Combo index 0 must resolve to the first available display/view.
-	EXPECT_EQ(node->GetDisplay(), displays.first());
+	EXPECT_EQ(node->get_display(), displays.first());
 
-	const QStringList views = manager->ListAvailableViews(node->GetDisplay());
+	const QStringList views = manager->list_available_views(node->get_display());
 	ASSERT_FALSE(views.isEmpty());
-	EXPECT_EQ(node->GetView(), views.first());
+	EXPECT_EQ(node->get_view(), views.first());
 
-	EXPECT_EQ(int(node->GetDirection()), int(olive::ColorProcessor::kNormal));
+	EXPECT_EQ(int(node->get_direction()), int(olive::ColorProcessor::k_normal));
 
-	node->SetStandardValue(olive::DisplayTransformNode::kDirectionInput, 1);
-	EXPECT_EQ(int(node->GetDirection()), int(olive::ColorProcessor::kInverse));
+	node->set_standard_value(olive::DisplayTransformNode::k_direction_input, 1);
+	EXPECT_EQ(int(node->get_direction()), int(olive::ColorProcessor::k_inverse));
 }
 
 TEST(DisplayTransformNode, RetranslateSetsInputNames)
 {
 	olive::DisplayTransformNode node;
-	node.Retranslate();
+	node.retranslate();
 
-	EXPECT_EQ(node.GetInputName(olive::OCIOBaseNode::kTextureInput),
+	EXPECT_EQ(node.get_input_name(olive::OCIOBaseNode::k_texture_input),
 			  QStringLiteral("Input"));
-	EXPECT_EQ(node.GetInputName(olive::DisplayTransformNode::kDisplayInput),
+	EXPECT_EQ(node.get_input_name(olive::DisplayTransformNode::k_display_input),
 			  QStringLiteral("Display"));
-	EXPECT_EQ(node.GetInputName(olive::DisplayTransformNode::kViewInput),
+	EXPECT_EQ(node.get_input_name(olive::DisplayTransformNode::k_view_input),
 			  QStringLiteral("View"));
-	EXPECT_EQ(node.GetInputName(olive::DisplayTransformNode::kDirectionInput),
+	EXPECT_EQ(node.get_input_name(olive::DisplayTransformNode::k_direction_input),
 			  QStringLiteral("Direction"));
 }
 
@@ -204,7 +204,7 @@ TEST(ThreeWayColorNode, ShaderCodeLoadsFragmentResource)
 	olive::ThreeWayColorNode node;
 
 	const olive::ShaderCode code =
-		node.GetShaderCode(olive::Node::ShaderRequest(QStringLiteral("test")));
+		node.get_shader_code(olive::Node::ShaderRequest(QStringLiteral("test")));
 
 	EXPECT_FALSE(code.frag_code().isEmpty());
 	EXPECT_TRUE(code.vert_code().isEmpty());
@@ -215,38 +215,38 @@ TEST(ThreeWayColorNode, ValueWithoutTexturePushesNothing)
 	olive::ThreeWayColorNode node;
 
 	olive::NodeValueTable table;
-	node.Value(olive::NodeValueRow(), olive::NodeGlobals(), &table);
+	node.value(olive::NodeValueRow(), olive::NodeGlobals(), &table);
 
-	EXPECT_EQ(table.Count(), 0);
+	EXPECT_EQ(table.count(), 0);
 }
 
 TEST(ThreeWayColorNode, ValuePushesShaderJobWithDefaultLumaCoefficients)
 {
 	olive::ThreeWayColorNode node;
 
-	olive::TexturePtr tex = MakeDummyTexture();
+	olive::TexturePtr tex = make_dummy_texture();
 	olive::NodeValueRow row =
-		MakeTextureRow(olive::ThreeWayColorNode::kTextureInput, tex);
+		make_texture_row(olive::ThreeWayColorNode::k_texture_input, tex);
 
 	olive::NodeValueTable table;
-	node.Value(row, olive::NodeGlobals(), &table);
+	node.value(row, olive::NodeGlobals(), &table);
 
-	ASSERT_EQ(table.Count(), 1);
+	ASSERT_EQ(table.count(), 1);
 	const olive::TexturePtr out =
-		table.Get(olive::NodeValue::kTexture).toTexture();
+		table.get(olive::NodeValue::k_texture).to_texture();
 	ASSERT_TRUE(out);
-	ASSERT_TRUE(out->IsJob());
+	ASSERT_TRUE(out->is_job());
 
 	auto *job = static_cast<olive::ShaderJob *>(out->job());
 	ASSERT_NE(job, nullptr);
 
-	const olive::NodeValueRow &values = job->GetValues();
-	EXPECT_TRUE(values.contains(olive::ThreeWayColorNode::kTextureInput));
-	ASSERT_TRUE(values.contains(olive::ThreeWayColorNode::kLumaCoefficientsInput));
+	const olive::NodeValueRow &values = job->get_values();
+	EXPECT_TRUE(values.contains(olive::ThreeWayColorNode::k_texture_input));
+	ASSERT_TRUE(values.contains(olive::ThreeWayColorNode::k_luma_coefficients_input));
 
 	// Without a project the node falls back to Rec. 709 luma coefficients.
 	const QVector3D coeffs =
-		values.value(olive::ThreeWayColorNode::kLumaCoefficientsInput).toVec3();
+		values.value(olive::ThreeWayColorNode::k_luma_coefficients_input).to_vec3();
 	EXPECT_NEAR(coeffs.x(), 0.2126f, 0.0001f);
 	EXPECT_NEAR(coeffs.y(), 0.7152f, 0.0001f);
 	EXPECT_NEAR(coeffs.z(), 0.0722f, 0.0001f);
@@ -257,30 +257,30 @@ TEST(ThreeWayColorNode, AmountInputsDefaultToFull)
 	olive::ThreeWayColorNode node;
 
 	EXPECT_DOUBLE_EQ(
-		node.GetStandardValue(olive::ThreeWayColorNode::kShadowsAmountInput)
+		node.get_standard_value(olive::ThreeWayColorNode::k_shadows_amount_input)
 			.toDouble(),
 		1.0);
 	EXPECT_DOUBLE_EQ(
-		node.GetStandardValue(olive::ThreeWayColorNode::kMidtonesAmountInput)
+		node.get_standard_value(olive::ThreeWayColorNode::k_midtones_amount_input)
 			.toDouble(),
 		1.0);
 	EXPECT_DOUBLE_EQ(
-		node.GetStandardValue(olive::ThreeWayColorNode::kHighlightsAmountInput)
+		node.get_standard_value(olive::ThreeWayColorNode::k_highlights_amount_input)
 			.toDouble(),
 		1.0);
 
 	EXPECT_DOUBLE_EQ(
-		node.GetInputProperty(olive::ThreeWayColorNode::kShadowsAmountInput,
+		node.get_input_property(olive::ThreeWayColorNode::k_shadows_amount_input,
 							  QStringLiteral("min"))
 			.toDouble(),
 		0.0);
 	EXPECT_DOUBLE_EQ(
-		node.GetInputProperty(olive::ThreeWayColorNode::kMidtonesAmountInput,
+		node.get_input_property(olive::ThreeWayColorNode::k_midtones_amount_input,
 							  QStringLiteral("min"))
 			.toDouble(),
 		0.0);
 	EXPECT_DOUBLE_EQ(
-		node.GetInputProperty(olive::ThreeWayColorNode::kHighlightsAmountInput,
+		node.get_input_property(olive::ThreeWayColorNode::k_highlights_amount_input,
 							  QStringLiteral("min"))
 			.toDouble(),
 		0.0);
@@ -289,25 +289,25 @@ TEST(ThreeWayColorNode, AmountInputsDefaultToFull)
 TEST(ThreeWayColorNode, RetranslateSetsInputNames)
 {
 	olive::ThreeWayColorNode node;
-	node.Retranslate();
+	node.retranslate();
 
-	EXPECT_EQ(node.GetInputName(olive::ThreeWayColorNode::kTextureInput),
+	EXPECT_EQ(node.get_input_name(olive::ThreeWayColorNode::k_texture_input),
 			  QStringLiteral("Input"));
-	EXPECT_EQ(node.GetInputName(olive::ThreeWayColorNode::kShadowsColorInput),
+	EXPECT_EQ(node.get_input_name(olive::ThreeWayColorNode::k_shadows_color_input),
 			  QStringLiteral("Shadows"));
-	EXPECT_EQ(node.GetInputName(olive::ThreeWayColorNode::kMidtonesColorInput),
+	EXPECT_EQ(node.get_input_name(olive::ThreeWayColorNode::k_midtones_color_input),
 			  QStringLiteral("Midtones"));
 	EXPECT_EQ(
-		node.GetInputName(olive::ThreeWayColorNode::kHighlightsColorInput),
+		node.get_input_name(olive::ThreeWayColorNode::k_highlights_color_input),
 		QStringLiteral("Highlights"));
 	EXPECT_EQ(
-		node.GetInputName(olive::ThreeWayColorNode::kShadowsAmountInput),
+		node.get_input_name(olive::ThreeWayColorNode::k_shadows_amount_input),
 		QStringLiteral("Shadows Amount"));
 	EXPECT_EQ(
-		node.GetInputName(olive::ThreeWayColorNode::kMidtonesAmountInput),
+		node.get_input_name(olive::ThreeWayColorNode::k_midtones_amount_input),
 		QStringLiteral("Midtones Amount"));
 	EXPECT_EQ(
-		node.GetInputName(olive::ThreeWayColorNode::kHighlightsAmountInput),
+		node.get_input_name(olive::ThreeWayColorNode::k_highlights_amount_input),
 		QStringLiteral("Highlights Amount"));
 }
 
@@ -321,8 +321,8 @@ TEST(GradingTransformLinear, InputDefaults)
 	olive::OCIOGradingTransformLinearNode node;
 
 	const QVector4D contrast =
-		node.GetStandardValue(
-				olive::OCIOGradingTransformLinearNode::kContrastInput)
+		node.get_standard_value(
+				olive::OCIOGradingTransformLinearNode::k_contrast_input)
 			.value<QVector4D>();
 	EXPECT_FLOAT_EQ(contrast.x(), 1.0f);
 	EXPECT_FLOAT_EQ(contrast.y(), 1.0f);
@@ -330,7 +330,7 @@ TEST(GradingTransformLinear, InputDefaults)
 	EXPECT_FLOAT_EQ(contrast.w(), 1.0f);
 
 	const QVector4D offset =
-		node.GetStandardValue(olive::OCIOGradingTransformLinearNode::kOffsetInput)
+		node.get_standard_value(olive::OCIOGradingTransformLinearNode::k_offset_input)
 			.value<QVector4D>();
 	EXPECT_FLOAT_EQ(offset.x(), 0.0f);
 	EXPECT_FLOAT_EQ(offset.y(), 0.0f);
@@ -338,8 +338,8 @@ TEST(GradingTransformLinear, InputDefaults)
 	EXPECT_FLOAT_EQ(offset.w(), 0.0f);
 
 	const QVector4D exposure =
-		node.GetStandardValue(
-				olive::OCIOGradingTransformLinearNode::kExposureInput)
+		node.get_standard_value(
+				olive::OCIOGradingTransformLinearNode::k_exposure_input)
 			.value<QVector4D>();
 	EXPECT_FLOAT_EQ(exposure.x(), 0.0f);
 	EXPECT_FLOAT_EQ(exposure.y(), 0.0f);
@@ -347,43 +347,43 @@ TEST(GradingTransformLinear, InputDefaults)
 	EXPECT_FLOAT_EQ(exposure.w(), 0.0f);
 
 	EXPECT_DOUBLE_EQ(
-		node.GetStandardValue(
-				olive::OCIOGradingTransformLinearNode::kSaturationInput)
+		node.get_standard_value(
+				olive::OCIOGradingTransformLinearNode::k_saturation_input)
 			.toDouble(),
 		1.0);
 	EXPECT_DOUBLE_EQ(
-		node.GetStandardValue(olive::OCIOGradingTransformLinearNode::kPivotInput)
+		node.get_standard_value(olive::OCIOGradingTransformLinearNode::k_pivot_input)
 			.toDouble(),
 		0.18);
 
 	EXPECT_FALSE(
-		node.GetStandardValue(
-				olive::OCIOGradingTransformLinearNode::kClampBlackEnableInput)
+		node.get_standard_value(
+				olive::OCIOGradingTransformLinearNode::k_clamp_black_enable_input)
 			.toBool());
 	EXPECT_FALSE(
-		node.GetStandardValue(
-				olive::OCIOGradingTransformLinearNode::kClampWhiteEnableInput)
+		node.get_standard_value(
+				olive::OCIOGradingTransformLinearNode::k_clamp_white_enable_input)
 			.toBool());
 	EXPECT_DOUBLE_EQ(
-		node.GetStandardValue(
-				olive::OCIOGradingTransformLinearNode::kClampBlackInput)
+		node.get_standard_value(
+				olive::OCIOGradingTransformLinearNode::k_clamp_black_input)
 			.toDouble(),
 		0.0);
 	EXPECT_DOUBLE_EQ(
-		node.GetStandardValue(
-				olive::OCIOGradingTransformLinearNode::kClampWhiteInput)
+		node.get_standard_value(
+				olive::OCIOGradingTransformLinearNode::k_clamp_white_input)
 			.toDouble(),
 		1.0);
 
 	// Clamp value inputs start out disabled, matching the enable toggles.
 	EXPECT_FALSE(
-		node.GetInputProperty(
-				olive::OCIOGradingTransformLinearNode::kClampBlackInput,
+		node.get_input_property(
+				olive::OCIOGradingTransformLinearNode::k_clamp_black_input,
 				QStringLiteral("enabled"))
 			.toBool());
 	EXPECT_FALSE(
-		node.GetInputProperty(
-				olive::OCIOGradingTransformLinearNode::kClampWhiteInput,
+		node.get_input_property(
+				olive::OCIOGradingTransformLinearNode::k_clamp_white_input,
 				QStringLiteral("enabled"))
 			.toBool());
 }
@@ -395,38 +395,38 @@ TEST(GradingTransformLinear, Identity)
 	EXPECT_EQ(node.id(),
 			  QStringLiteral(
 				  "org.olivevideoeditor.Olive.ociogradingtransformlinear"));
-	EXPECT_FALSE(node.Name().isEmpty());
-	EXPECT_FALSE(node.Description().isEmpty());
+	EXPECT_FALSE(node.name().isEmpty());
+	EXPECT_FALSE(node.description().isEmpty());
 
-	ASSERT_EQ(node.Category().size(), 1);
-	EXPECT_EQ(int(node.Category().first()), int(olive::Node::kCategoryColor));
+	ASSERT_EQ(node.category().size(), 1);
+	EXPECT_EQ(int(node.category().first()), int(olive::Node::k_category_color));
 }
 
 TEST(GradingTransformLinear, ClampEnableTogglesEnabledProperty)
 {
 	olive::OCIOGradingTransformLinearNode node;
 
-	node.SetStandardValue(
-		olive::OCIOGradingTransformLinearNode::kClampWhiteEnableInput, true);
+	node.set_standard_value(
+		olive::OCIOGradingTransformLinearNode::k_clamp_white_enable_input, true);
 	EXPECT_TRUE(
-		node.GetInputProperty(
-				olive::OCIOGradingTransformLinearNode::kClampWhiteInput,
+		node.get_input_property(
+				olive::OCIOGradingTransformLinearNode::k_clamp_white_input,
 				QStringLiteral("enabled"))
 			.toBool());
 
-	node.SetStandardValue(
-		olive::OCIOGradingTransformLinearNode::kClampBlackEnableInput, true);
+	node.set_standard_value(
+		olive::OCIOGradingTransformLinearNode::k_clamp_black_enable_input, true);
 	EXPECT_TRUE(
-		node.GetInputProperty(
-				olive::OCIOGradingTransformLinearNode::kClampBlackInput,
+		node.get_input_property(
+				olive::OCIOGradingTransformLinearNode::k_clamp_black_input,
 				QStringLiteral("enabled"))
 			.toBool());
 
-	node.SetStandardValue(
-		olive::OCIOGradingTransformLinearNode::kClampWhiteEnableInput, false);
+	node.set_standard_value(
+		olive::OCIOGradingTransformLinearNode::k_clamp_white_enable_input, false);
 	EXPECT_FALSE(
-		node.GetInputProperty(
-				olive::OCIOGradingTransformLinearNode::kClampWhiteInput,
+		node.get_input_property(
+				olive::OCIOGradingTransformLinearNode::k_clamp_white_input,
 				QStringLiteral("enabled"))
 			.toBool());
 }
@@ -437,17 +437,17 @@ TEST(GradingTransformLinear, WhiteClampMinimumFollowsStaticBlackClamp)
 
 	// Constructor seeds the white clamp minimum just above the black clamp.
 	EXPECT_DOUBLE_EQ(
-		node.GetInputProperty(
-				olive::OCIOGradingTransformLinearNode::kClampWhiteInput,
+		node.get_input_property(
+				olive::OCIOGradingTransformLinearNode::k_clamp_white_input,
 				QStringLiteral("min"))
 			.toDouble(),
 		0.000001);
 
-	node.SetStandardValue(
-		olive::OCIOGradingTransformLinearNode::kClampBlackInput, 0.5);
+	node.set_standard_value(
+		olive::OCIOGradingTransformLinearNode::k_clamp_black_input, 0.5);
 	EXPECT_DOUBLE_EQ(
-		node.GetInputProperty(
-				olive::OCIOGradingTransformLinearNode::kClampWhiteInput,
+		node.get_input_property(
+				olive::OCIOGradingTransformLinearNode::k_clamp_white_input,
 				QStringLiteral("min"))
 			.toDouble(),
 		0.5 + 0.000001);
@@ -459,14 +459,14 @@ TEST(GradingTransformLinear, WhiteClampMinimumNotUpdatedWhenBlackKeyframed)
 
 	// With the black clamp keyframing, the static UI minimum can no longer
 	// follow it; the invariant is enforced per frame in Value() instead.
-	node.SetInputIsKeyframing(
-		olive::OCIOGradingTransformLinearNode::kClampBlackInput, true);
-	node.SetStandardValue(
-		olive::OCIOGradingTransformLinearNode::kClampBlackInput, 0.5);
+	node.set_input_is_keyframing(
+		olive::OCIOGradingTransformLinearNode::k_clamp_black_input, true);
+	node.set_standard_value(
+		olive::OCIOGradingTransformLinearNode::k_clamp_black_input, 0.5);
 
 	EXPECT_DOUBLE_EQ(
-		node.GetInputProperty(
-				olive::OCIOGradingTransformLinearNode::kClampWhiteInput,
+		node.get_input_property(
+				olive::OCIOGradingTransformLinearNode::k_clamp_white_input,
 				QStringLiteral("min"))
 			.toDouble(),
 		0.000001);
@@ -478,151 +478,151 @@ TEST(GradingTransformLinear, ValueWithoutProcessorPushesNothing)
 	// generated and Value() must push nothing even with a valid texture.
 	olive::OCIOGradingTransformLinearNode node;
 
-	olive::TexturePtr tex = MakeDummyTexture();
+	olive::TexturePtr tex = make_dummy_texture();
 	olive::NodeValueRow row =
-		MakeTextureRow(olive::OCIOBaseNode::kTextureInput, tex);
+		make_texture_row(olive::OCIOBaseNode::k_texture_input, tex);
 
 	olive::NodeValueTable table;
-	node.Value(row, olive::NodeGlobals(), &table);
+	node.value(row, olive::NodeGlobals(), &table);
 
-	EXPECT_EQ(table.Count(), 0);
+	EXPECT_EQ(table.count(), 0);
 }
 
 TEST(GradingTransformLinear, ValueInProjectPushesColorTransformJob)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *node = new olive::OCIOGradingTransformLinearNode();
 	node->setParent(&project);
 
-	olive::TexturePtr tex = MakeDummyTexture();
+	olive::TexturePtr tex = make_dummy_texture();
 	olive::NodeValueRow row =
-		MakeTextureRow(olive::OCIOBaseNode::kTextureInput, tex);
-	row.insert(olive::OCIOGradingTransformLinearNode::kOffsetInput,
-			   Vec4Value(QVector4D(0.0f, 0.0f, 0.0f, 0.0f)));
-	row.insert(olive::OCIOGradingTransformLinearNode::kExposureInput,
-			   Vec4Value(QVector4D(0.0f, 0.0f, 0.0f, 0.0f)));
-	row.insert(olive::OCIOGradingTransformLinearNode::kContrastInput,
-			   Vec4Value(QVector4D(1.0f, 1.0f, 1.0f, 1.0f)));
-	row.insert(olive::OCIOGradingTransformLinearNode::kClampBlackEnableInput,
-			   BoolValue(false));
-	row.insert(olive::OCIOGradingTransformLinearNode::kClampWhiteEnableInput,
-			   BoolValue(false));
+		make_texture_row(olive::OCIOBaseNode::k_texture_input, tex);
+	row.insert(olive::OCIOGradingTransformLinearNode::k_offset_input,
+			   vec4_value(QVector4D(0.0f, 0.0f, 0.0f, 0.0f)));
+	row.insert(olive::OCIOGradingTransformLinearNode::k_exposure_input,
+			   vec4_value(QVector4D(0.0f, 0.0f, 0.0f, 0.0f)));
+	row.insert(olive::OCIOGradingTransformLinearNode::k_contrast_input,
+			   vec4_value(QVector4D(1.0f, 1.0f, 1.0f, 1.0f)));
+	row.insert(olive::OCIOGradingTransformLinearNode::k_clamp_black_enable_input,
+			   bool_value(false));
+	row.insert(olive::OCIOGradingTransformLinearNode::k_clamp_white_enable_input,
+			   bool_value(false));
 
 	olive::NodeValueTable table;
-	node->Value(row, olive::NodeGlobals(), &table);
+	node->value(row, olive::NodeGlobals(), &table);
 
-	ASSERT_EQ(table.Count(), 1);
+	ASSERT_EQ(table.count(), 1);
 	const olive::TexturePtr out =
-		table.Get(olive::NodeValue::kTexture).toTexture();
+		table.get(olive::NodeValue::k_texture).to_texture();
 	ASSERT_TRUE(out);
-	ASSERT_TRUE(out->IsJob());
+	ASSERT_TRUE(out->is_job());
 
 	auto *job = static_cast<olive::ColorTransformJob *>(out->job());
 	ASSERT_NE(job, nullptr);
-	EXPECT_NE(job->GetColorProcessor(), nullptr);
+	EXPECT_NE(job->get_color_processor(), nullptr);
 
-	const olive::NodeValueRow &values = job->GetValues();
+	const olive::NodeValueRow &values = job->get_values();
 
 	// Defaults convert to neutral vec3s for OCIO.
 	const QVector3D offset =
-		values.value(olive::OCIOGradingTransformLinearNode::kOffsetInput)
-			.toVec3();
+		values.value(olive::OCIOGradingTransformLinearNode::k_offset_input)
+			.to_vec3();
 	EXPECT_FLOAT_EQ(offset.x(), 0.0f);
 	EXPECT_FLOAT_EQ(offset.y(), 0.0f);
 	EXPECT_FLOAT_EQ(offset.z(), 0.0f);
 
 	const QVector3D exposure =
-		values.value(olive::OCIOGradingTransformLinearNode::kExposureInput)
-			.toVec3();
+		values.value(olive::OCIOGradingTransformLinearNode::k_exposure_input)
+			.to_vec3();
 	EXPECT_FLOAT_EQ(exposure.x(), 1.0f);
 	EXPECT_FLOAT_EQ(exposure.y(), 1.0f);
 	EXPECT_FLOAT_EQ(exposure.z(), 1.0f);
 
 	const QVector3D contrast =
-		values.value(olive::OCIOGradingTransformLinearNode::kContrastInput)
-			.toVec3();
+		values.value(olive::OCIOGradingTransformLinearNode::k_contrast_input)
+			.to_vec3();
 	EXPECT_FLOAT_EQ(contrast.x(), 1.0f);
 	EXPECT_FLOAT_EQ(contrast.y(), 1.0f);
 	EXPECT_FLOAT_EQ(contrast.z(), 1.0f);
 
 	// Disabled clamps are replaced with OCIO's "no clamp" sentinels.
 	ASSERT_TRUE(
-		values.contains(olive::OCIOGradingTransformLinearNode::kClampBlackInput));
+		values.contains(olive::OCIOGradingTransformLinearNode::k_clamp_black_input));
 	EXPECT_LT(values
-				  .value(olive::OCIOGradingTransformLinearNode::kClampBlackInput)
-				  .toDouble(),
+				  .value(olive::OCIOGradingTransformLinearNode::k_clamp_black_input)
+				  .to_double(),
 			  -1e300);
 	ASSERT_TRUE(
-		values.contains(olive::OCIOGradingTransformLinearNode::kClampWhiteInput));
+		values.contains(olive::OCIOGradingTransformLinearNode::k_clamp_white_input));
 	EXPECT_GT(values
-				  .value(olive::OCIOGradingTransformLinearNode::kClampWhiteInput)
-				  .toDouble(),
+				  .value(olive::OCIOGradingTransformLinearNode::k_clamp_white_input)
+				  .to_double(),
 			  1e300);
 }
 
 TEST(GradingTransformLinear, ValueAppliesMasterChannelMath)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *node = new olive::OCIOGradingTransformLinearNode();
 	node->setParent(&project);
 
-	olive::TexturePtr tex = MakeDummyTexture();
+	olive::TexturePtr tex = make_dummy_texture();
 	olive::NodeValueRow row =
-		MakeTextureRow(olive::OCIOBaseNode::kTextureInput, tex);
+		make_texture_row(olive::OCIOBaseNode::k_texture_input, tex);
 	// Layout is {master, red, green, blue}.
-	row.insert(olive::OCIOGradingTransformLinearNode::kOffsetInput,
-			   Vec4Value(QVector4D(0.1f, 0.2f, 0.3f, 0.4f)));
-	row.insert(olive::OCIOGradingTransformLinearNode::kExposureInput,
-			   Vec4Value(QVector4D(1.0f, 0.0f, 0.0f, 0.0f)));
-	row.insert(olive::OCIOGradingTransformLinearNode::kContrastInput,
-			   Vec4Value(QVector4D(2.0f, 0.5f, 1.0f, 1.0f)));
-	row.insert(olive::OCIOGradingTransformLinearNode::kClampBlackEnableInput,
-			   BoolValue(false));
-	row.insert(olive::OCIOGradingTransformLinearNode::kClampWhiteEnableInput,
-			   BoolValue(false));
+	row.insert(olive::OCIOGradingTransformLinearNode::k_offset_input,
+			   vec4_value(QVector4D(0.1f, 0.2f, 0.3f, 0.4f)));
+	row.insert(olive::OCIOGradingTransformLinearNode::k_exposure_input,
+			   vec4_value(QVector4D(1.0f, 0.0f, 0.0f, 0.0f)));
+	row.insert(olive::OCIOGradingTransformLinearNode::k_contrast_input,
+			   vec4_value(QVector4D(2.0f, 0.5f, 1.0f, 1.0f)));
+	row.insert(olive::OCIOGradingTransformLinearNode::k_clamp_black_enable_input,
+			   bool_value(false));
+	row.insert(olive::OCIOGradingTransformLinearNode::k_clamp_white_enable_input,
+			   bool_value(false));
 
 	olive::NodeValueTable table;
-	node->Value(row, olive::NodeGlobals(), &table);
+	node->value(row, olive::NodeGlobals(), &table);
 
-	ASSERT_EQ(table.Count(), 1);
+	ASSERT_EQ(table.count(), 1);
 	const olive::TexturePtr out =
-		table.Get(olive::NodeValue::kTexture).toTexture();
+		table.get(olive::NodeValue::k_texture).to_texture();
 	ASSERT_TRUE(out);
-	ASSERT_TRUE(out->IsJob());
+	ASSERT_TRUE(out->is_job());
 
 	auto *job = static_cast<olive::ColorTransformJob *>(out->job());
 	ASSERT_NE(job, nullptr);
 
-	const olive::NodeValueRow &values = job->GetValues();
+	const olive::NodeValueRow &values = job->get_values();
 
 	// Offset: master is added to each channel.
 	const QVector3D offset =
-		values.value(olive::OCIOGradingTransformLinearNode::kOffsetInput)
-			.toVec3();
+		values.value(olive::OCIOGradingTransformLinearNode::k_offset_input)
+			.to_vec3();
 	EXPECT_NEAR(offset.x(), 0.3f, 0.0001f);
 	EXPECT_NEAR(offset.y(), 0.4f, 0.0001f);
 	EXPECT_NEAR(offset.z(), 0.5f, 0.0001f);
 
 	// Exposure: channels become 2^(master + channel) gain values.
 	const QVector3D exposure =
-		values.value(olive::OCIOGradingTransformLinearNode::kExposureInput)
-			.toVec3();
+		values.value(olive::OCIOGradingTransformLinearNode::k_exposure_input)
+			.to_vec3();
 	EXPECT_NEAR(exposure.x(), 2.0f, 0.0001f);
 	EXPECT_NEAR(exposure.y(), 2.0f, 0.0001f);
 	EXPECT_NEAR(exposure.z(), 2.0f, 0.0001f);
 
 	// Contrast: master multiplies each channel.
 	const QVector3D contrast =
-		values.value(olive::OCIOGradingTransformLinearNode::kContrastInput)
-			.toVec3();
+		values.value(olive::OCIOGradingTransformLinearNode::k_contrast_input)
+			.to_vec3();
 	EXPECT_NEAR(contrast.x(), 1.0f, 0.0001f);
 	EXPECT_NEAR(contrast.y(), 2.0f, 0.0001f);
 	EXPECT_NEAR(contrast.z(), 2.0f, 0.0001f);
@@ -631,40 +631,40 @@ TEST(GradingTransformLinear, ValueAppliesMasterChannelMath)
 TEST(GradingTransformLinear, RetranslateSetsInputNames)
 {
 	olive::OCIOGradingTransformLinearNode node;
-	node.Retranslate();
+	node.retranslate();
 
-	EXPECT_EQ(node.GetInputName(olive::OCIOBaseNode::kTextureInput),
+	EXPECT_EQ(node.get_input_name(olive::OCIOBaseNode::k_texture_input),
 			  QStringLiteral("Input"));
 	EXPECT_EQ(
-		node.GetInputName(olive::OCIOGradingTransformLinearNode::kContrastInput),
+		node.get_input_name(olive::OCIOGradingTransformLinearNode::k_contrast_input),
 		QStringLiteral("Contrast"));
 	EXPECT_EQ(
-		node.GetInputName(olive::OCIOGradingTransformLinearNode::kOffsetInput),
+		node.get_input_name(olive::OCIOGradingTransformLinearNode::k_offset_input),
 		QStringLiteral("Offset"));
 	EXPECT_EQ(
-		node.GetInputName(olive::OCIOGradingTransformLinearNode::kExposureInput),
+		node.get_input_name(olive::OCIOGradingTransformLinearNode::k_exposure_input),
 		QStringLiteral("Exposure"));
 	EXPECT_EQ(
-		node.GetInputName(
-			olive::OCIOGradingTransformLinearNode::kSaturationInput),
+		node.get_input_name(
+			olive::OCIOGradingTransformLinearNode::k_saturation_input),
 		QStringLiteral("Saturation"));
 	EXPECT_EQ(
-		node.GetInputName(olive::OCIOGradingTransformLinearNode::kPivotInput),
+		node.get_input_name(olive::OCIOGradingTransformLinearNode::k_pivot_input),
 		QStringLiteral("Pivot"));
 	EXPECT_EQ(
-		node.GetInputName(
-			olive::OCIOGradingTransformLinearNode::kClampBlackEnableInput),
+		node.get_input_name(
+			olive::OCIOGradingTransformLinearNode::k_clamp_black_enable_input),
 		QStringLiteral("Enable Black Clamp"));
 	EXPECT_EQ(
-		node.GetInputName(
-			olive::OCIOGradingTransformLinearNode::kClampBlackInput),
+		node.get_input_name(
+			olive::OCIOGradingTransformLinearNode::k_clamp_black_input),
 		QStringLiteral("Black Clamp"));
 	EXPECT_EQ(
-		node.GetInputName(
-			olive::OCIOGradingTransformLinearNode::kClampWhiteEnableInput),
+		node.get_input_name(
+			olive::OCIOGradingTransformLinearNode::k_clamp_white_enable_input),
 		QStringLiteral("Enable White Clamp"));
 	EXPECT_EQ(
-		node.GetInputName(
-			olive::OCIOGradingTransformLinearNode::kClampWhiteInput),
+		node.get_input_name(
+			olive::OCIOGradingTransformLinearNode::k_clamp_white_input),
 		QStringLiteral("White Clamp"));
 }

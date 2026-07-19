@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINEWIDGETWAVEFORMSYNC_H
-#define TIMELINEWIDGETWAVEFORMSYNC_H
+#ifndef OAK_TIMELINEWIDGETWAVEFORMSYNC_H
+#define OAK_TIMELINEWIDGETWAVEFORMSYNC_H
 
 #include <QVector>
 
@@ -49,7 +49,7 @@ struct WaveformSyncClip {
  *
  * Kept in a separate unit so they can be exercised directly by unit tests.
  */
-namespace TimelineWaveformSync
+namespace timeline_waveform_sync
 {
 
 /**
@@ -59,13 +59,13 @@ namespace TimelineWaveformSync
  * has been validated in the waveform cache. Previously the whole range had to
  * be validated, which made the context-menu action unavailable for long clips.
  */
-bool GetWaveformSyncClip(Block *block, WaveformSyncClip *out);
+bool get_waveform_sync_clip(Block *block, WaveformSyncClip *out);
 
 /**
  * @brief Return all selected blocks that can be synchronized by waveform.
  */
 QVector<WaveformSyncClip>
-GetSelectedWaveformSyncClips(const QVector<Block *> &blocks);
+get_selected_waveform_sync_clips(const QVector<Block *> &blocks);
 
 /**
  * @brief Extract a peak envelope from the validated regions of a waveform cache.
@@ -76,7 +76,7 @@ GetSelectedWaveformSyncClips(const QVector<Block *> &blocks);
  * actually cached, allowing the correlation to skip uncached regions instead
  * of treating them as silence.
  */
-QVector<double> ExtractWaveformCacheEnvelope(const WaveformSyncClip &clip,
+QVector<double> extract_waveform_cache_envelope(const WaveformSyncClip &clip,
 											 int sample_rate,
 											 size_t window_samples,
 											 QVector<bool> *valid_mask = nullptr);
@@ -85,4 +85,4 @@ QVector<double> ExtractWaveformCacheEnvelope(const WaveformSyncClip &clip,
 
 } // namespace olive
 
-#endif // TIMELINEWIDGETWAVEFORMSYNC_H
+#endif // OAK_TIMELINEWIDGETWAVEFORMSYNC_H

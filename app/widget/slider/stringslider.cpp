@@ -29,42 +29,42 @@ namespace olive
 StringSlider::StringSlider(QWidget *parent)
 	: super(parent)
 {
-	SetValue(QString());
+	set_value(QString());
 
-	connect(label(), &SliderLabel::LabelReleased, this,
-			&SliderBase::ShowEditor);
+	connect(label(), &SliderLabel::label_released, this,
+			&SliderBase::show_editor);
 }
 
-QString StringSlider::GetValue() const
+QString StringSlider::get_value() const
 {
-	return GetValueInternal().toString();
+	return get_value_internal().toString();
 }
 
-void StringSlider::SetValue(const QString &v)
+void StringSlider::set_value(const QString &v)
 {
-	SetValueInternal(v);
+	set_value_internal(v);
 }
 
 void StringSlider::SetDefaultValue(const QString &v)
 {
-	super::SetDefaultValue(v);
+	super::set_default_value(v);
 }
 
-QString StringSlider::ValueToString(const QVariant &v) const
+QString StringSlider::value_to_string(const QVariant &v) const
 {
 	QString vstr = v.toString();
 	return (vstr.isEmpty()) ? tr("(none)") : vstr;
 }
 
-QVariant StringSlider::StringToValue(const QString &s, bool *ok) const
+QVariant StringSlider::string_to_value(const QString &s, bool *ok) const
 {
 	*ok = true;
 	return s;
 }
 
-void StringSlider::ValueSignalEvent(const QVariant &value)
+void StringSlider::value_signal_event(const QVariant &value)
 {
-	emit ValueChanged(value.toString());
+	emit value_changed(value.toString());
 }
 
 }

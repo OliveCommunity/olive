@@ -49,12 +49,12 @@ TaskManager::~TaskManager()
 	}
 }
 
-void TaskManager::CreateInstance()
+void TaskManager::create_instance()
 {
 	instance_ = new TaskManager();
 }
 
-void TaskManager::DestroyInstance()
+void TaskManager::destroy_instance()
 {
 	delete instance_;
 	instance_ = nullptr;
@@ -65,17 +65,17 @@ TaskManager *TaskManager::instance()
 	return instance_;
 }
 
-int TaskManager::GetTaskCount() const
+int TaskManager::get_task_count() const
 {
 	return tasks_.size();
 }
 
-Task *TaskManager::GetFirstTask() const
+Task *TaskManager::get_first_task() const
 {
 	return tasks_.begin().value();
 }
 
-void TaskManager::CancelTaskAndWait(Task *t)
+void TaskManager::cancel_task_and_wait(Task *t)
 {
 	t->Cancel();
 
@@ -86,12 +86,12 @@ void TaskManager::CancelTaskAndWait(Task *t)
 	}
 }
 
-void TaskManager::AddTask(Task *t)
+void TaskManager::add_task(Task *t)
 {
 	// Create a watcher for signalling
 	QFutureWatcher<bool> *watcher = new QFutureWatcher<bool>();
 	connect(watcher, &QFutureWatcher<bool>::finished, this,
-			&TaskManager::TaskFinished);
+			&TaskManager::task_finished);
 
 	// Add the Task to the queue
 	tasks_.insert(watcher, t);
@@ -99,30 +99,30 @@ void TaskManager::AddTask(Task *t)
 	// Run task concurrently
 	watcher->setFuture(
 #if QT_VERSION_MAJOR >= 6
-		QtConcurrent::run(&thread_pool_, &Task::Start, t)
+		QtConcurrent::run(&thread_pool_, &Task::start, t)
 #else
 		QtConcurrent::run(&thread_pool_, t, &Task::Start)
 #endif
 	);
 
 	// Emit signal that a Task was added
-	emit TaskAdded(t);
-	emit TaskListChanged();
+	emit task_added(t);
+	emit task_list_changed();
 }
 
-void TaskManager::CancelTask(Task *t)
+void TaskManager::cancel_task(Task *t)
 {
 	if (std::find(failed_tasks_.begin(), failed_tasks_.end(), t) !=
 		failed_tasks_.end()) {
 		failed_tasks_.remove(t);
-		emit TaskRemoved(t);
+		emit task_removed(t);
 		t->deleteLater();
 	} else {
 		t->Cancel();
 	}
 }
 
-void TaskManager::TaskFinished()
+void TaskManager::task_finished()
 {
 	QFutureWatcher<bool> *watcher =
 		static_cast<QFutureWatcher<bool> *>(sender());
@@ -132,17 +132,17 @@ void TaskManager::TaskFinished()
 
 	if (watcher->result()) {
 		// Task completed successfully
-		emit TaskRemoved(t);
+		emit task_removed(t);
 		t->deleteLater();
 	} else {
 		// Task failed, keep it so the user can see the error message
-		emit TaskFailed(t);
+		emit task_failed(t);
 		failed_tasks_.push_back(t);
 	}
 
 	watcher->deleteLater();
 
-	emit TaskListChanged();
+	emit task_list_changed();
 }
 
 }

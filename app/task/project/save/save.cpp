@@ -36,50 +36,50 @@ ProjectSaveTask::ProjectSaveTask(Project *project, bool use_compression)
 	: project_(project)
 	, use_compression_(use_compression)
 {
-	SetTitle(tr("Saving '%1'").arg(project->filename()));
+	set_title(tr("Saving '%1'").arg(project->filename()));
 }
 
-bool ProjectSaveTask::Run()
+bool ProjectSaveTask::run()
 {
 	QString using_filename = override_filename_.isEmpty() ?
 								 project_->filename() :
 								 override_filename_;
 
-	ProjectSerializer::SaveData data(ProjectSerializer::kProject);
+	ProjectSerializer::SaveData data(ProjectSerializer::k_project);
 
-	data.SetFilename(using_filename);
-	data.SetProject(project_);
-	data.SetLayout(layout_);
+	data.set_filename(using_filename);
+	data.set_project(project_);
+	data.set_layout(layout_);
 
 	ProjectSerializer::Result result =
-		ProjectSerializer::Save(data, use_compression_);
+		ProjectSerializer::save(data, use_compression_);
 
 	bool success = false;
 
 	switch (result.code()) {
-	case ProjectSerializer::kSuccess:
+	case ProjectSerializer::k_success:
 		success = true;
 		break;
-	case ProjectSerializer::kXmlError:
-		SetError(tr("Failed to write XML data."));
+	case ProjectSerializer::k_xml_error:
+		set_error(tr("Failed to write XML data."));
 		break;
-	case ProjectSerializer::kFileError:
-		SetError(tr("Failed to open file \"%1\" for writing.")
-					 .arg(result.GetDetails()));
+	case ProjectSerializer::k_file_error:
+		set_error(tr("Failed to open file \"%1\" for writing.")
+					 .arg(result.get_details()));
 		break;
-	case ProjectSerializer::kOverwriteError:
-		SetError(
+	case ProjectSerializer::k_overwrite_error:
+		set_error(
 			tr("Failed to overwrite \"%1\". Project has been saved as \"%2\" instead.")
-				.arg(using_filename, result.GetDetails()));
+				.arg(using_filename, result.get_details()));
 		success = true;
 		break;
 
 		// Errors that should never be thrown by a save
-	case ProjectSerializer::kProjectTooNew:
-	case ProjectSerializer::kProjectTooOld:
-	case ProjectSerializer::kUnknownVersion:
-	case ProjectSerializer::kNoData:
-		SetError(tr("Unknown error."));
+	case ProjectSerializer::k_project_too_new:
+	case ProjectSerializer::k_project_too_old:
+	case ProjectSerializer::k_unknown_version:
+	case ProjectSerializer::k_no_data:
+		set_error(tr("Unknown error."));
 		break;
 	}
 

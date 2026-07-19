@@ -18,8 +18,8 @@
 
 ***/
 
-#ifndef AUDIOSYNCHRONIZER_H
-#define AUDIOSYNCHRONIZER_H
+#ifndef OAK_AUDIOSYNCHRONIZER_H
+#define OAK_AUDIOSYNCHRONIZER_H
 
 #include <cstdint>
 
@@ -31,25 +31,25 @@ namespace olive
 class AudioSynchronizer {
 public:
 	struct SourceClip {
-		core::rational source_start_time;
-		core::rational media_in;
+		core::Rational source_start_time;
+		core::Rational media_in;
 		bool has_source_start_time = false;
 	};
 
 	struct Placement {
-		core::rational timeline_in;
+		core::Rational timeline_in;
 		bool valid = false;
 	};
 
 	static Placement
-	PlaceBySourceTime(const SourceClip &reference, const SourceClip &candidate,
-					  const core::rational &reference_timeline_in);
+	place_by_source_time(const SourceClip &reference, const SourceClip &candidate,
+					  const core::Rational &reference_timeline_in);
 
 	static Placement
-	PlaceByWaveformOffset(const core::rational &reference_timeline_in,
+	place_by_waveform_offset(const core::Rational &reference_timeline_in,
 						  int64_t candidate_offset_samples, int sample_rate);
 };
 
 }
 
-#endif // AUDIOSYNCHRONIZER_H
+#endif // OAK_AUDIOSYNCHRONIZER_H

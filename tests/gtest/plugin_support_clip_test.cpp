@@ -2,11 +2,11 @@
 
 #include "ofxImageEffect.h"
 #include "ofxhClip.h"
-#include "pluginSupport/OliveClip.h"
+#include "pluginSupport/oliveclip.h"
 
 namespace
 {
-olive::VideoParams MakeParams(int width, int height,
+olive::VideoParams make_params(int width, int height,
 							  olive::core::PixelFormat format, int channels,
 							  bool premultiplied)
 {
@@ -24,12 +24,12 @@ TEST(PluginSupportClip, PropertyGetters)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc(kOfxImageEffectOutputClipName);
 	olive::VideoParams params =
-		MakeParams(1920, 1080, olive::core::PixelFormat::U16, 3, false);
-	params.set_pixel_aspect_ratio(olive::core::rational(2, 1));
-	params.set_frame_rate(olive::core::rational(30, 1));
+		make_params(1920, 1080, olive::core::PixelFormat::u16, 3, false);
+	params.set_pixel_aspect_ratio(olive::core::Rational(2, 1));
+	params.set_frame_rate(olive::core::Rational(30, 1));
 	params.set_start_time(2);
 	params.set_duration(4);
-	params.set_interlacing(olive::VideoParams::kInterlacedTopFirst);
+	params.set_interlacing(olive::VideoParams::k_interlaced_top_first);
 
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
@@ -60,7 +60,7 @@ TEST(PluginSupportClip, GetImageClampsBoundsAndCachesOutput)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc(kOfxImageEffectOutputClipName);
 	olive::VideoParams params =
-		MakeParams(100, 80, olive::core::PixelFormat::U8, 4, true);
+		make_params(100, 80, olive::core::PixelFormat::u8, 4, true);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
 	OfxRectD optional_bounds = { -10.0, -10.0, 200.0, 200.0 };
@@ -79,7 +79,7 @@ TEST(PluginSupportClip, GetImageCachesImageForNonOutput)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc("Source");
 	olive::VideoParams params =
-		MakeParams(64, 64, olive::core::PixelFormat::U8, 4, false);
+		make_params(64, 64, olive::core::PixelFormat::u8, 4, false);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
 	EXPECT_FALSE(clip.getConnected());

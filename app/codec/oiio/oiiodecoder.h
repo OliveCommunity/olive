@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef OIIODECODER_H
-#define OIIODECODER_H
+#ifndef OAK_OIIODECODER_H
+#define OAK_OIIODECODER_H
 
 #include <OpenImageIO/imageio.h>
 #include <OpenImageIO/imagebuf.h>
@@ -39,32 +39,32 @@ public:
 
 	virtual QString id() const override;
 
-	virtual bool SupportsVideo() override
+	virtual bool supports_video() override
 	{
 		return true;
 	}
 
-	virtual FootageDescription Probe(const QString &filename,
+	virtual FootageDescription probe(const QString &filename,
 									 CancelAtom *cancelled) const override;
 
 protected:
-	virtual bool OpenInternal() override;
+	virtual bool open_internal() override;
 	virtual TexturePtr
-	RetrieveVideoInternal(const RetrieveVideoParams &p) override;
+	retrieve_video_internal(const RetrieveVideoParams &p) override;
 	virtual FramePtr
-	RetrieveVideoFrameInternal(const RetrieveVideoParams &p) override;
-	virtual void CloseInternal() override;
+	retrieve_video_frame_internal(const RetrieveVideoParams &p) override;
+	virtual void close_internal() override;
 
 private:
 	std::unique_ptr<OIIO::ImageInput> image_;
 
-	static bool FileTypeIsSupported(const QString &fn);
+	static bool file_type_is_supported(const QString &fn);
 
-	bool OpenImageHandler(const QString &fn, int subimage);
+	bool open_image_handler(const QString &fn, int subimage);
 
-	void CloseImageHandle();
+	void close_image_handle();
 
-	static VideoParams GetVideoParamsFromImageSpec(const OIIO::ImageSpec &spec);
+	static VideoParams get_video_params_from_image_spec(const OIIO::ImageSpec &spec);
 
 	PixelFormat pix_fmt_;
 	OIIO::TypeDesc::BASETYPE oiio_pix_fmt_;
@@ -72,9 +72,9 @@ private:
 	Frame buffer_;
 	RetrieveVideoParams last_params_;
 
-	static QStringList supported_formats_;
+	static QStringList supported_formats;
 };
 
 }
 
-#endif // OIIODECODER_H
+#endif // OAK_OIIODECODER_H

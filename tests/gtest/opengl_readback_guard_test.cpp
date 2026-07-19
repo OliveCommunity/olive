@@ -20,14 +20,14 @@ TEST(OpenGLRenderer, DownloadFromTextureWithoutCurrentContext)
 	ASSERT_EQ(QOpenGLContext::currentContext(), nullptr);
 
 	olive::OpenGLRenderer renderer;
-	renderer.Init(&context);
+	renderer.init(&context);
 
-	olive::VideoParams params(4, 4, olive::core::PixelFormat::U8, 4,
-							  olive::core::rational(1, 1),
-							  olive::VideoParams::kInterlaceNone, 1);
+	olive::VideoParams params(4, 4, olive::core::PixelFormat::u8, 4,
+							  olive::core::Rational(1, 1),
+							  olive::VideoParams::k_interlace_none, 1);
 
 	unsigned char buffer[4 * 4 * 4] = {};
-	renderer.DownloadFromTexture(QVariant::fromValue<GLuint>(0), params, buffer,
+	renderer.download_from_texture(QVariant::fromValue<GLuint>(0), params, buffer,
 								 4 * 4);
 
 	EXPECT_EQ(QOpenGLContext::currentContext(), nullptr);

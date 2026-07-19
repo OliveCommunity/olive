@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef LIBOLIVECORE_COLOR_H
-#define LIBOLIVECORE_COLOR_H
+#ifndef OAK_LIBOLIVECORE_COLOR_H
+#define OAK_LIBOLIVECORE_COLOR_H
 
 #include "../render/pixelformat.h"
 
@@ -33,11 +33,11 @@ namespace olive::core
 class Color {
 public:
 	using DataType = float;
-	static constexpr unsigned int RGBA = 4;
+	static constexpr unsigned int rgba = 4;
 
 	Color()
 	{
-		for (unsigned int i = 0; i < RGBA; i++) {
+		for (unsigned int i = 0; i < rgba; i++) {
 			data_[i] = 0.0;
 		}
 	}
@@ -58,7 +58,7 @@ public:
    *
    * Hue expects a value between 0.0 and 360.0. Saturation and Value expect a value between 0.0 and 1.0.
    */
-	static Color fromHsv(const DataType &h, const DataType &s,
+	static Color from_hsv(const DataType &h, const DataType &s,
 						 const DataType &v);
 
 	const DataType &red() const
@@ -78,12 +78,12 @@ public:
 		return data_[3];
 	}
 
-	void toHsv(DataType *hue, DataType *sat, DataType *val) const;
+	void to_hsv(DataType *hue, DataType *sat, DataType *val) const;
 	DataType hsv_hue() const;
 	DataType hsv_saturation() const;
 	DataType value() const;
 
-	void toHsl(DataType *hue, DataType *sat, DataType *lightness) const;
+	void to_hsl(DataType *hue, DataType *sat, DataType *lightness) const;
 	DataType hsl_hue() const;
 	DataType hsl_saturation() const;
 	DataType lightness() const;
@@ -114,15 +114,15 @@ public:
 		return data_;
 	}
 
-	void toData(char *out, const PixelFormat &format,
+	void to_data(char *out, const PixelFormat &format,
 				unsigned int nb_channels) const;
 
-	static Color fromData(const char *in, const PixelFormat &format,
+	static Color from_data(const char *in, const PixelFormat &format,
 						  unsigned int nb_channels);
 
 	// Suuuuper rough luminance value mostly used for UI (determining whether to overlay with black
 	// or white text)
-	DataType GetRoughLuminance() const;
+	DataType get_rough_luminance() const;
 
 	// Assignment math operators
 	Color &operator+=(const Color &rhs);
@@ -176,9 +176,9 @@ public:
 	}
 
 private:
-	DataType data_[RGBA];
+	DataType data_[rgba];
 };
 
 }
 
-#endif // LIBOLIVECORE_COLOR_H
+#endif // OAK_LIBOLIVECORE_COLOR_H

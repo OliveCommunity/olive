@@ -19,11 +19,11 @@
 
 ***/
 
-#ifndef OCIOUTILS_H
-#define OCIOUTILS_H
+#ifndef OAK_OCIOUTILS_H
+#define OAK_OCIOUTILS_H
 
 #include <OpenColorIO/OpenColorIO.h>
-namespace OCIO = OCIO_NAMESPACE;
+namespace ocio = OCIO_NAMESPACE;
 
 #include "render/videoparams.h"
 
@@ -32,9 +32,9 @@ namespace olive
 
 class OCIOUtils {
 public:
-	static OCIO::BitDepth GetOCIOBitDepthFromPixelFormat(PixelFormat format);
+	static ocio::BitDepth get_ocio_bit_depth_from_pixel_format(PixelFormat format);
 };
 
 }
 
-#endif // OCIOUTILS_H
+#endif // OAK_OCIOUTILS_H

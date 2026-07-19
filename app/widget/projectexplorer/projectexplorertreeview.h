@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECTEXPLORERTREEVIEW_H
-#define PROJECTEXPLORERTREEVIEW_H
+#ifndef OAK_PROJECTEXPLORERTREEVIEW_H
+#define OAK_PROJECTEXPLORERTREEVIEW_H
 
 #include <QTreeView>
 
@@ -57,9 +57,9 @@ signals:
    *
    * Emits a signal when the view is double clicked but not on any particular item
    */
-	void DoubleClickedEmptyArea();
+	void double_clicked_empty_area();
 };
 
 }
 
-#endif // PROJECTEXPLORERTREEVIEW_H
+#endif // OAK_PROJECTEXPLORERTREEVIEW_H

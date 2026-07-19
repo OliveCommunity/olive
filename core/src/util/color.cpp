@@ -30,73 +30,73 @@
 namespace olive::core
 {
 
-Color Color::fromHsv(const DataType &h, const DataType &s, const DataType &v)
+Color Color::from_hsv(const DataType &h, const DataType &s, const DataType &v)
 {
-	DataType C = s * v;
-	DataType X = C * (1.0 - std::abs(std::fmod(h / 60.0, 2.0) - 1.0));
-	DataType m = v - C;
-	DataType Rs, Gs, Bs;
+	DataType c = s * v;
+	DataType x = c * (1.0 - std::abs(std::fmod(h / 60.0, 2.0) - 1.0));
+	DataType m = v - c;
+	DataType rs, gs, bs;
 
 	if (h >= 0.0 && h < 60.0) {
-		Rs = C;
-		Gs = X;
-		Bs = 0.0;
+		rs = c;
+		gs = x;
+		bs = 0.0;
 	} else if (h >= 60.0 && h < 120.0) {
-		Rs = X;
-		Gs = C;
-		Bs = 0.0;
+		rs = x;
+		gs = c;
+		bs = 0.0;
 	} else if (h >= 120.0 && h < 180.0) {
-		Rs = 0.0;
-		Gs = C;
-		Bs = X;
+		rs = 0.0;
+		gs = c;
+		bs = x;
 	} else if (h >= 180.0 && h < 240.0) {
-		Rs = 0.0;
-		Gs = X;
-		Bs = C;
+		rs = 0.0;
+		gs = x;
+		bs = c;
 	} else if (h >= 240.0 && h < 300.0) {
-		Rs = X;
-		Gs = 0.0;
-		Bs = C;
+		rs = x;
+		gs = 0.0;
+		bs = c;
 	} else {
-		Rs = C;
-		Gs = 0.0;
-		Bs = X;
+		rs = c;
+		gs = 0.0;
+		bs = x;
 	}
 
-	return Color(Rs + m, Gs + m, Bs + m);
+	return Color(rs + m, gs + m, bs + m);
 }
 
 Color::Color(const char *data, const PixelFormat &format, int ch_layout)
 {
-	*this = fromData(data, format, ch_layout);
+	*this = from_data(data, format, ch_layout);
 }
 
-void Color::toHsv(DataType *hue, DataType *sat, DataType *val) const
+void Color::to_hsv(DataType *hue, DataType *sat, DataType *val) const
 {
-	DataType fCMax = std::max(std::max(red(), green()), blue());
-	DataType fCMin = std::min(std::min(red(), green()), blue());
-	DataType fDelta = fCMax - fCMin;
+	DataType f_c_max = std::max(std::max(red(), green()), blue());
+	DataType f_c_min = std::min(std::min(red(), green()), blue());
+	DataType f_delta = f_c_max - f_c_min;
 
-	if (fDelta > 0) {
-		if (fCMax == red()) {
-			*hue = 60 * (fmod(((green() - blue()) / fDelta), 6));
-		} else if (fCMax == green()) {
-			*hue = 60 * (((blue() - red()) / fDelta) + 2);
-		} else if (fCMax == blue()) {
-			*hue = 60 * (((red() - green()) / fDelta) + 4);
+	if (f_delta > 0) {
+		if (f_c_max == red()) {
+			*hue = 60 * (fmod(((green() - blue()) / f_delta), 6));
+		} else if (f_c_max == green()) {
+			*hue = 60 * (((blue() - red()) / f_delta) + 2);
+		} else if (f_c_max == blue()) {
+			*hue = 60 * (((red() - green()) / f_delta) + 4);
 		}
 
-		if (fCMax > 0) {
-			*sat = fDelta / fCMax;
+		if (f_c_max > 0) {
+			*sat = f_delta / f_c_max;
 		} else {
 			*sat = 0;
 		}
 
-		*val = fCMax;
+		*val = f_c_max;
 	} else {
 		*hue = 0;
 		*sat = 0;
-		*val = fCMax;
+		*val = f_c_max;
 	}
 
 	if (*hue < 0) {
@@ -107,50 +107,50 @@ void Color::toHsv(DataType *hue, DataType *sat, DataType *val) const
 Color::DataType Color::hsv_hue() const
 {
 	DataType h, s, v;
-	toHsv(&h, &s, &v);
+	to_hsv(&h, &s, &v);
 	return h;
 }
 
 Color::DataType Color::hsv_saturation() const
 {
 	DataType h, s, v;
-	toHsv(&h, &s, &v);
+	to_hsv(&h, &s, &v);
 	return s;
 }
 
 Color::DataType Color::value() const
 {
 	DataType h, s, v;
-	toHsv(&h, &s, &v);
+	to_hsv(&h, &s, &v);
 	return v;
 }
 
-void Color::toHsl(DataType *hue, DataType *sat, DataType *lightness) const
+void Color::to_hsl(DataType *hue, DataType *sat, DataType *lightness) const
 {
-	DataType fCMin = std::min(red(), std::min(green(), blue()));
-	DataType fCMax = std::max(red(), std::max(green(), blue()));
+	DataType f_c_min = std::min(red(), std::min(green(), blue()));
+	DataType f_c_max = std::max(red(), std::max(green(), blue()));
 
-	*lightness = 0.5 * (fCMin + fCMax);
+	*lightness = 0.5 * (f_c_min + f_c_max);
 
-	if (fCMin == fCMax) {
+	if (f_c_min == f_c_max) {
 		*sat = 0;
 		*hue = 0;
 		return;
 
 	} else if (*lightness < 0.5) {
-		*sat = (fCMax - fCMin) / (fCMax + fCMin);
+		*sat = (f_c_max - f_c_min) / (f_c_max + f_c_min);
 	} else {
-		*sat = (fCMax - fCMin) / (2.0 - fCMax - fCMin);
+		*sat = (f_c_max - f_c_min) / (2.0 - f_c_max - f_c_min);
 	}
 
-	if (fCMax == red()) {
-		*hue = 60 * (green() - blue()) / (fCMax - fCMin);
+	if (f_c_max == red()) {
+		*hue = 60 * (green() - blue()) / (f_c_max - f_c_min);
 	}
-	if (fCMax == green()) {
-		*hue = 60 * (blue() - red()) / (fCMax - fCMin) + 120;
+	if (f_c_max == green()) {
+		*hue = 60 * (blue() - red()) / (f_c_max - f_c_min) + 120;
 	}
-	if (fCMax == blue()) {
-		*hue = 60 * (red() - green()) / (fCMax - fCMin) + 240;
+	if (f_c_max == blue()) {
+		*hue = 60 * (red() - green()) / (f_c_max - f_c_min) + 240;
 	}
 	if (*hue < 0) {
 		*hue = *hue + 360;
@@ -160,30 +160,30 @@ void Color::toHsl(DataType *hue, DataType *sat, DataType *lightness) const
 Color::DataType Color::hsl_hue() const
 {
 	DataType h, s, l;
-	toHsl(&h, &s, &l);
+	to_hsl(&h, &s, &l);
 	return h;
 }
 
 Color::DataType Color::hsl_saturation() const
 {
 	DataType h, s, l;
-	toHsl(&h, &s, &l);
+	to_hsl(&h, &s, &l);
 	return s;
 }
 
 Color::DataType Color::lightness() const
 {
 	DataType h, s, l;
-	toHsl(&h, &s, &l);
+	to_hsl(&h, &s, &l);
 	return l;
 }
 
-void Color::toData(char *out, const PixelFormat &format,
+void Color::to_data(char *out, const PixelFormat &format,
 				   unsigned int nb_channels) const
 {
-	unsigned int count = std::min(RGBA, nb_channels);
+	unsigned int count = std::min(rgba, nb_channels);
 
-	if (format == PixelFormat::U10 && count == 4) {
+	if (format == PixelFormat::u10 && count == 4) {
 		const uint32_t r = static_cast<uint32_t>(std::clamp(data_[0], DataType(0.0), DataType(1.0)) * 1023.0 + 0.5);
 		const uint32_t g = static_cast<uint32_t>(std::clamp(data_[1], DataType(0.0), DataType(1.0)) * 1023.0 + 0.5);
 		const uint32_t b = static_cast<uint32_t>(std::clamp(data_[2], DataType(0.0), DataType(1.0)) * 1023.0 + 0.5);
@@ -196,36 +196,36 @@ void Color::toData(char *out, const PixelFormat &format,
 		DataType f = data_[i];
 
 		switch (format) {
-		case PixelFormat::INVALID:
-		case PixelFormat::COUNT:
+		case PixelFormat::invalid:
+		case PixelFormat::count:
 			break;
-		case PixelFormat::U8:
+		case PixelFormat::u8:
 			reinterpret_cast<uint8_t *>(out)[i] = f * 255.0;
 			break;
-		case PixelFormat::U10:
+		case PixelFormat::u10:
 			// handled above
 			break;
-		case PixelFormat::U16:
+		case PixelFormat::u16:
 			reinterpret_cast<uint16_t *>(out)[i] = f * 65535.0;
 			break;
-		case PixelFormat::F16:
+		case PixelFormat::f16:
 			reinterpret_cast<Imath::half *>(out)[i] = f;
 			break;
-		case PixelFormat::F32:
+		case PixelFormat::f32:
 			reinterpret_cast<float *>(out)[i] = f;
 			break;
 		}
 	}
 }
 
-Color Color::fromData(const char *in, const PixelFormat &format,
+Color Color::from_data(const char *in, const PixelFormat &format,
 					  unsigned int nb_channels)
 {
 	Color c;
 
-	unsigned int count = std::min(RGBA, nb_channels);
+	unsigned int count = std::min(rgba, nb_channels);
 
-	if (format == PixelFormat::U10 && count == 4) {
+	if (format == PixelFormat::u10 && count == 4) {
 		const uint32_t word = reinterpret_cast<const uint32_t *>(in)[0];
 		c.data_[0] = DataType((word & 0x3ff) / 1023.0);
 		c.data_[1] = DataType(((word >> 10) & 0x3ff) / 1023.0);
@@ -238,22 +238,22 @@ Color Color::fromData(const char *in, const PixelFormat &format,
 		DataType &f = c.data_[i];
 
 		switch (format) {
-		case PixelFormat::INVALID:
-		case PixelFormat::COUNT:
+		case PixelFormat::invalid:
+		case PixelFormat::count:
 			break;
-		case PixelFormat::U8:
+		case PixelFormat::u8:
 			f = DataType(reinterpret_cast<const uint8_t *>(in)[i]) / 255.0;
 			break;
-		case PixelFormat::U10:
+		case PixelFormat::u10:
 			// handled above
 			break;
-		case PixelFormat::U16:
+		case PixelFormat::u16:
 			f = DataType(reinterpret_cast<const uint16_t *>(in)[i]) / 65535.0;
 			break;
-		case PixelFormat::F16:
+		case PixelFormat::f16:
 			f = DataType(reinterpret_cast<const Imath::half *>(in)[i]);
 			break;
-		case PixelFormat::F32:
+		case PixelFormat::f32:
 			f = DataType(reinterpret_cast<const float *>(in)[i]);
 			break;
 		}
@@ -262,14 +262,14 @@ Color Color::fromData(const char *in, const PixelFormat &format,
 	return c;
 }
 
-Color::DataType Color::GetRoughLuminance() const
+Color::DataType Color::get_rough_luminance() const
 {
 	return (2 * red() + blue() + 3 * green()) / 6.0;
 }
 
 Color &Color::operator+=(const Color &rhs)
 {
-	for (int i = 0; i < RGBA; i++) {
+	for (int i = 0; i < rgba; i++) {
 		data_[i] += rhs.data_[i];
 	}
 
@@ -278,7 +278,7 @@ Color &Color::operator+=(const Color &rhs)
 
 Color &Color::operator-=(const Color &rhs)
 {
-	for (int i = 0; i < RGBA; i++) {
+	for (int i = 0; i < rgba; i++) {
 		data_[i] -= rhs.data_[i];
 	}
 
@@ -287,7 +287,7 @@ Color &Color::operator-=(const Color &rhs)
 
 Color &Color::operator+=(const DataType &rhs)
 {
-	for (int i = 0; i < RGBA; i++) {
+	for (int i = 0; i < rgba; i++) {
 		data_[i] += rhs;
 	}
 
@@ -296,7 +296,7 @@ Color &Color::operator+=(const DataType &rhs)
 
 Color &Color::operator-=(const DataType &rhs)
 {
-	for (int i = 0; i < RGBA; i++) {
+	for (int i = 0; i < rgba; i++) {
 		data_[i] -= rhs;
 	}
 
@@ -305,7 +305,7 @@ Color &Color::operator-=(const DataType &rhs)
 
 Color &Color::operator*=(const DataType &rhs)
 {
-	for (int i = 0; i < RGBA; i++) {
+	for (int i = 0; i < rgba; i++) {
 		data_[i] *= rhs;
 	}
 
@@ -314,7 +314,7 @@ Color &Color::operator*=(const DataType &rhs)
 
 Color &Color::operator/=(const DataType &rhs)
 {
-	for (int i = 0; i < RGBA; i++) {
+	for (int i = 0; i < rgba; i++) {
 		data_[i] /= rhs;
 	}
 

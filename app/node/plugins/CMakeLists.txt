@@ -16,7 +16,7 @@
 
 set(OLIVE_SOURCES
         ${OLIVE_SOURCES}
-        node/plugins/Plugin.h
-        node/plugins/Plugin.cpp
+        node/plugins/plugin.h
+        node/plugins/plugin.cpp
         PARENT_SCOPE
 )

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef AUDIOPLAYBACKCACHE_H
-#define AUDIOPLAYBACKCACHE_H
+#ifndef OAK_AUDIOPLAYBACKCACHE_H
+#define OAK_AUDIOPLAYBACKCACHE_H
 
 #include "audio/audiovisualwaveform.h"
 #include "render/playbackcache.h"
@@ -58,31 +58,31 @@ public:
 
 	virtual ~AudioPlaybackCache() override;
 
-	AudioParams GetParameters()
+	AudioParams get_parameters()
 	{
 		return params_;
 	}
 
-	void SetParameters(const AudioParams &params);
+	void set_parameters(const AudioParams &params);
 
-	void WritePCM(const TimeRange &range, const TimeRangeList &valid_ranges,
+	void write_pcm(const TimeRange &range, const TimeRangeList &valid_ranges,
 				  const SampleBuffer &samples);
 
-	void WriteSilence(const TimeRange &range);
+	void write_silence(const TimeRange &range);
 
 private:
-	bool WritePartOfSampleBuffer(const SampleBuffer &samples,
-								 const rational &write_start,
-								 const rational &buffer_start,
-								 const rational &length);
+	bool write_part_of_sample_buffer(const SampleBuffer &samples,
+								 const Rational &write_start,
+								 const Rational &buffer_start,
+								 const Rational &length);
 
-	QString GetSegmentFilename(qint64 segment_index, int channel);
+	QString get_segment_filename(qint64 segment_index, int channel);
 
-	static const qint64 kDefaultSegmentSizePerChannel;
+	static const qint64 k_default_segment_size_per_channel;
 
 	AudioParams params_;
 };
 
 }
 
-#endif // AUDIOPLAYBACKCACHE_H
+#endif // OAK_AUDIOPLAYBACKCACHE_H

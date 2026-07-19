@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SAMPLERATECOMBOBOX_H
-#define SAMPLERATECOMBOBOX_H
+#ifndef OAK_SAMPLERATECOMBOBOX_H
+#define OAK_SAMPLERATECOMBOBOX_H
 
 #include <olive/core/core.h>
 #include <QComboBox>
@@ -38,17 +38,17 @@ public:
 	SampleRateComboBox(QWidget *parent = nullptr)
 		: QComboBox(parent)
 	{
-		foreach (int sr, AudioParams::kSupportedSampleRates) {
-			this->addItem(HumanStrings::SampleRateToString(sr), sr);
+		foreach (int sr, AudioParams::k_supported_sample_rates) {
+			this->addItem(HumanStrings::sample_rate_to_string(sr), sr);
 		}
 	}
 
-	int GetSampleRate() const
+	int get_sample_rate() const
 	{
 		return this->currentData().toInt();
 	}
 
-	void SetSampleRate(int rate)
+	void set_sample_rate(int rate)
 	{
 		for (int i = 0; i < this->count(); i++) {
 			if (this->itemData(i).toInt() == rate) {
@@ -61,4 +61,4 @@ public:
 
 }
 
-#endif // SAMPLERATECOMBOBOX_H
+#endif // OAK_SAMPLERATECOMBOBOX_H

@@ -44,13 +44,13 @@ namespace test
 // Helper Functions
 // ============================================================================
 
-static AudioParams MakeAudioParams(int sample_rate, uint64_t channel_layout,
+static AudioParams make_audio_params(int sample_rate, uint64_t channel_layout,
 								   SampleFormat format)
 {
 	return AudioParams(sample_rate, channel_layout, format);
 }
 
-static void FillSampleBuffer(SampleBuffer &buffer, float value)
+static void fill_sample_buffer(SampleBuffer &buffer, float value)
 {
 	for (int ch = 0; ch < buffer.channel_count(); ++ch) {
 		float *data = buffer.data(ch);
@@ -64,16 +64,16 @@ static void FillSampleBuffer(SampleBuffer &buffer, float value)
 // filter graph still holds, returning the accumulated per-plane output.
 // Draining after a flush ends at EOF, which AudioProcessor reports as a
 // negative return value, so the final Convert result is intentionally unused.
-static AudioProcessor::Buffer ConvertAndDrain(AudioProcessor &processor,
+static AudioProcessor::Buffer convert_and_drain(AudioProcessor &processor,
 											  float **input, int nb_samples)
 {
 	AudioProcessor::Buffer output;
-	EXPECT_GE(processor.Convert(input, nb_samples, &output), 0);
+	EXPECT_GE(processor.convert(input, nb_samples, &output), 0);
 
-	processor.Flush();
+	processor.flush();
 
 	AudioProcessor::Buffer rest;
-	processor.Convert(nullptr, 0, &rest);
+	processor.convert(nullptr, 0, &rest);
 
 	if (output.size() < rest.size()) {
 		output.resize(rest.size());
@@ -94,24 +94,24 @@ TEST(AudioSmokeParams, DefaultConstruction)
 	EXPECT_FALSE(params.is_valid());
 	EXPECT_EQ(params.sample_rate(), 0);
 	EXPECT_EQ(params.channel_count(), 0);
-	EXPECT_EQ(params.format(), SampleFormat::INVALID);
+	EXPECT_EQ(params.format(), SampleFormat::invalid);
 }
 
 TEST(AudioSmokeParams, ValidConstruction)
 {
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 
 	EXPECT_TRUE(params.is_valid());
 	EXPECT_EQ(params.sample_rate(), 48000);
 	EXPECT_EQ(params.channel_count(), 2);
-	EXPECT_EQ(params.format(), SampleFormat::F32P);
+	EXPECT_EQ(params.format(), SampleFormat::f32_p);
 	EXPECT_EQ(params.bytes_per_sample_per_channel(), 4);
 	EXPECT_EQ(params.bits_per_sample(), 32);
 }
 
 TEST(AudioSmokeParams, MonoChannelLayout)
 {
-	AudioParams params(44100, kChannelLayoutMono, SampleFormat::S16);
+	AudioParams params(44100, k_channel_layout_mono, SampleFormat::s16);
 
 	EXPECT_TRUE(params.is_valid());
 	EXPECT_EQ(params.sample_rate(), 44100);
@@ -120,7 +120,7 @@ TEST(AudioSmokeParams, MonoChannelLayout)
 
 TEST(AudioSmokeParams, SurroundChannelLayout)
 {
-	AudioParams params(48000, kChannelLayout5Point1, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout5_point1, SampleFormat::f32_p);
 
 	EXPECT_TRUE(params.is_valid());
 	EXPECT_EQ(params.channel_count(), 6);
@@ -128,7 +128,7 @@ TEST(AudioSmokeParams, SurroundChannelLayout)
 
 TEST(AudioSmokeParams, TimeConversions)
 {
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 
 	// Time to samples
 	EXPECT_EQ(params.time_to_samples(1.0), 48000);
@@ -145,11 +145,11 @@ TEST(AudioSmokeParams, TimeConversions)
 
 TEST(AudioSmokeParams, EqualityOperators)
 {
-	AudioParams params1(48000, kChannelLayoutStereo, SampleFormat::F32P);
-	AudioParams params2(48000, kChannelLayoutStereo, SampleFormat::F32P);
-	AudioParams params3(44100, kChannelLayoutStereo, SampleFormat::F32P);
-	AudioParams params4(48000, kChannelLayoutMono, SampleFormat::F32P);
-	AudioParams params5(48000, kChannelLayoutStereo, SampleFormat::S16);
+	AudioParams params1(48000, k_channel_layout_stereo, SampleFormat::f32_p);
+	AudioParams params2(48000, k_channel_layout_stereo, SampleFormat::f32_p);
+	AudioParams params3(44100, k_channel_layout_stereo, SampleFormat::f32_p);
+	AudioParams params4(48000, k_channel_layout_mono, SampleFormat::f32_p);
+	AudioParams params5(48000, k_channel_layout_stereo, SampleFormat::s16);
 
 	EXPECT_TRUE(params1 == params2);
 	EXPECT_FALSE(params1 != params2);
@@ -161,7 +161,7 @@ TEST(AudioSmokeParams, EqualityOperators)
 
 TEST(AudioSmokeParams, CopyConstruction)
 {
-	AudioParams original(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams original(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	AudioParams copy(original);
 
 	EXPECT_TRUE(copy.is_valid());
@@ -177,7 +177,7 @@ TEST(AudioSmokeParams, CopyConstruction)
 
 TEST(AudioSmokeParams, CopyAssignment)
 {
-	AudioParams original(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams original(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	AudioParams copy;
 	copy = original;
 
@@ -189,15 +189,15 @@ TEST(AudioSmokeParams, CopyAssignment)
 
 TEST(AudioSmokeParams, ChannelLayoutModification)
 {
-	AudioParams params(48000, kChannelLayoutMono, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_mono, SampleFormat::f32_p);
 	EXPECT_EQ(params.channel_count(), 1);
 
 	// Change to stereo
-	params.set_channel_layout(kChannelLayoutStereo);
+	params.set_channel_layout(k_channel_layout_stereo);
 	EXPECT_EQ(params.channel_count(), 2);
 
 	// Change to 5.1
-	params.set_channel_layout(kChannelLayout5Point1);
+	params.set_channel_layout(k_channel_layout5_point1);
 	EXPECT_EQ(params.channel_count(), 6);
 }
 
@@ -215,7 +215,7 @@ TEST(AudioSmokeBuffer, DefaultConstruction)
 
 TEST(AudioSmokeBuffer, Allocation)
 {
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	SampleBuffer buffer(params, size_t(48000)); // 1 second of samples
 
 	EXPECT_TRUE(buffer.is_allocated());
@@ -225,11 +225,11 @@ TEST(AudioSmokeBuffer, Allocation)
 
 TEST(AudioSmokeBuffer, DataAccess)
 {
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	SampleBuffer buffer(params, size_t(100));
 
 	// Fill with test data
-	FillSampleBuffer(buffer, 0.5f);
+	fill_sample_buffer(buffer, 0.5f);
 
 	// Verify data
 	for (int ch = 0; ch < buffer.channel_count(); ++ch) {
@@ -242,11 +242,11 @@ TEST(AudioSmokeBuffer, DataAccess)
 
 TEST(AudioSmokeBuffer, Silence)
 {
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	SampleBuffer buffer(params, size_t(100));
 
 	// Fill with non-zero values
-	FillSampleBuffer(buffer, 0.5f);
+	fill_sample_buffer(buffer, 0.5f);
 
 	// Apply silence
 	buffer.silence();
@@ -262,11 +262,11 @@ TEST(AudioSmokeBuffer, Silence)
 
 TEST(AudioSmokeBuffer, VolumeTransform)
 {
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	SampleBuffer buffer(params, size_t(100));
 
 	// Fill with 1.0
-	FillSampleBuffer(buffer, 1.0f);
+	fill_sample_buffer(buffer, 1.0f);
 
 	// Apply volume transform (50%)
 	buffer.transform_volume(0.5f);
@@ -282,7 +282,7 @@ TEST(AudioSmokeBuffer, VolumeTransform)
 
 TEST(AudioSmokeBuffer, Clamp)
 {
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	SampleBuffer buffer(params, size_t(100));
 
 	// Fill with values outside [-1, 1]
@@ -308,11 +308,11 @@ TEST(AudioSmokeBuffer, Clamp)
 
 TEST(AudioSmokeBuffer, FastSet)
 {
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	SampleBuffer source(params, size_t(100));
 	SampleBuffer dest(params, size_t(100));
 
-	FillSampleBuffer(source, 0.75f);
+	fill_sample_buffer(source, 0.75f);
 	dest.silence();
 
 	// Fast copy from source to dest
@@ -327,7 +327,7 @@ TEST(AudioSmokeBuffer, FastSet)
 
 TEST(AudioSmokeBuffer, RipChannel)
 {
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	SampleBuffer buffer(params, size_t(100));
 
 	// Fill channel 0 with 0.5, channel 1 with 0.25
@@ -358,7 +358,7 @@ TEST(AudioSmokeWaveform, DefaultConstruction)
 {
 	AudioVisualWaveform waveform;
 	EXPECT_EQ(waveform.channel_count(), 0);
-	EXPECT_EQ(waveform.length(), rational(0));
+	EXPECT_EQ(waveform.length(), Rational(0));
 }
 
 TEST(AudioSmokeWaveform, ChannelCount)
@@ -377,7 +377,7 @@ TEST(AudioSmokeWaveform, OverwriteSamples)
 	waveform.set_channel_count(2);
 
 	// Create sample buffer with sine wave-like data
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	SampleBuffer buffer(params, size_t(4800)); // 0.1 seconds
 
 	for (int ch = 0; ch < buffer.channel_count(); ++ch) {
@@ -388,10 +388,10 @@ TEST(AudioSmokeWaveform, OverwriteSamples)
 	}
 
 	// Write samples to waveform
-	waveform.OverwriteSamples(buffer, 48000, rational(0));
+	waveform.overwrite_samples(buffer, 48000, Rational(0));
 
 	// 4800 samples at 48000 Hz is exactly 0.1 seconds
-	EXPECT_EQ(waveform.length(), rational(1, 10));
+	EXPECT_EQ(waveform.length(), Rational(1, 10));
 }
 
 TEST(AudioSmokeWaveform, OverwriteSilence)
@@ -400,20 +400,20 @@ TEST(AudioSmokeWaveform, OverwriteSilence)
 	waveform.set_channel_count(2);
 
 	// First add some samples
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	SampleBuffer buffer(params, size_t(4800));
-	FillSampleBuffer(buffer, 0.5f);
-	waveform.OverwriteSamples(buffer, 48000, rational(0));
+	fill_sample_buffer(buffer, 0.5f);
+	waveform.overwrite_samples(buffer, 48000, Rational(0));
 
 	// Overwrite with silence
-	waveform.OverwriteSilence(rational(0), rational(1, 10)); // 0.1 seconds
+	waveform.overwrite_silence(Rational(0), Rational(1, 10)); // 0.1 seconds
 
 	// The silence covers exactly the written region, so the length is
 	// unchanged at exactly 0.1 seconds
-	EXPECT_EQ(waveform.length(), rational(1, 10));
+	EXPECT_EQ(waveform.length(), Rational(1, 10));
 
 	// ...and the overwritten region is actually silent
-	auto summary = waveform.GetSummaryFromTime(rational(0), rational(1, 10));
+	auto summary = waveform.get_summary_from_time(Rational(0), Rational(1, 10));
 	ASSERT_EQ(summary.size(), 2);
 	EXPECT_FLOAT_EQ(summary[0].min, 0.0f);
 	EXPECT_FLOAT_EQ(summary[0].max, 0.0f);
@@ -427,17 +427,17 @@ TEST(AudioSmokeWaveform, TrimIn)
 	waveform.set_channel_count(2);
 
 	// Add samples
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	SampleBuffer buffer(params, size_t(48000)); // 1 second
-	FillSampleBuffer(buffer, 0.5f);
-	waveform.OverwriteSamples(buffer, 48000, rational(0));
+	fill_sample_buffer(buffer, 0.5f);
+	waveform.overwrite_samples(buffer, 48000, Rational(0));
 
-	EXPECT_EQ(waveform.length(), rational(1));
+	EXPECT_EQ(waveform.length(), Rational(1));
 
 	// Trim 0.25 seconds from start
-	waveform.TrimIn(rational(1, 4));
+	waveform.trim_in(Rational(1, 4));
 
-	EXPECT_EQ(waveform.length(), rational(3, 4));
+	EXPECT_EQ(waveform.length(), Rational(3, 4));
 }
 
 TEST(AudioSmokeWaveform, Resize)
@@ -446,17 +446,17 @@ TEST(AudioSmokeWaveform, Resize)
 	waveform.set_channel_count(2);
 
 	// Add samples
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	SampleBuffer buffer(params, size_t(48000));
-	FillSampleBuffer(buffer, 0.5f);
-	waveform.OverwriteSamples(buffer, 48000, rational(0));
+	fill_sample_buffer(buffer, 0.5f);
+	waveform.overwrite_samples(buffer, 48000, Rational(0));
 
-	EXPECT_EQ(waveform.length(), rational(1));
+	EXPECT_EQ(waveform.length(), Rational(1));
 
 	// Resize to 0.5 seconds
-	waveform.Resize(rational(1, 2));
+	waveform.resize(Rational(1, 2));
 
-	EXPECT_EQ(waveform.length(), rational(1, 2));
+	EXPECT_EQ(waveform.length(), Rational(1, 2));
 }
 
 TEST(AudioSmokeWaveform, TrimRange)
@@ -465,17 +465,17 @@ TEST(AudioSmokeWaveform, TrimRange)
 	waveform.set_channel_count(2);
 
 	// Add 2 seconds of samples
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	SampleBuffer buffer(params, size_t(96000));
-	FillSampleBuffer(buffer, 0.5f);
-	waveform.OverwriteSamples(buffer, 48000, rational(0));
+	fill_sample_buffer(buffer, 0.5f);
+	waveform.overwrite_samples(buffer, 48000, Rational(0));
 
-	EXPECT_EQ(waveform.length(), rational(2));
+	EXPECT_EQ(waveform.length(), Rational(2));
 
 	// Trim to range [0.5, 1.0] (0.5 seconds duration starting at 0.5)
-	waveform.TrimRange(rational(1, 2), rational(1, 2));
+	waveform.trim_range(Rational(1, 2), Rational(1, 2));
 
-	EXPECT_EQ(waveform.length(), rational(1, 2));
+	EXPECT_EQ(waveform.length(), Rational(1, 2));
 }
 
 TEST(AudioSmokeWaveform, Mid)
@@ -484,15 +484,15 @@ TEST(AudioSmokeWaveform, Mid)
 	waveform.set_channel_count(2);
 
 	// Add 2 seconds of samples
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	SampleBuffer buffer(params, size_t(96000));
-	FillSampleBuffer(buffer, 0.5f);
-	waveform.OverwriteSamples(buffer, 48000, rational(0));
+	fill_sample_buffer(buffer, 0.5f);
+	waveform.overwrite_samples(buffer, 48000, Rational(0));
 
 	// Get mid section [0.5, 1.5]
-	AudioVisualWaveform mid = waveform.Mid(rational(1, 2), rational(1));
+	AudioVisualWaveform mid = waveform.mid(Rational(1, 2), Rational(1));
 
-	EXPECT_EQ(mid.length(), rational(1));
+	EXPECT_EQ(mid.length(), Rational(1));
 	EXPECT_EQ(mid.channel_count(), 2);
 }
 
@@ -502,7 +502,7 @@ TEST(AudioSmokeWaveform, GetSummaryFromTime)
 	waveform.set_channel_count(2);
 
 	// Add samples with varying values
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	SampleBuffer buffer(params, size_t(4800));
 	for (int ch = 0; ch < buffer.channel_count(); ++ch) {
 		float *data = buffer.data(ch);
@@ -510,10 +510,10 @@ TEST(AudioSmokeWaveform, GetSummaryFromTime)
 			data[i] = (i % 2 == 0) ? 0.8f : -0.8f;
 		}
 	}
-	waveform.OverwriteSamples(buffer, 48000, rational(0));
+	waveform.overwrite_samples(buffer, 48000, Rational(0));
 
 	// Get summary for first half
-	auto summary = waveform.GetSummaryFromTime(rational(0), rational(1, 20));
+	auto summary = waveform.get_summary_from_time(Rational(0), Rational(1, 20));
 
 	ASSERT_EQ(summary.size(), 2); // 2 channels
 	// Samples alternate between +0.8 and -0.8, so the summary is exactly that
@@ -525,7 +525,7 @@ TEST(AudioSmokeWaveform, GetSummaryFromTime)
 
 TEST(AudioSmokeWaveform, SumSamples)
 {
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	SampleBuffer buffer(params, size_t(100));
 
 	// Fill with known pattern
@@ -536,7 +536,7 @@ TEST(AudioSmokeWaveform, SumSamples)
 		}
 	}
 
-	auto summary = AudioVisualWaveform::SumSamples(buffer, 0, 100);
+	auto summary = AudioVisualWaveform::sum_samples(buffer, 0, 100);
 
 	EXPECT_EQ(summary.size(), 2);
 	EXPECT_FLOAT_EQ(summary[0].min, 0.0f);
@@ -554,7 +554,7 @@ TEST(AudioSmokeWaveform, ReSumSamples)
 		samples[i * 2 + 1].max = 0.3f;
 	}
 
-	auto summary = AudioVisualWaveform::ReSumSamples(samples.data(), 200, 2);
+	auto summary = AudioVisualWaveform::re_sum_samples(samples.data(), 200, 2);
 
 	EXPECT_EQ(summary.size(), 2);
 	EXPECT_FLOAT_EQ(summary[0].min, -0.5f);
@@ -570,43 +570,43 @@ TEST(AudioSmokeWaveform, ReSumSamples)
 TEST(AudioSmokeProcessor, DefaultConstruction)
 {
 	AudioProcessor processor;
-	EXPECT_FALSE(processor.IsOpen());
+	EXPECT_FALSE(processor.is_open());
 }
 
 TEST(AudioSmokeProcessor, OpenClose)
 {
 	AudioProcessor processor;
 
-	AudioParams from(48000, kChannelLayoutStereo, SampleFormat::F32P);
-	AudioParams to(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams from(48000, k_channel_layout_stereo, SampleFormat::f32_p);
+	AudioParams to(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 
-	EXPECT_TRUE(processor.Open(from, to, 1.0));
-	EXPECT_TRUE(processor.IsOpen());
+	EXPECT_TRUE(processor.open(from, to, 1.0));
+	EXPECT_TRUE(processor.is_open());
 
-	processor.Close();
-	EXPECT_FALSE(processor.IsOpen());
+	processor.close();
+	EXPECT_FALSE(processor.is_open());
 }
 
 TEST(AudioSmokeProcessor, SampleRateConversion)
 {
 	AudioProcessor processor;
 
-	AudioParams from(48000, kChannelLayoutStereo, SampleFormat::F32P);
-	AudioParams to(44100, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams from(48000, k_channel_layout_stereo, SampleFormat::f32_p);
+	AudioParams to(44100, k_channel_layout_stereo, SampleFormat::f32_p);
 
-	ASSERT_TRUE(processor.Open(from, to, 1.0));
-	ASSERT_TRUE(processor.IsOpen());
+	ASSERT_TRUE(processor.open(from, to, 1.0));
+	ASSERT_TRUE(processor.is_open());
 	EXPECT_EQ(processor.from().sample_rate(), 48000);
 	EXPECT_EQ(processor.to().sample_rate(), 44100);
 
 	// Push one second of a constant signal
-	constexpr int kSamples = 48000;
-	std::vector<float> left(kSamples, 0.5f);
-	std::vector<float> right(kSamples, 0.5f);
+	constexpr int k_samples = 48000;
+	std::vector<float> left(k_samples, 0.5f);
+	std::vector<float> right(k_samples, 0.5f);
 	float *input[2] = { left.data(), right.data() };
 
 	const AudioProcessor::Buffer output =
-		ConvertAndDrain(processor, input, kSamples);
+		convert_and_drain(processor, input, k_samples);
 
 	ASSERT_EQ(output.size(), 2);
 	ASSERT_EQ(output.at(0).size(), output.at(1).size());
@@ -629,25 +629,25 @@ TEST(AudioSmokeProcessor, ChannelLayoutConversion)
 {
 	AudioProcessor processor;
 
-	AudioParams from(48000, kChannelLayoutStereo, SampleFormat::F32P);
-	AudioParams to(48000, kChannelLayoutMono, SampleFormat::F32P);
+	AudioParams from(48000, k_channel_layout_stereo, SampleFormat::f32_p);
+	AudioParams to(48000, k_channel_layout_mono, SampleFormat::f32_p);
 
-	ASSERT_TRUE(processor.Open(from, to, 1.0));
-	ASSERT_TRUE(processor.IsOpen());
+	ASSERT_TRUE(processor.open(from, to, 1.0));
+	ASSERT_TRUE(processor.is_open());
 	EXPECT_EQ(processor.from().channel_count(), 2);
 	EXPECT_EQ(processor.to().channel_count(), 1);
 
-	constexpr int kSamples = 1024;
-	std::vector<float> left(kSamples, 0.5f);
-	std::vector<float> right(kSamples, 0.5f);
+	constexpr int k_samples = 1024;
+	std::vector<float> left(k_samples, 0.5f);
+	std::vector<float> right(k_samples, 0.5f);
 	float *input[2] = { left.data(), right.data() };
 
 	AudioProcessor::Buffer output;
-	ASSERT_EQ(processor.Convert(input, kSamples, &output), 0);
+	ASSERT_EQ(processor.convert(input, k_samples, &output), 0);
 
 	// Downmixing folds both channels into a single mono plane
 	ASSERT_EQ(output.size(), 1);
-	ASSERT_EQ(output.at(0).size(), kSamples * int(sizeof(float)));
+	ASSERT_EQ(output.at(0).size(), k_samples * int(sizeof(float)));
 
 	// The downmix of two identical channels must stay audible regardless of
 	// the exact mixing coefficients
@@ -661,24 +661,24 @@ TEST(AudioSmokeProcessor, FormatConversion)
 {
 	AudioProcessor processor;
 
-	AudioParams from(48000, kChannelLayoutStereo, SampleFormat::F32P);
-	AudioParams to(48000, kChannelLayoutStereo, SampleFormat::S16P);
+	AudioParams from(48000, k_channel_layout_stereo, SampleFormat::f32_p);
+	AudioParams to(48000, k_channel_layout_stereo, SampleFormat::s16_p);
 
-	ASSERT_TRUE(processor.Open(from, to, 1.0));
-	ASSERT_TRUE(processor.IsOpen());
+	ASSERT_TRUE(processor.open(from, to, 1.0));
+	ASSERT_TRUE(processor.is_open());
 
-	constexpr int kSamples = 1024;
-	std::vector<float> left(kSamples, 0.5f);
-	std::vector<float> right(kSamples, -0.25f);
+	constexpr int k_samples = 1024;
+	std::vector<float> left(k_samples, 0.5f);
+	std::vector<float> right(k_samples, -0.25f);
 	float *input[2] = { left.data(), right.data() };
 
 	AudioProcessor::Buffer output;
-	ASSERT_EQ(processor.Convert(input, kSamples, &output), 0);
+	ASSERT_EQ(processor.convert(input, k_samples, &output), 0);
 
 	// Planar 16-bit output keeps one plane per channel at 2 bytes per sample
 	ASSERT_EQ(output.size(), 2);
-	ASSERT_EQ(output.at(0).size(), kSamples * int(sizeof(int16_t)));
-	ASSERT_EQ(output.at(1).size(), kSamples * int(sizeof(int16_t)));
+	ASSERT_EQ(output.at(0).size(), k_samples * int(sizeof(int16_t)));
+	ASSERT_EQ(output.at(1).size(), k_samples * int(sizeof(int16_t)));
 
 	// Known float values land on the expected 16-bit codes
 	int16_t value = 0;
@@ -692,21 +692,21 @@ TEST(AudioSmokeProcessor, TempoChange)
 {
 	AudioProcessor processor;
 
-	AudioParams from(48000, kChannelLayoutStereo, SampleFormat::F32P);
-	AudioParams to(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams from(48000, k_channel_layout_stereo, SampleFormat::f32_p);
+	AudioParams to(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 
 	// Open with 2x tempo
-	ASSERT_TRUE(processor.Open(from, to, 2.0));
-	ASSERT_TRUE(processor.IsOpen());
+	ASSERT_TRUE(processor.open(from, to, 2.0));
+	ASSERT_TRUE(processor.is_open());
 
 	// One second of input
-	constexpr int kSamples = 48000;
-	std::vector<float> left(kSamples, 0.5f);
-	std::vector<float> right(kSamples, 0.5f);
+	constexpr int k_samples = 48000;
+	std::vector<float> left(k_samples, 0.5f);
+	std::vector<float> right(k_samples, 0.5f);
 	float *input[2] = { left.data(), right.data() };
 
 	const AudioProcessor::Buffer output =
-		ConvertAndDrain(processor, input, kSamples);
+		convert_and_drain(processor, input, k_samples);
 
 	ASSERT_EQ(output.size(), 2);
 	ASSERT_EQ(output.at(0).size(), output.at(1).size());
@@ -730,12 +730,12 @@ TEST(AudioSmokeProcessor, InvalidOpen)
 	AudioProcessor processor;
 
 	// Open with valid params
-	AudioParams from(48000, kChannelLayoutStereo, SampleFormat::F32P);
-	AudioParams to(48000, kChannelLayoutStereo, SampleFormat::F32P);
-	EXPECT_TRUE(processor.Open(from, to, 1.0));
+	AudioParams from(48000, k_channel_layout_stereo, SampleFormat::f32_p);
+	AudioParams to(48000, k_channel_layout_stereo, SampleFormat::f32_p);
+	EXPECT_TRUE(processor.open(from, to, 1.0));
 
 	// Try to open again while already open (should fail)
-	EXPECT_FALSE(processor.Open(from, to, 1.0));
+	EXPECT_FALSE(processor.open(from, to, 1.0));
 }
 
 TEST(AudioSmokeProcessor, ConvertWithoutOpen)
@@ -752,7 +752,7 @@ TEST(AudioSmokeProcessor, ConvertWithoutOpen)
 	AudioProcessor::Buffer output;
 
 	// Should fail since processor is not open
-	EXPECT_EQ(processor.Convert(input, 100, &output), -1);
+	EXPECT_EQ(processor.convert(input, 100, &output), -1);
 }
 
 // ============================================================================
@@ -769,10 +769,10 @@ TEST(AudioSmokePreviewDevice, Construction)
 
 	// SetParams derives the frame size from the audio format:
 	// bytes per sample per channel * channel count
-	device.SetParams(AudioParams(48000, kChannelLayoutStereo, SampleFormat::F32P));
+	device.set_params(AudioParams(48000, k_channel_layout_stereo, SampleFormat::f32_p));
 	EXPECT_EQ(device.bytes_per_frame(), 8);
 
-	device.SetParams(AudioParams(48000, kChannelLayoutMono, SampleFormat::S16));
+	device.set_params(AudioParams(48000, k_channel_layout_mono, SampleFormat::s16));
 	EXPECT_EQ(device.bytes_per_frame(), 2);
 }
 
@@ -799,7 +799,7 @@ TEST(AudioSmokePreviewDevice, NotifyInterval)
 	device.set_notify_interval(64);
 
 	int notify_count = 0;
-	QObject::connect(&device, &PreviewAudioDevice::Notify, &device,
+	QObject::connect(&device, &PreviewAudioDevice::notify, &device,
 					 [&notify_count]() { ++notify_count; });
 
 	QByteArray data(256, 0x01);
@@ -827,7 +827,7 @@ TEST(AudioSmokePreviewDevice, NotifyInterval)
 	PreviewAudioDevice quiet_device;
 	quiet_device.open(QIODevice::ReadWrite);
 	int quiet_count = 0;
-	QObject::connect(&quiet_device, &PreviewAudioDevice::Notify, &quiet_device,
+	QObject::connect(&quiet_device, &PreviewAudioDevice::notify, &quiet_device,
 					 [&quiet_count]() { ++quiet_count; });
 	ASSERT_EQ(quiet_device.write(data), 256);
 	EXPECT_EQ(quiet_device.readData(buf, 128), 128);
@@ -841,7 +841,7 @@ TEST(AudioSmokePreviewDevice, Clear)
 
 	device.set_notify_interval(64);
 	int notify_count = 0;
-	QObject::connect(&device, &PreviewAudioDevice::Notify, &device,
+	QObject::connect(&device, &PreviewAudioDevice::notify, &device,
 					 [&notify_count]() { ++notify_count; });
 
 	// Write some data and read it back (readData() is called directly to
@@ -874,59 +874,59 @@ TEST(AudioSmokePreviewDevice, Clear)
 
 TEST(AudioSmokeSampleFormat, ByteCount)
 {
-	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::INVALID), 0);
-	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::U8), 1);
-	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::U8P), 1);
-	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::S16), 2);
-	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::S16P), 2);
-	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::S32), 4);
-	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::S32P), 4);
-	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::F32), 4);
-	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::F32P), 4);
-	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::S64), 8);
-	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::S64P), 8);
-	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::F64), 8);
-	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::F64P), 8);
+	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::invalid), 0);
+	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::u8), 1);
+	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::u8_p), 1);
+	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::s16), 2);
+	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::s16_p), 2);
+	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::s32), 4);
+	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::s32_p), 4);
+	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::f32), 4);
+	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::f32_p), 4);
+	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::s64), 8);
+	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::s64_p), 8);
+	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::f64), 8);
+	EXPECT_EQ(SampleFormat::byte_count(SampleFormat::f64_p), 8);
 }
 
 TEST(AudioSmokeSampleFormat, PackedVsPlanar)
 {
 	// Packed formats
-	EXPECT_TRUE(SampleFormat::is_packed(SampleFormat::U8));
-	EXPECT_TRUE(SampleFormat::is_packed(SampleFormat::S16));
-	EXPECT_TRUE(SampleFormat::is_packed(SampleFormat::S32));
-	EXPECT_TRUE(SampleFormat::is_packed(SampleFormat::F32));
-	EXPECT_TRUE(SampleFormat::is_packed(SampleFormat::S64));
-	EXPECT_TRUE(SampleFormat::is_packed(SampleFormat::F64));
+	EXPECT_TRUE(SampleFormat::is_packed(SampleFormat::u8));
+	EXPECT_TRUE(SampleFormat::is_packed(SampleFormat::s16));
+	EXPECT_TRUE(SampleFormat::is_packed(SampleFormat::s32));
+	EXPECT_TRUE(SampleFormat::is_packed(SampleFormat::f32));
+	EXPECT_TRUE(SampleFormat::is_packed(SampleFormat::s64));
+	EXPECT_TRUE(SampleFormat::is_packed(SampleFormat::f64));
 
 	// Planar formats
-	EXPECT_TRUE(SampleFormat::is_planar(SampleFormat::U8P));
-	EXPECT_TRUE(SampleFormat::is_planar(SampleFormat::S16P));
-	EXPECT_TRUE(SampleFormat::is_planar(SampleFormat::S32P));
-	EXPECT_TRUE(SampleFormat::is_planar(SampleFormat::F32P));
-	EXPECT_TRUE(SampleFormat::is_planar(SampleFormat::S64P));
-	EXPECT_TRUE(SampleFormat::is_planar(SampleFormat::F64P));
+	EXPECT_TRUE(SampleFormat::is_planar(SampleFormat::u8_p));
+	EXPECT_TRUE(SampleFormat::is_planar(SampleFormat::s16_p));
+	EXPECT_TRUE(SampleFormat::is_planar(SampleFormat::s32_p));
+	EXPECT_TRUE(SampleFormat::is_planar(SampleFormat::f32_p));
+	EXPECT_TRUE(SampleFormat::is_planar(SampleFormat::s64_p));
+	EXPECT_TRUE(SampleFormat::is_planar(SampleFormat::f64_p));
 }
 
 TEST(AudioSmokeSampleFormat, StringConversion)
 {
 	// Test to_string (values may vary based on FFmpeg version)
-	EXPECT_EQ(SampleFormat::to_string(SampleFormat::U8), "u8");
-	EXPECT_EQ(SampleFormat::to_string(SampleFormat::S16), "s16");
-	EXPECT_EQ(SampleFormat::to_string(SampleFormat::S32), "s32");
+	EXPECT_EQ(SampleFormat::to_string(SampleFormat::u8), "u8");
+	EXPECT_EQ(SampleFormat::to_string(SampleFormat::s16), "s16");
+	EXPECT_EQ(SampleFormat::to_string(SampleFormat::s32), "s32");
 	// F32 can be "flt" or "f32" depending on FFmpeg version
-	std::string f32_str = SampleFormat::to_string(SampleFormat::F32);
+	std::string f32_str = SampleFormat::to_string(SampleFormat::f32);
 	EXPECT_TRUE(f32_str == "flt" || f32_str == "f32");
 	// F64 can be "dbl" or "f64" depending on FFmpeg version
-	std::string f64_str = SampleFormat::to_string(SampleFormat::F64);
+	std::string f64_str = SampleFormat::to_string(SampleFormat::f64);
 	EXPECT_TRUE(f64_str == "dbl" || f64_str == "f64");
 
 	// Test from_string
-	EXPECT_EQ(SampleFormat::from_string("u8"), SampleFormat::U8);
-	EXPECT_EQ(SampleFormat::from_string("s16"), SampleFormat::S16);
+	EXPECT_EQ(SampleFormat::from_string("u8"), SampleFormat::u8);
+	EXPECT_EQ(SampleFormat::from_string("s16"), SampleFormat::s16);
 	// from_string may not support all format names
-	EXPECT_EQ(SampleFormat::from_string(""), SampleFormat::INVALID);
-	EXPECT_EQ(SampleFormat::from_string("unknown"), SampleFormat::INVALID);
+	EXPECT_EQ(SampleFormat::from_string(""), SampleFormat::invalid);
+	EXPECT_EQ(SampleFormat::from_string("unknown"), SampleFormat::invalid);
 }
 
 // ============================================================================
@@ -942,10 +942,10 @@ TEST(AudioSmokeThread, ConcurrentWaveformAccess)
 	waveform.set_channel_count(2);
 
 	// Pre-populate with data
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 	SampleBuffer buffer(params, size_t(4800));
-	FillSampleBuffer(buffer, 0.5f);
-	waveform.OverwriteSamples(buffer, 48000, rational(0));
+	fill_sample_buffer(buffer, 0.5f);
+	waveform.overwrite_samples(buffer, 48000, Rational(0));
 
 	std::vector<std::thread> threads;
 	std::atomic<int> success_count{ 0 };
@@ -954,9 +954,9 @@ TEST(AudioSmokeThread, ConcurrentWaveformAccess)
 		threads.emplace_back([&waveform, &success_count, num_ops_per_thread]() {
 			for (int i = 0; i < num_ops_per_thread; ++i) {
 				// Read summary from different times
-				auto summary = waveform.GetSummaryFromTime(
-					rational(i % 10, 100), // 0.00 to 0.09 seconds
-					rational(1, 100) // 0.01 second duration
+				auto summary = waveform.get_summary_from_time(
+					Rational(i % 10, 100), // 0.00 to 0.09 seconds
+					Rational(1, 100) // 0.01 second duration
 				);
 
 				if (summary.size() == 2) {
@@ -980,13 +980,13 @@ TEST(AudioSmokeThread, ConcurrentSampleBufferOperations)
 	// race-free and must produce deterministic results
 	const int num_threads = 4;
 
-	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
+	AudioParams params(48000, k_channel_layout_stereo, SampleFormat::f32_p);
 
 	std::vector<SampleBuffer> buffers;
 	buffers.reserve(num_threads);
 	for (int t = 0; t < num_threads; ++t) {
 		buffers.emplace_back(params, size_t(1000));
-		FillSampleBuffer(buffers.back(), 0.5f);
+		fill_sample_buffer(buffers.back(), 0.5f);
 	}
 
 	std::vector<std::thread> threads;

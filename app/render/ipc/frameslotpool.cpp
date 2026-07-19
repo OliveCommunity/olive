@@ -31,54 +31,54 @@ namespace
 {
 
 // Round `value` up to the next multiple of `align` (align must be a power of two).
-size_t AlignUp(size_t value, size_t align)
+size_t align_up(size_t value, size_t align)
 {
 	return (value + (align - 1)) & ~(align - 1);
 }
 
-constexpr size_t kAlign = 64; // Cache-line alignment for each sub-region.
+constexpr size_t k_align = 64; // Cache-line alignment for each sub-region.
 
 } // namespace
 
-size_t FrameSlotPool::BytesNeeded(uint32_t slot_count, size_t slot_data_bytes)
+size_t FrameSlotPool::bytes_needed(uint32_t slot_count, size_t slot_data_bytes)
 {
-	const uint32_t ring_cap = RingCapacity(slot_count);
-	size_t total = AlignUp(sizeof(Header), kAlign);
+	const uint32_t ring_cap = ring_capacity(slot_count);
+	size_t total = align_up(sizeof(Header), k_align);
 	total +=
-		AlignUp(SpscRingBuffer::BytesNeeded(ring_cap), kAlign); // free ring
+		align_up(SpscRingBuffer::bytes_needed(ring_cap), k_align); // free ring
 	total +=
-		AlignUp(SpscRingBuffer::BytesNeeded(ring_cap), kAlign); // ready ring
+		align_up(SpscRingBuffer::bytes_needed(ring_cap), k_align); // ready ring
 	total +=
-		AlignUp(sizeof(FrameSlotMeta) * slot_count, kAlign); // metadata array
-	total += AlignUp(slot_data_bytes, kAlign) * slot_count; // pixel data blocks
+		align_up(sizeof(FrameSlotMeta) * slot_count, k_align); // metadata array
+	total += align_up(slot_data_bytes, k_align) * slot_count; // pixel data blocks
 	return total;
 }
 
-FrameSlotPool FrameSlotPool::Create(void *mem, uint32_t slot_count,
+FrameSlotPool FrameSlotPool::create(void *mem, uint32_t slot_count,
 									size_t slot_data_bytes)
 {
 	FrameSlotPool pool;
 	pool.base_ = reinterpret_cast<uint8_t *>(mem);
 
-	const uint32_t ring_cap = RingCapacity(slot_count);
+	const uint32_t ring_cap = ring_capacity(slot_count);
 
 	size_t offset = 0;
 	const size_t header_off = offset;
-	offset += AlignUp(sizeof(Header), kAlign);
+	offset += align_up(sizeof(Header), k_align);
 
 	const size_t free_off = offset;
-	offset += AlignUp(SpscRingBuffer::BytesNeeded(ring_cap), kAlign);
+	offset += align_up(SpscRingBuffer::bytes_needed(ring_cap), k_align);
 
 	const size_t ready_off = offset;
-	offset += AlignUp(SpscRingBuffer::BytesNeeded(ring_cap), kAlign);
+	offset += align_up(SpscRingBuffer::bytes_needed(ring_cap), k_align);
 
 	const size_t meta_off = offset;
-	offset += AlignUp(sizeof(FrameSlotMeta) * slot_count, kAlign);
+	offset += align_up(sizeof(FrameSlotMeta) * slot_count, k_align);
 
 	const size_t data_off = offset;
 
 	pool.header_ = reinterpret_cast<Header *>(pool.base_ + header_off);
-	pool.header_->magic = kMagic;
+	pool.header_->magic = k_magic;
 	pool.header_->slot_count = slot_count;
 	pool.header_->slot_data_bytes = slot_data_bytes;
 	pool.header_->free_ring_offset = free_off;
@@ -86,8 +86,8 @@ FrameSlotPool FrameSlotPool::Create(void *mem, uint32_t slot_count,
 	pool.header_->meta_offset = meta_off;
 	pool.header_->data_offset = data_off;
 
-	pool.free_ring_ = SpscRingBuffer::Create(pool.base_ + free_off, ring_cap);
-	pool.ready_ring_ = SpscRingBuffer::Create(pool.base_ + ready_off, ring_cap);
+	pool.free_ring_ = SpscRingBuffer::create(pool.base_ + free_off, ring_cap);
+	pool.ready_ring_ = SpscRingBuffer::create(pool.base_ + ready_off, ring_cap);
 	pool.meta_ = reinterpret_cast<FrameSlotMeta *>(pool.base_ + meta_off);
 	pool.data_ = pool.base_ + data_off;
 
@@ -95,19 +95,19 @@ FrameSlotPool FrameSlotPool::Create(void *mem, uint32_t slot_count,
 
 	// Seed the free ring with every slot index so the filler can Acquire() immediately.
 	for (uint32_t i = 0; i < slot_count; i++) {
-		pool.free_ring_->Push(i);
+		pool.free_ring_->push(i);
 	}
 
 	return pool;
 }
 
-FrameSlotPool FrameSlotPool::Attach(void *mem)
+FrameSlotPool FrameSlotPool::attach(void *mem)
 {
 	FrameSlotPool pool;
 	pool.base_ = reinterpret_cast<uint8_t *>(mem);
 	pool.header_ = reinterpret_cast<Header *>(pool.base_);
 
-	if (pool.header_->magic != kMagic) {
+	if (pool.header_->magic != k_magic) {
 		// Caller will see IsValid() == false via a null header reset.
 		pool.header_ = nullptr;
 		pool.base_ = nullptr;
@@ -115,9 +115,9 @@ FrameSlotPool FrameSlotPool::Attach(void *mem)
 	}
 
 	pool.free_ring_ =
-		SpscRingBuffer::Attach(pool.base_ + pool.header_->free_ring_offset);
+		SpscRingBuffer::attach(pool.base_ + pool.header_->free_ring_offset);
 	pool.ready_ring_ =
-		SpscRingBuffer::Attach(pool.base_ + pool.header_->ready_ring_offset);
+		SpscRingBuffer::attach(pool.base_ + pool.header_->ready_ring_offset);
 	pool.meta_ = reinterpret_cast<FrameSlotMeta *>(pool.base_ +
 												   pool.header_->meta_offset);
 	pool.data_ = pool.base_ + pool.header_->data_offset;
@@ -135,44 +135,44 @@ size_t FrameSlotPool::slot_data_bytes() const
 	return header_ ? size_t(header_->slot_data_bytes) : 0;
 }
 
-bool FrameSlotPool::Acquire(uint32_t *index)
+bool FrameSlotPool::acquire(uint32_t *index)
 {
-	return free_ring_->Pop(index);
+	return free_ring_->pop(index);
 }
 
-void *FrameSlotPool::SlotData(uint32_t index)
+void *FrameSlotPool::slot_data(uint32_t index)
 {
-	return data_ + size_t(index) * AlignUp(slot_data_bytes(), kAlign);
+	return data_ + size_t(index) * align_up(slot_data_bytes(), k_align);
 }
 
-const void *FrameSlotPool::SlotData(uint32_t index) const
+const void *FrameSlotPool::slot_data(uint32_t index) const
 {
-	return data_ + size_t(index) * AlignUp(slot_data_bytes(), kAlign);
+	return data_ + size_t(index) * align_up(slot_data_bytes(), k_align);
 }
 
-FrameSlotMeta *FrameSlotPool::Meta(uint32_t index)
+FrameSlotMeta *FrameSlotPool::meta(uint32_t index)
 {
 	return &meta_[index];
 }
 
-const FrameSlotMeta *FrameSlotPool::Meta(uint32_t index) const
+const FrameSlotMeta *FrameSlotPool::meta(uint32_t index) const
 {
 	return &meta_[index];
 }
 
-bool FrameSlotPool::Publish(uint32_t index)
+bool FrameSlotPool::publish(uint32_t index)
 {
-	return ready_ring_->Push(index);
+	return ready_ring_->push(index);
 }
 
-bool FrameSlotPool::Consume(uint32_t *index)
+bool FrameSlotPool::consume(uint32_t *index)
 {
-	return ready_ring_->Pop(index);
+	return ready_ring_->pop(index);
 }
 
-bool FrameSlotPool::Release(uint32_t index)
+bool FrameSlotPool::release(uint32_t index)
 {
-	return free_ring_->Push(index);
+	return free_ring_->push(index);
 }
 
 } // namespace ipc

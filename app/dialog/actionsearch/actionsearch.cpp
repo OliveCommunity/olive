@@ -66,30 +66,30 @@ ActionSearch::ActionSearch(QWidget *parent)
 
 	// moveSelectionUp() and moveSelectionDown() are emitted when the user pressed up or down on the text field.
 	// We override it here to select the upper or lower item in the list.
-	connect(entry_field, SIGNAL(moveSelectionUp()), this,
+	connect(entry_field, SIGNAL(move_selection_up()), this,
 			SLOT(move_selection_up()));
-	connect(entry_field, SIGNAL(moveSelectionDown()), this,
+	connect(entry_field, SIGNAL(move_selection_down()), this,
 			SLOT(move_selection_down()));
 	layout->addWidget(entry_field);
 
 	// Construct list of actions
-	list_widget = new ActionSearchList(this);
+	list_widget_ = new ActionSearchList(this);
 
 	// Set list's font to 1.2x its standard font size
-	QFont list_widget_font = list_widget->font();
+	QFont list_widget_font = list_widget_->font();
 	list_widget_font.setPointSize(qRound(list_widget_font.pointSize() * 1.2));
-	list_widget->setFont(list_widget_font);
+	list_widget_->setFont(list_widget_font);
 
-	layout->addWidget(list_widget);
+	layout->addWidget(list_widget_);
 
-	connect(list_widget, SIGNAL(dbl_click()), this, SLOT(perform_action()));
+	connect(list_widget_, SIGNAL(dbl_click()), this, SLOT(perform_action()));
 
 	// Instantly focus on the entry field to allow for fully keyboard operation (if this popup was initiated by keyboard
 	// shortcut for example).
 	entry_field->setFocus();
 }
 
-void ActionSearch::SetMenuBar(QMenuBar *menu_bar)
+void ActionSearch::set_menu_bar(QMenuBar *menu_bar)
 {
 	menu_bar_ = menu_bar;
 }
@@ -112,7 +112,7 @@ void ActionSearch::search_update(const QString &s, const QString &p,
 		// (and their submenus).
 
 		// We'll clear all the current items in the list since if we're here, we're just starting.
-		list_widget->clear();
+		list_widget_->clear();
 
 		QList<QAction *> menus = menu_bar_->actions();
 
@@ -125,8 +125,8 @@ void ActionSearch::search_update(const QString &s, const QString &p,
 
 		// Once we're here, all the recursion/item retrieval is complete. We auto-select the first item for better
 		// keyboard-exclusive functionality.
-		if (list_widget->count() > 0) {
-			list_widget->item(0)->setSelected(true);
+		if (list_widget_->count() > 0) {
+			list_widget_->item(0)->setSelected(true);
 		}
 
 	} else {
@@ -162,13 +162,13 @@ void ActionSearch::search_update(const QString &s, const QString &p,
 						// If so, we add it to the list widget.
 						QListWidgetItem *item = new QListWidgetItem(
 							QStringLiteral("%1\n(%2)").arg(comp, menu_text),
-							list_widget);
+							list_widget_);
 
 						// Add a pointer to the original QAction in the item's data
 						item->setData(Qt::UserRole + 1,
 									  reinterpret_cast<quintptr>(a));
 
-						list_widget->addItem(item);
+						list_widget_->addItem(item);
 					}
 				}
 			}
@@ -179,8 +179,8 @@ void ActionSearch::search_update(const QString &s, const QString &p,
 void ActionSearch::perform_action()
 {
 	// Loop over all the items in the list and if we find one that's selected, we trigger it.
-	QList<QListWidgetItem *> selected_items = list_widget->selectedItems();
-	if (list_widget->count() > 0 && selected_items.size() > 0) {
+	QList<QListWidgetItem *> selected_items = list_widget_->selectedItems();
+	if (list_widget_->count() > 0 && selected_items.size() > 0) {
 		QListWidgetItem *item = selected_items.at(0);
 
 		// Get QAction pointer from item's data
@@ -200,11 +200,11 @@ void ActionSearch::move_selection_up()
 	// iterating at 1 (instead of 0) to efficiently ignore the first item (since the selection can't go below the very
 	// bottom item).
 
-	int lim = list_widget->count();
+	int lim = list_widget_->count();
 	for (int i = 1; i < lim; i++) {
-		if (list_widget->item(i)->isSelected()) {
-			list_widget->item(i - 1)->setSelected(true);
-			list_widget->scrollToItem(list_widget->item(i - 1));
+		if (list_widget_->item(i)->isSelected()) {
+			list_widget_->item(i - 1)->setSelected(true);
+			list_widget_->scrollToItem(list_widget_->item(i - 1));
 			break;
 		}
 	}
@@ -216,11 +216,11 @@ void ActionSearch::move_selection_down()
 	// one entry before count() to efficiently ignore the item at the end (since the selection can't go below the very
 	// bottom item).
 
-	int lim = list_widget->count() - 1;
+	int lim = list_widget_->count() - 1;
 	for (int i = 0; i < lim; i++) {
-		if (list_widget->item(i)->isSelected()) {
-			list_widget->item(i + 1)->setSelected(true);
-			list_widget->scrollToItem(list_widget->item(i + 1));
+		if (list_widget_->item(i)->isSelected()) {
+			list_widget_->item(i + 1)->setSelected(true);
+			list_widget_->scrollToItem(list_widget_->item(i + 1));
 			break;
 		}
 	}
@@ -247,11 +247,11 @@ bool ActionSearchEntry::event(QEvent *e)
 		switch (static_cast<QKeyEvent *>(e)->key()) {
 		case Qt::Key_Up:
 			e->accept();
-			emit moveSelectionUp();
+			emit move_selection_up();
 			return true;
 		case Qt::Key_Down:
 			e->accept();
-			emit moveSelectionDown();
+			emit move_selection_down();
 			return true;
 		}
 		break;

@@ -17,21 +17,21 @@ namespace
 class BackendVulkanRenderer : public olive::VulkanRenderer {
 public:
 	using olive::VulkanRenderer::VulkanRenderer;
-	using olive::VulkanRenderer::Blit;
-	using olive::VulkanRenderer::CreateNativeTexture;
-	using olive::VulkanRenderer::DestroyInternal;
-	using olive::VulkanRenderer::DestroyNativeTexture;
+	using olive::VulkanRenderer::blit;
+	using olive::VulkanRenderer::create_native_texture;
+	using olive::VulkanRenderer::destroy_internal;
+	using olive::VulkanRenderer::destroy_native_texture;
 };
 
 // Converts the opaque C ABI handle back to the C++ Vulkan renderer.
-BackendVulkanRenderer *Renderer(OakRenderBackendHandle handle)
+BackendVulkanRenderer *renderer(OakRenderBackendHandle handle)
 {
 	return static_cast<BackendVulkanRenderer *>(handle);
 }
 
 // Interprets ABI QVariant payloads without copying; this ABI version assumes
 // the host and backend are built with the same Qt/C++ ABI.
-const QVariant &VariantRef(const void *variant)
+const QVariant &variant_ref(const void *variant)
 {
 	return *static_cast<const QVariant *>(variant);
 }
@@ -49,7 +49,7 @@ oak_renderer_create(void *parent)
 OAK_RENDER_BACKEND_EXPORT void
 oak_renderer_destroy(OakRenderBackendHandle handle)
 {
-	delete Renderer(handle);
+	delete renderer(handle);
 }
 
 // Reports Vulkan backend capabilities and runtime availability status.
@@ -61,12 +61,12 @@ oak_renderer_get_info(OakRenderBackendHandle handle,
 		return false;
 	}
 	out_info->abi_version = 1;
-	out_info->kind = OAK_RENDER_BACKEND_VULKAN;
+	out_info->kind = oak_render_backend_vulkan;
 	out_info->capabilities =
-		OAK_RENDER_BACKEND_CAP_TEXTURES | OAK_RENDER_BACKEND_CAP_SHADERS |
-		OAK_RENDER_BACKEND_CAP_BLIT | OAK_RENDER_BACKEND_CAP_READBACK;
+		oak_render_backend_cap_textures | oak_render_backend_cap_shaders |
+		oak_render_backend_cap_blit | oak_render_backend_cap_readback;
 	out_info->name = "vulkan";
-	out_info->status = Renderer(handle)->IsAvailable() ? "available" :
+	out_info->status = renderer(handle)->is_available() ? "available" :
 														 "unavailable";
 	return true;
 }
@@ -76,21 +76,21 @@ oak_renderer_get_info(OakRenderBackendHandle handle,
 OAK_RENDER_BACKEND_EXPORT bool
 oak_renderer_is_available(OakRenderBackendHandle handle)
 {
-	auto *r = Renderer(handle);
-	if (!r || r->IsAvailable()) {
-		return r && r->IsAvailable();
+	auto *r = renderer(handle);
+	if (!r || r->is_available()) {
+		return r && r->is_available();
 	}
 	// Try to initialize if not already available
-	if (r->Init()) {
-		r->PostInit();
+	if (r->init()) {
+		r->post_init();
 	}
-	return r->IsAvailable();
+	return r->is_available();
 }
 
 // Initializes the Vulkan device path.
 OAK_RENDER_BACKEND_EXPORT bool oak_renderer_init(OakRenderBackendHandle handle)
 {
-	return Renderer(handle)->Init();
+	return renderer(handle)->init();
 }
 
 // Vulkan does not use a QOpenGLContext; the argument is accepted for ABI parity.
@@ -98,28 +98,28 @@ OAK_RENDER_BACKEND_EXPORT void
 oak_renderer_init_with_context(OakRenderBackendHandle handle, void *context)
 {
 	Q_UNUSED(context)
-	Renderer(handle)->Init();
+	renderer(handle)->init();
 }
 
 // Creates reusable Vulkan resources after device initialization.
 OAK_RENDER_BACKEND_EXPORT void
 oak_renderer_post_init(OakRenderBackendHandle handle)
 {
-	Renderer(handle)->PostInit();
+	renderer(handle)->post_init();
 }
 
 // Reserved for API symmetry; Vulkan cleanup is handled by destroy_internal.
 OAK_RENDER_BACKEND_EXPORT void
 oak_renderer_post_destroy(OakRenderBackendHandle handle)
 {
-	Renderer(handle)->PostDestroy();
+	renderer(handle)->post_destroy();
 }
 
 // Releases all Vulkan resources owned by the renderer.
 OAK_RENDER_BACKEND_EXPORT void
 oak_renderer_destroy_internal(OakRenderBackendHandle handle)
 {
-	Renderer(handle)->DestroyInternal();
+	renderer(handle)->destroy_internal();
 }
 
 // Clears a Vulkan texture destination.
@@ -127,7 +127,7 @@ OAK_RENDER_BACKEND_EXPORT void
 oak_renderer_clear_destination(OakRenderBackendHandle handle, void *texture,
 							   double r, double g, double b, double a)
 {
-	Renderer(handle)->ClearDestination(static_cast<olive::Texture *>(texture),
+	renderer(handle)->clear_destination(static_cast<olive::Texture *>(texture),
 									   r, g, b, a);
 }
 
@@ -137,7 +137,7 @@ OAK_RENDER_BACKEND_EXPORT void oak_renderer_create_native_texture(
 	int channel_count, const void *data, int linesize, void *out_variant)
 {
 	*static_cast<QVariant *>(out_variant) =
-		Renderer(handle)->CreateNativeTexture(
+		renderer(handle)->create_native_texture(
 			width, height, depth,
 			static_cast<olive::PixelFormat::Format>(format), channel_count,
 			data, linesize);
@@ -148,7 +148,7 @@ OAK_RENDER_BACKEND_EXPORT void
 oak_renderer_destroy_native_texture(OakRenderBackendHandle handle,
 									const void *variant)
 {
-	Renderer(handle)->DestroyNativeTexture(VariantRef(variant));
+	renderer(handle)->destroy_native_texture(variant_ref(variant));
 }
 
 // Compiles a Vulkan shader and returns its QVariant handle.
@@ -157,7 +157,7 @@ oak_renderer_create_native_shader(OakRenderBackendHandle handle,
 								  const void *shader_code, void *out_variant)
 {
 	*static_cast<QVariant *>(out_variant) =
-		Renderer(handle)->CreateNativeShader(
+		renderer(handle)->create_native_shader(
 			*static_cast<const olive::ShaderCode *>(shader_code));
 }
 
@@ -166,7 +166,7 @@ OAK_RENDER_BACKEND_EXPORT void
 oak_renderer_destroy_native_shader(OakRenderBackendHandle handle,
 								   const void *variant)
 {
-	Renderer(handle)->DestroyNativeShader(VariantRef(variant));
+	renderer(handle)->destroy_native_shader(variant_ref(variant));
 }
 
 // Uploads CPU pixel data into a Vulkan texture.
@@ -175,8 +175,8 @@ oak_renderer_upload_to_texture(OakRenderBackendHandle handle,
 							   const void *variant, const void *video_params,
 							   const void *data, int linesize)
 {
-	Renderer(handle)->UploadToTexture(
-		VariantRef(variant),
+	renderer(handle)->upload_to_texture(
+		variant_ref(variant),
 		*static_cast<const olive::VideoParams *>(video_params), data, linesize);
 }
 
@@ -185,15 +185,15 @@ OAK_RENDER_BACKEND_EXPORT void oak_renderer_download_from_texture(
 	OakRenderBackendHandle handle, const void *variant,
 	const void *video_params, void *data, int linesize)
 {
-	Renderer(handle)->DownloadFromTexture(
-		VariantRef(variant),
+	renderer(handle)->download_from_texture(
+		variant_ref(variant),
 		*static_cast<const olive::VideoParams *>(video_params), data, linesize);
 }
 
 // Waits for all queued Vulkan work to finish.
 OAK_RENDER_BACKEND_EXPORT void oak_renderer_flush(OakRenderBackendHandle handle)
 {
-	Renderer(handle)->Flush();
+	renderer(handle)->flush();
 }
 
 // Reads one pixel from a Vulkan texture.
@@ -203,7 +203,7 @@ oak_renderer_get_pixel_from_texture(OakRenderBackendHandle handle,
 									void *out_color)
 {
 	*static_cast<olive::Color *>(out_color) =
-		Renderer(handle)->GetPixelFromTexture(
+		renderer(handle)->get_pixel_from_texture(
 			static_cast<olive::Texture *>(texture),
 			*static_cast<const QPointF *>(point));
 }
@@ -215,8 +215,8 @@ OAK_RENDER_BACKEND_EXPORT void oak_renderer_blit(OakRenderBackendHandle handle,
 												 const void *destination_params,
 												 bool clear_destination)
 {
-	Renderer(handle)->Blit(
-		VariantRef(shader), *static_cast<olive::AcceleratedJob *>(job),
+	renderer(handle)->blit(
+		variant_ref(shader), *static_cast<olive::AcceleratedJob *>(job),
 		static_cast<olive::Texture *>(destination),
 		*static_cast<const olive::VideoParams *>(destination_params),
 		clear_destination);

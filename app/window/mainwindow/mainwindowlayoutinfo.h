@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef MAINWINDOWLAYOUTINFO_H
-#define MAINWINDOWLAYOUTINFO_H
+#ifndef OAK_MAINWINDOWLAYOUTINFO_H
+#define OAK_MAINWINDOWLAYOUTINFO_H
 
 #include "node/project/folder/folder.h"
 #include "node/project/sequence/sequence.h"
@@ -30,10 +30,10 @@ class MainWindowLayoutInfo {
 public:
 	MainWindowLayoutInfo() = default;
 
-	void toXml(QXmlStreamWriter *writer) const;
+	void to_xml(QXmlStreamWriter *writer) const;
 
 	static MainWindowLayoutInfo
-	fromXml(QXmlStreamReader *reader, const QHash<quintptr, Node *> &node_map);
+	from_xml(QXmlStreamReader *reader, const QHash<quintptr, Node *> &node_map);
 
 	void add_folder(Folder *f);
 
@@ -83,11 +83,11 @@ private:
 
 	std::map<QString, PanelWidget::Info> panel_data_;
 
-	static const unsigned int kVersion = 1;
+	static const unsigned int k_version = 1;
 };
 
 }
 
 Q_DECLARE_METATYPE(olive::MainWindowLayoutInfo)
 
-#endif // MAINWINDOWLAYOUTINFO_H
+#endif // OAK_MAINWINDOWLAYOUTINFO_H

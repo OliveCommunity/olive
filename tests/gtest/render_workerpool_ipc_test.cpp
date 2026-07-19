@@ -45,19 +45,19 @@ namespace
 
 // Unique-per-run segment key so stale POSIX segments left by earlier runs can
 // never collide with a test (MakeKey() bakes the pid into the key).
-QString TestShmKey(const char *tag)
+QString test_shm_key(const char *tag)
 {
-	return olive::ipc::SharedMemoryRegion::MakeKey(
+	return olive::ipc::SharedMemoryRegion::make_key(
 			   QCoreApplication::applicationPid(), 99) +
 		   QStringLiteral("-") + QLatin1String(tag);
 }
 
 olive::RenderManager::RenderVideoParams
-MakeVideoParams(olive::Node *node, const olive::VideoParams &video_params)
+make_video_params(olive::Node *node, const olive::VideoParams &video_params)
 {
 	return olive::RenderManager::RenderVideoParams(
 		node, video_params, olive::core::AudioParams(),
-		olive::core::rational(0), nullptr, olive::RenderMode::kOnline);
+		olive::core::Rational(0), nullptr, olive::RenderMode::k_online);
 }
 
 } // namespace
@@ -68,23 +68,23 @@ MakeVideoParams(olive::Node *node, const olive::VideoParams &video_params)
 
 TEST(SharedMemoryRegion, MakeKeyFormat)
 {
-	EXPECT_EQ(olive::ipc::SharedMemoryRegion::MakeKey(12345, 3),
+	EXPECT_EQ(olive::ipc::SharedMemoryRegion::make_key(12345, 3),
 			  QStringLiteral("olive-rw-12345-3"));
 
-	EXPECT_NE(olive::ipc::SharedMemoryRegion::MakeKey(12345, 3),
-			  olive::ipc::SharedMemoryRegion::MakeKey(12345, 4));
-	EXPECT_NE(olive::ipc::SharedMemoryRegion::MakeKey(12345, 3),
-			  olive::ipc::SharedMemoryRegion::MakeKey(12346, 3));
+	EXPECT_NE(olive::ipc::SharedMemoryRegion::make_key(12345, 3),
+			  olive::ipc::SharedMemoryRegion::make_key(12345, 4));
+	EXPECT_NE(olive::ipc::SharedMemoryRegion::make_key(12345, 3),
+			  olive::ipc::SharedMemoryRegion::make_key(12346, 3));
 }
 
 TEST(SharedMemoryRegion, CreateProvidesZeroedWritableMemory)
 {
-	const QString key = TestShmKey("zeroed");
+	const QString key = test_shm_key("zeroed");
 	olive::ipc::SharedMemoryRegion region;
-	ASSERT_TRUE(region.Open(key, 4096, olive::ipc::SharedMemoryRegion::kCreate))
+	ASSERT_TRUE(region.open(key, 4096, olive::ipc::SharedMemoryRegion::k_create))
 		<< region.error().toStdString();
 
-	EXPECT_TRUE(region.IsValid());
+	EXPECT_TRUE(region.is_valid());
 	EXPECT_EQ(region.size(), size_t(4096));
 	EXPECT_EQ(region.key(), key);
 	ASSERT_NE(region.data(), nullptr);
@@ -107,25 +107,25 @@ TEST(SharedMemoryRegion, CreateProvidesZeroedWritableMemory)
 TEST(SharedMemoryRegion, AttachToMissingKeyFails)
 {
 	olive::ipc::SharedMemoryRegion region;
-	EXPECT_FALSE(region.Open(TestShmKey("missing"), 4096,
-							 olive::ipc::SharedMemoryRegion::kAttach));
-	EXPECT_FALSE(region.IsValid());
+	EXPECT_FALSE(region.open(test_shm_key("missing"), 4096,
+							 olive::ipc::SharedMemoryRegion::k_attach));
+	EXPECT_FALSE(region.is_valid());
 	EXPECT_EQ(region.data(), nullptr);
 	EXPECT_FALSE(region.error().isEmpty());
 }
 
 TEST(SharedMemoryRegion, CreateAttachRoundTrip)
 {
-	const QString key = TestShmKey("roundtrip");
+	const QString key = test_shm_key("roundtrip");
 
 	olive::ipc::SharedMemoryRegion owner;
-	ASSERT_TRUE(owner.Open(key, 8192, olive::ipc::SharedMemoryRegion::kCreate))
+	ASSERT_TRUE(owner.open(key, 8192, olive::ipc::SharedMemoryRegion::k_create))
 		<< owner.error().toStdString();
 
 	olive::ipc::SharedMemoryRegion peer;
-	ASSERT_TRUE(peer.Open(key, 8192, olive::ipc::SharedMemoryRegion::kAttach))
+	ASSERT_TRUE(peer.open(key, 8192, olive::ipc::SharedMemoryRegion::k_attach))
 		<< peer.error().toStdString();
-	EXPECT_TRUE(peer.IsValid());
+	EXPECT_TRUE(peer.is_valid());
 	EXPECT_EQ(peer.size(), size_t(8192));
 	EXPECT_EQ(peer.key(), key);
 
@@ -150,52 +150,52 @@ TEST(SharedMemoryRegion, ZeroSizeCreateFails)
 	olive::ipc::SharedMemoryRegion region;
 	// A zero-length mapping is rejected (EINVAL from mmap on POSIX, invalid
 	// size for CreateFileMapping on Windows).
-	EXPECT_FALSE(region.Open(TestShmKey("zerosize"), 0,
-							 olive::ipc::SharedMemoryRegion::kCreate));
-	EXPECT_FALSE(region.IsValid());
+	EXPECT_FALSE(region.open(test_shm_key("zerosize"), 0,
+							 olive::ipc::SharedMemoryRegion::k_create));
+	EXPECT_FALSE(region.is_valid());
 	EXPECT_FALSE(region.error().isEmpty());
 }
 
 TEST(SharedMemoryRegion, CloseInvalidatesThenReopenWorks)
 {
 	olive::ipc::SharedMemoryRegion region;
-	ASSERT_TRUE(region.Open(TestShmKey("close1"), 4096,
-							olive::ipc::SharedMemoryRegion::kCreate));
+	ASSERT_TRUE(region.open(test_shm_key("close1"), 4096,
+							olive::ipc::SharedMemoryRegion::k_create));
 
-	region.Close();
-	EXPECT_FALSE(region.IsValid());
+	region.close();
+	EXPECT_FALSE(region.is_valid());
 	EXPECT_EQ(region.data(), nullptr);
 	EXPECT_EQ(region.size(), size_t(0));
 
 	// Close is idempotent.
-	region.Close();
-	EXPECT_FALSE(region.IsValid());
+	region.close();
+	EXPECT_FALSE(region.is_valid());
 
 	// The same object can be reused for a new segment (Open() closes first).
-	ASSERT_TRUE(region.Open(TestShmKey("close2"), 2048,
-							olive::ipc::SharedMemoryRegion::kCreate));
-	EXPECT_TRUE(region.IsValid());
+	ASSERT_TRUE(region.open(test_shm_key("close2"), 2048,
+							olive::ipc::SharedMemoryRegion::k_create));
+	EXPECT_TRUE(region.is_valid());
 	EXPECT_EQ(region.size(), size_t(2048));
 }
 
 TEST(SharedMemoryRegion, OwnerDestructionUnlinksSegment)
 {
-	const QString key = TestShmKey("unlink");
+	const QString key = test_shm_key("unlink");
 	{
 		olive::ipc::SharedMemoryRegion owner;
-		ASSERT_TRUE(owner.Open(key, 4096,
-							   olive::ipc::SharedMemoryRegion::kCreate));
+		ASSERT_TRUE(owner.open(key, 4096,
+							   olive::ipc::SharedMemoryRegion::k_create));
 
 		// While the owner lives, attaching works.
 		olive::ipc::SharedMemoryRegion peer;
 		ASSERT_TRUE(
-			peer.Open(key, 4096, olive::ipc::SharedMemoryRegion::kAttach));
+			peer.open(key, 4096, olive::ipc::SharedMemoryRegion::k_attach));
 	}
 
 	// Once the owner is destroyed the name is unlinked; new attaches fail.
 	olive::ipc::SharedMemoryRegion late;
-	EXPECT_FALSE(late.Open(key, 4096, olive::ipc::SharedMemoryRegion::kAttach));
-	EXPECT_FALSE(late.IsValid());
+	EXPECT_FALSE(late.open(key, 4096, olive::ipc::SharedMemoryRegion::k_attach));
+	EXPECT_FALSE(late.is_valid());
 }
 
 // ============================================================================
@@ -205,10 +205,10 @@ TEST(SharedMemoryRegion, OwnerDestructionUnlinksSegment)
 TEST(FrameSlotPool, AttachRejectsBadMagic)
 {
 	// A region that was never initialized by Create() has no valid magic number.
-	std::vector<uint8_t> mem(olive::ipc::FrameSlotPool::BytesNeeded(2, 64), 0xAB);
-	olive::ipc::FrameSlotPool pool = olive::ipc::FrameSlotPool::Attach(mem.data());
+	std::vector<uint8_t> mem(olive::ipc::FrameSlotPool::bytes_needed(2, 64), 0xAB);
+	olive::ipc::FrameSlotPool pool = olive::ipc::FrameSlotPool::attach(mem.data());
 
-	EXPECT_FALSE(pool.IsValid());
+	EXPECT_FALSE(pool.is_valid());
 	EXPECT_EQ(pool.slot_count(), 0u);
 	EXPECT_EQ(pool.slot_data_bytes(), size_t(0));
 }
@@ -216,7 +216,7 @@ TEST(FrameSlotPool, AttachRejectsBadMagic)
 TEST(FrameSlotPool, DefaultConstructedIsInvalid)
 {
 	olive::ipc::FrameSlotPool pool;
-	EXPECT_FALSE(pool.IsValid());
+	EXPECT_FALSE(pool.is_valid());
 	EXPECT_EQ(pool.slot_count(), 0u);
 	EXPECT_EQ(pool.slot_data_bytes(), size_t(0));
 }
@@ -224,69 +224,69 @@ TEST(FrameSlotPool, DefaultConstructedIsInvalid)
 TEST(FrameSlotPool, BytesNeededReflectsGeometry)
 {
 	// The total is a sum of 64-byte-aligned sub-regions, so it stays 64-aligned.
-	EXPECT_EQ(olive::ipc::FrameSlotPool::BytesNeeded(1, 64) % 64, 0u);
-	EXPECT_EQ(olive::ipc::FrameSlotPool::BytesNeeded(3, 1000) % 64, 0u);
+	EXPECT_EQ(olive::ipc::FrameSlotPool::bytes_needed(1, 64) % 64, 0u);
+	EXPECT_EQ(olive::ipc::FrameSlotPool::bytes_needed(3, 1000) % 64, 0u);
 
 	// More slots and bigger slots both need strictly more memory...
-	EXPECT_LT(olive::ipc::FrameSlotPool::BytesNeeded(1, 64),
-			  olive::ipc::FrameSlotPool::BytesNeeded(2, 64));
-	EXPECT_LT(olive::ipc::FrameSlotPool::BytesNeeded(2, 64),
-			  olive::ipc::FrameSlotPool::BytesNeeded(3, 64));
-	EXPECT_LT(olive::ipc::FrameSlotPool::BytesNeeded(2, 64),
-			  olive::ipc::FrameSlotPool::BytesNeeded(2, 128));
+	EXPECT_LT(olive::ipc::FrameSlotPool::bytes_needed(1, 64),
+			  olive::ipc::FrameSlotPool::bytes_needed(2, 64));
+	EXPECT_LT(olive::ipc::FrameSlotPool::bytes_needed(2, 64),
+			  olive::ipc::FrameSlotPool::bytes_needed(3, 64));
+	EXPECT_LT(olive::ipc::FrameSlotPool::bytes_needed(2, 64),
+			  olive::ipc::FrameSlotPool::bytes_needed(2, 128));
 
 	// ...but sizes inside the same 64-byte alignment bucket collapse together.
-	EXPECT_EQ(olive::ipc::FrameSlotPool::BytesNeeded(2, 65),
-			  olive::ipc::FrameSlotPool::BytesNeeded(2, 128));
+	EXPECT_EQ(olive::ipc::FrameSlotPool::bytes_needed(2, 65),
+			  olive::ipc::FrameSlotPool::bytes_needed(2, 128));
 }
 
 TEST(FrameSlotPool, SlotDataBlocksAreAlignedAndDistinct)
 {
-	constexpr uint32_t kSlots = 2;
-	constexpr size_t kSlotBytes = 100; // deliberately not 64-aligned
+	constexpr uint32_t k_slots = 2;
+	constexpr size_t k_slot_bytes = 100; // deliberately not 64-aligned
 
 	std::vector<uint8_t> mem(
-		olive::ipc::FrameSlotPool::BytesNeeded(kSlots, kSlotBytes));
+		olive::ipc::FrameSlotPool::bytes_needed(k_slots, k_slot_bytes));
 	olive::ipc::FrameSlotPool pool =
-		olive::ipc::FrameSlotPool::Create(mem.data(), kSlots, kSlotBytes);
-	ASSERT_TRUE(pool.IsValid());
+		olive::ipc::FrameSlotPool::create(mem.data(), k_slots, k_slot_bytes);
+	ASSERT_TRUE(pool.is_valid());
 
-	auto *first = static_cast<uint8_t *>(pool.SlotData(0));
-	auto *second = static_cast<uint8_t *>(pool.SlotData(1));
+	auto *first = static_cast<uint8_t *>(pool.slot_data(0));
+	auto *second = static_cast<uint8_t *>(pool.slot_data(1));
 
 	// Slot data blocks are padded out to 64-byte boundaries within the region.
 	EXPECT_EQ(second - first, ptrdiff_t(128));
 
 	// A full-size write to one slot never spills into the next.
-	std::memset(first, 0x11, kSlotBytes);
-	std::memset(second, 0x22, kSlotBytes);
-	EXPECT_EQ(first[kSlotBytes - 1], 0x11);
+	std::memset(first, 0x11, k_slot_bytes);
+	std::memset(second, 0x22, k_slot_bytes);
+	EXPECT_EQ(first[k_slot_bytes - 1], 0x11);
 	EXPECT_EQ(second[0], 0x22);
 
 	// The const overload maps the same addresses.
 	const olive::ipc::FrameSlotPool &const_pool = pool;
-	EXPECT_EQ(static_cast<const uint8_t *>(const_pool.SlotData(0)), first);
-	EXPECT_EQ(static_cast<const uint8_t *>(const_pool.SlotData(1)), second);
+	EXPECT_EQ(static_cast<const uint8_t *>(const_pool.slot_data(0)), first);
+	EXPECT_EQ(static_cast<const uint8_t *>(const_pool.slot_data(1)), second);
 }
 
 TEST(FrameSlotPool, MetadataFieldsRoundTrip)
 {
-	constexpr uint32_t kSlots = 2;
-	constexpr size_t kSlotBytes = 64;
+	constexpr uint32_t k_slots = 2;
+	constexpr size_t k_slot_bytes = 64;
 
 	std::vector<uint8_t> mem(
-		olive::ipc::FrameSlotPool::BytesNeeded(kSlots, kSlotBytes));
+		olive::ipc::FrameSlotPool::bytes_needed(k_slots, k_slot_bytes));
 	olive::ipc::FrameSlotPool filler =
-		olive::ipc::FrameSlotPool::Create(mem.data(), kSlots, kSlotBytes);
+		olive::ipc::FrameSlotPool::create(mem.data(), k_slots, k_slot_bytes);
 	olive::ipc::FrameSlotPool drainer =
-		olive::ipc::FrameSlotPool::Attach(mem.data());
+		olive::ipc::FrameSlotPool::attach(mem.data());
 
 	uint32_t idx = 0;
-	ASSERT_TRUE(filler.Acquire(&idx));
+	ASSERT_TRUE(filler.acquire(&idx));
 
 	// Freshly created pools zero the metadata array.
 	const olive::ipc::FrameSlotPool &const_drainer = drainer;
-	const olive::ipc::FrameSlotMeta *blank = const_drainer.Meta(idx);
+	const olive::ipc::FrameSlotMeta *blank = const_drainer.meta(idx);
 	EXPECT_EQ(blank->id, 0);
 	EXPECT_EQ(blank->time_num, 0);
 	EXPECT_EQ(blank->time_den, 0);
@@ -294,155 +294,155 @@ TEST(FrameSlotPool, MetadataFieldsRoundTrip)
 	EXPECT_EQ(blank->colorspace[0], '\0');
 
 	// Every field the producer writes survives the hand-off.
-	olive::ipc::FrameSlotMeta *meta = filler.Meta(idx);
+	olive::ipc::FrameSlotMeta *meta = filler.meta(idx);
 	meta->id = -99;
 	meta->time_num = 1001;
 	meta->time_den = 30000;
 	meta->width = 3840;
 	meta->height = 2160;
-	meta->format = int(olive::core::PixelFormat::F32);
+	meta->format = int(olive::core::PixelFormat::f32);
 	meta->channel_count = 4;
 	meta->linesize = 3840 * 4 * 4;
-	meta->data_size = int32_t(kSlotBytes);
-	const char kColorspace[] = "acescg";
-	std::strncpy(meta->colorspace, kColorspace, sizeof(meta->colorspace) - 1);
+	meta->data_size = int32_t(k_slot_bytes);
+	const char k_colorspace[] = "acescg";
+	std::strncpy(meta->colorspace, k_colorspace, sizeof(meta->colorspace) - 1);
 	meta->colorspace[sizeof(meta->colorspace) - 1] = '\0';
 
-	ASSERT_TRUE(filler.Publish(idx));
+	ASSERT_TRUE(filler.publish(idx));
 
 	uint32_t got = 0;
-	ASSERT_TRUE(drainer.Consume(&got));
+	ASSERT_TRUE(drainer.consume(&got));
 	EXPECT_EQ(got, idx);
 
-	const olive::ipc::FrameSlotMeta *out = const_drainer.Meta(got);
+	const olive::ipc::FrameSlotMeta *out = const_drainer.meta(got);
 	EXPECT_EQ(out->id, -99);
 	EXPECT_EQ(out->time_num, 1001);
 	EXPECT_EQ(out->time_den, 30000);
 	EXPECT_EQ(out->width, 3840);
 	EXPECT_EQ(out->height, 2160);
-	EXPECT_EQ(out->format, int(olive::core::PixelFormat::F32));
+	EXPECT_EQ(out->format, int(olive::core::PixelFormat::f32));
 	EXPECT_EQ(out->channel_count, 4);
 	EXPECT_EQ(out->linesize, 3840 * 4 * 4);
-	EXPECT_EQ(out->data_size, int32_t(kSlotBytes));
-	EXPECT_STREQ(out->colorspace, kColorspace);
+	EXPECT_EQ(out->data_size, int32_t(k_slot_bytes));
+	EXPECT_STREQ(out->colorspace, k_colorspace);
 
-	EXPECT_TRUE(drainer.Release(got));
+	EXPECT_TRUE(drainer.release(got));
 }
 
 TEST(FrameSlotPool, FreeSlotsAreIssuedInOrder)
 {
-	constexpr uint32_t kSlots = 4;
+	constexpr uint32_t k_slots = 4;
 	std::vector<uint8_t> mem(
-		olive::ipc::FrameSlotPool::BytesNeeded(kSlots, 64));
+		olive::ipc::FrameSlotPool::bytes_needed(k_slots, 64));
 	olive::ipc::FrameSlotPool pool =
-		olive::ipc::FrameSlotPool::Create(mem.data(), kSlots, 64);
+		olive::ipc::FrameSlotPool::create(mem.data(), k_slots, 64);
 
 	// Create() seeds the free ring FIFO with every slot index.
-	for (uint32_t expected = 0; expected < kSlots; expected++) {
+	for (uint32_t expected = 0; expected < k_slots; expected++) {
 		uint32_t idx = 0;
-		ASSERT_TRUE(pool.Acquire(&idx));
+		ASSERT_TRUE(pool.acquire(&idx));
 		EXPECT_EQ(idx, expected);
 	}
 
 	uint32_t overflow = 0;
-	EXPECT_FALSE(pool.Acquire(&overflow));
+	EXPECT_FALSE(pool.acquire(&overflow));
 
 	// Released slots are re-issued in the order they were released.
-	ASSERT_TRUE(pool.Release(2));
-	ASSERT_TRUE(pool.Release(0));
+	ASSERT_TRUE(pool.release(2));
+	ASSERT_TRUE(pool.release(0));
 	uint32_t idx = 0;
-	ASSERT_TRUE(pool.Acquire(&idx));
+	ASSERT_TRUE(pool.acquire(&idx));
 	EXPECT_EQ(idx, 2u);
-	ASSERT_TRUE(pool.Acquire(&idx));
+	ASSERT_TRUE(pool.acquire(&idx));
 	EXPECT_EQ(idx, 0u);
 }
 
 TEST(FrameSlotPool, ReadyRingDeliversInPublishOrder)
 {
-	constexpr uint32_t kSlots = 3;
+	constexpr uint32_t k_slots = 3;
 	std::vector<uint8_t> mem(
-		olive::ipc::FrameSlotPool::BytesNeeded(kSlots, 64));
+		olive::ipc::FrameSlotPool::bytes_needed(k_slots, 64));
 	olive::ipc::FrameSlotPool pool =
-		olive::ipc::FrameSlotPool::Create(mem.data(), kSlots, 64);
+		olive::ipc::FrameSlotPool::create(mem.data(), k_slots, 64);
 
 	uint32_t a = 0, b = 0, c = 0;
-	ASSERT_TRUE(pool.Acquire(&a));
-	ASSERT_TRUE(pool.Acquire(&b));
-	ASSERT_TRUE(pool.Acquire(&c));
+	ASSERT_TRUE(pool.acquire(&a));
+	ASSERT_TRUE(pool.acquire(&b));
+	ASSERT_TRUE(pool.acquire(&c));
 
 	// Publish order, not slot order, determines consume order.
-	ASSERT_TRUE(pool.Publish(c));
-	ASSERT_TRUE(pool.Publish(a));
-	ASSERT_TRUE(pool.Publish(b));
+	ASSERT_TRUE(pool.publish(c));
+	ASSERT_TRUE(pool.publish(a));
+	ASSERT_TRUE(pool.publish(b));
 
 	const uint32_t expected[] = { c, a, b };
 	for (uint32_t want : expected) {
 		uint32_t got = 0;
-		ASSERT_TRUE(pool.Consume(&got));
+		ASSERT_TRUE(pool.consume(&got));
 		EXPECT_EQ(got, want);
-		ASSERT_TRUE(pool.Release(got));
+		ASSERT_TRUE(pool.release(got));
 	}
 
 	uint32_t empty = 0;
-	EXPECT_FALSE(pool.Consume(&empty));
+	EXPECT_FALSE(pool.consume(&empty));
 }
 
 TEST(FrameSlotPool, CrossMappingHandoff)
 {
-	constexpr uint32_t kSlots = 2;
-	constexpr size_t kSlotBytes = 128;
-	const QString key = TestShmKey("pool-handoff");
+	constexpr uint32_t k_slots = 2;
+	constexpr size_t k_slot_bytes = 128;
+	const QString key = test_shm_key("pool-handoff");
 
 	const size_t bytes =
-		olive::ipc::FrameSlotPool::BytesNeeded(kSlots, kSlotBytes);
+		olive::ipc::FrameSlotPool::bytes_needed(k_slots, k_slot_bytes);
 
 	olive::ipc::SharedMemoryRegion owner_region;
-	ASSERT_TRUE(owner_region.Open(key, bytes,
-								  olive::ipc::SharedMemoryRegion::kCreate))
+	ASSERT_TRUE(owner_region.open(key, bytes,
+								  olive::ipc::SharedMemoryRegion::k_create))
 		<< owner_region.error().toStdString();
-	olive::ipc::FrameSlotPool filler = olive::ipc::FrameSlotPool::Create(
-		owner_region.data(), kSlots, kSlotBytes);
-	ASSERT_TRUE(filler.IsValid());
+	olive::ipc::FrameSlotPool filler = olive::ipc::FrameSlotPool::create(
+		owner_region.data(), k_slots, k_slot_bytes);
+	ASSERT_TRUE(filler.is_valid());
 
 	// The peer maps the same segment separately and attaches to the pool header.
 	olive::ipc::SharedMemoryRegion peer_region;
-	ASSERT_TRUE(peer_region.Open(key, bytes,
-								 olive::ipc::SharedMemoryRegion::kAttach))
+	ASSERT_TRUE(peer_region.open(key, bytes,
+								 olive::ipc::SharedMemoryRegion::k_attach))
 		<< peer_region.error().toStdString();
 	olive::ipc::FrameSlotPool drainer =
-		olive::ipc::FrameSlotPool::Attach(peer_region.data());
-	ASSERT_TRUE(drainer.IsValid());
-	EXPECT_EQ(drainer.slot_count(), kSlots);
-	EXPECT_EQ(drainer.slot_data_bytes(), kSlotBytes);
+		olive::ipc::FrameSlotPool::attach(peer_region.data());
+	ASSERT_TRUE(drainer.is_valid());
+	EXPECT_EQ(drainer.slot_count(), k_slots);
+	EXPECT_EQ(drainer.slot_data_bytes(), k_slot_bytes);
 
 	// Filler side: acquire a slot, stamp it, publish it.
 	uint32_t idx = 0;
-	ASSERT_TRUE(filler.Acquire(&idx));
-	auto *data = static_cast<uint8_t *>(filler.SlotData(idx));
-	for (size_t i = 0; i < kSlotBytes; i++) {
+	ASSERT_TRUE(filler.acquire(&idx));
+	auto *data = static_cast<uint8_t *>(filler.slot_data(idx));
+	for (size_t i = 0; i < k_slot_bytes; i++) {
 		data[i] = uint8_t(0xC3 ^ i);
 	}
-	filler.Meta(idx)->id = 777;
-	ASSERT_TRUE(filler.Publish(idx));
+	filler.meta(idx)->id = 777;
+	ASSERT_TRUE(filler.publish(idx));
 
 	// Drainer side (through the second mapping): same slot, meta and pixels.
 	uint32_t got = 0;
-	ASSERT_TRUE(drainer.Consume(&got));
+	ASSERT_TRUE(drainer.consume(&got));
 	EXPECT_EQ(got, idx);
-	EXPECT_EQ(drainer.Meta(got)->id, 777);
+	EXPECT_EQ(drainer.meta(got)->id, 777);
 	const auto *peer_data =
-		static_cast<const uint8_t *>(drainer.SlotData(got));
-	for (size_t i = 0; i < kSlotBytes; i++) {
+		static_cast<const uint8_t *>(drainer.slot_data(got));
+	for (size_t i = 0; i < k_slot_bytes; i++) {
 		ASSERT_EQ(peer_data[i], uint8_t(0xC3 ^ i)) << "byte " << i;
 	}
-	ASSERT_TRUE(drainer.Release(got));
+	ASSERT_TRUE(drainer.release(got));
 
 	// The release crosses back to the owner's mapping. The free ring is FIFO:
 	// the next fresh slot comes first, then the released slot cycles back.
 	uint32_t reacquired = 0;
-	ASSERT_TRUE(filler.Acquire(&reacquired));
+	ASSERT_TRUE(filler.acquire(&reacquired));
 	EXPECT_EQ(reacquired, 1u);
-	ASSERT_TRUE(filler.Acquire(&reacquired));
+	ASSERT_TRUE(filler.acquire(&reacquired));
 	EXPECT_EQ(reacquired, got);
 }
 
@@ -455,12 +455,12 @@ TEST(IpcMessage, LoadGraphRoundTrip)
 	olive::ipc::LoadGraphMsg msg;
 	msg.path = QStringLiteral("/tmp/oak-render-graph-abc123.ove");
 
-	const QJsonObject obj = msg.ToJson();
+	const QJsonObject obj = msg.to_json();
 	EXPECT_EQ(obj.value(QStringLiteral("type")).toString(),
-			  QLatin1String(olive::ipc::msgtype::kLoadGraph));
+			  QLatin1String(olive::ipc::msgtype::k_load_graph));
 
 	olive::ipc::LoadGraphMsg back;
-	ASSERT_TRUE(olive::ipc::LoadGraphMsg::FromJson(obj, &back));
+	ASSERT_TRUE(olive::ipc::LoadGraphMsg::from_json(obj, &back));
 	EXPECT_EQ(back.path, msg.path);
 }
 
@@ -473,7 +473,7 @@ TEST(IpcMessage, RenderFrameColorTransformRoundTrip)
 	msg.time_den = 24000;
 	msg.width = 1920;
 	msg.height = 1080;
-	msg.format = int(olive::core::PixelFormat::F32);
+	msg.format = int(olive::core::PixelFormat::f32);
 	msg.channel_count = 4;
 	msg.mode = 1;
 	msg.input_slots = { 0, 2, 5 };
@@ -483,13 +483,13 @@ TEST(IpcMessage, RenderFrameColorTransformRoundTrip)
 	msg.color_view = QStringLiteral("ACES 1.0 SDR-video");
 	msg.color_look = QStringLiteral("None");
 
-	const QJsonObject obj = msg.ToJson();
+	const QJsonObject obj = msg.to_json();
 	EXPECT_EQ(obj.value(QStringLiteral("type")).toString(),
-			  QLatin1String(olive::ipc::msgtype::kRenderFrame));
+			  QLatin1String(olive::ipc::msgtype::k_render_frame));
 	EXPECT_TRUE(obj.value(QStringLiteral("has_color_transform")).toBool());
 
 	olive::ipc::RenderFrameMsg back;
-	ASSERT_TRUE(olive::ipc::RenderFrameMsg::FromJson(obj, &back));
+	ASSERT_TRUE(olive::ipc::RenderFrameMsg::from_json(obj, &back));
 	EXPECT_EQ(back.ticket_id, msg.ticket_id);
 	EXPECT_EQ(back.node_uuid, msg.node_uuid);
 	EXPECT_EQ(back.time_num, msg.time_num);
@@ -510,7 +510,7 @@ TEST(IpcMessage, RenderFrameColorTransformRoundTrip)
 TEST(IpcMessage, RenderFrameOmitsColorTransformWhenUnset)
 {
 	olive::ipc::RenderFrameMsg msg; // has_color_transform defaults to false
-	const QJsonObject obj = msg.ToJson();
+	const QJsonObject obj = msg.to_json();
 
 	EXPECT_FALSE(obj.contains(QStringLiteral("has_color_transform")));
 	EXPECT_FALSE(obj.contains(QStringLiteral("color_output")));
@@ -518,7 +518,7 @@ TEST(IpcMessage, RenderFrameOmitsColorTransformWhenUnset)
 	EXPECT_FALSE(obj.contains(QStringLiteral("color_look")));
 
 	olive::ipc::RenderFrameMsg back;
-	ASSERT_TRUE(olive::ipc::RenderFrameMsg::FromJson(obj, &back));
+	ASSERT_TRUE(olive::ipc::RenderFrameMsg::from_json(obj, &back));
 	EXPECT_FALSE(back.has_color_transform);
 	EXPECT_FALSE(back.color_is_display);
 	EXPECT_TRUE(back.color_output.isEmpty());
@@ -530,12 +530,12 @@ TEST(IpcMessage, RenderFrameLegacyInputSlotFallback)
 	// input_slots array when the array is absent.
 	QJsonObject obj;
 	obj[QStringLiteral("type")] =
-		QLatin1String(olive::ipc::msgtype::kRenderFrame);
+		QLatin1String(olive::ipc::msgtype::k_render_frame);
 	obj[QStringLiteral("ticket")] = 5.0;
 	obj[QStringLiteral("input_slot")] = 3;
 
 	olive::ipc::RenderFrameMsg back;
-	ASSERT_TRUE(olive::ipc::RenderFrameMsg::FromJson(obj, &back));
+	ASSERT_TRUE(olive::ipc::RenderFrameMsg::from_json(obj, &back));
 	EXPECT_EQ(back.input_slot, 3);
 	ASSERT_EQ(back.input_slots.size(), 1);
 	EXPECT_EQ(back.input_slots.first(), 3);
@@ -543,7 +543,7 @@ TEST(IpcMessage, RenderFrameLegacyInputSlotFallback)
 	// When the array is present it wins and the scalar is not duplicated.
 	obj[QStringLiteral("input_slots")] = QJsonArray{ 7, 8 };
 	olive::ipc::RenderFrameMsg back2;
-	ASSERT_TRUE(olive::ipc::RenderFrameMsg::FromJson(obj, &back2));
+	ASSERT_TRUE(olive::ipc::RenderFrameMsg::from_json(obj, &back2));
 	ASSERT_EQ(back2.input_slots.size(), 2);
 	EXPECT_EQ(back2.input_slots.at(0), 7);
 	EXPECT_EQ(back2.input_slots.at(1), 8);
@@ -555,10 +555,10 @@ TEST(IpcMessage, RenderFrameDefaultsFromSparseJson)
 	// falling back to its documented default.
 	QJsonObject obj;
 	obj[QStringLiteral("type")] =
-		QLatin1String(olive::ipc::msgtype::kRenderFrame);
+		QLatin1String(olive::ipc::msgtype::k_render_frame);
 
 	olive::ipc::RenderFrameMsg back;
-	ASSERT_TRUE(olive::ipc::RenderFrameMsg::FromJson(obj, &back));
+	ASSERT_TRUE(olive::ipc::RenderFrameMsg::from_json(obj, &back));
 	EXPECT_EQ(back.ticket_id, 0);
 	EXPECT_TRUE(back.node_uuid.isEmpty());
 	EXPECT_EQ(back.time_num, 0);
@@ -585,7 +585,7 @@ TEST(IpcMessage, LargeIdentifiersSurviveRoundTrip)
 	rf.time_num = qint64(48000) * 123456789;
 	rf.time_den = qint64(1) << 40;
 	olive::ipc::RenderFrameMsg rf_back;
-	ASSERT_TRUE(olive::ipc::RenderFrameMsg::FromJson(rf.ToJson(), &rf_back));
+	ASSERT_TRUE(olive::ipc::RenderFrameMsg::from_json(rf.to_json(), &rf_back));
 	EXPECT_EQ(rf_back.ticket_id, ticket);
 	EXPECT_EQ(rf_back.time_num, rf.time_num);
 	EXPECT_EQ(rf_back.time_den, rf.time_den);
@@ -593,50 +593,50 @@ TEST(IpcMessage, LargeIdentifiersSurviveRoundTrip)
 	olive::ipc::FrameReadyMsg fr;
 	fr.ticket_id = ticket;
 	olive::ipc::FrameReadyMsg fr_back;
-	ASSERT_TRUE(olive::ipc::FrameReadyMsg::FromJson(fr.ToJson(), &fr_back));
+	ASSERT_TRUE(olive::ipc::FrameReadyMsg::from_json(fr.to_json(), &fr_back));
 	EXPECT_EQ(fr_back.ticket_id, ticket);
 
 	olive::ipc::CancelMsg cancel;
 	cancel.ticket_id = ticket;
 	olive::ipc::CancelMsg cancel_back;
-	ASSERT_TRUE(olive::ipc::CancelMsg::FromJson(cancel.ToJson(), &cancel_back));
+	ASSERT_TRUE(olive::ipc::CancelMsg::from_json(cancel.to_json(), &cancel_back));
 	EXPECT_EQ(cancel_back.ticket_id, ticket);
 
 	olive::ipc::HandshakeMsg hs;
 	hs.slot_data_bytes = slot_bytes;
 	hs.input_slot_data_bytes = slot_bytes / 2;
 	olive::ipc::HandshakeMsg hs_back;
-	ASSERT_TRUE(olive::ipc::HandshakeMsg::FromJson(hs.ToJson(), &hs_back));
+	ASSERT_TRUE(olive::ipc::HandshakeMsg::from_json(hs.to_json(), &hs_back));
 	EXPECT_EQ(hs_back.slot_data_bytes, slot_bytes);
 	EXPECT_EQ(hs_back.input_slot_data_bytes, slot_bytes / 2);
 }
 
 TEST(IpcMessage, TypedBuildersRejectMismatchedType)
 {
-	const QJsonObject hs_obj = olive::ipc::HandshakeMsg().ToJson();
-	const QJsonObject rf_obj = olive::ipc::RenderFrameMsg().ToJson();
-	const QJsonObject fr_obj = olive::ipc::FrameReadyMsg().ToJson();
-	const QJsonObject cancel_obj = olive::ipc::CancelMsg().ToJson();
-	const QJsonObject load_obj = olive::ipc::LoadGraphMsg().ToJson();
+	const QJsonObject hs_obj = olive::ipc::HandshakeMsg().to_json();
+	const QJsonObject rf_obj = olive::ipc::RenderFrameMsg().to_json();
+	const QJsonObject fr_obj = olive::ipc::FrameReadyMsg().to_json();
+	const QJsonObject cancel_obj = olive::ipc::CancelMsg().to_json();
+	const QJsonObject load_obj = olive::ipc::LoadGraphMsg().to_json();
 
 	olive::ipc::HandshakeMsg hs_out;
-	EXPECT_FALSE(olive::ipc::HandshakeMsg::FromJson(rf_obj, &hs_out));
+	EXPECT_FALSE(olive::ipc::HandshakeMsg::from_json(rf_obj, &hs_out));
 	olive::ipc::RenderFrameMsg rf_out;
-	EXPECT_FALSE(olive::ipc::RenderFrameMsg::FromJson(cancel_obj, &rf_out));
+	EXPECT_FALSE(olive::ipc::RenderFrameMsg::from_json(cancel_obj, &rf_out));
 	olive::ipc::FrameReadyMsg fr_out;
-	EXPECT_FALSE(olive::ipc::FrameReadyMsg::FromJson(load_obj, &fr_out));
+	EXPECT_FALSE(olive::ipc::FrameReadyMsg::from_json(load_obj, &fr_out));
 	olive::ipc::CancelMsg cancel_out;
-	EXPECT_FALSE(olive::ipc::CancelMsg::FromJson(fr_obj, &cancel_out));
+	EXPECT_FALSE(olive::ipc::CancelMsg::from_json(fr_obj, &cancel_out));
 	olive::ipc::LoadGraphMsg load_out;
-	EXPECT_FALSE(olive::ipc::LoadGraphMsg::FromJson(hs_obj, &load_out));
+	EXPECT_FALSE(olive::ipc::LoadGraphMsg::from_json(hs_obj, &load_out));
 
 	// An object with no "type" at all is rejected by every parser.
 	const QJsonObject empty;
-	EXPECT_FALSE(olive::ipc::HandshakeMsg::FromJson(empty, &hs_out));
-	EXPECT_FALSE(olive::ipc::RenderFrameMsg::FromJson(empty, &rf_out));
-	EXPECT_FALSE(olive::ipc::FrameReadyMsg::FromJson(empty, &fr_out));
-	EXPECT_FALSE(olive::ipc::CancelMsg::FromJson(empty, &cancel_out));
-	EXPECT_FALSE(olive::ipc::LoadGraphMsg::FromJson(empty, &load_out));
+	EXPECT_FALSE(olive::ipc::HandshakeMsg::from_json(empty, &hs_out));
+	EXPECT_FALSE(olive::ipc::RenderFrameMsg::from_json(empty, &rf_out));
+	EXPECT_FALSE(olive::ipc::FrameReadyMsg::from_json(empty, &fr_out));
+	EXPECT_FALSE(olive::ipc::CancelMsg::from_json(empty, &cancel_out));
+	EXPECT_FALSE(olive::ipc::LoadGraphMsg::from_json(empty, &load_out));
 }
 
 TEST(IpcMessage, ReadMessageSkipsBlankLines)
@@ -644,7 +644,7 @@ TEST(IpcMessage, ReadMessageSkipsBlankLines)
 	olive::ipc::CancelMsg cancel;
 	cancel.ticket_id = 9;
 	const QByteArray line =
-		QJsonDocument(cancel.ToJson()).toJson(QJsonDocument::Compact);
+		QJsonDocument(cancel.to_json()).toJson(QJsonDocument::Compact);
 
 	// A reader loop sees: blank line, whitespace-only line, then a real
 	// message. Blank lines are skipped silently.
@@ -652,10 +652,10 @@ TEST(IpcMessage, ReadMessageSkipsBlankLines)
 
 	QJsonObject obj;
 	bool ok = true;
-	ASSERT_TRUE(olive::ipc::ReadMessage(&reader, &obj, &ok));
+	ASSERT_TRUE(olive::ipc::read_message(&reader, &obj, &ok));
 	EXPECT_TRUE(ok);
 	olive::ipc::CancelMsg back;
-	ASSERT_TRUE(olive::ipc::CancelMsg::FromJson(obj, &back));
+	ASSERT_TRUE(olive::ipc::CancelMsg::from_json(obj, &back));
 	EXPECT_EQ(back.ticket_id, 9);
 	EXPECT_TRUE(reader.isEmpty());
 }
@@ -666,7 +666,7 @@ TEST(IpcMessage, ReadMessageRejectsNonObjectJson)
 	QByteArray reader = QByteArray("[1,2,3]\n");
 	QJsonObject obj;
 	bool ok = true;
-	EXPECT_FALSE(olive::ipc::ReadMessage(&reader, &obj, &ok));
+	EXPECT_FALSE(olive::ipc::read_message(&reader, &obj, &ok));
 	EXPECT_FALSE(ok);
 	EXPECT_TRUE(reader.isEmpty());
 }
@@ -676,14 +676,14 @@ TEST(IpcMessage, ReadMessageWorksWithoutOkPointer)
 	olive::ipc::CancelMsg cancel;
 	cancel.ticket_id = 4;
 	QByteArray reader =
-		QJsonDocument(cancel.ToJson()).toJson(QJsonDocument::Compact);
+		QJsonDocument(cancel.to_json()).toJson(QJsonDocument::Compact);
 	reader.append('\n');
 
 	QJsonObject obj;
-	EXPECT_TRUE(olive::ipc::ReadMessage(&reader, &obj)); // ok defaults to nullptr
+	EXPECT_TRUE(olive::ipc::read_message(&reader, &obj)); // ok defaults to nullptr
 
 	QByteArray bad = QByteArray("garbage\n");
-	EXPECT_FALSE(olive::ipc::ReadMessage(&bad, &obj));
+	EXPECT_FALSE(olive::ipc::read_message(&bad, &obj));
 }
 
 TEST(IpcMessage, WriteMessageProducesSingleTerminatedLine)
@@ -695,7 +695,7 @@ TEST(IpcMessage, WriteMessageProducesSingleTerminatedLine)
 	olive::ipc::HandshakeMsg hs;
 	hs.protocol_version = 1;
 	hs.shm_key = QStringLiteral("olive-rw-1-0");
-	ASSERT_TRUE(olive::ipc::WriteMessage(&device, hs.ToJson()));
+	ASSERT_TRUE(olive::ipc::write_message(&device, hs.to_json()));
 	device.close();
 
 	// NDJSON: exactly one compact line, newline-terminated.
@@ -706,9 +706,9 @@ TEST(IpcMessage, WriteMessageProducesSingleTerminatedLine)
 	// And it parses back to an identical object.
 	QJsonObject obj;
 	bool ok = false;
-	ASSERT_TRUE(olive::ipc::ReadMessage(&storage, &obj, &ok));
+	ASSERT_TRUE(olive::ipc::read_message(&storage, &obj, &ok));
 	EXPECT_TRUE(ok);
-	EXPECT_EQ(obj, hs.ToJson());
+	EXPECT_EQ(obj, hs.to_json());
 }
 
 TEST(IpcMessage, WriteMessageFailsOnClosedDevice)
@@ -717,50 +717,50 @@ TEST(IpcMessage, WriteMessageFailsOnClosedDevice)
 	QBuffer device(&storage); // never opened: writes fail
 
 	olive::ipc::CancelMsg cancel;
-	EXPECT_FALSE(olive::ipc::WriteMessage(&device, cancel.ToJson()));
+	EXPECT_FALSE(olive::ipc::write_message(&device, cancel.to_json()));
 	EXPECT_TRUE(storage.isEmpty());
 }
 
 TEST(IpcMessage, MessageTypeConstantsAreDistinct)
 {
 	const QSet<QString> types = {
-		QString::fromUtf8(olive::ipc::msgtype::kHandshake),
-		QString::fromUtf8(olive::ipc::msgtype::kLoadGraph),
-		QString::fromUtf8(olive::ipc::msgtype::kRenderFrame),
-		QString::fromUtf8(olive::ipc::msgtype::kFrameReady),
-		QString::fromUtf8(olive::ipc::msgtype::kCancel),
-		QString::fromUtf8(olive::ipc::msgtype::kGraphUpdate),
-		QString::fromUtf8(olive::ipc::msgtype::kShutdown),
-		QString::fromUtf8(olive::ipc::msgtype::kError),
+		QString::fromUtf8(olive::ipc::msgtype::k_handshake),
+		QString::fromUtf8(olive::ipc::msgtype::k_load_graph),
+		QString::fromUtf8(olive::ipc::msgtype::k_render_frame),
+		QString::fromUtf8(olive::ipc::msgtype::k_frame_ready),
+		QString::fromUtf8(olive::ipc::msgtype::k_cancel),
+		QString::fromUtf8(olive::ipc::msgtype::k_graph_update),
+		QString::fromUtf8(olive::ipc::msgtype::k_shutdown),
+		QString::fromUtf8(olive::ipc::msgtype::k_error),
 	};
 	EXPECT_EQ(types.size(), 8);
 
 	// Each builder stamps its own constant into the "type" field.
 	EXPECT_EQ(olive::ipc::HandshakeMsg()
-				  .ToJson()
+				  .to_json()
 				  .value(QStringLiteral("type"))
 				  .toString(),
-			  QLatin1String(olive::ipc::msgtype::kHandshake));
+			  QLatin1String(olive::ipc::msgtype::k_handshake));
 	EXPECT_EQ(olive::ipc::RenderFrameMsg()
-				  .ToJson()
+				  .to_json()
 				  .value(QStringLiteral("type"))
 				  .toString(),
-			  QLatin1String(olive::ipc::msgtype::kRenderFrame));
+			  QLatin1String(olive::ipc::msgtype::k_render_frame));
 	EXPECT_EQ(olive::ipc::FrameReadyMsg()
-				  .ToJson()
+				  .to_json()
 				  .value(QStringLiteral("type"))
 				  .toString(),
-			  QLatin1String(olive::ipc::msgtype::kFrameReady));
+			  QLatin1String(olive::ipc::msgtype::k_frame_ready));
 	EXPECT_EQ(olive::ipc::CancelMsg()
-				  .ToJson()
+				  .to_json()
 				  .value(QStringLiteral("type"))
 				  .toString(),
-			  QLatin1String(olive::ipc::msgtype::kCancel));
+			  QLatin1String(olive::ipc::msgtype::k_cancel));
 	EXPECT_EQ(olive::ipc::LoadGraphMsg()
-				  .ToJson()
+				  .to_json()
 				  .value(QStringLiteral("type"))
 				  .toString(),
-			  QLatin1String(olive::ipc::msgtype::kLoadGraph));
+			  QLatin1String(olive::ipc::msgtype::k_load_graph));
 }
 
 // ============================================================================
@@ -772,7 +772,7 @@ TEST(RenderWorkerPool, RemoveTicketRejectsNull)
 	olive::DecoderCache cache;
 	olive::RenderWorkerPool pool(&cache, QStringLiteral("cpu"));
 
-	EXPECT_FALSE(pool.RemoveTicket(nullptr));
+	EXPECT_FALSE(pool.remove_ticket(nullptr));
 }
 
 TEST(RenderWorkerPool, RemoveTicketUnknownTicketReturnsFalse)
@@ -783,7 +783,7 @@ TEST(RenderWorkerPool, RemoveTicketUnknownTicketReturnsFalse)
 	// The pool thread was never started, so the ticket can be neither queued
 	// nor active.
 	const olive::RenderTicketPtr ticket = std::make_shared<olive::RenderTicket>();
-	EXPECT_FALSE(pool.RemoveTicket(ticket));
+	EXPECT_FALSE(pool.remove_ticket(ticket));
 }
 
 TEST(RenderWorkerPool, ShutdownWithoutStartIsSafeAndIdempotent)
@@ -793,8 +793,8 @@ TEST(RenderWorkerPool, ShutdownWithoutStartIsSafeAndIdempotent)
 
 	// Shutdown on a pool whose thread never ran must not block or crash; the
 	// destructor runs it once more when the pool goes out of scope.
-	pool.Shutdown();
-	pool.Shutdown();
+	pool.shutdown();
+	pool.shutdown();
 	EXPECT_FALSE(pool.isRunning());
 }
 
@@ -804,14 +804,14 @@ TEST(RenderWorkerPool, SubmitFrameRejectsNullNode)
 	olive::RenderWorkerPool pool(&cache, QStringLiteral("cpu"));
 
 	const olive::RenderTicketPtr ticket = std::make_shared<olive::RenderTicket>();
-	EXPECT_FALSE(pool.SubmitFrame(
+	EXPECT_FALSE(pool.submit_frame(
 		ticket,
-		MakeVideoParams(nullptr, olive::VideoParams(
-									 64, 64, olive::core::PixelFormat::U8, 4))));
+		make_video_params(nullptr, olive::VideoParams(
+									 64, 64, olive::core::PixelFormat::u8, 4))));
 
 	// A rejected submission must leave the ticket untouched.
-	EXPECT_FALSE(ticket->IsRunning());
-	EXPECT_EQ(ticket->GetFinishCount(), 0);
+	EXPECT_FALSE(ticket->is_running());
+	EXPECT_EQ(ticket->get_finish_count(), 0);
 }
 
 TEST(RenderWorkerPool, SubmitFrameRejectsInvalidVideoParams)
@@ -826,8 +826,8 @@ TEST(RenderWorkerPool, SubmitFrameRejectsInvalidVideoParams)
 
 	const olive::RenderTicketPtr ticket = std::make_shared<olive::RenderTicket>();
 	EXPECT_FALSE(
-		pool.SubmitFrame(ticket, MakeVideoParams(&track, olive::VideoParams())));
-	EXPECT_FALSE(ticket->IsRunning());
+		pool.submit_frame(ticket, make_video_params(&track, olive::VideoParams())));
+	EXPECT_FALSE(ticket->is_running());
 }
 
 TEST(RenderWorkerPool, SubmitFrameRejectsNonFrameReturnType)
@@ -836,13 +836,13 @@ TEST(RenderWorkerPool, SubmitFrameRejectsNonFrameReturnType)
 	olive::RenderWorkerPool pool(&cache, QStringLiteral("cpu"));
 
 	olive::Track track;
-	olive::RenderManager::RenderVideoParams params = MakeVideoParams(
-		&track, olive::VideoParams(64, 64, olive::core::PixelFormat::U8, 4));
-	params.return_type = olive::RenderManager::kTexture;
+	olive::RenderManager::RenderVideoParams params = make_video_params(
+		&track, olive::VideoParams(64, 64, olive::core::PixelFormat::u8, 4));
+	params.return_type = olive::RenderManager::k_texture;
 
 	const olive::RenderTicketPtr ticket = std::make_shared<olive::RenderTicket>();
-	EXPECT_FALSE(pool.SubmitFrame(ticket, params));
-	EXPECT_FALSE(ticket->IsRunning());
+	EXPECT_FALSE(pool.submit_frame(ticket, params));
+	EXPECT_FALSE(ticket->is_running());
 }
 
 // ============================================================================

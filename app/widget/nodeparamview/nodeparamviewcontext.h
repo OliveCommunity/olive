@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEPARAMVIEWCONTEXT_H
-#define NODEPARAMVIEWCONTEXT_H
+#ifndef OAK_NODEPARAMVIEWCONTEXT_H
+#define OAK_NODEPARAMVIEWCONTEXT_H
 
 #include "nodeparamviewdockarea.h"
 #include "nodeparamviewitembase.h"
@@ -34,53 +34,53 @@ class NodeParamViewContext : public NodeParamViewItemBase {
 public:
 	NodeParamViewContext(QWidget *parent = nullptr);
 
-	NodeParamViewDockArea *GetDockArea() const
+	NodeParamViewDockArea *get_dock_area() const
 	{
 		return dock_area_;
 	}
 
-	const QVector<Node *> &GetContexts() const
+	const QVector<Node *> &get_contexts() const
 	{
 		return contexts_;
 	}
 
-	const QVector<NodeParamViewItem *> &GetItems() const
+	const QVector<NodeParamViewItem *> &get_items() const
 	{
 		return items_;
 	}
 
-	NodeParamViewItem *GetItem(Node *node, Node *ctx);
+	NodeParamViewItem *get_item(Node *node, Node *ctx);
 
-	void AddNode(NodeParamViewItem *item);
+	void add_node(NodeParamViewItem *item);
 
-	void RemoveNode(Node *node, Node *ctx);
+	void remove_node(Node *node, Node *ctx);
 
-	void RemoveNodesWithContext(Node *ctx);
+	void remove_nodes_with_context(Node *ctx);
 
-	void SetInputChecked(const NodeInput &input, bool e);
+	void set_input_checked(const NodeInput &input, bool e);
 
-	void SetTimebase(const rational &timebase);
+	void set_timebase(const Rational &timebase);
 
-	void SetTimeTarget(ViewerOutput *n);
+	void set_time_target(ViewerOutput *n);
 
-	void SetEffectType(Track::Type type);
+	void set_effect_type(Track::Type type);
 
 signals:
-	void AboutToDeleteItem(NodeParamViewItem *item);
+	void about_to_delete_item(NodeParamViewItem *item);
 
 public slots:
-	void AddContext(Node *node)
+	void add_context(Node *node)
 	{
 		contexts_.append(node);
 	}
 
-	void RemoveContext(Node *node)
+	void remove_context(Node *node)
 	{
 		contexts_.removeOne(node);
 	}
 
 protected slots:
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 private:
 	NodeParamViewDockArea *dock_area_;
@@ -92,11 +92,11 @@ private:
 	Track::Type type_;
 
 private slots:
-	void AddEffectButtonClicked();
+	void add_effect_button_clicked();
 
-	void AddEffectMenuItemTriggered(QAction *a);
+	void add_effect_menu_item_triggered(QAction *a);
 };
 
 }
 
-#endif // NODEPARAMVIEWCONTEXT_H
+#endif // OAK_NODEPARAMVIEWCONTEXT_H

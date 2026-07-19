@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLORSPACECHOOSER_H
-#define COLORSPACECHOOSER_H
+#ifndef OAK_COLORSPACECHOOSER_H
+#define OAK_COLORSPACECHOOSER_H
 
 #include <QComboBox>
 #include <QGroupBox>
@@ -45,14 +45,14 @@ public:
 	void set_output(const ColorTransform &out);
 
 signals:
-	void InputColorSpaceChanged(const QString &input);
+	void input_color_space_changed(const QString &input);
 
-	void OutputColorSpaceChanged(const ColorTransform &out);
+	void output_color_space_changed(const ColorTransform &out);
 
-	void ColorSpaceChanged(const QString &input, const ColorTransform &out);
+	void color_space_changed(const QString &input, const ColorTransform &out);
 
 private slots:
-	void UpdateViews(const QString &display);
+	void update_views(const QString &display);
 
 private:
 	ColorManager *color_manager_;
@@ -66,9 +66,9 @@ private:
 	QComboBox *look_combobox_;
 
 private slots:
-	void ComboBoxChanged();
+	void combo_box_changed();
 };
 
 }
 
-#endif // COLORSPACECHOOSER_H
+#endif // OAK_COLORSPACECHOOSER_H

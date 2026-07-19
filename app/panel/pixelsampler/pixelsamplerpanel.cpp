@@ -30,26 +30,26 @@ PixelSamplerPanel::PixelSamplerPanel()
 	: PanelWidget(QStringLiteral("PixelSamplerPanel"))
 {
 	sampler_widget_ = new ManagedPixelSamplerWidget(this);
-	SetWidgetWithPadding(sampler_widget_);
+	set_widget_with_padding(sampler_widget_);
 
 	connect(this, &PixelSamplerPanel::shown, Core::instance(),
-			[] { Core::instance()->RequestPixelSamplingInViewers(true); });
+			[] { Core::instance()->request_pixel_sampling_in_viewers(true); });
 	connect(this, &PixelSamplerPanel::hidden, Core::instance(),
-			[] { Core::instance()->RequestPixelSamplingInViewers(false); });
-	connect(Core::instance(), &Core::ColorPickerColorEmitted, this,
-			&PixelSamplerPanel::SetValues);
+			[] { Core::instance()->request_pixel_sampling_in_viewers(false); });
+	connect(Core::instance(), &Core::color_picker_color_emitted, this,
+			&PixelSamplerPanel::set_values);
 
-	Retranslate();
+	retranslate();
 }
 
-void PixelSamplerPanel::SetValues(const Color &reference, const Color &display)
+void PixelSamplerPanel::set_values(const Color &reference, const Color &display)
 {
-	sampler_widget_->SetValues(reference, display);
+	sampler_widget_->set_values(reference, display);
 }
 
-void PixelSamplerPanel::Retranslate()
+void PixelSamplerPanel::retranslate()
 {
-	SetTitle(tr("Pixel Sampler"));
+	set_title(tr("Pixel Sampler"));
 }
 
 }

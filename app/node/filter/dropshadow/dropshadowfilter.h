@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef DROPSHADOWFILTER_H
-#define DROPSHADOWFILTER_H
+#ifndef OAK_DROPSHADOWFILTER_H
+#define OAK_DROPSHADOWFILTER_H
 
 #include "node/node.h"
 
@@ -34,7 +34,7 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(DropShadowFilter)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return tr("Drop Shadow");
 	}
@@ -42,31 +42,31 @@ public:
 	{
 		return QStringLiteral("org.olivevideoeditor.Olive.dropshadow");
 	}
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
-		return { kCategoryFilter };
+		return { k_category_filter };
 	}
-	virtual QString Description() const override
+	virtual QString description() const override
 	{
 		return tr("Adds a drop shadow to an image.");
 	}
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	get_shader_code(const ShaderRequest &request) const override;
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	static const QString kTextureInput;
-	static const QString kColorInput;
-	static const QString kDistanceInput;
-	static const QString kAngleInput;
-	static const QString kSoftnessInput;
-	static const QString kOpacityInput;
-	static const QString kFastInput;
+	static const QString k_texture_input;
+	static const QString k_color_input;
+	static const QString k_distance_input;
+	static const QString k_angle_input;
+	static const QString k_softness_input;
+	static const QString k_opacity_input;
+	static const QString k_fast_input;
 };
 
 }
 
-#endif // DROPSHADOWFILTER_H
+#endif // OAK_DROPSHADOWFILTER_H

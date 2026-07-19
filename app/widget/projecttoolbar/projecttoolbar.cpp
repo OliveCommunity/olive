@@ -39,41 +39,41 @@ ProjectToolbar::ProjectToolbar(QWidget *parent)
 
 	new_button_ = new QPushButton();
 	connect(new_button_, &QPushButton::clicked, this,
-			&ProjectToolbar::NewClicked);
+			&ProjectToolbar::new_clicked);
 	layout->addWidget(new_button_);
 
 	open_button_ = new QPushButton();
 	connect(open_button_, &QPushButton::clicked, this,
-			&ProjectToolbar::OpenClicked);
+			&ProjectToolbar::open_clicked);
 	layout->addWidget(open_button_);
 
 	save_button_ = new QPushButton();
 	connect(save_button_, &QPushButton::clicked, this,
-			&ProjectToolbar::SaveClicked);
+			&ProjectToolbar::save_clicked);
 	layout->addWidget(save_button_);
 
 	search_field_ = new QLineEdit();
 	search_field_->setClearButtonEnabled(true);
 	connect(search_field_, &QLineEdit::textChanged, this,
-			&ProjectToolbar::SearchChanged);
+			&ProjectToolbar::search_changed);
 	layout->addWidget(search_field_);
 
 	tree_button_ = new QPushButton();
 	tree_button_->setCheckable(true);
 	connect(tree_button_, &QPushButton::clicked, this,
-			&ProjectToolbar::ViewButtonClicked);
+			&ProjectToolbar::view_button_clicked);
 	layout->addWidget(tree_button_);
 
 	list_button_ = new QPushButton();
 	list_button_->setCheckable(true);
 	connect(list_button_, &QPushButton::clicked, this,
-			&ProjectToolbar::ViewButtonClicked);
+			&ProjectToolbar::view_button_clicked);
 	layout->addWidget(list_button_);
 
 	icon_button_ = new QPushButton();
 	icon_button_->setCheckable(true);
 	connect(icon_button_, &QPushButton::clicked, this,
-			&ProjectToolbar::ViewButtonClicked);
+			&ProjectToolbar::view_button_clicked);
 	layout->addWidget(icon_button_);
 
 	// Group Tree/List/Icon view buttons into a button group for easy exclusive-buttons
@@ -83,20 +83,20 @@ ProjectToolbar::ProjectToolbar(QWidget *parent)
 	view_button_group->addButton(list_button_);
 	view_button_group->addButton(icon_button_);
 
-	Retranslate();
-	UpdateIcons();
+	retranslate();
+	update_icons();
 }
 
-void ProjectToolbar::SetView(ViewType type)
+void ProjectToolbar::set_view(ViewType type)
 {
 	switch (type) {
-	case TreeView:
+	case tree_view:
 		tree_button_->setChecked(true);
 		break;
-	case IconView:
+	case icon_view:
 		icon_button_->setChecked(true);
 		break;
-	case ListView:
+	case list_view:
 		list_button_->setChecked(true);
 		break;
 	}
@@ -105,14 +105,14 @@ void ProjectToolbar::SetView(ViewType type)
 void ProjectToolbar::changeEvent(QEvent *e)
 {
 	if (e->type() == QEvent::LanguageChange) {
-		Retranslate();
+		retranslate();
 	} else if (e->type() == QEvent::StyleChange) {
-		UpdateIcons();
+		update_icons();
 	}
 	QWidget::changeEvent(e);
 }
 
-void ProjectToolbar::Retranslate()
+void ProjectToolbar::retranslate()
 {
 	new_button_->setToolTip(tr("New..."));
 	open_button_->setToolTip(tr("Open Project"));
@@ -125,25 +125,25 @@ void ProjectToolbar::Retranslate()
 	icon_button_->setToolTip(tr("Icon View"));
 }
 
-void ProjectToolbar::UpdateIcons()
+void ProjectToolbar::update_icons()
 {
 	new_button_->setIcon(icon::New);
-	open_button_->setIcon(icon::Open);
-	save_button_->setIcon(icon::Save);
-	tree_button_->setIcon(icon::TreeView);
-	list_button_->setIcon(icon::ListView);
-	icon_button_->setIcon(icon::IconView);
+	open_button_->setIcon(icon::open);
+	save_button_->setIcon(icon::save);
+	tree_button_->setIcon(icon::tree_view);
+	list_button_->setIcon(icon::list_view);
+	icon_button_->setIcon(icon::icon_view);
 }
 
-void ProjectToolbar::ViewButtonClicked()
+void ProjectToolbar::view_button_clicked()
 {
 	// Determine which view button triggered this slot and emit a signal accordingly
 	if (sender() == tree_button_) {
-		emit ViewChanged(ProjectToolbar::TreeView);
+		emit view_changed(ProjectToolbar::tree_view);
 	} else if (sender() == icon_button_) {
-		emit ViewChanged(ProjectToolbar::IconView);
+		emit view_changed(ProjectToolbar::icon_view);
 	} else if (sender() == list_button_) {
-		emit ViewChanged(ProjectToolbar::ListView);
+		emit view_changed(ProjectToolbar::list_view);
 	} else {
 		// Assert that it was one of the above buttons
 		abort();

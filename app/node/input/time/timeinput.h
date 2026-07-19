@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMEINPUT_H
-#define TIMEINPUT_H
+#ifndef OAK_TIMEINPUT_H
+#define OAK_TIMEINPUT_H
 
 #include "node/node.h"
 
@@ -34,15 +34,15 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(TimeInput)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 };
 
 }
 
-#endif // TIMEINPUT_H
+#endif // OAK_TIMEINPUT_H

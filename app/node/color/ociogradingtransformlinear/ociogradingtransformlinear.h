@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef OCIOGRADINGTRANSFORMLINEARNODE_H
-#define OCIOGRADINGTRANSFORMLINEARNODE_H
+#ifndef OAK_OCIOGRADINGTRANSFORMLINEARNODE_H
+#define OAK_OCIOGRADINGTRANSFORMLINEARNODE_H
 
 #include "node/color/ociobase/ociobase.h"
 #include "render/colorprocessor.h"
@@ -35,48 +35,48 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(OCIOGradingTransformLinearNode)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 	virtual void InputValueChangedEvent(const QString &input,
 										int element) override;
 	virtual void InputConnectedEvent(const QString &input, int element,
 									 Node *output) override;
 	virtual void InputDisconnectedEvent(const QString &input, int element,
 										Node *output) override;
-	void GenerateProcessor();
+	void generate_processor();
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	static const QString kContrastInput;
-	static const QString kOffsetInput;
-	static const QString kExposureInput;
-	static const QString kSaturationInput;
-	static const QString kPivotInput;
-	static const QString kClampBlackEnableInput;
-	static const QString kClampBlackInput;
-	static const QString kClampWhiteEnableInput;
-	static const QString kClampWhiteInput;
+	static const QString k_contrast_input;
+	static const QString k_offset_input;
+	static const QString k_exposure_input;
+	static const QString k_saturation_input;
+	static const QString k_pivot_input;
+	static const QString k_clamp_black_enable_input;
+	static const QString k_clamp_black_input;
+	static const QString k_clamp_white_enable_input;
+	static const QString k_clamp_white_input;
 
 protected slots:
-	virtual void ConfigChanged() override;
+	virtual void config_changed() override;
 
 private:
-	void SetVec4InputColors(const QString &input);
+	void set_vec4_input_colors(const QString &input);
 
 	/**
 	 * @brief Constrains the white clamp UI minimum to just above the black
-	 * clamp, as required by OCIO::GradingPrimary::validate
+	 * clamp, as required by ocio::GradingPrimary::validate
 	 *
 	 * Only applies while the black clamp is a static value; when it is
 	 * keyframed or connected the invariant is enforced per frame in Value()
 	 * instead.
 	 */
-	void UpdateClampWhiteMinimum();
+	void update_clamp_white_minimum();
 };
 
 } // olive

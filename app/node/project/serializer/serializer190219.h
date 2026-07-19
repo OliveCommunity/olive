@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECTSERIALIZER190219_H
-#define PROJECTSERIALIZER190219_H
+#ifndef OAK_PROJECTSERIALIZER190219_H
+#define OAK_PROJECTSERIALIZER190219_H
 
 #include "serializer.h"
 
@@ -32,10 +32,10 @@ public:
 	ProjectSerializer190219() = default;
 
 protected:
-	virtual LoadData Load(Project *project, QXmlStreamReader *reader,
+	virtual LoadData load(Project *project, QXmlStreamReader *reader,
 						  LoadType load_type, void *reserved) const override;
 
-	virtual uint Version() const override
+	virtual uint version() const override
 	{
 		return 190219;
 	}

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef DISKCACHEDIALOG_H
-#define DISKCACHEDIALOG_H
+#ifndef OAK_DISKCACHEDIALOG_H
+#define OAK_DISKCACHEDIALOG_H
 
 #include <QCheckBox>
 #include <QDialog>
@@ -37,7 +37,7 @@ class DiskCacheDialog : public QDialog {
 public:
 	DiskCacheDialog(DiskCacheFolder *folder, QWidget *parent = nullptr);
 
-	static void ClearDiskCache(const QString &path, QWidget *parent,
+	static void clear_disk_cache(const QString &path, QWidget *parent,
 							   QPushButton *clear_btn = nullptr);
 
 public slots:
@@ -53,9 +53,9 @@ private:
 	QPushButton *clear_cache_btn_;
 
 private slots:
-	void ClearDiskCache();
+	void clear_disk_cache();
 };
 
 }
 
-#endif // DISKCACHEDIALOG_H
+#endif // OAK_DISKCACHEDIALOG_H

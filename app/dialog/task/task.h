@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TASKDIALOG_H
-#define TASKDIALOG_H
+#ifndef OAK_TASKDIALOG_H
+#define OAK_TASKDIALOG_H
 
 #include "dialog/progress/progress.h"
 #include "task/task.h"
@@ -45,7 +45,7 @@ public:
    *
    * This is TRUE by default.
    */
-	void SetDestroyOnClose(bool e)
+	void set_destroy_on_close(bool e)
 	{
 		destroy_on_close_ = e;
 	}
@@ -53,7 +53,7 @@ public:
 	/**
    * @brief Returns this dialog's task
    */
-	Task *GetTask() const
+	Task *get_task() const
 	{
 		return task_;
 	}
@@ -64,9 +64,9 @@ protected:
 	virtual void closeEvent(QCloseEvent *e) override;
 
 signals:
-	void TaskSucceeded(Task *task);
+	void task_succeeded(Task *task);
 
-	void TaskFailed(Task *task);
+	void task_failed(Task *task);
 
 private:
 	Task *task_;
@@ -78,9 +78,9 @@ private:
 	bool task_finished_;
 
 private slots:
-	void TaskFinished();
+	void task_finished();
 };
 
 }
 
-#endif // TASKDIALOG_H
+#endif // OAK_TASKDIALOG_H

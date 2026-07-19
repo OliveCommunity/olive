@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef IMPORTTIMELINETOOL_H
-#define IMPORTTIMELINETOOL_H
+#ifndef OAK_IMPORTTIMELINETOOL_H
+#define OAK_IMPORTTIMELINETOOL_H
 
 #include "tool.h"
 
@@ -31,48 +31,48 @@ class ImportTool : public TimelineTool {
 public:
 	ImportTool(TimelineWidget *parent);
 
-	virtual void DragEnter(TimelineViewMouseEvent *event) override;
-	virtual void DragMove(TimelineViewMouseEvent *event) override;
-	virtual void DragLeave(QDragLeaveEvent *event) override;
-	virtual void DragDrop(TimelineViewMouseEvent *event) override;
+	virtual void drag_enter(TimelineViewMouseEvent *event) override;
+	virtual void drag_move(TimelineViewMouseEvent *event) override;
+	virtual void drag_leave(QDragLeaveEvent *event) override;
+	virtual void drag_drop(TimelineViewMouseEvent *event) override;
 
 	using DraggedFootageData =
 		QVector<QPair<ViewerOutput *, QVector<Track::Reference>>>;
 
-	void PlaceAt(const QVector<ViewerOutput *> &footage, const rational &start,
+	void place_at(const QVector<ViewerOutput *> &footage, const Rational &start,
 				 bool insert, MultiUndoCommand *command, int track_offset = 0,
 				 bool jump_to_end = false);
-	void PlaceAt(const DraggedFootageData &footage, const rational &start,
+	void place_at(const DraggedFootageData &footage, const Rational &start,
 				 bool insert, MultiUndoCommand *command, int track_offset = 0,
 				 bool jump_to_end = false);
 
 	enum DropWithoutSequenceBehavior {
-		kDWSAsk,
-		kDWSAuto,
-		kDWSManual,
-		kDWSDisable
+		k_dws_ask,
+		k_dws_auto,
+		k_dws_manual,
+		k_dws_disable
 	};
 
 private:
-	void FootageToGhosts(rational ghost_start,
+	void footage_to_ghosts(Rational ghost_start,
 						 const DraggedFootageData &footage,
-						 const rational &dest_tb, const int &track_start);
+						 const Rational &dest_tb, const int &track_start);
 
-	void PrepGhosts(const rational &frame, const int &track_index);
+	void prep_ghosts(const Rational &frame, const int &track_index);
 
-	void DropGhosts(bool insert, MultiUndoCommand *parent_command);
+	void drop_ghosts(bool insert, MultiUndoCommand *parent_command);
 
-	TimelineViewGhostItem *CreateGhost(const TimeRange &range,
-									   const rational &media_in,
+	TimelineViewGhostItem *create_ghost(const TimeRange &range,
+									   const Rational &media_in,
 									   const Track::Reference &track);
 
 	DraggedFootageData dragged_footage_;
 
 	int import_pre_buffer_;
 
-	rational ghost_offset_;
+	Rational ghost_offset_;
 };
 
 }
 
-#endif // IMPORTTIMELINETOOL_H
+#endif // OAK_IMPORTTIMELINETOOL_H

@@ -33,14 +33,14 @@ AudioMonitorPanel::AudioMonitorPanel()
 {
 	audio_monitor_ = new AudioMonitor(this);
 
-	SetWidgetWithPadding(audio_monitor_);
+	set_widget_with_padding(audio_monitor_);
 
-	Retranslate();
+	retranslate();
 }
 
-void AudioMonitorPanel::Retranslate()
+void AudioMonitorPanel::retranslate()
 {
-	SetTitle(tr("Audio Monitor"));
+	set_title(tr("Audio Monitor"));
 }
 
 }

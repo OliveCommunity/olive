@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CRASHPADUTILS_H
-#define CRASHPADUTILS_H
+#ifndef OAK_CRASHPADUTILS_H
+#define OAK_CRASHPADUTILS_H
 
 #include <client/crashpad_client.h>
 
@@ -38,4 +38,4 @@
 #define BASE_STRING_TO_QSTRING(x) QString::fromStdWString(x)
 #endif // BUILDFLAG(IS_WIN)
 
-#endif // CRASHPADUTILS_H
+#endif // OAK_CRASHPADUTILS_H

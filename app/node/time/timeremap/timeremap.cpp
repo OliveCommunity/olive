@@ -26,23 +26,23 @@
 namespace olive
 {
 
-const QString TimeRemapNode::kTimeInput = QStringLiteral("time_in");
-const QString TimeRemapNode::kInputInput = QStringLiteral("input_in");
+const QString TimeRemapNode::k_time_input = QStringLiteral("time_in");
+const QString TimeRemapNode::k_input_input = QStringLiteral("input_in");
 
 #define super Node
 
 TimeRemapNode::TimeRemapNode()
 {
-	AddInput(kTimeInput, NodeValue::kRational, QVariant::fromValue(rational(0)),
-			 InputFlags(kInputFlagNotConnectable));
-	SetInputProperty(kTimeInput, QStringLiteral("view"), RationalSlider::kTime);
-	SetInputProperty(kTimeInput, QStringLiteral("viewlock"), true);
+	add_input(k_time_input, NodeValue::k_rational, QVariant::fromValue(Rational(0)),
+			 InputFlags(k_input_flag_not_connectable));
+	set_input_property(k_time_input, QStringLiteral("view"), RationalSlider::k_time);
+	set_input_property(k_time_input, QStringLiteral("viewlock"), true);
 
-	AddInput(kInputInput, NodeValue::kNone,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_input_input, NodeValue::k_none,
+			 InputFlags(k_input_flag_not_keyframable));
 }
 
-QString TimeRemapNode::Name() const
+QString TimeRemapNode::name() const
 {
 	return tr("Time Remap");
 }
@@ -52,58 +52,58 @@ QString TimeRemapNode::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.timeremap");
 }
 
-QVector<Node::CategoryID> TimeRemapNode::Category() const
+QVector<Node::CategoryID> TimeRemapNode::category() const
 {
-	return { kCategoryTime };
+	return { k_category_time };
 }
 
-QString TimeRemapNode::Description() const
+QString TimeRemapNode::description() const
 {
 	return tr("Arbitrarily remap time through the nodes.");
 }
 
-TimeRange TimeRemapNode::InputTimeAdjustment(const QString &input, int element,
+TimeRange TimeRemapNode::input_time_adjustment(const QString &input, int element,
 											 const TimeRange &input_time,
 											 bool clamp) const
 {
-	if (input == kInputInput) {
-		return TimeRange(GetRemappedTime(input_time.in()),
-						 GetRemappedTime(input_time.out()));
+	if (input == k_input_input) {
+		return TimeRange(get_remapped_time(input_time.in()),
+						 get_remapped_time(input_time.out()));
 	} else {
-		return super::InputTimeAdjustment(input, element, input_time, clamp);
+		return super::input_time_adjustment(input, element, input_time, clamp);
 	}
 }
 
-TimeRange TimeRemapNode::OutputTimeAdjustment(const QString &input, int element,
+TimeRange TimeRemapNode::output_time_adjustment(const QString &input, int element,
 											  const TimeRange &input_time) const
 {
 	/*if (input == kInputInput) {
-    rational target_time = GetValueAtTime(kTimeInput, input_time.in()).value<rational>();
+    Rational target_time = GetValueAtTime(kTimeInput, input_time.in()).value<Rational>();
 
     return TimeRange(target_time, target_time + input_time.length());
   } else {
-    return super::OutputTimeAdjustment(input, element, input_time);
+    return super::output_time_adjustment(input, element, input_time);
   }*/
-	return super::OutputTimeAdjustment(input, element, input_time);
+	return super::output_time_adjustment(input, element, input_time);
 }
 
-void TimeRemapNode::Retranslate()
+void TimeRemapNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kTimeInput, QStringLiteral("Time"));
-	SetInputName(kInputInput, QStringLiteral("Input"));
+	set_input_name(k_time_input, QStringLiteral("Time"));
+	set_input_name(k_input_input, QStringLiteral("Input"));
 }
 
-void TimeRemapNode::Value(const NodeValueRow &value, const NodeGlobals &globals,
+void TimeRemapNode::value(const NodeValueRow &value, const NodeGlobals &globals,
 						  NodeValueTable *table) const
 {
-	table->Push(value[kInputInput]);
+	table->push(value[k_input_input]);
 }
 
-rational TimeRemapNode::GetRemappedTime(const rational &input) const
+Rational TimeRemapNode::get_remapped_time(const Rational &input) const
 {
-	return GetValueAtTime(kTimeInput, input).value<rational>();
+	return get_value_at_time(k_time_input, input).value<Rational>();
 }
 
 }

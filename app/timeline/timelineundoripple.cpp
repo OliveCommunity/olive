@@ -49,7 +49,7 @@ TrackRippleRemoveAreaCommand::~TrackRippleRemoveAreaCommand()
 void TrackRippleRemoveAreaCommand::prepare()
 {
 	// Determine precisely what will be happening to these tracks
-	Block *first_block = track_->NearestBlockBeforeOrAt(range_.in());
+	Block *first_block = track_->nearest_block_before_or_at(range_.in());
 
 	if (!first_block) {
 		// No blocks at this time, nothing to be done on this track
@@ -140,15 +140,15 @@ void TrackRippleRemoveAreaCommand::redo()
 		if (!removals_.isEmpty()) {
 			foreach (auto op, removals_) {
 				// Ripple remove them all first
-				track_->RippleRemoveBlock(op.block);
+				track_->ripple_remove_block(op.block);
 			}
 
 			// Create undo commands for node removals where possible
 			if (remove_block_commands_.isEmpty()) {
 				foreach (auto op, removals_) {
-					if (NodeCanBeRemoved(op.block)) {
+					if (node_can_be_removed(op.block)) {
 						remove_block_commands_.append(
-							CreateRemoveCommand(op.block));
+							create_remove_command(op.block));
 					}
 				}
 			}
@@ -179,7 +179,7 @@ void TrackRippleRemoveAreaCommand::undo()
 		}
 
 		foreach (auto op, removals_) {
-			track_->InsertBlockAfter(op.block, op.before);
+			track_->insert_block_after(op.block, op.before);
 		}
 	}
 }
@@ -189,8 +189,8 @@ void TrackRippleRemoveAreaCommand::undo()
 //
 void TrackListRippleRemoveAreaCommand::prepare()
 {
-	foreach (Track *track, list_->GetTracks()) {
-		if (track->IsLocked()) {
+	foreach (Track *track, list_->get_tracks()) {
+		if (track->is_locked()) {
 			continue;
 		}
 
@@ -219,10 +219,10 @@ void TrackListRippleRemoveAreaCommand::undo()
 // TimelineRippleRemoveAreaCommand
 //
 TimelineRippleRemoveAreaCommand::TimelineRippleRemoveAreaCommand(
-	Sequence *timeline, rational in, rational out)
+	Sequence *timeline, Rational in, Rational out)
 	: timeline_(timeline)
 {
-	for (int i = 0; i < Track::kCount; i++) {
+	for (int i = 0; i < Track::k_count; i++) {
 		add_child(new TrackListRippleRemoveAreaCommand(
 			timeline->track_list(static_cast<Track::Type>(i)), in, out));
 	}
@@ -233,7 +233,7 @@ TimelineRippleRemoveAreaCommand::TimelineRippleRemoveAreaCommand(
 //
 TrackListRippleToolCommand::TrackListRippleToolCommand(
 	TrackList *track_list, const QHash<Track *, RippleInfo> &info,
-	const rational &ripple_movement,
+	const Rational &ripple_movement,
 	const Timeline::MovementMode &movement_mode)
 	: track_list_(track_list)
 	, info_(info)
@@ -252,8 +252,8 @@ void TrackListRippleToolCommand::ripple(bool redo)
 
 	// If we can shift, we will shift from the latest out before the ripple to the latest out after,
 	// since those sections will be unchanged by this ripple
-	rational pre_latest_out = RATIONAL_MIN;
-	rational post_latest_out = RATIONAL_MIN;
+	Rational pre_latest_out = RATIONAL_MIN;
+	Rational post_latest_out = RATIONAL_MIN;
 
 	// Make timeline changes
 	for (auto it = info_.cbegin(); it != info_.cend(); it++) {
@@ -263,10 +263,10 @@ void TrackListRippleToolCommand::ripple(bool redo)
 		Block *b = info.block;
 
 		// Generate block length
-		rational new_block_length;
-		rational operation_movement = ripple_movement_;
+		Rational new_block_length;
+		Rational operation_movement = ripple_movement_;
 
-		if (movement_mode_ == Timeline::kTrimIn) {
+		if (movement_mode_ == Timeline::k_trim_in) {
 			operation_movement = -operation_movement;
 		}
 
@@ -278,8 +278,8 @@ void TrackListRippleToolCommand::ripple(bool redo)
 			new_block_length = b->length() + operation_movement;
 		}
 
-		rational pre_shift;
-		rational post_shift;
+		Rational pre_shift;
+		Rational post_shift;
 
 		if (info.append_gap) {
 			// Rather than rippling the referenced block, we'll insert a gap and ripple with that
@@ -293,7 +293,7 @@ void TrackListRippleToolCommand::ripple(bool redo)
 				}
 
 				gap->setParent(track->parent());
-				track->InsertBlockBefore(gap, b);
+				track->insert_block_before(gap, b);
 
 				// As an insertion, we will shift from the gap's in to the gap's out
 				pre_shift = gap->in();
@@ -304,7 +304,7 @@ void TrackListRippleToolCommand::ripple(bool redo)
 				pre_shift = gap->out();
 				post_shift = gap->in();
 
-				track->RippleRemoveBlock(gap);
+				track->ripple_remove_block(gap);
 				gap->setParent(&memory_manager_);
 			}
 
@@ -323,12 +323,12 @@ void TrackListRippleToolCommand::ripple(bool redo)
 
 				// Remove gap from track and from graph
 				working_data.removed_gap_after = b->previous();
-				track->RippleRemoveBlock(b);
+				track->ripple_remove_block(b);
 				b->setParent(&memory_manager_);
 			} else {
 				// Restore gap to graph and track
 				b->setParent(track->parent());
-				track->InsertBlockAfter(b, working_data.removed_gap_after);
+				track->insert_block_after(b, working_data.removed_gap_after);
 
 				// The earliest point changes will happen is at the start of this block
 				working_data.earliest_point_of_change = b->in();
@@ -342,13 +342,13 @@ void TrackListRippleToolCommand::ripple(bool redo)
 			// Store old length
 			working_data.old_length = b->length();
 
-			if (movement_mode_ == Timeline::kTrimIn) {
+			if (movement_mode_ == Timeline::k_trim_in) {
 				// The earliest point changes will occur is in point of this bloc
 				working_data.earliest_point_of_change = b->in();
 
 				// Undo the trim in inversion we do above, this will still be inverted accurately for
 				// undoing where appropriate
-				rational inverted = -operation_movement;
+				Rational inverted = -operation_movement;
 				if (inverted > 0) {
 					pre_shift = b->in() + inverted;
 					post_shift = b->in();
@@ -396,7 +396,7 @@ void TimelineRippleDeleteGapsAtRegionsCommand::prepare()
 		const TimeRange &range = region.second;
 
 		GapBlock *gap =
-			dynamic_cast<GapBlock *>(track->NearestBlockBeforeOrAt(range.in()));
+			dynamic_cast<GapBlock *>(track->nearest_block_before_or_at(range.in()));
 
 		if (gap) {
 			QVector<RemovalRequest> &gaps_on_track = requested_gaps[track];
@@ -424,11 +424,11 @@ void TimelineRippleDeleteGapsAtRegionsCommand::prepare()
 
 	// For each gap on each track, find a corresponding gap on every other track (which may include
 	// a requested gap) to ripple in order to keep everything synchronized
-	QHash<GapBlock *, rational> gap_lengths;
+	QHash<GapBlock *, Rational> gap_lengths;
 	for (int gap_index = 0; gap_index < max_gaps; gap_index++) {
-		rational earliest_point = RATIONAL_MAX;
-		rational ripple_length = RATIONAL_MAX;
-		rational latest_point = RATIONAL_MIN;
+		Rational earliest_point = RATIONAL_MAX;
+		Rational ripple_length = RATIONAL_MAX;
+		Rational latest_point = RATIONAL_MIN;
 
 		foreach (const QVector<RemovalRequest> &gaps_on_track, requested_gaps) {
 			if (gap_index < gaps_on_track.size()) {
@@ -442,8 +442,8 @@ void TimelineRippleDeleteGapsAtRegionsCommand::prepare()
 		// Determine which gaps will be involved in this operation
 		QVector<GapBlock *> gaps;
 
-		foreach (Track *track, timeline_->GetTracks()) {
-			if (track->IsLocked()) {
+		foreach (Track *track, timeline_->get_tracks()) {
+			if (track->is_locked()) {
 				continue;
 			}
 
@@ -455,7 +455,7 @@ void TimelineRippleDeleteGapsAtRegionsCommand::prepare()
 				gap = requested_gaps_on_track.at(gap_index).gap;
 			} else {
 				// No requested gap was at this index, find one
-				Block *block = track->NearestBlockAfterOrAt(earliest_point);
+				Block *block = track->nearest_block_after_or_at(earliest_point);
 
 				if (block) {
 					// Found a block, test if it's a gap

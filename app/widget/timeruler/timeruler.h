@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMERULER_H
-#define TIMERULER_H
+#ifndef OAK_TIMERULER_H
+#define OAK_TIMERULER_H
 
 #include <QTimer>
 #include <QWidget>
@@ -37,22 +37,22 @@ public:
 	TimeRuler(bool text_visible = true, bool cache_status_visible = false,
 			  QWidget *parent = nullptr);
 
-	void SetCenteredText(bool c);
+	void set_centered_text(bool c);
 
-	void SetPlaybackCache(PlaybackCache *cache);
+	void set_playback_cache(PlaybackCache *cache);
 
 protected:
 	virtual void drawForeground(QPainter *painter, const QRectF &rect) override;
 
-	virtual void TimebaseChangedEvent(const rational &tb) override;
+	virtual void TimebaseChangedEvent(const Rational &tb) override;
 
 protected slots:
-	virtual bool ShowContextMenu(const QPoint &p) override;
+	virtual bool show_context_menu(const QPoint &p) override;
 
 private:
-	void UpdateHeight();
+	void update_height();
 
-	int CacheStatusHeight() const;
+	int cache_status_height() const;
 
 	int minimum_gap_between_lines_;
 
@@ -69,4 +69,4 @@ private:
 
 }
 
-#endif // TIMERULER_H
+#endif // OAK_TIMERULER_H

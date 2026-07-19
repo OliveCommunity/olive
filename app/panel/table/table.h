@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODETABLEPANEL_H
-#define NODETABLEPANEL_H
+#ifndef OAK_NODETABLEPANEL_H
+#define OAK_NODETABLEPANEL_H
 
 #include "panel/timebased/timebased.h"
 #include "widget/nodetableview/nodetablewidget.h"
@@ -34,21 +34,21 @@ public:
 	NodeTablePanel();
 
 public slots:
-	void SelectNodes(const QVector<Node *> &nodes)
+	void select_nodes(const QVector<Node *> &nodes)
 	{
-		static_cast<NodeTableWidget *>(GetTimeBasedWidget())->SelectNodes(nodes);
+		static_cast<NodeTableWidget *>(get_time_based_widget())->select_nodes(nodes);
 	}
 
-	void DeselectNodes(const QVector<Node *> &nodes)
+	void deselect_nodes(const QVector<Node *> &nodes)
 	{
-		static_cast<NodeTableWidget *>(GetTimeBasedWidget())
-			->DeselectNodes(nodes);
+		static_cast<NodeTableWidget *>(get_time_based_widget())
+			->deselect_nodes(nodes);
 	}
 
 private:
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 };
 
 }
 
-#endif // NODETABLEPANEL_H
+#endif // OAK_NODETABLEPANEL_H

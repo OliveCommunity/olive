@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef JOBTIME_H
-#define JOBTIME_H
+#ifndef OAK_JOBTIME_H
+#define OAK_JOBTIME_H
 
 #include <QDebug>
 #include <stdint.h>
@@ -29,7 +29,7 @@ class JobTime {
 public:
 	JobTime();
 
-	void Acquire();
+	void acquire();
 
 	uint64_t value() const
 	{
@@ -76,4 +76,4 @@ QDebug operator<<(QDebug debug, const olive::JobTime &r);
 
 Q_DECLARE_METATYPE(olive::JobTime)
 
-#endif // JOBTIME_H
+#endif // OAK_JOBTIME_H

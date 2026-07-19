@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef LIBOLIVECORE_FRACTIONUTILS_H
-#define LIBOLIVECORE_FRACTIONUTILS_H
+#ifndef OAK_LIBOLIVECORE_FRACTIONUTILS_H
+#define OAK_LIBOLIVECORE_FRACTIONUTILS_H
 
 #include <stdint.h>
 
@@ -38,12 +38,12 @@ enum class FractionRounding {
 	 * Round to the nearest value; halfway cases are rounded away from zero.
 	 * Equivalent to FFmpeg's AV_ROUND_NEAR_INF.
 	 */
-	kNearInf,
+	k_near_inf,
 
 	/**
 	 * Round toward positive infinity. Equivalent to FFmpeg's AV_ROUND_UP.
 	 */
-	kUp
+	k_up
 };
 
 /**
@@ -55,7 +55,7 @@ enum class FractionRounding {
  *
  * A zero denominator is preserved (with the numerator set to zero).
  */
-void ReduceFraction(int64_t &num, int64_t &den, int64_t max);
+void reduce_fraction(int64_t &num, int64_t &den, int64_t max);
 
 /**
  * @brief Compare two fractions
@@ -64,7 +64,7 @@ void ReduceFraction(int64_t &num, int64_t &den, int64_t max);
  * 0 if a == b, 1 if a > b, and INT_MIN when the comparison is meaningless
  * (degenerate zero-denominator fractions).
  */
-int CompareFractions(int an, int ad, int bn, int bd);
+int compare_fractions(int an, int ad, int bn, int bd);
 
 /**
  * @brief Rescale `a` by the fraction b/c: returns a * b / c
@@ -73,8 +73,8 @@ int CompareFractions(int an, int ad, int bn, int bd);
  * product is computed with 128-bit arithmetic where available so that no
  * precision is lost for large timestamps.
  */
-int64_t RescaleRnd(int64_t a, int64_t b, int64_t c, FractionRounding rnd);
+int64_t rescale_rnd(int64_t a, int64_t b, int64_t c, FractionRounding rnd);
 
 }
 
-#endif // LIBOLIVECORE_FRACTIONUTILS_H
+#endif // OAK_LIBOLIVECORE_FRACTIONUTILS_H

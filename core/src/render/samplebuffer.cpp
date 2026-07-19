@@ -38,7 +38,7 @@ SampleBuffer::SampleBuffer()
 }
 
 SampleBuffer::SampleBuffer(const AudioParams &audio_params,
-						   const rational &length)
+						   const Rational &length)
 	: audio_params_(audio_params)
 {
 	sample_count_per_channel_ = audio_params_.time_to_samples(length);
@@ -56,7 +56,7 @@ SampleBuffer::SampleBuffer(const AudioParams &audio_params,
 SampleBuffer SampleBuffer::rip_channel(int channel) const
 {
 	AudioParams p = this->audio_params_;
-	p.set_channel_layout(kChannelLayoutMono);
+	p.set_channel_layout(k_channel_layout_mono);
 
 	SampleBuffer b(p, this->sample_count_per_channel_);
 	b.fast_set(*this, 0, channel);
@@ -76,7 +76,7 @@ const AudioParams &SampleBuffer::audio_params() const
 void SampleBuffer::set_audio_params(const AudioParams &params)
 {
 	if (is_allocated()) {
-		Log::Warning() << "Tried to set parameters on allocated sample buffer";
+		Log::warning() << "Tried to set parameters on allocated sample buffer";
 		return;
 	}
 
@@ -86,7 +86,7 @@ void SampleBuffer::set_audio_params(const AudioParams &params)
 void SampleBuffer::set_sample_count(const size_t &sample_count)
 {
 	if (is_allocated()) {
-		Log::Warning()
+		Log::warning()
 			<< "Tried to set sample count on allocated sample buffer";
 		return;
 	}
@@ -97,19 +97,19 @@ void SampleBuffer::set_sample_count(const size_t &sample_count)
 void SampleBuffer::allocate()
 {
 	if (!audio_params_.is_valid()) {
-		Log::Warning()
+		Log::warning()
 			<< "Tried to allocate sample buffer with invalid audio parameters";
 		return;
 	}
 
 	if (!sample_count_per_channel_) {
-		Log::Warning()
+		Log::warning()
 			<< "Tried to allocate sample buffer with zero sample count";
 		return;
 	}
 
 	if (is_allocated()) {
-		Log::Warning() << "Tried to allocate already allocated sample buffer";
+		Log::warning() << "Tried to allocate already allocated sample buffer";
 		return;
 	}
 
@@ -127,7 +127,7 @@ void SampleBuffer::destroy()
 void SampleBuffer::reverse()
 {
 	if (!is_allocated()) {
-		Log::Warning() << "Tried to reverse an unallocated sample buffer";
+		Log::warning() << "Tried to reverse an unallocated sample buffer";
 		return;
 	}
 
@@ -145,7 +145,7 @@ void SampleBuffer::reverse()
 void SampleBuffer::speed(double speed)
 {
 	if (!is_allocated()) {
-		Log::Warning() << "Tried to speed an unallocated sample buffer";
+		Log::warning() << "Tried to speed an unallocated sample buffer";
 		return;
 	}
 
@@ -256,7 +256,7 @@ void SampleBuffer::silence(size_t start_sample, size_t end_sample)
 void SampleBuffer::silence_bytes(size_t start_byte, size_t end_byte)
 {
 	if (!is_allocated()) {
-		Log::Warning() << "Tried to fill an unallocated sample buffer";
+		Log::warning() << "Tried to fill an unallocated sample buffer";
 		return;
 	}
 
@@ -270,7 +270,7 @@ void SampleBuffer::set(int channel, const float *data, size_t sample_offset,
 					   size_t sample_length)
 {
 	if (!is_allocated()) {
-		Log::Warning() << "Tried to fill an unallocated sample buffer";
+		Log::warning() << "Tried to fill an unallocated sample buffer";
 		return;
 	}
 

@@ -52,7 +52,7 @@ PreferencesAppearanceTab::PreferencesAppearanceTab()
 		for (i = themes.cbegin(); i != themes.cend(); i++) {
 			style_combobox_->addItem(i.value(), i.key());
 
-			if (StyleManager::GetStyle() == i.key()) {
+			if (StyleManager::get_style() == i.key()) {
 				style_combobox_->setCurrentIndex(style_combobox_->count() - 1);
 			}
 		}
@@ -68,14 +68,14 @@ PreferencesAppearanceTab::PreferencesAppearanceTab()
 
 		QGridLayout *color_layout = new QGridLayout(color_group);
 
-		for (int i = 0; i < Node::kCategoryCount; i++) {
+		for (int i = 0; i < Node::k_category_count; i++) {
 			QString cat_name =
-				Node::GetCategoryName(static_cast<Node::CategoryID>(i));
+				Node::get_category_name(static_cast<Node::CategoryID>(i));
 			color_layout->addWidget(new QLabel(cat_name), i, 0);
 
 			ColorCodingComboBox *ccc = new ColorCodingComboBox();
-			ccc->SetColor(
-				OLIVE_CONFIG_STR(QStringLiteral("CatColor%1").arg(i)).toInt());
+			ccc->set_color(
+				OAK_CONFIG_STR(QStringLiteral("CatColor%1").arg(i)).toInt());
 			color_layout->addWidget(ccc, i, 1);
 			color_btns_.append(ccc);
 		}
@@ -93,7 +93,7 @@ PreferencesAppearanceTab::PreferencesAppearanceTab()
 		marker_layout->addWidget(new QLabel("Default Marker Color"), 0, 0);
 
 		marker_btn_ = new ColorCodingComboBox();
-		marker_btn_->SetColor(OLIVE_CONFIG("MarkerColor").toInt());
+		marker_btn_->set_color(OAK_CONFIG("MarkerColor").toInt());
 		marker_layout->addWidget(marker_btn_, 0, 1);
 
 		appearance_layout->addWidget(marker_group, row, 0, 1, 2);
@@ -102,23 +102,23 @@ PreferencesAppearanceTab::PreferencesAppearanceTab()
 	layout->addStretch();
 }
 
-void PreferencesAppearanceTab::Accept(MultiUndoCommand *command)
+void PreferencesAppearanceTab::accept(MultiUndoCommand *command)
 {
 	Q_UNUSED(command)
 
 	QString style_path = style_combobox_->currentData().toString();
 
-	if (style_path != StyleManager::GetStyle()) {
-		StyleManager::SetStyle(style_path);
-		OLIVE_CONFIG("Style") = style_path;
+	if (style_path != StyleManager::get_style()) {
+		StyleManager::set_style(style_path);
+		OAK_CONFIG("Style") = style_path;
 	}
 
 	for (int i = 0; i < color_btns_.size(); i++) {
-		OLIVE_CONFIG_STR(QStringLiteral("CatColor%1").arg(i)) =
-			color_btns_.at(i)->GetSelectedColor();
+		OAK_CONFIG_STR(QStringLiteral("CatColor%1").arg(i)) =
+			color_btns_.at(i)->get_selected_color();
 	}
 
-	OLIVE_CONFIG("MarkerColor") = marker_btn_->GetSelectedColor();
+	OAK_CONFIG("MarkerColor") = marker_btn_->get_selected_color();
 }
 
 }

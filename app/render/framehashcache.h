@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef VIDEORENDERFRAMECACHE_H
-#define VIDEORENDERFRAMECACHE_H
+#ifndef OAK_VIDEORENDERFRAMECACHE_H
+#define OAK_VIDEORENDERFRAMECACHE_H
 
 #include "codec/frame.h"
 #include "render/playbackcache.h"
@@ -34,64 +34,64 @@ class FrameHashCache : public PlaybackCache {
 public:
 	FrameHashCache(QObject *parent = nullptr);
 
-	const rational &GetTimebase() const
+	const Rational &get_timebase() const
 	{
 		return timebase_;
 	}
 
-	void SetTimebase(const rational &tb);
+	void set_timebase(const Rational &tb);
 
-	void ValidateTimestamp(const int64_t &ts);
-	void ValidateTime(const rational &time);
+	void validate_timestamp(const int64_t &ts);
+	void validate_time(const Rational &time);
 
-	bool IsFrameCached(const rational &time) const
+	bool is_frame_cached(const Rational &time) const
 	{
-		return GetValidatedRanges().contains(time);
+		return get_validated_ranges().contains(time);
 	}
 
-	QString GetValidCacheFilename(const rational &time) const;
+	QString get_valid_cache_filename(const Rational &time) const;
 
-	static bool SaveCacheFrame(const QString &filename, FramePtr frame);
-	bool SaveCacheFrame(const int64_t &time, FramePtr frame) const;
-	static bool SaveCacheFrame(const QString &cache_path, const QUuid &uuid,
+	static bool save_cache_frame(const QString &filename, FramePtr frame);
+	bool save_cache_frame(const int64_t &time, FramePtr frame) const;
+	static bool save_cache_frame(const QString &cache_path, const QUuid &uuid,
 							   const int64_t &time, FramePtr frame);
-	static bool SaveCacheFrame(const QString &cache_path, const QUuid &uuid,
-							   const rational &time, const rational &tb,
+	static bool save_cache_frame(const QString &cache_path, const QUuid &uuid,
+							   const Rational &time, const Rational &tb,
 							   FramePtr frame);
-	static FramePtr LoadCacheFrame(const QString &cache_path, const QUuid &uuid,
+	static FramePtr load_cache_frame(const QString &cache_path, const QUuid &uuid,
 								   const int64_t &time);
-	FramePtr LoadCacheFrame(const int64_t &time) const;
-	static FramePtr LoadCacheFrame(const QString &fn);
+	FramePtr load_cache_frame(const int64_t &time) const;
+	static FramePtr load_cache_frame(const QString &fn);
 
-	virtual void SetPassthrough(PlaybackCache *cache) override;
+	virtual void set_passthrough(PlaybackCache *cache) override;
 
 protected:
 	virtual void LoadStateEvent(QDataStream &stream) override;
 	virtual void SaveStateEvent(QDataStream &stream) override;
 
 private:
-	rational ToTime(const int64_t &ts) const;
-	int64_t ToTimestamp(const rational &ts,
-						Timecode::Rounding rounding = Timecode::kRound) const;
+	Rational to_time(const int64_t &ts) const;
+	int64_t to_timestamp(const Rational &ts,
+						Timecode::Rounding rounding = Timecode::k_round) const;
 
 	/**
    * @brief Return the path of the cached image at this time
    */
-	QString CachePathName(const int64_t &time) const;
-	QString CachePathName(const rational &time) const;
+	QString cache_path_name(const int64_t &time) const;
+	QString cache_path_name(const Rational &time) const;
 
-	static QString CachePathName(const QString &cache_path,
+	static QString cache_path_name(const QString &cache_path,
 								 const QUuid &cache_id, const int64_t &time);
-	static QString CachePathName(const QString &cache_path,
-								 const QUuid &cache_id, const rational &time,
-								 const rational &tb);
+	static QString cache_path_name(const QString &cache_path,
+								 const QUuid &cache_id, const Rational &time,
+								 const Rational &tb);
 
-	rational timebase_;
+	Rational timebase_;
 
 private slots:
-	void HashDeleted(const QString &path, const QString &filename);
+	void hash_deleted(const QString &path, const QString &filename);
 
-	void ProjectInvalidated(Project *p);
+	void project_invalidated(Project *p);
 };
 
 class ThumbnailCache : public FrameHashCache {
@@ -100,10 +100,10 @@ public:
 	ThumbnailCache(QObject *parent = nullptr)
 		: FrameHashCache(parent)
 	{
-		SetTimebase(rational(1, 10));
+		set_timebase(Rational(1, 10));
 	}
 };
 
 }
 
-#endif // VIDEORENDERFRAMECACHE_H
+#endif // OAK_VIDEORENDERFRAMECACHE_H

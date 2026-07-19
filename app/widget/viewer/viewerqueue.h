@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef VIEWERQUEUE_H
-#define VIEWERQUEUE_H
+#ifndef OAK_VIEWERQUEUE_H
+#define OAK_VIEWERQUEUE_H
 
 #include <QVariant>
 #include <QMutex>
@@ -32,7 +32,7 @@ namespace olive
 {
 
 struct ViewerPlaybackFrame {
-	rational timestamp;
+	Rational timestamp;
 	QVariant frame;
 };
 
@@ -57,7 +57,7 @@ public:
 		return *this;
 	}
 
-	void AppendTimewise(const ViewerPlaybackFrame &f, int playback_speed)
+	void append_timewise(const ViewerPlaybackFrame &f, int playback_speed)
 	{
 		QMutexLocker locker(mutex_);
 		if (this->empty() ||
@@ -73,7 +73,7 @@ public:
 		}
 	}
 
-	void PurgeBefore(const rational &time, int playback_speed)
+	void purge_before(const Rational &time, int playback_speed)
 	{
 		QMutexLocker locker(mutex_);
 		while (!this->empty() &&
@@ -91,4 +91,4 @@ private:
 
 Q_DECLARE_METATYPE(olive::ViewerPlaybackFrame)
 
-#endif // VIEWERQUEUE_H
+#endif // OAK_VIEWERQUEUE_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef ACCELERATEDJOB_H
-#define ACCELERATEDJOB_H
+#ifndef OAK_ACCELERATEDJOB_H
+#define OAK_ACCELERATEDJOB_H
 
 #include "node/param.h"
 #include "node/valuedatabase.h"
@@ -36,22 +36,22 @@ public:
 	{
 	}
 
-	virtual NodeValue Get(const QString &input) const
+	virtual NodeValue get(const QString &input) const
 	{
 		return value_map_.value(input);
 	}
 
-	virtual void Insert(const QString &input, const NodeValueRow &row)
+	virtual void insert(const QString &input, const NodeValueRow &row)
 	{
 		value_map_.insert(input, row.value(input));
 	}
 
-	virtual void Insert(const QString &input, const NodeValue &value)
+	virtual void insert(const QString &input, const NodeValue &value)
 	{
 		value_map_.insert(input, value);
 	}
 
-	virtual void Insert(const NodeValueRow &row)
+	virtual void insert(const NodeValueRow &row)
 	{
 #if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
 		value_map_.insert(row);
@@ -62,11 +62,11 @@ public:
 #endif
 	}
 
-	virtual const NodeValueRow &GetValues() const
+	virtual const NodeValueRow &get_values() const
 	{
 		return value_map_;
 	}
-	virtual NodeValueRow &GetValues()
+	virtual NodeValueRow &get_values()
 	{
 		return value_map_;
 	}
@@ -77,4 +77,4 @@ protected:
 
 }
 
-#endif // ACCELERATEDJOB_H
+#endif // OAK_ACCELERATEDJOB_H

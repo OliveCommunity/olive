@@ -18,8 +18,8 @@
 
 ***/
 
-#ifndef AUDIOLEVELMETER_H
-#define AUDIOLEVELMETER_H
+#ifndef OAK_AUDIOLEVELMETER_H
+#define OAK_AUDIOLEVELMETER_H
 
 #include <QVector>
 
@@ -45,13 +45,13 @@ public:
 		bool silence = true;
 	};
 
-	static Stats AnalyzeSampleBuffer(const core::SampleBuffer &samples);
+	static Stats analyze_sample_buffer(const core::SampleBuffer &samples);
 
 private:
-	static double LinearToDb(double linear);
-	static double PowerToLufs(double mean_square);
+	static double linear_to_db(double linear);
+	static double power_to_lufs(double mean_square);
 };
 
 }
 
-#endif // AUDIOLEVELMETER_H
+#endif // OAK_AUDIOLEVELMETER_H

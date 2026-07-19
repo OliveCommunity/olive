@@ -29,8 +29,8 @@ namespace olive
 PreCacheTask::PreCacheTask(Footage *footage, int index, Sequence *sequence)
 {
 	// Set video and audio params
-	set_video_params(sequence->GetVideoParams());
-	set_audio_params(sequence->GetAudioParams());
+	set_video_params(sequence->get_video_params());
+	set_audio_params(sequence->get_audio_params());
 
 	// Create new project
 	project_ = new Project();
@@ -38,25 +38,25 @@ PreCacheTask::PreCacheTask(Footage *footage, int index, Sequence *sequence)
 	// Create viewer with same parameters as the sequence
 	set_viewer(new ViewerOutput());
 	viewer()->setParent(project_);
-	viewer()->SetVideoParams(sequence->GetVideoParams());
-	viewer()->SetAudioParams(sequence->GetAudioParams());
+	viewer()->set_video_params(sequence->get_video_params());
+	viewer()->set_audio_params(sequence->get_audio_params());
 
 	// Copy project config nodes
-	Project::CopySettings(footage->project(), project_);
+	Project::copy_settings(footage->project(), project_);
 
 	// Copy footage node so it can precache without any modifications from the user screwing it up
 	footage_ = static_cast<Footage *>(footage->copy());
 	footage_->setParent(project_);
-	Node::CopyInputs(footage, footage_, false);
+	Node::copy_inputs(footage, footage_, false);
 
-	Node::ConnectEdge(footage_,
-					  NodeInput(viewer(), ViewerOutput::kTextureInput));
-	viewer()->SetValueHintForInput(
-		ViewerOutput::kTextureInput,
-		Node::ValueHint({ NodeValue::kTexture },
-						Track::Reference(Track::kVideo, index).ToString()));
+	Node::connect_edge(footage_,
+					  NodeInput(viewer(), ViewerOutput::k_texture_input));
+	viewer()->set_value_hint_for_input(
+		ViewerOutput::k_texture_input,
+		Node::ValueHint({ NodeValue::k_texture },
+						Track::Reference(Track::k_video, index).to_string()));
 
-	SetTitle(tr("Pre-caching %1:%2")
+	set_title(tr("Pre-caching %1:%2")
 				 .arg(footage_->filename(), QString::number(index)));
 }
 
@@ -66,29 +66,29 @@ PreCacheTask::~PreCacheTask()
 	delete project_;
 }
 
-bool PreCacheTask::Run()
+bool PreCacheTask::run()
 {
 	// Get list of invalidated ranges
 	TimeRange intersection;
 
-	if (footage_->GetWorkArea()->enabled()) {
+	if (footage_->get_work_area()->enabled()) {
 		// If we're caching only in-out, limit the range to that
-		intersection = footage_->GetWorkArea()->range();
+		intersection = footage_->get_work_area()->range();
 	} else {
 		// Otherwise use full length
-		intersection = TimeRange(0, footage_->GetVideoLength());
+		intersection = TimeRange(0, footage_->get_video_length());
 	}
 
 	TimeRangeList video_range =
-		viewer()->video_frame_cache()->GetInvalidatedRanges(intersection);
+		viewer()->video_frame_cache()->get_invalidated_ranges(intersection);
 
-	Render(project_->color_manager(), video_range, TimeRangeList(), TimeRange(),
-		   RenderMode::kOnline, viewer()->video_frame_cache());
+	render(project_->color_manager(), video_range, TimeRangeList(), TimeRange(),
+		   RenderMode::k_online, viewer()->video_frame_cache());
 
 	return true;
 }
 
-bool PreCacheTask::FrameDownloaded(FramePtr frame, const rational &time)
+bool PreCacheTask::frame_downloaded(FramePtr frame, const Rational &time)
 {
 	// Do nothing. Pre-cache essentially just creates more frames in the cache, it doesn't need to do
 	// anything else.
@@ -99,7 +99,7 @@ bool PreCacheTask::FrameDownloaded(FramePtr frame, const rational &time)
 	return true;
 }
 
-bool PreCacheTask::AudioDownloaded(const TimeRange &range,
+bool PreCacheTask::audio_downloaded(const TimeRange &range,
 								   const SampleBuffer &samples)
 {
 	// Pre-cache doesn't cache any audio

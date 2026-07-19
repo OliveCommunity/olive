@@ -1,8 +1,8 @@
 /***
 
-  Olive - Non-Linear Video Editor
-  Copyright (C) 2022 Olive Team
-  Modifications Copyright (C) 2025 mikesolar
+  Olive - Non-Linear video Editor
+  Copyright (c) 2022 Olive Team
+  Modifications Copyright (c) 2025 mikesolar
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -26,26 +26,26 @@
 namespace olive
 {
 
-OLIVE_ADD_TEST(DigitTest)
+OAK_ADD_TEST(DigitTest)
 {
-	OLIVE_ASSERT(GetDigitCount(1) == 1);
-	OLIVE_ASSERT(GetDigitCount(69) == 2);
-	OLIVE_ASSERT(GetDigitCount(420) == 3);
-	OLIVE_ASSERT(GetDigitCount(1337) == 4);
-	OLIVE_ASSERT(GetDigitCount(80085) == 5);
-	OLIVE_ASSERT(GetDigitCount(555555) == 6);
-	OLIVE_ASSERT(GetDigitCount(8675309) == 7);
-	OLIVE_ASSERT(GetDigitCount(78956423) == 8);
-	OLIVE_ASSERT(GetDigitCount(148497523) == 9);
-	OLIVE_ASSERT(GetDigitCount(4845821233) == 10);
-	OLIVE_ASSERT(GetDigitCount(18002738255) == 11);
-	OLIVE_ASSERT(GetDigitCount(180027382556) == 12);
-	OLIVE_ASSERT(GetDigitCount(1800273825568) == 13);
-	OLIVE_ASSERT(GetDigitCount(18002738255685) == 14);
-	OLIVE_ASSERT(GetDigitCount(180027382556857) == 15);
-	OLIVE_ASSERT(GetDigitCount(1800273825564857) == 16);
+	OAK_ASSERT(get_digit_count(1) == 1);
+	OAK_ASSERT(get_digit_count(69) == 2);
+	OAK_ASSERT(get_digit_count(420) == 3);
+	OAK_ASSERT(get_digit_count(1337) == 4);
+	OAK_ASSERT(get_digit_count(80085) == 5);
+	OAK_ASSERT(get_digit_count(555555) == 6);
+	OAK_ASSERT(get_digit_count(8675309) == 7);
+	OAK_ASSERT(get_digit_count(78956423) == 8);
+	OAK_ASSERT(get_digit_count(148497523) == 9);
+	OAK_ASSERT(get_digit_count(4845821233) == 10);
+	OAK_ASSERT(get_digit_count(18002738255) == 11);
+	OAK_ASSERT(get_digit_count(180027382556) == 12);
+	OAK_ASSERT(get_digit_count(1800273825568) == 13);
+	OAK_ASSERT(get_digit_count(18002738255685) == 14);
+	OAK_ASSERT(get_digit_count(180027382556857) == 15);
+	OAK_ASSERT(get_digit_count(1800273825564857) == 16);
 
-	OLIVE_TEST_END;
+	OAK_TEST_END;
 }
 
 }

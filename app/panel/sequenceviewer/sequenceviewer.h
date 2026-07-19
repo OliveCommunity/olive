@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SEQUENCEVIEWERPANEL_H
-#define SEQUENCEVIEWERPANEL_H
+#ifndef OAK_SEQUENCEVIEWERPANEL_H
+#define OAK_SEQUENCEVIEWERPANEL_H
 
 #include "panel/viewer/viewer.h"
 
@@ -33,12 +33,12 @@ public:
 	SequenceViewerPanel();
 
 public slots:
-	void StartCapture(const TimeRange &time, const Track::Reference &track);
+	void start_capture(const TimeRange &time, const Track::Reference &track);
 
 protected:
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 };
 
 }
 
-#endif // SEQUENCEVIEWERPANEL_H
+#endif // OAK_SEQUENCEVIEWERPANEL_H

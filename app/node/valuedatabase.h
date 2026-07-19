@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEVALUEDATABASE_H
-#define NODEVALUEDATABASE_H
+#ifndef OAK_NODEVALUEDATABASE_H
+#define OAK_NODEVALUEDATABASE_H
 
 #include "param.h"
 #include "value.h"
@@ -37,17 +37,17 @@ public:
 		return tables_[input_id];
 	}
 
-	void Insert(const QString &key, const NodeValueTable &value)
+	void insert(const QString &key, const NodeValueTable &value)
 	{
 		tables_.insert(key, value);
 	}
 
-	NodeValueTable Take(const QString &key)
+	NodeValueTable take(const QString &key)
 	{
 		return tables_.take(key);
 	}
 
-	NodeValueTable Merge() const;
+	NodeValueTable merge() const;
 
 	using Tables = QHash<QString, NodeValueTable>;
 	using const_iterator = Tables::const_iterator;
@@ -86,4 +86,4 @@ private:
 
 Q_DECLARE_METATYPE(olive::NodeValueDatabase)
 
-#endif // NODEVALUEDATABASE_H
+#endif // OAK_NODEVALUEDATABASE_H

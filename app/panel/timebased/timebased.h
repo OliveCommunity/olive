@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMEBASEDPANEL_H
-#define TIMEBASEDPANEL_H
+#ifndef OAK_TIMEBASEDPANEL_H
+#define OAK_TIMEBASEDPANEL_H
 
 #include "panel/panel.h"
 #include "widget/timebased/timebasedwidget.h"
@@ -35,19 +35,19 @@ public:
 
 	virtual ~TimeBasedPanel() override;
 
-	void ConnectViewerNode(ViewerOutput *node);
+	void connect_viewer_node(ViewerOutput *node);
 
-	void DisconnectViewerNode()
+	void disconnect_viewer_node()
 	{
-		ConnectViewerNode(nullptr);
+		connect_viewer_node(nullptr);
 	}
 
 	// Get the timebase of this panels widget
-	const rational &timebase();
+	const Rational &timebase();
 
-	ViewerOutput *GetConnectedViewer() const
+	ViewerOutput *get_connected_viewer() const
 	{
-		return widget_->GetConnectedNode();
+		return widget_->get_connected_node();
 	}
 
 	TimeRuler *ruler() const
@@ -55,83 +55,83 @@ public:
 		return widget_->ruler();
 	}
 
-	virtual void ZoomIn() override;
+	virtual void zoom_in() override;
 
-	virtual void ZoomOut() override;
+	virtual void zoom_out() override;
 
-	virtual void GoToStart() override;
+	virtual void go_to_start() override;
 
-	virtual void PrevFrame() override;
+	virtual void prev_frame() override;
 
-	virtual void NextFrame() override;
+	virtual void next_frame() override;
 
-	virtual void GoToEnd() override;
+	virtual void go_to_end() override;
 
-	virtual void GoToPrevCut() override;
+	virtual void go_to_prev_cut() override;
 
-	virtual void GoToNextCut() override;
+	virtual void go_to_next_cut() override;
 
-	virtual void PlayPause() override;
+	virtual void play_pause() override;
 
-	virtual void PlayInToOut() override;
+	virtual void play_in_to_out() override;
 
-	virtual void ShuttleLeft() override;
+	virtual void shuttle_left() override;
 
-	virtual void ShuttleStop() override;
+	virtual void shuttle_stop() override;
 
-	virtual void ShuttleRight() override;
+	virtual void shuttle_right() override;
 
-	virtual void SetIn() override;
+	virtual void set_in() override;
 
-	virtual void SetOut() override;
+	virtual void set_out() override;
 
-	virtual void ResetIn() override;
+	virtual void reset_in() override;
 
-	virtual void ResetOut() override;
+	virtual void reset_out() override;
 
-	virtual void ClearInOut() override;
+	virtual void clear_in_out() override;
 
-	virtual void SetMarker() override;
+	virtual void set_marker() override;
 
-	virtual void ToggleShowAll() override;
+	virtual void toggle_show_all() override;
 
-	virtual void GoToIn() override;
+	virtual void go_to_in() override;
 
-	virtual void GoToOut() override;
+	virtual void go_to_out() override;
 
-	virtual void DeleteSelected() override;
+	virtual void delete_selected() override;
 
-	virtual void CutSelected() override;
+	virtual void cut_selected() override;
 
-	virtual void CopySelected() override;
+	virtual void copy_selected() override;
 
-	virtual void Paste() override;
+	virtual void paste() override;
 
-	TimeBasedWidget *GetTimeBasedWidget() const
+	TimeBasedWidget *get_time_based_widget() const
 	{
 		return widget_;
 	}
 
 public slots:
-	void SetTimebase(const rational &timebase);
+	void set_timebase(const Rational &timebase);
 
 signals:
-	void PlayPauseRequested();
+	void play_pause_requested();
 
-	void PlayInToOutRequested();
+	void play_in_to_out_requested();
 
-	void ShuttleLeftRequested();
+	void shuttle_left_requested();
 
-	void ShuttleStopRequested();
+	void shuttle_stop_requested();
 
-	void ShuttleRightRequested();
+	void shuttle_right_requested();
 
 protected:
-	void SetTimeBasedWidget(TimeBasedWidget *widget);
+	void set_time_based_widget(TimeBasedWidget *widget);
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	void SetShowAndRaiseOnConnect()
+	void set_show_and_raise_on_connect()
 	{
 		show_and_raise_on_connect_ = true;
 	}
@@ -142,9 +142,9 @@ private:
 	bool show_and_raise_on_connect_;
 
 private slots:
-	void ConnectedNodeChanged(ViewerOutput *old, ViewerOutput *now);
+	void connected_node_changed(ViewerOutput *old, ViewerOutput *now);
 };
 
 }
 
-#endif // TIMEBASEDPANEL_H
+#endif // OAK_TIMEBASEDPANEL_H

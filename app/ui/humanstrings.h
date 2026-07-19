@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef HUMANSTRINGS_H
-#define HUMANSTRINGS_H
+#ifndef OAK_HUMANSTRINGS_H
+#define OAK_HUMANSTRINGS_H
 
 #include <olive/core/core.h>
 #include <QObject>
@@ -32,13 +32,13 @@ class HumanStrings : public QObject {
 public:
 	HumanStrings() = default;
 
-	static QString SampleRateToString(const int &sample_rate);
+	static QString sample_rate_to_string(const int &sample_rate);
 
-	static QString ChannelLayoutToString(const uint64_t &layout);
+	static QString channel_layout_to_string(const uint64_t &layout);
 
-	static QString FormatToString(const SampleFormat &f);
+	static QString format_to_string(const SampleFormat &f);
 };
 
 }
 
-#endif // HUMANSTRINGS_H
+#endif // OAK_HUMANSTRINGS_H

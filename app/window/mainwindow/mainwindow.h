@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef MAINWINDOW_H
-#define MAINWINDOW_H
+#ifndef OAK_MAINWINDOW_H
+#define OAK_MAINWINDOW_H
 
 #include <kddockwidgets/Config.h>
 #include <kddockwidgets/MainWindow.h>
@@ -61,21 +61,21 @@ public:
 
 	virtual ~MainWindow() override;
 
-	void LoadLayout(const MainWindowLayoutInfo &info);
+	void load_layout(const MainWindowLayoutInfo &info);
 
-	MainWindowLayoutInfo SaveLayout() const;
+	MainWindowLayoutInfo save_layout() const;
 
-	TimelinePanel *OpenSequence(Sequence *sequence, bool enable_focus = true);
+	TimelinePanel *open_sequence(Sequence *sequence, bool enable_focus = true);
 
-	void CloseSequence(Sequence *sequence);
+	void close_sequence(Sequence *sequence);
 
-	bool IsSequenceOpen(Sequence *sequence) const;
+	bool is_sequence_open(Sequence *sequence) const;
 
-	void OpenFolder(Folder *i, bool floating);
+	void open_folder(Folder *i, bool floating);
 
-	void OpenNodeInViewer(ViewerOutput *node);
+	void open_node_in_viewer(ViewerOutput *node);
 
-	enum ProgressStatus { kProgressNone, kProgressShow, kProgressError };
+	enum ProgressStatus { k_progress_none, k_progress_show, k_progress_error };
 
 	/**
    * @brief Where applicable, show progress on an operating system level
@@ -83,25 +83,25 @@ public:
    * * For Windows, this is shown as progress in the taskbar.
    * * For macOS, this is shown as progress in the dock.
    */
-	void SetApplicationProgressStatus(ProgressStatus status);
+	void set_application_progress_status(ProgressStatus status);
 
 	/**
    * @brief If SetApplicationProgressStatus is set to kShowProgress, set the value with this
    *
    * Expects a percentage (0-100 inclusive).
    */
-	void SetApplicationProgressValue(int value);
+	void set_application_progress_value(int value);
 
-	void SelectFootage(const QVector<Footage *> &e);
+	void select_footage(const QVector<Footage *> &e);
 
 public slots:
-	void SetProject(Project *p);
+	void set_project(Project *p);
 
-	void SetFullscreen(bool fullscreen);
+	void set_fullscreen(bool fullscreen);
 
-	void ToggleMaximizedPanel();
+	void toggle_maximized_panel();
 
-	void SetDefaultLayout();
+	void set_default_layout();
 
 protected:
 	virtual void showEvent(QShowEvent *e) override;
@@ -119,28 +119,28 @@ protected:
 #endif
 
 private:
-	TimelinePanel *AppendTimelinePanel();
+	TimelinePanel *append_timeline_panel();
 
 	template <typename T>
-	T *AppendPanelInternal(const QString &panel_name, QList<T *> &list);
+	T *append_panel_internal(const QString &panel_name, QList<T *> &list);
 
-	template <typename T> void RemovePanelInternal(QList<T *> &list, T *panel);
+	template <typename T> void remove_panel_internal(QList<T *> &list, T *panel);
 
-	void RemoveTimelinePanel(TimelinePanel *panel);
+	void remove_timeline_panel(TimelinePanel *panel);
 
-	void TimelineFocused(ViewerOutput *viewer);
+	void timeline_focused(ViewerOutput *viewer);
 
-	static QString GetCustomShortcutsFile();
+	static QString get_custom_shortcuts_file();
 
-	void LoadCustomShortcuts();
+	void load_custom_shortcuts();
 
-	void SaveCustomShortcuts();
+	void save_custom_shortcuts();
 
-	void UpdateAudioMonitorParams(ViewerOutput *viewer);
+	void update_audio_monitor_params(ViewerOutput *viewer);
 
-	void UpdateNodePanelContextFromTimelinePanel(TimelinePanel *panel);
+	void update_node_panel_context_from_timeline_panel(TimelinePanel *panel);
 
-	void SelectFootageForProjectPanel(const QVector<Footage *> &e,
+	void select_footage_for_project_panel(const QVector<Footage *> &e,
 									  ProjectPanel *p);
 
 	QByteArray premaximized_state_;
@@ -174,32 +174,32 @@ private:
 	Project *project_;
 
 private slots:
-	void FocusedPanelChanged(PanelWidget *panel);
+	void focused_panel_changed(PanelWidget *panel);
 
-	void UpdateTitle();
+	void update_title();
 
-	void TimelineCloseRequested();
+	void timeline_close_requested();
 
-	void ViewerCloseRequested();
+	void viewer_close_requested();
 
-	void ViewerWithPanelRemovedFromGraph();
+	void viewer_with_panel_removed_from_graph();
 
-	void FolderPanelCloseRequested();
+	void folder_panel_close_requested();
 
-	void StatusBarDoubleClicked();
+	void status_bar_double_clicked();
 
-	void NodePanelGroupOpenedOrClosed();
+	void node_panel_group_opened_or_closed();
 
 #ifdef Q_OS_LINUX
-	void ShowNouveauWarning();
+	void show_nouveau_warning();
 #endif
 
-	void TimelinePanelSelectionChanged(const QVector<Block *> &blocks);
+	void timeline_panel_selection_changed(const QVector<Block *> &blocks);
 
-	void ShowWelcomeDialog();
+	void show_welcome_dialog();
 
-	void RevealViewerInProject(ViewerOutput *r);
-	void RevealViewerInFootageViewer(ViewerOutput *r, const TimeRange &range);
+	void reveal_viewer_in_project(ViewerOutput *r);
+	void reveal_viewer_in_footage_viewer(ViewerOutput *r, const TimeRange &range);
 };
 
 }

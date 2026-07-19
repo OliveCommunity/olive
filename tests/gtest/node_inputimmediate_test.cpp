@@ -23,7 +23,7 @@ namespace
 // NodeInputImmediate is not a QObject, so keyframes inserted directly into it
 // (rather than through parenting to a Node) must be removed and deleted by
 // hand to avoid leaks.
-void ClearImmediate(olive::NodeInputImmediate *imm)
+void clear_immediate(olive::NodeInputImmediate *imm)
 {
 	for (int i = 0; i < imm->keyframe_tracks().size(); i++) {
 		const QVector<olive::NodeKeyframe *> keys = imm->keyframe_tracks().at(i);
@@ -34,10 +34,10 @@ void ClearImmediate(olive::NodeInputImmediate *imm)
 	}
 }
 
-olive::NodeKeyframe *MakeKey(const olive::rational &time, const QVariant &value,
+olive::NodeKeyframe *make_key(const olive::Rational &time, const QVariant &value,
 							 int track,
 							 olive::NodeKeyframe::Type type =
-								 olive::NodeKeyframe::kLinear)
+								 olive::NodeKeyframe::k_linear)
 {
 	return new olive::NodeKeyframe(time, value, type, track, -1,
 								   QStringLiteral("test_in"));
@@ -47,7 +47,7 @@ olive::NodeKeyframe *MakeKey(const olive::rational &time, const QVariant &value,
 
 TEST(NodeInputImmediate, StandardValueRoundTrip)
 {
-	olive::NodeInputImmediate imm(olive::NodeValue::kFloat, { 1.5 });
+	olive::NodeInputImmediate imm(olive::NodeValue::k_float, { 1.5 });
 
 	EXPECT_FALSE(imm.is_keyframing());
 	EXPECT_TRUE(imm.is_using_standard_value(0));
@@ -66,7 +66,7 @@ TEST(NodeInputImmediate, StandardValueRoundTrip)
 
 TEST(NodeInputImmediate, SetSplitStandardValueCopiesOnlyOverlappingTracks)
 {
-	olive::NodeInputImmediate imm(olive::NodeValue::kVec2, { 0.0, 0.0 });
+	olive::NodeInputImmediate imm(olive::NodeValue::k_vec2, { 0.0, 0.0 });
 	ASSERT_EQ(imm.get_split_standard_value().size(), 2);
 
 	// A shorter split only overwrites the tracks it covers
@@ -83,13 +83,13 @@ TEST(NodeInputImmediate, SetSplitStandardValueCopiesOnlyOverlappingTracks)
 
 TEST(NodeInputImmediate, SetDataTypeResizesTracksAndReappliesDefault)
 {
-	olive::NodeInputImmediate imm(olive::NodeValue::kFloat, { 7.0 });
+	olive::NodeInputImmediate imm(olive::NodeValue::k_float, { 7.0 });
 	ASSERT_EQ(imm.keyframe_tracks().size(), 1);
 	ASSERT_EQ(imm.get_split_standard_value().size(), 1);
 
 	// Growing to a four-track type keeps the default on the first track and
 	// leaves the new tracks null, since the default split only has one entry
-	imm.set_data_type(olive::NodeValue::kVec4);
+	imm.set_data_type(olive::NodeValue::k_vec4);
 	EXPECT_EQ(imm.keyframe_tracks().size(), 4);
 	ASSERT_EQ(imm.get_split_standard_value().size(), 4);
 	EXPECT_DOUBLE_EQ(imm.get_split_standard_value_on_track(0).toDouble(), 7.0);
@@ -97,7 +97,7 @@ TEST(NodeInputImmediate, SetDataTypeResizesTracksAndReappliesDefault)
 	EXPECT_TRUE(imm.get_split_standard_value_on_track(2).isNull());
 	EXPECT_TRUE(imm.get_split_standard_value_on_track(3).isNull());
 
-	imm.set_data_type(olive::NodeValue::kFloat);
+	imm.set_data_type(olive::NodeValue::k_float);
 	EXPECT_EQ(imm.keyframe_tracks().size(), 1);
 	ASSERT_EQ(imm.get_split_standard_value().size(), 1);
 	EXPECT_DOUBLE_EQ(imm.get_split_standard_value_on_track(0).toDouble(), 7.0);
@@ -105,42 +105,42 @@ TEST(NodeInputImmediate, SetDataTypeResizesTracksAndReappliesDefault)
 
 TEST(NodeInputImmediate, KeyframeLookupRequiresKeyframingEnabled)
 {
-	olive::NodeInputImmediate imm(olive::NodeValue::kFloat, { 0.0 });
+	olive::NodeInputImmediate imm(olive::NodeValue::k_float, { 0.0 });
 
-	olive::NodeKeyframe *key = MakeKey(olive::rational(2), 1.0, 0);
+	olive::NodeKeyframe *key = make_key(olive::Rational(2), 1.0, 0);
 	imm.insert_keyframe(key);
 
 	// Without keyframing enabled the track reports that it uses the standard
 	// value and all keyframe lookups come back empty
 	EXPECT_TRUE(imm.is_using_standard_value(0));
-	EXPECT_FALSE(imm.has_keyframe_at_time(olive::rational(2)));
-	EXPECT_EQ(imm.get_keyframe_at_time_on_track(olive::rational(2), 0),
+	EXPECT_FALSE(imm.has_keyframe_at_time(olive::Rational(2)));
+	EXPECT_EQ(imm.get_keyframe_at_time_on_track(olive::Rational(2), 0),
 			  nullptr);
-	EXPECT_TRUE(imm.get_keyframe_at_time(olive::rational(2)).isEmpty());
-	EXPECT_EQ(imm.get_closest_keyframe_to_time_on_track(olive::rational(2), 0),
+	EXPECT_TRUE(imm.get_keyframe_at_time(olive::Rational(2)).isEmpty());
+	EXPECT_EQ(imm.get_closest_keyframe_to_time_on_track(olive::Rational(2), 0),
 			  nullptr);
 
 	imm.set_is_keyframing(true);
 	EXPECT_FALSE(imm.is_using_standard_value(0));
-	EXPECT_TRUE(imm.has_keyframe_at_time(olive::rational(2)));
-	EXPECT_EQ(imm.get_keyframe_at_time_on_track(olive::rational(2), 0), key);
-	ASSERT_EQ(imm.get_keyframe_at_time(olive::rational(2)).size(), 1);
-	EXPECT_EQ(imm.get_keyframe_at_time(olive::rational(2)).first(), key);
-	EXPECT_EQ(imm.get_closest_keyframe_to_time_on_track(olive::rational(2), 0),
+	EXPECT_TRUE(imm.has_keyframe_at_time(olive::Rational(2)));
+	EXPECT_EQ(imm.get_keyframe_at_time_on_track(olive::Rational(2), 0), key);
+	ASSERT_EQ(imm.get_keyframe_at_time(olive::Rational(2)).size(), 1);
+	EXPECT_EQ(imm.get_keyframe_at_time(olive::Rational(2)).first(), key);
+	EXPECT_EQ(imm.get_closest_keyframe_to_time_on_track(olive::Rational(2), 0),
 			  key);
-	EXPECT_FALSE(imm.has_keyframe_at_time(olive::rational(3)));
+	EXPECT_FALSE(imm.has_keyframe_at_time(olive::Rational(3)));
 
-	ClearImmediate(&imm);
+	clear_immediate(&imm);
 }
 
 TEST(NodeInputImmediate, InsertKeyframeSortsByTimeAndLinksSiblings)
 {
-	olive::NodeInputImmediate imm(olive::NodeValue::kFloat, { 0.0 });
+	olive::NodeInputImmediate imm(olive::NodeValue::k_float, { 0.0 });
 
 	// Insert out of order; the track must stay sorted by time
-	olive::NodeKeyframe *key_late = MakeKey(olive::rational(10), 10.0, 0);
-	olive::NodeKeyframe *key_early = MakeKey(olive::rational(0), 0.0, 0);
-	olive::NodeKeyframe *key_mid = MakeKey(olive::rational(5), 5.0, 0);
+	olive::NodeKeyframe *key_late = make_key(olive::Rational(10), 10.0, 0);
+	olive::NodeKeyframe *key_early = make_key(olive::Rational(0), 0.0, 0);
+	olive::NodeKeyframe *key_mid = make_key(olive::Rational(5), 5.0, 0);
 	imm.insert_keyframe(key_late);
 	imm.insert_keyframe(key_early);
 	imm.insert_keyframe(key_mid);
@@ -171,142 +171,142 @@ TEST(NodeInputImmediate, InsertKeyframeSortsByTimeAndLinksSiblings)
 	ASSERT_EQ(track.size(), 2);
 	delete key_mid;
 
-	ClearImmediate(&imm);
+	clear_immediate(&imm);
 }
 
 TEST(NodeInputImmediate, ClosestKeyframeToTimeOnTrackClampsAndPicksNearest)
 {
-	olive::NodeInputImmediate imm(olive::NodeValue::kVec2, { 0.0, 0.0 });
+	olive::NodeInputImmediate imm(olive::NodeValue::k_vec2, { 0.0, 0.0 });
 	imm.set_is_keyframing(true);
 
-	olive::NodeKeyframe *key_a = MakeKey(olive::rational(0), 0.0, 0);
-	olive::NodeKeyframe *key_b = MakeKey(olive::rational(10), 10.0, 0);
+	olive::NodeKeyframe *key_a = make_key(olive::Rational(0), 0.0, 0);
+	olive::NodeKeyframe *key_b = make_key(olive::Rational(10), 10.0, 0);
 	imm.insert_keyframe(key_a);
 	imm.insert_keyframe(key_b);
 
 	// Outside the keyed range the closest keyframe clamps to the ends
-	EXPECT_EQ(imm.get_closest_keyframe_to_time_on_track(olive::rational(-3), 0),
+	EXPECT_EQ(imm.get_closest_keyframe_to_time_on_track(olive::Rational(-3), 0),
 			  key_a);
-	EXPECT_EQ(imm.get_closest_keyframe_to_time_on_track(olive::rational(20), 0),
+	EXPECT_EQ(imm.get_closest_keyframe_to_time_on_track(olive::Rational(20), 0),
 			  key_b);
 
 	// Between the keys the nearer one wins
-	EXPECT_EQ(imm.get_closest_keyframe_to_time_on_track(olive::rational(3), 0),
+	EXPECT_EQ(imm.get_closest_keyframe_to_time_on_track(olive::Rational(3), 0),
 			  key_a);
-	EXPECT_EQ(imm.get_closest_keyframe_to_time_on_track(olive::rational(7), 0),
+	EXPECT_EQ(imm.get_closest_keyframe_to_time_on_track(olive::Rational(7), 0),
 			  key_b);
 
 	// Exactly halfway the earlier keyframe wins the tie
-	EXPECT_EQ(imm.get_closest_keyframe_to_time_on_track(olive::rational(5), 0),
+	EXPECT_EQ(imm.get_closest_keyframe_to_time_on_track(olive::Rational(5), 0),
 			  key_a);
 
 	// A track with no keyframes still counts as using the standard value
-	EXPECT_EQ(imm.get_closest_keyframe_to_time_on_track(olive::rational(5), 1),
+	EXPECT_EQ(imm.get_closest_keyframe_to_time_on_track(olive::Rational(5), 1),
 			  nullptr);
 
-	ClearImmediate(&imm);
+	clear_immediate(&imm);
 }
 
 TEST(NodeInputImmediate, ClosestKeyframeBeforeAfterSpansAllTracks)
 {
-	olive::NodeInputImmediate imm(olive::NodeValue::kVec2, { 0.0, 0.0 });
+	olive::NodeInputImmediate imm(olive::NodeValue::k_vec2, { 0.0, 0.0 });
 	imm.set_is_keyframing(true);
 
-	olive::NodeKeyframe *key_t0 = MakeKey(olive::rational(0), 0.0, 0);
-	olive::NodeKeyframe *key_t10 = MakeKey(olive::rational(10), 10.0, 0);
-	olive::NodeKeyframe *key_t4_track1 = MakeKey(olive::rational(4), 4.0, 1);
+	olive::NodeKeyframe *key_t0 = make_key(olive::Rational(0), 0.0, 0);
+	olive::NodeKeyframe *key_t10 = make_key(olive::Rational(10), 10.0, 0);
+	olive::NodeKeyframe *key_t4_track1 = make_key(olive::Rational(4), 4.0, 1);
 	imm.insert_keyframe(key_t0);
 	imm.insert_keyframe(key_t10);
 	imm.insert_keyframe(key_t4_track1);
 
 	// The closest keyframe before 5 is the one at 4 on the other track
-	EXPECT_EQ(imm.get_closest_keyframe_before_time(olive::rational(5)),
+	EXPECT_EQ(imm.get_closest_keyframe_before_time(olive::Rational(5)),
 			  key_t4_track1);
-	EXPECT_EQ(imm.get_closest_keyframe_after_time(olive::rational(5)), key_t10);
+	EXPECT_EQ(imm.get_closest_keyframe_after_time(olive::Rational(5)), key_t10);
 
 	// Strictly before/after: nothing exists outside the keyed range
-	EXPECT_EQ(imm.get_closest_keyframe_before_time(olive::rational(0)),
+	EXPECT_EQ(imm.get_closest_keyframe_before_time(olive::Rational(0)),
 			  nullptr);
-	EXPECT_EQ(imm.get_closest_keyframe_after_time(olive::rational(10)),
+	EXPECT_EQ(imm.get_closest_keyframe_after_time(olive::Rational(10)),
 			  nullptr);
 
-	EXPECT_EQ(imm.get_closest_keyframe_before_time(olive::rational(4)), key_t0);
-	EXPECT_EQ(imm.get_closest_keyframe_after_time(olive::rational(4)), key_t10);
+	EXPECT_EQ(imm.get_closest_keyframe_before_time(olive::Rational(4)), key_t0);
+	EXPECT_EQ(imm.get_closest_keyframe_after_time(olive::Rational(4)), key_t10);
 
-	ClearImmediate(&imm);
+	clear_immediate(&imm);
 }
 
 TEST(NodeInputImmediate, BestKeyframeTypeForTimeFollowsClosestKey)
 {
-	olive::NodeInputImmediate imm(olive::NodeValue::kFloat, { 0.0 });
+	olive::NodeInputImmediate imm(olive::NodeValue::k_float, { 0.0 });
 
 	// With no keyframes there is no reference, so the default type is used
-	EXPECT_EQ(int(imm.get_best_keyframe_type_for_time(olive::rational(5), 0)),
-			  int(olive::NodeKeyframe::kDefaultType));
+	EXPECT_EQ(int(imm.get_best_keyframe_type_for_time(olive::Rational(5), 0)),
+			  int(olive::NodeKeyframe::k_default_type));
 
 	olive::NodeKeyframe *key_hold =
-		MakeKey(olive::rational(0), 0.0, 0, olive::NodeKeyframe::kHold);
-	olive::NodeKeyframe *key_linear = MakeKey(olive::rational(10), 10.0, 0);
+		make_key(olive::Rational(0), 0.0, 0, olive::NodeKeyframe::k_hold);
+	olive::NodeKeyframe *key_linear = make_key(olive::Rational(10), 10.0, 0);
 	imm.insert_keyframe(key_hold);
 	imm.insert_keyframe(key_linear);
 	imm.set_is_keyframing(true);
 
-	EXPECT_EQ(int(imm.get_best_keyframe_type_for_time(olive::rational(2), 0)),
-			  int(olive::NodeKeyframe::kHold));
-	EXPECT_EQ(int(imm.get_best_keyframe_type_for_time(olive::rational(8), 0)),
-			  int(olive::NodeKeyframe::kLinear));
+	EXPECT_EQ(int(imm.get_best_keyframe_type_for_time(olive::Rational(2), 0)),
+			  int(olive::NodeKeyframe::k_hold));
+	EXPECT_EQ(int(imm.get_best_keyframe_type_for_time(olive::Rational(8), 0)),
+			  int(olive::NodeKeyframe::k_linear));
 
-	ClearImmediate(&imm);
+	clear_immediate(&imm);
 }
 
 TEST(NodeInputImmediate, GetKeyframeAtTimeAggregatesAcrossTracks)
 {
-	olive::NodeInputImmediate imm(olive::NodeValue::kVec2, { 0.0, 0.0 });
+	olive::NodeInputImmediate imm(olive::NodeValue::k_vec2, { 0.0, 0.0 });
 	imm.set_is_keyframing(true);
 
-	olive::NodeKeyframe *key_track0 = MakeKey(olive::rational(3), 1.0, 0);
-	olive::NodeKeyframe *key_track1 = MakeKey(olive::rational(3), 2.0, 1);
-	olive::NodeKeyframe *key_later = MakeKey(olive::rational(7), 3.0, 0);
+	olive::NodeKeyframe *key_track0 = make_key(olive::Rational(3), 1.0, 0);
+	olive::NodeKeyframe *key_track1 = make_key(olive::Rational(3), 2.0, 1);
+	olive::NodeKeyframe *key_later = make_key(olive::Rational(7), 3.0, 0);
 	imm.insert_keyframe(key_track0);
 	imm.insert_keyframe(key_track1);
 	imm.insert_keyframe(key_later);
 
 	// Both tracks have a keyframe at t=3
 	QVector<olive::NodeKeyframe *> at_three =
-		imm.get_keyframe_at_time(olive::rational(3));
+		imm.get_keyframe_at_time(olive::Rational(3));
 	ASSERT_EQ(at_three.size(), 2);
 	EXPECT_TRUE(at_three.contains(key_track0));
 	EXPECT_TRUE(at_three.contains(key_track1));
 
 	// Only track 0 has one at t=7, and there is nothing at t=99
-	EXPECT_EQ(imm.get_keyframe_at_time(olive::rational(7)).size(), 1);
-	EXPECT_TRUE(imm.get_keyframe_at_time(olive::rational(99)).isEmpty());
+	EXPECT_EQ(imm.get_keyframe_at_time(olive::Rational(7)).size(), 1);
+	EXPECT_TRUE(imm.get_keyframe_at_time(olive::Rational(99)).isEmpty());
 
-	ClearImmediate(&imm);
+	clear_immediate(&imm);
 }
 
 class NodeInputImmediateNodeTest : public ::testing::Test {
 protected:
 	void SetUp() override
 	{
-		olive::ColorManager::SetUpDefaultConfig();
+		olive::ColorManager::set_up_default_config();
 
 		project_ = std::make_unique<olive::Project>();
-		project_->Initialize();
+		project_->initialize();
 	}
 
-	template <typename T> T *AddNode()
+	template <typename T> T *add_node()
 	{
 		T *node = new T();
 		node->setParent(project_.get());
 		return node;
 	}
 
-	olive::NodeKeyframe *AddKey(olive::Node *node, const QString &input,
-								const olive::rational &time,
+	olive::NodeKeyframe *add_key(olive::Node *node, const QString &input,
+								const olive::Rational &time,
 								const QVariant &value, int track,
 								olive::NodeKeyframe::Type type =
-									olive::NodeKeyframe::kLinear)
+									olive::NodeKeyframe::k_linear)
 	{
 		auto *key = new olive::NodeKeyframe(time, value, type, track, -1, input);
 		key->setParent(node);
@@ -318,34 +318,34 @@ protected:
 
 TEST_F(NodeInputImmediateNodeTest, SetValueAtTimeCreatesAndUpdatesKeyframes)
 {
-	auto *node = AddNode<olive::MathNode>();
-	const olive::NodeInput input(node, olive::MathNode::kParamAIn);
-	node->SetInputIsKeyframing(olive::MathNode::kParamAIn, true);
+	auto *node = add_node<olive::MathNode>();
+	const olive::NodeInput input(node, olive::MathNode::k_param_a_in);
+	node->set_input_is_keyframing(olive::MathNode::k_param_a_in, true);
 
 	// A new keyframe is inserted where none exists yet
 	olive::MultiUndoCommand cmd;
-	olive::Node::SetValueAtTime(input, olive::rational(5), 42.0, 0, &cmd, true);
+	olive::Node::set_value_at_time(input, olive::Rational(5), 42.0, 0, &cmd, true);
 	EXPECT_EQ(cmd.child_count(), 1);
 	cmd.redo_now();
 
-	olive::NodeKeyframe *key = node->GetKeyframeAtTimeOnTrack(
-		olive::MathNode::kParamAIn, olive::rational(5), 0);
+	olive::NodeKeyframe *key = node->get_keyframe_at_time_on_track(
+		olive::MathNode::k_param_a_in, olive::Rational(5), 0);
 	ASSERT_NE(key, nullptr);
 	EXPECT_DOUBLE_EQ(key->value().toDouble(), 42.0);
-	EXPECT_DOUBLE_EQ(node->GetValueAtTime(olive::MathNode::kParamAIn,
-										  olive::rational(5))
+	EXPECT_DOUBLE_EQ(node->get_value_at_time(olive::MathNode::k_param_a_in,
+										  olive::Rational(5))
 						 .toDouble(),
 					 42.0);
 
 	// Setting the same time again updates the existing keyframe in place
 	olive::MultiUndoCommand update_cmd;
-	olive::Node::SetValueAtTime(input, olive::rational(5), 43.0, 0,
+	olive::Node::set_value_at_time(input, olive::Rational(5), 43.0, 0,
 								&update_cmd, true);
 	EXPECT_EQ(update_cmd.child_count(), 1);
 	update_cmd.redo_now();
 
 	const QVector<olive::NodeKeyframeTrack> &tracks =
-		node->GetKeyframeTracks(olive::MathNode::kParamAIn, -1);
+		node->get_keyframe_tracks(olive::MathNode::k_param_a_in, -1);
 	ASSERT_EQ(tracks.at(0).size(), 1);
 	EXPECT_EQ(tracks.at(0).first(), key);
 	EXPECT_DOUBLE_EQ(key->value().toDouble(), 43.0);
@@ -353,41 +353,41 @@ TEST_F(NodeInputImmediateNodeTest, SetValueAtTimeCreatesAndUpdatesKeyframes)
 
 TEST_F(NodeInputImmediateNodeTest, SetValueAtTimeWithoutKeyframingSetsStandardValue)
 {
-	auto *node = AddNode<olive::MathNode>();
-	const olive::NodeInput input(node, olive::MathNode::kParamAIn);
+	auto *node = add_node<olive::MathNode>();
+	const olive::NodeInput input(node, olive::MathNode::k_param_a_in);
 
 	olive::MultiUndoCommand cmd;
-	olive::Node::SetValueAtTime(input, olive::rational(5), 9.0, 0, &cmd, true);
+	olive::Node::set_value_at_time(input, olive::Rational(5), 9.0, 0, &cmd, true);
 	EXPECT_EQ(cmd.child_count(), 1);
 	cmd.redo_now();
 
 	EXPECT_DOUBLE_EQ(
-		node->GetStandardValue(olive::MathNode::kParamAIn).toDouble(), 9.0);
-	EXPECT_TRUE(node->GetKeyframeTracks(olive::MathNode::kParamAIn, -1)
+		node->get_standard_value(olive::MathNode::k_param_a_in).toDouble(), 9.0);
+	EXPECT_TRUE(node->get_keyframe_tracks(olive::MathNode::k_param_a_in, -1)
 					.at(0)
 					.isEmpty());
 }
 
 TEST_F(NodeInputImmediateNodeTest, SetValueAtTimeInsertsOnAllTracksOnlyWhenAsked)
 {
-	auto *solid = AddNode<olive::SolidGenerator>();
-	solid->SetInputIsKeyframing(olive::SolidGenerator::kColorInput, true);
-	const olive::NodeInput input(solid, olive::SolidGenerator::kColorInput);
+	auto *solid = add_node<olive::SolidGenerator>();
+	solid->set_input_is_keyframing(olive::SolidGenerator::k_color_input, true);
+	const olive::NodeInput input(solid, olive::SolidGenerator::k_color_input);
 
 	// With insert_on_all_tracks_if_no_key set, keyframes are created on every
 	// track; sibling tracks capture the value they currently evaluate to (the
 	// standard value red = (1, 0, 0, 1) here)
 	olive::MultiUndoCommand cmd;
-	olive::Node::SetValueAtTime(input, olive::rational(5), 0.5, 2, &cmd, true);
+	olive::Node::set_value_at_time(input, olive::Rational(5), 0.5, 2, &cmd, true);
 	EXPECT_EQ(cmd.child_count(), 4);
 	cmd.redo_now();
 
 	const QVector<olive::NodeKeyframeTrack> &tracks =
-		solid->GetKeyframeTracks(olive::SolidGenerator::kColorInput, -1);
+		solid->get_keyframe_tracks(olive::SolidGenerator::k_color_input, -1);
 	ASSERT_EQ(tracks.size(), 4);
 	for (int i = 0; i < tracks.size(); i++) {
 		ASSERT_EQ(tracks.at(i).size(), 1);
-		EXPECT_EQ(tracks.at(i).first()->time(), olive::rational(5));
+		EXPECT_EQ(tracks.at(i).first()->time(), olive::Rational(5));
 	}
 	EXPECT_DOUBLE_EQ(tracks.at(0).first()->value().toDouble(), 1.0);
 	EXPECT_DOUBLE_EQ(tracks.at(1).first()->value().toDouble(), 0.0);
@@ -395,8 +395,8 @@ TEST_F(NodeInputImmediateNodeTest, SetValueAtTimeInsertsOnAllTracksOnlyWhenAsked
 	EXPECT_DOUBLE_EQ(tracks.at(3).first()->value().toDouble(), 1.0);
 
 	const olive::Color c =
-		solid->GetValueAtTime(olive::SolidGenerator::kColorInput,
-							  olive::rational(5))
+		solid->get_value_at_time(olive::SolidGenerator::k_color_input,
+							  olive::Rational(5))
 			.value<olive::Color>();
 	EXPECT_FLOAT_EQ(c.red(), 1.0f);
 	EXPECT_FLOAT_EQ(c.green(), 0.0f);
@@ -404,19 +404,19 @@ TEST_F(NodeInputImmediateNodeTest, SetValueAtTimeInsertsOnAllTracksOnlyWhenAsked
 	EXPECT_FLOAT_EQ(c.alpha(), 1.0f);
 
 	// Without the flag only the requested track receives a keyframe
-	auto *single = AddNode<olive::SolidGenerator>();
-	single->SetInputIsKeyframing(olive::SolidGenerator::kColorInput, true);
+	auto *single = add_node<olive::SolidGenerator>();
+	single->set_input_is_keyframing(olive::SolidGenerator::k_color_input, true);
 	const olive::NodeInput single_input(single,
-										olive::SolidGenerator::kColorInput);
+										olive::SolidGenerator::k_color_input);
 
 	olive::MultiUndoCommand single_cmd;
-	olive::Node::SetValueAtTime(single_input, olive::rational(5), 0.5, 2,
+	olive::Node::set_value_at_time(single_input, olive::Rational(5), 0.5, 2,
 								&single_cmd, false);
 	EXPECT_EQ(single_cmd.child_count(), 1);
 	single_cmd.redo_now();
 
 	const QVector<olive::NodeKeyframeTrack> &single_tracks =
-		single->GetKeyframeTracks(olive::SolidGenerator::kColorInput, -1);
+		single->get_keyframe_tracks(olive::SolidGenerator::k_color_input, -1);
 	ASSERT_EQ(single_tracks.size(), 4);
 	EXPECT_TRUE(single_tracks.at(0).isEmpty());
 	EXPECT_TRUE(single_tracks.at(1).isEmpty());
@@ -427,28 +427,28 @@ TEST_F(NodeInputImmediateNodeTest, SetValueAtTimeInsertsOnAllTracksOnlyWhenAsked
 
 TEST_F(NodeInputImmediateNodeTest, GetValueAtTimeInterpolatesColorTracks)
 {
-	auto *solid = AddNode<olive::SolidGenerator>();
-	solid->SetInputIsKeyframing(olive::SolidGenerator::kColorInput, true);
+	auto *solid = add_node<olive::SolidGenerator>();
+	solid->set_input_is_keyframing(olive::SolidGenerator::k_color_input, true);
 
 	// Black to white over ten seconds on all four tracks
 	for (int track = 0; track < 4; track++) {
-		AddKey(solid, olive::SolidGenerator::kColorInput, olive::rational(0),
+		add_key(solid, olive::SolidGenerator::k_color_input, olive::Rational(0),
 			   0.0, track);
-		AddKey(solid, olive::SolidGenerator::kColorInput, olive::rational(10),
+		add_key(solid, olive::SolidGenerator::k_color_input, olive::Rational(10),
 			   1.0, track);
 	}
 
 	const olive::Color mid =
-		solid->GetValueAtTime(olive::SolidGenerator::kColorInput,
-							  olive::rational(5))
+		solid->get_value_at_time(olive::SolidGenerator::k_color_input,
+							  olive::Rational(5))
 			.value<olive::Color>();
 	EXPECT_FLOAT_EQ(mid.red(), 0.5f);
 	EXPECT_FLOAT_EQ(mid.green(), 0.5f);
 	EXPECT_FLOAT_EQ(mid.blue(), 0.5f);
 	EXPECT_FLOAT_EQ(mid.alpha(), 0.5f);
 
-	const olive::SplitValue split = solid->GetSplitValueAtTime(
-		olive::SolidGenerator::kColorInput, olive::rational(5));
+	const olive::SplitValue split = solid->get_split_value_at_time(
+		olive::SolidGenerator::k_color_input, olive::Rational(5));
 	ASSERT_EQ(split.size(), 4);
 	for (int i = 0; i < split.size(); i++) {
 		EXPECT_DOUBLE_EQ(split.at(i).toDouble(), 0.5);
@@ -456,48 +456,48 @@ TEST_F(NodeInputImmediateNodeTest, GetValueAtTimeInterpolatesColorTracks)
 
 	// Outside the keyed range the end values hold
 	const olive::Color before =
-		solid->GetValueAtTime(olive::SolidGenerator::kColorInput,
-							  olive::rational(-2))
+		solid->get_value_at_time(olive::SolidGenerator::k_color_input,
+							  olive::Rational(-2))
 			.value<olive::Color>();
 	EXPECT_FLOAT_EQ(before.red(), 0.0f);
 	const olive::Color after =
-		solid->GetValueAtTime(olive::SolidGenerator::kColorInput,
-							  olive::rational(20))
+		solid->get_value_at_time(olive::SolidGenerator::k_color_input,
+							  olive::Rational(20))
 			.value<olive::Color>();
 	EXPECT_FLOAT_EQ(after.alpha(), 1.0f);
 }
 
 TEST_F(NodeInputImmediateNodeTest, GetValueAtTimeInterpolatesVec2Tracks)
 {
-	auto *matrix = AddNode<olive::MatrixGenerator>();
-	matrix->SetInputIsKeyframing(olive::MatrixGenerator::kPositionInput, true);
+	auto *matrix = add_node<olive::MatrixGenerator>();
+	matrix->set_input_is_keyframing(olive::MatrixGenerator::k_position_input, true);
 
-	AddKey(matrix, olive::MatrixGenerator::kPositionInput, olive::rational(0),
+	add_key(matrix, olive::MatrixGenerator::k_position_input, olive::Rational(0),
 		   0.0, 0);
-	AddKey(matrix, olive::MatrixGenerator::kPositionInput, olive::rational(10),
+	add_key(matrix, olive::MatrixGenerator::k_position_input, olive::Rational(10),
 		   10.0, 0);
-	AddKey(matrix, olive::MatrixGenerator::kPositionInput, olive::rational(0),
+	add_key(matrix, olive::MatrixGenerator::k_position_input, olive::Rational(0),
 		   10.0, 1);
-	AddKey(matrix, olive::MatrixGenerator::kPositionInput, olive::rational(10),
+	add_key(matrix, olive::MatrixGenerator::k_position_input, olive::Rational(10),
 		   20.0, 1);
 
 	const QVector2D mid =
-		matrix->GetValueAtTime(olive::MatrixGenerator::kPositionInput,
-							   olive::rational(5))
+		matrix->get_value_at_time(olive::MatrixGenerator::k_position_input,
+							   olive::Rational(5))
 			.value<QVector2D>();
 	EXPECT_FLOAT_EQ(mid.x(), 5.0f);
 	EXPECT_FLOAT_EQ(mid.y(), 15.0f);
 
 	// Each track clamps to its own end keyframes
 	const QVector2D clamped_low =
-		matrix->GetValueAtTime(olive::MatrixGenerator::kPositionInput,
-							   olive::rational(-5))
+		matrix->get_value_at_time(olive::MatrixGenerator::k_position_input,
+							   olive::Rational(-5))
 			.value<QVector2D>();
 	EXPECT_FLOAT_EQ(clamped_low.x(), 0.0f);
 	EXPECT_FLOAT_EQ(clamped_low.y(), 10.0f);
 	const QVector2D clamped_high =
-		matrix->GetValueAtTime(olive::MatrixGenerator::kPositionInput,
-							   olive::rational(15))
+		matrix->get_value_at_time(olive::MatrixGenerator::k_position_input,
+							   olive::Rational(15))
 			.value<QVector2D>();
 	EXPECT_FLOAT_EQ(clamped_high.x(), 10.0f);
 	EXPECT_FLOAT_EQ(clamped_high.y(), 20.0f);
@@ -505,63 +505,63 @@ TEST_F(NodeInputImmediateNodeTest, GetValueAtTimeInterpolatesVec2Tracks)
 
 TEST_F(NodeInputImmediateNodeTest, GetValueAtTimeInterpolatesRationalAsRational)
 {
-	auto *offset = AddNode<olive::TimeOffsetNode>();
-	offset->SetInputIsKeyframing(olive::TimeOffsetNode::kTimeInput, true);
+	auto *offset = add_node<olive::TimeOffsetNode>();
+	offset->set_input_is_keyframing(olive::TimeOffsetNode::k_time_input, true);
 
-	AddKey(offset, olive::TimeOffsetNode::kTimeInput, olive::rational(0),
-		   QVariant::fromValue(olive::rational(0)), 0);
-	AddKey(offset, olive::TimeOffsetNode::kTimeInput, olive::rational(10),
-		   QVariant::fromValue(olive::rational(10)), 0);
+	add_key(offset, olive::TimeOffsetNode::k_time_input, olive::Rational(0),
+		   QVariant::fromValue(olive::Rational(0)), 0);
+	add_key(offset, olive::TimeOffsetNode::k_time_input, olive::Rational(10),
+		   QVariant::fromValue(olive::Rational(10)), 0);
 
-	// The interpolated value is converted back into a rational
-	const QVariant mid = offset->GetValueAtTime(
-		olive::TimeOffsetNode::kTimeInput, olive::rational(5));
-	EXPECT_EQ(mid.value<olive::rational>(), olive::rational(5));
+	// The interpolated value is converted back into a Rational
+	const QVariant mid = offset->get_value_at_time(
+		olive::TimeOffsetNode::k_time_input, olive::Rational(5));
+	EXPECT_EQ(mid.value<olive::Rational>(), olive::Rational(5));
 
-	const QVariant one_tenth_in = offset->GetValueAtTime(
-		olive::TimeOffsetNode::kTimeInput, olive::rational(1));
-	EXPECT_DOUBLE_EQ(one_tenth_in.value<olive::rational>().toDouble(), 1.0);
+	const QVariant one_tenth_in = offset->get_value_at_time(
+		olive::TimeOffsetNode::k_time_input, olive::Rational(1));
+	EXPECT_DOUBLE_EQ(one_tenth_in.value<olive::Rational>().to_double(), 1.0);
 }
 
 TEST_F(NodeInputImmediateNodeTest, GetValueAtTimeHoldsRationalUntilNextKey)
 {
-	auto *offset = AddNode<olive::TimeOffsetNode>();
-	offset->SetInputIsKeyframing(olive::TimeOffsetNode::kTimeInput, true);
+	auto *offset = add_node<olive::TimeOffsetNode>();
+	offset->set_input_is_keyframing(olive::TimeOffsetNode::k_time_input, true);
 
-	AddKey(offset, olive::TimeOffsetNode::kTimeInput, olive::rational(0),
-		   QVariant::fromValue(olive::rational(2, 3)), 0,
-		   olive::NodeKeyframe::kHold);
-	AddKey(offset, olive::TimeOffsetNode::kTimeInput, olive::rational(10),
-		   QVariant::fromValue(olive::rational(4, 3)), 0);
+	add_key(offset, olive::TimeOffsetNode::k_time_input, olive::Rational(0),
+		   QVariant::fromValue(olive::Rational(2, 3)), 0,
+		   olive::NodeKeyframe::k_hold);
+	add_key(offset, olive::TimeOffsetNode::k_time_input, olive::Rational(10),
+		   QVariant::fromValue(olive::Rational(4, 3)), 0);
 
-	// A hold keyframe keeps its exact rational value until the next key
-	const QVariant held = offset->GetValueAtTime(
-		olive::TimeOffsetNode::kTimeInput, olive::rational(9));
-	EXPECT_EQ(held.value<olive::rational>(), olive::rational(2, 3));
+	// A hold keyframe keeps its exact Rational value until the next key
+	const QVariant held = offset->get_value_at_time(
+		olive::TimeOffsetNode::k_time_input, olive::Rational(9));
+	EXPECT_EQ(held.value<olive::Rational>(), olive::Rational(2, 3));
 
-	const QVariant at_next = offset->GetValueAtTime(
-		olive::TimeOffsetNode::kTimeInput, olive::rational(10));
-	EXPECT_EQ(at_next.value<olive::rational>(), olive::rational(4, 3));
+	const QVariant at_next = offset->get_value_at_time(
+		olive::TimeOffsetNode::k_time_input, olive::Rational(10));
+	EXPECT_EQ(at_next.value<olive::Rational>(), olive::Rational(4, 3));
 }
 
 TEST_F(NodeInputImmediateNodeTest, GetValueAtTimeBezierHandlesBendCurve)
 {
-	auto *node = AddNode<olive::MathNode>();
-	node->SetInputIsKeyframing(olive::MathNode::kParamAIn, true);
+	auto *node = add_node<olive::MathNode>();
+	node->set_input_is_keyframing(olive::MathNode::k_param_a_in, true);
 
 	olive::NodeKeyframe *before =
-		AddKey(node, olive::MathNode::kParamAIn, olive::rational(0), 0.0, 0,
-			   olive::NodeKeyframe::kBezier);
+		add_key(node, olive::MathNode::k_param_a_in, olive::Rational(0), 0.0, 0,
+			   olive::NodeKeyframe::k_bezier);
 	olive::NodeKeyframe *after =
-		AddKey(node, olive::MathNode::kParamAIn, olive::rational(10), 10.0, 0,
-			   olive::NodeKeyframe::kBezier);
+		add_key(node, olive::MathNode::k_param_a_in, olive::Rational(10), 10.0, 0,
+			   olive::NodeKeyframe::k_bezier);
 
 	// Ease-in shape: the outgoing handle pulls the start of the curve flat
 	before->set_bezier_control_out(QPointF(2.5, 0.0));
 	after->set_bezier_control_in(QPointF(0.0, 0.0));
 
-	const double interpolated = node->GetValueAtTime(
-		olive::MathNode::kParamAIn, olive::rational(5)).toDouble();
+	const double interpolated = node->get_value_at_time(
+		olive::MathNode::k_param_a_in, olive::Rational(5)).toDouble();
 
 	// Independent expectation, derived by hand from the control points
 	// P0=(0,0), P1=(2.5,0), P2=(10,10), P3=(10,10):
@@ -579,19 +579,19 @@ TEST_F(NodeInputImmediateNodeTest, GetValueAtTimeBezierHandlesBendCurve)
 
 TEST_F(NodeInputImmediateNodeTest, GetValueAtTimeQuadraticBezierWithOneHandle)
 {
-	auto *node = AddNode<olive::MathNode>();
-	node->SetInputIsKeyframing(olive::MathNode::kParamAIn, true);
+	auto *node = add_node<olive::MathNode>();
+	node->set_input_is_keyframing(olive::MathNode::k_param_a_in, true);
 
 	// Bezier into linear uses a quadratic curve with a single control point
 	olive::NodeKeyframe *before =
-		AddKey(node, olive::MathNode::kParamAIn, olive::rational(0), 0.0, 0,
-			   olive::NodeKeyframe::kBezier);
-	AddKey(node, olive::MathNode::kParamAIn, olive::rational(10), 10.0, 0,
-		   olive::NodeKeyframe::kLinear);
+		add_key(node, olive::MathNode::k_param_a_in, olive::Rational(0), 0.0, 0,
+			   olive::NodeKeyframe::k_bezier);
+	add_key(node, olive::MathNode::k_param_a_in, olive::Rational(10), 10.0, 0,
+		   olive::NodeKeyframe::k_linear);
 	before->set_bezier_control_out(QPointF(2.5, 0.0));
 
-	const double interpolated = node->GetValueAtTime(
-		olive::MathNode::kParamAIn, olive::rational(5)).toDouble();
+	const double interpolated = node->get_value_at_time(
+		olive::MathNode::k_param_a_in, olive::Rational(5)).toDouble();
 
 	// Independent expectation, derived by hand from the single control point
 	// CP=(2.5,0) between P0=(0,0) and P2=(10,10):
@@ -605,64 +605,64 @@ TEST_F(NodeInputImmediateNodeTest, GetValueAtTimeQuadraticBezierWithOneHandle)
 
 TEST_F(NodeInputImmediateNodeTest, IsUsingStandardValueTransitions)
 {
-	auto *node = AddNode<olive::MathNode>();
-	node->SetStandardValue(olive::MathNode::kParamAIn, 3.0);
+	auto *node = add_node<olive::MathNode>();
+	node->set_standard_value(olive::MathNode::k_param_a_in, 3.0);
 
 	// Static input: standard value is always in use
-	EXPECT_TRUE(node->IsUsingStandardValue(olive::MathNode::kParamAIn, 0));
+	EXPECT_TRUE(node->is_using_standard_value(olive::MathNode::k_param_a_in, 0));
 
 	// Keyframing enabled but no keyframes yet: still the standard value
-	node->SetInputIsKeyframing(olive::MathNode::kParamAIn, true);
-	EXPECT_TRUE(node->IsUsingStandardValue(olive::MathNode::kParamAIn, 0));
+	node->set_input_is_keyframing(olive::MathNode::k_param_a_in, true);
+	EXPECT_TRUE(node->is_using_standard_value(olive::MathNode::k_param_a_in, 0));
 
 	// With a keyframe present the track switches to the keyed value
 	olive::NodeKeyframe *key =
-		AddKey(node, olive::MathNode::kParamAIn, olive::rational(5), 7.0, 0);
-	EXPECT_FALSE(node->IsUsingStandardValue(olive::MathNode::kParamAIn, 0));
+		add_key(node, olive::MathNode::k_param_a_in, olive::Rational(5), 7.0, 0);
+	EXPECT_FALSE(node->is_using_standard_value(olive::MathNode::k_param_a_in, 0));
 
 	// Disabling keyframing hides the keyframes again
-	node->SetInputIsKeyframing(olive::MathNode::kParamAIn, false);
-	EXPECT_TRUE(node->IsUsingStandardValue(olive::MathNode::kParamAIn, 0));
-	EXPECT_DOUBLE_EQ(node->GetValueAtTime(olive::MathNode::kParamAIn,
-										  olive::rational(5))
+	node->set_input_is_keyframing(olive::MathNode::k_param_a_in, false);
+	EXPECT_TRUE(node->is_using_standard_value(olive::MathNode::k_param_a_in, 0));
+	EXPECT_DOUBLE_EQ(node->get_value_at_time(olive::MathNode::k_param_a_in,
+										  olive::Rational(5))
 						 .toDouble(),
 					 3.0);
 
 	// Removing the last keyframe returns the track to the standard value
-	node->SetInputIsKeyframing(olive::MathNode::kParamAIn, true);
-	EXPECT_FALSE(node->IsUsingStandardValue(olive::MathNode::kParamAIn, 0));
+	node->set_input_is_keyframing(olive::MathNode::k_param_a_in, true);
+	EXPECT_FALSE(node->is_using_standard_value(olive::MathNode::k_param_a_in, 0));
 	key->setParent(nullptr);
 	delete key;
-	EXPECT_TRUE(node->IsUsingStandardValue(olive::MathNode::kParamAIn, 0));
-	EXPECT_DOUBLE_EQ(node->GetValueAtTime(olive::MathNode::kParamAIn,
-										  olive::rational(5))
+	EXPECT_TRUE(node->is_using_standard_value(olive::MathNode::k_param_a_in, 0));
+	EXPECT_DOUBLE_EQ(node->get_value_at_time(olive::MathNode::k_param_a_in,
+										  olive::Rational(5))
 						 .toDouble(),
 					 3.0);
 }
 
 TEST_F(NodeInputImmediateNodeTest, PartiallyKeyedTrackFallsBackToStandardValue)
 {
-	auto *matrix = AddNode<olive::MatrixGenerator>();
-	matrix->SetStandardValue(olive::MatrixGenerator::kPositionInput,
+	auto *matrix = add_node<olive::MatrixGenerator>();
+	matrix->set_standard_value(olive::MatrixGenerator::k_position_input,
 							 QVector2D(1.0f, 2.0f));
-	matrix->SetInputIsKeyframing(olive::MatrixGenerator::kPositionInput, true);
+	matrix->set_input_is_keyframing(olive::MatrixGenerator::k_position_input, true);
 
 	// Only the X track is keyed; the Y track keeps its standard value
-	AddKey(matrix, olive::MatrixGenerator::kPositionInput, olive::rational(0),
+	add_key(matrix, olive::MatrixGenerator::k_position_input, olive::Rational(0),
 		   0.0, 0);
-	AddKey(matrix, olive::MatrixGenerator::kPositionInput, olive::rational(10),
+	add_key(matrix, olive::MatrixGenerator::k_position_input, olive::Rational(10),
 		   10.0, 0);
 
 	EXPECT_FALSE(
-		matrix->IsUsingStandardValue(olive::MatrixGenerator::kPositionInput,
+		matrix->is_using_standard_value(olive::MatrixGenerator::k_position_input,
 									 0));
 	EXPECT_TRUE(
-		matrix->IsUsingStandardValue(olive::MatrixGenerator::kPositionInput,
+		matrix->is_using_standard_value(olive::MatrixGenerator::k_position_input,
 									 1));
 
 	const QVector2D value =
-		matrix->GetValueAtTime(olive::MatrixGenerator::kPositionInput,
-							   olive::rational(5))
+		matrix->get_value_at_time(olive::MatrixGenerator::k_position_input,
+							   olive::Rational(5))
 			.value<QVector2D>();
 	EXPECT_FLOAT_EQ(value.x(), 5.0f);
 	EXPECT_FLOAT_EQ(value.y(), 2.0f);
@@ -670,11 +670,11 @@ TEST_F(NodeInputImmediateNodeTest, PartiallyKeyedTrackFallsBackToStandardValue)
 
 TEST_F(NodeInputImmediateNodeTest, StandardValueCombinationAcrossTracks)
 {
-	auto *solid = AddNode<olive::SolidGenerator>();
+	auto *solid = add_node<olive::SolidGenerator>();
 
 	// The declared default is opaque red
 	olive::Color initial =
-		solid->GetStandardValue(olive::SolidGenerator::kColorInput)
+		solid->get_standard_value(olive::SolidGenerator::k_color_input)
 			.value<olive::Color>();
 	EXPECT_FLOAT_EQ(initial.red(), 1.0f);
 	EXPECT_FLOAT_EQ(initial.green(), 0.0f);
@@ -682,26 +682,26 @@ TEST_F(NodeInputImmediateNodeTest, StandardValueCombinationAcrossTracks)
 	EXPECT_FLOAT_EQ(initial.alpha(), 1.0f);
 
 	// Setting a normal value splits it across the four tracks
-	solid->SetStandardValue(
-		olive::SolidGenerator::kColorInput,
+	solid->set_standard_value(
+		olive::SolidGenerator::k_color_input,
 		QVariant::fromValue(olive::Color(0.25f, 0.5f, 0.75f, 1.0f)));
 	const olive::SplitValue split =
-		solid->GetSplitStandardValue(olive::SolidGenerator::kColorInput);
+		solid->get_split_standard_value(olive::SolidGenerator::k_color_input);
 	ASSERT_EQ(split.size(), 4);
 	EXPECT_DOUBLE_EQ(split.at(0).toDouble(), 0.25);
 	EXPECT_DOUBLE_EQ(split.at(1).toDouble(), 0.5);
 	EXPECT_DOUBLE_EQ(split.at(2).toDouble(), 0.75);
 	EXPECT_DOUBLE_EQ(split.at(3).toDouble(), 1.0);
-	EXPECT_DOUBLE_EQ(solid->GetSplitStandardValueOnTrack(
-						 olive::SolidGenerator::kColorInput, 2)
+	EXPECT_DOUBLE_EQ(solid->get_split_standard_value_on_track(
+						 olive::SolidGenerator::k_color_input, 2)
 						 .toDouble(),
 					 0.75);
 
 	// A partial split only overwrites the leading tracks
-	solid->SetSplitStandardValue(olive::SolidGenerator::kColorInput,
+	solid->set_split_standard_value(olive::SolidGenerator::k_color_input,
 								 { 0.1, 0.2 });
 	const olive::Color combined =
-		solid->GetStandardValue(olive::SolidGenerator::kColorInput)
+		solid->get_standard_value(olive::SolidGenerator::k_color_input)
 			.value<olive::Color>();
 	EXPECT_FLOAT_EQ(combined.red(), 0.1f);
 	EXPECT_FLOAT_EQ(combined.green(), 0.2f);
@@ -711,16 +711,16 @@ TEST_F(NodeInputImmediateNodeTest, StandardValueCombinationAcrossTracks)
 
 TEST_F(NodeInputImmediateNodeTest, DeleteAllKeyframesReparentsOrDeletes)
 {
-	auto *node = AddNode<olive::MathNode>();
-	node->SetInputIsKeyframing(olive::MathNode::kParamAIn, true);
+	auto *node = add_node<olive::MathNode>();
+	node->set_input_is_keyframing(olive::MathNode::k_param_a_in, true);
 
 	olive::NodeKeyframe *key_a =
-		AddKey(node, olive::MathNode::kParamAIn, olive::rational(0), 1.0, 0);
+		add_key(node, olive::MathNode::k_param_a_in, olive::Rational(0), 1.0, 0);
 	olive::NodeKeyframe *key_b =
-		AddKey(node, olive::MathNode::kParamAIn, olive::rational(1), 2.0, 0);
+		add_key(node, olive::MathNode::k_param_a_in, olive::Rational(1), 2.0, 0);
 
 	olive::NodeInputImmediate *imm =
-		node->GetImmediate(olive::MathNode::kParamAIn, -1);
+		node->get_immediate(olive::MathNode::k_param_a_in, -1);
 	ASSERT_NE(imm, nullptr);
 	ASSERT_EQ(imm->keyframe_tracks().at(0).size(), 2);
 

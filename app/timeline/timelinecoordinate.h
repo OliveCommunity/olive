@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINECOORDINATE_H
-#define TIMELINECOORDINATE_H
+#ifndef OAK_TIMELINECOORDINATE_H
+#define OAK_TIMELINECOORDINATE_H
 
 #include "node/output/track/track.h"
 
@@ -30,22 +30,22 @@ namespace olive
 class TimelineCoordinate {
 public:
 	TimelineCoordinate();
-	TimelineCoordinate(const rational &frame, const Track::Reference &track);
-	TimelineCoordinate(const rational &frame, const Track::Type &track_type,
+	TimelineCoordinate(const Rational &frame, const Track::Reference &track);
+	TimelineCoordinate(const Rational &frame, const Track::Type &track_type,
 					   const int &track_index);
 
-	const rational &GetFrame() const;
-	const Track::Reference &GetTrack() const;
+	const Rational &get_frame() const;
+	const Track::Reference &get_track() const;
 
-	void SetFrame(const rational &frame);
-	void SetTrack(const Track::Reference &track);
+	void set_frame(const Rational &frame);
+	void set_track(const Track::Reference &track);
 
 private:
-	rational frame_;
+	Rational frame_;
 
 	Track::Reference track_;
 };
 
 }
 
-#endif // TIMELINECOORDINATE_H
+#endif // OAK_TIMELINECOORDINATE_H

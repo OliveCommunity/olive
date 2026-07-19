@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef HISTORYWIDGET_H
-#define HISTORYWIDGET_H
+#ifndef OAK_HISTORYWIDGET_H
+#define OAK_HISTORYWIDGET_H
 
 #include <QTreeView>
 
@@ -40,12 +40,12 @@ private:
 	size_t current_row_;
 
 private slots:
-	void indexChanged(int i);
+	void index_changed(int i);
 
-	void currentRowChanged(const QModelIndex &current,
+	void current_row_changed(const QModelIndex &current,
 						   const QModelIndex &previous);
 };
 
 }
 
-#endif // HISTORYWIDGET_H
+#endif // OAK_HISTORYWIDGET_H

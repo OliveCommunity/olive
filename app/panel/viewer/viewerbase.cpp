@@ -31,101 +31,101 @@ namespace olive
 ViewerPanelBase::ViewerPanelBase(const QString &object_name)
 	: super(object_name)
 {
-	connect(PanelManager::instance(), &PanelManager::FocusedPanelChanged, this,
-			&ViewerPanelBase::FocusedPanelChanged);
+	connect(PanelManager::instance(), &PanelManager::focused_panel_changed, this,
+			&ViewerPanelBase::focused_panel_changed);
 }
 
-void ViewerPanelBase::PlayPause()
+void ViewerPanelBase::play_pause()
 {
-	GetViewerWidget()->TogglePlayPause();
+	get_viewer_widget()->toggle_play_pause();
 }
 
-void ViewerPanelBase::PlayInToOut()
+void ViewerPanelBase::play_in_to_out()
 {
-	GetViewerWidget()->Play(true);
+	get_viewer_widget()->play(true);
 }
 
-void ViewerPanelBase::ShuttleLeft()
+void ViewerPanelBase::shuttle_left()
 {
-	GetViewerWidget()->ShuttleLeft();
+	get_viewer_widget()->shuttle_left();
 }
 
-void ViewerPanelBase::ShuttleStop()
+void ViewerPanelBase::shuttle_stop()
 {
-	GetViewerWidget()->ShuttleStop();
+	get_viewer_widget()->shuttle_stop();
 }
 
-void ViewerPanelBase::ShuttleRight()
+void ViewerPanelBase::shuttle_right()
 {
-	GetViewerWidget()->ShuttleRight();
+	get_viewer_widget()->shuttle_right();
 }
 
-void ViewerPanelBase::ConnectTimeBasedPanel(TimeBasedPanel *panel)
+void ViewerPanelBase::connect_time_based_panel(TimeBasedPanel *panel)
 {
-	connect(panel, &TimeBasedPanel::PlayPauseRequested, this,
-			&ViewerPanelBase::PlayPause);
-	connect(panel, &TimeBasedPanel::PlayInToOutRequested, this,
-			&ViewerPanelBase::PlayInToOut);
-	connect(panel, &TimeBasedPanel::ShuttleLeftRequested, this,
-			&ViewerPanelBase::ShuttleLeft);
-	connect(panel, &TimeBasedPanel::ShuttleStopRequested, this,
-			&ViewerPanelBase::ShuttleStop);
-	connect(panel, &TimeBasedPanel::ShuttleRightRequested, this,
-			&ViewerPanelBase::ShuttleRight);
+	connect(panel, &TimeBasedPanel::play_pause_requested, this,
+			&ViewerPanelBase::play_pause);
+	connect(panel, &TimeBasedPanel::play_in_to_out_requested, this,
+			&ViewerPanelBase::play_in_to_out);
+	connect(panel, &TimeBasedPanel::shuttle_left_requested, this,
+			&ViewerPanelBase::shuttle_left);
+	connect(panel, &TimeBasedPanel::shuttle_stop_requested, this,
+			&ViewerPanelBase::shuttle_stop);
+	connect(panel, &TimeBasedPanel::shuttle_right_requested, this,
+			&ViewerPanelBase::shuttle_right);
 }
 
-void ViewerPanelBase::DisconnectTimeBasedPanel(TimeBasedPanel *panel)
+void ViewerPanelBase::disconnect_time_based_panel(TimeBasedPanel *panel)
 {
-	disconnect(panel, &TimeBasedPanel::PlayPauseRequested, this,
-			   &ViewerPanelBase::PlayPause);
-	disconnect(panel, &TimeBasedPanel::PlayInToOutRequested, this,
-			   &ViewerPanelBase::PlayInToOut);
-	disconnect(panel, &TimeBasedPanel::ShuttleLeftRequested, this,
-			   &ViewerPanelBase::ShuttleLeft);
-	disconnect(panel, &TimeBasedPanel::ShuttleStopRequested, this,
-			   &ViewerPanelBase::ShuttleStop);
-	disconnect(panel, &TimeBasedPanel::ShuttleRightRequested, this,
-			   &ViewerPanelBase::ShuttleRight);
+	disconnect(panel, &TimeBasedPanel::play_pause_requested, this,
+			   &ViewerPanelBase::play_pause);
+	disconnect(panel, &TimeBasedPanel::play_in_to_out_requested, this,
+			   &ViewerPanelBase::play_in_to_out);
+	disconnect(panel, &TimeBasedPanel::shuttle_left_requested, this,
+			   &ViewerPanelBase::shuttle_left);
+	disconnect(panel, &TimeBasedPanel::shuttle_stop_requested, this,
+			   &ViewerPanelBase::shuttle_stop);
+	disconnect(panel, &TimeBasedPanel::shuttle_right_requested, this,
+			   &ViewerPanelBase::shuttle_right);
 }
 
-void ViewerPanelBase::SetFullScreen(QScreen *screen)
+void ViewerPanelBase::set_full_screen(QScreen *screen)
 {
-	GetViewerWidget()->SetFullScreen(screen);
+	get_viewer_widget()->set_full_screen(screen);
 }
 
-void ViewerPanelBase::SetGizmos(Node *node)
+void ViewerPanelBase::set_gizmos(Node *node)
 {
-	GetViewerWidget()->SetGizmos(node);
+	get_viewer_widget()->set_gizmos(node);
 }
 
-void ViewerPanelBase::CacheEntireSequence()
+void ViewerPanelBase::cache_entire_sequence()
 {
-	GetViewerWidget()->CacheEntireSequence();
+	get_viewer_widget()->cache_entire_sequence();
 }
 
-void ViewerPanelBase::CacheSequenceInOut()
+void ViewerPanelBase::cache_sequence_in_out()
 {
-	GetViewerWidget()->CacheSequenceInOut();
+	get_viewer_widget()->cache_sequence_in_out();
 }
 
-void ViewerPanelBase::SetViewerWidget(ViewerWidget *vw)
+void ViewerPanelBase::set_viewer_widget(ViewerWidget *vw)
 {
-	connect(vw, &ViewerWidget::TextureChanged, this,
-			&ViewerPanelBase::TextureChanged);
-	connect(vw, &ViewerWidget::ColorProcessorChanged, this,
-			&ViewerPanelBase::ColorProcessorChanged);
-	connect(vw, &ViewerWidget::ColorManagerChanged, this,
-			&ViewerPanelBase::ColorManagerChanged);
+	connect(vw, &ViewerWidget::texture_changed, this,
+			&ViewerPanelBase::texture_changed);
+	connect(vw, &ViewerWidget::color_processor_changed, this,
+			&ViewerPanelBase::color_processor_changed);
+	connect(vw, &ViewerWidget::color_manager_changed, this,
+			&ViewerPanelBase::color_manager_changed);
 
-	SetTimeBasedWidget(vw);
+	set_time_based_widget(vw);
 }
 
-void ViewerPanelBase::FocusedPanelChanged(PanelWidget *panel)
+void ViewerPanelBase::focused_panel_changed(PanelWidget *panel)
 {
 	if (dynamic_cast<ViewerPanelBase *>(panel)) {
-		auto vw = GetViewerWidget();
-		if (vw->IsPlaying() && panel != this) {
-			vw->Pause();
+		auto vw = get_viewer_widget();
+		if (vw->is_playing() && panel != this) {
+			vw->pause();
 		}
 	}
 }

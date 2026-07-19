@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef AV1SECTION_H
-#define AV1SECTION_H
+#ifndef OAK_AV1SECTION_H
+#define OAK_AV1SECTION_H
 
 #include <QSlider>
 #include <QStackedWidget>
@@ -37,13 +37,13 @@ class AV1CRFSection : public QWidget {
 public:
 	AV1CRFSection(int default_crf, QWidget *parent = nullptr);
 
-	int GetValue() const;
+	int get_value() const;
 
-	static const int kDefaultAV1CRF = 30;
+	static const int k_default_a_v1_crf = 30;
 
 private:
-	static const int kMinimumCRF = 0;
-	static const int kMaximumCRF = 63;
+	static const int k_minimum_crf = 0;
+	static const int k_maximum_crf = 63;
 
 	QSlider *crf_slider_;
 };
@@ -52,13 +52,13 @@ class AV1Section : public CodecSection {
 	Q_OBJECT
 public:
 	enum CompressionMethod {
-		kConstantRateFactor,
+		k_constant_rate_factor,
 	};
 
 	AV1Section(QWidget *parent = nullptr);
 	AV1Section(int default_crf, QWidget *parent);
 
-	virtual void AddOpts(EncodingParams *params) override;
+	virtual void add_opts(EncodingParams *params) override;
 
 private:
 	QStackedWidget *compression_method_stack_;
@@ -70,4 +70,4 @@ private:
 
 }
 
-#endif // AV1SECTION_H
+#endif // OAK_AV1SECTION_H

@@ -221,17 +221,17 @@ bool LoadOTIOTask::Run()
 
 				track->AppendBlock(block);
 
-				rational start_time;
-				rational duration;
+				Rational start_time;
+				Rational duration;
 
 				if (otio_block->schema_name() == "Clip" ||
 					otio_block->schema_name() == "Gap") {
-					start_time = rational::fromDouble(
+					start_time = Rational::fromDouble(
 						static_cast<OTIO::Item *>(otio_block)
 							->source_range()
 							->start_time()
 							.to_seconds());
-					duration = rational::fromDouble(
+					duration = Rational::fromDouble(
 						static_cast<OTIO::Item *>(otio_block)
 							->source_range()
 							->duration()
@@ -262,9 +262,9 @@ bool LoadOTIOTask::Run()
 
 					// Set how far the transition eats into the previous clip
 					transition_block->set_offsets_and_length(
-						rational::fromRationalTime(
+						Rational::fromRationalTime(
 							otio_block_transition->in_offset()),
-						rational::fromRationalTime(
+						Rational::fromRationalTime(
 							otio_block_transition->out_offset()));
 
 					if (previous_block) {

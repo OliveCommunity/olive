@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef LIBOLIVECORE_SAMPLEBUFFER_H
-#define LIBOLIVECORE_SAMPLEBUFFER_H
+#ifndef OAK_LIBOLIVECORE_SAMPLEBUFFER_H
+#define OAK_LIBOLIVECORE_SAMPLEBUFFER_H
 
 #include <memory>
 #include <vector>
@@ -42,7 +42,7 @@ namespace olive::core
 class SampleBuffer {
 public:
 	SampleBuffer();
-	SampleBuffer(const AudioParams &audio_params, const rational &length);
+	SampleBuffer(const AudioParams &audio_params, const Rational &length);
 	SampleBuffer(const AudioParams &audio_params, size_t samples_per_channel);
 
 	SampleBuffer rip_channel(int channel) const;
@@ -56,7 +56,7 @@ public:
 		return sample_count_per_channel_;
 	}
 	void set_sample_count(const size_t &sample_count);
-	void set_sample_count(const rational &length)
+	void set_sample_count(const Rational &length)
 	{
 		set_sample_count(audio_params_.time_to_samples(length));
 	}
@@ -134,4 +134,4 @@ private:
 
 }
 
-#endif // LIBOLIVECORE_SAMPLEBUFFER_H
+#endif // OAK_LIBOLIVECORE_SAMPLEBUFFER_H

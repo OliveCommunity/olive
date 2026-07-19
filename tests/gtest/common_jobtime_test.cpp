@@ -8,7 +8,7 @@ namespace
 // Collects qDebug output for inspection
 QStringList g_captured_messages;
 
-void CaptureMessageHandler(QtMsgType, const QMessageLogContext &,
+void capture_message_handler(QtMsgType, const QMessageLogContext &,
 						   const QString &msg)
 {
 	g_captured_messages.append(msg);
@@ -29,7 +29,7 @@ TEST(CommonJobTime, AcquireUpdatesValue)
 {
 	olive::JobTime a;
 	uint64_t first = a.value();
-	a.Acquire();
+	a.acquire();
 	uint64_t second = a.value();
 
 	EXPECT_GT(second, first);
@@ -59,7 +59,7 @@ TEST(CommonJobTime, DebugStream)
 	olive::JobTime a;
 
 	g_captured_messages.clear();
-	QtMessageHandler old = qInstallMessageHandler(CaptureMessageHandler);
+	QtMessageHandler old = qInstallMessageHandler(capture_message_handler);
 	{
 		QDebug debug(QtDebugMsg);
 		debug << a;

@@ -48,14 +48,14 @@ FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
 {
 	QGridLayout *layout = new QGridLayout(this);
 
-	setWindowTitle(tr("\"%1\" Properties").arg(footage_->GetLabelOrName()));
+	setWindowTitle(tr("\"%1\" Properties").arg(footage_->get_label_or_name()));
 	setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
 	int row = 0;
 
 	layout->addWidget(new QLabel(tr("Name:")), row, 0);
 
-	footage_name_field_ = new QLineEdit(footage_->GetLabel());
+	footage_name_field_ = new QLineEdit(footage_->get_label());
 	layout->addWidget(footage_name_field_, row, 1);
 	row++;
 
@@ -67,7 +67,7 @@ FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
 		QHBoxLayout *start_time_layout = new QHBoxLayout();
 
 		source_start_time_enable_ = new QCheckBox(tr("Set"));
-		source_start_time_enable_->setChecked(footage_->HasSourceStartTime());
+		source_start_time_enable_->setChecked(footage_->has_source_start_time());
 		start_time_layout->addWidget(source_start_time_enable_);
 
 		source_start_time_spin_ = new QDoubleSpinBox();
@@ -75,15 +75,15 @@ FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
 		source_start_time_spin_->setDecimals(3);
 		source_start_time_spin_->setSuffix(QStringLiteral(" s"));
 		source_start_time_spin_->setValue(
-			footage_->HasSourceStartTime() ?
-				footage_->source_start_time().toDouble() :
+			footage_->has_source_start_time() ?
+				footage_->source_start_time().to_double() :
 				0.0);
 		source_start_time_spin_->setEnabled(
 			source_start_time_enable_->isChecked());
 		start_time_layout->addWidget(source_start_time_spin_, 1);
 
 		QString detection_note;
-		if (footage_->HasSourceStartTime()) {
+		if (footage_->has_source_start_time()) {
 			const QString &source = footage_->source_start_time_source();
 			detection_note =
 				(source == QStringLiteral("manual")) ?
@@ -104,8 +104,8 @@ FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
 	layout->addWidget(new QLabel(tr("Tracks:")), row, 0, 1, 2);
 	row++;
 
-	track_list = new QListWidget();
-	layout->addWidget(track_list, row, 0, 1, 2);
+	track_list_ = new QListWidget();
+	layout->addWidget(track_list_, row, 0, 1, 2);
 
 	row++;
 
@@ -114,33 +114,33 @@ FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
 
 	int first_usable_stream = -1;
 
-	for (int i = 0; i < footage_->GetTotalStreamCount(); i++) {
-		Track::Reference reference = footage_->GetReferenceFromRealIndex(i);
+	for (int i = 0; i < footage_->get_total_stream_count(); i++) {
+		Track::Reference reference = footage_->get_reference_from_real_index(i);
 
 		QString description;
 		bool is_enabled = false;
 
 		switch (reference.type()) {
-		case Track::kVideo: {
+		case Track::k_video: {
 			stacked_widget_->addWidget(
 				new VideoStreamProperties(footage_, reference.index()));
 
-			VideoParams vp = footage_->GetVideoParams(reference.index());
+			VideoParams vp = footage_->get_video_params(reference.index());
 			is_enabled = vp.enabled();
-			description = Footage::DescribeVideoStream(vp);
+			description = Footage::describe_video_stream(vp);
 			break;
 		}
-		case Track::kAudio: {
+		case Track::k_audio: {
 			stacked_widget_->addWidget(
 				new AudioStreamProperties(footage_, reference.index()));
 
-			AudioParams ap = footage_->GetAudioParams(reference.index());
+			AudioParams ap = footage_->get_audio_params(reference.index());
 			is_enabled = ap.enabled();
-			description = Footage::DescribeAudioStream(ap);
+			description = Footage::describe_audio_stream(ap);
 			break;
 		}
-		case Track::kSubtitle: {
-			SubtitleParams sp = footage_->GetSubtitleParams(reference.index());
+		case Track::k_subtitle: {
+			SubtitleParams sp = footage_->get_subtitle_params(reference.index());
 			is_enabled = sp.enabled();
 
 			// FIXME: Language?
@@ -153,15 +153,15 @@ FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
 			break;
 		}
 
-		QListWidgetItem *item = new QListWidgetItem(description, track_list);
+		QListWidgetItem *item = new QListWidgetItem(description, track_list_);
 		item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
 		item->setCheckState(is_enabled ? Qt::Checked : Qt::Unchecked);
-		track_list->addItem(item);
+		track_list_->addItem(item);
 
 		if (first_usable_stream == -1 &&
-			(reference.type() == Track::kVideo ||
-			 reference.type() == Track::kAudio ||
-			 reference.type() == Track::kSubtitle)) {
+			(reference.type() == Track::k_video ||
+			 reference.type() == Track::k_audio ||
+			 reference.type() == Track::k_subtitle)) {
 			first_usable_stream = i;
 		}
 	}
@@ -176,14 +176,14 @@ FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
 	connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
 	connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
-	connect(track_list, &QListWidget::currentRowChanged, stacked_widget_,
+	connect(track_list_, &QListWidget::currentRowChanged, stacked_widget_,
 			&QStackedWidget::setCurrentIndex);
 
 	// Auto-select first item that actually has properties
 	if (first_usable_stream >= 0) {
-		track_list->setCurrentRow(first_usable_stream);
+		track_list_->setCurrentRow(first_usable_stream);
 	}
-	track_list->setFocus();
+	track_list_->setFocus();
 }
 
 void FootagePropertiesDialog::accept()
@@ -191,7 +191,7 @@ void FootagePropertiesDialog::accept()
 	// Perform sanity check on all pages
 	for (int i = 0; i < stacked_widget_->count(); i++) {
 		if (!static_cast<StreamProperties *>(stacked_widget_->widget(i))
-				 ->SanityCheck()) {
+				 ->sanity_check()) {
 			// Switch to the failed panel in question
 			stacked_widget_->setCurrentIndex(i);
 
@@ -202,45 +202,45 @@ void FootagePropertiesDialog::accept()
 
 	MultiUndoCommand *command = new MultiUndoCommand();
 
-	if (footage_->GetLabel() != footage_name_field_->text()) {
+	if (footage_->get_label() != footage_name_field_->text()) {
 		NodeRenameCommand *nrc = new NodeRenameCommand();
-		nrc->AddNode(footage_, footage_name_field_->text());
+		nrc->add_node(footage_, footage_name_field_->text());
 		command->add_child(nrc);
 	}
 
 	// Apply source start time changes
 	{
 		const bool new_enabled = source_start_time_enable_->isChecked();
-		const rational new_time =
-			rational::fromDouble(source_start_time_spin_->value());
-		if (new_enabled != footage_->HasSourceStartTime() ||
+		const Rational new_time =
+			Rational::from_double(source_start_time_spin_->value());
+		if (new_enabled != footage_->has_source_start_time() ||
 			(new_enabled && new_time != footage_->source_start_time())) {
 			command->add_child(new FootageSetSourceStartTimeCommand(
 				footage_, new_enabled, new_time, QStringLiteral("manual")));
 		}
 	}
 
-	for (int i = 0; i < footage_->GetTotalStreamCount(); i++) {
-		Track::Reference reference = footage_->GetReferenceFromRealIndex(i);
+	for (int i = 0; i < footage_->get_total_stream_count(); i++) {
+		Track::Reference reference = footage_->get_reference_from_real_index(i);
 		bool new_stream_enabled =
-			(track_list->item(i)->checkState() == Qt::Checked);
+			(track_list_->item(i)->checkState() == Qt::Checked);
 		bool old_stream_enabled = new_stream_enabled;
 
 		switch (reference.type()) {
-		case Track::kVideo:
+		case Track::k_video:
 			old_stream_enabled =
-				footage_->GetVideoParams(reference.index()).enabled();
+				footage_->get_video_params(reference.index()).enabled();
 			break;
-		case Track::kAudio:
+		case Track::k_audio:
 			old_stream_enabled =
-				footage_->GetAudioParams(reference.index()).enabled();
+				footage_->get_audio_params(reference.index()).enabled();
 			break;
-		case Track::kSubtitle:
+		case Track::k_subtitle:
 			old_stream_enabled =
-				footage_->GetSubtitleParams(reference.index()).enabled();
+				footage_->get_subtitle_params(reference.index()).enabled();
 			break;
-		case Track::kNone:
-		case Track::kCount:
+		case Track::k_none:
+		case Track::k_count:
 			break;
 		}
 
@@ -253,11 +253,11 @@ void FootagePropertiesDialog::accept()
 
 	for (int i = 0; i < stacked_widget_->count(); i++) {
 		static_cast<StreamProperties *>(stacked_widget_->widget(i))
-			->Accept(command);
+			->accept(command);
 	}
 
 	Core::instance()->undo_stack()->push(
-		command, tr("Set Footage \"%1\" Properties").arg(footage_->GetLabel()));
+		command, tr("Set Footage \"%1\" Properties").arg(footage_->get_label()));
 
 	QDialog::accept();
 }
@@ -272,7 +272,7 @@ FootagePropertiesDialog::StreamEnableChangeCommand::StreamEnableChangeCommand(
 }
 
 Project *
-FootagePropertiesDialog::StreamEnableChangeCommand::GetRelevantProject() const
+FootagePropertiesDialog::StreamEnableChangeCommand::get_relevant_project() const
 {
 	return footage_->project();
 }
@@ -280,29 +280,29 @@ FootagePropertiesDialog::StreamEnableChangeCommand::GetRelevantProject() const
 void FootagePropertiesDialog::StreamEnableChangeCommand::redo()
 {
 	switch (type_) {
-	case Track::kVideo: {
-		VideoParams vp = footage_->GetVideoParams(index_);
+	case Track::k_video: {
+		VideoParams vp = footage_->get_video_params(index_);
 		old_enabled_ = vp.enabled();
 		vp.set_enabled(new_enabled_);
-		footage_->SetVideoParams(vp, index_);
+		footage_->set_video_params(vp, index_);
 		break;
 	}
-	case Track::kAudio: {
-		AudioParams ap = footage_->GetAudioParams(index_);
+	case Track::k_audio: {
+		AudioParams ap = footage_->get_audio_params(index_);
 		old_enabled_ = ap.enabled();
 		ap.set_enabled(new_enabled_);
-		footage_->SetAudioParams(ap, index_);
+		footage_->set_audio_params(ap, index_);
 		break;
 	}
-	case Track::kSubtitle: {
-		SubtitleParams sp = footage_->GetSubtitleParams(index_);
+	case Track::k_subtitle: {
+		SubtitleParams sp = footage_->get_subtitle_params(index_);
 		old_enabled_ = sp.enabled();
 		sp.set_enabled(new_enabled_);
-		footage_->SetSubtitleParams(sp, index_);
+		footage_->set_subtitle_params(sp, index_);
 		break;
 	}
-	case Track::kNone:
-	case Track::kCount:
+	case Track::k_none:
+	case Track::k_count:
 		break;
 	}
 }
@@ -310,33 +310,33 @@ void FootagePropertiesDialog::StreamEnableChangeCommand::redo()
 void FootagePropertiesDialog::StreamEnableChangeCommand::undo()
 {
 	switch (type_) {
-	case Track::kVideo: {
-		VideoParams vp = footage_->GetVideoParams(index_);
+	case Track::k_video: {
+		VideoParams vp = footage_->get_video_params(index_);
 		vp.set_enabled(old_enabled_);
-		footage_->SetVideoParams(vp, index_);
+		footage_->set_video_params(vp, index_);
 		break;
 	}
-	case Track::kAudio: {
-		AudioParams ap = footage_->GetAudioParams(index_);
+	case Track::k_audio: {
+		AudioParams ap = footage_->get_audio_params(index_);
 		ap.set_enabled(old_enabled_);
-		footage_->SetAudioParams(ap, index_);
+		footage_->set_audio_params(ap, index_);
 		break;
 	}
-	case Track::kSubtitle: {
-		SubtitleParams sp = footage_->GetSubtitleParams(index_);
+	case Track::k_subtitle: {
+		SubtitleParams sp = footage_->get_subtitle_params(index_);
 		sp.set_enabled(old_enabled_);
-		footage_->SetSubtitleParams(sp, index_);
+		footage_->set_subtitle_params(sp, index_);
 		break;
 	}
-	case Track::kNone:
-	case Track::kCount:
+	case Track::k_none:
+	case Track::k_count:
 		break;
 	}
 }
 
 FootagePropertiesDialog::FootageSetSourceStartTimeCommand::
 	FootageSetSourceStartTimeCommand(Footage *footage, bool enabled,
-									 const rational &time,
+									 const Rational &time,
 									 const QString &source)
 	: footage_(footage)
 	, new_enabled_(enabled)
@@ -346,7 +346,7 @@ FootagePropertiesDialog::FootageSetSourceStartTimeCommand::
 }
 
 Project *
-FootagePropertiesDialog::FootageSetSourceStartTimeCommand::GetRelevantProject()
+FootagePropertiesDialog::FootageSetSourceStartTimeCommand::get_relevant_project()
 	const
 {
 	return footage_->project();
@@ -354,23 +354,23 @@ FootagePropertiesDialog::FootageSetSourceStartTimeCommand::GetRelevantProject()
 
 void FootagePropertiesDialog::FootageSetSourceStartTimeCommand::redo()
 {
-	old_enabled_ = footage_->HasSourceStartTime();
+	old_enabled_ = footage_->has_source_start_time();
 	old_time_ = footage_->source_start_time();
 	old_source_ = footage_->source_start_time_source();
 
 	if (new_enabled_) {
-		footage_->SetSourceStartTime(new_time_, new_source_);
+		footage_->set_source_start_time(new_time_, new_source_);
 	} else {
-		footage_->ClearSourceStartTime();
+		footage_->clear_source_start_time();
 	}
 }
 
 void FootagePropertiesDialog::FootageSetSourceStartTimeCommand::undo()
 {
 	if (old_enabled_) {
-		footage_->SetSourceStartTime(old_time_, old_source_);
+		footage_->set_source_start_time(old_time_, old_source_);
 	} else {
-		footage_->ClearSourceStartTime();
+		footage_->clear_source_start_time();
 	}
 }
 

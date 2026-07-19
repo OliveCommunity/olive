@@ -45,21 +45,21 @@ TaskView::TaskView(QWidget *parent)
 	layout_->addStretch();
 }
 
-void TaskView::AddTask(Task *t)
+void TaskView::add_task(Task *t)
 {
 	// Create TaskViewItem (UI representation of a Task) and connect it
 	TaskViewItem *item = new TaskViewItem(t);
-	connect(item, &TaskViewItem::TaskCancelled, this, &TaskView::TaskCancelled);
+	connect(item, &TaskViewItem::task_cancelled, this, &TaskView::task_cancelled);
 	items_.insert(t, item);
 	layout_->insertWidget(layout_->count() - 1, item);
 }
 
-void TaskView::TaskFailed(Task *t)
+void TaskView::task_failed(Task *t)
 {
-	items_.value(t)->Failed();
+	items_.value(t)->failed();
 }
 
-void TaskView::RemoveTask(Task *t)
+void TaskView::remove_task(Task *t)
 {
 	items_.value(t)->deleteLater();
 	items_.remove(t);

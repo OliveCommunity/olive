@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef INTEGERSLIDER_H
-#define INTEGERSLIDER_H
+#ifndef OAK_INTEGERSLIDER_H
+#define OAK_INTEGERSLIDER_H
 
 #include "base/numericsliderbase.h"
 
@@ -32,31 +32,31 @@ class IntegerSlider : public NumericSliderBase {
 public:
 	IntegerSlider(QWidget *parent = nullptr);
 
-	int64_t GetValue();
+	int64_t get_value();
 
-	void SetValue(const int64_t &v);
+	void set_value(const int64_t &v);
 
-	void SetMinimum(const int64_t &d);
+	void set_minimum(const int64_t &d);
 
-	void SetMaximum(const int64_t &d);
+	void set_maximum(const int64_t &d);
 
 	void SetDefaultValue(const int64_t &d);
 
 protected:
-	virtual QString ValueToString(const QVariant &v) const override;
+	virtual QString value_to_string(const QVariant &v) const override;
 
-	virtual QVariant StringToValue(const QString &s, bool *ok) const override;
+	virtual QVariant string_to_value(const QString &s, bool *ok) const override;
 
-	virtual void ValueSignalEvent(const QVariant &value) override;
+	virtual void value_signal_event(const QVariant &value) override;
 
 	virtual QVariant
-	AdjustDragDistanceInternal(const QVariant &start,
+	adjust_drag_distance_internal(const QVariant &start,
 							   const double &drag) const override;
 
 signals:
-	void ValueChanged(int64_t);
+	void value_changed(int64_t);
 };
 
 }
 
-#endif // INTEGERSLIDER_H
+#endif // OAK_INTEGERSLIDER_H

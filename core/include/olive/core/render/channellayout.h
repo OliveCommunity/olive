@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef LIBOLIVECORE_CHANNELLAYOUT_H
-#define LIBOLIVECORE_CHANNELLAYOUT_H
+#ifndef OAK_LIBOLIVECORE_CHANNELLAYOUT_H
+#define OAK_LIBOLIVECORE_CHANNELLAYOUT_H
 
 #include <stdint.h>
 
@@ -35,16 +35,16 @@ namespace olive::core
  * straight through to the FFmpeg bridge library; the bridge unit tests
  * static_assert each value against the real FFmpeg headers.
  */
-inline constexpr uint64_t kChannelLayoutMono = 0x4;      ///< AV_CH_LAYOUT_MONO
-inline constexpr uint64_t kChannelLayoutStereo = 0x3;    ///< AV_CH_LAYOUT_STEREO
-inline constexpr uint64_t kChannelLayout2_1 = 0x103;     ///< AV_CH_LAYOUT_2_1
-inline constexpr uint64_t kChannelLayout5Point1 = 0x60F; ///< AV_CH_LAYOUT_5POINT1
-inline constexpr uint64_t kChannelLayout7Point1 = 0x63F; ///< AV_CH_LAYOUT_7POINT1
+inline constexpr uint64_t k_channel_layout_mono = 0x4;      ///< AV_CH_LAYOUT_MONO
+inline constexpr uint64_t k_channel_layout_stereo = 0x3;    ///< AV_CH_LAYOUT_STEREO
+inline constexpr uint64_t k_channel_layout2_1 = 0x103;     ///< AV_CH_LAYOUT_2_1
+inline constexpr uint64_t k_channel_layout5_point1 = 0x60F; ///< AV_CH_LAYOUT_5POINT1
+inline constexpr uint64_t k_channel_layout7_point1 = 0x63F; ///< AV_CH_LAYOUT_7POINT1
 
 /**
  * @brief Number of channels in a layout mask (population count)
  */
-inline int ChannelLayoutMaskChannelCount(uint64_t mask)
+inline int channel_layout_mask_channel_count(uint64_t mask)
 {
 #if defined(__GNUC__) || defined(__clang__)
 	return __builtin_popcountll(mask);
@@ -60,4 +60,4 @@ inline int ChannelLayoutMaskChannelCount(uint64_t mask)
 
 }
 
-#endif // LIBOLIVECORE_CHANNELLAYOUT_H
+#endif // OAK_LIBOLIVECORE_CHANNELLAYOUT_H

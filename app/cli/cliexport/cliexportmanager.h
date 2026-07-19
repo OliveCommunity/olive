@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CLIEXPORTMANAGER_H
-#define CLIEXPORTMANAGER_H
+#ifndef OAK_CLIEXPORTMANAGER_H
+#define OAK_CLIEXPORTMANAGER_H
 
 #include "task/export/export.h"
 
@@ -34,4 +34,4 @@ public:
 
 }
 
-#endif // CLIEXPORTMANAGER_H
+#endif // OAK_CLIEXPORTMANAGER_H

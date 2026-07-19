@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef MENUSHARED_H
-#define MENUSHARED_H
+#ifndef OAK_MENUSHARED_H
+#define OAK_MENUSHARED_H
 
 #include <olive/core/core.h>
 #include "widget/colorlabelmenu/colorlabelmenu.h"
@@ -40,20 +40,20 @@ public:
 	MenuShared();
 	virtual ~MenuShared() override;
 
-	static void CreateInstance();
-	static void DestroyInstance();
+	static void create_instance();
+	static void destroy_instance();
 
-	void Retranslate();
+	void retranslate();
 
-	void AddItemsForNewMenu(Menu *m);
-	void AddItemsForEditMenu(Menu *m, bool for_clips);
-	void AddItemsForAddableObjectsMenu(Menu *m);
-	void AddItemsForInOutMenu(Menu *m);
-	void AddColorCodingMenu(Menu *m);
-	void AddItemsForClipEditMenu(Menu *m);
-	void AddItemsForTimeRulerMenu(Menu *m);
+	void add_items_for_new_menu(Menu *m);
+	void add_items_for_edit_menu(Menu *m, bool for_clips);
+	void add_items_for_addable_objects_menu(Menu *m);
+	void add_items_for_in_out_menu(Menu *m);
+	void add_color_coding_menu(Menu *m);
+	void add_items_for_clip_edit_menu(Menu *m);
+	void add_items_for_time_ruler_menu(Menu *m);
 
-	void AboutToShowTimeRulerActions(const rational &timebase);
+	void about_to_show_time_ruler_actions(const Rational &timebase);
 
 	static MenuShared *instance();
 
@@ -63,7 +63,7 @@ public:
 	}
 
 public slots:
-	void DeleteSelectedTriggered();
+	void delete_selected_triggered();
 
 private:
 	// "New" menu shared items
@@ -113,39 +113,39 @@ private:
 	static MenuShared *instance_;
 
 private slots:
-	void SplitAtPlayheadTriggered();
+	void split_at_playhead_triggered();
 
-	void RippleDeleteTriggered();
+	void ripple_delete_triggered();
 
-	void SetInTriggered();
+	void set_in_triggered();
 
-	void SetOutTriggered();
+	void set_out_triggered();
 
-	void ResetInTriggered();
+	void reset_in_triggered();
 
-	void ResetOutTriggered();
+	void reset_out_triggered();
 
-	void ClearInOutTriggered();
+	void clear_in_out_triggered();
 
-	void ToggleLinksTriggered();
+	void toggle_links_triggered();
 
-	void CutTriggered();
+	void cut_triggered();
 
-	void CopyTriggered();
+	void copy_triggered();
 
-	void PasteTriggered();
+	void paste_triggered();
 
-	void PasteInsertTriggered();
+	void paste_insert_triggered();
 
-	void DuplicateTriggered();
+	void duplicate_triggered();
 
-	void RenameSelectedTriggered();
+	void rename_selected_triggered();
 
-	void EnableDisableTriggered();
+	void enable_disable_triggered();
 
-	void NestTriggered();
+	void nest_triggered();
 
-	void DefaultTransitionTriggered();
+	void default_transition_triggered();
 
 	/**
    * @brief A slot for the timecode display menu items
@@ -153,15 +153,15 @@ private slots:
    * Assumes a QAction* sender() and its data() is a member of enum Timecode::Display. Uses the data() to signal a
    * timecode change throughout the rest of the application.
    */
-	void TimecodeDisplayTriggered();
+	void timecode_display_triggered();
 
-	void ColorLabelTriggered(int color_index);
+	void color_label_triggered(int color_index);
 
-	void SpeedDurationTriggered();
+	void speed_duration_triggered();
 
-	void AddableItemTriggered();
+	void addable_item_triggered();
 };
 
 }
 
-#endif // MENUSHARED_H
+#endif // OAK_MENUSHARED_H

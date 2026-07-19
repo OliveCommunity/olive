@@ -36,122 +36,122 @@ TimeBasedPanel::~TimeBasedPanel()
 	delete widget_;
 }
 
-const rational &TimeBasedPanel::timebase()
+const Rational &TimeBasedPanel::timebase()
 {
 	return widget_->timebase();
 }
 
-void TimeBasedPanel::GoToStart()
+void TimeBasedPanel::go_to_start()
 {
-	widget_->GoToStart();
+	widget_->go_to_start();
 }
 
-void TimeBasedPanel::PrevFrame()
+void TimeBasedPanel::prev_frame()
 {
-	widget_->PrevFrame();
+	widget_->prev_frame();
 }
 
-void TimeBasedPanel::NextFrame()
+void TimeBasedPanel::next_frame()
 {
-	widget_->NextFrame();
+	widget_->next_frame();
 }
 
-void TimeBasedPanel::GoToEnd()
+void TimeBasedPanel::go_to_end()
 {
-	widget_->GoToEnd();
+	widget_->go_to_end();
 }
 
-void TimeBasedPanel::ZoomIn()
+void TimeBasedPanel::zoom_in()
 {
-	widget_->ZoomIn();
+	widget_->zoom_in();
 }
 
-void TimeBasedPanel::ZoomOut()
+void TimeBasedPanel::zoom_out()
 {
-	widget_->ZoomOut();
+	widget_->zoom_out();
 }
 
-void TimeBasedPanel::SetTimebase(const rational &timebase)
+void TimeBasedPanel::set_timebase(const Rational &timebase)
 {
 	widget_->SetTimebase(timebase);
 }
 
-void TimeBasedPanel::GoToPrevCut()
+void TimeBasedPanel::go_to_prev_cut()
 {
-	widget_->GoToPrevCut();
+	widget_->go_to_prev_cut();
 }
 
-void TimeBasedPanel::GoToNextCut()
+void TimeBasedPanel::go_to_next_cut()
 {
-	widget_->GoToNextCut();
+	widget_->go_to_next_cut();
 }
 
-void TimeBasedPanel::PlayPause()
+void TimeBasedPanel::play_pause()
 {
-	emit PlayPauseRequested();
+	emit play_pause_requested();
 }
 
-void TimeBasedPanel::PlayInToOut()
+void TimeBasedPanel::play_in_to_out()
 {
-	emit PlayInToOutRequested();
+	emit play_in_to_out_requested();
 }
 
-void TimeBasedPanel::ShuttleLeft()
+void TimeBasedPanel::shuttle_left()
 {
-	emit ShuttleLeftRequested();
+	emit shuttle_left_requested();
 }
 
-void TimeBasedPanel::ShuttleStop()
+void TimeBasedPanel::shuttle_stop()
 {
-	emit ShuttleStopRequested();
+	emit shuttle_stop_requested();
 }
 
-void TimeBasedPanel::ShuttleRight()
+void TimeBasedPanel::shuttle_right()
 {
-	emit ShuttleRightRequested();
+	emit shuttle_right_requested();
 }
 
-void TimeBasedPanel::ConnectViewerNode(ViewerOutput *node)
+void TimeBasedPanel::connect_viewer_node(ViewerOutput *node)
 {
-	widget_->ConnectViewerNode(node);
+	widget_->connect_viewer_node(node);
 }
 
-void TimeBasedPanel::SetTimeBasedWidget(TimeBasedWidget *widget)
+void TimeBasedPanel::set_time_based_widget(TimeBasedWidget *widget)
 {
 	if (widget_) {
-		disconnect(widget_, &TimeBasedWidget::ConnectedNodeChanged, this,
-				   &TimeBasedPanel::ConnectedNodeChanged);
+		disconnect(widget_, &TimeBasedWidget::connected_node_changed, this,
+				   &TimeBasedPanel::connected_node_changed);
 	}
 
 	widget_ = widget;
 
 	if (widget_) {
-		connect(widget_, &TimeBasedWidget::ConnectedNodeChanged, this,
-				&TimeBasedPanel::ConnectedNodeChanged);
+		connect(widget_, &TimeBasedWidget::connected_node_changed, this,
+				&TimeBasedPanel::connected_node_changed);
 	}
 
-	SetWidgetWithPadding(widget_);
+	set_widget_with_padding(widget_);
 }
 
-void TimeBasedPanel::Retranslate()
+void TimeBasedPanel::retranslate()
 {
-	if (GetTimeBasedWidget()->GetConnectedNode()) {
-		SetSubtitle(GetTimeBasedWidget()->GetConnectedNode()->GetLabel());
+	if (get_time_based_widget()->get_connected_node()) {
+		set_subtitle(get_time_based_widget()->get_connected_node()->get_label());
 	} else {
-		SetSubtitle(tr("(none)"));
+		set_subtitle(tr("(none)"));
 	}
 }
 
-void TimeBasedPanel::ConnectedNodeChanged(ViewerOutput *old, ViewerOutput *now)
+void TimeBasedPanel::connected_node_changed(ViewerOutput *old, ViewerOutput *now)
 {
 	if (old) {
-		disconnect(old, &ViewerOutput::LabelChanged, this,
-				   &TimeBasedPanel::SetSubtitle);
+		disconnect(old, &ViewerOutput::label_changed, this,
+				   &TimeBasedPanel::set_subtitle);
 	}
 
 	if (now) {
-		connect(now, &ViewerOutput::LabelChanged, this,
-				&TimeBasedPanel::SetSubtitle);
+		connect(now, &ViewerOutput::label_changed, this,
+				&TimeBasedPanel::set_subtitle);
 
 		if (show_and_raise_on_connect_) {
 			this->show();
@@ -160,72 +160,72 @@ void TimeBasedPanel::ConnectedNodeChanged(ViewerOutput *old, ViewerOutput *now)
 	}
 
 	// Update strings
-	Retranslate();
+	retranslate();
 }
 
-void TimeBasedPanel::SetIn()
+void TimeBasedPanel::set_in()
 {
-	GetTimeBasedWidget()->SetInAtPlayhead();
+	get_time_based_widget()->set_in_at_playhead();
 }
 
-void TimeBasedPanel::SetOut()
+void TimeBasedPanel::set_out()
 {
-	GetTimeBasedWidget()->SetOutAtPlayhead();
+	get_time_based_widget()->set_out_at_playhead();
 }
 
-void TimeBasedPanel::ResetIn()
+void TimeBasedPanel::reset_in()
 {
-	GetTimeBasedWidget()->ResetIn();
+	get_time_based_widget()->reset_in();
 }
 
-void TimeBasedPanel::ResetOut()
+void TimeBasedPanel::reset_out()
 {
-	GetTimeBasedWidget()->ResetOut();
+	get_time_based_widget()->reset_out();
 }
 
-void TimeBasedPanel::ClearInOut()
+void TimeBasedPanel::clear_in_out()
 {
-	GetTimeBasedWidget()->ClearInOutPoints();
+	get_time_based_widget()->clear_in_out_points();
 }
 
-void TimeBasedPanel::SetMarker()
+void TimeBasedPanel::set_marker()
 {
-	GetTimeBasedWidget()->SetMarker();
+	get_time_based_widget()->set_marker();
 }
 
-void TimeBasedPanel::ToggleShowAll()
+void TimeBasedPanel::toggle_show_all()
 {
-	GetTimeBasedWidget()->ToggleShowAll();
+	get_time_based_widget()->toggle_show_all();
 }
 
-void TimeBasedPanel::GoToIn()
+void TimeBasedPanel::go_to_in()
 {
-	GetTimeBasedWidget()->GoToIn();
+	get_time_based_widget()->go_to_in();
 }
 
-void TimeBasedPanel::GoToOut()
+void TimeBasedPanel::go_to_out()
 {
-	GetTimeBasedWidget()->GoToOut();
+	get_time_based_widget()->go_to_out();
 }
 
-void TimeBasedPanel::DeleteSelected()
+void TimeBasedPanel::delete_selected()
 {
-	GetTimeBasedWidget()->DeleteSelected();
+	get_time_based_widget()->delete_selected();
 }
 
-void TimeBasedPanel::CutSelected()
+void TimeBasedPanel::cut_selected()
 {
-	GetTimeBasedWidget()->CopySelected(true);
+	get_time_based_widget()->copy_selected(true);
 }
 
-void TimeBasedPanel::CopySelected()
+void TimeBasedPanel::copy_selected()
 {
-	GetTimeBasedWidget()->CopySelected(false);
+	get_time_based_widget()->copy_selected(false);
 }
 
-void TimeBasedPanel::Paste()
+void TimeBasedPanel::paste()
 {
-	GetTimeBasedWidget()->Paste();
+	get_time_based_widget()->paste();
 }
 
 }

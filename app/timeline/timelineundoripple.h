@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINEUNDORIPPLE_H
-#define TIMELINEUNDORIPPLE_H
+#ifndef OAK_TIMELINEUNDORIPPLE_H
+#define OAK_TIMELINEUNDORIPPLE_H
 
 #include "node/block/gap/gap.h"
 #include "node/output/track/track.h"
@@ -46,7 +46,7 @@ public:
 
 	virtual ~TrackRippleRemoveAreaCommand() override;
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return track_->project();
 	}
@@ -54,12 +54,12 @@ public:
 	/**
    * @brief Block to insert after if you want to insert something between this ripple
    */
-	Block *GetInsertionIndex() const
+	Block *get_insertion_index() const
 	{
 		return insert_previous_;
 	}
 
-	Block *GetSplicedBlock() const
+	Block *get_spliced_block() const
 	{
 		if (splice_split_command_) {
 			return splice_split_command_->new_block();
@@ -68,7 +68,7 @@ public:
 		return nullptr;
 	}
 
-	void SetAllowSplittingGaps(bool e)
+	void set_allow_splitting_gaps(bool e)
 	{
 		allow_splitting_gaps_ = e;
 	}
@@ -83,8 +83,8 @@ protected:
 private:
 	struct TrimOperation {
 		Block *block;
-		rational old_length;
-		rational new_length;
+		Rational old_length;
+		Rational new_length;
 	};
 
 	struct RemoveOperation {
@@ -107,7 +107,7 @@ private:
 
 class TrackListRippleRemoveAreaCommand : public UndoCommand {
 public:
-	TrackListRippleRemoveAreaCommand(TrackList *list, rational in, rational out)
+	TrackListRippleRemoveAreaCommand(TrackList *list, Rational in, Rational out)
 		: list_(list)
 		, range_(in, out)
 	{
@@ -118,7 +118,7 @@ public:
 		qDeleteAll(commands_);
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return list_->parent()->project();
 	}
@@ -142,10 +142,10 @@ private:
 
 class TimelineRippleRemoveAreaCommand : public MultiUndoCommand {
 public:
-	TimelineRippleRemoveAreaCommand(Sequence *timeline, rational in,
-									rational out);
+	TimelineRippleRemoveAreaCommand(Sequence *timeline, Rational in,
+									Rational out);
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return timeline_->project();
 	}
@@ -163,10 +163,10 @@ public:
 
 	TrackListRippleToolCommand(TrackList *track_list,
 							   const QHash<Track *, RippleInfo> &info,
-							   const rational &ripple_movement,
+							   const Rational &ripple_movement,
 							   const Timeline::MovementMode &movement_mode);
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return track_list_->parent()->project();
 	}
@@ -188,14 +188,14 @@ private:
 	TrackList *track_list_;
 
 	QHash<Track *, RippleInfo> info_;
-	rational ripple_movement_;
+	Rational ripple_movement_;
 	Timeline::MovementMode movement_mode_;
 
 	struct WorkingData {
 		GapBlock *created_gap = nullptr;
 		Block *removed_gap_after;
-		rational old_length;
-		rational earliest_point_of_change;
+		Rational old_length;
+		Rational earliest_point_of_change;
 	};
 
 	QHash<Track *, WorkingData> working_data_;
@@ -219,12 +219,12 @@ public:
 		qDeleteAll(commands_);
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return timeline_->project();
 	}
 
-	bool HasCommands() const
+	bool has_commands() const
 	{
 		return !commands_.isEmpty();
 	}
@@ -250,4 +250,4 @@ private:
 
 }
 
-#endif // TIMELINEUNDORIPPLE_H
+#endif // OAK_TIMELINEUNDORIPPLE_H

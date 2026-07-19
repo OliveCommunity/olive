@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECTLOADBASETASK_H
-#define PROJECTLOADBASETASK_H
+#ifndef OAK_PROJECTLOADBASETASK_H
+#define OAK_PROJECTLOADBASETASK_H
 
 #include "node/project.h"
 #include "task/task.h"
@@ -33,17 +33,17 @@ class ProjectLoadBaseTask : public Task {
 public:
 	ProjectLoadBaseTask(const QString &filename);
 
-	Project *GetLoadedProject() const
+	Project *get_loaded_project() const
 	{
 		return project_;
 	}
 
-	const QString &GetFilename() const
+	const QString &get_filename() const
 	{
 		return filename_;
 	}
 
-	const MainWindowLayoutInfo &GetLoadedLayout() const
+	const MainWindowLayoutInfo &get_loaded_layout() const
 	{
 		return layout_;
 	}

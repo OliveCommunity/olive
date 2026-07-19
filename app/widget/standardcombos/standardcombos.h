@@ -18,8 +18,8 @@
 
 ***/
 
-#ifndef STANDARDCOMBOS_H
-#define STANDARDCOMBOS_H
+#ifndef OAK_STANDARDCOMBOS_H
+#define OAK_STANDARDCOMBOS_H
 
 #include "channellayoutcombobox.h"
 #include "frameratecombobox.h"
@@ -30,4 +30,4 @@
 #include "sampleratecombobox.h"
 #include "videodividercombobox.h"
 
-#endif // STANDARDCOMBOS_H
+#endif // OAK_STANDARDCOMBOS_H

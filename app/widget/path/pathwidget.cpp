@@ -40,16 +40,16 @@ PathWidget::PathWidget(const QString &path, QWidget *parent)
 	path_edit_->setText(path);
 	layout->addWidget(path_edit_);
 	connect(path_edit_, &QLineEdit::textChanged, this,
-			&PathWidget::LineEditChanged);
+			&PathWidget::line_edit_changed);
 
 	browse_btn_ = new QPushButton(tr("Browse"));
 	layout->addWidget(browse_btn_);
 
 	connect(browse_btn_, &QPushButton::clicked, this,
-			&PathWidget::BrowseClicked);
+			&PathWidget::browse_clicked);
 }
 
-void PathWidget::BrowseClicked()
+void PathWidget::browse_clicked()
 {
 	QString dir = QFileDialog::getExistingDirectory(
 		static_cast<QWidget *>(parent()), tr("Browse for path"),
@@ -60,9 +60,9 @@ void PathWidget::BrowseClicked()
 	}
 }
 
-void PathWidget::LineEditChanged()
+void PathWidget::line_edit_changed()
 {
-	if (FileFunctions::DirectoryIsValid(text(), false)) {
+	if (FileFunctions::directory_is_valid(text(), false)) {
 		path_edit_->setStyleSheet(QString());
 	} else {
 		path_edit_->setStyleSheet(QStringLiteral("QLineEdit {color: red;}"));

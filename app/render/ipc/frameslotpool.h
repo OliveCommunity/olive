@@ -18,8 +18,8 @@
 
 ***/
 
-#ifndef IPC_FRAMESLOTPOOL_H
-#define IPC_FRAMESLOTPOOL_H
+#ifndef OAK_IPC_FRAMESLOTPOOL_H
+#define OAK_IPC_FRAMESLOTPOOL_H
 
 #include <cstddef>
 #include <cstdint>
@@ -36,7 +36,7 @@ namespace ipc
  *
  * Trivially-copyable POD that lives in shared memory alongside the pixel data. Carries everything
  * the consumer needs to reconstruct an olive::Frame without any out-of-band information. We store
- * the rational timestamp as an explicit numerator/denominator pair to stay POD (olive::rational is
+ * the Rational timestamp as an explicit numerator/denominator pair to stay POD (olive::Rational is
  * not guaranteed shared-memory-safe).
  */
 struct FrameSlotMeta {
@@ -82,7 +82,7 @@ public:
 	/**
    * @brief Total bytes a region must provide to back a pool of `slot_count` x `slot_data_bytes`.
    */
-	static size_t BytesNeeded(uint32_t slot_count, size_t slot_data_bytes);
+	static size_t bytes_needed(uint32_t slot_count, size_t slot_data_bytes);
 
 	/**
    * @brief Lay out and initialize a brand-new pool over `mem` (owner side, once).
@@ -90,7 +90,7 @@ public:
    * Initializes both rings, seeds the free ring with every slot index, and zeroes metadata.
    * `mem` must provide at least BytesNeeded(slot_count, slot_data_bytes) bytes.
    */
-	static FrameSlotPool Create(void *mem, uint32_t slot_count,
+	static FrameSlotPool create(void *mem, uint32_t slot_count,
 								size_t slot_data_bytes);
 
 	/**
@@ -98,9 +98,9 @@ public:
    *
    * Reads slot_count/slot_data_bytes from the in-memory header written by Create().
    */
-	static FrameSlotPool Attach(void *mem);
+	static FrameSlotPool attach(void *mem);
 
-	bool IsValid() const
+	bool is_valid() const
 	{
 		return header_ != nullptr;
 	}
@@ -113,37 +113,37 @@ public:
 	/**
    * @brief Take ownership of a free slot. Returns false (and leaves *index untouched) if none free.
    */
-	bool Acquire(uint32_t *index);
+	bool acquire(uint32_t *index);
 
 	/**
    * @brief Pointer to a slot's pixel data block (slot_data_bytes available).
    */
-	void *SlotData(uint32_t index);
+	void *slot_data(uint32_t index);
 
 	/**
    * @brief Mutable metadata for a slot. Filler writes this before Publish().
    */
-	FrameSlotMeta *Meta(uint32_t index);
+	FrameSlotMeta *meta(uint32_t index);
 
 	/**
    * @brief Publish a filled slot to the drainer. Must follow a successful Acquire() of `index`.
    */
-	bool Publish(uint32_t index);
+	bool publish(uint32_t index);
 
 	// ---- Drainer side ----
 
 	/**
    * @brief Take the next published slot. Returns false if nothing is ready.
    */
-	bool Consume(uint32_t *index);
+	bool consume(uint32_t *index);
 
 	/**
    * @brief Return a consumed slot to the free pool for reuse. Must follow Consume() of `index`.
    */
-	bool Release(uint32_t index);
+	bool release(uint32_t index);
 
-	const FrameSlotMeta *Meta(uint32_t index) const;
-	const void *SlotData(uint32_t index) const;
+	const FrameSlotMeta *meta(uint32_t index) const;
+	const void *slot_data(uint32_t index) const;
 
 public:
 	FrameSlotPool() = default;
@@ -160,11 +160,11 @@ private:
 		uint64_t data_offset;
 	};
 
-	static constexpr uint32_t kMagic = 0x4F4B5350; // 'OKSP'
+	static constexpr uint32_t k_magic = 0x4F4B5350; // 'OKSP'
 
 	// Ring capacity must exceed slot_count by one because a ring can hold at most capacity-1 entries
 	// and we need to be able to enqueue every slot at once.
-	static uint32_t RingCapacity(uint32_t slot_count)
+	static uint32_t ring_capacity(uint32_t slot_count)
 	{
 		return slot_count + 1;
 	}
@@ -180,4 +180,4 @@ private:
 } // namespace ipc
 } // namespace olive
 
-#endif // IPC_FRAMESLOTPOOL_H
+#endif // OAK_IPC_FRAMESLOTPOOL_H

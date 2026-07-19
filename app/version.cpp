@@ -24,7 +24,7 @@
 namespace olive
 {
 
-QString kAppVersion = QStringLiteral(APPVERSION);
-QString kAppVersionLong = QStringLiteral(APPVERSIONLONG);
+QString k_app_version = QStringLiteral(APPVERSION);
+QString k_app_version_long = QStringLiteral(APPVERSIONLONG);
 
 }

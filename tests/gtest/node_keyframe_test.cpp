@@ -11,8 +11,8 @@ TEST(NodeKeyframe, SaveLoadRoundTrip)
 {
 	olive::NodeKeyframe key;
 	key.set_input(QStringLiteral("Value"));
-	key.set_time(olive::core::rational(1, 24));
-	key.set_type(olive::NodeKeyframe::kLinear);
+	key.set_time(olive::core::Rational(1, 24));
+	key.set_type(olive::NodeKeyframe::k_linear);
 	key.set_value(42.0);
 	key.set_bezier_control_in(QPointF(0.1, 0.2));
 	key.set_bezier_control_out(QPointF(0.3, 0.4));
@@ -23,7 +23,7 @@ TEST(NodeKeyframe, SaveLoadRoundTrip)
 	QXmlStreamWriter writer(&buffer);
 	writer.writeStartDocument();
 	writer.writeStartElement(QStringLiteral("key"));
-	key.save(&writer, olive::NodeValue::kFloat);
+	key.save(&writer, olive::NodeValue::k_float);
 	writer.writeEndElement();
 	writer.writeEndDocument();
 	buffer.close();
@@ -35,10 +35,10 @@ TEST(NodeKeyframe, SaveLoadRoundTrip)
 	EXPECT_EQ(reader.name().toString(), QStringLiteral("key"));
 
 	olive::NodeKeyframe loaded;
-	EXPECT_TRUE(loaded.load(&reader, olive::NodeValue::kFloat));
+	EXPECT_TRUE(loaded.load(&reader, olive::NodeValue::k_float));
 	EXPECT_EQ(loaded.input(), QStringLiteral("Value"));
-	EXPECT_EQ(loaded.time(), olive::core::rational(1, 24));
-	EXPECT_EQ(loaded.type(), olive::NodeKeyframe::kLinear);
+	EXPECT_EQ(loaded.time(), olive::core::Rational(1, 24));
+	EXPECT_EQ(loaded.type(), olive::NodeKeyframe::k_linear);
 	EXPECT_DOUBLE_EQ(loaded.value().toDouble(), 42.0);
 	EXPECT_DOUBLE_EQ(loaded.bezier_control_in().x(), 0.1);
 	EXPECT_DOUBLE_EQ(loaded.bezier_control_in().y(), 0.2);
@@ -50,16 +50,16 @@ TEST(NodeKeyframe, TypeEnumeration)
 {
 	using olive::NodeKeyframe;
 
-	EXPECT_NE(NodeKeyframe::kLinear, NodeKeyframe::kHold);
-	EXPECT_NE(NodeKeyframe::kLinear, NodeKeyframe::kBezier);
+	EXPECT_NE(NodeKeyframe::k_linear, NodeKeyframe::k_hold);
+	EXPECT_NE(NodeKeyframe::k_linear, NodeKeyframe::k_bezier);
 }
 
 TEST(NodeKeyframe, DefaultState)
 {
 	olive::NodeKeyframe key;
 	EXPECT_TRUE(key.input().isEmpty());
-	EXPECT_EQ(key.time(), olive::core::rational(0, 1));
-	EXPECT_EQ(key.type(), olive::NodeKeyframe::kLinear);
+	EXPECT_EQ(key.time(), olive::core::Rational(0, 1));
+	EXPECT_EQ(key.type(), olive::NodeKeyframe::k_linear);
 	EXPECT_TRUE(key.value().isNull());
 }
 

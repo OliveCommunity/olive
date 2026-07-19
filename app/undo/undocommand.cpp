@@ -48,7 +48,7 @@ UndoCommand::UndoCommand()
 
 void UndoCommand::redo_and_set_modified()
 {
-	project_ = GetRelevantProject();
+	project_ = get_relevant_project();
 
 	redo_now();
 

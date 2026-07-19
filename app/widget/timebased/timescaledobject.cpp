@@ -29,24 +29,24 @@
 namespace olive
 {
 
-const int TimeScaledObject::kCalculateDimensionsPadding = 10;
+const int TimeScaledObject::k_calculate_dimensions_padding = 10;
 
 TimeScaledObject::TimeScaledObject()
 	: scale_(1.0)
 	, min_scale_(0)
-	, max_scale_(AudioVisualWaveform::kMaximumSampleRate.toDouble())
+	, max_scale_(AudioVisualWaveform::k_maximum_sample_rate.to_double())
 {
 }
 
-void TimeScaledObject::SetTimebase(const rational &timebase)
+void TimeScaledObject::set_timebase(const Rational &timebase)
 {
 	timebase_ = timebase;
-	timebase_dbl_ = timebase_.toDouble();
+	timebase_dbl_ = timebase_.to_double();
 
 	TimebaseChangedEvent(timebase);
 }
 
-const rational &TimeScaledObject::timebase() const
+const Rational &TimeScaledObject::timebase() const
 {
 	return timebase_;
 }
@@ -56,13 +56,13 @@ const double &TimeScaledObject::timebase_dbl() const
 	return timebase_dbl_;
 }
 
-rational TimeScaledObject::SceneToTime(const double &x, const double &x_scale,
-									   const rational &timebase, bool round)
+Rational TimeScaledObject::scene_to_time(const double &x, const double &x_scale,
+									   const Rational &timebase, bool round)
 {
 	if (timebase.isNull()) {
-		return rational();
+		return Rational();
 	}
-	double unscaled_time = x / x_scale / timebase.toDouble();
+	double unscaled_time = x / x_scale / timebase.to_double();
 
 	// Adjust screen point by scale and timebase
 	qint64 rounded_x_mvmt;
@@ -77,66 +77,66 @@ rational TimeScaledObject::SceneToTime(const double &x, const double &x_scale,
 	}
 
 	// Return a time in the timebase
-	return rational(rounded_x_mvmt * timebase.numerator(),
+	return Rational(rounded_x_mvmt * timebase.numerator(),
 					timebase.denominator());
 }
 
-rational TimeScaledObject::SceneToTimeNoGrid(const double &x,
+Rational TimeScaledObject::scene_to_time_no_grid(const double &x,
 											 const double &x_scale)
 {
 	double unscaled_time = x / x_scale;
 
-	return rational::fromDouble(unscaled_time);
+	return Rational::from_double(unscaled_time);
 }
 
-double TimeScaledObject::TimeToScene(const rational &time) const
+double TimeScaledObject::time_to_scene(const Rational &time) const
 {
 	if (timebase_.isNull()) {
 		return 0.0;
 	}
-	return time.toDouble() * scale_;
+	return time.to_double() * scale_;
 }
 
-rational TimeScaledObject::SceneToTime(const double &x, bool round) const
+Rational TimeScaledObject::scene_to_time(const double &x, bool round) const
 {
 	if (timebase_.isNull()) {
-		return rational();
+		return Rational();
 	}
-	return SceneToTime(x, scale_, timebase_, round);
+	return scene_to_time(x, scale_, timebase_, round);
 }
 
-rational TimeScaledObject::SceneToTimeNoGrid(const double &x) const
+Rational TimeScaledObject::scene_to_time_no_grid(const double &x) const
 {
 	if (timebase_.isNull()) {
-		return rational::fromDouble(x / scale_);
+		return Rational::from_double(x / scale_);
 	}
-	return SceneToTimeNoGrid(x, scale_);
+	return scene_to_time_no_grid(x, scale_);
 }
 
-void TimeScaledObject::SetMaximumScale(const double &max)
+void TimeScaledObject::set_maximum_scale(const double &max)
 {
 	max_scale_ = max;
 
-	if (GetScale() > max_scale_) {
-		SetScale(max_scale_);
+	if (get_scale() > max_scale_) {
+		set_scale(max_scale_);
 	}
 }
 
-void TimeScaledObject::SetMinimumScale(const double &min)
+void TimeScaledObject::set_minimum_scale(const double &min)
 {
 	min_scale_ = min;
 
-	if (GetScale() < min_scale_) {
-		SetScale(min_scale_);
+	if (get_scale() < min_scale_) {
+		set_scale(min_scale_);
 	}
 }
 
-const double &TimeScaledObject::GetScale() const
+const double &TimeScaledObject::get_scale() const
 {
 	return scale_;
 }
 
-void TimeScaledObject::SetScale(const double &scale)
+void TimeScaledObject::set_scale(const double &scale)
 {
 	Q_ASSERT(scale > 0);
 
@@ -145,23 +145,23 @@ void TimeScaledObject::SetScale(const double &scale)
 	ScaleChangedEvent(scale_);
 }
 
-void TimeScaledObject::SetScaleFromDimensions(double viewport_width,
+void TimeScaledObject::set_scale_from_dimensions(double viewport_width,
 											  double content_width)
 {
-	SetScale(CalculateScaleFromDimensions(viewport_width, content_width));
+	set_scale(calculate_scale_from_dimensions(viewport_width, content_width));
 }
 
-double TimeScaledObject::CalculateScaleFromDimensions(double viewport_sz,
+double TimeScaledObject::calculate_scale_from_dimensions(double viewport_sz,
 													  double content_sz)
 {
-	return static_cast<double>(viewport_sz / kCalculateDimensionsPadding *
-							   (kCalculateDimensionsPadding - 1)) /
+	return static_cast<double>(viewport_sz / k_calculate_dimensions_padding *
+							   (k_calculate_dimensions_padding - 1)) /
 		   static_cast<double>(content_sz);
 }
 
-double TimeScaledObject::CalculatePaddingFromDimensionScale(double viewport_sz)
+double TimeScaledObject::calculate_padding_from_dimension_scale(double viewport_sz)
 {
-	return (viewport_sz / (kCalculateDimensionsPadding * 2));
+	return (viewport_sz / (k_calculate_dimensions_padding * 2));
 }
 
 TimelineScaledWidget::TimelineScaledWidget(QWidget *parent)

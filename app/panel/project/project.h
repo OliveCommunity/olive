@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECT_PANEL_H
-#define PROJECT_PANEL_H
+#ifndef OAK_PROJECT_PANEL_H
+#define OAK_PROJECT_PANEL_H
 
 #include "footagemanagementpanel.h"
 #include "node/project.h"
@@ -45,49 +45,49 @@ public:
 
 	void set_root(Folder *item);
 
-	QVector<Node *> SelectedItems() const;
+	QVector<Node *> selected_items() const;
 
-	Folder *GetSelectedFolder() const;
+	Folder *get_selected_folder() const;
 
-	virtual QVector<ViewerOutput *> GetSelectedFootage() const override;
+	virtual QVector<ViewerOutput *> get_selected_footage() const override;
 
 	ProjectViewModel *model() const;
 
-	bool SelectItem(Node *n, bool deselect_all_first = true)
+	bool select_item(Node *n, bool deselect_all_first = true)
 	{
-		return explorer_->SelectItem(n, deselect_all_first);
+		return explorer_->select_item(n, deselect_all_first);
 	}
 
-	virtual void SelectAll() override;
-	virtual void DeselectAll() override;
+	virtual void select_all() override;
+	virtual void deselect_all() override;
 
-	virtual void DeleteSelected() override;
+	virtual void delete_selected() override;
 
-	virtual void RenameSelected() override;
+	virtual void rename_selected() override;
 
 public slots:
-	void Edit(Node *item);
+	void edit(Node *item);
 
 signals:
-	void ProjectNameChanged();
+	void project_name_changed();
 
-	void SelectionChanged(const QVector<Node *> &selected);
+	void selection_changed(const QVector<Node *> &selected);
 
 private:
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 	ProjectExplorer *explorer_;
 
 private slots:
-	void ItemDoubleClickSlot(Node *item);
+	void item_double_click_slot(Node *item);
 
-	void ShowNewMenu();
+	void show_new_menu();
 
-	void UpdateSubtitle();
+	void update_subtitle();
 
-	void SaveConnectedProject();
+	void save_connected_project();
 };
 
 }
 
-#endif // PROJECT_PANEL_H
+#endif // OAK_PROJECT_PANEL_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef AUDIOWAVEFORMCACHE_H
-#define AUDIOWAVEFORMCACHE_H
+#ifndef OAK_AUDIOWAVEFORMCACHE_H
+#define OAK_AUDIOWAVEFORMCACHE_H
 
 #include "audio/audiovisualwaveform.h"
 #include "playbackcache.h"
@@ -33,29 +33,29 @@ class AudioWaveformCache : public PlaybackCache {
 public:
 	AudioWaveformCache(QObject *parent = nullptr);
 
-	void WriteWaveform(const TimeRange &range,
+	void write_waveform(const TimeRange &range,
 					   const TimeRangeList &valid_ranges,
 					   const AudioVisualWaveform *waveform);
 
-	const AudioParams &GetParameters() const
+	const AudioParams &get_parameters() const
 	{
 		return params_;
 	}
-	void SetParameters(const AudioParams &p)
+	void set_parameters(const AudioParams &p)
 	{
 		params_ = p;
 		waveforms_->set_channel_count(p.channel_count());
 	}
 
 	void Draw(QPainter *painter, const QRect &rect, const double &scale,
-			  const rational &start_time) const;
+			  const Rational &start_time) const;
 
 	AudioVisualWaveform::Sample
-	GetSummaryFromTime(const rational &start, const rational &length) const;
+	get_summary_from_time(const Rational &start, const Rational &length) const;
 
-	rational length() const;
+	Rational length() const;
 
-	virtual void SetPassthrough(PlaybackCache *cache) override;
+	virtual void set_passthrough(PlaybackCache *cache) override;
 
 protected:
 	virtual void InvalidateEvent(const TimeRange &range) override;
@@ -82,4 +82,4 @@ private:
 
 }
 
-#endif // AUDIOWAVEFORMCACHE_H
+#endif // OAK_AUDIOWAVEFORMCACHE_H

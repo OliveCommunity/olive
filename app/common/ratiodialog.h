@@ -19,17 +19,17 @@
 
 ***/
 
-#ifndef RATIODIALOG_H
-#define RATIODIALOG_H
+#ifndef OAK_RATIODIALOG_H
+#define OAK_RATIODIALOG_H
 
 #include <QInputDialog>
 
 namespace olive
 {
 
-double GetFloatRatioFromUser(QWidget *parent, const QString &title,
+double get_float_ratio_from_user(QWidget *parent, const QString &title,
 							 bool *ok_in);
 
 }
 
-#endif // RATIODIALOG_H
+#endif // OAK_RATIODIALOG_H

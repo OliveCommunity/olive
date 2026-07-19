@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef EXPORTTASK_H
-#define EXPORTTASK_H
+#ifndef OAK_EXPORTTASK_H
+#define OAK_EXPORTTASK_H
 
 #include "codec/encoder.h"
 #include "node/output/viewer/viewer.h"
@@ -39,26 +39,26 @@ public:
 			   const EncodingParams &params);
 
 protected:
-	virtual bool Run() override;
+	virtual bool run() override;
 
-	virtual bool FrameDownloaded(FramePtr frame, const rational &time) override;
+	virtual bool frame_downloaded(FramePtr frame, const Rational &time) override;
 
-	virtual bool AudioDownloaded(const TimeRange &range,
+	virtual bool audio_downloaded(const TimeRange &range,
 								 const SampleBuffer &samples) override;
 
-	virtual bool EncodeSubtitle(const SubtitleBlock *sub) override;
+	virtual bool encode_subtitle(const SubtitleBlock *sub) override;
 
-	virtual bool TwoStepFrameRendering() const override
+	virtual bool two_step_frame_rendering() const override
 	{
 		return false;
 	}
 
 private:
-	bool WriteAudioLoop(const TimeRange &time, const SampleBuffer &samples);
+	bool write_audio_loop(const TimeRange &time, const SampleBuffer &samples);
 
 	ProjectCopier *copier_;
 
-	QHash<rational, FramePtr> time_map_;
+	QHash<Rational, FramePtr> time_map_;
 
 	QHash<TimeRange, SampleBuffer> audio_map_;
 
@@ -74,11 +74,11 @@ private:
 
 	int64_t frame_time_;
 
-	rational audio_time_;
+	Rational audio_time_;
 
 	TimeRange export_range_;
 };
 
 }
 
-#endif // EXPORTTASK_H
+#endif // OAK_EXPORTTASK_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CROPDISTORTNODE_H
-#define CROPDISTORTNODE_H
+#ifndef OAK_CROPDISTORTNODE_H
+#define OAK_CROPDISTORTNODE_H
 
 #include <QVector2D>
 
@@ -39,7 +39,7 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(CropDistortNode)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return tr("Crop");
 	}
@@ -49,47 +49,47 @@ public:
 		return QStringLiteral("org.olivevideoeditor.Olive.crop");
 	}
 
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
-		return { kCategoryDistort };
+		return { k_category_distort };
 	}
 
-	virtual QString Description() const override
+	virtual QString description() const override
 	{
 		return tr("Crop the edges of an image.");
 	}
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
+	get_shader_code(const ShaderRequest &request) const override;
 
-	virtual void UpdateGizmoPositions(const NodeValueRow &row,
+	virtual void update_gizmo_positions(const NodeValueRow &row,
 									  const NodeGlobals &globals) override;
 
-	static const QString kTextureInput;
-	static const QString kLeftInput;
-	static const QString kTopInput;
-	static const QString kRightInput;
-	static const QString kBottomInput;
-	static const QString kFeatherInput;
+	static const QString k_texture_input;
+	static const QString k_left_input;
+	static const QString k_top_input;
+	static const QString k_right_input;
+	static const QString k_bottom_input;
+	static const QString k_feather_input;
 
 protected slots:
-	virtual void GizmoDragMove(double delta_x, double delta_y,
+	virtual void gizmo_drag_move(double delta_x, double delta_y,
 							   const Qt::KeyboardModifiers &modifiers) override;
 
 private:
-	void CreateCropSideInput(const QString &id);
+	void create_crop_side_input(const QString &id);
 
 	// Gizmo variables
-	PointGizmo *point_gizmo_[kGizmoScaleCount];
+	PointGizmo *point_gizmo_[k_gizmo_scale_count];
 	PolygonGizmo *poly_gizmo_;
 	QVector2D temp_resolution_;
 };
 
 }
 
-#endif // CROPDISTORTNODE_H
+#endif // OAK_CROPDISTORTNODE_H

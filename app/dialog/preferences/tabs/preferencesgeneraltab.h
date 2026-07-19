@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PREFERENCESGENERALTAB_H
-#define PREFERENCESGENERALTAB_H
+#ifndef OAK_PREFERENCESGENERALTAB_H
+#define OAK_PREFERENCESGENERALTAB_H
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -39,10 +39,10 @@ class PreferencesGeneralTab : public ConfigDialogBaseTab {
 public:
 	PreferencesGeneralTab();
 
-	virtual void Accept(MultiUndoCommand *command) override;
+	virtual void accept(MultiUndoCommand *command) override;
 
 private:
-	void AddLanguage(const QString &locale_name);
+	void add_language(const QString &locale_name);
 
 	QComboBox *language_combobox_;
 
@@ -65,4 +65,4 @@ private:
 
 }
 
-#endif // PREFERENCESGENERALTAB_H
+#endif // OAK_PREFERENCESGENERALTAB_H

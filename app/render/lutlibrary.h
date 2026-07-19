@@ -18,8 +18,8 @@
 
 ***/
 
-#ifndef LUTLIBRARY_H
-#define LUTLIBRARY_H
+#ifndef OAK_LUTLIBRARY_H
+#define OAK_LUTLIBRARY_H
 
 #include <QString>
 #include <QStringList>
@@ -41,18 +41,18 @@ public:
 	 * @brief Returns true if the given file suffix is a supported LUT
 	 * extension (.cube or .3dl, case-insensitive, leading dot tolerated)
 	 */
-	static bool IsSupportedExtension(const QString &suffix);
+	static bool is_supported_extension(const QString &suffix);
 
 	/**
 	 * @brief The directories that make up the LUT library
 	 */
-	static QStringList GetDirectories();
+	static QStringList get_directories();
 
 	/**
 	 * @brief Replaces the LUT library directories and saves them to the
 	 * application config
 	 */
-	static void SetDirectories(const QStringList &dirs);
+	static void set_directories(const QStringList &dirs);
 
 	/**
 	 * @brief All supported LUT files found under the library directories
@@ -60,9 +60,9 @@ public:
 	 * Directories are scanned recursively. Files in earlier directories
 	 * are listed first.
 	 */
-	static QStringList GetLutFiles();
+	static QStringList get_lut_files();
 };
 
 }
 
-#endif // LUTLIBRARY_H
+#endif // OAK_LUTLIBRARY_H

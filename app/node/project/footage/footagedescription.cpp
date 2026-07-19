@@ -31,7 +31,7 @@
 namespace olive
 {
 
-bool FootageDescription::Load(const QString &filename)
+bool FootageDescription::load(const QString &filename)
 {
 	// Reset self
 	*this = FootageDescription();
@@ -43,7 +43,7 @@ bool FootageDescription::Load(const QString &filename)
 
 		bool found_streamcache = false;
 
-		while (XMLReadNextStartElement(&reader)) {
+		while (xml_read_next_start_element(&reader)) {
 			if (reader.name() == QStringLiteral("streamcache")) {
 				found_streamcache = true;
 				// Default to first version of metadata (which wasn't versioned at all)
@@ -58,12 +58,12 @@ bool FootageDescription::Load(const QString &filename)
 					}
 				}
 
-				if (version != kFootageMetaVersion) {
+				if (version != k_footage_meta_version) {
 					// If this is a different version, discard so we can probe new data
 					return false;
 				}
 
-				while (XMLReadNextStartElement(&reader)) {
+				while (xml_read_next_start_element(&reader)) {
 					if (reader.name() == QStringLiteral("decoder")) {
 						decoder_ = reader.readElementText();
 					} else if (reader.name() ==
@@ -81,7 +81,7 @@ bool FootageDescription::Load(const QString &filename)
 						const QStringList split =
 							reader.readElementText().split('/');
 						if (split.size() == 2) {
-							SetSourceStartTime(rational(split.at(0).toInt(),
+							set_source_start_time(Rational(split.at(0).toInt(),
 														split.at(1).toInt()),
 											   source);
 						}
@@ -95,21 +95,21 @@ bool FootageDescription::Load(const QString &filename)
 							}
 						}
 
-						while (XMLReadNextStartElement(&reader)) {
+						while (xml_read_next_start_element(&reader)) {
 							if (reader.name() == QStringLiteral("video")) {
 								VideoParams vp;
-								vp.Load(&reader);
-								AddVideoStream(vp);
+								vp.load(&reader);
+								add_video_stream(vp);
 							} else if (reader.name() ==
 									   QStringLiteral("audio")) {
 								AudioParams ap =
-									TypeSerializer::LoadAudioParams(&reader);
-								AddAudioStream(ap);
+									TypeSerializer::load_audio_params(&reader);
+								add_audio_stream(ap);
 							} else if (reader.name() ==
 									   QStringLiteral("subtitle")) {
 								SubtitleParams sp;
-								sp.Load(&reader);
-								AddSubtitleStream(sp);
+								sp.load(&reader);
+								add_subtitle_stream(sp);
 							} else {
 								reader.skipCurrentElement();
 							}
@@ -137,7 +137,7 @@ bool FootageDescription::Load(const QString &filename)
 	return false;
 }
 
-bool FootageDescription::Save(const QString &filename) const
+bool FootageDescription::save(const QString &filename) const
 {
 	QFile file(filename);
 
@@ -152,7 +152,7 @@ bool FootageDescription::Save(const QString &filename) const
 	writer.writeStartElement(QStringLiteral("streamcache"));
 
 	writer.writeAttribute(QStringLiteral("version"),
-						  QString::number(kFootageMetaVersion));
+						  QString::number(k_footage_meta_version));
 
 	writer.writeTextElement(QStringLiteral("decoder"), decoder_);
 
@@ -173,19 +173,19 @@ bool FootageDescription::Save(const QString &filename) const
 
 	foreach (const VideoParams &vp, video_streams_) {
 		writer.writeStartElement(QStringLiteral("video"));
-		vp.Save(&writer);
+		vp.save(&writer);
 		writer.writeEndElement(); // video
 	}
 
 	foreach (const AudioParams &ap, audio_streams_) {
 		writer.writeStartElement(QStringLiteral("audio"));
-		TypeSerializer::SaveAudioParams(&writer, ap);
+		TypeSerializer::save_audio_params(&writer, ap);
 		writer.writeEndElement(); // audio
 	}
 
 	foreach (const SubtitleParams &sp, subtitle_streams_) {
 		writer.writeStartElement(QStringLiteral("subtitle"));
-		sp.Save(&writer);
+		sp.save(&writer);
 		writer.writeEndElement(); // audio
 	}
 

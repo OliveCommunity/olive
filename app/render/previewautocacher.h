@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef AUTOCACHER_H
-#define AUTOCACHER_H
+#ifndef OAK_AUTOCACHER_H
+#define OAK_AUTOCACHER_H
 
 #include <QtConcurrent/QtConcurrent>
 
@@ -49,20 +49,20 @@ public:
 
 	virtual ~PreviewAutoCacher() override;
 
-	RenderTicketPtr GetSingleFrame(ViewerOutput *viewer, const rational &t,
+	RenderTicketPtr get_single_frame(ViewerOutput *viewer, const Rational &t,
 								   bool dry = false);
-	RenderTicketPtr GetSingleFrame(Node *n, ViewerOutput *viewer,
-								   const rational &t, bool dry = false);
+	RenderTicketPtr get_single_frame(Node *n, ViewerOutput *viewer,
+								   const Rational &t, bool dry = false);
 
-	RenderTicketPtr GetRangeOfAudio(ViewerOutput *viewer, TimeRange range);
+	RenderTicketPtr get_range_of_audio(ViewerOutput *viewer, TimeRange range);
 
-	void ClearSingleFrameRenders();
-	void ClearSingleFrameRendersThatArentRunning();
+	void clear_single_frame_renders();
+	void clear_single_frame_renders_that_arent_running();
 
 	/**
    * @brief Set the viewer node to auto-cache
    */
-	void SetProject(Project *project);
+	void set_project(Project *project);
 
 	/**
    * @brief Force a certain range to be cached
@@ -71,12 +71,12 @@ public:
    * times they may want certain non-playhead-related time ranges to be cached (i.e. entire sequence
    * or in/out range), so that can be set here.
    */
-	void ForceCacheRange(ViewerOutput *context, const TimeRange &range);
+	void force_cache_range(ViewerOutput *context, const TimeRange &range);
 
 	/**
    * @brief Updates the range of frames to auto-cache
    */
-	void SetPlayhead(const rational &playhead);
+	void set_playhead(const Rational &playhead);
 
 	/**
    * @brief Call cancel on all currently running video tasks
@@ -86,60 +86,60 @@ public:
    * up finishing the task. The RenderManager will  also return "no result", which can be checked
    * with watcher->HasResult.
    */
-	void CancelVideoTasks(bool and_wait_for_them_to_finish = false);
-	void CancelAudioTasks(bool and_wait_for_them_to_finish = false);
+	void cancel_video_tasks(bool and_wait_for_them_to_finish = false);
+	void cancel_audio_tasks(bool and_wait_for_them_to_finish = false);
 
-	bool IsRenderingCustomRange() const;
+	bool is_rendering_custom_range() const;
 
-	void SetRendersPaused(bool e);
-	void SetThumbnailsPaused(bool e);
+	void set_renders_paused(bool e);
+	void set_thumbnails_paused(bool e);
 
-	void SetMulticamNode(MultiCamNode *n)
+	void set_multicam_node(MultiCamNode *n)
 	{
 		multicam_ = n;
 	}
 
-	void SetIgnoreCacheRequests(bool e)
+	void set_ignore_cache_requests(bool e)
 	{
 		ignore_cache_requests_ = e;
 	}
 
 public slots:
-	void SetDisplayColorProcessor(ColorProcessorPtr processor)
+	void set_display_color_processor(ColorProcessorPtr processor)
 	{
 		display_color_processor_ = processor;
 	}
 
 signals:
-	void StopCacheProxyTasks();
+	void stop_cache_proxy_tasks();
 
-	void SignalCacheProxyTaskProgress(double d);
+	void signal_cache_proxy_task_progress(double d);
 
 private:
-	void TryRender();
+	void try_render();
 
-	RenderTicketWatcher *RenderFrame(Node *node, ViewerOutput *context,
-									 const rational &time, PlaybackCache *cache,
+	RenderTicketWatcher *render_frame(Node *node, ViewerOutput *context,
+									 const Rational &time, PlaybackCache *cache,
 									 bool dry);
 
-	RenderTicketPtr RenderAudio(Node *node, ViewerOutput *context,
+	RenderTicketPtr render_audio(Node *node, ViewerOutput *context,
 								const TimeRange &range, PlaybackCache *cache);
 
-	void ConnectToNodeCache(Node *node);
-	void DisconnectFromNodeCache(Node *node);
+	void connect_to_node_cache(Node *node);
+	void disconnect_from_node_cache(Node *node);
 
-	void CancelQueuedSingleFrameRender();
+	void cancel_queued_single_frame_render();
 
-	void StartCachingRange(const TimeRange &range, TimeRangeList *range_list,
+	void start_caching_range(const TimeRange &range, TimeRangeList *range_list,
 						   RenderJobTracker *tracker);
-	void StartCachingVideoRange(ViewerOutput *context, PlaybackCache *cache,
+	void start_caching_video_range(ViewerOutput *context, PlaybackCache *cache,
 								const TimeRange &range);
-	void StartCachingAudioRange(ViewerOutput *context, PlaybackCache *cache,
+	void start_caching_audio_range(ViewerOutput *context, PlaybackCache *cache,
 								const TimeRange &range);
 
-	void VideoInvalidatedFromNode(ViewerOutput *context, PlaybackCache *cache,
+	void video_invalidated_from_node(ViewerOutput *context, PlaybackCache *cache,
 								  const olive::TimeRange &range);
-	void AudioInvalidatedFromNode(ViewerOutput *context, PlaybackCache *cache,
+	void audio_invalidated_from_node(ViewerOutput *context, PlaybackCache *cache,
 								  const olive::TimeRange &range);
 
 	Project *project_;
@@ -208,37 +208,37 @@ private slots:
 	/**
    * @brief Handler for when the NodeGraph reports a video change over a certain time range
    */
-	void VideoInvalidatedFromCache(ViewerOutput *context,
+	void video_invalidated_from_cache(ViewerOutput *context,
 								   const olive::TimeRange &range);
 
 	/**
    * @brief Handler for when the NodeGraph reports a audio change over a certain time range
    */
-	void AudioInvalidatedFromCache(ViewerOutput *context,
+	void audio_invalidated_from_cache(ViewerOutput *context,
 								   const olive::TimeRange &range);
 
-	void CancelForCache();
+	void cancel_for_cache();
 
 	/**
    * @brief Handler for when the RenderManager has returned rendered audio
    */
-	void AudioRendered();
+	void audio_rendered();
 
 	/**
    * @brief Handler for when the RenderManager has returned rendered video frames
    */
-	void VideoRendered();
+	void video_rendered();
 
 	/**
    * @brief Generic function called whenever the frames to render need to be (re)queued
    */
 	//void RequeueFrames();
 
-	void ConformFinished();
+	void conform_finished();
 
-	void CacheProxyTaskCancelled();
+	void cache_proxy_task_cancelled();
 };
 
 }
 
-#endif // AUTOCACHER_H
+#endif // OAK_AUTOCACHER_H

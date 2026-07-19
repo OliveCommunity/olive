@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEUNDO_H
-#define NODEUNDO_H
+#ifndef OAK_NODEUNDO_H
+#define OAK_NODEUNDO_H
 
 #include "node/node.h"
 #include "node/project.h"
@@ -38,7 +38,7 @@ public:
 		pos_ = pos;
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return node_->project();
 	}
@@ -66,7 +66,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return node_->project();
 	}
@@ -95,7 +95,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return node_->project();
 	}
@@ -122,7 +122,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return node_->project();
 	}
@@ -147,17 +147,17 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override
 	{
-		node_->InputArrayInsert(input_, index_);
+		node_->input_array_insert(input_, index_);
 	}
 
 	virtual void undo() override
 	{
-		node_->InputArrayRemove(input_, index_);
+		node_->input_array_remove(input_, index_);
 	}
 
 private:
@@ -175,12 +175,12 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override
 	{
-		old_size_ = node_->InputArraySize(input_);
+		old_size_ = node_->input_array_size(input_);
 
 		if (old_size_ > size_) {
 			// Decreasing in size, disconnect any extraneous edges
@@ -191,24 +191,24 @@ protected:
 
 					removed_connections_[input] = output;
 
-					Node::DisconnectEdge(output, input);
+					Node::disconnect_edge(output, input);
 				} catch (std::out_of_range &) {
 				}
 			}
 		}
 
-		node_->ArrayResizeInternal(input_, size_);
+		node_->array_resize_internal(input_, size_);
 	}
 
 	virtual void undo() override
 	{
 		for (auto it = removed_connections_.cbegin();
 			 it != removed_connections_.cend(); it++) {
-			Node::ConnectEdge(it->second, it->first);
+			Node::connect_edge(it->second, it->first);
 		}
 		removed_connections_.clear();
 
-		node_->ArrayResizeInternal(input_, old_size_);
+		node_->array_resize_internal(input_, old_size_);
 	}
 
 private:
@@ -229,26 +229,26 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override
 	{
 		// Save immediate data
-		if (node_->IsInputKeyframable(input_)) {
-			is_keyframing_ = node_->IsInputKeyframing(input_, index_);
+		if (node_->is_input_keyframable(input_)) {
+			is_keyframing_ = node_->is_input_keyframing(input_, index_);
 		}
-		standard_value_ = node_->GetSplitStandardValue(input_, index_);
-		keyframes_ = node_->GetKeyframeTracks(input_, index_);
-		node_->GetImmediate(input_, index_)
+		standard_value_ = node_->get_split_standard_value(input_, index_);
+		keyframes_ = node_->get_keyframe_tracks(input_, index_);
+		node_->get_immediate(input_, index_)
 			->delete_all_keyframes(&memory_manager_);
 
-		node_->InputArrayRemove(input_, index_);
+		node_->input_array_remove(input_, index_);
 	}
 
 	virtual void undo() override
 	{
-		node_->InputArrayInsert(input_, index_);
+		node_->input_array_insert(input_, index_);
 
 		// Restore keyframes
 		foreach (const NodeKeyframeTrack &track, keyframes_) {
@@ -256,10 +256,10 @@ protected:
 				key->setParent(node_);
 			}
 		}
-		node_->SetSplitStandardValue(input_, standard_value_, index_);
+		node_->set_split_standard_value(input_, standard_value_, index_);
 
-		if (node_->IsInputKeyframable(input_)) {
-			node_->SetInputIsKeyframing(input_, is_keyframing_, index_);
+		if (node_->is_input_keyframable(input_)) {
+			node_->set_input_is_keyframing(input_, is_keyframing_, index_);
 		}
 	}
 
@@ -283,7 +283,7 @@ class NodeEdgeRemoveCommand : public UndoCommand {
 public:
 	NodeEdgeRemoveCommand(Node *output, const NodeInput &input);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -305,7 +305,7 @@ public:
 
 	virtual ~NodeEdgeAddCommand() override;
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -322,9 +322,9 @@ class NodeAddCommand : public UndoCommand {
 public:
 	NodeAddCommand(Project *graph, Node *node);
 
-	void PushToThread(QThread *thread);
+	void push_to_thread(QThread *thread);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -351,7 +351,7 @@ public:
 		delete command_;
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return graph_;
 	}
@@ -397,12 +397,12 @@ public:
 		delete command_;
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		if (command_) {
 			return static_cast<const NodeRemoveAndDisconnectCommand *>(
 					   command_->child(0))
-				->GetRelevantProject();
+				->get_relevant_project();
 		} else {
 			return node_->project();
 		}
@@ -416,7 +416,7 @@ protected:
 		command_->add_child(new NodeRemoveAndDisconnectCommand(node_));
 
 		// Remove exclusive dependencies
-		QVector<Node *> deps = node_->GetExclusiveDependencies();
+		QVector<Node *> deps = node_->get_exclusive_dependencies();
 		foreach (Node *d, deps) {
 			command_->add_child(new NodeRemoveAndDisconnectCommand(d));
 		}
@@ -446,7 +446,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return a_->project();
 	}
@@ -455,9 +455,9 @@ protected:
 	virtual void redo() override
 	{
 		if (link_) {
-			done_ = Node::Link(a_, b_);
+			done_ = Node::link(a_, b_);
 		} else {
-			done_ = Node::Unlink(a_, b_);
+			done_ = Node::unlink(a_, b_);
 		}
 	}
 
@@ -465,9 +465,9 @@ protected:
 	{
 		if (done_) {
 			if (link_) {
-				Node::Unlink(a_, b_);
+				Node::unlink(a_, b_);
 			} else {
-				Node::Link(a_, b_);
+				Node::link(a_, b_);
 			}
 		}
 	}
@@ -486,7 +486,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return node_->project();
 	}
@@ -497,14 +497,14 @@ protected:
 		unlinked_ = node_->links();
 
 		foreach (Node *link, unlinked_) {
-			Node::Unlink(node_, link);
+			Node::unlink(node_, link);
 		}
 	}
 
 	virtual void undo() override
 	{
 		foreach (Node *link, unlinked_) {
-			Node::Link(node_, link);
+			Node::link(node_, link);
 		}
 
 		unlinked_.clear();
@@ -530,7 +530,7 @@ public:
 		}
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return nodes_.first()->project();
 	}
@@ -544,12 +544,12 @@ public:
 	NodeRenameCommand() = default;
 	NodeRenameCommand(Node *node, const QString &new_name)
 	{
-		AddNode(node, new_name);
+		add_node(node, new_name);
 	}
 
-	void AddNode(Node *node, const QString &new_name);
+	void add_node(Node *node, const QString &new_name);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -567,7 +567,7 @@ class NodeOverrideColorCommand : public UndoCommand {
 public:
 	NodeOverrideColorCommand(Node *node, int index);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -586,13 +586,13 @@ class NodeViewDeleteCommand : public UndoCommand {
 public:
 	NodeViewDeleteCommand();
 
-	void AddNode(Node *node, Node *context);
+	void add_node(Node *node, Node *context);
 
-	void AddEdge(Node *output, const NodeInput &input);
+	void add_edge(Node *output, const NodeInput &input);
 
-	bool ContainsNode(Node *node, Node *context);
+	bool contains_node(Node *node, Node *context);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -620,7 +620,7 @@ class NodeParamSetKeyframingCommand : public UndoCommand {
 public:
 	NodeParamSetKeyframingCommand(const NodeInput &input, bool setting);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -636,7 +636,7 @@ class NodeParamInsertKeyframeCommand : public UndoCommand {
 public:
 	NodeParamInsertKeyframeCommand(Node *node, NodeKeyframe *keyframe);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -654,7 +654,7 @@ class NodeParamRemoveKeyframeCommand : public UndoCommand {
 public:
 	NodeParamRemoveKeyframeCommand(NodeKeyframe *keyframe);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -670,11 +670,11 @@ private:
 
 class NodeParamSetKeyframeTimeCommand : public UndoCommand {
 public:
-	NodeParamSetKeyframeTimeCommand(NodeKeyframe *key, const rational &time);
-	NodeParamSetKeyframeTimeCommand(NodeKeyframe *key, const rational &new_time,
-									const rational &old_time);
+	NodeParamSetKeyframeTimeCommand(NodeKeyframe *key, const Rational &time);
+	NodeParamSetKeyframeTimeCommand(NodeKeyframe *key, const Rational &new_time,
+									const Rational &old_time);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -683,8 +683,8 @@ protected:
 private:
 	NodeKeyframe *key_;
 
-	rational old_time_;
-	rational new_time_;
+	Rational old_time_;
+	Rational new_time_;
 };
 
 class NodeParamSetKeyframeValueCommand : public UndoCommand {
@@ -694,7 +694,7 @@ public:
 									 const QVariant &new_value,
 									 const QVariant &old_value);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -715,7 +715,7 @@ public:
 									 const QVariant &new_value,
 									 const QVariant &old_value);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -742,11 +742,11 @@ public:
 	NodeParamSetSplitStandardValueCommand(const NodeInput &input,
 										  const SplitValue &value)
 		: NodeParamSetSplitStandardValueCommand(
-			  input, value, input.node()->GetSplitStandardValue(input.input()))
+			  input, value, input.node()->get_split_standard_value(input.input()))
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return ref_.node()->project();
 	}
@@ -754,13 +754,13 @@ public:
 protected:
 	virtual void redo() override
 	{
-		ref_.node()->SetSplitStandardValue(ref_.input(), new_value_,
+		ref_.node()->set_split_standard_value(ref_.input(), new_value_,
 										   ref_.element());
 	}
 
 	virtual void undo() override
 	{
-		ref_.node()->SetSplitStandardValue(ref_.input(), old_value_,
+		ref_.node()->set_split_standard_value(ref_.input(), old_value_,
 										   ref_.element());
 	}
 
@@ -775,7 +775,7 @@ class NodeParamArrayAppendCommand : public UndoCommand {
 public:
 	NodeParamArrayAppendCommand(Node *node, const QString &input);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -802,7 +802,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return input_.node()->project();
 	}
@@ -827,7 +827,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return nullptr;
 	}
@@ -851,4 +851,4 @@ private:
 
 }
 
-#endif // NODEUNDO_H
+#endif // OAK_NODEUNDO_H

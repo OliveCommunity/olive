@@ -28,24 +28,24 @@
 namespace olive
 {
 
-QString SubtitleParams::GenerateASSHeader()
+QString SubtitleParams::generate_ass_header()
 {
 	// NOTE: We'll probably implement more customization as we support ASS better. Right now, we only
 	//       natively support SRT and only make this header because FFmpeg requires it.
-	static const int kAssDefaultPlayResX = 384;
-	static const int kAssDefaultPlayResY = 288;
-	static const QString kAssDefaultFont = QStringLiteral("Arial");
-	static const int kAssDefaultFontSize = 16;
-	static const int kAssDefaultPrimaryColor = 0xFFFFFF; // White
-	static const int kAssDefaultSecondaryColor = 0xFFFFFF; // White
-	static const int kAssDefaultOutlineColor = 0x000000; // Black
-	static const int kAssDefaultBackColor = 0x000000; // Black
-	static const int kAssBold = 0;
-	static const int kAssItalic = 0;
-	static const int kAssUnderline = 0;
-	static const int kAssStrike = 0;
-	static const int kAssBorderStyle = 1;
-	static const int kAssAlignment = 2;
+	static const int k_ass_default_play_res_x = 384;
+	static const int k_ass_default_play_res_y = 288;
+	static const QString k_ass_default_font = QStringLiteral("Arial");
+	static const int k_ass_default_font_size = 16;
+	static const int k_ass_default_primary_color = 0xFFFFFF; // White
+	static const int k_ass_default_secondary_color = 0xFFFFFF; // White
+	static const int k_ass_default_outline_color = 0x000000; // Black
+	static const int k_ass_default_back_color = 0x000000; // Black
+	static const int k_ass_bold = 0;
+	static const int k_ass_italic = 0;
+	static const int k_ass_underline = 0;
+	static const int k_ass_strike = 0;
+	static const int k_ass_border_style = 1;
+	static const int k_ass_alignment = 2;
 
 	QString ass_code;
 
@@ -56,9 +56,9 @@ QString SubtitleParams::GenerateASSHeader()
 							 QCoreApplication::applicationVersion()));
 	ass_code.append(QStringLiteral("ScriptType: v4.00+\r\n"));
 	ass_code.append(QStringLiteral("PlayResX: %1\r\n")
-						.arg(QString::number(kAssDefaultPlayResX)));
+						.arg(QString::number(k_ass_default_play_res_x)));
 	ass_code.append(QStringLiteral("PlayResY: %1\r\n")
-						.arg(QString::number(kAssDefaultPlayResY)));
+						.arg(QString::number(k_ass_default_play_res_y)));
 	ass_code.append(QStringLiteral("ScaledBorderAndShadow: yes\r\n"));
 	ass_code.append(QStringLiteral("\r\n"));
 
@@ -81,20 +81,20 @@ QString SubtitleParams::GenerateASSHeader()
 
 	// Font{name,size}
 	ass_code.append(QStringLiteral("%1,%2,").arg(
-		kAssDefaultFont, QString::number(kAssDefaultFontSize)));
+		k_ass_default_font, QString::number(k_ass_default_font_size)));
 
 	// {Primary,Secondary,Outline,Back}Colour
 	ass_code.append(QStringLiteral("&H%1,&H%2,&H%3,&H%4,")
-						.arg(QString::number(kAssDefaultPrimaryColor, 16),
-							 QString::number(kAssDefaultSecondaryColor, 16),
-							 QString::number(kAssDefaultOutlineColor, 16),
-							 QString::number(kAssDefaultBackColor, 16)));
+						.arg(QString::number(k_ass_default_primary_color, 16),
+							 QString::number(k_ass_default_secondary_color, 16),
+							 QString::number(k_ass_default_outline_color, 16),
+							 QString::number(k_ass_default_back_color, 16)));
 
 	// Bold, Italic, Underline, StrikeOut
 	ass_code.append(
 		QStringLiteral("%1,%2,%3,%4,")
-			.arg(QString::number(kAssBold), QString::number(kAssItalic),
-				 QString::number(kAssUnderline), QString::number(kAssStrike)));
+			.arg(QString::number(k_ass_bold), QString::number(k_ass_italic),
+				 QString::number(k_ass_underline), QString::number(k_ass_strike)));
 
 	// Scale{X,Y}
 	ass_code.append(QStringLiteral("100,100,"));
@@ -104,11 +104,11 @@ QString SubtitleParams::GenerateASSHeader()
 
 	// BorderStyle, Outline, Shadow
 	ass_code.append(
-		QStringLiteral("%1,1,0,").arg(QString::number(kAssBorderStyle)));
+		QStringLiteral("%1,1,0,").arg(QString::number(k_ass_border_style)));
 
 	// Alignment, Margin[LRV]
 	ass_code.append(
-		QStringLiteral("%1,10,10,10,").arg(QString::number(kAssAlignment)));
+		QStringLiteral("%1,10,10,10,").arg(QString::number(k_ass_alignment)));
 
 	// Encoding
 	ass_code.append(QStringLiteral("0\r\n"));
@@ -120,28 +120,28 @@ QString SubtitleParams::GenerateASSHeader()
 	return ass_code;
 }
 
-void SubtitleParams::Load(QXmlStreamReader *reader)
+void SubtitleParams::load(QXmlStreamReader *reader)
 {
 	this->clear();
 
-	while (XMLReadNextStartElement(reader)) {
+	while (xml_read_next_start_element(reader)) {
 		if (reader->name() == QStringLiteral("streamindex")) {
 			set_stream_index(reader->readElementText().toInt());
 		} else if (reader->name() == QStringLiteral("enabled")) {
 			set_enabled(reader->readElementText().toInt());
 		} else if (reader->name() == QStringLiteral("subtitles")) {
-			while (XMLReadNextStartElement(reader)) {
+			while (xml_read_next_start_element(reader)) {
 				if (reader->name() == QStringLiteral("subtitle")) {
-					rational in, out;
+					Rational in, out;
 					QString text;
 
 					XMLAttributeLoop(reader, attr)
 					{
 						if (attr.name() == QStringLiteral("in")) {
-							in = rational::fromString(
+							in = Rational::from_string(
 								attr.value().toString().toStdString());
 						} else if (attr.name() == QStringLiteral("out")) {
-							out = rational::fromString(
+							out = Rational::from_string(
 								attr.value().toString().toStdString());
 						}
 					}
@@ -159,7 +159,7 @@ void SubtitleParams::Load(QXmlStreamReader *reader)
 	}
 }
 
-void SubtitleParams::Save(QXmlStreamWriter *writer) const
+void SubtitleParams::save(QXmlStreamWriter *writer) const
 {
 	writer->writeTextElement(QStringLiteral("streamindex"),
 							 QString::number(stream_index_));
@@ -171,10 +171,10 @@ void SubtitleParams::Save(QXmlStreamWriter *writer) const
 		writer->writeStartElement(QStringLiteral("subtitle"));
 		writer->writeAttribute(
 			QStringLiteral("in"),
-			QString::fromStdString(it->time().in().toString()));
+			QString::fromStdString(it->time().in().to_string()));
 		writer->writeAttribute(
 			QStringLiteral("out"),
-			QString::fromStdString(it->time().out().toString()));
+			QString::fromStdString(it->time().out().to_string()));
 		writer->writeCharacters(it->text());
 		writer->writeEndElement(); // subtitle
 	}

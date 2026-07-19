@@ -29,17 +29,17 @@ namespace olive
 CodecStack::CodecStack(QWidget *parent)
 	: super{ parent }
 {
-	connect(this, &CodecStack::currentChanged, this, &CodecStack::OnChange);
+	connect(this, &CodecStack::currentChanged, this, &CodecStack::on_change);
 }
 
 void CodecStack::addWidget(QWidget *widget)
 {
 	super::addWidget(widget);
 
-	OnChange(currentIndex());
+	on_change(currentIndex());
 }
 
-void CodecStack::OnChange(int index)
+void CodecStack::on_change(int index)
 {
 	for (int i = 0; i < count(); i++) {
 		if (i == index) {

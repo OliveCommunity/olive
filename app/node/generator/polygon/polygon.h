@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef POLYGONGENERATOR_H
-#define POLYGONGENERATOR_H
+#ifndef OAK_POLYGONGENERATOR_H
+#define OAK_POLYGONGENERATOR_H
 
 #include <QPainterPath>
 
@@ -41,46 +41,46 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(PolygonGenerator)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	virtual void GenerateFrame(FramePtr frame,
+	virtual void generate_frame(FramePtr frame,
 							   const GenerateJob &job) const override;
 
-	virtual void UpdateGizmoPositions(const NodeValueRow &row,
+	virtual void update_gizmo_positions(const NodeValueRow &row,
 									  const NodeGlobals &globals) override;
 
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
+	get_shader_code(const ShaderRequest &request) const override;
 
-	static const QString kPointsInput;
-	static const QString kColorInput;
+	static const QString k_points_input;
+	static const QString k_color_input;
 
 protected:
-	ShaderJob GetGenerateJob(const NodeValueRow &value,
+	ShaderJob get_generate_job(const NodeValueRow &value,
 							 const VideoParams &params) const;
 
 protected slots:
-	virtual void GizmoDragMove(double x, double y,
+	virtual void gizmo_drag_move(double x, double y,
 							   const Qt::KeyboardModifiers &modifiers) override;
 
 private:
-	static void AddPointToPath(QPainterPath *path, const Bezier &before,
+	static void add_point_to_path(QPainterPath *path, const Bezier &before,
 							   const Bezier &after);
 
-	static QPainterPath GeneratePath(const NodeValueArray &points, int size);
+	static QPainterPath generate_path(const NodeValueArray &points, int size);
 
 	template <typename T>
-	void ValidateGizmoVectorSize(QVector<T *> &vec, int new_sz);
+	void validate_gizmo_vector_size(QVector<T *> &vec, int new_sz);
 
-	template <typename T> NodeGizmo *CreateAppropriateGizmo();
+	template <typename T> NodeGizmo *create_appropriate_gizmo();
 
 	PathGizmo *poly_gizmo_;
 	QVector<PointGizmo *> gizmo_position_handles_;
@@ -90,4 +90,4 @@ private:
 
 }
 
-#endif // POLYGONGENERATOR_H
+#endif // OAK_POLYGONGENERATOR_H

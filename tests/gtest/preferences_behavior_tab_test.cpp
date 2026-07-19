@@ -12,32 +12,32 @@ using namespace olive;
 
 TEST(PreferencesBehaviorTab, TimelineCategoryHasExpectedCheckboxes)
 {
-	PreferencesBehaviorTab tab(PreferencesBehaviorTab::kCategoryTimeline);
+	PreferencesBehaviorTab tab(PreferencesBehaviorTab::k_category_timeline);
 	// 8 timeline behavior options
 	EXPECT_EQ(tab.findChildren<QCheckBox *>().size(), 8);
 }
 
 TEST(PreferencesBehaviorTab, PlaybackCategoryHasExpectedCheckboxes)
 {
-	PreferencesBehaviorTab tab(PreferencesBehaviorTab::kCategoryPlayback);
+	PreferencesBehaviorTab tab(PreferencesBehaviorTab::k_category_playback);
 	EXPECT_EQ(tab.findChildren<QCheckBox *>().size(), 2);
 }
 
 TEST(PreferencesBehaviorTab, ProjectCategoryHasExpectedCheckboxes)
 {
-	PreferencesBehaviorTab tab(PreferencesBehaviorTab::kCategoryProject);
+	PreferencesBehaviorTab tab(PreferencesBehaviorTab::k_category_project);
 	EXPECT_EQ(tab.findChildren<QCheckBox *>().size(), 1);
 }
 
 TEST(PreferencesBehaviorTab, NodesCategoryHasExpectedCheckboxes)
 {
-	PreferencesBehaviorTab tab(PreferencesBehaviorTab::kCategoryNodes);
+	PreferencesBehaviorTab tab(PreferencesBehaviorTab::k_category_nodes);
 	EXPECT_EQ(tab.findChildren<QCheckBox *>().size(), 3);
 }
 
 TEST(PreferencesBehaviorTab, RenderingCategoryHasGraphicsBackendCombobox)
 {
-	PreferencesBehaviorTab tab(PreferencesBehaviorTab::kCategoryRendering);
+	PreferencesBehaviorTab tab(PreferencesBehaviorTab::k_category_rendering);
 	EXPECT_FALSE(tab.findChildren<QComboBox *>().isEmpty());
 	EXPECT_FALSE(tab.findChildren<QCheckBox *>().isEmpty());
 }
@@ -49,16 +49,16 @@ TEST(PreferencesBehaviorTab, BehaviorPrefTrReturnsExactSourceStrings)
 	// text unchanged. Pin the exact strings so accidental edits are caught
 	// (they would silently change the translation keys and the cross-tab
 	// lookups that rely on them).
-	EXPECT_EQ(PreferencesBehaviorTab::BehaviorPrefTr("Behavior"),
+	EXPECT_EQ(PreferencesBehaviorTab::behavior_pref_tr("Behavior"),
 			  QStringLiteral("Behavior"));
-	EXPECT_EQ(PreferencesBehaviorTab::BehaviorPrefTr("Enable hover focus"),
+	EXPECT_EQ(PreferencesBehaviorTab::behavior_pref_tr("Enable hover focus"),
 			  QStringLiteral("Enable hover focus"));
-	EXPECT_EQ(PreferencesBehaviorTab::BehaviorPrefTr("Enable slider ladder"),
+	EXPECT_EQ(PreferencesBehaviorTab::behavior_pref_tr("Enable slider ladder"),
 			  QStringLiteral("Enable slider ladder"));
-	EXPECT_EQ(PreferencesBehaviorTab::BehaviorPrefTr(
+	EXPECT_EQ(PreferencesBehaviorTab::behavior_pref_tr(
 				  "Scrolling zooms by default"),
 			  QStringLiteral("Scrolling zooms by default"));
-	EXPECT_EQ(PreferencesBehaviorTab::BehaviorPrefTr("Enable audio scrubbing"),
+	EXPECT_EQ(PreferencesBehaviorTab::behavior_pref_tr("Enable audio scrubbing"),
 			  QStringLiteral("Enable audio scrubbing"));
 }
 
@@ -67,12 +67,12 @@ TEST(PreferencesBehaviorTab, RenderingCategoryContainsDefaultBackend)
 	// Force the config back to the registered default so the selected entry
 	// is deterministic regardless of test order
 	const QVariant saved_backend =
-		Config::Current()[QStringLiteral("GraphicsBackend")];
-	Config::Current()[QStringLiteral("GraphicsBackend")] =
+		Config::current()[QStringLiteral("GraphicsBackend")];
+	Config::current()[QStringLiteral("GraphicsBackend")] =
 		QStringLiteral("opengl");
 
 	{
-		PreferencesBehaviorTab tab(PreferencesBehaviorTab::kCategoryRendering);
+		PreferencesBehaviorTab tab(PreferencesBehaviorTab::k_category_rendering);
 		QList<QComboBox *> boxes = tab.findChildren<QComboBox *>();
 		ASSERT_FALSE(boxes.isEmpty());
 
@@ -87,7 +87,7 @@ TEST(PreferencesBehaviorTab, RenderingCategoryContainsDefaultBackend)
 		EXPECT_EQ(backend_box->currentIndex(), opengl_index);
 	}
 
-	Config::Current()[QStringLiteral("GraphicsBackend")] = saved_backend;
+	Config::current()[QStringLiteral("GraphicsBackend")] = saved_backend;
 }
 
 TEST(PreferencesGeneralTab, ContainsHoverFocusOption)
@@ -98,7 +98,7 @@ TEST(PreferencesGeneralTab, ContainsHoverFocusOption)
 	bool found = false;
 	foreach (QCheckBox *box, boxes) {
 		if (box->text() ==
-			PreferencesBehaviorTab::BehaviorPrefTr("Enable hover focus")) {
+			PreferencesBehaviorTab::behavior_pref_tr("Enable hover focus")) {
 			found = true;
 			break;
 		}
@@ -108,7 +108,7 @@ TEST(PreferencesGeneralTab, ContainsHoverFocusOption)
 
 TEST(PreferencesAudioTab, AudioScrubbingCheckboxUsesBehaviorTranslation)
 {
-	AudioManager::CreateInstance();
+	AudioManager::create_instance();
 
 	{
 		PreferencesAudioTab tab;
@@ -116,7 +116,7 @@ TEST(PreferencesAudioTab, AudioScrubbingCheckboxUsesBehaviorTranslation)
 
 		bool found = false;
 		foreach (QCheckBox *box, boxes) {
-			if (box->text() == PreferencesBehaviorTab::BehaviorPrefTr(
+			if (box->text() == PreferencesBehaviorTab::behavior_pref_tr(
 								   "Enable audio scrubbing")) {
 				found = true;
 				break;
@@ -125,7 +125,7 @@ TEST(PreferencesAudioTab, AudioScrubbingCheckboxUsesBehaviorTranslation)
 		EXPECT_TRUE(found);
 	}
 
-	AudioManager::DestroyInstance();
+	AudioManager::destroy_instance();
 }
 
 TEST(PreferencesGeneralTab, IncludesBehaviorOptions)
@@ -137,7 +137,7 @@ TEST(PreferencesGeneralTab, IncludesBehaviorOptions)
 
 TEST(PreferencesAudioTab, IncludesAudioScrubbingOption)
 {
-	AudioManager::CreateInstance();
+	AudioManager::create_instance();
 
 	{
 		PreferencesAudioTab tab;
@@ -154,8 +154,8 @@ TEST(PreferencesAudioTab, IncludesAudioScrubbingOption)
 
 		// Its initial state mirrors the AudioScrubbing config entry
 		EXPECT_EQ(scrubbing->isChecked(),
-				  Config::Current()[QStringLiteral("AudioScrubbing")].toBool());
+				  Config::current()[QStringLiteral("AudioScrubbing")].toBool());
 	}
 
-	AudioManager::DestroyInstance();
+	AudioManager::destroy_instance();
 }

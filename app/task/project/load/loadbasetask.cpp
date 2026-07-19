@@ -28,7 +28,7 @@ ProjectLoadBaseTask::ProjectLoadBaseTask(const QString &filename)
 	: project_(nullptr)
 	, filename_(filename)
 {
-	SetTitle(tr("Loading '%1'").arg(filename));
+	set_title(tr("Loading '%1'").arg(filename));
 }
 
 }

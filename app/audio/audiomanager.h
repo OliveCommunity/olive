@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef AUDIOMANAGER_H
-#define AUDIOMANAGER_H
+#ifndef OAK_AUDIOMANAGER_H
+#define OAK_AUDIOMANAGER_H
 
 #include <memory>
 #include <QtConcurrent/QtConcurrent>
@@ -46,61 +46,61 @@ namespace olive
 class AudioManager : public QObject {
 	Q_OBJECT
 public:
-	static void CreateInstance();
-	static void DestroyInstance();
+	static void create_instance();
+	static void destroy_instance();
 
 	static AudioManager *instance();
 
-	void SetOutputNotifyInterval(int n);
+	void set_output_notify_interval(int n);
 
-	bool PushToOutput(const AudioParams &params, const QByteArray &samples,
+	bool push_to_output(const AudioParams &params, const QByteArray &samples,
 					  QString *error = nullptr);
 
-	void ClearBufferedOutput();
+	void clear_buffered_output();
 
-	void StopOutput();
+	void stop_output();
 
-	PaDeviceIndex GetOutputDevice() const
+	PaDeviceIndex get_output_device() const
 	{
 		return output_device_;
 	}
 
-	PaDeviceIndex GetInputDevice() const
+	PaDeviceIndex get_input_device() const
 	{
 		return input_device_;
 	}
 
-	void SetOutputDevice(PaDeviceIndex device);
+	void set_output_device(PaDeviceIndex device);
 
-	void SetInputDevice(PaDeviceIndex device);
+	void set_input_device(PaDeviceIndex device);
 
-	void HardReset();
+	void hard_reset();
 
-	bool StartRecording(const EncodingParams &params,
+	bool start_recording(const EncodingParams &params,
 						QString *error_str = nullptr);
 
-	void StopRecording();
+	void stop_recording();
 
-	static PaDeviceIndex FindConfigDeviceByName(bool is_output_device);
-	static PaDeviceIndex FindDeviceByName(const QString &s,
+	static PaDeviceIndex find_config_device_by_name(bool is_output_device);
+	static PaDeviceIndex find_device_by_name(const QString &s,
 										  bool is_output_device);
 
-	static PaStreamParameters GetPortAudioParams(const AudioParams &p,
+	static PaStreamParameters get_port_audio_params(const AudioParams &p,
 												 PaDeviceIndex device);
 
 signals:
-	void OutputNotify();
+	void output_notify();
 
-	void OutputParamsChanged();
+	void output_params_changed();
 
 private:
 	AudioManager();
 
 	virtual ~AudioManager() override;
 
-	static PaSampleFormat GetPortAudioSampleFormat(SampleFormat fmt);
+	static PaSampleFormat get_port_audio_sample_format(SampleFormat fmt);
 
-	void CloseOutputStream();
+	void close_output_stream();
 
 	static AudioManager *instance_;
 
@@ -117,4 +117,4 @@ private:
 
 }
 
-#endif // AUDIOMANAGER_H
+#endif // OAK_AUDIOMANAGER_H

@@ -39,33 +39,33 @@ HistogramScope::HistogramScope(QWidget *parent)
 {
 }
 
-void HistogramScope::OnInit()
+void HistogramScope::on_init()
 {
-	super::OnInit();
+	super::on_init();
 
 	ShaderCode secondary_code(
-		FileFunctions::ReadFileAsString(
+		FileFunctions::read_file_as_string(
 			":/shaders/rgbhistogram_secondary.frag"),
-		FileFunctions::ReadFileAsString(":/shaders/rgbhistogram.vert"));
-	pipeline_secondary_ = renderer()->CreateNativeShader(secondary_code);
+		FileFunctions::read_file_as_string(":/shaders/rgbhistogram.vert"));
+	pipeline_secondary_ = renderer()->create_native_shader(secondary_code);
 }
 
-void HistogramScope::OnDestroy()
+void HistogramScope::on_destroy()
 {
 	pipeline_secondary_.clear();
 	texture_row_sums_ = nullptr;
 
-	super::OnDestroy();
+	super::on_destroy();
 }
 
-ShaderCode HistogramScope::GenerateShaderCode()
+ShaderCode HistogramScope::generate_shader_code()
 {
 	return ShaderCode(
-		FileFunctions::ReadFileAsString(":/shaders/rgbhistogram.frag"),
-		FileFunctions::ReadFileAsString(":/shaders/default.vert"));
+		FileFunctions::read_file_as_string(":/shaders/rgbhistogram.frag"),
+		FileFunctions::read_file_as_string(":/shaders/default.vert"));
 }
 
-void HistogramScope::DrawScope(TexturePtr managed_tex, QVariant pipeline)
+void HistogramScope::draw_scope(TexturePtr managed_tex, QVariant pipeline)
 {
 	float histogram_scale = 0.80f;
 	// This value is eyeballed for usefulness. Until we have a geometry
@@ -76,32 +76,32 @@ void HistogramScope::DrawScope(TexturePtr managed_tex, QVariant pipeline)
 
 	ShaderJob shader_job;
 
-	shader_job.Insert(QStringLiteral("viewport"),
-					  NodeValue(NodeValue::kVec2,
+	shader_job.insert(QStringLiteral("viewport"),
+					  NodeValue(NodeValue::k_vec2,
 								QVector2D(width(), height())));
-	shader_job.Insert(QStringLiteral("histogram_scale"),
-					  NodeValue(NodeValue::kFloat, histogram_scale));
-	shader_job.Insert(QStringLiteral("histogram_power"),
-					  NodeValue(NodeValue::kFloat, histogram_power));
+	shader_job.insert(QStringLiteral("histogram_scale"),
+					  NodeValue(NodeValue::k_float, histogram_scale));
+	shader_job.insert(QStringLiteral("histogram_power"),
+					  NodeValue(NodeValue::k_float, histogram_power));
 
 	if (!texture_row_sums_ || texture_row_sums_->width() != this->width() ||
 		texture_row_sums_->height() != this->height()) {
-		texture_row_sums_ = renderer()->CreateTexture(
+		texture_row_sums_ = renderer()->create_texture(
 			VideoParams(width(), height(), managed_tex->format(),
 						managed_tex->channel_count()));
 	}
 
 	// Draw managed texture to a sums texture
-	shader_job.Insert(QStringLiteral("ove_maintex"),
-					  NodeValue(NodeValue::kTexture,
+	shader_job.insert(QStringLiteral("ove_maintex"),
+					  NodeValue(NodeValue::k_texture,
 								QVariant::fromValue(managed_tex)));
-	renderer()->BlitToTexture(pipeline, shader_job, texture_row_sums_.get());
+	renderer()->blit_to_texture(pipeline, shader_job, texture_row_sums_.get());
 
 	// Draw sums into a histogram
-	shader_job.Insert(QStringLiteral("ove_maintex"),
-					  NodeValue(NodeValue::kTexture,
+	shader_job.insert(QStringLiteral("ove_maintex"),
+					  NodeValue(NodeValue::k_texture,
 								QVariant::fromValue(texture_row_sums_)));
-	renderer()->Blit(pipeline_secondary_, shader_job,
+	renderer()->blit(pipeline_secondary_, shader_job,
 					 texture_row_sums_->params());
 
 	// Draw line overlays
@@ -139,7 +139,7 @@ void HistogramScope::DrawScope(TexturePtr managed_tex, QVariant pipeline)
 			(histogram_dim_y * pow(1.0 - *it, histogram_base)) +
 				histogram_start_dim_y);
 		label = QString::number(*it * 100, 'f', 1) + "%";
-		font_x_offset = QtUtils::QFontMetricsWidth(font_metrics, label) + 4;
+		font_x_offset = QtUtils::q_font_metrics_width(font_metrics, label) + 4;
 
 		p.drawText(histogram_start_dim_x - font_x_offset,
 				   (histogram_dim_y * pow(1.0 - *it, histogram_base)) +
@@ -149,7 +149,7 @@ void HistogramScope::DrawScope(TexturePtr managed_tex, QVariant pipeline)
 	p.drawLines(histogram_lines);
 }
 
-void HistogramScope::DrawScopeSoftware(QPainter &p, const QImage &image)
+void HistogramScope::draw_scope_software(QPainter &p, const QImage &image)
 {
 	const float histogram_scale = 0.80f;
 	const float histogram_base = 2.5f;
@@ -241,7 +241,7 @@ void HistogramScope::DrawScopeSoftware(QPainter &p, const QImage &image)
 			(histogram_dim_y * pow(1.0 - *it, histogram_base)) +
 				histogram_start_dim_y);
 		label = QString::number(*it * 100, 'f', 1) + "%";
-		font_x_offset = QtUtils::QFontMetricsWidth(font_metrics, label) + 4;
+		font_x_offset = QtUtils::q_font_metrics_width(font_metrics, label) + 4;
 
 		p.drawText(histogram_start_dim_x - font_x_offset,
 				   (histogram_dim_y * pow(1.0 - *it, histogram_base)) +

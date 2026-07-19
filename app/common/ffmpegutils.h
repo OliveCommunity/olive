@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FFMPEGABSTRACTION_H
-#define FFMPEGABSTRACTION_H
+#ifndef OAK_FFMPEGABSTRACTION_H
+#define OAK_FFMPEGABSTRACTION_H
 
 #include <ffmpeg_bridge/ffmpeg_bridge.h>
 
@@ -50,29 +50,29 @@ public:
    * taking a single argument, an unscoped enum argument would silently
    * prefer an int overload over the PixelFormat one.
    */
-	static int GetCompatibleBridgePixelFormat(
-		int pix_fmt, PixelFormat maximum = PixelFormat::INVALID);
+	static int get_compatible_bridge_pixel_format(
+		int pix_fmt, PixelFormat maximum = PixelFormat::invalid);
 
 	/**
    * @brief Returns a native pixel format that can be used to convert from a native frame to a bridge frame with minimal data loss
    */
-	static PixelFormat GetCompatiblePixelFormat(const PixelFormat &pix_fmt);
+	static PixelFormat get_compatible_pixel_format(const PixelFormat &pix_fmt);
 
 	/**
    * @brief Returns a bridge pixel format for a given native pixel format
    */
-	static int GetFFmpegPixelFormat(const PixelFormat &pix_fmt,
+	static int get_f_fmpeg_pixel_format(const PixelFormat &pix_fmt,
 									int channel_layout);
 
 	/**
    * @brief Returns a native sample format type for a given bridge sample format
    */
-	static SampleFormat GetNativeSampleFormat(int smp_fmt);
+	static SampleFormat get_native_sample_format(int smp_fmt);
 
 	/**
    * @brief Returns a bridge sample format type for a given native type
    */
-	static int GetFFmpegSampleFormat(const SampleFormat &smp_fmt);
+	static int get_f_fmpeg_sample_format(const SampleFormat &smp_fmt);
 
 	/**
    * @brief Convert "JPEG"/full-range colorspace to its regular counterpart
@@ -81,9 +81,9 @@ public:
    * time being, FFmpeg still uses these JPEG spaces, so for simplicity (since we *are* color_range
    * aware), we use this function.
    */
-	static int ConvertJPEGSpaceToRegularSpace(int f);
+	static int convert_jpeg_space_to_regular_space(int f);
 };
 
 }
 
-#endif // FFMPEGABSTRACTION_H
+#endif // OAK_FFMPEGABSTRACTION_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef XMLREADLOOP_H
-#define XMLREADLOOP_H
+#ifndef OAK_XMLREADLOOP_H
+#define OAK_XMLREADLOOP_H
 
 #include <QXmlStreamReader>
 
@@ -48,9 +48,9 @@ class NodeGroup;
  *
  * See also: https://stackoverflow.com/questions/46346450/qt-qxmlstreamreader-always-returns-premature-end-of-document-error
  */
-bool XMLReadNextStartElement(QXmlStreamReader *reader,
+bool xml_read_next_start_element(QXmlStreamReader *reader,
 							 CancelAtom *cancel_atom = nullptr);
 
 }
 
-#endif // XMLREADLOOP_H
+#endif // OAK_XMLREADLOOP_H

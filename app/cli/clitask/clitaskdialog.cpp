@@ -25,15 +25,15 @@ namespace olive
 {
 
 CLITaskDialog::CLITaskDialog(Task *task, QObject *parent)
-	: CLIProgressDialog(task->GetTitle(), parent)
+	: CLIProgressDialog(task->get_title(), parent)
 	, task_(task)
 {
-	connect(task_, &Task::ProgressChanged, this, &CLITaskDialog::SetProgress);
+	connect(task_, &Task::progress_changed, this, &CLITaskDialog::set_progress);
 }
 
-bool CLITaskDialog::Run()
+bool CLITaskDialog::run()
 {
-	return task_->Start();
+	return task_->start();
 }
 
 }

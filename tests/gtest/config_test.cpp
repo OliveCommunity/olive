@@ -5,8 +5,8 @@
 
 TEST(Config, DefaultsPresent)
 {
-	olive::Config &cfg = olive::Config::Current();
-	cfg.SetDefaults();
+	olive::Config &cfg = olive::Config::current();
+	cfg.set_defaults();
 
 	EXPECT_TRUE(cfg[QStringLiteral("Style")].isValid());
 	EXPECT_TRUE(cfg[QStringLiteral("TimecodeDisplay")].isValid());
@@ -17,7 +17,7 @@ TEST(Config, DefaultsPresent)
 
 TEST(Config, SetAndGetValues)
 {
-	olive::Config &cfg = olive::Config::Current();
+	olive::Config &cfg = olive::Config::current();
 	cfg[QStringLiteral("UnitTestValue")] = 42;
 	EXPECT_EQ(cfg[QStringLiteral("UnitTestValue")].toInt(), 42);
 
@@ -33,7 +33,7 @@ TEST(Config, SetAndGetValues)
 
 	// Config offers no key-removal API, so reset the singleton to its
 	// default state to avoid leaking the UnitTest* keys into later tests
-	cfg.SetDefaults();
+	cfg.set_defaults();
 	EXPECT_FALSE(cfg[QStringLiteral("UnitTestValue")].isValid());
 	EXPECT_FALSE(cfg[QStringLiteral("UnitTestString")].isValid());
 	EXPECT_FALSE(cfg[QStringLiteral("UnitTestBool")].isValid());
@@ -42,41 +42,41 @@ TEST(Config, SetAndGetValues)
 
 TEST(Config, MissingKeyReturnsInvalidVariant)
 {
-	olive::Config &cfg = olive::Config::Current();
+	olive::Config &cfg = olive::Config::current();
 	EXPECT_FALSE(cfg[QStringLiteral("DefinitelyMissingKey")].isValid());
 }
 
 TEST(Config, GraphicsBackendStringConversion)
 {
-	EXPECT_EQ(olive::RenderManager::BackendFromString(QStringLiteral("opengl")),
-			  olive::RenderManager::kOpenGL);
-	EXPECT_EQ(olive::RenderManager::BackendFromString(QStringLiteral("vulkan")),
-			  olive::RenderManager::kVulkan);
-	EXPECT_EQ(olive::RenderManager::BackendFromString(QStringLiteral("dummy")),
-			  olive::RenderManager::kDummy);
+	EXPECT_EQ(olive::RenderManager::backend_from_string(QStringLiteral("opengl")),
+			  olive::RenderManager::k_open_gl);
+	EXPECT_EQ(olive::RenderManager::backend_from_string(QStringLiteral("vulkan")),
+			  olive::RenderManager::k_vulkan);
+	EXPECT_EQ(olive::RenderManager::backend_from_string(QStringLiteral("dummy")),
+			  olive::RenderManager::k_dummy);
 	EXPECT_EQ(
-		olive::RenderManager::BackendFromString(QStringLiteral("multiprocess")),
-		olive::RenderManager::kMultiProcess);
+		olive::RenderManager::backend_from_string(QStringLiteral("multiprocess")),
+		olive::RenderManager::k_multi_process);
 	EXPECT_EQ(
-		olive::RenderManager::BackendToString(olive::RenderManager::kOpenGL),
+		olive::RenderManager::backend_to_string(olive::RenderManager::k_open_gl),
 		QStringLiteral("opengl"));
 	EXPECT_EQ(
-		olive::RenderManager::BackendToString(olive::RenderManager::kVulkan),
+		olive::RenderManager::backend_to_string(olive::RenderManager::k_vulkan),
 		QStringLiteral("vulkan"));
 	EXPECT_EQ(
-		olive::RenderManager::BackendToString(olive::RenderManager::kDummy),
+		olive::RenderManager::backend_to_string(olive::RenderManager::k_dummy),
 		QStringLiteral("dummy"));
-	EXPECT_EQ(olive::RenderManager::BackendToString(
-				  olive::RenderManager::kMultiProcess),
+	EXPECT_EQ(olive::RenderManager::backend_to_string(
+				  olive::RenderManager::k_multi_process),
 			  QStringLiteral("multiprocess"));
-	EXPECT_EQ(olive::RenderManager::BackendFromString(QStringLiteral("bad")),
-			  olive::RenderManager::kOpenGL);
+	EXPECT_EQ(olive::RenderManager::backend_from_string(QStringLiteral("bad")),
+			  olive::RenderManager::k_open_gl);
 }
 
 TEST(Config, SetDefaultsPopulatesRequiredKeys)
 {
-	olive::Config &cfg = olive::Config::Current();
-	cfg.SetDefaults();
+	olive::Config &cfg = olive::Config::current();
+	cfg.set_defaults();
 
 	const QStringList required = {
 		QStringLiteral("Style"),

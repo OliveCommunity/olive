@@ -8,14 +8,14 @@
 #include "ofxhParam.h"
 #include "common/avframeptr.h"
 #include "common/ffmpegutils.h"
-#include "pluginSupport/OliveClip.h"
+#include "pluginSupport/oliveclip.h"
 #include "pluginSupport/image.h"
 #include "pluginSupport/paraminstance.h"
 #include "render/texture.h"
 
 namespace
 {
-olive::VideoParams MakeParams(int width, int height,
+olive::VideoParams make_params(int width, int height,
 							  olive::core::PixelFormat format, int channels,
 							  bool premultiplied)
 {
@@ -28,10 +28,10 @@ olive::VideoParams MakeParams(int width, int height,
 	return params;
 }
 
-olive::AVFramePtr CreateFrame(const olive::VideoParams &params)
+olive::AVFramePtr create_frame(const olive::VideoParams &params)
 {
-	olive::AVFramePtr frame = olive::CreateAVFramePtr();
-	frame->set_format(olive::FFmpegUtils::GetFFmpegPixelFormat(
+	olive::AVFramePtr frame = olive::create_av_frame_ptr();
+	frame->set_format(olive::FFmpegUtils::get_f_fmpeg_pixel_format(
 		params.format(), params.channel_count()));
 	frame->set_width(params.width());
 	frame->set_height(params.height());
@@ -57,32 +57,32 @@ TEST(PluginParamInstance, CoordinateSystemHelpers)
 											"TestCoordinate");
 	// A bare descriptor has no coordinate-system property; the OFX property
 	// suite reports an empty string which is treated as canonical.
-	EXPECT_FALSE(olive::plugin::IsNormalisedCoordinateSystem(descriptor));
+	EXPECT_FALSE(olive::plugin::is_normalised_coordinate_system(descriptor));
 
 	descriptor.addStandardParamProps(kOfxParamTypeDouble);
-	EXPECT_FALSE(olive::plugin::IsNormalisedCoordinateSystem(descriptor));
+	EXPECT_FALSE(olive::plugin::is_normalised_coordinate_system(descriptor));
 
 	descriptor.getProperties().setStringProperty(
 		kOfxParamPropDefaultCoordinateSystem, kOfxParamCoordinatesNormalised);
-	EXPECT_TRUE(olive::plugin::IsNormalisedCoordinateSystem(descriptor));
+	EXPECT_TRUE(olive::plugin::is_normalised_coordinate_system(descriptor));
 
-	EXPECT_DOUBLE_EQ(olive::plugin::ToNormalised(960.0, 1920.0), 0.5);
-	EXPECT_DOUBLE_EQ(olive::plugin::ToCanonical(0.5, 1920.0), 960.0);
+	EXPECT_DOUBLE_EQ(olive::plugin::to_normalised(960.0, 1920.0), 0.5);
+	EXPECT_DOUBLE_EQ(olive::plugin::to_canonical(0.5, 1920.0), 960.0);
 	// A non-positive extent passes the value through unchanged.
-	EXPECT_DOUBLE_EQ(olive::plugin::ToNormalised(7.5, 0.0), 7.5);
-	EXPECT_DOUBLE_EQ(olive::plugin::ToCanonical(7.5, 0.0), 7.5);
+	EXPECT_DOUBLE_EQ(olive::plugin::to_normalised(7.5, 0.0), 7.5);
+	EXPECT_DOUBLE_EQ(olive::plugin::to_canonical(7.5, 0.0), 7.5);
 }
 
 TEST(PluginParamInstance, ParamChangeLabelContainsParamName)
 {
 	OFX::Host::Param::Descriptor descriptor(kOfxParamTypeDouble, "Gain");
-	EXPECT_EQ(olive::plugin::ParamChangeLabel(descriptor),
+	EXPECT_EQ(olive::plugin::param_change_label(descriptor),
 			  QStringLiteral("Change Gain"));
 }
 
 TEST(PluginParamInstance, SubmitUndoCommandIgnoresNullCommand)
 {
-	EXPECT_NO_THROW(olive::plugin::SubmitUndoCommand(
+	EXPECT_NO_THROW(olive::plugin::submit_undo_command(
 		nullptr, nullptr, QStringLiteral("Ignored")));
 }
 
@@ -104,7 +104,7 @@ TEST(PluginParamInstance, IntegerInstanceUsesDescriptorDefault)
 	EXPECT_EQ(time_value, 42);
 
 	// Rebinding to the same (null) node keeps the cached value.
-	instance.SetNode(nullptr);
+	instance.set_node(nullptr);
 	EXPECT_EQ(instance.get(value), kOfxStatOK);
 	EXPECT_EQ(value, 42);
 }
@@ -392,7 +392,7 @@ TEST(PluginParamInstance, PushbuttonGroupAndPageInstancesExposeNames)
 											 "TestButton");
 	olive::plugin::PushbuttonInstance button(nullptr, "TestButton",
 											 button_desc);
-	button.SetNode(nullptr);
+	button.set_node(nullptr);
 	EXPECT_EQ(button.getName(), "TestButton");
 
 	OFX::Host::Param::Descriptor group_desc(kOfxParamTypeGroup, "TestGroup");
@@ -416,18 +416,18 @@ TEST(PluginClipInstance, UnmappedBitDepthFallsBackToParams)
 		const char *expected;
 	};
 	const Case cases[] = {
-		{ olive::core::PixelFormat::U8, kOfxBitDepthByte },
-		{ olive::core::PixelFormat::U10, kOfxBitDepthNone },
-		{ olive::core::PixelFormat::F16, kOfxBitDepthHalf },
-		{ olive::core::PixelFormat::F32, kOfxBitDepthFloat },
-		{ olive::core::PixelFormat::INVALID, kOfxBitDepthNone },
+		{ olive::core::PixelFormat::u8, kOfxBitDepthByte },
+		{ olive::core::PixelFormat::u10, kOfxBitDepthNone },
+		{ olive::core::PixelFormat::f16, kOfxBitDepthHalf },
+		{ olive::core::PixelFormat::f32, kOfxBitDepthFloat },
+		{ olive::core::PixelFormat::invalid, kOfxBitDepthNone },
 	};
 	for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
 		SCOPED_TRACE(i);
 		OFX::Host::ImageEffect::ClipDescriptor desc(
 			kOfxImageEffectOutputClipName);
 		olive::VideoParams params =
-			MakeParams(16, 16, cases[i].format, 4, false);
+			make_params(16, 16, cases[i].format, 4, false);
 		olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 		EXPECT_EQ(clip.getUnmappedBitDepth(), cases[i].expected);
 	}
@@ -437,7 +437,7 @@ TEST(PluginClipInstance, UnmappedBitDepthPrefersPluginChoice)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc(kOfxImageEffectOutputClipName);
 	olive::VideoParams params =
-		MakeParams(16, 16, olive::core::PixelFormat::U8, 4, false);
+		make_params(16, 16, olive::core::PixelFormat::u8, 4, false);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
 	clip.setPixelDepth(kOfxBitDepthFloat);
@@ -466,8 +466,8 @@ TEST(PluginClipInstance, UnmappedComponentsFallsBackToParams)
 		SCOPED_TRACE(i);
 		OFX::Host::ImageEffect::ClipDescriptor desc(
 			kOfxImageEffectOutputClipName);
-		olive::VideoParams params = MakeParams(
-			16, 16, olive::core::PixelFormat::U8, cases[i].channels, false);
+		olive::VideoParams params = make_params(
+			16, 16, olive::core::PixelFormat::u8, cases[i].channels, false);
 		olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 		EXPECT_EQ(clip.getUnmappedComponents(), cases[i].expected);
 	}
@@ -477,7 +477,7 @@ TEST(PluginClipInstance, UnmappedComponentsPrefersPluginChoice)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc(kOfxImageEffectOutputClipName);
 	olive::VideoParams params =
-		MakeParams(16, 16, olive::core::PixelFormat::U8, 4, false);
+		make_params(16, 16, olive::core::PixelFormat::u8, 4, false);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
 	clip.setComponents(kOfxImageComponentAlpha);
@@ -491,7 +491,7 @@ TEST(PluginClipInstance, PremultReflectsPremultipliedParams)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc(kOfxImageEffectOutputClipName);
 	olive::VideoParams params =
-		MakeParams(16, 16, olive::core::PixelFormat::U8, 4, true);
+		make_params(16, 16, olive::core::PixelFormat::u8, 4, true);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
 	EXPECT_EQ(clip.getPremult(), kOfxImagePreMultiplied);
@@ -501,8 +501,8 @@ TEST(PluginClipInstance, AspectRatioDefaultsToOneForZeroPar)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc(kOfxImageEffectOutputClipName);
 	olive::VideoParams params =
-		MakeParams(16, 16, olive::core::PixelFormat::U8, 4, false);
-	params.set_pixel_aspect_ratio(olive::core::rational(0, 1));
+		make_params(16, 16, olive::core::PixelFormat::u8, 4, false);
+	params.set_pixel_aspect_ratio(olive::core::Rational(0, 1));
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
 	EXPECT_DOUBLE_EQ(clip.getAspectRatio(), 1.0);
@@ -514,15 +514,15 @@ TEST(PluginClipInstance, FieldOrderNoneAndLower)
 	// PluginSupportClip.PropertyGetters.
 	OFX::Host::ImageEffect::ClipDescriptor desc(kOfxImageEffectOutputClipName);
 	olive::VideoParams progressive =
-		MakeParams(16, 16, olive::core::PixelFormat::U8, 4, false);
-	progressive.set_interlacing(olive::VideoParams::kInterlaceNone);
+		make_params(16, 16, olive::core::PixelFormat::u8, 4, false);
+	progressive.set_interlacing(olive::VideoParams::k_interlace_none);
 	olive::plugin::OliveClipInstance progressive_clip(nullptr, desc,
 													  progressive);
 	EXPECT_EQ(progressive_clip.getFieldOrder(), kOfxImageFieldNone);
 
 	olive::VideoParams lower =
-		MakeParams(16, 16, olive::core::PixelFormat::U8, 4, false);
-	lower.set_interlacing(olive::VideoParams::kInterlacedBottomFirst);
+		make_params(16, 16, olive::core::PixelFormat::u8, 4, false);
+	lower.set_interlacing(olive::VideoParams::k_interlaced_bottom_first);
 	olive::plugin::OliveClipInstance lower_clip(nullptr, desc, lower);
 	EXPECT_EQ(lower_clip.getFieldOrder(), kOfxImageFieldLower);
 }
@@ -531,8 +531,8 @@ TEST(PluginClipInstance, RegionOfDefinitionDefaultsToScaledFrame)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc(kOfxImageEffectOutputClipName);
 	olive::VideoParams params =
-		MakeParams(100, 80, olive::core::PixelFormat::U8, 4, false);
-	params.set_pixel_aspect_ratio(olive::core::rational(2, 1));
+		make_params(100, 80, olive::core::PixelFormat::u8, 4, false);
+	params.set_pixel_aspect_ratio(olive::core::Rational(2, 1));
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
 	OfxRectD rod = clip.getRegionOfDefinition(0.0);
@@ -546,7 +546,7 @@ TEST(PluginClipInstance, RegionOfDefinitionPerTimeOverride)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc(kOfxImageEffectOutputClipName);
 	olive::VideoParams params =
-		MakeParams(100, 80, olive::core::PixelFormat::U8, 4, false);
+		make_params(100, 80, olive::core::PixelFormat::u8, 4, false);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
 	OfxRectD custom = { 1.5, 2.5, 51.5, 21.0 };
@@ -573,7 +573,7 @@ TEST(PluginClipInstance, RegionOfDefinitionFallsBackToStoredDefault)
 	// Zero-sized params yield no usable params-derived region, so the stored
 	// default is used.
 	olive::VideoParams empty_params =
-		MakeParams(0, 0, olive::core::PixelFormat::U8, 4, false);
+		make_params(0, 0, olive::core::PixelFormat::u8, 4, false);
 	olive::plugin::OliveClipInstance empty_clip(nullptr, desc, empty_params);
 
 	OfxRectD stored = { 2.0, 4.0, 202.0, 104.0 };
@@ -587,7 +587,7 @@ TEST(PluginClipInstance, RegionOfDefinitionFallsBackToStoredDefault)
 
 	// A params-derived region still takes precedence over the stored default.
 	olive::VideoParams params =
-		MakeParams(100, 80, olive::core::PixelFormat::U8, 4, false);
+		make_params(100, 80, olive::core::PixelFormat::u8, 4, false);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 	clip.setDefaultRegionOfDefinition(stored);
 
@@ -602,7 +602,7 @@ TEST(PluginClipInstance, OutputImageBoundsFollowRegionOfDefinition)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc(kOfxImageEffectOutputClipName);
 	olive::VideoParams params =
-		MakeParams(100, 80, olive::core::PixelFormat::U8, 4, false);
+		make_params(100, 80, olive::core::PixelFormat::u8, 4, false);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
 	OfxRectD custom = { 1.5, 2.5, 51.5, 21.0 };
@@ -620,7 +620,7 @@ TEST(PluginClipInstance, OutputImageCacheIsPerTime)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc(kOfxImageEffectOutputClipName);
 	olive::VideoParams params =
-		MakeParams(16, 16, olive::core::PixelFormat::U8, 4, false);
+		make_params(16, 16, olive::core::PixelFormat::u8, 4, false);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
 	OFX::Host::ImageEffect::Image *first = clip.getImage(1.0, nullptr);
@@ -634,7 +634,7 @@ TEST(PluginClipInstance, GetOutputImageUsesCache)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc(kOfxImageEffectOutputClipName);
 	olive::VideoParams params =
-		MakeParams(16, 16, olive::core::PixelFormat::U8, 4, false);
+		make_params(16, 16, olive::core::PixelFormat::u8, 4, false);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
 	OFX::Host::ImageEffect::Image *created = clip.getOutputImage(1.0);
@@ -655,15 +655,15 @@ TEST(PluginClipInstance, InputImageNullForInvalidParams)
 		int channels;
 	};
 	const Case cases[] = {
-		{ 0, 10, olive::core::PixelFormat::U8, 4 },
-		{ 10, 0, olive::core::PixelFormat::U8, 4 },
-		{ 10, 10, olive::core::PixelFormat::INVALID, 4 },
-		{ 10, 10, olive::core::PixelFormat::U8, 0 },
+		{ 0, 10, olive::core::PixelFormat::u8, 4 },
+		{ 10, 0, olive::core::PixelFormat::u8, 4 },
+		{ 10, 10, olive::core::PixelFormat::invalid, 4 },
+		{ 10, 10, olive::core::PixelFormat::u8, 0 },
 	};
 	for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
 		SCOPED_TRACE(i);
 		OFX::Host::ImageEffect::ClipDescriptor desc("Source");
-		olive::VideoParams params = MakeParams(cases[i].width, cases[i].height,
+		olive::VideoParams params = make_params(cases[i].width, cases[i].height,
 											   cases[i].format,
 											   cases[i].channels, false);
 		olive::plugin::OliveClipInstance clip(nullptr, desc, params);
@@ -676,7 +676,7 @@ TEST(PluginClipInstance, ConnectedAfterImageBecomesAvailable)
 	OFX::Host::ImageEffect::ClipDescriptor out_desc(
 		kOfxImageEffectOutputClipName);
 	olive::VideoParams out_params =
-		MakeParams(16, 16, olive::core::PixelFormat::U8, 4, false);
+		make_params(16, 16, olive::core::PixelFormat::u8, 4, false);
 	olive::plugin::OliveClipInstance out_clip(nullptr, out_desc, out_params);
 	EXPECT_FALSE(out_clip.getConnected());
 	ASSERT_NE(out_clip.getImage(0.0, nullptr), nullptr);
@@ -684,7 +684,7 @@ TEST(PluginClipInstance, ConnectedAfterImageBecomesAvailable)
 
 	OFX::Host::ImageEffect::ClipDescriptor src_desc("Source");
 	olive::VideoParams src_params =
-		MakeParams(16, 16, olive::core::PixelFormat::U8, 4, false);
+		make_params(16, 16, olive::core::PixelFormat::u8, 4, false);
 	olive::plugin::OliveClipInstance src_clip(nullptr, src_desc, src_params);
 	EXPECT_FALSE(src_clip.getConnected());
 	auto texture = std::make_shared<olive::Texture>(src_params);
@@ -696,10 +696,10 @@ TEST(PluginClipInstance, SetInputTextureCopiesPixels)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc("Source");
 	olive::VideoParams params =
-		MakeParams(4, 2, olive::core::PixelFormat::U8, 4, false);
+		make_params(4, 2, olive::core::PixelFormat::u8, 4, false);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
-	olive::AVFramePtr frame = CreateFrame(params);
+	olive::AVFramePtr frame = create_frame(params);
 	ASSERT_NE(frame, nullptr);
 	ASSERT_NE(frame->data(0), nullptr);
 
@@ -712,7 +712,7 @@ TEST(PluginClipInstance, SetInputTextureCopiesPixels)
 	}
 
 	auto texture = std::make_shared<olive::Texture>(params);
-	texture->handleFrame(frame);
+	texture->handle_frame(frame);
 	clip.setInputTexture(texture, 1.0, true);
 
 	auto *image =
@@ -734,10 +734,10 @@ TEST(PluginClipInstance, SetInputTextureCopiesFloatPixels)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc("Source");
 	olive::VideoParams params =
-		MakeParams(2, 1, olive::core::PixelFormat::F32, 4, false);
+		make_params(2, 1, olive::core::PixelFormat::f32, 4, false);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
-	olive::AVFramePtr frame = CreateFrame(params);
+	olive::AVFramePtr frame = create_frame(params);
 	ASSERT_NE(frame, nullptr);
 	ASSERT_NE(frame->data(0), nullptr);
 
@@ -749,7 +749,7 @@ TEST(PluginClipInstance, SetInputTextureCopiesFloatPixels)
 	}
 
 	auto texture = std::make_shared<olive::Texture>(params);
-	texture->handleFrame(frame);
+	texture->handle_frame(frame);
 	clip.setInputTexture(texture, 1.0, true);
 
 	auto *image =
@@ -767,10 +767,10 @@ TEST(PluginClipInstance, SetInputTextureScrubsNaNToBlack)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc("Source");
 	olive::VideoParams params =
-		MakeParams(2, 2, olive::core::PixelFormat::F32, 4, false);
+		make_params(2, 2, olive::core::PixelFormat::f32, 4, false);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
-	olive::AVFramePtr frame = CreateFrame(params);
+	olive::AVFramePtr frame = create_frame(params);
 	ASSERT_NE(frame, nullptr);
 	ASSERT_NE(frame->data(0), nullptr);
 
@@ -786,7 +786,7 @@ TEST(PluginClipInstance, SetInputTextureScrubsNaNToBlack)
 		std::numeric_limits<float>::quiet_NaN();
 
 	auto texture = std::make_shared<olive::Texture>(params);
-	texture->handleFrame(frame);
+	texture->handle_frame(frame);
 	clip.setInputTexture(texture, 1.0, true);
 	ASSERT_TRUE(clip.getConnected());
 
@@ -809,15 +809,15 @@ TEST(PluginClipInstance, PruneImagesCacheEvictsOldestInputImages)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc("Source");
 	olive::VideoParams params =
-		MakeParams(16, 16, olive::core::PixelFormat::U8, 4, false);
+		make_params(16, 16, olive::core::PixelFormat::u8, 4, false);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
 	for (int t = 1;
-		 t <= olive::plugin::OliveClipInstance::kMaxInputImageCache + 1; ++t) {
+		 t <= olive::plugin::OliveClipInstance::k_max_input_image_cache + 1; ++t) {
 		auto texture = std::make_shared<olive::Texture>(params);
 		clip.setInputTexture(texture, static_cast<OfxTime>(t), true);
 	}
-	clip.pruneImagesCache();
+	clip.prune_images_cache();
 
 	// The oldest entry (time 1) was evicted; its on-demand recreation is
 	// cached again, while later entries remained cached throughout.
@@ -839,18 +839,18 @@ TEST(PluginClipInstance, PruneImagesCacheKeepsOutputImages)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc(kOfxImageEffectOutputClipName);
 	olive::VideoParams params =
-		MakeParams(16, 16, olive::core::PixelFormat::U8, 4, false);
+		make_params(16, 16, olive::core::PixelFormat::u8, 4, false);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
 	for (int t = 1;
-		 t <= olive::plugin::OliveClipInstance::kMaxInputImageCache + 1; ++t) {
+		 t <= olive::plugin::OliveClipInstance::k_max_input_image_cache + 1; ++t) {
 		clip.getImage(static_cast<OfxTime>(t), nullptr);
 	}
 	OFX::Host::ImageEffect::Image *before = clip.getImage(1.0, nullptr);
 	ASSERT_NE(before, nullptr);
 
 	// Pruning is a no-op for the output clip.
-	clip.pruneImagesCache();
+	clip.prune_images_cache();
 	EXPECT_EQ(clip.getImage(1.0, nullptr), before);
 }
 
@@ -859,7 +859,7 @@ TEST(PluginClipInstance, LoadTextureReturnsNullWithoutGpuTexture)
 {
 	OFX::Host::ImageEffect::ClipDescriptor src_desc("Source");
 	olive::VideoParams params =
-		MakeParams(16, 16, olive::core::PixelFormat::U8, 4, false);
+		make_params(16, 16, olive::core::PixelFormat::u8, 4, false);
 	olive::plugin::OliveClipInstance src_clip(nullptr, src_desc, params);
 
 	// No texture was supplied at all.
@@ -883,19 +883,19 @@ TEST(PluginClipInstance, SetParamsUpdatesClipAndPluginPreferences)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc(kOfxImageEffectOutputClipName);
 	olive::VideoParams params =
-		MakeParams(16, 16, olive::core::PixelFormat::U8, 4, false);
+		make_params(16, 16, olive::core::PixelFormat::u8, 4, false);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
 	olive::VideoParams updated =
-		MakeParams(32, 24, olive::core::PixelFormat::F32, 4, false);
-	updated.set_frame_rate(olive::core::rational(60, 1));
+		make_params(32, 24, olive::core::PixelFormat::f32, 4, false);
+	updated.set_frame_rate(olive::core::Rational(60, 1));
 	clip.setParams(updated);
 
 	EXPECT_DOUBLE_EQ(clip.getFrameRate(), 60.0);
 	EXPECT_EQ(clip.getUnmappedBitDepth(), kOfxBitDepthFloat);
 
 	olive::VideoParams preferred = clip.getPluginPreferredParams();
-	EXPECT_EQ(preferred.format(), olive::core::PixelFormat::F32);
+	EXPECT_EQ(preferred.format(), olive::core::PixelFormat::f32);
 	EXPECT_EQ(preferred.channel_count(), 4);
 }
 
@@ -903,11 +903,11 @@ TEST(PluginClipInstance, PluginPreferredParamsDefaultsToClipParams)
 {
 	OFX::Host::ImageEffect::ClipDescriptor desc(kOfxImageEffectOutputClipName);
 	olive::VideoParams params =
-		MakeParams(64, 32, olive::core::PixelFormat::U16, 3, false);
+		make_params(64, 32, olive::core::PixelFormat::u16, 3, false);
 	olive::plugin::OliveClipInstance clip(nullptr, desc, params);
 
 	olive::VideoParams preferred = clip.getPluginPreferredParams();
-	EXPECT_EQ(preferred.format(), olive::core::PixelFormat::U16);
+	EXPECT_EQ(preferred.format(), olive::core::PixelFormat::u16);
 	EXPECT_EQ(preferred.channel_count(), 3);
 	EXPECT_EQ(preferred.width(), 64);
 	EXPECT_EQ(preferred.height(), 32);
@@ -915,7 +915,7 @@ TEST(PluginClipInstance, PluginPreferredParamsDefaultsToClipParams)
 	clip.setPixelDepth(kOfxBitDepthByte);
 	clip.setComponents(kOfxImageComponentRGBA);
 	preferred = clip.getPluginPreferredParams();
-	EXPECT_EQ(preferred.format(), olive::core::PixelFormat::U8);
+	EXPECT_EQ(preferred.format(), olive::core::PixelFormat::u8);
 	EXPECT_EQ(preferred.channel_count(), 4);
 	EXPECT_EQ(preferred.width(), 64);
 }

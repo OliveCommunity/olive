@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FFMPEGENCODER_H
-#define FFMPEGENCODER_H
+#ifndef OAK_FFMPEGENCODER_H
+#define OAK_FFMPEGENCODER_H
 
 #include <ffmpeg_bridge/ffmpeg_bridge.h>
 
@@ -42,26 +42,26 @@ public:
 	FFmpegEncoder(const EncodingParams &params);
 
 	virtual QStringList
-	GetPixelFormatsForCodec(ExportCodec::Codec c) const override;
+	get_pixel_formats_for_codec(ExportCodec::Codec c) const override;
 
 	virtual std::vector<SampleFormat>
-	GetSampleFormatsForCodec(ExportCodec::Codec c) const override;
+	get_sample_formats_for_codec(ExportCodec::Codec c) const override;
 
-	virtual bool Open() override;
+	virtual bool open() override;
 
-	virtual bool WriteFrame(olive::FramePtr frame,
-							olive::core::rational time) override;
+	virtual bool write_frame(olive::FramePtr frame,
+							olive::core::Rational time) override;
 
-	virtual bool WriteAudio(const olive::SampleBuffer &audio) override;
+	virtual bool write_audio(const olive::SampleBuffer &audio) override;
 
-	bool WriteAudioData(const AudioParams &audio_params, const uint8_t **data,
+	bool write_audio_data(const AudioParams &audio_params, const uint8_t **data,
 						int input_sample_count);
 
-	virtual bool WriteSubtitle(const SubtitleBlock *sub_block) override;
+	virtual bool write_subtitle(const SubtitleBlock *sub_block) override;
 
-	virtual void Close() override;
+	virtual void close() override;
 
-	virtual PixelFormat GetDesiredPixelFormat() const override
+	virtual PixelFormat get_desired_pixel_format() const override
 	{
 		return video_conversion_fmt_;
 	}
@@ -70,9 +70,9 @@ private:
 	/**
    * @brief Copy the last error message from the bridge into the encoder error state
    */
-	void SetErrorFromBridge();
+	void set_error_from_bridge();
 
-	static int ExportCodecToBridge(ExportCodec::Codec c);
+	static int export_codec_to_bridge(ExportCodec::Codec c);
 
 	FBEncoder *encoder_;
 
@@ -83,4 +83,4 @@ private:
 
 }
 
-#endif // FFMPEGENCODER_H
+#endif // OAK_FFMPEGENCODER_H

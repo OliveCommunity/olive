@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef SSE2NEON_H
-#define SSE2NEON_H
+#ifndef OAK_SSE2NEON_H
+#define OAK_SSE2NEON_H
 
 // This header file provides a simple API translation layer
 // between SSE intrinsics to their corresponding Arm/Aarch64 NEON versions

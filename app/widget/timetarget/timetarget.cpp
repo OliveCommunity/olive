@@ -30,12 +30,12 @@ TimeTargetObject::TimeTargetObject()
 {
 }
 
-ViewerOutput *TimeTargetObject::GetTimeTarget() const
+ViewerOutput *TimeTargetObject::get_time_target() const
 {
 	return time_target_;
 }
 
-void TimeTargetObject::SetTimeTarget(ViewerOutput *target)
+void TimeTargetObject::set_time_target(ViewerOutput *target)
 {
 	if (time_target_) {
 		TimeTargetDisconnectEvent(time_target_);
@@ -49,31 +49,31 @@ void TimeTargetObject::SetTimeTarget(ViewerOutput *target)
 	}
 }
 
-void TimeTargetObject::SetPathIndex(int index)
+void TimeTargetObject::set_path_index(int index)
 {
 	path_index_ = index;
 }
 
-rational
-TimeTargetObject::GetAdjustedTime(Node *from, Node *to, const rational &r,
+Rational
+TimeTargetObject::get_adjusted_time(Node *from, Node *to, const Rational &r,
 								  Node::TransformTimeDirection dir) const
 {
 	if (!from || !to) {
 		return r;
 	}
 
-	return GetAdjustedTime(from, to, TimeRange(r, r), dir).in();
+	return get_adjusted_time(from, to, TimeRange(r, r), dir).in();
 }
 
 TimeRange
-TimeTargetObject::GetAdjustedTime(Node *from, Node *to, const TimeRange &r,
+TimeTargetObject::get_adjusted_time(Node *from, Node *to, const TimeRange &r,
 								  Node::TransformTimeDirection dir) const
 {
 	if (!from || !to) {
 		return r;
 	}
 
-	return from->TransformTimeTo(r, to, dir, path_index_);
+	return from->transform_time_to(r, to, dir, path_index_);
 }
 
 /*int TimeTargetObject::GetNumberOfPathAdjustments(Node* from, NodeParam::Type direction) const

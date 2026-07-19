@@ -28,7 +28,7 @@ CrossDissolveTransition::CrossDissolveTransition()
 {
 }
 
-QString CrossDissolveTransition::Name() const
+QString CrossDissolveTransition::name() const
 {
 	return tr("Cross Dissolve");
 }
@@ -38,23 +38,23 @@ QString CrossDissolveTransition::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.crossdissolve");
 }
 
-QVector<Node::CategoryID> CrossDissolveTransition::Category() const
+QVector<Node::CategoryID> CrossDissolveTransition::category() const
 {
-	return { kCategoryTransition };
+	return { k_category_transition };
 }
 
-QString CrossDissolveTransition::Description() const
+QString CrossDissolveTransition::description() const
 {
 	return tr("Smoothly transition between two clips.");
 }
 
 ShaderCode
-CrossDissolveTransition::GetShaderCode(const ShaderRequest &request) const
+CrossDissolveTransition::get_shader_code(const ShaderRequest &request) const
 {
 	Q_UNUSED(request)
 
 	return ShaderCode(
-		FileFunctions::ReadFileAsString(":/shaders/crossdissolve.frag"),
+		FileFunctions::read_file_as_string(":/shaders/crossdissolve.frag"),
 		QString());
 }
 
@@ -65,8 +65,8 @@ void CrossDissolveTransition::SampleJobEvent(const SampleBuffer &from_samples,
 {
 	for (size_t i = 0; i < out_samples.sample_count(); i++) {
 		double this_sample_time =
-			out_samples.audio_params().samples_to_time(i).toDouble() + time_in;
-		double progress = GetTotalProgress(this_sample_time);
+			out_samples.audio_params().samples_to_time(i).to_double() + time_in;
+		double progress = get_total_progress(this_sample_time);
 
 		for (int j = 0; j < out_samples.audio_params().channel_count(); j++) {
 			out_samples.data(j)[i] = 0;
@@ -74,7 +74,7 @@ void CrossDissolveTransition::SampleJobEvent(const SampleBuffer &from_samples,
 			if (from_samples.is_allocated()) {
 				if (i < from_samples.sample_count()) {
 					out_samples.data(j)[i] += from_samples.data(j)[i] *
-											  TransformCurve(1.0 - progress);
+											  transform_curve(1.0 - progress);
 				}
 			}
 
@@ -85,7 +85,7 @@ void CrossDissolveTransition::SampleJobEvent(const SampleBuffer &from_samples,
 				if (i >= remain) {
 					qint64 in_index = i - remain;
 					out_samples.data(j)[i] +=
-						to_samples.data(j)[in_index] * TransformCurve(progress);
+						to_samples.data(j)[in_index] * transform_curve(progress);
 				}
 			}
 		}

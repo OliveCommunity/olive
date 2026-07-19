@@ -33,7 +33,7 @@ namespace olive
 {
 
 ProjectSerializer230220::LoadData
-ProjectSerializer230220::Load(Project *project, QXmlStreamReader *reader,
+ProjectSerializer230220::load(Project *project, QXmlStreamReader *reader,
 							  LoadType load_type, void *reserved) const
 {
 	QMap<quintptr, QMap<QString, QString>> properties;
@@ -42,29 +42,29 @@ ProjectSerializer230220::Load(Project *project, QXmlStreamReader *reader,
 	SerializedData project_data;
 
 	switch (load_type) {
-	case kProject: {
+	case k_project: {
 		if (reader->name() == QStringLiteral("project")) {
-			while (XMLReadNextStartElement(reader)) {
+			while (xml_read_next_start_element(reader)) {
 				if (reader->name() == QStringLiteral("project")) {
-					project_data = project->Load(reader);
+					project_data = project->load(reader);
 					load_data.node_ptrs = project_data.node_ptrs;
 				} else if (reader->name() == QStringLiteral("layout")) {
-					load_data.layout = MainWindowLayoutInfo::fromXml(
+					load_data.layout = MainWindowLayoutInfo::from_xml(
 						reader, project_data.node_ptrs);
 				} else {
 					reader->skipCurrentElement();
 				}
 			}
 
-			PostConnect(project->nodes(), &project_data);
+			post_connect(project->nodes(), &project_data);
 		} else {
 			reader->skipCurrentElement();
 		}
 		break;
 	}
-	case kOnlyMarkers: {
+	case k_only_markers: {
 		if (reader->name() == QStringLiteral("markers")) {
-			while (XMLReadNextStartElement(reader)) {
+			while (xml_read_next_start_element(reader)) {
 				if (reader->name() == QStringLiteral("marker")) {
 					TimelineMarker *marker = new TimelineMarker();
 					marker->load(reader);
@@ -78,9 +78,9 @@ ProjectSerializer230220::Load(Project *project, QXmlStreamReader *reader,
 		}
 		break;
 	}
-	case kOnlyKeyframes: {
+	case k_only_keyframes: {
 		if (reader->name() == QStringLiteral("keyframes")) {
-			while (XMLReadNextStartElement(reader)) {
+			while (xml_read_next_start_element(reader)) {
 				if (reader->name() == QStringLiteral("node")) {
 					QString node_id;
 					XMLAttributeLoop(reader, attr)
@@ -93,13 +93,13 @@ ProjectSerializer230220::Load(Project *project, QXmlStreamReader *reader,
 
 					Node *n = nullptr;
 					if (!node_id.isEmpty()) {
-						n = NodeFactory::CreateFromID(node_id);
+						n = NodeFactory::create_from_id(node_id);
 					}
 
 					if (!n) {
 						reader->skipCurrentElement();
 					} else {
-						while (XMLReadNextStartElement(reader)) {
+						while (xml_read_next_start_element(reader)) {
 							if (reader->name() == QStringLiteral("input")) {
 								QString input_id;
 								XMLAttributeLoop(reader, attr)
@@ -113,7 +113,7 @@ ProjectSerializer230220::Load(Project *project, QXmlStreamReader *reader,
 								if (input_id.isEmpty()) {
 									reader->skipCurrentElement();
 								} else {
-									while (XMLReadNextStartElement(reader)) {
+									while (xml_read_next_start_element(reader)) {
 										if (reader->name() ==
 											QStringLiteral("element")) {
 											QString element_id;
@@ -130,7 +130,7 @@ ProjectSerializer230220::Load(Project *project, QXmlStreamReader *reader,
 											if (element_id.isEmpty()) {
 												reader->skipCurrentElement();
 											} else {
-												while (XMLReadNextStartElement(
+												while (xml_read_next_start_element(
 													reader)) {
 													if (reader->name() ==
 														QStringLiteral(
@@ -154,7 +154,7 @@ ProjectSerializer230220::Load(Project *project, QXmlStreamReader *reader,
 																->skipCurrentElement();
 														} else {
 															while (
-																XMLReadNextStartElement(
+																xml_read_next_start_element(
 																	reader)) {
 																if (reader
 																		->name() ==
@@ -173,7 +173,7 @@ ProjectSerializer230220::Load(Project *project, QXmlStreamReader *reader,
 
 																	key->load(
 																		reader,
-																		n->GetInputDataType(
+																		n->get_input_data_type(
 																			input_id));
 
 																	load_data
@@ -214,15 +214,15 @@ ProjectSerializer230220::Load(Project *project, QXmlStreamReader *reader,
 		}
 		break;
 	}
-	case kOnlyClips:
-	case kOnlyNodes: {
-		if ((load_type == kOnlyNodes &&
+	case k_only_clips:
+	case k_only_nodes: {
+		if ((load_type == k_only_nodes &&
 			 reader->name() == QStringLiteral("nodes")) ||
-			(load_type == kOnlyClips &&
+			(load_type == k_only_clips &&
 			 reader->name() == QStringLiteral("timeline"))) {
 			QMap<quintptr, Node *> skipped_items;
 
-			while (XMLReadNextStartElement(reader)) {
+			while (xml_read_next_start_element(reader)) {
 				if (reader->name() == QStringLiteral("node")) {
 					QString id;
 					quintptr ptr = 0;
@@ -262,13 +262,13 @@ ProjectSerializer230220::Load(Project *project, QXmlStreamReader *reader,
 						if (dependency_of_item) {
 							reader->skipCurrentElement();
 						} else {
-							Node *node = NodeFactory::CreateFromID(id);
+							Node *node = NodeFactory::create_from_id(id);
 							if (!node) {
 								qWarning()
 									<< "Failed to find node with ID" << id;
 								reader->skipCurrentElement();
 							} else {
-								if (project && node->IsItem() && ptr) {
+								if (project && node->is_item() && ptr) {
 									// If we're pasting an object into the same project, we should re-use the item
 									// rather than duplicate.
 									Node *existing =
@@ -288,8 +288,8 @@ ProjectSerializer230220::Load(Project *project, QXmlStreamReader *reader,
 
 								if (node) {
 									// Disable cache while node is being loaded (we'll re-enable it later)
-									node->SetCachesEnabled(false);
-									node->Load(reader, &project_data);
+									node->set_caches_enabled(false);
+									node->load(reader, &project_data);
 									load_data.nodes.append(node);
 								}
 							}
@@ -298,7 +298,7 @@ ProjectSerializer230220::Load(Project *project, QXmlStreamReader *reader,
 
 					load_data.node_ptrs = project_data.node_ptrs;
 				} else if (reader->name() == QStringLiteral("properties")) {
-					while (XMLReadNextStartElement(reader)) {
+					while (xml_read_next_start_element(reader)) {
 						if (reader->name() == QStringLiteral("node")) {
 							quintptr ptr = 0;
 
@@ -314,7 +314,7 @@ ProjectSerializer230220::Load(Project *project, QXmlStreamReader *reader,
 
 							if (ptr) {
 								QMap<QString, QString> properties_for_node;
-								while (XMLReadNextStartElement(reader)) {
+								while (xml_read_next_start_element(reader)) {
 									properties_for_node.insert(
 										reader->name().toString(),
 										reader->readElementText());
@@ -354,7 +354,7 @@ ProjectSerializer230220::Load(Project *project, QXmlStreamReader *reader,
 				}
 			}
 
-			PostConnect(load_data.nodes, &project_data);
+			post_connect(load_data.nodes, &project_data);
 		} else {
 			reader->skipCurrentElement();
 		}
@@ -365,7 +365,7 @@ ProjectSerializer230220::Load(Project *project, QXmlStreamReader *reader,
 	return load_data;
 }
 
-void WriteNodeMap(QXmlStreamWriter *writer, Node *node,
+void write_node_map(QXmlStreamWriter *writer, Node *node,
 				  const QVector<Node *> &nodes)
 {
 	writer->writeStartElement(QStringLiteral("node"));
@@ -375,23 +375,23 @@ void WriteNodeMap(QXmlStreamWriter *writer, Node *node,
 
 	for (auto oc : node->output_connections()) {
 		if (nodes.contains(oc.second.node())) {
-			WriteNodeMap(writer, oc.second.node(), nodes);
+			write_node_map(writer, oc.second.node(), nodes);
 		}
 	}
 
 	writer->writeEndElement();
 }
 
-void ProjectSerializer230220::Save(QXmlStreamWriter *writer,
+void ProjectSerializer230220::save(QXmlStreamWriter *writer,
 								   const SaveData &data, void *reserved) const
 {
-	if (!data.GetOnlySerializeMarkers().empty()) {
+	if (!data.get_only_serialize_markers().empty()) {
 		writer->writeStartElement(QStringLiteral("markers"));
 
 		writer->writeAttribute(QStringLiteral("version"), QString::number(1));
 
-		for (auto it = data.GetOnlySerializeMarkers().cbegin();
-			 it != data.GetOnlySerializeMarkers().cend(); it++) {
+		for (auto it = data.get_only_serialize_markers().cbegin();
+			 it != data.get_only_serialize_markers().cend(); it++) {
 			TimelineMarker *marker = *it;
 			writer->writeStartElement(QStringLiteral("marker"));
 			marker->save(writer);
@@ -399,7 +399,7 @@ void ProjectSerializer230220::Save(QXmlStreamWriter *writer,
 		}
 
 		writer->writeEndElement(); // markers
-	} else if (!data.GetOnlySerializeKeyframes().empty()) {
+	} else if (!data.get_only_serialize_keyframes().empty()) {
 		writer->writeStartElement(QStringLiteral("keyframes"));
 
 		writer->writeAttribute(QStringLiteral("version"), QString::number(1));
@@ -409,8 +409,8 @@ void ProjectSerializer230220::Save(QXmlStreamWriter *writer,
 			  QHash<QString, QMap<int, QMap<int, QVector<NodeKeyframe *>>>>>
 			organized;
 
-		for (auto it = data.GetOnlySerializeKeyframes().cbegin();
-			 it != data.GetOnlySerializeKeyframes().cend(); it++) {
+		for (auto it = data.get_only_serialize_keyframes().cbegin();
+			 it != data.get_only_serialize_keyframes().cend(); it++) {
 			NodeKeyframe *key = *it;
 			organized[key->parent()->id()][key->input()][key->element()]
 					 [key->track()]
@@ -445,7 +445,7 @@ void ProjectSerializer230220::Save(QXmlStreamWriter *writer,
 
 						for (NodeKeyframe *key : keys) {
 							writer->writeStartElement(QStringLiteral("key"));
-							key->save(writer, key->parent()->GetInputDataType(
+							key->save(writer, key->parent()->get_input_data_type(
 												  key->input()));
 							writer->writeEndElement(); // key
 						}
@@ -463,8 +463,8 @@ void ProjectSerializer230220::Save(QXmlStreamWriter *writer,
 		}
 
 		writer->writeEndElement(); // keyframes
-	} else if (!data.GetOnlySerializeNodes().empty()) {
-		if (data.type() == kOnlyClips) {
+	} else if (!data.get_only_serialize_nodes().empty()) {
+		if (data.type() == k_only_clips) {
 			writer->writeStartElement(QStringLiteral("timeline"));
 		} else {
 			writer->writeStartElement(QStringLiteral("nodes"));
@@ -472,12 +472,12 @@ void ProjectSerializer230220::Save(QXmlStreamWriter *writer,
 
 		writer->writeAttribute(QStringLiteral("version"), QString::number(1));
 
-		for (Node *n : data.GetOnlySerializeNodes()) {
+		for (Node *n : data.get_only_serialize_nodes()) {
 			writer->writeStartElement(QStringLiteral("node"));
 
 			QStringList item_list;
-			for (Node *i : data.GetOnlySerializeNodes()) {
-				if (i->IsItem() && i->InputsFrom(n, true)) {
+			for (Node *i : data.get_only_serialize_nodes()) {
+				if (i->is_item() && i->inputs_from(n, true)) {
 					item_list.append(
 						QString::number(reinterpret_cast<quintptr>(i)));
 				}
@@ -487,14 +487,14 @@ void ProjectSerializer230220::Save(QXmlStreamWriter *writer,
 									   item_list.join(','));
 			}
 
-			n->Save(writer);
+			n->save(writer);
 			writer->writeEndElement(); // node
 		}
 
-		if (!data.GetProperties().empty()) {
+		if (!data.get_properties().empty()) {
 			writer->writeStartElement(QStringLiteral("properties"));
-			for (auto it = data.GetProperties().cbegin();
-				 it != data.GetProperties().cend(); it++) {
+			for (auto it = data.get_properties().cbegin();
+				 it != data.get_properties().cend(); it++) {
 				writer->writeStartElement(QStringLiteral("node"));
 
 				writer->writeAttribute(
@@ -512,15 +512,15 @@ void ProjectSerializer230220::Save(QXmlStreamWriter *writer,
 		}
 
 		writer->writeEndElement(); // nodes
-	} else if (Project *project = data.GetProject()) {
+	} else if (Project *project = data.get_project()) {
 		writer->writeStartElement(QStringLiteral("project"));
 
 		writer->writeStartElement(QStringLiteral("project"));
-		project->Save(writer);
+		project->save(writer);
 		writer->writeEndElement(); // project
 
 		writer->writeStartElement(QStringLiteral("layout"));
-		data.GetLayout().toXml(writer);
+		data.get_layout().to_xml(writer);
 		writer->writeEndElement(); // layout
 
 		writer->writeEndElement(); // project
@@ -529,13 +529,13 @@ void ProjectSerializer230220::Save(QXmlStreamWriter *writer,
 	}
 }
 
-void ProjectSerializer230220::PostConnect(const QVector<Node *> &nodes,
+void ProjectSerializer230220::post_connect(const QVector<Node *> &nodes,
 										  SerializedData *project_data) const
 {
 	foreach (const SerializedData::SerializedConnection &con,
 			 project_data->desired_connections) {
 		if (Node *out = project_data->node_ptrs.value(con.output_node)) {
-			Node::ConnectEdge(out, con.input);
+			Node::connect_edge(out, con.input);
 		}
 	}
 
@@ -543,7 +543,7 @@ void ProjectSerializer230220::PostConnect(const QVector<Node *> &nodes,
 		Node *a = l.block;
 		Node *b = project_data->node_ptrs.value(l.link);
 
-		Node::Link(a, b);
+		Node::link(a, b);
 	}
 
 	for (auto it = nodes.cbegin(); it != nodes.cend(); it++) {
@@ -551,7 +551,7 @@ void ProjectSerializer230220::PostConnect(const QVector<Node *> &nodes,
 
 		n->PostLoadEvent(project_data);
 
-		n->SetCachesEnabled(true);
+		n->set_caches_enabled(true);
 	}
 }
 

@@ -30,37 +30,37 @@ ZoomTool::ZoomTool(TimelineWidget *parent)
 {
 }
 
-void ZoomTool::MousePress(TimelineViewMouseEvent *event)
+void ZoomTool::mouse_press(TimelineViewMouseEvent *event)
 {
 	Q_UNUSED(event)
 
 	drag_global_start_ = QCursor::pos();
 }
 
-void ZoomTool::MouseMove(TimelineViewMouseEvent *event)
+void ZoomTool::mouse_move(TimelineViewMouseEvent *event)
 {
 	Q_UNUSED(event)
 
 	if (!dragging_) {
-		parent()->StartRubberBandSelect(drag_global_start_);
+		parent()->start_rubber_band_select(drag_global_start_);
 
 		dragging_ = true;
 	}
 
-	parent()->MoveRubberBandSelect(false, false);
+	parent()->move_rubber_band_select(false, false);
 }
 
-void ZoomTool::MouseRelease(TimelineViewMouseEvent *event)
+void ZoomTool::mouse_release(TimelineViewMouseEvent *event)
 {
 	int scroll_value;
 
 	if (dragging_) {
 		// Zoom into the rubberband selection
-		QRect screen_coords = parent()->GetRubberBandGeometry();
+		QRect screen_coords = parent()->get_rubber_band_geometry();
 
-		parent()->EndRubberBandSelect();
+		parent()->end_rubber_band_select();
 
-		TimelineView *reference_view = parent()->GetFirstTimelineView();
+		TimelineView *reference_view = parent()->get_first_timeline_view();
 		QPointF scene_topleft = reference_view->mapToScene(
 			reference_view->mapFrom(parent(), screen_coords.topLeft()));
 		QPointF scene_bottomright = reference_view->mapToScene(
@@ -70,24 +70,24 @@ void ZoomTool::MouseRelease(TimelineViewMouseEvent *event)
 		double scene_right = scene_bottomright.x();
 
 		// Normalize scale to 1.0 scale
-		double scene_width = (scene_right - scene_left) / parent()->GetScale();
+		double scene_width = (scene_right - scene_left) / parent()->get_scale();
 
 		double new_scale =
-			qMin(parent()->GetFirstTimelineView()->GetMaximumScale(),
+			qMin(parent()->get_first_timeline_view()->get_maximum_scale(),
 				 static_cast<double>(reference_view->viewport()->width()) /
 					 scene_width);
 
 		parent()->SetScale(new_scale);
 
 		scroll_value =
-			qMax(0, qRound(scene_left / parent()->GetScale() * new_scale));
+			qMax(0, qRound(scene_left / parent()->get_scale() * new_scale));
 
 		dragging_ = false;
 	} else {
 		// Simple zoom in/out at the cursor position
-		double scale = parent()->GetScale();
+		double scale = parent()->get_scale();
 
-		if (event->GetModifiers() & Qt::AltModifier) {
+		if (event->get_modifiers() & Qt::AltModifier) {
 			// Zoom out if the user clicks while holding Alt
 			scale *= 0.5;
 		} else {
@@ -98,15 +98,15 @@ void ZoomTool::MouseRelease(TimelineViewMouseEvent *event)
 		parent()->SetScale(scale);
 
 		// Adjust scroll location for new scale
-		double frame_x = event->GetFrame().toDouble() * scale;
+		double frame_x = event->get_frame().to_double() * scale;
 
 		scroll_value = qMax(
 			0,
 			qRound(frame_x -
-				   parent()->GetFirstTimelineView()->viewport()->width() / 2));
+				   parent()->get_first_timeline_view()->viewport()->width() / 2));
 	}
 
-	parent()->QueueScroll(scroll_value);
+	parent()->queue_scroll(scroll_value);
 }
 
 }

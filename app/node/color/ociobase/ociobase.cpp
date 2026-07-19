@@ -27,54 +27,54 @@
 namespace olive
 {
 
-const QString OCIOBaseNode::kTextureInput = QStringLiteral("tex_in");
+const QString OCIOBaseNode::k_texture_input = QStringLiteral("tex_in");
 
 OCIOBaseNode::OCIOBaseNode()
 	: manager_(nullptr)
 	, processor_(nullptr)
 {
-	AddInput(kTextureInput, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_texture_input, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	SetEffectInput(kTextureInput);
+	set_effect_input(k_texture_input);
 
-	SetFlag(kVideoEffect);
+	set_flag(k_video_effect);
 }
 
 void OCIOBaseNode::AddedToGraphEvent(Project *p)
 {
 	manager_ = p->color_manager();
-	connect(manager_, &ColorManager::ConfigChanged, this,
-			&OCIOBaseNode::ConfigChanged);
-	ConfigChanged();
+	connect(manager_, &ColorManager::config_changed, this,
+			&OCIOBaseNode::config_changed);
+	config_changed();
 }
 
 void OCIOBaseNode::RemovedFromGraphEvent(Project *p)
 {
 	if (manager_) {
-		disconnect(manager_, &ColorManager::ConfigChanged, this,
-				   &OCIOBaseNode::ConfigChanged);
+		disconnect(manager_, &ColorManager::config_changed, this,
+				   &OCIOBaseNode::config_changed);
 		manager_ = nullptr;
 	}
 }
 
-void OCIOBaseNode::Value(const NodeValueRow &value, const NodeGlobals &globals,
+void OCIOBaseNode::value(const NodeValueRow &value, const NodeGlobals &globals,
 						 NodeValueTable *table) const
 {
-	auto tex_met = value[kTextureInput];
-	TexturePtr t = tex_met.toTexture();
+	auto tex_met = value[k_texture_input];
+	TexturePtr t = tex_met.to_texture();
 	if (t) {
 		if (processor_) {
 			ColorTransformJob job;
 
-			job.SetColorProcessor(processor_);
-			job.SetInputTexture(tex_met);
+			job.set_color_processor(processor_);
+			job.set_input_texture(tex_met);
 
-			table->Push(NodeValue::kTexture, t->toJob(job), this);
+			table->push(NodeValue::k_texture, t->to_job(job), this);
 		} else {
 			// Processor isn't ready yet (e.g. still being generated
 			// asynchronously), pass the input through unchanged.
-			table->Push(NodeValue::kTexture, QVariant::fromValue(t), this);
+			table->push(NodeValue::k_texture, QVariant::fromValue(t), this);
 		}
 	}
 }

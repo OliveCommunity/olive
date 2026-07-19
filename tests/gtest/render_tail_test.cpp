@@ -47,25 +47,25 @@ public:
 	{
 	}
 
-	bool Init() override
+	bool init() override
 	{
 		return true;
 	}
 
-	void PostDestroy() override
+	void post_destroy() override
 	{
 	}
 
-	void PostInit() override
+	void post_init() override
 	{
 	}
 
-	void ClearDestination(olive::Texture *texture, double r, double g, double b,
+	void clear_destination(olive::Texture *texture, double r, double g, double b,
 						  double a) override
 	{
 	}
 
-	QVariant CreateNativeShader(olive::ShaderCode code) override
+	QVariant create_native_shader(olive::ShaderCode code) override
 	{
 		create_shader_count++;
 		last_frag_code = code.frag_code();
@@ -73,26 +73,26 @@ public:
 		return QVariant(create_shader_count);
 	}
 
-	void DestroyNativeShader(QVariant shader) override
+	void destroy_native_shader(QVariant shader) override
 	{
 	}
 
-	void UploadToTexture(const QVariant &handle, const olive::VideoParams &params,
+	void upload_to_texture(const QVariant &handle, const olive::VideoParams &params,
 						 const void *data, int linesize) override
 	{
 	}
 
-	void DownloadFromTexture(const QVariant &handle,
+	void download_from_texture(const QVariant &handle,
 							 const olive::VideoParams &params, void *data,
 							 int linesize) override
 	{
 	}
 
-	void Flush() override
+	void flush() override
 	{
 	}
 
-	olive::Color GetPixelFromTexture(olive::Texture *texture,
+	olive::Color get_pixel_from_texture(olive::Texture *texture,
 									 const QPointF &pt) override
 	{
 		return olive::Color();
@@ -105,14 +105,14 @@ public:
 	QString last_vert_code;
 
 protected:
-	void Blit(QVariant shader, olive::AcceleratedJob &job,
+	void blit(QVariant shader, olive::AcceleratedJob &job,
 			  olive::Texture *destination, olive::VideoParams destination_params,
 			  bool clear_destination) override
 	{
 		blit_count++;
 	}
 
-	QVariant CreateNativeTexture(int width, int height, int depth,
+	QVariant create_native_texture(int width, int height, int depth,
 								 olive::PixelFormat format, int channel_count,
 								 const void *data, int linesize) override
 	{
@@ -120,27 +120,27 @@ protected:
 		return QVariant(create_texture_count);
 	}
 
-	void DestroyNativeTexture(QVariant texture) override
+	void destroy_native_texture(QVariant texture) override
 	{
 	}
 
-	void DestroyInternal() override
+	void destroy_internal() override
 	{
 	}
 };
 
-olive::ColorProcessorPtr MakeIdentityProcessor()
+olive::ColorProcessorPtr make_identity_processor()
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
-	OCIO::MatrixTransformRcPtr transform = OCIO::MatrixTransform::Create();
-	transform->setDirection(OCIO::TRANSFORM_DIR_FORWARD);
+	ocio::MatrixTransformRcPtr transform = ocio::MatrixTransform::Create();
+	transform->setDirection(ocio::TRANSFORM_DIR_FORWARD);
 
-	return olive::ColorProcessor::Create(
-		olive::ColorManager::GetDefaultConfig()->getProcessor(transform));
+	return olive::ColorProcessor::create(
+		olive::ColorManager::get_default_config()->getProcessor(transform));
 }
 
-bool WriteFile(const QString &path, qint64 size)
+bool write_file(const QString &path, qint64 size)
 {
 	QFile file(path);
 	if (!file.open(QFile::WriteOnly)) {
@@ -151,7 +151,7 @@ bool WriteFile(const QString &path, qint64 size)
 	return true;
 }
 
-bool ReadBytesAt(const QString &path, qint64 offset, qint64 len, QByteArray *out)
+bool read_bytes_at(const QString &path, qint64 offset, qint64 len, QByteArray *out)
 {
 	QFile f(path);
 	if (!f.open(QFile::ReadOnly)) {
@@ -164,7 +164,7 @@ bool ReadBytesAt(const QString &path, qint64 offset, qint64 len, QByteArray *out
 	return out->size() == len;
 }
 
-float BytesToFloat(const QByteArray &bytes)
+float bytes_to_float(const QByteArray &bytes)
 {
 	float v;
 	memcpy(&v, bytes.constData(), sizeof(v));
@@ -173,7 +173,7 @@ float BytesToFloat(const QByteArray &bytes)
 
 // AudioPlaybackCache always stores audio in fixed-size segments of 10 MB per
 // channel (AudioPlaybackCache::kDefaultSegmentSizePerChannel).
-const qint64 kSegmentSize = 10 * 1024 * 1024;
+const qint64 k_segment_size = 10 * 1024 * 1024;
 
 } // namespace
 
@@ -183,38 +183,38 @@ TEST(DynamicRenderer, EmptyBackendNameHasNoBackendType)
 {
 	olive::DynamicRenderer renderer{ QString() };
 	EXPECT_TRUE(renderer.backend_name().isEmpty());
-	EXPECT_FALSE(renderer.IsOpenGL());
-	EXPECT_FALSE(renderer.IsVulkan());
+	EXPECT_FALSE(renderer.is_open_gl());
+	EXPECT_FALSE(renderer.is_vulkan());
 
 	// Without a loaded backend, context and info accessors stay at defaults
-	EXPECT_EQ(renderer.OpenGLContext(), nullptr);
+	EXPECT_EQ(renderer.open_gl_context(), nullptr);
 
 	OakRenderBackendInfo info = {};
-	EXPECT_FALSE(renderer.GetBackendInfo(&info));
+	EXPECT_FALSE(renderer.get_backend_info(&info));
 }
 
 // BackendFromString lowercases its input before comparing, so mixed-case
 // spellings of every backend must resolve correctly.
 TEST(RenderManagerBackendStrings, FromStringIsCaseInsensitive)
 {
-	EXPECT_EQ(olive::RenderManager::BackendFromString(QStringLiteral("VULKAN")),
-			  olive::RenderManager::kVulkan);
+	EXPECT_EQ(olive::RenderManager::backend_from_string(QStringLiteral("VULKAN")),
+			  olive::RenderManager::k_vulkan);
 	EXPECT_EQ(
-		olive::RenderManager::BackendFromString(QStringLiteral("MultiProcess")),
-		olive::RenderManager::kMultiProcess);
-	EXPECT_EQ(olive::RenderManager::BackendFromString(QStringLiteral("DUMMY")),
-			  olive::RenderManager::kDummy);
+		olive::RenderManager::backend_from_string(QStringLiteral("MultiProcess")),
+		olive::RenderManager::k_multi_process);
+	EXPECT_EQ(olive::RenderManager::backend_from_string(QStringLiteral("DUMMY")),
+			  olive::RenderManager::k_dummy);
 
 	// Unknown and empty strings fall through to OpenGL
-	EXPECT_EQ(olive::RenderManager::BackendFromString(QString()),
-			  olive::RenderManager::kOpenGL);
+	EXPECT_EQ(olive::RenderManager::backend_from_string(QString()),
+			  olive::RenderManager::k_open_gl);
 }
 
 // BackendToString has a default return after the switch for out-of-range enum
 // values, which must be the OpenGL string.
 TEST(RenderManagerBackendStrings, ToStringFallsBackToOpenGLForUnknownEnum)
 {
-	EXPECT_EQ(olive::RenderManager::BackendToString(
+	EXPECT_EQ(olive::RenderManager::backend_to_string(
 				  static_cast<olive::RenderManager::Backend>(42)),
 			  QStringLiteral("opengl"));
 }
@@ -226,23 +226,23 @@ TEST(RendererColorContext, CustomFunctionNameIsCompiledIntoShader)
 {
 	ShaderCaptureRenderer renderer;
 
-	olive::ColorProcessorPtr processor = MakeIdentityProcessor();
+	olive::ColorProcessorPtr processor = make_identity_processor();
 	ASSERT_TRUE(processor);
 
 	olive::ColorTransformJob job;
-	job.SetColorProcessor(processor);
-	job.SetFunctionName(QStringLiteral("MyCustomOcioFunc"));
+	job.set_color_processor(processor);
+	job.set_function_name(QStringLiteral("MyCustomOcioFunc"));
 
-	const olive::VideoParams params(32, 32, olive::PixelFormat::U8,
-									olive::VideoParams::kRGBAChannelCount);
-	renderer.BlitColorManaged(job, params);
+	const olive::VideoParams params(32, 32, olive::PixelFormat::u8,
+									olive::VideoParams::k_rgba_channel_count);
+	renderer.blit_color_managed(job, params);
 
 	ASSERT_EQ(renderer.create_shader_count, 1);
 	EXPECT_TRUE(
 		renderer.last_frag_code.contains(QStringLiteral("MyCustomOcioFunc")));
 	EXPECT_EQ(renderer.blit_count, 1);
 
-	renderer.Destroy();
+	renderer.destroy();
 }
 
 // When the job names a custom shader source node, GetColorContext must ask the
@@ -252,62 +252,62 @@ TEST(RendererColorContext, CustomShaderSourceSuppliesFragmentCode)
 {
 	ShaderCaptureRenderer renderer;
 
-	olive::ColorProcessorPtr processor = MakeIdentityProcessor();
+	olive::ColorProcessorPtr processor = make_identity_processor();
 	ASSERT_TRUE(processor);
 
 	olive::ChromaKeyNode key_node;
 
 	olive::ColorTransformJob job;
-	job.SetColorProcessor(processor);
-	job.SetNeedsCustomShader(&key_node);
+	job.set_color_processor(processor);
+	job.set_needs_custom_shader(&key_node);
 
-	const olive::VideoParams params(32, 32, olive::PixelFormat::U8,
-									olive::VideoParams::kRGBAChannelCount);
-	renderer.BlitColorManaged(job, params);
+	const olive::VideoParams params(32, 32, olive::PixelFormat::u8,
+									olive::VideoParams::k_rgba_channel_count);
+	renderer.blit_color_managed(job, params);
 
 	ASSERT_EQ(renderer.create_shader_count, 1);
 	// A uniform name unique to chromakey.frag proves the node's code was used
 	EXPECT_TRUE(renderer.last_frag_code.contains(QStringLiteral("color_key")));
 	EXPECT_EQ(renderer.blit_count, 1);
 
-	renderer.Destroy();
+	renderer.destroy();
 }
 
 class RenderTailAutoCacherTest : public ::testing::Test {
 protected:
 	void SetUp() override
 	{
-		olive::ColorManager::SetUpDefaultConfig();
+		olive::ColorManager::set_up_default_config();
 
 		// Use the dummy render backend so PreviewAutoCacher can be exercised
 		// without initializing OpenGL/Vulkan in the unit-test process.
-		olive::Config::Current()[QStringLiteral("GraphicsBackend")] =
+		olive::Config::current()[QStringLiteral("GraphicsBackend")] =
 			QStringLiteral("dummy");
 
-		olive::DiskManager::CreateInstance();
-		olive::ConformManager::CreateInstance();
-		olive::RenderManager::CreateInstance();
+		olive::DiskManager::create_instance();
+		olive::ConformManager::create_instance();
+		olive::RenderManager::create_instance();
 
 		project_ = std::make_unique<olive::Project>();
-		project_->Initialize();
+		project_->initialize();
 	}
 
 	void TearDown() override
 	{
 		project_.reset();
-		olive::RenderManager::DestroyInstance();
-		olive::ConformManager::DestroyInstance();
-		olive::DiskManager::DestroyInstance();
+		olive::RenderManager::destroy_instance();
+		olive::ConformManager::destroy_instance();
+		olive::DiskManager::destroy_instance();
 	}
 
-	olive::ViewerOutput *CreateViewerWithParams()
+	olive::ViewerOutput *create_viewer_with_params()
 	{
 		auto *viewer = new olive::ViewerOutput();
 		viewer->setParent(project_.get());
-		viewer->SetVideoParams(
-			olive::VideoParams(64, 64, olive::rational(1, 25),
-							   olive::PixelFormat::U8,
-							   olive::VideoParams::kRGBAChannelCount));
+		viewer->set_video_params(
+			olive::VideoParams(64, 64, olive::Rational(1, 25),
+							   olive::PixelFormat::u8,
+							   olive::VideoParams::k_rgba_channel_count));
 		return viewer;
 	}
 
@@ -319,50 +319,50 @@ protected:
 // range iterator is exhausted.
 TEST_F(RenderTailAutoCacherTest, PausedRendersDelayForcedCacheRange)
 {
-	olive::ViewerOutput *viewer = CreateViewerWithParams();
+	olive::ViewerOutput *viewer = create_viewer_with_params();
 
 	olive::PreviewAutoCacher cacher;
-	cacher.SetProject(project_.get());
+	cacher.set_project(project_.get());
 
-	QSignalSpy stop_spy(&cacher, &olive::PreviewAutoCacher::StopCacheProxyTasks);
+	QSignalSpy stop_spy(&cacher, &olive::PreviewAutoCacher::stop_cache_proxy_tasks);
 
-	cacher.SetRendersPaused(true);
-	cacher.ForceCacheRange(
-		viewer, olive::TimeRange(olive::rational(0), olive::rational(1, 25)));
+	cacher.set_renders_paused(true);
+	cacher.force_cache_range(
+		viewer, olive::TimeRange(olive::Rational(0), olive::Rational(1, 25)));
 	EXPECT_EQ(stop_spy.count(), 0);
 
-	cacher.SetRendersPaused(false);
+	cacher.set_renders_paused(false);
 	EXPECT_GE(stop_spy.count(), 1);
 
 	// Deliver the queued RenderTicketWatcher::Finished emissions so the
 	// completed watchers are reaped before teardown.
 	QCoreApplication::processEvents();
 
-	cacher.SetProject(nullptr);
+	cacher.set_project(nullptr);
 }
 
 // The thumbnail pause gates only the video-job half of TryRender, so a forced
 // cache range queued while thumbnails are paused must wait for the unpause.
 TEST_F(RenderTailAutoCacherTest, PausedThumbnailsDelayForcedCacheRange)
 {
-	olive::ViewerOutput *viewer = CreateViewerWithParams();
+	olive::ViewerOutput *viewer = create_viewer_with_params();
 
 	olive::PreviewAutoCacher cacher;
-	cacher.SetProject(project_.get());
+	cacher.set_project(project_.get());
 
-	QSignalSpy stop_spy(&cacher, &olive::PreviewAutoCacher::StopCacheProxyTasks);
+	QSignalSpy stop_spy(&cacher, &olive::PreviewAutoCacher::stop_cache_proxy_tasks);
 
-	cacher.SetThumbnailsPaused(true);
-	cacher.ForceCacheRange(
-		viewer, olive::TimeRange(olive::rational(0), olive::rational(1, 25)));
+	cacher.set_thumbnails_paused(true);
+	cacher.force_cache_range(
+		viewer, olive::TimeRange(olive::Rational(0), olive::Rational(1, 25)));
 	EXPECT_EQ(stop_spy.count(), 0);
 
-	cacher.SetThumbnailsPaused(false);
+	cacher.set_thumbnails_paused(false);
 	EXPECT_GE(stop_spy.count(), 1);
 
 	QCoreApplication::processEvents();
 
-	cacher.SetProject(nullptr);
+	cacher.set_project(nullptr);
 }
 
 // With a project set, GetSingleFrame resolves the node through the ProjectCopier
@@ -371,29 +371,29 @@ TEST_F(RenderTailAutoCacherTest, PausedThumbnailsDelayForcedCacheRange)
 // once the watcher signals completion.
 TEST_F(RenderTailAutoCacherTest, GetSingleFrameDispatchesThroughProjectCopy)
 {
-	olive::ViewerOutput *viewer = CreateViewerWithParams();
+	olive::ViewerOutput *viewer = create_viewer_with_params();
 
 	auto *solid = new olive::SolidGenerator();
 	solid->setParent(project_.get());
 
 	olive::PreviewAutoCacher cacher;
-	cacher.SetProject(project_.get());
+	cacher.set_project(project_.get());
 
 	olive::RenderTicketPtr ticket =
-		cacher.GetSingleFrame(solid, viewer, olive::rational(0));
+		cacher.get_single_frame(solid, viewer, olive::Rational(0));
 	ASSERT_NE(ticket, nullptr);
-	EXPECT_TRUE(ticket->IsRunning());
+	EXPECT_TRUE(ticket->is_running());
 
 	// The dummy backend has no render threads, so the dispatched ticket can
 	// only be finished through the clear path (covered in detail by the
 	// ClearSingleFrameRenders tests below).
-	cacher.ClearSingleFrameRenders();
+	cacher.clear_single_frame_renders();
 
-	EXPECT_EQ(ticket->GetFinishCount(), 1);
-	EXPECT_FALSE(ticket->IsRunning());
-	EXPECT_FALSE(ticket->HasResult());
+	EXPECT_EQ(ticket->get_finish_count(), 1);
+	EXPECT_FALSE(ticket->is_running());
+	EXPECT_FALSE(ticket->has_result());
 
-	cacher.SetProject(nullptr);
+	cacher.set_project(nullptr);
 }
 
 // ClearSingleFrameRenders must cancel every dispatched (but no longer running)
@@ -401,29 +401,29 @@ TEST_F(RenderTailAutoCacherTest, GetSingleFrameDispatchesThroughProjectCopy)
 // watcher is reaped synchronously through VideoRendered.
 TEST_F(RenderTailAutoCacherTest, ClearSingleFrameRendersFinishesDispatchedTicket)
 {
-	olive::ViewerOutput *viewer = CreateViewerWithParams();
+	olive::ViewerOutput *viewer = create_viewer_with_params();
 
 	auto *solid = new olive::SolidGenerator();
 	solid->setParent(project_.get());
 
 	olive::PreviewAutoCacher cacher;
-	cacher.SetProject(project_.get());
+	cacher.set_project(project_.get());
 
 	olive::RenderTicketPtr ticket =
-		cacher.GetSingleFrame(solid, viewer, olive::rational(0));
+		cacher.get_single_frame(solid, viewer, olive::Rational(0));
 	ASSERT_NE(ticket, nullptr);
-	ASSERT_TRUE(ticket->IsRunning());
+	ASSERT_TRUE(ticket->is_running());
 
-	cacher.ClearSingleFrameRenders();
+	cacher.clear_single_frame_renders();
 
-	EXPECT_EQ(ticket->GetFinishCount(), 1);
-	EXPECT_FALSE(ticket->IsRunning());
-	EXPECT_FALSE(ticket->HasResult());
+	EXPECT_EQ(ticket->get_finish_count(), 1);
+	EXPECT_FALSE(ticket->is_running());
+	EXPECT_FALSE(ticket->has_result());
 
 	// Flush the stale queued watcher notification (its receiver is gone now).
 	QCoreApplication::processEvents();
 
-	cacher.SetProject(nullptr);
+	cacher.set_project(nullptr);
 }
 
 // ClearSingleFrameRendersThatArentRunning follows the same path for the dummy
@@ -431,28 +431,28 @@ TEST_F(RenderTailAutoCacherTest, ClearSingleFrameRendersFinishesDispatchedTicket
 TEST_F(RenderTailAutoCacherTest,
 	   ClearSingleFrameRendersThatArentRunningFinishesDispatchedTicket)
 {
-	olive::ViewerOutput *viewer = CreateViewerWithParams();
+	olive::ViewerOutput *viewer = create_viewer_with_params();
 
 	auto *solid = new olive::SolidGenerator();
 	solid->setParent(project_.get());
 
 	olive::PreviewAutoCacher cacher;
-	cacher.SetProject(project_.get());
+	cacher.set_project(project_.get());
 
 	olive::RenderTicketPtr ticket =
-		cacher.GetSingleFrame(solid, viewer, olive::rational(0));
+		cacher.get_single_frame(solid, viewer, olive::Rational(0));
 	ASSERT_NE(ticket, nullptr);
-	ASSERT_TRUE(ticket->IsRunning());
+	ASSERT_TRUE(ticket->is_running());
 
-	cacher.ClearSingleFrameRendersThatArentRunning();
+	cacher.clear_single_frame_renders_that_arent_running();
 
-	EXPECT_EQ(ticket->GetFinishCount(), 1);
-	EXPECT_FALSE(ticket->IsRunning());
-	EXPECT_FALSE(ticket->HasResult());
+	EXPECT_EQ(ticket->get_finish_count(), 1);
+	EXPECT_FALSE(ticket->is_running());
+	EXPECT_FALSE(ticket->has_result());
 
 	QCoreApplication::processEvents();
 
-	cacher.SetProject(nullptr);
+	cacher.set_project(nullptr);
 }
 
 class RenderTailDiskCacheTest : public ::testing::Test {
@@ -469,15 +469,15 @@ protected:
 			new olive::Core(olive::Core::CoreParams());
 		}
 
-		olive::DiskManager::CreateInstance();
+		olive::DiskManager::create_instance();
 	}
 
 	void TearDown() override
 	{
-		olive::DiskManager::DestroyInstance();
+		olive::DiskManager::destroy_instance();
 	}
 
-	QString MakeSubDir(const QString &name) const
+	QString make_sub_dir(const QString &name) const
 	{
 		QDir root(temp_dir_.path());
 		if (!root.mkpath(name)) {
@@ -494,25 +494,25 @@ protected:
 // defaults before loading the new path's index.
 TEST_F(RenderTailDiskCacheTest, SetPathEmitsDeletedFramesAndResetsState)
 {
-	const QString sub1 = MakeSubDir(QStringLiteral("move_from"));
-	const QString sub2 = MakeSubDir(QStringLiteral("move_to"));
+	const QString sub1 = make_sub_dir(QStringLiteral("move_from"));
+	const QString sub2 = make_sub_dir(QStringLiteral("move_to"));
 	ASSERT_FALSE(sub1.isEmpty());
 	ASSERT_FALSE(sub2.isEmpty());
 
 	olive::DiskCacheFolder folder(sub1);
-	folder.SetLimit(12345);
+	folder.set_limit(12345);
 
 	const QString fn = QDir(sub1).filePath(QStringLiteral("frame"));
-	ASSERT_TRUE(WriteFile(fn, 64));
-	folder.CreatedFile(fn);
+	ASSERT_TRUE(write_file(fn, 64));
+	folder.created_file(fn);
 
-	QSignalSpy spy(&folder, &olive::DiskCacheFolder::DeletedFrame);
+	QSignalSpy spy(&folder, &olive::DiskCacheFolder::deleted_frame);
 
-	folder.SetPath(sub2);
+	folder.set_path(sub2);
 
-	EXPECT_EQ(folder.GetPath(), sub2);
-	EXPECT_EQ(folder.GetLimit(), 21474836480LL); // back to the 20 GB default
-	EXPECT_FALSE(folder.GetClearOnClose());
+	EXPECT_EQ(folder.get_path(), sub2);
+	EXPECT_EQ(folder.get_limit(), 21474836480LL); // back to the 20 GB default
+	EXPECT_FALSE(folder.get_clear_on_close());
 
 	ASSERT_EQ(spy.count(), 1);
 	const QList<QVariant> args = spy.takeFirst();
@@ -521,7 +521,7 @@ TEST_F(RenderTailDiskCacheTest, SetPathEmitsDeletedFramesAndResetsState)
 
 	// The file itself is untouched, but it is no longer tracked
 	EXPECT_TRUE(QFileInfo::exists(fn));
-	EXPECT_FALSE(folder.DeleteSpecificFile(fn));
+	EXPECT_FALSE(folder.delete_specific_file(fn));
 }
 
 // When the persisted index references files that have since been deleted
@@ -529,18 +529,18 @@ TEST_F(RenderTailDiskCacheTest, SetPathEmitsDeletedFramesAndResetsState)
 // still picked up.
 TEST_F(RenderTailDiskCacheTest, PersistedIndexSkipsFilesThatNoLongerExist)
 {
-	const QString sub = MakeSubDir(QStringLiteral("index_skip"));
+	const QString sub = make_sub_dir(QStringLiteral("index_skip"));
 	ASSERT_FALSE(sub.isEmpty());
 
 	const QString keep = QDir(sub).filePath(QStringLiteral("keep"));
 	const QString gone = QDir(sub).filePath(QStringLiteral("gone"));
-	ASSERT_TRUE(WriteFile(keep, 32));
-	ASSERT_TRUE(WriteFile(gone, 32));
+	ASSERT_TRUE(write_file(keep, 32));
+	ASSERT_TRUE(write_file(gone, 32));
 
 	{
 		olive::DiskCacheFolder folder(sub);
-		folder.CreatedFile(keep);
-		folder.CreatedFile(gone);
+		folder.created_file(keep);
+		folder.created_file(gone);
 		// Destruction writes the index file into the cache folder
 	}
 
@@ -550,8 +550,8 @@ TEST_F(RenderTailDiskCacheTest, PersistedIndexSkipsFilesThatNoLongerExist)
 		olive::DiskCacheFolder reopened(sub);
 
 		// The missing file was not re-registered, the surviving one was
-		EXPECT_TRUE(reopened.DeleteSpecificFile(keep));
-		EXPECT_FALSE(reopened.DeleteSpecificFile(gone));
+		EXPECT_TRUE(reopened.delete_specific_file(keep));
+		EXPECT_FALSE(reopened.delete_specific_file(gone));
 		EXPECT_FALSE(QFileInfo::exists(keep));
 	}
 }
@@ -560,16 +560,16 @@ TEST_F(RenderTailDiskCacheTest, PersistedIndexSkipsFilesThatNoLongerExist)
 // so a folder reopened after closing with the flag set must restore it.
 TEST_F(RenderTailDiskCacheTest, ClearOnCloseFlagPersistsAcrossInstances)
 {
-	const QString sub = MakeSubDir(QStringLiteral("persist_clear_flag"));
+	const QString sub = make_sub_dir(QStringLiteral("persist_clear_flag"));
 	ASSERT_FALSE(sub.isEmpty());
 
 	const QString fn = QDir(sub).filePath(QStringLiteral("frame"));
-	ASSERT_TRUE(WriteFile(fn, 32));
+	ASSERT_TRUE(write_file(fn, 32));
 
 	{
 		olive::DiskCacheFolder folder(sub);
-		folder.SetClearOnClose(true);
-		folder.CreatedFile(fn);
+		folder.set_clear_on_close(true);
+		folder.created_file(fn);
 		// Destruction clears the cache and saves the flag into the index
 	}
 
@@ -577,10 +577,10 @@ TEST_F(RenderTailDiskCacheTest, ClearOnCloseFlagPersistsAcrossInstances)
 
 	{
 		olive::DiskCacheFolder reopened(sub);
-		EXPECT_TRUE(reopened.GetClearOnClose());
+		EXPECT_TRUE(reopened.get_clear_on_close());
 
 		// The cleared entry must not come back through the index either
-		EXPECT_FALSE(reopened.DeleteSpecificFile(fn));
+		EXPECT_FALSE(reopened.delete_specific_file(fn));
 	}
 }
 
@@ -588,18 +588,18 @@ TEST_F(RenderTailDiskCacheTest, ClearOnCloseFlagPersistsAcrossInstances)
 // deleting it again succeeds because a missing file counts as deleted.
 TEST_F(RenderTailDiskCacheTest, CreatedFileForMissingFileIsTrackedAsZeroSize)
 {
-	const QString sub = MakeSubDir(QStringLiteral("zero_size"));
+	const QString sub = make_sub_dir(QStringLiteral("zero_size"));
 	ASSERT_FALSE(sub.isEmpty());
 
 	olive::DiskCacheFolder folder(sub);
 
 	const QString ghost = QDir(sub).filePath(QStringLiteral("ghost"));
 	ASSERT_FALSE(QFileInfo::exists(ghost));
-	folder.CreatedFile(ghost);
+	folder.created_file(ghost);
 
-	QSignalSpy spy(&folder, &olive::DiskCacheFolder::DeletedFrame);
+	QSignalSpy spy(&folder, &olive::DiskCacheFolder::deleted_frame);
 
-	EXPECT_TRUE(folder.DeleteSpecificFile(ghost));
+	EXPECT_TRUE(folder.delete_specific_file(ghost));
 
 	ASSERT_EQ(spy.count(), 1);
 	EXPECT_EQ(spy.first().at(0).toString(), sub);
@@ -615,19 +615,19 @@ TEST_F(RenderTailDiskCacheTest,
 	olive::DiskManager *dm = olive::DiskManager::instance();
 	ASSERT_NE(dm, nullptr);
 
-	const QString sub = MakeSubDir(QStringLiteral("forwarding"));
+	const QString sub = make_sub_dir(QStringLiteral("forwarding"));
 	ASSERT_FALSE(sub.isEmpty());
 
 	const QString fn = QDir(sub).filePath(QStringLiteral("frame"));
-	ASSERT_TRUE(WriteFile(fn, 32));
+	ASSERT_TRUE(write_file(fn, 32));
 
-	dm->CreatedFile(sub, fn);
-	dm->Accessed(sub, fn);
+	dm->created_file(sub, fn);
+	dm->accessed(sub, fn);
 	ASSERT_TRUE(QFileInfo::exists(fn));
 
-	QSignalSpy spy(dm, &olive::DiskManager::DeletedFrame);
+	QSignalSpy spy(dm, &olive::DiskManager::deleted_frame);
 
-	dm->DeleteSpecificFile(fn);
+	dm->delete_specific_file(fn);
 
 	EXPECT_FALSE(QFileInfo::exists(fn));
 	ASSERT_EQ(spy.count(), 1);
@@ -640,8 +640,8 @@ TEST_F(RenderTailDiskCacheTest,
 TEST_F(RenderTailDiskCacheTest, DefaultDiskCachePathsAreNonEmptyAndDistinct)
 {
 	const QString config_file =
-		olive::DiskManager::GetDefaultDiskCacheConfigFile();
-	const QString cache_path = olive::DiskManager::GetDefaultDiskCachePath();
+		olive::DiskManager::get_default_disk_cache_config_file();
+	const QString cache_path = olive::DiskManager::get_default_disk_cache_path();
 
 	EXPECT_FALSE(config_file.isEmpty());
 	EXPECT_FALSE(cache_path.isEmpty());
@@ -661,33 +661,33 @@ protected:
 			new olive::Core(olive::Core::CoreParams()); // intentionally leaked
 		}
 
-		olive::DiskManager::CreateInstance();
+		olive::DiskManager::create_instance();
 
 		// Point the project cache at a folder alongside the (unsaved) project
 		// file so every cache write stays inside the temporary directory.
-		olive::ColorManager::SetUpDefaultConfig();
+		olive::ColorManager::set_up_default_config();
 		project_ = std::make_unique<olive::Project>();
-		project_->Initialize();
+		project_->initialize();
 		project_->set_filename(
 			QDir(temp_dir_.path()).filePath(QStringLiteral("test.ove")));
-		project_->SetCacheLocationSetting(
-			olive::Project::kCacheStoreAlongsideProject);
+		project_->set_cache_location_setting(
+			olive::Project::k_cache_store_alongside_project);
 	}
 
 	void TearDown() override
 	{
 		project_.reset();
-		olive::DiskManager::DestroyInstance();
+		olive::DiskManager::destroy_instance();
 	}
 
-	static olive::core::AudioParams MakeParams()
+	static olive::core::AudioParams make_params()
 	{
 		return olive::core::AudioParams(48000,
-										olive::core::kChannelLayoutStereo,
-										olive::core::SampleFormat::F32P);
+										olive::core::k_channel_layout_stereo,
+										olive::core::SampleFormat::f32_p);
 	}
 
-	static void FillBuffer(olive::core::SampleBuffer *buf, float ch0, float ch1)
+	static void fill_buffer(olive::core::SampleBuffer *buf, float ch0, float ch1)
 	{
 		for (size_t i = 0; i < buf->sample_count(); i++) {
 			buf->data(0)[i] = ch0;
@@ -704,21 +704,21 @@ protected:
 TEST_F(RenderTailAudioCacheTest, SetParametersRoundTrip)
 {
 	olive::AudioPlaybackCache cache(project_.get());
-	EXPECT_EQ(cache.GetParameters().channel_count(), 0);
+	EXPECT_EQ(cache.get_parameters().channel_count(), 0);
 
-	const olive::core::AudioParams params = MakeParams();
-	cache.SetParameters(params);
-	EXPECT_EQ(cache.GetParameters(), params);
+	const olive::core::AudioParams params = make_params();
+	cache.set_parameters(params);
+	EXPECT_EQ(cache.get_parameters(), params);
 
-	cache.SetParameters(params);
-	EXPECT_EQ(cache.GetParameters(), params);
+	cache.set_parameters(params);
+	EXPECT_EQ(cache.get_parameters(), params);
 
 	const olive::core::AudioParams other(44100,
-										 olive::core::kChannelLayoutMono,
-										 olive::core::SampleFormat::F32P);
-	cache.SetParameters(other);
-	EXPECT_EQ(cache.GetParameters().sample_rate(), 44100);
-	EXPECT_EQ(cache.GetParameters().channel_count(), 1);
+										 olive::core::k_channel_layout_mono,
+										 olive::core::SampleFormat::f32_p);
+	cache.set_parameters(other);
+	EXPECT_EQ(cache.get_parameters().sample_rate(), 44100);
+	EXPECT_EQ(cache.get_parameters().channel_count(), 1);
 }
 
 // WritePCM writes one segment file per channel, zero-padded to the full segment
@@ -726,23 +726,23 @@ TEST_F(RenderTailAudioCacheTest, SetParametersRoundTrip)
 TEST_F(RenderTailAudioCacheTest, WritePcmWritesSegmentFilesAndValidatesRange)
 {
 	olive::AudioPlaybackCache cache(project_.get());
-	cache.SetParameters(MakeParams());
+	cache.set_parameters(make_params());
 
-	const olive::TimeRange range(olive::rational(0), olive::rational(1, 10));
+	const olive::TimeRange range(olive::Rational(0), olive::Rational(1, 10));
 
-	olive::core::SampleBuffer buf(MakeParams(), olive::rational(1, 10));
+	olive::core::SampleBuffer buf(make_params(), olive::Rational(1, 10));
 	ASSERT_TRUE(buf.is_allocated());
-	FillBuffer(&buf, 0.5f, 0.25f);
+	fill_buffer(&buf, 0.5f, 0.25f);
 
-	cache.WritePCM(range, { range }, buf);
+	cache.write_pcm(range, { range }, buf);
 
-	EXPECT_TRUE(cache.HasValidatedRanges());
-	EXPECT_FALSE(cache.HasInvalidatedRanges(range));
+	EXPECT_TRUE(cache.has_validated_ranges());
+	EXPECT_FALSE(cache.has_invalidated_ranges(range));
 
 	// 4800 samples of 4-byte floats per channel
 	const qint64 data_bytes = 19200;
 
-	const QDir seg_dir = cache.GetThisCacheDirectory();
+	const QDir seg_dir = cache.get_this_cache_directory();
 	const QString ch0 = seg_dir.filePath(QStringLiteral("0.0"));
 	const QString ch1 = seg_dir.filePath(QStringLiteral("0.1"));
 	ASSERT_TRUE(QFileInfo::exists(ch0));
@@ -754,11 +754,11 @@ TEST_F(RenderTailAudioCacheTest, WritePcmWritesSegmentFilesAndValidatesRange)
 	EXPECT_EQ(QFileInfo(ch1).size(), data_bytes);
 
 	QByteArray bytes;
-	ASSERT_TRUE(ReadBytesAt(ch0, 0, 4, &bytes));
-	EXPECT_FLOAT_EQ(BytesToFloat(bytes), 0.5f);
+	ASSERT_TRUE(read_bytes_at(ch0, 0, 4, &bytes));
+	EXPECT_FLOAT_EQ(bytes_to_float(bytes), 0.5f);
 
-	ASSERT_TRUE(ReadBytesAt(ch1, 0, 4, &bytes));
-	EXPECT_FLOAT_EQ(BytesToFloat(bytes), 0.25f);
+	ASSERT_TRUE(read_bytes_at(ch1, 0, 4, &bytes));
+	EXPECT_FLOAT_EQ(bytes_to_float(bytes), 0.25f);
 }
 
 // A write that does not start at zero must seek into the segment, leaving the
@@ -766,33 +766,33 @@ TEST_F(RenderTailAudioCacheTest, WritePcmWritesSegmentFilesAndValidatesRange)
 TEST_F(RenderTailAudioCacheTest, WritePcmAtNonZeroStartWritesAtByteOffset)
 {
 	olive::AudioPlaybackCache cache(project_.get());
-	cache.SetParameters(MakeParams());
+	cache.set_parameters(make_params());
 
-	const olive::TimeRange range(olive::rational(1, 10), olive::rational(1, 5));
+	const olive::TimeRange range(olive::Rational(1, 10), olive::Rational(1, 5));
 
-	olive::core::SampleBuffer buf(MakeParams(), olive::rational(1, 10));
+	olive::core::SampleBuffer buf(make_params(), olive::Rational(1, 10));
 	ASSERT_TRUE(buf.is_allocated());
-	FillBuffer(&buf, 0.75f, 0.75f);
+	fill_buffer(&buf, 0.75f, 0.75f);
 
-	cache.WritePCM(range, { range }, buf);
+	cache.write_pcm(range, { range }, buf);
 
-	EXPECT_FALSE(cache.HasInvalidatedRanges(range));
+	EXPECT_FALSE(cache.has_invalidated_ranges(range));
 
 	const qint64 data_bytes = 19200;
 	const QString ch0 =
-		cache.GetThisCacheDirectory().filePath(QStringLiteral("0.0"));
+		cache.get_this_cache_directory().filePath(QStringLiteral("0.0"));
 	ASSERT_TRUE(QFileInfo::exists(ch0));
 	// The file extends exactly to the end of the written range
 	EXPECT_EQ(QFileInfo(ch0).size(), 2 * data_bytes);
 
 	// The first range was never written, so it reads back as silence
 	QByteArray bytes;
-	ASSERT_TRUE(ReadBytesAt(ch0, 0, 4, &bytes));
+	ASSERT_TRUE(read_bytes_at(ch0, 0, 4, &bytes));
 	EXPECT_EQ(bytes, QByteArray(4, '\0'));
 
 	// The new data starts exactly at its byte offset
-	ASSERT_TRUE(ReadBytesAt(ch0, data_bytes, 4, &bytes));
-	EXPECT_FLOAT_EQ(BytesToFloat(bytes), 0.75f);
+	ASSERT_TRUE(read_bytes_at(ch0, data_bytes, 4, &bytes));
+	EXPECT_FLOAT_EQ(bytes_to_float(bytes), 0.75f);
 }
 
 // Only the listed valid ranges are validated, even when the sample buffer
@@ -800,37 +800,37 @@ TEST_F(RenderTailAudioCacheTest, WritePcmAtNonZeroStartWritesAtByteOffset)
 TEST_F(RenderTailAudioCacheTest, WritePcmWithPartialValidRangesValidatesOnlyThose)
 {
 	olive::AudioPlaybackCache cache(project_.get());
-	cache.SetParameters(MakeParams());
+	cache.set_parameters(make_params());
 
-	const olive::TimeRange range(olive::rational(0), olive::rational(1, 5));
-	const olive::TimeRange first_half(olive::rational(0), olive::rational(1, 10));
+	const olive::TimeRange range(olive::Rational(0), olive::Rational(1, 5));
+	const olive::TimeRange first_half(olive::Rational(0), olive::Rational(1, 10));
 
-	olive::core::SampleBuffer buf(MakeParams(), olive::rational(1, 5));
+	olive::core::SampleBuffer buf(make_params(), olive::Rational(1, 5));
 	ASSERT_TRUE(buf.is_allocated());
-	FillBuffer(&buf, 0.5f, 0.5f);
+	fill_buffer(&buf, 0.5f, 0.5f);
 
-	cache.WritePCM(range, { first_half }, buf);
+	cache.write_pcm(range, { first_half }, buf);
 
-	EXPECT_FALSE(cache.HasInvalidatedRanges(first_half));
-	EXPECT_TRUE(cache.HasInvalidatedRanges(range));
+	EXPECT_FALSE(cache.has_invalidated_ranges(first_half));
+	EXPECT_TRUE(cache.has_invalidated_ranges(range));
 }
 
 // An empty valid-range list writes no segments and validates nothing.
 TEST_F(RenderTailAudioCacheTest, WritePcmWithNoValidRangesWritesNothing)
 {
 	olive::AudioPlaybackCache cache(project_.get());
-	cache.SetParameters(MakeParams());
+	cache.set_parameters(make_params());
 
-	const olive::TimeRange range(olive::rational(0), olive::rational(1, 10));
+	const olive::TimeRange range(olive::Rational(0), olive::Rational(1, 10));
 
-	olive::core::SampleBuffer buf(MakeParams(), olive::rational(1, 10));
+	olive::core::SampleBuffer buf(make_params(), olive::Rational(1, 10));
 	ASSERT_TRUE(buf.is_allocated());
 
-	cache.WritePCM(range, olive::TimeRangeList(), buf);
+	cache.write_pcm(range, olive::TimeRangeList(), buf);
 
-	EXPECT_FALSE(cache.HasValidatedRanges());
+	EXPECT_FALSE(cache.has_validated_ranges());
 	EXPECT_FALSE(QFileInfo::exists(
-		cache.GetThisCacheDirectory().filePath(QStringLiteral("0.0"))));
+		cache.get_this_cache_directory().filePath(QStringLiteral("0.0"))));
 }
 
 // A write larger than one segment must spill into the next segment file, with
@@ -839,34 +839,34 @@ TEST_F(RenderTailAudioCacheTest,
 	   WritePcmSpanningSegmentBoundaryCreatesBothSegments)
 {
 	olive::AudioPlaybackCache cache(project_.get());
-	cache.SetParameters(MakeParams());
+	cache.set_parameters(make_params());
 
 	// 56 seconds at 48000 Hz is 10752000 bytes per channel, just over one
 	// 10 MB segment.
-	const olive::TimeRange range(olive::rational(0), olive::rational(56));
+	const olive::TimeRange range(olive::Rational(0), olive::Rational(56));
 
-	olive::core::SampleBuffer buf(MakeParams(), olive::rational(56));
+	olive::core::SampleBuffer buf(make_params(), olive::Rational(56));
 	ASSERT_TRUE(buf.is_allocated());
 	ASSERT_EQ(buf.sample_count(), size_t(56 * 48000));
-	FillBuffer(&buf, 1.0f, 1.0f);
+	fill_buffer(&buf, 1.0f, 1.0f);
 
-	cache.WritePCM(range, { range }, buf);
+	cache.write_pcm(range, { range }, buf);
 
-	EXPECT_FALSE(cache.HasInvalidatedRanges(range));
+	EXPECT_FALSE(cache.has_invalidated_ranges(range));
 
-	const QDir seg_dir = cache.GetThisCacheDirectory();
+	const QDir seg_dir = cache.get_this_cache_directory();
 	const QString seg0 = seg_dir.filePath(QStringLiteral("0.0"));
 	const QString seg1 = seg_dir.filePath(QStringLiteral("1.0"));
 	ASSERT_TRUE(QFileInfo::exists(seg0));
 	ASSERT_TRUE(QFileInfo::exists(seg1));
 
-	EXPECT_EQ(QFileInfo(seg0).size(), kSegmentSize);
+	EXPECT_EQ(QFileInfo(seg0).size(), k_segment_size);
 	// The second segment holds exactly the spillover bytes
 	EXPECT_EQ(QFileInfo(seg1).size(),
-			  56 * 48000 * 4 - kSegmentSize);
+			  56 * 48000 * 4 - k_segment_size);
 
 	// The spillover data starts at the beginning of the second segment file
 	QByteArray bytes;
-	ASSERT_TRUE(ReadBytesAt(seg1, 0, 4, &bytes));
-	EXPECT_FLOAT_EQ(BytesToFloat(bytes), 1.0f);
+	ASSERT_TRUE(read_bytes_at(seg1, 0, 4, &bytes));
+	EXPECT_FLOAT_EQ(bytes_to_float(bytes), 1.0f);
 }

@@ -18,8 +18,8 @@
 
 ***/
 
-#ifndef TIMECODEMETADATA_H
-#define TIMECODEMETADATA_H
+#ifndef OAK_TIMECODEMETADATA_H
+#define OAK_TIMECODEMETADATA_H
 
 #include <QString>
 
@@ -31,18 +31,18 @@ namespace olive
 class TimecodeMetadata {
 public:
 	struct SourceTime {
-		core::rational time;
+		core::Rational time;
 		QString source;
 		bool valid = false;
 	};
 
-	static SourceTime FromTimecodeString(const QString &timecode,
-										 const core::rational &timebase);
+	static SourceTime from_timecode_string(const QString &timecode,
+										 const core::Rational &timebase);
 
-	static SourceTime FromBwfTimeReference(const QString &time_reference,
+	static SourceTime from_bwf_time_reference(const QString &time_reference,
 										   int sample_rate);
 };
 
 }
 
-#endif // TIMECODEMETADATA_H
+#endif // OAK_TIMECODEMETADATA_H

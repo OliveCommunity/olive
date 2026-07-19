@@ -26,206 +26,206 @@
 namespace olive
 {
 
-QString ExportFormat::GetName(olive::ExportFormat::Format f)
+QString ExportFormat::get_name(olive::ExportFormat::Format f)
 {
 	switch (f) {
-	case kFormatDNxHD:
+	case k_format_d_nx_hd:
 		return tr("DNxHD");
-	case kFormatMatroska:
+	case k_format_matroska:
 		return tr("Matroska Video");
-	case kFormatMPEG4Video:
+	case k_format_mpe_g4_video:
 		return tr("MPEG-4 Video");
-	case kFormatMPEG4Audio:
+	case k_format_mpe_g4_audio:
 		return tr("MPEG-4 Audio");
-	case kFormatOpenEXR:
+	case k_format_open_exr:
 		return tr("OpenEXR");
-	case kFormatPNG:
+	case k_format_png:
 		return tr("PNG");
-	case kFormatTIFF:
+	case k_format_tiff:
 		return tr("TIFF");
-	case kFormatQuickTime:
+	case k_format_quick_time:
 		return tr("QuickTime");
-	case kFormatWAV:
+	case k_format_wav:
 		return tr("Wave Audio");
-	case kFormatAIFF:
+	case k_format_aiff:
 		return tr("AIFF");
-	case kFormatMP3:
+	case k_format_m_p3:
 		return tr("MP3");
-	case kFormatFLAC:
+	case k_format_flac:
 		return tr("FLAC");
-	case kFormatOgg:
+	case k_format_ogg:
 		return tr("Ogg");
-	case kFormatWebM:
+	case k_format_web_m:
 		return tr("WebM");
-	case kFormatSRT:
+	case k_format_srt:
 		return tr("SubRip SRT");
 
-	case kFormatCount:
+	case k_format_count:
 		break;
 	}
 
 	return tr("Unknown");
 }
 
-QString ExportFormat::GetExtension(ExportFormat::Format f)
+QString ExportFormat::get_extension(ExportFormat::Format f)
 {
 	switch (f) {
-	case kFormatDNxHD:
+	case k_format_d_nx_hd:
 		return QStringLiteral("mxf");
-	case kFormatMatroska:
+	case k_format_matroska:
 		return QStringLiteral("mkv");
-	case kFormatMPEG4Video:
+	case k_format_mpe_g4_video:
 		return QStringLiteral("mp4");
-	case kFormatMPEG4Audio:
+	case k_format_mpe_g4_audio:
 		return QStringLiteral("m4a");
-	case kFormatOpenEXR:
+	case k_format_open_exr:
 		return QStringLiteral("exr");
-	case kFormatPNG:
+	case k_format_png:
 		return QStringLiteral("png");
-	case kFormatTIFF:
+	case k_format_tiff:
 		return QStringLiteral("tiff");
-	case kFormatQuickTime:
+	case k_format_quick_time:
 		return QStringLiteral("mov");
-	case kFormatWAV:
+	case k_format_wav:
 		return QStringLiteral("wav");
-	case kFormatAIFF:
+	case k_format_aiff:
 		return QStringLiteral("aiff");
-	case kFormatMP3:
+	case k_format_m_p3:
 		return QStringLiteral("mp3");
-	case kFormatFLAC:
+	case k_format_flac:
 		return QStringLiteral("flac");
-	case kFormatOgg:
+	case k_format_ogg:
 		return QStringLiteral("ogg");
-	case kFormatWebM:
+	case k_format_web_m:
 		return QStringLiteral("webm");
-	case kFormatSRT:
+	case k_format_srt:
 		return QStringLiteral("srt");
-	case kFormatCount:
+	case k_format_count:
 		break;
 	}
 
 	return QString();
 }
 
-QList<ExportCodec::Codec> ExportFormat::GetVideoCodecs(ExportFormat::Format f)
+QList<ExportCodec::Codec> ExportFormat::get_video_codecs(ExportFormat::Format f)
 {
 	switch (f) {
-	case kFormatDNxHD:
-		return { ExportCodec::kCodecDNxHD };
-	case kFormatMatroska:
-		return { ExportCodec::kCodecH264, ExportCodec::kCodecH264rgb,
-				 ExportCodec::kCodecH265, ExportCodec::kCodecVP9 };
-	case kFormatMPEG4Video:
-		return { ExportCodec::kCodecH264, ExportCodec::kCodecH264rgb,
-				 ExportCodec::kCodecH265 };
-	case kFormatOpenEXR:
-		return { ExportCodec::kCodecOpenEXR };
-	case kFormatPNG:
-		return { ExportCodec::kCodecPNG };
-	case kFormatTIFF:
-		return { ExportCodec::kCodecTIFF };
-	case kFormatQuickTime:
-		return { ExportCodec::kCodecH264, ExportCodec::kCodecH264rgb,
-				 ExportCodec::kCodecH265, ExportCodec::kCodecProRes,
-				 ExportCodec::kCodecCineform };
-	case kFormatWebM:
-		return { ExportCodec::kCodecAV1, ExportCodec::kCodecVP9 };
-	case kFormatOgg:
-	case kFormatWAV:
-	case kFormatMPEG4Audio:
-	case kFormatAIFF:
-	case kFormatMP3:
-	case kFormatFLAC:
-	case kFormatSRT:
-	case kFormatCount:
+	case k_format_d_nx_hd:
+		return { ExportCodec::k_codec_d_nx_hd };
+	case k_format_matroska:
+		return { ExportCodec::k_codec_h264, ExportCodec::k_codec_h264rgb,
+				 ExportCodec::k_codec_h265, ExportCodec::k_codec_v_p9 };
+	case k_format_mpe_g4_video:
+		return { ExportCodec::k_codec_h264, ExportCodec::k_codec_h264rgb,
+				 ExportCodec::k_codec_h265 };
+	case k_format_open_exr:
+		return { ExportCodec::k_codec_open_exr };
+	case k_format_png:
+		return { ExportCodec::k_codec_png };
+	case k_format_tiff:
+		return { ExportCodec::k_codec_tiff };
+	case k_format_quick_time:
+		return { ExportCodec::k_codec_h264, ExportCodec::k_codec_h264rgb,
+				 ExportCodec::k_codec_h265, ExportCodec::k_codec_pro_res,
+				 ExportCodec::k_codec_cineform };
+	case k_format_web_m:
+		return { ExportCodec::k_codec_a_v1, ExportCodec::k_codec_v_p9 };
+	case k_format_ogg:
+	case k_format_wav:
+	case k_format_mpe_g4_audio:
+	case k_format_aiff:
+	case k_format_m_p3:
+	case k_format_flac:
+	case k_format_srt:
+	case k_format_count:
 		break;
 	}
 
 	return {};
 }
 
-QList<ExportCodec::Codec> ExportFormat::GetAudioCodecs(ExportFormat::Format f)
+QList<ExportCodec::Codec> ExportFormat::get_audio_codecs(ExportFormat::Format f)
 {
 	switch (f) {
 	// Video/audio formats
-	case kFormatDNxHD:
-		return { ExportCodec::kCodecPCM };
-	case kFormatMatroska:
-		return { ExportCodec::kCodecAAC,	ExportCodec::kCodecMP2,
-				 ExportCodec::kCodecMP3,	ExportCodec::kCodecPCM,
-				 ExportCodec::kCodecVorbis, ExportCodec::kCodecOpus,
-				 ExportCodec::kCodecFLAC };
-	case kFormatMPEG4Video:
-	case kFormatMPEG4Audio:
-		return { ExportCodec::kCodecAAC, ExportCodec::kCodecMP2,
-				 ExportCodec::kCodecMP3 };
-	case kFormatQuickTime:
-		return { ExportCodec::kCodecAAC, ExportCodec::kCodecMP2,
-				 ExportCodec::kCodecMP3, ExportCodec::kCodecPCM };
-	case kFormatWebM:
-		return { ExportCodec::kCodecOpus, ExportCodec::kCodecAAC,
-				 ExportCodec::kCodecMP2,  ExportCodec::kCodecMP3,
-				 ExportCodec::kCodecPCM,  ExportCodec::kCodecVorbis };
+	case k_format_d_nx_hd:
+		return { ExportCodec::k_codec_pcm };
+	case k_format_matroska:
+		return { ExportCodec::k_codec_aac,	ExportCodec::k_codec_m_p2,
+				 ExportCodec::k_codec_m_p3,	ExportCodec::k_codec_pcm,
+				 ExportCodec::k_codec_vorbis, ExportCodec::k_codec_opus,
+				 ExportCodec::k_codec_flac };
+	case k_format_mpe_g4_video:
+	case k_format_mpe_g4_audio:
+		return { ExportCodec::k_codec_aac, ExportCodec::k_codec_m_p2,
+				 ExportCodec::k_codec_m_p3 };
+	case k_format_quick_time:
+		return { ExportCodec::k_codec_aac, ExportCodec::k_codec_m_p2,
+				 ExportCodec::k_codec_m_p3, ExportCodec::k_codec_pcm };
+	case k_format_web_m:
+		return { ExportCodec::k_codec_opus, ExportCodec::k_codec_aac,
+				 ExportCodec::k_codec_m_p2,  ExportCodec::k_codec_m_p3,
+				 ExportCodec::k_codec_pcm,  ExportCodec::k_codec_vorbis };
 
 	// Audio only formats
-	case kFormatWAV:
-		return { ExportCodec::kCodecPCM };
-	case kFormatAIFF:
-		return { ExportCodec::kCodecPCM };
-	case kFormatMP3:
-		return { ExportCodec::kCodecMP3 };
-	case kFormatFLAC:
-		return { ExportCodec::kCodecFLAC };
-	case kFormatOgg:
-		return { ExportCodec::kCodecOpus, ExportCodec::kCodecVorbis,
-				 ExportCodec::kCodecPCM };
+	case k_format_wav:
+		return { ExportCodec::k_codec_pcm };
+	case k_format_aiff:
+		return { ExportCodec::k_codec_pcm };
+	case k_format_m_p3:
+		return { ExportCodec::k_codec_m_p3 };
+	case k_format_flac:
+		return { ExportCodec::k_codec_flac };
+	case k_format_ogg:
+		return { ExportCodec::k_codec_opus, ExportCodec::k_codec_vorbis,
+				 ExportCodec::k_codec_pcm };
 
 	// Video only formats
-	case kFormatOpenEXR:
-	case kFormatPNG:
-	case kFormatTIFF:
-	case kFormatSRT:
-	case kFormatCount:
+	case k_format_open_exr:
+	case k_format_png:
+	case k_format_tiff:
+	case k_format_srt:
+	case k_format_count:
 		break;
 	}
 
 	return {};
 }
 
-QList<ExportCodec::Codec> ExportFormat::GetSubtitleCodecs(Format f)
+QList<ExportCodec::Codec> ExportFormat::get_subtitle_codecs(Format f)
 {
 	switch (f) {
-	case kFormatDNxHD:
-	case kFormatMPEG4Video:
-	case kFormatMPEG4Audio:
-	case kFormatOpenEXR:
-	case kFormatQuickTime:
-	case kFormatPNG:
-	case kFormatTIFF:
-	case kFormatWAV:
-	case kFormatAIFF:
-	case kFormatMP3:
-	case kFormatFLAC:
-	case kFormatOgg:
-	case kFormatWebM:
-	case kFormatCount:
+	case k_format_d_nx_hd:
+	case k_format_mpe_g4_video:
+	case k_format_mpe_g4_audio:
+	case k_format_open_exr:
+	case k_format_quick_time:
+	case k_format_png:
+	case k_format_tiff:
+	case k_format_wav:
+	case k_format_aiff:
+	case k_format_m_p3:
+	case k_format_flac:
+	case k_format_ogg:
+	case k_format_web_m:
+	case k_format_count:
 		break;
-	case kFormatMatroska:
-	case kFormatSRT:
-		return { ExportCodec::kCodecSRT };
+	case k_format_matroska:
+	case k_format_srt:
+		return { ExportCodec::k_codec_srt };
 	}
 
 	return {};
 }
 
-QStringList ExportFormat::GetPixelFormatsForCodec(ExportFormat::Format f,
+QStringList ExportFormat::get_pixel_formats_for_codec(ExportFormat::Format f,
 												  ExportCodec::Codec c)
 {
-	Encoder *e = Encoder::CreateFromFormat(f, EncodingParams());
+	Encoder *e = Encoder::create_from_format(f, EncodingParams());
 	QStringList list;
 
 	if (e) {
-		list = e->GetPixelFormatsForCodec(c);
+		list = e->get_pixel_formats_for_codec(c);
 		delete e;
 	}
 
@@ -233,13 +233,13 @@ QStringList ExportFormat::GetPixelFormatsForCodec(ExportFormat::Format f,
 }
 
 std::vector<SampleFormat>
-ExportFormat::GetSampleFormatsForCodec(Format format, ExportCodec::Codec c)
+ExportFormat::get_sample_formats_for_codec(Format format, ExportCodec::Codec c)
 {
 	std::vector<SampleFormat> f;
-	Encoder *e = Encoder::CreateFromFormat(format, EncodingParams());
+	Encoder *e = Encoder::create_from_format(format, EncodingParams());
 
 	if (e) {
-		f = e->GetSampleFormatsForCodec(c);
+		f = e->get_sample_formats_for_codec(c);
 		delete e;
 	}
 

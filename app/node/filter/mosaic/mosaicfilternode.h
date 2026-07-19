@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef MOSAICFILTERNODE_H
-#define MOSAICFILTERNODE_H
+#ifndef OAK_MOSAICFILTERNODE_H
+#define OAK_MOSAICFILTERNODE_H
 
 #include "node/node.h"
 
@@ -34,7 +34,7 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(MosaicFilterNode)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return tr("Mosaic");
 	}
@@ -44,28 +44,28 @@ public:
 		return QStringLiteral("org.olivevideoeditor.Olive.mosaicfilter");
 	}
 
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
-		return { kCategoryFilter };
+		return { k_category_filter };
 	}
 
-	virtual QString Description() const override
+	virtual QString description() const override
 	{
 		return tr("Apply a pixelated mosaic filter to video.");
 	}
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
+	get_shader_code(const ShaderRequest &request) const override;
 
-	static const QString kTextureInput;
-	static const QString kHorizInput;
-	static const QString kVertInput;
+	static const QString k_texture_input;
+	static const QString k_horiz_input;
+	static const QString k_vert_input;
 };
 
 }
 
-#endif // MOSAICFILTERNODE_H
+#endif // OAK_MOSAICFILTERNODE_H

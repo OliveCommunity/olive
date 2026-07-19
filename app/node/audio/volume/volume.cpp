@@ -26,26 +26,26 @@
 namespace olive
 {
 
-const QString VolumeNode::kSamplesInput = QStringLiteral("samples_in");
-const QString VolumeNode::kVolumeInput = QStringLiteral("volume_in");
+const QString VolumeNode::k_samples_input = QStringLiteral("samples_in");
+const QString VolumeNode::k_volume_input = QStringLiteral("volume_in");
 
 #define super MathNodeBase
 
 VolumeNode::VolumeNode()
 {
-	AddInput(kSamplesInput, NodeValue::kSamples,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_samples_input, NodeValue::k_samples,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	AddInput(kVolumeInput, NodeValue::kFloat, 1.0);
-	SetInputProperty(kVolumeInput, QStringLiteral("min"), 0.0);
-	SetInputProperty(kVolumeInput, QStringLiteral("view"),
-					 FloatSlider::kDecibel);
+	add_input(k_volume_input, NodeValue::k_float, 1.0);
+	set_input_property(k_volume_input, QStringLiteral("min"), 0.0);
+	set_input_property(k_volume_input, QStringLiteral("view"),
+					 FloatSlider::k_decibel);
 
-	SetFlag(kAudioEffect);
-	SetEffectInput(kSamplesInput);
+	set_flag(k_audio_effect);
+	set_effect_input(k_samples_input);
 }
 
-QString VolumeNode::Name() const
+QString VolumeNode::name() const
 {
 	return tr("Volume");
 }
@@ -55,55 +55,55 @@ QString VolumeNode::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.volume");
 }
 
-QVector<Node::CategoryID> VolumeNode::Category() const
+QVector<Node::CategoryID> VolumeNode::category() const
 {
-	return { kCategoryFilter };
+	return { k_category_filter };
 }
 
-QString VolumeNode::Description() const
+QString VolumeNode::description() const
 {
 	return tr("Adjusts the volume of an audio source.");
 }
 
-void VolumeNode::Value(const NodeValueRow &value, const NodeGlobals &globals,
+void VolumeNode::value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const
 {
 	// Create a sample job
-	SampleBuffer buffer = value[kSamplesInput].toSamples();
+	SampleBuffer buffer = value[k_samples_input].to_samples();
 
 	if (buffer.is_allocated()) {
 		// If the input is static, we can just do it now which will be faster
-		if (IsInputStatic(kVolumeInput)) {
-			auto volume = value[kVolumeInput].toDouble();
+		if (is_input_static(k_volume_input)) {
+			auto volume = value[k_volume_input].to_double();
 
 			if (!qFuzzyCompare(volume, 1.0)) {
 				buffer.transform_volume(volume);
 			}
 
-			table->Push(NodeValue::kSamples, QVariant::fromValue(buffer), this);
+			table->push(NodeValue::k_samples, QVariant::fromValue(buffer), this);
 		} else {
 			// Requires job
-			SampleJob job(globals.time(), kSamplesInput, value);
-			job.Insert(kVolumeInput, value);
-			table->Push(NodeValue::kSamples, QVariant::fromValue(job), this);
+			SampleJob job(globals.time(), k_samples_input, value);
+			job.insert(k_volume_input, value);
+			table->push(NodeValue::k_samples, QVariant::fromValue(job), this);
 		}
 	}
 }
 
-void VolumeNode::ProcessSamples(const NodeValueRow &values,
+void VolumeNode::process_samples(const NodeValueRow &values,
 								const SampleBuffer &input, SampleBuffer &output,
 								int index) const
 {
-	return ProcessSamplesInternal(values, kOpMultiply, kSamplesInput,
-								  kVolumeInput, input, output, index);
+	return process_samples_internal(values, k_op_multiply, k_samples_input,
+								  k_volume_input, input, output, index);
 }
 
-void VolumeNode::Retranslate()
+void VolumeNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kSamplesInput, tr("Samples"));
-	SetInputName(kVolumeInput, tr("Volume"));
+	set_input_name(k_samples_input, tr("Samples"));
+	set_input_name(k_volume_input, tr("Volume"));
 }
 
 }

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef ACTIONSEARCH_H
-#define ACTIONSEARCH_H
+#ifndef OAK_ACTIONSEARCH_H
+#define OAK_ACTIONSEARCH_H
 
 #include <QDialog>
 #include <QLineEdit>
@@ -58,7 +58,7 @@ public:
 	/**
    * @brief Set the menu bar to use in this action search
    */
-	void SetMenuBar(QMenuBar *menu_bar);
+	void set_menu_bar(QMenuBar *menu_bar);
 private slots:
 	/**
    * @brief Update the list of actions according to a search query
@@ -115,7 +115,7 @@ private:
 	/**
    * @brief Main widget that shows the list of commands
    */
-	ActionSearchList *list_widget;
+	ActionSearchList *list_widget_;
 
 	/**
    * @brief Attached menu bar object
@@ -180,14 +180,14 @@ signals:
 	/**
    * @brief Emitted when the user presses the up arrow key.
    */
-	void moveSelectionUp();
+	void move_selection_up();
 
 	/**
    * @brief Emitted when the user presses the down arrow key.
    */
-	void moveSelectionDown();
+	void move_selection_down();
 };
 
 }
 
-#endif // ACTIONSEARCH_H
+#endif // OAK_ACTIONSEARCH_H

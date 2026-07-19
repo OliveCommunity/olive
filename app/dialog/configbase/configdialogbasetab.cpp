@@ -24,7 +24,7 @@
 namespace olive
 {
 
-bool ConfigDialogBaseTab::Validate()
+bool ConfigDialogBaseTab::validate()
 {
 	return true;
 }

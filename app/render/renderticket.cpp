@@ -31,14 +31,14 @@ RenderTicket::RenderTicket()
 {
 }
 
-void RenderTicket::WaitForFinished(QMutex *mutex)
+void RenderTicket::wait_for_finished(QMutex *mutex)
 {
 	if (is_running_) {
 		wait_.wait(mutex);
 	}
 }
 
-void RenderTicket::Start()
+void RenderTicket::start()
 {
 	QMutexLocker locker(&lock_);
 
@@ -47,33 +47,33 @@ void RenderTicket::Start()
 	result_.clear();
 }
 
-void RenderTicket::Finish()
+void RenderTicket::finish()
 {
-	FinishInternal(false, QVariant());
+	finish_internal(false, QVariant());
 }
 
-void RenderTicket::Finish(QVariant result)
+void RenderTicket::finish(QVariant result)
 {
-	FinishInternal(true, result);
+	finish_internal(true, result);
 }
 
-QVariant RenderTicket::Get()
+QVariant RenderTicket::get()
 {
-	WaitForFinished();
+	wait_for_finished();
 
 	// We don't have to mutex around this because there is no way to write to `result_` after
 	// the ticket has finished and the above function blocks the calling thread until it is finished
 	return result_;
 }
 
-void RenderTicket::WaitForFinished()
+void RenderTicket::wait_for_finished()
 {
 	QMutexLocker locker(&lock_);
 
-	WaitForFinished(&lock_);
+	wait_for_finished(&lock_);
 }
 
-bool RenderTicket::IsRunning(bool lock)
+bool RenderTicket::is_running(bool lock)
 {
 	if (lock) {
 		lock_.lock();
@@ -88,7 +88,7 @@ bool RenderTicket::IsRunning(bool lock)
 	return running;
 }
 
-int RenderTicket::GetFinishCount(bool lock)
+int RenderTicket::get_finish_count(bool lock)
 {
 	if (lock) {
 		lock_.lock();
@@ -103,14 +103,14 @@ int RenderTicket::GetFinishCount(bool lock)
 	return count;
 }
 
-bool RenderTicket::HasResult()
+bool RenderTicket::has_result()
 {
 	QMutexLocker locker(&lock_);
 
 	return has_result_;
 }
 
-void RenderTicket::FinishInternal(bool has_result, QVariant result)
+void RenderTicket::finish_internal(bool has_result, QVariant result)
 {
 	QMutexLocker locker(&lock_);
 
@@ -126,7 +126,7 @@ void RenderTicket::FinishInternal(bool has_result, QVariant result)
 
 		locker.unlock();
 
-		emit Finished();
+		emit finished();
 	}
 }
 
@@ -136,7 +136,7 @@ RenderTicketWatcher::RenderTicketWatcher(QObject *parent)
 {
 }
 
-void RenderTicketWatcher::SetTicket(RenderTicketPtr ticket)
+void RenderTicketWatcher::set_ticket(RenderTicketPtr ticket)
 {
 	if (ticket_) {
 		qCritical() << "Tried to set a ticket on a RenderTicketWatcher twice";
@@ -153,62 +153,62 @@ void RenderTicketWatcher::SetTicket(RenderTicketPtr ticket)
 	// Lock ticket so we can query if it's already finished by the time this code runs
 	QMutexLocker locker(ticket->lock());
 
-	connect(ticket_.get(), &RenderTicket::Finished, this,
-			&RenderTicketWatcher::TicketFinished);
+	connect(ticket_.get(), &RenderTicket::finished, this,
+			&RenderTicketWatcher::ticket_finished);
 
-	if (!ticket_->IsRunning(false) && ticket_->GetFinishCount(false) > 0) {
+	if (!ticket_->is_running(false) && ticket_->get_finish_count(false) > 0) {
 		// Ticket has already finished before, so we emit a signal asynchronously
 		// to avoid deleting this watcher before the caller has a chance to use
 		// the returned pointer.
-		QMetaObject::invokeMethod(this, &RenderTicketWatcher::TicketFinished,
+		QMetaObject::invokeMethod(this, &RenderTicketWatcher::ticket_finished,
 								  Qt::QueuedConnection);
 	}
 }
 
-bool RenderTicketWatcher::IsRunning()
+bool RenderTicketWatcher::is_running()
 {
 	if (ticket_) {
-		return ticket_->IsRunning();
+		return ticket_->is_running();
 	} else {
 		return false;
 	}
 }
 
-void RenderTicketWatcher::WaitForFinished()
+void RenderTicketWatcher::wait_for_finished()
 {
 	if (ticket_) {
-		ticket_->WaitForFinished();
+		ticket_->wait_for_finished();
 	}
 }
 
-QVariant RenderTicketWatcher::Get()
+QVariant RenderTicketWatcher::get()
 {
 	if (ticket_) {
-		return ticket_->Get();
+		return ticket_->get();
 	} else {
 		return QVariant();
 	}
 }
 
-bool RenderTicketWatcher::HasResult()
+bool RenderTicketWatcher::has_result()
 {
 	if (ticket_) {
-		return ticket_->HasResult();
+		return ticket_->has_result();
 	} else {
 		return false;
 	}
 }
 
-void RenderTicketWatcher::Cancel()
+void RenderTicketWatcher::cancel()
 {
 	if (ticket_) {
-		ticket_->Cancel();
+		ticket_->cancel();
 	}
 }
 
-void RenderTicketWatcher::TicketFinished()
+void RenderTicketWatcher::ticket_finished()
 {
-	emit Finished(this);
+	emit finished(this);
 }
 
 }

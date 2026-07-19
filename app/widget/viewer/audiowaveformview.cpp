@@ -48,33 +48,33 @@ AudioWaveformView::AudioWaveformView(QWidget *parent)
 	setAlignment(Qt::AlignLeft | Qt::AlignTop);
 }
 
-void AudioWaveformView::SetViewer(ViewerOutput *playback)
+void AudioWaveformView::set_viewer(ViewerOutput *playback)
 {
 	if (playback_) {
 		pool_.clear();
 		pool_.waitForDone();
 
-		disconnect(playback_, &ViewerOutput::ConnectedWaveformChanged,
+		disconnect(playback_, &ViewerOutput::connected_waveform_changed,
 				   viewport(),
 				   static_cast<void (QWidget::*)()>(&QWidget::update));
 
-		SetTimebase(0);
+		set_timebase(0);
 	}
 
 	playback_ = playback;
 
 	if (playback_) {
-		connect(playback_, &ViewerOutput::ConnectedWaveformChanged, viewport(),
+		connect(playback_, &ViewerOutput::connected_waveform_changed, viewport(),
 				static_cast<void (QWidget::*)()>(&QWidget::update));
 
-		rational tb = playback_->GetVideoParams().frame_rate_as_time_base();
+		Rational tb = playback_->get_video_params().frame_rate_as_time_base();
 		if (tb.isNull()) {
-			tb = OLIVE_CONFIG("DefaultSequenceFrameRate")
-					 .value<rational>()
+			tb = OAK_CONFIG("DefaultSequenceFrameRate")
+					 .value<Rational>()
 					 .flipped();
 		}
-		SetTimebase(tb);
-		UpdateSceneRect();
+		set_timebase(tb);
+		update_scene_rect();
 	}
 }
 
@@ -86,28 +86,28 @@ void AudioWaveformView::drawForeground(QPainter *p, const QRectF &rect)
 		return;
 	}
 
-	const AudioWaveformCache *wave = playback_->GetConnectedWaveform();
+	const AudioWaveformCache *wave = playback_->get_connected_waveform();
 	if (!wave) {
 		return;
 	}
 
-	const AudioParams &params = wave->GetParameters();
+	const AudioParams &params = wave->get_parameters();
 	if (!params.is_valid()) {
 		return;
 	}
 
 	// Draw in/out points
-	DrawWorkArea(p);
-	DrawMarkers(p);
+	draw_work_area(p);
+	draw_markers(p);
 
 	// Draw waveform
 	p->setPen(QColor(64, 255, 160)); // FIXME: Hardcoded color
-	wave->Draw(p, rect.toRect(), GetScale(), SceneToTime(GetScroll()));
+	wave->Draw(p, rect.toRect(), get_scale(), scene_to_time(get_scroll()));
 
 	// Draw playhead
 	p->setPen(PLAYHEAD_COLOR);
 
-	int playhead_x = TimeToScene(GetViewerNode()->GetPlayhead());
+	int playhead_x = time_to_scene(get_viewer_node()->get_playhead());
 	p->drawLine(playhead_x, 0, playhead_x, height());
 }
 

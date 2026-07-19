@@ -36,7 +36,7 @@
 namespace olive
 {
 
-const int OpenGLRenderer::kTextureCacheMaxSize = 5000;
+const int OpenGLRenderer::k_texture_cache_max_size = 5000;
 
 const QVector<GLfloat> blit_vertices = { -1.0f, -1.0f, 0.0f, 1.0f,	-1.0f,
 										 0.0f,	1.0f,  1.0f, 0.0f,
@@ -73,9 +73,9 @@ private:
 	QOpenGLFunctions *functions_;
 };
 
-#define PRINT_GL_ERRORS ErrorPrinter __e(__FUNCTION__, functions_)
+#define OAK_PRINT_GL_ERRORS ErrorPrinter __e(__FUNCTION__, functions_)
 
-#define GL_PREAMBLE //QMutexLocker __l(&global_opengl_mutex);
+#define OAK_GL_PREAMBLE //QMutexLocker __l(&global_opengl_mutex);
 
 //QMutex global_opengl_mutex;
 
@@ -90,11 +90,11 @@ OpenGLRenderer::OpenGLRenderer(QObject *parent)
 
 OpenGLRenderer::~OpenGLRenderer()
 {
-	Destroy();
-	PostDestroy();
+	destroy();
+	post_destroy();
 }
 
-void OpenGLRenderer::Init(QOpenGLContext *existing_ctx)
+void OpenGLRenderer::init(QOpenGLContext *existing_ctx)
 {
 	if (context_) {
 		qCritical() << "Can't initialize already initialized OpenGLRenderer";
@@ -104,9 +104,9 @@ void OpenGLRenderer::Init(QOpenGLContext *existing_ctx)
 	context_ = existing_ctx;
 }
 
-bool OpenGLRenderer::Init()
+bool OpenGLRenderer::init()
 {
-	GL_PREAMBLE;
+	OAK_GL_PREAMBLE;
 
 	if (context_) {
 		qCritical() << "Can't initialize already initialized OpenGLRenderer";
@@ -125,7 +125,7 @@ bool OpenGLRenderer::Init()
 	return true;
 }
 
-void OpenGLRenderer::PostDestroy()
+void OpenGLRenderer::post_destroy()
 {
 	// Destroy surface if we created it
 	if (surface_.isValid()) {
@@ -133,9 +133,9 @@ void OpenGLRenderer::PostDestroy()
 	}
 }
 
-void OpenGLRenderer::PostInit()
+void OpenGLRenderer::post_init()
 {
-	GL_PREAMBLE;
+	OAK_GL_PREAMBLE;
 
 	if (!context_) {
 		qWarning() << __FUNCTION__ << "called without an OpenGL context";
@@ -162,12 +162,12 @@ void OpenGLRenderer::PostInit()
 	}
 }
 
-void OpenGLRenderer::DestroyInternal()
+void OpenGLRenderer::destroy_internal()
 {
 	// context_ is guarded: if a caller-owned context was already destroyed,
 	// this is null and there is nothing GL-side left to release.
 	if (context_) {
-		GL_PREAMBLE;
+		OAK_GL_PREAMBLE;
 
 		if (functions_ && framebuffer_) {
 			functions_->glDeleteFramebuffers(1, &framebuffer_);
@@ -186,33 +186,33 @@ void OpenGLRenderer::DestroyInternal()
 	functions_ = nullptr;
 }
 
-void OpenGLRenderer::ClearDestination(Texture *texture, double r, double g,
+void OpenGLRenderer::clear_destination(Texture *texture, double r, double g,
 									  double b, double a)
 {
-	GL_PREAMBLE;
+	OAK_GL_PREAMBLE;
 
-	if (!EnsureContextCurrent(__FUNCTION__)) {
+	if (!ensure_context_current(__FUNCTION__)) {
 		return;
 	}
 
 	if (texture) {
-		AttachTextureAsDestination(texture->id());
+		attach_texture_as_destination(texture->id());
 	}
 
-	ClearDestinationInternal(r, g, b, a);
+	clear_destination_internal(r, g, b, a);
 
 	if (texture) {
-		DetachTextureAsDestination();
+		detach_texture_as_destination();
 	}
 }
 
-QVariant OpenGLRenderer::CreateNativeTexture(int width, int height, int depth,
+QVariant OpenGLRenderer::create_native_texture(int width, int height, int depth,
 											 PixelFormat format,
 											 int channel_count,
 											 const void *data, int linesize)
 {
-	GL_PREAMBLE;
-	if (!EnsureContextCurrent(__FUNCTION__)) {
+	OAK_GL_PREAMBLE;
+	if (!ensure_context_current(__FUNCTION__)) {
 		return QVariant();
 	}
 
@@ -237,13 +237,13 @@ QVariant OpenGLRenderer::CreateNativeTexture(int width, int height, int depth,
 
 	if (is_3d) {
 		context_->extraFunctions()->glTexImage3D(
-			target, 0, GetInternalFormat(format, channel_count), width, height,
-			depth, 0, GetPixelFormat(channel_count), GetPixelType(format),
+			target, 0, get_internal_format(format, channel_count), width, height,
+			depth, 0, get_pixel_format(channel_count), get_pixel_type(format),
 			data);
 	} else {
 		functions_->glTexImage2D(
-			target, 0, GetInternalFormat(format, channel_count), width, height,
-			0, GetPixelFormat(channel_count), GetPixelType(format), data);
+			target, 0, get_internal_format(format, channel_count), width, height,
+			0, get_pixel_format(channel_count), get_pixel_type(format), data);
 	}
 
 	functions_->glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
@@ -253,9 +253,9 @@ QVariant OpenGLRenderer::CreateNativeTexture(int width, int height, int depth,
 	return texture;
 }
 
-void OpenGLRenderer::AttachTextureAsDestination(const QVariant &texture)
+void OpenGLRenderer::attach_texture_as_destination(const QVariant &texture)
 {
-	PRINT_GL_ERRORS;
+	OAK_PRINT_GL_ERRORS;
 
 	if (!framebuffer_) {
 		functions_->glGenFramebuffers(1, &framebuffer_);
@@ -267,7 +267,7 @@ void OpenGLRenderer::AttachTextureAsDestination(const QVariant &texture)
 									   0);
 }
 
-void OpenGLRenderer::DetachTextureAsDestination()
+void OpenGLRenderer::detach_texture_as_destination()
 {
 	// QOpenGLWidget renders to a non-zero default FBO.
 	const GLuint default_fbo = context_ ? context_->defaultFramebufferObject() :
@@ -275,9 +275,9 @@ void OpenGLRenderer::DetachTextureAsDestination()
 	functions_->glBindFramebuffer(GL_FRAMEBUFFER, default_fbo);
 }
 
-void OpenGLRenderer::DestroyNativeTexture(QVariant texture)
+void OpenGLRenderer::destroy_native_texture(QVariant texture)
 {
-	if (!EnsureContextCurrent(__FUNCTION__)) {
+	if (!ensure_context_current(__FUNCTION__)) {
 		return;
 	}
 
@@ -288,18 +288,18 @@ void OpenGLRenderer::DestroyNativeTexture(QVariant texture)
 	}
 }
 
-QVariant OpenGLRenderer::CreateNativeShader(ShaderCode code)
+QVariant OpenGLRenderer::create_native_shader(ShaderCode code)
 {
-	GL_PREAMBLE;
+	OAK_GL_PREAMBLE;
 
-	if (!EnsureContextCurrent(__FUNCTION__)) {
+	if (!ensure_context_current(__FUNCTION__)) {
 		return QVariant();
 	}
 
-	PRINT_GL_ERRORS;
+	OAK_PRINT_GL_ERRORS;
 
-	GLuint vert = CompileShader(GL_VERTEX_SHADER, code.vert_code());
-	GLuint frag = CompileShader(GL_FRAGMENT_SHADER, code.frag_code());
+	GLuint vert = compile_shader(GL_VERTEX_SHADER, code.vert_code());
+	GLuint frag = compile_shader(GL_FRAGMENT_SHADER, code.frag_code());
 
 	GLuint program = 0;
 
@@ -324,11 +324,11 @@ QVariant OpenGLRenderer::CreateNativeShader(ShaderCode code)
 	return program;
 }
 
-void OpenGLRenderer::DestroyNativeShader(QVariant shader)
+void OpenGLRenderer::destroy_native_shader(QVariant shader)
 {
-	GL_PREAMBLE;
+	OAK_GL_PREAMBLE;
 
-	if (!EnsureContextCurrent(__FUNCTION__)) {
+	if (!ensure_context_current(__FUNCTION__)) {
 		return;
 	}
 
@@ -336,11 +336,11 @@ void OpenGLRenderer::DestroyNativeShader(QVariant shader)
 	functions_->glDeleteProgram(program);
 }
 
-void OpenGLRenderer::UploadToTexture(const QVariant &handle,
+void OpenGLRenderer::upload_to_texture(const QVariant &handle,
 									 const VideoParams &p, const void *data,
 									 int linesize)
 {
-	GL_PREAMBLE;
+	OAK_GL_PREAMBLE;
 
 	GLuint t = handle.value<GLuint>();
 
@@ -358,18 +358,18 @@ void OpenGLRenderer::UploadToTexture(const QVariant &handle,
 	functions_->glPixelStorei(GL_UNPACK_ROW_LENGTH, linesize);
 
 	{
-		PRINT_GL_ERRORS;
+		OAK_PRINT_GL_ERRORS;
 
 		if (!is_3d) {
 			functions_->glTexSubImage2D(tex_type, 0, 0, 0, p.effective_width(),
 										p.effective_height(),
-										GetPixelFormat(p.channel_count()),
-										GetPixelType(p.format()), data);
+										get_pixel_format(p.channel_count()),
+										get_pixel_type(p.format()), data);
 		} else {
 			context_->extraFunctions()->glTexSubImage3D(
 				tex_type, 0, 0, 0, 0, p.effective_width(), p.effective_height(),
-				p.effective_depth(), GetPixelFormat(p.channel_count()),
-				GetPixelType(p.format()), data);
+				p.effective_depth(), get_pixel_format(p.channel_count()),
+				get_pixel_type(p.format()), data);
 		}
 	}
 
@@ -378,13 +378,13 @@ void OpenGLRenderer::UploadToTexture(const QVariant &handle,
 	functions_->glBindTexture(tex_type, current_tex);
 }
 
-void OpenGLRenderer::DownloadFromTexture(const QVariant &id,
+void OpenGLRenderer::download_from_texture(const QVariant &id,
 										 const VideoParams &p, void *data,
 										 int linesize)
 {
-	GL_PREAMBLE;
+	OAK_GL_PREAMBLE;
 
-	if (!EnsureContextCurrent(__FUNCTION__)) {
+	if (!ensure_context_current(__FUNCTION__)) {
 		return;
 	}
 
@@ -397,12 +397,12 @@ void OpenGLRenderer::DownloadFromTexture(const QVariant &id,
 	GLint current_tex;
 	functions_->glGetIntegerv(GL_TEXTURE_BINDING_2D, &current_tex);
 
-	AttachTextureAsDestination(id);
+	attach_texture_as_destination(id);
 
 	GLenum status = functions_->glCheckFramebufferStatus(GL_FRAMEBUFFER);
 	if (status != GL_FRAMEBUFFER_COMPLETE) {
 		qWarning() << "DownloadFromTexture framebuffer incomplete" << status;
-		DetachTextureAsDestination();
+		detach_texture_as_destination();
 		return;
 	}
 
@@ -412,30 +412,30 @@ void OpenGLRenderer::DownloadFromTexture(const QVariant &id,
 	functions_->glFinish();
 
 	{
-		PRINT_GL_ERRORS;
+		OAK_PRINT_GL_ERRORS;
 		functions_->glReadPixels(0, 0, p.effective_width(),
 								 p.effective_height(),
-								 GetPixelFormat(p.channel_count()),
-								 GetPixelType(p.format()), data);
+								 get_pixel_format(p.channel_count()),
+								 get_pixel_type(p.format()), data);
 	}
 
 	functions_->glPixelStorei(GL_PACK_ROW_LENGTH, 0);
 
-	DetachTextureAsDestination();
+	detach_texture_as_destination();
 
 	functions_->glBindTexture(GL_TEXTURE_2D, current_tex);
 }
 
-void OpenGLRenderer::Flush()
+void OpenGLRenderer::flush()
 {
-	GL_PREAMBLE;
+	OAK_GL_PREAMBLE;
 
-	if (!EnsureContextCurrent(__FUNCTION__)) {
+	if (!ensure_context_current(__FUNCTION__)) {
 		return;
 	}
 
 #if !defined(OAK_RENDER_BACKEND_PLUGIN)
-	if (OLIVE_CONFIG("UseGLFinish").toBool()) {
+	if (OAK_CONFIG("UseGLFinish").toBool()) {
 		functions_->glFinish();
 		return;
 	}
@@ -454,52 +454,52 @@ void OpenGLRenderer::Flush()
 
 // Adapts the generic Renderer output attachment hook to OpenGL's framebuffer
 // attachment path used by OFX OpenGL rendering.
-void OpenGLRenderer::AttachOutputTexture(olive::Texture *texture)
+void OpenGLRenderer::attach_output_texture(olive::Texture *texture)
 {
-	if (!EnsureContextCurrent(__FUNCTION__)) {
+	if (!ensure_context_current(__FUNCTION__)) {
 		return;
 	}
 
 	if (texture) {
-		AttachTextureAsDestination(texture->id());
+		attach_texture_as_destination(texture->id());
 	}
 }
 
 // Clears the framebuffer attachment installed by AttachOutputTexture().
-void OpenGLRenderer::DetachOutputTexture()
+void OpenGLRenderer::detach_output_texture()
 {
-	if (!EnsureContextCurrent(__FUNCTION__)) {
+	if (!ensure_context_current(__FUNCTION__)) {
 		return;
 	}
 
-	DetachTextureAsDestination();
+	detach_texture_as_destination();
 }
 
-Color OpenGLRenderer::GetPixelFromTexture(Texture *texture, const QPointF &pt)
+Color OpenGLRenderer::get_pixel_from_texture(Texture *texture, const QPointF &pt)
 {
-	if (!texture || !EnsureContextCurrent(__FUNCTION__)) {
+	if (!texture || !ensure_context_current(__FUNCTION__)) {
 		return Color();
 	}
 
-	AttachTextureAsDestination(texture->id());
+	attach_texture_as_destination(texture->id());
 
-	QByteArray data(VideoParams::GetBytesPerPixel(texture->format(),
+	QByteArray data(VideoParams::get_bytes_per_pixel(texture->format(),
 												  texture->channel_count()),
 					Qt::Uninitialized);
 
 	functions_->glReadPixels(pt.x(), pt.y(), 1, 1,
-							 GetPixelFormat(texture->channel_count()),
-							 GetPixelType(texture->format()), data.data());
+							 get_pixel_format(texture->channel_count()),
+							 get_pixel_type(texture->format()), data.data());
 
-	Color c = Color::fromData(data.data(), texture->format(),
+	Color c = Color::from_data(data.data(), texture->format(),
 							  texture->channel_count());
 
-	if (texture->channel_count() == VideoParams::kRGBChannelCount) {
+	if (texture->channel_count() == VideoParams::k_rgb_channel_count) {
 		// No alpha channel, set to 1.0
 		c.set_alpha(1.0);
 	}
 
-	DetachTextureAsDestination();
+	detach_texture_as_destination();
 
 	return c;
 }
@@ -509,12 +509,12 @@ struct TextureToBind {
 	Texture::Interpolation interpolation;
 };
 
-void OpenGLRenderer::Blit(QVariant s, AcceleratedJob &a_job,
+void OpenGLRenderer::blit(QVariant s, AcceleratedJob &a_job,
 						  Texture *destination, VideoParams destination_params,
 						  bool clear_destination)
 {
-	GL_PREAMBLE;
-	if (!EnsureContextCurrent(__FUNCTION__)) {
+	OAK_GL_PREAMBLE;
+	if (!ensure_context_current(__FUNCTION__)) {
 		return;
 	}
 	try {
@@ -534,8 +534,8 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob &a_job,
 
 		functions_->glUseProgram(shader);
 
-		for (auto it = job.GetValues().constBegin();
-			 it != job.GetValues().constEnd(); it++) {
+		for (auto it = job.get_values().constBegin();
+			 it != job.get_values().constEnd(); it++) {
 			// See if the shader has takes this parameter as an input
 			GLint variable_location = functions_->glGetUniformLocation(
 				shader, it.key().toUtf8().constData());
@@ -553,52 +553,52 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob &a_job,
 			}
 
 			switch (value.type()) {
-			case NodeValue::kInt:
+			case NodeValue::k_int:
 				// kInt technically specifies a LongLong, but OpenGL doesn't support those. This may lead to
 				// over/underflows if the number is large enough, but the likelihood of that is quite low.
-				functions_->glUniform1i(variable_location, value.toInt());
+				functions_->glUniform1i(variable_location, value.to_int());
 				break;
-			case NodeValue::kFloat:
+			case NodeValue::k_float:
 				// kFloat technically specifies a double but as above, OpenGL doesn't support those.
-				functions_->glUniform1f(variable_location, value.toDouble());
+				functions_->glUniform1f(variable_location, value.to_double());
 				break;
-			case NodeValue::kVec2: {
-				QVector2D v = value.toVec2();
+			case NodeValue::k_vec2: {
+				QVector2D v = value.to_vec2();
 				functions_->glUniform2fv(variable_location, 1,
 										 reinterpret_cast<const GLfloat *>(&v));
 				break;
 			}
-			case NodeValue::kVec3: {
-				QVector3D v = value.toVec3();
+			case NodeValue::k_vec3: {
+				QVector3D v = value.to_vec3();
 				functions_->glUniform3fv(variable_location, 1,
 										 reinterpret_cast<const GLfloat *>(&v));
 				break;
 			}
-			case NodeValue::kVec4: {
-				QVector4D v = value.toVec4();
+			case NodeValue::k_vec4: {
+				QVector4D v = value.to_vec4();
 				functions_->glUniform4fv(variable_location, 1,
 										 reinterpret_cast<const GLfloat *>(&v));
 				break;
 			}
-			case NodeValue::kMatrix:
+			case NodeValue::k_matrix:
 				functions_->glUniformMatrix4fv(variable_location, 1, false,
-											   value.toMatrix().constData());
+											   value.to_matrix().constData());
 				break;
-			case NodeValue::kCombo:
-				functions_->glUniform1i(variable_location, value.toInt());
+			case NodeValue::k_combo:
+				functions_->glUniform1i(variable_location, value.to_int());
 				break;
-			case NodeValue::kColor: {
-				Color color = value.toColor();
+			case NodeValue::k_color: {
+				Color color = value.to_color();
 				functions_->glUniform4f(variable_location, color.red(),
 										color.green(), color.blue(),
 										color.alpha());
 				break;
 			}
-			case NodeValue::kBoolean:
-				functions_->glUniform1i(variable_location, value.toBool());
+			case NodeValue::k_boolean:
+				functions_->glUniform1i(variable_location, value.to_bool());
 				break;
-			case NodeValue::kTexture: {
-				TexturePtr texture = value.toTexture();
+			case NodeValue::k_texture: {
+				TexturePtr texture = value.to_texture();
 
 				// Set value to bound texture
 				functions_->glUniform1i(variable_location,
@@ -607,7 +607,7 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob &a_job,
 				texture_index_map.insert(it.key(), textures_to_bind.size());
 
 				textures_to_bind.append(
-					{ texture, job.GetInterpolation(it.key()) });
+					{ texture, job.get_interpolation(it.key()) });
 
 				// Set enable flag if shader wants it
 				GLuint tex_id = texture ? texture->id().value<GLuint>() : 0;
@@ -621,18 +621,18 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob &a_job,
 				}
 				break;
 			}
-			case NodeValue::kSamples:
-			case NodeValue::kText:
-			case NodeValue::kRational:
-			case NodeValue::kFont:
-			case NodeValue::kFile:
-			case NodeValue::kVideoParams:
-			case NodeValue::kAudioParams:
-			case NodeValue::kSubtitleParams:
-			case NodeValue::kBezier:
-			case NodeValue::kBinary:
-			case NodeValue::kNone:
-			case NodeValue::kDataTypeCount:
+			case NodeValue::k_samples:
+			case NodeValue::k_text:
+			case NodeValue::k_rational:
+			case NodeValue::k_font:
+			case NodeValue::k_file:
+			case NodeValue::k_video_params:
+			case NodeValue::k_audio_params:
+			case NodeValue::k_subtitle_params:
+			case NodeValue::k_bezier:
+			case NodeValue::k_binary:
+			case NodeValue::k_none:
+			case NodeValue::k_data_type_count:
 				break;
 			}
 		}
@@ -652,7 +652,7 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob &a_job,
 			functions_->glBindTexture(target, tex_id);
 
 			if (tex_id) {
-				PrepareInputTexture(target, t.interpolation);
+				prepare_input_texture(target, t.interpolation);
 
 				if (texture->channel_count() == 1 &&
 					destination_params.channel_count() != 1) {
@@ -673,7 +673,7 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob &a_job,
 		if (mvpmat_location > -1) {
 			functions_->glUniformMatrix4fv(
 				mvpmat_location, 1, false,
-				job.Get(QStringLiteral("ove_mvpmat")).toMatrix().constData());
+				job.get(QStringLiteral("ove_mvpmat")).to_matrix().constData());
 		}
 
 		// Set the viewport to the "physical" resolution of the destination
@@ -681,51 +681,51 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob &a_job,
 							   destination_params.effective_height());
 
 		// Bind vertex array object
-		QOpenGLVertexArrayObject vao_;
-		vao_.create();
-		vao_.bind();
+		QOpenGLVertexArrayObject vao;
+		vao.create();
+		vao.bind();
 
 		// Set buffers
-		QOpenGLBuffer vert_vbo_;
-		vert_vbo_.create();
-		vert_vbo_.bind();
+		QOpenGLBuffer vert_vbo;
+		vert_vbo.create();
+		vert_vbo.bind();
 		// If the job has vertex coordinate overrides use them instead of the defaults.
-		if (!job.GetVertexCoordinates().isEmpty()) {
-			Q_ASSERT(job.GetVertexCoordinates().size() == 18);
-			vert_vbo_.allocate(job.GetVertexCoordinates().constData(),
-							   job.GetVertexCoordinates().size() *
+		if (!job.get_vertex_coordinates().isEmpty()) {
+			Q_ASSERT(job.get_vertex_coordinates().size() == 18);
+			vert_vbo.allocate(job.get_vertex_coordinates().constData(),
+							   job.get_vertex_coordinates().size() *
 								   sizeof(float));
 		} else {
-			vert_vbo_.allocate(blit_vertices.constData(),
+			vert_vbo.allocate(blit_vertices.constData(),
 							   blit_vertices.size() * sizeof(GLfloat));
 		}
-		vert_vbo_.release();
+		vert_vbo.release();
 
-		QOpenGLBuffer frag_vbo_;
-		frag_vbo_.create();
-		frag_vbo_.bind();
-		frag_vbo_.allocate(blit_texcoords.constData(),
+		QOpenGLBuffer frag_vbo;
+		frag_vbo.create();
+		frag_vbo.bind();
+		frag_vbo.allocate(blit_texcoords.constData(),
 						   blit_texcoords.size() * sizeof(GLfloat));
-		frag_vbo_.release();
+		frag_vbo.release();
 
 		GLint vertex_location =
 			functions_->glGetAttribLocation(shader, "a_position");
 		if (vertex_location != -1) {
-			vert_vbo_.bind();
+			vert_vbo.bind();
 			functions_->glEnableVertexAttribArray(vertex_location);
 			functions_->glVertexAttribPointer(vertex_location, 3, GL_FLOAT,
 											  GL_FALSE, 0, nullptr);
-			vert_vbo_.release();
+			vert_vbo.release();
 		}
 
 		GLint tex_location =
 			functions_->glGetAttribLocation(shader, "a_texcoord");
 		if (tex_location != -1) {
-			frag_vbo_.bind();
+			frag_vbo.bind();
 			functions_->glEnableVertexAttribArray(tex_location);
 			functions_->glVertexAttribPointer(tex_location, 2, GL_FLOAT,
 											  GL_FALSE, 0, nullptr);
-			frag_vbo_.release();
+			frag_vbo.release();
 		}
 
 		// Some shaders optimize through multiple iterations which requires ping-ponging textures
@@ -735,8 +735,8 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob &a_job,
 		//   textures. We can still use the destination as the last iteration, but we'll need textures
 		//   for the iterative process.
 		int real_iteration_count;
-		if (job.GetIterationCount() > 1 && !job.GetIterativeInput().isEmpty()) {
-			real_iteration_count = job.GetIterationCount();
+		if (job.get_iteration_count() > 1 && !job.get_iterative_input().isEmpty()) {
+			real_iteration_count = job.get_iteration_count();
 		} else {
 			real_iteration_count = 1;
 		}
@@ -744,11 +744,11 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob &a_job,
 		TexturePtr output_tex, input_tex;
 		if (real_iteration_count > 1) {
 			// Create one texture to bounce off
-			output_tex = CreateTexture(destination_params);
+			output_tex = create_texture(destination_params);
 
 			if (real_iteration_count > 2) {
 				// Create a second texture bounce off
-				input_tex = CreateTexture(destination_params);
+				input_tex = create_texture(destination_params);
 			}
 		}
 
@@ -765,33 +765,33 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob &a_job,
 				// This is the last iteration, draw to the destination
 				if (destination) {
 					// If we have a destination texture, draw to it
-					AttachTextureAsDestination(destination->id());
+					attach_texture_as_destination(destination->id());
 				} else if (iteration > 0) {
 					// Otherwise, if we were iterating before, detach texture now
-					DetachTextureAsDestination();
+					detach_texture_as_destination();
 				}
 
 				// Clear the destination if the caller requested it
 				if (clear_destination) {
-					ClearDestinationInternal();
+					clear_destination_internal();
 				}
 			} else {
 				// Always draw to output_tex, which gets swapped with input_tex every iteration
-				AttachTextureAsDestination(output_tex->id());
+				attach_texture_as_destination(output_tex->id());
 			}
 
 			if (iteration > 0) {
 				// If this is not the first iteration, replace the iterative texture with the one we
 				// last drew
-				const QString &iterative_input = job.GetIterativeInput();
+				const QString &iterative_input = job.get_iterative_input();
 				functions_->glActiveTexture(
 					GL_TEXTURE0 + texture_index_map.value(iterative_input));
 				functions_->glBindTexture(GL_TEXTURE_2D,
 										  input_tex->id().value<GLuint>());
 
 				// At this time, we only support iterating 2D textures
-				PrepareInputTexture(GL_TEXTURE_2D,
-									job.GetInterpolation(iterative_input));
+				prepare_input_texture(GL_TEXTURE_2D,
+									job.get_interpolation(iterative_input));
 			}
 
 			// Swap so that the next iteration, the texture we draw now will be the input texture next
@@ -799,7 +799,7 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob &a_job,
 
 			// Blit this texture through this shader
 			{
-				PRINT_GL_ERRORS;
+				OAK_PRINT_GL_ERRORS;
 				functions_->glDrawArrays(GL_TRIANGLES, 0,
 										 blit_vertices.size() / 3);
 			}
@@ -807,7 +807,7 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob &a_job,
 
 		if (destination) {
 			// Reset framebuffer to default if we were drawing to a texture
-			DetachTextureAsDestination();
+			detach_texture_as_destination();
 		}
 
 		// Release any textures we bound before
@@ -824,18 +824,18 @@ void OpenGLRenderer::Blit(QVariant s, AcceleratedJob &a_job,
 		functions_->glUseProgram(0);
 
 		// Release vertex array object
-		frag_vbo_.destroy();
-		vert_vbo_.destroy();
-		vao_.release();
-		vao_.destroy();
+		frag_vbo.destroy();
+		vert_vbo.destroy();
+		vao.release();
+		vao.destroy();
 	} catch (std::bad_cast e) {
 	}
 }
 
-GLint OpenGLRenderer::GetInternalFormat(PixelFormat format, int channel_layout)
+GLint OpenGLRenderer::get_internal_format(PixelFormat format, int channel_layout)
 {
 	switch (format) {
-	case PixelFormat::U8:
+	case PixelFormat::u8:
 		switch (channel_layout) {
 		case 1:
 			return GL_R8;
@@ -847,12 +847,12 @@ GLint OpenGLRenderer::GetInternalFormat(PixelFormat format, int channel_layout)
 			return GL_RGBA8;
 		}
 		break;
-	case PixelFormat::U10:
+	case PixelFormat::u10:
 		if (channel_layout == 4) {
 			return GL_RGB10_A2;
 		}
 		break;
-	case PixelFormat::U16:
+	case PixelFormat::u16:
 		switch (channel_layout) {
 		case 1:
 			return GL_R16;
@@ -864,7 +864,7 @@ GLint OpenGLRenderer::GetInternalFormat(PixelFormat format, int channel_layout)
 			return GL_RGBA16;
 		}
 		break;
-	case PixelFormat::F16:
+	case PixelFormat::f16:
 		switch (channel_layout) {
 		case 1:
 			return GL_R16F;
@@ -876,7 +876,7 @@ GLint OpenGLRenderer::GetInternalFormat(PixelFormat format, int channel_layout)
 			return GL_RGBA16F;
 		}
 		break;
-	case PixelFormat::F32:
+	case PixelFormat::f32:
 		switch (channel_layout) {
 		case 1:
 			return GL_R32F;
@@ -888,37 +888,37 @@ GLint OpenGLRenderer::GetInternalFormat(PixelFormat format, int channel_layout)
 			return GL_RGBA32F;
 		}
 		break;
-	case PixelFormat::INVALID:
-	case PixelFormat::COUNT:
+	case PixelFormat::invalid:
+	case PixelFormat::count:
 		break;
 	}
 
 	return GL_INVALID_VALUE;
 }
 
-GLenum OpenGLRenderer::GetPixelType(PixelFormat format)
+GLenum OpenGLRenderer::get_pixel_type(PixelFormat format)
 {
 	switch (format) {
-	case PixelFormat::U8:
+	case PixelFormat::u8:
 		return GL_UNSIGNED_BYTE;
-	case PixelFormat::U10:
+	case PixelFormat::u10:
 		return GL_UNSIGNED_INT_2_10_10_10_REV;
-	case PixelFormat::U16:
+	case PixelFormat::u16:
 		return GL_UNSIGNED_SHORT;
-	case PixelFormat::F16:
+	case PixelFormat::f16:
 		return GL_HALF_FLOAT;
-	case PixelFormat::F32:
+	case PixelFormat::f32:
 		return GL_FLOAT;
 
-	case PixelFormat::INVALID:
-	case PixelFormat::COUNT:
+	case PixelFormat::invalid:
+	case PixelFormat::count:
 		break;
 	}
 
 	return GL_INVALID_VALUE;
 }
 
-GLenum OpenGLRenderer::GetPixelFormat(int channel_count)
+GLenum OpenGLRenderer::get_pixel_format(int channel_count)
 {
 	switch (channel_count) {
 	case 1:
@@ -932,19 +932,19 @@ GLenum OpenGLRenderer::GetPixelFormat(int channel_count)
 	}
 }
 
-void OpenGLRenderer::PrepareInputTexture(GLenum target,
+void OpenGLRenderer::prepare_input_texture(GLenum target,
 										 Texture::Interpolation interp)
 {
 	switch (interp) {
-	case Texture::kNearest:
+	case Texture::k_nearest:
 		functions_->glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 		functions_->glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		break;
-	case Texture::kLinear:
+	case Texture::k_linear:
 		functions_->glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		functions_->glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		break;
-	case Texture::kMipmappedLinear:
+	case Texture::k_mipmapped_linear:
 		functions_->glGenerateMipmap(target);
 		functions_->glTexParameteri(target, GL_TEXTURE_MIN_FILTER,
 									GL_LINEAR_MIPMAP_LINEAR);
@@ -961,7 +961,7 @@ void OpenGLRenderer::PrepareInputTexture(GLenum target,
 	}
 }
 
-void OpenGLRenderer::ClearDestinationInternal(double r, double g, double b,
+void OpenGLRenderer::clear_destination_internal(double r, double g, double b,
 											  double a)
 {
 	if (!functions_) {
@@ -971,7 +971,7 @@ void OpenGLRenderer::ClearDestinationInternal(double r, double g, double b,
 	functions_->glClear(GL_COLOR_BUFFER_BIT);
 }
 
-GLuint OpenGLRenderer::CompileShader(GLenum type, const QString &code)
+GLuint OpenGLRenderer::compile_shader(GLenum type, const QString &code)
 {
 	const bool is_gles = context_ && context_->isOpenGLES();
 	const int major = context_ ? context_->format().majorVersion() : 0;
@@ -993,10 +993,10 @@ GLuint OpenGLRenderer::CompileShader(GLenum type, const QString &code)
 	if (base_code.isEmpty()) {
 		// Use default code
 		if (type == GL_FRAGMENT_SHADER) {
-			base_code = FileFunctions::ReadFileAsString(
+			base_code = FileFunctions::read_file_as_string(
 				QStringLiteral(":/shaders/default.frag"));
 		} else if (type == GL_VERTEX_SHADER) {
-			base_code = FileFunctions::ReadFileAsString(
+			base_code = FileFunctions::read_file_as_string(
 				QStringLiteral(":/shaders/default.vert"));
 		}
 	}
@@ -1064,7 +1064,7 @@ GLuint OpenGLRenderer::CompileShader(GLenum type, const QString &code)
 	return shader;
 }
 
-bool OpenGLRenderer::EnsureContextCurrent(const char *caller)
+bool OpenGLRenderer::ensure_context_current(const char *caller)
 {
 	if (!context_) {
 		qWarning() << caller << "called without an OpenGL context";

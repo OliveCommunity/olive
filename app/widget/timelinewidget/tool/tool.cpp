@@ -26,7 +26,7 @@
 namespace olive
 {
 
-const int TimelineTool::kDefaultDistanceFromOutput = -4;
+const int TimelineTool::k_default_distance_from_output = -4;
 
 TimelineTool::TimelineTool(TimelineWidget *parent)
 	: dragging_(false)
@@ -49,25 +49,25 @@ Sequence *TimelineTool::sequence()
 }
 
 Timeline::MovementMode
-TimelineTool::FlipTrimMode(const Timeline::MovementMode &trim_mode)
+TimelineTool::flip_trim_mode(const Timeline::MovementMode &trim_mode)
 {
-	if (trim_mode == Timeline::kTrimIn) {
-		return Timeline::kTrimOut;
+	if (trim_mode == Timeline::k_trim_in) {
+		return Timeline::k_trim_out;
 	}
 
-	if (trim_mode == Timeline::kTrimOut) {
-		return Timeline::kTrimIn;
+	if (trim_mode == Timeline::k_trim_out) {
+		return Timeline::k_trim_in;
 	}
 
 	return trim_mode;
 }
 
-rational TimelineTool::SnapMovementToTimebase(const rational &start,
-											  rational movement,
-											  const rational &timebase)
+Rational TimelineTool::snap_movement_to_timebase(const Rational &start,
+											  Rational movement,
+											  const Rational &timebase)
 {
-	rational proposed_position = start + movement;
-	rational snapped =
+	Rational proposed_position = start + movement;
+	Rational snapped =
 		Timecode::snap_time_to_timebase(proposed_position, timebase);
 
 	if (proposed_position != snapped) {
@@ -77,23 +77,23 @@ rational TimelineTool::SnapMovementToTimebase(const rational &start,
 	return movement;
 }
 
-rational TimelineTool::ValidateTimeMovement(rational movement)
+Rational TimelineTool::validate_time_movement(Rational movement)
 {
 	bool first_ghost = true;
 
-	foreach (TimelineViewGhostItem *ghost, parent()->GetGhostItems()) {
-		if (ghost->GetMode() != Timeline::kMove) {
+	foreach (TimelineViewGhostItem *ghost, parent()->get_ghost_items()) {
+		if (ghost->get_mode() != Timeline::k_move) {
 			continue;
 		}
 
 		// Prevents any ghosts from going below 0:00:00 time
-		if (ghost->GetIn() + movement < 0) {
-			movement = -ghost->GetIn();
+		if (ghost->get_in() + movement < 0) {
+			movement = -ghost->get_in();
 		} else if (first_ghost) {
 			// Ensure ghost is snapped to a grid
-			movement = SnapMovementToTimebase(
-				ghost->GetIn(), movement,
-				parent()->GetTimebaseForTrackType(ghost->GetTrack().type()));
+			movement = snap_movement_to_timebase(
+				ghost->get_in(), movement,
+				parent()->get_timebase_for_track_type(ghost->get_track().type()));
 
 			first_ghost = false;
 		}
@@ -102,35 +102,35 @@ rational TimelineTool::ValidateTimeMovement(rational movement)
 	return movement;
 }
 
-int TimelineTool::ValidateTrackMovement(
+int TimelineTool::validate_track_movement(
 	int movement, const QVector<TimelineViewGhostItem *> &ghosts)
 {
 	foreach (TimelineViewGhostItem *ghost, ghosts) {
-		if (ghost->GetMode() != Timeline::kMove) {
+		if (ghost->get_mode() != Timeline::k_move) {
 			continue;
 		}
 
-		if (!ghost->GetCanMoveTracks()) {
+		if (!ghost->get_can_move_tracks()) {
 			return 0;
 
-		} else if (ghost->GetTrack().index() + movement < 0) {
+		} else if (ghost->get_track().index() + movement < 0) {
 			// Prevents any ghosts from going to a non-existent negative track
-			movement = -ghost->GetTrack().index();
+			movement = -ghost->get_track().index();
 		}
 	}
 
 	return movement;
 }
 
-void TimelineTool::GetGhostData(rational *earliest_point,
-								rational *latest_point)
+void TimelineTool::get_ghost_data(Rational *earliest_point,
+								Rational *latest_point)
 {
-	rational ep = RATIONAL_MAX;
-	rational lp = RATIONAL_MIN;
+	Rational ep = RATIONAL_MAX;
+	Rational lp = RATIONAL_MIN;
 
-	foreach (TimelineViewGhostItem *ghost, parent()->GetGhostItems()) {
-		ep = qMin(ep, ghost->GetAdjustedIn());
-		lp = qMax(lp, ghost->GetAdjustedOut());
+	foreach (TimelineViewGhostItem *ghost, parent()->get_ghost_items()) {
+		ep = qMin(ep, ghost->get_adjusted_in());
+		lp = qMax(lp, ghost->get_adjusted_out());
 	}
 
 	if (earliest_point) {
@@ -142,13 +142,13 @@ void TimelineTool::GetGhostData(rational *earliest_point,
 	}
 }
 
-void TimelineTool::InsertGapsAtGhostDestination(olive::MultiUndoCommand *command)
+void TimelineTool::insert_gaps_at_ghost_destination(olive::MultiUndoCommand *command)
 {
-	rational earliest_point, latest_point;
+	Rational earliest_point, latest_point;
 
-	GetGhostData(&earliest_point, &latest_point);
+	get_ghost_data(&earliest_point, &latest_point);
 
-	parent()->InsertGapsAt(earliest_point, latest_point - earliest_point,
+	parent()->insert_gaps_at(earliest_point, latest_point - earliest_point,
 						   command);
 }
 

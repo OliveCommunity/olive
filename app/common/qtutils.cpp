@@ -26,7 +26,7 @@
 namespace olive
 {
 
-int QtUtils::QFontMetricsWidth(QFontMetrics fm, const QString &s)
+int QtUtils::q_font_metrics_width(QFontMetrics fm, const QString &s)
 {
 #if QT_VERSION < QT_VERSION_CHECK(5, 11, 0)
 	return fm.width(s);
@@ -35,7 +35,7 @@ int QtUtils::QFontMetricsWidth(QFontMetrics fm, const QString &s)
 #endif
 }
 
-QFrame *QtUtils::CreateHorizontalLine()
+QFrame *QtUtils::create_horizontal_line()
 {
 	QFrame *horizontal_line = new QFrame();
 	horizontal_line->setFrameShape(QFrame::HLine);
@@ -43,14 +43,14 @@ QFrame *QtUtils::CreateHorizontalLine()
 	return horizontal_line;
 }
 
-QFrame *QtUtils::CreateVerticalLine()
+QFrame *QtUtils::create_vertical_line()
 {
-	QFrame *l = CreateHorizontalLine();
+	QFrame *l = create_horizontal_line();
 	l->setFrameShape(QFrame::VLine);
 	return l;
 }
 
-int QtUtils::MsgBox(QWidget *parent, QMessageBox::Icon icon,
+int QtUtils::msg_box(QWidget *parent, QMessageBox::Icon icon,
 					const QString &title, const QString &message,
 					QMessageBox::StandardButtons buttons)
 {
@@ -72,7 +72,7 @@ int QtUtils::MsgBox(QWidget *parent, QMessageBox::Icon icon,
 	return b.exec();
 }
 
-QDateTime QtUtils::GetCreationDate(const QFileInfo &info)
+QDateTime QtUtils::get_creation_date(const QFileInfo &info)
 {
 #if QT_VERSION < QT_VERSION_CHECK(5, 10, 0)
 	return info.created();
@@ -85,12 +85,12 @@ QDateTime QtUtils::GetCreationDate(const QFileInfo &info)
 #endif
 }
 
-QString QtUtils::GetFormattedDateTime(const QDateTime &dt)
+QString QtUtils::get_formatted_date_time(const QDateTime &dt)
 {
 	return dt.toString(Qt::TextDate);
 }
 
-QStringList QtUtils::WordWrapString(const QString &s, const QFontMetrics &fm,
+QStringList QtUtils::word_wrap_string(const QString &s, const QFontMetrics &fm,
 									int bounding_width)
 {
 	QStringList list;
@@ -102,7 +102,7 @@ QStringList QtUtils::WordWrapString(const QString &s, const QFontMetrics &fm,
 		QString this_line = lines.at(i);
 
 		while (this_line.size() > 1 &&
-			   QFontMetricsWidth(fm, this_line) >= bounding_width) {
+			   q_font_metrics_width(fm, this_line) >= bounding_width) {
 			int old_size = this_line.size();
 			int hard_break = -1;
 
@@ -110,7 +110,7 @@ QStringList QtUtils::WordWrapString(const QString &s, const QFontMetrics &fm,
 				const QChar &char_test = this_line.at(j);
 
 				if (char_test.isSpace() || char_test == '-') {
-					if (QFontMetricsWidth(fm, this_line.left(j)) <
+					if (q_font_metrics_width(fm, this_line.left(j)) <
 						bounding_width) {
 						if (!char_test.isSpace()) {
 							j++;
@@ -128,7 +128,7 @@ QStringList QtUtils::WordWrapString(const QString &s, const QFontMetrics &fm,
 						break;
 					}
 				} else if (hard_break == -1 &&
-						   QFontMetricsWidth(fm, this_line.left(j)) <
+						   q_font_metrics_width(fm, this_line.left(j)) <
 							   bounding_width) {
 					// In case we can't find a better place to split, split at the earliest time the line
 					// goes under the width limit
@@ -157,7 +157,7 @@ QStringList QtUtils::WordWrapString(const QString &s, const QFontMetrics &fm,
 }
 
 Qt::KeyboardModifiers
-QtUtils::FlipControlAndShiftModifiers(Qt::KeyboardModifiers e)
+QtUtils::flip_control_and_shift_modifiers(Qt::KeyboardModifiers e)
 {
 	if (e & Qt::ControlModifier & Qt::ShiftModifier) {
 		return e;
@@ -174,7 +174,7 @@ QtUtils::FlipControlAndShiftModifiers(Qt::KeyboardModifiers e)
 	return e;
 }
 
-void QtUtils::SetComboBoxData(QComboBox *cb, int data)
+void QtUtils::set_combo_box_data(QComboBox *cb, int data)
 {
 	for (int i = 0; i < cb->count(); i++) {
 		if (cb->itemData(i).toInt() == data) {
@@ -184,7 +184,7 @@ void QtUtils::SetComboBoxData(QComboBox *cb, int data)
 	}
 }
 
-void QtUtils::SetComboBoxData(QComboBox *cb, const QString &data)
+void QtUtils::set_combo_box_data(QComboBox *cb, const QString &data)
 {
 	for (int i = 0; i < cb->count(); i++) {
 		if (cb->itemData(i).toString() == data) {
@@ -194,7 +194,7 @@ void QtUtils::SetComboBoxData(QComboBox *cb, const QString &data)
 	}
 }
 
-QColor QtUtils::toQColor(const core::Color &i)
+QColor QtUtils::to_q_color(const core::Color &i)
 {
 	QColor c;
 
@@ -210,9 +210,9 @@ QColor QtUtils::toQColor(const core::Color &i)
 namespace core
 {
 
-uint qHash(const core::rational &r, uint seed)
+uint qHash(const core::Rational &r, uint seed)
 {
-	return ::qHash(r.toDouble(), seed);
+	return ::qHash(r.to_double(), seed);
 }
 
 uint qHash(const core::TimeRange &r, uint seed)

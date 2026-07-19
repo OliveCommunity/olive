@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef LIBOLIVECORE_SAMPLEFORMAT_H
-#define LIBOLIVECORE_SAMPLEFORMAT_H
+#ifndef OAK_LIBOLIVECORE_SAMPLEFORMAT_H
+#define OAK_LIBOLIVECORE_SAMPLEFORMAT_H
 
 #include <stdexcept>
 #include <string>
@@ -31,31 +31,31 @@ namespace olive::core
 class SampleFormat {
 public:
 	enum Format {
-		INVALID = -1,
+		invalid = -1,
 
-		U8P,
-		S16P,
-		S32P,
-		S64P,
-		F32P,
-		F64P,
+		u8_p,
+		s16_p,
+		s32_p,
+		s64_p,
+		f32_p,
+		f64_p,
 
-		U8,
-		S16,
-		S32,
-		S64,
-		F32,
-		F64,
+		u8,
+		s16,
+		s32,
+		s64,
+		f32,
+		f64,
 
-		COUNT,
+		count,
 
-		PLANAR_START = U8P,
-		PACKED_START = U8,
-		PLANAR_END = PACKED_START,
-		PACKED_END = COUNT,
+		planar_start = u8_p,
+		packed_start = u8,
+		planar_end = packed_start,
+		packed_end = count,
 	};
 
-	SampleFormat(Format f = INVALID)
+	SampleFormat(Format f = invalid)
 	{
 		f_ = f;
 	}
@@ -68,24 +68,24 @@ public:
 	static int byte_count(Format f)
 	{
 		switch (f) {
-		case U8:
-		case U8P:
+		case u8:
+		case u8_p:
 			return 1;
-		case S16:
-		case S16P:
+		case s16:
+		case s16_p:
 			return 2;
-		case S32:
-		case F32:
-		case S32P:
-		case F32P:
+		case s32:
+		case f32:
+		case s32_p:
+		case f32_p:
 			return 4;
-		case S64:
-		case F64:
-		case S64P:
-		case F64P:
+		case s64:
+		case f64:
+		case s64_p:
+		case f64_p:
 			return 8;
-		case INVALID:
-		case COUNT:
+		case invalid:
+		case count:
 			break;
 		}
 
@@ -100,32 +100,32 @@ public:
 	static std::string to_string(Format f)
 	{
 		switch (f) {
-		case INVALID:
-		case COUNT:
+		case invalid:
+		case count:
 			break;
-		case U8:
+		case u8:
 			return "u8";
-		case S16:
+		case s16:
 			return "s16";
-		case S32:
+		case s32:
 			return "s32";
-		case S64:
+		case s64:
 			return "s64";
-		case F32:
+		case f32:
 			return "f32";
-		case F64:
+		case f64:
 			return "f64";
-		case U8P:
+		case u8_p:
 			return "u8p";
-		case S16P:
+		case s16_p:
 			return "s16p";
-		case S32P:
+		case s32_p:
 			return "s32p";
-		case S64P:
+		case s64_p:
 			return "s64p";
-		case F32P:
+		case f32_p:
 			return "f32p";
-		case F64P:
+		case f64_p:
 			return "f64p";
 		}
 
@@ -140,50 +140,50 @@ public:
 	static SampleFormat from_string(const std::string &s)
 	{
 		if (s.empty()) {
-			return INVALID;
+			return invalid;
 		} else if (s == "u8") {
-			return U8;
+			return u8;
 		} else if (s == "s16") {
-			return S16;
+			return s16;
 		} else if (s == "s32") {
-			return S32;
+			return s32;
 		} else if (s == "s64") {
-			return S64;
+			return s64;
 		} else if (s == "f32") {
-			return F32;
+			return f32;
 		} else if (s == "f64") {
-			return F64;
+			return f64;
 		} else if (s == "u8p") {
-			return U8P;
+			return u8_p;
 		} else if (s == "s16p") {
-			return S16P;
+			return s16_p;
 		} else if (s == "s32p") {
-			return S32P;
+			return s32_p;
 		} else if (s == "s64p") {
-			return S64P;
+			return s64_p;
 		} else if (s == "f32p") {
-			return F32P;
+			return f32_p;
 		} else if (s == "f64p") {
-			return F64P;
+			return f64_p;
 		} else {
 			// Deprecated: sample formats used to be serialized as an integer. Handle that here, but we'll
 			//             probably remove that eventually.
 			try {
 				int i = std::stoi(s);
-				if (i > INVALID && i < COUNT) {
+				if (i > invalid && i < count) {
 					return static_cast<Format>(i);
 				}
 			} catch (const std::invalid_argument &e) {
 			}
 
 			// Failed to deserialize from string
-			return INVALID;
+			return invalid;
 		}
 	}
 
 	static bool is_packed(Format f)
 	{
-		return f >= PACKED_START && f < PACKED_END;
+		return f >= packed_start && f < packed_end;
 	}
 
 	bool is_packed() const
@@ -193,7 +193,7 @@ public:
 
 	static bool is_planar(Format f)
 	{
-		return f >= PLANAR_START && f < PLANAR_END;
+		return f >= planar_start && f < planar_end;
 	}
 
 	bool is_planar() const
@@ -205,34 +205,34 @@ public:
 	{
 		switch (fmt) {
 		// For packed input, just return input
-		case U8:
-		case S16:
-		case S32:
-		case S64:
-		case F32:
-		case F64:
+		case u8:
+		case s16:
+		case s32:
+		case s64:
+		case f32:
+		case f64:
 			return fmt;
 
 		// Convert to packed
-		case U8P:
-			return U8;
-		case S16P:
-			return S16;
-		case S32P:
-			return S32;
-		case S64P:
-			return S64;
-		case F32P:
-			return F32;
-		case F64P:
-			return F64;
+		case u8_p:
+			return u8;
+		case s16_p:
+			return s16;
+		case s32_p:
+			return s32;
+		case s64_p:
+			return s64;
+		case f32_p:
+			return f32;
+		case f64_p:
+			return f64;
 
-		case INVALID:
-		case COUNT:
+		case invalid:
+		case count:
 			break;
 		}
 
-		return INVALID;
+		return invalid;
 	}
 
 	SampleFormat to_packed_equivalent() const
@@ -244,34 +244,34 @@ public:
 	{
 		switch (fmt) {
 		// Convert to planar
-		case U8:
-			return U8P;
-		case S16:
-			return S16P;
-		case S32:
-			return S32P;
-		case S64:
-			return S64P;
-		case F32:
-			return F32P;
-		case F64:
-			return F64P;
+		case u8:
+			return u8_p;
+		case s16:
+			return s16_p;
+		case s32:
+			return s32_p;
+		case s64:
+			return s64_p;
+		case f32:
+			return f32_p;
+		case f64:
+			return f64_p;
 
 		// For planar input, just return input
-		case U8P:
-		case S16P:
-		case S32P:
-		case S64P:
-		case F32P:
-		case F64P:
+		case u8_p:
+		case s16_p:
+		case s32_p:
+		case s64_p:
+		case f32_p:
+		case f64_p:
 			return fmt;
 
-		case INVALID:
-		case COUNT:
+		case invalid:
+		case count:
 			break;
 		}
 
-		return INVALID;
+		return invalid;
 	}
 
 	SampleFormat to_planar_equivalent() const
@@ -285,4 +285,4 @@ private:
 
 }
 
-#endif // LIBOLIVECORE_SAMPLEFORMAT_H
+#endif // OAK_LIBOLIVECORE_SAMPLEFORMAT_H

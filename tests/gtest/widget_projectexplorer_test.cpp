@@ -25,13 +25,13 @@ namespace
 {
 
 // Renames and moves go through the global undo stack hosted by Core
-void EnsureAppSingletons()
+void ensure_app_singletons()
 {
 	if (!olive::Core::instance()) {
 		new olive::Core(olive::Core::CoreParams()); // intentionally leaked
 	}
 	if (!olive::DiskManager::instance()) {
-		olive::DiskManager::CreateInstance();
+		olive::DiskManager::create_instance();
 	}
 }
 
@@ -41,16 +41,16 @@ class ProjectViewModelTest : public ::testing::Test {
 protected:
 	void SetUp() override
 	{
-		ColorManager::SetUpDefaultConfig();
-		EnsureAppSingletons();
+		ColorManager::set_up_default_config();
+		ensure_app_singletons();
 
 		project_ = std::make_unique<Project>();
-		project_->Initialize();
+		project_->initialize();
 
 		model_.set_project(project_.get());
 	}
 
-	template <typename T> T *AddItem(Folder *parent)
+	template <typename T> T *add_item(Folder *parent)
 	{
 		auto *node = new T();
 		node->setParent(project_.get());
@@ -72,13 +72,13 @@ TEST_F(ProjectViewModelTest, ModelWithoutProjectIsEmpty)
 
 TEST_F(ProjectViewModelTest, HierarchyIndexesAndParents)
 {
-	Folder *folder = AddItem<Folder>(project_->root());
-	Footage *footage = AddItem<Footage>(project_->root());
-	Sequence *sequence = AddItem<Sequence>(project_->root());
-	Footage *nested = AddItem<Footage>(folder);
+	Folder *folder = add_item<Folder>(project_->root());
+	Footage *footage = add_item<Footage>(project_->root());
+	Sequence *sequence = add_item<Sequence>(project_->root());
+	Footage *nested = add_item<Footage>(folder);
 
 	ASSERT_EQ(model_.rowCount(), 3);
-	EXPECT_EQ(model_.columnCount(), ProjectViewModel::kColumnCount);
+	EXPECT_EQ(model_.columnCount(), ProjectViewModel::k_column_count);
 
 	// Root children appear in insertion order
 	EXPECT_EQ(model_.index(0, 0).internalPointer(), folder);
@@ -95,8 +95,8 @@ TEST_F(ProjectViewModelTest, HierarchyIndexesAndParents)
 	EXPECT_EQ(model_.parent(nested_index), model_.index(0, 0));
 
 	// CreateIndexFromItem round-trips through the same object
-	EXPECT_EQ(model_.CreateIndexFromItem(footage), model_.index(1, 0));
-	EXPECT_EQ(model_.CreateIndexFromItem(nested).internalPointer(), nested);
+	EXPECT_EQ(model_.create_index_from_item(footage), model_.index(1, 0));
+	EXPECT_EQ(model_.create_index_from_item(nested).internalPointer(), nested);
 
 	// Only folders report children, even when empty
 	EXPECT_TRUE(model_.hasChildren(model_.index(0, 0)));
@@ -110,7 +110,7 @@ TEST_F(ProjectViewModelTest, ItemInsertAndRemoveEmitModelSignals)
 	QSignalSpy about_to_remove(&model_, &QAbstractItemModel::rowsAboutToBeRemoved);
 	QSignalSpy removed(&model_, &QAbstractItemModel::rowsRemoved);
 
-	Footage *footage = AddItem<Footage>(project_->root());
+	Footage *footage = add_item<Footage>(project_->root());
 	EXPECT_EQ(about_to_insert.count(), 1);
 	EXPECT_EQ(inserted.count(), 1);
 	EXPECT_EQ(model_.rowCount(), 1);
@@ -124,56 +124,56 @@ TEST_F(ProjectViewModelTest, ItemInsertAndRemoveEmitModelSignals)
 
 TEST_F(ProjectViewModelTest, DataColumnsAndHeader)
 {
-	Folder *folder = AddItem<Folder>(project_->root());
-	folder->SetLabel(QStringLiteral("Media"));
+	Folder *folder = add_item<Folder>(project_->root());
+	folder->set_label(QStringLiteral("Media"));
 
-	QModelIndex name_index = model_.CreateIndexFromItem(folder, ProjectViewModel::kName);
+	QModelIndex name_index = model_.create_index_from_item(folder, ProjectViewModel::k_name);
 	EXPECT_EQ(model_.data(name_index, Qt::DisplayRole).toString(),
 			  QStringLiteral("Media"));
 	EXPECT_EQ(model_.data(name_index, Qt::EditRole).toString(),
 			  QStringLiteral("Media"));
-	EXPECT_EQ(model_.data(name_index, ProjectViewModel::kInnerTextRole).toString(),
+	EXPECT_EQ(model_.data(name_index, ProjectViewModel::k_inner_text_role).toString(),
 			  QStringLiteral("Media"));
 
 	// A folder carries no duration/rate/timestamps
-	EXPECT_FALSE(model_.data(model_.CreateIndexFromItem(folder, ProjectViewModel::kDuration),
+	EXPECT_FALSE(model_.data(model_.create_index_from_item(folder, ProjectViewModel::k_duration),
 							 Qt::DisplayRole)
 					 .isValid());
-	EXPECT_FALSE(model_.data(model_.CreateIndexFromItem(folder, ProjectViewModel::kRate),
+	EXPECT_FALSE(model_.data(model_.create_index_from_item(folder, ProjectViewModel::k_rate),
 							 Qt::DisplayRole)
 					 .isValid());
 
 	// EditRole is only served for the name column
-	EXPECT_FALSE(model_.data(model_.CreateIndexFromItem(folder, ProjectViewModel::kDuration),
+	EXPECT_FALSE(model_.data(model_.create_index_from_item(folder, ProjectViewModel::k_duration),
 							 Qt::EditRole)
 					 .isValid());
 
-	EXPECT_EQ(model_.headerData(ProjectViewModel::kName, Qt::Horizontal).toString(),
+	EXPECT_EQ(model_.headerData(ProjectViewModel::k_name, Qt::Horizontal).toString(),
 			  QStringLiteral("Name"));
-	EXPECT_EQ(model_.headerData(ProjectViewModel::kDuration, Qt::Horizontal).toString(),
+	EXPECT_EQ(model_.headerData(ProjectViewModel::k_duration, Qt::Horizontal).toString(),
 			  QStringLiteral("Duration"));
-	EXPECT_EQ(model_.headerData(ProjectViewModel::kRate, Qt::Horizontal).toString(),
+	EXPECT_EQ(model_.headerData(ProjectViewModel::k_rate, Qt::Horizontal).toString(),
 			  QStringLiteral("Rate"));
-	EXPECT_EQ(model_.headerData(ProjectViewModel::kLastModified, Qt::Horizontal).toString(),
+	EXPECT_EQ(model_.headerData(ProjectViewModel::k_last_modified, Qt::Horizontal).toString(),
 			  QStringLiteral("Modified"));
-	EXPECT_EQ(model_.headerData(ProjectViewModel::kCreatedTime, Qt::Horizontal).toString(),
+	EXPECT_EQ(model_.headerData(ProjectViewModel::k_created_time, Qt::Horizontal).toString(),
 			  QStringLiteral("Created"));
 }
 
 TEST_F(ProjectViewModelTest, FlagsMarkNameEditableAndFoldersDroppable)
 {
-	Folder *folder = AddItem<Folder>(project_->root());
-	Footage *footage = AddItem<Footage>(project_->root());
+	Folder *folder = add_item<Folder>(project_->root());
+	Footage *footage = add_item<Footage>(project_->root());
 
 	const Qt::ItemFlags folder_name_flags =
-		model_.flags(model_.CreateIndexFromItem(folder, ProjectViewModel::kName));
+		model_.flags(model_.create_index_from_item(folder, ProjectViewModel::k_name));
 	EXPECT_TRUE(folder_name_flags & Qt::ItemIsEditable);
 	EXPECT_TRUE(folder_name_flags & Qt::ItemIsDragEnabled);
 	EXPECT_TRUE(folder_name_flags & Qt::ItemIsDropEnabled);
 
 	// Non-name columns are not editable, non-folders do not accept drops
 	const Qt::ItemFlags footage_duration_flags =
-		model_.flags(model_.CreateIndexFromItem(footage, ProjectViewModel::kDuration));
+		model_.flags(model_.create_index_from_item(footage, ProjectViewModel::k_duration));
 	EXPECT_FALSE(footage_duration_flags & Qt::ItemIsEditable);
 	EXPECT_FALSE(footage_duration_flags & Qt::ItemIsDropEnabled);
 
@@ -183,45 +183,45 @@ TEST_F(ProjectViewModelTest, FlagsMarkNameEditableAndFoldersDroppable)
 
 TEST_F(ProjectViewModelTest, SetDataRenamesItemThroughUndoStack)
 {
-	Folder *folder = AddItem<Folder>(project_->root());
-	folder->SetLabel(QStringLiteral("Before"));
+	Folder *folder = add_item<Folder>(project_->root());
+	folder->set_label(QStringLiteral("Before"));
 
 	QSignalSpy data_changed(&model_, &QAbstractItemModel::dataChanged);
 
-	QModelIndex name_index = model_.CreateIndexFromItem(folder, ProjectViewModel::kName);
+	QModelIndex name_index = model_.create_index_from_item(folder, ProjectViewModel::k_name);
 	EXPECT_TRUE(model_.setData(name_index, QStringLiteral("After"), Qt::EditRole));
-	EXPECT_EQ(folder->GetLabel(), QStringLiteral("After"));
+	EXPECT_EQ(folder->get_label(), QStringLiteral("After"));
 	EXPECT_GE(data_changed.count(), 1);
 
 	// The rename is a regular undo command
 	Core::instance()->undo_stack()->undo();
-	EXPECT_EQ(folder->GetLabel(), QStringLiteral("Before"));
+	EXPECT_EQ(folder->get_label(), QStringLiteral("Before"));
 	Core::instance()->undo_stack()->clear();
 
 	// Empty names and other columns are rejected
 	EXPECT_FALSE(model_.setData(name_index, QString(), Qt::EditRole));
-	EXPECT_FALSE(model_.setData(model_.CreateIndexFromItem(folder, ProjectViewModel::kRate),
+	EXPECT_FALSE(model_.setData(model_.create_index_from_item(folder, ProjectViewModel::k_rate),
 								QStringLiteral("After"), Qt::EditRole));
-	EXPECT_EQ(folder->GetLabel(), QStringLiteral("Before"));
+	EXPECT_EQ(folder->get_label(), QStringLiteral("Before"));
 }
 
 TEST_F(ProjectViewModelTest, MimeDataEncodesEachRowOnce)
 {
 	EXPECT_EQ(model_.mimeTypes(),
-			  (QStringList{ Project::kItemMimeType, QStringLiteral("text/uri-list") }));
+			  (QStringList{ Project::k_item_mime_type, QStringLiteral("text/uri-list") }));
 
-	Footage *footage = AddItem<Footage>(project_->root());
-	Folder *folder = AddItem<Folder>(project_->root());
+	Footage *footage = add_item<Footage>(project_->root());
+	Folder *folder = add_item<Folder>(project_->root());
 
 	// Passing every column of two rows must still encode only two items
-	QModelIndexList indexes{ model_.CreateIndexFromItem(footage, ProjectViewModel::kName),
-							 model_.CreateIndexFromItem(footage, ProjectViewModel::kDuration),
-							 model_.CreateIndexFromItem(folder, ProjectViewModel::kName) };
+	QModelIndexList indexes{ model_.create_index_from_item(footage, ProjectViewModel::k_name),
+							 model_.create_index_from_item(footage, ProjectViewModel::k_duration),
+							 model_.create_index_from_item(folder, ProjectViewModel::k_name) };
 	std::unique_ptr<QMimeData> mime(model_.mimeData(indexes));
 	ASSERT_NE(mime, nullptr);
-	ASSERT_TRUE(mime->hasFormat(Project::kItemMimeType));
+	ASSERT_TRUE(mime->hasFormat(Project::k_item_mime_type));
 
-	QByteArray encoded = mime->data(Project::kItemMimeType);
+	QByteArray encoded = mime->data(Project::k_item_mime_type);
 	QDataStream stream(&encoded, QIODevice::ReadOnly);
 	QVector<Track::Reference> streams;
 	quintptr ptr = 0;
@@ -240,19 +240,19 @@ TEST_F(ProjectViewModelTest, MimeDataEncodesEachRowOnce)
 
 TEST_F(ProjectViewModelTest, DropMimeDataMovesItemIntoFolder)
 {
-	Folder *folder = AddItem<Folder>(project_->root());
-	Footage *footage = AddItem<Footage>(project_->root());
+	Folder *folder = add_item<Folder>(project_->root());
+	Footage *footage = add_item<Footage>(project_->root());
 	ASSERT_EQ(model_.rowCount(), 2);
 
 	std::unique_ptr<QMimeData> mime(
-		model_.mimeData({ model_.CreateIndexFromItem(footage) }));
+		model_.mimeData({ model_.create_index_from_item(footage) }));
 	ASSERT_NE(mime, nullptr);
 
 	EXPECT_TRUE(model_.dropMimeData(mime.get(), Qt::CopyAction, -1, -1,
-									model_.CreateIndexFromItem(folder)));
+									model_.create_index_from_item(folder)));
 	EXPECT_EQ(footage->folder(), folder);
 	EXPECT_EQ(model_.rowCount(), 1);
-	EXPECT_EQ(model_.rowCount(model_.CreateIndexFromItem(folder)), 1);
+	EXPECT_EQ(model_.rowCount(model_.create_index_from_item(folder)), 1);
 
 	// The move is undoable
 	Core::instance()->undo_stack()->undo();
@@ -263,27 +263,27 @@ TEST_F(ProjectViewModelTest, DropMimeDataMovesItemIntoFolder)
 
 TEST_F(ProjectViewModelTest, DropRejectsNonFolderAndSelfNesting)
 {
-	Folder *folder = AddItem<Folder>(project_->root());
-	Folder *subfolder = AddItem<Folder>(folder);
-	Footage *footage = AddItem<Footage>(project_->root());
+	Folder *folder = add_item<Folder>(project_->root());
+	Folder *subfolder = add_item<Folder>(folder);
+	Footage *footage = add_item<Footage>(project_->root());
 
 	// Cannot drop onto a non-folder item
 	std::unique_ptr<QMimeData> footage_mime(
-		model_.mimeData({ model_.CreateIndexFromItem(footage) }));
+		model_.mimeData({ model_.create_index_from_item(footage) }));
 	EXPECT_FALSE(model_.dropMimeData(footage_mime.get(), Qt::CopyAction, -1, -1,
-									 model_.CreateIndexFromItem(footage)));
+									 model_.create_index_from_item(footage)));
 	EXPECT_EQ(footage->folder(), project_->root());
 
 	// Dropping a folder into its own descendant is skipped as a no-op
 	std::unique_ptr<QMimeData> folder_mime(
-		model_.mimeData({ model_.CreateIndexFromItem(folder) }));
+		model_.mimeData({ model_.create_index_from_item(folder) }));
 	EXPECT_TRUE(model_.dropMimeData(folder_mime.get(), Qt::CopyAction, -1, -1,
-									model_.CreateIndexFromItem(subfolder)));
+									model_.create_index_from_item(subfolder)));
 	EXPECT_EQ(folder->folder(), project_->root());
 
 	// Dropping onto the background moves items to the root
 	std::unique_ptr<QMimeData> sub_mime(
-		model_.mimeData({ model_.CreateIndexFromItem(subfolder) }));
+		model_.mimeData({ model_.create_index_from_item(subfolder) }));
 	EXPECT_TRUE(model_.dropMimeData(sub_mime.get(), Qt::CopyAction, -1, -1,
 									QModelIndex()));
 	EXPECT_EQ(subfolder->folder(), project_->root());
@@ -294,14 +294,14 @@ class ProjectExplorerTest : public ::testing::Test {
 protected:
 	void SetUp() override
 	{
-		ColorManager::SetUpDefaultConfig();
-		EnsureAppSingletons();
+		ColorManager::set_up_default_config();
+		ensure_app_singletons();
 
 		project_ = std::make_unique<Project>();
-		project_->Initialize();
+		project_->initialize();
 	}
 
-	template <typename T> T *AddItem(Folder *parent)
+	template <typename T> T *add_item(Folder *parent)
 	{
 		auto *node = new T();
 		node->setParent(project_.get());
@@ -321,50 +321,50 @@ TEST_F(ProjectExplorerTest, SetProjectAndSwitchViewType)
 	EXPECT_EQ(explorer.project(), project_.get());
 
 	// Tree view is the default
-	EXPECT_EQ(explorer.view_type(), ProjectToolbar::TreeView);
+	EXPECT_EQ(explorer.view_type(), ProjectToolbar::tree_view);
 
-	explorer.set_view_type(ProjectToolbar::ListView);
-	EXPECT_EQ(explorer.view_type(), ProjectToolbar::ListView);
+	explorer.set_view_type(ProjectToolbar::list_view);
+	EXPECT_EQ(explorer.view_type(), ProjectToolbar::list_view);
 
-	explorer.set_view_type(ProjectToolbar::IconView);
-	EXPECT_EQ(explorer.view_type(), ProjectToolbar::IconView);
+	explorer.set_view_type(ProjectToolbar::icon_view);
+	EXPECT_EQ(explorer.view_type(), ProjectToolbar::icon_view);
 }
 
 TEST_F(ProjectExplorerTest, GetSelectedFolderFallsBackToRoot)
 {
-	Folder *folder = AddItem<Folder>(project_->root());
-	Footage *footage = AddItem<Footage>(project_->root());
+	Folder *folder = add_item<Folder>(project_->root());
+	Footage *footage = add_item<Footage>(project_->root());
 
 	ProjectExplorer explorer(nullptr);
 	explorer.set_project(project_.get());
 
 	// No selection: heuristic returns the project root
-	EXPECT_EQ(explorer.GetSelectedFolder(), project_->root());
+	EXPECT_EQ(explorer.get_selected_folder(), project_->root());
 
 	// A selected folder is returned directly
-	EXPECT_TRUE(explorer.SelectItem(folder));
-	EXPECT_EQ(explorer.GetSelectedFolder(), folder);
+	EXPECT_TRUE(explorer.select_item(folder));
+	EXPECT_EQ(explorer.get_selected_folder(), folder);
 
 	// A selected non-folder resolves to its parent folder
-	EXPECT_TRUE(explorer.SelectItem(footage));
-	EXPECT_EQ(explorer.GetSelectedFolder(), project_->root());
+	EXPECT_TRUE(explorer.select_item(footage));
+	EXPECT_EQ(explorer.get_selected_folder(), project_->root());
 }
 
 TEST_F(ProjectExplorerTest, SelectItemUpdatesSelectedItems)
 {
-	Footage *footage = AddItem<Footage>(project_->root());
+	Footage *footage = add_item<Footage>(project_->root());
 
 	ProjectExplorer explorer(nullptr);
 	explorer.set_project(project_.get());
 
-	EXPECT_TRUE(explorer.SelectedItems().isEmpty());
+	EXPECT_TRUE(explorer.selected_items().isEmpty());
 
-	EXPECT_TRUE(explorer.SelectItem(footage));
-	EXPECT_EQ(explorer.SelectedItems().size(), 1);
-	EXPECT_EQ(explorer.SelectedItems().first(), footage);
+	EXPECT_TRUE(explorer.select_item(footage));
+	EXPECT_EQ(explorer.selected_items().size(), 1);
+	EXPECT_EQ(explorer.selected_items().first(), footage);
 
-	explorer.DeselectAll();
-	EXPECT_TRUE(explorer.SelectedItems().isEmpty());
+	explorer.deselect_all();
+	EXPECT_TRUE(explorer.selected_items().isEmpty());
 }
 
 class ProjectToolbarTest : public ::testing::Test {
@@ -378,9 +378,9 @@ TEST_F(ProjectToolbarTest, ActionButtonsEmitSignals)
 	const QList<QPushButton *> buttons = toolbar.findChildren<QPushButton *>();
 	ASSERT_EQ(buttons.size(), 6);
 
-	QSignalSpy new_spy(&toolbar, &ProjectToolbar::NewClicked);
-	QSignalSpy open_spy(&toolbar, &ProjectToolbar::OpenClicked);
-	QSignalSpy save_spy(&toolbar, &ProjectToolbar::SaveClicked);
+	QSignalSpy new_spy(&toolbar, &ProjectToolbar::new_clicked);
+	QSignalSpy open_spy(&toolbar, &ProjectToolbar::open_clicked);
+	QSignalSpy save_spy(&toolbar, &ProjectToolbar::save_clicked);
 
 	buttons.at(0)->click();
 	EXPECT_EQ(new_spy.count(), 1);
@@ -399,7 +399,7 @@ TEST_F(ProjectToolbarTest, SearchFieldForwardsTextChanges)
 	auto *search = toolbar.findChild<QLineEdit *>();
 	ASSERT_NE(search, nullptr);
 
-	QSignalSpy search_spy(&toolbar, &ProjectToolbar::SearchChanged);
+	QSignalSpy search_spy(&toolbar, &ProjectToolbar::search_changed);
 
 	search->setText(QStringLiteral("media"));
 	ASSERT_EQ(search_spy.count(), 1);
@@ -416,9 +416,9 @@ TEST_F(ProjectToolbarTest, ViewButtonsAreExclusiveAndEmitViewChanged)
 	QPushButton *list_button = buttons.at(4);
 	QPushButton *icon_button = buttons.at(5);
 
-	ProjectToolbar::ViewType received = ProjectToolbar::TreeView;
+	ProjectToolbar::ViewType received = ProjectToolbar::tree_view;
 	int emissions = 0;
-	QObject::connect(&toolbar, &ProjectToolbar::ViewChanged,
+	QObject::connect(&toolbar, &ProjectToolbar::view_changed,
 					 [&received, &emissions](ProjectToolbar::ViewType type) {
 						 received = type;
 						 ++emissions;
@@ -426,19 +426,19 @@ TEST_F(ProjectToolbarTest, ViewButtonsAreExclusiveAndEmitViewChanged)
 
 	list_button->click();
 	EXPECT_EQ(emissions, 1);
-	EXPECT_EQ(received, ProjectToolbar::ListView);
+	EXPECT_EQ(received, ProjectToolbar::list_view);
 	EXPECT_TRUE(list_button->isChecked());
 	EXPECT_FALSE(tree_button->isChecked());
 	EXPECT_FALSE(icon_button->isChecked());
 
 	icon_button->click();
 	EXPECT_EQ(emissions, 2);
-	EXPECT_EQ(received, ProjectToolbar::IconView);
+	EXPECT_EQ(received, ProjectToolbar::icon_view);
 	EXPECT_TRUE(icon_button->isChecked());
 	EXPECT_FALSE(list_button->isChecked());
 
 	// SetView only checks the button; it does not re-emit ViewChanged
-	toolbar.SetView(ProjectToolbar::TreeView);
+	toolbar.set_view(ProjectToolbar::tree_view);
 	EXPECT_EQ(emissions, 2);
 	EXPECT_TRUE(tree_button->isChecked());
 	EXPECT_FALSE(icon_button->isChecked());

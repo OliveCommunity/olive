@@ -19,13 +19,13 @@
 
 #include "paraminstance.h"
 
-#include "OlivePluginInstance.h"
+#include "oliveplugininstance.h"
 
 namespace olive
 {
 namespace plugin
 {
-void SubmitUndoCommand(const std::shared_ptr<PluginNode> &node,
+void submit_undo_command(const std::shared_ptr<PluginNode> &node,
 					   UndoCommand *command, const QString &label)
 {
 	if (!command) {
@@ -36,12 +36,12 @@ void SubmitUndoCommand(const std::shared_ptr<PluginNode> &node,
 		auto *instance = node->getPluginInstance();
 		auto *olive_instance = dynamic_cast<OlivePluginInstance *>(instance);
 		if (olive_instance) {
-			olive_instance->SubmitUndoCommand(command, label);
+			olive_instance->submit_undo_command(command, label);
 			return;
 		}
 	}
 
-	if (!IsGuiThread()) {
+	if (!is_gui_thread()) {
 		command->redo_now();
 		delete command;
 		return;

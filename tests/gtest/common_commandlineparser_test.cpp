@@ -10,7 +10,7 @@ namespace
 // Collects qDebug/qWarning/qCritical output for inspection
 QStringList g_captured_messages;
 
-void CaptureMessageHandler(QtMsgType, const QMessageLogContext &,
+void capture_message_handler(QtMsgType, const QMessageLogContext &,
 						   const QString &msg)
 {
 	g_captured_messages.append(msg);
@@ -22,60 +22,60 @@ TEST(CommonCommandLineParser, OptionWithoutArgument)
 {
 	CommandLineParser parser;
 	const CommandLineParser::Option *opt =
-		parser.AddOption({ QStringLiteral("help"), QStringLiteral("h") },
+		parser.add_option({ QStringLiteral("help"), QStringLiteral("h") },
 						 QStringLiteral("Show help"), false);
 
-	parser.Process({ QStringLiteral("app"), QStringLiteral("-help") });
+	parser.process({ QStringLiteral("app"), QStringLiteral("-help") });
 
-	EXPECT_TRUE(opt->IsSet());
+	EXPECT_TRUE(opt->is_set());
 }
 
 TEST(CommonCommandLineParser, ShortOption)
 {
 	CommandLineParser parser;
 	const CommandLineParser::Option *opt =
-		parser.AddOption({ QStringLiteral("help"), QStringLiteral("h") },
+		parser.add_option({ QStringLiteral("help"), QStringLiteral("h") },
 						 QStringLiteral("Show help"), false);
 
-	parser.Process({ QStringLiteral("app"), QStringLiteral("-h") });
+	parser.process({ QStringLiteral("app"), QStringLiteral("-h") });
 
-	EXPECT_TRUE(opt->IsSet());
+	EXPECT_TRUE(opt->is_set());
 }
 
 TEST(CommonCommandLineParser, OptionWithArgument)
 {
 	CommandLineParser parser;
-	const CommandLineParser::Option *opt = parser.AddOption(
+	const CommandLineParser::Option *opt = parser.add_option(
 		{ QStringLiteral("project") }, QStringLiteral("Project file"), true,
 		QStringLiteral("file"));
 
-	parser.Process({ QStringLiteral("app"), QStringLiteral("-project"),
+	parser.process({ QStringLiteral("app"), QStringLiteral("-project"),
 					 QStringLiteral("test.ove") });
 
-	EXPECT_TRUE(opt->IsSet());
-	EXPECT_EQ(opt->GetSetting(), QStringLiteral("test.ove"));
+	EXPECT_TRUE(opt->is_set());
+	EXPECT_EQ(opt->get_setting(), QStringLiteral("test.ove"));
 }
 
 TEST(CommonCommandLineParser, PositionalArgument)
 {
 	CommandLineParser parser;
 	const CommandLineParser::PositionalArgument *arg =
-		parser.AddPositionalArgument(QStringLiteral("filename"),
+		parser.add_positional_argument(QStringLiteral("filename"),
 									 QStringLiteral("Project file"), true);
 
-	parser.Process({ QStringLiteral("app"), QStringLiteral("test.ove") });
+	parser.process({ QStringLiteral("app"), QStringLiteral("test.ove") });
 
-	EXPECT_EQ(arg->GetSetting(), QStringLiteral("test.ove"));
+	EXPECT_EQ(arg->get_setting(), QStringLiteral("test.ove"));
 }
 
 TEST(CommonCommandLineParser, UnknownOptionWarning)
 {
 	CommandLineParser parser;
-	parser.AddOption({ QStringLiteral("known") }, QStringLiteral("Known"));
+	parser.add_option({ QStringLiteral("known") }, QStringLiteral("Known"));
 
 	g_captured_messages.clear();
-	QtMessageHandler old = qInstallMessageHandler(CaptureMessageHandler);
-	parser.Process({ QStringLiteral("app"), QStringLiteral("-unknown") });
+	QtMessageHandler old = qInstallMessageHandler(capture_message_handler);
+	parser.process({ QStringLiteral("app"), QStringLiteral("-unknown") });
 	qInstallMessageHandler(old);
 
 	// The warning must name the offending option
@@ -91,8 +91,8 @@ TEST(CommonCommandLineParser, UnknownPositionalWarning)
 	CommandLineParser parser;
 
 	g_captured_messages.clear();
-	QtMessageHandler old = qInstallMessageHandler(CaptureMessageHandler);
-	parser.Process({ QStringLiteral("app"), QStringLiteral("extra") });
+	QtMessageHandler old = qInstallMessageHandler(capture_message_handler);
+	parser.process({ QStringLiteral("app"), QStringLiteral("extra") });
 	qInstallMessageHandler(old);
 
 	// The warning must name the offending positional argument
@@ -106,15 +106,15 @@ TEST(CommonCommandLineParser, UnknownPositionalWarning)
 TEST(CommonCommandLineParser, HiddenOptionExcludedFromHelp)
 {
 	CommandLineParser parser;
-	parser.AddOption({ QStringLiteral("visible") }, QStringLiteral("Visible"));
-	parser.AddOption({ QStringLiteral("hidden") }, QStringLiteral("Hidden"),
+	parser.add_option({ QStringLiteral("visible") }, QStringLiteral("Visible"));
+	parser.add_option({ QStringLiteral("hidden") }, QStringLiteral("Hidden"),
 					 false, QString(), true);
-	parser.AddPositionalArgument(QStringLiteral("file"),
+	parser.add_positional_argument(QStringLiteral("file"),
 								 QStringLiteral("Input file"));
 
 	// PrintHelp writes to stdout via printf
 	testing::internal::CaptureStdout();
-	parser.PrintHelp("/usr/bin/app");
+	parser.print_help("/usr/bin/app");
 	std::string help = testing::internal::GetCapturedStdout();
 
 	// Visible option and positional argument must be listed

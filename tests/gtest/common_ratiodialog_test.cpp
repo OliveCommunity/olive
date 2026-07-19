@@ -22,12 +22,12 @@ public:
 	explicit DialogDriver(const QStringList &responses)
 		: responses_(responses)
 	{
-		connect(&timer_, &QTimer::timeout, this, &DialogDriver::Step);
+		connect(&timer_, &QTimer::timeout, this, &DialogDriver::step);
 		timer_.start(10);
 	}
 
 private:
-	void Step()
+	void step()
 	{
 		QWidget *modal = QApplication::activeModalWidget();
 		if (!modal) {
@@ -67,7 +67,7 @@ TEST(CommonRatioDialog, AcceptsPlainDecimal)
 	DialogDriver driver({ QStringLiteral("1.5") });
 
 	bool ok = false;
-	const double ratio = GetFloatRatioFromUser(nullptr, QStringLiteral("Test"), &ok);
+	const double ratio = get_float_ratio_from_user(nullptr, QStringLiteral("Test"), &ok);
 
 	EXPECT_TRUE(ok);
 	EXPECT_DOUBLE_EQ(ratio, 1.5);
@@ -78,7 +78,7 @@ TEST(CommonRatioDialog, AcceptsColonSeparatedRatio)
 	DialogDriver driver({ QStringLiteral("16:9") });
 
 	bool ok = false;
-	const double ratio = GetFloatRatioFromUser(nullptr, QStringLiteral("Test"), &ok);
+	const double ratio = get_float_ratio_from_user(nullptr, QStringLiteral("Test"), &ok);
 
 	EXPECT_TRUE(ok);
 	EXPECT_DOUBLE_EQ(ratio, 16.0 / 9.0);
@@ -89,7 +89,7 @@ TEST(CommonRatioDialog, AcceptsSlashSeparatedRatio)
 	DialogDriver driver({ QStringLiteral("4/3") });
 
 	bool ok = false;
-	const double ratio = GetFloatRatioFromUser(nullptr, QStringLiteral("Test"), &ok);
+	const double ratio = get_float_ratio_from_user(nullptr, QStringLiteral("Test"), &ok);
 
 	EXPECT_TRUE(ok);
 	EXPECT_DOUBLE_EQ(ratio, 4.0 / 3.0);
@@ -100,7 +100,7 @@ TEST(CommonRatioDialog, AcceptsSemicolonSeparatedRatio)
 	DialogDriver driver({ QStringLiteral("1;2") });
 
 	bool ok = false;
-	const double ratio = GetFloatRatioFromUser(nullptr, QStringLiteral("Test"), &ok);
+	const double ratio = get_float_ratio_from_user(nullptr, QStringLiteral("Test"), &ok);
 
 	EXPECT_TRUE(ok);
 	EXPECT_DOUBLE_EQ(ratio, 0.5);
@@ -112,7 +112,7 @@ TEST(CommonRatioDialog, CancelReturnsNaN)
 	DialogDriver driver({});
 
 	bool ok = true;
-	const double ratio = GetFloatRatioFromUser(nullptr, QStringLiteral("Test"), &ok);
+	const double ratio = get_float_ratio_from_user(nullptr, QStringLiteral("Test"), &ok);
 
 	EXPECT_FALSE(ok);
 	EXPECT_TRUE(std::isnan(ratio));
@@ -125,7 +125,7 @@ TEST(CommonRatioDialog, InvalidInputWarnsAndRetries)
 	DialogDriver driver({ QStringLiteral("banana"), QStringLiteral("2") });
 
 	bool ok = false;
-	const double ratio = GetFloatRatioFromUser(nullptr, QStringLiteral("Test"), &ok);
+	const double ratio = get_float_ratio_from_user(nullptr, QStringLiteral("Test"), &ok);
 
 	EXPECT_TRUE(ok);
 	EXPECT_DOUBLE_EQ(ratio, 2.0);
@@ -139,7 +139,7 @@ TEST(CommonRatioDialog, RejectsNonPositiveValues)
 		{ QStringLiteral("0"), QStringLiteral("-4:2"), QStringLiteral("3") });
 
 	bool ok = false;
-	const double ratio = GetFloatRatioFromUser(nullptr, QStringLiteral("Test"), &ok);
+	const double ratio = get_float_ratio_from_user(nullptr, QStringLiteral("Test"), &ok);
 
 	EXPECT_TRUE(ok);
 	EXPECT_DOUBLE_EQ(ratio, 3.0);

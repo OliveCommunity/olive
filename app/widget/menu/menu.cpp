@@ -30,29 +30,29 @@ Menu::Menu(QMenuBar *bar)
 {
 	bar->addMenu(this);
 
-	Init();
+	init();
 }
 
 Menu::Menu(Menu *menu)
 {
 	menu->addMenu(this);
 
-	Init();
+	init();
 }
 
 Menu::Menu(QWidget *parent)
 	: QMenu(parent)
 {
-	Init();
+	init();
 }
 
 Menu::Menu(const QString &s, QWidget *parent)
 	: QMenu(s, parent)
 {
-	Init();
+	init();
 }
 
-QAction *Menu::AddActionWithData(const QString &text, const QVariant &d,
+QAction *Menu::add_action_with_data(const QString &text, const QVariant &d,
 								 const QVariant &compare)
 {
 	QAction *a = addAction(text);
@@ -64,14 +64,14 @@ QAction *Menu::AddActionWithData(const QString &text, const QVariant &d,
 	return a;
 }
 
-QAction *Menu::InsertAlphabetically(const QString &s)
+QAction *Menu::insert_alphabetically(const QString &s)
 {
 	QAction *action = new QAction(s, this);
-	InsertAlphabetically(action);
+	insert_alphabetically(action);
 	return action;
 }
 
-void Menu::InsertAlphabetically(QAction *entry)
+void Menu::insert_alphabetically(QAction *entry)
 {
 	QList<QAction *> actions = this->actions();
 
@@ -85,12 +85,12 @@ void Menu::InsertAlphabetically(QAction *entry)
 	addAction(entry);
 }
 
-void Menu::InsertAlphabetically(Menu *menu)
+void Menu::insert_alphabetically(Menu *menu)
 {
-	InsertAlphabetically(menu->menuAction());
+	insert_alphabetically(menu->menuAction());
 }
 
-void Menu::ConformItem(QAction *a, const QString &id, const QKeySequence &key)
+void Menu::conform_item(QAction *a, const QString &id, const QKeySequence &key)
 {
 	a->setProperty("id", id);
 
@@ -103,7 +103,7 @@ void Menu::ConformItem(QAction *a, const QString &id, const QKeySequence &key)
 	}
 }
 
-void Menu::Init()
+void Menu::init()
 {
 	// HACK: Disables embossing on disabled text for a slightly nicer UI
 	QPalette p = palette();

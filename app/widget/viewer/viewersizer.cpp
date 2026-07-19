@@ -43,17 +43,17 @@ ViewerSizer::ViewerSizer(QWidget *parent)
 	horiz_scrollbar_ = new QScrollBar(Qt::Horizontal, this);
 	horiz_scrollbar_->setVisible(false);
 	connect(horiz_scrollbar_, &QScrollBar::valueChanged, this,
-			&ViewerSizer::ScrollBarMoved);
+			&ViewerSizer::scroll_bar_moved);
 
 	vert_scrollbar_ = new QScrollBar(Qt::Vertical, this);
 	vert_scrollbar_->setVisible(false);
 	connect(vert_scrollbar_, &QScrollBar::valueChanged, this,
-			&ViewerSizer::ScrollBarMoved);
+			&ViewerSizer::scroll_bar_moved);
 
 	setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 }
 
-void ViewerSizer::SetWidget(QWidget *widget)
+void ViewerSizer::set_widget(QWidget *widget)
 {
 	// Delete any previous widgets occupying this space
 	delete widget_;
@@ -64,50 +64,50 @@ void ViewerSizer::SetWidget(QWidget *widget)
 		widget_->setParent(this);
 		widget_->installEventFilter(this);
 
-		UpdateSize();
+		update_size();
 	}
 }
 
-QSize ViewerSizer::GetContainerSize() const
+QSize ViewerSizer::get_container_size() const
 {
-	double s = GetRealCurrentZoom();
+	double s = get_real_current_zoom();
 	return QSize(std::min(this->width(), int(width_ * s)) -
 					 vert_scrollbar_->width(),
 				 std::min(int(height_ * s), this->height()) -
 					 horiz_scrollbar_->height());
 }
 
-void ViewerSizer::SetChildSize(int width, int height)
+void ViewerSizer::set_child_size(int width, int height)
 {
 	width_ = width;
 	height_ = height;
 
-	UpdateSize();
+	update_size();
 }
 
-void ViewerSizer::SetPixelAspectRatio(const rational &pixel_aspect)
+void ViewerSizer::set_pixel_aspect_ratio(const Rational &pixel_aspect)
 {
 	pixel_aspect_ = pixel_aspect;
 
-	UpdateSize();
+	update_size();
 }
 
-void ViewerSizer::SetZoom(double percent)
+void ViewerSizer::set_zoom(double percent)
 {
 	zoom_ = percent;
 
-	UpdateSize();
+	update_size();
 }
 
-void ViewerSizer::SetZoomAnchored(double next_scale, double cursor_x,
+void ViewerSizer::set_zoom_anchored(double next_scale, double cursor_x,
 								  double cursor_y)
 {
 	if (next_scale > 0) {
-		double cur_scale = GetRealCurrentZoom();
+		double cur_scale = get_real_current_zoom();
 
 		// Clamp scale within safe values
-		next_scale = std::clamp(next_scale, kZoomLevels[0],
-								kZoomLevels[kZoomLevelCount - 1]);
+		next_scale = std::clamp(next_scale, k_zoom_levels[0],
+								k_zoom_levels[k_zoom_level_count - 1]);
 
 		int anchor_x = qRound(double(cursor_x + horiz_scrollbar_->value()) /
 								  cur_scale * next_scale -
@@ -116,19 +116,19 @@ void ViewerSizer::SetZoomAnchored(double next_scale, double cursor_x,
 								  cur_scale * next_scale -
 							  cursor_y);
 
-		SetZoom(next_scale);
+		set_zoom(next_scale);
 
 		horiz_scrollbar_->setValue(anchor_x);
 		vert_scrollbar_->setValue(anchor_y);
 	} else {
-		SetZoom(-1);
+		set_zoom(-1);
 
 		horiz_scrollbar_->setValue(0);
 		vert_scrollbar_->setValue(0);
 	}
 }
 
-void ViewerSizer::HandDragMove(int x, int y)
+void ViewerSizer::hand_drag_move(int x, int y)
 {
 	if (horiz_scrollbar_->isVisible()) {
 		horiz_scrollbar_->setValue(horiz_scrollbar_->value() - x);
@@ -146,10 +146,10 @@ bool ViewerSizer::eventFilter(QObject *watched, QEvent *event)
 			QWheelEvent *w = static_cast<QWheelEvent *>(event);
 
 			if (HandMovableView::WheelEventIsAZoomEvent(w)) {
-				double next_scale = GetRealCurrentZoom() *
-									HandMovableView::GetScrollZoomMultiplier(w);
+				double next_scale = get_real_current_zoom() *
+									HandMovableView::get_scroll_zoom_multiplier(w);
 				QPointF cursor_pos = w->position();
-				SetZoomAnchored(next_scale, cursor_pos.x(), cursor_pos.y());
+				set_zoom_anchored(next_scale, cursor_pos.x(), cursor_pos.y());
 			} else {
 				// Pass scroll values to scrollbars
 				QPoint p = w->pixelDelta();
@@ -167,10 +167,10 @@ void ViewerSizer::resizeEvent(QResizeEvent *event)
 {
 	QWidget::resizeEvent(event);
 
-	UpdateSize();
+	update_size();
 }
 
-void ViewerSizer::UpdateSize()
+void ViewerSizer::update_size()
 {
 	if (widget_ == nullptr) {
 		return;
@@ -189,9 +189,9 @@ void ViewerSizer::UpdateSize()
 
 	// Determine if we need scrollbars for the zoom we want
 	horiz_scrollbar_->setVisible(zoom_ > 0 &&
-								 GetZoomedValue(width_) > available_width);
+								 get_zoomed_value(width_) > available_width);
 	vert_scrollbar_->setVisible(zoom_ > 0 &&
-								GetZoomedValue(height_) > available_height);
+								get_zoomed_value(height_) > available_height);
 
 	// Horizontal scrollbar will reduce the available height
 	if (horiz_scrollbar_->isVisible()) {
@@ -209,7 +209,7 @@ void ViewerSizer::UpdateSize()
 								 horiz_scrollbar_->sizeHint().height());
 		horiz_scrollbar_->move(0,
 							   this->height() - horiz_scrollbar_->height() - 1);
-		horiz_scrollbar_->setMaximum(GetZoomedValue(width_) - available_width);
+		horiz_scrollbar_->setMaximum(get_zoomed_value(width_) - available_width);
 		horiz_scrollbar_->setPageStep(available_width);
 	}
 
@@ -218,7 +218,7 @@ void ViewerSizer::UpdateSize()
 		vert_scrollbar_->resize(vert_scrollbar_->sizeHint().width(),
 								available_height);
 		vert_scrollbar_->move(this->width() - vert_scrollbar_->width() - 1, 0);
-		vert_scrollbar_->setMaximum(GetZoomedValue(height_) - available_height);
+		vert_scrollbar_->setMaximum(get_zoomed_value(height_) - available_height);
 		vert_scrollbar_->setPageStep(available_height);
 	}
 
@@ -227,7 +227,7 @@ void ViewerSizer::UpdateSize()
 
 	// Adjust to aspect ratio
 	double sequence_aspect_ratio =
-		double(width_) / double(height_) * pixel_aspect_.toDouble();
+		double(width_) / double(height_) * pixel_aspect_.to_double();
 	double our_aspect_ratio =
 		double(available_width) / double(available_height);
 
@@ -253,17 +253,17 @@ void ViewerSizer::UpdateSize()
 		child_matrix.scale(zoom_diff, zoom_diff, 1.0);
 	}
 
-	emit RequestScale(child_matrix);
+	emit request_scale(child_matrix);
 
-	ScrollBarMoved();
+	scroll_bar_moved();
 }
 
-int ViewerSizer::GetZoomedValue(int value)
+int ViewerSizer::get_zoomed_value(int value)
 {
 	return qRound(value * zoom_);
 }
 
-double ViewerSizer::GetRealCurrentZoom() const
+double ViewerSizer::get_real_current_zoom() const
 {
 	if (zoom_ < 0) {
 		// Currently set to "fit"
@@ -274,14 +274,14 @@ double ViewerSizer::GetRealCurrentZoom() const
 	}
 }
 
-void ViewerSizer::ScrollBarMoved()
+void ViewerSizer::scroll_bar_moved()
 {
 	QMatrix4x4 mat;
 
 	float x_scroll, y_scroll;
 
 	if (horiz_scrollbar_->isVisible()) {
-		int zoomed_width = GetZoomedValue(width_);
+		int zoomed_width = get_zoomed_value(width_);
 		x_scroll = (zoomed_width / 2 - horiz_scrollbar_->value() -
 					widget_->width() / 2) *
 				   (2.0 / zoomed_width);
@@ -290,7 +290,7 @@ void ViewerSizer::ScrollBarMoved()
 	}
 
 	if (vert_scrollbar_->isVisible()) {
-		int zoomed_height = GetZoomedValue(height_);
+		int zoomed_height = get_zoomed_value(height_);
 		y_scroll = (zoomed_height / 2 - vert_scrollbar_->value() -
 					widget_->height() / 2) *
 				   (2.0 / zoomed_height);
@@ -301,7 +301,7 @@ void ViewerSizer::ScrollBarMoved()
 	// Zero translate is centered, so we need to determine how much "off center" we are
 	mat.translate(x_scroll, y_scroll);
 
-	emit RequestTranslate(mat);
+	emit request_translate(mat);
 }
 
 }

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SEEKABLEWIDGET_H
-#define SEEKABLEWIDGET_H
+#ifndef OAK_SEEKABLEWIDGET_H
+#define OAK_SEEKABLEWIDGET_H
 
 #include <QHBoxLayout>
 #include <QScrollBar>
@@ -36,55 +36,55 @@ class SeekableWidget : public TimeBasedView {
 public:
 	SeekableWidget(QWidget *parent = nullptr);
 
-	int GetScroll() const
+	int get_scroll() const
 	{
 		return horizontalScrollBar()->value();
 	}
 
-	TimelineMarkerList *GetMarkers() const
+	TimelineMarkerList *get_markers() const
 	{
 		return markers_;
 	}
-	TimelineWorkArea *GetWorkArea() const
+	TimelineWorkArea *get_work_area() const
 	{
 		return workarea_;
 	}
 
-	void SetMarkers(TimelineMarkerList *markers);
-	void SetWorkArea(TimelineWorkArea *workarea);
+	void set_markers(TimelineMarkerList *markers);
+	void set_work_area(TimelineWorkArea *workarea);
 
-	virtual bool IsDraggingPlayhead() const override
+	virtual bool is_dragging_playhead() const override
 	{
 		return dragging_;
 	}
 
-	bool IsMarkerEditingEnabled() const
+	bool is_marker_editing_enabled() const
 	{
 		return marker_editing_enabled_;
 	}
-	void SetMarkerEditingEnabled(bool e)
+	void set_marker_editing_enabled(bool e)
 	{
 		marker_editing_enabled_ = e;
 	}
 
-	void DeleteSelected();
+	void delete_selected();
 
-	bool CopySelected(bool cut);
+	bool copy_selected(bool cut);
 
-	bool PasteMarkers();
+	bool paste_markers();
 
-	void DeselectAllMarkers();
+	void deselect_all_markers();
 
-	void SeekToScenePoint(qreal scene);
+	void seek_to_scene_point(qreal scene);
 
-	bool HasItemsSelected() const
+	bool has_items_selected() const
 	{
-		return !selection_manager_.GetSelectedObjects().empty();
+		return !selection_manager_.get_selected_objects().empty();
 	}
 
-	const std::vector<TimelineMarker *> &GetSelectedMarkers() const
+	const std::vector<TimelineMarker *> &get_selected_markers() const
 	{
-		return selection_manager_.GetSelectedObjects();
+		return selection_manager_.get_selected_objects();
 	}
 
 	virtual void SelectionManagerSelectEvent(void *obj) override;
@@ -93,17 +93,17 @@ public:
 	virtual void CatchUpScrollEvent() override;
 
 public slots:
-	void SetScroll(int i)
+	void set_scroll(int i)
 	{
 		horizontalScrollBar()->setValue(i);
 	}
 
-	virtual void TimebaseChangedEvent(const rational &) override;
+	virtual void TimebaseChangedEvent(const Rational &) override;
 
 signals:
-	void DragMoved(int x, int y);
+	void drag_moved(int x, int y);
 
-	void DragReleased();
+	void drag_released();
 
 protected:
 	virtual void mousePressEvent(QMouseEvent *event) override;
@@ -113,10 +113,10 @@ protected:
 
 	virtual void focusOutEvent(QFocusEvent *event) override;
 
-	void DrawMarkers(QPainter *p, int marker_bottom = 0);
-	void DrawWorkArea(QPainter *p);
+	void draw_markers(QPainter *p, int marker_bottom = 0);
+	void draw_work_area(QPainter *p);
 
-	void DrawPlayhead(QPainter *p, int x, int y);
+	void draw_playhead(QPainter *p, int x, int y);
 
 	inline const int &text_height() const
 	{
@@ -128,22 +128,22 @@ protected:
 		return playhead_width_;
 	}
 
-	int GetLeftLimit() const;
-	int GetRightLimit() const;
+	int get_left_limit() const;
+	int get_right_limit() const;
 
 protected slots:
-	virtual bool ShowContextMenu(const QPoint &p);
+	virtual bool show_context_menu(const QPoint &p);
 
 private:
-	enum ResizeMode { kResizeNone, kResizeIn, kResizeOut };
+	enum ResizeMode { k_resize_none, k_resize_in, k_resize_out };
 
-	bool FindResizeHandle(QMouseEvent *event);
+	bool find_resize_handle(QMouseEvent *event);
 
-	void ClearResizeHandle();
+	void clear_resize_handle();
 
-	void DragResizeHandle(const QPointF &scene_pos);
+	void drag_resize_handle(const QPointF &scene_pos);
 
-	void CommitResizeHandle();
+	void commit_resize_handle();
 
 	TimelineMarkerList *markers_;
 	TimelineWorkArea *workarea_;
@@ -172,11 +172,11 @@ private:
 	QPolygon last_playhead_shape_;
 
 private slots:
-	void SetMarkerColor(int c);
+	void set_marker_color(int c);
 
-	void ShowMarkerProperties();
+	void show_marker_properties();
 };
 
 }
 
-#endif // SEEKABLEWIDGET_H
+#endif // OAK_SEEKABLEWIDGET_H

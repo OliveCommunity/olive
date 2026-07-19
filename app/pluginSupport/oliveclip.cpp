@@ -21,9 +21,9 @@
 // Created by mikesolar on 25-10-1.
 //
 
-#include "OliveClip.h"
+#include "oliveclip.h"
 
-#include "common/Current.h"
+#include "common/current.h"
 #include "common/ffmpegutils.h"
 #include "ofxCore.h"
 #include "ofxhClip.h"
@@ -43,26 +43,26 @@ namespace
 // The bridge header only defines the little-endian pixel formats. FFmpeg
 // numbers each big-endian variant immediately before its little-endian
 // counterpart (BE == LE - 1), so derive the BE constants used below.
-constexpr int FB_PIX_FMT_GRAYF32BE = FB_PIX_FMT_GRAYF32LE - 1;
-constexpr int FB_PIX_FMT_RGBF32BE = FB_PIX_FMT_RGBF32LE - 1;
-constexpr int FB_PIX_FMT_RGBAF32BE = FB_PIX_FMT_RGBAF32LE - 1;
+constexpr int fb_pix_fmt_gray_f32_be = fb_pix_fmt_gray_f32_le - 1;
+constexpr int fb_pix_fmt_rgb_f32_be = fb_pix_fmt_rgb_f32_le - 1;
+constexpr int fb_pix_fmt_rgba_f32_be = fb_pix_fmt_rgba_f32_le - 1;
 
-const std::string kBitDepthNoneStr(kOfxBitDepthNone);
-const std::string kBitDepthByteStr(kOfxBitDepthByte);
-const std::string kBitDepthShortStr(kOfxBitDepthShort);
-const std::string kBitDepthHalfStr(kOfxBitDepthHalf);
-const std::string kBitDepthFloatStr(kOfxBitDepthFloat);
-const std::string kImageComponentNoneStr(kOfxImageComponentNone);
-const std::string kImageComponentAlphaStr(kOfxImageComponentAlpha);
-const std::string kImageComponentRGBStr(kOfxImageComponentRGB);
-const std::string kImageComponentRGBAStr(kOfxImageComponentRGBA);
-const std::string kImagePremultStr(kOfxImagePreMultiplied);
-const std::string kImageUnPremultStr(kOfxImageUnPreMultiplied);
-const std::string kImageFieldNoneStr(kOfxImageFieldNone);
-const std::string kImageFieldUpperStr(kOfxImageFieldUpper);
-const std::string kImageFieldLowerStr(kOfxImageFieldLower);
+const std::string k_bit_depth_none_str(kOfxBitDepthNone);
+const std::string k_bit_depth_byte_str(kOfxBitDepthByte);
+const std::string k_bit_depth_short_str(kOfxBitDepthShort);
+const std::string k_bit_depth_half_str(kOfxBitDepthHalf);
+const std::string k_bit_depth_float_str(kOfxBitDepthFloat);
+const std::string k_image_component_none_str(kOfxImageComponentNone);
+const std::string k_image_component_alpha_str(kOfxImageComponentAlpha);
+const std::string k_image_component_rgb_str(kOfxImageComponentRGB);
+const std::string k_image_component_rgba_str(kOfxImageComponentRGBA);
+const std::string k_image_premult_str(kOfxImagePreMultiplied);
+const std::string k_image_un_premult_str(kOfxImageUnPreMultiplied);
+const std::string k_image_field_none_str(kOfxImageFieldNone);
+const std::string k_image_field_upper_str(kOfxImageFieldUpper);
+const std::string k_image_field_lower_str(kOfxImageFieldLower);
 
-static int BytesToPixels(int byte_linesize, const olive::VideoParams &params)
+static int bytes_to_pixels(int byte_linesize, const olive::VideoParams &params)
 {
 	const int bytes_per_pixel =
 		params.channel_count() * params.format().byte_count();
@@ -72,48 +72,48 @@ static int BytesToPixels(int byte_linesize, const olive::VideoParams &params)
 	return byte_linesize / bytes_per_pixel;
 }
 
-static int PackedFloatChannels(int fmt)
+static int packed_float_channels(int fmt)
 {
 	switch (fmt) {
-	case FB_PIX_FMT_GRAYF32LE:
-	case FB_PIX_FMT_GRAYF32BE:
+	case fb_pix_fmt_gray_f32_le:
+	case fb_pix_fmt_gray_f32_be:
 		return 1;
-	case FB_PIX_FMT_RGBF32LE:
-	case FB_PIX_FMT_RGBF32BE:
+	case fb_pix_fmt_rgb_f32_le:
+	case fb_pix_fmt_rgb_f32_be:
 		return 3;
-	case FB_PIX_FMT_RGBAF32LE:
-	case FB_PIX_FMT_RGBAF32BE:
+	case fb_pix_fmt_rgba_f32_le:
+	case fb_pix_fmt_rgba_f32_be:
 		return 4;
 	default:
 		return 0;
 	}
 }
 
-static bool PackedDstInfo(int fmt, int *channels,
+static bool packed_dst_info(int fmt, int *channels,
 						  int *bytes_per_component)
 {
 	switch (fmt) {
-	case FB_PIX_FMT_GRAY8:
+	case fb_pix_fmt_gra_y8:
 		*channels = 1;
 		*bytes_per_component = 1;
 		return true;
-	case FB_PIX_FMT_RGB24:
+	case fb_pix_fmt_rg_b24:
 		*channels = 3;
 		*bytes_per_component = 1;
 		return true;
-	case FB_PIX_FMT_RGBA:
+	case fb_pix_fmt_rgba:
 		*channels = 4;
 		*bytes_per_component = 1;
 		return true;
-	case FB_PIX_FMT_GRAY16LE:
+	case fb_pix_fmt_gra_y16_le:
 		*channels = 1;
 		*bytes_per_component = 2;
 		return true;
-	case FB_PIX_FMT_RGB48LE:
+	case fb_pix_fmt_rg_b48_le:
 		*channels = 3;
 		*bytes_per_component = 2;
 		return true;
-	case FB_PIX_FMT_RGBA64LE:
+	case fb_pix_fmt_rgb_a64_le:
 		*channels = 4;
 		*bytes_per_component = 2;
 		return true;
@@ -123,40 +123,40 @@ static bool PackedDstInfo(int fmt, int *channels,
 }
 
 static olive::AVFramePtr
-ReadbackTextureToFrame(olive::TexturePtr texture,
+readback_texture_to_frame(olive::TexturePtr texture,
 					   const olive::VideoParams &params)
 {
-	if (!texture || texture->IsDummy() || !texture->renderer()) {
+	if (!texture || texture->is_dummy() || !texture->renderer()) {
 		return nullptr;
 	}
 
-	int pix_fmt = olive::FFmpegUtils::GetFFmpegPixelFormat(
+	int pix_fmt = olive::FFmpegUtils::get_f_fmpeg_pixel_format(
 		params.format(), params.channel_count());
-	if (pix_fmt == FB_PIX_FMT_NONE) {
+	if (pix_fmt == fb_pix_fmt_none) {
 		return nullptr;
 	}
 
 	if (!fb_pix_fmt_is_planar(pix_fmt)) {
-		olive::AVFramePtr frame = olive::CreateAVFramePtr();
+		olive::AVFramePtr frame = olive::create_av_frame_ptr();
 		frame->set_format(pix_fmt);
 		frame->set_width(params.width());
 		frame->set_height(params.height());
 		if (frame->get_buffer(0) < 0) {
 			return nullptr;
 		}
-		const int linesize_pixels = BytesToPixels(frame->linesize(0), params);
-		texture->renderer()->DownloadFromTexture(
+		const int linesize_pixels = bytes_to_pixels(frame->linesize(0), params);
+		texture->renderer()->download_from_texture(
 			texture->id(), params, frame->data(0), linesize_pixels);
 		return frame;
 	}
 
 	olive::VideoParams rgba_params(params.width(), params.height(),
-								   olive::core::PixelFormat::U8, 4,
+								   olive::core::PixelFormat::u8, 4,
 								   params.pixel_aspect_ratio(),
 								   params.interlacing(), params.divider());
 
-	olive::AVFramePtr rgba_frame = olive::CreateAVFramePtr();
-	rgba_frame->set_format(FB_PIX_FMT_RGBA);
+	olive::AVFramePtr rgba_frame = olive::create_av_frame_ptr();
+	rgba_frame->set_format(fb_pix_fmt_rgba);
 	rgba_frame->set_width(params.width());
 	rgba_frame->set_height(params.height());
 	if (rgba_frame->get_buffer(0) < 0) {
@@ -164,11 +164,11 @@ ReadbackTextureToFrame(olive::TexturePtr texture,
 	}
 
 	const int linesize_pixels =
-		BytesToPixels(rgba_frame->linesize(0), rgba_params);
-	texture->renderer()->DownloadFromTexture(
+		bytes_to_pixels(rgba_frame->linesize(0), rgba_params);
+	texture->renderer()->download_from_texture(
 		texture->id(), rgba_params, rgba_frame->data(0), linesize_pixels);
 
-	olive::AVFramePtr dst = olive::CreateAVFramePtr();
+	olive::AVFramePtr dst = olive::create_av_frame_ptr();
 	dst->set_format(pix_fmt);
 	dst->set_width(params.width());
 	dst->set_height(params.height());
@@ -199,25 +199,25 @@ ReadbackTextureToFrame(olive::TexturePtr texture,
 	return dst;
 }
 
-static olive::AVFramePtr ConvertPackedFloatFrame(olive::AVFramePtr src,
+static olive::AVFramePtr convert_packed_float_frame(olive::AVFramePtr src,
 												 int dst_fmt)
 {
 	if (!src || !src->data(0)) {
 		return nullptr;
 	}
 	const int src_channels =
-		PackedFloatChannels(src->format());
+		packed_float_channels(src->format());
 	if (src_channels == 0) {
 		return nullptr;
 	}
 
 	int dst_channels = 0;
 	int bytes_per_component = 0;
-	if (!PackedDstInfo(dst_fmt, &dst_channels, &bytes_per_component)) {
+	if (!packed_dst_info(dst_fmt, &dst_channels, &bytes_per_component)) {
 		return nullptr;
 	}
 
-	olive::AVFramePtr dst = olive::CreateAVFramePtr();
+	olive::AVFramePtr dst = olive::create_av_frame_ptr();
 	dst->set_format(dst_fmt);
 	dst->set_width(src->width());
 	dst->set_height(src->height());
@@ -293,25 +293,25 @@ const std::string &olive::plugin::OliveClipInstance::getUnmappedBitDepth() const
 	// Return the plugin's preferred pixel depth from base class
 	// This is set during getClipPreferences action via setPixelDepth()
 	const std::string &depth = getPixelDepth();
-	if (!depth.empty() && depth != kBitDepthNoneStr) {
+	if (!depth.empty() && depth != k_bit_depth_none_str) {
 		return depth;
 	}
 	// Fallback to params_ if base class value is not set
 	switch (params_.format()) {
-	case PixelFormat::INVALID:
-		return kBitDepthNoneStr;
-	case PixelFormat::U8:
-		return kBitDepthByteStr;
-	case PixelFormat::U10:
-		return kBitDepthNoneStr;
-	case PixelFormat::U16:
-		return kBitDepthShortStr;
-	case PixelFormat::F16:
-		return kBitDepthHalfStr;
-	case PixelFormat::F32:
-		return kBitDepthFloatStr;
+	case PixelFormat::invalid:
+		return k_bit_depth_none_str;
+	case PixelFormat::u8:
+		return k_bit_depth_byte_str;
+	case PixelFormat::u10:
+		return k_bit_depth_none_str;
+	case PixelFormat::u16:
+		return k_bit_depth_short_str;
+	case PixelFormat::f16:
+		return k_bit_depth_half_str;
+	case PixelFormat::f32:
+		return k_bit_depth_float_str;
 	default:
-		return kBitDepthNoneStr;
+		return k_bit_depth_none_str;
 	}
 }
 const std::string &
@@ -320,32 +320,32 @@ olive::plugin::OliveClipInstance::getUnmappedComponents() const
 	// Return the plugin's preferred components from base class
 	// This is set during getClipPreferences action via setComponents()
 	const std::string &comp = getComponents();
-	if (!comp.empty() && comp != kImageComponentNoneStr) {
+	if (!comp.empty() && comp != k_image_component_none_str) {
 		return comp;
 	}
 	// Fallback to params_ if base class value is not set
 	switch (params_.channel_count()) {
 	case 1:
-		return kImageComponentAlphaStr;
+		return k_image_component_alpha_str;
 	case 3:
-		return kImageComponentRGBStr;
+		return k_image_component_rgb_str;
 	case 4:
-		return kImageComponentRGBAStr;
+		return k_image_component_rgba_str;
 	default:
-		return kImageComponentNoneStr;
+		return k_image_component_none_str;
 	}
 }
 const std::string &olive::plugin::OliveClipInstance::getPremult() const
 {
 	if (params_.premultiplied_alpha()) {
-		return kImagePremultStr;
+		return k_image_premult_str;
 	} else {
-		return kImageUnPremultStr;
+		return k_image_un_premult_str;
 	}
 }
 double olive::plugin::OliveClipInstance::getAspectRatio() const
 {
-	double par = params_.pixel_aspect_ratio().toDouble();
+	double par = params_.pixel_aspect_ratio().to_double();
 	if (par == 0.0) {
 		return 1.0; // default PAR when not explicitly set
 	}
@@ -353,26 +353,26 @@ double olive::plugin::OliveClipInstance::getAspectRatio() const
 }
 double olive::plugin::OliveClipInstance::getFrameRate() const
 {
-	return params_.frame_rate().toDouble();
+	return params_.frame_rate().to_double();
 }
-void olive::plugin::OliveClipInstance::getFrameRange(double &startFrame,
-													 double &endFrame) const
+void olive::plugin::OliveClipInstance::getFrameRange(double &start_frame,
+													 double &end_frame) const
 {
-	startFrame = params_.frame_rate().toDouble() * params_.start_time();
-	endFrame =
-		startFrame + params_.frame_rate().toDouble() * params_.duration();
+	start_frame = params_.frame_rate().to_double() * params_.start_time();
+	end_frame =
+		start_frame + params_.frame_rate().to_double() * params_.duration();
 }
 const std::string &olive::plugin::OliveClipInstance::getFieldOrder() const
 {
 	switch (params_.interlacing()) {
-	case VideoParams::kInterlaceNone:
-		return kImageFieldNoneStr;
-	case VideoParams::kInterlacedTopFirst:
-		return kImageFieldUpperStr;
-	case VideoParams::kInterlacedBottomFirst:
-		return kImageFieldLowerStr;
+	case VideoParams::k_interlace_none:
+		return k_image_field_none_str;
+	case VideoParams::k_interlaced_top_first:
+		return k_image_field_upper_str;
+	case VideoParams::k_interlaced_bottom_first:
+		return k_image_field_lower_str;
 	}
-	return kImageFieldNoneStr;
+	return k_image_field_none_str;
 }
 bool olive::plugin::OliveClipInstance::getConnected() const
 {
@@ -400,9 +400,9 @@ double olive::plugin::OliveClipInstance::getUnmappedFrameRate() const
 	return getFrameRate();
 }
 void olive::plugin::OliveClipInstance::getUnmappedFrameRange(
-	double &startFrame, double &endFrame) const
+	double &start_frame, double &end_frame) const
 {
-	getFrameRange(startFrame, endFrame);
+	getFrameRange(start_frame, end_frame);
 }
 bool olive::plugin::OliveClipInstance::getContinuousSamples() const
 {
@@ -410,14 +410,14 @@ bool olive::plugin::OliveClipInstance::getContinuousSamples() const
 }
 OFX::Host::ImageEffect::Image *
 olive::plugin::OliveClipInstance::getImage(OfxTime time,
-										   const OfxRectD *optionalBounds)
+										   const OfxRectD *optional_bounds)
 {
 	OfxRectD rod_d = getRegionOfDefinition(time);
 	OfxRectI rod = { static_cast<int>(std::floor(rod_d.x1)),
 					 static_cast<int>(std::floor(rod_d.y1)),
 					 static_cast<int>(std::ceil(rod_d.x2)),
 					 static_cast<int>(std::ceil(rod_d.y2)) };
-	(void)optionalBounds;
+	(void)optional_bounds;
 	// Always return full-frame images to keep input data consistent.
 	OfxRectI bounds = rod;
 
@@ -435,14 +435,14 @@ olive::plugin::OliveClipInstance::getImage(OfxTime time,
 		// when it releases the image
 		images_[time]->addReference();
 
-		images_[time]->EnsureAllocatedFromParams(params_, bounds, rod, true);
+		images_[time]->ensure_allocated_from_params(params_, bounds, rod, true);
 
 		// return it
 		return images_[time];
 	} else {
 		if (images_.contains(time)) {
 			Image *image = images_.value(time);
-			image->EnsureAllocatedFromParams(params_, bounds, rod, false);
+			image->ensure_allocated_from_params(params_, bounds, rod, false);
 			image->addReference();
 			return image;
 		}
@@ -451,7 +451,7 @@ olive::plugin::OliveClipInstance::getImage(OfxTime time,
 		// Use plugin-preferred params to ensure the image format matches
 		// what the plugin expects (may differ from input texture format)
 		VideoParams preferred_params = getPluginPreferredParams();
-		if (preferred_params.format() == core::PixelFormat::INVALID) {
+		if (preferred_params.format() == core::PixelFormat::invalid) {
 			preferred_params = params_;
 		}
 		// Keep dimensions and other settings from params_
@@ -462,7 +462,7 @@ olive::plugin::OliveClipInstance::getImage(OfxTime time,
 		// Guard against zero-size or invalid-format images that would
 		// cause EXC_BAD_ACCESS when the plugin accesses pixel data.
 		if (preferred_params.width() <= 0 || preferred_params.height() <= 0 ||
-			preferred_params.format() == core::PixelFormat::INVALID ||
+			preferred_params.format() == core::PixelFormat::invalid ||
 			preferred_params.channel_count() <= 0) {
 			return nullptr;
 		}
@@ -471,7 +471,7 @@ olive::plugin::OliveClipInstance::getImage(OfxTime time,
 		// fetches at the same time reuse it and getConnected() reflects it.
 		// The extra reference keeps the cached image alive when the plugin
 		// releases its own.
-		pruneImagesCache();
+		prune_images_cache();
 		Image *image = new Image(*this, preferred_params, bounds, rod, true);
 		images_.insert(time, image);
 		image->addReference();
@@ -496,7 +496,7 @@ olive::plugin::OliveClipInstance::getOutputImage(OfxTime time)
 	// Use plugin-preferred params instead of params_ to ensure the image
 	// is created with the format the plugin expects
 	VideoParams preferred_params = getPluginPreferredParams();
-	if (preferred_params.format() == core::PixelFormat::INVALID) {
+	if (preferred_params.format() == core::PixelFormat::invalid) {
 		preferred_params = params_;
 	}
 	// Keep the dimensions and other settings from params_
@@ -518,13 +518,13 @@ olive::plugin::OliveClipInstance::getPluginPreferredParams() const
 	const std::string &depth = getPixelDepth();
 	if (!depth.empty()) {
 		if (depth == kOfxBitDepthByte) {
-			result.set_format(core::PixelFormat::U8);
+			result.set_format(core::PixelFormat::u8);
 		} else if (depth == kOfxBitDepthShort) {
-			result.set_format(core::PixelFormat::U16);
+			result.set_format(core::PixelFormat::u16);
 		} else if (depth == kOfxBitDepthHalf) {
-			result.set_format(core::PixelFormat::F16);
+			result.set_format(core::PixelFormat::f16);
 		} else if (depth == kOfxBitDepthFloat) {
-			result.set_format(core::PixelFormat::F32);
+			result.set_format(core::PixelFormat::f32);
 		}
 	}
 
@@ -548,38 +548,38 @@ olive::plugin::OliveClipInstance::getRegionOfDefinition(OfxTime time) const
 	if (regionOfDefinitions_.contains(time)) {
 		return regionOfDefinitions_.value(time);
 	}
-	OfxRectD regionOfDefinition;
-	regionOfDefinition.x1 = regionOfDefinition.y1 = 0;
-	double par = params_.pixel_aspect_ratio().toDouble();
-	regionOfDefinition.x2 = params_.width() * par;
-	regionOfDefinition.y2 = params_.height();
-	if (regionOfDefinition.x2 <= 0 || regionOfDefinition.y2 <= 0) {
+	OfxRectD region_of_definition;
+	region_of_definition.x1 = region_of_definition.y1 = 0;
+	double par = params_.pixel_aspect_ratio().to_double();
+	region_of_definition.x2 = params_.width() * par;
+	region_of_definition.y2 = params_.height();
+	if (region_of_definition.x2 <= 0 || region_of_definition.y2 <= 0) {
 		// The params provide no usable region; fall back to the default set
 		// via setDefaultRegionOfDefinition().
 		return defaultRegionOfDefinitions_;
 	}
-	return regionOfDefinition;
+	return region_of_definition;
 }
 void olive::plugin::OliveClipInstance::setRegionOfDefinition(
-	OfxRectD regionOfDefinition, OfxTime time)
+	OfxRectD region_of_definition, OfxTime time)
 {
-	regionOfDefinitions_[time] = regionOfDefinition;
+	regionOfDefinitions_[time] = region_of_definition;
 }
 
 void olive::plugin::OliveClipInstance::setDefaultRegionOfDefinition(
-	OfxRectD regionOfDefinition)
+	OfxRectD region_of_definition)
 {
-	defaultRegionOfDefinitions_ = regionOfDefinition;
+	defaultRegionOfDefinitions_ = region_of_definition;
 }
 
-void olive::plugin::OliveClipInstance::pruneImagesCache()
+void olive::plugin::OliveClipInstance::prune_images_cache()
 {
 	// Do not prune output clip images; they may have external references
 	// added by getImage()/addReference() and are typically single-frame.
 	if (name_ == kOfxImageEffectOutputClipName) {
 		return;
 	}
-	while (images_.size() > kMaxInputImageCache) {
+	while (images_.size() > k_max_input_image_cache) {
 		auto it = images_.begin();
 		Image *img = it.value();
 		images_.erase(it);
@@ -608,8 +608,8 @@ void olive::plugin::OliveClipInstance::setInputTexture(TexturePtr texture,
 	// The frame rate of an OFX clip should reflect the project's frame rate,
 	// not the individual input texture's frame rate. If different inputs
 	// have different frame rates, setupClipPreferencesArgs throws an exception.
-	rational saved_frame_rate = params_.frame_rate();
-	rational saved_time_base = params_.time_base();
+	Rational saved_frame_rate = params_.frame_rate();
+	Rational saved_time_base = params_.time_base();
 
 	this->params_ = incoming;
 
@@ -634,16 +634,16 @@ void olive::plugin::OliveClipInstance::setInputTexture(TexturePtr texture,
 
 	AVFramePtr frame = texture->frame();
 	if (!frame || !frame->data(0)) {
-		frame = ReadbackTextureToFrame(texture, params_);
+		frame = readback_texture_to_frame(texture, params_);
 	}
-	int expected_fmt = FFmpegUtils::GetFFmpegPixelFormat(
+	int expected_fmt = FFmpegUtils::get_f_fmpeg_pixel_format(
 		params_.format(), params_.channel_count());
-	if (expected_fmt == FB_PIX_FMT_NONE) {
+	if (expected_fmt == fb_pix_fmt_none) {
 		return;
 	}
 	OfxRectI bounds = { 0, 0, params_.width(), params_.height() };
 	OfxRectD rod_d = getRegionOfDefinition(time);
-	OfxRectI regionOfDefinition = { static_cast<int>(std::floor(rod_d.x1)),
+	OfxRectI region_of_definition = { static_cast<int>(std::floor(rod_d.x1)),
 									static_cast<int>(std::floor(rod_d.y1)),
 									static_cast<int>(std::ceil(rod_d.x2)),
 									static_cast<int>(std::ceil(rod_d.y2)) };
@@ -651,12 +651,12 @@ void olive::plugin::OliveClipInstance::setInputTexture(TexturePtr texture,
 	Image *image;
 	if (images_.contains(time)) {
 		image = images_.value(time);
-		image->EnsureAllocatedFromParams(params_, bounds, regionOfDefinition,
+		image->ensure_allocated_from_params(params_, bounds, region_of_definition,
 										 false);
 	} else {
-		pruneImagesCache();
-		image = new Image(*this, params_, bounds, regionOfDefinition, false);
-		image->EnsureAllocatedFromParams(params_, bounds, regionOfDefinition,
+		prune_images_cache();
+		image = new Image(*this, params_, bounds, region_of_definition, false);
+		image->ensure_allocated_from_params(params_, bounds, region_of_definition,
 										 false);
 		images_.insert(time, image);
 	}
@@ -676,7 +676,7 @@ void olive::plugin::OliveClipInstance::setInputTexture(TexturePtr texture,
 	// undefined behaviour when val is NaN, leading to out-of-bounds indexing
 	// and SIGSEGV on Apple Silicon (where (int)NaN often evaluates to 0 or
 	// INT_MIN, causing huge offsets into bgrid._data).
-	if (params_.format() == core::PixelFormat::F32) {
+	if (params_.format() == core::PixelFormat::f32) {
 		const float *fptr = reinterpret_cast<const float *>(frame->data(0));
 		int row_floats = frame->linesize(0) / static_cast<int>(sizeof(float));
 		bool has_nan = false;
@@ -706,15 +706,15 @@ void olive::plugin::OliveClipInstance::setInputTexture(TexturePtr texture,
 	AVFramePtr src_frame = frame;
 	if (frame->format() != expected_fmt || frame->width() != params_.width() ||
 		frame->height() != params_.height()) {
-		if (PackedFloatChannels(frame->format()) >
+		if (packed_float_channels(frame->format()) >
 			0) {
-			AVFramePtr converted = ConvertPackedFloatFrame(frame, expected_fmt);
+			AVFramePtr converted = convert_packed_float_frame(frame, expected_fmt);
 			if (converted) {
 				src_frame = converted;
 				goto copy_pixels;
 			}
 		}
-		AVFramePtr converted = CreateAVFramePtr();
+		AVFramePtr converted = create_av_frame_ptr();
 		converted->set_format(expected_fmt);
 		converted->set_width(params_.width());
 		converted->set_height(params_.height());
@@ -758,7 +758,7 @@ copy_pixels:
 	int copy_height = std::min(image->height(), src_frame->height());
 
 	const uint8_t *src = src_frame->data(0);
-	if (params_.format() == core::PixelFormat::F32) {
+	if (params_.format() == core::PixelFormat::f32) {
 		const float *src_f = reinterpret_cast<const float *>(src);
 		float *dst_f = reinterpret_cast<float *>(dst);
 		int src_stride = src_row_bytes / static_cast<int>(sizeof(float));
@@ -806,7 +806,7 @@ void olive::plugin::OliveClipInstance::setOutputTexture(TexturePtr texture,
 #ifdef OFX_SUPPORTS_OPENGLRENDER
 OFX::Host::ImageEffect::Texture *
 olive::plugin::OliveClipInstance::loadTexture(OfxTime time, const char *format,
-											  const OfxRectD *optionalBounds)
+											  const OfxRectD *optional_bounds)
 {
 	(void)format;
 
@@ -818,7 +818,7 @@ olive::plugin::OliveClipInstance::loadTexture(OfxTime time, const char *format,
 		gl_texture = input ? input : nullptr;
 	}
 
-	if (!gl_texture || gl_texture->IsDummy() || !gl_texture->id().isValid()) {
+	if (!gl_texture || gl_texture->is_dummy() || !gl_texture->id().isValid()) {
 		return nullptr;
 	}
 
@@ -828,11 +828,11 @@ olive::plugin::OliveClipInstance::loadTexture(OfxTime time, const char *format,
 					 static_cast<int>(std::ceil(rod_d.x2)),
 					 static_cast<int>(std::ceil(rod_d.y2)) };
 	OfxRectI bounds = rod;
-	if (optionalBounds) {
-		bounds.x1 = static_cast<int>(std::floor(optionalBounds->x1));
-		bounds.y1 = static_cast<int>(std::floor(optionalBounds->y1));
-		bounds.x2 = static_cast<int>(std::ceil(optionalBounds->x2));
-		bounds.y2 = static_cast<int>(std::ceil(optionalBounds->y2));
+	if (optional_bounds) {
+		bounds.x1 = static_cast<int>(std::floor(optional_bounds->x1));
+		bounds.y1 = static_cast<int>(std::floor(optional_bounds->y1));
+		bounds.x2 = static_cast<int>(std::ceil(optional_bounds->x2));
+		bounds.y2 = static_cast<int>(std::ceil(optional_bounds->y2));
 	}
 	bounds.x1 = std::max(bounds.x1, rod.x1);
 	bounds.y1 = std::max(bounds.y1, rod.y1);

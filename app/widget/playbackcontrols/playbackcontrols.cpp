@@ -57,10 +57,10 @@ PlaybackControls::PlaybackControls(QWidget *parent)
 	lower_left_layout->setContentsMargins(0, 0, 0, 0);
 
 	cur_tc_lbl_ = new RationalSlider();
-	cur_tc_lbl_->SetDisplayType(RationalSlider::kTime);
-	cur_tc_lbl_->SetMinimum(0);
-	connect(cur_tc_lbl_, &RationalSlider::ValueChanged, this,
-			&PlaybackControls::TimeChanged);
+	cur_tc_lbl_->set_display_type(RationalSlider::k_time);
+	cur_tc_lbl_->set_minimum(0);
+	connect(cur_tc_lbl_, &RationalSlider::value_changed, this,
+			&PlaybackControls::time_changed);
 	lower_left_layout->addWidget(cur_tc_lbl_);
 	lower_left_layout->addStretch();
 
@@ -87,14 +87,14 @@ PlaybackControls::PlaybackControls(QWidget *parent)
 	go_to_start_btn_->setSizePolicy(btn_sz_policy);
 	lower_middle_layout->addWidget(go_to_start_btn_);
 	connect(go_to_start_btn_, &QPushButton::clicked, this,
-			&PlaybackControls::BeginClicked);
+			&PlaybackControls::begin_clicked);
 
 	// Prev Frame Button
 	prev_frame_btn_ = new QPushButton();
 	prev_frame_btn_->setSizePolicy(btn_sz_policy);
 	lower_middle_layout->addWidget(prev_frame_btn_);
 	connect(prev_frame_btn_, &QPushButton::clicked, this,
-			&PlaybackControls::PrevFrameClicked);
+			&PlaybackControls::prev_frame_clicked);
 
 	// Play/Pause Button
 	playpause_stack_ = new QStackedWidget();
@@ -104,12 +104,12 @@ PlaybackControls::PlaybackControls(QWidget *parent)
 	play_btn_ = new QPushButton();
 	playpause_stack_->addWidget(play_btn_);
 	connect(play_btn_, &QPushButton::clicked, this,
-			&PlaybackControls::PlayClicked);
+			&PlaybackControls::play_clicked);
 
 	pause_btn_ = new QPushButton();
 	playpause_stack_->addWidget(pause_btn_);
 	connect(pause_btn_, &QPushButton::clicked, this,
-			&PlaybackControls::PauseClicked);
+			&PlaybackControls::pause_clicked);
 
 	// Default to showing play button
 	playpause_stack_->setCurrentWidget(play_btn_);
@@ -119,14 +119,14 @@ PlaybackControls::PlaybackControls(QWidget *parent)
 	next_frame_btn_->setSizePolicy(btn_sz_policy);
 	lower_middle_layout->addWidget(next_frame_btn_);
 	connect(next_frame_btn_, &QPushButton::clicked, this,
-			&PlaybackControls::NextFrameClicked);
+			&PlaybackControls::next_frame_clicked);
 
 	// Go To End Button
 	go_to_end_btn_ = new QPushButton();
 	go_to_end_btn_->setSizePolicy(btn_sz_policy);
 	lower_middle_layout->addWidget(go_to_end_btn_);
 	connect(go_to_end_btn_, &QPushButton::clicked, this,
-			&PlaybackControls::EndClicked);
+			&PlaybackControls::end_clicked);
 
 	lower_middle_layout->addStretch();
 
@@ -137,15 +137,15 @@ PlaybackControls::PlaybackControls(QWidget *parent)
 	av_btn_layout->setContentsMargins(0, 0, 0, 0);
 	video_drag_btn_ = new DragButton();
 	connect(video_drag_btn_, &QPushButton::clicked, this,
-			&PlaybackControls::VideoClicked);
-	connect(video_drag_btn_, &DragButton::DragStarted, this,
-			&PlaybackControls::VideoDragged);
+			&PlaybackControls::video_clicked);
+	connect(video_drag_btn_, &DragButton::drag_started, this,
+			&PlaybackControls::video_dragged);
 	av_btn_layout->addWidget(video_drag_btn_);
 	audio_drag_btn_ = new DragButton();
 	connect(audio_drag_btn_, &QPushButton::clicked, this,
-			&PlaybackControls::AudioClicked);
-	connect(audio_drag_btn_, &DragButton::DragStarted, this,
-			&PlaybackControls::AudioDragged);
+			&PlaybackControls::audio_clicked);
+	connect(audio_drag_btn_, &DragButton::drag_started, this,
+			&PlaybackControls::audio_dragged);
 	av_btn_layout->addWidget(audio_drag_btn_);
 	lower_control_layout->addWidget(av_btn_widget);
 
@@ -163,31 +163,31 @@ PlaybackControls::PlaybackControls(QWidget *parent)
 	end_tc_lbl_ = new QLabel();
 	lower_right_layout->addWidget(end_tc_lbl_);
 
-	UpdateIcons();
+	update_icons();
 
-	SetTimebase(0);
+	set_timebase(0);
 
-	SetAudioVideoDragButtonsVisible(false);
+	set_audio_video_drag_buttons_visible(false);
 
-	connect(Core::instance(), &Core::TimecodeDisplayChanged, this,
-			&PlaybackControls::TimecodeChanged);
+	connect(Core::instance(), &Core::timecode_display_changed, this,
+			&PlaybackControls::timecode_changed);
 
 	play_blink_timer_ = new QTimer(this);
 	play_blink_timer_->setInterval(500);
 	connect(play_blink_timer_, &QTimer::timeout, this,
-			&PlaybackControls::PlayBlink);
+			&PlaybackControls::play_blink);
 }
 
-void PlaybackControls::SetTimecodeEnabled(bool enabled)
+void PlaybackControls::set_timecode_enabled(bool enabled)
 {
 	lower_left_container_->setVisible(enabled);
 	lower_right_container_->setVisible(enabled);
 }
 
-void PlaybackControls::SetTimebase(const rational &r)
+void PlaybackControls::set_timebase(const Rational &r)
 {
 	time_base_ = r;
-	cur_tc_lbl_->SetTimebase(r);
+	cur_tc_lbl_->set_timebase(r);
 
 	cur_tc_lbl_->setVisible(!r.isNull());
 	end_tc_lbl_->setVisible(!r.isNull());
@@ -195,18 +195,18 @@ void PlaybackControls::SetTimebase(const rational &r)
 	setEnabled(!r.isNull());
 }
 
-void PlaybackControls::SetAudioVideoDragButtonsVisible(bool e)
+void PlaybackControls::set_audio_video_drag_buttons_visible(bool e)
 {
 	video_drag_btn_->setVisible(e);
 	audio_drag_btn_->setVisible(e);
 }
 
-void PlaybackControls::SetTime(const rational &r)
+void PlaybackControls::set_time(const Rational &r)
 {
-	cur_tc_lbl_->SetValue(r);
+	cur_tc_lbl_->set_value(r);
 }
 
-void PlaybackControls::SetEndTime(const rational &r)
+void PlaybackControls::set_end_time(const Rational &r)
 {
 	if (time_base_.isNull()) {
 		return;
@@ -215,16 +215,16 @@ void PlaybackControls::SetEndTime(const rational &r)
 	end_time_ = r;
 
 	end_tc_lbl_->setText(QString::fromStdString(Timecode::time_to_timecode(
-		end_time_, time_base_, Core::instance()->GetTimecodeDisplay())));
+		end_time_, time_base_, Core::instance()->get_timecode_display())));
 }
 
-void PlaybackControls::ShowPauseButton()
+void PlaybackControls::show_pause_button()
 {
 	// Play was clicked, toggle to pause
 	playpause_stack_->setCurrentWidget(pause_btn_);
 }
 
-void PlaybackControls::ShowPlayButton()
+void PlaybackControls::show_play_button()
 {
 	playpause_stack_->setCurrentWidget(play_btn_);
 }
@@ -234,36 +234,36 @@ void PlaybackControls::changeEvent(QEvent *e)
 	QWidget::changeEvent(e);
 
 	if (e->type() == QEvent::StyleChange) {
-		UpdateIcons();
+		update_icons();
 	}
 }
 
-void PlaybackControls::UpdateIcons()
+void PlaybackControls::update_icons()
 {
-	go_to_start_btn_->setIcon(icon::GoToStart);
-	prev_frame_btn_->setIcon(icon::PrevFrame);
-	play_btn_->setIcon(icon::Play);
-	pause_btn_->setIcon(icon::Pause);
-	next_frame_btn_->setIcon(icon::NextFrame);
-	go_to_end_btn_->setIcon(icon::GoToEnd);
-	video_drag_btn_->setIcon(icon::Video);
-	audio_drag_btn_->setIcon(icon::Audio);
+	go_to_start_btn_->setIcon(icon::go_to_start);
+	prev_frame_btn_->setIcon(icon::prev_frame);
+	play_btn_->setIcon(icon::play);
+	pause_btn_->setIcon(icon::pause);
+	next_frame_btn_->setIcon(icon::next_frame);
+	go_to_end_btn_->setIcon(icon::go_to_end);
+	video_drag_btn_->setIcon(icon::video);
+	audio_drag_btn_->setIcon(icon::audio);
 }
 
-void PlaybackControls::SetButtonRecordingState(QPushButton *btn, bool on)
+void PlaybackControls::set_button_recording_state(QPushButton *btn, bool on)
 {
 	btn->setStyleSheet(on ? QStringLiteral("background: red;") : QString());
 }
 
-void PlaybackControls::TimecodeChanged()
+void PlaybackControls::timecode_changed()
 {
 	// Update end time
-	SetEndTime(end_time_);
+	set_end_time(end_time_);
 }
 
-void PlaybackControls::PlayBlink()
+void PlaybackControls::play_blink()
 {
-	SetButtonRecordingState(play_btn_, play_btn_->styleSheet().isEmpty());
+	set_button_recording_state(play_btn_, play_btn_->styleSheet().isEmpty());
 }
 
 }

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef UNDOCOMMAND_H
-#define UNDOCOMMAND_H
+#ifndef OAK_UNDOCOMMAND_H
+#define OAK_UNDOCOMMAND_H
 
 #include <list>
 #include <QString>
@@ -58,7 +58,7 @@ public:
 	void redo_and_set_modified();
 	void undo_and_set_modified();
 
-	virtual Project *GetRelevantProject() const = 0;
+	virtual Project *get_relevant_project() const = 0;
 
 protected:
 	virtual void prepare()
@@ -81,7 +81,7 @@ class MultiUndoCommand : public UndoCommand {
 public:
 	MultiUndoCommand() = default;
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return nullptr;
 	}
@@ -111,4 +111,4 @@ private:
 
 }
 
-#endif // UNDOCOMMAND_H
+#endif // OAK_UNDOCOMMAND_H

@@ -68,13 +68,13 @@ MainWindow::MainWindow(QWidget *parent)
 	MainMenu *main_menu = new MainMenu(this);
 	setMenuBar(main_menu);
 
-	LoadCustomShortcuts();
+	load_custom_shortcuts();
 
 	// Create and set status bar
 	MainStatusBar *status_bar = new MainStatusBar(this);
-	status_bar->ConnectTaskManager(TaskManager::instance());
-	connect(status_bar, &MainStatusBar::DoubleClicked, this,
-			&MainWindow::StatusBarDoubleClicked);
+	status_bar->connect_task_manager(TaskManager::instance());
+	connect(status_bar, &MainStatusBar::double_clicked, this,
+			&MainWindow::status_bar_double_clicked);
 	setStatusBar(status_bar);
 
 	// Create standard panels
@@ -88,7 +88,7 @@ MainWindow::MainWindow(QWidget *parent)
 	project_panel_ = new ProjectPanel(QStringLiteral("ProjectPanel"));
 	tool_panel_ = new ToolPanel();
 	task_man_panel_ = new TaskManagerPanel();
-	AppendTimelinePanel();
+	append_timeline_panel();
 	audio_monitor_panel_ = new AudioMonitorPanel();
 	scope_panel_ = new ScopePanel();
 	history_panel_ = new HistoryPanel();
@@ -101,44 +101,44 @@ MainWindow::MainWindow(QWidget *parent)
 	emit pixel_sampler_panel_->shown(Qt::OtherFocusReason);
 
 	// Make node-related connections
-	connect(node_panel_, &NodePanel::NodeSelectionChangedWithContexts,
-			param_panel_, &ParamPanel::SetSelectedNodes);
-	connect(node_panel_, &NodePanel::NodeGroupOpened, this,
-			&MainWindow::NodePanelGroupOpenedOrClosed);
-	connect(node_panel_, &NodePanel::NodeGroupClosed, this,
-			&MainWindow::NodePanelGroupOpenedOrClosed);
-	connect(param_panel_, &ParamPanel::FocusedNodeChanged,
-			sequence_viewer_panel_, &ViewerPanel::SetGizmos);
-	connect(param_panel_, &ParamPanel::RequestViewerToStartEditingText,
-			sequence_viewer_panel_, &ViewerPanel::RequestStartEditingText);
-	connect(param_panel_, &ParamPanel::FocusedNodeChanged, curve_panel_,
-			&CurvePanel::SetNode);
-	connect(param_panel_, &ParamPanel::SelectedNodesChanged, node_panel_,
-			&NodePanel::Select);
-	connect(project_panel_, &ProjectPanel::ProjectNameChanged, this,
-			&MainWindow::UpdateTitle);
+	connect(node_panel_, &NodePanel::node_selection_changed_with_contexts,
+			param_panel_, &ParamPanel::set_selected_nodes);
+	connect(node_panel_, &NodePanel::node_group_opened, this,
+			&MainWindow::node_panel_group_opened_or_closed);
+	connect(node_panel_, &NodePanel::node_group_closed, this,
+			&MainWindow::node_panel_group_opened_or_closed);
+	connect(param_panel_, &ParamPanel::focused_node_changed,
+			sequence_viewer_panel_, &ViewerPanel::set_gizmos);
+	connect(param_panel_, &ParamPanel::request_viewer_to_start_editing_text,
+			sequence_viewer_panel_, &ViewerPanel::request_start_editing_text);
+	connect(param_panel_, &ParamPanel::focused_node_changed, curve_panel_,
+			&CurvePanel::set_node);
+	connect(param_panel_, &ParamPanel::selected_nodes_changed, node_panel_,
+			&NodePanel::select);
+	connect(project_panel_, &ProjectPanel::project_name_changed, this,
+			&MainWindow::update_title);
 
-	connect(node_panel_, &NodePanel::NodeSelectionChanged,
-			sequence_viewer_panel_, &ViewerPanel::SetNodeViewSelections);
+	connect(node_panel_, &NodePanel::node_selection_changed,
+			sequence_viewer_panel_, &ViewerPanel::set_node_view_selections);
 
 	// Route play/pause/shuttle commands from these panels to the sequence viewer
-	sequence_viewer_panel_->ConnectTimeBasedPanel(param_panel_);
-	sequence_viewer_panel_->ConnectTimeBasedPanel(curve_panel_);
-	sequence_viewer_panel_->ConnectTimeBasedPanel(multicam_panel_);
+	sequence_viewer_panel_->connect_time_based_panel(param_panel_);
+	sequence_viewer_panel_->connect_time_based_panel(curve_panel_);
+	sequence_viewer_panel_->connect_time_based_panel(multicam_panel_);
 
-	connect(PanelManager::instance(), &PanelManager::FocusedPanelChanged, this,
-			&MainWindow::FocusedPanelChanged);
+	connect(PanelManager::instance(), &PanelManager::focused_panel_changed, this,
+			&MainWindow::focused_panel_changed);
 
-	sequence_viewer_panel_->AddPlaybackDevice(
-		multicam_panel_->GetMulticamWidget()->GetDisplayWidget());
-	sequence_viewer_panel_->ConnectMulticamWidget(
-		multicam_panel_->GetMulticamWidget());
+	sequence_viewer_panel_->add_playback_device(
+		multicam_panel_->get_multicam_widget()->get_display_widget());
+	sequence_viewer_panel_->connect_multicam_widget(
+		multicam_panel_->get_multicam_widget());
 
-	scope_panel_->SetViewerPanel(sequence_viewer_panel_);
+	scope_panel_->set_viewer_panel(sequence_viewer_panel_);
 
-	UpdateTitle();
+	update_title();
 
-	QMetaObject::invokeMethod(this, &MainWindow::SetDefaultLayout,
+	QMetaObject::invokeMethod(this, &MainWindow::set_default_layout,
 							  Qt::QueuedConnection);
 }
 
@@ -151,49 +151,49 @@ MainWindow::~MainWindow()
 #endif
 }
 
-void MainWindow::LoadLayout(const MainWindowLayoutInfo &info)
+void MainWindow::load_layout(const MainWindowLayoutInfo &info)
 {
 	foreach (Folder *folder, info.open_folders()) {
-		OpenFolder(folder, true);
+		open_folder(folder, true);
 	}
 
 	foreach (Sequence *sequence, info.open_sequences()) {
-		OpenSequence(sequence, info.open_sequences().size() == 1);
+		open_sequence(sequence, info.open_sequences().size() == 1);
 	}
 
 	foreach (ViewerOutput *viewer, info.open_viewers()) {
-		OpenNodeInViewer(viewer);
+		open_node_in_viewer(viewer);
 	}
 
 	for (auto it = info.panel_data().cbegin(); it != info.panel_data().cend();
 		 it++) {
 		// Find panel with this ID
 		if (PanelWidget *panel =
-				PanelManager::instance()->GetPanelWithName(it->first)) {
-			panel->LoadData(it->second);
+				PanelManager::instance()->get_panel_with_name(it->first)) {
+			panel->load_data(it->second);
 		}
 	}
 
 	KDDockWidgets::LayoutSaver().restoreLayout(qUncompress(info.state()));
 }
 
-QString TransformNameForSerialization(const QString &unique, int i)
+QString transform_name_for_serialization(const QString &unique, int i)
 {
 	return QStringLiteral("%1:%2").arg(unique.split(':').at(0),
 									   QString::number(i));
 }
 
-void CorrectPanelDataIfNecessary(const QString &unique_name, int index,
+void correct_panel_data_if_necessary(const QString &unique_name, int index,
 								 MainWindowLayoutInfo &info, QByteArray &layout)
 {
-	QString corrected = TransformNameForSerialization(unique_name, index);
+	QString corrected = transform_name_for_serialization(unique_name, index);
 	if (corrected != unique_name) {
 		info.move_panel_data(unique_name, corrected);
 		layout.replace(unique_name.toUtf8(), corrected.toUtf8());
 	}
 }
 
-MainWindowLayoutInfo MainWindow::SaveLayout() const
+MainWindowLayoutInfo MainWindow::save_layout() const
 {
 	MainWindowLayoutInfo info;
 
@@ -202,25 +202,25 @@ MainWindowLayoutInfo MainWindow::SaveLayout() const
 							premaximized_state_;
 
 	foreach (PanelWidget *panel, PanelManager::instance()->panels()) {
-		info.set_panel_data(panel->uniqueName(), panel->SaveData());
+		info.set_panel_data(panel->uniqueName(), panel->save_data());
 	}
 
 	for (int i = 0; i < folder_panels_.size(); i++) {
 		auto panel = folder_panels_.at(i);
 		info.add_folder(panel->get_root());
-		CorrectPanelDataIfNecessary(panel->uniqueName(), i, info, layout);
+		correct_panel_data_if_necessary(panel->uniqueName(), i, info, layout);
 	}
 
 	for (int i = 0; i < timeline_panels_.size(); i++) {
 		auto panel = timeline_panels_.at(i);
-		info.add_sequence(panel->GetSequence());
-		CorrectPanelDataIfNecessary(panel->uniqueName(), i, info, layout);
+		info.add_sequence(panel->get_sequence());
+		correct_panel_data_if_necessary(panel->uniqueName(), i, info, layout);
 	}
 
 	for (int i = 0; i < viewer_panels_.size(); i++) {
 		auto panel = viewer_panels_.at(i);
-		info.add_viewer(panel->GetConnectedViewer());
-		CorrectPanelDataIfNecessary(panel->uniqueName(), i, info, layout);
+		info.add_viewer(panel->get_connected_viewer());
+		correct_panel_data_if_necessary(panel->uniqueName(), i, info, layout);
 	}
 
 	info.set_state(qCompress(layout));
@@ -228,11 +228,11 @@ MainWindowLayoutInfo MainWindow::SaveLayout() const
 	return info;
 }
 
-TimelinePanel *MainWindow::OpenSequence(Sequence *sequence, bool enable_focus)
+TimelinePanel *MainWindow::open_sequence(Sequence *sequence, bool enable_focus)
 {
 	// See if this sequence is already open, and switch to it if so
 	foreach (TimelinePanel *tl, timeline_panels_) {
-		if (tl->GetConnectedViewer() == sequence) {
+		if (tl->get_connected_viewer() == sequence) {
 			tl->raise();
 			return tl;
 		}
@@ -241,40 +241,40 @@ TimelinePanel *MainWindow::OpenSequence(Sequence *sequence, bool enable_focus)
 	// See if we have any sequences open or not
 	TimelinePanel *panel;
 
-	if (!timeline_panels_.first()->GetConnectedViewer()) {
+	if (!timeline_panels_.first()->get_connected_viewer()) {
 		panel = timeline_panels_.first();
 	} else {
-		panel = AppendTimelinePanel();
+		panel = append_timeline_panel();
 		//enable_focus = false;
 	}
 
-	panel->ConnectViewerNode(sequence);
+	panel->connect_viewer_node(sequence);
 
 	if (enable_focus) {
-		TimelineFocused(sequence);
-		UpdateAudioMonitorParams(sequence);
+		timeline_focused(sequence);
+		update_audio_monitor_params(sequence);
 	}
 
 	return panel;
 }
 
-void MainWindow::CloseSequence(Sequence *sequence)
+void MainWindow::close_sequence(Sequence *sequence)
 {
 	// We defer to RemoveTimelinePanel() to close the panels, which may delete and remove indices from timeline_panels_.
 	// We make a copy so that our array here doesn't get ruined by what RemoveTimelinePanel() does
 	QList<TimelinePanel *> copy = timeline_panels_;
 
 	foreach (TimelinePanel *tp, copy) {
-		if (tp->GetConnectedViewer() == sequence) {
-			RemoveTimelinePanel(tp);
+		if (tp->get_connected_viewer() == sequence) {
+			remove_timeline_panel(tp);
 		}
 	}
 }
 
-bool MainWindow::IsSequenceOpen(Sequence *sequence) const
+bool MainWindow::is_sequence_open(Sequence *sequence) const
 {
 	foreach (TimelinePanel *tp, timeline_panels_) {
-		if (tp->GetConnectedViewer() == sequence) {
+		if (tp->get_connected_viewer() == sequence) {
 			return true;
 		}
 	}
@@ -282,10 +282,10 @@ bool MainWindow::IsSequenceOpen(Sequence *sequence) const
 	return false;
 }
 
-void MainWindow::OpenFolder(Folder *i, bool floating)
+void MainWindow::open_folder(Folder *i, bool floating)
 {
 	ProjectPanel *panel =
-		AppendPanelInternal(QStringLiteral("FolderPanel"), folder_panels_);
+		append_panel_internal(QStringLiteral("FolderPanel"), folder_panels_);
 
 	panel->set_project(i->project());
 	panel->set_root(i);
@@ -297,17 +297,17 @@ void MainWindow::OpenFolder(Folder *i, bool floating)
 	}
 
 	// If the panel is closed, just destroy it
-	connect(panel, &ProjectPanel::CloseRequested, this,
-			&MainWindow::FolderPanelCloseRequested);
+	connect(panel, &ProjectPanel::close_requested, this,
+			&MainWindow::folder_panel_close_requested);
 }
 
-void MainWindow::OpenNodeInViewer(ViewerOutput *node)
+void MainWindow::open_node_in_viewer(ViewerOutput *node)
 {
 	ViewerPanel *existing = nullptr;
 
 	for (auto it = viewer_panels_.cbegin(); it != viewer_panels_.cend(); it++) {
 		ViewerPanel *it2 = (*it);
-		if (it2->GetConnectedViewer() == node) {
+		if (it2->get_connected_viewer() == node) {
 			existing = it2;
 			break;
 		}
@@ -319,18 +319,18 @@ void MainWindow::OpenNodeInViewer(ViewerOutput *node)
 	} else {
 		// Create a viewer for this node
 		ViewerPanel *viewer =
-			AppendPanelInternal(QStringLiteral("ViewerPanel"), viewer_panels_);
+			append_panel_internal(QStringLiteral("ViewerPanel"), viewer_panels_);
 
-		viewer->ConnectViewerNode(node);
+		viewer->connect_viewer_node(node);
 
-		connect(viewer, &ViewerPanel::CloseRequested, this,
-				&MainWindow::ViewerCloseRequested);
-		connect(node, &ViewerOutput::RemovedFromGraph, this,
-				&MainWindow::ViewerWithPanelRemovedFromGraph);
+		connect(viewer, &ViewerPanel::close_requested, this,
+				&MainWindow::viewer_close_requested);
+		connect(node, &ViewerOutput::removed_from_graph, this,
+				&MainWindow::viewer_with_panel_removed_from_graph);
 	}
 }
 
-void MainWindow::SetFullscreen(bool fullscreen)
+void MainWindow::set_fullscreen(bool fullscreen)
 {
 	if (fullscreen) {
 		setWindowState(windowState() | Qt::WindowFullScreen);
@@ -339,7 +339,7 @@ void MainWindow::SetFullscreen(bool fullscreen)
 	}
 }
 
-void MainWindow::ToggleMaximizedPanel()
+void MainWindow::toggle_maximized_panel()
 {
 	KDDockWidgets::LayoutSaver saver;
 
@@ -348,11 +348,11 @@ void MainWindow::ToggleMaximizedPanel()
 
 		// Find the currently focused panel
 		PanelWidget *currently_hovered =
-			PanelManager::instance()->CurrentlyHovered();
+			PanelManager::instance()->currently_hovered();
 
 		// If no panel is hovered, fallback to the currently active panel
 		if (!currently_hovered) {
-			currently_hovered = PanelManager::instance()->CurrentlyFocused();
+			currently_hovered = PanelManager::instance()->currently_focused();
 
 			// If no panel is hovered or focused, do nothing
 			if (!currently_hovered) {
@@ -377,21 +377,21 @@ void MainWindow::ToggleMaximizedPanel()
 	} else {
 		// Preserve currently focused panel
 		auto currently_focused_panel =
-			PanelManager::instance()->CurrentlyFocused(false);
+			PanelManager::instance()->currently_focused(false);
 
 		// Assume we are currently maximized, restore the state
-		PanelManager::instance()->SetSuppressChangedSignal(true);
+		PanelManager::instance()->set_suppress_changed_signal(true);
 		saver.restoreLayout(premaximized_state_);
 		premaximized_state_.clear();
 
 		currently_focused_panel->raise();
 		currently_focused_panel->setFocus(Qt::ActiveWindowFocusReason);
 
-		PanelManager::instance()->SetSuppressChangedSignal(false);
+		PanelManager::instance()->set_suppress_changed_signal(false);
 	}
 }
 
-void MainWindow::SetProject(Project *p)
+void MainWindow::set_project(Project *p)
 {
 	if (project_ == p) {
 		return;
@@ -399,21 +399,21 @@ void MainWindow::SetProject(Project *p)
 
 	if (project_) {
 		// Clear all data
-		param_panel_->SetContexts(QVector<Node *>());
-		node_panel_->SetContexts(QVector<Node *>());
+		param_panel_->set_contexts(QVector<Node *>());
+		node_panel_->set_contexts(QVector<Node *>());
 
 		// Close any nodes open in TimeBasedWidgets
 		foreach (PanelWidget *panel, PanelManager::instance()->panels()) {
 			TimeBasedPanel *tbp = dynamic_cast<TimeBasedPanel *>(panel);
 
-			if (tbp && tbp->GetConnectedViewer() &&
-				tbp->GetConnectedViewer()->project() == project_) {
+			if (tbp && tbp->get_connected_viewer() &&
+				tbp->get_connected_viewer()->project() == project_) {
 				if (dynamic_cast<TimelinePanel *>(tbp)) {
 					// Prefer our CloseSequence function which will delete any unnecessary timeline panels
-					CloseSequence(
-						static_cast<Sequence *>(tbp->GetConnectedViewer()));
+					close_sequence(
+						static_cast<Sequence *>(tbp->get_connected_viewer()));
 				} else {
-					tbp->DisconnectViewerNode();
+					tbp->disconnect_viewer_node();
 				}
 			}
 		}
@@ -437,7 +437,7 @@ void MainWindow::SetProject(Project *p)
 	}
 }
 
-void MainWindow::SetApplicationProgressStatus(ProgressStatus status)
+void MainWindow::set_application_progress_status(ProgressStatus status)
 {
 #if defined(Q_OS_WINDOWS)
 	if (taskbar_interface_) {
@@ -461,7 +461,7 @@ void MainWindow::SetApplicationProgressStatus(ProgressStatus status)
 #endif
 }
 
-void MainWindow::SetApplicationProgressValue(int value)
+void MainWindow::set_application_progress_value(int value)
 {
 #if defined(Q_OS_WINDOWS)
 	if (taskbar_interface_) {
@@ -472,27 +472,27 @@ void MainWindow::SetApplicationProgressValue(int value)
 #endif
 }
 
-void MainWindow::SelectFootage(const QVector<Footage *> &e)
+void MainWindow::select_footage(const QVector<Footage *> &e)
 {
-	SelectFootageForProjectPanel(e, project_panel_);
+	select_footage_for_project_panel(e, project_panel_);
 	for (ProjectPanel *p : folder_panels_) {
-		SelectFootageForProjectPanel(e, p);
+		select_footage_for_project_panel(e, p);
 	}
 }
 
 void MainWindow::closeEvent(QCloseEvent *e)
 {
 	// Try to close all projects (this will return false if the user chooses not to close)
-	if (!Core::instance()->CloseProject(false)) {
+	if (!Core::instance()->close_project(false)) {
 		e->ignore();
 		return;
 	}
 
-	scope_panel_->SetViewerPanel(nullptr);
+	scope_panel_->set_viewer_panel(nullptr);
 
-	PanelManager::instance()->DeleteAllPanels();
+	PanelManager::instance()->delete_all_panels();
 
-	SaveCustomShortcuts();
+	save_custom_shortcuts();
 
 	QMainWindow::closeEvent(e);
 }
@@ -526,66 +526,66 @@ bool MainWindow::nativeEvent(const QByteArray &eventType, void *message,
 }
 #endif
 
-void MainWindow::StatusBarDoubleClicked()
+void MainWindow::status_bar_double_clicked()
 {
 	task_man_panel_->show();
 	task_man_panel_->raise();
 }
 
-void MainWindow::NodePanelGroupOpenedOrClosed()
+void MainWindow::node_panel_group_opened_or_closed()
 {
 	NodePanel *p = static_cast<NodePanel *>(sender());
-	param_panel_->SetContexts(p->GetContexts());
+	param_panel_->set_contexts(p->get_contexts());
 }
 
-void MainWindow::TimelinePanelSelectionChanged(const QVector<Block *> &blocks)
+void MainWindow::timeline_panel_selection_changed(const QVector<Block *> &blocks)
 {
 	TimelinePanel *panel = static_cast<TimelinePanel *>(sender());
 
-	if (PanelManager::instance()->CurrentlyFocused(false) == panel) {
-		UpdateNodePanelContextFromTimelinePanel(panel);
-		sequence_viewer_panel_->SetTimelineSelectedBlocks(blocks);
+	if (PanelManager::instance()->currently_focused(false) == panel) {
+		update_node_panel_context_from_timeline_panel(panel);
+		sequence_viewer_panel_->set_timeline_selected_blocks(blocks);
 	}
 }
 
-void MainWindow::ShowWelcomeDialog()
+void MainWindow::show_welcome_dialog()
 {
-	if (OLIVE_CONFIG("ShowWelcomeDialog").toBool()) {
+	if (OAK_CONFIG("show_welcome_dialog").toBool()) {
 		AboutDialog ad(true, this);
 		ad.exec();
 	}
 }
 
-void MainWindow::RevealViewerInProject(ViewerOutput *r)
+void MainWindow::reveal_viewer_in_project(ViewerOutput *r)
 {
 	// Rather than just using the resident ProjectPanel, find the most recently focused one since
 	// that's probably the one people will want
-	auto panels = PanelManager::instance()->GetPanelsOfType<ProjectPanel>();
+	auto panels = PanelManager::instance()->get_panels_of_type<ProjectPanel>();
 	foreach (ProjectPanel *p, panels) {
-		if (p->SelectItem(r)) {
+		if (p->select_item(r)) {
 			break;
 		}
 	}
 }
 
-void MainWindow::RevealViewerInFootageViewer(ViewerOutput *r,
+void MainWindow::reveal_viewer_in_footage_viewer(ViewerOutput *r,
 											 const TimeRange &range)
 {
-	footage_viewer_panel_->ConnectViewerNode(r);
+	footage_viewer_panel_->connect_viewer_node(r);
 
 	auto command = new MultiUndoCommand();
-	if (!r->GetWorkArea()->enabled()) {
+	if (!r->get_work_area()->enabled()) {
 		command->add_child(new WorkareaSetEnabledCommand(
-			r->project(), r->GetWorkArea(), true));
+			r->project(), r->get_work_area(), true));
 	}
-	command->add_child(new WorkareaSetRangeCommand(r->GetWorkArea(), range));
+	command->add_child(new WorkareaSetRangeCommand(r->get_work_area(), range));
 	Core::instance()->undo_stack()->push(command, tr("Set Footage Workarea"));
 
-	r->SetPlayhead(range.in());
+	r->set_playhead(range.in());
 }
 
 #ifdef Q_OS_LINUX
-void MainWindow::ShowNouveauWarning()
+void MainWindow::show_nouveau_warning()
 {
 	QMessageBox::warning(
 		this, tr("Driver Warning"),
@@ -596,14 +596,14 @@ void MainWindow::ShowNouveauWarning()
 }
 #endif
 
-void MainWindow::UpdateTitle()
+void MainWindow::update_title()
 {
-	if (Core::instance()->GetActiveProject()) {
+	if (Core::instance()->get_active_project()) {
 		setWindowTitle(
 			QStringLiteral("%1 %2 - [*]%3")
 				.arg(QApplication::applicationName(),
 					 QApplication::applicationVersion(),
-					 Core::instance()->GetActiveProject()->pretty_filename()));
+					 Core::instance()->get_active_project()->pretty_filename()));
 	} else {
 		setWindowTitle(
 			QStringLiteral("%1 %2").arg(QApplication::applicationName(),
@@ -611,53 +611,53 @@ void MainWindow::UpdateTitle()
 	}
 }
 
-void MainWindow::TimelineCloseRequested()
+void MainWindow::timeline_close_requested()
 {
 	TimelinePanel *t = static_cast<TimelinePanel *>(sender());
-	RemoveTimelinePanel(t);
+	remove_timeline_panel(t);
 }
 
-void MainWindow::ViewerCloseRequested()
+void MainWindow::viewer_close_requested()
 {
 	ViewerPanel *panel = static_cast<ViewerPanel *>(sender());
 
-	if (panel == scope_panel_->GetConnectedViewerPanel()) {
-		scope_panel_->SetViewerPanel(sequence_viewer_panel_);
+	if (panel == scope_panel_->get_connected_viewer_panel()) {
+		scope_panel_->set_viewer_panel(sequence_viewer_panel_);
 	}
 
-	RemovePanelInternal(viewer_panels_, panel);
+	remove_panel_internal(viewer_panels_, panel);
 
 	panel->deleteLater();
 }
 
-void MainWindow::ViewerWithPanelRemovedFromGraph()
+void MainWindow::viewer_with_panel_removed_from_graph()
 {
 	ViewerOutput *vo = static_cast<ViewerOutput *>(sender());
 	ViewerPanel *panel = nullptr;
 
 	foreach (ViewerPanel *p, viewer_panels_) {
-		if (p->GetConnectedViewer() == vo) {
+		if (p->get_connected_viewer() == vo) {
 			panel = p;
 			break;
 		}
 	}
 
 	if (panel) {
-		RemovePanelInternal(viewer_panels_, panel);
+		remove_panel_internal(viewer_panels_, panel);
 		panel->deleteLater();
-		disconnect(vo, &ViewerOutput::RemovedFromGraph, this,
-				   &MainWindow::ViewerWithPanelRemovedFromGraph);
+		disconnect(vo, &ViewerOutput::removed_from_graph, this,
+				   &MainWindow::viewer_with_panel_removed_from_graph);
 	}
 }
 
-void MainWindow::FolderPanelCloseRequested()
+void MainWindow::folder_panel_close_requested()
 {
 	ProjectPanel *panel = static_cast<ProjectPanel *>(sender());
-	RemovePanelInternal(folder_panels_, panel);
+	remove_panel_internal(folder_panels_, panel);
 	panel->deleteLater();
 }
 
-TimelinePanel *MainWindow::AppendTimelinePanel()
+TimelinePanel *MainWindow::append_timeline_panel()
 {
 	TimelinePanel *previous = nullptr;
 	if (!timeline_panels_.empty()) {
@@ -665,64 +665,64 @@ TimelinePanel *MainWindow::AppendTimelinePanel()
 	}
 
 	TimelinePanel *panel =
-		AppendPanelInternal(QStringLiteral("TimelinePanel"), timeline_panels_);
+		append_panel_internal(QStringLiteral("TimelinePanel"), timeline_panels_);
 
 	if (previous) {
 		previous->addDockWidgetAsTab(panel);
 	} else {
-		panel->SetSignalInsteadOfClose(false);
+		panel->set_signal_instead_of_close(false);
 	}
 
-	connect(panel, &PanelWidget::CloseRequested, this,
-			&MainWindow::TimelineCloseRequested);
-	connect(panel, &TimelinePanel::RequestCaptureStart, sequence_viewer_panel_,
-			&SequenceViewerPanel::StartCapture);
-	connect(panel, &TimelinePanel::BlockSelectionChanged, this,
-			&MainWindow::TimelinePanelSelectionChanged);
-	connect(panel, &TimelinePanel::RevealViewerInProject, this,
-			&MainWindow::RevealViewerInProject);
-	connect(panel, &TimelinePanel::RevealViewerInFootageViewer, this,
-			&MainWindow::RevealViewerInFootageViewer);
+	connect(panel, &PanelWidget::close_requested, this,
+			&MainWindow::timeline_close_requested);
+	connect(panel, &TimelinePanel::request_capture_start, sequence_viewer_panel_,
+			&SequenceViewerPanel::start_capture);
+	connect(panel, &TimelinePanel::block_selection_changed, this,
+			&MainWindow::timeline_panel_selection_changed);
+	connect(panel, &TimelinePanel::reveal_viewer_in_project, this,
+			&MainWindow::reveal_viewer_in_project);
+	connect(panel, &TimelinePanel::reveal_viewer_in_footage_viewer, this,
+			&MainWindow::reveal_viewer_in_footage_viewer);
 
-	sequence_viewer_panel_->ConnectTimeBasedPanel(panel);
+	sequence_viewer_panel_->connect_time_based_panel(panel);
 
 	return panel;
 }
 
-void MainWindow::RemoveTimelinePanel(TimelinePanel *panel)
+void MainWindow::remove_timeline_panel(TimelinePanel *panel)
 {
 	// Stop showing this timeline in the viewer
-	TimelineFocused(nullptr);
-	panel->ConnectViewerNode(nullptr);
+	timeline_focused(nullptr);
+	panel->connect_viewer_node(nullptr);
 
 	if (timeline_panels_.size() != 1) {
-		RemovePanelInternal(timeline_panels_, panel);
+		remove_panel_internal(timeline_panels_, panel);
 		panel->deleteLater();
 	}
 }
 
-void MainWindow::TimelineFocused(ViewerOutput *viewer)
+void MainWindow::timeline_focused(ViewerOutput *viewer)
 {
-	sequence_viewer_panel_->ConnectViewerNode(viewer);
-	multicam_panel_->ConnectViewerNode(viewer);
-	param_panel_->ConnectViewerNode(viewer);
-	curve_panel_->ConnectViewerNode(viewer);
+	sequence_viewer_panel_->connect_viewer_node(viewer);
+	multicam_panel_->connect_viewer_node(viewer);
+	param_panel_->connect_viewer_node(viewer);
+	curve_panel_->connect_viewer_node(viewer);
 }
 
-QString MainWindow::GetCustomShortcutsFile()
+QString MainWindow::get_custom_shortcuts_file()
 {
-	return QDir(FileFunctions::GetConfigurationLocation())
+	return QDir(FileFunctions::get_configuration_location())
 		.filePath(QStringLiteral("shortcuts"));
 }
 
-void LoadCustomShortcutsInternal(QMenu *menu,
+void load_custom_shortcuts_internal(QMenu *menu,
 								 const QMap<QString, QString> &shortcuts)
 {
 	QList<QAction *> actions = menu->actions();
 
 	foreach (QAction *a, actions) {
 		if (a->menu()) {
-			LoadCustomShortcutsInternal(a->menu(), shortcuts);
+			load_custom_shortcuts_internal(a->menu(), shortcuts);
 		} else if (!a->isSeparator()) {
 			QString action_id = a->property("id").toString();
 
@@ -733,9 +733,9 @@ void LoadCustomShortcutsInternal(QMenu *menu,
 	}
 }
 
-void MainWindow::LoadCustomShortcuts()
+void MainWindow::load_custom_shortcuts()
 {
-	QFile shortcut_file(GetCustomShortcutsFile());
+	QFile shortcut_file(get_custom_shortcuts_file());
 	if (shortcut_file.exists() && shortcut_file.open(QFile::ReadOnly)) {
 		QMap<QString, QString> shortcuts;
 
@@ -756,19 +756,19 @@ void MainWindow::LoadCustomShortcuts()
 			QList<QAction *> menus = menuBar()->actions();
 
 			foreach (QAction *menu, menus) {
-				LoadCustomShortcutsInternal(menu->menu(), shortcuts);
+				load_custom_shortcuts_internal(menu->menu(), shortcuts);
 			}
 		}
 	}
 }
 
-void SaveCustomShortcutsInternal(QMenu *menu, QMap<QString, QString> *shortcuts)
+void save_custom_shortcuts_internal(QMenu *menu, QMap<QString, QString> *shortcuts)
 {
 	QList<QAction *> actions = menu->actions();
 
 	foreach (QAction *a, actions) {
 		if (a->menu()) {
-			SaveCustomShortcutsInternal(a->menu(), shortcuts);
+			save_custom_shortcuts_internal(a->menu(), shortcuts);
 		} else if (!a->isSeparator()) {
 			QString default_shortcut =
 				a->property("keydefault").value<QKeySequence>().toString();
@@ -781,16 +781,16 @@ void SaveCustomShortcutsInternal(QMenu *menu, QMap<QString, QString> *shortcuts)
 	}
 }
 
-void MainWindow::SaveCustomShortcuts()
+void MainWindow::save_custom_shortcuts()
 {
 	QMap<QString, QString> shortcuts;
 	QList<QAction *> menus = menuBar()->actions();
 
 	foreach (QAction *menu, menus) {
-		SaveCustomShortcutsInternal(menu->menu(), &shortcuts);
+		save_custom_shortcuts_internal(menu->menu(), &shortcuts);
 	}
 
-	QFile shortcut_file(GetCustomShortcutsFile());
+	QFile shortcut_file(get_custom_shortcuts_file());
 	if (shortcuts.isEmpty()) {
 		if (shortcut_file.exists()) {
 			// No custom shortcuts, remove any existing file
@@ -812,75 +812,75 @@ void MainWindow::SaveCustomShortcuts()
 	}
 }
 
-void MainWindow::UpdateAudioMonitorParams(ViewerOutput *viewer)
+void MainWindow::update_audio_monitor_params(ViewerOutput *viewer)
 {
-	if (!audio_monitor_panel_->IsPlaying()) {
-		audio_monitor_panel_->SetParams(viewer ? viewer->GetAudioParams() :
+	if (!audio_monitor_panel_->is_playing()) {
+		audio_monitor_panel_->set_params(viewer ? viewer->get_audio_params() :
 												 AudioParams());
 	}
 }
 
-void MainWindow::UpdateNodePanelContextFromTimelinePanel(TimelinePanel *panel)
+void MainWindow::update_node_panel_context_from_timeline_panel(TimelinePanel *panel)
 {
 	// Add selected blocks (if any)
-	const QVector<Block *> &blocks = panel->GetSelectedBlocks();
+	const QVector<Block *> &blocks = panel->get_selected_blocks();
 	QVector<Node *> context(blocks.size());
 	for (int i = 0; i < blocks.size(); i++) {
 		context[i] = blocks.at(i);
 	}
 
 	// If no selected blocks, set the context to the sequence
-	ViewerOutput *viewer = panel->GetConnectedViewer();
+	ViewerOutput *viewer = panel->get_connected_viewer();
 	if (viewer && context.isEmpty()) {
 		context.append(viewer);
 	}
 
-	node_panel_->SetContexts(context);
-	param_panel_->SetContexts(context);
+	node_panel_->set_contexts(context);
+	param_panel_->set_contexts(context);
 }
 
-void MainWindow::SelectFootageForProjectPanel(const QVector<Footage *> &e,
+void MainWindow::select_footage_for_project_panel(const QVector<Footage *> &e,
 											  ProjectPanel *p)
 {
-	p->DeselectAll();
+	p->deselect_all();
 	for (Footage *f : e) {
-		if (p->get_root()->HasChildRecursive(f)) {
-			p->SelectItem(f, false);
+		if (p->get_root()->has_child_recursive(f)) {
+			p->select_item(f, false);
 		}
 	}
 }
 
-void MainWindow::FocusedPanelChanged(PanelWidget *panel)
+void MainWindow::focused_panel_changed(PanelWidget *panel)
 {
 	// Update audio monitor panel
 	if (TimeBasedPanel *tbp = dynamic_cast<TimeBasedPanel *>(panel)) {
-		UpdateAudioMonitorParams(tbp->GetConnectedViewer());
+		update_audio_monitor_params(tbp->get_connected_viewer());
 	}
 
 	if (NodePanel *node_panel = dynamic_cast<NodePanel *>(panel)) {
 		// Set param view contexts to these
-		const QVector<Node *> &new_ctxs = node_panel->GetContexts();
+		const QVector<Node *> &new_ctxs = node_panel->get_contexts();
 
-		if (new_ctxs != param_panel_->GetContexts()) {
-			param_panel_->SetContexts(new_ctxs);
+		if (new_ctxs != param_panel_->get_contexts()) {
+			param_panel_->set_contexts(new_ctxs);
 		}
 	} else if (TimelinePanel *timeline = dynamic_cast<TimelinePanel *>(panel)) {
 		// Signal timeline focus
-		TimelineFocused(timeline->GetConnectedViewer());
+		timeline_focused(timeline->get_connected_viewer());
 
-		UpdateNodePanelContextFromTimelinePanel(timeline);
+		update_node_panel_context_from_timeline_panel(timeline);
 	} else if (ProjectPanel *project = dynamic_cast<ProjectPanel *>(panel)) {
 		// Signal project panel focus
 		Q_UNUSED(project)
-		UpdateTitle();
+		update_title();
 	} else if (ViewerPanelBase *viewer =
 				   dynamic_cast<ViewerPanelBase *>(panel)) {
 		// Update scopes for viewer
-		scope_panel_->SetViewerPanel(viewer);
+		scope_panel_->set_viewer_panel(viewer);
 	}
 }
 
-void MainWindow::SetDefaultLayout()
+void MainWindow::set_default_layout()
 {
 	KDDockWidgets::InitialOption o;
 	o.preferredSize = QSize(0, centralAreaGeometry().height());
@@ -943,7 +943,7 @@ void MainWindow::showEvent(QShowEvent *e)
 	QMainWindow::showEvent(e);
 
 	if (first_show_) {
-		QMetaObject::invokeMethod(Core::instance(), "CheckForAutoRecoveries",
+		QMetaObject::invokeMethod(Core::instance(), "check_for_auto_recoveries",
 								  Qt::QueuedConnection);
 
 #ifdef Q_OS_LINUX
@@ -957,12 +957,12 @@ void MainWindow::showEvent(QShowEvent *e)
 			context.functions()->glGetString(GL_VENDOR));
 		qDebug() << "Using graphics driver:" << vendor;
 		if (!strcmp(vendor, "nouveau")) {
-			QMetaObject::invokeMethod(this, "ShowNouveauWarning",
+			QMetaObject::invokeMethod(this, "show_nouveau_warning",
 									  Qt::QueuedConnection);
 		}
 #endif
 
-		QMetaObject::invokeMethod(this, "ShowWelcomeDialog",
+		QMetaObject::invokeMethod(this, "show_welcome_dialog",
 								  Qt::QueuedConnection);
 
 		first_show_ = false;
@@ -970,9 +970,9 @@ void MainWindow::showEvent(QShowEvent *e)
 }
 
 template <typename T>
-T *MainWindow::AppendPanelInternal(const QString &panel_name, QList<T *> &list)
+T *MainWindow::append_panel_internal(const QString &panel_name, QList<T *> &list)
 {
-	T *panel = new T(TransformNameForSerialization(panel_name, list.size()));
+	T *panel = new T(transform_name_for_serialization(panel_name, list.size()));
 
 	// For some reason raise() on its own doesn't do anything, we need both
 	panel->show();
@@ -981,13 +981,13 @@ T *MainWindow::AppendPanelInternal(const QString &panel_name, QList<T *> &list)
 	list.append(panel);
 
 	// Let us handle the panel closing rather than the panel itself
-	panel->SetSignalInsteadOfClose(true);
+	panel->set_signal_instead_of_close(true);
 
 	return panel;
 }
 
 template <typename T>
-void MainWindow::RemovePanelInternal(QList<T *> &list, T *panel)
+void MainWindow::remove_panel_internal(QList<T *> &list, T *panel)
 {
 	list.removeOne(panel);
 }

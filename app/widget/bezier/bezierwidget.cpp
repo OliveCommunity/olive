@@ -37,13 +37,13 @@ BezierWidget::BezierWidget(QWidget *parent)
 	layout->addWidget(new QLabel(tr("Center:")), row, 0);
 
 	x_slider_ = new FloatSlider();
-	connect(x_slider_, &FloatSlider::ValueChanged, this,
-			&BezierWidget::ValueChanged);
+	connect(x_slider_, &FloatSlider::value_changed, this,
+			&BezierWidget::value_changed);
 	layout->addWidget(x_slider_, row, 1);
 
 	y_slider_ = new FloatSlider();
-	connect(y_slider_, &FloatSlider::ValueChanged, this,
-			&BezierWidget::ValueChanged);
+	connect(y_slider_, &FloatSlider::value_changed, this,
+			&BezierWidget::value_changed);
 	layout->addWidget(y_slider_, row, 2);
 
 	row++;
@@ -58,13 +58,13 @@ BezierWidget::BezierWidget(QWidget *parent)
 	bezier_layout->addWidget(new QLabel(tr("In:")), row, 0);
 
 	cp1_x_slider_ = new FloatSlider();
-	connect(cp1_x_slider_, &FloatSlider::ValueChanged, this,
-			&BezierWidget::ValueChanged);
+	connect(cp1_x_slider_, &FloatSlider::value_changed, this,
+			&BezierWidget::value_changed);
 	bezier_layout->addWidget(cp1_x_slider_, row, 1);
 
 	cp1_y_slider_ = new FloatSlider();
-	connect(cp1_y_slider_, &FloatSlider::ValueChanged, this,
-			&BezierWidget::ValueChanged);
+	connect(cp1_y_slider_, &FloatSlider::value_changed, this,
+			&BezierWidget::value_changed);
 	bezier_layout->addWidget(cp1_y_slider_, row, 2);
 
 	row++;
@@ -72,38 +72,38 @@ BezierWidget::BezierWidget(QWidget *parent)
 	bezier_layout->addWidget(new QLabel(tr("Out:")), row, 0);
 
 	cp2_x_slider_ = new FloatSlider();
-	connect(cp2_x_slider_, &FloatSlider::ValueChanged, this,
-			&BezierWidget::ValueChanged);
+	connect(cp2_x_slider_, &FloatSlider::value_changed, this,
+			&BezierWidget::value_changed);
 	bezier_layout->addWidget(cp2_x_slider_, row, 1);
 
 	cp2_y_slider_ = new FloatSlider();
-	connect(cp2_y_slider_, &FloatSlider::ValueChanged, this,
-			&BezierWidget::ValueChanged);
+	connect(cp2_y_slider_, &FloatSlider::value_changed, this,
+			&BezierWidget::value_changed);
 	bezier_layout->addWidget(cp2_y_slider_, row, 2);
 }
 
-Bezier BezierWidget::GetValue() const
+Bezier BezierWidget::get_value() const
 {
 	Bezier b;
 
-	b.set_x(x_slider_->GetValue());
-	b.set_y(y_slider_->GetValue());
-	b.set_cp1_x(cp1_x_slider_->GetValue());
-	b.set_cp1_y(cp1_y_slider_->GetValue());
-	b.set_cp2_x(cp2_x_slider_->GetValue());
-	b.set_cp2_y(cp2_y_slider_->GetValue());
+	b.set_x(x_slider_->get_value());
+	b.set_y(y_slider_->get_value());
+	b.set_cp1_x(cp1_x_slider_->get_value());
+	b.set_cp1_y(cp1_y_slider_->get_value());
+	b.set_cp2_x(cp2_x_slider_->get_value());
+	b.set_cp2_y(cp2_y_slider_->get_value());
 
 	return b;
 }
 
-void BezierWidget::SetValue(const Bezier &b)
+void BezierWidget::set_value(const Bezier &b)
 {
-	x_slider_->SetValue(b.x());
-	y_slider_->SetValue(b.y());
-	cp1_x_slider_->SetValue(b.cp1_x());
-	cp1_y_slider_->SetValue(b.cp1_y());
-	cp2_x_slider_->SetValue(b.cp2_x());
-	cp2_y_slider_->SetValue(b.cp2_y());
+	x_slider_->set_value(b.x());
+	y_slider_->set_value(b.y());
+	cp1_x_slider_->set_value(b.cp1_x());
+	cp1_y_slider_->set_value(b.cp1_y());
+	cp2_x_slider_->set_value(b.cp2_x());
+	cp2_y_slider_->set_value(b.cp2_y());
 }
 
 }

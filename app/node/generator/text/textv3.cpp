@@ -36,46 +36,46 @@ namespace olive
 #define super ShapeNodeBase
 
 enum TextVerticalAlign {
-	kVerticalAlignTop,
-	kVerticalAlignCenter,
-	kVerticalAlignBottom,
+	k_vertical_align_top,
+	k_vertical_align_center,
+	k_vertical_align_bottom,
 };
 
-const QString TextGeneratorV3::kTextInput = QStringLiteral("text_in");
-const QString TextGeneratorV3::kVerticalAlignmentInput =
+const QString TextGeneratorV3::k_text_input = QStringLiteral("text_in");
+const QString TextGeneratorV3::k_vertical_alignment_input =
 	QStringLiteral("valign_in");
-const QString TextGeneratorV3::kUseArgsInput = QStringLiteral("use_args_in");
-const QString TextGeneratorV3::kArgsInput = QStringLiteral("args_in");
+const QString TextGeneratorV3::k_use_args_input = QStringLiteral("use_args_in");
+const QString TextGeneratorV3::k_args_input = QStringLiteral("args_in");
 
 TextGeneratorV3::TextGeneratorV3()
 	: ShapeNodeBase(false)
 	, dont_emit_valign_(false)
 {
-	AddInput(kTextInput, NodeValue::kText,
+	add_input(k_text_input, NodeValue::k_text,
 			 QStringLiteral("<p style='font-size: 72pt; color: white;'>%1</p>")
 				 .arg(tr("Sample Text")));
-	SetInputProperty(kTextInput, QStringLiteral("vieweronly"), true);
+	set_input_property(k_text_input, QStringLiteral("vieweronly"), true);
 
-	SetStandardValue(kSizeInput, QVector2D(400, 300));
+	set_standard_value(k_size_input, QVector2D(400, 300));
 
-	AddInput(kVerticalAlignmentInput, NodeValue::kCombo,
-			 InputFlags(kInputFlagHidden | kInputFlagStatic));
+	add_input(k_vertical_alignment_input, NodeValue::k_combo,
+			 InputFlags(k_input_flag_hidden | k_input_flag_static));
 
-	AddInput(kUseArgsInput, NodeValue::kBoolean, true,
-			 InputFlags(kInputFlagHidden | kInputFlagStatic));
+	add_input(k_use_args_input, NodeValue::k_boolean, true,
+			 InputFlags(k_input_flag_hidden | k_input_flag_static));
 
-	AddInput(kArgsInput, NodeValue::kText, InputFlags(kInputFlagArray));
-	SetInputProperty(kArgsInput, QStringLiteral("arraystart"), 1);
+	add_input(k_args_input, NodeValue::k_text, InputFlags(k_input_flag_array));
+	set_input_property(k_args_input, QStringLiteral("arraystart"), 1);
 
 	text_gizmo_ = new TextGizmo(this);
-	text_gizmo_->SetInput(NodeInput(this, kTextInput));
-	connect(text_gizmo_, &TextGizmo::Activated, this,
-			&TextGeneratorV3::GizmoActivated);
-	connect(text_gizmo_, &TextGizmo::Deactivated, this,
-			&TextGeneratorV3::GizmoDeactivated);
+	text_gizmo_->set_input(NodeInput(this, k_text_input));
+	connect(text_gizmo_, &TextGizmo::activated, this,
+			&TextGeneratorV3::gizmo_activated);
+	connect(text_gizmo_, &TextGizmo::deactivated, this,
+			&TextGeneratorV3::gizmo_deactivated);
 }
 
-QString TextGeneratorV3::Name() const
+QString TextGeneratorV3::name() const
 {
 	return tr("Text");
 }
@@ -85,64 +85,64 @@ QString TextGeneratorV3::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.text3");
 }
 
-QVector<Node::CategoryID> TextGeneratorV3::Category() const
+QVector<Node::CategoryID> TextGeneratorV3::category() const
 {
-	return { kCategoryGenerator };
+	return { k_category_generator };
 }
 
-QString TextGeneratorV3::Description() const
+QString TextGeneratorV3::description() const
 {
 	return tr("Generate rich text.");
 }
 
-void TextGeneratorV3::Retranslate()
+void TextGeneratorV3::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kTextInput, tr("Text"));
-	SetInputName(kVerticalAlignmentInput, tr("Vertical Alignment"));
-	SetComboBoxStrings(kVerticalAlignmentInput,
+	set_input_name(k_text_input, tr("Text"));
+	set_input_name(k_vertical_alignment_input, tr("Vertical Alignment"));
+	set_combo_box_strings(k_vertical_alignment_input,
 					   { tr("Top"), tr("Middle"), tr("Bottom") });
-	SetInputName(kArgsInput, tr("Arguments"));
+	set_input_name(k_args_input, tr("Arguments"));
 }
 
-void TextGeneratorV3::Value(const NodeValueRow &value,
+void TextGeneratorV3::value(const NodeValueRow &value,
 							const NodeGlobals &globals,
 							NodeValueTable *table) const
 {
-	QString text = value[kTextInput].toString();
+	QString text = value[k_text_input].to_string();
 
-	if (value[kUseArgsInput].toBool()) {
-		auto args = value[kArgsInput].toArray();
+	if (value[k_use_args_input].to_bool()) {
+		auto args = value[k_args_input].to_array();
 		if (!args.empty()) {
 			QStringList list;
 			list.reserve(args.size());
 			for (size_t i = 0; i < args.size(); i++) {
-				list.append(args[i].toString());
+				list.append(args[i].to_string());
 			}
 
-			text = FormatString(text, list);
+			text = format_string(text, list);
 		}
 	}
 
 	if (!text.isEmpty()) {
-		TexturePtr base = value[kTextInput].toTexture();
+		TexturePtr base = value[k_text_input].to_texture();
 
 		VideoParams text_params = base ? base->params() : globals.vparams();
-		text_params.set_format(PixelFormat::U8);
+		text_params.set_format(PixelFormat::u8);
 		text_params.set_colorspace(
-			project()->color_manager()->GetDefaultInputColorSpace());
+			project()->color_manager()->get_default_input_color_space());
 
 		GenerateJob job(value);
-		job.Insert(kTextInput, NodeValue(NodeValue::kText, text));
+		job.insert(k_text_input, NodeValue(NodeValue::k_text, text));
 
-		PushMergableJob(value, Texture::Job(text_params, job), table);
-	} else if (value[kBaseInput].toTexture()) {
-		table->Push(value[kBaseInput]);
+		push_mergable_job(value, Texture::job(text_params, job), table);
+	} else if (value[k_base_input].to_texture()) {
+		table->push(value[k_base_input]);
 	}
 }
 
-void TextGeneratorV3::GenerateFrame(FramePtr frame,
+void TextGeneratorV3::generate_frame(FramePtr frame,
 									const GenerateJob &job) const
 {
 	QImage img(reinterpret_cast<uchar *>(frame->data()), frame->width(),
@@ -158,10 +158,10 @@ void TextGeneratorV3::GenerateFrame(FramePtr frame,
 	QTextDocument text_doc;
 	text_doc.documentLayout()->setPaintDevice(&img);
 
-	QString html = job.Get(kTextInput).toString();
-	Html::HtmlToDoc(&text_doc, html);
+	QString html = job.get(k_text_input).to_string();
+	Html::html_to_doc(&text_doc, html);
 
-	QVector2D size = job.Get(kSizeInput).toVec2();
+	QVector2D size = job.get(k_size_input).to_vec2();
 	text_doc.setTextWidth(size.x());
 
 	// Draw rich text onto image
@@ -169,21 +169,21 @@ void TextGeneratorV3::GenerateFrame(FramePtr frame,
 	p.scale(1.0 / frame->video_params().divider(),
 			1.0 / frame->video_params().divider());
 
-	QVector2D pos = job.Get(kPositionInput).toVec2();
+	QVector2D pos = job.get(k_position_input).to_vec2();
 	p.translate(pos.x() - size.x() / 2, pos.y() - size.y() / 2);
 	p.translate(frame->video_params().width() / 2,
 				frame->video_params().height() / 2);
 	p.setClipRect(0, 0, size.x(), size.y());
 
 	switch (static_cast<VerticalAlignment>(
-		job.Get(kVerticalAlignmentInput).toInt())) {
-	case kVAlignTop:
+		job.get(k_vertical_alignment_input).to_int())) {
+	case k_v_align_top:
 		// Do nothing
 		break;
-	case kVAlignMiddle:
+	case k_v_align_middle:
 		p.translate(0, size.y() / 2 - text_doc.size().height() / 2);
 		break;
-	case kVAlignBottom:
+	case k_v_align_bottom:
 		p.translate(0, size.y() - text_doc.size().height());
 		break;
 	}
@@ -195,45 +195,45 @@ void TextGeneratorV3::GenerateFrame(FramePtr frame,
 	text_doc.documentLayout()->draw(&p, ctx);
 }
 
-void TextGeneratorV3::UpdateGizmoPositions(const NodeValueRow &row,
+void TextGeneratorV3::update_gizmo_positions(const NodeValueRow &row,
 										   const NodeGlobals &globals)
 {
-	super::UpdateGizmoPositions(row, globals);
+	super::update_gizmo_positions(row, globals);
 
-	QRectF rect = poly_gizmo()->GetPolygon().boundingRect();
-	text_gizmo_->SetRect(rect);
-	text_gizmo_->SetHtml(row[kTextInput].toString());
+	QRectF rect = poly_gizmo()->get_polygon().boundingRect();
+	text_gizmo_->set_rect(rect);
+	text_gizmo_->set_html(row[k_text_input].to_string());
 }
 
-Qt::Alignment TextGeneratorV3::GetQtAlignmentFromOurs(VerticalAlignment v)
+Qt::Alignment TextGeneratorV3::get_qt_alignment_from_ours(VerticalAlignment v)
 {
 	switch (v) {
-	case kVAlignTop:
+	case k_v_align_top:
 		return Qt::AlignTop;
-	case kVAlignMiddle:
+	case k_v_align_middle:
 		return Qt::AlignVCenter;
-	case kVAlignBottom:
+	case k_v_align_bottom:
 		return Qt::AlignBottom;
 	}
 	return Qt::Alignment();
 }
 
 TextGeneratorV3::VerticalAlignment
-TextGeneratorV3::GetOurAlignmentFromQts(Qt::Alignment v)
+TextGeneratorV3::get_our_alignment_from_qts(Qt::Alignment v)
 {
 	switch (v) {
 	case Qt::AlignTop:
-		return kVAlignTop;
+		return k_v_align_top;
 	case Qt::AlignVCenter:
-		return kVAlignMiddle;
+		return k_v_align_middle;
 	case Qt::AlignBottom:
-		return kVAlignBottom;
+		return k_v_align_bottom;
 	}
 
-	return kVAlignTop;
+	return k_v_align_top;
 }
 
-QString TextGeneratorV3::FormatString(const QString &input,
+QString TextGeneratorV3::format_string(const QString &input,
 									  const QStringList &args)
 {
 	QString output;
@@ -274,36 +274,36 @@ QString TextGeneratorV3::FormatString(const QString &input,
 
 void TextGeneratorV3::InputValueChangedEvent(const QString &input, int element)
 {
-	if (input == kVerticalAlignmentInput && !dont_emit_valign_) {
-		text_gizmo_->SetVerticalAlignment(
-			GetQtAlignmentFromOurs(GetVerticalAlignment()));
+	if (input == k_vertical_alignment_input && !dont_emit_valign_) {
+		text_gizmo_->set_vertical_alignment(
+			get_qt_alignment_from_ours(get_vertical_alignment()));
 	}
 
 	super::InputValueChangedEvent(input, element);
 }
 
-void TextGeneratorV3::GizmoActivated()
+void TextGeneratorV3::gizmo_activated()
 {
-	SetStandardValue(kUseArgsInput, false);
-	connect(text_gizmo_, &TextGizmo::VerticalAlignmentChanged, this,
-			&TextGeneratorV3::SetVerticalAlignmentUndoable);
+	set_standard_value(k_use_args_input, false);
+	connect(text_gizmo_, &TextGizmo::vertical_alignment_changed, this,
+			&TextGeneratorV3::set_vertical_alignment_undoable);
 	dont_emit_valign_ = true;
 }
 
-void TextGeneratorV3::GizmoDeactivated()
+void TextGeneratorV3::gizmo_deactivated()
 {
-	SetStandardValue(kUseArgsInput, true);
-	disconnect(text_gizmo_, &TextGizmo::VerticalAlignmentChanged, this,
-			   &TextGeneratorV3::SetVerticalAlignmentUndoable);
+	set_standard_value(k_use_args_input, true);
+	disconnect(text_gizmo_, &TextGizmo::vertical_alignment_changed, this,
+			   &TextGeneratorV3::set_vertical_alignment_undoable);
 	dont_emit_valign_ = true;
 }
 
-void TextGeneratorV3::SetVerticalAlignmentUndoable(Qt::Alignment a)
+void TextGeneratorV3::set_vertical_alignment_undoable(Qt::Alignment a)
 {
 	Core::instance()->undo_stack()->push(
 		new NodeParamSetStandardValueCommand(NodeInput(this,
-													   kVerticalAlignmentInput),
-											 GetOurAlignmentFromQts(a)),
+													   k_vertical_alignment_input),
+											 get_our_alignment_from_qts(a)),
 		tr("Set Text Vertical Alignment"));
 }
 

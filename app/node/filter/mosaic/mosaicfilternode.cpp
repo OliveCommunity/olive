@@ -24,60 +24,60 @@
 namespace olive
 {
 
-const QString MosaicFilterNode::kTextureInput = QStringLiteral("tex_in");
-const QString MosaicFilterNode::kHorizInput = QStringLiteral("horiz_in");
-const QString MosaicFilterNode::kVertInput = QStringLiteral("vert_in");
+const QString MosaicFilterNode::k_texture_input = QStringLiteral("tex_in");
+const QString MosaicFilterNode::k_horiz_input = QStringLiteral("horiz_in");
+const QString MosaicFilterNode::k_vert_input = QStringLiteral("vert_in");
 
 #define super Node
 
 MosaicFilterNode::MosaicFilterNode()
 {
-	AddInput(kTextureInput, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_texture_input, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	AddInput(kHorizInput, NodeValue::kFloat, 32.0);
-	SetInputProperty(kHorizInput, QStringLiteral("min"), 1.0);
+	add_input(k_horiz_input, NodeValue::k_float, 32.0);
+	set_input_property(k_horiz_input, QStringLiteral("min"), 1.0);
 
-	AddInput(kVertInput, NodeValue::kFloat, 18.0);
-	SetInputProperty(kVertInput, QStringLiteral("min"), 1.0);
+	add_input(k_vert_input, NodeValue::k_float, 18.0);
+	set_input_property(k_vert_input, QStringLiteral("min"), 1.0);
 
-	SetFlag(kVideoEffect);
-	SetEffectInput(kTextureInput);
+	set_flag(k_video_effect);
+	set_effect_input(k_texture_input);
 }
 
-void MosaicFilterNode::Retranslate()
+void MosaicFilterNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kTextureInput, tr("Texture"));
-	SetInputName(kHorizInput, tr("Horizontal"));
-	SetInputName(kVertInput, tr("Vertical"));
+	set_input_name(k_texture_input, tr("Texture"));
+	set_input_name(k_horiz_input, tr("Horizontal"));
+	set_input_name(k_vert_input, tr("Vertical"));
 }
 
-void MosaicFilterNode::Value(const NodeValueRow &value,
+void MosaicFilterNode::value(const NodeValueRow &value,
 							 const NodeGlobals &globals,
 							 NodeValueTable *table) const
 {
-	if (TexturePtr texture = value[kTextureInput].toTexture()) {
-		if (texture && (value[kHorizInput].toInt() != texture->width() ||
-						value[kVertInput].toInt() != texture->height())) {
+	if (TexturePtr texture = value[k_texture_input].to_texture()) {
+		if (texture && (value[k_horiz_input].to_int() != texture->width() ||
+						value[k_vert_input].to_int() != texture->height())) {
 			ShaderJob job(value);
 
 			// Mipmapping makes this look weird, so we just use bilinear for finding the color of each block
-			job.SetInterpolation(kTextureInput, Texture::kLinear);
+			job.set_interpolation(k_texture_input, Texture::k_linear);
 
-			table->Push(NodeValue::kTexture, texture->toJob(job), this);
+			table->push(NodeValue::k_texture, texture->to_job(job), this);
 		} else {
-			table->Push(value[kTextureInput]);
+			table->push(value[k_texture_input]);
 		}
 	}
 }
 
-ShaderCode MosaicFilterNode::GetShaderCode(const ShaderRequest &request) const
+ShaderCode MosaicFilterNode::get_shader_code(const ShaderRequest &request) const
 {
 	Q_UNUSED(request)
 
-	return ShaderCode(FileFunctions::ReadFileAsString(":/shaders/mosaic.frag"));
+	return ShaderCode(FileFunctions::read_file_as_string(":/shaders/mosaic.frag"));
 }
 
 }

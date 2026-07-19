@@ -52,17 +52,17 @@
 #include <QtWidgets>
 
 #include "flowlayout.h"
-FlowLayout::FlowLayout(QWidget *parent, int margin, int hSpacing, int vSpacing)
+FlowLayout::FlowLayout(QWidget *parent, int margin, int h_spacing, int v_spacing)
 	: QLayout(parent)
-	, m_hSpace(hSpacing)
-	, m_vSpace(vSpacing)
+	, m_hSpace_(h_spacing)
+	, m_vSpace_(v_spacing)
 {
 	setContentsMargins(margin, margin, margin, margin);
 }
 
-FlowLayout::FlowLayout(int margin, int hSpacing, int vSpacing)
-	: m_hSpace(hSpacing)
-	, m_vSpace(vSpacing)
+FlowLayout::FlowLayout(int margin, int h_spacing, int v_spacing)
+	: m_hSpace_(h_spacing)
+	, m_vSpace_(v_spacing)
 {
 	setContentsMargins(margin, margin, margin, margin);
 }
@@ -76,41 +76,41 @@ FlowLayout::~FlowLayout()
 
 void FlowLayout::addItem(QLayoutItem *item)
 {
-	itemList.append(item);
+	itemList_.append(item);
 }
 
-int FlowLayout::horizontalSpacing() const
+int FlowLayout::horizontal_spacing() const
 {
-	if (m_hSpace >= 0) {
-		return m_hSpace;
+	if (m_hSpace_ >= 0) {
+		return m_hSpace_;
 	} else {
-		return smartSpacing(QStyle::PM_LayoutHorizontalSpacing);
+		return smart_spacing(QStyle::PM_LayoutHorizontalSpacing);
 	}
 }
 
-int FlowLayout::verticalSpacing() const
+int FlowLayout::vertical_spacing() const
 {
-	if (m_vSpace >= 0) {
-		return m_vSpace;
+	if (m_vSpace_ >= 0) {
+		return m_vSpace_;
 	} else {
-		return smartSpacing(QStyle::PM_LayoutVerticalSpacing);
+		return smart_spacing(QStyle::PM_LayoutVerticalSpacing);
 	}
 }
 
 int FlowLayout::count() const
 {
-	return itemList.size();
+	return itemList_.size();
 }
 
 QLayoutItem *FlowLayout::itemAt(int index) const
 {
-	return itemList.value(index);
+	return itemList_.value(index);
 }
 
 QLayoutItem *FlowLayout::takeAt(int index)
 {
-	if (index >= 0 && index < itemList.size())
-		return itemList.takeAt(index);
+	if (index >= 0 && index < itemList_.size())
+		return itemList_.takeAt(index);
 	else
 		return 0;
 }
@@ -127,14 +127,14 @@ bool FlowLayout::hasHeightForWidth() const
 
 int FlowLayout::heightForWidth(int width) const
 {
-	int height = doLayout(QRect(0, 0, width, 0), true);
+	int height = do_layout(QRect(0, 0, width, 0), true);
 	return height;
 }
 
 void FlowLayout::setGeometry(const QRect &rect)
 {
 	QLayout::setGeometry(rect);
-	doLayout(rect, false);
+	do_layout(rect, false);
 }
 
 QSize FlowLayout::sizeHint() const
@@ -146,51 +146,51 @@ QSize FlowLayout::minimumSize() const
 {
 	QSize size;
 	QLayoutItem *item;
-	foreach (item, itemList)
+	foreach (item, itemList_)
 		size = size.expandedTo(item->minimumSize());
 
 	size += QSize(2 * contentsMargins().left(), 2 * contentsMargins().top());
 	return size;
 }
 
-int FlowLayout::doLayout(const QRect &rect, bool testOnly) const
+int FlowLayout::do_layout(const QRect &rect, bool test_only) const
 {
 	int left, top, right, bottom;
 	getContentsMargins(&left, &top, &right, &bottom);
-	QRect effectiveRect = rect.adjusted(+left, +top, -right, -bottom);
-	int x = effectiveRect.x();
-	int y = effectiveRect.y();
-	int lineHeight = 0;
+	QRect effective_rect = rect.adjusted(+left, +top, -right, -bottom);
+	int x = effective_rect.x();
+	int y = effective_rect.y();
+	int line_height = 0;
 
 	QLayoutItem *item;
-	foreach (item, itemList) {
+	foreach (item, itemList_) {
 		QWidget *wid = item->widget();
-		int spaceX = horizontalSpacing();
-		if (spaceX == -1)
-			spaceX = wid->style()->layoutSpacing(QSizePolicy::PushButton,
+		int space_x = horizontal_spacing();
+		if (space_x == -1)
+			space_x = wid->style()->layoutSpacing(QSizePolicy::PushButton,
 												 QSizePolicy::PushButton,
 												 Qt::Horizontal);
-		int spaceY = verticalSpacing();
-		if (spaceY == -1)
-			spaceY = wid->style()->layoutSpacing(
+		int space_y = vertical_spacing();
+		if (space_y == -1)
+			space_y = wid->style()->layoutSpacing(
 				QSizePolicy::PushButton, QSizePolicy::PushButton, Qt::Vertical);
-		int nextX = x + item->sizeHint().width() + spaceX;
-		if (nextX - spaceX > effectiveRect.right() && lineHeight > 0) {
-			x = effectiveRect.x();
-			y = y + lineHeight + spaceY;
-			nextX = x + item->sizeHint().width() + spaceX;
-			lineHeight = 0;
+		int next_x = x + item->sizeHint().width() + space_x;
+		if (next_x - space_x > effective_rect.right() && line_height > 0) {
+			x = effective_rect.x();
+			y = y + line_height + space_y;
+			next_x = x + item->sizeHint().width() + space_x;
+			line_height = 0;
 		}
 
-		if (!testOnly)
+		if (!test_only)
 			item->setGeometry(QRect(QPoint(x, y), item->sizeHint()));
 
-		x = nextX;
-		lineHeight = qMax(lineHeight, item->sizeHint().height());
+		x = next_x;
+		line_height = qMax(line_height, item->sizeHint().height());
 	}
-	return y + lineHeight - rect.y() + bottom;
+	return y + line_height - rect.y() + bottom;
 }
-int FlowLayout::smartSpacing(QStyle::PixelMetric pm) const
+int FlowLayout::smart_spacing(QStyle::PixelMetric pm) const
 {
 	QObject *parent = this->parent();
 	if (!parent) {

@@ -32,7 +32,7 @@
 namespace olive
 {
 
-const qint64 AudioPlaybackCache::kDefaultSegmentSizePerChannel =
+const qint64 AudioPlaybackCache::k_default_segment_size_per_channel =
 	10 * 1024 * 1024;
 
 AudioPlaybackCache::AudioPlaybackCache(QObject *parent)
@@ -44,7 +44,7 @@ AudioPlaybackCache::~AudioPlaybackCache()
 {
 }
 
-void AudioPlaybackCache::SetParameters(const AudioParams &params)
+void AudioPlaybackCache::set_parameters(const AudioParams &params)
 {
 	if (params_ == params) {
 		return;
@@ -53,29 +53,29 @@ void AudioPlaybackCache::SetParameters(const AudioParams &params)
 	params_ = params;
 }
 
-void AudioPlaybackCache::WritePCM(const TimeRange &range,
+void AudioPlaybackCache::write_pcm(const TimeRange &range,
 								  const TimeRangeList &valid_ranges,
 								  const SampleBuffer &samples)
 {
 	for (const TimeRange &r : valid_ranges) {
-		if (WritePartOfSampleBuffer(samples, r.in(), r.in() - range.in(),
+		if (write_part_of_sample_buffer(samples, r.in(), r.in() - range.in(),
 									r.length())) {
-			Validate(r);
+			validate(r);
 		}
 	}
 }
 
-void AudioPlaybackCache::WriteSilence(const TimeRange &range)
+void AudioPlaybackCache::write_silence(const TimeRange &range)
 {
 	// WritePCM will automatically fill non-existent bytes with silence, so we just have to send
 	// it an empty sample buffer
-	WritePCM(range, { range }, SampleBuffer());
+	write_pcm(range, { range }, SampleBuffer());
 }
 
-bool AudioPlaybackCache::WritePartOfSampleBuffer(const SampleBuffer &samples,
-												 const rational &write_start,
-												 const rational &buffer_start,
-												 const rational &length)
+bool AudioPlaybackCache::write_part_of_sample_buffer(const SampleBuffer &samples,
+												 const Rational &write_start,
+												 const Rational &buffer_start,
+												 const Rational &length)
 {
 	int64_t length_in_bytes = params_.time_to_bytes_per_channel(length);
 
@@ -94,9 +94,9 @@ bool AudioPlaybackCache::WritePartOfSampleBuffer(const SampleBuffer &samples,
 	bool success = true;
 
 	while (current_cache_offset != end_cache_offset) {
-		int64_t segment = current_cache_offset / kDefaultSegmentSizePerChannel;
-		int64_t segment_start = segment * kDefaultSegmentSizePerChannel;
-		int64_t segment_end = segment_start + kDefaultSegmentSizePerChannel;
+		int64_t segment = current_cache_offset / k_default_segment_size_per_channel;
+		int64_t segment_start = segment * k_default_segment_size_per_channel;
+		int64_t segment_end = segment_start + k_default_segment_size_per_channel;
 
 		int64_t offset_in_segment = current_cache_offset - segment_start;
 		// Never write past the end of the requested range
@@ -111,9 +111,9 @@ bool AudioPlaybackCache::WritePartOfSampleBuffer(const SampleBuffer &samples,
 		}
 
 		for (int channel = 0; channel < params_.channel_count(); channel++) {
-			QString filename = GetSegmentFilename(segment, channel);
+			QString filename = get_segment_filename(segment, channel);
 
-			if (!FileFunctions::DirectoryIsValid(QFileInfo(filename).dir())) {
+			if (!FileFunctions::directory_is_valid(QFileInfo(filename).dir())) {
 				success = false;
 				break;
 			}
@@ -147,10 +147,10 @@ bool AudioPlaybackCache::WritePartOfSampleBuffer(const SampleBuffer &samples,
 	return success;
 }
 
-QString AudioPlaybackCache::GetSegmentFilename(qint64 segment_index,
+QString AudioPlaybackCache::get_segment_filename(qint64 segment_index,
 											   int channel)
 {
-	return GetThisCacheDirectory().filePath(QStringLiteral("%1.%2").arg(
+	return get_this_cache_directory().filePath(QStringLiteral("%1.%2").arg(
 		QString::number(segment_index), QString::number(channel)));
 }
 

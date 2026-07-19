@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef LIBOLIVECORE_TESTS_H
-#define LIBOLIVECORE_TESTS_H
+#ifndef OAK_LIBOLIVECORE_TESTS_H
+#define OAK_LIBOLIVECORE_TESTS_H
 
 #include <list>
 
@@ -59,4 +59,4 @@ private:
 
 }
 
-#endif // LIBOLIVECORE_TESTS_H
+#endif // OAK_LIBOLIVECORE_TESTS_H

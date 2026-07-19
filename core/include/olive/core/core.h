@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef LIBOLIVECORE_H
-#define LIBOLIVECORE_H
+#ifndef OAK_LIBOLIVECORE_H
+#define OAK_LIBOLIVECORE_H
 
 #include "render/audioparams.h"
 #include "render/pixelformat.h"
@@ -35,4 +35,4 @@
 #include "util/timerange.h"
 #include "util/value.h"
 
-#endif // LIBOLIVECORE_H
+#endif // OAK_LIBOLIVECORE_H

@@ -46,11 +46,11 @@ void RenderJobTracker::clear()
 	jobs_.clear();
 }
 
-bool RenderJobTracker::isCurrent(const rational &time, JobTime job_time) const
+bool RenderJobTracker::isCurrent(const Rational &time, JobTime job_time) const
 {
 	for (auto it = jobs_.crbegin(); it != jobs_.crend(); it++) {
-		if (it->Contains(time)) {
-			return job_time >= it->GetJobTime();
+		if (it->contains(time)) {
+			return job_time >= it->get_job_time();
 		}
 	}
 
@@ -64,8 +64,8 @@ RenderJobTracker::getCurrentSubRanges(const TimeRange &range,
 	TimeRangeList current_ranges;
 
 	for (auto it = jobs_.crbegin(); it != jobs_.crend(); it++) {
-		if (job_time >= it->GetJobTime() && it->OverlapsWith(range)) {
-			current_ranges.insert(it->Intersected(range));
+		if (job_time >= it->get_job_time() && it->overlaps_with(range)) {
+			current_ranges.insert(it->intersected(range));
 		}
 	}
 

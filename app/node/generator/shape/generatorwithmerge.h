@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef GENERATORWITHMERGE_H
-#define GENERATORWITHMERGE_H
+#ifndef OAK_GENERATORWITHMERGE_H
+#define OAK_GENERATORWITHMERGE_H
 
 #include "node/node.h"
 
@@ -32,18 +32,18 @@ class GeneratorWithMerge : public Node {
 public:
 	GeneratorWithMerge();
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
+	get_shader_code(const ShaderRequest &request) const override;
 
-	static const QString kBaseInput;
+	static const QString k_base_input;
 
 protected:
-	void PushMergableJob(const NodeValueRow &value, TexturePtr job,
+	void push_mergable_job(const NodeValueRow &value, TexturePtr job,
 						 NodeValueTable *table) const;
 };
 
 }
 
-#endif // GENERATORWITHMERGE_H
+#endif // OAK_GENERATORWITHMERGE_H

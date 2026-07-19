@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SAMPLEJOB_H
-#define SAMPLEJOB_H
+#ifndef OAK_SAMPLEJOB_H
+#define OAK_SAMPLEJOB_H
 
 #include "acceleratedjob.h"
 
@@ -35,14 +35,14 @@ public:
 
 	SampleJob(const TimeRange &time, const NodeValue &value)
 	{
-		samples_ = value.toSamples();
+		samples_ = value.to_samples();
 		time_ = time;
 	}
 
 	SampleJob(const TimeRange &time, const QString &from,
 			  const NodeValueRow &row)
 	{
-		samples_ = row[from].toSamples();
+		samples_ = row[from].to_samples();
 		time_ = time;
 	}
 
@@ -51,7 +51,7 @@ public:
 		return samples_;
 	}
 
-	bool HasSamples() const
+	bool has_samples() const
 	{
 		return samples_.is_allocated();
 	}
@@ -71,4 +71,4 @@ private:
 
 Q_DECLARE_METATYPE(olive::SampleJob)
 
-#endif // SAMPLEJOB_H
+#endif // OAK_SAMPLEJOB_H

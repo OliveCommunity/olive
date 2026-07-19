@@ -48,13 +48,13 @@ using namespace olive;
 namespace
 {
 
-QString DemoVideoPathT()
+QString demo_video_path_t()
 {
 	return QDir(QStringLiteral(OAK_TEST_SOURCE_DIR))
 		.filePath(QStringLiteral("tests/demo.mp4"));
 }
 
-QString WorkerBinaryPathT()
+QString worker_binary_path_t()
 {
 	QDir dir(QCoreApplication::applicationDirPath());
 	dir.cdUp();
@@ -70,37 +70,37 @@ QString WorkerBinaryPathT()
 // Loads and initializes the requested render backend the same way the
 // application does, verifying that the loaded backend is actually of the
 // requested kind (a Vulkan request that fell back to OpenGL does not count).
-bool IsRenderBackendAvailable(const QString &backend)
+bool is_render_backend_available(const QString &backend)
 {
 #ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
 	olive::DynamicRenderer renderer(backend);
-	if (!renderer.Load()) {
+	if (!renderer.load()) {
 		return false;
 	}
 
 	OakRenderBackendInfo info = {};
-	if (!renderer.GetBackendInfo(&info)) {
+	if (!renderer.get_backend_info(&info)) {
 		return false;
 	}
 
 	if (backend == QStringLiteral("vulkan") &&
-		info.kind != OAK_RENDER_BACKEND_VULKAN) {
+		info.kind != oak_render_backend_vulkan) {
 		return false;
 	}
 
 	if (backend == QStringLiteral("opengl") &&
-		info.kind != OAK_RENDER_BACKEND_OPENGL) {
+		info.kind != oak_render_backend_opengl) {
 		return false;
 	}
 
-	return renderer.Init();
+	return renderer.init();
 #else
 	Q_UNUSED(backend)
 	return false;
 #endif
 }
 
-double BrightnessOfWidget(QWidget *w)
+double brightness_of_widget(QWidget *w)
 {
 	QPixmap pm = w->grab();
 	QImage img = pm.toImage().convertToFormat(QImage::Format_RGB32);
@@ -137,16 +137,16 @@ class ViewerDisplayReproTest : public ::testing::TestWithParam<QString> {
 protected:
 	static void SetUpTestSuite()
 	{
-		NodeFactory::Initialize();
-		ColorManager::SetUpDefaultConfig();
-		TaskManager::CreateInstance();
-		ConformManager::CreateInstance();
-		ProxyManager::CreateInstance();
-		FrameManager::CreateInstance();
-		ProjectSerializer::Initialize();
-		DiskManager::CreateInstance();
+		NodeFactory::initialize();
+		ColorManager::set_up_default_config();
+		TaskManager::create_instance();
+		ConformManager::create_instance();
+		ProxyManager::create_instance();
+		FrameManager::create_instance();
+		ProjectSerializer::initialize();
+		DiskManager::create_instance();
 
-		const QString worker = WorkerBinaryPathT();
+		const QString worker = worker_binary_path_t();
 		if (QFileInfo::exists(worker)) {
 			qputenv("OAK_RENDER_WORKER", QFile::encodeName(worker));
 		}
@@ -154,19 +154,19 @@ protected:
 		if (!Core::instance()) {
 			new Core(Core::CoreParams());
 		}
-		AudioManager::CreateInstance();
+		AudioManager::create_instance();
 	}
 
 	static void TearDownTestSuite()
 	{
-		AudioManager::DestroyInstance();
-		DiskManager::DestroyInstance();
-		ProjectSerializer::Destroy();
-		FrameManager::DestroyInstance();
-		ProxyManager::DestroyInstance();
-		ConformManager::DestroyInstance();
-		TaskManager::DestroyInstance();
-		NodeFactory::Destroy();
+		AudioManager::destroy_instance();
+		DiskManager::destroy_instance();
+		ProjectSerializer::destroy();
+		FrameManager::destroy_instance();
+		ProxyManager::destroy_instance();
+		ConformManager::destroy_instance();
+		TaskManager::destroy_instance();
+		NodeFactory::destroy();
 	}
 
 	void SetUp() override
@@ -175,44 +175,44 @@ protected:
 		if (backend_ != QStringLiteral("vulkan")) {
 			GTEST_SKIP() << "offscreen QOpenGLWidget cannot paint; Vulkan only";
 		}
-		if (!IsRenderBackendAvailable(backend_)) {
+		if (!is_render_backend_available(backend_)) {
 			GTEST_SKIP() << "Render backend is not available: "
 						 << backend_.toStdString();
 		}
-		Config::Current()[QStringLiteral("GraphicsBackend")] = backend_;
+		Config::current()[QStringLiteral("GraphicsBackend")] = backend_;
 
-		demo_path_ = DemoVideoPathT();
+		demo_path_ = demo_video_path_t();
 		ASSERT_TRUE(QFileInfo::exists(demo_path_));
 
 		project_ = std::make_unique<Project>();
-		project_->Initialize();
+		project_->initialize();
 
 		footage_ = new Footage(demo_path_);
 		footage_->setParent(project_.get());
-		ASSERT_TRUE(footage_->IsValid());
+		ASSERT_TRUE(footage_->is_valid());
 
-		RenderManager::CreateInstance();
-		RenderManager::instance()->GetCacher()->SetProject(project_.get());
+		RenderManager::create_instance();
+		RenderManager::instance()->get_cacher()->set_project(project_.get());
 	}
 
 	void TearDown() override
 	{
 		// May be null when SetUp() skipped before creating the instance.
 		if (RenderManager::instance()) {
-			RenderManager::instance()->GetCacher()->SetProject(nullptr);
-			RenderManager::DestroyInstance();
+			RenderManager::instance()->get_cacher()->set_project(nullptr);
+			RenderManager::destroy_instance();
 		}
 		project_.reset();
 	}
 
 	// Pumps the event loop until the display widget has a texture or timeout.
-	bool WaitForTexture(ViewerDisplayWidget *display, int timeout_ms = 30000)
+	bool wait_for_texture(ViewerDisplayWidget *display, int timeout_ms = 30000)
 	{
 		QElapsedTimer timer;
 		timer.start();
 		while (!timer.hasExpired(timeout_ms)) {
 			QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
-			if (display->GetCurrentTexture()) {
+			if (display->get_current_texture()) {
 				// Let a few more paints happen
 				for (int i = 0; i < 5; i++) {
 					QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
@@ -239,13 +239,13 @@ TEST_P(ViewerDisplayReproTest, FootageViewerNotBlack)
 	viewer->resize(800, 600);
 	viewer->show();
 
-	viewer->ConnectViewerNode(footage_);
+	viewer->connect_viewer_node(footage_);
 
-	ASSERT_TRUE(WaitForTexture(viewer->display_widget()))
+	ASSERT_TRUE(wait_for_texture(viewer->display_widget()))
 		<< "Display widget never received a texture (backend="
 		<< backend_.toStdString() << ")";
 
-	double brightness = BrightnessOfWidget(viewer->display_widget());
+	double brightness = brightness_of_widget(viewer->display_widget());
 	EXPECT_GT(brightness, 0.01)
 		<< "Footage viewer paints BLACK (brightness=" << brightness
 		<< ", backend=" << backend_.toStdString() << ")";
@@ -262,20 +262,20 @@ TEST_P(ViewerDisplayReproTest, SequenceViewerIndirectNotBlack)
 	OpacityEffect *opacity = new OpacityEffect();
 	opacity->setParent(project_.get());
 
-	Node::ConnectEdge(footage_, NodeInput(opacity, OpacityEffect::kTextureInput));
-	Node::ConnectEdge(opacity, NodeInput(sequence, ViewerOutput::kTextureInput));
+	Node::connect_edge(footage_, NodeInput(opacity, OpacityEffect::k_texture_input));
+	Node::connect_edge(opacity, NodeInput(sequence, ViewerOutput::k_texture_input));
 
 	TestViewerWidget *viewer = new TestViewerWidget();
 	viewer->resize(800, 600);
 	viewer->show();
 
-	viewer->ConnectViewerNode(sequence);
+	viewer->connect_viewer_node(sequence);
 
-	ASSERT_TRUE(WaitForTexture(viewer->display_widget()))
+	ASSERT_TRUE(wait_for_texture(viewer->display_widget()))
 		<< "Display widget never received a texture (backend="
 		<< backend_.toStdString() << ")";
 
-	double brightness = BrightnessOfWidget(viewer->display_widget());
+	double brightness = brightness_of_widget(viewer->display_widget());
 	EXPECT_GT(brightness, 0.01)
 		<< "Sequence viewer (indirect) paints BLACK (brightness=" << brightness
 		<< ", backend=" << backend_.toStdString() << ")";
@@ -290,20 +290,20 @@ TEST_P(ViewerDisplayReproTest, SequenceViewerDirectNotBlack)
 	Sequence *sequence = new Sequence();
 	sequence->setParent(project_.get());
 
-	Node::ConnectEdge(footage_,
-					  NodeInput(sequence, ViewerOutput::kTextureInput));
+	Node::connect_edge(footage_,
+					  NodeInput(sequence, ViewerOutput::k_texture_input));
 
 	TestViewerWidget *viewer = new TestViewerWidget();
 	viewer->resize(800, 600);
 	viewer->show();
 
-	viewer->ConnectViewerNode(sequence);
+	viewer->connect_viewer_node(sequence);
 
-	ASSERT_TRUE(WaitForTexture(viewer->display_widget()))
+	ASSERT_TRUE(wait_for_texture(viewer->display_widget()))
 		<< "Display widget never received a texture (backend="
 		<< backend_.toStdString() << ")";
 
-	double brightness = BrightnessOfWidget(viewer->display_widget());
+	double brightness = brightness_of_widget(viewer->display_widget());
 	EXPECT_GT(brightness, 0.01)
 		<< "Sequence viewer (direct) paints BLACK (brightness=" << brightness
 		<< ", backend=" << backend_.toStdString() << ")";
@@ -320,12 +320,12 @@ INSTANTIATE_TEST_SUITE_P(Backends, ViewerDisplayReproTest,
 // directly to the output. Vulkan only (offscreen QOpenGLWidget cannot paint).
 class ViewerRuntimeRewireTest : public ViewerDisplayReproTest {
 protected:
-	double PumpAndMeasure(TestViewerWidget *viewer, int timeout_ms = 30000)
+	double pump_and_measure(TestViewerWidget *viewer, int timeout_ms = 30000)
 	{
-		if (!WaitForTexture(viewer->display_widget(), timeout_ms)) {
+		if (!wait_for_texture(viewer->display_widget(), timeout_ms)) {
 			return -1.0;
 		}
-		return BrightnessOfWidget(viewer->display_widget());
+		return brightness_of_widget(viewer->display_widget());
 	}
 };
 
@@ -337,26 +337,26 @@ TEST_P(ViewerRuntimeRewireTest, RewireToDirectConnectionNotBlack)
 	// Normal chain with a node in between: footage -> opacity -> sequence
 	OpacityEffect *opacity = new OpacityEffect();
 	opacity->setParent(project_.get());
-	Node::ConnectEdge(footage_,
-					  NodeInput(opacity, OpacityEffect::kTextureInput));
-	Node::ConnectEdge(opacity, NodeInput(sequence, ViewerOutput::kTextureInput));
+	Node::connect_edge(footage_,
+					  NodeInput(opacity, OpacityEffect::k_texture_input));
+	Node::connect_edge(opacity, NodeInput(sequence, ViewerOutput::k_texture_input));
 
 	TestViewerWidget *viewer = new TestViewerWidget();
 	viewer->resize(800, 600);
 	viewer->show();
-	viewer->ConnectViewerNode(sequence);
+	viewer->connect_viewer_node(sequence);
 
-	double brightness = PumpAndMeasure(viewer);
+	double brightness = pump_and_measure(viewer);
 	ASSERT_GT(brightness, 0.01)
 		<< "Precondition failed: indirect chain is already black";
 
 	// Now rewire at runtime: footage directly to the sequence output.
-	Node::DisconnectEdge(opacity,
-						 NodeInput(sequence, ViewerOutput::kTextureInput));
-	Node::ConnectEdge(footage_,
-					  NodeInput(sequence, ViewerOutput::kTextureInput));
+	Node::disconnect_edge(opacity,
+						 NodeInput(sequence, ViewerOutput::k_texture_input));
+	Node::connect_edge(footage_,
+					  NodeInput(sequence, ViewerOutput::k_texture_input));
 
-	brightness = PumpAndMeasure(viewer);
+	brightness = pump_and_measure(viewer);
 	EXPECT_GT(brightness, 0.01)
 		<< "Viewer paints BLACK after rewiring to a direct connection "
 		<< "(brightness=" << brightness << ")";
@@ -370,28 +370,28 @@ TEST_P(ViewerRuntimeRewireTest, RewireToIndirectConnectionNotBlack)
 	sequence->setParent(project_.get());
 
 	// Start direct: footage -> sequence
-	Node::ConnectEdge(footage_,
-					  NodeInput(sequence, ViewerOutput::kTextureInput));
+	Node::connect_edge(footage_,
+					  NodeInput(sequence, ViewerOutput::k_texture_input));
 
 	TestViewerWidget *viewer = new TestViewerWidget();
 	viewer->resize(800, 600);
 	viewer->show();
-	viewer->ConnectViewerNode(sequence);
+	viewer->connect_viewer_node(sequence);
 
-	double brightness = PumpAndMeasure(viewer);
+	double brightness = pump_and_measure(viewer);
 	ASSERT_GT(brightness, 0.01)
 		<< "Precondition failed: direct chain is already black";
 
 	// Insert a node at runtime: footage -> opacity -> sequence
 	OpacityEffect *opacity = new OpacityEffect();
 	opacity->setParent(project_.get());
-	Node::DisconnectEdge(footage_,
-						 NodeInput(sequence, ViewerOutput::kTextureInput));
-	Node::ConnectEdge(footage_,
-					  NodeInput(opacity, OpacityEffect::kTextureInput));
-	Node::ConnectEdge(opacity, NodeInput(sequence, ViewerOutput::kTextureInput));
+	Node::disconnect_edge(footage_,
+						 NodeInput(sequence, ViewerOutput::k_texture_input));
+	Node::connect_edge(footage_,
+					  NodeInput(opacity, OpacityEffect::k_texture_input));
+	Node::connect_edge(opacity, NodeInput(sequence, ViewerOutput::k_texture_input));
 
-	brightness = PumpAndMeasure(viewer);
+	brightness = pump_and_measure(viewer);
 	EXPECT_GT(brightness, 0.01)
 		<< "Viewer paints BLACK after rewiring to an indirect connection "
 		<< "(brightness=" << brightness << ")";

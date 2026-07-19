@@ -33,31 +33,31 @@
 namespace olive
 {
 
-const int kDecibelStep = 6;
-const int kDecibelMinimum =
+const int k_decibel_step = 6;
+const int k_decibel_minimum =
 	-198; // Must be divisible by kDecibelStep for infinity to appear
-const int kMaximumSmoothness = 8;
+const int k_maximum_smoothness = 8;
 
-QVector<AudioMonitor *> AudioMonitor::instances_;
+QVector<AudioMonitor *> AudioMonitor::instances;
 
 AudioMonitor::AudioMonitor(QWidget *parent)
 	: QOpenGLWidget(parent)
 	, waveform_(nullptr)
 	, cached_channels_(0)
 {
-	instances_.append(this);
+	instances.append(this);
 
-	values_.resize(kMaximumSmoothness);
+	values_.resize(k_maximum_smoothness);
 
 	this->setMinimumWidth(this->fontMetrics().height());
 }
 
 AudioMonitor::~AudioMonitor()
 {
-	instances_.removeOne(this);
+	instances.removeOne(this);
 }
 
-void AudioMonitor::SetParams(const AudioParams &params)
+void AudioMonitor::set_params(const AudioParams &params)
 {
 	if (params_ != params) {
 		params_ = params;
@@ -74,7 +74,7 @@ void AudioMonitor::SetParams(const AudioParams &params)
 	}
 }
 
-void AudioMonitor::Stop()
+void AudioMonitor::stop()
 {
 	waveform_ = nullptr;
 
@@ -82,7 +82,7 @@ void AudioMonitor::Stop()
 	// loop will stop itself since file_ and waveform_ are null.
 }
 
-void AudioMonitor::PushSampleBuffer(const SampleBuffer &d)
+void AudioMonitor::push_sample_buffer(const SampleBuffer &d)
 {
 	if (!params_.channel_count()) {
 		return;
@@ -91,7 +91,7 @@ void AudioMonitor::PushSampleBuffer(const SampleBuffer &d)
 	QVector<double> v(params_.channel_count(), 0);
 
 	const AudioLevelMeter::Stats stats =
-		AudioLevelMeter::AnalyzeSampleBuffer(d);
+		AudioLevelMeter::analyze_sample_buffer(d);
 	for (int i = 0; i < v.size() && i < stats.channels.size(); i++) {
 		v[i] = stats.channels.at(i).peak_linear;
 	}
@@ -99,13 +99,13 @@ void AudioMonitor::PushSampleBuffer(const SampleBuffer &d)
 	// Fill values because they get averaged out for smoothing
 	values_.fill(v);
 
-	SetUpdateLoop(true);
+	set_update_loop(true);
 }
 
-void AudioMonitor::StartWaveform(const AudioWaveformCache *waveform,
-								 const rational &start, int playback_speed)
+void AudioMonitor::start_waveform(const AudioWaveformCache *waveform,
+								 const Rational &start, int playback_speed)
 {
-	Stop();
+	stop();
 
 	waveform_length_ = waveform->length();
 	if (start >= waveform_length_) {
@@ -119,10 +119,10 @@ void AudioMonitor::StartWaveform(const AudioWaveformCache *waveform,
 
 	last_time_ = QDateTime::currentMSecsSinceEpoch();
 
-	SetUpdateLoop(true);
+	set_update_loop(true);
 }
 
-void AudioMonitor::SetUpdateLoop(bool e)
+void AudioMonitor::set_update_loop(bool e)
 {
 	if (e) {
 		connect(this, &AudioMonitor::frameSwapped, this,
@@ -171,7 +171,7 @@ void AudioMonitor::paintGL()
 	int peaks_pos;
 	int channel_size;
 	int db_line_length = fm.horizontalAdvance(QStringLiteral("-"));
-	int db_width = QtUtils::QFontMetricsWidth(p.fontMetrics(), "-00 ");
+	int db_width = QtUtils::q_font_metrics_width(p.fontMetrics(), "-00 ");
 	if (horizontal) {
 		// Insert peaks area
 		full_meter_rect.adjust(0, 0, -font_height, 0);
@@ -236,16 +236,16 @@ void AudioMonitor::paintGL()
 
 			cached_painter.setPen(palette.text().color());
 
-			for (int i = 0; i >= kDecibelMinimum; i -= kDecibelStep) {
+			for (int i = 0; i >= k_decibel_minimum; i -= k_decibel_step) {
 				QString db_label;
 				qreal log_val;
 
-				if (i == kDecibelMinimum) {
+				if (i == k_decibel_minimum) {
 					db_label = QStringLiteral("-∞ ");
 					log_val = 0;
 				} else {
 					db_label = QStringLiteral("%1 ").arg(i);
-					log_val = Decibel::toLogarithmic(i);
+					log_val = Decibel::to_logarithmic(i);
 				}
 
 				QLine db_line;
@@ -278,7 +278,7 @@ void AudioMonitor::paintGL()
 										db_labels_rect.bottom() - font_height;
 				}
 
-				if (overlaps_infinity && i == kDecibelMinimum) {
+				if (overlaps_infinity && i == k_decibel_minimum) {
 					overlaps_infinity = false;
 				}
 
@@ -351,7 +351,7 @@ void AudioMonitor::paintGL()
 
 	QVector<double> v(params_.channel_count(), 0);
 
-	if (IsPlaying()) {
+	if (is_playing()) {
 		// Determines how many milliseconds have passed since last update
 		qint64 current_time = QDateTime::currentMSecsSinceEpoch();
 		qint64 delta_time = current_time - last_time_;
@@ -363,19 +363,19 @@ void AudioMonitor::paintGL()
 		}
 
 		if (waveform_) {
-			UpdateValuesFromWaveform(v, delta_time);
+			update_values_from_waveform(v, delta_time);
 
 			if (waveform_time_ >= waveform_length_) {
-				Stop();
+				stop();
 			}
 		}
 
 		last_time_ = current_time;
 	}
 
-	PushValue(v);
+	push_value(v);
 
-	QVector<double> vals = GetAverages();
+	QVector<double> vals = get_averages();
 
 	p.setBrush(QColor(0, 0, 0, 128));
 	p.setPen(Qt::NoPen);
@@ -394,7 +394,7 @@ void AudioMonitor::paintGL()
 		}
 
 		// Convert val to logarithmic scale
-		vol = Decibel::LinearToLogarithmic(vol);
+		vol = Decibel::linear_to_logarithmic(vol);
 
 		QRect peaks_rect, meter_rect;
 
@@ -424,9 +424,9 @@ void AudioMonitor::paintGL()
 		}
 	}
 
-	if (all_zeroes && !IsPlaying()) {
+	if (all_zeroes && !is_playing()) {
 		// Optimize by disabling the update loop
-		SetUpdateLoop(false);
+		set_update_loop(false);
 	}
 }
 
@@ -436,21 +436,21 @@ void AudioMonitor::mousePressEvent(QMouseEvent *)
 	update();
 }
 
-void AudioMonitor::UpdateValuesFromWaveform(QVector<double> &v,
+void AudioMonitor::update_values_from_waveform(QVector<double> &v,
 											qint64 delta_time)
 {
-	// Delta time is provided in milliseconds, so we convert to seconds in rational
-	rational length(delta_time, 1000);
+	// Delta time is provided in milliseconds, so we convert to seconds in Rational
+	Rational length(delta_time, 1000);
 
 	AudioVisualWaveform::Sample sum =
-		waveform_->GetSummaryFromTime(waveform_time_, length);
+		waveform_->get_summary_from_time(waveform_time_, length);
 
-	AudioVisualWaveformSampleToInternalValues(sum, v);
+	audio_visual_waveform_sample_to_internal_values(sum, v);
 
 	waveform_time_ += length;
 }
 
-void AudioMonitor::AudioVisualWaveformSampleToInternalValues(
+void AudioMonitor::audio_visual_waveform_sample_to_internal_values(
 	const AudioVisualWaveform::Sample &in, QVector<double> &out)
 {
 	for (size_t i = 0; i < in.size(); i++) {
@@ -463,7 +463,7 @@ void AudioMonitor::AudioVisualWaveformSampleToInternalValues(
 	}
 }
 
-void AudioMonitor::PushValue(const QVector<double> &v)
+void AudioMonitor::push_value(const QVector<double> &v)
 {
 	int lim = values_.size() - 1;
 	for (int i = 0; i < lim; i++) {
@@ -472,7 +472,7 @@ void AudioMonitor::PushValue(const QVector<double> &v)
 	values_[lim] = v;
 }
 
-void AudioMonitor::BytesToSampleSummary(const QByteArray &b, QVector<double> &v)
+void AudioMonitor::bytes_to_sample_summary(const QByteArray &b, QVector<double> &v)
 {
 	const float *samples = reinterpret_cast<const float *>(b.constData());
 	int nb_samples = b.size() / sizeof(float);
@@ -488,7 +488,7 @@ void AudioMonitor::BytesToSampleSummary(const QByteArray &b, QVector<double> &v)
 	}
 }
 
-QVector<double> AudioMonitor::GetAverages() const
+QVector<double> AudioMonitor::get_averages() const
 {
 	QVector<double> v(params_.channel_count(), 0);
 

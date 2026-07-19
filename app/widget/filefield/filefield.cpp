@@ -41,19 +41,19 @@ FileField::FileField(QWidget *parent)
 
 	line_edit_ = new QLineEdit();
 	connect(line_edit_, &QLineEdit::textChanged, this,
-			&FileField::LineEditChanged);
+			&FileField::line_edit_changed);
 	connect(line_edit_, &QLineEdit::textEdited, this,
-			&FileField::FilenameChanged);
+			&FileField::filename_changed);
 	layout->addWidget(line_edit_);
 
 	browse_btn_ = new QPushButton();
-	browse_btn_->setIcon(icon::Open);
+	browse_btn_->setIcon(icon::open);
 	connect(browse_btn_, &QPushButton::clicked, this,
-			&FileField::BrowseBtnClicked);
+			&FileField::browse_btn_clicked);
 	layout->addWidget(browse_btn_);
 }
 
-void FileField::BrowseBtnClicked()
+void FileField::browse_btn_clicked()
 {
 	QString s;
 
@@ -85,11 +85,11 @@ void FileField::BrowseBtnClicked()
 
 	if (!s.isEmpty()) {
 		line_edit_->setText(s);
-		emit FilenameChanged(s);
+		emit filename_changed(s);
 	}
 }
 
-void FileField::LineEditChanged(const QString &text)
+void FileField::line_edit_changed(const QString &text)
 {
 	if (QFileInfo::exists(text) || text.isEmpty()) {
 		line_edit_->setStyleSheet(QString());

@@ -31,10 +31,10 @@ namespace olive
 NodeGroup::NodeGroup()
 	: output_passthrough_(nullptr)
 {
-	SetFlag(kDontShowInCreateMenu);
+	set_flag(k_dont_show_in_create_menu);
 }
 
-QString NodeGroup::Name() const
+QString NodeGroup::name() const
 {
 	return tr("Group");
 }
@@ -44,37 +44,37 @@ QString NodeGroup::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.group");
 }
 
-QVector<Node::CategoryID> NodeGroup::Category() const
+QVector<Node::CategoryID> NodeGroup::category() const
 {
-	return { kCategoryUnknown };
+	return { k_category_unknown };
 }
 
-QString NodeGroup::Description() const
+QString NodeGroup::description() const
 {
 	return tr("A group of nodes that is represented as a single node.");
 }
 
-void NodeGroup::Retranslate()
+void NodeGroup::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	for (auto it = GetContextPositions().cbegin();
-		 it != GetContextPositions().cend(); it++) {
-		it.key()->Retranslate();
+	for (auto it = get_context_positions().cbegin();
+		 it != get_context_positions().cend(); it++) {
+		it.key()->retranslate();
 	}
 }
 
-bool NodeGroup::LoadCustom(QXmlStreamReader *reader, SerializedData *data)
+bool NodeGroup::load_custom(QXmlStreamReader *reader, SerializedData *data)
 {
-	while (XMLReadNextStartElement(reader)) {
+	while (xml_read_next_start_element(reader)) {
 		if (reader->name() == QStringLiteral("inputpassthroughs")) {
-			while (XMLReadNextStartElement(reader)) {
+			while (xml_read_next_start_element(reader)) {
 				if (reader->name() == QStringLiteral("inputpassthrough")) {
 					SerializedData::GroupLink link;
 
 					link.group = this;
 
-					while (XMLReadNextStartElement(reader)) {
+					while (xml_read_next_start_element(reader)) {
 						if (reader->name() == QStringLiteral("node")) {
 							link.input_node =
 								reader->readElementText().toULongLong();
@@ -92,22 +92,22 @@ bool NodeGroup::LoadCustom(QXmlStreamReader *reader, SerializedData *data)
 							link.custom_flags = InputFlags(
 								reader->readElementText().toULongLong());
 						} else if (reader->name() == QStringLiteral("type")) {
-							link.data_type = NodeValue::GetDataTypeFromName(
+							link.data_type = NodeValue::get_data_type_from_name(
 								reader->readElementText());
 						} else if (reader->name() ==
 								   QStringLiteral("default")) {
-							link.default_val = NodeValue::StringToValue(
+							link.default_val = NodeValue::string_to_value(
 								link.data_type, reader->readElementText(),
 								false);
 						} else if (reader->name() ==
 								   QStringLiteral("properties")) {
-							while (XMLReadNextStartElement(reader)) {
+							while (xml_read_next_start_element(reader)) {
 								if (reader->name() ==
 									QStringLiteral("property")) {
 									QString key;
 									QString value;
 
-									while (XMLReadNextStartElement(reader)) {
+									while (xml_read_next_start_element(reader)) {
 										if (reader->name() ==
 											QStringLiteral("key")) {
 											key = reader->readElementText();
@@ -148,12 +148,12 @@ bool NodeGroup::LoadCustom(QXmlStreamReader *reader, SerializedData *data)
 	return true;
 }
 
-void NodeGroup::SaveCustom(QXmlStreamWriter *writer) const
+void NodeGroup::save_custom(QXmlStreamWriter *writer) const
 {
 	writer->writeStartElement(QStringLiteral("inputpassthroughs"));
 
 	foreach (const NodeGroup::InputPassthrough &ip,
-			 this->GetInputPassthroughs()) {
+			 this->get_input_passthroughs()) {
 		writer->writeStartElement(QStringLiteral("inputpassthrough"));
 
 		// Reference to inner input
@@ -170,23 +170,23 @@ void NodeGroup::SaveCustom(QXmlStreamWriter *writer) const
 		// Passthrough-specific details
 		const QString &input = ip.first;
 		writer->writeTextElement(QStringLiteral("name"),
-								 this->Node::GetInputName(input));
+								 this->Node::get_input_name(input));
 
 		writer->writeTextElement(
 			QStringLiteral("flags"),
 			QString::number(
-				(GetInputFlags(input) & ~ip.second.GetFlags()).value()));
+				(get_input_flags(input) & ~ip.second.get_flags()).value()));
 
-		NodeValue::Type data_type = GetInputDataType(input);
+		NodeValue::Type data_type = get_input_data_type(input);
 		writer->writeTextElement(QStringLiteral("type"),
-								 NodeValue::GetDataTypeName(data_type));
+								 NodeValue::get_data_type_name(data_type));
 
 		writer->writeTextElement(
 			QStringLiteral("default"),
-			NodeValue::ValueToString(data_type, GetDefaultValue(input), false));
+			NodeValue::value_to_string(data_type, get_default_value(input), false));
 
 		writer->writeStartElement(QStringLiteral("properties"));
-		auto p = GetInputProperties(input);
+		auto p = get_input_properties(input);
 		for (auto it = p.cbegin(); it != p.cend(); it++) {
 			writer->writeStartElement(QStringLiteral("property"));
 			writer->writeTextElement(QStringLiteral("key"), it.key());
@@ -203,7 +203,7 @@ void NodeGroup::SaveCustom(QXmlStreamWriter *writer) const
 
 	writer->writeTextElement(QStringLiteral("outputpassthrough"),
 							 QString::number(reinterpret_cast<quintptr>(
-								 this->GetOutputPassthrough())));
+								 this->get_output_passthrough())));
 }
 
 void NodeGroup::PostLoadEvent(SerializedData *data)
@@ -214,22 +214,22 @@ void NodeGroup::PostLoadEvent(SerializedData *data)
 		if (Node *input_node = data->node_ptrs.value(l.input_node)) {
 			NodeInput resolved(input_node, l.input_id, l.input_element);
 
-			l.group->AddInputPassthrough(resolved, l.passthrough_id);
+			l.group->add_input_passthrough(resolved, l.passthrough_id);
 
-			l.group->SetInputFlag(l.passthrough_id,
+			l.group->set_input_flag(l.passthrough_id,
 								  InputFlag(l.custom_flags.value()));
 
 			if (!l.custom_name.isEmpty()) {
-				l.group->SetInputName(l.passthrough_id, l.custom_name);
+				l.group->set_input_name(l.passthrough_id, l.custom_name);
 			}
 
-			l.group->SetInputDataType(l.passthrough_id, l.data_type);
+			l.group->set_input_data_type(l.passthrough_id, l.data_type);
 
-			l.group->SetDefaultValue(l.passthrough_id, l.default_val);
+			l.group->set_default_value(l.passthrough_id, l.default_val);
 
 			for (auto it = l.custom_properties.cbegin();
 				 it != l.custom_properties.cend(); it++) {
-				l.group->SetInputProperty(l.passthrough_id, it.key(),
+				l.group->set_input_property(l.passthrough_id, it.key(),
 										  it.value());
 			}
 		}
@@ -238,15 +238,15 @@ void NodeGroup::PostLoadEvent(SerializedData *data)
 	for (auto it = data->group_output_links.cbegin();
 		 it != data->group_output_links.cend(); it++) {
 		if (Node *output_node = data->node_ptrs.value(it.value())) {
-			it.key()->SetOutputPassthrough(output_node);
+			it.key()->set_output_passthrough(output_node);
 		}
 	}
 }
 
-QString NodeGroup::AddInputPassthrough(const NodeInput &input,
+QString NodeGroup::add_input_passthrough(const NodeInput &input,
 									   const QString &force_id)
 {
-	Q_ASSERT(ContextContainsNode(input.node()));
+	Q_ASSERT(context_contains_node(input.node()));
 
 	for (auto it = input_passthroughs_.cbegin();
 		 it != input_passthroughs_.cend(); it++) {
@@ -261,7 +261,7 @@ QString NodeGroup::AddInputPassthrough(const NodeInput &input,
 	if (force_id.isEmpty()) {
 		id = input.input();
 		int i = 2;
-		while (HasInputWithID(id)) {
+		while (has_input_with_id(id)) {
 			id = QStringLiteral("%1_%2").arg(input.input(), QString::number(i));
 			i++;
 		}
@@ -280,39 +280,39 @@ QString NodeGroup::AddInputPassthrough(const NodeInput &input,
 		Q_ASSERT(!already_exists);
 	}
 
-	AddInput(id, input.GetDataType(), input.GetDefaultValue(),
-			 input.GetFlags());
+	add_input(id, input.get_data_type(), input.get_default_value(),
+			 input.get_flags());
 
 	input_passthroughs_.append({ id, input });
 
-	emit InputPassthroughAdded(this, input);
+	emit input_passthrough_added(this, input);
 
 	return id;
 }
 
-void NodeGroup::RemoveInputPassthrough(const NodeInput &input)
+void NodeGroup::remove_input_passthrough(const NodeInput &input)
 {
 	for (auto it = input_passthroughs_.begin(); it != input_passthroughs_.end();
 		 it++) {
 		if (it->second == input) {
-			RemoveInput(it->first);
-			emit InputPassthroughRemoved(this, it->second);
+			remove_input(it->first);
+			emit input_passthrough_removed(this, it->second);
 			input_passthroughs_.erase(it);
 			break;
 		}
 	}
 }
 
-void NodeGroup::SetOutputPassthrough(Node *node)
+void NodeGroup::set_output_passthrough(Node *node)
 {
-	Q_ASSERT(!node || ContextContainsNode(node));
+	Q_ASSERT(!node || context_contains_node(node));
 
 	output_passthrough_ = node;
 
-	emit OutputPassthroughChanged(this, output_passthrough_);
+	emit output_passthrough_changed(this, output_passthrough_);
 }
 
-bool NodeGroup::ContainsInputPassthrough(const NodeInput &input) const
+bool NodeGroup::contains_input_passthrough(const NodeInput &input) const
 {
 	for (auto it = input_passthroughs_.cbegin();
 		 it != input_passthroughs_.cend(); it++) {
@@ -324,35 +324,35 @@ bool NodeGroup::ContainsInputPassthrough(const NodeInput &input) const
 	return false;
 }
 
-QString NodeGroup::GetInputName(const QString &id) const
+QString NodeGroup::get_input_name(const QString &id) const
 {
 	// If an override name was set, use that
-	QString override = super::GetInputName(id);
+	QString override = super::get_input_name(id);
 	if (!override.isEmpty()) {
 		return override;
 	}
 
 	// Call GetInputName of passed through node, which may be another group
-	NodeInput pass = GetInputFromID(id);
-	if (!pass.IsValid()) {
+	NodeInput pass = get_input_from_id(id);
+	if (!pass.is_valid()) {
 		return QString();
 	}
-	return pass.node()->GetInputName(pass.input());
+	return pass.node()->get_input_name(pass.input());
 }
 
-NodeInput NodeGroup::ResolveInput(NodeInput input)
+NodeInput NodeGroup::resolve_input(NodeInput input)
 {
-	while (GetInner(&input)) {
+	while (get_inner(&input)) {
 	}
 
 	return input;
 }
 
-bool NodeGroup::GetInner(NodeInput *input)
+bool NodeGroup::get_inner(NodeInput *input)
 {
 	if (NodeGroup *g = dynamic_cast<NodeGroup *>(input->node())) {
-		const NodeInput &passthrough = g->GetInputFromID(input->input());
-		if (!passthrough.IsValid()) {
+		const NodeInput &passthrough = g->get_input_from_id(input->input());
+		if (!passthrough.is_valid()) {
 			return false;
 		}
 
@@ -366,8 +366,8 @@ bool NodeGroup::GetInner(NodeInput *input)
 
 void NodeGroupAddInputPassthrough::redo()
 {
-	if (!group_->ContainsInputPassthrough(input_)) {
-		group_->AddInputPassthrough(input_, force_id_);
+	if (!group_->contains_input_passthrough(input_)) {
+		group_->add_input_passthrough(input_, force_id_);
 		actually_added_ = true;
 	} else {
 		actually_added_ = false;
@@ -377,19 +377,19 @@ void NodeGroupAddInputPassthrough::redo()
 void NodeGroupAddInputPassthrough::undo()
 {
 	if (actually_added_) {
-		group_->RemoveInputPassthrough(input_);
+		group_->remove_input_passthrough(input_);
 	}
 }
 
 void NodeGroupSetOutputPassthrough::redo()
 {
-	old_output_ = group_->GetOutputPassthrough();
-	group_->SetOutputPassthrough(new_output_);
+	old_output_ = group_->get_output_passthrough();
+	group_->set_output_passthrough(new_output_);
 }
 
 void NodeGroupSetOutputPassthrough::undo()
 {
-	group_->SetOutputPassthrough(old_output_);
+	group_->set_output_passthrough(old_output_);
 }
 
 }

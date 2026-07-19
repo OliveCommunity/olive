@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMEFORMAT_H
-#define TIMEFORMAT_H
+#ifndef OAK_TIMEFORMAT_H
+#define OAK_TIMEFORMAT_H
 
 #include "node/node.h"
 
@@ -34,21 +34,21 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(TimeFormatNode)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	static const QString kTimeInput;
-	static const QString kFormatInput;
-	static const QString kLocalTimeInput;
+	static const QString k_time_input;
+	static const QString k_format_input;
+	static const QString k_local_time_input;
 };
 
 }
 
-#endif // TIMEFORMAT_H
+#endif // OAK_TIMEFORMAT_H

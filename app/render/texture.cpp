@@ -27,13 +27,13 @@
 namespace olive
 {
 
-const Texture::Interpolation Texture::kDefaultInterpolation =
-	Texture::kMipmappedLinear;
+const Texture::Interpolation Texture::k_default_interpolation =
+	Texture::k_mipmapped_linear;
 
 Texture::~Texture()
 {
-	if (IsRendererAlive()) {
-		renderer_->DestroyTexture(this);
+	if (is_renderer_alive()) {
+		renderer_->destroy_texture(this);
 	}
 
 	if (job_) {
@@ -41,17 +41,17 @@ Texture::~Texture()
 	}
 }
 
-void Texture::Upload(void *data, int linesize)
+void Texture::upload(void *data, int linesize)
 {
-	if (IsRendererAlive()) {
-		renderer_->UploadToTexture(this->id(), this->params(), data, linesize);
+	if (is_renderer_alive()) {
+		renderer_->upload_to_texture(this->id(), this->params(), data, linesize);
 	}
 }
 
-void Texture::Download(void *data, int linesize)
+void Texture::download(void *data, int linesize)
 {
-	if (IsRendererAlive()) {
-		renderer_->DownloadFromTexture(this->id(), this->params(), data,
+	if (is_renderer_alive()) {
+		renderer_->download_from_texture(this->id(), this->params(), data,
 									   linesize);
 	}
 }

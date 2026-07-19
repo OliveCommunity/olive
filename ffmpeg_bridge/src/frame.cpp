@@ -114,14 +114,14 @@ void fb_frame_set_height(FBFrame *frame, int height)
 
 int fb_frame_get_format(const FBFrame *frame)
 {
-	return frame ? fb::PixFmtFromAV(AVPixelFormat(frame->frame->format)) :
-				   FB_PIX_FMT_NONE;
+	return frame ? fb::pix_fmt_from_av(AVPixelFormat(frame->frame->format)) :
+				   fb_pix_fmt_none;
 }
 
 void fb_frame_set_format(FBFrame *frame, int format)
 {
 	if (frame) {
-		frame->frame->format = fb::PixFmtToAV(format);
+		frame->frame->format = fb::pix_fmt_to_av(format);
 	}
 }
 
@@ -168,7 +168,7 @@ void fb_frame_set_sample_rate(FBFrame *frame, int sample_rate)
 
 int fb_frame_get_color_range(const FBFrame *frame)
 {
-	return frame ? int(frame->frame->color_range) : FB_COLOR_RANGE_UNSPEC;
+	return frame ? int(frame->frame->color_range) : fb_color_range_unspec;
 }
 
 void fb_frame_set_color_range(FBFrame *frame, int color_range)
@@ -180,7 +180,7 @@ void fb_frame_set_color_range(FBFrame *frame, int color_range)
 
 int fb_frame_get_colorspace(const FBFrame *frame)
 {
-	return frame ? int(frame->frame->colorspace) : FB_COL_SPC_UNSPEC;
+	return frame ? int(frame->frame->colorspace) : fb_col_spc_unspec;
 }
 
 void fb_frame_set_colorspace(FBFrame *frame, int colorspace)

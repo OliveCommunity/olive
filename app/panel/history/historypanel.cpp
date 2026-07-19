@@ -29,14 +29,14 @@ namespace olive
 HistoryPanel::HistoryPanel()
 	: PanelWidget(QStringLiteral("HistoryPanel"))
 {
-	SetWidgetWithPadding(new HistoryWidget(this));
+	set_widget_with_padding(new HistoryWidget(this));
 
-	Retranslate();
+	retranslate();
 }
 
-void HistoryPanel::Retranslate()
+void HistoryPanel::retranslate()
 {
-	SetTitle(tr("History"));
+	set_title(tr("History"));
 }
 
 }

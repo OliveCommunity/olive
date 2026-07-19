@@ -17,8 +17,8 @@
  *
  */
 
-#ifndef OLIVE_EDITOR_PLUGIN_IMAGE_H
-#define OLIVE_EDITOR_PLUGIN_IMAGE_H
+#ifndef OAK_OLIVE_EDITOR_PLUGIN_IMAGE_H
+#define OAK_OLIVE_EDITOR_PLUGIN_IMAGE_H
 
 #include "ofxCore.h"
 #include "ofxImageEffect.h"
@@ -50,12 +50,12 @@ public:
 	bool premultiplied_alpha();
 	int channel_count();
 
-	void AllocateFromParams(const VideoParams &params, const OfxRectI &bounds,
+	void allocate_from_params(const VideoParams &params, const OfxRectI &bounds,
 							const OfxRectI &rod, bool clear = true);
-	void EnsureAllocatedFromParams(const VideoParams &params,
+	void ensure_allocated_from_params(const VideoParams &params,
 								   const OfxRectI &bounds, const OfxRectI &rod,
 								   bool clear = false);
-	void Allocate(int width, int height, core::PixelFormat format,
+	void allocate(int width, int height, core::PixelFormat format,
 				  int channel_count, bool premultiplied_alpha,
 				  const OfxRectI &bounds, const OfxRectI &rod,
 				  bool clear = true);
@@ -78,4 +78,4 @@ protected:
 }
 }
 
-#endif //OLIVE_EDITOR_PLUGIN_IMAGE_H
+#endif //OAK_OLIVE_EDITOR_PLUGIN_IMAGE_H

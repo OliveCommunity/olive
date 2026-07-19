@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLUMNEDGRIDLAYOUT_H
-#define COLUMNEDGRIDLAYOUT_H
+#ifndef OAK_COLUMNEDGRIDLAYOUT_H
+#define OAK_COLUMNEDGRIDLAYOUT_H
 
 #include <QGridLayout>
 
@@ -40,9 +40,9 @@ class ColumnedGridLayout : public QGridLayout {
 public:
 	ColumnedGridLayout(QWidget *parent = nullptr, int maximum_columns = 0);
 
-	void Add(QWidget *widget);
-	int MaximumColumns() const;
-	void SetMaximumColumns(int maximum_columns);
+	void add(QWidget *widget);
+	int maximum_columns() const;
+	void set_maximum_columns(int maximum_columns);
 
 private:
 	int maximum_columns_;
@@ -50,4 +50,4 @@ private:
 
 }
 
-#endif // COLUMNEDGRIDLAYOUT_H
+#endif // OAK_COLUMNEDGRIDLAYOUT_H

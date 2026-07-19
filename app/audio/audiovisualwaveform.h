@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SUMSAMPLES_H
-#define SUMSAMPLES_H
+#ifndef OAK_SUMSAMPLES_H
+#define OAK_SUMSAMPLES_H
 
 #include <olive/core/core.h>
 #include <QPainter>
@@ -58,7 +58,7 @@ public:
 		channels_ = channels;
 	}
 
-	const rational &length() const
+	const Rational &length() const
 	{
 		return length_;
 	}
@@ -68,8 +68,8 @@ public:
    *
    * Starting at `start`, writes samples over anything in the buffer, expanding it if necessary.
    */
-	void OverwriteSamples(const SampleBuffer &samples, int sample_rate,
-						  const rational &start = 0);
+	void overwrite_samples(const SampleBuffer &samples, int sample_rate,
+						  const Rational &start = 0);
 
 	/**
    * @brief Replaces sums at a certain range in this visual waveform
@@ -90,74 +90,74 @@ public:
    *
    * Maximum length of `sums` to overwrite with.
    */
-	void OverwriteSums(const AudioVisualWaveform &sums, const rational &dest,
-					   const rational &offset = 0, const rational &length = 0);
+	void overwrite_sums(const AudioVisualWaveform &sums, const Rational &dest,
+					   const Rational &offset = 0, const Rational &length = 0);
 
-	void OverwriteSilence(const rational &start, const rational &length);
+	void overwrite_silence(const Rational &start, const Rational &length);
 
-	void TrimIn(rational length);
+	void trim_in(Rational length);
 
-	AudioVisualWaveform Mid(const rational &offset) const;
-	AudioVisualWaveform Mid(const rational &offset,
-							const rational &length) const;
+	AudioVisualWaveform mid(const Rational &offset) const;
+	AudioVisualWaveform mid(const Rational &offset,
+							const Rational &length) const;
 
-	void Resize(const rational &length);
+	void resize(const Rational &length);
 
-	void TrimRange(const rational &in, const rational &length);
+	void trim_range(const Rational &in, const Rational &length);
 
-	Sample GetSummaryFromTime(const rational &start,
-							  const rational &length) const;
+	Sample get_summary_from_time(const Rational &start,
+							  const Rational &length) const;
 
-	static Sample SumSamples(const SampleBuffer &samples, size_t start_index,
+	static Sample sum_samples(const SampleBuffer &samples, size_t start_index,
 							 size_t length);
 
-	static Sample ReSumSamples(const SamplePerChannel *samples,
+	static Sample re_sum_samples(const SamplePerChannel *samples,
 							   size_t nb_samples, int nb_channels);
 
-	static void DrawSample(QPainter *painter, const Sample &sample, int x,
+	static void draw_sample(QPainter *painter, const Sample &sample, int x,
 						   int y, int height, bool rectified);
 
-	static void DrawWaveform(QPainter *painter, const QRect &rect,
+	static void draw_waveform(QPainter *painter, const QRect &rect,
 							 const double &scale,
 							 const AudioVisualWaveform &samples,
-							 const rational &start_time);
+							 const Rational &start_time);
 
 	// Must be a power of 2
-	static const rational kMinimumSampleRate;
-	static const rational kMaximumSampleRate;
+	static const Rational k_minimum_sample_rate;
+	static const Rational k_maximum_sample_rate;
 
 private:
-	void OverwriteSamplesFromBuffer(const SampleBuffer &samples,
-									int sample_rate, const rational &start,
+	void overwrite_samples_from_buffer(const SampleBuffer &samples,
+									int sample_rate, const Rational &start,
 									double target_rate, Sample &data,
 									size_t &start_index,
 									size_t &samples_length);
 
-	void OverwriteSamplesFromMipmap(const Sample &input,
+	void overwrite_samples_from_mipmap(const Sample &input,
 									double input_sample_rate,
 									size_t &input_start, size_t &input_length,
-									const rational &start, double output_rate,
+									const Rational &start, double output_rate,
 									Sample &output_data);
 
-	size_t time_to_samples(const rational &time, double sample_rate) const;
+	size_t time_to_samples(const Rational &time, double sample_rate) const;
 	size_t time_to_samples(const double &time, double sample_rate) const;
 
-	std::map<rational, Sample>::const_iterator
-	GetMipmapForScale(double scale) const;
+	std::map<Rational, Sample>::const_iterator
+	get_mipmap_for_scale(double scale) const;
 
-	void ValidateVirtualStart(const rational &new_start);
+	void validate_virtual_start(const Rational &new_start);
 
-	rational virtual_start_;
+	Rational virtual_start_;
 
 	int channels_;
 
-	std::map<rational, Sample> mipmapped_data_;
+	std::map<Rational, Sample> mipmapped_data_;
 
-	rational length_;
+	Rational length_;
 };
 
 }
 
 Q_DECLARE_METATYPE(olive::AudioVisualWaveform)
 
-#endif // SUMSAMPLES_H
+#endif // OAK_SUMSAMPLES_H

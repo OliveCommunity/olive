@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CRASHHANDLERDIALOG_H
-#define CRASHHANDLERDIALOG_H
+#ifndef OAK_CRASHHANDLERDIALOG_H
+#define OAK_CRASHHANDLERDIALOG_H
 
 #include <client/crash_report_database.h>
 #include <QDialog>
@@ -79,4 +79,4 @@ private slots:
 
 }
 
-#endif // CRASHHANDLERDIALOG_H
+#endif // OAK_CRASHHANDLERDIALOG_H

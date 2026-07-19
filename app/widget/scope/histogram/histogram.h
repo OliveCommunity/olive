@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef HISTOGRAMSCOPE_H
-#define HISTOGRAMSCOPE_H
+#ifndef OAK_HISTOGRAMSCOPE_H
+#define OAK_HISTOGRAMSCOPE_H
 
 #include "widget/scope/scopebase/scopebase.h"
 
@@ -35,17 +35,17 @@ public:
 	MANAGEDDISPLAYWIDGET_DEFAULT_DESTRUCTOR(HistogramScope)
 
 protected slots:
-	virtual void OnInit() override;
+	virtual void on_init() override;
 
-	virtual void OnDestroy() override;
+	virtual void on_destroy() override;
 
 protected:
-	virtual ShaderCode GenerateShaderCode() override;
-	QVariant CreateSecondaryShader();
+	virtual ShaderCode generate_shader_code() override;
+	QVariant create_secondary_shader();
 
-	virtual void DrawScope(TexturePtr managed_tex, QVariant pipeline) override;
+	virtual void draw_scope(TexturePtr managed_tex, QVariant pipeline) override;
 
-	virtual void DrawScopeSoftware(QPainter &p, const QImage &image) override;
+	virtual void draw_scope_software(QPainter &p, const QImage &image) override;
 
 private:
 	QVariant pipeline_secondary_;
@@ -54,4 +54,4 @@ private:
 
 }
 
-#endif // HISTOGRAMSCOPE_H
+#endif // OAK_HISTOGRAMSCOPE_H

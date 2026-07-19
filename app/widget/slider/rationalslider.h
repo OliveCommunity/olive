@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef RATIONALSLIDER_H
-#define RATIONALSLIDER_H
+#ifndef OAK_RATIONALSLIDER_H
+#define OAK_RATIONALSLIDER_H
 
 #include <olive/core/core.h>
 #include <QMouseEvent>
@@ -33,7 +33,7 @@ namespace olive
 using namespace core;
 
 /**
- * @brief A olive::rational based slider
+ * @brief A olive::Rational based slider
  *
  * A slider that can display rationals as either timecode (drop or non-drop), a timestamp (frames),
  * or a float (seconds).
@@ -44,90 +44,90 @@ public:
 	/**
    * @brief enum containing the possibly display types
    */
-	enum DisplayType { kTime, kFloat, kRational };
+	enum DisplayType { k_time, k_float, k_rational };
 
 	RationalSlider(QWidget *parent = nullptr);
 
 	/**
-   * @brief Returns the sliders value as a rational
+   * @brief Returns the sliders value as a Rational
    */
-	rational GetValue();
+	Rational get_value();
 
 	/**
    * @brief Sets the sliders default value
    */
-	void SetDefaultValue(const rational &r);
+	void SetDefaultValue(const Rational &r);
 
 	/**
    * @brief Sets the sliders minimum value
    */
-	void SetMinimum(const rational &d);
+	void set_minimum(const Rational &d);
 
 	/**
    * @brief Sets the sliders maximum value
    */
-	void SetMaximum(const rational &d);
+	void set_maximum(const Rational &d);
 
 	/**
    * @brief Sets the display type of the slider
    */
-	void SetDisplayType(const DisplayType &type);
+	void set_display_type(const DisplayType &type);
 
 	/**
    * @brief Set whether the user can change the display type or not
    */
-	void SetLockDisplayType(bool e);
+	void set_lock_display_type(bool e);
 
 	/**
    * @brief Get whether the user can change the display type or not
    */
-	bool GetLockDisplayType();
+	bool get_lock_display_type();
 
 	/**
    * @brief Hide display type in menu
    */
-	void DisableDisplayType(DisplayType type);
+	void disable_display_type(DisplayType type);
 
 public slots:
 	/**
    * @brief Sets the sliders timebase which is also the minimum increment of the slider
    */
-	void SetTimebase(const rational &timebase);
+	void set_timebase(const Rational &timebase);
 
 	/**
    * @brief Sets the sliders value
    */
-	void SetValue(const rational &d);
+	void set_value(const Rational &d);
 
 protected:
-	virtual QString ValueToString(const QVariant &v) const override;
+	virtual QString value_to_string(const QVariant &v) const override;
 
-	virtual QVariant StringToValue(const QString &s, bool *ok) const override;
+	virtual QVariant string_to_value(const QString &s, bool *ok) const override;
 
 	virtual QVariant
-	AdjustDragDistanceInternal(const QVariant &start,
+	adjust_drag_distance_internal(const QVariant &start,
 							   const double &drag) const override;
 
-	virtual void ValueSignalEvent(const QVariant &v) override;
+	virtual void value_signal_event(const QVariant &v) override;
 
-	virtual bool ValueGreaterThan(const QVariant &lhs,
+	virtual bool value_greater_than(const QVariant &lhs,
 								  const QVariant &rhs) const override;
 
-	virtual bool ValueLessThan(const QVariant &lhs,
+	virtual bool value_less_than(const QVariant &lhs,
 							   const QVariant &rhs) const override;
 
 signals:
-	void ValueChanged(rational);
+	void value_changed(Rational);
 
 private slots:
-	void ShowDisplayTypeMenu();
+	void show_display_type_menu();
 
-	void SetDisplayTypeFromMenu();
+	void set_display_type_from_menu();
 
 private:
 	DisplayType display_type_;
 
-	rational timebase_;
+	Rational timebase_;
 
 	bool lock_display_type_;
 
@@ -136,4 +136,4 @@ private:
 
 }
 
-#endif // RATIONALSLIDER_H
+#endif // OAK_RATIONALSLIDER_H

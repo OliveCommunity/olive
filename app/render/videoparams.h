@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef VIDEOPARAMS_H
-#define VIDEOPARAMS_H
+#ifndef OAK_VIDEOPARAMS_H
+#define OAK_VIDEOPARAMS_H
 
 #include <olive/core/core.h>
 #include <QVector2D>
@@ -36,30 +36,30 @@ using namespace core;
 class VideoParams {
 public:
 	enum Interlacing {
-		kInterlaceNone,
-		kInterlacedTopFirst,
-		kInterlacedBottomFirst
+		k_interlace_none,
+		k_interlaced_top_first,
+		k_interlaced_bottom_first
 	};
 
-	enum Type { kVideoTypeVideo, kVideoTypeStill, kVideoTypeImageSequence };
+	enum Type { k_video_type_video, k_video_type_still, k_video_type_image_sequence };
 	enum ColorRange {
-		kColorRangeLimited, // 16_235
-		kColorRangeFull, // 0-255
+		k_color_range_limited, // 16_235
+		k_color_range_full, // 0-255
 
-		kColorRangeDefault = kColorRangeLimited
+		k_color_range_default = k_color_range_limited
 	};
 
 	VideoParams();
 	VideoParams(int width, int height, PixelFormat format, int nb_channels,
-				const rational &pixel_aspect_ratio = 1,
-				Interlacing interlacing = kInterlaceNone, int divider = 1);
+				const Rational &pixel_aspect_ratio = 1,
+				Interlacing interlacing = k_interlace_none, int divider = 1);
 	VideoParams(int width, int height, int depth, PixelFormat format,
-				int nb_channels, const rational &pixel_aspect_ratio = 1,
-				Interlacing interlacing = kInterlaceNone, int divider = 1);
-	VideoParams(int width, int height, const rational &time_base,
+				int nb_channels, const Rational &pixel_aspect_ratio = 1,
+				Interlacing interlacing = k_interlace_none, int divider = 1);
+	VideoParams(int width, int height, const Rational &time_base,
 				PixelFormat format, int nb_channels,
-				const rational &pixel_aspect_ratio = 1,
-				Interlacing interlacing = kInterlaceNone, int divider = 1);
+				const Rational &pixel_aspect_ratio = 1,
+				Interlacing interlacing = k_interlace_none, int divider = 1);
 
 	int width() const
 	{
@@ -117,17 +117,17 @@ public:
 		return depth_ > 1;
 	}
 
-	const rational &time_base() const
+	const Rational &time_base() const
 	{
 		return time_base_;
 	}
 
-	void set_time_base(const rational &r)
+	void set_time_base(const Rational &r)
 	{
 		time_base_ = r;
 	}
 
-	rational frame_rate_as_time_base() const
+	Rational frame_rate_as_time_base() const
 	{
 		return frame_rate_.flipped();
 	}
@@ -177,13 +177,13 @@ public:
 	{
 		channel_count_ = c;
 	}
-	void set_channel_count(const std::string &ofxComponent);
-	const rational &pixel_aspect_ratio() const
+	void set_channel_count(const std::string &ofx_component);
+	const Rational &pixel_aspect_ratio() const
 	{
 		return pixel_aspect_ratio_;
 	}
 
-	void set_pixel_aspect_ratio(const rational &r)
+	void set_pixel_aspect_ratio(const Rational &r)
 	{
 		pixel_aspect_ratio_ = r;
 		validate_pixel_aspect_ratio();
@@ -206,67 +206,67 @@ public:
 	bool operator==(const VideoParams &rhs) const;
 	bool operator!=(const VideoParams &rhs) const;
 
-	static int GetBytesPerChannel(PixelFormat format);
-	int GetBytesPerChannel() const
+	static int get_bytes_per_channel(PixelFormat format);
+	int get_bytes_per_channel() const
 	{
-		return GetBytesPerChannel(format_);
+		return get_bytes_per_channel(format_);
 	}
 
-	static int GetBytesPerPixel(PixelFormat format, int channels);
-	int GetBytesPerPixel() const
+	static int get_bytes_per_pixel(PixelFormat format, int channels);
+	int get_bytes_per_pixel() const
 	{
-		return GetBytesPerPixel(format_, channel_count_);
+		return get_bytes_per_pixel(format_, channel_count_);
 	}
 
-	static int GetBufferSize(int width, int height, PixelFormat format,
+	static int get_buffer_size(int width, int height, PixelFormat format,
 							 int channels)
 	{
-		return width * height * GetBytesPerPixel(format, channels);
+		return width * height * get_bytes_per_pixel(format, channels);
 	}
-	int GetBufferSize() const
+	int get_buffer_size() const
 	{
-		return GetBufferSize(width_, height_, format_, channel_count_);
+		return get_buffer_size(width_, height_, format_, channel_count_);
 	}
 
-	static QString GetNameForDivider(int div);
+	static QString get_name_for_divider(int div);
 
-	static bool FormatIsFloat(PixelFormat format)
+	static bool format_is_float(PixelFormat format)
 	{
 		return format.is_float();
 	}
 
-	static QString GetFormatName(PixelFormat format);
+	static QString get_format_name(PixelFormat format);
 
-	static int GetDividerForTargetResolution(int src_width, int src_height,
+	static int get_divider_for_target_resolution(int src_width, int src_height,
 											 int dst_width, int dst_height);
 
-	static const int kInternalChannelCount;
+	static const int k_internal_channel_count;
 
-	static const rational kPixelAspectSquare;
-	static const rational kPixelAspectNTSCStandard;
-	static const rational kPixelAspectNTSCWidescreen;
-	static const rational kPixelAspectPALStandard;
-	static const rational kPixelAspectPALWidescreen;
-	static const rational kPixelAspect1080Anamorphic;
+	static const Rational k_pixel_aspect_square;
+	static const Rational k_pixel_aspect_ntsc_standard;
+	static const Rational k_pixel_aspect_ntsc_widescreen;
+	static const Rational k_pixel_aspect_pal_standard;
+	static const Rational k_pixel_aspect_pal_widescreen;
+	static const Rational k_pixel_aspect1080_anamorphic;
 
-	static const QVector<rational> kSupportedFrameRates;
-	static const QVector<rational> kStandardPixelAspects;
-	static const QVector<int> kSupportedDividers;
+	static const QVector<Rational> k_supported_frame_rates;
+	static const QVector<Rational> k_standard_pixel_aspects;
+	static const QVector<int> k_supported_dividers;
 
-	static const int kHSVChannelCount = 3;
-	static const int kRGBChannelCount = 3;
-	static const int kRGBAChannelCount = 4;
+	static const int k_hsv_channel_count = 3;
+	static const int k_rgb_channel_count = 3;
+	static const int k_rgba_channel_count = 4;
 
 	/**
-   * @brief Convert rational frame rate (i.e. flipped timebase) to a user-friendly string
+   * @brief Convert Rational frame rate (i.e. flipped timebase) to a user-friendly string
    */
-	static QString FrameRateToString(const rational &frame_rate);
+	static QString frame_rate_to_string(const Rational &frame_rate);
 
-	static QStringList GetStandardPixelAspectRatioNames();
-	static QString FormatPixelAspectRatioString(const QString &format,
-												const rational &ratio);
+	static QStringList get_standard_pixel_aspect_ratio_names();
+	static QString format_pixel_aspect_ratio_string(const QString &format,
+												const Rational &ratio);
 
-	static int GetScaledDimension(int dim, int divider);
+	static int get_scaled_dimension(int dim, int divider);
 
 	bool enabled() const
 	{
@@ -319,12 +319,12 @@ public:
 		video_type_ = t;
 	}
 
-	const rational &frame_rate() const
+	const Rational &frame_rate() const
 	{
 		return frame_rate_;
 	}
 
-	void set_frame_rate(const rational &frame_rate)
+	void set_frame_rate(const Rational &frame_rate)
 	{
 		frame_rate_ = frame_rate;
 	}
@@ -378,11 +378,11 @@ public:
 		color_range_ = color_range;
 	}
 
-	int64_t get_time_in_timebase_units(const rational &time) const;
+	int64_t get_time_in_timebase_units(const Rational &time) const;
 
-	void Load(QXmlStreamReader *reader);
+	void load(QXmlStreamReader *reader);
 
-	void Save(QXmlStreamWriter *writer) const;
+	void save(QXmlStreamWriter *writer) const;
 
 private:
 	void calculate_effective_size();
@@ -396,13 +396,13 @@ private:
 	int width_;
 	int height_;
 	int depth_;
-	rational time_base_;
+	Rational time_base_;
 
 	PixelFormat format_;
 
 	int channel_count_;
 
-	rational pixel_aspect_ratio_;
+	Rational pixel_aspect_ratio_;
 
 	Interlacing interlacing_;
 
@@ -417,7 +417,7 @@ private:
 	bool enabled_;
 	int stream_index_;
 	Type video_type_;
-	rational frame_rate_;
+	Rational frame_rate_;
 	int64_t start_time_;
 	int64_t duration_;
 	bool premultiplied_alpha_;
@@ -432,4 +432,4 @@ private:
 Q_DECLARE_METATYPE(olive::VideoParams)
 Q_DECLARE_METATYPE(olive::VideoParams::Interlacing)
 
-#endif // VIDEOPARAMS_H
+#endif // OAK_VIDEOPARAMS_H

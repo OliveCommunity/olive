@@ -7,17 +7,17 @@ TEST(CodecFrame, DefaultState)
 	olive::Frame frame;
 	EXPECT_EQ(frame.width(), 0);
 	EXPECT_EQ(frame.height(), 0);
-	EXPECT_EQ(frame.format(), olive::core::PixelFormat::INVALID);
+	EXPECT_EQ(frame.format(), olive::core::PixelFormat::invalid);
 	EXPECT_FALSE(frame.is_allocated());
 	EXPECT_EQ(frame.data(), nullptr);
 }
 
 TEST(CodecFrame, CreateAllocatesForParams)
 {
-	olive::VideoParams params(64, 32, olive::core::PixelFormat::U8,
-							  olive::VideoParams::kRGBAChannelCount);
+	olive::VideoParams params(64, 32, olive::core::PixelFormat::u8,
+							  olive::VideoParams::k_rgba_channel_count);
 
-	olive::FramePtr frame = olive::Frame::Create();
+	olive::FramePtr frame = olive::Frame::create();
 	frame->set_video_params(params);
 	frame->allocate();
 
@@ -25,15 +25,15 @@ TEST(CodecFrame, CreateAllocatesForParams)
 	EXPECT_NE(frame->data(), nullptr);
 	EXPECT_EQ(frame->width(), 64);
 	EXPECT_EQ(frame->height(), 32);
-	EXPECT_EQ(frame->format(), olive::core::PixelFormat::U8);
+	EXPECT_EQ(frame->format(), olive::core::PixelFormat::u8);
 }
 
 TEST(CodecFrame, AllocateMatchesLineSize)
 {
-	olive::VideoParams params(64, 32, olive::core::PixelFormat::U8,
-							  olive::VideoParams::kRGBAChannelCount);
+	olive::VideoParams params(64, 32, olive::core::PixelFormat::u8,
+							  olive::VideoParams::k_rgba_channel_count);
 
-	olive::FramePtr frame = olive::Frame::Create();
+	olive::FramePtr frame = olive::Frame::create();
 	frame->set_video_params(params);
 	frame->allocate();
 
@@ -43,10 +43,10 @@ TEST(CodecFrame, AllocateMatchesLineSize)
 
 TEST(CodecFrame, DestroyDeallocatesData)
 {
-	olive::FramePtr frame = olive::Frame::Create();
+	olive::FramePtr frame = olive::Frame::create();
 	frame->set_video_params(
-		olive::VideoParams(8, 8, olive::core::PixelFormat::U8,
-						   olive::VideoParams::kRGBAChannelCount));
+		olive::VideoParams(8, 8, olive::core::PixelFormat::u8,
+						   olive::VideoParams::k_rgba_channel_count));
 	frame->allocate();
 	EXPECT_TRUE(frame->is_allocated());
 
@@ -63,9 +63,9 @@ TEST(CodecFrame, AllocateInvalidParamsFails)
 
 TEST(CodecFrame, DoubleAllocateReturnsTrue)
 {
-	olive::VideoParams params(8, 8, olive::core::PixelFormat::U8,
-							  olive::VideoParams::kRGBAChannelCount);
-	olive::FramePtr frame = olive::Frame::Create();
+	olive::VideoParams params(8, 8, olive::core::PixelFormat::u8,
+							  olive::VideoParams::k_rgba_channel_count);
+	olive::FramePtr frame = olive::Frame::create();
 	frame->set_video_params(params);
 	EXPECT_TRUE(frame->allocate());
 	EXPECT_TRUE(frame->allocate());
@@ -73,9 +73,9 @@ TEST(CodecFrame, DoubleAllocateReturnsTrue)
 
 TEST(CodecFrame, ContainsPixel)
 {
-	olive::VideoParams params(8, 8, olive::core::PixelFormat::U8,
-							  olive::VideoParams::kRGBAChannelCount);
-	olive::FramePtr frame = olive::Frame::Create();
+	olive::VideoParams params(8, 8, olive::core::PixelFormat::u8,
+							  olive::VideoParams::k_rgba_channel_count);
+	olive::FramePtr frame = olive::Frame::create();
 	frame->set_video_params(params);
 
 	EXPECT_FALSE(frame->contains_pixel(0, 0));
@@ -90,9 +90,9 @@ TEST(CodecFrame, ContainsPixel)
 
 TEST(CodecFrame, GetPixelOutOfBoundsReturnsBlack)
 {
-	olive::VideoParams params(8, 8, olive::core::PixelFormat::U8,
-							  olive::VideoParams::kRGBAChannelCount);
-	olive::FramePtr frame = olive::Frame::Create();
+	olive::VideoParams params(8, 8, olive::core::PixelFormat::u8,
+							  olive::VideoParams::k_rgba_channel_count);
+	olive::FramePtr frame = olive::Frame::create();
 	frame->set_video_params(params);
 	frame->allocate();
 
@@ -102,9 +102,9 @@ TEST(CodecFrame, GetPixelOutOfBoundsReturnsBlack)
 
 TEST(CodecFrame, SetAndGetPixel)
 {
-	olive::VideoParams params(8, 8, olive::core::PixelFormat::U8,
-							  olive::VideoParams::kRGBAChannelCount);
-	olive::FramePtr frame = olive::Frame::Create();
+	olive::VideoParams params(8, 8, olive::core::PixelFormat::u8,
+							  olive::VideoParams::k_rgba_channel_count);
+	olive::FramePtr frame = olive::Frame::create();
 	frame->set_video_params(params);
 	frame->allocate();
 
@@ -119,35 +119,35 @@ TEST(CodecFrame, SetAndGetPixel)
 
 TEST(CodecFrame, TimestampRoundTrip)
 {
-	olive::FramePtr frame = olive::Frame::Create();
-	frame->set_timestamp(olive::core::rational(5, 1));
-	EXPECT_EQ(frame->timestamp(), olive::core::rational(5, 1));
+	olive::FramePtr frame = olive::Frame::create();
+	frame->set_timestamp(olive::core::Rational(5, 1));
+	EXPECT_EQ(frame->timestamp(), olive::core::Rational(5, 1));
 }
 
 TEST(CodecFrame, GenerateLineSizeBytes)
 {
 	EXPECT_EQ(olive::Frame::generate_linesize_bytes(
-				  64, olive::core::PixelFormat::U8,
-				  olive::VideoParams::kRGBAChannelCount),
+				  64, olive::core::PixelFormat::u8,
+				  olive::VideoParams::k_rgba_channel_count),
 			  64 * 4);
 }
 
 TEST(CodecFrame, InterlaceFrames)
 {
-	olive::VideoParams params(4, 4, olive::core::PixelFormat::U8,
-							  olive::VideoParams::kRGBAChannelCount);
+	olive::VideoParams params(4, 4, olive::core::PixelFormat::u8,
+							  olive::VideoParams::k_rgba_channel_count);
 
-	olive::FramePtr top = olive::Frame::Create();
+	olive::FramePtr top = olive::Frame::create();
 	top->set_video_params(params);
 	top->allocate();
 	memset(top->data(), 0xFF, top->allocated_size());
 
-	olive::FramePtr bottom = olive::Frame::Create();
+	olive::FramePtr bottom = olive::Frame::create();
 	bottom->set_video_params(params);
 	bottom->allocate();
 	memset(bottom->data(), 0x00, bottom->allocated_size());
 
-	olive::FramePtr interlaced = olive::Frame::Interlace(top, bottom);
+	olive::FramePtr interlaced = olive::Frame::interlace(top, bottom);
 	ASSERT_NE(interlaced, nullptr);
 	EXPECT_EQ(interlaced->width(), 4);
 	EXPECT_EQ(interlaced->height(), 4);
@@ -155,32 +155,32 @@ TEST(CodecFrame, InterlaceFrames)
 
 TEST(CodecFrame, InterlaceIncompatibleReturnsNull)
 {
-	olive::FramePtr top = olive::Frame::Create();
+	olive::FramePtr top = olive::Frame::create();
 	top->set_video_params(
-		olive::VideoParams(4, 4, olive::core::PixelFormat::U8,
-						   olive::VideoParams::kRGBAChannelCount));
+		olive::VideoParams(4, 4, olive::core::PixelFormat::u8,
+						   olive::VideoParams::k_rgba_channel_count));
 	top->allocate();
 
-	olive::FramePtr bottom = olive::Frame::Create();
+	olive::FramePtr bottom = olive::Frame::create();
 	bottom->set_video_params(
-		olive::VideoParams(8, 8, olive::core::PixelFormat::U8,
-						   olive::VideoParams::kRGBAChannelCount));
+		olive::VideoParams(8, 8, olive::core::PixelFormat::u8,
+						   olive::VideoParams::k_rgba_channel_count));
 	bottom->allocate();
 
-	EXPECT_EQ(olive::Frame::Interlace(top, bottom), nullptr);
+	EXPECT_EQ(olive::Frame::interlace(top, bottom), nullptr);
 }
 
 TEST(CodecFrame, ConvertU8ToU16)
 {
-	olive::VideoParams params(4, 4, olive::core::PixelFormat::U8,
-							  olive::VideoParams::kRGBAChannelCount);
-	olive::FramePtr frame = olive::Frame::Create();
+	olive::VideoParams params(4, 4, olive::core::PixelFormat::u8,
+							  olive::VideoParams::k_rgba_channel_count);
+	olive::FramePtr frame = olive::Frame::create();
 	frame->set_video_params(params);
 	frame->allocate();
 
-	olive::FramePtr converted = frame->convert(olive::core::PixelFormat::U16);
+	olive::FramePtr converted = frame->convert(olive::core::PixelFormat::u16);
 	ASSERT_NE(converted, nullptr);
-	EXPECT_EQ(converted->format(), olive::core::PixelFormat::U16);
+	EXPECT_EQ(converted->format(), olive::core::PixelFormat::u16);
 	EXPECT_EQ(converted->width(), 4);
 	EXPECT_EQ(converted->height(), 4);
 }

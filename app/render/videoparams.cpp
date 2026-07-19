@@ -32,41 +32,41 @@
 namespace olive
 {
 
-const int VideoParams::kInternalChannelCount = kRGBAChannelCount;
+const int VideoParams::k_internal_channel_count = k_rgba_channel_count;
 
-const rational VideoParams::kPixelAspectSquare(1);
-const rational VideoParams::kPixelAspectNTSCStandard(8, 9);
-const rational VideoParams::kPixelAspectNTSCWidescreen(32, 27);
-const rational VideoParams::kPixelAspectPALStandard(16, 15);
-const rational VideoParams::kPixelAspectPALWidescreen(64, 45);
-const rational VideoParams::kPixelAspect1080Anamorphic(4, 3);
+const Rational VideoParams::k_pixel_aspect_square(1);
+const Rational VideoParams::k_pixel_aspect_ntsc_standard(8, 9);
+const Rational VideoParams::k_pixel_aspect_ntsc_widescreen(32, 27);
+const Rational VideoParams::k_pixel_aspect_pal_standard(16, 15);
+const Rational VideoParams::k_pixel_aspect_pal_widescreen(64, 45);
+const Rational VideoParams::k_pixel_aspect1080_anamorphic(4, 3);
 
-const QVector<rational> VideoParams::kSupportedFrameRates = {
-	rational(10, 1), // 10 FPS
-	rational(15, 1), // 15 FPS
-	rational(24000, 1001), // 23.976 FPS
-	rational(24, 1), // 24 FPS
-	rational(25, 1), // 25 FPS
-	rational(30000, 1001), // 29.97 FPS
-	rational(30, 1), // 30 FPS
-	rational(48000, 1001), // 47.952 FPS
-	rational(48, 1), // 48 FPS
-	rational(50, 1), // 50 FPS
-	rational(60000, 1001), // 59.94 FPS
-	rational(60, 1) // 60 FPS
+const QVector<Rational> VideoParams::k_supported_frame_rates = {
+	Rational(10, 1), // 10 FPS
+	Rational(15, 1), // 15 FPS
+	Rational(24000, 1001), // 23.976 FPS
+	Rational(24, 1), // 24 FPS
+	Rational(25, 1), // 25 FPS
+	Rational(30000, 1001), // 29.97 FPS
+	Rational(30, 1), // 30 FPS
+	Rational(48000, 1001), // 47.952 FPS
+	Rational(48, 1), // 48 FPS
+	Rational(50, 1), // 50 FPS
+	Rational(60000, 1001), // 59.94 FPS
+	Rational(60, 1) // 60 FPS
 };
 
-const QVector<int> VideoParams::kSupportedDividers = {
+const QVector<int> VideoParams::k_supported_dividers = {
 	1, 2, 3, 4, 6, 8, 12, 16
 };
 
-const QVector<rational> VideoParams::kStandardPixelAspects = {
-	VideoParams::kPixelAspectSquare,
-	VideoParams::kPixelAspectNTSCStandard,
-	VideoParams::kPixelAspectNTSCWidescreen,
-	VideoParams::kPixelAspectPALStandard,
-	VideoParams::kPixelAspectPALWidescreen,
-	VideoParams::kPixelAspect1080Anamorphic
+const QVector<Rational> VideoParams::k_standard_pixel_aspects = {
+	VideoParams::k_pixel_aspect_square,
+	VideoParams::k_pixel_aspect_ntsc_standard,
+	VideoParams::k_pixel_aspect_ntsc_widescreen,
+	VideoParams::k_pixel_aspect_pal_standard,
+	VideoParams::k_pixel_aspect_pal_widescreen,
+	VideoParams::k_pixel_aspect1080_anamorphic
 };
 
 VideoParams::VideoParams()
@@ -74,10 +74,10 @@ VideoParams::VideoParams()
 	, height_(0)
 	, depth_(0)
 	, time_base_(0)
-	, format_(PixelFormat::INVALID)
+	, format_(PixelFormat::invalid)
 	, channel_count_(0)
 	, pixel_aspect_ratio_(1)
-	, interlacing_(Interlacing::kInterlaceNone)
+	, interlacing_(Interlacing::k_interlace_none)
 	, divider_(1)
 {
 	calculate_effective_size();
@@ -86,7 +86,7 @@ VideoParams::VideoParams()
 }
 
 VideoParams::VideoParams(int width, int height, PixelFormat format,
-						 int nb_channels, const rational &pixel_aspect_ratio,
+						 int nb_channels, const Rational &pixel_aspect_ratio,
 						 Interlacing interlacing, int divider)
 	: width_(width)
 	, height_(height)
@@ -103,7 +103,7 @@ VideoParams::VideoParams(int width, int height, PixelFormat format,
 }
 
 VideoParams::VideoParams(int width, int height, int depth, PixelFormat format,
-						 int nb_channels, const rational &pixel_aspect_ratio,
+						 int nb_channels, const Rational &pixel_aspect_ratio,
 						 VideoParams::Interlacing interlacing, int divider)
 	: width_(width)
 	, height_(height)
@@ -119,20 +119,20 @@ VideoParams::VideoParams(int width, int height, int depth, PixelFormat format,
 	set_defaults_for_footage();
 }
 
-void VideoParams::set_channel_count(const std::string &ofxComponent)
+void VideoParams::set_channel_count(const std::string &ofx_component)
 {
-	if (ofxComponent == kOfxImageComponentAlpha) {
+	if (ofx_component == kOfxImageComponentAlpha) {
 		channel_count_ = 1;
-	} else if (ofxComponent == kOfxImageComponentRGB) {
-		channel_count_ = kRGBChannelCount;
-	} else if (ofxComponent == kOfxImageComponentRGBA) {
-		channel_count_ = kRGBAChannelCount;
+	} else if (ofx_component == kOfxImageComponentRGB) {
+		channel_count_ = k_rgb_channel_count;
+	} else if (ofx_component == kOfxImageComponentRGBA) {
+		channel_count_ = k_rgba_channel_count;
 	}
 }
 
-VideoParams::VideoParams(int width, int height, const rational &time_base,
+VideoParams::VideoParams(int width, int height, const Rational &time_base,
 						 PixelFormat format, int nb_channels,
-						 const rational &pixel_aspect_ratio,
+						 const Rational &pixel_aspect_ratio,
 						 Interlacing interlacing, int divider)
 	: width_(width)
 	, height_(height)
@@ -159,14 +159,14 @@ int VideoParams::generate_auto_divider(qint64 width, qint64 height)
 	double squared_divider = double(megapixels) / double(target_res);
 	double divider = qSqrt(squared_divider);
 
-	if (divider <= kSupportedDividers.first()) {
-		return kSupportedDividers.first();
-	} else if (divider >= kSupportedDividers.last()) {
-		return kSupportedDividers.last();
+	if (divider <= k_supported_dividers.first()) {
+		return k_supported_dividers.first();
+	} else if (divider >= k_supported_dividers.last()) {
+		return k_supported_dividers.last();
 	} else {
-		for (int i = 1; i < kSupportedDividers.size(); i++) {
-			int prev_divider = kSupportedDividers.at(i - 1);
-			int next_divider = kSupportedDividers.at(i);
+		for (int i = 1; i < k_supported_dividers.size(); i++) {
+			int prev_divider = k_supported_dividers.at(i - 1);
+			int next_divider = k_supported_dividers.at(i);
 
 			if (divider >= prev_divider && divider <= next_divider) {
 				double prev_diff = qAbs(prev_divider - divider);
@@ -199,36 +199,36 @@ bool VideoParams::operator!=(const VideoParams &rhs) const
 	return !(*this == rhs);
 }
 
-int VideoParams::GetBytesPerChannel(PixelFormat format)
+int VideoParams::get_bytes_per_channel(PixelFormat format)
 {
 	switch (format) {
-	case PixelFormat::INVALID:
-	case PixelFormat::COUNT:
+	case PixelFormat::invalid:
+	case PixelFormat::count:
 		break;
-	case PixelFormat::U8:
+	case PixelFormat::u8:
 		return 1;
-	case PixelFormat::U10:
+	case PixelFormat::u10:
 		return 0; // packed format, use GetBytesPerPixel instead
-	case PixelFormat::U16:
-	case PixelFormat::F16:
+	case PixelFormat::u16:
+	case PixelFormat::f16:
 		return 2;
-	case PixelFormat::F32:
+	case PixelFormat::f32:
 		return 4;
 	}
 
 	return 0;
 }
 
-int VideoParams::GetBytesPerPixel(PixelFormat format, int channels)
+int VideoParams::get_bytes_per_pixel(PixelFormat format, int channels)
 {
-	if (format == PixelFormat::U10) {
+	if (format == PixelFormat::u10) {
 		// Packed 10-bit RGBA10A2: 4 bytes per RGBA pixel regardless of channel count
-		return channels == VideoParams::kRGBAChannelCount ? 4 : 0;
+		return channels == VideoParams::k_rgba_channel_count ? 4 : 0;
 	}
-	return GetBytesPerChannel(format) * channels;
+	return get_bytes_per_channel(format) * channels;
 }
 
-QString VideoParams::GetNameForDivider(int div)
+QString VideoParams::get_name_for_divider(int div)
 {
 	if (div == 1) {
 		return QCoreApplication::translate("VideoParams", "Full");
@@ -237,23 +237,23 @@ QString VideoParams::GetNameForDivider(int div)
 	}
 }
 
-QString VideoParams::GetFormatName(PixelFormat format)
+QString VideoParams::get_format_name(PixelFormat format)
 {
 	switch (format) {
-	case PixelFormat::U8:
+	case PixelFormat::u8:
 		return QCoreApplication::translate("VideoParams", "8-bit");
-	case PixelFormat::U10:
+	case PixelFormat::u10:
 		return QCoreApplication::translate("VideoParams", "10-bit Packed");
-	case PixelFormat::U16:
+	case PixelFormat::u16:
 		return QCoreApplication::translate("VideoParams", "16-bit Integer");
-	case PixelFormat::F16:
+	case PixelFormat::f16:
 		return QCoreApplication::translate("VideoParams",
 										   "Half-Float (16-bit)");
-	case PixelFormat::F32:
+	case PixelFormat::f32:
 		return QCoreApplication::translate("VideoParams",
 										   "Full-Float (32-bit)");
-	case PixelFormat::INVALID:
-	case PixelFormat::COUNT:
+	case PixelFormat::invalid:
+	case PixelFormat::count:
 		break;
 	}
 
@@ -261,7 +261,7 @@ QString VideoParams::GetFormatName(PixelFormat format)
 		.arg(static_cast<int>(format), 0, 16);
 }
 
-int VideoParams::GetDividerForTargetResolution(int src_width, int src_height,
+int VideoParams::get_divider_for_target_resolution(int src_width, int src_height,
 											   int dst_width, int dst_height)
 {
 	int divider = 0;
@@ -270,8 +270,8 @@ int VideoParams::GetDividerForTargetResolution(int src_width, int src_height,
 	do {
 		divider++;
 
-		test_width = VideoParams::GetScaledDimension(src_width, divider);
-		test_height = VideoParams::GetScaledDimension(src_height, divider);
+		test_width = VideoParams::get_scaled_dimension(src_width, divider);
+		test_height = VideoParams::get_scaled_dimension(src_height, divider);
 	} while (test_width > dst_width || test_height > dst_height);
 
 	return divider;
@@ -279,10 +279,10 @@ int VideoParams::GetDividerForTargetResolution(int src_width, int src_height,
 
 void VideoParams::calculate_effective_size()
 {
-	effective_width_ = GetScaledDimension(width(), divider_);
-	effective_height_ = GetScaledDimension(height(), divider_);
+	effective_width_ = get_scaled_dimension(width(), divider_);
+	effective_height_ = get_scaled_dimension(height(), divider_);
 	effective_depth_ = (depth() == 1) ? depth() :
-										GetScaledDimension(depth(), divider_);
+										get_scaled_dimension(depth(), divider_);
 	calculate_square_pixel_width();
 }
 
@@ -298,19 +298,19 @@ void VideoParams::set_defaults_for_footage()
 {
 	enabled_ = true;
 	stream_index_ = 0;
-	video_type_ = kVideoTypeVideo;
+	video_type_ = k_video_type_video;
 	start_time_ = 0;
 	duration_ = 0;
 	premultiplied_alpha_ = false;
 	x_ = 0;
 	y_ = 0;
-	color_range_ = kColorRangeDefault;
+	color_range_ = k_color_range_default;
 }
 
 void VideoParams::calculate_square_pixel_width()
 {
 	if (pixel_aspect_ratio_.denominator() != 0) {
-		par_width_ = qRound(width_ * pixel_aspect_ratio_.toDouble());
+		par_width_ = qRound(width_ * pixel_aspect_ratio_.to_double());
 	} else {
 		par_width_ = width_;
 	}
@@ -319,17 +319,17 @@ void VideoParams::calculate_square_pixel_width()
 bool VideoParams::is_valid() const
 {
 	return (width() > 0 && height() > 0 && !pixel_aspect_ratio_.isNull() &&
-			format_ > PixelFormat::INVALID && format_ < PixelFormat::COUNT &&
+			format_ > PixelFormat::invalid && format_ < PixelFormat::count &&
 			channel_count_ > 0);
 }
 
-QString VideoParams::FrameRateToString(const rational &frame_rate)
+QString VideoParams::frame_rate_to_string(const Rational &frame_rate)
 {
 	return QCoreApplication::translate("VideoParams", "%1 FPS")
-		.arg(frame_rate.toDouble());
+		.arg(frame_rate.to_double());
 }
 
-QStringList VideoParams::GetStandardPixelAspectRatioNames()
+QStringList VideoParams::get_standard_pixel_aspect_ratio_names()
 {
 	QStringList strings = {
 		QCoreApplication::translate("VideoParams", "Square Pixels (%1)"),
@@ -342,25 +342,25 @@ QStringList VideoParams::GetStandardPixelAspectRatioNames()
 
 	// Format each
 	for (int i = 0; i < strings.size(); i++) {
-		strings.replace(i, FormatPixelAspectRatioString(
-							   strings.at(i), kStandardPixelAspects.at(i)));
+		strings.replace(i, format_pixel_aspect_ratio_string(
+							   strings.at(i), k_standard_pixel_aspects.at(i)));
 	}
 
 	return strings;
 }
 
-QString VideoParams::FormatPixelAspectRatioString(const QString &format,
-												  const rational &ratio)
+QString VideoParams::format_pixel_aspect_ratio_string(const QString &format,
+												  const Rational &ratio)
 {
-	return format.arg(QString::number(ratio.toDouble(), 'f', 4));
+	return format.arg(QString::number(ratio.to_double(), 'f', 4));
 }
 
-int VideoParams::GetScaledDimension(int dim, int divider)
+int VideoParams::get_scaled_dimension(int dim, int divider)
 {
 	return dim / divider;
 }
 
-int64_t VideoParams::get_time_in_timebase_units(const rational &time) const
+int64_t VideoParams::get_time_in_timebase_units(const Rational &time) const
 {
 	if (time_base_.isNull()) {
 		return INT64_MIN; // AV_NOPTS_VALUE
@@ -369,9 +369,9 @@ int64_t VideoParams::get_time_in_timebase_units(const rational &time) const
 	return Timecode::time_to_timestamp(time, time_base_) + start_time_;
 }
 
-void VideoParams::Load(QXmlStreamReader *reader)
+void VideoParams::load(QXmlStreamReader *reader)
 {
-	while (XMLReadNextStartElement(reader)) {
+	while (xml_read_next_start_element(reader)) {
 		if (reader->name() == QStringLiteral("width")) {
 			set_width(reader->readElementText().toInt());
 		} else if (reader->name() == QStringLiteral("height")) {
@@ -380,7 +380,7 @@ void VideoParams::Load(QXmlStreamReader *reader)
 			set_depth(reader->readElementText().toInt());
 		} else if (reader->name() == QStringLiteral("timebase")) {
 			set_time_base(
-				rational::fromString(reader->readElementText().toStdString()));
+				Rational::from_string(reader->readElementText().toStdString()));
 		} else if (reader->name() == QStringLiteral("format")) {
 			set_format(static_cast<PixelFormat::Format>(
 				reader->readElementText().toInt()));
@@ -388,7 +388,7 @@ void VideoParams::Load(QXmlStreamReader *reader)
 			set_channel_count(reader->readElementText().toInt());
 		} else if (reader->name() == QStringLiteral("pixelaspectratio")) {
 			set_pixel_aspect_ratio(
-				rational::fromString(reader->readElementText().toStdString()));
+				Rational::from_string(reader->readElementText().toStdString()));
 		} else if (reader->name() == QStringLiteral("interlacing")) {
 			set_interlacing(static_cast<VideoParams::Interlacing>(
 				reader->readElementText().toInt()));
@@ -407,7 +407,7 @@ void VideoParams::Load(QXmlStreamReader *reader)
 				reader->readElementText().toInt()));
 		} else if (reader->name() == QStringLiteral("framerate")) {
 			set_frame_rate(
-				rational::fromString(reader->readElementText().toStdString()));
+				Rational::from_string(reader->readElementText().toStdString()));
 		} else if (reader->name() == QStringLiteral("starttime")) {
 			set_start_time(reader->readElementText().toLongLong());
 		} else if (reader->name() == QStringLiteral("duration")) {
@@ -425,21 +425,21 @@ void VideoParams::Load(QXmlStreamReader *reader)
 	}
 }
 
-void VideoParams::Save(QXmlStreamWriter *writer) const
+void VideoParams::save(QXmlStreamWriter *writer) const
 {
 	writer->writeTextElement(QStringLiteral("width"), QString::number(width_));
 	writer->writeTextElement(QStringLiteral("height"),
 							 QString::number(height_));
 	writer->writeTextElement(QStringLiteral("depth"), QString::number(depth_));
 	writer->writeTextElement(QStringLiteral("timebase"),
-							 QString::fromStdString(time_base_.toString()));
+							 QString::fromStdString(time_base_.to_string()));
 	writer->writeTextElement(QStringLiteral("format"),
 							 QString::number(format_));
 	writer->writeTextElement(QStringLiteral("channelcount"),
 							 QString::number(channel_count_));
 	writer->writeTextElement(
 		QStringLiteral("pixelaspectratio"),
-		QString::fromStdString(pixel_aspect_ratio_.toString()));
+		QString::fromStdString(pixel_aspect_ratio_.to_string()));
 	writer->writeTextElement(QStringLiteral("interlacing"),
 							 QString::number(interlacing_));
 	writer->writeTextElement(QStringLiteral("divider"),
@@ -453,7 +453,7 @@ void VideoParams::Save(QXmlStreamWriter *writer) const
 	writer->writeTextElement(QStringLiteral("videotype"),
 							 QString::number(video_type_));
 	writer->writeTextElement(QStringLiteral("framerate"),
-							 QString::fromStdString(frame_rate_.toString()));
+							 QString::fromStdString(frame_rate_.to_string()));
 	writer->writeTextElement(QStringLiteral("starttime"),
 							 QString::number(start_time_));
 	writer->writeTextElement(QStringLiteral("duration"),

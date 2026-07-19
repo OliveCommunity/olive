@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef KEYSEQUENCEEDITOR_H
-#define KEYSEQUENCEEDITOR_H
+#ifndef OAK_KEYSEQUENCEEDITOR_H
+#define OAK_KEYSEQUENCEEDITOR_H
 
 #include <QKeySequenceEdit>
 
@@ -106,9 +106,9 @@ private:
 	/**
    * @brief Internal reference to the linked QAction
    */
-	QAction *action;
+	QAction *action_;
 };
 
 }
 
-#endif // KEYSEQUENCEEDITOR_H
+#endif // OAK_KEYSEQUENCEEDITOR_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef LIBOLIVECORE_PIXELFORMAT_H
-#define LIBOLIVECORE_PIXELFORMAT_H
+#ifndef OAK_LIBOLIVECORE_PIXELFORMAT_H
+#define OAK_LIBOLIVECORE_PIXELFORMAT_H
 #include "ofxCore.h"
 #include <string>
 namespace olive::core
@@ -28,9 +28,9 @@ namespace olive::core
 
 class PixelFormat {
 public:
-	enum Format { INVALID = -1, U8, U10, U16, F16, F32, COUNT };
+	enum Format { invalid = -1, u8, u10, u16, f16, f32, count };
 
-	PixelFormat(Format f = INVALID)
+	PixelFormat(Format f = invalid)
 	{
 		f_ = f;
 	}
@@ -40,35 +40,35 @@ public:
 		return f_;
 	}
 
-	static PixelFormat from_ofx(std::string ofxFormat){
-		if(ofxFormat == kOfxBitDepthByte){
-			return PixelFormat::U8;
+	static PixelFormat from_ofx(std::string ofx_format){
+		if(ofx_format == kOfxBitDepthByte){
+			return PixelFormat::u8;
 		}
-		else if (ofxFormat == kOfxBitDepthShort){
-			return PixelFormat::U16;
+		else if (ofx_format == kOfxBitDepthShort){
+			return PixelFormat::u16;
 		}
-		else if(ofxFormat == kOfxBitDepthHalf){
-			return PixelFormat::F16;
+		else if(ofx_format == kOfxBitDepthHalf){
+			return PixelFormat::f16;
 		}
-		else if(ofxFormat == kOfxBitDepthFloat){
-			return PixelFormat::F32;
+		else if(ofx_format == kOfxBitDepthFloat){
+			return PixelFormat::f32;
 		}
-		return PixelFormat::INVALID;
+		return PixelFormat::invalid;
 	}
 	static int byte_count(Format f)
 	{
 		switch (f) {
-		case INVALID:
-		case COUNT:
+		case invalid:
+		case count:
 			break;
-		case U8:
+		case u8:
 			return 1;
-		case U10:
+		case u10:
 			return 4; // packed RGBA10A2, treated as 4 bytes per pixel
-		case U16:
-		case F16:
+		case u16:
+		case f16:
 			return 2;
-		case F32:
+		case f32:
 			return 4;
 		}
 
@@ -78,18 +78,18 @@ public:
 	const char *to_string() const
 	{
 		switch (f_) {
-		case U8:
+		case u8:
 			return "u8";
-		case U10:
+		case u10:
 			return "u10";
-		case U16:
+		case u16:
 			return "u16";
-		case F16:
+		case f16:
 			return "f16";
-		case F32:
+		case f32:
 			return "f32";
-		case INVALID:
-		case COUNT:
+		case invalid:
+		case count:
 			break;
 		}
 
@@ -104,14 +104,14 @@ public:
 	static bool is_float(Format f)
 	{
 		switch (f) {
-		case INVALID:
-		case COUNT:
-		case U8:
-		case U10:
-		case U16:
+		case invalid:
+		case count:
+		case u8:
+		case u10:
+		case u16:
 			break;
-		case F16:
-		case F32:
+		case f16:
+		case f32:
 			return true;
 		}
 
@@ -129,4 +129,4 @@ private:
 
 }
 
-#endif // LIBOLIVECORE_PIXELFORMAT_H
+#endif // OAK_LIBOLIVECORE_PIXELFORMAT_H

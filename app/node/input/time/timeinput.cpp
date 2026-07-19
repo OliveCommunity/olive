@@ -30,7 +30,7 @@ TimeInput::TimeInput()
 {
 }
 
-QString TimeInput::Name() const
+QString TimeInput::name() const
 {
 	return tr("Time");
 }
@@ -40,20 +40,20 @@ QString TimeInput::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.time");
 }
 
-QVector<Node::CategoryID> TimeInput::Category() const
+QVector<Node::CategoryID> TimeInput::category() const
 {
-	return { kCategoryTime };
+	return { k_category_time };
 }
 
-QString TimeInput::Description() const
+QString TimeInput::description() const
 {
 	return tr("Generates the time (in seconds) at this frame.");
 }
 
-void TimeInput::Value(const NodeValueRow &value, const NodeGlobals &globals,
+void TimeInput::value(const NodeValueRow &value, const NodeGlobals &globals,
 					  NodeValueTable *table) const
 {
-	table->Push(NodeValue::kFloat, globals.time().in().toDouble(), this, false,
+	table->push(NodeValue::k_float, globals.time().in().to_double(), this, false,
 				QStringLiteral("time"));
 }
 

@@ -28,14 +28,14 @@ namespace olive
 {
 
 FrameManager *FrameManager::instance_ = nullptr;
-const int FrameManager::kFrameLifetime = 5000;
+const int FrameManager::k_frame_lifetime = 5000;
 
-void FrameManager::CreateInstance()
+void FrameManager::create_instance()
 {
 	instance_ = new FrameManager();
 }
 
-void FrameManager::DestroyInstance()
+void FrameManager::destroy_instance()
 {
 	delete instance_;
 	instance_ = nullptr;
@@ -46,19 +46,19 @@ FrameManager *FrameManager::instance()
 	return instance_;
 }
 
-char *FrameManager::Allocate(int size)
+char *FrameManager::allocate(int size)
 {
 	if (instance()) {
-		return instance()->AllocateFromPool(size);
+		return instance()->allocate_from_pool(size);
 	} else {
 		return new char[size];
 	}
 }
 
-void FrameManager::Deallocate(int size, char *buffer)
+void FrameManager::deallocate(int size, char *buffer)
 {
 	if (instance()) {
-		instance()->DeallocateToPool(size, buffer);
+		instance()->deallocate_to_pool(size, buffer);
 	} else {
 		delete[] buffer;
 	}
@@ -66,13 +66,13 @@ void FrameManager::Deallocate(int size, char *buffer)
 
 FrameManager::FrameManager()
 {
-	clear_timer_.setInterval(kFrameLifetime);
+	clear_timer_.setInterval(k_frame_lifetime);
 	connect(&clear_timer_, &QTimer::timeout, this,
-			&FrameManager::GarbageCollection);
+			&FrameManager::garbage_collection);
 	clear_timer_.start();
 }
 
-char *FrameManager::AllocateFromPool(int size)
+char *FrameManager::allocate_from_pool(int size)
 {
 	QMutexLocker locker(&mutex_);
 
@@ -90,7 +90,7 @@ char *FrameManager::AllocateFromPool(int size)
 	return buf;
 }
 
-void FrameManager::DeallocateToPool(int size, char *buffer)
+void FrameManager::deallocate_to_pool(int size, char *buffer)
 {
 	QMutexLocker locker(&mutex_);
 
@@ -99,11 +99,11 @@ void FrameManager::DeallocateToPool(int size, char *buffer)
 	buffer_list.push_back({ QDateTime::currentMSecsSinceEpoch(), buffer });
 }
 
-void FrameManager::GarbageCollection()
+void FrameManager::garbage_collection()
 {
 	QMutexLocker locker(&mutex_);
 
-	qint64 min_life = QDateTime::currentMSecsSinceEpoch() - kFrameLifetime;
+	qint64 min_life = QDateTime::currentMSecsSinceEpoch() - k_frame_lifetime;
 
 	for (auto it = pool_.begin(); it != pool_.end(); it++) {
 		std::list<Buffer> &list = it->second;

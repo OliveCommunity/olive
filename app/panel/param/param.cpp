@@ -30,41 +30,41 @@ ParamPanel::ParamPanel()
 	: TimeBasedPanel(QStringLiteral("ParamPanel"))
 {
 	NodeParamView *view = new NodeParamView(this);
-	connect(view, &NodeParamView::FocusedNodeChanged, this,
-			&ParamPanel::FocusedNodeChanged);
-	connect(view, &NodeParamView::SelectedNodesChanged, this,
-			&ParamPanel::SelectedNodesChanged);
-	connect(view, &NodeParamView::RequestViewerToStartEditingText, this,
-			&ParamPanel::RequestViewerToStartEditingText);
-	connect(this, &ParamPanel::shown, view, &NodeParamView::UpdateElementY);
-	SetTimeBasedWidget(view);
+	connect(view, &NodeParamView::focused_node_changed, this,
+			&ParamPanel::focused_node_changed);
+	connect(view, &NodeParamView::selected_nodes_changed, this,
+			&ParamPanel::selected_nodes_changed);
+	connect(view, &NodeParamView::request_viewer_to_start_editing_text, this,
+			&ParamPanel::request_viewer_to_start_editing_text);
+	connect(this, &ParamPanel::shown, view, &NodeParamView::update_element_y);
+	set_time_based_widget(view);
 
-	Retranslate();
+	retranslate();
 }
 
-void ParamPanel::DeleteSelected()
+void ParamPanel::delete_selected()
 {
-	static_cast<NodeParamView *>(GetTimeBasedWidget())->DeleteSelected();
+	static_cast<NodeParamView *>(get_time_based_widget())->DeleteSelected();
 }
 
-void ParamPanel::SelectAll()
+void ParamPanel::select_all()
 {
-	static_cast<NodeParamView *>(GetTimeBasedWidget())->SelectAll();
+	static_cast<NodeParamView *>(get_time_based_widget())->select_all();
 }
 
-void ParamPanel::DeselectAll()
+void ParamPanel::deselect_all()
 {
-	static_cast<NodeParamView *>(GetTimeBasedWidget())->DeselectAll();
+	static_cast<NodeParamView *>(get_time_based_widget())->deselect_all();
 }
 
-void ParamPanel::SetContexts(const QVector<Node *> &contexts)
+void ParamPanel::set_contexts(const QVector<Node *> &contexts)
 {
-	static_cast<NodeParamView *>(GetTimeBasedWidget())->SetContexts(contexts);
+	static_cast<NodeParamView *>(get_time_based_widget())->set_contexts(contexts);
 }
 
-void ParamPanel::Retranslate()
+void ParamPanel::retranslate()
 {
-	SetTitle(tr("Parameter Editor"));
+	set_title(tr("Parameter Editor"));
 }
 
 }

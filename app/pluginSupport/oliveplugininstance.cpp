@@ -15,13 +15,13 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include "OlivePluginInstance.h"
+#include "oliveplugininstance.h"
 
-#include "OliveClip.h"
+#include "oliveclip.h"
 #include "ofxGPURender.h"
 #include "ofxCore.h"
 #include "ofxMessage.h"
-#include "common/Current.h"
+#include "common/current.h"
 #include "core.h"
 #include "dialog/progress/progress.h"
 #include "node/output/viewer/viewer.h"
@@ -45,11 +45,11 @@ namespace plugin
 {
 namespace
 {
-const std::string kImageFieldNoneStr(kOfxImageFieldNone);
-const std::string kImageFieldUpperStr(kOfxImageFieldUpper);
-const std::string kImageFieldLowerStr(kOfxImageFieldLower);
+const std::string k_image_field_none_str(kOfxImageFieldNone);
+const std::string k_image_field_upper_str(kOfxImageFieldUpper);
+const std::string k_image_field_lower_str(kOfxImageFieldLower);
 
-QString FormatOfxMessage(const char *format, va_list args)
+QString format_ofx_message(const char *format, va_list args)
 {
 	char buffer[1024];
 	va_list args_copy;
@@ -71,17 +71,17 @@ QString FormatOfxMessage(const char *format, va_list args)
 	return QString::fromUtf8(dynamic_buffer.constData());
 }
 
-const std::string &FieldOrderForParams(const VideoParams &params)
+const std::string &field_order_for_params(const VideoParams &params)
 {
 	switch (params.interlacing()) {
-	case VideoParams::kInterlaceNone:
-		return kImageFieldNoneStr;
-	case VideoParams::kInterlacedTopFirst:
-		return kImageFieldUpperStr;
-	case VideoParams::kInterlacedBottomFirst:
-		return kImageFieldLowerStr;
+	case VideoParams::k_interlace_none:
+		return k_image_field_none_str;
+	case VideoParams::k_interlaced_top_first:
+		return k_image_field_upper_str;
+	case VideoParams::k_interlaced_bottom_first:
+		return k_image_field_lower_str;
 	}
-	return kImageFieldNoneStr;
+	return k_image_field_none_str;
 }
 
 class DeferredRedoCommand : public UndoCommand {
@@ -96,9 +96,9 @@ public:
 		delete inner_;
 	}
 
-	Project *GetRelevantProject() const override
+	Project *get_relevant_project() const override
 	{
-		return inner_ ? inner_->GetRelevantProject() : nullptr;
+		return inner_ ? inner_->get_relevant_project() : nullptr;
 	}
 
 protected:
@@ -125,24 +125,24 @@ private:
 	bool skip_first_redo_ = true;
 };
 
-ViewerOutput *GetActiveViewerOutput()
+ViewerOutput *get_active_viewer_output()
 {
 	PanelManager *manager = PanelManager::instance();
 	if (!manager) {
 		return nullptr;
 	}
 
-	if (auto *time_panel = manager->MostRecentlyFocused<TimeBasedPanel>()) {
-		if (time_panel->GetConnectedViewer()) {
-			return time_panel->GetConnectedViewer();
+	if (auto *time_panel = manager->most_recently_focused<TimeBasedPanel>()) {
+		if (time_panel->get_connected_viewer()) {
+			return time_panel->get_connected_viewer();
 		}
 	}
 
 	QList<TimelinePanel *> timelines =
-		manager->GetPanelsOfType<TimelinePanel>();
+		manager->get_panels_of_type<TimelinePanel>();
 	for (TimelinePanel *panel : timelines) {
-		if (panel && panel->GetConnectedViewer()) {
-			return panel->GetConnectedViewer();
+		if (panel && panel->get_connected_viewer()) {
+			return panel->get_connected_viewer();
 		}
 	}
 
@@ -152,7 +152,7 @@ ViewerOutput *GetActiveViewerOutput()
 
 const std::string &OlivePluginInstance::getDefaultOutputFielding() const
 {
-	return FieldOrderForParams(params_);
+	return field_order_for_params(params_);
 }
 
 void OlivePluginInstance::setNode(std::shared_ptr<PluginNode> node)
@@ -163,7 +163,7 @@ void OlivePluginInstance::setNode(std::shared_ptr<PluginNode> node)
 			continue;
 		}
 		if (auto *bound = dynamic_cast<NodeBoundParam *>(entry.second)) {
-			bound->SetNode(node_);
+			bound->set_node(node_);
 		}
 	}
 }
@@ -171,7 +171,7 @@ void OlivePluginInstance::setNode(std::shared_ptr<PluginNode> node)
 OfxStatus OlivePluginInstance::vmessage(const char *type, const char *id,
 										const char *format, va_list args)
 {
-	const QString message = FormatOfxMessage(format, args);
+	const QString message = format_ofx_message(format, args);
 	if (message.isEmpty()) {
 		return kOfxStatFailed;
 	}
@@ -191,7 +191,7 @@ OfxStatus OlivePluginInstance::vmessage(const char *type, const char *id,
 		}
 	};
 
-	if (IsGuiThread()) {
+	if (is_gui_thread()) {
 		show_message();
 	} else if (auto *app = QCoreApplication::instance()) {
 		if (is_question) {
@@ -211,7 +211,7 @@ OfxStatus OlivePluginInstance::setPersistentMessage(const char *type,
 													const char *format,
 													va_list args)
 {
-	const QString message = FormatOfxMessage(format, args);
+	const QString message = format_ofx_message(format, args);
 	if (message.isEmpty()) {
 		return kOfxStatFailed;
 	}
@@ -219,17 +219,17 @@ OfxStatus OlivePluginInstance::setPersistentMessage(const char *type,
 	ErrorType error_type;
 	// If This is a error message
 	if (strncmp(type, kOfxMessageError, strlen(kOfxMessageError)) == 0) {
-		error_type = ErrorType::Error;
+		error_type = ErrorType::error;
 	}
 	// A warning
 	else if (strncmp(type, kOfxMessageWarning, strlen(kOfxMessageWarning)) ==
 			 0) {
-		error_type = ErrorType::Warning;
+		error_type = ErrorType::warning;
 	}
 	// A simple information
 	else if (strncmp(type, kOfxMessageMessage, strlen(kOfxMessageMessage)) ==
 			 0) {
-		error_type = ErrorType::Message;
+		error_type = ErrorType::message;
 	} else {
 		return kOfxStatFailed;
 	}
@@ -237,22 +237,22 @@ OfxStatus OlivePluginInstance::setPersistentMessage(const char *type,
 	auto update_ui = [this, error_type, message]() {
 		persistentErrors_.append({ error_type, message });
 		switch (error_type) {
-		case ErrorType::Error:
+		case ErrorType::error:
 			QMessageBox::critical(nullptr, "", message);
 			break;
-		case ErrorType::Warning:
+		case ErrorType::warning:
 			QMessageBox::warning(nullptr, "", message);
 			break;
-		case ErrorType::Message:
+		case ErrorType::message:
 			QMessageBox::information(nullptr, "", message);
 			break;
 		}
 		if (node_) {
-			emit node_->MessageCountChanged();
+			emit node_->message_count_changed();
 		}
 	};
 
-	if (IsGuiThread()) {
+	if (is_gui_thread()) {
 		update_ui();
 	} else if (auto *app = QCoreApplication::instance()) {
 		QMetaObject::invokeMethod(app, update_ui, Qt::QueuedConnection);
@@ -265,38 +265,38 @@ OfxStatus OlivePluginInstance::clearPersistentMessage()
 		persistentErrors_.clear();
 		// TODO: tell the shell to remove message.
 		if (node_) {
-			emit node_->MessageCountChanged();
+			emit node_->message_count_changed();
 		}
 	};
-	if (IsGuiThread()) {
+	if (is_gui_thread()) {
 		clear_ui();
 	} else if (auto *app = QCoreApplication::instance()) {
 		QMetaObject::invokeMethod(app, clear_ui, Qt::QueuedConnection);
 	}
 	return kOfxStatOK;
 }
-void OlivePluginInstance::getProjectSize(double &xSize, double &ySize) const
+void OlivePluginInstance::getProjectSize(double &x_size, double &y_size) const
 {
-	double par = params_.pixel_aspect_ratio().toDouble();
-	xSize = params_.width() * par;
-	ySize = params_.height();
+	double par = params_.pixel_aspect_ratio().to_double();
+	x_size = params_.width() * par;
+	y_size = params_.height();
 }
-void OlivePluginInstance::getProjectOffset(double &xOffset,
-										   double &yOffset) const
+void OlivePluginInstance::getProjectOffset(double &x_offset,
+										   double &y_offset) const
 {
-	double par = params_.pixel_aspect_ratio().toDouble();
-	xOffset = params_.x() * par;
-	yOffset = params_.y();
+	double par = params_.pixel_aspect_ratio().to_double();
+	x_offset = params_.x() * par;
+	y_offset = params_.y();
 }
-void OlivePluginInstance::getProjectExtent(double &xSize, double &ySize) const
+void OlivePluginInstance::getProjectExtent(double &x_size, double &y_size) const
 {
-	double par = params_.pixel_aspect_ratio().toDouble();
-	xSize = params_.width() * par;
-	ySize = params_.height();
+	double par = params_.pixel_aspect_ratio().to_double();
+	x_size = params_.width() * par;
+	y_size = params_.height();
 }
 double OlivePluginInstance::getProjectPixelAspectRatio() const
 {
-	double par = params_.pixel_aspect_ratio().toDouble();
+	double par = params_.pixel_aspect_ratio().to_double();
 	if (par == 0.0) {
 		return 1.0; // default PAR when not explicitly set
 	}
@@ -304,7 +304,7 @@ double OlivePluginInstance::getProjectPixelAspectRatio() const
 }
 double OlivePluginInstance::getFrameRate() const
 {
-	return params_.frame_rate().toDouble();
+	return params_.frame_rate().to_double();
 }
 
 double OlivePluginInstance::getEffectDuration() const
@@ -410,7 +410,7 @@ OfxStatus OlivePluginInstance::editEnd()
 	return kOfxStatOK;
 }
 
-void OlivePluginInstance::SubmitUndoCommand(UndoCommand *command,
+void OlivePluginInstance::submit_undo_command(UndoCommand *command,
 											const QString &label)
 {
 	if (!command) {
@@ -431,7 +431,7 @@ void OlivePluginInstance::SubmitUndoCommand(UndoCommand *command,
 		return;
 	}
 
-	if (!IsGuiThread()) {
+	if (!is_gui_thread()) {
 		command->redo_now();
 		delete command;
 		return;
@@ -463,7 +463,7 @@ void OlivePluginInstance::progressStart(const std::string &message,
 	progress_dialog_ = new ::olive::ProgressDialog(
 		dialog_message, QStringLiteral("OpenFX"), nullptr);
 	progress_dialog_->setAttribute(Qt::WA_DeleteOnClose);
-	QObject::connect(progress_dialog_, &::olive::ProgressDialog::Cancelled,
+	QObject::connect(progress_dialog_, &::olive::ProgressDialog::cancelled,
 					 progress_dialog_,
 					 [this]() { progress_cancelled_ = true; });
 	progress_dialog_->show();
@@ -488,7 +488,7 @@ bool OlivePluginInstance::progressUpdate(double t)
 
 	if (progress_dialog_) {
 		double clamped = qBound(0.0, t, 1.0);
-		progress_dialog_->SetProgress(clamped);
+		progress_dialog_->set_progress(clamped);
 	}
 
 	return !progress_cancelled_;
@@ -514,8 +514,8 @@ OfxStatus OlivePluginInstance::contextDetachedAction()
 
 double OlivePluginInstance::timeLineGetTime()
 {
-	if (ViewerOutput *viewer = GetActiveViewerOutput()) {
-		return viewer->GetPlayhead().toDouble();
+	if (ViewerOutput *viewer = get_active_viewer_output()) {
+		return viewer->get_playhead().to_double();
 	}
 
 	return 0.0;
@@ -523,16 +523,16 @@ double OlivePluginInstance::timeLineGetTime()
 
 void OlivePluginInstance::timeLineGotoTime(double t)
 {
-	if (ViewerOutput *viewer = GetActiveViewerOutput()) {
-		viewer->SetPlayhead(olive::core::rational::fromDouble(t));
+	if (ViewerOutput *viewer = get_active_viewer_output()) {
+		viewer->set_playhead(olive::core::Rational::from_double(t));
 	}
 }
 
 void OlivePluginInstance::timeLineGetBounds(double &t1, double &t2)
 {
-	if (ViewerOutput *viewer = GetActiveViewerOutput()) {
+	if (ViewerOutput *viewer = get_active_viewer_output()) {
 		t1 = 0.0;
-		t2 = viewer->GetLength().toDouble();
+		t2 = viewer->get_length().to_double();
 		return;
 	}
 
@@ -541,12 +541,12 @@ void OlivePluginInstance::timeLineGetBounds(double &t1, double &t2)
 }
 
 void OlivePluginInstance::setCustomInArgs(const std::string &action,
-										  OFX::Host::Property::Set &inArgs)
+										  OFX::Host::Property::Set &in_args)
 {
 	if (action == kOfxImageEffectActionRender ||
 		action == kOfxImageEffectActionBeginSequenceRender ||
 		action == kOfxImageEffectActionEndSequenceRender) {
-		inArgs.setIntProperty(kOfxImageEffectPropOpenGLEnabled,
+		in_args.setIntProperty(kOfxImageEffectPropOpenGLEnabled,
 							  open_gl_enabled_ ? 1 : 0);
 	}
 }
@@ -556,7 +556,7 @@ OFX::Host::ImageEffect::ClipInstance *OlivePluginInstance::newClipInstance(
 	OFX::Host::ImageEffect::ClipDescriptor *descriptor, int index)
 {
 	// Create a new clip instance
-	OliveClipInstance *clipInstance =
+	OliveClipInstance *clip_instance =
 		new OliveClipInstance(plugin, *descriptor, params_);
 
 	// Initialize base class clip properties from VideoParams so that
@@ -567,16 +567,16 @@ OFX::Host::ImageEffect::ClipInstance *OlivePluginInstance::newClipInstance(
 	std::string comp = kOfxImageComponentRGBA; // host default
 
 	switch (params_.format()) {
-	case core::PixelFormat::U8:
+	case core::PixelFormat::u8:
 		depth = kOfxBitDepthByte;
 		break;
-	case core::PixelFormat::U16:
+	case core::PixelFormat::u16:
 		depth = kOfxBitDepthShort;
 		break;
-	case core::PixelFormat::F16:
+	case core::PixelFormat::f16:
 		depth = kOfxBitDepthHalf;
 		break;
-	case core::PixelFormat::F32:
+	case core::PixelFormat::f32:
 		depth = kOfxBitDepthFloat;
 		break;
 	default:
@@ -597,10 +597,10 @@ OFX::Host::ImageEffect::ClipInstance *OlivePluginInstance::newClipInstance(
 		break; // keep RGBA default
 	}
 
-	clipInstance->setPixelDepth(depth);
-	clipInstance->setComponents(comp);
+	clip_instance->setPixelDepth(depth);
+	clip_instance->setComponents(comp);
 
-	return clipInstance;
+	return clip_instance;
 }
 
 OlivePluginInstance::~OlivePluginInstance()

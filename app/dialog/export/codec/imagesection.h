@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef IMAGESECTION_H
-#define IMAGESECTION_H
+#ifndef OAK_IMAGESECTION_H
+#define OAK_IMAGESECTION_H
 
 #include <QCheckBox>
 
@@ -35,33 +35,33 @@ class ImageSection : public CodecSection {
 public:
 	ImageSection(QWidget *parent = nullptr);
 
-	bool IsImageSequenceChecked() const
+	bool is_image_sequence_checked() const
 	{
 		return image_sequence_checkbox_->isChecked();
 	}
 
-	void SetImageSequenceChecked(bool e)
+	void set_image_sequence_checked(bool e)
 	{
 		image_sequence_checkbox_->setChecked(e);
 	}
 
-	void SetTimebase(const rational &r)
+	void set_timebase(const Rational &r)
 	{
-		frame_slider_->SetTimebase(r);
+		frame_slider_->set_timebase(r);
 	}
 
-	rational GetTime() const
+	Rational get_time() const
 	{
-		return frame_slider_->GetValue();
+		return frame_slider_->get_value();
 	}
 
-	void SetTime(const rational &t)
+	void set_time(const Rational &t)
 	{
-		frame_slider_->SetValue(t);
+		frame_slider_->set_value(t);
 	}
 
 signals:
-	void TimeChanged(const rational &t);
+	void time_changed(const Rational &t);
 
 private:
 	QCheckBox *image_sequence_checkbox_;
@@ -69,9 +69,9 @@ private:
 	RationalSlider *frame_slider_;
 
 private slots:
-	void ImageSequenceCheckBoxToggled(bool e);
+	void image_sequence_check_box_toggled(bool e);
 };
 
 }
 
-#endif // IMAGESECTION_H
+#endif // OAK_IMAGESECTION_H

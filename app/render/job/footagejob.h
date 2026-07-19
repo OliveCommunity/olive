@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FOOTAGEJOB_H
-#define FOOTAGEJOB_H
+#ifndef OAK_FOOTAGEJOB_H
+#define OAK_FOOTAGEJOB_H
 
 #include "node/project/footage/footage.h"
 
@@ -30,13 +30,13 @@ namespace olive
 class FootageJob : public AcceleratedJob {
 public:
 	FootageJob()
-		: type_(Track::kNone)
+		: type_(Track::k_none)
 	{
 	}
 
 	FootageJob(const TimeRange &time, const QString &decoder,
 			   const QString &filename, Track::Type type,
-			   const rational &length, LoopMode loop_mode)
+			   const Rational &length, LoopMode loop_mode)
 		: time_(time)
 		, decoder_(decoder)
 		, filename_(filename)
@@ -120,12 +120,12 @@ public:
 		cache_path_ = p;
 	}
 
-	const rational &length() const
+	const Rational &length() const
 	{
 		return length_;
 	}
 
-	void set_length(const rational &length)
+	void set_length(const Rational &length)
 	{
 		length_ = length;
 	}
@@ -167,7 +167,7 @@ private:
 
 	QString cache_path_;
 
-	rational length_;
+	Rational length_;
 
 	LoopMode loop_mode_;
 };
@@ -176,4 +176,4 @@ private:
 
 Q_DECLARE_METATYPE(olive::FootageJob)
 
-#endif // FOOTAGEJOB_H
+#endif // OAK_FOOTAGEJOB_H

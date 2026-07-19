@@ -17,9 +17,9 @@
  *
  */
 
-#ifndef NODEPARAMBUTTON_H
-#define NODEPARAMBUTTON_H
-#include "node/plugins/Plugin.h"
+#ifndef OAK_NODEPARAMBUTTON_H
+#define OAK_NODEPARAMBUTTON_H
+#include "node/plugins/plugin.h"
 
 #include <QPushButton>
 
@@ -33,15 +33,15 @@ public:
 		connect(this, &QPushButton::clicked, this, &NodeParamButton::pressed);
 	}
 signals:
-	void onPressed(QString name);
+	void on_pressed(QString name);
 private slots:
 	void pressed()
 	{
-		emit onPressed(name_);
+		emit on_pressed(name_);
 	}
 
 private:
 	QString name_;
 };
 
-#endif //NODEPARAMBUTTON_H
+#endif //OAK_NODEPARAMBUTTON_H

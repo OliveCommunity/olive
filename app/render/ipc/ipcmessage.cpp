@@ -29,14 +29,14 @@ namespace olive
 namespace ipc
 {
 
-bool WriteMessage(QIODevice *device, const QJsonObject &obj)
+bool write_message(QIODevice *device, const QJsonObject &obj)
 {
 	QByteArray line = QJsonDocument(obj).toJson(QJsonDocument::Compact);
 	line.append('\n');
 	return device->write(line) == line.size();
 }
 
-bool ReadMessage(QByteArray *buffer, QJsonObject *out, bool *ok)
+bool read_message(QByteArray *buffer, QJsonObject *out, bool *ok)
 {
 	while (true) {
 		const int newline = buffer->indexOf('\n');
@@ -72,10 +72,10 @@ bool ReadMessage(QByteArray *buffer, QJsonObject *out, bool *ok)
 
 // ---- HandshakeMsg ---------------------------------------------------------------------------
 
-QJsonObject HandshakeMsg::ToJson() const
+QJsonObject HandshakeMsg::to_json() const
 {
 	QJsonObject o;
-	o["type"] = msgtype::kHandshake;
+	o["type"] = msgtype::k_handshake;
 	o["protocol_version"] = protocol_version;
 	o["shm_key"] = shm_key;
 	o["input_shm_key"] = input_shm_key;
@@ -86,9 +86,9 @@ QJsonObject HandshakeMsg::ToJson() const
 	return o;
 }
 
-bool HandshakeMsg::FromJson(const QJsonObject &o, HandshakeMsg *out)
+bool HandshakeMsg::from_json(const QJsonObject &o, HandshakeMsg *out)
 {
-	if (o["type"].toString() != QLatin1String(msgtype::kHandshake)) {
+	if (o["type"].toString() != QLatin1String(msgtype::k_handshake)) {
 		return false;
 	}
 	out->protocol_version = o["protocol_version"].toInt();
@@ -103,10 +103,10 @@ bool HandshakeMsg::FromJson(const QJsonObject &o, HandshakeMsg *out)
 
 // ---- RenderFrameMsg -------------------------------------------------------------------------
 
-QJsonObject RenderFrameMsg::ToJson() const
+QJsonObject RenderFrameMsg::to_json() const
 {
 	QJsonObject o;
-	o["type"] = msgtype::kRenderFrame;
+	o["type"] = msgtype::k_render_frame;
 	o["ticket"] = double(ticket_id);
 	o["node"] = node_uuid;
 	o["time_num"] = double(time_num);
@@ -133,9 +133,9 @@ QJsonObject RenderFrameMsg::ToJson() const
 	return o;
 }
 
-bool RenderFrameMsg::FromJson(const QJsonObject &o, RenderFrameMsg *out)
+bool RenderFrameMsg::from_json(const QJsonObject &o, RenderFrameMsg *out)
 {
-	if (o["type"].toString() != QLatin1String(msgtype::kRenderFrame)) {
+	if (o["type"].toString() != QLatin1String(msgtype::k_render_frame)) {
 		return false;
 	}
 	out->ticket_id = qint64(o["ticket"].toDouble());
@@ -169,18 +169,18 @@ bool RenderFrameMsg::FromJson(const QJsonObject &o, RenderFrameMsg *out)
 
 // ---- FrameReadyMsg --------------------------------------------------------------------------
 
-QJsonObject FrameReadyMsg::ToJson() const
+QJsonObject FrameReadyMsg::to_json() const
 {
 	QJsonObject o;
-	o["type"] = msgtype::kFrameReady;
+	o["type"] = msgtype::k_frame_ready;
 	o["ticket"] = double(ticket_id);
 	o["slot"] = output_slot;
 	return o;
 }
 
-bool FrameReadyMsg::FromJson(const QJsonObject &o, FrameReadyMsg *out)
+bool FrameReadyMsg::from_json(const QJsonObject &o, FrameReadyMsg *out)
 {
-	if (o["type"].toString() != QLatin1String(msgtype::kFrameReady)) {
+	if (o["type"].toString() != QLatin1String(msgtype::k_frame_ready)) {
 		return false;
 	}
 	out->ticket_id = qint64(o["ticket"].toDouble());
@@ -190,17 +190,17 @@ bool FrameReadyMsg::FromJson(const QJsonObject &o, FrameReadyMsg *out)
 
 // ---- CancelMsg ------------------------------------------------------------------------------
 
-QJsonObject CancelMsg::ToJson() const
+QJsonObject CancelMsg::to_json() const
 {
 	QJsonObject o;
-	o["type"] = msgtype::kCancel;
+	o["type"] = msgtype::k_cancel;
 	o["ticket"] = double(ticket_id);
 	return o;
 }
 
-bool CancelMsg::FromJson(const QJsonObject &o, CancelMsg *out)
+bool CancelMsg::from_json(const QJsonObject &o, CancelMsg *out)
 {
-	if (o["type"].toString() != QLatin1String(msgtype::kCancel)) {
+	if (o["type"].toString() != QLatin1String(msgtype::k_cancel)) {
 		return false;
 	}
 	out->ticket_id = qint64(o["ticket"].toDouble());
@@ -209,17 +209,17 @@ bool CancelMsg::FromJson(const QJsonObject &o, CancelMsg *out)
 
 // ---- LoadGraphMsg ---------------------------------------------------------------------------
 
-QJsonObject LoadGraphMsg::ToJson() const
+QJsonObject LoadGraphMsg::to_json() const
 {
 	QJsonObject o;
-	o["type"] = msgtype::kLoadGraph;
+	o["type"] = msgtype::k_load_graph;
 	o["path"] = path;
 	return o;
 }
 
-bool LoadGraphMsg::FromJson(const QJsonObject &o, LoadGraphMsg *out)
+bool LoadGraphMsg::from_json(const QJsonObject &o, LoadGraphMsg *out)
 {
-	if (o["type"].toString() != QLatin1String(msgtype::kLoadGraph)) {
+	if (o["type"].toString() != QLatin1String(msgtype::k_load_graph)) {
 		return false;
 	}
 	out->path = o["path"].toString();

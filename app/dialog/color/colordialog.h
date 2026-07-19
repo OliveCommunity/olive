@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLORDIALOG_H
-#define COLORDIALOG_H
+#ifndef OAK_COLORDIALOG_H
+#define OAK_COLORDIALOG_H
 
 #include <QDialog>
 
@@ -66,14 +66,14 @@ public:
    *
    * The color is always returned in the ColorManager's reference space (usually scene linear).
    */
-	ManagedColor GetSelectedColor() const;
+	ManagedColor get_selected_color() const;
 
-	QString GetColorSpaceInput() const;
+	QString get_color_space_input() const;
 
-	ColorTransform GetColorSpaceOutput() const;
+	ColorTransform get_color_space_output() const;
 
 public slots:
-	void SetColor(const ManagedColor &c);
+	void set_color(const ManagedColor &c);
 
 private:
 	ColorManager *color_manager_;
@@ -91,9 +91,9 @@ private:
 	ColorSwatchChooser *swatch_;
 
 private slots:
-	void ColorSpaceChanged(const QString &input, const ColorTransform &output);
+	void color_space_changed(const QString &input, const ColorTransform &output);
 };
 
 }
 
-#endif // COLORDIALOG_H
+#endif // OAK_COLORDIALOG_H

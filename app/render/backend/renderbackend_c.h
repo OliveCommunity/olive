@@ -1,5 +1,5 @@
-#ifndef RENDERBACKEND_C_H
-#define RENDERBACKEND_C_H
+#ifndef OAK_RENDERBACKEND_C_H
+#define OAK_RENDERBACKEND_C_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -20,20 +20,20 @@ typedef void *OakRenderBackendHandle;
 
 /* Identifies the concrete backend behind a dynamically loaded library. */
 enum OakRenderBackendKind {
-	OAK_RENDER_BACKEND_UNKNOWN = 0,
-	OAK_RENDER_BACKEND_OPENGL = 1,
-	OAK_RENDER_BACKEND_VULKAN = 2
+	oak_render_backend_unknown = 0,
+	oak_render_backend_opengl = 1,
+	oak_render_backend_vulkan = 2
 };
 
 /* Capability bits advertised by a backend through oak_renderer_get_info(). */
 enum OakRenderBackendCapability {
-	OAK_RENDER_BACKEND_CAP_TEXTURES = 1ULL << 0,
-	OAK_RENDER_BACKEND_CAP_SHADERS = 1ULL << 1,
-	OAK_RENDER_BACKEND_CAP_BLIT = 1ULL << 2,
-	OAK_RENDER_BACKEND_CAP_READBACK = 1ULL << 3,
-	OAK_RENDER_BACKEND_CAP_VIEWER_CONTEXT = 1ULL << 4,
-	OAK_RENDER_BACKEND_CAP_INSTANCE = 1ULL << 5,
-	OAK_RENDER_BACKEND_CAP_DEVICE = 1ULL << 6
+	oak_render_backend_cap_textures = 1ULL << 0,
+	oak_render_backend_cap_shaders = 1ULL << 1,
+	oak_render_backend_cap_blit = 1ULL << 2,
+	oak_render_backend_cap_readback = 1ULL << 3,
+	oak_render_backend_cap_viewer_context = 1ULL << 4,
+	oak_render_backend_cap_instance = 1ULL << 5,
+	oak_render_backend_cap_device = 1ULL << 6
 };
 
 /* Static and runtime metadata returned by the backend. */
@@ -118,4 +118,4 @@ typedef void *(*OakBackendOpenGLContextFn)(OakRenderBackendHandle handle);
 }
 #endif
 
-#endif // RENDERBACKEND_C_H
+#endif // OAK_RENDERBACKEND_C_H

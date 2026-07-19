@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINEUNDOSPLIT_H
-#define TIMELINEUNDOSPLIT_H
+#ifndef OAK_TIMELINEUNDOSPLIT_H
+#define OAK_TIMELINEUNDOSPLIT_H
 
 #include "node/output/track/track.h"
 
@@ -29,7 +29,7 @@ namespace olive
 
 class BlockSplitCommand : public UndoCommand {
 public:
-	BlockSplitCommand(Block *block, rational point)
+	BlockSplitCommand(Block *block, Rational point)
 		: block_(block)
 		, new_block_(nullptr)
 		, point_(point)
@@ -42,7 +42,7 @@ public:
 		delete reconnect_tree_command_;
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return block_->project();
 	}
@@ -66,8 +66,8 @@ private:
 	Block *block_;
 	Block *new_block_;
 
-	rational old_length_;
-	rational point_;
+	Rational old_length_;
+	Rational point_;
 
 	MultiUndoCommand *reconnect_tree_command_;
 
@@ -77,7 +77,7 @@ private:
 class BlockSplitPreservingLinksCommand : public UndoCommand {
 public:
 	BlockSplitPreservingLinksCommand(const QVector<Block *> &blocks,
-									 const QList<rational> &times)
+									 const QList<Rational> &times)
 		: blocks_(blocks)
 		, times_(times)
 	{
@@ -88,12 +88,12 @@ public:
 		qDeleteAll(commands_);
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return blocks_.first()->project();
 	}
 
-	Block *GetSplit(Block *original, int time_index) const;
+	Block *get_split(Block *original, int time_index) const;
 
 protected:
 	virtual void prepare() override;
@@ -115,7 +115,7 @@ protected:
 private:
 	QVector<Block *> blocks_;
 
-	QList<rational> times_;
+	QList<Rational> times_;
 
 	QVector<UndoCommand *> commands_;
 
@@ -124,7 +124,7 @@ private:
 
 class TrackSplitAtTimeCommand : public UndoCommand {
 public:
-	TrackSplitAtTimeCommand(Track *track, rational point)
+	TrackSplitAtTimeCommand(Track *track, Rational point)
 		: track_(track)
 		, point_(point)
 		, command_(nullptr)
@@ -136,7 +136,7 @@ public:
 		delete command_;
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return track_->project();
 	}
@@ -161,11 +161,11 @@ protected:
 private:
 	Track *track_;
 
-	rational point_;
+	Rational point_;
 
 	UndoCommand *command_;
 };
 
 }
 
-#endif // TIMELINEUNDOSPLIT_H
+#endif // OAK_TIMELINEUNDOSPLIT_H

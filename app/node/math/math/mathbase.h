@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef MATHNODEBASE_H
-#define MATHNODEBASE_H
+#ifndef OAK_MATHNODEBASE_H
+#define OAK_MATHNODEBASE_H
 
 #include "node/node.h"
 
@@ -31,30 +31,30 @@ class MathNodeBase : public Node {
 public:
 	MathNodeBase() = default;
 
-	enum Operation { kOpAdd, kOpSubtract, kOpMultiply, kOpDivide, kOpPower };
+	enum Operation { k_op_add, k_op_subtract, k_op_multiply, k_op_divide, k_op_power };
 
-	static QString GetOperationName(Operation o);
+	static QString get_operation_name(Operation o);
 
 protected:
 	enum Pairing {
-		kPairNone = -1,
+		k_pair_none = -1,
 
-		kPairNumberNumber,
-		kPairVecVec,
-		kPairMatrixMatrix,
-		kPairColorColor,
-		kPairTextureTexture,
+		k_pair_number_number,
+		k_pair_vec_vec,
+		k_pair_matrix_matrix,
+		k_pair_color_color,
+		k_pair_texture_texture,
 
-		kPairVecNumber,
-		kPairMatrixVec,
-		kPairNumberColor,
-		kPairTextureNumber,
-		kPairTextureColor,
-		kPairTextureMatrix,
-		kPairSampleSample,
-		kPairSampleNumber,
+		k_pair_vec_number,
+		k_pair_matrix_vec,
+		k_pair_number_color,
+		k_pair_texture_number,
+		k_pair_texture_color,
+		k_pair_texture_matrix,
+		k_pair_sample_sample,
+		k_pair_sample_number,
 
-		kPairCount
+		k_pair_count
 	};
 
 	class PairingCalculator {
@@ -62,14 +62,14 @@ protected:
 		PairingCalculator(const NodeValueTable &table_a,
 						  const NodeValueTable &table_b);
 
-		bool FoundMostLikelyPairing() const;
-		Pairing GetMostLikelyPairing() const;
+		bool found_most_likely_pairing() const;
+		Pairing get_most_likely_pairing() const;
 
-		const NodeValue &GetMostLikelyValueA() const;
-		const NodeValue &GetMostLikelyValueB() const;
+		const NodeValue &get_most_likely_value_a() const;
+		const NodeValue &get_most_likely_value_b() const;
 
 	private:
-		static QVector<int> GetPairLikelihood(const NodeValueTable &table);
+		static QVector<int> get_pair_likelihood(const NodeValueTable &table);
 
 		Pairing most_likely_pairing_;
 
@@ -79,57 +79,57 @@ protected:
 	};
 
 	template <typename T, typename U>
-	static T PerformAll(Operation operation, T a, U b);
+	static T perform_all(Operation operation, T a, U b);
 
 	template <typename T, typename U>
-	static T PerformMultDiv(Operation operation, T a, U b);
+	static T perform_mult_div(Operation operation, T a, U b);
 
 	template <typename T, typename U>
-	static T PerformAddSub(Operation operation, T a, U b);
+	static T perform_add_sub(Operation operation, T a, U b);
 
 	template <typename T, typename U>
-	static T PerformMult(Operation operation, T a, U b);
+	static T perform_mult(Operation operation, T a, U b);
 
 	template <typename T, typename U>
-	static T PerformAddSubMult(Operation operation, T a, U b);
+	static T perform_add_sub_mult(Operation operation, T a, U b);
 
 	template <typename T, typename U>
-	static T PerformAddSubMultDiv(Operation operation, T a, U b);
+	static T perform_add_sub_mult_div(Operation operation, T a, U b);
 
-	static void PerformAllOnFloatBuffer(Operation operation, float *a, float b,
+	static void perform_all_on_float_buffer(Operation operation, float *a, float b,
 										int start, int end);
 
 #if defined(Q_PROCESSOR_X86) || defined(Q_PROCESSOR_ARM)
-	static void PerformAllOnFloatBufferSSE(Operation operation, float *a,
+	static void perform_all_on_float_buffer_sse(Operation operation, float *a,
 										   float b, int start, int end);
 #endif
 
-	static QString GetShaderUniformType(const NodeValue::Type &type);
+	static QString get_shader_uniform_type(const NodeValue::Type &type);
 
-	static QString GetShaderVariableCall(const QString &input_id,
+	static QString get_shader_variable_call(const QString &input_id,
 										 const NodeValue::Type &type,
 										 const QString &coord_op = QString());
 
-	static QVector4D RetrieveVector(const NodeValue &val);
+	static QVector4D retrieve_vector(const NodeValue &val);
 
-	static float RetrieveNumber(const NodeValue &val);
+	static float retrieve_number(const NodeValue &val);
 
-	static bool NumberIsNoOp(const Operation &op, const float &number);
+	static bool number_is_no_op(const Operation &op, const float &number);
 
-	ShaderCode GetShaderCodeInternal(const QString &shader_id,
+	ShaderCode get_shader_code_internal(const QString &shader_id,
 									 const QString &param_a_in,
 									 const QString &param_b_in) const;
 
-	void PushVector(NodeValueTable *output, NodeValue::Type type,
+	void push_vector(NodeValueTable *output, NodeValue::Type type,
 					const QVector4D &vec) const;
 
-	void ValueInternal(Operation operation, Pairing pairing,
+	void value_internal(Operation operation, Pairing pairing,
 					   const QString &param_a_in, const NodeValue &val_a,
 					   const QString &param_b_in, const NodeValue &val_b,
 					   const NodeGlobals &globals,
 					   NodeValueTable *output) const;
 
-	void ProcessSamplesInternal(const NodeValueRow &values, Operation operation,
+	void process_samples_internal(const NodeValueRow &values, Operation operation,
 								const QString &param_a_in,
 								const QString &param_b_in,
 								const SampleBuffer &input, SampleBuffer &output,
@@ -138,4 +138,4 @@ protected:
 
 }
 
-#endif // MATHNODEBASE_H
+#endif // OAK_MATHNODEBASE_H

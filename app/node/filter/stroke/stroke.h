@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef STROKEFILTERNODE_H
-#define STROKEFILTERNODE_H
+#ifndef OAK_STROKEFILTERNODE_H
+#define OAK_STROKEFILTERNODE_H
 
 #include "node/node.h"
 
@@ -34,25 +34,25 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(StrokeFilterNode)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
+	get_shader_code(const ShaderRequest &request) const override;
 
-	static const QString kTextureInput;
-	static const QString kColorInput;
-	static const QString kRadiusInput;
-	static const QString kOpacityInput;
-	static const QString kInnerInput;
+	static const QString k_texture_input;
+	static const QString k_color_input;
+	static const QString k_radius_input;
+	static const QString k_opacity_input;
+	static const QString k_inner_input;
 };
 
 }
 
-#endif // STROKEFILTERNODE_H
+#endif // OAK_STROKEFILTERNODE_H

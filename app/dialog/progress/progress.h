@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROGRESSDIALOG_H
-#define PROGRESSDIALOG_H
+#ifndef OAK_PROGRESSDIALOG_H
+#define OAK_PROGRESSDIALOG_H
 
 #include <QDialog>
 #include <QProgressBar>
@@ -43,13 +43,13 @@ protected:
 	virtual void closeEvent(QCloseEvent *) override;
 
 public slots:
-	void SetProgress(double value);
+	void set_progress(double value);
 
 signals:
-	void Cancelled();
+	void cancelled();
 
 protected:
-	void ShowErrorMessage(const QString &title, const QString &message);
+	void show_error_message(const QString &title, const QString &message);
 
 private:
 	QProgressBar *bar_;
@@ -61,11 +61,11 @@ private:
 	bool first_show_;
 
 private slots:
-	void DisableSenderWidget();
+	void disable_sender_widget();
 
-	void DisableProgressWidgets();
+	void disable_progress_widgets();
 };
 
 }
 
-#endif // PROGRESSDIALOG_H
+#endif // OAK_PROGRESSDIALOG_H

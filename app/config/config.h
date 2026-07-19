@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CONFIG_H
-#define CONFIG_H
+#ifndef OAK_CONFIG_H
+#define OAK_CONFIG_H
 
 #include <QMap>
 #include <QString>
@@ -31,24 +31,24 @@
 namespace olive
 {
 
-#define OLIVE_CONFIG(x) Config::Current()[QStringLiteral(x)]
-#define OLIVE_CONFIG_STR(x) Config::Current()[x]
+#define OAK_CONFIG(x) Config::current()[QStringLiteral(x)]
+#define OAK_CONFIG_STR(x) Config::current()[x]
 
 class Config {
 public:
-	static Config &Current();
+	static Config &current();
 
-	void SetDefaults();
+	void set_defaults();
 
-	static void Load();
+	static void load();
 
-	static void Save();
+	static void save();
 
 	QVariant operator[](const QString &) const;
 
 	QVariant &operator[](const QString &);
 
-	NodeValue::Type GetConfigEntryType(const QString &key) const;
+	NodeValue::Type get_config_entry_type(const QString &key) const;
 
 private:
 	Config();
@@ -58,16 +58,16 @@ private:
 		QVariant data;
 	};
 
-	void SetEntryInternal(const QString &key, NodeValue::Type type,
+	void set_entry_internal(const QString &key, NodeValue::Type type,
 						  const QVariant &data);
 
 	QMap<QString, ConfigEntry> config_map_;
 
-	static Config current_config_;
+	static Config current_config;
 
-	static QString GetConfigFilePath();
+	static QString get_config_file_path();
 };
 
 }
 
-#endif // CONFIG_H
+#endif // OAK_CONFIG_H

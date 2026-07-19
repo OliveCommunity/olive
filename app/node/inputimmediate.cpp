@@ -50,7 +50,7 @@ void NodeInputImmediate::set_split_standard_value(const SplitValue &value)
 }
 
 QVector<NodeKeyframe *>
-NodeInputImmediate::get_keyframe_at_time(const rational &time) const
+NodeInputImmediate::get_keyframe_at_time(const Rational &time) const
 {
 	QVector<NodeKeyframe *> keys;
 
@@ -66,7 +66,7 @@ NodeInputImmediate::get_keyframe_at_time(const rational &time) const
 }
 
 NodeKeyframe *
-NodeInputImmediate::get_keyframe_at_time_on_track(const rational &time,
+NodeInputImmediate::get_keyframe_at_time_on_track(const Rational &time,
 												  int track) const
 {
 	if (!is_using_standard_value(track)) {
@@ -81,7 +81,7 @@ NodeInputImmediate::get_keyframe_at_time_on_track(const rational &time,
 }
 
 NodeKeyframe *
-NodeInputImmediate::get_closest_keyframe_to_time_on_track(const rational &time,
+NodeInputImmediate::get_closest_keyframe_to_time_on_track(const Rational &time,
 														  int track) const
 {
 	if (is_using_standard_value(track)) {
@@ -104,8 +104,8 @@ NodeInputImmediate::get_closest_keyframe_to_time_on_track(const rational &time,
 
 		if (prev_key->time() <= time && next_key->time() >= time) {
 			// Return whichever is closer
-			rational prev_diff = time - prev_key->time();
-			rational next_diff = next_key->time() - time;
+			Rational prev_diff = time - prev_key->time();
+			Rational next_diff = next_key->time() - time;
 
 			if (next_diff < prev_diff) {
 				return next_key;
@@ -119,7 +119,7 @@ NodeInputImmediate::get_closest_keyframe_to_time_on_track(const rational &time,
 }
 
 NodeKeyframe *
-NodeInputImmediate::get_closest_keyframe_before_time(const rational &time) const
+NodeInputImmediate::get_closest_keyframe_before_time(const Rational &time) const
 {
 	NodeKeyframe *key = nullptr;
 
@@ -137,7 +137,7 @@ NodeInputImmediate::get_closest_keyframe_before_time(const rational &time) const
 }
 
 NodeKeyframe *
-NodeInputImmediate::get_closest_keyframe_after_time(const rational &time) const
+NodeInputImmediate::get_closest_keyframe_after_time(const Rational &time) const
 {
 	NodeKeyframe *key = nullptr;
 
@@ -157,7 +157,7 @@ NodeInputImmediate::get_closest_keyframe_after_time(const rational &time) const
 }
 
 NodeKeyframe::Type
-NodeInputImmediate::get_best_keyframe_type_for_time(const rational &time,
+NodeInputImmediate::get_best_keyframe_type_for_time(const Rational &time,
 													int track) const
 {
 	NodeKeyframe *closest_key =
@@ -167,10 +167,10 @@ NodeInputImmediate::get_best_keyframe_type_for_time(const rational &time,
 		return closest_key->type();
 	}
 
-	return NodeKeyframe::kDefaultType;
+	return NodeKeyframe::k_default_type;
 }
 
-bool NodeInputImmediate::has_keyframe_at_time(const rational &time) const
+bool NodeInputImmediate::has_keyframe_at_time(const Rational &time) const
 {
 	if (!is_keyframing()) {
 		return false;

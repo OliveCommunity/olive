@@ -72,7 +72,7 @@ void ProjectExplorerIconViewItemDelegate::paint(
 
 		QString duration_str = index.data(Qt::UserRole).toString();
 
-		int timecode_width = QtUtils::QFontMetricsWidth(fm, duration_str);
+		int timecode_width = QtUtils::q_font_metrics_width(fm, duration_str);
 
 		int max_name_width = option.rect.width();
 

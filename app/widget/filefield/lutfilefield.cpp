@@ -35,7 +35,7 @@ LutFileField::LutFileField(QWidget *parent) : FileField(parent)
 	library_combo_->setMinimumContentsLength(12);
 	static_cast<QHBoxLayout *>(layout())->insertWidget(0, library_combo_, 1);
 
-	RefreshLibraryEntries();
+	refresh_library_entries();
 
 	connect(library_combo_,
 			static_cast<void (QComboBox::*)(int)>(&QComboBox::activated), this,
@@ -43,33 +43,33 @@ LutFileField::LutFileField(QWidget *parent) : FileField(parent)
 				const QString path =
 					library_combo_->itemData(index).toString();
 				if (!path.isEmpty()) {
-					SetFilename(path);
-					emit FilenameChanged(path);
+					set_filename(path);
+					emit filename_changed(path);
 				}
 			});
 
 	// Keep the combo in sync when the path is edited directly
-	connect(this, &FileField::FilenameChanged, this, [this](const QString &) {
-		RefreshLibraryEntries();
+	connect(this, &FileField::filename_changed, this, [this](const QString &) {
+		refresh_library_entries();
 	});
 }
 
-void LutFileField::SetFilename(const QString &s)
+void LutFileField::set_filename(const QString &s)
 {
-	FileField::SetFilename(s);
-	RefreshLibraryEntries();
+	FileField::set_filename(s);
+	refresh_library_entries();
 }
 
-void LutFileField::RefreshLibraryEntries()
+void LutFileField::refresh_library_entries()
 {
-	const QString current = GetFilename();
+	const QString current = get_filename();
 
 	const QSignalBlocker blocker(library_combo_);
 	library_combo_->clear();
 	library_combo_->addItem(tr("Other (Custom File)..."), QString());
 
-	const QStringList library_dirs = LUTLibrary::GetDirectories();
-	const QStringList luts = LUTLibrary::GetLutFiles();
+	const QStringList library_dirs = LUTLibrary::get_directories();
+	const QStringList luts = LUTLibrary::get_lut_files();
 	for (const QString &lut : luts) {
 		// Show the path relative to the library directory that contains it
 		QString display = lut;

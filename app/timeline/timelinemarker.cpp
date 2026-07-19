@@ -33,7 +33,7 @@ namespace olive
 {
 
 TimelineMarker::TimelineMarker(QObject *parent)
-	: color_(OLIVE_CONFIG("MarkerColor").toInt())
+	: color_(OAK_CONFIG("MarkerColor").toInt())
 {
 	setParent(parent);
 }
@@ -50,49 +50,49 @@ TimelineMarker::TimelineMarker(int color, const TimeRange &time,
 void TimelineMarker::set_time(const TimeRange &time)
 {
 	time_ = time;
-	emit TimeChanged(time_);
+	emit time_changed(time_);
 }
 
-void TimelineMarker::set_time(const rational &time)
+void TimelineMarker::set_time(const Rational &time)
 {
 	set_time(TimeRange(time, time + time_.length()));
 }
 
-bool TimelineMarker::has_sibling_at_time(const rational &t) const
+bool TimelineMarker::has_sibling_at_time(const Rational &t) const
 {
 	TimelineMarker *m =
-		static_cast<TimelineMarkerList *>(parent())->GetMarkerAtTime(t);
+		static_cast<TimelineMarkerList *>(parent())->get_marker_at_time(t);
 	return m && m != this;
 }
 
 void TimelineMarker::set_name(const QString &name)
 {
 	name_ = name;
-	emit NameChanged(name_);
+	emit name_changed(name_);
 }
 
 void TimelineMarker::set_color(int c)
 {
 	color_ = c;
-	emit ColorChanged(color_);
+	emit color_changed(color_);
 }
 
-int TimelineMarker::GetMarkerHeight(const QFontMetrics &fm)
+int TimelineMarker::get_marker_height(const QFontMetrics &fm)
 {
 	return fm.height();
 }
 
-QRect TimelineMarker::Draw(QPainter *p, const QPoint &pt, int max_right,
+QRect TimelineMarker::draw(QPainter *p, const QPoint &pt, int max_right,
 						   double scale, bool selected)
 {
 	QFontMetrics fm = p->fontMetrics();
 
-	int marker_height = GetMarkerHeight(fm);
-	int marker_width = QtUtils::QFontMetricsWidth(fm, QStringLiteral("H"));
+	int marker_height = get_marker_height(fm);
+	int marker_width = QtUtils::q_font_metrics_width(fm, QStringLiteral("H"));
 
 	int half_width = marker_width / 2;
 
-	QColor c = QtUtils::toQColor(ColorCoding::GetColor(color()));
+	QColor c = QtUtils::to_q_color(ColorCoding::get_color(color()));
 	if (selected) {
 		p->setPen(Qt::white);
 		p->setBrush(c.lighter());
@@ -107,14 +107,14 @@ QRect TimelineMarker::Draw(QPainter *p, const QPoint &pt, int max_right,
 	op.setWrapMode(QTextOption::NoWrap);
 
 	if (time_.out() != time_.in()) {
-		QRect marker_rect(pt.x(), top, time_.length().toDouble() * scale,
+		QRect marker_rect(pt.x(), top, time_.length().to_double() * scale,
 						  marker_height);
 
 		p->drawRect(marker_rect);
 
 		if (!name_.isEmpty()) {
 			p->setPen(
-				ColorCoding::GetUISelectorColor(ColorCoding::GetColor(color_)));
+				ColorCoding::get_ui_selector_color(ColorCoding::get_color(color_)));
 			p->drawText(marker_rect.adjusted(marker_width / 4, 0, 0, 0), name_,
 						op);
 		}
@@ -141,7 +141,7 @@ QRect TimelineMarker::Draw(QPainter *p, const QPoint &pt, int max_right,
 		if (!name_.isEmpty() && max_right != -1) {
 			QRect text_rect(right, top, max_right - right, marker_height);
 
-			int padding = QtUtils::QFontMetricsWidth(p->fontMetrics(),
+			int padding = QtUtils::q_font_metrics_width(p->fontMetrics(),
 													 QStringLiteral(" "));
 			text_rect.adjust(padding, 0, -padding - half_width, 0);
 
@@ -155,16 +155,16 @@ QRect TimelineMarker::Draw(QPainter *p, const QPoint &pt, int max_right,
 
 bool TimelineMarker::load(QXmlStreamReader *reader)
 {
-	rational in, out;
+	Rational in, out;
 
 	XMLAttributeLoop(reader, attr)
 	{
 		if (attr.name() == QStringLiteral("name")) {
 			this->set_name(attr.value().toString());
 		} else if (attr.name() == QStringLiteral("in")) {
-			in = rational::fromString(attr.value().toString().toStdString());
+			in = Rational::from_string(attr.value().toString().toStdString());
 		} else if (attr.name() == QStringLiteral("out")) {
-			out = rational::fromString(attr.value().toString().toStdString());
+			out = Rational::from_string(attr.value().toString().toStdString());
 		} else if (attr.name() == QStringLiteral("color")) {
 			this->set_color(attr.value().toInt());
 		}
@@ -183,17 +183,17 @@ void TimelineMarker::save(QXmlStreamWriter *writer) const
 	writer->writeAttribute(QStringLiteral("name"), this->name());
 	writer->writeAttribute(
 		QStringLiteral("in"),
-		QString::fromStdString(this->time().in().toString()));
+		QString::fromStdString(this->time().in().to_string()));
 	writer->writeAttribute(
 		QStringLiteral("out"),
-		QString::fromStdString(this->time().out().toString()));
+		QString::fromStdString(this->time().out().to_string()));
 	writer->writeAttribute(QStringLiteral("color"),
 						   QString::number(this->color()));
 }
 
 bool TimelineMarkerList::load(QXmlStreamReader *reader)
 {
-	while (XMLReadNextStartElement(reader)) {
+	while (xml_read_next_start_element(reader)) {
 		if (reader->name() == QStringLiteral("marker")) {
 			TimelineMarker *marker = new TimelineMarker(this);
 			if (!marker->load(reader)) {
@@ -226,37 +226,37 @@ void TimelineMarkerList::childEvent(QChildEvent *e)
 
 	if (TimelineMarker *marker = dynamic_cast<TimelineMarker *>(e->child())) {
 		if (e->type() == QChildEvent::ChildAdded) {
-			connect(marker, &TimelineMarker::TimeChanged, this,
-					&TimelineMarkerList::HandleMarkerTimeChange);
-			connect(marker, &TimelineMarker::TimeChanged, this,
-					&TimelineMarkerList::HandleMarkerModification);
-			connect(marker, &TimelineMarker::NameChanged, this,
-					&TimelineMarkerList::HandleMarkerModification);
-			connect(marker, &TimelineMarker::ColorChanged, this,
-					&TimelineMarkerList::HandleMarkerModification);
+			connect(marker, &TimelineMarker::time_changed, this,
+					&TimelineMarkerList::handle_marker_time_change);
+			connect(marker, &TimelineMarker::time_changed, this,
+					&TimelineMarkerList::handle_marker_modification);
+			connect(marker, &TimelineMarker::name_changed, this,
+					&TimelineMarkerList::handle_marker_modification);
+			connect(marker, &TimelineMarker::color_changed, this,
+					&TimelineMarkerList::handle_marker_modification);
 
-			InsertIntoList(marker);
+			insert_into_list(marker);
 
-			emit MarkerAdded(marker);
+			emit marker_added(marker);
 
 		} else if (e->type() == QChildEvent::ChildRemoved) {
-			RemoveFromList(marker);
+			remove_from_list(marker);
 
-			disconnect(marker, &TimelineMarker::TimeChanged, this,
-					   &TimelineMarkerList::HandleMarkerTimeChange);
-			disconnect(marker, &TimelineMarker::TimeChanged, this,
-					   &TimelineMarkerList::HandleMarkerModification);
-			disconnect(marker, &TimelineMarker::NameChanged, this,
-					   &TimelineMarkerList::HandleMarkerModification);
-			disconnect(marker, &TimelineMarker::ColorChanged, this,
-					   &TimelineMarkerList::HandleMarkerModification);
+			disconnect(marker, &TimelineMarker::time_changed, this,
+					   &TimelineMarkerList::handle_marker_time_change);
+			disconnect(marker, &TimelineMarker::time_changed, this,
+					   &TimelineMarkerList::handle_marker_modification);
+			disconnect(marker, &TimelineMarker::name_changed, this,
+					   &TimelineMarkerList::handle_marker_modification);
+			disconnect(marker, &TimelineMarker::color_changed, this,
+					   &TimelineMarkerList::handle_marker_modification);
 
-			emit MarkerRemoved(marker);
+			emit marker_removed(marker);
 		}
 	}
 }
 
-void TimelineMarkerList::InsertIntoList(TimelineMarker *marker)
+void TimelineMarkerList::insert_into_list(TimelineMarker *marker)
 {
 	// Insertion sort by time to allow some loop optimizations
 	bool found = false;
@@ -277,7 +277,7 @@ void TimelineMarkerList::InsertIntoList(TimelineMarker *marker)
 	}
 }
 
-bool TimelineMarkerList::RemoveFromList(TimelineMarker *marker)
+bool TimelineMarkerList::remove_from_list(TimelineMarker *marker)
 {
 	auto it = std::find(markers_.begin(), markers_.end(), marker);
 
@@ -289,12 +289,12 @@ bool TimelineMarkerList::RemoveFromList(TimelineMarker *marker)
 	return false;
 }
 
-void TimelineMarkerList::HandleMarkerModification()
+void TimelineMarkerList::handle_marker_modification()
 {
-	emit MarkerModified(static_cast<TimelineMarker *>(sender()));
+	emit marker_modified(static_cast<TimelineMarker *>(sender()));
 }
 
-void TimelineMarkerList::HandleMarkerTimeChange()
+void TimelineMarkerList::handle_marker_time_change()
 {
 	TimelineMarker *m = static_cast<TimelineMarker *>(sender());
 
@@ -302,7 +302,7 @@ void TimelineMarkerList::HandleMarkerTimeChange()
 
 	if (it != markers_.end()) {
 		markers_.erase(it);
-		InsertIntoList(m);
+		insert_into_list(m);
 	}
 }
 
@@ -324,9 +324,9 @@ MarkerAddCommand::MarkerAddCommand(TimelineMarkerList *marker_list,
 	added_marker_->setParent(&memory_manager_);
 }
 
-Project *MarkerAddCommand::GetRelevantProject() const
+Project *MarkerAddCommand::get_relevant_project() const
 {
-	return Project::GetProjectFromObject(marker_list_);
+	return Project::get_project_from_object(marker_list_);
 }
 
 void MarkerAddCommand::redo()
@@ -344,9 +344,9 @@ MarkerRemoveCommand::MarkerRemoveCommand(TimelineMarker *marker)
 {
 }
 
-Project *MarkerRemoveCommand::GetRelevantProject() const
+Project *MarkerRemoveCommand::get_relevant_project() const
 {
-	return Project::GetProjectFromObject(marker_);
+	return Project::get_project_from_object(marker_);
 }
 
 void MarkerRemoveCommand::redo()
@@ -367,9 +367,9 @@ MarkerChangeColorCommand::MarkerChangeColorCommand(TimelineMarker *marker,
 {
 }
 
-Project *MarkerChangeColorCommand::GetRelevantProject() const
+Project *MarkerChangeColorCommand::get_relevant_project() const
 {
-	return Project::GetProjectFromObject(marker_);
+	return Project::get_project_from_object(marker_);
 }
 
 void MarkerChangeColorCommand::redo()
@@ -390,9 +390,9 @@ MarkerChangeNameCommand::MarkerChangeNameCommand(TimelineMarker *marker,
 {
 }
 
-Project *MarkerChangeNameCommand::GetRelevantProject() const
+Project *MarkerChangeNameCommand::get_relevant_project() const
 {
-	return Project::GetProjectFromObject(marker_);
+	return Project::get_project_from_object(marker_);
 }
 
 void MarkerChangeNameCommand::redo()
@@ -415,9 +415,9 @@ MarkerChangeTimeCommand::MarkerChangeTimeCommand(TimelineMarker *marker,
 {
 }
 
-Project *MarkerChangeTimeCommand::GetRelevantProject() const
+Project *MarkerChangeTimeCommand::get_relevant_project() const
 {
-	return Project::GetProjectFromObject(marker_);
+	return Project::get_project_from_object(marker_);
 }
 
 void MarkerChangeTimeCommand::redo()

@@ -27,14 +27,14 @@ namespace olive
 NodeTablePanel::NodeTablePanel()
 	: TimeBasedPanel(QStringLiteral("NodeTablePanel"))
 {
-	SetTimeBasedWidget(new NodeTableWidget(this));
+	set_time_based_widget(new NodeTableWidget(this));
 
-	Retranslate();
+	retranslate();
 }
 
-void NodeTablePanel::Retranslate()
+void NodeTablePanel::retranslate()
 {
-	SetTitle(tr("Table View"));
+	set_title(tr("Table View"));
 }
 
 }

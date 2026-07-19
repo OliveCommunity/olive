@@ -33,62 +33,62 @@ namespace olive
 
 FloatSlider::FloatSlider(QWidget *parent)
 	: super(parent)
-	, display_type_(kNormal)
+	, display_type_(k_normal)
 {
-	SetValue(0.0);
+	set_value(0.0);
 }
 
-double FloatSlider::GetValue() const
+double FloatSlider::get_value() const
 {
-	return GetValueInternal().toDouble();
+	return get_value_internal().toDouble();
 }
 
-void FloatSlider::SetValue(const double &d)
+void FloatSlider::set_value(const double &d)
 {
-	SetValueInternal(d);
+	set_value_internal(d);
 }
 
 void FloatSlider::SetDefaultValue(const double &d)
 {
-	super::SetDefaultValue(d);
+	super::set_default_value(d);
 }
 
-void FloatSlider::SetMinimum(const double &d)
+void FloatSlider::set_minimum(const double &d)
 {
-	SetMinimumInternal(d);
+	set_minimum_internal(d);
 }
 
-void FloatSlider::SetMaximum(const double &d)
+void FloatSlider::set_maximum(const double &d)
 {
-	SetMaximumInternal(d);
+	set_maximum_internal(d);
 }
 
-void FloatSlider::SetDisplayType(const FloatSlider::DisplayType &type)
+void FloatSlider::set_display_type(const FloatSlider::DisplayType &type)
 {
 	display_type_ = type;
 
 	switch (display_type_) {
-	case kNormal:
-		ClearFormat();
+	case k_normal:
+		clear_format();
 		break;
-	case kDecibel:
-		SetFormat(tr("%1 dB"));
+	case k_decibel:
+		set_format(tr("%1 dB"));
 		break;
-	case kPercentage:
-		SetFormat(tr("%1%"));
+	case k_percentage:
+		set_format(tr("%1%"));
 		break;
 	}
 }
 
-double FloatSlider::TransformValueToDisplay(double val, DisplayType display)
+double FloatSlider::transform_value_to_display(double val, DisplayType display)
 {
 	switch (display) {
-	case kNormal:
+	case k_normal:
 		break;
-	case kDecibel:
-		val = Decibel::fromLinear(val);
+	case k_decibel:
+		val = Decibel::from_linear(val);
 		break;
-	case kPercentage:
+	case k_percentage:
 		val *= 100.0;
 		break;
 	}
@@ -96,15 +96,15 @@ double FloatSlider::TransformValueToDisplay(double val, DisplayType display)
 	return val;
 }
 
-double FloatSlider::TransformDisplayToValue(double val, DisplayType display)
+double FloatSlider::transform_display_to_value(double val, DisplayType display)
 {
 	switch (display) {
-	case kNormal:
+	case k_normal:
 		break;
-	case kDecibel:
-		val = Decibel::toLinear(val);
+	case k_decibel:
+		val = Decibel::to_linear(val);
 		break;
-	case kPercentage:
+	case k_percentage:
 		val *= 0.01;
 		break;
 	}
@@ -112,26 +112,26 @@ double FloatSlider::TransformDisplayToValue(double val, DisplayType display)
 	return val;
 }
 
-QString FloatSlider::ValueToString(double val, FloatSlider::DisplayType display,
+QString FloatSlider::value_to_string(double val, FloatSlider::DisplayType display,
 								   int decimal_places,
 								   bool autotrim_decimal_places)
 {
 	// Return negative infinity for zero volume
-	if (display == kDecibel && qIsNull(val)) {
+	if (display == k_decibel && qIsNull(val)) {
 		return tr("\xE2\x88\x9E");
 	}
 
-	return FloatToString(TransformValueToDisplay(val, display), decimal_places,
+	return float_to_string(transform_value_to_display(val, display), decimal_places,
 						 autotrim_decimal_places);
 }
 
-QString FloatSlider::ValueToString(const QVariant &v) const
+QString FloatSlider::value_to_string(const QVariant &v) const
 {
-	return ValueToString(v.toDouble() + GetOffset().toDouble(), display_type_,
-						 GetDecimalPlaces(), GetAutoTrimDecimalPlaces());
+	return value_to_string(v.toDouble() + get_offset().toDouble(), display_type_,
+						 get_decimal_places(), get_auto_trim_decimal_places());
 }
 
-QVariant FloatSlider::StringToValue(const QString &s, bool *ok) const
+QVariant FloatSlider::string_to_value(const QString &s, bool *ok) const
 {
 	bool valid;
 	double val = s.toDouble(&valid);
@@ -143,37 +143,37 @@ QVariant FloatSlider::StringToValue(const QString &s, bool *ok) const
 
 	// If valid, transform it from display
 	if (valid) {
-		val = TransformDisplayToValue(val, display_type_);
+		val = transform_display_to_value(val, display_type_);
 	}
 
 	// Return un-offset value
-	return val - GetOffset().toDouble();
+	return val - get_offset().toDouble();
 }
 
-QVariant FloatSlider::AdjustDragDistanceInternal(const QVariant &start,
+QVariant FloatSlider::adjust_drag_distance_internal(const QVariant &start,
 												 const double &drag) const
 {
 	switch (display_type_) {
-	case kNormal:
+	case k_normal:
 		// No change here
 		break;
-	case kDecibel: {
-		double current_db = Decibel::fromLinear(start.toDouble());
+	case k_decibel: {
+		double current_db = Decibel::from_linear(start.toDouble());
 		current_db += drag;
-		double adjusted_linear = Decibel::toLinear(current_db);
+		double adjusted_linear = Decibel::to_linear(current_db);
 
 		return adjusted_linear;
 	}
-	case kPercentage:
-		return super::AdjustDragDistanceInternal(start, drag * 0.01);
+	case k_percentage:
+		return super::adjust_drag_distance_internal(start, drag * 0.01);
 	}
 
-	return super::AdjustDragDistanceInternal(start, drag);
+	return super::adjust_drag_distance_internal(start, drag);
 }
 
-void FloatSlider::ValueSignalEvent(const QVariant &value)
+void FloatSlider::value_signal_event(const QVariant &value)
 {
-	emit ValueChanged(value.toDouble());
+	emit value_changed(value.toDouble());
 }
 
 }

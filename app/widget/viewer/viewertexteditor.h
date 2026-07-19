@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef VIEWERTEXTEDITOR_H
-#define VIEWERTEXTEDITOR_H
+#ifndef OAK_VIEWERTEXTEDITOR_H
+#define OAK_VIEWERTEXTEDITOR_H
 
 #include <QApplication>
 #include <QDebug>
@@ -39,79 +39,79 @@ class ViewerTextEditorToolBar : public QWidget {
 public:
 	ViewerTextEditorToolBar(QWidget *parent = nullptr);
 
-	QString GetFontFamily() const
+	QString get_font_family() const
 	{
 		return font_combo_->currentText();
 	}
 
-	QString GetFontStyleName() const
+	QString get_font_style_name() const
 	{
 		return style_combo_->currentText();
 	}
 
 public slots:
-	void SetFontFamily(QString s)
+	void set_font_family(QString s)
 	{
 		font_combo_->blockSignals(true);
 		font_combo_->setCurrentFont(s);
-		UpdateFontStyleList(s);
+		update_font_style_list(s);
 		font_combo_->blockSignals(false);
 	}
 
-	void SetStyle(QString style)
+	void set_style(QString style)
 	{
 		style_combo_->blockSignals(true);
 		style_combo_->setCurrentText(style);
 		style_combo_->blockSignals(false);
 	}
 
-	void SetFontSize(double d)
+	void set_font_size(double d)
 	{
-		font_sz_slider_->SetValue(d);
+		font_sz_slider_->set_value(d);
 	}
-	void SetUnderline(bool e)
+	void set_underline(bool e)
 	{
 		underline_btn_->setChecked(e);
 	}
-	void SetStrikethrough(bool e)
+	void set_strikethrough(bool e)
 	{
 		strikethrough_btn_->setChecked(e);
 	}
-	void SetAlignment(Qt::Alignment a);
-	void SetVerticalAlignment(Qt::Alignment a);
-	void SetColor(const QColor &c);
-	void SetSmallCaps(bool e)
+	void set_alignment(Qt::Alignment a);
+	void set_vertical_alignment(Qt::Alignment a);
+	void set_color(const QColor &c);
+	void set_small_caps(bool e)
 	{
 		small_caps_btn_->setChecked(e);
 	}
-	void SetStretch(int i)
+	void set_stretch(int i)
 	{
-		stretch_slider_->SetValue(i);
+		stretch_slider_->set_value(i);
 	}
-	void SetKerning(qreal i)
+	void set_kerning(qreal i)
 	{
-		kerning_slider_->SetValue(i);
+		kerning_slider_->set_value(i);
 	}
-	void SetLineHeight(qreal i)
+	void set_line_height(qreal i)
 	{
-		line_height_slider_->SetValue(i);
+		line_height_slider_->set_value(i);
 	}
 
 signals:
-	void FamilyChanged(const QString &s);
-	void SizeChanged(double d);
-	void StyleChanged(const QString &s);
-	void UnderlineChanged(bool e);
-	void StrikethroughChanged(bool e);
-	void AlignmentChanged(Qt::Alignment alignment);
-	void VerticalAlignmentChanged(Qt::Alignment alignment);
-	void ColorChanged(const QColor &c);
-	void SmallCapsChanged(bool e);
-	void StretchChanged(int i);
-	void KerningChanged(qreal i);
-	void LineHeightChanged(qreal i);
+	void family_changed(const QString &s);
+	void size_changed(double d);
+	void style_changed(const QString &s);
+	void underline_changed(bool e);
+	void strikethrough_changed(bool e);
+	void alignment_changed(Qt::Alignment alignment);
+	void vertical_alignment_changed(Qt::Alignment alignment);
+	void color_changed(const QColor &c);
+	void small_caps_changed(bool e);
+	void stretch_changed(int i);
+	void kerning_changed(qreal i);
+	void line_height_changed(qreal i);
 
-	void FirstPaint();
+	void first_paint();
 
 protected:
 	virtual void mousePressEvent(QMouseEvent *event) override;
@@ -125,7 +125,7 @@ protected:
 	virtual void paintEvent(QPaintEvent *event) override;
 
 private:
-	void AddSpacer(QLayout *l);
+	void add_spacer(QLayout *l);
 
 	QPoint drag_anchor_;
 
@@ -159,9 +159,9 @@ private:
 	bool drag_enabled_;
 
 private slots:
-	void UpdateFontStyleList(const QString &family);
+	void update_font_style_list(const QString &family);
 
-	void UpdateFontStyleListAndEmitFamilyChanged(const QString &family);
+	void update_font_style_list_and_emit_family_changed(const QString &family);
 };
 
 class ViewerTextEditor : public QTextEdit {
@@ -169,9 +169,9 @@ class ViewerTextEditor : public QTextEdit {
 public:
 	ViewerTextEditor(double scale, QWidget *parent = nullptr);
 
-	void ConnectToolBar(ViewerTextEditorToolBar *toolbar);
+	void connect_tool_bar(ViewerTextEditorToolBar *toolbar);
 
-	void Paint(QPainter *p, Qt::Alignment valign);
+	void paint(QPainter *p, Qt::Alignment valign);
 
 	virtual void dragEnterEvent(QDragEnterEvent *e) override
 	{
@@ -194,14 +194,14 @@ protected:
 	virtual void paintEvent(QPaintEvent *event) override;
 
 private:
-	static void UpdateToolBar(ViewerTextEditorToolBar *toolbar,
+	static void update_tool_bar(ViewerTextEditorToolBar *toolbar,
 							  const QTextCharFormat &f,
 							  const QTextBlockFormat &b,
 							  Qt::Alignment alignment);
 
-	void MergeCharFormat(const QTextCharFormat &fmt);
+	void merge_char_format(const QTextCharFormat &fmt);
 
-	void ApplyStyle(QTextCharFormat *format, const QString &family,
+	void apply_style(QTextCharFormat *format, const QString &family,
 					const QString &style);
 
 	QVector<ViewerTextEditorToolBar *> toolbars_;
@@ -216,27 +216,27 @@ private:
 	QTextCharFormat default_fmt_;
 
 private slots:
-	void FormatChanged(const QTextCharFormat &f);
+	void format_changed(const QTextCharFormat &f);
 
-	void SetFamily(const QString &s);
+	void set_family(const QString &s);
 
-	void SetStyle(const QString &s);
+	void set_style(const QString &s);
 
-	void SetFontStrikethrough(bool e);
+	void set_font_strikethrough(bool e);
 
-	void SetSmallCaps(bool e);
+	void set_small_caps(bool e);
 
-	void SetFontStretch(int i);
+	void set_font_stretch(int i);
 
-	void SetFontKerning(qreal i);
+	void set_font_kerning(qreal i);
 
-	void SetLineHeight(qreal i);
+	void set_line_height(qreal i);
 
-	void LockScrollBarMaximumToZero();
+	void lock_scroll_bar_maximum_to_zero();
 
-	void DocumentChanged();
+	void document_changed();
 };
 
 }
 
-#endif // VIEWERTEXTEDITOR_H
+#endif // OAK_VIEWERTEXTEDITOR_H

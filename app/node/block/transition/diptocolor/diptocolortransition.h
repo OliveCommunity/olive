@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef DIPTOCOLORTRANSITION_H
-#define DIPTOCOLORTRANSITION_H
+#ifndef OAK_DIPTOCOLORTRANSITION_H
+#define OAK_DIPTOCOLORTRANSITION_H
 
 #include "node/block/transition/transition.h"
 
@@ -34,17 +34,17 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(DipToColorTransition)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
+	get_shader_code(const ShaderRequest &request) const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	static const QString kColorInput;
+	static const QString k_color_input;
 
 protected:
 	virtual void ShaderJobEvent(const NodeValueRow &value,
@@ -53,4 +53,4 @@ protected:
 
 }
 
-#endif // DIPTOCOLORTRANSITION_H
+#endif // OAK_DIPTOCOLORTRANSITION_H

@@ -4,7 +4,7 @@
 
 TEST(LoopMode, ValuesAreDistinct)
 {
-	EXPECT_NE(olive::LoopMode::kLoopModeOff, olive::LoopMode::kLoopModeLoop);
-	EXPECT_NE(olive::LoopMode::kLoopModeOff, olive::LoopMode::kLoopModeClamp);
-	EXPECT_NE(olive::LoopMode::kLoopModeLoop, olive::LoopMode::kLoopModeClamp);
+	EXPECT_NE(olive::LoopMode::k_loop_mode_off, olive::LoopMode::k_loop_mode_loop);
+	EXPECT_NE(olive::LoopMode::k_loop_mode_off, olive::LoopMode::k_loop_mode_clamp);
+	EXPECT_NE(olive::LoopMode::k_loop_mode_loop, olive::LoopMode::k_loop_mode_clamp);
 }

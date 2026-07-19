@@ -31,54 +31,54 @@ namespace olive
 
 NodeViewScene::NodeViewScene(QObject *parent)
 	: QGraphicsScene(parent)
-	, direction_(NodeViewCommon::kLeftToRight)
+	, direction_(NodeViewCommon::k_left_to_right)
 	, curved_edges_(true)
 {
 }
 
-void NodeViewScene::SetFlowDirection(NodeViewCommon::FlowDirection direction)
+void NodeViewScene::set_flow_direction(NodeViewCommon::FlowDirection direction)
 {
 	direction_ = direction;
 
 	foreach (NodeViewContext *ctx, context_map_) {
-		ctx->SetFlowDirection(direction_);
+		ctx->set_flow_direction(direction_);
 	}
 }
 
-void NodeViewScene::SelectAll()
+void NodeViewScene::select_all()
 {
 	foreach (QGraphicsItem *i, items()) {
 		i->setSelected(true);
 	}
 }
 
-void NodeViewScene::DeselectAll()
+void NodeViewScene::deselect_all()
 {
 	foreach (QGraphicsItem *i, items()) {
 		i->setSelected(false);
 	}
 }
 
-QVector<NodeViewItem *> NodeViewScene::GetSelectedItems() const
+QVector<NodeViewItem *> NodeViewScene::get_selected_items() const
 {
 	QVector<NodeViewItem *> items;
 
 	foreach (NodeViewContext *ctx, context_map_) {
-		items.append(ctx->GetSelectedItems());
+		items.append(ctx->get_selected_items());
 	}
 
 	return items;
 }
 
-NodeViewContext *NodeViewScene::AddContext(Node *node)
+NodeViewContext *NodeViewScene::add_context(Node *node)
 {
 	NodeViewContext *context_item = context_map_.value(node);
 
 	if (!context_item) {
 		context_item = new NodeViewContext(node);
 
-		context_item->SetFlowDirection(GetFlowDirection());
-		context_item->SetCurvedEdges(GetEdgesAreCurved());
+		context_item->set_flow_direction(get_flow_direction());
+		context_item->set_curved_edges(get_edges_are_curved());
 
 		QPointF pos(0, 0);
 		QRectF item_rect = context_item->rect();
@@ -96,23 +96,23 @@ NodeViewContext *NodeViewScene::AddContext(Node *node)
 	return context_item;
 }
 
-void NodeViewScene::RemoveContext(Node *node)
+void NodeViewScene::remove_context(Node *node)
 {
 	delete context_map_.take(node);
 }
 
-Qt::Orientation NodeViewScene::GetFlowOrientation() const
+Qt::Orientation NodeViewScene::get_flow_orientation() const
 {
-	return NodeViewCommon::GetFlowOrientation(direction_);
+	return NodeViewCommon::get_flow_orientation(direction_);
 }
 
-void NodeViewScene::SetEdgesAreCurved(bool curved)
+void NodeViewScene::set_edges_are_curved(bool curved)
 {
 	if (curved_edges_ != curved) {
 		curved_edges_ = curved;
 
 		foreach (NodeViewContext *ctx, context_map_) {
-			ctx->SetCurvedEdges(curved_edges_);
+			ctx->set_curved_edges(curved_edges_);
 		}
 	}
 }

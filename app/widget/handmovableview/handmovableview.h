@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef HANDMOVABLEVIEW_H
-#define HANDMOVABLEVIEW_H
+#ifndef OAK_HANDMOVABLEVIEW_H
+#define OAK_HANDMOVABLEVIEW_H
 
 #include <QGraphicsView>
 #include <QMenu>
@@ -37,7 +37,7 @@ public:
 
 	static bool WheelEventIsAZoomEvent(QWheelEvent *event);
 
-	static qreal GetScrollZoomMultiplier(QWheelEvent *event);
+	static qreal get_scroll_zoom_multiplier(QWheelEvent *event);
 
 	virtual void CatchUpScrollEvent()
 	{
@@ -49,19 +49,19 @@ protected:
 		Q_UNUSED(tool)
 	}
 
-	bool HandPress(QMouseEvent *event);
-	bool HandMove(QMouseEvent *event);
-	bool HandRelease(QMouseEvent *event);
+	bool hand_press(QMouseEvent *event);
+	bool hand_move(QMouseEvent *event);
+	bool hand_release(QMouseEvent *event);
 
-	void SetDefaultDragMode(DragMode mode);
-	const DragMode &GetDefaultDragMode() const;
+	void set_default_drag_mode(DragMode mode);
+	const DragMode &get_default_drag_mode() const;
 
 	virtual void wheelEvent(QWheelEvent *event) override;
 
-	virtual void ZoomIntoCursorPosition(QWheelEvent *event, double multiplier,
+	virtual void zoom_into_cursor_position(QWheelEvent *event, double multiplier,
 										const QPointF &cursor_pos);
 
-	void SetIsTimelineAxes(bool e)
+	void set_is_timeline_axes(bool e)
 	{
 		is_timeline_axes_ = e;
 	}
@@ -77,9 +77,9 @@ private:
 	bool is_timeline_axes_;
 
 private slots:
-	void ApplicationToolChanged(Tool::Item tool);
+	void application_tool_changed(Tool::Item tool);
 };
 
 }
 
-#endif // HANDMOVABLEVIEW_H
+#endif // OAK_HANDMOVABLEVIEW_H

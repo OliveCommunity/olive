@@ -36,22 +36,22 @@ TaskManagerPanel::TaskManagerPanel()
 	setWidget(view_);
 
 	// Connect task view to the task manager
-	connect(TaskManager::instance(), &TaskManager::TaskAdded, view_,
-			&TaskView::AddTask);
-	connect(TaskManager::instance(), &TaskManager::TaskRemoved, view_,
-			&TaskView::RemoveTask);
-	connect(TaskManager::instance(), &TaskManager::TaskFailed, view_,
-			&TaskView::TaskFailed);
-	connect(view_, &TaskView::TaskCancelled, TaskManager::instance(),
-			&TaskManager::CancelTask);
+	connect(TaskManager::instance(), &TaskManager::task_added, view_,
+			&TaskView::add_task);
+	connect(TaskManager::instance(), &TaskManager::task_removed, view_,
+			&TaskView::remove_task);
+	connect(TaskManager::instance(), &TaskManager::task_failed, view_,
+			&TaskView::task_failed);
+	connect(view_, &TaskView::task_cancelled, TaskManager::instance(),
+			&TaskManager::cancel_task);
 
 	// Set strings
-	Retranslate();
+	retranslate();
 }
 
-void TaskManagerPanel::Retranslate()
+void TaskManagerPanel::retranslate()
 {
-	SetTitle(tr("Task Manager"));
+	set_title(tr("Task Manager"));
 }
 
 }

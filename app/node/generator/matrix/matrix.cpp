@@ -29,39 +29,39 @@
 namespace olive
 {
 
-const QString MatrixGenerator::kPositionInput = QStringLiteral("pos_in");
-const QString MatrixGenerator::kRotationInput = QStringLiteral("rot_in");
-const QString MatrixGenerator::kScaleInput = QStringLiteral("scale_in");
-const QString MatrixGenerator::kUniformScaleInput =
+const QString MatrixGenerator::k_position_input = QStringLiteral("pos_in");
+const QString MatrixGenerator::k_rotation_input = QStringLiteral("rot_in");
+const QString MatrixGenerator::k_scale_input = QStringLiteral("scale_in");
+const QString MatrixGenerator::k_uniform_scale_input =
 	QStringLiteral("uniform_scale_in");
-const QString MatrixGenerator::kAnchorInput = QStringLiteral("anchor_in");
+const QString MatrixGenerator::k_anchor_input = QStringLiteral("anchor_in");
 
 #define super Node
 
 MatrixGenerator::MatrixGenerator()
 {
-	AddInput(kPositionInput, NodeValue::kVec2, QVector2D(0.0, 0.0));
+	add_input(k_position_input, NodeValue::k_vec2, QVector2D(0.0, 0.0));
 
-	AddInput(kRotationInput, NodeValue::kFloat, 0.0);
+	add_input(k_rotation_input, NodeValue::k_float, 0.0);
 
-	AddInput(kScaleInput, NodeValue::kVec2, QVector2D(1.0f, 1.0f));
-	SetInputProperty(kScaleInput, QStringLiteral("min"), QVector2D(0, 0));
-	SetInputProperty(kScaleInput, QStringLiteral("view"),
-					 FloatSlider::kPercentage);
-	SetInputProperty(kScaleInput, QStringLiteral("disable1"), true);
+	add_input(k_scale_input, NodeValue::k_vec2, QVector2D(1.0f, 1.0f));
+	set_input_property(k_scale_input, QStringLiteral("min"), QVector2D(0, 0));
+	set_input_property(k_scale_input, QStringLiteral("view"),
+					 FloatSlider::k_percentage);
+	set_input_property(k_scale_input, QStringLiteral("disable1"), true);
 
-	AddInput(kUniformScaleInput, NodeValue::kBoolean, true,
-			 InputFlags(kInputFlagNotConnectable | kInputFlagNotKeyframable));
+	add_input(k_uniform_scale_input, NodeValue::k_boolean, true,
+			 InputFlags(k_input_flag_not_connectable | k_input_flag_not_keyframable));
 
-	AddInput(kAnchorInput, NodeValue::kVec2, QVector2D(0.0, 0.0));
+	add_input(k_anchor_input, NodeValue::k_vec2, QVector2D(0.0, 0.0));
 }
 
-QString MatrixGenerator::Name() const
+QString MatrixGenerator::name() const
 {
 	return tr("Orthographic Matrix");
 }
 
-QString MatrixGenerator::ShortName() const
+QString MatrixGenerator::short_name() const
 {
 	return tr("Ortho");
 }
@@ -71,38 +71,38 @@ QString MatrixGenerator::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.ortho");
 }
 
-QVector<Node::CategoryID> MatrixGenerator::Category() const
+QVector<Node::CategoryID> MatrixGenerator::category() const
 {
-	return { kCategoryGenerator, kCategoryMath };
+	return { k_category_generator, k_category_math };
 }
 
-QString MatrixGenerator::Description() const
+QString MatrixGenerator::description() const
 {
 	return tr(
 		"Generate an orthographic matrix using position, rotation, and scale.");
 }
 
-void MatrixGenerator::Retranslate()
+void MatrixGenerator::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kPositionInput, tr("Position"));
-	SetInputName(kRotationInput, tr("Rotation"));
-	SetInputName(kScaleInput, tr("Scale"));
-	SetInputName(kUniformScaleInput, tr("Uniform Scale"));
-	SetInputName(kAnchorInput, tr("Anchor Point"));
+	set_input_name(k_position_input, tr("Position"));
+	set_input_name(k_rotation_input, tr("Rotation"));
+	set_input_name(k_scale_input, tr("Scale"));
+	set_input_name(k_uniform_scale_input, tr("Uniform Scale"));
+	set_input_name(k_anchor_input, tr("Anchor Point"));
 }
 
-void MatrixGenerator::Value(const NodeValueRow &value,
+void MatrixGenerator::value(const NodeValueRow &value,
 							const NodeGlobals &globals,
 							NodeValueTable *table) const
 {
 	// Push matrix output
-	QMatrix4x4 mat = GenerateMatrix(value, false, false, false, QMatrix4x4());
-	table->Push(NodeValue::kMatrix, mat, this);
+	QMatrix4x4 mat = generate_matrix(value, false, false, false, QMatrix4x4());
+	table->push(NodeValue::k_matrix, mat, this);
 }
 
-QMatrix4x4 MatrixGenerator::GenerateMatrix(const NodeValueRow &value,
+QMatrix4x4 MatrixGenerator::generate_matrix(const NodeValueRow &value,
 										   bool ignore_anchor,
 										   bool ignore_position,
 										   bool ignore_scale,
@@ -113,23 +113,23 @@ QMatrix4x4 MatrixGenerator::GenerateMatrix(const NodeValueRow &value,
 	QVector2D scale;
 
 	if (!ignore_anchor) {
-		anchor = value[kAnchorInput].toVec2();
+		anchor = value[k_anchor_input].to_vec2();
 	}
 
 	if (!ignore_scale) {
-		scale = value[kScaleInput].toVec2();
+		scale = value[k_scale_input].to_vec2();
 	}
 
 	if (!ignore_position) {
-		position = value[kPositionInput].toVec2();
+		position = value[k_position_input].to_vec2();
 	}
 
-	return GenerateMatrix(position, value[kRotationInput].toDouble(), scale,
-						  value[kUniformScaleInput].toBool(), anchor, mat);
+	return generate_matrix(position, value[k_rotation_input].to_double(), scale,
+						  value[k_uniform_scale_input].to_bool(), anchor, mat);
 }
 
 QMatrix4x4
-MatrixGenerator::GenerateMatrix(const QVector2D &pos, const float &rot,
+MatrixGenerator::generate_matrix(const QVector2D &pos, const float &rot,
 								const QVector2D &scale, bool uniform_scale,
 								const QVector2D &anchor, QMatrix4x4 mat)
 {
@@ -158,9 +158,9 @@ void MatrixGenerator::InputValueChangedEvent(const QString &input, int element)
 {
 	Q_UNUSED(element)
 
-	if (input == kUniformScaleInput) {
-		SetInputProperty(kScaleInput, QStringLiteral("disable1"),
-						 GetStandardValue(kUniformScaleInput).toBool());
+	if (input == k_uniform_scale_input) {
+		set_input_property(k_scale_input, QStringLiteral("disable1"),
+						 get_standard_value(k_uniform_scale_input).toBool());
 	}
 }
 

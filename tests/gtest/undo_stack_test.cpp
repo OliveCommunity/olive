@@ -14,7 +14,7 @@ public:
 	{
 	}
 
-	olive::Project *GetRelevantProject() const override
+	olive::Project *get_relevant_project() const override
 	{
 		return nullptr;
 	}
@@ -54,8 +54,8 @@ TEST(UndoStack, PushUndoRedo)
 TEST(UndoStack, EmptyStateAndModelData)
 {
 	olive::UndoStack stack;
-	EXPECT_FALSE(stack.CanUndo());
-	EXPECT_FALSE(stack.CanRedo());
+	EXPECT_FALSE(stack.can_undo());
+	EXPECT_FALSE(stack.can_redo());
 	EXPECT_EQ(stack.columnCount(), 2);
 	EXPECT_EQ(stack.rowCount(), 1);
 	EXPECT_TRUE(stack.hasChildren(QModelIndex()));
@@ -80,7 +80,7 @@ TEST(UndoStack, UndoRedoListsAndColors)
 
 	stack.undo();
 	EXPECT_EQ(counter, 1);
-	EXPECT_TRUE(stack.CanRedo());
+	EXPECT_TRUE(stack.can_redo());
 
 	QModelIndex undone_name = stack.index(2, 1);
 	EXPECT_EQ(stack.data(undone_name, Qt::DisplayRole).toString(),
@@ -91,7 +91,7 @@ TEST(UndoStack, UndoRedoListsAndColors)
 
 	stack.redo();
 	EXPECT_EQ(counter, 2);
-	EXPECT_FALSE(stack.CanRedo());
+	EXPECT_FALSE(stack.can_redo());
 }
 
 TEST(UndoStack, JumpRestoresState)
@@ -106,11 +106,11 @@ TEST(UndoStack, JumpRestoresState)
 
 	stack.jump(1);
 	EXPECT_EQ(counter, 0);
-	EXPECT_TRUE(stack.CanRedo());
+	EXPECT_TRUE(stack.can_redo());
 
 	stack.jump(4);
 	EXPECT_EQ(counter, 3);
-	EXPECT_FALSE(stack.CanRedo());
+	EXPECT_FALSE(stack.can_redo());
 }
 
 TEST(UndoStack, EmptyMultiUndoCommandIsIgnored)
@@ -119,7 +119,7 @@ TEST(UndoStack, EmptyMultiUndoCommandIsIgnored)
 	auto *empty_multi = new olive::MultiUndoCommand();
 	stack.push(empty_multi, QStringLiteral("Empty"));
 	EXPECT_EQ(stack.rowCount(), 1);
-	EXPECT_FALSE(stack.CanUndo());
+	EXPECT_FALSE(stack.can_undo());
 }
 
 TEST(UndoStack, MultipleUndosAndRedos)
@@ -134,8 +134,8 @@ TEST(UndoStack, MultipleUndosAndRedos)
 	stack.undo();
 	stack.undo();
 	EXPECT_EQ(counter, 1);
-	EXPECT_TRUE(stack.CanUndo());
-	EXPECT_TRUE(stack.CanRedo());
+	EXPECT_TRUE(stack.can_undo());
+	EXPECT_TRUE(stack.can_redo());
 
 	stack.redo();
 	EXPECT_EQ(counter, 2);
@@ -154,7 +154,7 @@ TEST(UndoStack, PushAfterUndoClearsRedoBranch)
 
 	stack.push(new TestCommand(&counter), QStringLiteral("Third"));
 	EXPECT_EQ(counter, 2);
-	EXPECT_FALSE(stack.CanRedo());
+	EXPECT_FALSE(stack.can_redo());
 }
 
 TEST(UndoStack, ResetClearsHistory)
@@ -165,8 +165,8 @@ TEST(UndoStack, ResetClearsHistory)
 	EXPECT_EQ(counter, 1);
 
 	stack.clear();
-	EXPECT_FALSE(stack.CanUndo());
-	EXPECT_FALSE(stack.CanRedo());
+	EXPECT_FALSE(stack.can_undo());
+	EXPECT_FALSE(stack.can_redo());
 	EXPECT_EQ(stack.rowCount(), 1);
 }
 

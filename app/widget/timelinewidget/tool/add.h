@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef ADDTIMELINETOOL_H
-#define ADDTIMELINETOOL_H
+#ifndef OAK_ADDTIMELINETOOL_H
+#define OAK_ADDTIMELINETOOL_H
 
 #include "beam.h"
 
@@ -31,24 +31,24 @@ class AddTool : public BeamTool {
 public:
 	AddTool(TimelineWidget *parent);
 
-	virtual void MousePress(TimelineViewMouseEvent *event) override;
-	virtual void MouseMove(TimelineViewMouseEvent *event) override;
-	virtual void MouseRelease(TimelineViewMouseEvent *event) override;
+	virtual void mouse_press(TimelineViewMouseEvent *event) override;
+	virtual void mouse_move(TimelineViewMouseEvent *event) override;
+	virtual void mouse_release(TimelineViewMouseEvent *event) override;
 
-	static Node *CreateAddableClip(MultiUndoCommand *command,
+	static Node *create_addable_clip(MultiUndoCommand *command,
 								   Sequence *sequence,
 								   const Track::Reference &track,
-								   const rational &in, const rational &length,
+								   const Rational &in, const Rational &length,
 								   const QRectF &rect = QRectF());
 
 protected:
-	void MouseMoveInternal(const rational &cursor_frame, bool outwards);
+	void mouse_move_internal(const Rational &cursor_frame, bool outwards);
 
 	TimelineViewGhostItem *ghost_;
 
-	rational drag_start_point_;
+	Rational drag_start_point_;
 };
 
 }
 
-#endif // ADDTIMELINETOOL_H
+#endif // OAK_ADDTIMELINETOOL_H

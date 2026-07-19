@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef LIBOLIVECORE_VALUE_H
-#define LIBOLIVECORE_VALUE_H
+#ifndef OAK_LIBOLIVECORE_VALUE_H
+#define OAK_LIBOLIVECORE_VALUE_H
 
 #include <map>
 #include <stdint.h>
@@ -38,7 +38,7 @@ class Value {
 public:
 	enum Type {
 		/// Null/no data
-		NONE,
+		none,
 
 		/// Signed int64
 		INT,
@@ -47,12 +47,12 @@ public:
 		FLOAT,
 
 		/// UTF-8 string
-		STRING
+		string
 	};
 
 	Value()
 	{
-		type_ = NONE;
+		type_ = none;
 	}
 
 	Value(int64_t v)
@@ -74,14 +74,14 @@ public:
 		size_t sz = strlen(s);
 		data_.resize(sz);
 		memcpy(data_.data(), s, sz);
-		type_ = STRING;
+		type_ = string;
 	}
 
 	Value(const std::string &s)
 	{
 		data_.resize(s.size());
 		memcpy(data_.data(), s.data(), data_.size());
-		type_ = STRING;
+		type_ = string;
 	}
 
 private:
@@ -93,4 +93,4 @@ using ValueMap = std::map<std::string, Value>;
 
 }
 
-#endif // LIBOLIVECORE_VALUE_H
+#endif // OAK_LIBOLIVECORE_VALUE_H

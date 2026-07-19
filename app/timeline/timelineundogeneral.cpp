@@ -90,10 +90,10 @@ TimelineAddTrackCommand::TimelineAddTrackCommand(TrackList *timeline,
 	// Determine what input to connect it to
 	QString relevant_input;
 
-	if (timeline_->type() == Track::kVideo) {
-		relevant_input = Sequence::kTextureInput;
-	} else if (timeline_->type() == Track::kAudio) {
-		relevant_input = Sequence::kSamplesInput;
+	if (timeline_->type() == Track::k_video) {
+		relevant_input = Sequence::k_texture_input;
+	} else if (timeline_->type() == Track::k_audio) {
+		relevant_input = Sequence::k_samples_input;
 	}
 
 	// If we have an input to connect to, set it as our `direct` connection
@@ -101,17 +101,17 @@ TimelineAddTrackCommand::TimelineAddTrackCommand(TrackList *timeline,
 		direct_ = NodeInput(timeline_->parent(), relevant_input);
 
 		// If we're automerging and something is already connected, determine if/how to merge it
-		if (automerge_tracks && direct_.IsConnected()) {
-			if (timeline_->type() == Track::kVideo) {
+		if (automerge_tracks && direct_.is_connected()) {
+			if (timeline_->type() == Track::k_video) {
 				// Use merge for video
 				merge_ = new MergeNode();
-				base_ = NodeInput(merge_, MergeNode::kBaseIn);
-				blend_ = NodeInput(merge_, MergeNode::kBlendIn);
-			} else if (timeline_->type() == Track::kAudio) {
+				base_ = NodeInput(merge_, MergeNode::k_base_in);
+				blend_ = NodeInput(merge_, MergeNode::k_blend_in);
+			} else if (timeline_->type() == Track::k_audio) {
 				// Use math (add) for audio
 				merge_ = new MathNode();
-				base_ = NodeInput(merge_, MathNode::kParamAIn);
-				blend_ = NodeInput(merge_, MathNode::kParamBIn);
+				base_ = NodeInput(merge_, MathNode::k_param_a_in);
+				blend_ = NodeInput(merge_, MathNode::k_param_b_in);
 			}
 
 			if (merge_) {
@@ -128,23 +128,23 @@ void TimelineAddTrackCommand::redo()
 	Sequence *sequence = timeline_->parent();
 
 	// Add track to sequence
-	track_->setParent(timeline_->GetParentGraph());
-	if (timeline_->GetTrackCount() > 0) {
-		track_->SetTrackHeight(
-			timeline_->GetTrackAt(timeline_->GetTrackCount() - 1)
-				->GetTrackHeight());
+	track_->setParent(timeline_->get_parent_graph());
+	if (timeline_->get_track_count() > 0) {
+		track_->set_track_height(
+			timeline_->get_track_at(timeline_->get_track_count() - 1)
+				->get_track_height());
 	}
-	timeline_->ArrayAppend();
-	Node::ConnectEdge(track_,
-					  timeline_->track_input(timeline_->ArraySize() - 1));
+	timeline_->array_append();
+	Node::connect_edge(track_,
+					  timeline_->track_input(timeline_->array_size() - 1));
 
 	qreal position_factor = 0.5;
-	if (timeline_->type() == Track::kVideo) {
+	if (timeline_->type() == Track::k_video) {
 		position_factor = -position_factor;
 	}
 	bool create_pos_command =
-		(!position_command_ && (timeline_->type() == Track::kVideo ||
-								timeline_->type() == Track::kAudio));
+		(!position_command_ && (timeline_->type() == Track::k_video ||
+								timeline_->type() == Track::k_audio));
 	if (create_pos_command) {
 		position_command_ = new MultiUndoCommand();
 	}
@@ -152,41 +152,41 @@ void TimelineAddTrackCommand::redo()
 	// Add merge if applicable
 	if (merge_) {
 		// Determine what was previously connected
-		Node *previous_connection = direct_.GetConnectedOutput();
+		Node *previous_connection = direct_.get_connected_output();
 
 		// Add merge to graph
-		merge_->setParent(timeline_->GetParentGraph());
+		merge_->setParent(timeline_->get_parent_graph());
 
 		// Connect merge between what used to be here
-		Node::DisconnectEdge(previous_connection, direct_);
-		Node::ConnectEdge(merge_, direct_);
-		Node::ConnectEdge(previous_connection, base_);
-		Node::ConnectEdge(track_, blend_);
+		Node::disconnect_edge(previous_connection, direct_);
+		Node::connect_edge(merge_, direct_);
+		Node::connect_edge(previous_connection, base_);
+		Node::connect_edge(track_, blend_);
 
 		if (create_pos_command) {
 			position_command_->add_child(new NodeSetPositionCommand(
 				track_, sequence,
-				sequence->GetNodePositionInContext(sequence) +
+				sequence->get_node_position_in_context(sequence) +
 					QPointF(-1, -position_factor)));
 			position_command_->add_child(new NodeSetPositionCommand(
 				merge_, sequence,
-				sequence->GetNodePositionInContext(sequence)));
+				sequence->get_node_position_in_context(sequence)));
 			position_command_->add_child(
 				new NodeSetPositionAndDependenciesRecursivelyCommand(
 					merge_, sequence,
-					sequence->GetNodePositionInContext(sequence) +
+					sequence->get_node_position_in_context(sequence) +
 						QPointF(-1,
-								position_factor * timeline_->GetTrackCount())));
+								position_factor * timeline_->get_track_count())));
 		}
-	} else if (direct_.IsValid() && !direct_.IsConnected()) {
+	} else if (direct_.is_valid() && !direct_.is_connected()) {
 		// If no merge, we have a direct connection, and nothing else is connected, connect this
-		Node::ConnectEdge(track_, direct_);
+		Node::connect_edge(track_, direct_);
 
 		if (create_pos_command) {
 			// Just position directly next to the context node
 			position_command_->add_child(new NodeSetPositionCommand(
 				track_, sequence,
-				sequence->GetNodePositionInContext(sequence) +
+				sequence->get_node_position_in_context(sequence) +
 					QPointF(-1, position_factor)));
 		}
 	}
@@ -205,22 +205,22 @@ void TimelineAddTrackCommand::undo()
 
 	// Remove merge if applicable
 	if (merge_) {
-		Node *previous_connection = base_.GetConnectedOutput();
+		Node *previous_connection = base_.get_connected_output();
 
-		Node::DisconnectEdge(track_, blend_);
-		Node::DisconnectEdge(previous_connection, base_);
-		Node::DisconnectEdge(merge_, direct_);
-		Node::ConnectEdge(previous_connection, direct_);
+		Node::disconnect_edge(track_, blend_);
+		Node::disconnect_edge(previous_connection, base_);
+		Node::disconnect_edge(merge_, direct_);
+		Node::connect_edge(previous_connection, direct_);
 
 		merge_->setParent(&memory_manager_);
-	} else if (direct_.IsValid() && direct_.GetConnectedOutput() == track_) {
-		Node::DisconnectEdge(track_, direct_);
+	} else if (direct_.is_valid() && direct_.get_connected_output() == track_) {
+		Node::disconnect_edge(track_, direct_);
 	}
 
 	// Remove track
-	Node::DisconnectEdge(track_,
-						 timeline_->track_input(timeline_->ArraySize() - 1));
-	timeline_->ArrayRemoveLast();
+	Node::disconnect_edge(track_,
+						 timeline_->track_input(timeline_->array_size() - 1));
+	timeline_->array_remove_last();
 	track_->setParent(&memory_manager_);
 }
 
@@ -248,20 +248,20 @@ void TransitionRemoveCommand::redo()
 	}
 
 	if (in_block_) {
-		Node::DisconnectEdge(in_block_,
-							 NodeInput(block_, TransitionBlock::kInBlockInput));
+		Node::disconnect_edge(in_block_,
+							 NodeInput(block_, TransitionBlock::k_in_block_input));
 	}
 
 	if (out_block_) {
-		Node::DisconnectEdge(
-			out_block_, NodeInput(block_, TransitionBlock::kOutBlockInput));
+		Node::disconnect_edge(
+			out_block_, NodeInput(block_, TransitionBlock::k_out_block_input));
 	}
 
-	track_->RippleRemoveBlock(block_);
+	track_->ripple_remove_block(block_);
 
 	if (remove_from_graph_) {
 		if (!remove_command_) {
-			remove_command_ = CreateRemoveCommand(block_);
+			remove_command_ = create_remove_command(block_);
 		}
 
 		remove_command_->redo_now();
@@ -275,19 +275,19 @@ void TransitionRemoveCommand::undo()
 	}
 
 	if (in_block_) {
-		track_->InsertBlockBefore(block_, in_block_);
+		track_->insert_block_before(block_, in_block_);
 	} else {
-		track_->InsertBlockAfter(block_, out_block_);
+		track_->insert_block_after(block_, out_block_);
 	}
 
 	if (in_block_) {
-		Node::ConnectEdge(in_block_,
-						  NodeInput(block_, TransitionBlock::kInBlockInput));
+		Node::connect_edge(in_block_,
+						  NodeInput(block_, TransitionBlock::k_in_block_input));
 	}
 
 	if (out_block_) {
-		Node::ConnectEdge(out_block_,
-						  NodeInput(block_, TransitionBlock::kOutBlockInput));
+		Node::connect_edge(out_block_,
+						  NodeInput(block_, TransitionBlock::k_out_block_input));
 	}
 
 	// These if statements must be separated because in_offset and out_offset report different things
@@ -310,8 +310,8 @@ void TransitionRemoveCommand::undo()
 void TrackListInsertGaps::prepare()
 {
 	// Determine if all tracks will be affected, which will allow us to make some optimizations
-	foreach (Track *track, track_list_->GetTracks()) {
-		if (track->IsLocked()) {
+	foreach (Track *track, track_list_->get_tracks()) {
+		if (track->is_locked()) {
 			continue;
 		}
 
@@ -323,7 +323,7 @@ void TrackListInsertGaps::prepare()
 	QVector<Track *> tracks_to_append_gap_to;
 
 	for (Track *track : qAsConst(working_tracks_)) {
-		for (Block *b : track->Blocks()) {
+		for (Block *b : track->blocks()) {
 			if (dynamic_cast<GapBlock *>(b) && b->in() <= point_ &&
 				b->out() >= point_) {
 				// Found a gap at the location
@@ -379,7 +379,7 @@ void TrackListInsertGaps::redo()
 
 	foreach (auto add_gap, gaps_added_) {
 		add_gap.gap->setParent(add_gap.track->parent());
-		add_gap.track->InsertBlockAfter(add_gap.gap, add_gap.before);
+		add_gap.track->insert_block_after(add_gap.gap, add_gap.before);
 	}
 }
 
@@ -387,7 +387,7 @@ void TrackListInsertGaps::undo()
 {
 	// Remove added gaps
 	foreach (auto add_gap, gaps_added_) {
-		add_gap.gap->track()->RippleRemoveBlock(add_gap.gap);
+		add_gap.gap->track()->ripple_remove_block(add_gap.gap);
 		add_gap.gap->setParent(&memory_manager_);
 	}
 
@@ -409,8 +409,8 @@ void TrackReplaceBlockWithGapCommand::redo()
 {
 	// Determine if this block is connected to any transitions that should also be removed by this operation
 	if (handle_transitions_ && transition_remove_commands_.isEmpty()) {
-		CreateRemoveTransitionCommandIfNecessary(false);
-		CreateRemoveTransitionCommandIfNecessary(true);
+		create_remove_transition_command_if_necessary(false);
+		create_remove_transition_command_if_necessary(true);
 	}
 	for (auto it = transition_remove_commands_.cbegin();
 		 it != transition_remove_commands_.cend(); it++) {
@@ -422,7 +422,7 @@ void TrackReplaceBlockWithGapCommand::redo()
 		TimeRange invalidate_range(block_->in(), block_->out());
 
 		// Block has a next, which means it's NOT at the end of the sequence and thus requires a gap
-		rational new_gap_length = block_->length();
+		Rational new_gap_length = block_->length();
 
 		Block *previous = block_->previous();
 		Block *next = block_->next();
@@ -436,7 +436,7 @@ void TrackReplaceBlockWithGapCommand::redo()
 
 			existing_merged_gap_ = static_cast<GapBlock *>(next);
 			new_gap_length += existing_merged_gap_->length();
-			track_->RippleRemoveBlock(existing_merged_gap_);
+			track_->ripple_remove_block(existing_merged_gap_);
 			existing_merged_gap_->setParent(&memory_manager_);
 		} else if (previous_is_a_gap) {
 			// Extend this gap to fill space left by block
@@ -450,7 +450,7 @@ void TrackReplaceBlockWithGapCommand::redo()
 			// Extend an existing gap
 			new_gap_length += existing_gap_->length();
 			existing_gap_->set_length_and_media_out(new_gap_length);
-			track_->RippleRemoveBlock(block_);
+			track_->ripple_remove_block(block_);
 
 			existing_gap_precedes_ = (existing_gap_ == previous);
 		} else {
@@ -461,17 +461,17 @@ void TrackReplaceBlockWithGapCommand::redo()
 			}
 
 			our_gap_->setParent(track_->parent());
-			track_->ReplaceBlock(block_, our_gap_);
+			track_->replace_block(block_, our_gap_);
 		}
 
 	} else {
 		// Block is at the end of the track, simply remove it
 		Block *preceding = block_->previous();
-		track_->RippleRemoveBlock(block_);
+		track_->ripple_remove_block(block_);
 
 		// Determine if it's preceded by a gap, and remove that gap if so
 		if (dynamic_cast<GapBlock *>(preceding)) {
-			track_->RippleRemoveBlock(preceding);
+			track_->ripple_remove_block(preceding);
 			preceding->setParent(&memory_manager_);
 
 			existing_merged_gap_ = static_cast<GapBlock *>(preceding);
@@ -484,27 +484,27 @@ void TrackReplaceBlockWithGapCommand::undo()
 	if (our_gap_ || existing_gap_) {
 		if (our_gap_) {
 			// We made this gap, simply swap our gap back
-			track_->ReplaceBlock(our_gap_, block_);
+			track_->replace_block(our_gap_, block_);
 			our_gap_->setParent(&memory_manager_);
 
 		} else {
 			// If we're here, assume that we extended an existing gap
-			rational original_gap_length =
+			Rational original_gap_length =
 				existing_gap_->length() - block_->length();
 
 			// If we merged two gaps together, restore the second one now
 			if (existing_merged_gap_) {
 				original_gap_length -= existing_merged_gap_->length();
 				existing_merged_gap_->setParent(track_->parent());
-				track_->InsertBlockAfter(existing_merged_gap_, existing_gap_);
+				track_->insert_block_after(existing_merged_gap_, existing_gap_);
 				existing_merged_gap_ = nullptr;
 			}
 
 			// Restore original block
 			if (existing_gap_precedes_) {
-				track_->InsertBlockAfter(block_, existing_gap_);
+				track_->insert_block_after(block_, existing_gap_);
 			} else {
-				track_->InsertBlockBefore(block_, existing_gap_);
+				track_->insert_block_before(block_, existing_gap_);
 			}
 
 			// Restore gap's original length
@@ -520,12 +520,12 @@ void TrackReplaceBlockWithGapCommand::undo()
 		// However, we may have removed an unnecessary gap that preceded it
 		if (existing_merged_gap_) {
 			existing_merged_gap_->setParent(track_->parent());
-			track_->AppendBlock(existing_merged_gap_);
+			track_->append_block(existing_merged_gap_);
 			existing_merged_gap_ = nullptr;
 		}
 
 		// Restore block
-		track_->AppendBlock(block_);
+		track_->append_block(block_);
 	}
 
 	for (auto it = transition_remove_commands_.crbegin();
@@ -534,7 +534,7 @@ void TrackReplaceBlockWithGapCommand::undo()
 	}
 }
 
-void TrackReplaceBlockWithGapCommand::CreateRemoveTransitionCommandIfNecessary(
+void TrackReplaceBlockWithGapCommand::create_remove_transition_command_if_necessary(
 	bool next)
 {
 	Block *relevant_block;
@@ -564,7 +564,7 @@ void TimelineRemoveTrackCommand::prepare()
 {
 	list_ = track_->sequence()->track_list(track_->type());
 
-	index_ = list_->GetArrayIndexFromCacheIndex(track_->Index());
+	index_ = list_->get_array_index_from_cache_index(track_->index());
 
 	remove_command_ =
 		new NodeRemoveWithExclusiveDependenciesAndDisconnect(track_);
@@ -574,12 +574,12 @@ void TimelineRemoveTrackCommand::redo()
 {
 	remove_command_->redo_now();
 
-	list_->parent()->InputArrayRemove(list_->track_input(), index_);
+	list_->parent()->input_array_remove(list_->track_input(), index_);
 }
 
 void TimelineRemoveTrackCommand::undo()
 {
-	list_->parent()->InputArrayInsert(list_->track_input(), index_);
+	list_->parent()->input_array_insert(list_->track_input(), index_);
 
 	remove_command_->undo_now();
 }
@@ -594,64 +594,64 @@ void TimelineAddDefaultTransitionCommand::prepare()
 			// Do nothing, assume this will be handled by a dual transition from that clip
 		} else if (dynamic_cast<GapBlock *>(c->previous()) || !c->previous()) {
 			// Create in transition
-			AddTransition(c, kIn);
+			add_transition(c, k_in);
 		}
 
 		// Handle out transition
 		if (clips_.contains(static_cast<ClipBlock *>(c->next()))) {
-			AddTransition(c, kOutDual);
+			add_transition(c, k_out_dual);
 		} else if (dynamic_cast<GapBlock *>(c->next()) || !c->next()) {
 			// Create out transition
-			AddTransition(c, kOut);
+			add_transition(c, k_out);
 		}
 	}
 }
 
-void TimelineAddDefaultTransitionCommand::AddTransition(
+void TimelineAddDefaultTransitionCommand::add_transition(
 	ClipBlock *c, CreateTransitionMode mode)
 {
 	if (Track *t = c->track()) {
 		Node *p = nullptr;
-		if (t->type() == Track::kVideo) {
-			p = NodeFactory::CreateFromID(
-				OLIVE_CONFIG("DefaultVideoTransition").toString());
-		} else if (t->type() == Track::kAudio) {
-			p = NodeFactory::CreateFromID(
-				OLIVE_CONFIG("DefaultAudioTransition").toString());
+		if (t->type() == Track::k_video) {
+			p = NodeFactory::create_from_id(
+				OAK_CONFIG("DefaultVideoTransition").toString());
+		} else if (t->type() == Track::k_audio) {
+			p = NodeFactory::create_from_id(
+				OAK_CONFIG("DefaultAudioTransition").toString());
 		}
 
-		rational transition_length =
-			OLIVE_CONFIG("DefaultTransitionLength").value<rational>();
+		Rational transition_length =
+			OAK_CONFIG("DefaultTransitionLength").value<Rational>();
 
 		// Resize original clip
 		switch (mode) {
-		case kIn:
-			ValidateTransitionLength(c, transition_length);
+		case k_in:
+			validate_transition_length(c, transition_length);
 
 			if (transition_length > 0) {
-				AdjustClipLength(c, transition_length, false);
+				adjust_clip_length(c, transition_length, false);
 			}
 			break;
-		case kOut:
-			ValidateTransitionLength(c, transition_length);
+		case k_out:
+			validate_transition_length(c, transition_length);
 
 			if (transition_length > 0) {
-				AdjustClipLength(c, transition_length, true);
+				adjust_clip_length(c, transition_length, true);
 			}
 			break;
-		case kOutDual: {
-			rational half_length = transition_length / 2;
+		case k_out_dual: {
+			Rational half_length = transition_length / 2;
 
-			ValidateTransitionLength(static_cast<ClipBlock *>(c->next()),
+			validate_transition_length(static_cast<ClipBlock *>(c->next()),
 									 half_length);
-			ValidateTransitionLength(c, half_length);
+			validate_transition_length(c, half_length);
 
 			transition_length = half_length * 2;
 
 			if (transition_length > 0) {
-				AdjustClipLength(static_cast<ClipBlock *>(c->next()),
+				adjust_clip_length(static_cast<ClipBlock *>(c->next()),
 								 half_length, false);
-				AdjustClipLength(c, half_length, true);
+				adjust_clip_length(c, half_length, true);
 			}
 			break;
 		}
@@ -666,26 +666,26 @@ void TimelineAddDefaultTransitionCommand::AddTransition(
 				commands_.append(new NodeAddCommand(c->parent(), transition));
 
 				// Insert block
-				Block *insert_after = (mode == kIn) ? c->previous() : c;
+				Block *insert_after = (mode == k_in) ? c->previous() : c;
 				commands_.append(new TrackInsertBlockAfterCommand(
 					c->track(), transition, insert_after));
 
 				// Connect
 				switch (mode) {
-				case kIn:
+				case k_in:
 					commands_.append(new NodeEdgeAddCommand(
 						c,
-						NodeInput(transition, TransitionBlock::kInBlockInput)));
+						NodeInput(transition, TransitionBlock::k_in_block_input)));
 					break;
-				case kOutDual:
+				case k_out_dual:
 					commands_.append(new NodeEdgeAddCommand(
 						c->next(),
-						NodeInput(transition, TransitionBlock::kInBlockInput)));
+						NodeInput(transition, TransitionBlock::k_in_block_input)));
 					/* fall through */
-				case kOut:
+				case k_out:
 					commands_.append(new NodeEdgeAddCommand(
 						c, NodeInput(transition,
-									 TransitionBlock::kOutBlockInput)));
+									 TransitionBlock::k_out_block_input)));
 					break;
 				}
 			}
@@ -693,11 +693,11 @@ void TimelineAddDefaultTransitionCommand::AddTransition(
 	}
 }
 
-void TimelineAddDefaultTransitionCommand::AdjustClipLength(
-	ClipBlock *c, const rational &transition_length, bool out)
+void TimelineAddDefaultTransitionCommand::adjust_clip_length(
+	ClipBlock *c, const Rational &transition_length, bool out)
 {
-	rational cur_len = lengths_.value(c, c->length());
-	rational new_len = cur_len - transition_length;
+	Rational cur_len = lengths_.value(c, c->length());
+	Rational new_len = cur_len - transition_length;
 	if (out) {
 		commands_.append(new BlockResizeCommand(c, new_len));
 	} else {
@@ -706,11 +706,11 @@ void TimelineAddDefaultTransitionCommand::AdjustClipLength(
 	lengths_.insert(c, new_len);
 }
 
-void TimelineAddDefaultTransitionCommand::ValidateTransitionLength(
-	ClipBlock *c, rational &transition_length)
+void TimelineAddDefaultTransitionCommand::validate_transition_length(
+	ClipBlock *c, Rational &transition_length)
 {
-	rational cur_len = lengths_.value(c, c->length());
-	rational half_cur_len = cur_len / 2;
+	Rational cur_len = lengths_.value(c, c->length());
+	Rational half_cur_len = cur_len / 2;
 	if (transition_length >= half_cur_len) {
 		transition_length = half_cur_len - timebase_;
 	}

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEPARAMVIEWCONNECTEDLABEL_H
-#define NODEPARAMVIEWCONNECTEDLABEL_H
+#ifndef OAK_NODEPARAMVIEWCONNECTEDLABEL_H
+#define OAK_NODEPARAMVIEWCONNECTEDLABEL_H
 
 #include "node/param.h"
 #include "widget/clickablelabel/clickablelabel.h"
@@ -35,26 +35,26 @@ public:
 	NodeParamViewConnectedLabel(const NodeInput &input,
 								QWidget *parent = nullptr);
 
-	void SetViewerNode(ViewerOutput *viewer);
+	void set_viewer_node(ViewerOutput *viewer);
 
 signals:
-	void RequestSelectNode(Node *n);
+	void request_select_node(Node *n);
 
 private slots:
-	void InputConnected(Node *output, const NodeInput &input);
+	void input_connected(Node *output, const NodeInput &input);
 
-	void InputDisconnected(Node *output, const NodeInput &input);
+	void input_disconnected(Node *output, const NodeInput &input);
 
-	void ShowLabelContextMenu();
+	void show_label_context_menu();
 
-	void ConnectionClicked();
+	void connection_clicked();
 
 private:
-	void UpdateLabel();
+	void update_label();
 
-	void UpdateValueTree();
+	void update_value_tree();
 
-	void CreateTree();
+	void create_tree();
 
 	ClickableLabel *connected_to_lbl_;
 
@@ -67,9 +67,9 @@ private:
 	ViewerOutput *viewer_;
 
 private slots:
-	void SetValueTreeVisible(bool e);
+	void set_value_tree_visible(bool e);
 };
 
 }
 
-#endif // NODEPARAMVIEWCONNECTEDLABEL_H
+#endif // OAK_NODEPARAMVIEWCONNECTEDLABEL_H

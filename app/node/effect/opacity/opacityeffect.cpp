@@ -26,65 +26,65 @@ namespace olive
 
 #define super Node
 
-const QString OpacityEffect::kTextureInput = QStringLiteral("tex_in");
-const QString OpacityEffect::kValueInput = QStringLiteral("opacity_in");
+const QString OpacityEffect::k_texture_input = QStringLiteral("tex_in");
+const QString OpacityEffect::k_value_input = QStringLiteral("opacity_in");
 
 OpacityEffect::OpacityEffect()
 {
 	MathNode *math = new MathNode();
 	math->setParent(this);
 
-	math->SetOperation(MathNode::kOpMultiply);
+	math->set_operation(MathNode::k_op_multiply);
 
-	SetNodePositionInContext(math, QPointF(0, 0));
+	set_node_position_in_context(math, QPointF(0, 0));
 
-	AddInput(kTextureInput, NodeValue::kTexture,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_texture_input, NodeValue::k_texture,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	AddInput(kValueInput, NodeValue::kFloat, 1.0);
-	SetInputProperty(kValueInput, QStringLiteral("view"),
-					 FloatSlider::kPercentage);
-	SetInputProperty(kValueInput, QStringLiteral("min"), 0.0);
-	SetInputProperty(kValueInput, QStringLiteral("max"), 1.0);
+	add_input(k_value_input, NodeValue::k_float, 1.0);
+	set_input_property(k_value_input, QStringLiteral("view"),
+					 FloatSlider::k_percentage);
+	set_input_property(k_value_input, QStringLiteral("min"), 0.0);
+	set_input_property(k_value_input, QStringLiteral("max"), 1.0);
 
-	SetFlag(kVideoEffect);
-	SetEffectInput(kTextureInput);
+	set_flag(k_video_effect);
+	set_effect_input(k_texture_input);
 }
 
-void OpacityEffect::Retranslate()
+void OpacityEffect::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kTextureInput, tr("Texture"));
-	SetInputName(kValueInput, tr("Opacity"));
+	set_input_name(k_texture_input, tr("Texture"));
+	set_input_name(k_value_input, tr("Opacity"));
 }
 
-ShaderCode OpacityEffect::GetShaderCode(const ShaderRequest &request) const
+ShaderCode OpacityEffect::get_shader_code(const ShaderRequest &request) const
 {
 	if (request.id == QStringLiteral("rgbmult")) {
 		return ShaderCode(
-			FileFunctions::ReadFileAsString(":/shaders/opacity_rgb.frag"));
+			FileFunctions::read_file_as_string(":/shaders/opacity_rgb.frag"));
 	} else {
 		return ShaderCode(
-			FileFunctions::ReadFileAsString(":/shaders/opacity.frag"));
+			FileFunctions::read_file_as_string(":/shaders/opacity.frag"));
 	}
 }
 
-void OpacityEffect::Value(const NodeValueRow &value, const NodeGlobals &globals,
+void OpacityEffect::value(const NodeValueRow &value, const NodeGlobals &globals,
 						  NodeValueTable *table) const
 {
 	// If there's no texture, no need to run an operation
-	if (TexturePtr tex = value[kTextureInput].toTexture()) {
-		if (TexturePtr opacity_tex = value[kValueInput].toTexture()) {
+	if (TexturePtr tex = value[k_texture_input].to_texture()) {
+		if (TexturePtr opacity_tex = value[k_value_input].to_texture()) {
 			ShaderJob job(value);
-			job.SetShaderID(QStringLiteral("rgbmult"));
-			table->Push(NodeValue::kTexture, tex->toJob(job), this);
-		} else if (!qFuzzyCompare(value[kValueInput].toDouble(), 1.0)) {
-			table->Push(NodeValue::kTexture, tex->toJob(ShaderJob(value)),
+			job.set_shader_id(QStringLiteral("rgbmult"));
+			table->push(NodeValue::k_texture, tex->to_job(job), this);
+		} else if (!qFuzzyCompare(value[k_value_input].to_double(), 1.0)) {
+			table->push(NodeValue::k_texture, tex->to_job(ShaderJob(value)),
 						this);
 		} else {
 			// 1.0 float is a no-op, so just push the texture
-			table->Push(value[kTextureInput]);
+			table->push(value[k_texture_input]);
 		}
 	}
 }

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLORWHEELWIDGET_H
-#define COLORWHEELWIDGET_H
+#ifndef OAK_COLORWHEELWIDGET_H
+#define OAK_COLORWHEELWIDGET_H
 
 #include <QOpenGLWidget>
 
@@ -35,10 +35,10 @@ public:
 	ColorWheelWidget(QWidget *parent = nullptr);
 
 signals:
-	void DiameterChanged(int radius);
+	void diameter_changed(int radius);
 
 protected:
-	virtual Color GetColorFromScreenPos(const QPoint &p) const override;
+	virtual Color get_color_from_screen_pos(const QPoint &p) const override;
 
 	virtual void resizeEvent(QResizeEvent *e) override;
 
@@ -48,9 +48,9 @@ protected:
 										   bool external) override;
 
 private:
-	int GetDiameter() const;
+	int get_diameter() const;
 
-	qreal GetRadius() const;
+	qreal get_radius() const;
 
 	struct Triangle {
 		qreal opposite;
@@ -58,12 +58,12 @@ private:
 		qreal hypotenuse;
 	};
 
-	Triangle GetTriangleFromCoords(const QPoint &center, const QPoint &p) const;
-	Triangle GetTriangleFromCoords(const QPoint &center, qreal y,
+	Triangle get_triangle_from_coords(const QPoint &center, const QPoint &p) const;
+	Triangle get_triangle_from_coords(const QPoint &center, qreal y,
 								   qreal x) const;
 
-	Color GetColorFromTriangle(const Triangle &tri) const;
-	QPoint GetCoordsFromColor(const Color &c) const;
+	Color get_color_from_triangle(const Triangle &tri) const;
+	QPoint get_coords_from_color(const Color &c) const;
 
 	QPixmap cached_wheel_;
 
@@ -74,4 +74,4 @@ private:
 
 }
 
-#endif // COLORWHEELWIDGET_H
+#endif // OAK_COLORWHEELWIDGET_H

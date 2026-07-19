@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef RIPPLETIMELINETOOL_H
-#define RIPPLETIMELINETOOL_H
+#ifndef OAK_RIPPLETIMELINETOOL_H
+#define OAK_RIPPLETIMELINETOOL_H
 
 #include "pointer.h"
 
@@ -32,13 +32,13 @@ public:
 	RippleTool(TimelineWidget *parent);
 
 protected:
-	virtual void FinishDrag(TimelineViewMouseEvent *event) override;
+	virtual void finish_drag(TimelineViewMouseEvent *event) override;
 
-	virtual void InitiateDrag(Block *clicked_item,
+	virtual void initiate_drag(Block *clicked_item,
 							  Timeline::MovementMode trim_mode,
 							  Qt::KeyboardModifiers modifiers) override;
 };
 
 }
 
-#endif // RIPPLETIMELINETOOL_H
+#endif // OAK_RIPPLETIMELINETOOL_H

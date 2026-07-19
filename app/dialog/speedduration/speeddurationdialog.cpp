@@ -36,7 +36,7 @@ namespace olive
 #define super QDialog
 
 SpeedDurationDialog::SpeedDurationDialog(const QVector<ClipBlock *> &clips,
-										 const rational &timebase,
+										 const Rational &timebase,
 										 QWidget *parent)
 	: super(parent)
 	, clips_(clips)
@@ -57,9 +57,9 @@ SpeedDurationDialog::SpeedDurationDialog(const QVector<ClipBlock *> &clips,
 		speed_layout->addWidget(new QLabel(tr("Speed:")), row, 0);
 
 		speed_slider_ = new FloatSlider();
-		speed_slider_->SetDisplayType(FloatSlider::kPercentage);
-		connect(speed_slider_, &FloatSlider::ValueChanged, this,
-				&SpeedDurationDialog::SpeedChanged);
+		speed_slider_->set_display_type(FloatSlider::k_percentage);
+		connect(speed_slider_, &FloatSlider::value_changed, this,
+				&SpeedDurationDialog::speed_changed);
 		speed_layout->addWidget(speed_slider_, row, 1);
 
 		row++;
@@ -67,10 +67,10 @@ SpeedDurationDialog::SpeedDurationDialog(const QVector<ClipBlock *> &clips,
 		speed_layout->addWidget(new QLabel(tr("Duration:")), row, 0);
 
 		dur_slider_ = new RationalSlider();
-		dur_slider_->SetTimebase(timebase);
-		dur_slider_->SetDisplayType(RationalSlider::kTime);
-		connect(dur_slider_, &RationalSlider::ValueChanged, this,
-				&SpeedDurationDialog::DurationChanged);
+		dur_slider_->set_timebase(timebase);
+		dur_slider_->set_display_type(RationalSlider::k_time);
+		connect(dur_slider_, &RationalSlider::value_changed, this,
+				&SpeedDurationDialog::duration_changed);
 		speed_layout->addWidget(dur_slider_, row, 1);
 
 		row++;
@@ -106,9 +106,9 @@ SpeedDurationDialog::SpeedDurationDialog(const QVector<ClipBlock *> &clips,
 		loop_layout->addWidget(new QLabel(tr("Loop:")), row, 0);
 
 		loop_combo_ = new QComboBox();
-		loop_combo_->addItem(tr("None"), int(LoopMode::kLoopModeOff));
-		loop_combo_->addItem(tr("Loop"), int(LoopMode::kLoopModeLoop));
-		loop_combo_->addItem(tr("Clamp"), int(LoopMode::kLoopModeClamp));
+		loop_combo_->addItem(tr("None"), int(LoopMode::k_loop_mode_off));
+		loop_combo_->addItem(tr("Loop"), int(LoopMode::k_loop_mode_loop));
+		loop_combo_->addItem(tr("Clamp"), int(LoopMode::k_loop_mode_clamp));
 		loop_layout->addWidget(loop_combo_, row, 1);
 	}
 
@@ -157,15 +157,15 @@ SpeedDurationDialog::SpeedDurationDialog(const QVector<ClipBlock *> &clips,
 	}
 
 	if (qIsNaN(start_speed_)) {
-		speed_slider_->SetTristate();
+		speed_slider_->set_tristate();
 	} else {
-		speed_slider_->SetValue(start_speed_);
+		speed_slider_->set_value(start_speed_);
 	}
 
 	if (start_duration_ == -1) {
-		dur_slider_->SetTristate();
+		dur_slider_->set_tristate();
 	} else {
-		dur_slider_->SetValue(start_duration_);
+		dur_slider_->set_value(start_duration_);
 	}
 
 	if (start_reverse_ == -1) {
@@ -195,16 +195,16 @@ void SpeedDurationDialog::accept()
 	TimelineRippleDeleteGapsAtRegionsCommand::RangeList ripple_ranges;
 
 	foreach (ClipBlock *c, clips_) {
-		rational proposed_length = c->length();
+		Rational proposed_length = c->length();
 
-		if (dur_slider_->IsTristate()) {
-			if (link_box_->isChecked() && !speed_slider_->IsTristate()) {
-				proposed_length = GetLengthAdjustment(c->length(), c->speed(),
-													  speed_slider_->GetValue(),
+		if (dur_slider_->is_tristate()) {
+			if (link_box_->isChecked() && !speed_slider_->is_tristate()) {
+				proposed_length = get_length_adjustment(c->length(), c->speed(),
+													  speed_slider_->get_value(),
 													  timebase_);
 			}
 		} else {
-			proposed_length = dur_slider_->GetValue();
+			proposed_length = dur_slider_->get_value();
 		}
 
 		if (proposed_length != c->length()) {
@@ -220,7 +220,7 @@ void SpeedDurationDialog::accept()
 
 			if (proposed_length != c->length()) {
 				command->add_child(new BlockTrimCommand(
-					c->track(), c, proposed_length, Timeline::kTrimOut));
+					c->track(), c, proposed_length, Timeline::k_trim_out));
 				ripple_ranges.append(
 					{ c->track(),
 					  TimeRange(c->in() + proposed_length, c->out()) });
@@ -234,23 +234,23 @@ void SpeedDurationDialog::accept()
 	}
 
 	// Set speed values
-	if (speed_slider_->IsTristate()) {
-		if (link_box_->isChecked() && !dur_slider_->IsTristate()) {
+	if (speed_slider_->is_tristate()) {
+		if (link_box_->isChecked() && !dur_slider_->is_tristate()) {
 			// Automatically determine speed from duration
 			foreach (ClipBlock *c, clips_) {
 				command->add_child(new NodeParamSetStandardValueCommand(
 					NodeKeyframeTrackReference(
-						NodeInput(c, ClipBlock::kSpeedInput)),
-					GetSpeedAdjustment(c->speed(), c->length(),
-									   dur_slider_->GetValue())));
+						NodeInput(c, ClipBlock::k_speed_input)),
+					get_speed_adjustment(c->speed(), c->length(),
+									   dur_slider_->get_value())));
 			}
 		}
 	} else {
 		// Set speeds to value of slider
 		foreach (ClipBlock *c, clips_) {
 			command->add_child(new NodeParamSetStandardValueCommand(
-				NodeKeyframeTrackReference(NodeInput(c, ClipBlock::kSpeedInput)),
-				speed_slider_->GetValue()));
+				NodeKeyframeTrackReference(NodeInput(c, ClipBlock::k_speed_input)),
+				speed_slider_->get_value()));
 		}
 	}
 
@@ -259,7 +259,7 @@ void SpeedDurationDialog::accept()
 		foreach (ClipBlock *c, clips_) {
 			command->add_child(new NodeParamSetStandardValueCommand(
 				NodeKeyframeTrackReference(
-					NodeInput(c, ClipBlock::kReverseInput)),
+					NodeInput(c, ClipBlock::k_reverse_input)),
 				reverse_box_->isChecked()));
 		}
 	}
@@ -269,7 +269,7 @@ void SpeedDurationDialog::accept()
 		foreach (ClipBlock *c, clips_) {
 			command->add_child(new NodeParamSetStandardValueCommand(
 				NodeKeyframeTrackReference(
-					NodeInput(c, ClipBlock::kMaintainAudioPitchInput)),
+					NodeInput(c, ClipBlock::k_maintain_audio_pitch_input)),
 				maintain_audio_pitch_box_->isChecked()));
 		}
 	}
@@ -278,7 +278,7 @@ void SpeedDurationDialog::accept()
 		foreach (ClipBlock *c, clips_) {
 			command->add_child(new NodeParamSetStandardValueCommand(
 				NodeKeyframeTrackReference(
-					NodeInput(c, ClipBlock::kLoopModeInput)),
+					NodeInput(c, ClipBlock::k_loop_mode_input)),
 				loop_combo_->currentData()));
 		}
 	}
@@ -286,54 +286,54 @@ void SpeedDurationDialog::accept()
 	QString name = (clips_.size() > 1) ?
 					   tr("Set %1 Clip Properties").arg(clips_.size()) :
 					   tr("Set Clip \"%1\" Properties")
-						   .arg(clips_.first()->GetLabelOrName());
+						   .arg(clips_.first()->get_label_or_name());
 	Core::instance()->undo_stack()->push(command, name);
 
 	super::accept();
 }
 
-rational SpeedDurationDialog::GetLengthAdjustment(
-	const rational &original_length, double original_speed, double new_speed,
-	const rational &timebase)
+Rational SpeedDurationDialog::get_length_adjustment(
+	const Rational &original_length, double original_speed, double new_speed,
+	const Rational &timebase)
 {
 	return Timecode::snap_time_to_timebase(
-		rational::fromDouble(original_length.toDouble() / new_speed *
+		Rational::from_double(original_length.to_double() / new_speed *
 							 original_speed),
 		timebase);
 }
 
-double SpeedDurationDialog::GetSpeedAdjustment(double original_speed,
-											   const rational &original_length,
-											   const rational &new_length)
+double SpeedDurationDialog::get_speed_adjustment(double original_speed,
+											   const Rational &original_length,
+											   const Rational &new_length)
 {
-	return original_speed / new_length.toDouble() * original_length.toDouble();
+	return original_speed / new_length.to_double() * original_length.to_double();
 }
 
-void SpeedDurationDialog::SpeedChanged(double s)
+void SpeedDurationDialog::speed_changed(double s)
 {
 	if (!link_box_->isChecked()) {
 		return;
 	}
 
 	if (start_duration_ == -1) {
-		dur_slider_->SetTristate();
+		dur_slider_->set_tristate();
 	} else {
-		dur_slider_->SetValue(
-			GetLengthAdjustment(start_duration_, start_speed_, s, timebase_));
+		dur_slider_->set_value(
+			get_length_adjustment(start_duration_, start_speed_, s, timebase_));
 	}
 }
 
-void SpeedDurationDialog::DurationChanged(const rational &r)
+void SpeedDurationDialog::duration_changed(const Rational &r)
 {
 	if (!link_box_->isChecked()) {
 		return;
 	}
 
 	if (qIsNaN(start_speed_)) {
-		speed_slider_->SetTristate();
+		speed_slider_->set_tristate();
 	} else {
-		speed_slider_->SetValue(
-			GetSpeedAdjustment(start_speed_, start_duration_, r));
+		speed_slider_->set_value(
+			get_speed_adjustment(start_speed_, start_duration_, r));
 	}
 }
 

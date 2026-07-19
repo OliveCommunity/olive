@@ -39,40 +39,40 @@ ColorProcessor::ColorProcessor(ColorManager *config, const QString &input,
 		// Resolve role names (e.g. "scene_linear") to canonical colorspace names
 		// so they can be passed to getProcessor()/DisplayViewTransform.
 		QString resolved_input = input;
-		OCIO::ConstConfigRcPtr ocio_config = config->GetConfig();
+		ocio::ConstConfigRcPtr ocio_config = config->get_config();
 		if (ocio_config && ocio_config->hasRole(input.toUtf8())) {
 			resolved_input = ocio_config->getCanonicalName(input.toUtf8());
 		}
 
 		const QString &output = (transform.output().isEmpty()) ?
-									config->GetDefaultDisplay() :
+									config->get_default_display() :
 									transform.output();
 
 		if (transform.is_display()) {
 			const QString &view = (transform.view().isEmpty()) ?
-									  config->GetDefaultView(output) :
+									  config->get_default_view(output) :
 									  transform.view();
 
-			auto display_transform = OCIO::DisplayViewTransform::Create();
+			auto display_transform = ocio::DisplayViewTransform::Create();
 
 			display_transform->setSrc(resolved_input.toUtf8());
 			display_transform->setDisplay(output.toUtf8());
 			display_transform->setView(view.toUtf8());
-			display_transform->setDirection(direction == kNormal ?
-												OCIO::TRANSFORM_DIR_FORWARD :
-												OCIO::TRANSFORM_DIR_INVERSE);
+			display_transform->setDirection(direction == k_normal ?
+												ocio::TRANSFORM_DIR_FORWARD :
+												ocio::TRANSFORM_DIR_INVERSE);
 
 			if (transform.look().isEmpty()) {
 				processor_ = ocio_config->getProcessor(display_transform);
 			} else {
-				auto group = OCIO::GroupTransform::Create();
+				auto group = ocio::GroupTransform::Create();
 
 				const char *out_cs =
-					OCIO::LookTransform::GetLooksResultColorSpace(
+					ocio::LookTransform::GetLooksResultColorSpace(
 						ocio_config, ocio_config->getCurrentContext(),
 						transform.look().toUtf8());
 
-				auto lt = OCIO::LookTransform::Create();
+				auto lt = ocio::LookTransform::Create();
 				lt->setSrc(resolved_input.toUtf8());
 				lt->setDst(out_cs);
 				lt->setLooks(transform.look().toUtf8());
@@ -86,7 +86,7 @@ ColorProcessor::ColorProcessor(ColorManager *config, const QString &input,
 			}
 
 		} else {
-			if (direction == kNormal) {
+			if (direction == k_normal) {
 				processor_ = ocio_config->getProcessor(resolved_input.toUtf8(),
 													   output.toUtf8());
 			} else {
@@ -98,41 +98,41 @@ ColorProcessor::ColorProcessor(ColorManager *config, const QString &input,
 		if (processor_) {
 			cpu_processor_ = processor_->getDefaultCPUProcessor();
 		}
-	} catch (OCIO::Exception &e) {
+	} catch (ocio::Exception &e) {
 		qWarning() << "ColorProcessor exception:" << e.what();
 	}
 }
 
-ColorProcessor::ColorProcessor(OCIO::ConstProcessorRcPtr processor)
+ColorProcessor::ColorProcessor(ocio::ConstProcessorRcPtr processor)
 {
 	processor_ = processor;
 	cpu_processor_ = processor_ ? processor_->getDefaultCPUProcessor() :
 								  nullptr;
 }
 
-void ColorProcessor::ConvertFrame(Frame *f)
+void ColorProcessor::convert_frame(Frame *f)
 {
 	if (!cpu_processor_) {
 		return;
 	}
 
-	OCIO::BitDepth ocio_bit_depth =
-		OCIOUtils::GetOCIOBitDepthFromPixelFormat(f->format());
+	ocio::BitDepth ocio_bit_depth =
+		OCIOUtils::get_ocio_bit_depth_from_pixel_format(f->format());
 
-	if (ocio_bit_depth == OCIO::BIT_DEPTH_UNKNOWN) {
+	if (ocio_bit_depth == ocio::BIT_DEPTH_UNKNOWN) {
 		qCritical() << "Tried to color convert frame with no format";
 		return;
 	}
 
-	OCIO::PackedImageDesc img(f->data(), f->width(), f->height(),
+	ocio::PackedImageDesc img(f->data(), f->width(), f->height(),
 							  f->channel_count(), ocio_bit_depth,
-							  OCIO::AutoStride, OCIO::AutoStride,
+							  ocio::AutoStride, ocio::AutoStride,
 							  f->linesize_bytes());
 
 	cpu_processor_->apply(img);
 }
 
-Color ColorProcessor::ConvertColor(const Color &in)
+Color ColorProcessor::convert_color(const Color &in)
 {
 	if (!cpu_processor_) {
 		return in;
@@ -147,7 +147,7 @@ Color ColorProcessor::ConvertColor(const Color &in)
 	return Color(c[0], c[1], c[2], c[3]);
 }
 
-ColorProcessorPtr ColorProcessor::Create(ColorManager *config,
+ColorProcessorPtr ColorProcessor::create(ColorManager *config,
 										 const QString &input,
 										 const ColorTransform &transform,
 										 Direction direction)
@@ -156,19 +156,19 @@ ColorProcessorPtr ColorProcessor::Create(ColorManager *config,
 											direction);
 }
 
-ColorProcessorPtr ColorProcessor::Create(OCIO::ConstProcessorRcPtr processor)
+ColorProcessorPtr ColorProcessor::create(ocio::ConstProcessorRcPtr processor)
 {
 	return std::make_shared<ColorProcessor>(processor);
 }
 
-OCIO::ConstProcessorRcPtr ColorProcessor::GetProcessor()
+ocio::ConstProcessorRcPtr ColorProcessor::get_processor()
 {
 	return processor_;
 }
 
-void ColorProcessor::ConvertFrame(FramePtr f)
+void ColorProcessor::convert_frame(FramePtr f)
 {
-	ConvertFrame(f.get());
+	convert_frame(f.get());
 }
 
 }

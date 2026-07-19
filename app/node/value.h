@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEVALUE_H
-#define NODEVALUE_H
+#ifndef OAK_NODEVALUE_H
+#define OAK_NODEVALUE_H
 
 #include <QMatrix4x4>
 #include <QString>
@@ -47,7 +47,7 @@ public:
    * @brief The types of data that can be passed between Nodes
    */
 	enum Type {
-		kNone,
+		k_none,
 
 		/**
      ****************************** SPECIFIC IDENTIFIERS ******************************
@@ -58,28 +58,28 @@ public:
      *
      * Resolves to int64_t.
      */
-		kInt,
+		k_int,
 
 		/**
      * Decimal (floating-point) type
      *
      * Resolves to `double`.
      */
-		kFloat,
+		k_float,
 
 		/**
-     * Decimal (rational) type
+     * Decimal (Rational) type
      *
      * Resolves to `double`.
      */
-		kRational,
+		k_rational,
 
 		/**
      * Boolean type
      *
      * Resolves to `bool`.
      */
-		kBoolean,
+		k_boolean,
 
 		/**
      * Floating-point type
@@ -88,129 +88,129 @@ public:
      *
      * Colors passed around the nodes should always be in reference space and preferably use
      */
-		kColor,
+		k_color,
 
 		/**
      * Matrix type
      *
      * Resolves to `QMatrix4x4`.
      */
-		kMatrix,
+		k_matrix,
 
 		/**
      * Text type
      *
      * Resolves to `QString`.
      */
-		kText,
+		k_text,
 
 		/**
      * Font type
      *
      * Resolves to `QFont`.
      */
-		kFont,
+		k_font,
 
 		/**
      * File type
      *
      * Resolves to a `QString` containing an absolute file path.
      */
-		kFile,
+		k_file,
 
 		/**
      * Image buffer type
      *
      * True value type depends on the render engine used.
      */
-		kTexture,
+		k_texture,
 
 		/**
      * Audio samples type
      *
      * Resolves to `SampleBufferPtr`.
      */
-		kSamples,
+		k_samples,
 
 		/**
      * Two-dimensional vector (XY) type
      *
      * Resolves to `QVector2D`.
      */
-		kVec2,
+		k_vec2,
 
 		/**
      * Three-dimensional vector (XYZ) type
      *
      * Resolves to `QVector3D`.
      */
-		kVec3,
+		k_vec3,
 
 		/**
      * Four-dimensional vector (XYZW) type
      *
      * Resolves to `QVector4D`.
      */
-		kVec4,
+		k_vec4,
 
 		/**
      * Cubic bezier type that contains three X/Y coordinates, the main point, and two control points
      *
      * Resolves to `Bezier`
      */
-		kBezier,
+		k_bezier,
 
 		/**
      * ComboBox type
      *
      * Resolves to `int` - the index currently selected
      */
-		kCombo,
+		k_combo,
 		/**
 	 * ComboBox type
 	 *
 	 * Resolves to `QString` - the text of choice currently selected
 	 * This is to support the OpenFX type kOfxParamTypeStrChoice
 	 */
-		kStrCombo,
+		k_str_combo,
 		/**
      * Video Parameters type
      *
      * Resolves to `VideoParams`
      */
-		kVideoParams,
+		k_video_params,
 
 		/**
      * Audio Parameters type
      *
      * Resolves to `AudioParams`
      */
-		kAudioParams,
+		k_audio_params,
 
 		/**
      * Subtitle Parameters type
      *
      * Resolves to `SubtitleParams`
      */
-		kSubtitleParams,
+		k_subtitle_params,
 
 		/**
      * Binary Data
      */
-		kBinary,
+		k_binary,
 
 		/**
 		 *Push Button
 		 */
-		kPushButton,
+		k_push_button,
 		/**
      * End of list
      */
-		kDataTypeCount
+		k_data_type_count
 	};
 
 	NodeValue()
-		: type_(kNone)
+		: type_(k_none)
 		, from_(nullptr)
 		, array_(false)
 	{
@@ -288,19 +288,19 @@ public:
 		return !data_.isNull();
 	}
 
-	static QString GetPrettyDataTypeName(Type type);
+	static QString get_pretty_data_type_name(Type type);
 
-	static QString GetDataTypeName(Type type);
-	static NodeValue::Type GetDataTypeFromName(const QString &n);
+	static QString get_data_type_name(Type type);
+	static NodeValue::Type get_data_type_from_name(const QString &n);
 
-	static QString ValueToString(Type data_type, const QVariant &value,
+	static QString value_to_string(Type data_type, const QVariant &value,
 								 bool value_is_a_key_track);
-	static QString ValueToString(const NodeValue &v, bool value_is_a_key_track)
+	static QString value_to_string(const NodeValue &v, bool value_is_a_key_track)
 	{
-		return ValueToString(v.type_, v.data_, value_is_a_key_track);
+		return value_to_string(v.type_, v.data_, value_is_a_key_track);
 	}
 
-	static QVariant StringToValue(Type data_type, const QString &string,
+	static QVariant string_to_value(Type data_type, const QString &string,
 								  bool value_is_a_key_track);
 
 	static QVector<QVariant>
@@ -320,91 +320,91 @@ public:
    */
 	static bool type_can_be_interpolated(NodeValue::Type type)
 	{
-		return type == kFloat || type == kVec2 || type == kVec3 ||
-			   type == kVec4 || type == kBezier || type == kColor ||
-			   type == kRational;
+		return type == k_float || type == k_vec2 || type == k_vec3 ||
+			   type == k_vec4 || type == k_bezier || type == k_color ||
+			   type == k_rational;
 	}
 
 	static bool type_is_numeric(NodeValue::Type type)
 	{
-		return type == kFloat || type == kInt || type == kRational;
+		return type == k_float || type == k_int || type == k_rational;
 	}
 
 	static bool type_is_vector(NodeValue::Type type)
 	{
-		return type == kVec2 || type == kVec3 || type == kVec4;
+		return type == k_vec2 || type == k_vec3 || type == k_vec4;
 	}
 
 	static bool type_is_buffer(NodeValue::Type type)
 	{
-		return type == kTexture || type == kSamples;
+		return type == k_texture || type == k_samples;
 	}
 
 	static int get_number_of_keyframe_tracks(Type type);
 
-	static void ValidateVectorString(QStringList *list, int count);
+	static void validate_vector_string(QStringList *list, int count);
 
-	TexturePtr toTexture() const
+	TexturePtr to_texture() const
 	{
 		return value<TexturePtr>();
 	}
-	SampleBuffer toSamples() const
+	SampleBuffer to_samples() const
 	{
 		return value<SampleBuffer>();
 	}
-	bool toBool() const
+	bool to_bool() const
 	{
 		return value<bool>();
 	}
-	double toDouble() const
+	double to_double() const
 	{
 		return value<double>();
 	}
-	int64_t toInt() const
+	int64_t to_int() const
 	{
 		return value<int64_t>();
 	}
-	rational toRational() const
+	Rational to_rational() const
 	{
-		return value<olive::core::rational>();
+		return value<olive::core::Rational>();
 	}
-	QString toString() const
+	QString to_string() const
 	{
 		return value<QString>();
 	}
-	Color toColor() const
+	Color to_color() const
 	{
 		return value<olive::core::Color>();
 	}
-	QMatrix4x4 toMatrix() const
+	QMatrix4x4 to_matrix() const
 	{
 		return value<QMatrix4x4>();
 	}
-	VideoParams toVideoParams() const
+	VideoParams to_video_params() const
 	{
 		return value<VideoParams>();
 	}
-	AudioParams toAudioParams() const
+	AudioParams to_audio_params() const
 	{
 		return value<AudioParams>();
 	}
-	QVector2D toVec2() const
+	QVector2D to_vec2() const
 	{
 		return value<QVector2D>();
 	}
-	QVector3D toVec3() const
+	QVector3D to_vec3() const
 	{
 		return value<QVector3D>();
 	}
-	QVector4D toVec4() const
+	QVector4D to_vec4() const
 	{
 		return value<QVector4D>();
 	}
-	Bezier toBezier() const
+	Bezier to_bezier() const
 	{
 		return value<Bezier>();
 	}
-	NodeValueArray toArray() const
+	NodeValueArray to_array() const
 	{
 		return value<NodeValueArray>();
 	}
@@ -421,85 +421,85 @@ class NodeValueTable {
 public:
 	NodeValueTable() = default;
 
-	NodeValue Get(NodeValue::Type type, const QString &tag = QString()) const
+	NodeValue get(NodeValue::Type type, const QString &tag = QString()) const
 	{
 		QVector<NodeValue::Type> types = { type };
-		return Get(types, tag);
+		return get(types, tag);
 	}
 
-	NodeValue Get(const QVector<NodeValue::Type> &type,
+	NodeValue get(const QVector<NodeValue::Type> &type,
 				  const QString &tag = QString()) const;
 
-	NodeValue Take(NodeValue::Type type, const QString &tag = QString())
+	NodeValue take(NodeValue::Type type, const QString &tag = QString())
 	{
 		QVector<NodeValue::Type> types = { type };
-		return Take(types, tag);
+		return take(types, tag);
 	}
 
-	NodeValue Take(const QVector<NodeValue::Type> &type,
+	NodeValue take(const QVector<NodeValue::Type> &type,
 				   const QString &tag = QString());
 
-	void Push(const NodeValue &value)
+	void push(const NodeValue &value)
 	{
 		values_.append(value);
 	}
 
-	void Push(const NodeValueTable &value)
+	void push(const NodeValueTable &value)
 	{
 		values_.append(value.values_);
 	}
 
 	template <typename T>
-	void Push(NodeValue::Type type, const T &data, const Node *from,
+	void push(NodeValue::Type type, const T &data, const Node *from,
 			  bool array = false, const QString &tag = QString())
 	{
-		Push(NodeValue(type, data, from, array, tag));
+		push(NodeValue(type, data, from, array, tag));
 	}
 
 	template <typename T>
-	void Push(NodeValue::Type type, const T &data, const Node *from,
+	void push(NodeValue::Type type, const T &data, const Node *from,
 			  const QString &tag)
 	{
-		Push(NodeValue(type, data, from, false, tag));
+		push(NodeValue(type, data, from, false, tag));
 	}
 
-	void Prepend(const NodeValue &value)
+	void prepend(const NodeValue &value)
 	{
 		values_.prepend(value);
 	}
 
 	template <typename T>
-	void Prepend(NodeValue::Type type, const T &data, const Node *from,
+	void prepend(NodeValue::Type type, const T &data, const Node *from,
 				 bool array = false, const QString &tag = QString())
 	{
-		Prepend(NodeValue(type, data, from, array, tag));
+		prepend(NodeValue(type, data, from, array, tag));
 	}
 
 	template <typename T>
-	void Prepend(NodeValue::Type type, const T &data, const Node *from,
+	void prepend(NodeValue::Type type, const T &data, const Node *from,
 				 const QString &tag)
 	{
-		Prepend(NodeValue(type, data, from, false, tag));
+		prepend(NodeValue(type, data, from, false, tag));
 	}
 
 	const NodeValue &at(int index) const
 	{
 		return values_.at(index);
 	}
-	NodeValue TakeAt(int index)
+	NodeValue take_at(int index)
 	{
 		return values_.takeAt(index);
 	}
 
-	int Count() const
+	int count() const
 	{
 		return values_.size();
 	}
 
-	bool Has(NodeValue::Type type) const;
-	void Remove(const NodeValue &v);
+	bool has(NodeValue::Type type) const;
+	void remove(const NodeValue &v);
 
-	void Clear()
+	void clear()
 	{
 		values_.clear();
 	}
@@ -509,10 +509,10 @@ public:
 		return values_.isEmpty();
 	}
 
-	int GetValueIndex(const QVector<NodeValue::Type> &type,
+	int get_value_index(const QVector<NodeValue::Type> &type,
 					  const QString &tag) const;
 
-	static NodeValueTable Merge(QList<NodeValueTable> tables);
+	static NodeValueTable merge(QList<NodeValueTable> tables);
 
 private:
 	QVector<NodeValue> values_;
@@ -525,4 +525,4 @@ using NodeValueRow = QHash<QString, NodeValue>;
 Q_DECLARE_METATYPE(olive::NodeValue)
 Q_DECLARE_METATYPE(olive::NodeValueTable)
 
-#endif // NODEVALUE_H
+#endif // OAK_NODEVALUE_H

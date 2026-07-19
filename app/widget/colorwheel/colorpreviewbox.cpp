@@ -35,7 +35,7 @@ ColorPreviewBox::ColorPreviewBox(QWidget *parent)
 {
 }
 
-void ColorPreviewBox::SetColorProcessor(ColorProcessorPtr to_ref,
+void ColorPreviewBox::set_color_processor(ColorProcessorPtr to_ref,
 										ColorProcessorPtr to_display)
 {
 	to_ref_processor_ = to_ref;
@@ -44,7 +44,7 @@ void ColorPreviewBox::SetColorProcessor(ColorProcessorPtr to_ref,
 	update();
 }
 
-void ColorPreviewBox::SetColor(const Color &c)
+void ColorPreviewBox::set_color(const Color &c)
 {
 	color_ = c;
 	update();
@@ -58,10 +58,10 @@ void ColorPreviewBox::paintEvent(QPaintEvent *e)
 
 	// Color management
 	if (to_ref_processor_ && to_display_processor_) {
-		c = QtUtils::toQColor(to_display_processor_->ConvertColor(
-			to_ref_processor_->ConvertColor(color_)));
+		c = QtUtils::to_q_color(to_display_processor_->convert_color(
+			to_ref_processor_->convert_color(color_)));
 	} else {
-		c = QtUtils::toQColor(color_);
+		c = QtUtils::to_q_color(color_);
 	}
 
 	QPainter p(this);

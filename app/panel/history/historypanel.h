@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef HISTORYPANEL_H
-#define HISTORYPANEL_H
+#ifndef OAK_HISTORYPANEL_H
+#define OAK_HISTORYPANEL_H
 
 #include "panel/panel.h"
 
@@ -33,9 +33,9 @@ public:
 	HistoryPanel();
 
 protected:
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 };
 
 }
 
-#endif // HISTORYPANEL_H
+#endif // OAK_HISTORYPANEL_H

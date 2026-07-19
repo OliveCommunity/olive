@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SUBTITLEBLOCK_H
-#define SUBTITLEBLOCK_H
+#ifndef OAK_SUBTITLEBLOCK_H
+#define OAK_SUBTITLEBLOCK_H
 
 #include "node/block/clip/clip.h"
 
@@ -34,25 +34,25 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(SubtitleBlock)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QString Description() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	static const QString kTextIn;
+	static const QString k_text_in;
 
-	QString GetText() const
+	QString get_text() const
 	{
-		return GetStandardValue(kTextIn).toString();
+		return get_standard_value(k_text_in).toString();
 	}
 
-	void SetText(const QString &text)
+	void set_text(const QString &text)
 	{
-		SetStandardValue(kTextIn, text);
+		set_standard_value(k_text_in, text);
 	}
 };
 
 }
 
-#endif // SUBTITLEBLOCK_H
+#endif // OAK_SUBTITLEBLOCK_H

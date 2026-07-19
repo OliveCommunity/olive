@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINEUNDOCOMMON_H
-#define TIMELINEUNDOCOMMON_H
+#ifndef OAK_TIMELINEUNDOCOMMON_H
+#define OAK_TIMELINEUNDOCOMMON_H
 
 #include "node/node.h"
 #include "node/nodeundo.h"
@@ -28,23 +28,23 @@
 namespace olive
 {
 
-inline bool NodeCanBeRemoved(Node *n)
+inline bool node_can_be_removed(Node *n)
 {
 	return n->output_connections().empty();
 }
 
-inline UndoCommand *CreateRemoveCommand(Node *n)
+inline UndoCommand *create_remove_command(Node *n)
 {
 	return new NodeRemoveWithExclusiveDependenciesAndDisconnect(n);
 }
 
-inline UndoCommand *CreateAndRunRemoveCommand(Node *n)
+inline UndoCommand *create_and_run_remove_command(Node *n)
 {
-	UndoCommand *command = CreateRemoveCommand(n);
+	UndoCommand *command = create_remove_command(n);
 	command->redo_now();
 	return command;
 }
 
 }
 
-#endif // TIMELINEUNDOCOMMON_H
+#endif // OAK_TIMELINEUNDOCOMMON_H

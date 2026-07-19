@@ -55,25 +55,25 @@ public:
 	{
 	}
 
-	bool Init() override
+	bool init() override
 	{
 		return true;
 	}
 
-	void PostDestroy() override
+	void post_destroy() override
 	{
 	}
 
-	void PostInit() override
+	void post_init() override
 	{
 	}
 
-	void ClearDestination(olive::Texture *texture, double r, double g, double b,
+	void clear_destination(olive::Texture *texture, double r, double g, double b,
 						  double a) override
 	{
 	}
 
-	QVariant CreateNativeShader(olive::ShaderCode code) override
+	QVariant create_native_shader(olive::ShaderCode code) override
 	{
 		create_shader_count++;
 		if (fail_create_shader) {
@@ -82,12 +82,12 @@ public:
 		return QVariant(QStringLiteral("shader%1").arg(create_shader_count));
 	}
 
-	void DestroyNativeShader(QVariant shader) override
+	void destroy_native_shader(QVariant shader) override
 	{
 		destroy_shader_count++;
 	}
 
-	void UploadToTexture(const QVariant &handle, const olive::VideoParams &params,
+	void upload_to_texture(const QVariant &handle, const olive::VideoParams &params,
 						 const void *data, int linesize) override
 	{
 		upload_count++;
@@ -95,7 +95,7 @@ public:
 		last_upload_linesize = linesize;
 	}
 
-	void DownloadFromTexture(const QVariant &handle,
+	void download_from_texture(const QVariant &handle,
 							 const olive::VideoParams &params, void *data,
 							 int linesize) override
 	{
@@ -104,12 +104,12 @@ public:
 		last_download_linesize = linesize;
 	}
 
-	void Flush() override
+	void flush() override
 	{
 		flush_count++;
 	}
 
-	olive::Color GetPixelFromTexture(olive::Texture *texture,
+	olive::Color get_pixel_from_texture(olive::Texture *texture,
 									 const QPointF &pt) override
 	{
 		return olive::Color();
@@ -148,7 +148,7 @@ public:
 	bool last_blit_clear;
 
 protected:
-	void Blit(QVariant shader, olive::AcceleratedJob &job,
+	void blit(QVariant shader, olive::AcceleratedJob &job,
 			  olive::Texture *destination,
 			  olive::VideoParams destination_params,
 			  bool clear_destination) override
@@ -160,7 +160,7 @@ protected:
 		last_blit_clear = clear_destination;
 	}
 
-	QVariant CreateNativeTexture(int width, int height, int depth,
+	QVariant create_native_texture(int width, int height, int depth,
 								 olive::PixelFormat format, int channel_count,
 								 const void *data, int linesize) override
 	{
@@ -177,26 +177,26 @@ protected:
 		return QVariant(++next_handle);
 	}
 
-	void DestroyNativeTexture(QVariant texture) override
+	void destroy_native_texture(QVariant texture) override
 	{
 		destroy_texture_count++;
 	}
 
-	void DestroyInternal() override
+	void destroy_internal() override
 	{
 		destroy_internal_count++;
 	}
 };
 
-olive::ColorProcessorPtr CreateIdentityProcessor()
+olive::ColorProcessorPtr create_identity_processor()
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
-	OCIO::MatrixTransformRcPtr transform = OCIO::MatrixTransform::Create();
-	transform->setDirection(OCIO::TRANSFORM_DIR_FORWARD);
+	ocio::MatrixTransformRcPtr transform = ocio::MatrixTransform::Create();
+	transform->setDirection(ocio::TRANSFORM_DIR_FORWARD);
 
-	return olive::ColorProcessor::Create(
-		olive::ColorManager::GetDefaultConfig()->getProcessor(transform));
+	return olive::ColorProcessor::create(
+		olive::ColorManager::get_default_config()->getProcessor(transform));
 }
 
 } // namespace
@@ -207,13 +207,13 @@ TEST(DynamicRenderer, ConstructorNormalizesBackendName)
 {
 	olive::DynamicRenderer gl(QStringLiteral("OpenGL"));
 	EXPECT_EQ(gl.backend_name(), QStringLiteral("opengl"));
-	EXPECT_TRUE(gl.IsOpenGL());
-	EXPECT_FALSE(gl.IsVulkan());
+	EXPECT_TRUE(gl.is_open_gl());
+	EXPECT_FALSE(gl.is_vulkan());
 
 	olive::DynamicRenderer vk(QStringLiteral("VULKAN"));
 	EXPECT_EQ(vk.backend_name(), QStringLiteral("vulkan"));
-	EXPECT_TRUE(vk.IsVulkan());
-	EXPECT_FALSE(vk.IsOpenGL());
+	EXPECT_TRUE(vk.is_vulkan());
+	EXPECT_FALSE(vk.is_open_gl());
 }
 
 // Documents that an unrecognized backend name is kept verbatim (and
@@ -224,8 +224,8 @@ TEST(DynamicRenderer, UnknownBackendNameIsReportedVerbatim)
 {
 	olive::DynamicRenderer renderer(QStringLiteral("Metal"));
 	EXPECT_EQ(renderer.backend_name(), QStringLiteral("metal"));
-	EXPECT_FALSE(renderer.IsOpenGL());
-	EXPECT_FALSE(renderer.IsVulkan());
+	EXPECT_FALSE(renderer.is_open_gl());
+	EXPECT_FALSE(renderer.is_vulkan());
 }
 
 // Before Load() succeeds there is no backend handle, so the metadata and
@@ -235,11 +235,11 @@ TEST(DynamicRenderer, AccessorsBeforeLoadReturnDefaults)
 {
 	olive::DynamicRenderer renderer(QStringLiteral("opengl"));
 
-	EXPECT_EQ(renderer.OpenGLContext(), nullptr);
+	EXPECT_EQ(renderer.open_gl_context(), nullptr);
 
 	OakRenderBackendInfo info = {};
-	EXPECT_FALSE(renderer.GetBackendInfo(&info));
-	EXPECT_FALSE(renderer.GetBackendInfo(nullptr));
+	EXPECT_FALSE(renderer.get_backend_info(&info));
+	EXPECT_FALSE(renderer.get_backend_info(nullptr));
 }
 
 // Lifecycle entry points must tolerate being called without a loaded backend:
@@ -248,11 +248,11 @@ TEST(DynamicRenderer, PreLoadLifecycleCallsAreSafeNoOps)
 {
 	olive::DynamicRenderer renderer(QStringLiteral("opengl"));
 
-	renderer.PostInit();
-	renderer.PostDestroy();
-	renderer.AttachOutputTexture(nullptr);
-	renderer.DetachOutputTexture();
-	renderer.Destroy();
+	renderer.post_init();
+	renderer.post_destroy();
+	renderer.attach_output_texture(nullptr);
+	renderer.detach_output_texture();
+	renderer.destroy();
 	// Destruction after an explicit Destroy() must also be safe.
 }
 
@@ -264,13 +264,13 @@ TEST(DynamicRenderer, SecondLoadReturnsImmediately)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("opengl"));
-	if (!renderer.Load()) {
+	if (!renderer.load()) {
 		GTEST_SKIP()
 			<< "opengl backend library could not be loaded in this environment";
 	}
 
-	EXPECT_TRUE(renderer.Load());
-	EXPECT_TRUE(renderer.IsOpenGL());
+	EXPECT_TRUE(renderer.load());
+	EXPECT_TRUE(renderer.is_open_gl());
 	EXPECT_EQ(renderer.backend_name(), QStringLiteral("opengl"));
 #endif
 }
@@ -280,21 +280,21 @@ TEST(DynamicRenderer, SecondLoadReturnsImmediately)
 TEST(RendererTextureCache, CreateTextureWrapsNativeHandle)
 {
 	StubRenderer renderer;
-	const olive::VideoParams params(64, 32, olive::PixelFormat::U8,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(64, 32, olive::PixelFormat::u8,
+									olive::VideoParams::k_rgba_channel_count);
 
-	olive::TexturePtr texture = renderer.CreateTexture(params);
+	olive::TexturePtr texture = renderer.create_texture(params);
 	ASSERT_NE(texture, nullptr);
-	EXPECT_FALSE(texture->IsDummy());
+	EXPECT_FALSE(texture->is_dummy());
 	EXPECT_EQ(texture->id(), QVariant(1));
 	EXPECT_EQ(texture->width(), 64);
 	EXPECT_EQ(texture->height(), 32);
-	EXPECT_EQ(texture->format(), olive::PixelFormat::U8);
+	EXPECT_EQ(texture->format(), olive::PixelFormat::u8);
 	EXPECT_EQ(texture->channel_count(),
-			  int(olive::VideoParams::kRGBAChannelCount));
+			  int(olive::VideoParams::k_rgba_channel_count));
 	EXPECT_EQ(renderer.create_texture_count, 1);
 
-	renderer.Destroy();
+	renderer.destroy();
 }
 
 // A null native handle (backend allocation failure) must propagate as a null
@@ -304,9 +304,9 @@ TEST(RendererTextureCache, FailedNativeTextureCreateReturnsNull)
 	StubRenderer renderer;
 	renderer.fail_create_texture = true;
 
-	const olive::VideoParams params(64, 64, olive::PixelFormat::U8,
-									olive::VideoParams::kRGBAChannelCount);
-	EXPECT_EQ(renderer.CreateTexture(params), nullptr);
+	const olive::VideoParams params(64, 64, olive::PixelFormat::u8,
+									olive::VideoParams::k_rgba_channel_count);
+	EXPECT_EQ(renderer.create_texture(params), nullptr);
 	EXPECT_EQ(renderer.create_texture_count, 1);
 }
 
@@ -316,33 +316,33 @@ TEST(RendererTextureCache, FailedNativeTextureCreateReturnsNull)
 TEST(RendererTextureCache, DestroyedTextureIsReusedFromCache)
 {
 	StubRenderer renderer;
-	const olive::VideoParams params(64, 64, olive::PixelFormat::U8,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(64, 64, olive::PixelFormat::u8,
+									olive::VideoParams::k_rgba_channel_count);
 
 	{
-		olive::TexturePtr texture = renderer.CreateTexture(params);
+		olive::TexturePtr texture = renderer.create_texture(params);
 		ASSERT_NE(texture, nullptr);
 		EXPECT_EQ(texture->id(), QVariant(1));
 	}
 	EXPECT_EQ(renderer.create_texture_count, 1);
 
-	olive::TexturePtr reused = renderer.CreateTexture(params);
+	olive::TexturePtr reused = renderer.create_texture(params);
 	ASSERT_NE(reused, nullptr);
 	EXPECT_EQ(reused->id(), QVariant(1));
 	EXPECT_EQ(renderer.create_texture_count, 1);
 	EXPECT_EQ(renderer.flush_count, 1);
 
 	// A different size must miss the cache and allocate natively again.
-	const olive::VideoParams other(32, 32, olive::PixelFormat::U8,
-								   olive::VideoParams::kRGBAChannelCount);
-	olive::TexturePtr fresh = renderer.CreateTexture(other);
+	const olive::VideoParams other(32, 32, olive::PixelFormat::u8,
+								   olive::VideoParams::k_rgba_channel_count);
+	olive::TexturePtr fresh = renderer.create_texture(other);
 	ASSERT_NE(fresh, nullptr);
 	EXPECT_EQ(fresh->id(), QVariant(2));
 	EXPECT_EQ(renderer.create_texture_count, 2);
 
 	reused.reset();
 	fresh.reset();
-	renderer.Destroy();
+	renderer.destroy();
 	EXPECT_EQ(renderer.destroy_texture_count, 2);
 }
 
@@ -351,17 +351,17 @@ TEST(RendererTextureCache, DestroyedTextureIsReusedFromCache)
 TEST(RendererTextureCache, CachedTextureReusedWithDataTriggersUpload)
 {
 	StubRenderer renderer;
-	const olive::VideoParams params(16, 16, olive::PixelFormat::U8,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(16, 16, olive::PixelFormat::u8,
+									olive::VideoParams::k_rgba_channel_count);
 
 	{
-		olive::TexturePtr texture = renderer.CreateTexture(params);
+		olive::TexturePtr texture = renderer.create_texture(params);
 		ASSERT_NE(texture, nullptr);
 	}
 
 	char data[16 * 16 * 4] = {};
 	olive::TexturePtr texture =
-		renderer.CreateTexture(params, data, 16 * 4);
+		renderer.create_texture(params, data, 16 * 4);
 	ASSERT_NE(texture, nullptr);
 	EXPECT_EQ(renderer.create_texture_count, 1);
 	EXPECT_EQ(renderer.upload_count, 1);
@@ -369,7 +369,7 @@ TEST(RendererTextureCache, CachedTextureReusedWithDataTriggersUpload)
 	EXPECT_EQ(renderer.last_upload_linesize, 16 * 4);
 
 	texture.reset();
-	renderer.Destroy();
+	renderer.destroy();
 }
 
 // On a cache miss with initial data, the data pointer and linesize must be
@@ -377,11 +377,11 @@ TEST(RendererTextureCache, CachedTextureReusedWithDataTriggersUpload)
 TEST(RendererTextureCache, CreateWithDataForwardsToNativeCreate)
 {
 	StubRenderer renderer;
-	const olive::VideoParams params(8, 8, olive::PixelFormat::U8,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(8, 8, olive::PixelFormat::u8,
+									olive::VideoParams::k_rgba_channel_count);
 
 	char data[8 * 8 * 4] = {};
-	olive::TexturePtr texture = renderer.CreateTexture(params, data, 8 * 4);
+	olive::TexturePtr texture = renderer.create_texture(params, data, 8 * 4);
 	ASSERT_NE(texture, nullptr);
 	EXPECT_EQ(renderer.create_texture_count, 1);
 	EXPECT_EQ(renderer.last_create_data, static_cast<const void *>(data));
@@ -389,11 +389,11 @@ TEST(RendererTextureCache, CreateWithDataForwardsToNativeCreate)
 	EXPECT_EQ(renderer.last_create_width, 8);
 	EXPECT_EQ(renderer.last_create_height, 8);
 	EXPECT_EQ(renderer.last_create_channel_count,
-			  int(olive::VideoParams::kRGBAChannelCount));
+			  int(olive::VideoParams::k_rgba_channel_count));
 	EXPECT_EQ(renderer.upload_count, 0);
 
 	texture.reset();
-	renderer.Destroy();
+	renderer.destroy();
 }
 
 // GetDefaultShader() must compile the built-in shader once and cache it;
@@ -402,18 +402,18 @@ TEST(RendererShaderCache, DefaultShaderCreatedOnceAndReleasedOnDestroy)
 {
 	StubRenderer renderer;
 
-	const QVariant first = renderer.GetDefaultShader();
-	const QVariant second = renderer.GetDefaultShader();
+	const QVariant first = renderer.get_default_shader();
+	const QVariant second = renderer.get_default_shader();
 	EXPECT_FALSE(first.isNull());
 	EXPECT_EQ(first, second);
 	EXPECT_EQ(renderer.create_shader_count, 1);
 
-	renderer.Destroy();
+	renderer.destroy();
 	EXPECT_EQ(renderer.destroy_shader_count, 1);
 	EXPECT_EQ(renderer.destroy_internal_count, 1);
 
 	// A repeated Destroy() must not release the shader a second time.
-	renderer.Destroy();
+	renderer.destroy();
 	EXPECT_EQ(renderer.destroy_shader_count, 1);
 	EXPECT_EQ(renderer.destroy_internal_count, 2);
 }
@@ -423,66 +423,66 @@ TEST(RendererShaderCache, DefaultShaderCreatedOnceAndReleasedOnDestroy)
 TEST(TextureIo, UploadDownloadForwardToRenderer)
 {
 	StubRenderer renderer;
-	const olive::VideoParams params(16, 16, olive::PixelFormat::U8,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(16, 16, olive::PixelFormat::u8,
+									olive::VideoParams::k_rgba_channel_count);
 
-	olive::TexturePtr texture = renderer.CreateTexture(params);
+	olive::TexturePtr texture = renderer.create_texture(params);
 	ASSERT_NE(texture, nullptr);
 
 	char data[16 * 16 * 4] = {};
-	texture->Upload(data, 16 * 4);
+	texture->upload(data, 16 * 4);
 	EXPECT_EQ(renderer.upload_count, 1);
 	EXPECT_EQ(renderer.last_upload_handle, texture->id());
 	EXPECT_EQ(renderer.last_upload_linesize, 16 * 4);
 
-	texture->Download(data, 16 * 4);
+	texture->download(data, 16 * 4);
 	EXPECT_EQ(renderer.download_count, 1);
 	EXPECT_EQ(renderer.last_download_handle, texture->id());
 	EXPECT_EQ(renderer.last_download_linesize, 16 * 4);
 
 	texture.reset();
-	renderer.Destroy();
+	renderer.destroy();
 }
 
 // A dummy texture (no backend renderer) must expose its params, report
 // IsDummy(), and make Upload/Download harmless no-ops.
 TEST(TextureDummy, AccessorsAndNoOpIo)
 {
-	const olive::VideoParams params(128, 64, olive::PixelFormat::F16,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(128, 64, olive::PixelFormat::f16,
+									olive::VideoParams::k_rgba_channel_count);
 	olive::Texture texture(params);
 
-	EXPECT_TRUE(texture.IsDummy());
+	EXPECT_TRUE(texture.is_dummy());
 	EXPECT_EQ(texture.renderer(), nullptr);
 	EXPECT_TRUE(texture.id().isNull());
 	EXPECT_EQ(texture.width(), 128);
 	EXPECT_EQ(texture.height(), 64);
 	EXPECT_EQ(texture.virtual_resolution(), QVector2D(128, 64));
-	EXPECT_EQ(texture.format(), olive::PixelFormat::F16);
+	EXPECT_EQ(texture.format(), olive::PixelFormat::f16);
 	EXPECT_EQ(texture.channel_count(),
-			  int(olive::VideoParams::kRGBAChannelCount));
+			  int(olive::VideoParams::k_rgba_channel_count));
 	EXPECT_EQ(texture.divider(), 1);
-	EXPECT_EQ(texture.pixel_aspect_ratio(), olive::rational(1));
-	EXPECT_FALSE(texture.IsJob());
+	EXPECT_EQ(texture.pixel_aspect_ratio(), olive::Rational(1));
+	EXPECT_FALSE(texture.is_job());
 	EXPECT_EQ(texture.job(), nullptr);
 
 	char data[4] = {};
-	texture.Upload(data, 4);
-	texture.Download(data, 4);
+	texture.upload(data, 4);
+	texture.download(data, 4);
 }
 
 // Textures can carry a CPU-side AcceleratedJob instead of a native handle;
 // the job must be owned and retrievable through job().
 TEST(TextureJob, JobTextureExposesJob)
 {
-	const olive::VideoParams params(32, 32, olive::PixelFormat::U8,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(32, 32, olive::PixelFormat::u8,
+									olive::VideoParams::k_rgba_channel_count);
 	olive::TexturePtr texture =
-		olive::Texture::Job(params, olive::ShaderJob());
+		olive::Texture::job(params, olive::ShaderJob());
 
 	ASSERT_NE(texture, nullptr);
-	EXPECT_TRUE(texture->IsDummy());
-	EXPECT_TRUE(texture->IsJob());
+	EXPECT_TRUE(texture->is_dummy());
+	EXPECT_TRUE(texture->is_job());
 	ASSERT_NE(texture->job(), nullptr);
 	EXPECT_EQ(texture->params().width(), 32);
 }
@@ -495,15 +495,15 @@ TEST(RendererColorManagement, FallsBackToDefaultShaderWhenCompilationFails)
 	StubRenderer renderer;
 	renderer.fail_create_shader = true;
 
-	olive::ColorProcessorPtr processor = CreateIdentityProcessor();
+	olive::ColorProcessorPtr processor = create_identity_processor();
 	ASSERT_TRUE(processor);
 
 	olive::ColorTransformJob job;
-	job.SetColorProcessor(processor);
+	job.set_color_processor(processor);
 
-	const olive::VideoParams params(64, 64, olive::PixelFormat::U8,
-									olive::VideoParams::kRGBAChannelCount);
-	renderer.BlitColorManaged(job, params);
+	const olive::VideoParams params(64, 64, olive::PixelFormat::u8,
+									olive::VideoParams::k_rgba_channel_count);
+	renderer.blit_color_managed(job, params);
 
 	// One blit to the null destination overload, with the (failed) default
 	// shader handle and the job's clear-destination flag preserved.
@@ -513,7 +513,7 @@ TEST(RendererColorManagement, FallsBackToDefaultShaderWhenCompilationFails)
 	EXPECT_TRUE(renderer.last_blit_clear);
 	EXPECT_EQ(renderer.last_blit_params.width(), 64);
 
-	renderer.Destroy();
+	renderer.destroy();
 }
 
 // GetColorContext must cache the compiled color pipeline per processor id:
@@ -523,34 +523,34 @@ TEST(RendererColorManagement, CachesColorContextPerProcessorId)
 {
 	StubRenderer renderer;
 
-	olive::ColorProcessorPtr processor = CreateIdentityProcessor();
+	olive::ColorProcessorPtr processor = create_identity_processor();
 	ASSERT_TRUE(processor);
 
 	olive::ColorTransformJob job;
-	job.SetColorProcessor(processor);
+	job.set_color_processor(processor);
 
-	const olive::VideoParams params(64, 64, olive::PixelFormat::U8,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(64, 64, olive::PixelFormat::u8,
+									olive::VideoParams::k_rgba_channel_count);
 
-	renderer.BlitColorManaged(job, params);
+	renderer.blit_color_managed(job, params);
 	EXPECT_EQ(renderer.blit_count, 1);
 	EXPECT_EQ(renderer.create_shader_count, 1);
 	EXPECT_FALSE(renderer.last_blit_shader.isNull());
 
 	// Same processor id: color context cache hit, no new shader compilation.
-	renderer.BlitColorManaged(job, params);
+	renderer.blit_color_managed(job, params);
 	EXPECT_EQ(renderer.blit_count, 2);
 	EXPECT_EQ(renderer.create_shader_count, 1);
 
 	// A distinct override id bypasses the cached context and compiles again.
 	olive::ColorTransformJob other_job;
-	other_job.SetColorProcessor(processor);
-	other_job.SetOverrideID(QStringLiteral("other-context"));
-	renderer.BlitColorManaged(other_job, params);
+	other_job.set_color_processor(processor);
+	other_job.set_override_id(QStringLiteral("other-context"));
+	renderer.blit_color_managed(other_job, params);
 	EXPECT_EQ(renderer.blit_count, 3);
 	EXPECT_EQ(renderer.create_shader_count, 2);
 
-	renderer.Destroy();
+	renderer.destroy();
 }
 
 // The destination overload of BlitColorManaged must forward the destination
@@ -559,52 +559,52 @@ TEST(RendererColorManagement, BlitToDestinationForwardsTexture)
 {
 	StubRenderer renderer;
 
-	olive::ColorProcessorPtr processor = CreateIdentityProcessor();
+	olive::ColorProcessorPtr processor = create_identity_processor();
 	ASSERT_TRUE(processor);
 
 	olive::ColorTransformJob job;
-	job.SetColorProcessor(processor);
+	job.set_color_processor(processor);
 
-	const olive::VideoParams params(32, 16, olive::PixelFormat::U8,
-									olive::VideoParams::kRGBAChannelCount);
-	olive::TexturePtr destination = renderer.CreateTexture(params);
+	const olive::VideoParams params(32, 16, olive::PixelFormat::u8,
+									olive::VideoParams::k_rgba_channel_count);
+	olive::TexturePtr destination = renderer.create_texture(params);
 	ASSERT_NE(destination, nullptr);
 
-	renderer.BlitColorManaged(job, destination.get());
+	renderer.blit_color_managed(job, destination.get());
 	EXPECT_EQ(renderer.blit_count, 1);
 	EXPECT_EQ(renderer.last_blit_destination, destination.get());
 	EXPECT_EQ(renderer.last_blit_params.width(), 32);
 	EXPECT_EQ(renderer.last_blit_params.height(), 16);
 
 	destination.reset();
-	renderer.Destroy();
+	renderer.destroy();
 }
 
 class RenderMiscAutoCacherTest : public ::testing::Test {
 protected:
 	void SetUp() override
 	{
-		olive::ColorManager::SetUpDefaultConfig();
+		olive::ColorManager::set_up_default_config();
 
 		// Use the dummy render backend so PreviewAutoCacher can be exercised
 		// without initializing OpenGL/Vulkan in the unit-test process.
-		olive::Config::Current()[QStringLiteral("GraphicsBackend")] =
+		olive::Config::current()[QStringLiteral("GraphicsBackend")] =
 			QStringLiteral("dummy");
 
-		olive::DiskManager::CreateInstance();
-		olive::ConformManager::CreateInstance();
-		olive::RenderManager::CreateInstance();
+		olive::DiskManager::create_instance();
+		olive::ConformManager::create_instance();
+		olive::RenderManager::create_instance();
 
 		project_ = std::make_unique<olive::Project>();
-		project_->Initialize();
+		project_->initialize();
 	}
 
 	void TearDown() override
 	{
 		project_.reset();
-		olive::RenderManager::DestroyInstance();
-		olive::ConformManager::DestroyInstance();
-		olive::DiskManager::DestroyInstance();
+		olive::RenderManager::destroy_instance();
+		olive::ConformManager::destroy_instance();
+		olive::DiskManager::destroy_instance();
 	}
 
 	std::unique_ptr<olive::Project> project_;
@@ -621,19 +621,19 @@ TEST_F(RenderMiscAutoCacherTest, GetSingleFrameCancelsPreviouslyQueuedTicket)
 	olive::PreviewAutoCacher cacher;
 
 	olive::RenderTicketPtr first =
-		cacher.GetSingleFrame(viewer, olive::rational(0));
+		cacher.get_single_frame(viewer, olive::Rational(0));
 	olive::RenderTicketPtr second =
-		cacher.GetSingleFrame(viewer, olive::rational(1));
+		cacher.get_single_frame(viewer, olive::Rational(1));
 
 	ASSERT_NE(first, nullptr);
 	ASSERT_NE(second, nullptr);
 	EXPECT_NE(first, second);
 
-	EXPECT_EQ(first->GetFinishCount(), 1);
-	EXPECT_FALSE(first->IsRunning());
-	EXPECT_FALSE(first->HasResult());
+	EXPECT_EQ(first->get_finish_count(), 1);
+	EXPECT_FALSE(first->is_running());
+	EXPECT_FALSE(first->has_result());
 
-	EXPECT_TRUE(second->IsRunning());
+	EXPECT_TRUE(second->is_running());
 }
 
 // SetProject() early-outs when the same project (or null twice) is passed;
@@ -641,11 +641,11 @@ TEST_F(RenderMiscAutoCacherTest, GetSingleFrameCancelsPreviouslyQueuedTicket)
 TEST_F(RenderMiscAutoCacherTest, SetSameProjectTwiceIsNoOp)
 {
 	olive::PreviewAutoCacher cacher;
-	cacher.SetProject(project_.get());
-	cacher.SetProject(project_.get());
-	cacher.SetProject(nullptr);
-	cacher.SetProject(nullptr);
-	EXPECT_FALSE(cacher.IsRenderingCustomRange());
+	cacher.set_project(project_.get());
+	cacher.set_project(project_.get());
+	cacher.set_project(nullptr);
+	cacher.set_project(nullptr);
+	EXPECT_FALSE(cacher.is_rendering_custom_range());
 }
 
 // ForceCacheRange queues the requested frames through TryRender; with the
@@ -656,27 +656,27 @@ TEST_F(RenderMiscAutoCacherTest,
 {
 	auto *viewer = new olive::ViewerOutput();
 	viewer->setParent(project_.get());
-	viewer->SetVideoParams(
-		olive::VideoParams(64, 64, olive::rational(1, 25),
-						   olive::PixelFormat::U8,
-						   olive::VideoParams::kRGBAChannelCount));
+	viewer->set_video_params(
+		olive::VideoParams(64, 64, olive::Rational(1, 25),
+						   olive::PixelFormat::u8,
+						   olive::VideoParams::k_rgba_channel_count));
 
 	olive::PreviewAutoCacher cacher;
-	cacher.SetProject(project_.get());
+	cacher.set_project(project_.get());
 
-	QSignalSpy stop_spy(&cacher, &olive::PreviewAutoCacher::StopCacheProxyTasks);
+	QSignalSpy stop_spy(&cacher, &olive::PreviewAutoCacher::stop_cache_proxy_tasks);
 
-	cacher.ForceCacheRange(
-		viewer, olive::TimeRange(olive::rational(0), olive::rational(1, 25)));
+	cacher.force_cache_range(
+		viewer, olive::TimeRange(olive::Rational(0), olive::Rational(1, 25)));
 
 	EXPECT_GE(stop_spy.count(), 1);
-	EXPECT_FALSE(cacher.IsRenderingCustomRange());
+	EXPECT_FALSE(cacher.is_rendering_custom_range());
 
 	// Deliver the queued RenderTicketWatcher::Finished emissions so the
 	// completed watchers are reaped before teardown.
 	QCoreApplication::processEvents();
 
-	cacher.SetProject(nullptr);
+	cacher.set_project(nullptr);
 }
 
 // A conform-ready notification with no conform-blocked audio ranges must be a
@@ -684,19 +684,19 @@ TEST_F(RenderMiscAutoCacherTest,
 TEST_F(RenderMiscAutoCacherTest, ConformReadyWithoutPendingConformsIsNoOp)
 {
 	olive::PreviewAutoCacher cacher;
-	cacher.SetProject(project_.get());
+	cacher.set_project(project_.get());
 
-	QSignalSpy stop_spy(&cacher, &olive::PreviewAutoCacher::StopCacheProxyTasks);
+	QSignalSpy stop_spy(&cacher, &olive::PreviewAutoCacher::stop_cache_proxy_tasks);
 	QSignalSpy progress_spy(&cacher,
-							&olive::PreviewAutoCacher::SignalCacheProxyTaskProgress);
+							&olive::PreviewAutoCacher::signal_cache_proxy_task_progress);
 
-	emit olive::ConformManager::instance()->ConformReady();
+	emit olive::ConformManager::instance()->conform_ready();
 
 	EXPECT_EQ(stop_spy.count(), 0);
 	EXPECT_EQ(progress_spy.count(), 0);
-	EXPECT_FALSE(cacher.IsRenderingCustomRange());
+	EXPECT_FALSE(cacher.is_rendering_custom_range());
 
-	cacher.SetProject(nullptr);
+	cacher.set_project(nullptr);
 }
 
 // Cancelling cache-proxy tasks must drop pending video jobs without touching
@@ -705,27 +705,27 @@ TEST_F(RenderMiscAutoCacherTest, CacheProxyTaskCancelledClearsPendingJobs)
 {
 	auto *viewer = new olive::ViewerOutput();
 	viewer->setParent(project_.get());
-	viewer->SetVideoParams(
-		olive::VideoParams(64, 64, olive::rational(1, 25),
-						   olive::PixelFormat::U8,
-						   olive::VideoParams::kRGBAChannelCount));
+	viewer->set_video_params(
+		olive::VideoParams(64, 64, olive::Rational(1, 25),
+						   olive::PixelFormat::u8,
+						   olive::VideoParams::k_rgba_channel_count));
 
 	olive::PreviewAutoCacher cacher;
 
 	// No project is set, so the forced range cannot be dispatched and sits in
 	// the pending queue
-	cacher.ForceCacheRange(
-		viewer, olive::TimeRange(olive::rational(0), olive::rational(1)));
-	EXPECT_TRUE(cacher.IsRenderingCustomRange());
+	cacher.force_cache_range(
+		viewer, olive::TimeRange(olive::Rational(0), olive::Rational(1)));
+	EXPECT_TRUE(cacher.is_rendering_custom_range());
 
-	EXPECT_TRUE(QMetaObject::invokeMethod(&cacher, "CacheProxyTaskCancelled",
+	EXPECT_TRUE(QMetaObject::invokeMethod(&cacher, "cache_proxy_task_cancelled",
 										  Qt::DirectConnection));
 
 	// With the pending jobs cleared, the custom range is no longer being
 	// rendered
-	EXPECT_FALSE(cacher.IsRenderingCustomRange());
+	EXPECT_FALSE(cacher.is_rendering_custom_range());
 
-	cacher.SetProject(nullptr);
+	cacher.set_project(nullptr);
 }
 
 // With an unknown/dummy graphics backend the RenderManager never creates the
@@ -735,18 +735,18 @@ TEST_F(RenderMiscAutoCacherTest, CacheProxyTaskCancelledClearsPendingJobs)
 TEST(RenderManagerDummyBackend, GpuCacherMemberIsNullRatherThanUninitialized)
 {
 	const QVariant previous =
-		olive::Config::Current()[QStringLiteral("GraphicsBackend")];
-	olive::Config::Current()[QStringLiteral("GraphicsBackend")] =
+		olive::Config::current()[QStringLiteral("GraphicsBackend")];
+	olive::Config::current()[QStringLiteral("GraphicsBackend")] =
 		QStringLiteral("dummy");
 
-	olive::RenderManager::CreateInstance();
+	olive::RenderManager::create_instance();
 
 	EXPECT_EQ(olive::RenderManager::instance()->backend(),
-			  olive::RenderManager::kDummy);
+			  olive::RenderManager::k_dummy);
 	EXPECT_EQ(olive::RenderManager::instance()->requested_backend(),
-			  olive::RenderManager::kDummy);
-	EXPECT_EQ(olive::RenderManager::instance()->GetCacher(), nullptr);
+			  olive::RenderManager::k_dummy);
+	EXPECT_EQ(olive::RenderManager::instance()->get_cacher(), nullptr);
 
-	olive::RenderManager::DestroyInstance();
-	olive::Config::Current()[QStringLiteral("GraphicsBackend")] = previous;
+	olive::RenderManager::destroy_instance();
+	olive::Config::current()[QStringLiteral("GraphicsBackend")] = previous;
 }

@@ -39,7 +39,7 @@ ImageSection::ImageSection(QWidget *parent)
 
 	image_sequence_checkbox_ = new QCheckBox();
 	connect(image_sequence_checkbox_, &QCheckBox::toggled, this,
-			&ImageSection::ImageSequenceCheckBoxToggled);
+			&ImageSection::image_sequence_check_box_toggled);
 	layout->addWidget(image_sequence_checkbox_, row, 1);
 
 	row++;
@@ -47,15 +47,15 @@ ImageSection::ImageSection(QWidget *parent)
 	layout->addWidget(new QLabel(tr("Frame to Export:")), row, 0);
 
 	frame_slider_ = new RationalSlider();
-	frame_slider_->SetMinimum(0);
-	frame_slider_->SetValue(0);
-	frame_slider_->SetDisplayType(RationalSlider::kTime);
-	connect(frame_slider_, &RationalSlider::ValueChanged, this,
-			&ImageSection::TimeChanged);
+	frame_slider_->set_minimum(0);
+	frame_slider_->set_value(0);
+	frame_slider_->set_display_type(RationalSlider::k_time);
+	connect(frame_slider_, &RationalSlider::value_changed, this,
+			&ImageSection::time_changed);
 	layout->addWidget(frame_slider_, row, 1);
 }
 
-void ImageSection::ImageSequenceCheckBoxToggled(bool e)
+void ImageSection::image_sequence_check_box_toggled(bool e)
 {
 	frame_slider_->setEnabled(!e);
 }

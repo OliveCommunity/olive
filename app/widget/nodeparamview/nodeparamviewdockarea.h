@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEPARAMVIEWDOCKAREA_H
-#define NODEPARAMVIEWDOCKAREA_H
+#ifndef OAK_NODEPARAMVIEWDOCKAREA_H
+#define OAK_NODEPARAMVIEWDOCKAREA_H
 
 #include <QMainWindow>
 
@@ -36,10 +36,10 @@ public:
 
 	virtual QMenu *createPopupMenu() override;
 
-	void AddItem(QDockWidget *item);
-	void RemoveItem(QDockWidget *item);
+	void add_item(QDockWidget *item);
+	void remove_item(QDockWidget *item);
 };
 
 }
 
-#endif // NODEPARAMVIEWDOCKAREA_H
+#endif // OAK_NODEPARAMVIEWDOCKAREA_H

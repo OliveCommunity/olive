@@ -20,21 +20,21 @@ TEST(DynamicRenderBackend, LoadsExperimentalOpenGLBackend)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("opengl"));
-	if (!renderer.Load()) {
+	if (!renderer.load()) {
 		GTEST_SKIP()
 			<< "opengl backend library could not be loaded in this environment";
 	}
 
-	EXPECT_EQ(renderer.OpenGLContext(), nullptr);
+	EXPECT_EQ(renderer.open_gl_context(), nullptr);
 	OakRenderBackendInfo info = {};
-	ASSERT_TRUE(renderer.GetBackendInfo(&info));
+	ASSERT_TRUE(renderer.get_backend_info(&info));
 	EXPECT_EQ(info.abi_version, 1U);
-	EXPECT_EQ(info.kind, OAK_RENDER_BACKEND_OPENGL);
+	EXPECT_EQ(info.kind, oak_render_backend_opengl);
 	EXPECT_STREQ(info.name, "opengl");
-	EXPECT_TRUE(info.capabilities & OAK_RENDER_BACKEND_CAP_TEXTURES);
-	EXPECT_TRUE(info.capabilities & OAK_RENDER_BACKEND_CAP_SHADERS);
-	EXPECT_TRUE(info.capabilities & OAK_RENDER_BACKEND_CAP_BLIT);
-	EXPECT_TRUE(info.capabilities & OAK_RENDER_BACKEND_CAP_READBACK);
+	EXPECT_TRUE(info.capabilities & oak_render_backend_cap_textures);
+	EXPECT_TRUE(info.capabilities & oak_render_backend_cap_shaders);
+	EXPECT_TRUE(info.capabilities & oak_render_backend_cap_blit);
+	EXPECT_TRUE(info.capabilities & oak_render_backend_cap_readback);
 #endif
 }
 
@@ -48,12 +48,12 @@ TEST(DynamicRenderBackend, OpenGLBackendFollowsAdapterToRenderThread)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("opengl"));
-	if (!renderer.Load()) {
+	if (!renderer.load()) {
 		GTEST_SKIP()
 			<< "opengl backend library could not be loaded in this environment";
 	}
 
-	if (!renderer.Init()) {
+	if (!renderer.init()) {
 		GTEST_SKIP()
 			<< "OpenGL backend could not be initialized on this system";
 	}
@@ -62,7 +62,7 @@ TEST(DynamicRenderBackend, OpenGLBackendFollowsAdapterToRenderThread)
 	renderer.moveToThread(&render_thread);
 	render_thread.start();
 
-	QOpenGLContext *ctx = renderer.OpenGLContext();
+	QOpenGLContext *ctx = renderer.open_gl_context();
 	ASSERT_NE(ctx, nullptr);
 	EXPECT_EQ(ctx->thread(), &render_thread)
 		<< "Backend OpenGL context did not follow DynamicRenderer to render thread";
@@ -73,10 +73,10 @@ TEST(DynamicRenderBackend, OpenGLBackendFollowsAdapterToRenderThread)
 	QMetaObject::invokeMethod(
 		&renderer,
 		[&]() {
-			renderer.PostInit();
-			texture = renderer.CreateTexture(
-				olive::VideoParams(64, 64, olive::PixelFormat::U8,
-								   olive::VideoParams::kRGBAChannelCount));
+			renderer.post_init();
+			texture = renderer.create_texture(
+				olive::VideoParams(64, 64, olive::PixelFormat::u8,
+								   olive::VideoParams::k_rgba_channel_count));
 		},
 		Qt::BlockingQueuedConnection);
 
@@ -84,7 +84,7 @@ TEST(DynamicRenderBackend, OpenGLBackendFollowsAdapterToRenderThread)
 	render_thread.wait();
 
 	ASSERT_NE(texture, nullptr);
-	EXPECT_FALSE(texture->IsDummy());
+	EXPECT_FALSE(texture->is_dummy());
 #endif
 }
 
@@ -96,23 +96,23 @@ TEST(DynamicRenderBackend, LoadsExperimentalVulkanBackendWhenAvailable)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	if (!renderer.Load()) {
+	if (!renderer.load()) {
 		GTEST_SKIP()
 			<< "vulkan backend library could not be loaded in this environment";
 	}
 
 	OakRenderBackendInfo info = {};
-	ASSERT_TRUE(renderer.GetBackendInfo(&info));
-	if (info.kind != OAK_RENDER_BACKEND_VULKAN) {
+	ASSERT_TRUE(renderer.get_backend_info(&info));
+	if (info.kind != oak_render_backend_vulkan) {
 		GTEST_SKIP() << "Vulkan backend is not available on this system";
 	}
 	EXPECT_EQ(renderer.backend_name(), QStringLiteral("vulkan"));
-	EXPECT_EQ(renderer.OpenGLContext(), nullptr);
+	EXPECT_EQ(renderer.open_gl_context(), nullptr);
 	EXPECT_STREQ(info.name, "vulkan");
-	EXPECT_TRUE(info.capabilities & OAK_RENDER_BACKEND_CAP_TEXTURES);
-	EXPECT_TRUE(info.capabilities & OAK_RENDER_BACKEND_CAP_SHADERS);
-	EXPECT_TRUE(info.capabilities & OAK_RENDER_BACKEND_CAP_BLIT);
-	EXPECT_TRUE(info.capabilities & OAK_RENDER_BACKEND_CAP_READBACK);
+	EXPECT_TRUE(info.capabilities & oak_render_backend_cap_textures);
+	EXPECT_TRUE(info.capabilities & oak_render_backend_cap_shaders);
+	EXPECT_TRUE(info.capabilities & oak_render_backend_cap_blit);
+	EXPECT_TRUE(info.capabilities & oak_render_backend_cap_readback);
 #endif
 }
 
@@ -124,20 +124,20 @@ TEST(DynamicRenderBackend, FallsBackWhenExperimentalVulkanUnavailable)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	if (!renderer.Load()) {
+	if (!renderer.load()) {
 		GTEST_SKIP()
 			<< "vulkan backend library could not be loaded in this environment";
 	}
 
 	OakRenderBackendInfo info = {};
-	ASSERT_TRUE(renderer.GetBackendInfo(&info));
-	if (info.kind == OAK_RENDER_BACKEND_VULKAN) {
+	ASSERT_TRUE(renderer.get_backend_info(&info));
+	if (info.kind == oak_render_backend_vulkan) {
 		GTEST_SKIP()
 			<< "Vulkan backend is available on this system; skip fallback test";
 	}
 	EXPECT_EQ(renderer.backend_name(), QStringLiteral("opengl"));
-	EXPECT_EQ(renderer.OpenGLContext(), nullptr);
-	EXPECT_EQ(info.kind, OAK_RENDER_BACKEND_OPENGL);
+	EXPECT_EQ(renderer.open_gl_context(), nullptr);
+	EXPECT_EQ(info.kind, oak_render_backend_opengl);
 	EXPECT_STREQ(info.name, "opengl");
 #endif
 }
@@ -150,40 +150,40 @@ TEST(DynamicRenderBackend, VulkanUploadBlitDownload)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	if (!renderer.Load()) {
+	if (!renderer.load()) {
 		GTEST_SKIP()
 			<< "vulkan backend library could not be loaded in this environment";
 	}
 
 	OakRenderBackendInfo info = {};
-	ASSERT_TRUE(renderer.GetBackendInfo(&info));
-	if (info.kind != OAK_RENDER_BACKEND_VULKAN) {
+	ASSERT_TRUE(renderer.get_backend_info(&info));
+	if (info.kind != oak_render_backend_vulkan) {
 		GTEST_SKIP() << "Vulkan backend is not available on this system";
 	}
 
-	ASSERT_TRUE(renderer.Init());
-	renderer.PostInit();
+	ASSERT_TRUE(renderer.init());
+	renderer.post_init();
 
-	const int kSize = 64;
-	olive::VideoParams params(kSize, kSize, olive::PixelFormat::U8,
-							  olive::VideoParams::kRGBAChannelCount);
+	const int k_size = 64;
+	olive::VideoParams params(k_size, k_size, olive::PixelFormat::u8,
+							  olive::VideoParams::k_rgba_channel_count);
 
-	olive::TexturePtr src = renderer.CreateTexture(params);
+	olive::TexturePtr src = renderer.create_texture(params);
 	ASSERT_NE(src, nullptr);
-	ASSERT_FALSE(src->IsDummy());
+	ASSERT_FALSE(src->is_dummy());
 
-	QByteArray src_data(kSize * kSize * 4, 0);
-	for (int i = 0; i < kSize * kSize; ++i) {
+	QByteArray src_data(k_size * k_size * 4, 0);
+	for (int i = 0; i < k_size * k_size; ++i) {
 		src_data[i * 4 + 0] = static_cast<char>(255); // R
 		src_data[i * 4 + 1] = static_cast<char>(0); // G
 		src_data[i * 4 + 2] = static_cast<char>(0); // B
 		src_data[i * 4 + 3] = static_cast<char>(255); // A
 	}
-	src->Upload(src_data.data(), kSize);
+	src->upload(src_data.data(), k_size);
 
-	olive::TexturePtr dst = renderer.CreateTexture(params);
+	olive::TexturePtr dst = renderer.create_texture(params);
 	ASSERT_NE(dst, nullptr);
-	ASSERT_FALSE(dst->IsDummy());
+	ASSERT_FALSE(dst->is_dummy());
 
 	const QString vert =
 		QStringLiteral("uniform mat4 ove_mvpmat;\n"
@@ -202,20 +202,20 @@ TEST(DynamicRenderBackend, VulkanUploadBlitDownload)
 					   "    frag_color = texture(ove_maintex, ove_texcoord);\n"
 					   "}\n");
 	QVariant shader =
-		renderer.CreateNativeShader(olive::ShaderCode(frag, vert));
+		renderer.create_native_shader(olive::ShaderCode(frag, vert));
 	ASSERT_FALSE(shader.isNull());
 
 	olive::ShaderJob job;
-	job.Insert(QStringLiteral("ove_maintex"),
-			   olive::NodeValue(olive::NodeValue::kTexture,
+	job.insert(QStringLiteral("ove_maintex"),
+			   olive::NodeValue(olive::NodeValue::k_texture,
 								QVariant::fromValue(src)));
-	job.Insert(QStringLiteral("ove_mvpmat"),
-			   olive::NodeValue(olive::NodeValue::kMatrix, QMatrix4x4()));
+	job.insert(QStringLiteral("ove_mvpmat"),
+			   olive::NodeValue(olive::NodeValue::k_matrix, QMatrix4x4()));
 
-	renderer.BlitToTexture(shader, job, dst.get(), true);
+	renderer.blit_to_texture(shader, job, dst.get(), true);
 
-	QByteArray dst_data(kSize * kSize * 4, 0);
-	dst->Download(dst_data.data(), kSize);
+	QByteArray dst_data(k_size * k_size * 4, 0);
+	dst->download(dst_data.data(), k_size);
 
 	// The default pass-through shader should reproduce the red source pixel.
 	EXPECT_EQ(static_cast<uint8_t>(dst_data[0]), 255u);
@@ -233,34 +233,34 @@ TEST(DynamicRenderBackend, VulkanNullDestinationBlitDoesNotCrash)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	if (!renderer.Load()) {
+	if (!renderer.load()) {
 		GTEST_SKIP()
 			<< "vulkan backend library could not be loaded in this environment";
 	}
 
 	OakRenderBackendInfo info = {};
-	ASSERT_TRUE(renderer.GetBackendInfo(&info));
-	if (info.kind != OAK_RENDER_BACKEND_VULKAN) {
+	ASSERT_TRUE(renderer.get_backend_info(&info));
+	if (info.kind != oak_render_backend_vulkan) {
 		GTEST_SKIP() << "Vulkan backend is not available on this system";
 	}
 
-	ASSERT_TRUE(renderer.Init());
-	renderer.PostInit();
+	ASSERT_TRUE(renderer.init());
+	renderer.post_init();
 
-	const int kSize = 32;
-	olive::VideoParams params(kSize, kSize, olive::PixelFormat::U8,
-							  olive::VideoParams::kRGBAChannelCount);
+	const int k_size = 32;
+	olive::VideoParams params(k_size, k_size, olive::PixelFormat::u8,
+							  olive::VideoParams::k_rgba_channel_count);
 
-	olive::TexturePtr src = renderer.CreateTexture(params);
+	olive::TexturePtr src = renderer.create_texture(params);
 	ASSERT_NE(src, nullptr);
-	ASSERT_FALSE(src->IsDummy());
+	ASSERT_FALSE(src->is_dummy());
 
-	QByteArray src_data(kSize * kSize * 4, 0);
-	for (int i = 0; i < kSize * kSize; ++i) {
+	QByteArray src_data(k_size * k_size * 4, 0);
+	for (int i = 0; i < k_size * k_size; ++i) {
 		src_data[i * 4 + 0] = static_cast<char>(255);
 		src_data[i * 4 + 3] = static_cast<char>(255);
 	}
-	src->Upload(src_data.data(), kSize);
+	src->upload(src_data.data(), k_size);
 
 	const QString vert =
 		QStringLiteral("uniform mat4 ove_mvpmat;\n"
@@ -279,18 +279,18 @@ TEST(DynamicRenderBackend, VulkanNullDestinationBlitDoesNotCrash)
 					   "    frag_color = texture(ove_maintex, ove_texcoord);\n"
 					   "}\n");
 	QVariant shader =
-		renderer.CreateNativeShader(olive::ShaderCode(frag, vert));
+		renderer.create_native_shader(olive::ShaderCode(frag, vert));
 	ASSERT_FALSE(shader.isNull());
 
 	olive::ShaderJob job;
-	job.Insert(QStringLiteral("ove_maintex"),
-			   olive::NodeValue(olive::NodeValue::kTexture,
+	job.insert(QStringLiteral("ove_maintex"),
+			   olive::NodeValue(olive::NodeValue::k_texture,
 								QVariant::fromValue(src)));
-	job.Insert(QStringLiteral("ove_mvpmat"),
-			   olive::NodeValue(olive::NodeValue::kMatrix, QMatrix4x4()));
+	job.insert(QStringLiteral("ove_mvpmat"),
+			   olive::NodeValue(olive::NodeValue::k_matrix, QMatrix4x4()));
 
 	// Null-destination Blit has no render target; it should simply not crash.
-	renderer.Blit(shader, job, params, true);
+	renderer.blit(shader, job, params, true);
 	SUCCEED();
 #endif
 }
@@ -303,39 +303,39 @@ TEST(DynamicRenderBackend, VulkanIterativeBlitPingPong)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	if (!renderer.Load()) {
+	if (!renderer.load()) {
 		GTEST_SKIP()
 			<< "vulkan backend library could not be loaded in this environment";
 	}
 
 	OakRenderBackendInfo info = {};
-	ASSERT_TRUE(renderer.GetBackendInfo(&info));
-	if (info.kind != OAK_RENDER_BACKEND_VULKAN) {
+	ASSERT_TRUE(renderer.get_backend_info(&info));
+	if (info.kind != oak_render_backend_vulkan) {
 		GTEST_SKIP() << "Vulkan backend is not available on this system";
 	}
 
-	ASSERT_TRUE(renderer.Init());
-	renderer.PostInit();
+	ASSERT_TRUE(renderer.init());
+	renderer.post_init();
 
-	const int kSize = 32;
-	olive::VideoParams params(kSize, kSize, olive::PixelFormat::U8,
-							  olive::VideoParams::kRGBAChannelCount);
+	const int k_size = 32;
+	olive::VideoParams params(k_size, k_size, olive::PixelFormat::u8,
+							  olive::VideoParams::k_rgba_channel_count);
 
-	olive::TexturePtr src = renderer.CreateTexture(params);
+	olive::TexturePtr src = renderer.create_texture(params);
 	ASSERT_NE(src, nullptr);
-	ASSERT_FALSE(src->IsDummy());
+	ASSERT_FALSE(src->is_dummy());
 
 	// Start with a fully red texture.
-	QByteArray src_data(kSize * kSize * 4, 0);
-	for (int i = 0; i < kSize * kSize; ++i) {
+	QByteArray src_data(k_size * k_size * 4, 0);
+	for (int i = 0; i < k_size * k_size; ++i) {
 		src_data[i * 4 + 0] = static_cast<char>(255);
 		src_data[i * 4 + 3] = static_cast<char>(255);
 	}
-	src->Upload(src_data.data(), kSize);
+	src->upload(src_data.data(), k_size);
 
-	olive::TexturePtr dst = renderer.CreateTexture(params);
+	olive::TexturePtr dst = renderer.create_texture(params);
 	ASSERT_NE(dst, nullptr);
-	ASSERT_FALSE(dst->IsDummy());
+	ASSERT_FALSE(dst->is_dummy());
 
 	// Shader that samples the iterative input and scales RGB by 0.5 each pass.
 	const QString vert =
@@ -356,21 +356,21 @@ TEST(DynamicRenderBackend, VulkanIterativeBlitPingPong)
 					   "    frag_color = vec4(c.rgb * 0.5, c.a);\n"
 					   "}\n");
 	QVariant shader =
-		renderer.CreateNativeShader(olive::ShaderCode(frag, vert));
+		renderer.create_native_shader(olive::ShaderCode(frag, vert));
 	ASSERT_FALSE(shader.isNull());
 
 	olive::ShaderJob job;
-	job.Insert(QStringLiteral("ove_maintex"),
-			   olive::NodeValue(olive::NodeValue::kTexture,
+	job.insert(QStringLiteral("ove_maintex"),
+			   olive::NodeValue(olive::NodeValue::k_texture,
 								QVariant::fromValue(src)));
-	job.Insert(QStringLiteral("ove_mvpmat"),
-			   olive::NodeValue(olive::NodeValue::kMatrix, QMatrix4x4()));
-	job.SetIterations(2, QStringLiteral("ove_maintex"));
+	job.insert(QStringLiteral("ove_mvpmat"),
+			   olive::NodeValue(olive::NodeValue::k_matrix, QMatrix4x4()));
+	job.set_iterations(2, QStringLiteral("ove_maintex"));
 
-	renderer.BlitToTexture(shader, job, dst.get(), true);
+	renderer.blit_to_texture(shader, job, dst.get(), true);
 
-	QByteArray dst_data(kSize * kSize * 4, 0);
-	dst->Download(dst_data.data(), kSize);
+	QByteArray dst_data(k_size * k_size * 4, 0);
+	dst->download(dst_data.data(), k_size);
 
 	// After two halving passes, red is 255 * 0.5 * 0.5. UNORM conversion floors
 	// the intermediate value, so the result is 63 rather than 64.
@@ -389,38 +389,38 @@ TEST(DynamicRenderBackend, VulkanUploadDownloadThreeChannel)
 	GTEST_SKIP() << "Dynamic render backend is not enabled in this build";
 #else
 	olive::DynamicRenderer renderer(QStringLiteral("vulkan"));
-	if (!renderer.Load()) {
+	if (!renderer.load()) {
 		GTEST_SKIP()
 			<< "vulkan backend library could not be loaded in this environment";
 	}
 
 	OakRenderBackendInfo info = {};
-	ASSERT_TRUE(renderer.GetBackendInfo(&info));
-	if (info.kind != OAK_RENDER_BACKEND_VULKAN) {
+	ASSERT_TRUE(renderer.get_backend_info(&info));
+	if (info.kind != oak_render_backend_vulkan) {
 		GTEST_SKIP() << "Vulkan backend is not available on this system";
 	}
 
-	ASSERT_TRUE(renderer.Init());
-	renderer.PostInit();
+	ASSERT_TRUE(renderer.init());
+	renderer.post_init();
 
-	const int kSize = 16;
-	olive::VideoParams params(kSize, kSize, olive::PixelFormat::U8,
-							  olive::VideoParams::kRGBChannelCount);
+	const int k_size = 16;
+	olive::VideoParams params(k_size, k_size, olive::PixelFormat::u8,
+							  olive::VideoParams::k_rgb_channel_count);
 
-	olive::TexturePtr tex = renderer.CreateTexture(params);
+	olive::TexturePtr tex = renderer.create_texture(params);
 	ASSERT_NE(tex, nullptr);
-	ASSERT_FALSE(tex->IsDummy());
+	ASSERT_FALSE(tex->is_dummy());
 
-	QByteArray src_data(kSize * kSize * 3, 0);
-	for (int i = 0; i < kSize * kSize; ++i) {
+	QByteArray src_data(k_size * k_size * 3, 0);
+	for (int i = 0; i < k_size * k_size; ++i) {
 		src_data[i * 3 + 0] = static_cast<char>(255);
 		src_data[i * 3 + 1] = static_cast<char>(128);
 		src_data[i * 3 + 2] = static_cast<char>(64);
 	}
-	tex->Upload(src_data.data(), kSize);
+	tex->upload(src_data.data(), k_size);
 
-	QByteArray dst_data(kSize * kSize * 3, 0);
-	tex->Download(dst_data.data(), kSize);
+	QByteArray dst_data(k_size * k_size * 3, 0);
+	tex->download(dst_data.data(), k_size);
 
 	EXPECT_EQ(static_cast<uint8_t>(dst_data[0]), 255u);
 	EXPECT_EQ(static_cast<uint8_t>(dst_data[1]), 128u);

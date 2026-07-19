@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINE_PANEL_H
-#define TIMELINE_PANEL_H
+#ifndef OAK_TIMELINE_PANEL_H
+#define OAK_TIMELINE_PANEL_H
 
 #include "panel/timebased/timebased.h"
 #include "widget/timelinewidget/timelinewidget.h"
@@ -38,98 +38,98 @@ public:
 
 	inline TimelineWidget *timeline_widget() const
 	{
-		return static_cast<TimelineWidget *>(GetTimeBasedWidget());
+		return static_cast<TimelineWidget *>(get_time_based_widget());
 	}
 
-	void SplitAtPlayhead();
+	void split_at_playhead();
 
-	virtual void LoadData(const Info &info) override;
-	virtual Info SaveData() const override;
+	virtual void load_data(const Info &info) override;
+	virtual Info save_data() const override;
 
-	virtual void SelectAll() override;
+	virtual void select_all() override;
 
-	virtual void DeselectAll() override;
+	virtual void deselect_all() override;
 
-	virtual void RippleToIn() override;
+	virtual void ripple_to_in() override;
 
-	virtual void RippleToOut() override;
+	virtual void ripple_to_out() override;
 
-	virtual void EditToIn() override;
+	virtual void edit_to_in() override;
 
-	virtual void EditToOut() override;
+	virtual void edit_to_out() override;
 
-	virtual void DeleteSelected() override;
+	virtual void delete_selected() override;
 
-	virtual void RippleDelete() override;
+	virtual void ripple_delete() override;
 
-	virtual void IncreaseTrackHeight() override;
+	virtual void increase_track_height() override;
 
-	virtual void DecreaseTrackHeight() override;
+	virtual void decrease_track_height() override;
 
-	virtual void ToggleLinks() override;
+	virtual void toggle_links() override;
 
-	virtual void PasteInsert() override;
+	virtual void paste_insert() override;
 
-	virtual void DeleteInToOut() override;
+	virtual void delete_in_to_out() override;
 
-	virtual void RippleDeleteInToOut() override;
+	virtual void ripple_delete_in_to_out() override;
 
-	virtual void ToggleSelectedEnabled() override;
+	virtual void toggle_selected_enabled() override;
 
-	virtual void SetColorLabel(int index) override;
+	virtual void set_color_label(int index) override;
 
-	virtual void NudgeLeft() override;
+	virtual void nudge_left() override;
 
-	virtual void NudgeRight() override;
+	virtual void nudge_right() override;
 
-	virtual void MoveInToPlayhead() override;
+	virtual void move_in_to_playhead() override;
 
-	virtual void MoveOutToPlayhead() override;
+	virtual void move_out_to_playhead() override;
 
-	virtual void RenameSelected() override;
+	virtual void rename_selected() override;
 
-	void AddDefaultTransitionsToSelected()
+	void add_default_transitions_to_selected()
 	{
-		timeline_widget()->AddDefaultTransitionsToSelected();
+		timeline_widget()->add_default_transitions_to_selected();
 	}
 
-	void ShowSpeedDurationDialogForSelectedClips()
+	void show_speed_duration_dialog_for_selected_clips()
 	{
-		timeline_widget()->ShowSpeedDurationDialogForSelectedClips();
+		timeline_widget()->show_speed_duration_dialog_for_selected_clips();
 	}
 
-	void NestSelectedClips()
+	void nest_selected_clips()
 	{
-		timeline_widget()->NestSelectedClips();
+		timeline_widget()->nest_selected_clips();
 	}
 
-	void InsertFootageAtPlayhead(const QVector<ViewerOutput *> &footage);
+	void insert_footage_at_playhead(const QVector<ViewerOutput *> &footage);
 
-	void OverwriteFootageAtPlayhead(const QVector<ViewerOutput *> &footage);
+	void overwrite_footage_at_playhead(const QVector<ViewerOutput *> &footage);
 
-	const QVector<Block *> &GetSelectedBlocks() const
+	const QVector<Block *> &get_selected_blocks() const
 	{
-		return timeline_widget()->GetSelectedBlocks();
+		return timeline_widget()->get_selected_blocks();
 	}
 
-	Sequence *GetSequence() const
+	Sequence *get_sequence() const
 	{
-		return dynamic_cast<Sequence *>(GetConnectedViewer());
+		return dynamic_cast<Sequence *>(get_connected_viewer());
 	}
 
 protected:
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 signals:
-	void BlockSelectionChanged(const QVector<Block *> &selected_blocks);
+	void block_selection_changed(const QVector<Block *> &selected_blocks);
 
-	void RequestCaptureStart(const TimeRange &time,
+	void request_capture_start(const TimeRange &time,
 							 const Track::Reference &track);
 
-	void RevealViewerInProject(ViewerOutput *r);
-	void RevealViewerInFootageViewer(ViewerOutput *r, const TimeRange &range);
+	void reveal_viewer_in_project(ViewerOutput *r);
+	void reveal_viewer_in_footage_viewer(ViewerOutput *r, const TimeRange &range);
 };
 
 }
 
-#endif // TIMELINE_PANEL_H
+#endif // OAK_TIMELINE_PANEL_H

@@ -46,14 +46,14 @@ TimeBasedView::TimeBasedView(QWidget *parent)
 	setScene(&scene_);
 
 	// Set default scale (ensures non-zero scale from beginning)
-	SetScale(1.0);
+	set_scale(1.0);
 
 	// Default to no default drag mode
-	SetDefaultDragMode(NoDrag);
+	set_default_drag_mode(NoDrag);
 
 	// Signal to update bounding rect when the scene changes
 	connect(&scene_, &QGraphicsScene::changed, this,
-			&TimeBasedView::UpdateSceneRect);
+			&TimeBasedView::update_scene_rect);
 
 	// Workaround for Qt drawing issues with the default MinimalViewportUpdate. While this might be
 	// slower (Qt documentation says it may actually be faster in some situations),
@@ -61,13 +61,13 @@ TimeBasedView::TimeBasedView(QWidget *parent)
 	setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
 }
 
-void TimeBasedView::TimebaseChangedEvent(const rational &)
+void TimeBasedView::TimebaseChangedEvent(const Rational &)
 {
 	// Timebase influences position/visibility of playhead
 	viewport()->update();
 }
 
-void TimeBasedView::EnableSnap(const std::vector<rational> &points)
+void TimeBasedView::enable_snap(const std::vector<Rational> &points)
 {
 	snapped_ = true;
 	snap_time_ = points;
@@ -75,14 +75,14 @@ void TimeBasedView::EnableSnap(const std::vector<rational> &points)
 	viewport()->update();
 }
 
-void TimeBasedView::DisableSnap()
+void TimeBasedView::disable_snap()
 {
 	snapped_ = false;
 
 	viewport()->update();
 }
 
-const double &TimeBasedView::GetYScale() const
+const double &TimeBasedView::get_y_scale() const
 {
 	return y_scale_;
 }
@@ -91,7 +91,7 @@ void TimeBasedView::VerticalScaleChangedEvent(double)
 {
 }
 
-void TimeBasedView::ZoomIntoCursorPosition(QWheelEvent *event,
+void TimeBasedView::zoom_into_cursor_position(QWheelEvent *event,
 										   double scale_multiplier,
 										   const QPointF &cursor_pos)
 {
@@ -116,12 +116,12 @@ void TimeBasedView::ZoomIntoCursorPosition(QWheelEvent *event,
 	if (!only_vertical) {
 		double old_scroll = horizontalScrollBar()->value();
 
-		double old_scale = GetScale();
-		emit ScaleChanged(old_scale * scale_multiplier);
+		double old_scale = get_scale();
+		emit scale_changed(old_scale * scale_multiplier);
 
 		// Use GetScale so that if this value was clamped, we don't erroneously use an unclamped value
 		int new_x_scroll =
-			qRound((cursor_pos.x() + old_scroll) / old_scale * GetScale() -
+			qRound((cursor_pos.x() + old_scroll) / old_scale * get_scale() -
 				   cursor_pos.x());
 		horizontalScrollBar()->setValue(new_x_scroll);
 	}
@@ -129,18 +129,18 @@ void TimeBasedView::ZoomIntoCursorPosition(QWheelEvent *event,
 	if (!only_horizontal) {
 		double old_y_scroll = verticalScrollBar()->value();
 
-		double old_y_scale = GetYScale();
-		SetYScale(old_y_scale * scale_multiplier);
+		double old_y_scale = get_y_scale();
+		set_y_scale(old_y_scale * scale_multiplier);
 
 		// Use GetYScale so that if this value was clamped, we don't erroneously use an unclamped value
 		int new_y_scroll =
-			qRound((cursor_pos.y() + old_y_scroll) / old_y_scale * GetYScale() -
+			qRound((cursor_pos.y() + old_y_scroll) / old_y_scale * get_y_scale() -
 				   cursor_pos.y());
 		verticalScrollBar()->setValue(new_y_scroll);
 	}
 }
 
-void TimeBasedView::SetYScale(const double &y_scale)
+void TimeBasedView::set_y_scale(const double &y_scale)
 {
 	Q_ASSERT(y_scale > 0);
 
@@ -153,29 +153,29 @@ void TimeBasedView::SetYScale(const double &y_scale)
 	}
 }
 
-void TimeBasedView::SetViewerNode(ViewerOutput *v)
+void TimeBasedView::set_viewer_node(ViewerOutput *v)
 {
 	if (viewer_) {
-		disconnect(viewer_, &ViewerOutput::PlayheadChanged, viewport(),
+		disconnect(viewer_, &ViewerOutput::playhead_changed, viewport(),
 				   static_cast<void (QWidget::*)()>(&TimeBasedView::update));
 	}
 
 	viewer_ = v;
 
 	if (viewer_) {
-		connect(viewer_, &ViewerOutput::PlayheadChanged, viewport(),
+		connect(viewer_, &ViewerOutput::playhead_changed, viewport(),
 				static_cast<void (QWidget::*)()>(&TimeBasedView::update));
 	}
 }
 
-QPointF TimeBasedView::ScalePoint(const QPointF &p) const
+QPointF TimeBasedView::scale_point(const QPointF &p) const
 {
-	return QPointF(p.x() * GetScale(), p.y() * GetYScale());
+	return QPointF(p.x() * get_scale(), p.y() * get_y_scale());
 }
 
-QPointF TimeBasedView::UnscalePoint(const QPointF &p) const
+QPointF TimeBasedView::unscale_point(const QPointF &p) const
 {
-	return QPointF(p.x() / GetScale(), p.y() / GetYScale());
+	return QPointF(p.x() / get_scale(), p.y() / get_y_scale());
 }
 
 void TimeBasedView::drawForeground(QPainter *painter, const QRectF &rect)
@@ -183,9 +183,9 @@ void TimeBasedView::drawForeground(QPainter *painter, const QRectF &rect)
 	QGraphicsView::drawForeground(painter, rect);
 
 	if (!timebase().isNull()) {
-		double width = TimeToScene(timebase());
+		double width = time_to_scene(timebase());
 
-		playhead_scene_left_ = GetPlayheadX();
+		playhead_scene_left_ = get_playhead_x();
 		playhead_scene_right_ = playhead_scene_left_ + width;
 
 		QRectF playhead_rect(playhead_scene_left_, rect.top(), width,
@@ -208,15 +208,15 @@ void TimeBasedView::drawForeground(QPainter *painter, const QRectF &rect)
 	if (snapped_) {
 		painter->setPen(palette().text().color());
 
-		foreach (const rational &r, snap_time_) {
-			double x = TimeToScene(r);
+		foreach (const Rational &r, snap_time_) {
+			double x = time_to_scene(r);
 
 			painter->drawLine(x, rect.top(), x, rect.height());
 		}
 	}
 }
 
-bool TimeBasedView::PlayheadPress(QMouseEvent *event)
+bool TimeBasedView::playhead_press(QMouseEvent *event)
 {
 	QPointF scene_pos = mapToScene(event->pos());
 
@@ -227,7 +227,7 @@ bool TimeBasedView::PlayheadPress(QMouseEvent *event)
 	return dragging_playhead_;
 }
 
-bool TimeBasedView::PlayheadMove(QMouseEvent *event)
+bool TimeBasedView::playhead_move(QMouseEvent *event)
 {
 	if (!dragging_playhead_) {
 		return false;
@@ -235,31 +235,31 @@ bool TimeBasedView::PlayheadMove(QMouseEvent *event)
 
 	if (viewer_) {
 		QPointF scene_pos = mapToScene(event->pos());
-		rational mouse_time = qMax(rational(0), SceneToTime(scene_pos.x()));
+		Rational mouse_time = qMax(Rational(0), scene_to_time(scene_pos.x()));
 
 		if (Core::instance()->snapping() && snap_service_) {
-			rational movement;
+			Rational movement;
 
-			snap_service_->SnapPoint({ mouse_time }, &movement,
-									 TimeBasedWidget::kSnapAll &
-										 ~TimeBasedWidget::kSnapToPlayhead);
+			snap_service_->snap_point({ mouse_time }, &movement,
+									 TimeBasedWidget::k_snap_all &
+										 ~TimeBasedWidget::k_snap_to_playhead);
 
 			mouse_time += movement;
 		}
 
-		viewer_->SetPlayhead(mouse_time);
+		viewer_->set_playhead(mouse_time);
 	}
 
 	return true;
 }
 
-bool TimeBasedView::PlayheadRelease(QMouseEvent *)
+bool TimeBasedView::playhead_release(QMouseEvent *)
 {
 	if (dragging_playhead_) {
 		dragging_playhead_ = false;
 
 		if (snap_service_) {
-			snap_service_->HideSnaps();
+			snap_service_->hide_snaps();
 		}
 
 		return true;
@@ -268,23 +268,23 @@ bool TimeBasedView::PlayheadRelease(QMouseEvent *)
 	return false;
 }
 
-qreal TimeBasedView::GetPlayheadX()
+qreal TimeBasedView::get_playhead_x()
 {
 	if (viewer_) {
-		return TimeToScene(viewer_->GetPlayhead());
+		return time_to_scene(viewer_->get_playhead());
 	} else {
 		return 0;
 	}
 }
 
-void TimeBasedView::SetEndTime(const rational &length)
+void TimeBasedView::set_end_time(const Rational &length)
 {
 	end_time_ = length;
 
-	UpdateSceneRect();
+	update_scene_rect();
 }
 
-void TimeBasedView::UpdateSceneRect()
+void TimeBasedView::update_scene_rect()
 {
 	QRectF bounding_rect = scene_.itemsBoundingRect();
 
@@ -292,7 +292,7 @@ void TimeBasedView::UpdateSceneRect()
 	bounding_rect.setLeft(0);
 
 	// Ensure the scene is always the full length of the timeline with a gap at the end to work with
-	bounding_rect.setRight(TimeToScene(end_time_) + width());
+	bounding_rect.setRight(time_to_scene(end_time_) + width());
 
 	// Any further rect processing from derivatives can be done here
 	SceneRectUpdateEvent(bounding_rect);
@@ -307,7 +307,7 @@ void TimeBasedView::resizeEvent(QResizeEvent *event)
 {
 	QGraphicsView::resizeEvent(event);
 
-	UpdateSceneRect();
+	update_scene_rect();
 }
 
 void TimeBasedView::ScaleChangedEvent(const double &scale)
@@ -315,7 +315,7 @@ void TimeBasedView::ScaleChangedEvent(const double &scale)
 	TimeScaledObject::ScaleChangedEvent(scale);
 
 	// Update scene rect
-	UpdateSceneRect();
+	update_scene_rect();
 
 	// Force redraw for playhead if the above function didn't do it
 	viewport()->update();

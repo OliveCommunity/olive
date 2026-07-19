@@ -27,21 +27,21 @@
 namespace
 {
 
-QString DemoPath()
+QString demo_path()
 {
 	return QDir(QStringLiteral(OAK_TEST_SOURCE_DIR))
 		.filePath(QStringLiteral("tests/demo.mp4"));
 }
 
-QString TempFilePath(const QString &name)
+QString temp_file_path(const QString &name)
 {
 	return QDir::temp().filePath(name);
 }
 
-constexpr double kPi = 3.14159265358979323846;
+constexpr double k_pi = 3.14159265358979323846;
 
 // Finds the first stream of `type`; returns its index or -1.
-int FindStream(FBProbe *probe, int type)
+int find_stream(FBProbe *probe, int type)
 {
 	const int count = fb_probe_get_stream_count(probe);
 	for (int i = 0; i < count; ++i) {
@@ -64,11 +64,11 @@ TEST(FFmpegBridgeConstants, ChannelLayoutsMatchCore)
 {
 	// The core library and the bridge must agree on layout masks or all
 	// audio plumbing between them breaks.
-	EXPECT_EQ(FB_CH_LAYOUT_MONO, olive::core::kChannelLayoutMono);
-	EXPECT_EQ(FB_CH_LAYOUT_STEREO, olive::core::kChannelLayoutStereo);
-	EXPECT_EQ(FB_CH_LAYOUT_2_1, olive::core::kChannelLayout2_1);
-	EXPECT_EQ(FB_CH_LAYOUT_5POINT1, olive::core::kChannelLayout5Point1);
-	EXPECT_EQ(FB_CH_LAYOUT_7POINT1, olive::core::kChannelLayout7Point1);
+	EXPECT_EQ(FB_CH_LAYOUT_MONO, olive::core::k_channel_layout_mono);
+	EXPECT_EQ(FB_CH_LAYOUT_STEREO, olive::core::k_channel_layout_stereo);
+	EXPECT_EQ(FB_CH_LAYOUT_2_1, olive::core::k_channel_layout2_1);
+	EXPECT_EQ(FB_CH_LAYOUT_5POINT1, olive::core::k_channel_layout5_point1);
+	EXPECT_EQ(FB_CH_LAYOUT_7POINT1, olive::core::k_channel_layout7_point1);
 }
 
 TEST(FFmpegBridgeConstants, SpecialValues)
@@ -76,8 +76,8 @@ TEST(FFmpegBridgeConstants, SpecialValues)
 	EXPECT_EQ(FB_NOPTS_VALUE, INT64_MIN);
 	EXPECT_EQ(FB_TIME_BASE, 1000000);
 	EXPECT_LT(FB_ERROR_EOF, 0);
-	EXPECT_EQ(FB_PIX_FMT_NONE, -1);
-	EXPECT_EQ(FB_SAMPLE_FMT_NONE, -1);
+	EXPECT_EQ(fb_pix_fmt_none, -1);
+	EXPECT_EQ(fb_sample_fmt_none, -1);
 }
 
 // ============================================================================
@@ -107,37 +107,37 @@ TEST(FFmpegBridgeError, VersionString)
 
 TEST(FFmpegBridgePixFmt, NameRoundtrip)
 {
-	const char *name = fb_pix_fmt_name(FB_PIX_FMT_YUV420P);
+	const char *name = fb_pix_fmt_name(fb_pix_fmt_yu_v420_p);
 	ASSERT_NE(name, nullptr);
 	EXPECT_STREQ(name, "yuv420p");
-	EXPECT_EQ(fb_pix_fmt_from_name(name), FB_PIX_FMT_YUV420P);
+	EXPECT_EQ(fb_pix_fmt_from_name(name), fb_pix_fmt_yu_v420_p);
 
-	EXPECT_STREQ(fb_pix_fmt_name(FB_PIX_FMT_RGBA), "rgba");
-	EXPECT_EQ(fb_pix_fmt_from_name("rgba"), FB_PIX_FMT_RGBA);
+	EXPECT_STREQ(fb_pix_fmt_name(fb_pix_fmt_rgba), "rgba");
+	EXPECT_EQ(fb_pix_fmt_from_name("rgba"), fb_pix_fmt_rgba);
 }
 
 TEST(FFmpegBridgePixFmt, Properties)
 {
-	EXPECT_EQ(fb_pix_fmt_bits_per_pixel(FB_PIX_FMT_RGBA), 32);
-	EXPECT_EQ(fb_pix_fmt_bits_per_pixel(FB_PIX_FMT_YUV420P), 12);
-	EXPECT_EQ(fb_pix_fmt_bits_per_pixel(FB_PIX_FMT_RGBA64LE), 64);
+	EXPECT_EQ(fb_pix_fmt_bits_per_pixel(fb_pix_fmt_rgba), 32);
+	EXPECT_EQ(fb_pix_fmt_bits_per_pixel(fb_pix_fmt_yu_v420_p), 12);
+	EXPECT_EQ(fb_pix_fmt_bits_per_pixel(fb_pix_fmt_rgb_a64_le), 64);
 
-	EXPECT_EQ(fb_pix_fmt_has_alpha(FB_PIX_FMT_RGBA), 1);
-	EXPECT_EQ(fb_pix_fmt_has_alpha(FB_PIX_FMT_YUV420P), 0);
+	EXPECT_EQ(fb_pix_fmt_has_alpha(fb_pix_fmt_rgba), 1);
+	EXPECT_EQ(fb_pix_fmt_has_alpha(fb_pix_fmt_yu_v420_p), 0);
 
-	EXPECT_EQ(fb_pix_fmt_is_planar(FB_PIX_FMT_YUV420P), 1);
-	EXPECT_EQ(fb_pix_fmt_is_planar(FB_PIX_FMT_RGBA), 0);
+	EXPECT_EQ(fb_pix_fmt_is_planar(fb_pix_fmt_yu_v420_p), 1);
+	EXPECT_EQ(fb_pix_fmt_is_planar(fb_pix_fmt_rgba), 0);
 
-	EXPECT_EQ(fb_pix_fmt_component_size(FB_PIX_FMT_RGBA), 1);
-	EXPECT_EQ(fb_pix_fmt_component_size(FB_PIX_FMT_RGBA64LE), 2);
+	EXPECT_EQ(fb_pix_fmt_component_size(fb_pix_fmt_rgba), 1);
+	EXPECT_EQ(fb_pix_fmt_component_size(fb_pix_fmt_rgb_a64_le), 2);
 }
 
 TEST(FFmpegBridgePixFmt, FindBestOfList)
 {
-	const int list[] = { FB_PIX_FMT_YUV420P, FB_PIX_FMT_YUV444P,
-						 FB_PIX_FMT_NONE };
-	EXPECT_EQ(fb_find_best_pix_fmt_of_list(list, FB_PIX_FMT_YUV420P),
-			  FB_PIX_FMT_YUV420P);
+	const int list[] = { fb_pix_fmt_yu_v420_p, fb_pix_fmt_yu_v444_p,
+						 fb_pix_fmt_none };
+	EXPECT_EQ(fb_find_best_pix_fmt_of_list(list, fb_pix_fmt_yu_v420_p),
+			  fb_pix_fmt_yu_v420_p);
 }
 
 TEST(FFmpegBridgeChannelLayout, ChannelCounts)
@@ -168,16 +168,16 @@ TEST(FFmpegBridgeFrame, AllocAndFields)
 	ASSERT_NE(frame, nullptr);
 
 	EXPECT_EQ(fb_frame_get_width(frame), 0);
-	EXPECT_EQ(fb_frame_get_format(frame), FB_PIX_FMT_NONE);
+	EXPECT_EQ(fb_frame_get_format(frame), fb_pix_fmt_none);
 
 	fb_frame_set_width(frame, 320);
 	fb_frame_set_height(frame, 240);
-	fb_frame_set_format(frame, FB_PIX_FMT_RGBA);
+	fb_frame_set_format(frame, fb_pix_fmt_rgba);
 	fb_frame_set_pts(frame, 12345);
 
 	EXPECT_EQ(fb_frame_get_width(frame), 320);
 	EXPECT_EQ(fb_frame_get_height(frame), 240);
-	EXPECT_EQ(fb_frame_get_format(frame), FB_PIX_FMT_RGBA);
+	EXPECT_EQ(fb_frame_get_format(frame), fb_pix_fmt_rgba);
 	EXPECT_EQ(fb_frame_get_pts(frame), 12345);
 
 	fb_frame_free(&frame);
@@ -191,7 +191,7 @@ TEST(FFmpegBridgeFrame, BufferAllocAndAccess)
 
 	fb_frame_set_width(frame, 64);
 	fb_frame_set_height(frame, 48);
-	fb_frame_set_format(frame, FB_PIX_FMT_RGBA);
+	fb_frame_set_format(frame, fb_pix_fmt_rgba);
 	ASSERT_EQ(fb_frame_get_buffer(frame, 0), 0);
 	ASSERT_EQ(fb_frame_make_writable(frame), 0);
 
@@ -227,7 +227,7 @@ TEST(FFmpegBridgeFrame, AudioFields)
 
 	fb_frame_set_nb_samples(frame, 1024);
 	fb_frame_set_sample_rate(frame, 44100);
-	fb_frame_set_format(frame, FB_SAMPLE_FMT_FLTP);
+	fb_frame_set_format(frame, fb_sample_fmt_fltp);
 	fb_frame_set_channel_layout_mask(frame, FB_CH_LAYOUT_STEREO);
 	ASSERT_EQ(fb_frame_get_buffer(frame, 0), 0);
 
@@ -250,13 +250,13 @@ TEST(FFmpegBridgeFrame, CopyProps)
 
 	// av_frame_copy_props copies metadata properties, not dimensions/format
 	fb_frame_set_pts(src, 777);
-	fb_frame_set_color_range(src, FB_COLOR_RANGE_JPEG);
-	fb_frame_set_colorspace(src, FB_COL_SPC_BT709);
+	fb_frame_set_color_range(src, fb_color_range_jpeg);
+	fb_frame_set_colorspace(src, fb_col_spc_b_t709);
 
 	ASSERT_EQ(fb_frame_copy_props(dst, src), 0);
 	EXPECT_EQ(fb_frame_get_pts(dst), 777);
-	EXPECT_EQ(fb_frame_get_color_range(dst), FB_COLOR_RANGE_JPEG);
-	EXPECT_EQ(fb_frame_get_colorspace(dst), FB_COL_SPC_BT709);
+	EXPECT_EQ(fb_frame_get_color_range(dst), fb_color_range_jpeg);
+	EXPECT_EQ(fb_frame_get_colorspace(dst), fb_col_spc_b_t709);
 
 	fb_frame_free(&src);
 	fb_frame_free(&dst);
@@ -301,7 +301,7 @@ TEST(FFmpegBridgeScaler, RgbaToYuv420P)
 	FBFrame *src = fb_frame_alloc();
 	fb_frame_set_width(src, width);
 	fb_frame_set_height(src, height);
-	fb_frame_set_format(src, FB_PIX_FMT_RGBA);
+	fb_frame_set_format(src, fb_pix_fmt_rgba);
 	ASSERT_EQ(fb_frame_get_buffer(src, 0), 0);
 
 	// Solid mid-grey image
@@ -314,11 +314,11 @@ TEST(FFmpegBridgeScaler, RgbaToYuv420P)
 	FBFrame *dst = fb_frame_alloc();
 	fb_frame_set_width(dst, width);
 	fb_frame_set_height(dst, height);
-	fb_frame_set_format(dst, FB_PIX_FMT_YUV420P);
+	fb_frame_set_format(dst, fb_pix_fmt_yu_v420_p);
 	ASSERT_EQ(fb_frame_get_buffer(dst, 0), 0);
 
-	FBScaler *scaler = fb_scaler_create(width, height, FB_PIX_FMT_RGBA, width,
-										height, FB_PIX_FMT_YUV420P,
+	FBScaler *scaler = fb_scaler_create(width, height, fb_pix_fmt_rgba, width,
+										height, fb_pix_fmt_yu_v420_p,
 										FB_SCALER_POINT);
 	ASSERT_NE(scaler, nullptr);
 	// sws_scale returns the output slice height on success
@@ -345,10 +345,10 @@ TEST(FFmpegBridgeScaler, RgbaToYuv420P)
 
 TEST(FFmpegBridgeScaler, SetColorspace)
 {
-	FBScaler *scaler = fb_scaler_create(64, 64, FB_PIX_FMT_YUV420P, 64, 64,
-										FB_PIX_FMT_RGBA, FB_SCALER_POINT);
+	FBScaler *scaler = fb_scaler_create(64, 64, fb_pix_fmt_yu_v420_p, 64, 64,
+										fb_pix_fmt_rgba, FB_SCALER_POINT);
 	ASSERT_NE(scaler, nullptr);
-	EXPECT_GE(fb_scaler_set_colorspace(scaler, FB_COL_SPC_BT709, 0), 0);
+	EXPECT_GE(fb_scaler_set_colorspace(scaler, fb_col_spc_b_t709, 0), 0);
 	fb_scaler_free(&scaler);
 }
 
@@ -357,13 +357,13 @@ TEST(FFmpegBridgeScaler, YuvCoefficients)
 	// Values come from swscale's coefficient tables (sws_getCoefficients /
 	// 65536), which include the studio-range scaling factor.
 	double coeffs[4] = { 0, 0, 0, 0 };
-	fb_get_yuv_coefficients(FB_COL_SPC_BT709, coeffs);
+	fb_get_yuv_coefficients(fb_col_spc_b_t709, coeffs);
 	EXPECT_NEAR(coeffs[0], 117489 / 65536.0, 1e-6); // crv
 	EXPECT_NEAR(coeffs[1], 138438 / 65536.0, 1e-6); // cbu
 	EXPECT_GT(coeffs[2], 0.0);
 	EXPECT_GT(coeffs[3], 0.0);
 
-	fb_get_yuv_coefficients(FB_COL_SPC_SMPTE170M, coeffs);
+	fb_get_yuv_coefficients(fb_col_spc_smpt_e170_m, coeffs);
 	EXPECT_NEAR(coeffs[0], 104597 / 65536.0, 1e-6); // crv
 }
 
@@ -378,8 +378,8 @@ TEST(FFmpegBridgeResampler, ConvertFltpToS16p)
 	const double rate = 44100.0;
 
 	FBResampler *resampler =
-		fb_resampler_create(FB_CH_LAYOUT_STEREO, FB_SAMPLE_FMT_S16P, 44100,
-							FB_CH_LAYOUT_STEREO, FB_SAMPLE_FMT_FLTP, 44100);
+		fb_resampler_create(FB_CH_LAYOUT_STEREO, fb_sample_fmt_s16_p, 44100,
+							FB_CH_LAYOUT_STEREO, fb_sample_fmt_fltp, 44100);
 	ASSERT_NE(resampler, nullptr);
 
 	const int out_capacity = fb_resampler_get_out_samples(resampler, in_samples);
@@ -387,8 +387,8 @@ TEST(FFmpegBridgeResampler, ConvertFltpToS16p)
 
 	std::vector<float> in_left(in_samples), in_right(in_samples);
 	for (int i = 0; i < in_samples; ++i) {
-		in_left[i] = 0.5f * std::sin(2.0 * kPi * freq * i / rate);
-		in_right[i] = 0.5f * std::sin(2.0 * kPi * freq * i / rate);
+		in_left[i] = 0.5f * std::sin(2.0 * k_pi * freq * i / rate);
+		in_right[i] = 0.5f * std::sin(2.0 * k_pi * freq * i / rate);
 	}
 	const uint8_t *in_planes[2] = {
 		reinterpret_cast<const uint8_t *>(in_left.data()),
@@ -424,14 +424,14 @@ TEST(FFmpegBridgeResampler, ConvertFrameInput)
 	const int in_samples = 512;
 
 	FBResampler *resampler =
-		fb_resampler_create(FB_CH_LAYOUT_STEREO, FB_SAMPLE_FMT_S16P, 44100,
-							FB_CH_LAYOUT_STEREO, FB_SAMPLE_FMT_FLTP, 44100);
+		fb_resampler_create(FB_CH_LAYOUT_STEREO, fb_sample_fmt_s16_p, 44100,
+							FB_CH_LAYOUT_STEREO, fb_sample_fmt_fltp, 44100);
 	ASSERT_NE(resampler, nullptr);
 
 	FBFrame *frame = fb_frame_alloc();
 	fb_frame_set_nb_samples(frame, in_samples);
 	fb_frame_set_sample_rate(frame, 44100);
-	fb_frame_set_format(frame, FB_SAMPLE_FMT_FLTP);
+	fb_frame_set_format(frame, fb_sample_fmt_fltp);
 	fb_frame_set_channel_layout_mask(frame, FB_CH_LAYOUT_STEREO);
 	ASSERT_EQ(fb_frame_get_buffer(frame, 0), 0);
 
@@ -467,7 +467,7 @@ TEST(FFmpegBridgeResampler, ConvertFrameInput)
 
 TEST(FFmpegBridgeProbe, DemoMp4Streams)
 {
-	const QString path = DemoPath();
+	const QString path = demo_path();
 	ASSERT_TRUE(QFileInfo::exists(path));
 
 	FBProbe *probe = fb_probe_create();
@@ -477,14 +477,14 @@ TEST(FFmpegBridgeProbe, DemoMp4Streams)
 	EXPECT_GE(fb_probe_get_stream_count(probe), 1);
 	EXPECT_GT(fb_probe_get_duration(probe), 0);
 
-	const int video = FindStream(probe, FB_MEDIA_TYPE_VIDEO);
+	const int video = find_stream(probe, fb_media_type_video);
 	ASSERT_GE(video, 0);
 
 	FBStreamInfo info;
 	ASSERT_EQ(fb_probe_get_stream_info(probe, video, &info), 0);
 	EXPECT_EQ(info.width, 1920);
 	EXPECT_EQ(info.height, 1080);
-	EXPECT_NE(info.pixel_format, FB_PIX_FMT_NONE);
+	EXPECT_NE(info.pixel_format, fb_pix_fmt_none);
 	EXPECT_EQ(info.has_decoder, 1);
 	EXPECT_GT(info.time_base_den, 0);
 
@@ -500,15 +500,15 @@ TEST(FFmpegBridgeProbe, DemoMp4Streams)
 
 TEST(FFmpegBridgeProbe, VideoStreamDetails)
 {
-	const QString path = DemoPath();
+	const QString path = demo_path();
 	ASSERT_TRUE(QFileInfo::exists(path));
 
 	FBVideoStreamDetails details;
 	ASSERT_EQ(fb_probe_video_stream_details(path.toUtf8().constData(), 0,
 											&details, 0, nullptr, nullptr),
 			  0);
-	EXPECT_TRUE(details.field_order == FB_FIELD_ORDER_PROGRESSIVE ||
-				details.field_order == FB_FIELD_ORDER_UNKNOWN);
+	EXPECT_TRUE(details.field_order == fb_field_order_progressive ||
+				details.field_order == fb_field_order_unknown);
 	EXPECT_GT(details.frame_rate_num, 0);
 	EXPECT_GT(details.frame_rate_den, 0);
 	EXPECT_EQ(details.pixel_aspect_num, 1);
@@ -518,7 +518,7 @@ TEST(FFmpegBridgeProbe, VideoStreamDetails)
 TEST(FFmpegBridgeProbe, ReadSubtitleStream)
 {
 	// Write a small SRT file and read it back through the bridge
-	const QString path = TempFilePath(QStringLiteral("fb_bridge_test.srt"));
+	const QString path = temp_file_path(QStringLiteral("fb_bridge_test.srt"));
 	{
 		QFile file(path);
 		ASSERT_TRUE(file.open(QIODevice::WriteOnly | QIODevice::Text));
@@ -555,7 +555,7 @@ TEST(FFmpegBridgeProbe, ReadSubtitleStream)
 
 TEST(FFmpegBridgeDecoder, DecodeFirstFrame)
 {
-	const QString path = DemoPath();
+	const QString path = demo_path();
 	ASSERT_TRUE(QFileInfo::exists(path));
 
 	FBDecoder *decoder = fb_decoder_create();
@@ -566,7 +566,7 @@ TEST(FFmpegBridgeDecoder, DecodeFirstFrame)
 	ASSERT_EQ(fb_decoder_get_stream_info(decoder, &info), 0);
 	EXPECT_EQ(info.width, 1920);
 	EXPECT_EQ(info.height, 1080);
-	EXPECT_EQ(info.codec_type, FB_MEDIA_TYPE_VIDEO);
+	EXPECT_EQ(info.codec_type, fb_media_type_video);
 	EXPECT_GT(fb_decoder_get_format_duration(decoder), 0);
 
 	FBPacket *packet = fb_packet_alloc();
@@ -582,7 +582,7 @@ TEST(FFmpegBridgeDecoder, DecodeFirstFrame)
 
 	EXPECT_EQ(fb_frame_get_width(frame), 1920);
 	EXPECT_EQ(fb_frame_get_height(frame), 1080);
-	EXPECT_NE(fb_frame_get_format(frame), FB_PIX_FMT_NONE);
+	EXPECT_NE(fb_frame_get_format(frame), fb_pix_fmt_none);
 	// Software frames must have CPU-accessible data. Hardware frames live in
 	// device memory, so their data is checked after the transfer below.
 	if (!fb_frame_is_hw(frame)) {
@@ -641,7 +641,7 @@ TEST(FFmpegBridgeDecoder, OpenFailure)
 
 TEST(FFmpegBridgeDecoder, GuessRates)
 {
-	const QString path = DemoPath();
+	const QString path = demo_path();
 	ASSERT_TRUE(QFileInfo::exists(path));
 
 	FBDecoder *decoder = fb_decoder_create();
@@ -669,11 +669,11 @@ TEST(FFmpegBridgeAudioGraph, TempoProcessing)
 	FBAudioGraphConfig config = {};
 	config.in_sample_rate = 44100;
 	config.in_channel_layout_mask = FB_CH_LAYOUT_STEREO;
-	config.in_sample_format = FB_SAMPLE_FMT_FLTP;
+	config.in_sample_format = fb_sample_fmt_fltp;
 	config.in_channels = 2;
 	config.out_sample_rate = 44100;
 	config.out_channel_layout_mask = FB_CH_LAYOUT_STEREO;
-	config.out_sample_format = FB_SAMPLE_FMT_FLTP;
+	config.out_sample_format = fb_sample_fmt_fltp;
 	config.out_channels = 2;
 	config.out_is_planar = 1;
 	config.tempo = 2.0;
@@ -721,18 +721,18 @@ TEST(FFmpegBridgeEncoder, CodecFormatLists)
 	// PNG is a native FFmpeg encoder and always available
 	const char *names[16];
 	const int pix_count =
-		fb_encoder_codec_get_pixel_formats(FB_CODEC_PNG, names, 16);
+		fb_encoder_codec_get_pixel_formats(fb_codec_png, names, 16);
 	EXPECT_GT(pix_count, 0);
 
 	int fmts[16];
 	const int sample_count =
-		fb_encoder_codec_get_sample_formats(FB_CODEC_AAC, fmts, 16);
+		fb_encoder_codec_get_sample_formats(fb_codec_aac, fmts, 16);
 	EXPECT_GT(sample_count, 0);
 }
 
 TEST(FFmpegBridgeEncoder, WritePngVideoAndProbeBack)
 {
-	const QString path = TempFilePath(QStringLiteral("fb_bridge_test.mkv"));
+	const QString path = temp_file_path(QStringLiteral("fb_bridge_test.mkv"));
 	QFile::remove(path);
 
 	const int width = 64;
@@ -744,7 +744,7 @@ TEST(FFmpegBridgeEncoder, WritePngVideoAndProbeBack)
 	FBEncoderConfig config = {};
 	config.filename = filename.constData();
 	config.video_enabled = 1;
-	config.video_codec = FB_CODEC_PNG;
+	config.video_codec = fb_codec_png;
 	config.video_width = width;
 	config.video_height = height;
 	config.video_pixel_aspect_num = 1;
@@ -754,9 +754,9 @@ TEST(FFmpegBridgeEncoder, WritePngVideoAndProbeBack)
 	config.video_frame_rate_num = 30;
 	config.video_frame_rate_den = 1;
 	config.video_pix_fmt = "rgba";
-	config.video_src_pix_fmt = FB_PIX_FMT_RGBA;
-	config.video_color_range = FB_COLOR_RANGE_UNSPEC;
-	config.video_field_order = FB_FIELD_ORDER_PROGRESSIVE;
+	config.video_src_pix_fmt = fb_pix_fmt_rgba;
+	config.video_color_range = fb_color_range_unspec;
+	config.video_field_order = fb_field_order_progressive;
 	config.video_threads = 1;
 
 	FBEncoder *encoder = fb_encoder_create(&config);
@@ -773,7 +773,7 @@ TEST(FFmpegBridgeEncoder, WritePngVideoAndProbeBack)
 			pixels[i * 4 + 3] = 255;							// A
 		}
 		ASSERT_EQ(fb_encoder_write_video_frame(encoder, width, height,
-											 FB_PIX_FMT_RGBA, pixels.data(),
+											 fb_pix_fmt_rgba, pixels.data(),
 											 width * 4, f / 30.0),
 				  0)
 			<< "encoder error: " << fb_encoder_get_error(encoder);
@@ -787,7 +787,7 @@ TEST(FFmpegBridgeEncoder, WritePngVideoAndProbeBack)
 
 	FBProbe *probe = fb_probe_create();
 	ASSERT_EQ(fb_probe_open(probe, path.toUtf8().constData()), 0);
-	const int video = FindStream(probe, FB_MEDIA_TYPE_VIDEO);
+	const int video = find_stream(probe, fb_media_type_video);
 	ASSERT_GE(video, 0);
 
 	FBStreamInfo info;
@@ -802,7 +802,7 @@ TEST(FFmpegBridgeEncoder, WritePngVideoAndProbeBack)
 
 TEST(FFmpegBridgeEncoder, WritePcmAudioAndProbeBack)
 {
-	const QString path = TempFilePath(QStringLiteral("fb_bridge_test.wav"));
+	const QString path = temp_file_path(QStringLiteral("fb_bridge_test.wav"));
 	QFile::remove(path);
 
 	const QByteArray filename = path.toUtf8();
@@ -810,10 +810,10 @@ TEST(FFmpegBridgeEncoder, WritePcmAudioAndProbeBack)
 	FBEncoderConfig config = {};
 	config.filename = filename.constData();
 	config.audio_enabled = 1;
-	config.audio_codec = FB_CODEC_PCM;
+	config.audio_codec = fb_codec_pcm;
 	config.audio_sample_rate = 44100;
 	config.audio_channel_layout_mask = FB_CH_LAYOUT_STEREO;
-	config.audio_sample_format = FB_SAMPLE_FMT_S16;
+	config.audio_sample_format = fb_sample_fmt_s16;
 
 	FBEncoder *encoder = fb_encoder_create(&config);
 	ASSERT_NE(encoder, nullptr);
@@ -824,7 +824,7 @@ TEST(FFmpegBridgeEncoder, WritePcmAudioAndProbeBack)
 	std::vector<int16_t> left(sample_count), right(sample_count);
 	for (int i = 0; i < sample_count; ++i) {
 		left[i] = static_cast<int16_t>(
-			10000 * std::sin(2.0 * kPi * 440.0 * i / 44100.0));
+			10000 * std::sin(2.0 * k_pi * 440.0 * i / 44100.0));
 		right[i] = left[i];
 	}
 	const uint8_t *planes[2] = {
@@ -832,13 +832,13 @@ TEST(FFmpegBridgeEncoder, WritePcmAudioAndProbeBack)
 		reinterpret_cast<const uint8_t *>(right.data())
 	};
 
-	ASSERT_EQ(fb_encoder_write_audio(encoder, planes, 2, FB_SAMPLE_FMT_S16P,
+	ASSERT_EQ(fb_encoder_write_audio(encoder, planes, 2, fb_sample_fmt_s16_p,
 									 44100, FB_CH_LAYOUT_STEREO, sample_count),
 			  0)
 		<< "encoder error: " << fb_encoder_get_error(encoder);
 
 	// Flush
-	EXPECT_EQ(fb_encoder_write_audio(encoder, nullptr, 2, FB_SAMPLE_FMT_S16P,
+	EXPECT_EQ(fb_encoder_write_audio(encoder, nullptr, 2, fb_sample_fmt_s16_p,
 									 44100, FB_CH_LAYOUT_STEREO, 0),
 			  0);
 
@@ -849,7 +849,7 @@ TEST(FFmpegBridgeEncoder, WritePcmAudioAndProbeBack)
 
 	FBProbe *probe = fb_probe_create();
 	ASSERT_EQ(fb_probe_open(probe, path.toUtf8().constData()), 0);
-	const int audio = FindStream(probe, FB_MEDIA_TYPE_AUDIO);
+	const int audio = find_stream(probe, fb_media_type_audio);
 	ASSERT_GE(audio, 0);
 
 	FBStreamInfo info;

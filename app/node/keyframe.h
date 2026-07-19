@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEKEYFRAME_H
-#define NODEKEYFRAME_H
+#ifndef OAK_NODEKEYFRAME_H
+#define OAK_NODEKEYFRAME_H
 
 #include <memory>
 #include <QPointF>
@@ -42,19 +42,19 @@ public:
 	/**
    * @brief Methods of interpolation to use with this keyframe
    */
-	enum Type { kInvalid = -1, kLinear, kHold, kBezier };
+	enum Type { k_invalid = -1, k_linear, k_hold, k_bezier };
 
 	/**
    * @brief The two types of bezier handles that are available on bezier keyframes
    */
-	enum BezierType { kInHandle, kOutHandle };
+	enum BezierType { k_in_handle, k_out_handle };
 
-	static const Type kDefaultType;
+	static const Type k_default_type;
 
 	/**
    * @brief NodeKeyframe Constructor
    */
-	NodeKeyframe(const rational &time, const QVariant &value, Type type,
+	NodeKeyframe(const Rational &time, const QVariant &value, Type type,
 				 int track, int element, const QString &input,
 				 QObject *parent = nullptr);
 	NodeKeyframe();
@@ -84,8 +84,8 @@ public:
 	/**
    * @brief The time this keyframe is set at
    */
-	const rational &time() const;
-	void set_time(const rational &time);
+	const Rational &time() const;
+	void set_time(const Rational &time);
 
 	/**
    * @brief The value of this keyframe (i.e. the value to use at this keyframe's time)
@@ -177,7 +177,7 @@ public:
 		next_ = keyframe;
 	}
 
-	bool has_sibling_at_time(const rational &t) const;
+	bool has_sibling_at_time(const Rational &t) const;
 
 	bool load(QXmlStreamReader *reader, NodeValue::Type data_type);
 	void save(QXmlStreamWriter *writer, NodeValue::Type data_type) const;
@@ -186,30 +186,30 @@ signals:
 	/**
    * @brief Signal emitted when this keyframe's time is changed
    */
-	void TimeChanged(const rational &time);
+	void time_changed(const Rational &time);
 
 	/**
    * @brief Signal emitted when this keyframe's value is changed
    */
-	void ValueChanged(const QVariant &value);
+	void value_changed(const QVariant &value);
 
 	/**
    * @brief Signal emitted when this keyframe's value is changed
    */
-	void TypeChanged(const Type &type);
+	void type_changed(const Type &type);
 
 	/**
    * @brief Signal emitted when this keyframe's bezier in control point is changed
    */
-	void BezierControlInChanged(const QPointF &d);
+	void bezier_control_in_changed(const QPointF &d);
 
 	/**
    * @brief Signal emitted when this keyframe's bezier out control point is changed
    */
-	void BezierControlOutChanged(const QPointF &d);
+	void bezier_control_out_changed(const QPointF &d);
 
 private:
-	rational time_;
+	Rational time_;
 
 	QVariant value_;
 
@@ -236,4 +236,4 @@ using NodeKeyframeTrack = QVector<NodeKeyframe *>;
 
 Q_DECLARE_METATYPE(olive::NodeKeyframe::Type)
 
-#endif // NODEKEYFRAME_H
+#endif // OAK_NODEKEYFRAME_H

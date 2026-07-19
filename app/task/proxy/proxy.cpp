@@ -39,11 +39,11 @@ ProxyTask::ProxyTask(const QString &source_filename, int stream_index,
 	, params_(params)
 	, output_filename_(output_filename)
 {
-	SetTitle(tr("Generating Proxy %1:%2")
+	set_title(tr("Generating Proxy %1:%2")
 				 .arg(source_filename_, QString::number(stream_index_)));
 }
 
-QStringList ProxyTask::BuildArguments(const QString &source_filename,
+QStringList ProxyTask::build_arguments(const QString &source_filename,
 									  int stream_index,
 									  const ProxyManager::ProxyParams &params,
 									  const QString &output_filename)
@@ -82,12 +82,12 @@ QStringList ProxyTask::BuildArguments(const QString &source_filename,
 	return args;
 }
 
-bool ProxyTask::Run()
+bool ProxyTask::run()
 {
-	const QString ffmpeg = ProxyManager::FindFFmpegExecutable(
-		OLIVE_CONFIG("FFmpegPath").toString());
+	const QString ffmpeg = ProxyManager::find_f_fmpeg_executable(
+		OAK_CONFIG("FFmpegPath").toString());
 	if (ffmpeg.isEmpty()) {
-		SetError(
+		set_error(
 			tr("Failed to generate proxy: ffmpeg executable was not found. Set "
 			   "the ffmpeg path in Preferences > Disk > Proxy Settings."));
 		qWarning() << "ProxyTask: ffmpeg executable not found";
@@ -96,7 +96,7 @@ bool ProxyTask::Run()
 
 	QDir output_dir = QFileInfo(output_filename_).dir();
 	if (!output_dir.exists() && !output_dir.mkpath(QStringLiteral("."))) {
-		SetError(tr("Failed to create proxy output directory"));
+		set_error(tr("Failed to create proxy output directory"));
 		qWarning() << "ProxyTask: failed to create output directory"
 				   << output_dir.absolutePath();
 		return false;
@@ -108,7 +108,7 @@ bool ProxyTask::Run()
 
 	QFile::remove(output_filename_);
 
-	const QStringList args = BuildArguments(source_filename_, stream_index_,
+	const QStringList args = build_arguments(source_filename_, stream_index_,
 											params_, output_filename_);
 
 	QProcess process;
@@ -118,18 +118,18 @@ bool ProxyTask::Run()
 	process.start();
 
 	if (!process.waitForStarted()) {
-		SetError(tr("Failed to start ffmpeg for proxy generation"));
+		set_error(tr("Failed to start ffmpeg for proxy generation"));
 		qWarning()
 			<< "ProxyTask: failed to start ffmpeg" << process.errorString();
 		return false;
 	}
 
 	while (!process.waitForFinished(100)) {
-		if (IsCancelled()) {
+		if (is_cancelled()) {
 			process.kill();
 			process.waitForFinished();
 			QFile::remove(output_filename_);
-			SetError(tr("Proxy generation was cancelled"));
+			set_error(tr("Proxy generation was cancelled"));
 			return false;
 		}
 	}
@@ -138,21 +138,21 @@ bool ProxyTask::Run()
 		process.exitCode() != 0) {
 		const QString output = QString::fromUtf8(process.readAll()).trimmed();
 		QFile::remove(output_filename_);
-		SetError(tr("ffmpeg failed to generate proxy: %1").arg(output));
+		set_error(tr("ffmpeg failed to generate proxy: %1").arg(output));
 		qWarning() << "ProxyTask: ffmpeg failed with exit code"
 				   << process.exitCode() << "output:" << output;
 		return false;
 	}
 
 	if (!QFileInfo::exists(output_filename_)) {
-		SetError(tr("ffmpeg finished but proxy file was not created"));
+		set_error(tr("ffmpeg finished but proxy file was not created"));
 		qWarning() << "ProxyTask: ffmpeg finished but output file missing"
 				   << output_filename_;
 		return false;
 	}
 
 	qDebug() << "ProxyTask: proxy generation succeeded:" << output_filename_;
-	emit ProgressChanged(1.0);
+	emit progress_changed(1.0);
 	return true;
 }
 

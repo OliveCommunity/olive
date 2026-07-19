@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef OPENGLCONTEXT_H
-#define OPENGLCONTEXT_H
+#ifndef OAK_OPENGLCONTEXT_H
+#define OAK_OPENGLCONTEXT_H
 
 #include <QOffscreenSurface>
 #include <QOpenGLBuffer>
@@ -44,33 +44,33 @@ public:
 
 	virtual ~OpenGLRenderer() override;
 
-	void Init(QOpenGLContext *existing_ctx);
+	void init(QOpenGLContext *existing_ctx);
 
-	virtual bool Init() override;
+	virtual bool init() override;
 
-	virtual void PostDestroy() override;
+	virtual void post_destroy() override;
 
-	virtual void PostInit() override;
+	virtual void post_init() override;
 
-	virtual void ClearDestination(olive::Texture *texture = nullptr,
+	virtual void clear_destination(olive::Texture *texture = nullptr,
 								  double r = 0.0, double g = 0.0,
 								  double b = 0.0, double a = 0.0) override;
 
-	virtual QVariant CreateNativeShader(olive::ShaderCode code) override;
+	virtual QVariant create_native_shader(olive::ShaderCode code) override;
 
-	virtual void DestroyNativeShader(QVariant shader) override;
+	virtual void destroy_native_shader(QVariant shader) override;
 
-	virtual void UploadToTexture(const QVariant &handle,
+	virtual void upload_to_texture(const QVariant &handle,
 								 const VideoParams &params, const void *data,
 								 int linesize) override;
 
-	virtual void DownloadFromTexture(const QVariant &handle,
+	virtual void download_from_texture(const QVariant &handle,
 									 const VideoParams &params, void *data,
 									 int linesize) override;
 
-	virtual void Flush() override;
+	virtual void flush() override;
 
-	virtual Color GetPixelFromTexture(olive::Texture *texture,
+	virtual Color get_pixel_from_texture(olive::Texture *texture,
 									  const QPointF &pt) override;
 
 	QOpenGLContext *context() const
@@ -78,54 +78,54 @@ public:
 		return context_.data();
 	}
 
-	virtual QOpenGLContext *OpenGLContext() const override
+	virtual QOpenGLContext *open_gl_context() const override
 	{
 		return context();
 	}
 
-	virtual bool IsOpenGL() const override
+	virtual bool is_open_gl() const override
 	{
 		return true;
 	}
 
-	virtual void AttachOutputTexture(olive::Texture *texture) override;
+	virtual void attach_output_texture(olive::Texture *texture) override;
 
-	virtual void DetachOutputTexture() override;
+	virtual void detach_output_texture() override;
 
-	bool EnsureContextCurrent(const char *caller);
+	bool ensure_context_current(const char *caller);
 
 protected:
-	virtual void Blit(QVariant shader, olive::AcceleratedJob &job,
+	virtual void blit(QVariant shader, olive::AcceleratedJob &job,
 					  olive::Texture *destination,
 					  olive::VideoParams destination_params,
 					  bool clear_destination) override;
 
-	virtual QVariant CreateNativeTexture(int width, int height, int depth,
+	virtual QVariant create_native_texture(int width, int height, int depth,
 										 PixelFormat format, int channel_count,
 										 const void *data = nullptr,
 										 int linesize = 0) override;
 
-	virtual void DestroyNativeTexture(QVariant texture) override;
+	virtual void destroy_native_texture(QVariant texture) override;
 
-	virtual void DestroyInternal() override;
+	virtual void destroy_internal() override;
 
-	void AttachTextureAsDestination(const QVariant &texture);
+	void attach_texture_as_destination(const QVariant &texture);
 
-	void DetachTextureAsDestination();
+	void detach_texture_as_destination();
 
 private:
-	static GLint GetInternalFormat(PixelFormat format, int channel_layout);
+	static GLint get_internal_format(PixelFormat format, int channel_layout);
 
-	static GLenum GetPixelType(PixelFormat format);
+	static GLenum get_pixel_type(PixelFormat format);
 
-	static GLenum GetPixelFormat(int channel_count);
+	static GLenum get_pixel_format(int channel_count);
 
-	void PrepareInputTexture(GLenum target, Texture::Interpolation interp);
+	void prepare_input_texture(GLenum target, Texture::Interpolation interp);
 
-	void ClearDestinationInternal(double r = 0.0, double g = 0.0,
+	void clear_destination_internal(double r = 0.0, double g = 0.0,
 								  double b = 0.0, double a = 0.0);
 
-	GLuint CompileShader(GLenum type, const QString &code);
+	GLuint compile_shader(GLenum type, const QString &code);
 
 	// Guarded pointer: viewer contexts are owned by the widget that created
 	// them and may be destroyed before this renderer (e.g. when a QOpenGLWidget
@@ -156,9 +156,9 @@ private:
 
 	QMap<GLuint, TextureCacheKey> texture_params_;
 
-	static const int kTextureCacheMaxSize;
+	static const int k_texture_cache_max_size;
 };
 
 }
 
-#endif // OPENGLCONTEXT_H
+#endif // OAK_OPENGLCONTEXT_H

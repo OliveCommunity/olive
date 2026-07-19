@@ -29,8 +29,8 @@ namespace olive
 {
 
 TimecodeMetadata::SourceTime
-TimecodeMetadata::FromTimecodeString(const QString &timecode,
-									 const core::rational &timebase)
+TimecodeMetadata::from_timecode_string(const QString &timecode,
+									 const core::Rational &timebase)
 {
 	SourceTime result;
 	const QString trimmed = timecode.trimmed();
@@ -40,8 +40,8 @@ TimecodeMetadata::FromTimecodeString(const QString &timecode,
 
 	bool ok = false;
 	const core::Timecode::Display display =
-		trimmed.contains(';') ? core::Timecode::kTimecodeDropFrame :
-								core::Timecode::kTimecodeNonDropFrame;
+		trimmed.contains(';') ? core::Timecode::k_timecode_drop_frame :
+								core::Timecode::k_timecode_non_drop_frame;
 	result.time = core::Timecode::timecode_to_time(trimmed.toStdString(),
 												   timebase, display, &ok);
 	result.valid = ok;
@@ -52,7 +52,7 @@ TimecodeMetadata::FromTimecodeString(const QString &timecode,
 }
 
 TimecodeMetadata::SourceTime
-TimecodeMetadata::FromBwfTimeReference(const QString &time_reference,
+TimecodeMetadata::from_bwf_time_reference(const QString &time_reference,
 									   int sample_rate)
 {
 	SourceTime result;
@@ -75,10 +75,10 @@ TimecodeMetadata::FromBwfTimeReference(const QString &time_reference,
 	const qulonglong rational_limit =
 		static_cast<qulonglong>(std::numeric_limits<int>::max());
 	if (numerator <= rational_limit && denominator <= rational_limit) {
-		result.time = core::rational(static_cast<int>(numerator),
+		result.time = core::Rational(static_cast<int>(numerator),
 									 static_cast<int>(denominator));
 	} else {
-		result.time = core::rational::fromDouble(
+		result.time = core::Rational::from_double(
 			static_cast<double>(samples) / static_cast<double>(sample_rate));
 	}
 	result.source = QStringLiteral("bwf_time_reference");

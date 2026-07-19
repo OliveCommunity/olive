@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef DISKMANAGER_H
-#define DISKMANAGER_H
+#ifndef OAK_DISKMANAGER_H
+#define OAK_DISKMANAGER_H
 
 #include <QMap>
 #include <QMutex>
@@ -40,43 +40,43 @@ public:
 
 	virtual ~DiskCacheFolder() override;
 
-	bool ClearCache();
+	bool clear_cache();
 
-	void Accessed(const QString &filename);
+	void accessed(const QString &filename);
 
-	void CreatedFile(const QString &filename);
+	void created_file(const QString &filename);
 
-	const QString &GetPath() const
+	const QString &get_path() const
 	{
 		return path_;
 	}
 
-	void SetPath(const QString &path);
+	void set_path(const QString &path);
 
-	qint64 GetLimit() const
+	qint64 get_limit() const
 	{
 		return limit_;
 	}
 
-	bool GetClearOnClose() const
+	bool get_clear_on_close() const
 	{
 		return clear_on_close_;
 	}
 
-	void SetLimit(qint64 l)
+	void set_limit(qint64 l)
 	{
 		limit_ = l;
 	}
 
-	void SetClearOnClose(bool e)
+	void set_clear_on_close(bool e)
 	{
 		clear_on_close_ = e;
 	}
 
-	bool DeleteSpecificFile(const QString &f);
+	bool delete_specific_file(const QString &f);
 
 signals:
-	void DeletedFrame(const QString &path, const QString &filename);
+	void deleted_frame(const QString &path, const QString &filename);
 
 private:
 	struct HashTime {
@@ -84,11 +84,11 @@ private:
 		qint64 access_time;
 	};
 
-	bool DeleteFileInternal(QMap<QString, HashTime>::iterator hash_to_delete);
+	bool delete_file_internal(QMap<QString, HashTime>::iterator hash_to_delete);
 
-	bool DeleteLeastRecent();
+	bool delete_least_recent();
 
-	void CloseCacheFolder();
+	void close_cache_folder();
 
 	QString path_;
 
@@ -105,58 +105,58 @@ private:
 	QTimer save_timer_;
 
 private slots:
-	void SaveDiskCacheIndex();
+	void save_disk_cache_index();
 };
 
 class DiskManager : public QObject {
 	Q_OBJECT
 public:
-	static void CreateInstance();
+	static void create_instance();
 
-	static void DestroyInstance();
+	static void destroy_instance();
 
 	static DiskManager *instance();
 
-	bool ClearDiskCache(const QString &cache_folder);
+	bool clear_disk_cache(const QString &cache_folder);
 
-	DiskCacheFolder *GetDefaultCacheFolder() const
+	DiskCacheFolder *get_default_cache_folder() const
 	{
 		// The first folder will always be the default
 		return open_folders_.first();
 	}
 
-	const QString &GetDefaultCachePath() const
+	const QString &get_default_cache_path() const
 	{
-		return GetDefaultCacheFolder()->GetPath();
+		return get_default_cache_folder()->get_path();
 	}
 
-	DiskCacheFolder *GetOpenFolder(const QString &path);
+	DiskCacheFolder *get_open_folder(const QString &path);
 
-	const QVector<DiskCacheFolder *> &GetOpenFolders() const
+	const QVector<DiskCacheFolder *> &get_open_folders() const
 	{
 		return open_folders_;
 	}
 
-	static bool ShowDiskCacheChangeConfirmationDialog(QWidget *parent);
+	static bool show_disk_cache_change_confirmation_dialog(QWidget *parent);
 
-	static QString GetDefaultDiskCacheConfigFile();
+	static QString get_default_disk_cache_config_file();
 
-	static QString GetDefaultDiskCachePath();
+	static QString get_default_disk_cache_path();
 
-	void ShowDiskCacheSettingsDialog(DiskCacheFolder *folder, QWidget *parent);
-	void ShowDiskCacheSettingsDialog(const QString &path, QWidget *parent);
+	void show_disk_cache_settings_dialog(DiskCacheFolder *folder, QWidget *parent);
+	void show_disk_cache_settings_dialog(const QString &path, QWidget *parent);
 
 public slots:
-	void Accessed(const QString &cache_folder, const QString &filename);
+	void accessed(const QString &cache_folder, const QString &filename);
 
-	void CreatedFile(const QString &cache_folder, const QString &filename);
+	void created_file(const QString &cache_folder, const QString &filename);
 
-	void DeleteSpecificFile(const QString &filename);
+	void delete_specific_file(const QString &filename);
 
 signals:
-	void DeletedFrame(const QString &path, const QString &filename);
+	void deleted_frame(const QString &path, const QString &filename);
 
-	void InvalidateProject(Project *p);
+	void invalidate_project(Project *p);
 
 private:
 	DiskManager();
@@ -170,4 +170,4 @@ private:
 
 }
 
-#endif // DISKMANAGER_H
+#endif // OAK_DISKMANAGER_H

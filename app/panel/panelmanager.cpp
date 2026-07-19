@@ -34,7 +34,7 @@ PanelManager::PanelManager(QObject *parent)
 {
 }
 
-void PanelManager::DeleteAllPanels()
+void PanelManager::delete_all_panels()
 {
 	// Prevent any confusion regarding focus history by clearing it first
 	QList<PanelWidget *> copy = focus_history_;
@@ -47,12 +47,12 @@ const QList<PanelWidget *> &PanelManager::panels()
 	return focus_history_;
 }
 
-PanelWidget *PanelManager::CurrentlyFocused(bool enable_hover) const
+PanelWidget *PanelManager::currently_focused(bool enable_hover) const
 {
 	// If hover focus is enabled, find the currently hovered panel and return it (if no panel is hovered, resort to
 	// default behavior)
-	if (enable_hover && OLIVE_CONFIG("HoverFocus").toBool()) {
-		PanelWidget *hovered = CurrentlyHovered();
+	if (enable_hover && OAK_CONFIG("HoverFocus").toBool()) {
+		PanelWidget *hovered = currently_hovered();
 
 		if (hovered != nullptr) {
 			return hovered;
@@ -66,7 +66,7 @@ PanelWidget *PanelManager::CurrentlyFocused(bool enable_hover) const
 	return focus_history_.first();
 }
 
-PanelWidget *PanelManager::CurrentlyHovered() const
+PanelWidget *PanelManager::currently_hovered() const
 {
 	QPoint global_mouse = QCursor::pos();
 
@@ -79,7 +79,7 @@ PanelWidget *PanelManager::CurrentlyHovered() const
 	return nullptr;
 }
 
-PanelWidget *PanelManager::GetPanelWithName(const QString &name) const
+PanelWidget *PanelManager::get_panel_with_name(const QString &name) const
 {
 	foreach (PanelWidget *panel, focus_history_) {
 		if (panel->objectName() == name) {
@@ -90,12 +90,12 @@ PanelWidget *PanelManager::GetPanelWithName(const QString &name) const
 	return nullptr;
 }
 
-void PanelManager::CreateInstance()
+void PanelManager::create_instance()
 {
 	instance_ = new PanelManager();
 }
 
-void PanelManager::DestroyInstance()
+void PanelManager::destroy_instance()
 {
 	delete instance_;
 	instance_ = nullptr;
@@ -106,7 +106,7 @@ PanelManager *PanelManager::instance()
 	return instance_;
 }
 
-void PanelManager::RegisterPanel(PanelWidget *panel)
+void PanelManager::register_panel(PanelWidget *panel)
 {
 	// Add panel to the bottom of the focus history
 	focus_history_.append(panel);
@@ -117,17 +117,17 @@ void PanelManager::RegisterPanel(PanelWidget *panel)
 
 	if (focus_history_.size() == 1) {
 		// This is the first panel, focus it
-		panel->SetBorderVisible(true);
-		emit FocusedPanelChanged(panel);
+		panel->set_border_visible(true);
+		emit focused_panel_changed(panel);
 	}
 }
 
-void PanelManager::UnregisterPanel(PanelWidget *panel)
+void PanelManager::unregister_panel(PanelWidget *panel)
 {
 	focus_history_.removeOne(panel);
 }
 
-void PanelManager::FocusChanged(QWidget *old, QWidget *now)
+void PanelManager::focus_changed(QWidget *old, QWidget *now)
 {
 	Q_UNUSED(old)
 
@@ -147,11 +147,11 @@ void PanelManager::FocusChanged(QWidget *old, QWidget *now)
 
 					// Disable highlight border on old panel
 					if (!focus_history_.isEmpty()) {
-						focus_history_.first()->SetBorderVisible(false);
+						focus_history_.first()->set_border_visible(false);
 					}
 
 					// Enable new border's highlight
-					panel_cast_test->SetBorderVisible(true);
+					panel_cast_test->set_border_visible(true);
 
 					// If it's not in the focus history, prepend it, otherwise move it
 					if (panel_index == -1) {
@@ -161,7 +161,7 @@ void PanelManager::FocusChanged(QWidget *old, QWidget *now)
 					}
 
 					if (!suppress_changed_signal_) {
-						emit FocusedPanelChanged(panel_cast_test);
+						emit focused_panel_changed(panel_cast_test);
 					}
 				}
 

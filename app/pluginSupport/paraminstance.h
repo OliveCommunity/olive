@@ -18,21 +18,21 @@
  */
 
 // Copyright OpenFX and contributors to the OpenFX project.
-#ifndef PARAM_INSTANCE_H
-#define PARAM_INSTANCE_H
+#ifndef OAK_PARAM_INSTANCE_H
+#define OAK_PARAM_INSTANCE_H
 
 #include "olive/core/util/rational.h"
-#include "pluginSupport/OlivePluginInstance.h"
+#include "pluginSupport/oliveplugininstance.h"
 #include <QString>
 #include <QVector2D>
 #include <QVector3D>
 #include <QVariant>
 #include "ofxhParam.h"
 #include "node/nodeundo.h"
-#include "node/plugins/Plugin.h"
+#include "node/plugins/plugin.h"
 #include "core.h"
 #include "undo/undocommand.h"
-#include "common/Current.h"
+#include "common/current.h"
 #include <iostream>
 #include <mutex>
 #include <qlogging.h>
@@ -42,71 +42,71 @@ namespace plugin
 {
 
 inline bool
-IsNormalisedCoordinateSystem(const OFX::Host::Param::Descriptor &descriptor)
+is_normalised_coordinate_system(const OFX::Host::Param::Descriptor &descriptor)
 {
 	return descriptor.getDefaultCoordinateSystem() ==
 		   kOfxParamCoordinatesNormalised;
 }
 
-inline void GetProjectExtent(double &xSize, double &ySize)
+inline void get_project_extent(double &x_size, double &y_size)
 {
-	auto &vp = Current::getInstance().currentVideoParams();
-	xSize = vp.width() * vp.pixel_aspect_ratio().toDouble();
-	ySize = vp.height();
+	auto &vp = Current::getInstance().current_video_params();
+	x_size = vp.width() * vp.pixel_aspect_ratio().to_double();
+	y_size = vp.height();
 }
 
-inline double ToNormalised(double canonical, double extent)
+inline double to_normalised(double canonical, double extent)
 {
 	return extent > 0 ? canonical / extent : canonical;
 }
 
-inline double ToCanonical(double normalised, double extent)
+inline double to_canonical(double normalised, double extent)
 {
 	return extent > 0 ? normalised * extent : normalised;
 }
 
-inline QString ParamChangeLabel(const OFX::Host::Param::Descriptor &descriptor)
+inline QString param_change_label(const OFX::Host::Param::Descriptor &descriptor)
 {
 	return QStringLiteral("Change %1")
 		.arg(QString::fromStdString(descriptor.getName()));
 }
-void SubmitUndoCommand(const std::shared_ptr<PluginNode> &node,
+void submit_undo_command(const std::shared_ptr<PluginNode> &node,
 					   UndoCommand *command, const QString &label);
 
 class NodeBoundParam {
 public:
 	virtual ~NodeBoundParam() = default;
-	virtual void SetNode(const std::shared_ptr<PluginNode> &node) = 0;
+	virtual void set_node(const std::shared_ptr<PluginNode> &node) = 0;
 };
 
 class PushbuttonInstance : public OFX::Host::Param::PushbuttonInstance,
 						   public NodeBoundParam {
 protected:
-	std::shared_ptr<PluginNode> node;
-	OFX::Host::Param::Descriptor *_descriptor;
+	std::shared_ptr<PluginNode> node_;
+	OFX::Host::Param::Descriptor *descriptor_;
 
 public:
 	PushbuttonInstance(std::shared_ptr<PluginNode> effect,
 					   const std::string &name,
 					   OFX::Host::Param::Descriptor &descriptor,
-					   OFX::Host::Param::SetInstance *paramSet = nullptr)
-		: OFX::Host::Param::PushbuttonInstance(descriptor, paramSet)
-		, node(effect)
+					   OFX::Host::Param::SetInstance *param_set = nullptr)
+		: OFX::Host::Param::PushbuttonInstance(descriptor, param_set)
+		, node_(effect)
 	{
-		_descriptor = &descriptor;
+		descriptor_ = &descriptor;
 	};
-	void SetNode(const std::shared_ptr<PluginNode> &new_node) override
+	void set_node(const std::shared_ptr<PluginNode> &new_node) override
 	{
-		node = new_node;
+		node_ = new_node;
 	}
 };
 
 class IntegerInstance : public OFX::Host::Param::IntegerInstance,
 						public NodeBoundParam {
 protected:
-	std::shared_ptr<PluginNode> _node;
-	OFX::Host::Param::Descriptor &_descriptor;
-	QString id;
+	std::shared_ptr<PluginNode> node_;
+	OFX::Host::Param::Descriptor &descriptor_;
+	QString id_;
 	mutable std::mutex no_node_mutex_;
 	bool has_value_ = false;
 	int value_ = 0;
@@ -114,14 +114,14 @@ protected:
 public:
 	IntegerInstance(std::shared_ptr<PluginNode> node,
 					OFX::Host::Param::Descriptor &descriptor,
-					OFX::Host::Param::SetInstance *paramSet = nullptr)
-		: OFX::Host::Param::IntegerInstance(descriptor, paramSet)
-		, _node(node)
-		, _descriptor(descriptor)
-		, id(_descriptor.getName().c_str())
+					OFX::Host::Param::SetInstance *param_set = nullptr)
+		: OFX::Host::Param::IntegerInstance(descriptor, param_set)
+		, node_(node)
+		, descriptor_(descriptor)
+		, id_(descriptor_.getName().c_str())
 	{
 		try {
-			value_ = _descriptor.getProperties().getIntProperty(
+			value_ = descriptor_.getProperties().getIntProperty(
 				kOfxParamPropDefault);
 			has_value_ = true;
 		} catch (...) {
@@ -129,21 +129,21 @@ public:
 			has_value_ = false;
 		}
 	}
-	void SetNode(const std::shared_ptr<PluginNode> &new_node) override
+	void set_node(const std::shared_ptr<PluginNode> &new_node) override
 	{
-		_node = new_node;
+		node_ = new_node;
 	}
 	OfxStatus get(int &a)
 	{
-		if (!_node) {
+		if (!node_) {
 			std::lock_guard<std::mutex> lock(no_node_mutex_);
 			a = has_value_ ? value_ : 0;
 			return kOfxStatOK;
 		}
-		if (id.isEmpty()) {
+		if (id_.isEmpty()) {
 			return kOfxStatErrBadHandle;
 		}
-		QVariant variant = _node->GetStandardValue(id);
+		QVariant variant = node_->get_standard_value(id_);
 
 		if (variant.canConvert<int>()) {
 			a = variant.toInt();
@@ -154,16 +154,16 @@ public:
 	}
 	OfxStatus get(OfxTime time, int &data)
 	{
-		if (!_node) {
+		if (!node_) {
 			std::lock_guard<std::mutex> lock(no_node_mutex_);
 			data = has_value_ ? value_ : 0;
 			return kOfxStatOK;
 		}
-		if (id.isEmpty()) {
+		if (id_.isEmpty()) {
 			return kOfxStatErrBadHandle;
 		}
 		QVariant variant =
-			_node->GetValueAtTime(id, rational::fromDouble(time));
+			node_->get_value_at_time(id_, Rational::from_double(time));
 		if (variant.canConvert<int>()) {
 			data = variant.toInt();
 			return kOfxStatOK;
@@ -173,33 +173,33 @@ public:
 	}
 	OfxStatus set(int data)
 	{
-		if (!_node) {
+		if (!node_) {
 			std::lock_guard<std::mutex> lock(no_node_mutex_);
 			value_ = data;
 			has_value_ = true;
 			return kOfxStatOK;
 		}
 		SplitValue split = NodeValue::split_normal_value_into_track_values(
-			NodeValue::kInt, data);
+			NodeValue::k_int, data);
 
 		auto command = new NodeParamSetSplitStandardValueCommand(
-			NodeInput(_node.get(), _descriptor.getName().c_str()), split);
-		SubmitUndoCommand(_node, command, ParamChangeLabel(_descriptor));
+			NodeInput(node_.get(), descriptor_.getName().c_str()), split);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 	OfxStatus set(OfxTime time, int data)
 	{
-		if (!_node) {
+		if (!node_) {
 			std::lock_guard<std::mutex> lock(no_node_mutex_);
 			value_ = data;
 			has_value_ = true;
 			return kOfxStatOK;
 		}
 		auto command = new MultiUndoCommand();
-		Node::SetValueAtTime(
-			NodeInput(_node.get(), _descriptor.getName().c_str()),
-			rational::fromDouble(time), data, 0, command, true);
-		SubmitUndoCommand(_node, command, ParamChangeLabel(_descriptor));
+		Node::set_value_at_time(
+			NodeInput(node_.get(), descriptor_.getName().c_str()),
+			Rational::from_double(time), data, 0, command, true);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 };
@@ -207,22 +207,22 @@ public:
 class DoubleInstance : public OFX::Host::Param::DoubleInstance,
 					   public NodeBoundParam {
 protected:
-	std::shared_ptr<PluginNode> node;
-	OFX::Host::Param::Descriptor &_descriptor;
+	std::shared_ptr<PluginNode> node_;
+	OFX::Host::Param::Descriptor &descriptor_;
 	bool has_value_ = false;
 	double value_ = 0.0;
 
 public:
 	DoubleInstance(std::shared_ptr<PluginNode> effect, const std::string &name,
 				   OFX::Host::Param::Descriptor &descriptor,
-				   OFX::Host::Param::SetInstance *paramSet = nullptr)
-		: OFX::Host::Param::DoubleInstance(descriptor, paramSet)
-		, node(effect)
-		, _descriptor(descriptor)
+				   OFX::Host::Param::SetInstance *param_set = nullptr)
+		: OFX::Host::Param::DoubleInstance(descriptor, param_set)
+		, node_(effect)
+		, descriptor_(descriptor)
 	{
 		(void)name;
 		try {
-			value_ = _descriptor.getProperties().getDoubleProperty(
+			value_ = descriptor_.getProperties().getDoubleProperty(
 				kOfxParamPropDefault);
 			has_value_ = true;
 		} catch (...) {
@@ -230,24 +230,24 @@ public:
 			has_value_ = false;
 		}
 	}
-	void SetNode(const std::shared_ptr<PluginNode> &new_node) override
+	void set_node(const std::shared_ptr<PluginNode> &new_node) override
 	{
-		node = new_node;
+		node_ = new_node;
 	}
 	OfxStatus get(double &data)
 	{
-		if (!node) {
+		if (!node_) {
 			data = has_value_ ? value_ : 0.0;
 			return kOfxStatOK;
 		}
 		QVariant variant =
-			node->GetStandardValue(_descriptor.getName().c_str());
+			node_->get_standard_value(descriptor_.getName().c_str());
 		if (variant.canConvert<double>()) {
 			data = variant.toDouble();
-			if (IsNormalisedCoordinateSystem(_descriptor)) {
-				double xSize, ySize;
-				GetProjectExtent(xSize, ySize);
-				data = ToNormalised(data, xSize);
+			if (is_normalised_coordinate_system(descriptor_)) {
+				double x_size, y_size;
+				get_project_extent(x_size, y_size);
+				data = to_normalised(data, x_size);
 			}
 			return kOfxStatOK;
 		}
@@ -256,18 +256,18 @@ public:
 	}
 	OfxStatus get(OfxTime time, double &data)
 	{
-		if (!node) {
+		if (!node_) {
 			data = has_value_ ? value_ : 0.0;
 			return kOfxStatOK;
 		}
-		QVariant variant = node->GetValueAtTime(_descriptor.getName().c_str(),
-												rational::fromDouble(time));
+		QVariant variant = node_->get_value_at_time(descriptor_.getName().c_str(),
+												Rational::from_double(time));
 		if (variant.canConvert<double>()) {
 			data = variant.toDouble();
-			if (IsNormalisedCoordinateSystem(_descriptor)) {
-				double xSize, ySize;
-				GetProjectExtent(xSize, ySize);
-				data = ToNormalised(data, xSize);
+			if (is_normalised_coordinate_system(descriptor_)) {
+				double x_size, y_size;
+				get_project_extent(x_size, y_size);
+				data = to_normalised(data, x_size);
 			}
 			return kOfxStatOK;
 		}
@@ -276,42 +276,42 @@ public:
 	}
 	OfxStatus set(double data)
 	{
-		if (!node) {
+		if (!node_) {
 			value_ = data;
 			has_value_ = true;
 			return kOfxStatOK;
 		}
 		double val = data;
-		if (IsNormalisedCoordinateSystem(_descriptor)) {
-			double xSize, ySize;
-			GetProjectExtent(xSize, ySize);
-			val = ToCanonical(val, xSize);
+		if (is_normalised_coordinate_system(descriptor_)) {
+			double x_size, y_size;
+			get_project_extent(x_size, y_size);
+			val = to_canonical(val, x_size);
 		}
 		SplitValue split = NodeValue::split_normal_value_into_track_values(
-			NodeValue::kFloat, val);
+			NodeValue::k_float, val);
 		auto command = new NodeParamSetSplitStandardValueCommand(
-			NodeInput(node.get(), _descriptor.getName().c_str()), split);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+			NodeInput(node_.get(), descriptor_.getName().c_str()), split);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 	OfxStatus set(OfxTime time, double data)
 	{
-		if (!node) {
+		if (!node_) {
 			value_ = data;
 			has_value_ = true;
 			return kOfxStatOK;
 		}
 		double val = data;
-		if (IsNormalisedCoordinateSystem(_descriptor)) {
-			double xSize, ySize;
-			GetProjectExtent(xSize, ySize);
-			val = ToCanonical(val, xSize);
+		if (is_normalised_coordinate_system(descriptor_)) {
+			double x_size, y_size;
+			get_project_extent(x_size, y_size);
+			val = to_canonical(val, x_size);
 		}
 		auto command = new MultiUndoCommand();
-		Node::SetValueAtTime(NodeInput(node.get(),
-									   _descriptor.getName().c_str()),
-							 rational::fromDouble(time), val, 0, command, true);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+		Node::set_value_at_time(NodeInput(node_.get(),
+									   descriptor_.getName().c_str()),
+							 Rational::from_double(time), val, 0, command, true);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 	OfxStatus derive(OfxTime, double &)
@@ -327,98 +327,98 @@ public:
 class BooleanInstance : public OFX::Host::Param::BooleanInstance,
 						public NodeBoundParam {
 protected:
-	std::shared_ptr<PluginNode> node;
-	OFX::Host::Param::Descriptor &_descriptor;
+	std::shared_ptr<PluginNode> node_;
+	OFX::Host::Param::Descriptor &descriptor_;
 	bool has_value_ = false;
 	bool value_ = false;
-	bool DefaultValue() const
+	bool default_value() const
 	{
-		return _descriptor.getProperties().getIntProperty(
+		return descriptor_.getProperties().getIntProperty(
 				   kOfxParamPropDefault) != 0;
 	}
 
 public:
 	BooleanInstance(std::shared_ptr<PluginNode> effect, const std::string &name,
 					OFX::Host::Param::Descriptor &descriptor,
-					OFX::Host::Param::SetInstance *paramSet = nullptr)
-		: OFX::Host::Param::BooleanInstance(descriptor, paramSet)
-		, node(effect)
-		, _descriptor(descriptor)
+					OFX::Host::Param::SetInstance *param_set = nullptr)
+		: OFX::Host::Param::BooleanInstance(descriptor, param_set)
+		, node_(effect)
+		, descriptor_(descriptor)
 	{
 		(void)name;
-		value_ = DefaultValue();
+		value_ = default_value();
 		has_value_ = true;
 	}
-	void SetNode(const std::shared_ptr<PluginNode> &new_node) override
+	void set_node(const std::shared_ptr<PluginNode> &new_node) override
 	{
-		node = new_node;
+		node_ = new_node;
 	}
 	OfxStatus get(bool &data)
 	{
-		if (!node) {
+		if (!node_) {
 			data = has_value_ ? value_ : false;
 			return kOfxStatOK;
 		}
 		QVariant variant =
-			node->GetStandardValue(_descriptor.getName().c_str());
+			node_->get_standard_value(descriptor_.getName().c_str());
 		if (variant.canConvert<bool>()) {
 			data = variant.toBool();
 			return kOfxStatOK;
 		}
-		data = DefaultValue();
+		data = default_value();
 		return kOfxStatOK;
 	}
 	OfxStatus get(OfxTime time, bool &data)
 	{
-		if (!node) {
+		if (!node_) {
 			data = has_value_ ? value_ : false;
 			return kOfxStatOK;
 		}
-		QVariant variant = node->GetValueAtTime(_descriptor.getName().c_str(),
-												rational::fromDouble(time));
+		QVariant variant = node_->get_value_at_time(descriptor_.getName().c_str(),
+												Rational::from_double(time));
 		if (variant.isNull()) {
 			qWarning().noquote()
 				<< "Boolean get failed: Varient is null" << time
-				<< rational::fromDouble(time).toDouble();
+				<< Rational::from_double(time).to_double();
 		}
 		if (!variant.isValid()) {
 			qWarning().noquote()
 				<< "Boolean get failed: Varient is invalid" << time
-				<< rational::fromDouble(time).toDouble();
+				<< Rational::from_double(time).to_double();
 		}
 		if (variant.canConvert<bool>()) {
 			data = variant.toBool();
 			return kOfxStatOK;
 		}
-		data = DefaultValue();
+		data = default_value();
 		return kOfxStatOK;
 	}
 	OfxStatus set(bool data)
 	{
-		if (!node) {
+		if (!node_) {
 			value_ = data;
 			has_value_ = true;
 			return kOfxStatOK;
 		}
 		SplitValue split = NodeValue::split_normal_value_into_track_values(
-			NodeValue::kBoolean, data);
+			NodeValue::k_boolean, data);
 		auto command = new NodeParamSetSplitStandardValueCommand(
-			NodeInput(node.get(), _descriptor.getName().c_str()), split);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+			NodeInput(node_.get(), descriptor_.getName().c_str()), split);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 	OfxStatus set(OfxTime time, bool data)
 	{
-		if (!node) {
+		if (!node_) {
 			value_ = data;
 			has_value_ = true;
 			return kOfxStatOK;
 		}
 		auto command = new MultiUndoCommand();
-		Node::SetValueAtTime(
-			NodeInput(node.get(), _descriptor.getName().c_str()),
-			rational::fromDouble(time), data, 0, command, true);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+		Node::set_value_at_time(
+			NodeInput(node_.get(), descriptor_.getName().c_str()),
+			Rational::from_double(time), data, 0, command, true);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 };
@@ -426,22 +426,22 @@ public:
 class ChoiceInstance : public OFX::Host::Param::ChoiceInstance,
 					   public NodeBoundParam {
 protected:
-	std::shared_ptr<PluginNode> node;
-	OFX::Host::Param::Descriptor &_descriptor;
+	std::shared_ptr<PluginNode> node_;
+	OFX::Host::Param::Descriptor &descriptor_;
 	bool has_value_ = false;
 	int value_ = 0;
 
 public:
 	ChoiceInstance(std::shared_ptr<PluginNode> effect, const std::string &name,
 				   OFX::Host::Param::Descriptor &descriptor,
-				   OFX::Host::Param::SetInstance *paramSet = nullptr)
-		: OFX::Host::Param::ChoiceInstance(descriptor, paramSet)
-		, node(effect)
-		, _descriptor(descriptor)
+				   OFX::Host::Param::SetInstance *param_set = nullptr)
+		: OFX::Host::Param::ChoiceInstance(descriptor, param_set)
+		, node_(effect)
+		, descriptor_(descriptor)
 	{
 		(void)name;
 		try {
-			value_ = _descriptor.getProperties().getIntProperty(
+			value_ = descriptor_.getProperties().getIntProperty(
 				kOfxParamPropDefault);
 			has_value_ = true;
 		} catch (...) {
@@ -449,18 +449,18 @@ public:
 			has_value_ = false;
 		}
 	}
-	void SetNode(const std::shared_ptr<PluginNode> &new_node) override
+	void set_node(const std::shared_ptr<PluginNode> &new_node) override
 	{
-		node = new_node;
+		node_ = new_node;
 	}
 	OfxStatus get(int &data)
 	{
-		if (!node) {
+		if (!node_) {
 			data = has_value_ ? value_ : 0;
 			return kOfxStatOK;
 		}
 		QVariant variant =
-			node->GetStandardValue(_descriptor.getName().c_str());
+			node_->get_standard_value(descriptor_.getName().c_str());
 		if (variant.canConvert<int>()) {
 			data = variant.toInt();
 			return kOfxStatOK;
@@ -470,12 +470,12 @@ public:
 	}
 	OfxStatus get(OfxTime time, int &data)
 	{
-		if (!node) {
+		if (!node_) {
 			data = has_value_ ? value_ : 0;
 			return kOfxStatOK;
 		}
-		QVariant variant = node->GetValueAtTime(_descriptor.getName().c_str(),
-												rational::fromDouble(time));
+		QVariant variant = node_->get_value_at_time(descriptor_.getName().c_str(),
+												Rational::from_double(time));
 		if (variant.canConvert<int>()) {
 			data = variant.toInt();
 			return kOfxStatOK;
@@ -485,30 +485,30 @@ public:
 	}
 	OfxStatus set(int data)
 	{
-		if (!node) {
+		if (!node_) {
 			value_ = data;
 			has_value_ = true;
 			return kOfxStatOK;
 		}
 		SplitValue split = NodeValue::split_normal_value_into_track_values(
-			NodeValue::kCombo, data);
+			NodeValue::k_combo, data);
 		auto command = new NodeParamSetSplitStandardValueCommand(
-			NodeInput(node.get(), _descriptor.getName().c_str()), split);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+			NodeInput(node_.get(), descriptor_.getName().c_str()), split);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 	OfxStatus set(OfxTime time, int data)
 	{
-		if (!node) {
+		if (!node_) {
 			value_ = data;
 			has_value_ = true;
 			return kOfxStatOK;
 		}
 		auto command = new MultiUndoCommand();
-		Node::SetValueAtTime(
-			NodeInput(node.get(), _descriptor.getName().c_str()),
-			rational::fromDouble(time), data, 0, command, true);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+		Node::set_value_at_time(
+			NodeInput(node_.get(), descriptor_.getName().c_str()),
+			Rational::from_double(time), data, 0, command, true);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 };
@@ -516,28 +516,28 @@ public:
 class RGBAInstance : public OFX::Host::Param::RGBAInstance,
 					 public NodeBoundParam {
 protected:
-	std::shared_ptr<PluginNode> node;
-	OFX::Host::Param::Descriptor &_descriptor;
+	std::shared_ptr<PluginNode> node_;
+	OFX::Host::Param::Descriptor &descriptor_;
 	bool has_value_ = false;
 	double value_[4] = { 0.0, 0.0, 0.0, 0.0 };
 
 public:
 	RGBAInstance(std::shared_ptr<PluginNode> effect, const std::string &name,
 				 OFX::Host::Param::Descriptor &descriptor,
-				 OFX::Host::Param::SetInstance *paramSet = nullptr)
-		: OFX::Host::Param::RGBAInstance(descriptor, paramSet)
-		, node(effect)
-		, _descriptor(descriptor)
+				 OFX::Host::Param::SetInstance *param_set = nullptr)
+		: OFX::Host::Param::RGBAInstance(descriptor, param_set)
+		, node_(effect)
+		, descriptor_(descriptor)
 	{
 		(void)name;
 	}
-	void SetNode(const std::shared_ptr<PluginNode> &new_node) override
+	void set_node(const std::shared_ptr<PluginNode> &new_node) override
 	{
-		node = new_node;
+		node_ = new_node;
 	}
 	OfxStatus get(double &r, double &g, double &b, double &a)
 	{
-		if (!node) {
+		if (!node_) {
 			if (has_value_) {
 				r = value_[0];
 				g = value_[1];
@@ -549,7 +549,7 @@ public:
 			return kOfxStatOK;
 		}
 		olive::core::Color c =
-			node->GetStandardValue(_descriptor.getName().c_str())
+			node_->get_standard_value(descriptor_.getName().c_str())
 				.value<olive::core::Color>();
 
 		r = static_cast<double>(c.red());
@@ -560,7 +560,7 @@ public:
 	}
 	OfxStatus get(OfxTime time, double &r, double &g, double &b, double &a)
 	{
-		if (!node) {
+		if (!node_) {
 			if (has_value_) {
 				r = value_[0];
 				g = value_[1];
@@ -572,8 +572,8 @@ public:
 			return kOfxStatOK;
 		}
 		olive::core::Color c =
-			node->GetValueAtTime(_descriptor.getName().c_str(),
-								 rational::fromDouble(time))
+			node_->get_value_at_time(descriptor_.getName().c_str(),
+								 Rational::from_double(time))
 				.value<olive::core::Color>();
 
 		r = static_cast<double>(c.red());
@@ -584,7 +584,7 @@ public:
 	}
 	OfxStatus set(double r, double g, double b, double a)
 	{
-		if (!node) {
+		if (!node_) {
 			value_[0] = r;
 			value_[1] = g;
 			value_[2] = b;
@@ -593,16 +593,16 @@ public:
 			return kOfxStatOK;
 		}
 		SplitValue split = NodeValue::split_normal_value_into_track_values(
-			NodeValue::kColor,
+			NodeValue::k_color,
 			QVariant::fromValue(olive::core::Color(r, g, b, a)));
 		auto command = new NodeParamSetSplitStandardValueCommand(
-			NodeInput(node.get(), _descriptor.getName().c_str()), split);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+			NodeInput(node_.get(), descriptor_.getName().c_str()), split);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 	OfxStatus set(OfxTime time, double r, double g, double b, double a)
 	{
-		if (!node) {
+		if (!node_) {
 			value_[0] = r;
 			value_[1] = g;
 			value_[2] = b;
@@ -611,16 +611,16 @@ public:
 			return kOfxStatOK;
 		}
 		auto command = new MultiUndoCommand();
-		const QString name = _descriptor.getName().c_str();
-		Node::SetValueAtTime(NodeInput(node.get(), name),
-							 rational::fromDouble(time), r, 0, command, true);
-		Node::SetValueAtTime(NodeInput(node.get(), name),
-							 rational::fromDouble(time), g, 1, command, true);
-		Node::SetValueAtTime(NodeInput(node.get(), name),
-							 rational::fromDouble(time), b, 2, command, true);
-		Node::SetValueAtTime(NodeInput(node.get(), name),
-							 rational::fromDouble(time), a, 3, command, true);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+		const QString name = descriptor_.getName().c_str();
+		Node::set_value_at_time(NodeInput(node_.get(), name),
+							 Rational::from_double(time), r, 0, command, true);
+		Node::set_value_at_time(NodeInput(node_.get(), name),
+							 Rational::from_double(time), g, 1, command, true);
+		Node::set_value_at_time(NodeInput(node_.get(), name),
+							 Rational::from_double(time), b, 2, command, true);
+		Node::set_value_at_time(NodeInput(node_.get(), name),
+							 Rational::from_double(time), a, 3, command, true);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 };
@@ -628,28 +628,28 @@ public:
 class RGBInstance : public OFX::Host::Param::RGBInstance,
 					public NodeBoundParam {
 protected:
-	std::shared_ptr<PluginNode> node;
-	OFX::Host::Param::Descriptor &_descriptor;
+	std::shared_ptr<PluginNode> node_;
+	OFX::Host::Param::Descriptor &descriptor_;
 	bool has_value_ = false;
 	double value_[3] = { 0.0, 0.0, 0.0 };
 
 public:
 	RGBInstance(std::shared_ptr<PluginNode> effect, const std::string &name,
 				OFX::Host::Param::Descriptor &descriptor,
-				OFX::Host::Param::SetInstance *paramSet = nullptr)
-		: OFX::Host::Param::RGBInstance(descriptor, paramSet)
-		, node(effect)
-		, _descriptor(descriptor)
+				OFX::Host::Param::SetInstance *param_set = nullptr)
+		: OFX::Host::Param::RGBInstance(descriptor, param_set)
+		, node_(effect)
+		, descriptor_(descriptor)
 	{
 		(void)name;
 	}
-	void SetNode(const std::shared_ptr<PluginNode> &new_node) override
+	void set_node(const std::shared_ptr<PluginNode> &new_node) override
 	{
-		node = new_node;
+		node_ = new_node;
 	}
 	OfxStatus get(double &r, double &g, double &b)
 	{
-		if (!node) {
+		if (!node_) {
 			if (has_value_) {
 				r = value_[0];
 				g = value_[1];
@@ -660,7 +660,7 @@ public:
 			return kOfxStatOK;
 		}
 		olive::core::Color c =
-			node->GetStandardValue(_descriptor.getName().c_str())
+			node_->get_standard_value(descriptor_.getName().c_str())
 				.value<olive::core::Color>();
 
 		r = static_cast<double>(c.red());
@@ -670,7 +670,7 @@ public:
 	}
 	OfxStatus get(OfxTime time, double &r, double &g, double &b)
 	{
-		if (!node) {
+		if (!node_) {
 			if (has_value_) {
 				r = value_[0];
 				g = value_[1];
@@ -681,8 +681,8 @@ public:
 			return kOfxStatOK;
 		}
 		olive::core::Color c =
-			node->GetValueAtTime(_descriptor.getName().c_str(),
-								 rational::fromDouble(time))
+			node_->get_value_at_time(descriptor_.getName().c_str(),
+								 Rational::from_double(time))
 				.value<olive::core::Color>();
 
 		r = static_cast<double>(c.red());
@@ -692,7 +692,7 @@ public:
 	}
 	OfxStatus set(double r, double g, double b)
 	{
-		if (!node) {
+		if (!node_) {
 			value_[0] = r;
 			value_[1] = g;
 			value_[2] = b;
@@ -700,16 +700,16 @@ public:
 			return kOfxStatOK;
 		}
 		SplitValue split = NodeValue::split_normal_value_into_track_values(
-			NodeValue::kColor,
+			NodeValue::k_color,
 			QVariant::fromValue(olive::core::Color(r, g, b)));
 		auto command = new NodeParamSetSplitStandardValueCommand(
-			NodeInput(node.get(), _descriptor.getName().c_str()), split);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+			NodeInput(node_.get(), descriptor_.getName().c_str()), split);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 	OfxStatus set(OfxTime time, double r, double g, double b)
 	{
-		if (!node) {
+		if (!node_) {
 			value_[0] = r;
 			value_[1] = g;
 			value_[2] = b;
@@ -717,14 +717,14 @@ public:
 			return kOfxStatOK;
 		}
 		auto command = new MultiUndoCommand();
-		const QString name = _descriptor.getName().c_str();
-		Node::SetValueAtTime(NodeInput(node.get(), name),
-							 rational::fromDouble(time), r, 0, command, true);
-		Node::SetValueAtTime(NodeInput(node.get(), name),
-							 rational::fromDouble(time), g, 1, command, true);
-		Node::SetValueAtTime(NodeInput(node.get(), name),
-							 rational::fromDouble(time), b, 2, command, true);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+		const QString name = descriptor_.getName().c_str();
+		Node::set_value_at_time(NodeInput(node_.get(), name),
+							 Rational::from_double(time), r, 0, command, true);
+		Node::set_value_at_time(NodeInput(node_.get(), name),
+							 Rational::from_double(time), g, 1, command, true);
+		Node::set_value_at_time(NodeInput(node_.get(), name),
+							 Rational::from_double(time), b, 2, command, true);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 };
@@ -732,8 +732,8 @@ public:
 class Double2DInstance : public OFX::Host::Param::Double2DInstance,
 						 public NodeBoundParam {
 protected:
-	std::shared_ptr<PluginNode> node;
-	OFX::Host::Param::Descriptor &_descriptor;
+	std::shared_ptr<PluginNode> node_;
+	OFX::Host::Param::Descriptor &descriptor_;
 	bool has_value_ = false;
 	double value_[2] = { 0.0, 0.0 };
 
@@ -741,20 +741,20 @@ public:
 	Double2DInstance(std::shared_ptr<PluginNode> effect,
 					 const std::string &name,
 					 OFX::Host::Param::Descriptor &descriptor,
-					 OFX::Host::Param::SetInstance *paramSet = nullptr)
-		: OFX::Host::Param::Double2DInstance(descriptor, paramSet)
-		, node(effect)
-		, _descriptor(descriptor)
+					 OFX::Host::Param::SetInstance *param_set = nullptr)
+		: OFX::Host::Param::Double2DInstance(descriptor, param_set)
+		, node_(effect)
+		, descriptor_(descriptor)
 	{
 		(void)name;
 	}
-	void SetNode(const std::shared_ptr<PluginNode> &new_node) override
+	void set_node(const std::shared_ptr<PluginNode> &new_node) override
 	{
-		node = new_node;
+		node_ = new_node;
 	}
 	OfxStatus get(double &x, double &y)
 	{
-		if (!node) {
+		if (!node_) {
 			if (has_value_) {
 				x = value_[0];
 				y = value_[1];
@@ -763,21 +763,21 @@ public:
 			}
 			return kOfxStatOK;
 		}
-		QVector2D vec = node->GetStandardValue(_descriptor.getName().c_str())
+		QVector2D vec = node_->get_standard_value(descriptor_.getName().c_str())
 							.value<QVector2D>();
 		x = static_cast<double>(vec.x());
 		y = static_cast<double>(vec.y());
-		if (IsNormalisedCoordinateSystem(_descriptor)) {
-			double xSize, ySize;
-			GetProjectExtent(xSize, ySize);
-			x = ToNormalised(x, xSize);
-			y = ToNormalised(y, ySize);
+		if (is_normalised_coordinate_system(descriptor_)) {
+			double x_size, y_size;
+			get_project_extent(x_size, y_size);
+			x = to_normalised(x, x_size);
+			y = to_normalised(y, y_size);
 		}
 		return kOfxStatOK;
 	}
 	OfxStatus get(OfxTime time, double &x, double &y)
 	{
-		if (!node) {
+		if (!node_) {
 			if (has_value_) {
 				x = value_[0];
 				y = value_[1];
@@ -786,63 +786,63 @@ public:
 			}
 			return kOfxStatOK;
 		}
-		QVector2D vec = node->GetValueAtTime(_descriptor.getName().c_str(),
-											 rational::fromDouble(time))
+		QVector2D vec = node_->get_value_at_time(descriptor_.getName().c_str(),
+											 Rational::from_double(time))
 							.value<QVector2D>();
 		x = static_cast<double>(vec.x());
 		y = static_cast<double>(vec.y());
-		if (IsNormalisedCoordinateSystem(_descriptor)) {
-			double xSize, ySize;
-			GetProjectExtent(xSize, ySize);
-			x = ToNormalised(x, xSize);
-			y = ToNormalised(y, ySize);
+		if (is_normalised_coordinate_system(descriptor_)) {
+			double x_size, y_size;
+			get_project_extent(x_size, y_size);
+			x = to_normalised(x, x_size);
+			y = to_normalised(y, y_size);
 		}
 		return kOfxStatOK;
 	}
 	OfxStatus set(double x, double y)
 	{
-		if (!node) {
+		if (!node_) {
 			value_[0] = x;
 			value_[1] = y;
 			has_value_ = true;
 			return kOfxStatOK;
 		}
 		double xv = x, yv = y;
-		if (IsNormalisedCoordinateSystem(_descriptor)) {
-			double xSize, ySize;
-			GetProjectExtent(xSize, ySize);
-			xv = ToCanonical(xv, xSize);
-			yv = ToCanonical(yv, ySize);
+		if (is_normalised_coordinate_system(descriptor_)) {
+			double x_size, y_size;
+			get_project_extent(x_size, y_size);
+			xv = to_canonical(xv, x_size);
+			yv = to_canonical(yv, y_size);
 		}
 		SplitValue split = NodeValue::split_normal_value_into_track_values(
-			NodeValue::kVec2, QVector2D(xv, yv));
+			NodeValue::k_vec2, QVector2D(xv, yv));
 		auto command = new NodeParamSetSplitStandardValueCommand(
-			NodeInput(node.get(), _descriptor.getName().c_str()), split);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+			NodeInput(node_.get(), descriptor_.getName().c_str()), split);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 	OfxStatus set(OfxTime time, double x, double y)
 	{
-		if (!node) {
+		if (!node_) {
 			value_[0] = x;
 			value_[1] = y;
 			has_value_ = true;
 			return kOfxStatOK;
 		}
 		double xv = x, yv = y;
-		if (IsNormalisedCoordinateSystem(_descriptor)) {
-			double xSize, ySize;
-			GetProjectExtent(xSize, ySize);
-			xv = ToCanonical(xv, xSize);
-			yv = ToCanonical(yv, ySize);
+		if (is_normalised_coordinate_system(descriptor_)) {
+			double x_size, y_size;
+			get_project_extent(x_size, y_size);
+			xv = to_canonical(xv, x_size);
+			yv = to_canonical(yv, y_size);
 		}
 		auto command = new MultiUndoCommand();
-		const QString name = _descriptor.getName().c_str();
-		Node::SetValueAtTime(NodeInput(node.get(), name),
-							 rational::fromDouble(time), xv, 0, command, true);
-		Node::SetValueAtTime(NodeInput(node.get(), name),
-							 rational::fromDouble(time), yv, 1, command, true);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+		const QString name = descriptor_.getName().c_str();
+		Node::set_value_at_time(NodeInput(node_.get(), name),
+							 Rational::from_double(time), xv, 0, command, true);
+		Node::set_value_at_time(NodeInput(node_.get(), name),
+							 Rational::from_double(time), yv, 1, command, true);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 };
@@ -850,8 +850,8 @@ public:
 class Integer2DInstance : public OFX::Host::Param::Integer2DInstance,
 						  public NodeBoundParam {
 protected:
-	std::shared_ptr<PluginNode> node;
-	OFX::Host::Param::Descriptor &_descriptor;
+	std::shared_ptr<PluginNode> node_;
+	OFX::Host::Param::Descriptor &descriptor_;
 	bool has_value_ = false;
 	int value_[2] = { 0, 0 };
 
@@ -859,20 +859,20 @@ public:
 	Integer2DInstance(std::shared_ptr<PluginNode> effect,
 					  const std::string &name,
 					  OFX::Host::Param::Descriptor &descriptor,
-					  OFX::Host::Param::SetInstance *paramSet = nullptr)
-		: OFX::Host::Param::Integer2DInstance(descriptor, paramSet)
-		, node(effect)
-		, _descriptor(descriptor)
+					  OFX::Host::Param::SetInstance *param_set = nullptr)
+		: OFX::Host::Param::Integer2DInstance(descriptor, param_set)
+		, node_(effect)
+		, descriptor_(descriptor)
 	{
 		(void)name;
 	}
-	void SetNode(const std::shared_ptr<PluginNode> &new_node) override
+	void set_node(const std::shared_ptr<PluginNode> &new_node) override
 	{
-		node = new_node;
+		node_ = new_node;
 	}
 	OfxStatus get(int &x, int &y)
 	{
-		if (!node) {
+		if (!node_) {
 			if (has_value_) {
 				x = value_[0];
 				y = value_[1];
@@ -881,7 +881,7 @@ public:
 			}
 			return kOfxStatOK;
 		}
-		QVector2D vec = node->GetStandardValue(_descriptor.getName().c_str())
+		QVector2D vec = node_->get_standard_value(descriptor_.getName().c_str())
 							.value<QVector2D>();
 		x = static_cast<int>(vec.x());
 		y = static_cast<int>(vec.y());
@@ -889,7 +889,7 @@ public:
 	}
 	OfxStatus get(OfxTime time, int &x, int &y)
 	{
-		if (!node) {
+		if (!node_) {
 			if (has_value_) {
 				x = value_[0];
 				y = value_[1];
@@ -898,8 +898,8 @@ public:
 			}
 			return kOfxStatOK;
 		}
-		QVector2D vec = node->GetValueAtTime(_descriptor.getName().c_str(),
-											 rational::fromDouble(time))
+		QVector2D vec = node_->get_value_at_time(descriptor_.getName().c_str(),
+											 Rational::from_double(time))
 							.value<QVector2D>();
 		x = static_cast<int>(vec.x());
 		y = static_cast<int>(vec.y());
@@ -907,34 +907,34 @@ public:
 	}
 	OfxStatus set(int x, int y)
 	{
-		if (!node) {
+		if (!node_) {
 			value_[0] = x;
 			value_[1] = y;
 			has_value_ = true;
 			return kOfxStatOK;
 		}
 		SplitValue split = NodeValue::split_normal_value_into_track_values(
-			NodeValue::kVec2, QVector2D(x, y));
+			NodeValue::k_vec2, QVector2D(x, y));
 		auto command = new NodeParamSetSplitStandardValueCommand(
-			NodeInput(node.get(), _descriptor.getName().c_str()), split);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+			NodeInput(node_.get(), descriptor_.getName().c_str()), split);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 	OfxStatus set(OfxTime time, int x, int y)
 	{
-		if (!node) {
+		if (!node_) {
 			value_[0] = x;
 			value_[1] = y;
 			has_value_ = true;
 			return kOfxStatOK;
 		}
 		auto command = new MultiUndoCommand();
-		const QString name = _descriptor.getName().c_str();
-		Node::SetValueAtTime(NodeInput(node.get(), name),
-							 rational::fromDouble(time), x, 0, command, true);
-		Node::SetValueAtTime(NodeInput(node.get(), name),
-							 rational::fromDouble(time), y, 1, command, true);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+		const QString name = descriptor_.getName().c_str();
+		Node::set_value_at_time(NodeInput(node_.get(), name),
+							 Rational::from_double(time), x, 0, command, true);
+		Node::set_value_at_time(NodeInput(node_.get(), name),
+							 Rational::from_double(time), y, 1, command, true);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 };
@@ -942,8 +942,8 @@ public:
 class Double3DInstance : public OFX::Host::Param::Double3DInstance,
 						 public NodeBoundParam {
 protected:
-	std::shared_ptr<PluginNode> node;
-	OFX::Host::Param::Descriptor &_descriptor;
+	std::shared_ptr<PluginNode> node_;
+	OFX::Host::Param::Descriptor &descriptor_;
 	bool has_value_ = false;
 	double value_[3] = { 0.0, 0.0, 0.0 };
 
@@ -951,20 +951,20 @@ public:
 	Double3DInstance(std::shared_ptr<PluginNode> effect,
 					 const std::string &name,
 					 OFX::Host::Param::Descriptor &descriptor,
-					 OFX::Host::Param::SetInstance *paramSet = nullptr)
-		: OFX::Host::Param::Double3DInstance(descriptor, paramSet)
-		, node(effect)
-		, _descriptor(descriptor)
+					 OFX::Host::Param::SetInstance *param_set = nullptr)
+		: OFX::Host::Param::Double3DInstance(descriptor, param_set)
+		, node_(effect)
+		, descriptor_(descriptor)
 	{
 		(void)name;
 	}
-	void SetNode(const std::shared_ptr<PluginNode> &new_node) override
+	void set_node(const std::shared_ptr<PluginNode> &new_node) override
 	{
-		node = new_node;
+		node_ = new_node;
 	}
 	OfxStatus get(double &x, double &y, double &z)
 	{
-		if (!node) {
+		if (!node_) {
 			if (has_value_) {
 				x = value_[0];
 				y = value_[1];
@@ -974,23 +974,23 @@ public:
 			}
 			return kOfxStatOK;
 		}
-		QVector3D vec = node->GetStandardValue(_descriptor.getName().c_str())
+		QVector3D vec = node_->get_standard_value(descriptor_.getName().c_str())
 							.value<QVector3D>();
 		x = static_cast<double>(vec.x());
 		y = static_cast<double>(vec.y());
 		z = static_cast<double>(vec.z());
-		if (IsNormalisedCoordinateSystem(_descriptor)) {
-			double xSize, ySize;
-			GetProjectExtent(xSize, ySize);
-			x = ToNormalised(x, xSize);
-			y = ToNormalised(y, ySize);
-			z = ToNormalised(z, xSize);
+		if (is_normalised_coordinate_system(descriptor_)) {
+			double x_size, y_size;
+			get_project_extent(x_size, y_size);
+			x = to_normalised(x, x_size);
+			y = to_normalised(y, y_size);
+			z = to_normalised(z, x_size);
 		}
 		return kOfxStatOK;
 	}
 	OfxStatus get(OfxTime time, double &x, double &y, double &z)
 	{
-		if (!node) {
+		if (!node_) {
 			if (has_value_) {
 				x = value_[0];
 				y = value_[1];
@@ -1000,24 +1000,24 @@ public:
 			}
 			return kOfxStatOK;
 		}
-		QVector3D vec = node->GetValueAtTime(_descriptor.getName().c_str(),
-											 rational::fromDouble(time))
+		QVector3D vec = node_->get_value_at_time(descriptor_.getName().c_str(),
+											 Rational::from_double(time))
 							.value<QVector3D>();
 		x = static_cast<double>(vec.x());
 		y = static_cast<double>(vec.y());
 		z = static_cast<double>(vec.z());
-		if (IsNormalisedCoordinateSystem(_descriptor)) {
-			double xSize, ySize;
-			GetProjectExtent(xSize, ySize);
-			x = ToNormalised(x, xSize);
-			y = ToNormalised(y, ySize);
-			z = ToNormalised(z, xSize);
+		if (is_normalised_coordinate_system(descriptor_)) {
+			double x_size, y_size;
+			get_project_extent(x_size, y_size);
+			x = to_normalised(x, x_size);
+			y = to_normalised(y, y_size);
+			z = to_normalised(z, x_size);
 		}
 		return kOfxStatOK;
 	}
 	OfxStatus set(double x, double y, double z)
 	{
-		if (!node) {
+		if (!node_) {
 			value_[0] = x;
 			value_[1] = y;
 			value_[2] = z;
@@ -1025,23 +1025,23 @@ public:
 			return kOfxStatOK;
 		}
 		double xv = x, yv = y, zv = z;
-		if (IsNormalisedCoordinateSystem(_descriptor)) {
-			double xSize, ySize;
-			GetProjectExtent(xSize, ySize);
-			xv = ToCanonical(xv, xSize);
-			yv = ToCanonical(yv, ySize);
-			zv = ToCanonical(zv, xSize);
+		if (is_normalised_coordinate_system(descriptor_)) {
+			double x_size, y_size;
+			get_project_extent(x_size, y_size);
+			xv = to_canonical(xv, x_size);
+			yv = to_canonical(yv, y_size);
+			zv = to_canonical(zv, x_size);
 		}
 		SplitValue split = NodeValue::split_normal_value_into_track_values(
-			NodeValue::kVec3, QVector3D(xv, yv, zv));
+			NodeValue::k_vec3, QVector3D(xv, yv, zv));
 		auto command = new NodeParamSetSplitStandardValueCommand(
-			NodeInput(node.get(), _descriptor.getName().c_str()), split);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+			NodeInput(node_.get(), descriptor_.getName().c_str()), split);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 	OfxStatus set(OfxTime time, double x, double y, double z)
 	{
-		if (!node) {
+		if (!node_) {
 			value_[0] = x;
 			value_[1] = y;
 			value_[2] = z;
@@ -1049,22 +1049,22 @@ public:
 			return kOfxStatOK;
 		}
 		double xv = x, yv = y, zv = z;
-		if (IsNormalisedCoordinateSystem(_descriptor)) {
-			double xSize, ySize;
-			GetProjectExtent(xSize, ySize);
-			xv = ToCanonical(xv, xSize);
-			yv = ToCanonical(yv, ySize);
-			zv = ToCanonical(zv, xSize);
+		if (is_normalised_coordinate_system(descriptor_)) {
+			double x_size, y_size;
+			get_project_extent(x_size, y_size);
+			xv = to_canonical(xv, x_size);
+			yv = to_canonical(yv, y_size);
+			zv = to_canonical(zv, x_size);
 		}
 		auto command = new MultiUndoCommand();
-		const QString name = _descriptor.getName().c_str();
-		Node::SetValueAtTime(NodeInput(node.get(), name),
-							 rational::fromDouble(time), xv, 0, command, true);
-		Node::SetValueAtTime(NodeInput(node.get(), name),
-							 rational::fromDouble(time), yv, 1, command, true);
-		Node::SetValueAtTime(NodeInput(node.get(), name),
-							 rational::fromDouble(time), zv, 2, command, true);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+		const QString name = descriptor_.getName().c_str();
+		Node::set_value_at_time(NodeInput(node_.get(), name),
+							 Rational::from_double(time), xv, 0, command, true);
+		Node::set_value_at_time(NodeInput(node_.get(), name),
+							 Rational::from_double(time), yv, 1, command, true);
+		Node::set_value_at_time(NodeInput(node_.get(), name),
+							 Rational::from_double(time), zv, 2, command, true);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 };
@@ -1072,8 +1072,8 @@ public:
 class Integer3DInstance : public OFX::Host::Param::Integer3DInstance,
 						  public NodeBoundParam {
 protected:
-	std::shared_ptr<PluginNode> node;
-	OFX::Host::Param::Descriptor &_descriptor;
+	std::shared_ptr<PluginNode> node_;
+	OFX::Host::Param::Descriptor &descriptor_;
 	bool has_value_ = false;
 	int value_[3] = { 0, 0, 0 };
 
@@ -1081,20 +1081,20 @@ public:
 	Integer3DInstance(std::shared_ptr<PluginNode> effect,
 					  const std::string &name,
 					  OFX::Host::Param::Descriptor &descriptor,
-					  OFX::Host::Param::SetInstance *paramSet = nullptr)
-		: OFX::Host::Param::Integer3DInstance(descriptor, paramSet)
-		, node(effect)
-		, _descriptor(descriptor)
+					  OFX::Host::Param::SetInstance *param_set = nullptr)
+		: OFX::Host::Param::Integer3DInstance(descriptor, param_set)
+		, node_(effect)
+		, descriptor_(descriptor)
 	{
 		(void)name;
 	}
-	void SetNode(const std::shared_ptr<PluginNode> &new_node) override
+	void set_node(const std::shared_ptr<PluginNode> &new_node) override
 	{
-		node = new_node;
+		node_ = new_node;
 	}
 	OfxStatus get(int &x, int &y, int &z)
 	{
-		if (!node) {
+		if (!node_) {
 			if (has_value_) {
 				x = value_[0];
 				y = value_[1];
@@ -1104,7 +1104,7 @@ public:
 			}
 			return kOfxStatOK;
 		}
-		QVector3D vec = node->GetStandardValue(_descriptor.getName().c_str())
+		QVector3D vec = node_->get_standard_value(descriptor_.getName().c_str())
 							.value<QVector3D>();
 		x = static_cast<int>(vec.x());
 		y = static_cast<int>(vec.y());
@@ -1113,7 +1113,7 @@ public:
 	}
 	OfxStatus get(OfxTime time, int &x, int &y, int &z)
 	{
-		if (!node) {
+		if (!node_) {
 			if (has_value_) {
 				x = value_[0];
 				y = value_[1];
@@ -1123,8 +1123,8 @@ public:
 			}
 			return kOfxStatOK;
 		}
-		QVector3D vec = node->GetValueAtTime(_descriptor.getName().c_str(),
-											 rational::fromDouble(time))
+		QVector3D vec = node_->get_value_at_time(descriptor_.getName().c_str(),
+											 Rational::from_double(time))
 							.value<QVector3D>();
 		x = static_cast<int>(vec.x());
 		y = static_cast<int>(vec.y());
@@ -1133,7 +1133,7 @@ public:
 	}
 	OfxStatus set(int x, int y, int z)
 	{
-		if (!node) {
+		if (!node_) {
 			value_[0] = x;
 			value_[1] = y;
 			value_[2] = z;
@@ -1141,15 +1141,15 @@ public:
 			return kOfxStatOK;
 		}
 		SplitValue split = NodeValue::split_normal_value_into_track_values(
-			NodeValue::kVec3, QVector3D(x, y, z));
+			NodeValue::k_vec3, QVector3D(x, y, z));
 		auto command = new NodeParamSetSplitStandardValueCommand(
-			NodeInput(node.get(), _descriptor.getName().c_str()), split);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+			NodeInput(node_.get(), descriptor_.getName().c_str()), split);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 	OfxStatus set(OfxTime time, int x, int y, int z)
 	{
-		if (!node) {
+		if (!node_) {
 			value_[0] = x;
 			value_[1] = y;
 			value_[2] = z;
@@ -1157,14 +1157,14 @@ public:
 			return kOfxStatOK;
 		}
 		auto command = new MultiUndoCommand();
-		const QString name = _descriptor.getName().c_str();
-		Node::SetValueAtTime(NodeInput(node.get(), name),
-							 rational::fromDouble(time), x, 0, command, true);
-		Node::SetValueAtTime(NodeInput(node.get(), name),
-							 rational::fromDouble(time), y, 1, command, true);
-		Node::SetValueAtTime(NodeInput(node.get(), name),
-							 rational::fromDouble(time), z, 2, command, true);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+		const QString name = descriptor_.getName().c_str();
+		Node::set_value_at_time(NodeInput(node_.get(), name),
+							 Rational::from_double(time), x, 0, command, true);
+		Node::set_value_at_time(NodeInput(node_.get(), name),
+							 Rational::from_double(time), y, 1, command, true);
+		Node::set_value_at_time(NodeInput(node_.get(), name),
+							 Rational::from_double(time), z, 2, command, true);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 };
@@ -1172,22 +1172,22 @@ public:
 class StringInstance : public OFX::Host::Param::StringInstance,
 					   public NodeBoundParam {
 protected:
-	std::shared_ptr<PluginNode> node;
-	OFX::Host::Param::Descriptor &_descriptor;
+	std::shared_ptr<PluginNode> node_;
+	OFX::Host::Param::Descriptor &descriptor_;
 	bool has_value_ = false;
 	std::string value_;
 
 public:
 	StringInstance(std::shared_ptr<PluginNode> effect, const std::string &name,
 				   OFX::Host::Param::Descriptor &descriptor,
-				   OFX::Host::Param::SetInstance *paramSet = nullptr)
-		: OFX::Host::Param::StringInstance(descriptor, paramSet)
-		, node(effect)
-		, _descriptor(descriptor)
+				   OFX::Host::Param::SetInstance *param_set = nullptr)
+		: OFX::Host::Param::StringInstance(descriptor, param_set)
+		, node_(effect)
+		, descriptor_(descriptor)
 	{
 		(void)name;
 		try {
-			value_ = _descriptor.getProperties().getStringProperty(
+			value_ = descriptor_.getProperties().getStringProperty(
 				kOfxParamPropDefault);
 			has_value_ = true;
 		} catch (...) {
@@ -1195,18 +1195,18 @@ public:
 			has_value_ = false;
 		}
 	}
-	void SetNode(const std::shared_ptr<PluginNode> &new_node) override
+	void set_node(const std::shared_ptr<PluginNode> &new_node) override
 	{
-		node = new_node;
+		node_ = new_node;
 	}
 	OfxStatus get(std::string &data)
 	{
-		if (!node) {
+		if (!node_) {
 			data = has_value_ ? value_ : std::string();
 			return kOfxStatOK;
 		}
 		QVariant variant =
-			node->GetStandardValue(_descriptor.getName().c_str());
+			node_->get_standard_value(descriptor_.getName().c_str());
 		if (variant.canConvert<QString>()) {
 			data = variant.toString().toStdString();
 			return kOfxStatOK;
@@ -1216,12 +1216,12 @@ public:
 	}
 	OfxStatus get(OfxTime time, std::string &data)
 	{
-		if (!node) {
+		if (!node_) {
 			data = has_value_ ? value_ : std::string();
 			return kOfxStatOK;
 		}
-		QVariant variant = node->GetValueAtTime(_descriptor.getName().c_str(),
-												rational::fromDouble(time));
+		QVariant variant = node_->get_value_at_time(descriptor_.getName().c_str(),
+												Rational::from_double(time));
 		if (variant.canConvert<QString>()) {
 			data = variant.toString().toStdString();
 			return kOfxStatOK;
@@ -1231,32 +1231,32 @@ public:
 	}
 	OfxStatus set(const char *data)
 	{
-		if (!node) {
+		if (!node_) {
 			value_ = data ? data : "";
 			has_value_ = true;
 			return kOfxStatOK;
 		}
 		QString v = QString::fromUtf8(data);
 		SplitValue split = NodeValue::split_normal_value_into_track_values(
-			NodeValue::kText, v);
+			NodeValue::k_text, v);
 		auto command = new NodeParamSetSplitStandardValueCommand(
-			NodeInput(node.get(), _descriptor.getName().c_str()), split);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+			NodeInput(node_.get(), descriptor_.getName().c_str()), split);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 	OfxStatus set(OfxTime time, const char *data)
 	{
-		if (!node) {
+		if (!node_) {
 			value_ = data ? data : "";
 			has_value_ = true;
 			return kOfxStatOK;
 		}
 		auto command = new MultiUndoCommand();
-		Node::SetValueAtTime(NodeInput(node.get(),
-									   _descriptor.getName().c_str()),
-							 rational::fromDouble(time),
+		Node::set_value_at_time(NodeInput(node_.get(),
+									   descriptor_.getName().c_str()),
+							 Rational::from_double(time),
 							 QString::fromUtf8(data), 0, command, true);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 };
@@ -1264,33 +1264,33 @@ public:
 class CustomInstance : public OFX::Host::Param::CustomInstance,
 					   public NodeBoundParam {
 protected:
-	std::shared_ptr<PluginNode> node;
-	OFX::Host::Param::Descriptor &_descriptor;
+	std::shared_ptr<PluginNode> node_;
+	OFX::Host::Param::Descriptor &descriptor_;
 	bool has_value_ = false;
 	std::string value_;
 
 public:
 	CustomInstance(std::shared_ptr<PluginNode> effect, const std::string &name,
 				   OFX::Host::Param::Descriptor &descriptor,
-				   OFX::Host::Param::SetInstance *paramSet = nullptr)
-		: OFX::Host::Param::CustomInstance(descriptor, paramSet)
-		, node(effect)
-		, _descriptor(descriptor)
+				   OFX::Host::Param::SetInstance *param_set = nullptr)
+		: OFX::Host::Param::CustomInstance(descriptor, param_set)
+		, node_(effect)
+		, descriptor_(descriptor)
 	{
 		(void)name;
 	}
-	void SetNode(const std::shared_ptr<PluginNode> &new_node) override
+	void set_node(const std::shared_ptr<PluginNode> &new_node) override
 	{
-		node = new_node;
+		node_ = new_node;
 	}
 	OfxStatus get(std::string &data)
 	{
-		if (!node) {
+		if (!node_) {
 			data = has_value_ ? value_ : std::string();
 			return kOfxStatOK;
 		}
 		QVariant variant =
-			node->GetStandardValue(_descriptor.getName().c_str());
+			node_->get_standard_value(descriptor_.getName().c_str());
 		if (variant.canConvert<QByteArray>()) {
 			data = variant.toByteArray().toStdString();
 			return kOfxStatOK;
@@ -1304,12 +1304,12 @@ public:
 	}
 	OfxStatus get(OfxTime time, std::string &data)
 	{
-		if (!node) {
+		if (!node_) {
 			data = has_value_ ? value_ : std::string();
 			return kOfxStatOK;
 		}
-		QVariant variant = node->GetValueAtTime(_descriptor.getName().c_str(),
-												rational::fromDouble(time));
+		QVariant variant = node_->get_value_at_time(descriptor_.getName().c_str(),
+												Rational::from_double(time));
 		if (variant.canConvert<QByteArray>()) {
 			data = variant.toByteArray().toStdString();
 			return kOfxStatOK;
@@ -1323,31 +1323,31 @@ public:
 	}
 	OfxStatus set(const char *data)
 	{
-		if (!node) {
+		if (!node_) {
 			value_ = data ? data : "";
 			has_value_ = true;
 			return kOfxStatOK;
 		}
 		QByteArray v = QByteArray(data);
 		SplitValue split = NodeValue::split_normal_value_into_track_values(
-			NodeValue::kBinary, v);
+			NodeValue::k_binary, v);
 		auto command = new NodeParamSetSplitStandardValueCommand(
-			NodeInput(node.get(), _descriptor.getName().c_str()), split);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+			NodeInput(node_.get(), descriptor_.getName().c_str()), split);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 	OfxStatus set(OfxTime time, const char *data)
 	{
-		if (!node) {
+		if (!node_) {
 			value_ = data ? data : "";
 			has_value_ = true;
 			return kOfxStatOK;
 		}
 		auto command = new MultiUndoCommand();
-		Node::SetValueAtTime(
-			NodeInput(node.get(), _descriptor.getName().c_str()),
-			rational::fromDouble(time), QByteArray(data), 0, command, true);
-		SubmitUndoCommand(node, command, ParamChangeLabel(_descriptor));
+		Node::set_value_at_time(
+			NodeInput(node_.get(), descriptor_.getName().c_str()),
+			Rational::from_double(time), QByteArray(data), 0, command, true);
+		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
 };
@@ -1355,8 +1355,8 @@ public:
 class GroupInstance : public OFX::Host::Param::GroupInstance {
 public:
 	GroupInstance(OFX::Host::Param::Descriptor &descriptor,
-				  OFX::Host::Param::SetInstance *paramSet = nullptr)
-		: OFX::Host::Param::GroupInstance(descriptor, paramSet)
+				  OFX::Host::Param::SetInstance *param_set = nullptr)
+		: OFX::Host::Param::GroupInstance(descriptor, param_set)
 	{
 	}
 };
@@ -1364,8 +1364,8 @@ public:
 class PageInstance : public OFX::Host::Param::PageInstance {
 public:
 	PageInstance(OFX::Host::Param::Descriptor &descriptor,
-				 OFX::Host::Param::SetInstance *paramSet = nullptr)
-		: OFX::Host::Param::PageInstance(descriptor, paramSet)
+				 OFX::Host::Param::SetInstance *param_set = nullptr)
+		: OFX::Host::Param::PageInstance(descriptor, param_set)
 	{
 	}
 };

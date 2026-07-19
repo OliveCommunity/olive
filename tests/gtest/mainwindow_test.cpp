@@ -35,11 +35,11 @@ class DummyTask : public Task {
 public:
 	DummyTask()
 	{
-		SetTitle(QStringLiteral("Status Test Task"));
+		set_title(QStringLiteral("Status Test Task"));
 	}
 
 protected:
-	virtual bool Run() override
+	virtual bool run() override
 	{
 		return true;
 	}
@@ -50,7 +50,7 @@ protected:
 TEST(MainWindowLayoutInfo, AccessorsStoreAndRetrieve)
 {
 	Project project;
-	project.Initialize();
+	project.initialize();
 	auto *folder = new Folder();
 	folder->setParent(&project);
 	auto *sequence = new Sequence();
@@ -102,7 +102,7 @@ TEST(MainWindowLayoutInfo, AccessorsStoreAndRetrieve)
 TEST(MainWindowLayoutInfo, XmlRoundTripPreservesEverything)
 {
 	Project project;
-	project.Initialize();
+	project.initialize();
 	auto *folder = new Folder();
 	folder->setParent(&project);
 	auto *sequence = new Sequence();
@@ -123,7 +123,7 @@ TEST(MainWindowLayoutInfo, XmlRoundTripPreservesEverything)
 	QXmlStreamWriter writer(&xml);
 	writer.writeStartDocument();
 	writer.writeStartElement(QStringLiteral("layout"));
-	info.toXml(&writer);
+	info.to_xml(&writer);
 	writer.writeEndElement();
 	writer.writeEndDocument();
 
@@ -136,7 +136,7 @@ TEST(MainWindowLayoutInfo, XmlRoundTripPreservesEverything)
 	ASSERT_TRUE(reader.readNextStartElement());
 	ASSERT_EQ(reader.name(), QStringLiteral("layout"));
 
-	MainWindowLayoutInfo loaded = MainWindowLayoutInfo::fromXml(&reader, node_map);
+	MainWindowLayoutInfo loaded = MainWindowLayoutInfo::from_xml(&reader, node_map);
 
 	ASSERT_EQ(loaded.open_folders().size(), 1);
 	EXPECT_EQ(loaded.open_folders().front(), folder);
@@ -177,7 +177,7 @@ TEST(MainWindowLayoutInfo, FromXmlSkipsUnknownElementsAndNodes)
 	ASSERT_TRUE(reader.readNextStartElement());
 	ASSERT_EQ(reader.name(), QStringLiteral("layout"));
 
-	MainWindowLayoutInfo info = MainWindowLayoutInfo::fromXml(&reader, {});
+	MainWindowLayoutInfo info = MainWindowLayoutInfo::from_xml(&reader, {});
 
 	// Unknown pointers resolve to null but are still listed
 	ASSERT_EQ(info.open_folders().size(), 1);
@@ -209,22 +209,22 @@ TEST(MainWindowStatusBar, ReflectsTaskManagerState)
 	auto *progress = bar.findChild<QProgressBar *>();
 	ASSERT_NE(progress, nullptr);
 
-	bar.ConnectTaskManager(&manager);
+	bar.connect_task_manager(&manager);
 
 	auto *task = new DummyTask();
-	manager.AddTask(task);
+	manager.add_task(task);
 
 	// One running task shows its title and the progress bar
 	EXPECT_EQ(bar.currentMessage(), QStringLiteral("Status Test Task"));
 	EXPECT_TRUE(progress->isVisible());
 
 	// Progress signals are forwarded to the bar
-	emit task->ProgressChanged(0.5);
+	emit task->progress_changed(0.5);
 	EXPECT_EQ(progress->value(), 50);
 
 	// When the task list empties, the bar hides and the message clears
-	manager.CancelTaskAndWait(task);
-	QTRY_COMPARE_WITH_TIMEOUT(manager.GetTaskCount(), 0, 2000);
+	manager.cancel_task_and_wait(task);
+	QTRY_COMPARE_WITH_TIMEOUT(manager.get_task_count(), 0, 2000);
 	EXPECT_TRUE(bar.currentMessage().isEmpty());
 	EXPECT_FALSE(progress->isVisible());
 	EXPECT_EQ(progress->value(), 0);
@@ -237,7 +237,7 @@ TEST(MainWindowStatusBar, DoubleClickEmitsSignal)
 	MainStatusBar bar;
 	bar.show();
 
-	QSignalSpy spy(&bar, &MainStatusBar::DoubleClicked);
+	QSignalSpy spy(&bar, &MainStatusBar::double_clicked);
 	QTest::mouseDClick(&bar, Qt::LeftButton);
 	EXPECT_GE(spy.count(), 1);
 }
@@ -267,37 +267,37 @@ TEST(MainWindow, ConstructsOffscreenWithPanelsAndMenus)
 
 	// Must precede RenderManager creation: PreviewAutoCacher constructs a
 	// Project whose ColorManager dereferences the default OCIO config
-	ColorManager::SetUpDefaultConfig();
+	ColorManager::set_up_default_config();
 
 	const bool created_task_manager = (TaskManager::instance() == nullptr);
 	if (created_task_manager) {
-		TaskManager::CreateInstance();
+		TaskManager::create_instance();
 	}
 	const bool created_render_manager = (RenderManager::instance() == nullptr);
 	QVariant saved_backend;
 	if (created_render_manager) {
 		// Another suite may have left an experimental backend in the config;
 		// RenderManager needs a real one to create its cacher
-		saved_backend = Config::Current()[QStringLiteral("GraphicsBackend")];
-		Config::Current()[QStringLiteral("GraphicsBackend")] =
+		saved_backend = Config::current()[QStringLiteral("GraphicsBackend")];
+		Config::current()[QStringLiteral("GraphicsBackend")] =
 			QStringLiteral("opengl");
-		RenderManager::CreateInstance();
+		RenderManager::create_instance();
 	}
 	const bool created_disk_manager = (DiskManager::instance() == nullptr);
 	if (created_disk_manager) {
-		DiskManager::CreateInstance();
+		DiskManager::create_instance();
 	}
 	const bool created_menu_shared = (MenuShared::instance() == nullptr);
 	if (created_menu_shared) {
-		MenuShared::CreateInstance();
+		MenuShared::create_instance();
 	}
 	const bool created_panel_manager = (PanelManager::instance() == nullptr);
 	if (created_panel_manager) {
-		PanelManager::CreateInstance();
+		PanelManager::create_instance();
 	}
 	const bool created_audio_manager = (AudioManager::instance() == nullptr);
 	if (created_audio_manager) {
-		AudioManager::CreateInstance();
+		AudioManager::create_instance();
 	}
 	if (!Core::instance()) {
 		new Core(Core::CoreParams()); // intentionally leaked
@@ -306,8 +306,8 @@ TEST(MainWindow, ConstructsOffscreenWithPanelsAndMenus)
 
 	// Suppress the modal welcome dialog shown on first show
 	const QVariant welcome_setting =
-		Config::Current()[QStringLiteral("ShowWelcomeDialog")];
-	Config::Current()[QStringLiteral("ShowWelcomeDialog")] = false;
+		Config::current()[QStringLiteral("ShowWelcomeDialog")];
+	Config::current()[QStringLiteral("ShowWelcomeDialog")] = false;
 
 	MainWindow *window = new MainWindow();
 	window->showMaximized();
@@ -316,15 +316,15 @@ TEST(MainWindow, ConstructsOffscreenWithPanelsAndMenus)
 	PanelManager *panels = PanelManager::instance();
 	ASSERT_NE(panels, nullptr);
 	EXPECT_GE(panels->panels().size(), 10);
-	EXPECT_NE(panels->GetPanelWithName(QStringLiteral("NodePanel")), nullptr);
-	EXPECT_NE(panels->GetPanelWithName(QStringLiteral("ProjectPanel")),
+	EXPECT_NE(panels->get_panel_with_name(QStringLiteral("NodePanel")), nullptr);
+	EXPECT_NE(panels->get_panel_with_name(QStringLiteral("ProjectPanel")),
 			  nullptr);
 	// Timeline panels get their index appended to the unique name
-	EXPECT_NE(panels->GetPanelWithName(QStringLiteral("TimelinePanel:0")),
+	EXPECT_NE(panels->get_panel_with_name(QStringLiteral("TimelinePanel:0")),
 			  nullptr);
-	EXPECT_NE(panels->GetPanelWithName(QStringLiteral("SequenceViewerPanel")),
+	EXPECT_NE(panels->get_panel_with_name(QStringLiteral("SequenceViewerPanel")),
 			  nullptr);
-	EXPECT_NE(panels->GetPanelWithName(QStringLiteral("FootageViewerPanel")),
+	EXPECT_NE(panels->get_panel_with_name(QStringLiteral("FootageViewerPanel")),
 			  nullptr);
 
 	// The menu bar is fully populated (this is what the action search dialog
@@ -348,29 +348,29 @@ TEST(MainWindow, ConstructsOffscreenWithPanelsAndMenus)
 	// loop must not crash
 	QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
 
-	Config::Current()[QStringLiteral("ShowWelcomeDialog")] = welcome_setting;
+	Config::current()[QStringLiteral("ShowWelcomeDialog")] = welcome_setting;
 
 	// Tear down in reverse order: window first, then its panels, then only
 	// the singletons this test created
 	delete window;
 	if (created_panel_manager) {
-		PanelManager::instance()->DeleteAllPanels();
-		PanelManager::DestroyInstance();
+		PanelManager::instance()->delete_all_panels();
+		PanelManager::destroy_instance();
 	}
 	if (created_audio_manager) {
-		AudioManager::DestroyInstance();
+		AudioManager::destroy_instance();
 	}
 	if (created_menu_shared) {
-		MenuShared::DestroyInstance();
+		MenuShared::destroy_instance();
 	}
 	if (created_render_manager) {
-		RenderManager::DestroyInstance();
-		Config::Current()[QStringLiteral("GraphicsBackend")] = saved_backend;
+		RenderManager::destroy_instance();
+		Config::current()[QStringLiteral("GraphicsBackend")] = saved_backend;
 	}
 	if (created_task_manager) {
-		TaskManager::DestroyInstance();
+		TaskManager::destroy_instance();
 	}
 	if (created_disk_manager) {
-		DiskManager::DestroyInstance();
+		DiskManager::destroy_instance();
 	}
 }

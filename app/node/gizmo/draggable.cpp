@@ -26,30 +26,30 @@ namespace olive
 
 DraggableGizmo::DraggableGizmo(QObject *parent)
 	: NodeGizmo{ parent }
-	, drag_value_behavior_(kAbsolute)
+	, drag_value_behavior_(k_absolute)
 {
 }
 
-void DraggableGizmo::DragStart(const NodeValueRow &row, double abs_x,
-							   double abs_y, const rational &time)
+void DraggableGizmo::drag_start(const NodeValueRow &row, double abs_x,
+							   double abs_y, const Rational &time)
 {
 	for (int i = 0; i < draggers_.size(); i++) {
-		draggers_[i].Start(inputs_[i], time);
+		draggers_[i].start(inputs_[i], time);
 	}
 
-	emit HandleStart(row, abs_x, abs_y, time);
+	emit handle_start(row, abs_x, abs_y, time);
 }
 
-void DraggableGizmo::DragMove(double x, double y,
+void DraggableGizmo::drag_move(double x, double y,
 							  const Qt::KeyboardModifiers &modifiers)
 {
-	emit HandleMovement(x, y, modifiers);
+	emit handle_movement(x, y, modifiers);
 }
 
-void DraggableGizmo::DragEnd(MultiUndoCommand *command)
+void DraggableGizmo::drag_end(MultiUndoCommand *command)
 {
 	for (int i = 0; i < draggers_.size(); i++) {
-		draggers_[i].End(command);
+		draggers_[i].end(command);
 	}
 }
 

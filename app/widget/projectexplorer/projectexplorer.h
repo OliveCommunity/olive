@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECTEXPLORER_H
-#define PROJECTEXPLORER_H
+#ifndef OAK_PROJECTEXPLORER_H
+#define OAK_PROJECTEXPLORER_H
 
 #include <QSortFilterProxyModel>
 #include <QStackedWidget>
@@ -59,7 +59,7 @@ public:
 	Folder *get_root() const;
 	void set_root(Folder *item);
 
-	QVector<Node *> SelectedItems() const;
+	QVector<Node *> selected_items() const;
 
 	/**
    * @brief Use a heuristic to determine which (if any) folder is selected
@@ -73,29 +73,29 @@ public:
    * A folder that's heuristically been determined as "selected", or the root directory if none, or nullptr if no
    * project is open.
    */
-	Folder *GetSelectedFolder() const;
+	Folder *get_selected_folder() const;
 
 	/**
    * @brief Access the ViewModel model of the project
    */
 	ProjectViewModel *model();
 
-	void SelectAll();
+	void select_all();
 
-	void DeselectAll();
+	void deselect_all();
 
-	void DeleteSelected();
+	void delete_selected();
 
-	bool SelectItem(Node *n, bool deselect_all_first = true);
+	bool select_item(Node *n, bool deselect_all_first = true);
 
 public slots:
 	void set_view_type(ProjectToolbar::ViewType type);
 
-	void Edit(Node *item);
+	void edit(Node *item);
 
-	void RenameSelectedItem();
+	void rename_selected_item();
 
-	void SetSearchFilter(const QString &s);
+	void set_search_filter(const QString &s);
 
 signals:
 	/**
@@ -105,9 +105,9 @@ signals:
    *
    * The Item that was double clicked, or nullptr if empty area was double clicked
    */
-	void DoubleClickedItem(Node *item);
+	void double_clicked_item(Node *item);
 
-	void SelectionChanged(const QVector<Node *> &selected);
+	void selection_changed(const QVector<Node *> &selected);
 
 private:
 	/**
@@ -115,7 +115,7 @@ private:
    *
    * Ignores blocks that depend on multiple inputs
    */
-	QList<Block *> GetFootageBlocks(QList<Node *> nodes);
+	QList<Block *> get_footage_blocks(QList<Node *> nodes);
 
 	/**
    * @brief Simple convenience function for adding a view to this stacked widget
@@ -126,7 +126,7 @@ private:
    *
    * View to add to the stack
    */
-	void AddView(QAbstractItemView *view);
+	void add_view(QAbstractItemView *view);
 
 	/**
    * @brief Browse to a specific folder index in the model
@@ -137,22 +137,22 @@ private:
    *
    * Either an invalid index to return to the project root, or an index to a valid Folder object.
    */
-	void BrowseToFolder(const QModelIndex &index);
+	void browse_to_folder(const QModelIndex &index);
 
-	int ConfirmItemDeletion(Node *item);
+	int confirm_item_deletion(Node *item);
 
-	bool DeleteItemsInternal(const QVector<Node *> &selected,
+	bool delete_items_internal(const QVector<Node *> &selected,
 							 bool &check_if_item_is_in_use,
 							 MultiUndoCommand *command);
 
-	static QString GetHumanReadableNodeName(Node *node);
+	static QString get_human_readable_node_name(Node *node);
 
-	void UpdateNavBarText();
+	void update_nav_bar_text();
 
 	/**
    * @brief Get the currently active QAbstractItemView
    */
-	QAbstractItemView *CurrentView() const;
+	QAbstractItemView *current_view() const;
 
 	QStackedWidget *stacked_widget_;
 
@@ -170,39 +170,39 @@ private:
 	QVector<Node *> context_menu_items_;
 
 private slots:
-	void ViewEmptyAreaDoubleClickedSlot();
+	void view_empty_area_double_clicked_slot();
 
-	void ItemDoubleClickedSlot(const QModelIndex &index);
+	void item_double_clicked_slot(const QModelIndex &index);
 
-	void SizeChangedSlot(int s);
+	void size_changed_slot(int s);
 
-	void DirUpSlot();
+	void dir_up_slot();
 
-	void ShowContextMenu();
+	void show_context_menu();
 
-	void ShowItemPropertiesDialog();
+	void show_item_properties_dialog();
 
-	void RevealSelectedFootage();
+	void reveal_selected_footage();
 
-	void ReplaceSelectedFootage();
+	void replace_selected_footage();
 
-	void OpenContextMenuItemInNewTab();
+	void open_context_menu_item_in_new_tab();
 
-	void OpenContextMenuItemInNewWindow();
+	void open_context_menu_item_in_new_window();
 
-	void GenerateProxiesForSelectedFootage();
+	void generate_proxies_for_selected_footage();
 
-	void SetSelectedFootageProxyEnabled(bool enabled);
+	void set_selected_footage_proxy_enabled(bool enabled);
 
-	void RevealProxyForSelectedFootage();
+	void reveal_proxy_for_selected_footage();
 
-	void DeleteProxiesForSelectedFootage();
+	void delete_proxies_for_selected_footage();
 
-	void ShowProxyDialogForSelectedFootage();
+	void show_proxy_dialog_for_selected_footage();
 
-	void ViewSelectionChanged();
+	void view_selection_changed();
 };
 
 }
 
-#endif // PROJECTEXPLORER_H
+#endif // OAK_PROJECTEXPLORER_H

@@ -54,7 +54,7 @@ SliderLabel::SliderLabel(QWidget *parent)
 	setContextMenuPolicy(Qt::CustomContextMenu);
 }
 
-void SliderLabel::SetColor(const QColor &c)
+void SliderLabel::set_color(const QColor &c)
 {
 	// Prevent infinite loop in changeEvent when we set the stylesheet
 	override_color_enabled_ = false;
@@ -78,9 +78,9 @@ void SliderLabel::mousePressEvent(QMouseEvent *e)
 {
 	if (e->button() == Qt::LeftButton) {
 		if (e->modifiers() & Qt::AltModifier) {
-			emit RequestReset();
+			emit request_reset();
 		} else {
-			emit LabelPressed();
+			emit label_pressed();
 		}
 	}
 }
@@ -89,7 +89,7 @@ void SliderLabel::mouseReleaseEvent(QMouseEvent *e)
 {
 	if (e->button() == Qt::LeftButton) {
 		if (!(e->modifiers() & Qt::AltModifier)) {
-			emit LabelReleased();
+			emit label_released();
 		}
 	}
 }
@@ -108,7 +108,7 @@ void SliderLabel::changeEvent(QEvent *event)
 	QWidget::changeEvent(event);
 
 	if (override_color_enabled_ && event->type() == QEvent::StyleChange) {
-		SetColor(override_color_);
+		set_color(override_color_);
 	}
 }
 

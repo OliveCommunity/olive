@@ -33,26 +33,26 @@ TextGizmo::TextGizmo(QObject *parent)
 {
 }
 
-void TextGizmo::SetRect(const QRectF &r)
+void TextGizmo::set_rect(const QRectF &r)
 {
 	rect_ = r;
-	emit RectChanged(rect_);
+	emit rect_changed(rect_);
 }
 
-void TextGizmo::UpdateInputHtml(const QString &s, const rational &time)
+void TextGizmo::update_input_html(const QString &s, const Rational &time)
 {
-	if (input_.IsValid()) {
+	if (input_.is_valid()) {
 		MultiUndoCommand *command = new MultiUndoCommand();
-		Node::SetValueAtTime(input_.input(), time, s, input_.track(), command,
+		Node::set_value_at_time(input_.input(), time, s, input_.track(), command,
 							 true);
 		Core::instance()->undo_stack()->push(command, tr("Edit Text"));
 	}
 }
 
-void TextGizmo::SetVerticalAlignment(Qt::Alignment va)
+void TextGizmo::set_vertical_alignment(Qt::Alignment va)
 {
 	valign_ = va;
-	emit VerticalAlignmentChanged(valign_);
+	emit vertical_alignment_changed(valign_);
 }
 
 }

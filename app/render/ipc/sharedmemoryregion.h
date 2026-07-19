@@ -18,8 +18,8 @@
 
 ***/
 
-#ifndef IPC_SHAREDMEMORYREGION_H
-#define IPC_SHAREDMEMORYREGION_H
+#ifndef OAK_IPC_SHAREDMEMORYREGION_H
+#define OAK_IPC_SHAREDMEMORYREGION_H
 
 #include <cstddef>
 #include <QString>
@@ -46,9 +46,9 @@ class SharedMemoryRegion {
 public:
 	enum Mode {
 		/// Create (and own) the segment. Fails if it already exists; unlinks on destruction.
-		kCreate,
+		k_create,
 		/// Attach to a segment created by the peer. Does not unlink on destruction.
-		kAttach
+		k_attach
 	};
 
 	SharedMemoryRegion();
@@ -63,14 +63,14 @@ public:
    * `key` is a short identifier (no leading slash needed; the platform prefix is added internally).
    * Returns true on success. On failure, error() carries a human-readable reason.
    */
-	bool Open(const QString &key, size_t size, Mode mode);
+	bool open(const QString &key, size_t size, Mode mode);
 
 	/**
    * @brief Unmap and (if owner) unlink the segment. Called automatically by the destructor.
    */
-	void Close();
+	void close();
 
-	bool IsValid() const
+	bool is_valid() const
 	{
 		return data_ != nullptr;
 	}
@@ -100,7 +100,7 @@ public:
    *
    * Centralized so the owner and the spawned worker agree on the same name.
    */
-	static QString MakeKey(qint64 owner_pid, int worker_index);
+	static QString make_key(qint64 owner_pid, int worker_index);
 
 private:
 	QString key_;
@@ -120,4 +120,4 @@ private:
 } // namespace ipc
 } // namespace olive
 
-#endif // IPC_SHAREDMEMORYREGION_H
+#endif // OAK_IPC_SHAREDMEMORYREGION_H

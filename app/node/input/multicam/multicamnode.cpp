@@ -25,29 +25,29 @@ namespace olive
 
 #define super Node
 
-const QString MultiCamNode::kCurrentInput = QStringLiteral("current_in");
-const QString MultiCamNode::kSourcesInput = QStringLiteral("sources_in");
-const QString MultiCamNode::kSequenceInput = QStringLiteral("sequence_in");
-const QString MultiCamNode::kSequenceTypeInput =
+const QString MultiCamNode::k_current_input = QStringLiteral("current_in");
+const QString MultiCamNode::k_sources_input = QStringLiteral("sources_in");
+const QString MultiCamNode::k_sequence_input = QStringLiteral("sequence_in");
+const QString MultiCamNode::k_sequence_type_input =
 	QStringLiteral("sequence_type_in");
 
 MultiCamNode::MultiCamNode()
 {
-	AddInput(kCurrentInput, NodeValue::kCombo, InputFlags(kInputFlagStatic));
+	add_input(k_current_input, NodeValue::k_combo, InputFlags(k_input_flag_static));
 
-	AddInput(kSourcesInput, NodeValue::kNone,
-			 InputFlags(kInputFlagNotKeyframable | kInputFlagArray));
-	SetInputProperty(kSourcesInput, QStringLiteral("arraystart"), 1);
+	add_input(k_sources_input, NodeValue::k_none,
+			 InputFlags(k_input_flag_not_keyframable | k_input_flag_array));
+	set_input_property(k_sources_input, QStringLiteral("arraystart"), 1);
 
-	AddInput(kSequenceInput, NodeValue::kNone,
-			 InputFlags(kInputFlagNotKeyframable));
-	AddInput(kSequenceTypeInput, NodeValue::kCombo,
-			 InputFlags(kInputFlagStatic | kInputFlagHidden));
+	add_input(k_sequence_input, NodeValue::k_none,
+			 InputFlags(k_input_flag_not_keyframable));
+	add_input(k_sequence_type_input, NodeValue::k_combo,
+			 InputFlags(k_input_flag_static | k_input_flag_hidden));
 
 	sequence_ = nullptr;
 }
 
-QString MultiCamNode::Name() const
+QString MultiCamNode::name() const
 {
 	return tr("Multi-Cam");
 }
@@ -57,44 +57,44 @@ QString MultiCamNode::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.multicam");
 }
 
-QVector<Node::CategoryID> MultiCamNode::Category() const
+QVector<Node::CategoryID> MultiCamNode::category() const
 {
-	return { kCategoryTimeline };
+	return { k_category_timeline };
 }
 
-QString MultiCamNode::Description() const
+QString MultiCamNode::description() const
 {
 	return tr("Allows easy switching between multiple sources.");
 }
 
 Node::ActiveElements
-MultiCamNode::GetActiveElementsAtTime(const QString &input,
+MultiCamNode::get_active_elements_at_time(const QString &input,
 									  const TimeRange &r) const
 {
-	if (input == kSourcesInput) {
-		int src = GetCurrentSource();
-		if (src >= 0 && src < GetSourceCount()) {
+	if (input == k_sources_input) {
+		int src = get_current_source();
+		if (src >= 0 && src < get_source_count()) {
 			Node::ActiveElements a;
 			a.add(src);
 			return a;
 		} else {
-			return ActiveElements::kNoElements;
+			return ActiveElements::k_no_elements;
 		}
 	} else {
-		return super::GetActiveElementsAtTime(input, r);
+		return super::get_active_elements_at_time(input, r);
 	}
 }
 
-void MultiCamNode::Value(const NodeValueRow &value, const NodeGlobals &globals,
+void MultiCamNode::value(const NodeValueRow &value, const NodeGlobals &globals,
 						 NodeValueTable *table) const
 {
-	NodeValueArray arr = value[kSourcesInput].toArray();
+	NodeValueArray arr = value[k_sources_input].to_array();
 	if (!arr.empty()) {
-		table->Push(arr.begin()->second);
+		table->push(arr.begin()->second);
 	}
 }
 
-void MultiCamNode::IndexToRowCols(int index, int total_rows, int total_cols,
+void MultiCamNode::index_to_row_cols(int index, int total_rows, int total_cols,
 								  int *row, int *col)
 {
 	Q_UNUSED(total_rows)
@@ -103,39 +103,39 @@ void MultiCamNode::IndexToRowCols(int index, int total_rows, int total_cols,
 	*row = index / total_cols;
 }
 
-Node *MultiCamNode::GetConnectedRenderOutput(const QString &input,
+Node *MultiCamNode::get_connected_render_output(const QString &input,
 											 int element) const
 {
-	if (sequence_ && input == kSourcesInput && element >= 0 &&
-		element < GetSourceCount()) {
-		return GetTrackList()->GetTrackAt(element);
+	if (sequence_ && input == k_sources_input && element >= 0 &&
+		element < get_source_count()) {
+		return get_track_list()->get_track_at(element);
 	} else {
-		return Node::GetConnectedRenderOutput(input, element);
+		return Node::get_connected_render_output(input, element);
 	}
 }
 
-bool MultiCamNode::IsInputConnectedForRender(const QString &input,
+bool MultiCamNode::is_input_connected_for_render(const QString &input,
 											 int element) const
 {
-	if (sequence_ && input == kSourcesInput && element >= 0 &&
-		element < GetSourceCount()) {
+	if (sequence_ && input == k_sources_input && element >= 0 &&
+		element < get_source_count()) {
 		return true;
 	} else {
-		return Node::IsInputConnectedForRender(input, element);
+		return Node::is_input_connected_for_render(input, element);
 	}
 }
 
-QVector<QString> MultiCamNode::IgnoreInputsForRendering() const
+QVector<QString> MultiCamNode::ignore_inputs_for_rendering() const
 {
-	return { kSequenceInput };
+	return { k_sequence_input };
 }
 
 void MultiCamNode::InputConnectedEvent(const QString &input, int element,
 									   Node *output)
 {
-	if (input == kSequenceInput) {
+	if (input == k_sequence_input) {
 		if (Sequence *s = dynamic_cast<Sequence *>(output)) {
-			SetInputFlag(kSequenceTypeInput, kInputFlagHidden, false);
+			set_input_flag(k_sequence_type_input, k_input_flag_hidden, false);
 			sequence_ = s;
 		}
 	}
@@ -144,51 +144,51 @@ void MultiCamNode::InputConnectedEvent(const QString &input, int element,
 void MultiCamNode::InputDisconnectedEvent(const QString &input, int element,
 										  Node *output)
 {
-	if (input == kSequenceInput) {
-		SetInputFlag(kSequenceTypeInput, kInputFlagHidden, true);
+	if (input == k_sequence_input) {
+		set_input_flag(k_sequence_type_input, k_input_flag_hidden, true);
 		sequence_ = nullptr;
 	}
 }
 
-TrackList *MultiCamNode::GetTrackList() const
+TrackList *MultiCamNode::get_track_list() const
 {
 	return sequence_->track_list(
-		static_cast<Track::Type>(GetStandardValue(kSequenceTypeInput).toInt()));
+		static_cast<Track::Type>(get_standard_value(k_sequence_type_input).toInt()));
 }
 
-void MultiCamNode::Retranslate()
+void MultiCamNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kCurrentInput, tr("Current"));
-	SetInputName(kSourcesInput, tr("Sources"));
-	SetInputName(kSequenceInput, tr("Sequence"));
-	SetInputName(kSequenceTypeInput, tr("Sequence Type"));
-	SetComboBoxStrings(kSequenceTypeInput, { tr("Video"), tr("Audio") });
+	set_input_name(k_current_input, tr("Current"));
+	set_input_name(k_sources_input, tr("Sources"));
+	set_input_name(k_sequence_input, tr("Sequence"));
+	set_input_name(k_sequence_type_input, tr("Sequence Type"));
+	set_combo_box_strings(k_sequence_type_input, { tr("Video"), tr("Audio") });
 
 	QStringList names;
-	int name_count = GetSourceCount();
+	int name_count = get_source_count();
 	names.reserve(name_count);
 	for (int i = 0; i < name_count; i++) {
 		QString src_name;
-		if (Node *n = GetConnectedRenderOutput(kSourcesInput, i)) {
-			src_name = n->Name();
+		if (Node *n = get_connected_render_output(k_sources_input, i)) {
+			src_name = n->name();
 		}
 		names.append(tr("%1: %2").arg(QString::number(i + 1), src_name));
 	}
-	SetComboBoxStrings(kCurrentInput, names);
+	set_combo_box_strings(k_current_input, names);
 }
 
-int MultiCamNode::GetSourceCount() const
+int MultiCamNode::get_source_count() const
 {
 	if (sequence_) {
-		return GetTrackList()->GetTrackCount();
+		return get_track_list()->get_track_count();
 	} else {
-		return InputArraySize(kSourcesInput);
+		return input_array_size(k_sources_input);
 	}
 }
 
-void MultiCamNode::GetRowsAndColumns(int sources, int *rows_in, int *cols_in)
+void MultiCamNode::get_rows_and_columns(int sources, int *rows_in, int *cols_in)
 {
 	int &rows = *rows_in;
 	int &cols = *cols_in;

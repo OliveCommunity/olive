@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TOOL_PANEL_H
-#define TOOL_PANEL_H
+#ifndef OAK_TOOL_PANEL_H
+#define OAK_TOOL_PANEL_H
 
 #include "panel/panel.h"
 
@@ -36,9 +36,9 @@ public:
 	ToolPanel();
 
 private:
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 };
 
 }
 
-#endif // TOOL_PANEL_H
+#endif // OAK_TOOL_PANEL_H

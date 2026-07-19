@@ -22,8 +22,8 @@ target_sources(libolive-editor PRIVATE
         crashpadinterface.cpp
         crashpadinterface.h
         crashpadutils.h
-        Current.cpp
-        Current.h
+        current.cpp
+        current.h
         debug.cpp
         debug.h
         decibel.h

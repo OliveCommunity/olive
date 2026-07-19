@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef DISPLAYTRANSFORMNODE_H
-#define DISPLAYTRANSFORMNODE_H
+#ifndef OAK_DISPLAYTRANSFORMNODE_H
+#define OAK_DISPLAYTRANSFORMNODE_H
 
 #include "node/color/ociobase/ociobase.h"
 #include "render/colorprocessor.h"
@@ -35,34 +35,34 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(DisplayTransformNode)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 	virtual void InputValueChangedEvent(const QString &input,
 										int element) override;
 
-	QString GetDisplay() const;
-	QString GetView() const;
-	ColorProcessor::Direction GetDirection() const;
+	QString get_display() const;
+	QString get_view() const;
+	ColorProcessor::Direction get_direction() const;
 
-	static const QString kDisplayInput;
-	static const QString kViewInput;
-	static const QString kDirectionInput;
+	static const QString k_display_input;
+	static const QString k_view_input;
+	static const QString k_direction_input;
 
 protected slots:
-	virtual void ConfigChanged() override;
+	virtual void config_changed() override;
 
 private:
-	void GenerateProcessor();
+	void generate_processor();
 
-	void UpdateDisplays();
+	void update_displays();
 
-	void UpdateViews();
+	void update_views();
 };
 
 } // olive
 
-#endif // DISPLAYTRANSFORMNODE_H
+#endif // OAK_DISPLAYTRANSFORMNODE_H

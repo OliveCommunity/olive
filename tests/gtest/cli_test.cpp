@@ -12,14 +12,14 @@ public:
 	explicit DummyTask(bool succeed)
 		: succeed_(succeed)
 	{
-		SetTitle(QStringLiteral("Dummy"));
+		set_title(QStringLiteral("Dummy"));
 	}
 
 protected:
-	virtual bool Run() override
+	virtual bool run() override
 	{
-		emit ProgressChanged(0.5);
-		emit ProgressChanged(1.0);
+		emit progress_changed(0.5);
+		emit progress_changed(1.0);
 		return succeed_;
 	}
 
@@ -47,7 +47,7 @@ TEST(CLIProgress, SameProgressValueDoesNotRedraw)
 	olive::CLIProgressDialog dlg(QStringLiteral("Job"));
 
 	testing::internal::CaptureStdout();
-	dlg.SetProgress(0.0);
+	dlg.set_progress(0.0);
 	const QString out =
 		QString::fromStdString(testing::internal::GetCapturedStdout());
 
@@ -59,7 +59,7 @@ TEST(CLIProgress, ProgressRendersPercentage)
 	olive::CLIProgressDialog dlg(QStringLiteral("Job"));
 
 	testing::internal::CaptureStdout();
-	dlg.SetProgress(0.25);
+	dlg.set_progress(0.25);
 	const QString out =
 		QString::fromStdString(testing::internal::GetCapturedStdout());
 
@@ -86,7 +86,7 @@ TEST(CLIProgress, BarFillMatchesProgress)
 	olive::CLIProgressDialog dlg(QStringLiteral("Job"));
 
 	testing::internal::CaptureStdout();
-	dlg.SetProgress(1.0);
+	dlg.set_progress(1.0);
 	const QString out =
 		QString::fromStdString(testing::internal::GetCapturedStdout());
 
@@ -100,7 +100,7 @@ TEST(CLIProgress, PercentageIsPaddedToThreeColumns)
 
 	auto pct_field = [&](double p) {
 		testing::internal::CaptureStdout();
-		dlg.SetProgress(p);
+		dlg.set_progress(p);
 		const QString out =
 			QString::fromStdString(testing::internal::GetCapturedStdout());
 		const int bracket = out.indexOf(QLatin1Char(']'));
@@ -124,7 +124,7 @@ TEST(CLITask, RunReturnsTaskResult)
 		olive::CLITaskDialog dlg(&task);
 
 		testing::internal::CaptureStdout();
-		const bool ok = dlg.Run();
+		const bool ok = dlg.run();
 		testing::internal::GetCapturedStdout();
 
 		EXPECT_TRUE(ok);
@@ -135,7 +135,7 @@ TEST(CLITask, RunReturnsTaskResult)
 		olive::CLITaskDialog dlg(&task);
 
 		testing::internal::CaptureStdout();
-		const bool ok = dlg.Run();
+		const bool ok = dlg.run();
 		testing::internal::GetCapturedStdout();
 
 		EXPECT_FALSE(ok);
@@ -148,7 +148,7 @@ TEST(CLITask, TaskProgressIsForwardedToDisplay)
 	olive::CLITaskDialog dlg(&task);
 
 	testing::internal::CaptureStdout();
-	dlg.Run();
+	dlg.run();
 	const QString out =
 		QString::fromStdString(testing::internal::GetCapturedStdout());
 

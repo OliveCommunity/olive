@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef ICONS_H
-#define ICONS_H
+#ifndef OAK_ICONS_H
+#define OAK_ICONS_H
 
 #include <QIcon>
 
@@ -33,85 +33,85 @@ namespace icon
 {
 
 // Playback Icons
-extern QIcon GoToStart;
-extern QIcon PrevFrame;
-extern QIcon Play;
-extern QIcon Pause;
-extern QIcon NextFrame;
-extern QIcon GoToEnd;
+extern QIcon go_to_start;
+extern QIcon prev_frame;
+extern QIcon play;
+extern QIcon pause;
+extern QIcon next_frame;
+extern QIcon go_to_end;
 
 // Project Management Toolbar Icons
 extern QIcon New;
-extern QIcon Open;
-extern QIcon Save;
-extern QIcon Undo;
-extern QIcon Redo;
-extern QIcon TreeView;
-extern QIcon ListView;
-extern QIcon IconView;
+extern QIcon open;
+extern QIcon save;
+extern QIcon undo;
+extern QIcon redo;
+extern QIcon tree_view;
+extern QIcon list_view;
+extern QIcon icon_view;
 
 // Tool Icons
-extern QIcon ToolPointer;
-extern QIcon ToolEdit;
-extern QIcon ToolRipple;
-extern QIcon ToolRolling;
-extern QIcon ToolRazor;
-extern QIcon ToolSlip;
-extern QIcon ToolSlide;
-extern QIcon ToolHand;
-extern QIcon ToolTransition;
-extern QIcon ToolTrackSelect;
+extern QIcon tool_pointer;
+extern QIcon tool_edit;
+extern QIcon tool_ripple;
+extern QIcon tool_rolling;
+extern QIcon tool_razor;
+extern QIcon tool_slip;
+extern QIcon tool_slide;
+extern QIcon tool_hand;
+extern QIcon tool_transition;
+extern QIcon tool_track_select;
 
 // Project Icons
-extern QIcon Folder;
-extern QIcon Sequence;
-extern QIcon Video;
-extern QIcon Audio;
-extern QIcon Image;
+extern QIcon folder;
+extern QIcon sequence;
+extern QIcon video;
+extern QIcon audio;
+extern QIcon image;
 
 // Node Icons
-extern QIcon MiniMap;
+extern QIcon mini_map;
 
 // Triangle Arrows
-extern QIcon TriUp;
-extern QIcon TriLeft;
-extern QIcon TriDown;
-extern QIcon TriRight;
+extern QIcon tri_up;
+extern QIcon tri_left;
+extern QIcon tri_down;
+extern QIcon tri_right;
 
 // Text
-extern QIcon TextBold;
-extern QIcon TextItalic;
-extern QIcon TextUnderline;
-extern QIcon TextStrikethrough;
-extern QIcon TextSmallCaps;
-extern QIcon TextAlignLeft;
-extern QIcon TextAlignRight;
-extern QIcon TextAlignCenter;
-extern QIcon TextAlignJustify;
-extern QIcon TextAlignTop;
-extern QIcon TextAlignBottom;
-extern QIcon TextAlignMiddle;
+extern QIcon text_bold;
+extern QIcon text_italic;
+extern QIcon text_underline;
+extern QIcon text_strikethrough;
+extern QIcon text_small_caps;
+extern QIcon text_align_left;
+extern QIcon text_align_right;
+extern QIcon text_align_center;
+extern QIcon text_align_justify;
+extern QIcon text_align_top;
+extern QIcon text_align_bottom;
+extern QIcon text_align_middle;
 
 // Miscellaneous Icons
-extern QIcon Snapping;
-extern QIcon ZoomIn;
-extern QIcon ZoomOut;
-extern QIcon Record;
-extern QIcon Add;
-extern QIcon Error;
-extern QIcon DirUp;
-extern QIcon Clock;
-extern QIcon Diamond;
-extern QIcon Plus;
-extern QIcon Minus;
-extern QIcon AddEffect;
-extern QIcon EyeOpened;
-extern QIcon EyeClosed;
-extern QIcon LockOpened;
-extern QIcon LockClosed;
-extern QIcon Pencil;
-extern QIcon Subtitles;
-extern QIcon ColorPicker;
+extern QIcon snapping;
+extern QIcon zoom_in;
+extern QIcon zoom_out;
+extern QIcon record;
+extern QIcon add;
+extern QIcon error;
+extern QIcon dir_up;
+extern QIcon clock;
+extern QIcon diamond;
+extern QIcon plus;
+extern QIcon minus;
+extern QIcon add_effect;
+extern QIcon eye_opened;
+extern QIcon eye_closed;
+extern QIcon lock_opened;
+extern QIcon lock_closed;
+extern QIcon pencil;
+extern QIcon subtitles;
+extern QIcon color_picker;
 
 /**
  * @brief Create an icon object loaded from file
@@ -142,7 +142,7 @@ extern QIcon ColorPicker;
  *
  * A QIcon object containing the various icon sizes loaded from resource
  */
-QIcon Create(const QString &theme, const QString &name);
+QIcon create(const QString &theme, const QString &name);
 
 /**
  * @brief Methodically load all Olive icons into global variables that can be accessed throughout the application
@@ -150,10 +150,10 @@ QIcon Create(const QString &theme, const QString &name);
  * It's recommended to load any UI icons here so they're ready at startup and don't need to be re-loaded upon each
  * use.
  */
-void LoadAll(const QString &theme);
+void load_all(const QString &theme);
 
 }
 
 }
 
-#endif // ICONS_H
+#endif // OAK_ICONS_H

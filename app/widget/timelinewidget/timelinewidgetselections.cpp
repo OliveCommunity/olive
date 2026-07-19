@@ -24,14 +24,14 @@
 namespace olive
 {
 
-void TimelineWidgetSelections::ShiftTime(const rational &diff)
+void TimelineWidgetSelections::shift_time(const Rational &diff)
 {
 	for (auto it = this->begin(); it != this->end(); it++) {
 		it.value().shift(diff);
 	}
 }
 
-void TimelineWidgetSelections::ShiftTracks(Track::Type type, int diff)
+void TimelineWidgetSelections::shift_tracks(Track::Type type, int diff)
 {
 	TimelineWidgetSelections cached_selections;
 
@@ -57,21 +57,21 @@ void TimelineWidgetSelections::ShiftTracks(Track::Type type, int diff)
 	}
 }
 
-void TimelineWidgetSelections::TrimIn(const rational &diff)
+void TimelineWidgetSelections::trim_in(const Rational &diff)
 {
 	for (auto it = this->begin(); it != this->end(); it++) {
 		it.value().trim_in(diff);
 	}
 }
 
-void TimelineWidgetSelections::TrimOut(const rational &diff)
+void TimelineWidgetSelections::trim_out(const Rational &diff)
 {
 	for (auto it = this->begin(); it != this->end(); it++) {
 		it.value().trim_out(diff);
 	}
 }
 
-void TimelineWidgetSelections::Subtract(
+void TimelineWidgetSelections::subtract(
 	const TimelineWidgetSelections &selections)
 {
 	for (auto it = selections.cbegin(); it != selections.cend(); it++) {

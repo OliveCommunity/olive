@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CHANNELLAYOUTCOMBOBOX_H
-#define CHANNELLAYOUTCOMBOBOX_H
+#ifndef OAK_CHANNELLAYOUTCOMBOBOX_H
+#define OAK_CHANNELLAYOUTCOMBOBOX_H
 
 #include <olive/core/core.h>
 #include <QComboBox>
@@ -38,16 +38,16 @@ public:
 		: QComboBox(parent)
 	{
 		foreach (const uint64_t &ch_layout,
-				 AudioParams::kSupportedChannelLayouts) {
-			this->addItem(HumanStrings::ChannelLayoutToString(ch_layout),
+				 AudioParams::k_supported_channel_layouts) {
+			this->addItem(HumanStrings::channel_layout_to_string(ch_layout),
 						  QVariant::fromValue(ch_layout));
 		}
 	}
-	[[nodiscard]] uint64_t GetChannelLayout() const
+	[[nodiscard]] uint64_t get_channel_layout() const
 	{
 		return this->currentData().toULongLong();
 	}
-	void SetChannelLayout(uint64_t ch)
+	void set_channel_layout(uint64_t ch)
 	{
 		for (int i = 0; i < this->count(); i++) {
 			if (this->itemData(i).toULongLong() == ch) {
@@ -62,4 +62,4 @@ private:
 
 }
 
-#endif // CHANNELLAYOUTCOMBOBOX_H
+#endif // OAK_CHANNELLAYOUTCOMBOBOX_H

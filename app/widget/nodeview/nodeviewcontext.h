@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef NODEVIEWCONTEXT_H
-#define NODEVIEWCONTEXT_H
+#ifndef OAK_NODEVIEWCONTEXT_H
+#define OAK_NODEVIEWCONTEXT_H
 
 #include <QGraphicsRectItem>
 #include <QGraphicsTextItem>
@@ -37,26 +37,26 @@ public:
 
 	virtual ~NodeViewContext() override;
 
-	Node *GetContext() const
+	Node *get_context() const
 	{
 		return context_;
 	}
 
-	void UpdateRect();
+	void update_rect();
 
-	void SetFlowDirection(NodeViewCommon::FlowDirection dir);
+	void set_flow_direction(NodeViewCommon::FlowDirection dir);
 
-	void SetCurvedEdges(bool e);
+	void set_curved_edges(bool e);
 
-	int DeleteSelected(NodeViewDeleteCommand *command);
+	int delete_selected(NodeViewDeleteCommand *command);
 
-	void Select(const QVector<Node *> &nodes);
+	void select(const QVector<Node *> &nodes);
 
-	QVector<NodeViewItem *> GetSelectedItems() const;
+	QVector<NodeViewItem *> get_selected_items() const;
 
-	QPointF MapScenePosToNodePosInContext(const QPointF &pos) const;
+	QPointF map_scene_pos_to_node_pos_in_context(const QPointF &pos) const;
 
-	NodeViewItem *GetItemFromMap(Node *node) const
+	NodeViewItem *get_item_from_map(Node *node) const
 	{
 		return item_map_.value(node);
 	}
@@ -66,18 +66,18 @@ public:
 					   QWidget *widget = nullptr) override;
 
 public slots:
-	void AddChild(Node *node);
+	void add_child(Node *node);
 
-	void SetChildPosition(Node *node, const QPointF &pos);
+	void set_child_position(Node *node, const QPointF &pos);
 
-	void RemoveChild(Node *node);
+	void remove_child(Node *node);
 
-	void ChildInputConnected(Node *output, const NodeInput &input);
+	void child_input_connected(Node *output, const NodeInput &input);
 
-	bool ChildInputDisconnected(Node *output, const NodeInput &input);
+	bool child_input_disconnected(Node *output, const NodeInput &input);
 
 signals:
-	void ItemAboutToBeDeleted(NodeViewItem *item);
+	void item_about_to_be_deleted(NodeViewItem *item);
 
 protected:
 	virtual QVariant itemChange(QGraphicsItem::GraphicsItemChange change,
@@ -86,9 +86,9 @@ protected:
 	virtual void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
 
 private:
-	void AddNodeInternal(Node *node, NodeViewItem *item);
+	void add_node_internal(Node *node, NodeViewItem *item);
 
-	void AddEdgeInternal(Node *output, const NodeInput &input,
+	void add_edge_internal(Node *output, const NodeInput &input,
 						 NodeViewItem *from, NodeViewItem *to);
 
 	Node *context_;
@@ -106,11 +106,11 @@ private:
 	QVector<NodeViewEdge *> edges_;
 
 private slots:
-	void GroupAddedNode(Node *node);
+	void group_added_node(Node *node);
 
-	void GroupRemovedNode(Node *node);
+	void group_removed_node(Node *node);
 };
 
 }
 
-#endif // NODEVIEWCONTEXT_H
+#endif // OAK_NODEVIEWCONTEXT_H

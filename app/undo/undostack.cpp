@@ -26,7 +26,7 @@
 namespace olive
 {
 
-const int UndoStack::kMaxUndoCommands = 200;
+const int UndoStack::k_max_undo_commands = 200;
 
 class EmptyCommand : public UndoCommand {
 public:
@@ -34,7 +34,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return nullptr;
 	}
@@ -57,7 +57,7 @@ UndoStack::UndoStack()
 	connect(redo_action_, &QAction::triggered, this, &UndoStack::redo);
 
 	clear();
-	UpdateActions();
+	update_actions();
 }
 
 UndoStack::~UndoStack()
@@ -79,7 +79,7 @@ void UndoStack::push(UndoCommand *command, const QString &name)
 	// Clear any redoable commands
 	this->beginRemoveRows(QModelIndex(), commands_.size(),
 						  commands_.size() + undone_commands_.size());
-	if (CanRedo()) {
+	if (can_redo()) {
 		for (auto it = undone_commands_.cbegin(); it != undone_commands_.cend();
 			 it++) {
 			delete (*it).command;
@@ -95,14 +95,14 @@ void UndoStack::push(UndoCommand *command, const QString &name)
 	this->endInsertRows();
 
 	// Delete oldest
-	if (commands_.size() > kMaxUndoCommands) {
+	if (commands_.size() > k_max_undo_commands) {
 		this->beginRemoveRows(QModelIndex(), 0, 0);
 		delete commands_.front().command;
 		commands_.pop_front();
 		this->endRemoveRows();
 	}
 
-	UpdateActions();
+	update_actions();
 }
 
 void UndoStack::jump(size_t index)
@@ -117,7 +117,7 @@ void UndoStack::jump(size_t index)
 
 void UndoStack::undo()
 {
-	if (CanUndo()) {
+	if (can_undo()) {
 		// Undo most recently done command
 		commands_.back().command->undo_and_set_modified();
 
@@ -128,13 +128,13 @@ void UndoStack::undo()
 		commands_.pop_back();
 
 		// Update actions
-		UpdateActions();
+		update_actions();
 	}
 }
 
 void UndoStack::redo()
 {
-	if (CanRedo()) {
+	if (can_redo()) {
 		// Redo most recently undone command
 		undone_commands_.front().command->redo_and_set_modified();
 
@@ -145,7 +145,7 @@ void UndoStack::redo()
 		undone_commands_.pop_front();
 
 		// Update actions
-		UpdateActions();
+		update_actions();
 	}
 }
 
@@ -168,25 +168,25 @@ void UndoStack::clear()
 	push(new EmptyCommand(), tr("New/Open Project"));
 }
 
-bool UndoStack::CanUndo() const
+bool UndoStack::can_undo() const
 {
 	return !commands_.empty() &&
 		   !dynamic_cast<EmptyCommand *>(commands_.back().command);
 }
 
-void UndoStack::UpdateActions()
+void UndoStack::update_actions()
 {
-	undo_action_->setEnabled(CanUndo());
-	redo_action_->setEnabled(CanRedo());
+	undo_action_->setEnabled(can_undo());
+	redo_action_->setEnabled(can_redo());
 
 	undo_action_->setText(
 		QCoreApplication::translate("UndoStack", "Undo %1")
-			.arg(CanUndo() ? commands_.back().name : QString()));
+			.arg(can_undo() ? commands_.back().name : QString()));
 	redo_action_->setText(
 		QCoreApplication::translate("UndoStack", "Redo %1")
-			.arg(CanRedo() ? undone_commands_.front().name : QString()));
+			.arg(can_redo() ? undone_commands_.front().name : QString()));
 
-	emit indexChanged(commands_.size());
+	emit index_changed(commands_.size());
 }
 
 int UndoStack::columnCount(const QModelIndex &parent) const

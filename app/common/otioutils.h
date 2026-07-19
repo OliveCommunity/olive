@@ -18,8 +18,8 @@
 
 ***/
 
-#ifndef OTIOUTILS_H
-#define OTIOUTILS_H
+#ifndef OAK_OTIOUTILS_H
+#define OAK_OTIOUTILS_H
 
 #ifdef USE_OTIO
 #include <opentimelineio/version.h>

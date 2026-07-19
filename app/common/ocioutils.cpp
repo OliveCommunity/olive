@@ -24,28 +24,28 @@
 namespace olive
 {
 
-OCIO::BitDepth OCIOUtils::GetOCIOBitDepthFromPixelFormat(PixelFormat format)
+ocio::BitDepth OCIOUtils::get_ocio_bit_depth_from_pixel_format(PixelFormat format)
 {
 	switch (format) {
-	case PixelFormat::U8:
-		return OCIO::BIT_DEPTH_UINT8;
-	case PixelFormat::U10:
-		return OCIO::BIT_DEPTH_UINT10;
-	case PixelFormat::U16:
-		return OCIO::BIT_DEPTH_UINT16;
+	case PixelFormat::u8:
+		return ocio::BIT_DEPTH_UINT8;
+	case PixelFormat::u10:
+		return ocio::BIT_DEPTH_UINT10;
+	case PixelFormat::u16:
+		return ocio::BIT_DEPTH_UINT16;
 		break;
-	case PixelFormat::F16:
-		return OCIO::BIT_DEPTH_F16;
+	case PixelFormat::f16:
+		return ocio::BIT_DEPTH_F16;
 		break;
-	case PixelFormat::F32:
-		return OCIO::BIT_DEPTH_F32;
+	case PixelFormat::f32:
+		return ocio::BIT_DEPTH_F32;
 		break;
-	case PixelFormat::INVALID:
-	case PixelFormat::COUNT:
+	case PixelFormat::invalid:
+	case PixelFormat::count:
 		break;
 	}
 
-	return OCIO::BIT_DEPTH_UNKNOWN;
+	return ocio::BIT_DEPTH_UNKNOWN;
 }
 
 }

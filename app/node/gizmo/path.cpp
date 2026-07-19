@@ -29,7 +29,7 @@ PathGizmo::PathGizmo(QObject *parent)
 {
 }
 
-void PathGizmo::Draw(QPainter *p) const
+void PathGizmo::draw(QPainter *p) const
 {
 	// Draw transposed black
 	QPainterPath transposed = p->transform().map(path_);

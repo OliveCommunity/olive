@@ -48,34 +48,34 @@ ElapsedCounterWidget::ElapsedCounterWidget(QWidget *parent)
 
 	elapsed_timer_.setInterval(500);
 	connect(&elapsed_timer_, &QTimer::timeout, this,
-			&ElapsedCounterWidget::UpdateTimers);
-	UpdateTimers();
+			&ElapsedCounterWidget::update_timers);
+	update_timers();
 }
 
-void ElapsedCounterWidget::SetProgress(double d)
+void ElapsedCounterWidget::set_progress(double d)
 {
 	last_progress_ = d;
-	UpdateTimers();
+	update_timers();
 }
 
-void ElapsedCounterWidget::Start()
+void ElapsedCounterWidget::start()
 {
-	Start(QDateTime::currentMSecsSinceEpoch());
+	start(QDateTime::currentMSecsSinceEpoch());
 }
 
-void ElapsedCounterWidget::Start(qint64 start_time)
+void ElapsedCounterWidget::start(qint64 start_time)
 {
 	start_time_ = start_time;
 	elapsed_timer_.start();
-	UpdateTimers();
+	update_timers();
 }
 
-void ElapsedCounterWidget::Stop()
+void ElapsedCounterWidget::stop()
 {
 	elapsed_timer_.stop();
 }
 
-void ElapsedCounterWidget::UpdateTimers()
+void ElapsedCounterWidget::update_timers()
 {
 	int64_t elapsed_ms, remaining_ms;
 

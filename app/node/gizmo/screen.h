@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SCREENGIZMO_H
-#define SCREENGIZMO_H
+#ifndef OAK_SCREENGIZMO_H
+#define OAK_SCREENGIZMO_H
 
 #include "draggable.h"
 
@@ -35,4 +35,4 @@ public:
 
 }
 
-#endif // SCREENGIZMO_H
+#endif // OAK_SCREENGIZMO_H

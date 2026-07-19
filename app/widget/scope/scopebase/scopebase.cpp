@@ -35,10 +35,10 @@ ScopeBase::ScopeBase(QWidget *parent)
 	, managed_tex_up_to_date_(false)
 	, software_image_up_to_date_(false)
 {
-	EnableDefaultContextMenu();
+	enable_default_context_menu();
 }
 
-void ScopeBase::SetBuffer(TexturePtr frame)
+void ScopeBase::set_buffer(TexturePtr frame)
 {
 	texture_ = frame;
 	managed_tex_up_to_date_ = false;
@@ -51,20 +51,20 @@ void ScopeBase::showEvent(QShowEvent *e)
 	super::showEvent(e);
 }
 
-void ScopeBase::DrawScope(TexturePtr managed_tex, QVariant pipeline)
+void ScopeBase::draw_scope(TexturePtr managed_tex, QVariant pipeline)
 {
 	ShaderJob job;
 
-	job.Insert(QStringLiteral("ove_maintex"),
-			   NodeValue(NodeValue::kTexture,
+	job.insert(QStringLiteral("ove_maintex"),
+			   NodeValue(NodeValue::k_texture,
 						 QVariant::fromValue(managed_tex)));
 
-	renderer()->Blit(pipeline, job, GetViewportParams());
+	renderer()->blit(pipeline, job, get_viewport_params());
 }
 
-void ScopeBase::UpdateSoftwareImage()
+void ScopeBase::update_software_image()
 {
-	if (!texture_ || texture_->IsDummy() || !renderer()) {
+	if (!texture_ || texture_->is_dummy() || !renderer()) {
 		software_image_ = QImage();
 		software_image_up_to_date_ = true;
 		return;
@@ -76,18 +76,18 @@ void ScopeBase::UpdateSoftwareImage()
 	// it into this scope's renderer before we can sample it.
 	TexturePtr source_tex = texture_;
 	if (texture_->renderer() && texture_->renderer() != renderer()) {
-		FramePtr temp_frame = Frame::Create();
+		FramePtr temp_frame = Frame::create();
 		temp_frame->set_video_params(texture_->params());
 		temp_frame->allocate();
-		texture_->Download(temp_frame->data(), temp_frame->linesize_pixels());
+		texture_->download(temp_frame->data(), temp_frame->linesize_pixels());
 
-		local_texture_ = renderer()->CreateTexture(
+		local_texture_ = renderer()->create_texture(
 			temp_frame->video_params(), temp_frame->data(),
 			temp_frame->linesize_pixels());
 		source_tex = local_texture_;
 	}
 
-	if (!source_tex || source_tex->IsDummy()) {
+	if (!source_tex || source_tex->is_dummy()) {
 		software_image_ = QImage();
 		software_image_up_to_date_ = true;
 		return;
@@ -97,94 +97,94 @@ void ScopeBase::UpdateSoftwareImage()
 	const int texture_height = static_cast<int>(height() * devicePixelRatioF());
 
 	const VideoParams offscreen_params(texture_width, texture_height,
-									   PixelFormat::U8,
-									   VideoParams::kRGBAChannelCount);
+									   PixelFormat::u8,
+									   VideoParams::k_rgba_channel_count);
 
 	if (!software_tex_ || software_tex_->params() != offscreen_params) {
-		software_tex_ = renderer()->CreateTexture(offscreen_params);
+		software_tex_ = renderer()->create_texture(offscreen_params);
 		software_buffer_.resize(
 			texture_width * texture_height *
-			VideoParams::GetBytesPerPixel(PixelFormat::U8,
-										  VideoParams::kRGBAChannelCount));
+			VideoParams::get_bytes_per_pixel(PixelFormat::u8,
+										  VideoParams::k_rgba_channel_count));
 	}
 
-	if (!software_tex_ || software_tex_->IsDummy()) {
+	if (!software_tex_ || software_tex_->is_dummy()) {
 		software_image_ = QImage();
 		software_image_up_to_date_ = true;
 		return;
 	}
 
 	ColorTransformJob job;
-	job.SetColorProcessor(color_service());
-	job.SetInputTexture(source_tex);
-	job.SetInputAlphaAssociation(kAlphaNone);
-	job.SetClearDestinationEnabled(true);
-	job.SetForceOpaque(true);
+	job.set_color_processor(color_service());
+	job.set_input_texture(source_tex);
+	job.set_input_alpha_association(k_alpha_none);
+	job.set_clear_destination_enabled(true);
+	job.set_force_opaque(true);
 
-	renderer()->BlitColorManaged(job, software_tex_.get());
-	renderer()->DownloadFromTexture(software_tex_->id(),
+	renderer()->blit_color_managed(job, software_tex_.get());
+	renderer()->download_from_texture(software_tex_->id(),
 									software_tex_->params(),
 									software_buffer_.data(), 0);
 
 	software_image_ = QImage(
 		reinterpret_cast<const uchar *>(software_buffer_.constData()),
 		texture_width, texture_height,
-		texture_width * VideoParams::GetBytesPerPixel(
-							PixelFormat::U8, VideoParams::kRGBAChannelCount),
+		texture_width * VideoParams::get_bytes_per_pixel(
+							PixelFormat::u8, VideoParams::k_rgba_channel_count),
 		QImage::Format_RGBA8888_Premultiplied);
 	software_image_.setDevicePixelRatio(devicePixelRatioF());
 
 	software_image_up_to_date_ = true;
 }
 
-void ScopeBase::OnInit()
+void ScopeBase::on_init()
 {
-	super::OnInit();
+	super::on_init();
 
-	if (!IsBackendNeutral()) {
-		pipeline_ = renderer()->CreateNativeShader(GenerateShaderCode());
+	if (!is_backend_neutral()) {
+		pipeline_ = renderer()->create_native_shader(generate_shader_code());
 	}
 }
 
-void ScopeBase::OnPaint()
+void ScopeBase::on_paint()
 {
-	if (IsBackendNeutral()) {
+	if (is_backend_neutral()) {
 		if (!software_image_up_to_date_) {
-			UpdateSoftwareImage();
+			update_software_image();
 		}
 
 		QPainter p(paint_device());
 		p.fillRect(rect(), Qt::black);
 
 		if (!software_image_.isNull()) {
-			DrawScopeSoftware(p, software_image_);
+			draw_scope_software(p, software_image_);
 		}
 		return;
 	}
 
 	// Clear display surface
-	renderer()->ClearDestination();
+	renderer()->clear_destination();
 
 	if (texture_) {
 		// Convert reference frame to display space
 		if (!managed_tex_ || !managed_tex_up_to_date_ ||
 			managed_tex_->params() != texture_->params()) {
-			managed_tex_ = renderer()->CreateTexture(texture_->params());
+			managed_tex_ = renderer()->create_texture(texture_->params());
 
 			ColorTransformJob job;
-			job.SetColorProcessor(color_service());
-			job.SetInputTexture(texture_);
-			job.SetInputAlphaAssociation(kAlphaNone);
+			job.set_color_processor(color_service());
+			job.set_input_texture(texture_);
+			job.set_input_alpha_association(k_alpha_none);
 
-			renderer()->BlitColorManaged(job, managed_tex_.get());
+			renderer()->blit_color_managed(job, managed_tex_.get());
 			managed_tex_up_to_date_ = true;
 		}
 
-		DrawScope(managed_tex_, pipeline_);
+		draw_scope(managed_tex_, pipeline_);
 	}
 }
 
-void ScopeBase::OnDestroy()
+void ScopeBase::on_destroy()
 {
 	local_texture_ = nullptr;
 	software_tex_ = nullptr;
@@ -194,7 +194,7 @@ void ScopeBase::OnDestroy()
 	texture_ = nullptr;
 	pipeline_.clear();
 
-	super::OnDestroy();
+	super::on_destroy();
 }
 
 }

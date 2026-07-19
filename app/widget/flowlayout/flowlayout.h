@@ -49,22 +49,22 @@
 **
 ****************************************************************************/
 
-#ifndef FLOWLAYOUT_H
-#define FLOWLAYOUT_H
+#ifndef OAK_FLOWLAYOUT_H
+#define OAK_FLOWLAYOUT_H
 
 #include <QLayout>
 #include <QRect>
 #include <QStyle>
 class FlowLayout : public QLayout {
 public:
-	explicit FlowLayout(QWidget *parent, int margin = -1, int hSpacing = -1,
-						int vSpacing = -1);
-	explicit FlowLayout(int margin = -1, int hSpacing = -1, int vSpacing = -1);
+	explicit FlowLayout(QWidget *parent, int margin = -1, int h_spacing = -1,
+						int v_spacing = -1);
+	explicit FlowLayout(int margin = -1, int h_spacing = -1, int v_spacing = -1);
 	~FlowLayout();
 
 	void addItem(QLayoutItem *item) override;
-	int horizontalSpacing() const;
-	int verticalSpacing() const;
+	int horizontal_spacing() const;
+	int vertical_spacing() const;
 	Qt::Orientations expandingDirections() const override;
 	bool hasHeightForWidth() const override;
 	int heightForWidth(int) const override;
@@ -76,12 +76,12 @@ public:
 	QLayoutItem *takeAt(int index) override;
 
 private:
-	int doLayout(const QRect &rect, bool testOnly) const;
-	int smartSpacing(QStyle::PixelMetric pm) const;
+	int do_layout(const QRect &rect, bool test_only) const;
+	int smart_spacing(QStyle::PixelMetric pm) const;
 
-	QList<QLayoutItem *> itemList;
-	int m_hSpace;
-	int m_vSpace;
+	QList<QLayoutItem *> itemList_;
+	int m_hSpace_;
+	int m_vSpace_;
 };
 
-#endif // FLOWLAYOUT_H
+#endif // OAK_FLOWLAYOUT_H

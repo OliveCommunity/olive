@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEGLOBALS_H
-#define NODEGLOBALS_H
+#ifndef OAK_NODEGLOBALS_H
+#define OAK_NODEGLOBALS_H
 
 #include <QVector2D>
 
@@ -46,7 +46,7 @@ public:
 	}
 
 	NodeGlobals(const VideoParams &vparam, const AudioParams &aparam,
-				const rational &time, LoopMode loop_mode)
+				const Rational &time, LoopMode loop_mode)
 		: NodeGlobals(vparam, aparam,
 					  TimeRange(time, time + vparam.frame_rate_as_time_base()),
 					  loop_mode)
@@ -87,4 +87,4 @@ private:
 
 }
 
-#endif // NODEGLOBALS_H
+#endif // OAK_NODEGLOBALS_H

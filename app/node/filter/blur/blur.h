@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef BLURFILTERNODE_H
-#define BLURFILTERNODE_H
+#ifndef OAK_BLURFILTERNODE_H
+#define OAK_BLURFILTERNODE_H
 
 #include "node/gizmo/point.h"
 #include "node/node.h"
@@ -33,43 +33,43 @@ class BlurFilterNode : public Node {
 public:
 	BlurFilterNode();
 
-	enum Method { kBox, kGaussian, kDirectional, kRadial };
+	enum Method { k_box, k_gaussian, k_directional, k_radial };
 
 	NODE_DEFAULT_FUNCTIONS(BlurFilterNode)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	get_shader_code(const ShaderRequest &request) const override;
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	Method GetMethod() const
+	Method get_method() const
 	{
-		return static_cast<Method>(GetStandardValue(kMethodInput).toInt());
+		return static_cast<Method>(get_standard_value(k_method_input).toInt());
 	}
 
-	virtual void UpdateGizmoPositions(const NodeValueRow &row,
+	virtual void update_gizmo_positions(const NodeValueRow &row,
 									  const NodeGlobals &globals) override;
 
-	static const QString kTextureInput;
-	static const QString kMethodInput;
-	static const QString kRadiusInput;
-	static const QString kHorizInput;
-	static const QString kVertInput;
-	static const QString kRepeatEdgePixelsInput;
+	static const QString k_texture_input;
+	static const QString k_method_input;
+	static const QString k_radius_input;
+	static const QString k_horiz_input;
+	static const QString k_vert_input;
+	static const QString k_repeat_edge_pixels_input;
 
-	static const QString kDirectionalDegreesInput;
+	static const QString k_directional_degrees_input;
 
-	static const QString kRadialCenterInput;
+	static const QString k_radial_center_input;
 
 protected slots:
-	virtual void GizmoDragMove(double x, double y,
+	virtual void gizmo_drag_move(double x, double y,
 							   const Qt::KeyboardModifiers &modifiers) override;
 
 protected:
@@ -77,11 +77,11 @@ protected:
 										int element) override;
 
 private:
-	void UpdateInputs(Method method);
+	void update_inputs(Method method);
 
 	PointGizmo *radial_center_gizmo_;
 };
 
 }
 
-#endif // BLURFILTERNODE_H
+#endif // OAK_BLURFILTERNODE_H

@@ -44,28 +44,28 @@ ViewerDisplayWidget *ViewerWindow::display_widget() const
 	return display_widget_;
 }
 
-void ViewerWindow::SetVideoParams(const VideoParams &params)
+void ViewerWindow::set_video_params(const VideoParams &params)
 {
 	width_ = params.width();
 	height_ = params.height();
 	pixel_aspect_ = params.pixel_aspect_ratio();
 
-	UpdateMatrix();
+	update_matrix();
 }
 
-void ViewerWindow::SetResolution(int width, int height)
+void ViewerWindow::set_resolution(int width, int height)
 {
 	width_ = width;
 	height_ = height;
 
-	UpdateMatrix();
+	update_matrix();
 }
 
-void ViewerWindow::SetPixelAspectRatio(const rational &pixel_aspect)
+void ViewerWindow::set_pixel_aspect_ratio(const Rational &pixel_aspect)
 {
 	pixel_aspect_ = pixel_aspect;
 
-	UpdateMatrix();
+	update_matrix();
 }
 
 void ViewerWindow::keyPressEvent(QKeyEvent *e)
@@ -84,13 +84,13 @@ void ViewerWindow::closeEvent(QCloseEvent *e)
 	deleteLater();
 }
 
-void ViewerWindow::UpdateMatrix()
+void ViewerWindow::update_matrix()
 {
 	// Set GL widget matrix to maintain this texture's aspect ratio
 	double window_ar = static_cast<double>(this->width()) /
 					   static_cast<double>(this->height());
 	double image_ar = static_cast<double>(width_) /
-					  static_cast<double>(height_) * pixel_aspect_.toDouble();
+					  static_cast<double>(height_) * pixel_aspect_.to_double();
 
 	QMatrix4x4 mat;
 
@@ -102,7 +102,7 @@ void ViewerWindow::UpdateMatrix()
 		mat.scale(1.0f, window_ar / image_ar, 1.0f);
 	}
 
-	display_widget_->SetMatrixZoom(mat);
+	display_widget_->set_matrix_zoom(mat);
 }
 
 }

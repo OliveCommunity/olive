@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef POLYGONGIZMO_H
-#define POLYGONGIZMO_H
+#ifndef OAK_POLYGONGIZMO_H
+#define OAK_POLYGONGIZMO_H
 
 #include <QPolygonF>
 
@@ -34,16 +34,16 @@ class PolygonGizmo : public DraggableGizmo {
 public:
 	explicit PolygonGizmo(QObject *parent = nullptr);
 
-	const QPolygonF &GetPolygon() const
+	const QPolygonF &get_polygon() const
 	{
 		return polygon_;
 	}
-	void SetPolygon(const QPolygonF &polygon)
+	void set_polygon(const QPolygonF &polygon)
 	{
 		polygon_ = polygon;
 	}
 
-	virtual void Draw(QPainter *p) const override;
+	virtual void draw(QPainter *p) const override;
 
 private:
 	QPolygonF polygon_;
@@ -51,4 +51,4 @@ private:
 
 }
 
-#endif // POLYGONGIZMO_H
+#endif // OAK_POLYGONGIZMO_H

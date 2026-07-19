@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLORTRANSFORM_H
-#define COLORTRANSFORM_H
+#ifndef OAK_COLORTRANSFORM_H
+#define OAK_COLORTRANSFORM_H
 
 #include <QString>
 
@@ -89,4 +89,4 @@ private:
 
 Q_DECLARE_METATYPE(olive::ColorTransform)
 
-#endif // COLORTRANSFORM_H
+#endif // OAK_COLORTRANSFORM_H

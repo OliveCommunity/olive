@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CONFIGBASE_H
-#define CONFIGBASE_H
+#ifndef OAK_CONFIGBASE_H
+#define OAK_CONFIGBASE_H
 
 #include <QDialog>
 #include <QListWidget>
@@ -36,7 +36,7 @@ class ConfigDialogBase : public QDialog {
 public:
 	ConfigDialogBase(QWidget *parent = nullptr);
 
-	void SetCurrentTab(int index);
+	void set_current_tab(int index);
 
 private slots:
 	/**
@@ -45,7 +45,7 @@ private slots:
 	virtual void accept() override;
 
 protected:
-	void AddTab(ConfigDialogBaseTab *tab, const QString &title);
+	void add_tab(ConfigDialogBaseTab *tab, const QString &title);
 
 	virtual void AcceptEvent()
 	{
@@ -61,4 +61,4 @@ private:
 
 }
 
-#endif // CONFIGBASE_H
+#endif // OAK_CONFIGBASE_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SPLITVALUE_H
-#define SPLITVALUE_H
+#ifndef OAK_SPLITVALUE_H
+#define OAK_SPLITVALUE_H
 
 #include <QVariant>
 #include <QVector>
@@ -32,4 +32,4 @@ using SplitValue = QVector<QVariant>;
 
 }
 
-#endif // SPLITVALUE_H
+#endif // OAK_SPLITVALUE_H

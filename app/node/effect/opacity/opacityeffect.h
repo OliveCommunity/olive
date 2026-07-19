@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef OPACITYEFFECT_H
-#define OPACITYEFFECT_H
+#ifndef OAK_OPACITYEFFECT_H
+#define OAK_OPACITYEFFECT_H
 
 #include "node/group/group.h"
 
@@ -30,7 +30,7 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(OpacityEffect)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return tr("Opacity");
 	}
@@ -40,28 +40,28 @@ public:
 		return QStringLiteral("org.olivevideoeditor.Olive.opacity");
 	}
 
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
-		return { kCategoryFilter };
+		return { k_category_filter };
 	}
 
-	virtual QString Description() const override
+	virtual QString description() const override
 	{
 		return tr(
 			"Alter a video's opacity.\n\nThis is equivalent to multiplying a video by a number between 0.0 and 1.0.");
 	}
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	get_shader_code(const ShaderRequest &request) const override;
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	static const QString kTextureInput;
-	static const QString kValueInput;
+	static const QString k_texture_input;
+	static const QString k_value_input;
 };
 
 }
 
-#endif // OPACITYEFFECT_H
+#endif // OAK_OPACITYEFFECT_H

@@ -23,15 +23,15 @@ using namespace olive::core;
 namespace
 {
 
-AudioParams MakeMonoParams(int sample_rate)
+AudioParams make_mono_params(int sample_rate)
 {
-	return AudioParams(sample_rate, static_cast<uint64_t>(kChannelLayoutMono),
-					   SampleFormat::F32P);
+	return AudioParams(sample_rate, static_cast<uint64_t>(k_channel_layout_mono),
+					   SampleFormat::f32_p);
 }
 
-SampleBuffer MakeMonoBuffer(int sample_rate, float value, int seconds)
+SampleBuffer make_mono_buffer(int sample_rate, float value, int seconds)
 {
-	SampleBuffer buf(MakeMonoParams(sample_rate),
+	SampleBuffer buf(make_mono_params(sample_rate),
 					 static_cast<size_t>(sample_rate * seconds));
 	float *data = buf.data(0);
 	for (size_t i = 0; i < buf.sample_count(); i++) {
@@ -40,19 +40,19 @@ SampleBuffer MakeMonoBuffer(int sample_rate, float value, int seconds)
 	return buf;
 }
 
-void WritePartialWaveform(AudioWaveformCache *cache, int sample_rate)
+void write_partial_waveform(AudioWaveformCache *cache, int sample_rate)
 {
-	const AudioParams params = MakeMonoParams(sample_rate);
-	cache->SetParameters(params);
+	const AudioParams params = make_mono_params(sample_rate);
+	cache->set_parameters(params);
 
 	// Fill seconds [1,2) with a loud constant signal.
 	AudioVisualWaveform waveform;
 	waveform.set_channel_count(1);
-	SampleBuffer buf = MakeMonoBuffer(sample_rate, 1.0f, 1);
-	waveform.OverwriteSamples(buf, sample_rate, rational(1));
+	SampleBuffer buf = make_mono_buffer(sample_rate, 1.0f, 1);
+	waveform.overwrite_samples(buf, sample_rate, Rational(1));
 
 	// Tell the cache that only the middle second is valid in a 3-second clip.
-	cache->WriteWaveform(TimeRange(1, 2), TimeRangeList({ TimeRange(1, 2) }),
+	cache->write_waveform(TimeRange(1, 2), TimeRangeList({ TimeRange(1, 2) }),
 						 &waveform);
 }
 
@@ -60,20 +60,20 @@ void WritePartialWaveform(AudioWaveformCache *cache, int sample_rate)
 
 TEST(TimelineWaveformSync, ExtractEnvelopeUsesOnlyValidatedRanges)
 {
-	constexpr int kSampleRate = 48000;
-	constexpr size_t kWindowSamples = kSampleRate / 20; // 50 ms windows
+	constexpr int k_sample_rate = 48000;
+	constexpr size_t k_window_samples = k_sample_rate / 20; // 50 ms windows
 
 	AudioWaveformCache cache;
-	WritePartialWaveform(&cache, kSampleRate);
+	write_partial_waveform(&cache, k_sample_rate);
 
 	WaveformSyncClip clip;
 	clip.waveform = &cache;
 	clip.media_range = TimeRange(0, 3);
-	clip.sample_rate = kSampleRate;
+	clip.sample_rate = k_sample_rate;
 
 	const QVector<double> envelope =
-		TimelineWaveformSync::ExtractWaveformCacheEnvelope(clip, kSampleRate,
-														   kWindowSamples);
+		timeline_waveform_sync::extract_waveform_cache_envelope(clip, k_sample_rate,
+														   k_window_samples);
 
 	// 3 seconds at 20 windows per second == 60 windows.
 	EXPECT_EQ(envelope.size(), 60);
@@ -97,21 +97,21 @@ TEST(TimelineWaveformSync, ExtractEnvelopeUsesOnlyValidatedRanges)
 
 TEST(TimelineWaveformSync, ExtractEnvelopeReportsValidityMask)
 {
-	constexpr int kSampleRate = 48000;
-	constexpr size_t kWindowSamples = kSampleRate / 20; // 50 ms windows
+	constexpr int k_sample_rate = 48000;
+	constexpr size_t k_window_samples = k_sample_rate / 20; // 50 ms windows
 
 	AudioWaveformCache cache;
-	WritePartialWaveform(&cache, kSampleRate);
+	write_partial_waveform(&cache, k_sample_rate);
 
 	WaveformSyncClip clip;
 	clip.waveform = &cache;
 	clip.media_range = TimeRange(0, 3);
-	clip.sample_rate = kSampleRate;
+	clip.sample_rate = k_sample_rate;
 
 	QVector<bool> valid_mask;
 	const QVector<double> envelope =
-		TimelineWaveformSync::ExtractWaveformCacheEnvelope(
-			clip, kSampleRate, kWindowSamples, &valid_mask);
+		timeline_waveform_sync::extract_waveform_cache_envelope(
+			clip, k_sample_rate, k_window_samples, &valid_mask);
 
 	// One flag per envelope window
 	ASSERT_EQ(valid_mask.size(), envelope.size());
@@ -127,41 +127,41 @@ TEST(TimelineWaveformSync, ExtractEnvelopeReportsValidityMask)
 
 TEST(TimelineWaveformSync, PartialCacheIsConsideredReady)
 {
-	constexpr int kSampleRate = 48000;
+	constexpr int k_sample_rate = 48000;
 
 	Footage footage;
-	footage.SetValid();
+	footage.set_valid();
 
 	AudioWaveformCache *cache = footage.waveform_cache();
-	WritePartialWaveform(cache, kSampleRate);
+	write_partial_waveform(cache, k_sample_rate);
 
 	ClipBlock clip;
-	clip.set_length_and_media_out(rational(3));
-	clip.set_media_in(rational(0));
+	clip.set_length_and_media_out(Rational(3));
+	clip.set_media_in(Rational(0));
 
-	Node::ConnectEdge(&footage, NodeInput(&clip, ClipBlock::kBufferIn));
+	Node::connect_edge(&footage, NodeInput(&clip, ClipBlock::k_buffer_in));
 
 	WaveformSyncClip out;
-	EXPECT_TRUE(TimelineWaveformSync::GetWaveformSyncClip(&clip, &out));
+	EXPECT_TRUE(timeline_waveform_sync::get_waveform_sync_clip(&clip, &out));
 	EXPECT_EQ(out.waveform, cache);
-	EXPECT_EQ(out.sample_rate, kSampleRate);
+	EXPECT_EQ(out.sample_rate, k_sample_rate);
 	EXPECT_EQ(out.media_range, TimeRange(0, 3));
 }
 
 TEST(TimelineWaveformSync, EmptyCacheIsNotReady)
 {
 	Footage footage;
-	footage.SetValid();
+	footage.set_valid();
 
-	AudioParams params = MakeMonoParams(48000);
-	footage.waveform_cache()->SetParameters(params);
+	AudioParams params = make_mono_params(48000);
+	footage.waveform_cache()->set_parameters(params);
 
 	ClipBlock clip;
-	clip.set_length_and_media_out(rational(3));
-	clip.set_media_in(rational(0));
+	clip.set_length_and_media_out(Rational(3));
+	clip.set_media_in(Rational(0));
 
-	Node::ConnectEdge(&footage, NodeInput(&clip, ClipBlock::kBufferIn));
+	Node::connect_edge(&footage, NodeInput(&clip, ClipBlock::k_buffer_in));
 
 	WaveformSyncClip out;
-	EXPECT_FALSE(TimelineWaveformSync::GetWaveformSyncClip(&clip, &out));
+	EXPECT_FALSE(timeline_waveform_sync::get_waveform_sync_clip(&clip, &out));
 }

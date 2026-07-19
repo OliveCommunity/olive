@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FRAMEMANAGER_H
-#define FRAMEMANAGER_H
+#ifndef OAK_FRAMEMANAGER_H
+#define OAK_FRAMEMANAGER_H
 
 #include <QMutex>
 #include <QObject>
@@ -32,15 +32,15 @@ namespace olive
 class FrameManager : public QObject {
 	Q_OBJECT
 public:
-	static void CreateInstance();
+	static void create_instance();
 
-	static void DestroyInstance();
+	static void destroy_instance();
 
 	static FrameManager *instance();
 
-	static char *Allocate(int size);
+	static char *allocate(int size);
 
-	static void Deallocate(int size, char *buffer);
+	static void deallocate(int size, char *buffer);
 
 private:
 	FrameManager();
@@ -55,7 +55,7 @@ private:
    *
    * Thread-safe.
    */
-	char *AllocateFromPool(int size);
+	char *allocate_from_pool(int size);
 
 	/**
    * @brief Deallocate buffer
@@ -65,11 +65,11 @@ private:
    *
    * Thread-safe.
    */
-	void DeallocateToPool(int size, char *buffer);
+	void deallocate_to_pool(int size, char *buffer);
 
 	static FrameManager *instance_;
 
-	static const int kFrameLifetime;
+	static const int k_frame_lifetime;
 
 	struct Buffer {
 		qint64 time;
@@ -83,9 +83,9 @@ private:
 	QTimer clear_timer_;
 
 private slots:
-	void GarbageCollection();
+	void garbage_collection();
 };
 
 }
 
-#endif // FRAMEMANAGER_H
+#endif // OAK_FRAMEMANAGER_H

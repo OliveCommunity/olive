@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef ENCODER_H
-#define ENCODER_H
+#ifndef OAK_ENCODER_H
+#define OAK_ENCODER_H
 
 #include <memory>
 #include <QRegularExpression>
@@ -43,34 +43,34 @@ using EncoderPtr = std::shared_ptr<Encoder>;
 
 class EncodingParams {
 public:
-	enum VideoScalingMethod { kFit, kStretch, kCrop };
+	enum VideoScalingMethod { k_fit, k_stretch, k_crop };
 
 	EncodingParams();
 
-	static QDir GetPresetPath();
-	static QStringList GetListOfPresets();
+	static QDir get_preset_path();
+	static QStringList get_list_of_presets();
 
-	bool IsValid() const
+	bool is_valid() const
 	{
 		return video_enabled_ || audio_enabled_ || subtitles_enabled_;
 	}
 
-	void SetFilename(const QString &filename)
+	void set_filename(const QString &filename)
 	{
 		filename_ = filename;
 	}
 
-	void EnableVideo(const VideoParams &video_params,
+	void enable_video(const VideoParams &video_params,
 					 const ExportCodec::Codec &vcodec);
-	void EnableAudio(const AudioParams &audio_params,
+	void enable_audio(const AudioParams &audio_params,
 					 const ExportCodec::Codec &acodec);
-	void EnableSubtitles(const ExportCodec::Codec &scodec);
-	void EnableSidecarSubtitles(const ExportFormat::Format &sfmt,
+	void enable_subtitles(const ExportCodec::Codec &scodec);
+	void enable_sidecar_subtitles(const ExportFormat::Format &sfmt,
 								const ExportCodec::Codec &scodec);
 
-	void DisableVideo();
-	void DisableAudio();
-	void DisableSubtitles();
+	void disable_video();
+	void disable_audio();
+	void disable_subtitles();
 
 	const ExportFormat::Format &format() const
 	{
@@ -219,20 +219,20 @@ public:
 		return subtitles_codec_;
 	}
 
-	const rational &GetExportLength() const
+	const Rational &get_export_length() const
 	{
 		return export_length_;
 	}
-	void SetExportLength(const rational &export_length)
+	void set_export_length(const Rational &export_length)
 	{
 		export_length_ = export_length;
 	}
 
-	bool Load(QIODevice *device);
-	bool Load(QXmlStreamReader *reader);
+	bool load(QIODevice *device);
+	bool load(QXmlStreamReader *reader);
 
-	void Save(QIODevice *device) const;
-	void Save(QXmlStreamWriter *writer) const;
+	void save(QIODevice *device) const;
+	void save(QXmlStreamWriter *writer) const;
 
 	bool has_custom_range() const
 	{
@@ -258,20 +258,20 @@ public:
 		video_scaling_method_ = video_scaling_method;
 	}
 
-	static QMatrix4x4 GenerateMatrix(VideoScalingMethod method,
+	static QMatrix4x4 generate_matrix(VideoScalingMethod method,
 									 int source_width, int source_height,
 									 int dest_width, int dest_height);
 
 private:
-	static const int kEncoderParamsVersion = 1;
+	static const int k_encoder_params_version = 1;
 
-	bool LoadV1(QXmlStreamReader *reader);
+	bool load_v1(QXmlStreamReader *reader);
 
 	QString filename_;
-	ExportFormat::Format format_ = ExportFormat::kFormatCount;
+	ExportFormat::Format format_ = ExportFormat::k_format_count;
 
 	bool video_enabled_;
-	ExportCodec::Codec video_codec_ = ExportCodec::kCodecCount;
+	ExportCodec::Codec video_codec_ = ExportCodec::k_codec_count;
 	VideoParams video_params_;
 	QHash<QString, QString> video_opts_;
 	int64_t video_bit_rate_;
@@ -284,16 +284,16 @@ private:
 	ColorTransform color_transform_;
 
 	bool audio_enabled_;
-	ExportCodec::Codec audio_codec_ = ExportCodec::kCodecCount;
+	ExportCodec::Codec audio_codec_ = ExportCodec::k_codec_count;
 	AudioParams audio_params_;
 	int64_t audio_bit_rate_;
 
 	bool subtitles_enabled_;
 	bool subtitles_are_sidecar_;
-	ExportFormat::Format subtitle_sidecar_fmt_ = ExportFormat::kFormatCount;
-	ExportCodec::Codec subtitles_codec_ = ExportCodec::kCodecCount;
+	ExportFormat::Format subtitle_sidecar_fmt_ = ExportFormat::k_format_count;
+	ExportCodec::Codec subtitles_codec_ = ExportCodec::k_codec_count;
 
-	rational export_length_;
+	Rational export_length_;
 	VideoScalingMethod video_scaling_method_;
 
 	bool has_custom_range_;
@@ -305,7 +305,7 @@ class Encoder : public QObject {
 public:
 	Encoder(const EncodingParams &params);
 
-	enum Type { kEncoderTypeNone = -1, kEncoderTypeFFmpeg, kEncoderTypeOIIO };
+	enum Type { k_encoder_type_none = -1, k_encoder_type_f_fmpeg, k_encoder_type_oiio };
 
 	/**
    * @brief Create a Encoder instance using a Encoder ID
@@ -314,53 +314,53 @@ public:
    *
    * A Encoder instance or nullptr if a Decoder with this ID does not exist
    */
-	static Encoder *CreateFromID(Type id, const EncodingParams &params);
+	static Encoder *create_from_id(Type id, const EncodingParams &params);
 
-	static Type GetTypeFromFormat(ExportFormat::Format f);
+	static Type get_type_from_format(ExportFormat::Format f);
 
-	static Encoder *CreateFromFormat(ExportFormat::Format f,
+	static Encoder *create_from_format(ExportFormat::Format f,
 									 const EncodingParams &params);
 
-	static Encoder *CreateFromParams(const EncodingParams &params);
+	static Encoder *create_from_params(const EncodingParams &params);
 
-	virtual QStringList GetPixelFormatsForCodec(ExportCodec::Codec c) const;
+	virtual QStringList get_pixel_formats_for_codec(ExportCodec::Codec c) const;
 	virtual std::vector<SampleFormat>
-	GetSampleFormatsForCodec(ExportCodec::Codec c) const;
+	get_sample_formats_for_codec(ExportCodec::Codec c) const;
 
 	const EncodingParams &params() const;
 
-	virtual PixelFormat GetDesiredPixelFormat() const
+	virtual PixelFormat get_desired_pixel_format() const
 	{
-		return PixelFormat::INVALID;
+		return PixelFormat::invalid;
 	}
 
-	const QString &GetError() const
+	const QString &get_error() const
 	{
 		return error_;
 	}
 
-	QString GetFilenameForFrame(const rational &frame);
+	QString get_filename_for_frame(const Rational &frame);
 
-	static int GetImageSequencePlaceholderDigitCount(const QString &filename);
+	static int get_image_sequence_placeholder_digit_count(const QString &filename);
 
-	static bool FilenameContainsDigitPlaceholder(const QString &filename);
-	static QString FilenameRemoveDigitPlaceholder(QString filename);
+	static bool filename_contains_digit_placeholder(const QString &filename);
+	static QString filename_remove_digit_placeholder(QString filename);
 
-	static const QRegularExpression kImageSequenceContainsDigits;
-	static const QRegularExpression kImageSequenceRemoveDigits;
+	static const QRegularExpression k_image_sequence_contains_digits;
+	static const QRegularExpression k_image_sequence_remove_digits;
 
 public slots:
-	virtual bool Open() = 0;
+	virtual bool open() = 0;
 
-	virtual bool WriteFrame(olive::FramePtr frame,
-							olive::core::rational time) = 0;
-	virtual bool WriteAudio(const olive::SampleBuffer &audio) = 0;
-	virtual bool WriteSubtitle(const SubtitleBlock *sub_block) = 0;
+	virtual bool write_frame(olive::FramePtr frame,
+							olive::core::Rational time) = 0;
+	virtual bool write_audio(const olive::SampleBuffer &audio) = 0;
+	virtual bool write_subtitle(const SubtitleBlock *sub_block) = 0;
 
-	virtual void Close() = 0;
+	virtual void close() = 0;
 
 protected:
-	void SetError(const QString &err)
+	void set_error(const QString &err)
 	{
 		error_ = err;
 	}
@@ -373,4 +373,4 @@ private:
 
 }
 
-#endif // ENCODER_H
+#endif // OAK_ENCODER_H

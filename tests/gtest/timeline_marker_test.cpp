@@ -9,7 +9,7 @@
 TEST(TimelineMarker, SaveLoadRoundTrip)
 {
 	olive::TimelineMarker marker;
-	marker.set_time(olive::core::rational(10, 1));
+	marker.set_time(olive::core::Rational(10, 1));
 	marker.set_name(QStringLiteral("Marker"));
 	marker.set_color(5);
 
@@ -32,7 +32,7 @@ TEST(TimelineMarker, SaveLoadRoundTrip)
 	EXPECT_EQ(reader.name().toString(), QStringLiteral("marker"));
 	loaded.load(&reader);
 
-	EXPECT_EQ(loaded.time().in(), olive::core::rational(10, 1));
+	EXPECT_EQ(loaded.time().in(), olive::core::Rational(10, 1));
 	EXPECT_EQ(loaded.name(), QStringLiteral("Marker"));
 	EXPECT_EQ(loaded.color(), 5);
 }
@@ -41,7 +41,7 @@ TEST(TimelineMarker, DefaultConstruction)
 {
 	olive::TimelineMarker marker;
 	EXPECT_TRUE(marker.name().isEmpty());
-	EXPECT_EQ(marker.time().in(), olive::core::rational(0, 1));
+	EXPECT_EQ(marker.time().in(), olive::core::Rational(0, 1));
 }
 
 TEST(TimelineMarkerList, OrderAndLookup)
@@ -49,40 +49,40 @@ TEST(TimelineMarkerList, OrderAndLookup)
 	olive::TimelineMarkerList list;
 	olive::TimelineMarker marker_a(
 		1,
-		olive::core::TimeRange(olive::core::rational(10, 1),
-							   olive::core::rational(10, 1)),
+		olive::core::TimeRange(olive::core::Rational(10, 1),
+							   olive::core::Rational(10, 1)),
 		QStringLiteral("A"), &list);
 	olive::TimelineMarker marker_b(
 		2,
-		olive::core::TimeRange(olive::core::rational(5, 1),
-							   olive::core::rational(5, 1)),
+		olive::core::TimeRange(olive::core::Rational(5, 1),
+							   olive::core::Rational(5, 1)),
 		QStringLiteral("B"), &list);
 	olive::TimelineMarker marker_c(
 		3,
-		olive::core::TimeRange(olive::core::rational(20, 1),
-							   olive::core::rational(20, 1)),
+		olive::core::TimeRange(olive::core::Rational(20, 1),
+							   olive::core::Rational(20, 1)),
 		QStringLiteral("C"), &list);
 
 	ASSERT_EQ(list.size(), 3);
 	auto it = list.cbegin();
-	EXPECT_EQ((*it)->time().in(), olive::core::rational(5, 1));
+	EXPECT_EQ((*it)->time().in(), olive::core::Rational(5, 1));
 	++it;
-	EXPECT_EQ((*it)->time().in(), olive::core::rational(10, 1));
+	EXPECT_EQ((*it)->time().in(), olive::core::Rational(10, 1));
 	++it;
-	EXPECT_EQ((*it)->time().in(), olive::core::rational(20, 1));
+	EXPECT_EQ((*it)->time().in(), olive::core::Rational(20, 1));
 
-	EXPECT_EQ(list.GetMarkerAtTime(olive::core::rational(10, 1)), &marker_a);
-	EXPECT_EQ(list.GetClosestMarkerToTime(olive::core::rational(7, 1)),
+	EXPECT_EQ(list.get_marker_at_time(olive::core::Rational(10, 1)), &marker_a);
+	EXPECT_EQ(list.get_closest_marker_to_time(olive::core::Rational(7, 1)),
 			  &marker_b);
-	EXPECT_EQ(list.GetClosestMarkerToTime(olive::core::rational(9, 1)),
+	EXPECT_EQ(list.get_closest_marker_to_time(olive::core::Rational(9, 1)),
 			  &marker_a);
 }
 
 TEST(TimelineMarkerList, GetMarkerAtTimeReturnsNullWhenEmpty)
 {
 	olive::TimelineMarkerList list;
-	EXPECT_EQ(list.GetMarkerAtTime(olive::core::rational(10, 1)), nullptr);
-	EXPECT_EQ(list.GetClosestMarkerToTime(olive::core::rational(10, 1)),
+	EXPECT_EQ(list.get_marker_at_time(olive::core::Rational(10, 1)), nullptr);
+	EXPECT_EQ(list.get_closest_marker_to_time(olive::core::Rational(10, 1)),
 			  nullptr);
 }
 
@@ -91,8 +91,8 @@ TEST(TimelineMarkerList, SaveLoadWithUnknownElements)
 	olive::TimelineMarkerList list;
 	olive::TimelineMarker marker(
 		4,
-		olive::core::TimeRange(olive::core::rational(12, 1),
-							   olive::core::rational(15, 1)),
+		olive::core::TimeRange(olive::core::Rational(12, 1),
+							   olive::core::Rational(15, 1)),
 		QStringLiteral("Span"), &list);
 
 	QByteArray xml;
@@ -117,7 +117,7 @@ TEST(TimelineMarkerList, SaveLoadWithUnknownElements)
 	EXPECT_TRUE(loaded.load(&reader));
 	EXPECT_EQ(loaded.size(), 1);
 	EXPECT_EQ(loaded.front()->name(), QStringLiteral("Span"));
-	EXPECT_EQ(loaded.front()->time().in(), olive::core::rational(12, 1));
+	EXPECT_EQ(loaded.front()->time().in(), olive::core::Rational(12, 1));
 }
 
 TEST(TimelineMarkerCommands, AddRemoveAndChange)
@@ -125,8 +125,8 @@ TEST(TimelineMarkerCommands, AddRemoveAndChange)
 	olive::TimelineMarkerList list;
 	olive::MarkerAddCommand add(
 		&list,
-		olive::core::TimeRange(olive::core::rational(1, 1),
-							   olive::core::rational(2, 1)),
+		olive::core::TimeRange(olive::core::Rational(1, 1),
+							   olive::core::Rational(2, 1)),
 		QStringLiteral("One"), 1);
 	add.redo_now();
 	ASSERT_EQ(list.size(), 1);
@@ -153,18 +153,18 @@ TEST(TimelineMarkerCommands, AddRemoveAndChange)
 
 	olive::TimelineMarker other(
 		2,
-		olive::core::TimeRange(olive::core::rational(5, 1),
-							   olive::core::rational(5, 1)),
+		olive::core::TimeRange(olive::core::Rational(5, 1),
+							   olive::core::Rational(5, 1)),
 		QStringLiteral("Two"), &list);
-	EXPECT_EQ(list.front()->time().in(), olive::core::rational(1, 1));
+	EXPECT_EQ(list.front()->time().in(), olive::core::Rational(1, 1));
 
 	olive::MarkerChangeTimeCommand move(
-		marker, olive::core::TimeRange(olive::core::rational(0, 1),
-									   olive::core::rational(0, 1)));
+		marker, olive::core::TimeRange(olive::core::Rational(0, 1),
+									   olive::core::Rational(0, 1)));
 	move.redo_now();
 	EXPECT_EQ(list.front(), marker);
 	move.undo_now();
-	EXPECT_EQ(list.front()->time().in(), olive::core::rational(1, 1));
+	EXPECT_EQ(list.front()->time().in(), olive::core::Rational(1, 1));
 }
 
 TEST(TimelineMarkerCommands, AddCommandUndo)
@@ -172,8 +172,8 @@ TEST(TimelineMarkerCommands, AddCommandUndo)
 	olive::TimelineMarkerList list;
 	olive::MarkerAddCommand add(
 		&list,
-		olive::core::TimeRange(olive::core::rational(5, 1),
-							   olive::core::rational(5, 1)),
+		olive::core::TimeRange(olive::core::Rational(5, 1),
+							   olive::core::Rational(5, 1)),
 		QStringLiteral("UndoMe"), 2);
 	add.redo_now();
 	EXPECT_EQ(list.size(), 1);

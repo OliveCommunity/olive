@@ -46,64 +46,64 @@ MainStatusBar::MainStatusBar(QWidget *parent)
 				10000);
 }
 
-void MainStatusBar::ConnectTaskManager(TaskManager *manager)
+void MainStatusBar::connect_task_manager(TaskManager *manager)
 {
 	if (manager_) {
-		disconnect(manager_, &TaskManager::TaskListChanged, this,
-				   &MainStatusBar::UpdateStatus);
+		disconnect(manager_, &TaskManager::task_list_changed, this,
+				   &MainStatusBar::update_status);
 	}
 
 	manager_ = manager;
 
 	if (manager_) {
-		connect(manager_, &TaskManager::TaskListChanged, this,
-				&MainStatusBar::UpdateStatus);
+		connect(manager_, &TaskManager::task_list_changed, this,
+				&MainStatusBar::update_status);
 	}
 }
 
-void MainStatusBar::UpdateStatus()
+void MainStatusBar::update_status()
 {
 	if (!manager_) {
 		return;
 	}
 
-	if (manager_->GetTaskCount() == 0) {
+	if (manager_->get_task_count() == 0) {
 		clearMessage();
 		bar_->setVisible(false);
 		bar_->setValue(0);
 	} else {
-		Task *t = manager_->GetFirstTask();
+		Task *t = manager_->get_first_task();
 
-		if (manager_->GetTaskCount() == 1) {
-			showMessage(t->GetTitle());
+		if (manager_->get_task_count() == 1) {
+			showMessage(t->get_title());
 		} else {
 			showMessage(tr("Running %n background task(s)", nullptr,
-						   manager_->GetTaskCount()));
+						   manager_->get_task_count()));
 		}
 
 		bar_->setVisible(true);
 
 		if (connected_task_) {
-			disconnect(connected_task_, &Task::ProgressChanged, this,
-					   &MainStatusBar::SetProgressBarValue);
+			disconnect(connected_task_, &Task::progress_changed, this,
+					   &MainStatusBar::set_progress_bar_value);
 			disconnect(connected_task_, &Task::destroyed, this,
-					   &MainStatusBar::ConnectedTaskDeleted);
+					   &MainStatusBar::connected_task_deleted);
 		}
 
 		connected_task_ = t;
-		connect(connected_task_, &Task::ProgressChanged, this,
-				&MainStatusBar::SetProgressBarValue);
+		connect(connected_task_, &Task::progress_changed, this,
+				&MainStatusBar::set_progress_bar_value);
 		connect(connected_task_, &Task::destroyed, this,
-				&MainStatusBar::ConnectedTaskDeleted);
+				&MainStatusBar::connected_task_deleted);
 	}
 }
 
-void MainStatusBar::SetProgressBarValue(double d)
+void MainStatusBar::set_progress_bar_value(double d)
 {
 	bar_->setValue(qRound(100.0 * d));
 }
 
-void MainStatusBar::ConnectedTaskDeleted()
+void MainStatusBar::connected_task_deleted()
 {
 	connected_task_ = nullptr;
 }
@@ -112,7 +112,7 @@ void MainStatusBar::mouseDoubleClickEvent(QMouseEvent *e)
 {
 	QStatusBar::mouseDoubleClickEvent(e);
 
-	emit DoubleClicked();
+	emit double_clicked();
 }
 
 }

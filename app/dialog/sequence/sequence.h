@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SEQUENCEDIALOG_H
-#define SEQUENCEDIALOG_H
+#ifndef OAK_SEQUENCEDIALOG_H
+#define OAK_SEQUENCEDIALOG_H
 
 #include <QComboBox>
 #include <QDialog>
@@ -54,7 +54,7 @@ public:
 	/**
    * @brief Used to set the dialog mode of operation (see SequenceDialog())
    */
-	enum Type { kNew, kExisting };
+	enum Type { k_new, k_existing };
 
 	/**
    * @brief SequenceDialog Constructor
@@ -68,21 +68,21 @@ public:
    * @param parent
    * QWidget parent
    */
-	SequenceDialog(Sequence *s, Type t = kExisting, QWidget *parent = nullptr);
+	SequenceDialog(Sequence *s, Type t = k_existing, QWidget *parent = nullptr);
 
 	/**
    * @brief Set whether the parameter changes should be made into an undo command or not
    *
    * Defaults to true.
    */
-	void SetUndoable(bool u);
+	void set_undoable(bool u);
 
 	/**
    * @brief Set whether the name of this Sequence can be edited with this dialog
    *
    * Defaults to true.
    */
-	void SetNameIsEditable(bool e);
+	void set_name_is_editable(bool e);
 
 public slots:
 	/**
@@ -110,7 +110,7 @@ private:
 							 const AudioParams &audio_params,
 							 const QString &name, bool autocache);
 
-		virtual Project *GetRelevantProject() const override;
+		virtual Project *get_relevant_project() const override;
 
 	protected:
 		virtual void redo() override;
@@ -131,9 +131,9 @@ private:
 	};
 
 private slots:
-	void SetAsDefaultClicked();
+	void set_as_default_clicked();
 };
 
 }
 
-#endif // SEQUENCEDIALOG_H
+#endif // OAK_SEQUENCEDIALOG_H

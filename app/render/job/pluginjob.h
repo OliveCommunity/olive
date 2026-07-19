@@ -17,10 +17,10 @@
  *
  */
 
-#ifndef PLUGINJOB_H
-#define PLUGINJOB_H
+#ifndef OAK_PLUGINJOB_H
+#define OAK_PLUGINJOB_H
 #include "acceleratedjob.h"
-#include "pluginSupport/OlivePluginInstance.h"
+#include "pluginSupport/oliveplugininstance.h"
 #include "olive/core/util/rational.h"
 
 #include <any>
@@ -33,19 +33,19 @@ namespace plugin
 
 class PluginJob : public AcceleratedJob {
 public:
-	explicit PluginJob(const OFX::Host::ImageEffect::Instance *pluginInstance,
+	explicit PluginJob(const OFX::Host::ImageEffect::Instance *plugin_instance,
 					   const PluginNode *node, NodeValueRow row,
-					   const olive::core::rational &time)
+					   const olive::core::Rational &time)
 		: AcceleratedJob()
-		, time_seconds_(time.toDouble())
+		, time_seconds_(time.to_double())
 	{
-		this->pluginInstance_ = pluginInstance;
+		this->pluginInstance_ = plugin_instance;
 		this->node_ = node;
-		Insert(row);
+		insert(row);
 	}
-	explicit PluginJob(const OFX::Host::ImageEffect::Instance *pluginInstance,
+	explicit PluginJob(const OFX::Host::ImageEffect::Instance *plugin_instance,
 					   const PluginNode *node, NodeValueRow row)
-		: PluginJob(pluginInstance, node, row, olive::core::rational(0))
+		: PluginJob(plugin_instance, node, row, olive::core::Rational(0))
 	{
 	}
 
@@ -54,7 +54,7 @@ public:
 		return const_cast<PluginNode *>(node_);
 	}
 
-	OFX::Host::ImageEffect::Instance *pluginInstance()
+	OFX::Host::ImageEffect::Instance *plugin_instance()
 	{
 		return const_cast<OFX::Host::ImageEffect::Instance *>(pluginInstance_);
 	}
@@ -67,9 +67,9 @@ public:
 private:
 	const OFX::Host::ImageEffect::Instance *pluginInstance_ = nullptr;
 
-	QHash<OfxTime, QHash<QString, std::any>> paramsOnTime;
+	QHash<OfxTime, QHash<QString, std::any>> paramsOnTime_;
 
-	QHash<QString, std::any> params;
+	QHash<QString, std::any> params_;
 
 	const PluginNode *node_ = nullptr;
 	double time_seconds_ = 0.0;
@@ -78,4 +78,4 @@ private:
 } // plugin
 } // olive
 
-#endif //PLUGINJOB_H
+#endif //OAK_PLUGINJOB_H

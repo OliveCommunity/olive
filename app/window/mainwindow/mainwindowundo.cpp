@@ -29,22 +29,22 @@ namespace olive
 
 void OpenSequenceCommand::redo()
 {
-	Core::instance()->main_window()->OpenSequence(sequence_);
+	Core::instance()->main_window()->open_sequence(sequence_);
 }
 
 void OpenSequenceCommand::undo()
 {
-	Core::instance()->main_window()->CloseSequence(sequence_);
+	Core::instance()->main_window()->close_sequence(sequence_);
 }
 
 void CloseSequenceCommand::redo()
 {
-	Core::instance()->main_window()->CloseSequence(sequence_);
+	Core::instance()->main_window()->close_sequence(sequence_);
 }
 
 void CloseSequenceCommand::undo()
 {
-	Core::instance()->main_window()->OpenSequence(sequence_);
+	Core::instance()->main_window()->open_sequence(sequence_);
 }
 
 }

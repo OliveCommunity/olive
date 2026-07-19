@@ -33,7 +33,7 @@ namespace olive
 {
 
 AV1Section::AV1Section(QWidget *parent)
-	: AV1Section(AV1CRFSection::kDefaultAV1CRF, parent)
+	: AV1Section(AV1CRFSection::k_default_a_v1_crf, parent)
 {
 }
 
@@ -89,15 +89,15 @@ AV1Section::AV1Section(int default_crf, QWidget *parent)
 		compression_method_stack_, &QStackedWidget::setCurrentIndex);
 }
 
-void AV1Section::AddOpts(EncodingParams *params)
+void AV1Section::add_opts(EncodingParams *params)
 {
 	CompressionMethod method = static_cast<CompressionMethod>(
 		compression_method_stack_->currentIndex());
 
-	if (method == kConstantRateFactor) {
+	if (method == k_constant_rate_factor) {
 		// Set Quantizer value
 		params->set_video_option(QStringLiteral("qp"),
-								 QString::number(crf_section_->GetValue()));
+								 QString::number(crf_section_->get_value()));
 	}
 
 	params->set_video_option(QStringLiteral("preset"),
@@ -111,27 +111,27 @@ AV1CRFSection::AV1CRFSection(int default_crf, QWidget *parent)
 	layout->setContentsMargins(0, 0, 0, 0);
 
 	crf_slider_ = new QSlider(Qt::Horizontal);
-	crf_slider_->setMinimum(kMinimumCRF);
-	crf_slider_->setMaximum(kMaximumCRF);
+	crf_slider_->setMinimum(k_minimum_crf);
+	crf_slider_->setMaximum(k_maximum_crf);
 	crf_slider_->setValue(default_crf);
 	layout->addWidget(crf_slider_);
 
 	IntegerSlider *crf_input = new IntegerSlider();
-	crf_input->setMaximumWidth(QtUtils::QFontMetricsWidth(
+	crf_input->setMaximumWidth(QtUtils::q_font_metrics_width(
 		crf_input->fontMetrics(), QStringLiteral("HHHH")));
-	crf_input->SetMinimum(kMinimumCRF);
-	crf_input->SetMaximum(kMaximumCRF);
-	crf_input->SetValue(default_crf);
+	crf_input->set_minimum(k_minimum_crf);
+	crf_input->set_maximum(k_maximum_crf);
+	crf_input->set_value(default_crf);
 	crf_input->SetDefaultValue(default_crf);
 	layout->addWidget(crf_input);
 
 	connect(crf_slider_, &QSlider::valueChanged, crf_input,
-			&IntegerSlider::SetValue);
-	connect(crf_input, &IntegerSlider::ValueChanged, crf_slider_,
+			&IntegerSlider::set_value);
+	connect(crf_input, &IntegerSlider::value_changed, crf_slider_,
 			&QSlider::setValue);
 }
 
-int AV1CRFSection::GetValue() const
+int AV1CRFSection::get_value() const
 {
 	return crf_slider_->value();
 }

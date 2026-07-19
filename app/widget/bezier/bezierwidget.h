@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef BEZIERWIDGET_H
-#define BEZIERWIDGET_H
+#ifndef OAK_BEZIERWIDGET_H
+#define OAK_BEZIERWIDGET_H
 
 #include <olive/core/core.h>
 #include <QCheckBox>
@@ -38,9 +38,9 @@ class BezierWidget : public QWidget {
 public:
 	explicit BezierWidget(QWidget *parent = nullptr);
 
-	Bezier GetValue() const;
+	Bezier get_value() const;
 
-	void SetValue(const Bezier &b);
+	void set_value(const Bezier &b);
 
 	FloatSlider *x_slider() const
 	{
@@ -73,7 +73,7 @@ public:
 	}
 
 signals:
-	void ValueChanged();
+	void value_changed();
 
 private:
 	FloatSlider *x_slider_;
@@ -91,4 +91,4 @@ private:
 
 }
 
-#endif // BEZIERWIDGET_H
+#endif // OAK_BEZIERWIDGET_H

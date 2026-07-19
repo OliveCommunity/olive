@@ -37,31 +37,31 @@ NodeValueTree::NodeValueTree(QWidget *parent)
 	p.setHorizontalStretch(1);
 	setSizePolicy(p);
 
-	static const int kMinimumRows = 10;
-	setMinimumHeight(fontMetrics().height() * kMinimumRows);
+	static const int k_minimum_rows = 10;
+	setMinimumHeight(fontMetrics().height() * k_minimum_rows);
 
-	Retranslate();
+	retranslate();
 }
 
-void NodeValueTree::SetNode(const NodeInput &input, const rational &time)
+void NodeValueTree::set_node(const NodeInput &input, const Rational &time)
 {
 	clear();
 
 	NodeTraverser traverser;
 
-	Node *connected_node = input.GetConnectedOutput();
+	Node *connected_node = input.get_connected_output();
 
 	NodeValueTable table =
-		traverser.GenerateTable(connected_node, TimeRange(time, time));
+		traverser.generate_table(connected_node, TimeRange(time, time));
 
-	int index = traverser.GenerateRowValueElementIndex(
+	int index = traverser.generate_row_value_element_index(
 		input.node(), input.input(), input.element(), &table);
 
-	for (int i = 0; i < table.Count(); i++) {
+	for (int i = 0; i < table.count(); i++) {
 		const NodeValue &value = table.at(i);
 		QTreeWidgetItem *item = new QTreeWidgetItem(this);
 
-		Node::ValueHint hint({ value.type() }, table.Count() - 1 - i,
+		Node::ValueHint hint({ value.type() }, table.count() - 1 - i,
 							 value.tag());
 
 		QRadioButton *radio = new QRadioButton(this);
@@ -71,37 +71,37 @@ void NodeValueTree::SetNode(const NodeInput &input, const rational &time)
 			radio->setChecked(true);
 		}
 		connect(radio, &QRadioButton::clicked, this,
-				&NodeValueTree::RadioButtonChecked);
+				&NodeValueTree::radio_button_checked);
 
 		setItemWidget(item, 0, radio);
-		item->setText(1, NodeValue::GetPrettyDataTypeName(value.type()));
-		item->setText(2, NodeValue::ValueToString(value, false));
-		item->setText(3, value.source()->GetLabelAndName());
+		item->setText(1, NodeValue::get_pretty_data_type_name(value.type()));
+		item->setText(2, NodeValue::value_to_string(value, false));
+		item->setText(3, value.source()->get_label_and_name());
 	}
 }
 
 void NodeValueTree::changeEvent(QEvent *event)
 {
 	if (event->type() == QEvent::LanguageChange) {
-		Retranslate();
+		retranslate();
 	}
 
 	super::changeEvent(event);
 }
 
-void NodeValueTree::Retranslate()
+void NodeValueTree::retranslate()
 {
 	setHeaderLabels({ QString(), tr("Type"), tr("Value"), tr("Source") });
 }
 
-void NodeValueTree::RadioButtonChecked(bool e)
+void NodeValueTree::radio_button_checked(bool e)
 {
 	if (e) {
 		QRadioButton *btn = static_cast<QRadioButton *>(sender());
 		Node::ValueHint hint = btn->property("hint").value<Node::ValueHint>();
 		NodeInput input = btn->property("input").value<NodeInput>();
 
-		input.node()->SetValueHintForInput(input.input(), hint,
+		input.node()->set_value_hint_for_input(input.input(), hint,
 										   input.element());
 	}
 }

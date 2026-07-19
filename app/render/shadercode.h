@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SHADERCODE_H
-#define SHADERCODE_H
+#ifndef OAK_SHADERCODE_H
+#define OAK_SHADERCODE_H
 
 #include "common/filefunctions.h"
 
@@ -62,4 +62,4 @@ private:
 
 }
 
-#endif // SHADERCODE_H
+#endif // OAK_SHADERCODE_H

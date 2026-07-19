@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECTSAVEASOTIOTASK_H
-#define PROJECTSAVEASOTIOTASK_H
+#ifndef OAK_PROJECTSAVEASOTIOTASK_H
+#define OAK_PROJECTSAVEASOTIOTASK_H
 
 #ifdef USE_OTIO
 
@@ -46,7 +46,7 @@ private:
 	OTIO::Timeline *SerializeTimeline(Sequence *sequence);
 
 	OTIO::Track *SerializeTrack(Track *track, double sequence_rate,
-								rational max_track_length);
+								Rational max_track_length);
 
 	bool SerializeTrackList(TrackList *list, OTIO::Timeline *otio_timeline,
 							double sequence_rate);
@@ -58,4 +58,4 @@ private:
 
 #endif
 
-#endif // PROJECTSAVEASOTIOTASK_H
+#endif // OAK_PROJECTSAVEASOTIOTASK_H

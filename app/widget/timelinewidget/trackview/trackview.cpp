@@ -51,7 +51,7 @@ TrackView::TrackView(Qt::Alignment vertical_alignment, QWidget *parent)
 		layout->addStretch();
 
 		connect(verticalScrollBar(), &QScrollBar::rangeChanged, this,
-				&TrackView::ScrollbarRangeChanged);
+				&TrackView::scrollbar_range_changed);
 		last_scrollbar_max_ = verticalScrollBar()->maximum();
 	}
 
@@ -63,51 +63,51 @@ TrackView::TrackView(Qt::Alignment vertical_alignment, QWidget *parent)
 		layout->addStretch();
 	}
 
-	connect(splitter_, &TrackViewSplitter::TrackHeightChanged, this,
-			&TrackView::TrackHeightChanged);
+	connect(splitter_, &TrackViewSplitter::track_height_changed, this,
+			&TrackView::track_height_changed);
 	setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 	setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 }
 
-void TrackView::ConnectTrackList(TrackList *list)
+void TrackView::connect_track_list(TrackList *list)
 {
 	if (list_ != nullptr) {
 		// Remove tracks
-		for (int i = 0; i < list_->GetTrackCount(); i++) {
-			splitter_->Remove(0);
+		for (int i = 0; i < list_->get_track_count(); i++) {
+			splitter_->remove(0);
 		}
 
-		disconnect(list_, &TrackList::TrackAdded, this,
-				   &TrackView::InsertTrack);
-		disconnect(list_, &TrackList::TrackRemoved, this,
-				   &TrackView::RemoveTrack);
+		disconnect(list_, &TrackList::track_added, this,
+				   &TrackView::insert_track);
+		disconnect(list_, &TrackList::track_removed, this,
+				   &TrackView::remove_track);
 	}
 
 	list_ = list;
 
 	if (list_ != nullptr) {
-		foreach (Track *track, list_->GetTracks()) {
-			InsertTrack(track);
+		foreach (Track *track, list_->get_tracks()) {
+			insert_track(track);
 		}
 
-		connect(list_, &TrackList::TrackAdded, this, &TrackView::InsertTrack);
-		connect(list_, &TrackList::TrackRemoved, this, &TrackView::RemoveTrack);
+		connect(list_, &TrackList::track_added, this, &TrackView::insert_track);
+		connect(list_, &TrackList::track_removed, this, &TrackView::remove_track);
 	}
 }
 
-void TrackView::DisconnectTrackList()
+void TrackView::disconnect_track_list()
 {
-	ConnectTrackList(nullptr);
+	connect_track_list(nullptr);
 }
 
 void TrackView::resizeEvent(QResizeEvent *e)
 {
 	QScrollArea::resizeEvent(e);
 
-	splitter_->SetSpacerHeight(height() / 2);
+	splitter_->set_spacer_height(height() / 2);
 }
 
-void TrackView::ScrollbarRangeChanged(int, int max)
+void TrackView::scrollbar_range_changed(int, int max)
 {
 	if (max != last_scrollbar_max_) {
 		int ba_val = last_scrollbar_max_ - verticalScrollBar()->value();
@@ -120,24 +120,24 @@ void TrackView::ScrollbarRangeChanged(int, int max)
 	}
 }
 
-void TrackView::TrackHeightChanged(int index, int height)
+void TrackView::track_height_changed(int index, int height)
 {
-	list_->GetTrackAt(index)->SetTrackHeightInPixels(height);
+	list_->get_track_at(index)->set_track_height_in_pixels(height);
 }
 
-void TrackView::InsertTrack(Track *track)
+void TrackView::insert_track(Track *track)
 {
 	TrackViewItem *tvi = new TrackViewItem(track);
 
-	connect(tvi, &TrackViewItem::AboutToDeleteTrack, this,
-			&TrackView::AboutToDeleteTrack);
+	connect(tvi, &TrackViewItem::about_to_delete_track, this,
+			&TrackView::about_to_delete_track);
 
-	splitter_->Insert(track->Index(), track->GetTrackHeightInPixels(), tvi);
+	splitter_->insert(track->index(), track->get_track_height_in_pixels(), tvi);
 }
 
-void TrackView::RemoveTrack(Track *track)
+void TrackView::remove_track(Track *track)
 {
-	splitter_->Remove(track->Index());
+	splitter_->remove(track->index());
 }
 
 }

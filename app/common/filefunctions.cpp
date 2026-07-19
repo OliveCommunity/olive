@@ -33,7 +33,7 @@
 namespace olive
 {
 
-QString FileFunctions::GetUniqueFileIdentifier(const QString &filename)
+QString FileFunctions::get_unique_file_identifier(const QString &filename)
 {
 	QFileInfo info(filename);
 
@@ -53,10 +53,10 @@ QString FileFunctions::GetUniqueFileIdentifier(const QString &filename)
 	return QString(result.toHex());
 }
 
-QString FileFunctions::GetConfigurationLocation()
+QString FileFunctions::get_configuration_location()
 {
-	if (IsPortable()) {
-		return GetApplicationPath();
+	if (is_portable()) {
+		return get_application_path();
 	} else {
 		QString s =
 			QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
@@ -65,17 +65,17 @@ QString FileFunctions::GetConfigurationLocation()
 	}
 }
 
-bool FileFunctions::IsPortable()
+bool FileFunctions::is_portable()
 {
-	return QFileInfo::exists(QDir(GetApplicationPath()).filePath("portable"));
+	return QFileInfo::exists(QDir(get_application_path()).filePath("portable"));
 }
 
-QString FileFunctions::GetApplicationPath()
+QString FileFunctions::get_application_path()
 {
 	return QCoreApplication::applicationDirPath();
 }
 
-QString FileFunctions::GetTempFilePath()
+QString FileFunctions::get_temp_file_path()
 {
 	QString temp_path =
 		QDir(
@@ -89,7 +89,7 @@ QString FileFunctions::GetTempFilePath()
 	return temp_path;
 }
 
-bool FileFunctions::CanCopyDirectoryWithoutOverwriting(const QString &source,
+bool FileFunctions::can_copy_directory_without_overwriting(const QString &source,
 													   const QString &dest)
 {
 	QFileInfoList info_list = QDir(source).entryInfoList();
@@ -104,7 +104,7 @@ bool FileFunctions::CanCopyDirectoryWithoutOverwriting(const QString &source,
 		QString dest_equivalent = QDir(dest).filePath(info.fileName());
 
 		if (info.isDir()) {
-			if (!CanCopyDirectoryWithoutOverwriting(info.absoluteFilePath(),
+			if (!can_copy_directory_without_overwriting(info.absoluteFilePath(),
 													dest_equivalent)) {
 				return false;
 			}
@@ -116,7 +116,7 @@ bool FileFunctions::CanCopyDirectoryWithoutOverwriting(const QString &source,
 	return true;
 }
 
-void FileFunctions::CopyDirectory(const QString &source, const QString &dest,
+void FileFunctions::copy_directory(const QString &source, const QString &dest,
 								  bool overwrite)
 {
 	QDir d(source);
@@ -147,7 +147,7 @@ void FileFunctions::CopyDirectory(const QString &source, const QString &dest,
 
 		if (info.isDir()) {
 			// Copy dir
-			CopyDirectory(info.absoluteFilePath(), dest_file_path, overwrite);
+			copy_directory(info.absoluteFilePath(), dest_file_path, overwrite);
 		} else {
 			// Copy file
 			if (overwrite && QFile::exists(dest_file_path)) {
@@ -164,7 +164,7 @@ void FileFunctions::CopyDirectory(const QString &source, const QString &dest,
 	}
 }
 
-bool FileFunctions::DirectoryIsValid(const QDir &d,
+bool FileFunctions::directory_is_valid(const QDir &d,
 									 bool try_to_create_if_not_exists)
 {
 	// Return whether the directory exists, or whether it could be created if it doesn't
@@ -172,7 +172,7 @@ bool FileFunctions::DirectoryIsValid(const QDir &d,
 		   (try_to_create_if_not_exists && d.mkpath(QStringLiteral(".")));
 }
 
-QString FileFunctions::EnsureFilenameExtension(QString fn,
+QString FileFunctions::ensure_filename_extension(QString fn,
 											   const QString &extension)
 {
 	// No-op if either input is empty
@@ -190,7 +190,7 @@ QString FileFunctions::EnsureFilenameExtension(QString fn,
 	return fn;
 }
 
-QString FileFunctions::ReadFileAsString(const QString &filename)
+QString FileFunctions::read_file_as_string(const QString &filename)
 {
 	QFile f(filename);
 	QString file_data;
@@ -202,7 +202,7 @@ QString FileFunctions::ReadFileAsString(const QString &filename)
 	return file_data;
 }
 
-QString FileFunctions::GetSafeTemporaryFilename(const QString &original)
+QString FileFunctions::get_safe_temporary_filename(const QString &original)
 {
 	int counter = 0;
 
@@ -226,7 +226,7 @@ QString FileFunctions::GetSafeTemporaryFilename(const QString &original)
 	return temp_abs_path;
 }
 
-bool FileFunctions::RenameFileAllowOverwrite(const QString &from,
+bool FileFunctions::rename_file_allow_overwrite(const QString &from,
 											 const QString &to)
 {
 	if (QFileInfo::exists(to) && !QFile::remove(to)) {
@@ -243,7 +243,7 @@ bool FileFunctions::RenameFileAllowOverwrite(const QString &from,
 	return true;
 }
 
-QString FileFunctions::GetAutoRecoveryRoot()
+QString FileFunctions::get_auto_recovery_root()
 {
 	return QDir(QStandardPaths::writableLocation(
 					QStandardPaths::AppLocalDataLocation))

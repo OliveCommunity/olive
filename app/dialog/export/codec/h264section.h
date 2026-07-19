@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef H264SECTION_H
-#define H264SECTION_H
+#ifndef OAK_H264SECTION_H
+#define OAK_H264SECTION_H
 
 #include <QSlider>
 #include <QStackedWidget>
@@ -37,15 +37,15 @@ class H264CRFSection : public QWidget {
 public:
 	H264CRFSection(int default_crf, QWidget *parent = nullptr);
 
-	int GetValue() const;
-	void SetValue(int c);
+	int get_value() const;
+	void set_value(int c);
 
-	static constexpr int kDefaultH264CRF = 18;
-	static constexpr int kDefaultH265CRF = 23;
+	static constexpr int k_default_h264_crf = 18;
+	static constexpr int k_default_h265_crf = 23;
 
 private:
-	static constexpr int kMinimumCRF = 0;
-	static constexpr int kMaximumCRF = 51;
+	static constexpr int k_minimum_crf = 0;
+	static constexpr int k_maximum_crf = 51;
 
 	QSlider *crf_slider_;
 };
@@ -58,14 +58,14 @@ public:
 	/**
    * @brief Get user-selected target bit rate (returns in BITS)
    */
-	int64_t GetTargetBitRate() const;
-	void SetTargetBitRate(int64_t b);
+	int64_t get_target_bit_rate() const;
+	void set_target_bit_rate(int64_t b);
 
 	/**
    * @brief Get user-selected maximum bit rate (returns in BITS)
    */
-	int64_t GetMaximumBitRate() const;
-	void SetMaximumBitRate(int64_t b);
+	int64_t get_maximum_bit_rate() const;
+	void set_maximum_bit_rate(int64_t b);
 
 private:
 	FloatSlider *target_rate_;
@@ -81,8 +81,8 @@ public:
 	/**
    * @brief Returns file size in BITS
    */
-	int64_t GetFileSize() const;
-	void SetFileSize(int64_t f);
+	int64_t get_file_size() const;
+	void set_file_size(int64_t f);
 
 private:
 	FloatSlider *file_size_;
@@ -92,17 +92,17 @@ class H264Section : public CodecSection {
 	Q_OBJECT
 public:
 	enum CompressionMethod {
-		kConstantRateFactor,
-		kTargetBitRate,
-		kTargetFileSize
+		k_constant_rate_factor,
+		k_target_bit_rate,
+		k_target_file_size
 	};
 
 	H264Section(QWidget *parent = nullptr);
 	H264Section(int default_crf, QWidget *parent);
 
-	virtual void AddOpts(EncodingParams *params) override;
+	virtual void add_opts(EncodingParams *params) override;
 
-	virtual void SetOpts(const EncodingParams *p) override;
+	virtual void set_opts(const EncodingParams *p) override;
 
 private:
 	QStackedWidget *compression_method_stack_;
@@ -124,4 +124,4 @@ public:
 
 }
 
-#endif // H264SECTION_H
+#endif // OAK_H264SECTION_H

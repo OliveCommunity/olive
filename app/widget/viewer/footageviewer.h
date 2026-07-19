@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FOOTAGEVIEWERWIDGET_H
-#define FOOTAGEVIEWERWIDGET_H
+#ifndef OAK_FOOTAGEVIEWERWIDGET_H
+#define OAK_FOOTAGEVIEWERWIDGET_H
 
 #include "node/output/viewer/viewer.h"
 #include "viewer.h"
@@ -33,26 +33,26 @@ class FootageViewerWidget : public ViewerWidget {
 public:
 	FootageViewerWidget(QWidget *parent = nullptr);
 
-	void OverrideWorkArea(const TimeRange &r);
-	void ResetWorkArea();
+	void override_work_area(const TimeRange &r);
+	void reset_work_area();
 
 private:
-	void StartFootageDragInternal(bool enable_video, bool enable_audio);
+	void start_footage_drag_internal(bool enable_video, bool enable_audio);
 
 	TimelineWorkArea *override_workarea_;
 
 private slots:
-	void StartFootageDrag();
+	void start_footage_drag();
 
-	void StartVideoDrag();
+	void start_video_drag();
 
-	void StartAudioDrag();
+	void start_audio_drag();
 
-	void VideoButtonClicked();
+	void video_button_clicked();
 
-	void AudioButtonClicked();
+	void audio_button_clicked();
 };
 
 }
 
-#endif // FOOTAGEVIEWERWIDGET_H
+#endif // OAK_FOOTAGEVIEWERWIDGET_H

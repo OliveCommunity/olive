@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TRANSFORMDISTORTNODE_H
-#define TRANSFORMDISTORTNODE_H
+#ifndef OAK_TRANSFORMDISTORTNODE_H
+#define OAK_TRANSFORMDISTORTNODE_H
 
 #include "node/generator/matrix/matrix.h"
 #include "node/gizmo/point.h"
@@ -37,15 +37,15 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(TransformDistortNode)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return tr("Transform");
 	}
 
-	virtual QString ShortName() const override
+	virtual QString short_name() const override
 	{
 		// Override MatrixGenerator's short name "Ortho"
-		return Name();
+		return name();
 	}
 
 	virtual QString id() const override
@@ -53,65 +53,65 @@ public:
 		return QStringLiteral("org.olivevideoeditor.Olive.transform");
 	}
 
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
-		return { kCategoryDistort };
+		return { k_category_distort };
 	}
 
-	virtual QString Description() const override
+	virtual QString description() const override
 	{
 		return tr(
 			"Transform an image in 2D space. Equivalent to multiplying by an orthographic matrix.");
 	}
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
+	get_shader_code(const ShaderRequest &request) const override;
 
 	enum AutoScaleType {
-		kAutoScaleNone,
-		kAutoScaleFit,
-		kAutoScaleFill,
-		kAutoScaleStretch
+		k_auto_scale_none,
+		k_auto_scale_fit,
+		k_auto_scale_fill,
+		k_auto_scale_stretch
 	};
 
-	static QMatrix4x4 AdjustMatrixByResolutions(
+	static QMatrix4x4 adjust_matrix_by_resolutions(
 		const QMatrix4x4 &mat, const QVector2D &sequence_res,
 		const QVector2D &texture_res, const QVector2D &offset,
-		AutoScaleType autoscale_type = kAutoScaleNone);
+		AutoScaleType autoscale_type = k_auto_scale_none);
 
-	virtual void UpdateGizmoPositions(const NodeValueRow &row,
+	virtual void update_gizmo_positions(const NodeValueRow &row,
 									  const NodeGlobals &globals) override;
 	virtual QTransform
-	GizmoTransformation(const NodeValueRow &row,
+	gizmo_transformation(const NodeValueRow &row,
 						const NodeGlobals &globals) const override;
 
-	static const QString kParentInput;
-	static const QString kTextureInput;
-	static const QString kAutoscaleInput;
-	static const QString kInterpolationInput;
+	static const QString k_parent_input;
+	static const QString k_texture_input;
+	static const QString k_autoscale_input;
+	static const QString k_interpolation_input;
 
 protected slots:
-	virtual void GizmoDragStart(const olive::NodeValueRow &row, double x,
-								double y, const olive::rational &time) override;
+	virtual void gizmo_drag_start(const olive::NodeValueRow &row, double x,
+								double y, const olive::Rational &time) override;
 
-	virtual void GizmoDragMove(double x, double y,
+	virtual void gizmo_drag_move(double x, double y,
 							   const Qt::KeyboardModifiers &modifiers) override;
 
 private:
-	static QPointF CreateScalePoint(double x, double y, const QPointF &half_res,
+	static QPointF create_scale_point(double x, double y, const QPointF &half_res,
 									const QMatrix4x4 &mat);
 
 	QMatrix4x4
-	GenerateAutoScaledMatrix(const QMatrix4x4 &generated_matrix,
+	generate_auto_scaled_matrix(const QMatrix4x4 &generated_matrix,
 							 const NodeValueRow &db, const NodeGlobals &globals,
 							 const VideoParams &texture_params) const;
 
-	bool IsAScaleGizmo(NodeGizmo *g) const;
+	bool is_a_scale_gizmo(NodeGizmo *g) const;
 
 	// Gizmo variables
 	double gizmo_start_angle_;
@@ -123,23 +123,23 @@ private:
 	int gizmo_rotate_wrap_;
 
 	enum RotationDirection {
-		kDirectionNone,
-		kDirectionPositive, // Clockwise
-		kDirectionNegative // Counter-clockwise
+		k_direction_none,
+		k_direction_positive, // Clockwise
+		k_direction_negative // Counter-clockwise
 	};
 
-	static RotationDirection GetDirectionFromAngles(double last,
+	static RotationDirection get_direction_from_angles(double last,
 													double current);
 	RotationDirection gizmo_rotate_last_dir_;
 	RotationDirection gizmo_rotate_last_alt_dir_;
 
-	enum GizmoScaleType { kGizmoScaleXOnly, kGizmoScaleYOnly, kGizmoScaleBoth };
+	enum GizmoScaleType { k_gizmo_scale_x_only, k_gizmo_scale_y_only, k_gizmo_scale_both };
 
 	GizmoScaleType gizmo_scale_axes_;
 	QVector2D gizmo_scale_anchor_;
 
 	// Gizmo on screen object storage
-	PointGizmo *point_gizmo_[kGizmoScaleCount];
+	PointGizmo *point_gizmo_[k_gizmo_scale_count];
 	PointGizmo *anchor_gizmo_;
 	PolygonGizmo *poly_gizmo_;
 	ScreenGizmo *rotation_gizmo_;
@@ -147,4 +147,4 @@ private:
 
 }
 
-#endif // TRANSFORMDISTORTNODE_H
+#endif // OAK_TRANSFORMDISTORTNODE_H

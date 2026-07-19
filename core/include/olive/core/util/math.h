@@ -19,12 +19,12 @@
 
 ***/
 
-#ifndef LIBOLIVECORE_MATH_H
-#define LIBOLIVECORE_MATH_H
+#ifndef OAK_LIBOLIVECORE_MATH_H
+#define OAK_LIBOLIVECORE_MATH_H
 
 namespace olive::core
 {
 
 }
 
-#endif // LIBOLIVECORE_MATH_H
+#endif // OAK_LIBOLIVECORE_MATH_H

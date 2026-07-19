@@ -10,18 +10,18 @@ using namespace olive;
 TEST(RenderTicketWatcher, DoesNotEmitFinishedForRunningTicketSynchronously)
 {
 	RenderTicketPtr ticket = std::make_shared<RenderTicket>();
-	ticket->Start();
+	ticket->start();
 
 	RenderTicketWatcher watcher;
-	QSignalSpy spy(&watcher, &RenderTicketWatcher::Finished);
+	QSignalSpy spy(&watcher, &RenderTicketWatcher::finished);
 
-	watcher.SetTicket(ticket);
+	watcher.set_ticket(ticket);
 
 	// The ticket is still running, so the watcher must not emit Finished
 	// synchronously when SetTicket is called.
 	EXPECT_EQ(spy.count(), 0);
 
-	ticket->Finish();
+	ticket->finish();
 
 	// Once the ticket finishes, the watcher should emit Finished.
 	spy.wait(100);
@@ -31,19 +31,19 @@ TEST(RenderTicketWatcher, DoesNotEmitFinishedForRunningTicketSynchronously)
 TEST(RenderTicketWatcher, EmitsFinishedForAlreadyFinishedTicketAsynchronously)
 {
 	RenderTicketPtr ticket = std::make_shared<RenderTicket>();
-	ticket->Start();
-	ticket->Finish();
+	ticket->start();
+	ticket->finish();
 
 	RenderTicketWatcher watcher;
-	QSignalSpy spy(&watcher, &RenderTicketWatcher::Finished);
+	QSignalSpy spy(&watcher, &RenderTicketWatcher::finished);
 
-	watcher.SetTicket(ticket);
+	watcher.set_ticket(ticket);
 
 	// The ticket has already finished. The watcher must not delete itself or
 	// emit Finished synchronously inside SetTicket, because the caller may still
 	// need the returned pointer. Instead it should defer the signal.
 	EXPECT_EQ(spy.count(), 0);
-	EXPECT_FALSE(watcher.GetTicket() == nullptr);
+	EXPECT_FALSE(watcher.get_ticket() == nullptr);
 
 	// Process the queued Finished emission.
 	QCoreApplication::processEvents();
@@ -54,81 +54,81 @@ TEST(RenderTicketWatcher, EmitsFinishedForAlreadyFinishedTicketAsynchronously)
 TEST(RenderTicketWatcher, CancelMarksTicketAsCancelled)
 {
 	RenderTicketPtr ticket = std::make_shared<RenderTicket>();
-	ticket->Start();
+	ticket->start();
 
 	RenderTicketWatcher watcher;
-	watcher.SetTicket(ticket);
+	watcher.set_ticket(ticket);
 
-	EXPECT_TRUE(watcher.IsRunning());
-	EXPECT_FALSE(ticket->IsCancelled());
+	EXPECT_TRUE(watcher.is_running());
+	EXPECT_FALSE(ticket->is_cancelled());
 
-	watcher.Cancel();
+	watcher.cancel();
 
-	EXPECT_TRUE(ticket->IsCancelled());
+	EXPECT_TRUE(ticket->is_cancelled());
 }
 
 TEST(RenderTicket, HasResultIsFalseWhileRunning)
 {
 	RenderTicketPtr ticket = std::make_shared<RenderTicket>();
-	ticket->Start();
+	ticket->start();
 
-	EXPECT_TRUE(ticket->IsRunning());
-	EXPECT_FALSE(ticket->HasResult());
+	EXPECT_TRUE(ticket->is_running());
+	EXPECT_FALSE(ticket->has_result());
 }
 
 TEST(RenderTicket, FinishWithValueProvidesResult)
 {
 	RenderTicketPtr ticket = std::make_shared<RenderTicket>();
-	ticket->Start();
-	ticket->Finish(QVariant(42));
+	ticket->start();
+	ticket->finish(QVariant(42));
 
-	EXPECT_FALSE(ticket->IsRunning());
-	EXPECT_TRUE(ticket->HasResult());
-	EXPECT_EQ(ticket->Get().toInt(), 42);
+	EXPECT_FALSE(ticket->is_running());
+	EXPECT_TRUE(ticket->has_result());
+	EXPECT_EQ(ticket->get().toInt(), 42);
 }
 
 TEST(RenderTicket, FinishCountIncrementsOnEachFinish)
 {
 	RenderTicketPtr ticket = std::make_shared<RenderTicket>();
-	EXPECT_EQ(ticket->GetFinishCount(), 0);
+	EXPECT_EQ(ticket->get_finish_count(), 0);
 
-	ticket->Start();
-	ticket->Finish();
-	EXPECT_EQ(ticket->GetFinishCount(), 1);
+	ticket->start();
+	ticket->finish();
+	EXPECT_EQ(ticket->get_finish_count(), 1);
 
-	ticket->Start();
-	ticket->Finish();
-	EXPECT_EQ(ticket->GetFinishCount(), 2);
+	ticket->start();
+	ticket->finish();
+	EXPECT_EQ(ticket->get_finish_count(), 2);
 }
 
 TEST(RenderTicket, FinishWithoutStartIsIgnored)
 {
 	RenderTicketPtr ticket = std::make_shared<RenderTicket>();
-	ticket->Finish();
-	EXPECT_EQ(ticket->GetFinishCount(), 0);
+	ticket->finish();
+	EXPECT_EQ(ticket->get_finish_count(), 0);
 }
 
 TEST(RenderTicketWatcher, DelegatesGetAndHasResultToTicket)
 {
 	RenderTicketPtr ticket = std::make_shared<RenderTicket>();
-	ticket->Start();
-	ticket->Finish(QVariant(QStringLiteral("result")));
+	ticket->start();
+	ticket->finish(QVariant(QStringLiteral("result")));
 
 	RenderTicketWatcher watcher;
-	watcher.SetTicket(ticket);
+	watcher.set_ticket(ticket);
 
-	EXPECT_FALSE(watcher.IsRunning());
-	EXPECT_TRUE(watcher.HasResult());
-	EXPECT_EQ(watcher.Get().toString(), QStringLiteral("result"));
+	EXPECT_FALSE(watcher.is_running());
+	EXPECT_TRUE(watcher.has_result());
+	EXPECT_EQ(watcher.get().toString(), QStringLiteral("result"));
 }
 
 TEST(RenderTicketWatcher, EmptyWatcherReturnsDefaults)
 {
 	RenderTicketWatcher watcher;
-	EXPECT_FALSE(watcher.IsRunning());
-	EXPECT_FALSE(watcher.HasResult());
-	EXPECT_TRUE(watcher.Get().isNull());
-	EXPECT_EQ(watcher.GetTicket(), nullptr);
+	EXPECT_FALSE(watcher.is_running());
+	EXPECT_FALSE(watcher.has_result());
+	EXPECT_TRUE(watcher.get().isNull());
+	EXPECT_EQ(watcher.get_ticket(), nullptr);
 }
 
 TEST(RenderTicketWatcher, SettingTicketTwiceIsRejected)
@@ -137,8 +137,8 @@ TEST(RenderTicketWatcher, SettingTicketTwiceIsRejected)
 	RenderTicketPtr second = std::make_shared<RenderTicket>();
 
 	RenderTicketWatcher watcher;
-	watcher.SetTicket(first);
-	watcher.SetTicket(second);
+	watcher.set_ticket(first);
+	watcher.set_ticket(second);
 
-	EXPECT_EQ(watcher.GetTicket(), first);
+	EXPECT_EQ(watcher.get_ticket(), first);
 }

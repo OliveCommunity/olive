@@ -18,40 +18,40 @@ class PreviewAutoCacherTest : public ::testing::Test {
 protected:
 	void SetUp() override
 	{
-		ColorManager::SetUpDefaultConfig();
+		ColorManager::set_up_default_config();
 
 		// Use the dummy render backend so PreviewAutoCacher can be exercised
 		// without initializing OpenGL/Vulkan in the unit-test process.
-		OLIVE_CONFIG("GraphicsBackend") = QStringLiteral("dummy");
+		OAK_CONFIG("GraphicsBackend") = QStringLiteral("dummy");
 
-		DiskManager::CreateInstance();
-		ConformManager::CreateInstance();
-		RenderManager::CreateInstance();
+		DiskManager::create_instance();
+		ConformManager::create_instance();
+		RenderManager::create_instance();
 
 		project_ = std::make_unique<Project>();
-		project_->Initialize();
+		project_->initialize();
 	}
 
 	void TearDown() override
 	{
-		RenderManager::DestroyInstance();
-		ConformManager::DestroyInstance();
-		DiskManager::DestroyInstance();
+		RenderManager::destroy_instance();
+		ConformManager::destroy_instance();
+		DiskManager::destroy_instance();
 	}
 
-	ViewerOutput *CreateViewer()
+	ViewerOutput *create_viewer()
 	{
 		auto *viewer = new ViewerOutput();
 		viewer->setParent(project_.get());
 		return viewer;
 	}
 
-	ViewerOutput *CreateViewerWithValidParams()
+	ViewerOutput *create_viewer_with_valid_params()
 	{
-		ViewerOutput *viewer = CreateViewer();
-		viewer->SetVideoParams(
-			VideoParams(64, 64, rational(1, 25), PixelFormat::U8,
-						VideoParams::kRGBAChannelCount));
+		ViewerOutput *viewer = create_viewer();
+		viewer->set_video_params(
+			VideoParams(64, 64, Rational(1, 25), PixelFormat::u8,
+						VideoParams::k_rgba_channel_count));
 		return viewer;
 	}
 
@@ -61,7 +61,7 @@ protected:
 TEST_F(PreviewAutoCacherTest, ConstructionInitializesDefaultState)
 {
 	PreviewAutoCacher cacher;
-	EXPECT_FALSE(cacher.IsRenderingCustomRange());
+	EXPECT_FALSE(cacher.is_rendering_custom_range());
 }
 
 // With a project set, a single-frame request is dispatched to the render
@@ -70,113 +70,113 @@ TEST_F(PreviewAutoCacherTest, ConstructionInitializesDefaultState)
 // request cancels the previously queued one.
 TEST_F(PreviewAutoCacherTest, SetProjectToNullStopsSingleFrameDispatch)
 {
-	ViewerOutput *viewer = CreateViewerWithValidParams();
+	ViewerOutput *viewer = create_viewer_with_valid_params();
 
 	// The single-frame path renders the node connected to the viewer's
 	// texture input, so connect something the copier can duplicate.
 	auto *solid = new SolidGenerator();
 	solid->setParent(project_.get());
-	Node::ConnectEdge(solid, NodeInput(viewer, ViewerOutput::kTextureInput));
+	Node::connect_edge(solid, NodeInput(viewer, ViewerOutput::k_texture_input));
 
 	PreviewAutoCacher cacher;
-	cacher.SetProject(project_.get());
+	cacher.set_project(project_.get());
 
-	RenderTicketPtr dispatched = cacher.GetSingleFrame(viewer, rational(0));
+	RenderTicketPtr dispatched = cacher.get_single_frame(viewer, Rational(0));
 	ASSERT_NE(dispatched, nullptr);
 
 	// A dispatched ticket is owned by the render pipeline; the next request
 	// must leave it alone
-	RenderTicketPtr next = cacher.GetSingleFrame(viewer, rational(1));
+	RenderTicketPtr next = cacher.get_single_frame(viewer, Rational(1));
 	ASSERT_NE(next, nullptr);
-	EXPECT_EQ(dispatched->GetFinishCount(), 0);
-	EXPECT_TRUE(dispatched->IsRunning());
+	EXPECT_EQ(dispatched->get_finish_count(), 0);
+	EXPECT_TRUE(dispatched->is_running());
 
-	cacher.SetProject(nullptr);
+	cacher.set_project(nullptr);
 
 	// Without a copied graph there is nothing to dispatch to: the request
 	// stays queued and the next request cancels it
-	RenderTicketPtr queued = cacher.GetSingleFrame(viewer, rational(2));
+	RenderTicketPtr queued = cacher.get_single_frame(viewer, Rational(2));
 	ASSERT_NE(queued, nullptr);
-	RenderTicketPtr cancelling = cacher.GetSingleFrame(viewer, rational(3));
+	RenderTicketPtr cancelling = cacher.get_single_frame(viewer, Rational(3));
 	ASSERT_NE(cancelling, nullptr);
-	EXPECT_EQ(queued->GetFinishCount(), 1);
-	EXPECT_FALSE(queued->HasResult());
+	EXPECT_EQ(queued->get_finish_count(), 1);
+	EXPECT_FALSE(queued->has_result());
 
-	cacher.SetProject(nullptr);
+	cacher.set_project(nullptr);
 }
 
 // While renders are paused, forced cache ranges must stay queued; unpausing
 // must dispatch them.
 TEST_F(PreviewAutoCacherTest, SetRendersPausedBlocksAndResumesCacheJobs)
 {
-	ViewerOutput *viewer = CreateViewerWithValidParams();
+	ViewerOutput *viewer = create_viewer_with_valid_params();
 
 	PreviewAutoCacher cacher;
-	cacher.SetProject(project_.get());
+	cacher.set_project(project_.get());
 
-	QSignalSpy stop_spy(&cacher, &PreviewAutoCacher::StopCacheProxyTasks);
+	QSignalSpy stop_spy(&cacher, &PreviewAutoCacher::stop_cache_proxy_tasks);
 
-	cacher.SetRendersPaused(true);
-	cacher.ForceCacheRange(viewer, TimeRange(rational(0), rational(1, 25)));
-	EXPECT_TRUE(cacher.IsRenderingCustomRange());
+	cacher.set_renders_paused(true);
+	cacher.force_cache_range(viewer, TimeRange(Rational(0), Rational(1, 25)));
+	EXPECT_TRUE(cacher.is_rendering_custom_range());
 	EXPECT_EQ(stop_spy.count(), 0);
 
 	// The dummy backend finishes each ticket without a result, exhausting the
 	// range as soon as it is dispatched
-	cacher.SetRendersPaused(false);
-	EXPECT_FALSE(cacher.IsRenderingCustomRange());
+	cacher.set_renders_paused(false);
+	EXPECT_FALSE(cacher.is_rendering_custom_range());
 	EXPECT_GE(stop_spy.count(), 1);
 
 	// Deliver the queued RenderTicketWatcher::Finished emissions so the
 	// completed watchers are reaped before teardown.
 	QCoreApplication::processEvents();
 
-	cacher.SetProject(nullptr);
+	cacher.set_project(nullptr);
 }
 
 // pause_thumbnails_ gates the same pending-video-job dispatch loop, so it is
 // observable the same way as pause_renders_.
 TEST_F(PreviewAutoCacherTest, SetThumbnailsPausedBlocksAndResumesCacheJobs)
 {
-	ViewerOutput *viewer = CreateViewerWithValidParams();
+	ViewerOutput *viewer = create_viewer_with_valid_params();
 
 	PreviewAutoCacher cacher;
-	cacher.SetProject(project_.get());
+	cacher.set_project(project_.get());
 
-	QSignalSpy stop_spy(&cacher, &PreviewAutoCacher::StopCacheProxyTasks);
+	QSignalSpy stop_spy(&cacher, &PreviewAutoCacher::stop_cache_proxy_tasks);
 
-	cacher.SetThumbnailsPaused(true);
-	cacher.ForceCacheRange(viewer, TimeRange(rational(0), rational(1, 25)));
-	EXPECT_TRUE(cacher.IsRenderingCustomRange());
+	cacher.set_thumbnails_paused(true);
+	cacher.force_cache_range(viewer, TimeRange(Rational(0), Rational(1, 25)));
+	EXPECT_TRUE(cacher.is_rendering_custom_range());
 	EXPECT_EQ(stop_spy.count(), 0);
 
-	cacher.SetThumbnailsPaused(false);
-	EXPECT_FALSE(cacher.IsRenderingCustomRange());
+	cacher.set_thumbnails_paused(false);
+	EXPECT_FALSE(cacher.is_rendering_custom_range());
 	EXPECT_GE(stop_spy.count(), 1);
 
 	// Deliver the queued RenderTicketWatcher::Finished emissions so the
 	// completed watchers are reaped before teardown.
 	QCoreApplication::processEvents();
 
-	cacher.SetProject(nullptr);
+	cacher.set_project(nullptr);
 }
 
 // ClearSingleFrameRenders only cancels already-dispatched passthrough renders;
 // a single-frame ticket that is still queued must be left untouched.
 TEST_F(PreviewAutoCacherTest, ClearSingleFrameRendersLeavesQueuedTicketPending)
 {
-	ViewerOutput *viewer = CreateViewer();
+	ViewerOutput *viewer = create_viewer();
 
 	PreviewAutoCacher cacher;
-	RenderTicketPtr ticket = cacher.GetSingleFrame(viewer, rational(0));
+	RenderTicketPtr ticket = cacher.get_single_frame(viewer, Rational(0));
 	ASSERT_NE(ticket, nullptr);
 
-	cacher.ClearSingleFrameRenders();
-	cacher.ClearSingleFrameRendersThatArentRunning();
+	cacher.clear_single_frame_renders();
+	cacher.clear_single_frame_renders_that_arent_running();
 
-	EXPECT_TRUE(ticket->IsRunning());
-	EXPECT_EQ(ticket->GetFinishCount(), 0);
-	EXPECT_FALSE(ticket->HasResult());
+	EXPECT_TRUE(ticket->is_running());
+	EXPECT_EQ(ticket->get_finish_count(), 0);
+	EXPECT_FALSE(ticket->has_result());
 }
 
 TEST_F(PreviewAutoCacherTest, GetSingleFrameWithoutProjectReturnsTicket)
@@ -185,6 +185,6 @@ TEST_F(PreviewAutoCacherTest, GetSingleFrameWithoutProjectReturnsTicket)
 	viewer->setParent(project_.get());
 
 	PreviewAutoCacher cacher;
-	RenderTicketPtr ticket = cacher.GetSingleFrame(viewer, rational(0));
+	RenderTicketPtr ticket = cacher.get_single_frame(viewer, Rational(0));
 	EXPECT_NE(ticket, nullptr);
 }

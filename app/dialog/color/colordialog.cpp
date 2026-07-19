@@ -56,7 +56,7 @@ ColorDialog::ColorDialog(ColorManager *color_manager, const ManagedColor &start,
 
 	hsv_value_gradient_ = new ColorGradientWidget(Qt::Vertical);
 	hsv_value_gradient_->setFixedWidth(
-		QtUtils::QFontMetricsWidth(fontMetrics(), QStringLiteral("HHH")));
+		QtUtils::q_font_metrics_width(fontMetrics(), QStringLiteral("HHH")));
 	wheel_layout->addWidget(hsv_value_gradient_);
 
 	QHBoxLayout *swatch_layout = new QHBoxLayout();
@@ -76,7 +76,7 @@ ColorDialog::ColorDialog(ColorManager *color_manager, const ManagedColor &start,
 	splitter->addWidget(value_area);
 
 	color_values_widget_ = new ColorValuesWidget(color_manager_);
-	color_values_widget_->IgnorePickFrom(this);
+	color_values_widget_->ignore_pick_from(this);
 	value_layout->addWidget(color_values_widget_);
 
 	chooser_ = new ColorSpaceChooser(color_manager_);
@@ -86,32 +86,32 @@ ColorDialog::ColorDialog(ColorManager *color_manager, const ManagedColor &start,
 	// Split window 50/50
 	splitter->setSizes({ INT_MAX, INT_MAX });
 
-	connect(color_wheel_, &ColorWheelWidget::SelectedColorChanged,
-			color_values_widget_, &ColorValuesWidget::SetColor);
-	connect(color_wheel_, &ColorWheelWidget::SelectedColorChanged,
-			hsv_value_gradient_, &ColorGradientWidget::SetSelectedColor);
-	connect(color_wheel_, &ColorWheelWidget::SelectedColorChanged, swatch_,
-			&ColorSwatchChooser::SetCurrentColor);
-	connect(hsv_value_gradient_, &ColorGradientWidget::SelectedColorChanged,
-			color_values_widget_, &ColorValuesWidget::SetColor);
-	connect(hsv_value_gradient_, &ColorGradientWidget::SelectedColorChanged,
-			color_wheel_, &ColorWheelWidget::SetSelectedColor);
-	connect(hsv_value_gradient_, &ColorGradientWidget::SelectedColorChanged,
-			swatch_, &ColorSwatchChooser::SetCurrentColor);
-	connect(color_values_widget_, &ColorValuesWidget::ColorChanged,
-			hsv_value_gradient_, &ColorGradientWidget::SetSelectedColor);
-	connect(color_values_widget_, &ColorValuesWidget::ColorChanged,
-			color_wheel_, &ColorWheelWidget::SetSelectedColor);
-	connect(color_values_widget_, &ColorValuesWidget::ColorChanged, swatch_,
-			&ColorSwatchChooser::SetCurrentColor);
-	connect(swatch_, &ColorSwatchChooser::ColorClicked, hsv_value_gradient_,
-			&ColorGradientWidget::SetSelectedColor);
-	connect(swatch_, &ColorSwatchChooser::ColorClicked, color_wheel_,
-			&ColorWheelWidget::SetSelectedColor);
-	connect(swatch_, &ColorSwatchChooser::ColorClicked, color_values_widget_,
-			&ColorValuesWidget::SetColor);
+	connect(color_wheel_, &ColorWheelWidget::selected_color_changed,
+			color_values_widget_, &ColorValuesWidget::set_color);
+	connect(color_wheel_, &ColorWheelWidget::selected_color_changed,
+			hsv_value_gradient_, &ColorGradientWidget::set_selected_color);
+	connect(color_wheel_, &ColorWheelWidget::selected_color_changed, swatch_,
+			&ColorSwatchChooser::set_current_color);
+	connect(hsv_value_gradient_, &ColorGradientWidget::selected_color_changed,
+			color_values_widget_, &ColorValuesWidget::set_color);
+	connect(hsv_value_gradient_, &ColorGradientWidget::selected_color_changed,
+			color_wheel_, &ColorWheelWidget::set_selected_color);
+	connect(hsv_value_gradient_, &ColorGradientWidget::selected_color_changed,
+			swatch_, &ColorSwatchChooser::set_current_color);
+	connect(color_values_widget_, &ColorValuesWidget::color_changed,
+			hsv_value_gradient_, &ColorGradientWidget::set_selected_color);
+	connect(color_values_widget_, &ColorValuesWidget::color_changed,
+			color_wheel_, &ColorWheelWidget::set_selected_color);
+	connect(color_values_widget_, &ColorValuesWidget::color_changed, swatch_,
+			&ColorSwatchChooser::set_current_color);
+	connect(swatch_, &ColorSwatchChooser::color_clicked, hsv_value_gradient_,
+			&ColorGradientWidget::set_selected_color);
+	connect(swatch_, &ColorSwatchChooser::color_clicked, color_wheel_,
+			&ColorWheelWidget::set_selected_color);
+	connect(swatch_, &ColorSwatchChooser::color_clicked, color_values_widget_,
+			&ColorValuesWidget::set_color);
 
-	connect(color_wheel_, &ColorWheelWidget::DiameterChanged,
+	connect(color_wheel_, &ColorWheelWidget::diameter_changed,
 			hsv_value_gradient_, &ColorGradientWidget::setFixedHeight);
 
 	QDialogButtonBox *buttons =
@@ -120,17 +120,17 @@ ColorDialog::ColorDialog(ColorManager *color_manager, const ManagedColor &start,
 	connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 	layout->addWidget(buttons);
 
-	SetColor(start);
+	set_color(start);
 
-	connect(chooser_, &ColorSpaceChooser::ColorSpaceChanged, this,
-			&ColorDialog::ColorSpaceChanged);
-	ColorSpaceChanged(chooser_->input(), chooser_->output());
+	connect(chooser_, &ColorSpaceChooser::color_space_changed, this,
+			&ColorDialog::color_space_changed);
+	color_space_changed(chooser_->input(), chooser_->output());
 
 	// Set default size ratio to 2:1
 	resize(sizeHint().height() * 2, sizeHint().height());
 }
 
-void ColorDialog::SetColor(const ManagedColor &start)
+void ColorDialog::set_color(const ManagedColor &start)
 {
 	chooser_->set_input(start.color_input());
 	chooser_->set_output(start.color_output());
@@ -142,70 +142,70 @@ void ColorDialog::SetColor(const ManagedColor &start)
 
 	} else {
 		// Convert reference color to the input space
-		ColorProcessorPtr linear_to_input = ColorProcessor::Create(
-			color_manager_, color_manager_->GetReferenceColorSpace(),
+		ColorProcessorPtr linear_to_input = ColorProcessor::create(
+			color_manager_, color_manager_->get_reference_color_space(),
 			start.color_input());
 
-		managed_start = linear_to_input->ConvertColor(start);
+		managed_start = linear_to_input->convert_color(start);
 	}
 
-	color_wheel_->SetSelectedColor(managed_start);
-	hsv_value_gradient_->SetSelectedColor(managed_start);
-	color_values_widget_->SetColor(managed_start);
-	swatch_->SetCurrentColor(managed_start);
+	color_wheel_->set_selected_color(managed_start);
+	hsv_value_gradient_->set_selected_color(managed_start);
+	color_values_widget_->set_color(managed_start);
+	swatch_->set_current_color(managed_start);
 }
 
-ManagedColor ColorDialog::GetSelectedColor() const
+ManagedColor ColorDialog::get_selected_color() const
 {
-	ManagedColor selected = color_wheel_->GetSelectedColor();
+	ManagedColor selected = color_wheel_->get_selected_color();
 
 	// Convert to linear and return a linear color
 	if (input_to_ref_processor_) {
-		selected = input_to_ref_processor_->ConvertColor(selected);
+		selected = input_to_ref_processor_->convert_color(selected);
 	}
 
-	selected.set_color_input(GetColorSpaceInput());
-	selected.set_color_output(GetColorSpaceOutput());
+	selected.set_color_input(get_color_space_input());
+	selected.set_color_output(get_color_space_output());
 
 	return selected;
 }
 
-QString ColorDialog::GetColorSpaceInput() const
+QString ColorDialog::get_color_space_input() const
 {
 	return chooser_->input();
 }
 
-ColorTransform ColorDialog::GetColorSpaceOutput() const
+ColorTransform ColorDialog::get_color_space_output() const
 {
 	return chooser_->output();
 }
 
-void ColorDialog::ColorSpaceChanged(const QString &input,
+void ColorDialog::color_space_changed(const QString &input,
 									const ColorTransform &output)
 {
-	input_to_ref_processor_ = ColorProcessor::Create(
-		color_manager_, input, color_manager_->GetReferenceColorSpace());
+	input_to_ref_processor_ = ColorProcessor::create(
+		color_manager_, input, color_manager_->get_reference_color_space());
 
-	ColorProcessorPtr ref_to_display = ColorProcessor::Create(
-		color_manager_, color_manager_->GetReferenceColorSpace(), output);
+	ColorProcessorPtr ref_to_display = ColorProcessor::create(
+		color_manager_, color_manager_->get_reference_color_space(), output);
 
-	ColorProcessorPtr ref_to_input = ColorProcessor::Create(
-		color_manager_, color_manager_->GetReferenceColorSpace(), input);
+	ColorProcessorPtr ref_to_input = ColorProcessor::create(
+		color_manager_, color_manager_->get_reference_color_space(), input);
 
 	// Display -> reference is the inverse of the display transform. Older OCIO
 	// versions crashed on TRANSFORM_DIR_INVERSE; guard by requiring a valid
 	// processor and fall back to disabling the display tab if creation fails.
-	ColorProcessorPtr display_to_ref = ColorProcessor::Create(
-		color_manager_, color_manager_->GetReferenceColorSpace(), output,
-		ColorProcessor::kInverse);
-	if (display_to_ref && !display_to_ref->GetProcessor()) {
+	ColorProcessorPtr display_to_ref = ColorProcessor::create(
+		color_manager_, color_manager_->get_reference_color_space(), output,
+		ColorProcessor::k_inverse);
+	if (display_to_ref && !display_to_ref->get_processor()) {
 		display_to_ref = nullptr;
 	}
 
-	color_wheel_->SetColorProcessor(input_to_ref_processor_, ref_to_display);
-	hsv_value_gradient_->SetColorProcessor(input_to_ref_processor_,
+	color_wheel_->set_color_processor(input_to_ref_processor_, ref_to_display);
+	hsv_value_gradient_->set_color_processor(input_to_ref_processor_,
 										   ref_to_display);
-	color_values_widget_->SetColorProcessor(
+	color_values_widget_->set_color_processor(
 		input_to_ref_processor_, ref_to_display, display_to_ref, ref_to_input);
 }
 

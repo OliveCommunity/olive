@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef KEYFRAMEVIEWUNDO_H
-#define KEYFRAMEVIEWUNDO_H
+#ifndef OAK_KEYFRAMEVIEWUNDO_H
+#define OAK_KEYFRAMEVIEWUNDO_H
 
 #include "node/keyframe.h"
 #include "undo/undocommand.h"
@@ -32,7 +32,7 @@ class KeyframeSetTypeCommand : public UndoCommand {
 public:
 	KeyframeSetTypeCommand(NodeKeyframe *key, NodeKeyframe::Type type);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -56,7 +56,7 @@ public:
 								  const QPointF &new_point,
 								  const QPointF &old_point);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -74,4 +74,4 @@ private:
 
 }
 
-#endif // KEYFRAMEVIEWUNDO_H
+#endif // OAK_KEYFRAMEVIEWUNDO_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef POINTGIZMO_H
-#define POINTGIZMO_H
+#ifndef OAK_POINTGIZMO_H
+#define OAK_POINTGIZMO_H
 
 #include <QPointF>
 
@@ -32,48 +32,48 @@ namespace olive
 class PointGizmo : public DraggableGizmo {
 	Q_OBJECT
 public:
-	enum Shape { kSquare, kCircle, kAnchorPoint };
+	enum Shape { k_square, k_circle, k_anchor_point };
 
 	explicit PointGizmo(const Shape &shape, bool smaller,
 						QObject *parent = nullptr);
 	explicit PointGizmo(const Shape &shape, QObject *parent = nullptr);
 	explicit PointGizmo(QObject *parent = nullptr);
 
-	const Shape &GetShape() const
+	const Shape &get_shape() const
 	{
 		return shape_;
 	}
-	void SetShape(const Shape &s)
+	void set_shape(const Shape &s)
 	{
 		shape_ = s;
 	}
 
-	const QPointF &GetPoint() const
+	const QPointF &get_point() const
 	{
 		return point_;
 	}
-	void SetPoint(const QPointF &pt)
+	void set_point(const QPointF &pt)
 	{
 		point_ = pt;
 	}
 
-	bool GetSmaller() const
+	bool get_smaller() const
 	{
 		return smaller_;
 	}
-	void SetSmaller(bool e)
+	void set_smaller(bool e)
 	{
 		smaller_ = e;
 	}
 
-	virtual void Draw(QPainter *p) const override;
+	virtual void draw(QPainter *p) const override;
 
-	QRectF GetClickingRect(const QTransform &t) const;
+	QRectF get_clicking_rect(const QTransform &t) const;
 
 private:
-	static double GetStandardRadius();
+	static double get_standard_radius();
 
-	QRectF GetDrawingRect(const QTransform &transform, double radius) const;
+	QRectF get_drawing_rect(const QTransform &transform, double radius) const;
 
 	Shape shape_;
 
@@ -84,4 +84,4 @@ private:
 
 }
 
-#endif // POINTGIZMO_H
+#endif // OAK_POINTGIZMO_H

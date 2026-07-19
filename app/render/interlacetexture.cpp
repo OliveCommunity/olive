@@ -28,30 +28,30 @@
 namespace olive
 {
 
-TexturePtr Renderer::InterlaceTexture(TexturePtr top, TexturePtr bottom,
+TexturePtr Renderer::interlace_texture(TexturePtr top, TexturePtr bottom,
 									  const VideoParams &params)
 {
 	color_cache_mutex_.lock();
 	if (interlace_texture_.isNull()) {
 		interlace_texture_ =
-			CreateNativeShader(ShaderCode(FileFunctions::ReadFileAsString(
+			create_native_shader(ShaderCode(FileFunctions::read_file_as_string(
 				QStringLiteral(":/shaders/interlace.frag"))));
 	}
 	color_cache_mutex_.unlock();
 
 	ShaderJob job;
-	job.Insert(QStringLiteral("top_tex_in"),
-			   NodeValue(NodeValue::kTexture, QVariant::fromValue(top)));
-	job.Insert(QStringLiteral("bottom_tex_in"),
-			   NodeValue(NodeValue::kTexture, QVariant::fromValue(bottom)));
-	job.Insert(QStringLiteral("resolution_in"),
-			   NodeValue(NodeValue::kVec2,
+	job.insert(QStringLiteral("top_tex_in"),
+			   NodeValue(NodeValue::k_texture, QVariant::fromValue(top)));
+	job.insert(QStringLiteral("bottom_tex_in"),
+			   NodeValue(NodeValue::k_texture, QVariant::fromValue(bottom)));
+	job.insert(QStringLiteral("resolution_in"),
+			   NodeValue(NodeValue::k_vec2,
 						 QVector2D(params.effective_width(),
 								   params.effective_height())));
 
-	TexturePtr output = CreateTexture(params);
+	TexturePtr output = create_texture(params);
 
-	BlitToTexture(interlace_texture_, job, output.get());
+	blit_to_texture(interlace_texture_, job, output.get());
 
 	return output;
 }

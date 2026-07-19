@@ -19,17 +19,17 @@
 
 ***/
 
-#ifndef GITHASH_H
-#define GITHASH_H
+#ifndef OAK_GITHASH_H
+#define OAK_GITHASH_H
 
 #include <QString>
 
 namespace olive
 {
 
-extern QString kAppVersion;
-extern QString kAppVersionLong;
+extern QString k_app_version;
+extern QString k_app_version_long;
 
 }
 
-#endif // GITHASH_H
+#endif // OAK_GITHASH_H

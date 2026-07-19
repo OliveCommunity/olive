@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECTLOADMANAGER_H
-#define PROJECTLOADMANAGER_H
+#ifndef OAK_PROJECTLOADMANAGER_H
+#define OAK_PROJECTLOADMANAGER_H
 
 #include "loadbasetask.h"
 #include "window/mainwindow/mainwindowlayoutinfo.h"
@@ -34,9 +34,9 @@ public:
 	ProjectLoadTask(const QString &filename);
 
 protected:
-	virtual bool Run() override;
+	virtual bool run() override;
 };
 
 }
 
-#endif // PROJECTLOADMANAGER_H
+#endif // OAK_PROJECTLOADMANAGER_H

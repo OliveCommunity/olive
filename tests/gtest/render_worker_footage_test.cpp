@@ -51,29 +51,29 @@ namespace
 {
 
 #ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
-bool IsRenderBackendAvailable(const QString &backend)
+bool is_render_backend_available(const QString &backend)
 {
 	olive::DynamicRenderer renderer(backend);
-	if (!renderer.Load()) {
+	if (!renderer.load()) {
 		return false;
 	}
 
 	OakRenderBackendInfo info = {};
-	if (!renderer.GetBackendInfo(&info)) {
+	if (!renderer.get_backend_info(&info)) {
 		return false;
 	}
 
 	if (backend == QStringLiteral("vulkan") &&
-		info.kind != OAK_RENDER_BACKEND_VULKAN) {
+		info.kind != oak_render_backend_vulkan) {
 		return false;
 	}
 
 	if (backend == QStringLiteral("opengl") &&
-		info.kind != OAK_RENDER_BACKEND_OPENGL) {
+		info.kind != oak_render_backend_opengl) {
 		return false;
 	}
 
-	return renderer.Init();
+	return renderer.init();
 }
 #else
 bool IsRenderBackendAvailable(const QString &)
@@ -86,11 +86,11 @@ bool IsRenderBackendAvailable(const QString &)
 }
 #endif
 
-constexpr int kInputSlots = 1;
-constexpr int kOutputSlots = 1;
-constexpr int kTimeoutMs = 30000;
+constexpr int k_input_slots = 1;
+constexpr int k_output_slots = 1;
+constexpr int k_timeout_ms = 30000;
 
-QString WorkerBinaryPath()
+QString worker_binary_path()
 {
 	// The test binary lives in cmake-build-debug/tests/gtest; the worker is in
 	// cmake-build-debug/app.
@@ -105,13 +105,13 @@ QString WorkerBinaryPath()
 #endif
 }
 
-QString DemoVideoPath()
+QString demo_video_path()
 {
 	return QDir(QStringLiteral(OAK_TEST_SOURCE_DIR))
 		.filePath(QStringLiteral("tests/demo.mp4"));
 }
 
-double SampleBrightnessF32(const void *data, int width, int height, int stride)
+double sample_brightness_f32(const void *data, int width, int height, int stride)
 {
 	const auto *base = reinterpret_cast<const uint8_t *>(data);
 	double avg = 0.0;
@@ -135,28 +135,28 @@ class RenderWorkerFootageTest : public ::testing::Test {
 protected:
 	void SetUp() override
 	{
-		ColorManager::SetUpDefaultConfig();
-		ProjectSerializer::Initialize();
-		DiskManager::CreateInstance();
+		ColorManager::set_up_default_config();
+		ProjectSerializer::initialize();
+		DiskManager::create_instance();
 
-		demo_path_ = DemoVideoPath();
+		demo_path_ = demo_video_path();
 		ASSERT_TRUE(QFileInfo::exists(demo_path_))
 			<< "demo.mp4 not found at " << demo_path_.toStdString();
 
-		worker_path_ = WorkerBinaryPath();
+		worker_path_ = worker_binary_path();
 		ASSERT_TRUE(QFileInfo::exists(worker_path_))
 			<< "worker binary not found at " << worker_path_.toStdString();
 
 		ASSERT_TRUE(temp_dir_.isValid());
 
 		// Create a minimal project containing the demo footage.
-		CreateProjectFile();
+		create_project_file();
 	}
 
 	void TearDown() override
 	{
-		input_region_.Close();
-		output_region_.Close();
+		input_region_.close();
+		output_region_.close();
 		if (worker_.state() != QProcess::NotRunning) {
 			worker_.terminate();
 			worker_.waitForFinished(5000);
@@ -165,47 +165,47 @@ protected:
 				worker_.waitForFinished(5000);
 			}
 		}
-		DiskManager::DestroyInstance();
-		ProjectSerializer::Destroy();
+		DiskManager::destroy_instance();
+		ProjectSerializer::destroy();
 	}
 
-	void CreateProjectFile()
+	void create_project_file()
 	{
 		project_ = std::make_unique<Project>();
-		project_->Initialize();
+		project_->initialize();
 
 		footage_ = new Footage(demo_path_);
 		footage_->setParent(project_.get());
-		footage_->SetLabel(QStringLiteral("demo"));
-		ASSERT_TRUE(footage_->IsValid())
+		footage_->set_label(QStringLiteral("demo"));
+		ASSERT_TRUE(footage_->is_valid())
 			<< "Footage failed to probe " << demo_path_.toStdString();
 
 		footage_id_ = QString::number(reinterpret_cast<quintptr>(footage_));
 
-		project_file_ = FileFunctions::GetSafeTemporaryFilename(
+		project_file_ = FileFunctions::get_safe_temporary_filename(
 			temp_dir_.filePath(QStringLiteral("worker_graph.ove")));
 
-		ProjectSerializer::Result r = ProjectSerializer::Save(
-			ProjectSerializer::SaveData(ProjectSerializer::kProject,
+		ProjectSerializer::Result r = ProjectSerializer::save(
+			ProjectSerializer::SaveData(ProjectSerializer::k_project,
 										project_.get(), project_file_),
 			false);
-		ASSERT_EQ(r.code(), ProjectSerializer::kSuccess)
-			<< "Failed to save project file: " << r.GetDetails().toStdString();
+		ASSERT_EQ(r.code(), ProjectSerializer::k_success)
+			<< "Failed to save project file: " << r.get_details().toStdString();
 		ASSERT_TRUE(QFileInfo::exists(project_file_));
 	}
 
-	bool StartWorker(const QString &backend)
+	bool start_worker(const QString &backend)
 	{
 		// ---- decode a frame so we know the dimensions and slot sizes ----
-		DecoderPtr decoder = Decoder::CreateFromID(QStringLiteral("ffmpeg"));
+		DecoderPtr decoder = Decoder::create_from_id(QStringLiteral("ffmpeg"));
 		if (!decoder ||
-			!decoder->Open(Decoder::CodecStream(demo_path_, 0, nullptr))) {
+			!decoder->open(Decoder::CodecStream(demo_path_, 0, nullptr))) {
 			return false;
 		}
 		Decoder::RetrieveVideoParams retrieve;
-		retrieve.time = rational(0);
-		retrieve.maximum_format = PixelFormat::U16;
-		FramePtr frame = decoder->RetrieveVideoFrame(retrieve);
+		retrieve.time = Rational(0);
+		retrieve.maximum_format = PixelFormat::u16;
+		FramePtr frame = decoder->retrieve_video_frame(retrieve);
 		if (!frame || !frame->is_allocated()) {
 			return false;
 		}
@@ -213,7 +213,7 @@ protected:
 		input_width_ = frame->width();
 		input_height_ = frame->height();
 		input_stride_ = frame->linesize_bytes();
-		input_bpc_ = VideoParams::GetBytesPerChannel(frame->format());
+		input_bpc_ = VideoParams::get_bytes_per_channel(frame->format());
 		input_data_bytes_ = frame->allocated_size();
 		decoded_frame_ = frame;
 
@@ -221,35 +221,35 @@ protected:
 		output_width_ = 1920;
 		output_height_ = 1080;
 		output_data_bytes_ = size_t(output_width_) * output_height_ * 4 *
-							 VideoParams::GetBytesPerChannel(PixelFormat::F32);
+							 VideoParams::get_bytes_per_channel(PixelFormat::f32);
 
 		// ---- create shared memory pools ----
 		const qint64 owner_pid = QCoreApplication::applicationPid();
-		output_shm_key_ = ipc::SharedMemoryRegion::MakeKey(owner_pid, 0);
-		input_shm_key_ = ipc::SharedMemoryRegion::MakeKey(owner_pid, 1);
+		output_shm_key_ = ipc::SharedMemoryRegion::make_key(owner_pid, 0);
+		input_shm_key_ = ipc::SharedMemoryRegion::make_key(owner_pid, 1);
 
 		const size_t output_bytes =
-			ipc::FrameSlotPool::BytesNeeded(kOutputSlots, output_data_bytes_);
+			ipc::FrameSlotPool::bytes_needed(k_output_slots, output_data_bytes_);
 		const size_t input_bytes =
-			ipc::FrameSlotPool::BytesNeeded(kInputSlots, input_data_bytes_);
+			ipc::FrameSlotPool::bytes_needed(k_input_slots, input_data_bytes_);
 
-		if (!output_region_.Open(output_shm_key_, output_bytes,
-								 ipc::SharedMemoryRegion::kCreate)) {
+		if (!output_region_.open(output_shm_key_, output_bytes,
+								 ipc::SharedMemoryRegion::k_create)) {
 			return false;
 		}
-		if (!input_region_.Open(input_shm_key_, input_bytes,
-								ipc::SharedMemoryRegion::kCreate)) {
+		if (!input_region_.open(input_shm_key_, input_bytes,
+								ipc::SharedMemoryRegion::k_create)) {
 			return false;
 		}
 
 		output_pool_ = std::make_unique<ipc::FrameSlotPool>(
-			ipc::FrameSlotPool::Create(output_region_.data(), kOutputSlots,
+			ipc::FrameSlotPool::create(output_region_.data(), k_output_slots,
 									   output_data_bytes_));
 		input_pool_ = std::make_unique<ipc::FrameSlotPool>(
-			ipc::FrameSlotPool::Create(input_region_.data(), kInputSlots,
+			ipc::FrameSlotPool::create(input_region_.data(), k_input_slots,
 									   input_data_bytes_));
 
-		if (!output_pool_->IsValid() || !input_pool_->IsValid()) {
+		if (!output_pool_->is_valid() || !input_pool_->is_valid()) {
 			return false;
 		}
 
@@ -257,16 +257,16 @@ protected:
 		worker_.setProcessChannelMode(QProcess::SeparateChannels);
 		worker_.start(worker_path_,
 					  QStringList{ QStringLiteral("--backend"), backend });
-		if (!worker_.waitForStarted(kTimeoutMs)) {
+		if (!worker_.waitForStarted(k_timeout_ms)) {
 			return false;
 		}
 
 		// ---- wait for worker handshake ----
-		if (!WaitForMessage(&worker_handshake_)) {
+		if (!wait_for_message(&worker_handshake_)) {
 			return false;
 		}
 		if (worker_handshake_[QStringLiteral("type")].toString() !=
-			QLatin1String(ipc::msgtype::kHandshake)) {
+			QLatin1String(ipc::msgtype::k_handshake)) {
 			return false;
 		}
 
@@ -275,24 +275,24 @@ protected:
 		response.protocol_version = 1;
 		response.shm_key = output_shm_key_;
 		response.input_shm_key = input_shm_key_;
-		response.input_slots = kInputSlots;
-		response.output_slots = kOutputSlots;
+		response.input_slots = k_input_slots;
+		response.output_slots = k_output_slots;
 		response.slot_data_bytes = qint64(output_data_bytes_);
 		response.input_slot_data_bytes = qint64(input_data_bytes_);
-		if (!ipc::WriteMessage(&worker_, response.ToJson())) {
+		if (!ipc::write_message(&worker_, response.to_json())) {
 			return false;
 		}
 
 		// ---- load graph ----
 		ipc::LoadGraphMsg load;
 		load.path = project_file_;
-		if (!ipc::WriteMessage(&worker_, load.ToJson())) {
+		if (!ipc::write_message(&worker_, load.to_json())) {
 			return false;
 		}
 
 		// ---- wait for graph_loaded ----
 		QJsonObject loaded;
-		if (!WaitForMessage(&loaded)) {
+		if (!wait_for_message(&loaded)) {
 			return false;
 		}
 		if (loaded[QStringLiteral("type")].toString() !=
@@ -303,17 +303,17 @@ protected:
 		return true;
 	}
 
-	bool RenderFrameAndWait(int *output_slot)
+	bool render_frame_and_wait(int *output_slot)
 	{
 		// Publish the decoded frame to the input pool. The worker consumes it and
 		// releases it back, so we re-publish before every render.
 		uint32_t input_slot = 0;
-		if (!input_pool_->Acquire(&input_slot)) {
+		if (!input_pool_->acquire(&input_slot)) {
 			return false;
 		}
-		std::memcpy(input_pool_->SlotData(input_slot),
+		std::memcpy(input_pool_->slot_data(input_slot),
 					decoded_frame_->const_data(), input_data_bytes_);
-		ipc::FrameSlotMeta *meta = input_pool_->Meta(input_slot);
+		ipc::FrameSlotMeta *meta = input_pool_->meta(input_slot);
 		meta->id = 0;
 		meta->time_num = 0;
 		meta->time_den = 1;
@@ -328,7 +328,7 @@ protected:
 			decoded_frame_->video_params().colorspace().toUtf8().constData(),
 			sizeof(meta->colorspace) - 1);
 		meta->colorspace[sizeof(meta->colorspace) - 1] = '\0';
-		input_pool_->Publish(input_slot);
+		input_pool_->publish(input_slot);
 
 		ipc::RenderFrameMsg req;
 		req.ticket_id = 1;
@@ -337,24 +337,24 @@ protected:
 		req.time_den = 1;
 		req.width = output_width_;
 		req.height = output_height_;
-		req.format = int(PixelFormat::F32);
-		req.channel_count = VideoParams::kRGBAChannelCount;
-		req.mode = int(RenderMode::kOnline);
+		req.format = int(PixelFormat::f32);
+		req.channel_count = VideoParams::k_rgba_channel_count;
+		req.mode = int(RenderMode::k_online);
 		req.input_slot = 0;
-		if (!ipc::WriteMessage(&worker_, req.ToJson())) {
+		if (!ipc::write_message(&worker_, req.to_json())) {
 			std::cerr << "RenderFrameAndWait: failed to write request"
 					  << std::endl;
 			return false;
 		}
 
 		QJsonObject ready;
-		if (!WaitForMessage(&ready)) {
+		if (!wait_for_message(&ready)) {
 			std::cerr << "RenderFrameAndWait: failed to receive ready message"
 					  << std::endl;
 			return false;
 		}
 		if (ready[QStringLiteral("type")].toString() !=
-			QLatin1String(ipc::msgtype::kFrameReady)) {
+			QLatin1String(ipc::msgtype::k_frame_ready)) {
 			std::cerr << "RenderFrameAndWait: unexpected message type "
 					  << ready[QStringLiteral("type")].toString().toStdString()
 					  << " body="
@@ -368,16 +368,16 @@ protected:
 		return true;
 	}
 
-	bool WaitForMessage(QJsonObject *out)
+	bool wait_for_message(QJsonObject *out)
 	{
 		QElapsedTimer timer;
 		timer.start();
-		while (!timer.hasExpired(kTimeoutMs)) {
+		while (!timer.hasExpired(k_timeout_ms)) {
 			if (worker_.waitForReadyRead(100)) {
 				read_buffer_.append(worker_.readAllStandardOutput());
 			}
 			bool ok = true;
-			if (ipc::ReadMessage(&read_buffer_, out, &ok)) {
+			if (ipc::read_message(&read_buffer_, out, &ok)) {
 				return true;
 			}
 			if (!ok) {
@@ -440,56 +440,56 @@ protected:
 
 TEST_F(RenderWorkerFootageTest, VulkanFootageIsNotBlack)
 {
-	if (!IsRenderBackendAvailable(QStringLiteral("vulkan"))) {
+	if (!is_render_backend_available(QStringLiteral("vulkan"))) {
 		GTEST_SKIP() << "Vulkan backend is not available in this environment";
 	}
 
-	ASSERT_TRUE(StartWorker(QStringLiteral("vulkan")));
+	ASSERT_TRUE(start_worker(QStringLiteral("vulkan")));
 
 	int output_slot = -1;
-	ASSERT_TRUE(RenderFrameAndWait(&output_slot));
+	ASSERT_TRUE(render_frame_and_wait(&output_slot));
 	ASSERT_GE(output_slot, 0);
-	ASSERT_LT(output_slot, kOutputSlots);
+	ASSERT_LT(output_slot, k_output_slots);
 
 	uint32_t consumed_slot = 0;
-	ASSERT_TRUE(output_pool_->Consume(&consumed_slot));
+	ASSERT_TRUE(output_pool_->consume(&consumed_slot));
 	ASSERT_EQ(int(consumed_slot), output_slot);
 
-	const void *output_data = output_pool_->SlotData(consumed_slot);
+	const void *output_data = output_pool_->slot_data(consumed_slot);
 	const double brightness =
-		SampleBrightnessF32(output_data, output_width_, output_height_,
+		sample_brightness_f32(output_data, output_width_, output_height_,
 							output_width_ * 4 * int(sizeof(float)));
 
 	EXPECT_GT(brightness, 0.01)
 		<< "Worker output frame is black (brightness=" << brightness << ")";
 
-	output_pool_->Release(consumed_slot);
+	output_pool_->release(consumed_slot);
 }
 
 TEST_F(RenderWorkerFootageTest, OpenGLFootageIsNotBlack)
 {
-	if (!IsRenderBackendAvailable(QStringLiteral("opengl"))) {
+	if (!is_render_backend_available(QStringLiteral("opengl"))) {
 		GTEST_SKIP() << "OpenGL backend is not available in this environment";
 	}
 
-	ASSERT_TRUE(StartWorker(QStringLiteral("opengl")));
+	ASSERT_TRUE(start_worker(QStringLiteral("opengl")));
 
 	int output_slot = -1;
-	ASSERT_TRUE(RenderFrameAndWait(&output_slot));
+	ASSERT_TRUE(render_frame_and_wait(&output_slot));
 	ASSERT_GE(output_slot, 0);
-	ASSERT_LT(output_slot, kOutputSlots);
+	ASSERT_LT(output_slot, k_output_slots);
 
 	uint32_t consumed_slot = 0;
-	ASSERT_TRUE(output_pool_->Consume(&consumed_slot));
+	ASSERT_TRUE(output_pool_->consume(&consumed_slot));
 	ASSERT_EQ(int(consumed_slot), output_slot);
 
-	const void *output_data = output_pool_->SlotData(consumed_slot);
+	const void *output_data = output_pool_->slot_data(consumed_slot);
 	const double brightness =
-		SampleBrightnessF32(output_data, output_width_, output_height_,
+		sample_brightness_f32(output_data, output_width_, output_height_,
 							output_width_ * 4 * int(sizeof(float)));
 
 	EXPECT_GT(brightness, 0.01)
 		<< "Worker output frame is black (brightness=" << brightness << ")";
 
-	output_pool_->Release(consumed_slot);
+	output_pool_->release(consumed_slot);
 }

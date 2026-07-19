@@ -24,7 +24,7 @@
 namespace olive
 {
 
-QVector<Color> ColorCoding::colors_ = {
+QVector<Color> ColorCoding::colors = {
 	Color(0.545f, 0.255f, 0.255f), Color(0.412f, 0.188f, 0.259f),
 	Color(0.561f, 0.427f, 0.239f), Color(0.486f, 0.306f, 0.235f),
 	Color(0.631f, 0.612f, 0.212f), Color(0.404f, 0.478f, 0.243f),
@@ -35,55 +35,55 @@ QVector<Color> ColorCoding::colors_ = {
 	Color(0.800f, 0.800f, 0.800f), Color(0.502f, 0.502f, 0.502f)
 };
 
-QString ColorCoding::GetColorName(int c)
+QString ColorCoding::get_color_name(int c)
 {
 	// FIXME: I'm sure we could come up with more creative names for these colors
 	switch (c) {
-	case kRed:
+	case k_red:
 		return tr("Red");
-	case kMaroon:
+	case k_maroon:
 		return tr("Maroon");
-	case kOrange:
+	case k_orange:
 		return tr("Orange");
-	case kBrown:
+	case k_brown:
 		return tr("Brown");
-	case kYellow:
+	case k_yellow:
 		return tr("Yellow");
-	case kOlive:
+	case k_olive:
 		return tr("Oak");
-	case kLime:
+	case k_lime:
 		return tr("Lime");
-	case kGreen:
+	case k_green:
 		return tr("Green");
-	case kCyan:
+	case k_cyan:
 		return tr("Cyan");
-	case kTeal:
+	case k_teal:
 		return tr("Teal");
-	case kBlue:
+	case k_blue:
 		return tr("Blue");
-	case kNavy:
+	case k_navy:
 		return tr("Navy");
-	case kPink:
+	case k_pink:
 		return tr("Pink");
-	case kPurple:
+	case k_purple:
 		return tr("Purple");
-	case kSilver:
+	case k_silver:
 		return tr("Silver");
-	case kGray:
+	case k_gray:
 		return tr("Gray");
 	}
 
 	return QString();
 }
 
-Color ColorCoding::GetColor(int c)
+Color ColorCoding::get_color(int c)
 {
-	return colors_.at(c);
+	return colors.at(c);
 }
 
-Qt::GlobalColor ColorCoding::GetUISelectorColor(const Color &c)
+Qt::GlobalColor ColorCoding::get_ui_selector_color(const Color &c)
 {
-	if (c.GetRoughLuminance() > 0.40f) {
+	if (c.get_rough_luminance() > 0.40f) {
 		return Qt::black;
 	} else {
 		return Qt::white;

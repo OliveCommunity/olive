@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEPARAMVIEWARRAYWIDGET_H
-#define NODEPARAMVIEWARRAYWIDGET_H
+#ifndef OAK_NODEPARAMVIEWARRAYWIDGET_H
+#define OAK_NODEPARAMVIEWARRAYWIDGET_H
 
 #include <QLabel>
 #include <QPushButton>
@@ -34,7 +34,7 @@ namespace olive
 class NodeParamViewArrayButton : public QPushButton {
 	Q_OBJECT
 public:
-	enum Type { kAdd, kRemove };
+	enum Type { k_add, k_remove };
 
 	NodeParamViewArrayButton(Type type, QWidget *parent = nullptr);
 
@@ -42,7 +42,7 @@ protected:
 	virtual void changeEvent(QEvent *event) override;
 
 private:
-	void Retranslate();
+	void retranslate();
 
 	Type type_;
 };
@@ -54,7 +54,7 @@ public:
 							 QWidget *parent = nullptr);
 
 signals:
-	void DoubleClicked();
+	void double_clicked();
 
 protected:
 	virtual void mouseDoubleClickEvent(QMouseEvent *event) override;
@@ -67,9 +67,9 @@ private:
 	QLabel *count_lbl_;
 
 private slots:
-	void UpdateCounter(const QString &input, int old_size, int new_size);
+	void update_counter(const QString &input, int old_size, int new_size);
 };
 
 }
 
-#endif // NODEPARAMVIEWARRAYWIDGET_H
+#endif // OAK_NODEPARAMVIEWARRAYWIDGET_H

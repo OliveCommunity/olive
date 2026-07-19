@@ -16,7 +16,7 @@ TEST(NodeProject, DefaultsAfterConstruction)
 	EXPECT_TRUE(project.is_new());
 	EXPECT_FALSE(project.is_modified());
 	EXPECT_TRUE(project.has_autorecovery_been_saved());
-	EXPECT_FALSE(project.GetUuid().isNull());
+	EXPECT_FALSE(project.get_uuid().isNull());
 	EXPECT_NE(project.color_manager(), nullptr);
 	EXPECT_EQ(project.root(), nullptr);
 	EXPECT_TRUE(project.nodes().isEmpty());
@@ -51,23 +51,23 @@ TEST(NodeProject, SettingsRoundTrip)
 {
 	olive::Project project;
 
-	project.SetSetting(
-		olive::Project::kCacheLocationSettingKey,
-		QString::number(olive::Project::kCacheStoreAlongsideProject));
-	EXPECT_EQ(project.GetCacheLocationSetting(),
-			  olive::Project::kCacheStoreAlongsideProject);
+	project.set_setting(
+		olive::Project::k_cache_location_setting_key,
+		QString::number(olive::Project::k_cache_store_alongside_project));
+	EXPECT_EQ(project.get_cache_location_setting(),
+			  olive::Project::k_cache_store_alongside_project);
 
-	project.SetCustomCachePath(QStringLiteral("/tmp/cache"));
-	EXPECT_EQ(project.GetCustomCachePath(), QStringLiteral("/tmp/cache"));
+	project.set_custom_cache_path(QStringLiteral("/tmp/cache"));
+	EXPECT_EQ(project.get_custom_cache_path(), QStringLiteral("/tmp/cache"));
 
-	project.SetColorConfigFilename(QStringLiteral("config.ocio"));
-	EXPECT_EQ(project.GetColorConfigFilename(), QStringLiteral("config.ocio"));
+	project.set_color_config_filename(QStringLiteral("config.ocio"));
+	EXPECT_EQ(project.get_color_config_filename(), QStringLiteral("config.ocio"));
 
-	project.SetDefaultInputColorSpace(QStringLiteral("ACEScg"));
-	EXPECT_EQ(project.GetDefaultInputColorSpace(), QStringLiteral("ACEScg"));
+	project.set_default_input_color_space(QStringLiteral("ACEScg"));
+	EXPECT_EQ(project.get_default_input_color_space(), QStringLiteral("ACEScg"));
 
-	project.SetColorReferenceSpace(QStringLiteral("ACES - ACEScg"));
-	EXPECT_EQ(project.GetColorReferenceSpace(),
+	project.set_color_reference_space(QStringLiteral("ACES - ACEScg"));
+	EXPECT_EQ(project.get_color_reference_space(),
 			  QStringLiteral("ACES - ACEScg"));
 }
 
@@ -76,38 +76,38 @@ TEST(NodeProject, InitializeCreatesRoot)
 	olive::Project project;
 	EXPECT_EQ(project.root(), nullptr);
 
-	project.Initialize();
+	project.initialize();
 	EXPECT_NE(project.root(), nullptr);
-	EXPECT_EQ(project.root()->GetLabel(), QStringLiteral("Root"));
+	EXPECT_EQ(project.root()->get_label(), QStringLiteral("Root"));
 }
 
 TEST(NodeProject, UuidCanBeRegenerated)
 {
 	olive::Project project;
-	const QUuid original = project.GetUuid();
+	const QUuid original = project.get_uuid();
 
-	project.RegenerateUuid();
-	EXPECT_FALSE(project.GetUuid().isNull());
-	EXPECT_NE(project.GetUuid(), original);
+	project.regenerate_uuid();
+	EXPECT_FALSE(project.get_uuid().isNull());
+	EXPECT_NE(project.get_uuid(), original);
 }
 
 TEST(NodeProject, GetProjectFromObject)
 {
 	olive::Project project;
 	olive::ColorManager *cm = project.color_manager();
-	EXPECT_EQ(olive::Project::GetProjectFromObject(cm), &project);
+	EXPECT_EQ(olive::Project::get_project_from_object(cm), &project);
 }
 
 TEST(NodeProject, SaveProducesXml)
 {
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	QByteArray xml;
 	QXmlStreamWriter writer(&xml);
 	writer.writeStartDocument();
 	writer.writeStartElement(QStringLiteral("project"));
-	project.Save(&writer);
+	project.save(&writer);
 	writer.writeEndElement();
 	writer.writeEndDocument();
 
@@ -166,7 +166,7 @@ TEST(NodeProject, SaveProducesXml)
 
 	// The project uuid round-trips as a valid uuid
 	EXPECT_TRUE(saw_uuid);
-	EXPECT_EQ(uuid_text, project.GetUuid().toString());
+	EXPECT_EQ(uuid_text, project.get_uuid().toString());
 	EXPECT_FALSE(QUuid(uuid_text).isNull());
 
 	// Initialize() created a root folder, so at least one node is serialized

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECTCOPIER_H
-#define PROJECTCOPIER_H
+#ifndef OAK_PROJECTCOPIER_H
+#define OAK_PROJECTCOPIER_H
 
 #include "node/project.h"
 #include "node/project/footage/footage.h"
@@ -33,38 +33,38 @@ class ProjectCopier : public QObject {
 public:
 	ProjectCopier(QObject *parent = nullptr);
 
-	void SetProject(Project *project);
+	void set_project(Project *project);
 
-	template <typename T> T *GetCopy(T *original)
+	template <typename T> T *get_copy(T *original)
 	{
 		return static_cast<T *>(copy_map_.value(original));
 	}
 
-	template <typename T> T *GetOriginal(T *copy)
+	template <typename T> T *get_original(T *copy)
 	{
 		return static_cast<T *>(copy_map_.key(copy));
 	}
 
-	Project *GetCopiedProject() const
+	Project *get_copied_project() const
 	{
 		return copy_;
 	}
 
-	const QHash<Node *, Node *> &GetNodeMap() const
+	const QHash<Node *, Node *> &get_node_map() const
 	{
 		return copy_map_;
 	}
 
-	const JobTime &GetGraphChangeTime() const
+	const JobTime &get_graph_change_time() const
 	{
 		return graph_changed_time_;
 	}
-	const JobTime &GetLastUpdateTime() const
+	const JobTime &get_last_update_time() const
 	{
 		return last_update_time_;
 	}
 
-	bool HasUpdatesInQueue() const
+	bool has_updates_in_queue() const
 	{
 		return !graph_update_queue_.empty();
 	}
@@ -75,27 +75,27 @@ public:
    * PreviewAutoCacher staggers updates to its internal NodeGraph copy, only applying them when the
    * RenderManager is not reading from it. This function is called when such an opportunity arises.
    */
-	void ProcessUpdateQueue();
+	void process_update_queue();
 
 signals:
-	void AddedNode(Node *n);
-	void RemovedNode(Node *n);
+	void added_node(Node *n);
+	void removed_node(Node *n);
 
 private:
-	void DoNodeAdd(Node *node);
-	void DoNodeRemove(Node *node);
-	void DoEdgeAdd(Node *output, const NodeInput &input);
-	void DoEdgeRemove(Node *output, const NodeInput &input);
-	void DoValueChange(const NodeInput &input);
-	void DoValueHintChange(const NodeInput &input);
-	void DoProjectSettingChange(const QString &key, const QString &value);
+	void do_node_add(Node *node);
+	void do_node_remove(Node *node);
+	void do_edge_add(Node *output, const NodeInput &input);
+	void do_edge_remove(Node *output, const NodeInput &input);
+	void do_value_change(const NodeInput &input);
+	void do_value_hint_change(const NodeInput &input);
+	void do_project_setting_change(const QString &key, const QString &value);
 
-	void SyncFootageProxySettings(Footage *source);
+	void sync_footage_proxy_settings(Footage *source);
 
-	void InsertIntoCopyMap(Node *node, Node *copy);
+	void insert_into_copy_map(Node *node, Node *copy);
 
-	void UpdateGraphChangeValue();
-	void UpdateLastSyncedValue();
+	void update_graph_change_value();
+	void update_last_synced_value();
 
 	Project *original_;
 	Project *copy_;
@@ -103,13 +103,13 @@ private:
 	class QueuedJob {
 	public:
 		enum Type {
-			kNodeAdded,
-			kNodeRemoved,
-			kEdgeAdded,
-			kEdgeRemoved,
-			kValueChanged,
-			kValueHintChanged,
-			kProjectSettingChanged
+			k_node_added,
+			k_node_removed,
+			k_edge_added,
+			k_edge_removed,
+			k_value_changed,
+			k_value_hint_changed,
+			k_project_setting_changed
 		};
 
 		Type type;
@@ -130,21 +130,21 @@ private:
 	JobTime last_update_time_;
 
 private slots:
-	void QueueNodeAdd(Node *node);
+	void queue_node_add(Node *node);
 
-	void QueueNodeRemove(Node *node);
+	void queue_node_remove(Node *node);
 
-	void QueueEdgeAdd(Node *output, const NodeInput &input);
+	void queue_edge_add(Node *output, const NodeInput &input);
 
-	void QueueEdgeRemove(Node *output, const NodeInput &input);
+	void queue_edge_remove(Node *output, const NodeInput &input);
 
-	void QueueValueChange(const NodeInput &input);
+	void queue_value_change(const NodeInput &input);
 
-	void QueueValueHintChange(const NodeInput &input);
+	void queue_value_hint_change(const NodeInput &input);
 
-	void QueueProjectSettingChange(const QString &key, const QString &value);
+	void queue_project_setting_change(const QString &key, const QString &value);
 };
 
 }
 
-#endif // PROJECTCOPIER_H
+#endif // OAK_PROJECTCOPIER_H

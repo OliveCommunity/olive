@@ -43,17 +43,17 @@ MulticamWidget::MulticamWidget(QWidget *parent)
 	layout->addWidget(sizer_);
 
 	display_ = new MulticamDisplay(this);
-	display_->SetShowWidgetBackground(true);
-	connect(display_, &ViewerDisplayWidget::DragStarted, this,
-			&MulticamWidget::DisplayClicked);
+	display_->set_show_widget_background(true);
+	connect(display_, &ViewerDisplayWidget::drag_started, this,
+			&MulticamWidget::display_clicked);
 
-	connect(sizer_, &ViewerSizer::RequestScale, display_,
-			&ViewerDisplayWidget::SetMatrixZoom);
-	connect(sizer_, &ViewerSizer::RequestTranslate, display_,
-			&ViewerDisplayWidget::SetMatrixTranslate);
-	connect(display_, &ViewerDisplayWidget::HandDragMoved, sizer_,
-			&ViewerSizer::HandDragMove);
-	sizer_->SetWidget(display_);
+	connect(sizer_, &ViewerSizer::request_scale, display_,
+			&ViewerDisplayWidget::set_matrix_zoom);
+	connect(sizer_, &ViewerSizer::request_translate, display_,
+			&ViewerDisplayWidget::set_matrix_translate);
+	connect(display_, &ViewerDisplayWidget::hand_drag_moved, sizer_,
+			&ViewerSizer::hand_drag_move);
+	sizer_->set_widget(display_);
 
 	layout->addWidget(this->ruler());
 	layout->addWidget(this->scrollbar());
@@ -66,16 +66,16 @@ MulticamWidget::MulticamWidget(QWidget *parent)
 	}
 }
 
-void MulticamWidget::SetMulticamNodeInternal(ViewerOutput *viewer,
+void MulticamWidget::set_multicam_node_internal(ViewerOutput *viewer,
 											 MultiCamNode *n, ClipBlock *clip)
 {
-	if (GetConnectedNode() != viewer) {
-		ConnectViewerNode(viewer);
+	if (get_connected_node() != viewer) {
+		connect_viewer_node(viewer);
 	}
 
 	if (node_ != n) {
 		node_ = n;
-		display_->SetMulticamNode(n);
+		display_->set_multicam_node(n);
 	}
 
 	if (clip_ != clip) {
@@ -83,12 +83,12 @@ void MulticamWidget::SetMulticamNodeInternal(ViewerOutput *viewer,
 	}
 }
 
-void MulticamWidget::SetMulticamNode(ViewerOutput *viewer, MultiCamNode *n,
-									 ClipBlock *clip, const rational &time)
+void MulticamWidget::set_multicam_node(ViewerOutput *viewer, MultiCamNode *n,
+									 ClipBlock *clip, const Rational &time)
 {
-	if (time.isNaN() || !GetConnectedNode() ||
-		time == GetConnectedNode()->GetPlayhead()) {
-		SetMulticamNodeInternal(viewer, n, clip);
+	if (time.isNaN() || !get_connected_node() ||
+		time == get_connected_node()->get_playhead()) {
+		set_multicam_node_internal(viewer, n, clip);
 		play_queue_.clear();
 	} else {
 		MulticamNodeQueue m = { time, viewer, n, clip };
@@ -98,31 +98,31 @@ void MulticamWidget::SetMulticamNode(ViewerOutput *viewer, MultiCamNode *n,
 
 void MulticamWidget::ConnectNodeEvent(ViewerOutput *n)
 {
-	connect(n, &ViewerOutput::SizeChanged, sizer_, &ViewerSizer::SetChildSize);
-	connect(n, &ViewerOutput::PixelAspectChanged, sizer_,
-			&ViewerSizer::SetPixelAspectRatio);
+	connect(n, &ViewerOutput::size_changed, sizer_, &ViewerSizer::set_child_size);
+	connect(n, &ViewerOutput::pixel_aspect_changed, sizer_,
+			&ViewerSizer::set_pixel_aspect_ratio);
 
-	VideoParams vp = n->GetVideoParams();
-	sizer_->SetChildSize(vp.width(), vp.height());
-	sizer_->SetPixelAspectRatio(vp.pixel_aspect_ratio());
+	VideoParams vp = n->get_video_params();
+	sizer_->set_child_size(vp.width(), vp.height());
+	sizer_->set_pixel_aspect_ratio(vp.pixel_aspect_ratio());
 }
 
 void MulticamWidget::DisconnectNodeEvent(ViewerOutput *n)
 {
-	disconnect(n, &ViewerOutput::SizeChanged, sizer_,
-			   &ViewerSizer::SetChildSize);
-	disconnect(n, &ViewerOutput::PixelAspectChanged, sizer_,
-			   &ViewerSizer::SetPixelAspectRatio);
+	disconnect(n, &ViewerOutput::size_changed, sizer_,
+			   &ViewerSizer::set_child_size);
+	disconnect(n, &ViewerOutput::pixel_aspect_changed, sizer_,
+			   &ViewerSizer::set_pixel_aspect_ratio);
 }
 
-void MulticamWidget::TimeChangedEvent(const rational &t)
+void MulticamWidget::TimeChangedEvent(const Rational &t)
 {
 	super::TimeChangedEvent(t);
 
 	if (!play_queue_.empty()) {
 		const MulticamNodeQueue &m = play_queue_.front();
 		if (m.time >= t) {
-			SetMulticamNodeInternal(m.viewer, m.node, m.clip);
+			set_multicam_node_internal(m.viewer, m.node, m.clip);
 			play_queue_.pop_front();
 		}
 	}
@@ -142,33 +142,33 @@ void MulticamWidget::Switch(int source, bool split_clip)
 	BlockSplitPreservingLinksCommand *split = nullptr;
 
 	if (clip_ && split_clip &&
-		clip_->in() < GetConnectedNode()->GetPlayhead() &&
-		clip_->out() > GetConnectedNode()->GetPlayhead()) {
+		clip_->in() < get_connected_node()->get_playhead() &&
+		clip_->out() > get_connected_node()->get_playhead()) {
 		QVector<Block *> blocks;
 
 		blocks.append(clip_);
 		blocks.append(clip_->block_links());
 
 		split = new BlockSplitPreservingLinksCommand(
-			blocks, { GetConnectedNode()->GetPlayhead() });
+			blocks, { get_connected_node()->get_playhead() });
 		split->redo_now();
 		command->add_child(split);
 
-		clip = static_cast<ClipBlock *>(split->GetSplit(clip_, 0));
+		clip = static_cast<ClipBlock *>(split->get_split(clip_, 0));
 
-		cam = clip->FindMulticam();
+		cam = clip->find_multicam();
 	}
 
 	command->add_child(new NodeParamSetStandardValueCommand(
-		NodeKeyframeTrackReference(NodeInput(cam, cam->kCurrentInput)),
+		NodeKeyframeTrackReference(NodeInput(cam, cam->k_current_input)),
 		source));
 
 	for (Block *link : clip->block_links()) {
 		if (ClipBlock *clink = dynamic_cast<ClipBlock *>(link)) {
-			if (MultiCamNode *mlink = clink->FindMulticam()) {
+			if (MultiCamNode *mlink = clink->find_multicam()) {
 				command->add_child(new NodeParamSetStandardValueCommand(
 					NodeKeyframeTrackReference(
-						NodeInput(mlink, mlink->kCurrentInput)),
+						NodeInput(mlink, mlink->k_current_input)),
 					source));
 			}
 		}
@@ -179,18 +179,18 @@ void MulticamWidget::Switch(int source, bool split_clip)
 
 	display_->update();
 
-	emit Switched();
+	emit switched();
 }
 
-void MulticamWidget::DisplayClicked(const QPoint &p)
+void MulticamWidget::display_clicked(const QPoint &p)
 {
 	if (!node_) {
 		return;
 	}
 
-	QPointF click = display_->ScreenToScenePoint(p);
-	int width = display_->GetVideoParams().width();
-	int height = display_->GetVideoParams().height();
+	QPointF click = display_->screen_to_scene_point(p);
+	int width = display_->get_video_params().width();
+	int height = display_->get_video_params().height();
 
 	if (click.x() < 0 || click.y() < 0 || click.x() >= width ||
 		click.y() >= height) {
@@ -198,14 +198,14 @@ void MulticamWidget::DisplayClicked(const QPoint &p)
 	}
 
 	int rows, cols;
-	node_->GetRowsAndColumns(&rows, &cols);
+	node_->get_rows_and_columns(&rows, &cols);
 
 	int multi = std::max(cols, rows);
 
 	int c = click.x() / (width / multi);
 	int r = click.y() / (height / multi);
 
-	int source = node_->RowsColsToIndex(r, c, rows, cols);
+	int source = node_->rows_cols_to_index(r, c, rows, cols);
 
 	Switch(source, true);
 }

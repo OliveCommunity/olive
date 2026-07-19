@@ -30,41 +30,41 @@
 namespace olive::core
 {
 
-TimeRange::TimeRange(const rational &in, const rational &out)
+TimeRange::TimeRange(const Rational &in, const Rational &out)
 	: in_(in)
 	, out_(out)
 {
 	normalize();
 }
 
-const rational &TimeRange::in() const
+const Rational &TimeRange::in() const
 {
 	return in_;
 }
 
-const rational &TimeRange::out() const
+const Rational &TimeRange::out() const
 {
 	return out_;
 }
 
-const rational &TimeRange::length() const
+const Rational &TimeRange::length() const
 {
 	return length_;
 }
 
-void TimeRange::set_in(const rational &in)
+void TimeRange::set_in(const Rational &in)
 {
 	in_ = in;
 	normalize();
 }
 
-void TimeRange::set_out(const rational &out)
+void TimeRange::set_out(const Rational &out)
 {
 	out_ = out;
 	normalize();
 }
 
-void TimeRange::set_range(const rational &in, const rational &out)
+void TimeRange::set_range(const Rational &in, const Rational &out)
 {
 	in_ = in;
 	out_ = out;
@@ -81,7 +81,7 @@ bool TimeRange::operator!=(const TimeRange &r) const
 	return in() != r.in() || out() != r.out();
 }
 
-bool TimeRange::OverlapsWith(const TimeRange &a, bool in_inclusive,
+bool TimeRange::overlaps_with(const TimeRange &a, bool in_inclusive,
 							 bool out_inclusive) const
 {
 	bool doesnt_overlap_in = (in_inclusive) ? (a.out() < in()) :
@@ -93,12 +93,12 @@ bool TimeRange::OverlapsWith(const TimeRange &a, bool in_inclusive,
 	return !doesnt_overlap_in && !doesnt_overlap_out;
 }
 
-TimeRange TimeRange::Combined(const TimeRange &a) const
+TimeRange TimeRange::combined(const TimeRange &a) const
 {
-	return Combine(a, *this);
+	return combine(a, *this);
 }
 
-bool TimeRange::Contains(const TimeRange &compare, bool in_inclusive,
+bool TimeRange::contains(const TimeRange &compare, bool in_inclusive,
 						 bool out_inclusive) const
 {
 	bool contains_in = (in_inclusive) ? (compare.in() >= in()) :
@@ -110,69 +110,69 @@ bool TimeRange::Contains(const TimeRange &compare, bool in_inclusive,
 	return contains_in && contains_out;
 }
 
-bool TimeRange::Contains(const rational &r) const
+bool TimeRange::contains(const Rational &r) const
 {
 	return r >= in_ && r < out_;
 }
 
-TimeRange TimeRange::Combine(const TimeRange &a, const TimeRange &b)
+TimeRange TimeRange::combine(const TimeRange &a, const TimeRange &b)
 {
 	return TimeRange(std::min(a.in(), b.in()), std::max(a.out(), b.out()));
 }
 
-TimeRange TimeRange::Intersected(const TimeRange &a) const
+TimeRange TimeRange::intersected(const TimeRange &a) const
 {
-	return Intersect(a, *this);
+	return intersect(a, *this);
 }
 
-TimeRange TimeRange::Intersect(const TimeRange &a, const TimeRange &b)
+TimeRange TimeRange::intersect(const TimeRange &a, const TimeRange &b)
 {
 	return TimeRange(std::max(a.in(), b.in()), std::min(a.out(), b.out()));
 }
 
-TimeRange TimeRange::operator+(const rational &rhs) const
+TimeRange TimeRange::operator+(const Rational &rhs) const
 {
 	TimeRange answer(*this);
 	answer += rhs;
 	return answer;
 }
 
-TimeRange TimeRange::operator-(const rational &rhs) const
+TimeRange TimeRange::operator-(const Rational &rhs) const
 {
 	TimeRange answer(*this);
 	answer -= rhs;
 	return answer;
 }
 
-const TimeRange &TimeRange::operator+=(const rational &rhs)
+const TimeRange &TimeRange::operator+=(const Rational &rhs)
 {
 	set_range(in_ + rhs, out_ + rhs);
 
 	return *this;
 }
 
-const TimeRange &TimeRange::operator-=(const rational &rhs)
+const TimeRange &TimeRange::operator-=(const Rational &rhs)
 {
 	set_range(in_ - rhs, out_ - rhs);
 
 	return *this;
 }
 
-std::list<TimeRange> TimeRange::Split(const int &chunk_size) const
+std::list<TimeRange> TimeRange::split(const int &chunk_size) const
 {
 	std::list<TimeRange> split_ranges;
 
 	int start_time =
-		std::floor(this->in().toDouble() / static_cast<double>(chunk_size)) *
+		std::floor(this->in().to_double() / static_cast<double>(chunk_size)) *
 		chunk_size;
 	int end_time =
-		std::ceil(this->out().toDouble() / static_cast<double>(chunk_size)) *
+		std::ceil(this->out().to_double() / static_cast<double>(chunk_size)) *
 		chunk_size;
 
 	for (int i = start_time; i < end_time; i += chunk_size) {
 		split_ranges.push_back(
-			TimeRange(std::max(this->in(), rational(i)),
-					  std::min(this->out(), rational(i + chunk_size))));
+			TimeRange(std::max(this->in(), Rational(i)),
+					  std::min(this->out(), Rational(i + chunk_size))));
 	}
 
 	return split_ranges;
@@ -188,7 +188,7 @@ void TimeRange::normalize()
 	// Calculate length
 	if (out_ == RATIONAL_MIN || out_ == RATIONAL_MAX || in_ == RATIONAL_MIN ||
 		in_ == RATIONAL_MAX) {
-		length_ = rational::NaN;
+		length_ = Rational::na_n;
 	} else {
 		length_ = out_ - in_;
 	}
@@ -212,8 +212,8 @@ void TimeRangeList::insert(TimeRange range_to_add)
 	for (auto it = array_.begin(); it != array_.end();) {
 		const TimeRange &compare = *it;
 
-		if (compare.OverlapsWith(range_to_add)) {
-			range_to_add = TimeRange::Combine(range_to_add, compare);
+		if (compare.overlaps_with(range_to_add)) {
+			range_to_add = TimeRange::combine(range_to_add, compare);
 			it = array_.erase(it);
 		} else {
 			it++;
@@ -239,7 +239,7 @@ bool TimeRangeList::contains(const TimeRange &range, bool in_inclusive,
 							 bool out_inclusive) const
 {
 	for (int i = 0; i < size(); i++) {
-		if (array_.at(i).Contains(range, in_inclusive, out_inclusive)) {
+		if (array_.at(i).contains(range, in_inclusive, out_inclusive)) {
 			return true;
 		}
 	}
@@ -247,14 +247,14 @@ bool TimeRangeList::contains(const TimeRange &range, bool in_inclusive,
 	return false;
 }
 
-void TimeRangeList::shift(const rational &diff)
+void TimeRangeList::shift(const Rational &diff)
 {
 	for (int i = 0; i < array_.size(); i++) {
 		array_[i] += diff;
 	}
 }
 
-void TimeRangeList::trim_in(const rational &diff)
+void TimeRangeList::trim_in(const Rational &diff)
 {
 	// Re-do list since we want to handle overlaps
 	TimeRangeList temp = *this;
@@ -268,7 +268,7 @@ void TimeRangeList::trim_in(const rational &diff)
 	}
 }
 
-void TimeRangeList::trim_out(const rational &diff)
+void TimeRangeList::trim_out(const Rational &diff)
 {
 	// Re-do list since we want to handle overlaps
 	TimeRangeList temp = *this;
@@ -282,7 +282,7 @@ void TimeRangeList::trim_out(const rational &diff)
 	}
 }
 
-TimeRangeList TimeRangeList::Intersects(const TimeRange &range) const
+TimeRangeList TimeRangeList::intersects(const TimeRange &range) const
 {
 	TimeRangeList intersect_list;
 
@@ -305,12 +305,12 @@ TimeRangeList TimeRangeList::Intersects(const TimeRange &range) const
 }
 
 TimeRangeListFrameIterator::TimeRangeListFrameIterator()
-	: TimeRangeListFrameIterator(TimeRangeList(), rational::NaN)
+	: TimeRangeListFrameIterator(TimeRangeList(), Rational::na_n)
 {
 }
 
 TimeRangeListFrameIterator::TimeRangeListFrameIterator(
-	const TimeRangeList &list, const rational &timebase)
+	const TimeRangeList &list, const Rational &timebase)
 	: list_(list)
 	, timebase_(timebase)
 	, range_index_(-1)
@@ -324,17 +324,17 @@ TimeRangeListFrameIterator::TimeRangeListFrameIterator(
 			<< std::endl;
 	}
 
-	UpdateIndexIfNecessary();
+	update_index_if_necessary();
 }
 
-rational TimeRangeListFrameIterator::Snap(const rational &r) const
+Rational TimeRangeListFrameIterator::snap(const Rational &r) const
 {
-	return Timecode::snap_time_to_timebase(r, timebase_, Timecode::kFloor);
+	return Timecode::snap_time_to_timebase(r, timebase_, Timecode::k_floor);
 }
 
-bool TimeRangeListFrameIterator::GetNext(rational *out)
+bool TimeRangeListFrameIterator::get_next(Rational *out)
 {
-	if (!HasNext()) {
+	if (!has_next()) {
 		return false;
 	}
 
@@ -345,7 +345,7 @@ bool TimeRangeListFrameIterator::GetNext(rational *out)
 	current_ += timebase_;
 
 	// If this time is outside the current range, jump to the next one
-	UpdateIndexIfNecessary();
+	update_index_if_necessary();
 
 	// Increment frame index
 	frame_index_++;
@@ -353,7 +353,7 @@ bool TimeRangeListFrameIterator::GetNext(rational *out)
 	return true;
 }
 
-bool TimeRangeListFrameIterator::HasNext() const
+bool TimeRangeListFrameIterator::has_next() const
 {
 	return range_index_ < list_.size();
 }
@@ -365,9 +365,9 @@ int TimeRangeListFrameIterator::size()
 		size_ = 0;
 
 		for (const TimeRange &range : list_) {
-			rational start = Snap(range.in());
-			rational end = Timecode::snap_time_to_timebase(
-				range.out(), timebase_, Timecode::kFloor);
+			Rational start = snap(range.in());
+			Rational end = Timecode::snap_time_to_timebase(
+				range.out(), timebase_, Timecode::k_floor);
 
 			if (end == range.out()) {
 				end -= timebase_;
@@ -383,14 +383,14 @@ int TimeRangeListFrameIterator::size()
 	return size_;
 }
 
-void TimeRangeListFrameIterator::UpdateIndexIfNecessary()
+void TimeRangeListFrameIterator::update_index_if_necessary()
 {
 	while (range_index_ < list_.size() &&
 		   (range_index_ == -1 || current_ >= list_.at(range_index_).out())) {
 		range_index_++;
 
 		if (range_index_ < list_.size()) {
-			current_ = Snap(list_.at(range_index_).in());
+			current_ = snap(list_.at(range_index_).in());
 		}
 	}
 }

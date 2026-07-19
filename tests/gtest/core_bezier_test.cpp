@@ -53,21 +53,21 @@ TEST(CoreBezier, Setters)
 
 TEST(CoreBezier, QuadraticXtoT)
 {
-	double t = Bezier::QuadraticXtoT(0.5, 0.0, 0.5, 1.0);
+	double t = Bezier::quadratic_xto_t(0.5, 0.0, 0.5, 1.0);
 	EXPECT_NEAR(t, 0.5, 0.00001);
 
-	t = Bezier::QuadraticXtoT(0.0, 0.0, 0.5, 1.0);
+	t = Bezier::quadratic_xto_t(0.0, 0.0, 0.5, 1.0);
 	EXPECT_NEAR(t, 0.0, 0.00001);
 
-	t = Bezier::QuadraticXtoT(1.0, 0.0, 0.5, 1.0);
+	t = Bezier::quadratic_xto_t(1.0, 0.0, 0.5, 1.0);
 	EXPECT_NEAR(t, 1.0, 0.00001);
 }
 
 TEST(CoreBezier, QuadraticTtoY)
 {
-	EXPECT_NEAR(Bezier::QuadraticTtoY(0.0, 0.5, 1.0, 0.0), 0.0, 0.00001);
-	EXPECT_NEAR(Bezier::QuadraticTtoY(0.0, 0.5, 1.0, 0.5), 0.5, 0.00001);
-	EXPECT_NEAR(Bezier::QuadraticTtoY(0.0, 0.5, 1.0, 1.0), 1.0, 0.00001);
+	EXPECT_NEAR(Bezier::quadratic_tto_y(0.0, 0.5, 1.0, 0.0), 0.0, 0.00001);
+	EXPECT_NEAR(Bezier::quadratic_tto_y(0.0, 0.5, 1.0, 0.5), 0.5, 0.00001);
+	EXPECT_NEAR(Bezier::quadratic_tto_y(0.0, 0.5, 1.0, 1.0), 1.0, 0.00001);
 }
 
 TEST(CoreBezier, QuadraticXtoY)
@@ -76,7 +76,7 @@ TEST(CoreBezier, QuadraticXtoY)
 	Imath::V2d b(0.5, 0.5);
 	Imath::V2d c(1.0, 1.0);
 
-	EXPECT_NEAR(Bezier::QuadraticXtoY(0.5, a, b, c), 0.5, 0.00001);
+	EXPECT_NEAR(Bezier::quadratic_xto_y(0.5, a, b, c), 0.5, 0.00001);
 }
 
 TEST(CoreBezier, CubicXtoT)
@@ -86,14 +86,14 @@ TEST(CoreBezier, CubicXtoT)
 	// and x(t) = 0.5 is solved by t = 0.5037592 (Newton-Raphson). The
 	// implementation bisects until |x(t) - x| < 1e-6 and dx/dt >= 0.99 on
 	// [0,1], so the returned t is well within 1e-5 of the true root.
-	double t = Bezier::CubicXtoT(0.5, 0.0, 0.33, 0.66, 1.0);
+	double t = Bezier::cubic_xto_t(0.5, 0.0, 0.33, 0.66, 1.0);
 	EXPECT_NEAR(t, 0.5037592, 1e-5);
 }
 
 TEST(CoreBezier, CubicTtoY)
 {
-	EXPECT_NEAR(Bezier::CubicTtoY(0.0, 0.33, 0.66, 1.0, 0.0), 0.0, 0.00001);
-	EXPECT_NEAR(Bezier::CubicTtoY(0.0, 0.33, 0.66, 1.0, 1.0), 1.0, 0.00001);
+	EXPECT_NEAR(Bezier::cubic_tto_y(0.0, 0.33, 0.66, 1.0, 0.0), 0.0, 0.00001);
+	EXPECT_NEAR(Bezier::cubic_tto_y(0.0, 0.33, 0.66, 1.0, 1.0), 1.0, 0.00001);
 }
 
 TEST(CoreBezier, CubicXtoY)
@@ -108,7 +108,7 @@ TEST(CoreBezier, CubicXtoY)
 	// the y curve is y(t) = 3(1-t)t^2 + t^3 = 3t^2 - 2t^3, which then yields
 	// y = 0.5056392. The implementation's 1e-6 bisection tolerance in x is
 	// amplified by dy/dt < 1.5, keeping the y error well under 1e-5.
-	double y = Bezier::CubicXtoY(0.5, a, b, c, d);
+	double y = Bezier::cubic_xto_y(0.5, a, b, c, d);
 	EXPECT_NEAR(y, 0.5056392, 1e-5);
 }
 

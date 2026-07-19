@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CORNERPINDISTORTNODE_H
-#define CORNERPINDISTORTNODE_H
+#ifndef OAK_CORNERPINDISTORTNODE_H
+#define OAK_CORNERPINDISTORTNODE_H
 
 #include <QVector2D>
 
@@ -38,7 +38,7 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(CornerPinDistortNode)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return tr("Corner Pin");
 	}
@@ -48,52 +48,52 @@ public:
 		return QStringLiteral("org.olivevideoeditor.Olive.cornerpin");
 	}
 
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
-		return { kCategoryDistort };
+		return { k_category_distort };
 	}
 
-	virtual QString Description() const override
+	virtual QString description() const override
 	{
 		return tr("Distort the image by dragging the corners.");
 	}
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
+	get_shader_code(const ShaderRequest &request) const override;
 
-	virtual void UpdateGizmoPositions(const NodeValueRow &row,
+	virtual void update_gizmo_positions(const NodeValueRow &row,
 									  const NodeGlobals &globals) override;
 
 	/**
    * @brief Convenience function - converts the 2D slider values from being
    * an offset to the actual pixel value.
    */
-	QPointF ValueToPixel(int value, const NodeValueRow &row,
+	QPointF value_to_pixel(int value, const NodeValueRow &row,
 						 const QVector2D &resolution) const;
 
-	static const QString kTextureInput;
-	static const QString kPerspectiveInput;
-	static const QString kTopLeftInput;
-	static const QString kTopRightInput;
-	static const QString kBottomRightInput;
-	static const QString kBottomLeftInput;
+	static const QString k_texture_input;
+	static const QString k_perspective_input;
+	static const QString k_top_left_input;
+	static const QString k_top_right_input;
+	static const QString k_bottom_right_input;
+	static const QString k_bottom_left_input;
 
 protected slots:
-	virtual void GizmoDragMove(double x, double y,
+	virtual void gizmo_drag_move(double x, double y,
 							   const Qt::KeyboardModifiers &modifiers) override;
 
 private:
 	// Gizmo variables
-	static const int kGizmoCornerCount = 4;
-	PointGizmo *gizmo_resize_handle_[kGizmoCornerCount];
+	static const int k_gizmo_corner_count = 4;
+	PointGizmo *gizmo_resize_handle_[k_gizmo_corner_count];
 	PolygonGizmo *gizmo_whole_rect_;
 };
 
 }
 
-#endif // CORNERPINDISTORTNODE_H
+#endif // OAK_CORNERPINDISTORTNODE_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CODECSECTION_H
-#define CODECSECTION_H
+#ifndef OAK_CODECSECTION_H
+#define OAK_CODECSECTION_H
 
 #include <QWidget>
 
@@ -34,12 +34,12 @@ class CodecSection : public QWidget {
 public:
 	CodecSection(QWidget *parent = nullptr);
 
-	virtual void AddOpts(EncodingParams *params)
+	virtual void add_opts(EncodingParams *params)
 	{
 		Q_UNUSED(params)
 	}
 
-	virtual void SetOpts(const EncodingParams *p)
+	virtual void set_opts(const EncodingParams *p)
 	{
 		Q_UNUSED(p)
 	}
@@ -47,4 +47,4 @@ public:
 
 }
 
-#endif // CODECSECTION_H
+#endif // OAK_CODECSECTION_H

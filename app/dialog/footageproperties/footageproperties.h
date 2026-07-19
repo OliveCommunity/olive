@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef MEDIAPROPERTIESDIALOG_H
-#define MEDIAPROPERTIESDIALOG_H
+#ifndef OAK_MEDIAPROPERTIESDIALOG_H
+#define OAK_MEDIAPROPERTIESDIALOG_H
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -64,7 +64,7 @@ private:
 		StreamEnableChangeCommand(Footage *footage, Track::Type type,
 								  int index_in_type, bool enabled);
 
-		virtual Project *GetRelevantProject() const override;
+		virtual Project *get_relevant_project() const override;
 
 	protected:
 		virtual void redo() override;
@@ -82,10 +82,10 @@ private:
 	class FootageSetSourceStartTimeCommand : public UndoCommand {
 	public:
 		FootageSetSourceStartTimeCommand(Footage *footage, bool enabled,
-										 const rational &time,
+										 const Rational &time,
 										 const QString &source);
 
-		virtual Project *GetRelevantProject() const override;
+		virtual Project *get_relevant_project() const override;
 
 	protected:
 		virtual void redo() override;
@@ -95,11 +95,11 @@ private:
 		Footage *footage_;
 
 		bool new_enabled_;
-		rational new_time_;
+		Rational new_time_;
 		QString new_source_;
 
 		bool old_enabled_;
-		rational old_time_;
+		Rational old_time_;
 		QString old_source_;
 	};
 
@@ -131,12 +131,12 @@ private:
 	/**
    * @brief A list widget for listing the tracks in Media
    */
-	QListWidget *track_list;
+	QListWidget *track_list_;
 
 	/**
    * @brief Frame rate to conform to
    */
-	QDoubleSpinBox *conform_fr;
+	QDoubleSpinBox *conform_fr_;
 
 private slots:
 	/**
@@ -147,4 +147,4 @@ private slots:
 
 }
 
-#endif // MEDIAPROPERTIESDIALOG_H
+#endif // OAK_MEDIAPROPERTIESDIALOG_H

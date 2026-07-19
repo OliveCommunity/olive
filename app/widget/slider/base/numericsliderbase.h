@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NUMERICSLIDERBASE_H
-#define NUMERICSLIDERBASE_H
+#ifndef OAK_NUMERICSLIDERBASE_H
+#define OAK_NUMERICSLIDERBASE_H
 
 #include "sliderbase.h"
 
@@ -32,41 +32,41 @@ class NumericSliderBase : public SliderBase {
 public:
 	NumericSliderBase(QWidget *parent = nullptr);
 
-	void SetLadderElementCount(int b)
+	void set_ladder_element_count(int b)
 	{
 		ladder_element_count_ = b;
 	}
 
-	void SetDragMultiplier(const double &d);
+	void set_drag_multiplier(const double &d);
 
-	void SetOffset(const QVariant &v);
+	void set_offset(const QVariant &v);
 
-	bool IsDragging() const;
+	bool is_dragging() const;
 
 protected:
-	const QVariant &GetOffset() const
+	const QVariant &get_offset() const
 	{
 		return offset_;
 	}
 
-	virtual QVariant AdjustDragDistanceInternal(const QVariant &start,
+	virtual QVariant adjust_drag_distance_internal(const QVariant &start,
 												const double &drag) const;
 
-	void SetMinimumInternal(const QVariant &v);
+	void set_minimum_internal(const QVariant &v);
 
-	void SetMaximumInternal(const QVariant &v);
+	void set_maximum_internal(const QVariant &v);
 
-	virtual bool ValueGreaterThan(const QVariant &lhs,
+	virtual bool value_greater_than(const QVariant &lhs,
 								  const QVariant &rhs) const;
 
-	virtual bool ValueLessThan(const QVariant &lhs, const QVariant &rhs) const;
+	virtual bool value_less_than(const QVariant &lhs, const QVariant &rhs) const;
 
-	virtual bool CanSetValue() const override;
+	virtual bool can_set_value() const override;
 
 private:
-	bool UsingLadders() const;
+	bool using_ladders() const;
 
-	virtual QVariant AdjustValue(const QVariant &value) const override;
+	virtual QVariant adjust_value(const QVariant &value) const override;
 
 	SliderLadder *drag_ladder_;
 
@@ -93,18 +93,18 @@ private:
 	/**
    * @brief An effects slider somewhere is being dragged
    */
-	static bool effects_slider_is_being_dragged_;
+	static bool effects_slider_is_being_dragged;
 
 private slots:
-	void LabelPressed();
+	void label_pressed();
 
-	void RepositionLadder();
+	void reposition_ladder();
 
-	void LadderDragged(int value, double multiplier);
+	void ladder_dragged(int value, double multiplier);
 
-	void LadderReleased();
+	void ladder_released();
 };
 
 }
 
-#endif // NUMERICSLIDERBASE_H
+#endif // OAK_NUMERICSLIDERBASE_H

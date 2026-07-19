@@ -28,23 +28,23 @@
 namespace olive
 {
 
-const int ScrollingLabel::kMinLineHeight = 10;
+const int ScrollingLabel::k_min_line_height = 10;
 
 ScrollingLabel::ScrollingLabel(QWidget *parent)
 	: QWidget(parent)
 	, animate_(0)
 {
 	timer_.setInterval(50);
-	connect(&timer_, &QTimer::timeout, this, &ScrollingLabel::AnimationUpdate);
+	connect(&timer_, &QTimer::timeout, this, &ScrollingLabel::animation_update);
 }
 
 ScrollingLabel::ScrollingLabel(const QStringList &text, QWidget *parent)
 	: ScrollingLabel(parent)
 {
-	SetText(text);
+	set_text(text);
 }
 
-void ScrollingLabel::SetText(const QStringList &text)
+void ScrollingLabel::set_text(const QStringList &text)
 {
 	text_ = text;
 
@@ -53,10 +53,10 @@ void ScrollingLabel::SetText(const QStringList &text)
 
 	int width = 0;
 	foreach (const QString &s, text_) {
-		width = qMax(width, QtUtils::QFontMetricsWidth(fm, s));
+		width = qMax(width, QtUtils::q_font_metrics_width(fm, s));
 	}
 
-	setMinimumSize(width, text_height_ * kMinLineHeight);
+	setMinimumSize(width, text_height_ * k_min_line_height);
 }
 
 void ScrollingLabel::paintEvent(QPaintEvent *e)
@@ -82,15 +82,15 @@ void ScrollingLabel::paintEvent(QPaintEvent *e)
 
 			const QString &s = text_.at(i);
 
-			int width = QtUtils::QFontMetricsWidth(fm, s);
+			int width = QtUtils::q_font_metrics_width(fm, s);
 			p.drawText(half_width / 2 - width / 2, text_y, s);
 		}
 
 		for (int y = 0; y < text_height_; y++) {
 			double mul = double(y) / double(text_height_);
 
-			SetOpacityOfScanLine(map.scanLine(y), map.width(), 4, mul);
-			SetOpacityOfScanLine(map.scanLine(map.height() - 1 - y),
+			set_opacity_of_scan_line(map.scanLine(y), map.width(), 4, mul);
+			set_opacity_of_scan_line(map.scanLine(map.height() - 1 - y),
 								 map.width(), 4, mul);
 		}
 	}
@@ -99,7 +99,7 @@ void ScrollingLabel::paintEvent(QPaintEvent *e)
 	wp.drawImage(0, 0, map);
 }
 
-void ScrollingLabel::SetOpacityOfScanLine(uchar *scan_line, int width,
+void ScrollingLabel::set_opacity_of_scan_line(uchar *scan_line, int width,
 										  int channels, double mul)
 {
 	for (int x = 0; x < width; x++) {
@@ -111,7 +111,7 @@ void ScrollingLabel::SetOpacityOfScanLine(uchar *scan_line, int width,
 	}
 }
 
-void ScrollingLabel::AnimationUpdate()
+void ScrollingLabel::animation_update()
 {
 	animate_++;
 

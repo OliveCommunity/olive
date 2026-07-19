@@ -28,26 +28,26 @@ namespace olive
 namespace plugin
 {
 
-static const char *PixelDepthToOfx(core::PixelFormat format)
+static const char *pixel_depth_to_ofx(core::PixelFormat format)
 {
 	switch (format) {
-	case core::PixelFormat::U8:
+	case core::PixelFormat::u8:
 		return kOfxBitDepthByte;
-	case core::PixelFormat::U16:
+	case core::PixelFormat::u16:
 		return kOfxBitDepthShort;
-	case core::PixelFormat::F16:
+	case core::PixelFormat::f16:
 		return kOfxBitDepthHalf;
-	case core::PixelFormat::F32:
+	case core::PixelFormat::f32:
 		return kOfxBitDepthFloat;
-	case core::PixelFormat::INVALID:
-	case core::PixelFormat::COUNT:
+	case core::PixelFormat::invalid:
+	case core::PixelFormat::count:
 		break;
 	}
 
 	return kOfxBitDepthNone;
 }
 
-static const char *ComponentsToOfx(int channel_count)
+static const char *components_to_ofx(int channel_count)
 {
 	switch (channel_count) {
 	case 1:
@@ -67,7 +67,7 @@ Image::Image(OFX::Host::ImageEffect::ClipInstance &clip_instance)
 	: OFX::Host::ImageEffect::Image(clip_instance)
 	, width_(0)
 	, height_(0)
-	, format_(core::PixelFormat::INVALID)
+	, format_(core::PixelFormat::invalid)
 	, premultiplied_alpha_(false)
 	, channel_count_(0)
 	, row_bytes_(0)
@@ -82,30 +82,30 @@ Image::Image(OFX::Host::ImageEffect::ClipInstance &clip_instance,
 	: OFX::Host::ImageEffect::Image(clip_instance)
 	, width_(0)
 	, height_(0)
-	, format_(core::PixelFormat::INVALID)
+	, format_(core::PixelFormat::invalid)
 	, premultiplied_alpha_(false)
 	, channel_count_(0)
 	, row_bytes_(0)
 	, bounds_{ 0, 0, 0, 0 }
 	, rod_{ 0, 0, 0, 0 }
 {
-	AllocateFromParams(params, bounds, rod, clear);
+	allocate_from_params(params, bounds, rod, clear);
 }
 
 Image::~Image()
 {
 }
 
-void Image::AllocateFromParams(const VideoParams &params,
+void Image::allocate_from_params(const VideoParams &params,
 							   const OfxRectI &bounds, const OfxRectI &rod,
 							   bool clear)
 {
-	Allocate(bounds.x2 - bounds.x1, bounds.y2 - bounds.y1, params.format(),
+	allocate(bounds.x2 - bounds.x1, bounds.y2 - bounds.y1, params.format(),
 			 params.channel_count(), params.premultiplied_alpha(), bounds, rod,
 			 clear);
 }
 
-void Image::EnsureAllocatedFromParams(const VideoParams &params,
+void Image::ensure_allocated_from_params(const VideoParams &params,
 									  const OfxRectI &bounds,
 									  const OfxRectI &rod, bool clear)
 {
@@ -120,13 +120,13 @@ void Image::EnsureAllocatedFromParams(const VideoParams &params,
 				(rod_.x2 == rod.x2) && (rod_.y2 == rod.y2);
 
 	if (!same) {
-		AllocateFromParams(params, bounds, rod, clear);
+		allocate_from_params(params, bounds, rod, clear);
 	} else if (clear && !image_.empty()) {
 		std::fill(image_.begin(), image_.end(), 0);
 	}
 }
 
-void Image::Allocate(int width, int height, core::PixelFormat format,
+void Image::allocate(int width, int height, core::PixelFormat format,
 					 int channel_count, bool premultiplied_alpha,
 					 const OfxRectI &bounds, const OfxRectI &rod, bool clear)
 {
@@ -161,8 +161,8 @@ void Image::Allocate(int width, int height, core::PixelFormat format,
 	setIntProperty(kOfxImagePropRegionOfDefinition, rod.x2, 2);
 	setIntProperty(kOfxImagePropRegionOfDefinition, rod.y2, 3);
 	setStringProperty(kOfxImageEffectPropComponents,
-					  ComponentsToOfx(channel_count_));
-	setStringProperty(kOfxImageEffectPropPixelDepth, PixelDepthToOfx(format_));
+					  components_to_ofx(channel_count_));
+	setStringProperty(kOfxImageEffectPropPixelDepth, pixel_depth_to_ofx(format_));
 	setStringProperty(kOfxImageEffectPropPreMultiplication,
 					  premultiplied_alpha_ ? kOfxImagePreMultiplied :
 											 kOfxImageUnPreMultiplied);
@@ -170,21 +170,21 @@ void Image::Allocate(int width, int height, core::PixelFormat format,
 
 core::PixelFormat Image::pixel_format()
 {
-	if (format_ != core::PixelFormat::INVALID) {
+	if (format_ != core::PixelFormat::invalid) {
 		return format_;
 	}
 
 	std::string type = getStringProperty(kOfxImageEffectPropPixelDepth);
 	if (type == kOfxBitDepthByte) {
-		format_ = core::PixelFormat::U8;
+		format_ = core::PixelFormat::u8;
 	} else if (type == kOfxBitDepthShort) {
-		format_ = core::PixelFormat::U16;
+		format_ = core::PixelFormat::u16;
 	} else if (type == kOfxBitDepthHalf) {
-		format_ = core::PixelFormat::F16;
+		format_ = core::PixelFormat::f16;
 	} else if (type == kOfxBitDepthFloat) {
-		format_ = core::PixelFormat::F32;
+		format_ = core::PixelFormat::f32;
 	} else {
-		format_ = core::PixelFormat::INVALID;
+		format_ = core::PixelFormat::invalid;
 	}
 	return format_;
 }

@@ -21,8 +21,8 @@
 // Created by mikesolar on 25-10-1.
 //
 
-#ifndef OLIVECLIP_H
-#define OLIVECLIP_H
+#ifndef OAK_OLIVECLIP_H
+#define OAK_OLIVECLIP_H
 #include "image.h"
 #include "ofxCore.h"
 #include "ofxhClip.h"
@@ -37,10 +37,10 @@ namespace plugin
 {
 class OliveClipInstance : public OFX::Host::ImageEffect::ClipInstance {
 public:
-	OliveClipInstance(OFX::Host::ImageEffect::Instance *effectInstance,
+	OliveClipInstance(OFX::Host::ImageEffect::Instance *effect_instance,
 					  OFX::Host::ImageEffect::ClipDescriptor &desc,
 					  VideoParams &params)
-		: ClipInstance(effectInstance, desc)
+		: ClipInstance(effect_instance, desc)
 		, params_(params)
 		, defaultRegionOfDefinitions_{ 0, 0, 0, 0 }
 		, name_(desc.getName())
@@ -53,24 +53,24 @@ public:
 	const std::string &getPremult() const override;
 	double getAspectRatio() const override;
 	double getFrameRate() const override;
-	void getFrameRange(double &startFrame, double &endFrame) const override;
+	void getFrameRange(double &start_frame, double &end_frame) const override;
 	const std::string &getFieldOrder() const override;
 	bool getConnected() const override;
 	double getUnmappedFrameRate() const override;
-	void getUnmappedFrameRange(double &startFrame,
-							   double &endFrame) const override;
+	void getUnmappedFrameRange(double &start_frame,
+							   double &end_frame) const override;
 	bool getContinuousSamples() const override;
 	OFX::Host::ImageEffect::Image *
-	getImage(OfxTime time, const OfxRectD *optionalBounds) override;
+	getImage(OfxTime time, const OfxRectD *optional_bounds) override;
 	OfxRectD getRegionOfDefinition(OfxTime time) const override;
 
-	void setRegionOfDefinition(OfxRectD regionOfDefinition, OfxTime time);
-	void setDefaultRegionOfDefinition(OfxRectD regionOfDefinition);
+	void setRegionOfDefinition(OfxRectD region_of_definition, OfxTime time);
+	void setDefaultRegionOfDefinition(OfxRectD region_of_definition);
 	void setParams(const VideoParams &params);
 #ifdef OFX_SUPPORTS_OPENGLRENDER
 	OFX::Host::ImageEffect::Texture *
 	loadTexture(OfxTime time, const char *format,
-				const OfxRectD *optionalBounds) override;
+				const OfxRectD *optional_bounds) override;
 #endif
 
 	void setInputTexture(TexturePtr texture, OfxTime time,
@@ -82,9 +82,9 @@ public:
 
 	// Prune old entries from the images_ cache to prevent unbounded growth.
 	// Output clip images are not pruned (they are typically single-frame).
-	void pruneImagesCache();
+	void prune_images_cache();
 
-	static constexpr int kMaxInputImageCache = 8;
+	static constexpr int k_max_input_image_cache = 8;
 
 private:
 	VideoParams params_;
@@ -103,4 +103,4 @@ private:
 }
 }
 
-#endif //OLIVECLIP_H
+#endif //OAK_OLIVECLIP_H

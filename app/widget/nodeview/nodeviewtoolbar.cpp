@@ -36,41 +36,41 @@ NodeViewToolBar::NodeViewToolBar(QWidget *parent)
 
 	add_node_btn_ = new QPushButton();
 	connect(add_node_btn_, &QPushButton::clicked, this,
-			&NodeViewToolBar::AddNodeClicked);
+			&NodeViewToolBar::add_node_clicked);
 	layout->addWidget(add_node_btn_);
 
 	minimap_btn_ = new QPushButton();
 	minimap_btn_->setCheckable(true);
 	connect(minimap_btn_, &QPushButton::clicked, this,
-			&NodeViewToolBar::MiniMapEnabledToggled);
+			&NodeViewToolBar::mini_map_enabled_toggled);
 	layout->addWidget(minimap_btn_);
 
 	layout->addStretch();
 
-	Retranslate();
-	UpdateIcons();
+	retranslate();
+	update_icons();
 }
 
 void NodeViewToolBar::changeEvent(QEvent *e)
 {
 	if (e->type() == QEvent::LanguageChange) {
-		Retranslate();
+		retranslate();
 	} else if (e->type() == QEvent::StyleChange) {
-		UpdateIcons();
+		update_icons();
 	}
 	super::changeEvent(e);
 }
 
-void NodeViewToolBar::Retranslate()
+void NodeViewToolBar::retranslate()
 {
 	add_node_btn_->setToolTip(tr("Add Node"));
 	minimap_btn_->setToolTip(tr("Toggle Mini-Map"));
 }
 
-void NodeViewToolBar::UpdateIcons()
+void NodeViewToolBar::update_icons()
 {
-	add_node_btn_->setIcon(icon::Add);
-	minimap_btn_->setIcon(icon::MiniMap);
+	add_node_btn_->setIcon(icon::add);
+	minimap_btn_->setIcon(icon::mini_map);
 }
 
 }

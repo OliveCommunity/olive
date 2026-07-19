@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PATHWIDGET_H
-#define PATHWIDGET_H
+#ifndef OAK_PATHWIDGET_H
+#define OAK_PATHWIDGET_H
 
 #include <QLineEdit>
 #include <QPushButton>
@@ -41,9 +41,9 @@ public:
 	}
 
 private slots:
-	void BrowseClicked();
+	void browse_clicked();
 
-	void LineEditChanged();
+	void line_edit_changed();
 
 private:
 	QLineEdit *path_edit_;
@@ -53,4 +53,4 @@ private:
 
 }
 
-#endif // PATHWIDGET_H
+#endif // OAK_PATHWIDGET_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef EDITTIMELINETOOL_H
-#define EDITTIMELINETOOL_H
+#ifndef OAK_EDITTIMELINETOOL_H
+#define OAK_EDITTIMELINETOOL_H
 
 #include "beam.h"
 #include "tool.h"
@@ -33,10 +33,10 @@ class EditTool : public BeamTool {
 public:
 	EditTool(TimelineWidget *parent);
 
-	virtual void MousePress(TimelineViewMouseEvent *event) override;
-	virtual void MouseMove(TimelineViewMouseEvent *event) override;
-	virtual void MouseRelease(TimelineViewMouseEvent *event) override;
-	virtual void MouseDoubleClick(TimelineViewMouseEvent *event) override;
+	virtual void mouse_press(TimelineViewMouseEvent *event) override;
+	virtual void mouse_move(TimelineViewMouseEvent *event) override;
+	virtual void mouse_release(TimelineViewMouseEvent *event) override;
+	virtual void mouse_double_click(TimelineViewMouseEvent *event) override;
 
 private:
 	TimelineWidgetSelections start_selections_;
@@ -46,4 +46,4 @@ private:
 
 }
 
-#endif // EDITTIMELINETOOL_H
+#endif // OAK_EDITTIMELINETOOL_H

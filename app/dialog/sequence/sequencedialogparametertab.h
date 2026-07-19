@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef SEQUENCEDIALOGPARAMETERTAB_H
-#define SEQUENCEDIALOGPARAMETERTAB_H
+#ifndef OAK_SEQUENCEDIALOGPARAMETERTAB_H
+#define OAK_SEQUENCEDIALOGPARAMETERTAB_H
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -37,52 +37,52 @@ class SequenceDialogParameterTab : public QWidget {
 public:
 	SequenceDialogParameterTab(Sequence *sequence, QWidget *parent = nullptr);
 
-	int GetSelectedVideoWidth() const
+	int get_selected_video_width() const
 	{
-		return width_slider_->GetValue();
+		return width_slider_->get_value();
 	}
 
-	int GetSelectedVideoHeight() const
+	int get_selected_video_height() const
 	{
-		return height_slider_->GetValue();
+		return height_slider_->get_value();
 	}
 
-	rational GetSelectedVideoFrameRate() const
+	Rational get_selected_video_frame_rate() const
 	{
-		return framerate_combo_->GetFrameRate();
+		return framerate_combo_->get_frame_rate();
 	}
 
-	rational GetSelectedVideoPixelAspect() const
+	Rational get_selected_video_pixel_aspect() const
 	{
-		return pixelaspect_combo_->GetPixelAspectRatio();
+		return pixelaspect_combo_->get_pixel_aspect_ratio();
 	}
 
-	VideoParams::Interlacing GetSelectedVideoInterlacingMode() const
+	VideoParams::Interlacing get_selected_video_interlacing_mode() const
 	{
-		return interlacing_combo_->GetInterlaceMode();
+		return interlacing_combo_->get_interlace_mode();
 	}
 
-	int GetSelectedAudioSampleRate() const
+	int get_selected_audio_sample_rate() const
 	{
-		return audio_sample_rate_field_->GetSampleRate();
+		return audio_sample_rate_field_->get_sample_rate();
 	}
 
-	[[nodiscard]] uint64_t GetSelectedAudioChannelLayout() const
+	[[nodiscard]] uint64_t get_selected_audio_channel_layout() const
 	{
-		return audio_channels_field_->GetChannelLayout();
+		return audio_channels_field_->get_channel_layout();
 	}
 
-	int GetSelectedPreviewResolution() const
+	int get_selected_preview_resolution() const
 	{
-		return preview_resolution_field_->GetDivider();
+		return preview_resolution_field_->get_divider();
 	}
 
-	PixelFormat GetSelectedPreviewFormat() const
+	PixelFormat get_selected_preview_format() const
 	{
-		return preview_format_field_->GetPixelFormat();
+		return preview_format_field_->get_pixel_format();
 	}
 
-	bool GetSelectedPreviewAutoCache() const
+	bool get_selected_preview_auto_cache() const
 	{
 		//return preview_autocache_field_->isChecked();
 		// TEMP: Disable sequence auto-cache, wanna see if clip cache supersedes it.
@@ -90,10 +90,10 @@ public:
 	}
 
 public slots:
-	void PresetChanged(const SequencePreset &preset);
+	void preset_changed(const SequencePreset &preset);
 
 signals:
-	void SaveParametersAsPreset(const SequencePreset &preset);
+	void save_parameters_as_preset(const SequencePreset &preset);
 
 private:
 	IntegerSlider *width_slider_;
@@ -119,11 +119,11 @@ private:
 	QCheckBox *preview_autocache_field_;
 
 private slots:
-	void SavePresetClicked();
+	void save_preset_clicked();
 
-	void UpdatePreviewResolutionLabel();
+	void update_preview_resolution_label();
 };
 
 }
 
-#endif // SEQUENCEDIALOGPARAMETERTAB_H
+#endif // OAK_SEQUENCEDIALOGPARAMETERTAB_H

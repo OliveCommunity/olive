@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CODECSTACK_H
-#define CODECSTACK_H
+#ifndef OAK_CODECSTACK_H
+#define OAK_CODECSTACK_H
 
 #include <QStackedWidget>
 
@@ -37,9 +37,9 @@ public:
 signals:
 
 private slots:
-	void OnChange(int index);
+	void on_change(int index);
 };
 
 }
 
-#endif // CODECSTACK_H
+#endif // OAK_CODECSTACK_H

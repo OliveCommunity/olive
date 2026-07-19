@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PRECACHETASK_H
-#define PRECACHETASK_H
+#ifndef OAK_PRECACHETASK_H
+#define OAK_PRECACHETASK_H
 
 #include "node/project/footage/footage.h"
 #include "node/project/sequence/sequence.h"
@@ -37,12 +37,12 @@ public:
 	virtual ~PreCacheTask() override;
 
 protected:
-	virtual bool Run() override;
+	virtual bool run() override;
 
-	virtual bool FrameDownloaded(FramePtr frame,
-								 const rational &times) override;
+	virtual bool frame_downloaded(FramePtr frame,
+								 const Rational &times) override;
 
-	virtual bool AudioDownloaded(const TimeRange &range,
+	virtual bool audio_downloaded(const TimeRange &range,
 								 const SampleBuffer &samples) override;
 
 private:
@@ -53,4 +53,4 @@ private:
 
 }
 
-#endif // PRECACHETASK_H
+#endif // OAK_PRECACHETASK_H

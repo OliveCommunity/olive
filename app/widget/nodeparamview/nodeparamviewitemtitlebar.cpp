@@ -37,7 +37,7 @@ NodeParamViewItemTitleBar::NodeParamViewItemTitleBar(QWidget *parent)
 
 	collapse_btn_ = new CollapseButton(this);
 	connect(collapse_btn_, &QPushButton::clicked, this,
-			&NodeParamViewItemTitleBar::ExpandedStateChanged);
+			&NodeParamViewItemTitleBar::expanded_state_changed);
 	layout->addWidget(collapse_btn_);
 
 	lbl_ = new QLabel(this);
@@ -47,13 +47,13 @@ NodeParamViewItemTitleBar::NodeParamViewItemTitleBar(QWidget *parent)
 	layout->addStretch();
 
 	add_fx_btn_ = new QPushButton(this);
-	add_fx_btn_->setIcon(icon::AddEffect);
+	add_fx_btn_->setIcon(icon::add_effect);
 	add_fx_btn_->setFixedSize(add_fx_btn_->sizeHint().height(),
 							  add_fx_btn_->sizeHint().height());
 	add_fx_btn_->setVisible(false);
 	layout->addWidget(add_fx_btn_);
 	connect(add_fx_btn_, &QPushButton::clicked, this,
-			&NodeParamViewItemTitleBar::AddEffectButtonClicked);
+			&NodeParamViewItemTitleBar::add_effect_button_clicked);
 
 	pin_btn_ = new QPushButton(QStringLiteral("P"), this);
 	pin_btn_->setCheckable(true);
@@ -62,16 +62,16 @@ NodeParamViewItemTitleBar::NodeParamViewItemTitleBar(QWidget *parent)
 	pin_btn_->setVisible(false);
 	layout->addWidget(pin_btn_);
 	connect(pin_btn_, &QPushButton::clicked, this,
-			&NodeParamViewItemTitleBar::PinToggled);
+			&NodeParamViewItemTitleBar::pin_toggled);
 
 	enabled_checkbox_ = new QCheckBox(this);
 	enabled_checkbox_->setVisible(false);
 	layout->addWidget(enabled_checkbox_);
 	connect(enabled_checkbox_, &QCheckBox::clicked, this,
-			&NodeParamViewItemTitleBar::EnabledCheckBoxClicked);
+			&NodeParamViewItemTitleBar::enabled_check_box_clicked);
 }
 
-void NodeParamViewItemTitleBar::SetExpanded(bool e)
+void NodeParamViewItemTitleBar::set_expanded(bool e)
 {
 	draw_border_ = e;
 	collapse_btn_->setChecked(e);
@@ -97,7 +97,7 @@ void NodeParamViewItemTitleBar::mousePressEvent(QMouseEvent *event)
 {
 	QWidget::mousePressEvent(event);
 
-	emit Clicked();
+	emit clicked();
 }
 
 void NodeParamViewItemTitleBar::mouseDoubleClickEvent(QMouseEvent *event)

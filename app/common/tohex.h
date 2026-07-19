@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef TOHEX_H
-#define TOHEX_H
+#ifndef OAK_TOHEX_H
+#define OAK_TOHEX_H
 
 #include <QString>
 #include <QtGlobal>
@@ -27,11 +27,11 @@
 namespace olive
 {
 
-inline QString ToHex(quint64 t)
+inline QString to_hex(quint64 t)
 {
 	return QStringLiteral("%1").arg(t, 0, 16);
 }
 
 }
 
-#endif // TOHEX_H
+#endif // OAK_TOHEX_H

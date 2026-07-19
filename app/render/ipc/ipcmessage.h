@@ -18,8 +18,8 @@
 
 ***/
 
-#ifndef IPC_IPCMESSAGE_H
-#define IPC_IPCMESSAGE_H
+#ifndef OAK_IPC_IPCMESSAGE_H
+#define OAK_IPC_IPCMESSAGE_H
 
 #include <cstdint>
 #include <QByteArray>
@@ -55,14 +55,14 @@ namespace ipc
  */
 namespace msgtype
 {
-constexpr const char *kHandshake = "handshake";
-constexpr const char *kLoadGraph = "load_graph";
-constexpr const char *kRenderFrame = "render_frame";
-constexpr const char *kFrameReady = "frame_ready";
-constexpr const char *kCancel = "cancel";
-constexpr const char *kGraphUpdate = "graph_update";
-constexpr const char *kShutdown = "shutdown";
-constexpr const char *kError = "error";
+constexpr const char *k_handshake = "handshake";
+constexpr const char *k_load_graph = "load_graph";
+constexpr const char *k_render_frame = "render_frame";
+constexpr const char *k_frame_ready = "frame_ready";
+constexpr const char *k_cancel = "cancel";
+constexpr const char *k_graph_update = "graph_update";
+constexpr const char *k_shutdown = "shutdown";
+constexpr const char *k_error = "error";
 } // namespace msgtype
 
 /**
@@ -71,7 +71,7 @@ constexpr const char *kError = "error";
  * Serializes `obj` to compact JSON, appends '\n', and writes the whole line in one call. Returns
  * true only if the full line was written.
  */
-bool WriteMessage(QIODevice *device, const QJsonObject &obj);
+bool write_message(QIODevice *device, const QJsonObject &obj);
 
 /**
  * @brief Pull one complete NDJSON line out of `buffer` and parse it.
@@ -82,7 +82,7 @@ bool WriteMessage(QIODevice *device, const QJsonObject &obj);
  * and continue rather than wedge. Supports the typical "append bytes as they arrive, then drain
  * complete lines" reader loop on a pipe.
  */
-bool ReadMessage(QByteArray *buffer, QJsonObject *out, bool *ok = nullptr);
+bool read_message(QByteArray *buffer, QJsonObject *out, bool *ok = nullptr);
 
 // ---- Typed message builders / parsers -------------------------------------------------------
 //
@@ -100,8 +100,8 @@ struct HandshakeMsg {
 	qint64 slot_data_bytes = 0; ///< Per-output-slot pixel block size.
 	qint64 input_slot_data_bytes = 0; ///< Per-input-slot pixel block size.
 
-	QJsonObject ToJson() const;
-	static bool FromJson(const QJsonObject &o, HandshakeMsg *out);
+	QJsonObject to_json() const;
+	static bool from_json(const QJsonObject &o, HandshakeMsg *out);
 };
 
 struct RenderFrameMsg {
@@ -129,33 +129,33 @@ struct RenderFrameMsg {
 	QString color_view;
 	QString color_look;
 
-	QJsonObject ToJson() const;
-	static bool FromJson(const QJsonObject &o, RenderFrameMsg *out);
+	QJsonObject to_json() const;
+	static bool from_json(const QJsonObject &o, RenderFrameMsg *out);
 };
 
 struct FrameReadyMsg {
 	qint64 ticket_id = 0;
 	int output_slot = 0; ///< Index into the worker->main output FrameSlotPool.
 
-	QJsonObject ToJson() const;
-	static bool FromJson(const QJsonObject &o, FrameReadyMsg *out);
+	QJsonObject to_json() const;
+	static bool from_json(const QJsonObject &o, FrameReadyMsg *out);
 };
 
 struct CancelMsg {
 	qint64 ticket_id = 0;
 
-	QJsonObject ToJson() const;
-	static bool FromJson(const QJsonObject &o, CancelMsg *out);
+	QJsonObject to_json() const;
+	static bool from_json(const QJsonObject &o, CancelMsg *out);
 };
 
 struct LoadGraphMsg {
 	QString path; ///< Temporary file holding the serialized node graph.
 
-	QJsonObject ToJson() const;
-	static bool FromJson(const QJsonObject &o, LoadGraphMsg *out);
+	QJsonObject to_json() const;
+	static bool from_json(const QJsonObject &o, LoadGraphMsg *out);
 };
 
 } // namespace ipc
 } // namespace olive
 
-#endif // IPC_IPCMESSAGE_H
+#endif // OAK_IPC_IPCMESSAGE_H

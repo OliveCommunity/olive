@@ -39,15 +39,15 @@ ExportSavePresetDialog::ExportSavePresetDialog(const EncodingParams &p,
 	name_edit_ = new QLineEdit();
 
 	// Populate existing list
-	QStringList l = EncodingParams::GetListOfPresets();
+	QStringList l = EncodingParams::get_list_of_presets();
 	if (!l.empty()) {
-		auto list_widget_ = new QListWidget();
+		auto list_widget = new QListWidget();
 		for (const QString &f : l) {
-			list_widget_->addItem(f);
+			list_widget->addItem(f);
 		}
-		connect(list_widget_, &QListWidget::currentTextChanged, name_edit_,
+		connect(list_widget, &QListWidget::currentTextChanged, name_edit_,
 				&QLineEdit::setText);
-		layout->addWidget(list_widget_);
+		layout->addWidget(list_widget);
 	}
 
 	auto name_layout = new QHBoxLayout();
@@ -78,7 +78,7 @@ void ExportSavePresetDialog::accept()
 		return;
 	}
 
-	QDir d(EncodingParams::GetPresetPath());
+	QDir d(EncodingParams::get_preset_path());
 	if (!d.exists()) {
 		d.mkpath(QStringLiteral("."));
 	}
@@ -101,7 +101,7 @@ void ExportSavePresetDialog::accept()
 		return;
 	}
 
-	params_.Save(&f);
+	params_.save(&f);
 
 	f.close();
 

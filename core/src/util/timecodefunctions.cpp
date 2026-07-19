@@ -30,21 +30,21 @@
 namespace olive::core
 {
 
-std::string Timecode::time_to_timecode(const rational &time,
-									   const rational &timebase,
+std::string Timecode::time_to_timecode(const Rational &time,
+									   const Rational &timebase,
 									   const Timecode::Display &display,
 									   bool show_plus_if_positive)
 {
-	if (timebase.isNull() || timebase.flipped().toDouble() < 1) {
+	if (timebase.isNull() || timebase.flipped().to_double() < 1) {
 		return "INVALID TIMEBASE";
 	}
 
-	double time_dbl = time.toDouble();
+	double time_dbl = time.to_double();
 
 	switch (display) {
-	case kTimecodeNonDropFrame:
-	case kTimecodeDropFrame:
-	case kTimecodeSeconds: {
+	case k_timecode_non_drop_frame:
+	case k_timecode_drop_frame:
+	case k_timecode_seconds: {
 		const char *prefix = "";
 
 		if (time_dbl < 0) {
@@ -53,7 +53,7 @@ std::string Timecode::time_to_timecode(const rational &time,
 			prefix = "+";
 		}
 
-		if (display == kTimecodeSeconds) {
+		if (display == k_timecode_seconds) {
 			time_dbl = std::abs(time_dbl);
 
 			int64_t total_seconds = std::floor(time_dbl);
@@ -73,12 +73,12 @@ std::string Timecode::time_to_timecode(const rational &time,
 		} else {
 			// Determine what symbol to separate frames (";" is used for drop frame, ":" is non-drop frame)
 			const char *frame_token;
-			double frame_rate = timebase.flipped().toDouble();
+			double frame_rate = timebase.flipped().to_double();
 			int rounded_frame_rate = std::llround(frame_rate);
 			int64_t frames, secs, mins, hours;
 			int64_t f = std::abs(time_to_timestamp(time, timebase));
 
-			if (display == kTimecodeDropFrame &&
+			if (display == k_timecode_drop_frame &&
 				timebase_is_drop_frame(timebase)) {
 				frame_token = ";";
 
@@ -94,19 +94,19 @@ std::string Timecode::time_to_timecode(const rational &time,
 				f %= (std::llround(frame_rate * 3600) * 24);
 
 				// Number of frames per ten minutes
-				int64_t framesPer10Minutes = std::llround(frame_rate * 600);
-				int64_t d = f / framesPer10Minutes;
-				int64_t m = f % framesPer10Minutes;
+				int64_t frames_per10_minutes = std::llround(frame_rate * 600);
+				int64_t d = f / frames_per10_minutes;
+				int64_t m = f % frames_per10_minutes;
 
 				// Number of frames to drop on the minute marks is the nearest integer to 6% of the framerate
-				int64_t dropFrames = std::llround(frame_rate * (2.0 / 30.0));
+				int64_t drop_frames = std::llround(frame_rate * (2.0 / 30.0));
 
 				// Number of frames per minute is the round of the framerate * 60 minus the number of dropped frames
-				f += dropFrames * 9 * d;
-				if (m > dropFrames) {
-					f += dropFrames *
-						 ((m - dropFrames) /
-						  (std::llround(frame_rate) * 60 - dropFrames));
+				f += drop_frames * 9 * d;
+				if (m > drop_frames) {
+					f += drop_frames *
+						 ((m - drop_frames) /
+						  (std::llround(frame_rate) * 60 - drop_frames));
 				}
 			} else {
 				frame_token = ":";
@@ -126,16 +126,16 @@ std::string Timecode::time_to_timecode(const rational &time,
 				StringUtils::to_string_leftpad(frames, 2).c_str());
 		}
 	}
-	case kFrames:
+	case k_frames:
 		return std::to_string(time_to_timestamp(time, timebase));
-	case kMilliseconds:
+	case k_milliseconds:
 		return std::to_string(std::llround(time_dbl * 1000));
 	}
 
 	return "INVALID TIMECODE MODE";
 }
 
-int64_t StrToInt64EmptyTolerant(const std::string &s, bool *ok)
+int64_t str_to_int64_empty_tolerant(const std::string &s, bool *ok)
 {
 	if (s.empty()) {
 		if (ok)
@@ -155,7 +155,7 @@ int64_t StrToInt64EmptyTolerant(const std::string &s, bool *ok)
 	}
 }
 
-double StrToDoubleEmptyTolerant(const std::string &s, bool *ok)
+double str_to_double_empty_tolerant(const std::string &s, bool *ok)
 {
 	if (s.empty()) {
 		if (ok)
@@ -175,8 +175,8 @@ double StrToDoubleEmptyTolerant(const std::string &s, bool *ok)
 	}
 }
 
-rational Timecode::timecode_to_time(std::string timecode,
-									const rational &timebase,
+Rational Timecode::timecode_to_time(std::string timecode,
+									const Rational &timebase,
 									const Timecode::Display &display, bool *ok)
 {
 	StringUtils::trim(timecode);
@@ -185,13 +185,13 @@ rational Timecode::timecode_to_time(std::string timecode,
 	}
 
 	switch (display) {
-	case kTimecodeNonDropFrame:
-	case kTimecodeDropFrame:
-	case kTimecodeSeconds: {
+	case k_timecode_non_drop_frame:
+	case k_timecode_drop_frame:
+	case k_timecode_seconds: {
 		std::vector<std::string> timecode_split =
 			StringUtils::split_regex(timecode, std::regex("(:)|(;)"));
 
-		const int element_count = display == kTimecodeSeconds ? 3 : 4;
+		const int element_count = display == k_timecode_seconds ? 3 : 4;
 
 		// Remove excess tokens (we're only interested in HH:MM:SS.FF)
 		if (timecode_split.size() > element_count) {
@@ -207,60 +207,60 @@ rational Timecode::timecode_to_time(std::string timecode,
 
 		bool negative = (timecode.at(0) == '-');
 
-		double frame_rate = timebase.flipped().toDouble();
+		double frame_rate = timebase.flipped().to_double();
 		int rounded_frame_rate = std::lround(frame_rate);
 
 		bool valid;
-		rational time;
+		Rational time;
 
-		int64_t hours = StrToInt64EmptyTolerant(timecode_split.at(0), &valid);
+		int64_t hours = str_to_int64_empty_tolerant(timecode_split.at(0), &valid);
 		if (!valid)
 			goto err_fatal;
-		int64_t mins = StrToInt64EmptyTolerant(timecode_split.at(1), &valid);
+		int64_t mins = str_to_int64_empty_tolerant(timecode_split.at(1), &valid);
 		if (!valid)
 			goto err_fatal;
 
-		if (display == kTimecodeSeconds) {
+		if (display == k_timecode_seconds) {
 			double secs =
-				StrToDoubleEmptyTolerant(timecode_split.at(2), &valid);
+				str_to_double_empty_tolerant(timecode_split.at(2), &valid);
 			if (!valid)
 				goto err_fatal;
 
-			time = rational::fromDouble(hours * 3600 + mins * 60 + secs);
+			time = Rational::from_double(hours * 3600 + mins * 60 + secs);
 		} else {
 			int64_t secs =
-				StrToInt64EmptyTolerant(timecode_split.at(2), &valid);
+				str_to_int64_empty_tolerant(timecode_split.at(2), &valid);
 			if (!valid)
 				goto err_fatal;
 			int64_t frames =
-				StrToInt64EmptyTolerant(timecode_split.at(3), &valid);
+				str_to_int64_empty_tolerant(timecode_split.at(3), &valid);
 			if (!valid)
 				goto err_fatal;
 
 			int64_t sec_count = (hours * 3600 + mins * 60 + secs);
 			int64_t frame_count = sec_count * rounded_frame_rate + frames;
 
-			if (display == kTimecodeDropFrame &&
+			if (display == k_timecode_drop_frame &&
 				timebase_is_drop_frame(timebase)) {
 				// Number of frames to drop on the minute marks is the nearest integer to 6% of the framerate
-				int64_t dropFrames = std::llround(frame_rate * (2.0 / 30.0));
+				int64_t drop_frames = std::llround(frame_rate * (2.0 / 30.0));
 
 				// d and m need to be calculated from
 				int64_t real_fr_ts =
 					std::llround(static_cast<double>(sec_count) * frame_rate) +
 					frames;
 
-				int64_t framesPer10Minutes = std::llround(frame_rate * 600);
-				int64_t d = real_fr_ts / framesPer10Minutes;
-				int64_t m = real_fr_ts % framesPer10Minutes;
+				int64_t frames_per10_minutes = std::llround(frame_rate * 600);
+				int64_t d = real_fr_ts / frames_per10_minutes;
+				int64_t m = real_fr_ts % frames_per10_minutes;
 
-				if (m > dropFrames) {
+				if (m > drop_frames) {
 					frame_count -=
-						dropFrames *
-						((m - dropFrames) /
-						 (std::llround(frame_rate) * 60 - dropFrames));
+						drop_frames *
+						((m - drop_frames) /
+						 (std::llround(frame_rate) * 60 - drop_frames));
 				}
-				frame_count -= dropFrames * 9 * d;
+				frame_count -= drop_frames * 9 * d;
 			}
 
 			time = timestamp_to_time(frame_count, timebase);
@@ -274,20 +274,20 @@ rational Timecode::timecode_to_time(std::string timecode,
 
 		return time;
 	}
-	case kMilliseconds: {
+	case k_milliseconds: {
 		try {
 			double timecode_secs = std::stod(timecode);
 
 			// Convert milliseconds to seconds
 			timecode_secs *= 0.001;
 
-			// Convert seconds to rational
-			return rational::fromDouble(timecode_secs, ok);
+			// Convert seconds to Rational
+			return Rational::from_double(timecode_secs, ok);
 		} catch (const std::invalid_argument &e) {
 			goto err_fatal;
 		}
 	}
-	case kFrames: {
+	case k_frames: {
 		try {
 			int64_t ts = std::stoll(timecode);
 			if (ok)
@@ -318,8 +318,8 @@ std::string Timecode::time_to_string(int64_t ms)
 							   StringUtils::to_string_leftpad(ss, 2).c_str());
 }
 
-rational Timecode::snap_time_to_timebase(const rational &time,
-										 const rational &timebase,
+Rational Timecode::snap_time_to_timebase(const Rational &time,
+										 const Rational &timebase,
 										 Rounding floor)
 {
 	// Just convert to a timestamp in timebase units and back
@@ -328,32 +328,32 @@ rational Timecode::snap_time_to_timebase(const rational &time,
 	return timestamp_to_time(timestamp, timebase);
 }
 
-rational Timecode::timestamp_to_time(const int64_t &timestamp,
-									 const rational &timebase)
+Rational Timecode::timestamp_to_time(const int64_t &timestamp,
+									 const Rational &timebase)
 {
 	int64_t num = int64_t(timebase.numerator()) * timestamp;
 	int64_t den = timebase.denominator();
 
-	ReduceFraction(num, den, INT_MAX);
+	reduce_fraction(num, den, INT_MAX);
 
-	return rational(int(num), int(den));
+	return Rational(int(num), int(den));
 }
 
-bool Timecode::timebase_is_drop_frame(const rational &timebase)
+bool Timecode::timebase_is_drop_frame(const Rational &timebase)
 {
 	return (timebase.numerator() != 1);
 }
 
-int64_t Timecode::time_to_timestamp(const rational &time,
-									const rational &timebase, Rounding floor)
+int64_t Timecode::time_to_timestamp(const Rational &time,
+									const Rational &timebase, Rounding floor)
 {
-	return time_to_timestamp(time.toDouble(), timebase, floor);
+	return time_to_timestamp(time.to_double(), timebase, floor);
 }
 
 int64_t Timecode::time_to_timestamp(const double &time,
-									const rational &timebase, Rounding floor)
+									const Rational &timebase, Rounding floor)
 {
-	const double d = time * timebase.flipped().toDouble();
+	const double d = time * timebase.flipped().to_double();
 
 	if (std::isnan(d)) {
 		return 0;
@@ -362,16 +362,16 @@ int64_t Timecode::time_to_timestamp(const double &time,
 	const double eps = 0.000000000001;
 
 	switch (floor) {
-	case kRound:
+	case k_round:
 	default:
 		return std::llround(d);
-	case kFloor:
+	case k_floor:
 		if (d > std::ceil(d) - eps) {
 			return std::ceil(d);
 		} else {
 			return std::floor(d);
 		}
-	case kCeil:
+	case k_ceil:
 		if (d < std::floor(d) + eps) {
 			return std::floor(d);
 		} else {
@@ -380,29 +380,29 @@ int64_t Timecode::time_to_timestamp(const double &time,
 	}
 }
 
-int64_t Timecode::rescale_timestamp(const int64_t &ts, const rational &source,
-									const rational &dest)
+int64_t Timecode::rescale_timestamp(const int64_t &ts, const Rational &source,
+									const Rational &dest)
 {
 	if (source == dest) {
 		return ts;
 	}
 
-	return RescaleRnd(ts, source.numerator() * int64_t(dest.denominator()),
+	return rescale_rnd(ts, source.numerator() * int64_t(dest.denominator()),
 					  source.denominator() * int64_t(dest.numerator()),
-					  FractionRounding::kNearInf);
+					  FractionRounding::k_near_inf);
 }
 
 int64_t Timecode::rescale_timestamp_ceil(const int64_t &ts,
-										 const rational &source,
-										 const rational &dest)
+										 const Rational &source,
+										 const Rational &dest)
 {
 	if (source == dest) {
 		return ts;
 	}
 
-	return RescaleRnd(ts, source.numerator() * int64_t(dest.denominator()),
+	return rescale_rnd(ts, source.numerator() * int64_t(dest.denominator()),
 					  source.denominator() * int64_t(dest.numerator()),
-					  FractionRounding::kUp);
+					  FractionRounding::k_up);
 }
 
 }

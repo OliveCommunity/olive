@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TRACKSELECTTOOL_H
-#define TRACKSELECTTOOL_H
+#ifndef OAK_TRACKSELECTTOOL_H
+#define OAK_TRACKSELECTTOOL_H
 
 #include "pointer.h"
 
@@ -31,13 +31,13 @@ class TrackSelectTool : public PointerTool {
 public:
 	TrackSelectTool(TimelineWidget *parent);
 
-	virtual void MousePress(TimelineViewMouseEvent *event) override;
+	virtual void mouse_press(TimelineViewMouseEvent *event) override;
 
 private:
-	void SelectBlocksOnTrack(Track *track, TimelineViewMouseEvent *event,
+	void select_blocks_on_track(Track *track, TimelineViewMouseEvent *event,
 							 QVector<Block *> *blocks, bool forward);
 };
 
 }
 
-#endif // TRACKSELECTTOOL_H
+#endif // OAK_TRACKSELECTTOOL_H

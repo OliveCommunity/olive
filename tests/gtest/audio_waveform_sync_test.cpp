@@ -8,15 +8,15 @@
 namespace
 {
 
-olive::core::AudioParams MakeMonoParams()
+olive::core::AudioParams make_mono_params()
 {
-	return olive::core::AudioParams(48000, olive::core::kChannelLayoutMono,
-									olive::core::SampleFormat::F32P);
+	return olive::core::AudioParams(48000, olive::core::k_channel_layout_mono,
+									olive::core::SampleFormat::f32_p);
 }
 
-olive::core::SampleBuffer MakeBuffer(const QVector<float> &values)
+olive::core::SampleBuffer make_buffer(const QVector<float> &values)
 {
-	olive::core::SampleBuffer samples(MakeMonoParams(),
+	olive::core::SampleBuffer samples(make_mono_params(),
 									  static_cast<size_t>(values.size()));
 	float *data = samples.data(0);
 	for (int i = 0; i < values.size(); i++) {
@@ -30,10 +30,10 @@ olive::core::SampleBuffer MakeBuffer(const QVector<float> &values)
 TEST(AudioWaveformSync, ExtractsRmsEnvelope)
 {
 	olive::core::SampleBuffer samples =
-		MakeBuffer({ 1.0f, -1.0f, 0.5f, -0.5f, 0.0f, 0.0f });
+		make_buffer({ 1.0f, -1.0f, 0.5f, -0.5f, 0.0f, 0.0f });
 
 	const QVector<double> envelope =
-		olive::AudioWaveformSync::ExtractRmsEnvelope(samples, 2);
+		olive::AudioWaveformSync::extract_rms_envelope(samples, 2);
 
 	ASSERT_EQ(envelope.size(), 3);
 	EXPECT_NEAR(envelope.at(0), 1.0, 0.0001);
@@ -50,8 +50,8 @@ TEST(AudioWaveformSync, EstimatesCandidateLag)
 											  0.6f, 0.6f, 0.0f, 0.0f };
 
 	const olive::AudioWaveformSync::OffsetResult result =
-		olive::AudioWaveformSync::EstimateOffset(
-			MakeBuffer(reference_values), MakeBuffer(candidate_values), 2, 8);
+		olive::AudioWaveformSync::estimate_offset(
+			make_buffer(reference_values), make_buffer(candidate_values), 2, 8);
 
 	ASSERT_TRUE(result.valid);
 	EXPECT_EQ(result.offset_samples, 2);
@@ -67,8 +67,8 @@ TEST(AudioWaveformSync, EstimatesCandidateLead)
 											  0.7f, 0.7f, 0.0f, 0.0f };
 
 	const olive::AudioWaveformSync::OffsetResult result =
-		olive::AudioWaveformSync::EstimateOffset(
-			MakeBuffer(reference_values), MakeBuffer(candidate_values), 2, 4);
+		olive::AudioWaveformSync::estimate_offset(
+			make_buffer(reference_values), make_buffer(candidate_values), 2, 4);
 
 	ASSERT_TRUE(result.valid);
 	EXPECT_EQ(result.offset_samples, -4);
@@ -77,13 +77,13 @@ TEST(AudioWaveformSync, EstimatesCandidateLead)
 
 TEST(AudioWaveformSync, RejectsSilence)
 {
-	olive::core::SampleBuffer reference(MakeMonoParams(), size_t(16));
-	olive::core::SampleBuffer candidate(MakeMonoParams(), size_t(16));
+	olive::core::SampleBuffer reference(make_mono_params(), size_t(16));
+	olive::core::SampleBuffer candidate(make_mono_params(), size_t(16));
 	reference.silence();
 	candidate.silence();
 
 	const olive::AudioWaveformSync::OffsetResult result =
-		olive::AudioWaveformSync::EstimateOffset(reference, candidate, 4, 16);
+		olive::AudioWaveformSync::estimate_offset(reference, candidate, 4, 16);
 
 	EXPECT_FALSE(result.valid);
 }
@@ -106,10 +106,10 @@ TEST(AudioWaveformSync, MaskedEstimationIgnoresInvalidWindows)
 	}
 
 	const olive::AudioWaveformSync::OffsetResult unmasked =
-		olive::AudioWaveformSync::EstimateEnvelopeOffset(reference, candidate, 1,
+		olive::AudioWaveformSync::estimate_envelope_offset(reference, candidate, 1,
 														 8);
 	const olive::AudioWaveformSync::OffsetResult masked =
-		olive::AudioWaveformSync::EstimateEnvelopeOffset(
+		olive::AudioWaveformSync::estimate_envelope_offset(
 			reference, candidate, QVector<bool>(), candidate_valid, 1, 8);
 
 	ASSERT_TRUE(masked.valid);
@@ -140,7 +140,7 @@ TEST(AudioWaveformSync, EstimatesStretchAndOffset)
 	}
 
 	const olive::AudioWaveformSync::StretchOffsetResult result =
-		olive::AudioWaveformSync::EstimateStretchAndOffset(
+		olive::AudioWaveformSync::estimate_stretch_and_offset(
 			reference, candidate, QVector<bool>(), QVector<bool>(), 1, 12,
 			0.8, 2.5, 0.005);
 
@@ -156,7 +156,7 @@ TEST(AudioWaveformSync, StretchEstimationRejectsSilence)
 	const QVector<double> silence(16, 0.0);
 
 	const olive::AudioWaveformSync::StretchOffsetResult result =
-		olive::AudioWaveformSync::EstimateStretchAndOffset(
+		olive::AudioWaveformSync::estimate_stretch_and_offset(
 			silence, silence, QVector<bool>(), QVector<bool>(), 1, 8, 0.5,
 			2.0, 0.1);
 
@@ -167,15 +167,15 @@ TEST(AudioWaveformSync, StretchEstimationRejectsInvalidParameters)
 {
 	const QVector<double> envelope = { 0.5, 0.6, 0.7, 0.8 };
 
-	EXPECT_FALSE(olive::AudioWaveformSync::EstimateStretchAndOffset(
+	EXPECT_FALSE(olive::AudioWaveformSync::estimate_stretch_and_offset(
 					 envelope, envelope, QVector<bool>(), QVector<bool>(), 1,
 					 8, 0.0, 2.0, 0.1)
 					 .valid);
-	EXPECT_FALSE(olive::AudioWaveformSync::EstimateStretchAndOffset(
+	EXPECT_FALSE(olive::AudioWaveformSync::estimate_stretch_and_offset(
 					 envelope, envelope, QVector<bool>(), QVector<bool>(), 1,
 					 8, 2.0, 0.5, 0.1)
 					 .valid);
-	EXPECT_FALSE(olive::AudioWaveformSync::EstimateStretchAndOffset(
+	EXPECT_FALSE(olive::AudioWaveformSync::estimate_stretch_and_offset(
 					 envelope, envelope, QVector<bool>(), QVector<bool>(), 1,
 					 8, 0.5, 2.0, 0.0)
 					 .valid);

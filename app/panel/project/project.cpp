@@ -44,39 +44,39 @@ ProjectPanel::ProjectPanel(const QString &unique_name)
 	QVBoxLayout *layout = new QVBoxLayout(central_widget);
 	layout->setContentsMargins(0, 0, 0, 0);
 
-	SetWidgetWithPadding(central_widget);
+	set_widget_with_padding(central_widget);
 
 	// Set up project toolbar
 	ProjectToolbar *toolbar = new ProjectToolbar(this);
 	layout->addWidget(toolbar);
 
 	// Make toolbar connections
-	connect(toolbar, &ProjectToolbar::NewClicked, this,
-			&ProjectPanel::ShowNewMenu);
-	connect(toolbar, &ProjectToolbar::OpenClicked, Core::instance(),
-			&Core::OpenProject);
-	connect(toolbar, &ProjectToolbar::SaveClicked, this,
-			&ProjectPanel::SaveConnectedProject);
+	connect(toolbar, &ProjectToolbar::new_clicked, this,
+			&ProjectPanel::show_new_menu);
+	connect(toolbar, &ProjectToolbar::open_clicked, Core::instance(),
+			&Core::open_project);
+	connect(toolbar, &ProjectToolbar::save_clicked, this,
+			&ProjectPanel::save_connected_project);
 
 	// Set up main explorer object
 	explorer_ = new ProjectExplorer(this);
 	layout->addWidget(explorer_);
-	connect(explorer_, &ProjectExplorer::DoubleClickedItem, this,
-			&ProjectPanel::ItemDoubleClickSlot);
-	connect(explorer_, &ProjectExplorer::SelectionChanged, this,
-			&ProjectPanel::SelectionChanged);
-	connect(toolbar, &ProjectToolbar::SearchChanged, explorer_,
-			&ProjectExplorer::SetSearchFilter);
+	connect(explorer_, &ProjectExplorer::double_clicked_item, this,
+			&ProjectPanel::item_double_click_slot);
+	connect(explorer_, &ProjectExplorer::selection_changed, this,
+			&ProjectPanel::selection_changed);
+	connect(toolbar, &ProjectToolbar::search_changed, explorer_,
+			&ProjectExplorer::set_search_filter);
 
 	// Set toolbar's view to the explorer's view
-	toolbar->SetView(explorer_->view_type());
+	toolbar->set_view(explorer_->view_type());
 
 	// Connect toolbar's view change signal to the explorer's view change slot
-	connect(toolbar, &ProjectToolbar::ViewChanged, explorer_,
+	connect(toolbar, &ProjectToolbar::view_changed, explorer_,
 			&ProjectExplorer::set_view_type);
 
 	// Set strings
-	Retranslate();
+	retranslate();
 }
 
 Project *ProjectPanel::project() const
@@ -87,24 +87,24 @@ Project *ProjectPanel::project() const
 void ProjectPanel::set_project(Project *p)
 {
 	if (project()) {
-		disconnect(project(), &Project::NameChanged, this,
-				   &ProjectPanel::UpdateSubtitle);
-		disconnect(project(), &Project::NameChanged, this,
-				   &ProjectPanel::ProjectNameChanged);
+		disconnect(project(), &Project::name_changed, this,
+				   &ProjectPanel::update_subtitle);
+		disconnect(project(), &Project::name_changed, this,
+				   &ProjectPanel::project_name_changed);
 	}
 
 	explorer_->set_project(p);
 
 	if (project()) {
-		connect(project(), &Project::NameChanged, this,
-				&ProjectPanel::UpdateSubtitle);
-		connect(project(), &Project::NameChanged, this,
-				&ProjectPanel::ProjectNameChanged);
+		connect(project(), &Project::name_changed, this,
+				&ProjectPanel::update_subtitle);
+		connect(project(), &Project::name_changed, this,
+				&ProjectPanel::project_name_changed);
 	}
 
-	UpdateSubtitle();
+	update_subtitle();
 
-	emit ProjectNameChanged();
+	emit project_name_changed();
 }
 
 Folder *ProjectPanel::get_root() const
@@ -116,17 +116,17 @@ void ProjectPanel::set_root(Folder *item)
 {
 	explorer_->set_root(item);
 
-	Retranslate();
+	retranslate();
 }
 
-QVector<Node *> ProjectPanel::SelectedItems() const
+QVector<Node *> ProjectPanel::selected_items() const
 {
-	return explorer_->SelectedItems();
+	return explorer_->selected_items();
 }
 
-Folder *ProjectPanel::GetSelectedFolder() const
+Folder *ProjectPanel::get_selected_folder() const
 {
-	return explorer_->GetSelectedFolder();
+	return explorer_->get_selected_folder();
 }
 
 ProjectViewModel *ProjectPanel::model() const
@@ -134,71 +134,71 @@ ProjectViewModel *ProjectPanel::model() const
 	return explorer_->model();
 }
 
-void ProjectPanel::SelectAll()
+void ProjectPanel::select_all()
 {
-	explorer_->SelectAll();
+	explorer_->select_all();
 }
 
-void ProjectPanel::DeselectAll()
+void ProjectPanel::deselect_all()
 {
-	explorer_->DeselectAll();
+	explorer_->deselect_all();
 }
 
-void ProjectPanel::DeleteSelected()
+void ProjectPanel::delete_selected()
 {
-	explorer_->DeleteSelected();
+	explorer_->delete_selected();
 }
 
-void ProjectPanel::RenameSelected()
+void ProjectPanel::rename_selected()
 {
-	explorer_->RenameSelectedItem();
+	explorer_->rename_selected_item();
 }
 
-void ProjectPanel::Edit(Node *item)
+void ProjectPanel::edit(Node *item)
 {
-	explorer_->Edit(item);
+	explorer_->edit(item);
 }
 
-void ProjectPanel::Retranslate()
+void ProjectPanel::retranslate()
 {
 	if (project() && explorer_->get_root() != project()->root()) {
-		SetTitle(tr("Folder"));
+		set_title(tr("Folder"));
 	} else {
-		SetTitle(tr("Project"));
+		set_title(tr("Project"));
 	}
 
-	UpdateSubtitle();
+	update_subtitle();
 }
 
-void ProjectPanel::ItemDoubleClickSlot(Node *item)
+void ProjectPanel::item_double_click_slot(Node *item)
 {
 	if (item == nullptr) {
 		// If the user double clicks on empty space, show the import dialog
-		Core::instance()->DialogImportShow();
+		Core::instance()->dialog_import_show();
 	} else if (dynamic_cast<Footage *>(item)) {
 		// Open this footage in a FootageViewer
 		auto panel =
-			PanelManager::instance()->MostRecentlyFocused<FootageViewerPanel>();
-		panel->ConnectViewerNode(static_cast<Footage *>(item));
+			PanelManager::instance()->most_recently_focused<FootageViewerPanel>();
+		panel->connect_viewer_node(static_cast<Footage *>(item));
 		panel->raise();
 		panel->setFocus(Qt::FocusReason::MouseFocusReason);
 	} else if (dynamic_cast<Sequence *>(item)) {
 		// Open this sequence in the Timeline
-		Core::instance()->main_window()->OpenSequence(
+		Core::instance()->main_window()->open_sequence(
 			static_cast<Sequence *>(item));
 	}
 }
 
-void ProjectPanel::ShowNewMenu()
+void ProjectPanel::show_new_menu()
 {
 	Menu new_menu(this);
 
-	MenuShared::instance()->AddItemsForNewMenu(&new_menu);
+	MenuShared::instance()->add_items_for_new_menu(&new_menu);
 
 	new_menu.exec(QCursor::pos());
 }
 
-void ProjectPanel::UpdateSubtitle()
+void ProjectPanel::update_subtitle()
 {
 	if (project()) {
 		QString project_title = QStringLiteral("%1").arg(project()->name());
@@ -210,7 +210,7 @@ void ProjectPanel::UpdateSubtitle()
 
 			do {
 				folder_path.prepend(
-					QStringLiteral("/%1").arg(item->GetLabel()));
+					QStringLiteral("/%1").arg(item->get_label()));
 
 				item = item->folder();
 			} while (item != project()->root());
@@ -218,20 +218,20 @@ void ProjectPanel::UpdateSubtitle()
 			project_title.append(folder_path);
 		}
 
-		SetSubtitle(project_title);
+		set_subtitle(project_title);
 	} else {
-		SetSubtitle(tr("(none)"));
+		set_subtitle(tr("(none)"));
 	}
 }
 
-void ProjectPanel::SaveConnectedProject()
+void ProjectPanel::save_connected_project()
 {
-	Core::instance()->SaveProject();
+	Core::instance()->save_project();
 }
 
-QVector<ViewerOutput *> ProjectPanel::GetSelectedFootage() const
+QVector<ViewerOutput *> ProjectPanel::get_selected_footage() const
 {
-	QVector<Node *> items = SelectedItems();
+	QVector<Node *> items = selected_items();
 	QVector<ViewerOutput *> footage;
 
 	foreach (Node *i, items) {

@@ -33,7 +33,7 @@ namespace olive
 {
 
 H264Section::H264Section(QWidget *parent)
-	: H264Section(H264CRFSection::kDefaultH264CRF, parent)
+	: H264Section(H264CRFSection::k_default_h264_crf, parent)
 {
 }
 
@@ -101,7 +101,7 @@ H264Section::H264Section(int default_crf, QWidget *parent)
 		compression_method_stack_, &QStackedWidget::setCurrentIndex);
 }
 
-void H264Section::AddOpts(EncodingParams *params)
+void H264Section::add_opts(EncodingParams *params)
 {
 	// FIXME: Implement two-pass
 
@@ -113,24 +113,24 @@ void H264Section::AddOpts(EncodingParams *params)
 	params->set_video_option(QStringLiteral("ove_compressionmethod"),
 							 QString::number(method));
 
-	if (method == kConstantRateFactor) {
+	if (method == k_constant_rate_factor) {
 		// Simply set CRF value
 		params->set_video_option(QStringLiteral("crf"),
-								 QString::number(crf_section_->GetValue()));
+								 QString::number(crf_section_->get_value()));
 
 	} else {
 		int64_t target_rate, max_rate, min_rate;
 
-		if (method == kTargetBitRate) {
+		if (method == k_target_bit_rate) {
 			// Use user-supplied values for the bit rate
-			target_rate = bitrate_section_->GetTargetBitRate();
+			target_rate = bitrate_section_->get_target_bit_rate();
 			min_rate = 0;
-			max_rate = bitrate_section_->GetMaximumBitRate();
+			max_rate = bitrate_section_->get_maximum_bit_rate();
 		} else {
 			// Calculate the bit rate from the file size divided by the sequence length in seconds (bits per second)
-			int64_t target_fs = filesize_section_->GetFileSize();
+			int64_t target_fs = filesize_section_->get_file_size();
 			target_rate = qRound64(static_cast<double>(target_fs) /
-								   params->GetExportLength().toDouble());
+								   params->get_export_length().to_double());
 			min_rate = target_rate;
 			max_rate = target_rate;
 
@@ -151,26 +151,26 @@ void H264Section::AddOpts(EncodingParams *params)
 							 QString::number(preset_combobox_->currentIndex()));
 }
 
-void H264Section::SetOpts(const EncodingParams *p)
+void H264Section::set_opts(const EncodingParams *p)
 {
 	CompressionMethod method = static_cast<CompressionMethod>(
 		p->video_option(QStringLiteral("ove_compressionmethod")).toInt());
 
 	compression_method_stack_->setCurrentIndex(method);
 
-	if (method == kConstantRateFactor) {
-		crf_section_->SetValue(p->video_option(QStringLiteral("crf")).toInt());
+	if (method == k_constant_rate_factor) {
+		crf_section_->set_value(p->video_option(QStringLiteral("crf")).toInt());
 	} else {
 		int64_t target_rate = p->video_bit_rate();
 		int64_t max_rate = p->video_max_bit_rate();
 
-		if (method == kTargetBitRate) {
+		if (method == k_target_bit_rate) {
 			// Use user-supplied values for the bit rate
-			bitrate_section_->SetTargetBitRate(target_rate);
-			bitrate_section_->SetMaximumBitRate(max_rate);
+			bitrate_section_->set_target_bit_rate(target_rate);
+			bitrate_section_->set_maximum_bit_rate(max_rate);
 		} else {
 			// Calculate the bit rate from the file size divided by the sequence length in seconds (bits per second)
-			filesize_section_->SetFileSize(
+			filesize_section_->set_file_size(
 				p->video_option(QStringLiteral("ove_targetfilesize"))
 					.toLongLong());
 		}
@@ -184,32 +184,32 @@ H264CRFSection::H264CRFSection(int default_crf, QWidget *parent)
 	layout->setContentsMargins(0, 0, 0, 0);
 
 	crf_slider_ = new QSlider(Qt::Horizontal);
-	crf_slider_->setMinimum(kMinimumCRF);
-	crf_slider_->setMaximum(kMaximumCRF);
+	crf_slider_->setMinimum(k_minimum_crf);
+	crf_slider_->setMaximum(k_maximum_crf);
 	crf_slider_->setValue(default_crf);
 	layout->addWidget(crf_slider_);
 
 	IntegerSlider *crf_input = new IntegerSlider();
-	crf_input->setMaximumWidth(QtUtils::QFontMetricsWidth(
+	crf_input->setMaximumWidth(QtUtils::q_font_metrics_width(
 		crf_input->fontMetrics(), QStringLiteral("HHHH")));
-	crf_input->SetMinimum(kMinimumCRF);
-	crf_input->SetMaximum(kMaximumCRF);
-	crf_input->SetValue(default_crf);
+	crf_input->set_minimum(k_minimum_crf);
+	crf_input->set_maximum(k_maximum_crf);
+	crf_input->set_value(default_crf);
 	crf_input->SetDefaultValue(default_crf);
 	layout->addWidget(crf_input);
 
 	connect(crf_slider_, &QSlider::valueChanged, crf_input,
-			&IntegerSlider::SetValue);
-	connect(crf_input, &IntegerSlider::ValueChanged, crf_slider_,
+			&IntegerSlider::set_value);
+	connect(crf_input, &IntegerSlider::value_changed, crf_slider_,
 			&QSlider::setValue);
 }
 
-int H264CRFSection::GetValue() const
+int H264CRFSection::get_value() const
 {
 	return crf_slider_->value();
 }
 
-void H264CRFSection::SetValue(int c)
+void H264CRFSection::set_value(int c)
 {
 	crf_slider_->setValue(c);
 }
@@ -225,7 +225,7 @@ H264BitRateSection::H264BitRateSection(QWidget *parent)
 	layout->addWidget(new QLabel(tr("Target Bit Rate (Mbps):")), row, 0);
 
 	target_rate_ = new FloatSlider();
-	target_rate_->SetMinimum(0);
+	target_rate_->set_minimum(0);
 	layout->addWidget(target_rate_, row, 1);
 
 	row++;
@@ -233,7 +233,7 @@ H264BitRateSection::H264BitRateSection(QWidget *parent)
 	layout->addWidget(new QLabel(tr("Maximum Bit Rate (Mbps):")), row, 0);
 
 	max_rate_ = new FloatSlider();
-	max_rate_->SetMinimum(0);
+	max_rate_->set_minimum(0);
 	layout->addWidget(max_rate_, row, 1);
 
 	row++;
@@ -244,28 +244,28 @@ H264BitRateSection::H264BitRateSection(QWidget *parent)
 	layout->addWidget(two_pass_box, row, 1);
 
 	// Bit rate defaults
-	target_rate_->SetValue(16.0);
-	max_rate_->SetValue(32.0);
+	target_rate_->set_value(16.0);
+	max_rate_->set_value(32.0);
 }
 
-int64_t H264BitRateSection::GetTargetBitRate() const
+int64_t H264BitRateSection::get_target_bit_rate() const
 {
-	return qRound64(target_rate_->GetValue() * 1000000.0);
+	return qRound64(target_rate_->get_value() * 1000000.0);
 }
 
-void H264BitRateSection::SetTargetBitRate(int64_t b)
+void H264BitRateSection::set_target_bit_rate(int64_t b)
 {
-	target_rate_->SetValue(double(b) * 0.000001);
+	target_rate_->set_value(double(b) * 0.000001);
 }
 
-int64_t H264BitRateSection::GetMaximumBitRate() const
+int64_t H264BitRateSection::get_maximum_bit_rate() const
 {
-	return qRound64(max_rate_->GetValue() * 1000000.0);
+	return qRound64(max_rate_->get_value() * 1000000.0);
 }
 
-void H264BitRateSection::SetMaximumBitRate(int64_t b)
+void H264BitRateSection::set_maximum_bit_rate(int64_t b)
 {
-	max_rate_->SetValue(double(b) * 0.000001);
+	max_rate_->set_value(double(b) * 0.000001);
 }
 
 H264FileSizeSection::H264FileSizeSection(QWidget *parent)
@@ -279,7 +279,7 @@ H264FileSizeSection::H264FileSizeSection(QWidget *parent)
 	layout->addWidget(new QLabel(tr("Target File Size (MB):")), row, 0);
 
 	file_size_ = new FloatSlider();
-	file_size_->SetMinimum(0);
+	file_size_->set_minimum(0);
 	layout->addWidget(file_size_, row, 1);
 
 	row++;
@@ -290,23 +290,23 @@ H264FileSizeSection::H264FileSizeSection(QWidget *parent)
 	layout->addWidget(two_pass_box, row, 1);
 
 	// File size defaults
-	file_size_->SetValue(700.0);
+	file_size_->set_value(700.0);
 }
 
-int64_t H264FileSizeSection::GetFileSize() const
+int64_t H264FileSizeSection::get_file_size() const
 {
 	// Convert megabytes to BITS
-	return qRound64(file_size_->GetValue() * 1024.0 * 1024.0 * 8.0);
+	return qRound64(file_size_->get_value() * 1024.0 * 1024.0 * 8.0);
 }
 
-void H264FileSizeSection::SetFileSize(int64_t f)
+void H264FileSizeSection::set_file_size(int64_t f)
 {
 	// Convert bits back to megabytes
-	file_size_->SetValue(double(f) / 8.0 / 1024.0 / 1024.0);
+	file_size_->set_value(double(f) / 8.0 / 1024.0 / 1024.0);
 }
 
 H265Section::H265Section(QWidget *parent)
-	: H264Section(H264CRFSection::kDefaultH265CRF, parent)
+	: H264Section(H264CRFSection::k_default_h265_crf, parent)
 {
 }
 

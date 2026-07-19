@@ -31,31 +31,31 @@ namespace olive
 
 KeySequenceEditor::KeySequenceEditor(QWidget *parent, QAction *a)
 	: super(parent)
-	, action(a)
+	, action_(a)
 {
-	setKeySequence(action->shortcut());
+	setKeySequence(action_->shortcut());
 }
 
 void KeySequenceEditor::set_action_shortcut()
 {
-	action->setShortcut(keySequence());
+	action_->setShortcut(keySequence());
 }
 
 void KeySequenceEditor::reset_to_default()
 {
-	setKeySequence(action->property("keydefault").toString());
+	setKeySequence(action_->property("keydefault").toString());
 }
 
 QString KeySequenceEditor::action_name()
 {
-	return action->property("id").toString();
+	return action_->property("id").toString();
 }
 
 QString KeySequenceEditor::export_shortcut()
 {
 	QKeySequence ks = keySequence();
-	if (ks != action->property("keydefault").value<QKeySequence>()) {
-		return action->property("id").toString() + "\t" + ks.toString();
+	if (ks != action_->property("keydefault").value<QKeySequence>()) {
+		return action_->property("id").toString() + "\t" + ks.toString();
 	}
 	return nullptr;
 }

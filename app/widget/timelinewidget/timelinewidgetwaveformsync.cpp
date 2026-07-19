@@ -29,10 +29,10 @@
 namespace olive
 {
 
-namespace TimelineWaveformSync
+namespace timeline_waveform_sync
 {
 
-bool GetWaveformSyncClip(Block *block, WaveformSyncClip *out)
+bool get_waveform_sync_clip(Block *block, WaveformSyncClip *out)
 {
 	ClipBlock *clip = dynamic_cast<ClipBlock *>(block);
 	if (!clip || !clip->waveform()) {
@@ -45,7 +45,7 @@ bool GetWaveformSyncClip(Block *block, WaveformSyncClip *out)
 	}
 
 	const AudioWaveformCache *waveform = clip->waveform();
-	if (waveform->GetParameters().sample_rate() <= 0) {
+	if (waveform->get_parameters().sample_rate() <= 0) {
 		return false;
 	}
 
@@ -54,7 +54,7 @@ bool GetWaveformSyncClip(Block *block, WaveformSyncClip *out)
 	// validated makes the menu item stay disabled for long clips and gives
 	// the appearance that "nothing happens" when the user tries to sync.
 	const TimeRangeList validated_ranges =
-		waveform->GetValidatedRanges().Intersects(media_range);
+		waveform->get_validated_ranges().intersects(media_range);
 	if (validated_ranges.isEmpty()) {
 		return false;
 	}
@@ -62,24 +62,24 @@ bool GetWaveformSyncClip(Block *block, WaveformSyncClip *out)
 	out->clip = clip;
 	out->waveform = waveform;
 	out->media_range = media_range;
-	out->sample_rate = waveform->GetParameters().sample_rate();
+	out->sample_rate = waveform->get_parameters().sample_rate();
 	return true;
 }
 
 QVector<WaveformSyncClip>
-GetSelectedWaveformSyncClips(const QVector<Block *> &blocks)
+get_selected_waveform_sync_clips(const QVector<Block *> &blocks)
 {
 	QVector<WaveformSyncClip> clips;
 	for (Block *block : blocks) {
 		WaveformSyncClip sync_clip;
-		if (GetWaveformSyncClip(block, &sync_clip)) {
+		if (get_waveform_sync_clip(block, &sync_clip)) {
 			clips.append(sync_clip);
 		}
 	}
 	return clips;
 }
 
-QVector<double> ExtractWaveformCacheEnvelope(const WaveformSyncClip &clip,
+QVector<double> extract_waveform_cache_envelope(const WaveformSyncClip &clip,
 											 int sample_rate,
 											 size_t window_samples,
 											 QVector<bool> *valid_mask)
@@ -93,7 +93,7 @@ QVector<double> ExtractWaveformCacheEnvelope(const WaveformSyncClip &clip,
 		valid_mask->clear();
 	}
 
-	const rational window_time(static_cast<int>(window_samples), sample_rate);
+	const Rational window_time(static_cast<int>(window_samples), sample_rate);
 
 	// Only trust regions that have actually been validated. Unvalidated cache
 	// returns zero samples, which both drags the correlation score down and
@@ -102,11 +102,11 @@ QVector<double> ExtractWaveformCacheEnvelope(const WaveformSyncClip &clip,
 	// absolute timeline, while the validity mask lets the correlation skip
 	// those placeholders entirely.
 	const TimeRangeList validated_ranges =
-		clip.waveform->GetValidatedRanges().Intersects(clip.media_range);
+		clip.waveform->get_validated_ranges().intersects(clip.media_range);
 
-	for (rational t = clip.media_range.in(); t < clip.media_range.out();
+	for (Rational t = clip.media_range.in(); t < clip.media_range.out();
 		 t += window_time) {
-		const rational length = qMin(window_time, clip.media_range.out() - t);
+		const Rational length = qMin(window_time, clip.media_range.out() - t);
 		const TimeRange window(t, t + length);
 
 		const bool window_valid = validated_ranges.contains(window);
@@ -114,7 +114,7 @@ QVector<double> ExtractWaveformCacheEnvelope(const WaveformSyncClip &clip,
 		double peak = 0.0;
 		if (window_valid) {
 			const AudioVisualWaveform::Sample summary =
-				clip.waveform->GetSummaryFromTime(t, length);
+				clip.waveform->get_summary_from_time(t, length);
 
 			for (const AudioVisualWaveform::SamplePerChannel &channel :
 				 summary) {

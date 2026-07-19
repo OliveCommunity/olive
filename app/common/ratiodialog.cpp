@@ -28,7 +28,7 @@
 namespace olive
 {
 
-double GetFloatRatioFromUser(QWidget *parent, const QString &title, bool *ok_in)
+double get_float_ratio_from_user(QWidget *parent, const QString &title, bool *ok_in)
 {
 	QString s;
 
@@ -86,7 +86,7 @@ double GetFloatRatioFromUser(QWidget *parent, const QString &title, bool *ok_in)
 			QCoreApplication::translate(
 				"RatioDialog",
 				"Failed to parse \"%1\" into an aspect ratio. Please format a "
-				"rational fraction with a ':' or a '/' separator.")
+				"Rational fraction with a ':' or a '/' separator.")
 				.arg(s),
 			QMessageBox::Ok);
 	}

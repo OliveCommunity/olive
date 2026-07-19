@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef LIBOLIVECORE_AUDIOPARAMS_H
-#define LIBOLIVECORE_AUDIOPARAMS_H
+#ifndef OAK_LIBOLIVECORE_AUDIOPARAMS_H
+#define OAK_LIBOLIVECORE_AUDIOPARAMS_H
 #include <cstring>
 
 #include <assert.h>
@@ -50,7 +50,7 @@ public:
 		: sample_rate_(0)
 		, channel_layout_mask_(0)
 		, channel_count_(0)
-		, format_(SampleFormat::INVALID)
+		, format_(SampleFormat::invalid)
 	{
 		set_default_footage_parameters();
 	}
@@ -99,19 +99,19 @@ public:
 		channel_layout_mask_ = mask;
 		calculate_channel_count();
 	}
-	rational time_base() const
+	Rational time_base() const
 	{
 		return timebase_;
 	}
 
-	void set_time_base(const rational &timebase)
+	void set_time_base(const Rational &timebase)
 	{
 		timebase_ = timebase;
 	}
 
-	rational sample_rate_as_time_base() const
+	Rational sample_rate_as_time_base() const
 	{
-		return rational(1, sample_rate());
+		return Rational(1, sample_rate());
 	}
 
 	SampleFormat format() const
@@ -155,17 +155,17 @@ public:
 	}
 
 	int64_t time_to_bytes(const double &time) const;
-	int64_t time_to_bytes(const rational &time) const;
+	int64_t time_to_bytes(const Rational &time) const;
 	int64_t time_to_bytes_per_channel(const double &time) const;
-	int64_t time_to_bytes_per_channel(const rational &time) const;
+	int64_t time_to_bytes_per_channel(const Rational &time) const;
 	int64_t time_to_samples(const double &time) const;
-	int64_t time_to_samples(const rational &time) const;
+	int64_t time_to_samples(const Rational &time) const;
 	int64_t samples_to_bytes(const int64_t &samples) const;
 	int64_t samples_to_bytes_per_channel(const int64_t &samples) const;
-	rational samples_to_time(const int64_t &samples) const;
+	Rational samples_to_time(const int64_t &samples) const;
 	int64_t bytes_to_samples(const int64_t &bytes) const;
-	rational bytes_to_time(const int64_t &bytes) const;
-	rational bytes_per_channel_to_time(const int64_t &bytes) const;
+	Rational bytes_to_time(const int64_t &bytes) const;
+	Rational bytes_per_channel_to_time(const int64_t &bytes) const;
 	int channel_count() const;
 	int bytes_per_sample_per_channel() const;
 	int bits_per_sample() const;
@@ -174,8 +174,8 @@ public:
 	bool operator==(const AudioParams &other) const;
 	bool operator!=(const AudioParams &other) const;
 
-	static const std::vector<uint64_t> kSupportedChannelLayouts;
-	static const std::vector<int> kSupportedSampleRates;
+	static const std::vector<uint64_t> k_supported_channel_layouts;
+	static const std::vector<int> k_supported_sample_rates;
 
 private:
 	void set_default_footage_parameters()
@@ -209,9 +209,9 @@ private:
 	int enabled_; // Using int instead of bool fixes GCC 11 stringop-overflow issue (byte alignment)
 	int stream_index_;                   ///< Index in the source file's stream list
 	int64_t duration_;                   ///< Stream duration in timebase units
-	rational timebase_;                  ///< Timebase for this audio stream
+	Rational timebase_;                  ///< Timebase for this audio stream
 };
 
 }
 
-#endif // LIBOLIVECORE_AUDIOPARAMS_H
+#endif // OAK_LIBOLIVECORE_AUDIOPARAMS_H

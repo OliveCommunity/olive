@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SLIDETIMELINETOOL_H
-#define SLIDETIMELINETOOL_H
+#ifndef OAK_SLIDETIMELINETOOL_H
+#define OAK_SLIDETIMELINETOOL_H
 
 #include "pointer.h"
 
@@ -32,11 +32,11 @@ public:
 	SlideTool(TimelineWidget *parent);
 
 protected:
-	virtual void InitiateDrag(Block *clicked_item,
+	virtual void initiate_drag(Block *clicked_item,
 							  Timeline::MovementMode trim_mode,
 							  Qt::KeyboardModifiers modifiers) override;
 };
 
 }
 
-#endif // SLIDETIMELINETOOL_H
+#endif // OAK_SLIDETIMELINETOOL_H

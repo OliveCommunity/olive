@@ -20,12 +20,12 @@
 #include "render/colorprocessor.h"
 #include "render/lutlibrary.h"
 
-namespace OCIO = OCIO_NAMESPACE;
+namespace ocio = OCIO_NAMESPACE;
 
 namespace
 {
 
-QString WriteTestCube(QTemporaryDir *dir)
+QString write_test_cube(QTemporaryDir *dir)
 {
 	const QString path =
 		QDir(dir->path()).filePath(QStringLiteral("invert.cube"));
@@ -49,16 +49,16 @@ QString WriteTestCube(QTemporaryDir *dir)
 // into real frames so we can compare pixels without a GPU/worker process.
 class PixelColorTransformTraverser : public olive::NodeTraverser {
 public:
-	void Resolve(olive::NodeValue &value)
+	void resolve(olive::NodeValue &value)
 	{
-		ResolveJobs(value);
+		resolve_jobs(value);
 	}
 
 	olive::FramePtr source_frame;
 	olive::FramePtr output_frame;
 
 protected:
-	virtual void ProcessShader(olive::TexturePtr destination,
+	virtual void process_shader(olive::TexturePtr destination,
 							   const olive::Node *node,
 							   const olive::ShaderJob *job) override
 	{
@@ -66,13 +66,13 @@ protected:
 		Q_UNUSED(node)
 
 		const olive::Color c =
-			job->GetValues().value(olive::SolidGenerator::kColorInput).toColor();
+			job->get_values().value(olive::SolidGenerator::k_color_input).to_color();
 
 		olive::VideoParams p = destination->params();
-		p.set_format(olive::core::PixelFormat::F32);
-		p.set_channel_count(olive::VideoParams::kRGBAChannelCount);
+		p.set_format(olive::core::PixelFormat::f32);
+		p.set_channel_count(olive::VideoParams::k_rgba_channel_count);
 
-		source_frame = olive::Frame::Create();
+		source_frame = olive::Frame::create();
 		source_frame->set_video_params(p);
 		source_frame->allocate();
 
@@ -84,30 +84,30 @@ protected:
 	}
 
 	virtual void
-	ProcessColorTransform(olive::TexturePtr destination,
+	process_color_transform(olive::TexturePtr destination,
 						  const olive::Node *node,
 						  const olive::ColorTransformJob *job) override
 	{
 		Q_UNUSED(destination)
 		Q_UNUSED(node)
 
-		olive::ColorProcessorPtr processor = job->GetColorProcessor();
+		olive::ColorProcessorPtr processor = job->get_color_processor();
 		if (!processor || !source_frame) {
 			return;
 		}
 
-		output_frame = olive::Frame::Create();
+		output_frame = olive::Frame::create();
 		output_frame->set_video_params(source_frame->video_params());
 		output_frame->allocate();
 
 		std::memcpy(output_frame->data(), source_frame->const_data(),
 					source_frame->allocated_size());
 
-		processor->ConvertFrame(output_frame);
+		processor->convert_frame(output_frame);
 	}
 };
 
-QString WriteTestCubeLut(QTemporaryDir *dir, const char *title, float low,
+QString write_test_cube_lut(QTemporaryDir *dir, const char *title, float low,
 						 float high)
 {
 	const QString path =
@@ -136,7 +136,7 @@ QString WriteTestCubeLut(QTemporaryDir *dir, const char *title, float low,
 //   1.0 -> 1.00
 // Forward:  (0.25, 0.50, 0.75) -> (0.375, 0.750, 0.875)
 // Inverse:  (0.25, 0.50, 0.75) -> (0.167, 0.333, 0.500)
-QString WriteAsymmetricCube(QTemporaryDir *dir)
+QString write_asymmetric_cube(QTemporaryDir *dir)
 {
 	const QString path =
 		QDir(dir->path()).filePath(QStringLiteral("asymmetric.cube"));
@@ -161,34 +161,34 @@ QString WriteAsymmetricCube(QTemporaryDir *dir)
 
 TEST(ColorProcessor, CreateFromInvalidTransformThrows)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
-	OCIO::FileTransformRcPtr transform = OCIO::FileTransform::Create();
+	ocio::FileTransformRcPtr transform = ocio::FileTransform::Create();
 	transform->setSrc("/nonexistent/lut.cube");
-	transform->setInterpolation(OCIO::INTERP_LINEAR);
-	transform->setDirection(OCIO::TRANSFORM_DIR_FORWARD);
+	transform->setInterpolation(ocio::INTERP_LINEAR);
+	transform->setDirection(ocio::TRANSFORM_DIR_FORWARD);
 
 	// A FileTransform pointing at a missing LUT makes OCIO throw while
 	// resolving the processor, before ColorProcessor is even constructed.
-	EXPECT_THROW(olive::ColorProcessor::Create(
-					 olive::ColorManager::GetDefaultConfig()->getProcessor(
+	EXPECT_THROW(olive::ColorProcessor::create(
+					 olive::ColorManager::get_default_config()->getProcessor(
 						 transform)),
-				 OCIO::Exception);
+				 ocio::Exception);
 }
 
 TEST(ColorProcessor, ConvertColorWithIdentityProcessor)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
-	OCIO::MatrixTransformRcPtr transform = OCIO::MatrixTransform::Create();
-	transform->setDirection(OCIO::TRANSFORM_DIR_FORWARD);
+	ocio::MatrixTransformRcPtr transform = ocio::MatrixTransform::Create();
+	transform->setDirection(ocio::TRANSFORM_DIR_FORWARD);
 
-	olive::ColorProcessorPtr processor = olive::ColorProcessor::Create(
-		olive::ColorManager::GetDefaultConfig()->getProcessor(transform));
+	olive::ColorProcessorPtr processor = olive::ColorProcessor::create(
+		olive::ColorManager::get_default_config()->getProcessor(transform));
 	ASSERT_NE(processor, nullptr);
 
 	const olive::Color in(0.25f, 0.50f, 0.75f, 1.0f);
-	const olive::Color out = processor->ConvertColor(in);
+	const olive::Color out = processor->convert_color(in);
 
 	EXPECT_NEAR(out.red(), in.red(), 0.001f);
 	EXPECT_NEAR(out.green(), in.green(), 0.001f);
@@ -200,21 +200,21 @@ TEST(ColorLut, CubeFileTransformConvertsColor)
 {
 	QTemporaryDir dir;
 	ASSERT_TRUE(dir.isValid());
-	const QString path = WriteTestCube(&dir);
+	const QString path = write_test_cube(&dir);
 	ASSERT_FALSE(path.isEmpty());
 
-	OCIO::FileTransformRcPtr transform = OCIO::FileTransform::Create();
+	ocio::FileTransformRcPtr transform = ocio::FileTransform::Create();
 	transform->setSrc(path.toUtf8().constData());
-	transform->setInterpolation(OCIO::INTERP_LINEAR);
-	transform->setDirection(OCIO::TRANSFORM_DIR_FORWARD);
+	transform->setInterpolation(ocio::INTERP_LINEAR);
+	transform->setDirection(ocio::TRANSFORM_DIR_FORWARD);
 
-	OCIO::ConstConfigRcPtr config = OCIO::Config::CreateRaw();
+	ocio::ConstConfigRcPtr config = ocio::Config::CreateRaw();
 	olive::ColorProcessorPtr processor =
-		olive::ColorProcessor::Create(config->getProcessor(transform));
+		olive::ColorProcessor::create(config->getProcessor(transform));
 	ASSERT_TRUE(processor);
 
 	const olive::Color out =
-		processor->ConvertColor(olive::Color(0.25f, 0.50f, 0.75f, 1.0f));
+		processor->convert_color(olive::Color(0.25f, 0.50f, 0.75f, 1.0f));
 	EXPECT_NEAR(out.red(), 0.75f, 0.02f);
 	EXPECT_NEAR(out.green(), 0.50f, 0.02f);
 	EXPECT_NEAR(out.blue(), 0.25f, 0.02f);
@@ -223,27 +223,27 @@ TEST(ColorLut, CubeFileTransformConvertsColor)
 
 TEST(ColorV04, FactoryCreatesColorNodes)
 {
-	std::unique_ptr<olive::Node> lut(olive::NodeFactory::CreateFromFactoryIndex(
-		olive::NodeFactory::kOCIOLut));
+	std::unique_ptr<olive::Node> lut(olive::NodeFactory::create_from_factory_index(
+		olive::NodeFactory::k_ocio_lut));
 	ASSERT_NE(lut, nullptr);
 	EXPECT_EQ(lut->id(), QStringLiteral("org.olivevideoeditor.Olive.ociolut"));
 
 	std::unique_ptr<olive::Node> three_way(
-		olive::NodeFactory::CreateFromFactoryIndex(
-			olive::NodeFactory::kThreeWayColor));
+		olive::NodeFactory::create_from_factory_index(
+			olive::NodeFactory::k_three_way_color));
 	ASSERT_NE(three_way, nullptr);
 	EXPECT_EQ(three_way->id(),
 			  QStringLiteral("org.olivevideoeditor.Olive.threewaycolor"));
-	EXPECT_TRUE(three_way->HasInputWithID(
-		olive::ThreeWayColorNode::kShadowsColorInput));
-	EXPECT_TRUE(three_way->HasInputWithID(
-		olive::ThreeWayColorNode::kMidtonesColorInput));
-	EXPECT_TRUE(three_way->HasInputWithID(
-		olive::ThreeWayColorNode::kHighlightsColorInput));
+	EXPECT_TRUE(three_way->has_input_with_id(
+		olive::ThreeWayColorNode::k_shadows_color_input));
+	EXPECT_TRUE(three_way->has_input_with_id(
+		olive::ThreeWayColorNode::k_midtones_color_input));
+	EXPECT_TRUE(three_way->has_input_with_id(
+		olive::ThreeWayColorNode::k_highlights_color_input));
 
 	const olive::Color neutral =
 		three_way
-			->GetStandardValue(olive::ThreeWayColorNode::kMidtonesColorInput)
+			->get_standard_value(olive::ThreeWayColorNode::k_midtones_color_input)
 			.value<olive::Color>();
 	EXPECT_FLOAT_EQ(neutral.red(), 0.5f);
 	EXPECT_FLOAT_EQ(neutral.green(), 0.5f);
@@ -264,41 +264,41 @@ TEST(ColorV04, FactoryCreatesColorNodes)
 
 TEST(ColorLutNode, ForwardDirectionInvertsPixels)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	QTemporaryDir dir;
 	ASSERT_TRUE(dir.isValid());
-	const QString path = WriteTestCubeLut(&dir, "invert", 0.0f, 1.0f);
+	const QString path = write_test_cube_lut(&dir, "invert", 0.0f, 1.0f);
 	ASSERT_FALSE(path.isEmpty());
 
 	auto *solid = new olive::SolidGenerator();
 	solid->setParent(&project);
-	solid->SetStandardValue(
-		olive::SolidGenerator::kColorInput,
+	solid->set_standard_value(
+		olive::SolidGenerator::k_color_input,
 		QVariant::fromValue(olive::Color(0.25f, 0.50f, 0.75f, 1.0f)));
 
 	auto *lut = new olive::OCIOLutNode();
 	lut->setParent(&project);
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput, path);
-	lut->SetStandardValue(olive::OCIOLutNode::kDirectionInput, 0); // Forward
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input, path);
+	lut->set_standard_value(olive::OCIOLutNode::k_direction_input, 0); // Forward
 
-	olive::Node::ConnectEdge(
-		solid, olive::NodeInput(lut, olive::OCIOLutNode::kTextureInput));
+	olive::Node::connect_edge(
+		solid, olive::NodeInput(lut, olive::OCIOLutNode::k_texture_input));
 
-	const olive::VideoParams params(16, 16, olive::core::PixelFormat::F32,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(16, 16, olive::core::PixelFormat::f32,
+									olive::VideoParams::k_rgba_channel_count);
 
 	PixelColorTransformTraverser traverser;
-	traverser.SetCacheVideoParams(params);
+	traverser.set_cache_video_params(params);
 
-	olive::NodeValueTable table = traverser.GenerateTable(
-		lut, olive::TimeRange(olive::core::rational(0),
-							  olive::core::rational(1, 30)));
-	olive::NodeValue tex_val = table.Get(olive::NodeValue::kTexture);
-	traverser.Resolve(tex_val);
+	olive::NodeValueTable table = traverser.generate_table(
+		lut, olive::TimeRange(olive::core::Rational(0),
+							  olive::core::Rational(1, 30)));
+	olive::NodeValue tex_val = table.get(olive::NodeValue::k_texture);
+	traverser.resolve(tex_val);
 
 	ASSERT_TRUE(traverser.output_frame);
 	const olive::Color out = traverser.output_frame->get_pixel(0, 0);
@@ -311,41 +311,41 @@ TEST(ColorLutNode, ForwardDirectionInvertsPixels)
 
 TEST(ColorLutNode, InverseDirectionReversesForwardTransform)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	QTemporaryDir dir;
 	ASSERT_TRUE(dir.isValid());
-	const QString path = WriteTestCubeLut(&dir, "invert", 0.0f, 1.0f);
+	const QString path = write_test_cube_lut(&dir, "invert", 0.0f, 1.0f);
 	ASSERT_FALSE(path.isEmpty());
 
 	auto *solid = new olive::SolidGenerator();
 	solid->setParent(&project);
-	solid->SetStandardValue(
-		olive::SolidGenerator::kColorInput,
+	solid->set_standard_value(
+		olive::SolidGenerator::k_color_input,
 		QVariant::fromValue(olive::Color(0.75f, 0.50f, 0.25f, 1.0f)));
 
 	auto *lut = new olive::OCIOLutNode();
 	lut->setParent(&project);
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput, path);
-	lut->SetStandardValue(olive::OCIOLutNode::kDirectionInput, 1); // Inverse
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input, path);
+	lut->set_standard_value(olive::OCIOLutNode::k_direction_input, 1); // Inverse
 
-	olive::Node::ConnectEdge(
-		solid, olive::NodeInput(lut, olive::OCIOLutNode::kTextureInput));
+	olive::Node::connect_edge(
+		solid, olive::NodeInput(lut, olive::OCIOLutNode::k_texture_input));
 
-	const olive::VideoParams params(16, 16, olive::core::PixelFormat::F32,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(16, 16, olive::core::PixelFormat::f32,
+									olive::VideoParams::k_rgba_channel_count);
 
 	PixelColorTransformTraverser traverser;
-	traverser.SetCacheVideoParams(params);
+	traverser.set_cache_video_params(params);
 
-	olive::NodeValueTable table = traverser.GenerateTable(
-		lut, olive::TimeRange(olive::core::rational(0),
-							  olive::core::rational(1, 30)));
-	olive::NodeValue tex_val = table.Get(olive::NodeValue::kTexture);
-	traverser.Resolve(tex_val);
+	olive::NodeValueTable table = traverser.generate_table(
+		lut, olive::TimeRange(olive::core::Rational(0),
+							  olive::core::Rational(1, 30)));
+	olive::NodeValue tex_val = table.get(olive::NodeValue::k_texture);
+	traverser.resolve(tex_val);
 
 	ASSERT_TRUE(traverser.output_frame);
 	const olive::Color out = traverser.output_frame->get_pixel(0, 0);
@@ -358,42 +358,42 @@ TEST(ColorLutNode, InverseDirectionReversesForwardTransform)
 
 TEST(ColorLutNode, SwitchingDirectionUpdatesProcessorAndPixels)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	QTemporaryDir dir;
 	ASSERT_TRUE(dir.isValid());
-	const QString path = WriteAsymmetricCube(&dir);
+	const QString path = write_asymmetric_cube(&dir);
 	ASSERT_FALSE(path.isEmpty());
 
 	auto *solid = new olive::SolidGenerator();
 	solid->setParent(&project);
-	solid->SetStandardValue(
-		olive::SolidGenerator::kColorInput,
+	solid->set_standard_value(
+		olive::SolidGenerator::k_color_input,
 		QVariant::fromValue(olive::Color(0.25f, 0.50f, 0.75f, 1.0f)));
 
 	auto *lut = new olive::OCIOLutNode();
 	lut->setParent(&project);
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput, path);
-	lut->SetStandardValue(olive::OCIOLutNode::kDirectionInput, 0); // Forward
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input, path);
+	lut->set_standard_value(olive::OCIOLutNode::k_direction_input, 0); // Forward
 
-	olive::Node::ConnectEdge(
-		solid, olive::NodeInput(lut, olive::OCIOLutNode::kTextureInput));
+	olive::Node::connect_edge(
+		solid, olive::NodeInput(lut, olive::OCIOLutNode::k_texture_input));
 
-	const olive::VideoParams params(16, 16, olive::core::PixelFormat::F32,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(16, 16, olive::core::PixelFormat::f32,
+									olive::VideoParams::k_rgba_channel_count);
 
 	// First render: forward direction.
 	PixelColorTransformTraverser forward_traverser;
-	forward_traverser.SetCacheVideoParams(params);
-	olive::NodeValueTable forward_table = forward_traverser.GenerateTable(
-		lut, olive::TimeRange(olive::core::rational(0),
-							  olive::core::rational(1, 30)));
+	forward_traverser.set_cache_video_params(params);
+	olive::NodeValueTable forward_table = forward_traverser.generate_table(
+		lut, olive::TimeRange(olive::core::Rational(0),
+							  olive::core::Rational(1, 30)));
 	olive::NodeValue forward_tex =
-		forward_table.Get(olive::NodeValue::kTexture);
-	forward_traverser.Resolve(forward_tex);
+		forward_table.get(olive::NodeValue::k_texture);
+	forward_traverser.resolve(forward_tex);
 
 	ASSERT_TRUE(forward_traverser.output_frame);
 	const olive::Color forward_out =
@@ -404,16 +404,16 @@ TEST(ColorLutNode, SwitchingDirectionUpdatesProcessorAndPixels)
 
 	// Switch direction. Before the Value()/EnsureProcessor() fix, the node
 	// would keep using the old forward processor.
-	lut->SetStandardValue(olive::OCIOLutNode::kDirectionInput, 1); // Inverse
+	lut->set_standard_value(olive::OCIOLutNode::k_direction_input, 1); // Inverse
 
 	PixelColorTransformTraverser inverse_traverser;
-	inverse_traverser.SetCacheVideoParams(params);
-	olive::NodeValueTable inverse_table = inverse_traverser.GenerateTable(
-		lut, olive::TimeRange(olive::core::rational(0),
-							  olive::core::rational(1, 30)));
+	inverse_traverser.set_cache_video_params(params);
+	olive::NodeValueTable inverse_table = inverse_traverser.generate_table(
+		lut, olive::TimeRange(olive::core::Rational(0),
+							  olive::core::Rational(1, 30)));
 	olive::NodeValue inverse_tex =
-		inverse_table.Get(olive::NodeValue::kTexture);
-	inverse_traverser.Resolve(inverse_tex);
+		inverse_table.get(olive::NodeValue::k_texture);
+	inverse_traverser.resolve(inverse_tex);
 
 	ASSERT_TRUE(inverse_traverser.output_frame);
 	const olive::Color inverse_out =
@@ -432,144 +432,144 @@ TEST(ColorLutNode, SwitchingDirectionUpdatesProcessorAndPixels)
 
 TEST(ColorLutNode, EmptyFilePathLeavesProcessorNull)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *solid = new olive::SolidGenerator();
 	solid->setParent(&project);
-	solid->SetStandardValue(
-		olive::SolidGenerator::kColorInput,
+	solid->set_standard_value(
+		olive::SolidGenerator::k_color_input,
 		QVariant::fromValue(olive::Color(0.25f, 0.50f, 0.75f, 1.0f)));
 
 	auto *lut = new olive::OCIOLutNode();
 	lut->setParent(&project);
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput, QString());
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input, QString());
 
-	olive::Node::ConnectEdge(
-		solid, olive::NodeInput(lut, olive::OCIOLutNode::kTextureInput));
+	olive::Node::connect_edge(
+		solid, olive::NodeInput(lut, olive::OCIOLutNode::k_texture_input));
 
-	const olive::VideoParams params(16, 16, olive::core::PixelFormat::F32,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(16, 16, olive::core::PixelFormat::f32,
+									olive::VideoParams::k_rgba_channel_count);
 
 	PixelColorTransformTraverser traverser;
-	traverser.SetCacheVideoParams(params);
-	olive::NodeValueTable table = traverser.GenerateTable(
-		lut, olive::TimeRange(olive::core::rational(0),
-							  olive::core::rational(1, 30)));
+	traverser.set_cache_video_params(params);
+	olive::NodeValueTable table = traverser.generate_table(
+		lut, olive::TimeRange(olive::core::Rational(0),
+							  olive::core::Rational(1, 30)));
 
 	// With an empty LUT path, the node should pass the input texture through
 	// without producing a color-transform job.
-	olive::NodeValue tex_val = table.Get(olive::NodeValue::kTexture);
-	EXPECT_EQ(tex_val.type(), olive::NodeValue::kTexture);
+	olive::NodeValue tex_val = table.get(olive::NodeValue::k_texture);
+	EXPECT_EQ(tex_val.type(), olive::NodeValue::k_texture);
 }
 
 TEST(ColorLutNode, MissingFilePathLeavesProcessorNull)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *solid = new olive::SolidGenerator();
 	solid->setParent(&project);
-	solid->SetStandardValue(
-		olive::SolidGenerator::kColorInput,
+	solid->set_standard_value(
+		olive::SolidGenerator::k_color_input,
 		QVariant::fromValue(olive::Color(0.25f, 0.50f, 0.75f, 1.0f)));
 
 	auto *lut = new olive::OCIOLutNode();
 	lut->setParent(&project);
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput,
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input,
 						  QStringLiteral("/nonexistent/path/lut.cube"));
 
-	olive::Node::ConnectEdge(
-		solid, olive::NodeInput(lut, olive::OCIOLutNode::kTextureInput));
+	olive::Node::connect_edge(
+		solid, olive::NodeInput(lut, olive::OCIOLutNode::k_texture_input));
 
-	const olive::VideoParams params(16, 16, olive::core::PixelFormat::F32,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(16, 16, olive::core::PixelFormat::f32,
+									olive::VideoParams::k_rgba_channel_count);
 
 	PixelColorTransformTraverser traverser;
-	traverser.SetCacheVideoParams(params);
-	olive::NodeValueTable table = traverser.GenerateTable(
-		lut, olive::TimeRange(olive::core::rational(0),
-							  olive::core::rational(1, 30)));
+	traverser.set_cache_video_params(params);
+	olive::NodeValueTable table = traverser.generate_table(
+		lut, olive::TimeRange(olive::core::Rational(0),
+							  olive::core::Rational(1, 30)));
 
-	olive::NodeValue tex_val = table.Get(olive::NodeValue::kTexture);
-	EXPECT_EQ(tex_val.type(), olive::NodeValue::kTexture);
+	olive::NodeValue tex_val = table.get(olive::NodeValue::k_texture);
+	EXPECT_EQ(tex_val.type(), olive::NodeValue::k_texture);
 }
 
 TEST(ColorLutNode, UnsupportedExtensionLeavesProcessorNull)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *solid = new olive::SolidGenerator();
 	solid->setParent(&project);
-	solid->SetStandardValue(
-		olive::SolidGenerator::kColorInput,
+	solid->set_standard_value(
+		olive::SolidGenerator::k_color_input,
 		QVariant::fromValue(olive::Color(0.25f, 0.50f, 0.75f, 1.0f)));
 
 	auto *lut = new olive::OCIOLutNode();
 	lut->setParent(&project);
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput,
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input,
 						  QStringLiteral("/tmp/lut.txt"));
 
-	olive::Node::ConnectEdge(
-		solid, olive::NodeInput(lut, olive::OCIOLutNode::kTextureInput));
+	olive::Node::connect_edge(
+		solid, olive::NodeInput(lut, olive::OCIOLutNode::k_texture_input));
 
-	const olive::VideoParams params(16, 16, olive::core::PixelFormat::F32,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(16, 16, olive::core::PixelFormat::f32,
+									olive::VideoParams::k_rgba_channel_count);
 
 	PixelColorTransformTraverser traverser;
-	traverser.SetCacheVideoParams(params);
-	olive::NodeValueTable table = traverser.GenerateTable(
-		lut, olive::TimeRange(olive::core::rational(0),
-							  olive::core::rational(1, 30)));
+	traverser.set_cache_video_params(params);
+	olive::NodeValueTable table = traverser.generate_table(
+		lut, olive::TimeRange(olive::core::Rational(0),
+							  olive::core::Rational(1, 30)));
 
-	olive::NodeValue tex_val = table.Get(olive::NodeValue::kTexture);
-	EXPECT_EQ(tex_val.type(), olive::NodeValue::kTexture);
+	olive::NodeValue tex_val = table.get(olive::NodeValue::k_texture);
+	EXPECT_EQ(tex_val.type(), olive::NodeValue::k_texture);
 }
 
 TEST(ColorLutNode, DirectionStringValuesAreAccepted)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	QTemporaryDir dir;
 	ASSERT_TRUE(dir.isValid());
-	const QString path = WriteTestCubeLut(&dir, "invert", 0.0f, 1.0f);
+	const QString path = write_test_cube_lut(&dir, "invert", 0.0f, 1.0f);
 	ASSERT_FALSE(path.isEmpty());
 
 	auto *solid = new olive::SolidGenerator();
 	solid->setParent(&project);
-	solid->SetStandardValue(
-		olive::SolidGenerator::kColorInput,
+	solid->set_standard_value(
+		olive::SolidGenerator::k_color_input,
 		QVariant::fromValue(olive::Color(0.25f, 0.50f, 0.75f, 1.0f)));
 
 	auto *lut = new olive::OCIOLutNode();
 	lut->setParent(&project);
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput, path);
-	lut->SetStandardValue(olive::OCIOLutNode::kDirectionInput,
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input, path);
+	lut->set_standard_value(olive::OCIOLutNode::k_direction_input,
 						  QStringLiteral("forward"));
 
-	olive::Node::ConnectEdge(
-		solid, olive::NodeInput(lut, olive::OCIOLutNode::kTextureInput));
+	olive::Node::connect_edge(
+		solid, olive::NodeInput(lut, olive::OCIOLutNode::k_texture_input));
 
-	const olive::VideoParams params(16, 16, olive::core::PixelFormat::F32,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(16, 16, olive::core::PixelFormat::f32,
+									olive::VideoParams::k_rgba_channel_count);
 
 	PixelColorTransformTraverser traverser;
-	traverser.SetCacheVideoParams(params);
-	olive::NodeValueTable table = traverser.GenerateTable(
-		lut, olive::TimeRange(olive::core::rational(0),
-							  olive::core::rational(1, 30)));
-	olive::NodeValue tex_val = table.Get(olive::NodeValue::kTexture);
-	traverser.Resolve(tex_val);
+	traverser.set_cache_video_params(params);
+	olive::NodeValueTable table = traverser.generate_table(
+		lut, olive::TimeRange(olive::core::Rational(0),
+							  olive::core::Rational(1, 30)));
+	olive::NodeValue tex_val = table.get(olive::NodeValue::k_texture);
+	traverser.resolve(tex_val);
 
 	ASSERT_TRUE(traverser.output_frame);
 	const olive::Color out = traverser.output_frame->get_pixel(0, 0);
@@ -581,41 +581,41 @@ TEST(ColorLutNode, DirectionStringValuesAreAccepted)
 
 TEST(ColorLutNode, DirectionStringInverseIsAccepted)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	QTemporaryDir dir;
 	ASSERT_TRUE(dir.isValid());
-	const QString path = WriteTestCubeLut(&dir, "invert", 0.0f, 1.0f);
+	const QString path = write_test_cube_lut(&dir, "invert", 0.0f, 1.0f);
 	ASSERT_FALSE(path.isEmpty());
 
 	auto *solid = new olive::SolidGenerator();
 	solid->setParent(&project);
-	solid->SetStandardValue(
-		olive::SolidGenerator::kColorInput,
+	solid->set_standard_value(
+		olive::SolidGenerator::k_color_input,
 		QVariant::fromValue(olive::Color(0.75f, 0.50f, 0.25f, 1.0f)));
 
 	auto *lut = new olive::OCIOLutNode();
 	lut->setParent(&project);
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput, path);
-	lut->SetStandardValue(olive::OCIOLutNode::kDirectionInput,
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input, path);
+	lut->set_standard_value(olive::OCIOLutNode::k_direction_input,
 						  QStringLiteral("inverse"));
 
-	olive::Node::ConnectEdge(
-		solid, olive::NodeInput(lut, olive::OCIOLutNode::kTextureInput));
+	olive::Node::connect_edge(
+		solid, olive::NodeInput(lut, olive::OCIOLutNode::k_texture_input));
 
-	const olive::VideoParams params(16, 16, olive::core::PixelFormat::F32,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(16, 16, olive::core::PixelFormat::f32,
+									olive::VideoParams::k_rgba_channel_count);
 
 	PixelColorTransformTraverser traverser;
-	traverser.SetCacheVideoParams(params);
-	olive::NodeValueTable table = traverser.GenerateTable(
-		lut, olive::TimeRange(olive::core::rational(0),
-							  olive::core::rational(1, 30)));
-	olive::NodeValue tex_val = table.Get(olive::NodeValue::kTexture);
-	traverser.Resolve(tex_val);
+	traverser.set_cache_video_params(params);
+	olive::NodeValueTable table = traverser.generate_table(
+		lut, olive::TimeRange(olive::core::Rational(0),
+							  olive::core::Rational(1, 30)));
+	olive::NodeValue tex_val = table.get(olive::NodeValue::k_texture);
+	traverser.resolve(tex_val);
 
 	ASSERT_TRUE(traverser.output_frame);
 	const olive::Color out = traverser.output_frame->get_pixel(0, 0);
@@ -627,41 +627,41 @@ TEST(ColorLutNode, DirectionStringInverseIsAccepted)
 
 TEST(ColorLutNode, ReusingSameFileDoesNotCrash)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	QTemporaryDir dir;
 	ASSERT_TRUE(dir.isValid());
-	const QString path = WriteTestCubeLut(&dir, "invert", 0.0f, 1.0f);
+	const QString path = write_test_cube_lut(&dir, "invert", 0.0f, 1.0f);
 	ASSERT_FALSE(path.isEmpty());
 
 	auto *solid = new olive::SolidGenerator();
 	solid->setParent(&project);
-	solid->SetStandardValue(
-		olive::SolidGenerator::kColorInput,
+	solid->set_standard_value(
+		olive::SolidGenerator::k_color_input,
 		QVariant::fromValue(olive::Color(0.25f, 0.50f, 0.75f, 1.0f)));
 
 	auto *lut = new olive::OCIOLutNode();
 	lut->setParent(&project);
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput, path);
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input, path);
 
-	olive::Node::ConnectEdge(
-		solid, olive::NodeInput(lut, olive::OCIOLutNode::kTextureInput));
+	olive::Node::connect_edge(
+		solid, olive::NodeInput(lut, olive::OCIOLutNode::k_texture_input));
 
-	const olive::VideoParams params(16, 16, olive::core::PixelFormat::F32,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(16, 16, olive::core::PixelFormat::f32,
+									olive::VideoParams::k_rgba_channel_count);
 
 	// Render twice; the second render should reuse the cached processor.
 	for (int i = 0; i < 2; ++i) {
 		PixelColorTransformTraverser traverser;
-		traverser.SetCacheVideoParams(params);
-		olive::NodeValueTable table = traverser.GenerateTable(
-			lut, olive::TimeRange(olive::core::rational(0),
-								  olive::core::rational(1, 30)));
-		olive::NodeValue tex_val = table.Get(olive::NodeValue::kTexture);
-		traverser.Resolve(tex_val);
+		traverser.set_cache_video_params(params);
+		olive::NodeValueTable table = traverser.generate_table(
+			lut, olive::TimeRange(olive::core::Rational(0),
+								  olive::core::Rational(1, 30)));
+		olive::NodeValue tex_val = table.get(olive::NodeValue::k_texture);
+		traverser.resolve(tex_val);
 
 		ASSERT_TRUE(traverser.output_frame);
 		const olive::Color out = traverser.output_frame->get_pixel(0, 0);
@@ -673,43 +673,43 @@ TEST(ColorLutNode, ReusingSameFileDoesNotCrash)
 
 TEST(ColorLutNode, SwitchingBackToOriginalFileRestoresOriginalPixels)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	QTemporaryDir dir;
 	ASSERT_TRUE(dir.isValid());
 
-	const QString invert_path = WriteTestCubeLut(&dir, "invert", 0.0f, 1.0f);
-	const QString boost_path = WriteTestCubeLut(&dir, "boost", 0.5f, 1.0f);
+	const QString invert_path = write_test_cube_lut(&dir, "invert", 0.0f, 1.0f);
+	const QString boost_path = write_test_cube_lut(&dir, "boost", 0.5f, 1.0f);
 	ASSERT_FALSE(invert_path.isEmpty());
 	ASSERT_FALSE(boost_path.isEmpty());
 
 	auto *solid = new olive::SolidGenerator();
 	solid->setParent(&project);
-	solid->SetStandardValue(
-		olive::SolidGenerator::kColorInput,
+	solid->set_standard_value(
+		olive::SolidGenerator::k_color_input,
 		QVariant::fromValue(olive::Color(0.25f, 0.50f, 0.75f, 1.0f)));
 
 	auto *lut = new olive::OCIOLutNode();
 	lut->setParent(&project);
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput, invert_path);
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input, invert_path);
 
-	olive::Node::ConnectEdge(
-		solid, olive::NodeInput(lut, olive::OCIOLutNode::kTextureInput));
+	olive::Node::connect_edge(
+		solid, olive::NodeInput(lut, olive::OCIOLutNode::k_texture_input));
 
-	const olive::VideoParams params(16, 16, olive::core::PixelFormat::F32,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(16, 16, olive::core::PixelFormat::f32,
+									olive::VideoParams::k_rgba_channel_count);
 
 	auto render = [&]() {
 		PixelColorTransformTraverser traverser;
-		traverser.SetCacheVideoParams(params);
-		olive::NodeValueTable table = traverser.GenerateTable(
-			lut, olive::TimeRange(olive::core::rational(0),
-								  olive::core::rational(1, 30)));
-		olive::NodeValue tex_val = table.Get(olive::NodeValue::kTexture);
-		traverser.Resolve(tex_val);
+		traverser.set_cache_video_params(params);
+		olive::NodeValueTable table = traverser.generate_table(
+			lut, olive::TimeRange(olive::core::Rational(0),
+								  olive::core::Rational(1, 30)));
+		olive::NodeValue tex_val = table.get(olive::NodeValue::k_texture);
+		traverser.resolve(tex_val);
 		return traverser.output_frame->get_pixel(0, 0);
 	};
 
@@ -718,11 +718,11 @@ TEST(ColorLutNode, SwitchingBackToOriginalFileRestoresOriginalPixels)
 	EXPECT_NEAR(invert_out.red(), 0.75f, 0.02f);
 
 	// Switch to boost, then back to invert.
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput, boost_path);
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input, boost_path);
 	const olive::Color boost_out = render();
 	EXPECT_GT(std::abs(boost_out.red() - invert_out.red()), 0.1f);
 
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput, invert_path);
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input, invert_path);
 	const olive::Color restored_out = render();
 	EXPECT_NEAR(restored_out.red(), invert_out.red(), 0.02f);
 	EXPECT_NEAR(restored_out.green(), invert_out.green(), 0.02f);
@@ -735,14 +735,14 @@ TEST(ColorLutNode, SwitchingBackToOriginalFileRestoresOriginalPixels)
 
 TEST(ColorLutNode, MissingFileSetsLastError)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *lut = new olive::OCIOLutNode();
 	lut->setParent(&project);
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput,
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input,
 						  QStringLiteral("/nonexistent/path/lut.cube"));
 
 	EXPECT_FALSE(lut->last_error().isEmpty());
@@ -750,10 +750,10 @@ TEST(ColorLutNode, MissingFileSetsLastError)
 
 TEST(ColorLutNode, UnsupportedExtensionSetsLastError)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	QTemporaryDir dir;
 	ASSERT_TRUE(dir.isValid());
@@ -764,49 +764,49 @@ TEST(ColorLutNode, UnsupportedExtensionSetsLastError)
 
 	auto *lut = new olive::OCIOLutNode();
 	lut->setParent(&project);
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput, path);
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input, path);
 
 	EXPECT_FALSE(lut->last_error().isEmpty());
 }
 
 TEST(ColorLutNode, ValidFileClearsLastError)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	QTemporaryDir dir;
 	ASSERT_TRUE(dir.isValid());
-	const QString path = WriteTestCubeLut(&dir, "invert", 0.0f, 1.0f);
+	const QString path = write_test_cube_lut(&dir, "invert", 0.0f, 1.0f);
 	ASSERT_FALSE(path.isEmpty());
 
 	auto *lut = new olive::OCIOLutNode();
 	lut->setParent(&project);
 
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput,
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input,
 						  QStringLiteral("/nonexistent/path/lut.cube"));
 	EXPECT_FALSE(lut->last_error().isEmpty());
 
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput, path);
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input, path);
 	EXPECT_TRUE(lut->last_error().isEmpty());
 }
 
 TEST(ColorLutNode, EmptyPathClearsLastError)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *lut = new olive::OCIOLutNode();
 	lut->setParent(&project);
 
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput,
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input,
 						  QStringLiteral("/nonexistent/path/lut.cube"));
 	EXPECT_FALSE(lut->last_error().isEmpty());
 
-	lut->SetStandardValue(olive::OCIOLutNode::kFileInput, QString());
+	lut->set_standard_value(olive::OCIOLutNode::k_file_input, QString());
 	EXPECT_TRUE(lut->last_error().isEmpty());
 }
 
@@ -816,36 +816,36 @@ TEST(ColorLutNode, EmptyPathClearsLastError)
 
 TEST(LUTLibrary, SupportsCubeAnd3dlExtensions)
 {
-	EXPECT_TRUE(olive::LUTLibrary::IsSupportedExtension(QStringLiteral("cube")));
+	EXPECT_TRUE(olive::LUTLibrary::is_supported_extension(QStringLiteral("cube")));
 	EXPECT_TRUE(
-		olive::LUTLibrary::IsSupportedExtension(QStringLiteral(".cube")));
-	EXPECT_TRUE(olive::LUTLibrary::IsSupportedExtension(QStringLiteral("CUBE")));
-	EXPECT_TRUE(olive::LUTLibrary::IsSupportedExtension(QStringLiteral("3dl")));
-	EXPECT_TRUE(olive::LUTLibrary::IsSupportedExtension(QStringLiteral(".3dl")));
-	EXPECT_FALSE(olive::LUTLibrary::IsSupportedExtension(QStringLiteral("txt")));
-	EXPECT_FALSE(olive::LUTLibrary::IsSupportedExtension(QString()));
+		olive::LUTLibrary::is_supported_extension(QStringLiteral(".cube")));
+	EXPECT_TRUE(olive::LUTLibrary::is_supported_extension(QStringLiteral("CUBE")));
+	EXPECT_TRUE(olive::LUTLibrary::is_supported_extension(QStringLiteral("3dl")));
+	EXPECT_TRUE(olive::LUTLibrary::is_supported_extension(QStringLiteral(".3dl")));
+	EXPECT_FALSE(olive::LUTLibrary::is_supported_extension(QStringLiteral("txt")));
+	EXPECT_FALSE(olive::LUTLibrary::is_supported_extension(QString()));
 }
 
 TEST(LUTLibrary, DirectoryRoundTripCleansAndDeduplicates)
 {
 	const QString previous =
-		olive::Config::Current()[QStringLiteral("LUTLibraryPaths")].toString();
+		olive::Config::current()[QStringLiteral("LUTLibraryPaths")].toString();
 
-	olive::LUTLibrary::SetDirectories(
+	olive::LUTLibrary::set_directories(
 		{ QStringLiteral("/a/luts"), QStringLiteral(" /a/luts "),
 		  QStringLiteral("/b/luts"), QString() });
 
-	EXPECT_EQ(olive::LUTLibrary::GetDirectories(),
+	EXPECT_EQ(olive::LUTLibrary::get_directories(),
 			  (QStringList{ QStringLiteral("/a/luts"),
 							QStringLiteral("/b/luts") }));
 
-	olive::Config::Current()[QStringLiteral("LUTLibraryPaths")] = previous;
+	olive::Config::current()[QStringLiteral("LUTLibraryPaths")] = previous;
 }
 
 TEST(LUTLibrary, ScansDirectoriesRecursivelyForSupportedLuts)
 {
 	const QString previous =
-		olive::Config::Current()[QStringLiteral("LUTLibraryPaths")].toString();
+		olive::Config::current()[QStringLiteral("LUTLibraryPaths")].toString();
 
 	QTemporaryDir dir;
 	ASSERT_TRUE(dir.isValid());
@@ -865,15 +865,15 @@ TEST(LUTLibrary, ScansDirectoriesRecursivelyForSupportedLuts)
 		file.close();
 	}
 
-	olive::LUTLibrary::SetDirectories({ dir.path() });
+	olive::LUTLibrary::set_directories({ dir.path() });
 
-	const QStringList files = olive::LUTLibrary::GetLutFiles();
+	const QStringList files = olive::LUTLibrary::get_lut_files();
 	EXPECT_EQ(files.size(), 2);
 	EXPECT_TRUE(files.contains(cube_path));
 	EXPECT_TRUE(files.contains(three_dl_path));
 	EXPECT_FALSE(files.contains(text_path));
 
-	olive::Config::Current()[QStringLiteral("LUTLibraryPaths")] = previous;
+	olive::Config::current()[QStringLiteral("LUTLibraryPaths")] = previous;
 }
 
 // -----------------------------------------------------------------------------
@@ -883,36 +883,36 @@ TEST(LUTLibrary, ScansDirectoriesRecursivelyForSupportedLuts)
 
 TEST(ColorProcessor, InverseDisplayTransformRoundTripsColor)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	olive::ColorManager *color_manager = project.color_manager();
 	ASSERT_NE(color_manager, nullptr);
 
-	const QString display = color_manager->GetDefaultDisplay();
-	const QString view = color_manager->GetDefaultView(display);
+	const QString display = color_manager->get_default_display();
+	const QString view = color_manager->get_default_view(display);
 	ASSERT_FALSE(display.isEmpty());
 	ASSERT_FALSE(view.isEmpty());
 
 	const olive::ColorTransform output_transform(display, view, QString());
 
-	olive::ColorProcessorPtr ref_to_display = olive::ColorProcessor::Create(
-		color_manager, color_manager->GetReferenceColorSpace(),
+	olive::ColorProcessorPtr ref_to_display = olive::ColorProcessor::create(
+		color_manager, color_manager->get_reference_color_space(),
 		output_transform);
 	ASSERT_NE(ref_to_display, nullptr);
-	ASSERT_NE(ref_to_display->GetProcessor(), nullptr);
+	ASSERT_NE(ref_to_display->get_processor(), nullptr);
 
-	olive::ColorProcessorPtr display_to_ref = olive::ColorProcessor::Create(
-		color_manager, color_manager->GetReferenceColorSpace(),
-		output_transform, olive::ColorProcessor::kInverse);
+	olive::ColorProcessorPtr display_to_ref = olive::ColorProcessor::create(
+		color_manager, color_manager->get_reference_color_space(),
+		output_transform, olive::ColorProcessor::k_inverse);
 	ASSERT_NE(display_to_ref, nullptr);
-	ASSERT_NE(display_to_ref->GetProcessor(), nullptr);
+	ASSERT_NE(display_to_ref->get_processor(), nullptr);
 
 	const olive::Color reference(0.2f, 0.4f, 0.6f, 1.0f);
-	const olive::Color display_color = ref_to_display->ConvertColor(reference);
-	const olive::Color round_trip = display_to_ref->ConvertColor(display_color);
+	const olive::Color display_color = ref_to_display->convert_color(reference);
+	const olive::Color round_trip = display_to_ref->convert_color(display_color);
 
 	EXPECT_NEAR(round_trip.red(), reference.red(), 0.001f);
 	EXPECT_NEAR(round_trip.green(), reference.green(), 0.001f);
@@ -934,20 +934,20 @@ public:
 
 protected:
 	virtual void
-	ProcessColorTransform(olive::TexturePtr destination, const olive::Node *node,
+	process_color_transform(olive::TexturePtr destination, const olive::Node *node,
 						  const olive::ColorTransformJob *job) override
 	{
-		const olive::NodeValueRow &values = job->GetValues();
+		const olive::NodeValueRow &values = job->get_values();
 		if (values.contains(
-				olive::OCIOGradingTransformLinearNode::kClampWhiteInput)) {
+				olive::OCIOGradingTransformLinearNode::k_clamp_white_input)) {
 			white_clamp_value =
 				values
 					.value(olive::OCIOGradingTransformLinearNode::
-							   kClampWhiteInput)
-					.toDouble();
+							   k_clamp_white_input)
+					.to_double();
 			captured_white_clamp = true;
 		}
-		PixelColorTransformTraverser::ProcessColorTransform(destination, node,
+		PixelColorTransformTraverser::process_color_transform(destination, node,
 														  job);
 	}
 };
@@ -956,45 +956,45 @@ protected:
 
 TEST(ColorGradingLinear, InvalidClampRangeIsCorrectedPerFrame)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *solid = new olive::SolidGenerator();
 	solid->setParent(&project);
-	solid->SetStandardValue(
-		olive::SolidGenerator::kColorInput,
+	solid->set_standard_value(
+		olive::SolidGenerator::k_color_input,
 		QVariant::fromValue(olive::Color(0.25f, 0.50f, 0.75f, 1.0f)));
 
 	auto *grading = new olive::OCIOGradingTransformLinearNode();
 	grading->setParent(&project);
-	grading->SetStandardValue(
-		olive::OCIOGradingTransformLinearNode::kClampBlackEnableInput, true);
-	grading->SetStandardValue(
-		olive::OCIOGradingTransformLinearNode::kClampWhiteEnableInput, true);
-	grading->SetStandardValue(
-		olive::OCIOGradingTransformLinearNode::kClampBlackInput, 0.5);
+	grading->set_standard_value(
+		olive::OCIOGradingTransformLinearNode::k_clamp_black_enable_input, true);
+	grading->set_standard_value(
+		olive::OCIOGradingTransformLinearNode::k_clamp_white_enable_input, true);
+	grading->set_standard_value(
+		olive::OCIOGradingTransformLinearNode::k_clamp_black_input, 0.5);
 	// Invalid: white clamp below black clamp
-	grading->SetStandardValue(
-		olive::OCIOGradingTransformLinearNode::kClampWhiteInput, 0.0);
+	grading->set_standard_value(
+		olive::OCIOGradingTransformLinearNode::k_clamp_white_input, 0.0);
 
-	olive::Node::ConnectEdge(
+	olive::Node::connect_edge(
 		solid,
 		olive::NodeInput(
 			grading,
-			olive::OCIOGradingTransformLinearNode::kTextureInput));
+			olive::OCIOGradingTransformLinearNode::k_texture_input));
 
-	const olive::VideoParams params(16, 16, olive::core::PixelFormat::F32,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(16, 16, olive::core::PixelFormat::f32,
+									olive::VideoParams::k_rgba_channel_count);
 
 	ClampCaptureTraverser traverser;
-	traverser.SetCacheVideoParams(params);
-	olive::NodeValueTable table = traverser.GenerateTable(
-		grading, olive::TimeRange(olive::core::rational(0),
-								  olive::core::rational(1, 30)));
-	olive::NodeValue tex_val = table.Get(olive::NodeValue::kTexture);
-	traverser.Resolve(tex_val);
+	traverser.set_cache_video_params(params);
+	olive::NodeValueTable table = traverser.generate_table(
+		grading, olive::TimeRange(olive::core::Rational(0),
+								  olive::core::Rational(1, 30)));
+	olive::NodeValue tex_val = table.get(olive::NodeValue::k_texture);
+	traverser.resolve(tex_val);
 
 	// The node must have corrected the white clamp to just above the black
 	// clamp instead of feeding an invalid grading primary to OCIO
@@ -1007,44 +1007,44 @@ TEST(ColorGradingLinear, InvalidClampRangeIsCorrectedPerFrame)
 
 TEST(ColorGradingLinear, ValidClampRangeIsLeftUntouched)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *solid = new olive::SolidGenerator();
 	solid->setParent(&project);
-	solid->SetStandardValue(
-		olive::SolidGenerator::kColorInput,
+	solid->set_standard_value(
+		olive::SolidGenerator::k_color_input,
 		QVariant::fromValue(olive::Color(0.25f, 0.50f, 0.75f, 1.0f)));
 
 	auto *grading = new olive::OCIOGradingTransformLinearNode();
 	grading->setParent(&project);
-	grading->SetStandardValue(
-		olive::OCIOGradingTransformLinearNode::kClampBlackEnableInput, true);
-	grading->SetStandardValue(
-		olive::OCIOGradingTransformLinearNode::kClampWhiteEnableInput, true);
-	grading->SetStandardValue(
-		olive::OCIOGradingTransformLinearNode::kClampBlackInput, 0.1);
-	grading->SetStandardValue(
-		olive::OCIOGradingTransformLinearNode::kClampWhiteInput, 0.9);
+	grading->set_standard_value(
+		olive::OCIOGradingTransformLinearNode::k_clamp_black_enable_input, true);
+	grading->set_standard_value(
+		olive::OCIOGradingTransformLinearNode::k_clamp_white_enable_input, true);
+	grading->set_standard_value(
+		olive::OCIOGradingTransformLinearNode::k_clamp_black_input, 0.1);
+	grading->set_standard_value(
+		olive::OCIOGradingTransformLinearNode::k_clamp_white_input, 0.9);
 
-	olive::Node::ConnectEdge(
+	olive::Node::connect_edge(
 		solid,
 		olive::NodeInput(
 			grading,
-			olive::OCIOGradingTransformLinearNode::kTextureInput));
+			olive::OCIOGradingTransformLinearNode::k_texture_input));
 
-	const olive::VideoParams params(16, 16, olive::core::PixelFormat::F32,
-									olive::VideoParams::kRGBAChannelCount);
+	const olive::VideoParams params(16, 16, olive::core::PixelFormat::f32,
+									olive::VideoParams::k_rgba_channel_count);
 
 	ClampCaptureTraverser traverser;
-	traverser.SetCacheVideoParams(params);
-	olive::NodeValueTable table = traverser.GenerateTable(
-		grading, olive::TimeRange(olive::core::rational(0),
-								  olive::core::rational(1, 30)));
-	olive::NodeValue tex_val = table.Get(olive::NodeValue::kTexture);
-	traverser.Resolve(tex_val);
+	traverser.set_cache_video_params(params);
+	olive::NodeValueTable table = traverser.generate_table(
+		grading, olive::TimeRange(olive::core::Rational(0),
+								  olive::core::Rational(1, 30)));
+	olive::NodeValue tex_val = table.get(olive::NodeValue::k_texture);
+	traverser.resolve(tex_val);
 
 	ASSERT_TRUE(traverser.captured_white_clamp);
 	EXPECT_NEAR(traverser.white_clamp_value, 0.9, 1e-9);
@@ -1054,28 +1054,28 @@ TEST(ColorGradingLinear, ValidClampRangeIsLeftUntouched)
 
 TEST(ColorGradingLinear, StaticBlackClampConstrainsWhiteMinimum)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *grading = new olive::OCIOGradingTransformLinearNode();
 	grading->setParent(&project);
 
 	// Default black clamp is 0, so the white minimum starts just above it
 	EXPECT_NEAR(grading
-					->GetInputProperty(
-						olive::OCIOGradingTransformLinearNode::kClampWhiteInput,
+					->get_input_property(
+						olive::OCIOGradingTransformLinearNode::k_clamp_white_input,
 						QStringLiteral("min"))
 					.toDouble(),
 				0.000001, 1e-9);
 
 	// Changing the static black clamp updates the white minimum
-	grading->SetStandardValue(
-		olive::OCIOGradingTransformLinearNode::kClampBlackInput, 0.25);
+	grading->set_standard_value(
+		olive::OCIOGradingTransformLinearNode::k_clamp_black_input, 0.25);
 	EXPECT_NEAR(grading
-					->GetInputProperty(
-						olive::OCIOGradingTransformLinearNode::kClampWhiteInput,
+					->get_input_property(
+						olive::OCIOGradingTransformLinearNode::k_clamp_white_input,
 						QStringLiteral("min"))
 					.toDouble(),
 				0.250001, 1e-9);

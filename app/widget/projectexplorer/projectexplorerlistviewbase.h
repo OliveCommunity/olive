@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECTEXPLORERLISTVIEWBASE_H
-#define PROJECTEXPLORERLISTVIEWBASE_H
+#ifndef OAK_PROJECTEXPLORERLISTVIEWBASE_H
+#define OAK_PROJECTEXPLORERLISTVIEWBASE_H
 
 #include <QListView>
 
@@ -55,9 +55,9 @@ signals:
    *
    * Emits a signal when the view is double clicked but not on any particular item
    */
-	void DoubleClickedEmptyArea();
+	void double_clicked_empty_area();
 };
 
 }
 
-#endif // PROJECTEXPLORERLISTVIEWBASE_H
+#endif // OAK_PROJECTEXPLORERLISTVIEWBASE_H

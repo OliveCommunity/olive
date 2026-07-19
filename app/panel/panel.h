@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PANEL_WIDGET_H
-#define PANEL_WIDGET_H
+#ifndef OAK_PANEL_WIDGET_H
+#define OAK_PANEL_WIDGET_H
 
 #include "KDDockWidgets/src/core/Window_p.h"
 #include "KDDockWidgets/src/qtwidgets/views/TabBar.h"
@@ -58,21 +58,21 @@ public:
    *
    * @param enabled
    */
-	void SetBorderVisible(bool enabled);
+	void set_border_visible(bool enabled);
 
 	/**
    * @brief If enabled, sends signal CloseRequested() when the user closes instead of closing
    *
    * Defaults to FALSE. Use this to override default panel closing functionality.
    */
-	void SetSignalInsteadOfClose(bool e);
+	void set_signal_instead_of_close(bool e);
 
 	using Info = std::map<QString, QString>;
 
-	virtual void LoadData(const Info &info)
+	virtual void load_data(const Info &info)
 	{
 	}
-	virtual Info SaveData() const
+	virtual Info save_data() const
 	{
 		return Info();
 	}
@@ -83,7 +83,7 @@ public:
    * This function is up to the Panel's interpretation of what the user intends to zoom into. Default behavior is a
    * no-op.
    */
-	virtual void ZoomIn()
+	virtual void zoom_in()
 	{
 	}
 
@@ -93,15 +93,15 @@ public:
    * This function is up to the Panel's interpretation of what the user intends to zoom out of. Default behavior is a
    * no-op.
    */
-	virtual void ZoomOut()
+	virtual void zoom_out()
 	{
 	}
 
-	virtual void GoToStart()
+	virtual void go_to_start()
 	{
 	}
 
-	virtual void PrevFrame()
+	virtual void prev_frame()
 	{
 	}
 
@@ -111,180 +111,180 @@ public:
    * This function is up to the Panel's interpretation of what the user intends to zoom out of. Default behavior is a
    * no-op.
    */
-	virtual void PlayPause()
+	virtual void play_pause()
 	{
 	}
 
-	virtual void PlayInToOut()
+	virtual void play_in_to_out()
 	{
 	}
 
-	virtual void NextFrame()
+	virtual void next_frame()
 	{
 	}
 
-	virtual void GoToEnd()
+	virtual void go_to_end()
 	{
 	}
 
-	virtual void SelectAll()
+	virtual void select_all()
 	{
 	}
 
-	virtual void DeselectAll()
+	virtual void deselect_all()
 	{
 	}
 
-	virtual void RippleToIn()
+	virtual void ripple_to_in()
 	{
 	}
 
-	virtual void RippleToOut()
+	virtual void ripple_to_out()
 	{
 	}
 
-	virtual void EditToIn()
+	virtual void edit_to_in()
 	{
 	}
 
-	virtual void EditToOut()
+	virtual void edit_to_out()
 	{
 	}
 
-	virtual void ShuttleLeft()
+	virtual void shuttle_left()
 	{
 	}
 
-	virtual void ShuttleStop()
+	virtual void shuttle_stop()
 	{
 	}
 
-	virtual void ShuttleRight()
+	virtual void shuttle_right()
 	{
 	}
 
-	virtual void GoToPrevCut()
+	virtual void go_to_prev_cut()
 	{
 	}
 
-	virtual void GoToNextCut()
+	virtual void go_to_next_cut()
 	{
 	}
 
-	virtual void RenameSelected()
+	virtual void rename_selected()
 	{
 	}
 
-	virtual void DeleteSelected()
+	virtual void delete_selected()
 	{
 	}
 
-	virtual void RippleDelete()
+	virtual void ripple_delete()
 	{
 	}
 
-	virtual void IncreaseTrackHeight()
+	virtual void increase_track_height()
 	{
 	}
 
-	virtual void DecreaseTrackHeight()
+	virtual void decrease_track_height()
 	{
 	}
 
-	virtual void SetIn()
+	virtual void set_in()
 	{
 	}
 
-	virtual void SetOut()
+	virtual void set_out()
 	{
 	}
 
-	virtual void ResetIn()
+	virtual void reset_in()
 	{
 	}
 
-	virtual void ResetOut()
+	virtual void reset_out()
 	{
 	}
 
-	virtual void ClearInOut()
+	virtual void clear_in_out()
 	{
 	}
 
-	virtual void SetMarker()
+	virtual void set_marker()
 	{
 	}
 
-	virtual void ToggleLinks()
+	virtual void toggle_links()
 	{
 	}
 
-	virtual void CutSelected()
+	virtual void cut_selected()
 	{
 	}
 
-	virtual void CopySelected()
+	virtual void copy_selected()
 	{
 	}
 
-	virtual void Paste()
+	virtual void paste()
 	{
 	}
 
-	virtual void PasteInsert()
+	virtual void paste_insert()
 	{
 	}
 
-	virtual void ToggleShowAll()
+	virtual void toggle_show_all()
 	{
 	}
 
-	virtual void GoToIn()
+	virtual void go_to_in()
 	{
 	}
 
-	virtual void GoToOut()
+	virtual void go_to_out()
 	{
 	}
 
-	virtual void DeleteInToOut()
+	virtual void delete_in_to_out()
 	{
 	}
 
-	virtual void RippleDeleteInToOut()
+	virtual void ripple_delete_in_to_out()
 	{
 	}
 
-	virtual void ToggleSelectedEnabled()
+	virtual void toggle_selected_enabled()
 	{
 	}
 
-	virtual void Duplicate()
+	virtual void duplicate()
 	{
 	}
 
-	virtual void SetColorLabel(int)
+	virtual void set_color_label(int)
 	{
 	}
 
-	virtual void NudgeLeft()
+	virtual void nudge_left()
 	{
 	}
 
-	virtual void NudgeRight()
+	virtual void nudge_right()
 	{
 	}
 
-	virtual void MoveInToPlayhead()
+	virtual void move_in_to_playhead()
 	{
 	}
 
-	virtual void MoveOutToPlayhead()
+	virtual void move_out_to_playhead()
 	{
 	}
 
 signals:
-	void CloseRequested();
+	void close_requested();
 	void shown(Qt::FocusReason reason);
 	void hidden();
 
@@ -299,9 +299,9 @@ protected:
 
 	virtual void closeEvent(QCloseEvent *event) override;
 
-	virtual void Retranslate();
+	virtual void retranslate();
 
-	void SetWidgetWithPadding(QWidget *widget);
+	void set_widget_with_padding(QWidget *widget);
 
 protected slots:
 	/**
@@ -316,7 +316,7 @@ protected slots:
    *
    * String to set the title to
    */
-	void SetTitle(const QString &t);
+	void set_title(const QString &t);
 
 	/**
    * @brief Set panel's subtitle
@@ -330,7 +330,7 @@ protected slots:
    *
    * String to set the subtitle to
    */
-	void SetSubtitle(const QString &t);
+	void set_subtitle(const QString &t);
 protected slots:
 private:
 	/**
@@ -338,7 +338,7 @@ private:
    *
    * Should be called any time a change is made to title_ or subtitle_
    */
-	void UpdateTitle();
+	void update_title();
 
 	QString title_;
 
@@ -348,11 +348,11 @@ private:
 
 	bool signal_instead_of_close_;
 
-	QMetaObject::Connection m_tabBarConnection;
-	QMetaObject::Connection m_windowConnection;
-	bool m_lastVisibleState = false;
+	QMetaObject::Connection m_tabBarConnection_;
+	QMetaObject::Connection m_windowConnection_;
+	bool m_lastVisibleState_ = false;
 };
 
 }
 
-#endif // PANEL_WIDGET_H
+#endif // OAK_PANEL_WIDGET_H

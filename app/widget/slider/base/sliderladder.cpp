@@ -50,7 +50,7 @@ SliderLadder::SliderLadder(double drag_multiplier, int nb_outer_values,
 	setFrameShape(QFrame::Box);
 	setLineWidth(1);
 
-	if (!OLIVE_CONFIG("UseSliderLadders").toBool()) {
+	if (!OAK_CONFIG("UseSliderLadders").toBool()) {
 		nb_outer_values = 0;
 	}
 
@@ -63,7 +63,7 @@ SliderLadder::SliderLadder(double drag_multiplier, int nb_outer_values,
 	SliderLadderElement *start_element =
 		new SliderLadderElement(drag_multiplier, width_hint);
 	active_element_ = elements_.size();
-	start_element->SetHighlighted(true);
+	start_element->set_highlighted(true);
 	elements_.append(start_element);
 
 	for (int i = 0; i < nb_outer_values; i++) {
@@ -76,11 +76,11 @@ SliderLadder::SliderLadder(double drag_multiplier, int nb_outer_values,
 	}
 
 	if (elements_.size() == 1) {
-		elements_.first()->SetMultiplierVisible(false);
+		elements_.first()->set_multiplier_visible(false);
 	}
 
 	drag_timer_.setInterval(10);
-	connect(&drag_timer_, &QTimer::timeout, this, &SliderLadder::TimerUpdate);
+	connect(&drag_timer_, &QTimer::timeout, this, &SliderLadder::timer_update);
 
 	screen_ = nullptr;
 	foreach (QScreen *screen, qApp->screens()) {
@@ -90,7 +90,7 @@ SliderLadder::SliderLadder(double drag_multiplier, int nb_outer_values,
 		}
 	}
 
-	if (UsingLadders()) {
+	if (using_ladders()) {
 		drag_start_x_ = -1;
 		wrap_count_ = 0;
 	} else {
@@ -110,7 +110,7 @@ SliderLadder::SliderLadder(double drag_multiplier, int nb_outer_values,
 
 SliderLadder::~SliderLadder()
 {
-	if (UsingLadders()) {
+	if (using_ladders()) {
 		if (wrap_count_ != 0) {
 			// If wrapped, restore cursor to ladder
 			QCursor::setPos(pos() + rect().center());
@@ -126,14 +126,14 @@ SliderLadder::~SliderLadder()
 	}
 }
 
-void SliderLadder::SetValue(const QString &s)
+void SliderLadder::set_value(const QString &s)
 {
 	foreach (SliderLadderElement *e, elements_) {
-		e->SetValue(s);
+		e->set_value(s);
 	}
 }
 
-void SliderLadder::StartListeningToMouseInput()
+void SliderLadder::start_listening_to_mouse_input()
 {
 	QMetaObject::invokeMethod(&drag_timer_, "start", Qt::QueuedConnection);
 }
@@ -151,18 +151,18 @@ void SliderLadder::closeEvent(QCloseEvent *event)
 
 	drag_timer_.stop();
 
-	emit Released();
+	emit released();
 
 	QFrame::closeEvent(event);
 }
 
-void SliderLadder::TimerUpdate()
+void SliderLadder::timer_update()
 {
 	int ladder_left = this->x();
 	int ladder_right = this->x() + this->width() - 1;
 	int now_pos = QCursor::pos().x();
 
-	if (UsingLadders()) {
+	if (using_ladders()) {
 		bool is_under_mouse = (now_pos >= ladder_left &&
 							   now_pos <= ladder_right && wrap_count_ == 0);
 
@@ -180,8 +180,8 @@ void SliderLadder::TimerUpdate()
 			}
 
 			int makeup_value = anchor - drag_start_x_;
-			emit DraggedByValue(makeup_value,
-								elements_.at(active_element_)->GetMultiplier());
+			emit dragged_by_value(makeup_value,
+								elements_.at(active_element_)->get_multiplier());
 
 			drag_start_x_ = -1;
 		}
@@ -191,9 +191,9 @@ void SliderLadder::TimerUpdate()
 			for (int i = 0; i < elements_.size(); i++) {
 				if (elements_.at(i)->underMouse()) {
 					if (i != active_element_) {
-						elements_.at(active_element_)->SetHighlighted(false);
+						elements_.at(active_element_)->set_highlighted(false);
 						active_element_ = i;
-						elements_.at(active_element_)->SetHighlighted(true);
+						elements_.at(active_element_)->set_highlighted(true);
 					}
 
 					break;
@@ -210,8 +210,8 @@ void SliderLadder::TimerUpdate()
 				}
 			}
 
-			emit DraggedByValue(now_pos - drag_start_x_,
-								elements_.at(active_element_)->GetMultiplier());
+			emit dragged_by_value(now_pos - drag_start_x_,
+								elements_.at(active_element_)->get_multiplier());
 
 			// Determine if cursor is at desktop edge, if so wrap around to other side
 			if (screen_) {
@@ -268,12 +268,12 @@ void SliderLadder::TimerUpdate()
 				multiplier *= 100.0;
 			}
 
-			emit DraggedByValue(x_mvmt + y_mvmt, multiplier);
+			emit dragged_by_value(x_mvmt + y_mvmt, multiplier);
 		}
 	}
 }
 
-bool SliderLadder::UsingLadders() const
+bool SliderLadder::using_ladders() const
 {
 	return elements_.size() > 1;
 }
@@ -290,7 +290,7 @@ SliderLadderElement::SliderLadderElement(const double &multiplier,
 	label_ = new QLabel();
 	label_->setAlignment(Qt::AlignCenter);
 	label_->setFixedWidth(
-		QtUtils::QFontMetricsWidth(label_->fontMetrics(), width_hint));
+		QtUtils::q_font_metrics_width(label_->fontMetrics(), width_hint));
 	layout->addWidget(label_);
 
 	QPalette p = palette();
@@ -301,10 +301,10 @@ SliderLadderElement::SliderLadderElement(const double &multiplier,
 
 	setAutoFillBackground(true);
 
-	UpdateLabel();
+	update_label();
 }
 
-void SliderLadderElement::SetHighlighted(bool e)
+void SliderLadderElement::set_highlighted(bool e)
 {
 	highlighted_ = e;
 
@@ -314,24 +314,24 @@ void SliderLadderElement::SetHighlighted(bool e)
 		setBackgroundRole(QPalette::Window);
 	}
 
-	UpdateLabel();
+	update_label();
 }
 
-void SliderLadderElement::SetValue(const QString &value)
+void SliderLadderElement::set_value(const QString &value)
 {
 	value_ = value;
 
-	UpdateLabel();
+	update_label();
 }
 
-void SliderLadderElement::SetMultiplierVisible(bool e)
+void SliderLadderElement::set_multiplier_visible(bool e)
 {
 	multiplier_visible_ = e;
 
-	UpdateLabel();
+	update_label();
 }
 
-void SliderLadderElement::UpdateLabel()
+void SliderLadderElement::update_label()
 {
 	if (multiplier_visible_) {
 		QString val_text;

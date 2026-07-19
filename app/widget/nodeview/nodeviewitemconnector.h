@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEVIEWITEMCONNECTOR_H
-#define NODEVIEWITEMCONNECTOR_H
+#ifndef OAK_NODEVIEWITEMCONNECTOR_H
+#define OAK_NODEVIEWITEMCONNECTOR_H
 
 #include <QGraphicsPolygonItem>
 
@@ -33,9 +33,9 @@ class NodeViewItemConnector : public QGraphicsPolygonItem {
 public:
 	NodeViewItemConnector(bool is_output, QGraphicsItem *parent = nullptr);
 
-	void SetFlowDirection(NodeViewCommon::FlowDirection dir);
+	void set_flow_direction(NodeViewCommon::FlowDirection dir);
 
-	bool IsOutput() const
+	bool is_output() const
 	{
 		return output_;
 	}
@@ -49,4 +49,4 @@ private:
 
 }
 
-#endif // NODEVIEWITEMCONNECTOR_H
+#endif // OAK_NODEVIEWITEMCONNECTOR_H

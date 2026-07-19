@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef MANAGEDCOLOR_H
-#define MANAGEDCOLOR_H
+#ifndef OAK_MANAGEDCOLOR_H
+#define OAK_MANAGEDCOLOR_H
 
 #include <olive/core/core.h>
 
@@ -52,4 +52,4 @@ private:
 
 }
 
-#endif // MANAGEDCOLOR_H
+#endif // OAK_MANAGEDCOLOR_H

@@ -16,12 +16,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "Plugin.h"
+#include "plugin.h"
 
 #include "render/rendermanager.h"
 #include "render/job/pluginjob.h"
-#include "pluginSupport/OlivePluginInstance.h"
-#include "common/Current.h"
+#include "pluginSupport/oliveplugininstance.h"
+#include "common/current.h"
 
 #include <algorithm>
 #include <cstring>
@@ -36,79 +36,79 @@ namespace
 {
 QHash<QString, QHash<QString, QVariant>> g_plugin_param_defaults;
 
-static bool IsNormalisedCoordSystem(const OFX::Host::Param::Base *param)
+static bool is_normalised_coord_system(const OFX::Host::Param::Base *param)
 {
 	return param->getDefaultCoordinateSystem() ==
 		   kOfxParamCoordinatesNormalised;
 }
 
-static void GetProjectExtent(double &xSize, double &ySize)
+static void get_project_extent(double &x_size, double &y_size)
 {
-	auto &vp = Current::getInstance().currentVideoParams();
-	xSize = vp.width() * vp.pixel_aspect_ratio().toDouble();
-	ySize = vp.height();
+	auto &vp = Current::getInstance().current_video_params();
+	x_size = vp.width() * vp.pixel_aspect_ratio().to_double();
+	y_size = vp.height();
 }
 
-static double ToCanonical(double normalised, double extent)
+static double to_canonical(double normalised, double extent)
 {
 	return extent > 0 ? normalised * extent : normalised;
 }
 
-QVariant DefaultValueForParam(const OFX::Host::Param::Base *param)
+QVariant default_value_for_param(const OFX::Host::Param::Base *param)
 {
 	if (!param) {
 		return QVariant();
 	}
-	const std::string &ofxType = param->getType();
+	const std::string &ofx_type = param->getType();
 	const auto &props = param->getProperties();
 
-	if (ofxType == kOfxParamTypeInteger || ofxType == kOfxParamTypeChoice) {
+	if (ofx_type == kOfxParamTypeInteger || ofx_type == kOfxParamTypeChoice) {
 		return props.getIntProperty(kOfxParamPropDefault);
 	}
-	if (ofxType == kOfxParamTypeBoolean) {
+	if (ofx_type == kOfxParamTypeBoolean) {
 		return props.getIntProperty(kOfxParamPropDefault) != 0;
 	}
-	if (ofxType == kOfxParamTypeDouble) {
+	if (ofx_type == kOfxParamTypeDouble) {
 		double val = props.getDoubleProperty(kOfxParamPropDefault);
-		if (IsNormalisedCoordSystem(param)) {
-			double xSize, ySize;
-			GetProjectExtent(xSize, ySize);
-			val = ToCanonical(val, xSize);
+		if (is_normalised_coord_system(param)) {
+			double x_size, y_size;
+			get_project_extent(x_size, y_size);
+			val = to_canonical(val, x_size);
 		}
 		return val;
 	}
-	if (ofxType == kOfxParamTypeString || ofxType == kOfxParamTypeStrChoice ||
-		ofxType == kOfxParamTypeCustom) {
+	if (ofx_type == kOfxParamTypeString || ofx_type == kOfxParamTypeStrChoice ||
+		ofx_type == kOfxParamTypeCustom) {
 		return QString::fromStdString(
 			props.getStringProperty(kOfxParamPropDefault));
 	}
-	if (ofxType == kOfxParamTypeRGB || ofxType == kOfxParamTypeRGBA) {
-		const int count = (ofxType == kOfxParamTypeRGBA) ? 4 : 3;
+	if (ofx_type == kOfxParamTypeRGB || ofx_type == kOfxParamTypeRGBA) {
+		const int count = (ofx_type == kOfxParamTypeRGBA) ? 4 : 3;
 		double values[4] = { 0.0, 0.0, 0.0, 1.0 };
 		props.getDoublePropertyN(kOfxParamPropDefault, values, count);
 		const double alpha = (count == 4) ? values[3] : 1.0;
 		return QVariant::fromValue(
 			olive::core::Color(values[0], values[1], values[2], alpha));
 	}
-	if (ofxType == kOfxParamTypeDouble2D || ofxType == kOfxParamTypeDouble3D ||
-		ofxType == kOfxParamTypeInteger2D ||
-		ofxType == kOfxParamTypeInteger3D) {
-		const bool is_double = (ofxType == kOfxParamTypeDouble2D ||
-								ofxType == kOfxParamTypeDouble3D);
-		const int count = (ofxType == kOfxParamTypeDouble2D ||
-						   ofxType == kOfxParamTypeInteger2D) ?
+	if (ofx_type == kOfxParamTypeDouble2D || ofx_type == kOfxParamTypeDouble3D ||
+		ofx_type == kOfxParamTypeInteger2D ||
+		ofx_type == kOfxParamTypeInteger3D) {
+		const bool is_double = (ofx_type == kOfxParamTypeDouble2D ||
+								ofx_type == kOfxParamTypeDouble3D);
+		const int count = (ofx_type == kOfxParamTypeDouble2D ||
+						   ofx_type == kOfxParamTypeInteger2D) ?
 							  2 :
 							  3;
 		if (is_double) {
 			double values[3] = { 0.0, 0.0, 0.0 };
 			props.getDoublePropertyN(kOfxParamPropDefault, values, count);
-			if (IsNormalisedCoordSystem(param)) {
-				double xSize, ySize;
-				GetProjectExtent(xSize, ySize);
-				values[0] = ToCanonical(values[0], xSize);
-				values[1] = ToCanonical(values[1], ySize);
+			if (is_normalised_coord_system(param)) {
+				double x_size, y_size;
+				get_project_extent(x_size, y_size);
+				values[0] = to_canonical(values[0], x_size);
+				values[1] = to_canonical(values[1], y_size);
 				if (count == 3) {
-					values[2] = ToCanonical(values[2], xSize);
+					values[2] = to_canonical(values[2], x_size);
 				}
 			}
 			if (count == 2) {
@@ -123,7 +123,7 @@ QVariant DefaultValueForParam(const OFX::Host::Param::Base *param)
 		}
 		return QVector3D(values[0], values[1], values[2]);
 	}
-	if (ofxType == kOfxParamTypeBytes) {
+	if (ofx_type == kOfxParamTypeBytes) {
 		return QByteArray();
 	}
 
@@ -137,11 +137,11 @@ QVariant DefaultValueForParam(const OFX::Host::Param::Base *param)
  * Uses heuristics based on label, hint, display range, default values,
  * and parent group name.
  */
-QString DeduceColorSemantic(const OFX::Host::Param::Base *param,
+QString deduce_color_semantic(const OFX::Host::Param::Base *param,
 							const QHash<QString, QString> &group_labels)
 {
-	const std::string &ofxType = param->getType();
-	if (ofxType != kOfxParamTypeRGB && ofxType != kOfxParamTypeRGBA) {
+	const std::string &ofx_type = param->getType();
+	if (ofx_type != kOfxParamTypeRGB && ofx_type != kOfxParamTypeRGBA) {
 		return QStringLiteral("color");
 	}
 
@@ -150,18 +150,18 @@ QString DeduceColorSemantic(const OFX::Host::Param::Base *param,
 	const QString name = QString::fromStdString(param->getName()).toLower();
 
 	// Rule 1: explicit color keywords → color
-	static const QStringList kColorKeywords = {
+	static const QStringList k_color_keywords = {
 		QStringLiteral("color"), QStringLiteral("colour"),
 		QStringLiteral("fill"), QStringLiteral("tint"), QStringLiteral("key")
 	};
-	for (const QString &kw : kColorKeywords) {
+	for (const QString &kw : k_color_keywords) {
 		if (label.contains(kw) || hint.contains(kw) || name.contains(kw)) {
 			return QStringLiteral("color");
 		}
 	}
 
 	// Rule 2: explicit scalar/adjustment keywords → scalar
-	static const QStringList kScalarKeywords = {
+	static const QStringList k_scalar_keywords = {
 		QStringLiteral("gamma"),	  QStringLiteral("contrast"),
 		QStringLiteral("gain"),		  QStringLiteral("offset"),
 		QStringLiteral("saturation"), QStringLiteral("exposure"),
@@ -169,7 +169,7 @@ QString DeduceColorSemantic(const OFX::Host::Param::Base *param,
 		QStringLiteral("multiply"),	  QStringLiteral("scale"),
 		QStringLiteral("pivot")
 	};
-	for (const QString &kw : kScalarKeywords) {
+	for (const QString &kw : k_scalar_keywords) {
 		if (label.contains(kw) || hint.contains(kw) || name.contains(kw)) {
 			return QStringLiteral("scalar");
 		}
@@ -177,7 +177,7 @@ QString DeduceColorSemantic(const OFX::Host::Param::Base *param,
 
 	// Rule 3: display range significantly outside/asymmetric to [0,1] → scalar
 	const auto &props = param->getProperties();
-	const int dim = (ofxType == kOfxParamTypeRGBA) ? 4 : 3;
+	const int dim = (ofx_type == kOfxParamTypeRGBA) ? 4 : 3;
 	double dmin[4] = { 0, 0, 0, 0 };
 	double dmax[4] = { 1, 1, 1, 1 };
 	props.getDoublePropertyN(kOfxParamPropDisplayMin, dmin, dim);
@@ -211,7 +211,7 @@ QString DeduceColorSemantic(const OFX::Host::Param::Base *param,
 	const QString parent =
 		QString::fromStdString(param->getParentName()).toLower();
 	if (!parent.isEmpty()) {
-		for (const QString &kw : kScalarKeywords) {
+		for (const QString &kw : k_scalar_keywords) {
 			if (parent.contains(kw)) {
 				return QStringLiteral("scalar");
 			}
@@ -222,14 +222,14 @@ QString DeduceColorSemantic(const OFX::Host::Param::Base *param,
 	return QStringLiteral("color");
 }
 
-QHash<QString, QVariant> BuildDefaultValues(
+QHash<QString, QVariant> build_default_values(
 	const std::map<std::string, OFX::Host::Param::Instance *> &params)
 {
 	QHash<QString, QVariant> defaults;
 	for (const auto &param : params) {
-		const std::string &ofxType = param.second->getType();
-		if (ofxType == kOfxParamTypeGroup || ofxType == kOfxParamTypePage ||
-			ofxType == kOfxParamTypePushButton) {
+		const std::string &ofx_type = param.second->getType();
+		if (ofx_type == kOfxParamTypeGroup || ofx_type == kOfxParamTypePage ||
+			ofx_type == kOfxParamTypePushButton) {
 			continue;
 		}
 		const auto &props = param.second->getProperties();
@@ -239,7 +239,7 @@ QHash<QString, QVariant> BuildDefaultValues(
 		if (input_id.isEmpty()) {
 			continue;
 		}
-		QVariant default_value = DefaultValueForParam(param.second);
+		QVariant default_value = default_value_for_param(param.second);
 		if (!default_value.isValid()) {
 			continue;
 		}
@@ -249,7 +249,7 @@ QHash<QString, QVariant> BuildDefaultValues(
 }
 }
 static QString
-ClipLabelForName(const std::string &name,
+clip_label_for_name(const std::string &name,
 				 const OFX::Host::ImageEffect::ClipDescriptor *desc)
 {
 	if (name == kOfxImageEffectSimpleSourceClipName) {
@@ -298,18 +298,18 @@ olive::plugin::PluginNode::PluginNode(OFX::Host::ImageEffect::Instance *plugin)
 		QString::fromStdString(plugin_instance_->getPlugin()->getIdentifier());
 	auto defaults_iter = g_plugin_param_defaults.find(plugin_id);
 	if (defaults_iter == g_plugin_param_defaults.end()) {
-		g_plugin_param_defaults.insert(plugin_id, BuildDefaultValues(params));
+		g_plugin_param_defaults.insert(plugin_id, build_default_values(params));
 		defaults_iter = g_plugin_param_defaults.find(plugin_id);
 	}
 	const QHash<QString, QVariant> &defaults = defaults_iter.value();
 	for (auto param : params) {
-		const std::string &ofxType = param.second->getType();
-		if (ofxType == kOfxParamTypeGroup) {
+		const std::string &ofx_type = param.second->getType();
+		if (ofx_type == kOfxParamTypeGroup) {
 			const QString name = QString::fromStdString(param.first);
 			const QString label =
 				QString::fromStdString(param.second->getLabel());
 			group_labels.insert(name, label.isEmpty() ? name : label);
-		} else if (ofxType == kOfxParamTypePage) {
+		} else if (ofx_type == kOfxParamTypePage) {
 			const QString name = QString::fromStdString(param.first);
 			const QString label =
 				QString::fromStdString(param.second->getLabel());
@@ -331,40 +331,40 @@ olive::plugin::PluginNode::PluginNode(OFX::Host::ImageEffect::Instance *plugin)
 	}
 
 	for (auto param : params) {
-		NodeValue::Type type = NodeValue::kNone;
+		NodeValue::Type type = NodeValue::k_none;
 
-		const std::string &ofxType = param.second->getType();
-		if (ofxType == kOfxParamTypeInteger) {
-			type = NodeValue::kInt;
-		} else if (ofxType == kOfxParamTypeDouble) {
-			type = NodeValue::kFloat;
-		} else if (ofxType == kOfxParamTypeBoolean) {
-			type = NodeValue::kBoolean;
-		} else if (ofxType == kOfxParamTypeString) {
-			type = NodeValue::kText;
-		} else if (ofxType == kOfxParamTypeRGB ||
-				   ofxType == kOfxParamTypeRGBA) {
-			type = NodeValue::kColor;
-		} else if (ofxType == kOfxParamTypeChoice) {
-			type = NodeValue::kCombo;
-		} else if (ofxType == kOfxParamTypeDouble2D ||
-				   ofxType == kOfxParamTypeInteger2D) {
-			type = NodeValue::kVec2;
-		} else if (ofxType == kOfxParamTypeDouble3D ||
-				   ofxType == kOfxParamTypeInteger3D) {
-			type = NodeValue::kVec3;
-		} else if (ofxType == kOfxParamTypeStrChoice) {
-			type = NodeValue::kStrCombo;
-		} else if (ofxType == kOfxParamTypeBytes ||
-				   ofxType == kOfxParamTypeCustom) {
-			type = NodeValue::kBinary;
-		} else if (ofxType == kOfxParamTypePushButton) {
-			type = NodeValue::kPushButton;
-		} else if (ofxType == kOfxParamTypeGroup ||
-				   ofxType == kOfxParamTypePage) {
+		const std::string &ofx_type = param.second->getType();
+		if (ofx_type == kOfxParamTypeInteger) {
+			type = NodeValue::k_int;
+		} else if (ofx_type == kOfxParamTypeDouble) {
+			type = NodeValue::k_float;
+		} else if (ofx_type == kOfxParamTypeBoolean) {
+			type = NodeValue::k_boolean;
+		} else if (ofx_type == kOfxParamTypeString) {
+			type = NodeValue::k_text;
+		} else if (ofx_type == kOfxParamTypeRGB ||
+				   ofx_type == kOfxParamTypeRGBA) {
+			type = NodeValue::k_color;
+		} else if (ofx_type == kOfxParamTypeChoice) {
+			type = NodeValue::k_combo;
+		} else if (ofx_type == kOfxParamTypeDouble2D ||
+				   ofx_type == kOfxParamTypeInteger2D) {
+			type = NodeValue::k_vec2;
+		} else if (ofx_type == kOfxParamTypeDouble3D ||
+				   ofx_type == kOfxParamTypeInteger3D) {
+			type = NodeValue::k_vec3;
+		} else if (ofx_type == kOfxParamTypeStrChoice) {
+			type = NodeValue::k_str_combo;
+		} else if (ofx_type == kOfxParamTypeBytes ||
+				   ofx_type == kOfxParamTypeCustom) {
+			type = NodeValue::k_binary;
+		} else if (ofx_type == kOfxParamTypePushButton) {
+			type = NodeValue::k_push_button;
+		} else if (ofx_type == kOfxParamTypeGroup ||
+				   ofx_type == kOfxParamTypePage) {
 			continue;
 		} else {
-			type = NodeValue::kNone;
+			type = NodeValue::k_none;
 		}
 
 		const QString input_id =
@@ -374,57 +374,57 @@ olive::plugin::PluginNode::PluginNode(OFX::Host::ImageEffect::Instance *plugin)
 		}
 		const auto &props = param.second->getProperties();
 		bool is_secret = props.getIntProperty(kOfxParamPropSecret) != 0;
-		if (type == NodeValue::kNone) {
+		if (type == NodeValue::k_none) {
 			continue;
 		}
 		QVariant default_value = defaults.value(input_id, QVariant());
 		if (default_value.isValid()) {
-			AddInput(input_id, type, default_value);
-			if (type != NodeValue::kPushButton) {
-				SetStandardValue(input_id, default_value);
+			add_input(input_id, type, default_value);
+			if (type != NodeValue::k_push_button) {
+				set_standard_value(input_id, default_value);
 			}
 		} else {
-			AddInput(input_id, type);
+			add_input(input_id, type);
 		}
 		if (is_secret) {
-			SetInputFlag(input_id, kInputFlagHidden);
+			set_input_flag(input_id, k_input_flag_hidden);
 		}
 		const QString label = QString::fromStdString(param.second->getLabel());
 		if (!label.isEmpty()) {
-			SetInputName(input_id, label);
+			set_input_name(input_id, label);
 		} else {
-			SetInputName(input_id, input_id);
+			set_input_name(input_id, input_id);
 		}
 		const QString parent =
 			QString::fromStdString(param.second->getParentName());
 		if (!parent.isEmpty()) {
-			SetInputProperty(input_id, QStringLiteral("ui_group"),
+			set_input_property(input_id, QStringLiteral("ui_group"),
 							 group_labels.value(parent, parent));
 		}
 		if (page_for_param.contains(input_id)) {
-			SetInputProperty(input_id, QStringLiteral("ui_page"),
+			set_input_property(input_id, QStringLiteral("ui_page"),
 							 page_for_param.value(input_id));
 		}
-		if (type == NodeValue::kColor) {
-			QString semantic = DeduceColorSemantic(param.second, group_labels);
-			SetInputProperty(input_id, QStringLiteral("color_semantic"),
+		if (type == NodeValue::k_color) {
+			QString semantic = deduce_color_semantic(param.second, group_labels);
+			set_input_property(input_id, QStringLiteral("color_semantic"),
 							 semantic);
 
-			const int dim = (ofxType == kOfxParamTypeRGBA) ? 4 : 3;
+			const int dim = (ofx_type == kOfxParamTypeRGBA) ? 4 : 3;
 			double dmin[4] = { 0, 0, 0, 0 };
 			double dmax[4] = { 1, 1, 1, 1 };
 			props.getDoublePropertyN(kOfxParamPropDisplayMin, dmin, dim);
 			props.getDoublePropertyN(kOfxParamPropDisplayMax, dmax, dim);
-			SetInputProperty(input_id, QStringLiteral("min"), dmin[0]);
-			SetInputProperty(input_id, QStringLiteral("max"), dmax[0]);
+			set_input_property(input_id, QStringLiteral("min"), dmin[0]);
+			set_input_property(input_id, QStringLiteral("max"), dmax[0]);
 
 			const QString hint =
 				QString::fromStdString(param.second->getHint());
 			if (!hint.isEmpty()) {
-				SetInputProperty(input_id, QStringLiteral("tooltip"), hint);
+				set_input_property(input_id, QStringLiteral("tooltip"), hint);
 			}
 		}
-		if (type == NodeValue::kCombo || type == NodeValue::kStrCombo) {
+		if (type == NodeValue::k_combo || type == NodeValue::k_str_combo) {
 			QStringList option_labels;
 			QStringList option_values;
 			const int label_count =
@@ -478,9 +478,9 @@ olive::plugin::PluginNode::PluginNode(OFX::Host::ImageEffect::Instance *plugin)
 			}
 
 			if (!option_labels.isEmpty()) {
-				SetComboBoxStrings(input_id, option_labels);
-				if (type == NodeValue::kStrCombo) {
-					SetInputProperty(input_id,
+				set_combo_box_strings(input_id, option_labels);
+				if (type == NodeValue::k_str_combo) {
+					set_input_property(input_id,
 									 QStringLiteral("combo_value_str"),
 									 option_values);
 				}
@@ -494,28 +494,28 @@ olive::plugin::PluginNode::PluginNode(OFX::Host::ImageEffect::Instance *plugin)
 			continue;
 		}
 		QString input_id = QString::fromStdString(entry.first);
-		AddInput(input_id, NodeValue::kTexture);
-		SetInputName(input_id, ClipLabelForName(entry.first, entry.second));
+		add_input(input_id, NodeValue::k_texture);
+		set_input_name(input_id, clip_label_for_name(entry.first, entry.second));
 		has_texture_input = true;
 	}
 
 	const QString source_id =
 		QString::fromUtf8(kOfxImageEffectSimpleSourceClipName);
-	if (HasInputWithID(source_id)) {
-		SetEffectInput(source_id);
-	} else if (HasInputWithID(kTextureInput)) {
-		SetEffectInput(kTextureInput);
+	if (has_input_with_id(source_id)) {
+		set_effect_input(source_id);
+	} else if (has_input_with_id(k_texture_input)) {
+		set_effect_input(k_texture_input);
 	} else {
 		if (has_texture_input) {
-			AddInput(kTextureInput, NodeValue::kTexture);
-			SetInputName(kTextureInput, tr("Texture"));
-			SetEffectInput(kTextureInput);
+			add_input(k_texture_input, NodeValue::k_texture);
+			set_input_name(k_texture_input, tr("Texture"));
+			set_effect_input(k_texture_input);
 		}
 	}
 }
 
 olive::plugin::PluginNode::~PluginNode() = default;
-QString olive::plugin::PluginNode::Name() const
+QString olive::plugin::PluginNode::name() const
 {
 	const auto *plugin = plugin_instance_->getPlugin();
 	return plugin->getDescriptor()
@@ -524,17 +524,17 @@ QString olive::plugin::PluginNode::Name() const
 		.data();
 }
 
-QVector<olive::Node::CategoryID> olive::plugin::PluginNode::Category() const
+QVector<olive::Node::CategoryID> olive::plugin::PluginNode::category() const
 {
-	return { olive::Node::kCategoryOpenFX };
+	return { olive::Node::k_category_open_fx };
 }
 
-QString olive::plugin::PluginNode::SubCategory() const
+QString olive::plugin::PluginNode::sub_category() const
 {
 	return sub_category_;
 }
 
-QString olive::plugin::PluginNode::Description() const
+QString olive::plugin::PluginNode::description() const
 {
 	const auto *plugin = plugin_instance_->getPlugin();
 	return plugin->getDescriptor()
@@ -542,7 +542,7 @@ QString olive::plugin::PluginNode::Description() const
 		.getStringProperty(kOfxPropPluginDescription)
 		.data();
 }
-void olive::plugin::PluginNode::ProcessSamples(const NodeValueRow &values,
+void olive::plugin::PluginNode::process_samples(const NodeValueRow &values,
 											   const SampleBuffer &input,
 											   SampleBuffer &output,
 											   int index) const
@@ -575,7 +575,7 @@ void olive::plugin::PluginNode::ProcessSamples(const NodeValueRow &values,
 	}
 }
 
-void olive::plugin::PluginNode::GenerateFrame(FramePtr frame,
+void olive::plugin::PluginNode::generate_frame(FramePtr frame,
 											  const GenerateJob &job) const
 {
 	Q_UNUSED(job)
@@ -594,34 +594,34 @@ void olive::plugin::PluginNode::GenerateFrame(FramePtr frame,
 
 	std::memset(frame->data(), 0, static_cast<size_t>(frame->allocated_size()));
 }
-void olive::plugin::PluginNode::Value(const NodeValueRow &value,
+void olive::plugin::PluginNode::value(const NodeValueRow &value,
 									  const NodeGlobals &globals,
 									  NodeValueTable *table) const
 {
 	for (auto it = value.cbegin(); it != value.cend(); ++it) {
 		const NodeValue &input_value = it.value();
-		if (input_value.type() == NodeValue::kTexture ||
-			input_value.type() == NodeValue::kNone) {
+		if (input_value.type() == NodeValue::k_texture ||
+			input_value.type() == NodeValue::k_none) {
 			continue;
 		}
 		NodeValue tagged = input_value;
 		tagged.set_tag(it.key());
-		table->Push(tagged);
+		table->push(tagged);
 	}
 
 	TexturePtr tex = nullptr;
 	const QString source_key =
 		QString::fromUtf8(kOfxImageEffectSimpleSourceClipName);
 	if (value.contains(source_key)) {
-		tex = value.value(source_key).toTexture();
+		tex = value.value(source_key).to_texture();
 	}
 	if (!tex) {
-		tex = value.value(kTextureInput).toTexture();
+		tex = value.value(k_texture_input).to_texture();
 	}
 	if (!tex) {
 		for (auto it = value.cbegin(); it != value.cend(); ++it) {
-			if (it.value().type() == NodeValue::kTexture) {
-				tex = it.value().toTexture();
+			if (it.value().type() == NodeValue::k_texture) {
+				tex = it.value().to_texture();
 				if (tex) {
 					break;
 				}
@@ -631,10 +631,10 @@ void olive::plugin::PluginNode::Value(const NodeValueRow &value,
 	if (tex && plugin_instance_) {
 		PluginJob job(plugin_instance_, this, value, globals.time().in());
 
-		table->Push(NodeValue::kTexture, tex->toJob(job), this);
+		table->push(NodeValue::k_texture, tex->to_job(job), this);
 	}
 }
-void olive::plugin::PluginNode::pushButtonClicked(QString name)
+void olive::plugin::PluginNode::push_button_clicked(QString name)
 {
 }
 

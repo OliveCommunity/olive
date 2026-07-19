@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECTSAVEMANAGER_H
-#define PROJECTSAVEMANAGER_H
+#ifndef OAK_PROJECTSAVEMANAGER_H
+#define OAK_PROJECTSAVEMANAGER_H
 
 #include "node/project.h"
 #include "task/task.h"
@@ -33,23 +33,23 @@ class ProjectSaveTask : public Task {
 public:
 	ProjectSaveTask(Project *project, bool use_compression);
 
-	Project *GetProject() const
+	Project *get_project() const
 	{
 		return project_;
 	}
 
-	void SetOverrideFilename(const QString &filename)
+	void set_override_filename(const QString &filename)
 	{
 		override_filename_ = filename;
 	}
 
-	void SetLayout(const MainWindowLayoutInfo &layout)
+	void set_layout(const MainWindowLayoutInfo &layout)
 	{
 		layout_ = layout;
 	}
 
 protected:
-	virtual bool Run() override;
+	virtual bool run() override;
 
 private:
 	Project *project_;
@@ -63,4 +63,4 @@ private:
 
 }
 
-#endif // PROJECTSAVEMANAGER_H
+#endif // OAK_PROJECTSAVEMANAGER_H

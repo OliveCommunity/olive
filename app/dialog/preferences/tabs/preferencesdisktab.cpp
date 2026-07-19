@@ -38,7 +38,7 @@ PreferencesDiskTab::PreferencesDiskTab()
 {
 	// Get default disk cache folder
 	default_disk_cache_folder_ =
-		DiskManager::instance()->GetDefaultCacheFolder();
+		DiskManager::instance()->get_default_cache_folder();
 
 	QVBoxLayout *outer_layout = new QVBoxLayout(this);
 
@@ -54,7 +54,7 @@ PreferencesDiskTab::PreferencesDiskTab()
 									  row, 0);
 
 	disk_cache_location_ =
-		new PathWidget(default_disk_cache_folder_->GetPath());
+		new PathWidget(default_disk_cache_folder_->get_path());
 	disk_management_layout->addWidget(disk_cache_location_, row, 1);
 
 	row++;
@@ -62,7 +62,7 @@ PreferencesDiskTab::PreferencesDiskTab()
 	QPushButton *disk_cache_settings_btn =
 		new QPushButton(tr("Disk Cache Settings"));
 	connect(disk_cache_settings_btn, &QPushButton::clicked, this, [this]() {
-		DiskManager::instance()->ShowDiskCacheSettingsDialog(
+		DiskManager::instance()->show_disk_cache_settings_dialog(
 			disk_cache_location_->text(), this);
 	});
 	disk_management_layout->addWidget(disk_cache_settings_btn, row, 1);
@@ -78,19 +78,19 @@ PreferencesDiskTab::PreferencesDiskTab()
 	cache_behavior_layout->addWidget(new QLabel(tr("Cache Ahead:")), row, 0);
 
 	cache_ahead_slider_ = new FloatSlider();
-	cache_ahead_slider_->SetFormat(tr("%1 seconds"));
-	cache_ahead_slider_->SetMinimum(0);
-	cache_ahead_slider_->SetValue(
-		OLIVE_CONFIG("DiskCacheAhead").value<rational>().toDouble());
+	cache_ahead_slider_->set_format(tr("%1 seconds"));
+	cache_ahead_slider_->set_minimum(0);
+	cache_ahead_slider_->set_value(
+		OAK_CONFIG("DiskCacheAhead").value<Rational>().to_double());
 	cache_behavior_layout->addWidget(cache_ahead_slider_, row, 1);
 
 	cache_behavior_layout->addWidget(new QLabel(tr("Cache Behind:")), row, 2);
 
 	cache_behind_slider_ = new FloatSlider();
-	cache_behind_slider_->SetMinimum(0);
-	cache_behind_slider_->SetFormat(tr("%1 seconds"));
-	cache_behind_slider_->SetValue(
-		OLIVE_CONFIG("DiskCacheBehind").value<rational>().toDouble());
+	cache_behind_slider_->set_minimum(0);
+	cache_behind_slider_->set_format(tr("%1 seconds"));
+	cache_behind_slider_->set_value(
+		OAK_CONFIG("DiskCacheBehind").value<Rational>().to_double());
 	cache_behavior_layout->addWidget(cache_behind_slider_, row, 3);
 
 	row++;
@@ -103,25 +103,25 @@ PreferencesDiskTab::PreferencesDiskTab()
 
 	proxy_layout->addWidget(new QLabel(tr("Proxy Width:")), proxy_row, 0);
 	proxy_width_slider_ = new IntegerSlider();
-	proxy_width_slider_->SetMinimum(160);
-	proxy_width_slider_->SetMaximum(4096);
-	proxy_width_slider_->SetValue(OLIVE_CONFIG("ProxyWidth").value<int>());
+	proxy_width_slider_->set_minimum(160);
+	proxy_width_slider_->set_maximum(4096);
+	proxy_width_slider_->set_value(OAK_CONFIG("ProxyWidth").value<int>());
 	proxy_layout->addWidget(proxy_width_slider_, proxy_row, 1);
 
 	proxy_layout->addWidget(new QLabel(tr("Proxy Height:")), proxy_row, 2);
 	proxy_height_slider_ = new IntegerSlider();
-	proxy_height_slider_->SetMinimum(120);
-	proxy_height_slider_->SetMaximum(2160);
-	proxy_height_slider_->SetValue(OLIVE_CONFIG("ProxyHeight").value<int>());
+	proxy_height_slider_->set_minimum(120);
+	proxy_height_slider_->set_maximum(2160);
+	proxy_height_slider_->set_value(OAK_CONFIG("ProxyHeight").value<int>());
 	proxy_layout->addWidget(proxy_height_slider_, proxy_row, 3);
 
 	proxy_row++;
 
 	proxy_layout->addWidget(new QLabel(tr("Proxy CRF:")), proxy_row, 0);
 	proxy_crf_slider_ = new IntegerSlider();
-	proxy_crf_slider_->SetMinimum(0);
-	proxy_crf_slider_->SetMaximum(51);
-	proxy_crf_slider_->SetValue(OLIVE_CONFIG("ProxyCRF").value<int>());
+	proxy_crf_slider_->set_minimum(0);
+	proxy_crf_slider_->set_maximum(51);
+	proxy_crf_slider_->set_value(OAK_CONFIG("ProxyCRF").value<int>());
 	proxy_layout->addWidget(proxy_crf_slider_, proxy_row, 1);
 
 	proxy_layout->addWidget(new QLabel(tr("Proxy Preset:")), proxy_row, 2);
@@ -136,7 +136,7 @@ PreferencesDiskTab::PreferencesDiskTab()
 	for (const QString &preset : presets) {
 		proxy_preset_combo_->addItem(preset);
 	}
-	proxy_preset_combo_->setCurrentText(OLIVE_CONFIG("ProxyPreset").toString());
+	proxy_preset_combo_->setCurrentText(OAK_CONFIG("ProxyPreset").toString());
 	proxy_layout->addWidget(proxy_preset_combo_, proxy_row, 3);
 
 	proxy_row++;
@@ -144,7 +144,7 @@ PreferencesDiskTab::PreferencesDiskTab()
 	proxy_include_audio_checkbox_ =
 		new QCheckBox(tr("Include audio in proxies"));
 	proxy_include_audio_checkbox_->setChecked(
-		OLIVE_CONFIG("ProxyIncludeAudio").toBool());
+		OAK_CONFIG("ProxyIncludeAudio").toBool());
 	proxy_layout->addWidget(proxy_include_audio_checkbox_, proxy_row, 0, 1, 2);
 
 	proxy_row++;
@@ -152,7 +152,7 @@ PreferencesDiskTab::PreferencesDiskTab()
 	proxy_layout->addWidget(new QLabel(tr("ffmpeg Executable:")), proxy_row,
 							0);
 	proxy_ffmpeg_path_edit_ =
-		new QLineEdit(OLIVE_CONFIG("FFmpegPath").toString());
+		new QLineEdit(OAK_CONFIG("FFmpegPath").toString());
 	proxy_ffmpeg_path_edit_->setPlaceholderText(tr("Auto-detect"));
 	proxy_layout->addWidget(proxy_ffmpeg_path_edit_, proxy_row, 1);
 
@@ -169,18 +169,18 @@ PreferencesDiskTab::PreferencesDiskTab()
 	outer_layout->addStretch();
 }
 
-bool PreferencesDiskTab::Validate()
+bool PreferencesDiskTab::validate()
 {
-	if (disk_cache_location_->text() != default_disk_cache_folder_->GetPath()) {
+	if (disk_cache_location_->text() != default_disk_cache_folder_->get_path()) {
 		// Disk cache location is changing
 
 		// Check if the user is okay with invalidating the current cache
-		if (!DiskManager::ShowDiskCacheChangeConfirmationDialog(this)) {
+		if (!DiskManager::show_disk_cache_change_confirmation_dialog(this)) {
 			return false;
 		}
 
 		// Check validity of the new path
-		if (!FileFunctions::DirectoryIsValid(disk_cache_location_->text())) {
+		if (!FileFunctions::directory_is_valid(disk_cache_location_->text())) {
 			QMessageBox::critical(
 				this, tr("Disk Cache"),
 				tr("Failed to set disk cache location. Access was denied."));
@@ -191,28 +191,28 @@ bool PreferencesDiskTab::Validate()
 	return true;
 }
 
-void PreferencesDiskTab::Accept(MultiUndoCommand *command)
+void PreferencesDiskTab::accept(MultiUndoCommand *command)
 {
 	Q_UNUSED(command)
 
-	if (disk_cache_location_->text() != default_disk_cache_folder_->GetPath()) {
-		default_disk_cache_folder_->SetPath(disk_cache_location_->text());
+	if (disk_cache_location_->text() != default_disk_cache_folder_->get_path()) {
+		default_disk_cache_folder_->set_path(disk_cache_location_->text());
 	}
 
-	OLIVE_CONFIG("DiskCacheBehind") = QVariant::fromValue(
-		rational::fromDouble(cache_behind_slider_->GetValue()));
-	OLIVE_CONFIG("DiskCacheAhead") = QVariant::fromValue(
-		rational::fromDouble(cache_ahead_slider_->GetValue()));
+	OAK_CONFIG("DiskCacheBehind") = QVariant::fromValue(
+		Rational::from_double(cache_behind_slider_->get_value()));
+	OAK_CONFIG("DiskCacheAhead") = QVariant::fromValue(
+		Rational::from_double(cache_ahead_slider_->get_value()));
 
-	OLIVE_CONFIG("ProxyWidth") =
-		static_cast<int>(proxy_width_slider_->GetValue());
-	OLIVE_CONFIG("ProxyHeight") =
-		static_cast<int>(proxy_height_slider_->GetValue());
-	OLIVE_CONFIG("ProxyCRF") = static_cast<int>(proxy_crf_slider_->GetValue());
-	OLIVE_CONFIG("ProxyPreset") = proxy_preset_combo_->currentText();
-	OLIVE_CONFIG("ProxyIncludeAudio") =
+	OAK_CONFIG("ProxyWidth") =
+		static_cast<int>(proxy_width_slider_->get_value());
+	OAK_CONFIG("ProxyHeight") =
+		static_cast<int>(proxy_height_slider_->get_value());
+	OAK_CONFIG("ProxyCRF") = static_cast<int>(proxy_crf_slider_->get_value());
+	OAK_CONFIG("ProxyPreset") = proxy_preset_combo_->currentText();
+	OAK_CONFIG("ProxyIncludeAudio") =
 		proxy_include_audio_checkbox_->isChecked();
-	OLIVE_CONFIG("FFmpegPath") = proxy_ffmpeg_path_edit_->text().trimmed();
+	OAK_CONFIG("FFmpegPath") = proxy_ffmpeg_path_edit_->text().trimmed();
 }
 
 }

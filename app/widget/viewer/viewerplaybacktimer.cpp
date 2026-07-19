@@ -26,7 +26,7 @@
 namespace olive
 {
 
-void ViewerPlaybackTimer::Start(const int64_t &start_timestamp,
+void ViewerPlaybackTimer::start(const int64_t &start_timestamp,
 								const int &playback_speed,
 								const double &timebase)
 {
@@ -36,7 +36,7 @@ void ViewerPlaybackTimer::Start(const int64_t &start_timestamp,
 	timebase_ = timebase * 1000;
 }
 
-int64_t ViewerPlaybackTimer::GetTimestampNow() const
+int64_t ViewerPlaybackTimer::get_timestamp_now() const
 {
 	int64_t real_time = timer_.elapsed();
 

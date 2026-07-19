@@ -42,14 +42,14 @@ WaveformScope::WaveformScope(QWidget *parent)
 {
 }
 
-ShaderCode WaveformScope::GenerateShaderCode()
+ShaderCode WaveformScope::generate_shader_code()
 {
 	return ShaderCode(
-		FileFunctions::ReadFileAsString(":/shaders/rgbwaveform.frag"),
-		FileFunctions::ReadFileAsString(":/shaders/rgbwaveform.vert"));
+		FileFunctions::read_file_as_string(":/shaders/rgbwaveform.frag"),
+		FileFunctions::read_file_as_string(":/shaders/rgbwaveform.vert"));
 }
 
-void WaveformScope::DrawScope(TexturePtr managed_tex, QVariant pipeline)
+void WaveformScope::draw_scope(TexturePtr managed_tex, QVariant pipeline)
 {
 	float waveform_scale = 0.80f;
 
@@ -57,27 +57,27 @@ void WaveformScope::DrawScope(TexturePtr managed_tex, QVariant pipeline)
 	ShaderJob job;
 
 	// Set viewport size
-	job.Insert(QStringLiteral("viewport"),
-			   NodeValue(NodeValue::kVec2, QVector2D(width(), height())));
+	job.insert(QStringLiteral("viewport"),
+			   NodeValue(NodeValue::k_vec2, QVector2D(width(), height())));
 
 	// Set luma coefficients
 	double luma_coeffs[3] = { 0.0f, 0.0f, 0.0f };
-	color_manager()->GetDefaultLumaCoefs(luma_coeffs);
-	job.Insert(
+	color_manager()->get_default_luma_coefs(luma_coeffs);
+	job.insert(
 		QStringLiteral("luma_coeffs"),
-		NodeValue(NodeValue::kVec3,
+		NodeValue(NodeValue::k_vec3,
 				  QVector3D(luma_coeffs[0], luma_coeffs[1], luma_coeffs[2])));
 
 	// Scale of the waveform relative to the viewport surface.
-	job.Insert(QStringLiteral("waveform_scale"),
-			   NodeValue(NodeValue::kFloat, waveform_scale));
+	job.insert(QStringLiteral("waveform_scale"),
+			   NodeValue(NodeValue::k_float, waveform_scale));
 
 	// Insert source texture
-	job.Insert(QStringLiteral("ove_maintex"),
-			   NodeValue(NodeValue::kTexture,
+	job.insert(QStringLiteral("ove_maintex"),
+			   NodeValue(NodeValue::k_texture,
 						 QVariant::fromValue(managed_tex)));
 
-	renderer()->Blit(pipeline, job, GetViewportParams());
+	renderer()->blit(pipeline, job, get_viewport_params());
 
 	float waveform_dim_x = ceil((width() - 1.0) * waveform_scale);
 	float waveform_dim_y = ceil((height() - 1.0) * waveform_scale);
@@ -109,7 +109,7 @@ void WaveformScope::DrawScope(TexturePtr managed_tex, QVariant pipeline)
 			waveform_end_dim_x,
 			(waveform_dim_y * (i * ire_increment)) + waveform_start_dim_y);
 		label = QString::number(1.0 - (i * ire_increment), 'f', 1);
-		font_x_offset = QtUtils::QFontMetricsWidth(font_metrics, label) + 4;
+		font_x_offset = QtUtils::q_font_metrics_width(font_metrics, label) + 4;
 
 		p.drawText(waveform_start_dim_x - font_x_offset,
 				   (waveform_dim_y * (i * ire_increment)) +
@@ -120,7 +120,7 @@ void WaveformScope::DrawScope(TexturePtr managed_tex, QVariant pipeline)
 	p.drawLines(ire_lines);
 }
 
-void WaveformScope::DrawScopeSoftware(QPainter &p, const QImage &image)
+void WaveformScope::draw_scope_software(QPainter &p, const QImage &image)
 {
 	const float waveform_scale = 0.80f;
 	const int waveform_dim_x = qCeil((width() - 1.0) * waveform_scale);
@@ -203,7 +203,7 @@ void WaveformScope::DrawScopeSoftware(QPainter &p, const QImage &image)
 			waveform_end_dim_x,
 			(waveform_dim_y * (i * ire_increment)) + waveform_start_dim_y);
 		label = QString::number(1.0 - (i * ire_increment), 'f', 1);
-		font_x_offset = QtUtils::QFontMetricsWidth(font_metrics, label) + 4;
+		font_x_offset = QtUtils::q_font_metrics_width(font_metrics, label) + 4;
 
 		p.drawText(waveform_start_dim_x - font_x_offset,
 				   (waveform_dim_y * (i * ire_increment)) +

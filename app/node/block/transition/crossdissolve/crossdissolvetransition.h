@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CROSSDISSOLVETRANSITION_H
-#define CROSSDISSOLVETRANSITION_H
+#ifndef OAK_CROSSDISSOLVETRANSITION_H
+#define OAK_CROSSDISSOLVETRANSITION_H
 
 #include "node/block/transition/transition.h"
 
@@ -34,15 +34,15 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(CrossDissolveTransition)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
 	//virtual void Retranslate() override;
 
 	virtual ShaderCode
-	GetShaderCode(const ShaderRequest &request) const override;
+	get_shader_code(const ShaderRequest &request) const override;
 
 protected:
 	virtual void SampleJobEvent(const SampleBuffer &from_samples,
@@ -53,4 +53,4 @@ protected:
 
 }
 
-#endif // CROSSDISSOLVETRANSITION_H
+#endif // OAK_CROSSDISSOLVETRANSITION_H

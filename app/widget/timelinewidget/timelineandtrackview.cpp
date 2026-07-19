@@ -46,9 +46,9 @@ TimelineAndTrackView::TimelineAndTrackView(Qt::Alignment vertical_alignment,
 	splitter_->addWidget(view_);
 
 	connect(view_->verticalScrollBar(), &QScrollBar::valueChanged, this,
-			&TimelineAndTrackView::ViewValueChanged);
+			&TimelineAndTrackView::view_value_changed);
 	connect(track_view_->verticalScrollBar(), &QScrollBar::valueChanged, this,
-			&TimelineAndTrackView::TracksValueChanged);
+			&TimelineAndTrackView::tracks_value_changed);
 
 	splitter_->setSizes({ 1, width() });
 }
@@ -68,13 +68,13 @@ TrackView *TimelineAndTrackView::track_view() const
 	return track_view_;
 }
 
-void TimelineAndTrackView::ViewValueChanged(int v)
+void TimelineAndTrackView::view_value_changed(int v)
 {
 	track_view_->verticalScrollBar()->setValue(
 		v - view_->verticalScrollBar()->minimum());
 }
 
-void TimelineAndTrackView::TracksValueChanged(int v)
+void TimelineAndTrackView::tracks_value_changed(int v)
 {
 	view_->verticalScrollBar()->setValue(view_->verticalScrollBar()->minimum() +
 										 v);

@@ -18,8 +18,8 @@
 
 ***/
 
-#ifndef PREFERENCESLUTTAB_H
-#define PREFERENCESLUTTAB_H
+#ifndef OAK_PREFERENCESLUTTAB_H
+#define OAK_PREFERENCESLUTTAB_H
 
 #include <QListWidget>
 
@@ -33,7 +33,7 @@ class PreferencesLutTab : public ConfigDialogBaseTab {
 public:
 	PreferencesLutTab();
 
-	virtual void Accept(MultiUndoCommand *command) override;
+	virtual void accept(MultiUndoCommand *command) override;
 
 private:
 	QListWidget *library_dirs_list_;
@@ -41,4 +41,4 @@ private:
 
 }
 
-#endif // PREFERENCESLUTTAB_H
+#endif // OAK_PREFERENCESLUTTAB_H

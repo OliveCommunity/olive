@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
-#include "pluginSupport/OliveHost.h"
+#include "pluginSupport/olivehost.h"
 
 TEST(PluginSupport, LoadPluginsEmptyPath)
 {
-	EXPECT_NO_THROW({ olive::plugin::loadPlugins(QString()); });
+	EXPECT_NO_THROW({ olive::plugin::load_plugins(QString()); });
 }

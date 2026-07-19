@@ -15,9 +15,9 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#ifndef OLIVE_HOST_H
-#define OLIVE_HOST_H
-#include "node/plugins/Plugin.h"
+#ifndef OAK_OLIVE_HOST_H
+#define OAK_OLIVE_HOST_H
+#include "node/plugins/plugin.h"
 #include "ofxhHost.h"
 #include "ofxhImageEffectAPI.h"
 #include "ofxCore.h"
@@ -35,18 +35,18 @@ namespace olive
 {
 namespace plugin
 {
-enum class HostMessageType { Error, Warning, Message };
+enum class HostMessageType { error, warning, message };
 struct HostPersistentMessage {
 	HostMessageType type;
 	QString message;
 };
 
-void loadPlugins(QString path);
+void load_plugins(QString path);
 class OliveHost : public OFX::Host::ImageEffect::Host {
 public:
 	OliveHost();
 	~OliveHost() override;
-	void destroyInstance(OFX::Host::ImageEffect::Instance *instance);
+	void destroy_instance(OFX::Host::ImageEffect::Instance *instance);
 
 	bool pluginSupported(OFX::Host::ImageEffect::ImageEffectPlugin *plugin,
 						 std::string &reason) const override
@@ -63,7 +63,7 @@ public:
 	};
 
 	OFX::Host::ImageEffect::Instance *
-	newInstance(void *clientData,
+	newInstance(void *client_data,
 				OFX::Host::ImageEffect::ImageEffectPlugin *plugin,
 				OFX::Host::ImageEffect::Descriptor &desc,
 				const std::string &context) override;
@@ -72,11 +72,11 @@ public:
 	makeDescriptor(OFX::Host::ImageEffect::ImageEffectPlugin *plugin) override;
 
 	std::shared_ptr<OFX::Host::ImageEffect::Descriptor>
-	makeDescriptor(const OFX::Host::ImageEffect::Descriptor &rootContext,
+	makeDescriptor(const OFX::Host::ImageEffect::Descriptor &root_context,
 				   OFX::Host::ImageEffect::ImageEffectPlugin *plugin) override;
 
 	std::shared_ptr<OFX::Host::ImageEffect::Descriptor>
-	makeDescriptor(const std::string &bundlePath,
+	makeDescriptor(const std::string &bundle_path,
 				   OFX::Host::ImageEffect::ImageEffectPlugin *plugin) override;
 	/// vmessage
 	virtual OfxStatus vmessage(const char *type, const char *id,

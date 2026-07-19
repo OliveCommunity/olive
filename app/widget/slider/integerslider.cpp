@@ -29,40 +29,40 @@ namespace olive
 IntegerSlider::IntegerSlider(QWidget *parent)
 	: super(parent)
 {
-	SetValue(0);
+	set_value(0);
 }
 
-int64_t IntegerSlider::GetValue()
+int64_t IntegerSlider::get_value()
 {
-	return GetValueInternal().toLongLong();
+	return get_value_internal().toLongLong();
 }
 
-void IntegerSlider::SetValue(const int64_t &v)
+void IntegerSlider::set_value(const int64_t &v)
 {
-	SetValueInternal(QVariant::fromValue(v));
+	set_value_internal(QVariant::fromValue(v));
 }
 
-void IntegerSlider::SetMinimum(const int64_t &d)
+void IntegerSlider::set_minimum(const int64_t &d)
 {
-	SetMinimumInternal(QVariant::fromValue(d));
+	set_minimum_internal(QVariant::fromValue(d));
 }
 
-void IntegerSlider::SetMaximum(const int64_t &d)
+void IntegerSlider::set_maximum(const int64_t &d)
 {
-	SetMaximumInternal(QVariant::fromValue(d));
+	set_maximum_internal(QVariant::fromValue(d));
 }
 
 void IntegerSlider::SetDefaultValue(const int64_t &d)
 {
-	super::SetDefaultValue(QVariant::fromValue(d));
+	super::set_default_value(QVariant::fromValue(d));
 }
 
-QString IntegerSlider::ValueToString(const QVariant &v) const
+QString IntegerSlider::value_to_string(const QVariant &v) const
 {
-	return QString::number(v.toLongLong() + GetOffset().toLongLong());
+	return QString::number(v.toLongLong() + get_offset().toLongLong());
 }
 
-QVariant IntegerSlider::StringToValue(const QString &s, bool *ok) const
+QVariant IntegerSlider::string_to_value(const QString &s, bool *ok) const
 {
 	bool valid;
 
@@ -73,7 +73,7 @@ QVariant IntegerSlider::StringToValue(const QString &s, bool *ok) const
 		*ok = valid;
 	}
 
-	decimal_val -= GetOffset().toLongLong();
+	decimal_val -= get_offset().toLongLong();
 
 	if (valid) {
 		// But for an integer, we round it
@@ -83,15 +83,15 @@ QVariant IntegerSlider::StringToValue(const QString &s, bool *ok) const
 	return QVariant();
 }
 
-void IntegerSlider::ValueSignalEvent(const QVariant &value)
+void IntegerSlider::value_signal_event(const QVariant &value)
 {
-	emit ValueChanged(value.toInt());
+	emit value_changed(value.toInt());
 }
 
-QVariant IntegerSlider::AdjustDragDistanceInternal(const QVariant &start,
+QVariant IntegerSlider::adjust_drag_distance_internal(const QVariant &start,
 												   const double &drag) const
 {
-	return qRound64(super::AdjustDragDistanceInternal(start, drag).toDouble());
+	return qRound64(super::adjust_drag_distance_internal(start, drag).toDouble());
 }
 
 }

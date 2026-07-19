@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PIXELSAMPLERWIDGET_H
-#define PIXELSAMPLERWIDGET_H
+#ifndef OAK_PIXELSAMPLERWIDGET_H
+#define OAK_PIXELSAMPLERWIDGET_H
 
 #include <QLabel>
 #include <QGroupBox>
@@ -37,10 +37,10 @@ public:
 	PixelSamplerWidget(QWidget *parent = nullptr);
 
 public slots:
-	void SetValues(const Color &color);
+	void set_values(const Color &color);
 
 private:
-	void UpdateLabelInternal();
+	void update_label_internal();
 
 	Color color_;
 
@@ -55,7 +55,7 @@ public:
 	ManagedPixelSamplerWidget(QWidget *parent = nullptr);
 
 public slots:
-	void SetValues(const Color &reference, const Color &display);
+	void set_values(const Color &reference, const Color &display);
 
 private:
 	PixelSamplerWidget *reference_view_;
@@ -65,4 +65,4 @@ private:
 
 }
 
-#endif // PIXELSAMPLERWIDGET_H
+#endif // OAK_PIXELSAMPLERWIDGET_H

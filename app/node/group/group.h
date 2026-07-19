@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEGROUP_H
-#define NODEGROUP_H
+#ifndef OAK_NODEGROUP_H
+#define OAK_NODEGROUP_H
 
 #include "node/node.h"
 
@@ -34,45 +34,45 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(NodeGroup)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual bool LoadCustom(QXmlStreamReader *reader,
+	virtual bool load_custom(QXmlStreamReader *reader,
 							SerializedData *data) override;
-	virtual void SaveCustom(QXmlStreamWriter *writer) const override;
+	virtual void save_custom(QXmlStreamWriter *writer) const override;
 	virtual void PostLoadEvent(SerializedData *data) override;
 
-	QString AddInputPassthrough(const NodeInput &input,
+	QString add_input_passthrough(const NodeInput &input,
 								const QString &force_id = QString());
 
-	void RemoveInputPassthrough(const NodeInput &input);
+	void remove_input_passthrough(const NodeInput &input);
 
-	Node *GetOutputPassthrough() const
+	Node *get_output_passthrough() const
 	{
 		return output_passthrough_;
 	}
 
-	void SetOutputPassthrough(Node *node);
+	void set_output_passthrough(Node *node);
 
 	using InputPassthrough = QPair<QString, NodeInput>;
 	using InputPassthroughs = QVector<InputPassthrough>;
-	const InputPassthroughs &GetInputPassthroughs() const
+	const InputPassthroughs &get_input_passthroughs() const
 	{
 		return input_passthroughs_;
 	}
 
-	bool ContainsInputPassthrough(const NodeInput &input) const;
+	bool contains_input_passthrough(const NodeInput &input) const;
 
-	virtual QString GetInputName(const QString &id) const override;
+	virtual QString get_input_name(const QString &id) const override;
 
-	static NodeInput ResolveInput(NodeInput input);
-	static bool GetInner(NodeInput *input);
+	static NodeInput resolve_input(NodeInput input);
+	static bool get_inner(NodeInput *input);
 
-	QString GetIDOfPassthrough(const NodeInput &input) const
+	QString get_id_of_passthrough(const NodeInput &input) const
 	{
 		for (auto it = input_passthroughs_.cbegin();
 			 it != input_passthroughs_.cend(); it++) {
@@ -83,7 +83,7 @@ public:
 		return QString();
 	}
 
-	NodeInput GetInputFromID(const QString &id) const
+	NodeInput get_input_from_id(const QString &id) const
 	{
 		for (auto it = input_passthroughs_.cbegin();
 			 it != input_passthroughs_.cend(); it++) {
@@ -95,13 +95,13 @@ public:
 	}
 
 signals:
-	void InputPassthroughAdded(olive::NodeGroup *group,
+	void input_passthrough_added(olive::NodeGroup *group,
 							   const olive::NodeInput &input);
 
-	void InputPassthroughRemoved(olive::NodeGroup *group,
+	void input_passthrough_removed(olive::NodeGroup *group,
 								 const olive::NodeInput &input);
 
-	void OutputPassthroughChanged(olive::NodeGroup *group, olive::Node *output);
+	void output_passthrough_changed(olive::NodeGroup *group, olive::Node *output);
 
 private:
 	InputPassthroughs input_passthroughs_;
@@ -119,7 +119,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return group_->project();
 	}
@@ -147,7 +147,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return group_->project();
 	}
@@ -166,4 +166,4 @@ private:
 
 }
 
-#endif // NODEGROUP_H
+#endif // OAK_NODEGROUP_H

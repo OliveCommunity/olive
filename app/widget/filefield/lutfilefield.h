@@ -18,8 +18,8 @@
 
 ***/
 
-#ifndef LUTFILEFIELD_H
-#define LUTFILEFIELD_H
+#ifndef OAK_LUTFILEFIELD_H
+#define OAK_LUTFILEFIELD_H
 
 #include <QComboBox>
 
@@ -43,7 +43,7 @@ class LutFileField : public FileField {
 public:
 	LutFileField(QWidget *parent = nullptr);
 
-	virtual void SetFilename(const QString &s) override;
+	virtual void set_filename(const QString &s) override;
 
 	/**
 	 * @brief The combo box listing the LUT library entries
@@ -61,11 +61,11 @@ private:
 	 * @brief Repopulates the combo from the LUT library and syncs the
 	 * selection with the current filename
 	 */
-	void RefreshLibraryEntries();
+	void refresh_library_entries();
 
 	QComboBox *library_combo_;
 };
 
 }
 
-#endif // LUTFILEFIELD_H
+#endif // OAK_LUTFILEFIELD_H

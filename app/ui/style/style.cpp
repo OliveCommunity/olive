@@ -35,23 +35,23 @@
 namespace olive
 {
 
-QString StyleManager::current_style_;
+QString StyleManager::current_style;
 QMap<QString, QString> StyleManager::available_themes_;
 
-QPalette StyleManager::ParsePalette(const QString &ini_path)
+QPalette StyleManager::parse_palette(const QString &ini_path)
 {
 	QSettings ini(ini_path, QSettings::IniFormat);
 	QPalette palette;
 
-	ParsePaletteGroup(&ini, &palette, QPalette::All);
-	ParsePaletteGroup(&ini, &palette, QPalette::Active);
-	ParsePaletteGroup(&ini, &palette, QPalette::Inactive);
-	ParsePaletteGroup(&ini, &palette, QPalette::Disabled);
+	parse_palette_group(&ini, &palette, QPalette::All);
+	parse_palette_group(&ini, &palette, QPalette::Active);
+	parse_palette_group(&ini, &palette, QPalette::Inactive);
+	parse_palette_group(&ini, &palette, QPalette::Disabled);
 
 	return palette;
 }
 
-void StyleManager::ParsePaletteGroup(QSettings *ini, QPalette *palette,
+void StyleManager::parse_palette_group(QSettings *ini, QPalette *palette,
 									 QPalette::ColorGroup group)
 {
 	QString group_name;
@@ -77,13 +77,13 @@ void StyleManager::ParsePaletteGroup(QSettings *ini, QPalette *palette,
 
 	QStringList keys = ini->childKeys();
 	foreach (QString k, keys) {
-		ParsePaletteColor(ini, palette, group, k);
+		parse_palette_color(ini, palette, group, k);
 	}
 
 	ini->endGroup();
 }
 
-void StyleManager::ParsePaletteColor(QSettings *ini, QPalette *palette,
+void StyleManager::parse_palette_color(QSettings *ini, QPalette *palette,
 									 QPalette::ColorGroup group,
 									 const QString &role_name)
 {
@@ -137,7 +137,7 @@ void StyleManager::ParsePaletteColor(QSettings *ini, QPalette *palette,
 	palette->setColor(group, role, QColor(ini->value(role_name).toString()));
 }
 
-void StyleManager::Init()
+void StyleManager::init()
 {
 	qApp->setStyle(QStyleFactory::create("Fusion"));
 
@@ -146,33 +146,33 @@ void StyleManager::Init()
 	available_themes_.insert(QStringLiteral("olive-light"),
 							 QStringLiteral("Oak Light"));
 
-	QString config_style = OLIVE_CONFIG("Style").toString();
+	QString config_style = OAK_CONFIG("Style").toString();
 
 	if (config_style.isEmpty() || !available_themes_.contains(config_style)) {
-		SetStyle(kDefaultStyle);
+		set_style(k_default_style);
 	} else {
-		SetStyle(config_style);
+		set_style(config_style);
 	}
 }
 
-const QString &StyleManager::GetStyle()
+const QString &StyleManager::get_style()
 {
-	return current_style_;
+	return current_style;
 }
 
-void StyleManager::SetStyle(const QString &style_path)
+void StyleManager::set_style(const QString &style_path)
 {
-	current_style_ = style_path;
+	current_style = style_path;
 
 	QString abs_style_path = QStringLiteral(":/style/%1").arg(style_path);
 
 	// Load all icons for this style (icons must be loaded first because the style change below triggers the icon change)
-	icon::LoadAll(abs_style_path);
+	icon::load_all(abs_style_path);
 
 	// Set palette for this
 	QString palette_file = QStringLiteral("%1/palette.ini").arg(abs_style_path);
 	if (QFileInfo::exists(palette_file)) {
-		qApp->setPalette(ParsePalette(palette_file));
+		qApp->setPalette(parse_palette(palette_file));
 	} else {
 		qApp->setPalette(qApp->style()->standardPalette());
 	}

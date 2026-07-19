@@ -32,7 +32,7 @@
 namespace olive
 {
 
-QStringList OIIODecoder::supported_formats_;
+QStringList OIIODecoder::supported_formats;
 
 OIIODecoder::OIIODecoder()
 	: image_(nullptr)
@@ -44,7 +44,7 @@ QString OIIODecoder::id() const
 	return QStringLiteral("oiio");
 }
 
-FootageDescription OIIODecoder::Probe(const QString &filename,
+FootageDescription OIIODecoder::probe(const QString &filename,
 									  CancelAtom *cancelled) const
 {
 	Q_UNUSED(cancelled)
@@ -53,7 +53,7 @@ FootageDescription OIIODecoder::Probe(const QString &filename,
 
 	// Filter out any file extensions that aren't expected to work - sometimes OIIO will crash trying
 	// to open a file that it can't if it's given one
-	if (!FileTypeIsSupported(filename)) {
+	if (!file_type_is_supported(filename)) {
 		return desc;
 	}
 
@@ -77,7 +77,7 @@ FootageDescription OIIODecoder::Probe(const QString &filename,
 	for (i = 0; in->seek_subimage(i, 0); i++) {
 		OIIO::ImageSpec spec = in->spec();
 
-		VideoParams video_params = GetVideoParamsFromImageSpec(spec);
+		VideoParams video_params = get_video_params_from_image_spec(spec);
 
 		video_params.set_stream_index(i);
 
@@ -104,10 +104,10 @@ FootageDescription OIIODecoder::Probe(const QString &filename,
 		//        likely reduces the fidelity?
 		video_params.set_premultiplied_alpha(true);
 
-		desc.AddVideoStream(video_params);
+		desc.add_video_stream(video_params);
 	}
 
-	desc.SetStreamCount(i);
+	desc.set_stream_count(i);
 
 	// If we're here, we have a successful image open
 	in->close();
@@ -115,26 +115,26 @@ FootageDescription OIIODecoder::Probe(const QString &filename,
 	return desc;
 }
 
-bool OIIODecoder::OpenInternal()
+bool OIIODecoder::open_internal()
 {
 	// If we can open the filename provided, assume everything is working
-	return OpenImageHandler(stream().filename(), stream().stream());
+	return open_image_handler(stream().filename(), stream().stream());
 }
 
-TexturePtr OIIODecoder::RetrieveVideoInternal(const RetrieveVideoParams &p)
+TexturePtr OIIODecoder::retrieve_video_internal(const RetrieveVideoParams &p)
 {
-	FramePtr frame = RetrieveVideoFrameInternal(p);
+	FramePtr frame = retrieve_video_frame_internal(p);
 	if (!frame) {
 		return nullptr;
 	}
 
-	return p.renderer->CreateTexture(frame->video_params(), frame->data(),
+	return p.renderer->create_texture(frame->video_params(), frame->data(),
 									 frame->linesize_pixels());
 }
 
-FramePtr OIIODecoder::RetrieveVideoFrameInternal(const RetrieveVideoParams &p)
+FramePtr OIIODecoder::retrieve_video_frame_internal(const RetrieveVideoParams &p)
 {
-	VideoParams vp = GetVideoParamsFromImageSpec(image_->spec());
+	VideoParams vp = get_video_params_from_image_spec(image_->spec());
 	vp.set_divider(p.divider);
 
 	if (!buffer_.is_allocated() || last_params_.divider != p.divider) {
@@ -154,7 +154,7 @@ FramePtr OIIODecoder::RetrieveVideoFrameInternal(const RetrieveVideoParams &p)
 							   buf.scanline_stride(), buf.z_stride());
 
 			// Roughly downsample image for divider (for some reason OIIO::ImageBufAlgo::resample failed here)
-			int px_sz = vp.GetBytesPerPixel();
+			int px_sz = vp.get_bytes_per_pixel();
 			for (int dst_y = 0; dst_y < buffer_.height(); dst_y++) {
 				int src_y = dst_y * buf.spec().height / buffer_.height();
 
@@ -171,15 +171,15 @@ FramePtr OIIODecoder::RetrieveVideoFrameInternal(const RetrieveVideoParams &p)
 	}
 
 	// Force F32 output for all still images
-	if (vp.format() != PixelFormat::F32) {
-		FramePtr f32_frame = buffer_.convert(PixelFormat::F32);
+	if (vp.format() != PixelFormat::f32) {
+		FramePtr f32_frame = buffer_.convert(PixelFormat::f32);
 		if (f32_frame) {
 			f32_frame->set_timestamp(p.time);
 			return f32_frame;
 		}
 	}
 
-	FramePtr frame = Frame::Create();
+	FramePtr frame = Frame::create();
 	frame->set_video_params(buffer_.video_params());
 	frame->set_timestamp(p.time);
 	if (!frame->allocate()) {
@@ -190,19 +190,19 @@ FramePtr OIIODecoder::RetrieveVideoFrameInternal(const RetrieveVideoParams &p)
 	return frame;
 }
 
-void OIIODecoder::CloseInternal()
+void OIIODecoder::close_internal()
 {
-	CloseImageHandle();
+	close_image_handle();
 }
 
-bool OIIODecoder::FileTypeIsSupported(const QString &fn)
+bool OIIODecoder::file_type_is_supported(const QString &fn)
 {
 	// We prioritize OIIO over FFmpeg to pick up still images more effectively, but some OIIO decoders (notably OpenJPEG)
 	// will segfault entirely if given unexpected data (an MPEG-4 for instance). To workaround this issue, we use OIIO's
 	// "extension_list" attribute and match it with the extension of the file.
 
 	// Check if we've created the supported formats list, create it if not
-	if (supported_formats_.isEmpty()) {
+	if (supported_formats.isEmpty()) {
 		QStringList extension_list =
 			QString::fromStdString(OIIO::get_string_attribute("extension_list"))
 				.split(';');
@@ -211,11 +211,11 @@ bool OIIODecoder::FileTypeIsSupported(const QString &fn)
 		foreach (const QString &ext, extension_list) {
 			QStringList format_and_ext = ext.split(':');
 
-			supported_formats_.append(format_and_ext.at(1).split(','));
+			supported_formats.append(format_and_ext.at(1).split(','));
 		}
 	}
 
-	if (!supported_formats_.contains(QFileInfo(fn).suffix(),
+	if (!supported_formats.contains(QFileInfo(fn).suffix(),
 									 Qt::CaseInsensitive)) {
 		return false;
 	}
@@ -223,7 +223,7 @@ bool OIIODecoder::FileTypeIsSupported(const QString &fn)
 	return true;
 }
 
-bool OIIODecoder::OpenImageHandler(const QString &fn, int subimage)
+bool OIIODecoder::open_image_handler(const QString &fn, int subimage)
 {
 	image_ = OIIO::ImageInput::open(fn.toStdString());
 
@@ -239,16 +239,16 @@ bool OIIODecoder::OpenImageHandler(const QString &fn, int subimage)
 	const OIIO::ImageSpec &spec = image_->spec();
 
 	// We use RGBA frames because that tends to be the native format of GPUs
-	pix_fmt_ = OIIOUtils::GetFormatFromOIIOBasetype(
+	pix_fmt_ = OIIOUtils::get_format_from_oiio_basetype(
 		static_cast<OIIO::TypeDesc::BASETYPE>(spec.format.basetype));
 
-	if (pix_fmt_ == PixelFormat::INVALID) {
+	if (pix_fmt_ == PixelFormat::invalid) {
 		qWarning()
 			<< "Failed to convert OIIO::ImageDesc to native pixel format";
 		return false;
 	}
 
-	oiio_pix_fmt_ = OIIOUtils::GetOIIOBaseTypeFromFormat(pix_fmt_);
+	oiio_pix_fmt_ = OIIOUtils::get_oiio_base_type_from_format(pix_fmt_);
 
 	if (oiio_pix_fmt_ == OIIO::TypeDesc::UNKNOWN) {
 		qCritical()
@@ -259,7 +259,7 @@ bool OIIODecoder::OpenImageHandler(const QString &fn, int subimage)
 	return true;
 }
 
-void OIIODecoder::CloseImageHandle()
+void OIIODecoder::close_image_handle()
 {
 	if (image_) {
 		image_->close();
@@ -270,18 +270,18 @@ void OIIODecoder::CloseImageHandle()
 }
 
 VideoParams
-OIIODecoder::GetVideoParamsFromImageSpec(const OIIO::ImageSpec &spec)
+OIIODecoder::get_video_params_from_image_spec(const OIIO::ImageSpec &spec)
 {
 	VideoParams video_params;
 
 	video_params.set_width(spec.width);
 	video_params.set_height(spec.height);
-	video_params.set_format(OIIOUtils::GetFormatFromOIIOBasetype(
+	video_params.set_format(OIIOUtils::get_format_from_oiio_basetype(
 		static_cast<OIIO::TypeDesc::BASETYPE>(spec.format.basetype)));
 	video_params.set_channel_count(spec.nchannels);
 	video_params.set_pixel_aspect_ratio(
-		OIIOUtils::GetPixelAspectRatioFromOIIO(spec));
-	video_params.set_video_type(VideoParams::kVideoTypeStill);
+		OIIOUtils::get_pixel_aspect_ratio_from_oiio(spec));
+	video_params.set_video_type(VideoParams::k_video_type_still);
 
 	return video_params;
 }

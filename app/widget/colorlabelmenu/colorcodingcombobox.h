@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLORCODINGCOMBOBOX_H
-#define COLORCODINGCOMBOBOX_H
+#ifndef OAK_COLORCODINGCOMBOBOX_H
+#define OAK_COLORCODINGCOMBOBOX_H
 
 #include <QComboBox>
 
@@ -36,9 +36,9 @@ public:
 
 	virtual void showPopup() override;
 
-	void SetColor(int index);
+	void set_color(int index);
 
-	int GetSelectedColor() const
+	int get_selected_color() const
 	{
 		return index_;
 	}
@@ -49,4 +49,4 @@ private:
 
 }
 
-#endif // COLORCODINGCOMBOBOX_H
+#endif // OAK_COLORCODINGCOMBOBOX_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SERIALIZER220403_H
-#define SERIALIZER220403_H
+#ifndef OAK_SERIALIZER220403_H
+#define OAK_SERIALIZER220403_H
 
 #include "serializer.h"
 
@@ -32,10 +32,10 @@ public:
 	ProjectSerializer220403() = default;
 
 protected:
-	virtual LoadData Load(Project *project, QXmlStreamReader *reader,
+	virtual LoadData load(Project *project, QXmlStreamReader *reader,
 						  LoadType load_type, void *reserved) const override;
 
-	virtual uint Version() const override
+	virtual uint version() const override
 	{
 		return 220403;
 	}
@@ -73,45 +73,45 @@ private:
 		QHash<Node *, QUuid> node_uuids;
 	};
 
-	void LoadNode(Node *node, XMLNodeData &xml_node_data,
+	void load_node(Node *node, XMLNodeData &xml_node_data,
 				  QXmlStreamReader *reader) const;
 
-	void LoadColorManager(QXmlStreamReader *reader, Project *project) const;
+	void load_color_manager(QXmlStreamReader *reader, Project *project) const;
 
-	void LoadProjectSettings(QXmlStreamReader *reader, Project *project) const;
+	void load_project_settings(QXmlStreamReader *reader, Project *project) const;
 
-	void LoadInput(Node *node, QXmlStreamReader *reader,
+	void load_input(Node *node, QXmlStreamReader *reader,
 				   XMLNodeData &xml_node_data) const;
 
-	void LoadImmediate(QXmlStreamReader *reader, Node *node,
+	void load_immediate(QXmlStreamReader *reader, Node *node,
 					   const QString &input, int element,
 					   XMLNodeData &xml_node_data) const;
 
-	void LoadKeyframe(QXmlStreamReader *reader, NodeKeyframe *key,
+	void load_keyframe(QXmlStreamReader *reader, NodeKeyframe *key,
 					  NodeValue::Type data_type) const;
 
-	bool LoadPosition(QXmlStreamReader *reader, quintptr *node_ptr,
+	bool load_position(QXmlStreamReader *reader, quintptr *node_ptr,
 					  Node::Position *pos) const;
 
-	void PostConnect(const XMLNodeData &xml_node_data) const;
+	void post_connect(const XMLNodeData &xml_node_data) const;
 
-	void LoadNodeCustom(QXmlStreamReader *reader, Node *node,
+	void load_node_custom(QXmlStreamReader *reader, Node *node,
 						XMLNodeData &xml_node_data) const;
 
-	void LoadTimelinePoints(QXmlStreamReader *reader,
+	void load_timeline_points(QXmlStreamReader *reader,
 							ViewerOutput *viewer) const;
 
-	void LoadMarker(QXmlStreamReader *reader, TimelineMarker *marker) const;
+	void load_marker(QXmlStreamReader *reader, TimelineMarker *marker) const;
 
-	void LoadWorkArea(QXmlStreamReader *reader,
+	void load_work_area(QXmlStreamReader *reader,
 					  TimelineWorkArea *workarea) const;
 
-	void LoadMarkerList(QXmlStreamReader *reader,
+	void load_marker_list(QXmlStreamReader *reader,
 						TimelineMarkerList *markers) const;
 
-	void LoadValueHint(Node::ValueHint *hint, QXmlStreamReader *reader) const;
+	void load_value_hint(Node::ValueHint *hint, QXmlStreamReader *reader) const;
 };
 
 }
 
-#endif // SERIALIZER220403_H
+#endif // OAK_SERIALIZER220403_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINEMARKER_H
-#define TIMELINEMARKER_H
+#ifndef OAK_TIMELINEMARKER_H
+#define OAK_TIMELINEMARKER_H
 
 #include <olive/core/core.h>
 #include <QPainter>
@@ -47,9 +47,9 @@ public:
 		return time_;
 	}
 	void set_time(const TimeRange &time);
-	void set_time(const rational &time);
+	void set_time(const Rational &time);
 
-	bool has_sibling_at_time(const rational &t) const;
+	bool has_sibling_at_time(const Rational &t) const;
 
 	const QString &name() const
 	{
@@ -63,19 +63,19 @@ public:
 	}
 	void set_color(int c);
 
-	static int GetMarkerHeight(const QFontMetrics &fm);
-	QRect Draw(QPainter *p, const QPoint &pt, int max_right, double scale,
+	static int get_marker_height(const QFontMetrics &fm);
+	QRect draw(QPainter *p, const QPoint &pt, int max_right, double scale,
 			   bool selected);
 
 	bool load(QXmlStreamReader *reader);
 	void save(QXmlStreamWriter *writer) const;
 
 signals:
-	void TimeChanged(const TimeRange &time);
+	void time_changed(const TimeRange &time);
 
-	void NameChanged(const QString &name);
+	void name_changed(const QString &name);
 
-	void ColorChanged(int c);
+	void color_changed(int c);
 
 private:
 	TimeRange time_;
@@ -129,7 +129,7 @@ public:
 	bool load(QXmlStreamReader *reader);
 	void save(QXmlStreamWriter *writer) const;
 
-	TimelineMarker *GetMarkerAtTime(const rational &t) const
+	TimelineMarker *get_marker_at_time(const Rational &t) const
 	{
 		for (auto it = markers_.cbegin(); it != markers_.cend(); it++) {
 			TimelineMarker *m = *it;
@@ -141,17 +141,17 @@ public:
 		return nullptr;
 	}
 
-	TimelineMarker *GetClosestMarkerToTime(const rational &t) const
+	TimelineMarker *get_closest_marker_to_time(const Rational &t) const
 	{
 		TimelineMarker *closest = nullptr;
 
 		for (auto it = markers_.cbegin(); it != markers_.cend(); it++) {
 			TimelineMarker *m = *it;
 
-			rational this_diff = qAbs(m->time().in() - t);
+			Rational this_diff = qAbs(m->time().in() - t);
 
 			if (closest) {
-				rational stored_diff = qAbs(closest->time().in() - t);
+				Rational stored_diff = qAbs(closest->time().in() - t);
 
 				if (this_diff > stored_diff) {
 					// Since the list is organized by time, if the diff increases, assume we are only going
@@ -167,25 +167,25 @@ public:
 	}
 
 signals:
-	void MarkerAdded(TimelineMarker *marker);
+	void marker_added(TimelineMarker *marker);
 
-	void MarkerRemoved(TimelineMarker *marker);
+	void marker_removed(TimelineMarker *marker);
 
-	void MarkerModified(TimelineMarker *marker);
+	void marker_modified(TimelineMarker *marker);
 
 protected:
 	virtual void childEvent(QChildEvent *e) override;
 
 private:
-	void InsertIntoList(TimelineMarker *m);
-	bool RemoveFromList(TimelineMarker *m);
+	void insert_into_list(TimelineMarker *m);
+	bool remove_from_list(TimelineMarker *m);
 
 	std::vector<TimelineMarker *> markers_;
 
 private slots:
-	void HandleMarkerModification();
+	void handle_marker_modification();
 
-	void HandleMarkerTimeChange();
+	void handle_marker_time_change();
 };
 
 class MarkerAddCommand : public UndoCommand {
@@ -194,7 +194,7 @@ public:
 					 const QString &name, int color);
 	MarkerAddCommand(TimelineMarkerList *marker_list, TimelineMarker *marker);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -211,7 +211,7 @@ class MarkerRemoveCommand : public UndoCommand {
 public:
 	MarkerRemoveCommand(TimelineMarker *marker);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -228,7 +228,7 @@ class MarkerChangeColorCommand : public UndoCommand {
 public:
 	MarkerChangeColorCommand(TimelineMarker *marker, int new_color);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -244,7 +244,7 @@ class MarkerChangeNameCommand : public UndoCommand {
 public:
 	MarkerChangeNameCommand(TimelineMarker *marker, QString name);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -265,7 +265,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -279,4 +279,4 @@ private:
 
 }
 
-#endif // TIMELINEMARKER_H
+#endif // OAK_TIMELINEMARKER_H

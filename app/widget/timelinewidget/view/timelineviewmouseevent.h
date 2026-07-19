@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINEVIEWMOUSEEVENT_H
-#define TIMELINEVIEWMOUSEEVENT_H
+#ifndef OAK_TIMELINEVIEWMOUSEEVENT_H
+#define OAK_TIMELINEVIEWMOUSEEVENT_H
 
 #include <QEvent>
 #include <QMimeData>
@@ -37,7 +37,7 @@ class TimelineViewMouseEvent {
 public:
 	TimelineViewMouseEvent(
 		const QPointF &scene_pos, const QPoint &screen_pos,
-		const double &scale_x, const rational &timebase,
+		const double &scale_x, const Rational &timebase,
 		const Track::Reference &track, const Qt::MouseButton &button,
 		const Qt::KeyboardModifiers &modifiers = Qt::NoModifier)
 		: scene_pos_(scene_pos)
@@ -53,12 +53,12 @@ public:
 	{
 	}
 
-	TimelineCoordinate GetCoordinates(bool round_time = false) const
+	TimelineCoordinate get_coordinates(bool round_time = false) const
 	{
-		return TimelineCoordinate(GetFrame(round_time), track_);
+		return TimelineCoordinate(get_frame(round_time), track_);
 	}
 
-	const Qt::KeyboardModifiers &GetModifiers() const
+	const Qt::KeyboardModifiers &get_modifiers() const
 	{
 		return modifiers_;
 	}
@@ -72,23 +72,23 @@ public:
    * always to the left of the cursor. The former behavior is better for clicking between frames (e.g. razor tool) and
    * the latter is better for clicking directly on frames (e.g. pointer tool).
    */
-	rational GetFrame(bool round = false) const
+	Rational get_frame(bool round = false) const
 	{
-		return TimeScaledObject::SceneToTime(GetSceneX(), scale_x_, timebase_,
+		return TimeScaledObject::scene_to_time(get_scene_x(), scale_x_, timebase_,
 											 round);
 	}
 
-	const Track::Reference &GetTrack() const
+	const Track::Reference &get_track() const
 	{
 		return track_;
 	}
 
-	const QMimeData *GetMimeData()
+	const QMimeData *get_mime_data()
 	{
 		return mime_data_;
 	}
 
-	void SetMimeData(const QMimeData *data)
+	void set_mime_data(const QMimeData *data)
 	{
 		mime_data_ = data;
 	}
@@ -98,21 +98,21 @@ public:
 		source_event_ = event;
 	}
 
-	qreal GetSceneX() const
+	qreal get_scene_x() const
 	{
 		return scene_pos_.x();
 	}
 
-	const QPointF &GetScenePos() const
+	const QPointF &get_scene_pos() const
 	{
 		return scene_pos_;
 	}
-	const QPoint &GetScreenPos() const
+	const QPoint &get_screen_pos() const
 	{
 		return screen_pos_;
 	}
 
-	const Qt::MouseButton &GetButton() const
+	const Qt::MouseButton &get_button() const
 	{
 		return button_;
 	}
@@ -129,11 +129,11 @@ public:
 			source_event_->ignore();
 	}
 
-	bool GetBypassImportBuffer() const
+	bool get_bypass_import_buffer() const
 	{
 		return bypass_import_buffer_;
 	}
-	void SetBypassImportBuffer(bool e)
+	void set_bypass_import_buffer(bool e)
 	{
 		bypass_import_buffer_ = e;
 	}
@@ -142,7 +142,7 @@ private:
 	QPointF scene_pos_;
 	QPoint screen_pos_;
 	double scale_x_;
-	rational timebase_;
+	Rational timebase_;
 
 	Track::Reference track_;
 
@@ -159,4 +159,4 @@ private:
 
 }
 
-#endif // TIMELINEVIEWMOUSEEVENT_H
+#endif // OAK_TIMELINEVIEWMOUSEEVENT_H

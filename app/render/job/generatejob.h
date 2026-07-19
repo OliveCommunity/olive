@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef GENERATEJOB_H
-#define GENERATEJOB_H
+#ifndef OAK_GENERATEJOB_H
+#define OAK_GENERATEJOB_H
 
 #include "acceleratedjob.h"
 #include "codec/frame.h"
@@ -34,10 +34,10 @@ public:
 	GenerateJob(const NodeValueRow &row)
 		: GenerateJob()
 	{
-		Insert(row);
+		insert(row);
 	}
 };
 
 }
 
-#endif // GENERATEJOB_H
+#endif // OAK_GENERATEJOB_H

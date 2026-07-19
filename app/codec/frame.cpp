@@ -44,7 +44,7 @@ Frame::~Frame()
 	destroy();
 }
 
-FramePtr Frame::Create()
+FramePtr Frame::create()
 {
 	return std::make_shared<Frame>();
 }
@@ -60,10 +60,10 @@ void Frame::set_video_params(const VideoParams &params)
 
 	linesize_ = generate_linesize_bytes(width(), params_.format(),
 										params_.channel_count());
-	linesize_pixels_ = linesize_ / params_.GetBytesPerPixel();
+	linesize_pixels_ = linesize_ / params_.get_bytes_per_pixel();
 }
 
-FramePtr Frame::Interlace(FramePtr top, FramePtr bottom)
+FramePtr Frame::interlace(FramePtr top, FramePtr bottom)
 {
 	if (top->video_params() != bottom->video_params()) {
 		qCritical()
@@ -71,7 +71,7 @@ FramePtr Frame::Interlace(FramePtr top, FramePtr bottom)
 		return nullptr;
 	}
 
-	FramePtr interlaced = Frame::Create();
+	FramePtr interlaced = Frame::create();
 	interlaced->set_video_params(top->video_params());
 	interlaced->allocate();
 
@@ -91,7 +91,7 @@ int Frame::generate_linesize_bytes(int width, PixelFormat format,
 								   int channel_count)
 {
 	// Align to 32 bytes (not sure if this is necessary?)
-	return VideoParams::GetBytesPerPixel(format, channel_count) *
+	return VideoParams::get_bytes_per_pixel(format, channel_count) *
 		   ((width + 31) & ~31);
 }
 
@@ -102,7 +102,7 @@ Color Frame::get_pixel(int x, int y) const
 	}
 
 	int byte_offset =
-		y * linesize_bytes() + x * video_params().GetBytesPerPixel();
+		y * linesize_bytes() + x * video_params().get_bytes_per_pixel();
 
 	return Color(reinterpret_cast<const char *>(data_ + byte_offset),
 				 video_params().format(), video_params().channel_count());
@@ -120,9 +120,9 @@ void Frame::set_pixel(int x, int y, const Color &c)
 	}
 
 	int byte_offset =
-		y * linesize_bytes() + x * video_params().GetBytesPerPixel();
+		y * linesize_bytes() + x * video_params().get_bytes_per_pixel();
 
-	c.toData(reinterpret_cast<char *>(data_ + byte_offset),
+	c.to_data(reinterpret_cast<char *>(data_ + byte_offset),
 			 video_params().format(), video_params().channel_count());
 }
 
@@ -140,7 +140,7 @@ bool Frame::allocate()
 	}
 
 	data_size_ = linesize_ * height();
-	data_ = FrameManager::Allocate(data_size_);
+	data_ = FrameManager::allocate(data_size_);
 
 	return true;
 }
@@ -148,7 +148,7 @@ bool Frame::allocate()
 void Frame::destroy()
 {
 	if (is_allocated()) {
-		FrameManager::Deallocate(data_size_, data_);
+		FrameManager::deallocate(data_size_, data_);
 
 		data_size_ = 0;
 		data_ = nullptr;
@@ -162,7 +162,7 @@ FramePtr Frame::convert(PixelFormat format) const
 	params.set_format(format);
 
 	// Create new frame
-	FramePtr converted = Frame::Create();
+	FramePtr converted = Frame::create();
 	converted->set_video_params(params);
 	converted->set_timestamp(timestamp_);
 	converted->allocate();
@@ -170,16 +170,16 @@ FramePtr Frame::convert(PixelFormat format) const
 	// Do the conversion through OIIO for convenience
 	OIIO::ImageBuf src(
 		OIIO::ImageSpec(width(), height(), channel_count(),
-						OIIOUtils::GetOIIOBaseTypeFromFormat(this->format())));
+						OIIOUtils::get_oiio_base_type_from_format(this->format())));
 
-	OIIOUtils::FrameToBuffer(this, &src);
+	OIIOUtils::frame_to_buffer(this, &src);
 
 	OIIO::ImageBuf dst(OIIO::ImageSpec(
 		converted->width(), converted->height(), channel_count(),
-		OIIOUtils::GetOIIOBaseTypeFromFormat(format)));
+		OIIOUtils::get_oiio_base_type_from_format(format)));
 
 	if (dst.copy_pixels(src)) {
-		OIIOUtils::BufferToFrame(&dst, converted.get());
+		OIIOUtils::buffer_to_frame(&dst, converted.get());
 		return converted;
 	} else {
 		return nullptr;

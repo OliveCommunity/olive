@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLORPROCESSORCACHE_H
-#define COLORPROCESSORCACHE_H
+#ifndef OAK_COLORPROCESSORCACHE_H
+#define OAK_COLORPROCESSORCACHE_H
 
 #include "render/colorprocessor.h"
 
@@ -31,4 +31,4 @@ using ColorProcessorCache = QHash<QString, ColorProcessorPtr>;
 
 }
 
-#endif // COLORPROCESSORCACHE_H
+#endif // OAK_COLORPROCESSORCACHE_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINEUNDOGENERAL_H
-#define TIMELINEUNDOGENERAL_H
+#ifndef OAK_TIMELINEUNDOGENERAL_H
+#define OAK_TIMELINEUNDOGENERAL_H
 
 #include "config/config.h"
 #include "node/block/clip/clip.h"
@@ -37,13 +37,13 @@ namespace olive
 
 class BlockResizeCommand : public UndoCommand {
 public:
-	BlockResizeCommand(Block *block, rational new_length)
+	BlockResizeCommand(Block *block, Rational new_length)
 		: block_(block)
 		, new_length_(new_length)
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return block_->project();
 	}
@@ -54,19 +54,19 @@ protected:
 
 private:
 	Block *block_;
-	rational old_length_;
-	rational new_length_;
+	Rational old_length_;
+	Rational new_length_;
 };
 
 class BlockResizeWithMediaInCommand : public UndoCommand {
 public:
-	BlockResizeWithMediaInCommand(Block *block, rational new_length)
+	BlockResizeWithMediaInCommand(Block *block, Rational new_length)
 		: block_(block)
 		, new_length_(new_length)
 	{
 	}
 
-	virtual Project *GetRelevantProject() const
+	virtual Project *get_relevant_project() const
 	{
 		return block_->project();
 	}
@@ -77,19 +77,19 @@ protected:
 
 private:
 	Block *block_;
-	rational old_length_;
-	rational new_length_;
+	Rational old_length_;
+	Rational new_length_;
 };
 
 class BlockSetMediaInCommand : public UndoCommand {
 public:
-	BlockSetMediaInCommand(ClipBlock *block, rational new_media_in)
+	BlockSetMediaInCommand(ClipBlock *block, Rational new_media_in)
 		: block_(block)
 		, new_media_in_(new_media_in)
 	{
 	}
 
-	virtual Project *GetRelevantProject() const
+	virtual Project *get_relevant_project() const
 	{
 		return block_->project();
 	}
@@ -100,28 +100,28 @@ protected:
 
 private:
 	ClipBlock *block_;
-	rational old_media_in_;
-	rational new_media_in_;
+	Rational old_media_in_;
+	Rational new_media_in_;
 };
 
 class TimelineAddTrackCommand : public UndoCommand {
 public:
 	TimelineAddTrackCommand(TrackList *timeline)
 		: TimelineAddTrackCommand(timeline,
-								  OLIVE_CONFIG("AutoMergeTracks").toBool())
+								  OAK_CONFIG("AutoMergeTracks").toBool())
 	{
 	}
 
 	TimelineAddTrackCommand(TrackList *timeline, bool automerge_tracks);
 
-	static Track *RunImmediately(TrackList *timeline)
+	static Track *run_immediately(TrackList *timeline)
 	{
 		TimelineAddTrackCommand c(timeline);
 		c.redo();
 		return c.track();
 	}
 
-	static Track *RunImmediately(TrackList *timeline, bool automerge)
+	static Track *run_immediately(TrackList *timeline, bool automerge)
 	{
 		TimelineAddTrackCommand c(timeline, automerge);
 		c.redo();
@@ -138,7 +138,7 @@ public:
 		return track_;
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return timeline_->parent()->project();
 	}
@@ -176,7 +176,7 @@ public:
 		delete remove_command_;
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return track_->project();
 	}
@@ -208,7 +208,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return track_->project();
 	}
@@ -243,7 +243,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return block_->project();
 	}
@@ -254,7 +254,7 @@ protected:
 	virtual void undo() override;
 
 private:
-	void CreateRemoveTransitionCommandIfNecessary(bool next);
+	void create_remove_transition_command_if_necessary(bool next);
 
 	Track *track_;
 	Block *block_;
@@ -280,7 +280,7 @@ public:
 	{
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return block_->project();
 	}
@@ -306,8 +306,8 @@ private:
 
 class TrackListInsertGaps : public UndoCommand {
 public:
-	TrackListInsertGaps(TrackList *track_list, const rational &point,
-						const rational &length)
+	TrackListInsertGaps(TrackList *track_list, const Rational &point,
+						const Rational &length)
 		: track_list_(track_list)
 		, point_(point)
 		, length_(length)
@@ -320,7 +320,7 @@ public:
 		delete split_command_;
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return track_list_->parent()->project();
 	}
@@ -335,9 +335,9 @@ protected:
 private:
 	TrackList *track_list_;
 
-	rational point_;
+	Rational point_;
 
-	rational length_;
+	Rational length_;
 
 	QVector<Track *> working_tracks_;
 
@@ -359,7 +359,7 @@ private:
 class TimelineAddDefaultTransitionCommand : public UndoCommand {
 public:
 	TimelineAddDefaultTransitionCommand(const QVector<ClipBlock *> &clips,
-										const rational &timebase)
+										const Rational &timebase)
 		: clips_(clips)
 		, timebase_(timebase)
 	{
@@ -370,7 +370,7 @@ public:
 		qDeleteAll(commands_);
 	}
 
-	virtual Project *GetRelevantProject() const override
+	virtual Project *get_relevant_project() const override
 	{
 		return clips_.empty() ? nullptr : clips_.first()->project();
 	}
@@ -393,20 +393,20 @@ protected:
 	}
 
 private:
-	enum CreateTransitionMode { kIn, kOut, kOutDual };
+	enum CreateTransitionMode { k_in, k_out, k_out_dual };
 
-	void AddTransition(ClipBlock *c, CreateTransitionMode mode);
-	void AdjustClipLength(ClipBlock *c, const rational &transition_length,
+	void add_transition(ClipBlock *c, CreateTransitionMode mode);
+	void adjust_clip_length(ClipBlock *c, const Rational &transition_length,
 						  bool out);
-	void ValidateTransitionLength(ClipBlock *c, rational &transition_length);
+	void validate_transition_length(ClipBlock *c, Rational &transition_length);
 
 	QVector<ClipBlock *> clips_;
-	rational timebase_;
+	Rational timebase_;
 	QVector<UndoCommand *> commands_;
 
-	QHash<ClipBlock *, rational> lengths_;
+	QHash<ClipBlock *, Rational> lengths_;
 };
 
 }
 
-#endif // TIMELINEUNDOGENERAL_H
+#endif // OAK_TIMELINEUNDOGENERAL_H

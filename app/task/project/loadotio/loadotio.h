@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef OTIODECODER_H
-#define OTIODECODER_H
+#ifndef OAK_OTIODECODER_H
+#define OAK_OTIODECODER_H
 
 #ifdef USE_OTIO
 
@@ -44,4 +44,4 @@ protected:
 
 #endif
 
-#endif // OTIODECODER_H
+#endif // OAK_OTIODECODER_H

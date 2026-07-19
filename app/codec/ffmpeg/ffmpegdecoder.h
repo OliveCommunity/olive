@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FFMPEGDECODER_H
-#define FFMPEGDECODER_H
+#ifndef OAK_FFMPEGDECODER_H
+#define OAK_FFMPEGDECODER_H
 
 #include <inttypes.h>
 
@@ -53,30 +53,30 @@ public:
 
 	virtual QString id() const override;
 
-	virtual bool SupportsVideo() override
+	virtual bool supports_video() override
 	{
 		return true;
 	}
-	virtual bool SupportsAudio() override
+	virtual bool supports_audio() override
 	{
 		return true;
 	}
 
-	virtual FootageDescription Probe(const QString &filename,
+	virtual FootageDescription probe(const QString &filename,
 									 CancelAtom *cancelled) const override;
 
 protected:
-	virtual bool OpenInternal() override;
+	virtual bool open_internal() override;
 	virtual TexturePtr
-	RetrieveVideoInternal(const RetrieveVideoParams &p) override;
+	retrieve_video_internal(const RetrieveVideoParams &p) override;
 	virtual FramePtr
-	RetrieveVideoFrameInternal(const RetrieveVideoParams &p) override;
-	virtual bool ConformAudioInternal(const QVector<QString> &filenames,
+	retrieve_video_frame_internal(const RetrieveVideoParams &p) override;
+	virtual bool conform_audio_internal(const QVector<QString> &filenames,
 									  const AudioParams &params,
 									  CancelAtom *cancelled) override;
-	virtual void CloseInternal() override;
+	virtual void close_internal() override;
 
-	virtual rational GetAudioStartOffset() const override;
+	virtual Rational get_audio_start_offset() const override;
 
 private:
 	/**
@@ -87,32 +87,32 @@ private:
    *
    * @param error_code
    */
-	static QString FFmpegError(int error_code);
+	static QString f_fmpeg_error(int error_code);
 
-	void FreeScaler();
+	void free_scaler();
 
-	AVFramePtr TransferHardwareFrame(AVFramePtr f);
+	AVFramePtr transfer_hardware_frame(AVFramePtr f);
 
-	static PixelFormat GetNativePixelFormat(int pix_fmt);
-	static int GetNativeChannelCount(int pix_fmt);
+	static PixelFormat get_native_pixel_format(int pix_fmt);
+	static int get_native_channel_count(int pix_fmt);
 
-	static bool IsPixelFormatGLSLCompatible(int f);
+	static bool is_pixel_format_glsl_compatible(int f);
 
-	AVFramePtr GetFrameFromCache(const int64_t &t) const;
+	AVFramePtr get_frame_from_cache(const int64_t &t) const;
 
-	void ClearFrameCache();
+	void clear_frame_cache();
 
-	AVFramePtr PreProcessFrame(AVFramePtr f, const RetrieveVideoParams &p);
+	AVFramePtr pre_process_frame(AVFramePtr f, const RetrieveVideoParams &p);
 
-	TexturePtr ProcessFrameIntoTexture(AVFramePtr f,
+	TexturePtr process_frame_into_texture(AVFramePtr f,
 									   const RetrieveVideoParams &p,
 									   const AVFramePtr original);
 
-	AVFramePtr RetrieveFrame(const rational &time, CancelAtom *cancelled);
+	AVFramePtr retrieve_frame(const Rational &time, CancelAtom *cancelled);
 
-	void RemoveFirstFrame();
+	void remove_first_frame();
 
-	static int MaximumQueueSize();
+	static int maximum_queue_size();
 
 	FBScaler *scaler_;
 	int scaler_src_width_;
@@ -137,7 +137,7 @@ private:
 
 	// Stream parameters cached on open (the stream object itself lives
 	// inside the bridge library)
-	rational stream_time_base_;
+	Rational stream_time_base_;
 	int64_t stream_start_time_;
 	int64_t stream_duration_;
 	int64_t format_start_time_;
@@ -148,4 +148,4 @@ private:
 
 }
 
-#endif // FFMPEGDECODER_H
+#endif // OAK_FFMPEGDECODER_H

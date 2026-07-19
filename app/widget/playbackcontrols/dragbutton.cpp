@@ -43,7 +43,7 @@ void DragButton::mouseMoveEvent(QMouseEvent *event)
 	QPushButton::mouseMoveEvent(event);
 
 	if (event->buttons() && !dragging_) {
-		emit DragStarted();
+		emit drag_started();
 		dragging_ = true;
 	}
 }

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef AUDIOSTREAMPROPERTIES_H
-#define AUDIOSTREAMPROPERTIES_H
+#ifndef OAK_AUDIOSTREAMPROPERTIES_H
+#define OAK_AUDIOSTREAMPROPERTIES_H
 
 #include "node/project/footage/footage.h"
 #include "streamproperties.h"
@@ -32,7 +32,7 @@ class AudioStreamProperties : public StreamProperties {
 public:
 	AudioStreamProperties(Footage *footage, int audio_index);
 
-	virtual void Accept(MultiUndoCommand *parent) override;
+	virtual void accept(MultiUndoCommand *parent) override;
 
 private:
 	Footage *footage_;
@@ -42,4 +42,4 @@ private:
 
 }
 
-#endif // AUDIOSTREAMPROPERTIES_H
+#endif // OAK_AUDIOSTREAMPROPERTIES_H

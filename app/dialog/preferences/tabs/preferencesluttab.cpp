@@ -46,7 +46,7 @@ PreferencesLutTab::PreferencesLutTab()
 		   "these locations when picking a LUT file.")));
 
 	library_dirs_list_ = new QListWidget();
-	library_dirs_list_->addItems(LUTLibrary::GetDirectories());
+	library_dirs_list_->addItems(LUTLibrary::get_directories());
 	library_layout->addWidget(library_dirs_list_);
 
 	QHBoxLayout *button_layout = new QHBoxLayout();
@@ -74,7 +74,7 @@ PreferencesLutTab::PreferencesLutTab()
 	outer_layout->addStretch();
 }
 
-void PreferencesLutTab::Accept(MultiUndoCommand *command)
+void PreferencesLutTab::accept(MultiUndoCommand *command)
 {
 	Q_UNUSED(command)
 
@@ -83,7 +83,7 @@ void PreferencesLutTab::Accept(MultiUndoCommand *command)
 		dirs.append(library_dirs_list_->item(i)->text());
 	}
 
-	LUTLibrary::SetDirectories(dirs);
+	LUTLibrary::set_directories(dirs);
 }
 
 }

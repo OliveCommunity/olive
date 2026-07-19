@@ -29,7 +29,7 @@ LineGizmo::LineGizmo(QObject *parent)
 {
 }
 
-void LineGizmo::Draw(QPainter *p) const
+void LineGizmo::draw(QPainter *p) const
 {
 	// Draw transposed black
 	QLineF transposed = p->transform().map(line_);

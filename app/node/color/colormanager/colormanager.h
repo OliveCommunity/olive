@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLORSERVICE_H
-#define COLORSERVICE_H
+#ifndef OAK_COLORSERVICE_H
+#define OAK_COLORSERVICE_H
 
 #include <memory>
 #include <QMutex>
@@ -37,64 +37,64 @@ class ColorManager : public QObject {
 public:
 	ColorManager(Project *project);
 
-	void Init();
+	void init();
 
-	OCIO::ConstConfigRcPtr GetConfig() const;
+	ocio::ConstConfigRcPtr get_config() const;
 
-	static OCIO::ConstConfigRcPtr CreateConfigFromFile(const QString &filename);
+	static ocio::ConstConfigRcPtr create_config_from_file(const QString &filename);
 
-	QString GetConfigFilename() const;
+	QString get_config_filename() const;
 
-	static OCIO::ConstConfigRcPtr GetDefaultConfig();
+	static ocio::ConstConfigRcPtr get_default_config();
 
-	static void SetUpDefaultConfig();
+	static void set_up_default_config();
 
-	void SetConfigFilename(const QString &filename);
+	void set_config_filename(const QString &filename);
 
-	QStringList ListAvailableDisplays();
+	QStringList list_available_displays();
 
-	QString GetDefaultDisplay();
+	QString get_default_display();
 
-	QStringList ListAvailableViews(QString display);
+	QStringList list_available_views(QString display);
 
-	QString GetDefaultView(const QString &display);
+	QString get_default_view(const QString &display);
 
-	QStringList ListAvailableLooks();
+	QStringList list_available_looks();
 
-	QStringList ListAvailableColorspaces() const;
+	QStringList list_available_colorspaces() const;
 
-	QString GetDefaultInputColorSpace() const;
+	QString get_default_input_color_space() const;
 
-	void SetDefaultInputColorSpace(const QString &s);
+	void set_default_input_color_space(const QString &s);
 
-	QString GetReferenceColorSpace() const;
+	QString get_reference_color_space() const;
 
-	QString GetCompliantColorSpace(const QString &s);
+	QString get_compliant_color_space(const QString &s);
 
-	ColorTransform GetCompliantColorSpace(const ColorTransform &transform,
+	ColorTransform get_compliant_color_space(const ColorTransform &transform,
 										  bool force_display = false);
 
-	static QStringList ListAvailableColorspaces(OCIO::ConstConfigRcPtr config);
+	static QStringList list_available_colorspaces(ocio::ConstConfigRcPtr config);
 
-	void GetDefaultLumaCoefs(double *rgb) const;
+	void get_default_luma_coefs(double *rgb) const;
 
 	Project *project() const;
 
-	void UpdateConfigFromFilename();
+	void update_config_from_filename();
 
 signals:
-	void ConfigChanged(const QString &s);
+	void config_changed(const QString &s);
 
-	void ReferenceSpaceChanged(const QString &s);
+	void reference_space_changed(const QString &s);
 
-	void DefaultInputChanged(const QString &s);
+	void default_input_changed(const QString &s);
 
 private:
-	OCIO::ConstConfigRcPtr config_;
+	ocio::ConstConfigRcPtr config_;
 
-	static OCIO::ConstConfigRcPtr default_config_;
+	static ocio::ConstConfigRcPtr default_config;
 };
 
 }
 
-#endif // COLORSERVICE_H
+#endif // OAK_COLORSERVICE_H

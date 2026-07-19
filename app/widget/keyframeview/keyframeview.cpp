@@ -48,53 +48,53 @@ KeyframeView::KeyframeView(QWidget *parent)
 	, first_chance_mouse_event_(false)
 {
 	setAlignment(Qt::AlignLeft | Qt::AlignTop);
-	SetDefaultDragMode(RubberBandDrag);
+	set_default_drag_mode(RubberBandDrag);
 	setContextMenuPolicy(Qt::CustomContextMenu);
 
 	connect(this, &KeyframeView::customContextMenuRequested, this,
-			&KeyframeView::ShowContextMenu);
+			&KeyframeView::show_context_menu);
 }
 
-void KeyframeView::DeleteSelected()
+void KeyframeView::delete_selected()
 {
-	if (!selection_manager_.IsDragging()) {
+	if (!selection_manager_.is_dragging()) {
 		MultiUndoCommand *command = new MultiUndoCommand();
 
-		foreach (NodeKeyframe *key, GetSelectedKeyframes()) {
+		foreach (NodeKeyframe *key, get_selected_keyframes()) {
 			command->add_child(new NodeParamRemoveKeyframeCommand(key));
 		}
 
 		Core::instance()->undo_stack()->push(
 			command,
-			tr("Deleted %1 Keyframe(s)").arg(GetSelectedKeyframes().size()));
+			tr("Deleted %1 Keyframe(s)").arg(get_selected_keyframes().size()));
 	}
 }
 
-KeyframeView::NodeConnections KeyframeView::AddKeyframesOfNode(Node *n)
+KeyframeView::NodeConnections KeyframeView::add_keyframes_of_node(Node *n)
 {
 	NodeConnections map;
 
 	foreach (const QString &i, n->inputs()) {
-		map.insert(i, AddKeyframesOfInput(n, i));
+		map.insert(i, add_keyframes_of_input(n, i));
 	}
 
 	return map;
 }
 
 KeyframeView::InputConnections
-KeyframeView::AddKeyframesOfInput(Node *on, const QString &oinput)
+KeyframeView::add_keyframes_of_input(Node *on, const QString &oinput)
 {
 	InputConnections vec;
 
-	NodeInput resolved = NodeGroup::ResolveInput(NodeInput(on, oinput));
+	NodeInput resolved = NodeGroup::resolve_input(NodeInput(on, oinput));
 	Node *n = resolved.node();
 	const QString &input = resolved.input();
 
-	if (n->IsInputKeyframable(input)) {
-		int arr_sz = n->InputArraySize(input);
+	if (n->is_input_keyframable(input)) {
+		int arr_sz = n->input_array_size(input);
 		vec.resize(arr_sz + 1);
 		for (int i = -1; i < arr_sz; i++) {
-			vec[i + 1] = AddKeyframesOfElement(NodeInput(n, input, i));
+			vec[i + 1] = add_keyframes_of_element(NodeInput(n, input, i));
 		}
 	}
 
@@ -102,114 +102,114 @@ KeyframeView::AddKeyframesOfInput(Node *on, const QString &oinput)
 }
 
 KeyframeView::ElementConnections
-KeyframeView::AddKeyframesOfElement(const NodeInput &input)
+KeyframeView::add_keyframes_of_element(const NodeInput &input)
 {
 	const QVector<NodeKeyframeTrack> &tracks =
-		input.node()->GetKeyframeTracks(input);
+		input.node()->get_keyframe_tracks(input);
 	ElementConnections vec(tracks.size());
 
 	for (int i = 0; i < tracks.size(); i++) {
-		vec[i] = AddKeyframesOfTrack(NodeKeyframeTrackReference(input, i));
+		vec[i] = add_keyframes_of_track(NodeKeyframeTrackReference(input, i));
 	}
 
 	return vec;
 }
 
 KeyframeViewInputConnection *
-KeyframeView::AddKeyframesOfTrack(const NodeKeyframeTrackReference &ref)
+KeyframeView::add_keyframes_of_track(const NodeKeyframeTrackReference &ref)
 {
 	KeyframeViewInputConnection *track =
 		new KeyframeViewInputConnection(ref, this);
-	connect(track, &KeyframeViewInputConnection::RequireUpdate, this,
-			&KeyframeView::Redraw);
+	connect(track, &KeyframeViewInputConnection::require_update, this,
+			&KeyframeView::redraw);
 	tracks_.append(track);
-	Redraw();
+	redraw();
 	return track;
 }
 
-void KeyframeView::RemoveKeyframesOfTrack(
+void KeyframeView::remove_keyframes_of_track(
 	KeyframeViewInputConnection *connection)
 {
 	if (tracks_.removeOne(connection)) {
-		foreach (NodeKeyframe *key, connection->GetKeyframes()) {
-			selection_manager_.Deselect(key);
+		foreach (NodeKeyframe *key, connection->get_keyframes()) {
+			selection_manager_.deselect(key);
 		}
 		delete connection;
-		Redraw();
-		emit SelectionChanged();
+		redraw();
+		emit selection_changed();
 	}
 }
 
-void KeyframeView::SelectAll()
+void KeyframeView::select_all()
 {
 	foreach (KeyframeViewInputConnection *track, tracks_) {
-		foreach (NodeKeyframe *key, track->GetKeyframes()) {
-			SelectKeyframe(key);
+		foreach (NodeKeyframe *key, track->get_keyframes()) {
+			select_keyframe(key);
 		}
 	}
 }
 
-void KeyframeView::DeselectAll()
+void KeyframeView::deselect_all()
 {
-	selection_manager_.ClearSelection();
+	selection_manager_.clear_selection();
 
-	Redraw();
+	redraw();
 }
 
-void KeyframeView::Clear()
+void KeyframeView::clear()
 {
 	if (!tracks_.isEmpty()) {
 		qDeleteAll(tracks_);
 		tracks_.clear();
-		Redraw();
+		redraw();
 	}
 
-	selection_manager_.ClearSelection();
+	selection_manager_.clear_selection();
 }
 
 void KeyframeView::SelectionManagerSelectEvent(void *obj)
 {
 	if (autoselect_siblings_) {
 		NodeKeyframe *key = static_cast<NodeKeyframe *>(obj);
-		QVector<NodeKeyframe *> keys = key->parent()->GetKeyframesAtTime(
+		QVector<NodeKeyframe *> keys = key->parent()->get_keyframes_at_time(
 			key->input(), key->time(), key->element());
 		foreach (NodeKeyframe *k, keys) {
 			if (k != key) {
-				SelectKeyframe(k);
+				select_keyframe(k);
 			}
 		}
 	}
 
-	emit SelectionChanged();
+	emit selection_changed();
 }
 
 void KeyframeView::SelectionManagerDeselectEvent(void *obj)
 {
 	if (autoselect_siblings_) {
 		NodeKeyframe *key = static_cast<NodeKeyframe *>(obj);
-		QVector<NodeKeyframe *> keys = key->parent()->GetKeyframesAtTime(
+		QVector<NodeKeyframe *> keys = key->parent()->get_keyframes_at_time(
 			key->input(), key->time(), key->element());
 		foreach (NodeKeyframe *k, keys) {
 			if (k != key) {
-				DeselectKeyframe(k);
+				deselect_keyframe(k);
 			}
 		}
 	}
 
-	emit SelectionChanged();
+	emit selection_changed();
 }
 
-bool KeyframeView::CopySelected(bool cut)
+bool KeyframeView::copy_selected(bool cut)
 {
-	if (!selection_manager_.GetSelectedObjects().empty()) {
-		ProjectSerializer::SaveData sdata(ProjectSerializer::kOnlyKeyframes);
-		sdata.SetOnlySerializeKeyframes(
-			selection_manager_.GetSelectedObjects());
+	if (!selection_manager_.get_selected_objects().empty()) {
+		ProjectSerializer::SaveData sdata(ProjectSerializer::k_only_keyframes);
+		sdata.set_only_serialize_keyframes(
+			selection_manager_.get_selected_objects());
 
-		ProjectSerializer::Copy(sdata);
+		ProjectSerializer::copy(sdata);
 
 		if (cut) {
-			DeleteSelected();
+			delete_selected();
 		}
 
 		return true;
@@ -218,28 +218,28 @@ bool KeyframeView::CopySelected(bool cut)
 	return false;
 }
 
-bool KeyframeView::Paste(
+bool KeyframeView::paste(
 	std::function<Node *(const QString &)> find_node_function)
 {
-	if (!GetViewerNode()) {
+	if (!get_viewer_node()) {
 		return false;
 	}
 
 	ProjectSerializer::Result res =
-		ProjectSerializer::Paste(ProjectSerializer::kOnlyKeyframes);
-	if (res == ProjectSerializer::kSuccess) {
+		ProjectSerializer::paste(ProjectSerializer::k_only_keyframes);
+	if (res == ProjectSerializer::k_success) {
 		const ProjectSerializer::SerializedKeyframes &keys =
-			res.GetLoadData().keyframes;
+			res.get_load_data().keyframes;
 
 		MultiUndoCommand *command = new MultiUndoCommand();
 
-		rational min = RATIONAL_MAX;
+		Rational min = RATIONAL_MAX;
 		for (auto it = keys.cbegin(); it != keys.cend(); it++) {
 			for (NodeKeyframe *key : it.value()) {
 				min = std::min(min, key->time());
 			}
 		}
-		min -= GetViewerNode()->GetPlayhead();
+		min -= get_viewer_node()->get_playhead();
 
 		for (auto it = keys.cbegin(); it != keys.cend(); it++) {
 			const QString &paste_id = it.key();
@@ -250,13 +250,13 @@ bool KeyframeView::Paste(
 			if (node_with_id) {
 				for (NodeKeyframe *key : it.value()) {
 					// Adjust sequence time to node's time
-					rational t = key->time() - min;
-					t = GetAdjustedTime(GetTimeTarget(), node_with_id, t,
-										Node::kTransformTowardsInput);
+					Rational t = key->time() - min;
+					t = get_adjusted_time(get_time_target(), node_with_id, t,
+										Node::k_transform_towards_input);
 					key->set_time(t);
 
 					if (NodeKeyframe *existing =
-							node_with_id->GetKeyframeAtTimeOnTrack(
+							node_with_id->get_keyframe_at_time_on_track(
 								key->input(), key->time(), key->track(),
 								key->element())) {
 						command->add_child(
@@ -283,83 +283,83 @@ void KeyframeView::CatchUpScrollEvent()
 {
 	super::CatchUpScrollEvent();
 
-	this->selection_manager_.ForceDragUpdate();
+	this->selection_manager_.force_drag_update();
 }
 
 void KeyframeView::mousePressEvent(QMouseEvent *event)
 {
 	NodeKeyframe *key_under_cursor =
-		selection_manager_.GetObjectAtPoint(event->pos());
+		selection_manager_.get_object_at_point(event->pos());
 
-	if (HandPress(event) || (!key_under_cursor && PlayheadPress(event))) {
+	if (hand_press(event) || (!key_under_cursor && playhead_press(event))) {
 		return;
 	}
 
 	// Do mouse press things
-	if (FirstChanceMousePress(event)) {
+	if (first_chance_mouse_press(event)) {
 		first_chance_mouse_event_ = true;
 	} else if (NodeKeyframe *initial_key =
-				   selection_manager_.MousePress(event)) {
-		selection_manager_.DragStart(initial_key, event, this);
-		KeyframeDragStart(event);
+				   selection_manager_.mouse_press(event)) {
+		selection_manager_.drag_start(initial_key, event, this);
+		keyframe_drag_start(event);
 	} else {
-		selection_manager_.RubberBandStart(event);
+		selection_manager_.rubber_band_start(event);
 	}
 
 	// Update view
-	Redraw();
+	redraw();
 }
 
 void KeyframeView::mouseMoveEvent(QMouseEvent *event)
 {
-	if (HandMove(event) || PlayheadMove(event)) {
+	if (hand_move(event) || playhead_move(event)) {
 		return;
 	}
 
 	if (first_chance_mouse_event_) {
-		FirstChanceMouseMove(event);
-	} else if (selection_manager_.IsDragging()) {
+		first_chance_mouse_move(event);
+	} else if (selection_manager_.is_dragging()) {
 		QString tip;
-		KeyframeDragMove(event, tip);
-		selection_manager_.DragMove(event->pos(), tip);
-	} else if (selection_manager_.IsRubberBanding()) {
-		selection_manager_.RubberBandMove(event->pos());
-		Redraw();
+		keyframe_drag_move(event, tip);
+		selection_manager_.drag_move(event->pos(), tip);
+	} else if (selection_manager_.is_rubber_banding()) {
+		selection_manager_.rubber_band_move(event->pos());
+		redraw();
 	}
 
 	if (event->buttons()) {
 		// Signal cursor pos in case we should scroll to catch up to it
-		emit Dragged(event->pos().x(), event->pos().y());
+		emit dragged(event->pos().x(), event->pos().y());
 	}
 }
 
 void KeyframeView::mouseReleaseEvent(QMouseEvent *event)
 {
-	if (HandRelease(event) || PlayheadRelease(event)) {
+	if (hand_release(event) || playhead_release(event)) {
 		return;
 	}
 
 	if (first_chance_mouse_event_) {
-		FirstChanceMouseRelease(event);
+		first_chance_mouse_release(event);
 		first_chance_mouse_event_ = false;
-	} else if (selection_manager_.IsDragging()) {
+	} else if (selection_manager_.is_dragging()) {
 		MultiUndoCommand *command = new MultiUndoCommand();
-		selection_manager_.DragStop(command);
-		KeyframeDragRelease(event, command);
+		selection_manager_.drag_stop(command);
+		keyframe_drag_release(event, command);
 		Core::instance()->undo_stack()->push(
 			command, tr("Moved %1 Keyframe(s)")
-						 .arg(selection_manager_.GetSelectedObjects().size()));
-	} else if (selection_manager_.IsRubberBanding()) {
-		selection_manager_.RubberBandStop();
-		Redraw();
-		emit SelectionChanged();
+						 .arg(selection_manager_.get_selected_objects().size()));
+	} else if (selection_manager_.is_rubber_banding()) {
+		selection_manager_.rubber_band_stop();
+		redraw();
+		emit selection_changed();
 	}
 
-	emit Released();
+	emit released();
 }
 
-int BinarySearchFirstKeyframeAfterOrAt(const QVector<NodeKeyframe *> &keys,
-									   const rational &time)
+int binary_search_first_keyframe_after_or_at(const QVector<NodeKeyframe *> &keys,
+									   const Rational &time)
 {
 	int low = 0;
 	int high = keys.size() - 1;
@@ -384,35 +384,35 @@ int BinarySearchFirstKeyframeAfterOrAt(const QVector<NodeKeyframe *> &keys,
 
 void KeyframeView::drawForeground(QPainter *painter, const QRectF &rect)
 {
-	int key_sz = QtUtils::QFontMetricsWidth(fontMetrics(), "Oi");
+	int key_sz = QtUtils::q_font_metrics_width(fontMetrics(), "Oi");
 	int key_rad = key_sz / 2;
 
-	selection_manager_.ClearDrawnObjects();
+	selection_manager_.clear_drawn_objects();
 
 	painter->setRenderHint(QPainter::Antialiasing);
 
 	foreach (KeyframeViewInputConnection *track, tracks_) {
-		const QVector<NodeKeyframe *> &keys = track->GetKeyframes();
+		const QVector<NodeKeyframe *> &keys = track->get_keyframes();
 
 		if (keys.isEmpty()) {
 			continue;
 		}
 
-		if (!IsYAxisEnabled()) {
+		if (!is_y_axis_enabled()) {
 			// Filter out if the keyframes are offscreen Y
-			qreal y = GetKeyframeSceneY(track, keys.first());
+			qreal y = get_keyframe_scene_y(track, keys.first());
 			if (y + key_rad < rect.top() || y - key_rad >= rect.bottom()) {
 				continue;
 			}
 		}
 
 		// Find first keyframe to show with binary search
-		rational left_time = GetUnadjustedKeyframeTime(
-			keys.first(), SceneToTime(rect.left() - key_sz));
-		int using_index = BinarySearchFirstKeyframeAfterOrAt(keys, left_time);
+		Rational left_time = get_unadjusted_keyframe_time(
+			keys.first(), scene_to_time(rect.left() - key_sz));
+		int using_index = binary_search_first_keyframe_after_or_at(keys, left_time);
 
-		rational next_key = RATIONAL_MIN;
-		NodeKeyframe::Type last_type = NodeKeyframe::kInvalid;
+		Rational next_key = RATIONAL_MIN;
+		NodeKeyframe::Type last_type = NodeKeyframe::k_invalid;
 		for (int i = using_index; i < keys.size(); i++) {
 			NodeKeyframe *key = keys.at(i);
 
@@ -428,7 +428,7 @@ void KeyframeView::drawForeground(QPainter *painter, const QRectF &rect)
 
 				if (key->time() < next_key) {
 					// Next key still won't be drawn, so we'll switch to a binary search
-					i = BinarySearchFirstKeyframeAfterOrAt(keys, next_key);
+					i = binary_search_first_keyframe_after_or_at(keys, next_key);
 
 					if (i == keys.size()) {
 						break;
@@ -439,17 +439,17 @@ void KeyframeView::drawForeground(QPainter *painter, const QRectF &rect)
 			}
 
 			QRectF key_rect(-key_rad, -key_rad, key_sz, key_sz);
-			qreal key_x = GetKeyframeSceneX(key);
-			key_rect.translate(key_x, GetKeyframeSceneY(track, key));
+			qreal key_x = get_keyframe_scene_x(key);
+			key_rect.translate(key_x, get_keyframe_scene_y(track, key));
 
 			if (key_rect.left() >= rect.right()) {
 				// Break after last keyframe
 				break;
 			}
 
-			DrawKeyframe(painter, key, track, key_rect);
+			draw_keyframe(painter, key, track, key_rect);
 
-			next_key = GetUnadjustedKeyframeTime(key, SceneToTime(key_x + 1));
+			next_key = get_unadjusted_keyframe_time(key, scene_to_time(key_x + 1));
 			last_type = key->type();
 		}
 	}
@@ -457,24 +457,24 @@ void KeyframeView::drawForeground(QPainter *painter, const QRectF &rect)
 	super::drawForeground(painter, rect);
 }
 
-void KeyframeView::DrawKeyframe(QPainter *painter, NodeKeyframe *key,
+void KeyframeView::draw_keyframe(QPainter *painter, NodeKeyframe *key,
 								KeyframeViewInputConnection *track,
 								const QRectF &key_rect)
 {
 	painter->setPen(Qt::black);
 
-	if (IsKeyframeSelected(key)) {
+	if (is_keyframe_selected(key)) {
 		painter->setBrush(palette().highlight());
 	} else {
-		painter->setBrush(track->GetBrush());
+		painter->setBrush(track->get_brush());
 	}
 
-	selection_manager_.DeclareDrawnObject(key, key_rect);
+	selection_manager_.declare_drawn_object(key, key_rect);
 
 	switch (key->type()) {
-	case NodeKeyframe::kInvalid:
+	case NodeKeyframe::k_invalid:
 		break;
-	case NodeKeyframe::kLinear: {
+	case NodeKeyframe::k_linear: {
 		QPointF points[] = { QPointF(key_rect.center().x(), key_rect.top()),
 							 QPointF(key_rect.right(), key_rect.center().y()),
 							 QPointF(key_rect.center().x(), key_rect.bottom()),
@@ -483,10 +483,10 @@ void KeyframeView::DrawKeyframe(QPainter *painter, NodeKeyframe *key,
 		painter->drawPolygon(points, 4);
 		break;
 	}
-	case NodeKeyframe::kBezier:
+	case NodeKeyframe::k_bezier:
 		painter->drawEllipse(key_rect);
 		break;
-	case NodeKeyframe::kHold:
+	case NodeKeyframe::k_hold:
 		painter->drawRect(key_rect);
 		break;
 	}
@@ -496,19 +496,19 @@ void KeyframeView::ScaleChangedEvent(const double &scale)
 {
 	super::ScaleChangedEvent(scale);
 
-	Redraw();
+	redraw();
 }
 
 void KeyframeView::TimeTargetChangedEvent(ViewerOutput *v)
 {
-	Redraw();
+	redraw();
 }
 
-void KeyframeView::TimebaseChangedEvent(const rational &timebase)
+void KeyframeView::TimebaseChangedEvent(const Rational &timebase)
 {
 	super::TimebaseChangedEvent(timebase);
 
-	selection_manager_.SetTimebase(timebase);
+	selection_manager_.set_timebase(timebase);
 }
 
 void KeyframeView::ContextMenuEvent(Menu &m)
@@ -516,46 +516,46 @@ void KeyframeView::ContextMenuEvent(Menu &m)
 	Q_UNUSED(m)
 }
 
-void KeyframeView::SelectKeyframe(NodeKeyframe *key)
+void KeyframeView::select_keyframe(NodeKeyframe *key)
 {
-	if (selection_manager_.Select(key)) {
-		Redraw();
+	if (selection_manager_.select(key)) {
+		redraw();
 
-		emit SelectionChanged();
+		emit selection_changed();
 	}
 }
 
-void KeyframeView::DeselectKeyframe(NodeKeyframe *key)
+void KeyframeView::deselect_keyframe(NodeKeyframe *key)
 {
-	if (selection_manager_.Deselect(key)) {
-		Redraw();
+	if (selection_manager_.deselect(key)) {
+		redraw();
 
-		emit SelectionChanged();
+		emit selection_changed();
 	}
 }
 
-rational KeyframeView::GetUnadjustedKeyframeTime(NodeKeyframe *key,
-												 const rational &time)
+Rational KeyframeView::get_unadjusted_keyframe_time(NodeKeyframe *key,
+												 const Rational &time)
 {
-	return GetAdjustedTime(GetTimeTarget(), key->parent(), time,
-						   Node::kTransformTowardsInput);
+	return get_adjusted_time(get_time_target(), key->parent(), time,
+						   Node::k_transform_towards_input);
 }
 
-rational KeyframeView::GetAdjustedKeyframeTime(NodeKeyframe *key)
+Rational KeyframeView::get_adjusted_keyframe_time(NodeKeyframe *key)
 {
-	return GetAdjustedTime(key->parent(), GetTimeTarget(), key->time(),
-						   Node::kTransformTowardsOutput);
+	return get_adjusted_time(key->parent(), get_time_target(), key->time(),
+						   Node::k_transform_towards_output);
 }
 
-double KeyframeView::GetKeyframeSceneX(NodeKeyframe *key)
+double KeyframeView::get_keyframe_scene_x(NodeKeyframe *key)
 {
-	return TimeToScene(GetAdjustedKeyframeTime(key));
+	return time_to_scene(get_adjusted_keyframe_time(key));
 }
 
-qreal KeyframeView::GetKeyframeSceneY(KeyframeViewInputConnection *track,
+qreal KeyframeView::get_keyframe_scene_y(KeyframeViewInputConnection *track,
 									  NodeKeyframe *key)
 {
-	return mapFromGlobal(QPoint(0, track->GetKeyframeY())).y();
+	return mapFromGlobal(QPoint(0, track->get_keyframe_y())).y();
 }
 
 void KeyframeView::SceneRectUpdateEvent(QRectF &rect)
@@ -564,29 +564,29 @@ void KeyframeView::SceneRectUpdateEvent(QRectF &rect)
 	rect.setHeight(max_scroll_);
 }
 
-rational KeyframeView::CalculateNewTimeFromScreen(const rational &old_time,
+Rational KeyframeView::calculate_new_time_from_screen(const Rational &old_time,
 												  double cursor_diff)
 {
-	return rational::fromDouble(old_time.toDouble() + cursor_diff);
+	return Rational::from_double(old_time.to_double() + cursor_diff);
 }
 
-void KeyframeView::ShowContextMenu()
+void KeyframeView::show_context_menu()
 {
 	Menu m;
 
-	MenuShared::instance()->AddItemsForEditMenu(&m, false);
+	MenuShared::instance()->add_items_for_edit_menu(&m, false);
 
 	QAction *linear_key_action = nullptr;
 	QAction *bezier_key_action = nullptr;
 	QAction *hold_key_action = nullptr;
 
-	if (!GetSelectedKeyframes().empty()) {
+	if (!get_selected_keyframes().empty()) {
 		bool all_keys_are_same_type = true;
-		NodeKeyframe::Type type = GetSelectedKeyframes().front()->type();
+		NodeKeyframe::Type type = get_selected_keyframes().front()->type();
 
-		for (size_t i = 1; i < GetSelectedKeyframes().size(); i++) {
-			NodeKeyframe *key_item = GetSelectedKeyframes().at(i);
-			NodeKeyframe *prev_item = GetSelectedKeyframes().at(i - 1);
+		for (size_t i = 1; i < get_selected_keyframes().size(); i++) {
+			NodeKeyframe *key_item = get_selected_keyframes().at(i);
+			NodeKeyframe *prev_item = get_selected_keyframes().at(i - 1);
 
 			if (key_item->type() != prev_item->type()) {
 				all_keys_are_same_type = false;
@@ -602,15 +602,15 @@ void KeyframeView::ShowContextMenu()
 
 		if (all_keys_are_same_type) {
 			switch (type) {
-			case NodeKeyframe::kInvalid:
+			case NodeKeyframe::k_invalid:
 				break;
-			case NodeKeyframe::kLinear:
+			case NodeKeyframe::k_linear:
 				linear_key_action->setChecked(true);
 				break;
-			case NodeKeyframe::kBezier:
+			case NodeKeyframe::k_bezier:
 				bezier_key_action->setChecked(true);
 				break;
-			case NodeKeyframe::kHold:
+			case NodeKeyframe::k_hold:
 				hold_key_action->setChecked(true);
 				break;
 			}
@@ -621,12 +621,12 @@ void KeyframeView::ShowContextMenu()
 
 	ContextMenuEvent(m);
 
-	if (!GetSelectedKeyframes().empty()) {
+	if (!get_selected_keyframes().empty()) {
 		m.addSeparator();
 
 		QAction *properties_action = m.addAction(tr("P&roperties"));
 		connect(properties_action, &QAction::triggered, this,
-				&KeyframeView::ShowKeyframePropertiesDialog);
+				&KeyframeView::show_keyframe_properties_dialog);
 	}
 
 	QAction *selected = m.exec(QCursor::pos());
@@ -638,38 +638,38 @@ void KeyframeView::ShowContextMenu()
 			NodeKeyframe::Type new_type;
 
 			if (selected == hold_key_action) {
-				new_type = NodeKeyframe::kHold;
+				new_type = NodeKeyframe::k_hold;
 			} else if (selected == bezier_key_action) {
-				new_type = NodeKeyframe::kBezier;
+				new_type = NodeKeyframe::k_bezier;
 			} else {
-				new_type = NodeKeyframe::kLinear;
+				new_type = NodeKeyframe::k_linear;
 			}
 
 			MultiUndoCommand *command = new MultiUndoCommand();
-			foreach (NodeKeyframe *item, GetSelectedKeyframes()) {
+			foreach (NodeKeyframe *item, get_selected_keyframes()) {
 				command->add_child(new KeyframeSetTypeCommand(item, new_type));
 			}
 			Core::instance()->undo_stack()->push(
 				command, tr("Set Type of %1 Keyframe(s)")
-							 .arg(GetSelectedKeyframes().size()));
+							 .arg(get_selected_keyframes().size()));
 		}
 	}
 }
 
-void KeyframeView::ShowKeyframePropertiesDialog()
+void KeyframeView::show_keyframe_properties_dialog()
 {
-	if (!GetSelectedKeyframes().empty()) {
-		KeyframePropertiesDialog kd(GetSelectedKeyframes(), timebase(), this);
+	if (!get_selected_keyframes().empty()) {
+		KeyframePropertiesDialog kd(get_selected_keyframes(), timebase(), this);
 		kd.exec();
 	}
 }
 
-void KeyframeView::UpdateRubberBandForScroll()
+void KeyframeView::update_rubber_band_for_scroll()
 {
-	this->selection_manager_.ForceDragUpdate();
+	this->selection_manager_.force_drag_update();
 }
 
-void KeyframeView::Redraw()
+void KeyframeView::redraw()
 {
 	viewport()->update();
 }

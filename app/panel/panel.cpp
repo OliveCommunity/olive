@@ -52,31 +52,31 @@ PanelWidget::PanelWidget(const QString &object_name)
 	connect(this, &PanelWidget::shown, this,
 			reinterpret_cast<void (PanelWidget::*)()>(&PanelWidget::setFocus));
 
-	PanelManager::instance()->RegisterPanel(this);
+	PanelManager::instance()->register_panel(this);
 }
 
 PanelWidget::~PanelWidget()
 {
-	PanelManager::instance()->UnregisterPanel(this);
+	PanelManager::instance()->unregister_panel(this);
 }
 
-void PanelWidget::SetBorderVisible(bool enabled)
+void PanelWidget::set_border_visible(bool enabled)
 {
 	border_visible_ = enabled;
 
 	update();
 }
 
-void PanelWidget::SetTitle(const QString &t)
+void PanelWidget::set_title(const QString &t)
 {
 	title_ = t;
-	UpdateTitle();
+	update_title();
 }
 
-void PanelWidget::SetSubtitle(const QString &t)
+void PanelWidget::set_subtitle(const QString &t)
 {
 	subtitle_ = t;
-	UpdateTitle();
+	update_title();
 }
 
 void PanelWidget::paintEvent(QPaintEvent *event)
@@ -101,7 +101,7 @@ void PanelWidget::paintEvent(QPaintEvent *event)
 	}
 }
 
-void PanelWidget::UpdateTitle()
+void PanelWidget::update_title()
 {
 	// If there's no subtitle, just use the title. Otherwise, we set a formatted combination of the two that can
 	// differ based on translation
@@ -112,7 +112,7 @@ void PanelWidget::UpdateTitle()
 	}
 }
 
-void PanelWidget::SetSignalInsteadOfClose(bool e)
+void PanelWidget::set_signal_instead_of_close(bool e)
 {
 	signal_instead_of_close_ = e;
 }
@@ -121,7 +121,7 @@ void PanelWidget::closeEvent(QCloseEvent *event)
 {
 	if (signal_instead_of_close_) {
 		event->ignore();
-		emit CloseRequested();
+		emit close_requested();
 	} else {
 		super::closeEvent(event);
 	}
@@ -130,7 +130,7 @@ void PanelWidget::closeEvent(QCloseEvent *event)
 void PanelWidget::changeEvent(QEvent *e)
 {
 	if (e->type() == QEvent::LanguageChange) {
-		Retranslate();
+		retranslate();
 	}
 
 	if (e->type() == QEvent::WindowStateChange) {
@@ -143,11 +143,11 @@ void PanelWidget::changeEvent(QEvent *e)
 	super::changeEvent(e);
 }
 
-void PanelWidget::Retranslate()
+void PanelWidget::retranslate()
 {
 }
 
-void PanelWidget::SetWidgetWithPadding(QWidget *widget)
+void PanelWidget::set_widget_with_padding(QWidget *widget)
 {
 	QWidget *wrapper = new QWidget();
 	QHBoxLayout *layout = new QHBoxLayout(wrapper);

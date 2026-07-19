@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLORCODING_H
-#define COLORCODING_H
+#ifndef OAK_COLORCODING_H
+#define OAK_COLORCODING_H
 
 #include <olive/core/core.h>
 #include <QObject>
@@ -34,39 +34,39 @@ class ColorCoding : public QObject {
 	Q_OBJECT
 public:
 	enum Code {
-		kRed,
-		kMaroon,
-		kOrange,
-		kBrown,
-		kYellow,
-		kOlive,
-		kLime,
-		kGreen,
-		kCyan,
-		kTeal,
-		kBlue,
-		kNavy,
-		kPink,
-		kPurple,
-		kSilver,
-		kGray
+		k_red,
+		k_maroon,
+		k_orange,
+		k_brown,
+		k_yellow,
+		k_olive,
+		k_lime,
+		k_green,
+		k_cyan,
+		k_teal,
+		k_blue,
+		k_navy,
+		k_pink,
+		k_purple,
+		k_silver,
+		k_gray
 	};
 
-	static QString GetColorName(int c);
+	static QString get_color_name(int c);
 
-	static Color GetColor(int c);
+	static Color get_color(int c);
 
-	static Qt::GlobalColor GetUISelectorColor(const Color &c);
+	static Qt::GlobalColor get_ui_selector_color(const Color &c);
 
 	static const QVector<Color> &standard_colors()
 	{
-		return colors_;
+		return colors;
 	}
 
 private:
-	static QVector<Color> colors_;
+	static QVector<Color> colors;
 };
 
 }
 
-#endif // COLORCODING_H
+#endif // OAK_COLORCODING_H

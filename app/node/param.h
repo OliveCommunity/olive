@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEPARAM_H
-#define NODEPARAM_H
+#ifndef OAK_NODEPARAM_H
+#define OAK_NODEPARAM_H
 
 #include <QString>
 
@@ -34,21 +34,21 @@ class NodeKeyframe;
 
 enum InputFlag : uint64_t {
 	/// By default, inputs are keyframable, connectable, and NOT arrays
-	kInputFlagNormal = 0x0,
-	kInputFlagArray = 0x1,
-	kInputFlagNotKeyframable = 0x2,
-	kInputFlagNotConnectable = 0x4,
-	kInputFlagHidden = 0x8,
-	kInputFlagIgnoreInvalidations = 0x10,
+	k_input_flag_normal = 0x0,
+	k_input_flag_array = 0x1,
+	k_input_flag_not_keyframable = 0x2,
+	k_input_flag_not_connectable = 0x4,
+	k_input_flag_hidden = 0x8,
+	k_input_flag_ignore_invalidations = 0x10,
 
-	kInputFlagStatic = kInputFlagNotKeyframable | kInputFlagNotConnectable
+	k_input_flag_static = k_input_flag_not_keyframable | k_input_flag_not_connectable
 };
 
 class InputFlags {
 public:
 	explicit InputFlags()
 	{
-		f_ = kInputFlagNormal;
+		f_ = k_input_flag_normal;
 	}
 
 	explicit InputFlags(uint64_t flags)
@@ -244,44 +244,44 @@ public:
 
 	QString name() const;
 
-	bool IsValid() const
+	bool is_valid() const
 	{
 		return node_ && !input_.isEmpty() && element_ >= -1;
 	}
 
-	bool IsHidden() const;
+	bool is_hidden() const;
 
-	bool IsConnected() const;
+	bool is_connected() const;
 
-	bool IsKeyframing() const;
+	bool is_keyframing() const;
 
-	bool IsArray() const;
+	bool is_array() const;
 
-	InputFlags GetFlags() const;
+	InputFlags get_flags() const;
 
-	QString GetInputName() const;
+	QString get_input_name() const;
 
-	Node *GetConnectedOutput() const;
+	Node *get_connected_output() const;
 
-	NodeValue::Type GetDataType() const;
+	NodeValue::Type get_data_type() const;
 
-	QVariant GetDefaultValue() const;
+	QVariant get_default_value() const;
 
-	QStringList GetComboBoxStrings() const;
+	QStringList get_combo_box_strings() const;
 
-	QVariant GetProperty(const QString &key) const;
-	QHash<QString, QVariant> GetProperties() const;
+	QVariant get_property(const QString &key) const;
+	QHash<QString, QVariant> get_properties() const;
 
-	QVariant GetValueAtTime(const rational &time) const;
+	QVariant get_value_at_time(const Rational &time) const;
 
-	NodeKeyframe *GetKeyframeAtTimeOnTrack(const rational &time,
+	NodeKeyframe *get_keyframe_at_time_on_track(const Rational &time,
 										   int track) const;
 
-	QVariant GetSplitDefaultValueForTrack(int track) const;
+	QVariant get_split_default_value_for_track(int track) const;
 
-	int GetArraySize() const;
+	int get_array_size() const;
 
-	void Reset()
+	void reset()
 	{
 		*this = NodeInput();
 	}
@@ -344,12 +344,12 @@ public:
 		return track_;
 	}
 
-	bool IsValid() const
+	bool is_valid() const
 	{
-		return input_.IsValid() && track_ >= 0;
+		return input_.is_valid() && track_ >= 0;
 	}
 
-	void Reset()
+	void reset()
 	{
 		*this = NodeKeyframeTrackReference();
 	}
@@ -368,4 +368,4 @@ uint qHash(const NodeKeyframeTrackReference &i);
 Q_DECLARE_METATYPE(olive::NodeInput)
 Q_DECLARE_METATYPE(olive::NodeKeyframeTrackReference)
 
-#endif // NODEPARAM_H
+#endif // OAK_NODEPARAM_H

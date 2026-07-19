@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SLIDERLINEEDIT_H
-#define SLIDERLINEEDIT_H
+#ifndef OAK_SLIDERLINEEDIT_H
+#define OAK_SLIDERLINEEDIT_H
 
 #include <QLineEdit>
 
@@ -35,9 +35,9 @@ public:
 	FocusableLineEdit(QWidget *parent = nullptr);
 
 signals:
-	void Confirmed();
+	void confirmed();
 
-	void Cancelled();
+	void cancelled();
 
 protected:
 	void keyPressEvent(QKeyEvent *) override;
@@ -47,4 +47,4 @@ protected:
 
 }
 
-#endif // SLIDERLINEEDIT_H
+#endif // OAK_SLIDERLINEEDIT_H

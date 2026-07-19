@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef MAINSTATUSBAR_H
-#define MAINSTATUSBAR_H
+#ifndef OAK_MAINSTATUSBAR_H
+#define OAK_MAINSTATUSBAR_H
 
 #include <QProgressBar>
 #include <QStatusBar>
@@ -38,20 +38,20 @@ class MainStatusBar : public QStatusBar {
 public:
 	MainStatusBar(QWidget *parent = nullptr);
 
-	void ConnectTaskManager(TaskManager *manager);
+	void connect_task_manager(TaskManager *manager);
 
 signals:
-	void DoubleClicked();
+	void double_clicked();
 
 protected:
 	virtual void mouseDoubleClickEvent(QMouseEvent *e) override;
 
 private slots:
-	void UpdateStatus();
+	void update_status();
 
-	void SetProgressBarValue(double d);
+	void set_progress_bar_value(double d);
 
-	void ConnectedTaskDeleted();
+	void connected_task_deleted();
 
 private:
 	TaskManager *manager_;
@@ -63,4 +63,4 @@ private:
 
 }
 
-#endif // MAINSTATUSBAR_H
+#endif // OAK_MAINSTATUSBAR_H

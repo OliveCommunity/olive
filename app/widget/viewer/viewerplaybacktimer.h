@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef VIEWERPLAYBACKTIMER_H
-#define VIEWERPLAYBACKTIMER_H
+#ifndef OAK_VIEWERPLAYBACKTIMER_H
+#define OAK_VIEWERPLAYBACKTIMER_H
 
 #include <QtGlobal>
 #include <QElapsedTimer>
@@ -32,10 +32,10 @@ namespace olive
 
 class ViewerPlaybackTimer {
 public:
-	void Start(const int64_t &start_timestamp, const int &playback_speed,
+	void start(const int64_t &start_timestamp, const int &playback_speed,
 			   const double &timebase);
 
-	int64_t GetTimestampNow() const;
+	int64_t get_timestamp_now() const;
 
 private:
 	QElapsedTimer timer_;
@@ -48,4 +48,4 @@ private:
 
 }
 
-#endif // VIEWERPLAYBACKTIMER_H
+#endif // OAK_VIEWERPLAYBACKTIMER_H

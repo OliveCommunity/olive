@@ -9,7 +9,7 @@
 
 TEST(UIStyle, InitPopulatesThemesAndAppliesStyle)
 {
-	olive::StyleManager::Init();
+	olive::StyleManager::init();
 
 	const QMap<QString, QString> &themes = olive::StyleManager::available_themes();
 	EXPECT_EQ(themes.size(), 2);
@@ -19,14 +19,14 @@ TEST(UIStyle, InitPopulatesThemesAndAppliesStyle)
 			  QStringLiteral("Oak Light"));
 
 	// Whatever the config says, the current style must be a known theme
-	EXPECT_TRUE(themes.contains(olive::StyleManager::GetStyle()));
+	EXPECT_TRUE(themes.contains(olive::StyleManager::get_style()));
 	EXPECT_FALSE(qApp->styleSheet().isEmpty());
 }
 
 TEST(UIStyle, SetStyleAppliesPaletteFromIni)
 {
-	olive::StyleManager::SetStyle(QStringLiteral("olive-dark"));
-	EXPECT_EQ(olive::StyleManager::GetStyle(), QStringLiteral("olive-dark"));
+	olive::StyleManager::set_style(QStringLiteral("olive-dark"));
+	EXPECT_EQ(olive::StyleManager::get_style(), QStringLiteral("olive-dark"));
 
 	// Values from app/ui/style/olive-dark/palette.ini
 	const QPalette p = qApp->palette();
@@ -44,11 +44,11 @@ TEST(UIStyle, SetStyleAppliesPaletteFromIni)
 
 TEST(UIStyle, SetStyleSwitchesThemes)
 {
-	olive::StyleManager::SetStyle(QStringLiteral("olive-dark"));
+	olive::StyleManager::set_style(QStringLiteral("olive-dark"));
 	const QColor dark_window = qApp->palette().color(QPalette::Window);
 
-	olive::StyleManager::SetStyle(QStringLiteral("olive-light"));
-	EXPECT_EQ(olive::StyleManager::GetStyle(), QStringLiteral("olive-light"));
+	olive::StyleManager::set_style(QStringLiteral("olive-light"));
+	EXPECT_EQ(olive::StyleManager::get_style(), QStringLiteral("olive-light"));
 
 	// Values from app/ui/style/olive-light/palette.ini
 	EXPECT_EQ(qApp->palette().color(QPalette::Window),
@@ -56,15 +56,15 @@ TEST(UIStyle, SetStyleSwitchesThemes)
 	EXPECT_NE(qApp->palette().color(QPalette::Window), dark_window);
 
 	// Restore the default theme for subsequent tests
-	olive::StyleManager::SetStyle(olive::StyleManager::kDefaultStyle);
-	EXPECT_EQ(olive::StyleManager::GetStyle(),
+	olive::StyleManager::set_style(olive::StyleManager::k_default_style);
+	EXPECT_EQ(olive::StyleManager::get_style(),
 			  QStringLiteral("olive-dark"));
 }
 
 TEST(UIStyle, SetStyleWithMissingThemeClearsOverrides)
 {
-	olive::StyleManager::SetStyle(QStringLiteral("does-not-exist"));
-	EXPECT_EQ(olive::StyleManager::GetStyle(),
+	olive::StyleManager::set_style(QStringLiteral("does-not-exist"));
+	EXPECT_EQ(olive::StyleManager::get_style(),
 			  QStringLiteral("does-not-exist"));
 
 	// No palette.ini/style.css in this theme: fall back to standard palette
@@ -74,5 +74,5 @@ TEST(UIStyle, SetStyleWithMissingThemeClearsOverrides)
 			  qApp->style()->standardPalette().color(QPalette::Window));
 
 	// Restore the default theme for subsequent tests
-	olive::StyleManager::SetStyle(olive::StyleManager::kDefaultStyle);
+	olive::StyleManager::set_style(olive::StyleManager::k_default_style);
 }

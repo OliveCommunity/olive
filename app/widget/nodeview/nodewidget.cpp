@@ -40,14 +40,14 @@ NodeWidget::NodeWidget(QWidget *parent)
 	outer_layout->addWidget(node_view_);
 
 	// Connect toolbar to NodeView
-	connect(toolbar_, &NodeViewToolBar::MiniMapEnabledToggled, node_view_,
-			&NodeView::SetMiniMapEnabled);
-	connect(toolbar_, &NodeViewToolBar::AddNodeClicked, node_view_,
-			&NodeView::ShowAddMenu);
+	connect(toolbar_, &NodeViewToolBar::mini_map_enabled_toggled, node_view_,
+			&NodeView::set_mini_map_enabled);
+	connect(toolbar_, &NodeViewToolBar::add_node_clicked, node_view_,
+			&NodeView::show_add_menu);
 
 	// Set defaults
-	toolbar_->SetMiniMapEnabled(true);
-	node_view_->SetMiniMapEnabled(true);
+	toolbar_->set_mini_map_enabled(true);
+	node_view_->set_mini_map_enabled(true);
 
 	setSizePolicy(node_view_->sizePolicy());
 }

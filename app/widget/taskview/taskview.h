@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TASKVIEW_H
-#define TASKVIEW_H
+#ifndef OAK_TASKVIEW_H
+#define OAK_TASKVIEW_H
 
 #include <QScrollArea>
 #include <QVBoxLayout>
@@ -44,7 +44,7 @@ public:
 	TaskView(QWidget *parent);
 
 signals:
-	void TaskCancelled(Task *t);
+	void task_cancelled(Task *t);
 
 public slots:
 	/**
@@ -52,11 +52,11 @@ public slots:
    *
    * Connect this to TaskManager::TaskAdded().
    */
-	void AddTask(Task *t);
+	void add_task(Task *t);
 
-	void TaskFailed(Task *t);
+	void task_failed(Task *t);
 
-	void RemoveTask(Task *t);
+	void remove_task(Task *t);
 
 private:
 	QWidget *central_widget_;
@@ -68,4 +68,4 @@ private:
 
 }
 
-#endif // TASKVIEW_H
+#endif // OAK_TASKVIEW_H

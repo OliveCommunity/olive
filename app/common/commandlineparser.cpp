@@ -36,7 +36,7 @@ CommandLineParser::~CommandLineParser()
 }
 
 const CommandLineParser::Option *
-CommandLineParser::AddOption(const QStringList &strings,
+CommandLineParser::add_option(const QStringList &strings,
 							 const QString &description, bool takes_arg,
 							 const QString &arg_placeholder, bool hidden)
 {
@@ -49,7 +49,7 @@ CommandLineParser::AddOption(const QStringList &strings,
 }
 
 const CommandLineParser::PositionalArgument *
-CommandLineParser::AddPositionalArgument(const QString &name,
+CommandLineParser::add_positional_argument(const QString &name,
 										 const QString &description,
 										 bool required)
 {
@@ -60,7 +60,7 @@ CommandLineParser::AddPositionalArgument(const QString &name,
 	return a;
 }
 
-void CommandLineParser::Process(const QVector<QString> &argv)
+void CommandLineParser::process(const QVector<QString> &argv)
 {
 	int positional_index = 0;
 
@@ -79,10 +79,10 @@ void CommandLineParser::Process(const QVector<QString> &argv)
 				foreach (const QString &s, o.args) {
 					if (!s.compare(arg_basename, Qt::CaseInsensitive)) {
 						// Flag discovered!
-						o.option->Set();
+						o.option->set();
 
 						if (o.takes_arg && i + 1 < argv.size()) {
-							o.option->SetSetting(argv[i + 1]);
+							o.option->set_setting(argv[i + 1]);
 							i++;
 						}
 
@@ -100,7 +100,7 @@ found_flag:
 		} else {
 			// Must be a positional flag
 			if (positional_index < positional_args_.size()) {
-				positional_args_[positional_index].option->SetSetting(argv[i]);
+				positional_args_[positional_index].option->set_setting(argv[i]);
 				positional_index++;
 			} else {
 				qWarning() << "Unknown parameter:" << argv[i];
@@ -109,7 +109,7 @@ found_flag:
 	}
 }
 
-void CommandLineParser::PrintHelp(const char *filename)
+void CommandLineParser::print_help(const char *filename)
 {
 	printf("%s %s\n", QCoreApplication::applicationName().toUtf8().constData(),
 		   QCoreApplication::applicationVersion().toUtf8().constData());

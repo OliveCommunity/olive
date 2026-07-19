@@ -32,7 +32,7 @@ namespace olive
 {
 
 KeyframePropertiesDialog::KeyframePropertiesDialog(
-	const std::vector<NodeKeyframe *> &keys, const rational &timebase,
+	const std::vector<NodeKeyframe *> &keys, const Rational &timebase,
 	QWidget *parent)
 	: QDialog(parent)
 	, keys_(keys)
@@ -47,8 +47,8 @@ KeyframePropertiesDialog::KeyframePropertiesDialog(
 	layout->addWidget(new QLabel("Time:"), row, 0);
 
 	time_slider_ = new RationalSlider();
-	time_slider_->SetDisplayType(RationalSlider::kTime);
-	time_slider_->SetTimebase(timebase_);
+	time_slider_->set_display_type(RationalSlider::k_time);
+	time_slider_->set_timebase(timebase_);
 	layout->addWidget(time_slider_, row, 1);
 
 	row++;
@@ -57,7 +57,7 @@ KeyframePropertiesDialog::KeyframePropertiesDialog(
 
 	type_select_ = new QComboBox();
 	connect(type_select_, SIGNAL(currentIndexChanged(int)), this,
-			SLOT(KeyTypeChanged(int)));
+			SLOT(key_type_changed(int)));
 	layout->addWidget(type_select_, row, 1);
 
 	row++;
@@ -150,9 +150,9 @@ KeyframePropertiesDialog::KeyframePropertiesDialog(
 	}
 
 	if (all_same_time) {
-		time_slider_->SetValue(keys_.front()->time());
+		time_slider_->set_value(keys_.front()->time());
 	} else {
-		time_slider_->SetTristate();
+		time_slider_->set_tristate();
 	}
 
 	time_slider_->setEnabled(can_set_time);
@@ -162,12 +162,12 @@ KeyframePropertiesDialog::KeyframePropertiesDialog(
 		type_select_->addItem(QStringLiteral("--"), -1);
 
 		// Ensure UI updates for the index being 0
-		KeyTypeChanged(0);
+		key_type_changed(0);
 	}
 
-	type_select_->addItem(tr("Linear"), NodeKeyframe::kLinear);
-	type_select_->addItem(tr("Hold"), NodeKeyframe::kHold);
-	type_select_->addItem(tr("Bezier"), NodeKeyframe::kBezier);
+	type_select_->addItem(tr("Linear"), NodeKeyframe::k_linear);
+	type_select_->addItem(tr("Hold"), NodeKeyframe::k_hold);
+	type_select_->addItem(tr("Bezier"), NodeKeyframe::k_bezier);
 
 	if (all_same_type) {
 		// If all keyframes are the same type, set it here
@@ -176,19 +176,19 @@ KeyframePropertiesDialog::KeyframePropertiesDialog(
 				type_select_->setCurrentIndex(i);
 
 				// Ensure UI updates for this index
-				KeyTypeChanged(i);
+				key_type_changed(i);
 				break;
 			}
 		}
 	}
 
-	SetUpBezierSlider(bezier_in_x_slider_, all_same_bezier_in_x,
+	set_up_bezier_slider(bezier_in_x_slider_, all_same_bezier_in_x,
 					  keys_.front()->bezier_control_in().x());
-	SetUpBezierSlider(bezier_in_y_slider_, all_same_bezier_in_y,
+	set_up_bezier_slider(bezier_in_y_slider_, all_same_bezier_in_y,
 					  keys_.front()->bezier_control_in().y());
-	SetUpBezierSlider(bezier_out_x_slider_, all_same_bezier_out_x,
+	set_up_bezier_slider(bezier_out_x_slider_, all_same_bezier_out_x,
 					  keys_.front()->bezier_control_out().x());
-	SetUpBezierSlider(bezier_out_y_slider_, all_same_bezier_out_y,
+	set_up_bezier_slider(bezier_out_y_slider_, all_same_bezier_out_y,
 					  keys_.front()->bezier_control_out().y());
 
 	row++;
@@ -205,11 +205,11 @@ void KeyframePropertiesDialog::accept()
 {
 	MultiUndoCommand *command = new MultiUndoCommand();
 
-	rational new_time = time_slider_->GetValue();
+	Rational new_time = time_slider_->get_value();
 	int new_type = type_select_->currentData().toInt();
 
 	foreach (NodeKeyframe *key, keys_) {
-		if (time_slider_->isEnabled() && !time_slider_->IsTristate()) {
+		if (time_slider_->isEnabled() && !time_slider_->is_tristate()) {
 			command->add_child(
 				new NodeParamSetKeyframeTimeCommand(key, new_time));
 		}
@@ -221,14 +221,14 @@ void KeyframePropertiesDialog::accept()
 
 		if (bezier_group_->isEnabled()) {
 			command->add_child(new KeyframeSetBezierControlPoint(
-				key, NodeKeyframe::kInHandle,
-				QPointF(bezier_in_x_slider_->GetValue(),
-						bezier_in_y_slider_->GetValue())));
+				key, NodeKeyframe::k_in_handle,
+				QPointF(bezier_in_x_slider_->get_value(),
+						bezier_in_y_slider_->get_value())));
 
 			command->add_child(new KeyframeSetBezierControlPoint(
-				key, NodeKeyframe::kOutHandle,
-				QPointF(bezier_out_x_slider_->GetValue(),
-						bezier_out_y_slider_->GetValue())));
+				key, NodeKeyframe::k_out_handle,
+				QPointF(bezier_out_x_slider_->get_value(),
+						bezier_out_y_slider_->get_value())));
 		}
 	}
 
@@ -238,20 +238,20 @@ void KeyframePropertiesDialog::accept()
 	QDialog::accept();
 }
 
-void KeyframePropertiesDialog::SetUpBezierSlider(FloatSlider *slider,
+void KeyframePropertiesDialog::set_up_bezier_slider(FloatSlider *slider,
 												 bool all_same, double value)
 {
 	if (all_same) {
-		slider->SetValue(value);
+		slider->set_value(value);
 	} else {
-		slider->SetTristate();
+		slider->set_tristate();
 	}
 }
 
-void KeyframePropertiesDialog::KeyTypeChanged(int index)
+void KeyframePropertiesDialog::key_type_changed(int index)
 {
 	bezier_group_->setEnabled(type_select_->itemData(index) ==
-							  NodeKeyframe::kBezier);
+							  NodeKeyframe::k_bezier);
 }
 
 }

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TEXTGENERATORV2_H
-#define TEXTGENERATORV2_H
+#ifndef OAK_TEXTGENERATORV2_H
+#define OAK_TEXTGENERATORV2_H
 
 #include "node/generator/shape/shapenodebase.h"
 
@@ -34,26 +34,26 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(TextGeneratorV2)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	virtual void GenerateFrame(FramePtr frame,
+	virtual void generate_frame(FramePtr frame,
 							   const GenerateJob &job) const override;
 
-	static const QString kTextInput;
-	static const QString kHtmlInput;
-	static const QString kVAlignInput;
-	static const QString kFontInput;
-	static const QString kFontSizeInput;
+	static const QString k_text_input;
+	static const QString k_html_input;
+	static const QString k_v_align_input;
+	static const QString k_font_input;
+	static const QString k_font_size_input;
 };
 
 }
 
-#endif // TEXTGENERATORV2_H
+#endif // OAK_TEXTGENERATORV2_H

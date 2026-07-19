@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECT_H
-#define PROJECT_H
+#ifndef OAK_PROJECT_H
+#define OAK_PROJECT_H
 
 #include <memory>
 #include <QObject>
@@ -49,9 +49,9 @@ class Project : public QObject {
 	Q_OBJECT
 public:
 	enum CacheSetting {
-		kCacheUseDefaultLocation,
-		kCacheStoreAlongsideProject,
-		kCacheCustomPath
+		k_cache_use_default_location,
+		k_cache_store_alongside_project,
+		k_cache_custom_path
 	};
 
 	Project();
@@ -61,7 +61,7 @@ public:
 	/**
    * @brief Destructively destroys all nodes in the graph
    */
-	void Clear();
+	void clear();
 
 	/**
    * @brief Retrieve a complete list of the nodes belonging to this graph
@@ -71,12 +71,12 @@ public:
 		return node_children_;
 	}
 
-	void Initialize();
+	void initialize();
 
-	SerializedData Load(QXmlStreamReader *reader);
-	void Save(QXmlStreamWriter *writer) const;
+	SerializedData load(QXmlStreamReader *reader);
+	void save(QXmlStreamWriter *writer) const;
 
-	int GetNumberOfContextsNodeIsIn(Node *node,
+	int get_number_of_contexts_node_is_in(Node *node,
 									bool except_itself = false) const;
 
 	QString name() const;
@@ -108,29 +108,29 @@ public:
 	QString get_cache_alongside_project_path() const;
 	QString cache_path() const;
 
-	const QUuid &GetUuid() const
+	const QUuid &get_uuid() const
 	{
 		return uuid_;
 	}
 
-	void SetUuid(const QUuid &uuid)
+	void set_uuid(const QUuid &uuid)
 	{
 		uuid_ = uuid;
 	}
 
-	void RegenerateUuid();
+	void regenerate_uuid();
 
 	/**
    * @brief Returns the filename the project was saved as, but not necessarily where it is now
    *
    * May help for resolving relative paths.
    */
-	const QString &GetSavedURL() const
+	const QString &get_saved_url() const
 	{
 		return saved_url_;
 	}
 
-	void SetSavedURL(const QString &url)
+	void set_saved_url(const QString &url)
 	{
 		saved_url_ = url;
 	}
@@ -141,104 +141,104 @@ public:
    * If an object is expected to be a child of a project, this function will traverse its parent
    * tree until it finds it.
    */
-	static Project *GetProjectFromObject(const QObject *o);
+	static Project *get_project_from_object(const QObject *o);
 
-	static void CopySettings(Project *from, Project *to)
+	static void copy_settings(Project *from, Project *to)
 	{
 		to->settings_ = from->settings_;
 	}
 
-	static const QString kItemMimeType;
+	static const QString k_item_mime_type;
 
-	static const QString kCacheLocationSettingKey;
-	static const QString kCachePathKey;
-	static const QString kColorConfigFilename;
-	static const QString kColorReferenceSpace;
-	static const QString kDefaultInputColorSpaceKey;
-	static const QString kRootKey;
+	static const QString k_cache_location_setting_key;
+	static const QString k_cache_path_key;
+	static const QString k_color_config_filename;
+	static const QString k_color_reference_space;
+	static const QString k_default_input_color_space_key;
+	static const QString k_root_key;
 
-	QString GetSetting(const QString &key) const
+	QString get_setting(const QString &key) const
 	{
 		return settings_.value(key);
 	}
-	void SetSetting(const QString &key, const QString &value);
+	void set_setting(const QString &key, const QString &value);
 
-	CacheSetting GetCacheLocationSetting() const
+	CacheSetting get_cache_location_setting() const
 	{
 		return static_cast<CacheSetting>(
-			GetSetting(kCacheLocationSettingKey).toInt());
+			get_setting(k_cache_location_setting_key).toInt());
 	}
-	void SetCacheLocationSetting(CacheSetting s)
+	void set_cache_location_setting(CacheSetting s)
 	{
-		SetSetting(kCacheLocationSettingKey, QString::number(s));
-	}
-
-	QString GetCustomCachePath() const
-	{
-		return GetSetting(kCachePathKey);
-	}
-	void SetCustomCachePath(const QString &path)
-	{
-		SetSetting(kCachePathKey, path);
+		set_setting(k_cache_location_setting_key, QString::number(s));
 	}
 
-	QString GetColorConfigFilename() const
+	QString get_custom_cache_path() const
 	{
-		return GetSetting(kColorConfigFilename);
+		return get_setting(k_cache_path_key);
 	}
-	void SetColorConfigFilename(const QString &s)
+	void set_custom_cache_path(const QString &path)
 	{
-		SetSetting(kColorConfigFilename, s);
-	}
-
-	QString GetDefaultInputColorSpace() const
-	{
-		return GetSetting(kDefaultInputColorSpaceKey);
-	}
-	void SetDefaultInputColorSpace(const QString &s)
-	{
-		SetSetting(kDefaultInputColorSpaceKey, s);
+		set_setting(k_cache_path_key, path);
 	}
 
-	QString GetColorReferenceSpace() const
+	QString get_color_config_filename() const
 	{
-		return GetSetting(kColorReferenceSpace);
+		return get_setting(k_color_config_filename);
 	}
-	void SetColorReferenceSpace(const QString &s)
+	void set_color_config_filename(const QString &s)
 	{
-		SetSetting(kColorReferenceSpace, s);
+		set_setting(k_color_config_filename, s);
+	}
+
+	QString get_default_input_color_space() const
+	{
+		return get_setting(k_default_input_color_space_key);
+	}
+	void set_default_input_color_space(const QString &s)
+	{
+		set_setting(k_default_input_color_space_key, s);
+	}
+
+	QString get_color_reference_space() const
+	{
+		return get_setting(k_color_reference_space);
+	}
+	void set_color_reference_space(const QString &s)
+	{
+		set_setting(k_color_reference_space, s);
 	}
 
 signals:
-	void NameChanged();
+	void name_changed();
 
-	void ModifiedChanged(bool e);
+	void modified_changed(bool e);
 
 	/**
    * @brief Signal emitted when a Node is added to the graph
    */
-	void NodeAdded(Node *node);
+	void node_added(Node *node);
 
 	/**
    * @brief Signal emitted when a Node is removed from the graph
    */
-	void NodeRemoved(Node *node);
+	void node_removed(Node *node);
 
-	void InputConnected(Node *output, const NodeInput &input);
+	void input_connected(Node *output, const NodeInput &input);
 
-	void InputDisconnected(Node *output, const NodeInput &input);
+	void input_disconnected(Node *output, const NodeInput &input);
 
-	void ValueChanged(const NodeInput &input);
+	void value_changed(const NodeInput &input);
 
-	void InputValueHintChanged(const NodeInput &input);
+	void input_value_hint_changed(const NodeInput &input);
 
-	void GroupAddedInputPassthrough(NodeGroup *group, const NodeInput &input);
+	void group_added_input_passthrough(NodeGroup *group, const NodeInput &input);
 
-	void GroupRemovedInputPassthrough(NodeGroup *group, const NodeInput &input);
+	void group_removed_input_passthrough(NodeGroup *group, const NodeInput &input);
 
-	void GroupChangedOutputPassthrough(NodeGroup *group, Node *output);
+	void group_changed_output_passthrough(NodeGroup *group, Node *output);
 
-	void SettingChanged(const QString &key, const QString &value);
+	void setting_changed(const QString &key, const QString &value);
 
 protected:
 	virtual void childEvent(QChildEvent *event) override;
@@ -265,4 +265,4 @@ private:
 
 }
 
-#endif // PROJECT_H
+#endif // OAK_PROJECT_H

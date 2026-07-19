@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINEWIDGETSELECTIONS_H
-#define TIMELINEWIDGETSELECTIONS_H
+#ifndef OAK_TIMELINEWIDGETSELECTIONS_H
+#define OAK_TIMELINEWIDGETSELECTIONS_H
 
 #include <QHash>
 
@@ -33,25 +33,25 @@ class TimelineWidgetSelections : public QHash<Track::Reference, TimeRangeList> {
 public:
 	TimelineWidgetSelections() = default;
 
-	void ShiftTime(const rational &diff);
+	void shift_time(const Rational &diff);
 
-	void ShiftTracks(Track::Type type, int diff);
+	void shift_tracks(Track::Type type, int diff);
 
-	void TrimIn(const rational &diff);
+	void trim_in(const Rational &diff);
 
-	void TrimOut(const rational &diff);
+	void trim_out(const Rational &diff);
 
-	void Subtract(const TimelineWidgetSelections &selections);
+	void subtract(const TimelineWidgetSelections &selections);
 
 	TimelineWidgetSelections
-	Subtracted(const TimelineWidgetSelections &selections) const
+	subtracted(const TimelineWidgetSelections &selections) const
 	{
 		TimelineWidgetSelections copy = *this;
-		copy.Subtract(selections);
+		copy.subtract(selections);
 		return copy;
 	}
 };
 
 }
 
-#endif // TIMELINEWIDGETSELECTIONS_H
+#endif // OAK_TIMELINEWIDGETSELECTIONS_H

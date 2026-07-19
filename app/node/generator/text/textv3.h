@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TEXTGENERATORV3_H
-#define TEXTGENERATORV3_H
+#ifndef OAK_TEXTGENERATORV3_H
+#define OAK_TEXTGENERATORV3_H
 
 #include "node/generator/shape/shapenodebase.h"
 #include "node/gizmo/text.h"
@@ -35,39 +35,39 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(TextGeneratorV3)
 
-	virtual QString Name() const override;
+	virtual QString name() const override;
 	virtual QString id() const override;
-	virtual QVector<CategoryID> Category() const override;
-	virtual QString Description() const override;
+	virtual QVector<CategoryID> category() const override;
+	virtual QString description() const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	virtual void Value(const NodeValueRow &value, const NodeGlobals &globals,
+	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
-	virtual void GenerateFrame(FramePtr frame,
+	virtual void generate_frame(FramePtr frame,
 							   const GenerateJob &job) const override;
 
-	virtual void UpdateGizmoPositions(const NodeValueRow &row,
+	virtual void update_gizmo_positions(const NodeValueRow &row,
 									  const NodeGlobals &globals) override;
 
-	enum VerticalAlignment { kVAlignTop, kVAlignMiddle, kVAlignBottom };
+	enum VerticalAlignment { k_v_align_top, k_v_align_middle, k_v_align_bottom };
 
-	VerticalAlignment GetVerticalAlignment() const
+	VerticalAlignment get_vertical_alignment() const
 	{
 		return static_cast<VerticalAlignment>(
-			GetStandardValue(kVerticalAlignmentInput).toInt());
+			get_standard_value(k_vertical_alignment_input).toInt());
 	}
 
-	static Qt::Alignment GetQtAlignmentFromOurs(VerticalAlignment v);
-	static VerticalAlignment GetOurAlignmentFromQts(Qt::Alignment v);
+	static Qt::Alignment get_qt_alignment_from_ours(VerticalAlignment v);
+	static VerticalAlignment get_our_alignment_from_qts(Qt::Alignment v);
 
-	static const QString kTextInput;
-	static const QString kVerticalAlignmentInput;
-	static const QString kUseArgsInput;
-	static const QString kArgsInput;
+	static const QString k_text_input;
+	static const QString k_vertical_alignment_input;
+	static const QString k_use_args_input;
+	static const QString k_args_input;
 
-	static QString FormatString(const QString &input, const QStringList &args);
+	static QString format_string(const QString &input, const QStringList &args);
 
 protected:
 	virtual void InputValueChangedEvent(const QString &input,
@@ -79,11 +79,11 @@ private:
 	bool dont_emit_valign_;
 
 private slots:
-	void GizmoActivated();
-	void GizmoDeactivated();
-	void SetVerticalAlignmentUndoable(Qt::Alignment a);
+	void gizmo_activated();
+	void gizmo_deactivated();
+	void set_vertical_alignment_undoable(Qt::Alignment a);
 };
 
 }
 
-#endif // TEXTGENERATORV3_H
+#endif // OAK_TEXTGENERATORV3_H

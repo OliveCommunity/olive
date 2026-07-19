@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PROJECTSERIALIZER230220_H
-#define PROJECTSERIALIZER230220_H
+#ifndef OAK_PROJECTSERIALIZER230220_H
+#define OAK_PROJECTSERIALIZER230220_H
 
 #include "serializer.h"
 
@@ -32,22 +32,22 @@ public:
 	ProjectSerializer230220() = default;
 
 protected:
-	virtual LoadData Load(Project *project, QXmlStreamReader *reader,
+	virtual LoadData load(Project *project, QXmlStreamReader *reader,
 						  LoadType load_type, void *reserved) const override;
 
-	virtual void Save(QXmlStreamWriter *writer, const SaveData &data,
+	virtual void save(QXmlStreamWriter *writer, const SaveData &data,
 					  void *reserved) const override;
 
-	virtual uint Version() const override
+	virtual uint version() const override
 	{
 		return 230220;
 	}
 
 private:
-	void PostConnect(const QVector<Node *> &nodes,
+	void post_connect(const QVector<Node *> &nodes,
 					 SerializedData *project_data) const;
 };
 
 }
 
-#endif // PROJECTSERIALIZER230220_H
+#endif // OAK_PROJECTSERIALIZER230220_H

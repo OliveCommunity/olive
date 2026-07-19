@@ -16,10 +16,10 @@ class TestNode final : public olive::Node {
 public:
 	TestNode()
 	{
-		AddInput(QStringLiteral("Value"), olive::NodeValue::kFloat);
+		add_input(QStringLiteral("Value"), olive::NodeValue::k_float);
 		olive::SplitValue value;
 		value.append(3.5);
-		SetSplitStandardValue(QStringLiteral("Value"), value, -1);
+		set_split_standard_value(QStringLiteral("Value"), value, -1);
 	}
 
 	TestNode *copy() const override
@@ -27,7 +27,7 @@ public:
 		return new TestNode();
 	}
 
-	QString Name() const override
+	QString name() const override
 	{
 		return QStringLiteral("TestNode");
 	}
@@ -37,17 +37,17 @@ public:
 		return QStringLiteral("org.olivevideoeditor.TestNode");
 	}
 
-	QVector<CategoryID> Category() const override
+	QVector<CategoryID> category() const override
 	{
-		return { kCategoryUnknown };
+		return { k_category_unknown };
 	}
 
-	QString Description() const override
+	QString description() const override
 	{
 		return QStringLiteral("Test node for serialization");
 	}
 
-	void Value(const olive::NodeValueRow &, const olive::NodeGlobals &,
+	void value(const olive::NodeValueRow &, const olive::NodeGlobals &,
 			   olive::NodeValueTable *) const override
 	{
 	}
@@ -59,12 +59,12 @@ TEST(NodeSerialization, SaveAndLoadInput)
 	const bool created_disk_manager =
 		(olive::DiskManager::instance() == nullptr);
 	if (created_disk_manager) {
-		olive::DiskManager::CreateInstance();
+		olive::DiskManager::create_instance();
 	}
 
 	TestNode node;
-	node.SetLabel(QStringLiteral("MyNode"));
-	node.SetOverrideColor(2);
+	node.set_label(QStringLiteral("MyNode"));
+	node.set_override_color(2);
 
 	QByteArray xml;
 	QBuffer buffer(&xml);
@@ -72,7 +72,7 @@ TEST(NodeSerialization, SaveAndLoadInput)
 	QXmlStreamWriter writer(&buffer);
 	writer.writeStartDocument();
 	writer.writeStartElement(QStringLiteral("node"));
-	node.Save(&writer);
+	node.save(&writer);
 	writer.writeEndElement();
 	writer.writeEndDocument();
 	buffer.close();
@@ -84,16 +84,16 @@ TEST(NodeSerialization, SaveAndLoadInput)
 	QXmlStreamReader reader(&read_buffer);
 	EXPECT_TRUE(reader.readNextStartElement());
 	EXPECT_EQ(reader.name().toString(), QStringLiteral("node"));
-	EXPECT_TRUE(loaded.Load(&reader, &data));
+	EXPECT_TRUE(loaded.load(&reader, &data));
 
-	EXPECT_EQ(loaded.GetLabel(), QStringLiteral("MyNode"));
-	EXPECT_EQ(loaded.GetOverrideColor(), 2);
-	EXPECT_DOUBLE_EQ(loaded.GetSplitStandardValue(QStringLiteral("Value"), -1)
+	EXPECT_EQ(loaded.get_label(), QStringLiteral("MyNode"));
+	EXPECT_EQ(loaded.get_override_color(), 2);
+	EXPECT_DOUBLE_EQ(loaded.get_split_standard_value(QStringLiteral("Value"), -1)
 						 .first()
 						 .toDouble(),
 					 3.5);
 
 	if (created_disk_manager) {
-		olive::DiskManager::DestroyInstance();
+		olive::DiskManager::destroy_instance();
 	}
 }

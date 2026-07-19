@@ -38,7 +38,7 @@ namespace olive
  * If the mask is zero, fall back to a default layout derived from the
  * channel count (stereo when unknown).
  */
-static AudioParams FixChannelLayout(const AudioParams &params)
+static AudioParams fix_channel_layout(const AudioParams &params)
 {
 	AudioParams result = params;
 
@@ -66,10 +66,10 @@ AudioProcessor::AudioProcessor()
 
 AudioProcessor::~AudioProcessor()
 {
-	Close();
+	close();
 }
 
-bool AudioProcessor::Open(const AudioParams &from, const AudioParams &to,
+bool AudioProcessor::open(const AudioParams &from, const AudioParams &to,
 						  double tempo)
 {
 	if (graph_) {
@@ -77,8 +77,8 @@ bool AudioProcessor::Open(const AudioParams &from, const AudioParams &to,
 		return false;
 	}
 
-	AudioParams from_fixed = FixChannelLayout(from);
-	AudioParams to_fixed = FixChannelLayout(to);
+	AudioParams from_fixed = fix_channel_layout(from);
+	AudioParams to_fixed = fix_channel_layout(to);
 
 	qDebug() << "AudioProcessor::Open: from sample_rate="
 			 << from_fixed.sample_rate() << "channels="
@@ -92,13 +92,13 @@ bool AudioProcessor::Open(const AudioParams &from, const AudioParams &to,
 	config.in_sample_rate = from_fixed.sample_rate();
 	config.in_channel_layout_mask = from_fixed.channel_layout();
 	config.in_sample_format =
-		FFmpegUtils::GetFFmpegSampleFormat(from_fixed.format());
+		FFmpegUtils::get_f_fmpeg_sample_format(from_fixed.format());
 	config.in_channels = from_fixed.channel_count();
 
 	config.out_sample_rate = to_fixed.sample_rate();
 	config.out_channel_layout_mask = to_fixed.channel_layout();
 	config.out_sample_format =
-		FFmpegUtils::GetFFmpegSampleFormat(to_fixed.format());
+		FFmpegUtils::get_f_fmpeg_sample_format(to_fixed.format());
 	config.out_channels = to_fixed.channel_count();
 	config.out_is_planar = to_fixed.format().is_planar() ? 1 : 0;
 
@@ -113,7 +113,7 @@ bool AudioProcessor::Open(const AudioParams &from, const AudioParams &to,
 	out_frame_ = fb_frame_alloc();
 	if (!out_frame_) {
 		qCritical() << "Failed to allocate output frame";
-		Close();
+		close();
 		return false;
 	}
 
@@ -123,7 +123,7 @@ bool AudioProcessor::Open(const AudioParams &from, const AudioParams &to,
 	return true;
 }
 
-void AudioProcessor::Close()
+void AudioProcessor::close()
 {
 	if (graph_) {
 		fb_audio_graph_free(&graph_);
@@ -134,10 +134,10 @@ void AudioProcessor::Close()
 	}
 }
 
-int AudioProcessor::Convert(float **in, int nb_in_samples,
+int AudioProcessor::convert(float **in, int nb_in_samples,
 							AudioProcessor::Buffer *output)
 {
-	if (!IsOpen()) {
+	if (!is_open()) {
 		qCritical() << "Tried to convert on closed processor";
 		return -1;
 	}
@@ -197,7 +197,7 @@ int AudioProcessor::Convert(float **in, int nb_in_samples,
 	return r;
 }
 
-void AudioProcessor::Flush()
+void AudioProcessor::flush()
 {
 	int r = fb_audio_graph_push(graph_, nullptr, 0);
 	if (r < 0) {

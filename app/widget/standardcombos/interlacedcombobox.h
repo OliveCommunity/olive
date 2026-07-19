@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef INTERLACEDCOMBOBOX_H
-#define INTERLACEDCOMBOBOX_H
+#ifndef OAK_INTERLACEDCOMBOBOX_H
+#define OAK_INTERLACEDCOMBOBOX_H
 
 #include <QComboBox>
 
@@ -41,12 +41,12 @@ public:
 		this->addItem(tr("Bottom-Field First"));
 	}
 
-	VideoParams::Interlacing GetInterlaceMode() const
+	VideoParams::Interlacing get_interlace_mode() const
 	{
 		return static_cast<VideoParams::Interlacing>(this->currentIndex());
 	}
 
-	void SetInterlaceMode(VideoParams::Interlacing mode)
+	void set_interlace_mode(VideoParams::Interlacing mode)
 	{
 		this->setCurrentIndex(mode);
 	}
@@ -54,4 +54,4 @@ public:
 
 }
 
-#endif // INTERLACEDCOMBOBOX_H
+#endif // OAK_INTERLACEDCOMBOBOX_H

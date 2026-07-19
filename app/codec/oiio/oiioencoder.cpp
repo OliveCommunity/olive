@@ -31,21 +31,21 @@ OIIOEncoder::OIIOEncoder(const EncodingParams &params)
 {
 }
 
-bool OIIOEncoder::Open()
+bool OIIOEncoder::open()
 {
 	return true;
 }
 
-bool OIIOEncoder::WriteFrame(FramePtr frame, rational time)
+bool OIIOEncoder::write_frame(FramePtr frame, Rational time)
 {
-	std::string filename = GetFilenameForFrame(time).toStdString();
+	std::string filename = get_filename_for_frame(time).toStdString();
 
 	auto output = OIIO::ImageOutput::create(filename);
 	if (!output) {
 		return false;
 	}
 
-	OIIO::TypeDesc type = OIIOUtils::GetOIIOBaseTypeFromFormat(frame->format());
+	OIIO::TypeDesc type = OIIOUtils::get_oiio_base_type_from_format(frame->format());
 	OIIO::ImageSpec spec(frame->width(), frame->height(),
 						 frame->channel_count(), type);
 
@@ -65,18 +65,18 @@ bool OIIOEncoder::WriteFrame(FramePtr frame, rational time)
 	return true;
 }
 
-bool OIIOEncoder::WriteAudio(const SampleBuffer &audio)
+bool OIIOEncoder::write_audio(const SampleBuffer &audio)
 {
 	// Do nothing
 	return false;
 }
 
-bool OIIOEncoder::WriteSubtitle(const SubtitleBlock *sub_block)
+bool OIIOEncoder::write_subtitle(const SubtitleBlock *sub_block)
 {
 	return false;
 }
 
-void OIIOEncoder::Close()
+void OIIOEncoder::close()
 {
 	// Do nothing
 }

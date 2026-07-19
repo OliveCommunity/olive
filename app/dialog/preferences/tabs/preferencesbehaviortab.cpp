@@ -36,8 +36,8 @@ PreferencesBehaviorTab::PreferencesBehaviorTab(Category category)
 	layout->setAlignment(Qt::AlignTop);
 
 	switch (category_) {
-	case kCategoryTimeline:
-		AddItems({
+	case k_category_timeline:
+		add_items({
 			{ tr("Auto-Seek to Imported Clips"),
 			  QStringLiteral("EnableSeekToImport") },
 			{ tr("Edit Tool Also Seeks"), QStringLiteral("EditToolAlsoSeeks") },
@@ -54,8 +54,8 @@ PreferencesBehaviorTab::PreferencesBehaviorTab(Category category)
 		});
 		break;
 
-	case kCategoryPlayback:
-		AddItems({
+	case k_category_playback:
+		add_items({
 			{ tr("Ask For Name When Setting Marker"),
 			  QStringLiteral("SetNameWithMarker") },
 			{ tr("Automatically rewind at the end of a sequence"),
@@ -63,13 +63,13 @@ PreferencesBehaviorTab::PreferencesBehaviorTab(Category category)
 		});
 		break;
 
-	case kCategoryProject:
-		AddItem(tr("Drop Files on Media to Replace"),
+	case k_category_project:
+		add_item(tr("Drop Files on Media to Replace"),
 				QStringLiteral("DropFileOnMediaToReplace"));
 		break;
 
-	case kCategoryNodes:
-		AddItems({
+	case k_category_nodes:
+		add_items({
 			{ tr("Add Default Effects to New Clips"),
 			  QStringLiteral("AddDefaultEffectsToClips") },
 			{ tr("Auto-Scale By Default"),
@@ -82,7 +82,7 @@ PreferencesBehaviorTab::PreferencesBehaviorTab(Category category)
 		});
 		break;
 
-	case kCategoryRendering: {
+	case k_category_rendering: {
 		QLabel *backend_label = new QLabel(tr("Graphics Backend"));
 		backend_label->setToolTip(
 			tr("Selects the graphics API Oak should request on next launch. "
@@ -96,7 +96,7 @@ PreferencesBehaviorTab::PreferencesBehaviorTab(Category category)
 		graphics_backend_combobox_->addItem(tr("Vulkan (experimental)"),
 											QStringLiteral("vulkan"));
 		const QString current_backend =
-			OLIVE_CONFIG("GraphicsBackend").toString().toLower();
+			OAK_CONFIG("GraphicsBackend").toString().toLower();
 		const int backend_index = graphics_backend_combobox_->findData(
 			current_backend.isEmpty() ? QStringLiteral("opengl") :
 										current_backend);
@@ -108,40 +108,40 @@ PreferencesBehaviorTab::PreferencesBehaviorTab(Category category)
 		backend_layout->addWidget(graphics_backend_combobox_, 1);
 		layout->addLayout(backend_layout);
 
-		AddItem(tr("Use glFinish"), QStringLiteral("UseGLFinish"));
+		add_item(tr("Use glFinish"), QStringLiteral("UseGLFinish"));
 		break;
 	}
 	}
 }
 
-void PreferencesBehaviorTab::Accept(MultiUndoCommand *command)
+void PreferencesBehaviorTab::accept(MultiUndoCommand *command)
 {
 	Q_UNUSED(command)
 
 	for (auto it = config_map_.cbegin(); it != config_map_.cend(); ++it) {
-		OLIVE_CONFIG_STR(it.value()) = it.key()->isChecked();
+		OAK_CONFIG_STR(it.value()) = it.key()->isChecked();
 	}
 
 	if (graphics_backend_combobox_) {
-		OLIVE_CONFIG("GraphicsBackend") =
+		OAK_CONFIG("GraphicsBackend") =
 			graphics_backend_combobox_->currentData().toString();
 	}
 }
 
-void PreferencesBehaviorTab::AddItems(const QVector<Item> &items)
+void PreferencesBehaviorTab::add_items(const QVector<Item> &items)
 {
 	for (const Item &i : items) {
-		AddItem(i.text, i.config_key, i.tooltip);
+		add_item(i.text, i.config_key, i.tooltip);
 	}
 }
 
-QCheckBox *PreferencesBehaviorTab::AddItem(const QString &text,
+QCheckBox *PreferencesBehaviorTab::add_item(const QString &text,
 										   const QString &config_key,
 										   const QString &tooltip)
 {
 	QCheckBox *checkbox = new QCheckBox(text);
 	checkbox->setToolTip(tooltip);
-	checkbox->setChecked(OLIVE_CONFIG_STR(config_key).toBool());
+	checkbox->setChecked(OAK_CONFIG_STR(config_key).toBool());
 
 	config_map_.insert(checkbox, config_key);
 

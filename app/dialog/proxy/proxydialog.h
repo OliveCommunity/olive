@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef PROXYDIALOG_H
-#define PROXYDIALOG_H
+#ifndef OAK_PROXYDIALOG_H
+#define OAK_PROXYDIALOG_H
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -39,36 +39,36 @@ public:
 
 	virtual void accept() override;
 
-	int ProxyWidth() const;
+	int proxy_width() const;
 
-	int ProxyHeight() const;
+	int proxy_height() const;
 
-	int ProxyCRF() const;
+	int proxy_crf() const;
 
-	QString ProxyPreset() const;
+	QString proxy_preset() const;
 
-	bool ProxyIncludeAudio() const;
+	bool proxy_include_audio() const;
 
-	QString FFmpegPath() const;
+	QString f_fmpeg_path() const;
 
-	void SetProxyWidth(int width);
+	void set_proxy_width(int width);
 
-	void SetProxyHeight(int height);
+	void set_proxy_height(int height);
 
-	void SetProxyCRF(int crf);
+	void set_proxy_crf(int crf);
 
-	void SetProxyPreset(const QString &preset);
+	void set_proxy_preset(const QString &preset);
 
-	void SetProxyIncludeAudio(bool include_audio);
+	void set_proxy_include_audio(bool include_audio);
 
-	void SetFFmpegPath(const QString &path);
+	void set_f_fmpeg_path(const QString &path);
 
 private:
-	ProxyManager::ProxyParams CurrentParams() const;
+	ProxyManager::ProxyParams current_params() const;
 
-	void SaveGlobalSettings();
+	void save_global_settings();
 
-	void RefreshFootageList();
+	void refresh_footage_list();
 
 	QVector<Footage *> footage_;
 
@@ -89,13 +89,13 @@ private:
 	QLineEdit *ffmpeg_path_edit_;
 
 private slots:
-	void GenerateProxies();
+	void generate_proxies();
 
-	void DeleteProxies();
+	void delete_proxies();
 
-	void BrowseForFFmpeg();
+	void browse_for_f_fmpeg();
 };
 
 }
 
-#endif // PROXYDIALOG_H
+#endif // OAK_PROXYDIALOG_H

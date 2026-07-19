@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TRACKVIEW_H
-#define TRACKVIEW_H
+#ifndef OAK_TRACKVIEW_H
+#define OAK_TRACKVIEW_H
 
 #include <QScrollArea>
 #include <QSplitter>
@@ -38,11 +38,11 @@ public:
 	TrackView(Qt::Alignment vertical_alignment = Qt::AlignTop,
 			  QWidget *parent = nullptr);
 
-	void ConnectTrackList(TrackList *list);
-	void DisconnectTrackList();
+	void connect_track_list(TrackList *list);
+	void disconnect_track_list();
 
 signals:
-	void AboutToDeleteTrack(Track *track);
+	void about_to_delete_track(Track *track);
 
 protected:
 	virtual void resizeEvent(QResizeEvent *e) override;
@@ -57,15 +57,15 @@ private:
 	int last_scrollbar_max_;
 
 private slots:
-	void ScrollbarRangeChanged(int min, int max);
+	void scrollbar_range_changed(int min, int max);
 
-	void TrackHeightChanged(int index, int height);
+	void track_height_changed(int index, int height);
 
-	void InsertTrack(Track *track);
+	void insert_track(Track *track);
 
-	void RemoveTrack(Track *track);
+	void remove_track(Track *track);
 };
 
 }
 
-#endif // TRACKVIEW_H
+#endif // OAK_TRACKVIEW_H

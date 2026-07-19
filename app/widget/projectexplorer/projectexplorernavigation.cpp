@@ -43,7 +43,7 @@ ProjectExplorerNavigation::ProjectExplorerNavigation(QWidget *parent)
 	dir_up_btn_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Preferred);
 	layout->addWidget(dir_up_btn_);
 	connect(dir_up_btn_, SIGNAL(clicked(bool)), this,
-			SIGNAL(DirectoryUpClicked()));
+			SIGNAL(directory_up_clicked()));
 
 	// Create directory tree label
 	dir_lbl_ = new QLabel(this);
@@ -56,10 +56,10 @@ ProjectExplorerNavigation::ProjectExplorerNavigation(QWidget *parent)
 	size_slider_->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
 	layout->addWidget(size_slider_);
 	connect(size_slider_, SIGNAL(valueChanged(int)), this,
-			SIGNAL(SizeChanged(int)));
+			SIGNAL(size_changed(int)));
 
-	Retranslate();
-	UpdateIcons();
+	retranslate();
+	update_icons();
 }
 
 void ProjectExplorerNavigation::set_text(const QString &s)
@@ -80,24 +80,24 @@ void ProjectExplorerNavigation::set_size_value(int s)
 void ProjectExplorerNavigation::changeEvent(QEvent *e)
 {
 	if (e->type() == QEvent::LanguageChange) {
-		Retranslate();
+		retranslate();
 	} else if (e->type() == QEvent::StyleChange) {
-		UpdateIcons();
+		update_icons();
 	}
 	QWidget::changeEvent(e);
 }
 
-void ProjectExplorerNavigation::Retranslate()
+void ProjectExplorerNavigation::retranslate()
 {
 	dir_up_btn_->setToolTip(tr("Go to parent folder"));
 }
 
-void ProjectExplorerNavigation::UpdateIcons()
+void ProjectExplorerNavigation::update_icons()
 {
-	dir_up_btn_->setIcon(icon::DirUp);
-	size_slider_->setMinimum(kProjectIconSizeMinimum);
-	size_slider_->setMaximum(kProjectIconSizeMaximum);
-	size_slider_->setValue(kProjectIconSizeDefault);
+	dir_up_btn_->setIcon(icon::dir_up);
+	size_slider_->setMinimum(k_project_icon_size_minimum);
+	size_slider_->setMaximum(k_project_icon_size_maximum);
+	size_slider_->setValue(k_project_icon_size_default);
 }
 
 }

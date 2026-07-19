@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLORVALUESWIDGET_H
-#define COLORVALUESWIDGET_H
+#ifndef OAK_COLORVALUESWIDGET_H
+#define OAK_COLORVALUESWIDGET_H
 
 #include <QCheckBox>
 #include <QPushButton>
@@ -39,29 +39,29 @@ class ColorValuesTab : public QWidget {
 public:
 	ColorValuesTab(bool with_legacy_option = false, QWidget *parent = nullptr);
 
-	Color GetColor() const;
+	Color get_color() const;
 
-	void SetColor(const Color &c);
+	void set_color(const Color &c);
 
-	double GetRed() const;
-	double GetGreen() const;
-	double GetBlue() const;
-	void SetRed(double r);
-	void SetGreen(double g);
-	void SetBlue(double b);
+	double get_red() const;
+	double get_green() const;
+	double get_blue() const;
+	void set_red(double r);
+	void set_green(double g);
+	void set_blue(double b);
 
 signals:
-	void ColorChanged(const Color &c);
+	void color_changed(const Color &c);
 
 private:
-	static const double kLegacyMultiplier;
+	static const double k_legacy_multiplier;
 
-	double GetValueInternal(FloatSlider *slider) const;
-	void SetValueInternal(FloatSlider *slider, double v);
+	double get_value_internal(FloatSlider *slider) const;
+	void set_value_internal(FloatSlider *slider, double v);
 
-	bool AreSlidersLegacyValues() const;
+	bool are_sliders_legacy_values() const;
 
-	FloatSlider *CreateColorSlider();
+	FloatSlider *create_color_slider();
 
 	FloatSlider *red_slider_;
 	FloatSlider *green_slider_;
@@ -75,13 +75,13 @@ private:
 	QCheckBox *legacy_box_;
 
 private slots:
-	void SliderChanged();
+	void slider_changed();
 
-	void LegacyChanged(bool e);
+	void legacy_changed(bool e);
 
-	void UpdateHex();
+	void update_hex();
 
-	void HexChanged(const QString &s);
+	void hex_changed(const QString &s);
 };
 
 class ColorValuesWidget : public QWidget {
@@ -89,36 +89,36 @@ class ColorValuesWidget : public QWidget {
 public:
 	ColorValuesWidget(ColorManager *manager, QWidget *parent = nullptr);
 
-	Color GetColor() const;
+	Color get_color() const;
 
-	void SetColorProcessor(ColorProcessorPtr input_to_ref,
+	void set_color_processor(ColorProcessorPtr input_to_ref,
 						   ColorProcessorPtr ref_to_display,
 						   ColorProcessorPtr display_to_ref,
 						   ColorProcessorPtr ref_to_input);
 
 	virtual bool eventFilter(QObject *watcher, QEvent *event) override;
 
-	void IgnorePickFrom(QWidget *w)
+	void ignore_pick_from(QWidget *w)
 	{
 		ignore_pick_from_.append(w);
 	}
 
 public slots:
-	void SetColor(const Color &c);
+	void set_color(const Color &c);
 
-	void SetReferenceColor(const Color &c);
+	void set_reference_color(const Color &c);
 
 signals:
-	void ColorChanged(const Color &c);
+	void color_changed(const Color &c);
 
 private:
-	void UpdateInputFromRef();
+	void update_input_from_ref();
 
-	void UpdateDisplayFromRef();
+	void update_display_from_ref();
 
-	void UpdateRefFromInput();
+	void update_ref_from_input();
 
-	void UpdateRefFromDisplay();
+	void update_ref_from_display();
 
 	ColorManager *manager_;
 
@@ -145,15 +145,15 @@ private:
 	QVector<QWidget *> ignore_pick_from_;
 
 private slots:
-	void UpdateValuesFromInput();
+	void update_values_from_input();
 
-	void UpdateValuesFromRef();
+	void update_values_from_ref();
 
-	void UpdateValuesFromDisplay();
+	void update_values_from_display();
 
-	void ColorPickedBtnToggled(bool e);
+	void color_picked_btn_toggled(bool e);
 };
 
 }
 
-#endif // COLORVALUESWIDGET_H
+#endif // OAK_COLORVALUESWIDGET_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef LIBOLIVECORE_BEZIER_H
-#define LIBOLIVECORE_BEZIER_H
+#ifndef OAK_LIBOLIVECORE_BEZIER_H
+#define OAK_LIBOLIVECORE_BEZIER_H
 
 #include <Imath/ImathVec.h>
 
@@ -99,28 +99,28 @@ public:
 		cp2_y_ = cp2_y;
 	}
 
-	static double QuadraticXtoT(double x, double a, double b, double c);
+	static double quadratic_xto_t(double x, double a, double b, double c);
 
-	static double QuadraticTtoY(double a, double b, double c, double t);
+	static double quadratic_tto_y(double a, double b, double c, double t);
 
-	static double QuadraticXtoY(double x, const Imath::V2d &a,
+	static double quadratic_xto_y(double x, const Imath::V2d &a,
 								const Imath::V2d &b, const Imath::V2d &c)
 	{
-		return QuadraticTtoY(a.y, b.y, c.y, QuadraticXtoT(x, a.x, b.x, c.x));
+		return quadratic_tto_y(a.y, b.y, c.y, quadratic_xto_t(x, a.x, b.x, c.x));
 	}
 
-	static double CubicXtoT(double x, double a, double b, double c, double d);
+	static double cubic_xto_t(double x, double a, double b, double c, double d);
 
-	static double CubicTtoY(double a, double b, double c, double d, double t);
+	static double cubic_tto_y(double a, double b, double c, double d, double t);
 
-	static double CubicXtoY(double x, const Imath::V2d &a, const Imath::V2d &b,
+	static double cubic_xto_y(double x, const Imath::V2d &a, const Imath::V2d &b,
 							const Imath::V2d &c, const Imath::V2d &d)
 	{
-		return CubicTtoY(a.y, b.y, c.y, d.y, CubicXtoT(x, a.x, b.x, c.x, d.x));
+		return cubic_tto_y(a.y, b.y, c.y, d.y, cubic_xto_t(x, a.x, b.x, c.x, d.x));
 	}
 
 private:
-	static double CalculateTFromX(bool cubic, double x, double a, double b,
+	static double calculate_t_from_x(bool cubic, double x, double a, double b,
 								  double c, double d);
 
 	double x_;
@@ -135,4 +135,4 @@ private:
 
 }
 
-#endif // LIBOLIVECORE_BEZIER_H
+#endif // OAK_LIBOLIVECORE_BEZIER_H

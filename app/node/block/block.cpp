@@ -31,39 +31,39 @@ namespace olive
 
 #define super Node
 
-const QString Block::kLengthInput = QStringLiteral("length_in");
+const QString Block::k_length_input = QStringLiteral("length_in");
 
 Block::Block()
 	: previous_(nullptr)
 	, next_(nullptr)
 	, track_(nullptr)
 {
-	AddInput(kLengthInput, NodeValue::kRational,
-			 InputFlags(kInputFlagNotConnectable | kInputFlagNotKeyframable |
-						kInputFlagHidden));
-	SetInputProperty(kLengthInput, QStringLiteral("min"),
-					 QVariant::fromValue(rational(0, 1)));
-	SetInputProperty(kLengthInput, QStringLiteral("view"),
-					 RationalSlider::kTime);
-	SetInputProperty(kLengthInput, QStringLiteral("viewlock"), true);
+	add_input(k_length_input, NodeValue::k_rational,
+			 InputFlags(k_input_flag_not_connectable | k_input_flag_not_keyframable |
+						k_input_flag_hidden));
+	set_input_property(k_length_input, QStringLiteral("min"),
+					 QVariant::fromValue(Rational(0, 1)));
+	set_input_property(k_length_input, QStringLiteral("view"),
+					 RationalSlider::k_time);
+	set_input_property(k_length_input, QStringLiteral("viewlock"), true);
 
-	SetInputFlag(kEnabledInput, kInputFlagNotConnectable);
-	SetInputFlag(kEnabledInput, kInputFlagNotKeyframable);
+	set_input_flag(k_enabled_input, k_input_flag_not_connectable);
+	set_input_flag(k_enabled_input, k_input_flag_not_keyframable);
 
-	SetFlag(kDontShowInParamView);
+	set_flag(k_dont_show_in_param_view);
 }
 
-QVector<Node::CategoryID> Block::Category() const
+QVector<Node::CategoryID> Block::category() const
 {
-	return { kCategoryTimeline };
+	return { k_category_timeline };
 }
 
-rational Block::length() const
+Rational Block::length() const
 {
-	return GetStandardValue(kLengthInput).value<rational>();
+	return get_standard_value(k_length_input).value<Rational>();
 }
 
-void Block::set_length_and_media_out(const rational &length)
+void Block::set_length_and_media_out(const Rational &length)
 {
 	if (length == this->length()) {
 		return;
@@ -72,7 +72,7 @@ void Block::set_length_and_media_out(const rational &length)
 	set_length_internal(length);
 }
 
-void Block::set_length_and_media_in(const rational &length)
+void Block::set_length_and_media_in(const Rational &length)
 {
 	if (length == this->length()) {
 		return;
@@ -84,50 +84,50 @@ void Block::set_length_and_media_in(const rational &length)
 
 bool Block::is_enabled() const
 {
-	return GetStandardValue(kEnabledInput).toBool();
+	return get_standard_value(k_enabled_input).toBool();
 }
 
 void Block::set_enabled(bool e)
 {
-	SetStandardValue(kEnabledInput, e);
+	set_standard_value(k_enabled_input, e);
 
-	emit EnabledChanged();
+	emit enabled_changed();
 }
 
 void Block::InputValueChangedEvent(const QString &input, int element)
 {
 	super::InputValueChangedEvent(input, element);
 
-	if (input == kLengthInput) {
-		emit LengthChanged();
-	} else if (input == kEnabledInput) {
-		emit EnabledChanged();
+	if (input == k_length_input) {
+		emit length_changed();
+	} else if (input == k_enabled_input) {
+		emit enabled_changed();
 	}
 }
 
-void Block::set_length_internal(const rational &length)
+void Block::set_length_internal(const Rational &length)
 {
-	SetStandardValue(kLengthInput, QVariant::fromValue(length));
+	set_standard_value(k_length_input, QVariant::fromValue(length));
 }
 
-void Block::Retranslate()
+void Block::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kLengthInput, tr("Length"));
-	SetInputName(kEnabledInput, tr("Enabled"));
+	set_input_name(k_length_input, tr("Length"));
+	set_input_name(k_enabled_input, tr("Enabled"));
 }
 
-void Block::InvalidateCache(const TimeRange &range, const QString &from,
+void Block::invalidate_cache(const TimeRange &range, const QString &from,
 							int element, InvalidateCacheOptions options)
 {
 	TimeRange r;
 
-	if (from == kLengthInput) {
+	if (from == k_length_input) {
 		// We must intercept the signal here
 		r = TimeRange(qMin(length(), last_length_), RATIONAL_MAX);
 
-		if (!NodeInputDragger::IsInputBeingDragged()) {
+		if (!NodeInputDragger::is_input_being_dragged()) {
 			last_length_ = length();
 		}
 
@@ -136,7 +136,7 @@ void Block::InvalidateCache(const TimeRange &range, const QString &from,
 		r = range;
 	}
 
-	super::InvalidateCache(r, from, element, options);
+	super::invalidate_cache(r, from, element, options);
 }
 
 void Block::set_previous_next(Block *previous, Block *next)

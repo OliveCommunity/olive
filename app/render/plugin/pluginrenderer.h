@@ -21,8 +21,8 @@
 // Created by mikesolar on 25-10-19.
 //
 
-#ifndef PLUGINRENDERER_H
-#define PLUGINRENDERER_H
+#ifndef OAK_PLUGINRENDERER_H
+#define OAK_PLUGINRENDERER_H
 
 #include <QObject>
 
@@ -37,7 +37,7 @@ namespace detail
 {
 // 作用：将字节行跨度转换为像素跨度，便于纹理读写。
 // Purpose: Convert byte stride to pixel stride for texture I/O.
-int BytesToPixels(int byte_linesize, const olive::VideoParams &params);
+int bytes_to_pixels(int byte_linesize, const olive::VideoParams &params);
 }
 // 作用：OFX 插件渲染器，负责 CPU/GL 路径下的插件调用和纹理桥接。
 // Purpose: OFX plugin renderer that drives CPU/GL render paths and texture bridging.
@@ -65,13 +65,13 @@ public:
 
 	// 作用：将目标纹理绑定为插件输出。
 	// Purpose: Attach destination texture as OFX output.
-	void AttachOutputTexture(olive::TexturePtr texture);
+	void attach_output_texture(olive::TexturePtr texture);
 	// 作用：解除目标纹理绑定。
 	// Purpose: Detach destination texture binding.
-	void DetachOutputTexture();
+	void detach_output_texture();
 	// 作用：执行插件渲染流程（参数配置、输入/输出、调用渲染动作）。
 	// Purpose: Execute plugin render flow (params, inputs/outputs, render actions).
-	void RenderPlugin(TexturePtr src, olive::plugin::PluginJob &job,
+	void render_plugin(TexturePtr src, olive::plugin::PluginJob &job,
 					  olive::TexturePtr destination,
 					  olive::VideoParams destination_params,
 					  bool clear_destination, bool interactive);
@@ -82,4 +82,4 @@ private:
 }
 }
 
-#endif //PLUGINRENDERER_H
+#endif //OAK_PLUGINRENDERER_H

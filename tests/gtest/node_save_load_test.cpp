@@ -30,20 +30,20 @@ namespace
 
 // Serializes a single node into a standalone XML document, mirroring how
 // Project::Save wraps Node::Save in a "node" element
-QString SaveNodeXml(const olive::Node *node)
+QString save_node_xml(const olive::Node *node)
 {
 	QString xml;
 	QXmlStreamWriter writer(&xml);
 	writer.writeStartDocument();
 	writer.writeStartElement(QStringLiteral("node"));
-	node->Save(&writer);
+	node->save(&writer);
 	writer.writeEndElement(); // node
 	writer.writeEndDocument();
 	return xml;
 }
 
 // Loads a document produced by SaveNodeXml into an existing node
-bool LoadNodeXml(olive::Node *node, const QString &xml,
+bool load_node_xml(olive::Node *node, const QString &xml,
 				 olive::SerializedData *data)
 {
 	QXmlStreamReader reader(xml);
@@ -53,10 +53,10 @@ bool LoadNodeXml(olive::Node *node, const QString &xml,
 	if (reader.name() != QStringLiteral("node")) {
 		return false;
 	}
-	return node->Load(&reader, data);
+	return node->load(&reader, data);
 }
 
-olive::Node *FindNodeById(olive::Project *project, const QString &id)
+olive::Node *find_node_by_id(olive::Project *project, const QString &id)
 {
 	for (olive::Node *n : project->nodes()) {
 		if (n->id() == id) {
@@ -72,12 +72,12 @@ class CustomDataNode : public olive::Node {
 public:
 	CustomDataNode()
 	{
-		AddInput(QStringLiteral("Value"), olive::NodeValue::kFloat);
+		add_input(QStringLiteral("Value"), olive::NodeValue::k_float);
 	}
 
 	NODE_DEFAULT_FUNCTIONS(CustomDataNode)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return QStringLiteral("CustomDataNode");
 	}
@@ -87,34 +87,34 @@ public:
 		return QStringLiteral("org.oak.test.customdatanode");
 	}
 
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
-		return { kCategoryUnknown };
+		return { k_category_unknown };
 	}
 
-	virtual QString Description() const override
+	virtual QString description() const override
 	{
 		return QStringLiteral("Node with custom serialized data");
 	}
 
-	void Value(const olive::NodeValueRow &, const olive::NodeGlobals &,
+	void value(const olive::NodeValueRow &, const olive::NodeGlobals &,
 			   olive::NodeValueTable *) const override
 	{
 	}
 
-	virtual void SaveCustom(QXmlStreamWriter *writer) const override
+	virtual void save_custom(QXmlStreamWriter *writer) const override
 	{
-		writer->writeTextElement(QStringLiteral("greeting"), greeting_);
+		writer->writeTextElement(QStringLiteral("greeting"), greeting);
 	}
 
-	virtual bool LoadCustom(QXmlStreamReader *reader,
+	virtual bool load_custom(QXmlStreamReader *reader,
 							olive::SerializedData *data) override
 	{
 		Q_UNUSED(data)
 
-		while (olive::XMLReadNextStartElement(reader)) {
+		while (olive::xml_read_next_start_element(reader)) {
 			if (reader->name() == QStringLiteral("greeting")) {
-				greeting_ = reader->readElementText();
+				greeting = reader->readElementText();
 			} else if (reader->name() == QStringLiteral("explode")) {
 				reader->skipCurrentElement();
 				return false;
@@ -128,11 +128,11 @@ public:
 
 	virtual void LoadFinishedEvent() override
 	{
-		load_finished_called_ = true;
+		load_finished_called = true;
 	}
 
-	QString greeting_;
-	bool load_finished_called_ = false;
+	QString greeting;
+	bool load_finished_called = false;
 };
 
 } // namespace
@@ -141,7 +141,7 @@ class NodeSaveLoadTest : public ::testing::Test {
 protected:
 	void SetUp() override
 	{
-		olive::ColorManager::SetUpDefaultConfig();
+		olive::ColorManager::set_up_default_config();
 
 		// Cache UUID changes resolve a cache path through the DiskManager
 		// singleton, which itself touches Core (same pattern as
@@ -150,14 +150,14 @@ protected:
 			new olive::Core(olive::Core::CoreParams()); // intentionally leaked
 		}
 		if (!olive::DiskManager::instance()) {
-			olive::DiskManager::CreateInstance();
+			olive::DiskManager::create_instance();
 		}
 
 		project_ = std::make_unique<olive::Project>();
-		project_->Initialize();
+		project_->initialize();
 	}
 
-	template <typename T> T *AddNode()
+	template <typename T> T *add_node()
 	{
 		T *node = new T();
 		node->setParent(project_.get());
@@ -169,80 +169,80 @@ protected:
 
 TEST_F(NodeSaveLoadTest, StandardValuesLabelAndColorRoundTrip)
 {
-	auto *src = AddNode<olive::MathNode>();
-	src->SetLabel(QStringLiteral("Labeled"));
-	src->SetOverrideColor(3);
-	src->SetStandardValue(olive::MathNode::kParamAIn, 3.5);
-	src->SetStandardValue(olive::MathNode::kParamBIn, -2.25);
-	src->SetOperation(olive::MathNode::kOpMultiply);
+	auto *src = add_node<olive::MathNode>();
+	src->set_label(QStringLiteral("Labeled"));
+	src->set_override_color(3);
+	src->set_standard_value(olive::MathNode::k_param_a_in, 3.5);
+	src->set_standard_value(olive::MathNode::k_param_b_in, -2.25);
+	src->set_operation(olive::MathNode::k_op_multiply);
 
-	const QString xml = SaveNodeXml(src);
+	const QString xml = save_node_xml(src);
 	EXPECT_TRUE(xml.contains(QStringLiteral("version=\"1\"")));
 	EXPECT_TRUE(xml.contains(
 		QStringLiteral("id=\"org.olivevideoeditor.Olive.math\"")));
 
 	olive::MathNode loaded;
 	olive::SerializedData data;
-	ASSERT_TRUE(LoadNodeXml(&loaded, xml, &data));
+	ASSERT_TRUE(load_node_xml(&loaded, xml, &data));
 
-	EXPECT_EQ(loaded.GetLabel(), QStringLiteral("Labeled"));
-	EXPECT_EQ(loaded.GetOverrideColor(), 3);
+	EXPECT_EQ(loaded.get_label(), QStringLiteral("Labeled"));
+	EXPECT_EQ(loaded.get_override_color(), 3);
 	EXPECT_DOUBLE_EQ(
-		loaded.GetStandardValue(olive::MathNode::kParamAIn).toDouble(), 3.5);
+		loaded.get_standard_value(olive::MathNode::k_param_a_in).toDouble(), 3.5);
 	EXPECT_DOUBLE_EQ(
-		loaded.GetStandardValue(olive::MathNode::kParamBIn).toDouble(), -2.25);
-	EXPECT_EQ(int(loaded.GetOperation()), int(olive::MathNode::kOpMultiply));
+		loaded.get_standard_value(olive::MathNode::k_param_b_in).toDouble(), -2.25);
+	EXPECT_EQ(int(loaded.get_operation()), int(olive::MathNode::k_op_multiply));
 
 	// The "ptr" attribute maps the serialized address to the loaded instance
 	EXPECT_EQ(data.node_ptrs.value(reinterpret_cast<quintptr>(src)), &loaded);
 
 	// A non-keyframable input never reports keyframing after load
-	EXPECT_FALSE(loaded.IsInputKeyframing(olive::MathNode::kMethodIn));
+	EXPECT_FALSE(loaded.is_input_keyframing(olive::MathNode::k_method_in));
 }
 
 TEST_F(NodeSaveLoadTest, ArrayElementsAndPerElementKeyframingRoundTrip)
 {
-	auto *src = AddNode<olive::TextGeneratorV3>();
-	src->InputArrayResize(olive::TextGeneratorV3::kArgsInput, 2);
-	src->SetStandardValue(
-		olive::NodeInput(src, olive::TextGeneratorV3::kArgsInput, 0),
+	auto *src = add_node<olive::TextGeneratorV3>();
+	src->input_array_resize(olive::TextGeneratorV3::k_args_input, 2);
+	src->set_standard_value(
+		olive::NodeInput(src, olive::TextGeneratorV3::k_args_input, 0),
 		QStringLiteral("first"));
-	src->SetStandardValue(
-		olive::NodeInput(src, olive::TextGeneratorV3::kArgsInput, 1),
+	src->set_standard_value(
+		olive::NodeInput(src, olive::TextGeneratorV3::k_args_input, 1),
 		QStringLiteral("second"));
 
 	// Only element 1 is keyframed
-	src->SetInputIsKeyframing(olive::TextGeneratorV3::kArgsInput, true, 1);
+	src->set_input_is_keyframing(olive::TextGeneratorV3::k_args_input, true, 1);
 	auto *key = new olive::NodeKeyframe(
-		olive::rational(2), QStringLiteral("keyed"), olive::NodeKeyframe::kLinear,
-		0, 1, olive::TextGeneratorV3::kArgsInput);
+		olive::Rational(2), QStringLiteral("keyed"), olive::NodeKeyframe::k_linear,
+		0, 1, olive::TextGeneratorV3::k_args_input);
 	key->setParent(src);
 
-	const QString xml = SaveNodeXml(src);
+	const QString xml = save_node_xml(src);
 
 	olive::TextGeneratorV3 loaded;
 	olive::SerializedData data;
-	ASSERT_TRUE(LoadNodeXml(&loaded, xml, &data));
+	ASSERT_TRUE(load_node_xml(&loaded, xml, &data));
 
 	// The subelement count attribute resized the array on load
-	ASSERT_EQ(loaded.InputArraySize(olive::TextGeneratorV3::kArgsInput), 2);
-	EXPECT_EQ(loaded.GetSplitStandardValue(olive::TextGeneratorV3::kArgsInput, 0)
+	ASSERT_EQ(loaded.input_array_size(olive::TextGeneratorV3::k_args_input), 2);
+	EXPECT_EQ(loaded.get_split_standard_value(olive::TextGeneratorV3::k_args_input, 0)
 				  .at(0)
 				  .toString(),
 			  QStringLiteral("first"));
-	EXPECT_EQ(loaded.GetSplitStandardValue(olive::TextGeneratorV3::kArgsInput, 1)
+	EXPECT_EQ(loaded.get_split_standard_value(olive::TextGeneratorV3::k_args_input, 1)
 				  .at(0)
 				  .toString(),
 			  QStringLiteral("second"));
 
 	EXPECT_FALSE(
-		loaded.IsInputKeyframing(olive::TextGeneratorV3::kArgsInput, 0));
-	EXPECT_TRUE(loaded.IsInputKeyframing(olive::TextGeneratorV3::kArgsInput, 1));
+		loaded.is_input_keyframing(olive::TextGeneratorV3::k_args_input, 0));
+	EXPECT_TRUE(loaded.is_input_keyframing(olive::TextGeneratorV3::k_args_input, 1));
 
 	const QVector<olive::NodeKeyframeTrack> &tracks =
-		loaded.GetKeyframeTracks(olive::TextGeneratorV3::kArgsInput, 1);
+		loaded.get_keyframe_tracks(olive::TextGeneratorV3::k_args_input, 1);
 	ASSERT_EQ(tracks.at(0).size(), 1);
-	EXPECT_EQ(tracks.at(0).first()->time(), olive::rational(2));
+	EXPECT_EQ(tracks.at(0).first()->time(), olive::Rational(2));
 	EXPECT_EQ(tracks.at(0).first()->value().toString(),
 			  QStringLiteral("keyed"));
 	EXPECT_EQ(tracks.at(0).first()->element(), 1);
@@ -250,61 +250,61 @@ TEST_F(NodeSaveLoadTest, ArrayElementsAndPerElementKeyframingRoundTrip)
 
 TEST_F(NodeSaveLoadTest, KeyframesAllTypesAndColorPropertiesRoundTrip)
 {
-	auto *src = AddNode<olive::SolidGenerator>();
+	auto *src = add_node<olive::SolidGenerator>();
 
 	olive::SplitValue color;
 	color.append(0.25);
 	color.append(0.5);
 	color.append(0.75);
 	color.append(1.0);
-	src->SetSplitStandardValue(olive::SolidGenerator::kColorInput, color, -1);
+	src->set_split_standard_value(olive::SolidGenerator::k_color_input, color, -1);
 
-	src->SetInputIsKeyframing(olive::SolidGenerator::kColorInput, true);
+	src->set_input_is_keyframing(olive::SolidGenerator::k_color_input, true);
 
 	auto *linear = new olive::NodeKeyframe(
-		olive::rational(0), 0.0, olive::NodeKeyframe::kLinear, 0, -1,
-		olive::SolidGenerator::kColorInput);
+		olive::Rational(0), 0.0, olive::NodeKeyframe::k_linear, 0, -1,
+		olive::SolidGenerator::k_color_input);
 	linear->setParent(src);
 	auto *bezier = new olive::NodeKeyframe(
-		olive::rational(5), 1.0, olive::NodeKeyframe::kBezier, 0, -1,
-		olive::SolidGenerator::kColorInput);
+		olive::Rational(5), 1.0, olive::NodeKeyframe::k_bezier, 0, -1,
+		olive::SolidGenerator::k_color_input);
 	bezier->setParent(src);
 	bezier->set_bezier_control_in(QPointF(0.25, -1.5));
 	bezier->set_bezier_control_out(QPointF(2.5, 0.75));
 	auto *hold = new olive::NodeKeyframe(
-		olive::rational(3), 0.5, olive::NodeKeyframe::kHold, 2, -1,
-		olive::SolidGenerator::kColorInput);
+		olive::Rational(3), 0.5, olive::NodeKeyframe::k_hold, 2, -1,
+		olive::SolidGenerator::k_color_input);
 	hold->setParent(src);
 
 	// Color inputs additionally serialize their color management properties
-	src->SetInputProperty(olive::SolidGenerator::kColorInput,
+	src->set_input_property(olive::SolidGenerator::k_color_input,
 						  QStringLiteral("col_input"), QStringLiteral("ACEScg"));
-	src->SetInputProperty(olive::SolidGenerator::kColorInput,
+	src->set_input_property(olive::SolidGenerator::k_color_input,
 						  QStringLiteral("col_display"), QStringLiteral("sRGB"));
-	src->SetInputProperty(olive::SolidGenerator::kColorInput,
+	src->set_input_property(olive::SolidGenerator::k_color_input,
 						  QStringLiteral("col_view"), QStringLiteral("Filmic"));
-	src->SetInputProperty(olive::SolidGenerator::kColorInput,
+	src->set_input_property(olive::SolidGenerator::k_color_input,
 						  QStringLiteral("col_look"), QStringLiteral("None"));
 
-	const QString xml = SaveNodeXml(src);
+	const QString xml = save_node_xml(src);
 
 	olive::SolidGenerator loaded;
 	olive::SerializedData data;
-	ASSERT_TRUE(LoadNodeXml(&loaded, xml, &data));
+	ASSERT_TRUE(load_node_xml(&loaded, xml, &data));
 
-	EXPECT_TRUE(loaded.IsInputKeyframing(olive::SolidGenerator::kColorInput));
+	EXPECT_TRUE(loaded.is_input_keyframing(olive::SolidGenerator::k_color_input));
 
 	const QVector<olive::NodeKeyframeTrack> &tracks =
-		loaded.GetKeyframeTracks(olive::SolidGenerator::kColorInput, -1);
+		loaded.get_keyframe_tracks(olive::SolidGenerator::k_color_input, -1);
 	ASSERT_EQ(tracks.size(), 4);
 
 	// Track 0 holds the linear and bezier keys, sorted by time
 	ASSERT_EQ(tracks.at(0).size(), 2);
-	EXPECT_EQ(tracks.at(0).at(0)->time(), olive::rational(0));
-	EXPECT_EQ(tracks.at(0).at(0)->type(), olive::NodeKeyframe::kLinear);
+	EXPECT_EQ(tracks.at(0).at(0)->time(), olive::Rational(0));
+	EXPECT_EQ(tracks.at(0).at(0)->type(), olive::NodeKeyframe::k_linear);
 	EXPECT_DOUBLE_EQ(tracks.at(0).at(0)->value().toDouble(), 0.0);
-	EXPECT_EQ(tracks.at(0).at(1)->time(), olive::rational(5));
-	EXPECT_EQ(tracks.at(0).at(1)->type(), olive::NodeKeyframe::kBezier);
+	EXPECT_EQ(tracks.at(0).at(1)->time(), olive::Rational(5));
+	EXPECT_EQ(tracks.at(0).at(1)->type(), olive::NodeKeyframe::k_bezier);
 	EXPECT_DOUBLE_EQ(tracks.at(0).at(1)->value().toDouble(), 1.0);
 	EXPECT_DOUBLE_EQ(tracks.at(0).at(1)->bezier_control_in().x(), 0.25);
 	EXPECT_DOUBLE_EQ(tracks.at(0).at(1)->bezier_control_in().y(), -1.5);
@@ -314,33 +314,33 @@ TEST_F(NodeSaveLoadTest, KeyframesAllTypesAndColorPropertiesRoundTrip)
 	// Track 1 was left empty, track 2 holds the single hold key
 	EXPECT_TRUE(tracks.at(1).isEmpty());
 	ASSERT_EQ(tracks.at(2).size(), 1);
-	EXPECT_EQ(tracks.at(2).first()->time(), olive::rational(3));
-	EXPECT_EQ(tracks.at(2).first()->type(), olive::NodeKeyframe::kHold);
+	EXPECT_EQ(tracks.at(2).first()->time(), olive::Rational(3));
+	EXPECT_EQ(tracks.at(2).first()->type(), olive::NodeKeyframe::k_hold);
 	EXPECT_DOUBLE_EQ(tracks.at(2).first()->value().toDouble(), 0.5);
 	EXPECT_TRUE(tracks.at(3).isEmpty());
 
 	// The per-track standard values survive as well
 	const olive::SplitValue loaded_color =
-		loaded.GetSplitStandardValue(olive::SolidGenerator::kColorInput, -1);
+		loaded.get_split_standard_value(olive::SolidGenerator::k_color_input, -1);
 	ASSERT_EQ(loaded_color.size(), 4);
 	EXPECT_DOUBLE_EQ(loaded_color.at(0).toDouble(), 0.25);
 	EXPECT_DOUBLE_EQ(loaded_color.at(1).toDouble(), 0.5);
 	EXPECT_DOUBLE_EQ(loaded_color.at(2).toDouble(), 0.75);
 	EXPECT_DOUBLE_EQ(loaded_color.at(3).toDouble(), 1.0);
 
-	EXPECT_EQ(loaded.GetInputProperty(olive::SolidGenerator::kColorInput,
+	EXPECT_EQ(loaded.get_input_property(olive::SolidGenerator::k_color_input,
 									  QStringLiteral("col_input"))
 				  .toString(),
 			  QStringLiteral("ACEScg"));
-	EXPECT_EQ(loaded.GetInputProperty(olive::SolidGenerator::kColorInput,
+	EXPECT_EQ(loaded.get_input_property(olive::SolidGenerator::k_color_input,
 									  QStringLiteral("col_display"))
 				  .toString(),
 			  QStringLiteral("sRGB"));
-	EXPECT_EQ(loaded.GetInputProperty(olive::SolidGenerator::kColorInput,
+	EXPECT_EQ(loaded.get_input_property(olive::SolidGenerator::k_color_input,
 									  QStringLiteral("col_view"))
 				  .toString(),
 			  QStringLiteral("Filmic"));
-	EXPECT_EQ(loaded.GetInputProperty(olive::SolidGenerator::kColorInput,
+	EXPECT_EQ(loaded.get_input_property(olive::SolidGenerator::k_color_input,
 									  QStringLiteral("col_look"))
 				  .toString(),
 			  QStringLiteral("None"));
@@ -348,35 +348,35 @@ TEST_F(NodeSaveLoadTest, KeyframesAllTypesAndColorPropertiesRoundTrip)
 
 TEST_F(NodeSaveLoadTest, ValueHintsRoundTrip)
 {
-	auto *src = AddNode<olive::MathNode>();
-	src->SetValueHintForInput(
-		olive::MathNode::kParamAIn,
+	auto *src = add_node<olive::MathNode>();
+	src->set_value_hint_for_input(
+		olive::MathNode::k_param_a_in,
 		olive::Node::ValueHint(
-			{ olive::NodeValue::kVec2, olive::NodeValue::kTexture }, 3,
+			{ olive::NodeValue::k_vec2, olive::NodeValue::k_texture }, 3,
 			QStringLiteral("tag")));
-	src->SetValueHintForInput(olive::MathNode::kParamBIn,
+	src->set_value_hint_for_input(olive::MathNode::k_param_b_in,
 							  olive::Node::ValueHint(QStringLiteral("elem")), 2);
 
-	const QString xml = SaveNodeXml(src);
+	const QString xml = save_node_xml(src);
 
 	olive::MathNode loaded;
 	olive::SerializedData data;
-	ASSERT_TRUE(LoadNodeXml(&loaded, xml, &data));
+	ASSERT_TRUE(load_node_xml(&loaded, xml, &data));
 
 	const olive::Node::ValueHint hint =
-		loaded.GetValueHintForInput(olive::MathNode::kParamAIn);
+		loaded.get_value_hint_for_input(olive::MathNode::k_param_a_in);
 	ASSERT_EQ(hint.types().size(), 2);
-	EXPECT_EQ(hint.types().at(0), olive::NodeValue::kVec2);
-	EXPECT_EQ(hint.types().at(1), olive::NodeValue::kTexture);
+	EXPECT_EQ(hint.types().at(0), olive::NodeValue::k_vec2);
+	EXPECT_EQ(hint.types().at(1), olive::NodeValue::k_texture);
 	EXPECT_EQ(hint.index(), 3);
 	EXPECT_EQ(hint.tag(), QStringLiteral("tag"));
 
 	// Hints are tracked per element
-	EXPECT_EQ(loaded.GetValueHintForInput(olive::MathNode::kParamBIn, 2).tag(),
+	EXPECT_EQ(loaded.get_value_hint_for_input(olive::MathNode::k_param_b_in, 2).tag(),
 			  QStringLiteral("elem"));
-	EXPECT_EQ(loaded.GetValueHintForInput(olive::MathNode::kParamBIn, 1).tag(),
+	EXPECT_EQ(loaded.get_value_hint_for_input(olive::MathNode::k_param_b_in, 1).tag(),
 			  QString());
-	EXPECT_EQ(loaded.GetValueHints().size(), 2);
+	EXPECT_EQ(loaded.get_value_hints().size(), 2);
 }
 
 TEST_F(NodeSaveLoadTest, CacheUuidsRoundTrip)
@@ -392,37 +392,37 @@ TEST_F(NodeSaveLoadTest, CacheUuidsRoundTrip)
 	const QUuid waveform_uuid(
 		QStringLiteral("{44444444-4444-4444-4444-444444444444}"));
 
-	src.audio_playback_cache()->SetUuid(audio_uuid);
-	src.video_frame_cache()->SetUuid(video_uuid);
-	src.thumbnail_cache()->SetUuid(thumb_uuid);
-	src.waveform_cache()->SetUuid(waveform_uuid);
+	src.audio_playback_cache()->set_uuid(audio_uuid);
+	src.video_frame_cache()->set_uuid(video_uuid);
+	src.thumbnail_cache()->set_uuid(thumb_uuid);
+	src.waveform_cache()->set_uuid(waveform_uuid);
 
-	const QString xml = SaveNodeXml(&src);
+	const QString xml = save_node_xml(&src);
 
 	olive::MathNode loaded;
 	olive::SerializedData data;
-	ASSERT_TRUE(LoadNodeXml(&loaded, xml, &data));
+	ASSERT_TRUE(load_node_xml(&loaded, xml, &data));
 
-	EXPECT_EQ(loaded.audio_playback_cache()->GetUuid(), audio_uuid);
-	EXPECT_EQ(loaded.video_frame_cache()->GetUuid(), video_uuid);
-	EXPECT_EQ(loaded.thumbnail_cache()->GetUuid(), thumb_uuid);
-	EXPECT_EQ(loaded.waveform_cache()->GetUuid(), waveform_uuid);
+	EXPECT_EQ(loaded.audio_playback_cache()->get_uuid(), audio_uuid);
+	EXPECT_EQ(loaded.video_frame_cache()->get_uuid(), video_uuid);
+	EXPECT_EQ(loaded.thumbnail_cache()->get_uuid(), thumb_uuid);
+	EXPECT_EQ(loaded.waveform_cache()->get_uuid(), waveform_uuid);
 }
 
 TEST_F(NodeSaveLoadTest, CustomDataAndLoadFinishedEventRoundTrip)
 {
 	CustomDataNode src;
-	src.greeting_ = QStringLiteral("hello custom");
+	src.greeting = QStringLiteral("hello custom");
 
-	const QString xml = SaveNodeXml(&src);
+	const QString xml = save_node_xml(&src);
 	EXPECT_TRUE(xml.contains(QStringLiteral("hello custom")));
 
 	CustomDataNode loaded;
 	olive::SerializedData data;
-	ASSERT_TRUE(LoadNodeXml(&loaded, xml, &data));
+	ASSERT_TRUE(load_node_xml(&loaded, xml, &data));
 
-	EXPECT_EQ(loaded.greeting_, QStringLiteral("hello custom"));
-	EXPECT_TRUE(loaded.load_finished_called_);
+	EXPECT_EQ(loaded.greeting, QStringLiteral("hello custom"));
+	EXPECT_TRUE(loaded.load_finished_called);
 
 	// A LoadCustom failure propagates out of Node::Load
 	const QString fail_xml = QStringLiteral(
@@ -432,7 +432,7 @@ TEST_F(NodeSaveLoadTest, CustomDataAndLoadFinishedEventRoundTrip)
 	QXmlStreamReader reader(fail_xml);
 	ASSERT_TRUE(reader.readNextStartElement());
 	ASSERT_EQ(reader.name(), QStringLiteral("node"));
-	EXPECT_FALSE(failing.Load(&reader, &fail_data));
+	EXPECT_FALSE(failing.load(&reader, &fail_data));
 }
 
 TEST_F(NodeSaveLoadTest, UnknownElementsAndVersionAreSkipped)
@@ -465,20 +465,20 @@ TEST_F(NodeSaveLoadTest, UnknownElementsAndVersionAreSkipped)
 	QXmlStreamReader reader(xml);
 	ASSERT_TRUE(reader.readNextStartElement());
 	ASSERT_EQ(reader.name(), QStringLiteral("node"));
-	EXPECT_TRUE(node.Load(&reader, &data));
+	EXPECT_TRUE(node.load(&reader, &data));
 
-	EXPECT_EQ(node.GetLabel(), QStringLiteral("kept"));
+	EXPECT_EQ(node.get_label(), QStringLiteral("kept"));
 
 	// The one well-formed connection was still recorded
 	ASSERT_EQ(data.desired_connections.size(), 1);
 	EXPECT_EQ(data.desired_connections.first().input.input(),
-			  olive::MathNode::kParamAIn);
+			  olive::MathNode::k_param_a_in);
 	EXPECT_EQ(data.desired_connections.first().input.element(), -1);
 	EXPECT_EQ(data.desired_connections.first().output_node, quintptr(12345));
 
 	// The malformed input left the default value untouched
 	EXPECT_DOUBLE_EQ(
-		node.GetStandardValue(olive::MathNode::kParamAIn).toDouble(), 0.0);
+		node.get_standard_value(olive::MathNode::k_param_a_in).toDouble(), 0.0);
 }
 
 TEST_F(NodeSaveLoadTest, LoadInputWithMissingOrUnknownIdIsSkipped)
@@ -500,40 +500,40 @@ TEST_F(NodeSaveLoadTest, LoadInputWithMissingOrUnknownIdIsSkipped)
 	QXmlStreamReader reader(xml);
 	ASSERT_TRUE(reader.readNextStartElement());
 	ASSERT_EQ(reader.name(), QStringLiteral("node"));
-	EXPECT_TRUE(node.Load(&reader, &data));
+	EXPECT_TRUE(node.load(&reader, &data));
 
 	EXPECT_DOUBLE_EQ(
-		node.GetStandardValue(olive::MathNode::kParamAIn).toDouble(), 0.0);
+		node.get_standard_value(olive::MathNode::k_param_a_in).toDouble(), 0.0);
 	EXPECT_DOUBLE_EQ(
-		node.GetStandardValue(olive::MathNode::kParamBIn).toDouble(), 0.0);
+		node.get_standard_value(olive::MathNode::k_param_b_in).toDouble(), 0.0);
 }
 
 TEST_F(NodeSaveLoadTest, ConnectionsLinksAndPositionsResolveAfterProjectLoad)
 {
-	olive::NodeFactory::Initialize();
+	olive::NodeFactory::initialize();
 
-	auto *src = AddNode<olive::SolidGenerator>();
-	auto *dst = AddNode<olive::MathNode>();
-	auto *text = AddNode<olive::TextGeneratorV3>();
-	text->InputArrayResize(olive::TextGeneratorV3::kArgsInput, 2);
+	auto *src = add_node<olive::SolidGenerator>();
+	auto *dst = add_node<olive::MathNode>();
+	auto *text = add_node<olive::TextGeneratorV3>();
+	text->input_array_resize(olive::TextGeneratorV3::k_args_input, 2);
 
-	olive::Node::ConnectEdge(
-		src, olive::NodeInput(dst, olive::MathNode::kParamAIn));
-	olive::Node::ConnectEdge(
-		dst, olive::NodeInput(text, olive::TextGeneratorV3::kArgsInput, 1));
-	olive::Node::Link(src, dst);
+	olive::Node::connect_edge(
+		src, olive::NodeInput(dst, olive::MathNode::k_param_a_in));
+	olive::Node::connect_edge(
+		dst, olive::NodeInput(text, olive::TextGeneratorV3::k_args_input, 1));
+	olive::Node::link(src, dst);
 
 	olive::Folder *root = project_->root();
-	root->SetNodePositionInContext(
+	root->set_node_position_in_context(
 		src, olive::Node::Position(QPointF(10.0, 20.0), true));
-	root->SetNodePositionInContext(
+	root->set_node_position_in_context(
 		dst, olive::Node::Position(QPointF(-3.5, 7.25), false));
 
 	QString xml;
 	QXmlStreamWriter writer(&xml);
 	writer.writeStartDocument();
 	writer.writeStartElement(QStringLiteral("project"));
-	project_->Save(&writer);
+	project_->save(&writer);
 	writer.writeEndElement(); // project
 	writer.writeEndDocument();
 
@@ -545,15 +545,15 @@ TEST_F(NodeSaveLoadTest, ConnectionsLinksAndPositionsResolveAfterProjectLoad)
 		QXmlStreamReader reader(xml);
 		ASSERT_TRUE(reader.readNextStartElement());
 		ASSERT_EQ(reader.name(), QStringLiteral("project"));
-		data = loaded.Load(&reader);
+		data = loaded.load(&reader);
 	}
 
 	// Root folder plus the three nodes created above
 	ASSERT_EQ(loaded.nodes().size(), 4);
 
-	olive::Node *loaded_src = FindNodeById(&loaded, src->id());
-	olive::Node *loaded_dst = FindNodeById(&loaded, dst->id());
-	olive::Node *loaded_text = FindNodeById(&loaded, text->id());
+	olive::Node *loaded_src = find_node_by_id(&loaded, src->id());
+	olive::Node *loaded_dst = find_node_by_id(&loaded, dst->id());
+	olive::Node *loaded_text = find_node_by_id(&loaded, text->id());
 	ASSERT_NE(loaded_src, nullptr);
 	ASSERT_NE(loaded_dst, nullptr);
 	ASSERT_NE(loaded_text, nullptr);
@@ -565,12 +565,12 @@ TEST_F(NodeSaveLoadTest, ConnectionsLinksAndPositionsResolveAfterProjectLoad)
 	bool found_text_edge = false;
 	for (const auto &sc : data.desired_connections) {
 		if (sc.input.node() == loaded_dst) {
-			EXPECT_EQ(sc.input.input(), olive::MathNode::kParamAIn);
+			EXPECT_EQ(sc.input.input(), olive::MathNode::k_param_a_in);
 			EXPECT_EQ(sc.input.element(), -1);
 			EXPECT_EQ(sc.output_node, reinterpret_cast<quintptr>(src));
 			found_math_edge = true;
 		} else if (sc.input.node() == loaded_text) {
-			EXPECT_EQ(sc.input.input(), olive::TextGeneratorV3::kArgsInput);
+			EXPECT_EQ(sc.input.input(), olive::TextGeneratorV3::k_args_input);
 			EXPECT_EQ(sc.input.element(), 1);
 			EXPECT_EQ(sc.output_node, reinterpret_cast<quintptr>(dst));
 			found_text_edge = true;
@@ -591,45 +591,45 @@ TEST_F(NodeSaveLoadTest, ConnectionsLinksAndPositionsResolveAfterProjectLoad)
 	// ProjectSerializer230220::PostConnect does
 	for (const auto &sc : data.desired_connections) {
 		if (olive::Node *out = data.node_ptrs.value(sc.output_node)) {
-			olive::Node::ConnectEdge(out, sc.input);
+			olive::Node::connect_edge(out, sc.input);
 		}
 	}
 	for (const auto &link : data.block_links) {
-		olive::Node::Link(link.block, data.node_ptrs.value(link.link));
+		olive::Node::link(link.block, data.node_ptrs.value(link.link));
 	}
 	for (olive::Node *n : loaded.nodes()) {
 		n->PostLoadEvent(&data);
 	}
 
-	EXPECT_EQ(loaded_dst->GetConnectedOutput(olive::MathNode::kParamAIn),
+	EXPECT_EQ(loaded_dst->get_connected_output(olive::MathNode::k_param_a_in),
 			  loaded_src);
-	EXPECT_EQ(loaded_text->GetConnectedOutput(
-				  olive::TextGeneratorV3::kArgsInput, 1),
+	EXPECT_EQ(loaded_text->get_connected_output(
+				  olive::TextGeneratorV3::k_args_input, 1),
 			  loaded_dst);
-	EXPECT_TRUE(olive::Node::AreLinked(loaded_src, loaded_dst));
-	EXPECT_TRUE(olive::Node::AreLinked(loaded_dst, loaded_src));
+	EXPECT_TRUE(olive::Node::are_linked(loaded_src, loaded_dst));
+	EXPECT_TRUE(olive::Node::are_linked(loaded_dst, loaded_src));
 
-	EXPECT_EQ(loaded_root->GetNodePositionInContext(loaded_src),
+	EXPECT_EQ(loaded_root->get_node_position_in_context(loaded_src),
 			  QPointF(10.0, 20.0));
-	EXPECT_TRUE(loaded_root->IsNodeExpandedInContext(loaded_src));
-	EXPECT_EQ(loaded_root->GetNodePositionInContext(loaded_dst),
+	EXPECT_TRUE(loaded_root->is_node_expanded_in_context(loaded_src));
+	EXPECT_EQ(loaded_root->get_node_position_in_context(loaded_dst),
 			  QPointF(-3.5, 7.25));
-	EXPECT_FALSE(loaded_root->IsNodeExpandedInContext(loaded_dst));
+	EXPECT_FALSE(loaded_root->is_node_expanded_in_context(loaded_dst));
 
-	olive::NodeFactory::Destroy();
+	olive::NodeFactory::destroy();
 }
 
 TEST_F(NodeSaveLoadTest, LegacyMisspelledChromaKeyIDsAreMapped)
 {
-	auto *src = AddNode<olive::ChromaKeyNode>();
-	src->SetStandardValue(olive::ChromaKeyNode::kUpperToleranceInput, 42.0);
-	src->SetStandardValue(olive::ChromaKeyNode::kLowerToleranceInput, 7.0);
+	auto *src = add_node<olive::ChromaKeyNode>();
+	src->set_standard_value(olive::ChromaKeyNode::k_upper_tolerance_input, 42.0);
+	src->set_standard_value(olive::ChromaKeyNode::k_lower_tolerance_input, 7.0);
 
-	auto *math = AddNode<olive::MathNode>();
-	olive::Node::ConnectEdge(
-		math, olive::NodeInput(src, olive::ChromaKeyNode::kUpperToleranceInput));
+	auto *math = add_node<olive::MathNode>();
+	olive::Node::connect_edge(
+		math, olive::NodeInput(src, olive::ChromaKeyNode::k_upper_tolerance_input));
 
-	QString xml = SaveNodeXml(src);
+	QString xml = save_node_xml(src);
 
 	// Simulate an old project file written with the misspelled "tolerence" IDs
 	xml.replace(QStringLiteral("upper_tolerance_in"),
@@ -639,19 +639,19 @@ TEST_F(NodeSaveLoadTest, LegacyMisspelledChromaKeyIDsAreMapped)
 
 	olive::ChromaKeyNode loaded;
 	olive::SerializedData data;
-	ASSERT_TRUE(LoadNodeXml(&loaded, xml, &data));
+	ASSERT_TRUE(load_node_xml(&loaded, xml, &data));
 
 	EXPECT_DOUBLE_EQ(
-		loaded.GetStandardValue(olive::ChromaKeyNode::kUpperToleranceInput)
+		loaded.get_standard_value(olive::ChromaKeyNode::k_upper_tolerance_input)
 			.toDouble(),
 		42.0);
 	EXPECT_DOUBLE_EQ(
-		loaded.GetStandardValue(olive::ChromaKeyNode::kLowerToleranceInput)
+		loaded.get_standard_value(olive::ChromaKeyNode::k_lower_tolerance_input)
 			.toDouble(),
 		7.0);
 
 	// Connections to the renamed inputs are remapped too
 	ASSERT_EQ(data.desired_connections.size(), 1);
 	EXPECT_EQ(data.desired_connections.first().input.input(),
-			  olive::ChromaKeyNode::kUpperToleranceInput);
+			  olive::ChromaKeyNode::k_upper_tolerance_input);
 }

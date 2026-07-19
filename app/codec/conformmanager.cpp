@@ -27,7 +27,7 @@ namespace olive
 
 ConformManager *ConformManager::instance_ = nullptr;
 
-ConformManager::Conform ConformManager::GetConformState(
+ConformManager::Conform ConformManager::get_conform_state(
 	const QString &decoder_id, const QString &cache_path,
 	const Decoder::CodecStream &stream, const AudioParams &params, bool wait)
 {
@@ -36,9 +36,9 @@ ConformManager::Conform ConformManager::GetConformState(
 
 	// Return existing conform if exists
 	QVector<QString> filenames =
-		GetConformedFilename(cache_path, stream, params);
-	if (AllConformsExist(filenames)) {
-		return { kConformExists, filenames, nullptr };
+		get_conformed_filename(cache_path, stream, params);
+	if (all_conforms_exist(filenames)) {
+		return { k_conform_exists, filenames, nullptr };
 	}
 
 	ConformTask *conforming_task = nullptr;
@@ -63,10 +63,10 @@ ConformManager::Conform ConformManager::GetConformState(
 
 		conforming_task =
 			new ConformTask(decoder_id, stream, params, working_filenames);
-		connect(conforming_task, &ConformTask::Finished, this,
-				&ConformManager::ConformTaskFinished);
+		connect(conforming_task, &ConformTask::finished, this,
+				&ConformManager::conform_task_finished);
 		conforming_task->moveToThread(TaskManager::instance()->thread());
-		QMetaObject::invokeMethod(TaskManager::instance(), "AddTask",
+		QMetaObject::invokeMethod(TaskManager::instance(), "add_task",
 								  Qt::QueuedConnection,
 								  Q_ARG(Task *, conforming_task));
 
@@ -77,15 +77,15 @@ ConformManager::Conform ConformManager::GetConformState(
 	if (wait) {
 		do {
 			conform_done_condition_.wait(&mutex_);
-		} while (!AllConformsExist(filenames));
-		return { kConformExists, filenames, nullptr };
+		} while (!all_conforms_exist(filenames));
+		return { k_conform_exists, filenames, nullptr };
 	}
 
-	return { kConformGenerating, QVector<QString>(), conforming_task };
+	return { k_conform_generating, QVector<QString>(), conforming_task };
 }
 
 QVector<QString>
-ConformManager::GetConformedFilename(const QString &cache_path,
+ConformManager::get_conformed_filename(const QString &cache_path,
 									 const Decoder::CodecStream &stream,
 									 const AudioParams &params)
 {
@@ -94,7 +94,7 @@ ConformManager::GetConformedFilename(const QString &cache_path,
 	for (int i = 0; i < filenames.size(); i++) {
 		QString index_fn =
 			QStringLiteral("%1-%2.%3.%4.%5.%6.pcm")
-				.arg(FileFunctions::GetUniqueFileIdentifier(stream.filename()),
+				.arg(FileFunctions::get_unique_file_identifier(stream.filename()),
 					 QString::number(stream.stream()),
 					 QString::number(params.sample_rate()),
 					 QString::number(params.format()),
@@ -107,7 +107,7 @@ ConformManager::GetConformedFilename(const QString &cache_path,
 	return filenames;
 }
 
-bool ConformManager::AllConformsExist(const QVector<QString> &filenames)
+bool ConformManager::all_conforms_exist(const QVector<QString> &filenames)
 {
 	foreach (const QString &fn, filenames) {
 		if (!QFileInfo::exists(fn)) {
@@ -118,7 +118,7 @@ bool ConformManager::AllConformsExist(const QVector<QString> &filenames)
 	return true;
 }
 
-void ConformManager::ConformTaskFinished(Task *task, bool succeeded)
+void ConformManager::conform_task_finished(Task *task, bool succeeded)
 {
 	QMutexLocker locker(&mutex_);
 
@@ -146,7 +146,7 @@ void ConformManager::ConformTaskFinished(Task *task, bool succeeded)
 
 		conform_done_condition_.wakeAll();
 		locker.unlock();
-		emit ConformReady();
+		emit conform_ready();
 	} else {
 		// Failed, just delete the working filename if exists
 		for (int i = 0; i < data.working_filename.size(); i++) {

@@ -16,14 +16,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef LOOPMODE_H
-#define LOOPMODE_H
+#ifndef OAK_LOOPMODE_H
+#define OAK_LOOPMODE_H
 
 namespace olive
 {
 
-enum class LoopMode { kLoopModeOff, kLoopModeLoop, kLoopModeClamp };
+enum class LoopMode { k_loop_mode_off, k_loop_mode_loop, k_loop_mode_clamp };
 
 }
 
-#endif // LOOPMODE_H
+#endif // OAK_LOOPMODE_H

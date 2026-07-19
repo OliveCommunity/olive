@@ -35,7 +35,7 @@ namespace olive
 #define super QDialog
 
 MarkerPropertiesDialog::MarkerPropertiesDialog(
-	const std::vector<TimelineMarker *> &markers, const rational &timebase,
+	const std::vector<TimelineMarker *> &markers, const Rational &timebase,
 	QWidget *parent)
 	: super(parent)
 	, markers_(markers)
@@ -64,18 +64,18 @@ MarkerPropertiesDialog::MarkerPropertiesDialog(
 	}
 
 	if (markers.size() == 1) {
-		in_slider_->SetValue(markers.front()->time().in());
-		in_slider_->SetDisplayType(RationalSlider::kTime);
-		in_slider_->SetTimebase(timebase);
-		out_slider_->SetValue(markers.front()->time().out());
-		out_slider_->SetDisplayType(RationalSlider::kTime);
-		out_slider_->SetTimebase(timebase);
+		in_slider_->set_value(markers.front()->time().in());
+		in_slider_->set_display_type(RationalSlider::k_time);
+		in_slider_->set_timebase(timebase);
+		out_slider_->set_value(markers.front()->time().out());
+		out_slider_->set_display_type(RationalSlider::k_time);
+		out_slider_->set_timebase(timebase);
 	} else {
 		// Markers cannot be on the same time, so we disable setting time if multiple markers are selected
 		in_slider_->setEnabled(false);
-		in_slider_->SetTristate();
+		in_slider_->set_tristate();
 		out_slider_->setEnabled(false);
-		out_slider_->SetTristate();
+		out_slider_->set_tristate();
 	}
 
 	layout->addWidget(time_group, row, 0, 1, 2);
@@ -87,10 +87,10 @@ MarkerPropertiesDialog::MarkerPropertiesDialog(
 	color_menu_ = new ColorCodingComboBox();
 	layout->addWidget(color_menu_, row, 1);
 
-	color_menu_->SetColor(markers.front()->color());
+	color_menu_->set_color(markers.front()->color());
 	for (size_t i = 1; i < markers.size(); i++) {
-		if (markers.at(i)->color() != color_menu_->GetSelectedColor()) {
-			color_menu_->SetColor(-1);
+		if (markers.at(i)->color() != color_menu_->get_selected_color()) {
+			color_menu_->set_color(-1);
 			break;
 		}
 	}
@@ -100,7 +100,7 @@ MarkerPropertiesDialog::MarkerPropertiesDialog(
 	layout->addWidget(new QLabel(tr("Name:")), row, 0);
 
 	label_edit_ = new LineEditWithFocusSignal();
-	connect(label_edit_, &LineEditWithFocusSignal::Focused, this,
+	connect(label_edit_, &LineEditWithFocusSignal::focused, this,
 			[this] { label_edit_->setPlaceholderText(QString()); });
 	layout->addWidget(label_edit_, row, 1);
 
@@ -131,7 +131,7 @@ MarkerPropertiesDialog::MarkerPropertiesDialog(
 void MarkerPropertiesDialog::accept()
 {
 	if (in_slider_->isEnabled() &&
-		in_slider_->GetValue() > out_slider_->GetValue()) {
+		in_slider_->get_value() > out_slider_->get_value()) {
 		QMessageBox::critical(
 			this, tr("Invalid Values"),
 			tr("In point must be less than or equal to out point."));
@@ -140,7 +140,7 @@ void MarkerPropertiesDialog::accept()
 
 	MultiUndoCommand *command = new MultiUndoCommand();
 
-	int color = color_menu_->GetSelectedColor();
+	int color = color_menu_->get_selected_color();
 
 	foreach (TimelineMarker *m, markers_) {
 		if (color != -1) {
@@ -156,7 +156,7 @@ void MarkerPropertiesDialog::accept()
 	if (markers_.size() == 1) {
 		command->add_child(new MarkerChangeTimeCommand(
 			markers_.front(),
-			TimeRange(in_slider_->GetValue(), out_slider_->GetValue())));
+			TimeRange(in_slider_->get_value(), out_slider_->get_value())));
 	}
 
 	Core::instance()->undo_stack()->push(command, tr("Set Marker Properties"));

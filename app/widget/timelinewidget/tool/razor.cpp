@@ -33,45 +33,45 @@ RazorTool::RazorTool(TimelineWidget *parent)
 {
 }
 
-void RazorTool::MousePress(TimelineViewMouseEvent *event)
+void RazorTool::mouse_press(TimelineViewMouseEvent *event)
 {
 	split_tracks_.clear();
 
-	MouseMove(event);
+	mouse_move(event);
 }
 
-void RazorTool::MouseMove(TimelineViewMouseEvent *event)
+void RazorTool::mouse_move(TimelineViewMouseEvent *event)
 {
 	if (!dragging_) {
-		drag_start_ = ValidatedCoordinate(event->GetCoordinates(true));
+		drag_start_ = validated_coordinate(event->get_coordinates(true));
 		dragging_ = true;
 	}
 
 	// Split at the current cursor track
-	Track::Reference split_track = event->GetTrack();
+	Track::Reference split_track = event->get_track();
 
 	if (!split_tracks_.contains(split_track)) {
 		split_tracks_.append(split_track);
 	}
 }
 
-void RazorTool::MouseRelease(TimelineViewMouseEvent *event)
+void RazorTool::mouse_release(TimelineViewMouseEvent *event)
 {
 	Q_UNUSED(event)
 
 	// Always split at the same time
-	rational split_time = drag_start_.GetFrame();
+	Rational split_time = drag_start_.get_frame();
 
 	QVector<Block *> blocks_to_split;
 
 	foreach (const Track::Reference &track_ref, split_tracks_) {
-		Track *track = parent()->GetTrackFromReference(track_ref);
+		Track *track = parent()->get_track_from_reference(track_ref);
 
-		if (track == nullptr || track->IsLocked()) {
+		if (track == nullptr || track->is_locked()) {
 			continue;
 		}
 
-		Block *block_at_time = track->NearestBlockBefore(split_time);
+		Block *block_at_time = track->nearest_block_before(split_time);
 
 		// Ensure there's a valid block here
 		ClipBlock *clip_at_time;
@@ -81,7 +81,7 @@ void RazorTool::MouseRelease(TimelineViewMouseEvent *event)
 			blocks_to_split.append(block_at_time);
 
 			// Add links if no alt is held
-			if (!(event->GetModifiers() & Qt::AltModifier)) {
+			if (!(event->get_modifiers() & Qt::AltModifier)) {
 				foreach (Block *link, clip_at_time->block_links()) {
 					if (!blocks_to_split.contains(link)) {
 						blocks_to_split.append(link);

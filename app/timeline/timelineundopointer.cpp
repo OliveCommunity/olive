@@ -41,7 +41,7 @@ void BlockTrimCommand::redo()
 	// Determine how much time to invalidate
 	TimeRange invalidate_range;
 
-	if (mode_ == Timeline::kTrimIn) {
+	if (mode_ == Timeline::k_trim_in) {
 		invalidate_range = TimeRange(block_->in(), block_->in() + trim_diff_);
 		block_->set_length_and_media_in(new_length_);
 	} else {
@@ -54,27 +54,27 @@ void BlockTrimCommand::redo()
 			// Add adjacent and insert it
 			adjacent_->setParent(track_->parent());
 
-			if (mode_ == Timeline::kTrimIn) {
-				track_->InsertBlockBefore(adjacent_, block_);
+			if (mode_ == Timeline::k_trim_in) {
+				track_->insert_block_before(adjacent_, block_);
 			} else {
-				track_->InsertBlockAfter(adjacent_, block_);
+				track_->insert_block_after(adjacent_, block_);
 			}
 		} else if (we_removed_adjacent_) {
-			track_->RippleRemoveBlock(adjacent_);
+			track_->ripple_remove_block(adjacent_);
 
 			// It no longer inputs/outputs anything, remove it
-			if (remove_block_from_graph_ && NodeCanBeRemoved(adjacent_)) {
+			if (remove_block_from_graph_ && node_can_be_removed(adjacent_)) {
 				if (!deleted_adjacent_command_) {
 					deleted_adjacent_command_ =
-						CreateAndRunRemoveCommand(adjacent_);
+						create_and_run_remove_command(adjacent_);
 				} else {
 					deleted_adjacent_command_->redo_now();
 				}
 			}
 		} else {
-			rational adjacent_length = adjacent_->length() + trim_diff_;
+			Rational adjacent_length = adjacent_->length() + trim_diff_;
 
-			if (mode_ == Timeline::kTrimIn) {
+			if (mode_ == Timeline::k_trim_in) {
 				adjacent_->set_length_and_media_out(adjacent_length);
 			} else {
 				adjacent_->set_length_and_media_in(adjacent_length);
@@ -98,7 +98,7 @@ void BlockTrimCommand::undo()
 	if (needs_adjacent_) {
 		if (we_created_adjacent_) {
 			// Adjacent is ours, just delete it
-			track_->RippleRemoveBlock(adjacent_);
+			track_->ripple_remove_block(adjacent_);
 			adjacent_->setParent(&memory_manager_);
 		} else {
 			if (we_removed_adjacent_) {
@@ -107,15 +107,15 @@ void BlockTrimCommand::undo()
 					deleted_adjacent_command_->undo_now();
 				}
 
-				if (mode_ == Timeline::kTrimIn) {
-					track_->InsertBlockBefore(adjacent_, block_);
+				if (mode_ == Timeline::k_trim_in) {
+					track_->insert_block_before(adjacent_, block_);
 				} else {
-					track_->InsertBlockAfter(adjacent_, block_);
+					track_->insert_block_after(adjacent_, block_);
 				}
 			} else {
-				rational adjacent_length = adjacent_->length() - trim_diff_;
+				Rational adjacent_length = adjacent_->length() - trim_diff_;
 
-				if (mode_ == Timeline::kTrimIn) {
+				if (mode_ == Timeline::k_trim_in) {
 					adjacent_->set_length_and_media_out(adjacent_length);
 				} else {
 					adjacent_->set_length_and_media_in(adjacent_length);
@@ -126,7 +126,7 @@ void BlockTrimCommand::undo()
 
 	TimeRange invalidate_range;
 
-	if (mode_ == Timeline::kTrimIn) {
+	if (mode_ == Timeline::k_trim_in) {
 		block_->set_length_and_media_in(old_length_);
 
 		invalidate_range = TimeRange(block_->in(), block_->in() + trim_diff_);
@@ -156,7 +156,7 @@ void BlockTrimCommand::prepare()
 	trim_diff_ = old_length_ - new_length_;
 
 	// Retrieve our adjacent block (or nullptr if none)
-	if (mode_ == Timeline::kTrimIn) {
+	if (mode_ == Timeline::k_trim_in) {
 		adjacent_ = block_->previous();
 	} else {
 		adjacent_ = block_->next();
@@ -164,7 +164,7 @@ void BlockTrimCommand::prepare()
 
 	// Ignore when trimming the out with no adjacent, because the user must have trimmed the end
 	// of the last block in the track, so we don't need to do anything elses
-	needs_adjacent_ = (mode_ == Timeline::kTrimIn || adjacent_);
+	needs_adjacent_ = (mode_ == Timeline::k_trim_in || adjacent_);
 
 	if (needs_adjacent_) {
 		// If we're trimming shorter, we need an adjacent, so check if we have a viable one.
@@ -179,7 +179,7 @@ void BlockTrimCommand::prepare()
 			adjacent_->set_length_and_media_out(trim_diff_);
 		} else {
 			// Determine if we're removing the adjacent
-			rational adjacent_length = adjacent_->length() + trim_diff_;
+			Rational adjacent_length = adjacent_->length() + trim_diff_;
 			we_removed_adjacent_ = adjacent_length.isNull();
 		}
 	}
@@ -197,14 +197,14 @@ void TrackSlideCommand::redo()
 	if (we_created_in_adjacent_) {
 		// We created in adjacent, so all we have to do is insert it
 		in_adjacent_->setParent(track_->parent());
-		track_->InsertBlockBefore(in_adjacent_, blocks_.first());
+		track_->insert_block_before(in_adjacent_, blocks_.first());
 	} else if (-movement_ == in_adjacent_->length()) {
 		// Movement will remove in adjacent
-		track_->RippleRemoveBlock(in_adjacent_);
+		track_->ripple_remove_block(in_adjacent_);
 
-		if (NodeCanBeRemoved(in_adjacent_)) {
+		if (node_can_be_removed(in_adjacent_)) {
 			if (!in_adjacent_remove_command_) {
-				in_adjacent_remove_command_ = CreateRemoveCommand(in_adjacent_);
+				in_adjacent_remove_command_ = create_remove_command(in_adjacent_);
 			}
 
 			in_adjacent_remove_command_->redo_now();
@@ -222,15 +222,15 @@ void TrackSlideCommand::redo()
 		if (we_created_out_adjacent_) {
 			// We created out adjacent, so we just have to insert it
 			out_adjacent_->setParent(track_->parent());
-			track_->InsertBlockAfter(out_adjacent_, blocks_.last());
+			track_->insert_block_after(out_adjacent_, blocks_.last());
 		} else if (movement_ == out_adjacent_->length()) {
 			// Movement will remove out adjacent
-			track_->RippleRemoveBlock(out_adjacent_);
+			track_->ripple_remove_block(out_adjacent_);
 
-			if (NodeCanBeRemoved(out_adjacent_)) {
+			if (node_can_be_removed(out_adjacent_)) {
 				if (!out_adjacent_remove_command_) {
 					out_adjacent_remove_command_ =
-						CreateRemoveCommand(out_adjacent_);
+						create_remove_command(out_adjacent_);
 				}
 
 				out_adjacent_remove_command_->redo_now();
@@ -257,7 +257,7 @@ void TrackSlideCommand::undo()
 
 	if (we_created_in_adjacent_) {
 		// We created this, so we can remove it now
-		track_->RippleRemoveBlock(in_adjacent_);
+		track_->ripple_remove_block(in_adjacent_);
 		in_adjacent_->setParent(&memory_manager_);
 	} else if (we_removed_in_adjacent_) {
 		if (in_adjacent_remove_command_) {
@@ -265,7 +265,7 @@ void TrackSlideCommand::undo()
 			in_adjacent_remove_command_->undo_now();
 		}
 
-		track_->InsertBlockBefore(in_adjacent_, blocks_.first());
+		track_->insert_block_before(in_adjacent_, blocks_.first());
 	} else {
 		// Simply resize adjacent
 		in_adjacent_->set_length_and_media_out(in_adjacent_->length() -
@@ -275,14 +275,14 @@ void TrackSlideCommand::undo()
 	if (out_adjacent_) {
 		if (we_created_out_adjacent_) {
 			// We created this, so we can remove it now
-			track_->RippleRemoveBlock(out_adjacent_);
+			track_->ripple_remove_block(out_adjacent_);
 			out_adjacent_->setParent(&memory_manager_);
 		} else if (we_removed_out_adjacent_) {
 			if (out_adjacent_remove_command_) {
 				out_adjacent_remove_command_->undo_now();
 			}
 
-			track_->InsertBlockAfter(out_adjacent_, blocks_.last());
+			track_->insert_block_after(out_adjacent_, blocks_.last());
 		} else {
 			out_adjacent_->set_length_and_media_in(out_adjacent_->length() +
 												   movement_);
@@ -328,11 +328,11 @@ TrackPlaceBlockCommand::~TrackPlaceBlockCommand()
 void TrackPlaceBlockCommand::redo()
 {
 	// Determine if we need to add tracks
-	if (track_index_ >= timeline_->GetTracks().size()) {
+	if (track_index_ >= timeline_->get_tracks().size()) {
 		if (add_track_commands_.isEmpty()) {
 			// First redo, create tracks now
 			add_track_commands_.resize(track_index_ -
-									   timeline_->GetTracks().size() + 1);
+									   timeline_->get_tracks().size() + 1);
 
 			for (int i = 0; i < add_track_commands_.size(); i++) {
 				add_track_commands_[i] = new TimelineAddTrackCommand(timeline_);
@@ -344,7 +344,7 @@ void TrackPlaceBlockCommand::redo()
 		}
 	}
 
-	Track *track = timeline_->GetTrackAt(track_index_);
+	Track *track = timeline_->get_track_at(track_index_);
 
 	bool append = (in_ >= track->track_length());
 
@@ -357,38 +357,38 @@ void TrackPlaceBlockCommand::redo()
 				gap_->set_length_and_media_out(in_ - track->track_length());
 			}
 			gap_->setParent(track->parent());
-			track->AppendBlock(gap_);
+			track->append_block(gap_);
 		}
 
-		track->AppendBlock(insert_);
+		track->append_block(insert_);
 	} else {
 		// Place the Block at this point
 		if (!ripple_remove_command_) {
 			ripple_remove_command_ = new TrackRippleRemoveAreaCommand(
 				track, TimeRange(in_, in_ + insert_->length()));
-			ripple_remove_command_->SetAllowSplittingGaps(true);
+			ripple_remove_command_->set_allow_splitting_gaps(true);
 		}
 
 		ripple_remove_command_->redo_now();
-		track->InsertBlockAfter(insert_,
-								ripple_remove_command_->GetInsertionIndex());
+		track->insert_block_after(insert_,
+								ripple_remove_command_->get_insertion_index());
 	}
 }
 
 void TrackPlaceBlockCommand::undo()
 {
-	Track *t = timeline_->GetTrackAt(track_index_);
+	Track *t = timeline_->get_track_at(track_index_);
 
 	TimeRange insert_range(insert_->in(), insert_->out());
 
 	// Firstly, remove our insert
-	t->RippleRemoveBlock(insert_);
+	t->ripple_remove_block(insert_);
 
 	if (ripple_remove_command_) {
 		// If we ripple removed, just undo that
 		ripple_remove_command_->undo_now();
 	} else if (gap_) {
-		t->RippleRemoveBlock(gap_);
+		t->ripple_remove_block(gap_);
 		gap_->setParent(&memory_manager_);
 	}
 

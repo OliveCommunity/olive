@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef MULTICAMPANEL_H
-#define MULTICAMPANEL_H
+#ifndef OAK_MULTICAMPANEL_H
+#define OAK_MULTICAMPANEL_H
 
 #include "panel/viewer/viewerbase.h"
 #include "widget/multicam/multicamwidget.h"
@@ -30,15 +30,15 @@ class MulticamPanel : public TimeBasedPanel {
 public:
 	MulticamPanel();
 
-	MulticamWidget *GetMulticamWidget() const
+	MulticamWidget *get_multicam_widget() const
 	{
-		return static_cast<MulticamWidget *>(GetTimeBasedWidget());
+		return static_cast<MulticamWidget *>(get_time_based_widget());
 	}
 
 protected:
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 };
 
 }
 
-#endif // MULTICAMPANEL_H
+#endif // OAK_MULTICAMPANEL_H

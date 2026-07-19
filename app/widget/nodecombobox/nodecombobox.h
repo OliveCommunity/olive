@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODECOMBOBOX_H
-#define NODECOMBOBOX_H
+#ifndef OAK_NODECOMBOBOX_H
+#define OAK_NODECOMBOBOX_H
 
 #include <QComboBox>
 
@@ -36,21 +36,21 @@ public:
 
 	virtual void showPopup() override;
 
-	const QString &GetSelectedNode() const;
+	const QString &get_selected_node() const;
 
 public slots:
-	void SetNode(const QString &id);
+	void set_node(const QString &id);
 
 protected:
 	virtual void changeEvent(QEvent *e) override;
 
 signals:
-	void NodeChanged(const QString &id);
+	void node_changed(const QString &id);
 
 private:
-	void UpdateText();
+	void update_text();
 
-	void SetNodeInternal(const QString &id, bool emit_signal);
+	void set_node_internal(const QString &id, bool emit_signal);
 
 	QString selected_id_;
 };

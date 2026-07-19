@@ -33,28 +33,28 @@ ConformTask::ConformTask(const QString &decoder_id,
 	, params_(params)
 	, output_filenames_(output_filenames)
 {
-	SetTitle(tr("Conforming Audio %1:%2")
+	set_title(tr("Conforming Audio %1:%2")
 				 .arg(stream.filename(), QString::number(stream.stream())));
 }
 
-bool ConformTask::Run()
+bool ConformTask::run()
 {
-	DecoderPtr decoder = Decoder::CreateFromID(decoder_id_);
+	DecoderPtr decoder = Decoder::create_from_id(decoder_id_);
 
-	if (!decoder->Open(stream_)) {
-		SetError(tr("Failed to open decoder for audio conform"));
+	if (!decoder->open(stream_)) {
+		set_error(tr("Failed to open decoder for audio conform"));
 		return false;
 	}
 
-	connect(decoder.get(), &Decoder::IndexProgress, this,
-			&ConformTask::ProgressChanged);
+	connect(decoder.get(), &Decoder::index_progress, this,
+			&ConformTask::progress_changed);
 
 	qDebug() << "Starting conform of" << stream_.filename() << stream_.stream();
 
 	bool ret =
-		decoder->ConformAudio(output_filenames_, params_, GetCancelAtom());
+		decoder->conform_audio(output_filenames_, params_, get_cancel_atom());
 
-	decoder->Close();
+	decoder->close();
 
 	return ret;
 }

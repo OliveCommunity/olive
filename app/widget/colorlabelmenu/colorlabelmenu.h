@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLORLABELMENU_H
-#define COLORLABELMENU_H
+#ifndef OAK_COLORLABELMENU_H
+#define OAK_COLORLABELMENU_H
 
 #include "widget/menu/menu.h"
 
@@ -35,17 +35,17 @@ public:
 	virtual void changeEvent(QEvent *event) override;
 
 signals:
-	void ColorSelected(int i);
+	void color_selected(int i);
 
 private:
-	void Retranslate();
+	void retranslate();
 
 	QVector<QAction *> color_items_;
 
 private slots:
-	void ActionTriggered();
+	void action_triggered();
 };
 
 }
 
-#endif // COLORLABELMENU_H
+#endif // OAK_COLORLABELMENU_H

@@ -16,48 +16,48 @@ TEST(ProjectSerializer, SaveLoadProjectRoundTrip)
 	const bool created_disk_manager =
 		(olive::DiskManager::instance() == nullptr);
 	if (created_disk_manager) {
-		olive::DiskManager::CreateInstance();
+		olive::DiskManager::create_instance();
 	}
 
-	olive::ColorManager::SetUpDefaultConfig();
-	olive::NodeFactory::Initialize();
-	olive::ProjectSerializer::Initialize();
+	olive::ColorManager::set_up_default_config();
+	olive::NodeFactory::initialize();
+	olive::ProjectSerializer::initialize();
 
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *node = new olive::TimeInput();
-	node->SetLabel(QStringLiteral("TimeInput"));
+	node->set_label(QStringLiteral("TimeInput"));
 	node->setParent(&project);
 
 	olive::ProjectSerializer::SaveData save_data(
-		olive::ProjectSerializer::kProject, &project, QString());
+		olive::ProjectSerializer::k_project, &project, QString());
 
 	QByteArray xml;
 	QBuffer buffer(&xml);
 	buffer.open(QIODevice::WriteOnly);
 	QXmlStreamWriter writer(&buffer);
 	olive::ProjectSerializer::Result save_result =
-		olive::ProjectSerializer::Save(&writer, save_data);
-	EXPECT_EQ(save_result.code(), olive::ProjectSerializer::kSuccess);
+		olive::ProjectSerializer::save(&writer, save_data);
+	EXPECT_EQ(save_result.code(), olive::ProjectSerializer::k_success);
 	buffer.close();
 
 	olive::Project loaded_project;
 	QBuffer read_buffer(&xml);
 	read_buffer.open(QIODevice::ReadOnly);
 	QXmlStreamReader reader(&read_buffer);
-	olive::ProjectSerializer::Result result = olive::ProjectSerializer::Load(
-		&loaded_project, &reader, olive::ProjectSerializer::kProject);
-	EXPECT_EQ(result.code(), olive::ProjectSerializer::kSuccess);
+	olive::ProjectSerializer::Result result = olive::ProjectSerializer::load(
+		&loaded_project, &reader, olive::ProjectSerializer::k_project);
+	EXPECT_EQ(result.code(), olive::ProjectSerializer::k_success);
 	EXPECT_FALSE(loaded_project.nodes().isEmpty());
-	ASSERT_TRUE(result.GetLoadData().node_ptrs.contains(
+	ASSERT_TRUE(result.get_load_data().node_ptrs.contains(
 		reinterpret_cast<quintptr>(node)));
 	EXPECT_TRUE(
-		loaded_project.nodes().contains(result.GetLoadData().node_ptrs.value(
+		loaded_project.nodes().contains(result.get_load_data().node_ptrs.value(
 			reinterpret_cast<quintptr>(node))));
 
-	olive::ProjectSerializer::Destroy();
+	olive::ProjectSerializer::destroy();
 	if (created_disk_manager) {
-		olive::DiskManager::DestroyInstance();
+		olive::DiskManager::destroy_instance();
 	}
 }

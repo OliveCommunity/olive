@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CANCELABLEOBJECT_H
-#define CANCELABLEOBJECT_H
+#ifndef OAK_CANCELABLEOBJECT_H
+#define OAK_CANCELABLEOBJECT_H
 
 #include "common/define.h"
 #include "render/cancelatom.h"
@@ -34,20 +34,20 @@ public:
 	{
 	}
 
-	void Cancel()
+	void cancel()
 	{
-		cancel_.Cancel();
+		cancel_.cancel();
 		CancelEvent();
 	}
 
-	CancelAtom *GetCancelAtom()
+	CancelAtom *get_cancel_atom()
 	{
 		return &cancel_;
 	}
 
-	bool IsCancelled()
+	bool is_cancelled()
 	{
-		return cancel_.IsCancelled();
+		return cancel_.is_cancelled();
 	}
 
 protected:
@@ -61,4 +61,4 @@ private:
 
 }
 
-#endif // CANCELABLEOBJECT_H
+#endif // OAK_CANCELABLEOBJECT_H

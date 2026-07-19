@@ -28,18 +28,18 @@ namespace olive
 
 #define super Node
 
-const QString TimeFormatNode::kTimeInput = QStringLiteral("time_in");
-const QString TimeFormatNode::kFormatInput = QStringLiteral("format_in");
-const QString TimeFormatNode::kLocalTimeInput = QStringLiteral("localtime_in");
+const QString TimeFormatNode::k_time_input = QStringLiteral("time_in");
+const QString TimeFormatNode::k_format_input = QStringLiteral("format_in");
+const QString TimeFormatNode::k_local_time_input = QStringLiteral("localtime_in");
 
 TimeFormatNode::TimeFormatNode()
 {
-	AddInput(kTimeInput, NodeValue::kFloat);
-	AddInput(kFormatInput, NodeValue::kText, QStringLiteral("hh:mm:ss"));
-	AddInput(kLocalTimeInput, NodeValue::kBoolean);
+	add_input(k_time_input, NodeValue::k_float);
+	add_input(k_format_input, NodeValue::k_text, QStringLiteral("hh:mm:ss"));
+	add_input(k_local_time_input, NodeValue::k_boolean);
 }
 
-QString TimeFormatNode::Name() const
+QString TimeFormatNode::name() const
 {
 	return tr("Time Format");
 }
@@ -49,36 +49,36 @@ QString TimeFormatNode::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.timeformat");
 }
 
-QVector<Node::CategoryID> TimeFormatNode::Category() const
+QVector<Node::CategoryID> TimeFormatNode::category() const
 {
-	return { kCategoryGenerator };
+	return { k_category_generator };
 }
 
-QString TimeFormatNode::Description() const
+QString TimeFormatNode::description() const
 {
 	return tr("Format time (in Unix epoch seconds) into a string.");
 }
 
-void TimeFormatNode::Retranslate()
+void TimeFormatNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kTimeInput, tr("Time"));
-	SetInputName(kFormatInput, tr("Format"));
-	SetInputName(kLocalTimeInput, tr("Interpret time as local time"));
+	set_input_name(k_time_input, tr("Time"));
+	set_input_name(k_format_input, tr("Format"));
+	set_input_name(k_local_time_input, tr("Interpret time as local time"));
 }
 
-void TimeFormatNode::Value(const NodeValueRow &value,
+void TimeFormatNode::value(const NodeValueRow &value,
 						   const NodeGlobals &globals,
 						   NodeValueTable *table) const
 {
-	qint64 ms_since_epoch = value[kTimeInput].toDouble() * 1000;
-	bool time_is_local = value[kLocalTimeInput].toBool();
+	qint64 ms_since_epoch = value[k_time_input].to_double() * 1000;
+	bool time_is_local = value[k_local_time_input].to_bool();
 	QDateTime dt = QDateTime::fromMSecsSinceEpoch(
 		ms_since_epoch, time_is_local ? Qt::LocalTime : Qt::UTC);
-	QString format = value[kFormatInput].toString();
+	QString format = value[k_format_input].to_string();
 	QString output = dt.toString(format);
-	table->Push(NodeValue(NodeValue::kText, output, this));
+	table->push(NodeValue(NodeValue::k_text, output, this));
 }
 
 }

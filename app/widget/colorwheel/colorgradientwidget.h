@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLORGRADIENTGLWIDGET_H
-#define COLORGRADIENTGLWIDGET_H
+#ifndef OAK_COLORGRADIENTGLWIDGET_H
+#define OAK_COLORGRADIENTGLWIDGET_H
 
 #include "colorswatchwidget.h"
 
@@ -33,7 +33,7 @@ public:
 	ColorGradientWidget(Qt::Orientation orientation, QWidget *parent = nullptr);
 
 protected:
-	virtual Color GetColorFromScreenPos(const QPoint &p) const override;
+	virtual Color get_color_from_screen_pos(const QPoint &p) const override;
 
 	virtual void paintEvent(QPaintEvent *e) override;
 
@@ -41,7 +41,7 @@ protected:
 										   bool external) override;
 
 private:
-	static Color LerpColor(const Color &a, const Color &b, int i, int max);
+	static Color lerp_color(const Color &a, const Color &b, int i, int max);
 
 	QPixmap cached_gradient_;
 
@@ -56,4 +56,4 @@ private:
 
 }
 
-#endif // COLORGRADIENTGLWIDGET_H
+#endif // OAK_COLORGRADIENTGLWIDGET_H

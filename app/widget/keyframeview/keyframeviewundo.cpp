@@ -35,7 +35,7 @@ KeyframeSetTypeCommand::KeyframeSetTypeCommand(NodeKeyframe *key,
 {
 }
 
-Project *KeyframeSetTypeCommand::GetRelevantProject() const
+Project *KeyframeSetTypeCommand::get_relevant_project() const
 {
 	return key_->parent()->project();
 }
@@ -69,7 +69,7 @@ KeyframeSetBezierControlPoint::KeyframeSetBezierControlPoint(
 {
 }
 
-Project *KeyframeSetBezierControlPoint::GetRelevantProject() const
+Project *KeyframeSetBezierControlPoint::get_relevant_project() const
 {
 	return key_->parent()->project();
 }

@@ -24,110 +24,110 @@
 namespace olive
 {
 
-int FFmpegUtils::GetCompatibleBridgePixelFormat(int pix_fmt,
+int FFmpegUtils::get_compatible_bridge_pixel_format(int pix_fmt,
 												PixelFormat maximum)
 {
 	int possible_pix_fmts[4];
 
-	possible_pix_fmts[0] = FB_PIX_FMT_RGBA;
+	possible_pix_fmts[0] = fb_pix_fmt_rgba;
 
-	if (maximum == PixelFormat::U8) {
-		possible_pix_fmts[1] = FB_PIX_FMT_NONE;
+	if (maximum == PixelFormat::u8) {
+		possible_pix_fmts[1] = fb_pix_fmt_none;
 	} else {
-		possible_pix_fmts[1] = FB_PIX_FMT_RGBA64LE;
-		if (maximum == PixelFormat::F32) {
-			possible_pix_fmts[2] = FB_PIX_FMT_RGBAF32LE;
-			possible_pix_fmts[3] = FB_PIX_FMT_NONE;
+		possible_pix_fmts[1] = fb_pix_fmt_rgb_a64_le;
+		if (maximum == PixelFormat::f32) {
+			possible_pix_fmts[2] = fb_pix_fmt_rgba_f32_le;
+			possible_pix_fmts[3] = fb_pix_fmt_none;
 		} else {
-			possible_pix_fmts[2] = FB_PIX_FMT_NONE;
+			possible_pix_fmts[2] = fb_pix_fmt_none;
 		}
 	}
 
 	return fb_find_best_pix_fmt_of_list(possible_pix_fmts, pix_fmt);
 }
 
-SampleFormat FFmpegUtils::GetNativeSampleFormat(int smp_fmt)
+SampleFormat FFmpegUtils::get_native_sample_format(int smp_fmt)
 {
 	switch (smp_fmt) {
-	case FB_SAMPLE_FMT_U8:
-		return SampleFormat::U8;
-	case FB_SAMPLE_FMT_S16:
-		return SampleFormat::S16;
-	case FB_SAMPLE_FMT_S32:
-		return SampleFormat::S32;
-	case FB_SAMPLE_FMT_S64:
-		return SampleFormat::S64;
-	case FB_SAMPLE_FMT_FLT:
-		return SampleFormat::F32;
-	case FB_SAMPLE_FMT_DBL:
-		return SampleFormat::F64;
-	case FB_SAMPLE_FMT_U8P:
-		return SampleFormat::U8P;
-	case FB_SAMPLE_FMT_S16P:
-		return SampleFormat::S16P;
-	case FB_SAMPLE_FMT_S32P:
-		return SampleFormat::S32P;
-	case FB_SAMPLE_FMT_S64P:
-		return SampleFormat::S64P;
-	case FB_SAMPLE_FMT_FLTP:
-		return SampleFormat::F32P;
-	case FB_SAMPLE_FMT_DBLP:
-		return SampleFormat::F64P;
+	case fb_sample_fmt_u8:
+		return SampleFormat::u8;
+	case fb_sample_fmt_s16:
+		return SampleFormat::s16;
+	case fb_sample_fmt_s32:
+		return SampleFormat::s32;
+	case fb_sample_fmt_s64:
+		return SampleFormat::s64;
+	case fb_sample_fmt_flt:
+		return SampleFormat::f32;
+	case fb_sample_fmt_dbl:
+		return SampleFormat::f64;
+	case fb_sample_fmt_u8_p:
+		return SampleFormat::u8_p;
+	case fb_sample_fmt_s16_p:
+		return SampleFormat::s16_p;
+	case fb_sample_fmt_s32_p:
+		return SampleFormat::s32_p;
+	case fb_sample_fmt_s64_p:
+		return SampleFormat::s64_p;
+	case fb_sample_fmt_fltp:
+		return SampleFormat::f32_p;
+	case fb_sample_fmt_dblp:
+		return SampleFormat::f64_p;
 	default:
 		break;
 	}
 
-	return SampleFormat::INVALID;
+	return SampleFormat::invalid;
 }
 
-int FFmpegUtils::GetFFmpegSampleFormat(const SampleFormat &smp_fmt)
+int FFmpegUtils::get_f_fmpeg_sample_format(const SampleFormat &smp_fmt)
 {
 	switch (smp_fmt) {
-	case SampleFormat::U8:
-		return FB_SAMPLE_FMT_U8;
-	case SampleFormat::S16:
-		return FB_SAMPLE_FMT_S16;
-	case SampleFormat::S32:
-		return FB_SAMPLE_FMT_S32;
-	case SampleFormat::S64:
-		return FB_SAMPLE_FMT_S64;
-	case SampleFormat::F32:
-		return FB_SAMPLE_FMT_FLT;
-	case SampleFormat::F64:
-		return FB_SAMPLE_FMT_DBL;
-	case SampleFormat::U8P:
-		return FB_SAMPLE_FMT_U8P;
-	case SampleFormat::S16P:
-		return FB_SAMPLE_FMT_S16P;
-	case SampleFormat::S32P:
-		return FB_SAMPLE_FMT_S32P;
-	case SampleFormat::S64P:
-		return FB_SAMPLE_FMT_S64P;
-	case SampleFormat::F32P:
-		return FB_SAMPLE_FMT_FLTP;
-	case SampleFormat::F64P:
-		return FB_SAMPLE_FMT_DBLP;
-	case SampleFormat::INVALID:
-	case SampleFormat::COUNT:
+	case SampleFormat::u8:
+		return fb_sample_fmt_u8;
+	case SampleFormat::s16:
+		return fb_sample_fmt_s16;
+	case SampleFormat::s32:
+		return fb_sample_fmt_s32;
+	case SampleFormat::s64:
+		return fb_sample_fmt_s64;
+	case SampleFormat::f32:
+		return fb_sample_fmt_flt;
+	case SampleFormat::f64:
+		return fb_sample_fmt_dbl;
+	case SampleFormat::u8_p:
+		return fb_sample_fmt_u8_p;
+	case SampleFormat::s16_p:
+		return fb_sample_fmt_s16_p;
+	case SampleFormat::s32_p:
+		return fb_sample_fmt_s32_p;
+	case SampleFormat::s64_p:
+		return fb_sample_fmt_s64_p;
+	case SampleFormat::f32_p:
+		return fb_sample_fmt_fltp;
+	case SampleFormat::f64_p:
+		return fb_sample_fmt_dblp;
+	case SampleFormat::invalid:
+	case SampleFormat::count:
 		break;
 	}
 
-	return FB_SAMPLE_FMT_NONE;
+	return fb_sample_fmt_none;
 }
 
-int FFmpegUtils::ConvertJPEGSpaceToRegularSpace(int f)
+int FFmpegUtils::convert_jpeg_space_to_regular_space(int f)
 {
 	switch (f) {
-	case FB_PIX_FMT_YUVJ420P:
-		return FB_PIX_FMT_YUV420P;
-	case FB_PIX_FMT_YUVJ422P:
-		return FB_PIX_FMT_YUV422P;
-	case FB_PIX_FMT_YUVJ444P:
-		return FB_PIX_FMT_YUV444P;
-	case FB_PIX_FMT_YUVJ440P:
-		return FB_PIX_FMT_YUV440P;
-	case FB_PIX_FMT_YUVJ411P:
-		return FB_PIX_FMT_YUV411P;
+	case fb_pix_fmt_yuv_j420_p:
+		return fb_pix_fmt_yu_v420_p;
+	case fb_pix_fmt_yuv_j422_p:
+		return fb_pix_fmt_yu_v422_p;
+	case fb_pix_fmt_yuv_j444_p:
+		return fb_pix_fmt_yu_v444_p;
+	case fb_pix_fmt_yuv_j440_p:
+		return fb_pix_fmt_yu_v440_p;
+	case fb_pix_fmt_yuv_j411_p:
+		return fb_pix_fmt_yu_v411_p;
 	default:
 		break;
 	}
@@ -135,63 +135,63 @@ int FFmpegUtils::ConvertJPEGSpaceToRegularSpace(int f)
 	return f;
 }
 
-int FFmpegUtils::GetFFmpegPixelFormat(const PixelFormat &pix_fmt,
+int FFmpegUtils::get_f_fmpeg_pixel_format(const PixelFormat &pix_fmt,
 									  int channel_layout)
 {
-	if (channel_layout == VideoParams::kRGBChannelCount) {
+	if (channel_layout == VideoParams::k_rgb_channel_count) {
 		switch (pix_fmt) {
-		case PixelFormat::U8:
-			return FB_PIX_FMT_RGB24;
-		case PixelFormat::U10:
-			return FB_PIX_FMT_NONE;
-		case PixelFormat::U16:
-			return FB_PIX_FMT_RGB48LE;
-		case PixelFormat::F16:
-			return FB_PIX_FMT_RGBF16LE;
-		case PixelFormat::F32:
-			return FB_PIX_FMT_RGBF32LE;
-		case PixelFormat::INVALID:
-		case PixelFormat::COUNT:
+		case PixelFormat::u8:
+			return fb_pix_fmt_rg_b24;
+		case PixelFormat::u10:
+			return fb_pix_fmt_none;
+		case PixelFormat::u16:
+			return fb_pix_fmt_rg_b48_le;
+		case PixelFormat::f16:
+			return fb_pix_fmt_rgb_f16_le;
+		case PixelFormat::f32:
+			return fb_pix_fmt_rgb_f32_le;
+		case PixelFormat::invalid:
+		case PixelFormat::count:
 			break;
 		}
-	} else if (channel_layout == VideoParams::kRGBAChannelCount) {
+	} else if (channel_layout == VideoParams::k_rgba_channel_count) {
 		switch (pix_fmt) {
-		case PixelFormat::U8:
-			return FB_PIX_FMT_RGBA;
-		case PixelFormat::U10:
-			return FB_PIX_FMT_NONE;
-		case PixelFormat::U16:
-			return FB_PIX_FMT_RGBA64LE;
-		case PixelFormat::F16:
-			return FB_PIX_FMT_RGBAF16LE;
-		case PixelFormat::F32:
-			return FB_PIX_FMT_RGBAF32LE;
-		case PixelFormat::INVALID:
-		case PixelFormat::COUNT:
+		case PixelFormat::u8:
+			return fb_pix_fmt_rgba;
+		case PixelFormat::u10:
+			return fb_pix_fmt_none;
+		case PixelFormat::u16:
+			return fb_pix_fmt_rgb_a64_le;
+		case PixelFormat::f16:
+			return fb_pix_fmt_rgba_f16_le;
+		case PixelFormat::f32:
+			return fb_pix_fmt_rgba_f32_le;
+		case PixelFormat::invalid:
+		case PixelFormat::count:
 			break;
 		}
 	}
 
-	return FB_PIX_FMT_NONE;
+	return fb_pix_fmt_none;
 }
 
-PixelFormat FFmpegUtils::GetCompatiblePixelFormat(const PixelFormat &pix_fmt)
+PixelFormat FFmpegUtils::get_compatible_pixel_format(const PixelFormat &pix_fmt)
 {
 	switch (pix_fmt) {
-	case PixelFormat::U8:
-		return PixelFormat::U8;
-	case PixelFormat::U10:
-		return PixelFormat::U8;
-	case PixelFormat::U16:
-	case PixelFormat::F16:
-	case PixelFormat::F32:
-		return PixelFormat::U16;
-	case PixelFormat::INVALID:
-	case PixelFormat::COUNT:
+	case PixelFormat::u8:
+		return PixelFormat::u8;
+	case PixelFormat::u10:
+		return PixelFormat::u8;
+	case PixelFormat::u16:
+	case PixelFormat::f16:
+	case PixelFormat::f32:
+		return PixelFormat::u16;
+	case PixelFormat::invalid:
+	case PixelFormat::count:
 		break;
 	}
 
-	return PixelFormat::INVALID;
+	return PixelFormat::invalid;
 }
 
 }

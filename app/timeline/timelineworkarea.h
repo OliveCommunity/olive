@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TIMELINEWORKAREA_H
-#define TIMELINEWORKAREA_H
+#ifndef OAK_TIMELINEWORKAREA_H
+#define OAK_TIMELINEWORKAREA_H
 
 #include <olive/core/core.h>
 #include <QObject>
@@ -40,22 +40,22 @@ public:
 	bool enabled() const;
 	void set_enabled(bool e);
 
-	const rational &in() const;
-	const rational &out() const;
-	const rational &length() const;
+	const Rational &in() const;
+	const Rational &out() const;
+	const Rational &length() const;
 	const TimeRange &range() const;
 	void set_range(const TimeRange &range);
 
 	bool load(QXmlStreamReader *reader);
 	void save(QXmlStreamWriter *writer) const;
 
-	static const rational kResetIn;
-	static const rational kResetOut;
+	static const Rational k_reset_in;
+	static const Rational k_reset_out;
 
 signals:
-	void EnabledChanged(bool e);
+	void enabled_changed(bool e);
 
-	void RangeChanged(const TimeRange &r);
+	void range_changed(const TimeRange &r);
 
 private:
 	bool workarea_enabled_;
@@ -65,4 +65,4 @@ private:
 
 }
 
-#endif // TIMELINEWORKAREA_H
+#endif // OAK_TIMELINEWORKAREA_H

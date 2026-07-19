@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FOOTAGEDESCRIPTION_H
-#define FOOTAGEDESCRIPTION_H
+#ifndef OAK_FOOTAGEDESCRIPTION_H
+#define OAK_FOOTAGEDESCRIPTION_H
 
 #include <QString>
 
@@ -40,7 +40,7 @@ public:
 	{
 	}
 
-	bool IsValid() const
+	bool is_valid() const
 	{
 		return !decoder_.isEmpty() &&
 			   (!video_streams_.isEmpty() || !audio_streams_.isEmpty() ||
@@ -52,41 +52,41 @@ public:
 		return decoder_;
 	}
 
-	void AddVideoStream(const VideoParams &video_params)
+	void add_video_stream(const VideoParams &video_params)
 	{
-		Q_ASSERT(!HasStreamIndex(video_params.stream_index()));
+		Q_ASSERT(!has_stream_index(video_params.stream_index()));
 
 		video_streams_.append(video_params);
 	}
 
-	void AddAudioStream(const AudioParams &audio_params)
+	void add_audio_stream(const AudioParams &audio_params)
 	{
-		Q_ASSERT(!HasStreamIndex(audio_params.stream_index()));
+		Q_ASSERT(!has_stream_index(audio_params.stream_index()));
 
 		audio_streams_.append(audio_params);
 	}
 
-	void AddSubtitleStream(const SubtitleParams &sub_params)
+	void add_subtitle_stream(const SubtitleParams &sub_params)
 	{
-		Q_ASSERT(!HasStreamIndex(sub_params.stream_index()));
+		Q_ASSERT(!has_stream_index(sub_params.stream_index()));
 
 		subtitle_streams_.append(sub_params);
 	}
 
-	Track::Type GetTypeOfStream(int index)
+	Track::Type get_type_of_stream(int index)
 	{
-		if (StreamIsVideo(index)) {
-			return Track::kVideo;
-		} else if (StreamIsAudio(index)) {
-			return Track::kAudio;
-		} else if (StreamIsSubtitle(index)) {
-			return Track::kSubtitle;
+		if (stream_is_video(index)) {
+			return Track::k_video;
+		} else if (stream_is_audio(index)) {
+			return Track::k_audio;
+		} else if (stream_is_subtitle(index)) {
+			return Track::k_subtitle;
 		} else {
-			return Track::kNone;
+			return Track::k_none;
 		}
 	}
 
-	bool StreamIsVideo(int index) const
+	bool stream_is_video(int index) const
 	{
 		foreach (const VideoParams &vp, video_streams_) {
 			if (vp.stream_index() == index) {
@@ -97,7 +97,7 @@ public:
 		return false;
 	}
 
-	bool StreamIsAudio(int index) const
+	bool stream_is_audio(int index) const
 	{
 		foreach (const AudioParams &ap, audio_streams_) {
 			if (ap.stream_index() == index) {
@@ -108,7 +108,7 @@ public:
 		return false;
 	}
 
-	bool StreamIsSubtitle(int index) const
+	bool stream_is_subtitle(int index) const
 	{
 		foreach (const SubtitleParams &sp, subtitle_streams_) {
 			if (sp.stream_index() == index) {
@@ -119,34 +119,34 @@ public:
 		return false;
 	}
 
-	bool HasStreamIndex(int index) const
+	bool has_stream_index(int index) const
 	{
-		return StreamIsVideo(index) || StreamIsAudio(index) ||
-			   StreamIsSubtitle(index);
+		return stream_is_video(index) || stream_is_audio(index) ||
+			   stream_is_subtitle(index);
 	}
 
-	int GetStreamCount() const
+	int get_stream_count() const
 	{
 		return total_stream_count_;
 	}
-	void SetStreamCount(int s)
+	void set_stream_count(int s)
 	{
 		total_stream_count_ = s;
 	}
 
-	void SetSourceStartTime(const rational &time, const QString &source)
+	void set_source_start_time(const Rational &time, const QString &source)
 	{
 		source_start_time_ = time;
 		source_start_time_source_ = source;
 		has_source_start_time_ = true;
 	}
 
-	bool HasSourceStartTime() const
+	bool has_source_start_time() const
 	{
 		return has_source_start_time_;
 	}
 
-	const rational &source_start_time() const
+	const Rational &source_start_time() const
 	{
 		return source_start_time_;
 	}
@@ -156,39 +156,39 @@ public:
 		return source_start_time_source_;
 	}
 
-	bool Load(const QString &filename);
+	bool load(const QString &filename);
 
-	bool Save(const QString &filename) const;
+	bool save(const QString &filename) const;
 
-	const QVector<VideoParams> &GetVideoStreams() const
+	const QVector<VideoParams> &get_video_streams() const
 	{
 		return video_streams_;
 	}
-	QVector<VideoParams> &GetVideoStreams()
+	QVector<VideoParams> &get_video_streams()
 	{
 		return video_streams_;
 	}
 
-	const QVector<AudioParams> &GetAudioStreams() const
+	const QVector<AudioParams> &get_audio_streams() const
 	{
 		return audio_streams_;
 	}
-	QVector<AudioParams> &GetAudioStreams()
+	QVector<AudioParams> &get_audio_streams()
 	{
 		return audio_streams_;
 	}
 
-	const QVector<SubtitleParams> &GetSubtitleStreams() const
+	const QVector<SubtitleParams> &get_subtitle_streams() const
 	{
 		return subtitle_streams_;
 	}
-	QVector<SubtitleParams> &GetSubtitleStreams()
+	QVector<SubtitleParams> &get_subtitle_streams()
 	{
 		return subtitle_streams_;
 	}
 
 private:
-	static constexpr unsigned kFootageMetaVersion = 7;
+	static constexpr unsigned k_footage_meta_version = 7;
 
 	QString decoder_;
 
@@ -200,7 +200,7 @@ private:
 
 	int total_stream_count_;
 
-	rational source_start_time_;
+	Rational source_start_time_;
 
 	QString source_start_time_source_;
 
@@ -209,4 +209,4 @@ private:
 
 }
 
-#endif // FOOTAGEDESCRIPTION_H
+#endif // OAK_FOOTAGEDESCRIPTION_H

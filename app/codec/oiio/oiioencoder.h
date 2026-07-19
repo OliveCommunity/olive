@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef OIIOENCODER_H
-#define OIIOENCODER_H
+#ifndef OAK_OIIOENCODER_H
+#define OAK_OIIOENCODER_H
 
 #include "codec/encoder.h"
 
@@ -33,16 +33,16 @@ public:
 	OIIOEncoder(const EncodingParams &params);
 
 public slots:
-	virtual bool Open() override;
+	virtual bool open() override;
 
-	virtual bool WriteFrame(olive::FramePtr frame,
-							olive::core::rational time) override;
-	virtual bool WriteAudio(const SampleBuffer &audio) override;
-	virtual bool WriteSubtitle(const SubtitleBlock *sub_block) override;
+	virtual bool write_frame(olive::FramePtr frame,
+							olive::core::Rational time) override;
+	virtual bool write_audio(const SampleBuffer &audio) override;
+	virtual bool write_subtitle(const SubtitleBlock *sub_block) override;
 
-	virtual void Close() override;
+	virtual void close() override;
 };
 
 }
 
-#endif // OIIOENCODER_H
+#endif // OAK_OIIOENCODER_H

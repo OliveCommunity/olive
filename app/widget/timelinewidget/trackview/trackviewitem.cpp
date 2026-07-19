@@ -48,49 +48,49 @@ TrackViewItem::TrackViewItem(Track *track, QWidget *parent)
 	layout->addWidget(stack_);
 
 	label_ = new ClickableLabel();
-	connect(label_, &ClickableLabel::MouseDoubleClicked, this,
-			&TrackViewItem::LabelClicked);
-	connect(track_, &Track::LabelChanged, this, &TrackViewItem::UpdateLabel);
-	connect(track_, &Track::IndexChanged, this, &TrackViewItem::UpdateLabel);
-	UpdateLabel();
+	connect(label_, &ClickableLabel::mouse_double_clicked, this,
+			&TrackViewItem::label_clicked);
+	connect(track_, &Track::label_changed, this, &TrackViewItem::update_label);
+	connect(track_, &Track::index_changed, this, &TrackViewItem::update_label);
+	update_label();
 	stack_->addWidget(label_);
 
 	line_edit_ = new FocusableLineEdit();
-	connect(line_edit_, &FocusableLineEdit::Confirmed, this,
-			&TrackViewItem::LineEditConfirmed);
-	connect(line_edit_, &FocusableLineEdit::Cancelled, this,
-			&TrackViewItem::LineEditCancelled);
+	connect(line_edit_, &FocusableLineEdit::confirmed, this,
+			&TrackViewItem::line_edit_confirmed);
+	connect(line_edit_, &FocusableLineEdit::cancelled, this,
+			&TrackViewItem::line_edit_cancelled);
 	stack_->addWidget(line_edit_);
 
-	mute_button_ = CreateMSLButton(Qt::red);
-	mute_button_->setChecked(track->IsMuted());
-	UpdateMuteButton(track->IsMuted());
-	connect(mute_button_, &QPushButton::toggled, track_, &Track::SetMuted);
+	mute_button_ = create_msl_button(Qt::red);
+	mute_button_->setChecked(track->is_muted());
+	update_mute_button(track->is_muted());
+	connect(mute_button_, &QPushButton::toggled, track_, &Track::set_muted);
 	connect(mute_button_, &QPushButton::toggled, this,
-			&TrackViewItem::UpdateMuteButton);
+			&TrackViewItem::update_mute_button);
 	layout->addWidget(mute_button_);
 
 	/*solo_button_ = CreateMSLButton(tr("S"), Qt::yellow);
   layout->addWidget(solo_button_);*/
 
-	lock_button_ = CreateMSLButton(Qt::gray);
-	lock_button_->setChecked(track->IsLocked());
-	UpdateLockButton(track->IsLocked());
-	connect(lock_button_, &QPushButton::toggled, track_, &Track::SetLocked);
+	lock_button_ = create_msl_button(Qt::gray);
+	lock_button_->setChecked(track->is_locked());
+	update_lock_button(track->is_locked());
+	connect(lock_button_, &QPushButton::toggled, track_, &Track::set_locked);
 	connect(lock_button_, &QPushButton::toggled, this,
-			&TrackViewItem::UpdateLockButton);
+			&TrackViewItem::update_lock_button);
 	layout->addWidget(lock_button_);
 
 	setMinimumHeight(mute_button_->height());
 	setContextMenuPolicy(Qt::CustomContextMenu);
 
-	connect(track, &Track::MutedChanged, mute_button_,
+	connect(track, &Track::muted_changed, mute_button_,
 			&QPushButton::setChecked);
 	connect(this, &QWidget::customContextMenuRequested, this,
-			&TrackViewItem::ShowContextMenu);
+			&TrackViewItem::show_context_menu);
 }
 
-QPushButton *TrackViewItem::CreateMSLButton(const QColor &checked_color) const
+QPushButton *TrackViewItem::create_msl_button(const QColor &checked_color) const
 {
 	QPushButton *button = new QPushButton();
 	button->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
@@ -106,26 +106,26 @@ QPushButton *TrackViewItem::CreateMSLButton(const QColor &checked_color) const
 	return button;
 }
 
-void TrackViewItem::LabelClicked()
+void TrackViewItem::label_clicked()
 {
 	stack_->setCurrentWidget(line_edit_);
 	line_edit_->setFocus();
 	line_edit_->selectAll();
 }
 
-void TrackViewItem::LineEditConfirmed()
+void TrackViewItem::line_edit_confirmed()
 {
 	line_edit_->blockSignals(true);
 
-	track_->SetLabel(line_edit_->text());
-	UpdateLabel();
+	track_->set_label(line_edit_->text());
+	update_label();
 
 	stack_->setCurrentWidget(label_);
 
 	line_edit_->blockSignals(false);
 }
 
-void TrackViewItem::LineEditCancelled()
+void TrackViewItem::line_edit_cancelled()
 {
 	line_edit_->blockSignals(true);
 
@@ -134,46 +134,46 @@ void TrackViewItem::LineEditCancelled()
 	line_edit_->blockSignals(false);
 }
 
-void TrackViewItem::UpdateLabel()
+void TrackViewItem::update_label()
 {
-	label_->setText(track_->GetLabelOrName());
+	label_->setText(track_->get_label_or_name());
 }
 
-void TrackViewItem::ShowContextMenu(const QPoint &p)
+void TrackViewItem::show_context_menu(const QPoint &p)
 {
 	Menu m(this);
 
 	QAction *delete_action = m.addAction(tr("&Delete"));
 	connect(delete_action, &QAction::triggered, this,
-			&TrackViewItem::DeleteTrack, Qt::QueuedConnection);
+			&TrackViewItem::delete_track, Qt::QueuedConnection);
 
 	m.addSeparator();
 
 	QAction *delete_unused_action = m.addAction(tr("Delete All &Empty"));
 	connect(delete_unused_action, &QAction::triggered, this,
-			&TrackViewItem::DeleteAllEmptyTracks, Qt::QueuedConnection);
+			&TrackViewItem::delete_all_empty_tracks, Qt::QueuedConnection);
 
 	m.exec(mapToGlobal(p));
 }
 
-void TrackViewItem::DeleteTrack()
+void TrackViewItem::delete_track()
 {
-	emit AboutToDeleteTrack(track_);
+	emit about_to_delete_track(track_);
 	Core::instance()->undo_stack()->push(
 		new TimelineRemoveTrackCommand(track_),
-		tr("Deleted Track \"%1\"").arg(track_->GetLabelOrName()));
+		tr("Deleted Track \"%1\"").arg(track_->get_label_or_name()));
 }
 
-void TrackViewItem::DeleteAllEmptyTracks()
+void TrackViewItem::delete_all_empty_tracks()
 {
 	Sequence *sequence = track_->sequence();
 	QVector<Track *> tracks_to_remove;
 	QStringList track_names_to_remove;
 
-	foreach (Track *t, sequence->GetTracks()) {
-		if (t->Blocks().isEmpty()) {
+	foreach (Track *t, sequence->get_tracks()) {
+		if (t->blocks().isEmpty()) {
 			tracks_to_remove.append(t);
-			track_names_to_remove.append(t->GetLabelOrName());
+			track_names_to_remove.append(t->get_label_or_name());
 		}
 	}
 
@@ -196,14 +196,14 @@ void TrackViewItem::DeleteAllEmptyTracks()
 	}
 }
 
-void TrackViewItem::UpdateMuteButton(bool e)
+void TrackViewItem::update_mute_button(bool e)
 {
-	mute_button_->setIcon(e ? icon::EyeClosed : icon::EyeOpened);
+	mute_button_->setIcon(e ? icon::eye_closed : icon::eye_opened);
 }
 
-void TrackViewItem::UpdateLockButton(bool e)
+void TrackViewItem::update_lock_button(bool e)
 {
-	lock_button_->setIcon(e ? icon::LockClosed : icon::LockOpened);
+	lock_button_->setIcon(e ? icon::lock_closed : icon::lock_opened);
 }
 
 }

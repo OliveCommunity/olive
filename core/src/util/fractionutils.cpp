@@ -53,7 +53,7 @@ int64_t i64_gcd(int64_t a, int64_t b)
 
 } // namespace
 
-void ReduceFraction(int64_t &num, int64_t &den, int64_t max)
+void reduce_fraction(int64_t &num, int64_t &den, int64_t max)
 {
 	if (den == 0) {
 		num = 0;
@@ -110,7 +110,7 @@ void ReduceFraction(int64_t &num, int64_t &den, int64_t max)
 	den = a1d;
 }
 
-int CompareFractions(int an, int ad, int bn, int bd)
+int compare_fractions(int an, int ad, int bn, int bd)
 {
 	const int64_t tmp = an * int64_t(bd) - bn * int64_t(ad);
 
@@ -125,7 +125,7 @@ int CompareFractions(int an, int ad, int bn, int bd)
 	return INT_MIN;
 }
 
-int64_t RescaleRnd(int64_t a, int64_t b, int64_t c, FractionRounding rnd)
+int64_t rescale_rnd(int64_t a, int64_t b, int64_t c, FractionRounding rnd)
 {
 	// Normalize so that the divisor is positive; the sign is carried by the
 	// dividend instead.
@@ -142,7 +142,7 @@ int64_t RescaleRnd(int64_t a, int64_t b, int64_t c, FractionRounding rnd)
 	unsigned __int128 uc = static_cast<unsigned __int128>(c);
 
 	unsigned __int128 q;
-	if (rnd == FractionRounding::kNearInf) {
+	if (rnd == FractionRounding::k_near_inf) {
 		// Round to nearest, ties away from zero
 		q = (ur + uc / 2) / uc;
 	} else {

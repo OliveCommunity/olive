@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef COLORSWATCHWIDGET_H
-#define COLORSWATCHWIDGET_H
+#ifndef OAK_COLORSWATCHWIDGET_H
+#define OAK_COLORSWATCHWIDGET_H
 
 #include <QOpenGLWidget>
 
@@ -34,32 +34,32 @@ class ColorSwatchWidget : public QWidget {
 public:
 	ColorSwatchWidget(QWidget *parent = nullptr);
 
-	const Color &GetSelectedColor() const;
+	const Color &get_selected_color() const;
 
-	void SetColorProcessor(ColorProcessorPtr to_linear,
+	void set_color_processor(ColorProcessorPtr to_linear,
 						   ColorProcessorPtr to_display);
 
 public slots:
-	void SetSelectedColor(const Color &c);
+	void set_selected_color(const Color &c);
 
 signals:
-	void SelectedColorChanged(const Color &c);
+	void selected_color_changed(const Color &c);
 
 protected:
 	virtual void mousePressEvent(QMouseEvent *e) override;
 
 	virtual void mouseMoveEvent(QMouseEvent *e) override;
 
-	virtual Color GetColorFromScreenPos(const QPoint &p) const = 0;
+	virtual Color get_color_from_screen_pos(const QPoint &p) const = 0;
 
 	virtual void SelectedColorChangedEvent(const Color &c, bool external);
 
-	Qt::GlobalColor GetUISelectorColor() const;
+	Qt::GlobalColor get_ui_selector_color() const;
 
-	Color GetManagedColor(const Color &input) const;
+	Color get_managed_color(const Color &input) const;
 
 private:
-	void SetSelectedColorInternal(const Color &c, bool external);
+	void set_selected_color_internal(const Color &c, bool external);
 
 	Color selected_color_;
 
@@ -70,4 +70,4 @@ private:
 
 }
 
-#endif // COLORSWATCHWIDGET_H
+#endif // OAK_COLORSWATCHWIDGET_H

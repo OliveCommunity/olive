@@ -28,9 +28,9 @@
 #include "ofxhImageEffect.h"
 
 // Plugin support headers
-#include "pluginSupport/OliveHost.h"
-#include "pluginSupport/OliveClip.h"
-#include "pluginSupport/OlivePluginInstance.h"
+#include "pluginSupport/olivehost.h"
+#include "pluginSupport/oliveclip.h"
+#include "pluginSupport/oliveplugininstance.h"
 #include "pluginSupport/image.h"
 
 // Node and render headers
@@ -52,7 +52,7 @@ namespace test
 // Helper Functions
 // ============================================================================
 
-static VideoParams MakeVideoParams(int width, int height,
+static VideoParams make_video_params(int width, int height,
 								   core::PixelFormat format, int channels,
 								   bool premultiplied = false)
 {
@@ -62,20 +62,20 @@ static VideoParams MakeVideoParams(int width, int height,
 	params.set_format(format);
 	params.set_channel_count(channels);
 	params.set_premultiplied_alpha(premultiplied);
-	params.set_pixel_aspect_ratio(core::rational(1, 1));
-	params.set_frame_rate(core::rational(30, 1));
+	params.set_pixel_aspect_ratio(core::Rational(1, 1));
+	params.set_frame_rate(core::Rational(30, 1));
 	return params;
 }
 
-static TexturePtr CreateTestTexture(const VideoParams &params,
+static TexturePtr create_test_texture(const VideoParams &params,
 									uint8_t fill_value = 0x7f)
 {
-	AVFramePtr frame = CreateAVFramePtr();
-	frame->set_format(FFmpegUtils::GetFFmpegPixelFormat(params.format(),
+	AVFramePtr frame = create_av_frame_ptr();
+	frame->set_format(FFmpegUtils::get_f_fmpeg_pixel_format(params.format(),
 														params.channel_count()));
 	frame->set_width(params.width());
 	frame->set_height(params.height());
-	if (frame->format() == FB_PIX_FMT_NONE) {
+	if (frame->format() == fb_pix_fmt_none) {
 		return nullptr;
 	}
 	if (frame->get_buffer(0) < 0) {
@@ -91,7 +91,7 @@ static TexturePtr CreateTestTexture(const VideoParams &params,
 	}
 
 	TexturePtr texture = std::make_shared<Texture>(params);
-	texture->handleFrame(frame);
+	texture->handle_frame(frame);
 	return texture;
 }
 
@@ -109,14 +109,14 @@ TEST(PluginSmoke, HostSingletonExists)
 TEST(PluginSmoke, LoadPluginsEmptyPathNoCrash)
 {
 	// Loading plugins from empty path should not crash
-	EXPECT_NO_THROW({ loadPlugins(QString()); });
+	EXPECT_NO_THROW({ load_plugins(QString()); });
 }
 
 TEST(PluginSmoke, LoadPluginsNonExistentPathNoCrash)
 {
 	// Loading plugins from non-existent path should not crash
 	EXPECT_NO_THROW(
-		{ loadPlugins(QStringLiteral("/nonexistent/path/to/plugins")); });
+		{ load_plugins(QStringLiteral("/nonexistent/path/to/plugins")); });
 }
 
 // ============================================================================
@@ -128,7 +128,7 @@ TEST(PluginSmokeJob, JobConstruction)
 	NodeValueRow row;
 	PluginJob job(nullptr, nullptr, row);
 
-	EXPECT_EQ(job.pluginInstance(), nullptr);
+	EXPECT_EQ(job.plugin_instance(), nullptr);
 	EXPECT_EQ(job.node(), nullptr);
 	EXPECT_DOUBLE_EQ(job.time_seconds(), 0.0);
 }
@@ -136,7 +136,7 @@ TEST(PluginSmokeJob, JobConstruction)
 TEST(PluginSmokeJob, JobWithTime)
 {
 	NodeValueRow row;
-	core::rational time(5, 1); // 5 seconds
+	core::Rational time(5, 1); // 5 seconds
 	PluginJob job(nullptr, nullptr, row, time);
 
 	EXPECT_DOUBLE_EQ(job.time_seconds(), 5.0);
@@ -144,17 +144,17 @@ TEST(PluginSmokeJob, JobWithTime)
 
 TEST(PluginSmokeJob, JobWithTextureValue)
 {
-	VideoParams params(64, 64, core::PixelFormat::U8, 4);
-	TexturePtr tex = CreateTestTexture(params, 0x80);
+	VideoParams params(64, 64, core::PixelFormat::u8, 4);
+	TexturePtr tex = create_test_texture(params, 0x80);
 	ASSERT_NE(tex, nullptr);
 
 	NodeValueRow row;
-	row.insert(QStringLiteral("source"), NodeValue(NodeValue::kTexture, tex));
+	row.insert(QStringLiteral("source"), NodeValue(NodeValue::k_texture, tex));
 
 	PluginJob job(nullptr, nullptr, row);
 
 	// Job should have the values inserted
-	EXPECT_FALSE(job.GetValues().isEmpty());
+	EXPECT_FALSE(job.get_values().isEmpty());
 }
 
 // ============================================================================
@@ -174,14 +174,14 @@ TEST(PluginSmokeThread, ConcurrentImageAllocation)
 			for (int i = 0; i < num_allocs_per_thread; ++i) {
 				OFX::Host::ImageEffect::ClipDescriptor desc(
 					kOfxImageEffectOutputClipName);
-				VideoParams params = MakeVideoParams(
-					32 + t, 32 + i, core::PixelFormat::U8, 4, false);
+				VideoParams params = make_video_params(
+					32 + t, 32 + i, core::PixelFormat::u8, 4, false);
 				OliveClipInstance clip(nullptr, desc, params);
 
 				Image image(clip);
 				OfxRectI bounds = { 0, 0, 32 + t, 32 + i };
 				OfxRectI rod = bounds;
-				image.AllocateFromParams(params, bounds, rod, true);
+				image.allocate_from_params(params, bounds, rod, true);
 
 				if (image.data() != nullptr && image.width() == 32 + t &&
 					image.height() == 32 + i) {

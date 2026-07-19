@@ -37,11 +37,11 @@ NodeViewItemConnector::NodeViewItemConnector(bool is_output,
 	, output_(is_output)
 {
 	QColor c = qApp->palette().text().color();
-	setPen(QPen(c, NodeViewItem::DefaultItemBorder()));
+	setPen(QPen(c, NodeViewItem::default_item_border()));
 	setBrush(c);
 }
 
-void NodeViewItemConnector::SetFlowDirection(NodeViewCommon::FlowDirection dir)
+void NodeViewItemConnector::set_flow_direction(NodeViewCommon::FlowDirection dir)
 {
 	QFont f;
 	QFontMetricsF fm(f);
@@ -53,31 +53,31 @@ void NodeViewItemConnector::SetFlowDirection(NodeViewCommon::FlowDirection dir)
 	p.resize(3);
 
 	switch (dir) {
-	case NodeViewCommon::kLeftToRight:
+	case NodeViewCommon::k_left_to_right:
 		// Triangle pointing right
 		p[0] = QPointF(0, -triangle_sz_half);
 		p[1] = QPointF(triangle_sz_half, 0);
 		p[2] = QPointF(0, triangle_sz_half);
 		break;
-	case NodeViewCommon::kTopToBottom:
+	case NodeViewCommon::k_top_to_bottom:
 		// Triangle pointing down
 		p[0] = QPointF(-triangle_sz_half, 0);
 		p[1] = QPointF(0, triangle_sz_half);
 		p[2] = QPointF(triangle_sz_half, 0);
 		break;
-	case NodeViewCommon::kBottomToTop:
+	case NodeViewCommon::k_bottom_to_top:
 		// Triangle pointing up
 		p[0] = QPointF(-triangle_sz_half, 0);
 		p[1] = QPointF(0, -triangle_sz_half);
 		p[2] = QPointF(triangle_sz_half, 0);
 		break;
-	case NodeViewCommon::kRightToLeft:
+	case NodeViewCommon::k_right_to_left:
 		// Triangle pointing left
 		p[0] = QPointF(0, -triangle_sz_half);
 		p[1] = QPointF(-triangle_sz_half, 0);
 		p[2] = QPointF(0, triangle_sz_half);
 		break;
-	case NodeViewCommon::kInvalidDirection:
+	case NodeViewCommon::k_invalid_direction:
 		break;
 	}
 

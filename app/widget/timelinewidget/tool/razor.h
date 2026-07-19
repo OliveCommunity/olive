@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef RAZORTIMELINETOOL_H
-#define RAZORTIMELINETOOL_H
+#ifndef OAK_RAZORTIMELINETOOL_H
+#define OAK_RAZORTIMELINETOOL_H
 
 #include "beam.h"
 
@@ -31,9 +31,9 @@ class RazorTool : public BeamTool {
 public:
 	RazorTool(TimelineWidget *parent);
 
-	virtual void MousePress(TimelineViewMouseEvent *event) override;
-	virtual void MouseMove(TimelineViewMouseEvent *event) override;
-	virtual void MouseRelease(TimelineViewMouseEvent *event) override;
+	virtual void mouse_press(TimelineViewMouseEvent *event) override;
+	virtual void mouse_move(TimelineViewMouseEvent *event) override;
+	virtual void mouse_release(TimelineViewMouseEvent *event) override;
 
 private:
 	QVector<Track::Reference> split_tracks_;
@@ -41,4 +41,4 @@ private:
 
 }
 
-#endif // RAZORTIMELINETOOL_H
+#endif // OAK_RAZORTIMELINETOOL_H

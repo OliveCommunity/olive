@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "common/Current.h"
+#include "common/current.h"
 #include "render/videoparams.h"
 #include "olive/core/render/audioparams.h"
 
@@ -12,7 +12,7 @@ TEST(CommonCurrent, SetAndGetVideoParams)
 	Current::getInstance().setCurrentVideoParams(params);
 
 	const olive::VideoParams &stored =
-		Current::getInstance().currentVideoParams();
+		Current::getInstance().current_video_params();
 	EXPECT_EQ(stored.width(), 1920);
 	EXPECT_EQ(stored.height(), 1080);
 }
@@ -24,6 +24,6 @@ TEST(CommonCurrent, SetAndGetAudioParams)
 	Current::getInstance().setCurrentAudioParams(params);
 
 	const olive::AudioParams &stored =
-		Current::getInstance().currentAudioParams();
+		Current::getInstance().current_audio_params();
 	EXPECT_EQ(stored.sample_rate(), 48000);
 }

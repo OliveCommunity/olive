@@ -11,9 +11,9 @@
 namespace
 {
 
-QVariant ProxyDialogConfigValue(const char *key)
+QVariant proxy_dialog_config_value(const char *key)
 {
-	return olive::Config::Current()[QString::fromUtf8(key)];
+	return olive::Config::current()[QString::fromUtf8(key)];
 }
 
 } // namespace
@@ -23,18 +23,18 @@ TEST(ProxyDialog, ConstructsInGlobalModeWithNullParent)
 	olive::ProxyDialog dialog(nullptr);
 
 	// The global settings editors must reflect the current config values
-	EXPECT_EQ(dialog.ProxyWidth(),
-			  ProxyDialogConfigValue("ProxyWidth").value<int>());
-	EXPECT_EQ(dialog.ProxyHeight(),
-			  ProxyDialogConfigValue("ProxyHeight").value<int>());
-	EXPECT_EQ(dialog.ProxyCRF(),
-			  ProxyDialogConfigValue("ProxyCRF").value<int>());
-	EXPECT_EQ(dialog.ProxyPreset(),
-			  ProxyDialogConfigValue("ProxyPreset").toString());
-	EXPECT_EQ(dialog.ProxyIncludeAudio(),
-			  ProxyDialogConfigValue("ProxyIncludeAudio").toBool());
-	EXPECT_EQ(dialog.FFmpegPath(),
-			  ProxyDialogConfigValue("FFmpegPath").toString());
+	EXPECT_EQ(dialog.proxy_width(),
+			  proxy_dialog_config_value("ProxyWidth").value<int>());
+	EXPECT_EQ(dialog.proxy_height(),
+			  proxy_dialog_config_value("ProxyHeight").value<int>());
+	EXPECT_EQ(dialog.proxy_crf(),
+			  proxy_dialog_config_value("ProxyCRF").value<int>());
+	EXPECT_EQ(dialog.proxy_preset(),
+			  proxy_dialog_config_value("ProxyPreset").toString());
+	EXPECT_EQ(dialog.proxy_include_audio(),
+			  proxy_dialog_config_value("ProxyIncludeAudio").toBool());
+	EXPECT_EQ(dialog.f_fmpeg_path(),
+			  proxy_dialog_config_value("FFmpegPath").toString());
 }
 
 TEST(ProxyDialog, ConstructsWithFootageList)
@@ -82,29 +82,29 @@ TEST(ProxyDialog, ConstructsWithFootageList)
 
 TEST(ProxyDialog, AcceptSavesGlobalSettingsToConfig)
 {
-	const int old_width = ProxyDialogConfigValue("ProxyWidth").value<int>();
+	const int old_width = proxy_dialog_config_value("ProxyWidth").value<int>();
 	const bool old_include_audio =
-		ProxyDialogConfigValue("ProxyIncludeAudio").toBool();
+		proxy_dialog_config_value("ProxyIncludeAudio").toBool();
 	const QString old_ffmpeg_path =
-		ProxyDialogConfigValue("FFmpegPath").toString();
+		proxy_dialog_config_value("FFmpegPath").toString();
 
 	{
 		olive::ProxyDialog dialog(nullptr);
-		dialog.SetProxyWidth(640);
-		dialog.SetProxyIncludeAudio(!old_include_audio);
-		dialog.SetFFmpegPath(QStringLiteral("/tmp/oak-test-ffmpeg"));
+		dialog.set_proxy_width(640);
+		dialog.set_proxy_include_audio(!old_include_audio);
+		dialog.set_f_fmpeg_path(QStringLiteral("/tmp/oak-test-ffmpeg"));
 		dialog.accept();
 	}
 
-	EXPECT_EQ(ProxyDialogConfigValue("ProxyWidth").value<int>(), 640);
-	EXPECT_EQ(ProxyDialogConfigValue("ProxyIncludeAudio").toBool(),
+	EXPECT_EQ(proxy_dialog_config_value("ProxyWidth").value<int>(), 640);
+	EXPECT_EQ(proxy_dialog_config_value("ProxyIncludeAudio").toBool(),
 			  !old_include_audio);
-	EXPECT_EQ(ProxyDialogConfigValue("FFmpegPath").toString(),
+	EXPECT_EQ(proxy_dialog_config_value("FFmpegPath").toString(),
 			  QStringLiteral("/tmp/oak-test-ffmpeg"));
 
 	// Restore previous config values so other tests are unaffected
-	olive::Config::Current()[QStringLiteral("ProxyWidth")] = old_width;
-	olive::Config::Current()[QStringLiteral("ProxyIncludeAudio")] =
+	olive::Config::current()[QStringLiteral("ProxyWidth")] = old_width;
+	olive::Config::current()[QStringLiteral("ProxyIncludeAudio")] =
 		old_include_audio;
-	olive::Config::Current()[QStringLiteral("FFmpegPath")] = old_ffmpeg_path;
+	olive::Config::current()[QStringLiteral("FFmpegPath")] = old_ffmpeg_path;
 }

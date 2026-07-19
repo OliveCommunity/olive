@@ -49,7 +49,7 @@ namespace
 
 // Widgets that connect to Core::instance() at construction require the
 // application singleton, but not a MainWindow
-void EnsureCore()
+void ensure_core()
 {
 	if (!olive::Core::instance()) {
 		new olive::Core(olive::Core::CoreParams()); // intentionally leaked
@@ -65,7 +65,7 @@ public:
 	{
 	}
 
-	QRect SliderRect()
+	QRect slider_rect()
 	{
 		QStyleOptionSlider opt;
 		initStyleOption(&opt);
@@ -77,32 +77,32 @@ public:
 // Exposes the protected hand-drag state machine entry points
 class ProbeHandView : public olive::HandMovableView {
 public:
-	bool PubHandPress(QMouseEvent *e)
+	bool pub_hand_press(QMouseEvent *e)
 	{
-		return HandPress(e);
+		return hand_press(e);
 	}
-	bool PubHandMove(QMouseEvent *e)
+	bool pub_hand_move(QMouseEvent *e)
 	{
-		return HandMove(e);
+		return hand_move(e);
 	}
-	bool PubHandRelease(QMouseEvent *e)
+	bool pub_hand_release(QMouseEvent *e)
 	{
-		return HandRelease(e);
+		return hand_release(e);
 	}
-	void PubSetDefaultDragMode(DragMode mode)
+	void pub_set_default_drag_mode(DragMode mode)
 	{
-		SetDefaultDragMode(mode);
+		set_default_drag_mode(mode);
 	}
-	const DragMode &PubGetDefaultDragMode() const
+	const DragMode &pub_get_default_drag_mode() const
 	{
-		return GetDefaultDragMode();
+		return get_default_drag_mode();
 	}
 };
 
 // ToolbarButton has no Q_OBJECT, so findChildren<ToolbarButton*> doesn't
 // compile; every button in a Toolbar is a ToolbarButton, so fetch QPushButtons
 // and static_cast
-QList<olive::ToolbarButton *> ToolbarButtons(olive::Toolbar *bar)
+QList<olive::ToolbarButton *> toolbar_buttons(olive::Toolbar *bar)
 {
 	QList<olive::ToolbarButton *> out;
 	for (QPushButton *b : bar->findChildren<QPushButton *>()) {
@@ -119,7 +119,7 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(TwoValueNode)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return QStringLiteral("Test Two Value");
 	}
@@ -129,20 +129,20 @@ public:
 		return QStringLiteral("org.oak.test.twovalue");
 	}
 
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
-		return { kCategoryMath };
+		return { k_category_math };
 	}
 
-	virtual void Value(const olive::NodeValueRow &value,
+	virtual void value(const olive::NodeValueRow &value,
 					   const olive::NodeGlobals &globals,
 					   olive::NodeValueTable *table) const override
 	{
 		Q_UNUSED(value)
 		Q_UNUSED(globals)
 
-		table->Push(olive::NodeValue::kFloat, QVariant(1.5), this);
-		table->Push(olive::NodeValue::kInt, QVariant(2), this);
+		table->push(olive::NodeValue::k_float, QVariant(1.5), this);
+		table->push(olive::NodeValue::k_int, QVariant(2), this);
 	}
 };
 
@@ -151,9 +151,9 @@ public:
 TEST(WidgetMenu, InsertAlphabeticallySortsActions)
 {
 	olive::Menu menu;
-	menu.InsertAlphabetically(QStringLiteral("Charlie"));
-	menu.InsertAlphabetically(QStringLiteral("Alpha"));
-	menu.InsertAlphabetically(QStringLiteral("Bravo"));
+	menu.insert_alphabetically(QStringLiteral("Charlie"));
+	menu.insert_alphabetically(QStringLiteral("Alpha"));
+	menu.insert_alphabetically(QStringLiteral("Bravo"));
 
 	ASSERT_EQ(menu.actions().size(), 3);
 	EXPECT_EQ(menu.actions().at(0)->text(), QStringLiteral("Alpha"));
@@ -163,7 +163,7 @@ TEST(WidgetMenu, InsertAlphabeticallySortsActions)
 	// Submenus slot in by their title too
 	auto *sub = new olive::Menu(&menu);
 	sub->setTitle(QStringLiteral("Aardvark"));
-	menu.InsertAlphabetically(sub);
+	menu.insert_alphabetically(sub);
 
 	ASSERT_EQ(menu.actions().size(), 4);
 	EXPECT_EQ(menu.actions().at(0)->text(), QStringLiteral("Aardvark"));
@@ -173,8 +173,8 @@ TEST(WidgetMenu, InsertAlphabeticallySortsActions)
 TEST(WidgetMenu, AddActionWithDataChecksMatchingValue)
 {
 	olive::Menu menu;
-	QAction *match = menu.AddActionWithData(QStringLiteral("Five"), 5, 5);
-	QAction *other = menu.AddActionWithData(QStringLiteral("Six"), 6, 5);
+	QAction *match = menu.add_action_with_data(QStringLiteral("Five"), 5, 5);
+	QAction *other = menu.add_action_with_data(QStringLiteral("Six"), 6, 5);
 
 	EXPECT_TRUE(match->isCheckable());
 	EXPECT_TRUE(match->isChecked());
@@ -188,7 +188,7 @@ TEST(WidgetMenu, AddActionWithDataChecksMatchingValue)
 TEST(WidgetMenu, ConformItemStoresIdAndKeyDefault)
 {
 	QAction a;
-	olive::Menu::ConformItem(&a, QStringLiteral("myaction"),
+	olive::Menu::conform_item(&a, QStringLiteral("myaction"),
 							 QKeySequence(QStringLiteral("Ctrl+K")));
 
 	EXPECT_EQ(a.property("id").toString(), QStringLiteral("myaction"));
@@ -199,7 +199,7 @@ TEST(WidgetMenu, ConformItemStoresIdAndKeyDefault)
 
 	// Without a key, no keydefault is stored
 	QAction b;
-	olive::Menu::ConformItem(&b, QStringLiteral("plain"));
+	olive::Menu::conform_item(&b, QStringLiteral("plain"));
 	EXPECT_EQ(b.property("id").toString(), QStringLiteral("plain"));
 	EXPECT_FALSE(b.property("keydefault").isValid());
 }
@@ -214,12 +214,12 @@ TEST(WidgetColorLabelMenu, ItemsCarryIndexAndEmitSelection)
 	for (int i = 0; i < color_count; i++) {
 		QAction *a = menu.actions().at(i);
 		EXPECT_EQ(a->data().toInt(), i);
-		EXPECT_EQ(a->text(), olive::ColorCoding::GetColorName(i));
+		EXPECT_EQ(a->text(), olive::ColorCoding::get_color_name(i));
 		EXPECT_EQ(a->property("id").toString(),
 				  QStringLiteral("colorlabel%1").arg(i));
 	}
 
-	QSignalSpy spy(&menu, &olive::ColorLabelMenu::ColorSelected);
+	QSignalSpy spy(&menu, &olive::ColorLabelMenu::color_selected);
 	menu.actions().at(2)->trigger();
 	ASSERT_EQ(spy.count(), 1);
 	EXPECT_EQ(spy.first().first().toInt(), 2);
@@ -228,10 +228,10 @@ TEST(WidgetColorLabelMenu, ItemsCarryIndexAndEmitSelection)
 TEST(WidgetFileField, SetFilenameReadbackDoesNotSignal)
 {
 	olive::FileField field;
-	QSignalSpy spy(&field, &olive::FileField::FilenameChanged);
+	QSignalSpy spy(&field, &olive::FileField::filename_changed);
 
-	field.SetFilename(QStringLiteral("/some/file.txt"));
-	EXPECT_EQ(field.GetFilename(), QStringLiteral("/some/file.txt"));
+	field.set_filename(QStringLiteral("/some/file.txt"));
+	EXPECT_EQ(field.get_filename(), QStringLiteral("/some/file.txt"));
 
 	// Programmatic changes don't count as user edits
 	EXPECT_EQ(spy.count(), 0);
@@ -243,12 +243,12 @@ TEST(WidgetFileField, TypingEmitsFilenameChanged)
 	QLineEdit *edit = field.findChild<QLineEdit *>();
 	ASSERT_NE(edit, nullptr);
 
-	QSignalSpy spy(&field, &olive::FileField::FilenameChanged);
+	QSignalSpy spy(&field, &olive::FileField::filename_changed);
 	QTest::keyClicks(edit, QStringLiteral("a"));
 
 	ASSERT_EQ(spy.count(), 1);
 	EXPECT_EQ(spy.first().first().toString(), QStringLiteral("a"));
-	EXPECT_EQ(field.GetFilename(), QStringLiteral("a"));
+	EXPECT_EQ(field.get_filename(), QStringLiteral("a"));
 }
 
 TEST(WidgetFileField, InvalidPathMarkedRed)
@@ -296,7 +296,7 @@ TEST(WidgetPathWidget, ReadbackAndDirectoryValidation)
 TEST(WidgetCollapseButton, ToggleSwitchesIcon)
 {
 	// Icons are normally loaded by the app style; pull them in explicitly
-	olive::icon::LoadAll(QStringLiteral(":/style/olive-dark"));
+	olive::icon::load_all(QStringLiteral(":/style/olive-dark"));
 
 	olive::CollapseButton btn;
 	EXPECT_TRUE(btn.isCheckable());
@@ -323,8 +323,8 @@ TEST(WidgetClickableLabel, ClickAndDoubleClickSignals)
 		GTEST_SKIP() << "Platform does not track cursor position";
 	}
 
-	QSignalSpy clicked_spy(&label, &olive::ClickableLabel::MouseClicked);
-	QSignalSpy dbl_spy(&label, &olive::ClickableLabel::MouseDoubleClicked);
+	QSignalSpy clicked_spy(&label, &olive::ClickableLabel::mouse_clicked);
+	QSignalSpy dbl_spy(&label, &olive::ClickableLabel::mouse_double_clicked);
 
 	QTest::mouseClick(&label, Qt::LeftButton);
 	EXPECT_EQ(clicked_spy.count(), 1);
@@ -337,8 +337,8 @@ TEST(WidgetClickableLabel, ClickAndDoubleClickSignals)
 TEST(WidgetFocusableLineEdit, EnterConfirmsEscapeCancels)
 {
 	olive::FocusableLineEdit edit;
-	QSignalSpy confirmed(&edit, &olive::FocusableLineEdit::Confirmed);
-	QSignalSpy cancelled(&edit, &olive::FocusableLineEdit::Cancelled);
+	QSignalSpy confirmed(&edit, &olive::FocusableLineEdit::confirmed);
+	QSignalSpy cancelled(&edit, &olive::FocusableLineEdit::cancelled);
 
 	QTest::keyClick(&edit, Qt::Key_Return);
 	EXPECT_EQ(confirmed.count(), 1);
@@ -363,7 +363,7 @@ TEST(WidgetPixelSampler, LabelShowsColorComponents)
 	QLabel *label = w.findChild<QLabel *>();
 	ASSERT_NE(label, nullptr);
 
-	w.SetValues(olive::Color(1.0, 0.5, 0.0, 1.0));
+	w.set_values(olive::Color(1.0, 0.5, 0.0, 1.0));
 	const QString text = label->text();
 	EXPECT_TRUE(text.contains(QStringLiteral("R: 1 (255)")));
 	EXPECT_TRUE(text.contains(QStringLiteral("G: 0.5 (127)")));
@@ -378,7 +378,7 @@ TEST(WidgetPixelSampler, ManagedSamplerForwardsValues)
 	ASSERT_EQ(samplers.size(), 2);
 
 	// First child is the display view, second the reference view
-	w.SetValues(olive::Color(1.0, 0.0, 0.0, 1.0), olive::Color(0.0, 1.0, 0.0, 1.0));
+	w.set_values(olive::Color(1.0, 0.0, 0.0, 1.0), olive::Color(0.0, 1.0, 0.0, 1.0));
 
 	EXPECT_TRUE(samplers.at(0)->findChild<QLabel *>()->text().contains(
 		QStringLiteral("G: 1 (255)")));
@@ -391,9 +391,9 @@ TEST(WidgetBezierWidget, ValueRoundTripsThroughSliders)
 	olive::BezierWidget w;
 
 	olive::Bezier b(1.0, 2.0, 3.0, 4.0, 5.0, 6.0);
-	w.SetValue(b);
+	w.set_value(b);
 
-	olive::Bezier out = w.GetValue();
+	olive::Bezier out = w.get_value();
 	EXPECT_DOUBLE_EQ(out.x(), 1.0);
 	EXPECT_DOUBLE_EQ(out.y(), 2.0);
 	EXPECT_DOUBLE_EQ(out.cp1_x(), 3.0);
@@ -401,10 +401,10 @@ TEST(WidgetBezierWidget, ValueRoundTripsThroughSliders)
 	EXPECT_DOUBLE_EQ(out.cp2_x(), 5.0);
 	EXPECT_DOUBLE_EQ(out.cp2_y(), 6.0);
 
-	EXPECT_DOUBLE_EQ(w.x_slider()->GetValue(), 1.0);
-	EXPECT_DOUBLE_EQ(w.y_slider()->GetValue(), 2.0);
-	EXPECT_DOUBLE_EQ(w.cp1_x_slider()->GetValue(), 3.0);
-	EXPECT_DOUBLE_EQ(w.cp2_y_slider()->GetValue(), 6.0);
+	EXPECT_DOUBLE_EQ(w.x_slider()->get_value(), 1.0);
+	EXPECT_DOUBLE_EQ(w.y_slider()->get_value(), 2.0);
+	EXPECT_DOUBLE_EQ(w.cp1_x_slider()->get_value(), 3.0);
+	EXPECT_DOUBLE_EQ(w.cp2_y_slider()->get_value(), 6.0);
 }
 
 TEST(WidgetResizableScrollBar, DefaultsMatchInit)
@@ -428,13 +428,13 @@ TEST(WidgetResizableScrollBar, HandleDragEmitsResizeSignals)
 	bar.show();
 	EXPECT_TRUE(QTest::qWaitForWindowExposed(&bar));
 
-	const QRect slider = bar.SliderRect();
+	const QRect slider = bar.slider_rect();
 	ASSERT_GT(slider.width(), 30)
 		<< "slider too small to hold two handles and a middle";
 
-	QSignalSpy began(&bar, &olive::ResizableScrollBar::ResizeBegan);
-	QSignalSpy moved(&bar, &olive::ResizableScrollBar::ResizeMoved);
-	QSignalSpy ended(&bar, &olive::ResizableScrollBar::ResizeEnded);
+	QSignalSpy began(&bar, &olive::ResizableScrollBar::resize_began);
+	QSignalSpy moved(&bar, &olive::ResizableScrollBar::resize_moved);
+	QSignalSpy ended(&bar, &olive::ResizableScrollBar::resize_ended);
 
 	// Hover the top (left) handle, then drag it 25px to the right
 	const QPoint handle_pos(slider.left() + 1, slider.center().y());
@@ -472,68 +472,68 @@ TEST(WidgetResizableScrollBar, HandleDragEmitsResizeSignals)
 
 TEST(WidgetHandMovableView, ToolSwitchChangesDragMode)
 {
-	EnsureCore();
+	ensure_core();
 
 	ProbeHandView view;
-	view.PubSetDefaultDragMode(QGraphicsView::RubberBandDrag);
+	view.pub_set_default_drag_mode(QGraphicsView::RubberBandDrag);
 	EXPECT_EQ(view.dragMode(), QGraphicsView::RubberBandDrag);
-	EXPECT_EQ(view.PubGetDefaultDragMode(), QGraphicsView::RubberBandDrag);
+	EXPECT_EQ(view.pub_get_default_drag_mode(), QGraphicsView::RubberBandDrag);
 
-	olive::Core::instance()->SetTool(olive::Tool::kHand);
+	olive::Core::instance()->set_tool(olive::Tool::k_hand);
 	EXPECT_EQ(view.dragMode(), QGraphicsView::ScrollHandDrag);
 	EXPECT_FALSE(view.isInteractive());
 
 	// Restore the previous tool state for other tests
-	olive::Core::instance()->SetTool(olive::Tool::kPointer);
+	olive::Core::instance()->set_tool(olive::Tool::k_pointer);
 	EXPECT_EQ(view.dragMode(), QGraphicsView::RubberBandDrag);
 	EXPECT_TRUE(view.isInteractive());
 }
 
 TEST(WidgetHandMovableView, MiddleButtonHandDragStateMachine)
 {
-	EnsureCore();
+	ensure_core();
 
 	ProbeHandView view;
 	view.resize(200, 100);
-	view.PubSetDefaultDragMode(QGraphicsView::NoDrag);
+	view.pub_set_default_drag_mode(QGraphicsView::NoDrag);
 
 	// Left button is not a hand drag
 	QMouseEvent left_press(QEvent::MouseButtonPress, QPointF(10, 10),
 						   QPointF(10, 10), QPointF(10, 10), Qt::LeftButton,
 						   Qt::LeftButton, Qt::NoModifier);
-	EXPECT_FALSE(view.PubHandPress(&left_press));
+	EXPECT_FALSE(view.pub_hand_press(&left_press));
 	EXPECT_TRUE(view.isInteractive());
 
 	// Middle button starts a hand drag
 	QMouseEvent mid_press(QEvent::MouseButtonPress, QPointF(10, 10),
 						  QPointF(10, 10), QPointF(10, 10), Qt::MiddleButton,
 						  Qt::MiddleButton, Qt::NoModifier);
-	EXPECT_TRUE(view.PubHandPress(&mid_press));
+	EXPECT_TRUE(view.pub_hand_press(&mid_press));
 	EXPECT_EQ(view.dragMode(), QGraphicsView::ScrollHandDrag);
 	EXPECT_FALSE(view.isInteractive());
 
 	QMouseEvent move(QEvent::MouseMove, QPointF(30, 20), QPointF(30, 20),
 					 QPointF(30, 20), Qt::NoButton, Qt::MiddleButton,
 					 Qt::NoModifier);
-	EXPECT_TRUE(view.PubHandMove(&move));
+	EXPECT_TRUE(view.pub_hand_move(&move));
 
 	// Release restores the pre-drag state
 	QMouseEvent release(QEvent::MouseButtonRelease, QPointF(30, 20),
 						QPointF(30, 20), QPointF(30, 20), Qt::MiddleButton,
 						Qt::NoButton, Qt::NoModifier);
-	EXPECT_TRUE(view.PubHandRelease(&release));
+	EXPECT_TRUE(view.pub_hand_release(&release));
 	EXPECT_TRUE(view.isInteractive());
 	EXPECT_EQ(view.dragMode(), QGraphicsView::NoDrag);
 
 	// Without an active hand drag, move/release are ignored
-	EXPECT_FALSE(view.PubHandMove(&move));
-	EXPECT_FALSE(view.PubHandRelease(&release));
+	EXPECT_FALSE(view.pub_hand_move(&move));
+	EXPECT_FALSE(view.pub_hand_release(&release));
 }
 
 TEST(WidgetHandMovableView, WheelZoomHelpers)
 {
 	const QVariant old_scroll_zooms =
-		olive::Config::Current()[QStringLiteral("ScrollZooms")];
+		olive::Config::current()[QStringLiteral("ScrollZooms")];
 
 	QWheelEvent plain(QPointF(5, 5), QPointF(5, 5), QPoint(), QPoint(0, 120),
 					  Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
@@ -541,49 +541,49 @@ TEST(WidgetHandMovableView, WheelZoomHelpers)
 					 Qt::NoButton, Qt::ControlModifier, Qt::NoScrollPhase, false);
 
 	// With ScrollZooms off, only Ctrl+wheel zooms
-	olive::Config::Current()[QStringLiteral("ScrollZooms")] = false;
+	olive::Config::current()[QStringLiteral("ScrollZooms")] = false;
 	EXPECT_TRUE(olive::HandMovableView::WheelEventIsAZoomEvent(&ctrl));
 	EXPECT_FALSE(olive::HandMovableView::WheelEventIsAZoomEvent(&plain));
 
 	// With ScrollZooms on, plain wheel zooms and Ctrl+wheel does not
-	olive::Config::Current()[QStringLiteral("ScrollZooms")] = true;
+	olive::Config::current()[QStringLiteral("ScrollZooms")] = true;
 	EXPECT_TRUE(olive::HandMovableView::WheelEventIsAZoomEvent(&plain));
 	EXPECT_FALSE(olive::HandMovableView::WheelEventIsAZoomEvent(&ctrl));
 
 	// 120 wheel units -> 1.12x; inverted devices flip the sign
-	EXPECT_NEAR(olive::HandMovableView::GetScrollZoomMultiplier(&plain), 1.12,
+	EXPECT_NEAR(olive::HandMovableView::get_scroll_zoom_multiplier(&plain), 1.12,
 				1e-9);
 	QWheelEvent inverted(QPointF(5, 5), QPointF(5, 5), QPoint(),
 						 QPoint(0, 120), Qt::NoButton, Qt::NoModifier,
 						 Qt::NoScrollPhase, true);
-	EXPECT_NEAR(olive::HandMovableView::GetScrollZoomMultiplier(&inverted),
+	EXPECT_NEAR(olive::HandMovableView::get_scroll_zoom_multiplier(&inverted),
 				0.88, 1e-9);
 
-	olive::Config::Current()[QStringLiteral("ScrollZooms")] =
+	olive::Config::current()[QStringLiteral("ScrollZooms")] =
 		old_scroll_zooms;
 }
 
 TEST(WidgetToolbarButton, StoresToolAndIsCheckable)
 {
-	olive::ToolbarButton btn(nullptr, olive::Tool::kSlip);
-	EXPECT_EQ(btn.tool(), olive::Tool::kSlip);
+	olive::ToolbarButton btn(nullptr, olive::Tool::k_slip);
+	EXPECT_EQ(btn.tool(), olive::Tool::k_slip);
 	EXPECT_TRUE(btn.isCheckable());
 }
 
 TEST(WidgetToolbar, SetToolChecksMatchingButtonOnly)
 {
 	olive::Toolbar bar(nullptr);
-	const auto buttons = ToolbarButtons(&bar);
+	const auto buttons = toolbar_buttons(&bar);
 
 	// 13 tool buttons + 1 snapping toggle
 	EXPECT_EQ(buttons.size(), 14);
 
-	bar.SetTool(olive::Tool::kRazor);
+	bar.set_tool(olive::Tool::k_razor);
 	for (olive::ToolbarButton *b : buttons) {
-		if (b->tool() == olive::Tool::kNone) {
+		if (b->tool() == olive::Tool::k_none) {
 			continue;
 		}
-		EXPECT_EQ(b->isChecked(), b->tool() == olive::Tool::kRazor)
+		EXPECT_EQ(b->isChecked(), b->tool() == olive::Tool::k_razor)
 			<< int(b->tool());
 	}
 }
@@ -593,14 +593,14 @@ TEST(WidgetToolbar, ClickingButtonEmitsToolChanged)
 	olive::Toolbar bar(nullptr);
 
 	QVector<olive::Tool::Item> received;
-	QObject::connect(&bar, &olive::Toolbar::ToolChanged,
+	QObject::connect(&bar, &olive::Toolbar::tool_changed,
 					 [&received](const olive::Tool::Item &t) {
 						 received.append(t);
 					 });
 
 	olive::ToolbarButton *pointer = nullptr;
-	for (olive::ToolbarButton *b : ToolbarButtons(&bar)) {
-		if (b->tool() == olive::Tool::kPointer) {
+	for (olive::ToolbarButton *b : toolbar_buttons(&bar)) {
+		if (b->tool() == olive::Tool::k_pointer) {
 			pointer = b;
 			break;
 		}
@@ -609,26 +609,26 @@ TEST(WidgetToolbar, ClickingButtonEmitsToolChanged)
 	pointer->click();
 
 	ASSERT_EQ(received.size(), 1);
-	EXPECT_EQ(received.first(), olive::Tool::kPointer);
+	EXPECT_EQ(received.first(), olive::Tool::k_pointer);
 }
 
 TEST(WidgetToolbar, SnappingToggleReflectsAndEmits)
 {
 	olive::Toolbar bar(nullptr);
-	QSignalSpy spy(&bar, &olive::Toolbar::SnappingChanged);
+	QSignalSpy spy(&bar, &olive::Toolbar::snapping_changed);
 
 	olive::ToolbarButton *snap = nullptr;
-	for (olive::ToolbarButton *b : ToolbarButtons(&bar)) {
-		if (b->tool() == olive::Tool::kNone) {
+	for (olive::ToolbarButton *b : toolbar_buttons(&bar)) {
+		if (b->tool() == olive::Tool::k_none) {
 			snap = b;
 			break;
 		}
 	}
 	ASSERT_NE(snap, nullptr);
 
-	bar.SetSnapping(false);
+	bar.set_snapping(false);
 	EXPECT_FALSE(snap->isChecked());
-	bar.SetSnapping(true);
+	bar.set_snapping(true);
 	EXPECT_TRUE(snap->isChecked());
 
 	snap->click();
@@ -638,17 +638,17 @@ TEST(WidgetToolbar, SnappingToggleReflectsAndEmits)
 
 TEST(WidgetColorButton, SetColorRoundTrips)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
 
 	olive::ColorButton btn(project.color_manager());
-	EXPECT_FLOAT_EQ(btn.GetColor().red(), 1.0f);
-	EXPECT_FLOAT_EQ(btn.GetColor().green(), 1.0f);
-	EXPECT_FLOAT_EQ(btn.GetColor().blue(), 1.0f);
+	EXPECT_FLOAT_EQ(btn.get_color().red(), 1.0f);
+	EXPECT_FLOAT_EQ(btn.get_color().green(), 1.0f);
+	EXPECT_FLOAT_EQ(btn.get_color().blue(), 1.0f);
 
-	btn.SetColor(olive::ManagedColor(0.25, 0.5, 0.75, 1.0));
+	btn.set_color(olive::ManagedColor(0.25, 0.5, 0.75, 1.0));
 
-	const olive::ManagedColor &out = btn.GetColor();
+	const olive::ManagedColor &out = btn.get_color();
 	EXPECT_FLOAT_EQ(out.red(), 0.25f);
 	EXPECT_FLOAT_EQ(out.green(), 0.5f);
 	EXPECT_FLOAT_EQ(out.blue(), 0.75f);
@@ -661,13 +661,13 @@ TEST(WidgetColorButton, SetColorRoundTrips)
 TEST(WidgetColorValuesTab, FloatModeRoundTripsColor)
 {
 	olive::ColorValuesTab tab(false);
-	tab.SetColor(olive::Color(0.25, 0.5, 0.75));
+	tab.set_color(olive::Color(0.25, 0.5, 0.75));
 
-	EXPECT_NEAR(tab.GetRed(), 0.25, 1e-6);
-	EXPECT_NEAR(tab.GetGreen(), 0.5, 1e-6);
-	EXPECT_NEAR(tab.GetBlue(), 0.75, 1e-6);
+	EXPECT_NEAR(tab.get_red(), 0.25, 1e-6);
+	EXPECT_NEAR(tab.get_green(), 0.5, 1e-6);
+	EXPECT_NEAR(tab.get_blue(), 0.75, 1e-6);
 
-	olive::Color out = tab.GetColor();
+	olive::Color out = tab.get_color();
 	EXPECT_NEAR(out.red(), 0.25, 1e-6);
 	EXPECT_NEAR(out.green(), 0.5, 1e-6);
 	EXPECT_NEAR(out.blue(), 0.75, 1e-6);
@@ -675,19 +675,19 @@ TEST(WidgetColorValuesTab, FloatModeRoundTripsColor)
 	// The web field shows the rgb() form in float mode
 	auto *hex = tab.findChild<olive::StringSlider *>();
 	ASSERT_NE(hex, nullptr);
-	EXPECT_EQ(hex->GetValue(), QStringLiteral("rgb(0.25, 0.5, 0.75)"));
+	EXPECT_EQ(hex->get_value(), QStringLiteral("rgb(0.25, 0.5, 0.75)"));
 }
 
 TEST(WidgetColorValuesTab, LegacyToggleRescalesSliders)
 {
 	const QVariant old_legacy =
-		olive::Config::Current()[QStringLiteral("UseLegacyColorInInputTab")];
-	olive::Config::Current()[QStringLiteral("UseLegacyColorInInputTab")] = false;
+		olive::Config::current()[QStringLiteral("UseLegacyColorInInputTab")];
+	olive::Config::current()[QStringLiteral("UseLegacyColorInInputTab")] = false;
 
 	{
 		olive::ColorValuesTab tab(true);
-		tab.SetRed(1.0);
-		EXPECT_NEAR(tab.GetRed(), 1.0, 1e-6);
+		tab.set_red(1.0);
+		EXPECT_NEAR(tab.get_red(), 1.0, 1e-6);
 
 		QCheckBox *legacy = tab.findChild<QCheckBox *>();
 		ASSERT_NE(legacy, nullptr);
@@ -695,25 +695,25 @@ TEST(WidgetColorValuesTab, LegacyToggleRescalesSliders)
 
 		// Switching to legacy keeps the effective color but shows 0-255
 		legacy->click();
-		EXPECT_NEAR(tab.GetRed(), 1.0, 1e-6);
+		EXPECT_NEAR(tab.get_red(), 1.0, 1e-6);
 
 		auto *hex = tab.findChild<olive::StringSlider *>();
 		ASSERT_NE(hex, nullptr);
-		EXPECT_EQ(hex->GetValue(), QStringLiteral("FF0000"));
+		EXPECT_EQ(hex->get_value(), QStringLiteral("FF0000"));
 
 		// And back
 		legacy->click();
-		EXPECT_NEAR(tab.GetRed(), 1.0, 1e-6);
-		EXPECT_EQ(hex->GetValue(), QStringLiteral("rgb(1.0, 0.0, 0.0)"));
+		EXPECT_NEAR(tab.get_red(), 1.0, 1e-6);
+		EXPECT_EQ(hex->get_value(), QStringLiteral("rgb(1.0, 0.0, 0.0)"));
 	}
 
-	olive::Config::Current()[QStringLiteral("UseLegacyColorInInputTab")] =
+	olive::Config::current()[QStringLiteral("UseLegacyColorInInputTab")] =
 		old_legacy;
 }
 
 TEST(WidgetColorSwatchChooser, ClickingSwatchEmitsItsColor)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
 
 	olive::ColorSwatchChooser chooser(project.color_manager());
@@ -721,7 +721,7 @@ TEST(WidgetColorSwatchChooser, ClickingSwatchEmitsItsColor)
 	EXPECT_EQ(buttons.size(), 32);
 
 	QVector<olive::Color> received;
-	QObject::connect(&chooser, &olive::ColorSwatchChooser::ColorClicked,
+	QObject::connect(&chooser, &olive::ColorSwatchChooser::color_clicked,
 					 [&received](const olive::ManagedColor &c) {
 						 received.append(c);
 					 });
@@ -730,7 +730,7 @@ TEST(WidgetColorSwatchChooser, ClickingSwatchEmitsItsColor)
 	ASSERT_EQ(received.size(), 1);
 
 	// The emitted color is exactly the clicked button's color
-	const olive::ManagedColor &expected = buttons.first()->GetColor();
+	const olive::ManagedColor &expected = buttons.first()->get_color();
 	EXPECT_FLOAT_EQ(received.first().red(), expected.red());
 	EXPECT_FLOAT_EQ(received.first().green(), expected.green());
 	EXPECT_FLOAT_EQ(received.first().blue(), expected.blue());
@@ -738,11 +738,11 @@ TEST(WidgetColorSwatchChooser, ClickingSwatchEmitsItsColor)
 
 TEST(WidgetColorSpaceChooser, InputRoundTripsAndEmits)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
 
 	const QStringList spaces =
-		project.color_manager()->ListAvailableColorspaces();
+		project.color_manager()->list_available_colorspaces();
 	ASSERT_GE(spaces.size(), 2);
 
 	// Input-only mode, as used by the export dialog
@@ -750,7 +750,7 @@ TEST(WidgetColorSpaceChooser, InputRoundTripsAndEmits)
 	EXPECT_FALSE(chooser.input().isEmpty());
 
 	QSignalSpy spy(&chooser,
-				   &olive::ColorSpaceChooser::InputColorSpaceChanged);
+				   &olive::ColorSpaceChooser::input_color_space_changed);
 
 	// Pick whichever colorspace isn't currently selected
 	QString target;
@@ -770,7 +770,7 @@ TEST(WidgetColorSpaceChooser, InputRoundTripsAndEmits)
 
 TEST(WidgetColorSpaceChooser, FullModePopulatesDisplayFields)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
 
 	olive::ColorSpaceChooser chooser(project.color_manager());
@@ -783,7 +783,7 @@ TEST(WidgetColorPreviewBox, RendersManagedColor)
 {
 	olive::ColorPreviewBox box;
 	box.resize(20, 20);
-	box.SetColor(olive::Color(1.0, 0.0, 0.0, 1.0));
+	box.set_color(olive::Color(1.0, 0.0, 0.0, 1.0));
 
 	QImage img(box.size(), QImage::Format_ARGB32);
 	img.fill(Qt::transparent);
@@ -799,24 +799,24 @@ TEST(WidgetColorGradient, ClickPositionsMapToValueRange)
 {
 	olive::ColorGradientWidget grad(Qt::Horizontal);
 	grad.resize(100, 20);
-	grad.SetSelectedColor(olive::Color(1.0, 0.0, 0.0));
+	grad.set_selected_color(olive::Color(1.0, 0.0, 0.0));
 
 	QVector<olive::Color> received;
-	QObject::connect(&grad, &olive::ColorGradientWidget::SelectedColorChanged,
+	QObject::connect(&grad, &olive::ColorGradientWidget::selected_color_changed,
 					 [&received](const olive::Color &c) { received.append(c); });
 
 	// Left edge is the full-value end of the gradient
 	float hue, sat, val;
 	QTest::mouseClick(&grad, Qt::LeftButton, Qt::NoModifier, QPoint(0, 10));
 	ASSERT_EQ(received.size(), 1);
-	EXPECT_FLOAT_EQ(grad.GetSelectedColor().red(), received.first().red());
-	received.first().toHsv(&hue, &sat, &val);
+	EXPECT_FLOAT_EQ(grad.get_selected_color().red(), received.first().red());
+	received.first().to_hsv(&hue, &sat, &val);
 	EXPECT_NEAR(val, 1.0, 1e-4);
 
 	// Right edge approaches the zero-value end
 	QTest::mouseClick(&grad, Qt::LeftButton, Qt::NoModifier, QPoint(99, 10));
 	ASSERT_EQ(received.size(), 2);
-	received.at(1).toHsv(&hue, &sat, &val);
+	received.at(1).to_hsv(&hue, &sat, &val);
 	EXPECT_NEAR(val, 0.01, 0.02);
 }
 
@@ -826,7 +826,7 @@ TEST(WidgetColorWheel, ResizeEmitsDiameter)
 	wheel.show();
 	EXPECT_TRUE(QTest::qWaitForWindowExposed(&wheel));
 
-	QSignalSpy spy(&wheel, &olive::ColorWheelWidget::DiameterChanged);
+	QSignalSpy spy(&wheel, &olive::ColorWheelWidget::diameter_changed);
 
 	wheel.resize(200, 100);
 	ASSERT_GE(spy.count(), 1);
@@ -841,17 +841,17 @@ TEST(WidgetColorWheel, SelectedColorRoundTrips)
 	olive::ColorWheelWidget wheel;
 	wheel.resize(100, 100);
 
-	wheel.SetSelectedColor(olive::Color(0.2, 0.4, 0.6));
-	EXPECT_FLOAT_EQ(wheel.GetSelectedColor().red(), 0.2f);
-	EXPECT_FLOAT_EQ(wheel.GetSelectedColor().green(), 0.4f);
-	EXPECT_FLOAT_EQ(wheel.GetSelectedColor().blue(), 0.6f);
+	wheel.set_selected_color(olive::Color(0.2, 0.4, 0.6));
+	EXPECT_FLOAT_EQ(wheel.get_selected_color().red(), 0.2f);
+	EXPECT_FLOAT_EQ(wheel.get_selected_color().green(), 0.4f);
+	EXPECT_FLOAT_EQ(wheel.get_selected_color().blue(), 0.6f);
 }
 
 TEST(WidgetNodeValueTree, PopulatesRowsAndSetsValueHint)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
-	project.Initialize();
+	project.initialize();
 
 	auto *source = new TwoValueNode();
 	source->setParent(&project);
@@ -859,12 +859,12 @@ TEST(WidgetNodeValueTree, PopulatesRowsAndSetsValueHint)
 	auto *consumer = new olive::MathNode();
 	consumer->setParent(&project);
 
-	olive::Node::ConnectEdge(source,
-							 olive::NodeInput(consumer, olive::MathNode::kParamAIn));
+	olive::Node::connect_edge(source,
+							 olive::NodeInput(consumer, olive::MathNode::k_param_a_in));
 
 	olive::NodeValueTree tree;
-	tree.SetNode(olive::NodeInput(consumer, olive::MathNode::kParamAIn),
-				 olive::rational(0));
+	tree.set_node(olive::NodeInput(consumer, olive::MathNode::k_param_a_in),
+				 olive::Rational(0));
 
 	// One row per pushed value
 	ASSERT_EQ(tree.topLevelItemCount(), 2);
@@ -884,7 +884,7 @@ TEST(WidgetNodeValueTree, PopulatesRowsAndSetsValueHint)
 		}
 	}
 	EXPECT_EQ(checked_row, float_row);
-	EXPECT_EQ(consumer->GetValueHintForInput(olive::MathNode::kParamAIn).index(),
+	EXPECT_EQ(consumer->get_value_hint_for_input(olive::MathNode::k_param_a_in).index(),
 			  -1);
 
 	// Clicking the other row writes its value hint back to the node
@@ -895,7 +895,7 @@ TEST(WidgetNodeValueTree, PopulatesRowsAndSetsValueHint)
 	other_radio->click();
 
 	const olive::Node::ValueHint hint =
-		consumer->GetValueHintForInput(olive::MathNode::kParamAIn);
+		consumer->get_value_hint_for_input(olive::MathNode::k_param_a_in);
 	EXPECT_EQ(hint.index(), 1 - other_row); // table.Count() - 1 - row
-	EXPECT_TRUE(hint.types().contains(olive::NodeValue::kInt));
+	EXPECT_TRUE(hint.types().contains(olive::NodeValue::k_int));
 }

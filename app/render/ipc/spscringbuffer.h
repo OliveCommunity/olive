@@ -18,8 +18,8 @@
 
 ***/
 
-#ifndef IPC_SPSCRINGBUFFER_H
-#define IPC_SPSCRINGBUFFER_H
+#ifndef OAK_IPC_SPSCRINGBUFFER_H
+#define OAK_IPC_SPSCRINGBUFFER_H
 
 #include <atomic>
 #include <cstddef>
@@ -60,7 +60,7 @@ public:
    * intended to be placement-style initialization performed exactly once by whichever process owns
    * the segment's creation; the peer process uses Attach() instead.
    */
-	static SpscRingBuffer *Create(void *mem, uint32_t capacity)
+	static SpscRingBuffer *create(void *mem, uint32_t capacity)
 	{
 		auto *self = reinterpret_cast<SpscRingBuffer *>(mem);
 		self->capacity_ = capacity;
@@ -77,7 +77,7 @@ public:
    *
    * No writes are performed; the cursors and capacity are assumed already set by Create().
    */
-	static SpscRingBuffer *Attach(void *mem)
+	static SpscRingBuffer *attach(void *mem)
 	{
 		return reinterpret_cast<SpscRingBuffer *>(mem);
 	}
@@ -85,7 +85,7 @@ public:
 	/**
    * @brief Total bytes required to hold the header plus `capacity` index slots.
    */
-	static size_t BytesNeeded(uint32_t capacity)
+	static size_t bytes_needed(uint32_t capacity)
 	{
 		return sizeof(SpscRingBuffer) + size_t(capacity) * sizeof(uint32_t);
 	}
@@ -93,10 +93,10 @@ public:
 	/**
    * @brief Producer side: enqueue an index. Returns false if the buffer is full.
    */
-	bool Push(uint32_t value)
+	bool push(uint32_t value)
 	{
 		const uint32_t head = head_.load(std::memory_order_relaxed);
-		const uint32_t next = Increment(head);
+		const uint32_t next = increment(head);
 
 		// Buffer is full if advancing head would collide with the consumer's tail.
 		if (next == tail_.load(std::memory_order_acquire)) {
@@ -111,7 +111,7 @@ public:
 	/**
    * @brief Consumer side: dequeue an index into `out`. Returns false if the buffer is empty.
    */
-	bool Pop(uint32_t *out)
+	bool pop(uint32_t *out)
 	{
 		const uint32_t tail = tail_.load(std::memory_order_relaxed);
 
@@ -121,7 +121,7 @@ public:
 		}
 
 		*out = slot_array()[tail];
-		tail_.store(Increment(tail), std::memory_order_release);
+		tail_.store(increment(tail), std::memory_order_release);
 		return true;
 	}
 
@@ -131,14 +131,14 @@ public:
    * Safe to call from either side, but the value may be stale the instant it returns. Intended for
    * metrics/backpressure heuristics, not for correctness decisions.
    */
-	uint32_t SizeApprox() const
+	uint32_t size_approx() const
 	{
 		const uint32_t head = head_.load(std::memory_order_acquire);
 		const uint32_t tail = tail_.load(std::memory_order_acquire);
 		return (head + capacity_ - tail) % capacity_;
 	}
 
-	bool IsEmptyApprox() const
+	bool is_empty_approx() const
 	{
 		return head_.load(std::memory_order_acquire) ==
 			   tail_.load(std::memory_order_acquire);
@@ -150,7 +150,7 @@ public:
 	}
 
 private:
-	uint32_t Increment(uint32_t index) const
+	uint32_t increment(uint32_t index) const
 	{
 		// capacity_ is small and this avoids requiring a power-of-two capacity.
 		return (index + 1) % capacity_;
@@ -182,4 +182,4 @@ private:
 } // namespace ipc
 } // namespace olive
 
-#endif // IPC_SPSCRINGBUFFER_H
+#endif // OAK_IPC_SPSCRINGBUFFER_H

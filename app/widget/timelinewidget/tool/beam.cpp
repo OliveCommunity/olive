@@ -30,19 +30,19 @@ BeamTool::BeamTool(TimelineWidget *parent)
 {
 }
 
-void BeamTool::HoverMove(TimelineViewMouseEvent *event)
+void BeamTool::hover_move(TimelineViewMouseEvent *event)
 {
-	parent()->SetViewBeamCursor(
-		ValidatedCoordinate(event->GetCoordinates(true)));
+	parent()->set_view_beam_cursor(
+		validated_coordinate(event->get_coordinates(true)));
 }
 
-TimelineCoordinate BeamTool::ValidatedCoordinate(TimelineCoordinate coord)
+TimelineCoordinate BeamTool::validated_coordinate(TimelineCoordinate coord)
 {
 	if (Core::instance()->snapping()) {
-		rational movement;
-		parent()->SnapPoint({ coord.GetFrame() }, &movement);
+		Rational movement;
+		parent()->snap_point({ coord.get_frame() }, &movement);
 		if (!movement.isNull()) {
-			coord.SetFrame(coord.GetFrame() + movement);
+			coord.set_frame(coord.get_frame() + movement);
 		}
 	}
 

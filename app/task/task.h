@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TASK_H
-#define TASK_H
+#ifndef OAK_TASK_H
+#define OAK_TASK_H
 
 #include <memory>
 #include <QDateTime>
@@ -65,7 +65,7 @@ public:
 	/**
    * @brief Retrieve the current title of this Task
    */
-	const QString &GetTitle() const
+	const QString &get_title() const
 	{
 		return title_;
 	}
@@ -73,12 +73,12 @@ public:
 	/**
    * @brief Returns the error that occurred if Run() returns false
    */
-	const QString &GetError() const
+	const QString &get_error() const
 	{
 		return error_;
 	}
 
-	const qint64 &GetStartTime() const
+	const qint64 &get_start_time() const
 	{
 		return start_time_;
 	}
@@ -91,18 +91,18 @@ public slots:
    *
    * \see GetError() if this returns false.
    */
-	bool Start()
+	bool start()
 	{
 		start_time_ = QDateTime::currentMSecsSinceEpoch();
-		emit Started(start_time_);
+		emit started(start_time_);
 
-		bool ret = Run();
+		bool ret = run();
 
 		// Print how long this task took for debugging purposes
 		qDebug() << this << "took"
 				 << (QDateTime::currentMSecsSinceEpoch() - start_time_);
 
-		emit Finished(this, ret);
+		emit finished(this, ret);
 
 		return ret;
 	}
@@ -113,7 +113,7 @@ public slots:
    * Override this if your class holds any persistent state that should be cleared/modified before
    * it's safe for Run() to run again.
    */
-	virtual void Reset()
+	virtual void reset()
 	{
 	}
 
@@ -125,11 +125,11 @@ public slots:
    */
 	void Cancel()
 	{
-		CancelableObject::Cancel();
+		CancelableObject::cancel();
 	}
 
 protected:
-	virtual bool Run() = 0;
+	virtual bool run() = 0;
 
 	/**
    * @brief Set the error message
@@ -137,7 +137,7 @@ protected:
    * It is recommended to use this if your Action() function ever returns FALSE to tell the user why the failure
    * occurred.
    */
-	void SetError(const QString &s)
+	void set_error(const QString &s)
 	{
 		error_ = s;
 	}
@@ -149,13 +149,13 @@ protected:
    * and shouldn't need to change during the life of the Task. To show an error message, it's recommended to use
    * set_error() instead.
    */
-	void SetTitle(const QString &s)
+	void set_title(const QString &s)
 	{
 		title_ = s;
 	}
 
 signals:
-	void Started(qint64 start_time);
+	void started(qint64 start_time);
 
 	/**
    * @brief Signal emitted whenever progress is made
@@ -166,14 +166,14 @@ signals:
    *
    * A progress value between 0.0 and 1.0.
    */
-	void ProgressChanged(double d);
+	void progress_changed(double d);
 
 	/**
    * @brief Emitted when task is finished
    *
    * Do NOT delete immediately after this signal, call deleteLater() instead.
    */
-	void Finished(Task *task, bool succeeded);
+	void finished(Task *task, bool succeeded);
 
 private:
 	QString title_;
@@ -185,4 +185,4 @@ private:
 
 }
 
-#endif // TASK_H
+#endif // OAK_TASK_H

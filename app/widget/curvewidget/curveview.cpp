@@ -43,17 +43,17 @@ CurveView::CurveView(QWidget *parent)
 	, dragging_bezier_pt_(nullptr)
 {
 	setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-	SetYAxisEnabled(true);
-	SetAutoSelectSiblings(false);
+	set_y_axis_enabled(true);
+	set_auto_select_siblings(false);
 
 	text_padding_ =
-		QtUtils::QFontMetricsWidth(fontMetrics(), QStringLiteral("i"));
+		QtUtils::q_font_metrics_width(fontMetrics(), QStringLiteral("i"));
 
 	minimum_grid_space_ =
-		QtUtils::QFontMetricsWidth(fontMetrics(), QStringLiteral("00000"));
+		QtUtils::q_font_metrics_width(fontMetrics(), QStringLiteral("00000"));
 }
 
-void CurveView::ConnectInput(const NodeKeyframeTrackReference &ref)
+void CurveView::connect_input(const NodeKeyframeTrackReference &ref)
 {
 	if (connected_inputs_.contains(ref)) {
 		// Input wasn't connected, do nothing
@@ -61,19 +61,19 @@ void CurveView::ConnectInput(const NodeKeyframeTrackReference &ref)
 	}
 
 	// Add keyframes from track
-	KeyframeViewInputConnection *track_con = AddKeyframesOfTrack(ref);
-	track_con->SetBrush(keyframe_colors_.value(ref));
+	KeyframeViewInputConnection *track_con = add_keyframes_of_track(ref);
+	track_con->set_brush(keyframe_colors_.value(ref));
 	track_connections_.insert(ref, track_con);
 
 	// Signal to CurveWidget to update its bezier/linear/hold buttons if a key type changes
-	connect(track_con, &KeyframeViewInputConnection::TypeChanged, this,
-			&CurveView::SelectionChanged);
+	connect(track_con, &KeyframeViewInputConnection::type_changed, this,
+			&CurveView::selection_changed);
 
 	// Append to the list
 	connected_inputs_.append(ref);
 }
 
-void CurveView::DisconnectInput(const NodeKeyframeTrackReference &ref)
+void CurveView::disconnect_input(const NodeKeyframeTrackReference &ref)
 {
 	if (!connected_inputs_.contains(ref)) {
 		// Input wasn't connected, do nothing
@@ -81,24 +81,24 @@ void CurveView::DisconnectInput(const NodeKeyframeTrackReference &ref)
 	}
 
 	// Remove keyframes belonging to this element and track
-	RemoveKeyframesOfTrack(track_connections_.take(ref));
+	remove_keyframes_of_track(track_connections_.take(ref));
 
 	// Remove from the list
 	connected_inputs_.removeOne(ref);
 }
 
-void CurveView::SelectKeyframesOfInput(const NodeKeyframeTrackReference &ref)
+void CurveView::select_keyframes_of_input(const NodeKeyframeTrackReference &ref)
 {
-	DeselectAll();
+	deselect_all();
 
 	if (KeyframeViewInputConnection *con = track_connections_.value(ref)) {
-		foreach (NodeKeyframe *key, con->GetKeyframes()) {
-			SelectKeyframe(key);
+		foreach (NodeKeyframe *key, con->get_keyframes()) {
+			select_keyframe(key);
 		}
 	}
 }
 
-void CurveView::SetKeyframeTrackColor(const NodeKeyframeTrackReference &ref,
+void CurveView::set_keyframe_track_color(const NodeKeyframeTrackReference &ref,
 									  const QColor &color)
 {
 	// Insert color into hashmap
@@ -106,7 +106,7 @@ void CurveView::SetKeyframeTrackColor(const NodeKeyframeTrackReference &ref,
 
 	if (KeyframeViewInputConnection *con = track_connections_.value(ref)) {
 		// Update all keyframes
-		con->SetBrush(color);
+		con->set_brush(color);
 	}
 }
 
@@ -120,7 +120,7 @@ void CurveView::drawBackground(QPainter *painter, const QRectF &rect)
 
 	QVector<QLine> lines;
 
-	double x_interval = timebase().flipped().toDouble();
+	double x_interval = timebase().flipped().to_double();
 	double y_interval = 100.0;
 
 	int x_grid_interval, y_grid_interval;
@@ -128,12 +128,12 @@ void CurveView::drawBackground(QPainter *painter, const QRectF &rect)
 	painter->setPen(QPen(palette().window().color(), 1));
 
 	do {
-		x_grid_interval = qRound(x_interval * GetScale() * timebase_dbl());
+		x_grid_interval = qRound(x_interval * get_scale() * timebase_dbl());
 		x_interval *= 2.0;
 	} while (x_grid_interval < minimum_grid_space_);
 
 	do {
-		y_grid_interval = qRound(y_interval * GetYScale());
+		y_grid_interval = qRound(y_interval * get_y_scale());
 		y_interval *= 2.0;
 	} while (y_grid_interval < minimum_grid_space_);
 
@@ -146,7 +146,7 @@ void CurveView::drawBackground(QPainter *painter, const QRectF &rect)
 	// Add vertical lines
 	for (int i = x_start; i < rect.right(); i += x_grid_interval) {
 		int value =
-			qRound(static_cast<double>(i) / GetScale() / timebase_dbl());
+			qRound(static_cast<double>(i) / get_scale() / timebase_dbl());
 		painter->drawText(i + text_padding_,
 						  qRound(scene_bottom_left.y()) - text_padding_,
 						  QString::number(value));
@@ -155,7 +155,7 @@ void CurveView::drawBackground(QPainter *painter, const QRectF &rect)
 
 	// Add horizontal lines
 	for (int i = y_start; i < rect.bottom(); i += y_grid_interval) {
-		int value = qRound(static_cast<double>(i) / GetYScale());
+		int value = qRound(static_cast<double>(i) / get_y_scale());
 		painter->drawText(qRound(scene_bottom_left.x()) + text_padding_,
 						  i - text_padding_, QString::number(-value));
 		lines.append(QLine(qRound(rect.left()), i, qRound(rect.right()), i));
@@ -169,9 +169,9 @@ void CurveView::drawBackground(QPainter *painter, const QRectF &rect)
 		Node *node = ref.input().node();
 		const QString &input = ref.input().input();
 
-		if (node->IsInputKeyframing(input, ref.input().element())) {
+		if (node->is_input_keyframing(input, ref.input().element())) {
 			const QVector<NodeKeyframeTrack> &tracks =
-				node->GetKeyframeTracks(ref.input());
+				node->get_keyframe_tracks(ref.input());
 
 			const NodeKeyframeTrack &track = tracks.at(ref.track());
 
@@ -183,7 +183,7 @@ void CurveView::drawBackground(QPainter *painter, const QRectF &rect)
 				QPainterPath path;
 
 				// Draw straight line leading to first keyframe
-				QPointF first_key_pos = GetKeyframePosition(track.first());
+				QPointF first_key_pos = get_keyframe_position(track.first());
 				path.moveTo(QPointF(scene_bottom_left.x(), first_key_pos.y()));
 				path.lineTo(first_key_pos);
 
@@ -192,16 +192,16 @@ void CurveView::drawBackground(QPainter *painter, const QRectF &rect)
 					NodeKeyframe *before = track.at(i - 1);
 					NodeKeyframe *after = track.at(i);
 
-					QPointF before_pos = GetKeyframePosition(before);
-					QPointF after_pos = GetKeyframePosition(after);
+					QPointF before_pos = get_keyframe_position(before);
+					QPointF after_pos = get_keyframe_position(after);
 
-					if (before->type() == NodeKeyframe::kHold) {
+					if (before->type() == NodeKeyframe::k_hold) {
 						// Draw a hold keyframe (basically a right angle)
 						path.lineTo(after_pos.x(), before_pos.y());
 						path.lineTo(after_pos.x(), after_pos.y());
 
-					} else if (before->type() == NodeKeyframe::kBezier &&
-							   after->type() == NodeKeyframe::kBezier) {
+					} else if (before->type() == NodeKeyframe::k_bezier &&
+							   after->type() == NodeKeyframe::k_bezier) {
 						// Draw a cubic bezier
 
 						// Cubic beziers have two control points, so we can just use both
@@ -215,15 +215,15 @@ void CurveView::drawBackground(QPainter *painter, const QRectF &rect)
 						path.cubicTo(before_control_point, after_control_point,
 									 after_pos);
 
-					} else if (before->type() == NodeKeyframe::kBezier ||
-							   after->type() == NodeKeyframe::kBezier) {
+					} else if (before->type() == NodeKeyframe::k_bezier ||
+							   after->type() == NodeKeyframe::k_bezier) {
 						// Draw a quadratic bezier
 
 						// Quadratic beziers have a single control point, we just have to determine which it is
 						QPointF key_anchor;
 						QPointF control_point;
 
-						if (before->type() == NodeKeyframe::kBezier) {
+						if (before->type() == NodeKeyframe::k_bezier) {
 							key_anchor = before_pos;
 							control_point = before->valid_bezier_control_out();
 						} else {
@@ -244,7 +244,7 @@ void CurveView::drawBackground(QPainter *painter, const QRectF &rect)
 				}
 
 				// Draw straight line leading from end keyframe
-				QPointF last_key_pos = GetKeyframePosition(track.last());
+				QPointF last_key_pos = get_keyframe_position(track.last());
 				path.lineTo(QPointF(scene_top_right.x(), last_key_pos.y()));
 
 				painter->drawPath(path);
@@ -264,15 +264,15 @@ void CurveView::ContextMenuEvent(Menu &m)
 {
 	// View settings
 	QAction *zoom_fit_action = m.addAction(tr("Zoom to Fit"));
-	connect(zoom_fit_action, &QAction::triggered, this, &CurveView::ZoomToFit);
+	connect(zoom_fit_action, &QAction::triggered, this, &CurveView::zoom_to_fit);
 
 	QAction *zoom_fit_selected_action = m.addAction(tr("Zoom to Fit Selected"));
 	connect(zoom_fit_selected_action, &QAction::triggered, this,
-			&CurveView::ZoomToFitSelected);
+			&CurveView::zoom_to_fit_selected);
 
 	QAction *reset_zoom_action = m.addAction(tr("Reset Zoom"));
 	connect(reset_zoom_action, &QAction::triggered, this,
-			&CurveView::ResetZoom);
+			&CurveView::reset_zoom);
 }
 
 void CurveView::SceneRectUpdateEvent(QRectF &r)
@@ -281,8 +281,8 @@ void CurveView::SceneRectUpdateEvent(QRectF &r)
 	bool got_val = false;
 
 	foreach (KeyframeViewInputConnection *con, track_connections_) {
-		foreach (NodeKeyframe *key, con->GetKeyframes()) {
-			qreal key_y = GetItemYFromKeyframeValue(key);
+		foreach (NodeKeyframe *key, con->get_keyframes()) {
+			qreal key_y = get_item_y_from_keyframe_value(key);
 
 			if (got_val) {
 				min_val = qMin(key_y, min_val);
@@ -301,19 +301,19 @@ void CurveView::SceneRectUpdateEvent(QRectF &r)
 	}
 }
 
-qreal CurveView::GetKeyframeSceneY(KeyframeViewInputConnection *track,
+qreal CurveView::get_keyframe_scene_y(KeyframeViewInputConnection *track,
 								   NodeKeyframe *key)
 {
-	return GetItemYFromKeyframeValue(key);
+	return get_item_y_from_keyframe_value(key);
 }
 
-void CurveView::DrawKeyframe(QPainter *painter, NodeKeyframe *key,
+void CurveView::draw_keyframe(QPainter *painter, NodeKeyframe *key,
 							 KeyframeViewInputConnection *track,
 							 const QRectF &key_rect)
 {
-	if (IsKeyframeSelected(key) && key->type() == NodeKeyframe::kBezier) {
+	if (is_keyframe_selected(key) && key->type() == NodeKeyframe::k_bezier) {
 		// Draw bezier control points if keyframe is selected
-		int control_point_size = QtUtils::QFontMetricsWidth(fontMetrics(), "o");
+		int control_point_size = QtUtils::q_font_metrics_width(fontMetrics(), "o");
 		int half_sz = control_point_size / 2;
 		QRectF control_point_rect(-half_sz, -half_sz, control_point_size,
 								  control_point_size);
@@ -332,14 +332,14 @@ void CurveView::DrawKeyframe(QPainter *painter, NodeKeyframe *key,
 		painter->drawEllipse(cp_in);
 		painter->drawEllipse(cp_out);
 
-		bezier_pts_.append({ cp_in, key, NodeKeyframe::kInHandle });
-		bezier_pts_.append({ cp_out, key, NodeKeyframe::kOutHandle });
+		bezier_pts_.append({ cp_in, key, NodeKeyframe::k_in_handle });
+		bezier_pts_.append({ cp_out, key, NodeKeyframe::k_out_handle });
 	}
 
-	super::DrawKeyframe(painter, key, track, key_rect);
+	super::draw_keyframe(painter, key, track, key_rect);
 }
 
-bool CurveView::FirstChanceMousePress(QMouseEvent *event)
+bool CurveView::first_chance_mouse_press(QMouseEvent *event)
 {
 	dragging_bezier_pt_ = nullptr;
 	QPointF scene_pt = mapToScene(event->pos());
@@ -353,11 +353,11 @@ bool CurveView::FirstChanceMousePress(QMouseEvent *event)
 	if (dragging_bezier_pt_) {
 		NodeKeyframe *key = dragging_bezier_pt_->keyframe;
 		dragging_bezier_point_start_ =
-			(dragging_bezier_pt_->type == NodeKeyframe::kInHandle) ?
+			(dragging_bezier_pt_->type == NodeKeyframe::k_in_handle) ?
 				key->bezier_control_in() :
 				key->bezier_control_out();
 		dragging_bezier_point_opposing_start_ =
-			(dragging_bezier_pt_->type == NodeKeyframe::kInHandle) ?
+			(dragging_bezier_pt_->type == NodeKeyframe::k_in_handle) ?
 				key->bezier_control_out() :
 				key->bezier_control_in();
 
@@ -368,11 +368,11 @@ bool CurveView::FirstChanceMousePress(QMouseEvent *event)
 	}
 }
 
-void CurveView::FirstChanceMouseMove(QMouseEvent *event)
+void CurveView::first_chance_mouse_move(QMouseEvent *event)
 {
 	// Calculate cursor difference and scale it
 	QPointF scene_pos = mapToScene(event->pos());
-	QPointF mouse_diff_scaled = GetScaledCursorPos(scene_pos - drag_start_);
+	QPointF mouse_diff_scaled = get_scaled_cursor_pos(scene_pos - drag_start_);
 
 	if (event->modifiers() & Qt::ShiftModifier) {
 		// If holding shift, only move one axis
@@ -382,7 +382,7 @@ void CurveView::FirstChanceMouseMove(QMouseEvent *event)
 	// Flip the mouse Y because bezier control points are drawn bottom to top, not top to bottom
 	mouse_diff_scaled.setY(-mouse_diff_scaled.y());
 
-	QPointF new_bezier_pos = GenerateBezierControlPosition(
+	QPointF new_bezier_pos = generate_bezier_control_position(
 		dragging_bezier_pt_->type, dragging_bezier_point_start_,
 		mouse_diff_scaled);
 
@@ -392,7 +392,7 @@ void CurveView::FirstChanceMouseMove(QMouseEvent *event)
 		NodeKeyframe::get_opposing_bezier_type(dragging_bezier_pt_->type);
 
 	if (!(event->modifiers() & Qt::ControlModifier)) {
-		new_opposing_pos = GenerateBezierControlPosition(
+		new_opposing_pos = generate_bezier_control_position(
 			opposing_type, dragging_bezier_point_opposing_start_,
 			-mouse_diff_scaled);
 	} else {
@@ -405,10 +405,10 @@ void CurveView::FirstChanceMouseMove(QMouseEvent *event)
 	dragging_bezier_pt_->keyframe->set_bezier_control(opposing_type,
 													  new_opposing_pos);
 
-	Redraw();
+	redraw();
 }
 
-void CurveView::FirstChanceMouseRelease(QMouseEvent *event)
+void CurveView::first_chance_mouse_release(QMouseEvent *event)
 {
 	MultiUndoCommand *command = new MultiUndoCommand();
 
@@ -434,23 +434,23 @@ void CurveView::FirstChanceMouseRelease(QMouseEvent *event)
 		command, tr("Moved Keyframe Bezier Control Point"));
 }
 
-void CurveView::KeyframeDragStart(QMouseEvent *event)
+void CurveView::keyframe_drag_start(QMouseEvent *event)
 {
-	drag_keyframe_values_.resize(GetSelectedKeyframes().size());
-	for (size_t i = 0; i < GetSelectedKeyframes().size(); i++) {
-		NodeKeyframe *key = GetSelectedKeyframes().at(i);
+	drag_keyframe_values_.resize(get_selected_keyframes().size());
+	for (size_t i = 0; i < get_selected_keyframes().size(); i++) {
+		NodeKeyframe *key = get_selected_keyframes().at(i);
 		drag_keyframe_values_[i] = key->value();
 	}
 
 	drag_start_ = mapToScene(event->pos());
 }
 
-void CurveView::KeyframeDragMove(QMouseEvent *event, QString &tip)
+void CurveView::keyframe_drag_move(QMouseEvent *event, QString &tip)
 {
 	if (event->modifiers() & Qt::ShiftModifier) {
 		// Lock to X axis only and set original values on all keys
-		for (size_t i = 0; i < GetSelectedKeyframes().size(); i++) {
-			NodeKeyframe *key = GetSelectedKeyframes().at(i);
+		for (size_t i = 0; i < get_selected_keyframes().size(); i++) {
+			NodeKeyframe *key = get_selected_keyframes().at(i);
 			key->set_value(drag_keyframe_values_.at(i));
 		}
 		return;
@@ -458,31 +458,31 @@ void CurveView::KeyframeDragMove(QMouseEvent *event, QString &tip)
 
 	// Calculate cursor difference
 	double scaled_diff =
-		(mapToScene(event->pos()).y() - drag_start_.y()) / GetYScale();
+		(mapToScene(event->pos()).y() - drag_start_.y()) / get_y_scale();
 
 	// Validate movement - ensure no keyframe goes above its max point or below its min point
-	for (size_t i = 0; i < GetSelectedKeyframes().size(); i++) {
-		NodeKeyframe *key = GetSelectedKeyframes().at(i);
+	for (size_t i = 0; i < get_selected_keyframes().size(); i++) {
+		NodeKeyframe *key = get_selected_keyframes().at(i);
 
-		FloatSlider::DisplayType display = GetFloatDisplayTypeFromKeyframe(key);
+		FloatSlider::DisplayType display = get_float_display_type_from_keyframe(key);
 		Node *node = key->parent();
-		double original_val = FloatSlider::TransformValueToDisplay(
+		double original_val = FloatSlider::transform_value_to_display(
 			drag_keyframe_values_.at(i).toDouble(), display);
 		const QString &input = key->input();
-		double new_val = FloatSlider::TransformDisplayToValue(
+		double new_val = FloatSlider::transform_display_to_value(
 			original_val - scaled_diff, display);
 		double limited = new_val;
 
-		if (node->HasInputProperty(input, QStringLiteral("min"))) {
+		if (node->has_input_property(input, QStringLiteral("min"))) {
 			limited = qMax(
 				limited,
-				node->GetInputProperty(input, QStringLiteral("min")).toDouble());
+				node->get_input_property(input, QStringLiteral("min")).toDouble());
 		}
 
-		if (node->HasInputProperty(input, QStringLiteral("max"))) {
+		if (node->has_input_property(input, QStringLiteral("max"))) {
 			limited = qMin(
 				limited,
-				node->GetInputProperty(input, QStringLiteral("max")).toDouble());
+				node->get_input_property(input, QStringLiteral("max")).toDouble());
 		}
 
 		if (limited != new_val) {
@@ -491,34 +491,34 @@ void CurveView::KeyframeDragMove(QMouseEvent *event, QString &tip)
 	}
 
 	// Set values
-	for (size_t i = 0; i < GetSelectedKeyframes().size(); i++) {
-		NodeKeyframe *key = GetSelectedKeyframes().at(i);
-		FloatSlider::DisplayType display = GetFloatDisplayTypeFromKeyframe(key);
-		key->set_value(FloatSlider::TransformDisplayToValue(
-			FloatSlider::TransformValueToDisplay(
+	for (size_t i = 0; i < get_selected_keyframes().size(); i++) {
+		NodeKeyframe *key = get_selected_keyframes().at(i);
+		FloatSlider::DisplayType display = get_float_display_type_from_keyframe(key);
+		key->set_value(FloatSlider::transform_display_to_value(
+			FloatSlider::transform_value_to_display(
 				drag_keyframe_values_.at(i).toDouble(), display) -
 				scaled_diff,
 			display));
 	}
 
-	NodeKeyframe *tip_item = GetSelectedKeyframes().front();
+	NodeKeyframe *tip_item = get_selected_keyframes().front();
 
 	bool ok;
 	double num_value = tip_item->value().toDouble(&ok);
 
 	if (ok) {
 		tip = QStringLiteral("%1\n");
-		tip.append(FloatSlider::ValueToString(
-			num_value + GetOffsetFromKeyframe(tip_item),
-			GetFloatDisplayTypeFromKeyframe(tip_item), 2, true));
+		tip.append(FloatSlider::value_to_string(
+			num_value + get_offset_from_keyframe(tip_item),
+			get_float_display_type_from_keyframe(tip_item), 2, true));
 	}
 }
 
-void CurveView::KeyframeDragRelease(QMouseEvent *event,
+void CurveView::keyframe_drag_release(QMouseEvent *event,
 									MultiUndoCommand *command)
 {
-	for (size_t i = 0; i < GetSelectedKeyframes().size(); i++) {
-		NodeKeyframe *k = GetSelectedKeyframes().at(i);
+	for (size_t i = 0; i < get_selected_keyframes().size(); i++) {
+		NodeKeyframe *k = get_selected_keyframes().at(i);
 		if (!qFuzzyCompare(k->value().toDouble(),
 						   drag_keyframe_values_.at(i).toDouble())) {
 			command->add_child(new NodeParamSetKeyframeValueCommand(
@@ -528,7 +528,7 @@ void CurveView::KeyframeDragRelease(QMouseEvent *event,
 }
 
 QPointF
-CurveView::GenerateBezierControlPosition(const NodeKeyframe::BezierType mode,
+CurveView::generate_bezier_control_position(const NodeKeyframe::BezierType mode,
 										 const QPointF &start_point,
 										 const QPointF &scaled_cursor_diff)
 {
@@ -537,7 +537,7 @@ CurveView::GenerateBezierControlPosition(const NodeKeyframe::BezierType mode,
 	new_bezier_pos += scaled_cursor_diff;
 
 	// LIMIT bezier handles from overlapping each other
-	if (mode == NodeKeyframe::kInHandle) {
+	if (mode == NodeKeyframe::k_in_handle) {
 		if (new_bezier_pos.x() > 0) {
 			new_bezier_pos.setX(0);
 		}
@@ -550,26 +550,26 @@ CurveView::GenerateBezierControlPosition(const NodeKeyframe::BezierType mode,
 	return new_bezier_pos;
 }
 
-QPointF CurveView::GetScaledCursorPos(const QPointF &cursor_pos)
+QPointF CurveView::get_scaled_cursor_pos(const QPointF &cursor_pos)
 {
-	return QPointF(cursor_pos.x() / GetScale(), cursor_pos.y() / GetYScale());
+	return QPointF(cursor_pos.x() / get_scale(), cursor_pos.y() / get_y_scale());
 }
 
-void CurveView::ZoomToFitInternal(bool selected_only)
+void CurveView::zoom_to_fit_internal(bool selected_only)
 {
 	bool got_val = false;
 
-	rational min_time, max_time;
+	Rational min_time, max_time;
 	double min_val, max_val;
 
 	foreach (KeyframeViewInputConnection *con, track_connections_) {
-		foreach (NodeKeyframe *key, con->GetKeyframes()) {
-			if (!selected_only || IsKeyframeSelected(key)) {
-				rational transformed_time =
-					GetAdjustedTime(key->parent(), GetTimeTarget(), key->time(),
-									Node::kTransformTowardsOutput);
+		foreach (NodeKeyframe *key, con->get_keyframes()) {
+			if (!selected_only || is_keyframe_selected(key)) {
+				Rational transformed_time =
+					get_adjusted_time(key->parent(), get_time_target(), key->time(),
+									Node::k_transform_towards_output);
 
-				qreal key_y = GetUnscaledItemYFromKeyframeValue(key);
+				qreal key_y = get_unscaled_item_y_from_keyframe_value(key);
 
 				if (got_val) {
 					min_time = qMin(transformed_time, min_time);
@@ -592,8 +592,8 @@ void CurveView::ZoomToFitInternal(bool selected_only)
 
 	// Prevent scaling if no keyframes were found
 	if (got_val) {
-		QRectF desired(QPointF(min_time.toDouble(), min_val),
-					   QPointF(max_time.toDouble(), max_val));
+		QRectF desired(QPointF(min_time.to_double(), min_val),
+					   QPointF(max_time.to_double(), max_val));
 
 		const double scale_divider = 0.5;
 		double scale_half_divider = scale_divider * 0.5;
@@ -612,10 +612,10 @@ void CurveView::ZoomToFitInternal(bool selected_only)
 				viewport()->height() / desired.height() * scale_divider;
 		}
 
-		emit ScaleChanged(new_x_scale);
-		SetYScale(new_y_scale);
+		emit scale_changed(new_x_scale);
+		set_y_scale(new_y_scale);
 
-		UpdateSceneRect();
+		update_scene_rect();
 
 		int sb_x = desired.left() * new_x_scale -
 				   viewport()->width() * scale_half_divider;
@@ -629,19 +629,19 @@ void CurveView::ZoomToFitInternal(bool selected_only)
 	}
 }
 
-qreal CurveView::GetItemYFromKeyframeValue(NodeKeyframe *key)
+qreal CurveView::get_item_y_from_keyframe_value(NodeKeyframe *key)
 {
-	return GetUnscaledItemYFromKeyframeValue(key) * GetYScale();
+	return get_unscaled_item_y_from_keyframe_value(key) * get_y_scale();
 }
 
-qreal CurveView::GetUnscaledItemYFromKeyframeValue(NodeKeyframe *key)
+qreal CurveView::get_unscaled_item_y_from_keyframe_value(NodeKeyframe *key)
 {
 	double val = key->value().toDouble();
 
-	val = FloatSlider::TransformValueToDisplay(
-		val, GetFloatDisplayTypeFromKeyframe(key));
+	val = FloatSlider::transform_value_to_display(
+		val, get_float_display_type_from_keyframe(key));
 
-	val += GetOffsetFromKeyframe(key);
+	val += get_offset_from_keyframe(key);
 
 	return -val;
 }
@@ -649,35 +649,35 @@ qreal CurveView::GetUnscaledItemYFromKeyframeValue(NodeKeyframe *key)
 QPointF CurveView::ScalePoint(const QPointF &point)
 {
 	// Flips Y coordinate because curves are drawn bottom to top
-	return QPointF(point.x() * GetScale(), -point.y() * GetYScale());
+	return QPointF(point.x() * get_scale(), -point.y() * get_y_scale());
 }
 
 FloatSlider::DisplayType
-CurveView::GetFloatDisplayTypeFromKeyframe(NodeKeyframe *key)
+CurveView::get_float_display_type_from_keyframe(NodeKeyframe *key)
 {
 	Node *node = key->parent();
 	const QString &input = key->input();
-	if (node->HasInputProperty(input, QStringLiteral("view"))) {
+	if (node->has_input_property(input, QStringLiteral("view"))) {
 		// Try to get view from input (which will be normal if unset)
 		return static_cast<FloatSlider::DisplayType>(
-			node->GetInputProperty(input, QStringLiteral("view")).toInt());
+			node->get_input_property(input, QStringLiteral("view")).toInt());
 	}
 
 	// Fallback to normal
-	return FloatSlider::kNormal;
+	return FloatSlider::k_normal;
 }
 
-double CurveView::GetOffsetFromKeyframe(NodeKeyframe *key)
+double CurveView::get_offset_from_keyframe(NodeKeyframe *key)
 {
 	Node *node = key->parent();
 	const QString &input = key->input();
-	if (node->HasInputProperty(input, QStringLiteral("offset"))) {
-		QVariant v = node->GetInputProperty(input, QStringLiteral("offset"));
+	if (node->has_input_property(input, QStringLiteral("offset"))) {
+		QVariant v = node->get_input_property(input, QStringLiteral("offset"));
 
 		// NOTE: Implement getting correct offset for the track based on the data type
 		QVector<QVariant> track_vals =
 			NodeValue::split_normal_value_into_track_values(
-				node->GetInputDataType(input), v);
+				node->get_input_data_type(input), v);
 
 		return track_vals.at(key->track()).toDouble();
 	}
@@ -685,25 +685,25 @@ double CurveView::GetOffsetFromKeyframe(NodeKeyframe *key)
 	return 0;
 }
 
-QPointF CurveView::GetKeyframePosition(NodeKeyframe *key)
+QPointF CurveView::get_keyframe_position(NodeKeyframe *key)
 {
-	return QPointF(GetKeyframeSceneX(key), GetItemYFromKeyframeValue(key));
+	return QPointF(get_keyframe_scene_x(key), get_item_y_from_keyframe_value(key));
 }
 
-void CurveView::ZoomToFit()
+void CurveView::zoom_to_fit()
 {
-	ZoomToFitInternal(false);
+	zoom_to_fit_internal(false);
 }
 
-void CurveView::ZoomToFitSelected()
+void CurveView::zoom_to_fit_selected()
 {
-	ZoomToFitInternal(true);
+	zoom_to_fit_internal(true);
 }
 
-void CurveView::ResetZoom()
+void CurveView::reset_zoom()
 {
-	emit ScaleChanged(1.0);
-	SetYScale(1.0);
+	emit scale_changed(1.0);
+	set_y_scale(1.0);
 }
 
 }

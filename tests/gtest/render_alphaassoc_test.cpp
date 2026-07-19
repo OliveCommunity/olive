@@ -4,7 +4,7 @@
 
 TEST(AlphaAssociated, ValuesAreDistinct)
 {
-	EXPECT_NE(olive::kAlphaNone, olive::kAlphaUnassociated);
-	EXPECT_NE(olive::kAlphaNone, olive::kAlphaAssociated);
-	EXPECT_NE(olive::kAlphaUnassociated, olive::kAlphaAssociated);
+	EXPECT_NE(olive::k_alpha_none, olive::k_alpha_unassociated);
+	EXPECT_NE(olive::k_alpha_none, olive::k_alpha_associated);
+	EXPECT_NE(olive::k_alpha_unassociated, olive::k_alpha_associated);
 }

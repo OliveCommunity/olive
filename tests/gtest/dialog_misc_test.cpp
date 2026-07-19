@@ -40,13 +40,13 @@
 namespace
 {
 
-void EnsureAppSingletons()
+void ensure_app_singletons()
 {
 	if (!olive::Core::instance()) {
 		new olive::Core(olive::Core::CoreParams()); // intentionally leaked
 	}
 	if (!olive::DiskManager::instance()) {
-		olive::DiskManager::CreateInstance();
+		olive::DiskManager::create_instance();
 	}
 }
 
@@ -70,12 +70,12 @@ public:
 	bool validate_result = true;
 	int accept_count = 0;
 
-	virtual bool Validate() override
+	virtual bool validate() override
 	{
 		return validate_result;
 	}
 
-	virtual void Accept(olive::MultiUndoCommand *) override
+	virtual void accept(olive::MultiUndoCommand *) override
 	{
 		++accept_count;
 	}
@@ -83,7 +83,7 @@ public:
 
 class TestConfigDialog : public olive::ConfigDialogBase {
 public:
-	using olive::ConfigDialogBase::AddTab;
+	using olive::ConfigDialogBase::add_tab;
 	using olive::ConfigDialogBase::ConfigDialogBase;
 
 	bool accept_event_called = false;
@@ -99,11 +99,11 @@ class DummyTask : public olive::Task {
 public:
 	DummyTask()
 	{
-		SetTitle(QStringLiteral("DummyTask"));
+		set_title(QStringLiteral("DummyTask"));
 	}
 
 protected:
-	virtual bool Run() override
+	virtual bool run() override
 	{
 		return true;
 	}
@@ -126,7 +126,7 @@ TEST(DialogAbout, WelcomeDialogHasDontShowAgainCheckbox)
 TEST(DialogAbout, AcceptWithCheckboxWritesConfig)
 {
 	const QVariant old_value =
-		olive::Config::Current()[QStringLiteral("ShowWelcomeDialog")];
+		olive::Config::current()[QStringLiteral("ShowWelcomeDialog")];
 
 	{
 		olive::AboutDialog welcome(true);
@@ -137,9 +137,9 @@ TEST(DialogAbout, AcceptWithCheckboxWritesConfig)
 	}
 
 	EXPECT_FALSE(
-		olive::Config::Current()[QStringLiteral("ShowWelcomeDialog")].toBool());
+		olive::Config::current()[QStringLiteral("ShowWelcomeDialog")].toBool());
 
-	olive::Config::Current()[QStringLiteral("ShowWelcomeDialog")] = old_value;
+	olive::Config::current()[QStringLiteral("ShowWelcomeDialog")] = old_value;
 }
 
 //
@@ -159,7 +159,7 @@ TEST(DialogActionSearch, SearchFiltersActionsCaseInsensitively)
 	recent_menu->addAction(QStringLiteral("Project A"));
 	bar.addMenu(QStringLiteral("&Edit"))->addAction(QStringLiteral("Undo"));
 
-	dialog.SetMenuBar(&bar);
+	dialog.set_menu_bar(&bar);
 
 	auto *entry = dialog.findChild<olive::ActionSearchEntry *>();
 	auto *list = dialog.findChild<olive::ActionSearchList *>();
@@ -192,7 +192,7 @@ TEST(DialogActionSearch, PerformActionTriggersSelectedAction)
 	QMenu *file_menu = bar.addMenu(QStringLiteral("&File"));
 	QAction *open_action = file_menu->addAction(QStringLiteral("Open..."));
 
-	dialog.SetMenuBar(&bar);
+	dialog.set_menu_bar(&bar);
 
 	bool triggered = false;
 	QObject::connect(open_action, &QAction::triggered,
@@ -217,7 +217,7 @@ TEST(DialogActionSearch, SelectionMovesUpAndDown)
 	file_menu->addAction(QStringLiteral("Alpha"));
 	file_menu->addAction(QStringLiteral("Beta"));
 
-	dialog.SetMenuBar(&bar);
+	dialog.set_menu_bar(&bar);
 
 	auto *entry = dialog.findChild<olive::ActionSearchEntry *>();
 	auto *list = dialog.findChild<olive::ActionSearchList *>();
@@ -242,9 +242,9 @@ TEST(DialogActionSearch, SelectionMovesUpAndDown)
 TEST(DialogAutoRecovery, PopulatesTreeFromRecoveryFolders)
 {
 	StandardPathsTestModeGuard test_mode;
-	EnsureAppSingletons();
+	ensure_app_singletons();
 
-	const QString root = olive::FileFunctions::GetAutoRecoveryRoot();
+	const QString root = olive::FileFunctions::get_auto_recovery_root();
 	const QString folder = QStringLiteral("uuid-abc");
 	QDir recovery_dir(QDir(root).filePath(folder));
 	ASSERT_TRUE(recovery_dir.mkpath(QStringLiteral(".")));
@@ -317,9 +317,9 @@ TEST(DialogAutoRecovery, PopulatesTreeFromRecoveryFolders)
 TEST(DialogAutoRecovery, MissingRealnameFallsBackToFolderName)
 {
 	StandardPathsTestModeGuard test_mode;
-	EnsureAppSingletons();
+	ensure_app_singletons();
 
-	const QString root = olive::FileFunctions::GetAutoRecoveryRoot();
+	const QString root = olive::FileFunctions::get_auto_recovery_root();
 	const QString folder = QStringLiteral("uuid-no-realname");
 	QDir recovery_dir(QDir(root).filePath(folder));
 	ASSERT_TRUE(recovery_dir.mkpath(QStringLiteral(".")));
@@ -349,8 +349,8 @@ TEST(DialogConfigBase, AddTabPopulatesListAndStack)
 
 	auto *tab_a = new DummyTab();
 	auto *tab_b = new DummyTab();
-	dialog.AddTab(tab_a, QStringLiteral("First"));
-	dialog.AddTab(tab_b, QStringLiteral("Second"));
+	dialog.add_tab(tab_a, QStringLiteral("First"));
+	dialog.add_tab(tab_b, QStringLiteral("Second"));
 
 	auto *list = dialog.findChild<QListWidget *>();
 	auto *stack = dialog.findChild<QStackedWidget *>();
@@ -360,20 +360,20 @@ TEST(DialogConfigBase, AddTabPopulatesListAndStack)
 	EXPECT_EQ(list->count(), 2);
 	EXPECT_EQ(stack->count(), 2);
 
-	dialog.SetCurrentTab(1);
+	dialog.set_current_tab(1);
 	EXPECT_EQ(list->currentRow(), 1);
 	EXPECT_EQ(stack->currentIndex(), 1);
 }
 
 TEST(DialogConfigBase, AcceptCallsTabsAndAcceptEvent)
 {
-	EnsureAppSingletons();
+	ensure_app_singletons();
 
 	TestConfigDialog dialog;
 	auto *tab_a = new DummyTab();
 	auto *tab_b = new DummyTab();
-	dialog.AddTab(tab_a, QStringLiteral("First"));
-	dialog.AddTab(tab_b, QStringLiteral("Second"));
+	dialog.add_tab(tab_a, QStringLiteral("First"));
+	dialog.add_tab(tab_b, QStringLiteral("Second"));
 
 	// accept() is a private slot, invoke it through the meta-object
 	QMetaObject::invokeMethod(&dialog, "accept");
@@ -386,14 +386,14 @@ TEST(DialogConfigBase, AcceptCallsTabsAndAcceptEvent)
 
 TEST(DialogConfigBase, FailedValidateBlocksAccept)
 {
-	EnsureAppSingletons();
+	ensure_app_singletons();
 
 	TestConfigDialog dialog;
 	auto *tab_a = new DummyTab();
 	auto *tab_b = new DummyTab();
 	tab_a->validate_result = false;
-	dialog.AddTab(tab_a, QStringLiteral("First"));
-	dialog.AddTab(tab_b, QStringLiteral("Second"));
+	dialog.add_tab(tab_a, QStringLiteral("First"));
+	dialog.add_tab(tab_b, QStringLiteral("Second"));
 
 	// accept() is a private slot, invoke it through the meta-object
 	QMetaObject::invokeMethod(&dialog, "accept");
@@ -422,17 +422,17 @@ TEST(DialogDiskCache, AcceptAppliesLimitAndClearOnClose)
 	ASSERT_NE(clear_box, nullptr);
 
 	// Fields reflect the folder's current settings (20 GB default)
-	EXPECT_DOUBLE_EQ(limit_slider->GetValue(), 20.0);
+	EXPECT_DOUBLE_EQ(limit_slider->get_value(), 20.0);
 	EXPECT_FALSE(clear_box->isChecked());
 
-	limit_slider->SetValue(5.0);
+	limit_slider->set_value(5.0);
 	clear_box->setChecked(true);
 
 	dialog.accept();
 
-	EXPECT_EQ(folder.GetLimit(),
-			  5 * static_cast<qint64>(olive::kBytesInGigabyte));
-	EXPECT_TRUE(folder.GetClearOnClose());
+	EXPECT_EQ(folder.get_limit(),
+			  5 * static_cast<qint64>(olive::k_bytes_in_gigabyte));
+	EXPECT_TRUE(folder.get_clear_on_close());
 }
 
 //
@@ -468,7 +468,7 @@ TEST(DialogProgress, CancelButtonEmitsCancelledAndDisables)
 	ASSERT_NE(cancel_btn, nullptr);
 
 	bool cancelled = false;
-	QObject::connect(&dialog, &olive::ProgressDialog::Cancelled,
+	QObject::connect(&dialog, &olive::ProgressDialog::cancelled,
 					 [&cancelled]() { cancelled = true; });
 
 	cancel_btn->click();
@@ -484,12 +484,12 @@ TEST(DialogRenderCancel, IdleWorkersDoNotBlock)
 {
 	olive::RenderCancelDialog dialog;
 
-	dialog.SetWorkerCount(2);
-	dialog.WorkerStarted();
-	dialog.WorkerDone();
+	dialog.set_worker_count(2);
+	dialog.worker_started();
+	dialog.worker_done();
 
 	// No busy workers: must return immediately without exec()ing
-	dialog.RunIfWorkersAreBusy();
+	dialog.run_if_workers_are_busy();
 
 	EXPECT_FALSE(dialog.isVisible());
 }
@@ -504,7 +504,7 @@ TEST(DialogTask, WrapsAndOwnsTask)
 
 	auto *dialog = new olive::TaskDialog(task, QStringLiteral("Title"));
 
-	EXPECT_EQ(dialog->GetTask(), task);
+	EXPECT_EQ(dialog->get_task(), task);
 	EXPECT_EQ(task->parent(), dialog);
 
 	// The dialog takes ownership of the task
@@ -517,19 +517,19 @@ TEST(DialogTask, WrapsAndOwnsTask)
 //
 TEST(DialogColor, SelectedColorRoundTrips)
 {
-	olive::ColorManager::SetUpDefaultConfig();
+	olive::ColorManager::set_up_default_config();
 	olive::Project project;
 
 	olive::ColorDialog dialog(project.color_manager(),
 							  olive::Color(1.0f, 0.0f, 0.0f, 1.0f));
 
-	olive::ManagedColor selected = dialog.GetSelectedColor();
+	olive::ManagedColor selected = dialog.get_selected_color();
 	EXPECT_GT(selected.red(), selected.green());
 	EXPECT_GT(selected.red(), selected.blue());
 
-	dialog.SetColor(olive::Color(0.0f, 0.0f, 1.0f, 1.0f));
+	dialog.set_color(olive::Color(0.0f, 0.0f, 1.0f, 1.0f));
 
-	olive::ManagedColor blue = dialog.GetSelectedColor();
+	olive::ManagedColor blue = dialog.get_selected_color();
 	EXPECT_GT(blue.blue(), blue.red());
 	EXPECT_GT(blue.blue(), blue.green());
 }
@@ -547,12 +547,12 @@ TEST(PreferencesAppearanceTab, ContainsStyleAndColorChoices)
 
 TEST(PreferencesDiskTab, ValidatesUnchangedCacheLocation)
 {
-	EnsureAppSingletons();
+	ensure_app_singletons();
 
 	olive::PreferencesDiskTab tab;
 
 	// Unchanged location must validate without prompting
-	EXPECT_TRUE(tab.Validate());
+	EXPECT_TRUE(tab.validate());
 }
 
 TEST(PreferencesLutTab, ConstructsWithDirectoryList)

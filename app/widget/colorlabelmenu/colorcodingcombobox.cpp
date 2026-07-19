@@ -29,7 +29,7 @@ namespace olive
 ColorCodingComboBox::ColorCodingComboBox(QWidget *parent)
 	: QComboBox(parent)
 {
-	SetColor(0);
+	set_color(0);
 }
 
 void ColorCodingComboBox::showPopup()
@@ -41,14 +41,14 @@ void ColorCodingComboBox::showPopup()
 	QAction *a = menu.exec(parentWidget()->mapToGlobal(pos()));
 
 	if (a) {
-		SetColor(a->data().toInt());
+		set_color(a->data().toInt());
 	}
 }
 
-void ColorCodingComboBox::SetColor(int index)
+void ColorCodingComboBox::set_color(int index)
 {
 	clear();
-	addItem(ColorCoding::GetColorName(index));
+	addItem(ColorCoding::get_color_name(index));
 	index_ = index;
 }
 

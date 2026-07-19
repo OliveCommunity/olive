@@ -36,31 +36,31 @@ ExportFormatComboBox::ExportFormatComboBox(Mode mode, QWidget *parent)
 
 	// Populate combobox formats
 	switch (mode) {
-	case kShowAllFormats:
-		custom_menu_->addAction(CreateHeader(icon::Video, tr("Video")));
-		PopulateType(Track::kVideo);
+	case k_show_all_formats:
+		custom_menu_->addAction(create_header(icon::video, tr("Video")));
+		populate_type(Track::k_video);
 		custom_menu_->addSeparator();
 
-		custom_menu_->addAction(CreateHeader(icon::Audio, tr("Audio")));
-		PopulateType(Track::kAudio);
+		custom_menu_->addAction(create_header(icon::audio, tr("Audio")));
+		populate_type(Track::k_audio);
 		custom_menu_->addSeparator();
 
-		custom_menu_->addAction(CreateHeader(icon::Subtitles, tr("Subtitle")));
-		PopulateType(Track::kSubtitle);
+		custom_menu_->addAction(create_header(icon::subtitles, tr("Subtitle")));
+		populate_type(Track::k_subtitle);
 		break;
-	case kShowAudioOnly:
-		PopulateType(Track::kAudio);
+	case k_show_audio_only:
+		populate_type(Track::k_audio);
 		break;
-	case kShowVideoOnly:
-		PopulateType(Track::kVideo);
+	case k_show_video_only:
+		populate_type(Track::k_video);
 		break;
-	case kShowSubtitlesOnly:
-		PopulateType(Track::kSubtitle);
+	case k_show_subtitles_only:
+		populate_type(Track::k_subtitle);
 		break;
 	}
 
 	connect(custom_menu_, &Menu::triggered, this,
-			&ExportFormatComboBox::HandleIndexChange);
+			&ExportFormatComboBox::handle_index_change);
 }
 
 void ExportFormatComboBox::showPopup()
@@ -69,43 +69,43 @@ void ExportFormatComboBox::showPopup()
 	custom_menu_->exec(mapToGlobal(QPoint(0, 0)));
 }
 
-void ExportFormatComboBox::SetFormat(ExportFormat::Format fmt)
+void ExportFormatComboBox::set_format(ExportFormat::Format fmt)
 {
 	current_ = fmt;
 	clear();
-	addItem(ExportFormat::GetName(current_));
+	addItem(ExportFormat::get_name(current_));
 }
 
-void ExportFormatComboBox::HandleIndexChange(QAction *a)
+void ExportFormatComboBox::handle_index_change(QAction *a)
 {
 	ExportFormat::Format f =
 		static_cast<ExportFormat::Format>(a->data().toInt());
-	SetFormat(f);
-	emit FormatChanged(f);
+	set_format(f);
+	emit format_changed(f);
 }
 
-void ExportFormatComboBox::PopulateType(Track::Type type)
+void ExportFormatComboBox::populate_type(Track::Type type)
 {
-	for (int i = 0; i < ExportFormat::kFormatCount; i++) {
+	for (int i = 0; i < ExportFormat::k_format_count; i++) {
 		ExportFormat::Format f = static_cast<ExportFormat::Format>(i);
 
-		if (type == Track::kVideo &&
-			!ExportFormat::GetVideoCodecs(f).isEmpty()) {
+		if (type == Track::k_video &&
+			!ExportFormat::get_video_codecs(f).isEmpty()) {
 			// Do nothing
-		} else if (type == Track::kAudio &&
-				   ExportFormat::GetVideoCodecs(f).isEmpty() &&
-				   !ExportFormat::GetAudioCodecs(f).isEmpty()) {
+		} else if (type == Track::k_audio &&
+				   ExportFormat::get_video_codecs(f).isEmpty() &&
+				   !ExportFormat::get_audio_codecs(f).isEmpty()) {
 			// Do nothing
-		} else if (type == Track::kSubtitle &&
-				   ExportFormat::GetVideoCodecs(f).isEmpty() &&
-				   ExportFormat::GetAudioCodecs(f).isEmpty() &&
-				   !ExportFormat::GetSubtitleCodecs(f).isEmpty()) {
+		} else if (type == Track::k_subtitle &&
+				   ExportFormat::get_video_codecs(f).isEmpty() &&
+				   ExportFormat::get_audio_codecs(f).isEmpty() &&
+				   !ExportFormat::get_subtitle_codecs(f).isEmpty()) {
 			// Do nothing
 		} else {
 			continue;
 		}
 
-		QString format_name = ExportFormat::GetName(f);
+		QString format_name = ExportFormat::get_name(f);
 
 		QAction *a = custom_menu_->addAction(format_name);
 		a->setData(i);
@@ -113,7 +113,7 @@ void ExportFormatComboBox::PopulateType(Track::Type type)
 	}
 }
 
-QWidgetAction *ExportFormatComboBox::CreateHeader(const QIcon &icon,
+QWidgetAction *ExportFormatComboBox::create_header(const QIcon &icon,
 												  const QString &title)
 {
 	QWidgetAction *a = new QWidgetAction(this);

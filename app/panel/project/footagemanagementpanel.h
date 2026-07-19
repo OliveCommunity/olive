@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FOOTAGEMANAGEMENTPANEL_H
-#define FOOTAGEMANAGEMENTPANEL_H
+#ifndef OAK_FOOTAGEMANAGEMENTPANEL_H
+#define OAK_FOOTAGEMANAGEMENTPANEL_H
 
 #include <QList>
 
@@ -31,9 +31,9 @@ namespace olive
 
 class FootageManagementPanel {
 public:
-	virtual QVector<ViewerOutput *> GetSelectedFootage() const = 0;
+	virtual QVector<ViewerOutput *> get_selected_footage() const = 0;
 };
 
 }
 
-#endif // FOOTAGEMANAGEMENTPANEL_H
+#endif // OAK_FOOTAGEMANAGEMENTPANEL_H

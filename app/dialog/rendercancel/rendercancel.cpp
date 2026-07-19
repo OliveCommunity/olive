@@ -32,7 +32,7 @@ RenderCancelDialog::RenderCancelDialog(QWidget *parent)
 {
 }
 
-void RenderCancelDialog::RunIfWorkersAreBusy()
+void RenderCancelDialog::run_if_workers_are_busy()
 {
 	if (busy_workers_ > 0) {
 		waiting_workers_ = busy_workers_;
@@ -41,41 +41,41 @@ void RenderCancelDialog::RunIfWorkersAreBusy()
 	}
 }
 
-void RenderCancelDialog::SetWorkerCount(int count)
+void RenderCancelDialog::set_worker_count(int count)
 {
 	total_workers_ = count;
 
-	UpdateProgress();
+	update_progress();
 }
 
-void RenderCancelDialog::WorkerStarted()
+void RenderCancelDialog::worker_started()
 {
 	busy_workers_++;
 
-	UpdateProgress();
+	update_progress();
 }
 
-void RenderCancelDialog::WorkerDone()
+void RenderCancelDialog::worker_done()
 {
 	busy_workers_--;
 
-	UpdateProgress();
+	update_progress();
 }
 
 void RenderCancelDialog::showEvent(QShowEvent *event)
 {
 	QDialog::showEvent(event);
 
-	UpdateProgress();
+	update_progress();
 }
 
-void RenderCancelDialog::UpdateProgress()
+void RenderCancelDialog::update_progress()
 {
 	if (!total_workers_ || !isVisible()) {
 		return;
 	}
 
-	SetProgress(
+	set_progress(
 		qRound(100.0 * static_cast<double>(waiting_workers_ - busy_workers_) /
 			   static_cast<double>(waiting_workers_)));
 

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FOLDER_H
-#define FOLDER_H
+#ifndef OAK_FOLDER_H
+#define OAK_FOLDER_H
 
 #include "node/node.h"
 
@@ -40,7 +40,7 @@ public:
 
 	NODE_DEFAULT_FUNCTIONS(Folder)
 
-	virtual QString Name() const override
+	virtual QString name() const override
 	{
 		return tr("Folder");
 	}
@@ -50,27 +50,27 @@ public:
 		return QStringLiteral("org.olivevideoeditor.Olive.folder");
 	}
 
-	virtual QVector<CategoryID> Category() const override
+	virtual QVector<CategoryID> category() const override
 	{
-		return { kCategoryProject };
+		return { k_category_project };
 	}
 
-	virtual QString Description() const override
+	virtual QString description() const override
 	{
 		return tr("Organize several items into a single collection.");
 	}
 
 	virtual QVariant data(const DataType &d) const override;
 
-	virtual void Retranslate() override;
+	virtual void retranslate() override;
 
-	Node *GetChildWithName(const QString &s) const;
-	bool ChildExistsWithName(const QString &s) const
+	Node *get_child_with_name(const QString &s) const;
+	bool child_exists_with_name(const QString &s) const
 	{
-		return GetChildWithName(s);
+		return get_child_with_name(s);
 	}
 
-	bool HasChildRecursive(Node *child) const;
+	bool has_child_recursive(Node *child) const;
 
 	int item_child_count() const
 	{
@@ -94,7 +94,7 @@ public:
 
 	int index_of_child_in_array(Node *item) const;
 
-	template <typename T> QVector<T *> ListChildrenOfType() const
+	template <typename T> QVector<T *> list_children_of_type() const
 	{
 		QVector<T *> list;
 
@@ -106,14 +106,14 @@ public:
 
 			Folder *folder_test = dynamic_cast<Folder *>(node);
 			if (folder_test) {
-				list.append(folder_test->ListChildrenOfType<T>());
+				list.append(folder_test->list_children_of_type<T>());
 			}
 		}
 
 		return list;
 	}
 
-	static const QString kChildInput;
+	static const QString k_child_input;
 
 	class RemoveElementCommand : public UndoCommand {
 	public:
@@ -129,7 +129,7 @@ public:
 			delete subcommand_;
 		}
 
-		virtual Project *GetRelevantProject() const override
+		virtual Project *get_relevant_project() const override
 		{
 			return folder_->project();
 		}
@@ -155,13 +155,13 @@ public:
 	};
 
 signals:
-	void BeginInsertItem(Node *n, int index);
+	void begin_insert_item(Node *n, int index);
 
-	void EndInsertItem();
+	void end_insert_item();
 
-	void BeginRemoveItem(Node *n, int index);
+	void begin_remove_item(Node *n, int index);
 
-	void EndRemoveItem();
+	void end_remove_item();
 
 protected:
 	virtual void InputConnectedEvent(const QString &input, int element,
@@ -172,7 +172,7 @@ protected:
 
 private:
 	template <typename T>
-	static void ListOutputsOfTypeInternal(const Folder *n, QVector<T *> &list,
+	static void list_outputs_of_type_internal(const Folder *n, QVector<T *> &list,
 										  bool recursive)
 	{
 		foreach (const Node::OutputConnection &c, n->output_connections()) {
@@ -205,7 +205,7 @@ class FolderAddChild : public UndoCommand {
 public:
 	FolderAddChild(Folder *folder, Node *child);
 
-	virtual Project *GetRelevantProject() const override;
+	virtual Project *get_relevant_project() const override;
 
 protected:
 	virtual void redo() override;
@@ -220,4 +220,4 @@ private:
 
 }
 
-#endif // FOLDER_H
+#endif // OAK_FOLDER_H

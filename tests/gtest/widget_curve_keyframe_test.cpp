@@ -23,22 +23,22 @@ namespace
 {
 
 // Keyframe deletion goes through the global undo stack hosted by Core
-void EnsureAppSingletons()
+void ensure_app_singletons()
 {
 	if (!olive::Core::instance()) {
 		new olive::Core(olive::Core::CoreParams()); // intentionally leaked
 	}
 	if (!olive::DiskManager::instance()) {
-		olive::DiskManager::CreateInstance();
+		olive::DiskManager::create_instance();
 	}
 }
 
-NodeKeyframe *InsertKeyframe(Node *node, const QString &input,
-							 const rational &time, const QVariant &value,
+NodeKeyframe *insert_keyframe(Node *node, const QString &input,
+							 const Rational &time, const QVariant &value,
 							 int track = 0)
 {
 	auto *key =
-		new NodeKeyframe(time, value, NodeKeyframe::kLinear, track, -1, input);
+		new NodeKeyframe(time, value, NodeKeyframe::k_linear, track, -1, input);
 	NodeParamInsertKeyframeCommand(node, key).redo_now();
 	return key;
 }
@@ -49,14 +49,14 @@ class KeyframeViewTest : public ::testing::Test {
 protected:
 	void SetUp() override
 	{
-		ColorManager::SetUpDefaultConfig();
-		EnsureAppSingletons();
+		ColorManager::set_up_default_config();
+		ensure_app_singletons();
 
 		project_ = std::make_unique<Project>();
-		project_->Initialize();
+		project_->initialize();
 	}
 
-	MathNode *AddMathNode()
+	MathNode *add_math_node()
 	{
 		auto *node = new MathNode();
 		node->setParent(project_.get());
@@ -68,52 +68,52 @@ protected:
 
 TEST_F(KeyframeViewTest, AddKeyframesOfNodeCreatesConnectionPerKeyframableInput)
 {
-	MathNode *node = AddMathNode();
+	MathNode *node = add_math_node();
 
 	KeyframeView view;
-	KeyframeView::NodeConnections map = view.AddKeyframesOfNode(node);
+	KeyframeView::NodeConnections map = view.add_keyframes_of_node(node);
 
 	// A float input has one element (the array-less -1) with one track
-	ASSERT_TRUE(map.contains(MathNode::kParamAIn));
-	const KeyframeView::InputConnections &param_a = map[MathNode::kParamAIn];
+	ASSERT_TRUE(map.contains(MathNode::k_param_a_in));
+	const KeyframeView::InputConnections &param_a = map[MathNode::k_param_a_in];
 	ASSERT_EQ(param_a.size(), 1);
 	ASSERT_EQ(param_a.first().size(), 1);
 	EXPECT_NE(param_a.first().first(), nullptr);
 
-	ASSERT_TRUE(map.contains(MathNode::kParamBIn));
-	EXPECT_EQ(map[MathNode::kParamBIn].size(), 1);
+	ASSERT_TRUE(map.contains(MathNode::k_param_b_in));
+	EXPECT_EQ(map[MathNode::k_param_b_in].size(), 1);
 
 	// The base-class enabled checkbox is keyframable too
-	ASSERT_TRUE(map.contains(Node::kEnabledInput));
-	EXPECT_EQ(map[Node::kEnabledInput].size(), 1);
+	ASSERT_TRUE(map.contains(Node::k_enabled_input));
+	EXPECT_EQ(map[Node::k_enabled_input].size(), 1);
 
 	// The combo input is flagged not-keyframable, so it gets no connections
-	ASSERT_TRUE(map.contains(MathNode::kMethodIn));
-	EXPECT_TRUE(map[MathNode::kMethodIn].isEmpty());
+	ASSERT_TRUE(map.contains(MathNode::k_method_in));
+	EXPECT_TRUE(map[MathNode::k_method_in].isEmpty());
 
 	// One track connection each for enabled, param A and param B
-	EXPECT_EQ(view.GetKeyframeTracks().size(), 3);
+	EXPECT_EQ(view.get_keyframe_tracks().size(), 3);
 }
 
 TEST_F(KeyframeViewTest, SelectAllAndDeselectAllUpdateSelection)
 {
-	MathNode *node = AddMathNode();
-	NodeKeyframe *key_a = InsertKeyframe(node, MathNode::kParamAIn, rational(0), 0.0);
-	NodeKeyframe *key_b = InsertKeyframe(node, MathNode::kParamAIn, rational(1), 1.0);
+	MathNode *node = add_math_node();
+	NodeKeyframe *key_a = insert_keyframe(node, MathNode::k_param_a_in, Rational(0), 0.0);
+	NodeKeyframe *key_b = insert_keyframe(node, MathNode::k_param_a_in, Rational(1), 1.0);
 
 	KeyframeView view;
-	view.AddKeyframesOfNode(node);
+	view.add_keyframes_of_node(node);
 
-	QSignalSpy selection_spy(&view, &KeyframeView::SelectionChanged);
+	QSignalSpy selection_spy(&view, &KeyframeView::selection_changed);
 
-	EXPECT_TRUE(view.GetSelectedKeyframes().empty());
+	EXPECT_TRUE(view.get_selected_keyframes().empty());
 
-	view.SelectAll();
-	EXPECT_EQ(view.GetSelectedKeyframes().size(), 2);
+	view.select_all();
+	EXPECT_EQ(view.get_selected_keyframes().size(), 2);
 	EXPECT_GE(selection_spy.count(), 1);
 
-	view.DeselectAll();
-	EXPECT_TRUE(view.GetSelectedKeyframes().empty());
+	view.deselect_all();
+	EXPECT_TRUE(view.get_selected_keyframes().empty());
 	EXPECT_GE(selection_spy.count(), 2);
 
 	Q_UNUSED(key_a)
@@ -122,69 +122,69 @@ TEST_F(KeyframeViewTest, SelectAllAndDeselectAllUpdateSelection)
 
 TEST_F(KeyframeViewTest, RemoveKeyframesOfTrackDeselectsAndDetaches)
 {
-	MathNode *node = AddMathNode();
-	InsertKeyframe(node, MathNode::kParamAIn, rational(0), 0.0);
+	MathNode *node = add_math_node();
+	insert_keyframe(node, MathNode::k_param_a_in, Rational(0), 0.0);
 
 	KeyframeView view;
-	KeyframeViewInputConnection *connection = view.AddKeyframesOfTrack(
-		NodeKeyframeTrackReference(NodeInput(node, MathNode::kParamAIn), 0));
+	KeyframeViewInputConnection *connection = view.add_keyframes_of_track(
+		NodeKeyframeTrackReference(NodeInput(node, MathNode::k_param_a_in), 0));
 	ASSERT_NE(connection, nullptr);
-	ASSERT_EQ(view.GetKeyframeTracks().size(), 1);
+	ASSERT_EQ(view.get_keyframe_tracks().size(), 1);
 
-	view.SelectAll();
-	ASSERT_EQ(view.GetSelectedKeyframes().size(), 1);
+	view.select_all();
+	ASSERT_EQ(view.get_selected_keyframes().size(), 1);
 
-	QSignalSpy selection_spy(&view, &KeyframeView::SelectionChanged);
-	view.RemoveKeyframesOfTrack(connection);
+	QSignalSpy selection_spy(&view, &KeyframeView::selection_changed);
+	view.remove_keyframes_of_track(connection);
 
-	EXPECT_TRUE(view.GetKeyframeTracks().isEmpty());
-	EXPECT_TRUE(view.GetSelectedKeyframes().empty());
+	EXPECT_TRUE(view.get_keyframe_tracks().isEmpty());
+	EXPECT_TRUE(view.get_selected_keyframes().empty());
 	EXPECT_GE(selection_spy.count(), 1);
 
 	// Removing again is a harmless no-op
-	view.RemoveKeyframesOfTrack(connection);
-	EXPECT_TRUE(view.GetKeyframeTracks().isEmpty());
+	view.remove_keyframes_of_track(connection);
+	EXPECT_TRUE(view.get_keyframe_tracks().isEmpty());
 }
 
 TEST_F(KeyframeViewTest, ClearRemovesAllTracksAndSelection)
 {
-	MathNode *node = AddMathNode();
-	InsertKeyframe(node, MathNode::kParamAIn, rational(0), 0.0);
+	MathNode *node = add_math_node();
+	insert_keyframe(node, MathNode::k_param_a_in, Rational(0), 0.0);
 
 	KeyframeView view;
-	view.AddKeyframesOfNode(node);
-	view.SelectAll();
-	ASSERT_FALSE(view.GetKeyframeTracks().isEmpty());
-	ASSERT_FALSE(view.GetSelectedKeyframes().empty());
+	view.add_keyframes_of_node(node);
+	view.select_all();
+	ASSERT_FALSE(view.get_keyframe_tracks().isEmpty());
+	ASSERT_FALSE(view.get_selected_keyframes().empty());
 
-	view.Clear();
-	EXPECT_TRUE(view.GetKeyframeTracks().isEmpty());
-	EXPECT_TRUE(view.GetSelectedKeyframes().empty());
+	view.clear();
+	EXPECT_TRUE(view.get_keyframe_tracks().isEmpty());
+	EXPECT_TRUE(view.get_selected_keyframes().empty());
 }
 
 TEST_F(KeyframeViewTest, DeleteSelectedPushesUndoableRemoval)
 {
-	MathNode *node = AddMathNode();
-	NodeKeyframe *key = InsertKeyframe(node, MathNode::kParamAIn, rational(0), 0.0);
+	MathNode *node = add_math_node();
+	NodeKeyframe *key = insert_keyframe(node, MathNode::k_param_a_in, Rational(0), 0.0);
 
 	KeyframeView view;
-	view.AddKeyframesOfTrack(
-		NodeKeyframeTrackReference(NodeInput(node, MathNode::kParamAIn), 0));
-	view.SelectAll();
-	view.DeleteSelected();
+	view.add_keyframes_of_track(
+		NodeKeyframeTrackReference(NodeInput(node, MathNode::k_param_a_in), 0));
+	view.select_all();
+	view.delete_selected();
 
 	// The command was executed on push: the keyframe is gone from the node
-	EXPECT_TRUE(node->GetKeyframeTracks(MathNode::kParamAIn, -1)
+	EXPECT_TRUE(node->get_keyframe_tracks(MathNode::k_param_a_in, -1)
 					.at(0)
 					.isEmpty());
 
 	Core::instance()->undo_stack()->undo();
-	EXPECT_TRUE(node->GetKeyframeTracks(MathNode::kParamAIn, -1)
+	EXPECT_TRUE(node->get_keyframe_tracks(MathNode::k_param_a_in, -1)
 					.at(0)
 					.contains(key));
 
 	Core::instance()->undo_stack()->redo();
-	EXPECT_TRUE(node->GetKeyframeTracks(MathNode::kParamAIn, -1)
+	EXPECT_TRUE(node->get_keyframe_tracks(MathNode::k_param_a_in, -1)
 					.at(0)
 					.isEmpty());
 
@@ -196,10 +196,10 @@ class KeyframeViewUndoTest : public ::testing::Test {
 protected:
 	void SetUp() override
 	{
-		ColorManager::SetUpDefaultConfig();
+		ColorManager::set_up_default_config();
 
 		project_ = std::make_unique<Project>();
-		project_->Initialize();
+		project_->initialize();
 
 		node_ = new MathNode();
 		node_->setParent(project_.get());
@@ -212,29 +212,29 @@ protected:
 TEST_F(KeyframeViewUndoTest, SetTypeCommandSwitchesAndRestoresType)
 {
 	NodeKeyframe *key =
-		InsertKeyframe(node_, MathNode::kParamAIn, rational(0), 0.0);
-	ASSERT_EQ(key->type(), NodeKeyframe::kLinear);
+		insert_keyframe(node_, MathNode::k_param_a_in, Rational(0), 0.0);
+	ASSERT_EQ(key->type(), NodeKeyframe::k_linear);
 
-	KeyframeSetTypeCommand command(key, NodeKeyframe::kBezier);
-	EXPECT_EQ(command.GetRelevantProject(), project_.get());
+	KeyframeSetTypeCommand command(key, NodeKeyframe::k_bezier);
+	EXPECT_EQ(command.get_relevant_project(), project_.get());
 
 	command.redo_now();
-	EXPECT_EQ(key->type(), NodeKeyframe::kBezier);
+	EXPECT_EQ(key->type(), NodeKeyframe::k_bezier);
 
 	command.undo_now();
-	EXPECT_EQ(key->type(), NodeKeyframe::kLinear);
+	EXPECT_EQ(key->type(), NodeKeyframe::k_linear);
 }
 
 TEST_F(KeyframeViewUndoTest, SetBezierControlPointCapturesOldPointFromKeyframe)
 {
 	NodeKeyframe *key =
-		InsertKeyframe(node_, MathNode::kParamAIn, rational(0), 0.0);
-	key->set_type(NodeKeyframe::kBezier);
+		insert_keyframe(node_, MathNode::k_param_a_in, Rational(0), 0.0);
+	key->set_type(NodeKeyframe::k_bezier);
 	key->set_bezier_control_in(QPointF(0.1, 0.2));
 
-	KeyframeSetBezierControlPoint command(key, NodeKeyframe::kInHandle,
+	KeyframeSetBezierControlPoint command(key, NodeKeyframe::k_in_handle,
 										  QPointF(0.5, 0.6));
-	EXPECT_EQ(command.GetRelevantProject(), project_.get());
+	EXPECT_EQ(command.get_relevant_project(), project_.get());
 
 	command.redo_now();
 	EXPECT_EQ(key->bezier_control_in(), QPointF(0.5, 0.6));
@@ -246,11 +246,11 @@ TEST_F(KeyframeViewUndoTest, SetBezierControlPointCapturesOldPointFromKeyframe)
 TEST_F(KeyframeViewUndoTest, SetBezierControlPointWithExplicitOldPoint)
 {
 	NodeKeyframe *key =
-		InsertKeyframe(node_, MathNode::kParamAIn, rational(0), 0.0);
-	key->set_type(NodeKeyframe::kBezier);
+		insert_keyframe(node_, MathNode::k_param_a_in, Rational(0), 0.0);
+	key->set_type(NodeKeyframe::k_bezier);
 
 	// The four-argument overload does not read the current control point
-	KeyframeSetBezierControlPoint command(key, NodeKeyframe::kOutHandle,
+	KeyframeSetBezierControlPoint command(key, NodeKeyframe::k_out_handle,
 										  QPointF(0.7, 0.8), QPointF(0.3, 0.4));
 
 	command.redo_now();
@@ -264,19 +264,19 @@ class CurveViewTest : public ::testing::Test {
 protected:
 	void SetUp() override
 	{
-		ColorManager::SetUpDefaultConfig();
+		ColorManager::set_up_default_config();
 
 		project_ = std::make_unique<Project>();
-		project_->Initialize();
+		project_->initialize();
 
 		solid_ = new SolidGenerator();
 		solid_->setParent(project_.get());
 	}
 
-	NodeKeyframeTrackReference ColorTrackRef(int track) const
+	NodeKeyframeTrackReference color_track_ref(int track) const
 	{
 		return NodeKeyframeTrackReference(
-			NodeInput(solid_, SolidGenerator::kColorInput), track);
+			NodeInput(solid_, SolidGenerator::k_color_input), track);
 	}
 
 	std::unique_ptr<Project> project_;
@@ -286,45 +286,45 @@ protected:
 TEST_F(CurveViewTest, ConnectAndDisconnectInputManageTrackConnections)
 {
 	CurveView view;
-	EXPECT_TRUE(view.GetConnections().isEmpty());
+	EXPECT_TRUE(view.get_connections().isEmpty());
 
-	view.ConnectInput(ColorTrackRef(0));
-	EXPECT_EQ(view.GetConnections().size(), 1);
-	EXPECT_TRUE(view.GetConnections().contains(ColorTrackRef(0)));
-	EXPECT_EQ(view.GetConnections().value(ColorTrackRef(0))->GetReference(),
-			  ColorTrackRef(0));
+	view.connect_input(color_track_ref(0));
+	EXPECT_EQ(view.get_connections().size(), 1);
+	EXPECT_TRUE(view.get_connections().contains(color_track_ref(0)));
+	EXPECT_EQ(view.get_connections().value(color_track_ref(0))->get_reference(),
+			  color_track_ref(0));
 
 	// Connecting the same reference twice is a no-op
-	view.ConnectInput(ColorTrackRef(0));
-	EXPECT_EQ(view.GetConnections().size(), 1);
+	view.connect_input(color_track_ref(0));
+	EXPECT_EQ(view.get_connections().size(), 1);
 
 	// A color input has four tracks; connecting another track adds one more
-	view.ConnectInput(ColorTrackRef(1));
-	EXPECT_EQ(view.GetConnections().size(), 2);
+	view.connect_input(color_track_ref(1));
+	EXPECT_EQ(view.get_connections().size(), 2);
 
-	view.DisconnectInput(ColorTrackRef(0));
-	EXPECT_EQ(view.GetConnections().size(), 1);
-	EXPECT_FALSE(view.GetConnections().contains(ColorTrackRef(0)));
+	view.disconnect_input(color_track_ref(0));
+	EXPECT_EQ(view.get_connections().size(), 1);
+	EXPECT_FALSE(view.get_connections().contains(color_track_ref(0)));
 
 	// Disconnecting an unconnected reference is a no-op
-	view.DisconnectInput(ColorTrackRef(0));
-	EXPECT_EQ(view.GetConnections().size(), 1);
+	view.disconnect_input(color_track_ref(0));
+	EXPECT_EQ(view.get_connections().size(), 1);
 }
 
 TEST_F(CurveViewTest, ConnectionReflectsLiveKeyframeList)
 {
 	CurveView view;
-	view.ConnectInput(ColorTrackRef(0));
+	view.connect_input(color_track_ref(0));
 
 	KeyframeViewInputConnection *connection =
-		view.GetConnections().value(ColorTrackRef(0));
+		view.get_connections().value(color_track_ref(0));
 	ASSERT_NE(connection, nullptr);
-	EXPECT_TRUE(connection->GetKeyframes().isEmpty());
+	EXPECT_TRUE(connection->get_keyframes().isEmpty());
 
 	NodeKeyframe *key =
-		InsertKeyframe(solid_, SolidGenerator::kColorInput, rational(0), 0.5, 0);
-	EXPECT_EQ(connection->GetKeyframes().size(), 1);
-	EXPECT_EQ(connection->GetKeyframes().first(), key);
+		insert_keyframe(solid_, SolidGenerator::k_color_input, Rational(0), 0.5, 0);
+	EXPECT_EQ(connection->get_keyframes().size(), 1);
+	EXPECT_EQ(connection->get_keyframes().first(), key);
 }
 
 TEST_F(CurveViewTest, SetKeyframeTrackColorAppliesToBrush)
@@ -332,78 +332,78 @@ TEST_F(CurveViewTest, SetKeyframeTrackColorAppliesToBrush)
 	CurveView view;
 
 	// Setting the color before connecting is picked up on connect
-	view.SetKeyframeTrackColor(ColorTrackRef(0), QColor(Qt::red));
-	view.ConnectInput(ColorTrackRef(0));
+	view.set_keyframe_track_color(color_track_ref(0), QColor(Qt::red));
+	view.connect_input(color_track_ref(0));
 	KeyframeViewInputConnection *connection =
-		view.GetConnections().value(ColorTrackRef(0));
+		view.get_connections().value(color_track_ref(0));
 	ASSERT_NE(connection, nullptr);
-	EXPECT_EQ(connection->GetBrush().color(), QColor(Qt::red));
+	EXPECT_EQ(connection->get_brush().color(), QColor(Qt::red));
 
 	// Setting it afterwards updates the live connection
-	view.SetKeyframeTrackColor(ColorTrackRef(0), QColor(Qt::blue));
-	EXPECT_EQ(connection->GetBrush().color(), QColor(Qt::blue));
+	view.set_keyframe_track_color(color_track_ref(0), QColor(Qt::blue));
+	EXPECT_EQ(connection->get_brush().color(), QColor(Qt::blue));
 }
 
 TEST_F(CurveViewTest, SelectKeyframesOfInputSelectsOnlyRequestedTrack)
 {
 	class SelectionProbeCurveView : public CurveView {
 	public:
-		using KeyframeView::IsKeyframeSelected;
+		using KeyframeView::is_keyframe_selected;
 	};
 
 	SelectionProbeCurveView view;
-	view.ConnectInput(ColorTrackRef(0));
-	view.ConnectInput(ColorTrackRef(1));
+	view.connect_input(color_track_ref(0));
+	view.connect_input(color_track_ref(1));
 
 	NodeKeyframe *key0 =
-		InsertKeyframe(solid_, SolidGenerator::kColorInput, rational(0), 0.5, 0);
+		insert_keyframe(solid_, SolidGenerator::k_color_input, Rational(0), 0.5, 0);
 	NodeKeyframe *key1 =
-		InsertKeyframe(solid_, SolidGenerator::kColorInput, rational(1), 0.6, 1);
+		insert_keyframe(solid_, SolidGenerator::k_color_input, Rational(1), 0.6, 1);
 
 	// Previously the reference was ignored and keyframes of every connected
 	// track got selected.
-	view.SelectKeyframesOfInput(ColorTrackRef(0));
-	EXPECT_TRUE(view.IsKeyframeSelected(key0));
-	EXPECT_FALSE(view.IsKeyframeSelected(key1));
+	view.select_keyframes_of_input(color_track_ref(0));
+	EXPECT_TRUE(view.is_keyframe_selected(key0));
+	EXPECT_FALSE(view.is_keyframe_selected(key1));
 
 	// Selecting the other track replaces the selection (DeselectAll first)
-	view.SelectKeyframesOfInput(ColorTrackRef(1));
-	EXPECT_FALSE(view.IsKeyframeSelected(key0));
-	EXPECT_TRUE(view.IsKeyframeSelected(key1));
+	view.select_keyframes_of_input(color_track_ref(1));
+	EXPECT_FALSE(view.is_keyframe_selected(key0));
+	EXPECT_TRUE(view.is_keyframe_selected(key1));
 }
 
 TEST(CurveWidget, VerticalScaleRoundTripsThroughView)
 {
-	ColorManager::SetUpDefaultConfig();
+	ColorManager::set_up_default_config();
 
 	CurveWidget widget;
-	const double original = widget.GetVerticalScale();
+	const double original = widget.get_vertical_scale();
 	EXPECT_GT(original, 0.0);
 
-	widget.SetVerticalScale(original * 2.0);
-	EXPECT_DOUBLE_EQ(widget.GetVerticalScale(), original * 2.0);
+	widget.set_vertical_scale(original * 2.0);
+	EXPECT_DOUBLE_EQ(widget.get_vertical_scale(), original * 2.0);
 }
 
 TEST(CurveWidget, TreeSelectionConnectsTracksAndResolvesNodeId)
 {
-	ColorManager::SetUpDefaultConfig();
-	EnsureAppSingletons();
+	ColorManager::set_up_default_config();
+	ensure_app_singletons();
 
 	Project project;
-	project.Initialize();
+	project.initialize();
 	auto *solid = new SolidGenerator();
 	solid->setParent(&project);
-	solid->Retranslate();
+	solid->retranslate();
 
 	CurveWidget widget;
-	widget.SetNodes({ solid });
+	widget.set_nodes({ solid });
 
 	auto *tree = widget.findChild<NodeTreeView *>();
 	ASSERT_NE(tree, nullptr);
 	ASSERT_EQ(tree->topLevelItemCount(), 1);
 
 	// Nothing is connected until an input is selected in the tree
-	EXPECT_EQ(widget.GetSelectedNodeWithID(solid->id()), nullptr);
+	EXPECT_EQ(widget.get_selected_node_with_id(solid->id()), nullptr);
 
 	// The solid has two inputs ("enabled" from the base class, then "Color")
 	QTreeWidgetItem *node_item = tree->topLevelItem(0);
@@ -411,11 +411,11 @@ TEST(CurveWidget, TreeSelectionConnectsTracksAndResolvesNodeId)
 	QTreeWidgetItem *color_item = node_item->child(1);
 
 	color_item->setSelected(true);
-	EXPECT_EQ(widget.GetSelectedNodeWithID(solid->id()), solid);
-	EXPECT_EQ(widget.GetSelectedNodeWithID(QStringLiteral("org.example.bogus")),
+	EXPECT_EQ(widget.get_selected_node_with_id(solid->id()), solid);
+	EXPECT_EQ(widget.get_selected_node_with_id(QStringLiteral("org.example.bogus")),
 			  nullptr);
 
 	// Clearing the selection disconnects the tracks again
 	tree->clearSelection();
-	EXPECT_EQ(widget.GetSelectedNodeWithID(solid->id()), nullptr);
+	EXPECT_EQ(widget.get_selected_node_with_id(solid->id()), nullptr);
 }

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef RESIZABLETIMELINESCROLLBAR_H
-#define RESIZABLETIMELINESCROLLBAR_H
+#ifndef OAK_RESIZABLETIMELINESCROLLBAR_H
+#define OAK_RESIZABLETIMELINESCROLLBAR_H
 
 #include "resizablescrollbar.h"
 #include "timeline/timelinemarker.h"
@@ -38,8 +38,8 @@ public:
 	ResizableTimelineScrollBar(Qt::Orientation orientation,
 							   QWidget *parent = nullptr);
 
-	void ConnectMarkers(TimelineMarkerList *markers);
-	void ConnectWorkArea(TimelineWorkArea *workarea);
+	void connect_markers(TimelineMarkerList *markers);
+	void connect_work_area(TimelineWorkArea *workarea);
 
 	void SetScale(double d);
 
@@ -56,4 +56,4 @@ private:
 
 }
 
-#endif // RESIZABLETIMELINESCROLLBAR_H
+#endif // OAK_RESIZABLETIMELINESCROLLBAR_H

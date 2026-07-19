@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CINEFORMSECTION_H
-#define CINEFORMSECTION_H
+#ifndef OAK_CINEFORMSECTION_H
+#define OAK_CINEFORMSECTION_H
 
 #include <QComboBox>
 
@@ -34,9 +34,9 @@ class CineformSection : public CodecSection {
 public:
 	CineformSection(QWidget *parent = nullptr);
 
-	virtual void AddOpts(EncodingParams *params) override;
+	virtual void add_opts(EncodingParams *params) override;
 
-	virtual void SetOpts(const EncodingParams *p) override;
+	virtual void set_opts(const EncodingParams *p) override;
 
 private:
 	QComboBox *quality_combobox_;
@@ -44,4 +44,4 @@ private:
 
 }
 
-#endif // CINEFORMSECTION_H
+#endif // OAK_CINEFORMSECTION_H

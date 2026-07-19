@@ -125,7 +125,7 @@ OTIO::Timeline *SaveOTIOTask::SerializeTimeline(Sequence *sequence)
 }
 
 OTIO::Track *SaveOTIOTask::SerializeTrack(Track *track, double sequence_rate,
-										  rational max_track_length)
+										  Rational max_track_length)
 {
 	auto otio_track = new OTIO::Track();
 
@@ -246,7 +246,7 @@ bool SaveOTIOTask::SerializeTrackList(TrackList *list,
 {
 	OTIO::ErrorStatus es;
 
-	rational max_track_length = RATIONAL_MIN;
+	Rational max_track_length = RATIONAL_MIN;
 
 	foreach (Track *track, list->GetTracks()) {
 		if (track->track_length() > max_track_length) {

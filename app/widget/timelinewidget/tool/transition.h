@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef TRANSITIONTIMELINETOOL_H
-#define TRANSITIONTIMELINETOOL_H
+#ifndef OAK_TRANSITIONTIMELINETOOL_H
+#define OAK_TRANSITIONTIMELINETOOL_H
 
 #include "add.h"
 
@@ -31,21 +31,21 @@ class TransitionTool : public AddTool {
 public:
 	TransitionTool(TimelineWidget *parent);
 
-	virtual void HoverMove(TimelineViewMouseEvent *event) override;
+	virtual void hover_move(TimelineViewMouseEvent *event) override;
 
-	virtual void MousePress(TimelineViewMouseEvent *event) override;
-	virtual void MouseMove(TimelineViewMouseEvent *event) override;
-	virtual void MouseRelease(TimelineViewMouseEvent *event) override;
+	virtual void mouse_press(TimelineViewMouseEvent *event) override;
+	virtual void mouse_move(TimelineViewMouseEvent *event) override;
+	virtual void mouse_release(TimelineViewMouseEvent *event) override;
 
 private:
-	bool GetBlocksAtCoord(const TimelineCoordinate &coord, ClipBlock **primary,
+	bool get_blocks_at_coord(const TimelineCoordinate &coord, ClipBlock **primary,
 						  ClipBlock **secondary,
 						  Timeline::MovementMode *trim_mode,
-						  rational *start_point);
+						  Rational *start_point);
 
 	bool dual_transition_;
 };
 
 }
 
-#endif // TRANSITIONTIMELINETOOL_H
+#endif // OAK_TRANSITIONTIMELINETOOL_H

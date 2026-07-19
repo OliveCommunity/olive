@@ -65,7 +65,7 @@ ConfigDialogBase::ConfigDialogBase(QWidget *parent)
 void ConfigDialogBase::accept()
 {
 	foreach (ConfigDialogBaseTab *tab, tabs_) {
-		if (!tab->Validate()) {
+		if (!tab->validate()) {
 			return;
 		}
 	}
@@ -73,7 +73,7 @@ void ConfigDialogBase::accept()
 	MultiUndoCommand *command = new MultiUndoCommand();
 
 	foreach (ConfigDialogBaseTab *tab, tabs_) {
-		tab->Accept(command);
+		tab->accept(command);
 	}
 
 	Core::instance()->undo_stack()->push(command, tr("Set Configuration"));
@@ -83,7 +83,7 @@ void ConfigDialogBase::accept()
 	QDialog::accept();
 }
 
-void ConfigDialogBase::AddTab(ConfigDialogBaseTab *tab, const QString &title)
+void ConfigDialogBase::add_tab(ConfigDialogBaseTab *tab, const QString &title)
 {
 	list_widget_->addItem(title);
 	preference_pane_stack_->addWidget(tab);
@@ -91,7 +91,7 @@ void ConfigDialogBase::AddTab(ConfigDialogBaseTab *tab, const QString &title)
 	tabs_.append(tab);
 }
 
-void ConfigDialogBase::SetCurrentTab(int index)
+void ConfigDialogBase::set_current_tab(int index)
 {
 	if (index >= 0 && index < list_widget_->count()) {
 		list_widget_->setCurrentRow(index);

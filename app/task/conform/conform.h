@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef CONFORMTASK_H
-#define CONFORMTASK_H
+#ifndef OAK_CONFORMTASK_H
+#define OAK_CONFORMTASK_H
 
 #include "codec/decoder.h"
 #include "node/project/footage/footage.h"
@@ -37,7 +37,7 @@ public:
 				const QVector<QString> &output_filenames);
 
 protected:
-	virtual bool Run() override;
+	virtual bool run() override;
 
 private:
 	QString decoder_id_;
@@ -51,4 +51,4 @@ private:
 
 }
 
-#endif // CONFORMTASK_H
+#endif // OAK_CONFORMTASK_H

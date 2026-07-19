@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODEPARAMVIEWITEMBASE_H
-#define NODEPARAMVIEWITEMBASE_H
+#ifndef OAK_NODEPARAMVIEWITEMBASE_H
+#define OAK_NODEPARAMVIEWITEMBASE_H
 
 #include <QDockWidget>
 
@@ -35,41 +35,41 @@ class NodeParamViewItemBase : public QDockWidget {
 public:
 	NodeParamViewItemBase(QWidget *parent = nullptr);
 
-	void SetHighlighted(bool e)
+	void set_highlighted(bool e)
 	{
 		highlighted_ = e;
 
 		update();
 	}
 
-	bool IsHighlighted() const
+	bool is_highlighted() const
 	{
 		return highlighted_;
 	}
 
-	bool IsExpanded() const;
+	bool is_expanded() const;
 
-	static QString GetTitleBarTextFromNode(Node *n);
+	static QString get_title_bar_text_from_node(Node *n);
 
 public slots:
-	void SetExpanded(bool e);
+	void set_expanded(bool e);
 
-	void ToggleExpanded()
+	void toggle_expanded()
 	{
-		SetExpanded(!IsExpanded());
+		set_expanded(!is_expanded());
 	}
 
 signals:
-	void PinToggled(bool e);
+	void pin_toggled(bool e);
 
-	void ExpandedChanged(bool e);
+	void expanded_changed(bool e);
 
-	void Moved();
+	void moved();
 
-	void Clicked();
+	void clicked();
 
 protected:
-	void SetBody(QWidget *body);
+	void set_body(QWidget *body);
 
 	virtual void paintEvent(QPaintEvent *event) override;
 
@@ -85,7 +85,7 @@ protected:
 	virtual void mousePressEvent(QMouseEvent *e) override;
 
 protected slots:
-	virtual void Retranslate()
+	virtual void retranslate()
 	{
 	}
 
@@ -101,4 +101,4 @@ private:
 
 }
 
-#endif // NODEPARAMVIEWITEMBASE_H
+#endif // OAK_NODEPARAMVIEWITEMBASE_H

@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef NODETREEVIEW_H
-#define NODETREEVIEW_H
+#ifndef OAK_NODETREEVIEW_H
+#define OAK_NODETREEVIEW_H
 
 #include <QTreeWidget>
 
@@ -34,39 +34,39 @@ class NodeTreeView : public QTreeWidget {
 public:
 	NodeTreeView(QWidget *parent = nullptr);
 
-	bool IsNodeEnabled(Node *n) const;
+	bool is_node_enabled(Node *n) const;
 
-	bool IsInputEnabled(const NodeKeyframeTrackReference &ref) const;
+	bool is_input_enabled(const NodeKeyframeTrackReference &ref) const;
 
-	void SetCheckBoxesEnabled(bool e)
+	void set_check_boxes_enabled(bool e)
 	{
 		checkboxes_enabled_ = e;
 	}
 
-	void SetKeyframeTrackColor(const NodeKeyframeTrackReference &ref,
+	void set_keyframe_track_color(const NodeKeyframeTrackReference &ref,
 							   const QColor &color);
 
-	void SetOnlyShowKeyframable(bool e)
+	void set_only_show_keyframable(bool e)
 	{
 		only_show_keyframable_ = e;
 	}
 
-	void SetShowKeyframeTracksAsRows(bool e)
+	void set_show_keyframe_tracks_as_rows(bool e)
 	{
 		show_keyframe_tracks_as_rows_ = e;
 	}
 
 public slots:
-	void SetNodes(const QVector<Node *> &nodes);
+	void set_nodes(const QVector<Node *> &nodes);
 
 signals:
-	void NodeEnableChanged(Node *n, bool e);
+	void node_enable_changed(Node *n, bool e);
 
-	void InputEnableChanged(const NodeKeyframeTrackReference &ref, bool e);
+	void input_enable_changed(const NodeKeyframeTrackReference &ref, bool e);
 
-	void InputSelectionChanged(const NodeKeyframeTrackReference &ref);
+	void input_selection_changed(const NodeKeyframeTrackReference &ref);
 
-	void InputDoubleClicked(const NodeKeyframeTrackReference &ref);
+	void input_double_clicked(const NodeKeyframeTrackReference &ref);
 
 protected:
 	virtual void changeEvent(QEvent *e) override;
@@ -74,23 +74,23 @@ protected:
 	virtual void mouseDoubleClickEvent(QMouseEvent *e) override;
 
 private:
-	void Retranslate();
+	void retranslate();
 
-	NodeKeyframeTrackReference GetSelectedInput();
+	NodeKeyframeTrackReference get_selected_input();
 
-	QTreeWidgetItem *CreateItem(QTreeWidgetItem *parent,
+	QTreeWidgetItem *create_item(QTreeWidgetItem *parent,
 								const NodeKeyframeTrackReference &ref);
 
-	void CreateItemsForTracks(QTreeWidgetItem *parent, const NodeInput &input,
+	void create_items_for_tracks(QTreeWidgetItem *parent, const NodeInput &input,
 							  int track_count);
 
-	static bool UseRGBAOverXYZW(const NodeKeyframeTrackReference &ref);
+	static bool use_rgba_over_xyzw(const NodeKeyframeTrackReference &ref);
 
-	enum ItemType { kItemTypeNode, kItemTypeInput };
+	enum ItemType { k_item_type_node, k_item_type_input };
 
-	static const int kItemType = Qt::UserRole;
-	static const int kItemInputReference = Qt::UserRole + 1;
-	static const int kItemNodePointer = Qt::UserRole + 1;
+	static const int k_item_type = Qt::UserRole;
+	static const int k_item_input_reference = Qt::UserRole + 1;
+	static const int k_item_node_pointer = Qt::UserRole + 1;
 
 	QVector<Node *> nodes_;
 
@@ -109,11 +109,11 @@ private:
 	bool checkboxes_enabled_;
 
 private slots:
-	void ItemCheckStateChanged(QTreeWidgetItem *item, int column);
+	void item_check_state_changed(QTreeWidgetItem *item, int column);
 
-	void SelectionChanged();
+	void selection_changed();
 };
 
 }
 
-#endif // NODETREEVIEW_H
+#endif // OAK_NODETREEVIEW_H

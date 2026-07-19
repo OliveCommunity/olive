@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PREFERENCESAUDIOTAB_H
-#define PREFERENCESAUDIOTAB_H
+#ifndef OAK_PREFERENCESAUDIOTAB_H
+#define OAK_PREFERENCESAUDIOTAB_H
 
 #include <QComboBox>
 #include <QPushButton>
@@ -39,7 +39,7 @@ class PreferencesAudioTab : public ConfigDialogBaseTab {
 public:
 	PreferencesAudioTab();
 
-	virtual void Accept(MultiUndoCommand *command) override;
+	virtual void accept(MultiUndoCommand *command) override;
 
 private:
 	QComboBox *audio_backend_combobox_;
@@ -75,15 +75,15 @@ private:
 	QCheckBox *audio_scrubbing_;
 
 private slots:
-	void RefreshBackends();
+	void refresh_backends();
 
-	void RefreshDevices();
+	void refresh_devices();
 
-	void HardRefreshBackends();
+	void hard_refresh_backends();
 
-	void AttemptToSetDevicesFromConfig();
+	void attempt_to_set_devices_from_config();
 };
 
 }
 
-#endif // PREFERENCESAUDIOTAB_H
+#endif // OAK_PREFERENCESAUDIOTAB_H

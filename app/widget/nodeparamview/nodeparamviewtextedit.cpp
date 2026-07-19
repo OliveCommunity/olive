@@ -38,46 +38,46 @@ NodeParamViewTextEdit::NodeParamViewTextEdit(QWidget *parent)
 	line_edit_ = new QPlainTextEdit();
 	line_edit_->setUndoRedoEnabled(true);
 	connect(line_edit_, &QPlainTextEdit::textChanged, this,
-			&NodeParamViewTextEdit::InnerWidgetTextChanged);
+			&NodeParamViewTextEdit::inner_widget_text_changed);
 	layout->addWidget(line_edit_);
 
 	edit_btn_ = new QPushButton();
-	edit_btn_->setIcon(icon::ToolEdit);
+	edit_btn_->setIcon(icon::tool_edit);
 	edit_btn_->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Expanding);
 	layout->addWidget(edit_btn_);
 	connect(edit_btn_, &QPushButton::clicked, this,
-			&NodeParamViewTextEdit::ShowTextDialog);
+			&NodeParamViewTextEdit::show_text_dialog);
 
 	edit_in_viewer_btn_ = new QPushButton(tr("Edit In Viewer"));
-	edit_in_viewer_btn_->setIcon(icon::Pencil);
+	edit_in_viewer_btn_->setIcon(icon::pencil);
 	layout->addWidget(edit_in_viewer_btn_);
 	connect(edit_in_viewer_btn_, &QPushButton::clicked, this,
-			&NodeParamViewTextEdit::RequestEditInViewer);
+			&NodeParamViewTextEdit::request_edit_in_viewer);
 
-	SetEditInViewerOnlyMode(false);
+	set_edit_in_viewer_only_mode(false);
 }
 
-void NodeParamViewTextEdit::SetEditInViewerOnlyMode(bool on)
+void NodeParamViewTextEdit::set_edit_in_viewer_only_mode(bool on)
 {
 	line_edit_->setVisible(!on);
 	edit_btn_->setVisible(!on);
 	edit_in_viewer_btn_->setVisible(on);
 }
 
-void NodeParamViewTextEdit::ShowTextDialog()
+void NodeParamViewTextEdit::show_text_dialog()
 {
 	TextDialog d(this->text(), this);
 	if (d.exec() == QDialog::Accepted) {
 		QString s = d.text();
 
 		line_edit_->setPlainText(s);
-		emit textEdited(s);
+		emit text_edited(s);
 	}
 }
 
-void NodeParamViewTextEdit::InnerWidgetTextChanged()
+void NodeParamViewTextEdit::inner_widget_text_changed()
 {
-	emit textEdited(this->text());
+	emit text_edited(this->text());
 }
 
 }

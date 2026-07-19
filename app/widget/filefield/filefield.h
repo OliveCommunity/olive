@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef FILEFIELD_H
-#define FILEFIELD_H
+#ifndef OAK_FILEFIELD_H
+#define OAK_FILEFIELD_H
 
 #include <QLineEdit>
 #include <QPushButton>
@@ -33,27 +33,27 @@ class FileField : public QWidget {
 public:
 	FileField(QWidget *parent = nullptr);
 
-	QString GetFilename() const
+	QString get_filename() const
 	{
 		return line_edit_->text();
 	}
 
-	virtual void SetFilename(const QString &s)
+	virtual void set_filename(const QString &s)
 	{
 		line_edit_->setText(s);
 	}
 
-	void SetPlaceholder(const QString &s)
+	void set_placeholder(const QString &s)
 	{
 		line_edit_->setPlaceholderText(s);
 	}
 
-	void SetDirectoryMode(bool e)
+	void set_directory_mode(bool e)
 	{
 		directory_mode_ = e;
 	}
 
-	void SetNameFilter(const QString &filter)
+	void set_name_filter(const QString &filter)
 	{
 		name_filter_ = filter;
 	}
@@ -64,13 +64,13 @@ public:
 	 *
 	 * Note: setting sidebar URLs requires Qt's non-native file dialog.
 	 */
-	void SetSidebarUrls(const QList<QUrl> &urls)
+	void set_sidebar_urls(const QList<QUrl> &urls)
 	{
 		sidebar_urls_ = urls;
 	}
 
 signals:
-	void FilenameChanged(const QString &filename);
+	void filename_changed(const QString &filename);
 
 private:
 	QLineEdit *line_edit_;
@@ -84,11 +84,11 @@ private:
 	QList<QUrl> sidebar_urls_;
 
 private slots:
-	void BrowseBtnClicked();
+	void browse_btn_clicked();
 
-	void LineEditChanged(const QString &text);
+	void line_edit_changed(const QString &text);
 };
 
 }
 
-#endif // FILEFIELD_H
+#endif // OAK_FILEFIELD_H

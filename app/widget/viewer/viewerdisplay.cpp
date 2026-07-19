@@ -68,19 +68,19 @@ ViewerDisplayWidget::ViewerDisplayWidget(QWidget *parent)
 	, frames_skipped_(0)
 	, show_widget_background_(false)
 	, playback_speed_(0)
-	, push_mode_(kPushNull)
+	, push_mode_(k_push_null)
 	, add_band_(false)
 	, queue_starved_(false)
 	, text_edit_(nullptr)
 {
-	connect(Core::instance(), &Core::ToolChanged, this,
-			&ViewerDisplayWidget::ToolChanged);
+	connect(Core::instance(), &Core::tool_changed, this,
+			&ViewerDisplayWidget::tool_changed);
 
 	// Initializes cursor based on tool
-	UpdateCursor();
+	update_cursor();
 
-	const int kFrameRateAverageCount = 8;
-	frame_rate_averages_.resize(kFrameRateAverageCount);
+	const int k_frame_rate_average_count = 8;
+	frame_rate_averages_.resize(k_frame_rate_average_count);
 
 	inner_widget()->setAcceptDrops(true);
 }
@@ -92,76 +92,76 @@ ViewerDisplayWidget::~ViewerDisplayWidget()
 	MANAGEDDISPLAYWIDGET_DEFAULT_DESTRUCTOR_INNER;
 }
 
-void ViewerDisplayWidget::SetMatrixTranslate(const QMatrix4x4 &mat)
+void ViewerDisplayWidget::set_matrix_translate(const QMatrix4x4 &mat)
 {
 	translate_matrix_ = mat;
 
-	UpdateMatrix();
+	update_matrix();
 }
 
-void ViewerDisplayWidget::SetMatrixZoom(const QMatrix4x4 &mat)
+void ViewerDisplayWidget::set_matrix_zoom(const QMatrix4x4 &mat)
 {
 	scale_matrix_ = mat;
 
-	UpdateMatrix();
+	update_matrix();
 }
 
-void ViewerDisplayWidget::SetMatrixCrop(const QMatrix4x4 &mat)
+void ViewerDisplayWidget::set_matrix_crop(const QMatrix4x4 &mat)
 {
 	crop_matrix_ = mat;
 
 	update();
 }
 
-void ViewerDisplayWidget::UpdateCursor()
+void ViewerDisplayWidget::update_cursor()
 {
-	if (Core::instance()->tool() == Tool::kHand) {
+	if (Core::instance()->tool() == Tool::k_hand) {
 		this->inner_widget()->setCursor(Qt::OpenHandCursor);
-	} else if (Core::instance()->tool() == Tool::kAdd) {
+	} else if (Core::instance()->tool() == Tool::k_add) {
 		this->inner_widget()->setCursor(Qt::CrossCursor);
 	} else {
 		this->inner_widget()->unsetCursor();
 	}
 }
 
-void ViewerDisplayWidget::SetSignalCursorColorEnabled(bool e)
+void ViewerDisplayWidget::set_signal_cursor_color_enabled(bool e)
 {
 	signal_cursor_color_ = e;
-	SetInnerMouseTracking(e);
+	set_inner_mouse_tracking(e);
 }
 
-void ViewerDisplayWidget::SetImage(const QVariant &buffer)
+void ViewerDisplayWidget::set_image(const QVariant &buffer)
 {
 	load_frame_ = buffer;
 
 	if (load_frame_.isNull()) {
-		push_mode_ = kPushNull;
+		push_mode_ = k_push_null;
 	} else {
-		push_mode_ = kPushFrame;
+		push_mode_ = k_push_frame;
 	}
 
 	update();
 }
 
-void ViewerDisplayWidget::SetBlank()
+void ViewerDisplayWidget::set_blank()
 {
-	push_mode_ = kPushBlank;
+	push_mode_ = k_push_blank;
 
 	update();
 }
 
-void ViewerDisplayWidget::ToolChanged()
+void ViewerDisplayWidget::tool_changed()
 {
-	UpdateCursor();
+	update_cursor();
 }
 
-void ViewerDisplayWidget::SetDeinterlacing(bool e)
+void ViewerDisplayWidget::set_deinterlacing(bool e)
 {
 	deinterlace_ = e;
 
 	if (!deinterlace_) {
 		if (!deinterlace_shader_.isNull()) {
-			renderer()->DestroyNativeShader(deinterlace_shader_);
+			renderer()->destroy_native_shader(deinterlace_shader_);
 			deinterlace_shader_.clear();
 		}
 		deinterlace_texture_ = nullptr;
@@ -170,12 +170,12 @@ void ViewerDisplayWidget::SetDeinterlacing(bool e)
 	update();
 }
 
-const ViewerSafeMarginInfo &ViewerDisplayWidget::GetSafeMargin() const
+const ViewerSafeMarginInfo &ViewerDisplayWidget::get_safe_margin() const
 {
 	return safe_margin_;
 }
 
-void ViewerDisplayWidget::SetSafeMargins(const ViewerSafeMarginInfo &safe_margin)
+void ViewerDisplayWidget::set_safe_margins(const ViewerSafeMarginInfo &safe_margin)
 {
 	if (safe_margin_ != safe_margin) {
 		safe_margin_ = safe_margin;
@@ -184,7 +184,7 @@ void ViewerDisplayWidget::SetSafeMargins(const ViewerSafeMarginInfo &safe_margin
 	}
 }
 
-void ViewerDisplayWidget::SetGizmos(Node *node)
+void ViewerDisplayWidget::set_gizmos(Node *node)
 {
 	if (gizmos_ != node) {
 		gizmos_ = node;
@@ -193,7 +193,7 @@ void ViewerDisplayWidget::SetGizmos(Node *node)
 	}
 }
 
-void ViewerDisplayWidget::SetVideoParams(const VideoParams &params)
+void ViewerDisplayWidget::set_video_params(const VideoParams &params)
 {
 	gizmo_params_ = params;
 
@@ -202,7 +202,7 @@ void ViewerDisplayWidget::SetVideoParams(const VideoParams &params)
 	}
 }
 
-void ViewerDisplayWidget::SetAudioParams(const AudioParams &params)
+void ViewerDisplayWidget::set_audio_params(const AudioParams &params)
 {
 	gizmo_audio_params_ = params;
 
@@ -211,7 +211,7 @@ void ViewerDisplayWidget::SetAudioParams(const AudioParams &params)
 	}
 }
 
-void ViewerDisplayWidget::SetTime(const rational &time)
+void ViewerDisplayWidget::set_time(const Rational &time)
 {
 	time_ = time;
 
@@ -220,48 +220,48 @@ void ViewerDisplayWidget::SetTime(const rational &time)
 	}
 }
 
-void ViewerDisplayWidget::SetSubtitleTracks(Sequence *list)
+void ViewerDisplayWidget::set_subtitle_tracks(Sequence *list)
 {
 	if (subtitle_tracks_) {
-		disconnect(subtitle_tracks_, &Sequence::SubtitlesChanged, this,
-				   &ViewerDisplayWidget::SubtitlesChanged);
+		disconnect(subtitle_tracks_, &Sequence::subtitles_changed, this,
+				   &ViewerDisplayWidget::subtitles_changed);
 	}
 
 	subtitle_tracks_ = list;
 
 	if (subtitle_tracks_) {
-		connect(subtitle_tracks_, &Sequence::SubtitlesChanged, this,
-				&ViewerDisplayWidget::SubtitlesChanged);
+		connect(subtitle_tracks_, &Sequence::subtitles_changed, this,
+				&ViewerDisplayWidget::subtitles_changed);
 	}
 
 	update();
 }
 
 QPointF
-ViewerDisplayWidget::TransformViewerSpaceToBufferSpace(const QPointF &pos)
+ViewerDisplayWidget::transform_viewer_space_to_buffer_space(const QPointF &pos)
 {
 	/*
   * Inversion will only fail if the viewer has been scaled by 0 in any direction
   * which I think should never happen.
   */
-	return pos * GenerateDisplayTransform().inverted();
+	return pos * generate_display_transform().inverted();
 }
 
-void ViewerDisplayWidget::ResetFPSTimer()
+void ViewerDisplayWidget::reset_fps_timer()
 {
 	fps_timer_start_ = QDateTime::currentMSecsSinceEpoch();
 	fps_timer_update_count_ = 0;
 	frames_skipped_ = 0;
 	frame_rate_average_count_ = 0;
 
-	Core::instance()->ClearStatusBarMessage();
+	Core::instance()->clear_status_bar_message();
 }
 
-void ViewerDisplayWidget::IncrementSkippedFrames()
+void ViewerDisplayWidget::increment_skipped_frames()
 {
 	frames_skipped_++;
 
-	Core::instance()->ShowStatusBarMessage(
+	Core::instance()->show_status_bar_message(
 		tr("%n skipped frame(s) detected during playback", nullptr,
 		   frames_skipped_),
 		10000);
@@ -274,45 +274,45 @@ bool ViewerDisplayWidget::eventFilter(QObject *o, QEvent *e)
 		case QEvent::MouseButtonPress: {
 			QMouseEvent *mouse = static_cast<QMouseEvent *>(e);
 			if (!(mouse->flags() & Qt::MouseEventCreatedDoubleClick)) {
-				if (OnMousePress(mouse)) {
+				if (on_mouse_press(mouse)) {
 					return true;
 				}
 			}
 			break;
 		}
 		case QEvent::MouseMove:
-			EmitColorAtCursor(static_cast<QMouseEvent *>(e));
-			if (OnMouseMove(static_cast<QMouseEvent *>(e))) {
+			emit_color_at_cursor(static_cast<QMouseEvent *>(e));
+			if (on_mouse_move(static_cast<QMouseEvent *>(e))) {
 				return true;
 			}
 			break;
 		case QEvent::MouseButtonRelease:
-			if (OnMouseRelease(static_cast<QMouseEvent *>(e))) {
+			if (on_mouse_release(static_cast<QMouseEvent *>(e))) {
 				return true;
 			}
 			break;
 		case QEvent::MouseButtonDblClick:
-			if (OnMouseDoubleClick(static_cast<QMouseEvent *>(e))) {
+			if (on_mouse_double_click(static_cast<QMouseEvent *>(e))) {
 				return true;
 			}
 			break;
 		case QEvent::ShortcutOverride:
 		case QEvent::KeyPress:
-			if (OnKeyPress(static_cast<QKeyEvent *>(e))) {
+			if (on_key_press(static_cast<QKeyEvent *>(e))) {
 				return true;
 			}
 			break;
 		case QEvent::KeyRelease:
-			if (OnKeyRelease(static_cast<QKeyEvent *>(e))) {
+			if (on_key_release(static_cast<QKeyEvent *>(e))) {
 				return true;
 			}
 			break;
 		case QEvent::DragEnter: {
 			auto drag_enter = static_cast<QDragEnterEvent *>(e);
 			if (text_edit_) {
-				ForwardDragEventToTextEdit(drag_enter);
+				forward_drag_event_to_text_edit(drag_enter);
 			} else {
-				emit DragEntered(drag_enter);
+				emit drag_entered(drag_enter);
 			}
 
 			if (drag_enter->isAccepted()) {
@@ -323,7 +323,7 @@ bool ViewerDisplayWidget::eventFilter(QObject *o, QEvent *e)
 		case QEvent::DragMove: {
 			auto drag_move = static_cast<QDragMoveEvent *>(e);
 			if (text_edit_) {
-				ForwardDragEventToTextEdit(drag_move);
+				forward_drag_event_to_text_edit(drag_move);
 			}
 
 			if (drag_move->isAccepted()) {
@@ -334,9 +334,9 @@ bool ViewerDisplayWidget::eventFilter(QObject *o, QEvent *e)
 		case QEvent::DragLeave: {
 			auto drag_leave = static_cast<QDragLeaveEvent *>(e);
 			if (text_edit_) {
-				ForwardDragEventToTextEdit(drag_leave);
+				forward_drag_event_to_text_edit(drag_leave);
 			} else {
-				emit DragLeft(drag_leave);
+				emit drag_left(drag_leave);
 			}
 
 			if (drag_leave->isAccepted()) {
@@ -347,9 +347,9 @@ bool ViewerDisplayWidget::eventFilter(QObject *o, QEvent *e)
 		case QEvent::Drop: {
 			auto drop = static_cast<QDropEvent *>(e);
 			if (text_edit_) {
-				ForwardDragEventToTextEdit(drop);
+				forward_drag_event_to_text_edit(drop);
 			} else {
-				emit Dropped(drop);
+				emit dropped(drop);
 			}
 
 			if (drop->isAccepted()) {
@@ -373,9 +373,9 @@ bool ViewerDisplayWidget::eventFilter(QObject *o, QEvent *e)
 	return super::eventFilter(o, e);
 }
 
-void ViewerDisplayWidget::OnPaint()
+void ViewerDisplayWidget::on_paint()
 {
-	const bool backend_neutral = IsBackendNeutral();
+	const bool backend_neutral = is_backend_neutral();
 
 	QPainter bg_painter;
 	bool bg_painter_active = false;
@@ -385,14 +385,14 @@ void ViewerDisplayWidget::OnPaint()
 		// image itself will be rendered offscreen, downloaded, and painted below.
 		bg_painter.begin(paint_device());
 		bg_painter_active = true;
-		bg_painter.fillRect(GetInnerRect(), show_widget_background_ ?
+		bg_painter.fillRect(get_inner_rect(), show_widget_background_ ?
 												palette().window().color() :
 												Qt::black);
 	} else {
 		// Clear background to empty
 		QColor bg_color = show_widget_background_ ? palette().window().color() :
 													Qt::black;
-		renderer()->ClearDestination(nullptr, bg_color.redF(),
+		renderer()->clear_destination(nullptr, bg_color.redF(),
 									 bg_color.greenF(), bg_color.blueF());
 	}
 
@@ -401,13 +401,13 @@ void ViewerDisplayWidget::OnPaint()
 	bool have_ctj = false;
 
 	// We only draw if we have a pipeline
-	if (push_mode_ != kPushNull) {
+	if (push_mode_ != k_push_null) {
 		// Draw texture through color transform
-		device_params = GetViewportParams();
+		device_params = get_viewport_params();
 
-		if (push_mode_ == kPushBlank) {
+		if (push_mode_ == k_push_blank) {
 			if (!backend_neutral) {
-				DrawBlank(device_params);
+				draw_blank(device_params);
 			}
 		} else if (color_service()) {
 			bool drew_backend_neutral_frame = false;
@@ -420,18 +420,18 @@ void ViewerDisplayWidget::OnPaint()
 					 texture_->height() != frame->height() ||
 					 texture_->format() != frame->format() ||
 					 texture_->channel_count() != frame->channel_count())) {
-					texture_ = renderer()->CreateTexture(
+					texture_ = renderer()->create_texture(
 						frame->video_params(), frame->data(),
 						frame->linesize_pixels());
 				} else if (!drew_backend_neutral_frame) {
-					texture_->Upload(frame->data(), frame->linesize_pixels());
+					texture_->upload(frame->data(), frame->linesize_pixels());
 				}
 			} else if (TexturePtr texture = load_frame_.value<TexturePtr>()) {
 				// This is a GPU texture, switch to it directly when possible.
 				if (!drew_backend_neutral_frame && texture &&
 					texture->renderer() && texture->renderer() != renderer()) {
-					if (texture->renderer()->IsOpenGL() &&
-						renderer()->IsOpenGL()) {
+					if (texture->renderer()->is_open_gl() &&
+						renderer()->is_open_gl()) {
 						// Shared OpenGL contexts can display the producer texture
 						// directly. Avoid readback here because the producer
 						// renderer may belong to a render thread whose context
@@ -439,13 +439,13 @@ void ViewerDisplayWidget::OnPaint()
 						texture_ = texture;
 					} else {
 						// Cross-backend texture: download and re-upload
-						FramePtr frame = Frame::Create();
+						FramePtr frame = Frame::create();
 						frame->set_video_params(texture->params());
 						if (frame->allocate()) {
-							texture->renderer()->DownloadFromTexture(
+							texture->renderer()->download_from_texture(
 								texture->id(), texture->params(), frame->data(),
 								frame->linesize_pixels());
-							texture_ = renderer()->CreateTexture(
+							texture_ = renderer()->create_texture(
 								frame->video_params(), frame->data(),
 								frame->linesize_pixels());
 						} else {
@@ -456,30 +456,30 @@ void ViewerDisplayWidget::OnPaint()
 					texture_ = texture;
 				}
 			} else {
-				texture_ = LoadCustomTextureFromFrame(load_frame_);
+				texture_ = load_custom_texture_from_frame(load_frame_);
 			}
 
 			if (drew_backend_neutral_frame) {
 				texture_ = nullptr;
 			}
 
-			emit TextureChanged(texture_);
+			emit texture_changed(texture_);
 
-			push_mode_ = kPushUnnecessary;
+			push_mode_ = k_push_unnecessary;
 
 			if (!drew_backend_neutral_frame) {
 				TexturePtr texture_to_draw = texture_;
 
-				if (!texture_to_draw || texture_to_draw->IsDummy()) {
+				if (!texture_to_draw || texture_to_draw->is_dummy()) {
 					if (!backend_neutral) {
-						DrawBlank(device_params);
+						draw_blank(device_params);
 					}
 				} else {
 					if (deinterlace_) {
 						if (deinterlace_shader_.isNull()) {
 							deinterlace_shader_ =
-								renderer()->CreateNativeShader(
-									ShaderCode(FileFunctions::ReadFileAsString(
+								renderer()->create_native_shader(
+									ShaderCode(FileFunctions::read_file_as_string(
 										QStringLiteral(
 											":/shaders/deinterlace.frag"))));
 						}
@@ -488,37 +488,37 @@ void ViewerDisplayWidget::OnPaint()
 							deinterlace_texture_->params() !=
 								texture_to_draw->params()) {
 							// (Re)create texture
-							deinterlace_texture_ = renderer()->CreateTexture(
+							deinterlace_texture_ = renderer()->create_texture(
 								texture_to_draw->params());
 						}
 
 						ShaderJob job;
-						job.Insert(
+						job.insert(
 							QStringLiteral("resolution_in"),
-							NodeValue(NodeValue::kVec2,
+							NodeValue(NodeValue::k_vec2,
 									  QVector2D(texture_to_draw->width(),
 												texture_to_draw->height())));
-						job.Insert(
+						job.insert(
 							QStringLiteral("ove_maintex"),
-							NodeValue(NodeValue::kTexture,
+							NodeValue(NodeValue::k_texture,
 									  QVariant::fromValue(texture_to_draw)));
 
-						renderer()->BlitToTexture(deinterlace_shader_, job,
+						renderer()->blit_to_texture(deinterlace_shader_, job,
 												  deinterlace_texture_.get());
 
 						texture_to_draw = deinterlace_texture_;
 					}
 
-					ctj.SetColorProcessor(color_service());
-					ctj.SetInputTexture(texture_to_draw);
-					ctj.SetInputAlphaAssociation(
-						OLIVE_CONFIG("ReassocLinToNonLin").toBool() ?
-							kAlphaAssociated :
-							kAlphaNone);
-					ctj.SetClearDestinationEnabled(false);
-					ctj.SetTransformMatrix(combined_matrix_flipped_);
-					ctj.SetCropMatrix(crop_matrix_);
-					ctj.SetForceOpaque(true);
+					ctj.set_color_processor(color_service());
+					ctj.set_input_texture(texture_to_draw);
+					ctj.set_input_alpha_association(
+						OAK_CONFIG("ReassocLinToNonLin").toBool() ?
+							k_alpha_associated :
+							k_alpha_none);
+					ctj.set_clear_destination_enabled(false);
+					ctj.set_transform_matrix(combined_matrix_flipped_);
+					ctj.set_crop_matrix(crop_matrix_);
+					ctj.set_force_opaque(true);
 
 					have_ctj = true;
 				}
@@ -529,9 +529,9 @@ void ViewerDisplayWidget::OnPaint()
 
 	if (have_ctj) {
 		if (backend_neutral) {
-			DrawBackendNeutral(ctj, &bg_painter);
+			draw_backend_neutral(ctj, &bg_painter);
 		} else {
-			renderer()->BlitColorManaged(ctj, device_params);
+			renderer()->blit_color_managed(ctj, device_params);
 		}
 	}
 
@@ -543,16 +543,16 @@ void ViewerDisplayWidget::OnPaint()
 	if (gizmos_) {
 		QPainter p(paint_device());
 
-		GenerateGizmoTransforms();
+		generate_gizmo_transforms();
 
 		p.setWorldTransform(gizmo_last_draw_transform_);
 
-		gizmos_->UpdateGizmoPositions(
+		gizmos_->update_gizmo_positions(
 			gizmo_db_, NodeGlobals(gizmo_params_, gizmo_audio_params_,
-								   gizmo_draw_time_, LoopMode::kLoopModeOff));
-		foreach (NodeGizmo *gizmo, gizmos_->GetGizmos()) {
-			if (gizmo->IsVisible()) {
-				gizmo->Draw(&p);
+								   gizmo_draw_time_, LoopMode::k_loop_mode_off));
+		foreach (NodeGizmo *gizmo, gizmos_->get_gizmos()) {
+			if (gizmo->is_visible()) {
+				gizmo->draw(&p);
 			}
 		}
 
@@ -561,8 +561,8 @@ void ViewerDisplayWidget::OnPaint()
 			pm.fill(Qt::transparent);
 
 			QPainter pixp(&pm);
-			text_edit_->Paint(&pixp,
-							  active_text_gizmo_->GetVerticalAlignment());
+			text_edit_->paint(&pixp,
+							  active_text_gizmo_->get_vertical_alignment());
 
 			p.drawPixmap(text_edit_pos_, pm);
 		}
@@ -571,7 +571,7 @@ void ViewerDisplayWidget::OnPaint()
 	// Draw action/title safe areas
 	if (safe_margin_.is_enabled()) {
 		QPainter p(paint_device());
-		p.setWorldTransform(GenerateWorldTransform());
+		p.setWorldTransform(generate_world_transform());
 
 		p.setPen(QPen(Qt::lightGray, 0));
 		p.setBrush(Qt::NoBrush);
@@ -635,21 +635,21 @@ void ViewerDisplayWidget::OnPaint()
 			}
 			average /= double(frame_rate_averages_.size());
 
-			DrawTextWithCrudeShadow(
-				&p, GetInnerRect(),
+			draw_text_with_crude_shadow(
+				&p, get_inner_rect(),
 				tr("%1 FPS").arg(QString::number(average, 'f', 1)));
 
 			if (frames_skipped_ > 0) {
-				DrawTextWithCrudeShadow(
+				draw_text_with_crude_shadow(
 					&p,
-					GetInnerRect().adjusted(0, p.fontMetrics().height(), 0, 0),
+					get_inner_rect().adjusted(0, p.fontMetrics().height(), 0, 0),
 					tr("%1 frames skipped").arg(frames_skipped_));
 			}
 		}
 	}
 
 	// Extraordinarily basic subtitle renderer. Hoping to swap this out with libass at some point.
-	DrawSubtitleTracks();
+	draw_subtitle_tracks();
 
 	if (add_band_) {
 		QPainter p(paint_device());
@@ -664,22 +664,22 @@ void ViewerDisplayWidget::OnPaint()
 	// emit frameSwapped automatically. Emit it ourselves so the playback queue
 	// keeps advancing (UpdateFromQueue is connected to it during Play()).
 	if (backend_neutral) {
-		emit frameSwapped();
+		emit frame_swapped();
 	}
 }
 
-void ViewerDisplayWidget::OnDestroy()
+void ViewerDisplayWidget::on_destroy()
 {
 	if (!deinterlace_shader_.isNull()) {
-		renderer()->DestroyNativeShader(deinterlace_shader_);
+		renderer()->destroy_native_shader(deinterlace_shader_);
 		deinterlace_shader_.clear();
 	}
 	if (!blank_shader_.isNull()) {
-		renderer()->DestroyNativeShader(blank_shader_);
+		renderer()->destroy_native_shader(blank_shader_);
 		blank_shader_.clear();
 	}
 
-	super::OnDestroy();
+	super::on_destroy();
 
 	texture_ = nullptr;
 	deinterlace_texture_ = nullptr;
@@ -691,29 +691,29 @@ void ViewerDisplayWidget::OnDestroy()
 	backend_neutral_cpu_source_texture_.reset();
 	backend_neutral_cpu_color_id_.clear();
 	if (load_frame_.isNull()) {
-		push_mode_ = kPushNull;
+		push_mode_ = k_push_null;
 	} else {
-		push_mode_ = kPushFrame;
+		push_mode_ = k_push_frame;
 	}
 }
 
-QPointF ViewerDisplayWidget::GetTexturePosition(const QPoint &screen_pos)
+QPointF ViewerDisplayWidget::get_texture_position(const QPoint &screen_pos)
 {
-	return GetTexturePosition(screen_pos.x(), screen_pos.y());
+	return get_texture_position(screen_pos.x(), screen_pos.y());
 }
 
-QPointF ViewerDisplayWidget::GetTexturePosition(const QSize &size)
+QPointF ViewerDisplayWidget::get_texture_position(const QSize &size)
 {
-	return GetTexturePosition(size.width(), size.height());
+	return get_texture_position(size.width(), size.height());
 }
 
-QPointF ViewerDisplayWidget::GetTexturePosition(const double &x,
+QPointF ViewerDisplayWidget::get_texture_position(const double &x,
 												const double &y)
 {
 	return QPointF(x / gizmo_params_.width(), y / gizmo_params_.height());
 }
 
-void ViewerDisplayWidget::DrawTextWithCrudeShadow(QPainter *painter,
+void ViewerDisplayWidget::draw_text_with_crude_shadow(QPainter *painter,
 												  const QRect &rect,
 												  const QString &text,
 												  const QTextOption &opt)
@@ -724,19 +724,19 @@ void ViewerDisplayWidget::DrawTextWithCrudeShadow(QPainter *painter,
 	painter->drawText(rect, text, opt);
 }
 
-rational ViewerDisplayWidget::GetGizmoTime()
+Rational ViewerDisplayWidget::get_gizmo_time()
 {
-	return GetAdjustedTime(GetTimeTarget(), gizmos_, time_,
-						   Node::kTransformTowardsInput);
+	return get_adjusted_time(get_time_target(), gizmos_, time_,
+						   Node::k_transform_towards_input);
 }
 
-bool ViewerDisplayWidget::IsHandDrag(QMouseEvent *event) const
+bool ViewerDisplayWidget::is_hand_drag(QMouseEvent *event) const
 {
 	return event->button() == Qt::MiddleButton ||
-		   Core::instance()->tool() == Tool::kHand;
+		   Core::instance()->tool() == Tool::k_hand;
 }
 
-void ViewerDisplayWidget::UpdateMatrix()
+void ViewerDisplayWidget::update_matrix()
 {
 	combined_matrix_ = scale_matrix_ * translate_matrix_;
 
@@ -746,7 +746,7 @@ void ViewerDisplayWidget::UpdateMatrix()
 	// up. Vulkan's framebuffer and texture coordinate origins are both top-left,
 	// so the same flip would invert the image. Default to the OpenGL flip when
 	// no renderer is available yet.
-	if (!renderer() || !renderer()->IsVulkan()) {
+	if (!renderer() || !renderer()->is_vulkan()) {
 		QMatrix4x4 flip;
 		flip.scale(1.0f, -1.0f, 1.0f);
 		combined_matrix_flipped_ = flip * combined_matrix_flipped_;
@@ -755,7 +755,7 @@ void ViewerDisplayWidget::UpdateMatrix()
 	update();
 }
 
-QTransform ViewerDisplayWidget::GenerateWorldTransform()
+QTransform ViewerDisplayWidget::generate_world_transform()
 {
 	/*
    * Get matrix elements (roughly) as below in column major order
@@ -779,30 +779,30 @@ QTransform ViewerDisplayWidget::GenerateWorldTransform()
 	return world;
 }
 
-QTransform ViewerDisplayWidget::GenerateDisplayTransform()
+QTransform ViewerDisplayWidget::generate_display_transform()
 {
-	QVector2D viewer_scale(GetTexturePosition(size()));
-	QTransform gizmo_transform = GenerateWorldTransform();
+	QVector2D viewer_scale(get_texture_position(size()));
+	QTransform gizmo_transform = generate_world_transform();
 	gizmo_transform.scale(viewer_scale.x(), viewer_scale.y());
 	gizmo_transform.scale(
-		gizmo_params_.pixel_aspect_ratio().flipped().toDouble(), 1);
+		gizmo_params_.pixel_aspect_ratio().flipped().to_double(), 1);
 	return gizmo_transform;
 }
 
-QTransform ViewerDisplayWidget::GenerateGizmoTransform(NodeTraverser &gt,
+QTransform ViewerDisplayWidget::generate_gizmo_transform(NodeTraverser &gt,
 													   const TimeRange &range)
 {
-	QTransform t = GenerateDisplayTransform();
-	if (GetTimeTarget()) {
-		Node *target = GetTimeTarget();
+	QTransform t = generate_display_transform();
+	if (get_time_target()) {
+		Node *target = get_time_target();
 		if (ViewerOutput *v = dynamic_cast<ViewerOutput *>(target)) {
-			if (Node *n = v->GetConnectedTextureOutput()) {
+			if (Node *n = v->get_connected_texture_output()) {
 				target = n;
 			}
 		}
 
 		QTransform nt;
-		gt.Transform(&nt, gizmos_, target, range);
+		gt.transform(&nt, gizmos_, target, range);
 
 		t.translate(gizmo_params_.width() * 0.5, gizmo_params_.height() * 0.5);
 		t.scale(gizmo_params_.width(), gizmo_params_.height());
@@ -817,29 +817,29 @@ QTransform ViewerDisplayWidget::GenerateGizmoTransform(NodeTraverser &gt,
 	return t;
 }
 
-NodeGizmo *ViewerDisplayWidget::TryGizmoPress(const NodeValueRow &row,
+NodeGizmo *ViewerDisplayWidget::try_gizmo_press(const NodeValueRow &row,
 											  const QPointF &p)
 {
 	if (!gizmos_) {
 		return nullptr;
 	}
 
-	for (auto it = gizmos_->GetGizmos().crbegin();
-		 it != gizmos_->GetGizmos().crend(); it++) {
+	for (auto it = gizmos_->get_gizmos().crbegin();
+		 it != gizmos_->get_gizmos().crend(); it++) {
 		NodeGizmo *gizmo = *it;
-		if (gizmo->IsVisible()) {
+		if (gizmo->is_visible()) {
 			if (PointGizmo *point = dynamic_cast<PointGizmo *>(gizmo)) {
-				if (point->GetClickingRect(gizmo_last_draw_transform_)
+				if (point->get_clicking_rect(gizmo_last_draw_transform_)
 						.contains(p)) {
 					return point;
 				}
 			} else if (PolygonGizmo *poly =
 						   dynamic_cast<PolygonGizmo *>(gizmo)) {
-				if (poly->GetPolygon().containsPoint(p, Qt::OddEvenFill)) {
+				if (poly->get_polygon().containsPoint(p, Qt::OddEvenFill)) {
 					return poly;
 				}
 			} else if (PathGizmo *path = dynamic_cast<PathGizmo *>(gizmo)) {
-				if (path->GetPath().contains(p)) {
+				if (path->get_path().contains(p)) {
 					return path;
 				}
 			} else if (ScreenGizmo *screen =
@@ -853,17 +853,17 @@ NodeGizmo *ViewerDisplayWidget::TryGizmoPress(const NodeValueRow &row,
 	return nullptr;
 }
 
-void ViewerDisplayWidget::OpenTextGizmo(TextGizmo *text, QMouseEvent *event)
+void ViewerDisplayWidget::open_text_gizmo(TextGizmo *text, QMouseEvent *event)
 {
-	GenerateGizmoTransforms();
-	gizmos_->UpdateGizmoPositions(
+	generate_gizmo_transforms();
+	gizmos_->update_gizmo_positions(
 		gizmo_db_, NodeGlobals(gizmo_params_, gizmo_audio_params_,
-							   gizmo_draw_time_, LoopMode::kLoopModeOff));
+							   gizmo_draw_time_, LoopMode::k_loop_mode_off));
 
 	active_text_gizmo_ = text;
-	connect(active_text_gizmo_, &TextGizmo::RectChanged, this,
-			&ViewerDisplayWidget::UpdateActiveTextGizmoSize);
-	text_transform_ = GenerateGizmoTransform();
+	connect(active_text_gizmo_, &TextGizmo::rect_changed, this,
+			&ViewerDisplayWidget::update_active_text_gizmo_size);
+	text_transform_ = generate_gizmo_transform();
 	text_transform_inverted_ = text_transform_.inverted();
 
 	// Create text editor
@@ -885,31 +885,31 @@ void ViewerDisplayWidget::OpenTextGizmo(TextGizmo *text, QMouseEvent *event)
 	text_edit_->show();
 
 	// Convert HTML to Qt document
-	Html::HtmlToDoc(text_edit_->document(), text->GetHtml());
+	Html::html_to_doc(text_edit_->document(), text->get_html());
 
 	// Connect text change event to propagate back to node
 	connect(text_edit_, &ViewerTextEditor::textChanged, this,
-			&ViewerDisplayWidget::TextEditChanged);
+			&ViewerDisplayWidget::text_edit_changed);
 
 	// Connect destroyed signal to cleanup after destruction
 	connect(text_edit_, &ViewerTextEditor::destroyed, this,
-			&ViewerDisplayWidget::TextEditDestroyed);
+			&ViewerDisplayWidget::text_edit_destroyed);
 
 	// Set text editor's size to logical size
-	QRectF text_rect = UpdateActiveTextGizmoSize();
+	QRectF text_rect = update_active_text_gizmo_size();
 
 	// Emit text gizmo activation signal
-	emit text->Activated();
+	emit text->activated();
 
 	// Create toolbar
 	text_toolbar_ = new ViewerTextEditorToolBar(text_edit_);
 	text_toolbar_->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
-	connect(text_toolbar_, &ViewerTextEditorToolBar::VerticalAlignmentChanged,
-			text, &TextGizmo::SetVerticalAlignment);
-	connect(text, &TextGizmo::VerticalAlignmentChanged, text_toolbar_,
-			&ViewerTextEditorToolBar::SetVerticalAlignment);
-	text_toolbar_->SetVerticalAlignment(text->GetVerticalAlignment());
-	text_edit_->ConnectToolBar(text_toolbar_);
+	connect(text_toolbar_, &ViewerTextEditorToolBar::vertical_alignment_changed,
+			text, &TextGizmo::set_vertical_alignment);
+	connect(text, &TextGizmo::vertical_alignment_changed, text_toolbar_,
+			&ViewerTextEditorToolBar::set_vertical_alignment);
+	text_toolbar_->set_vertical_alignment(text->get_vertical_alignment());
+	text_edit_->connect_tool_bar(text_toolbar_);
 
 	QPoint toolbar_pos =
 		mapToGlobal(text_transform_.map(text_edit_pos_).toPoint());
@@ -950,7 +950,7 @@ void ViewerDisplayWidget::OpenTextGizmo(TextGizmo *text, QMouseEvent *event)
 	inner_widget()->setMouseTracking(true);
 
 	connect(qApp, &QApplication::focusChanged, this,
-			&ViewerDisplayWidget::FocusChanged);
+			&ViewerDisplayWidget::focus_changed);
 
 	// Start text cursor where the user clicked
 	if (event) {
@@ -960,49 +960,49 @@ void ViewerDisplayWidget::OpenTextGizmo(TextGizmo *text, QMouseEvent *event)
 	}
 
 	// Grab focus back from the toolbar
-	connect(text_toolbar_, &ViewerTextEditorToolBar::FirstPaint, this, [this] {
+	connect(text_toolbar_, &ViewerTextEditorToolBar::first_paint, this, [this] {
 		Core::instance()->main_window()->activateWindow();
 		inner_widget()->setFocus();
 	});
 }
 
-bool ViewerDisplayWidget::OnMousePress(QMouseEvent *event)
+bool ViewerDisplayWidget::on_mouse_press(QMouseEvent *event)
 {
-	if (IsHandDrag(event)) {
+	if (is_hand_drag(event)) {
 		// Handle hand drag
 		hand_last_drag_pos_ = event->pos();
 		hand_dragging_ = true;
-		emit HandDragStarted();
+		emit hand_drag_started();
 		inner_widget()->setCursor(Qt::ClosedHandCursor);
 
 		return true;
 
-	} else if (text_edit_ && ForwardMouseEventToTextEdit(event, true)) {
+	} else if (text_edit_ && forward_mouse_event_to_text_edit(event, true)) {
 		return true;
 
 	} else if (event->button() == Qt::LeftButton) {
-		if (Core::instance()->tool() == Tool::kAdd &&
-			(Core::instance()->GetSelectedAddableObject() ==
-				 Tool::kAddableShape ||
-			 Core::instance()->GetSelectedAddableObject() ==
-				 Tool::kAddableTitle)) {
+		if (Core::instance()->tool() == Tool::k_add &&
+			(Core::instance()->get_selected_addable_object() ==
+				 Tool::k_addable_shape ||
+			 Core::instance()->get_selected_addable_object() ==
+				 Tool::k_addable_title)) {
 			add_band_start_ = event->pos();
 			add_band_end_ = add_band_start_;
 			add_band_ = true;
 
-		} else if ((current_gizmo_ = TryGizmoPress(
+		} else if ((current_gizmo_ = try_gizmo_press(
 						gizmo_db_, gizmo_last_draw_transform_inverted_.map(
 									   event->pos())))) {
 			// Handle gizmo click
 			gizmo_start_drag_ = event->pos();
 			gizmo_last_drag_ = gizmo_start_drag_;
-			current_gizmo_->SetGlobals(
+			current_gizmo_->set_globals(
 				NodeGlobals(gizmo_params_, gizmo_audio_params_,
-							GenerateGizmoTime(), LoopMode::kLoopModeOff));
+							generate_gizmo_time(), LoopMode::k_loop_mode_off));
 
 		} else {
 			// Handle standard drag
-			emit DragStarted(event->pos());
+			emit drag_started(event->pos());
 		}
 
 		return true;
@@ -1011,19 +1011,19 @@ bool ViewerDisplayWidget::OnMousePress(QMouseEvent *event)
 	return false;
 }
 
-bool ViewerDisplayWidget::OnMouseMove(QMouseEvent *event)
+bool ViewerDisplayWidget::on_mouse_move(QMouseEvent *event)
 {
 	// Handle hand dragging
 	if (hand_dragging_) {
 		// Emit movement
-		emit HandDragMoved(event->x() - hand_last_drag_pos_.x(),
+		emit hand_drag_moved(event->x() - hand_last_drag_pos_.x(),
 						   event->y() - hand_last_drag_pos_.y());
 
 		hand_last_drag_pos_ = event->pos();
 
 		return true;
 
-	} else if (text_edit_ && ForwardMouseEventToTextEdit(event)) {
+	} else if (text_edit_ && forward_mouse_event_to_text_edit(event)) {
 		return true;
 
 	} else if (add_band_) {
@@ -1036,37 +1036,37 @@ bool ViewerDisplayWidget::OnMouseMove(QMouseEvent *event)
 		if (DraggableGizmo *draggable =
 				dynamic_cast<DraggableGizmo *>(current_gizmo_)) {
 			if (!gizmo_drag_started_) {
-				QPointF start = ScreenToScenePoint(gizmo_start_drag_);
+				QPointF start = screen_to_scene_point(gizmo_start_drag_);
 
-				rational gizmo_time = GetGizmoTime();
+				Rational gizmo_time = get_gizmo_time();
 				NodeTraverser t;
-				t.SetCacheVideoParams(gizmo_params_);
-				t.SetCacheAudioParams(gizmo_audio_params_);
-				NodeValueRow row = t.GenerateRow(
+				t.set_cache_video_params(gizmo_params_);
+				t.set_cache_audio_params(gizmo_audio_params_);
+				NodeValueRow row = t.generate_row(
 					gizmos_,
 					TimeRange(gizmo_time,
 							  gizmo_time +
 								  gizmo_params_.frame_rate_as_time_base()));
 
-				draggable->DragStart(row, start.x(), start.y(), gizmo_time);
+				draggable->drag_start(row, start.x(), start.y(), gizmo_time);
 				gizmo_drag_started_ = true;
 			}
 
-			QPointF v = ScreenToScenePoint(event->pos());
-			switch (draggable->GetDragValueBehavior()) {
-			case DraggableGizmo::kAbsolute:
+			QPointF v = screen_to_scene_point(event->pos());
+			switch (draggable->get_drag_value_behavior()) {
+			case DraggableGizmo::k_absolute:
 				// Above value is correct
 				break;
-			case DraggableGizmo::kDeltaFromPrevious:
-				v -= ScreenToScenePoint(gizmo_last_drag_);
+			case DraggableGizmo::k_delta_from_previous:
+				v -= screen_to_scene_point(gizmo_last_drag_);
 				gizmo_last_drag_ = event->pos();
 				break;
-			case DraggableGizmo::kDeltaFromStart:
-				v -= ScreenToScenePoint(gizmo_start_drag_);
+			case DraggableGizmo::k_delta_from_start:
+				v -= screen_to_scene_point(gizmo_start_drag_);
 				break;
 			}
 
-			draggable->DragMove(v.x(), v.y(), event->modifiers());
+			draggable->drag_move(v.x(), v.y(), event->modifiers());
 
 			return true;
 		}
@@ -1075,24 +1075,24 @@ bool ViewerDisplayWidget::OnMouseMove(QMouseEvent *event)
 	return false;
 }
 
-bool ViewerDisplayWidget::OnMouseRelease(QMouseEvent *e)
+bool ViewerDisplayWidget::on_mouse_release(QMouseEvent *e)
 {
 	if (hand_dragging_) {
 		// Handle hand drag
-		emit HandDragEnded();
+		emit hand_drag_ended();
 		hand_dragging_ = false;
-		UpdateCursor();
+		update_cursor();
 
 		return true;
 
-	} else if (text_edit_ && ForwardMouseEventToTextEdit(e)) {
+	} else if (text_edit_ && forward_mouse_event_to_text_edit(e)) {
 		return true;
 
 	} else if (add_band_) {
 		QRect band_rect = QRect(add_band_start_, add_band_end_).normalized();
 		if (band_rect.width() > 1 && band_rect.height() > 1) {
-			QRectF r = GenerateDisplayTransform().inverted().mapRect(band_rect);
-			emit CreateAddableAt(r);
+			QRectF r = generate_display_transform().inverted().mapRect(band_rect);
+			emit create_addable_at(r);
 		}
 
 		add_band_ = false;
@@ -1104,7 +1104,7 @@ bool ViewerDisplayWidget::OnMouseRelease(QMouseEvent *e)
 			MultiUndoCommand *command = new MultiUndoCommand();
 			if (DraggableGizmo *draggable =
 					dynamic_cast<DraggableGizmo *>(current_gizmo_)) {
-				draggable->DragEnd(command);
+				draggable->drag_end(command);
 			}
 			Core::instance()->undo_stack()->push(command, tr("Dragged Gizmo"));
 			gizmo_drag_started_ = false;
@@ -1117,16 +1117,16 @@ bool ViewerDisplayWidget::OnMouseRelease(QMouseEvent *e)
 	return false;
 }
 
-bool ViewerDisplayWidget::OnMouseDoubleClick(QMouseEvent *event)
+bool ViewerDisplayWidget::on_mouse_double_click(QMouseEvent *event)
 {
-	if (text_edit_ && ForwardMouseEventToTextEdit(event)) {
+	if (text_edit_ && forward_mouse_event_to_text_edit(event)) {
 		return true;
 	} else if (event->button() == Qt::LeftButton && gizmos_) {
-		QPointF ptr = TransformViewerSpaceToBufferSpace(event->pos());
-		foreach (NodeGizmo *g, gizmos_->GetGizmos()) {
+		QPointF ptr = transform_viewer_space_to_buffer_space(event->pos());
+		foreach (NodeGizmo *g, gizmos_->get_gizmos()) {
 			if (TextGizmo *text = dynamic_cast<TextGizmo *>(g)) {
-				if (text->GetRect().contains(ptr)) {
-					OpenTextGizmo(text, event);
+				if (text->get_rect().contains(ptr)) {
+					open_text_gizmo(text, event);
 					return true;
 				}
 			}
@@ -1136,28 +1136,28 @@ bool ViewerDisplayWidget::OnMouseDoubleClick(QMouseEvent *event)
 	return false;
 }
 
-bool ViewerDisplayWidget::OnKeyPress(QKeyEvent *e)
+bool ViewerDisplayWidget::on_key_press(QKeyEvent *e)
 {
 	if (text_edit_) {
 		if (e->key() == Qt::Key_Escape) {
-			CloseTextEditor();
+			close_text_editor();
 			return true;
 		} else {
-			return ForwardEventToTextEdit(e);
+			return forward_event_to_text_edit(e);
 		}
 	}
 	return false;
 }
 
-bool ViewerDisplayWidget::OnKeyRelease(QKeyEvent *e)
+bool ViewerDisplayWidget::on_key_release(QKeyEvent *e)
 {
 	if (text_edit_) {
-		return ForwardEventToTextEdit(e);
+		return forward_event_to_text_edit(e);
 	}
 	return false;
 }
 
-void ViewerDisplayWidget::EmitColorAtCursor(QMouseEvent *e)
+void ViewerDisplayWidget::emit_color_at_cursor(QMouseEvent *e)
 {
 	// Do this no matter what, emits signal to any pixel samplers
 	if (signal_cursor_color_) {
@@ -1165,39 +1165,39 @@ void ViewerDisplayWidget::EmitColorAtCursor(QMouseEvent *e)
 
 		if (texture_) {
 			QPointF pixel_pos =
-				GenerateDisplayTransform().inverted().map(e->pos());
+				generate_display_transform().inverted().map(e->pos());
 			pixel_pos /= texture_->params().divider();
 
-			makeCurrent();
+			make_current();
 
 			reference =
-				renderer()->GetPixelFromTexture(texture_.get(), pixel_pos);
+				renderer()->get_pixel_from_texture(texture_.get(), pixel_pos);
 			if (color_service()) {
-				display = color_service()->ConvertColor(reference);
+				display = color_service()->convert_color(reference);
 			} else {
 				display = reference;
 			}
 		}
 
-		emit CursorColor(reference, display);
+		emit cursor_color(reference, display);
 	}
 }
 
-void ViewerDisplayWidget::DrawSubtitleTracks()
+void ViewerDisplayWidget::draw_subtitle_tracks()
 {
 	if (!show_subtitles_ || !subtitle_tracks_) {
 		return;
 	}
 
 	const QVector<Track *> &subtitle_tracklist =
-		subtitle_tracks_->track_list(Track::kSubtitle)->GetTracks();
+		subtitle_tracks_->track_list(Track::k_subtitle)->get_tracks();
 	if (subtitle_tracklist.empty()) {
 		return;
 	}
 
 	// Scale font size by transform
-	QTransform display_transform = GenerateDisplayTransform();
-	qreal font_sz = OLIVE_CONFIG("DefaultSubtitleSize").toInt();
+	QTransform display_transform = generate_display_transform();
+	qreal font_sz = OAK_CONFIG("DefaultSubtitleSize").toInt();
 	font_sz *= display_transform.m11();
 	if (qIsNaN(font_sz)) {
 		return;
@@ -1205,19 +1205,19 @@ void ViewerDisplayWidget::DrawSubtitleTracks()
 
 	QPainterPath path;
 
-	QTransform transform = GenerateWorldTransform();
+	QTransform transform = generate_world_transform();
 	QRect bounding_box = transform.mapRect(rect());
 
 	QFont f;
 	f.setPointSizeF(font_sz);
 
-	QString family = OLIVE_CONFIG("DefaultSubtitleFamily").toString();
+	QString family = OAK_CONFIG("DefaultSubtitleFamily").toString();
 	if (!family.isEmpty()) {
 		f.setFamily(family);
 	}
 
 	f.setWeight(static_cast<QFont::Weight>(
-		OLIVE_CONFIG("DefaultSubtitleWeight").toInt()));
+		OAK_CONFIG("DefaultSubtitleWeight").toInt()));
 
 	bounding_box.adjust(bounding_box.width() / 10, bounding_box.height() / 10,
 						-bounding_box.width() / 10,
@@ -1227,15 +1227,15 @@ void ViewerDisplayWidget::DrawSubtitleTracks()
 
 	for (int j = subtitle_tracklist.size() - 1; j >= 0; j--) {
 		Track *sub_track = subtitle_tracklist.at(j);
-		if (!sub_track->IsMuted()) {
+		if (!sub_track->is_muted()) {
 			if (SubtitleBlock *sub = dynamic_cast<SubtitleBlock *>(
-					sub_track->VisibleBlockAtTime(time_))) {
+					sub_track->visible_block_at_time(time_))) {
 				// Split into lines
-				QStringList list = QtUtils::WordWrapString(
-					sub->GetText(), fm, bounding_box.width());
+				QStringList list = QtUtils::word_wrap_string(
+					sub->get_text(), fm, bounding_box.width());
 
 				for (int i = list.size() - 1; i >= 0; i--) {
-					int w = QtUtils::QFontMetricsWidth(fm, list.at(i));
+					int w = QtUtils::q_font_metrics_width(fm, list.at(i));
 					path.addText(bounding_box.width() / 2 - w / 2,
 								 bounding_box.height() -
 									 fm.height() * (list.size() - i) +
@@ -1246,7 +1246,7 @@ void ViewerDisplayWidget::DrawSubtitleTracks()
 		}
 	}
 
-	bool antialias = OLIVE_CONFIG("AntialiasSubtitles").toBool();
+	bool antialias = OAK_CONFIG("AntialiasSubtitles").toBool();
 
 	QPixmap *aa_pixmap;
 	QPainter *text_painter;
@@ -1280,7 +1280,7 @@ void ViewerDisplayWidget::DrawSubtitleTracks()
 	}
 }
 
-template <typename T> void ViewerDisplayWidget::ForwardDragEventToTextEdit(T *e)
+template <typename T> void ViewerDisplayWidget::forward_drag_event_to_text_edit(T *e)
 {
 	// HACK: Absolutely filthy hack. We need to be able to transform the mouse coordinates for our
 	//       proxied QTextEdit, however unlike QMouseEvents, Qt's drag events don't allow modifying
@@ -1295,7 +1295,7 @@ template <typename T> void ViewerDisplayWidget::ForwardDragEventToTextEdit(T *e)
 	if constexpr (std::is_same_v<T, QDragLeaveEvent>) {
 		text_edit_->dragLeaveEvent(e);
 	} else {
-		T relay(AdjustPosByVAlign(GetVirtualPosForTextEdit(e->pos())).toPoint(),
+		T relay(adjust_pos_by_v_align(get_virtual_pos_for_text_edit(e->pos())).toPoint(),
 				e->possibleActions(), e->mimeData(), e->mouseButtons(),
 				e->keyboardModifiers());
 
@@ -1313,7 +1313,7 @@ template <typename T> void ViewerDisplayWidget::ForwardDragEventToTextEdit(T *e)
 	}
 }
 
-bool ViewerDisplayWidget::ForwardMouseEventToTextEdit(QMouseEvent *event,
+bool ViewerDisplayWidget::forward_mouse_event_to_text_edit(QMouseEvent *event,
 													  bool check_if_outside)
 {
 	if (current_gizmo_) {
@@ -1321,7 +1321,7 @@ bool ViewerDisplayWidget::ForwardMouseEventToTextEdit(QMouseEvent *event,
 	}
 
 	// Transform screen mouse coords to world mouse coords
-	QPointF local_pos = GetVirtualPosForTextEdit(event->pos());
+	QPointF local_pos = get_virtual_pos_for_text_edit(event->pos());
 
 	if (event->type() == QEvent::MouseMove &&
 		event->buttons() == Qt::NoButton) {
@@ -1340,26 +1340,26 @@ bool ViewerDisplayWidget::ForwardMouseEventToTextEdit(QMouseEvent *event,
 		if (local_pos.x() < 0 || local_pos.x() >= text_edit_->width() ||
 			local_pos.y() < 0 || local_pos.y() >= text_edit_->height()) {
 			// Allow clicking other gizmos so the user can resize while the text editor is active
-			if ((current_gizmo_ = TryGizmoPress(
+			if ((current_gizmo_ = try_gizmo_press(
 					 gizmo_db_,
 					 gizmo_last_draw_transform_inverted_.map(event->pos())))) {
 				return false;
 			} else {
-				CloseTextEditor();
+				close_text_editor();
 				return true;
 			}
 		}
 	}
 
-	local_pos = AdjustPosByVAlign(local_pos);
+	local_pos = adjust_pos_by_v_align(local_pos);
 
 	QMouseEvent derived(event->type(), local_pos, event->windowPos(),
 						event->screenPos(), event->button(), event->buttons(),
 						event->modifiers(), event->source());
-	return ForwardEventToTextEdit(&derived);
+	return forward_event_to_text_edit(&derived);
 }
 
-bool ViewerDisplayWidget::ForwardEventToTextEdit(QEvent *event)
+bool ViewerDisplayWidget::forward_event_to_text_edit(QEvent *event)
 {
 	qApp->sendEvent(text_edit_->viewport(), event);
 	bool e = event->isAccepted();
@@ -1369,9 +1369,9 @@ bool ViewerDisplayWidget::ForwardEventToTextEdit(QEvent *event)
 	return e;
 }
 
-QPointF ViewerDisplayWidget::AdjustPosByVAlign(QPointF p)
+QPointF ViewerDisplayWidget::adjust_pos_by_v_align(QPointF p)
 {
-	switch (active_text_gizmo_->GetVerticalAlignment()) {
+	switch (active_text_gizmo_->get_vertical_alignment()) {
 	case Qt::AlignTop:
 		// Do nothing
 		break;
@@ -1388,48 +1388,48 @@ QPointF ViewerDisplayWidget::AdjustPosByVAlign(QPointF p)
 	return p;
 }
 
-void ViewerDisplayWidget::CloseTextEditor()
+void ViewerDisplayWidget::close_text_editor()
 {
 	text_edit_->deleteLater();
 	text_edit_ = nullptr;
 
-	disconnect(active_text_gizmo_, &TextGizmo::RectChanged, this,
-			   &ViewerDisplayWidget::UpdateActiveTextGizmoSize);
+	disconnect(active_text_gizmo_, &TextGizmo::rect_changed, this,
+			   &ViewerDisplayWidget::update_active_text_gizmo_size);
 	active_text_gizmo_ = nullptr;
 }
 
-void ViewerDisplayWidget::GenerateGizmoTransforms()
+void ViewerDisplayWidget::generate_gizmo_transforms()
 {
 	NodeTraverser gt;
-	gt.SetCacheVideoParams(gizmo_params_);
-	gt.SetCacheAudioParams(gizmo_audio_params_);
+	gt.set_cache_video_params(gizmo_params_);
+	gt.set_cache_audio_params(gizmo_audio_params_);
 
-	gizmo_draw_time_ = GenerateGizmoTime();
+	gizmo_draw_time_ = generate_gizmo_time();
 
 	if (gizmos_) {
-		gizmo_db_ = gt.GenerateRow(gizmos_, gizmo_draw_time_);
+		gizmo_db_ = gt.generate_row(gizmos_, gizmo_draw_time_);
 	}
 
-	gizmo_last_draw_transform_ = GenerateGizmoTransform(gt, gizmo_draw_time_);
+	gizmo_last_draw_transform_ = generate_gizmo_transform(gt, gizmo_draw_time_);
 	gizmo_last_draw_transform_inverted_ = gizmo_last_draw_transform_.inverted();
 }
 
-void ViewerDisplayWidget::DrawBlank(const VideoParams &device_params)
+void ViewerDisplayWidget::draw_blank(const VideoParams &device_params)
 {
 	if (blank_shader_.isNull()) {
-		blank_shader_ = renderer()->CreateNativeShader(ShaderCode());
+		blank_shader_ = renderer()->create_native_shader(ShaderCode());
 	}
 
 	ShaderJob job;
-	job.Insert(QStringLiteral("ove_mvpmat"),
-			   NodeValue(NodeValue::kMatrix, combined_matrix_flipped_));
-	job.Insert(QStringLiteral("ove_cropmatrix"),
-			   NodeValue(NodeValue::kMatrix, crop_matrix_));
+	job.insert(QStringLiteral("ove_mvpmat"),
+			   NodeValue(NodeValue::k_matrix, combined_matrix_flipped_));
+	job.insert(QStringLiteral("ove_cropmatrix"),
+			   NodeValue(NodeValue::k_matrix, crop_matrix_));
 
-	renderer()->Blit(blank_shader_, job, device_params, false);
+	renderer()->blit(blank_shader_, job, device_params, false);
 }
 
-bool ViewerDisplayWidget::DrawBackendNeutralFrame(const FramePtr &frame,
+bool ViewerDisplayWidget::draw_backend_neutral_frame(const FramePtr &frame,
 												  QPainter *painter)
 {
 	if (!frame || !frame->is_allocated() || !painter || !painter->isActive() ||
@@ -1443,7 +1443,7 @@ bool ViewerDisplayWidget::DrawBackendNeutralFrame(const FramePtr &frame,
 		!backend_neutral_cpu_image_.isNull()) {
 		painter->save();
 		painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
-		painter->setWorldTransform(GenerateWorldTransform(), false);
+		painter->setWorldTransform(generate_world_transform(), false);
 		painter->drawImage(rect(), backend_neutral_cpu_image_);
 		painter->restore();
 		return true;
@@ -1456,17 +1456,17 @@ bool ViewerDisplayWidget::DrawBackendNeutralFrame(const FramePtr &frame,
 	FramePtr display_frame = frame;
 
 	QImage source_image;
-	if (display_frame->format() == PixelFormat::U8 &&
-		display_frame->channel_count() == VideoParams::kRGBAChannelCount) {
+	if (display_frame->format() == PixelFormat::u8 &&
+		display_frame->channel_count() == VideoParams::k_rgba_channel_count) {
 		backend_neutral_cpu_display_frame_ = display_frame;
 		backend_neutral_cpu_image_ =
 			QImage(reinterpret_cast<const uchar *>(display_frame->const_data()),
 				   display_frame->width(), display_frame->height(),
 				   display_frame->linesize_bytes(), QImage::Format_RGBA8888);
 		source_image = backend_neutral_cpu_image_;
-	} else if (display_frame->format() == PixelFormat::U8 &&
+	} else if (display_frame->format() == PixelFormat::u8 &&
 			   display_frame->channel_count() ==
-				   VideoParams::kRGBChannelCount) {
+				   VideoParams::k_rgb_channel_count) {
 		backend_neutral_cpu_display_frame_ = display_frame;
 		backend_neutral_cpu_image_ =
 			QImage(reinterpret_cast<const uchar *>(display_frame->const_data()),
@@ -1476,7 +1476,7 @@ bool ViewerDisplayWidget::DrawBackendNeutralFrame(const FramePtr &frame,
 	} else {
 		backend_neutral_cpu_display_frame_.reset();
 		const int bytes_per_pixel =
-			display_frame->video_params().GetBytesPerPixel();
+			display_frame->video_params().get_bytes_per_pixel();
 		if (backend_neutral_cpu_image_.size() !=
 				QSize(display_frame->width(), display_frame->height()) ||
 			backend_neutral_cpu_image_.format() != QImage::Format_RGBA8888) {
@@ -1509,16 +1509,16 @@ bool ViewerDisplayWidget::DrawBackendNeutralFrame(const FramePtr &frame,
 
 	painter->save();
 	painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
-	painter->setWorldTransform(GenerateWorldTransform(), false);
+	painter->setWorldTransform(generate_world_transform(), false);
 	painter->drawImage(rect(), source_image);
 	painter->restore();
 	return true;
 }
 
-bool ViewerDisplayWidget::DrawBackendNeutralTexture(const TexturePtr &texture,
+bool ViewerDisplayWidget::draw_backend_neutral_texture(const TexturePtr &texture,
 													QPainter *painter)
 {
-	if (!texture || texture->IsDummy() || !texture->renderer() || !painter ||
+	if (!texture || texture->is_dummy() || !texture->renderer() || !painter ||
 		!painter->isActive() || !color_service()) {
 		return false;
 	}
@@ -1529,21 +1529,21 @@ bool ViewerDisplayWidget::DrawBackendNeutralTexture(const TexturePtr &texture,
 		!backend_neutral_cpu_image_.isNull()) {
 		painter->save();
 		painter->setRenderHint(QPainter::SmoothPixmapTransform, true);
-		painter->setWorldTransform(GenerateWorldTransform(), false);
+		painter->setWorldTransform(generate_world_transform(), false);
 		painter->drawImage(rect(), backend_neutral_cpu_image_);
 		painter->restore();
 		return true;
 	}
 
-	FramePtr frame = Frame::Create();
+	FramePtr frame = Frame::create();
 	frame->set_video_params(texture->params());
 	if (!frame->allocate()) {
 		return false;
 	}
 
-	texture->Download(frame->data(), frame->linesize_pixels());
+	texture->download(frame->data(), frame->linesize_pixels());
 
-	if (!DrawBackendNeutralFrame(frame, painter)) {
+	if (!draw_backend_neutral_frame(frame, painter)) {
 		return false;
 	}
 
@@ -1554,7 +1554,7 @@ bool ViewerDisplayWidget::DrawBackendNeutralTexture(const TexturePtr &texture,
 
 // Renders a backend-neutral frame by drawing into an offscreen backend texture,
 // downloading it to CPU memory, then painting that image with QPainter.
-void ViewerDisplayWidget::DrawBackendNeutral(const ColorTransformJob &ctj,
+void ViewerDisplayWidget::draw_backend_neutral(const ColorTransformJob &ctj,
 											 QPainter *painter)
 {
 	if (!painter || !painter->isActive()) {
@@ -1565,35 +1565,35 @@ void ViewerDisplayWidget::DrawBackendNeutral(const ColorTransformJob &ctj,
 	const int texture_height = static_cast<int>(height() * devicePixelRatioF());
 
 	const VideoParams offscreen_params(texture_width, texture_height,
-									   PixelFormat::U8,
-									   VideoParams::kRGBAChannelCount);
+									   PixelFormat::u8,
+									   VideoParams::k_rgba_channel_count);
 
 	if (!backend_neutral_texture_ ||
 		backend_neutral_texture_->params() != offscreen_params) {
 		// The offscreen texture is sized in device pixels so high-DPI widgets
 		// draw one downloaded pixel per device pixel after setDevicePixelRatio().
-		backend_neutral_texture_ = renderer()->CreateTexture(offscreen_params);
+		backend_neutral_texture_ = renderer()->create_texture(offscreen_params);
 		backend_neutral_buffer_.resize(
 			texture_width * texture_height *
-			VideoParams::GetBytesPerPixel(PixelFormat::U8,
-										  VideoParams::kRGBAChannelCount));
+			VideoParams::get_bytes_per_pixel(PixelFormat::u8,
+										  VideoParams::k_rgba_channel_count));
 	}
 
-	if (!backend_neutral_texture_ || backend_neutral_texture_->IsDummy()) {
+	if (!backend_neutral_texture_ || backend_neutral_texture_->is_dummy()) {
 		return;
 	}
 
 	ColorTransformJob local_ctj = ctj;
-	local_ctj.SetClearDestinationEnabled(true);
+	local_ctj.set_clear_destination_enabled(true);
 
 	// Reuse the normal color-management shader path, but render into a texture
 	// instead of an OpenGL widget framebuffer.
-	renderer()->BlitColorManaged(local_ctj, backend_neutral_texture_.get());
+	renderer()->blit_color_managed(local_ctj, backend_neutral_texture_.get());
 
-	backend_neutral_texture_->Download(backend_neutral_buffer_.data(), 0);
+	backend_neutral_texture_->download(backend_neutral_buffer_.data(), 0);
 
-	const int bytes_per_pixel = VideoParams::GetBytesPerPixel(
-		PixelFormat::U8, VideoParams::kRGBAChannelCount);
+	const int bytes_per_pixel = VideoParams::get_bytes_per_pixel(
+		PixelFormat::u8, VideoParams::k_rgba_channel_count);
 
 	QImage img(
 		reinterpret_cast<const uchar *>(backend_neutral_buffer_.constData()),
@@ -1606,82 +1606,82 @@ void ViewerDisplayWidget::DrawBackendNeutral(const ColorTransformJob &ctj,
 	painter->drawImage(QPoint(0, 0), img);
 }
 
-void ViewerDisplayWidget::SetShowFPS(bool e)
+void ViewerDisplayWidget::set_show_fps(bool e)
 {
 	show_fps_ = e;
 
 	update();
 }
 
-void ViewerDisplayWidget::RequestStartEditingText()
+void ViewerDisplayWidget::request_start_editing_text()
 {
 	if (gizmos_) {
-		foreach (NodeGizmo *gizmo, gizmos_->GetGizmos()) {
+		foreach (NodeGizmo *gizmo, gizmos_->get_gizmos()) {
 			if (TextGizmo *text = dynamic_cast<TextGizmo *>(gizmo)) {
-				OpenTextGizmo(text);
+				open_text_gizmo(text);
 				break;
 			}
 		}
 	}
 }
 
-void ViewerDisplayWidget::Play(const int64_t &start_timestamp,
+void ViewerDisplayWidget::play(const int64_t &start_timestamp,
 							   const int &playback_speed,
-							   const rational &timebase, bool start_updating)
+							   const Rational &timebase, bool start_updating)
 {
 	playback_timebase_ = timebase;
 	playback_speed_ = playback_speed;
 
-	timer_.Start(start_timestamp, playback_speed, timebase.toDouble());
+	timer_.start(start_timestamp, playback_speed, timebase.to_double());
 
 	if (start_updating) {
-		connect(this, &ViewerDisplayWidget::frameSwapped, this,
-				&ViewerDisplayWidget::UpdateFromQueue);
+		connect(this, &ViewerDisplayWidget::frame_swapped, this,
+				&ViewerDisplayWidget::update_from_queue);
 
 		update();
 	}
 }
 
-void ViewerDisplayWidget::Pause()
+void ViewerDisplayWidget::pause()
 {
-	disconnect(this, &ViewerDisplayWidget::frameSwapped, this,
-			   &ViewerDisplayWidget::UpdateFromQueue);
+	disconnect(this, &ViewerDisplayWidget::frame_swapped, this,
+			   &ViewerDisplayWidget::update_from_queue);
 
 	queue_.clear();
 	queue_starved_ = false;
 }
 
-QPointF ViewerDisplayWidget::ScreenToScenePoint(const QPoint &p)
+QPointF ViewerDisplayWidget::screen_to_scene_point(const QPoint &p)
 {
 	if (gizmo_last_draw_transform_.isIdentity()) {
-		GenerateGizmoTransforms();
+		generate_gizmo_transforms();
 	}
 
 	return p * gizmo_last_draw_transform_inverted_;
 }
 
-void ViewerDisplayWidget::UpdateFromQueue()
+void ViewerDisplayWidget::update_from_queue()
 {
-	int64_t t = timer_.GetTimestampNow();
+	int64_t t = timer_.get_timestamp_now();
 
-	rational time = Timecode::timestamp_to_time(t, playback_timebase_);
+	Rational time = Timecode::timestamp_to_time(t, playback_timebase_);
 
 	bool popped = false;
 
 	if (queue_.empty()) {
 		queue_starved_ = true;
-		emit QueueStarved();
+		emit queue_starved();
 	} else {
 		while (!queue_.empty()) {
 			const ViewerPlaybackFrame &pf = queue_.front();
 
 			if (pf.timestamp == time) {
 				// Frame was in queue, no need to decode anything
-				SetImage(pf.frame);
+				set_image(pf.frame);
 
 				if (queue_starved_) {
 					queue_starved_ = false;
-					emit QueueNoLongerStarved();
+					emit queue_no_longer_starved();
 				}
 				return;
 
@@ -1695,16 +1695,16 @@ void ViewerDisplayWidget::UpdateFromQueue()
 
 				if (popped) {
 					// We've already popped a frame in this loop, meaning a frame has been skipped
-					IncrementSkippedFrames();
+					increment_skipped_frames();
 				} else {
 					// Shown a frame and progressed to the next one
-					IncrementFrameCount();
+					increment_frame_count();
 					popped = true;
 				}
 
 				if (queue_.empty()) {
 					queue_starved_ = true;
-					emit QueueStarved();
+					emit queue_starved();
 					break;
 				}
 			}
@@ -1714,39 +1714,39 @@ void ViewerDisplayWidget::UpdateFromQueue()
 	update();
 }
 
-void ViewerDisplayWidget::TextEditChanged()
+void ViewerDisplayWidget::text_edit_changed()
 {
 	ViewerTextEditor *editor = static_cast<ViewerTextEditor *>(sender());
 
 	TextGizmo *gizmo = reinterpret_cast<TextGizmo *>(
 		editor->property("gizmo").value<quintptr>());
 
-	QString html = Html::DocToHtml(editor->document());
-	gizmo->UpdateInputHtml(html, GetGizmoTime());
+	QString html = Html::doc_to_html(editor->document());
+	gizmo->update_input_html(html, get_gizmo_time());
 }
 
-void ViewerDisplayWidget::TextEditDestroyed()
+void ViewerDisplayWidget::text_edit_destroyed()
 {
 	TextGizmo *gizmo = reinterpret_cast<TextGizmo *>(
 		sender()->property("gizmo").value<quintptr>());
-	emit gizmo->Deactivated();
+	emit gizmo->deactivated();
 	text_edit_ = nullptr;
 	text_toolbar_ = nullptr;
 	inner_widget()->setMouseTracking(false);
 	inner_widget()->setFocusPolicy(Qt::NoFocus);
-	UpdateCursor();
+	update_cursor();
 	disconnect(qApp, &QApplication::focusChanged, this,
-			   &ViewerDisplayWidget::FocusChanged);
+			   &ViewerDisplayWidget::focus_changed);
 }
 
-void ViewerDisplayWidget::SubtitlesChanged(const TimeRange &r)
+void ViewerDisplayWidget::subtitles_changed(const TimeRange &r)
 {
 	if (time_ >= r.in() && time_ < r.out()) {
 		update();
 	}
 }
 
-void ViewerDisplayWidget::FocusChanged(QWidget *old, QWidget *now)
+void ViewerDisplayWidget::focus_changed(QWidget *old, QWidget *now)
 {
 	if (!now) {
 		// Ignore this
@@ -1765,13 +1765,13 @@ void ViewerDisplayWidget::FocusChanged(QWidget *old, QWidget *now)
 	}
 
 	if (unfocused) {
-		CloseTextEditor();
+		close_text_editor();
 	}
 }
 
-QRectF ViewerDisplayWidget::UpdateActiveTextGizmoSize()
+QRectF ViewerDisplayWidget::update_active_text_gizmo_size()
 {
-	QRectF text_rect = active_text_gizmo_->GetRect();
+	QRectF text_rect = active_text_gizmo_->get_rect();
 	text_edit_pos_ = text_rect.topLeft();
 	text_edit_->setGeometry(text_rect.toRect());
 	return text_rect;

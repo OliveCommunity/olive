@@ -27,7 +27,7 @@
  * Use the navigation above to find documentation on classes or source files.
  */
 
-#include "OliveHost.h"
+#include "olivehost.h"
 
 #include <csignal>
 
@@ -79,7 +79,7 @@ int decompress_project(const QString &project)
 			   .toUtf8()
 			   .constData());
 
-	if (!olive::ProjectSerializer::CheckCompressedID(&project_file)) {
+	if (!olive::ProjectSerializer::check_compressed_id(&project_file)) {
 		printf("%s\n",
 			   QCoreApplication::translate(
 				   "main", "Failed to decompress, project may be corrupt")
@@ -145,7 +145,7 @@ int decompress_project(const QString &project)
 int main(int argc, char *argv[])
 {
 	// Set up debug handler
-	qInstallMessageHandler(olive::DebugHandler);
+	qInstallMessageHandler(olive::debug_handler);
 
 	// Ignore SIGPIPE so that writing to a render-worker process that has
 	// already crashed/closed does not terminate the main application. QProcess
@@ -159,7 +159,7 @@ int main(int argc, char *argv[])
 	QCoreApplication::setOrganizationDomain("oakvideoeditor.org");
 	QCoreApplication::setApplicationName("Oak Video Editor");
 	QGuiApplication::setDesktopFileName("org.oakvideoeditor.Oak");
-	QCoreApplication::setApplicationVersion(olive::kAppVersionLong);
+	QCoreApplication::setApplicationVersion(olive::k_app_version_long);
 
 	//
 	// Parse command line arguments
@@ -186,29 +186,29 @@ int main(int argc, char *argv[])
 	CommandLineParser parser;
 
 	// Our options
-	auto help_option = parser.AddOption(
+	auto help_option = parser.add_option(
 		{ QStringLiteral("h"), QStringLiteral("-help") },
 		QCoreApplication::translate("main", "Show this help text"));
 
-	auto version_option = parser.AddOption(
+	auto version_option = parser.add_option(
 		{ QStringLiteral("v"), QStringLiteral("-version") },
 		QCoreApplication::translate("main", "Show application version"));
 
-	auto fullscreen_option = parser.AddOption(
+	auto fullscreen_option = parser.add_option(
 		{ QStringLiteral("f"), QStringLiteral("-fullscreen") },
 		QCoreApplication::translate("main", "Start in full-screen mode"));
 
-	auto export_option = parser.AddOption(
+	auto export_option = parser.add_option(
 		{ QStringLiteral("x"), QStringLiteral("-export") },
 		QCoreApplication::translate("main", "Export only (No GUI)"));
 
-	auto ts_option = parser.AddOption(
+	auto ts_option = parser.add_option(
 		{ QStringLiteral("-ts") },
 		QCoreApplication::translate("main", "Override language with file"),
 		true, QCoreApplication::translate("main", "qm-file"));
 
 	auto decompress_option =
-		parser.AddOption({ QStringLiteral("d"), QStringLiteral("-decompress") },
+		parser.add_option({ QStringLiteral("d"), QStringLiteral("-decompress") },
 						 QCoreApplication::translate(
 							 "main", "Decompress project file (No GUI)"));
 
@@ -218,11 +218,11 @@ int main(int argc, char *argv[])
 		QCoreApplication::translate("main", "Launch with debug console"));
 #endif // _WIN32
 
-	auto project_argument = parser.AddPositionalArgument(
+	auto project_argument = parser.add_positional_argument(
 		QStringLiteral("project"),
 		QCoreApplication::translate("main", "Project to open on startup"));
 
-	auto no_plugin = parser.AddOption(
+	auto no_plugin = parser.add_option(
 		{ QStringLiteral("-no-plugin") },
 		QCoreApplication::translate("main", "Don't load plugins"));
 
@@ -230,77 +230,77 @@ int main(int argc, char *argv[])
 	//
 	// Because we don't use QCommandLineParser, we must filter out Qt's arguments ourselves. Here,
 	// we create them so they're recognized, but never use and also hide them in the "help" text.
-	parser.AddOption({ QStringLiteral("platform") }, QString(), true, QString(),
+	parser.add_option({ QStringLiteral("platform") }, QString(), true, QString(),
 					 true);
-	parser.AddOption({ QStringLiteral("platformpluginpath") }, QString(), true,
+	parser.add_option({ QStringLiteral("platformpluginpath") }, QString(), true,
 					 QString(), true);
-	parser.AddOption({ QStringLiteral("platformtheme") }, QString(), true,
+	parser.add_option({ QStringLiteral("platformtheme") }, QString(), true,
 					 QString(), true);
-	parser.AddOption({ QStringLiteral("plugin") }, QString(), true, QString(),
+	parser.add_option({ QStringLiteral("plugin") }, QString(), true, QString(),
 					 true);
-	parser.AddOption({ QStringLiteral("qmljsdebugger") }, QString(), true,
+	parser.add_option({ QStringLiteral("qmljsdebugger") }, QString(), true,
 					 QString(), true);
-	parser.AddOption({ QStringLiteral("qwindowgeometry") }, QString(), true,
+	parser.add_option({ QStringLiteral("qwindowgeometry") }, QString(), true,
 					 QString(), true);
-	parser.AddOption({ QStringLiteral("qwindowicon") }, QString(), true,
+	parser.add_option({ QStringLiteral("qwindowicon") }, QString(), true,
 					 QString(), true);
-	parser.AddOption({ QStringLiteral("qwindowtitle") }, QString(), true,
+	parser.add_option({ QStringLiteral("qwindowtitle") }, QString(), true,
 					 QString(), true);
-	parser.AddOption({ QStringLiteral("reverse") }, QString(), false, QString(),
+	parser.add_option({ QStringLiteral("reverse") }, QString(), false, QString(),
 					 true);
-	parser.AddOption({ QStringLiteral("session") }, QString(), true, QString(),
+	parser.add_option({ QStringLiteral("session") }, QString(), true, QString(),
 					 true);
-	parser.AddOption({ QStringLiteral("style") }, QString(), true, QString(),
+	parser.add_option({ QStringLiteral("style") }, QString(), true, QString(),
 					 true);
-	parser.AddOption({ QStringLiteral("stylesheet") }, QString(), true,
+	parser.add_option({ QStringLiteral("stylesheet") }, QString(), true,
 					 QString(), true);
-	parser.AddOption({ QStringLiteral("widgetcount") }, QString(), false,
+	parser.add_option({ QStringLiteral("widgetcount") }, QString(), false,
 					 QString(), true);
 
 	// Hidden crash option for debugging the crash handling
-	auto crash_option = parser.AddOption({ QStringLiteral("-crash") },
+	auto crash_option = parser.add_option({ QStringLiteral("-crash") },
 										 QString(), true, QString(), true);
 
-	parser.Process(args);
+	parser.process(args);
 
-	if (help_option->IsSet()) {
+	if (help_option->is_set()) {
 		// Show help
-		parser.PrintHelp(argv[0]);
+		parser.print_help(argv[0]);
 		return 0;
 	}
 
-	if (version_option->IsSet()) {
+	if (version_option->is_set()) {
 		// Print version
 		printf("%s\n",
 			   QCoreApplication::applicationVersion().toUtf8().constData());
 		return 0;
 	}
 
-	if (decompress_option->IsSet()) {
-		return decompress_project(project_argument->GetSetting());
+	if (decompress_option->is_set()) {
+		return decompress_project(project_argument->get_setting());
 	}
 
-	if (export_option->IsSet()) {
-		startup_params.set_run_mode(olive::Core::CoreParams::kHeadlessExport);
+	if (export_option->is_set()) {
+		startup_params.set_run_mode(olive::Core::CoreParams::k_headless_export);
 	}
 
-	if (ts_option->IsSet()) {
-		if (ts_option->GetSetting().isEmpty()) {
+	if (ts_option->is_set()) {
+		if (ts_option->get_setting().isEmpty()) {
 			qWarning() << "--ts was set but no translation file was provided";
 		} else {
-			startup_params.set_startup_language(ts_option->GetSetting());
+			startup_params.set_startup_language(ts_option->get_setting());
 		}
 	}
 
-	const bool load_plugins = !no_plugin->IsSet();
+	const bool load_plugins = !no_plugin->is_set();
 
-	if (crash_option->IsSet()) {
+	if (crash_option->is_set()) {
 		startup_params.set_crash_on_startup(true);
 	}
 
-	startup_params.set_fullscreen(fullscreen_option->IsSet());
+	startup_params.set_fullscreen(fullscreen_option->is_set());
 
-	startup_params.set_startup_project(project_argument->GetSetting());
+	startup_params.set_startup_project(project_argument->get_setting());
 
 	// Set OpenGL display profile. Oak's render pipeline still uses OpenGL
 	// internally even when Vulkan is requested as the Qt graphics backend.
@@ -327,7 +327,7 @@ int main(int argc, char *argv[])
 	// Create application instance
 	std::unique_ptr<QCoreApplication> a;
 
-	if (startup_params.run_mode() == olive::Core::CoreParams::kRunNormal) {
+	if (startup_params.run_mode() == olive::Core::CoreParams::k_run_normal) {
 #ifdef _WIN32
 		// Since Oak Video Editor is linked with the console subsystem (for better POSIX compatibility), a console
 		// is created by default. If the user didn't request one, we free it here.
@@ -341,9 +341,9 @@ int main(int argc, char *argv[])
 		a.reset(new QCoreApplication(argc, argv));
 	}
 
-	olive::Config::Load();
+	olive::Config::load();
 	const QString graphics_backend =
-		olive::Config::Current()[QStringLiteral("GraphicsBackend")]
+		olive::Config::current()[QStringLiteral("GraphicsBackend")]
 			.toString()
 			.toLower();
 	qputenv("QSG_RHI_BACKEND", graphics_backend == QStringLiteral("vulkan") ?
@@ -356,7 +356,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (load_plugins) {
-		olive::plugin::loadPlugins("plugins");
+		olive::plugin::load_plugins("plugins");
 	}
 
 #ifdef _WIN32
@@ -412,12 +412,12 @@ int main(int argc, char *argv[])
 	// Start core
 	olive::Core c(startup_params);
 
-	c.Start();
+	c.start();
 
 	int ret = a->exec();
 
 	// Clear core memory
-	c.Stop();
+	c.stop();
 
 	return ret;
 }

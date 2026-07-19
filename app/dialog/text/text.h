@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef RICHTEXTDIALOG_H
-#define RICHTEXTDIALOG_H
+#ifndef OAK_RICHTEXTDIALOG_H
+#define OAK_RICHTEXTDIALOG_H
 
 #include <QDialog>
 #include <QFontComboBox>
@@ -48,4 +48,4 @@ private:
 
 }
 
-#endif // RICHTEXTDIALOG_H
+#endif // OAK_RICHTEXTDIALOG_H

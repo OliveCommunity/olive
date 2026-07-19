@@ -35,7 +35,7 @@ void BlockSplitCommand::prepare()
 {
 	reconnect_tree_command_ = new MultiUndoCommand();
 	new_block_ = static_cast<Block *>(
-		Node::CopyNodeInGraph(block_, reconnect_tree_command_));
+		Node::copy_node_in_graph(block_, reconnect_tree_command_));
 }
 
 void BlockSplitCommand::redo()
@@ -47,8 +47,8 @@ void BlockSplitCommand::redo()
 	reconnect_tree_command_->redo_now();
 
 	// Determine our new lengths
-	rational new_length = point_ - block_->in();
-	rational new_part_length = block_->out() - point_;
+	Rational new_length = point_ - block_->in();
+	Rational new_part_length = block_->out() - point_;
 
 	// Begin an operation
 	Track *track = block_->track();
@@ -58,11 +58,11 @@ void BlockSplitCommand::redo()
 	new_block()->set_length_and_media_in(new_part_length);
 
 	// Insert new block
-	track->InsertBlockAfter(new_block(), block_);
+	track->insert_block_after(new_block(), block_);
 
 	if (ClipBlock *new_clip = dynamic_cast<ClipBlock *>(new_block_)) {
 		ClipBlock *old_clip = static_cast<ClipBlock *>(block_);
-		new_clip->AddCachePassthroughFrom(old_clip);
+		new_clip->add_cache_passthrough_from(old_clip);
 	}
 
 	// If the block had an out transition, we move it to the new block
@@ -75,9 +75,9 @@ void BlockSplitCommand::redo()
 			 block_->output_connections()) {
 			if (output.second.node() == potential_transition) {
 				moved_transition_ = NodeInput(potential_transition,
-											  TransitionBlock::kOutBlockInput);
-				Node::DisconnectEdge(block_, moved_transition_);
-				Node::ConnectEdge(new_block(), moved_transition_);
+											  TransitionBlock::k_out_block_input);
+				Node::disconnect_edge(block_, moved_transition_);
+				Node::connect_edge(new_block(), moved_transition_);
 				break;
 			}
 		}
@@ -88,13 +88,13 @@ void BlockSplitCommand::undo()
 {
 	Track *track = block_->track();
 
-	if (moved_transition_.IsValid()) {
-		Node::DisconnectEdge(new_block(), moved_transition_);
-		Node::ConnectEdge(block_, moved_transition_);
+	if (moved_transition_.is_valid()) {
+		Node::disconnect_edge(new_block(), moved_transition_);
+		Node::connect_edge(block_, moved_transition_);
 	}
 
 	block_->set_length_and_media_out(old_length_);
-	track->RippleRemoveBlock(new_block());
+	track->ripple_remove_block(new_block());
 
 	// If we ran a reconnect command, disconnect now
 	reconnect_tree_command_->undo_now();
@@ -103,7 +103,7 @@ void BlockSplitCommand::undo()
 //
 // BlockSplitPreservingLinksCommand
 //
-Block *BlockSplitPreservingLinksCommand::GetSplit(Block *original,
+Block *BlockSplitPreservingLinksCommand::get_split(Block *original,
 												  int time_index) const
 {
 	if (time_index >= 0 && time_index < times_.size()) {
@@ -121,7 +121,7 @@ void BlockSplitPreservingLinksCommand::prepare()
 	splits_.resize(times_.size());
 
 	for (int i = 0; i < times_.size(); i++) {
-		const rational &time = times_.at(i);
+		const Rational &time = times_.at(i);
 
 		// FIXME: I realize this isn't going to work if the times aren't ordered. I'm lazy so rather
 		//        than writing in a sorting algorithm here, I'll just put an assert as a reminder
@@ -158,7 +158,7 @@ void BlockSplitPreservingLinksCommand::prepare()
 
 			Block *b = blocks_.at(j);
 
-			if (Block::AreLinked(a, b)) {
+			if (Block::are_linked(a, b)) {
 				// These blocks are linked, ensure all the splits are linked too
 
 				foreach (const QVector<Block *> &split_list, splits_) {
@@ -178,7 +178,7 @@ void BlockSplitPreservingLinksCommand::prepare()
 void TrackSplitAtTimeCommand::prepare()
 {
 	// Find Block that contains this time
-	Block *b = track_->BlockContainingTime(point_);
+	Block *b = track_->block_containing_time(point_);
 
 	if (b) {
 		command_ = new BlockSplitCommand(b, point_);

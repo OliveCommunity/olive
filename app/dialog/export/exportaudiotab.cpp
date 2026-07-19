@@ -27,7 +27,7 @@
 namespace olive
 {
 
-const int ExportAudioTab::kDefaultBitRate = 320;
+const int ExportAudioTab::k_default_bit_rate = 320;
 
 ExportAudioTab::ExportAudioTab(QWidget *parent)
 	: QWidget(parent)
@@ -45,11 +45,11 @@ ExportAudioTab::ExportAudioTab(QWidget *parent)
 	connect(
 		codec_combobox_,
 		static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
-		this, &ExportAudioTab::UpdateSampleFormats);
+		this, &ExportAudioTab::update_sample_formats);
 	connect(
 		codec_combobox_,
 		static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
-		this, &ExportAudioTab::UpdateBitRateEnabled);
+		this, &ExportAudioTab::update_bit_rate_enabled);
 	layout->addWidget(codec_combobox_, row, 1);
 
 	row++;
@@ -78,48 +78,48 @@ ExportAudioTab::ExportAudioTab(QWidget *parent)
 	layout->addWidget(new QLabel(tr("Bit Rate:")), row, 0);
 
 	bit_rate_slider_ = new IntegerSlider();
-	bit_rate_slider_->SetMinimum(32);
-	bit_rate_slider_->SetMaximum(320);
-	bit_rate_slider_->SetValue(kDefaultBitRate);
-	bit_rate_slider_->SetFormat(tr("%1 kbps"));
+	bit_rate_slider_->set_minimum(32);
+	bit_rate_slider_->set_maximum(320);
+	bit_rate_slider_->set_value(k_default_bit_rate);
+	bit_rate_slider_->set_format(tr("%1 kbps"));
 	layout->addWidget(bit_rate_slider_, row, 1);
 
 	outer_layout->addStretch();
 }
 
-int ExportAudioTab::SetFormat(ExportFormat::Format format)
+int ExportAudioTab::set_format(ExportFormat::Format format)
 {
-	QList<ExportCodec::Codec> acodecs = ExportFormat::GetAudioCodecs(format);
+	QList<ExportCodec::Codec> acodecs = ExportFormat::get_audio_codecs(format);
 	setEnabled(!acodecs.isEmpty());
 	codec_combobox_->blockSignals(true);
 	codec_combobox_->clear();
 	foreach (ExportCodec::Codec acodec, acodecs) {
-		codec_combobox_->addItem(ExportCodec::GetCodecName(acodec), acodec);
+		codec_combobox_->addItem(ExportCodec::get_codec_name(acodec), acodec);
 	}
 	codec_combobox_->blockSignals(false);
 	fmt_ = format;
 
-	UpdateSampleFormats();
-	UpdateBitRateEnabled();
+	update_sample_formats();
+	update_bit_rate_enabled();
 
 	return acodecs.size();
 }
 
-void ExportAudioTab::UpdateSampleFormats()
+void ExportAudioTab::update_sample_formats()
 {
-	auto fmts = ExportFormat::GetSampleFormatsForCodec(fmt_, GetCodec());
-	sample_format_combobox_->SetAvailableFormats(fmts);
+	auto fmts = ExportFormat::get_sample_formats_for_codec(fmt_, get_codec());
+	sample_format_combobox_->set_available_formats(fmts);
 }
 
-void ExportAudioTab::UpdateBitRateEnabled()
+void ExportAudioTab::update_bit_rate_enabled()
 {
-	bool uses_bitrate = !ExportCodec::IsCodecLossless(GetCodec());
+	bool uses_bitrate = !ExportCodec::is_codec_lossless(get_codec());
 	bit_rate_slider_->setEnabled(uses_bitrate);
 
 	if (!uses_bitrate) {
-		bit_rate_slider_->SetTristate();
+		bit_rate_slider_->set_tristate();
 	} else {
-		bit_rate_slider_->SetValue(kDefaultBitRate);
+		bit_rate_slider_->set_value(k_default_bit_rate);
 	}
 }
 

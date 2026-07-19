@@ -37,7 +37,7 @@
 namespace
 {
 
-AVPixelFormat ConvertJPEGSpaceToRegularSpace(AVPixelFormat f)
+AVPixelFormat convert_jpeg_space_to_regular_space(AVPixelFormat f)
 {
 	switch (f) {
 	case AV_PIX_FMT_YUVJ420P:
@@ -57,67 +57,67 @@ AVPixelFormat ConvertJPEGSpaceToRegularSpace(AVPixelFormat f)
 	return f;
 }
 
-const AVCodec *FindEncoder(int codec, int sample_format)
+const AVCodec *find_encoder(int codec, int sample_format)
 {
 	switch (codec) {
-	case FB_CODEC_H264:
+	case fb_codec_h264:
 		return avcodec_find_encoder_by_name("libx264");
-	case FB_CODEC_H264RGB:
+	case fb_codec_h264_rgb:
 		return avcodec_find_encoder_by_name("libx264rgb");
-	case FB_CODEC_DNXHD:
+	case fb_codec_dnxhd:
 		return avcodec_find_encoder(AV_CODEC_ID_DNXHD);
-	case FB_CODEC_PRORES:
+	case fb_codec_prores:
 		return avcodec_find_encoder(AV_CODEC_ID_PRORES);
-	case FB_CODEC_CINEFORM:
+	case fb_codec_cineform:
 		return avcodec_find_encoder(AV_CODEC_ID_CFHD);
-	case FB_CODEC_H265:
+	case fb_codec_h265:
 		return avcodec_find_encoder(AV_CODEC_ID_HEVC);
-	case FB_CODEC_VP9:
+	case fb_codec_v_p9:
 		return avcodec_find_encoder(AV_CODEC_ID_VP9);
-	case FB_CODEC_AV1: {
+	case fb_codec_a_v1: {
 		const AVCodec *encoder = avcodec_find_encoder_by_name("libsvtav1");
 		if (!encoder) {
 			encoder = avcodec_find_encoder(AV_CODEC_ID_AV1);
 		}
 		return encoder;
 	}
-	case FB_CODEC_OPENEXR:
+	case fb_codec_openexr:
 		return avcodec_find_encoder(AV_CODEC_ID_EXR);
-	case FB_CODEC_PNG:
+	case fb_codec_png:
 		return avcodec_find_encoder(AV_CODEC_ID_PNG);
-	case FB_CODEC_TIFF:
+	case fb_codec_tiff:
 		return avcodec_find_encoder(AV_CODEC_ID_TIFF);
-	case FB_CODEC_MP2:
+	case fb_codec_m_p2:
 		return avcodec_find_encoder(AV_CODEC_ID_MP2);
-	case FB_CODEC_MP3:
+	case fb_codec_m_p3:
 		return avcodec_find_encoder(AV_CODEC_ID_MP3);
-	case FB_CODEC_AAC:
+	case fb_codec_aac:
 		return avcodec_find_encoder(AV_CODEC_ID_AAC);
-	case FB_CODEC_PCM:
+	case fb_codec_pcm:
 		switch (sample_format) {
-		case FB_SAMPLE_FMT_U8:
+		case fb_sample_fmt_u8:
 			return avcodec_find_encoder(AV_CODEC_ID_PCM_U8);
-		case FB_SAMPLE_FMT_S16:
+		case fb_sample_fmt_s16:
 			return avcodec_find_encoder(AV_CODEC_ID_PCM_S16LE);
-		case FB_SAMPLE_FMT_S32:
+		case fb_sample_fmt_s32:
 			return avcodec_find_encoder(AV_CODEC_ID_PCM_S32LE);
-		case FB_SAMPLE_FMT_S64:
+		case fb_sample_fmt_s64:
 			return avcodec_find_encoder(AV_CODEC_ID_PCM_S64LE);
-		case FB_SAMPLE_FMT_FLT:
+		case fb_sample_fmt_flt:
 			return avcodec_find_encoder(AV_CODEC_ID_PCM_F32LE);
-		case FB_SAMPLE_FMT_DBL:
+		case fb_sample_fmt_dbl:
 			return avcodec_find_encoder(AV_CODEC_ID_PCM_F64LE);
 		default:
 			break;
 		}
 		break;
-	case FB_CODEC_FLAC:
+	case fb_codec_flac:
 		return avcodec_find_encoder(AV_CODEC_ID_FLAC);
-	case FB_CODEC_OPUS:
+	case fb_codec_opus:
 		return avcodec_find_encoder(AV_CODEC_ID_OPUS);
-	case FB_CODEC_VORBIS:
+	case fb_codec_vorbis:
 		return avcodec_find_encoder(AV_CODEC_ID_VORBIS);
-	case FB_CODEC_SRT:
+	case fb_codec_srt:
 		return avcodec_find_encoder(AV_CODEC_ID_SUBRIP);
 	default:
 		break;
@@ -133,7 +133,7 @@ struct FBEncoder {
 	std::string filename;
 
 	int video_enabled = 0;
-	int video_codec = FB_CODEC_NONE;
+	int video_codec = fb_codec_none;
 	int video_width = 0;
 	int video_height = 0;
 	int video_pixel_aspect_num = 1;
@@ -144,9 +144,9 @@ struct FBEncoder {
 	int video_frame_rate_den = 1;
 	std::string video_pix_fmt;
 	// In AVPixelFormat space (translated from the FB config value at create)
-	int video_src_pix_fmt = FB_PIX_FMT_NONE;
-	int video_color_range = FB_COLOR_RANGE_UNSPEC;
-	int video_field_order = FB_FIELD_ORDER_PROGRESSIVE;
+	int video_src_pix_fmt = fb_pix_fmt_none;
+	int video_color_range = fb_color_range_unspec;
+	int video_field_order = fb_field_order_progressive;
 	int64_t video_bit_rate = 0;
 	int64_t video_min_bit_rate = 0;
 	int64_t video_max_bit_rate = 0;
@@ -156,14 +156,14 @@ struct FBEncoder {
 	std::vector<std::pair<std::string, std::string>> video_opts;
 
 	int audio_enabled = 0;
-	int audio_codec = FB_CODEC_NONE;
+	int audio_codec = fb_codec_none;
 	int audio_sample_rate = 0;
 	uint64_t audio_channel_layout_mask = 0;
-	int audio_sample_format = FB_SAMPLE_FMT_NONE;
+	int audio_sample_format = fb_sample_fmt_none;
 	int64_t audio_bit_rate = 0;
 
 	int subtitles_enabled = 0;
-	int subtitle_codec = FB_CODEC_NONE;
+	int subtitle_codec = fb_codec_none;
 	std::vector<uint8_t> subtitle_header;
 
 	// Runtime state
@@ -190,29 +190,29 @@ struct FBEncoder {
 
 	char error[1024] = { 0 };
 
-	void SetError(const char *context, int error_code)
+	void set_error(const char *context, int error_code)
 	{
-		fb::SetError(error, sizeof(error), context, error_code);
+		fb::set_error(error, sizeof(error), context, error_code);
 	}
 
-	void SetError(const char *message)
+	void set_error(const char *message)
 	{
 		snprintf(error, sizeof(error), "%s", message);
 	}
 
-	bool WriteAVFrame(AVFrame *frame, AVCodecContext *codec_ctx,
+	bool write_av_frame(AVFrame *frame, AVCodecContext *codec_ctx,
 					  AVStream *stream);
-	bool InitializeStream(AVMediaType type, AVStream **stream,
+	bool initialize_stream(AVMediaType type, AVStream **stream,
 						  AVCodecContext **codec_ctx, int codec);
-	bool InitializeCodecContext(AVStream **stream, AVCodecContext **codec_ctx,
+	bool initialize_codec_context(AVStream **stream, AVCodecContext **codec_ctx,
 								const AVCodec *codec);
-	bool SetupCodecContext(AVStream *stream, AVCodecContext *codec_ctx,
+	bool setup_codec_context(AVStream *stream, AVCodecContext *codec_ctx,
 						   const AVCodec *codec);
-	void FlushEncoders();
-	void FlushCodecCtx(AVCodecContext *codec_ctx, AVStream *stream);
-	bool InitializeResampleContext(int sample_format, int sample_rate,
+	void flush_encoders();
+	void flush_codec_ctx(AVCodecContext *codec_ctx, AVStream *stream);
+	bool initialize_resample_context(int sample_format, int sample_rate,
 								   uint64_t channel_layout_mask);
-	bool WriteAudioData(int sample_format, int sample_rate,
+	bool write_audio_data(int sample_format, int sample_rate,
 						uint64_t channel_layout_mask, const uint8_t **input_data,
 						int input_sample_count);
 };
@@ -242,7 +242,7 @@ FBEncoder *fb_encoder_create(const FBEncoderConfig *config)
 	}
 	// Stored in AVPixelFormat space; the public config value is an
 	// FB_PIX_FMT_* identifier.
-	e->video_src_pix_fmt = fb::PixFmtToAV(config->video_src_pix_fmt);
+	e->video_src_pix_fmt = fb::pix_fmt_to_av(config->video_src_pix_fmt);
 	e->video_color_range = config->video_color_range;
 	e->video_field_order = config->video_field_order;
 	e->video_bit_rate = config->video_bit_rate;
@@ -301,13 +301,13 @@ int fb_encoder_open(FBEncoder *e)
 	error_code = avformat_alloc_output_context2(&e->fmt_ctx, nullptr, nullptr,
 												e->filename.c_str());
 	if (error_code < 0) {
-		e->SetError("Failed to allocate output context", error_code);
+		e->set_error("Failed to allocate output context", error_code);
 		return error_code;
 	}
 
 	// Initialize a video stream if it's enabled
 	if (e->video_enabled) {
-		if (!e->InitializeStream(AVMEDIA_TYPE_VIDEO, &e->video_stream,
+		if (!e->initialize_stream(AVMEDIA_TYPE_VIDEO, &e->video_stream,
 								 &e->video_codec_ctx, e->video_codec)) {
 			return AVERROR_EXTERNAL;
 		}
@@ -317,14 +317,14 @@ int fb_encoder_open(FBEncoder *e)
 
 		e->video_scale_ctx = avfilter_graph_alloc();
 		if (!e->video_scale_ctx) {
-			e->SetError("Failed to allocate filter graph");
+			e->set_error("Failed to allocate filter graph");
 			return AVERROR_EXTERNAL;
 		}
 
-		static const int FILTER_ARG_SZ = 1024;
-		char filter_args[FILTER_ARG_SZ];
+		static const int filter_arg_sz = 1024;
+		char filter_args[filter_arg_sz];
 
-		snprintf(filter_args, FILTER_ARG_SZ,
+		snprintf(filter_args, filter_arg_sz,
 				 "video_size=%dx%d:pix_fmt=%d:time_base=%d/%d:pixel_aspect=%d/%d",
 				 e->video_width, e->video_height, e->video_src_pix_fmt,
 				 e->video_time_base_num, e->video_time_base_den,
@@ -343,8 +343,8 @@ int fb_encoder_open(FBEncoder *e)
 			// Set color range
 			AVFilterContext *range_filter;
 
-			snprintf(filter_args, FILTER_ARG_SZ, "in_range=full:out_range=%s",
-					 e->video_color_range == FB_COLOR_RANGE_JPEG ? "full" :
+			snprintf(filter_args, filter_arg_sz, "in_range=full:out_range=%s",
+					 e->video_color_range == fb_color_range_jpeg ? "full" :
 																   "limited");
 
 			avfilter_graph_create_filter(&range_filter,
@@ -360,7 +360,7 @@ int fb_encoder_open(FBEncoder *e)
 			// Transform pixel format
 			AVFilterContext *format_filter;
 
-			snprintf(filter_args, FILTER_ARG_SZ, "pix_fmts=%u", encoder_pix_fmt);
+			snprintf(filter_args, filter_arg_sz, "pix_fmts=%u", encoder_pix_fmt);
 
 			avfilter_graph_create_filter(&format_filter,
 										 avfilter_get_by_name("format"),
@@ -374,14 +374,14 @@ int fb_encoder_open(FBEncoder *e)
 		avfilter_link(last_filter, 0, e->video_buffersink_ctx, 0);
 
 		if (avfilter_graph_config(e->video_scale_ctx, nullptr) < 0) {
-			e->SetError("Failed to configure filter graph");
+			e->set_error("Failed to configure filter graph");
 			return AVERROR_EXTERNAL;
 		}
 	}
 
 	// Initialize an audio stream if it's enabled
 	if (e->audio_enabled) {
-		if (!e->InitializeStream(AVMEDIA_TYPE_AUDIO, &e->audio_stream,
+		if (!e->initialize_stream(AVMEDIA_TYPE_AUDIO, &e->audio_stream,
 								 &e->audio_codec_ctx, e->audio_codec)) {
 			return AVERROR_EXTERNAL;
 		}
@@ -389,7 +389,7 @@ int fb_encoder_open(FBEncoder *e)
 
 	// Initialize a subtitle stream if it's enabled
 	if (e->subtitles_enabled) {
-		if (!e->InitializeStream(AVMEDIA_TYPE_SUBTITLE, &e->subtitle_stream,
+		if (!e->initialize_stream(AVMEDIA_TYPE_SUBTITLE, &e->subtitle_stream,
 								 &e->subtitle_codec_ctx, e->subtitle_codec)) {
 			return AVERROR_EXTERNAL;
 		}
@@ -400,14 +400,14 @@ int fb_encoder_open(FBEncoder *e)
 	// Open output file for writing
 	error_code = avio_open(&e->fmt_ctx->pb, e->filename.c_str(), AVIO_FLAG_WRITE);
 	if (error_code < 0) {
-		e->SetError("Failed to open IO context", error_code);
+		e->set_error("Failed to open IO context", error_code);
 		return error_code;
 	}
 
 	// Write header
 	error_code = avformat_write_header(e->fmt_ctx, nullptr);
 	if (error_code < 0) {
-		e->SetError("Failed to write format header", error_code);
+		e->set_error("Failed to write format header", error_code);
 		return error_code;
 	}
 
@@ -426,13 +426,13 @@ int fb_encoder_write_video_frame(FBEncoder *e, int width, int height,
 	// Use the filter graph to convert formats/linesizes
 	AVFrame *input_frame = av_frame_alloc();
 	if (!input_frame) {
-		e->SetError("Failed to allocate input frame");
+		e->set_error("Failed to allocate input frame");
 		return AVERROR(ENOMEM);
 	}
 
 	input_frame->width = width;
 	input_frame->height = height;
-	input_frame->format = fb::PixFmtToAV(pix_fmt);
+	input_frame->format = fb::pix_fmt_to_av(pix_fmt);
 	input_frame->data[0] = const_cast<uint8_t *>(data);
 	input_frame->linesize[0] = linesize;
 
@@ -445,20 +445,20 @@ int fb_encoder_write_video_frame(FBEncoder *e, int width, int height,
 										 AV_BUFFERSRC_FLAG_KEEP_REF);
 	av_frame_free(&input_frame);
 	if (r < 0) {
-		e->SetError("Failed to add frame to filter graph", r);
+		e->set_error("Failed to add frame to filter graph", r);
 		return r;
 	}
 
 	AVFrame *encoded_frame = av_frame_alloc();
 	if (!encoded_frame) {
-		e->SetError("Failed to allocate encode frame");
+		e->set_error("Failed to allocate encode frame");
 		return AVERROR(ENOMEM);
 	}
 
 	r = av_buffersink_get_frame(e->video_buffersink_ctx, encoded_frame);
 	if (r < 0) {
 		av_frame_free(&encoded_frame);
-		e->SetError("Failed to retrieve frame from buffer sink", r);
+		e->set_error("Failed to retrieve frame from buffer sink", r);
 		return r;
 	}
 
@@ -466,21 +466,21 @@ int fb_encoder_write_video_frame(FBEncoder *e, int width, int height,
 		llround(time_seconds / av_q2d(e->video_codec_ctx->time_base));
 
 	bool result =
-		e->WriteAVFrame(encoded_frame, e->video_codec_ctx, e->video_stream);
+		e->write_av_frame(encoded_frame, e->video_codec_ctx, e->video_stream);
 
 	av_frame_free(&encoded_frame);
 
 	return result ? 0 : AVERROR_EXTERNAL;
 }
 
-bool FBEncoder::WriteAudioData(int sample_format, int sample_rate,
+bool FBEncoder::write_audio_data(int sample_format, int sample_rate,
 							   uint64_t channel_layout_mask,
 							   const uint8_t **input_data,
 							   int input_sample_count)
 {
-	if (!InitializeResampleContext(sample_format, sample_rate,
+	if (!initialize_resample_context(sample_format, sample_rate,
 								   channel_layout_mask)) {
-		SetError("Failed to initialize resample context");
+		set_error("Failed to initialize resample context");
 		return false;
 	}
 
@@ -527,13 +527,13 @@ bool FBEncoder::WriteAudioData(int sample_format, int sample_rate,
 					audio_write_count, { 1, audio_codec_ctx->sample_rate },
 					audio_codec_ctx->time_base);
 
-				WriteAVFrame(audio_frame, audio_codec_ctx, audio_stream);
+				write_av_frame(audio_frame, audio_codec_ctx, audio_stream);
 				audio_write_count += audio_frame_offset;
 				audio_frame_offset = 0;
 			}
 		}
 	} else if (converted < 0) {
-		SetError("Failed to resample audio", converted);
+		set_error("Failed to resample audio", converted);
 		result = false;
 	}
 
@@ -542,7 +542,7 @@ bool FBEncoder::WriteAudioData(int sample_format, int sample_rate,
 		audio_frame->pts =
 			av_rescale_q(audio_write_count, { 1, audio_codec_ctx->sample_rate },
 						 audio_codec_ctx->time_base);
-		WriteAVFrame(audio_frame, audio_codec_ctx, audio_stream);
+		write_av_frame(audio_frame, audio_codec_ctx, audio_stream);
 	}
 
 	// Free buffers created
@@ -590,7 +590,7 @@ int fb_encoder_write_audio(FBEncoder *e, const uint8_t *const *channel_data,
 			static_cast<AVSampleFormat>(sample_format), 0);
 
 		if (r < 0) {
-			e->SetError("Failed to allocate sample array", r);
+			e->set_error("Failed to allocate sample array", r);
 			return r;
 		} else {
 			if (planar) {
@@ -608,7 +608,7 @@ int fb_encoder_write_audio(FBEncoder *e, const uint8_t *const *channel_data,
 			start += input_sample_count;
 		}
 
-		result = e->WriteAudioData(sample_format, sample_rate,
+		result = e->write_audio_data(sample_format, sample_rate,
 								   channel_layout_mask,
 								   const_cast<const uint8_t **>(input_data),
 								   int(input_sample_count));
@@ -659,7 +659,7 @@ int fb_encoder_write_subtitle(FBEncoder *e, const char *utf8_text,
 	bool ret = true;
 
 	if (err < 0) {
-		e->SetError("Failed to write interleaved packet", err);
+		e->set_error("Failed to write interleaved packet", err);
 		ret = false;
 	}
 
@@ -676,7 +676,7 @@ void fb_encoder_close(FBEncoder *e)
 
 	if (e->open) {
 		// Flush encoders
-		e->FlushEncoders();
+		e->flush_encoders();
 
 		// We've written a header, so we'll write a trailer
 		av_write_trailer(e->fmt_ctx);
@@ -732,13 +732,13 @@ const char *fb_encoder_get_error(const FBEncoder *encoder)
 	return encoder ? encoder->error : "";
 }
 
-bool FBEncoder::WriteAVFrame(AVFrame *frame, AVCodecContext *codec_ctx,
+bool FBEncoder::write_av_frame(AVFrame *frame, AVCodecContext *codec_ctx,
 							 AVStream *stream)
 {
 	// Send raw frame to the encoder
 	int error_code = avcodec_send_frame(codec_ctx, frame);
 	if (error_code < 0) {
-		SetError("Failed to send frame to encoder", error_code);
+		set_error("Failed to send frame to encoder", error_code);
 		return false;
 	}
 
@@ -754,7 +754,7 @@ bool FBEncoder::WriteAVFrame(AVFrame *frame, AVCodecContext *codec_ctx,
 		if (error_code == AVERROR(EAGAIN)) {
 			break;
 		} else if (error_code < 0) {
-			SetError("Failed to receive packet from decoder", error_code);
+			set_error("Failed to receive packet from decoder", error_code);
 			goto fail;
 		}
 
@@ -766,7 +766,7 @@ bool FBEncoder::WriteAVFrame(AVFrame *frame, AVCodecContext *codec_ctx,
 		// Write packet to file
 		error_code = av_interleaved_write_frame(fmt_ctx, pkt);
 		if (error_code < 0) {
-			SetError("Failed to write interleaved packet", error_code);
+			set_error("Failed to write interleaved packet", error_code);
 			goto fail;
 		}
 
@@ -782,30 +782,30 @@ fail:
 	return succeeded;
 }
 
-bool FBEncoder::InitializeStream(AVMediaType type, AVStream **stream_ptr,
+bool FBEncoder::initialize_stream(AVMediaType type, AVStream **stream_ptr,
 								 AVCodecContext **codec_ctx_ptr, int codec)
 {
 	if (type != AVMEDIA_TYPE_VIDEO && type != AVMEDIA_TYPE_AUDIO &&
 		type != AVMEDIA_TYPE_SUBTITLE) {
-		SetError("Cannot initialize a stream that is not a video, audio, or subtitle type");
+		set_error("Cannot initialize a stream that is not a video, audio, or subtitle type");
 		return false;
 	}
 
 	// Find encoder
-	const AVCodec *encoder = FindEncoder(codec, audio_sample_format);
+	const AVCodec *encoder = find_encoder(codec, audio_sample_format);
 	if (!encoder) {
 		char msg[128];
 		snprintf(msg, sizeof(msg), "Failed to find codec for 0x%x", codec);
-		SetError(msg);
+		set_error(msg);
 		return false;
 	}
 
 	if (encoder->type != type) {
-		SetError("Retrieved unexpected codec type for codec");
+		set_error("Retrieved unexpected codec type for codec");
 		return false;
 	}
 
-	if (!InitializeCodecContext(stream_ptr, codec_ctx_ptr, encoder)) {
+	if (!initialize_codec_context(stream_ptr, codec_ctx_ptr, encoder)) {
 		return false;
 	}
 
@@ -821,23 +821,23 @@ bool FBEncoder::InitializeStream(AVMediaType type, AVStream **stream_ptr,
 		codec_ctx->time_base = { video_time_base_num, video_time_base_den };
 		codec_ctx->framerate = { video_frame_rate_num, video_frame_rate_den };
 		codec_ctx->pix_fmt = av_get_pix_fmt(video_pix_fmt.c_str());
-		codec_ctx->color_range = video_color_range == FB_COLOR_RANGE_JPEG ?
+		codec_ctx->color_range = video_color_range == fb_color_range_jpeg ?
 									 AVCOL_RANGE_JPEG :
 									 AVCOL_RANGE_MPEG;
 
-		if (video_field_order != FB_FIELD_ORDER_PROGRESSIVE) {
+		if (video_field_order != fb_field_order_progressive) {
 			// FIXME: I actually don't know what these flags do, the documentation helpfully doesn't
 			//        explain them at all. I hope using both of them is the right thing to do.
 			codec_ctx->flags |= AV_CODEC_FLAG_INTERLACED_DCT |
 								AV_CODEC_FLAG_INTERLACED_ME;
 
-			if (video_field_order == FB_FIELD_ORDER_TT) {
+			if (video_field_order == fb_field_order_tt) {
 				codec_ctx->field_order = AV_FIELD_TT;
 			} else {
 				codec_ctx->field_order = AV_FIELD_BB;
 
-				if (video_codec == FB_CODEC_H264 ||
-					video_codec == FB_CODEC_H264RGB) {
+				if (video_codec == fb_codec_h264 ||
+					video_codec == fb_codec_h264_rgb) {
 					// For some reason, FFmpeg doesn't set libx264's bff flag so we have to do it ourselves
 					av_opt_set(codec_ctx->priv_data, "x264opts", "bff=1",
 							   AV_OPT_SEARCH_CHILDREN);
@@ -902,34 +902,34 @@ bool FBEncoder::InitializeStream(AVMediaType type, AVStream **stream_ptr,
 		}
 	}
 
-	if (!SetupCodecContext(stream, codec_ctx, encoder)) {
+	if (!setup_codec_context(stream, codec_ctx, encoder)) {
 		return false;
 	}
 
 	return true;
 }
 
-bool FBEncoder::InitializeCodecContext(AVStream **stream,
+bool FBEncoder::initialize_codec_context(AVStream **stream,
 									   AVCodecContext **codec_ctx,
 									   const AVCodec *codec)
 {
 	*stream = avformat_new_stream(fmt_ctx, nullptr);
 	if (!(*stream)) {
-		SetError("Failed to allocate AVStream");
+		set_error("Failed to allocate AVStream");
 		return false;
 	}
 
 	// Allocate a codec context
 	*codec_ctx = avcodec_alloc_context3(codec);
 	if (!(*codec_ctx)) {
-		SetError("Failed to allocate AVCodecContext");
+		set_error("Failed to allocate AVCodecContext");
 		return false;
 	}
 
 	return true;
 }
 
-bool FBEncoder::SetupCodecContext(AVStream *stream, AVCodecContext *codec_ctx,
+bool FBEncoder::setup_codec_context(AVStream *stream, AVCodecContext *codec_ctx,
 								  const AVCodec *codec)
 {
 	int error_code;
@@ -953,14 +953,14 @@ bool FBEncoder::SetupCodecContext(AVStream *stream, AVCodecContext *codec_ctx,
 	error_code = avcodec_open2(codec_ctx, codec, &codec_opts);
 	av_dict_free(&codec_opts);
 	if (error_code < 0) {
-		SetError("Failed to open encoder", error_code);
+		set_error("Failed to open encoder", error_code);
 		return false;
 	}
 
 	// Copy context settings to codecpar object
 	error_code = avcodec_parameters_from_context(stream->codecpar, codec_ctx);
 	if (error_code < 0) {
-		SetError("Failed to copy codec parameters to stream", error_code);
+		set_error("Failed to copy codec parameters to stream", error_code);
 		return false;
 	}
 
@@ -971,27 +971,27 @@ bool FBEncoder::SetupCodecContext(AVStream *stream, AVCodecContext *codec_ctx,
 	return true;
 }
 
-void FBEncoder::FlushEncoders()
+void FBEncoder::flush_encoders()
 {
 	if (video_codec_ctx) {
-		FlushCodecCtx(video_codec_ctx, video_stream);
+		flush_codec_ctx(video_codec_ctx, video_stream);
 	}
 
 	if (audio_codec_ctx) {
-		FlushCodecCtx(audio_codec_ctx, audio_stream);
+		flush_codec_ctx(audio_codec_ctx, audio_stream);
 	}
 
 	if (fmt_ctx) {
 		if (fmt_ctx->oformat->flags) {
 			int r = av_interleaved_write_frame(fmt_ctx, nullptr);
 			if (r < 0) {
-				SetError("Failed to write interleaved packet", r);
+				set_error("Failed to write interleaved packet", r);
 			}
 		}
 	}
 }
 
-void FBEncoder::FlushCodecCtx(AVCodecContext *codec_ctx, AVStream *stream)
+void FBEncoder::flush_codec_ctx(AVCodecContext *codec_ctx, AVStream *stream)
 {
 	avcodec_send_frame(codec_ctx, nullptr);
 	AVPacket *pkt = av_packet_alloc();
@@ -1008,7 +1008,7 @@ void FBEncoder::FlushCodecCtx(AVCodecContext *codec_ctx, AVStream *stream)
 		av_packet_rescale_ts(pkt, codec_ctx->time_base, stream->time_base);
 		int r = av_interleaved_write_frame(fmt_ctx, pkt);
 		if (r < 0) {
-			SetError("Failed to write interleaved packet", r);
+			set_error("Failed to write interleaved packet", r);
 			break;
 		}
 		av_packet_unref(pkt);
@@ -1017,7 +1017,7 @@ void FBEncoder::FlushCodecCtx(AVCodecContext *codec_ctx, AVStream *stream)
 	av_packet_free(&pkt);
 }
 
-bool FBEncoder::InitializeResampleContext(int sample_format, int sample_rate,
+bool FBEncoder::initialize_resample_context(int sample_format, int sample_rate,
 										  uint64_t channel_layout_mask)
 {
 	if (audio_resample_ctx) {
@@ -1025,7 +1025,7 @@ bool FBEncoder::InitializeResampleContext(int sample_format, int sample_rate,
 	}
 
 	AVChannelLayout layout;
-	fb::ChannelLayoutFromMask(&layout, channel_layout_mask, 0);
+	fb::channel_layout_from_mask(&layout, channel_layout_mask, 0);
 
 	// Create resample context
 	swr_alloc_set_opts2(&audio_resample_ctx, &audio_codec_ctx->ch_layout,
@@ -1041,7 +1041,7 @@ bool FBEncoder::InitializeResampleContext(int sample_format, int sample_rate,
 
 	int err = swr_init(audio_resample_ctx);
 	if (err < 0) {
-		SetError("Failed to create resampling context", err);
+		set_error("Failed to create resampling context", err);
 		return false;
 	}
 
@@ -1070,7 +1070,7 @@ bool FBEncoder::InitializeResampleContext(int sample_format, int sample_rate,
 
 	err = av_frame_get_buffer(audio_frame, 0);
 	if (err < 0) {
-		SetError("Failed to create audio frame", err);
+		set_error("Failed to create audio frame", err);
 		return false;
 	}
 
@@ -1083,7 +1083,7 @@ bool FBEncoder::InitializeResampleContext(int sample_format, int sample_rate,
 int fb_encoder_codec_get_pixel_formats(int codec, const char **names,
 									   int max_names)
 {
-	const AVCodec *codec_info = FindEncoder(codec, FB_SAMPLE_FMT_NONE);
+	const AVCodec *codec_info = find_encoder(codec, fb_sample_fmt_none);
 	if (!codec_info || !codec_info->pix_fmts) {
 		return 0;
 	}
@@ -1091,7 +1091,7 @@ int fb_encoder_codec_get_pixel_formats(int codec, const char **names,
 	int count = 0;
 	for (int i = 0; codec_info->pix_fmts[i] != AV_PIX_FMT_NONE; i++) {
 		AVPixelFormat fmt = codec_info->pix_fmts[i];
-		if (ConvertJPEGSpaceToRegularSpace(fmt) != fmt) {
+		if (convert_jpeg_space_to_regular_space(fmt) != fmt) {
 			// This is a deprecated "JPEG" space, skip it
 			continue;
 		}
@@ -1107,7 +1107,7 @@ int fb_encoder_codec_get_pixel_formats(int codec, const char **names,
 
 int fb_encoder_codec_get_sample_formats(int codec, int *fmts, int max_fmts)
 {
-	const AVCodec *codec_info = FindEncoder(codec, FB_SAMPLE_FMT_NONE);
+	const AVCodec *codec_info = find_encoder(codec, fb_sample_fmt_none);
 	if (!codec_info || !codec_info->sample_fmts) {
 		return 0;
 	}

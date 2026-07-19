@@ -34,23 +34,23 @@
 namespace olive
 {
 
-const QString OCIOLutNode::kFileInput = QStringLiteral("lut_file_in");
-const QString OCIOLutNode::kDirectionInput = QStringLiteral("lut_dir_in");
+const QString OCIOLutNode::k_file_input = QStringLiteral("lut_file_in");
+const QString OCIOLutNode::k_direction_input = QStringLiteral("lut_dir_in");
 
 #define super OCIOBaseNode
 
 namespace
 {
 
-bool IsMainProcess()
+bool is_main_process()
 {
 	return qobject_cast<QApplication *>(QCoreApplication::instance()) !=
 		   nullptr;
 }
 
-int ReadDirectionInput(const Node *node)
+int read_direction_input(const Node *node)
 {
-	QVariant v = node->GetStandardValue(OCIOLutNode::kDirectionInput);
+	QVariant v = node->get_standard_value(OCIOLutNode::k_direction_input);
 
 	bool ok = false;
 	int direction = v.toInt(&ok);
@@ -75,23 +75,23 @@ int ReadDirectionInput(const Node *node)
 
 OCIOLutNode::OCIOLutNode()
 {
-	AddInput(kFileInput, NodeValue::kFile, QString(),
-			 InputFlags(kInputFlagNotKeyframable | kInputFlagNotConnectable));
-	SetInputProperty(
-		kFileInput, QStringLiteral("filter"),
+	add_input(k_file_input, NodeValue::k_file, QString(),
+			 InputFlags(k_input_flag_not_keyframable | k_input_flag_not_connectable));
+	set_input_property(
+		k_file_input, QStringLiteral("filter"),
 		tr("LUT Files (*.cube *.3dl);;Cube LUT (*.cube);;3DL LUT (*.3dl);;All Files (*)"));
-	SetInputProperty(kFileInput, QStringLiteral("placeholder"),
+	set_input_property(k_file_input, QStringLiteral("placeholder"),
 					 tr("Select a .cube or .3dl LUT file"));
 	// Allow the UI to offer the global LUT library for this input
-	SetInputProperty(kFileInput, QStringLiteral("lut_library"), true);
+	set_input_property(k_file_input, QStringLiteral("lut_library"), true);
 
-	AddInput(kDirectionInput, NodeValue::kCombo, 0,
-			 InputFlags(kInputFlagNotKeyframable | kInputFlagNotConnectable));
+	add_input(k_direction_input, NodeValue::k_combo, 0,
+			 InputFlags(k_input_flag_not_keyframable | k_input_flag_not_connectable));
 
 	qRegisterMetaType<olive::ColorProcessorPtr>();
 }
 
-QString OCIOLutNode::Name() const
+QString OCIOLutNode::name() const
 {
 	return tr("OCIO LUT");
 }
@@ -101,37 +101,37 @@ QString OCIOLutNode::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.ociolut");
 }
 
-QVector<Node::CategoryID> OCIOLutNode::Category() const
+QVector<Node::CategoryID> OCIOLutNode::category() const
 {
-	return { kCategoryColor };
+	return { k_category_color };
 }
 
-QString OCIOLutNode::Description() const
+QString OCIOLutNode::description() const
 {
 	return tr("Applies a LUT file through OpenColorIO.");
 }
 
-void OCIOLutNode::Retranslate()
+void OCIOLutNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kTextureInput, tr("Input"));
-	SetInputName(kFileInput, tr("LUT File"));
-	SetInputName(kDirectionInput, tr("Direction"));
-	SetComboBoxStrings(kDirectionInput, { tr("Forward"), tr("Inverse") });
+	set_input_name(k_texture_input, tr("Input"));
+	set_input_name(k_file_input, tr("LUT File"));
+	set_input_name(k_direction_input, tr("Direction"));
+	set_combo_box_strings(k_direction_input, { tr("Forward"), tr("Inverse") });
 }
 
 void OCIOLutNode::InputValueChangedEvent(const QString &input, int element)
 {
 	Q_UNUSED(element)
 
-	if (input == kFileInput || input == kDirectionInput) {
+	if (input == k_file_input || input == k_direction_input) {
 		// In the worker process, creating the OCIO processor can be slow and we
 		// are often called from LoadGraph while the main process is blocked
 		// waiting for a response. Defer generation to Value() time so the worker
 		// can ack the graph load immediately.
-		if (IsMainProcess()) {
-			GenerateProcessor();
+		if (is_main_process()) {
+			generate_processor();
 		} else {
 			QMutexLocker locker(&gen_mutex_);
 			processor_dirty_ = true;
@@ -139,60 +139,60 @@ void OCIOLutNode::InputValueChangedEvent(const QString &input, int element)
 	}
 }
 
-void OCIOLutNode::ConfigChanged()
+void OCIOLutNode::config_changed()
 {
-	if (IsMainProcess()) {
-		GenerateProcessor();
+	if (is_main_process()) {
+		generate_processor();
 	} else {
 		QMutexLocker locker(&gen_mutex_);
 		processor_dirty_ = true;
 	}
 }
 
-void OCIOLutNode::Value(const NodeValueRow &value, const NodeGlobals &globals,
+void OCIOLutNode::value(const NodeValueRow &value, const NodeGlobals &globals,
 						NodeValueTable *table) const
 {
 	// Ensure the processor is up-to-date before the base class emits the color
 	// transform job. This is especially important in the render worker, where
 	// processor creation is deferred until the first render.
-	EnsureProcessor();
+	ensure_processor();
 
-	super::Value(value, globals, table);
+	super::value(value, globals, table);
 }
 
-void OCIOLutNode::GenerateProcessor()
+void OCIOLutNode::generate_processor()
 {
-	EnsureProcessor();
+	ensure_processor();
 
 	// The processor has changed. In the main GUI process, refresh the viewer by
 	// invalidating the cache and cancelling background cache jobs.
 	// Invalidating first ensures any in-flight renders that complete afterwards
 	// won't write stale frames back. The worker process uses QGuiApplication and
 	// has no RenderManager/PreviewAutoCacher, so skip this step to avoid crashing.
-	if (IsMainProcess()) {
-		InvalidateAll(kTextureInput);
+	if (is_main_process()) {
+		invalidate_all(k_texture_input);
 		if (RenderManager *rm = RenderManager::instance()) {
-			if (PreviewAutoCacher *cacher = rm->GetCacher()) {
-				cacher->CancelVideoTasks(false);
+			if (PreviewAutoCacher *cacher = rm->get_cacher()) {
+				cacher->cancel_video_tasks(false);
 			}
 		}
 	}
 }
 
-void OCIOLutNode::EnsureProcessor() const
+void OCIOLutNode::ensure_processor() const
 {
 	QMutexLocker locker(&gen_mutex_);
 
 	if (!processor_dirty_ && last_processor_ &&
-		GetStandardValue(kFileInput).toString() == last_path_ &&
-		ReadDirectionInput(this) == last_direction_) {
+		get_standard_value(k_file_input).toString() == last_path_ &&
+		read_direction_input(this) == last_direction_) {
 		return;
 	}
 
-	CreateProcessorFromInputs();
+	create_processor_from_inputs();
 }
 
-void OCIOLutNode::SetLastError(const QString &error) const
+void OCIOLutNode::set_last_error(const QString &error) const
 {
 	if (last_error_ == error) {
 		return;
@@ -202,12 +202,12 @@ void OCIOLutNode::SetLastError(const QString &error) const
 
 	// Make the error visible to the user instead of failing silently, but only
 	// from the main process (the render worker has no status bar)
-	if (!error.isEmpty() && IsMainProcess() && Core::instance()) {
-		Core::instance()->ShowStatusBarMessage(error, 10000);
+	if (!error.isEmpty() && is_main_process() && Core::instance()) {
+		Core::instance()->show_status_bar_message(error, 10000);
 	}
 }
 
-bool OCIOLutNode::CreateProcessorFromInputs() const
+bool OCIOLutNode::create_processor_from_inputs() const
 {
 	if (!manager()) {
 		const_cast<OCIOLutNode *>(this)->set_processor(nullptr);
@@ -218,8 +218,8 @@ bool OCIOLutNode::CreateProcessorFromInputs() const
 		return false;
 	}
 
-	const QString path = GetStandardValue(kFileInput).toString();
-	const int direction = ReadDirectionInput(this);
+	const QString path = get_standard_value(k_file_input).toString();
+	const int direction = read_direction_input(this);
 
 	if (path.isEmpty()) {
 		const_cast<OCIOLutNode *>(this)->set_processor(nullptr);
@@ -227,7 +227,7 @@ bool OCIOLutNode::CreateProcessorFromInputs() const
 		last_path_.clear();
 		last_direction_ = -1;
 		processor_dirty_ = false;
-		SetLastError(QString());
+		set_last_error(QString());
 		return false;
 	}
 
@@ -245,19 +245,19 @@ bool OCIOLutNode::CreateProcessorFromInputs() const
 		last_path_.clear();
 		last_direction_ = -1;
 		processor_dirty_ = false;
-		SetLastError(tr("OCIO LUT: file does not exist: %1").arg(path));
+		set_last_error(tr("OCIO LUT: file does not exist: %1").arg(path));
 		return false;
 	}
 
 	const QString suffix = info.suffix();
-	if (!LUTLibrary::IsSupportedExtension(suffix)) {
+	if (!LUTLibrary::is_supported_extension(suffix)) {
 		qWarning() << "Unsupported OCIO LUT file extension:" << path;
 		const_cast<OCIOLutNode *>(this)->set_processor(nullptr);
 		last_processor_.reset();
 		last_path_.clear();
 		last_direction_ = -1;
 		processor_dirty_ = false;
-		SetLastError(
+		set_last_error(
 			tr("OCIO LUT: unsupported LUT file extension (expected .cube or "
 			   ".3dl): %1")
 				.arg(path));
@@ -267,29 +267,29 @@ bool OCIOLutNode::CreateProcessorFromInputs() const
 	ColorProcessorPtr processor;
 	try {
 		const bool forward = static_cast<ColorProcessor::Direction>(
-								 direction) == ColorProcessor::kNormal;
+								 direction) == ColorProcessor::k_normal;
 		qDebug() << "OCIOLutNode: creating processor for" << path
 				 << "direction=" << direction
 				 << "ocio_dir=" << (forward ? "FORWARD" : "INVERSE")
-				 << "process=" << (IsMainProcess() ? "main" : "worker");
+				 << "process=" << (is_main_process() ? "main" : "worker");
 
-		OCIO::FileTransformRcPtr transform = OCIO::FileTransform::Create();
+		ocio::FileTransformRcPtr transform = ocio::FileTransform::Create();
 		transform->setSrc(path.toUtf8().constData());
-		transform->setInterpolation(OCIO::INTERP_LINEAR);
-		transform->setDirection(forward ? OCIO::TRANSFORM_DIR_FORWARD :
-										  OCIO::TRANSFORM_DIR_INVERSE);
+		transform->setInterpolation(ocio::INTERP_LINEAR);
+		transform->setDirection(forward ? ocio::TRANSFORM_DIR_FORWARD :
+										  ocio::TRANSFORM_DIR_INVERSE);
 
-		processor = ColorProcessor::Create(
-			manager()->GetConfig()->getProcessor(transform));
+		processor = ColorProcessor::create(
+			manager()->get_config()->getProcessor(transform));
 	} catch (const std::exception &e) {
 		qWarning() << "OCIO LUT processor error:" << e.what();
 		processor = nullptr;
 	}
 
 	if (!processor) {
-		SetLastError(tr("OCIO LUT: failed to load LUT file: %1").arg(path));
+		set_last_error(tr("OCIO LUT: failed to load LUT file: %1").arg(path));
 	} else {
-		SetLastError(QString());
+		set_last_error(QString());
 	}
 
 	last_path_ = path;

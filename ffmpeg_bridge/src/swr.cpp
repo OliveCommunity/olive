@@ -30,8 +30,8 @@ FBResampler *fb_resampler_create(uint64_t out_layout_mask, int out_format,
 								 int in_format, int in_rate)
 {
 	AVChannelLayout out_layout, in_layout;
-	fb::ChannelLayoutFromMask(&out_layout, out_layout_mask, 0);
-	fb::ChannelLayoutFromMask(&in_layout, in_layout_mask, 0);
+	fb::channel_layout_from_mask(&out_layout, out_layout_mask, 0);
+	fb::channel_layout_from_mask(&in_layout, in_layout_mask, 0);
 
 	SwrContext *ctx = nullptr;
 	int r = swr_alloc_set_opts2(&ctx, &out_layout,

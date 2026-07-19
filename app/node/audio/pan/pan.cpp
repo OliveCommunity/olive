@@ -26,27 +26,27 @@
 namespace olive
 {
 
-const QString PanNode::kSamplesInput = QStringLiteral("samples_in");
-const QString PanNode::kPanningInput = QStringLiteral("panning_in");
+const QString PanNode::k_samples_input = QStringLiteral("samples_in");
+const QString PanNode::k_panning_input = QStringLiteral("panning_in");
 
 #define super Node
 
 PanNode::PanNode()
 {
-	AddInput(kSamplesInput, NodeValue::kSamples,
-			 InputFlags(kInputFlagNotKeyframable));
+	add_input(k_samples_input, NodeValue::k_samples,
+			 InputFlags(k_input_flag_not_keyframable));
 
-	AddInput(kPanningInput, NodeValue::kFloat, 0.0);
-	SetInputProperty(kPanningInput, QStringLiteral("min"), -1.0);
-	SetInputProperty(kPanningInput, QStringLiteral("max"), 1.0);
-	SetInputProperty(kPanningInput, QStringLiteral("view"),
-					 FloatSlider::kPercentage);
+	add_input(k_panning_input, NodeValue::k_float, 0.0);
+	set_input_property(k_panning_input, QStringLiteral("min"), -1.0);
+	set_input_property(k_panning_input, QStringLiteral("max"), 1.0);
+	set_input_property(k_panning_input, QStringLiteral("view"),
+					 FloatSlider::k_percentage);
 
-	SetFlag(kAudioEffect);
-	SetEffectInput(kSamplesInput);
+	set_flag(k_audio_effect);
+	set_effect_input(k_samples_input);
 }
 
-QString PanNode::Name() const
+QString PanNode::name() const
 {
 	return tr("Pan");
 }
@@ -56,27 +56,27 @@ QString PanNode::id() const
 	return QStringLiteral("org.olivevideoeditor.Olive.pan");
 }
 
-QVector<Node::CategoryID> PanNode::Category() const
+QVector<Node::CategoryID> PanNode::category() const
 {
-	return { kCategoryFilter };
+	return { k_category_filter };
 }
 
-QString PanNode::Description() const
+QString PanNode::description() const
 {
 	return tr("Adjust the stereo panning of an audio source.");
 }
 
-void PanNode::Value(const NodeValueRow &value, const NodeGlobals &globals,
+void PanNode::value(const NodeValueRow &value, const NodeGlobals &globals,
 					NodeValueTable *table) const
 {
 	// Create a sample job
-	SampleBuffer samples = value[kSamplesInput].toSamples();
+	SampleBuffer samples = value[k_samples_input].to_samples();
 	if (samples.is_allocated()) {
 		// This node is only compatible with stereo audio
 		if (samples.audio_params().channel_count() == 2) {
 			// If the input is static, we can just do it now which will be faster
-			if (IsInputStatic(kPanningInput)) {
-				float pan_volume = value[kPanningInput].toDouble();
+			if (is_input_static(k_panning_input)) {
+				float pan_volume = value[k_panning_input].to_double();
 				if (!qIsNull(pan_volume)) {
 					if (pan_volume > 0) {
 						samples.transform_volume_for_channel(0,
@@ -87,26 +87,26 @@ void PanNode::Value(const NodeValueRow &value, const NodeGlobals &globals,
 					}
 				}
 
-				table->Push(NodeValue(NodeValue::kSamples, samples, this));
+				table->push(NodeValue(NodeValue::k_samples, samples, this));
 			} else {
 				// Requires job
-				SampleJob job(globals.time(), kSamplesInput, value);
-				job.Insert(kPanningInput, value);
-				table->Push(NodeValue::kSamples, QVariant::fromValue(job),
+				SampleJob job(globals.time(), k_samples_input, value);
+				job.insert(k_panning_input, value);
+				table->push(NodeValue::k_samples, QVariant::fromValue(job),
 							this);
 			}
 		} else {
 			// Pass right through
-			table->Push(value[kSamplesInput]);
+			table->push(value[k_samples_input]);
 		}
 	}
 }
 
-void PanNode::ProcessSamples(const NodeValueRow &values,
+void PanNode::process_samples(const NodeValueRow &values,
 							 const SampleBuffer &input, SampleBuffer &output,
 							 int index) const
 {
-	float pan_val = values[kPanningInput].toDouble();
+	float pan_val = values[k_panning_input].to_double();
 
 	for (int i = 0; i < input.audio_params().channel_count(); i++) {
 		output.data(i)[index] = input.data(i)[index];
@@ -119,12 +119,12 @@ void PanNode::ProcessSamples(const NodeValueRow &values,
 	}
 }
 
-void PanNode::Retranslate()
+void PanNode::retranslate()
 {
-	super::Retranslate();
+	super::retranslate();
 
-	SetInputName(kSamplesInput, tr("Samples"));
-	SetInputName(kPanningInput, tr("Pan"));
+	set_input_name(k_samples_input, tr("Samples"));
+	set_input_name(k_panning_input, tr("Pan"));
 }
 
 }

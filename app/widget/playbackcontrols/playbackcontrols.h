@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef PLAYBACKCONTROLS_H
-#define PLAYBACKCONTROLS_H
+#ifndef OAK_PLAYBACKCONTROLS_H
+#define OAK_PLAYBACKCONTROLS_H
 
 #include <QWidget>
 #include <QLabel>
@@ -46,86 +46,86 @@ public:
 	/**
    * @brief Set whether the timecodes should be shown or not
    */
-	void SetTimecodeEnabled(bool enabled);
+	void set_timecode_enabled(bool enabled);
 
-	void SetTimebase(const rational &r);
+	void set_timebase(const Rational &r);
 
-	void SetAudioVideoDragButtonsVisible(bool e);
+	void set_audio_video_drag_buttons_visible(bool e);
 
 public slots:
-	void SetTime(const rational &r);
+	void set_time(const Rational &r);
 
-	void SetEndTime(const rational &r);
+	void set_end_time(const Rational &r);
 
-	void ShowPauseButton();
+	void show_pause_button();
 
-	void ShowPlayButton();
+	void show_play_button();
 
-	void StartPlayBlink()
+	void start_play_blink()
 	{
 		play_blink_timer_->start();
-		SetButtonRecordingState(play_btn_, true);
+		set_button_recording_state(play_btn_, true);
 	}
 
-	void StopPlayBlink()
+	void stop_play_blink()
 	{
 		play_blink_timer_->stop();
-		SetButtonRecordingState(play_btn_, false);
+		set_button_recording_state(play_btn_, false);
 	}
 
-	void SetPauseButtonRecordingState(bool on)
+	void set_pause_button_recording_state(bool on)
 	{
-		SetButtonRecordingState(pause_btn_, on);
+		set_button_recording_state(pause_btn_, on);
 	}
 
 signals:
 	/**
    * @brief Signal emitted when "Go to Start" is clicked
    */
-	void BeginClicked();
+	void begin_clicked();
 
 	/**
    * @brief Signal emitted when "Previous Frame" is clicked
    */
-	void PrevFrameClicked();
+	void prev_frame_clicked();
 
 	/**
    * @brief Signal emitted when "Play" is clicked
    */
-	void PlayClicked();
+	void play_clicked();
 
 	/**
    * @brief Signal emitted when "Pause" is clicked
    */
-	void PauseClicked();
+	void pause_clicked();
 
 	/**
    * @brief Signal emitted when "Next Frame" is clicked
    */
-	void NextFrameClicked();
+	void next_frame_clicked();
 
 	/**
    * @brief Signal emitted when "Go to End" is clicked
    */
-	void EndClicked();
+	void end_clicked();
 
-	void AudioClicked();
+	void audio_clicked();
 
-	void VideoClicked();
+	void video_clicked();
 
-	void AudioDragged();
+	void audio_dragged();
 
-	void VideoDragged();
+	void video_dragged();
 
-	void TimeChanged(const rational &t);
+	void time_changed(const Rational &t);
 
 protected:
 	virtual void changeEvent(QEvent *) override;
 
 private:
-	void UpdateIcons();
+	void update_icons();
 
-	static void SetButtonRecordingState(QPushButton *btn, bool on);
+	static void set_button_recording_state(QPushButton *btn, bool on);
 
 	QWidget *lower_left_container_;
 	QWidget *lower_right_container_;
@@ -133,9 +133,9 @@ private:
 	RationalSlider *cur_tc_lbl_;
 	QLabel *end_tc_lbl_;
 
-	rational end_time_;
+	Rational end_time_;
 
-	rational time_base_;
+	Rational time_base_;
 
 	QPushButton *go_to_start_btn_;
 	QPushButton *prev_frame_btn_;
@@ -151,11 +151,11 @@ private:
 	QTimer *play_blink_timer_;
 
 private slots:
-	void TimecodeChanged();
+	void timecode_changed();
 
-	void PlayBlink();
+	void play_blink();
 };
 
 }
 
-#endif // PLAYBACKCONTROLS_H
+#endif // OAK_PLAYBACKCONTROLS_H

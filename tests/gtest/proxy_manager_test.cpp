@@ -20,9 +20,9 @@
 namespace
 {
 
-QVariant ProxyConfigValue(const char *key)
+QVariant proxy_config_value(const char *key)
 {
-	return olive::Config::Current()[QString::fromUtf8(key)];
+	return olive::Config::current()[QString::fromUtf8(key)];
 }
 
 } // namespace
@@ -34,13 +34,13 @@ TEST(ProxyManager, BuildsStableProxyFilename)
 	params.height = 720;
 	params.version = 1;
 
-	const QString first = olive::ProxyManager::GetProxyFilename(
+	const QString first = olive::ProxyManager::get_proxy_filename(
 		QStringLiteral("/tmp/oak-cache"), QStringLiteral("/media/source.mov"),
 		0, params);
-	const QString second = olive::ProxyManager::GetProxyFilename(
+	const QString second = olive::ProxyManager::get_proxy_filename(
 		QStringLiteral("/tmp/oak-cache"), QStringLiteral("/media/source.mov"),
 		0, params);
-	const QString other_stream = olive::ProxyManager::GetProxyFilename(
+	const QString other_stream = olive::ProxyManager::get_proxy_filename(
 		QStringLiteral("/tmp/oak-cache"), QStringLiteral("/media/source.mov"),
 		1, params);
 
@@ -64,10 +64,10 @@ TEST(ProxyManager, ProxyFilenameIncludesPresetParameters)
 	mov_540p.version = 2;
 	mov_540p.extension = QStringLiteral("mov");
 
-	const QString first = olive::ProxyManager::GetProxyFilename(
+	const QString first = olive::ProxyManager::get_proxy_filename(
 		QStringLiteral("/tmp/oak-cache"), QStringLiteral("/media/source.mov"),
 		0, mp4_720p);
-	const QString second = olive::ProxyManager::GetProxyFilename(
+	const QString second = olive::ProxyManager::get_proxy_filename(
 		QStringLiteral("/tmp/oak-cache"), QStringLiteral("/media/source.mov"),
 		0, mov_540p);
 
@@ -84,20 +84,20 @@ TEST(ProxyManager, DetectsProxyState)
 
 	const QString proxy =
 		QDir(dir.path()).filePath(QStringLiteral("proxy-file.mp4"));
-	EXPECT_EQ(olive::ProxyManager::GetProxyState(proxy),
-			  olive::ProxyManager::kProxyMissing);
+	EXPECT_EQ(olive::ProxyManager::get_proxy_state(proxy),
+			  olive::ProxyManager::k_proxy_missing);
 
-	QFile working(olive::ProxyManager::GetWorkingProxyFilename(proxy));
+	QFile working(olive::ProxyManager::get_working_proxy_filename(proxy));
 	ASSERT_TRUE(working.open(QFile::WriteOnly));
 	working.close();
-	EXPECT_EQ(olive::ProxyManager::GetProxyState(proxy),
-			  olive::ProxyManager::kProxyGenerating);
+	EXPECT_EQ(olive::ProxyManager::get_proxy_state(proxy),
+			  olive::ProxyManager::k_proxy_generating);
 
 	QFile ready(proxy);
 	ASSERT_TRUE(ready.open(QFile::WriteOnly));
 	ready.close();
-	EXPECT_EQ(olive::ProxyManager::GetProxyState(proxy),
-			  olive::ProxyManager::kProxyReady);
+	EXPECT_EQ(olive::ProxyManager::get_proxy_state(proxy),
+			  olive::ProxyManager::k_proxy_ready);
 }
 
 TEST(ProxyManager, ReadyStateTakesPrecedenceOverWorkingFile)
@@ -111,44 +111,44 @@ TEST(ProxyManager, ReadyStateTakesPrecedenceOverWorkingFile)
 	ASSERT_TRUE(ready.open(QFile::WriteOnly));
 	ready.close();
 
-	QFile working(olive::ProxyManager::GetWorkingProxyFilename(proxy));
+	QFile working(olive::ProxyManager::get_working_proxy_filename(proxy));
 	ASSERT_TRUE(working.open(QFile::WriteOnly));
 	working.close();
 
-	EXPECT_EQ(olive::ProxyManager::GetProxyState(proxy),
-			  olive::ProxyManager::kProxyReady);
+	EXPECT_EQ(olive::ProxyManager::get_proxy_state(proxy),
+			  olive::ProxyManager::k_proxy_ready);
 }
 
 TEST(ProxyManager, ConvertsProxyStateToAndFromStrings)
 {
-	EXPECT_EQ(olive::ProxyManager::ProxyStateToString(
-				  olive::ProxyManager::kProxyMissing),
+	EXPECT_EQ(olive::ProxyManager::proxy_state_to_string(
+				  olive::ProxyManager::k_proxy_missing),
 			  QStringLiteral("missing"));
-	EXPECT_EQ(olive::ProxyManager::ProxyStateToString(
-				  olive::ProxyManager::kProxyGenerating),
+	EXPECT_EQ(olive::ProxyManager::proxy_state_to_string(
+				  olive::ProxyManager::k_proxy_generating),
 			  QStringLiteral("generating"));
-	EXPECT_EQ(olive::ProxyManager::ProxyStateToString(
-				  olive::ProxyManager::kProxyReady),
+	EXPECT_EQ(olive::ProxyManager::proxy_state_to_string(
+				  olive::ProxyManager::k_proxy_ready),
 			  QStringLiteral("ready"));
-	EXPECT_EQ(olive::ProxyManager::ProxyStateToString(
-				  olive::ProxyManager::kProxyFailed),
+	EXPECT_EQ(olive::ProxyManager::proxy_state_to_string(
+				  olive::ProxyManager::k_proxy_failed),
 			  QStringLiteral("failed"));
 
 	EXPECT_EQ(
-		olive::ProxyManager::ProxyStateFromString(QStringLiteral("missing")),
-		olive::ProxyManager::kProxyMissing);
+		olive::ProxyManager::proxy_state_from_string(QStringLiteral("missing")),
+		olive::ProxyManager::k_proxy_missing);
 	EXPECT_EQ(
-		olive::ProxyManager::ProxyStateFromString(QStringLiteral("generating")),
-		olive::ProxyManager::kProxyGenerating);
+		olive::ProxyManager::proxy_state_from_string(QStringLiteral("generating")),
+		olive::ProxyManager::k_proxy_generating);
 	EXPECT_EQ(
-		olive::ProxyManager::ProxyStateFromString(QStringLiteral("ready")),
-		olive::ProxyManager::kProxyReady);
+		olive::ProxyManager::proxy_state_from_string(QStringLiteral("ready")),
+		olive::ProxyManager::k_proxy_ready);
 	EXPECT_EQ(
-		olive::ProxyManager::ProxyStateFromString(QStringLiteral("failed")),
-		olive::ProxyManager::kProxyFailed);
+		olive::ProxyManager::proxy_state_from_string(QStringLiteral("failed")),
+		olive::ProxyManager::k_proxy_failed);
 	EXPECT_EQ(
-		olive::ProxyManager::ProxyStateFromString(QStringLiteral("unknown")),
-		olive::ProxyManager::kProxyMissing);
+		olive::ProxyManager::proxy_state_from_string(QStringLiteral("unknown")),
+		olive::ProxyManager::k_proxy_missing);
 }
 
 TEST(ProxyManager, FootagePersistsProxyMetadata)
@@ -173,10 +173,10 @@ TEST(ProxyManager, FootagePersistsProxyMetadata)
 	ASSERT_EQ(reader.name(), QStringLiteral("custom"));
 
 	olive::Footage footage;
-	ASSERT_TRUE(footage.LoadCustom(&reader, nullptr));
+	ASSERT_TRUE(footage.load_custom(&reader, nullptr));
 	EXPECT_TRUE(footage.proxy_enabled());
 	EXPECT_EQ(footage.proxy_path(), QStringLiteral("/cache/proxy/example.mp4"));
-	EXPECT_EQ(footage.proxy_state(), olive::ProxyManager::kProxyReady);
+	EXPECT_EQ(footage.proxy_state(), olive::ProxyManager::k_proxy_ready);
 	EXPECT_EQ(footage.proxy_video_stream_index(), 0);
 	EXPECT_EQ(footage.proxy_preset_version(), 1);
 }
@@ -185,14 +185,14 @@ TEST(ProxyManager, FootageSavesProxyMetadata)
 {
 	olive::Footage footage;
 	footage.set_timestamp(42);
-	footage.SetProxy(QStringLiteral("/cache/proxy/example.mp4"),
-					 olive::ProxyManager::kProxyReady, 2, 3, true);
+	footage.set_proxy(QStringLiteral("/cache/proxy/example.mp4"),
+					 olive::ProxyManager::k_proxy_ready, 2, 3, true);
 
 	QString xml;
 	QXmlStreamWriter writer(&xml);
 	writer.writeStartDocument();
 	writer.writeStartElement(QStringLiteral("custom"));
-	footage.SaveCustom(&writer);
+	footage.save_custom(&writer);
 	writer.writeEndElement();
 	writer.writeEndDocument();
 
@@ -207,14 +207,14 @@ TEST(ProxyManager, FootageSavesProxyMetadata)
 TEST(ProxyManager, FootageClearRemovesProxyMetadata)
 {
 	olive::Footage footage;
-	footage.SetProxy(QStringLiteral("/cache/proxy/example.mp4"),
-					 olive::ProxyManager::kProxyReady, 0, 1, true);
+	footage.set_proxy(QStringLiteral("/cache/proxy/example.mp4"),
+					 olive::ProxyManager::k_proxy_ready, 0, 1, true);
 
-	footage.Clear();
+	footage.clear();
 
 	EXPECT_FALSE(footage.proxy_enabled());
 	EXPECT_TRUE(footage.proxy_path().isEmpty());
-	EXPECT_EQ(footage.proxy_state(), olive::ProxyManager::kProxyMissing);
+	EXPECT_EQ(footage.proxy_state(), olive::ProxyManager::k_proxy_missing);
 	EXPECT_EQ(footage.proxy_video_stream_index(), -1);
 	EXPECT_EQ(footage.proxy_preset_version(), 0);
 }
@@ -223,8 +223,8 @@ TEST(ProxyManager, EmitsProxyFinishedState)
 {
 	// Drives a real proxy job through ProxyManager so that ProxyFinished is
 	// emitted by the manager's own task completion path
-	const QString ffmpeg = olive::ProxyManager::FindFFmpegExecutable(
-		ProxyConfigValue("FFmpegPath").toString());
+	const QString ffmpeg = olive::ProxyManager::find_f_fmpeg_executable(
+		proxy_config_value("FFmpegPath").toString());
 	if (ffmpeg.isEmpty()) {
 		GTEST_SKIP() << "ffmpeg executable not available";
 	}
@@ -237,9 +237,9 @@ TEST(ProxyManager, EmitsProxyFinishedState)
 	const bool created_task_manager =
 		(olive::TaskManager::instance() == nullptr);
 	if (created_task_manager) {
-		olive::TaskManager::CreateInstance();
+		olive::TaskManager::create_instance();
 	}
-	olive::ProxyManager::CreateInstance();
+	olive::ProxyManager::create_instance();
 
 	QTemporaryDir cache;
 	ASSERT_TRUE(cache.isValid());
@@ -251,7 +251,7 @@ TEST(ProxyManager, EmitsProxyFinishedState)
 	params.preset = QStringLiteral("ultrafast");
 	params.include_audio = true;
 
-	const QString expected_proxy = olive::ProxyManager::GetProxyFilename(
+	const QString expected_proxy = olive::ProxyManager::get_proxy_filename(
 		cache.path(), source, 0, params);
 
 	bool received = false;
@@ -259,11 +259,11 @@ TEST(ProxyManager, EmitsProxyFinishedState)
 	int received_stream = -1;
 	QString received_proxy;
 	olive::ProxyManager::ProxyState received_state =
-		olive::ProxyManager::kProxyMissing;
+		olive::ProxyManager::k_proxy_missing;
 	bool ready_received = false;
 	QEventLoop loop;
 	QObject::connect(
-		olive::ProxyManager::instance(), &olive::ProxyManager::ProxyFinished,
+		olive::ProxyManager::instance(), &olive::ProxyManager::proxy_finished,
 		&loop,
 		[&received, &received_source, &received_stream, &received_proxy,
 		 &received_state, &loop](const QString &source_filename,
@@ -277,7 +277,7 @@ TEST(ProxyManager, EmitsProxyFinishedState)
 			loop.quit();
 		});
 	QObject::connect(olive::ProxyManager::instance(),
-					 &olive::ProxyManager::ProxyReady, &loop,
+					 &olive::ProxyManager::proxy_ready, &loop,
 					 [&ready_received](const QString &, int, const QString &) {
 						 ready_received = true;
 					 });
@@ -285,9 +285,9 @@ TEST(ProxyManager, EmitsProxyFinishedState)
 	QTimer::singleShot(120000, &loop, &QEventLoop::quit);
 
 	const olive::ProxyManager::Proxy proxy =
-		olive::ProxyManager::instance()->GetOrStartProxy(cache.path(), source, 0,
+		olive::ProxyManager::instance()->get_or_start_proxy(cache.path(), source, 0,
 														 params);
-	ASSERT_EQ(proxy.state, olive::ProxyManager::kProxyGenerating);
+	ASSERT_EQ(proxy.state, olive::ProxyManager::k_proxy_generating);
 	ASSERT_NE(proxy.task, nullptr);
 
 	loop.exec();
@@ -297,38 +297,38 @@ TEST(ProxyManager, EmitsProxyFinishedState)
 	EXPECT_EQ(received_source, source);
 	EXPECT_EQ(received_stream, 0);
 	EXPECT_EQ(received_proxy, expected_proxy);
-	EXPECT_EQ(received_state, olive::ProxyManager::kProxyReady);
+	EXPECT_EQ(received_state, olive::ProxyManager::k_proxy_ready);
 
 	// The manager moved the completed proxy into its final location
 	EXPECT_TRUE(QFileInfo::exists(expected_proxy));
-	EXPECT_EQ(olive::ProxyManager::GetProxyState(expected_proxy),
-			  olive::ProxyManager::kProxyReady);
+	EXPECT_EQ(olive::ProxyManager::get_proxy_state(expected_proxy),
+			  olive::ProxyManager::k_proxy_ready);
 
-	olive::ProxyManager::DestroyInstance();
+	olive::ProxyManager::destroy_instance();
 	if (created_task_manager) {
-		olive::TaskManager::DestroyInstance();
+		olive::TaskManager::destroy_instance();
 	}
 }
 
 TEST(ProxyManager, WorkingProxyFilenamePrependsExtension)
 {
 	const QString proxy = QStringLiteral("/cache/proxy/example.mp4");
-	const QString working = olive::ProxyManager::GetWorkingProxyFilename(proxy);
+	const QString working = olive::ProxyManager::get_working_proxy_filename(proxy);
 
 	EXPECT_EQ(working, QStringLiteral("/cache/proxy/example.mp4.working.mp4"));
 }
 
 TEST(ProxyManager, ProxyStateFromStringDefaultsForEmpty)
 {
-	EXPECT_EQ(olive::ProxyManager::ProxyStateFromString(QString()),
-			  olive::ProxyManager::kProxyMissing);
+	EXPECT_EQ(olive::ProxyManager::proxy_state_from_string(QString()),
+			  olive::ProxyManager::k_proxy_missing);
 }
 
 TEST(ProxyManager, FootageProxyCanBeDisabled)
 {
 	olive::Footage footage;
-	footage.SetProxy(QStringLiteral("/cache/proxy/example.mp4"),
-					 olive::ProxyManager::kProxyReady, 0, 1, false);
+	footage.set_proxy(QStringLiteral("/cache/proxy/example.mp4"),
+					 olive::ProxyManager::k_proxy_ready, 0, 1, false);
 
 	EXPECT_FALSE(footage.proxy_enabled());
 	EXPECT_FALSE(footage.proxy_path().isEmpty());
@@ -338,8 +338,8 @@ TEST(ProxyManager, FootageJobWithoutProxyHasEmptyProxyFields)
 {
 	olive::FootageJob job(olive::TimeRange(), QStringLiteral("source-decoder"),
 						  QStringLiteral("/media/source.mov"),
-						  olive::Track::kVideo, olive::rational(10),
-						  olive::LoopMode::kLoopModeOff);
+						  olive::Track::k_video, olive::Rational(10),
+						  olive::LoopMode::k_loop_mode_off);
 
 	EXPECT_FALSE(job.has_proxy());
 	EXPECT_TRUE(job.proxy_filename().isEmpty());
@@ -352,21 +352,21 @@ TEST(ProxyManager, ProxyFilenameIncludesAudioFlag)
 	olive::ProxyManager::ProxyParams params;
 	params.include_audio = true;
 
-	const QString with_audio = olive::ProxyManager::GetProxyFilename(
+	const QString with_audio = olive::ProxyManager::get_proxy_filename(
 		QStringLiteral("/tmp/oak-cache"), QStringLiteral("/media/source.mov"),
 		0, params);
 	EXPECT_TRUE(with_audio.contains(QStringLiteral(".a1.")));
-	EXPECT_TRUE(olive::ProxyManager::ProxyFilenameHasAudio(with_audio));
+	EXPECT_TRUE(olive::ProxyManager::proxy_filename_has_audio(with_audio));
 
 	params.include_audio = false;
-	const QString without_audio = olive::ProxyManager::GetProxyFilename(
+	const QString without_audio = olive::ProxyManager::get_proxy_filename(
 		QStringLiteral("/tmp/oak-cache"), QStringLiteral("/media/source.mov"),
 		0, params);
 	EXPECT_TRUE(without_audio.contains(QStringLiteral(".a0.")));
-	EXPECT_FALSE(olive::ProxyManager::ProxyFilenameHasAudio(without_audio));
+	EXPECT_FALSE(olive::ProxyManager::proxy_filename_has_audio(without_audio));
 
 	// Legacy proxy filenames (no audio marker) must be treated as video-only
-	EXPECT_FALSE(olive::ProxyManager::ProxyFilenameHasAudio(
+	EXPECT_FALSE(olive::ProxyManager::proxy_filename_has_audio(
 		QStringLiteral("/tmp/oak-cache/proxy/abc-0.1280x720.v1.mp4")));
 
 	// The audio flag distinguishes otherwise identical proxy filenames
@@ -376,14 +376,14 @@ TEST(ProxyManager, ProxyFilenameIncludesAudioFlag)
 TEST(ProxyManager, ProxyParamsFromConfigReadsDefaults)
 {
 	const olive::ProxyManager::ProxyParams params =
-		olive::ProxyManager::ProxyParamsFromConfig();
+		olive::ProxyManager::proxy_params_from_config();
 
-	EXPECT_EQ(params.width, ProxyConfigValue("ProxyWidth").value<int>());
-	EXPECT_EQ(params.height, ProxyConfigValue("ProxyHeight").value<int>());
-	EXPECT_EQ(params.crf, ProxyConfigValue("ProxyCRF").value<int>());
-	EXPECT_EQ(params.preset, ProxyConfigValue("ProxyPreset").toString());
+	EXPECT_EQ(params.width, proxy_config_value("ProxyWidth").value<int>());
+	EXPECT_EQ(params.height, proxy_config_value("ProxyHeight").value<int>());
+	EXPECT_EQ(params.crf, proxy_config_value("ProxyCRF").value<int>());
+	EXPECT_EQ(params.preset, proxy_config_value("ProxyPreset").toString());
 	EXPECT_EQ(params.include_audio,
-			  ProxyConfigValue("ProxyIncludeAudio").toBool());
+			  proxy_config_value("ProxyIncludeAudio").toBool());
 }
 
 TEST(ProxyManager, FindFFmpegExecutablePrefersConfiguredPath)
@@ -393,13 +393,13 @@ TEST(ProxyManager, FindFFmpegExecutablePrefersConfiguredPath)
 	const QString self = QCoreApplication::applicationFilePath();
 	ASSERT_FALSE(self.isEmpty());
 
-	EXPECT_EQ(olive::ProxyManager::FindFFmpegExecutable(self), self);
+	EXPECT_EQ(olive::ProxyManager::find_f_fmpeg_executable(self), self);
 }
 
 TEST(ProxyManager, FindFFmpegExecutableRejectsInvalidConfiguredPath)
 {
 	const QString bogus = QStringLiteral("/nonexistent/ffmpeg-binary");
-	const QString result = olive::ProxyManager::FindFFmpegExecutable(bogus);
+	const QString result = olive::ProxyManager::find_f_fmpeg_executable(bogus);
 
 	// Must not return the invalid configured path; any fallback is acceptable
 	EXPECT_NE(result, bogus);
@@ -410,7 +410,7 @@ TEST(ProxyTask, BuildArgumentsIncludesAudioWhenEnabled)
 	olive::ProxyManager::ProxyParams params;
 	params.include_audio = true;
 
-	const QStringList args = olive::ProxyTask::BuildArguments(
+	const QStringList args = olive::ProxyTask::build_arguments(
 		QStringLiteral("/media/source.mov"), 1, params,
 		QStringLiteral("/cache/proxy/out.mp4"));
 
@@ -429,7 +429,7 @@ TEST(ProxyTask, BuildArgumentsDisablesAudioWhenDisabled)
 	olive::ProxyManager::ProxyParams params;
 	params.include_audio = false;
 
-	const QStringList args = olive::ProxyTask::BuildArguments(
+	const QStringList args = olive::ProxyTask::build_arguments(
 		QStringLiteral("/media/source.mov"), 1, params,
 		QStringLiteral("/cache/proxy/out.mp4"));
 
@@ -447,15 +447,15 @@ TEST(ProxyManager, FootagePersistsCustomProxyParams)
 	params.preset = QStringLiteral("faster");
 	params.extension = QStringLiteral("mov");
 	params.include_audio = false;
-	footage.SetCustomProxyParams(params);
-	footage.SetProxy(QStringLiteral("/cache/proxy/example.mp4"),
-					 olive::ProxyManager::kProxyReady, 0, 1, true);
+	footage.set_custom_proxy_params(params);
+	footage.set_proxy(QStringLiteral("/cache/proxy/example.mp4"),
+					 olive::ProxyManager::k_proxy_ready, 0, 1, true);
 
 	QString xml;
 	QXmlStreamWriter writer(&xml);
 	writer.writeStartDocument();
 	writer.writeStartElement(QStringLiteral("custom"));
-	footage.SaveCustom(&writer);
+	footage.save_custom(&writer);
 	writer.writeEndElement();
 	writer.writeEndDocument();
 
@@ -472,7 +472,7 @@ TEST(ProxyManager, FootagePersistsCustomProxyParams)
 	ASSERT_EQ(reader.name(), QStringLiteral("custom"));
 
 	olive::Footage loaded;
-	ASSERT_TRUE(loaded.LoadCustom(&reader, nullptr));
+	ASSERT_TRUE(loaded.load_custom(&reader, nullptr));
 	ASSERT_TRUE(loaded.has_custom_proxy_params());
 	EXPECT_EQ(loaded.custom_proxy_params().width, 640);
 	EXPECT_EQ(loaded.custom_proxy_params().height, 360);
@@ -485,14 +485,14 @@ TEST(ProxyManager, FootagePersistsCustomProxyParams)
 TEST(ProxyManager, FootageWithoutCustomParamsOmitsThemFromXml)
 {
 	olive::Footage footage;
-	footage.SetProxy(QStringLiteral("/cache/proxy/example.mp4"),
-					 olive::ProxyManager::kProxyReady, 0, 1, true);
+	footage.set_proxy(QStringLiteral("/cache/proxy/example.mp4"),
+					 olive::ProxyManager::k_proxy_ready, 0, 1, true);
 
 	QString xml;
 	QXmlStreamWriter writer(&xml);
 	writer.writeStartDocument();
 	writer.writeStartElement(QStringLiteral("custom"));
-	footage.SaveCustom(&writer);
+	footage.save_custom(&writer);
 	writer.writeEndElement();
 	writer.writeEndDocument();
 
@@ -502,7 +502,7 @@ TEST(ProxyManager, FootageWithoutCustomParamsOmitsThemFromXml)
 	QXmlStreamReader reader(xml);
 	ASSERT_TRUE(reader.readNextStartElement());
 	olive::Footage loaded;
-	ASSERT_TRUE(loaded.LoadCustom(&reader, nullptr));
+	ASSERT_TRUE(loaded.load_custom(&reader, nullptr));
 	EXPECT_FALSE(loaded.has_custom_proxy_params());
 }
 
@@ -512,23 +512,23 @@ TEST(ProxyManager, FootageEffectiveProxyParams)
 
 	// Without custom params, the global config values apply
 	const olive::ProxyManager::ProxyParams global_params =
-		footage.GetEffectiveProxyParams();
-	EXPECT_EQ(global_params.width, ProxyConfigValue("ProxyWidth").value<int>());
+		footage.get_effective_proxy_params();
+	EXPECT_EQ(global_params.width, proxy_config_value("ProxyWidth").value<int>());
 	EXPECT_EQ(global_params.include_audio,
-			  ProxyConfigValue("ProxyIncludeAudio").toBool());
+			  proxy_config_value("ProxyIncludeAudio").toBool());
 
 	// Custom params take precedence
 	olive::ProxyManager::ProxyParams custom;
 	custom.width = 320;
 	custom.height = 180;
-	footage.SetCustomProxyParams(custom);
+	footage.set_custom_proxy_params(custom);
 	EXPECT_TRUE(footage.has_custom_proxy_params());
-	EXPECT_EQ(footage.GetEffectiveProxyParams().width, 320);
-	EXPECT_EQ(footage.GetEffectiveProxyParams().height, 180);
+	EXPECT_EQ(footage.get_effective_proxy_params().width, 320);
+	EXPECT_EQ(footage.get_effective_proxy_params().height, 180);
 
 	// Clearing reverts to the global config values
-	footage.ClearCustomProxyParams();
+	footage.clear_custom_proxy_params();
 	EXPECT_FALSE(footage.has_custom_proxy_params());
-	EXPECT_EQ(footage.GetEffectiveProxyParams().width,
-			  ProxyConfigValue("ProxyWidth").value<int>());
+	EXPECT_EQ(footage.get_effective_proxy_params().width,
+			  proxy_config_value("ProxyWidth").value<int>());
 }

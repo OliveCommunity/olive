@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef LINEGIZMO_H
-#define LINEGIZMO_H
+#ifndef OAK_LINEGIZMO_H
+#define OAK_LINEGIZMO_H
 
 #include <QLineF>
 
@@ -34,16 +34,16 @@ class LineGizmo : public NodeGizmo {
 public:
 	LineGizmo(QObject *parent = nullptr);
 
-	const QLineF &GetLine() const
+	const QLineF &get_line() const
 	{
 		return line_;
 	}
-	void SetLine(const QLineF &line)
+	void set_line(const QLineF &line)
 	{
 		line_ = line;
 	}
 
-	virtual void Draw(QPainter *p) const override;
+	virtual void draw(QPainter *p) const override;
 
 private:
 	QLineF line_;
@@ -51,4 +51,4 @@ private:
 
 }
 
-#endif // LINEGIZMO_H
+#endif // OAK_LINEGIZMO_H

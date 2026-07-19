@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef SLIDERLABEL_H
-#define SLIDERLABEL_H
+#ifndef OAK_SLIDERLABEL_H
+#define OAK_SLIDERLABEL_H
 
 #include <QLabel>
 
@@ -34,7 +34,7 @@ class SliderLabel : public QLabel {
 public:
 	SliderLabel(QWidget *parent);
 
-	void SetColor(const QColor &c);
+	void set_color(const QColor &c);
 
 protected:
 	virtual void mousePressEvent(QMouseEvent *e) override;
@@ -46,15 +46,15 @@ protected:
 	virtual void changeEvent(QEvent *event) override;
 
 signals:
-	void LabelPressed();
+	void label_pressed();
 
-	void LabelReleased();
+	void label_released();
 
 	void focused();
 
-	void RequestReset();
+	void request_reset();
 
-	void ChangeSliderType();
+	void change_slider_type();
 
 private:
 	bool override_color_enabled_;
@@ -63,4 +63,4 @@ private:
 
 }
 
-#endif // SLIDERLABEL_H
+#endif // OAK_SLIDERLABEL_H

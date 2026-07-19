@@ -50,12 +50,12 @@ namespace olive
 
 namespace
 {
-QVector<Footage *> GetSelectedProxyFootage(const QVector<Node *> &items)
+QVector<Footage *> get_selected_proxy_footage(const QVector<Node *> &items)
 {
 	QVector<Footage *> footage;
 	for (Node *node : items) {
 		Footage *candidate = dynamic_cast<Footage *>(node);
-		if (!candidate || !candidate->GetFirstEnabledVideoStream().is_valid() ||
+		if (!candidate || !candidate->get_first_enabled_video_stream().is_valid() ||
 			footage.contains(candidate)) {
 			continue;
 		}
@@ -76,10 +76,10 @@ ProjectExplorer::ProjectExplorer(QWidget *parent)
 
 	// Set up navigation bar
 	nav_bar_ = new ProjectExplorerNavigation(this);
-	connect(nav_bar_, &ProjectExplorerNavigation::SizeChanged, this,
-			&ProjectExplorer::SizeChangedSlot);
-	connect(nav_bar_, &ProjectExplorerNavigation::DirectoryUpClicked, this,
-			&ProjectExplorer::DirUpSlot);
+	connect(nav_bar_, &ProjectExplorerNavigation::size_changed, this,
+			&ProjectExplorer::size_changed_slot);
+	connect(nav_bar_, &ProjectExplorerNavigation::directory_up_clicked, this,
+			&ProjectExplorer::dir_up_slot);
 	layout->addWidget(nav_bar_);
 
 	// Set up stacked widget
@@ -89,39 +89,39 @@ ProjectExplorer::ProjectExplorer(QWidget *parent)
 	// Set up sort filter proxy model
 	sort_model_.setSourceModel(&model_);
 	sort_model_.setFilterCaseSensitivity(Qt::CaseInsensitive);
-	sort_model_.setSortRole(ProjectViewModel::kInnerTextRole);
+	sort_model_.setSortRole(ProjectViewModel::k_inner_text_role);
 
 	// Add tree view to stacked widget
 	tree_view_ = new ProjectExplorerTreeView(stacked_widget_);
 	tree_view_->setSortingEnabled(true);
 	tree_view_->sortByColumn(0, Qt::AscendingOrder);
 	tree_view_->setContextMenuPolicy(Qt::CustomContextMenu);
-	AddView(tree_view_);
+	add_view(tree_view_);
 
 	// Add list view to stacked widget
 	list_view_ = new ProjectExplorerListView(stacked_widget_);
 	list_view_->setContextMenuPolicy(Qt::CustomContextMenu);
-	AddView(list_view_);
+	add_view(list_view_);
 
 	// Add icon view to stacked widget
 	icon_view_ = new ProjectExplorerIconView(stacked_widget_);
 	icon_view_->setContextMenuPolicy(Qt::CustomContextMenu);
-	AddView(icon_view_);
+	add_view(icon_view_);
 
 	// Set default view to tree view
-	set_view_type(ProjectToolbar::TreeView);
+	set_view_type(ProjectToolbar::tree_view);
 
 	// Set default icon size
-	SizeChangedSlot(kProjectIconSizeDefault);
+	size_changed_slot(k_project_icon_size_default);
 
 	connect(tree_view_, &ProjectExplorerTreeView::customContextMenuRequested,
-			this, &ProjectExplorer::ShowContextMenu);
+			this, &ProjectExplorer::show_context_menu);
 	connect(list_view_, &ProjectExplorerListView::customContextMenuRequested,
-			this, &ProjectExplorer::ShowContextMenu);
+			this, &ProjectExplorer::show_context_menu);
 	connect(icon_view_, &ProjectExplorerIconView::customContextMenuRequested,
-			this, &ProjectExplorer::ShowContextMenu);
+			this, &ProjectExplorer::show_context_menu);
 
-	UpdateNavBarText();
+	update_nav_bar_text();
 }
 
 const ProjectToolbar::ViewType &ProjectExplorer::view_type() const
@@ -135,54 +135,54 @@ void ProjectExplorer::set_view_type(ProjectToolbar::ViewType type)
 
 	// Set widget based on view type
 	switch (view_type_) {
-	case ProjectToolbar::TreeView:
+	case ProjectToolbar::tree_view:
 		stacked_widget_->setCurrentWidget(tree_view_);
 		nav_bar_->setVisible(false);
 		break;
-	case ProjectToolbar::ListView:
+	case ProjectToolbar::list_view:
 		stacked_widget_->setCurrentWidget(list_view_);
 		nav_bar_->setVisible(true);
 		break;
-	case ProjectToolbar::IconView:
+	case ProjectToolbar::icon_view:
 		stacked_widget_->setCurrentWidget(icon_view_);
 		nav_bar_->setVisible(true);
 		break;
 	}
 }
 
-void ProjectExplorer::Edit(Node *item)
+void ProjectExplorer::edit(Node *item)
 {
-	CurrentView()->edit(
-		sort_model_.mapFromSource(model_.CreateIndexFromItem(item)));
+	current_view()->edit(
+		sort_model_.mapFromSource(model_.create_index_from_item(item)));
 }
 
-void ProjectExplorer::AddView(QAbstractItemView *view)
+void ProjectExplorer::add_view(QAbstractItemView *view)
 {
 	view->setModel(&sort_model_);
 	view->setEditTriggers(QAbstractItemView::SelectedClicked);
 	connect(view, &QAbstractItemView::doubleClicked, this,
-			&ProjectExplorer::ItemDoubleClickedSlot);
+			&ProjectExplorer::item_double_clicked_slot);
 	connect(view->selectionModel(), &QItemSelectionModel::selectionChanged,
-			this, &ProjectExplorer::ViewSelectionChanged);
-	connect(view, SIGNAL(DoubleClickedEmptyArea()), this,
-			SLOT(ViewEmptyAreaDoubleClickedSlot()));
+			this, &ProjectExplorer::view_selection_changed);
+	connect(view, SIGNAL(double_clicked_empty_area()), this,
+			SLOT(view_empty_area_double_clicked_slot()));
 	stacked_widget_->addWidget(view);
 }
 
-void ProjectExplorer::BrowseToFolder(const QModelIndex &index)
+void ProjectExplorer::browse_to_folder(const QModelIndex &index)
 {
 	// Set appropriate views to this index
 	icon_view_->setRootIndex(index);
 	list_view_->setRootIndex(index);
 
 	// Set navbar text to folder's name
-	UpdateNavBarText();
+	update_nav_bar_text();
 
 	// Set directory up enabled button based on whether we're in root or not
 	nav_bar_->set_dir_up_enabled(index.isValid());
 }
 
-int ProjectExplorer::ConfirmItemDeletion(Node *item)
+int ProjectExplorer::confirm_item_deletion(Node *item)
 {
 	QMessageBox msgbox(this);
 	msgbox.setWindowTitle(tr("Confirm Item Deletion"));
@@ -193,7 +193,7 @@ int ProjectExplorer::ConfirmItemDeletion(Node *item)
 			 item->output_connections()) {
 		if (!dynamic_cast<Folder *>(connected.second.node())) {
 			connected_nodes_names.append(
-				GetHumanReadableNodeName(connected.second.node()));
+				get_human_readable_node_name(connected.second.node()));
 		}
 	}
 
@@ -201,7 +201,7 @@ int ProjectExplorer::ConfirmItemDeletion(Node *item)
 		tr("The item \"%1\" is currently connected to the following nodes:\n\n"
 		   "%2\n\n"
 		   "Are you sure you wish to delete this footage?")
-			.arg(GetHumanReadableNodeName(item),
+			.arg(get_human_readable_node_name(item),
 				 connected_nodes_names.join('\n')));
 
 	// Set up buttons
@@ -214,7 +214,7 @@ int ProjectExplorer::ConfirmItemDeletion(Node *item)
 	return msgbox.exec();
 }
 
-bool ProjectExplorer::DeleteItemsInternal(const QVector<Node *> &selected,
+bool ProjectExplorer::delete_items_internal(const QVector<Node *> &selected,
 										  bool &check_if_item_is_in_use,
 										  MultiUndoCommand *command)
 {
@@ -230,7 +230,7 @@ bool ProjectExplorer::DeleteItemsInternal(const QVector<Node *> &selected,
 				Folder *folder_test = dynamic_cast<Folder *>(oc.second.node());
 				if (!folder_test) {
 					// This sequence outputs to SOMETHING, confirm the user if they want to delete this
-					int r = ConfirmItemDeletion(node);
+					int r = confirm_item_deletion(node);
 
 					switch (r) {
 					case QMessageBox::No:
@@ -249,7 +249,7 @@ bool ProjectExplorer::DeleteItemsInternal(const QVector<Node *> &selected,
 		if (can_delete_item) {
 			Sequence *sequence = dynamic_cast<Sequence *>(node);
 			if (sequence &&
-				Core::instance()->main_window()->IsSequenceOpen(sequence)) {
+				Core::instance()->main_window()->is_sequence_open(sequence)) {
 				command->add_child(new CloseSequenceCommand(sequence));
 			}
 
@@ -266,23 +266,23 @@ bool ProjectExplorer::DeleteItemsInternal(const QVector<Node *> &selected,
 	return true;
 }
 
-QString ProjectExplorer::GetHumanReadableNodeName(Node *node)
+QString ProjectExplorer::get_human_readable_node_name(Node *node)
 {
-	if (node->GetLabel().isEmpty()) {
-		return node->Name();
+	if (node->get_label().isEmpty()) {
+		return node->name();
 	} else {
-		return tr("%1 (%2)").arg(node->GetLabel(), node->Name());
+		return tr("%1 (%2)").arg(node->get_label(), node->name());
 	}
 }
 
-void ProjectExplorer::UpdateNavBarText()
+void ProjectExplorer::update_nav_bar_text()
 {
 	QString absolute;
 
 	Folder *f = static_cast<Folder *>(
 		sort_model_.mapToSource(list_view_->rootIndex()).internalPointer());
 	while (f && f != project()->root()) {
-		absolute.prepend(QStringLiteral("%1 / ").arg(f->GetLabel()));
+		absolute.prepend(QStringLiteral("%1 / ").arg(f->get_label()));
 		f = f->folder();
 	}
 
@@ -291,17 +291,17 @@ void ProjectExplorer::UpdateNavBarText()
 	nav_bar_->set_text(absolute);
 }
 
-QAbstractItemView *ProjectExplorer::CurrentView() const
+QAbstractItemView *ProjectExplorer::current_view() const
 {
 	return static_cast<QAbstractItemView *>(stacked_widget_->currentWidget());
 }
 
-void ProjectExplorer::ViewEmptyAreaDoubleClickedSlot()
+void ProjectExplorer::view_empty_area_double_clicked_slot()
 {
-	emit DoubleClickedItem(nullptr);
+	emit double_clicked_item(nullptr);
 }
 
-void ProjectExplorer::ItemDoubleClickedSlot(const QModelIndex &index)
+void ProjectExplorer::item_double_clicked_slot(const QModelIndex &index)
 {
 	// Retrieve source item from index
 	Node *i =
@@ -309,65 +309,65 @@ void ProjectExplorer::ItemDoubleClickedSlot(const QModelIndex &index)
 
 	// If the item is a folder, browse to it
 	if (dynamic_cast<Folder *>(i) &&
-		(view_type() == ProjectToolbar::ListView ||
-		 view_type() == ProjectToolbar::IconView)) {
-		BrowseToFolder(index);
+		(view_type() == ProjectToolbar::list_view ||
+		 view_type() == ProjectToolbar::icon_view)) {
+		browse_to_folder(index);
 	}
 
 	// Emit a signal
-	emit DoubleClickedItem(i);
+	emit double_clicked_item(i);
 }
 
-void ProjectExplorer::SizeChangedSlot(int s)
+void ProjectExplorer::size_changed_slot(int s)
 {
 	icon_view_->setGridSize(QSize(s, s));
 
 	list_view_->setIconSize(QSize(s, s));
 }
 
-void ProjectExplorer::DirUpSlot()
+void ProjectExplorer::dir_up_slot()
 {
 	QModelIndex current_root = icon_view_->rootIndex();
 
 	if (current_root.isValid()) {
 		QModelIndex parent = current_root.parent();
 
-		BrowseToFolder(parent);
+		browse_to_folder(parent);
 	}
 }
 
-void ProjectExplorer::RenameSelectedItem()
+void ProjectExplorer::rename_selected_item()
 {
-	auto indexes = CurrentView()->selectionModel()->selectedRows();
+	auto indexes = current_view()->selectionModel()->selectedRows();
 	if (!indexes.empty()) {
-		CurrentView()->edit(indexes.first());
+		current_view()->edit(indexes.first());
 	}
 }
 
-void ProjectExplorer::SetSearchFilter(const QString &s)
+void ProjectExplorer::set_search_filter(const QString &s)
 {
 	sort_model_.setFilterFixedString(s);
 }
 
-void ProjectExplorer::ShowContextMenu()
+void ProjectExplorer::show_context_menu()
 {
 	Menu menu;
 	Menu new_menu;
 
-	context_menu_items_ = SelectedItems();
+	context_menu_items_ = selected_items();
 
 	if (context_menu_items_.isEmpty()) {
 		// Items to show if no items are selected
 
 		// "New" menu
 		new_menu.setTitle(tr("&New"));
-		MenuShared::instance()->AddItemsForNewMenu(&new_menu);
+		MenuShared::instance()->add_items_for_new_menu(&new_menu);
 		menu.addMenu(&new_menu);
 
 		// "Import" action
 		QAction *import_action = menu.addAction(tr("&Import..."));
 		connect(import_action, &QAction::triggered, Core::instance(),
-				&Core::DialogImportShow);
+				&Core::dialog_import_show);
 	} else {
 		// Actions to add when only one item is selected
 		if (context_menu_items_.size() == 1) {
@@ -377,12 +377,12 @@ void ProjectExplorer::ShowContextMenu()
 				QAction *open_in_new_tab =
 					menu.addAction(tr("Open in New Tab"));
 				connect(open_in_new_tab, &QAction::triggered, this,
-						&ProjectExplorer::OpenContextMenuItemInNewTab);
+						&ProjectExplorer::open_context_menu_item_in_new_tab);
 
 				QAction *open_in_new_window =
 					menu.addAction(tr("Open in New Window"));
 				connect(open_in_new_window, &QAction::triggered, this,
-						&ProjectExplorer::OpenContextMenuItemInNewWindow);
+						&ProjectExplorer::open_context_menu_item_in_new_window);
 
 			} else if (dynamic_cast<Footage *>(context_menu_item)) {
 				QString reveal_text;
@@ -397,11 +397,11 @@ void ProjectExplorer::ShowContextMenu()
 
 				QAction *reveal_action = menu.addAction(reveal_text);
 				connect(reveal_action, &QAction::triggered, this,
-						&ProjectExplorer::RevealSelectedFootage);
+						&ProjectExplorer::reveal_selected_footage);
 
 				QAction *replace_action = menu.addAction(tr("Replace Footage"));
 				connect(replace_action, &QAction::triggered, this,
-						&ProjectExplorer::ReplaceSelectedFootage);
+						&ProjectExplorer::replace_selected_footage);
 			}
 
 			menu.addSeparator();
@@ -416,7 +416,7 @@ void ProjectExplorer::ShowContextMenu()
 			Sequence *sequence_cast_test = dynamic_cast<Sequence *>(i);
 
 			if (footage_cast_test &&
-				!footage_cast_test->HasEnabledVideoStreams()) {
+				!footage_cast_test->has_enabled_video_streams()) {
 				all_items_have_video_streams = false;
 			}
 
@@ -431,7 +431,7 @@ void ProjectExplorer::ShowContextMenu()
 
 		if (all_items_are_footage && all_items_have_video_streams) {
 			const QVector<Footage *> proxy_footage =
-				GetSelectedProxyFootage(context_menu_items_);
+				get_selected_proxy_footage(context_menu_items_);
 
 			Menu *proxy_menu = new Menu(tr("Proxy"), &menu);
 			menu.addMenu(proxy_menu);
@@ -440,7 +440,7 @@ void ProjectExplorer::ShowContextMenu()
 				proxy_menu->addAction(tr("Generate Proxy"));
 			generate_proxy->setEnabled(!proxy_footage.isEmpty());
 			connect(generate_proxy, &QAction::triggered, this,
-					&ProjectExplorer::GenerateProxiesForSelectedFootage);
+					&ProjectExplorer::generate_proxies_for_selected_footage);
 
 			QAction *use_proxy = proxy_menu->addAction(tr("Use Proxy"));
 			use_proxy->setCheckable(true);
@@ -452,7 +452,7 @@ void ProjectExplorer::ShowContextMenu()
 								return footage->proxy_enabled();
 							}));
 			connect(use_proxy, &QAction::triggered, this,
-					&ProjectExplorer::SetSelectedFootageProxyEnabled);
+					&ProjectExplorer::set_selected_footage_proxy_enabled);
 
 			QAction *reveal_proxy = proxy_menu->addAction(tr("Reveal Proxy"));
 			reveal_proxy->setEnabled(
@@ -461,7 +461,7 @@ void ProjectExplorer::ShowContextMenu()
 								return !footage->proxy_path().isEmpty();
 							}));
 			connect(reveal_proxy, &QAction::triggered, this,
-					&ProjectExplorer::RevealProxyForSelectedFootage);
+					&ProjectExplorer::reveal_proxy_for_selected_footage);
 
 			QAction *delete_proxy = proxy_menu->addAction(tr("Delete Proxy"));
 			delete_proxy->setEnabled(
@@ -470,12 +470,12 @@ void ProjectExplorer::ShowContextMenu()
 								return !footage->proxy_path().isEmpty();
 							}));
 			connect(delete_proxy, &QAction::triggered, this,
-					&ProjectExplorer::DeleteProxiesForSelectedFootage);
+					&ProjectExplorer::delete_proxies_for_selected_footage);
 
 			QAction *proxy_settings =
 				proxy_menu->addAction(tr("Proxy Settings..."));
 			connect(proxy_settings, &QAction::triggered, this,
-					&ProjectExplorer::ShowProxyDialogForSelectedFootage);
+					&ProjectExplorer::show_proxy_dialog_for_selected_footage);
 		}
 
 		Q_UNUSED(all_items_are_footage_or_sequence)
@@ -485,26 +485,26 @@ void ProjectExplorer::ShowContextMenu()
 
 			auto rename_action = menu.addAction(tr("Rename"));
 			connect(rename_action, &QAction::triggered, this,
-					&ProjectExplorer::RenameSelectedItem);
+					&ProjectExplorer::rename_selected_item);
 		}
 
 		auto delete_action = menu.addAction(tr("Delete"));
 		connect(delete_action, &QAction::triggered, this,
-				&ProjectExplorer::DeleteSelected);
+				&ProjectExplorer::delete_selected);
 
 		if (context_menu_items_.size() == 1) {
 			menu.addSeparator();
 
 			QAction *properties_action = menu.addAction(tr("P&roperties"));
 			connect(properties_action, &QAction::triggered, this,
-					&ProjectExplorer::ShowItemPropertiesDialog);
+					&ProjectExplorer::show_item_properties_dialog);
 		}
 	}
 
 	menu.exec(QCursor::pos());
 }
 
-void ProjectExplorer::ShowItemPropertiesDialog()
+void ProjectExplorer::show_item_properties_dialog()
 {
 	Node *sel = context_menu_items_.first();
 
@@ -514,16 +514,16 @@ void ProjectExplorer::ShowItemPropertiesDialog()
 		fpd.exec();
 
 	} else if (dynamic_cast<Folder *>(sel)) {
-		Core::instance()->LabelNodes(context_menu_items_);
+		Core::instance()->label_nodes(context_menu_items_);
 
 	} else if (dynamic_cast<Sequence *>(sel)) {
 		SequenceDialog sd(static_cast<Sequence *>(sel),
-						  SequenceDialog::kExisting, this);
+						  SequenceDialog::k_existing, this);
 		sd.exec();
 	}
 }
 
-void ProjectExplorer::RevealSelectedFootage()
+void ProjectExplorer::reveal_selected_footage()
 {
 	Footage *footage = static_cast<Footage *>(context_menu_items_.first());
 
@@ -549,15 +549,15 @@ void ProjectExplorer::RevealSelectedFootage()
 #endif
 }
 
-void ProjectExplorer::ReplaceSelectedFootage()
+void ProjectExplorer::replace_selected_footage()
 {
 	Footage *footage = static_cast<Footage *>(context_menu_items_.first());
 
 	QString file =
 		QFileDialog::getOpenFileName(this, tr("Replace Footage"), QString(),
-									 Core::FootageFileDialogFilter());
+									 Core::footage_file_dialog_filter());
 	if (!file.isEmpty()) {
-		if (!Core::IsFootageExtensionAllowed(file)) {
+		if (!Core::is_footage_extension_allowed(file)) {
 			QMessageBox::warning(
 				this, tr("Unsupported media"),
 				tr("This file type is not allowed by the current media type "
@@ -570,10 +570,10 @@ void ProjectExplorer::ReplaceSelectedFootage()
 		// Change filename parameter
 		p->add_child(new NodeParamSetStandardValueCommand(
 			NodeKeyframeTrackReference(
-				NodeInput(footage, Footage::kFilenameInput)),
+				NodeInput(footage, Footage::k_filename_input)),
 			file));
 
-		if (QFileInfo(footage->filename()).fileName() == footage->GetLabel()) {
+		if (QFileInfo(footage->filename()).fileName() == footage->get_label()) {
 			// Footage label == filename, change label too
 			p->add_child(
 				new NodeRenameCommand(footage, QFileInfo(file).fileName()));
@@ -583,19 +583,19 @@ void ProjectExplorer::ReplaceSelectedFootage()
 	}
 }
 
-void ProjectExplorer::OpenContextMenuItemInNewTab()
+void ProjectExplorer::open_context_menu_item_in_new_tab()
 {
-	Core::instance()->main_window()->OpenFolder(
+	Core::instance()->main_window()->open_folder(
 		static_cast<Folder *>(context_menu_items_.first()), false);
 }
 
-void ProjectExplorer::OpenContextMenuItemInNewWindow()
+void ProjectExplorer::open_context_menu_item_in_new_window()
 {
-	Core::instance()->main_window()->OpenFolder(
+	Core::instance()->main_window()->open_folder(
 		static_cast<Folder *>(context_menu_items_.first()), true);
 }
 
-void ProjectExplorer::GenerateProxiesForSelectedFootage()
+void ProjectExplorer::generate_proxies_for_selected_footage()
 {
 	if (!ProxyManager::instance() || !project()) {
 		qWarning()
@@ -604,12 +604,12 @@ void ProjectExplorer::GenerateProxiesForSelectedFootage()
 	}
 
 	const QVector<Footage *> footage =
-		GetSelectedProxyFootage(context_menu_items_);
+		get_selected_proxy_footage(context_menu_items_);
 	qDebug()
 		<< "GenerateProxiesForSelectedFootage: starting proxy generation for"
 		<< footage.size() << "footage item(s)";
 	for (Footage *item : footage) {
-		const VideoParams video = item->GetFirstEnabledVideoStream();
+		const VideoParams video = item->get_first_enabled_video_stream();
 		if (!video.is_valid()) {
 			qWarning()
 				<< "GenerateProxiesForSelectedFootage: skipping item with no valid video stream"
@@ -617,25 +617,25 @@ void ProjectExplorer::GenerateProxiesForSelectedFootage()
 			continue;
 		}
 
-		ProxyManager::ProxyParams params = item->GetEffectiveProxyParams();
+		ProxyManager::ProxyParams params = item->get_effective_proxy_params();
 		const ProxyManager::Proxy proxy =
-			ProxyManager::instance()->GetOrStartProxy(
+			ProxyManager::instance()->get_or_start_proxy(
 				item->project()->cache_path(), item->filename(),
 				video.stream_index(), params);
 		qDebug() << "GenerateProxiesForSelectedFootage: proxy state="
-				 << ProxyManager::ProxyStateToString(proxy.state)
+				 << ProxyManager::proxy_state_to_string(proxy.state)
 				 << "file=" << proxy.filename
 				 << "cache=" << item->project()->cache_path();
-		item->SetProxy(proxy.filename, proxy.state, video.stream_index(),
+		item->set_proxy(proxy.filename, proxy.state, video.stream_index(),
 					   params.version, true);
-		item->InvalidateAll(Footage::kFilenameInput);
+		item->invalidate_all(Footage::k_filename_input);
 	}
 }
 
-void ProjectExplorer::SetSelectedFootageProxyEnabled(bool enabled)
+void ProjectExplorer::set_selected_footage_proxy_enabled(bool enabled)
 {
 	const QVector<Footage *> footage =
-		GetSelectedProxyFootage(context_menu_items_);
+		get_selected_proxy_footage(context_menu_items_);
 	qDebug() << "ProjectExplorer::SetSelectedFootageProxyEnabled:" << enabled
 			 << "footage count=" << footage.size();
 	for (Footage *item : footage) {
@@ -646,14 +646,14 @@ void ProjectExplorer::SetSelectedFootageProxyEnabled(bool enabled)
 		}
 
 		item->set_proxy_enabled(enabled);
-		item->InvalidateAll(Footage::kFilenameInput);
+		item->invalidate_all(Footage::k_filename_input);
 	}
 }
 
-void ProjectExplorer::RevealProxyForSelectedFootage()
+void ProjectExplorer::reveal_proxy_for_selected_footage()
 {
 	const QVector<Footage *> footage =
-		GetSelectedProxyFootage(context_menu_items_);
+		get_selected_proxy_footage(context_menu_items_);
 	for (Footage *item : footage) {
 		if (item->proxy_path().isEmpty()) {
 			continue;
@@ -681,28 +681,28 @@ void ProjectExplorer::RevealProxyForSelectedFootage()
 	}
 }
 
-void ProjectExplorer::DeleteProxiesForSelectedFootage()
+void ProjectExplorer::delete_proxies_for_selected_footage()
 {
 	const QVector<Footage *> footage =
-		GetSelectedProxyFootage(context_menu_items_);
+		get_selected_proxy_footage(context_menu_items_);
 	for (Footage *item : footage) {
 		if (item->proxy_path().isEmpty()) {
 			continue;
 		}
 
 		QFile::remove(item->proxy_path());
-		item->ClearProxy();
-		item->InvalidateAll(Footage::kFilenameInput);
+		item->clear_proxy();
+		item->invalidate_all(Footage::k_filename_input);
 	}
 }
 
-void ProjectExplorer::ShowProxyDialogForSelectedFootage()
+void ProjectExplorer::show_proxy_dialog_for_selected_footage()
 {
-	ProxyDialog d(this, GetSelectedProxyFootage(context_menu_items_));
+	ProxyDialog d(this, get_selected_proxy_footage(context_menu_items_));
 	d.exec();
 }
 
-void ProjectExplorer::ViewSelectionChanged()
+void ProjectExplorer::view_selection_changed()
 {
 	QItemSelectionModel *model = static_cast<QItemSelectionModel *>(sender());
 
@@ -722,7 +722,7 @@ void ProjectExplorer::ViewSelectionChanged()
 		nodes.append(get_root());
 	}
 
-	emit SelectionChanged(nodes);
+	emit selection_changed(nodes);
 }
 
 Project *ProjectExplorer::project() const
@@ -749,17 +749,17 @@ Folder *ProjectExplorer::get_root() const
 void ProjectExplorer::set_root(Folder *item)
 {
 	QModelIndex index =
-		sort_model_.mapFromSource(model_.CreateIndexFromItem(item));
+		sort_model_.mapFromSource(model_.create_index_from_item(item));
 
-	BrowseToFolder(index);
+	browse_to_folder(index);
 	tree_view_->setRootIndex(index);
 }
 
-QVector<Node *> ProjectExplorer::SelectedItems() const
+QVector<Node *> ProjectExplorer::selected_items() const
 {
 	// Determine which view is active and get its selected indexes
 	QModelIndexList index_list =
-		CurrentView()->selectionModel()->selectedRows();
+		current_view()->selectionModel()->selectedRows();
 
 	// Convert indexes to item objects
 	QVector<Node *> selected_items;
@@ -775,7 +775,7 @@ QVector<Node *> ProjectExplorer::SelectedItems() const
 	return selected_items;
 }
 
-Folder *ProjectExplorer::GetSelectedFolder() const
+Folder *ProjectExplorer::get_selected_folder() const
 {
 	if (project() == nullptr) {
 		return nullptr;
@@ -784,7 +784,7 @@ Folder *ProjectExplorer::GetSelectedFolder() const
 	Folder *folder = nullptr;
 
 	// Get the selected items from the panel
-	QVector<Node *> selected_items = SelectedItems();
+	QVector<Node *> selected_nodes = selected_items();
 
 	// Heuristic for finding the selected folder:
 	//
@@ -793,8 +793,8 @@ Folder *ProjectExplorer::GetSelectedFolder() const
 	// - Otherwise, if all folders found are the same, we'll use that to import into.
 	// - If more than one folder is found, we play it safe and import into the root folder
 
-	for (int i = 0; i < selected_items.size(); i++) {
-		Node *sel_item = selected_items.at(i);
+	for (int i = 0; i < selected_nodes.size(); i++) {
+		Node *sel_item = selected_nodes.at(i);
 
 		// If this item is not a folder, presumably it's parent is
 		if (!dynamic_cast<Folder *>(sel_item)) {
@@ -825,19 +825,19 @@ ProjectViewModel *ProjectExplorer::model()
 	return &model_;
 }
 
-void ProjectExplorer::SelectAll()
+void ProjectExplorer::select_all()
 {
-	CurrentView()->selectAll();
+	current_view()->selectAll();
 }
 
-void ProjectExplorer::DeselectAll()
+void ProjectExplorer::deselect_all()
 {
-	CurrentView()->selectionModel()->clearSelection();
+	current_view()->selectionModel()->clearSelection();
 }
 
-void ProjectExplorer::DeleteSelected()
+void ProjectExplorer::delete_selected()
 {
-	QVector<Node *> selected = SelectedItems();
+	QVector<Node *> selected = selected_items();
 
 	if (selected.isEmpty()) {
 		return;
@@ -847,7 +847,7 @@ void ProjectExplorer::DeleteSelected()
 
 	bool check_if_item_is_in_use = true;
 
-	if (DeleteItemsInternal(selected, check_if_item_is_in_use, command)) {
+	if (delete_items_internal(selected, check_if_item_is_in_use, command)) {
 		Core::instance()->undo_stack()->push(
 			command, tr("Deleted %1 Item(s)").arg(selected.size()));
 	} else {
@@ -855,29 +855,29 @@ void ProjectExplorer::DeleteSelected()
 	}
 }
 
-bool ProjectExplorer::SelectItem(Node *n, bool deselect_all_first)
+bool ProjectExplorer::select_item(Node *n, bool deselect_all_first)
 {
 	if (deselect_all_first) {
-		DeselectAll();
+		deselect_all();
 	}
 
-	QModelIndex index = model_.CreateIndexFromItem(n);
+	QModelIndex index = model_.create_index_from_item(n);
 
 	if (index.isValid()) {
 		index = sort_model_.mapFromSource(index);
 
 		QModelIndex parent = index.parent();
-		if (view_type() == ProjectToolbar::TreeView) {
+		if (view_type() == ProjectToolbar::tree_view) {
 			// Expand all folders until this index is visible
 			while (parent.isValid()) {
 				tree_view_->expand(parent);
 				parent = parent.parent();
 			}
 		} else {
-			BrowseToFolder(parent);
+			browse_to_folder(parent);
 		}
 
-		CurrentView()->selectionModel()->select(
+		current_view()->selectionModel()->select(
 			index, QItemSelectionModel::Select | QItemSelectionModel::Rows);
 
 		return true;

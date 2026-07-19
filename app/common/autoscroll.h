@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef AUTOSCROLL_H
-#define AUTOSCROLL_H
+#ifndef OAK_AUTOSCROLL_H
+#define OAK_AUTOSCROLL_H
 
 #include "common/define.h"
 
@@ -29,9 +29,9 @@ namespace olive
 
 class AutoScroll {
 public:
-	enum Method { kNone, kPage, kSmooth };
+	enum Method { k_none, k_page, k_smooth };
 };
 
 }
 
-#endif // AUTOSCROLL_H
+#endif // OAK_AUTOSCROLL_H

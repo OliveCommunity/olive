@@ -46,7 +46,7 @@ TrackViewSplitter::TrackViewSplitter(Qt::Alignment vertical_alignment,
 	setFixedHeight(initial_height);
 }
 
-void TrackViewSplitter::HandleReceiver(TrackViewSplitterHandle *h, int diff)
+void TrackViewSplitter::handle_receiver(TrackViewSplitterHandle *h, int diff)
 {
 	int ele_id = -1;
 
@@ -72,18 +72,18 @@ void TrackViewSplitter::HandleReceiver(TrackViewSplitterHandle *h, int diff)
 	int new_ele_sz = old_ele_sz + diff;
 
 	// Limit by track minimum height
-	new_ele_sz = qMax(new_ele_sz, Track::GetMinimumTrackHeightInPixels());
+	new_ele_sz = qMax(new_ele_sz, Track::get_minimum_track_height_in_pixels());
 
 	if (alignment_ == Qt::AlignBottom) {
 		ele_id = count() - ele_id - 1;
 	}
 
-	SetTrackHeight(ele_id, new_ele_sz);
+	set_track_height(ele_id, new_ele_sz);
 
-	emit TrackHeightChanged(ele_id, new_ele_sz);
+	emit track_height_changed(ele_id, new_ele_sz);
 }
 
-void TrackViewSplitter::SetTrackHeight(int index, int h)
+void TrackViewSplitter::set_track_height(int index, int h)
 {
 	QList<int> element_sizes = sizes();
 
@@ -103,7 +103,7 @@ void TrackViewSplitter::SetTrackHeight(int index, int h)
 	setFixedHeight(height() + diff);
 }
 
-void TrackViewSplitter::SetHeightWithSizes(QList<int> sizes)
+void TrackViewSplitter::set_height_with_sizes(QList<int> sizes)
 {
 	int start_height = 0;
 
@@ -125,7 +125,7 @@ void TrackViewSplitter::SetHeightWithSizes(QList<int> sizes)
 	setSizes(sizes);
 }
 
-void TrackViewSplitter::Insert(int index, int height, QWidget *item)
+void TrackViewSplitter::insert(int index, int height, QWidget *item)
 {
 	QList<int> sz = sizes();
 
@@ -136,10 +136,10 @@ void TrackViewSplitter::Insert(int index, int height, QWidget *item)
 	sz.insert(index, height);
 	insertWidget(index, item);
 
-	SetHeightWithSizes(sz);
+	set_height_with_sizes(sz);
 }
 
-void TrackViewSplitter::Remove(int index)
+void TrackViewSplitter::remove(int index)
 {
 	QList<int> sz = sizes();
 
@@ -150,13 +150,13 @@ void TrackViewSplitter::Remove(int index)
 	sz.removeAt(index);
 	delete widget(index);
 
-	SetHeightWithSizes(sz);
+	set_height_with_sizes(sz);
 }
 
-void TrackViewSplitter::SetSpacerHeight(int height)
+void TrackViewSplitter::set_spacer_height(int height)
 {
 	spacer_height_ = height;
-	SetHeightWithSizes(sizes());
+	set_height_with_sizes(sizes());
 }
 
 QSplitterHandle *TrackViewSplitter::createHandle()
@@ -178,7 +178,7 @@ void TrackViewSplitterHandle::mousePressEvent(QMouseEvent *)
 void TrackViewSplitterHandle::mouseMoveEvent(QMouseEvent *)
 {
 	if (dragging_) {
-		static_cast<TrackViewSplitter *>(parent())->HandleReceiver(
+		static_cast<TrackViewSplitter *>(parent())->handle_receiver(
 			this, QCursor::pos().y() - drag_y_);
 	}
 
