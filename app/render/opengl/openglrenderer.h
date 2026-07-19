@@ -27,6 +27,7 @@
 #include <QOpenGLFunctions>
 #include <QOpenGLShader>
 #include <QOpenGLVertexArrayObject>
+#include <QPointer>
 #include <QThread>
 #include <QTimer>
 
@@ -74,7 +75,7 @@ public:
 
 	QOpenGLContext *context() const
 	{
-		return context_;
+		return context_.data();
 	}
 
 	virtual QOpenGLContext *OpenGLContext() const override
@@ -126,7 +127,11 @@ private:
 
 	GLuint CompileShader(GLenum type, const QString &code);
 
-	QOpenGLContext *context_;
+	// Guarded pointer: viewer contexts are owned by the widget that created
+	// them and may be destroyed before this renderer (e.g. when a QOpenGLWidget
+	// tears down its shared context). QPointer auto-nulls in that case so
+	// DestroyInternal() never dereferences a dangling context.
+	QPointer<QOpenGLContext> context_;
 
 	QOpenGLFunctions *functions_;
 

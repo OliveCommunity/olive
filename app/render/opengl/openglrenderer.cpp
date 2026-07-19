@@ -164,21 +164,26 @@ void OpenGLRenderer::PostInit()
 
 void OpenGLRenderer::DestroyInternal()
 {
+	// context_ is guarded: if a caller-owned context was already destroyed,
+	// this is null and there is nothing GL-side left to release.
 	if (context_) {
 		GL_PREAMBLE;
 
 		if (functions_ && framebuffer_) {
 			functions_->glDeleteFramebuffers(1, &framebuffer_);
 		}
-		framebuffer_ = 0;
 
 		// Delete context if it belongs to us
 		if (context_->parent() == this) {
-			delete context_;
+			delete context_.data();
 		}
-		context_ = nullptr;
-		functions_ = nullptr;
 	}
+
+	// functions_ is derived from the context, so it is unusable once the
+	// context is gone; reset both regardless of the path taken above.
+	framebuffer_ = 0;
+	context_ = nullptr;
+	functions_ = nullptr;
 }
 
 void OpenGLRenderer::ClearDestination(Texture *texture, double r, double g,

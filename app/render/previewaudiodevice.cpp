@@ -42,6 +42,11 @@ bool PreviewAudioDevice::isSequential() const
 	return true;
 }
 
+void PreviewAudioDevice::SetParams(const core::AudioParams &params)
+{
+	set_bytes_per_frame(params.samples_to_bytes(1));
+}
+
 qint64 PreviewAudioDevice::readData(char *data, qint64 maxSize)
 {
 	QMutexLocker locker(&lock_);
