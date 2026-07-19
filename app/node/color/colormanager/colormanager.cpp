@@ -175,6 +175,53 @@ void ColorManager::set_default_input_color_space(const QString &s)
 	project()->set_default_input_color_space(s);
 }
 
+QString ColorManager::get_colorspace_for_ffmpeg_tags(int primaries,
+													 int trc) const
+{
+	// FFmpeg AVColorPrimaries/AVColorTransferCharacteristic values mapped to
+	// candidate colorspace names, in order of preference
+	struct TagMapping {
+		int primaries;
+		int trc;
+		const char *candidates[3];
+	};
+
+	static const TagMapping k_tag_mappings[] = {
+		{ 1, 1, { "Rec.709 OETF", "Rec.709", "BT.709" } },
+		{ 1, 13, { "sRGB OETF", "sRGB", nullptr } },
+		{ 6, 6, { "Rec.601 OETF (NTSC)", "Rec.601 NTSC", nullptr } },
+		{ 5, 5, { "Rec.601 OETF (PAL)", "Rec.601 PAL", nullptr } },
+		{ 5, 6, { "Rec.601 OETF (PAL)", "Rec.601 PAL", nullptr } },
+		{ 9, 16, { "Rec.2020 PQ", "BT.2020 PQ", "ST 2084 PQ" } },
+		{ 9, 18, { "Rec.2020 HLG", "BT.2020 HLG", "HLG" } },
+		{ 9, 1, { "Rec.2020", "BT.2020", nullptr } },
+		{ 9, 14, { "Rec.2020", "BT.2020", nullptr } },
+		{ 9, 15, { "Rec.2020", "BT.2020", nullptr } },
+	};
+
+	// 0 = unset, 2 = AVCOL_PRI/TRC_UNSPECIFIED
+	if (primaries == 0 || primaries == 2 || trc == 0 || trc == 2) {
+		return QString();
+	}
+
+	const QStringList available = list_available_colorspaces();
+
+	for (const TagMapping &mapping : k_tag_mappings) {
+		if (mapping.primaries == primaries && mapping.trc == trc) {
+			for (const char *candidate : mapping.candidates) {
+				if (candidate &&
+					available.contains(QString::fromUtf8(candidate))) {
+					return QString::fromUtf8(candidate);
+				}
+			}
+			// Known tag pair, but the config has no matching colorspace
+			return QString();
+		}
+	}
+
+	return QString();
+}
+
 QString ColorManager::get_reference_color_space() const
 {
 	return project()->get_color_reference_space();

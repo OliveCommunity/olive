@@ -84,6 +84,21 @@ static_assert(fb_col_spc_smpt_e170_m == AVCOL_SPC_SMPTE170M, "colspace mismatch"
 static_assert(fb_col_spc_smpt_e240_m == AVCOL_SPC_SMPTE240M, "colspace mismatch");
 static_assert(fb_col_spc_b_t2020_ncl == AVCOL_SPC_BT2020_NCL, "colspace mismatch");
 
+static_assert(fb_color_primaries_unspec == AVCOL_PRI_UNSPECIFIED, "primaries mismatch");
+static_assert(fb_color_primaries_bt709 == AVCOL_PRI_BT709, "primaries mismatch");
+static_assert(fb_color_primaries_bt470bg == AVCOL_PRI_BT470BG, "primaries mismatch");
+static_assert(fb_color_primaries_smpte170m == AVCOL_PRI_SMPTE170M, "primaries mismatch");
+static_assert(fb_color_primaries_bt2020 == AVCOL_PRI_BT2020, "primaries mismatch");
+static_assert(fb_color_primaries_smpte432 == AVCOL_PRI_SMPTE432, "primaries mismatch");
+
+static_assert(fb_color_trc_unspec == AVCOL_TRC_UNSPECIFIED, "trc mismatch");
+static_assert(fb_color_trc_bt709 == AVCOL_TRC_BT709, "trc mismatch");
+static_assert(fb_color_trc_gamma28 == AVCOL_TRC_GAMMA28, "trc mismatch");
+static_assert(fb_color_trc_smpte170m == AVCOL_TRC_SMPTE170M, "trc mismatch");
+static_assert(fb_color_trc_srgb == AVCOL_TRC_IEC61966_2_1, "trc mismatch");
+static_assert(fb_color_trc_pq == AVCOL_TRC_SMPTE2084, "trc mismatch");
+static_assert(fb_color_trc_hlg == AVCOL_TRC_ARIB_STD_B67, "trc mismatch");
+
 static_assert(fb_media_type_video == AVMEDIA_TYPE_VIDEO, "mediatype mismatch");
 static_assert(fb_media_type_audio == AVMEDIA_TYPE_AUDIO, "mediatype mismatch");
 static_assert(fb_media_type_data == AVMEDIA_TYPE_DATA, "mediatype mismatch");

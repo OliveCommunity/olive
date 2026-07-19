@@ -419,6 +419,10 @@ void VideoParams::load(QXmlStreamReader *reader)
 		} else if (reader->name() == QStringLiteral("colorrange")) {
 			set_color_range(
 				static_cast<ColorRange>(reader->readElementText().toInt()));
+		} else if (reader->name() == QStringLiteral("colorprimaries")) {
+			set_color_primaries(reader->readElementText().toInt());
+		} else if (reader->name() == QStringLiteral("colortransfer")) {
+			set_color_transfer(reader->readElementText().toInt());
 		} else {
 			reader->skipCurrentElement();
 		}
@@ -463,6 +467,10 @@ void VideoParams::save(QXmlStreamWriter *writer) const
 	writer->writeTextElement(QStringLiteral("colorspace"), colorspace_);
 	writer->writeTextElement(QStringLiteral("colorrange"),
 							 QString::number(color_range_));
+	writer->writeTextElement(QStringLiteral("colorprimaries"),
+							 QString::number(color_primaries_));
+	writer->writeTextElement(QStringLiteral("colortransfer"),
+							 QString::number(color_transfer_));
 }
 
 }

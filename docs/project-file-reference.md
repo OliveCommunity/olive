@@ -517,6 +517,8 @@ Serialized inside `<standard><track>` for inputs of type `kVideoParams`.
 <premultipliedalpha>0|1</premultipliedalpha>
 <colorspace>string</colorspace>
 <colorrange>int</colorrange>
+<colorprimaries>int</colorprimaries>
+<colortransfer>int</colortransfer>
 ```
 
 - `format`: `PixelFormat::Format` integer (`U8`, `U10`, `U16`, `F16`, `F32`).
@@ -527,6 +529,8 @@ Serialized inside `<standard><track>` for inputs of type `kVideoParams`.
   - `videotype`：`VideoParams::Type` 整数。
 - `colorrange`: `VideoParams::ColorRange` integer (`0` = limited, `1` = full).
   - `colorrange`：`VideoParams::ColorRange` 整数（`0` 为 limited，`1` 为 full）。
+- `colorprimaries`, `colortransfer`: raw FFmpeg `AVColorPrimaries` / `AVColorTransferCharacteristic` values reported by the media (`0` = unset, `2` = unspecified). Used to auto-detect the input colorspace when `colorspace` is empty.
+  - `colorprimaries`、`colortransfer`：媒体上报的 FFmpeg 原始 `AVColorPrimaries` / `AVColorTransferCharacteristic` 值（`0` 为未设置，`2` 为未指定）。当 `colorspace` 为空时用于自动检测输入色彩空间。
 
 ---
 

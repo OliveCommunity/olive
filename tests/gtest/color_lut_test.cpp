@@ -826,6 +826,56 @@ TEST(LUTLibrary, SupportsCubeAnd3dlExtensions)
 	EXPECT_FALSE(olive::LUTLibrary::is_supported_extension(QString()));
 }
 
+TEST(LUTLibrary, SupportsExtendedOcioFormats)
+{
+	for (const QString &ext :
+		 { QStringLiteral("spi1d"), QStringLiteral("spi3d"),
+		   QStringLiteral("spimtx"), QStringLiteral("csp"),
+		   QStringLiteral("clf"), QStringLiteral("ctf"), QStringLiteral("cub") }) {
+		EXPECT_TRUE(olive::LUTLibrary::is_supported_extension(ext))
+			<< ext.toStdString();
+		EXPECT_TRUE(olive::LUTLibrary::is_supported_extension(
+			QStringLiteral(".") + ext.toUpper()))
+			<< ext.toStdString();
+	}
+}
+
+TEST(ColorLut, Spi1dFileTransformConvertsColor)
+{
+	QTemporaryDir dir;
+	ASSERT_TRUE(dir.isValid());
+	const QString path =
+		QDir(dir.path()).filePath(QStringLiteral("invert.spi1d"));
+	QFile file(path);
+	ASSERT_TRUE(file.open(QIODevice::WriteOnly | QIODevice::Text));
+	file.write("Version 1\n"
+			   "From 0.0 1.0\n"
+			   "Length 2\n"
+			   "Components 3\n"
+			   "{\n"
+			   "1.0 1.0 1.0\n"
+			   "0.0 0.0 0.0\n"
+			   "}\n");
+	file.close();
+
+	ocio::FileTransformRcPtr transform = ocio::FileTransform::Create();
+	transform->setSrc(path.toUtf8().constData());
+	transform->setInterpolation(ocio::INTERP_LINEAR);
+	transform->setDirection(ocio::TRANSFORM_DIR_FORWARD);
+
+	ocio::ConstConfigRcPtr config = ocio::Config::CreateRaw();
+	olive::ColorProcessorPtr processor =
+		olive::ColorProcessor::create(config->getProcessor(transform));
+	ASSERT_TRUE(processor);
+
+	const olive::Color out =
+		processor->convert_color(olive::Color(0.25f, 0.50f, 0.75f, 1.0f));
+	EXPECT_NEAR(out.red(), 0.75f, 0.02f);
+	EXPECT_NEAR(out.green(), 0.50f, 0.02f);
+	EXPECT_NEAR(out.blue(), 0.25f, 0.02f);
+	EXPECT_NEAR(out.alpha(), 1.0f, 0.001f);
+}
+
 TEST(LUTLibrary, DirectoryRoundTripCleansAndDeduplicates)
 {
 	const QString previous =

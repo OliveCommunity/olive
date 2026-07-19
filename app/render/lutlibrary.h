@@ -38,8 +38,15 @@ namespace olive
 class LUTLibrary {
 public:
 	/**
+	 * @brief All LUT file extensions supported by the library
+	 *
+	 * Extensions OCIO FileTransform can load, lowercase, without the dot.
+	 */
+	static const QStringList &supported_extensions();
+
+	/**
 	 * @brief Returns true if the given file suffix is a supported LUT
-	 * extension (.cube or .3dl, case-insensitive, leading dot tolerated)
+	 * extension (case-insensitive, leading dot tolerated)
 	 */
 	static bool is_supported_extension(const QString &suffix);
 

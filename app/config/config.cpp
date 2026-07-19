@@ -78,6 +78,8 @@ void Config::set_defaults()
 	set_entry_internal(QStringLiteral("HoverFocus"), NodeValue::k_boolean, false);
 	set_entry_internal(QStringLiteral("AudioScrubbing"), NodeValue::k_boolean,
 					 true);
+	set_entry_internal(QStringLiteral("WaveformRgbParade"), NodeValue::k_boolean,
+					 false);
 	set_entry_internal(QStringLiteral("AutorecoveryEnabled"), NodeValue::k_boolean,
 					 true);
 	set_entry_internal(QStringLiteral("AutorecoveryInterval"), NodeValue::k_int,

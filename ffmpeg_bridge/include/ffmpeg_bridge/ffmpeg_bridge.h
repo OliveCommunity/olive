@@ -149,6 +149,27 @@ typedef enum FBColorSpace {
 	fb_col_spc_b_t2020_ncl = 9
 } FBColorSpace;
 
+/** Color primaries. Values mirror AVColorPrimaries (static_assert'ed). */
+typedef enum FBColorPrimaries {
+	fb_color_primaries_bt709 = 1,
+	fb_color_primaries_unspec = 2,
+	fb_color_primaries_bt470bg = 5,
+	fb_color_primaries_smpte170m = 6,
+	fb_color_primaries_bt2020 = 9,
+	fb_color_primaries_smpte432 = 12
+} FBColorPrimaries;
+
+/** Color transfer characteristics. Values mirror AVColorTransferCharacteristic. */
+typedef enum FBColorTrc {
+	fb_color_trc_bt709 = 1,
+	fb_color_trc_unspec = 2,
+	fb_color_trc_gamma28 = 5,
+	fb_color_trc_smpte170m = 6,
+	fb_color_trc_srgb = 13,
+	fb_color_trc_pq = 16,
+	fb_color_trc_hlg = 18
+} FBColorTrc;
+
 /** Media types. Values mirror AVMediaType (static_assert'ed). */
 typedef enum FBMediaType {
 	fb_media_type_video = 0,
@@ -322,6 +343,8 @@ typedef struct FBStreamInfo {
 	int pixel_format; /* FBPixelFormat */
 	int field_order;  /* FBFieldOrder */
 	int color_range;  /* FBColorRange */
+	int color_primaries; /* raw AVColorPrimaries value (2 = unspecified) */
+	int color_trc;       /* raw AVColorTransferCharacteristic value */
 
 	int sample_rate;
 	int sample_format; /* FBSampleFormat */
@@ -536,6 +559,13 @@ typedef struct FBEncoderConfig {
 	int64_t video_buffer_size;
 	int video_threads;
 	int video_color_srgb; /* non-zero: tag nclc as sRGB, else Rec.709 */
+	/* Explicit nclc tags; when video_color_primaries is
+	 * fb_color_primaries_unspec, tags are inferred from video_color_srgb
+	 * instead. Values match the corresponding
+	 * AVColorPrimaries/AVColorTransferCharacteristic/AVColorSpace constants. */
+	int video_color_primaries; /* FBColorPrimaries */
+	int video_color_trc;       /* FBColorTrc */
+	int video_colorspace;      /* FBColorSpaceTag */
 	const char **video_opt_keys;
 	const char **video_opt_values;
 	int video_opt_count;

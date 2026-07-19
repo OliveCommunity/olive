@@ -34,12 +34,24 @@ public:
 
 	MANAGEDDISPLAYWIDGET_DEFAULT_DESTRUCTOR(WaveformScope)
 
+	bool parade_mode() const
+	{
+		return parade_mode_;
+	}
+
+	void set_parade_mode(bool enabled);
+
 protected:
 	virtual ShaderCode generate_shader_code() override;
 
 	virtual void draw_scope(TexturePtr managed_tex, QVariant pipeline) override;
 
 	virtual void draw_scope_software(QPainter &p, const QImage &image) override;
+
+	virtual void contextMenuEvent(QContextMenuEvent *event) override;
+
+private:
+	bool parade_mode_;
 };
 
 }

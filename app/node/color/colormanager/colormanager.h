@@ -65,6 +65,16 @@ public:
 
 	QString get_default_input_color_space() const;
 
+	/**
+	 * @brief Auto-detects an input colorspace from media color tags
+	 *
+	 * Maps raw FFmpeg color primaries/transfer values (as exposed on
+	 * VideoParams) to a colorspace of the active OCIO config. Returns an
+	 * empty string when the tags are unknown or the config has no matching
+	 * colorspace, in which case the default input colorspace applies.
+	 */
+	QString get_colorspace_for_ffmpeg_tags(int primaries, int trc) const;
+
 	void set_default_input_color_space(const QString &s);
 
 	QString get_reference_color_space() const;

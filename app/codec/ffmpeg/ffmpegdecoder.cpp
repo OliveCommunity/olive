@@ -677,6 +677,8 @@ FootageDescription FFmpegDecoder::probe(const QString &filename,
 				stream.set_color_range(info.color_range == fb_color_range_jpeg ?
 										   VideoParams::k_color_range_full :
 										   VideoParams::k_color_range_limited);
+				stream.set_color_primaries(info.color_primaries);
+				stream.set_color_transfer(info.color_trc);
 				stream.set_premultiplied_alpha(false);
 
 				desc.add_video_stream(stream);

@@ -48,6 +48,8 @@ void fill_stream_info(const AVStream *s, int has_decoder, FBStreamInfo *out)
 	out->pixel_format = fb::pix_fmt_from_av(AVPixelFormat(par->format));
 	out->field_order = fb_field_order_unknown;
 	out->color_range = par->color_range;
+	out->color_primaries = par->color_primaries;
+	out->color_trc = par->color_trc;
 	out->sample_rate = par->sample_rate;
 	out->sample_format = par->format;
 	out->channel_layout_mask = fb::validate_stream_channel_layout_mask(s);

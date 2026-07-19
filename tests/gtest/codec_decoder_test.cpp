@@ -41,3 +41,22 @@ TEST(CodecDecoder, RetrieveVideoFrameFromDemoMp4)
 	}
 	EXPECT_TRUE(has_nonzero_byte);
 }
+
+TEST(CodecDecoder, ProbeReportsColorTags)
+{
+	const QString path = QDir(QStringLiteral(OAK_TEST_SOURCE_DIR))
+							 .filePath(QStringLiteral("tests/demo.mp4"));
+	ASSERT_TRUE(QFileInfo::exists(path));
+
+	olive::DecoderPtr decoder =
+		olive::Decoder::create_from_id(QStringLiteral("ffmpeg"));
+	ASSERT_TRUE(decoder);
+
+	const olive::FootageDescription desc = decoder->probe(path, nullptr);
+	const QVector<olive::VideoParams> &streams = desc.get_video_streams();
+	ASSERT_FALSE(streams.isEmpty());
+
+	// tests/demo.mp4 is tagged BT.709 primaries and transfer
+	EXPECT_EQ(streams.first().color_primaries(), 1);
+	EXPECT_EQ(streams.first().color_transfer(), 1);
+}

@@ -378,6 +378,33 @@ public:
 		color_range_ = color_range;
 	}
 
+	/**
+	 * @brief Color primaries/transfer as reported by the media
+	 *
+	 * Raw FFmpeg AVColorPrimaries/AVColorTransferCharacteristic values
+	 * (0 = unset, 2 = unspecified). Used to auto-detect the input
+	 * colorspace when no explicit colorspace has been set.
+	 */
+	int color_primaries() const
+	{
+		return color_primaries_;
+	}
+
+	void set_color_primaries(int p)
+	{
+		color_primaries_ = p;
+	}
+
+	int color_transfer() const
+	{
+		return color_transfer_;
+	}
+
+	void set_color_transfer(int t)
+	{
+		color_transfer_ = t;
+	}
+
 	int64_t get_time_in_timebase_units(const Rational &time) const;
 
 	void load(QXmlStreamReader *reader);
@@ -425,6 +452,8 @@ private:
 	float x_;
 	float y_;
 	ColorRange color_range_;
+	int color_primaries_ = 0;
+	int color_transfer_ = 0;
 };
 
 }

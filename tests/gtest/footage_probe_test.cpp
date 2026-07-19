@@ -331,9 +331,11 @@ TEST_F(FootageProbeTest, ProbedFootageValuePushesRealStreamJobs)
 	ASSERT_NE(texture, nullptr);
 	EXPECT_EQ(texture->params().width(), 1920);
 	EXPECT_EQ(texture->params().height(), 1080);
-	// The probed stream has no colorspace, so the project default is used
+	// The probed stream has no explicit colorspace. The media is tagged
+	// BT.709, which auto-detects to the config's Rec.709 input space and
+	// takes precedence over the project default
 	EXPECT_EQ(texture->params().colorspace(),
-			  QStringLiteral("ProbeInputSpace"));
+			  QStringLiteral("Rec.709 OETF"));
 
 	const auto *video_job =
 		static_cast<const olive::FootageJob *>(texture->job());

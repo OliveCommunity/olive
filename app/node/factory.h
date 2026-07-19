@@ -84,6 +84,8 @@ public:
 		k_tile_distort,
 		k_swirl_distort,
 		k_multicam_node,
+		k_ocio_grading_transform_log,
+		k_white_balance,
 
 		// Count value
 		k_internal_node_count

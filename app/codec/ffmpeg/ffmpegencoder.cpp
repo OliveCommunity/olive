@@ -38,6 +38,73 @@ FFmpegEncoder::FFmpegEncoder(const EncodingParams &params)
 {
 }
 
+bool FFmpegEncoder::get_color_tags_for_colorspace(const QString &colorspace,
+												  int *primaries, int *trc,
+												  int *matrix)
+{
+	const QString name = colorspace.toLower();
+
+	if (name.contains(QStringLiteral("pq")) ||
+		name.contains(QStringLiteral("2084"))) {
+		*primaries = fb_color_primaries_bt2020;
+		*trc = fb_color_trc_pq;
+		*matrix = fb_col_spc_b_t2020_ncl;
+		return true;
+	}
+
+	if (name.contains(QStringLiteral("hlg"))) {
+		*primaries = fb_color_primaries_bt2020;
+		*trc = fb_color_trc_hlg;
+		*matrix = fb_col_spc_b_t2020_ncl;
+		return true;
+	}
+
+	if (name.contains(QStringLiteral("2020"))) {
+		*primaries = fb_color_primaries_bt2020;
+		*trc = fb_color_trc_bt709;
+		*matrix = fb_col_spc_b_t2020_ncl;
+		return true;
+	}
+
+	if (name.contains(QStringLiteral("p3"))) {
+		*primaries = fb_color_primaries_smpte432;
+		*trc = fb_color_trc_srgb;
+		*matrix = fb_col_spc_b_t709;
+		return true;
+	}
+
+	if (name.contains(QStringLiteral("srgb"))) {
+		*primaries = fb_color_primaries_bt709;
+		*trc = fb_color_trc_srgb;
+		*matrix = fb_col_spc_b_t709;
+		return true;
+	}
+
+	if (name.contains(QStringLiteral("pal"))) {
+		*primaries = fb_color_primaries_bt470bg;
+		*trc = fb_color_trc_gamma28;
+		*matrix = fb_col_spc_b_t470_bg;
+		return true;
+	}
+
+	if (name.contains(QStringLiteral("ntsc"))) {
+		*primaries = fb_color_primaries_smpte170m;
+		*trc = fb_color_trc_smpte170m;
+		*matrix = fb_col_spc_smpt_e170_m;
+		return true;
+	}
+
+	if (name.contains(QStringLiteral("1886")) ||
+		name.contains(QStringLiteral("709"))) {
+		*primaries = fb_color_primaries_bt709;
+		*trc = fb_color_trc_bt709;
+		*matrix = fb_col_spc_b_t709;
+		return true;
+	}
+
+	return false;
+}
+
 QStringList FFmpegEncoder::get_pixel_formats_for_codec(ExportCodec::Codec c) const
 {
 	QStringList pix_fmts;
@@ -186,6 +253,19 @@ bool FFmpegEncoder::open()
 				QStringLiteral("sRGB"), Qt::CaseInsensitive) ?
 				1 :
 				0;
+
+		// Derive explicit nclc tags (HDR etc.) from the export colorspace;
+		// the bridge falls back to the legacy sRGB/Rec.709 logic when these
+		// are unspecified
+		int color_primaries = fb_color_primaries_unspec;
+		int color_trc = fb_color_trc_unspec;
+		int color_matrix = fb_col_spc_unspec;
+		get_color_tags_for_colorspace(params().color_transform().output(),
+									  &color_primaries, &color_trc,
+									  &color_matrix);
+		config.video_color_primaries = color_primaries;
+		config.video_color_trc = color_trc;
+		config.video_colorspace = color_matrix;
 
 		// Custom options (skip Olive-internal keys)
 		for (auto i = params().video_opts().begin();

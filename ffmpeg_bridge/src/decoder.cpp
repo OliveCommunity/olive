@@ -435,6 +435,8 @@ int fb_decoder_get_stream_info(const FBDecoder *decoder, FBStreamInfo *out)
 	out->field_order = decoder->codec_ctx ? decoder->codec_ctx->field_order :
 											AV_FIELD_UNKNOWN;
 	out->color_range = par->color_range;
+	out->color_primaries = par->color_primaries;
+	out->color_trc = par->color_trc;
 	out->sample_rate = par->sample_rate;
 	out->sample_format = par->format;
 	out->channel_layout_mask = fb::validate_stream_channel_layout_mask(s);

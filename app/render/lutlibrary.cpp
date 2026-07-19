@@ -29,6 +29,17 @@
 namespace olive
 {
 
+const QStringList &LUTLibrary::supported_extensions()
+{
+	// LUT formats OCIO FileTransform can load
+	static const QStringList extensions = {
+		QStringLiteral("cube"),	 QStringLiteral("3dl"),  QStringLiteral("spi1d"),
+		QStringLiteral("spi3d"), QStringLiteral("spimtx"), QStringLiteral("csp"),
+		QStringLiteral("clf"),	 QStringLiteral("ctf"),  QStringLiteral("cub"),
+	};
+	return extensions;
+}
+
 bool LUTLibrary::is_supported_extension(const QString &suffix)
 {
 	QString s = suffix;
@@ -36,8 +47,7 @@ bool LUTLibrary::is_supported_extension(const QString &suffix)
 		s.remove(0, 1);
 	}
 
-	const QString lower = s.toLower();
-	return lower == QStringLiteral("cube") || lower == QStringLiteral("3dl");
+	return supported_extensions().contains(s.toLower());
 }
 
 QStringList LUTLibrary::get_directories()

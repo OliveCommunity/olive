@@ -33,8 +33,10 @@
 #include "block/transition/diptocolor/diptocolortransition.h"
 #include "color/displaytransform/displaytransform.h"
 #include "color/ociogradingtransformlinear/ociogradingtransformlinear.h"
+#include "color/ociogradingtransformlog/ociogradingtransformlog.h"
 #include "color/ociolut/ociolut.h"
 #include "color/threewaycolor/threewaycolor.h"
+#include "color/whitebalance/whitebalance.h"
 #include "common/current.h"
 #include "distort/cornerpin/cornerpindistortnode.h"
 #include "distort/crop/cropdistortnode.h"
@@ -375,6 +377,10 @@ Node *NodeFactory::create_from_factory_index(const NodeFactory::InternalID &id)
 		return new DisplayTransformNode();
 	case k_ocio_grading_transform_linear:
 		return new OCIOGradingTransformLinearNode();
+	case k_ocio_grading_transform_log:
+		return new OCIOGradingTransformLogNode();
+	case k_white_balance:
+		return new WhiteBalanceNode();
 	case k_ocio_lut:
 		return new OCIOLutNode();
 	case k_three_way_color:

@@ -1,5 +1,5 @@
-# Olive - Non-Linear Video Editor
-# Copyright (C) 2022 Olive Team
+# Oak - Non-Linear Video Editor
+# Copyright (C) 2026 Oak Team
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -14,16 +14,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-add_subdirectory(colormanager)
-add_subdirectory(displaytransform)
-add_subdirectory(ociobase)
-add_subdirectory(ociogradingtransformlinear)
-add_subdirectory(ociogradingtransformlog)
-add_subdirectory(ociolut)
-add_subdirectory(threewaycolor)
-add_subdirectory(whitebalance)
-
 set(OLIVE_SOURCES
         ${OLIVE_SOURCES}
+        node/color/whitebalance/whitebalance.cpp
+        node/color/whitebalance/whitebalance.h
         PARENT_SCOPE
 )

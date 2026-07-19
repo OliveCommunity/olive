@@ -8,8 +8,13 @@
 #include "node/color/displaytransform/displaytransform.h"
 #include "node/color/ociobase/ociobase.h"
 #include "node/color/ociogradingtransformlinear/ociogradingtransformlinear.h"
+#include "node/color/ociogradingtransformlog/ociogradingtransformlog.h"
 #include "node/color/threewaycolor/threewaycolor.h"
+#include "node/color/whitebalance/whitebalance.h"
+#include "node/factory.h"
 #include "node/project.h"
+#include "node/project/serializer/serializer.h"
+#include "render/diskmanager.h"
 #include "render/job/colortransformjob.h"
 #include "render/job/shaderjob.h"
 #include "render/texture.h"
@@ -78,6 +83,198 @@ TEST(OCIOBaseNode, PushesNothingWhenTextureInputEmpty)
 
 	EXPECT_EQ(table.count(), 0);
 }
+
+// -----------------------------------------------------------------------------
+// ColorManager input colorspace auto-detection
+// -----------------------------------------------------------------------------
+
+TEST(ColorManager, DetectsColorspaceFromFfmpegTags)
+{
+	olive::ColorManager::set_up_default_config();
+	olive::ProjectSerializer::initialize();
+	olive::DiskManager::create_instance();
+
+	olive::Project project;
+	project.initialize();
+	olive::ColorManager *cm = project.color_manager();
+	ASSERT_NE(cm, nullptr);
+
+	EXPECT_EQ(cm->get_colorspace_for_ffmpeg_tags(1, 1),
+			  QStringLiteral("Rec.709 OETF"));
+	EXPECT_EQ(cm->get_colorspace_for_ffmpeg_tags(1, 13),
+			  QStringLiteral("sRGB OETF"));
+	EXPECT_EQ(cm->get_colorspace_for_ffmpeg_tags(6, 6),
+			  QStringLiteral("Rec.601 OETF (NTSC)"));
+	EXPECT_EQ(cm->get_colorspace_for_ffmpeg_tags(5, 5),
+			  QStringLiteral("Rec.601 OETF (PAL)"));
+
+	// The embedded config has no PQ/HLG/Rec.2020 colorspace
+	EXPECT_TRUE(cm->get_colorspace_for_ffmpeg_tags(9, 16).isEmpty());
+	EXPECT_TRUE(cm->get_colorspace_for_ffmpeg_tags(9, 18).isEmpty());
+
+	// Unknown tags never guess
+	EXPECT_TRUE(cm->get_colorspace_for_ffmpeg_tags(0, 0).isEmpty());
+	EXPECT_TRUE(cm->get_colorspace_for_ffmpeg_tags(2, 2).isEmpty());
+
+	olive::DiskManager::destroy_instance();
+	olive::ProjectSerializer::destroy();
+}
+
+// -----------------------------------------------------------------------------
+// OCIOGradingTransformLogNode (lift/gamma/gain)
+// -----------------------------------------------------------------------------
+
+TEST(OCIOGradingTransformLogNode, InputIdsMatchOcioUniformNames)
+{
+	olive::OCIOGradingTransformLogNode node;
+
+	// The input ids double as the OCIO GPU uniform names of the dynamic
+	// GRADING_LOG transform (verified against OCIO's generated shader)
+	EXPECT_EQ(olive::OCIOGradingTransformLogNode::k_lift_input,
+			  QStringLiteral("ocio_grading_primary_brightness"));
+	EXPECT_EQ(olive::OCIOGradingTransformLogNode::k_gain_input,
+			  QStringLiteral("ocio_grading_primary_contrast"));
+	EXPECT_EQ(olive::OCIOGradingTransformLogNode::k_gamma_input,
+			  QStringLiteral("ocio_grading_primary_gamma"));
+
+	EXPECT_TRUE(node.has_input_with_id(
+		olive::OCIOGradingTransformLogNode::k_saturation_input));
+	EXPECT_TRUE(
+		node.has_input_with_id(olive::OCIOGradingTransformLogNode::k_pivot_input));
+
+	// GRADING_LOG defaults (see ocio::GradingPrimary)
+	EXPECT_EQ(node.get_standard_value(
+				  olive::OCIOGradingTransformLogNode::k_lift_input),
+			  QVariant::fromValue(QVector4D(0, 0, 0, 0)));
+	EXPECT_EQ(node.get_standard_value(
+				  olive::OCIOGradingTransformLogNode::k_gain_input),
+			  QVariant::fromValue(QVector4D(1, 1, 1, 1)));
+	EXPECT_EQ(node.get_standard_value(
+				  olive::OCIOGradingTransformLogNode::k_gamma_input),
+			  QVariant::fromValue(QVector4D(1, 1, 1, 1)));
+	EXPECT_EQ(node.get_standard_value(
+				  olive::OCIOGradingTransformLogNode::k_pivot_input),
+			  QVariant::fromValue(-0.2));
+}
+
+TEST(OCIOGradingTransformLogNode, ValueMapsWheelsToOcioUniforms)
+{
+	olive::ColorManager::set_up_default_config();
+	olive::ProjectSerializer::initialize();
+	olive::DiskManager::create_instance();
+
+	olive::Project project;
+	project.initialize();
+
+	auto *node = new olive::OCIOGradingTransformLogNode();
+	node->setParent(&project);
+
+	olive::NodeValueRow row;
+	row.insert(olive::OCIOBaseNode::k_texture_input,
+			   olive::NodeValue(olive::NodeValue::k_texture,
+								make_dummy_texture()));
+	row.insert(olive::OCIOGradingTransformLogNode::k_lift_input,
+			   olive::NodeValue(olive::NodeValue::k_vec4,
+								QVector4D(1.0, 0.25, 0.0, 0.0)));
+	row.insert(olive::OCIOGradingTransformLogNode::k_gain_input,
+			   olive::NodeValue(olive::NodeValue::k_vec4,
+								QVector4D(2.0, 0.5, 1.0, 1.0)));
+	row.insert(olive::OCIOGradingTransformLogNode::k_gamma_input,
+			   olive::NodeValue(olive::NodeValue::k_vec4,
+								QVector4D(2.0, 1.0, 0.5, 1.0)));
+
+	olive::NodeValueTable table;
+	node->value(row, olive::NodeGlobals(), &table);
+
+	ASSERT_EQ(table.count(), 1);
+	olive::TexturePtr tex = table.get(olive::NodeValue::k_texture).to_texture();
+	ASSERT_TRUE(tex);
+	auto *job = dynamic_cast<olive::ColorTransformJob *>(tex->job());
+	ASSERT_NE(job, nullptr);
+
+	// Lift is additive: RGB += master
+	const QVector3D lift =
+		job->get(olive::OCIOGradingTransformLogNode::k_lift_input).to_vec3();
+	EXPECT_FLOAT_EQ(lift.x(), 1.25f);
+	EXPECT_FLOAT_EQ(lift.y(), 1.0f);
+	EXPECT_FLOAT_EQ(lift.z(), 1.0f);
+
+	// Gain multiplies: RGB *= master
+	const QVector3D gain =
+		job->get(olive::OCIOGradingTransformLogNode::k_gain_input).to_vec3();
+	EXPECT_FLOAT_EQ(gain.x(), 1.0f);
+	EXPECT_FLOAT_EQ(gain.y(), 2.0f);
+	EXPECT_FLOAT_EQ(gain.z(), 2.0f);
+
+	// Gamma multiplies: RGB *= master
+	const QVector3D gamma =
+		job->get(olive::OCIOGradingTransformLogNode::k_gamma_input).to_vec3();
+	EXPECT_FLOAT_EQ(gamma.x(), 2.0f);
+	EXPECT_FLOAT_EQ(gamma.y(), 1.0f);
+	EXPECT_FLOAT_EQ(gamma.z(), 2.0f);
+
+	olive::DiskManager::destroy_instance();
+	olive::ProjectSerializer::destroy();
+}
+
+TEST(OCIOGradingTransformLogNode, FactoryCreatesNode)
+{
+	std::unique_ptr<olive::Node> node(
+		olive::NodeFactory::create_from_factory_index(
+			olive::NodeFactory::k_ocio_grading_transform_log));
+	ASSERT_NE(node, nullptr);
+	EXPECT_EQ(node->id(),
+			  QStringLiteral("org.olivevideoeditor.Olive.ociogradingtransformlog"));
+}
+
+// -----------------------------------------------------------------------------
+// WhiteBalanceNode
+// -----------------------------------------------------------------------------
+
+TEST(WhiteBalanceNode, NeutralTemperatureKeepsNearUnityGain)
+{
+	const QVector3D gain =
+		olive::WhiteBalanceNode::get_gain_for_temperature(6500.0, 0.0);
+	EXPECT_NEAR(gain.x(), 1.0f, 0.02f);
+	EXPECT_FLOAT_EQ(gain.y(), 1.0f);
+	EXPECT_NEAR(gain.z(), 1.0f, 0.02f);
+}
+
+TEST(WhiteBalanceNode, WarmAndCoolShiftAsExpected)
+{
+	const QVector3D warm =
+		olive::WhiteBalanceNode::get_gain_for_temperature(3000.0, 0.0);
+	EXPECT_GT(warm.x(), warm.z()); // warm light: red over blue
+	EXPECT_FLOAT_EQ(warm.y(), 1.0f);
+
+	const QVector3D cool =
+		olive::WhiteBalanceNode::get_gain_for_temperature(10000.0, 0.0);
+	EXPECT_GT(cool.z(), cool.x()); // cool light: blue over red
+}
+
+TEST(WhiteBalanceNode, TintMovesGreenMagentaAxis)
+{
+	const QVector3D magenta =
+		olive::WhiteBalanceNode::get_gain_for_temperature(6500.0, -0.5);
+	const QVector3D green =
+		olive::WhiteBalanceNode::get_gain_for_temperature(6500.0, 0.5);
+	EXPECT_LT(magenta.y(), 1.0f);
+	EXPECT_GT(green.y(), 1.0f);
+}
+
+TEST(WhiteBalanceNode, FactoryCreatesNode)
+{
+	std::unique_ptr<olive::Node> node(
+		olive::NodeFactory::create_from_factory_index(
+			olive::NodeFactory::k_white_balance));
+	ASSERT_NE(node, nullptr);
+	EXPECT_EQ(node->id(),
+			  QStringLiteral("org.olivevideoeditor.Olive.whitebalance"));
+	EXPECT_TRUE(
+		node->has_input_with_id(olive::WhiteBalanceNode::k_temperature_input));
+	EXPECT_TRUE(node->has_input_with_id(olive::WhiteBalanceNode::k_tint_input));
+}
+
 
 // -----------------------------------------------------------------------------
 // DisplayTransformNode

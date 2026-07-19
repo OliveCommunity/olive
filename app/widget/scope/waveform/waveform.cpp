@@ -22,6 +22,8 @@
 
 #include "waveform.h"
 
+#include <QContextMenuEvent>
+#include <QMenu>
 #include <QPainter>
 #include <QtMath>
 #include <QDebug>
@@ -39,7 +41,25 @@ namespace olive
 
 WaveformScope::WaveformScope(QWidget *parent)
 	: super(parent)
+	, parade_mode_(OAK_CONFIG("WaveformRgbParade").toBool())
 {
+}
+
+void WaveformScope::set_parade_mode(bool enabled)
+{
+	parade_mode_ = enabled;
+	OAK_CONFIG("WaveformRgbParade") = enabled;
+	update();
+}
+
+void WaveformScope::contextMenuEvent(QContextMenuEvent *event)
+{
+	QMenu menu(this);
+	QAction *parade = menu.addAction(tr("RGB Parade"));
+	parade->setCheckable(true);
+	parade->setChecked(parade_mode_);
+	connect(parade, &QAction::triggered, this, &WaveformScope::set_parade_mode);
+	menu.exec(event->globalPos());
 }
 
 ShaderCode WaveformScope::generate_shader_code()
@@ -71,6 +91,10 @@ void WaveformScope::draw_scope(TexturePtr managed_tex, QVariant pipeline)
 	// Scale of the waveform relative to the viewport surface.
 	job.insert(QStringLiteral("waveform_scale"),
 			   NodeValue(NodeValue::k_float, waveform_scale));
+
+	// Overlay vs. RGB parade display
+	job.insert(QStringLiteral("parade_mode"),
+			   NodeValue(NodeValue::k_float, parade_mode_ ? 1.0f : 0.0f));
 
 	// Insert source texture
 	job.insert(QStringLiteral("ove_maintex"),
@@ -156,26 +180,40 @@ void WaveformScope::draw_scope_software(QPainter &p, const QImage &image)
 				continue;
 			}
 
-			auto mark = [&](float value, int add_r, int add_g, int add_b) {
+			auto mark = [&](int x, float value, int add_r, int add_g, int add_b) {
 				int scope_y =
 					waveform_start_dim_y + int((1.0f - value) * waveform_dim_y);
-				if (scope_y < waveform_start_dim_y ||
+				if (x < waveform_start_dim_x || x >= waveform_end_dim_x ||
+					scope_y < waveform_start_dim_y ||
 					scope_y >= waveform_start_dim_y + waveform_dim_y) {
 					return;
 				}
-				QRgb *dst_line =
-					reinterpret_cast<QRgb *>(buf.scanLine(scope_y));
-				QRgb cur = dst_line[scope_x];
+				QRgb *dst_line = reinterpret_cast<QRgb *>(buf.scanLine(scope_y));
+				QRgb cur = dst_line[x];
 				int nr = qMin(255, qRed(cur) + add_r);
 				int ng = qMin(255, qGreen(cur) + add_g);
 				int nb = qMin(255, qBlue(cur) + add_b);
 				int na = qMax(qMax(nr, ng), nb);
-				dst_line[scope_x] = qRgba(nr, ng, nb, na);
+				dst_line[x] = qRgba(nr, ng, nb, na);
 			};
 
-			mark(r, 30, 0, 0);
-			mark(g, 0, 30, 0);
-			mark(b, 0, 0, 30);
+			if (parade_mode_) {
+				// RGB parade: each channel gets one third of the scope width
+				const float zone_x = float(sx) / float(src_w) / 3.0f;
+				mark(waveform_start_dim_x +
+						 int((0.0f + zone_x) * waveform_dim_x),
+					 r, 30, 0, 0);
+				mark(waveform_start_dim_x +
+						 int((1.0f / 3.0f + zone_x) * waveform_dim_x),
+					 g, 0, 30, 0);
+				mark(waveform_start_dim_x +
+						 int((2.0f / 3.0f + zone_x) * waveform_dim_x),
+					 b, 0, 0, 30);
+			} else {
+				mark(scope_x, r, 30, 0, 0);
+				mark(scope_x, g, 0, 30, 0);
+				mark(scope_x, b, 0, 0, 30);
+			}
 		}
 	}
 

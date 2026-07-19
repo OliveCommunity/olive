@@ -66,6 +66,18 @@ public:
 		return video_conversion_fmt_;
 	}
 
+	/**
+	 * @brief Derives nclc color tags from an output colorspace name
+	 *
+	 * Extracted for testability. Returns true when the name maps to
+	 * explicit tags (PQ/HLG/BT.2020, sRGB, P3, Rec.601, Rec.709); returns
+	 * false for unknown names, in which case the bridge's legacy
+	 * Rec.709/sRGB inference applies.
+	 */
+	static bool get_color_tags_for_colorspace(const QString &colorspace,
+											  int *primaries, int *trc,
+											  int *matrix);
+
 private:
 	/**
    * @brief Copy the last error message from the bridge into the encoder error state

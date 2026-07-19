@@ -14,6 +14,8 @@ TEST(RenderVideoParams, SaveLoadRoundTrip)
 	params.set_frame_rate(olive::core::Rational(24, 1));
 	params.set_pixel_aspect_ratio(olive::core::Rational(1, 1));
 	params.set_colorspace(QStringLiteral("test"));
+	params.set_color_primaries(9);
+	params.set_color_transfer(16);
 
 	QByteArray xml;
 	QBuffer buffer(&xml);
@@ -39,4 +41,6 @@ TEST(RenderVideoParams, SaveLoadRoundTrip)
 	EXPECT_EQ(loaded.frame_rate(), olive::core::Rational(24, 1));
 	EXPECT_EQ(loaded.pixel_aspect_ratio(), olive::core::Rational(1, 1));
 	EXPECT_EQ(loaded.colorspace(), QStringLiteral("test"));
+	EXPECT_EQ(loaded.color_primaries(), 9);
+	EXPECT_EQ(loaded.color_transfer(), 16);
 }

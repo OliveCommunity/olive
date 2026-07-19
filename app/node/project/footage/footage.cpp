@@ -126,11 +126,20 @@ Rational Footage::verify_length_internal(Track::Type type) const
 
 QString Footage::get_colorspace_to_use(const VideoParams &params) const
 {
-	if (params.colorspace().isEmpty()) {
-		return project()->color_manager()->get_default_input_color_space();
-	} else {
+	if (!params.colorspace().isEmpty()) {
+		// The user explicitly set this stream's colorspace
 		return params.colorspace();
 	}
+
+	// No override: try auto-detecting from the media's color tags
+	const QString detected =
+		project()->color_manager()->get_colorspace_for_ffmpeg_tags(
+			params.color_primaries(), params.color_transfer());
+	if (!detected.isEmpty()) {
+		return detected;
+	}
+
+	return project()->color_manager()->get_default_input_color_space();
 }
 
 void Footage::clear()

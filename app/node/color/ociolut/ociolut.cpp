@@ -77,11 +77,13 @@ OCIOLutNode::OCIOLutNode()
 {
 	add_input(k_file_input, NodeValue::k_file, QString(),
 			 InputFlags(k_input_flag_not_keyframable | k_input_flag_not_connectable));
-	set_input_property(
-		k_file_input, QStringLiteral("filter"),
-		tr("LUT Files (*.cube *.3dl);;Cube LUT (*.cube);;3DL LUT (*.3dl);;All Files (*)"));
+	const QString all_luts =
+		QStringLiteral("*.") +
+		LUTLibrary::supported_extensions().join(QStringLiteral(" *."));
+	set_input_property(k_file_input, QStringLiteral("filter"),
+					 tr("LUT Files (%1);;All Files (*)").arg(all_luts));
 	set_input_property(k_file_input, QStringLiteral("placeholder"),
-					 tr("Select a .cube or .3dl LUT file"));
+					 tr("Select a LUT file"));
 	// Allow the UI to offer the global LUT library for this input
 	set_input_property(k_file_input, QStringLiteral("lut_library"), true);
 
@@ -257,10 +259,8 @@ bool OCIOLutNode::create_processor_from_inputs() const
 		last_path_.clear();
 		last_direction_ = -1;
 		processor_dirty_ = false;
-		set_last_error(
-			tr("OCIO LUT: unsupported LUT file extension (expected .cube or "
-			   ".3dl): %1")
-				.arg(path));
+		set_last_error(tr("OCIO LUT: unsupported LUT file extension: %1")
+						   .arg(path));
 		return false;
 	}
 

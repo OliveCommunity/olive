@@ -153,6 +153,9 @@ struct FBEncoder {
 	int64_t video_buffer_size = 0;
 	int video_threads = 0;
 	int video_color_srgb = 0;
+	int video_color_primaries = fb_color_primaries_unspec;
+	int video_color_trc = fb_color_trc_unspec;
+	int video_colorspace = fb_col_spc_unspec;
 	std::vector<std::pair<std::string, std::string>> video_opts;
 
 	int audio_enabled = 0;
@@ -251,6 +254,9 @@ FBEncoder *fb_encoder_create(const FBEncoderConfig *config)
 	e->video_buffer_size = config->video_buffer_size;
 	e->video_threads = config->video_threads;
 	e->video_color_srgb = config->video_color_srgb;
+	e->video_color_primaries = config->video_color_primaries;
+	e->video_color_trc = config->video_color_trc;
+	e->video_colorspace = config->video_colorspace;
 	for (int i = 0; i < config->video_opt_count; i++) {
 		if (config->video_opt_keys[i] && config->video_opt_values[i]) {
 			e->video_opts.emplace_back(config->video_opt_keys[i],
@@ -868,7 +874,14 @@ bool FBEncoder::initialize_stream(AVMediaType type, AVStream **stream_ptr,
 		}
 
 		// nclc tags. See https://ffmpeg.org/doxygen/4.0/pixfmt_8h.html#ad384ee5a840bafd73daef08e6d9cafe7
-		if (video_color_srgb) {
+		if (video_color_primaries != fb_color_primaries_unspec) {
+			// Explicit tags supplied (e.g. derived from the export colorspace)
+			codec_ctx->color_primaries =
+				static_cast<AVColorPrimaries>(video_color_primaries);
+			codec_ctx->color_trc =
+				static_cast<AVColorTransferCharacteristic>(video_color_trc);
+			codec_ctx->colorspace = static_cast<AVColorSpace>(video_colorspace);
+		} else if (video_color_srgb) {
 			codec_ctx->color_primaries = AVCOL_PRI_BT709;
 			codec_ctx->color_trc = AVCOL_TRC_IEC61966_2_1;
 			codec_ctx->colorspace = AVCOL_SPC_BT709;
