@@ -27,14 +27,22 @@
 #include <QString>
 
 #include "coreengine.h"
+#include "node/block/clip/clip.h"
 #include "node/nodeundo.h"
 #include "node/project.h"
 #include "node/project/folder/folder.h"
 #include "node/project/sequence/sequence.h"
 #include "timeline/timelinemarker.h"
+#include "timeline/timelineundogeneral.h"
+#include "timeline/timelineundopointer.h"
 #include "timeline/timelineworkarea.h"
 #include "undo/undocommand.h"
 #include "undo/undostack.h"
+
+// Internal cross-family accessor (not part of the public C ABI), defined in
+// footage.cpp: borrowed project node of an import handle, nullptr otherwise.
+extern "C" __attribute__((visibility("hidden"))) void *
+oakengine_capi_footage_node(OakEngineFootage *h);
 
 namespace
 {
@@ -102,6 +110,33 @@ int64_t time_to_ts(const olive::Rational &time, const olive::Rational &tb)
 		time, tb, olive::core::Timecode::k_round);
 }
 
+// ---- Editing primitive helpers -------------------------------------------
+
+// Last editing error per thread (editing calls return NULL/negative codes).
+thread_local QString g_seq_last_error;
+
+void set_seq_error(const QString &error)
+{
+	g_seq_last_error = error;
+}
+
+olive::Track::Type to_track_type(int track_type)
+{
+	switch (track_type) {
+	case OAKENGINE_TRACK_TYPE_VIDEO:
+		return olive::Track::k_video;
+	case OAKENGINE_TRACK_TYPE_AUDIO:
+		return olive::Track::k_audio;
+	default:
+		return olive::Track::k_subtitle;
+	}
+}
+
+OakEngineClip *wrap_clip(olive::ClipBlock *c)
+{
+	return reinterpret_cast<OakEngineClip *>(c);
+}
+
 } // namespace
 
 extern "C"
@@ -118,6 +153,30 @@ OakEngineSequence *oakengine_sequence_new(OakEngineProject *project,
 	olive::Sequence *sequence = new olive::Sequence();
 	sequence->set_default_parameters();
 	sequence->set_label(QString::fromUtf8(name ? name : ""));
+
+	// set_default_parameters() reads the sequence defaults from the user
+	// config; a config that lacks those keys yields invalid parameters
+	// (e.g. sample rate 0), which later aborts the render worker. Backfill
+	// hard defaults for anything invalid.
+	if (sequence->get_audio_params().sample_rate() <= 0) {
+		sequence->set_audio_params(
+			olive::AudioParams(48000, olive::core::k_channel_layout_stereo,
+							   olive::core::SampleFormat::f32_p));
+	}
+	{
+		const olive::VideoParams vp = sequence->get_video_params();
+		const olive::Rational frame_rate = vp.frame_rate();
+		if (vp.width() <= 0 || vp.height() <= 0 || frame_rate.isNull() ||
+			frame_rate.isNaN()) {
+			const olive::PixelFormat::Format format =
+				vp.format() == olive::PixelFormat::invalid ?
+					olive::PixelFormat::f32 :
+					static_cast<olive::PixelFormat::Format>(vp.format());
+			sequence->set_video_params(olive::VideoParams(
+				1920, 1080, olive::Rational(1001, 30000), format,
+				olive::VideoParams::k_internal_channel_count));
+		}
+	}
 
 	// Same undoable creation as the application's "Create New Sequence"
 	// action (app/core.cpp), minus opening a viewer. Without an EngineCore
@@ -343,6 +402,199 @@ int oakengine_sequence_marker_at(const OakEngineSequence *self, int index,
 	}
 	if (name && name_size > 0) {
 		copy_to_buf(marker->name(), name, size_t(name_size));
+	}
+	return OAKENGINE_OK;
+}
+
+/* ---- Timeline editing primitives ---------------------------------------- */
+
+int oakengine_sequence_last_error(char *buf, int buf_size)
+{
+	return string_to_buf(g_seq_last_error, buf, buf_size);
+}
+
+int oakengine_sequence_add_track(OakEngineSequence *self, int track_type)
+{
+	set_seq_error(QString());
+	if (!self || track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+		set_seq_error(QStringLiteral("invalid sequence or track type"));
+		return OAKENGINE_E_INVALID;
+	}
+
+	olive::TrackList *list =
+		impl(self)->track_list(to_track_type(track_type));
+	// TimelineAddTrackCommand without auto-merge: the first video/audio
+	// track connects straight to the sequence output; further tracks stay
+	// unconnected (compositing is a later milestone).
+	auto *command = new olive::TimelineAddTrackCommand(list, false);
+	if (olive::EngineCore::instance()) {
+		olive::EngineCore::instance()->undo_stack()->push(
+			command, QStringLiteral("Add Track"));
+	} else {
+		command->redo_now();
+		delete command;
+	}
+	return list->get_track_count() - 1;
+}
+
+OakEngineClip *oakengine_sequence_add_footage_clip(
+	OakEngineSequence *seq, OakEngineFootage *footage, int track_type,
+	int track_index, int64_t in, int64_t out, int64_t media_in)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	auto *footage_node =
+		static_cast<olive::Footage *>(oakengine_capi_footage_node(footage));
+
+	if (!sequence || !footage) {
+		set_seq_error(QStringLiteral("invalid sequence or footage handle"));
+		return nullptr;
+	}
+	if (!footage_node) {
+		set_seq_error(QStringLiteral(
+			"footage must be imported into the project first "
+			"(oakengine_project_import_footage)"));
+		return nullptr;
+	}
+	if (track_type != OAKENGINE_TRACK_TYPE_VIDEO &&
+		track_type != OAKENGINE_TRACK_TYPE_AUDIO) {
+		set_seq_error(QStringLiteral(
+			"clips are only supported on video and audio tracks"));
+		return nullptr;
+	}
+	olive::Project *project =
+		olive::Project::get_project_from_object(sequence);
+	if (!project ||
+		olive::Project::get_project_from_object(footage_node) != project) {
+		set_seq_error(QStringLiteral(
+			"footage and sequence belong to different projects"));
+		return nullptr;
+	}
+	if (in < 0 || out <= in || media_in < 0) {
+		set_seq_error(QStringLiteral("invalid clip range (need 0 <= in < out "
+									 "and media_in >= 0)"));
+		return nullptr;
+	}
+	olive::TrackList *list = sequence->track_list(to_track_type(track_type));
+	if (track_index < 0 || track_index >= list->get_track_count()) {
+		set_seq_error(QStringLiteral("track index %1 out of range (%2 tracks)")
+					  .arg(track_index)
+					  .arg(list->get_track_count()));
+		return nullptr;
+	}
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return nullptr;
+	}
+
+	const olive::Rational in_time =
+		olive::core::Timecode::timestamp_to_time(in, tb);
+	const olive::Rational out_time =
+		olive::core::Timecode::timestamp_to_time(out, tb);
+	const olive::Rational media_in_time =
+		olive::core::Timecode::timestamp_to_time(media_in, tb);
+
+	// The application's drop-import chain reduced to its editing core (see
+	// ImportTool::place_at()): clip with media in-point and length, footage
+	// onto the buffer input, placed on the track -- all undoable.
+	auto *clip = new olive::ClipBlock();
+	clip->set_media_in(media_in_time);
+	clip->set_length_and_media_out(out_time - in_time);
+
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	command->add_child(new olive::NodeAddCommand(project, clip));
+	command->add_child(new olive::NodeEdgeAddCommand(
+		footage_node, olive::NodeInput(clip, olive::ClipBlock::k_buffer_in)));
+	command->add_child(new olive::TrackPlaceBlockCommand(list, track_index,
+													   clip, in_time));
+
+	if (olive::EngineCore::instance()) {
+		olive::EngineCore::instance()->undo_stack()->push(
+			command, QStringLiteral("Add Clip"));
+	} else {
+		command->redo_now();
+		delete command;
+	}
+	return wrap_clip(clip);
+}
+
+int oakengine_sequence_clip_count(OakEngineSequence *self, int track_type,
+								  int track_index)
+{
+	if (!self || track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::TrackList *list =
+		impl(self)->track_list(to_track_type(track_type));
+	if (track_index < 0 || track_index >= list->get_track_count()) {
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	// Only real clips count; gap blocks on the track are skipped.
+	int count = 0;
+	for (const olive::Block *b : list->get_track_at(track_index)->blocks()) {
+		if (dynamic_cast<const olive::ClipBlock *>(b)) {
+			count++;
+		}
+	}
+	return count;
+}
+
+OakEngineClip *oakengine_sequence_clip_at(OakEngineSequence *self,
+										  int track_type, int track_index,
+										  int clip_index)
+{
+	if (!self || track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE || clip_index < 0) {
+		return nullptr;
+	}
+	olive::TrackList *list =
+		impl(self)->track_list(to_track_type(track_type));
+	if (track_index < 0 || track_index >= list->get_track_count()) {
+		return nullptr;
+	}
+	// Skip gap blocks: indexes address clips only.
+	int seen = 0;
+	for (olive::Block *b : list->get_track_at(track_index)->blocks()) {
+		if (olive::ClipBlock *clip = dynamic_cast<olive::ClipBlock *>(b)) {
+			if (seen == clip_index) {
+				return wrap_clip(clip);
+			}
+			seen++;
+		}
+	}
+	return nullptr;
+}
+
+int oakengine_clip_get_range(const OakEngineClip *self, int64_t *in,
+							 int64_t *out, int64_t *media_in)
+{
+	const olive::ClipBlock *clip =
+		reinterpret_cast<const olive::ClipBlock *>(self);
+	if (!clip) {
+		return OAKENGINE_E_INVALID;
+	}
+	// The clip's sequence (clip -> track -> sequence) provides the timebase
+	// for the timestamp conversion.
+	const olive::Sequence *sequence =
+		clip->track() ? clip->track()->sequence() : nullptr;
+	if (!sequence) {
+		return OAKENGINE_E_STATE;
+	}
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		return OAKENGINE_E_STATE;
+	}
+	if (in) {
+		*in = time_to_ts(clip->in(), tb);
+	}
+	if (out) {
+		*out = time_to_ts(clip->out(), tb);
+	}
+	if (media_in) {
+		*media_in = time_to_ts(clip->media_in(), tb);
 	}
 	return OAKENGINE_OK;
 }

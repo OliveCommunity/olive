@@ -80,6 +80,12 @@ void print_usage(FILE *out)
 			"  oak-cli probe <mediafile>\n"
 			"      Probe a media file: decoder, duration, video and audio streams.\n"
 			"\n"
+			"  oak-cli transcode <input_media> <out_dir> [width]\n"
+			"      Transcode a media file end to end: import it into a temporary\n"
+			"      project, place it as clips, and render the whole duration to\n"
+			"      PPM frames + a WAV. [width] defaults to the source width; the\n"
+			"      height follows the source aspect ratio.\n"
+			"\n"
 			"  oak-cli --help\n"
 			"      Show this text.\n"
 			"\n"
@@ -307,6 +313,64 @@ int renderer_fail(OakEngineRenderer *renderer, const char *what)
 	return k_exit_render_unavailable;
 }
 
+// Render frames [start_ts, end_ts) to PPM files in out_dir, with per-frame
+// progress on stderr. Shared by the render and transcode commands.
+int render_frames_to_ppm(OakEngineRenderer *renderer, const char *out_dir,
+						 int64_t start_ts, int64_t end_ts)
+{
+	const int64_t frame_count = end_ts - start_ts;
+	int rc = k_exit_ok;
+	try {
+		for (int64_t ts = start_ts; ts < end_ts; ts++) {
+			OakEngineFrame *frame =
+				oakengine_renderer_render_frame(renderer, ts);
+			if (!frame) {
+				rc = renderer_fail(renderer, "render_frame");
+				break;
+			}
+			fprintf(stderr, "frame %lld/%lld (ts=%lld)\n",
+					(long long)(ts - start_ts + 1), (long long)frame_count,
+					(long long)ts);
+
+			char name[64];
+			snprintf(name, sizeof(name), "frame-%04lld.ppm",
+					 (long long)(ts - start_ts));
+			const std::filesystem::path ppm_path =
+				std::filesystem::path(out_dir) / name;
+			write_ppm(frame, ppm_path.string());
+			oakengine_frame_free(frame);
+		}
+	} catch (const std::string &e) {
+		fprintf(stderr, "error: %s\n", e.c_str());
+		if (rc == k_exit_ok) {
+			rc = k_exit_error;
+		}
+	}
+	return rc;
+}
+
+// Render audio [start_ts, start_ts+length_ts) to audio.wav in out_dir.
+// Shared by the render and transcode commands.
+int render_audio_to_wav(OakEngineRenderer *renderer, const char *out_dir,
+						int64_t start_ts, int64_t length_ts)
+{
+	OakEngineAudioBuffer *audio =
+		oakengine_renderer_render_audio(renderer, start_ts, length_ts);
+	if (!audio) {
+		return renderer_fail(renderer, "render_audio");
+	}
+	int rc = k_exit_ok;
+	try {
+		write_wav(audio,
+				  (std::filesystem::path(out_dir) / "audio.wav").string());
+	} catch (const std::string &e) {
+		fprintf(stderr, "error: %s\n", e.c_str());
+		rc = k_exit_error;
+	}
+	oakengine_audio_free(audio);
+	return rc;
+}
+
 int cmd_render(const char *path, const char *start_str, const char *end_str,
 			   const char *out_dir)
 {
@@ -407,49 +471,10 @@ int cmd_render(const char *path, const char *start_str, const char *end_str,
 			break;
 		}
 
-		try {
-			for (int64_t ts = start_ts; ts < end_ts; ts++) {
-				OakEngineFrame *frame =
-					oakengine_renderer_render_frame(renderer, ts);
-				if (!frame) {
-					rc = renderer_fail(renderer, "render_frame");
-					break;
-				}
-				fprintf(stderr, "frame %lld/%lld (ts=%lld)\n",
-						(long long)(ts - start_ts + 1), (long long)frame_count,
-						(long long)ts);
-
-				char name[64];
-				snprintf(name, sizeof(name), "frame-%04lld.ppm",
-						 (long long)(ts - start_ts));
-				const std::filesystem::path ppm_path =
-					std::filesystem::path(out_dir) / name;
-				write_ppm(frame, ppm_path.string());
-				oakengine_frame_free(frame);
-			}
-		} catch (const std::string &e) {
-			fprintf(stderr, "error: %s\n", e.c_str());
-			if (rc == k_exit_ok) {
-				rc = k_exit_error;
-			}
-		}
+		rc = render_frames_to_ppm(renderer, out_dir, start_ts, end_ts);
 
 		if (rc == k_exit_ok) {
-			OakEngineAudioBuffer *audio = oakengine_renderer_render_audio(
-				renderer, start_ts, frame_count);
-			if (!audio) {
-				rc = renderer_fail(renderer, "render_audio");
-			} else {
-				try {
-					write_wav(audio,
-							  (std::filesystem::path(out_dir) / "audio.wav")
-								  .string());
-				} catch (const std::string &e) {
-					fprintf(stderr, "error: %s\n", e.c_str());
-					rc = k_exit_error;
-				}
-				oakengine_audio_free(audio);
-			}
+			rc = render_audio_to_wav(renderer, out_dir, start_ts, frame_count);
 		}
 
 		if (rc == k_exit_ok) {
@@ -537,6 +562,176 @@ int cmd_probe(const char *path)
 	return rc;
 }
 
+// "Media in, renders out" round trip: probe the source, build a temporary
+// project with the whole media placed as clips, and render it out to PPM
+// frames + a WAV of the full duration.
+int cmd_transcode(const char *input, const char *out_dir,
+				  const char *width_str)
+{
+	int width = 0;
+	if (width_str) {
+		char *end = nullptr;
+		const long parsed = std::strtol(width_str, &end, 10);
+		if (end == width_str || *end != '\0' || parsed <= 0) {
+			fprintf(stderr, "error: invalid width \"%s\"\n", width_str);
+			return k_exit_usage;
+		}
+		width = int(parsed);
+	}
+
+	if (oakengine_init(OAKENGINE_INIT_HEADLESS | OAKENGINE_INIT_RENDER) !=
+		OAKENGINE_OK) {
+		fprintf(stderr, "error: failed to initialize the engine\n");
+		return k_exit_error;
+	}
+
+	int rc = k_exit_ok;
+	OakEngineProject *project = nullptr;
+	OakEngineFootage *footage = nullptr;
+	OakEngineRenderer *renderer = nullptr;
+	do {
+		// Probe the source for its native geometry, frame rate and duration.
+		OakEngineFootage *probed = oakengine_footage_probe(input);
+		if (!probed) {
+			char err[1024];
+			fprintf(stderr, "error: %s\n",
+					oakengine_footage_last_error(err, sizeof(err)) > 0 ?
+						err :
+						"probe failed");
+			rc = k_exit_error;
+			break;
+		}
+		if (oakengine_footage_get_video_stream_count(probed) < 1) {
+			fprintf(stderr, "error: \"%s\" has no video stream\n", input);
+			oakengine_footage_free(probed);
+			rc = k_exit_error;
+			break;
+		}
+		oak_footage_video_info vi;
+		if (oakengine_footage_get_video_stream_info(probed, 0, &vi) !=
+				OAKENGINE_OK ||
+			vi.frame_rate_num <= 0 || vi.frame_rate_den <= 0) {
+			fprintf(stderr, "error: \"%s\" has no valid video stream\n",
+					input);
+			oakengine_footage_free(probed);
+			rc = k_exit_error;
+			break;
+		}
+		const double fps = double(vi.frame_rate_num) / vi.frame_rate_den;
+		double seconds = 0.0;
+		oakengine_footage_get_duration(probed, &seconds);
+		const int64_t total_ts = std::llround(seconds * fps);
+		if (width <= 0) {
+			width = vi.width;
+		}
+		const int height = std::max(2l, std::lround(
+										  double(width) * vi.height / vi.width));
+		oakengine_footage_free(probed);
+
+		// Build the temporary project: import, sequence, one video + one
+		// audio track, and clips spanning the whole media.
+		project = oakengine_project_create();
+		if (oakengine_project_new(project) != OAKENGINE_OK) {
+			fprintf(stderr, "error: failed to create project\n");
+			rc = k_exit_error;
+			break;
+		}
+		std::error_code ec;
+		const std::string abs_input =
+			std::filesystem::absolute(std::filesystem::path(input), ec)
+				.string();
+		footage = oakengine_project_import_footage(
+			project, ec ? input : abs_input.c_str());
+		if (!footage) {
+			char err[1024];
+			fprintf(stderr, "error: %s\n",
+					oakengine_footage_last_error(err, sizeof(err)) > 0 ?
+						err :
+						"import failed");
+			rc = k_exit_error;
+			break;
+		}
+
+		OakEngineSequence *seq = oakengine_sequence_new(project, "Transcode");
+		if (!seq) {
+			fprintf(stderr, "error: failed to create sequence\n");
+			rc = k_exit_error;
+			break;
+		}
+		// Clip ranges are timestamps in the SEQUENCE's frame-rate timebase
+		// (which may differ from the source frame rate); the render loop
+		// below runs at the source frame rate.
+		int seq_fr_num = 0, seq_fr_den = 0;
+		if (oakengine_sequence_get_frame_rate(seq, &seq_fr_num,
+											  &seq_fr_den) != OAKENGINE_OK ||
+			seq_fr_num <= 0 || seq_fr_den <= 0) {
+			fprintf(stderr, "error: sequence has no valid frame rate\n");
+			rc = k_exit_error;
+			break;
+		}
+		const double seq_fps = double(seq_fr_num) / seq_fr_den;
+		const int64_t clip_end_ts = std::llround(seconds * seq_fps);
+		char edit_err[512];
+		if (oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_VIDEO) < 0 ||
+			oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_AUDIO) < 0) {
+			fprintf(stderr, "error: failed to add tracks: %s\n",
+					oakengine_sequence_last_error(edit_err,
+												  sizeof(edit_err)) > 0 ?
+						edit_err :
+						"(no error)");
+			rc = k_exit_error;
+			break;
+		}
+		if (!oakengine_sequence_add_footage_clip(
+				seq, footage, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, clip_end_ts,
+				0) ||
+		!oakengine_sequence_add_footage_clip(
+				seq, footage, OAKENGINE_TRACK_TYPE_AUDIO, 0, 0, clip_end_ts,
+				0)) {
+			fprintf(stderr, "error: failed to place clips: %s\n",
+					oakengine_sequence_last_error(edit_err,
+												  sizeof(edit_err)) > 0 ?
+						edit_err :
+						"(no error)");
+			rc = k_exit_error;
+			break;
+		}
+
+		std::filesystem::create_directories(out_dir, ec);
+		if (ec) {
+			fprintf(stderr, "error: cannot create output directory \"%s\": %s\n",
+					out_dir, ec.message().c_str());
+			rc = k_exit_error;
+			break;
+		}
+
+		renderer = oakengine_renderer_create(seq, width, height,
+											 k_pixel_format_f32,
+											 vi.frame_rate_num,
+											 vi.frame_rate_den, nullptr);
+		if (!renderer) {
+			fprintf(stderr, "error: failed to create renderer\n");
+			rc = k_exit_error;
+			break;
+		}
+
+		rc = render_frames_to_ppm(renderer, out_dir, 0, total_ts);
+		if (rc == k_exit_ok) {
+			rc = render_audio_to_wav(renderer, out_dir, 0, total_ts);
+		}
+		if (rc == k_exit_ok) {
+			printf("wrote %lld PPM frame(s) (%dx%d) and audio.wav to \"%s\"\n",
+				   (long long)total_ts, width, height, out_dir);
+		}
+	} while (false);
+
+	oakengine_renderer_free(renderer);
+	oakengine_footage_free(footage);
+	oakengine_project_free(project);
+	oakengine_shutdown();
+	return rc;
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -571,6 +766,13 @@ int main(int argc, char *argv[])
 			return k_exit_usage;
 		}
 		return cmd_probe(argv[2]);
+	}
+	if (command == "transcode") {
+		if (argc != 4 && argc != 5) {
+			print_usage(stderr);
+			return k_exit_usage;
+		}
+		return cmd_transcode(argv[2], argv[3], argc == 5 ? argv[4] : nullptr);
 	}
 
 	fprintf(stderr, "error: unknown command \"%s\"\n", argv[1]);

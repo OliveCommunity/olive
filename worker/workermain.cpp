@@ -504,8 +504,18 @@ private:
 								QVariant::fromValue(color_output));
 		}
 		ticket->setProperty("vparam", QVariant::fromValue(vparams));
-		ticket->setProperty("aparam",
-							QVariant::fromValue(olive::AudioParams()));
+		// The IPC render_frame message carries no audio parameters, but
+		// rendering a sequence that has audio content evaluates audio
+		// tracks with globals.aparams -- an empty AudioParams aborts
+		// (AudioParams::time_to_samples asserts is_valid). Use the render
+		// node's own audio parameters, mirroring the in-process render
+		// path (PreviewAutoCacher uses context->get_audio_params()).
+		olive::AudioParams aparam;
+		if (olive::ViewerOutput *viewer =
+				dynamic_cast<olive::ViewerOutput *>(node)) {
+			aparam = viewer->get_audio_params();
+		}
+		ticket->setProperty("aparam", QVariant::fromValue(aparam));
 		ticket->setProperty("return", olive::RenderManager::k_frame);
 		ticket->setProperty("cache", QString());
 		ticket->setProperty("cachetimebase",

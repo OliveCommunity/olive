@@ -24,6 +24,7 @@
 #include <stdint.h>
 
 #include "export.h"
+#include "footage.h"
 #include "init.h"
 #include "project.h"
 
@@ -185,6 +186,97 @@ oakengine_sequence_marker_count(const OakEngineSequence *self);
 OAKENGINE_API int oakengine_sequence_marker_at(const OakEngineSequence *self,
 											   int index, int64_t *time,
 											   char *name, int name_size);
+
+/* ---- Timeline editing primitives ---------------------------------------- */
+
+/**
+ * @brief Track types, matching olive::Track::Type.
+ */
+#define OAKENGINE_TRACK_TYPE_VIDEO 0
+#define OAKENGINE_TRACK_TYPE_AUDIO 1
+#define OAKENGINE_TRACK_TYPE_SUBTITLE 2
+
+/**
+ * @brief Opaque clip handle (a ClipBlock on a track).
+ *
+ * Handles are borrowed from their owning project (QObject parent chain) and
+ * become invalid when the project is freed or the clip is removed (e.g. by
+ * undoing the add). There is no oakengine_clip_free().
+ */
+typedef struct OakEngineClip OakEngineClip;
+
+/**
+ * @brief Human-readable reason for the last failed editing call on this
+ * thread (buf/size convention). Editing calls return NULL or a negative
+ * OAKENGINE_E_* code; the text explains why.
+ */
+OAKENGINE_API int oakengine_sequence_last_error(char *buf, int buf_size);
+
+/**
+ * @brief Append a track of `track_type` (OAKENGINE_TRACK_TYPE_*) to the
+ * sequence and return its index in that type's track list.
+ *
+ * Uses the engine's TimelineAddTrackCommand without auto-merge: the first
+ * video/audio track is connected straight to the sequence's texture/samples
+ * input (tracks beyond the first stay unconnected until a merge node is
+ * added -- multi-track compositing is a later milestone). The add is
+ * undoable like the other editing primitives. Returns the new track index
+ * (>= 0) or a negative OAKENGINE_E_* code.
+ */
+OAKENGINE_API int oakengine_sequence_add_track(OakEngineSequence *self,
+											   int track_type);
+
+/**
+ * @brief Place a clip of `footage` on a track (undoable).
+ *
+ * Creates an olive::ClipBlock whose buffer input is fed by the footage node
+ * and places it on the track at `track_index` (within the track list of
+ * `track_type`, OAKENGINE_TRACK_TYPE_VIDEO or _AUDIO; subtitle clips are
+ * rejected with OAKENGINE_E_INVALID). The footage handle must be a borrowed
+ * import handle belonging to the same project as the sequence (probed
+ * handles carry no node and are rejected).
+ *
+ * `in`/`out` are the clip's timeline range and `media_in` the source in-
+ * point, all as frame timestamps in the sequence's frame-rate timebase
+ * (same convention as the rest of this family); `out` must be greater than
+ * `in` and `media_in` must be >= 0. No track is created implicitly: an
+ * out-of-range `track_index` fails with OAKENGINE_E_NOT_FOUND.
+ *
+ * The add mirrors the application's drop-import chain reduced to its
+ * editing core (NodeAddCommand + NodeEdgeAddCommand onto
+ * ClipBlock::k_buffer_in + TrackPlaceBlockCommand, pushed as one undoable
+ * MultiUndoCommand). Returns a borrowed clip handle, or NULL on failure
+ * (see oakengine_sequence_last_error()).
+ */
+OAKENGINE_API OakEngineClip *oakengine_sequence_add_footage_clip(
+	OakEngineSequence *seq, OakEngineFootage *footage, int track_type,
+	int track_index, int64_t in, int64_t out, int64_t media_in);
+
+/**
+ * @brief Number of clips on the track at `track_index` (within the
+ * `track_type` list). Gap blocks are not clips and are not counted.
+ * Returns the count (>= 0) or a negative OAKENGINE_E_* code
+ * (OAKENGINE_E_NOT_FOUND when the track does not exist).
+ */
+OAKENGINE_API int oakengine_sequence_clip_count(OakEngineSequence *self,
+												int track_type,
+												int track_index);
+
+/**
+ * @brief Borrowed handle of the clip at `clip_index` on the track (gap
+ * blocks are skipped), or NULL when out of range.
+ */
+OAKENGINE_API OakEngineClip *oakengine_sequence_clip_at(
+	OakEngineSequence *self, int track_type, int track_index, int clip_index);
+
+/**
+ * @brief The clip's timeline range (`in`/`out`) and source in-point
+ * (`media_in`) as frame timestamps in the sequence's frame-rate timebase.
+ * Any pointer may be NULL.
+ */
+OAKENGINE_API int oakengine_clip_get_range(const OakEngineClip *self,
+										   int64_t *in, int64_t *out,
+										   int64_t *media_in);
 
 #ifdef __cplusplus
 }

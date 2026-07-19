@@ -90,6 +90,15 @@ if (BUILD_TESTS)
     set_tests_properties(oak_cli_probe PROPERTIES
             PASS_REGULAR_EXPRESSION "1920.*48000"
     )
+
+    # transcode smoke test: full "media in, renders out" round trip at a
+    # reduced width; like render it exits 2 without a GL backend (skip).
+    add_test(NAME oak_cli_transcode
+            COMMAND oak-cli transcode ${CMAKE_SOURCE_DIR}/tests/demo.mp4 ${CMAKE_CURRENT_BINARY_DIR}/oak_cli_transcode_out 960
+    )
+    set_tests_properties(oak_cli_transcode PROPERTIES
+            SKIP_RETURN_CODE 2
+    )
     # Rendering needs the render worker and the dynamic backend plugins.
     if (TARGET olive-render-worker)
         add_dependencies(oak-cli olive-render-worker)

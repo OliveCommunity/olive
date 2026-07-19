@@ -126,6 +126,19 @@ QString filename_of(const OakEngineFootageState *s)
 
 } // namespace
 
+// Internal cross-family accessor (not part of the public C ABI): returns
+// the borrowed project node of an import handle, or nullptr for probe
+// handles and NULL. Used by the timeline editing primitives.
+extern "C" __attribute__((visibility("hidden"))) void *
+oakengine_capi_footage_node(OakEngineFootage *h)
+{
+	if (!h) {
+		return nullptr;
+	}
+	const OakEngineFootageState *s = impl(h);
+	return s->node;
+}
+
 extern "C"
 {
 

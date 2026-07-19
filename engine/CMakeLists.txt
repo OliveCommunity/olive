@@ -269,4 +269,9 @@ if (BUILD_TESTS)
     target_compile_definitions(oakengine_footage_test PRIVATE
             OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
+
+    make_oakengine_test(oakengine_timeline_edit_test)
+    target_compile_definitions(oakengine_timeline_edit_test PRIVATE
+            OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    )
 endif ()
