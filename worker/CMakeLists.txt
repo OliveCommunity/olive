@@ -23,7 +23,6 @@
 # dependencies is a later-phase cleanup (render-process-isolation plan).
 add_executable(olive-render-worker
         workermain.cpp
-        $<TARGET_OBJECTS:libolive-editor>
         $<TARGET_OBJECTS:olive-version-obj>
 )
 set_target_properties(olive-render-worker PROPERTIES OUTPUT_NAME "oak-render-worker")
@@ -75,6 +74,7 @@ if (WIN32)
     add_custom_command(TARGET olive-render-worker POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ffmpeg_bridge> $<TARGET_FILE_DIR:olive-render-worker>
             COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:olivecore> $<TARGET_FILE_DIR:olive-render-worker>
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:oakengine> $<TARGET_FILE_DIR:olive-render-worker>
     )
 endif ()
 

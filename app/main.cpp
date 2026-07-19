@@ -27,7 +27,7 @@
  * Use the navigation above to find documentation on classes or source files.
  */
 
-#include "olivehost.h"
+#include "pluginSupport/olivehost.h"
 
 #include <csignal>
 

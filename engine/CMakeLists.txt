@@ -1,0 +1,195 @@
+# Oak - Non-Linear Video Editor
+# Copyright (C) 2026 Oak Team
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Add version object
+add_library(olive-version-obj
+        OBJECT
+        version.cpp
+        version.h
+)
+target_link_libraries(olive-version-obj PRIVATE Qt${QT_VERSION_MAJOR}::Core)
+target_compile_options(olive-version-obj PRIVATE -DAPPVERSION="${PROJECT_VERSION}" -DAPPVERSIONLONG="${PROJECT_LONG_VERSION}")
+
+# Engine library (liboakengine): the node graph, render pipeline, codecs,
+# timeline, task system and engine services, independent of the editor UI.
+# The editor (app/) and the render worker (worker/) both link against it.
+
+set(OLIVE_SOURCES
+        coreengine.h
+        coreengine.cpp
+)
+
+add_subdirectory(audio)
+add_subdirectory(cli)
+add_subdirectory(codec)
+add_subdirectory(config)
+add_subdirectory(node)
+add_subdirectory(render)
+add_subdirectory(shaders)
+add_subdirectory(task)
+add_subdirectory(timeline)
+add_subdirectory(tool)
+add_subdirectory(ui)
+add_subdirectory(undo)
+
+add_library(oakengine SHARED
+        ${OLIVE_SOURCES}
+        ${OLIVE_RESOURCES}
+)
+
+add_subdirectory(common)
+add_subdirectory(pluginSupport)
+
+target_compile_features(oakengine PUBLIC cxx_std_23)
+set_target_properties(oakengine PROPERTIES
+        OUTPUT_NAME oakengine
+        POSITION_INDEPENDENT_CODE ON
+)
+
+# Consumers resolve engine headers ("node/...", "render/...", "coreengine.h",
+# "ui/icons/icons.h", "tool/tool.h") from the engine root
+target_include_directories(oakengine
+        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+        PRIVATE ${CMAKE_SOURCE_DIR}/third_party/openfx/include
+        ${CMAKE_SOURCE_DIR}/third_party/openfx/HostSupport/include
+        ${OLIVE_INCLUDE_DIRS}
+)
+
+target_link_libraries(oakengine PUBLIC ${OLIVE_LIBRARIES} OfxHost)
+target_compile_definitions(oakengine PRIVATE ${OLIVE_DEFINITIONS})
+target_compile_options(oakengine PRIVATE ${OLIVE_COMPILE_OPTIONS})
+
+# Install into the platform's standard library directory (/usr/lib,
+# /usr/lib64 or the Debian multiarch path); Windows DLLs go next to the
+# executables in bin.
+include(GNUInstallDirs)
+if (WIN32)
+    install(TARGETS oakengine
+            RUNTIME DESTINATION bin
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+else ()
+    install(TARGETS oakengine
+            LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+            ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif ()
+
+if (UNIX AND NOT APPLE)
+    set_target_properties(oakengine PROPERTIES INSTALL_RPATH "$ORIGIN")
+endif ()
+
+# Dynamic render backends (OpenGL/Vulkan) are engine plugins loaded via
+# dlopen; they share this engine library instead of embedding a static
+# render-core subset.
+if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
+    target_compile_definitions(oakengine PRIVATE OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
+
+    foreach (target olivecore kddockwidgets)
+        if (TARGET ${target})
+            set_target_properties(${target} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+        endif ()
+    endforeach ()
+
+    add_library(oakgl SHARED
+            render/opengl/openglbackend_c.cpp
+            render/opengl/openglrenderer.cpp
+            render/opengl/openglrenderer.h
+    )
+    target_link_libraries(oakgl PRIVATE oakengine)
+    target_include_directories(oakgl PRIVATE ${OLIVE_INCLUDE_DIRS})
+    target_compile_definitions(oakgl PRIVATE OAK_RENDER_BACKEND_PLUGIN)
+    set_target_properties(oakgl PROPERTIES
+            OUTPUT_NAME oakgl
+            LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+            ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    )
+    if (WIN32)
+        set_target_properties(oakgl PROPERTIES PREFIX "")
+    endif ()
+    install(TARGETS oakgl
+            RUNTIME DESTINATION bin
+            LIBRARY DESTINATION lib
+            ARCHIVE DESTINATION lib
+    )
+
+    if (Vulkan_FOUND)
+        add_library(oakvulkan SHARED
+                render/vulkan/vulkanbackend_c.cpp
+                render/vulkan/vulkanrenderer.cpp
+                render/vulkan/vulkanrenderer.h
+        )
+        target_link_libraries(oakvulkan PRIVATE oakengine)
+        target_include_directories(oakvulkan PRIVATE ${OLIVE_INCLUDE_DIRS})
+        target_link_libraries(oakvulkan PRIVATE Vulkan::Vulkan)
+        target_compile_definitions(oakvulkan PRIVATE OAK_HAS_VULKAN)
+        if (SHADERC_FOUND)
+            target_link_libraries(oakvulkan PRIVATE ${SHADERC_LIBRARIES})
+            target_include_directories(oakvulkan PRIVATE ${SHADERC_INCLUDE_DIRS})
+            target_compile_definitions(oakvulkan PRIVATE OAK_HAS_SHADERC)
+        endif ()
+        set_target_properties(oakvulkan PROPERTIES
+                OUTPUT_NAME oakvulkan
+                LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+                RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+                ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        )
+        if (WIN32)
+            set_target_properties(oakvulkan PROPERTIES PREFIX "")
+        endif ()
+        install(TARGETS oakvulkan
+                RUNTIME DESTINATION bin
+                LIBRARY DESTINATION lib
+                ARCHIVE DESTINATION lib
+        )
+    endif ()
+
+    add_library(oakgl-cabi-check OBJECT
+            render/opengl/openglbackend_c.cpp
+    )
+    target_include_directories(oakgl-cabi-check PRIVATE
+            ${CMAKE_SOURCE_DIR}/app
+            ${CMAKE_SOURCE_DIR}/third_party/openfx/include
+            ${CMAKE_SOURCE_DIR}/third_party/openfx/HostSupport/include
+            ${OLIVE_INCLUDE_DIRS}
+    )
+    target_link_libraries(oakgl-cabi-check PRIVATE ${OLIVE_LIBRARIES} OfxHost)
+    target_compile_definitions(oakgl-cabi-check PRIVATE ${OLIVE_DEFINITIONS})
+    target_compile_options(oakgl-cabi-check PRIVATE ${OLIVE_COMPILE_OPTIONS})
+
+    if (Vulkan_FOUND)
+        add_library(oakvulkan-cabi-check OBJECT
+                render/vulkan/vulkanbackend_c.cpp
+                render/vulkan/vulkanrenderer.cpp
+                render/vulkan/vulkanrenderer.h
+        )
+        target_include_directories(oakvulkan-cabi-check PRIVATE
+                ${CMAKE_SOURCE_DIR}/app
+                ${CMAKE_SOURCE_DIR}/third_party/openfx/include
+                ${CMAKE_SOURCE_DIR}/third_party/openfx/HostSupport/include
+                ${OLIVE_INCLUDE_DIRS}
+        )
+        target_link_libraries(oakvulkan-cabi-check PRIVATE Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets)
+        target_link_libraries(oakvulkan-cabi-check PRIVATE Vulkan::Vulkan)
+        target_compile_definitions(oakvulkan-cabi-check PRIVATE OAK_HAS_VULKAN)
+        if (SHADERC_FOUND)
+            target_link_libraries(oakvulkan-cabi-check PRIVATE ${SHADERC_LIBRARIES})
+            target_include_directories(oakvulkan-cabi-check PRIVATE ${SHADERC_INCLUDE_DIRS})
+            target_compile_definitions(oakvulkan-cabi-check PRIVATE OAK_HAS_SHADERC)
+        endif ()
+        target_compile_definitions(oakvulkan-cabi-check PRIVATE ${OLIVE_DEFINITIONS})
+        target_compile_options(oakvulkan-cabi-check PRIVATE ${OLIVE_COMPILE_OPTIONS})
+    endif ()
+endif ()

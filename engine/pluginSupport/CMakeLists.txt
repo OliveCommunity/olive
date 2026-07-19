@@ -1,4 +1,4 @@
-target_sources(libolive-editor PRIVATE
+target_sources(oakengine PRIVATE
         olivehost.h
         olivehost.cpp
         oliveplugininstance.h

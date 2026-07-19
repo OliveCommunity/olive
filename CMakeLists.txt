@@ -308,6 +308,11 @@ set(KDDockWidgets_FRONTENDS "qtwidgets" CACHE INTERNAL "Only build the QtWidgets
 add_subdirectory(third_party/KDDockWidgets EXCLUDE_FROM_ALL)
 
 add_subdirectory(third_party/openfx/HostSupport)
+add_subdirectory(engine)
+
+# Everything above the engine library links against it
+list(APPEND OLIVE_LIBRARIES oakengine)
+
 add_subdirectory(app)
 add_subdirectory(worker)
 

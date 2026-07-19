@@ -64,8 +64,9 @@ QString DynamicRenderer::library_filename() const
 			QDir(QStringLiteral("render_backends")).filePath(filename)),
 		app_dir.filePath(QDir(QStringLiteral("../lib")).filePath(filename)),
 		app_dir.filePath(QDir(QStringLiteral("../../lib")).filePath(filename)),
-		app_dir.filePath(QDir(QStringLiteral("../app")).filePath(filename)),
-		app_dir.filePath(QDir(QStringLiteral("../../app")).filePath(filename))
+		app_dir.filePath(QDir(QStringLiteral("../engine")).filePath(filename)),
+		app_dir.filePath(
+			QDir(QStringLiteral("../../engine")).filePath(filename))
 	};
 	for (const QString &candidate : candidates) {
 		if (QFileInfo::exists(candidate)) {

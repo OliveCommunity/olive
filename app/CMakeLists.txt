@@ -19,29 +19,16 @@
 set(OLIVE_SOURCES
         core.h
         core.cpp
-        coreengine.h
-        coreengine.cpp
 )
 
 #set(OLIVE_RESOURCES)
 
 # Add subdirectories, which will populate the above variables
-add_subdirectory(audio)
-add_subdirectory(cli)
-add_subdirectory(codec)
-add_subdirectory(config)
 add_subdirectory(dialog)
-add_subdirectory(node)
 add_subdirectory(packaging)
 add_subdirectory(panel)
-add_subdirectory(render)
-add_subdirectory(shaders)
-add_subdirectory(task)
-add_subdirectory(timeline)
 add_subdirectory(ts)
-add_subdirectory(tool)
 add_subdirectory(ui)
-add_subdirectory(undo)
 add_subdirectory(widget)
 add_subdirectory(window)
 
@@ -58,20 +45,9 @@ configure_file(ts/translations.qrc.in ts/translations.qrc @ONLY)
 set(OLIVE_RESOURCES
         ${OLIVE_RESOURCES}
         ${CMAKE_CURRENT_BINARY_DIR}/ts/translations.qrc
-        render/job/pluginjob.cpp
-        render/job/pluginjob.h
         widget/nodeparamview/nodeparambutton.cpp
         widget/nodeparamview/nodeparambutton.h
 )
-
-# Add version object
-add_library(olive-version-obj
-        OBJECT
-        version.cpp
-        version.h
-)
-target_link_libraries(olive-version-obj PRIVATE Qt${QT_VERSION_MAJOR}::Core)
-target_compile_options(olive-version-obj PRIVATE -DAPPVERSION="${PROJECT_VERSION}" -DAPPVERSIONLONG="${PROJECT_LONG_VERSION}")
 
 # Add main library
 add_library(libolive-editor
@@ -79,9 +55,6 @@ add_library(libolive-editor
         ${OLIVE_SOURCES}
         ${OLIVE_RESOURCES}
 )
-add_subdirectory(common)
-add_subdirectory(pluginSupport)
-
 
 target_compile_features(libolive-editor PUBLIC cxx_std_23)
 include_directories(../third_party/openfx/include
@@ -99,139 +72,6 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
             set_target_properties(${target} PROPERTIES POSITION_INDEPENDENT_CODE ON)
         endif ()
     endforeach ()
-
-    # Render core library: the minimal set of code required by the OpenGL/Vulkan backend
-    # libraries. Keeping this separate from libolive-editor prevents the backends from
-    # dragging in editor-wide state (project, task, cache, UI, etc.).
-    add_library(libolive-rendercore STATIC
-            common/avframeptr.h
-            common/define.h
-            common/filefunctions.cpp
-            common/filefunctions.h
-            common/qtutils.cpp
-            common/qtutils.h
-            common/xmlutils.cpp
-            common/xmlutils.h
-            node/param.cpp
-            node/param.h
-            node/splitvalue.h
-            node/value.cpp
-            node/value.h
-            node/valuedatabase.cpp
-            node/valuedatabase.h
-            render/backend/dynamicrenderer.cpp
-            render/backend/dynamicrenderer.h
-            render/backend/renderbackend_c.h
-            render/job/acceleratedjob.cpp
-            render/job/acceleratedjob.h
-            render/job/shaderjob.h
-            render/renderer.cpp
-            render/renderer.h
-            render/shadercode.h
-            render/texture.cpp
-            render/texture.h
-            render/videoparams.cpp
-            render/videoparams.h
-    )
-    set_target_properties(libolive-rendercore PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    target_include_directories(libolive-rendercore PUBLIC
-            ${CMAKE_SOURCE_DIR}/app
-            ${CMAKE_SOURCE_DIR}/third_party/openfx/include
-            ${CMAKE_SOURCE_DIR}/third_party/openfx/HostSupport/include
-            ${OLIVE_INCLUDE_DIRS}
-    )
-    target_link_libraries(libolive-rendercore PUBLIC ${OLIVE_LIBRARIES} OfxHost)
-    target_compile_definitions(libolive-rendercore PUBLIC ${OLIVE_DEFINITIONS})
-    target_compile_options(libolive-rendercore PUBLIC ${OLIVE_COMPILE_OPTIONS})
-
-    add_library(oakgl SHARED
-            render/opengl/openglbackend_c.cpp
-            render/opengl/openglrenderer.cpp
-            render/opengl/openglrenderer.h
-    )
-    target_link_libraries(oakgl PRIVATE libolive-rendercore)
-    target_compile_definitions(oakgl PRIVATE OAK_RENDER_BACKEND_PLUGIN)
-    set_target_properties(oakgl PROPERTIES
-            OUTPUT_NAME oakgl
-            LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-            RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-            ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-    )
-    if (WIN32)
-        set_target_properties(oakgl PROPERTIES PREFIX "")
-    endif ()
-    install(TARGETS oakgl
-            RUNTIME DESTINATION bin
-            LIBRARY DESTINATION lib
-            ARCHIVE DESTINATION lib
-    )
-
-    if (Vulkan_FOUND)
-        add_library(oakvulkan SHARED
-                render/vulkan/vulkanbackend_c.cpp
-                render/vulkan/vulkanrenderer.cpp
-                render/vulkan/vulkanrenderer.h
-        )
-        target_link_libraries(oakvulkan PRIVATE libolive-rendercore)
-        target_link_libraries(oakvulkan PRIVATE Vulkan::Vulkan)
-        target_compile_definitions(oakvulkan PRIVATE OAK_HAS_VULKAN)
-        if (SHADERC_FOUND)
-            target_link_libraries(oakvulkan PRIVATE ${SHADERC_LIBRARIES})
-            target_include_directories(oakvulkan PRIVATE ${SHADERC_INCLUDE_DIRS})
-            target_compile_definitions(oakvulkan PRIVATE OAK_HAS_SHADERC)
-        endif ()
-        set_target_properties(oakvulkan PROPERTIES
-                OUTPUT_NAME oakvulkan
-                LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-                RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-                ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        )
-        if (WIN32)
-            set_target_properties(oakvulkan PROPERTIES PREFIX "")
-        endif ()
-        install(TARGETS oakvulkan
-                RUNTIME DESTINATION bin
-                LIBRARY DESTINATION lib
-                ARCHIVE DESTINATION lib
-        )
-    endif ()
-endif ()
-
-add_library(oakgl-cabi-check OBJECT
-        render/opengl/openglbackend_c.cpp
-)
-target_include_directories(oakgl-cabi-check PRIVATE
-        ${CMAKE_SOURCE_DIR}/app
-        ${CMAKE_SOURCE_DIR}/third_party/openfx/include
-        ${CMAKE_SOURCE_DIR}/third_party/openfx/HostSupport/include
-        ${OLIVE_INCLUDE_DIRS}
-)
-target_link_libraries(oakgl-cabi-check PRIVATE ${OLIVE_LIBRARIES} OfxHost)
-target_compile_definitions(oakgl-cabi-check PRIVATE ${OLIVE_DEFINITIONS})
-target_compile_options(oakgl-cabi-check PRIVATE ${OLIVE_COMPILE_OPTIONS})
-
-if (Vulkan_FOUND)
-    add_library(oakvulkan-cabi-check OBJECT
-            render/vulkan/vulkanbackend_c.cpp
-            render/vulkan/vulkanrenderer.cpp
-            render/vulkan/vulkanrenderer.h
-    )
-    target_include_directories(oakvulkan-cabi-check PRIVATE
-            ${CMAKE_SOURCE_DIR}/app
-            ${CMAKE_SOURCE_DIR}/third_party/openfx/include
-            ${CMAKE_SOURCE_DIR}/third_party/openfx/HostSupport/include
-            ${OLIVE_INCLUDE_DIRS}
-    )
-    target_link_libraries(oakvulkan-cabi-check PRIVATE Qt${QT_VERSION_MAJOR}::Core Qt${QT_VERSION_MAJOR}::Gui Qt${QT_VERSION_MAJOR}::Widgets)
-    target_link_libraries(oakvulkan-cabi-check PRIVATE Vulkan::Vulkan)
-    target_compile_definitions(oakvulkan-cabi-check PRIVATE OAK_HAS_VULKAN)
-    if (SHADERC_FOUND)
-        target_link_libraries(oakvulkan-cabi-check PRIVATE ${SHADERC_LIBRARIES})
-        target_include_directories(oakvulkan-cabi-check PRIVATE ${SHADERC_INCLUDE_DIRS})
-        target_compile_definitions(oakvulkan-cabi-check PRIVATE OAK_HAS_SHADERC)
-    endif ()
-    target_compile_definitions(oakvulkan-cabi-check PRIVATE ${OLIVE_DEFINITIONS})
-    target_compile_options(oakvulkan-cabi-check PRIVATE ${OLIVE_COMPILE_OPTIONS})
 endif ()
 
 # Add application
@@ -240,7 +80,7 @@ add_executable(olive-editor
         $<TARGET_OBJECTS:libolive-editor>
         $<TARGET_OBJECTS:olive-version-obj>
 )
-target_include_directories(olive-editor PUBLIC pluginSupport)
+
 target_link_libraries(olive-editor PUBLIC OfxHost)
 add_dependencies(olive-editor oakgl-cabi-check)
 if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
@@ -298,7 +138,8 @@ elseif (APPLE)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:oakgl> $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS/
             COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ffmpeg_bridge> $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS/
             COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:olivecore> $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS/
-            COMMENT "Copying oak-render-worker, render backends, ffmpeg_bridge and liboakcore into Oak.app"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:oakengine> $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS/
+            COMMENT "Copying oak-render-worker, render backends, ffmpeg_bridge, liboakcore and liboakengine into Oak.app"
     )
     if (TARGET oakvulkan)
         add_custom_command(TARGET olive-editor POST_BUILD
@@ -315,6 +156,7 @@ if (WIN32)
     add_custom_command(TARGET olive-editor POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ffmpeg_bridge> $<TARGET_FILE_DIR:olive-editor>
             COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:olivecore> $<TARGET_FILE_DIR:olive-editor>
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:oakengine> $<TARGET_FILE_DIR:olive-editor>
     )
 endif ()
 

@@ -205,4 +205,7 @@ if (WIN32)
   add_custom_command(TARGET olive-gtest POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       $<TARGET_FILE:olivecore> $<TARGET_FILE_DIR:olive-gtest>)
+  add_custom_command(TARGET olive-gtest POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      $<TARGET_FILE:oakengine> $<TARGET_FILE_DIR:olive-gtest>)
 endif()
