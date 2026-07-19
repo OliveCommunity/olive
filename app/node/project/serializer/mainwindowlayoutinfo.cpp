@@ -63,7 +63,7 @@ void MainWindowLayoutInfo::to_xml(QXmlStreamWriter *writer) const
 
 		writer->writeAttribute(QStringLiteral("id"), it->first);
 
-		const PanelWidget::Info &info = it->second;
+		const PanelLayoutInfo &info = it->second;
 		for (auto jt = info.cbegin(); jt != info.cend(); jt++) {
 			writer->writeStartElement(QStringLiteral("option"));
 
@@ -158,7 +158,7 @@ MainWindowLayoutInfo::from_xml(QXmlStreamReader *reader,
 					}
 
 					if (!id.isEmpty()) {
-						PanelWidget::Info i;
+						PanelLayoutInfo i;
 
 						while (xml_read_next_start_element(reader)) {
 							if (reader->name() == QStringLiteral("option")) {
@@ -211,7 +211,7 @@ void MainWindowLayoutInfo::add_viewer(ViewerOutput *viewer)
 }
 
 void MainWindowLayoutInfo::set_panel_data(const QString &id,
-										  const PanelWidget::Info &data)
+										  const PanelLayoutInfo &data)
 {
 	panel_data_[id] = data;
 }
@@ -219,7 +219,7 @@ void MainWindowLayoutInfo::set_panel_data(const QString &id,
 void MainWindowLayoutInfo::move_panel_data(const QString &old,
 										   const QString &now)
 {
-	PanelWidget::Info tmp = panel_data_.at(old);
+	PanelLayoutInfo tmp = panel_data_.at(old);
 	panel_data_.erase(old);
 	panel_data_[now] = tmp;
 }

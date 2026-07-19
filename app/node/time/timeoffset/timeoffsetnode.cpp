@@ -21,7 +21,7 @@
 
 #include "timeoffsetnode.h"
 
-#include "widget/slider/rationalslider.h"
+#include "node/sliderdisplaytype.h"
 
 namespace olive
 {
@@ -35,7 +35,7 @@ TimeOffsetNode::TimeOffsetNode()
 {
 	add_input(k_time_input, NodeValue::k_rational, QVariant::fromValue(Rational(0)),
 			 InputFlags(k_input_flag_not_connectable));
-	set_input_property(k_time_input, QStringLiteral("view"), RationalSlider::k_time);
+	set_input_property(k_time_input, QStringLiteral("view"), slider::k_time);
 	set_input_property(k_time_input, QStringLiteral("viewlock"), true);
 
 	add_input(k_input_input, NodeValue::k_none,

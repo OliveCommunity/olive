@@ -34,7 +34,6 @@
 #include "task/task.h"
 #include "tool/tool.h"
 #include "undo/undostack.h"
-#include "widget/projectexplorer/projectviewmodel.h"
 
 namespace olive
 {

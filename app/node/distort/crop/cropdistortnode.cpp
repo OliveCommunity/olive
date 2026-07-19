@@ -23,7 +23,7 @@
 
 #include "common/util.h"
 #include "core.h"
-#include "widget/slider/floatslider.h"
+#include "node/sliderdisplaytype.h"
 
 namespace olive
 {
@@ -183,7 +183,7 @@ void CropDistortNode::create_crop_side_input(const QString &id)
 	add_input(id, NodeValue::k_float, 0.0);
 	set_input_property(id, QStringLiteral("min"), 0.0);
 	set_input_property(id, QStringLiteral("max"), 1.0);
-	set_input_property(id, QStringLiteral("view"), FloatSlider::k_percentage);
+	set_input_property(id, QStringLiteral("view"), slider::k_percentage);
 }
 
 }

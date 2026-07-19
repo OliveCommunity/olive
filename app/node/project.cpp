@@ -28,14 +28,14 @@
 #include "common/qtutils.h"
 #include "common/xmlutils.h"
 #include "core.h"
-#include "dialog/progress/progress.h"
 #include "node/color/ociobase/ociobase.h"
 #include "node/factory.h"
+#include "node/group/group.h"
+#include "node/project/folder/folder.h"
 #include "node/serializeddata.h"
 #include "pluginSupport/olivehost.h"
 #include "ofxhPluginCache.h"
 #include "render/diskmanager.h"
-#include "window/mainwindow/mainwindow.h"
 
 namespace olive
 {

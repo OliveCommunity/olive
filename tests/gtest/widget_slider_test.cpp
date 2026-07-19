@@ -105,43 +105,43 @@ TEST(WidgetSlider, FloatRangeChangeClampsExistingValue)
 TEST(WidgetSlider, FloatDisplayTransformRoundTrips)
 {
 	EXPECT_DOUBLE_EQ(
-		olive::FloatSlider::transform_value_to_display(0.5, olive::FloatSlider::k_percentage),
+		olive::FloatSlider::transform_value_to_display(0.5, olive::slider::k_percentage),
 		50.0);
 	EXPECT_DOUBLE_EQ(
-		olive::FloatSlider::transform_display_to_value(50.0, olive::FloatSlider::k_percentage),
+		olive::FloatSlider::transform_display_to_value(50.0, olive::slider::k_percentage),
 		0.5);
 
 	EXPECT_DOUBLE_EQ(
-		olive::FloatSlider::transform_value_to_display(1.0, olive::FloatSlider::k_decibel),
+		olive::FloatSlider::transform_value_to_display(1.0, olive::slider::k_decibel),
 		0.0);
 	EXPECT_NEAR(
-		olive::FloatSlider::transform_value_to_display(0.5, olive::FloatSlider::k_decibel),
+		olive::FloatSlider::transform_value_to_display(0.5, olive::slider::k_decibel),
 		-6.0206, 0.001);
 	EXPECT_NEAR(
 		olive::FloatSlider::transform_display_to_value(
-			olive::FloatSlider::transform_value_to_display(0.75, olive::FloatSlider::k_decibel),
-			olive::FloatSlider::k_decibel),
+			olive::FloatSlider::transform_value_to_display(0.75, olive::slider::k_decibel),
+			olive::slider::k_decibel),
 		0.75, 1e-12);
 
 	EXPECT_DOUBLE_EQ(
-		olive::FloatSlider::transform_value_to_display(3.5, olive::FloatSlider::k_normal),
+		olive::FloatSlider::transform_value_to_display(3.5, olive::slider::k_normal),
 		3.5);
 	EXPECT_DOUBLE_EQ(
-		olive::FloatSlider::transform_display_to_value(3.5, olive::FloatSlider::k_normal),
+		olive::FloatSlider::transform_display_to_value(3.5, olive::slider::k_normal),
 		3.5);
 }
 
 TEST(WidgetSlider, FloatStaticValueToStringRespectsDisplayType)
 {
 	// Zero volume in decibel mode displays as an infinity symbol (U+221E)
-	EXPECT_EQ(olive::FloatSlider::value_to_string(0.0, olive::FloatSlider::k_decibel, 2,
+	EXPECT_EQ(olive::FloatSlider::value_to_string(0.0, olive::slider::k_decibel, 2,
 												false),
 			  QString(QChar(0x221E)));
 
-	EXPECT_EQ(olive::FloatSlider::value_to_string(0.5, olive::FloatSlider::k_percentage,
+	EXPECT_EQ(olive::FloatSlider::value_to_string(0.5, olive::slider::k_percentage,
 												1, false),
 			  QStringLiteral("50.0"));
-	EXPECT_EQ(olive::FloatSlider::value_to_string(1.234, olive::FloatSlider::k_normal,
+	EXPECT_EQ(olive::FloatSlider::value_to_string(1.234, olive::slider::k_normal,
 												2, false),
 			  QStringLiteral("1.23"));
 }
@@ -155,14 +155,14 @@ TEST(WidgetSlider, FloatLabelShowsFormattedValue)
 	s.set_value(0.5);
 	EXPECT_EQ(label->text(), QStringLiteral("0.50"));
 
-	s.set_display_type(olive::FloatSlider::k_percentage);
+	s.set_display_type(olive::slider::k_percentage);
 	EXPECT_EQ(label->text(), QStringLiteral("50.00%"));
 
 	s.set_format(QStringLiteral("%1 px"));
 	EXPECT_EQ(label->text(), QStringLiteral("50.00 px"));
 
 	s.clear_format();
-	s.set_display_type(olive::FloatSlider::k_normal);
+	s.set_display_type(olive::slider::k_normal);
 	EXPECT_EQ(label->text(), QStringLiteral("0.50"));
 }
 
@@ -191,7 +191,7 @@ TEST(WidgetSlider, FloatStringToValueRejectsGarbage)
 TEST(WidgetSlider, FloatStringToValueRespectsDisplayType)
 {
 	ExposedFloatSlider s;
-	s.set_display_type(olive::FloatSlider::k_percentage);
+	s.set_display_type(olive::slider::k_percentage);
 
 	bool ok = false;
 	QVariant v = s.string_to_value_public(QStringLiteral("50"), &ok);
@@ -207,11 +207,11 @@ TEST(WidgetSlider, FloatDragDistanceRespectsDisplayType)
 	EXPECT_DOUBLE_EQ(s.adjust_drag_public(1.0, 2.5).toDouble(), 3.5);
 
 	// Percentage: drag is scaled by 1/100
-	s.set_display_type(olive::FloatSlider::k_percentage);
+	s.set_display_type(olive::slider::k_percentage);
 	EXPECT_DOUBLE_EQ(s.adjust_drag_public(0.5, 10.0).toDouble(), 0.6);
 
 	// Decibel: drag happens in dB space
-	s.set_display_type(olive::FloatSlider::k_decibel);
+	s.set_display_type(olive::slider::k_decibel);
 	const double expected =
 		olive::Decibel::to_linear(olive::Decibel::from_linear(1.0) + 6.0);
 	EXPECT_DOUBLE_EQ(s.adjust_drag_public(1.0, 6.0).toDouble(), expected);

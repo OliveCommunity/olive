@@ -23,7 +23,6 @@
 
 #include "common/lerp.h"
 #include "core.h"
-#include "widget/slider/floatslider.h"
 
 namespace olive
 {

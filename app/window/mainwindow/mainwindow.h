@@ -25,7 +25,7 @@
 #include <kddockwidgets/Config.h>
 #include <kddockwidgets/MainWindow.h>
 
-#include "mainwindowlayoutinfo.h"
+#include "node/project/serializer/mainwindowlayoutinfo.h"
 #include "node/project.h"
 #include "panel/multicam/multicampanel.h"
 #include "panel/panelmanager.h"

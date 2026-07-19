@@ -533,7 +533,7 @@ TEST(CropDistortNode, InputDefinitionsAndDefaults)
 		EXPECT_DOUBLE_EQ(
 			node.get_input_property(side, QStringLiteral("max")).toDouble(), 1.0);
 		EXPECT_EQ(node.get_input_property(side, QStringLiteral("view")).toInt(),
-				  int(olive::FloatSlider::k_percentage));
+				  int(olive::slider::k_percentage));
 	}
 
 	EXPECT_DOUBLE_EQ(
@@ -1521,7 +1521,7 @@ TEST(TileDistortNode, InputDefaults)
 	EXPECT_EQ(node.get_input_property(olive::TileDistortNode::k_scale_input,
 									QStringLiteral("view"))
 				  .toInt(),
-			  int(olive::FloatSlider::k_percentage));
+			  int(olive::slider::k_percentage));
 
 	EXPECT_EQ(node.get_standard_value(olive::TileDistortNode::k_position_input)
 				  .value<QVector2D>(),

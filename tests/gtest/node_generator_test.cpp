@@ -171,7 +171,7 @@ TEST(MatrixGenerator, InputDefaultsAndProperties)
 	EXPECT_EQ(node->get_input_property(olive::MatrixGenerator::k_scale_input,
 									 QStringLiteral("view"))
 				  .toInt(),
-			  int(olive::FloatSlider::k_percentage));
+			  int(olive::slider::k_percentage));
 	EXPECT_EQ(node->get_input_property(olive::MatrixGenerator::k_scale_input,
 									 QStringLiteral("min"))
 				  .value<QVector2D>(),
@@ -676,7 +676,7 @@ TEST(NoiseGenerator, InputDefaults)
 	EXPECT_EQ(node->get_input_property(olive::NoiseGeneratorNode::k_strength_input,
 									 QStringLiteral("view"))
 				  .toInt(),
-			  int(olive::FloatSlider::k_percentage));
+			  int(olive::slider::k_percentage));
 
 	EXPECT_EQ(int(node->get_input_data_type(olive::NoiseGeneratorNode::k_color_input)),
 			  int(olive::NodeValue::k_boolean));

@@ -1,8 +1,7 @@
 /***
 
-  Olive - Non-Linear Video Editor
-  Copyright (C) 2022 Olive Team
-  Modifications Copyright (C) 2025 mikesolar
+  Oak - Non-Linear Video Editor
+  Copyright (C) 2026 Oak Team
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -19,24 +18,26 @@
 
 ***/
 
-#ifndef OAK_PROJECTLOADMANAGER_H
-#define OAK_PROJECTLOADMANAGER_H
-
-#include "loadbasetask.h"
-#include "node/project/serializer/mainwindowlayoutinfo.h"
+#ifndef OAK_DROPWORKFLOWBEHAVIOR_H
+#define OAK_DROPWORKFLOWBEHAVIOR_H
 
 namespace olive
 {
 
-class ProjectLoadTask : public ProjectLoadBaseTask {
-	Q_OBJECT
-public:
-	ProjectLoadTask(const QString &filename);
-
-protected:
-	virtual bool run() override;
+/**
+ * @brief Behavior when media is dropped onto a timeline without a sequence
+ *
+ * Shared by the config defaults (engine layer) and the timeline import
+ * tool (UI layer). Enumerator order matches the previous
+ * ImportTool::DropWithoutSequenceBehavior.
+ */
+enum DropWithoutSequenceBehavior {
+	k_dws_ask,
+	k_dws_auto,
+	k_dws_manual,
+	k_dws_disable
 };
 
 }
 
-#endif // OAK_PROJECTLOADMANAGER_H
+#endif // OAK_DROPWORKFLOWBEHAVIOR_H

@@ -21,7 +21,7 @@
 
 #include "volume.h"
 
-#include "widget/slider/floatslider.h"
+#include "node/sliderdisplaytype.h"
 
 namespace olive
 {
@@ -39,7 +39,7 @@ VolumeNode::VolumeNode()
 	add_input(k_volume_input, NodeValue::k_float, 1.0);
 	set_input_property(k_volume_input, QStringLiteral("min"), 0.0);
 	set_input_property(k_volume_input, QStringLiteral("view"),
-					 FloatSlider::k_decibel);
+					 slider::k_decibel);
 
 	set_flag(k_audio_effect);
 	set_effect_input(k_samples_input);

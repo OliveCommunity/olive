@@ -23,6 +23,7 @@
 #define OAK_PROJECTSAVEMANAGER_H
 
 #include "node/project.h"
+#include "node/project/serializer/mainwindowlayoutinfo.h"
 #include "task/task.h"
 
 namespace olive

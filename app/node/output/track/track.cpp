@@ -21,7 +21,6 @@
 
 #include "track.h"
 
-#include <QApplication>
 #include <QDebug>
 #include <QFontMetrics>
 

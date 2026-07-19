@@ -664,7 +664,7 @@ CurveView::get_float_display_type_from_keyframe(NodeKeyframe *key)
 	}
 
 	// Fallback to normal
-	return FloatSlider::k_normal;
+	return slider::k_normal;
 }
 
 double CurveView::get_offset_from_keyframe(NodeKeyframe *key)

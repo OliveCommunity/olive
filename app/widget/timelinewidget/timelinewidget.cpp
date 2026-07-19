@@ -161,7 +161,7 @@ TimelineWidget::TimelineWidget(QWidget *parent)
 
 	timecode_label_ = new RationalSlider();
 	timecode_label_->set_alignment(Qt::AlignCenter);
-	timecode_label_->set_display_type(RationalSlider::k_time);
+	timecode_label_->set_display_type(slider::k_time);
 	timecode_label_->setVisible(false);
 	timecode_label_->set_minimum(0);
 	ruler_and_time_layout->addWidget(timecode_label_);

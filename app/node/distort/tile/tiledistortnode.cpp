@@ -21,7 +21,7 @@
 
 #include "tiledistortnode.h"
 
-#include "widget/slider/floatslider.h"
+#include "node/sliderdisplaytype.h"
 
 namespace olive
 {
@@ -43,7 +43,7 @@ TileDistortNode::TileDistortNode()
 	add_input(k_scale_input, NodeValue::k_float, 0.5);
 	set_input_property(k_scale_input, QStringLiteral("min"), 0);
 	set_input_property(k_scale_input, QStringLiteral("view"),
-					 FloatSlider::k_percentage);
+					 slider::k_percentage);
 
 	add_input(k_position_input, NodeValue::k_vec2, QVector2D(0, 0));
 

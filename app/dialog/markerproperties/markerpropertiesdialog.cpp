@@ -65,10 +65,10 @@ MarkerPropertiesDialog::MarkerPropertiesDialog(
 
 	if (markers.size() == 1) {
 		in_slider_->set_value(markers.front()->time().in());
-		in_slider_->set_display_type(RationalSlider::k_time);
+		in_slider_->set_display_type(slider::k_time);
 		in_slider_->set_timebase(timebase);
 		out_slider_->set_value(markers.front()->time().out());
-		out_slider_->set_display_type(RationalSlider::k_time);
+		out_slider_->set_display_type(slider::k_time);
 		out_slider_->set_timebase(timebase);
 	} else {
 		// Markers cannot be on the same time, so we disable setting time if multiple markers are selected

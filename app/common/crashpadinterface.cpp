@@ -27,7 +27,6 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
-#include <QMessageBox>
 #include <QProcess>
 
 #include "crashpadutils.h"

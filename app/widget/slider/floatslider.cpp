@@ -33,7 +33,7 @@ namespace olive
 
 FloatSlider::FloatSlider(QWidget *parent)
 	: super(parent)
-	, display_type_(k_normal)
+	, display_type_(slider::k_normal)
 {
 	set_value(0.0);
 }
@@ -68,13 +68,13 @@ void FloatSlider::set_display_type(const FloatSlider::DisplayType &type)
 	display_type_ = type;
 
 	switch (display_type_) {
-	case k_normal:
+	case slider::k_normal:
 		clear_format();
 		break;
-	case k_decibel:
+	case slider::k_decibel:
 		set_format(tr("%1 dB"));
 		break;
-	case k_percentage:
+	case slider::k_percentage:
 		set_format(tr("%1%"));
 		break;
 	}
@@ -83,12 +83,12 @@ void FloatSlider::set_display_type(const FloatSlider::DisplayType &type)
 double FloatSlider::transform_value_to_display(double val, DisplayType display)
 {
 	switch (display) {
-	case k_normal:
+	case slider::k_normal:
 		break;
-	case k_decibel:
+	case slider::k_decibel:
 		val = Decibel::from_linear(val);
 		break;
-	case k_percentage:
+	case slider::k_percentage:
 		val *= 100.0;
 		break;
 	}
@@ -99,12 +99,12 @@ double FloatSlider::transform_value_to_display(double val, DisplayType display)
 double FloatSlider::transform_display_to_value(double val, DisplayType display)
 {
 	switch (display) {
-	case k_normal:
+	case slider::k_normal:
 		break;
-	case k_decibel:
+	case slider::k_decibel:
 		val = Decibel::to_linear(val);
 		break;
-	case k_percentage:
+	case slider::k_percentage:
 		val *= 0.01;
 		break;
 	}
@@ -117,7 +117,7 @@ QString FloatSlider::value_to_string(double val, FloatSlider::DisplayType displa
 								   bool autotrim_decimal_places)
 {
 	// Return negative infinity for zero volume
-	if (display == k_decibel && qIsNull(val)) {
+	if (display == slider::k_decibel && qIsNull(val)) {
 		return tr("\xE2\x88\x9E");
 	}
 
@@ -154,17 +154,17 @@ QVariant FloatSlider::adjust_drag_distance_internal(const QVariant &start,
 												 const double &drag) const
 {
 	switch (display_type_) {
-	case k_normal:
+	case slider::k_normal:
 		// No change here
 		break;
-	case k_decibel: {
+	case slider::k_decibel: {
 		double current_db = Decibel::from_linear(start.toDouble());
 		current_db += drag;
 		double adjusted_linear = Decibel::to_linear(current_db);
 
 		return adjusted_linear;
 	}
-	case k_percentage:
+	case slider::k_percentage:
 		return super::adjust_drag_distance_internal(start, drag * 0.01);
 	}
 

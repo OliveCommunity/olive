@@ -25,7 +25,6 @@
 #include <pa_jack.h>
 #endif
 
-#include <QApplication>
 
 #include "config/config.h"
 

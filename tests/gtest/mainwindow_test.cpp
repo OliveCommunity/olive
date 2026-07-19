@@ -24,7 +24,7 @@
 #include "widget/menu/menushared.h"
 #include "window/mainwindow/mainstatusbar.h"
 #include "window/mainwindow/mainwindow.h"
-#include "window/mainwindow/mainwindowlayoutinfo.h"
+#include "node/project/serializer/mainwindowlayoutinfo.h"
 
 using namespace olive;
 

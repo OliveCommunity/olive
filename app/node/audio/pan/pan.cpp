@@ -21,7 +21,7 @@
 
 #include "pan.h"
 
-#include "widget/slider/floatslider.h"
+#include "node/sliderdisplaytype.h"
 
 namespace olive
 {
@@ -40,7 +40,7 @@ PanNode::PanNode()
 	set_input_property(k_panning_input, QStringLiteral("min"), -1.0);
 	set_input_property(k_panning_input, QStringLiteral("max"), 1.0);
 	set_input_property(k_panning_input, QStringLiteral("view"),
-					 FloatSlider::k_percentage);
+					 slider::k_percentage);
 
 	set_flag(k_audio_effect);
 	set_effect_input(k_samples_input);

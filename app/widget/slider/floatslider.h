@@ -23,6 +23,7 @@
 #define OAK_FLOATSLIDER_H
 
 #include "base/decimalsliderbase.h"
+#include "node/sliderdisplaytype.h"
 
 namespace olive
 {
@@ -32,7 +33,10 @@ class FloatSlider : public DecimalSliderBase {
 public:
 	FloatSlider(QWidget *parent = nullptr);
 
-	enum DisplayType { k_normal, k_decibel, k_percentage };
+	// The canonical definition lives in the engine layer
+	// (node/sliderdisplaytype.h); this alias keeps existing call sites
+	// source-compatible. Use slider::k_normal etc. for the enumerators.
+	using DisplayType = slider::FloatDisplayType;
 
 	double get_value() const;
 

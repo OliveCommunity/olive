@@ -26,6 +26,7 @@
 #include <QMouseEvent>
 
 #include "base/decimalsliderbase.h"
+#include "node/sliderdisplaytype.h"
 
 namespace olive
 {
@@ -43,8 +44,12 @@ class RationalSlider : public DecimalSliderBase {
 public:
 	/**
    * @brief enum containing the possibly display types
+   *
+   * The canonical definition lives in the engine layer
+   * (node/sliderdisplaytype.h); this alias keeps existing call sites
+   * source-compatible. Use slider::k_time etc. for the enumerators.
    */
-	enum DisplayType { k_time, k_float, k_rational };
+	using DisplayType = slider::RationalDisplayType;
 
 	RationalSlider(QWidget *parent = nullptr);
 

@@ -227,7 +227,7 @@ TEST(PanNode, InputDefaults)
 	EXPECT_EQ(int(pan.get_input_property(olive::PanNode::k_panning_input,
 									   QStringLiteral("view"))
 					  .toInt()),
-			  int(olive::FloatSlider::k_percentage));
+			  int(olive::slider::k_percentage));
 }
 
 TEST(PanNode, RetranslateSetsInputNames)
@@ -489,7 +489,7 @@ TEST(VolumeNode, InputDefaults)
 	EXPECT_EQ(int(volume.get_input_property(olive::VolumeNode::k_volume_input,
 										  QStringLiteral("view"))
 					  .toInt()),
-			  int(olive::FloatSlider::k_decibel));
+			  int(olive::slider::k_decibel));
 }
 
 TEST(VolumeNode, RetranslateSetsInputNames)

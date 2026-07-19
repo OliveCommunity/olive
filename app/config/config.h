@@ -44,6 +44,18 @@ public:
 
 	static void save();
 
+	/**
+	 * @brief Handler for configuration errors that should be shown to the user
+	 *
+	 * The engine layer cannot show dialogs itself. The UI registers a
+	 * handler (e.g. QMessageBox-based) at startup; without one, errors go
+	 * to the log instead.
+	 */
+	using ErrorHandler = void (*)(const QString &title,
+								  const QString &message);
+
+	static void set_error_handler(ErrorHandler handler);
+
 	QVariant operator[](const QString &) const;
 
 	QVariant &operator[](const QString &);
@@ -64,6 +76,10 @@ private:
 	QMap<QString, ConfigEntry> config_map_;
 
 	static Config current_config;
+
+	static ErrorHandler error_handler_;
+
+	static void report_error(const QString &title, const QString &message);
 
 	static QString get_config_file_path();
 };

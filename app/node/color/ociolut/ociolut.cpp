@@ -20,10 +20,10 @@
 
 #include "ociolut.h"
 
+#include <QApplication>
 #include <QFileInfo>
 #include <QMetaObject>
 
-#include <QApplication>
 
 #include "core.h"
 #include "node/color/colormanager/colormanager.h"

@@ -22,6 +22,7 @@
 #ifndef OAK_IMPORTTIMELINETOOL_H
 #define OAK_IMPORTTIMELINETOOL_H
 
+#include "common/dropworkflowbehavior.h"
 #include "tool.h"
 
 namespace olive
@@ -46,12 +47,12 @@ public:
 				 bool insert, MultiUndoCommand *command, int track_offset = 0,
 				 bool jump_to_end = false);
 
-	enum DropWithoutSequenceBehavior {
-		k_dws_ask,
-		k_dws_auto,
-		k_dws_manual,
-		k_dws_disable
-	};
+	// The canonical definition lives in the engine layer
+	// (common/dropworkflowbehavior.h); this alias keeps existing call
+	// sites source-compatible. Use olive::k_dws_ask etc. for the
+	// enumerators (visible unqualified inside namespace olive).
+	using DropWithoutSequenceBehavior =
+		olive::DropWithoutSequenceBehavior;
 
 private:
 	void footage_to_ghosts(Rational ghost_start,

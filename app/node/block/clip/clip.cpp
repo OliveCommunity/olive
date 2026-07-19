@@ -26,8 +26,8 @@
 #include "node/output/track/track.h"
 #include "node/output/viewer/viewer.h"
 #include "node/project/sequence/sequence.h"
-#include "widget/slider/floatslider.h"
-#include "widget/slider/rationalslider.h"
+#include "node/sliderdisplaytype.h"
+#include "node/sliderdisplaytype.h"
 
 namespace olive
 {
@@ -51,13 +51,13 @@ ClipBlock::ClipBlock()
 	add_input(k_media_in_input, NodeValue::k_rational,
 			 InputFlags(k_input_flag_not_connectable | k_input_flag_not_keyframable));
 	set_input_property(k_media_in_input, QStringLiteral("view"),
-					 RationalSlider::k_time);
+					 slider::k_time);
 	set_input_property(k_media_in_input, QStringLiteral("viewlock"), true);
 
 	add_input(k_speed_input, NodeValue::k_float, 1.0,
 			 InputFlags(k_input_flag_not_connectable | k_input_flag_not_keyframable));
 	set_input_property(k_speed_input, QStringLiteral("view"),
-					 FloatSlider::k_percentage);
+					 slider::k_percentage);
 	set_input_property(k_speed_input, QStringLiteral("min"), 0.0);
 
 	add_input(k_reverse_input, NodeValue::k_boolean, false,

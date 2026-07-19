@@ -71,7 +71,7 @@
 #include "task/project/saveotio/saveotio.h"
 #endif
 #include "task/project/import/import.h"
-#include "task/project/import/importerrordialog.h"
+#include "dialog/projectimport/projectimporterrordialog.h"
 #include "task/project/load/load.h"
 #include "task/project/save/save.h"
 #include "task/taskmanager.h"

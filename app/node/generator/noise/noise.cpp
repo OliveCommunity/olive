@@ -21,7 +21,7 @@
 
 #include "noise.h"
 
-#include "widget/slider/floatslider.h"
+#include "node/sliderdisplaytype.h"
 
 namespace olive
 {
@@ -40,7 +40,7 @@ NoiseGeneratorNode::NoiseGeneratorNode()
 
 	add_input(k_strength_input, NodeValue::k_float, 0.2);
 	set_input_property(k_strength_input, QStringLiteral("view"),
-					 FloatSlider::k_percentage);
+					 slider::k_percentage);
 	set_input_property(k_strength_input, QStringLiteral("min"), 0);
 
 	add_input(k_color_input, NodeValue::k_boolean, false);

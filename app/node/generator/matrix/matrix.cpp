@@ -24,7 +24,7 @@
 #include <QMatrix4x4>
 #include <QVector2D>
 
-#include "widget/slider/floatslider.h"
+#include "node/sliderdisplaytype.h"
 
 namespace olive
 {
@@ -47,7 +47,7 @@ MatrixGenerator::MatrixGenerator()
 	add_input(k_scale_input, NodeValue::k_vec2, QVector2D(1.0f, 1.0f));
 	set_input_property(k_scale_input, QStringLiteral("min"), QVector2D(0, 0));
 	set_input_property(k_scale_input, QStringLiteral("view"),
-					 FloatSlider::k_percentage);
+					 slider::k_percentage);
 	set_input_property(k_scale_input, QStringLiteral("disable1"), true);
 
 	add_input(k_uniform_scale_input, NodeValue::k_boolean, true,

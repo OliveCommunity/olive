@@ -57,7 +57,7 @@ PlaybackControls::PlaybackControls(QWidget *parent)
 	lower_left_layout->setContentsMargins(0, 0, 0, 0);
 
 	cur_tc_lbl_ = new RationalSlider();
-	cur_tc_lbl_->set_display_type(RationalSlider::k_time);
+	cur_tc_lbl_->set_display_type(slider::k_time);
 	cur_tc_lbl_->set_minimum(0);
 	connect(cur_tc_lbl_, &RationalSlider::value_changed, this,
 			&PlaybackControls::time_changed);

@@ -33,6 +33,9 @@ set(OLIVE_SOURCES
         node/project/serializer/serializer230220.h
 
 
+        node/project/serializer/mainwindowlayoutinfo.cpp
+        node/project/serializer/mainwindowlayoutinfo.h
+
         node/project/serializer/typeserializer.cpp
         node/project/serializer/typeserializer.h
 

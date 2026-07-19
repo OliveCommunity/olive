@@ -24,7 +24,7 @@
 #include <QDebug>
 
 #include "node/inputdragger.h"
-#include "widget/slider/rationalslider.h"
+#include "node/sliderdisplaytype.h"
 
 namespace olive
 {
@@ -44,7 +44,7 @@ Block::Block()
 	set_input_property(k_length_input, QStringLiteral("min"),
 					 QVariant::fromValue(Rational(0, 1)));
 	set_input_property(k_length_input, QStringLiteral("view"),
-					 RationalSlider::k_time);
+					 slider::k_time);
 	set_input_property(k_length_input, QStringLiteral("viewlock"), true);
 
 	set_input_flag(k_enabled_input, k_input_flag_not_connectable);

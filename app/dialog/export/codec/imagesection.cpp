@@ -49,7 +49,7 @@ ImageSection::ImageSection(QWidget *parent)
 	frame_slider_ = new RationalSlider();
 	frame_slider_->set_minimum(0);
 	frame_slider_->set_value(0);
-	frame_slider_->set_display_type(RationalSlider::k_time);
+	frame_slider_->set_display_type(slider::k_time);
 	connect(frame_slider_, &RationalSlider::value_changed, this,
 			&ImageSection::time_changed);
 	layout->addWidget(frame_slider_, row, 1);

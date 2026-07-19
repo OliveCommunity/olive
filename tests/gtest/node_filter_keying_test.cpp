@@ -103,7 +103,7 @@ TEST(OpacityEffect, InputDefinitionsAndDefaults)
 	EXPECT_EQ(node.get_input_property(olive::OpacityEffect::k_value_input,
 									QStringLiteral("view"))
 				  .toInt(),
-			  int(olive::FloatSlider::k_percentage));
+			  int(olive::slider::k_percentage));
 }
 
 TEST(OpacityEffect, Identity)
@@ -616,7 +616,7 @@ TEST(DropShadowFilter, InputDefinitionsAndDefaults)
 	EXPECT_EQ(node.get_input_property(olive::DropShadowFilter::k_opacity_input,
 									QStringLiteral("view"))
 				  .toInt(),
-			  int(olive::FloatSlider::k_percentage));
+			  int(olive::slider::k_percentage));
 	EXPECT_FALSE(
 		node.get_standard_value(olive::DropShadowFilter::k_fast_input).toBool());
 }
@@ -933,7 +933,7 @@ TEST(StrokeFilterNode, InputDefinitionsAndDefaults)
 	EXPECT_EQ(node.get_input_property(olive::StrokeFilterNode::k_opacity_input,
 									QStringLiteral("view"))
 				  .toInt(),
-			  int(olive::FloatSlider::k_percentage));
+			  int(olive::slider::k_percentage));
 	EXPECT_FALSE(
 		node.get_standard_value(olive::StrokeFilterNode::k_inner_input).toBool());
 }

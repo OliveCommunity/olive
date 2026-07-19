@@ -22,8 +22,6 @@ set(OLIVE_SOURCES
         window/mainwindow/mainstatusbar.cpp
         window/mainwindow/mainwindow.h
         window/mainwindow/mainwindow.cpp
-        window/mainwindow/mainwindowlayoutinfo.h
-        window/mainwindow/mainwindowlayoutinfo.cpp
         window/mainwindow/mainwindowundo.h
         window/mainwindow/mainwindowundo.cpp
         PARENT_SCOPE

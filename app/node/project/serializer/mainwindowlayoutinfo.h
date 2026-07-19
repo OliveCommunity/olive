@@ -19,12 +19,21 @@
 #ifndef OAK_MAINWINDOWLAYOUTINFO_H
 #define OAK_MAINWINDOWLAYOUTINFO_H
 
+#include <map>
+
 #include "node/project/folder/folder.h"
 #include "node/project/sequence/sequence.h"
-#include "panel/panel.h"
 
 namespace olive
 {
+
+/**
+ * @brief Per-panel layout data (key/value pairs)
+ *
+ * Identical to PanelWidget::Info in the UI layer; defined here so the
+ * engine-side layout data structure does not depend on widget headers.
+ */
+using PanelLayoutInfo = std::map<QString, QString>;
 
 class MainWindowLayoutInfo {
 public:
@@ -41,7 +50,7 @@ public:
 
 	void add_viewer(ViewerOutput *viewer);
 
-	void set_panel_data(const QString &id, const PanelWidget::Info &data);
+	void set_panel_data(const QString &id, const PanelLayoutInfo &data);
 
 	void move_panel_data(const QString &old, const QString &now);
 
@@ -62,7 +71,7 @@ public:
 		return open_viewers_;
 	}
 
-	const std::map<QString, PanelWidget::Info> &panel_data() const
+	const std::map<QString, PanelLayoutInfo> &panel_data() const
 	{
 		return panel_data_;
 	}
@@ -81,7 +90,7 @@ private:
 
 	std::vector<ViewerOutput *> open_viewers_;
 
-	std::map<QString, PanelWidget::Info> panel_data_;
+	std::map<QString, PanelLayoutInfo> panel_data_;
 
 	static const unsigned int k_version = 1;
 };

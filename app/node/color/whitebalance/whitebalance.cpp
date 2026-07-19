@@ -25,7 +25,7 @@
 #include "common/filefunctions.h"
 #include "render/job/shaderjob.h"
 #include "render/texture.h"
-#include "widget/slider/floatslider.h"
+#include "node/sliderdisplaytype.h"
 
 namespace olive
 {
@@ -47,7 +47,7 @@ WhiteBalanceNode::WhiteBalanceNode()
 	set_input_property(k_temperature_input, QStringLiteral("min"), 1000.0);
 	set_input_property(k_temperature_input, QStringLiteral("max"), 40000.0);
 	set_input_property(k_temperature_input, QStringLiteral("view"),
-					 FloatSlider::k_normal);
+					 slider::k_normal);
 
 	add_input(k_tint_input, NodeValue::k_float, 0.0);
 	set_input_property(k_tint_input, QStringLiteral("min"), -1.0);

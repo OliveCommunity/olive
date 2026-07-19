@@ -21,7 +21,6 @@
 
 #include "rendermanager.h"
 
-#include <QApplication>
 #include <QMatrix4x4>
 #include <QThread>
 
@@ -35,7 +34,6 @@
 #include "renderworkerpool.h"
 #include "task/conform/conform.h"
 #include "task/taskmanager.h"
-#include "window/mainwindow/mainwindow.h"
 
 namespace olive
 {

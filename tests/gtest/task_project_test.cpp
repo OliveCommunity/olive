@@ -19,7 +19,7 @@
 #include "node/project/serializer/serializer.h"
 #include "render/diskmanager.h"
 #include "task/project/import/import.h"
-#include "task/project/import/importerrordialog.h"
+#include "dialog/projectimport/projectimporterrordialog.h"
 #include "task/project/load/load.h"
 #include "undo/undocommand.h"
 

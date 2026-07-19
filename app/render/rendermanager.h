@@ -26,7 +26,6 @@
 
 #include "config/config.h"
 #include "colorprocessorcache.h"
-#include "dialog/rendercancel/rendercancel.h"
 #include "node/output/viewer/viewer.h"
 #include "node/project.h"
 #include "node/traverser.h"

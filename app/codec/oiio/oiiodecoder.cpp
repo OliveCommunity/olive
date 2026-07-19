@@ -24,7 +24,6 @@
 #include <QDebug>
 #include <QDir>
 #include <QFileInfo>
-#include <QMessageBox>
 
 #include "common/oiioutils.h"
 #include "render/renderer.h"

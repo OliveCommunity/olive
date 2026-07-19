@@ -24,7 +24,7 @@
 #include <QVector3D>
 
 #include "node/project.h"
-#include "widget/slider/floatslider.h"
+#include "node/sliderdisplaytype.h"
 
 namespace olive
 {
@@ -66,9 +66,9 @@ ThreeWayColorNode::ThreeWayColorNode()
 	set_input_property(k_shadows_amount_input, min, 0.0);
 	set_input_property(k_midtones_amount_input, min, 0.0);
 	set_input_property(k_highlights_amount_input, min, 0.0);
-	set_input_property(k_shadows_amount_input, view, FloatSlider::k_percentage);
-	set_input_property(k_midtones_amount_input, view, FloatSlider::k_percentage);
-	set_input_property(k_highlights_amount_input, view, FloatSlider::k_percentage);
+	set_input_property(k_shadows_amount_input, view, slider::k_percentage);
+	set_input_property(k_midtones_amount_input, view, slider::k_percentage);
+	set_input_property(k_highlights_amount_input, view, slider::k_percentage);
 
 	set_effect_input(k_texture_input);
 	set_flag(k_video_effect);

@@ -21,7 +21,7 @@
 
 #include "dropshadowfilter.h"
 
-#include "widget/slider/floatslider.h"
+#include "node/sliderdisplaytype.h"
 
 namespace olive
 {
@@ -54,7 +54,7 @@ DropShadowFilter::DropShadowFilter()
 	add_input(k_opacity_input, NodeValue::k_float, 1.0);
 	set_input_property(k_opacity_input, QStringLiteral("min"), 0.0);
 	set_input_property(k_opacity_input, QStringLiteral("view"),
-					 FloatSlider::k_percentage);
+					 slider::k_percentage);
 
 	add_input(k_fast_input, NodeValue::k_boolean, false);
 

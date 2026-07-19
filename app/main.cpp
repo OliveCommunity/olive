@@ -341,6 +341,16 @@ int main(int argc, char *argv[])
 		a.reset(new QCoreApplication(argc, argv));
 	}
 
+	// Configuration errors are reported through a UI handler so the engine
+	// layer (config) never has to know about dialogs
+	olive::Config::set_error_handler(
+		[](const QString &title, const QString &message) {
+			QWidget *parent =
+				olive::Core::instance() ? olive::Core::instance()->main_window() :
+										  nullptr;
+			QMessageBox::critical(parent, title, message, QMessageBox::Ok);
+		});
+
 	olive::Config::load();
 	const QString graphics_backend =
 		olive::Config::current()[QStringLiteral("GraphicsBackend")]

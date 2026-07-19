@@ -19,7 +19,7 @@
 
 ***/
 
-#include "importerrordialog.h"
+#include "projectimporterrordialog.h"
 
 #include <QDialogButtonBox>
 #include <QLabel>

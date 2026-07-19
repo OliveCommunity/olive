@@ -21,7 +21,6 @@
 
 #include "previewautocacher.h"
 
-#include <QApplication>
 #include <QPointer>
 #include <QtConcurrent/QtConcurrent>
 

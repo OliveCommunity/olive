@@ -27,9 +27,10 @@
 #include <QUuid>
 
 #include "node/output/viewer/viewer.h"
+#include "node/project/folder/folder.h"
 #include "node/project/footage/footage.h"
+#include "node/project/sequence/sequence.h"
 #include "node/color/colormanager/colormanager.h"
-#include "window/mainwindow/mainwindowlayoutinfo.h"
 
 namespace olive
 {

@@ -23,7 +23,6 @@
 
 #include <QThread>
 
-#include "panel/timeline/timeline.h"
 #include "ui/icons/icons.h"
 #include "timeline/timelineundogeneral.h"
 

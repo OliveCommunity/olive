@@ -26,6 +26,7 @@
 
 #include "common/define.h"
 #include "node/project.h"
+#include "node/project/serializer/mainwindowlayoutinfo.h"
 #include "typeserializer.h"
 
 namespace olive

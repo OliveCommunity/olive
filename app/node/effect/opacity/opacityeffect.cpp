@@ -19,7 +19,7 @@
 #include "opacityeffect.h"
 
 #include "node/math/math/math.h"
-#include "widget/slider/floatslider.h"
+#include "node/sliderdisplaytype.h"
 
 namespace olive
 {
@@ -43,7 +43,7 @@ OpacityEffect::OpacityEffect()
 
 	add_input(k_value_input, NodeValue::k_float, 1.0);
 	set_input_property(k_value_input, QStringLiteral("view"),
-					 FloatSlider::k_percentage);
+					 slider::k_percentage);
 	set_input_property(k_value_input, QStringLiteral("min"), 0.0);
 	set_input_property(k_value_input, QStringLiteral("max"), 1.0);
 

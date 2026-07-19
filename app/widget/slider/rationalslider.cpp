@@ -39,7 +39,7 @@ RationalSlider::RationalSlider(QWidget *parent)
 	connect(SliderBase::label(), &SliderLabel::customContextMenuRequested, this,
 			&RationalSlider::show_display_type_menu);
 
-	set_display_type(k_float);
+	set_display_type(slider::k_float);
 
 	set_value(Rational(0, 0));
 }
@@ -109,13 +109,13 @@ QString RationalSlider::value_to_string(const QVariant &v) const
 		double val = r.to_double() + get_offset().value<Rational>().to_double();
 
 		switch (display_type_) {
-		case k_time:
+		case slider::k_time:
 			return QString::fromStdString(Timecode::time_to_timecode(
 				r, timebase_, Core::instance()->get_timecode_display()));
-		case k_float:
+		case slider::k_float:
 			return float_to_string(val, get_decimal_places(),
 								 get_auto_trim_decimal_places());
-		case k_rational:
+		case slider::k_rational:
 			return QString::fromStdString(v.value<Rational>().to_string());
 		}
 
@@ -129,13 +129,13 @@ QVariant RationalSlider::string_to_value(const QString &s, bool *ok) const
 	*ok = false;
 
 	switch (display_type_) {
-	case k_time: {
+	case slider::k_time: {
 		r = Timecode::timecode_to_time(s.toStdString(), timebase_,
 									   Core::instance()->get_timecode_display(),
 									   ok);
 		break;
 	}
-	case k_float: {
+	case slider::k_float: {
 		// First, convert to a double
 		double d = s.toDouble(ok);
 		if (!(*ok)) {
@@ -146,7 +146,7 @@ QVariant RationalSlider::string_to_value(const QString &s, bool *ok) const
 		r = Rational::from_double(d, ok);
 		break;
 	}
-	case k_rational:
+	case slider::k_rational:
 		r = Rational::from_string(s.toStdString(), ok);
 		break;
 	}
@@ -185,29 +185,29 @@ void RationalSlider::show_display_type_menu()
 	Menu m(this);
 
 	if (!get_lock_display_type()) {
-		if (!disabled_.contains(k_float)) {
+		if (!disabled_.contains(slider::k_float)) {
 			QAction *float_action = m.addAction(tr("Float"));
-			float_action->setData(k_float);
+			float_action->setData(slider::k_float);
 			connect(float_action, &QAction::triggered, this,
 					&RationalSlider::set_display_type_from_menu);
 		}
 
-		if (!disabled_.contains(k_rational)) {
+		if (!disabled_.contains(slider::k_rational)) {
 			QAction *rational_action = m.addAction(tr("Rational"));
-			rational_action->setData(k_rational);
+			rational_action->setData(slider::k_rational);
 			connect(rational_action, &QAction::triggered, this,
 					&RationalSlider::set_display_type_from_menu);
 		}
 
-		if (!disabled_.contains(k_time)) {
+		if (!disabled_.contains(slider::k_time)) {
 			QAction *time_action = m.addAction(tr("Time"));
-			time_action->setData(k_time);
+			time_action->setData(slider::k_time);
 			connect(time_action, &QAction::triggered, this,
 					&RationalSlider::set_display_type_from_menu);
 		}
 	}
 
-	if (display_type_ == k_time) {
+	if (display_type_ == slider::k_time) {
 		if (!m.actions().isEmpty()) {
 			m.addSeparator();
 		}

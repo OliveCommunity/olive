@@ -23,7 +23,7 @@
 
 #include "node/block/clip/clip.h"
 #include "node/output/track/track.h"
-#include "widget/slider/rationalslider.h"
+#include "node/sliderdisplaytype.h"
 
 namespace olive
 {
@@ -51,7 +51,7 @@ TransitionBlock::TransitionBlock()
 	add_input(k_center_input, NodeValue::k_rational,
 			 InputFlags(k_input_flag_not_keyframable | k_input_flag_not_connectable));
 	set_input_property(k_center_input, QStringLiteral("view"),
-					 RationalSlider::k_time);
+					 slider::k_time);
 	set_input_property(k_center_input, QStringLiteral("viewlock"), true);
 
 	set_flag(k_dont_show_in_param_view, false);

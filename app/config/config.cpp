@@ -24,25 +24,38 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
-#include <QMessageBox>
 #include <QStandardPaths>
 #include <QXmlStreamWriter>
 
 #include "codec/exportformat.h"
 #include "common/autoscroll.h"
+#include "common/dropworkflowbehavior.h"
 #include "common/filefunctions.h"
 #include "common/xmlutils.h"
 #include "core.h"
 #include "timeline/timelinecommon.h"
 #include "ui/colorcoding.h"
-#include "ui/style/style.h"
-#include "widget/timelinewidget/tool/import.h"
-#include "window/mainwindow/mainwindow.h"
 
 namespace olive
 {
 
 Config Config::current_config;
+
+Config::ErrorHandler Config::error_handler_ = nullptr;
+
+void Config::set_error_handler(ErrorHandler handler)
+{
+	error_handler_ = handler;
+}
+
+void Config::report_error(const QString &title, const QString &message)
+{
+	if (error_handler_) {
+		error_handler_(title, message);
+	} else {
+		qWarning() << title << "-" << message;
+	}
+}
 
 Config::Config()
 {
@@ -69,8 +82,10 @@ Config &Config::current()
 void Config::set_defaults()
 {
 	config_map_.clear();
+	// Default style name; the style itself lives in the UI layer
+	// (ui/style), which owns the definitive list
 	set_entry_internal(QStringLiteral("Style"), NodeValue::k_text,
-					 StyleManager::k_default_style);
+					 QStringLiteral("olive-dark"));
 	set_entry_internal(QStringLiteral("TimecodeDisplay"), NodeValue::k_int,
 					 Timecode::k_timecode_drop_frame);
 	set_entry_internal(QStringLiteral("DefaultStillLength"), NodeValue::k_rational,
@@ -124,7 +139,7 @@ void Config::set_defaults()
 	set_entry_internal(QStringLiteral("RectifiedWaveforms"), NodeValue::k_boolean,
 					 true);
 	set_entry_internal(QStringLiteral("DropWithoutSequenceBehavior"),
-					 NodeValue::k_int, ImportTool::k_dws_ask);
+					 NodeValue::k_int, k_dws_ask);
 	set_entry_internal(QStringLiteral("Loop"), NodeValue::k_boolean, false);
 	set_entry_internal(QStringLiteral("SplitClipsCopyNodes"), NodeValue::k_boolean,
 					 true);
@@ -356,20 +371,13 @@ void Config::load()
 	}
 
 	if (reader.hasError()) {
-		// Config::Load() is called before Core (and therefore the main window)
-		// is constructed, so we cannot use Core::instance()->main_window() as
-		// the message box parent. Passing nullptr creates a top-level dialog.
-		QWidget *parent = Core::instance() ? Core::instance()->main_window() :
-											 nullptr;
-		QMessageBox::critical(
-			parent,
+		report_error(
 			QCoreApplication::translate("Config", "Error loading settings"),
 			QCoreApplication::translate(
 				"Config",
 				"Failed to load application settings. This session will "
 				"use defaults.\n\n%1")
-				.arg(reader.errorString()),
-			QMessageBox::Ok);
+				.arg(reader.errorString()));
 		current_config.set_defaults();
 	}
 
@@ -385,14 +393,12 @@ void Config::save()
 	QFile config_file(temp_filename);
 
 	if (!config_file.open(QFile::WriteOnly)) {
-		QMessageBox::critical(
-			Core::instance()->main_window(),
+		report_error(
 			QCoreApplication::translate("Config", "Error saving settings"),
 			QCoreApplication::translate(
 				"Config",
 				"Failed to save application settings. The application "
-				"may lack write permissions for this location."),
-			QMessageBox::Ok);
+				"may lack write permissions for this location."));
 		return;
 	}
 
