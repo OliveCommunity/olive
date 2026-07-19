@@ -69,11 +69,11 @@ QString demo_video_path()
 QString worker_binary_path()
 {
 	// The test binary lives in cmake-build-debug/tests/gtest; the worker is in
-	// cmake-build-debug/app.
+	// cmake-build-debug/worker.
 	QDir dir(QCoreApplication::applicationDirPath());
 	dir.cdUp(); // tests/gtest -> tests
 	dir.cdUp(); // tests -> build dir
-	dir.cd(QStringLiteral("app"));
+	dir.cd(QStringLiteral("worker"));
 #if defined(_WIN32)
 	return dir.filePath(QStringLiteral("oak-render-worker.exe"));
 #else

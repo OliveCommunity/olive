@@ -59,7 +59,7 @@ jobs:
         run: |
           mkdir -p app/packaging/windows/nsis/oak-editor
           cp build/app/oak-editor.exe app/packaging/windows/nsis/oak-editor/
-          cp build/app/oak-render-worker.exe app/packaging/windows/nsis/oak-editor/
+          cp build/worker/oak-render-worker.exe app/packaging/windows/nsis/oak-editor/
           cp build/app/oakgl.dll app/packaging/windows/nsis/oak-editor/
           if [ -f build/app/oakvulkan.dll ]; then
             cp build/app/oakvulkan.dll app/packaging/windows/nsis/oak-editor/

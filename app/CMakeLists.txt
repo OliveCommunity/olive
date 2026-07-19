@@ -247,35 +247,8 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
         add_dependencies(olive-editor oakvulkan)
     endif ()
 endif ()
-# Ensure the render worker is always built together with the editor on every platform.
-add_dependencies(olive-editor olive-render-worker)
-
 set_target_properties(olive-editor PROPERTIES OUTPUT_NAME "oak-editor")
 
-# Add render worker process (oak-render-worker).
-# Reuses the libolive-editor object library so the worker shares the exact same render/node/codec
-# code as the editor. It is a headless app that owns its own offscreen GL context. The link set is
-# currently the full OLIVE_LIBRARIES for simplicity; trimming UI-only dependencies is a later-phase
-# cleanup (see render-process-isolation plan).
-add_executable(olive-render-worker
-        render/worker/workermain.cpp
-        $<TARGET_OBJECTS:libolive-editor>
-        $<TARGET_OBJECTS:olive-version-obj>
-)
-set_target_properties(olive-render-worker PROPERTIES OUTPUT_NAME "oak-render-worker")
-if (APPLE)
-    target_sources(olive-render-worker PRIVATE render/worker/workermain_mac.mm)
-    target_link_libraries(olive-render-worker PRIVATE "-framework Cocoa")
-endif ()
-target_include_directories(olive-render-worker PUBLIC pluginSupport)
-target_link_libraries(olive-render-worker PUBLIC OfxHost)
-if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
-    target_compile_definitions(olive-render-worker PRIVATE OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
-    add_dependencies(olive-render-worker oakgl)
-    if (TARGET oakvulkan)
-        add_dependencies(olive-render-worker oakvulkan)
-    endif ()
-endif ()
 # Create docs if doxygen was found
 if (DOXYGEN_FOUND)
     set(DOXYGEN_PROJECT_NAME "Oak Video Editor")
@@ -331,15 +304,12 @@ elseif (APPLE)
     endif ()
 elseif (UNIX)
     # Set Linux-specific properties for application
-    # The render worker must ship next to oak-editor: RenderWorkerPool spawns
-    # it from QCoreApplication::applicationDirPath()
-    install(TARGETS olive-editor olive-render-worker RUNTIME DESTINATION bin)
+    install(TARGETS olive-editor RUNTIME DESTINATION bin)
 endif ()
 
 # Set link libraries
 target_link_libraries(olive-editor PRIVATE ${OLIVE_LIBRARIES})
 target_link_libraries(libolive-editor PRIVATE ${OLIVE_LIBRARIES})
-target_link_libraries(olive-render-worker PRIVATE ${OLIVE_LIBRARIES})
 
 # The ffmpeg_bridge shared library ships next to the binaries: inside the
 # macOS app bundle (Contents/MacOS, resolved via @loader_path), and in the
@@ -348,14 +318,13 @@ if (APPLE)
     # macOS bundles are distributed via POST_BUILD copies (not install()), so
     # @loader_path must already be in the build-tree binaries' RPATH.
     set(OLIVE_FB_RPATH "@loader_path")
-    set_target_properties(olive-editor olive-render-worker PROPERTIES
+    set_target_properties(olive-editor PROPERTIES
             BUILD_RPATH "@loader_path")
 elseif (UNIX)
     set(OLIVE_FB_RPATH "$ORIGIN/../lib")
 endif ()
 if (OLIVE_FB_RPATH)
-    set_target_properties(olive-editor olive-render-worker PROPERTIES
-            INSTALL_RPATH "${OLIVE_FB_RPATH}")
+    set_target_properties(olive-editor PROPERTIES INSTALL_RPATH "${OLIVE_FB_RPATH}")
     if (TARGET oakgl)
         set_target_properties(oakgl PROPERTIES INSTALL_RPATH "${OLIVE_FB_RPATH}")
     endif ()
@@ -367,22 +336,14 @@ endif ()
 # Set compile options
 target_compile_options(olive-editor PRIVATE ${OLIVE_COMPILE_OPTIONS})
 target_compile_options(libolive-editor PRIVATE ${OLIVE_COMPILE_OPTIONS})
-target_compile_options(olive-render-worker PRIVATE ${OLIVE_COMPILE_OPTIONS})
 
 # Set global definitions
 target_compile_definitions(olive-editor PRIVATE ${OLIVE_DEFINITIONS})
 target_compile_definitions(libolive-editor PRIVATE ${OLIVE_DEFINITIONS})
-target_compile_definitions(olive-render-worker PRIVATE ${OLIVE_DEFINITIONS})
 
 # Set include dirs
 target_include_directories(olive-editor PRIVATE ${OLIVE_INCLUDE_DIRS})
 target_include_directories(libolive-editor PRIVATE ${OLIVE_INCLUDE_DIRS})
-target_include_directories(olive-render-worker PRIVATE ${OLIVE_INCLUDE_DIRS})
-
-# Install the render worker alongside the editor on Linux.
-if (UNIX AND NOT APPLE)
-    install(TARGETS olive-render-worker RUNTIME DESTINATION bin)
-endif ()
 
 # Add crash handler
 if (GoogleCrashpad_FOUND AND Qt${QT_VERSION_MAJOR}Network_FOUND)

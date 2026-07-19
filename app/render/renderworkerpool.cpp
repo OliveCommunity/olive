@@ -245,6 +245,7 @@ QString worker_program_path()
 	const QStringList candidates = {
 		QDir(app_dir).filePath(file),
 		QDir(app_dir).filePath(QStringLiteral("../app/") + file),
+		QDir(app_dir).filePath(QStringLiteral("../worker/") + file),
 	};
 
 	for (const QString &path : candidates) {

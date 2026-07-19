@@ -309,6 +309,7 @@ add_subdirectory(third_party/KDDockWidgets EXCLUDE_FROM_ALL)
 
 add_subdirectory(third_party/openfx/HostSupport)
 add_subdirectory(app)
+add_subdirectory(worker)
 
 if (BUILD_TESTS)
   enable_testing()

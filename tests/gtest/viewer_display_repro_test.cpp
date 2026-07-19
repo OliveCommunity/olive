@@ -59,7 +59,7 @@ QString worker_binary_path_t()
 	QDir dir(QCoreApplication::applicationDirPath());
 	dir.cdUp();
 	dir.cdUp();
-	dir.cd(QStringLiteral("app"));
+	dir.cd(QStringLiteral("worker"));
 #if defined(_WIN32)
 	return dir.filePath(QStringLiteral("oak-render-worker.exe"));
 #else
