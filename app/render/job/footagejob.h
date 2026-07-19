@@ -22,7 +22,10 @@
 #ifndef OAK_FOOTAGEJOB_H
 #define OAK_FOOTAGEJOB_H
 
+#include <QFileInfo>
+
 #include "node/project/footage/footage.h"
+#include "render/rendermodes.h"
 
 namespace olive
 {
@@ -83,6 +86,20 @@ public:
 		proxy_decoder_ = decoder;
 		proxy_stream_index_ = stream_index;
 		has_proxy_ = !filename.isEmpty();
+	}
+
+	/**
+	 * @brief Whether decoding for the given render mode should use the proxy
+	 *
+	 * Proxies are a preview accelerator only: offline (realtime preview)
+	 * renders may decode from them, online (export/master) renders must
+	 * always decode the original media. The proxy file must also still
+	 * exist on disk, otherwise decoding falls back to the original.
+	 */
+	bool should_use_proxy(RenderMode::Mode mode) const
+	{
+		return mode == RenderMode::k_offline && has_proxy() &&
+			QFileInfo::exists(proxy_filename_);
 	}
 
 	Track::Type type() const

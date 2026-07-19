@@ -62,6 +62,11 @@ public:
 	struct ProxyParams {
 		int width = 1280;
 		int height = 720;
+		/**
+		 * @brief Source resolution divider (1 = use absolute width/height,
+		 * 2/4/8 = fraction of the source resolution)
+		 */
+		int divider = 1;
 		int version = 1;
 		QString extension = QStringLiteral("mp4");
 		int crf = 23;

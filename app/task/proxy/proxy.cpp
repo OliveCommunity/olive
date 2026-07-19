@@ -48,16 +48,28 @@ QStringList ProxyTask::build_arguments(const QString &source_filename,
 									  const ProxyManager::ProxyParams &params,
 									  const QString &output_filename)
 {
-	const QString scale_filter =
-		QStringLiteral("scale=w=%1:h=%2:force_original_aspect_ratio=decrease")
-			.arg(QString::number(params.width),
-				 QString::number(params.height));
+	QString scale_filter;
+	if (params.divider > 1) {
+		// Fraction of the source resolution, rounded down to even dimensions
+		// as required by yuv420p
+		scale_filter =
+			QStringLiteral("scale=w=trunc(iw/%1/2)*2:h=trunc(ih/%1/2)*2")
+				.arg(QString::number(params.divider));
+	} else {
+		scale_filter =
+			QStringLiteral("scale=w=%1:h=%2:force_original_aspect_ratio=decrease")
+				.arg(QString::number(params.width),
+					 QString::number(params.height));
+	}
 
 	const QString container_format =
 		params.extension.isEmpty() ? QStringLiteral("mp4") : params.extension;
 
 	QStringList args;
-	args << QStringLiteral("-y") << QStringLiteral("-i") << source_filename
+	args << QStringLiteral("-y")
+		 // Report machine-readable progress on stdout for the task dialog
+		 << QStringLiteral("-nostats") << QStringLiteral("-progress")
+		 << QStringLiteral("pipe:1") << QStringLiteral("-i") << source_filename
 		 // Map the requested video stream first so it is stream 0 in the proxy
 		 << QStringLiteral("-map") << QStringLiteral("0:%1").arg(stream_index);
 
@@ -81,6 +93,68 @@ QStringList ProxyTask::build_arguments(const QString &source_filename,
 
 	return args;
 }
+
+double ProxyTask::parse_progress(const QString &line, double duration_seconds)
+{
+	if (duration_seconds <= 0.0) {
+		return -1.0;
+	}
+
+	qint64 out_time_us = -1;
+	if (line.startsWith(QStringLiteral("out_time_us="))) {
+		out_time_us = line.mid(12).toLongLong();
+	} else if (line.startsWith(QStringLiteral("out_time_ms="))) {
+		// Despite the name, ffmpeg reports this value in microseconds
+		out_time_us = line.mid(12).toLongLong();
+	}
+
+	if (out_time_us < 0) {
+		return -1.0;
+	}
+
+	return qBound(0.0, out_time_us / 1000000.0 / duration_seconds, 1.0);
+}
+
+namespace
+{
+
+/**
+ * @brief Probes the source duration with the ffprobe next to ffmpeg
+ *
+ * Returns 0 when ffprobe is unavailable or the duration cannot be
+ * determined, in which case the task simply reports no intermediate
+ * progress.
+ */
+double probe_source_duration_seconds(const QString &ffmpeg_path,
+									 const QString &source_filename)
+{
+	QString ffprobe =
+		QFileInfo(ffmpeg_path).dir().filePath(QStringLiteral("ffprobe"));
+#if defined(Q_OS_WIN)
+	ffprobe += QStringLiteral(".exe");
+#endif
+	if (!QFileInfo::exists(ffprobe)) {
+		return 0.0;
+	}
+
+	QProcess probe;
+	probe.start(ffprobe,
+				{ QStringLiteral("-v"), QStringLiteral("error"),
+				  QStringLiteral("-show_entries"), QStringLiteral("format=duration"),
+				  QStringLiteral("-of"),
+				  QStringLiteral("default=noprint_wrappers=1:nokey=1"),
+				  source_filename });
+	if (!probe.waitForFinished(10000) || probe.exitCode() != 0) {
+		return 0.0;
+	}
+
+	bool ok = false;
+	const double duration =
+		QString::fromUtf8(probe.readAllStandardOutput()).trimmed().toDouble(&ok);
+	return ok ? duration : 0.0;
+}
+
+} // namespace
 
 bool ProxyTask::run()
 {
@@ -115,6 +189,10 @@ bool ProxyTask::run()
 	process.setProgram(ffmpeg);
 	process.setArguments(args);
 	process.setProcessChannelMode(QProcess::MergedChannels);
+
+	const double duration_seconds =
+		probe_source_duration_seconds(ffmpeg, source_filename_);
+
 	process.start();
 
 	if (!process.waitForStarted()) {
@@ -124,7 +202,25 @@ bool ProxyTask::run()
 		return false;
 	}
 
+	QString progress_buffer;
+	double last_progress = 0.0;
+
+	const auto drain_progress = [&]() {
+		progress_buffer += QString::fromUtf8(process.readAll());
+		int newline = -1;
+		while ((newline = progress_buffer.indexOf(QLatin1Char('\n'))) >= 0) {
+			const QString line = progress_buffer.left(newline).trimmed();
+			progress_buffer.remove(0, newline + 1);
+			const double progress = parse_progress(line, duration_seconds);
+			if (progress >= 0.0 && progress - last_progress > 0.001) {
+				last_progress = progress;
+				emit progress_changed(progress);
+			}
+		}
+	};
+
 	while (!process.waitForFinished(100)) {
+		drain_progress();
 		if (is_cancelled()) {
 			process.kill();
 			process.waitForFinished();
@@ -133,6 +229,7 @@ bool ProxyTask::run()
 			return false;
 		}
 	}
+	drain_progress();
 
 	if (process.exitStatus() != QProcess::NormalExit ||
 		process.exitCode() != 0) {

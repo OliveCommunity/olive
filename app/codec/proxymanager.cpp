@@ -38,8 +38,8 @@ bool proxy_params_equal(const ProxyManager::ProxyParams &a,
 					  const ProxyManager::ProxyParams &b)
 {
 	return a.width == b.width && a.height == b.height &&
-		   a.version == b.version && a.extension == b.extension &&
-		   a.crf == b.crf && a.preset == b.preset &&
+		   a.divider == b.divider && a.version == b.version &&
+		   a.extension == b.extension && a.crf == b.crf && a.preset == b.preset &&
 		   a.include_audio == b.include_audio;
 }
 
@@ -56,11 +56,23 @@ QString ProxyManager::get_proxy_filename(const QString &cache_path,
 	const QString proxy_dir = get_proxy_directory(cache_path);
 	const QString extension =
 		params.extension.isEmpty() ? QStringLiteral("mp4") : params.extension;
+
+	// Divider mode scales relative to the source, so the tag names the
+	// divider rather than an absolute target size
+	QString size_tag;
+	if (params.divider > 1) {
+		size_tag = QStringLiteral("div%1").arg(QString::number(params.divider));
+	} else {
+		size_tag = QStringLiteral("%1x%2")
+					   .arg(QString::number(params.width),
+							QString::number(params.height));
+	}
+
 	const QString filename =
-		QStringLiteral("%1-%2.%3x%4.v%5.a%6.%7")
+		QStringLiteral("%1-%2.%3.v%4.a%5.%6")
 			.arg(FileFunctions::get_unique_file_identifier(source_filename),
-				 QString::number(stream_index), QString::number(params.width),
-				 QString::number(params.height), QString::number(params.version),
+				 QString::number(stream_index), size_tag,
+				 QString::number(params.version),
 				 params.include_audio ? QStringLiteral("1") : QStringLiteral("0"),
 				 extension);
 
@@ -133,6 +145,7 @@ ProxyManager::ProxyParams ProxyManager::proxy_params_from_config()
 	ProxyParams params;
 	params.width = OAK_CONFIG("ProxyWidth").value<int>();
 	params.height = OAK_CONFIG("ProxyHeight").value<int>();
+	params.divider = OAK_CONFIG("ProxyDivider").value<int>();
 	params.crf = OAK_CONFIG("ProxyCRF").value<int>();
 	params.preset = OAK_CONFIG("ProxyPreset").toString();
 	params.include_audio = OAK_CONFIG("ProxyIncludeAudio").toBool();

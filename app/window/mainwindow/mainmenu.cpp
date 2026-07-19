@@ -361,6 +361,15 @@ MainMenu::MainMenu(MainWindow *parent)
 
 	tools_menu_->addSeparator();
 
+	tools_use_proxy_item_ = new QAction(this);
+	Menu::conform_item(tools_use_proxy_item_, "useproxymedia");
+	tools_use_proxy_item_->setCheckable(true);
+	tools_use_proxy_item_->setChecked(
+		Config::current()[QStringLiteral("UseProxyMedia")].toBool());
+	connect(tools_use_proxy_item_, &QAction::triggered, Core::instance(),
+			&Core::set_use_proxy_media);
+	tools_menu_->addAction(tools_use_proxy_item_);
+
 	tools_proxy_settings_item_ = new QAction(this);
 	Menu::conform_item(tools_proxy_settings_item_, "proxysettings");
 	connect(tools_proxy_settings_item_, &QAction::triggered, this, [this]() {
@@ -892,6 +901,7 @@ void MainMenu::retranslate()
 	tools_add_item_->setText(tr("Add Tool"));
 	tools_record_item_->setText(tr("Record Tool"));
 	tools_snapping_item_->setText(tr("Enable Snapping"));
+	tools_use_proxy_item_->setText(tr("Use Proxy Media"));
 	tools_proxy_settings_item_->setText(tr("Proxy Settings..."));
 	tools_preferences_item_->setText(tr("Preferences"));
 	tools_add_item_menu_->setTitle(tr("Add Tool Item"));

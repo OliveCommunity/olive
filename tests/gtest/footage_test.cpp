@@ -12,6 +12,7 @@
 
 #include "common/filefunctions.h"
 #include "core.h"
+#include "codec/frame.h"
 #include "node/color/colormanager/colormanager.h"
 #include "node/globals.h"
 #include "node/project.h"
@@ -19,6 +20,7 @@
 #include "render/diskmanager.h"
 #include "node/project/footage/footagedescription.h"
 #include "render/job/footagejob.h"
+#include "render/job/generatejob.h"
 #include "render/loopmode.h"
 #include "render/texture.h"
 #include "ui/icons/icons.h"
@@ -587,6 +589,56 @@ TEST_F(FootageTest, ProxyChangesMarkProjectModifiedAndEmitSignal)
 	EXPECT_EQ(emissions, 2);
 	EXPECT_TRUE(project_->is_modified());
 	EXPECT_FALSE(footage->proxy_enabled());
+}
+
+TEST_F(FootageTest, OfflineMediaGeneratesWarningFrame)
+{
+	olive::Footage *footage = add_footage();
+	footage->set_filename(QStringLiteral("/nonexistent/media.mp4"));
+
+	olive::FramePtr frame = olive::Frame::create();
+	frame->set_video_params(olive::VideoParams(320, 180, olive::PixelFormat::u8,
+											 olive::VideoParams::k_rgba_channel_count));
+	frame->allocate();
+
+	footage->generate_frame(frame, olive::GenerateJob());
+
+	// The offline slat must be visible: dark red background/stripes plus
+	// white warning text
+	bool found_red_pixel = false;
+	bool found_bright_pixel = false;
+	const auto *data = reinterpret_cast<const uchar *>(frame->data());
+	for (int y = 0; y < frame->height(); y++) {
+		const uchar *row = data + y * frame->linesize_bytes();
+		for (int x = 0; x < frame->width(); x++) {
+			const uchar *px = row + x * 4;
+			if (px[0] > 40 && px[1] < px[0] / 2 && px[2] < px[0] / 2) {
+				found_red_pixel = true;
+			}
+			if (px[0] > 200 && px[1] > 200 && px[2] > 200) {
+				found_bright_pixel = true;
+			}
+		}
+	}
+	EXPECT_TRUE(found_red_pixel);
+	EXPECT_TRUE(found_bright_pixel);
+}
+
+TEST_F(FootageTest, RelinkClearsStaleProxy)
+{
+	olive::Footage *footage = add_footage();
+	footage->set_filename(QStringLiteral("/media/original.mov"));
+	footage->set_proxy(QStringLiteral("/cache/proxy/example.mp4"),
+					  olive::ProxyManager::k_proxy_ready, 0, 1, true);
+	ASSERT_FALSE(footage->proxy_path().isEmpty());
+
+	// Relinking to a different file must invalidate the proxy that was
+	// generated from the old source (Footage::clear() drops it when the
+	// filename input changes)
+	footage->set_filename(QStringLiteral("/media/relinked.mov"));
+	EXPECT_TRUE(footage->proxy_path().isEmpty());
+	EXPECT_FALSE(footage->proxy_enabled());
+	EXPECT_EQ(footage->proxy_state(), olive::ProxyManager::k_proxy_missing);
 }
 
 TEST_F(FootageTest, ReprobeRestoresStreamsFromMetadataCache)

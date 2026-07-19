@@ -281,6 +281,7 @@ private:
 	QAction *tools_add_item_;
 	QAction *tools_record_item_;
 	QAction *tools_snapping_item_;
+	QAction *tools_use_proxy_item_;
 	QAction *tools_proxy_settings_item_;
 	QAction *tools_preferences_item_;
 	Menu *tools_add_item_menu_;

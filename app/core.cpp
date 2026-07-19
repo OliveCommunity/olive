@@ -448,6 +448,20 @@ void Core::set_snapping(const bool &b)
 	emit snapping_changed(snapping_);
 }
 
+void Core::set_use_proxy_media(bool enabled)
+{
+	Config::current()[QStringLiteral("UseProxyMedia")] = enabled;
+
+	// Invalidate all footage so viewers re-evaluate with the new proxy state
+	if (open_project_) {
+		for (Node *n : open_project_->nodes()) {
+			if (Footage *footage = dynamic_cast<Footage *>(n)) {
+				footage->invalidate_all(Footage::k_filename_input);
+			}
+		}
+	}
+}
+
 void Core::dialog_about_show()
 {
 	AboutDialog a(false, main_window_);

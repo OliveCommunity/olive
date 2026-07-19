@@ -375,6 +375,8 @@ Default `Node::SaveCustom()` writes nothing. Specific node subclasses may overri
     - `custom`（可选）：为 `1` 表示该素材使用独立的自定义代理参数，而不是全局设置。
     - `pwidth`, `pheight` (optional, requires `custom="1"`): custom proxy dimensions.
     - `pwidth`、`pheight`（可选，需 `custom="1"`）：自定义代理分辨率。
+    - `pdivider` (optional): source resolution divider (`1` = use `pwidth`/`pheight`; `2`/`4`/`8` = fraction of the source resolution). Defaults to `1` when absent.
+    - `pdivider`（可选）：源分辨率分频（`1` = 使用 `pwidth`/`pheight`；`2`/`4`/`8` = 源分辨率的几分之一）。缺省时为 `1`。
     - `pcrf` (optional): custom x264 CRF value.
     - `pcrf`（可选）：自定义 x264 CRF 值。
     - `ppreset` (optional): custom x264 preset name.

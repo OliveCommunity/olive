@@ -338,6 +338,15 @@ public slots:
 	void set_snapping(const bool &b);
 
 	/**
+   * @brief Globally enable or disable decoding from proxy media
+   *
+   * When disabled, all footage decodes from its original media regardless of
+   * each footage's individual proxy setting. The per-footage settings are
+   * preserved and take effect again when this is re-enabled.
+   */
+	void set_use_proxy_media(bool enabled);
+
+	/**
    * @brief Show an About dialog
    */
 	void dialog_about_show();

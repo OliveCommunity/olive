@@ -24,6 +24,8 @@
 #include <QApplication>
 #include <QDebug>
 #include <QDir>
+#include <QImage>
+#include <QPainter>
 #include <QStandardPaths>
 
 #include "codec/decoder.h"
@@ -353,6 +355,11 @@ void Footage::value(const NodeValueRow &value, const NodeGlobals &globals,
 	// Pop filename from table
 	QString file = value[k_filename_input].to_string();
 
+	// Proxies can be globally disabled (Tools > Use Proxy Media) without
+	// losing each footage's individual proxy setting
+	const bool proxies_allowed =
+		Config::current()[QStringLiteral("UseProxyMedia")].toBool();
+
 	// If the file exists and the reference is valid, push a footage job to the renderer
 	if (QFileInfo::exists(file)) {
 		// Push length
@@ -368,7 +375,8 @@ void Footage::value(const NodeValueRow &value, const NodeGlobals &globals,
 			if (ref.type() == Track::k_video) {
 				VideoParams vp = get_video_params(ref.index());
 
-				if (proxy_enabled_ && !proxy_path_.isEmpty() &&
+				if (proxies_allowed && proxy_enabled_ &&
+					!proxy_path_.isEmpty() &&
 					proxy_video_stream_index_ == vp.stream_index() &&
 					ProxyManager::get_proxy_state(proxy_path_) ==
 						ProxyManager::k_proxy_ready) {
@@ -403,7 +411,8 @@ void Footage::value(const NodeValueRow &value, const NodeGlobals &globals,
 
 				// Proxies generated with audio contain the video stream at
 				// index 0 followed by all source audio streams in source order
-				if (proxy_enabled_ && !proxy_path_.isEmpty() &&
+				if (proxies_allowed && proxy_enabled_ &&
+					!proxy_path_.isEmpty() &&
 					ProxyManager::get_proxy_state(proxy_path_) ==
 						ProxyManager::k_proxy_ready &&
 					ProxyManager::proxy_filename_has_audio(proxy_path_)) {
@@ -425,7 +434,60 @@ void Footage::value(const NodeValueRow &value, const NodeGlobals &globals,
 							ref.to_string());
 			}
 		}
+	} else if (!file.isEmpty()) {
+		// Media is offline: push a generated warning frame for each video
+		// stream so missing media is clearly visible in the timeline instead
+		// of a transparent/black hole. generate_frame() draws the slat.
+		for (int i = 0; i < get_total_stream_count(); i++) {
+			Track::Reference ref = get_reference_from_real_index(i);
+			if (ref.type() != Track::k_video) {
+				continue;
+			}
+
+			VideoParams vp = get_video_params(ref.index());
+			if (!vp.is_valid()) {
+				vp = globals.vparams();
+			}
+			vp.set_format(PixelFormat::u8);
+			vp.set_colorspace(
+				project()->color_manager()->get_default_input_color_space());
+
+			GenerateJob job(value);
+			table->push(NodeValue::k_texture, Texture::job(vp, job), this,
+						ref.to_string());
+		}
 	}
+}
+
+void Footage::generate_frame(FramePtr frame, const GenerateJob &job) const
+{
+	Q_UNUSED(job)
+
+	QImage img(reinterpret_cast<uchar *>(frame->data()), frame->width(),
+			   frame->height(), frame->linesize_bytes(),
+			   QImage::Format_RGBA8888_Premultiplied);
+
+	// Dark red slat with diagonal stripes, matching the offline media
+	// warnings of other NLEs
+	img.fill(QColor(60, 0, 0));
+
+	QPainter p(&img);
+	p.setRenderHint(QPainter::Antialiasing);
+
+	p.setPen(QPen(QColor(120, 20, 20), qMax(2, frame->height() / 90)));
+	const int stripe_step = qMax(16, frame->height() / 6);
+	for (int x = -frame->height(); x < frame->width() + frame->height();
+		 x += stripe_step) {
+		p.drawLine(x, 0, x + frame->height(), frame->height());
+	}
+
+	QFont font = p.font();
+	font.setPixelSize(qMax(10, frame->height() / 10));
+	font.setBold(true);
+	p.setFont(font);
+	p.setPen(Qt::white);
+	p.drawText(img.rect(), Qt::AlignCenter | Qt::TextWordWrap,
+			   tr("Media Offline\n%1").arg(QFileInfo(filename()).fileName()));
 }
 
 QString Footage::get_stream_type_name(Track::Type type)

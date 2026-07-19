@@ -437,12 +437,76 @@ TEST(ProxyTask, BuildArgumentsDisablesAudioWhenDisabled)
 	EXPECT_FALSE(args.contains(QStringLiteral("0:a?")));
 }
 
+TEST(ProxyTask, ParseProgressReadsOutTime)
+{
+	EXPECT_DOUBLE_EQ(olive::ProxyTask::parse_progress(
+						 QStringLiteral("out_time_us=5000000"), 10.0),
+					 0.5);
+	// Despite the name, out_time_ms is also reported in microseconds
+	EXPECT_DOUBLE_EQ(olive::ProxyTask::parse_progress(
+						 QStringLiteral("out_time_ms=2500000"), 10.0),
+					 0.25);
+}
+
+TEST(ProxyTask, ParseProgressClampsToOne)
+{
+	EXPECT_DOUBLE_EQ(olive::ProxyTask::parse_progress(
+						 QStringLiteral("out_time_us=20000000"), 10.0),
+					 1.0);
+}
+
+TEST(ProxyTask, ParseProgressIgnoresUnknownDuration)
+{
+	EXPECT_LT(olive::ProxyTask::parse_progress(
+				  QStringLiteral("out_time_us=5000000"), 0.0),
+			  0.0);
+}
+
+TEST(ProxyTask, ParseProgressIgnoresUnrelatedLines)
+{
+	EXPECT_LT(olive::ProxyTask::parse_progress(QStringLiteral("frame=  250"),
+											   10.0),
+			  0.0);
+	EXPECT_LT(olive::ProxyTask::parse_progress(QStringLiteral("progress=end"),
+											   10.0),
+			  0.0);
+}
+
+TEST(ProxyTask, BuildArgumentsDividerScalesFromSource)
+{
+	olive::ProxyManager::ProxyParams params;
+	params.divider = 4;
+
+	const QStringList args = olive::ProxyTask::build_arguments(
+		QStringLiteral("/media/source.mov"), 0, params,
+		QStringLiteral("/cache/proxy/out.mp4"));
+
+	const int vf = args.indexOf(QStringLiteral("-vf"));
+	ASSERT_GE(vf, 0);
+	EXPECT_EQ(args.at(vf + 1),
+			  QStringLiteral("scale=w=trunc(iw/4/2)*2:h=trunc(ih/4/2)*2"));
+}
+
+TEST(ProxyManager, DividerProxyFilenameUsesDividerTag)
+{
+	olive::ProxyManager::ProxyParams params;
+	params.divider = 2;
+
+	const QString filename = olive::ProxyManager::get_proxy_filename(
+		QStringLiteral("/tmp/oak-cache"), QStringLiteral("/media/source.mov"),
+		0, params);
+
+	EXPECT_TRUE(QFileInfo(filename).fileName().contains(
+		QStringLiteral(".div2.")));
+}
+
 TEST(ProxyManager, FootagePersistsCustomProxyParams)
 {
 	olive::Footage footage;
 	olive::ProxyManager::ProxyParams params;
 	params.width = 640;
 	params.height = 360;
+	params.divider = 4;
 	params.crf = 30;
 	params.preset = QStringLiteral("faster");
 	params.extension = QStringLiteral("mov");
@@ -462,6 +526,7 @@ TEST(ProxyManager, FootagePersistsCustomProxyParams)
 	EXPECT_TRUE(xml.contains(QStringLiteral("custom=\"1\"")));
 	EXPECT_TRUE(xml.contains(QStringLiteral("pwidth=\"640\"")));
 	EXPECT_TRUE(xml.contains(QStringLiteral("pheight=\"360\"")));
+	EXPECT_TRUE(xml.contains(QStringLiteral("pdivider=\"4\"")));
 	EXPECT_TRUE(xml.contains(QStringLiteral("pcrf=\"30\"")));
 	EXPECT_TRUE(xml.contains(QStringLiteral("ppreset=\"faster\"")));
 	EXPECT_TRUE(xml.contains(QStringLiteral("pext=\"mov\"")));
@@ -476,6 +541,7 @@ TEST(ProxyManager, FootagePersistsCustomProxyParams)
 	ASSERT_TRUE(loaded.has_custom_proxy_params());
 	EXPECT_EQ(loaded.custom_proxy_params().width, 640);
 	EXPECT_EQ(loaded.custom_proxy_params().height, 360);
+	EXPECT_EQ(loaded.custom_proxy_params().divider, 4);
 	EXPECT_EQ(loaded.custom_proxy_params().crf, 30);
 	EXPECT_EQ(loaded.custom_proxy_params().preset, QStringLiteral("faster"));
 	EXPECT_EQ(loaded.custom_proxy_params().extension, QStringLiteral("mov"));

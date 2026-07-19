@@ -44,6 +44,16 @@ public:
 									  const ProxyManager::ProxyParams &params,
 									  const QString &output_filename);
 
+	/**
+	 * @brief Parses one line of ffmpeg "-progress" output
+	 *
+	 * Extracted for testability. If the line carries an output timestamp
+	 * ("out_time_us=" or "out_time_ms="), returns the progress fraction in
+	 * the range [0, 1] against duration_seconds. Returns a negative value
+	 * when the line carries no timestamp or duration_seconds is unknown.
+	 */
+	static double parse_progress(const QString &line, double duration_seconds);
+
 protected:
 	virtual bool run() override;
 

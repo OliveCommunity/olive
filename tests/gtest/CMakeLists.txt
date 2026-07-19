@@ -46,6 +46,7 @@ add_executable(olive-gtest
   project_serializer_test.cpp
   proxy_manager_test.cpp
   proxy_dialog_test.cpp
+  footage_job_proxy_test.cpp
   lut_file_field_test.cpp
   node_math_test.cpp
   node_undo_test.cpp
@@ -182,6 +183,12 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
   if (TARGET oakvulkan)
     add_dependencies(olive-gtest oakvulkan)
   endif()
+endif()
+
+# Several render tests spawn the render worker binary from the build tree; it
+# must be up to date with the code under test
+if (TARGET olive-render-worker)
+  add_dependencies(olive-gtest olive-render-worker)
 endif()
 
 if (MSVC)

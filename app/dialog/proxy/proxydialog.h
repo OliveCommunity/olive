@@ -43,6 +43,8 @@ public:
 
 	int proxy_height() const;
 
+	int proxy_divider() const;
+
 	int proxy_crf() const;
 
 	QString proxy_preset() const;
@@ -54,6 +56,8 @@ public:
 	void set_proxy_width(int width);
 
 	void set_proxy_height(int height);
+
+	void set_proxy_divider(int divider);
 
 	void set_proxy_crf(int crf);
 
@@ -79,6 +83,8 @@ private:
 	IntegerSlider *width_slider_;
 
 	IntegerSlider *height_slider_;
+
+	QComboBox *resolution_combo_;
 
 	IntegerSlider *crf_slider_;
 

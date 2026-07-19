@@ -232,10 +232,13 @@ void Config::set_defaults()
 
 	set_entry_internal(QStringLiteral("ProxyWidth"), NodeValue::k_int, 1280);
 	set_entry_internal(QStringLiteral("ProxyHeight"), NodeValue::k_int, 720);
+	set_entry_internal(QStringLiteral("ProxyDivider"), NodeValue::k_int, 1);
 	set_entry_internal(QStringLiteral("ProxyCRF"), NodeValue::k_int, 23);
 	set_entry_internal(QStringLiteral("ProxyPreset"), NodeValue::k_text,
 					 QStringLiteral("veryfast"));
 	set_entry_internal(QStringLiteral("ProxyIncludeAudio"), NodeValue::k_boolean,
+					 true);
+	set_entry_internal(QStringLiteral("UseProxyMedia"), NodeValue::k_boolean,
 					 true);
 	set_entry_internal(QStringLiteral("FFmpegPath"), NodeValue::k_text,
 					 QString());

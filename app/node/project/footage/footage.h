@@ -247,6 +247,9 @@ public:
 	virtual void value(const NodeValueRow &value, const NodeGlobals &globals,
 					   NodeValueTable *table) const override;
 
+	virtual void generate_frame(FramePtr frame,
+								const GenerateJob &job) const override;
+
 	static QString get_stream_type_name(Track::Type type);
 
 	virtual Node *get_connected_texture_output() override;

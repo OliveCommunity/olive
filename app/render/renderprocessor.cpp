@@ -530,10 +530,8 @@ void RenderProcessor::process_video_footage(TexturePtr destination,
 		return;
 	}
 
-	const bool use_proxy =
-		static_cast<RenderMode::Mode>(ticket_->property("mode").toInt()) ==
-			RenderMode::k_offline &&
-		stream->has_proxy() && QFileInfo::exists(stream->proxy_filename());
+	const bool use_proxy = stream->should_use_proxy(
+		static_cast<RenderMode::Mode>(ticket_->property("mode").toInt()));
 	const QString decode_filename = use_proxy ? stream->proxy_filename() :
 												stream->filename();
 	const QString decoder_id = use_proxy ? stream->proxy_decoder() :
@@ -613,10 +611,8 @@ void RenderProcessor::process_audio_footage(SampleBuffer &destination,
 
 	// Mirror the video path: use the proxy (when enabled, ready, and containing
 	// audio) for offline renders only, never for export
-	const bool use_proxy =
-		static_cast<RenderMode::Mode>(ticket_->property("mode").toInt()) ==
-			RenderMode::k_offline &&
-		stream->has_proxy() && QFileInfo::exists(stream->proxy_filename());
+	const bool use_proxy = stream->should_use_proxy(
+		static_cast<RenderMode::Mode>(ticket_->property("mode").toInt()));
 	const QString decode_filename = use_proxy ? stream->proxy_filename() :
 												stream->filename();
 	const QString decoder_id = use_proxy ? stream->proxy_decoder() :

@@ -77,6 +77,20 @@ ProxyDialog::ProxyDialog(QWidget *parent, const QVector<Footage *> &footage)
 
 	int row = 0;
 
+	settings_layout->addWidget(new QLabel(tr("Proxy Resolution:")), row, 0);
+	resolution_combo_ = new QComboBox();
+	resolution_combo_->addItem(tr("Custom size"), 1);
+	resolution_combo_->addItem(tr("1/2 of source"), 2);
+	resolution_combo_->addItem(tr("1/4 of source"), 4);
+	resolution_combo_->addItem(tr("1/8 of source"), 8);
+	const int divider_index = resolution_combo_->findData(params.divider);
+	if (divider_index >= 0) {
+		resolution_combo_->setCurrentIndex(divider_index);
+	}
+	settings_layout->addWidget(resolution_combo_, row, 1, 1, 3);
+
+	row++;
+
 	settings_layout->addWidget(new QLabel(tr("Proxy Width:")), row, 0);
 	width_slider_ = new IntegerSlider();
 	width_slider_->set_minimum(160);
@@ -90,6 +104,16 @@ ProxyDialog::ProxyDialog(QWidget *parent, const QVector<Footage *> &footage)
 	height_slider_->set_maximum(2160);
 	height_slider_->set_value(params.height);
 	settings_layout->addWidget(height_slider_, row, 3);
+
+	// Absolute size only applies in "Custom size" mode
+	const auto update_size_sliders_enabled = [this]() {
+		const bool custom_size = resolution_combo_->currentData().toInt() == 1;
+		width_slider_->setEnabled(custom_size);
+		height_slider_->setEnabled(custom_size);
+	};
+	connect(resolution_combo_, &QComboBox::currentIndexChanged, this,
+			update_size_sliders_enabled);
+	update_size_sliders_enabled();
 
 	row++;
 
@@ -182,6 +206,11 @@ int ProxyDialog::proxy_height() const
 	return static_cast<int>(height_slider_->get_value());
 }
 
+int ProxyDialog::proxy_divider() const
+{
+	return resolution_combo_->currentData().toInt();
+}
+
 int ProxyDialog::proxy_crf() const
 {
 	return static_cast<int>(crf_slider_->get_value());
@@ -212,6 +241,14 @@ void ProxyDialog::set_proxy_height(int height)
 	height_slider_->set_value(height);
 }
 
+void ProxyDialog::set_proxy_divider(int divider)
+{
+	const int index = resolution_combo_->findData(divider);
+	if (index >= 0) {
+		resolution_combo_->setCurrentIndex(index);
+	}
+}
+
 void ProxyDialog::set_proxy_crf(int crf)
 {
 	crf_slider_->set_value(crf);
@@ -237,6 +274,7 @@ ProxyManager::ProxyParams ProxyDialog::current_params() const
 	ProxyManager::ProxyParams params = ProxyManager::proxy_params_from_config();
 	params.width = static_cast<int>(width_slider_->get_value());
 	params.height = static_cast<int>(height_slider_->get_value());
+	params.divider = resolution_combo_->currentData().toInt();
 	params.crf = static_cast<int>(crf_slider_->get_value());
 	params.preset = preset_combo_->currentText();
 	params.include_audio = include_audio_checkbox_->isChecked();
@@ -247,6 +285,7 @@ void ProxyDialog::save_global_settings()
 {
 	OAK_CONFIG("ProxyWidth") = static_cast<int>(width_slider_->get_value());
 	OAK_CONFIG("ProxyHeight") = static_cast<int>(height_slider_->get_value());
+	OAK_CONFIG("ProxyDivider") = resolution_combo_->currentData().toInt();
 	OAK_CONFIG("ProxyCRF") = static_cast<int>(crf_slider_->get_value());
 	OAK_CONFIG("ProxyPreset") = preset_combo_->currentText();
 	OAK_CONFIG("ProxyIncludeAudio") = include_audio_checkbox_->isChecked();

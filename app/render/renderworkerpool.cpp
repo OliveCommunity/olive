@@ -137,16 +137,18 @@ DecoderPtr resolve_decoder_from_cache(DecoderCache *decoder_cache,
 }
 
 FramePtr decode_input_frame(DecoderCache *decoder_cache,
-						  const FootageInput &input, CancelAtom *cancel)
+						  const FootageInput &input, CancelAtom *cancel,
+						  RenderMode::Mode mode)
 {
 	VideoParams stream_data = input.job.video_params();
 	QString filename = input.job.filename();
 	QString decoder_id = input.job.decoder();
 	int stream_index = stream_data.stream_index();
 
-	// Use generated proxy if one is attached to the job. The Footage node only
-	// attaches a proxy when it is enabled, ready, and matches this stream.
-	if (input.job.has_proxy()) {
+	// Use the generated proxy when this render is allowed to (preview only,
+	// never export). The Footage node only attaches a proxy when it is
+	// enabled, ready, and matches this stream.
+	if (input.job.should_use_proxy(mode)) {
 		filename = input.job.proxy_filename();
 		decoder_id = input.job.proxy_decoder();
 		stream_index = input.job.proxy_stream_index();
@@ -219,7 +221,8 @@ bool decode_input_frames(DecoderCache *decoder_cache,
 			return false;
 		}
 
-		FramePtr frame = decode_input_frame(decoder_cache, input, cancel);
+		FramePtr frame =
+			decode_input_frame(decoder_cache, input, cancel, params.mode);
 		if (!frame || !frame->is_allocated()) {
 			frames->clear();
 			return false;
