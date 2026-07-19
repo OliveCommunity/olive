@@ -1,5 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <QUuid>
+#include <QXmlStreamReader>
+#include <QXmlStreamWriter>
+
 #include "node/project.h"
 
 TEST(NodeProject, DefaultsAfterConstruction)
@@ -108,5 +112,69 @@ TEST(NodeProject, SaveProducesXml)
 	writer.writeEndDocument();
 
 	EXPECT_FALSE(xml.isEmpty());
-	EXPECT_TRUE(xml.contains("uuid"));
+
+	// Parse the document and assert the serialized structure instead of
+	// relying on substring matching
+	QXmlStreamReader reader(xml);
+	ASSERT_TRUE(reader.readNextStartElement());
+	EXPECT_EQ(reader.name(), QStringLiteral("project"));
+	EXPECT_EQ(reader.attributes().value(QStringLiteral("version")).toString(),
+			  QStringLiteral("1"));
+
+	bool saw_uuid = false;
+	QString uuid_text;
+	bool saw_nodes = false;
+	bool in_nodes = false;
+	int node_count = 0;
+	QString first_node_id;
+	bool in_settings = false;
+	bool saw_settings_root = false;
+
+	while (!reader.atEnd()) {
+		const QXmlStreamReader::TokenType token = reader.readNext();
+		if (token == QXmlStreamReader::StartElement) {
+			const QStringView name = reader.name();
+			if (name == QStringLiteral("uuid")) {
+				saw_uuid = true;
+				uuid_text = reader.readElementText();
+			} else if (name == QStringLiteral("nodes")) {
+				saw_nodes = true;
+				in_nodes = true;
+			} else if (in_nodes && name == QStringLiteral("node")) {
+				++node_count;
+				if (first_node_id.isEmpty()) {
+					first_node_id =
+						reader.attributes().value(QStringLiteral("id")).toString();
+				}
+			} else if (name == QStringLiteral("settings")) {
+				in_settings = true;
+			} else if (in_settings && name == QStringLiteral("root")) {
+				saw_settings_root = true;
+			}
+		} else if (token == QXmlStreamReader::EndElement) {
+			if (reader.name() == QStringLiteral("nodes")) {
+				in_nodes = false;
+			} else if (reader.name() == QStringLiteral("settings")) {
+				in_settings = false;
+			} else if (reader.name() == QStringLiteral("project")) {
+				break;
+			}
+		}
+	}
+
+	ASSERT_FALSE(reader.hasError()) << reader.errorString().toStdString();
+
+	// The project uuid round-trips as a valid uuid
+	EXPECT_TRUE(saw_uuid);
+	EXPECT_EQ(uuid_text, project.GetUuid().toString());
+	EXPECT_FALSE(QUuid(uuid_text).isNull());
+
+	// Initialize() created a root folder, so at least one node is serialized
+	// and the first one is that root
+	EXPECT_TRUE(saw_nodes);
+	EXPECT_GE(node_count, 1);
+	EXPECT_EQ(first_node_id, project.root()->id());
+
+	// The root pointer is persisted in the settings block
+	EXPECT_TRUE(saw_settings_root);
 }

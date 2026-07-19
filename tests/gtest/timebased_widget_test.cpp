@@ -38,11 +38,22 @@ TEST(SeekableWidget, SetScrollAdjustsScrollBar)
 	widget.SetScroll(0);
 	EXPECT_EQ(widget.GetScroll(), 0);
 
-	int max_scroll = widget.horizontalScrollBar()->maximum();
-	if (max_scroll > 0) {
-		widget.SetScroll(max_scroll);
-		EXPECT_EQ(widget.GetScroll(), max_scroll);
-	}
+	// Give the scene a deterministic length much wider than the viewport so
+	// the horizontal scrollbar gains a non-zero range (60 seconds at
+	// 100 px/second)
+	widget.SetTimebase(olive::rational(1, 30));
+	widget.SetScale(100.0);
+	widget.SetEndTime(olive::rational(60));
+
+	const int max_scroll = widget.horizontalScrollBar()->maximum();
+	ASSERT_GT(max_scroll, 0);
+
+	widget.SetScroll(max_scroll);
+	EXPECT_EQ(widget.GetScroll(), max_scroll);
+
+	// Values beyond the range clamp to the scrollbar's maximum
+	widget.SetScroll(max_scroll + 1000);
+	EXPECT_EQ(widget.GetScroll(), max_scroll);
 }
 
 TEST(SeekableWidget, SetMarkersAndWorkAreaAreReflected)

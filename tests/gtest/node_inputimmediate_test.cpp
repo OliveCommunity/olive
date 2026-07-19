@@ -2,7 +2,6 @@
 
 #include <memory>
 
-#include <Imath/ImathVec.h>
 #include <QObject>
 #include <QPointF>
 #include <QVector2D>
@@ -16,7 +15,6 @@
 #include "node/node.h"
 #include "node/project.h"
 #include "node/time/timeoffset/timeoffsetnode.h"
-#include "olive/core/util/bezier.h"
 #include "undo/undocommand.h"
 
 namespace
@@ -564,10 +562,16 @@ TEST_F(NodeInputImmediateNodeTest, GetValueAtTimeBezierHandlesBendCurve)
 
 	const double interpolated = node->GetValueAtTime(
 		olive::MathNode::kParamAIn, olive::rational(5)).toDouble();
-	const double expected = olive::core::Bezier::CubicXtoY(
-		5.0, Imath::V2d(0.0, 0.0), Imath::V2d(2.5, 0.0), Imath::V2d(10.0, 10.0),
-		Imath::V2d(10.0, 10.0));
-	EXPECT_DOUBLE_EQ(interpolated, expected);
+
+	// Independent expectation, derived by hand from the control points
+	// P0=(0,0), P1=(2.5,0), P2=(10,10), P3=(10,10):
+	//   x(t) = 7.5*(1-t)^2*t + 30*(1-t)*t^2 + 10*t^3
+	//        = -12.5*t^3 + 15*t^2 + 7.5*t
+	//   x(t) = 5  =>  5*t^3 - 6*t^2 - 3*t + 2 = 0  =>  t = 0.4296537740156094
+	//   y(t) = 30*(1-t)*t^2 + 10*t^3 = 30*t^2 - 20*t^3
+	//        = 3.9517689049678255
+	// (the production bisection solves x(t) to 1e-6, so allow 1e-4 slack)
+	EXPECT_NEAR(interpolated, 3.9517689049678255, 1e-4);
 
 	// The ease-in handle keeps the midpoint below the linear value of 5.0
 	EXPECT_LT(interpolated, 5.0);
@@ -588,10 +592,14 @@ TEST_F(NodeInputImmediateNodeTest, GetValueAtTimeQuadraticBezierWithOneHandle)
 
 	const double interpolated = node->GetValueAtTime(
 		olive::MathNode::kParamAIn, olive::rational(5)).toDouble();
-	const double expected = olive::core::Bezier::QuadraticXtoY(
-		5.0, Imath::V2d(0.0, 0.0), Imath::V2d(2.5, 0.0),
-		Imath::V2d(10.0, 10.0));
-	EXPECT_DOUBLE_EQ(interpolated, expected);
+
+	// Independent expectation, derived by hand from the single control point
+	// CP=(2.5,0) between P0=(0,0) and P2=(10,10):
+	//   x(t) = 2*(1-t)*t*2.5 + t^2*10 = 5*t + 5*t^2
+	//   x(t) = 5  =>  t = (sqrt(5)-1)/2 = 0.6180339887498949
+	//   y(t) = t^2*10 = 5*(3 - sqrt(5)) = 3.819660112501051
+	// (the production bisection solves x(t) to 1e-6, so allow 1e-4 slack)
+	EXPECT_NEAR(interpolated, 3.819660112501051, 1e-4);
 	EXPECT_LT(interpolated, 5.0);
 }
 

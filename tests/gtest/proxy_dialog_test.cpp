@@ -1,5 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <QCheckBox>
+#include <QPushButton>
+#include <QTreeWidget>
+
 #include "config/config.h"
 #include "dialog/proxy/proxydialog.h"
 #include "node/project/footage/footage.h"
@@ -35,11 +39,45 @@ TEST(ProxyDialog, ConstructsInGlobalModeWithNullParent)
 
 TEST(ProxyDialog, ConstructsWithFootageList)
 {
-	olive::Footage footage;
+	olive::Footage footage(QStringLiteral("/tmp/oak-proxy-test.mov"));
 	const QVector<olive::Footage *> items = { &footage };
 
 	olive::ProxyDialog dialog(nullptr, items);
-	SUCCEED();
+	EXPECT_EQ(dialog.windowTitle(), QStringLiteral("Proxy Settings"));
+
+	// Global mode has no footage tree at all
+	olive::ProxyDialog global_dialog(nullptr);
+	EXPECT_EQ(global_dialog.findChild<QTreeWidget *>(), nullptr);
+
+	// Footage mode shows one tree row per item with its proxy state
+	auto *tree = dialog.findChild<QTreeWidget *>();
+	ASSERT_NE(tree, nullptr);
+	ASSERT_EQ(tree->topLevelItemCount(), 1);
+	EXPECT_EQ(tree->topLevelItem(0)->text(0),
+			  QStringLiteral("/tmp/oak-proxy-test.mov"));
+	EXPECT_EQ(tree->topLevelItem(0)->text(1), QStringLiteral("missing"));
+
+	// Fresh footage has no custom params, so the custom settings checkbox
+	// starts unchecked
+	QCheckBox *custom_checkbox = nullptr;
+	foreach (QCheckBox *box, dialog.findChildren<QCheckBox *>()) {
+		if (box->text() ==
+			QStringLiteral("Use custom settings for selected footage")) {
+			custom_checkbox = box;
+			break;
+		}
+	}
+	ASSERT_NE(custom_checkbox, nullptr);
+	EXPECT_FALSE(custom_checkbox->isChecked());
+
+	// Footage mode adds generate/delete actions next to Close
+	QStringList button_texts;
+	foreach (QPushButton *b, dialog.findChildren<QPushButton *>()) {
+		button_texts << b->text();
+	}
+	EXPECT_TRUE(button_texts.contains(QStringLiteral("Generate Proxies")));
+	EXPECT_TRUE(button_texts.contains(QStringLiteral("Delete Proxies")));
+	EXPECT_TRUE(button_texts.contains(QStringLiteral("Close")));
 }
 
 TEST(ProxyDialog, AcceptSavesGlobalSettingsToConfig)

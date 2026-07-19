@@ -81,8 +81,13 @@ TEST(CoreBezier, QuadraticXtoY)
 
 TEST(CoreBezier, CubicXtoT)
 {
+	// Independent expectation from the Bernstein basis: with x control
+	// values 0, 0.33, 0.66, 1.0 the curve expands to x(t) = 0.99t + 0.01t^3,
+	// and x(t) = 0.5 is solved by t = 0.5037592 (Newton-Raphson). The
+	// implementation bisects until |x(t) - x| < 1e-6 and dx/dt >= 0.99 on
+	// [0,1], so the returned t is well within 1e-5 of the true root.
 	double t = Bezier::CubicXtoT(0.5, 0.0, 0.33, 0.66, 1.0);
-	EXPECT_NEAR(t, 0.5, 0.01);
+	EXPECT_NEAR(t, 0.5037592, 1e-5);
 }
 
 TEST(CoreBezier, CubicTtoY)
@@ -98,9 +103,13 @@ TEST(CoreBezier, CubicXtoY)
 	Imath::V2d c(0.66, 1.0);
 	Imath::V2d d(1.0, 1.0);
 
+	// Independent expectation from the Bernstein basis: the x curve is
+	// x(t) = 0.99t + 0.01t^3, so x = 0.5 gives t = 0.5037592 (Newton-Raphson);
+	// the y curve is y(t) = 3(1-t)t^2 + t^3 = 3t^2 - 2t^3, which then yields
+	// y = 0.5056392. The implementation's 1e-6 bisection tolerance in x is
+	// amplified by dy/dt < 1.5, keeping the y error well under 1e-5.
 	double y = Bezier::CubicXtoY(0.5, a, b, c, d);
-	EXPECT_GE(y, 0.0);
-	EXPECT_LE(y, 1.0);
+	EXPECT_NEAR(y, 0.5056392, 1e-5);
 }
 
 TEST(CoreBezier, VectorConverters)

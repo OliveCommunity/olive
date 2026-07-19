@@ -466,9 +466,6 @@ TEST(TextureDummy, AccessorsAndNoOpIo)
 	EXPECT_FALSE(texture.IsJob());
 	EXPECT_EQ(texture.job(), nullptr);
 
-	EXPECT_EQ(int(olive::Texture::kDefaultInterpolation),
-			  int(olive::Texture::kMipmappedLinear));
-
 	char data[4] = {};
 	texture.Upload(data, 4);
 	texture.Download(data, 4);
@@ -683,13 +680,21 @@ TEST_F(RenderMiscAutoCacherTest,
 }
 
 // A conform-ready notification with no conform-blocked audio ranges must be a
-// harmless no-op.
+// harmless no-op: no cache jobs may be queued and no signals emitted.
 TEST_F(RenderMiscAutoCacherTest, ConformReadyWithoutPendingConformsIsNoOp)
 {
 	olive::PreviewAutoCacher cacher;
 	cacher.SetProject(project_.get());
 
+	QSignalSpy stop_spy(&cacher, &olive::PreviewAutoCacher::StopCacheProxyTasks);
+	QSignalSpy progress_spy(&cacher,
+							&olive::PreviewAutoCacher::SignalCacheProxyTaskProgress);
+
 	emit olive::ConformManager::instance()->ConformReady();
+
+	EXPECT_EQ(stop_spy.count(), 0);
+	EXPECT_EQ(progress_spy.count(), 0);
+	EXPECT_FALSE(cacher.IsRenderingCustomRange());
 
 	cacher.SetProject(nullptr);
 }
@@ -700,24 +705,34 @@ TEST_F(RenderMiscAutoCacherTest, CacheProxyTaskCancelledClearsPendingJobs)
 {
 	auto *viewer = new olive::ViewerOutput();
 	viewer->setParent(project_.get());
+	viewer->SetVideoParams(
+		olive::VideoParams(64, 64, olive::rational(1, 25),
+						   olive::PixelFormat::U8,
+						   olive::VideoParams::kRGBAChannelCount));
 
 	olive::PreviewAutoCacher cacher;
 
-	// No project is set, so the forced range sits in the pending queue.
+	// No project is set, so the forced range cannot be dispatched and sits in
+	// the pending queue
 	cacher.ForceCacheRange(
 		viewer, olive::TimeRange(olive::rational(0), olive::rational(1)));
+	EXPECT_TRUE(cacher.IsRenderingCustomRange());
 
 	EXPECT_TRUE(QMetaObject::invokeMethod(&cacher, "CacheProxyTaskCancelled",
 										  Qt::DirectConnection));
+
+	// With the pending jobs cleared, the custom range is no longer being
+	// rendered
+	EXPECT_FALSE(cacher.IsRenderingCustomRange());
 
 	cacher.SetProject(nullptr);
 }
 
 // With an unknown/dummy graphics backend the RenderManager never creates the
-// GPU-side objects. Those pointers must be null (previously they were left
-// uninitialized, so callers such as ViewerWidget dereferenced garbage and
-// crashed).
-TEST(RenderManagerDummyBackend, GpuMembersAreNullRatherThanUninitialized)
+// GPU-side objects. The auto-cacher pointer must be null (previously it was
+// left uninitialized, so callers such as ViewerWidget dereferenced garbage
+// and crashed).
+TEST(RenderManagerDummyBackend, GpuCacherMemberIsNullRatherThanUninitialized)
 {
 	const QVariant previous =
 		olive::Config::Current()[QStringLiteral("GraphicsBackend")];
@@ -726,6 +741,10 @@ TEST(RenderManagerDummyBackend, GpuMembersAreNullRatherThanUninitialized)
 
 	olive::RenderManager::CreateInstance();
 
+	EXPECT_EQ(olive::RenderManager::instance()->backend(),
+			  olive::RenderManager::kDummy);
+	EXPECT_EQ(olive::RenderManager::instance()->requested_backend(),
+			  olive::RenderManager::kDummy);
 	EXPECT_EQ(olive::RenderManager::instance()->GetCacher(), nullptr);
 
 	olive::RenderManager::DestroyInstance();

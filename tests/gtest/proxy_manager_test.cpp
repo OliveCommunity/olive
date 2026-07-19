@@ -2,8 +2,11 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QEventLoop>
 #include <QFile>
+#include <QFileInfo>
 #include <QTemporaryDir>
+#include <QTimer>
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
 
@@ -12,6 +15,7 @@
 #include "node/project/footage/footage.h"
 #include "render/job/footagejob.h"
 #include "task/proxy/proxy.h"
+#include "task/taskmanager.h"
 
 namespace
 {
@@ -217,7 +221,38 @@ TEST(ProxyManager, FootageClearRemovesProxyMetadata)
 
 TEST(ProxyManager, EmitsProxyFinishedState)
 {
+	// Drives a real proxy job through ProxyManager so that ProxyFinished is
+	// emitted by the manager's own task completion path
+	const QString ffmpeg = olive::ProxyManager::FindFFmpegExecutable(
+		ProxyConfigValue("FFmpegPath").toString());
+	if (ffmpeg.isEmpty()) {
+		GTEST_SKIP() << "ffmpeg executable not available";
+	}
+
+	const QString source =
+		QDir(QStringLiteral(OAK_TEST_SOURCE_DIR))
+			.filePath(QStringLiteral("tests/demo.mp4"));
+	ASSERT_TRUE(QFileInfo::exists(source));
+
+	const bool created_task_manager =
+		(olive::TaskManager::instance() == nullptr);
+	if (created_task_manager) {
+		olive::TaskManager::CreateInstance();
+	}
 	olive::ProxyManager::CreateInstance();
+
+	QTemporaryDir cache;
+	ASSERT_TRUE(cache.isValid());
+
+	// A small, fast preset keeps the encode of the 17 second demo clip quick
+	olive::ProxyManager::ProxyParams params;
+	params.width = 320;
+	params.height = 180;
+	params.preset = QStringLiteral("ultrafast");
+	params.include_audio = true;
+
+	const QString expected_proxy = olive::ProxyManager::GetProxyFilename(
+		cache.path(), source, 0, params);
 
 	bool received = false;
 	QString received_source;
@@ -225,31 +260,54 @@ TEST(ProxyManager, EmitsProxyFinishedState)
 	QString received_proxy;
 	olive::ProxyManager::ProxyState received_state =
 		olive::ProxyManager::kProxyMissing;
+	bool ready_received = false;
+	QEventLoop loop;
 	QObject::connect(
 		olive::ProxyManager::instance(), &olive::ProxyManager::ProxyFinished,
+		&loop,
 		[&received, &received_source, &received_stream, &received_proxy,
-		 &received_state](const QString &source_filename, int stream_index,
-						  const QString &proxy_filename,
-						  olive::ProxyManager::ProxyState state) {
+		 &received_state, &loop](const QString &source_filename,
+								 int stream_index, const QString &proxy_filename,
+								 olive::ProxyManager::ProxyState state) {
 			received = true;
 			received_source = source_filename;
 			received_stream = stream_index;
 			received_proxy = proxy_filename;
 			received_state = state;
+			loop.quit();
 		});
+	QObject::connect(olive::ProxyManager::instance(),
+					 &olive::ProxyManager::ProxyReady, &loop,
+					 [&ready_received](const QString &, int, const QString &) {
+						 ready_received = true;
+					 });
+	// Generous timeout; failure to finish in time fails the test below
+	QTimer::singleShot(120000, &loop, &QEventLoop::quit);
 
-	emit olive::ProxyManager::instance()
-		-> ProxyFinished(QStringLiteral("/media/source.mov"), 0,
-						 QStringLiteral("/cache/proxy/example.mp4"),
-						 olive::ProxyManager::kProxyFailed);
+	const olive::ProxyManager::Proxy proxy =
+		olive::ProxyManager::instance()->GetOrStartProxy(cache.path(), source, 0,
+														 params);
+	ASSERT_EQ(proxy.state, olive::ProxyManager::kProxyGenerating);
+	ASSERT_NE(proxy.task, nullptr);
 
-	EXPECT_TRUE(received);
-	EXPECT_EQ(received_source, QStringLiteral("/media/source.mov"));
+	loop.exec();
+
+	ASSERT_TRUE(received) << "Timed out waiting for proxy generation";
+	EXPECT_TRUE(ready_received);
+	EXPECT_EQ(received_source, source);
 	EXPECT_EQ(received_stream, 0);
-	EXPECT_EQ(received_proxy, QStringLiteral("/cache/proxy/example.mp4"));
-	EXPECT_EQ(received_state, olive::ProxyManager::kProxyFailed);
+	EXPECT_EQ(received_proxy, expected_proxy);
+	EXPECT_EQ(received_state, olive::ProxyManager::kProxyReady);
+
+	// The manager moved the completed proxy into its final location
+	EXPECT_TRUE(QFileInfo::exists(expected_proxy));
+	EXPECT_EQ(olive::ProxyManager::GetProxyState(expected_proxy),
+			  olive::ProxyManager::kProxyReady);
 
 	olive::ProxyManager::DestroyInstance();
+	if (created_task_manager) {
+		olive::TaskManager::DestroyInstance();
+	}
 }
 
 TEST(ProxyManager, WorkingProxyFilenamePrependsExtension)

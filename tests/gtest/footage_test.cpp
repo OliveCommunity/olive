@@ -21,6 +21,7 @@
 #include "render/job/footagejob.h"
 #include "render/loopmode.h"
 #include "render/texture.h"
+#include "ui/icons/icons.h"
 
 namespace
 {
@@ -474,39 +475,92 @@ TEST_F(FootageTest, TooltipDescribesEnabledStreams)
 
 TEST_F(FootageTest, IconReflectsPrioritizedStreamType)
 {
-	// Invalid footage
-	TestableFootage footage;
-	EXPECT_TRUE(footage.data(olive::Node::ICON).canConvert<QIcon>());
+	// The icon globals must be loaded for the returned icons to be
+	// distinguishable (null icons all share the same cache key)
+	olive::icon::LoadAll(QStringLiteral(":/style/olive-dark"));
+	ASSERT_FALSE(olive::icon::Video.isNull());
+	ASSERT_FALSE(olive::icon::Audio.isNull());
+	ASSERT_FALSE(olive::icon::Image.isNull());
+	ASSERT_FALSE(olive::icon::Subtitles.isNull());
+	ASSERT_FALSE(olive::icon::Error.isNull());
+
+	// Footage::data(ICON) only inspects streams once the footage has been
+	// probed (total_stream_count_ is set by Reprobe), so each variant is
+	// seeded through the metadata cache like a real probe would leave it
+	QTemporaryDir dir;
+	ASSERT_TRUE(dir.isValid());
+	const ScopedEnvVar xdg(
+		"XDG_CACHE_HOME",
+		QDir(dir.path()).filePath(QStringLiteral("xdg")).toUtf8());
+
+	auto probe = [&](const QString &name,
+					 const olive::FootageDescription &desc) {
+		const QString media = CreateFakeMediaFile(dir, name);
+		EXPECT_FALSE(media.isEmpty());
+		TestableFootage *footage =
+			ProbeFootageFromCache(project_.get(), media, desc);
+		EXPECT_NE(footage, nullptr);
+		return footage;
+	};
+
+	// Invalid footage gets the error icon
+	TestableFootage invalid;
+	EXPECT_EQ(invalid.data(olive::Node::ICON).value<QIcon>().cacheKey(),
+			  olive::icon::Error.cacheKey());
 
 	// Real video streams take priority over audio
-	footage.AddStream(olive::Track::kVideo,
-					  QVariant::fromValue(MakeVideoStream(0)));
-	footage.AddStream(olive::Track::kAudio,
-					  QVariant::fromValue(MakeAudioStream(1)));
-	footage.SetValid();
-	EXPECT_TRUE(footage.data(olive::Node::ICON).canConvert<QIcon>());
+	olive::FootageDescription video_audio(QStringLiteral("fakedecoder"));
+	video_audio.AddVideoStream(MakeVideoStream(0));
+	video_audio.AddAudioStream(MakeAudioStream(1));
+	video_audio.SetStreamCount(2);
+	TestableFootage *footage = probe(QStringLiteral("video-audio.mkv"), video_audio);
+	ASSERT_NE(footage, nullptr);
+	const QIcon video_icon = footage->data(olive::Node::ICON).value<QIcon>();
+	EXPECT_EQ(video_icon.cacheKey(), olive::icon::Video.cacheKey());
+	EXPECT_NE(video_icon.cacheKey(), olive::icon::Audio.cacheKey());
+	EXPECT_NE(video_icon.cacheKey(), olive::icon::Error.cacheKey());
+
+	// Audio still takes priority over a still image stream
+	olive::VideoParams still_stream = MakeVideoStream(0);
+	still_stream.set_video_type(olive::VideoParams::kVideoTypeStill);
+	olive::FootageDescription still_audio(QStringLiteral("fakedecoder"));
+	still_audio.AddVideoStream(still_stream);
+	still_audio.AddAudioStream(MakeAudioStream(1));
+	still_audio.SetStreamCount(2);
+	TestableFootage *still_and_audio =
+		probe(QStringLiteral("still-audio.mkv"), still_audio);
+	ASSERT_NE(still_and_audio, nullptr);
+	const QIcon still_audio_icon =
+		still_and_audio->data(olive::Node::ICON).value<QIcon>();
+	EXPECT_EQ(still_audio_icon.cacheKey(), olive::icon::Audio.cacheKey());
+	EXPECT_NE(still_audio_icon.cacheKey(), olive::icon::Image.cacheKey());
 
 	// A still image without audio hits the image branch
-	TestableFootage stills;
-	olive::VideoParams still = MakeVideoStream(0);
-	still.set_video_type(olive::VideoParams::kVideoTypeStill);
-	stills.AddStream(olive::Track::kVideo, QVariant::fromValue(still));
-	stills.SetValid();
-	EXPECT_TRUE(stills.data(olive::Node::ICON).canConvert<QIcon>());
+	olive::FootageDescription stills(QStringLiteral("fakedecoder"));
+	stills.AddVideoStream(still_stream);
+	stills.SetStreamCount(1);
+	TestableFootage *still_only = probe(QStringLiteral("still.mkv"), stills);
+	ASSERT_NE(still_only, nullptr);
+	EXPECT_EQ(still_only->data(olive::Node::ICON).value<QIcon>().cacheKey(),
+			  olive::icon::Image.cacheKey());
 
 	// Audio-only footage
-	TestableFootage audio_only;
-	audio_only.AddStream(olive::Track::kAudio,
-						 QVariant::fromValue(MakeAudioStream(0)));
-	audio_only.SetValid();
-	EXPECT_TRUE(audio_only.data(olive::Node::ICON).canConvert<QIcon>());
+	olive::FootageDescription audio(QStringLiteral("fakedecoder"));
+	audio.AddAudioStream(MakeAudioStream(0));
+	audio.SetStreamCount(1);
+	TestableFootage *audio_only = probe(QStringLiteral("audio.mkv"), audio);
+	ASSERT_NE(audio_only, nullptr);
+	EXPECT_EQ(audio_only->data(olive::Node::ICON).value<QIcon>().cacheKey(),
+			  olive::icon::Audio.cacheKey());
 
 	// Subtitle-only footage
-	TestableFootage subs_only;
-	subs_only.AddStream(olive::Track::kSubtitle,
-						QVariant::fromValue(MakeSubtitleStream(0)));
-	subs_only.SetValid();
-	EXPECT_TRUE(subs_only.data(olive::Node::ICON).canConvert<QIcon>());
+	olive::FootageDescription subs(QStringLiteral("fakedecoder"));
+	subs.AddSubtitleStream(MakeSubtitleStream(0));
+	subs.SetStreamCount(1);
+	TestableFootage *subs_only = probe(QStringLiteral("subs.mkv"), subs);
+	ASSERT_NE(subs_only, nullptr);
+	EXPECT_EQ(subs_only->data(olive::Node::ICON).value<QIcon>().cacheKey(),
+			  olive::icon::Subtitles.cacheKey());
 }
 
 TEST_F(FootageTest, ProxyChangesMarkProjectModifiedAndEmitSignal)

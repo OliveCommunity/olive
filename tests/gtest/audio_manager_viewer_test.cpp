@@ -16,6 +16,7 @@
 #include <QXmlStreamWriter>
 
 #include "audio/audiomanager.h"
+#include "config/config.h"
 #include "node/block/clip/clip.h"
 #include "node/color/colormanager/colormanager.h"
 #include "node/generator/solid/solid.h"
@@ -51,10 +52,28 @@ TEST_F(AudioManagerTest, InstanceLifecycle)
 	olive::AudioManager::CreateInstance();
 	EXPECT_EQ(olive::AudioManager::instance(), first);
 
-	// Whatever PortAudio reports, the stored indices are either a valid
-	// device index or paNoDevice
-	EXPECT_GE(olive::AudioManager::instance()->GetOutputDevice(), paNoDevice);
-	EXPECT_GE(olive::AudioManager::instance()->GetInputDevice(), paNoDevice);
+	// The stored indices are either paNoDevice or a valid device index with
+	// channels in the appropriate direction
+	const PaDeviceIndex output =
+		olive::AudioManager::instance()->GetOutputDevice();
+	const PaDeviceIndex input = olive::AudioManager::instance()->GetInputDevice();
+
+	if (Pa_GetDeviceCount() == 0) {
+		// No devices exist, so nothing could have been selected
+		EXPECT_EQ(output, paNoDevice);
+		EXPECT_EQ(input, paNoDevice);
+	} else {
+		if (output != paNoDevice) {
+			ASSERT_GE(output, 0);
+			ASSERT_LT(output, Pa_GetDeviceCount());
+			EXPECT_GT(Pa_GetDeviceInfo(output)->maxOutputChannels, 0);
+		}
+		if (input != paNoDevice) {
+			ASSERT_GE(input, 0);
+			ASSERT_LT(input, Pa_GetDeviceCount());
+			EXPECT_GT(Pa_GetDeviceInfo(input)->maxInputChannels, 0);
+		}
+	}
 }
 
 TEST_F(AudioManagerTest, SetAndGetNoDevice)
@@ -101,13 +120,16 @@ TEST_F(AudioManagerTest, StartRecordingWithoutInputDeviceFails)
 
 TEST_F(AudioManagerTest, OutputControlsWithoutStreamAreNoOps)
 {
+	olive::AudioManager::instance()->SetOutputDevice(paNoDevice);
+
 	// No output stream is open; all of these must be harmless no-ops
 	olive::AudioManager::instance()->StopOutput();
 	olive::AudioManager::instance()->ClearBufferedOutput();
 	olive::AudioManager::instance()->SetOutputNotifyInterval(64);
 	olive::AudioManager::instance()->SetOutputNotifyInterval(0);
 
-	SUCCEED();
+	// ...and they must not disturb the device bookkeeping
+	EXPECT_EQ(olive::AudioManager::instance()->GetOutputDevice(), paNoDevice);
 }
 
 TEST_F(AudioManagerTest, HardResetKeepsManagerUsable)
@@ -119,36 +141,92 @@ TEST_F(AudioManagerTest, HardResetKeepsManagerUsable)
 	EXPECT_EQ(olive::AudioManager::instance()->GetOutputDevice(), paNoDevice);
 }
 
-TEST_F(AudioManagerTest, FindDeviceByNameReturnsValidIndexOrNoDevice)
+TEST_F(AudioManagerTest, FindDeviceByNameFallsBackForUnknownName)
 {
+	// A name that matches nothing must never produce a garbage index. When no
+	// devices exist there is nothing to fall back to and the result must be
+	// exactly paNoDevice; otherwise the fallback is a preferred/default
+	// device, i.e. a valid index or paNoDevice.
 	const PaDeviceIndex bogus_output = olive::AudioManager::FindDeviceByName(
 		QStringLiteral("OakNoSuchAudioDevice12345"), true);
-	EXPECT_TRUE(bogus_output == paNoDevice ||
-				(bogus_output >= 0 && bogus_output < Pa_GetDeviceCount()));
-
 	const PaDeviceIndex bogus_input = olive::AudioManager::FindDeviceByName(
 		QStringLiteral("OakNoSuchAudioDevice12345"), false);
-	EXPECT_TRUE(bogus_input == paNoDevice ||
-				(bogus_input >= 0 && bogus_input < Pa_GetDeviceCount()));
 
-	// An empty name falls back to the default/preferred device
-	const PaDeviceIndex fallback =
-		olive::AudioManager::FindDeviceByName(QString(), true);
-	EXPECT_TRUE(fallback == paNoDevice ||
-				(fallback >= 0 && fallback < Pa_GetDeviceCount()));
+	if (Pa_GetDeviceCount() == 0) {
+		EXPECT_EQ(bogus_output, paNoDevice);
+		EXPECT_EQ(bogus_input, paNoDevice);
+	} else {
+		EXPECT_TRUE(bogus_output == paNoDevice ||
+					(bogus_output >= 0 && bogus_output < Pa_GetDeviceCount()));
+		EXPECT_TRUE(bogus_input == paNoDevice ||
+					(bogus_input >= 0 && bogus_input < Pa_GetDeviceCount()));
+	}
 }
 
-TEST_F(AudioManagerTest, FindConfigDeviceByNameReturnsValidIndexOrNoDevice)
+TEST_F(AudioManagerTest, FindDeviceByNameFindsExactMatch)
 {
+	if (Pa_GetDeviceCount() == 0) {
+		GTEST_SKIP() << "No PortAudio devices available on this system";
+	}
+
+	// Searching the exact name of a device must return that device's index.
+	// On Linux a match on a non-preferred backend (e.g. ALSA) may legitimately
+	// be upgraded to a preferred device, so only a device that already sits on
+	// a preferred host API (PipeWire/JACK/PulseAudio) gives an exact contract.
+	for (PaDeviceIndex i = 0, end = Pa_GetDeviceCount(); i < end; i++) {
+		const PaDeviceInfo *info = Pa_GetDeviceInfo(i);
+		if (!info || !info->maxOutputChannels) {
+			continue;
+		}
+
+#ifdef Q_OS_LINUX
+		const PaHostApiInfo *api = Pa_GetHostApiInfo(info->hostApi);
+		if (!api) {
+			continue;
+		}
+		const QString api_name = QString::fromLatin1(api->name);
+		if (!api_name.contains(QStringLiteral("PipeWire"),
+							   Qt::CaseInsensitive) &&
+			!api_name.contains(QStringLiteral("JACK"), Qt::CaseInsensitive) &&
+			!api_name.contains(QStringLiteral("PulseAudio"),
+							   Qt::CaseInsensitive)) {
+			continue;
+		}
+#endif
+
+		EXPECT_EQ(olive::AudioManager::FindDeviceByName(
+					  QString::fromLatin1(info->name), true),
+				  i);
+		return;
+	}
+
+	GTEST_SKIP() << "No output device on a preferred host API on this system";
+}
+
+TEST_F(AudioManagerTest, FindConfigDeviceByNameMatchesConfiguredLookup)
+{
+	// The config-driven lookup must be exactly FindDeviceByName applied to the
+	// configured name, and must never return a garbage index
 	const PaDeviceIndex output =
 		olive::AudioManager::FindConfigDeviceByName(true);
-	EXPECT_TRUE(output == paNoDevice ||
-				(output >= 0 && output < Pa_GetDeviceCount()));
-
 	const PaDeviceIndex input =
 		olive::AudioManager::FindConfigDeviceByName(false);
-	EXPECT_TRUE(input == paNoDevice ||
-				(input >= 0 && input < Pa_GetDeviceCount()));
+
+	EXPECT_EQ(output,
+			  olive::AudioManager::FindDeviceByName(
+				  olive::Config::Current()[QStringLiteral("AudioOutput")]
+					  .toString(),
+				  true));
+	EXPECT_EQ(input,
+			  olive::AudioManager::FindDeviceByName(
+				  olive::Config::Current()[QStringLiteral("AudioInput")]
+					  .toString(),
+				  false));
+
+	if (Pa_GetDeviceCount() == 0) {
+		EXPECT_EQ(output, paNoDevice);
+		EXPECT_EQ(input, paNoDevice);
+	}
 }
 
 TEST_F(AudioManagerTest, PortAudioParamsReflectAudioParams)

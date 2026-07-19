@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 
+#include <QLabel>
 #include <QProgressBar>
 #include <QSignalSpy>
+#include <QSplitter>
 
 #include <kddockwidgets/KDDockWidgets.h>
 
@@ -39,6 +41,9 @@
 #include "undo/undostack.h"
 #include "widget/curvewidget/curvewidget.h"
 #include "widget/history/historywidget.h"
+#include "widget/nodetableview/nodetableview.h"
+#include "widget/nodetreeview/nodetreeview.h"
+#include "widget/pixelsampler/pixelsampler.h"
 #include "widget/taskview/taskview.h"
 #include "widget/taskview/taskviewitem.h"
 #include "widget/timebased/timebasedwidget.h"
@@ -229,13 +234,19 @@ TEST_F(PanelTest, PanelWidgetBaseCloseBehavior)
 	EXPECT_TRUE(panel.isVisible());
 }
 
-TEST_F(PanelTest, PanelWidgetBaseDefaultActionsAreNoOps)
+TEST_F(PanelTest, PanelWidgetBaseDefaultActionsLeaveStateUnchanged)
 {
 	TestPanel panel(QStringLiteral("NoOpTestPanel"));
+	panel.SetTitle(QStringLiteral("NoOp"));
+	panel.show();
+	ASSERT_TRUE(panel.isVisible());
 
 	// Default SaveData is empty and LoadData accepts anything
 	EXPECT_TRUE(panel.SaveData().empty());
 	panel.LoadData(PanelWidget::Info());
+
+	// None of the default actions may request a close
+	QSignalSpy close_spy(&panel, &PanelWidget::CloseRequested);
 
 	// All default actions are no-ops and must not crash
 	panel.ZoomIn();
@@ -286,7 +297,11 @@ TEST_F(PanelTest, PanelWidgetBaseDefaultActionsAreNoOps)
 	panel.MoveInToPlayhead();
 	panel.MoveOutToPlayhead();
 
-	SUCCEED();
+	// The sweep must not have altered any observable panel state
+	EXPECT_EQ(panel.title(), QStringLiteral("NoOp"));
+	EXPECT_TRUE(panel.isVisible());
+	EXPECT_TRUE(panel.SaveData().empty());
+	EXPECT_EQ(close_spy.count(), 0);
 }
 
 TEST_F(PanelTest, PanelWidgetBaseBorderAndFocus)
@@ -310,10 +325,20 @@ TEST_F(PanelTest, PixelSamplerPanelConstruction)
 	EXPECT_EQ(panel.objectName(), QStringLiteral("PixelSamplerPanel"));
 	EXPECT_EQ(panel.title(), QStringLiteral("Pixel Sampler"));
 
-	// Feeding values through the slot must not crash
+	// The panel hosts the two sampler views of a ManagedPixelSamplerWidget
+	const auto samplers = panel.findChildren<PixelSamplerWidget *>();
+	ASSERT_EQ(samplers.size(), 2);
+
+	// Feeding values through the slot updates the displayed components
 	Color red(1.0, 0.0, 0.0, 1.0);
 	Color green(0.0, 1.0, 0.0, 1.0);
 	panel.SetValues(red, green);
+
+	// First child is the display view, second the reference view
+	EXPECT_TRUE(samplers.at(0)->findChild<QLabel *>()->text().contains(
+		QStringLiteral("G: 1 (255)")));
+	EXPECT_TRUE(samplers.at(1)->findChild<QLabel *>()->text().contains(
+		QStringLiteral("R: 1 (255)")));
 
 	// The panel hooks its visibility into Core's pixel sampling requests
 	emit panel.shown(Qt::OtherFocusReason);
@@ -369,12 +394,27 @@ TEST_F(PanelTest, CurvePanelSetNodes)
 	auto *math = AddNode<MathNode>(&project);
 
 	CurvePanel panel;
-	panel.SetNode(math);
-	panel.SetNode(nullptr);
-	panel.SetNodes({ math });
-	panel.SetNodes({});
+	auto *tree = panel.findChild<NodeTreeView *>();
+	ASSERT_NE(tree, nullptr);
+	EXPECT_EQ(tree->topLevelItemCount(), 0);
 
-	SUCCEED();
+	// A single node appears as one top-level item listing its keyframable
+	// inputs (MathNode has three: the base "enabled" input and parameters
+	// A and B)
+	panel.SetNode(math);
+	ASSERT_EQ(tree->topLevelItemCount(), 1);
+	EXPECT_EQ(tree->topLevelItem(0)->text(0), math->Name());
+	EXPECT_EQ(tree->topLevelItem(0)->childCount(), 3);
+
+	// A null node clears the tree again
+	panel.SetNode(nullptr);
+	EXPECT_EQ(tree->topLevelItemCount(), 0);
+
+	// Same through the multi-node slot
+	panel.SetNodes({ math });
+	EXPECT_EQ(tree->topLevelItemCount(), 1);
+	panel.SetNodes({});
+	EXPECT_EQ(tree->topLevelItemCount(), 0);
 }
 
 TEST_F(PanelTest, ParamPanelConstructionAndContexts)
@@ -527,10 +567,20 @@ TEST_F(PanelTest, NodeTablePanelConstruction)
 	EXPECT_EQ(panel.title(), QStringLiteral("Table View"));
 	ASSERT_NE(panel.GetTimeBasedWidget(), nullptr);
 
-	panel.SelectNodes({ math });
-	panel.DeselectNodes({ math });
+	auto *view = panel.findChild<NodeTableView *>();
+	ASSERT_NE(view, nullptr);
+	EXPECT_EQ(view->columnCount(), 6);
+	EXPECT_EQ(view->headerItem()->text(0), QStringLiteral("Type"));
+	EXPECT_EQ(view->topLevelItemCount(), 0);
 
-	SUCCEED();
+	// Selecting a node adds a top-level row labeled with the node
+	panel.SelectNodes({ math });
+	ASSERT_EQ(view->topLevelItemCount(), 1);
+	EXPECT_EQ(view->topLevelItem(0)->text(0), math->GetLabelAndName());
+
+	// Deselecting removes it again
+	panel.DeselectNodes({ math });
+	EXPECT_EQ(view->topLevelItemCount(), 0);
 }
 
 TEST_F(PanelTest, MulticamPanelConstruction)
@@ -643,17 +693,37 @@ TEST_F(PanelTest, TimelinePanelSaveLoadDataRoundTrip)
 {
 	TimelinePanel panel(QStringLiteral("TimelinePanelDataTest"));
 
+	// The vertical view splitter (video/audio/subtitle views) is a direct
+	// child of the timeline widget
+	const QList<QSplitter *> splitters =
+		panel.timeline_widget()->findChildren<QSplitter *>(
+			QString(), Qt::FindDirectChildrenOnly);
+	ASSERT_EQ(splitters.size(), 1);
+	QSplitter *splitter = splitters.first();
+	ASSERT_EQ(splitter->count(), 3);
+
+	// Save a known layout
+	splitter->setSizes({ 200, 400, 100 });
+	const QList<int> saved_sizes = splitter->sizes();
+
 	PanelWidget::Info info = panel.SaveData();
 	ASSERT_EQ(info.size(), 1);
 	EXPECT_TRUE(info.count(QStringLiteral("splitter")));
 
-	// Loading the saved state back must not throw or crash
+	// Disturb the layout so the restore has something to undo
+	splitter->setSizes({ 500, 100, 100 });
+	ASSERT_NE(splitter->sizes(), saved_sizes);
+
+	// LoadData must restore the splitter layout captured by SaveData
 	panel.LoadData(info);
+	EXPECT_EQ(splitter->sizes(), saved_sizes);
+	EXPECT_EQ(panel.timeline_widget()->SaveSplitterState(),
+			  QByteArray::fromBase64(
+				  info.at(QStringLiteral("splitter")).toUtf8()));
 
 	// Loading twice is idempotent
 	panel.LoadData(info);
-
-	SUCCEED();
+	EXPECT_EQ(splitter->sizes(), saved_sizes);
 }
 
 TEST_F(PanelTest, ToolPanelReflectsCoreToolState)

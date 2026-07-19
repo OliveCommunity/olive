@@ -1,9 +1,24 @@
 #include <gtest/gtest.h>
 
+#include <QDebug>
 #include <QTemporaryDir>
 #include <QTemporaryFile>
 
 #include "common/filefunctions.h"
+
+namespace
+{
+
+// Collects qDebug/qWarning/qCritical output for inspection
+QStringList g_captured_messages;
+
+void CaptureMessageHandler(QtMsgType, const QMessageLogContext &,
+						   const QString &msg)
+{
+	g_captured_messages.append(msg);
+}
+
+} // namespace
 
 TEST(CommonFileFunctions, EnsureFilenameExtension)
 {
@@ -215,7 +230,19 @@ TEST(CommonFileFunctions, CopyDirectorySourceMissing)
 	QTemporaryDir dst;
 	ASSERT_TRUE(dst.isValid());
 
-	// Should not crash even if source doesn't exist
+	// A missing source must log a critical error naming the source and
+	// leave the destination untouched
+	g_captured_messages.clear();
+	QtMessageHandler old = qInstallMessageHandler(CaptureMessageHandler);
 	olive::FileFunctions::CopyDirectory(QStringLiteral("/nonexistent/path"),
 										dst.path(), false);
+	qInstallMessageHandler(old);
+
+	ASSERT_EQ(g_captured_messages.size(), 1);
+	EXPECT_TRUE(g_captured_messages.first().contains(
+		QStringLiteral("Failed to copy directory")));
+	EXPECT_TRUE(g_captured_messages.first().contains(
+		QStringLiteral("/nonexistent/path")));
+	EXPECT_TRUE(
+		QDir(dst.path()).entryList(QDir::NoDotAndDotDot).isEmpty());
 }

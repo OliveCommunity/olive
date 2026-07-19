@@ -1,6 +1,22 @@
 #include <gtest/gtest.h>
 
+#include <QDebug>
+
 #include "common/commandlineparser.h"
+
+namespace
+{
+
+// Collects qDebug/qWarning/qCritical output for inspection
+QStringList g_captured_messages;
+
+void CaptureMessageHandler(QtMsgType, const QMessageLogContext &,
+						   const QString &msg)
+{
+	g_captured_messages.append(msg);
+}
+
+} // namespace
 
 TEST(CommonCommandLineParser, OptionWithoutArgument)
 {
@@ -57,16 +73,34 @@ TEST(CommonCommandLineParser, UnknownOptionWarning)
 	CommandLineParser parser;
 	parser.AddOption({ QStringLiteral("known") }, QStringLiteral("Known"));
 
-	// Should not crash; unknown option is logged
+	g_captured_messages.clear();
+	QtMessageHandler old = qInstallMessageHandler(CaptureMessageHandler);
 	parser.Process({ QStringLiteral("app"), QStringLiteral("-unknown") });
+	qInstallMessageHandler(old);
+
+	// The warning must name the offending option
+	ASSERT_EQ(g_captured_messages.size(), 1);
+	EXPECT_TRUE(g_captured_messages.first().contains(
+		QStringLiteral("Unknown parameter:")));
+	EXPECT_TRUE(
+		g_captured_messages.first().contains(QStringLiteral("-unknown")));
 }
 
 TEST(CommonCommandLineParser, UnknownPositionalWarning)
 {
 	CommandLineParser parser;
 
-	// Should not crash; unknown positional is logged
+	g_captured_messages.clear();
+	QtMessageHandler old = qInstallMessageHandler(CaptureMessageHandler);
 	parser.Process({ QStringLiteral("app"), QStringLiteral("extra") });
+	qInstallMessageHandler(old);
+
+	// The warning must name the offending positional argument
+	ASSERT_EQ(g_captured_messages.size(), 1);
+	EXPECT_TRUE(g_captured_messages.first().contains(
+		QStringLiteral("Unknown parameter:")));
+	EXPECT_TRUE(
+		g_captured_messages.first().contains(QStringLiteral("extra")));
 }
 
 TEST(CommonCommandLineParser, HiddenOptionExcludedFromHelp)
@@ -78,6 +112,17 @@ TEST(CommonCommandLineParser, HiddenOptionExcludedFromHelp)
 	parser.AddPositionalArgument(QStringLiteral("file"),
 								 QStringLiteral("Input file"));
 
-	// Should not crash; hidden option should be skipped during help output
+	// PrintHelp writes to stdout via printf
+	testing::internal::CaptureStdout();
 	parser.PrintHelp("/usr/bin/app");
+	std::string help = testing::internal::GetCapturedStdout();
+
+	// Visible option and positional argument must be listed
+	EXPECT_NE(help.find("-visible"), std::string::npos);
+	EXPECT_NE(help.find("Visible"), std::string::npos);
+	EXPECT_NE(help.find("[file]"), std::string::npos);
+
+	// Hidden option must not appear anywhere in the help text
+	EXPECT_EQ(help.find("-hidden"), std::string::npos);
+	EXPECT_EQ(help.find("Hidden"), std::string::npos);
 }

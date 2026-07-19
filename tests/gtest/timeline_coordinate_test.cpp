@@ -51,21 +51,50 @@ TEST(TimelineCoordinate, CopyAndAssignment)
 
 TEST(TimelineCoordinate, Equality)
 {
-	olive::TimelineCoordinate a(olive::core::rational(5, 1),
-								olive::Track::Reference(olive::Track::kVideo,
-														1));
-	olive::TimelineCoordinate b(olive::core::rational(5, 1),
-								olive::Track::Reference(olive::Track::kVideo,
-														1));
-	olive::TimelineCoordinate c(olive::core::rational(6, 1),
-								olive::Track::Reference(olive::Track::kVideo,
-														1));
-	olive::TimelineCoordinate d(olive::core::rational(5, 1),
-								olive::Track::Reference(olive::Track::kAudio,
-														1));
+	// TimelineCoordinate provides no operator== of its own; equality is
+	// observable through the real operators of its components (rational and
+	// Track::Reference)
+	const olive::TimelineCoordinate a(
+		olive::core::rational(5, 1),
+		olive::Track::Reference(olive::Track::kVideo, 1));
 
-	EXPECT_EQ(a.GetFrame(), b.GetFrame());
-	EXPECT_EQ(a.GetTrack(), b.GetTrack());
-	EXPECT_NE(a.GetFrame(), c.GetFrame());
-	EXPECT_NE(a.GetTrack(), d.GetTrack());
+	// Distinct objects with identical frame and track compare equal in both
+	// components
+	const olive::TimelineCoordinate b(
+		olive::core::rational(5, 1),
+		olive::Track::Reference(olive::Track::kVideo, 1));
+	EXPECT_TRUE(a.GetFrame() == b.GetFrame());
+	EXPECT_TRUE(a.GetTrack() == b.GetTrack());
+	EXPECT_FALSE(a.GetFrame() != b.GetFrame());
+	EXPECT_FALSE(a.GetTrack() != b.GetTrack());
+
+	// A different frame breaks frame equality while the track stays equal
+	const olive::TimelineCoordinate c(
+		olive::core::rational(6, 1),
+		olive::Track::Reference(olive::Track::kVideo, 1));
+	EXPECT_FALSE(a.GetFrame() == c.GetFrame());
+	EXPECT_TRUE(a.GetFrame() != c.GetFrame());
+	EXPECT_TRUE(a.GetTrack() == c.GetTrack());
+
+	// A different track type or index breaks track equality while the frame
+	// stays equal
+	const olive::TimelineCoordinate d(
+		olive::core::rational(5, 1),
+		olive::Track::Reference(olive::Track::kAudio, 1));
+	const olive::TimelineCoordinate e(
+		olive::core::rational(5, 1),
+		olive::Track::Reference(olive::Track::kVideo, 2));
+	EXPECT_TRUE(a.GetTrack() != d.GetTrack());
+	EXPECT_FALSE(a.GetTrack() == d.GetTrack());
+	EXPECT_TRUE(a.GetTrack() != e.GetTrack());
+	EXPECT_TRUE(a.GetFrame() == d.GetFrame());
+	EXPECT_TRUE(a.GetFrame() == e.GetFrame());
+
+	// Mutating a copy breaks equality with the original
+	olive::TimelineCoordinate mutated = a;
+	mutated.SetFrame(olive::core::rational(7, 1));
+	EXPECT_TRUE(mutated.GetFrame() != a.GetFrame());
+	mutated.SetFrame(olive::core::rational(5, 1));
+	mutated.SetTrack(olive::Track::Reference(olive::Track::kSubtitle, 0));
+	EXPECT_TRUE(mutated.GetTrack() != a.GetTrack());
 }

@@ -6,7 +6,9 @@
 #include <QtGlobal>
 #include <QDir>
 #include <QDebug>
+#include <QFileInfo>
 
+#include "codec/decoder.h"
 #include "common/ffmpegutils.h"
 #include "render/videoparams.h"
 #include "render/texture.h"
@@ -67,37 +69,53 @@ static AVFramePtr CreateTestFrame(int width, int height, int fmt,
 	return frame;
 }
 
-// Test U8 to U16 conversion
+// Test U8 to U16 conversion through the bridge scaler
 TEST(FormatConversion, U8ToU16)
 {
 	const int width = 10;
 	const int height = 10;
-	const uint32_t test_color = 0xFF804020; // ARGB: A=255, R=128, G=64, B=32
+	const uint32_t test_color = 0xFF804020; // R=255, G=128, B=64, A=32
 
-	// Create U8 frame
+	// Create U8 source frame
 	AVFramePtr u8_frame =
 		CreateTestFrame(width, height, FB_PIX_FMT_RGBA, test_color);
 	ASSERT_NE(u8_frame, nullptr);
 
-	// Verify U8 values
-	uint8_t *first_pixel_u8 = u8_frame->data(0);
-	EXPECT_EQ(first_pixel_u8[0], 0xFF); // R
-	EXPECT_EQ(first_pixel_u8[1], 0x80); // G
-	EXPECT_EQ(first_pixel_u8[2], 0x40); // B
-	EXPECT_EQ(first_pixel_u8[3], 0x20); // A
-
-	// Create U16 frame
+	// Create U16 destination frame
 	AVFramePtr u16_frame =
-		CreateTestFrame(width, height, FB_PIX_FMT_RGBA64LE, test_color);
+		CreateTestFrame(width, height, FB_PIX_FMT_RGBA64LE, 0);
 	ASSERT_NE(u16_frame, nullptr);
 
-	// Verify U16 values (should be U8 value repeated: 0xFF -> 0xFFFF, 0x80 -> 0x8080)
-	uint16_t *first_pixel_u16 =
-		reinterpret_cast<uint16_t *>(u16_frame->data(0));
-	EXPECT_EQ(first_pixel_u16[0], 0xFFFF); // R
-	EXPECT_EQ(first_pixel_u16[1], 0x8080); // G
-	EXPECT_EQ(first_pixel_u16[2], 0x4040); // B
-	EXPECT_EQ(first_pixel_u16[3], 0x2020); // A
+	// Use the bridge scaler to convert
+	FBScaler *sws_ctx = fb_scaler_create(width, height, FB_PIX_FMT_RGBA, width,
+										 height, FB_PIX_FMT_RGBA64LE,
+										 FB_SCALER_POINT);
+	ASSERT_NE(sws_ctx, nullptr);
+
+	uint8_t *src_data[4];
+	int src_linesize[4];
+	uint8_t *dst_data[4];
+	int dst_linesize[4];
+	for (int i = 0; i < 4; ++i) {
+		src_data[i] = u8_frame->data(i);
+		src_linesize[i] = u8_frame->linesize(i);
+		dst_data[i] = u16_frame->data(i);
+		dst_linesize[i] = u16_frame->linesize(i);
+	}
+
+	fb_scaler_scale_slices(sws_ctx, src_data, src_linesize, height, dst_data,
+						   dst_linesize);
+	fb_scaler_free(&sws_ctx);
+
+	// Verify conversion: each 16-bit channel should hold the 8-bit value
+	// scaled up (v * 257, i.e. (v << 8) | v); allow two 8-bit LSBs of
+	// rounding like the U16 -> U8 test below.
+	const uint16_t *first_pixel =
+		reinterpret_cast<const uint16_t *>(u16_frame->data(0));
+	EXPECT_NEAR(first_pixel[0], 0xFFFF, 512); // R
+	EXPECT_NEAR(first_pixel[1], 0x8080, 512); // G
+	EXPECT_NEAR(first_pixel[2], 0x4040, 512); // B
+	EXPECT_NEAR(first_pixel[3], 0x2020, 512); // A
 }
 
 // Test FFmpeg sws_scale for U16 to U8 conversion
@@ -174,22 +192,22 @@ TEST(FormatConversion, VideoParamsToAVFormat)
 	EXPECT_EQ(fmt_u16_rgb, FB_PIX_FMT_RGB48LE);
 }
 
-// Test row bytes calculation
+// Test row bytes calculation via VideoParams::GetBytesPerPixel
 TEST(FormatConversion, RowBytes)
 {
 	const int width = 320;
 
 	// U8 RGBA: 4 bytes per pixel
-	EXPECT_EQ(width * 4, 1280);
+	EXPECT_EQ(width * VideoParams::GetBytesPerPixel(PixelFormat::U8, 4), 1280);
 
 	// U16 RGBA: 8 bytes per pixel
-	EXPECT_EQ(width * 8, 2560);
+	EXPECT_EQ(width * VideoParams::GetBytesPerPixel(PixelFormat::U16, 4), 2560);
 
 	// U8 RGB: 3 bytes per pixel
-	EXPECT_EQ(width * 3, 960);
+	EXPECT_EQ(width * VideoParams::GetBytesPerPixel(PixelFormat::U8, 3), 960);
 
 	// U16 RGB: 6 bytes per pixel
-	EXPECT_EQ(width * 6, 1920);
+	EXPECT_EQ(width * VideoParams::GetBytesPerPixel(PixelFormat::U16, 3), 1920);
 }
 
 // Test that linesize may differ from width * bpp due to alignment
@@ -216,46 +234,44 @@ TEST(FormatConversion, LinesizeAlignment)
 // Test loading actual image file
 TEST(FormatConversion, LoadImageFile)
 {
-	// Load the test image
-	QString img_path =
-		QStringLiteral("%1/../tests/img.png").arg(QDir::currentPath());
+	const QString img_path = QDir(QStringLiteral(OAK_TEST_SOURCE_DIR))
+								 .filePath(QStringLiteral("tests/img.png"));
+	ASSERT_TRUE(QFileInfo::exists(img_path));
 
-	AVFramePtr frame = CreateAVFramePtr();
-	// Just create a simple test frame instead of loading an image
-	frame->set_width(1920);
-	frame->set_height(1080);
-	frame->set_format(FB_PIX_FMT_RGBA);
-	if (frame->get_buffer(0) < 0) {
-		return;
-	}
-	// Fill with orange color (sunrise sky)
-	for (int y = 0; y < frame->height(); ++y) {
-		uint8_t *row = frame->data(0) + y * frame->linesize(0);
-		uint8_t r = 255;
-		uint8_t g = 128 + (y * 127) / frame->height(); // Gradient from 128 to 255
-		uint8_t b = 64;
-		uint8_t a = 255;
-		for (int x = 0; x < frame->width(); ++x) {
-			row[x * 4 + 0] = r;
-			row[x * 4 + 1] = g;
-			row[x * 4 + 2] = b;
-			row[x * 4 + 3] = a;
-		}
-	}
-	ASSERT_NE(frame->data(0), nullptr) << "Failed to create test frame";
+	DecoderPtr decoder = Decoder::CreateFromID(QStringLiteral("oiio"));
+	ASSERT_TRUE(decoder);
+	ASSERT_TRUE(decoder->Open(Decoder::CodecStream(img_path, 0, nullptr)));
 
+	Decoder::RetrieveVideoParams params;
+	params.time = rational(0);
+	params.divider = 1;
+
+	FramePtr frame = decoder->RetrieveVideoFrame(params);
+	decoder->Close();
+
+	ASSERT_TRUE(frame);
+	ASSERT_TRUE(frame->is_allocated());
 	EXPECT_EQ(frame->width(), 1920);
 	EXPECT_EQ(frame->height(), 1080);
 
-	// Check first pixel (top-left corner of the sunrise image)
-	// Based on the image, it should have some orange/pink color in the sky area
-	uint8_t *first_pixel = frame->data(0);
-	qDebug() << "First pixel RGBA:" << first_pixel[0] << first_pixel[1]
-			 << first_pixel[2] << first_pixel[3];
+	// Still images are decoded to F32 RGBA (channel values scaled by 1/255)
+	EXPECT_EQ(frame->format(), PixelFormat::F32);
+	EXPECT_EQ(frame->channel_count(), 4);
 
-	// The image is RGB, so we expect 3 channels
-	// First pixel should be non-black (sky area)
-	EXPECT_GT(first_pixel[0] + first_pixel[1] + first_pixel[2], 0);
+	// Spot-check decoded pixels against the known PNG content
+	const float eps = 1.0f / 255.0f + 0.001f;
+
+	const Color top_left = frame->get_pixel(0, 0);
+	EXPECT_NEAR(top_left.red(), 75.0f / 255.0f, eps);
+	EXPECT_NEAR(top_left.green(), 124.0f / 255.0f, eps);
+	EXPECT_NEAR(top_left.blue(), 127.0f / 255.0f, eps);
+	EXPECT_NEAR(top_left.alpha(), 1.0f, eps);
+
+	const Color center = frame->get_pixel(960, 540);
+	EXPECT_NEAR(center.red(), 131.0f / 255.0f, eps);
+	EXPECT_NEAR(center.green(), 108.0f / 255.0f, eps);
+	EXPECT_NEAR(center.blue(), 111.0f / 255.0f, eps);
+	EXPECT_NEAR(center.alpha(), 1.0f, eps);
 }
 
 // Tests are registered with gtest, no main needed

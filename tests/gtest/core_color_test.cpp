@@ -66,9 +66,17 @@ TEST(CoreColor, HsvRoundTrip)
 	float h, s, v;
 	original.toHsv(&h, &s, &v);
 
-	EXPECT_NEAR(original.hsv_hue(), h, 0.001f);
-	EXPECT_NEAR(original.hsv_saturation(), s, 0.001f);
-	EXPECT_NEAR(original.value(), v, 0.001f);
+	// Independently derived expectation: max=0.8 (red), delta=0.6, so
+	// h = 60*(g-b)/delta = 20, s = delta/max = 0.75, v = max = 0.8
+	EXPECT_NEAR(h, 20.0f, 0.0001f);
+	EXPECT_NEAR(s, 0.75f, 0.0001f);
+	EXPECT_NEAR(v, 0.8f, 0.0001f);
+
+	// True round trip: converting the HSV values back must restore the color
+	Color restored = Color::fromHsv(h, s, v);
+	EXPECT_NEAR(restored.red(), original.red(), 0.0001f);
+	EXPECT_NEAR(restored.green(), original.green(), 0.0001f);
+	EXPECT_NEAR(restored.blue(), original.blue(), 0.0001f);
 }
 
 TEST(CoreColor, HslRoundTrip)
@@ -77,9 +85,13 @@ TEST(CoreColor, HslRoundTrip)
 	float h, s, l;
 	original.toHsl(&h, &s, &l);
 
-	EXPECT_NEAR(original.hsl_hue(), h, 0.001f);
-	EXPECT_NEAR(original.hsl_saturation(), s, 0.001f);
-	EXPECT_NEAR(original.lightness(), l, 0.001f);
+	// Color has no fromHsl(), so instead of a round trip check the HSL
+	// values against independently derived expectations: min=0.2, max=0.8,
+	// l = (min+max)/2 = 0.5, s = (max-min)/(2-max-min) = 0.6,
+	// h = 60*(r-g)/(max-min) + 240 = 210 (blue is max)
+	EXPECT_NEAR(h, 210.0f, 0.0001f);
+	EXPECT_NEAR(s, 0.6f, 0.0001f);
+	EXPECT_NEAR(l, 0.5f, 0.0001f);
 }
 
 TEST(CoreColor, ArithmeticOperators)

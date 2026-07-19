@@ -117,10 +117,10 @@ TEST(AudioWaveformSync, MaskedEstimationIgnoresInvalidWindows)
 	EXPECT_GT(masked.confidence, 0.99);
 
 	// Ignoring the uncached placeholder windows must not make the estimate
-	// worse than treating them as silence
-	if (unmasked.valid) {
-		EXPECT_GE(masked.confidence, unmasked.confidence);
-	}
+	// worse than treating them as silence. Both estimations are deterministic
+	// on this fixed input, so the unmasked result must be valid too.
+	ASSERT_TRUE(unmasked.valid);
+	EXPECT_GE(masked.confidence, unmasked.confidence);
 }
 
 TEST(AudioWaveformSync, EstimatesStretchAndOffset)

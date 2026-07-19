@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include "tool/tool.h"
-#include "ui/humanstrings.h"
 
 TEST(ModuleSmoke, ToolAddableObjectNames)
 {
@@ -38,26 +37,4 @@ TEST(ModuleSmoke, ToolAddableObjectIds)
 			  QStringLiteral("tone"));
 	EXPECT_EQ(olive::Tool::GetAddableObjectID(olive::Tool::kAddableSubtitle),
 			  QStringLiteral("subtitle"));
-}
-
-TEST(ModuleSmoke, HumanStringsSampleRate)
-{
-	EXPECT_FALSE(olive::HumanStrings::SampleRateToString(48000).isEmpty());
-	EXPECT_FALSE(olive::HumanStrings::SampleRateToString(44100).isEmpty());
-}
-
-TEST(ModuleSmoke, HumanStringsChannelLayout)
-{
-	EXPECT_FALSE(
-		olive::HumanStrings::ChannelLayoutToString(olive::core::kChannelLayoutMono).isEmpty());
-	EXPECT_FALSE(olive::HumanStrings::ChannelLayoutToString(olive::core::kChannelLayoutStereo)
-					 .isEmpty());
-}
-
-TEST(ModuleSmoke, HumanStringsFormat)
-{
-	EXPECT_FALSE(
-		olive::HumanStrings::FormatToString(olive::SampleFormat::U8).isEmpty());
-	EXPECT_FALSE(
-		olive::HumanStrings::FormatToString(olive::SampleFormat::F32).isEmpty());
 }

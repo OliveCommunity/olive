@@ -78,21 +78,21 @@ TEST(TimelineWaveformSync, ExtractEnvelopeUsesOnlyValidatedRanges)
 	// 3 seconds at 20 windows per second == 60 windows.
 	EXPECT_EQ(envelope.size(), 60);
 
-	// Window before the validated region should be silent.
-	EXPECT_DOUBLE_EQ(envelope.at(0), 0.0);
-
-	// Windows inside the validated region should have a non-zero peak.
-	bool found_nonzero = false;
-	for (int i = 20; i < 40; ++i) {
-		if (envelope.at(i) > 0.0) {
-			found_nonzero = true;
-			break;
-		}
+	// Windows before the validated region are silent placeholders
+	for (int i = 0; i < 20; ++i) {
+		EXPECT_DOUBLE_EQ(envelope.at(i), 0.0);
 	}
-	EXPECT_TRUE(found_nonzero);
 
-	// Window after the validated region should also be silent.
-	EXPECT_DOUBLE_EQ(envelope.at(59), 0.0);
+	// The validated second was filled with a constant 1.0 signal, so every
+	// window inside it must peak at exactly 1.0
+	for (int i = 20; i < 40; ++i) {
+		EXPECT_DOUBLE_EQ(envelope.at(i), 1.0);
+	}
+
+	// Windows after the validated region are silent placeholders too
+	for (int i = 40; i < 60; ++i) {
+		EXPECT_DOUBLE_EQ(envelope.at(i), 0.0);
+	}
 }
 
 TEST(TimelineWaveformSync, ExtractEnvelopeReportsValidityMask)

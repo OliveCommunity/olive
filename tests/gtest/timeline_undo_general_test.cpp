@@ -783,11 +783,49 @@ TEST_F(TimelineUndoGeneralTest, AddDefaultTransitionAddsDualTransition)
 
 TEST_F(TimelineUndoGeneralTest, AddDefaultTransitionEmptyClipListIsHarmless)
 {
+	// A real timeline with two adjacent clips; the empty command must leave
+	// every observable detail of it untouched
+	olive::Sequence *sequence = CreateSequence(project_.get());
+	olive::TrackList *list = sequence->track_list(olive::Track::kVideo);
+	olive::Track *track = CreateTrack(project_.get());
+	olive::ClipBlock *a = CreateClip(project_.get(), olive::core::rational(4));
+	olive::ClipBlock *b = CreateClip(project_.get(), olive::core::rational(4));
+	track->AppendBlock(a);
+	track->AppendBlock(b);
+	AppendTrackToList(list, track);
+	// Layout: a [0,4], b [4,8]
+
 	olive::TimelineAddDefaultTransitionCommand cmd(
 		{}, olive::core::rational(1, 30));
 	EXPECT_EQ(cmd.GetRelevantProject(), nullptr);
 
-	// redo/undo on an empty command must be harmless no-ops
+	// redo on an empty command adds no transitions and changes nothing
 	cmd.redo_now();
+	ASSERT_EQ(track->Blocks().size(), 2);
+	EXPECT_EQ(track->Blocks().at(0), a);
+	EXPECT_EQ(track->Blocks().at(1), b);
+	EXPECT_EQ(a->length(), olive::core::rational(4));
+	EXPECT_EQ(a->media_in(), olive::core::rational(0));
+	EXPECT_EQ(a->in(), olive::core::rational(0));
+	EXPECT_EQ(a->out(), olive::core::rational(4));
+	EXPECT_EQ(b->length(), olive::core::rational(4));
+	EXPECT_EQ(b->media_in(), olive::core::rational(0));
+	EXPECT_EQ(b->in(), olive::core::rational(4));
+	EXPECT_EQ(b->out(), olive::core::rational(8));
+	EXPECT_EQ(track->track_length(), olive::core::rational(8));
+
+	// undo is equally a no-op
 	cmd.undo_now();
+	ASSERT_EQ(track->Blocks().size(), 2);
+	EXPECT_EQ(track->Blocks().at(0), a);
+	EXPECT_EQ(track->Blocks().at(1), b);
+	EXPECT_EQ(a->length(), olive::core::rational(4));
+	EXPECT_EQ(a->media_in(), olive::core::rational(0));
+	EXPECT_EQ(a->in(), olive::core::rational(0));
+	EXPECT_EQ(a->out(), olive::core::rational(4));
+	EXPECT_EQ(b->length(), olive::core::rational(4));
+	EXPECT_EQ(b->media_in(), olive::core::rational(0));
+	EXPECT_EQ(b->in(), olive::core::rational(4));
+	EXPECT_EQ(b->out(), olive::core::rational(8));
+	EXPECT_EQ(track->track_length(), olive::core::rational(8));
 }

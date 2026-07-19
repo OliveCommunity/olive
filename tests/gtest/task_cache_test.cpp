@@ -154,6 +154,25 @@ protected:
 	std::unique_ptr<olive::Project> project_;
 };
 
+namespace
+{
+
+// Exposes RenderTask's protected accessors so the test can inspect the
+// private viewer the task builds.
+class InspectablePreCacheTask : public olive::PreCacheTask {
+public:
+	InspectablePreCacheTask(olive::Footage *footage, int index,
+							olive::Sequence *sequence)
+		: PreCacheTask(footage, index, sequence)
+	{
+	}
+
+	using olive::RenderTask::video_params;
+	using olive::RenderTask::viewer;
+};
+
+} // namespace
+
 TEST_F(TaskPreCacheTest, ConstructorCopiesFootageIntoPrivateProject)
 {
 	const QString path = QDir(QStringLiteral(OAK_TEST_SOURCE_DIR))
@@ -171,8 +190,27 @@ TEST_F(TaskPreCacheTest, ConstructorCopiesFootageIntoPrivateProject)
 	// Construction copies the footage into a private project and wires it to a
 	// private viewer; it must not touch the render pipeline. Run() itself is
 	// not exercised here since it requires live render workers.
-	olive::PreCacheTask task(footage, 0, sequence);
+	InspectablePreCacheTask task(footage, 0, sequence);
 
 	EXPECT_TRUE(task.GetTitle().contains(path));
 	EXPECT_TRUE(task.GetTitle().contains(QStringLiteral(":0")));
+
+	// The private viewer must mirror the sequence's parameters
+	olive::ViewerOutput *viewer = task.viewer();
+	ASSERT_NE(viewer, nullptr);
+	EXPECT_EQ(task.video_params(), sequence->GetVideoParams());
+	EXPECT_EQ(viewer->GetVideoParams(), sequence->GetVideoParams());
+
+	// The viewer's texture input must be fed by a private copy of the footage:
+	// same file, different node, living in the task's private project rather
+	// than the caller's
+	olive::Node *connected = viewer->GetConnectedTextureOutput();
+	ASSERT_NE(connected, nullptr);
+	EXPECT_NE(connected, footage);
+
+	auto *copied_footage = dynamic_cast<olive::Footage *>(connected);
+	ASSERT_NE(copied_footage, nullptr);
+	EXPECT_EQ(copied_footage->filename(), footage->filename());
+	EXPECT_NE(copied_footage->project(), project_.get());
+	EXPECT_EQ(copied_footage->project(), viewer->project());
 }

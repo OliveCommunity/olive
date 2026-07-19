@@ -30,6 +30,14 @@ TEST(Config, SetAndGetValues)
 
 	cfg[QStringLiteral("UnitTestDouble")] = 3.14;
 	EXPECT_NEAR(cfg[QStringLiteral("UnitTestDouble")].toDouble(), 3.14, 0.001);
+
+	// Config offers no key-removal API, so reset the singleton to its
+	// default state to avoid leaking the UnitTest* keys into later tests
+	cfg.SetDefaults();
+	EXPECT_FALSE(cfg[QStringLiteral("UnitTestValue")].isValid());
+	EXPECT_FALSE(cfg[QStringLiteral("UnitTestString")].isValid());
+	EXPECT_FALSE(cfg[QStringLiteral("UnitTestBool")].isValid());
+	EXPECT_FALSE(cfg[QStringLiteral("UnitTestDouble")].isValid());
 }
 
 TEST(Config, MissingKeyReturnsInvalidVariant)

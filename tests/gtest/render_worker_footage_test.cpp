@@ -17,9 +17,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
-#include <QFile>
 #include <QFileInfo>
-#include <QImage>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
@@ -129,31 +127,6 @@ double SampleBrightnessF32(const void *data, int width, int height, int stride)
 		}
 	}
 	return samples > 0 ? avg / samples : 0.0;
-}
-
-void SaveFrameAsPng(const void *data, int width, int height,
-					const QString &path)
-{
-	QImage img(width, height, QImage::Format_RGBA8888);
-	const auto *src = reinterpret_cast<const float *>(data);
-	for (int y = 0; y < height; ++y) {
-		uchar *dst = img.scanLine(y);
-		for (int x = 0; x < width; ++x) {
-			for (int c = 0; c < 4; ++c) {
-				float v = src[(y * width + x) * 4 + c];
-				if (v < 0.0f)
-					v = 0.0f;
-				if (v > 1.0f)
-					v = 1.0f;
-				dst[(x * 4) + c] = static_cast<uchar>(v * 255.0f);
-			}
-		}
-	}
-	if (!img.save(path)) {
-		std::cerr << "Failed to save " << path.toStdString() << std::endl;
-	} else {
-		std::cerr << "Saved " << path.toStdString() << std::endl;
-	}
 }
 
 } // namespace
@@ -490,14 +463,6 @@ TEST_F(RenderWorkerFootageTest, VulkanFootageIsNotBlack)
 	EXPECT_GT(brightness, 0.01)
 		<< "Worker output frame is black (brightness=" << brightness << ")";
 
-	SaveFrameAsPng(
-		output_data, output_width_, output_height_,
-		temp_dir_.filePath(QStringLiteral("worker_output_vulkan.png")));
-	QFile::remove(QStringLiteral("/tmp/worker_output_vulkan.png"));
-	QFile::copy(temp_dir_.filePath(QStringLiteral("worker_output_vulkan.png")),
-				QStringLiteral("/tmp/worker_output_vulkan.png"));
-	std::cerr << "Vulkan output copied to /tmp/worker_output_vulkan.png"
-			  << std::endl;
 	output_pool_->Release(consumed_slot);
 }
 
@@ -526,13 +491,5 @@ TEST_F(RenderWorkerFootageTest, OpenGLFootageIsNotBlack)
 	EXPECT_GT(brightness, 0.01)
 		<< "Worker output frame is black (brightness=" << brightness << ")";
 
-	SaveFrameAsPng(
-		output_data, output_width_, output_height_,
-		temp_dir_.filePath(QStringLiteral("worker_output_opengl.png")));
-	QFile::remove(QStringLiteral("/tmp/worker_output_opengl.png"));
-	QFile::copy(temp_dir_.filePath(QStringLiteral("worker_output_opengl.png")),
-				QStringLiteral("/tmp/worker_output_opengl.png"));
-	std::cerr << "OpenGL output copied to /tmp/worker_output_opengl.png"
-			  << std::endl;
 	output_pool_->Release(consumed_slot);
 }

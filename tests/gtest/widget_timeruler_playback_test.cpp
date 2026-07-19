@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <QFontMetrics>
 #include <QLabel>
 #include <QPushButton>
 #include <QSignalSpy>
@@ -9,6 +10,7 @@
 #include "node/output/viewer/viewer.h"
 #include "olive/core/util/timecodefunctions.h"
 #include "render/diskmanager.h"
+#include "timeline/timelinemarker.h"
 #include "widget/playbackcontrols/playbackcontrols.h"
 #include "widget/slider/base/sliderbase.h"
 #include "widget/slider/base/sliderlabel.h"
@@ -35,14 +37,33 @@ void EnsureAppSingletons()
 
 TEST(TimeRuler, ConstructionWithAndWithoutDecorations)
 {
+	EnsureAppSingletons();
+
+	// Text shown, cache status hidden
 	TimeRuler plain;
 	EXPECT_EQ(plain.GetMarkers(), nullptr);
 	EXPECT_EQ(plain.GetWorkArea(), nullptr);
 
 	// Text hidden, cache status shown
 	TimeRuler decorated(false, true);
+
+	// The height is fixed and derived from the enabled decorations: base
+	// text height plus marker height always, another text height when text
+	// is visible, and the cache indicator height when cache status is shown
+	const QFontMetrics fm = plain.fontMetrics();
+	const int marker_h = TimelineMarker::GetMarkerHeight(fm);
+
+	EXPECT_EQ(plain.minimumHeight(), 2 * fm.height() + marker_h);
+	EXPECT_EQ(plain.maximumHeight(), plain.minimumHeight());
+
+	EXPECT_EQ(decorated.minimumHeight(),
+			  fm.height() + PlaybackCache::GetCacheIndicatorHeight() + marker_h);
+	EXPECT_EQ(decorated.maximumHeight(), decorated.minimumHeight());
+
+	// Centered text only affects painting, not geometry
 	decorated.SetCenteredText(true);
-	SUCCEED();
+	EXPECT_EQ(decorated.minimumHeight(),
+			  fm.height() + PlaybackCache::GetCacheIndicatorHeight() + marker_h);
 }
 
 TEST(TimeRuler, TimebaseAndScaleDriveTimePixelConversion)
@@ -253,11 +274,21 @@ TEST_F(PlaybackControlsTest, SetEndTimeFormatsEndTimecodeLabel)
 	}
 	ASSERT_NE(end_label, nullptr);
 
+	// Pin the display mode so the expected strings don't depend on whatever
+	// the config happens to hold
+	const core::Timecode::Display saved_display =
+		Core::instance()->GetTimecodeDisplay();
+	Core::instance()->SetTimecodeDisplay(core::Timecode::kTimecodeNonDropFrame);
+
+	// 30 seconds at 30 fps is frame 900 = 30 seconds + 0 frames
 	controls.SetEndTime(rational(30));
-	const QString expected = QString::fromStdString(
-		core::Timecode::time_to_timecode(rational(30), rational(1, 30),
-										 Core::instance()->GetTimecodeDisplay()));
-	EXPECT_EQ(end_label->text(), expected);
+	EXPECT_EQ(end_label->text(), QStringLiteral("00:00:30:00"));
+
+	// 1.5 seconds at 30 fps is frame 45 = 1 second + 15 frames
+	controls.SetEndTime(rational(3, 2));
+	EXPECT_EQ(end_label->text(), QStringLiteral("00:00:01:15"));
+
+	Core::instance()->SetTimecodeDisplay(saved_display);
 }
 
 TEST_F(PlaybackControlsTest, PlayPauseStackSwitchesVisibleButton)

@@ -25,15 +25,6 @@ namespace OCIO = OCIO_NAMESPACE;
 namespace
 {
 
-bool IsOakSupportedLutExtension(QString suffix)
-{
-	if (suffix.startsWith(QLatin1Char('.'))) {
-		suffix.remove(0, 1);
-	}
-	const QString lower = suffix.toLower();
-	return lower == QStringLiteral("cube") || lower == QStringLiteral("3dl");
-}
-
 QString WriteTestCube(QTemporaryDir *dir)
 {
 	const QString path =
@@ -168,16 +159,7 @@ QString WriteAsymmetricCube(QTemporaryDir *dir)
 
 } // namespace
 
-TEST(ColorLut, OcioSupportsCubeAnd3dlExtensions)
-{
-	EXPECT_TRUE(IsOakSupportedLutExtension("cube"));
-	EXPECT_TRUE(IsOakSupportedLutExtension(".cube"));
-	EXPECT_TRUE(IsOakSupportedLutExtension("3dl"));
-	EXPECT_TRUE(IsOakSupportedLutExtension(".3dl"));
-	EXPECT_FALSE(IsOakSupportedLutExtension("txt"));
-}
-
-TEST(ColorProcessor, CreateFromInvalidTransformReturnsNull)
+TEST(ColorProcessor, CreateFromInvalidTransformThrows)
 {
 	olive::ColorManager::SetUpDefaultConfig();
 
@@ -186,18 +168,12 @@ TEST(ColorProcessor, CreateFromInvalidTransformReturnsNull)
 	transform->setInterpolation(OCIO::INTERP_LINEAR);
 	transform->setDirection(OCIO::TRANSFORM_DIR_FORWARD);
 
-	olive::ColorProcessorPtr processor;
-	EXPECT_NO_THROW({
-		try {
-			processor = olive::ColorProcessor::Create(
-				olive::ColorManager::GetDefaultConfig()->getProcessor(
-					transform));
-		} catch (const std::exception &e) {
-			processor = nullptr;
-		}
-	});
-
-	EXPECT_EQ(processor, nullptr);
+	// A FileTransform pointing at a missing LUT makes OCIO throw while
+	// resolving the processor, before ColorProcessor is even constructed.
+	EXPECT_THROW(olive::ColorProcessor::Create(
+					 olive::ColorManager::GetDefaultConfig()->getProcessor(
+						 transform)),
+				 OCIO::Exception);
 }
 
 TEST(ColorProcessor, ConvertColorWithIdentityProcessor)

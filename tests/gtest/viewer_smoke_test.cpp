@@ -11,15 +11,22 @@
 
 #include <gtest/gtest.h>
 
+#include <QCoreApplication>
 #include <QThread>
 #include <QElapsedTimer>
+#include <QSignalSpy>
 
 // Viewer headers
 #include "widget/viewer/viewerplaybacktimer.h"
 #include "widget/viewer/viewerqueue.h"
 #include "widget/viewer/viewersafemargininfo.h"
-#include "render/previewautocacher.h"
+#include "codec/conformmanager.h"
+#include "node/output/viewer/viewer.h"
+#include "node/project.h"
 #include "render/audioplaybackcache.h"
+#include "render/diskmanager.h"
+#include "render/previewautocacher.h"
+#include "render/rendermanager.h"
 #include "olive/core/util/rational.h"
 
 using namespace olive;
@@ -39,8 +46,10 @@ namespace test
 TEST(ViewerSmokeTimer, DefaultConstruction)
 {
 	ViewerPlaybackTimer timer;
-	// Timer should be in a valid but not-started state
-	// After Start() is called, it should return valid timestamps
+
+	// After Start() is called, the timer must return valid timestamps
+	timer.Start(0, 1, 1.0 / 24.0);
+	EXPECT_GE(timer.GetTimestampNow(), 0);
 }
 
 TEST(ViewerSmokeTimer, BasicTiming)
@@ -58,9 +67,9 @@ TEST(ViewerSmokeTimer, BasicTiming)
 	QThread::msleep(50); // 50ms
 	int64_t ts2 = timer.GetTimestampNow();
 
-	// At 24fps, 50ms should be approximately 1 frame (or slightly more)
-	// Allow for some timing variance
-	EXPECT_GE(ts2, ts);
+	// At 24fps, 50ms is more than one frame period (~41.7ms), so the
+	// timestamp must have advanced by at least one frame
+	EXPECT_GT(ts2, ts);
 }
 
 TEST(ViewerSmokeTimer, PlaybackSpeedForward)
@@ -325,8 +334,10 @@ TEST(ViewerSmokeSafeMargin, CopyConstruction)
 TEST(ViewerSmokeAudioCache, DefaultConstruction)
 {
 	AudioPlaybackCache cache;
-	// Should construct without crashing
-	SUCCEED();
+
+	// A fresh cache has invalid (unset) audio parameters and no validated ranges
+	EXPECT_FALSE(cache.GetParameters().is_valid());
+	EXPECT_TRUE(cache.GetValidatedRanges().isEmpty());
 }
 
 TEST(ViewerSmokeAudioCache, ParameterSetters)
@@ -354,37 +365,120 @@ TEST(ViewerSmokeAudioCache, ValidateWithRange)
 // Smoke Test: PreviewAutoCacher (basic lifecycle)
 // ============================================================================
 
-// NOTE: PreviewAutoCacher requires a QApplication and proper initialization.
-// These tests are disabled in headless mode.
+// PreviewAutoCacher runs headless with the dummy render backend; this fixture
+// mirrors the one in preview_autocacher_test.cpp.
+class ViewerSmokeAutoCacherTest : public ::testing::Test {
+protected:
+	void SetUp() override
+	{
+		ColorManager::SetUpDefaultConfig();
 
-TEST(ViewerSmokeAutoCacher, DISABLED_Construction)
+		// Use the dummy render backend so PreviewAutoCacher can be exercised
+		// without initializing OpenGL/Vulkan in the unit-test process.
+		OLIVE_CONFIG("GraphicsBackend") = QStringLiteral("dummy");
+
+		DiskManager::CreateInstance();
+		ConformManager::CreateInstance();
+		RenderManager::CreateInstance();
+
+		project_ = std::make_unique<Project>();
+		project_->Initialize();
+	}
+
+	void TearDown() override
+	{
+		project_.reset();
+		RenderManager::DestroyInstance();
+		ConformManager::DestroyInstance();
+		DiskManager::DestroyInstance();
+	}
+
+	ViewerOutput *CreateViewerWithValidParams()
+	{
+		auto *viewer = new ViewerOutput();
+		viewer->setParent(project_.get());
+		viewer->SetVideoParams(
+			VideoParams(64, 64, rational(1, 25), PixelFormat::U8,
+						VideoParams::kRGBAChannelCount));
+		return viewer;
+	}
+
+	std::unique_ptr<Project> project_;
+};
+
+TEST_F(ViewerSmokeAutoCacherTest, Construction)
 {
-	// PreviewAutoCacher requires full GUI environment
-	SUCCEED();
+	PreviewAutoCacher cacher;
+
+	// A freshly constructed cacher has no project and no custom range running
+	EXPECT_FALSE(cacher.IsRenderingCustomRange());
 }
 
-TEST(ViewerSmokeAutoCacher, DISABLED_SetPlayhead)
+TEST_F(ViewerSmokeAutoCacherTest, PauseControls)
 {
-	// PreviewAutoCacher requires full GUI environment
-	SUCCEED();
+	ViewerOutput *viewer = CreateViewerWithValidParams();
+
+	PreviewAutoCacher cacher;
+	cacher.SetProject(project_.get());
+
+	// While renders are paused, a forced cache range must stay queued
+	cacher.SetRendersPaused(true);
+	cacher.ForceCacheRange(viewer, TimeRange(rational(0), rational(1, 25)));
+	EXPECT_TRUE(cacher.IsRenderingCustomRange());
+
+	// Unpausing must dispatch it; the dummy backend finishes each ticket
+	// without a result, which exhausts the range immediately
+	cacher.SetRendersPaused(false);
+	EXPECT_FALSE(cacher.IsRenderingCustomRange());
+
+	// Deliver the queued RenderTicketWatcher::Finished emissions so the
+	// completed watchers are reaped before teardown.
+	QCoreApplication::processEvents();
+
+	cacher.SetProject(nullptr);
 }
 
-TEST(ViewerSmokeAutoCacher, DISABLED_PauseControls)
+TEST_F(ViewerSmokeAutoCacherTest, CacheRequestSchedulesRenderWhenNotIgnored)
 {
-	// PreviewAutoCacher requires full GUI environment
-	SUCCEED();
+	ViewerOutput *viewer = CreateViewerWithValidParams();
+
+	PreviewAutoCacher cacher;
+	cacher.SetProject(project_.get());
+
+	QSignalSpy stop_spy(&cacher, &PreviewAutoCacher::StopCacheProxyTasks);
+
+	// A cache request on a connected node's cache must be picked up and
+	// rendered, emitting StopCacheProxyTasks when the range is exhausted
+	viewer->video_frame_cache()->Request(
+		viewer, TimeRange(rational(0), rational(1, 25)));
+	EXPECT_GE(stop_spy.count(), 1);
+
+	// Deliver the queued RenderTicketWatcher::Finished emissions so the
+	// completed watchers are reaped before teardown.
+	QCoreApplication::processEvents();
+
+	cacher.SetProject(nullptr);
 }
 
-TEST(ViewerSmokeAutoCacher, DISABLED_SetIgnoreCacheRequests)
+TEST_F(ViewerSmokeAutoCacherTest, SetIgnoreCacheRequests)
 {
-	// PreviewAutoCacher requires full GUI environment
-	SUCCEED();
-}
+	ViewerOutput *viewer = CreateViewerWithValidParams();
 
-TEST(ViewerSmokeAutoCacher, DISABLED_SetDisplayColorProcessor)
-{
-	// PreviewAutoCacher requires full GUI environment
-	SUCCEED();
+	PreviewAutoCacher cacher;
+	// Must be set before SetProject(), which is when the cache connections
+	// would be made
+	cacher.SetIgnoreCacheRequests(true);
+	cacher.SetProject(project_.get());
+
+	QSignalSpy stop_spy(&cacher, &PreviewAutoCacher::StopCacheProxyTasks);
+
+	// With cache requests ignored, requesting a range must not queue any job
+	viewer->video_frame_cache()->Request(
+		viewer, TimeRange(rational(0), rational(1, 25)));
+	EXPECT_EQ(stop_spy.count(), 0);
+	EXPECT_FALSE(cacher.IsRenderingCustomRange());
+
+	cacher.SetProject(nullptr);
 }
 
 // ============================================================================
@@ -475,15 +569,19 @@ TEST(ViewerSmokeThread, ConcurrentTimerAccess)
 	timer.Start(0, 1, 1.0 / 30.0);
 
 	std::vector<std::thread> threads;
-	std::atomic<int> success_count{ 0 };
+	std::atomic<int> monotonic_violations{ 0 };
 
+	// Each thread reads the timer repeatedly; because playback is forward, a
+	// thread must never observe a timestamp smaller than the one it read before
 	for (int t = 0; t < num_threads; ++t) {
-		threads.emplace_back([&timer, &success_count, num_iterations]() {
+		threads.emplace_back([&timer, &monotonic_violations, num_iterations]() {
+			int64_t previous = 0;
 			for (int i = 0; i < num_iterations; ++i) {
-				int64_t ts = timer.GetTimestampNow();
-				if (ts >= 0) {
-					success_count++;
+				const int64_t ts = timer.GetTimestampNow();
+				if (ts < previous) {
+					monotonic_violations++;
 				}
+				previous = ts;
 			}
 		});
 	}
@@ -492,7 +590,9 @@ TEST(ViewerSmokeThread, ConcurrentTimerAccess)
 		t.join();
 	}
 
-	EXPECT_EQ(success_count.load(), num_threads * num_iterations);
+	EXPECT_EQ(monotonic_violations.load(), 0);
+	// The threads ran long enough that the timer must have advanced at all
+	EXPECT_GE(timer.GetTimestampNow(), 0);
 }
 
 TEST(ViewerSmokeThread, ConcurrentQueueAccess)
@@ -535,7 +635,7 @@ TEST(ViewerSmokeIntegration, PlaybackSequenceSimulation)
 	ViewerPlaybackTimer timer;
 	ViewerQueue queue;
 
-	// Start playback at frame 0, 24fps
+	// Start playback at frame 0, 24fps; timestamps are expressed in frames
 	timer.Start(0, 1, 1.0 / 24.0);
 
 	// Queue some frames
@@ -544,11 +644,11 @@ TEST(ViewerSmokeIntegration, PlaybackSequenceSimulation)
 		queue.AppendTimewise(frame, 1);
 	}
 
-	// Get current timestamp
-	int64_t current_ts = timer.GetTimestampNow();
+	// Get current timestamp (in frames) and convert it to a time in seconds
+	const int64_t current_ts = timer.GetTimestampNow();
+	const rational current_time(current_ts, 24);
 
-	// Find frame closest to current time
-	rational current_time(current_ts, 1);
+	// Find the first queued frame at or after the current playback time
 	bool found = false;
 	for (const auto &frame : queue) {
 		if (frame.timestamp >= current_time) {
@@ -557,8 +657,9 @@ TEST(ViewerSmokeIntegration, PlaybackSequenceSimulation)
 		}
 	}
 
-	// Should have frames available
-	EXPECT_FALSE(queue.empty());
+	// Playback just started at frame 0 and the queue holds frames 0-9, so a
+	// current-or-future frame must be available
+	EXPECT_TRUE(found);
 }
 
 TEST(ViewerSmokeIntegration, SafeMarginWithDifferentAspectRatios)

@@ -84,8 +84,15 @@ TEST(CoreTimecode, TimeToTimestamp)
 {
 	rational tb(1, 25);
 	EXPECT_EQ(Timecode::time_to_timestamp(rational(2, 1), tb), 50);
+
+	// 0.08s @ 25fps lands exactly on frame 2, so the rounding mode
+	// must not matter
 	EXPECT_EQ(Timecode::time_to_timestamp(0.08, tb, Timecode::kFloor), 2);
 	EXPECT_EQ(Timecode::time_to_timestamp(0.08, tb, Timecode::kCeil), 2);
+
+	// 0.1s @ 25fps is 2.5 frames: floor and ceil must differ
+	EXPECT_EQ(Timecode::time_to_timestamp(0.1, tb, Timecode::kFloor), 2);
+	EXPECT_EQ(Timecode::time_to_timestamp(0.1, tb, Timecode::kCeil), 3);
 }
 
 TEST(CoreTimecode, TimestampToTime)

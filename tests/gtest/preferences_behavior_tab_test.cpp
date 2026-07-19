@@ -3,6 +3,7 @@
 #include <QApplication>
 
 #include "audio/audiomanager.h"
+#include "config/config.h"
 #include "dialog/preferences/tabs/preferencesbehaviortab.h"
 #include "dialog/preferences/tabs/preferencesgeneraltab.h"
 #include "dialog/preferences/tabs/preferencesaudiotab.h"
@@ -41,32 +42,52 @@ TEST(PreferencesBehaviorTab, RenderingCategoryHasGraphicsBackendCombobox)
 	EXPECT_FALSE(tab.findChildren<QCheckBox *>().isEmpty());
 }
 
-TEST(PreferencesBehaviorTab, BehaviorPrefTrProvidesTranslations)
+TEST(PreferencesBehaviorTab, BehaviorPrefTrReturnsExactSourceStrings)
 {
-	QStringList keys;
-	keys << QStringLiteral("Enable hover focus")
-		 << QStringLiteral("Select also selects all children in the graph")
-		 << QStringLiteral("Double-clicking a node opens its properties")
-		 << QStringLiteral("Auto-Seek to Beginning of Sequence")
-		 << QStringLiteral("Scroll wheel zooms instead of scrolling")
-		 << QStringLiteral("Enable audio scrubbing");
-
-	foreach (const QString &key, keys) {
-		EXPECT_FALSE(
-			PreferencesBehaviorTab::BehaviorPrefTr(key.toUtf8().constData())
-				.isEmpty())
-			<< key.toStdString();
-	}
+	// BehaviorPrefTr() provides the shared source strings used by the other
+	// preference tabs; without a translator installed it returns the source
+	// text unchanged. Pin the exact strings so accidental edits are caught
+	// (they would silently change the translation keys and the cross-tab
+	// lookups that rely on them).
+	EXPECT_EQ(PreferencesBehaviorTab::BehaviorPrefTr("Behavior"),
+			  QStringLiteral("Behavior"));
+	EXPECT_EQ(PreferencesBehaviorTab::BehaviorPrefTr("Enable hover focus"),
+			  QStringLiteral("Enable hover focus"));
+	EXPECT_EQ(PreferencesBehaviorTab::BehaviorPrefTr("Enable slider ladder"),
+			  QStringLiteral("Enable slider ladder"));
+	EXPECT_EQ(PreferencesBehaviorTab::BehaviorPrefTr(
+				  "Scrolling zooms by default"),
+			  QStringLiteral("Scrolling zooms by default"));
+	EXPECT_EQ(PreferencesBehaviorTab::BehaviorPrefTr("Enable audio scrubbing"),
+			  QStringLiteral("Enable audio scrubbing"));
 }
 
 TEST(PreferencesBehaviorTab, RenderingCategoryContainsDefaultBackend)
 {
-	PreferencesBehaviorTab tab(PreferencesBehaviorTab::kCategoryRendering);
-	QList<QComboBox *> boxes = tab.findChildren<QComboBox *>();
-	ASSERT_FALSE(boxes.isEmpty());
+	// Force the config back to the registered default so the selected entry
+	// is deterministic regardless of test order
+	const QVariant saved_backend =
+		Config::Current()[QStringLiteral("GraphicsBackend")];
+	Config::Current()[QStringLiteral("GraphicsBackend")] =
+		QStringLiteral("opengl");
 
-	QComboBox *backend_box = boxes.first();
-	EXPECT_GT(backend_box->count(), 0);
+	{
+		PreferencesBehaviorTab tab(PreferencesBehaviorTab::kCategoryRendering);
+		QList<QComboBox *> boxes = tab.findChildren<QComboBox *>();
+		ASSERT_FALSE(boxes.isEmpty());
+
+		QComboBox *backend_box = boxes.first();
+
+		// config.cpp registers "opengl" as the default GraphicsBackend
+		const int opengl_index =
+			backend_box->findData(QStringLiteral("opengl"));
+		ASSERT_NE(opengl_index, -1);
+		EXPECT_EQ(backend_box->itemText(opengl_index),
+				  QStringLiteral("OpenGL"));
+		EXPECT_EQ(backend_box->currentIndex(), opengl_index);
+	}
+
+	Config::Current()[QStringLiteral("GraphicsBackend")] = saved_backend;
 }
 
 TEST(PreferencesGeneralTab, ContainsHoverFocusOption)
@@ -120,15 +141,20 @@ TEST(PreferencesAudioTab, IncludesAudioScrubbingOption)
 
 	{
 		PreferencesAudioTab tab;
-		QList<QCheckBox *> boxes = tab.findChildren<QCheckBox *>();
-		bool found = false;
-		foreach (QCheckBox *box, boxes) {
-			if (!box->text().isEmpty()) {
-				found = true;
+
+		// Locate the scrubbing checkbox by its exact (untranslated) label
+		QCheckBox *scrubbing = nullptr;
+		foreach (QCheckBox *box, tab.findChildren<QCheckBox *>()) {
+			if (box->text() == QStringLiteral("Enable audio scrubbing")) {
+				scrubbing = box;
 				break;
 			}
 		}
-		EXPECT_TRUE(found);
+		ASSERT_NE(scrubbing, nullptr);
+
+		// Its initial state mirrors the AudioScrubbing config entry
+		EXPECT_EQ(scrubbing->isChecked(),
+				  Config::Current()[QStringLiteral("AudioScrubbing")].toBool());
 	}
 
 	AudioManager::DestroyInstance();

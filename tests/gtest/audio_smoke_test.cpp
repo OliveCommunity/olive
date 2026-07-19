@@ -12,6 +12,10 @@
 
 #include <gtest/gtest.h>
 
+#include <cmath>
+#include <cstdint>
+#include <cstring>
+
 #include <QCoreApplication>
 #include <QThread>
 #include <QPainter>
@@ -54,6 +58,30 @@ static void FillSampleBuffer(SampleBuffer &buffer, float value)
 			data[i] = value;
 		}
 	}
+}
+
+// Pushes input through the processor, then flushes and drains everything the
+// filter graph still holds, returning the accumulated per-plane output.
+// Draining after a flush ends at EOF, which AudioProcessor reports as a
+// negative return value, so the final Convert result is intentionally unused.
+static AudioProcessor::Buffer ConvertAndDrain(AudioProcessor &processor,
+											  float **input, int nb_samples)
+{
+	AudioProcessor::Buffer output;
+	EXPECT_GE(processor.Convert(input, nb_samples, &output), 0);
+
+	processor.Flush();
+
+	AudioProcessor::Buffer rest;
+	processor.Convert(nullptr, 0, &rest);
+
+	if (output.size() < rest.size()) {
+		output.resize(rest.size());
+	}
+	for (int i = 0; i < rest.size(); i++) {
+		output[i].append(rest.at(i));
+	}
+	return output;
 }
 
 // ============================================================================
@@ -362,7 +390,8 @@ TEST(AudioSmokeWaveform, OverwriteSamples)
 	// Write samples to waveform
 	waveform.OverwriteSamples(buffer, 48000, rational(0));
 
-	EXPECT_GT(waveform.length(), rational(0));
+	// 4800 samples at 48000 Hz is exactly 0.1 seconds
+	EXPECT_EQ(waveform.length(), rational(1, 10));
 }
 
 TEST(AudioSmokeWaveform, OverwriteSilence)
@@ -376,13 +405,20 @@ TEST(AudioSmokeWaveform, OverwriteSilence)
 	FillSampleBuffer(buffer, 0.5f);
 	waveform.OverwriteSamples(buffer, 48000, rational(0));
 
-	rational original_length = waveform.length();
-
 	// Overwrite with silence
 	waveform.OverwriteSilence(rational(0), rational(1, 10)); // 0.1 seconds
 
-	// Length should be at least as long as original
-	EXPECT_GE(waveform.length(), original_length);
+	// The silence covers exactly the written region, so the length is
+	// unchanged at exactly 0.1 seconds
+	EXPECT_EQ(waveform.length(), rational(1, 10));
+
+	// ...and the overwritten region is actually silent
+	auto summary = waveform.GetSummaryFromTime(rational(0), rational(1, 10));
+	ASSERT_EQ(summary.size(), 2);
+	EXPECT_FLOAT_EQ(summary[0].min, 0.0f);
+	EXPECT_FLOAT_EQ(summary[0].max, 0.0f);
+	EXPECT_FLOAT_EQ(summary[1].min, 0.0f);
+	EXPECT_FLOAT_EQ(summary[1].max, 0.0f);
 }
 
 TEST(AudioSmokeWaveform, TrimIn)
@@ -479,10 +515,12 @@ TEST(AudioSmokeWaveform, GetSummaryFromTime)
 	// Get summary for first half
 	auto summary = waveform.GetSummaryFromTime(rational(0), rational(1, 20));
 
-	EXPECT_EQ(summary.size(), 2); // 2 channels
-	// Summary should reflect the min/max of the samples
-	EXPECT_LE(summary[0].min, 0.0f);
-	EXPECT_GE(summary[0].max, 0.0f);
+	ASSERT_EQ(summary.size(), 2); // 2 channels
+	// Samples alternate between +0.8 and -0.8, so the summary is exactly that
+	EXPECT_FLOAT_EQ(summary[0].min, -0.8f);
+	EXPECT_FLOAT_EQ(summary[0].max, 0.8f);
+	EXPECT_FLOAT_EQ(summary[1].min, -0.8f);
+	EXPECT_FLOAT_EQ(summary[1].max, 0.8f);
 }
 
 TEST(AudioSmokeWaveform, SumSamples)
@@ -556,10 +594,35 @@ TEST(AudioSmokeProcessor, SampleRateConversion)
 	AudioParams from(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	AudioParams to(44100, kChannelLayoutStereo, SampleFormat::F32P);
 
-	EXPECT_TRUE(processor.Open(from, to, 1.0));
-	EXPECT_TRUE(processor.IsOpen());
+	ASSERT_TRUE(processor.Open(from, to, 1.0));
+	ASSERT_TRUE(processor.IsOpen());
 	EXPECT_EQ(processor.from().sample_rate(), 48000);
 	EXPECT_EQ(processor.to().sample_rate(), 44100);
+
+	// Push one second of a constant signal
+	constexpr int kSamples = 48000;
+	std::vector<float> left(kSamples, 0.5f);
+	std::vector<float> right(kSamples, 0.5f);
+	float *input[2] = { left.data(), right.data() };
+
+	const AudioProcessor::Buffer output =
+		ConvertAndDrain(processor, input, kSamples);
+
+	ASSERT_EQ(output.size(), 2);
+	ASSERT_EQ(output.at(0).size(), output.at(1).size());
+
+	// 48000 -> 44100 must produce ~44100 samples; the resampler's filter
+	// delay makes the exact total version-dependent
+	const int converted = output.at(0).size() / int(sizeof(float));
+	EXPECT_GE(converted, 43500);
+	EXPECT_LE(converted, 44600);
+
+	// A constant signal stays constant through resampling
+	float value = 0.0f;
+	std::memcpy(&value,
+				output.at(0).constData() + (converted / 2) * sizeof(float),
+				sizeof(float));
+	EXPECT_NEAR(value, 0.5f, 0.01f);
 }
 
 TEST(AudioSmokeProcessor, ChannelLayoutConversion)
@@ -569,10 +632,29 @@ TEST(AudioSmokeProcessor, ChannelLayoutConversion)
 	AudioParams from(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	AudioParams to(48000, kChannelLayoutMono, SampleFormat::F32P);
 
-	EXPECT_TRUE(processor.Open(from, to, 1.0));
-	EXPECT_TRUE(processor.IsOpen());
+	ASSERT_TRUE(processor.Open(from, to, 1.0));
+	ASSERT_TRUE(processor.IsOpen());
 	EXPECT_EQ(processor.from().channel_count(), 2);
 	EXPECT_EQ(processor.to().channel_count(), 1);
+
+	constexpr int kSamples = 1024;
+	std::vector<float> left(kSamples, 0.5f);
+	std::vector<float> right(kSamples, 0.5f);
+	float *input[2] = { left.data(), right.data() };
+
+	AudioProcessor::Buffer output;
+	ASSERT_EQ(processor.Convert(input, kSamples, &output), 0);
+
+	// Downmixing folds both channels into a single mono plane
+	ASSERT_EQ(output.size(), 1);
+	ASSERT_EQ(output.at(0).size(), kSamples * int(sizeof(float)));
+
+	// The downmix of two identical channels must stay audible regardless of
+	// the exact mixing coefficients
+	float value = 0.0f;
+	std::memcpy(&value, output.at(0).constData(), sizeof(float));
+	EXPECT_GT(value, 0.0f);
+	EXPECT_LE(value, 1.0f);
 }
 
 TEST(AudioSmokeProcessor, FormatConversion)
@@ -582,8 +664,28 @@ TEST(AudioSmokeProcessor, FormatConversion)
 	AudioParams from(48000, kChannelLayoutStereo, SampleFormat::F32P);
 	AudioParams to(48000, kChannelLayoutStereo, SampleFormat::S16P);
 
-	EXPECT_TRUE(processor.Open(from, to, 1.0));
-	EXPECT_TRUE(processor.IsOpen());
+	ASSERT_TRUE(processor.Open(from, to, 1.0));
+	ASSERT_TRUE(processor.IsOpen());
+
+	constexpr int kSamples = 1024;
+	std::vector<float> left(kSamples, 0.5f);
+	std::vector<float> right(kSamples, -0.25f);
+	float *input[2] = { left.data(), right.data() };
+
+	AudioProcessor::Buffer output;
+	ASSERT_EQ(processor.Convert(input, kSamples, &output), 0);
+
+	// Planar 16-bit output keeps one plane per channel at 2 bytes per sample
+	ASSERT_EQ(output.size(), 2);
+	ASSERT_EQ(output.at(0).size(), kSamples * int(sizeof(int16_t)));
+	ASSERT_EQ(output.at(1).size(), kSamples * int(sizeof(int16_t)));
+
+	// Known float values land on the expected 16-bit codes
+	int16_t value = 0;
+	std::memcpy(&value, output.at(0).constData(), sizeof(value));
+	EXPECT_NEAR(value, 16384, 1); // 0.5 * 32768
+	std::memcpy(&value, output.at(1).constData(), sizeof(value));
+	EXPECT_NEAR(value, -8192, 1); // -0.25 * 32768
 }
 
 TEST(AudioSmokeProcessor, TempoChange)
@@ -594,8 +696,33 @@ TEST(AudioSmokeProcessor, TempoChange)
 	AudioParams to(48000, kChannelLayoutStereo, SampleFormat::F32P);
 
 	// Open with 2x tempo
-	EXPECT_TRUE(processor.Open(from, to, 2.0));
-	EXPECT_TRUE(processor.IsOpen());
+	ASSERT_TRUE(processor.Open(from, to, 2.0));
+	ASSERT_TRUE(processor.IsOpen());
+
+	// One second of input
+	constexpr int kSamples = 48000;
+	std::vector<float> left(kSamples, 0.5f);
+	std::vector<float> right(kSamples, 0.5f);
+	float *input[2] = { left.data(), right.data() };
+
+	const AudioProcessor::Buffer output =
+		ConvertAndDrain(processor, input, kSamples);
+
+	ASSERT_EQ(output.size(), 2);
+	ASSERT_EQ(output.at(0).size(), output.at(1).size());
+
+	// 2x tempo must output roughly half the input; atempo works in windows,
+	// so allow generous margins
+	const int converted = output.at(0).size() / int(sizeof(float));
+	EXPECT_GE(converted, 20000);
+	EXPECT_LE(converted, 28000);
+
+	// Tempo changes timing, not sample values
+	float value = 0.0f;
+	std::memcpy(&value,
+				output.at(0).constData() + (converted / 2) * sizeof(float),
+				sizeof(float));
+	EXPECT_NEAR(value, 0.5f, 0.05f);
 }
 
 TEST(AudioSmokeProcessor, InvalidOpen)
@@ -636,8 +763,17 @@ TEST(AudioSmokePreviewDevice, Construction)
 {
 	PreviewAudioDevice device;
 	EXPECT_TRUE(device.isSequential());
-	EXPECT_EQ(device.bytes_per_frame(),
-			  0); // BUG: Should be initialized properly
+
+	// Without params the frame size is unknown and reported as zero
+	EXPECT_EQ(device.bytes_per_frame(), 0);
+
+	// SetParams derives the frame size from the audio format:
+	// bytes per sample per channel * channel count
+	device.SetParams(AudioParams(48000, kChannelLayoutStereo, SampleFormat::F32P));
+	EXPECT_EQ(device.bytes_per_frame(), 8);
+
+	device.SetParams(AudioParams(48000, kChannelLayoutMono, SampleFormat::S16));
+	EXPECT_EQ(device.bytes_per_frame(), 2);
 }
 
 TEST(AudioSmokePreviewDevice, BytesPerFrame)
@@ -654,9 +790,48 @@ TEST(AudioSmokePreviewDevice, BytesPerFrame)
 TEST(AudioSmokePreviewDevice, NotifyInterval)
 {
 	PreviewAudioDevice device;
+	device.open(QIODevice::ReadWrite);
 
-	device.set_notify_interval(100); // 100 frames
-	// Cannot directly verify, but should not crash
+	// The notify interval is measured in bytes: Notify fires when the total
+	// number of bytes read crosses a multiple of the interval. readData() is
+	// called directly to bypass QIODevice's read-ahead buffer, which would
+	// otherwise coalesce the reads and hide the per-read transitions.
+	device.set_notify_interval(64);
+
+	int notify_count = 0;
+	QObject::connect(&device, &PreviewAudioDevice::Notify, &device,
+					 [&notify_count]() { ++notify_count; });
+
+	QByteArray data(256, 0x01);
+	ASSERT_EQ(device.write(data), 256);
+
+	// Nothing read yet, so no notification
+	EXPECT_EQ(notify_count, 0);
+
+	char buf[128];
+	ASSERT_EQ(device.readData(buf, 64), 64);
+	EXPECT_EQ(notify_count, 1); // crossed the 64-byte mark
+
+	ASSERT_EQ(device.readData(buf, 64), 64);
+	EXPECT_EQ(notify_count, 2); // crossed the 128-byte mark
+
+	// Crossing two intervals in one read emits a single notification
+	ASSERT_EQ(device.readData(buf, 128), 128);
+	EXPECT_EQ(notify_count, 3);
+
+	// Buffer drained: no more reads, no more notifications
+	EXPECT_EQ(device.readData(buf, 64), 0);
+	EXPECT_EQ(notify_count, 3);
+
+	// An interval of zero disables notifications entirely
+	PreviewAudioDevice quiet_device;
+	quiet_device.open(QIODevice::ReadWrite);
+	int quiet_count = 0;
+	QObject::connect(&quiet_device, &PreviewAudioDevice::Notify, &quiet_device,
+					 [&quiet_count]() { ++quiet_count; });
+	ASSERT_EQ(quiet_device.write(data), 256);
+	EXPECT_EQ(quiet_device.readData(buf, 128), 128);
+	EXPECT_EQ(quiet_count, 0);
 }
 
 TEST(AudioSmokePreviewDevice, Clear)
@@ -664,18 +839,33 @@ TEST(AudioSmokePreviewDevice, Clear)
 	PreviewAudioDevice device;
 	device.open(QIODevice::ReadWrite);
 
-	// Write some data
-	QByteArray data(1000, 0xAB);
-	device.write(data);
+	device.set_notify_interval(64);
+	int notify_count = 0;
+	QObject::connect(&device, &PreviewAudioDevice::Notify, &device,
+					 [&notify_count]() { ++notify_count; });
 
-	// Clear
+	// Write some data and read it back (readData() is called directly to
+	// bypass QIODevice's read-ahead buffer)
+	QByteArray data(128, 0xAB);
+	ASSERT_EQ(device.write(data), 128);
+	char buf[128];
+	ASSERT_EQ(device.readData(buf, sizeof(buf)), 128);
+	EXPECT_EQ(notify_count, 1);
+
+	// Queue new data, then clear it
+	ASSERT_EQ(device.write(data), 128);
 	device.clear();
 
-	// Device should be empty now (next read should return 0 or silence)
-	char buf[100];
-	qint64 read = device.readData(buf, sizeof(buf));
-	// After clear, read should return 0 or the buffer should be zeroed
-	EXPECT_TRUE(read >= 0);
+	// After clear the device holds no data: a read returns 0 bytes, which is
+	// how the output callback knows to fill the stream with silence
+	EXPECT_EQ(device.readData(buf, sizeof(buf)), 0);
+
+	// clear() also resets the read counter, so notifications start over, and
+	// the device keeps working: data written after the clear reads back intact
+	ASSERT_EQ(device.write(data), 128);
+	ASSERT_EQ(device.readData(buf, sizeof(buf)), 128);
+	EXPECT_EQ(QByteArray(buf, data.size()), data);
+	EXPECT_EQ(notify_count, 2);
 }
 
 // ============================================================================
@@ -785,39 +975,38 @@ TEST(AudioSmokeThread, ConcurrentWaveformAccess)
 
 TEST(AudioSmokeThread, ConcurrentSampleBufferOperations)
 {
+	// SampleBuffer instances are independent value objects with no shared
+	// state, so operating on separate instances from multiple threads is
+	// race-free and must produce deterministic results
 	const int num_threads = 4;
 
 	AudioParams params(48000, kChannelLayoutStereo, SampleFormat::F32P);
-	SampleBuffer buffer(params, size_t(1000));
-	FillSampleBuffer(buffer, 0.5f);
+
+	std::vector<SampleBuffer> buffers;
+	buffers.reserve(num_threads);
+	for (int t = 0; t < num_threads; ++t) {
+		buffers.emplace_back(params, size_t(1000));
+		FillSampleBuffer(buffers.back(), 0.5f);
+	}
 
 	std::vector<std::thread> threads;
-	std::atomic<int> success_count{ 0 };
-
 	for (int t = 0; t < num_threads; ++t) {
-		threads.emplace_back([&buffer, &success_count, t]() {
-			// Each thread applies different operations
+		threads.emplace_back([&buffers, t]() {
+			SampleBuffer &buffer = buffers[static_cast<size_t>(t)];
 			switch (t % 4) {
 			case 0:
 				buffer.transform_volume(0.8f);
-				success_count++;
 				break;
 			case 1:
+				buffer.transform_volume(4.0f);
 				buffer.clamp();
-				success_count++;
 				break;
-			case 2: {
-				auto ripped = buffer.rip_channel(0);
-				if (ripped.channel_count() == 1)
-					success_count++;
+			case 2:
+				buffer.silence();
 				break;
-			}
-			case 3: {
-				auto ptrs = buffer.to_raw_ptrs();
-				if (!ptrs.empty())
-					success_count++;
+			case 3:
+				buffer.transform_volume_for_channel(1, 0.0f);
 				break;
-			}
 			}
 		});
 	}
@@ -826,7 +1015,20 @@ TEST(AudioSmokeThread, ConcurrentSampleBufferOperations)
 		t.join();
 	}
 
-	EXPECT_EQ(success_count.load(), num_threads);
+	// Each buffer must hold the exact deterministic outcome of its operation
+	for (size_t i = 0; i < buffers[0].sample_count(); ++i) {
+		EXPECT_FLOAT_EQ(buffers[0].data(0)[i], 0.4f); // 0.5 * 0.8
+		EXPECT_FLOAT_EQ(buffers[0].data(1)[i], 0.4f);
+
+		EXPECT_FLOAT_EQ(buffers[1].data(0)[i], 1.0f); // 0.5 * 4 clamped
+		EXPECT_FLOAT_EQ(buffers[1].data(1)[i], 1.0f);
+
+		EXPECT_FLOAT_EQ(buffers[2].data(0)[i], 0.0f); // silenced
+		EXPECT_FLOAT_EQ(buffers[2].data(1)[i], 0.0f);
+
+		EXPECT_FLOAT_EQ(buffers[3].data(0)[i], 0.5f); // untouched channel
+		EXPECT_FLOAT_EQ(buffers[3].data(1)[i], 0.0f); // zeroed channel
+	}
 }
 
 } // namespace test

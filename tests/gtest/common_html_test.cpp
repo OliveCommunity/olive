@@ -246,5 +246,6 @@ TEST(CommonHtml, NestedInlineTagsMergeFormats)
 
 	const QTextFragment frag = OnlyFragment(&doc);
 	EXPECT_TRUE(frag.charFormat().fontItalic());
-	EXPECT_EQ(frag.charFormat().fontWeight(), 600 / 8);
+	// CSS font-weight 600 maps to 75 on the legacy 0-99 Qt weight scale
+	EXPECT_EQ(frag.charFormat().fontWeight(), 75);
 }

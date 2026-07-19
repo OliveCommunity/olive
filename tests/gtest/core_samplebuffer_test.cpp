@@ -259,4 +259,9 @@ TEST(CoreSampleBuffer, UnallocatedOperationsNoCrash)
 	b.silence();
 	b.set(0, nullptr, 0, 0);
 	b.destroy();
+
+	// Operations on an unallocated buffer must be no-ops
+	EXPECT_FALSE(b.is_allocated());
+	EXPECT_EQ(b.channel_count(), 0);
+	EXPECT_EQ(b.sample_count(), 0u);
 }

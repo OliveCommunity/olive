@@ -83,8 +83,11 @@ TEST(CommonQtUtils, QFontMetricsWidth)
 {
 	QFont font;
 	QFontMetrics fm(font);
-	int width = olive::QtUtils::QFontMetricsWidth(fm, QStringLiteral("Olive"));
-	EXPECT_GT(width, 0);
+	QString text = QStringLiteral("Olive");
+
+	// Thin wrapper: must forward to QFontMetrics::horizontalAdvance exactly
+	EXPECT_EQ(olive::QtUtils::QFontMetricsWidth(fm, text),
+			  fm.horizontalAdvance(text));
 }
 
 TEST(CommonQtUtils, CreateHorizontalLine)
@@ -117,8 +120,10 @@ TEST(CommonQtUtils, GetFormattedDateTime)
 {
 	QDateTime dt = QDateTime::fromString(QStringLiteral("2025-01-15T10:30:00"),
 										 Qt::ISODate);
-	QString s = olive::QtUtils::GetFormattedDateTime(dt);
-	EXPECT_FALSE(s.isEmpty());
+
+	// Qt::TextDate renders "ddd MMM d HH:mm:ss yyyy" in the C locale
+	EXPECT_EQ(olive::QtUtils::GetFormattedDateTime(dt),
+			  QStringLiteral("Wed Jan 15 10:30:00 2025"));
 }
 
 TEST(CommonQtUtils, WordWrapString)
@@ -126,15 +131,24 @@ TEST(CommonQtUtils, WordWrapString)
 	QFont font;
 	QFontMetrics fm(font);
 
-	// Use a moderate width; long words may not split cleanly, so just verify no crash
+	// A string wider than the bounding width must be split into
+	// multiple lines
 	QStringList wrapped = olive::QtUtils::WordWrapString(
 		QStringLiteral("hello world foo bar"), fm, 40);
-	EXPECT_GE(wrapped.size(), 1u);
+	EXPECT_GT(wrapped.size(), 1);
+
+	// A string that fits stays on a single line, untouched
+	wrapped = olive::QtUtils::WordWrapString(
+		QStringLiteral("hello world foo bar"), fm, 100000);
+	EXPECT_EQ(wrapped.size(), 1);
+	EXPECT_EQ(wrapped.first(), QStringLiteral("hello world foo bar"));
 
 	// Should preserve manual newlines
 	wrapped = olive::QtUtils::WordWrapString(QStringLiteral("line1\nline2"), fm,
 											 1000);
 	EXPECT_EQ(wrapped.size(), 2);
+	EXPECT_EQ(wrapped.at(0), QStringLiteral("line1"));
+	EXPECT_EQ(wrapped.at(1), QStringLiteral("line2"));
 }
 
 TEST(CommonQtUtils, ToQColorClampsValues)
@@ -149,13 +163,29 @@ TEST(CommonQtUtils, ToQColorClampsValues)
 
 TEST(CommonQtUtils, qHashRational)
 {
-	olive::core::rational r(3, 4);
-	EXPECT_NO_THROW(qHash(r));
+	using olive::core::rational;
+
+	// Hash contract: equal rationals must hash equally
+	EXPECT_EQ(qHash(rational(3, 4)), qHash(rational(3, 4)));
+	EXPECT_EQ(qHash(rational(3, 4)), qHash(rational(6, 8)));
+
+	// Distinct values must hash differently
+	EXPECT_NE(qHash(rational(3, 4)), qHash(rational(1, 2)));
+	EXPECT_NE(qHash(rational(1, 3)), qHash(rational(2, 3)));
 }
 
 TEST(CommonQtUtils, qHashTimeRange)
 {
-	olive::core::TimeRange tr(olive::core::rational(1),
-							  olive::core::rational(5));
-	EXPECT_NO_THROW(qHash(tr));
+	using olive::core::rational;
+	using olive::core::TimeRange;
+
+	// Hash contract: equal ranges must hash equally
+	EXPECT_EQ(qHash(TimeRange(rational(1), rational(5))),
+			  qHash(TimeRange(rational(1), rational(5))));
+
+	// Ranges differing in their in- or out-point must hash differently
+	EXPECT_NE(qHash(TimeRange(rational(1), rational(5))),
+			  qHash(TimeRange(rational(2), rational(5))));
+	EXPECT_NE(qHash(TimeRange(rational(1), rational(5))),
+			  qHash(TimeRange(rational(1), rational(6))));
 }
