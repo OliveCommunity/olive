@@ -2,7 +2,7 @@
 
   Olive - Non-Linear Video Editor
   Copyright (C) 2023 Olive Studios LLC
-  Modifications Copyright (C) 2025 mikesolar
+  Modifications Copyright (C) 2026 Oak Team
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -24,14 +24,20 @@
 
 #include <stdint.h>
 
+#include "olive/core/oakcore/fractionutils.h"
+
 namespace olive::core
 {
 
 /**
- * @brief Rounding modes for RescaleRnd()
+ * @brief Rounding modes for rescale_rnd()
  *
  * Mirrors the FFmpeg AVRounding modes that this codebase used before the
  * FFmpeg dependency was removed from core.
+ *
+ * Consumer-side wrapper over the liboakcore C ABI: every function forwards
+ * across the C boundary. The public API is unchanged from the original
+ * implementation.
  */
 enum class FractionRounding {
 	/**
@@ -55,7 +61,10 @@ enum class FractionRounding {
  *
  * A zero denominator is preserved (with the numerator set to zero).
  */
-void reduce_fraction(int64_t &num, int64_t &den, int64_t max);
+inline void reduce_fraction(int64_t &num, int64_t &den, int64_t max)
+{
+	oakcore_fractionutils_reduce_fraction(&num, &den, max);
+}
 
 /**
  * @brief Compare two fractions
@@ -64,7 +73,10 @@ void reduce_fraction(int64_t &num, int64_t &den, int64_t max);
  * 0 if a == b, 1 if a > b, and INT_MIN when the comparison is meaningless
  * (degenerate zero-denominator fractions).
  */
-int compare_fractions(int an, int ad, int bn, int bd);
+inline int compare_fractions(int an, int ad, int bn, int bd)
+{
+	return oakcore_fractionutils_compare_fractions(an, ad, bn, bd);
+}
 
 /**
  * @brief Rescale `a` by the fraction b/c: returns a * b / c
@@ -73,7 +85,11 @@ int compare_fractions(int an, int ad, int bn, int bd);
  * product is computed with 128-bit arithmetic where available so that no
  * precision is lost for large timestamps.
  */
-int64_t rescale_rnd(int64_t a, int64_t b, int64_t c, FractionRounding rnd);
+inline int64_t rescale_rnd(int64_t a, int64_t b, int64_t c, FractionRounding rnd)
+{
+	return oakcore_fractionutils_rescale_rnd(a, b, c,
+											 static_cast<OakFractionRounding>(rnd));
+}
 
 }
 

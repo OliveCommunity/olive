@@ -29,7 +29,7 @@
 #include "util/cpuoptimize.h"
 #include "util/log.h"
 
-namespace olive::core
+namespace olive::core::internal
 {
 
 SampleBuffer::SampleBuffer()

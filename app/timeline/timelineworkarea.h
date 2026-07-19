@@ -40,9 +40,9 @@ public:
 	bool enabled() const;
 	void set_enabled(bool e);
 
-	const Rational &in() const;
-	const Rational &out() const;
-	const Rational &length() const;
+	Rational in() const;
+	Rational out() const;
+	Rational length() const;
 	const TimeRange &range() const;
 	void set_range(const TimeRange &range);
 

@@ -19,7 +19,7 @@ cmake_minimum_required(VERSION 3.13 FATAL_ERROR)
 
 project(libolivecore VERSION 1.0.0 LANGUAGES CXX)
 
-option(OLIVECORE_BUILD_TESTS ON)
+option(OLIVECORE_BUILD_TESTS "Build liboakcore tests" ON)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -36,7 +36,20 @@ if(UNIX AND NOT APPLE AND NOT DEFINED OpenGL_GL_PREFERENCE)
 endif()
 find_package(OpenGL REQUIRED)
 
-add_library(olivecore
+# liboakcore is a shared library. It exports a pure C ABI (see
+# include/olive/core/oakcore/): every public function is declared with
+# OAKCORE_API and all C++ symbols are hidden, so no C++ ABI crosses the
+# library boundary. Consumers use the wrapper headers in include/olive/core.
+add_library(olivecore SHARED
+  src/capi/audioparams.cpp
+  src/capi/bezier.cpp
+  src/capi/color.cpp
+  src/capi/fractionutils.cpp
+  src/capi/rational.cpp
+  src/capi/samplebuffer.cpp
+  src/capi/stringutils.cpp
+  src/capi/timecodefunctions.cpp
+  src/capi/timerange.cpp
   src/render/audioparams.cpp
   src/render/samplebuffer.cpp
   src/util/bezier.cpp
@@ -50,7 +63,23 @@ add_library(olivecore
   src/util/value.cpp
 )
 
+set_target_properties(olivecore PROPERTIES
+  OUTPUT_NAME oakcore
+  POSITION_INDEPENDENT_CODE ON
+  C_VISIBILITY_PRESET hidden
+  CXX_VISIBILITY_PRESET hidden
+  VISIBILITY_INLINES_HIDDEN ON
+)
+
+# OAKCORE_BUILD marks the library side of the export macros (dllexport)
+target_compile_definitions(olivecore PRIVATE OAKCORE_BUILD)
+
+# The library builds against its internal implementation headers
+# (src/oliveimpl); consumers only ever see the public C API and wrapper
+# headers (include/olive/core). oliveimpl must come first so that internal
+# sources never pick up a wrapper header by accident.
 target_include_directories(olivecore PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/src/oliveimpl"
   "${CMAKE_CURRENT_SOURCE_DIR}/include/olive/core"
   "${CMAKE_SOURCE_DIR}/third_party/openfx/include/"
 )
@@ -70,8 +99,19 @@ else()
   message("   OpenTimelineIO interchange will be disabled.")
 endif()
 
-install(TARGETS olivecore)
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/olive" DESTINATION "${CMAKE_INSTALL_PREFIX}/include")
+# liboakcore installs into the platform's standard library directory
+# (/usr/lib, /usr/lib64 or the Debian multiarch path), not a custom one.
+# Windows DLLs go next to the executables in bin.
+include(GNUInstallDirs)
+if (WIN32)
+  install(TARGETS olivecore
+          RUNTIME DESTINATION bin
+          ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+else ()
+  install(TARGETS olivecore
+          LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+          ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif ()
 
 if (OLIVECORE_BUILD_TESTS)
   enable_testing()
@@ -82,13 +122,20 @@ if (OLIVECORE_BUILD_TESTS)
     )
     target_link_libraries(${name} PRIVATE olivecore)
     target_include_directories(${name} PRIVATE
+      "${CMAKE_CURRENT_SOURCE_DIR}/include"
       "${CMAKE_CURRENT_SOURCE_DIR}/include/olive/core"
     )
     add_test(${name} ${name})
   endfunction()
 
-  make_test(rational-test)
-  make_test(stringutils-test)
-  make_test(timecode-test)
-  make_test(timerange-test)
+  # Pure C ABI tests for the liboakcore public interface
+  make_test(oakcore_audioparams_test)
+  make_test(oakcore_bezier_test)
+  make_test(oakcore_color_test)
+  make_test(oakcore_fractionutils_test)
+  make_test(oakcore_rational_test)
+  make_test(oakcore_samplebuffer_test)
+  make_test(oakcore_stringutils_test)
+  make_test(oakcore_timecodefunctions_test)
+  make_test(oakcore_timerange_test)
 endif()

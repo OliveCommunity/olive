@@ -67,10 +67,12 @@ jobs:
           # The FFmpeg bridge DLL is built outside app/ and is not reachable
           # via PATH, so ntldd cannot discover it from the executables alone
           cp build/ffmpeg_bridge/bin/ffmpeg_bridge.dll app/packaging/windows/nsis/oak-editor/
+          # Same for the liboakcore DLL
+          cp build/core/oakcore.dll app/packaging/windows/nsis/oak-editor/
           windeployqt6 app/packaging/windows/nsis/oak-editor/oak-editor.exe
           # Copy all non-Qt MSYS2 DLLs recursively for every binary we ship
           cd app/packaging/windows/nsis/oak-editor
-          for binary in oak-editor.exe oak-render-worker.exe oakgl.dll oakvulkan.dll ffmpeg_bridge.dll; do
+          for binary in oak-editor.exe oak-render-worker.exe oakgl.dll oakvulkan.dll ffmpeg_bridge.dll oakcore.dll; do
             [ -f "$binary" ] || continue
             for l in $(ntldd -R "$binary" | grep -E 'mingw64|ucrt64|clang64' | sed 's/^[ \t]*//' | cut -d' ' -f3); do
               cp -v "$l" .
@@ -369,9 +371,11 @@ jobs:
           ls AppDir/usr/lib/liboakvulkan.so                  || (echo "Missing liboakvulkan.so" && exit 1)
           ls AppDir/usr/lib/libvulkan.so*                    || (echo "Missing libvulkan" && exit 1)
           ls AppDir/usr/lib/libffmpeg_bridge.so              || (echo "Missing libffmpeg_bridge.so" && exit 1)
+          ls AppDir/usr/lib/liboakcore.so                    || (echo "Missing liboakcore.so" && exit 1)
           # Ensure every shipped binary resolves all of its dependencies
           ! ldd AppDir/usr/bin/oak-editor | grep "not found"
           ! ldd AppDir/usr/bin/oak-render-worker | grep "not found"
+          ! ldd AppDir/usr/lib/liboakcore.so | grep "not found"
           ! ldd AppDir/usr/lib/liboakgl.so | grep "not found"
           ! ldd AppDir/usr/lib/liboakvulkan.so | grep "not found"
 

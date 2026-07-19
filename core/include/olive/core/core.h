@@ -33,6 +33,7 @@
 #include "util/tests.h"
 #include "util/timecodefunctions.h"
 #include "util/timerange.h"
-#include "util/value.h"
+// util/value.h is deliberately not part of the public API: the generic
+// Value container is unused by consumers and stays internal to the library
 
 #endif // OAK_LIBOLIVECORE_H

@@ -27,7 +27,7 @@
 
 #include <limits>
 
-namespace olive::core
+namespace olive::core::internal
 {
 
 namespace

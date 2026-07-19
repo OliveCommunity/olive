@@ -295,7 +295,8 @@ elseif (APPLE)
             COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:olive-render-worker> $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS/
             COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:oakgl> $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS/
             COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ffmpeg_bridge> $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS/
-            COMMENT "Copying oak-render-worker, render backends, and ffmpeg_bridge into Oak.app"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:olivecore> $<TARGET_BUNDLE_DIR:olive-editor>/Contents/MacOS/
+            COMMENT "Copying oak-render-worker, render backends, ffmpeg_bridge and liboakcore into Oak.app"
     )
     if (TARGET oakvulkan)
         add_custom_command(TARGET olive-editor POST_BUILD
@@ -305,6 +306,14 @@ elseif (APPLE)
 elseif (UNIX)
     # Set Linux-specific properties for application
     install(TARGETS olive-editor RUNTIME DESTINATION bin)
+endif ()
+
+if (WIN32)
+    # Windows has no RPATH: shared libraries must sit next to the executable
+    add_custom_command(TARGET olive-editor POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ffmpeg_bridge> $<TARGET_FILE_DIR:olive-editor>
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:olivecore> $<TARGET_FILE_DIR:olive-editor>
+    )
 endif ()
 
 # Set link libraries

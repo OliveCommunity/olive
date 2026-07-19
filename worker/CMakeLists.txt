@@ -70,6 +70,14 @@ endif ()
 # copies, Linux install() into the same bin directory)
 add_dependencies(olive-editor olive-render-worker)
 
+if (WIN32)
+    # Windows has no RPATH: shared libraries must sit next to the executable
+    add_custom_command(TARGET olive-render-worker POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:ffmpeg_bridge> $<TARGET_FILE_DIR:olive-render-worker>
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:olivecore> $<TARGET_FILE_DIR:olive-render-worker>
+    )
+endif ()
+
 # Install the render worker alongside the editor on Linux.
 if (UNIX AND NOT APPLE)
     install(TARGETS olive-render-worker RUNTIME DESTINATION bin)

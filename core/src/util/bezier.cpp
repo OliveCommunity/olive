@@ -23,7 +23,7 @@
 
 #include <algorithm>
 
-namespace olive::core
+namespace olive::core::internal
 {
 
 Bezier::Bezier()

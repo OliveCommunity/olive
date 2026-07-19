@@ -24,7 +24,7 @@
 #include <stdarg.h>
 #include <stdexcept>
 
-namespace olive::core
+namespace olive::core::internal
 {
 
 std::vector<std::string> StringUtils::split(const std::string &s,

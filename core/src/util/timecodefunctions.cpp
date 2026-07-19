@@ -27,7 +27,7 @@
 #include "util/fractionutils.h"
 #include "util/stringutils.h"
 
-namespace olive::core
+namespace olive::core::internal
 {
 
 std::string Timecode::time_to_timecode(const Rational &time,

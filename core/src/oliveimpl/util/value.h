@@ -28,7 +28,7 @@
 #include <string.h>
 #include <vector>
 
-namespace olive::core
+namespace olive::core::internal
 {
 
 /**

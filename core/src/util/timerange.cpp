@@ -27,7 +27,7 @@
 
 #include "util/timecodefunctions.h"
 
-namespace olive::core
+namespace olive::core::internal
 {
 
 TimeRange::TimeRange(const Rational &in, const Rational &out)

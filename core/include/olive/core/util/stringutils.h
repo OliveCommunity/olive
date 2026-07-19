@@ -2,7 +2,7 @@
 
   Olive - Non-Linear Video Editor
   Copyright (C) 2023 Olive Studios LLC
-  Modifications Copyright (C) 2025 mikesolar
+  Modifications Copyright (C) 2026 Oak Team
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -23,13 +23,24 @@
 #define OAK_LIBOLIVECORE_STRINGUTILS_H
 
 #include <algorithm>
+#include <cstdarg>
 #include <regex>
 #include <vector>
 #include <string>
 
+#include "olive/core/oakcore/stringutils.h"
+
 namespace olive::core
 {
 
+/**
+ * @brief String utility functions
+ *
+ * Consumer-side wrapper over the liboakcore C ABI: every non-inlined call
+ * is forwarded across the C boundary. The public API is unchanged from the
+ * original implementation. The class has static members only, so there is
+ * no opaque handle.
+ */
 class StringUtils {
 public:
 	/**
@@ -47,7 +58,20 @@ public:
    *
    * A vector of strings split by the specified delimiter.
    */
-	static std::vector<std::string> split(const std::string &s, char separator);
+	static std::vector<std::string> split(const std::string &s, char separator)
+	{
+		int count = 0;
+		char **arr = oakcore_stringutils_split(s.c_str(), separator, &count);
+		std::vector<std::string> output;
+		if (arr) {
+			output.reserve(size_t(count));
+			for (int i = 0; i < count; i++) {
+				output.emplace_back(arr[i]);
+			}
+			oakcore_stringutils_free_string_array(arr, count);
+		}
+		return output;
+	}
 
 	/**
    * @brief Splits a string into a list of strings using regular expressions.
@@ -65,10 +89,26 @@ public:
    * A vector of strings split wherever the regular expression matched.
    */
 	static std::vector<std::string> split_regex(const std::string &s,
-												const std::regex &regex);
+												const std::regex &regex)
+	{
+		// std::regex cannot cross the C ABI, so this overload is implemented
+		// inline here with only standard library facilities, exactly like the
+		// original. The C ABI exposes the same functionality as
+		// oakcore_stringutils_split_regex() taking a pattern string.
+		std::vector<std::string> output;
+
+		std::sregex_token_iterator iter(s.begin(), s.end(), regex, -1);
+		std::sregex_token_iterator end;
+		for (; iter != end; iter++) {
+			output.push_back(*iter);
+		}
+
+		return output;
+	}
 
 	/**
-   * @brief Convert a string to int using a bool pointer to determine success rather than an exception
+   * @brief Convert a string to int using a bool pointer to determine
+   * success rather than an exception
    *
    * @param s
    *
@@ -86,7 +126,15 @@ public:
    *
    * Either the int parsed from the string, or 0 (with *ok set to false) on parser error.
    */
-	static int to_int(const std::string &s, int base, bool *ok = nullptr);
+	static int to_int(const std::string &s, int base, bool *ok = nullptr)
+	{
+		int c_ok = 0;
+		const int x = oakcore_stringutils_to_int(s.c_str(), base, &c_ok);
+		if (ok) {
+			*ok = (c_ok != 0);
+		}
+		return x;
+	}
 
 	/**
    * @brief Overloaded function
@@ -157,7 +205,28 @@ public:
    *
    * A formatted string in std::string form.
    */
-	static std::string format(const char *fmt, ...);
+	static std::string format(const char *fmt, ...)
+	{
+		va_list ap1, ap2;
+		va_start(ap1, fmt);
+
+		// Need to duplicate because the va_list is consumed by each C API call
+		va_copy(ap2, ap1);
+
+		const int size = oakcore_stringutils_format_v(nullptr, 0, fmt, ap1);
+
+		// Create string with size, adding 1 for the null terminator
+		std::string r(size_t(size) + 1, '\0');
+		oakcore_stringutils_format_v(r.data(), size + 1, fmt, ap2);
+
+		va_end(ap2);
+		va_end(ap1);
+
+		// Pop null terminator
+		r.pop_back();
+
+		return r;
+	}
 
 	// trim from start (in place)
 	static inline void ltrim(std::string &s)

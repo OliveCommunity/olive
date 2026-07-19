@@ -106,17 +106,17 @@ void TimelineWorkArea::save(QXmlStreamWriter *writer) const
 							 QString::fromStdString(this->out().to_string()));
 }
 
-const Rational &TimelineWorkArea::in() const
+Rational TimelineWorkArea::in() const
 {
 	return workarea_range_.in();
 }
 
-const Rational &TimelineWorkArea::out() const
+Rational TimelineWorkArea::out() const
 {
 	return workarea_range_.out();
 }
 
-const Rational &TimelineWorkArea::length() const
+Rational TimelineWorkArea::length() const
 {
 	return workarea_range_.length();
 }

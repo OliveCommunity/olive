@@ -198,8 +198,11 @@ else()
 endif()
 
 if (WIN32)
-  # Windows has no RPATH: ffmpeg_bridge.dll must sit next to the executable
+  # Windows has no RPATH: shared libraries must sit next to the executable
   add_custom_command(TARGET olive-gtest POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       $<TARGET_FILE:ffmpeg_bridge> $<TARGET_FILE_DIR:olive-gtest>)
+  add_custom_command(TARGET olive-gtest POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      $<TARGET_FILE:olivecore> $<TARGET_FILE_DIR:olive-gtest>)
 endif()

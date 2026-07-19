@@ -27,7 +27,7 @@
 #include <math.h>
 #include <stdint.h>
 
-namespace olive::core
+namespace olive::core::internal
 {
 
 Color Color::from_hsv(const DataType &h, const DataType &s, const DataType &v)

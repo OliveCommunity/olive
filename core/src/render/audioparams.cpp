@@ -23,7 +23,7 @@
 
 #include <cmath>
 
-namespace olive::core
+namespace olive::core::internal
 {
 
 const std::vector<int> AudioParams::k_supported_sample_rates = {

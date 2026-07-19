@@ -31,7 +31,7 @@
 #include "util/fractionutils.h"
 #include "util/stringutils.h"
 
-namespace olive::core
+namespace olive::core::internal
 {
 
 const Rational Rational::na_n = Rational(0, 0);
