@@ -27,6 +27,7 @@
 
 #include <map>
 #include <mutex>
+#include <functional>
 #include <QCoreApplication>
 #include <QPointer>
 #include <QThread>
@@ -43,15 +44,28 @@ inline bool is_gui_thread()
 	}
 	return true;
 }
-class ProgressDialog;
+class ViewerOutput;
 namespace plugin
 {
 class PluginNode;
+class PluginProgressReporter;
 enum class ErrorType { error, warning, message };
 struct PersistentErrors {
 	ErrorType type;
 	QString message;
 };
+
+/**
+ * @brief Provider returning the currently active viewer
+ *
+ * Registered by the UI layer, which resolves the viewer through the panel
+ * manager. Without a provider, the OFX timeline suite falls back to its
+ * safe defaults (current time 0, empty bounds, seeking does nothing).
+ */
+using ActiveViewerProvider = std::function<ViewerOutput *()>;
+
+void set_active_viewer_provider(ActiveViewerProvider provider);
+
 class OlivePluginInstance : public OFX::Host::ImageEffect::Instance {
 public:
 	OlivePluginInstance(OFX::Host::ImageEffect::ImageEffectPlugin *plugin,
@@ -214,7 +228,7 @@ private:
 	QString edit_label_;
 	QString edit_first_label_;
 	int edit_param_count_ = 0;
-	QPointer<olive::ProgressDialog> progress_dialog_;
+	QPointer<PluginProgressReporter> progress_reporter_;
 	bool progress_cancelled_ = false;
 	bool progress_active_ = false;
 	bool open_gl_enabled_ = false;

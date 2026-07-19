@@ -24,8 +24,8 @@
 #include <QMessageBox>
 
 #include "node/block/clip/clip.h"
-#include "node/factory.h"
 #include "node/nodeundo.h"
+#include "widget/menu/factorymenu.h"
 
 namespace olive
 {
@@ -147,7 +147,7 @@ void NodeParamViewContext::add_effect_button_clicked()
 	}
 
 	Menu *m =
-		NodeFactory::create_menu(this, false, Node::k_category_unknown, flag);
+		create_node_menu(this, false, Node::k_category_unknown, flag);
 	connect(m, &Menu::triggered, this,
 			&NodeParamViewContext::add_effect_menu_item_triggered);
 	m->exec(QCursor::pos());
@@ -156,7 +156,7 @@ void NodeParamViewContext::add_effect_button_clicked()
 
 void NodeParamViewContext::add_effect_menu_item_triggered(QAction *a)
 {
-	Node *n = NodeFactory::CreateFromMenuAction(a);
+	Node *n = create_node_from_menu_action(a);
 
 	if (n) {
 		NodeInput new_node_input = n->get_effect_input();

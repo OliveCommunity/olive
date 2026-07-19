@@ -31,12 +31,14 @@
 #include "common/filefunctions.h"
 #include "config/config.h"
 #include "coreengine.h"
-#include "dialog/diskcache/diskcachedialog.h"
 
 namespace olive
 {
 
 DiskManager *DiskManager::instance_ = nullptr;
+
+DiskManager::ShowDiskCacheSettingsHandler
+	DiskManager::show_disk_cache_settings_handler_;
 
 DiskManager::DiskManager()
 {
@@ -181,11 +183,21 @@ QString DiskManager::get_default_disk_cache_path()
 		.filePath("mediacache");
 }
 
+void DiskManager::set_show_disk_cache_settings_handler(
+	ShowDiskCacheSettingsHandler handler)
+{
+	show_disk_cache_settings_handler_ = std::move(handler);
+}
+
 void DiskManager::show_disk_cache_settings_dialog(DiskCacheFolder *folder,
 											  QWidget *parent)
 {
-	DiskCacheDialog d(folder, parent);
-	d.exec();
+	if (show_disk_cache_settings_handler_) {
+		show_disk_cache_settings_handler_(folder, parent);
+		return;
+	}
+
+	qWarning() << "No disk cache settings dialog handler registered, skipping";
 }
 
 void DiskManager::show_disk_cache_settings_dialog(const QString &path,

@@ -23,11 +23,8 @@
 #include "ofxMessage.h"
 #include "common/current.h"
 #include "coreengine.h"
-#include "dialog/progress/progress.h"
+#include "pluginprogressreporter.h"
 #include "node/output/viewer/viewer.h"
-#include "panel/panelmanager.h"
-#include "panel/timebased/timebased.h"
-#include "panel/timeline/timeline.h"
 
 #include <cstdio>
 #include <QApplication>
@@ -125,30 +122,18 @@ private:
 	bool skip_first_redo_ = true;
 };
 
+ActiveViewerProvider active_viewer_provider_;
+
 ViewerOutput *get_active_viewer_output()
 {
-	PanelManager *manager = PanelManager::instance();
-	if (!manager) {
-		return nullptr;
-	}
-
-	if (auto *time_panel = manager->most_recently_focused<TimeBasedPanel>()) {
-		if (time_panel->get_connected_viewer()) {
-			return time_panel->get_connected_viewer();
-		}
-	}
-
-	QList<TimelinePanel *> timelines =
-		manager->get_panels_of_type<TimelinePanel>();
-	for (TimelinePanel *panel : timelines) {
-		if (panel && panel->get_connected_viewer()) {
-			return panel->get_connected_viewer();
-		}
-	}
-
-	return nullptr;
+	return active_viewer_provider_ ? active_viewer_provider_() : nullptr;
 }
 } // namespace
+
+void set_active_viewer_provider(ActiveViewerProvider provider)
+{
+	active_viewer_provider_ = std::move(provider);
+}
 
 const std::string &OlivePluginInstance::getDefaultOutputFielding() const
 {
@@ -452,21 +437,20 @@ void OlivePluginInstance::progressStart(const std::string &message,
 		return;
 	}
 
-	if (progress_dialog_) {
-		progress_dialog_->close();
-		progress_dialog_->deleteLater();
+	if (progress_reporter_) {
+		progress_reporter_->close();
+		progress_reporter_->deleteLater();
 	}
 
 	QString dialog_message = message.empty() ? QStringLiteral("Processing...") :
 											   QString::fromStdString(message);
 
-	progress_dialog_ = new ::olive::ProgressDialog(
-		dialog_message, QStringLiteral("OpenFX"), nullptr);
-	progress_dialog_->setAttribute(Qt::WA_DeleteOnClose);
-	QObject::connect(progress_dialog_, &::olive::ProgressDialog::cancelled,
-					 progress_dialog_,
+	progress_reporter_ = create_plugin_progress_reporter(
+		dialog_message, QStringLiteral("OpenFX"));
+	QObject::connect(progress_reporter_, &PluginProgressReporter::cancelled,
+					 progress_reporter_,
 					 [this]() { progress_cancelled_ = true; });
-	progress_dialog_->show();
+	progress_reporter_->show();
 }
 
 void OlivePluginInstance::progressEnd()
@@ -474,9 +458,9 @@ void OlivePluginInstance::progressEnd()
 	progress_active_ = false;
 	progress_cancelled_ = false;
 
-	if (progress_dialog_) {
-		progress_dialog_->close();
-		progress_dialog_->deleteLater();
+	if (progress_reporter_) {
+		progress_reporter_->close();
+		progress_reporter_->deleteLater();
 	}
 }
 
@@ -486,9 +470,9 @@ bool OlivePluginInstance::progressUpdate(double t)
 		return true;
 	}
 
-	if (progress_dialog_) {
+	if (progress_reporter_) {
 		double clamped = qBound(0.0, t, 1.0);
-		progress_dialog_->set_progress(clamped);
+		progress_reporter_->set_progress(clamped);
 	}
 
 	return !progress_cancelled_;

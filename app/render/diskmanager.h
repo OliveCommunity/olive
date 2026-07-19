@@ -27,6 +27,8 @@
 #include <QObject>
 #include <QTimer>
 
+#include <functional>
+
 #include "common/define.h"
 #include "node/project.h"
 
@@ -143,6 +145,19 @@ public:
 
 	static QString get_default_disk_cache_path();
 
+	/**
+	 * @brief Handler showing the disk cache settings dialog for a folder
+	 *
+	 * Registered by the UI layer (e.g. a DiskCacheDialog-based
+	 * implementation), since the engine cannot show dialogs itself. Without
+	 * a handler, the request is logged and skipped.
+	 */
+	using ShowDiskCacheSettingsHandler =
+		std::function<void(DiskCacheFolder *folder, QWidget *parent)>;
+
+	static void set_show_disk_cache_settings_handler(
+		ShowDiskCacheSettingsHandler handler);
+
 	void show_disk_cache_settings_dialog(DiskCacheFolder *folder, QWidget *parent);
 	void show_disk_cache_settings_dialog(const QString &path, QWidget *parent);
 
@@ -164,6 +179,8 @@ private:
 	virtual ~DiskManager() override;
 
 	static DiskManager *instance_;
+
+	static ShowDiskCacheSettingsHandler show_disk_cache_settings_handler_;
 
 	QVector<DiskCacheFolder *> open_folders_;
 };

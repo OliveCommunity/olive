@@ -21,7 +21,6 @@
 
 #include "factory.h"
 
-#include <QCoreApplication>
 #include <QHash>
 
 #include "audio/pan/pan.h"
@@ -103,113 +102,6 @@ void NodeFactory::destroy()
 {
 	qDeleteAll(library);
 	library.clear();
-}
-
-Menu *NodeFactory::create_menu(QWidget *parent, bool create_none_item,
-							  Node::CategoryID restrict_to,
-							  uint64_t restrict_flags)
-{
-	Menu *menu = new Menu(parent);
-	menu->setToolTipsVisible(true);
-
-	for (int i = 0; i < library.size(); i++) {
-		Node *n = library.at(i);
-
-		if (restrict_to != Node::k_category_unknown &&
-			!n->category().contains(restrict_to)) {
-			// Skip this node
-			continue;
-		}
-
-		if (restrict_flags && !(n->get_flags() & restrict_flags)) {
-			continue;
-		}
-
-		if (n->get_flags() & Node::k_dont_show_in_create_menu) {
-			continue;
-		}
-
-		// Make sure nodes are up-to-date with the current translation
-		n->retranslate();
-
-		QString category_name = Node::get_category_name(
-			n->category().isEmpty() ? Node::k_category_unknown :
-									  n->category().first());
-
-		// Find or create top-level category menu
-		Menu *top_menu = nullptr;
-		QList<QAction *> menu_actions = menu->actions();
-		foreach (QAction *action, menu_actions) {
-			if (action->menu() && action->menu()->title() == category_name) {
-				top_menu = static_cast<Menu *>(action->menu());
-				break;
-			}
-		}
-		if (!top_menu) {
-			top_menu = new Menu(category_name, menu);
-			menu->insert_alphabetically(top_menu);
-		}
-
-		// Determine final destination (support secondary grouping)
-		Menu *destination = top_menu;
-		QString sub = n->sub_category();
-		if (!sub.isEmpty() && n->category().contains(Node::k_category_open_fx)) {
-			QList<QAction *> sub_actions = top_menu->actions();
-			foreach (QAction *action, sub_actions) {
-				if (action->menu() && action->menu()->title() == sub) {
-					destination = static_cast<Menu *>(action->menu());
-					break;
-				}
-			}
-			if (destination == top_menu) {
-				destination = new Menu(sub, top_menu);
-				top_menu->insert_alphabetically(destination);
-			}
-		}
-
-		// Add entry to menu
-		QAction *a = destination->insert_alphabetically(n->name());
-		a->setData(i);
-		a->setToolTip(n->description());
-	}
-
-	if (create_none_item) {
-		QAction *none_item = new QAction(
-			QCoreApplication::translate("NodeFactory", "None"), menu);
-
-		none_item->setData(-1);
-
-		if (menu->actions().isEmpty()) {
-			menu->addAction(none_item);
-		} else {
-			QAction *separator = menu->insertSeparator(menu->actions().first());
-			menu->insertAction(separator, none_item);
-		}
-	}
-
-	return menu;
-}
-
-Node *NodeFactory::CreateFromMenuAction(QAction *action)
-{
-	int index = action->data().toInt();
-
-	if (index == -1) {
-		return nullptr;
-	}
-
-	return library.at(index)->copy();
-}
-
-QString NodeFactory::GetIDFromMenuAction(QAction *action)
-{
-	int index = action->data().toInt();
-
-	if (index == -1) {
-		return QString();
-	}
-
-	return library.at(action->data().toInt())->id();
 }
 
 QString NodeFactory::get_name_from_id(const QString &id)

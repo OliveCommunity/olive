@@ -31,13 +31,13 @@
 
 #include "node/audio/volume/volume.h"
 #include "node/distort/transform/transformdistortnode.h"
-#include "node/factory.h"
 #include "node/group/group.h"
 #include "node/nodeundo.h"
 #include "node/project/serializer/serializer.h"
 #include "panel/panelmanager.h"
 #include "node/traverser.h"
 #include "ui/icons/icons.h"
+#include "widget/menu/factorymenu.h"
 #include "widget/menu/menushared.h"
 #include "widget/timebased/timebasedview.h"
 
@@ -936,7 +936,7 @@ void NodeView::show_context_menu(const QPoint &pos)
 
 void NodeView::create_node_slot(QAction *action)
 {
-	Node *new_node = NodeFactory::CreateFromMenuAction(action);
+	Node *new_node = create_node_from_menu_action(action);
 
 	if (new_node) {
 		NodeViewItem *new_item = new NodeViewItem(new_node, nullptr);
@@ -1381,7 +1381,7 @@ bool NodeView::get_assumed_position_for_selected_node(Node *node,
 
 Menu *NodeView::create_add_menu(Menu *parent)
 {
-	Menu *add_menu = NodeFactory::create_menu(parent);
+	Menu *add_menu = create_node_menu(parent);
 	add_menu->setTitle(tr("Add"));
 	connect(add_menu, &Menu::triggered, this, &NodeView::create_node_slot);
 	return add_menu;

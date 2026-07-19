@@ -44,11 +44,13 @@
 #include "config/config.h"
 #include "dialog/about/about.h"
 #include "dialog/autorecovery/autorecoverydialog.h"
+#include "dialog/diskcache/diskcachedialog.h"
 #include "dialog/export/export.h"
 #include "dialog/footagerelink/footagerelinkdialog.h"
 #ifdef USE_OTIO
 #include "dialog/otioproperties/otiopropertiesdialog.h"
 #endif
+#include "dialog/progress/pluginprogressdialogreporter.h"
 #include "dialog/projectproperties/projectproperties.h"
 #include "dialog/sequence/sequence.h"
 #include "dialog/task/task.h"
@@ -56,7 +58,11 @@
 #include "node/nodeundo.h"
 #include "panel/panelmanager.h"
 #include "panel/project/project.h"
+#include "panel/timebased/timebased.h"
+#include "panel/timeline/timeline.h"
 #include "panel/viewer/viewer.h"
+#include "pluginSupport/oliveplugininstance.h"
+#include "pluginSupport/pluginprogressreporter.h"
 #include "render/diskmanager.h"
 #ifdef USE_OTIO
 #include "task/project/loadotio/loadotio.h"
@@ -103,6 +109,45 @@ Core::Core(const CoreParams &params)
 		return DialogImportOTIOShow(sequences);
 	});
 #endif
+
+	// Disk cache settings dialog (engine -> UI)
+	DiskManager::set_show_disk_cache_settings_handler(
+		[](DiskCacheFolder *folder, QWidget *parent) {
+			DiskCacheDialog d(folder, parent);
+			d.exec();
+		});
+
+	// OFX plugin progress dialog (engine -> UI)
+	plugin::set_plugin_progress_reporter_factory(
+		[](const QString &message,
+		   const QString &title) -> plugin::PluginProgressReporter * {
+			return new PluginProgressDialogReporter(message, title);
+		});
+
+	// OFX timeline suite: resolve the active viewer through the panels
+	plugin::set_active_viewer_provider([]() -> ViewerOutput * {
+		PanelManager *manager = PanelManager::instance();
+		if (!manager) {
+			return nullptr;
+		}
+
+		if (auto *time_panel =
+				manager->most_recently_focused<TimeBasedPanel>()) {
+			if (time_panel->get_connected_viewer()) {
+				return time_panel->get_connected_viewer();
+			}
+		}
+
+		QList<TimelinePanel *> timelines =
+			manager->get_panels_of_type<TimelinePanel>();
+		for (TimelinePanel *panel : timelines) {
+			if (panel && panel->get_connected_viewer()) {
+				return panel->get_connected_viewer();
+			}
+		}
+
+		return nullptr;
+	});
 }
 
 void Core::start()

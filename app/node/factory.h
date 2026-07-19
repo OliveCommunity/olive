@@ -25,7 +25,6 @@
 #include <QList>
 
 #include "node.h"
-#include "widget/menu/menu.h"
 
 namespace olive
 {
@@ -97,21 +96,24 @@ public:
 
 	static void destroy();
 
-	static Menu *
-	create_menu(QWidget *parent, bool create_none_item = false,
-			   Node::CategoryID restrict_to = Node::k_category_unknown,
-			   uint64_t restrict_flags = 0);
-
-	static Node *CreateFromMenuAction(QAction *action);
-
-	static QString GetIDFromMenuAction(QAction *action);
-
 	static QString get_name_from_id(const QString &id);
 
 	static Node *create_from_id(const QString &id);
 	static void register_plugin_nodes();
 
 	static Node *create_from_factory_index(const InternalID &id);
+
+	/**
+	 * @brief Access the internal node library
+	 *
+	 * Exposed for the UI layer (e.g. widget/menu/factorymenu), which builds
+	 * node creation menus from the library. The library itself stays
+	 * UI-independent.
+	 */
+	static const QList<Node *> &get_library()
+	{
+		return library;
+	}
 
 private:
 	static QList<Node *> library;

@@ -3,6 +3,8 @@ target_sources(libolive-editor PRIVATE
         olivehost.cpp
         oliveplugininstance.h
         oliveplugininstance.cpp
+        pluginprogressreporter.h
+        pluginprogressreporter.cpp
         oliveclip.cpp
         oliveclip.h
         paraminstance.cpp

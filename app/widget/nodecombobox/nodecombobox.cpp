@@ -27,6 +27,7 @@
 
 #include "node/factory.h"
 #include "ui/icons/icons.h"
+#include "widget/menu/factorymenu.h"
 #include "widget/menu/menu.h"
 
 namespace olive
@@ -39,12 +40,12 @@ NodeComboBox::NodeComboBox(QWidget *parent)
 
 void NodeComboBox::showPopup()
 {
-	Menu *m = NodeFactory::create_menu(this, true);
+	Menu *m = create_node_menu(this, true);
 
 	QAction *selected = m->exec(parentWidget()->mapToGlobal(pos()));
 
 	if (selected) {
-		QString new_id = NodeFactory::GetIDFromMenuAction(selected);
+		QString new_id = get_node_id_from_menu_action(selected);
 
 		set_node_internal(new_id, true);
 	}

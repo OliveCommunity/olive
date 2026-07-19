@@ -31,6 +31,7 @@
 #include "node/serializeddata.h"
 #include "core.h"
 #include "render/diskmanager.h"
+#include "widget/menu/factorymenu.h"
 #include "widget/menu/menu.h"
 
 namespace
@@ -532,15 +533,15 @@ TEST(NodeFactory, CreateMenuWithNoneItem)
 	olive::NodeFactory::initialize();
 
 	std::unique_ptr<olive::Menu> menu(
-		olive::NodeFactory::create_menu(nullptr, true));
+		olive::create_node_menu(nullptr, true));
 	ASSERT_NE(menu, nullptr);
 	ASSERT_FALSE(menu->actions().isEmpty());
 
 	// The "None" item is inserted at the very top and maps to nothing
 	QAction *none_item = menu->actions().first();
 	EXPECT_EQ(none_item->data().toInt(), -1);
-	EXPECT_EQ(olive::NodeFactory::CreateFromMenuAction(none_item), nullptr);
-	EXPECT_TRUE(olive::NodeFactory::GetIDFromMenuAction(none_item).isEmpty());
+	EXPECT_EQ(olive::create_node_from_menu_action(none_item), nullptr);
+	EXPECT_TRUE(olive::get_node_id_from_menu_action(none_item).isEmpty());
 
 	// Leaf actions carry a library index that maps back to node ids
 	QList<QAction *> leaves;
@@ -552,10 +553,10 @@ TEST(NodeFactory, CreateMenuWithNoneItem)
 		if (leaf->data().toInt() < 0) {
 			continue;
 		}
-		const QString id = olive::NodeFactory::GetIDFromMenuAction(leaf);
+		const QString id = olive::get_node_id_from_menu_action(leaf);
 		EXPECT_FALSE(id.isEmpty());
 		std::unique_ptr<olive::Node> node(
-			olive::NodeFactory::CreateFromMenuAction(leaf));
+			olive::create_node_from_menu_action(leaf));
 		ASSERT_NE(node, nullptr);
 		EXPECT_EQ(node->id(), id);
 		++created;
@@ -569,7 +570,7 @@ TEST(NodeFactory, CreateMenuRestrictedToCategory)
 {
 	olive::NodeFactory::initialize();
 
-	std::unique_ptr<olive::Menu> menu(olive::NodeFactory::create_menu(
+	std::unique_ptr<olive::Menu> menu(olive::create_node_menu(
 		nullptr, false, olive::Node::k_category_math));
 	ASSERT_NE(menu, nullptr);
 
@@ -579,7 +580,7 @@ TEST(NodeFactory, CreateMenuRestrictedToCategory)
 
 	for (QAction *leaf : leaves) {
 		std::unique_ptr<olive::Node> node(
-			olive::NodeFactory::CreateFromMenuAction(leaf));
+			olive::create_node_from_menu_action(leaf));
 		ASSERT_NE(node, nullptr);
 		EXPECT_TRUE(node->category().contains(olive::Node::k_category_math))
 			<< node->id().toStdString();

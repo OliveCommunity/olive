@@ -16,6 +16,8 @@
 
 set(OLIVE_SOURCES
         ${OLIVE_SOURCES}
+        dialog/progress/pluginprogressdialogreporter.h
+        dialog/progress/pluginprogressdialogreporter.cpp
         dialog/progress/progress.h
         dialog/progress/progress.cpp
         PARENT_SCOPE

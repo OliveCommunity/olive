@@ -16,6 +16,8 @@
 
 set(OLIVE_SOURCES
         ${OLIVE_SOURCES}
+        widget/menu/factorymenu.cpp
+        widget/menu/factorymenu.h
         widget/menu/menu.cpp
         widget/menu/menu.h
         widget/menu/menushared.cpp

@@ -27,8 +27,8 @@
 #include <QResizeEvent>
 #include <QVariant>
 
-#include "node/factory.h"
 #include "ui/icons/icons.h"
+#include "widget/menu/factorymenu.h"
 #include "widget/menu/menu.h"
 #include "widget/menu/menushared.h"
 
@@ -206,7 +206,7 @@ void Toolbar::add_button_clicked()
 
 void Toolbar::transition_button_clicked()
 {
-	Menu *m = NodeFactory::create_menu(this, false, Node::k_category_transition);
+	Menu *m = create_node_menu(this, false, Node::k_category_transition);
 
 	connect(m, &QMenu::triggered, this, &Toolbar::transition_menu_item_triggered);
 
@@ -217,7 +217,7 @@ void Toolbar::transition_button_clicked()
 
 void Toolbar::transition_menu_item_triggered(QAction *a)
 {
-	emit selected_transition_changed(NodeFactory::GetIDFromMenuAction(a));
+	emit selected_transition_changed(get_node_id_from_menu_action(a));
 }
 
 }
