@@ -298,7 +298,7 @@ endif()
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 list(APPEND OLIVE_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/third_party)
 
-add_subdirectory(core EXCLUDE_FROM_ALL)
+add_subdirectory(core)
 
 set(KDDockWidgets_STATIC ON CACHE INTERNAL "Force KDDockWidgets to build statically")
 set(KDDockWidgets_QT6 ${BUILD_QT6} CACHE INTERNAL "Conform KDDockWidgets' Qt 6 setting to ours")
