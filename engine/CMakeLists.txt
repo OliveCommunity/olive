@@ -44,6 +44,7 @@ add_subdirectory(timeline)
 add_subdirectory(tool)
 add_subdirectory(ui)
 add_subdirectory(undo)
+add_subdirectory(src/capi)
 
 add_library(oakengine SHARED
         ${OLIVE_SOURCES}
@@ -225,4 +226,11 @@ if (BUILD_TESTS)
     endfunction()
 
     make_oakengine_test(oakengine_ipc_test)
+
+    make_oakengine_test(oakengine_init_test)
+    # Resolves the real test assets (tests/demo.mp4, the footage fixture
+    # project) relative to the repository root, like tests/gtest does.
+    target_compile_definitions(oakengine_init_test PRIVATE
+            OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    )
 endif ()
