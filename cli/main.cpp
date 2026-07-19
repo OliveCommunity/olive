@@ -48,6 +48,7 @@
 #include <string>
 #include <vector>
 
+#include "oakengine/exporter.h"
 #include "oakengine/footage.h"
 #include "oakengine/init.h"
 #include "oakengine/project.h"
@@ -80,11 +81,14 @@ void print_usage(FILE *out)
 			"  oak-cli probe <mediafile>\n"
 			"      Probe a media file: decoder, duration, video and audio streams.\n"
 			"\n"
-			"  oak-cli transcode <input_media> <out_dir> [width]\n"
+			"  oak-cli transcode <input_media> <out> [width] [--format ppm|mp4]\n"
 			"      Transcode a media file end to end: import it into a temporary\n"
-			"      project, place it as clips, and render the whole duration to\n"
-			"      PPM frames + a WAV. [width] defaults to the source width; the\n"
-			"      height follows the source aspect ratio.\n"
+			"      project, place it as clips, and render the whole duration.\n"
+			"      Default output is a single H.264/AAC MP4 file (encoder default\n"
+			"      bit rate); --format ppm renders PPM frames + a WAV instead.\n"
+			"      [width] defaults to the source width; the height follows the\n"
+			"      source aspect ratio. <out> is the MP4 file path, or the\n"
+			"      output directory with --format ppm.\n"
 			"\n"
 			"  oak-cli --help\n"
 			"      Show this text.\n"
@@ -562,21 +566,51 @@ int cmd_probe(const char *path)
 	return rc;
 }
 
+// Progress printer for mp4 transcodes: percentage steps of 5% on stderr.
+static int g_transcode_progress_shown = -1;
+
+void transcode_progress(double fraction, void *userdata)
+{
+	(void)userdata;
+	const int percent = int(fraction * 100.0);
+	if (percent / 5 > g_transcode_progress_shown) {
+		g_transcode_progress_shown = percent / 5;
+		fprintf(stderr, "export progress: %d%%\n", percent);
+	}
+}
+
 // "Media in, renders out" round trip: probe the source, build a temporary
-// project with the whole media placed as clips, and render it out to PPM
-// frames + a WAV of the full duration.
-int cmd_transcode(const char *input, const char *out_dir,
-				  const char *width_str)
+// project with the whole media placed as clips, and render it out -- as a
+// single encoded MP4 by default, or as PPM frames + WAV with --format ppm.
+int cmd_transcode(const char *input, const char *out, int argc,
+				  char *argv[], int first_opt)
 {
 	int width = 0;
-	if (width_str) {
-		char *end = nullptr;
-		const long parsed = std::strtol(width_str, &end, 10);
-		if (end == width_str || *end != '\0' || parsed <= 0) {
-			fprintf(stderr, "error: invalid width \"%s\"\n", width_str);
+	std::string format = "mp4";
+	for (int i = first_opt; i < argc; i++) {
+		if (std::strcmp(argv[i], "--format") == 0) {
+			if (i + 1 >= argc) {
+				fprintf(stderr, "error: --format needs a value (ppm|mp4)\n");
+				return k_exit_usage;
+			}
+			format = argv[++i];
+			if (format != "ppm" && format != "mp4") {
+				fprintf(stderr, "error: unknown --format \"%s\" (ppm|mp4)\n",
+						format.c_str());
+				return k_exit_usage;
+			}
+		} else if (width == 0) {
+			char *end = nullptr;
+			const long parsed = std::strtol(argv[i], &end, 10);
+			if (end == argv[i] || *end != '\0' || parsed <= 0) {
+				fprintf(stderr, "error: invalid width \"%s\"\n", argv[i]);
+				return k_exit_usage;
+			}
+			width = int(parsed);
+		} else {
+			fprintf(stderr, "error: unexpected argument \"%s\"\n", argv[i]);
 			return k_exit_usage;
 		}
-		width = int(parsed);
 	}
 
 	if (oakengine_init(OAKENGINE_INIT_HEADLESS | OAKENGINE_INIT_RENDER) !=
@@ -697,31 +731,74 @@ int cmd_transcode(const char *input, const char *out_dir,
 			break;
 		}
 
-		std::filesystem::create_directories(out_dir, ec);
-		if (ec) {
-			fprintf(stderr, "error: cannot create output directory \"%s\": %s\n",
-					out_dir, ec.message().c_str());
-			rc = k_exit_error;
-			break;
-		}
+		if (format == "ppm") {
+			std::filesystem::create_directories(out, ec);
+			if (ec) {
+				fprintf(stderr,
+						"error: cannot create output directory \"%s\": %s\n",
+						out, ec.message().c_str());
+				rc = k_exit_error;
+				break;
+			}
 
-		renderer = oakengine_renderer_create(seq, width, height,
-											 k_pixel_format_f32,
-											 vi.frame_rate_num,
-											 vi.frame_rate_den, nullptr);
-		if (!renderer) {
-			fprintf(stderr, "error: failed to create renderer\n");
-			rc = k_exit_error;
-			break;
-		}
+			renderer = oakengine_renderer_create(seq, width, height,
+												 k_pixel_format_f32,
+												 vi.frame_rate_num,
+												 vi.frame_rate_den, nullptr);
+			if (!renderer) {
+				fprintf(stderr, "error: failed to create renderer\n");
+				rc = k_exit_error;
+				break;
+			}
 
-		rc = render_frames_to_ppm(renderer, out_dir, 0, total_ts);
-		if (rc == k_exit_ok) {
-			rc = render_audio_to_wav(renderer, out_dir, 0, total_ts);
-		}
-		if (rc == k_exit_ok) {
-			printf("wrote %lld PPM frame(s) (%dx%d) and audio.wav to \"%s\"\n",
-				   (long long)total_ts, width, height, out_dir);
+			rc = render_frames_to_ppm(renderer, out, 0, total_ts);
+			if (rc == k_exit_ok) {
+				rc = render_audio_to_wav(renderer, out, 0, total_ts);
+			}
+			if (rc == k_exit_ok) {
+				printf("wrote %lld PPM frame(s) (%dx%d) and audio.wav to "
+					   "\"%s\"\n",
+					   (long long)total_ts, width, height, out);
+			}
+		} else {
+			// mp4: synchronous render + encode through the export facade.
+			// Bit rate is left to the encoder default (bit_rate 0), H.264
+			// video + AAC audio at 48 kHz stereo.
+			const std::filesystem::path out_parent =
+				std::filesystem::path(out).parent_path();
+			if (!out_parent.empty()) {
+				std::filesystem::create_directories(out_parent, ec);
+			}
+			if (ec) {
+				fprintf(stderr,
+						"error: cannot create output directory for \"%s\": %s\n",
+						out, ec.message().c_str());
+				rc = k_exit_error;
+				break;
+			}
+
+			oak_export_options opts;
+			memset(&opts, 0, sizeof(opts));
+			opts.video_codec = OAKENGINE_EXPORT_VIDEO_H264;
+			opts.audio_codec = OAKENGINE_EXPORT_AUDIO_AAC;
+			opts.audio_sample_rate = 48000;
+			opts.audio_channel_count = 2;
+			oakengine_export_set_progress_callback(transcode_progress, NULL);
+			const int export_rc = oakengine_export_render(
+				seq, out, 0, clip_end_ts, width, height, &opts);
+			oakengine_export_set_progress_callback(NULL, NULL);
+			if (export_rc != OAKENGINE_OK) {
+				char err[1024];
+				fprintf(stderr, "error: export failed: %s\n",
+						oakengine_export_last_error(err, sizeof(err)) > 0 ?
+							err :
+							"(no error)");
+				rc = k_exit_render_unavailable;
+				break;
+			}
+			fprintf(stderr, "\n");
+			printf("wrote %dx%d H.264/AAC MP4 to \"%s\"\n", width, height,
+				   out);
 		}
 	} while (false);
 
@@ -768,11 +845,11 @@ int main(int argc, char *argv[])
 		return cmd_probe(argv[2]);
 	}
 	if (command == "transcode") {
-		if (argc != 4 && argc != 5) {
+		if (argc < 4 || argc > 7) {
 			print_usage(stderr);
 			return k_exit_usage;
 		}
-		return cmd_transcode(argv[2], argv[3], argc == 5 ? argv[4] : nullptr);
+		return cmd_transcode(argv[2], argv[3], argc, argv, 4);
 	}
 
 	fprintf(stderr, "error: unknown command \"%s\"\n", argv[1]);

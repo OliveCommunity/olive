@@ -91,12 +91,27 @@ if (BUILD_TESTS)
             PASS_REGULAR_EXPRESSION "1920.*48000"
     )
 
-    # transcode smoke test: full "media in, renders out" round trip at a
-    # reduced width; like render it exits 2 without a GL backend (skip).
+    # transcode smoke test: full "media in, renders out" round trip to a
+    # single H.264 MP4 (the default format); like render it exits 2 without
+    # a GL backend (skip). The verify step then checks the file with ffprobe.
     add_test(NAME oak_cli_transcode
-            COMMAND oak-cli transcode ${CMAKE_SOURCE_DIR}/tests/demo.mp4 ${CMAKE_CURRENT_BINARY_DIR}/oak_cli_transcode_out 960
+            COMMAND oak-cli transcode ${CMAKE_SOURCE_DIR}/tests/demo.mp4 ${CMAKE_CURRENT_BINARY_DIR}/oak_cli_transcode.mp4 960
     )
     set_tests_properties(oak_cli_transcode PROPERTIES
+            SKIP_RETURN_CODE 2
+    )
+    add_test(NAME oak_cli_transcode_verify
+            COMMAND ${CMAKE_COMMAND} -DOUT=${CMAKE_CURRENT_BINARY_DIR}/oak_cli_transcode.mp4 -P ${CMAKE_CURRENT_SOURCE_DIR}/verify_transcode_mp4.cmake
+    )
+    set_tests_properties(oak_cli_transcode_verify PROPERTIES
+            DEPENDS oak_cli_transcode
+    )
+
+    # Same round trip through the PPM+WAV path.
+    add_test(NAME oak_cli_transcode_ppm
+            COMMAND oak-cli transcode ${CMAKE_SOURCE_DIR}/tests/demo.mp4 ${CMAKE_CURRENT_BINARY_DIR}/oak_cli_transcode_ppm_out 960 --format ppm
+    )
+    set_tests_properties(oak_cli_transcode_ppm PROPERTIES
             SKIP_RETURN_CODE 2
     )
     # Rendering needs the render worker and the dynamic backend plugins.
