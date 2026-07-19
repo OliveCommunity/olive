@@ -35,6 +35,7 @@
 #include <QScreen>
 #include <QTextEdit>
 
+#include "audio/audiomanager.h"
 #include "common/define.h"
 #include "common/html.h"
 #include "common/qtutils.h"
@@ -1632,7 +1633,8 @@ void ViewerDisplayWidget::play(const int64_t &start_timestamp,
 	playback_timebase_ = timebase;
 	playback_speed_ = playback_speed;
 
-	timer_.start(start_timestamp, playback_speed, timebase.to_double());
+	timer_.start(start_timestamp, playback_speed, timebase.to_double(),
+				 AudioManager::instance());
 
 	if (start_updating) {
 		connect(this, &ViewerDisplayWidget::frame_swapped, this,

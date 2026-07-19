@@ -43,6 +43,7 @@ target_sources(libolive-editor PRIVATE
         oiioutils.cpp
         oiioutils.h
         otioutils.h
+        playbackaudioclock.h
         qtutils.cpp
         qtutils.h
         range.h

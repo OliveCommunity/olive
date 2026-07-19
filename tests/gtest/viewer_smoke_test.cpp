@@ -145,6 +145,61 @@ TEST(ViewerSmokeTimer, ZeroSpeed)
 	EXPECT_EQ(ts1, ts2);
 }
 
+class FakeAudioClock : public PlaybackAudioClock {
+public:
+	virtual double seconds() const override
+	{
+		return seconds_;
+	}
+
+	double seconds_ = -1.0;
+};
+
+TEST(ViewerSmokeTimer, AudioClockDrivesTimestamp)
+{
+	FakeAudioClock clock;
+	ViewerPlaybackTimer timer;
+
+	// Start at timestamp 100, 1x speed, 32fps (exact in floating point)
+	timer.start(100, 1, 1.0 / 32.0, &clock);
+
+	// One second of consumed audio = 32 frames, regardless of wall time
+	clock.seconds_ = 1.0;
+	EXPECT_EQ(timer.get_timestamp_now(), 132);
+
+	// The audio clock fully overrides the wall clock (no sleep involved)
+	clock.seconds_ = 0.5;
+	EXPECT_EQ(timer.get_timestamp_now(), 116);
+}
+
+TEST(ViewerSmokeTimer, AudioClockScalesWithPlaybackSpeed)
+{
+	FakeAudioClock clock;
+	ViewerPlaybackTimer timer;
+
+	// At 2x speed one output second is two timeline seconds
+	timer.start(0, 2, 1.0 / 32.0, &clock);
+	clock.seconds_ = 0.5;
+	EXPECT_EQ(timer.get_timestamp_now(), 32);
+
+	// In reverse the playhead moves backward at |speed|
+	timer.start(100, -2, 1.0 / 32.0, &clock);
+	clock.seconds_ = 1.0;
+	EXPECT_EQ(timer.get_timestamp_now(), 36);
+}
+
+TEST(ViewerSmokeTimer, InvalidAudioClockFallsBackToWallClock)
+{
+	FakeAudioClock clock; // seconds() returns -1: no clocked output running
+	ViewerPlaybackTimer timer;
+
+	timer.start(0, 1, 1.0 / 24.0, &clock);
+	EXPECT_GE(timer.get_timestamp_now(), 0);
+
+	QThread::msleep(50); // 50ms > one 24fps frame period
+	EXPECT_GT(timer.get_timestamp_now(), 0);
+}
+
 // ============================================================================
 // Smoke Test: ViewerQueue
 // ============================================================================

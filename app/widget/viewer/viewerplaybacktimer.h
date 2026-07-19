@@ -26,6 +26,7 @@
 #include <QElapsedTimer>
 
 #include "common/define.h"
+#include "common/playbackaudioclock.h"
 
 namespace olive
 {
@@ -33,7 +34,8 @@ namespace olive
 class ViewerPlaybackTimer {
 public:
 	void start(const int64_t &start_timestamp, const int &playback_speed,
-			   const double &timebase);
+			   const double &timebase,
+			   const PlaybackAudioClock *audio_clock = nullptr);
 
 	int64_t get_timestamp_now() const;
 
@@ -44,6 +46,8 @@ private:
 	int playback_speed_;
 
 	double timebase_;
+
+	const PlaybackAudioClock *audio_clock_ = nullptr;
 };
 
 }

@@ -149,6 +149,8 @@ void SampleBuffer::speed(double speed)
 		return;
 	}
 
+	const size_t input_sample_count = sample_count_per_channel_;
+
 	sample_count_per_channel_ =
 		std::llround(static_cast<double>(sample_count_per_channel_) / speed);
 
@@ -160,10 +162,17 @@ void SampleBuffer::speed(double speed)
 	}
 
 	for (size_t i = 0; i < sample_count_per_channel_; i++) {
-		size_t input_index = std::floor(static_cast<double>(i) * speed);
+		// Linear interpolation between the two nearest input samples,
+		// rather than nearest-neighbor sampling which aliases audibly
+		const double input_position = static_cast<double>(i) * speed;
+		const size_t input_index = static_cast<size_t>(input_position);
+		const double fraction = input_position - input_index;
+		const size_t next_index =
+			std::min(input_index + 1, input_sample_count - 1);
 
 		for (int j = 0; j < audio_params_.channel_count(); j++) {
-			output_data[j][i] = data_[j][input_index];
+			output_data[j][i] = data_[j][input_index] * (1.0 - fraction) +
+				data_[j][next_index] * fraction;
 		}
 	}
 

@@ -71,6 +71,10 @@ int output_callback(const void *input, void *output, unsigned long frame_count,
 			   max_read - read_count);
 	}
 
+	// Count all frames leaving the device (including zero-filled underrun
+	// frames) so this can serve as the playback master clock
+	device->add_output_frames(frame_count);
+
 	return paContinue;
 }
 
@@ -106,10 +110,14 @@ bool AudioManager::push_to_output(const AudioParams &params,
 
 		PaStreamParameters p = get_port_audio_params(params, output_device_);
 
+		// 0 = let PortAudio choose the buffer size
+		const unsigned long frames_per_buffer =
+			OAK_CONFIG("AudioOutputBufferSize").toUInt();
+
 		PaError r = Pa_OpenStream(&output_stream_, nullptr, &p,
 								  output_params_.sample_rate(),
-								  paFramesPerBufferUnspecified, paNoFlag,
-								  output_callback, output_buffer_);
+								  frames_per_buffer, paNoFlag, output_callback,
+								  output_buffer_);
 		if (r != paNoError) {
 			// Unhandled error
 			//qCritical() << "Failed to open output stream:" << Pa_GetErrorText(r);
@@ -139,6 +147,28 @@ bool AudioManager::push_to_output(const AudioParams &params,
 void AudioManager::clear_buffered_output()
 {
 	output_buffer_->clear();
+}
+
+double AudioManager::seconds() const
+{
+	if (!output_stream_ || !Pa_IsStreamActive(output_stream_)) {
+		return -1.0;
+	}
+
+	double seconds = double(output_buffer_->output_frames_consumed()) /
+					 double(output_params_.sample_rate());
+
+	// Compensate for output latency so the clock reflects what is audible
+	if (const PaStreamInfo *info = Pa_GetStreamInfo(output_stream_)) {
+		seconds -= info->outputLatency;
+	}
+
+	return qMax(0.0, seconds);
+}
+
+void AudioManager::reset_output_clock()
+{
+	output_buffer_->reset_output_frames();
 }
 
 PaSampleFormat AudioManager::get_port_audio_sample_format(SampleFormat fmt)

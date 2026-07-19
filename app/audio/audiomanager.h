@@ -30,6 +30,7 @@
 #include "audiovisualwaveform.h"
 #include "audio/audioprocessor.h"
 #include "common/define.h"
+#include "common/playbackaudioclock.h"
 #include "codec/ffmpeg/ffmpegencoder.h"
 #include "render/audioplaybackcache.h"
 #include "render/previewaudiodevice.h"
@@ -43,7 +44,7 @@ namespace olive
  * Wraps around a QAudioOutput and AudioHybridDevice, connecting them together and exposing audio functionality to
  * the rest of the system.
  */
-class AudioManager : public QObject {
+class AudioManager : public QObject, public PlaybackAudioClock {
 	Q_OBJECT
 public:
 	static void create_instance();
@@ -59,6 +60,19 @@ public:
 	void clear_buffered_output();
 
 	void stop_output();
+
+	/**
+	 * @brief Seconds of audio consumed by the output device since the last reset
+	 *
+	 * Compensated for output latency so it represents what is actually
+	 * audible. Returns a negative value when no output stream is running.
+	 */
+	virtual double seconds() const override;
+
+	/**
+	 * @brief Restarts the output clock at zero for a new playback run
+	 */
+	void reset_output_clock();
 
 	PaDeviceIndex get_output_device() const
 	{

@@ -25,6 +25,7 @@
 #include <QComboBox>
 #include <QPushButton>
 #include <QCheckBox>
+#include <QSpinBox>
 
 #include "dialog/configbase/configdialogbase.h"
 #include "dialog/export/exportaudiotab.h"
@@ -67,6 +68,11 @@ private:
 	SampleRateComboBox *output_rate_combo_;
 	ChannelLayoutComboBox *output_ch_layout_combo_;
 	SampleFormatComboBox *output_fmt_combo_;
+
+	/**
+   * @brief UI widget for the output buffer size in frames (0 = auto)
+   */
+	QSpinBox *output_buffer_size_;
 
 	ExportFormatComboBox *record_format_combo_;
 

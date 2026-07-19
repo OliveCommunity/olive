@@ -210,6 +210,10 @@ void Config::set_defaults()
 		QStringLiteral("AudioOutputSampleFormat"), NodeValue::k_text,
 		QString::fromStdString(SampleFormat(SampleFormat::s16).to_string()));
 
+	// Output buffer size in frames, 0 = let PortAudio/the device decide
+	set_entry_internal(QStringLiteral("AudioOutputBufferSize"), NodeValue::k_int,
+					 0);
+
 	set_entry_internal(QStringLiteral("AudioRecordingFormat"), NodeValue::k_int,
 					 ExportFormat::k_format_wav);
 	set_entry_internal(QStringLiteral("AudioRecordingCodec"), NodeValue::k_int,

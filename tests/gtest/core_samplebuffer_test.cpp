@@ -251,6 +251,29 @@ TEST(CoreSampleBuffer, Speed)
 	EXPECT_FLOAT_EQ(b.data(0)[1], 0.3f);
 }
 
+TEST(CoreSampleBuffer, SpeedInterpolatesBetweenSamples)
+{
+	AudioParams params = make_params();
+	SampleBuffer b(params, 4);
+	b.data(0)[0] = 0.0f;
+	b.data(0)[1] = 1.0f;
+	b.data(0)[2] = 0.0f;
+	b.data(0)[3] = -1.0f;
+
+	// 0.5x doubles the length; odd output samples sit exactly between two
+	// input samples and must be interpolated, not nearest-neighbor picked
+	b.speed(0.5);
+	ASSERT_EQ(b.sample_count(), 8u);
+	EXPECT_FLOAT_EQ(b.data(0)[0], 0.0f);
+	EXPECT_FLOAT_EQ(b.data(0)[1], 0.5f);
+	EXPECT_FLOAT_EQ(b.data(0)[2], 1.0f);
+	EXPECT_FLOAT_EQ(b.data(0)[3], 0.5f);
+	EXPECT_FLOAT_EQ(b.data(0)[4], 0.0f);
+	EXPECT_FLOAT_EQ(b.data(0)[5], -0.5f);
+	EXPECT_FLOAT_EQ(b.data(0)[6], -1.0f);
+	EXPECT_FLOAT_EQ(b.data(0)[7], -1.0f); // clamped at the last sample
+}
+
 TEST(CoreSampleBuffer, UnallocatedOperationsNoCrash)
 {
 	SampleBuffer b;

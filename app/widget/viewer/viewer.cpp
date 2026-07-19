@@ -1384,6 +1384,10 @@ void ViewerWidget::finish_play_preprocess()
 
 	int64_t playback_start_time = get_timestamp();
 
+	// Restart the audio output clock for this playback run; the playback
+	// timer uses it as its master clock
+	AudioManager::instance()->reset_output_clock();
+
 	// Start audio waveform playback
 	if (!prequeued_audio_.isEmpty()) {
 		QString error;

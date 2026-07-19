@@ -24,6 +24,8 @@
 
 #include <olive/core/render/audioparams.h>
 
+#include <atomic>
+
 #include "previewautocacher.h"
 
 namespace olive
@@ -66,6 +68,27 @@ public:
 
 	void clear();
 
+	/**
+	 * @brief Frames consumed by the audio output callback
+	 *
+	 * Counted in the callback itself so underrun (zero-filled) frames are
+	 * included, making the value usable as a playback clock.
+	 */
+	void add_output_frames(qint64 frame_count)
+	{
+		output_frames_consumed_.fetch_add(frame_count);
+	}
+
+	qint64 output_frames_consumed() const
+	{
+		return output_frames_consumed_.load();
+	}
+
+	void reset_output_frames()
+	{
+		output_frames_consumed_.store(0);
+	}
+
 signals:
 	void notify();
 
@@ -79,6 +102,8 @@ private:
 	qint64 notify_interval_;
 
 	qint64 bytes_read_;
+
+	std::atomic<qint64> output_frames_consumed_{0};
 };
 
 }

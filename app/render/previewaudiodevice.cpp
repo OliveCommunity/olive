@@ -87,6 +87,7 @@ void PreviewAudioDevice::clear()
 
 	buffer_.clear();
 	bytes_read_ = 0;
+	output_frames_consumed_.store(0);
 }
 
 }

@@ -124,6 +124,20 @@ PreferencesAudioTab::PreferencesAudioTab()
 						.toStdString()));
 				output_param_layout->addWidget(output_fmt_combo_, output_row,
 											   1);
+
+				output_row++;
+
+				output_param_layout->addWidget(
+					new QLabel(tr("Buffer Size:")), output_row, 0);
+
+				output_buffer_size_ = new QSpinBox();
+				output_buffer_size_->setRange(0, 65536);
+				output_buffer_size_->setSpecialValueText(tr("Auto"));
+				output_buffer_size_->setSuffix(tr(" frames"));
+				output_buffer_size_->setValue(
+					OAK_CONFIG("AudioOutputBufferSize").toInt());
+				output_param_layout->addWidget(output_buffer_size_, output_row,
+											   1);
 			}
 		}
 
@@ -222,6 +236,7 @@ void PreferencesAudioTab::accept(MultiUndoCommand *command)
 		QVariant::fromValue(output_ch_layout_combo_->get_channel_layout());
 	OAK_CONFIG("AudioOutputSampleFormat") = QString::fromStdString(
 		output_fmt_combo_->get_sample_format().to_string());
+	OAK_CONFIG("AudioOutputBufferSize") = output_buffer_size_->value();
 
 	OAK_CONFIG("AudioRecordingFormat") = record_format_combo_->get_format();
 	OAK_CONFIG("AudioRecordingCodec") = record_options_->get_codec();
