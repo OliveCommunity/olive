@@ -278,6 +278,71 @@ OAKENGINE_API int oakengine_clip_get_range(const OakEngineClip *self,
 										   int64_t *in, int64_t *out,
 										   int64_t *media_in);
 
+/* ---- Editing primitives, round 2: split / ripple delete / trim / move ----
+ *
+ * All four are undoable like the other editing primitives and report
+ * failures through oakengine_sequence_last_error(). Clips are addressed by
+ * (track_type, track_index, clip_index) exactly like
+ * oakengine_sequence_clip_at() (gap blocks are skipped). All times are
+ * frame timestamps in the sequence's frame-rate timebase.
+ */
+
+/**
+ * @brief Split the addressed clip in two at timeline `time` (undoable;
+ * olive::BlockSplitCommand).
+ *
+ * `time` must lie strictly inside the clip's range. The left part keeps the
+ * clip's in-point, the right part starts at `time` with its media in-point
+ * advanced accordingly (the engine's split semantics). Returns OAKENGINE_OK
+ * or a negative code (OAKENGINE_E_NOT_FOUND for a missing clip,
+ * OAKENGINE_E_INVALID for a time outside the clip).
+ */
+OAKENGINE_API int oakengine_sequence_split_clip(OakEngineSequence *seq,
+												int track_type,
+												int track_index,
+												int clip_index, int64_t time);
+
+/**
+ * @brief Delete the addressed clip and shift all following clips on the
+ * track left by its length (undoable;
+ * olive::TrackRippleRemoveAreaCommand).
+ */
+OAKENGINE_API int oakengine_sequence_ripple_delete_clip(OakEngineSequence *seq,
+														int track_type,
+														int track_index,
+														int clip_index);
+
+/**
+ * @brief Change the clip's timeline range (undoable; olive::BlockTrimCommand,
+ * the application's trim command).
+ *
+ * Pass the current value for the end that should stay unchanged; changing
+ * both ends is applied as an in-trim followed by an out-trim in one
+ * undoable command. Requires new_out > new_in and new_in >= 0. When the
+ * in-point moves, the clip's media in-point moves with it (the engine's
+ * set_length_and_media_in() alignment); adjacent gaps absorb the difference
+ * (the engine's trim semantics, adjacent clips are not rolled). The clip
+ * handle must still be on a track.
+ */
+OAKENGINE_API int oakengine_clip_trim(OakEngineClip *clip, int64_t new_in,
+									  int64_t new_out);
+
+/**
+ * @brief Move the addressed clip to start at `new_in` on the same track
+ * (undoable).
+ *
+ * Length and media in-point are preserved; the old spot is filled with a
+ * gap (olive::TrackReplaceBlockWithGapCommand) and the clip is placed at
+ * the destination (olive::TrackPlaceBlockCommand, which ripples whatever
+ * was there). Moving across tracks is a later milestone. `new_in` must be
+ * >= 0.
+ */
+OAKENGINE_API int oakengine_sequence_move_clip(OakEngineSequence *seq,
+											   int track_type,
+											   int track_index,
+											   int clip_index,
+											   int64_t new_in);
+
 #ifdef __cplusplus
 }
 #endif

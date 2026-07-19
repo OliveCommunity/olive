@@ -243,6 +243,207 @@ static void test_cross_project_rejected(const char *media_path)
 	oakengine_project_free(b);
 }
 
+// Round-2 primitives: split, trim, move, ripple delete (plus undo/redo),
+// over a fresh project with two clips on one video track.
+static void test_edit_round2(const char *media_path)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	OakEngineSequence *seq = oakengine_sequence_new(project, "Round2");
+	assert(seq != NULL);
+	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_VIDEO) ==
+		   0);
+
+	OakEngineFootage *footage =
+		oakengine_project_import_footage(project, media_path);
+	assert(footage != NULL);
+
+	// Two clips back to back: A [0,30] and B [30,60], both from media 0.
+	OakEngineClip *clip_a = oakengine_sequence_add_footage_clip(
+		seq, footage, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, 30, 0);
+	assert(clip_a != NULL);
+	OakEngineClip *clip_b = oakengine_sequence_add_footage_clip(
+		seq, footage, OAKENGINE_TRACK_TYPE_VIDEO, 0, 30, 60, 0);
+	assert(clip_b != NULL);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 2);
+
+	int64_t in = -1, out = -1, media_in = -1;
+	char err[512];
+
+	// ---- split -------------------------------------------------------------
+	// Bad split points: on the edges, outside, missing clip.
+	assert(oakengine_sequence_split_clip(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										 0, 0) == OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_split_clip(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										 0, 30) == OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_split_clip(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										 0, -5) == OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_split_clip(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										 0, 99) == OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_split_clip(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										 99, 15) == OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_sequence_split_clip(NULL, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										 0, 15) == OAKENGINE_E_INVALID);
+
+	// Split A [0,30] at 15 -> [0,15] + [15,30] with aligned media in-points.
+	assert(oakengine_sequence_split_clip(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										 0, 15) == OAKENGINE_OK);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 3);
+	OakEngineClip *left =
+		oakengine_sequence_clip_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0);
+	OakEngineClip *right =
+		oakengine_sequence_clip_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 1);
+	assert(left == clip_a);
+	assert(oakengine_clip_get_range(left, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 0 && out == 15 && media_in == 0);
+	assert(oakengine_clip_get_range(right, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 15 && out == 30 && media_in == 15);
+
+	// Undo merges them back, redo splits again.
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 2);
+	assert(oakengine_clip_get_range(clip_a, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 0 && out == 30 && media_in == 0);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 3);
+	right = oakengine_sequence_clip_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 1);
+	assert(oakengine_clip_get_range(right, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 15 && out == 30 && media_in == 15);
+
+	// ---- trim --------------------------------------------------------------
+	// Bad trim ranges.
+	assert(oakengine_clip_trim(NULL, 0, 10) == OAKENGINE_E_INVALID);
+	assert(oakengine_clip_trim(right, 30, 20) == OAKENGINE_E_INVALID);
+	assert(oakengine_clip_trim(right, -1, 20) == OAKENGINE_E_INVALID);
+
+	// Trim the right part's in-point 15 -> 20: media_in follows 15 -> 20.
+	assert(oakengine_clip_trim(right, 20, 30) == OAKENGINE_OK);
+	assert(oakengine_clip_get_range(right, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 20 && out == 30 && media_in == 20);
+	// The leading clip is untouched (a gap absorbs the difference).
+	assert(oakengine_clip_get_range(clip_a, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 0 && out == 15 && media_in == 0);
+
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_clip_get_range(right, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 15 && out == 30 && media_in == 15);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	assert(oakengine_clip_get_range(right, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 20 && out == 30 && media_in == 20);
+
+	// Trim the out-point 30 -> 25 (media in-point stays).
+	assert(oakengine_clip_trim(right, 20, 25) == OAKENGINE_OK);
+	assert(oakengine_clip_get_range(right, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 20 && out == 25 && media_in == 20);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_clip_get_range(right, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 20 && out == 30 && media_in == 20);
+
+	// No-op trim is accepted and does nothing.
+	assert(oakengine_clip_trim(right, 20, 30) == OAKENGINE_OK);
+
+	// Both ends in one command: [20,30] -> [22,28], media_in follows.
+	assert(oakengine_clip_trim(right, 22, 28) == OAKENGINE_OK);
+	assert(oakengine_clip_get_range(right, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 22 && out == 28 && media_in == 22);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_clip_get_range(right, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 20 && out == 30 && media_in == 20);
+
+	// ---- move ---------------------------------------------------------------
+	assert(oakengine_sequence_move_clip(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 1,
+										-1) == OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_move_clip(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										99, 50) == OAKENGINE_E_NOT_FOUND);
+
+	// Move the second clip [20,30] to 70 (past everything): position shifts,
+	// length and media in-point are preserved, the other clips stay put.
+	assert(oakengine_sequence_move_clip(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 1,
+										70) == OAKENGINE_OK);
+	// After the move the moved clip is the LAST one on the track.
+	right = oakengine_sequence_clip_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 2);
+	assert(oakengine_clip_get_range(right, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 70 && out == 80 && media_in == 20);
+	assert(oakengine_clip_get_range(clip_a, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 0 && out == 15 && media_in == 0);
+	assert(oakengine_clip_get_range(clip_b, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 30 && out == 60 && media_in == 0);
+
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	right = oakengine_sequence_clip_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 1);
+	assert(oakengine_clip_get_range(right, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 20 && out == 30 && media_in == 20);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	right = oakengine_sequence_clip_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 2);
+	assert(oakengine_clip_get_range(right, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 70 && out == 80 && media_in == 20);
+
+	// ---- ripple delete -------------------------------------------------------
+	assert(oakengine_sequence_ripple_delete_clip(
+			   seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 99) ==
+		   OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_sequence_ripple_delete_clip(NULL,
+												 OAKENGINE_TRACK_TYPE_VIDEO, 0,
+												 0) == OAKENGINE_E_INVALID);
+
+	// Delete the first clip [0,15]: both following clips shift left by 15.
+	assert(oakengine_sequence_ripple_delete_clip(
+			   seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0) == OAKENGINE_OK);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 2);
+	right = oakengine_sequence_clip_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0);
+	assert(oakengine_clip_get_range(right, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 15 && out == 45 && media_in == 0); // clip_b was [30,60]
+	right = oakengine_sequence_clip_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 1);
+	assert(oakengine_clip_get_range(right, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 55 && out == 65 && media_in == 20); // was [70,80]
+
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 3);
+	right = oakengine_sequence_clip_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0);
+	assert(oakengine_clip_get_range(right, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 0 && out == 15 && media_in == 0);
+	right = oakengine_sequence_clip_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 1);
+	assert(oakengine_clip_get_range(right, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 30 && out == 60 && media_in == 0);
+	right = oakengine_sequence_clip_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 2);
+	assert(oakengine_clip_get_range(right, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 70 && out == 80 && media_in == 20);
+
+	oakengine_footage_free(footage); // wrapper only; node stays
+	assert(oakengine_project_footage_count(project) == 1);
+}
+
+// Footage imported into one project must not be placed into another.
+
 int main(void)
 {
 	make_tmpdir();
@@ -268,6 +469,7 @@ int main(void)
 	test_add_track(project, seq);
 	test_add_clip(project, seq, path);
 	test_cross_project_rejected(path);
+	test_edit_round2(path);
 
 	oakengine_project_free(project);
 	assert(oakengine_shutdown() == OAKENGINE_OK);

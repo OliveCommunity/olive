@@ -35,6 +35,8 @@
 #include "timeline/timelinemarker.h"
 #include "timeline/timelineundogeneral.h"
 #include "timeline/timelineundopointer.h"
+#include "timeline/timelineundoripple.h"
+#include "timeline/timelineundosplit.h"
 #include "timeline/timelineworkarea.h"
 #include "undo/undocommand.h"
 #include "undo/undostack.h"
@@ -135,6 +137,39 @@ olive::Track::Type to_track_type(int track_type)
 OakEngineClip *wrap_clip(olive::ClipBlock *c)
 {
 	return reinterpret_cast<OakEngineClip *>(c);
+}
+
+// Push an undoable command onto the global undo stack when the engine is
+// initialized, otherwise execute it directly (same degradation as the
+// round-1 primitives).
+void push_or_run(olive::UndoCommand *command, const QString &name)
+{
+	if (olive::EngineCore::instance()) {
+		olive::EngineCore::instance()->undo_stack()->push(command, name);
+	} else {
+		command->redo_now();
+		delete command;
+	}
+}
+
+// The clip at (track_index, clip_index) within the given track list,
+// skipping gap blocks; nullptr when out of range.
+olive::ClipBlock *clip_at_index(olive::TrackList *list, int track_index,
+								int clip_index)
+{
+	if (track_index < 0 || track_index >= list->get_track_count()) {
+		return nullptr;
+	}
+	int seen = 0;
+	for (olive::Block *b : list->get_track_at(track_index)->blocks()) {
+		if (olive::ClipBlock *clip = dynamic_cast<olive::ClipBlock *>(b)) {
+			if (seen == clip_index) {
+				return clip;
+			}
+			seen++;
+		}
+	}
+	return nullptr;
 }
 
 } // namespace
@@ -552,20 +587,7 @@ OakEngineClip *oakengine_sequence_clip_at(OakEngineSequence *self,
 	}
 	olive::TrackList *list =
 		impl(self)->track_list(to_track_type(track_type));
-	if (track_index < 0 || track_index >= list->get_track_count()) {
-		return nullptr;
-	}
-	// Skip gap blocks: indexes address clips only.
-	int seen = 0;
-	for (olive::Block *b : list->get_track_at(track_index)->blocks()) {
-		if (olive::ClipBlock *clip = dynamic_cast<olive::ClipBlock *>(b)) {
-			if (seen == clip_index) {
-				return wrap_clip(clip);
-			}
-			seen++;
-		}
-	}
-	return nullptr;
+	return wrap_clip(clip_at_index(list, track_index, clip_index));
 }
 
 int oakengine_clip_get_range(const OakEngineClip *self, int64_t *in,
@@ -596,6 +618,165 @@ int oakengine_clip_get_range(const OakEngineClip *self, int64_t *in,
 	if (media_in) {
 		*media_in = time_to_ts(clip->media_in(), tb);
 	}
+	return OAKENGINE_OK;
+}
+
+/* ---- Editing primitives, round 2 ----------------------------------------- */
+
+int oakengine_sequence_split_clip(OakEngineSequence *seq, int track_type,
+								  int track_index, int clip_index,
+								  int64_t time)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence || track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+		set_seq_error(QStringLiteral("invalid sequence or track type"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::TrackList *list =
+		sequence->track_list(to_track_type(track_type));
+	olive::ClipBlock *clip = clip_at_index(list, track_index, clip_index);
+	if (!clip) {
+		set_seq_error(QStringLiteral("no clip at track %1 index %2")
+					  .arg(track_index)
+					  .arg(clip_index));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return OAKENGINE_E_STATE;
+	}
+	const olive::Rational point =
+		olive::core::Timecode::timestamp_to_time(time, tb);
+	if (point <= clip->in() || point >= clip->out()) {
+		set_seq_error(QStringLiteral("split time %1 is not strictly inside "
+									 "the clip [%2, %3]")
+					  .arg(time)
+					  .arg(time_to_ts(clip->in(), tb))
+					  .arg(time_to_ts(clip->out(), tb)));
+		return OAKENGINE_E_INVALID;
+	}
+
+	push_or_run(new olive::BlockSplitCommand(clip, point),
+				QStringLiteral("Split Clip"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_sequence_ripple_delete_clip(OakEngineSequence *seq,
+										  int track_type, int track_index,
+										  int clip_index)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence || track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+		set_seq_error(QStringLiteral("invalid sequence or track type"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::TrackList *list =
+		sequence->track_list(to_track_type(track_type));
+	olive::ClipBlock *clip = clip_at_index(list, track_index, clip_index);
+	if (!clip || !clip->track()) {
+		set_seq_error(QStringLiteral("no clip at track %1 index %2")
+					  .arg(track_index)
+					  .arg(clip_index));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+
+	push_or_run(new olive::TrackRippleRemoveAreaCommand(
+					clip->track(), olive::TimeRange(clip->in(), clip->out())),
+				QStringLiteral("Ripple Delete Clip"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_clip_trim(OakEngineClip *clip, int64_t new_in, int64_t new_out)
+{
+	set_seq_error(QString());
+	olive::ClipBlock *block = reinterpret_cast<olive::ClipBlock *>(clip);
+	if (!block) {
+		set_seq_error(QStringLiteral("invalid clip handle"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Track *track = block->track();
+	if (!track) {
+		set_seq_error(QStringLiteral("clip is not on a track"));
+		return OAKENGINE_E_STATE;
+	}
+	const olive::Sequence *sequence = track->sequence();
+	olive::Rational tb;
+	if (!sequence || !time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return OAKENGINE_E_STATE;
+	}
+	if (new_in < 0 || new_out <= new_in) {
+		set_seq_error(QStringLiteral("invalid trim range (need 0 <= new_in "
+									 "< new_out)"));
+		return OAKENGINE_E_INVALID;
+	}
+
+	const int64_t old_in = time_to_ts(block->in(), tb);
+	const int64_t old_out = time_to_ts(block->out(), tb);
+	if (new_in == old_in && new_out == old_out) {
+		return OAKENGINE_OK;
+	}
+
+	// The application's trim command (BlockTrimCommand): one end at a time,
+	// adjacent gaps absorb the difference; both ends are applied as an
+	// in-trim followed by an out-trim within one undoable command.
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	if (new_in != old_in) {
+		command->add_child(new olive::BlockTrimCommand(
+			track, block, block->out() -
+							  olive::core::Timecode::timestamp_to_time(new_in, tb),
+			olive::Timeline::k_trim_in));
+	}
+	if (new_out != old_out) {
+		command->add_child(new olive::BlockTrimCommand(
+			track, block,
+			olive::core::Timecode::timestamp_to_time(new_out - new_in, tb),
+			olive::Timeline::k_trim_out));
+	}
+	push_or_run(command, QStringLiteral("Trim Clip"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_sequence_move_clip(OakEngineSequence *seq, int track_type,
+								 int track_index, int clip_index,
+								 int64_t new_in)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence || track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE || new_in < 0) {
+		set_seq_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::TrackList *list =
+		sequence->track_list(to_track_type(track_type));
+	olive::ClipBlock *clip = clip_at_index(list, track_index, clip_index);
+	if (!clip || !clip->track()) {
+		set_seq_error(QStringLiteral("no clip at track %1 index %2")
+					  .arg(track_index)
+					  .arg(clip_index));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return OAKENGINE_E_STATE;
+	}
+
+	// Same assembly as the application's drag-move: gap the old spot, then
+	// place the clip at the destination (length and media in-point stay).
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	command->add_child(
+		new olive::TrackReplaceBlockWithGapCommand(clip->track(), clip));
+	command->add_child(new olive::TrackPlaceBlockCommand(
+		list, track_index, clip,
+		olive::core::Timecode::timestamp_to_time(new_in, tb)));
+	push_or_run(command, QStringLiteral("Move Clip"));
 	return OAKENGINE_OK;
 }
 
