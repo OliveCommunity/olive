@@ -193,7 +193,12 @@ int oakengine_project_load(OakEngineProject *self, const char *path,
 		return OAKENGINE_E_STATE;
 	}
 
-	const QString filename = QString::fromUtf8(path);
+	// Normalize to an absolute path so the stored filename matches the
+	// file's saved_url; otherwise the footage validator treats the project
+	// as moved (absolute saved_url vs. relative filename) and rewrites
+	// relative footage paths against the caller's cwd.
+	const QString filename =
+		QFileInfo(QString::fromUtf8(path)).absoluteFilePath();
 	project->set_filename(filename);
 
 	olive::ProjectSerializer::Result result = olive::ProjectSerializer::load(

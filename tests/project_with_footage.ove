@@ -2,9 +2,9 @@
 <olive version="230220" url="/home/mikesolar/Projects/oak/tests/project_with_footage.ove">
     <project>
         <project version="1">
-            <uuid>{b9147285-72ca-4b6b-b980-ce1dfbec408f}</uuid>
+            <uuid>{9f610139-af81-4c3f-a689-caeac18ffa5e}</uuid>
             <nodes>
-                <node version="1" id="org.olivevideoeditor.Olive.folder" ptr="94695150158256">
+                <node version="1" id="org.olivevideoeditor.Olive.folder" ptr="94432914284304">
                     <label>Root</label>
                     <input id="enabled_in">
                         <primary>
@@ -35,21 +35,21 @@
                     </input>
                     <connections>
                         <connection input="child_in" element="0">
-                            <output>94695150298656</output>
+                            <output>94432914429312</output>
                         </connection>
                         <connection input="child_in" element="1">
-                            <output>94695150363552</output>
+                            <output>94432914494208</output>
                         </connection>
                     </connections>
                     <caches>
-                        <audio>{725969c5-6732-4d64-9fc0-0cbf24c45dff}</audio>
-                        <video>{819cf072-671a-413b-a5c2-ec8c254ceec6}</video>
-                        <thumb>{3f699391-032f-4b27-9ab9-297faa2781ba}</thumb>
-                        <waveform>{a11aa028-d950-460f-a7a6-d71df445ce68}</waveform>
+                        <audio>{0acc30ab-841e-4143-8aa5-0393dd76d4ff}</audio>
+                        <video>{4df67d75-38c7-46ef-ac3d-11fc80cfce8b}</video>
+                        <thumb>{a97d0036-322c-4e52-800b-4d97d49ccaa9}</thumb>
+                        <waveform>{fa87a9bb-5f9d-451d-be93-5ba6ee738f33}</waveform>
                     </caches>
                     <custom/>
                 </node>
-                <node version="1" id="org.olivevideoeditor.Olive.footage" ptr="94695150298656">
+                <node version="1" id="org.olivevideoeditor.Olive.footage" ptr="94432914429312">
                     <label>demo.mp4</label>
                     <input id="file_in">
                         <primary>
@@ -95,6 +95,36 @@
                                 </track>
                             </standard>
                         </primary>
+                        <subelements count="1">
+                            <element>
+                                <standard>
+                                    <track>
+                                        <width>1920</width>
+                                        <height>1080</height>
+                                        <depth>0</depth>
+                                        <timebase>1/12800</timebase>
+                                        <format>0</format>
+                                        <channelcount>4</channelcount>
+                                        <pixelaspectratio>1/1</pixelaspectratio>
+                                        <interlacing>0</interlacing>
+                                        <divider>1</divider>
+                                        <enabled>1</enabled>
+                                        <x>0</x>
+                                        <y>0</y>
+                                        <streamindex>0</streamindex>
+                                        <videotype>0</videotype>
+                                        <framerate>25/1</framerate>
+                                        <starttime>0</starttime>
+                                        <duration>217600</duration>
+                                        <premultipliedalpha>0</premultipliedalpha>
+                                        <colorspace></colorspace>
+                                        <colorrange>0</colorrange>
+                                        <colorprimaries>1</colorprimaries>
+                                        <colortransfer>1</colortransfer>
+                                    </track>
+                                </standard>
+                            </element>
+                        </subelements>
                     </input>
                     <input id="audio_param_in">
                         <primary>
@@ -110,6 +140,21 @@
                                 </track>
                             </standard>
                         </primary>
+                        <subelements count="1">
+                            <element>
+                                <standard>
+                                    <track>
+                                        <samplerate>48000</samplerate>
+                                        <channellayout>3</channellayout>
+                                        <format>f32p</format>
+                                        <enabled>1</enabled>
+                                        <streamindex>1</streamindex>
+                                        <duration>816000</duration>
+                                        <timebase>1/48000</timebase>
+                                    </track>
+                                </standard>
+                            </element>
+                        </subelements>
                     </input>
                     <input id="subtitle_param_in">
                         <primary>
@@ -119,13 +164,14 @@
                         </primary>
                     </input>
                     <caches>
-                        <audio>{03070a9c-e9bd-4a6e-8532-7d502d8fea5e}</audio>
-                        <video>{680e8c34-0d38-40c3-87b9-810db7df6ff0}</video>
-                        <thumb>{d7346615-f439-4910-9c0b-c9b94df27883}</thumb>
-                        <waveform>{7d154ff3-1794-451c-9495-528c5d5c4576}</waveform>
+                        <audio>{248ab9c2-17e4-43f1-8731-7d4b2eaaf8c9}</audio>
+                        <video>{399f53b5-7543-470c-854d-48a4b7d68c21}</video>
+                        <thumb>{3761c26e-2564-431f-9787-9e9e104f6ece}</thumb>
+                        <waveform>{90e619c9-3a4c-40e2-9701-e6fcfb20fc9a}</waveform>
                     </caches>
                     <custom>
-                        <timestamp>0</timestamp>
+                        <timestamp>1780763070093</timestamp>
+                        <sourcestarttime source="timecode">3600/1</sourcestarttime>
                         <viewer>
                             <workarea version="1">
                                 <enabled>0</enabled>
@@ -136,7 +182,7 @@
                         </viewer>
                     </custom>
                 </node>
-                <node version="1" id="org.olivevideoeditor.Olive.sequence" ptr="94695150363552">
+                <node version="1" id="org.olivevideoeditor.Olive.sequence" ptr="94432914494208">
                     <label>Fixture Sequence</label>
                     <input id="enabled_in">
                         <primary>
@@ -182,8 +228,8 @@
                                         <width>1920</width>
                                         <height>1080</height>
                                         <depth>1</depth>
-                                        <timebase>1/10</timebase>
-                                        <format>3</format>
+                                        <timebase>1001/30000</timebase>
+                                        <format>4</format>
                                         <channelcount>4</channelcount>
                                         <pixelaspectratio>1/1</pixelaspectratio>
                                         <interlacing>0</interlacing>
@@ -193,7 +239,7 @@
                                         <y>0</y>
                                         <streamindex>0</streamindex>
                                         <videotype>0</videotype>
-                                        <framerate>10/1</framerate>
+                                        <framerate>30000/1001</framerate>
                                         <starttime>0</starttime>
                                         <duration>0</duration>
                                         <premultipliedalpha>0</premultipliedalpha>
@@ -278,11 +324,19 @@
                             </standard>
                         </primary>
                     </input>
+                    <connections>
+                        <connection input="samples_in" element="-1">
+                            <output>94432914429312</output>
+                        </connection>
+                        <connection input="tex_in" element="-1">
+                            <output>94432914429312</output>
+                        </connection>
+                    </connections>
                     <caches>
-                        <audio>{c312cebb-c206-4be3-8685-44b1cefd2000}</audio>
-                        <video>{6f929c83-c178-43de-8427-7f2aea486c96}</video>
-                        <thumb>{edd6c747-f4a8-4ecd-869c-e2d522ea648f}</thumb>
-                        <waveform>{654584d4-b0c7-40d7-9c12-95971f981e69}</waveform>
+                        <audio>{102fc5ac-7748-46ee-b0a9-6face77861da}</audio>
+                        <video>{f2b74020-3926-4c05-a62a-179301cec7d6}</video>
+                        <thumb>{efb47fba-1935-49ef-8578-c8eee2792a98}</thumb>
+                        <waveform>{faac7cd3-084d-40d6-a352-2622d65d3502}</waveform>
                     </caches>
                     <custom>
                         <workarea version="1">
@@ -297,7 +351,7 @@
             <settings>
                 <colorreferencespace>scene_linear</colorreferencespace>
                 <defaultinputcolorspace>Rec.709 OETF</defaultinputcolorspace>
-                <root>94695150158256</root>
+                <root>94432914284304</root>
             </settings>
         </project>
         <layout version="1">

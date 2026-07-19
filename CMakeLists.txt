@@ -309,6 +309,7 @@ add_subdirectory(third_party/KDDockWidgets EXCLUDE_FROM_ALL)
 
 add_subdirectory(third_party/openfx/HostSupport)
 add_subdirectory(engine)
+add_subdirectory(cli)
 
 # Everything above the engine library links against it
 list(APPEND OLIVE_LIBRARIES oakengine)
