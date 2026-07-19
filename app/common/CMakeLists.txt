@@ -47,8 +47,6 @@ target_sources(libolive-editor PRIVATE
         qtutils.cpp
         qtutils.h
         range.h
-        ratiodialog.cpp
-        ratiodialog.h
         threadsafemap.h
         tohex.h
         util.h

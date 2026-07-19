@@ -24,7 +24,7 @@
 
 #include <QComboBox>
 
-#include "common/ratiodialog.h"
+#include "dialog/ratiodialog.h"
 #include "render/videoparams.h"
 
 namespace olive

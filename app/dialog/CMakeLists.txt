@@ -41,5 +41,7 @@ add_subdirectory(text)
 
 set(OLIVE_SOURCES
         ${OLIVE_SOURCES}
+        dialog/ratiodialog.cpp
+        dialog/ratiodialog.h
         PARENT_SCOPE
 )

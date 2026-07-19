@@ -33,7 +33,7 @@
 #include <QVBoxLayout>
 
 #include "audio/audiomanager.h"
-#include "common/ratiodialog.h"
+#include "dialog/ratiodialog.h"
 #include "config/config.h"
 #include "core.h"
 #include "node/block/gap/gap.h"

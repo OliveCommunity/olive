@@ -7,7 +7,7 @@
 #include <QMessageBox>
 #include <QTimer>
 
-#include "common/ratiodialog.h"
+#include "dialog/ratiodialog.h"
 
 using namespace olive;
 
