@@ -60,16 +60,26 @@ set_target_properties(oakengine PROPERTIES
 )
 
 # Consumers resolve engine headers ("node/...", "render/...", "coreengine.h",
-# "ui/icons/icons.h", "tool/tool.h") from the engine root
+# "ui/icons/icons.h", "tool/tool.h") from the engine root, and the public C
+# API ("oakengine/ipc.h") from include/. The library itself builds against its
+# internal implementation headers under src/oliveimpl, included with an
+# "oliveimpl/"-prefixed path resolved from src/ (mirrors the src/oliveimpl
+# comment in core/CMakeLists.txt). A plain include-order trick like core's
+# cannot work here: CMAKE_INCLUDE_CURRENT_DIR puts the engine root ahead of
+# every target-level directory, so the prefixed paths are what keep internal
+# sources from ever picking up a consumer wrapper header by accident.
 target_include_directories(oakengine
+        PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
         PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
         PRIVATE ${CMAKE_SOURCE_DIR}/third_party/openfx/include
         ${CMAKE_SOURCE_DIR}/third_party/openfx/HostSupport/include
         ${OLIVE_INCLUDE_DIRS}
 )
 
 target_link_libraries(oakengine PUBLIC ${OLIVE_LIBRARIES} OfxHost)
-target_compile_definitions(oakengine PRIVATE ${OLIVE_DEFINITIONS})
+# OAKENGINE_BUILD marks the library side of the C ABI export macros (dllexport)
+target_compile_definitions(oakengine PRIVATE ${OLIVE_DEFINITIONS} OAKENGINE_BUILD)
 target_compile_options(oakengine PRIVATE ${OLIVE_COMPILE_OPTIONS})
 
 # Install into the platform's standard library directory (/usr/lib,
@@ -192,4 +202,27 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
         target_compile_definitions(oakvulkan-cabi-check PRIVATE ${OLIVE_DEFINITIONS})
         target_compile_options(oakvulkan-cabi-check PRIVATE ${OLIVE_COMPILE_OPTIONS})
     endif ()
+endif ()
+
+# Pure C ABI tests for the liboakengine public interface (mirrors the
+# make_test pattern in core/CMakeLists.txt). They link only against oakengine
+# and must not depend on OpenGL/Vulkan.
+if (BUILD_TESTS)
+    enable_testing()
+
+    function(make_oakengine_test name)
+        # oakengine leaves olive::k_app_version to the final executable; the
+        # version object library provides it (same as worker/CMakeLists.txt).
+        add_executable(${name}
+                tests/${name}.cpp
+                $<TARGET_OBJECTS:olive-version-obj>
+        )
+        target_link_libraries(${name} PRIVATE oakengine)
+        target_include_directories(${name} PRIVATE
+                "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        )
+        add_test(${name} ${name})
+    endfunction()
+
+    make_oakengine_test(oakengine_ipc_test)
 endif ()

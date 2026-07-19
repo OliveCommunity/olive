@@ -18,11 +18,15 @@
 
 ***/
 
-#include "frameslotpool.h"
+#include "oliveimpl/render/ipc/frameslotpool.h"
 
 #include <cstring>
 
 namespace olive
+{
+namespace engine
+{
+namespace internal
 {
 namespace ipc
 {
@@ -45,9 +49,9 @@ size_t FrameSlotPool::bytes_needed(uint32_t slot_count, size_t slot_data_bytes)
 	const uint32_t ring_cap = ring_capacity(slot_count);
 	size_t total = align_up(sizeof(Header), k_align);
 	total +=
-		align_up(SpscRingBuffer::bytes_needed(ring_cap), k_align); // free ring
+		align_up(olive::ipc::SpscRingBuffer::bytes_needed(ring_cap), k_align); // free ring
 	total +=
-		align_up(SpscRingBuffer::bytes_needed(ring_cap), k_align); // ready ring
+		align_up(olive::ipc::SpscRingBuffer::bytes_needed(ring_cap), k_align); // ready ring
 	total +=
 		align_up(sizeof(FrameSlotMeta) * slot_count, k_align); // metadata array
 	total += align_up(slot_data_bytes, k_align) * slot_count; // pixel data blocks
@@ -67,10 +71,10 @@ FrameSlotPool FrameSlotPool::create(void *mem, uint32_t slot_count,
 	offset += align_up(sizeof(Header), k_align);
 
 	const size_t free_off = offset;
-	offset += align_up(SpscRingBuffer::bytes_needed(ring_cap), k_align);
+	offset += align_up(olive::ipc::SpscRingBuffer::bytes_needed(ring_cap), k_align);
 
 	const size_t ready_off = offset;
-	offset += align_up(SpscRingBuffer::bytes_needed(ring_cap), k_align);
+	offset += align_up(olive::ipc::SpscRingBuffer::bytes_needed(ring_cap), k_align);
 
 	const size_t meta_off = offset;
 	offset += align_up(sizeof(FrameSlotMeta) * slot_count, k_align);
@@ -86,8 +90,8 @@ FrameSlotPool FrameSlotPool::create(void *mem, uint32_t slot_count,
 	pool.header_->meta_offset = meta_off;
 	pool.header_->data_offset = data_off;
 
-	pool.free_ring_ = SpscRingBuffer::create(pool.base_ + free_off, ring_cap);
-	pool.ready_ring_ = SpscRingBuffer::create(pool.base_ + ready_off, ring_cap);
+	pool.free_ring_ = olive::ipc::SpscRingBuffer::create(pool.base_ + free_off, ring_cap);
+	pool.ready_ring_ = olive::ipc::SpscRingBuffer::create(pool.base_ + ready_off, ring_cap);
 	pool.meta_ = reinterpret_cast<FrameSlotMeta *>(pool.base_ + meta_off);
 	pool.data_ = pool.base_ + data_off;
 
@@ -115,9 +119,9 @@ FrameSlotPool FrameSlotPool::attach(void *mem)
 	}
 
 	pool.free_ring_ =
-		SpscRingBuffer::attach(pool.base_ + pool.header_->free_ring_offset);
+		olive::ipc::SpscRingBuffer::attach(pool.base_ + pool.header_->free_ring_offset);
 	pool.ready_ring_ =
-		SpscRingBuffer::attach(pool.base_ + pool.header_->ready_ring_offset);
+		olive::ipc::SpscRingBuffer::attach(pool.base_ + pool.header_->ready_ring_offset);
 	pool.meta_ = reinterpret_cast<FrameSlotMeta *>(pool.base_ +
 												   pool.header_->meta_offset);
 	pool.data_ = pool.base_ + pool.header_->data_offset;
@@ -176,4 +180,6 @@ bool FrameSlotPool::release(uint32_t index)
 }
 
 } // namespace ipc
+} // namespace internal
+} // namespace engine
 } // namespace olive

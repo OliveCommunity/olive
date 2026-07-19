@@ -24,7 +24,7 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "spscringbuffer.h"
+#include "oakengine/ipc.h"
 
 namespace olive
 {
@@ -34,147 +34,193 @@ namespace ipc
 /**
  * @brief Per-slot metadata describing the frame currently occupying a slot.
  *
- * Trivially-copyable POD that lives in shared memory alongside the pixel data. Carries everything
- * the consumer needs to reconstruct an olive::Frame without any out-of-band information. We store
- * the Rational timestamp as an explicit numerator/denominator pair to stay POD (olive::Rational is
- * not guaranteed shared-memory-safe).
+ * Trivially-copyable POD that lives in shared memory alongside the pixel data, part of the
+ * version-1 wire protocol with the render worker. This is the C ABI oak_frame_slot_meta struct,
+ * aliased so the shared-memory layout is defined exactly once, in oakengine/ipc.h.
  */
-struct FrameSlotMeta {
-	int64_t id; ///< Caller-defined tag (e.g. ticket id, or footage stream hash).
-	int64_t time_num; ///< Frame timestamp numerator.
-	int64_t time_den; ///< Frame timestamp denominator.
-	int32_t width;
-	int32_t height;
-	int32_t format; ///< olive::PixelFormat::Format value.
-	int32_t channel_count;
-	int32_t linesize; ///< Bytes per scanline (stride).
-	int32_t data_size; ///< Valid bytes written into the slot's data block.
-	char colorspace[128]; ///< Input colorspace name for color-managed footage.
-};
+typedef oak_frame_slot_meta FrameSlotMeta;
 
 /**
  * @brief A fixed-size pool of equal-sized frame slots in shared memory, with lock-free hand-off.
  *
+ * Consumer-side wrapper over the liboakengine C ABI: the object only holds an opaque
+ * OakFrameSlotPool handle and forwards every call across the C boundary. The public API is
+ * unchanged from the original implementation; see oakengine/ipc.h for the protocol description.
+ *
  * One pool models a single direction of frame flow (e.g. worker -> main for rendered output, or
- * main -> worker for decoded input). Ownership of a slot is transferred via two SPSC ring buffers
- * of slot indices, so no mutex is ever taken:
- *
- *   - free_ring:  indices of slots available to the FILLER. The drainer returns slots here.
- *   - ready_ring: indices of slots holding a published frame, produced by the FILLER for the
- *                 DRAINER to consume.
- *
- * Lifecycle (filler = producer of frames, drainer = consumer of frames):
- *   filler:  Acquire() -> pop a free index -> write meta + pixels -> Publish() -> push to ready
- *   drainer: Consume() -> pop a ready index -> read meta + pixels -> Release() -> push to free
- *
- * Because each ring has exactly one producer and one consumer (the filler owns free.Pop +
- * ready.Push, the drainer owns ready.Pop + free.Push), the SPSC invariant holds and the whole
- * exchange is lock-free.
- *
- * All slots are sized to `slot_data_bytes`, computed for the maximum supported frame (e.g. 8K RGBA
- * half-float). Frames smaller than that simply use a prefix of the slot.
- *
- * The pool does NOT own the memory; it is constructed over a SharedMemoryRegion mapping. Use
- * BytesNeeded() to size that region.
+ * main -> worker for decoded input). The pool does NOT own the memory; it is constructed over a
+ * SharedMemoryRegion mapping. Use bytes_needed() to size that region.
  */
 class FrameSlotPool {
 public:
+	FrameSlotPool() = default;
+
+	FrameSlotPool(const FrameSlotPool &rhs)
+		: handle_(oakengine_ipc_framepool_copy(rhs.handle_))
+	{
+	}
+
+	FrameSlotPool(FrameSlotPool &&rhs) noexcept
+		: handle_(rhs.handle_)
+	{
+		rhs.handle_ = nullptr;
+	}
+
+	~FrameSlotPool()
+	{
+		oakengine_ipc_framepool_free(handle_);
+	}
+
+	FrameSlotPool &operator=(const FrameSlotPool &rhs)
+	{
+		if (this != &rhs) {
+			oakengine_ipc_framepool_free(handle_);
+			handle_ = oakengine_ipc_framepool_copy(rhs.handle_);
+		}
+		return *this;
+	}
+
+	FrameSlotPool &operator=(FrameSlotPool &&rhs) noexcept
+	{
+		if (this != &rhs) {
+			oakengine_ipc_framepool_free(handle_);
+			handle_ = rhs.handle_;
+			rhs.handle_ = nullptr;
+		}
+		return *this;
+	}
+
 	/**
    * @brief Total bytes a region must provide to back a pool of `slot_count` x `slot_data_bytes`.
    */
-	static size_t bytes_needed(uint32_t slot_count, size_t slot_data_bytes);
+	static size_t bytes_needed(uint32_t slot_count, size_t slot_data_bytes)
+	{
+		return oakengine_ipc_framepool_bytes_needed(slot_count, slot_data_bytes);
+	}
 
 	/**
    * @brief Lay out and initialize a brand-new pool over `mem` (owner side, once).
    *
    * Initializes both rings, seeds the free ring with every slot index, and zeroes metadata.
-   * `mem` must provide at least BytesNeeded(slot_count, slot_data_bytes) bytes.
+   * `mem` must provide at least bytes_needed(slot_count, slot_data_bytes) bytes.
    */
 	static FrameSlotPool create(void *mem, uint32_t slot_count,
-								size_t slot_data_bytes);
+								size_t slot_data_bytes)
+	{
+		return from_handle(oakengine_ipc_framepool_create(mem, slot_count,
+														  slot_data_bytes));
+	}
 
 	/**
    * @brief Map an existing, already-initialized pool (peer side).
    *
-   * Reads slot_count/slot_data_bytes from the in-memory header written by Create().
+   * Reads slot_count/slot_data_bytes from the in-memory header written by create().
    */
-	static FrameSlotPool attach(void *mem);
+	static FrameSlotPool attach(void *mem)
+	{
+		return from_handle(oakengine_ipc_framepool_attach(mem));
+	}
 
 	bool is_valid() const
 	{
-		return header_ != nullptr;
+		return oakengine_ipc_framepool_is_valid(handle_) != 0;
 	}
 
-	uint32_t slot_count() const;
-	size_t slot_data_bytes() const;
+	uint32_t slot_count() const
+	{
+		return oakengine_ipc_framepool_slot_count(handle_);
+	}
+
+	size_t slot_data_bytes() const
+	{
+		return oakengine_ipc_framepool_slot_data_bytes(handle_);
+	}
 
 	// ---- Filler side ----
 
 	/**
    * @brief Take ownership of a free slot. Returns false (and leaves *index untouched) if none free.
    */
-	bool acquire(uint32_t *index);
+	bool acquire(uint32_t *index)
+	{
+		return oakengine_ipc_framepool_acquire(handle_, index) != 0;
+	}
 
 	/**
    * @brief Pointer to a slot's pixel data block (slot_data_bytes available).
    */
-	void *slot_data(uint32_t index);
+	void *slot_data(uint32_t index)
+	{
+		return oakengine_ipc_framepool_slot_data(handle_, index);
+	}
 
 	/**
-   * @brief Mutable metadata for a slot. Filler writes this before Publish().
+   * @brief Mutable metadata for a slot. Filler writes this before publish().
    */
-	FrameSlotMeta *meta(uint32_t index);
+	FrameSlotMeta *meta(uint32_t index)
+	{
+		return oakengine_ipc_framepool_meta(handle_, index);
+	}
 
 	/**
-   * @brief Publish a filled slot to the drainer. Must follow a successful Acquire() of `index`.
+   * @brief Publish a filled slot to the drainer. Must follow a successful acquire() of `index`.
    */
-	bool publish(uint32_t index);
+	bool publish(uint32_t index)
+	{
+		return oakengine_ipc_framepool_publish(handle_, index) != 0;
+	}
 
 	// ---- Drainer side ----
 
 	/**
    * @brief Take the next published slot. Returns false if nothing is ready.
    */
-	bool consume(uint32_t *index);
-
-	/**
-   * @brief Return a consumed slot to the free pool for reuse. Must follow Consume() of `index`.
-   */
-	bool release(uint32_t index);
-
-	const FrameSlotMeta *meta(uint32_t index) const;
-	const void *slot_data(uint32_t index) const;
-
-public:
-	FrameSlotPool() = default;
-
-private:
-	struct Header {
-		uint32_t magic;
-		uint32_t slot_count;
-		uint64_t slot_data_bytes;
-		// Byte offsets from the start of the segment to each sub-region.
-		uint64_t free_ring_offset;
-		uint64_t ready_ring_offset;
-		uint64_t meta_offset;
-		uint64_t data_offset;
-	};
-
-	static constexpr uint32_t k_magic = 0x4F4B5350; // 'OKSP'
-
-	// Ring capacity must exceed slot_count by one because a ring can hold at most capacity-1 entries
-	// and we need to be able to enqueue every slot at once.
-	static uint32_t ring_capacity(uint32_t slot_count)
+	bool consume(uint32_t *index)
 	{
-		return slot_count + 1;
+		return oakengine_ipc_framepool_consume(handle_, index) != 0;
 	}
 
-	uint8_t *base_ = nullptr;
-	Header *header_ = nullptr;
-	SpscRingBuffer *free_ring_ = nullptr;
-	SpscRingBuffer *ready_ring_ = nullptr;
-	FrameSlotMeta *meta_ = nullptr;
-	uint8_t *data_ = nullptr;
+	/**
+   * @brief Return a consumed slot to the free pool for reuse. Must follow consume() of `index`.
+   */
+	bool release(uint32_t index)
+	{
+		return oakengine_ipc_framepool_release(handle_, index) != 0;
+	}
+
+	const FrameSlotMeta *meta(uint32_t index) const
+	{
+		return oakengine_ipc_framepool_meta_const(handle_, index);
+	}
+
+	const void *slot_data(uint32_t index) const
+	{
+		return oakengine_ipc_framepool_slot_data_const(handle_, index);
+	}
+
+	/**
+   * @brief The wrapped C handle, for cross-type wrappers and direct C API use
+   */
+	OakFrameSlotPool *handle() const
+	{
+		return handle_;
+	}
+
+	/**
+   * @brief Wraps an owned C handle (takes ownership)
+   */
+	static FrameSlotPool from_handle(OakFrameSlotPool *handle)
+	{
+		return FrameSlotPool(handle);
+	}
+
+private:
+	explicit FrameSlotPool(OakFrameSlotPool *handle)
+		: handle_(handle)
+	{
+	}
+
+	OakFrameSlotPool *handle_ = nullptr;
 };
 
 } // namespace ipc

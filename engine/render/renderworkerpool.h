@@ -32,15 +32,22 @@
 
 #include "codec/frame.h"
 #include "node/project/serializer/serializer.h"
-#include "render/ipc/frameslotpool.h"
-#include "render/ipc/ipcmessage.h"
-#include "render/ipc/sharedmemoryregion.h"
 #include "render/rendermanager.h"
 
 class QProcess;
 
 namespace olive
 {
+
+// The worker IPC implementation lives behind the liboakengine C ABI facade
+// (src/oliveimpl/render/ipc). This header is consumed outside the engine
+// library, so it can only forward-declare the internal types used by private
+// method signatures; PooledWorker (which holds IPC objects by value) is
+// defined in the .cpp for the same reason.
+namespace engine::internal::ipc
+{
+class FrameSlotPool;
+}
 
 class Project;
 
@@ -90,24 +97,9 @@ private:
 		qint64 ticket_id = 0;
 	};
 
-	struct PooledWorker {
-		QProcess *process = nullptr;
-		QString loaded_graph_path;
-		qint64 last_used_ms = 0;
-		int use_count = 0;
-
-		// Persistent shared memory for this worker. Reusing regions across frames
-		// avoids the cost of creating/destroying large shm segments every render.
-		ipc::SharedMemoryRegion output_region;
-		ipc::FrameSlotPool output_pool;
-		size_t output_slot_bytes = 0;
-		QString output_shm_key;
-
-		ipc::SharedMemoryRegion input_region;
-		ipc::FrameSlotPool input_pool;
-		size_t input_slot_bytes = 0;
-		QString input_shm_key;
-	};
+	// Defined in the .cpp: holds the per-worker IPC shared-memory regions and
+	// frame slot pools (internal oliveimpl types) by value.
+	struct PooledWorker;
 
 	struct CachedGraph {
 		QString path;
@@ -124,7 +116,8 @@ private:
 					std::vector<std::unique_ptr<PooledWorker>> *local_pool);
 	JobResult process_job_attempt(const Job &job, int worker_index,
 								int attempt_index, PooledWorker *worker);
-	void finish_with_frame(RenderTicketPtr ticket, const ipc::FrameSlotPool &pool,
+	void finish_with_frame(RenderTicketPtr ticket,
+						 const engine::internal::ipc::FrameSlotPool &pool,
 						 uint32_t slot);
 	void cleanup_graph_file(const QString &path);
 	void add_graph_path_ref(const QString &path);

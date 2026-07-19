@@ -24,6 +24,8 @@
 #include <cstddef>
 #include <QString>
 
+#include "oakengine/ipc.h"
+
 namespace olive
 {
 namespace ipc
@@ -32,27 +34,34 @@ namespace ipc
 /**
  * @brief A named, fixed-size shared memory segment mapped into the process address space.
  *
- * One process Create()s the segment (owner); the peer process Attach()es to it by the same key.
- * The mapping is a raw contiguous byte range accessible via data() — the IPC ring buffers and frame
- * slot pools are laid out inside it. Nothing here is locked; synchronization is entirely the
- * caller's responsibility via the lock-free structures placed in the mapping.
+ * Consumer-side wrapper over the liboakengine C ABI: the object only holds an opaque
+ * OakSharedMemoryRegion handle and forwards every call across the C boundary. The public API is
+ * unchanged from the original implementation.
  *
- * We deliberately use the raw OS primitives (POSIX shm_open + mmap, Windows CreateFileMapping +
- * MapViewOfFile) rather than QSharedMemory: QSharedMemory carries an implicit semaphore and a 1-byte
- * header convention, attaches/detaches with reference counting we don't want, and historically has
- * cross-platform lifetime quirks. For a render pipeline pushing large frames we want a plain mmap.
+ * One process open()s the segment with k_create (owner); the peer process open()s it by the same
+ * key with k_attach. The mapping is a raw contiguous byte range accessible via data() — the IPC
+ * ring buffers and frame slot pools are laid out inside it. Nothing here is locked;
+ * synchronization is entirely the caller's responsibility via the lock-free structures placed in
+ * the mapping.
  */
 class SharedMemoryRegion {
 public:
 	enum Mode {
 		/// Create (and own) the segment. Fails if it already exists; unlinks on destruction.
-		k_create,
+		k_create = OAK_IPC_SHM_MODE_CREATE,
 		/// Attach to a segment created by the peer. Does not unlink on destruction.
-		k_attach
+		k_attach = OAK_IPC_SHM_MODE_ATTACH
 	};
 
-	SharedMemoryRegion();
-	~SharedMemoryRegion();
+	SharedMemoryRegion()
+		: handle_(oakengine_ipc_shm_create())
+	{
+	}
+
+	~SharedMemoryRegion()
+	{
+		oakengine_ipc_shm_free(handle_);
+	}
 
 	SharedMemoryRegion(const SharedMemoryRegion &) = delete;
 	SharedMemoryRegion &operator=(const SharedMemoryRegion &) = delete;
@@ -63,26 +72,36 @@ public:
    * `key` is a short identifier (no leading slash needed; the platform prefix is added internally).
    * Returns true on success. On failure, error() carries a human-readable reason.
    */
-	bool open(const QString &key, size_t size, Mode mode);
+	bool open(const QString &key, size_t size, Mode mode)
+	{
+		const bool ok = oakengine_ipc_shm_open(
+							handle_, key.toUtf8().constData(), size,
+							static_cast<oak_ipc_shm_mode>(mode)) != 0;
+		refresh_caches();
+		return ok;
+	}
 
 	/**
    * @brief Unmap and (if owner) unlink the segment. Called automatically by the destructor.
    */
-	void close();
+	void close()
+	{
+		oakengine_ipc_shm_close(handle_);
+	}
 
 	bool is_valid() const
 	{
-		return data_ != nullptr;
+		return oakengine_ipc_shm_is_valid(handle_) != 0;
 	}
 
 	void *data() const
 	{
-		return data_;
+		return oakengine_ipc_shm_data(handle_);
 	}
 
 	size_t size() const
 	{
-		return size_;
+		return oakengine_ipc_shm_size(handle_);
 	}
 
 	const QString &key() const
@@ -100,21 +119,47 @@ public:
    *
    * Centralized so the owner and the spawned worker agree on the same name.
    */
-	static QString make_key(qint64 owner_pid, int worker_index);
+	static QString make_key(qint64 owner_pid, int worker_index)
+	{
+		const int size = oakengine_ipc_shm_make_key(owner_pid, worker_index,
+													nullptr, 0);
+		QByteArray buf(size + 1, '\0');
+		oakengine_ipc_shm_make_key(owner_pid, worker_index, buf.data(),
+								   size + 1);
+		return QString::fromUtf8(buf.constData());
+	}
+
+	/**
+   * @brief The wrapped C handle, for cross-type wrappers and direct C API use
+   */
+	OakSharedMemoryRegion *handle() const
+	{
+		return handle_;
+	}
 
 private:
-	QString key_;
-	size_t size_;
-	void *data_;
-	Mode mode_;
-	QString error_;
+	static QString query_string(int (*query)(const OakSharedMemoryRegion *,
+											 char *, int),
+								const OakSharedMemoryRegion *handle)
+	{
+		const int size = query(handle, nullptr, 0);
+		if (size <= 0) {
+			return QString();
+		}
+		QByteArray buf(size + 1, '\0');
+		query(handle, buf.data(), size + 1);
+		return QString::fromUtf8(buf.constData());
+	}
 
-#if defined(Q_OS_WIN)
-	void *handle_; // HANDLE from CreateFileMapping/OpenFileMapping
-#else
-	int fd_; // file descriptor from shm_open
-	QString shm_name_; // the platform-prefixed name actually passed to shm_open
-#endif
+	void refresh_caches()
+	{
+		key_ = query_string(oakengine_ipc_shm_key, handle_);
+		error_ = query_string(oakengine_ipc_shm_error, handle_);
+	}
+
+	OakSharedMemoryRegion *handle_;
+	QString key_;
+	QString error_;
 };
 
 } // namespace ipc

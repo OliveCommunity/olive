@@ -36,7 +36,7 @@
 #include "render/plugin/pluginrenderer.h"
 #include "pluginSupport/oliveclip.h"
 #include "pluginSupport/olivehost.h"
-#include "render/ipc/frameslotpool.h"
+#include "oliveimpl/render/ipc/frameslotpool.h"
 
 namespace olive
 {
@@ -456,7 +456,7 @@ void RenderProcessor::process_video_footage(TexturePtr destination,
 		render_ctx_->flush();
 	};
 
-	auto *input_pool = QtUtils::value_to_ptr<ipc::FrameSlotPool>(
+	auto *input_pool = QtUtils::value_to_ptr<engine::internal::ipc::FrameSlotPool>(
 		ticket_->property("ipc_input_pool"));
 	int input_slot = -1;
 	const QVariantList input_slots =
@@ -481,7 +481,7 @@ void RenderProcessor::process_video_footage(TexturePtr destination,
 			return;
 		}
 
-		const ipc::FrameSlotMeta *meta = input_pool->meta(uint32_t(input_slot));
+		const engine::internal::ipc::FrameSlotMeta *meta = input_pool->meta(uint32_t(input_slot));
 		if (meta && meta->width > 0 && meta->height > 0 &&
 			meta->data_size > 0 &&
 			meta->data_size <= int(input_pool->slot_data_bytes())) {

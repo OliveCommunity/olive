@@ -18,7 +18,7 @@
 
 ***/
 
-#include "sharedmemoryregion.h"
+#include "oliveimpl/render/ipc/sharedmemoryregion.h"
 
 #include <QtGlobal>
 
@@ -34,6 +34,10 @@
 #endif
 
 namespace olive
+{
+namespace engine
+{
+namespace internal
 {
 namespace ipc
 {
@@ -228,4 +232,6 @@ void SharedMemoryRegion::close()
 #endif
 
 } // namespace ipc
+} // namespace internal
+} // namespace engine
 } // namespace olive

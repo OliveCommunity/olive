@@ -515,8 +515,12 @@ private:
 											static_cast<void *>(nullptr)));
 		ticket->setProperty(
 			"ipc_input_pool",
+			// The engine reads this back as the internal implementation object
+			// (olive::engine::internal::ipc::FrameSlotPool), which is exactly
+			// what the C handle points at.
 			olive::QtUtils::ptr_to_value(input_pool_ ?
-										   static_cast<void *>(&*input_pool_) :
+										   static_cast<void *>(
+											   input_pool_->handle()) :
 										   static_cast<void *>(nullptr)));
 		QVariantList input_slot_values;
 		for (int slot : input_slots) {

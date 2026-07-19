@@ -14,14 +14,26 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+# The IPC subsystem is migrating behind the liboakengine C ABI facade:
+#   - include/oakengine/*.h        public C API (+ the inline SPSC header)
+#   - src/oliveimpl/render/ipc/*.h internal implementation headers
+#   - src/capi/ipc.cpp             C ABI implementation
+#   - render/ipc/*.{h,cpp}         implementation sources and the
+#                                  consumer-side C++ wrapper headers
 set(OLIVE_SOURCES
         ${OLIVE_SOURCES}
+        include/oakengine/export.h
+        include/oakengine/ipc.h
+        include/oakengine/spscringbuffer.h
+        src/capi/ipc.cpp
+        src/oliveimpl/render/ipc/frameslotpool.h
+        src/oliveimpl/render/ipc/ipcmessage.h
+        src/oliveimpl/render/ipc/sharedmemoryregion.h
         render/ipc/frameslotpool.cpp
         render/ipc/frameslotpool.h
         render/ipc/ipcmessage.cpp
         render/ipc/ipcmessage.h
         render/ipc/sharedmemoryregion.cpp
         render/ipc/sharedmemoryregion.h
-        render/ipc/spscringbuffer.h
         PARENT_SCOPE
 )

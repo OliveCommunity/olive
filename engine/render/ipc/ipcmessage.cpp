@@ -18,13 +18,17 @@
 
 ***/
 
-#include "ipcmessage.h"
+#include "oliveimpl/render/ipc/ipcmessage.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QIODevice>
 
 namespace olive
+{
+namespace engine
+{
+namespace internal
 {
 namespace ipc
 {
@@ -227,4 +231,6 @@ bool LoadGraphMsg::from_json(const QJsonObject &o, LoadGraphMsg *out)
 }
 
 } // namespace ipc
+} // namespace internal
+} // namespace engine
 } // namespace olive

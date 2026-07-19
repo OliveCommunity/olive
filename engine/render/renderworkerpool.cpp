@@ -46,6 +46,9 @@
 #include "common/qtutils.h"
 #include "node/project/footage/footage.h"
 #include "node/traverser.h"
+#include "oliveimpl/render/ipc/frameslotpool.h"
+#include "oliveimpl/render/ipc/ipcmessage.h"
+#include "oliveimpl/render/ipc/sharedmemoryregion.h"
 
 namespace olive
 {
@@ -381,7 +384,7 @@ bool read_control_message(QProcess *process, QJsonObject *out, QString *error,
 
 		*out = doc.object();
 		if (out->value(QStringLiteral("type")).toString() ==
-			QLatin1String(ipc::msgtype::k_error)) {
+			QLatin1String(engine::internal::ipc::msgtype::k_error)) {
 			if (error) {
 				*error = out->value(QStringLiteral("message")).toString();
 			}
@@ -397,6 +400,28 @@ bool read_control_message(QProcess *process, QJsonObject *out, QString *error,
 }
 
 } // namespace
+
+// Holds the persistent per-worker IPC state. Defined here rather than in the
+// header because the member types are engine-internal (oliveimpl): the header
+// is consumed outside the library and only forward-declares this struct.
+struct RenderWorkerPool::PooledWorker {
+	QProcess *process = nullptr;
+	QString loaded_graph_path;
+	qint64 last_used_ms = 0;
+	int use_count = 0;
+
+	// Persistent shared memory for this worker. Reusing regions across frames
+	// avoids the cost of creating/destroying large shm segments every render.
+	engine::internal::ipc::SharedMemoryRegion output_region;
+	engine::internal::ipc::FrameSlotPool output_pool;
+	size_t output_slot_bytes = 0;
+	QString output_shm_key;
+
+	engine::internal::ipc::SharedMemoryRegion input_region;
+	engine::internal::ipc::FrameSlotPool input_pool;
+	size_t input_slot_bytes = 0;
+	QString input_shm_key;
+};
 
 RenderWorkerPool::RenderWorkerPool(DecoderCache *decoder_cache,
 								   const QString &gpu_backend, QObject *parent)
@@ -782,33 +807,33 @@ RenderWorkerPool::process_job_attempt(const Job &job, int worker_index,
 		}
 	}
 	const size_t output_region_bytes =
-		ipc::FrameSlotPool::bytes_needed(k_output_slots, output_slot_bytes);
+		engine::internal::ipc::FrameSlotPool::bytes_needed(k_output_slots, output_slot_bytes);
 
 	if (!worker->output_region.is_valid() ||
 		worker->output_slot_bytes < output_slot_bytes) {
 		if (worker->output_region.is_valid()) {
 			worker->output_region.close();
-			worker->output_pool = ipc::FrameSlotPool();
+			worker->output_pool = engine::internal::ipc::FrameSlotPool();
 		}
 		if (worker->output_shm_key.isEmpty()) {
 			worker->output_shm_key =
-				ipc::SharedMemoryRegion::make_key(worker_process_id, 0) +
+				engine::internal::ipc::SharedMemoryRegion::make_key(worker_process_id, 0) +
 				QStringLiteral("-out");
 		}
 		if (!worker->output_region.open(worker->output_shm_key,
 										output_region_bytes,
-										ipc::SharedMemoryRegion::k_create)) {
+										engine::internal::ipc::SharedMemoryRegion::k_create)) {
 			qWarning()
 				<< "RenderWorkerPool failed to create output shared memory"
 				<< worker->output_region.error();
 			return JobResult::k_fatal_failure;
 		}
-		worker->output_pool = ipc::FrameSlotPool::create(
+		worker->output_pool = engine::internal::ipc::FrameSlotPool::create(
 			worker->output_region.data(), k_output_slots, output_slot_bytes);
 		worker->output_slot_bytes = output_slot_bytes;
 	}
 	const QString shm_key = worker->output_shm_key;
-	ipc::FrameSlotPool &output_pool = worker->output_pool;
+	engine::internal::ipc::FrameSlotPool &output_pool = worker->output_pool;
 
 	const uint32_t input_slot_count =
 		job.input_frames.isEmpty() ? 0 : uint32_t(job.input_frames.size());
@@ -818,31 +843,31 @@ RenderWorkerPool::process_job_attempt(const Job &job, int worker_index,
 			worker->input_pool.slot_count() < input_slot_count) {
 			if (worker->input_region.is_valid()) {
 				worker->input_region.close();
-				worker->input_pool = ipc::FrameSlotPool();
+				worker->input_pool = engine::internal::ipc::FrameSlotPool();
 			}
 			if (worker->input_shm_key.isEmpty()) {
 				worker->input_shm_key =
-					ipc::SharedMemoryRegion::make_key(worker_process_id, 1) +
+					engine::internal::ipc::SharedMemoryRegion::make_key(worker_process_id, 1) +
 					QStringLiteral("-in");
 			}
-			const size_t input_region_bytes = ipc::FrameSlotPool::bytes_needed(
+			const size_t input_region_bytes = engine::internal::ipc::FrameSlotPool::bytes_needed(
 				input_slot_count, input_slot_bytes);
 			if (!worker->input_region.open(worker->input_shm_key,
 										   input_region_bytes,
-										   ipc::SharedMemoryRegion::k_create)) {
+										   engine::internal::ipc::SharedMemoryRegion::k_create)) {
 				qWarning()
 					<< "RenderWorkerPool failed to create input shared memory"
 					<< worker->input_region.error();
 				return JobResult::k_fatal_failure;
 			}
 			worker->input_pool =
-				ipc::FrameSlotPool::create(worker->input_region.data(),
+				engine::internal::ipc::FrameSlotPool::create(worker->input_region.data(),
 										   input_slot_count, input_slot_bytes);
 			worker->input_slot_bytes = input_slot_bytes;
 		}
 	}
 	const QString input_shm_key = worker->input_shm_key;
-	ipc::FrameSlotPool &input_pool = worker->input_pool;
+	engine::internal::ipc::FrameSlotPool &input_pool = worker->input_pool;
 	QVector<int> input_slots;
 	if (input_slot_count > 0) {
 		for (const FramePtr &frame : job.input_frames) {
@@ -860,7 +885,7 @@ RenderWorkerPool::process_job_attempt(const Job &job, int worker_index,
 
 			memcpy(input_pool.slot_data(slot), frame->const_data(),
 				   size_t(frame->allocated_size()));
-			ipc::FrameSlotMeta *meta = input_pool.meta(slot);
+			engine::internal::ipc::FrameSlotMeta *meta = input_pool.meta(slot);
 			meta->id = qint64(input_slots.size());
 			meta->time_num = frame->timestamp().numerator();
 			meta->time_den = frame->timestamp().denominator();
@@ -896,14 +921,14 @@ RenderWorkerPool::process_job_attempt(const Job &job, int worker_index,
 
 	set_active_worker(worker_index, job.ticket, worker->process, ticket_id);
 	if (job.ticket->is_cancelled()) {
-		ipc::CancelMsg cancel;
+		engine::internal::ipc::CancelMsg cancel;
 		cancel.ticket_id = ticket_id;
 		try_write_control_message(worker->process, cancel.to_json());
 		clear_active_worker(worker_index, worker_process_id);
 		return JobResult::k_cancelled;
 	}
 
-	ipc::HandshakeMsg handshake;
+	engine::internal::ipc::HandshakeMsg handshake;
 	handshake.protocol_version = k_protocol_version;
 	handshake.shm_key = shm_key;
 	handshake.input_shm_key = input_slots.isEmpty() ? QString() : input_shm_key;
@@ -923,7 +948,7 @@ RenderWorkerPool::process_job_attempt(const Job &job, int worker_index,
 	}
 
 	if (worker->loaded_graph_path != job.graph_path) {
-		ipc::LoadGraphMsg load;
+		engine::internal::ipc::LoadGraphMsg load;
 		load.path = job.graph_path;
 		QString error;
 		QJsonObject response;
@@ -939,7 +964,7 @@ RenderWorkerPool::process_job_attempt(const Job &job, int worker_index,
 		}
 		worker->loaded_graph_path = job.graph_path;
 	}
-	ipc::RenderFrameMsg render;
+	engine::internal::ipc::RenderFrameMsg render;
 	render.ticket_id = ticket_id;
 	render.node_uuid = job.node_token;
 	render.time_num = job.params.time.numerator();
@@ -970,7 +995,7 @@ RenderWorkerPool::process_job_attempt(const Job &job, int worker_index,
 
 	QString error;
 	QJsonObject response;
-	ipc::FrameReadyMsg ready;
+	engine::internal::ipc::FrameReadyMsg ready;
 	while (true) {
 		if (!read_control_message(worker->process, &response, &error, 30000)) {
 			if (!job.ticket->is_cancelled()) {
@@ -982,7 +1007,7 @@ RenderWorkerPool::process_job_attempt(const Job &job, int worker_index,
 											   JobResult::k_retryable_failure;
 		}
 
-		if (ipc::FrameReadyMsg::from_json(response, &ready)) {
+		if (engine::internal::ipc::FrameReadyMsg::from_json(response, &ready)) {
 			break;
 		}
 	}
@@ -1174,7 +1199,7 @@ void RenderWorkerPool::shutdown_worker(PooledWorker *worker)
 
 	if (process->state() == QProcess::Running) {
 		QJsonObject shutdown;
-		shutdown[QStringLiteral("type")] = ipc::msgtype::k_shutdown;
+		shutdown[QStringLiteral("type")] = engine::internal::ipc::msgtype::k_shutdown;
 		try_write_control_message(process, shutdown);
 		process->closeWriteChannel();
 		if (!process->waitForFinished(5000)) {
@@ -1209,10 +1234,10 @@ void RenderWorkerPool::clear_graph_cache()
 }
 
 void RenderWorkerPool::finish_with_frame(RenderTicketPtr ticket,
-									   const ipc::FrameSlotPool &pool,
+									   const engine::internal::ipc::FrameSlotPool &pool,
 									   uint32_t slot)
 {
-	const ipc::FrameSlotMeta *meta = pool.meta(slot);
+	const engine::internal::ipc::FrameSlotMeta *meta = pool.meta(slot);
 	if (!meta || meta->data_size <= 0 ||
 		meta->data_size > int(pool.slot_data_bytes())) {
 		ticket->finish();

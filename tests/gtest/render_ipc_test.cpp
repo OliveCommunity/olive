@@ -22,9 +22,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+#include "oakengine/spscringbuffer.h"
 #include "render/ipc/frameslotpool.h"
 #include "render/ipc/ipcmessage.h"
-#include "render/ipc/spscringbuffer.h"
 
 using namespace olive::ipc;
 
