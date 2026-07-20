@@ -28,11 +28,13 @@ set(OLIVE_SOURCES
         include/oakengine/renderer.h
         include/oakengine/footage.h
         include/oakengine/exporter.h
+        include/oakengine/node.h
         src/capi/init.cpp
         src/capi/project.cpp
         src/capi/timeline.cpp
         src/capi/renderer.cpp
         src/capi/footage.cpp
         src/capi/export.cpp
+        src/capi/node.cpp
         PARENT_SCOPE
 )

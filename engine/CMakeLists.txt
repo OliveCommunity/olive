@@ -301,4 +301,9 @@ if (BUILD_TESTS)
     if (TARGET olive-render-worker)
         add_dependencies(oakengine_export_test olive-render-worker)
     endif ()
+
+    make_oakengine_test(oakengine_node_test)
+    target_compile_definitions(oakengine_node_test PRIVATE
+            OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    )
 endif ()
