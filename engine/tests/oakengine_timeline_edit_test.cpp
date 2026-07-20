@@ -37,6 +37,7 @@
 
 #include "oakengine/footage.h"
 #include "oakengine/init.h"
+#include "oakengine/node.h"
 #include "oakengine/project.h"
 #include "oakengine/timeline.h"
 
@@ -641,6 +642,174 @@ static void test_markers(void)
 	oakengine_project_free(project);
 }
 
+static void test_sequence_params(void)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	OakEngineSequence *seq = oakengine_sequence_new(project, "Params");
+	assert(seq != NULL);
+
+	int w = 0, h = 0, fn = 0, fd = 0, pn = 0, pd = 0, il = -1, fmt = -1,
+		div = 0;
+	assert(oakengine_sequence_get_video_params_ex(seq, &w, &h, &fn, &fd, &pn,
+												  &pd, &il, &fmt,
+												  &div) == OAKENGINE_OK);
+	const int base_w = w, base_h = h, base_div = div;
+	assert(base_w > 0 && base_h > 0 && fn > 0 && fd > 0 && div >= 1);
+	assert(oakengine_sequence_get_video_params_ex(NULL, &w, &h, &fn, &fd,
+												  &pn, &pd, &il, &fmt,
+												  &div) == OAKENGINE_E_INVALID);
+
+	// Full video parameter write (f32 = 4, bottom-first = 2) + readback.
+	assert(oakengine_sequence_set_video_params(seq, 1280, 720, 24, 1, 1, 1, 2,
+											   4, 1) == OAKENGINE_OK);
+	assert(oakengine_sequence_get_video_params_ex(seq, &w, &h, &fn, &fd, &pn,
+												  &pd, &il, &fmt,
+												  &div) == OAKENGINE_OK);
+	assert(w == 1280 && h == 720 && fn == 24 && fd == 1);
+	assert(pn == 1 && pd == 1 && il == 2 && fmt == 4 && div == base_div);
+	int gn = 0, gd = 0;
+	assert(oakengine_sequence_get_frame_rate(seq, &gn, &gd) == OAKENGINE_OK);
+	assert(gn == 24 && gd == 1);
+
+	// Partial update: -1 leaves the other fields unchanged.
+	assert(oakengine_sequence_set_video_params(seq, 640, -1, -1, -1, -1, -1,
+											   -1, -1, 1) == OAKENGINE_OK);
+	assert(oakengine_sequence_get_video_params_ex(seq, &w, &h, &fn, &fd, &pn,
+												  &pd, &il, &fmt,
+												  &div) == OAKENGINE_OK);
+	assert(w == 640 && h == 720 && fn == 24 && il == 2);
+
+	// Invalid values: zero size, half a rational pair, out-of-range enum.
+	assert(oakengine_sequence_set_video_params(seq, 0, 720, -1, -1, -1, -1,
+											   -1, -1,
+											   1) == OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_set_video_params(seq, -1, -1, 24, -1, -1, -1,
+											   -1, -1,
+											   1) == OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_set_video_params(seq, -1, -1, -1, -1, -1, -1, 3,
+											   -1,
+											   1) == OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_set_video_params(seq, -1, -1, -1, -1, -1, -1,
+											   -1, 5,
+											   1) == OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_set_video_params(NULL, 1, 1, -1, -1, -1, -1, -1,
+											   -1,
+											   1) == OAKENGINE_E_INVALID);
+
+	// Undo restores step by step (partial write, then full write).
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_get_video_params_ex(seq, &w, &h, &fn, &fd, &pn,
+												  &pd, &il, &fmt,
+												  &div) == OAKENGINE_OK);
+	assert(w == 1280 && h == 720);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_get_video_params_ex(seq, &w, &h, &fn, &fd, &pn,
+												  &pd, &il, &fmt,
+												  &div) == OAKENGINE_OK);
+	assert(w == base_w && h == base_h);
+
+	// Audio round trip; 0 / <= 0 leaves the field unchanged.
+	int sr = 0;
+	uint64_t layout = 0;
+	assert(oakengine_sequence_get_audio_params(seq, &sr, &layout) ==
+		   OAKENGINE_OK);
+	assert(sr > 0 && layout != 0);
+	const int base_sr = sr;
+	const uint64_t base_layout = layout;
+	assert(oakengine_sequence_set_audio_params(seq, 44100, 3, 1) ==
+		   OAKENGINE_OK);
+	assert(oakengine_sequence_get_audio_params(seq, &sr, &layout) ==
+		   OAKENGINE_OK);
+	assert(sr == 44100 && layout == 3);
+	assert(oakengine_sequence_set_audio_params(seq, 48000, 0, 1) ==
+		   OAKENGINE_OK);
+	assert(oakengine_sequence_get_audio_params(seq, &sr, &layout) ==
+		   OAKENGINE_OK);
+	assert(sr == 48000 && layout == 3);
+	assert(oakengine_sequence_set_audio_params(NULL, 48000, 3, 1) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_get_audio_params(NULL, &sr, &layout) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_get_audio_params(seq, &sr, &layout) ==
+		   OAKENGINE_OK);
+	assert(sr == base_sr && layout == base_layout);
+
+	// Preview divider; the other video params stay untouched.
+	assert(oakengine_sequence_get_preview_divider(seq) == base_div);
+	assert(oakengine_sequence_set_preview_divider(seq, 4, 1) == OAKENGINE_OK);
+	assert(oakengine_sequence_get_preview_divider(seq) == 4);
+	assert(oakengine_sequence_set_preview_divider(seq, 0, 1) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_set_preview_divider(NULL, 1, 1) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_get_preview_divider(NULL) == 0);
+	assert(oakengine_sequence_get_video_params_ex(seq, &w, &h, &fn, &fd, &pn,
+												  &pd, &il, &fmt,
+												  &div) == OAKENGINE_OK);
+	assert(w == base_w && h == base_h && div == 4);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_get_preview_divider(seq) == base_div);
+
+	// Auto-cache flag: the engine accessors are stubs (read always 0, write
+	// ignored), so there is nothing to undo here.
+	assert(oakengine_sequence_get_video_auto_cache(seq) == 0);
+	assert(oakengine_sequence_set_video_auto_cache(seq, 1, 1) == OAKENGINE_OK);
+	assert(oakengine_sequence_get_video_auto_cache(seq) == 0);
+	assert(oakengine_sequence_get_video_auto_cache(NULL) == 0);
+	assert(oakengine_sequence_set_video_auto_cache(NULL, 1, 1) ==
+		   OAKENGINE_E_INVALID);
+
+	// Label through the node family with the undoable flag.
+	assert(oakengine_node_set_label_ex((OakEngineNode *)seq, "Renamed", 1) ==
+		   OAKENGINE_OK);
+	char name[64];
+	assert(oakengine_sequence_name(seq, name, sizeof(name)) > 0);
+	assert(strcmp(name, "Renamed") == 0);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_name(seq, name, sizeof(name)) > 0);
+	assert(strcmp(name, "Params") == 0);
+
+	oakengine_project_free(project);
+
+	// undoable == 0 applies directly with no undo entry: on a fresh project
+	// the creation is undone first so the stack is empty (the node stays
+	// alive under its creation command).
+	OakEngineProject *p2 = oakengine_project_create();
+	assert(p2 != NULL);
+	assert(oakengine_project_new(p2) == OAKENGINE_OK);
+	OakEngineSequence *s2 = oakengine_sequence_new(p2, "Direct");
+	assert(s2 != NULL);
+	assert(oakengine_project_undo(p2) == OAKENGINE_OK);
+	assert(oakengine_project_can_undo(p2) == 0);
+	assert(oakengine_sequence_set_video_params(s2, 800, 600, -1, -1, -1, -1,
+											   -1, -1,
+											   0) == OAKENGINE_OK);
+	assert(oakengine_sequence_get_video_params_ex(s2, &w, &h, &fn, &fd, &pn,
+												  &pd, &il, &fmt,
+												  &div) == OAKENGINE_OK);
+	assert(w == 800 && h == 600);
+	assert(oakengine_project_can_undo(p2) == 0);
+	assert(oakengine_sequence_set_audio_params(s2, 22050, 0, 0) ==
+		   OAKENGINE_OK);
+	assert(oakengine_sequence_get_audio_params(s2, &sr, &layout) ==
+		   OAKENGINE_OK);
+	assert(sr == 22050);
+	assert(oakengine_project_can_undo(p2) == 0);
+	assert(oakengine_sequence_set_preview_divider(s2, 2, 0) == OAKENGINE_OK);
+	assert(oakengine_sequence_get_preview_divider(s2) == 2);
+	assert(oakengine_project_can_undo(p2) == 0);
+	assert(oakengine_node_set_label_ex((OakEngineNode *)s2, "NoUndo", 0) ==
+		   OAKENGINE_OK);
+	assert(oakengine_sequence_name(s2, name, sizeof(name)) > 0);
+	assert(strcmp(name, "NoUndo") == 0);
+	assert(oakengine_project_can_undo(p2) == 0);
+	oakengine_project_free(p2);
+}
+
 int main(void)
 {
 	make_tmpdir();
@@ -669,6 +838,7 @@ int main(void)
 	test_edit_round2(path);
 	test_track_structure(path);
 	test_markers();
+	test_sequence_params();
 
 	oakengine_project_free(project);
 	assert(oakengine_shutdown() == OAKENGINE_OK);

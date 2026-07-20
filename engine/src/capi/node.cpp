@@ -488,14 +488,25 @@ int oakengine_node_get_label(const OakEngineNode *self, char *buf,
 
 int oakengine_node_set_label(OakEngineNode *self, const char *label)
 {
+	return oakengine_node_set_label_ex(self, label, 1);
+}
+
+int oakengine_node_set_label_ex(OakEngineNode *self, const char *label,
+								int undoable)
+{
 	set_error(QString());
 	if (!self) {
 		set_error(QStringLiteral("invalid node"));
 		return OAKENGINE_E_INVALID;
 	}
-	push_or_run(new olive::NodeRenameCommand(
-					impl(self), QString::fromUtf8(label ? label : "")),
-				QStringLiteral("Rename Node"));
+	olive::UndoCommand *command = new olive::NodeRenameCommand(
+		impl(self), QString::fromUtf8(label ? label : ""));
+	if (undoable) {
+		push_or_run(command, QStringLiteral("Rename Node"));
+	} else {
+		command->redo_now();
+		delete command;
+	}
 	return OAKENGINE_OK;
 }
 

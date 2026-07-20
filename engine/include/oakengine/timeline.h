@@ -37,10 +37,10 @@ extern "C" {
  * @brief C ABI for sequences (Oak timelines)
  *
  * An OakEngineSequence wraps the engine's olive::Sequence node
- * (engine/node/project/sequence/sequence.h, a ViewerOutput). This family is
- * intentionally read-mostly this round: playhead and workarea are simple
- * writes, everything else is inspection. Clip/track editing is a later
- * milestone.
+ * (engine/node/project/sequence/sequence.h, a ViewerOutput). Most of the
+ * family is inspection; playhead, workarea, the sequence parameters
+ * (video/audio/preview/auto-cache, see below) and clip/track editing are
+ * writes, undoable unless documented otherwise.
  *
  * Handles are borrowed from their owning OakEngineProject (Qt QObject parent
  * chain; sequences are added to the project graph which becomes their
@@ -117,6 +117,100 @@ oakengine_sequence_get_frame_rate(const OakEngineSequence *self, int *num,
 OAKENGINE_API int
 oakengine_sequence_get_video_params(const OakEngineSequence *self, int *width,
 									int *height, int *par_num, int *par_den);
+
+/* ---- Sequence parameters (sequence dialog) ------------------------------------
+ *
+ * The parameter set shown by the application's sequence dialog
+ * (app/dialog/sequence): video size/frame rate/pixel aspect/interlacing,
+ * preview pixel format and resolution divider, audio sample rate/channel
+ * layout, and the video auto-cache flag. Setters take an `undoable` flag:
+ * 1 pushes one undoable command onto the global undo stack (direct
+ * application when the engine is not initialized), 0 applies directly with
+ * no undo entry -- mirroring the dialog's two modes (SetUndoable()).
+ * Fields pass -1 (ints/rationals) or <= 0 / 0 (audio) to leave them
+ * unchanged; a call that changes nothing pushes no command and returns
+ * OAKENGINE_OK. The video channel count and the audio sample format are
+ * internal constants in the engine (VideoParams::k_internal_channel_count,
+ * ViewerOutput::k_default_sample_format) and are kept as-is.
+ */
+
+/**
+ * @brief Full read of the sequence's video parameters
+ * (ViewerOutput::get_video_params()). Any output pointer may be NULL.
+ * `fps_*` is the frame rate (the time base flipped), `format` a
+ * PixelFormat::Format value, `divider` the preview resolution divider.
+ */
+OAKENGINE_API int oakengine_sequence_get_video_params_ex(
+	const OakEngineSequence *self, int *width, int *height, int *fps_num,
+	int *fps_den, int *par_num, int *par_den, int *interlacing, int *format,
+	int *divider);
+
+/**
+ * @brief Write the sequence's video parameters (see the section comment
+ * for the undoable/unchanged conventions).
+ *
+ * -1 leaves a field unchanged; both fps and pixel-aspect must be given as
+ * num/den pairs (both -1 or both > 0). `interlacing` is a
+ * VideoParams::Interlacing value (0..2), `format` a PixelFormat::Format
+ * value (0..PixelFormat::count-1). Invalid values yield
+ * OAKENGINE_E_INVALID. The frame rate is stored as its flipped time base
+ * exactly like the application's dialog (VideoParams constructor), so the
+ * derived effective size and frame_rate stay in sync.
+ */
+OAKENGINE_API int oakengine_sequence_set_video_params(
+	OakEngineSequence *self, int width, int height, int fps_num, int fps_den,
+	int par_num, int par_den, int interlacing, int format, int undoable);
+
+/**
+ * @brief Sequence audio sample rate and channel layout
+ * (ViewerOutput::get_audio_params()). Any output pointer may be NULL.
+ */
+OAKENGINE_API int oakengine_sequence_get_audio_params(
+	const OakEngineSequence *self, int *sample_rate,
+	uint64_t *channel_layout);
+
+/**
+ * @brief Write the sequence's audio parameters (undoable flag as above).
+ * `sample_rate` <= 0 or `channel_layout` == 0 leaves the field unchanged.
+ * The sample format is kept unchanged (the dialog always uses
+ * ViewerOutput::k_default_sample_format).
+ */
+OAKENGINE_API int oakengine_sequence_set_audio_params(
+	OakEngineSequence *self, int sample_rate, uint64_t channel_layout,
+	int undoable);
+
+/**
+ * @brief Preview resolution divider (VideoParams::divider()). 0 on a NULL
+ * handle.
+ */
+OAKENGINE_API int
+oakengine_sequence_get_preview_divider(const OakEngineSequence *self);
+
+/**
+ * @brief Set the preview resolution divider (undoable flag as above).
+ * `divider` < 1 yields OAKENGINE_E_INVALID.
+ */
+OAKENGINE_API int oakengine_sequence_set_preview_divider(
+	OakEngineSequence *self, int divider, int undoable);
+
+/**
+ * @brief 1 when video auto-cache is enabled
+ * (ViewerOutput::is_video_auto_cache_enabled()). 0 on a NULL handle.
+ */
+OAKENGINE_API int
+oakengine_sequence_get_video_auto_cache(const OakEngineSequence *self);
+
+/**
+ * @brief Enable or disable video auto-cache.
+ *
+ * The engine's auto-cache accessors are currently stubs (the read always
+ * reports 0, the write is ignored; the application's dialog has the
+ * checkbox TEMP-disabled for the same reason). This forwards to the stub
+ * without an undo command so the ABI is ready when the engine
+ * implementation lands. `undoable` is accepted for symmetry and ignored.
+ */
+OAKENGINE_API int oakengine_sequence_set_video_auto_cache(
+	OakEngineSequence *self, int enabled, int undoable);
 
 /**
  * @brief Number of tracks per track type (Sequence::track_list(type)->

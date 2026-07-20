@@ -140,6 +140,17 @@ OAKENGINE_API int oakengine_node_get_label(const OakEngineNode *self,
 OAKENGINE_API int oakengine_node_set_label(OakEngineNode *self,
 										   const char *label);
 
+/**
+ * @brief Set the node's user label with an explicit undoable flag.
+ *
+ * `undoable` != 0 behaves like oakengine_node_set_label() (one undoable
+ * NodeRenameCommand on the global undo stack, degrading to a direct
+ * rename when the engine is not initialized); 0 renames directly with no
+ * undo entry.
+ */
+OAKENGINE_API int oakengine_node_set_label_ex(OakEngineNode *self,
+											  const char *label, int undoable);
+
 /* ---- Input introspection ---------------------------------------------------- */
 
 /**

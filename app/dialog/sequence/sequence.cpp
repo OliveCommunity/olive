@@ -31,10 +31,10 @@
 #include <QVBoxLayout>
 
 #include "config/config.h"
-#include "core.h"
 #include "common/qtutils.h"
 #include "dialog/msgbox.h"
-#include "undo/undostack.h"
+#include "oakengine/node.h"
+#include "oakengine/timeline.h"
 
 namespace olive
 {
@@ -139,40 +139,36 @@ void SequenceDialog::accept()
 		}
 	}
 
-	// Generate video and audio parameter structs from data
-	VideoParams video_params =
-		VideoParams(parameter_tab_->get_selected_video_width(),
-					parameter_tab_->get_selected_video_height(),
-					parameter_tab_->get_selected_video_frame_rate().flipped(),
-					parameter_tab_->get_selected_preview_format(),
-					VideoParams::k_internal_channel_count,
-					parameter_tab_->get_selected_video_pixel_aspect(),
-					parameter_tab_->get_selected_video_interlacing_mode(),
-					parameter_tab_->get_selected_preview_resolution());
-
-	AudioParams audio_params =
-		AudioParams(parameter_tab_->get_selected_audio_sample_rate(),
-					parameter_tab_->get_selected_audio_channel_layout(),
-					Sequence::k_default_sample_format);
-
-	if (make_undoable_) {
-		// Make undoable command to change the parameters
-		SequenceParamCommand *param_command = new SequenceParamCommand(
-			sequence_, video_params, audio_params, name_field_->text(),
-			parameter_tab_->get_selected_preview_auto_cache());
-
-		Core::instance()->undo_stack()->push(
-			param_command,
-			tr("Set Sequence Parameters For \"%1\"").arg(sequence_->get_label()));
-
-	} else {
-		// Set sequence values directly with no undo command
-		sequence_->set_video_params(video_params);
-		sequence_->set_audio_params(audio_params);
-		sequence_->set_label(name_field_->text());
-		sequence_->set_video_auto_cache_enabled(
-			parameter_tab_->get_selected_preview_auto_cache());
-	}
+	// All parameter writes go through the liboakengine C ABI facade; in
+	// undoable mode each call lands on the shared undo stack as one command,
+	// otherwise it applies directly (the flag mirrors the old
+	// SequenceParamCommand / direct-set split).
+	const int undoable = make_undoable_ ? 1 : 0;
+	OakEngineSequence *facade_handle =
+		reinterpret_cast<OakEngineSequence *>(sequence_);
+	const Rational frame_rate = parameter_tab_->get_selected_video_frame_rate();
+	const Rational pixel_aspect =
+		parameter_tab_->get_selected_video_pixel_aspect();
+	oakengine_sequence_set_video_params(
+		facade_handle, parameter_tab_->get_selected_video_width(),
+		parameter_tab_->get_selected_video_height(), frame_rate.numerator(),
+		frame_rate.denominator(), pixel_aspect.numerator(),
+		pixel_aspect.denominator(),
+		int(parameter_tab_->get_selected_video_interlacing_mode()),
+		int(parameter_tab_->get_selected_preview_format()), undoable);
+	oakengine_sequence_set_preview_divider(
+		facade_handle, parameter_tab_->get_selected_preview_resolution(),
+		undoable);
+	oakengine_sequence_set_audio_params(
+		facade_handle, parameter_tab_->get_selected_audio_sample_rate(),
+		parameter_tab_->get_selected_audio_channel_layout(), undoable);
+	oakengine_node_set_label_ex(
+		reinterpret_cast<OakEngineNode *>(sequence_),
+		name_field_->text().toUtf8().constData(), undoable);
+	oakengine_sequence_set_video_auto_cache(
+		facade_handle, parameter_tab_->get_selected_preview_auto_cache() ? 1 :
+																		 0,
+		undoable);
 
 	QDialog::accept();
 }
@@ -199,50 +195,6 @@ void SequenceDialog::set_as_default_clicked()
 		OAK_CONFIG("DefaultSequenceAudioLayout") = QVariant::fromValue(
 			parameter_tab_->get_selected_audio_channel_layout());
 	}
-}
-
-SequenceDialog::SequenceParamCommand::SequenceParamCommand(
-	Sequence *s, const VideoParams &video_params,
-	const AudioParams &audio_params, const QString &name, bool autocache)
-	: sequence_(s)
-	, new_video_params_(video_params)
-	, new_audio_params_(audio_params)
-	, new_name_(name)
-	, new_autocache_(autocache)
-	, old_video_params_(s->get_video_params())
-	, old_audio_params_(s->get_audio_params())
-	, old_name_(s->get_label())
-	, old_autocache_(s->is_video_auto_cache_enabled())
-{
-}
-
-Project *SequenceDialog::SequenceParamCommand::get_relevant_project() const
-{
-	return sequence_->project();
-}
-
-void SequenceDialog::SequenceParamCommand::redo()
-{
-	if (sequence_->get_video_params() != new_video_params_) {
-		sequence_->set_video_params(new_video_params_);
-	}
-	if (sequence_->get_audio_params() != new_audio_params_) {
-		sequence_->set_audio_params(new_audio_params_);
-	}
-	sequence_->set_label(new_name_);
-	sequence_->set_video_auto_cache_enabled(new_autocache_);
-}
-
-void SequenceDialog::SequenceParamCommand::undo()
-{
-	if (sequence_->get_video_params() != old_video_params_) {
-		sequence_->set_video_params(old_video_params_);
-	}
-	if (sequence_->get_audio_params() != old_audio_params_) {
-		sequence_->set_audio_params(old_audio_params_);
-	}
-	sequence_->set_label(old_name_);
-	sequence_->set_video_auto_cache_enabled(old_autocache_);
 }
 
 }

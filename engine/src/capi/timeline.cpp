@@ -152,6 +152,88 @@ void push_or_run(olive::UndoCommand *command, const QString &name)
 	}
 }
 
+// Apply a command honoring an explicit undoable flag: 1 pushes through
+// push_or_run(), 0 applies directly with no undo entry (the sequence
+// dialog's non-undoable mode for freshly created sequences).
+void apply_or_push(olive::UndoCommand *command, const QString &name,
+				   int undoable)
+{
+	if (undoable) {
+		push_or_run(command, name);
+	} else {
+		command->redo_now();
+		delete command;
+	}
+}
+
+// Undo commands for sequence parameter writes. The engine has no undo
+// commands for these (the application's sequence dialog carries its own
+// SequenceParamCommand at the app layer), so the facade carries
+// read-modify-write equivalents with the same semantics.
+class SequenceVideoParamsCommand : public olive::UndoCommand {
+public:
+	SequenceVideoParamsCommand(olive::Sequence *sequence,
+							   const olive::VideoParams &params)
+		: sequence_(sequence)
+		, new_params_(params)
+	{
+	}
+
+	virtual olive::Project *get_relevant_project() const override
+	{
+		return sequence_->project();
+	}
+
+protected:
+	virtual void redo() override
+	{
+		old_params_ = sequence_->get_video_params();
+		sequence_->set_video_params(new_params_);
+	}
+
+	virtual void undo() override
+	{
+		sequence_->set_video_params(old_params_);
+	}
+
+private:
+	olive::Sequence *sequence_;
+	olive::VideoParams old_params_;
+	olive::VideoParams new_params_;
+};
+
+class SequenceAudioParamsCommand : public olive::UndoCommand {
+public:
+	SequenceAudioParamsCommand(olive::Sequence *sequence,
+							   const olive::AudioParams &params)
+		: sequence_(sequence)
+		, new_params_(params)
+	{
+	}
+
+	virtual olive::Project *get_relevant_project() const override
+	{
+		return sequence_->project();
+	}
+
+protected:
+	virtual void redo() override
+	{
+		old_params_ = sequence_->get_audio_params();
+		sequence_->set_audio_params(new_params_);
+	}
+
+	virtual void undo() override
+	{
+		sequence_->set_audio_params(old_params_);
+	}
+
+private:
+	olive::Sequence *sequence_;
+	olive::AudioParams old_params_;
+	olive::AudioParams new_params_;
+};
+
 // The clip at (track_index, clip_index) within the given track list,
 // skipping gap blocks; nullptr when out of range.
 olive::ClipBlock *clip_at_index(olive::TrackList *list, int track_index,
@@ -306,6 +388,220 @@ int oakengine_sequence_get_video_params(const OakEngineSequence *self,
 	if (par_den) {
 		*par_den = par.denominator();
 	}
+	return OAKENGINE_OK;
+}
+
+/* ---- Sequence parameters (sequence dialog) ------------------------------------ */
+
+int oakengine_sequence_get_video_params_ex(
+	const OakEngineSequence *self, int *width, int *height, int *fps_num,
+	int *fps_den, int *par_num, int *par_den, int *interlacing, int *format,
+	int *divider)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::VideoParams params = impl(self)->get_video_params();
+	if (width) {
+		*width = params.width();
+	}
+	if (height) {
+		*height = params.height();
+	}
+	const olive::Rational frame_rate = params.frame_rate();
+	if (fps_num) {
+		*fps_num = frame_rate.numerator();
+	}
+	if (fps_den) {
+		*fps_den = frame_rate.denominator();
+	}
+	const olive::Rational par = params.pixel_aspect_ratio();
+	if (par_num) {
+		*par_num = par.numerator();
+	}
+	if (par_den) {
+		*par_den = par.denominator();
+	}
+	if (interlacing) {
+		*interlacing = int(params.interlacing());
+	}
+	if (format) {
+		*format = int(params.format());
+	}
+	if (divider) {
+		*divider = params.divider();
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_sequence_set_video_params(
+	OakEngineSequence *self, int width, int height, int fps_num, int fps_den,
+	int par_num, int par_den, int interlacing, int format, int undoable)
+{
+	set_seq_error(QString());
+	if (!self) {
+		set_seq_error(QStringLiteral("invalid sequence"));
+		return OAKENGINE_E_INVALID;
+	}
+	// -1 leaves a field unchanged; 0 / out-of-range values are rejected.
+	if (width < -1 || width == 0 || height < -1 || height == 0) {
+		set_seq_error(QStringLiteral("invalid video size %1x%2")
+						  .arg(width)
+						  .arg(height));
+		return OAKENGINE_E_INVALID;
+	}
+	if ((fps_num == -1) != (fps_den == -1) || fps_num < -1 || fps_num == 0 ||
+		fps_den < -1 || fps_den == 0) {
+		set_seq_error(QStringLiteral("invalid frame rate %1/%2")
+						  .arg(fps_num)
+						  .arg(fps_den));
+		return OAKENGINE_E_INVALID;
+	}
+	if ((par_num == -1) != (par_den == -1) || par_num < -1 || par_num == 0 ||
+		par_den < -1 || par_den == 0) {
+		set_seq_error(QStringLiteral("invalid pixel aspect %1/%2")
+						  .arg(par_num)
+						  .arg(par_den));
+		return OAKENGINE_E_INVALID;
+	}
+	if (interlacing < -1 ||
+		interlacing > int(olive::VideoParams::k_interlaced_bottom_first)) {
+		set_seq_error(
+			QStringLiteral("invalid interlacing %1").arg(interlacing));
+		return OAKENGINE_E_INVALID;
+	}
+	if (format < -1 || format >= int(olive::PixelFormat::count)) {
+		set_seq_error(QStringLiteral("invalid pixel format %1").arg(format));
+		return OAKENGINE_E_INVALID;
+	}
+
+	olive::Sequence *sequence = impl(self);
+	const olive::VideoParams current = sequence->get_video_params();
+	// Rebuild through the same constructor the application's dialog uses so
+	// the frame rate (flipped time base) and effective size stay in sync.
+	const olive::VideoParams updated(
+		width >= 0 ? width : current.width(),
+		height >= 0 ? height : current.height(),
+		fps_num >= 0 ? olive::Rational(fps_den, fps_num) : current.time_base(),
+		format >= 0 ? olive::PixelFormat::Format(format) :
+					  olive::PixelFormat::Format(current.format()),
+		current.channel_count(),
+		par_num >= 0 ? olive::Rational(par_num, par_den) :
+					   current.pixel_aspect_ratio(),
+		interlacing >= 0 ? olive::VideoParams::Interlacing(interlacing) :
+						   current.interlacing(),
+		current.divider());
+	if (updated == current) {
+		return OAKENGINE_OK;
+	}
+	apply_or_push(new SequenceVideoParamsCommand(sequence, updated),
+				  QStringLiteral("Set Sequence Video Parameters"), undoable);
+	return OAKENGINE_OK;
+}
+
+int oakengine_sequence_get_audio_params(const OakEngineSequence *self,
+										int *sample_rate,
+										uint64_t *channel_layout)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::AudioParams params = impl(self)->get_audio_params();
+	if (sample_rate) {
+		*sample_rate = params.sample_rate();
+	}
+	if (channel_layout) {
+		*channel_layout = params.channel_layout();
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_sequence_set_audio_params(OakEngineSequence *self,
+										int sample_rate,
+										uint64_t channel_layout, int undoable)
+{
+	set_seq_error(QString());
+	if (!self) {
+		set_seq_error(QStringLiteral("invalid sequence"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Sequence *sequence = impl(self);
+	const olive::AudioParams current = sequence->get_audio_params();
+	if (sample_rate <= 0) {
+		sample_rate = current.sample_rate();
+	}
+	if (channel_layout == 0) {
+		channel_layout = current.channel_layout();
+	}
+	const olive::AudioParams updated(sample_rate, channel_layout,
+									 current.format());
+	if (updated == current) {
+		return OAKENGINE_OK;
+	}
+	apply_or_push(new SequenceAudioParamsCommand(sequence, updated),
+				  QStringLiteral("Set Sequence Audio Parameters"), undoable);
+	return OAKENGINE_OK;
+}
+
+int oakengine_sequence_get_preview_divider(const OakEngineSequence *self)
+{
+	if (!self) {
+		return 0;
+	}
+	return impl(self)->get_video_params().divider();
+}
+
+int oakengine_sequence_set_preview_divider(OakEngineSequence *self,
+										   int divider, int undoable)
+{
+	set_seq_error(QString());
+	if (!self) {
+		set_seq_error(QStringLiteral("invalid sequence"));
+		return OAKENGINE_E_INVALID;
+	}
+	if (divider < 1) {
+		set_seq_error(QStringLiteral("invalid preview divider %1")
+						  .arg(divider));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Sequence *sequence = impl(self);
+	const olive::VideoParams current = sequence->get_video_params();
+	if (current.divider() == divider) {
+		return OAKENGINE_OK;
+	}
+	// Same constructor rebuild as in set_video_params (keeps the derived
+	// effective size in sync).
+	const olive::VideoParams updated(
+		current.width(), current.height(), current.time_base(),
+		current.format(), current.channel_count(),
+		current.pixel_aspect_ratio(), current.interlacing(), divider);
+	apply_or_push(new SequenceVideoParamsCommand(sequence, updated),
+				  QStringLiteral("Set Sequence Preview Divider"), undoable);
+	return OAKENGINE_OK;
+}
+
+int oakengine_sequence_get_video_auto_cache(const OakEngineSequence *self)
+{
+	if (!self) {
+		return 0;
+	}
+	return impl(self)->is_video_auto_cache_enabled() ? 1 : 0;
+}
+
+int oakengine_sequence_set_video_auto_cache(OakEngineSequence *self,
+											int enabled, int undoable)
+{
+	set_seq_error(QString());
+	Q_UNUSED(undoable)
+	if (!self) {
+		set_seq_error(QStringLiteral("invalid sequence"));
+		return OAKENGINE_E_INVALID;
+	}
+	// The engine's auto-cache accessors are stubs for now (the read always
+	// returns false, the write is a no-op; the application's dialog has the
+	// checkbox TEMP-disabled accordingly). Forwarded without an undo
+	// command so the facade surface is ready when the engine lands it.
+	impl(self)->set_video_auto_cache_enabled(enabled != 0);
 	return OAKENGINE_OK;
 }
 

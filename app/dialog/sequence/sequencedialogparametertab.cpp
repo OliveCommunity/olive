@@ -23,6 +23,8 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+#include "oakengine/timeline.h"
+
 namespace olive
 {
 
@@ -100,19 +102,35 @@ SequenceDialogParameterTab::SequenceDialogParameterTab(Sequence *sequence,
 
 	layout->addWidget(preview_group);
 
-	// Set values based on input sequence
-	VideoParams vp = sequence->get_video_params();
-	AudioParams ap = sequence->get_audio_params();
-	width_slider_->set_value(vp.width());
-	height_slider_->set_value(vp.height());
-	framerate_combo_->set_frame_rate(vp.time_base().flipped());
-	pixelaspect_combo_->set_pixel_aspect_ratio(vp.pixel_aspect_ratio());
-	interlacing_combo_->set_interlace_mode(vp.interlacing());
-	preview_resolution_field_->set_divider(vp.divider());
-	preview_format_field_->set_pixel_format(vp.format());
-	preview_autocache_field_->setChecked(sequence->is_video_auto_cache_enabled());
-	audio_sample_rate_field_->set_sample_rate(ap.sample_rate());
-	audio_channels_field_->set_channel_layout(ap.channel_layout());
+	// Set values based on input sequence; the reads go through the
+	// liboakengine C ABI facade (the sequence handle is the engine node
+	// pointer in this family).
+	OakEngineSequence *facade_handle =
+		reinterpret_cast<OakEngineSequence *>(sequence);
+	int width = 0, height = 0, fps_num = 0, fps_den = 1, par_num = 1,
+		par_den = 1, interlacing = 0, format = 0, divider = 1;
+	oakengine_sequence_get_video_params_ex(facade_handle, &width, &height,
+										   &fps_num, &fps_den, &par_num,
+										   &par_den, &interlacing, &format,
+										   &divider);
+	int sample_rate = 0;
+	uint64_t channel_layout = 0;
+	oakengine_sequence_get_audio_params(facade_handle, &sample_rate,
+										&channel_layout);
+
+	width_slider_->set_value(width);
+	height_slider_->set_value(height);
+	framerate_combo_->set_frame_rate(Rational(fps_num, fps_den));
+	pixelaspect_combo_->set_pixel_aspect_ratio(Rational(par_num, par_den));
+	interlacing_combo_->set_interlace_mode(
+		static_cast<VideoParams::Interlacing>(interlacing));
+	preview_resolution_field_->set_divider(divider);
+	preview_format_field_->set_pixel_format(
+		static_cast<PixelFormat::Format>(format));
+	preview_autocache_field_->setChecked(
+		oakengine_sequence_get_video_auto_cache(facade_handle) != 0);
+	audio_sample_rate_field_->set_sample_rate(sample_rate);
+	audio_channels_field_->set_channel_layout(channel_layout);
 
 	connect(
 		preview_resolution_field_,

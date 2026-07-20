@@ -29,7 +29,6 @@
 #include "node/project/sequence/sequence.h"
 #include "sequencedialogparametertab.h"
 #include "sequencedialogpresettab.h"
-#include "undo/undocommand.h"
 
 namespace olive
 {
@@ -100,35 +99,6 @@ private:
 	bool make_undoable_;
 
 	QLineEdit *name_field_;
-
-	/**
-   * @brief An UndoCommand for setting the parameters on a sequence
-   */
-	class SequenceParamCommand : public UndoCommand {
-	public:
-		SequenceParamCommand(Sequence *s, const VideoParams &video_params,
-							 const AudioParams &audio_params,
-							 const QString &name, bool autocache);
-
-		virtual Project *get_relevant_project() const override;
-
-	protected:
-		virtual void redo() override;
-		virtual void undo() override;
-
-	private:
-		Sequence *sequence_;
-
-		VideoParams new_video_params_;
-		AudioParams new_audio_params_;
-		QString new_name_;
-		bool new_autocache_;
-
-		VideoParams old_video_params_;
-		AudioParams old_audio_params_;
-		QString old_name_;
-		bool old_autocache_;
-	};
 
 private slots:
 	void set_as_default_clicked();
