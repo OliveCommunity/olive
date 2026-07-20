@@ -444,6 +444,203 @@ static void test_edit_round2(const char *media_path)
 
 // Footage imported into one project must not be placed into another.
 
+// Track structure: move/height/mute/lock/remove over two video tracks,
+// plus undo/redo of the undoable ones.
+static void test_track_structure(const char *media_path)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	OakEngineSequence *seq = oakengine_sequence_new(project, "Tracks");
+	assert(seq != NULL);
+	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_VIDEO) ==
+		   0);
+	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_VIDEO) ==
+		   1);
+
+	OakEngineFootage *footage =
+		oakengine_project_import_footage(project, media_path);
+	assert(footage != NULL);
+	// Distinctive clips per track so track order is observable.
+	OakEngineClip *clip_a = oakengine_sequence_add_footage_clip(
+		seq, footage, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, 10, 0);
+	OakEngineClip *clip_b = oakengine_sequence_add_footage_clip(
+		seq, footage, OAKENGINE_TRACK_TYPE_VIDEO, 1, 20, 30, 0);
+	assert(clip_a != NULL && clip_b != NULL);
+
+	int64_t in = -1, out = -1, media_in = -1;
+	double height = 0.0;
+
+	// move_track swaps their positions; the clips move with the tracks.
+	assert(oakengine_sequence_move_track(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										 1) == OAKENGINE_OK);
+	OakEngineClip *now = oakengine_sequence_clip_at(
+		seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0);
+	assert(now == clip_b);
+	assert(oakengine_clip_get_range(now, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 20 && out == 30);
+	now = oakengine_sequence_clip_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 1, 0);
+	assert(now == clip_a);
+	assert(oakengine_clip_get_range(now, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 0 && out == 10);
+
+	// Undo/redo restore the order both ways.
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	now = oakengine_sequence_clip_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0);
+	assert(now == clip_a);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	now = oakengine_sequence_clip_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0);
+	assert(now == clip_b);
+
+	// No-op move and out-of-range indexes.
+	assert(oakengine_sequence_move_track(seq, OAKENGINE_TRACK_TYPE_VIDEO, 1,
+										 1) == OAKENGINE_OK);
+	assert(oakengine_sequence_move_track(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										 5) == OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_sequence_move_track(seq, OAKENGINE_TRACK_TYPE_VIDEO, 5,
+										 0) == OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_sequence_move_track(NULL, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										 1) == OAKENGINE_E_INVALID);
+
+	// Height: default is positive, round-trip, direct (not undoable).
+	assert(oakengine_track_get_height(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+									  &height) == OAKENGINE_OK);
+	const double default_height = height;
+	assert(default_height > 0.0);
+	assert(oakengine_track_set_height(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+									  3.0) == OAKENGINE_OK);
+	assert(oakengine_track_get_height(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+									  &height) == OAKENGINE_OK);
+	assert(height == 3.0);
+	assert(oakengine_track_set_height(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+									  0.0) == OAKENGINE_E_INVALID);
+	assert(oakengine_track_get_height(seq, OAKENGINE_TRACK_TYPE_VIDEO, 99,
+									  &height) == OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_track_get_height(NULL, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+									  &height) == OAKENGINE_E_INVALID);
+
+	// Mute and lock toggles, direct (not undoable).
+	assert(oakengine_track_is_muted(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0) == 0);
+	assert(oakengine_track_set_muted(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+									 1) == OAKENGINE_OK);
+	assert(oakengine_track_is_muted(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0) == 1);
+	assert(oakengine_track_set_muted(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+									 0) == OAKENGINE_OK);
+	assert(oakengine_track_is_muted(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0) == 0);
+	assert(oakengine_track_set_muted(seq, OAKENGINE_TRACK_TYPE_VIDEO, 99,
+									 1) == OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_track_is_locked(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0) ==
+		   0);
+	assert(oakengine_track_set_locked(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+									  1) == OAKENGINE_OK);
+	assert(oakengine_track_is_locked(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0) ==
+		   1);
+	assert(oakengine_track_set_locked(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+									  0) == OAKENGINE_OK);
+	assert(oakengine_track_set_locked(NULL, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+									  1) == OAKENGINE_E_INVALID);
+
+	// remove_track drops the track and its content; undo brings both back.
+	int video = -1, audio = -1, subtitle = -1;
+	assert(oakengine_sequence_remove_track(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										   1) == OAKENGINE_OK);
+	assert(oakengine_sequence_track_count(seq, &video, &audio, &subtitle) ==
+		   OAKENGINE_OK);
+	assert(video == 1);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 1);
+	assert(oakengine_sequence_remove_track(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										   9) == OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_track_count(seq, &video, &audio, &subtitle) ==
+		   OAKENGINE_OK);
+	assert(video == 2);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 1) == 1);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_track_count(seq, &video, &audio, &subtitle) ==
+		   OAKENGINE_OK);
+	assert(video == 1);
+
+	oakengine_footage_free(footage);
+	oakengine_project_free(project);
+}
+
+static void test_markers(void)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	OakEngineSequence *seq = oakengine_sequence_new(project, "Markers");
+	assert(seq != NULL);
+
+	int64_t ts = -1;
+	char name[64];
+
+	assert(oakengine_sequence_marker_count(seq) == 0);
+	assert(oakengine_sequence_marker_add(seq, 30, "Chapter 1") ==
+		   OAKENGINE_OK);
+	assert(oakengine_sequence_marker_count(seq) == 1);
+	assert(oakengine_sequence_marker_at(seq, 0, &ts, name, sizeof(name)) ==
+		   OAKENGINE_OK);
+	assert(ts == 30 && strcmp(name, "Chapter 1") == 0);
+
+	// Duplicate time: the engine forbids two markers at one time.
+	assert(oakengine_sequence_marker_add(seq, 30, "dup") ==
+		   OAKENGINE_E_STATE);
+
+	// Earlier marker sorts in front.
+	assert(oakengine_sequence_marker_add(seq, 10, "Intro") == OAKENGINE_OK);
+	assert(oakengine_sequence_marker_count(seq) == 2);
+	assert(oakengine_sequence_marker_at(seq, 0, &ts, name, sizeof(name)) ==
+		   OAKENGINE_OK);
+	assert(ts == 10 && strcmp(name, "Intro") == 0);
+	assert(oakengine_sequence_marker_at(seq, 1, &ts, name, sizeof(name)) ==
+		   OAKENGINE_OK);
+	assert(ts == 30 && strcmp(name, "Chapter 1") == 0);
+	assert(oakengine_sequence_marker_at(seq, 2, &ts, name, sizeof(name)) ==
+		   OAKENGINE_E_NOT_FOUND);
+
+	// Rename with undo/redo.
+	assert(oakengine_sequence_marker_rename(seq, 30, "Chapter 2") ==
+		   OAKENGINE_OK);
+	assert(oakengine_sequence_marker_at(seq, 1, &ts, name, sizeof(name)) ==
+		   OAKENGINE_OK);
+	assert(strcmp(name, "Chapter 2") == 0);
+	assert(oakengine_sequence_marker_rename(seq, 77, "nope") ==
+		   OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_marker_at(seq, 1, &ts, name, sizeof(name)) ==
+		   OAKENGINE_OK);
+	assert(strcmp(name, "Chapter 1") == 0);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_marker_at(seq, 1, &ts, name, sizeof(name)) ==
+		   OAKENGINE_OK);
+	assert(strcmp(name, "Chapter 2") == 0);
+
+	// Remove with undo; removing again reports not found.
+	assert(oakengine_sequence_marker_remove(seq, 10) == OAKENGINE_OK);
+	assert(oakengine_sequence_marker_count(seq) == 1);
+	assert(oakengine_sequence_marker_remove(seq, 10) ==
+		   OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_marker_count(seq) == 2);
+
+	// NULL safety.
+	assert(oakengine_sequence_marker_add(NULL, 0, "x") ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_marker_remove(NULL, 0) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_marker_rename(NULL, 0, "x") ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_remove_track(NULL, OAKENGINE_TRACK_TYPE_VIDEO,
+										   0) == OAKENGINE_E_INVALID);
+
+	oakengine_project_free(project);
+}
+
 int main(void)
 {
 	make_tmpdir();
@@ -470,6 +667,8 @@ int main(void)
 	test_add_clip(project, seq, path);
 	test_cross_project_rejected(path);
 	test_edit_round2(path);
+	test_track_structure(path);
+	test_markers();
 
 	oakengine_project_free(project);
 	assert(oakengine_shutdown() == OAKENGINE_OK);

@@ -780,4 +780,288 @@ int oakengine_sequence_move_clip(OakEngineSequence *seq, int track_type,
 	return OAKENGINE_OK;
 }
 
+/* ---- Track structure and markers ------------------------------------------ */
+
+int oakengine_sequence_remove_track(OakEngineSequence *seq, int track_type,
+									int track_index)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence || track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+		set_seq_error(QStringLiteral("invalid sequence or track type"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::TrackList *list =
+		sequence->track_list(to_track_type(track_type));
+	if (track_index < 0 || track_index >= list->get_track_count()) {
+		set_seq_error(QStringLiteral("no track at index %1")
+					  .arg(track_index));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	push_or_run(new olive::TimelineRemoveTrackCommand(
+					list->get_track_at(track_index)),
+				QStringLiteral("Remove Track"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_sequence_move_track(OakEngineSequence *seq, int track_type,
+								  int from_index, int to_index)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence || track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+		set_seq_error(QStringLiteral("invalid sequence or track type"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::TrackList *list =
+		sequence->track_list(to_track_type(track_type));
+	const int count = list->get_track_count();
+	if (from_index < 0 || from_index >= count || to_index < 0 ||
+		to_index >= count) {
+		set_seq_error(QStringLiteral("track index out of range (%1 tracks)")
+					  .arg(count));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	if (from_index == to_index) {
+		return OAKENGINE_OK;
+	}
+
+	// True move: compute the reordered track list, then rewire every track's
+	// array-element connection into that order with the engine's edge
+	// commands (one undoable command, so undo restores the old order).
+	QVector<olive::Track *> order = list->get_tracks();
+	olive::Track *moved = order.at(from_index);
+	order.removeAt(from_index);
+	order.insert(to_index, moved);
+
+	// Array elements stay put (connections just move between them); collect
+	// them in slot order.
+	QVector<int> elements;
+	for (int i = 0; i < count; i++) {
+		elements.append(list->get_array_index_from_cache_index(i));
+	}
+
+	const QString input_id = list->track_input();
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	for (int i = 0; i < count; i++) {
+		command->add_child(new olive::NodeEdgeRemoveCommand(
+			list->get_tracks().at(i),
+			olive::NodeInput(sequence, input_id, elements.at(i))));
+	}
+	for (int i = 0; i < count; i++) {
+		command->add_child(new olive::NodeEdgeAddCommand(
+			order.at(i),
+			olive::NodeInput(sequence, input_id, elements.at(i))));
+	}
+	push_or_run(command, QStringLiteral("Move Track"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_track_get_height(const OakEngineSequence *seq, int track_type,
+							   int track_index, double *height)
+{
+	set_seq_error(QString());
+	const olive::Sequence *sequence =
+		reinterpret_cast<const olive::Sequence *>(seq);
+	if (!sequence || !height || track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+		set_seq_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::TrackList *list =
+		sequence->track_list(to_track_type(track_type));
+	if (track_index < 0 || track_index >= list->get_track_count()) {
+		set_seq_error(QStringLiteral("no track at index %1")
+					  .arg(track_index));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	*height = list->get_track_at(track_index)->get_track_height();
+	return OAKENGINE_OK;
+}
+
+int oakengine_track_set_height(OakEngineSequence *seq, int track_type,
+							   int track_index, double height)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence || height <= 0.0 ||
+		track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+		set_seq_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::TrackList *list =
+		sequence->track_list(to_track_type(track_type));
+	if (track_index < 0 || track_index >= list->get_track_count()) {
+		set_seq_error(QStringLiteral("no track at index %1")
+					  .arg(track_index));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	// Straight setter like the application (not undoable).
+	list->get_track_at(track_index)->set_track_height(height);
+	return OAKENGINE_OK;
+}
+
+int oakengine_track_is_muted(const OakEngineSequence *seq, int track_type,
+							 int track_index)
+{
+	const olive::Sequence *sequence =
+		reinterpret_cast<const olive::Sequence *>(seq);
+	if (!sequence || track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+		return 0;
+	}
+	olive::TrackList *list =
+		sequence->track_list(to_track_type(track_type));
+	if (track_index < 0 || track_index >= list->get_track_count()) {
+		return 0;
+	}
+	return list->get_track_at(track_index)->is_muted() ? 1 : 0;
+}
+
+int oakengine_track_set_muted(OakEngineSequence *seq, int track_type,
+							  int track_index, int muted)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence || track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+		set_seq_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::TrackList *list =
+		sequence->track_list(to_track_type(track_type));
+	if (track_index < 0 || track_index >= list->get_track_count()) {
+		set_seq_error(QStringLiteral("no track at index %1")
+					  .arg(track_index));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	list->get_track_at(track_index)->set_muted(muted != 0);
+	return OAKENGINE_OK;
+}
+
+int oakengine_track_is_locked(const OakEngineSequence *seq, int track_type,
+							  int track_index)
+{
+	const olive::Sequence *sequence =
+		reinterpret_cast<const olive::Sequence *>(seq);
+	if (!sequence || track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+		return 0;
+	}
+	olive::TrackList *list =
+		sequence->track_list(to_track_type(track_type));
+	if (track_index < 0 || track_index >= list->get_track_count()) {
+		return 0;
+	}
+	return list->get_track_at(track_index)->is_locked() ? 1 : 0;
+}
+
+int oakengine_track_set_locked(OakEngineSequence *seq, int track_type,
+							   int track_index, int locked)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence || track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+		set_seq_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::TrackList *list =
+		sequence->track_list(to_track_type(track_type));
+	if (track_index < 0 || track_index >= list->get_track_count()) {
+		set_seq_error(QStringLiteral("no track at index %1")
+					  .arg(track_index));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	list->get_track_at(track_index)->set_locked(locked != 0);
+	return OAKENGINE_OK;
+}
+
+int oakengine_sequence_marker_add(OakEngineSequence *seq, int64_t time_ts,
+								  const char *name)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence) {
+		set_seq_error(QStringLiteral("invalid sequence"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return OAKENGINE_E_STATE;
+	}
+	const olive::Rational time =
+		olive::core::Timecode::timestamp_to_time(time_ts, tb);
+	olive::TimelineMarkerList *markers = sequence->get_markers();
+	if (markers->get_marker_at_time(time)) {
+		// The engine's marker insertion asserts on duplicate times.
+		set_seq_error(QStringLiteral("a marker already exists at time %1")
+					  .arg(time_ts));
+		return OAKENGINE_E_STATE;
+	}
+	push_or_run(new olive::MarkerAddCommand(
+					markers, olive::TimeRange(time, time),
+					QString::fromUtf8(name ? name : ""), 0),
+				QStringLiteral("Add Marker"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_sequence_marker_remove(OakEngineSequence *seq, int64_t time_ts)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence) {
+		set_seq_error(QStringLiteral("invalid sequence"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return OAKENGINE_E_STATE;
+	}
+	const olive::Rational time =
+		olive::core::Timecode::timestamp_to_time(time_ts, tb);
+	olive::TimelineMarker *marker =
+		sequence->get_markers()->get_marker_at_time(time);
+	if (!marker) {
+		set_seq_error(QStringLiteral("no marker at time %1").arg(time_ts));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	push_or_run(new olive::MarkerRemoveCommand(marker),
+				QStringLiteral("Remove Marker"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_sequence_marker_rename(OakEngineSequence *seq, int64_t time_ts,
+									 const char *name)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence) {
+		set_seq_error(QStringLiteral("invalid sequence"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return OAKENGINE_E_STATE;
+	}
+	const olive::Rational time =
+		olive::core::Timecode::timestamp_to_time(time_ts, tb);
+	olive::TimelineMarker *marker =
+		sequence->get_markers()->get_marker_at_time(time);
+	if (!marker) {
+		set_seq_error(QStringLiteral("no marker at time %1").arg(time_ts));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	push_or_run(new olive::MarkerChangeNameCommand(
+					marker, QString::fromUtf8(name ? name : "")),
+				QStringLiteral("Rename Marker"));
+	return OAKENGINE_OK;
+}
+
 } // extern "C"

@@ -343,6 +343,110 @@ OAKENGINE_API int oakengine_sequence_move_clip(OakEngineSequence *seq,
 											   int clip_index,
 											   int64_t new_in);
 
+/* ---- Track structure and markers ------------------------------------------
+ *
+ * Track structure edits are undoable like the other editing primitives.
+ * Track height, mute and lock are NOT undoable in the engine (the
+ * application wires those buttons straight to the setters, see
+ * app/widget/timelinewidget/trackview/trackviewitem.cpp), and this family
+ * follows that behavior. Marker edits are undoable.
+ * All marker times are frame timestamps in the sequence's frame-rate
+ * timebase, like the rest of the family.
+ */
+
+/**
+ * @brief Remove a track and its content (undoable;
+ * olive::TimelineRemoveTrackCommand). OAKENGINE_E_NOT_FOUND when the track
+ * does not exist.
+ */
+OAKENGINE_API int oakengine_sequence_remove_track(OakEngineSequence *seq,
+												  int track_type,
+												  int track_index);
+
+/**
+ * @brief Move the track at `from_index` to `to_index` within the track
+ * list (undoable).
+ *
+ * Implemented as a true move (take out and re-insert, the tracks in
+ * between shift), assembled from the engine's edge commands. `from_index`
+ * == `to_index` is a no-op success; an out-of-range index fails with
+ * OAKENGINE_E_NOT_FOUND.
+ */
+OAKENGINE_API int oakengine_sequence_move_track(OakEngineSequence *seq,
+												int track_type,
+												int from_index, int to_index);
+
+/**
+ * @brief Track height in the engine's internal units
+ * (Track::get_track_height(); NOT undoable, see the section comment).
+ */
+OAKENGINE_API int oakengine_track_get_height(const OakEngineSequence *seq,
+											 int track_type, int track_index,
+											 double *height);
+
+/**
+ * @brief Set the track height in internal units
+ * (Track::set_track_height(); NOT undoable). `height` must be > 0.
+ */
+OAKENGINE_API int oakengine_track_set_height(OakEngineSequence *seq,
+											 int track_type, int track_index,
+											 double height);
+
+/**
+ * @brief 1 if the track is muted (Track::is_muted()).
+ */
+OAKENGINE_API int oakengine_track_is_muted(const OakEngineSequence *seq,
+										   int track_type, int track_index);
+
+/**
+ * @brief Mute or unmute the track (Track::set_muted(); NOT undoable).
+ */
+OAKENGINE_API int oakengine_track_set_muted(OakEngineSequence *seq,
+											int track_type, int track_index,
+											int muted);
+
+/**
+ * @brief 1 if the track is locked (Track::is_locked()).
+ */
+OAKENGINE_API int oakengine_track_is_locked(const OakEngineSequence *seq,
+											int track_type, int track_index);
+
+/**
+ * @brief Lock or unlock the track (Track::set_locked(); NOT undoable).
+ */
+OAKENGINE_API int oakengine_track_set_locked(OakEngineSequence *seq,
+											 int track_type, int track_index,
+											 int locked);
+
+/**
+ * @brief Add a timeline marker at `time_ts` named `name` (undoable;
+ * olive::MarkerAddCommand).
+ *
+ * The engine does not allow two markers at the exact same time (its
+ * insertion asserts on it), so adding one fails with OAKENGINE_E_STATE.
+ * `name` may be NULL for an empty name.
+ */
+OAKENGINE_API int oakengine_sequence_marker_add(OakEngineSequence *seq,
+												int64_t time_ts,
+												const char *name);
+
+/**
+ * @brief Remove the (first) marker at `time_ts` (undoable;
+ * olive::MarkerRemoveCommand). OAKENGINE_E_NOT_FOUND when no marker exists
+ * at that exact time.
+ */
+OAKENGINE_API int oakengine_sequence_marker_remove(OakEngineSequence *seq,
+												   int64_t time_ts);
+
+/**
+ * @brief Rename the (first) marker at `time_ts` (undoable;
+ * olive::MarkerChangeNameCommand). OAKENGINE_E_NOT_FOUND when no marker
+ * exists at that exact time.
+ */
+OAKENGINE_API int oakengine_sequence_marker_rename(OakEngineSequence *seq,
+												   int64_t time_ts,
+												   const char *name);
+
 #ifdef __cplusplus
 }
 #endif
