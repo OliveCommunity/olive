@@ -22,6 +22,8 @@
 #ifndef OAK_VIEWERGLWIDGET_H
 #define OAK_VIEWERGLWIDGET_H
 
+#include <atomic>
+
 #include <QImage>
 #include <QMatrix4x4>
 #include <QRubberBand>
@@ -33,7 +35,6 @@
 #include "node/output/track/tracklist.h"
 #include "node/traverser.h"
 #include "tool/tool.h"
-#include "viewerplaybacktimer.h"
 #include "viewerqueue.h"
 #include "viewersafemargininfo.h"
 #include "viewertexteditor.h"
@@ -154,9 +155,16 @@ public:
 		return &queue_;
 	}
 
-	ViewerPlaybackTimer *timer()
+	/**
+	 * @brief Feed the facade playback position as this display's clock
+	 *
+	 * The facade playback engine owns the master clock now; the
+	 * ViewerWidget polls it (oakengine_playback_get_position) and pushes
+	 * the timestamp here for update_from_queue() to pop by.
+	 */
+	void set_playback_timestamp(int64_t ts)
 	{
-		return &timer_;
+		external_ts_.store(ts);
 	}
 
 	QPointF screen_to_scene_point(const QPoint &p);
@@ -461,7 +469,7 @@ private:
 	// Playback
 	ViewerQueue queue_;
 
-	ViewerPlaybackTimer timer_;
+	std::atomic<int64_t> external_ts_{ -1 };
 
 	Rational playback_timebase_;
 

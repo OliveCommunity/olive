@@ -35,7 +35,6 @@
 #include <QScreen>
 #include <QTextEdit>
 
-#include "audio/audiomanager.h"
 #include "common/define.h"
 #include "common/html.h"
 #include "common/qtutils.h"
@@ -1633,8 +1632,10 @@ void ViewerDisplayWidget::play(const int64_t &start_timestamp,
 	playback_timebase_ = timebase;
 	playback_speed_ = playback_speed;
 
-	timer_.start(start_timestamp, playback_speed, timebase.to_double(),
-				 AudioManager::instance());
+	// The facade playback engine owns the master clock; seed the display
+	// clock with the start timestamp (the ViewerWidget keeps feeding it
+	// from oakengine_playback_get_position afterwards).
+	external_ts_.store(start_timestamp);
 
 	if (start_updating) {
 		connect(this, &ViewerDisplayWidget::frame_swapped, this,
@@ -1648,6 +1649,8 @@ void ViewerDisplayWidget::pause()
 {
 	disconnect(this, &ViewerDisplayWidget::frame_swapped, this,
 			   &ViewerDisplayWidget::update_from_queue);
+
+	external_ts_.store(-1);
 
 	queue_.clear();
 	queue_starved_ = false;
@@ -1664,7 +1667,11 @@ QPointF ViewerDisplayWidget::screen_to_scene_point(const QPoint &p)
 
 void ViewerDisplayWidget::update_from_queue()
 {
-	int64_t t = timer_.get_timestamp_now();
+	const int64_t t = external_ts_.load();
+	if (t < 0) {
+		// No facade playback position fed yet.
+		return;
+	}
 
 	Rational time = Timecode::timestamp_to_time(t, playback_timebase_);
 

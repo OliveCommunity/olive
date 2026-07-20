@@ -282,6 +282,9 @@ void pull_loop(OakEnginePlaybackState *state)
 			state->paused_ts.store(end_ts);
 			state->last_start_ts.store(end_ts);
 			state->state.store(k_state_stopped);
+			if (olive::AudioManager::instance()) {
+				olive::AudioManager::instance()->stop_output();
+			}
 			break;
 		}
 
@@ -306,6 +309,11 @@ void stop_and_join(OakEnginePlaybackState *state)
 		} else {
 			state->pull_thread.join();
 		}
+	}
+	// Do not leave buffered audio playing out after a pause/stop (an
+	// output stream stays active and audible otherwise).
+	if (olive::AudioManager::instance()) {
+		olive::AudioManager::instance()->stop_output();
 	}
 }
 
@@ -424,8 +432,10 @@ int oakengine_playback_start(OakEnginePlayback *self, int64_t start_ts,
 	state->next_audio_time.store(start_ts * state->time_base.to_double());
 	state->wall_timer.restart();
 	if (olive::AudioManager::instance()) {
-		// Restart the master clock at zero for this run (the viewer does
-		// the same in finish_play_preprocess()).
+		// Flush whatever a previous run left in the output, then restart
+		// the master clock at zero for this run (the viewer did the same
+		// in finish_play_preprocess()).
+		olive::AudioManager::instance()->clear_buffered_output();
 		olive::AudioManager::instance()->reset_output_clock();
 	}
 	state->anchor_clock.store(master_clock_seconds(state));
@@ -452,6 +462,10 @@ int oakengine_playback_pause(OakEnginePlayback *self)
 		state->state.store(k_state_paused);
 		if (state->renderer) {
 			oakengine_renderer_cancel(state->renderer);
+		}
+		// Do not leave buffered audio playing out while paused.
+		if (olive::AudioManager::instance()) {
+			olive::AudioManager::instance()->stop_output();
 		}
 	}
 	return OAKENGINE_OK;

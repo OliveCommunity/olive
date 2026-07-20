@@ -32,7 +32,7 @@
 #include "audio/audioprocessor.h"
 #include "audiowaveformview.h"
 #include "node/output/viewer/viewer.h"
-#include "render/previewaudiodevice.h"
+#include "oakengine/playback.h"
 #include "render/previewautocacher.h"
 #include "viewerdisplay.h"
 #include "viewersizer.h"
@@ -251,13 +251,7 @@ private:
 
 	void set_display_image(RenderTicketPtr ticket);
 
-	RenderTicketWatcher *request_next_frame_for_queue(bool increment = true);
-
 	RenderTicketPtr get_frame(const Rational &t);
-
-	void finish_play_preprocess();
-
-	int determine_playback_queue_size();
 
 	static FramePtr decode_cached_image(const QString &cache_path,
 									  const QUuid &cache_id,
@@ -273,8 +267,6 @@ private:
 
 	void update_auto_cacher();
 
-	void decrement_prequeued_audio();
-
 	void arm_for_recording();
 
 	void disarm_recording();
@@ -284,6 +276,15 @@ private:
 	void detect_multicam_node(const Rational &time);
 
 	bool is_video_visible() const;
+
+	void deliver_facade_frame(const FramePtr &frame, const Rational &ts);
+
+	// Trampolines for the facade playback engine's pull-thread
+	// callbacks; both marshal onto the main thread.
+	static void facade_frame_callback(const oak_playback_frame *frame,
+									  void *userdata);
+	static void facade_audio_callback(const oak_playback_audio *audio,
+									  void *userdata);
 
 	ViewerSizer *sizer_;
 
@@ -305,29 +306,20 @@ private:
 
 	ViewerDisplayWidget *context_menu_widget_;
 
-	QTimer playback_backup_timer_;
+	// Facade playback session (created on first play; the engine drives
+	// frames/audio from its pull thread and we poll its position).
+	OakEnginePlayback *playback_;
+	QTimer playback_poll_timer_;
 
-	int64_t playback_queue_next_frame_;
-	int64_t dry_run_next_frame_;
+	// Sample-rate/channel converter for the audio SCRUB path (continuous
+	// playback audio is handled by the facade engine itself).
+	AudioProcessor audio_processor_;
+
 	QVector<ViewerDisplayWidget *> playback_devices_;
-
-	bool prequeuing_video_;
-	int prequeuing_audio_;
 
 	QList<RenderTicketWatcher *> nonqueue_watchers_;
 
 	Rational last_length_;
-
-	int prequeue_length_;
-	int prequeue_count_;
-
-	QVector<RenderTicketWatcher *> queue_watchers_;
-
-	std::list<RenderTicketWatcher *> audio_playback_queue_;
-	Rational audio_playback_queue_time_;
-	AudioProcessor audio_processor_;
-	QByteArray prequeued_audio_;
-	static const Rational k_audio_playback_interval;
 
 	static QVector<ViewerWidget *> instances;
 
@@ -340,14 +332,9 @@ private:
 	Track::Reference recording_track_;
 	QString recording_filename_;
 
-	qint64 queue_starved_start_;
-	RenderTicketWatcher *first_requeue_watcher_;
-
 	bool enable_audio_scrubbing_;
 
 	WaveformMode waveform_mode_;
-
-	QVector<RenderTicketWatcher *> dry_run_watchers_;
 
 	int ignore_scrub_;
 
@@ -357,7 +344,7 @@ private:
 	MulticamWidget *multicam_panel_;
 
 private slots:
-	void playback_timer_update();
+	void playback_poll_update();
 
 	void length_changed_slot(const Rational &length);
 
@@ -387,8 +374,6 @@ private slots:
 
 	void renderer_generated_frame();
 
-	void renderer_generated_frame_for_queue();
-
 	void viewer_invalidated_video_range(const olive::TimeRange &range);
 
 	void update_waveform_mode_from_menu(QAction *a);
@@ -397,29 +382,13 @@ private slots:
 
 	void dropped(QDropEvent *event);
 
-	void queue_next_audio_buffer();
-
-	void received_audio_buffer_for_playback();
-
 	void received_audio_buffer_for_scrubbing();
-
-	void queue_starved();
-	void queue_no_longer_starved();
-
-	void force_requeue_from_current_time();
-	void force_requeue_from_current_time_internal();
 
 	void update_audio_processor();
 
 	void create_addable_at(const QRectF &f);
 
-	void handle_first_requeue_destroy();
-
 	void show_subtitle_properties();
-
-	void dry_run_finished();
-
-	void request_next_dry_run();
 
 	void save_frame_as_image();
 

@@ -57,24 +57,14 @@ namespace olive
 
 QVector<ViewerWidget *> ViewerWidget::instances;
 
-// NOTE: Hardcoded interval of size of audio chunk to render and send to the output at a time.
-//       We want this to be as long as possible so the code has plenty of time to send the audio
-//       while also being as short as possible so users get relatively immediate feedback when
-//       changing values. 1/4 second seems to be a good middleground.
-const Rational ViewerWidget::k_audio_playback_interval = Rational(1, 4);
-
-const Rational k_video_playback_interval = Rational(1, 10);
-
 ViewerWidget::ViewerWidget(ViewerDisplayWidget *display, QWidget *parent)
 	: super(false, true, parent)
 	, playback_speed_(0)
 	, color_menu_enabled_(true)
 	, time_changed_from_timer_(false)
-	, prequeuing_video_(false)
-	, prequeuing_audio_(0)
+	, playback_(nullptr)
 	, record_armed_(false)
 	, recording_(false)
-	, first_requeue_watcher_(nullptr)
 	, enable_audio_scrubbing_(true)
 	, waveform_mode_(k_wf_automatic)
 	, ignore_scrub_(0)
@@ -113,10 +103,6 @@ ViewerWidget::ViewerWidget(ViewerDisplayWidget *display, QWidget *parent)
 			&ViewerWidget::dropped);
 	connect(display_widget_, &ViewerDisplayWidget::texture_changed, this,
 			&ViewerWidget::texture_changed);
-	connect(display_widget_, &ViewerDisplayWidget::queue_starved, this,
-			&ViewerWidget::queue_starved);
-	connect(display_widget_, &ViewerDisplayWidget::queue_no_longer_starved, this,
-			&ViewerWidget::queue_no_longer_starved);
 	connect(display_widget_, &ViewerDisplayWidget::create_addable_at, this,
 			&ViewerWidget::create_addable_at);
 	connect(sizer_, &ViewerSizer::request_scale, display_widget_,
@@ -168,8 +154,8 @@ ViewerWidget::ViewerWidget(ViewerDisplayWidget *display, QWidget *parent)
 	connect(waveform_view_, &AudioWaveformView::customContextMenuRequested,
 			this, &ViewerWidget::show_context_menu);
 
-	connect(&playback_backup_timer_, &QTimer::timeout, this,
-			&ViewerWidget::playback_timer_update);
+	connect(&playback_poll_timer_, &QTimer::timeout, this,
+			&ViewerWidget::playback_poll_update);
 
 	set_auto_max_scroll_bar(true);
 
@@ -188,6 +174,10 @@ ViewerWidget::ViewerWidget(ViewerDisplayWidget *display, QWidget *parent)
 ViewerWidget::~ViewerWidget()
 {
 	instances.removeOne(this);
+
+	// Stop and release the facade playback session.
+	oakengine_playback_free(playback_);
+	playback_ = nullptr;
 
 	auto windows = windows_;
 
@@ -560,14 +550,6 @@ void ViewerWidget::update_auto_cacher()
 		get_connected_node()->get_playhead());
 }
 
-void ViewerWidget::decrement_prequeued_audio()
-{
-	prequeuing_audio_--;
-	if (!prequeuing_audio_) {
-		finish_play_preprocess();
-	}
-}
-
 void ViewerWidget::arm_for_recording()
 {
 	controls_->start_play_blink();
@@ -657,14 +639,6 @@ void ViewerWidget::create_addable_at(const QRectF &f)
 	}
 }
 
-void ViewerWidget::handle_first_requeue_destroy()
-{
-	// Extra protection to ensure we don't reference a destroyed object
-	if (first_requeue_watcher_ == sender()) {
-		first_requeue_watcher_ = nullptr;
-	}
-}
-
 void ViewerWidget::show_subtitle_properties()
 {
 	QFont f(OAK_CONFIG("DefaultSubtitleFamily").toString(),
@@ -678,39 +652,6 @@ void ViewerWidget::show_subtitle_properties()
 		OAK_CONFIG("DefaultSubtitleFamily") = f.family();
 		OAK_CONFIG("DefaultSubtitleWeight") = f.weight();
 		display_widget_->update();
-	}
-}
-
-void ViewerWidget::dry_run_finished()
-{
-	RenderTicketWatcher *w = static_cast<RenderTicketWatcher *>(sender());
-
-	if (dry_run_watchers_.contains(w)) {
-		request_next_dry_run();
-	}
-
-	delete w;
-}
-
-void ViewerWidget::request_next_dry_run()
-{
-	if (is_playing()) {
-		Rational next_time =
-			Timecode::timestamp_to_time(dry_run_next_frame_, timebase());
-		if (frame_exists_at_time(next_time)) {
-			if (next_time > get_connected_node()->get_playhead() +
-								RenderManager::k_dry_run_interval) {
-				QTimer::singleShot(timebase().to_double() / playback_speed_,
-								   this, &ViewerWidget::request_next_dry_run);
-			} else {
-				RenderTicketWatcher *watcher = new RenderTicketWatcher(this);
-				connect(watcher, &RenderTicketWatcher::finished, this,
-						&ViewerWidget::dry_run_finished);
-				watcher->set_ticket(get_single_frame(next_time, true));
-				dry_run_next_frame_ += playback_speed_;
-				dry_run_watchers_.append(watcher);
-			}
-		}
 	}
 }
 
@@ -844,80 +785,6 @@ void ViewerWidget::update_waveform_view_from_mode()
 	}
 }
 
-void ViewerWidget::queue_next_audio_buffer()
-{
-	Rational queue_end =
-		audio_playback_queue_time_ + (k_audio_playback_interval * playback_speed_);
-
-	// Clamp queue end by zero and the audio length
-	queue_end = std::clamp(queue_end, Rational(0),
-						   get_connected_node()->get_audio_length());
-	if ((playback_speed_ > 0 && queue_end <= audio_playback_queue_time_) ||
-		(playback_speed_ < 0 && queue_end >= audio_playback_queue_time_)) {
-		// This will queue nothing, so stop the loop here
-		if (prequeuing_audio_) {
-			decrement_prequeued_audio();
-		}
-		return;
-	}
-
-	RenderTicketWatcher *watcher = new RenderTicketWatcher(this);
-	connect(watcher, &RenderTicketWatcher::finished, this,
-			&ViewerWidget::received_audio_buffer_for_playback);
-	audio_playback_queue_.push_back(watcher);
-	watcher->set_ticket(RenderManager::instance()->get_cacher()->get_range_of_audio(
-		get_connected_node(), TimeRange(audio_playback_queue_time_, queue_end)));
-
-	audio_playback_queue_time_ = queue_end;
-}
-
-void ViewerWidget::received_audio_buffer_for_playback()
-{
-	while (!audio_playback_queue_.empty() &&
-		   audio_playback_queue_.front()->has_result()) {
-		RenderTicketWatcher *watcher = audio_playback_queue_.front();
-		audio_playback_queue_.pop_front();
-
-		if (watcher->has_result()) {
-			SampleBuffer samples = watcher->get().value<SampleBuffer>();
-			if (samples.is_allocated()) {
-				// If the samples must be reversed, reverse them now
-				if (playback_speed_ < 0) {
-					samples.reverse();
-				}
-
-				// Convert to packed data for audio output
-				AudioProcessor::Buffer buf;
-				int r = audio_processor_.convert(samples.to_raw_ptrs().data(),
-															 samples.sample_count(), &buf);
-
-				// TempoProcessor may have emptied the array
-				if (r >= 0) {
-					if (!buf.empty()) {
-						const QByteArray &pack = buf.at(0);
-						if (prequeuing_audio_) {
-							// Add to prequeued audio buffer
-							prequeued_audio_.append(pack);
-						} else {
-							// Push directly to audio manager
-							AudioManager::instance()->push_to_output(
-								audio_processor_.to(), pack);
-						}
-					}
-				} else {
-					qCritical() << "Failed to process audio for playback:" << r;
-				}
-			}
-		}
-
-		if (prequeuing_audio_) {
-			decrement_prequeued_audio();
-		}
-
-		delete watcher;
-	}
-}
-
 void ViewerWidget::received_audio_buffer_for_scrubbing()
 {
 	RenderTicketWatcher *watcher = static_cast<RenderTicketWatcher *>(sender());
@@ -959,67 +826,6 @@ void ViewerWidget::received_audio_buffer_for_scrubbing()
 	}
 
 	delete watcher;
-}
-
-void ViewerWidget::queue_starved()
-{
-	static const int k_maximum_wait_time_ms = 250;
-	static const Rational k_maximum_wait_time(k_maximum_wait_time_ms, 1000);
-	qint64 now = QDateTime::currentMSecsSinceEpoch();
-
-	if (!queue_starved_start_) {
-		queue_starved_start_ = now;
-	} else if (now > queue_starved_start_ + k_maximum_wait_time_ms) {
-		if (first_requeue_watcher_) {
-			if (get_connected_node()->get_playhead() + k_maximum_wait_time <
-				first_requeue_watcher_->property("time").value<Rational>()) {
-				// We still have time
-				return;
-			}
-		}
-
-		force_requeue_from_current_time();
-		queue_starved_start_ = 0;
-	}
-}
-
-void ViewerWidget::queue_no_longer_starved()
-{
-	queue_starved_start_ = 0;
-}
-
-void ViewerWidget::force_requeue_from_current_time()
-{
-	// Defer the requeue to the next event-loop iteration. This function is often
-	// called from paintEvent paths (QueueStarved) where synchronously cancelling
-	// watchers can re-enter the same RenderTicket mutex and deadlock.
-	QMetaObject::invokeMethod(
-		this, [this]() { force_requeue_from_current_time_internal(); },
-		Qt::QueuedConnection);
-}
-
-void ViewerWidget::force_requeue_from_current_time_internal()
-{
-	// Allow half a second for requeue to complete
-	static const Rational k_requeue_wait_time(1);
-
-	RenderManager::instance()->get_cacher()->clear_single_frame_renders();
-	queue_watchers_.clear();
-	int queue = determine_playback_queue_size();
-	playback_queue_next_frame_ =
-		get_timestamp() +
-		playback_speed_ * Timecode::time_to_timestamp(
-							  k_requeue_wait_time, timebase(), Timecode::k_floor);
-	;
-	first_requeue_watcher_ = nullptr;
-	for (int i = 0; i < queue; i++) {
-		RenderTicketWatcher *watcher = request_next_frame_for_queue();
-		if (!first_requeue_watcher_) {
-			first_requeue_watcher_ = watcher;
-			connect(first_requeue_watcher_, &RenderTicketWatcher::destroyed,
-					this, &ViewerWidget::handle_first_requeue_destroy);
-		}
-	}
 }
 
 void ViewerWidget::update_texture_from_node()
@@ -1077,6 +883,13 @@ void ViewerWidget::play_internal(int speed, bool in_to_out_only)
 		return;
 	}
 
+	if (speed < 0) {
+		// The facade playback engine covers forward playback only this
+		// round; backward/shuttle playback is deferred (roadmap 附 A).
+		qWarning() << "ViewerWidget: backward playback is not supported yet";
+		return;
+	}
+
 	// Kindly tell all viewers to stop playing and caching so all resources can be used for playback
 	foreach (ViewerWidget *viewer, instances) {
 		if (viewer != this) {
@@ -1097,76 +910,69 @@ void ViewerWidget::play_internal(int speed, bool in_to_out_only)
 		Rational last_frame = get_connected_node()->get_length() - timebase();
 		if (!in_to_out_only &&
 			get_connected_node()->get_playhead() >= last_frame) {
-			if (speed > 0) {
-				get_connected_node()->set_playhead(0);
-			} else {
-				get_connected_node()->set_playhead(last_frame);
-			}
+			get_connected_node()->set_playhead(0);
 		}
 	}
 
 	playback_speed_ = speed;
 	play_in_to_out_only_ = in_to_out_only;
 
-	playback_queue_next_frame_ = get_timestamp() + playback_speed_;
-
 	controls_->show_pause_button();
 
-	queue_starved_start_ = 0;
-
-	// Attempt to fill playback queue
-	if (is_video_visible()) {
-		prequeue_length_ = determine_playback_queue_size();
-
-		if (prequeue_length_ > 0) {
-			prequeuing_video_ = true;
-			prequeue_count_ = 0;
-
-			for (int i = 0; i < prequeue_length_; i++) {
-				request_next_frame_for_queue();
-			}
-
-			dry_run_next_frame_ = playback_queue_next_frame_;
-			request_next_dry_run();
+	// Start the facade playback session: its pull thread renders frames
+	// and 1/4s audio blocks ahead, pushes audio to the AudioManager
+	// itself and feeds our frame/audio callbacks.
+	if (!playback_) {
+		const VideoParams vp = get_connected_node()->get_video_params();
+		playback_ = oakengine_playback_create(
+			reinterpret_cast<OakEngineSequence *>(get_connected_node()),
+			vp.effective_width(), vp.effective_height(),
+			timebase().denominator(), timebase().numerator());
+		if (!playback_) {
+			qWarning() << "ViewerWidget: failed to create playback session";
+			playback_speed_ = 0;
+			controls_->show_play_button();
+			return;
 		}
+		oakengine_playback_set_frame_callback(
+			playback_, &ViewerWidget::facade_frame_callback, this);
+		oakengine_playback_set_audio_callback(
+			playback_, &ViewerWidget::facade_audio_callback, this);
 	}
 
-	AudioParams ap = get_connected_node()->get_audio_params();
-	qDebug() << "ViewerWidget::PlayInternal: audio params valid=" << ap.is_valid()
-			 << "channel_count=" << ap.channel_count();
-	if (ap.is_valid() && ap.channel_count() != 0) {
-		update_audio_processor();
-
-		// Verify audio processor output params are valid before using them
-		AudioParams output_params = audio_processor_.to();
-		qDebug() << "ViewerWidget::PlayInternal: audio processor output params valid="
-				 << output_params.is_valid();
-		if (!output_params.is_valid()) {
-			qWarning()
-				<< "Audio processor output params are invalid, skipping audio playback";
-		} else {
-			AudioManager::instance()->set_output_notify_interval(
-				output_params.time_to_bytes(k_audio_playback_interval));
-			connect(AudioManager::instance(), &AudioManager::output_notify, this,
-					&ViewerWidget::queue_next_audio_buffer);
-
-			static const int prequeue_count = 2;
-			prequeuing_audio_ =
-				prequeue_count; // Queue two buffers ahead of time
-			audio_playback_queue_time_ = get_connected_node()->get_playhead();
-			qDebug() << "ViewerWidget::PlayInternal: prequeuing audio start time="
-					 << audio_playback_queue_time_.to_double();
-			for (int i = 0; i < prequeue_count; i++) {
-				queue_next_audio_buffer();
-			}
-		}
+	const int64_t start_ts = get_timestamp();
+	if (oakengine_playback_start(playback_, start_ts, playback_speed_) !=
+		OAKENGINE_OK) {
+		char err[512];
+		err[0] = '\0';
+		oakengine_playback_last_error(playback_, err, sizeof(err));
+		qWarning() << "ViewerWidget: failed to start playback:"
+				   << (err[0] ? err : "(no error)");
+		playback_speed_ = 0;
+		controls_->show_play_button();
+		return;
 	}
 
-	// If there's nothing to prequeue, start playback immediately so the
-	// playhead advances even when only the audio waveform is visible.
-	if (!prequeuing_video_ && !prequeuing_audio_) {
-		finish_play_preprocess();
+	// Waveform monitor stays UI-side (it needs the connected waveform
+	// metadata); the facade pushes audio to the output by itself.
+	if (get_connected_node()->get_audio_params().channel_count() > 0) {
+		AudioMonitor::start_waveform_on_all(
+			get_connected_node()->get_connected_waveform(),
+			get_connected_node()->get_playhead(), playback_speed_);
 	}
+
+	display_widget_->reset_fps_timer();
+
+	foreach (ViewerDisplayWidget *dw, playback_devices_) {
+		dw->play(start_ts, playback_speed_, timebase(), is_video_visible());
+	}
+
+	// The UI poll timer drives the playhead, boundary and loop policy
+	// from the facade's playback position.
+	playback_poll_timer_.setInterval(
+		qMax(1, qFloor(timebase().to_double() * 1000.0)));
+	playback_poll_timer_.start();
+	playback_poll_update();
 
 	// Force screen to stay awake
 	prevent_sleep(true);
@@ -1192,28 +998,15 @@ void ViewerWidget::pause_internal()
 			dw->pause();
 		}
 
-		// Cancel in-flight render tickets before deleting watchers,
-		// otherwise the render thread keeps working on stale frames
-		// and blocks the single-frame render requested by UpdateTextureFromNode().
-		foreach (RenderTicketWatcher *watcher, queue_watchers_) {
-			watcher->cancel();
+		// The facade pause also stops the audio output (engine side).
+		if (playback_) {
+			oakengine_playback_pause(playback_);
 		}
-		qDeleteAll(queue_watchers_);
-		queue_watchers_.clear();
-		RenderManager::instance()->get_cacher()->clear_single_frame_renders();
+		playback_poll_timer_.stop();
 
-		playback_backup_timer_.stop();
-
-		// Handle audio
-		AudioManager::instance()->stop_output();
 		AudioMonitor::stop_on_all();
-		prequeued_audio_.clear();
-		disconnect(AudioManager::instance(), &AudioManager::output_notify, this,
-				   &ViewerWidget::queue_next_audio_buffer);
-		qDeleteAll(audio_playback_queue_);
-		audio_playback_queue_.clear();
-		update_audio_processor();
 
+		RenderManager::instance()->get_cacher()->clear_single_frame_renders();
 		RenderManager::instance()->get_cacher()->set_thumbnails_paused(false);
 
 		update_texture_from_node();
@@ -1221,12 +1014,72 @@ void ViewerWidget::pause_internal()
 		RenderManager::instance()->set_aggressive_garbage_collection(false);
 	}
 
-	prequeuing_video_ = false;
-	prequeuing_audio_ = 0;
-	dry_run_watchers_.clear();
-
 	// Reset screen timeout timer
 	prevent_sleep(false);
+}
+
+void ViewerWidget::facade_frame_callback(const oak_playback_frame *frame,
+										 void *userdata)
+{
+	ViewerWidget *viewer = static_cast<ViewerWidget *>(userdata);
+
+	// Wrap the CPU pixels now (the payload dies when we return), then
+	// append to the display queue on the main thread -- the same
+	// destination the old renderer_generated_frame_for_queue used.
+	FramePtr copy = Frame::create();
+	copy->set_video_params(
+		VideoParams(frame->width, frame->height, viewer->timebase(),
+					static_cast<PixelFormat::Format>(frame->format),
+					VideoParams::k_internal_channel_count));
+	copy->allocate();
+	const int row_bytes = qMin(frame->linesize, copy->linesize_bytes());
+	for (int y = 0; y < frame->height; y++) {
+		memcpy(copy->data() + y * copy->linesize_bytes(),
+			   static_cast<const char *>(frame->data) + y * frame->linesize,
+			   size_t(row_bytes));
+	}
+
+	const Rational ts =
+		Timecode::timestamp_to_time(frame->timestamp, viewer->timebase());
+	QMetaObject::invokeMethod(viewer, [viewer, copy, ts]() {
+		viewer->deliver_facade_frame(copy, ts);
+	}, Qt::QueuedConnection);
+}
+
+void ViewerWidget::facade_audio_callback(const oak_playback_audio *audio,
+										 void *userdata)
+{
+	ViewerWidget *viewer = static_cast<ViewerWidget *>(userdata);
+
+	// Copy the block for the level monitor (the payload dies when we
+	// return; the facade already pushed it to the AudioManager).
+	const AudioParams params(
+		audio->sample_rate,
+		viewer->get_connected_node() ?
+			viewer->get_connected_node()->get_audio_params().channel_layout() :
+			core::k_channel_layout_stereo,
+		core::SampleFormat::f32_p);
+	SampleBuffer buffer(params, size_t(audio->sample_count));
+	for (int ch = 0; ch < audio->channels; ch++) {
+		memcpy(buffer.to_raw_ptrs()[ch], audio->channel_data[ch],
+			   size_t(audio->sample_count) * sizeof(float));
+	}
+
+	QMetaObject::invokeMethod(viewer, [buffer]() {
+		AudioMonitor::push_sample_buffer_on_all(buffer);
+	}, Qt::QueuedConnection);
+}
+
+void ViewerWidget::deliver_facade_frame(const FramePtr &frame,
+										const Rational &ts)
+{
+	if (!is_playing()) {
+		return;
+	}
+	foreach (ViewerDisplayWidget *dw, playback_devices_) {
+		dw->queue()->append_timewise({ ts, QVariant::fromValue(frame) },
+									 playback_speed_);
+	}
 }
 
 void ViewerWidget::push_scrubbed_audio()
@@ -1322,34 +1175,9 @@ void ViewerWidget::set_display_image(RenderTicketPtr ticket)
 	}
 }
 
-RenderTicketWatcher *ViewerWidget::request_next_frame_for_queue(bool increment)
-{
-	RenderTicketWatcher *watcher = nullptr;
-
-	Rational next_time =
-		Timecode::timestamp_to_time(playback_queue_next_frame_, timebase());
-
-	if (frame_exists_at_time(next_time) || viewer_might_be_a_still()) {
-		if (increment) {
-			playback_queue_next_frame_ += playback_speed_;
-		}
-
-		watcher = new RenderTicketWatcher();
-		watcher->setProperty("start", QDateTime::currentMSecsSinceEpoch());
-		watcher->setProperty("time", QVariant::fromValue(next_time));
-		detect_multicam_node(next_time);
-		connect(watcher, &RenderTicketWatcher::finished, this,
-				&ViewerWidget::renderer_generated_frame_for_queue);
-		queue_watchers_.append(watcher);
-		watcher->set_ticket(get_frame(next_time));
-	}
-
-	return watcher;
-}
-
 RenderTicketPtr ViewerWidget::get_frame(const Rational &t)
 {
-	if (is_playing() || prequeuing_video_) {
+	if (is_playing()) {
 		return get_single_frame(t);
 	}
 
@@ -1373,76 +1201,6 @@ RenderTicketPtr ViewerWidget::get_frame(const Rational &t)
 			Timecode::time_to_timestamp(t, timebase(), Timecode::k_floor));
 		return ticket;
 	}
-}
-
-void ViewerWidget::finish_play_preprocess()
-{
-	// Check if we're still waiting for video or audio respectively
-	if (prequeuing_video_ || prequeuing_audio_) {
-		return;
-	}
-
-	int64_t playback_start_time = get_timestamp();
-
-	// Restart the audio output clock for this playback run; the playback
-	// timer uses it as its master clock
-	AudioManager::instance()->reset_output_clock();
-
-	// Start audio waveform playback
-	if (!prequeued_audio_.isEmpty()) {
-		QString error;
-		if (!AudioManager::instance()->push_to_output(audio_processor_.to(),
-													prequeued_audio_, &error)) {
-			QMessageBox::critical(
-				this, tr("Audio Error"),
-				tr("Failed to start audio: %1\n\n"
-				   "Please check your audio preferences and try again.")
-					.arg(error));
-		}
-		prequeued_audio_.clear();
-
-		AudioMonitor::start_waveform_on_all(
-			get_connected_node()->get_connected_waveform(),
-			get_connected_node()->get_playhead(), playback_speed_);
-	}
-
-	display_widget_->reset_fps_timer();
-
-	foreach (ViewerDisplayWidget *dw, playback_devices_) {
-		dw->play(playback_start_time, playback_speed_, timebase(),
-				 is_video_visible());
-	}
-
-	// This is our timer for loading the queue and setting the time
-	playback_backup_timer_.setInterval(
-		qMax(1, qFloor(timebase_dbl() * 1000.0)));
-	playback_backup_timer_.start();
-
-	playback_timer_update();
-}
-
-int ViewerWidget::determine_playback_queue_size()
-{
-	if (playback_speed_ == 0) {
-		return 0;
-	}
-
-	int64_t end_ts;
-
-	if (playback_speed_ > 0) {
-		end_ts = Timecode::time_to_timestamp(
-			get_connected_node()->get_video_length(), timebase());
-	} else {
-		end_ts = 0;
-	}
-
-	int remaining_frames = (end_ts - get_timestamp() - 1) / playback_speed_;
-
-	// Generate maximum queue
-	int max_frames =
-		qCeil(k_video_playback_interval.to_double() / timebase().to_double());
-
-	return qMin(max_frames, remaining_frames);
 }
 
 void ViewerWidget::context_menu_set_full_screen(QAction *action)
@@ -1511,80 +1269,6 @@ void ViewerWidget::renderer_generated_frame()
 	}
 
 	delete ticket;
-}
-
-void ViewerWidget::renderer_generated_frame_for_queue()
-{
-	RenderTicketWatcher *watcher = static_cast<RenderTicketWatcher *>(sender());
-
-	if (queue_watchers_.contains(watcher)) {
-		queue_watchers_.removeOne(watcher);
-
-		if (watcher->has_result()) {
-			QVariant frame = watcher->get();
-			bool drop_frame = false;
-
-			// Ignore this signal if we've paused now
-			if (is_playing() || prequeuing_video_) {
-				const qint64 start_ms = watcher->property("start").toLongLong();
-				const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
-				const int playback_step = qMax(1, qAbs(playback_speed_));
-				const double frame_interval_ms =
-					qMax(1.0, timebase().to_double() * 1000.0 /
-								  static_cast<double>(playback_step));
-				if (start_ms > 0 && (now_ms - start_ms) > frame_interval_ms) {
-					// If the queue is nearly empty, keep the frame anyway
-					// to prevent the viewer from freezing entirely when
-					// rendering can't keep up with playback speed.
-					if (display_widget_->queue()->size() >= 2) {
-						drop_frame = true;
-					}
-				}
-
-				Rational ts = watcher->property("time").value<Rational>();
-
-				if (!drop_frame) {
-					foreach (ViewerDisplayWidget *dw, playback_devices_) {
-						const bool is_multicam =
-							dynamic_cast<MulticamDisplay *>(dw);
-						QVariant push;
-						if (is_multicam) {
-							push = watcher->get_ticket()->property(
-								"multicam_output");
-							if (!push.isValid() || push.isNull()) {
-								// Fall back to the primary frame when multicam isn't available.
-								push = frame;
-							}
-						} else {
-							push = frame;
-						}
-
-						dw->queue()->append_timewise({ ts, push },
-													playback_speed_);
-					}
-				}
-
-				if (prequeuing_video_) {
-					prequeue_count_++;
-
-					if (prequeue_count_ == prequeue_length_) {
-						prequeuing_video_ = false;
-						finish_play_preprocess();
-					} else {
-						// This call was mostly necessary to keep the threads busy between prequeue and playback.
-						// If we only have a single render thread, it's no longer necessary.
-						//RequestNextFrameForQueue();
-					}
-				}
-			}
-		}
-	}
-
-	if (first_requeue_watcher_ == watcher) {
-		first_requeue_watcher_ = nullptr;
-	}
-
-	delete watcher;
 }
 
 void ViewerWidget::show_context_menu(const QPoint &pos)
@@ -1956,12 +1640,18 @@ void ViewerWidget::TimebaseChangedEvent(const Rational &timebase)
 	length_changed_slot(get_connected_node() ? get_connected_node()->get_length() : 0);
 }
 
-void ViewerWidget::playback_timer_update()
+void ViewerWidget::playback_poll_update()
 {
-	Q_ASSERT(playback_speed_ != 0);
+	if (!playback_ || !is_playing() || !get_connected_node()) {
+		return;
+	}
 
-	Rational current_time = Timecode::timestamp_to_time(
-		display_widget_->timer()->get_timestamp_now(), timebase());
+	// The facade playback engine owns the master clock; poll its
+	// position for the playhead, boundary and loop policy (the min/max
+	// part of the old playback_timer_update).
+	int64_t pos_ts = 0;
+	oakengine_playback_get_position(playback_, &pos_ts);
+	Rational current_time = Timecode::timestamp_to_time(pos_ts, timebase());
 
 	Rational min_time, max_time;
 
@@ -1993,31 +1683,21 @@ void ViewerWidget::playback_timer_update()
 	bool play_after_pause = false;
 
 	if ((!recording_ || recording_range_.out() != recording_range_.in()) &&
-		((playback_speed_ < 0 && current_time <= min_time) ||
-		 (playback_speed_ > 0 && current_time >= max_time))) {
-		// Determine which timestamp we tripped
-		Rational tripped_time;
-
-		if (current_time <= min_time) {
-			tripped_time = min_time;
-		} else {
-			tripped_time = max_time;
-		}
-
-		// Signal that we've reached the end of whatever range we're playing and should either pause
-		// or restart playback
+		current_time >= max_time) {
+		// We've reached the end of whatever range we're playing and should either pause
+		// or restart playback (negative speeds are out of scope this round).
 		end_of_line = true;
 
 		if (OAK_CONFIG("Loop").toBool() && !recording_) {
-			// If we're looping, jump to the other side of the workarea and continue
-			time_to_set = (tripped_time == min_time) ? max_time : min_time;
+			// If we're looping, jump back to the start of the range and continue
+			time_to_set = min_time;
 
 			// Signal to restart playback after the pause signalled by `end_of_line`
 			play_after_pause = true;
 
 		} else {
 			// Pause at the boundary we tripped
-			time_to_set = tripped_time;
+			time_to_set = max_time;
 		}
 
 	} else {
@@ -2031,6 +1711,13 @@ void ViewerWidget::playback_timer_update()
 	time_changed_from_timer_ = true;
 	get_connected_node()->set_playhead(time_to_set);
 	time_changed_from_timer_ = false;
+
+	// Feed the display clocks and purge consumed queue entries.
+	foreach (ViewerDisplayWidget *dw, playback_devices_) {
+		dw->set_playback_timestamp(pos_ts);
+		dw->queue()->purge_before(current_time, playback_speed_);
+	}
+
 	if (end_of_line) {
 		// Cache the current speed
 		int current_speed = playback_speed_;
@@ -2039,20 +1726,6 @@ void ViewerWidget::playback_timer_update()
 		if (play_after_pause) {
 			play_internal(current_speed, play_in_to_out_only_);
 		}
-	}
-
-	if (is_playing() && is_video_visible()) {
-		while ((int(display_widget_->queue()->size()) +
-				queue_watchers_.size()) < determine_playback_queue_size()) {
-			if (!request_next_frame_for_queue()) {
-				// Prevent infinite loop
-				break;
-			}
-		}
-	}
-
-	foreach (ViewerDisplayWidget *dw, playback_devices_) {
-		dw->queue()->purge_before(current_time, playback_speed_);
 	}
 }
 

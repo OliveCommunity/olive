@@ -152,7 +152,7 @@ These tests depend on:
 
 The viewer subsystem has the following thread safety characteristics:
 
-1. **ViewerPlaybackTimer**: Thread-safe for concurrent reads, but Start() should not be called concurrently with GetTimestampNow()
+1. **ViewerPlaybackTimer**: removed when playback moved to the facade playback engine (the facade owns the master clock now)
 2. **ViewerQueue**: NOT thread-safe - requires external synchronization for concurrent modifications
 3. **ViewerSafeMarginInfo**: Thread-safe for read-only access after construction
 4. **AudioPlaybackCache**: Uses internal locking for thread safety
