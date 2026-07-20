@@ -25,6 +25,7 @@
 
 #include "export.h"
 #include "init.h"
+#include "node.h"
 #include "project.h"
 
 #ifdef __cplusplus
@@ -51,6 +52,10 @@ extern "C" {
  *     the handle becomes invalid when the project is freed.
  *     oakengine_footage_free() on a borrowed handle only releases the handle
  *     wrapper, never the node.
+ *
+ *   - Borrowing (oakengine_footage_borrow()): wrap a Footage node the
+ *     caller already holds (e.g. selected in the UI) in the same borrowed
+ *     handle model, without probing or importing anything.
  *
  * Image sequences: the application's import asks the user whether numbered
  * stills form a sequence (EngineCore::confirm_image_sequence_handler). No
@@ -200,6 +205,19 @@ OAKENGINE_API int oakengine_footage_get_source_start_time(
 OAKENGINE_API OakEngineFootage *oakengine_project_import_footage(
 	OakEngineProject *project, const char *path);
 
+/**
+ * @brief Wrap an existing project footage node in a BORROWED handle.
+ *
+ * For callers that already hold an engine node (e.g. the application
+ * wrapping the Footage it has selected) and want to use the media
+ * management / stream override functions below. `node` must be a footage
+ * node (anything else yields NULL, see oakengine_footage_last_error()).
+ * The handle borrows the node -- it becomes invalid when the node's
+ * project is freed, and oakengine_footage_free() only releases the
+ * wrapper.
+ */
+OAKENGINE_API OakEngineFootage *oakengine_footage_borrow(OakEngineNode *node);
+
 /* ---- Media management: relink and proxies -----------------------------------
  *
  * These functions operate on BORROWED import handles (footage nodes living
@@ -214,10 +232,10 @@ OAKENGINE_API OakEngineFootage *oakengine_project_import_footage(
  *
  * Calls Footage::set_filename(), which triggers the engine's full reprobe
  * cascade (Footage::clear(): streams, decoder link and the proxy state are
- * reset before re-probing). Fails with OAKENGINE_E_NOT_FOUND when
- * `new_path` does not exist, and with OAKENGINE_E_FAILED when the new file
- * cannot be probed as media. Not undoable (same as the application's
- * relink dialog).
+ * reset before re-probing). The footage label is left unchanged. Fails
+ * with OAKENGINE_E_NOT_FOUND when `new_path` does not exist, and with
+ * OAKENGINE_E_FAILED when the new file cannot be probed as media. Not
+ * undoable (same as the application's relink action).
  */
 OAKENGINE_API int oakengine_footage_relink(OakEngineFootage *footage,
 										   const char *new_path);
@@ -229,8 +247,8 @@ OAKENGINE_API int oakengine_footage_relink(OakEngineFootage *footage,
  * Simplified version of the application's relink dialog matching: each
  * footage whose stored filename does not exist is relinked to
  * `search_dir`/<file name> when that file exists (exact file-name match,
- * no recursion). Returns the number of relinked items (>= 0) or a negative
- * code.
+ * no recursion; labels are left unchanged). Returns the number of
+ * relinked items (>= 0) or a negative code.
  */
 OAKENGINE_API int
 oakengine_project_find_offline_footage(OakEngineProject *project,
@@ -281,6 +299,123 @@ OAKENGINE_API int oakengine_footage_proxy_set_enabled(OakEngineFootage *self,
  */
 OAKENGINE_API int oakengine_footage_proxy_get_path(OakEngineFootage *self,
 												   char *buf, int buf_size);
+
+/* ---- Stream parameter overrides (footage properties) ------------------------
+ *
+ * Per-stream overrides shown by the application's footage properties
+ * dialog (app/dialog/footageproperties). All setters here are UNDOABLE
+ * (pushed onto the global undo stack as one command each, matching the
+ * dialog's undoable commands; the engine stores these as plain
+ * VideoParams/AudioParams values on the footage node). Getters are direct
+ * reads. Everything in this section requires a borrowed import handle
+ * (probe handles are rejected with OAKENGINE_E_INVALID), and stream
+ * indexes are the index within the stream's own type (0-based).
+ */
+
+/**
+ * @brief Read a video stream's override parameters.
+ *
+ * Fills the current values (VideoParams): colorspace name (buf/size
+ * convention, may be NULL to skip), color_range
+ * (VideoParams::ColorRange), interlacing (VideoParams::Interlacing) and
+ * premultiplied-alpha flag. Any output pointer may be NULL. Returns
+ * OAKENGINE_E_NOT_FOUND for an out-of-range stream index.
+ */
+OAKENGINE_API int oakengine_footage_get_video_stream_overrides(
+	OakEngineFootage *self, int stream_index, char *colorspace_buf,
+	int colorspace_size, int *color_range, int *interlacing,
+	int *premultiplied);
+
+/**
+ * @brief Write a video stream's overrides (undoable).
+ *
+ * Pass NULL for `colorspace` and -1 for any int field to leave that field
+ * unchanged. An empty colorspace string ("") clears the override back to
+ * the project's default input color space.
+ */
+OAKENGINE_API int oakengine_footage_set_video_stream_overrides(
+	OakEngineFootage *self, int stream_index, const char *colorspace,
+	int color_range, int interlacing, int premultiplied);
+
+/**
+ * @brief Video stream pixel aspect ratio (num/den).
+ */
+OAKENGINE_API int oakengine_footage_get_pixel_aspect(OakEngineFootage *self,
+													 int stream_index, int *num,
+													 int *den);
+
+/**
+ * @brief Set the video stream pixel aspect ratio (undoable). Both values
+ * must be > 0.
+ */
+OAKENGINE_API int oakengine_footage_set_pixel_aspect(OakEngineFootage *self,
+													 int stream_index, int num,
+													 int den);
+
+/**
+ * @brief Image-sequence parameters of a video stream: start index,
+ * duration in frames and frame rate (num/den). Returns
+ * OAKENGINE_E_NOT_FOUND for an out-of-range index.
+ */
+OAKENGINE_API int oakengine_footage_get_image_sequence_params(
+	OakEngineFootage *self, int stream_index, int64_t *start_index,
+	int64_t *duration, int *frame_rate_num, int *frame_rate_den);
+
+/**
+ * @brief Set image-sequence parameters (undoable). `duration` must be > 0
+ * and the frame rate positive.
+ */
+OAKENGINE_API int oakengine_footage_set_image_sequence_params(
+	OakEngineFootage *self, int stream_index, int64_t start_index,
+	int64_t duration, int frame_rate_num, int frame_rate_den);
+
+/**
+ * @brief 1 if a stream is enabled (VideoParams/AudioParams/SubtitleParams
+ * ::enabled()). `track_type` is an OAKENGINE_TRACK_TYPE_* value;
+ * OAKENGINE_E_NOT_FOUND for an out-of-range index.
+ */
+OAKENGINE_API int oakengine_footage_get_stream_enabled(OakEngineFootage *self,
+													   int track_type,
+													   int index);
+
+/**
+ * @brief Enable or disable a stream (undoable).
+ */
+OAKENGINE_API int oakengine_footage_set_stream_enabled(OakEngineFootage *self,
+													   int track_type,
+													   int index, int enabled);
+
+/**
+ * @brief Set or clear the source start time (undoable; mirrors the
+ * dialog's FootageSetSourceStartTimeCommand with source "manual").
+ * `enabled` == 0 clears it; otherwise the time is num/den seconds.
+ */
+OAKENGINE_API int oakengine_footage_set_source_start_time(
+	OakEngineFootage *self, int enabled, int64_t num, int64_t den);
+
+/**
+ * @brief The detection source of the source start time (e.g. "manual" or
+ * the metadata field it was read from; empty when unset). buf/size
+ * convention.
+ */
+OAKENGINE_API int oakengine_footage_get_source_start_time_source(
+	OakEngineFootage *self, char *buf, int buf_size);
+
+/* ---- Colorspace candidates --------------------------------------------------- */
+
+/**
+ * @brief Number of color spaces in the project's color config (the same
+ * list the footage properties dialog's color space dropdown shows).
+ */
+OAKENGINE_API int
+oakengine_footage_colorspace_count(const OakEngineFootage *self);
+
+/**
+ * @brief Color space name at `index` in the project color config
+ * (buf/size convention). OAKENGINE_E_NOT_FOUND for an out-of-range index.
+ */
+OAKENGINE_API int oakengine_footage_colorspace_at(
+	const OakEngineFootage *self, int index, char *buf, int buf_size);
 
 #ifdef __cplusplus
 }

@@ -22,6 +22,9 @@
 #include "footagerelinkdialog.h"
 
 #include "core.h"
+#include "oakengine/footage.h"
+#include "oakengine/node.h"
+#include "oakengine/project.h"
 
 #include <QDialogButtonBox>
 #include <QFileDialog>
@@ -135,42 +138,59 @@ void FootageRelinkDialog::browse_for_footage()
 		QDir original_dir = info.dir();
 		QDir new_dir = QFileInfo(new_fn).dir();
 
-		// Set new filename since this was set manually by the user
-		f->set_filename(new_fn);
-
-		// Assume footage is valid here. We could do some decoder probing to ensure it's a usable file
-		// but otherwise we assume the user knows what they're doing here.
-
-		// Set footage to valid and update icon
-		f->set_valid();
+		// Relink through the facade (reprobes the file and resets stream /
+		// proxy state; relinked footage becomes valid when the probe
+		// succeeds).
+		OakEngineFootage *relink_handle = oakengine_footage_borrow(
+			reinterpret_cast<OakEngineNode *>(f));
+		const int relink_rc = oakengine_footage_relink(
+			relink_handle, new_fn.toUtf8().constData());
+		oakengine_footage_free(relink_handle);
+		if (relink_rc != OAKENGINE_OK) {
+			char err[512];
+			err[0] = '\0';
+			oakengine_footage_last_error(err, sizeof(err));
+			QMessageBox::warning(this, tr("Cannot relink footage"),
+								 err[0] ? QString::fromUtf8(err) :
+										  tr("The file could not be used as media."));
+			return;
+		}
 
 		// Update item visually
 		update_footage_item(index);
 
-		// Check all other footage files for matches
-		for (int it = 0; it < footage_.size(); it++) {
-			Footage *other_footage = footage_.at(it);
+		// Check all other footage files for matches in the new directory
+		// (facade's exact file-name matching, mirroring the second attempt
+		// of the old per-footage loop).
+		Project *project = f->project();
+		if (project) {
+			oakengine_project_find_offline_footage(
+				reinterpret_cast<OakEngineProject *>(project),
+				new_dir.absolutePath().toUtf8().constData());
 
-			// Ignore current footage file and footage that's already valid of course
-			if (index != it && !other_footage->is_valid()) {
-				// Get footage path relative to original directory
-				QString relative_to_original =
-					original_dir.relativeFilePath(other_footage->filename());
-				QString absolute_to_new =
-					new_dir.filePath(relative_to_original);
+			// The old dialog also tried the original directory's relative
+			// paths, which the facade's exact-name matching does not cover;
+			// keep that pass here.
+			for (int it = 0; it < footage_.size(); it++) {
+				Footage *other_footage = footage_.at(it);
 
-				// Second attempt. Try appending the filename to our new filepath
-				if (!QFileInfo::exists(absolute_to_new)) {
-					QFileInfo file_info(other_footage->filename());
-					absolute_to_new = new_dir.filePath(file_info.fileName());
+				// Ignore footage that's already valid of course
+				if (!other_footage->is_valid()) {
+					// Get footage path relative to original directory
+					QString relative_to_original =
+						original_dir.relativeFilePath(other_footage->filename());
+					QString absolute_to_new =
+						new_dir.filePath(relative_to_original);
+
+					if (QFileInfo::exists(absolute_to_new)) {
+						other_footage->set_filename(absolute_to_new);
+					}
 				}
+			}
 
-				// Check if file exists
-				if (QFileInfo::exists(absolute_to_new)) {
-					other_footage->set_filename(absolute_to_new);
-					other_footage->set_valid();
-					update_footage_item(it);
-				}
+			// Refresh every row whose validity may have changed.
+			for (int it = 0; it < footage_.size(); it++) {
+				update_footage_item(it);
 			}
 		}
 	}

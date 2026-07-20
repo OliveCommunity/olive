@@ -217,6 +217,10 @@ static void test_failures(void)
 	assert(oakengine_project_import_footage(NULL, path) == NULL);
 	oakengine_project_free(project);
 
+	// Borrowing nothing yields no handle.
+	assert(oakengine_footage_borrow(NULL) == NULL);
+	assert(oakengine_footage_last_error(err, sizeof(err)) > 0);
+
 	// NULL safety.
 	oakengine_footage_free(NULL);
 	assert(oakengine_footage_get_decoder_name(NULL, err, sizeof(err)) ==
@@ -409,6 +413,181 @@ static void test_proxy(void)
 	oakengine_project_free(project);
 }
 
+static void test_stream_overrides(void)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+
+	char path[4096];
+	demo_path(path, sizeof(path));
+	OakEngineFootage *f = oakengine_project_import_footage(project, path);
+	assert(f != NULL);
+
+	char cs[128];
+	int range = -1, interlace = -1, premult = -1;
+
+	// Defaults from the probe.
+	assert(oakengine_footage_get_video_stream_overrides(
+			   f, 0, cs, sizeof(cs), &range, &interlace, &premult) ==
+		   OAKENGINE_OK);
+	assert(range == 0); // limited
+	assert(interlace == 0); // progressive
+	assert(premult == 0);
+
+	// Full override write + read-back + undo/redo.
+	assert(oakengine_footage_set_video_stream_overrides(
+			   f, 0, "Rec.709 OETF", 1, 1, 1) == OAKENGINE_OK);
+	assert(oakengine_footage_get_video_stream_overrides(
+			   f, 0, cs, sizeof(cs), &range, &interlace, &premult) ==
+		   OAKENGINE_OK);
+	assert(strcmp(cs, "Rec.709 OETF") == 0);
+	assert(range == 1 && interlace == 1 && premult == 1);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_footage_get_video_stream_overrides(
+			   f, 0, cs, sizeof(cs), &range, &interlace, &premult) ==
+		   OAKENGINE_OK);
+	assert(range == 0 && interlace == 0 && premult == 0);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	assert(oakengine_footage_get_video_stream_overrides(
+			   f, 0, cs, sizeof(cs), &range, &interlace, &premult) ==
+		   OAKENGINE_OK);
+	assert(range == 1 && interlace == 1 && premult == 1);
+
+	// Partial write: NULL/-1 leaves fields alone.
+	assert(oakengine_footage_set_video_stream_overrides(f, 0, NULL, 0, -1,
+														-1) == OAKENGINE_OK);
+	assert(oakengine_footage_get_video_stream_overrides(
+			   f, 0, cs, sizeof(cs), &range, &interlace, &premult) ==
+		   OAKENGINE_OK);
+	assert(range == 0 && interlace == 1 && premult == 1);
+
+	// Pixel aspect ratio.
+	int num = 0, den = 0;
+	assert(oakengine_footage_get_pixel_aspect(f, 0, &num, &den) ==
+		   OAKENGINE_OK);
+	assert(num == 1 && den == 1);
+	assert(oakengine_footage_set_pixel_aspect(f, 0, 4, 3) == OAKENGINE_OK);
+	assert(oakengine_footage_get_pixel_aspect(f, 0, &num, &den) ==
+		   OAKENGINE_OK);
+	assert(num == 4 && den == 3);
+	assert(oakengine_footage_set_pixel_aspect(f, 0, 0, 3) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_footage_get_pixel_aspect(f, 0, &num, &den) ==
+		   OAKENGINE_OK);
+	assert(num == 1 && den == 1);
+
+	// Image-sequence parameters round-trip (stored even for non-sequence
+	// footage; the dialog shows them only for image sequences).
+	int64_t start = -1, dur = -1;
+	assert(oakengine_footage_get_image_sequence_params(f, 0, &start, &dur,
+													   &num, &den) ==
+		   OAKENGINE_OK);
+	assert(oakengine_footage_set_image_sequence_params(f, 0, 10, 100, 25,
+													   1) == OAKENGINE_OK);
+	assert(oakengine_footage_get_image_sequence_params(f, 0, &start, &dur,
+													   &num, &den) ==
+		   OAKENGINE_OK);
+	assert(start == 10 && dur == 100 && num == 25 && den == 1);
+	assert(oakengine_footage_set_image_sequence_params(f, 0, 0, 0, 25, 1) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+
+	// Stream enable toggles.
+	assert(oakengine_footage_get_stream_enabled(f, 0, 0) == 1);
+	assert(oakengine_footage_set_stream_enabled(f, 0, 0, 0) == OAKENGINE_OK);
+	assert(oakengine_footage_get_stream_enabled(f, 0, 0) == 0);
+	assert(oakengine_footage_set_stream_enabled(f, 0, 0, 1) == OAKENGINE_OK);
+	assert(oakengine_footage_get_stream_enabled(f, 0, 0) == 1);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_footage_get_stream_enabled(f, 0, 0) == 0);
+	assert(oakengine_footage_get_stream_enabled(f, 1, 0) == 1);
+	assert(oakengine_footage_get_stream_enabled(f, 0, 99) ==
+		   OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_footage_set_stream_enabled(f, 9, 0, 1) ==
+		   OAKENGINE_E_INVALID);
+
+	// Source start time set/clear with source label.
+	int snum = 0, sden = 0;
+	assert(oakengine_footage_get_source_start_time(f, &snum, &sden) == 1);
+	char source[64];
+	assert(oakengine_footage_set_source_start_time(f, 1, 42, 1) ==
+		   OAKENGINE_OK);
+	assert(oakengine_footage_get_source_start_time(f, &snum, &sden) == 1);
+	assert(snum == 42 && sden == 1);
+	assert(oakengine_footage_get_source_start_time_source(f, source,
+														  sizeof(source)) > 0);
+	assert(strcmp(source, "manual") == 0);
+	assert(oakengine_footage_set_source_start_time(f, 0, 0, 1) ==
+		   OAKENGINE_OK);
+	assert(oakengine_footage_get_source_start_time(f, &snum, &sden) == 0);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_footage_get_source_start_time(f, &snum, &sden) == 1);
+	assert(snum == 42);
+
+	// Out-of-range and NULL.
+	assert(oakengine_footage_get_video_stream_overrides(
+			   f, 9, cs, sizeof(cs), &range, &interlace, &premult) ==
+		   OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_footage_set_video_stream_overrides(f, 9, "x", 0, 0,
+														0) ==
+		   OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_footage_get_pixel_aspect(f, 9, &num, &den) ==
+		   OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_footage_get_image_sequence_params(f, 9, &start, &dur,
+													   &num, &den) ==
+		   OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_footage_get_video_stream_overrides(
+			   NULL, 0, cs, sizeof(cs), &range, &interlace, &premult) ==
+		   OAKENGINE_E_INVALID);
+	OakEngineFootage *probed = oakengine_footage_probe(path);
+	assert(probed != NULL);
+	assert(oakengine_footage_set_video_stream_overrides(probed, 0, "x", 0,
+														0, 0) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_footage_colorspace_count(probed) == 0);
+	oakengine_footage_free(probed);
+
+	oakengine_footage_free(f);
+	oakengine_project_free(project);
+}
+
+static void test_colorspace_candidates(void)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+
+	char path[4096];
+	demo_path(path, sizeof(path));
+	OakEngineFootage *f = oakengine_project_import_footage(project, path);
+	assert(f != NULL);
+
+	const int count = oakengine_footage_colorspace_count(f);
+	assert(count > 0);
+	char name[128];
+	int found_rec709 = 0;
+	for (int i = 0; i < count; i++) {
+		assert(oakengine_footage_colorspace_at(f, i, name, sizeof(name)) > 0);
+		assert(strlen(name) > 0);
+		if (strcmp(name, "Rec.709 OETF") == 0) {
+			found_rec709 = 1;
+		}
+	}
+	assert(found_rec709 == 1);
+	assert(oakengine_footage_colorspace_at(f, count, name, sizeof(name)) ==
+		   OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_footage_colorspace_at(f, -1, name, sizeof(name)) ==
+		   OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_footage_colorspace_at(NULL, 0, name, sizeof(name)) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_footage_colorspace_count(NULL) == 0);
+
+	oakengine_footage_free(f);
+	oakengine_project_free(project);
+}
+
 int main(void)
 {
 	make_tmpdir();
@@ -429,6 +608,8 @@ int main(void)
 	test_relink();
 	test_find_offline();
 	test_proxy();
+	test_stream_overrides();
+	test_colorspace_candidates();
 
 	assert(oakengine_shutdown() == OAKENGINE_OK);
 

@@ -36,7 +36,8 @@
 #include "dialog/proxy/proxydialog.h"
 #include "dialog/sequence/sequence.h"
 #include "projectexplorerundo.h"
-#include "codec/proxymanager.h"
+#include "oakengine/footage.h"
+#include "oakengine/node.h"
 #include "task/taskmanager.h"
 #include "widget/menu/menu.h"
 #include "widget/menu/menushared.h"
@@ -63,6 +64,46 @@ QVector<Footage *> get_selected_proxy_footage(const QVector<Node *> &items)
 	}
 	return footage;
 }
+
+/**
+ * @brief Proxy generation driven by the liboakengine C ABI facade
+ *
+ * Replaces the direct ProxyManager::get_or_start_proxy() drive: the actual
+ * transcode and its synchronous wait live behind
+ * oakengine_footage_proxy_generate() (which also records the proxy state
+ * on the footage and invalidates it), while the task stays on the
+ * TaskManager queue like before.
+ */
+class FacadeProxyTask : public Task {
+public:
+	FacadeProxyTask(Footage *footage)
+		: footage_(footage)
+	{
+		set_title(tr("Generating proxy for \"%1\"")
+					  .arg(footage->get_label_or_name()));
+	}
+
+protected:
+	virtual bool run() override
+	{
+		OakEngineFootage *handle = oakengine_footage_borrow(
+			reinterpret_cast<OakEngineNode *>(footage_));
+		const int rc = oakengine_footage_proxy_generate(handle);
+		oakengine_footage_free(handle);
+		if (rc != OAKENGINE_OK) {
+			char err[512];
+			err[0] = '\0';
+			oakengine_footage_last_error(err, sizeof(err));
+			set_error(err[0] ? QString::fromUtf8(err) :
+							   tr("Proxy generation failed"));
+			return false;
+		}
+		return true;
+	}
+
+private:
+	Footage *footage_;
+};
 }
 
 ProjectExplorer::ProjectExplorer(QWidget *parent)
@@ -565,21 +606,31 @@ void ProjectExplorer::replace_selected_footage()
 			return;
 		}
 
-		auto p = new MultiUndoCommand();
-
-		// Change filename parameter
-		p->add_child(new NodeParamSetStandardValueCommand(
-			NodeKeyframeTrackReference(
-				NodeInput(footage, Footage::k_filename_input)),
-			file));
-
-		if (QFileInfo(footage->filename()).fileName() == footage->get_label()) {
-			// Footage label == filename, change label too
-			p->add_child(
-				new NodeRenameCommand(footage, QFileInfo(file).fileName()));
+		// Change the filename through the facade relink (reprobes the new
+		// file and resets proxy/stream state); the label policy stays here.
+		OakEngineFootage *facade_handle = oakengine_footage_borrow(
+			reinterpret_cast<OakEngineNode *>(footage));
+		const int relink_rc = oakengine_footage_relink(
+			facade_handle, file.toUtf8().constData());
+		oakengine_footage_free(facade_handle);
+		if (relink_rc != OAKENGINE_OK) {
+			char err[512];
+			err[0] = '\0';
+			oakengine_footage_last_error(err, sizeof(err));
+			QMessageBox::warning(
+				this, tr("Cannot replace footage"),
+				err[0] ? QString::fromUtf8(err) :
+						 tr("The file could not be used as media."));
+			return;
 		}
 
-		Core::instance()->undo_stack()->push(p, tr("Replaced Footage"));
+		if (QFileInfo(footage->filename()).fileName() ==
+			footage->get_label()) {
+			// Footage label == filename, change label too
+			oakengine_node_set_label(
+				reinterpret_cast<OakEngineNode *>(footage),
+				QFileInfo(file).fileName().toUtf8().constData());
+		}
 	}
 }
 
@@ -597,9 +648,8 @@ void ProjectExplorer::open_context_menu_item_in_new_window()
 
 void ProjectExplorer::generate_proxies_for_selected_footage()
 {
-	if (!ProxyManager::instance() || !project()) {
-		qWarning()
-			<< "GenerateProxiesForSelectedFootage: ProxyManager or project unavailable";
+	if (!project()) {
+		qWarning() << "GenerateProxiesForSelectedFootage: no project";
 		return;
 	}
 
@@ -617,18 +667,9 @@ void ProjectExplorer::generate_proxies_for_selected_footage()
 			continue;
 		}
 
-		ProxyManager::ProxyParams params = item->get_effective_proxy_params();
-		const ProxyManager::Proxy proxy =
-			ProxyManager::instance()->get_or_start_proxy(
-				item->project()->cache_path(), item->filename(),
-				video.stream_index(), params);
-		qDebug() << "GenerateProxiesForSelectedFootage: proxy state="
-				 << ProxyManager::proxy_state_to_string(proxy.state)
-				 << "file=" << proxy.filename
-				 << "cache=" << item->project()->cache_path();
-		item->set_proxy(proxy.filename, proxy.state, video.stream_index(),
-					   params.version, true);
-		item->invalidate_all(Footage::k_filename_input);
+		// Queue one facade-backed task per footage item (same queueing
+		// semantics as the old per-footage proxy tasks).
+		TaskManager::instance()->add_task(new FacadeProxyTask(item));
 	}
 }
 
@@ -645,7 +686,12 @@ void ProjectExplorer::set_selected_footage_proxy_enabled(bool enabled)
 			continue;
 		}
 
-		item->set_proxy_enabled(enabled);
+		OakEngineFootage *handle = oakengine_footage_borrow(
+			reinterpret_cast<OakEngineNode *>(item));
+		oakengine_footage_proxy_set_enabled(handle, enabled ? 1 : 0);
+		oakengine_footage_free(handle);
+		// The facade call toggles the flag; cache invalidation for the UI
+		// stays here.
 		item->invalidate_all(Footage::k_filename_input);
 	}
 }
@@ -655,13 +701,21 @@ void ProjectExplorer::reveal_proxy_for_selected_footage()
 	const QVector<Footage *> footage =
 		get_selected_proxy_footage(context_menu_items_);
 	for (Footage *item : footage) {
-		if (item->proxy_path().isEmpty()) {
+		char proxy_path[4096];
+		proxy_path[0] = '\0';
+		OakEngineFootage *handle = oakengine_footage_borrow(
+			reinterpret_cast<OakEngineNode *>(item));
+		oakengine_footage_proxy_get_path(handle, proxy_path,
+										 sizeof(proxy_path));
+		oakengine_footage_free(handle);
+		if (proxy_path[0] == '\0') {
 			continue;
 		}
+		const QString path = QString::fromUtf8(proxy_path);
 
 #if defined(Q_OS_WINDOWS)
 		QStringList args;
-		args << "/select," << QDir::toNativeSeparators(item->proxy_path());
+		args << "/select," << QDir::toNativeSeparators(path);
 		QProcess::startDetached(QStringLiteral("explorer"), args);
 #elif defined(Q_OS_MAC)
 		QStringList args;
@@ -670,13 +724,13 @@ void ProjectExplorer::reveal_proxy_for_selected_footage()
 		args << "-e";
 		args << "activate";
 		args << "-e";
-		args << "select POSIX file \"" + item->proxy_path() + "\"";
+		args << "select POSIX file \"" + path + "\"";
 		args << "-e";
 		args << "end tell";
 		QProcess::startDetached(QStringLiteral("osascript"), args);
 #else
 		QDesktopServices::openUrl(QUrl::fromLocalFile(
-			QFileInfo(item->proxy_path()).dir().absolutePath()));
+			QFileInfo(path).dir().absolutePath()));
 #endif
 	}
 }
@@ -690,9 +744,12 @@ void ProjectExplorer::delete_proxies_for_selected_footage()
 			continue;
 		}
 
-		QFile::remove(item->proxy_path());
-		item->clear_proxy();
-		item->invalidate_all(Footage::k_filename_input);
+		// Facade delete: removes the file, clears the proxy state and
+		// invalidates the footage.
+		OakEngineFootage *handle = oakengine_footage_borrow(
+			reinterpret_cast<OakEngineNode *>(item));
+		oakengine_footage_proxy_delete(handle);
+		oakengine_footage_free(handle);
 	}
 }
 

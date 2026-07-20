@@ -86,63 +86,6 @@ private:
    * @brief Sets the pixel aspect ratio of the stream
    */
 	PixelAspectRatioComboBox *pixel_aspect_combo_;
-
-	class VideoStreamChangeCommand : public UndoCommand {
-	public:
-		VideoStreamChangeCommand(Footage *footage, int video_index,
-								 bool premultiplied, QString colorspace,
-								 VideoParams::Interlacing interlacing,
-								 const Rational &pixel_ar,
-								 VideoParams::ColorRange range);
-
-		virtual Project *get_relevant_project() const override;
-
-	protected:
-		virtual void redo() override;
-		virtual void undo() override;
-
-	private:
-		Footage *footage_;
-		int video_index_;
-
-		bool new_premultiplied_;
-		QString new_colorspace_;
-		VideoParams::Interlacing new_interlacing_;
-		Rational new_pixel_ar_;
-		VideoParams::ColorRange new_range_;
-
-		bool old_premultiplied_;
-		QString old_colorspace_;
-		VideoParams::Interlacing old_interlacing_;
-		Rational old_pixel_ar_;
-		VideoParams::ColorRange old_range_;
-	};
-
-	class ImageSequenceChangeCommand : public UndoCommand {
-	public:
-		ImageSequenceChangeCommand(Footage *footage, int video_index,
-								   int64_t start_index, int64_t duration,
-								   const Rational &frame_rate);
-
-		virtual Project *get_relevant_project() const override;
-
-	protected:
-		virtual void redo() override;
-		virtual void undo() override;
-
-	private:
-		Footage *footage_;
-		int video_index_;
-
-		int64_t new_start_index_;
-		int64_t old_start_index_;
-
-		int64_t new_duration_;
-		int64_t old_duration_;
-
-		Rational new_frame_rate_;
-		Rational old_frame_rate_;
-	};
 };
 
 }

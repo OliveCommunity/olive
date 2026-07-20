@@ -149,6 +149,183 @@ olive::Footage *borrowed_node(OakEngineFootage *self)
 	return node;
 }
 
+// Push an undoable command onto the global undo stack when the engine is
+// initialized, otherwise execute it directly.
+void push_or_run(olive::UndoCommand *command, const QString &name)
+{
+	if (olive::EngineCore::instance()) {
+		olive::EngineCore::instance()->undo_stack()->push(command, name);
+	} else {
+		command->redo_now();
+		delete command;
+	}
+}
+
+// Undo commands for footage stream overrides. The engine has no undo
+// commands for these (the application's footage properties dialog carries
+// them at the app layer), so the facade carries read-modify-write
+// equivalents with the same semantics.
+class FootageVideoParamsCommand : public olive::UndoCommand {
+public:
+	FootageVideoParamsCommand(olive::Footage *footage, int index,
+							  const olive::VideoParams &params)
+		: footage_(footage)
+		, index_(index)
+		, new_params_(params)
+	{
+	}
+
+	virtual olive::Project *get_relevant_project() const override
+	{
+		return footage_->project();
+	}
+
+protected:
+	virtual void redo() override
+	{
+		old_params_ = footage_->get_video_params(index_);
+		footage_->set_video_params(new_params_, index_);
+	}
+
+	virtual void undo() override
+	{
+		footage_->set_video_params(old_params_, index_);
+	}
+
+private:
+	olive::Footage *footage_;
+	int index_;
+	olive::VideoParams old_params_;
+	olive::VideoParams new_params_;
+};
+
+class FootageAudioParamsCommand : public olive::UndoCommand {
+public:
+	FootageAudioParamsCommand(olive::Footage *footage, int index,
+							  const olive::AudioParams &params)
+		: footage_(footage)
+		, index_(index)
+		, new_params_(params)
+	{
+	}
+
+	virtual olive::Project *get_relevant_project() const override
+	{
+		return footage_->project();
+	}
+
+protected:
+	virtual void redo() override
+	{
+		old_params_ = footage_->get_audio_params(index_);
+		footage_->set_audio_params(new_params_, index_);
+	}
+
+	virtual void undo() override
+	{
+		footage_->set_audio_params(old_params_, index_);
+	}
+
+private:
+	olive::Footage *footage_;
+	int index_;
+	olive::AudioParams old_params_;
+	olive::AudioParams new_params_;
+};
+
+class FootageSubtitleParamsCommand : public olive::UndoCommand {
+public:
+	FootageSubtitleParamsCommand(olive::Footage *footage, int index,
+								 const olive::SubtitleParams &params)
+		: footage_(footage)
+		, index_(index)
+		, new_params_(params)
+	{
+	}
+
+	virtual olive::Project *get_relevant_project() const override
+	{
+		return footage_->project();
+	}
+
+protected:
+	virtual void redo() override
+	{
+		old_params_ = footage_->get_subtitle_params(index_);
+		footage_->set_subtitle_params(new_params_, index_);
+	}
+
+	virtual void undo() override
+	{
+		footage_->set_subtitle_params(old_params_, index_);
+	}
+
+private:
+	olive::Footage *footage_;
+	int index_;
+	olive::SubtitleParams old_params_;
+	olive::SubtitleParams new_params_;
+};
+
+class FootageSourceStartTimeCommand : public olive::UndoCommand {
+public:
+	FootageSourceStartTimeCommand(olive::Footage *footage, bool enabled,
+								  const olive::Rational &time)
+		: footage_(footage)
+		, new_enabled_(enabled)
+		, new_time_(time)
+	{
+	}
+
+	virtual olive::Project *get_relevant_project() const override
+	{
+		return footage_->project();
+	}
+
+protected:
+	virtual void redo() override
+	{
+		old_enabled_ = footage_->has_source_start_time();
+		old_time_ = footage_->source_start_time();
+		old_source_ = footage_->source_start_time_source();
+
+		if (new_enabled_) {
+			footage_->set_source_start_time(new_time_,
+											QStringLiteral("manual"));
+		} else {
+			footage_->clear_source_start_time();
+		}
+	}
+
+	virtual void undo() override
+	{
+		if (old_enabled_) {
+			footage_->set_source_start_time(old_time_, old_source_);
+		} else {
+			footage_->clear_source_start_time();
+		}
+	}
+
+private:
+	olive::Footage *footage_;
+	bool new_enabled_;
+	olive::Rational new_time_;
+	bool old_enabled_ = false;
+	olive::Rational old_time_;
+	QString old_source_;
+};
+
+// Stream access by facade track type; returns false for unknown indexes.
+bool video_stream_at(const olive::Footage *f, int index,
+					 olive::VideoParams *out)
+{
+	if (index < 0 || index >= f->get_video_stream_count()) {
+		return false;
+	}
+	*out = f->get_video_params(index);
+	return true;
+}
+
 } // namespace
 
 // Internal cross-family accessor (not part of the public C ABI): returns
@@ -383,6 +560,21 @@ OakEngineFootage *oakengine_project_import_footage(OakEngineProject *project,
 	return wrap(state);
 }
 
+OakEngineFootage *oakengine_footage_borrow(OakEngineNode *node)
+{
+	set_error(QString());
+	auto *footage =
+		dynamic_cast<olive::Footage *>(reinterpret_cast<olive::Node *>(node));
+	if (!footage) {
+		set_error(QStringLiteral("node is not a footage node"));
+		return nullptr;
+	}
+	auto *state = new OakEngineFootageState();
+	state->borrowed = true;
+	state->node = footage;
+	return wrap(state);
+}
+
 int oakengine_footage_relink(OakEngineFootage *footage, const char *new_path)
 {
 	set_error(QString());
@@ -400,10 +592,11 @@ int oakengine_footage_relink(OakEngineFootage *footage, const char *new_path)
 		return OAKENGINE_E_NOT_FOUND;
 	}
 
-	// Same as the application's relink dialog: set_filename() triggers
-	// clear() (streams, decoder and proxy state reset) and a reprobe.
+	// Same as the application's relink action: set_filename() triggers
+	// clear() (streams, decoder and proxy state reset) and a reprobe. The
+	// label is intentionally left alone (relinking changes the path, not
+	// the user's naming).
 	node->set_filename(path);
-	node->set_label(QFileInfo(path).fileName());
 	if (!node->is_valid()) {
 		set_error(QStringLiteral("failed to probe \"%1\" as media")
 					  .arg(path));
@@ -438,12 +631,12 @@ int oakengine_project_find_offline_footage(OakEngineProject *project,
 		if (filename.isEmpty() || QFileInfo::exists(filename)) {
 			continue;
 		}
-		// Exact file-name match in the search directory (no recursion).
+		// Exact file-name match in the search directory (no recursion). The
+		// label is intentionally left alone.
 		const QString candidate =
 			dir.filePath(QFileInfo(filename).fileName());
 		if (QFileInfo::exists(candidate)) {
 			footage->set_filename(candidate);
-			footage->set_label(QFileInfo(candidate).fileName());
 			if (footage->is_valid()) {
 				relinked++;
 			}
@@ -573,6 +766,320 @@ int oakengine_footage_proxy_get_path(OakEngineFootage *self, char *buf,
 		return OAKENGINE_E_INVALID;
 	}
 	return string_to_buf(impl(self)->node->proxy_path(), buf, buf_size);
+}
+
+/* ---- Stream parameter overrides --------------------------------------------- */
+
+int oakengine_footage_get_video_stream_overrides(
+	OakEngineFootage *self, int stream_index, char *colorspace_buf,
+	int colorspace_size, int *color_range, int *interlacing,
+	int *premultiplied)
+{
+	set_error(QString());
+	olive::Footage *node = borrowed_node(self);
+	if (!node) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::VideoParams vp;
+	if (!video_stream_at(node, stream_index, &vp)) {
+		set_error(QStringLiteral("no video stream at index %1")
+					  .arg(stream_index));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	if (colorspace_buf) {
+		string_to_buf(vp.colorspace(), colorspace_buf, colorspace_size);
+	}
+	if (color_range) {
+		*color_range = int(vp.color_range());
+	}
+	if (interlacing) {
+		*interlacing = int(vp.interlacing());
+	}
+	if (premultiplied) {
+		*premultiplied = vp.premultiplied_alpha() ? 1 : 0;
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_footage_set_video_stream_overrides(
+	OakEngineFootage *self, int stream_index, const char *colorspace,
+	int color_range, int interlacing, int premultiplied)
+{
+	set_error(QString());
+	olive::Footage *node = borrowed_node(self);
+	if (!node) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::VideoParams vp;
+	if (!video_stream_at(node, stream_index, &vp)) {
+		set_error(QStringLiteral("no video stream at index %1")
+					  .arg(stream_index));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	if (colorspace) {
+		vp.set_colorspace(QString::fromUtf8(colorspace));
+	}
+	if (color_range >= 0) {
+		vp.set_color_range(
+			static_cast<olive::VideoParams::ColorRange>(color_range));
+	}
+	if (interlacing >= 0) {
+		vp.set_interlacing(
+			static_cast<olive::VideoParams::Interlacing>(interlacing));
+	}
+	if (premultiplied >= 0) {
+		vp.set_premultiplied_alpha(premultiplied != 0);
+	}
+	push_or_run(new FootageVideoParamsCommand(node, stream_index, vp),
+				QStringLiteral("Set Video Stream Overrides"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_footage_get_pixel_aspect(OakEngineFootage *self,
+									   int stream_index, int *num, int *den)
+{
+	set_error(QString());
+	olive::Footage *node = borrowed_node(self);
+	if (!node) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::VideoParams vp;
+	if (!video_stream_at(node, stream_index, &vp)) {
+		set_error(QStringLiteral("no video stream at index %1")
+					  .arg(stream_index));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	if (num) {
+		*num = vp.pixel_aspect_ratio().numerator();
+	}
+	if (den) {
+		*den = vp.pixel_aspect_ratio().denominator();
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_footage_set_pixel_aspect(OakEngineFootage *self,
+									   int stream_index, int num, int den)
+{
+	set_error(QString());
+	olive::Footage *node = borrowed_node(self);
+	if (!node) {
+		return OAKENGINE_E_INVALID;
+	}
+	if (num <= 0 || den <= 0) {
+		set_error(QStringLiteral("invalid pixel aspect ratio %1/%2")
+					  .arg(num)
+					  .arg(den));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::VideoParams vp;
+	if (!video_stream_at(node, stream_index, &vp)) {
+		set_error(QStringLiteral("no video stream at index %1")
+					  .arg(stream_index));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	vp.set_pixel_aspect_ratio(olive::Rational(num, den));
+	push_or_run(new FootageVideoParamsCommand(node, stream_index, vp),
+				QStringLiteral("Set Pixel Aspect Ratio"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_footage_get_image_sequence_params(
+	OakEngineFootage *self, int stream_index, int64_t *start_index,
+	int64_t *duration, int *frame_rate_num, int *frame_rate_den)
+{
+	set_error(QString());
+	olive::Footage *node = borrowed_node(self);
+	if (!node) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::VideoParams vp;
+	if (!video_stream_at(node, stream_index, &vp)) {
+		set_error(QStringLiteral("no video stream at index %1")
+					  .arg(stream_index));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	if (start_index) {
+		*start_index = vp.start_time();
+	}
+	if (duration) {
+		*duration = vp.duration();
+	}
+	if (frame_rate_num) {
+		*frame_rate_num = vp.frame_rate().numerator();
+	}
+	if (frame_rate_den) {
+		*frame_rate_den = vp.frame_rate().denominator();
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_footage_set_image_sequence_params(
+	OakEngineFootage *self, int stream_index, int64_t start_index,
+	int64_t duration, int frame_rate_num, int frame_rate_den)
+{
+	set_error(QString());
+	olive::Footage *node = borrowed_node(self);
+	if (!node) {
+		return OAKENGINE_E_INVALID;
+	}
+	if (start_index < 0 || duration <= 0 || frame_rate_num <= 0 ||
+		frame_rate_den <= 0) {
+		set_error(QStringLiteral(
+			"invalid image sequence parameters (need start >= 0, duration > "
+			"0, positive frame rate)"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::VideoParams vp;
+	if (!video_stream_at(node, stream_index, &vp)) {
+		set_error(QStringLiteral("no video stream at index %1")
+					  .arg(stream_index));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	vp.set_start_time(start_index);
+	vp.set_duration(duration);
+	const olive::Rational frame_rate(frame_rate_num, frame_rate_den);
+	vp.set_frame_rate(frame_rate);
+	vp.set_time_base(frame_rate.flipped());
+	push_or_run(new FootageVideoParamsCommand(node, stream_index, vp),
+				QStringLiteral("Set Image Sequence Parameters"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_footage_get_stream_enabled(OakEngineFootage *self,
+										 int track_type, int index)
+{
+	if (!self || !impl(self)->node) {
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::Footage *node = impl(self)->node;
+	switch (track_type) {
+	case 0:
+		if (index >= 0 && index < node->get_video_stream_count()) {
+			return node->get_video_params(index).enabled() ? 1 : 0;
+		}
+		break;
+	case 1:
+		if (index >= 0 && index < node->get_audio_stream_count()) {
+			return node->get_audio_params(index).enabled() ? 1 : 0;
+		}
+		break;
+	case 2:
+		if (index >= 0 && index < node->get_subtitle_stream_count()) {
+			return node->get_subtitle_params(index).enabled() ? 1 : 0;
+		}
+		break;
+	default:
+		break;
+	}
+	return OAKENGINE_E_NOT_FOUND;
+}
+
+int oakengine_footage_set_stream_enabled(OakEngineFootage *self,
+										 int track_type, int index,
+										 int enabled)
+{
+	set_error(QString());
+	olive::Footage *node = borrowed_node(self);
+	if (!node) {
+		return OAKENGINE_E_INVALID;
+	}
+	switch (track_type) {
+	case 0:
+		if (index >= 0 && index < node->get_video_stream_count()) {
+			olive::VideoParams vp = node->get_video_params(index);
+			vp.set_enabled(enabled != 0);
+			push_or_run(
+				new FootageVideoParamsCommand(node, index, vp),
+				QStringLiteral("Set Stream Enabled"));
+			return OAKENGINE_OK;
+		}
+		break;
+	case 1:
+		if (index >= 0 && index < node->get_audio_stream_count()) {
+			olive::AudioParams ap = node->get_audio_params(index);
+			ap.set_enabled(enabled != 0);
+			push_or_run(
+				new FootageAudioParamsCommand(node, index, ap),
+				QStringLiteral("Set Stream Enabled"));
+			return OAKENGINE_OK;
+		}
+		break;
+	case 2:
+		if (index >= 0 && index < node->get_subtitle_stream_count()) {
+			olive::SubtitleParams sp = node->get_subtitle_params(index);
+			sp.set_enabled(enabled != 0);
+			push_or_run(
+				new FootageSubtitleParamsCommand(node, index, sp),
+				QStringLiteral("Set Stream Enabled"));
+			return OAKENGINE_OK;
+		}
+		break;
+	default:
+		set_error(QStringLiteral("unknown track type %1").arg(track_type));
+		return OAKENGINE_E_INVALID;
+	}
+	set_error(QStringLiteral("no stream of type %1 at index %2")
+				  .arg(track_type)
+				  .arg(index));
+	return OAKENGINE_E_NOT_FOUND;
+}
+
+int oakengine_footage_set_source_start_time(OakEngineFootage *self,
+											int enabled, int64_t num,
+											int64_t den)
+{
+	set_error(QString());
+	olive::Footage *node = borrowed_node(self);
+	if (!node) {
+		return OAKENGINE_E_INVALID;
+	}
+	if (enabled && den == 0) {
+		set_error(QStringLiteral("invalid time denominator 0"));
+		return OAKENGINE_E_INVALID;
+	}
+	push_or_run(new FootageSourceStartTimeCommand(
+					node, enabled != 0,
+					olive::Rational::from_double(
+						den != 0 ? double(num) / double(den) : 0.0)),
+				QStringLiteral("Set Source Start Time"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_footage_get_source_start_time_source(OakEngineFootage *self,
+												   char *buf, int buf_size)
+{
+	if (!self || !impl(self)->node) {
+		return OAKENGINE_E_INVALID;
+	}
+	return string_to_buf(impl(self)->node->source_start_time_source(), buf,
+						 buf_size);
+}
+
+/* ---- Colorspace candidates ----------------------------------------------------- */
+
+int oakengine_footage_colorspace_count(const OakEngineFootage *self)
+{
+	if (!self || !impl(self)->node || !impl(self)->node->project()) {
+		return 0;
+	}
+	return impl(self)->node->project()->color_manager()->get_config()
+		->getNumColorSpaces();
+}
+
+int oakengine_footage_colorspace_at(const OakEngineFootage *self, int index,
+									char *buf, int buf_size)
+{
+	if (!self || !impl(self)->node || !impl(self)->node->project()) {
+		return OAKENGINE_E_INVALID;
+	}
+	const ocio::ConstConfigRcPtr config =
+		impl(self)->node->project()->color_manager()->get_config();
+	if (index < 0 || index >= config->getNumColorSpaces()) {
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	return string_to_buf(config->getColorSpaceNameByIndex(index), buf,
+						 buf_size);
 }
 
 } // extern "C"

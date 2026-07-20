@@ -28,6 +28,8 @@
 #include <QMessageBox>
 
 #include "node/project.h"
+#include "oakengine/footage.h"
+#include "oakengine/node.h"
 
 namespace olive
 {
@@ -46,8 +48,23 @@ VideoStreamProperties::VideoStreamProperties(Footage *footage, int video_index)
 
 	VideoParams vp = footage_->get_video_params(video_index_);
 
+	// Stream override values come through the liboakengine C ABI facade;
+	// layout-only conditions (channel count, video type) stay direct reads.
+	OakEngineFootage *facade_handle = oakengine_footage_borrow(
+		reinterpret_cast<OakEngineNode *>(footage_));
+	char colorspace_buf[256];
+	int color_range = 0;
+	int interlacing = 0;
+	int premultiplied = 0;
+	oakengine_footage_get_video_stream_overrides(
+		facade_handle, video_index_, colorspace_buf, sizeof(colorspace_buf),
+		&color_range, &interlacing, &premultiplied);
+	int par_num = 1, par_den = 1;
+	oakengine_footage_get_pixel_aspect(facade_handle, video_index_, &par_num,
+									   &par_den);
+
 	pixel_aspect_combo_ = new PixelAspectRatioComboBox();
-	pixel_aspect_combo_->set_pixel_aspect_ratio(vp.pixel_aspect_ratio());
+	pixel_aspect_combo_->set_pixel_aspect_ratio(Rational(par_num, par_den));
 	video_layout->addWidget(pixel_aspect_combo_, row, 1);
 
 	row++;
@@ -55,7 +72,8 @@ VideoStreamProperties::VideoStreamProperties(Footage *footage, int video_index)
 	video_layout->addWidget(new QLabel(tr("Interlacing:")), row, 0);
 
 	video_interlace_combo_ = new InterlacedComboBox();
-	video_interlace_combo_->set_interlace_mode(vp.interlacing());
+	video_interlace_combo_->set_interlace_mode(
+		static_cast<VideoParams::Interlacing>(interlacing));
 
 	video_layout->addWidget(video_interlace_combo_, row, 1);
 
@@ -64,22 +82,25 @@ VideoStreamProperties::VideoStreamProperties(Footage *footage, int video_index)
 	video_layout->addWidget(new QLabel(tr("Color Space:")), row, 0);
 
 	video_color_space_ = new QComboBox();
-	ocio::ConstConfigRcPtr config =
-		footage_->project()->color_manager()->get_config();
-	int number_of_colorspaces = config->getNumColorSpaces();
 
+	// The dropdown's color space list comes through the facade (same list
+	// the engine's color config reports).
 	video_color_space_->addItem(tr("Default (%1)")
 									.arg(footage_->project()
 											 ->color_manager()
 											 ->get_default_input_color_space()));
 
-	for (int i = 0; i < number_of_colorspaces; i++) {
-		QString colorspace = config->getColorSpaceNameByIndex(i);
-
-		video_color_space_->addItem(colorspace);
+	const int colorspace_count =
+		oakengine_footage_colorspace_count(facade_handle);
+	for (int i = 0; i < colorspace_count; i++) {
+		char name_buf[256];
+		if (oakengine_footage_colorspace_at(facade_handle, i, name_buf,
+											sizeof(name_buf)) > 0) {
+			video_color_space_->addItem(QString::fromUtf8(name_buf));
+		}
 	}
 
-	video_color_space_->setCurrentText(vp.colorspace());
+	video_color_space_->setCurrentText(QString::fromUtf8(colorspace_buf));
 
 	video_layout->addWidget(video_color_space_, row, 1);
 
@@ -92,7 +113,7 @@ VideoStreamProperties::VideoStreamProperties(Footage *footage, int video_index)
 								VideoParams::k_color_range_limited);
 	color_range_combo_->addItem(tr("Full (0-255)"),
 								VideoParams::k_color_range_full);
-	color_range_combo_->setCurrentIndex(vp.color_range());
+	color_range_combo_->setCurrentIndex(color_range);
 
 	video_layout->addWidget(color_range_combo_, row, 1);
 
@@ -100,7 +121,7 @@ VideoStreamProperties::VideoStreamProperties(Footage *footage, int video_index)
 		row++;
 
 		video_premultiply_alpha_ = new QCheckBox(tr("Premultiplied Alpha"));
-		video_premultiply_alpha_->setChecked(vp.premultiplied_alpha());
+		video_premultiply_alpha_->setChecked(premultiplied != 0);
 		video_layout->addWidget(video_premultiply_alpha_, row, 0, 1, 2);
 	}
 
@@ -114,9 +135,15 @@ VideoStreamProperties::VideoStreamProperties(Footage *footage, int video_index)
 
 		imgseq_layout->addWidget(new QLabel(tr("Start Index:")), imgseq_row, 0);
 
+		int64_t seq_start = 0, seq_duration = 0;
+		int fr_num = 0, fr_den = 1;
+		oakengine_footage_get_image_sequence_params(
+			facade_handle, video_index_, &seq_start, &seq_duration, &fr_num,
+			&fr_den);
+
 		imgseq_start_time_ = new IntegerSlider();
 		imgseq_start_time_->set_minimum(0);
-		imgseq_start_time_->set_value(vp.start_time());
+		imgseq_start_time_->set_value(seq_start);
 		imgseq_layout->addWidget(imgseq_start_time_, imgseq_row, 1);
 
 		imgseq_row++;
@@ -125,7 +152,7 @@ VideoStreamProperties::VideoStreamProperties(Footage *footage, int video_index)
 
 		imgseq_end_time_ = new IntegerSlider();
 		imgseq_end_time_->set_minimum(0);
-		imgseq_end_time_->set_value(vp.start_time() + vp.duration() - 1);
+		imgseq_end_time_->set_value(seq_start + seq_duration - 1);
 		imgseq_layout->addWidget(imgseq_end_time_, imgseq_row, 1);
 
 		imgseq_row++;
@@ -133,15 +160,22 @@ VideoStreamProperties::VideoStreamProperties(Footage *footage, int video_index)
 		imgseq_layout->addWidget(new QLabel(tr("Frame Rate:")), imgseq_row, 0);
 
 		imgseq_frame_rate_ = new FrameRateComboBox();
-		imgseq_frame_rate_->set_frame_rate(vp.frame_rate());
+		imgseq_frame_rate_->set_frame_rate(Rational(fr_num, fr_den));
 		imgseq_layout->addWidget(imgseq_frame_rate_, imgseq_row, 1);
 
 		video_layout->addWidget(imgseq_group, row, 0, 1, 2);
 	}
+
+	oakengine_footage_free(facade_handle);
 }
 
 void VideoStreamProperties::accept(MultiUndoCommand *parent)
 {
+	Q_UNUSED(parent)
+
+	OakEngineFootage *facade_handle = oakengine_footage_borrow(
+		reinterpret_cast<OakEngineNode *>(footage_));
+
 	QString set_colorspace;
 
 	if (video_color_space_->currentIndex() > 0) {
@@ -150,23 +184,30 @@ void VideoStreamProperties::accept(MultiUndoCommand *parent)
 
 	VideoParams vp = footage_->get_video_params(video_index_);
 
+	// Write every override through the facade (each call is one undoable
+	// command on the shared undo stack, replacing this dialog's own undo
+	// command classes with identical semantics).
 	if ((video_premultiply_alpha_ &&
 		 video_premultiply_alpha_->isChecked() != vp.premultiplied_alpha()) ||
 		set_colorspace != vp.colorspace() ||
 		static_cast<VideoParams::Interlacing>(
 			video_interlace_combo_->currentIndex()) != vp.interlacing() ||
-		pixel_aspect_combo_->get_pixel_aspect_ratio() != vp.pixel_aspect_ratio() ||
 		color_range_combo_->currentData().toInt() != vp.color_range()) {
-		parent->add_child(new VideoStreamChangeCommand(
-			footage_, video_index_,
-			video_premultiply_alpha_ ? video_premultiply_alpha_->isChecked() :
-									   vp.premultiplied_alpha(),
-			set_colorspace,
-			static_cast<VideoParams::Interlacing>(
-				video_interlace_combo_->currentIndex()),
-			pixel_aspect_combo_->get_pixel_aspect_ratio(),
-			static_cast<VideoParams::ColorRange>(
-				color_range_combo_->currentData().toInt())));
+		oakengine_footage_set_video_stream_overrides(
+			facade_handle, video_index_,
+			set_colorspace.toUtf8().constData(),
+			color_range_combo_->currentData().toInt(),
+			video_interlace_combo_->currentIndex(),
+			video_premultiply_alpha_ ?
+				(video_premultiply_alpha_->isChecked() ? 1 : 0) :
+				-1);
+	}
+
+	const Rational new_par = pixel_aspect_combo_->get_pixel_aspect_ratio();
+	if (new_par != vp.pixel_aspect_ratio()) {
+		oakengine_footage_set_pixel_aspect(facade_handle, video_index_,
+										   new_par.numerator(),
+										   new_par.denominator());
 	}
 
 	if (vp.video_type() == VideoParams::k_video_type_image_sequence) {
@@ -176,11 +217,15 @@ void VideoStreamProperties::accept(MultiUndoCommand *parent)
 		if (vp.start_time() != imgseq_start_time_->get_value() ||
 			vp.duration() != new_dur ||
 			vp.frame_rate() != imgseq_frame_rate_->get_frame_rate()) {
-			parent->add_child(new ImageSequenceChangeCommand(
-				footage_, video_index_, imgseq_start_time_->get_value(), new_dur,
-				imgseq_frame_rate_->get_frame_rate()));
+			const Rational fr = imgseq_frame_rate_->get_frame_rate();
+			oakengine_footage_set_image_sequence_params(
+				facade_handle, video_index_,
+				imgseq_start_time_->get_value(), new_dur, fr.numerator(),
+				fr.denominator());
 		}
 	}
+
+	oakengine_footage_free(facade_handle);
 }
 
 bool VideoStreamProperties::sanity_check()
@@ -197,104 +242,6 @@ bool VideoStreamProperties::sanity_check()
 	}
 
 	return true;
-}
-
-VideoStreamProperties::VideoStreamChangeCommand::VideoStreamChangeCommand(
-	Footage *footage, int video_index, bool premultiplied, QString colorspace,
-	VideoParams::Interlacing interlacing, const Rational &pixel_ar,
-	VideoParams::ColorRange range)
-	: footage_(footage)
-	, video_index_(video_index)
-	, new_premultiplied_(premultiplied)
-	, new_colorspace_(colorspace)
-	, new_interlacing_(interlacing)
-	, new_pixel_ar_(pixel_ar)
-	, new_range_(range)
-{
-}
-
-Project *
-VideoStreamProperties::VideoStreamChangeCommand::get_relevant_project() const
-{
-	return footage_->project();
-}
-
-void VideoStreamProperties::VideoStreamChangeCommand::redo()
-{
-	VideoParams vp = footage_->get_video_params(video_index_);
-
-	old_premultiplied_ = vp.premultiplied_alpha();
-	old_colorspace_ = vp.colorspace();
-	old_interlacing_ = vp.interlacing();
-	old_pixel_ar_ = vp.pixel_aspect_ratio();
-	old_range_ = vp.color_range();
-
-	vp.set_premultiplied_alpha(new_premultiplied_);
-	vp.set_colorspace(new_colorspace_);
-	vp.set_interlacing(new_interlacing_);
-	vp.set_pixel_aspect_ratio(new_pixel_ar_);
-	vp.set_color_range(new_range_);
-
-	footage_->set_video_params(vp, video_index_);
-}
-
-void VideoStreamProperties::VideoStreamChangeCommand::undo()
-{
-	VideoParams vp = footage_->get_video_params(video_index_);
-
-	vp.set_premultiplied_alpha(old_premultiplied_);
-	vp.set_colorspace(old_colorspace_);
-	vp.set_interlacing(old_interlacing_);
-	vp.set_pixel_aspect_ratio(old_pixel_ar_);
-	vp.set_color_range(old_range_);
-
-	footage_->set_video_params(vp, video_index_);
-}
-
-VideoStreamProperties::ImageSequenceChangeCommand::ImageSequenceChangeCommand(
-	Footage *footage, int video_index, int64_t start_index, int64_t duration,
-	const Rational &frame_rate)
-	: footage_(footage)
-	, video_index_(video_index)
-	, new_start_index_(start_index)
-	, new_duration_(duration)
-	, new_frame_rate_(frame_rate)
-{
-}
-
-Project *
-VideoStreamProperties::ImageSequenceChangeCommand::get_relevant_project() const
-{
-	return footage_->project();
-}
-
-void VideoStreamProperties::ImageSequenceChangeCommand::redo()
-{
-	VideoParams vp = footage_->get_video_params(video_index_);
-
-	old_start_index_ = vp.start_time();
-	vp.set_start_time(new_start_index_);
-
-	old_duration_ = vp.duration();
-	vp.set_duration(new_duration_);
-
-	old_frame_rate_ = vp.frame_rate();
-	vp.set_frame_rate(new_frame_rate_);
-	vp.set_time_base(new_frame_rate_.flipped());
-
-	footage_->set_video_params(vp, video_index_);
-}
-
-void VideoStreamProperties::ImageSequenceChangeCommand::undo()
-{
-	VideoParams vp = footage_->get_video_params(video_index_);
-
-	vp.set_start_time(old_start_index_);
-	vp.set_duration(old_duration_);
-	vp.set_frame_rate(old_frame_rate_);
-	vp.set_time_base(old_frame_rate_.flipped());
-
-	footage_->set_video_params(vp, video_index_);
 }
 
 }

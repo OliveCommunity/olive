@@ -59,50 +59,6 @@ public:
 	FootagePropertiesDialog(QWidget *parent, Footage *footage);
 
 private:
-	class StreamEnableChangeCommand : public UndoCommand {
-	public:
-		StreamEnableChangeCommand(Footage *footage, Track::Type type,
-								  int index_in_type, bool enabled);
-
-		virtual Project *get_relevant_project() const override;
-
-	protected:
-		virtual void redo() override;
-		virtual void undo() override;
-
-	private:
-		Footage *footage_;
-		Track::Type type_;
-		int index_;
-
-		bool old_enabled_;
-		bool new_enabled_;
-	};
-
-	class FootageSetSourceStartTimeCommand : public UndoCommand {
-	public:
-		FootageSetSourceStartTimeCommand(Footage *footage, bool enabled,
-										 const Rational &time,
-										 const QString &source);
-
-		virtual Project *get_relevant_project() const override;
-
-	protected:
-		virtual void redo() override;
-		virtual void undo() override;
-
-	private:
-		Footage *footage_;
-
-		bool new_enabled_;
-		Rational new_time_;
-		QString new_source_;
-
-		bool old_enabled_;
-		Rational old_time_;
-		QString old_source_;
-	};
-
 	/**
    * @brief Stack of widgets that changes based on whether the stream is a video or audio stream
    */

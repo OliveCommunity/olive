@@ -35,6 +35,8 @@
 
 #include "core.h"
 #include "node/nodeundo.h"
+#include "oakengine/footage.h"
+#include "oakengine/node.h"
 #include "streamproperties/audiostreamproperties.h"
 #include "streamproperties/videostreamproperties.h"
 
@@ -83,8 +85,17 @@ FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
 		start_time_layout->addWidget(source_start_time_spin_, 1);
 
 		QString detection_note;
+		// Detection source comes through the facade (auto-detected field or
+		// "manual"), matching the engine's stored value.
 		if (footage_->has_source_start_time()) {
-			const QString &source = footage_->source_start_time_source();
+			OakEngineFootage *facade_handle = oakengine_footage_borrow(
+				reinterpret_cast<OakEngineNode *>(footage_));
+			char source_buf[64];
+			source_buf[0] = '\0';
+			oakengine_footage_get_source_start_time_source(
+				facade_handle, source_buf, sizeof(source_buf));
+			oakengine_footage_free(facade_handle);
+			const QString source = QString::fromUtf8(source_buf);
 			detection_note =
 				(source == QStringLiteral("manual")) ?
 					tr("(set manually)") :
@@ -200,12 +211,16 @@ void FootagePropertiesDialog::accept()
 		}
 	}
 
-	MultiUndoCommand *command = new MultiUndoCommand();
+	OakEngineFootage *facade_handle = oakengine_footage_borrow(
+		reinterpret_cast<OakEngineNode *>(footage_));
 
+	// All writes go through the liboakengine C ABI facade; each call lands
+	// on the shared undo stack as an undoable command (replacing this
+	// dialog's own undo command classes with identical semantics).
 	if (footage_->get_label() != footage_name_field_->text()) {
-		NodeRenameCommand *nrc = new NodeRenameCommand();
-		nrc->add_node(footage_, footage_name_field_->text());
-		command->add_child(nrc);
+		oakengine_node_set_label(
+			reinterpret_cast<OakEngineNode *>(footage_),
+			footage_name_field_->text().toUtf8().constData());
 	}
 
 	// Apply source start time changes
@@ -215,8 +230,9 @@ void FootagePropertiesDialog::accept()
 			Rational::from_double(source_start_time_spin_->value());
 		if (new_enabled != footage_->has_source_start_time() ||
 			(new_enabled && new_time != footage_->source_start_time())) {
-			command->add_child(new FootageSetSourceStartTimeCommand(
-				footage_, new_enabled, new_time, QStringLiteral("manual")));
+			oakengine_footage_set_source_start_time(
+				facade_handle, new_enabled ? 1 : 0, new_time.numerator(),
+				new_time.denominator());
 		}
 	}
 
@@ -245,133 +261,22 @@ void FootagePropertiesDialog::accept()
 		}
 
 		if (old_stream_enabled != new_stream_enabled) {
-			command->add_child(new StreamEnableChangeCommand(
-				footage_, reference.type(), reference.index(),
-				new_stream_enabled));
+			oakengine_footage_set_stream_enabled(
+				facade_handle, int(reference.type()), reference.index(),
+				new_stream_enabled ? 1 : 0);
 		}
 	}
 
+	oakengine_footage_free(facade_handle);
+
+	MultiUndoCommand *command = new MultiUndoCommand();
 	for (int i = 0; i < stacked_widget_->count(); i++) {
 		static_cast<StreamProperties *>(stacked_widget_->widget(i))
 			->accept(command);
 	}
-
-	Core::instance()->undo_stack()->push(
-		command, tr("Set Footage \"%1\" Properties").arg(footage_->get_label()));
+	delete command; // stream pages write through the facade directly
 
 	QDialog::accept();
-}
-
-FootagePropertiesDialog::StreamEnableChangeCommand::StreamEnableChangeCommand(
-	Footage *footage, Track::Type type, int index_in_type, bool enabled)
-	: footage_(footage)
-	, type_(type)
-	, index_(index_in_type)
-	, new_enabled_(enabled)
-{
-}
-
-Project *
-FootagePropertiesDialog::StreamEnableChangeCommand::get_relevant_project() const
-{
-	return footage_->project();
-}
-
-void FootagePropertiesDialog::StreamEnableChangeCommand::redo()
-{
-	switch (type_) {
-	case Track::k_video: {
-		VideoParams vp = footage_->get_video_params(index_);
-		old_enabled_ = vp.enabled();
-		vp.set_enabled(new_enabled_);
-		footage_->set_video_params(vp, index_);
-		break;
-	}
-	case Track::k_audio: {
-		AudioParams ap = footage_->get_audio_params(index_);
-		old_enabled_ = ap.enabled();
-		ap.set_enabled(new_enabled_);
-		footage_->set_audio_params(ap, index_);
-		break;
-	}
-	case Track::k_subtitle: {
-		SubtitleParams sp = footage_->get_subtitle_params(index_);
-		old_enabled_ = sp.enabled();
-		sp.set_enabled(new_enabled_);
-		footage_->set_subtitle_params(sp, index_);
-		break;
-	}
-	case Track::k_none:
-	case Track::k_count:
-		break;
-	}
-}
-
-void FootagePropertiesDialog::StreamEnableChangeCommand::undo()
-{
-	switch (type_) {
-	case Track::k_video: {
-		VideoParams vp = footage_->get_video_params(index_);
-		vp.set_enabled(old_enabled_);
-		footage_->set_video_params(vp, index_);
-		break;
-	}
-	case Track::k_audio: {
-		AudioParams ap = footage_->get_audio_params(index_);
-		ap.set_enabled(old_enabled_);
-		footage_->set_audio_params(ap, index_);
-		break;
-	}
-	case Track::k_subtitle: {
-		SubtitleParams sp = footage_->get_subtitle_params(index_);
-		sp.set_enabled(old_enabled_);
-		footage_->set_subtitle_params(sp, index_);
-		break;
-	}
-	case Track::k_none:
-	case Track::k_count:
-		break;
-	}
-}
-
-FootagePropertiesDialog::FootageSetSourceStartTimeCommand::
-	FootageSetSourceStartTimeCommand(Footage *footage, bool enabled,
-									 const Rational &time,
-									 const QString &source)
-	: footage_(footage)
-	, new_enabled_(enabled)
-	, new_time_(time)
-	, new_source_(source)
-{
-}
-
-Project *
-FootagePropertiesDialog::FootageSetSourceStartTimeCommand::get_relevant_project()
-	const
-{
-	return footage_->project();
-}
-
-void FootagePropertiesDialog::FootageSetSourceStartTimeCommand::redo()
-{
-	old_enabled_ = footage_->has_source_start_time();
-	old_time_ = footage_->source_start_time();
-	old_source_ = footage_->source_start_time_source();
-
-	if (new_enabled_) {
-		footage_->set_source_start_time(new_time_, new_source_);
-	} else {
-		footage_->clear_source_start_time();
-	}
-}
-
-void FootagePropertiesDialog::FootageSetSourceStartTimeCommand::undo()
-{
-	if (old_enabled_) {
-		footage_->set_source_start_time(old_time_, old_source_);
-	} else {
-		footage_->clear_source_start_time();
-	}
 }
 
 }
