@@ -25,6 +25,7 @@
 #include <cstring>
 
 #include <QByteArray>
+#include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QMutex>
 #include <QString>
@@ -135,6 +136,10 @@ bool wait_for_ticket(OakEngineRendererState *state,
 	timer.start();
 	while (!finished.load() && !ticket->is_cancelled() &&
 		   !timer.hasExpired(k_render_timeout_ms)) {
+		// Pump events, not just sleep: audio conforms signal their
+		// completion through this thread's event queue, and a bare sleep
+		// loop would starve them (the export family waits the same way).
+		QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
 		QThread::msleep(5);
 	}
 
@@ -330,24 +335,43 @@ OakEngineAudioBuffer *oakengine_renderer_render_audio(
 			state->sequence, olive::TimeRange(in_time, in_time + length_time),
 			state->audio_params, state->mode);
 
-		olive::RenderTicketPtr ticket =
-			olive::RenderManager::instance()->render_audio(params);
-		{
-			QMutexLocker locker(&state->ticket_mutex);
-			state->in_flight = ticket;
+		// A ticket can finish "successfully" with an empty buffer when the
+		// audio conform was still generating (RenderProcessor marks it
+		// "incomplete" instead of blocking): resubmit until the conform is
+		// ready, up to the overall render timeout.
+		olive::SampleBuffer samples;
+		QElapsedTimer retry_timer;
+		retry_timer.start();
+		while (true) {
+			olive::RenderTicketPtr ticket =
+				olive::RenderManager::instance()->render_audio(params);
+			{
+				QMutexLocker locker(&state->ticket_mutex);
+				state->in_flight = ticket;
+			}
+
+			if (!wait_for_ticket(state, ticket) || !ticket->has_result()) {
+				set_error(state,
+						  ticket->is_cancelled() ?
+							  QStringLiteral("render cancelled") :
+							  QStringLiteral(
+								  "audio render produced nothing (timeout or failure)"));
+				return nullptr;
+			}
+
+			if (!ticket->property("incomplete").toBool()) {
+				samples = ticket->get().value<olive::SampleBuffer>();
+				break;
+			}
+			if (retry_timer.hasExpired(k_render_timeout_ms)) {
+				set_error(state, QStringLiteral(
+					"audio conform did not finish in time"));
+				return nullptr;
+			}
+			// Conform still generating; let it finish and try again.
+			QThread::msleep(50);
 		}
 
-		if (!wait_for_ticket(state, ticket) || !ticket->has_result()) {
-			set_error(state,
-					  ticket->is_cancelled() ?
-						  QStringLiteral("render cancelled") :
-						  QStringLiteral(
-							  "audio render produced nothing (timeout or failure)"));
-			return nullptr;
-		}
-
-		olive::SampleBuffer samples =
-			ticket->get().value<olive::SampleBuffer>();
 		if (!samples.is_allocated()) {
 			set_error(state, QStringLiteral("audio render result was empty"));
 			return nullptr;

@@ -29,6 +29,7 @@ set(OLIVE_SOURCES
         include/oakengine/footage.h
         include/oakengine/exporter.h
         include/oakengine/node.h
+        include/oakengine/preview.h
         src/capi/init.cpp
         src/capi/project.cpp
         src/capi/timeline.cpp
@@ -36,5 +37,6 @@ set(OLIVE_SOURCES
         src/capi/footage.cpp
         src/capi/export.cpp
         src/capi/node.cpp
+        src/capi/preview.cpp
         PARENT_SCOPE
 )

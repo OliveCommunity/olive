@@ -311,4 +311,27 @@ if (BUILD_TESTS)
     target_compile_definitions(oakengine_keyframe_test PRIVATE
             OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
+
+    make_oakengine_test(oakengine_preview_test)
+    # The preview test needs audio rendering (RenderManager + workers).
+    target_include_directories(oakengine_preview_test PRIVATE
+            ${CMAKE_SOURCE_DIR}/third_party/openfx/include
+            ${CMAKE_SOURCE_DIR}/third_party/openfx/HostSupport/include
+            ${OLIVE_INCLUDE_DIRS}
+    )
+    target_compile_definitions(oakengine_preview_test PRIVATE
+            ${OLIVE_DEFINITIONS}
+            OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    )
+    target_compile_options(oakengine_preview_test PRIVATE
+            ${OLIVE_COMPILE_OPTIONS}
+    )
+    if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
+        target_compile_definitions(oakengine_preview_test PRIVATE
+                OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
+        add_dependencies(oakengine_preview_test oakgl)
+    endif ()
+    if (TARGET olive-render-worker)
+        add_dependencies(oakengine_preview_test olive-render-worker)
+    endif ()
 endif ()
