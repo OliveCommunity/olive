@@ -251,6 +251,102 @@ OAKENGINE_API int oakengine_node_connect(OakEngineNode *output_node,
 OAKENGINE_API int oakengine_node_disconnect(OakEngineNode *input_node,
 											const char *input_id);
 
+/* ---- Parameter animation (keyframes) --------------------------------------
+ *
+ * Keyframes live on an input's keyframe tracks (olive::NodeKeyframe). All
+ * functions of this family operate on TRACK 0 only: for single-track types
+ * (FLOAT, INT, BOOL, RATIONAL, COMBO, STRING) that is the whole value; for
+ * split-track types (COLOR, VEC2/3/4) it is the FIRST component only (e.g.
+ * red / x) -- multi-component keyframe editing is a later milestone.
+ *
+ * Keyframe times cross the boundary as frame timestamps (int64) in the
+ * timebase of the project's first sequence's frame rate; projects without a
+ * sequence fall back to the engine's default frame rate (1001/30000 s per
+ * frame). The facade easing type is 0 = linear, 1 = bezier, 2 = hold (the
+ * engine's NodeKeyframe::Type in a different order). Bezier control points
+ * are the in-handle (x1, y1) and out-handle (x2, y2) in curve space; they
+ * are only meaningful for bezier keyframes.
+ *
+ * All mutating calls are undoable like the other editing primitives.
+ * Errors follow the family model (oakengine_node_last_error()).
+ */
+
+/**
+ * @brief 1 if the input is keyframing-enabled (Node::is_input_keyframing()).
+ */
+OAKENGINE_API int oakengine_node_input_is_keyframed(const OakEngineNode *self,
+													const char *input_id);
+
+/**
+ * @brief Number of keyframes on track 0 of the input.
+ */
+OAKENGINE_API int oakengine_node_keyframe_count(const OakEngineNode *self,
+												const char *input_id);
+
+/**
+ * @brief Read the keyframe at `index` (time-ordered): its time as a frame
+ * timestamp (`time_ts`, may be NULL) and its value mapped like
+ * oakengine_node_get_input() (`value`, may be NULL; split-track types get
+ * their first component in f[0]/num).
+ */
+OAKENGINE_API int oakengine_node_keyframe_at(const OakEngineNode *self,
+											 const char *input_id, int index,
+											 int64_t *time_ts,
+											 oak_node_value *value);
+
+/**
+ * @brief Read the easing of the keyframe at `index`: facade type into
+ * `type` (0 = linear, 1 = bezier, 2 = hold; may be NULL) and the bezier
+ * in/out control points into (x1, y1, x2, y2) -- zeroed for non-bezier
+ * keyframes. Any pointer may be NULL.
+ */
+OAKENGINE_API int oakengine_node_keyframe_get_easing(
+	const OakEngineNode *self, const char *input_id, int index, float *x1,
+	float *y1, float *x2, float *y2, int *type);
+
+/**
+ * @brief Add a keyframe at `time_ts` (undoable; enables keyframing on the
+ * input first when needed).
+ *
+ * `value` maps like oakengine_node_set_input() and must match the input's
+ * declared type (for split-track types, the first component is used).
+ * `type` is the facade easing type; the four control floats only apply to
+ * bezier (type 1). Fails with OAKENGINE_E_STATE when a keyframe already
+ * exists at that exact time.
+ */
+OAKENGINE_API int oakengine_node_keyframe_add(OakEngineNode *self,
+											  const char *input_id,
+											  int64_t time_ts,
+											  const oak_node_value *value,
+											  int type, float x1, float y1,
+											  float x2, float y2);
+
+/**
+ * @brief Remove the keyframe at `time_ts` (undoable).
+ * OAKENGINE_E_NOT_FOUND when no keyframe exists at that exact time.
+ */
+OAKENGINE_API int oakengine_node_keyframe_remove(OakEngineNode *self,
+												 const char *input_id,
+												 int64_t time_ts);
+
+/**
+ * @brief Change the easing of the keyframe at `time_ts` (undoable; set type
+ * plus bezier control points, mirroring the application's keyframe view
+ * commands). OAKENGINE_E_NOT_FOUND when no keyframe exists at that time;
+ * OAKENGINE_E_INVALID for an unknown easing type.
+ */
+OAKENGINE_API int oakengine_node_keyframe_set_easing(
+	OakEngineNode *self, const char *input_id, int64_t time_ts, int type,
+	float x1, float y1, float x2, float y2);
+
+/**
+ * @brief Remove all keyframes from the input (undoable,
+ * olive::NodeImmediateRemoveAllKeyframesCommand). A no-op (OAKENGINE_OK)
+ * when the input has no keyframes.
+ */
+OAKENGINE_API int oakengine_node_keyframes_clear(OakEngineNode *self,
+												 const char *input_id);
+
 #ifdef __cplusplus
 }
 #endif

@@ -306,4 +306,9 @@ if (BUILD_TESTS)
     target_compile_definitions(oakengine_node_test PRIVATE
             OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
+
+    make_oakengine_test(oakengine_keyframe_test)
+    target_compile_definitions(oakengine_keyframe_test PRIVATE
+            OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    )
 endif ()
