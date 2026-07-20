@@ -224,6 +224,66 @@ OAKENGINE_API int oakengine_node_set_input_string(OakEngineNode *self,
 												  const char *input_id,
 												  const char *s);
 
+/**
+ * @brief The frame timebase used for keyframe/parameter frame timestamps
+ * (seconds per frame: the frame rate of the project's first sequence
+ * flipped, or the engine default 1001/30000). Any pointer may be NULL.
+ * Use it to convert rational seconds to the timestamps this family
+ * takes, exactly like the facade does internally.
+ */
+OAKENGINE_API int oakengine_node_frame_time_base(
+	const OakEngineNode *self, int *num, int *den);
+
+/**
+ * @brief Write an input's value at a time (undoable, ONE command;
+ * olive::Node::set_value_at_time() -- the application's parameter
+ * panel commit path).
+ *
+ * When the input is keyframed this inserts or updates the keyframe at
+ * `time_ts` (the engine's set_value_at_time semantics); otherwise it
+ * sets the standard value on `track`. `element` is the array element
+ * (-1 for non-array inputs). `track` is the keyframe track/component;
+ * pass -1 to write ALL components of a split-track type (COLOR/VEC2/3/4)
+ * from `v->f[]` in the same command. `v->type` must match the input's
+ * declared type; a k_bezier input takes an OAK_NODE_VALUE_FLOAT
+ * component per track. String-family inputs (k_file/k_text/k_font/
+ * k_str_combo) are rejected -- use oakengine_node_set_input_string_at_
+ * time(). `insert_on_all_tracks` mirrors set_value_at_time's
+ * insert_on_all_tracks_if_no_key (ignored for `track` -1).
+ */
+OAKENGINE_API int oakengine_node_set_input_at_time(
+	OakEngineNode *self, const char *input_id, int element, int64_t time_ts,
+	int track, const oak_node_value *v, int insert_on_all_tracks);
+
+/**
+ * @brief Write a string-family input's value at a time (undoable, ONE
+ * command; k_file/k_text/k_font/k_str_combo on track 0, with
+ * insert_on_all_tracks_if_no_key semantics like the panel).
+ */
+OAKENGINE_API int oakengine_node_set_input_string_at_time(
+	OakEngineNode *self, const char *input_id, int element, int64_t time_ts,
+	const char *value);
+
+/* ---- Array inputs --------------------------------------------------------- */
+
+/**
+ * @brief Insert an element into an array input at `index` (undoable,
+ * olive::NodeArrayInsertCommand; the panel's array append/insert
+ * buttons). `index` must be >= 0.
+ */
+OAKENGINE_API int oakengine_node_array_insert_at(OakEngineNode *self,
+												 const char *input_id,
+												 int index);
+
+/**
+ * @brief Remove the array element at `index` (undoable,
+ * olive::NodeArrayRemoveCommand). OAKENGINE_E_NOT_FOUND for an
+ * out-of-range index.
+ */
+OAKENGINE_API int oakengine_node_array_remove_at(OakEngineNode *self,
+												 const char *input_id,
+												 int index);
+
 /* ---- Graph editing ------------------------------------------------------------- */
 
 /**
@@ -261,6 +321,16 @@ OAKENGINE_API int oakengine_node_connect(OakEngineNode *output_node,
  */
 OAKENGINE_API int oakengine_node_disconnect(OakEngineNode *input_node,
 											const char *input_id);
+
+/**
+ * @brief Remove the edge feeding `input_node`'s `input_id` at `element`
+ * (undoable). Same as oakengine_node_disconnect() (which passes element
+ * -1) but addresses an array element, like the panel's connected-label
+ * disconnect for array inputs.
+ */
+OAKENGINE_API int oakengine_node_disconnect_ex(OakEngineNode *input_node,
+											   const char *input_id,
+											   int element);
 
 /* ---- Parameter animation (keyframes) --------------------------------------
  *
@@ -349,6 +419,23 @@ OAKENGINE_API int oakengine_node_keyframe_remove(OakEngineNode *self,
 OAKENGINE_API int oakengine_node_keyframe_set_easing(
 	OakEngineNode *self, const char *input_id, int64_t time_ts, int type,
 	float x1, float y1, float x2, float y2);
+
+/**
+ * @brief Change only the easing TYPE of several keyframes of one input
+ * (undoable, ONE command; the application's keyframe view
+ * KeyframeSetTypeCommand, batched like its context-menu action).
+ *
+ * Unlike the rest of this family (track 0 only), keyframes are addressed
+ * individually by (`times_ts`[i], `tracks`[i]) because the view's
+ * selection may span tracks; `element` addresses the input's array
+ * element (-1 for non-array). Bezier control points are left untouched.
+ * Every address must name an existing keyframe or the whole call fails
+ * with OAKENGINE_E_NOT_FOUND and nothing is pushed. Returns the number
+ * of affected keyframes (>= 0) or a negative code.
+ */
+OAKENGINE_API int oakengine_node_keyframes_set_type_many(
+	OakEngineNode *self, const char *input_id, int element,
+	const int64_t *times_ts, const int *tracks, int count, int type);
 
 /**
  * @brief Remove all keyframes from the input (undoable,

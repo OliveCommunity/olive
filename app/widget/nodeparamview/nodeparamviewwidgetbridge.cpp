@@ -37,6 +37,7 @@
 #include "node/project/sequence/sequence.h"
 #include "nodeparamviewarraywidget.h"
 #include "nodeparamviewtextedit.h"
+#include "oakengine/node.h"
 #include "render/lutlibrary.h"
 #include "undo/undostack.h"
 #include "widget/bezier/bezierwidget.h"
@@ -74,6 +75,74 @@ int get_slider_count(NodeValue::Type type)
 {
 	return NodeValue::get_number_of_keyframe_tracks(type);
 }
+
+namespace
+{
+
+// Map a panel widget's per-track scalar QVariant into the facade POD.
+// Returns false for types that have no facade mapping (the caller keeps
+// the legacy path for those).
+bool variant_to_c_value(NodeValue::Type type, const QVariant &value,
+						oak_node_value *out)
+{
+	memset(out, 0, sizeof(*out));
+	switch (type) {
+	case NodeValue::k_int:
+		out->type = OAK_NODE_VALUE_INT;
+		out->num = value.toLongLong();
+		return true;
+	case NodeValue::k_combo:
+		out->type = OAK_NODE_VALUE_COMBO;
+		out->num = value.toLongLong();
+		return true;
+	case NodeValue::k_float:
+	case NodeValue::k_bezier:
+		out->type = OAK_NODE_VALUE_FLOAT;
+		out->f[0] = value.toDouble();
+		return true;
+	case NodeValue::k_boolean:
+		out->type = OAK_NODE_VALUE_BOOL;
+		out->num = value.toBool() ? 1 : 0;
+		return true;
+	case NodeValue::k_rational: {
+		const Rational r = value.value<Rational>();
+		out->type = OAK_NODE_VALUE_RATIONAL;
+		out->num = r.numerator();
+		out->den = r.denominator();
+		return true;
+	}
+	case NodeValue::k_color:
+		out->type = OAK_NODE_VALUE_COLOR;
+		out->f[0] = value.toDouble();
+		return true;
+	case NodeValue::k_vec2:
+		out->type = OAK_NODE_VALUE_VEC2;
+		out->f[0] = value.toDouble();
+		return true;
+	case NodeValue::k_vec3:
+		out->type = OAK_NODE_VALUE_VEC3;
+		out->f[0] = value.toDouble();
+		return true;
+	case NodeValue::k_vec4:
+		out->type = OAK_NODE_VALUE_VEC4;
+		out->f[0] = value.toDouble();
+		return true;
+	default:
+		return false;
+	}
+}
+
+// Convert rational node time to the facade's frame timestamps using the
+// facade's own timebase (so the round trip is exact).
+int64_t node_time_to_ts(OakEngineNode *node, const Rational &time)
+{
+	int tbn = 0, tbd = 0;
+	oakengine_node_frame_time_base(node, &tbn, &tbd);
+	return Timecode::time_to_timestamp(time, Rational(tbn, tbd),
+									   Timecode::k_round);
+}
+
+} // namespace
 
 void NodeParamViewWidgetBridge::create_widgets()
 {
@@ -236,11 +305,37 @@ void NodeParamViewWidgetBridge::create_widgets()
 
 void NodeParamViewWidgetBridge::set_input_value(const QVariant &value, int track)
 {
-	MultiUndoCommand *command = new MultiUndoCommand();
+	// POD values go through the liboakengine C ABI facade (one undoable
+	// command with the same set-value-at-time semantics as the old
+	// app-side assembly); types without a facade mapping keep the legacy
+	// undo assembly below.
+	const NodeInput &input = get_inner_input();
+	oak_node_value c_value;
+	if (!variant_to_c_value(get_data_type(), value, &c_value)) {
+		MultiUndoCommand *command = new MultiUndoCommand();
+		set_input_value_internal(value, track, command, true);
+		Core::instance()->undo_stack()->push(command, get_command_name());
+		return;
+	}
 
-	set_input_value_internal(value, track, command, true);
+	oakengine_node_set_input_at_time(
+		reinterpret_cast<OakEngineNode *>(input.node()),
+		input.input().toUtf8().constData(), input.element(),
+		node_time_to_ts(reinterpret_cast<OakEngineNode *>(input.node()),
+						get_current_time_as_node_time()),
+		track, &c_value, 1);
+}
 
-	Core::instance()->undo_stack()->push(command, get_command_name());
+void NodeParamViewWidgetBridge::set_string_value(const QString &value)
+{
+	// String-family inputs (file/text/font/str_combo) through the facade.
+	const NodeInput &input = get_inner_input();
+	oakengine_node_set_input_string_at_time(
+		reinterpret_cast<OakEngineNode *>(input.node()),
+		input.input().toUtf8().constData(), input.element(),
+		node_time_to_ts(reinterpret_cast<OakEngineNode *>(input.node()),
+						get_current_time_as_node_time()),
+		value.toUtf8().constData());
 }
 
 void NodeParamViewWidgetBridge::set_input_value_internal(
@@ -336,7 +431,7 @@ void NodeParamViewWidgetBridge::widget_callback()
 		break;
 	}
 	case NodeValue::k_file: {
-		set_input_value(static_cast<FileField *>(sender())->get_filename(), 0);
+		set_string_value(static_cast<FileField *>(sender())->get_filename());
 		break;
 	}
 	case NodeValue::k_color: {
@@ -345,15 +440,27 @@ void NodeParamViewWidgetBridge::widget_callback()
 			FloatSlider *slider = static_cast<FloatSlider *>(sender());
 			process_slider(slider, slider->get_value());
 		} else {
-			// Sender is a ColorButton
+			// Sender is a ColorButton: all four components go through the
+			// facade in one undoable command (track -1). The
+			// color-management input properties are not undoable in the
+			// engine and stay direct (same as the old code).
 			ManagedColor c = static_cast<ColorButton *>(sender())->get_color();
 
-			MultiUndoCommand *command = new MultiUndoCommand();
-
-			set_input_value_internal(c.red(), 0, command, false);
-			set_input_value_internal(c.green(), 1, command, false);
-			set_input_value_internal(c.blue(), 2, command, false);
-			set_input_value_internal(c.alpha(), 3, command, false);
+			const NodeInput &input = get_inner_input();
+			oak_node_value c_value;
+			memset(&c_value, 0, sizeof(c_value));
+			c_value.type = OAK_NODE_VALUE_COLOR;
+			c_value.f[0] = c.red();
+			c_value.f[1] = c.green();
+			c_value.f[2] = c.blue();
+			c_value.f[3] = c.alpha();
+			oakengine_node_set_input_at_time(
+				reinterpret_cast<OakEngineNode *>(input.node()),
+				input.input().toUtf8().constData(), input.element(),
+				node_time_to_ts(
+					reinterpret_cast<OakEngineNode *>(input.node()),
+					get_current_time_as_node_time()),
+				-1, &c_value, 0);
 
 			Node *n = get_inner_input().node();
 			n->blockSignals(true);
@@ -369,15 +476,12 @@ void NodeParamViewWidgetBridge::widget_callback()
 								QStringLiteral("col_look"),
 								c.color_output().look());
 			n->blockSignals(false);
-
-			Core::instance()->undo_stack()->push(command, get_command_name());
 		}
 		break;
 	}
 	case NodeValue::k_text: {
 		// Sender is a NodeParamViewRichText
-		set_input_value(static_cast<NodeParamViewTextEdit *>(sender())->text(),
-					  0);
+		set_string_value(static_cast<NodeParamViewTextEdit *>(sender())->text());
 		break;
 	}
 	case NodeValue::k_binary: {
@@ -397,8 +501,8 @@ void NodeParamViewWidgetBridge::widget_callback()
 	}
 	case NodeValue::k_font: {
 		// Widget is a QFontComboBox
-		set_input_value(
-			static_cast<QFontComboBox *>(sender())->currentFont().family(), 0);
+		set_string_value(
+			static_cast<QFontComboBox *>(sender())->currentFont().family());
 		break;
 	}
 	case NodeValue::k_combo: {
@@ -421,9 +525,9 @@ void NodeParamViewWidgetBridge::widget_callback()
 		QComboBox *cb = static_cast<QComboBox *>(widgets_.first());
 		const QVariant data = cb->currentData();
 		if (data.isValid()) {
-			set_input_value(data.toString(), 0);
+			set_string_value(data.toString());
 		} else {
-			set_input_value(cb->currentText(), 0);
+			set_string_value(cb->currentText());
 		}
 		break;
 	}

@@ -262,6 +262,162 @@ static void test_rational_and_color(OakEngineProject *project,
 	assert(oakengine_node_keyframes_clear(solid, "color_in") == OAKENGINE_OK);
 }
 
+static void test_panel_paths(OakEngineProject *project,
+							 OakEngineNode *opacity, OakEngineNode *solid)
+{
+	oak_node_value out;
+
+	// Frame time base (1001/30000 with the default sequence).
+	int tbn = 0, tbd = 0;
+	assert(oakengine_node_frame_time_base(opacity, &tbn, &tbd) ==
+		   OAKENGINE_OK);
+	assert(tbn > 0 && tbd > 0);
+	assert(oakengine_node_frame_time_base(NULL, &tbn, &tbd) ==
+		   OAKENGINE_E_INVALID);
+
+	// set_input_at_time on a NON-keyframed input (fresh node) sets the
+	// standard value; undo restores it.
+	OakEngineNode *op2 = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.opacity");
+	assert(op2 != NULL);
+	oak_node_value v = float_value(0.75);
+	assert(oakengine_node_set_input_at_time(op2, "opacity_in", -1, 10, 0, &v,
+											1) == OAKENGINE_OK);
+	assert(oakengine_node_get_input(op2, "opacity_in", &out) == OAKENGINE_OK);
+	assert(fabs(out.f[0] - 0.75) < 1e-9);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_node_get_input(op2, "opacity_in", &out) == OAKENGINE_OK);
+	assert(fabs(out.f[0] - 0.75) > 1e-9);
+
+	// Component type must match the declared type; bad track/id rejected.
+	oak_node_value wrong;
+	memset(&wrong, 0, sizeof(wrong));
+	wrong.type = OAK_NODE_VALUE_INT;
+	assert(oakengine_node_set_input_at_time(op2, "opacity_in", -1, 0, 0,
+											&wrong,
+											1) == OAKENGINE_E_INVALID);
+	assert(oakengine_node_set_input_at_time(op2, "opacity_in", -1, 0, 1, &v,
+											1) == OAKENGINE_E_INVALID);
+	assert(oakengine_node_set_input_at_time(op2, "nope", -1, 0, 0, &v,
+											1) == OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_node_set_input_at_time(NULL, "opacity_in", -1, 0, 0, &v,
+											1) == OAKENGINE_E_INVALID);
+
+	// `opacity` is keyframed at this point (keys at 0/15/30 left by the
+	// earlier tests): the call writes a KEYFRAME at the time
+	// (set_value_at_time semantics) -- insert first, then update in place.
+	v = float_value(0.9);
+	assert(oakengine_node_set_input_at_time(opacity, "opacity_in", -1, 20, 0,
+											&v, 1) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_count(opacity, "opacity_in") == 4);
+	int64_t ts = -1;
+	assert(oakengine_node_keyframe_at(opacity, "opacity_in", 2, &ts, &out) ==
+		   OAKENGINE_OK);
+	assert(ts == 20 && fabs(out.f[0] - 0.9) < 1e-9);
+	v = float_value(0.8);
+	assert(oakengine_node_set_input_at_time(opacity, "opacity_in", -1, 20, 0,
+											&v, 1) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_count(opacity, "opacity_in") == 4);
+	assert(oakengine_node_keyframe_at(opacity, "opacity_in", 2, &ts, &out) ==
+		   OAKENGINE_OK);
+	assert(fabs(out.f[0] - 0.8) < 1e-9);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_count(opacity, "opacity_in") == 3);
+
+	// track -1 writes all color components in one command (fresh node, so
+	// the standard value itself is written and readable back).
+	OakEngineNode *solid2 = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.solidgenerator");
+	assert(solid2 != NULL);
+	oak_node_value c;
+	memset(&c, 0, sizeof(c));
+	c.type = OAK_NODE_VALUE_COLOR;
+	c.f[0] = 0.1;
+	c.f[1] = 0.2;
+	c.f[2] = 0.3;
+	c.f[3] = 0.4;
+	assert(oakengine_node_set_input_at_time(solid2, "color_in", -1, 5, -1, &c,
+											0) == OAKENGINE_OK);
+	assert(oakengine_node_get_input(solid2, "color_in", &out) ==
+		   OAKENGINE_OK);
+	assert(fabs(out.f[0] - 0.1) < 1e-6 && fabs(out.f[1] - 0.2) < 1e-6 &&
+		   fabs(out.f[2] - 0.3) < 1e-6 && fabs(out.f[3] - 0.4) < 1e-6);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+
+	// String-at-time on the text node; the POD path rejects strings and
+	// vice versa.
+	OakEngineNode *text = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.text3");
+	assert(text != NULL);
+	assert(oakengine_node_set_input_string_at_time(text, "text_in", -1, 0,
+												   "hello") == OAKENGINE_OK);
+	assert(oakengine_node_set_input_string_at_time(text, "nope", -1, 0,
+												   "x") == OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_node_set_input_string_at_time(op2, "opacity_in", -1, 0,
+												   "x") == OAKENGINE_E_INVALID);
+	assert(oakengine_node_set_input_at_time(text, "text_in", -1, 0, 0, &v,
+											1) == OAKENGINE_E_INVALID);
+
+	// Array insert/remove on the text node's args_in array.
+	assert(oakengine_node_array_insert_at(text, "args_in", 0) ==
+		   OAKENGINE_OK);
+	assert(oakengine_node_array_insert_at(text, "args_in", 1) ==
+		   OAKENGINE_OK);
+	assert(oakengine_node_array_remove_at(text, "args_in", 1) ==
+		   OAKENGINE_OK);
+	assert(oakengine_node_array_remove_at(text, "args_in", 5) ==
+		   OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_node_array_remove_at(text, "args_in", 0) ==
+		   OAKENGINE_OK);
+	assert(oakengine_node_array_insert_at(text, "args_in", -1) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_node_array_remove_at(NULL, "args_in", 0) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+
+	// keyframes_set_type_many: keys at 0 and 15 to hold in one command.
+	const int64_t times[2] = { 0, 15 };
+	const int tracks[2] = { 0, 0 };
+	assert(oakengine_node_keyframes_set_type_many(opacity, "opacity_in", -1,
+												  times, tracks, 2, 2) == 2);
+	int type = -1;
+	assert(oakengine_node_keyframe_get_easing(opacity, "opacity_in", 0, NULL,
+											  NULL, NULL, NULL,
+											  &type) == OAKENGINE_OK);
+	assert(type == 2);
+	assert(oakengine_node_keyframe_get_easing(opacity, "opacity_in", 1, NULL,
+											  NULL, NULL, NULL,
+											  &type) == OAKENGINE_OK);
+	assert(type == 2);
+	// One undo restores each key's own previous easing (hold at 0, bezier
+	// at 15 -- left over from the earlier tests).
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_get_easing(opacity, "opacity_in", 0, NULL,
+											  NULL, NULL, NULL,
+											  &type) == OAKENGINE_OK);
+	assert(type == 2);
+	assert(oakengine_node_keyframe_get_easing(opacity, "opacity_in", 1, NULL,
+											  NULL, NULL, NULL,
+											  &type) == OAKENGINE_OK);
+	assert(type == 1);
+
+	// A bad address fails without side effects; zero count is a no-op.
+	const int64_t bad[1] = { 99 };
+	assert(oakengine_node_keyframes_set_type_many(opacity, "opacity_in", -1,
+												  bad, tracks, 1,
+												  1) == OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_node_keyframes_set_type_many(opacity, "opacity_in", -1,
+												  times, tracks, 0, 1) == 0);
+	assert(oakengine_node_keyframes_set_type_many(NULL, "opacity_in", -1,
+												  times, tracks, 1,
+												  1) == OAKENGINE_E_INVALID);
+	assert(oakengine_node_keyframe_count(opacity, "opacity_in") == 3);
+}
+
 int main(void)
 {
 	make_tmpdir();
@@ -295,6 +451,7 @@ int main(void)
 	test_float_lifecycle(project, opacity);
 	test_easing_and_remove(project, opacity);
 	test_rational_and_color(project, timeremap, solid);
+	test_panel_paths(project, opacity, solid);
 
 	oakengine_project_free(project);
 	assert(oakengine_shutdown() == OAKENGINE_OK);

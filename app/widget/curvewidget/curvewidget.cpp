@@ -30,7 +30,7 @@
 #include "core.h"
 #include "common/qtutils.h"
 #include "node/node.h"
-#include "widget/keyframeview/keyframeviewundo.h"
+#include "oakengine/node.h"
 #include "widget/timeruler/timeruler.h"
 
 namespace olive
@@ -341,14 +341,50 @@ void CurveWidget::keyframe_type_button_triggered(bool checked)
 	// Ensure only the appropriate button is checked
 	set_keyframe_button_checked_from_type(new_type);
 
-	MultiUndoCommand *command = new MultiUndoCommand();
-
+	// Through the liboakengine C ABI facade: one undoable command per
+	// distinct input (usually just one), with the same batch semantics as
+	// the old per-keyframe commands.
+	struct TypeGroup {
+		Node *node;
+		QString input;
+		int element;
+		QVector<int64_t> times;
+		QVector<int> tracks;
+	};
+	QVector<TypeGroup> groups;
 	foreach (NodeKeyframe *item, selected) {
-		command->add_child(new KeyframeSetTypeCommand(item, new_type));
+		int g = 0;
+		for (; g < groups.size(); g++) {
+			if (groups.at(g).node == item->parent() &&
+				groups.at(g).input == item->input() &&
+				groups.at(g).element == item->element()) {
+				break;
+			}
+		}
+		if (g == groups.size()) {
+			groups.append({ item->parent(), item->input(), item->element(),
+							{}, {} });
+		}
+		OakEngineNode *handle =
+			reinterpret_cast<OakEngineNode *>(item->parent());
+		int tbn = 0, tbd = 0;
+		oakengine_node_frame_time_base(handle, &tbn, &tbd);
+		groups[g].times.append(Timecode::time_to_timestamp(
+			item->time(), Rational(tbn, tbd), Timecode::k_round));
+		groups[g].tracks.append(item->track());
 	}
-
-	Core::instance()->undo_stack()->push(
-		command, tr("Changed Type of %1 Keyframe(s) to %2"));
+	int facade_type = 0;
+	if (new_type == NodeKeyframe::k_bezier) {
+		facade_type = 1;
+	} else if (new_type == NodeKeyframe::k_hold) {
+		facade_type = 2;
+	}
+	foreach (const TypeGroup &g, groups) {
+		oakengine_node_keyframes_set_type_many(
+			reinterpret_cast<OakEngineNode *>(g.node),
+			g.input.toUtf8().constData(), g.element, g.times.constData(),
+			g.tracks.data(), g.times.size(), facade_type);
+	}
 }
 
 void CurveWidget::input_selection_changed(const NodeKeyframeTrackReference &ref)

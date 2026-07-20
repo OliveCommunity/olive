@@ -668,6 +668,221 @@ int oakengine_node_set_input_string(OakEngineNode *self,
 	return OAKENGINE_OK;
 }
 
+int oakengine_node_frame_time_base(const OakEngineNode *self, int *num,
+								   int *den)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::Rational tb = project_time_base(impl(self));
+	if (num) {
+		*num = tb.numerator();
+	}
+	if (den) {
+		*den = tb.denominator();
+	}
+	return OAKENGINE_OK;
+}
+
+// Component QVariant of a per-track POD for set_value_at_time: the
+// panel's sliders carry one scalar per track (int64/double/Rational/
+// bool). Returns false on a type that has no scalar component here.
+static bool component_from_c(const oak_node_value *v,
+							 olive::NodeValue::Type declared, int component,
+							 QVariant *out)
+{
+	switch (declared) {
+	case olive::NodeValue::k_int:
+	case olive::NodeValue::k_combo:
+		if (v->type != OAK_NODE_VALUE_INT &&
+			v->type != OAK_NODE_VALUE_COMBO) {
+			return false;
+		}
+		*out = QVariant::fromValue<qlonglong>(v->num);
+		return true;
+	case olive::NodeValue::k_float:
+	case olive::NodeValue::k_bezier:
+		if (v->type != OAK_NODE_VALUE_FLOAT) {
+			return false;
+		}
+		*out = QVariant::fromValue(v->f[0]);
+		return true;
+	case olive::NodeValue::k_boolean:
+		if (v->type != OAK_NODE_VALUE_BOOL) {
+			return false;
+		}
+		*out = QVariant::fromValue(v->num != 0);
+		return true;
+	case olive::NodeValue::k_rational:
+		if (v->type != OAK_NODE_VALUE_RATIONAL) {
+			return false;
+		}
+		*out = QVariant::fromValue(
+			olive::Rational(int(v->num), int(v->den)));
+		return true;
+	case olive::NodeValue::k_color:
+	case olive::NodeValue::k_vec2:
+	case olive::NodeValue::k_vec3:
+	case olive::NodeValue::k_vec4:
+		if (int(v->type) != int(to_c_type(declared))) {
+			return false;
+		}
+		*out = QVariant::fromValue(v->f[component]);
+		return true;
+	default:
+		return false;
+	}
+}
+
+int oakengine_node_set_input_at_time(OakEngineNode *self,
+									 const char *input_id, int element,
+									 int64_t time_ts, int track,
+									 const oak_node_value *v,
+									 int insert_on_all_tracks)
+{
+	set_error(QString());
+	olive::Node *node = impl(self);
+	const olive::NodeValue::Type declared = checked_input(node, input_id);
+	if (declared == olive::NodeValue::k_none) {
+		set_error(self && input_id ?
+					  QStringLiteral("unknown input id \"%1\"")
+						  .arg(QString::fromUtf8(input_id)) :
+					  QStringLiteral("invalid arguments"));
+		return self && input_id ? OAKENGINE_E_NOT_FOUND : OAKENGINE_E_INVALID;
+	}
+	if (declared == olive::NodeValue::k_file ||
+		declared == olive::NodeValue::k_text ||
+		declared == olive::NodeValue::k_font ||
+		declared == olive::NodeValue::k_str_combo) {
+		set_error(QStringLiteral(
+			"string inputs use oakengine_node_set_input_string_at_time"));
+		return OAKENGINE_E_INVALID;
+	}
+	const int nb_tracks =
+		olive::NodeValue::get_number_of_keyframe_tracks(declared);
+	if (!v || track < -1 || track >= nb_tracks || nb_tracks == 0) {
+		set_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+
+	const QString id = QString::fromUtf8(input_id);
+	const olive::Rational time = olive::core::Timecode::timestamp_to_time(
+		time_ts, project_time_base(node));
+	const olive::NodeInput input(node, id, element);
+
+	// The panel's commit path (Node::set_value_at_time), one undoable
+	// command: keyframed inputs insert/update the keyframe at the time,
+	// others set the standard value on the track.
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	if (track == -1) {
+		for (int i = 0; i < nb_tracks; i++) {
+			QVariant component;
+			if (!component_from_c(v, declared, i, &component)) {
+				set_error(QStringLiteral(
+					"value type does not match the declared input type"));
+				delete command;
+				return OAKENGINE_E_INVALID;
+			}
+			olive::Node::set_value_at_time(input, time, component, i,
+										   command, false);
+		}
+	} else {
+		QVariant component;
+		if (!component_from_c(v, declared, 0, &component)) {
+			set_error(QStringLiteral(
+				"value type does not match the declared input type"));
+			delete command;
+			return OAKENGINE_E_INVALID;
+		}
+		olive::Node::set_value_at_time(input, time, component, track,
+									   command, insert_on_all_tracks != 0);
+	}
+	push_or_run(command, QStringLiteral("Set Input Value"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_node_set_input_string_at_time(OakEngineNode *self,
+											const char *input_id, int element,
+											int64_t time_ts, const char *value)
+{
+	set_error(QString());
+	olive::Node *node = impl(self);
+	const olive::NodeValue::Type declared = checked_input(node, input_id);
+	if (declared == olive::NodeValue::k_none) {
+		set_error(self && input_id ?
+					  QStringLiteral("unknown input id \"%1\"")
+						  .arg(QString::fromUtf8(input_id)) :
+					  QStringLiteral("invalid arguments"));
+		return self && input_id ? OAKENGINE_E_NOT_FOUND : OAKENGINE_E_INVALID;
+	}
+	if (declared != olive::NodeValue::k_file &&
+		declared != olive::NodeValue::k_text &&
+		declared != olive::NodeValue::k_font &&
+		declared != olive::NodeValue::k_str_combo) {
+		set_error(QStringLiteral("\"%1\" is not a string input")
+					  .arg(QString::fromUtf8(input_id)));
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::Rational time = olive::core::Timecode::timestamp_to_time(
+		time_ts, project_time_base(node));
+	const QVariant v =
+		QVariant::fromValue(QString::fromUtf8(value ? value : ""));
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	olive::Node::set_value_at_time(
+		olive::NodeInput(node, QString::fromUtf8(input_id), element), time, v,
+		0, command, true);
+	push_or_run(command, QStringLiteral("Set Input Value"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_node_array_insert_at(OakEngineNode *self, const char *input_id,
+								   int index)
+{
+	set_error(QString());
+	olive::Node *node = impl(self);
+	if (checked_input(node, input_id) == olive::NodeValue::k_none ||
+		index < 0) {
+		set_error(self && input_id && index >= 0 ?
+					  QStringLiteral("unknown input id \"%1\"")
+						  .arg(QString::fromUtf8(input_id)) :
+					  QStringLiteral("invalid arguments"));
+		return self && input_id && index >= 0 ? OAKENGINE_E_NOT_FOUND :
+												OAKENGINE_E_INVALID;
+	}
+	push_or_run(new olive::NodeArrayInsertCommand(
+					node, QString::fromUtf8(input_id), index),
+				QStringLiteral("Insert Array Element"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_node_array_remove_at(OakEngineNode *self, const char *input_id,
+								   int index)
+{
+	set_error(QString());
+	olive::Node *node = impl(self);
+	if (checked_input(node, input_id) == olive::NodeValue::k_none ||
+		index < 0) {
+		set_error(self && input_id && index >= 0 ?
+					  QStringLiteral("unknown input id \"%1\"")
+						  .arg(QString::fromUtf8(input_id)) :
+					  QStringLiteral("invalid arguments"));
+		return self && input_id && index >= 0 ? OAKENGINE_E_NOT_FOUND :
+												OAKENGINE_E_INVALID;
+	}
+	const QString id = QString::fromUtf8(input_id);
+	const int size = olive::NodeInput(node, id).get_array_size();
+	if (index >= size) {
+		set_error(QStringLiteral("array index %1 out of range (size %2)")
+					  .arg(index)
+					  .arg(size));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	push_or_run(new olive::NodeArrayRemoveCommand(node, id, index),
+				QStringLiteral("Remove Array Element"));
+	return OAKENGINE_OK;
+}
+
+
 OakEngineNode *oakengine_project_add_node(OakEngineProject *project,
 										  const char *type_id)
 {
@@ -740,6 +955,12 @@ int oakengine_node_connect(OakEngineNode *output_node,
 
 int oakengine_node_disconnect(OakEngineNode *input_node, const char *input_id)
 {
+	return oakengine_node_disconnect_ex(input_node, input_id, -1);
+}
+
+int oakengine_node_disconnect_ex(OakEngineNode *input_node,
+								 const char *input_id, int element)
+{
 	set_error(QString());
 	olive::Node *in_node = impl(input_node);
 	if (!in_node || !input_id) {
@@ -751,14 +972,13 @@ int oakengine_node_disconnect(OakEngineNode *input_node, const char *input_id)
 		set_error(QStringLiteral("unknown input id \"%1\"").arg(id));
 		return OAKENGINE_E_NOT_FOUND;
 	}
-	olive::Node *connected =
-		in_node->get_connected_output(olive::NodeInput(in_node, id));
+	const olive::NodeInput input(in_node, id, element);
+	olive::Node *connected = in_node->get_connected_output(input);
 	if (!connected) {
 		set_error(QStringLiteral("input \"%1\" is not connected").arg(id));
 		return OAKENGINE_E_NOT_FOUND;
 	}
-	push_or_run(new olive::NodeEdgeRemoveCommand(
-					connected, olive::NodeInput(in_node, id)),
+	push_or_run(new olive::NodeEdgeRemoveCommand(connected, input),
 				QStringLiteral("Disconnect Nodes"));
 	return OAKENGINE_OK;
 }
@@ -980,6 +1200,52 @@ int oakengine_node_keyframe_set_easing(OakEngineNode *self,
 	}
 	push_or_run(command, QStringLiteral("Set Keyframe Easing"));
 	return OAKENGINE_OK;
+}
+
+int oakengine_node_keyframes_set_type_many(OakEngineNode *self,
+										   const char *input_id, int element,
+										   const int64_t *times_ts,
+										   const int *tracks, int count,
+										   int type)
+{
+	set_error(QString());
+	olive::Node *node = impl(self);
+	if (checked_keyframe_input(node, input_id) == olive::NodeValue::k_none) {
+		return self && input_id ? OAKENGINE_E_NOT_FOUND : OAKENGINE_E_INVALID;
+	}
+	if (type < 0 || type > 2 || count < 0 || (count > 0 && (!times_ts || !tracks))) {
+		set_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	if (count == 0) {
+		return 0;
+	}
+	const QString id = QString::fromUtf8(input_id);
+	const olive::Rational tb = project_time_base(node);
+	const olive::NodeInput input(node, id, element);
+
+	// Resolve every keyframe first so a bad address fails without side
+	// effects (same batch semantics as the view's context-menu action).
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	for (int i = 0; i < count; i++) {
+		const olive::Rational time =
+			olive::core::Timecode::timestamp_to_time(times_ts[i], tb);
+		olive::NodeKeyframe *key =
+			node->get_keyframe_at_time_on_track(input, time, tracks[i]);
+		if (!key) {
+			set_error(QStringLiteral("no keyframe at time %1 track %2 on "
+									 "\"%3\"")
+						  .arg(times_ts[i])
+						  .arg(tracks[i])
+						  .arg(id));
+			delete command;
+			return OAKENGINE_E_NOT_FOUND;
+		}
+		command->add_child(
+			new KeyframeSetTypeCommand(key, to_engine_easing(type)));
+	}
+	push_or_run(command, QStringLiteral("Set Keyframe Type"));
+	return count;
 }
 
 int oakengine_node_keyframes_clear(OakEngineNode *self, const char *input_id)

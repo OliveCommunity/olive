@@ -26,7 +26,7 @@
 #include "common/qtutils.h"
 #include "core.h"
 #include "node/node.h"
-#include "node/nodeundo.h"
+#include "oakengine/node.h"
 #include "widget/collapsebutton/collapsebutton.h"
 #include "widget/menu/menu.h"
 
@@ -150,9 +150,11 @@ void NodeParamViewConnectedLabel::show_label_context_menu()
 
 	QAction *disconnect_action = m.addAction(tr("Disconnect"));
 	connect(disconnect_action, &QAction::triggered, this, [this]() {
-		Core::instance()->undo_stack()->push(
-			new NodeEdgeRemoveCommand(connected_node_, input_),
-			Node::get_disconnect_command_string(connected_node_, input_));
+		// Through the liboakengine C ABI facade (one undoable command,
+		// array element included, same as the old NodeEdgeRemoveCommand).
+		oakengine_node_disconnect_ex(
+			reinterpret_cast<OakEngineNode *>(input_.node()),
+			input_.input().toUtf8().constData(), input_.element());
 	});
 
 	m.exec(QCursor::pos());

@@ -27,11 +27,11 @@
 
 #include "common/qtutils.h"
 #include "dialog/keyframeproperties/keyframeproperties.h"
-#include "keyframeviewundo.h"
 #include "node/group/group.h"
 #include "node/node.h"
 #include "node/nodeundo.h"
 #include "node/project/serializer/serializer.h"
+#include "oakengine/node.h"
 #include "widget/menu/menu.h"
 #include "widget/menu/menushared.h"
 
@@ -645,13 +645,51 @@ void KeyframeView::show_context_menu()
 				new_type = NodeKeyframe::k_linear;
 			}
 
-			MultiUndoCommand *command = new MultiUndoCommand();
+			// Through the liboakengine C ABI facade: one undoable command
+			// per distinct input (usually just one), with the same batch
+			// semantics as the old per-keyframe commands.
+			struct TypeGroup {
+				Node *node;
+				QString input;
+				int element;
+				QVector<int64_t> times;
+				QVector<int> tracks;
+			};
+			QVector<TypeGroup> groups;
 			foreach (NodeKeyframe *item, get_selected_keyframes()) {
-				command->add_child(new KeyframeSetTypeCommand(item, new_type));
+				int g = 0;
+				for (; g < groups.size(); g++) {
+					if (groups.at(g).node == item->parent() &&
+						groups.at(g).input == item->input() &&
+						groups.at(g).element == item->element()) {
+						break;
+					}
+				}
+				if (g == groups.size()) {
+					groups.append({ item->parent(), item->input(),
+									item->element(), {}, {} });
+				}
+				OakEngineNode *handle =
+					reinterpret_cast<OakEngineNode *>(item->parent());
+				int tbn = 0, tbd = 0;
+				oakengine_node_frame_time_base(handle, &tbn, &tbd);
+				groups[g].times.append(Timecode::time_to_timestamp(
+					item->time(), Rational(tbn, tbd), Timecode::k_round));
+				groups[g].tracks.append(item->track());
 			}
-			Core::instance()->undo_stack()->push(
-				command, tr("Set Type of %1 Keyframe(s)")
-							 .arg(get_selected_keyframes().size()));
+			int facade_type = 0;
+			if (new_type == NodeKeyframe::k_bezier) {
+				facade_type = 1;
+			} else if (new_type == NodeKeyframe::k_hold) {
+				facade_type = 2;
+			}
+			foreach (const TypeGroup &g, groups) {
+				oakengine_node_keyframes_set_type_many(
+					reinterpret_cast<OakEngineNode *>(g.node),
+					g.input.toUtf8().constData(), g.element,
+					g.times.constData(), g.tracks.data(), g.times.size(),
+					facade_type);
+			}
 		}
 	}
 }

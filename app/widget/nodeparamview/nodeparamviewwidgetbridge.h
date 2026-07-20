@@ -66,6 +66,8 @@ private:
 
 	void set_input_value(const QVariant &value, int track);
 
+	void set_string_value(const QString &value);
+
 	void set_input_value_internal(const QVariant &value, int track,
 							   MultiUndoCommand *command,
 							   bool insert_on_all_tracks_if_no_key);

@@ -25,11 +25,10 @@
 #include <QDebug>
 
 #include "common/qtutils.h"
-#include "core.h"
 #include "dialog/speedduration/speeddurationdialog.h"
 #include "node/group/group.h"
-#include "node/nodeundo.h"
 #include "node/project/sequence/sequence.h"
+#include "oakengine/node.h"
 #include "pluginSupport/oliveplugininstance.h"
 
 namespace olive
@@ -630,13 +629,12 @@ void NodeParamViewItemBody::array_append_clicked()
 		if (it.value().append_btn == sender()) {
 			NodeInput real_input = NodeGroup::resolve_input(
 				NodeInput(it.key().node, it.key().input));
-			Core::instance()->undo_stack()->push(
-				new NodeArrayInsertCommand(real_input.node(),
-										   real_input.input(),
-										   real_input.get_array_size()),
-				tr("Appended Array Element In %1 - %2")
-					.arg(real_input.node()->get_label_and_name(),
-						 real_input.get_input_name()));
+			// Through the liboakengine C ABI facade (one undoable command,
+			// same as the old NodeArrayInsertCommand push).
+			oakengine_node_array_insert_at(
+				reinterpret_cast<OakEngineNode *>(real_input.node()),
+				real_input.input().toUtf8().constData(),
+				real_input.get_array_size());
 			break;
 		}
 	}
@@ -648,10 +646,10 @@ void NodeParamViewItemBody::array_insert_clicked()
 		if (it.value().array_insert_btn == sender()) {
 			// Found our input and element
 			NodeInput ic = NodeGroup::resolve_input(it.key());
-			Core::instance()->undo_stack()->push(
-				new NodeArrayInsertCommand(ic.node(), ic.input(), ic.element()),
-				tr("Inserted Array Element In %1 - %2")
-					.arg(ic.node()->get_label_and_name(), ic.get_input_name()));
+			// Through the liboakengine C ABI facade (one undoable command).
+			oakengine_node_array_insert_at(
+				reinterpret_cast<OakEngineNode *>(ic.node()),
+				ic.input().toUtf8().constData(), ic.element());
 			break;
 		}
 	}
@@ -663,10 +661,10 @@ void NodeParamViewItemBody::array_remove_clicked()
 		if (it.value().array_remove_btn == sender()) {
 			// Found our input and element
 			NodeInput ic = NodeGroup::resolve_input(it.key());
-			Core::instance()->undo_stack()->push(
-				new NodeArrayRemoveCommand(ic.node(), ic.input(), ic.element()),
-				tr("Removed Array Element In %1 - %2")
-					.arg(ic.node()->get_label_and_name(), ic.get_input_name()));
+			// Through the liboakengine C ABI facade (one undoable command).
+			oakengine_node_array_remove_at(
+				reinterpret_cast<OakEngineNode *>(ic.node()),
+				ic.input().toUtf8().constData(), ic.element());
 			break;
 		}
 	}
