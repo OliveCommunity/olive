@@ -20,13 +20,20 @@
 
 #include "oakengine/footage.h"
 
+#include <atomic>
 #include <cstdio>
 
 #include <QByteArray>
+#include <QCoreApplication>
+#include <QDir>
+#include <QElapsedTimer>
+#include <QFile>
 #include <QFileInfo>
 #include <QString>
+#include <QThread>
 
 #include "codec/decoder.h"
+#include "codec/proxymanager.h"
 #include "coreengine.h"
 #include "node/nodeundo.h"
 #include "node/project.h"
@@ -122,6 +129,24 @@ olive::AudioParams audio_stream_at(const OakEngineFootageState *s, int index)
 QString filename_of(const OakEngineFootageState *s)
 {
 	return s->node ? s->node->filename() : s->filename;
+}
+
+// The footage node of a borrowed handle, or nullptr (probe handles have no
+// node). Shared validation for the media-management section; sets the
+// error string.
+olive::Footage *borrowed_node(OakEngineFootage *self)
+{
+	if (!self) {
+		set_error(QStringLiteral("invalid footage handle"));
+		return nullptr;
+	}
+	olive::Footage *node = impl(self)->node;
+	if (!node) {
+		set_error(QStringLiteral(
+			"probe handles carry no project node; import the media first"));
+		return nullptr;
+	}
+	return node;
 }
 
 } // namespace
@@ -356,6 +381,198 @@ OakEngineFootage *oakengine_project_import_footage(OakEngineProject *project,
 	state->borrowed = true;
 	state->node = footage;
 	return wrap(state);
+}
+
+int oakengine_footage_relink(OakEngineFootage *footage, const char *new_path)
+{
+	set_error(QString());
+	if (!new_path) {
+		set_error(QStringLiteral("invalid path"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Footage *node = borrowed_node(footage);
+	if (!node) {
+		return OAKENGINE_E_INVALID;
+	}
+	const QString path = QString::fromUtf8(new_path);
+	if (!QFileInfo::exists(path)) {
+		set_error(QStringLiteral("file does not exist: %1").arg(path));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+
+	// Same as the application's relink dialog: set_filename() triggers
+	// clear() (streams, decoder and proxy state reset) and a reprobe.
+	node->set_filename(path);
+	node->set_label(QFileInfo(path).fileName());
+	if (!node->is_valid()) {
+		set_error(QStringLiteral("failed to probe \"%1\" as media")
+					  .arg(path));
+		return OAKENGINE_E_FAILED;
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_project_find_offline_footage(OakEngineProject *project,
+										   const char *search_dir)
+{
+	set_error(QString());
+	olive::Project *p = reinterpret_cast<olive::Project *>(project);
+	if (!p || !search_dir) {
+		set_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	const QDir dir(QString::fromUtf8(search_dir));
+	if (!dir.exists()) {
+		set_error(QStringLiteral("directory does not exist: %1")
+					  .arg(search_dir));
+		return OAKENGINE_E_INVALID;
+	}
+
+	int relinked = 0;
+	for (olive::Node *n : p->nodes()) {
+		olive::Footage *footage = dynamic_cast<olive::Footage *>(n);
+		if (!footage) {
+			continue;
+		}
+		const QString filename = footage->filename();
+		if (filename.isEmpty() || QFileInfo::exists(filename)) {
+			continue;
+		}
+		// Exact file-name match in the search directory (no recursion).
+		const QString candidate =
+			dir.filePath(QFileInfo(filename).fileName());
+		if (QFileInfo::exists(candidate)) {
+			footage->set_filename(candidate);
+			footage->set_label(QFileInfo(candidate).fileName());
+			if (footage->is_valid()) {
+				relinked++;
+			}
+		}
+	}
+	return relinked;
+}
+
+int oakengine_footage_proxy_get_state(OakEngineFootage *self)
+{
+	if (!self || !impl(self)->node) {
+		return OAKENGINE_E_INVALID;
+	}
+	return int(impl(self)->node->proxy_state());
+}
+
+int oakengine_footage_proxy_generate(OakEngineFootage *self)
+{
+	set_error(QString());
+	olive::Footage *node = borrowed_node(self);
+	if (!node) {
+		return OAKENGINE_E_INVALID;
+	}
+	if (!olive::ProxyManager::instance()) {
+		set_error(QStringLiteral("engine not initialized"));
+		return OAKENGINE_E_STATE;
+	}
+	olive::Project *project = node->project();
+	if (!project) {
+		set_error(QStringLiteral("footage is not part of a project"));
+		return OAKENGINE_E_INVALID;
+	}
+	const QString filename = node->filename();
+	if (!QFileInfo::exists(filename)) {
+		set_error(QStringLiteral("source file does not exist: %1")
+					  .arg(filename));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	if (node->get_video_stream_count() < 1) {
+		set_error(QStringLiteral("footage has no video stream to proxy"));
+		return OAKENGINE_E_INVALID;
+	}
+
+	const int stream_index = node->get_video_params(0).stream_index();
+	const olive::ProxyManager::ProxyParams params =
+		olive::ProxyManager::proxy_params_from_config();
+
+	// Same assembly as the application's proxy dialog.
+	olive::ProxyManager::Proxy proxy =
+		olive::ProxyManager::instance()->get_or_start_proxy(
+			project->cache_path(), filename, stream_index, params);
+	node->set_proxy(proxy.filename, proxy.state, stream_index,
+					params.version, true);
+	node->invalidate_all(olive::Footage::k_filename_input);
+
+	if (proxy.state == olive::ProxyManager::k_proxy_ready) {
+		return OAKENGINE_OK;
+	}
+
+	// Wait for completion with an event loop, like the export family: the
+	// proxy task finishes on the TaskManager thread and its completion
+	// signal is queued back to this thread (up to 120 s).
+	QElapsedTimer timer;
+	timer.start();
+	while (node->proxy_state() == olive::ProxyManager::k_proxy_generating &&
+		   !timer.hasExpired(120000)) {
+		QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+		QThread::msleep(5);
+	}
+
+	if (node->proxy_state() == olive::ProxyManager::k_proxy_ready) {
+		return OAKENGINE_OK;
+	}
+	if (node->proxy_state() == olive::ProxyManager::k_proxy_failed) {
+		set_error(QStringLiteral("proxy generation failed for \"%1\"")
+					  .arg(filename));
+		return OAKENGINE_E_FAILED;
+	}
+	set_error(QStringLiteral("proxy generation timed out for \"%1\"")
+				  .arg(filename));
+	return OAKENGINE_E_FAILED;
+}
+
+int oakengine_footage_proxy_delete(OakEngineFootage *self)
+{
+	set_error(QString());
+	olive::Footage *node = borrowed_node(self);
+	if (!node) {
+		return OAKENGINE_E_INVALID;
+	}
+	// Mirrors the application's proxy dialog: remove the finished and the
+	// in-progress working file, then reset the proxy state.
+	if (!node->proxy_path().isEmpty()) {
+		QFile::remove(node->proxy_path());
+		QFile::remove(
+			olive::ProxyManager::get_working_proxy_filename(
+				node->proxy_path()));
+	}
+	node->clear_proxy();
+	node->invalidate_all(olive::Footage::k_filename_input);
+	return OAKENGINE_OK;
+}
+
+int oakengine_footage_proxy_is_enabled(OakEngineFootage *self)
+{
+	if (!self || !impl(self)->node) {
+		return OAKENGINE_E_INVALID;
+	}
+	return impl(self)->node->proxy_enabled() ? 1 : 0;
+}
+
+int oakengine_footage_proxy_set_enabled(OakEngineFootage *self, int enabled)
+{
+	set_error(QString());
+	olive::Footage *node = borrowed_node(self);
+	if (!node) {
+		return OAKENGINE_E_INVALID;
+	}
+	node->set_proxy_enabled(enabled != 0);
+	return OAKENGINE_OK;
+}
+
+int oakengine_footage_proxy_get_path(OakEngineFootage *self, char *buf,
+									 int buf_size)
+{
+	if (!self || !impl(self)->node) {
+		return OAKENGINE_E_INVALID;
+	}
+	return string_to_buf(impl(self)->node->proxy_path(), buf, buf_size);
 }
 
 } // extern "C"

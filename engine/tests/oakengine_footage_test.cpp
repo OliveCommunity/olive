@@ -238,6 +238,177 @@ static void test_failures(void)
 		   OAKENGINE_E_INVALID);
 }
 
+// Copy a file in C (used to stage a deletable media copy).
+static void copy_file(const char *src, const char *dst)
+{
+	FILE *in = fopen(src, "rb");
+	assert(in != NULL);
+	FILE *out = fopen(dst, "wb");
+	assert(out != NULL);
+	char chunk[65536];
+	size_t n;
+	while ((n = fread(chunk, 1, sizeof(chunk), in)) > 0) {
+		assert(fwrite(chunk, 1, n, out) == n);
+	}
+	fclose(out);
+	fclose(in);
+}
+
+static void test_relink(void)
+{
+	assert(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
+
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+
+	char path[4096], img[4096], missing[4096], txt[4096];
+	demo_path(path, sizeof(path));
+	snprintf(img, sizeof(img), "%s/tests/img.png", OAK_TEST_SOURCE_DIR);
+	snprintf(missing, sizeof(missing), "%s/tests/not-there.mp4",
+			 OAK_TEST_SOURCE_DIR);
+	snprintf(txt, sizeof(txt), "%s/not-media.txt", g_tmpdir);
+	{
+		FILE *f = fopen(txt, "w");
+		assert(f != NULL);
+		fputs("not media\n", f);
+		fclose(f);
+	}
+
+	OakEngineFootage *f = oakengine_project_import_footage(project, path);
+	assert(f != NULL);
+
+	// Missing target, non-media target, probe handles, NULL.
+	assert(oakengine_footage_relink(f, missing) == OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_footage_relink(f, txt) == OAKENGINE_E_FAILED);
+	assert(oakengine_footage_relink(NULL, path) == OAKENGINE_E_INVALID);
+	OakEngineFootage *probed = oakengine_footage_probe(path);
+	assert(probed != NULL);
+	assert(oakengine_footage_relink(probed, img) == OAKENGINE_E_INVALID);
+	oakengine_footage_free(probed);
+
+	// Relink to the same file: still valid, still online.
+	assert(oakengine_footage_relink(f, path) == OAKENGINE_OK);
+	assert(oakengine_footage_is_online(f) == 1);
+	assert(oakengine_footage_get_video_stream_count(f) == 1);
+
+	// Relink to a still image: decoder/filename update.
+	assert(oakengine_footage_relink(f, img) == OAKENGINE_OK);
+	char filename[4096];
+	assert(oakengine_project_footage_filename(project, 0, filename,
+											  sizeof(filename)) > 0);
+	assert(strcmp(filename, img) == 0);
+	char decoder[64];
+	assert(oakengine_footage_get_decoder_name(f, decoder,
+											  sizeof(decoder)) > 0);
+	assert(strlen(decoder) > 0);
+	assert(oakengine_footage_get_video_stream_count(f) >= 1);
+	assert(oakengine_footage_is_online(f) == 1);
+
+	// And back to the demo file.
+	assert(oakengine_footage_relink(f, path) == OAKENGINE_OK);
+	assert(oakengine_project_footage_filename(project, 0, filename,
+											  sizeof(filename)) > 0);
+	assert(strcmp(filename, path) == 0);
+
+	oakengine_footage_free(f);
+	oakengine_project_free(project);
+}
+
+static void test_find_offline(void)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+
+	// Import a staged copy, then delete it so the footage goes offline.
+	char staged[4096], tests_dir[4096];
+	snprintf(staged, sizeof(staged), "%s/demo.mp4", g_tmpdir);
+	snprintf(tests_dir, sizeof(tests_dir), "%s/tests", OAK_TEST_SOURCE_DIR);
+	char path[4096];
+	demo_path(path, sizeof(path));
+	copy_file(path, staged);
+
+	OakEngineFootage *f = oakengine_project_import_footage(project, staged);
+	assert(f != NULL);
+	assert(oakengine_project_footage_is_online(project, 0) == 1);
+	assert(remove(staged) == 0);
+	assert(oakengine_project_footage_is_online(project, 0) == 0);
+
+	// The search directory has a file with the same name: relinked.
+	assert(oakengine_project_find_offline_footage(project, tests_dir) == 1);
+	assert(oakengine_project_footage_is_online(project, 0) == 1);
+	char filename[4096];
+	assert(oakengine_project_footage_filename(project, 0, filename,
+											  sizeof(filename)) > 0);
+	assert(strcmp(filename, path) == 0);
+
+	// Nothing left to do; a missing search directory is an error.
+	assert(oakengine_project_find_offline_footage(project, tests_dir) == 0);
+	assert(oakengine_project_find_offline_footage(project,
+												  "/definitely/not/here") ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_project_find_offline_footage(NULL, tests_dir) ==
+		   OAKENGINE_E_INVALID);
+
+	oakengine_footage_free(f);
+	oakengine_project_free(project);
+}
+
+static void test_proxy(void)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+
+	char path[4096];
+	demo_path(path, sizeof(path));
+	OakEngineFootage *f = oakengine_project_import_footage(project, path);
+	assert(f != NULL);
+
+	assert(oakengine_footage_proxy_get_state(f) == 0); // missing
+	assert(oakengine_footage_proxy_get_state(NULL) == OAKENGINE_E_INVALID);
+
+	// Generate synchronously (CPU transcode of the 17 s demo file).
+	assert(oakengine_footage_proxy_generate(f) == OAKENGINE_OK);
+	assert(oakengine_footage_proxy_get_state(f) == 2); // ready
+	char proxy_path[4096];
+	assert(oakengine_footage_proxy_get_path(f, proxy_path,
+											sizeof(proxy_path)) > 0);
+	FILE *pf = fopen(proxy_path, "rb");
+	assert(pf != NULL);
+	fclose(pf);
+	assert(oakengine_footage_proxy_is_enabled(f) == 1);
+
+	// Enable/disable round-trip.
+	assert(oakengine_footage_proxy_set_enabled(f, 0) == OAKENGINE_OK);
+	assert(oakengine_footage_proxy_is_enabled(f) == 0);
+	assert(oakengine_footage_proxy_set_enabled(f, 1) == OAKENGINE_OK);
+	assert(oakengine_footage_proxy_is_enabled(f) == 1);
+
+	// Delete: state and file are gone.
+	assert(oakengine_footage_proxy_delete(f) == OAKENGINE_OK);
+	assert(oakengine_footage_proxy_get_state(f) == 0);
+	assert(fopen(proxy_path, "rb") == NULL);
+
+	// Error paths.
+	assert(oakengine_footage_proxy_generate(NULL) == OAKENGINE_E_INVALID);
+	assert(oakengine_footage_proxy_delete(NULL) == OAKENGINE_E_INVALID);
+	assert(oakengine_footage_proxy_set_enabled(NULL, 1) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_footage_proxy_get_path(NULL, proxy_path,
+											sizeof(proxy_path)) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_footage_proxy_is_enabled(NULL) == OAKENGINE_E_INVALID);
+	OakEngineFootage *probed = oakengine_footage_probe(path);
+	assert(probed != NULL);
+	assert(oakengine_footage_proxy_generate(probed) == OAKENGINE_E_INVALID);
+	oakengine_footage_free(probed);
+
+	oakengine_footage_free(f);
+	oakengine_project_free(project);
+}
+
 int main(void)
 {
 	make_tmpdir();
@@ -255,6 +426,9 @@ int main(void)
 	test_probe();
 	test_import();
 	test_failures();
+	test_relink();
+	test_find_offline();
+	test_proxy();
 
 	assert(oakengine_shutdown() == OAKENGINE_OK);
 

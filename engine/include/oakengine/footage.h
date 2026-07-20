@@ -200,6 +200,88 @@ OAKENGINE_API int oakengine_footage_get_source_start_time(
 OAKENGINE_API OakEngineFootage *oakengine_project_import_footage(
 	OakEngineProject *project, const char *path);
 
+/* ---- Media management: relink and proxies -----------------------------------
+ *
+ * These functions operate on BORROWED import handles (footage nodes living
+ * in a project). Probe handles carry no node and are rejected with
+ * OAKENGINE_E_INVALID everywhere in this section. Relinking and proxy
+ * state changes are not undoable in the engine (the application's relink
+ * and proxy dialogs call the same setters directly).
+ */
+
+/**
+ * @brief Point the footage at a different media file (relink).
+ *
+ * Calls Footage::set_filename(), which triggers the engine's full reprobe
+ * cascade (Footage::clear(): streams, decoder link and the proxy state are
+ * reset before re-probing). Fails with OAKENGINE_E_NOT_FOUND when
+ * `new_path` does not exist, and with OAKENGINE_E_FAILED when the new file
+ * cannot be probed as media. Not undoable (same as the application's
+ * relink dialog).
+ */
+OAKENGINE_API int oakengine_footage_relink(OakEngineFootage *footage,
+										   const char *new_path);
+
+/**
+ * @brief Try to bring every offline footage item in the project back
+ * online by looking up its file name under `search_dir`.
+ *
+ * Simplified version of the application's relink dialog matching: each
+ * footage whose stored filename does not exist is relinked to
+ * `search_dir`/<file name> when that file exists (exact file-name match,
+ * no recursion). Returns the number of relinked items (>= 0) or a negative
+ * code.
+ */
+OAKENGINE_API int
+oakengine_project_find_offline_footage(OakEngineProject *project,
+									   const char *search_dir);
+
+/**
+ * @brief Proxy state (olive::ProxyManager::ProxyState): 0 = missing,
+ * 1 = generating, 2 = ready, 3 = failed.
+ */
+OAKENGINE_API int oakengine_footage_proxy_get_state(OakEngineFootage *self);
+
+/**
+ * @brief Generate the proxy synchronously
+ * (ProxyManager::get_or_start_proxy() + wait).
+ *
+ * Drives the proxy task with an event loop like the export family (the
+ * engine hands proxy tasks to the TaskManager thread via queued calls, so
+ * the calling thread must process events while waiting; up to 120 s). A
+ * ready proxy is a success; a failed generation returns
+ * OAKENGINE_E_FAILED with the reason in oakengine_footage_last_error().
+ * Not undoable.
+ */
+OAKENGINE_API int oakengine_footage_proxy_generate(OakEngineFootage *self);
+
+/**
+ * @brief Delete the proxy file (and any in-progress working file) and
+ * reset the footage's proxy state (mirrors the application's proxy
+ * dialog). Not undoable.
+ */
+OAKENGINE_API int oakengine_footage_proxy_delete(OakEngineFootage *self);
+
+/**
+ * @brief 1 if proxy usage is enabled for this footage
+ * (Footage::proxy_enabled()).
+ */
+OAKENGINE_API int oakengine_footage_proxy_is_enabled(OakEngineFootage *self);
+
+/**
+ * @brief Enable or disable proxy usage (Footage::set_proxy_enabled(); not
+ * undoable).
+ */
+OAKENGINE_API int oakengine_footage_proxy_set_enabled(OakEngineFootage *self,
+													  int enabled);
+
+/**
+ * @brief Path of the proxy file (Footage::proxy_path(); empty when the
+ * footage has no proxy). buf/size convention.
+ */
+OAKENGINE_API int oakengine_footage_proxy_get_path(OakEngineFootage *self,
+												   char *buf, int buf_size);
+
 #ifdef __cplusplus
 }
 #endif
