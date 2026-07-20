@@ -88,7 +88,21 @@ facade 现状覆盖:项目/序列读写、素材探测与导入、时间线查�
 
 **验收**:播放/暂停/停止下帧画面与声音同步;时间标尺播放头跟随;全量 gtest + facade 回归(固定 9 个 + playback)绿;viewer.h 中不再出现 `RenderTicketWatcher` 播放队列字段。
 
-### 阶段 4:隐藏 C++ 符号(1 周)
+### 附 C:阶段 4 耦合消减战役(2026-07 测绘,基线 559)
+
+按符号聚类的消减顺序(每步保持全绿+耦合计数下降):
+
+1. **icon(56)**:注册表下沉 core——纯资源元数据,无行为风险,最大单块。
+2. **EngineCore(48)**:应用核心外观族(oakengine_app_*):项目生命周期(create/open/save/recent/autorecovery)、剪贴板、status bar、color picker、handler 注册;信号→回调。worker 的无头 Core 继续用 C++ 不动。
+3. **节点图 UI(~103)**:Node 40 / ViewerOutput 20 / Track 13 / ClipBlock 12 / NodeGroup 9 / NodeKeyframe 7 / NodeTraverser 6 / MultiCamNode 6——node view、multicam 面板、曲线编辑器对节点类的直接引用,按控件逐个切。
+4. **参数/色彩/导出(~50)**:VideoParams 19 / ColorManager 15 / EncodingParams 9 / ExportFormat 7——导出编解码控件、色彩管理菜单、scopes。
+5. **工具类(~30)**:QtUtils 9 / FileFunctions 5 / Config 5 / MainWindowLayoutInfo 6 / olive 8——从 engine 移到 core 或 app(它们本不属于引擎)。
+6. **基础设施(~40)**:TaskManager/Task 14 / AudioManager 12 / DiskManager 9 / UndoStack 7 / PreviewAutoCacher 7 / RenderTicketWatcher 6 / Folder 7 / Footage 10 / Project 10 / TimelineMarker 6 / TimelineWorkArea 8——录制、刮擦、单帧刷新、preferences 等保留路径的收口,逐项判 facade 化或豁免。
+
+豁免原则:纯 UI 呈现类(不触引擎执行)可经 C++ 包装层引用——但包装层本身也是 C++ 符号引用,故阶段 4 的"0"实际指**直接 olive:: 符号**;包装类应放进 liboakengine 的 wrapper 头(符号由 wrapper 内联消解,不进动态符号表)。
+
+### 阶段 4:隐藏 C++ 符号
+
 - app/worker 的引擎符号引用清零后:visibility=hidden + version script(`oakengine_*` 白名单)。
 - 验收:`nm -D` 仅 `oakengine_*`;全部测试(含 CLI)绿;三平台打包复验。
 
