@@ -494,6 +494,62 @@ OAKENGINE_API int oakengine_sequence_delete_clips(
 OAKENGINE_API int oakengine_sequence_ripple_delete_range(
 	OakEngineSequence *seq, int64_t in_ts, int64_t out_ts);
 
+/**
+ * @brief Delete the workarea range on every track (undoable, ONE command;
+ * the application's TimelineWidget::delete_in_to_out).
+ *
+ * `ripple` != 0: the area is removed and following content shifts left
+ * (olive::TimelineRippleRemoveAreaCommand). `ripple` == 0: a gap of the
+ * range's length is placed at `in_ts` on every unlocked track (the
+ * application's gap-insert path). Either way the workarea is disabled
+ * afterwards (olive::WorkareaSetEnabledCommand), all as one undoable
+ * command. Requires an enabled workarea on the sequence
+ * (OAKENGINE_E_STATE otherwise) and 0 <= in_ts < out_ts. The application's
+ * playhead move after a ripple stays with the caller (not undoable).
+ */
+OAKENGINE_API int oakengine_sequence_ripple_delete_in_to_out(
+	OakEngineSequence *seq, int ripple, int64_t in_ts, int64_t out_ts);
+
+/**
+ * @brief Trim the nearest clip of every unlocked track to `point_ts`
+ * (undoable, ONE command; the application's TimelineWidget::edit_to).
+ *
+ * `edge` 0 (in): per track the nearest block starting before or at the
+ * point gets its in-point trimmed to the point; `edge` 1 (out): the
+ * nearest block before the point gets its out-point trimmed to it
+ * (olive::BlockTrimCommand per affected track). Gap blocks and blocks
+ * already at the point are skipped, like the application. Returns the
+ * number of trimmed clips (>= 0; 0 when nothing qualified and no command
+ * is pushed) or a negative code.
+ */
+OAKENGINE_API int oakengine_sequence_trim_clips_to(OakEngineSequence *seq,
+												   int edge, int64_t point_ts);
+
+/**
+ * @brief Remove every empty track (undoable, ONE command; the
+ * application's "delete all empty tracks").
+ *
+ * `track_type` is an OAKENGINE_TRACK_TYPE_* value to only purge that
+ * type, or -1 for all types (the application's behavior). Returns the
+ * number of removed tracks (>= 0; 0 when no track was empty and no
+ * command is pushed) or a negative code.
+ */
+OAKENGINE_API int oakengine_sequence_delete_empty_tracks(OakEngineSequence *seq,
+														 int track_type);
+
+/**
+ * @brief Remove the markers at the given times (undoable, ONE command;
+ * the marker-list equivalent of the application's marker
+ * SeekableWidget::delete_selected).
+ *
+ * `times_ts` holds `count` marker in-point timestamps; each must name an
+ * existing marker (markers are unique per time in the engine) or the
+ * whole call fails with OAKENGINE_E_NOT_FOUND and nothing is pushed.
+ * Returns the number of removed markers (>= 0) or a negative code.
+ */
+OAKENGINE_API int oakengine_sequence_marker_remove_many(
+	OakEngineSequence *seq, const int64_t *times_ts, int count);
+
 /* ---- Track structure and markers ------------------------------------------
  *
  * Track structure edits are undoable like the other editing primitives.

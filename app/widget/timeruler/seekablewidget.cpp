@@ -30,7 +30,9 @@
 #include "common/range.h"
 #include "core.h"
 #include "dialog/markerproperties/markerpropertiesdialog.h"
+#include "node/project/sequence/sequence.h"
 #include "node/project/serializer/serializer.h"
+#include "oakengine/timeline.h"
 #include "timeline/timelineundoworkarea.h"
 #include "widget/colorlabelmenu/colorlabelmenu.h"
 #include "widget/menu/menushared.h"
@@ -122,16 +124,38 @@ void SeekableWidget::set_work_area(TimelineWorkArea *workarea)
 void SeekableWidget::delete_selected()
 {
 	if (!selection_manager_.is_dragging()) {
+		const auto &selected = selection_manager_.get_selected_objects();
+		if (selected.empty()) {
+			return;
+		}
+
+		if (Sequence *sequence =
+				dynamic_cast<Sequence *>(get_viewer_node())) {
+			// Batch removal through the liboakengine C ABI facade (one
+			// undoable command). The facade family only wraps sequences;
+			// markers of other viewer nodes (e.g. footage viewers) keep
+			// the old per-marker command path below.
+			QVector<int64_t> times;
+			times.reserve(int(selected.size()));
+			for (TimelineMarker *marker : selected) {
+				times.append(Timecode::time_to_timestamp(
+					marker->time().in(), timebase(), Timecode::k_round));
+			}
+			oakengine_sequence_marker_remove_many(
+				reinterpret_cast<OakEngineSequence *>(sequence),
+				times.constData(), times.size());
+			return;
+		}
+
 		MultiUndoCommand *command = new MultiUndoCommand();
 
-		foreach (TimelineMarker *marker,
-				 selection_manager_.get_selected_objects()) {
+		foreach (TimelineMarker *marker, selected) {
 			command->add_child(new MarkerRemoveCommand(marker));
 		}
 
 		Core::instance()->undo_stack()->push(
-			command, tr("Deleted %1 Marker(s)")
-						 .arg(selection_manager_.get_selected_objects().size()));
+			command,
+			tr("Deleted %1 Marker(s)").arg(selected.size()));
 	}
 }
 

@@ -37,6 +37,7 @@
 #include "timeline/timelineundopointer.h"
 #include "timeline/timelineundoripple.h"
 #include "timeline/timelineundosplit.h"
+#include "timeline/timelineundoworkarea.h"
 #include "timeline/timelineworkarea.h"
 #include "undo/undocommand.h"
 #include "undo/undostack.h"
@@ -1261,6 +1262,182 @@ int oakengine_sequence_ripple_delete_range(OakEngineSequence *seq,
 					olive::core::Timecode::timestamp_to_time(out_ts, tb)),
 				QStringLiteral("Ripple Delete Range"));
 	return OAKENGINE_OK;
+}
+
+int oakengine_sequence_ripple_delete_in_to_out(OakEngineSequence *seq,
+											   int ripple, int64_t in_ts,
+											   int64_t out_ts)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence || in_ts < 0 || out_ts <= in_ts) {
+		set_seq_error(QStringLiteral("invalid range [%1, %2)")
+						  .arg(in_ts)
+						  .arg(out_ts));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::TimelineWorkArea *workarea = sequence->get_work_area();
+	if (!workarea || !workarea->enabled()) {
+		set_seq_error(QStringLiteral("sequence workarea is not enabled"));
+		return OAKENGINE_E_STATE;
+	}
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return OAKENGINE_E_STATE;
+	}
+	const olive::Rational in_time =
+		olive::core::Timecode::timestamp_to_time(in_ts, tb);
+	const olive::Rational out_time =
+		olive::core::Timecode::timestamp_to_time(out_ts, tb);
+
+	// The application's delete_in_to_out, one undoable command: ripple the
+	// area out (or fill it with a fresh gap per unlocked track), then
+	// disable the workarea.
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	if (ripple) {
+		command->add_child(new olive::TimelineRippleRemoveAreaCommand(
+			sequence, in_time, out_time));
+	} else {
+		const QVector<olive::Track *> unlocked_tracks =
+			sequence->get_unlocked_tracks();
+		for (olive::Track *track : unlocked_tracks) {
+			auto *gap = new olive::GapBlock();
+			gap->set_length_and_media_out(out_time - in_time);
+			command->add_child(new olive::NodeAddCommand(
+				static_cast<olive::Project *>(track->parent()), gap));
+			command->add_child(new olive::TrackPlaceBlockCommand(
+				sequence->track_list(track->type()), track->index(), gap,
+				in_time));
+		}
+	}
+	command->add_child(new olive::WorkareaSetEnabledCommand(
+		sequence->project(), workarea, false));
+	push_or_run(command, QStringLiteral("Delete In To Out"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_sequence_trim_clips_to(OakEngineSequence *seq, int edge,
+									 int64_t point_ts)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence || point_ts < 0 || edge < 0 || edge > 1) {
+		set_seq_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return OAKENGINE_E_STATE;
+	}
+	const olive::Rational point =
+		olive::core::Timecode::timestamp_to_time(point_ts, tb);
+	const olive::Timeline::MovementMode mode =
+		(edge == 0) ? olive::Timeline::k_trim_in : olive::Timeline::k_trim_out;
+
+	// The application's edit_to: per unlocked track, trim the nearest
+	// block's edge to the point (gaps and blocks already at the point are
+	// skipped), all as one undoable command.
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	int trimmed = 0;
+	const QVector<olive::Track *> tracks = sequence->get_unlocked_tracks();
+	for (olive::Track *track : tracks) {
+		olive::Block *block =
+			(mode == olive::Timeline::k_trim_in) ?
+				track->nearest_block_before_or_at(point) :
+				track->nearest_block_before(point);
+		if (!block || dynamic_cast<olive::GapBlock *>(block)) {
+			continue;
+		}
+		const olive::Rational nearest_time =
+			(mode == olive::Timeline::k_trim_in) ? block->in() : block->out();
+		if (nearest_time == point) {
+			continue;
+		}
+		olive::Rational new_length =
+			(mode == olive::Timeline::k_trim_in) ? point - nearest_time :
+												   nearest_time - point;
+		new_length = block->length() - new_length;
+		command->add_child(
+			new olive::BlockTrimCommand(track, block, new_length, mode));
+		trimmed++;
+	}
+	if (trimmed == 0) {
+		delete command;
+		return 0;
+	}
+	push_or_run(command, QStringLiteral("Trim Clips To Point"));
+	return trimmed;
+}
+
+int oakengine_sequence_delete_empty_tracks(OakEngineSequence *seq,
+										   int track_type)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence || track_type < -1 ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+		set_seq_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+
+	// The application's "delete all empty tracks", one undoable command.
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	int removed = 0;
+	for (olive::Track *track : sequence->get_tracks()) {
+		if (track_type >= 0 && track->type() != to_track_type(track_type)) {
+			continue;
+		}
+		if (track->blocks().isEmpty()) {
+			command->add_child(new olive::TimelineRemoveTrackCommand(track));
+			removed++;
+		}
+	}
+	if (removed == 0) {
+		delete command;
+		return 0;
+	}
+	push_or_run(command, QStringLiteral("Delete Empty Tracks"));
+	return removed;
+}
+
+int oakengine_sequence_marker_remove_many(OakEngineSequence *seq,
+										  const int64_t *times_ts, int count)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence || count < 0 || (count > 0 && !times_ts)) {
+		set_seq_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	if (count == 0) {
+		return 0;
+	}
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return OAKENGINE_E_STATE;
+	}
+	olive::TimelineMarkerList *markers = sequence->get_markers();
+
+	// Resolve all markers first so a bad time fails without side effects
+	// (markers are unique per time in the engine).
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	for (int i = 0; i < count; i++) {
+		const olive::Rational time =
+			olive::core::Timecode::timestamp_to_time(times_ts[i], tb);
+		olive::TimelineMarker *marker = markers->get_marker_at_time(time);
+		if (!marker) {
+			set_seq_error(QStringLiteral("no marker at time %1")
+							  .arg(times_ts[i]));
+			delete command;
+			return OAKENGINE_E_NOT_FOUND;
+		}
+		command->add_child(new olive::MarkerRemoveCommand(marker));
+	}
+	push_or_run(command, QStringLiteral("Remove Markers"));
+	return count;
 }
 
 /* ---- Track structure and markers ------------------------------------------ */

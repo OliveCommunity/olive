@@ -53,7 +53,6 @@
 #include "timeline/timelineundogeneral.h"
 #include "timeline/timelineundopointer.h"
 #include "timeline/timelineundoripple.h"
-#include "timeline/timelineundoworkarea.h"
 #include "tool/add.h"
 #include "tool/beam.h"
 #include "tool/edit.h"
@@ -873,42 +872,20 @@ void TimelineWidget::delete_in_to_out(bool ripple)
 		return;
 	}
 
-	MultiUndoCommand *command = new MultiUndoCommand();
+	// Compound through the liboakengine C ABI facade (ripple removal or
+	// per-track gap fill + workarea disable, one undoable command with the
+	// same semantics as the old app-side assembly).
+	const Rational wa_in = get_connected_node()->get_work_area()->in();
+	const Rational wa_out = get_connected_node()->get_work_area()->out();
+	oakengine_sequence_ripple_delete_in_to_out(
+		reinterpret_cast<OakEngineSequence *>(sequence()), ripple ? 1 : 0,
+		Timecode::time_to_timestamp(wa_in, timebase(), Timecode::k_round),
+		Timecode::time_to_timestamp(wa_out, timebase(), Timecode::k_round));
 
+	// Playhead move is not undoable and stays here (same as before).
 	if (ripple) {
-		command->add_child(new TimelineRippleRemoveAreaCommand(
-			sequence(), get_connected_node()->get_work_area()->in(),
-			get_connected_node()->get_work_area()->out()));
-
-	} else {
-		QVector<Track *> unlocked_tracks = sequence()->get_unlocked_tracks();
-
-		foreach (Track *track, unlocked_tracks) {
-			GapBlock *gap = new GapBlock();
-
-			gap->set_length_and_media_out(
-				get_connected_node()->get_work_area()->length());
-
-			command->add_child(new NodeAddCommand(
-				static_cast<Project *>(track->parent()), gap));
-
-			command->add_child(new TrackPlaceBlockCommand(
-				sequence()->track_list(track->type()), track->index(), gap,
-				get_connected_node()->get_work_area()->in()));
-		}
+		get_connected_node()->set_playhead(wa_in);
 	}
-
-	// Clear workarea after this
-	command->add_child(new WorkareaSetEnabledCommand(
-		get_connected_node()->project(), get_connected_node()->get_work_area(),
-		false));
-
-	if (ripple) {
-		get_connected_node()->set_playhead(
-			get_connected_node()->get_work_area()->in());
-	}
-
-	Core::instance()->undo_stack()->push(command, tr("Deleted In To Out"));
 }
 
 void TimelineWidget::toggle_selected_enabled()
@@ -2583,34 +2560,14 @@ void TimelineWidget::edit_to(Timeline::MovementMode mode)
 {
 	const Rational playhead_time = get_connected_node()->get_playhead();
 
-	// Get list of unlocked tracks
-	QVector<Timeline::EditToInfo> tracks = get_edit_to_info(playhead_time, mode);
-
-	if (tracks.isEmpty()) {
-		return;
-	}
-
-	MultiUndoCommand *command = new MultiUndoCommand();
-
-	foreach (const Timeline::EditToInfo &info, tracks) {
-		if (info.nearest_block &&
-			!dynamic_cast<GapBlock *>(info.nearest_block) &&
-			info.nearest_time != playhead_time) {
-			Rational new_len;
-
-			if (mode == Timeline::k_trim_in) {
-				new_len = playhead_time - info.nearest_time;
-			} else {
-				new_len = info.nearest_time - playhead_time;
-			}
-			new_len = info.nearest_block->length() - new_len;
-
-			command->add_child(new BlockTrimCommand(
-				info.track, info.nearest_block, new_len, mode));
-		}
-	}
-
-	Core::instance()->undo_stack()->push(command, tr("Cut Clip(s) To Point"));
+	// Batch trim through the liboakengine C ABI facade (one undoable
+	// command; the per-track nearest-block semantics of the old app-side
+	// assembly live behind the facade now).
+	oakengine_sequence_trim_clips_to(
+		reinterpret_cast<OakEngineSequence *>(sequence()),
+		(mode == Timeline::k_trim_in) ? 0 : 1,
+		Timecode::time_to_timestamp(playhead_time, timebase(),
+									Timecode::k_round));
 }
 
 void TimelineWidget::update_viewports(const Track::Type &type)

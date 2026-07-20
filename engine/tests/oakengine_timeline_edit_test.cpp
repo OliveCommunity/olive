@@ -962,6 +962,172 @@ static void test_batch_editing(const char *media_path)
 	oakengine_project_free(project);
 }
 
+static void test_batch_editing_round2(const char *media_path)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	OakEngineSequence *seq = oakengine_sequence_new(project, "Batch2");
+	assert(seq != NULL);
+	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_VIDEO) ==
+		   0);
+	OakEngineFootage *footage =
+		oakengine_project_import_footage(project, media_path);
+	assert(footage != NULL);
+
+	int64_t in = -1, out = -1;
+
+	OakEngineClip *c0 = oakengine_sequence_add_footage_clip(
+		seq, footage, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, 100, 0);
+	assert(c0 != NULL);
+
+	// trim_clips_to: out-edge to 60, then in-edge to 40 (one clip each).
+	assert(oakengine_sequence_trim_clips_to(seq, 1, 60) == 1);
+	assert(oakengine_clip_get_range(c0, &in, &out, NULL) == OAKENGINE_OK);
+	assert(in == 0 && out == 60);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_clip_get_range(c0, &in, &out, NULL) == OAKENGINE_OK);
+	assert(in == 0 && out == 100);
+	assert(oakengine_sequence_trim_clips_to(seq, 0, 40) == 1);
+	assert(oakengine_clip_get_range(c0, &in, &out, NULL) == OAKENGINE_OK);
+	assert(in == 40 && out == 100);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+
+	// Already at the point: nothing qualifies, 0 and no command.
+	assert(oakengine_sequence_trim_clips_to(seq, 1, 100) == 0);
+	// Past the content there is no block under the point either (the
+	// application's edit_to only shortens blocks containing the point).
+	assert(oakengine_sequence_trim_clips_to(seq, 1, 200) == 0);
+	assert(oakengine_sequence_trim_clips_to(seq, 0, 200) == 0);
+	// Invalid arguments.
+	assert(oakengine_sequence_trim_clips_to(seq, 2, 60) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_trim_clips_to(seq, 1, -1) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_trim_clips_to(NULL, 1, 60) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_clip_get_range(c0, &in, &out, NULL) == OAKENGINE_OK);
+	assert(in == 0 && out == 100);
+
+	// ripple_delete_in_to_out (ripple): area removed, workarea disabled,
+	// one undo entry restores everything including the workarea.
+	assert(oakengine_sequence_set_workarea(seq, 1, 20, 80) == OAKENGINE_OK);
+	assert(oakengine_sequence_workarea_is_enabled(seq) == 1);
+	assert(oakengine_sequence_ripple_delete_in_to_out(seq, 1, 20, 80) ==
+		   OAKENGINE_OK);
+	assert(oakengine_sequence_workarea_is_enabled(seq) == 0);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 2);
+	OakEngineClip *piece0 = oakengine_sequence_clip_at(
+		seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0);
+	OakEngineClip *piece1 = oakengine_sequence_clip_at(
+		seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 1);
+	assert(oakengine_clip_get_range(piece0, &in, &out, NULL) ==
+		   OAKENGINE_OK);
+	assert(in == 0 && out == 20);
+	assert(oakengine_clip_get_range(piece1, &in, &out, NULL) ==
+		   OAKENGINE_OK);
+	assert(in == 20 && out == 40);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_workarea_is_enabled(seq) == 1);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 1);
+	assert(oakengine_clip_get_range(c0, &in, &out, NULL) == OAKENGINE_OK);
+	assert(in == 0 && out == 100);
+
+	// ripple_delete_in_to_out (no ripple): a gap fills the area, later
+	// content shifts right by the range length.
+	assert(oakengine_sequence_ripple_delete_in_to_out(seq, 0, 20, 80) ==
+		   OAKENGINE_OK);
+	assert(oakengine_sequence_workarea_is_enabled(seq) == 0);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 2);
+	piece0 = oakengine_sequence_clip_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										0);
+	piece1 = oakengine_sequence_clip_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										1);
+	assert(oakengine_clip_get_range(piece0, &in, &out, NULL) ==
+		   OAKENGINE_OK);
+	assert(in == 0 && out == 20);
+	assert(oakengine_clip_get_range(piece1, &in, &out, NULL) ==
+		   OAKENGINE_OK);
+	assert(in == 80 && out == 100);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 1);
+
+	// Workarea disabled: rejected; bad range: invalid (range is validated
+	// before the workarea state).
+	assert(oakengine_sequence_set_workarea(seq, 0, 20, 80) == OAKENGINE_OK);
+	assert(oakengine_sequence_ripple_delete_in_to_out(seq, 1, 20, 80) ==
+		   OAKENGINE_E_STATE);
+	assert(oakengine_sequence_ripple_delete_in_to_out(seq, 1, 80, 20) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_ripple_delete_in_to_out(NULL, 1, 20, 80) ==
+		   OAKENGINE_E_INVALID);
+
+	// delete_empty_tracks: add an empty audio and an empty subtitle track.
+	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_AUDIO) ==
+		   0);
+	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_SUBTITLE) ==
+		   0);
+	int v = 0, a = 0, s = 0;
+	assert(oakengine_sequence_track_count(seq, &v, &a, &s) == OAKENGINE_OK);
+	assert(v == 1 && a == 1 && s == 1);
+	// Type-filtered purge first: only the audio track goes.
+	assert(oakengine_sequence_delete_empty_tracks(
+			   seq, OAKENGINE_TRACK_TYPE_AUDIO) == 1);
+	assert(oakengine_sequence_track_count(seq, &v, &a, &s) == OAKENGINE_OK);
+	assert(v == 1 && a == 0 && s == 1);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_track_count(seq, &v, &a, &s) == OAKENGINE_OK);
+	assert(v == 1 && a == 1 && s == 1);
+	// All types at once (the application's behavior).
+	assert(oakengine_sequence_delete_empty_tracks(seq, -1) == 2);
+	assert(oakengine_sequence_track_count(seq, &v, &a, &s) == OAKENGINE_OK);
+	assert(v == 1 && a == 0 && s == 0);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_track_count(seq, &v, &a, &s) == OAKENGINE_OK);
+	assert(v == 1 && a == 1 && s == 1);
+	// Nothing empty: 0, no command; invalid type rejected.
+	assert(oakengine_sequence_delete_empty_tracks(
+			   seq, OAKENGINE_TRACK_TYPE_VIDEO) == 0);
+	assert(oakengine_sequence_delete_empty_tracks(seq, 3) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_delete_empty_tracks(NULL, -1) ==
+		   OAKENGINE_E_INVALID);
+
+	// marker_remove_many: batch delete by time, one undo entry.
+	assert(oakengine_sequence_marker_add_ex(seq, 10, "m1", 0) ==
+		   OAKENGINE_OK);
+	assert(oakengine_sequence_marker_add_ex(seq, 20, "m2", 0) ==
+		   OAKENGINE_OK);
+	assert(oakengine_sequence_marker_add_ex(seq, 30, "m3", 0) ==
+		   OAKENGINE_OK);
+	assert(oakengine_sequence_marker_count(seq) == 3);
+	{
+		const int64_t times[2] = { 10, 30 };
+		assert(oakengine_sequence_marker_remove_many(seq, times, 2) == 2);
+	}
+	assert(oakengine_sequence_marker_count(seq) == 1);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_marker_count(seq) == 3);
+	{
+		const int64_t bad[1] = { 99 };
+		assert(oakengine_sequence_marker_remove_many(seq, bad, 1) ==
+			   OAKENGINE_E_NOT_FOUND);
+	}
+	assert(oakengine_sequence_marker_count(seq) == 3);
+	assert(oakengine_sequence_marker_remove_many(seq, NULL, 1) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_marker_remove_many(seq, NULL, 0) == 0);
+	assert(oakengine_sequence_marker_remove_many(NULL, NULL, 0) ==
+		   OAKENGINE_E_INVALID);
+
+	oakengine_footage_free(footage);
+	oakengine_project_free(project);
+}
+
 int main(void)
 {
 	make_tmpdir();
@@ -992,6 +1158,7 @@ int main(void)
 	test_markers();
 	test_sequence_params();
 	test_batch_editing(path);
+	test_batch_editing_round2(path);
 
 	oakengine_project_free(project);
 	assert(oakengine_shutdown() == OAKENGINE_OK);

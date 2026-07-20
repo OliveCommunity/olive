@@ -28,9 +28,8 @@
 #include <QPainter>
 #include <QtMath>
 
-#include "core.h"
+#include "node/project/sequence/sequence.h"
 #include "oakengine/timeline.h"
-#include "timeline/timelineundogeneral.h"
 #include "ui/icons/icons.h"
 #include "widget/menu/menu.h"
 
@@ -189,12 +188,10 @@ void TrackViewItem::delete_all_empty_tracks()
 				tr("This will delete the following tracks:\n\n%1\n\nDo you wish to continue?")
 					.arg(track_names_to_remove.join('\n')),
 				QMessageBox::Ok | QMessageBox::Cancel) == QMessageBox::Ok) {
-			MultiUndoCommand *command = new MultiUndoCommand();
-			foreach (Track *track, tracks_to_remove) {
-				command->add_child(new TimelineRemoveTrackCommand(track));
-			}
-			Core::instance()->undo_stack()->push(
-				command, tr("Deleted All Empty Tracks"));
+			// Batch removal through the liboakengine C ABI facade (one
+			// undoable command, same as the old per-track children).
+			oakengine_sequence_delete_empty_tracks(
+				reinterpret_cast<OakEngineSequence *>(sequence), -1);
 		}
 	}
 }
