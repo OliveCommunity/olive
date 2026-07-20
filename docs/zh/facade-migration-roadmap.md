@@ -92,7 +92,7 @@ facade 现状覆盖:项目/序列读写、素材探测与导入、时间线查�
 
 按符号聚类的消减顺序(每步保持全绿+耦合计数下降):
 
-1. **icon(56)**:注册表下沉 core——纯资源元数据,无行为风险,最大单块。
+1. **icon(56)**:注册表搬到 app(engine/ui/icons→app/ui/icons,~20 个 app 文件只改 include 路径,namespace 不变);engine 仅 4 处 data(Node::icon) 覆盖(folder/footage/sequence/node 默认),改为返回图标**名字符串**,projectviewmodel.cpp:185 单一消费点按名映射。**不要下沉 core**——liboakcore 实测 Qt-free(2026-07),QIcon 会污染它;图标本就是呈现资源,归 app。
 2. **EngineCore(48)**:应用核心外观族(oakengine_app_*):项目生命周期(create/open/save/recent/autorecovery)、剪贴板、status bar、color picker、handler 注册;信号→回调。worker 的无头 Core 继续用 C++ 不动。
 3. **节点图 UI(~103)**:Node 40 / ViewerOutput 20 / Track 13 / ClipBlock 12 / NodeGroup 9 / NodeKeyframe 7 / NodeTraverser 6 / MultiCamNode 6——node view、multicam 面板、曲线编辑器对节点类的直接引用,按控件逐个切。
 4. **参数/色彩/导出(~50)**:VideoParams 19 / ColorManager 15 / EncodingParams 9 / ExportFormat 7——导出编解码控件、色彩管理菜单、scopes。
