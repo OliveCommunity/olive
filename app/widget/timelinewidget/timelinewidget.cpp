@@ -47,6 +47,7 @@
 #include "node/nodeundo.h"
 #include "node/project/footage/footage.h"
 #include "node/project/serializer/serializer.h"
+#include "oakengine/timeline.h"
 #include "render/audiowaveformcache.h"
 #include "task/project/import/import.h"
 #include "timeline/timelineundogeneral.h"
@@ -556,10 +557,20 @@ void TimelineWidget::split_at_playhead()
 	}
 
 	if (!blocks_to_split.isEmpty()) {
-		Core::instance()->undo_stack()->push(
-			new BlockSplitPreservingLinksCommand(blocks_to_split,
-												 { playhead_time }),
-			tr("Split Clips At Playhead"));
+		// Split through the liboakengine C ABI facade: one undoable,
+		// link-preserving command with the same semantics as the old
+		// app-side BlockSplitPreservingLinksCommand push.
+		QVector<OakEngineClip *> clips;
+		clips.reserve(blocks_to_split.size());
+		foreach (Block *b, blocks_to_split) {
+			clips.append(reinterpret_cast<OakEngineClip *>(
+				static_cast<ClipBlock *>(b)));
+		}
+		oakengine_sequence_split_clips(
+			reinterpret_cast<OakEngineSequence *>(sequence()), clips.data(),
+			clips.size(),
+			Timecode::time_to_timestamp(playhead_time, timebase(),
+										Timecode::k_round));
 	}
 }
 
@@ -639,32 +650,47 @@ void TimelineWidget::DeleteSelected(bool ripple)
 		command->add_child(trc);
 	}
 
-	// Replace clips with gaps (effectively deleting them)
-	replace_blocks_with_gaps(clips_to_delete, true, command, false);
+	// Selection clearing and transition removal stay app-side (selection
+	// state and transition commands have no facade equivalent); the clip
+	// deletion core below goes through the facade and lands as one undoable
+	// command right after this one, keeping the undo order intact.
+	Core::instance()->undo_stack()->push(command, tr("Deleted Clips"));
 
-	// Insert ripple command now that it's all cleaned up gaps
-	TimelineRippleDeleteGapsAtRegionsCommand *ripple_command = nullptr;
-	Rational new_playhead = RATIONAL_MAX;
-	if (ripple) {
-		TimelineRippleDeleteGapsAtRegionsCommand::RangeList range_list;
-
-		foreach (Block *b, selected_list) {
-			range_list.append({ b->track(), b->range() });
-			new_playhead = qMin(new_playhead, b->in());
-		}
-
-		ripple_command = new TimelineRippleDeleteGapsAtRegionsCommand(
-			sequence(), range_list);
-		command->add_child(ripple_command);
+	// Delete the clips through the liboakengine C ABI facade (gap
+	// replacement + graph removal, optionally rippling the selected ranges
+	// closed), same semantics as the old in-command children.
+	QVector<OakEngineClip *> facade_clips;
+	facade_clips.reserve(clips_to_delete.size());
+	foreach (Block *b, clips_to_delete) {
+		facade_clips.append(
+			reinterpret_cast<OakEngineClip *>(static_cast<ClipBlock *>(b)));
 	}
 
-	Core::instance()->undo_stack()->push(command, tr("Deleted Clips"));
+	Rational new_playhead = RATIONAL_MAX;
+	QVector<int64_t> ripple_ranges;
+	if (ripple) {
+		foreach (Block *b, selected_list) {
+			ripple_ranges.append(int64_t(b->track()->type()));
+			ripple_ranges.append(b->track()->index());
+			ripple_ranges.append(Timecode::time_to_timestamp(
+				b->in(), timebase(), Timecode::k_round));
+			ripple_ranges.append(Timecode::time_to_timestamp(
+				b->out(), timebase(), Timecode::k_round));
+			new_playhead = qMin(new_playhead, b->in());
+		}
+	}
+
+	int rippled = 0;
+	oakengine_sequence_delete_clips(
+		reinterpret_cast<OakEngineSequence *>(sequence()),
+		facade_clips.data(), facade_clips.size(), ripple ? 1 : 0,
+		ripple ? ripple_ranges.constData() : nullptr,
+		ripple ? ripple_ranges.size() / 4 : 0, &rippled);
 
 	// Ensures any current drag operations are cancelled
 	clear_ghosts();
 
-	if (ripple_command && ripple_command->has_commands() &&
-		new_playhead != RATIONAL_MAX) {
+	if (ripple && rippled && new_playhead != RATIONAL_MAX) {
 		get_connected_node()->set_playhead(new_playhead);
 	}
 }
@@ -2535,10 +2561,14 @@ void TimelineWidget::ripple_to(Timeline::MovementMode mode)
 	Rational in_ripple = qMin(closest_point_to_playhead, playhead_time);
 	Rational out_ripple = qMax(closest_point_to_playhead, playhead_time);
 
-	TimelineRippleRemoveAreaCommand *c =
-		new TimelineRippleRemoveAreaCommand(sequence(), in_ripple, out_ripple);
-
-	Core::instance()->undo_stack()->push(c, tr("Rippled Clip(s) To Point"));
+	// Ripple the region out through the liboakengine C ABI facade (one
+	// undoable all-tracks ripple, same as the old
+	// TimelineRippleRemoveAreaCommand push).
+	oakengine_sequence_ripple_delete_range(
+		reinterpret_cast<OakEngineSequence *>(sequence()),
+		Timecode::time_to_timestamp(in_ripple, timebase(), Timecode::k_round),
+		Timecode::time_to_timestamp(out_ripple, timebase(),
+									Timecode::k_round));
 
 	// If we rippled, ump to where new cut is if applicable
 	if (mode == Timeline::k_trim_in) {

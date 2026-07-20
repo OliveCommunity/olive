@@ -220,7 +220,7 @@ static void test_sequence_and_save_load(void)
 
 	// No markers on a fresh sequence.
 	assert(oakengine_sequence_marker_count(seq) == 0);
-	assert(oakengine_sequence_marker_at(seq, 0, NULL, NULL, 0) ==
+	assert(oakengine_sequence_marker_at(seq, 0, NULL, NULL, 0, NULL) ==
 		   OAKENGINE_E_NOT_FOUND);
 
 	// Save; the modified flag clears and the filename is adopted.
@@ -384,7 +384,7 @@ static void test_null_safety(void)
 	assert(oakengine_sequence_set_workarea(NULL, 0, 0, 0) ==
 		   OAKENGINE_E_INVALID);
 	assert(oakengine_sequence_marker_count(NULL) == 0);
-	assert(oakengine_sequence_marker_at(NULL, 0, NULL, NULL, 0) ==
+	assert(oakengine_sequence_marker_at(NULL, 0, NULL, NULL, 0, NULL) ==
 		   OAKENGINE_E_INVALID);
 }
 

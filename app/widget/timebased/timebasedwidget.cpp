@@ -30,6 +30,7 @@
 #include "common/current.h"
 #include "dialog/markerproperties/markerpropertiesdialog.h"
 #include "node/project/sequence/sequence.h"
+#include "oakengine/timeline.h"
 #include "timeline/timelineundoworkarea.h"
 #include "widget/timeruler/timeruler.h"
 
@@ -751,17 +752,35 @@ void TimeBasedWidget::set_marker()
 			color, TimeRange(get_connected_node()->get_playhead(),
 							 get_connected_node()->get_playhead()));
 
+		bool edited_in_dialog = false;
 		if (OAK_CONFIG("SetNameWithMarker").toBool()) {
 			MarkerPropertiesDialog mpd({ marker }, timebase(), this);
 			if (mpd.exec() != QDialog::Accepted) {
 				delete marker;
 				marker = nullptr;
+			} else {
+				edited_in_dialog = true;
 			}
 		}
 
 		if (marker) {
-			Core::instance()->undo_stack()->push(
-				new MarkerAddCommand(markers, marker), tr("Added Marker"));
+			if (edited_in_dialog) {
+				// The dialog pushed undo commands referencing this exact
+				// marker object, so it must be the one added to the list.
+				Core::instance()->undo_stack()->push(
+					new MarkerAddCommand(markers, marker), tr("Added Marker"));
+			} else {
+				// Pristine marker: add through the liboakengine C ABI
+				// facade (one undoable command) and drop the temporary.
+				oakengine_sequence_marker_add_ex(
+					reinterpret_cast<OakEngineSequence *>(
+						get_connected_node()),
+					Timecode::time_to_timestamp(marker->time().in(),
+												timebase(),
+												Timecode::k_round),
+					"", marker->color());
+				delete marker;
+			}
 		}
 	}
 }

@@ -714,7 +714,8 @@ int oakengine_sequence_marker_count(const OakEngineSequence *self)
 }
 
 int oakengine_sequence_marker_at(const OakEngineSequence *self, int index,
-								 int64_t *time, char *name, int name_size)
+								 int64_t *time, char *name, int name_size,
+								 int *color)
 {
 	if (!self || index < 0) {
 		return OAKENGINE_E_INVALID;
@@ -733,6 +734,9 @@ int oakengine_sequence_marker_at(const OakEngineSequence *self, int index,
 	}
 	if (name && name_size > 0) {
 		copy_to_buf(marker->name(), name, size_t(name_size));
+	}
+	if (color) {
+		*color = marker->color();
 	}
 	return OAKENGINE_OK;
 }
@@ -1076,6 +1080,189 @@ int oakengine_sequence_move_clip(OakEngineSequence *seq, int track_type,
 	return OAKENGINE_OK;
 }
 
+/* ---- Batch editing (timeline panel) ------------------------------------------ */
+
+int oakengine_sequence_split_clips(OakEngineSequence *seq,
+								   OakEngineClip **clips, int clip_count,
+								   int64_t time_ts)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence || !clips || clip_count <= 0) {
+		set_seq_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return OAKENGINE_E_STATE;
+	}
+	const olive::Rational time =
+		olive::core::Timecode::timestamp_to_time(time_ts, tb);
+
+	QVector<olive::Block *> blocks;
+	blocks.reserve(clip_count);
+	bool any_spanning = false;
+	for (int i = 0; i < clip_count; i++) {
+		olive::ClipBlock *clip =
+			reinterpret_cast<olive::ClipBlock *>(clips[i]);
+		if (!clip) {
+			set_seq_error(QStringLiteral("invalid clip at index %1").arg(i));
+			return OAKENGINE_E_INVALID;
+		}
+		if (blocks.contains(clip)) {
+			continue;
+		}
+		blocks.append(clip);
+		if (clip->in() < time && clip->out() > time) {
+			any_spanning = true;
+		}
+	}
+	if (!any_spanning) {
+		set_seq_error(QStringLiteral("no clip spans time %1").arg(time_ts));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+
+	// Same as the application's razor tool / split-at-playhead
+	// (BlockSplitPreservingLinksCommand): split every block spanning the
+	// time and link the halves of linked blocks, one undoable command.
+	push_or_run(new olive::BlockSplitPreservingLinksCommand(blocks, { time }),
+				QStringLiteral("Split Clips"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_sequence_delete_clips(OakEngineSequence *seq,
+									OakEngineClip **clips, int clip_count,
+									int ripple, const int64_t *ripple_ranges_ts,
+									int ripple_range_count, int *rippled)
+{
+	set_seq_error(QString());
+	if (rippled) {
+		*rippled = 0;
+	}
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence || clip_count < 0 || (clip_count > 0 && !clips) ||
+		ripple_range_count < 0 ||
+		(ripple_range_count > 0 && !ripple_ranges_ts)) {
+		set_seq_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	if (clip_count == 0 && (!ripple || ripple_range_count == 0)) {
+		// Nothing to delete and nothing to ripple.
+		return OAKENGINE_OK;
+	}
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return OAKENGINE_E_STATE;
+	}
+
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	olive::TimelineRippleDeleteGapsAtRegionsCommand::RangeList clip_ranges;
+	for (int i = 0; i < clip_count; i++) {
+		olive::ClipBlock *clip =
+			reinterpret_cast<olive::ClipBlock *>(clips[i]);
+		if (!clip || !clip->track()) {
+			set_seq_error(QStringLiteral("invalid clip at index %1").arg(i));
+			delete command;
+			return OAKENGINE_E_INVALID;
+		}
+		// Same as the application's delete-selection core
+		// (TimelineWidget::DeleteSelected): replace the clip with a gap
+		// (transitions are the caller's job) and remove it from the graph
+		// with its exclusive dependencies.
+		command->add_child(new olive::TrackReplaceBlockWithGapCommand(
+			clip->track(), clip, false));
+		command->add_child(
+			new olive::NodeRemoveWithExclusiveDependenciesAndDisconnect(clip));
+		clip_ranges.append({ clip->track(), clip->range() });
+	}
+
+	olive::TimelineRippleDeleteGapsAtRegionsCommand *ripple_command = nullptr;
+	if (ripple) {
+		olive::TimelineRippleDeleteGapsAtRegionsCommand::RangeList ranges;
+		if (ripple_ranges_ts && ripple_range_count > 0) {
+			for (int i = 0; i < ripple_range_count; i++) {
+				const int64_t *range = ripple_ranges_ts + i * 4;
+				const int track_type = int(range[0]);
+				const int track_index = int(range[1]);
+				if (track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+					track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+					set_seq_error(QStringLiteral("invalid track type in "
+												 "ripple range %1")
+									  .arg(i));
+					delete command;
+					return OAKENGINE_E_INVALID;
+				}
+				olive::TrackList *list =
+					sequence->track_list(to_track_type(track_type));
+				if (track_index < 0 ||
+					track_index >= list->get_track_count()) {
+					set_seq_error(QStringLiteral("no track at index %1 in "
+												 "ripple range %2")
+									  .arg(track_index)
+									  .arg(i));
+					delete command;
+					return OAKENGINE_E_NOT_FOUND;
+				}
+				ranges.append({ list->get_track_at(track_index),
+								olive::TimeRange(
+									olive::core::Timecode::timestamp_to_time(
+										range[2], tb),
+									olive::core::Timecode::timestamp_to_time(
+										range[3], tb)) });
+			}
+		} else {
+			ranges = clip_ranges;
+		}
+		if (!ranges.isEmpty()) {
+			ripple_command =
+				new olive::TimelineRippleDeleteGapsAtRegionsCommand(sequence,
+																	ranges);
+			command->add_child(ripple_command);
+		}
+	}
+
+	push_or_run(command, QStringLiteral("Delete Clips"));
+	if (rippled) {
+		// has_commands() is valid after the stack prepared the command;
+		// without an engine the command ran directly and a non-null ripple
+		// command means regions were queued.
+		*rippled = (ripple_command && (!olive::EngineCore::instance() ||
+									   ripple_command->has_commands())) ?
+					   1 :
+					   0;
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_sequence_ripple_delete_range(OakEngineSequence *seq,
+										   int64_t in_ts, int64_t out_ts)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence || in_ts < 0 || out_ts <= in_ts) {
+		set_seq_error(QStringLiteral("invalid range [%1, %2)")
+						  .arg(in_ts)
+						  .arg(out_ts));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return OAKENGINE_E_STATE;
+	}
+	// Same as the application's "ripple to playhead" (TimelineWidget::
+	// ripple_to): remove the area on every track and shift the following
+	// content left, one undoable command.
+	push_or_run(new olive::TimelineRippleRemoveAreaCommand(
+					sequence,
+					olive::core::Timecode::timestamp_to_time(in_ts, tb),
+					olive::core::Timecode::timestamp_to_time(out_ts, tb)),
+				QStringLiteral("Ripple Delete Range"));
+	return OAKENGINE_OK;
+}
+
 /* ---- Track structure and markers ------------------------------------------ */
 
 int oakengine_sequence_remove_track(OakEngineSequence *seq, int track_type,
@@ -1279,6 +1466,12 @@ int oakengine_track_set_locked(OakEngineSequence *seq, int track_type,
 int oakengine_sequence_marker_add(OakEngineSequence *seq, int64_t time_ts,
 								  const char *name)
 {
+	return oakengine_sequence_marker_add_ex(seq, time_ts, name, 0);
+}
+
+int oakengine_sequence_marker_add_ex(OakEngineSequence *seq, int64_t time_ts,
+									 const char *name, int color)
+{
 	set_seq_error(QString());
 	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
 	if (!sequence) {
@@ -1301,7 +1494,7 @@ int oakengine_sequence_marker_add(OakEngineSequence *seq, int64_t time_ts,
 	}
 	push_or_run(new olive::MarkerAddCommand(
 					markers, olive::TimeRange(time, time),
-					QString::fromUtf8(name ? name : ""), 0),
+					QString::fromUtf8(name ? name : ""), color),
 				QStringLiteral("Add Marker"));
 	return OAKENGINE_OK;
 }

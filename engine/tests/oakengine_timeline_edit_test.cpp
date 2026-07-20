@@ -584,7 +584,7 @@ static void test_markers(void)
 	assert(oakengine_sequence_marker_add(seq, 30, "Chapter 1") ==
 		   OAKENGINE_OK);
 	assert(oakengine_sequence_marker_count(seq) == 1);
-	assert(oakengine_sequence_marker_at(seq, 0, &ts, name, sizeof(name)) ==
+	assert(oakengine_sequence_marker_at(seq, 0, &ts, name, sizeof(name), NULL) ==
 		   OAKENGINE_OK);
 	assert(ts == 30 && strcmp(name, "Chapter 1") == 0);
 
@@ -595,29 +595,29 @@ static void test_markers(void)
 	// Earlier marker sorts in front.
 	assert(oakengine_sequence_marker_add(seq, 10, "Intro") == OAKENGINE_OK);
 	assert(oakengine_sequence_marker_count(seq) == 2);
-	assert(oakengine_sequence_marker_at(seq, 0, &ts, name, sizeof(name)) ==
+	assert(oakengine_sequence_marker_at(seq, 0, &ts, name, sizeof(name), NULL) ==
 		   OAKENGINE_OK);
 	assert(ts == 10 && strcmp(name, "Intro") == 0);
-	assert(oakengine_sequence_marker_at(seq, 1, &ts, name, sizeof(name)) ==
+	assert(oakengine_sequence_marker_at(seq, 1, &ts, name, sizeof(name), NULL) ==
 		   OAKENGINE_OK);
 	assert(ts == 30 && strcmp(name, "Chapter 1") == 0);
-	assert(oakengine_sequence_marker_at(seq, 2, &ts, name, sizeof(name)) ==
+	assert(oakengine_sequence_marker_at(seq, 2, &ts, name, sizeof(name), NULL) ==
 		   OAKENGINE_E_NOT_FOUND);
 
 	// Rename with undo/redo.
 	assert(oakengine_sequence_marker_rename(seq, 30, "Chapter 2") ==
 		   OAKENGINE_OK);
-	assert(oakengine_sequence_marker_at(seq, 1, &ts, name, sizeof(name)) ==
+	assert(oakengine_sequence_marker_at(seq, 1, &ts, name, sizeof(name), NULL) ==
 		   OAKENGINE_OK);
 	assert(strcmp(name, "Chapter 2") == 0);
 	assert(oakengine_sequence_marker_rename(seq, 77, "nope") ==
 		   OAKENGINE_E_NOT_FOUND);
 	assert(oakengine_project_undo(project) == OAKENGINE_OK);
-	assert(oakengine_sequence_marker_at(seq, 1, &ts, name, sizeof(name)) ==
+	assert(oakengine_sequence_marker_at(seq, 1, &ts, name, sizeof(name), NULL) ==
 		   OAKENGINE_OK);
 	assert(strcmp(name, "Chapter 1") == 0);
 	assert(oakengine_project_redo(project) == OAKENGINE_OK);
-	assert(oakengine_sequence_marker_at(seq, 1, &ts, name, sizeof(name)) ==
+	assert(oakengine_sequence_marker_at(seq, 1, &ts, name, sizeof(name), NULL) ==
 		   OAKENGINE_OK);
 	assert(strcmp(name, "Chapter 2") == 0);
 
@@ -810,6 +810,158 @@ static void test_sequence_params(void)
 	oakengine_project_free(p2);
 }
 
+static void test_batch_editing(const char *media_path)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	OakEngineSequence *seq = oakengine_sequence_new(project, "Batch");
+	assert(seq != NULL);
+	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_VIDEO) ==
+		   0);
+	OakEngineFootage *footage =
+		oakengine_project_import_footage(project, media_path);
+	assert(footage != NULL);
+
+	int64_t in = -1, out = -1;
+
+	// Two clips on the video track: [0, 100) and [100, 160).
+	OakEngineClip *c0 = oakengine_sequence_add_footage_clip(
+		seq, footage, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, 100, 0);
+	OakEngineClip *c1 = oakengine_sequence_add_footage_clip(
+		seq, footage, OAKENGINE_TRACK_TYPE_VIDEO, 0, 100, 160, 0);
+	assert(c0 != NULL && c1 != NULL);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 2);
+
+	// split_clips at 50: the first clip splits in two.
+	{
+		OakEngineClip *arr[1] = { c0 };
+		assert(oakengine_sequence_split_clips(seq, arr, 1, 50) ==
+			   OAKENGINE_OK);
+	}
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 3);
+	OakEngineClip *left = oakengine_sequence_clip_at(
+		seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0);
+	OakEngineClip *right = oakengine_sequence_clip_at(
+		seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 1);
+	assert(oakengine_clip_get_range(left, &in, &out, NULL) == OAKENGINE_OK);
+	assert(in == 0 && out == 50);
+	assert(oakengine_clip_get_range(right, &in, &out, NULL) == OAKENGINE_OK);
+	assert(in == 50 && out == 100);
+
+	// Nothing spans 200; invalid arrays are rejected.
+	{
+		OakEngineClip *arr[2] = { left, right };
+		assert(oakengine_sequence_split_clips(seq, arr, 2, 200) ==
+			   OAKENGINE_E_NOT_FOUND);
+		assert(oakengine_sequence_split_clips(seq, NULL, 1, 50) ==
+			   OAKENGINE_E_INVALID);
+		assert(oakengine_sequence_split_clips(seq, arr, 0, 50) ==
+			   OAKENGINE_E_INVALID);
+		assert(oakengine_sequence_split_clips(NULL, arr, 1, 50) ==
+			   OAKENGINE_E_INVALID);
+	}
+
+	// Undo the split.
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 2);
+
+	// delete_clips without ripple: a gap is left, the second clip stays.
+	int rippled = -1;
+	{
+		OakEngineClip *arr[1] = { c0 };
+		assert(oakengine_sequence_delete_clips(seq, arr, 1, 0, NULL, 0,
+											   &rippled) == OAKENGINE_OK);
+	}
+	assert(rippled == 0);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 1);
+	assert(oakengine_clip_get_range(c1, &in, &out, NULL) == OAKENGINE_OK);
+	assert(in == 100 && out == 160);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 2);
+
+	// delete_clips with ripple (auto ranges): the second clip shifts left.
+	rippled = -1;
+	{
+		OakEngineClip *arr[1] = { c0 };
+		assert(oakengine_sequence_delete_clips(seq, arr, 1, 1, NULL, 0,
+											   &rippled) == OAKENGINE_OK);
+	}
+	assert(rippled == 1);
+	assert(oakengine_clip_get_range(c1, &in, &out, NULL) == OAKENGINE_OK);
+	assert(in == 0 && out == 60);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_clip_get_range(c1, &in, &out, NULL) == OAKENGINE_OK);
+	assert(in == 100 && out == 160);
+
+	// delete_clips with an explicit ripple range: same shift.
+	rippled = -1;
+	{
+		OakEngineClip *arr[1] = { c0 };
+		const int64_t ranges[4] = { OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, 100 };
+		assert(oakengine_sequence_delete_clips(seq, arr, 1, 1, ranges, 1,
+											   &rippled) == OAKENGINE_OK);
+	}
+	assert(rippled == 1);
+	assert(oakengine_clip_get_range(c1, &in, &out, NULL) == OAKENGINE_OK);
+	assert(in == 0 && out == 60);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 2);
+
+	// A bad explicit range coordinate is rejected without side effects.
+	{
+		OakEngineClip *arr[1] = { c0 };
+		const int64_t bad[4] = { OAKENGINE_TRACK_TYPE_VIDEO, 9, 0, 100 };
+		assert(oakengine_sequence_delete_clips(seq, arr, 1, 1, bad, 1,
+											   NULL) == OAKENGINE_E_NOT_FOUND);
+	}
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 2);
+	assert(oakengine_sequence_delete_clips(NULL, NULL, 0, 0, NULL, 0,
+										   NULL) == OAKENGINE_E_INVALID);
+
+	// ripple_delete_range over [0, 100): the area is removed from every
+	// track and the following content shifts left.
+	assert(oakengine_sequence_ripple_delete_range(seq, 0, 100) ==
+		   OAKENGINE_OK);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 1);
+	OakEngineClip *remaining = oakengine_sequence_clip_at(
+		seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0);
+	assert(oakengine_clip_get_range(remaining, &in, &out, NULL) ==
+		   OAKENGINE_OK);
+	assert(in == 0 && out == 60);
+	assert(oakengine_sequence_ripple_delete_range(seq, 100, 100) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_ripple_delete_range(seq, -1, 5) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_sequence_ripple_delete_range(NULL, 0, 1) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 2);
+
+	// Marker with an explicit color.
+	assert(oakengine_sequence_marker_add_ex(seq, 10, "colored", 5) ==
+		   OAKENGINE_OK);
+	int color = -1;
+	int64_t ts = -1;
+	assert(oakengine_sequence_marker_at(seq, 0, &ts, NULL, 0, &color) ==
+		   OAKENGINE_OK);
+	assert(ts == 10 && color == 5);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_marker_count(seq) == 0);
+
+	oakengine_footage_free(footage);
+	oakengine_project_free(project);
+}
+
 int main(void)
 {
 	make_tmpdir();
@@ -839,6 +991,7 @@ int main(void)
 	test_track_structure(path);
 	test_markers();
 	test_sequence_params();
+	test_batch_editing(path);
 
 	oakengine_project_free(project);
 	assert(oakengine_shutdown() == OAKENGINE_OK);

@@ -29,6 +29,7 @@
 #include <QtMath>
 
 #include "core.h"
+#include "oakengine/timeline.h"
 #include "timeline/timelineundogeneral.h"
 #include "ui/icons/icons.h"
 #include "widget/menu/menu.h"
@@ -159,9 +160,11 @@ void TrackViewItem::show_context_menu(const QPoint &p)
 void TrackViewItem::delete_track()
 {
 	emit about_to_delete_track(track_);
-	Core::instance()->undo_stack()->push(
-		new TimelineRemoveTrackCommand(track_),
-		tr("Deleted Track \"%1\"").arg(track_->get_label_or_name()));
+	// Through the liboakengine C ABI facade (one undoable command, same as
+	// the old TimelineRemoveTrackCommand push).
+	oakengine_sequence_remove_track(
+		reinterpret_cast<OakEngineSequence *>(track_->sequence()),
+		int(track_->type()), track_->index());
 }
 
 void TrackViewItem::delete_all_empty_tracks()

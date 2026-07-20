@@ -21,8 +21,7 @@
 
 #include "razor.h"
 
-#include "node/nodeundo.h"
-#include "timeline/timelineundosplit.h"
+#include "oakengine/timeline.h"
 #include "widget/timelinewidget/timelinewidget.h"
 
 namespace olive
@@ -94,10 +93,21 @@ void RazorTool::mouse_release(TimelineViewMouseEvent *event)
 	split_tracks_.clear();
 
 	if (!blocks_to_split.isEmpty()) {
-		Core::instance()->undo_stack()->push(
-			new BlockSplitPreservingLinksCommand(blocks_to_split,
-												 { split_time }),
-			qApp->translate("RazorTool", "Split Clips"));
+		// Split through the liboakengine C ABI facade: one undoable,
+		// link-preserving command with the same semantics as the old
+		// app-side BlockSplitPreservingLinksCommand push.
+		QVector<OakEngineClip *> clips;
+		clips.reserve(blocks_to_split.size());
+		foreach (Block *b, blocks_to_split) {
+			if (ClipBlock *clip = dynamic_cast<ClipBlock *>(b)) {
+				clips.append(reinterpret_cast<OakEngineClip *>(clip));
+			}
+		}
+		oakengine_sequence_split_clips(
+			reinterpret_cast<OakEngineSequence *>(parent()->sequence()),
+			clips.data(), clips.size(),
+			Timecode::time_to_timestamp(split_time, parent()->timebase(),
+										Timecode::k_round));
 	}
 
 	dragging_ = false;

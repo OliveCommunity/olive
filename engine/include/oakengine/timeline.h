@@ -274,12 +274,14 @@ oakengine_sequence_marker_count(const OakEngineSequence *self);
 /**
  * @brief Marker at `index`: `time` receives its in-point as a timestamp in
  * timebase units (may be NULL), `name` its label using the buf/size
- * truncation convention (may be NULL to only fetch the time). Returns
+ * truncation convention (may be NULL to only fetch the time), `color` its
+ * color index (may be NULL). Returns
  * OAKENGINE_OK on success, OAKENGINE_E_NOT_FOUND for an out-of-range index.
  */
 OAKENGINE_API int oakengine_sequence_marker_at(const OakEngineSequence *self,
 											   int index, int64_t *time,
-											   char *name, int name_size);
+											   char *name, int name_size,
+											   int *color);
 
 /* ---- Timeline editing primitives ---------------------------------------- */
 
@@ -437,6 +439,61 @@ OAKENGINE_API int oakengine_sequence_move_clip(OakEngineSequence *seq,
 											   int clip_index,
 											   int64_t new_in);
 
+/* ---- Batch editing (timeline panel) ------------------------------------------
+ *
+ * Higher-level operations mirroring the application's timeline panel
+ * (app/widget/timelinewidget), each undoable as ONE command like the
+ * panel's own undo entries. Clip arrays hold borrowed handles
+ * (oakengine_sequence_clip_at(); the handle is the engine ClipBlock
+ * pointer in this family, so the application can pass its own clips
+ * directly). All times are frame timestamps in the sequence's frame-rate
+ * timebase.
+ */
+
+/**
+ * @brief Split every given clip at timeline `time_ts`, preserving links
+ * (undoable; olive::BlockSplitPreservingLinksCommand -- the application's
+ * razor tool / split-at-playhead command).
+ *
+ * Clips not spanning `time_ts` are skipped (same as the engine command);
+ * when none of the clips spans it, the call fails with
+ * OAKENGINE_E_NOT_FOUND and nothing is pushed. The halves of linked clips
+ * come out linked, like the application's split.
+ */
+OAKENGINE_API int oakengine_sequence_split_clips(
+	OakEngineSequence *seq, OakEngineClip **clips, int clip_count,
+	int64_t time_ts);
+
+/**
+ * @brief Delete clips leaving gaps, optionally rippling regions closed
+ * (undoable; the clip-deletion core of the application's
+ * TimelineWidget::DeleteSelected).
+ *
+ * Each clip is replaced with a gap (olive::TrackReplaceBlockWithGapCommand,
+ * transitions left to the caller like the application) and removed from
+ * the graph with its exclusive dependencies
+ * (olive::NodeRemoveWithExclusiveDependenciesAndDisconnect).
+ *
+ * When `ripple` != 0, a olive::TimelineRippleDeleteGapsAtRegionsCommand
+ * follows over `ripple_ranges_ts` -- 4 int64 per range: track_type,
+ * track_index, in_ts, out_ts (NULL with `ripple_range_count` 0 ripples the
+ * deleted clips' own ranges instead). `rippled` (may be NULL) receives 1
+ * when the ripple actually produced commands. Everything lands as one
+ * undoable command.
+ */
+OAKENGINE_API int oakengine_sequence_delete_clips(
+	OakEngineSequence *seq, OakEngineClip **clips, int clip_count, int ripple,
+	const int64_t *ripple_ranges_ts, int ripple_range_count, int *rippled);
+
+/**
+ * @brief Remove the area [in_ts, out_ts) on every track and shift the
+ * following content left (undoable;
+ * olive::TimelineRippleRemoveAreaCommand -- the application's
+ * "ripple to playhead"). `in_ts` must be >= 0 and `out_ts` > `in_ts`.
+ */
+OAKENGINE_API int oakengine_sequence_ripple_delete_range(
+	OakEngineSequence *seq, int64_t in_ts, int64_t out_ts);
+
 /* ---- Track structure and markers ------------------------------------------
  *
  * Track structure edits are undoable like the other editing primitives.
@@ -523,6 +580,18 @@ OAKENGINE_API int oakengine_track_set_locked(OakEngineSequence *seq,
 OAKENGINE_API int oakengine_sequence_marker_add(OakEngineSequence *seq,
 												int64_t time_ts,
 												const char *name);
+
+/**
+ * @brief Add a timeline marker with an explicit color index (undoable).
+ *
+ * Same as oakengine_sequence_marker_add() (which passes color 0) but the
+ * caller picks the marker color, like the application's "set marker"
+ * action (color of the closest marker, or the configured default).
+ */
+OAKENGINE_API int oakengine_sequence_marker_add_ex(OakEngineSequence *seq,
+												   int64_t time_ts,
+												   const char *name,
+												   int color);
 
 /**
  * @brief Remove the (first) marker at `time_ts` (undoable;
