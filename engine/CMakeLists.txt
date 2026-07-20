@@ -334,4 +334,32 @@ if (BUILD_TESTS)
     if (TARGET olive-render-worker)
         add_dependencies(oakengine_preview_test olive-render-worker)
     endif ()
+
+    make_oakengine_test(oakengine_playback_test)
+    # The playback test builds sequence content through the engine C++ API
+    # and pulls frames through the render worker pool (same needs as
+    # oakengine_renderer_test).
+    target_include_directories(oakengine_playback_test PRIVATE
+            ${CMAKE_SOURCE_DIR}/third_party/openfx/include
+            ${CMAKE_SOURCE_DIR}/third_party/openfx/HostSupport/include
+            ${OLIVE_INCLUDE_DIRS}
+    )
+    target_compile_definitions(oakengine_playback_test PRIVATE
+            ${OLIVE_DEFINITIONS}
+            OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+    )
+    target_compile_options(oakengine_playback_test PRIVATE
+            ${OLIVE_COMPILE_OPTIONS}
+    )
+    if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
+        target_compile_definitions(oakengine_playback_test PRIVATE
+                OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
+        add_dependencies(oakengine_playback_test oakgl)
+        if (TARGET oakvulkan)
+            add_dependencies(oakengine_playback_test oakvulkan)
+        endif ()
+    endif ()
+    if (TARGET olive-render-worker)
+        add_dependencies(oakengine_playback_test olive-render-worker)
+    endif ()
 endif ()
