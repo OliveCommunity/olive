@@ -30,13 +30,66 @@
 
 #include "common/decibel.h"
 #include "common/qtutils.h"
-#include "node/nodeundo.h"
-#include "widget/keyframeview/keyframeviewundo.h"
+#include "oakengine/node.h"
 
 namespace olive
 {
 
 #define super KeyframeView
+
+namespace
+{
+
+// Map a keyframe track's scalar QVariant into the facade POD for the
+// input's declared type (the curve view drags numeric tracks).
+void track_value_to_c(NodeValue::Type declared, const QVariant &value,
+					  oak_node_value *out)
+{
+	memset(out, 0, sizeof(*out));
+	switch (declared) {
+	case NodeValue::k_int:
+		out->type = OAK_NODE_VALUE_INT;
+		out->num = value.toLongLong();
+		break;
+	case NodeValue::k_combo:
+		out->type = OAK_NODE_VALUE_COMBO;
+		out->num = value.toLongLong();
+		break;
+	case NodeValue::k_boolean:
+		out->type = OAK_NODE_VALUE_BOOL;
+		out->num = value.toBool() ? 1 : 0;
+		break;
+	case NodeValue::k_rational: {
+		const Rational r = value.value<Rational>();
+		out->type = OAK_NODE_VALUE_RATIONAL;
+		out->num = r.numerator();
+		out->den = r.denominator();
+		break;
+	}
+	case NodeValue::k_color:
+		out->type = OAK_NODE_VALUE_COLOR;
+		out->f[0] = value.toDouble();
+		break;
+	case NodeValue::k_vec2:
+		out->type = OAK_NODE_VALUE_VEC2;
+		out->f[0] = value.toDouble();
+		break;
+	case NodeValue::k_vec3:
+		out->type = OAK_NODE_VALUE_VEC3;
+		out->f[0] = value.toDouble();
+		break;
+	case NodeValue::k_vec4:
+		out->type = OAK_NODE_VALUE_VEC4;
+		out->f[0] = value.toDouble();
+		break;
+	default:
+		out->type = OAK_NODE_VALUE_FLOAT;
+		out->f[0] = value.toDouble();
+		break;
+	}
+}
+
+} // namespace
 
 CurveView::CurveView(QWidget *parent)
 	: KeyframeView(parent)
@@ -410,28 +463,40 @@ void CurveView::first_chance_mouse_move(QMouseEvent *event)
 
 void CurveView::first_chance_mouse_release(QMouseEvent *event)
 {
-	MultiUndoCommand *command = new MultiUndoCommand();
-
-	// Create undo command with the current bezier point and the old one
-	command->add_child(new KeyframeSetBezierControlPoint(
-		dragging_bezier_pt_->keyframe, dragging_bezier_pt_->type,
-		dragging_bezier_pt_->keyframe->bezier_control(dragging_bezier_pt_->type),
-		dragging_bezier_point_start_));
+	// Through the liboakengine C ABI facade with the drag-start point(s)
+	// as the explicit old values (the drag already live-set the new
+	// ones); one undoable command per handle, same as the old
+	// KeyframeSetBezierControlPoint children.
+	NodeKeyframe *key = dragging_bezier_pt_->keyframe;
+	OakEngineNode *handle =
+		reinterpret_cast<OakEngineNode *>(key->parent());
+	int tbn = 0, tbd = 0;
+	oakengine_node_frame_time_base(handle, &tbn, &tbd);
+	const int64_t ts = Timecode::time_to_timestamp(
+		key->time(), Rational(tbn, tbd), Timecode::k_round);
+	const QPointF current =
+		key->bezier_control(dragging_bezier_pt_->type);
+	oakengine_node_keyframe_set_bezier_point(
+		handle, key->input().toUtf8().constData(), key->element(), ts,
+		key->track(),
+		(dragging_bezier_pt_->type == NodeKeyframe::k_in_handle) ? 0 : 1,
+		current.x(), current.y(), dragging_bezier_point_start_.x(),
+		dragging_bezier_point_start_.y());
 
 	if (!(event->modifiers() & Qt::ControlModifier)) {
 		auto opposing_type =
 			NodeKeyframe::get_opposing_bezier_type(dragging_bezier_pt_->type);
-
-		command->add_child(new KeyframeSetBezierControlPoint(
-			dragging_bezier_pt_->keyframe, opposing_type,
-			dragging_bezier_pt_->keyframe->bezier_control(opposing_type),
-			dragging_bezier_point_opposing_start_));
+		const QPointF opposing_current = key->bezier_control(opposing_type);
+		oakengine_node_keyframe_set_bezier_point(
+			handle, key->input().toUtf8().constData(), key->element(), ts,
+			key->track(),
+			(opposing_type == NodeKeyframe::k_in_handle) ? 0 : 1,
+			opposing_current.x(), opposing_current.y(),
+			dragging_bezier_point_opposing_start_.x(),
+			dragging_bezier_point_opposing_start_.y());
 	}
 
 	dragging_bezier_pt_ = nullptr;
-
-	Core::instance()->undo_stack()->push(
-		command, tr("Moved Keyframe Bezier Control Point"));
 }
 
 void CurveView::keyframe_drag_start(QMouseEvent *event)
@@ -517,13 +582,65 @@ void CurveView::keyframe_drag_move(QMouseEvent *event, QString &tip)
 void CurveView::keyframe_drag_release(QMouseEvent *event,
 									MultiUndoCommand *command)
 {
+	Q_UNUSED(command) // the facade pushes its own single command below
+
+	// Group the changed keys by owning input and push ONE undoable
+	// command per group through the liboakengine C ABI facade, with the
+	// drag-start values as the explicit undo values (the drag already
+	// live-set the new ones).
+	struct ValueGroup {
+		Node *node;
+		QString input;
+		int element;
+		QVector<int64_t> times;
+		QVector<int> tracks;
+		std::vector<oak_node_value> values;
+		std::vector<oak_node_value> olds;
+	};
+	QVector<ValueGroup> groups;
 	for (size_t i = 0; i < get_selected_keyframes().size(); i++) {
 		NodeKeyframe *k = get_selected_keyframes().at(i);
-		if (!qFuzzyCompare(k->value().toDouble(),
-						   drag_keyframe_values_.at(i).toDouble())) {
-			command->add_child(new NodeParamSetKeyframeValueCommand(
-				k, k->value(), drag_keyframe_values_.at(i)));
+		if (qFuzzyCompare(k->value().toDouble(),
+						  drag_keyframe_values_.at(i).toDouble())) {
+			continue;
 		}
+
+		int g = 0;
+		for (; g < groups.size(); g++) {
+			if (groups.at(g).node == k->parent() &&
+				groups.at(g).input == k->input() &&
+				groups.at(g).element == k->element()) {
+				break;
+			}
+		}
+		if (g == groups.size()) {
+			groups.append(
+				{ k->parent(), k->input(), k->element(), {}, {}, {}, {} });
+		}
+
+		OakEngineNode *handle =
+			reinterpret_cast<OakEngineNode *>(k->parent());
+		int tbn = 0, tbd = 0;
+		oakengine_node_frame_time_base(handle, &tbn, &tbd);
+		groups[g].times.append(Timecode::time_to_timestamp(
+			k->time(), Rational(tbn, tbd), Timecode::k_round));
+		groups[g].tracks.append(k->track());
+
+		const NodeValue::Type declared =
+			k->parent()->get_input_data_type(k->input());
+		oak_node_value new_v, old_v;
+		track_value_to_c(declared, k->value(), &new_v);
+		track_value_to_c(declared, drag_keyframe_values_.at(i), &old_v);
+		groups[g].values.push_back(new_v);
+		groups[g].olds.push_back(old_v);
+	}
+
+	foreach (const ValueGroup &g, groups) {
+		oakengine_node_keyframes_set_value_many(
+			reinterpret_cast<OakEngineNode *>(g.node),
+			g.input.toUtf8().constData(), g.element, g.times.constData(),
+			g.tracks.data(), g.times.size(), g.values.data(),
+			g.olds.data());
 	}
 }
 

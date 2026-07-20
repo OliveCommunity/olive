@@ -251,6 +251,16 @@ TEST(DialogKeyframeProperties, SingleKeyAcceptWritesAllFields)
 	ensure_app_singletons();
 	auto project = create_project();
 
+	// A 24 fps sequence gives the facade's keyframe timestamps a
+	// frame-aligned timebase (the dialog moves the key to 1/2 s = 12
+	// frames; without a sequence the facade's default timebase would not
+	// land on it exactly).
+	auto *seq = new olive::Sequence();
+	seq->setParent(project.get());
+	seq->set_video_params(olive::VideoParams(
+		1920, 1080, olive::Rational(1, 24), olive::PixelFormat::f32,
+		olive::VideoParams::k_internal_channel_count));
+
 	auto *node = new olive::MathNode();
 	node->setParent(project.get());
 	auto *key = new olive::NodeKeyframe(olive::Rational(0), 1.0,

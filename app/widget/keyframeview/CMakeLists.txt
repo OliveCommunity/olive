@@ -20,7 +20,5 @@ set(OLIVE_SOURCES
         widget/keyframeview/keyframeview.h
         widget/keyframeview/keyframeviewinputconnection.cpp
         widget/keyframeview/keyframeviewinputconnection.h
-        widget/keyframeview/keyframeviewundo.cpp
-        widget/keyframeview/keyframeviewundo.h
         PARENT_SCOPE
 )

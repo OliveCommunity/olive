@@ -418,6 +418,150 @@ static void test_panel_paths(OakEngineProject *project,
 	assert(oakengine_node_keyframe_count(opacity, "opacity_in") == 3);
 }
 
+static void test_keyframe_properties(OakEngineProject *project,
+									 OakEngineNode *opacity)
+{
+	// `opacity` has three keys at 0/15/30 (values 0.0/0.5/1.0) with
+	// easings hold/bezier/linear from the earlier tests.
+	oak_node_value out;
+	int64_t ts = -1;
+	const int tr1[1] = { 0 };
+
+	// set_time_many: move 15 -> 20 and undo.
+	const int64_t olds[1] = { 15 };
+	assert(oakengine_node_keyframes_set_time_many(opacity, "opacity_in", -1,
+												  olds, tr1, 1, 20) == 1);
+	assert(oakengine_node_keyframe_at(opacity, "opacity_in", 1, &ts, NULL) ==
+		   OAKENGINE_OK);
+	assert(ts == 20);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_at(opacity, "opacity_in", 1, &ts, NULL) ==
+		   OAKENGINE_OK);
+	assert(ts == 15);
+
+	// Moving onto an occupied time is a conflict; onto the key's own time
+	// is allowed; a missing key is NOT_FOUND. Failures push nothing.
+	assert(oakengine_node_keyframes_set_time_many(opacity, "opacity_in", -1,
+												  olds, tr1, 1,
+												  30) == OAKENGINE_E_STATE);
+	assert(oakengine_node_keyframes_set_time_many(opacity, "opacity_in", -1,
+												  olds, tr1, 1, 15) == 1);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	const int64_t miss[1] = { 99 };
+	assert(oakengine_node_keyframes_set_time_many(opacity, "opacity_in", -1,
+												  miss, tr1, 1,
+												  40) == OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_node_keyframes_set_time_many(NULL, "opacity_in", -1,
+												  olds, tr1, 1,
+												  40) == OAKENGINE_E_INVALID);
+	assert(oakengine_node_keyframes_set_time_many(opacity, "opacity_in", -1,
+												  olds, tr1, 0, 40) == 0);
+	assert(oakengine_node_keyframe_count(opacity, "opacity_in") == 3);
+
+	// set_value_many: captured old values are restored by undo.
+	const int64_t times2[2] = { 0, 15 };
+	const int tr2[2] = { 0, 0 };
+	oak_node_value nv[2];
+	nv[0] = float_value(0.7);
+	nv[1] = float_value(0.6);
+	assert(oakengine_node_keyframes_set_value_many(opacity, "opacity_in", -1,
+												   times2, tr2, 2, nv,
+												   NULL) == 2);
+	assert(oakengine_node_keyframe_at(opacity, "opacity_in", 0, &ts, &out) ==
+		   OAKENGINE_OK);
+	assert(fabs(out.f[0] - 0.7) < 1e-9);
+	assert(oakengine_node_keyframe_at(opacity, "opacity_in", 1, &ts, &out) ==
+		   OAKENGINE_OK);
+	assert(fabs(out.f[0] - 0.6) < 1e-9);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_at(opacity, "opacity_in", 0, &ts, &out) ==
+		   OAKENGINE_OK);
+	assert(fabs(out.f[0] - 0.0) < 1e-9);
+	assert(oakengine_node_keyframe_at(opacity, "opacity_in", 1, &ts, &out) ==
+		   OAKENGINE_OK);
+	assert(fabs(out.f[0] - 0.5) < 1e-9);
+
+	// Explicit old values (the live-set drag pattern): undo restores the
+	// recorded old, redo the new.
+	oak_node_value ov[2];
+	ov[0] = float_value(9.9);
+	ov[1] = float_value(9.8);
+	assert(oakengine_node_keyframes_set_value_many(opacity, "opacity_in", -1,
+												   times2, tr2, 2, nv,
+												   ov) == 2);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_at(opacity, "opacity_in", 0, &ts, &out) ==
+		   OAKENGINE_OK);
+	assert(fabs(out.f[0] - 9.9) < 1e-9);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	oak_node_value orig[2];
+	orig[0] = float_value(0.0);
+	orig[1] = float_value(0.5);
+	assert(oakengine_node_keyframes_set_value_many(opacity, "opacity_in", -1,
+												   times2, tr2, 2, orig,
+												   NULL) == 2);
+
+	// bezier_many: both control points on both keys, undo restores each
+	// key's own previous points (key 15 had 0.1/0.2/0.3/0.4).
+	assert(oakengine_node_keyframes_set_bezier_many(
+			   opacity, "opacity_in", -1, times2, tr2, 2, 0.11f, 0.22f, 0.33f,
+			   0.44f) == 2);
+	float x1 = 0, y1 = 0, x2 = 0, y2 = 0;
+	int type = -1;
+	assert(oakengine_node_keyframe_get_easing(opacity, "opacity_in", 1, &x1,
+											  &y1, &x2, &y2,
+											  &type) == OAKENGINE_OK);
+	assert(fabsf(x1 - 0.11f) < 1e-6f && fabsf(y1 - 0.22f) < 1e-6f &&
+		   fabsf(x2 - 0.33f) < 1e-6f && fabsf(y2 - 0.44f) < 1e-6f);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_get_easing(opacity, "opacity_in", 1, &x1,
+											  &y1, &x2, &y2,
+											  &type) == OAKENGINE_OK);
+	assert(fabsf(x1 - 0.1f) < 1e-6f && fabsf(y1 - 0.2f) < 1e-6f);
+	assert(oakengine_node_keyframes_set_bezier_many(
+			   opacity, "opacity_in", -1, miss, tr1, 1, 0.f, 0.f, 0.f,
+			   0.f) == OAKENGINE_E_NOT_FOUND);
+
+	// set_bezier_point: NaN old captures the current point.
+	assert(oakengine_node_keyframe_set_bezier_point(
+			   opacity, "opacity_in", -1, 15, 0, 0, 0.5f, 0.6f, NAN,
+			   NAN) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_get_easing(opacity, "opacity_in", 1, &x1,
+											  &y1, &x2, &y2,
+											  &type) == OAKENGINE_OK);
+	assert(fabsf(x1 - 0.5f) < 1e-6f && fabsf(y1 - 0.6f) < 1e-6f);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_get_easing(opacity, "opacity_in", 1, &x1,
+											  &y1, &x2, &y2,
+											  &type) == OAKENGINE_OK);
+	assert(fabsf(x1 - 0.1f) < 1e-6f && fabsf(y1 - 0.2f) < 1e-6f);
+
+	// Explicit old restores the recorded point on undo.
+	assert(oakengine_node_keyframe_set_bezier_point(
+			   opacity, "opacity_in", -1, 15, 0, 0, 0.7f, 0.8f, 9.0f,
+			   9.0f) == OAKENGINE_OK);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_get_easing(opacity, "opacity_in", 1, &x1,
+											  &y1, &x2, &y2,
+											  &type) == OAKENGINE_OK);
+	assert(fabsf(x1 - 9.0f) < 1e-6f);
+	// Put the point back so later state matches the earlier tests.
+	assert(oakengine_node_keyframe_set_bezier_point(
+			   opacity, "opacity_in", -1, 15, 0, 0, 0.1f, 0.2f, NAN,
+			   NAN) == OAKENGINE_OK);
+
+	// Errors: bad point index, missing key, NULL node.
+	assert(oakengine_node_keyframe_set_bezier_point(
+			   opacity, "opacity_in", -1, 15, 0, 2, 0.f, 0.f, 0.f,
+			   0.f) == OAKENGINE_E_INVALID);
+	assert(oakengine_node_keyframe_set_bezier_point(
+			   opacity, "opacity_in", -1, 99, 0, 0, 0.f, 0.f, 0.f,
+			   0.f) == OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_node_keyframe_set_bezier_point(
+			   NULL, "opacity_in", -1, 15, 0, 0, 0.f, 0.f, 0.f,
+			   0.f) == OAKENGINE_E_INVALID);
+}
+
 int main(void)
 {
 	make_tmpdir();
@@ -452,6 +596,7 @@ int main(void)
 	test_easing_and_remove(project, opacity);
 	test_rational_and_color(project, timeremap, solid);
 	test_panel_paths(project, opacity, solid);
+	test_keyframe_properties(project, opacity);
 
 	oakengine_project_free(project);
 	assert(oakengine_shutdown() == OAKENGINE_OK);

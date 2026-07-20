@@ -347,9 +347,9 @@ bool kf_value_to_c(olive::NodeValue::Type type, const QVariant &component,
 }
 
 // Undo commands for easing changes. The engine's undo stack has no
-// keyframe type/bezier commands -- they live in the application layer
-// (app/widget/keyframeviewundo.h), so the facade carries minimal
-// equivalents with the same old/new semantics.
+// keyframe type/bezier commands (the application layer used to carry
+// them in app/widget/keyframeviewundo.h, since migrated here), so the
+// facade carries minimal equivalents with the same old/new semantics.
 class KeyframeSetTypeCommand : public olive::UndoCommand {
 public:
 	KeyframeSetTypeCommand(olive::NodeKeyframe *key,
@@ -393,6 +393,20 @@ public:
 	{
 	}
 
+	// Explicit old point for callers that already live-set the new one
+	// (mirrors the application class's second constructor).
+	KeyframeSetBezierPointCommand(olive::NodeKeyframe *key,
+								  olive::NodeKeyframe::BezierType mode,
+								  const QPointF &new_point,
+								  const QPointF &old_point)
+		: key_(key)
+		, mode_(mode)
+		, has_old_(true)
+		, old_point_(old_point)
+		, new_point_(new_point)
+	{
+	}
+
 	virtual olive::Project *get_relevant_project() const override
 	{
 		return key_->parent() ? key_->parent()->project() : nullptr;
@@ -401,7 +415,10 @@ public:
 protected:
 	virtual void redo() override
 	{
-		old_point_ = key_->bezier_control(mode_);
+		if (!has_old_) {
+			old_point_ = key_->bezier_control(mode_);
+			has_old_ = true;
+		}
 		key_->set_bezier_control(mode_, new_point_);
 	}
 
@@ -413,6 +430,7 @@ protected:
 private:
 	olive::NodeKeyframe *key_;
 	olive::NodeKeyframe::BezierType mode_;
+	bool has_old_ = false;
 	QPointF old_point_;
 	QPointF new_point_;
 };
@@ -433,6 +451,27 @@ olive::NodeValue::Type checked_keyframe_input(const olive::Node *self,
 		return olive::NodeValue::k_none;
 	}
 	return type;
+}
+
+// Time-exact keyframe lookup that does not depend on the input's
+// keyframing-enabled flag (Node::get_keyframe_at_time_on_track reports
+// nothing when keyframing is off, but the application's keyframe editing
+// operates on the keyframe objects regardless of the flag).
+olive::NodeKeyframe *find_keyframe(const olive::Node *node,
+								   const olive::NodeInput &input,
+								   const olive::Rational &time, int track)
+{
+	const QVector<olive::NodeKeyframeTrack> &tracks =
+		node->get_keyframe_tracks(input.input(), input.element());
+	if (track < 0 || track >= tracks.size()) {
+		return nullptr;
+	}
+	for (olive::NodeKeyframe *key : tracks.at(track)) {
+		if (key->time() == time) {
+			return key;
+		}
+	}
+	return nullptr;
 }
 
 } // namespace
@@ -1231,7 +1270,7 @@ int oakengine_node_keyframes_set_type_many(OakEngineNode *self,
 		const olive::Rational time =
 			olive::core::Timecode::timestamp_to_time(times_ts[i], tb);
 		olive::NodeKeyframe *key =
-			node->get_keyframe_at_time_on_track(input, time, tracks[i]);
+			find_keyframe(node, input, time, tracks[i]);
 		if (!key) {
 			set_error(QStringLiteral("no keyframe at time %1 track %2 on "
 									 "\"%3\"")
@@ -1246,6 +1285,222 @@ int oakengine_node_keyframes_set_type_many(OakEngineNode *self,
 	}
 	push_or_run(command, QStringLiteral("Set Keyframe Type"));
 	return count;
+}
+
+int oakengine_node_keyframes_set_time_many(OakEngineNode *self,
+										   const char *input_id, int element,
+										   const int64_t *old_times_ts,
+										   const int *tracks, int count,
+										   int64_t new_time_ts)
+{
+	set_error(QString());
+	olive::Node *node = impl(self);
+	if (checked_keyframe_input(node, input_id) == olive::NodeValue::k_none) {
+		return self && input_id ? OAKENGINE_E_NOT_FOUND : OAKENGINE_E_INVALID;
+	}
+	if (count < 0 || (count > 0 && (!old_times_ts || !tracks)) ||
+		new_time_ts < 0) {
+		set_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	if (count == 0) {
+		return 0;
+	}
+	const QString id = QString::fromUtf8(input_id);
+	const olive::Rational tb = project_time_base(node);
+	const olive::NodeInput input(node, id, element);
+	const olive::Rational new_time =
+		olive::core::Timecode::timestamp_to_time(new_time_ts, tb);
+
+	// Resolve and conflict-check every key first so a failure has no side
+	// effects.
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	for (int i = 0; i < count; i++) {
+		const olive::Rational old_time =
+			olive::core::Timecode::timestamp_to_time(old_times_ts[i], tb);
+		olive::NodeKeyframe *key =
+			find_keyframe(node, input, old_time, tracks[i]);
+		if (!key) {
+			set_error(QStringLiteral("no keyframe at time %1 track %2 on "
+									 "\"%3\"")
+						  .arg(old_times_ts[i])
+						  .arg(tracks[i])
+						  .arg(id));
+			delete command;
+			return OAKENGINE_E_NOT_FOUND;
+		}
+		olive::NodeKeyframe *occupant =
+			find_keyframe(node, input, new_time, tracks[i]);
+		if (occupant && occupant != key) {
+			set_error(QStringLiteral("a keyframe already exists at time %1 "
+									 "on track %2")
+						  .arg(new_time_ts)
+						  .arg(tracks[i]));
+			delete command;
+			return OAKENGINE_E_STATE;
+		}
+		command->add_child(new olive::NodeParamSetKeyframeTimeCommand(
+			key, new_time, key->time()));
+	}
+	push_or_run(command, QStringLiteral("Set Keyframe Time"));
+	return count;
+}
+
+int oakengine_node_keyframes_set_value_many(OakEngineNode *self,
+											const char *input_id, int element,
+											const int64_t *times_ts,
+											const int *tracks, int count,
+											const oak_node_value *values,
+											const oak_node_value *old_values)
+{
+	set_error(QString());
+	olive::Node *node = impl(self);
+	const olive::NodeValue::Type declared =
+		checked_keyframe_input(node, input_id);
+	if (declared == olive::NodeValue::k_none) {
+		return self && input_id ? OAKENGINE_E_NOT_FOUND : OAKENGINE_E_INVALID;
+	}
+	if (count < 0 || (count > 0 && (!times_ts || !tracks || !values))) {
+		set_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	if (count == 0) {
+		return 0;
+	}
+	const QString id = QString::fromUtf8(input_id);
+	const olive::Rational tb = project_time_base(node);
+	const olive::NodeInput input(node, id, element);
+
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	for (int i = 0; i < count; i++) {
+		const olive::Rational time =
+			olive::core::Timecode::timestamp_to_time(times_ts[i], tb);
+		olive::NodeKeyframe *key =
+			find_keyframe(node, input, time, tracks[i]);
+		if (!key) {
+			set_error(QStringLiteral("no keyframe at time %1 track %2 on "
+									 "\"%3\"")
+						  .arg(times_ts[i])
+						  .arg(tracks[i])
+						  .arg(id));
+			delete command;
+			return OAKENGINE_E_NOT_FOUND;
+		}
+		QVariant new_value;
+		if (!component_from_c(&values[i], declared, 0, &new_value)) {
+			set_error(QStringLiteral(
+				"value type does not match the declared input type"));
+			delete command;
+			return OAKENGINE_E_INVALID;
+		}
+		if (old_values) {
+			QVariant old_value;
+			if (!component_from_c(&old_values[i], declared, 0, &old_value)) {
+				set_error(QStringLiteral(
+					"old value type does not match the declared input type"));
+				delete command;
+				return OAKENGINE_E_INVALID;
+			}
+			command->add_child(new olive::NodeParamSetKeyframeValueCommand(
+				key, new_value, old_value));
+		} else {
+			command->add_child(new olive::NodeParamSetKeyframeValueCommand(
+				key, new_value, key->value()));
+		}
+	}
+	push_or_run(command, QStringLiteral("Set Keyframe Value"));
+	return count;
+}
+
+int oakengine_node_keyframes_set_bezier_many(OakEngineNode *self,
+											 const char *input_id,
+											 int element,
+											 const int64_t *times_ts,
+											 const int *tracks, int count,
+											 double in_x, double in_y,
+											 double out_x, double out_y)
+{
+	set_error(QString());
+	olive::Node *node = impl(self);
+	if (checked_keyframe_input(node, input_id) == olive::NodeValue::k_none) {
+		return self && input_id ? OAKENGINE_E_NOT_FOUND : OAKENGINE_E_INVALID;
+	}
+	if (count < 0 || (count > 0 && (!times_ts || !tracks))) {
+		set_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	if (count == 0) {
+		return 0;
+	}
+	const QString id = QString::fromUtf8(input_id);
+	const olive::Rational tb = project_time_base(node);
+	const olive::NodeInput input(node, id, element);
+
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	for (int i = 0; i < count; i++) {
+		const olive::Rational time =
+			olive::core::Timecode::timestamp_to_time(times_ts[i], tb);
+		olive::NodeKeyframe *key =
+			find_keyframe(node, input, time, tracks[i]);
+		if (!key) {
+			set_error(QStringLiteral("no keyframe at time %1 track %2 on "
+									 "\"%3\"")
+						  .arg(times_ts[i])
+						  .arg(tracks[i])
+						  .arg(id));
+			delete command;
+			return OAKENGINE_E_NOT_FOUND;
+		}
+		command->add_child(new KeyframeSetBezierPointCommand(
+			key, olive::NodeKeyframe::k_in_handle, QPointF(in_x, in_y)));
+		command->add_child(new KeyframeSetBezierPointCommand(
+			key, olive::NodeKeyframe::k_out_handle, QPointF(out_x, out_y)));
+	}
+	push_or_run(command, QStringLiteral("Set Keyframe Bezier Points"));
+	return count;
+}
+
+int oakengine_node_keyframe_set_bezier_point(
+	OakEngineNode *self, const char *input_id, int element, int64_t time_ts,
+	int track, int point_index, double x, double y, double old_x,
+	double old_y)
+{
+	set_error(QString());
+	olive::Node *node = impl(self);
+	if (checked_keyframe_input(node, input_id) == olive::NodeValue::k_none) {
+		return self && input_id ? OAKENGINE_E_NOT_FOUND : OAKENGINE_E_INVALID;
+	}
+	if (point_index < 0 || point_index > 1) {
+		set_error(QStringLiteral("invalid bezier point index %1")
+					  .arg(point_index));
+		return OAKENGINE_E_INVALID;
+	}
+	const QString id = QString::fromUtf8(input_id);
+	const olive::Rational tb = project_time_base(node);
+	const olive::Rational time =
+		olive::core::Timecode::timestamp_to_time(time_ts, tb);
+	olive::NodeKeyframe *key = find_keyframe(
+		node, olive::NodeInput(node, id, element), time, track);
+	if (!key) {
+		set_error(QStringLiteral("no keyframe at time %1 track %2 on \"%3\"")
+					  .arg(time_ts)
+					  .arg(track)
+					  .arg(id));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	const olive::NodeKeyframe::BezierType mode =
+		(point_index == 0) ? olive::NodeKeyframe::k_in_handle :
+							 olive::NodeKeyframe::k_out_handle;
+	if (std::isnan(old_x) || std::isnan(old_y)) {
+		push_or_run(new KeyframeSetBezierPointCommand(key, mode,
+													  QPointF(x, y)),
+					QStringLiteral("Set Keyframe Bezier Point"));
+	} else {
+		push_or_run(new KeyframeSetBezierPointCommand(
+						key, mode, QPointF(x, y), QPointF(old_x, old_y)),
+					QStringLiteral("Set Keyframe Bezier Point"));
+	}
+	return OAKENGINE_OK;
 }
 
 int oakengine_node_keyframes_clear(OakEngineNode *self, const char *input_id)

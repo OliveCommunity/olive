@@ -24,12 +24,54 @@
 #include <QDialogButtonBox>
 #include <QGridLayout>
 
-#include "core.h"
-#include "node/nodeundo.h"
-#include "widget/keyframeview/keyframeviewundo.h"
+#include "oakengine/node.h"
 
 namespace olive
 {
+
+namespace
+{
+
+// Selected keyframes grouped by owning input (node/id/element), with
+// times converted to the facade's frame timestamps. The dialog's
+// per-property writes go through the facade as ONE undoable command per
+// group (usually just one).
+struct KeyGroup {
+	Node *node;
+	QString input;
+	int element;
+	QVector<int64_t> times;
+	QVector<int> tracks;
+};
+
+QVector<KeyGroup> group_keys(const std::vector<NodeKeyframe *> &keys)
+{
+	QVector<KeyGroup> groups;
+	for (NodeKeyframe *item : keys) {
+		int g = 0;
+		for (; g < groups.size(); g++) {
+			if (groups.at(g).node == item->parent() &&
+				groups.at(g).input == item->input() &&
+				groups.at(g).element == item->element()) {
+				break;
+			}
+		}
+		if (g == groups.size()) {
+			groups.append({ item->parent(), item->input(), item->element(),
+							{}, {} });
+		}
+		OakEngineNode *handle =
+			reinterpret_cast<OakEngineNode *>(item->parent());
+		int tbn = 0, tbd = 0;
+		oakengine_node_frame_time_base(handle, &tbn, &tbd);
+		groups[g].times.append(Timecode::time_to_timestamp(
+			item->time(), Rational(tbn, tbd), Timecode::k_round));
+		groups[g].tracks.append(item->track());
+	}
+	return groups;
+}
+
+} // namespace
 
 KeyframePropertiesDialog::KeyframePropertiesDialog(
 	const std::vector<NodeKeyframe *> &keys, const Rational &timebase,
@@ -203,37 +245,57 @@ KeyframePropertiesDialog::KeyframePropertiesDialog(
 
 void KeyframePropertiesDialog::accept()
 {
-	MultiUndoCommand *command = new MultiUndoCommand();
+	const Rational new_time = time_slider_->get_value();
+	const int new_type = type_select_->currentData().toInt();
 
-	Rational new_time = time_slider_->get_value();
-	int new_type = type_select_->currentData().toInt();
+	const QVector<KeyGroup> groups = group_keys(keys_);
 
-	foreach (NodeKeyframe *key, keys_) {
-		if (time_slider_->isEnabled() && !time_slider_->is_tristate()) {
-			command->add_child(
-				new NodeParamSetKeyframeTimeCommand(key, new_time));
+	if (new_type > -1) {
+		// Engine type (linear 0 / hold 1 / bezier 2) to the facade's
+		// easing order (linear 0 / bezier 1 / hold 2).
+		int facade_type = 0;
+		if (new_type == NodeKeyframe::k_bezier) {
+			facade_type = 1;
+		} else if (new_type == NodeKeyframe::k_hold) {
+			facade_type = 2;
 		}
-
-		if (new_type > -1) {
-			command->add_child(new KeyframeSetTypeCommand(
-				key, static_cast<NodeKeyframe::Type>(new_type)));
-		}
-
-		if (bezier_group_->isEnabled()) {
-			command->add_child(new KeyframeSetBezierControlPoint(
-				key, NodeKeyframe::k_in_handle,
-				QPointF(bezier_in_x_slider_->get_value(),
-						bezier_in_y_slider_->get_value())));
-
-			command->add_child(new KeyframeSetBezierControlPoint(
-				key, NodeKeyframe::k_out_handle,
-				QPointF(bezier_out_x_slider_->get_value(),
-						bezier_out_y_slider_->get_value())));
+		foreach (const KeyGroup &g, groups) {
+			oakengine_node_keyframes_set_type_many(
+				reinterpret_cast<OakEngineNode *>(g.node),
+				g.input.toUtf8().constData(), g.element, g.times.constData(),
+				g.tracks.data(), g.times.size(), facade_type);
 		}
 	}
 
-	Core::instance()->undo_stack()->push(command,
-										 tr("Set Keyframe Properties"));
+	if (bezier_group_->isEnabled()) {
+		foreach (const KeyGroup &g, groups) {
+			oakengine_node_keyframes_set_bezier_many(
+				reinterpret_cast<OakEngineNode *>(g.node),
+				g.input.toUtf8().constData(), g.element, g.times.constData(),
+				g.tracks.data(), g.times.size(),
+				bezier_in_x_slider_->get_value(),
+				bezier_in_y_slider_->get_value(),
+				bezier_out_x_slider_->get_value(),
+				bezier_out_y_slider_->get_value());
+		}
+	}
+
+	// Time moves go LAST: the facade addresses keyframes by time, so the
+	// type/bezier writes above must happen while the keys still sit at
+	// the times the groups were built from.
+	if (time_slider_->isEnabled() && !time_slider_->is_tristate()) {
+		foreach (const KeyGroup &g, groups) {
+			OakEngineNode *handle =
+				reinterpret_cast<OakEngineNode *>(g.node);
+			int tbn = 0, tbd = 0;
+			oakengine_node_frame_time_base(handle, &tbn, &tbd);
+			oakengine_node_keyframes_set_time_many(
+				handle, g.input.toUtf8().constData(), g.element,
+				g.times.constData(), g.tracks.data(), g.times.size(),
+				Timecode::time_to_timestamp(new_time, Rational(tbn, tbd),
+											Timecode::k_round));
+		}
+	}
 
 	QDialog::accept();
 }

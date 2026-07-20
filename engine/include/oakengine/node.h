@@ -438,6 +438,72 @@ OAKENGINE_API int oakengine_node_keyframes_set_type_many(
 	const int64_t *times_ts, const int *tracks, int count, int type);
 
 /**
+ * @brief Move several keyframes of one input to `new_time_ts` (undoable,
+ * ONE command; olive::NodeParamSetKeyframeTimeCommand per key, like the
+ * application's keyframe properties dialog).
+ *
+ * Keyframes are addressed individually by (`old_times_ts`[i],
+ * `tracks`[i]); `element` addresses the input's array element (-1 for
+ * non-array). Every old address must name an existing keyframe
+ * (OAKENGINE_E_NOT_FOUND otherwise), and no other keyframe may already
+ * sit at `new_time_ts` on a target track (OAKENGINE_E_STATE; moving to
+ * the key's own current time is allowed). On any failure nothing is
+ * pushed. Returns the number of moved keyframes (>= 0) or a negative
+ * code.
+ */
+OAKENGINE_API int oakengine_node_keyframes_set_time_many(
+	OakEngineNode *self, const char *input_id, int element,
+	const int64_t *old_times_ts, const int *tracks, int count,
+	int64_t new_time_ts);
+
+/**
+ * @brief Change the value of several keyframes of one input (undoable,
+ * ONE command; olive::NodeParamSetKeyframeValueCommand per key).
+ *
+ * `values`[i] is the new per-track component (mapped like
+ * oakengine_node_set_input_at_time(); the type must match the input's
+ * declared type). When `old_values` is not NULL, `old_values`[i] is
+ * recorded as the undo value -- for callers that already live-set the
+ * new values (the curve view's drag release); when NULL, each key's
+ * current value is captured at apply time. Every address must name an
+ * existing keyframe (OAKENGINE_E_NOT_FOUND; nothing pushed on failure).
+ * Returns the number of changed keyframes (>= 0) or a negative code.
+ */
+OAKENGINE_API int oakengine_node_keyframes_set_value_many(
+	OakEngineNode *self, const char *input_id, int element,
+	const int64_t *times_ts, const int *tracks, int count,
+	const oak_node_value *values, const oak_node_value *old_values);
+
+/**
+ * @brief Set both bezier control points of several keyframes of one
+ * input (undoable, ONE command; two point commands per key, like the
+ * keyframe properties dialog). The previous points are captured per
+ * key. Every address must name an existing keyframe
+ * (OAKENGINE_E_NOT_FOUND; nothing pushed on failure). Returns the
+ * number of affected keyframes (>= 0) or a negative code.
+ */
+OAKENGINE_API int oakengine_node_keyframes_set_bezier_many(
+	OakEngineNode *self, const char *input_id, int element,
+	const int64_t *times_ts, const int *tracks, int count, double in_x,
+	double in_y, double out_x, double out_y);
+
+/**
+ * @brief Set one bezier control point of one keyframe (undoable;
+ * the curve view's bezier-handle drag release).
+ *
+ * `point_index` is 0 for the in-handle and 1 for the out-handle. The
+ * new point is (x, y); (`old_x`, `old_y`) is the undo point recorded
+ * for callers that already live-set the new point during the drag --
+ * pass NaN for either old component to capture the key's current point
+ * at apply time instead. OAKENGINE_E_NOT_FOUND when no keyframe exists
+ * at that time/track.
+ */
+OAKENGINE_API int oakengine_node_keyframe_set_bezier_point(
+	OakEngineNode *self, const char *input_id, int element,
+	int64_t time_ts, int track, int point_index, double x, double y,
+	double old_x, double old_y);
+
+/**
  * @brief Remove all keyframes from the input (undoable,
  * olive::NodeImmediateRemoveAllKeyframesCommand). A no-op (OAKENGINE_OK)
  * when the input has no keyframes.

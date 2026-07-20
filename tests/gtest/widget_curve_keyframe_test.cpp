@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <memory>
 
 #include <QSignalSpy>
@@ -10,11 +11,12 @@
 #include "node/math/math/math.h"
 #include "node/nodeundo.h"
 #include "node/project.h"
+#include "oakengine/node.h"
+#include "oakengine/project.h"
 #include "render/diskmanager.h"
 #include "widget/curvewidget/curveview.h"
 #include "widget/curvewidget/curvewidget.h"
 #include "widget/keyframeview/keyframeview.h"
-#include "widget/keyframeview/keyframeviewundo.h"
 #include "widget/nodetreeview/nodetreeview.h"
 
 using namespace olive;
@@ -197,6 +199,7 @@ protected:
 	void SetUp() override
 	{
 		ColorManager::set_up_default_config();
+		ensure_app_singletons();
 
 		project_ = std::make_unique<Project>();
 		project_->initialize();
@@ -209,54 +212,73 @@ protected:
 	MathNode *node_ = nullptr;
 };
 
-TEST_F(KeyframeViewUndoTest, SetTypeCommandSwitchesAndRestoresType)
+TEST_F(KeyframeViewUndoTest, SetTypeSwitchesAndRestoresType)
 {
 	NodeKeyframe *key =
 		insert_keyframe(node_, MathNode::k_param_a_in, Rational(0), 0.0);
 	ASSERT_EQ(key->type(), NodeKeyframe::k_linear);
 
-	KeyframeSetTypeCommand command(key, NodeKeyframe::k_bezier);
-	EXPECT_EQ(command.get_relevant_project(), project_.get());
-
-	command.redo_now();
+	// The app-side command class was replaced by the facade batch call;
+	// undo/redo ride the same global undo stack.
+	const int64_t times[1] = { 0 };
+	const int tracks[1] = { 0 };
+	EXPECT_EQ(oakengine_node_keyframes_set_type_many(
+				  reinterpret_cast<OakEngineNode *>(node_),
+				  MathNode::k_param_a_in.toUtf8().constData(), -1, times,
+				  tracks, 1, 1),
+			  1);
 	EXPECT_EQ(key->type(), NodeKeyframe::k_bezier);
 
-	command.undo_now();
+	EXPECT_EQ(oakengine_project_undo(
+				  reinterpret_cast<OakEngineProject *>(project_.get())),
+			  OAKENGINE_OK);
 	EXPECT_EQ(key->type(), NodeKeyframe::k_linear);
+
+	EXPECT_EQ(oakengine_project_redo(
+				  reinterpret_cast<OakEngineProject *>(project_.get())),
+			  OAKENGINE_OK);
+	EXPECT_EQ(key->type(), NodeKeyframe::k_bezier);
 }
 
-TEST_F(KeyframeViewUndoTest, SetBezierControlPointCapturesOldPointFromKeyframe)
+TEST_F(KeyframeViewUndoTest, SetBezierPointCapturesOldPointFromKeyframe)
 {
 	NodeKeyframe *key =
 		insert_keyframe(node_, MathNode::k_param_a_in, Rational(0), 0.0);
 	key->set_type(NodeKeyframe::k_bezier);
 	key->set_bezier_control_in(QPointF(0.1, 0.2));
 
-	KeyframeSetBezierControlPoint command(key, NodeKeyframe::k_in_handle,
-										  QPointF(0.5, 0.6));
-	EXPECT_EQ(command.get_relevant_project(), project_.get());
-
-	command.redo_now();
+	// NaN old components make the facade capture the current point.
+	EXPECT_EQ(oakengine_node_keyframe_set_bezier_point(
+				  reinterpret_cast<OakEngineNode *>(node_),
+				  MathNode::k_param_a_in.toUtf8().constData(), -1, 0, 0, 0,
+				  0.5, 0.6, NAN, NAN),
+			  OAKENGINE_OK);
 	EXPECT_EQ(key->bezier_control_in(), QPointF(0.5, 0.6));
 
-	command.undo_now();
+	EXPECT_EQ(oakengine_project_undo(
+				  reinterpret_cast<OakEngineProject *>(project_.get())),
+			  OAKENGINE_OK);
 	EXPECT_EQ(key->bezier_control_in(), QPointF(0.1, 0.2));
 }
 
-TEST_F(KeyframeViewUndoTest, SetBezierControlPointWithExplicitOldPoint)
+TEST_F(KeyframeViewUndoTest, SetBezierPointWithExplicitOldPoint)
 {
 	NodeKeyframe *key =
 		insert_keyframe(node_, MathNode::k_param_a_in, Rational(0), 0.0);
 	key->set_type(NodeKeyframe::k_bezier);
 
-	// The four-argument overload does not read the current control point
-	KeyframeSetBezierControlPoint command(key, NodeKeyframe::k_out_handle,
-										  QPointF(0.7, 0.8), QPointF(0.3, 0.4));
-
-	command.redo_now();
+	// Explicit old components are recorded for undo (the live-set drag
+	// pattern; the current point is not read).
+	EXPECT_EQ(oakengine_node_keyframe_set_bezier_point(
+				  reinterpret_cast<OakEngineNode *>(node_),
+				  MathNode::k_param_a_in.toUtf8().constData(), -1, 0, 0, 1,
+				  0.7, 0.8, 0.3, 0.4),
+			  OAKENGINE_OK);
 	EXPECT_EQ(key->bezier_control_out(), QPointF(0.7, 0.8));
 
-	command.undo_now();
+	EXPECT_EQ(oakengine_project_undo(
+				  reinterpret_cast<OakEngineProject *>(project_.get())),
+			  OAKENGINE_OK);
 	EXPECT_EQ(key->bezier_control_out(), QPointF(0.3, 0.4));
 }
 
