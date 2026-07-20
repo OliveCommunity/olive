@@ -89,6 +89,8 @@ facade 现状覆盖:项目/序列读写、素材探测与导入、时间线查�
 - **性能**:参数级 facade 调用频率低(用户操作粒度),不构成问题;渲染/帧路径已有同步封装。
 - **Qt 对象生命周期**:节点/序列/clip 均为 borrowed handle 随 project;文档已有约定,迁移时沿用。
 - **undo 语义**:所有编辑原语必须经全局 UndoStack(facade 已强制),UI 侧不得再直接 new 命令。
+- **icon 归属**(2026-07 实测):app→引擎剩余耦合中最大单类是 `olive::icon`(56 个符号,节点图标元数据留在引擎)。它不属于任何面板,阶段 4 隐藏符号前需要专门处理:补 icon 查询 facade 族(按节点 type id 取图标),或把图标注册表下沉到 core。倾向后者,icon 是纯资源元数据。
+- **架构事实**(同次实测,防止误判):liboakengine 对 liboakcore 只经 C ABI(134 个 oakcore_* 全为 undefined 引用);EngineCore 不在 liboakcore 内,进程里只有 liboakengine 一份,无双单例问题。
 
 ## 验收清单(阶段 4 完成时)
 
