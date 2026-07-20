@@ -11,7 +11,8 @@
 ## 现状盘点(已完成)
 
 - 引擎物理拆分完毕:`engine/` 树 + liboakengine.so;worker 脱 UI(336MB→2.9MB)。
-- facade 7 族约 118 函数 + 5 个纯 C 测试 + 6 个 CLI ctest;oak-cli 是现成的纯 C ABI 消费者(info/probe/render/transcode)。
+- facade 13 族约 160+ C 函数:ipc/init/project/timeline/renderer/footage/export/node/keyframe/序列结构/编辑原语×2/preview/playback(在建);oak-cli 是现成的纯 C ABI 消费者(info/probe/render/transcode,已进三平台打包)。
+- 面板迁移(阶段 3)已切:Export 对话框、素材属性/项目浏览器、序列参数、时间线(三轮,含遗留命令)、节点参数面板、关键帧区;app 侧约定为直接调 C 函数。
 - 编辑器与引擎的 UI 依赖已全部反转(Core/EngineCore 拆分、handler 钩子体系、枚举下沉、布局数据纯净化)。
 - 测试基建:make_oakengine_test、GL 门控 SKIP 模式、CLI ctest、沙箱 config。
 
@@ -57,6 +58,26 @@ facade 现状覆盖:项目/序列读写、素材探测与导入、时间线查�
 7. **多机位/标记/其余面板**。
 
 每切一个面板:该面板的 UI 代码改为只调 facade(或 wrapper),对应引擎类从 UI 侧 include 中移除;全量测试必须保持绿。
+
+### 附 A:viewer 面板迁移映射(阶段 3.6 细化)
+
+地基:facade 播放族(`oakengine_playback_*`,无头异步播放引擎)。`ViewerWidget` 当前自管的整条播放管线替换为 facade 播放会话;消费方式与其余面板一致(app 侧直接调 C 函数)。
+
+**迁入 facade(从 ViewerWidget 删除):**
+- `playback_timer_update` / `playback_backup_timer_` → facade 拉取线程 + frame 回调,UI 在回调里 marshal 回主线程调 `set_display_image`。
+- 视频 prequeue(`prequeue_length_`/`prequeue_count_`/`queue_watchers_`/`request_next_frame_for_queue`/`renderer_generated_frame_for_queue`)→ facade 内部 8 帧 prequeue。
+- 音频播放队列(`audio_playback_queue_`/`audio_processor_`/`prequeued_audio_`/`k_audio_playback_interval`/`queue_next_audio_buffer`/`received_audio_buffer_for_playback`/`decrement_prequeued_audio`)→ facade audio 回调(1/4 秒 planar float 块)。
+- 音频主时钟:facade 内部直接用 `AudioManager`(已在 `engine/audio/`)的秒时钟;UI 侧改为轮询 `oakengine_playback_get_position` 更新播放头。
+
+**留在 UI 侧(facade MVP 不覆盖):**
+- 负倍速 / shuttle(`shuttle_left/right`、`playback_speed_` 变速路径)——后续再议。
+- 音频刮擦(`audio_scrub_watchers_`、`push_scrubbed_audio`)——逐帧点播,非连续播放,保留现有 watcher 路径。
+- 录制/capture(`arm_for_recording`/`disarm_recording` 等)。
+- 纯 UI:gizmos、文本编辑、安全框、多屏 `ViewerWindow`、波形视图、右键菜单。
+- multicam 检测(`detect_multicam_node`)——依赖 UI 选择状态。
+- in/out 区间播放(`play_in_to_out_only`)——UI 在 frame 回调里判断到点自行 pause,无需 facade 支持。
+
+**验收**:播放/暂停/停止下帧画面与声音同步;时间标尺播放头跟随;全量 gtest + facade 回归(固定 9 个 + playback)绿;viewer.h 中不再出现 `RenderTicketWatcher` 播放队列字段。
 
 ### 阶段 4:隐藏 C++ 符号(1 周)
 - app/worker 的引擎符号引用清零后:visibility=hidden + version script(`oakengine_*` 白名单)。
