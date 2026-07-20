@@ -29,6 +29,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QInputDialog>
 #include <QProcess>
 #include <QSplitter>
 #include <QUrl>
@@ -47,6 +48,7 @@
 #include "node/nodeundo.h"
 #include "node/project/footage/footage.h"
 #include "node/project/serializer/serializer.h"
+#include "oakengine/node.h"
 #include "oakengine/timeline.h"
 #include "render/audiowaveformcache.h"
 #include "task/project/import/import.h"
@@ -763,8 +765,15 @@ void TimelineWidget::toggle_links_on_selected()
 		return;
 	}
 
-	Core::instance()->undo_stack()->push(new NodeLinkManyCommand(blocks, link),
-										 tr("Linked Clips"));
+	// Link/unlink through the liboakengine C ABI facade (one undoable
+	// command, same as the old NodeLinkManyCommand push).
+	QVector<OakEngineClip *> clips;
+	clips.reserve(blocks.size());
+	foreach (Node *n, blocks) {
+		clips.append(
+			reinterpret_cast<OakEngineClip *>(static_cast<ClipBlock *>(n)));
+	}
+	oakengine_clip_set_linked(clips.data(), clips.size(), link ? 1 : 0);
 }
 
 void TimelineWidget::add_default_transitions_to_selected()
@@ -779,9 +788,16 @@ void TimelineWidget::add_default_transitions_to_selected()
 	}
 
 	if (!blocks.isEmpty()) {
-		Core::instance()->undo_stack()->push(
-			new TimelineAddDefaultTransitionCommand(blocks, timebase()),
-			tr("Added Default Transitions"));
+		// Through the liboakengine C ABI facade (one undoable command with
+		// the same engine semantics as the old app-side push).
+		QVector<OakEngineClip *> clips;
+		clips.reserve(blocks.size());
+		foreach (ClipBlock *clip, blocks) {
+			clips.append(reinterpret_cast<OakEngineClip *>(clip));
+		}
+		oakengine_sequence_add_default_transition(
+			reinterpret_cast<OakEngineSequence *>(sequence()), clips.data(),
+			clips.size());
 	}
 }
 
@@ -896,25 +912,28 @@ void TimelineWidget::toggle_selected_enabled()
 		return;
 	}
 
-	MultiUndoCommand *command = new MultiUndoCommand();
-
+	// Flip each selected clip through the liboakengine C ABI facade (one
+	// undoable command, same per-block inversion as the old children).
+	QVector<OakEngineClip *> clips;
+	clips.reserve(items.size());
 	foreach (Block *i, items) {
-		command->add_child(new BlockEnableDisableCommand(i, !i->is_enabled()));
+		if (ClipBlock *clip = dynamic_cast<ClipBlock *>(i)) {
+			clips.append(reinterpret_cast<OakEngineClip *>(clip));
+		}
 	}
-
-	Core::instance()->undo_stack()->push(command, tr("Toggled Clips Enabled"));
+	oakengine_clip_toggle_enabled(clips.data(), clips.size());
 }
 
 void TimelineWidget::set_color_label(int index)
 {
-	MultiUndoCommand *command = new MultiUndoCommand();
-
+	// Batch color labels through the liboakengine C ABI facade (one
+	// undoable command, same as the old per-block children).
+	QVector<OakEngineNode *> nodes;
+	nodes.reserve(selected_blocks_.size());
 	foreach (Block *b, selected_blocks_) {
-		command->add_child(new NodeOverrideColorCommand(b, index));
+		nodes.append(reinterpret_cast<OakEngineNode *>(b));
 	}
-
-	Core::instance()->undo_stack()->push(
-		command, tr("Set Colors of %1 Clips").arg(selected_blocks_.size()));
+	oakengine_node_set_color_label(nodes.data(), nodes.size(), index);
 }
 
 void TimelineWidget::nudge_left()
@@ -2068,16 +2087,38 @@ void TimelineWidget::reveal_in_project()
 
 void TimelineWidget::rename_selected_blocks()
 {
-	MultiUndoCommand *command = new MultiUndoCommand();
-	QVector<Node *> nodes(selected_blocks_.size());
-
-	for (int i = 0; i < nodes.size(); i++) {
-		nodes[i] = selected_blocks_[i];
+	if (selected_blocks_.isEmpty()) {
+		return;
 	}
 
-	Core::instance()->label_nodes(nodes);
-	Core::instance()->undo_stack()->push(
-		command, tr("Renamed %1 Clip(s)").arg(nodes.size()));
+	// Same rename dialog as Core::label_nodes(), but the write goes
+	// through the liboakengine C ABI facade (one undoable multi-node
+	// rename command; the old code also pushed a stray empty command,
+	// which is gone now).
+	QString start_label = selected_blocks_.first()->get_label();
+	for (int i = 1; i < selected_blocks_.size(); i++) {
+		if (selected_blocks_.at(i)->get_label() != start_label) {
+			start_label.clear();
+			break;
+		}
+	}
+
+	bool ok;
+	const QString s = QInputDialog::getText(this, tr("Label Node"),
+											tr("Set node label"),
+											QLineEdit::Normal, start_label,
+											&ok);
+	if (!ok) {
+		return;
+	}
+
+	QVector<OakEngineNode *> nodes;
+	nodes.reserve(selected_blocks_.size());
+	foreach (Block *b, selected_blocks_) {
+		nodes.append(reinterpret_cast<OakEngineNode *>(b));
+	}
+	oakengine_node_set_label_many(nodes.data(), nodes.size(),
+								  s.toUtf8().constData());
 }
 
 void TimelineWidget::track_about_to_be_deleted(Track *track)

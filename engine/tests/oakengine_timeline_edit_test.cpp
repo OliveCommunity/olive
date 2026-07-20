@@ -1128,6 +1128,83 @@ static void test_batch_editing_round2(const char *media_path)
 	oakengine_project_free(project);
 }
 
+static void test_batch_editing_round3(const char *media_path)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	OakEngineSequence *seq = oakengine_sequence_new(project, "Batch3");
+	assert(seq != NULL);
+	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_VIDEO) ==
+		   0);
+	OakEngineFootage *footage =
+		oakengine_project_import_footage(project, media_path);
+	assert(footage != NULL);
+
+	int64_t in = -1, out = -1;
+
+	// Two adjacent clips: [0, 60) and [60, 100).
+	OakEngineClip *c0 = oakengine_sequence_add_footage_clip(
+		seq, footage, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, 60, 0);
+	OakEngineClip *c1 = oakengine_sequence_add_footage_clip(
+		seq, footage, OAKENGINE_TRACK_TYPE_VIDEO, 0, 60, 100, 0);
+	assert(c0 != NULL && c1 != NULL);
+	OakEngineClip *two[2] = { c0, c1 };
+
+	// toggle_enabled flips each clip in one undoable command.
+	assert(oakengine_clip_is_enabled(c0) == 1 &&
+		   oakengine_clip_is_enabled(c1) == 1);
+	assert(oakengine_clip_toggle_enabled(two, 2) == 2);
+	assert(oakengine_clip_is_enabled(c0) == 0 &&
+		   oakengine_clip_is_enabled(c1) == 0);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_clip_is_enabled(c0) == 1 &&
+		   oakengine_clip_is_enabled(c1) == 1);
+	assert(oakengine_clip_toggle_enabled(NULL, 1) == OAKENGINE_E_INVALID);
+	assert(oakengine_clip_toggle_enabled(two, 0) == 0);
+	assert(oakengine_clip_is_enabled(NULL) == 0);
+
+	// set_linked: link and unlink are one undoable command each.
+	assert(oakengine_clip_are_linked(c0, c1) == 0);
+	assert(oakengine_clip_set_linked(two, 2, 1) == OAKENGINE_OK);
+	assert(oakengine_clip_are_linked(c0, c1) == 1);
+	assert(oakengine_clip_set_linked(two, 2, 0) == OAKENGINE_OK);
+	assert(oakengine_clip_are_linked(c0, c1) == 0);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_clip_are_linked(c0, c1) == 1);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_clip_are_linked(c0, c1) == 0);
+	assert(oakengine_clip_are_linked(c0, NULL) == 0);
+	assert(oakengine_clip_set_linked(NULL, 1, 1) == OAKENGINE_E_INVALID);
+	assert(oakengine_clip_set_linked(two, 0, 1) == OAKENGINE_OK);
+
+	// add_default_transition: an in-transition before c0, a dual between
+	// the adjacent pair and an out-transition after c1 shrink both clips;
+	// one undo restores the exact ranges.
+	assert(oakengine_clip_get_range(c0, &in, &out, NULL) == OAKENGINE_OK);
+	const int64_t c0_in = in, c0_len = out - in;
+	assert(oakengine_clip_get_range(c1, &in, &out, NULL) == OAKENGINE_OK);
+	const int64_t c1_len = out - in;
+	assert(oakengine_sequence_add_default_transition(seq, two, 2) ==
+		   OAKENGINE_OK);
+	assert(oakengine_clip_get_range(c0, &in, &out, NULL) == OAKENGINE_OK);
+	assert(in > c0_in && out - in < c0_len);
+	assert(oakengine_clip_get_range(c1, &in, &out, NULL) == OAKENGINE_OK);
+	assert(out - in < c1_len);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_clip_get_range(c0, &in, &out, NULL) == OAKENGINE_OK);
+	assert(in == c0_in && out - in == c0_len);
+	assert(oakengine_clip_get_range(c1, &in, &out, NULL) == OAKENGINE_OK);
+	assert(out - in == c1_len);
+	assert(oakengine_sequence_add_default_transition(seq, NULL, 0) ==
+		   OAKENGINE_OK);
+	assert(oakengine_sequence_add_default_transition(NULL, two, 2) ==
+		   OAKENGINE_E_INVALID);
+
+	oakengine_footage_free(footage);
+	oakengine_project_free(project);
+}
+
 int main(void)
 {
 	make_tmpdir();
@@ -1159,6 +1236,7 @@ int main(void)
 	test_sequence_params();
 	test_batch_editing(path);
 	test_batch_editing_round2(path);
+	test_batch_editing_round3(path);
 
 	oakengine_project_free(project);
 	assert(oakengine_shutdown() == OAKENGINE_OK);

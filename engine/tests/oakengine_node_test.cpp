@@ -332,6 +332,43 @@ static void test_remove(OakEngineProject *project, OakEngineNode *solid,
 	(void)solid;
 }
 
+static void test_label_and_color_many(OakEngineProject *project)
+{
+	OakEngineNode *a = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.solidgenerator");
+	OakEngineNode *b = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.text3");
+	assert(a != NULL && b != NULL);
+	OakEngineNode *two[2] = { a, b };
+	char buf[128];
+
+	// One command renames both; undo restores each node's own label.
+	assert(oakengine_node_set_label_many(two, 2, "Shared") == OAKENGINE_OK);
+	assert(oakengine_node_get_label(a, buf, sizeof(buf)) > 0);
+	assert(strcmp(buf, "Shared") == 0);
+	assert(oakengine_node_get_label(b, buf, sizeof(buf)) > 0);
+	assert(strcmp(buf, "Shared") == 0);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	// The original labels were empty.
+	assert(oakengine_node_get_label(a, buf, sizeof(buf)) == 0);
+	assert(oakengine_node_get_label(b, buf, sizeof(buf)) == 0);
+	assert(oakengine_node_set_label_many(NULL, 1, "x") ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_node_set_label_many(two, 0, "x") == OAKENGINE_OK);
+
+	// Color labels batch in one command too.
+	assert(oakengine_node_get_color_label(a) == -1);
+	assert(oakengine_node_set_color_label(two, 2, 5) == OAKENGINE_OK);
+	assert(oakengine_node_get_color_label(a) == 5);
+	assert(oakengine_node_get_color_label(b) == 5);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_node_get_color_label(a) == -1);
+	assert(oakengine_node_get_color_label(b) == -1);
+	assert(oakengine_node_get_color_label(NULL) == -1);
+	assert(oakengine_node_set_color_label(NULL, 1, 1) ==
+		   OAKENGINE_E_INVALID);
+}
+
 int main(void)
 {
 	make_tmpdir();
@@ -356,6 +393,7 @@ int main(void)
 	test_inputs_and_params(project, solid, lut);
 	test_edges(project, solid, lut);
 	test_remove(project, solid, lut);
+	test_label_and_color_many(project);
 
 	// Graph nodes are not timeline clips: a sequence's track list stays
 	// empty no matter what the project graph holds.

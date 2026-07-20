@@ -1264,6 +1264,119 @@ int oakengine_sequence_ripple_delete_range(OakEngineSequence *seq,
 	return OAKENGINE_OK;
 }
 
+int oakengine_clip_toggle_enabled(OakEngineClip **clips, int count)
+{
+	set_seq_error(QString());
+	if (count < 0 || (count > 0 && !clips)) {
+		set_seq_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	for (int i = 0; i < count; i++) {
+		olive::ClipBlock *clip =
+			reinterpret_cast<olive::ClipBlock *>(clips[i]);
+		if (!clip) {
+			set_seq_error(QStringLiteral("invalid clip at index %1").arg(i));
+			delete command;
+			return OAKENGINE_E_INVALID;
+		}
+		// The panel's toggle: each clip flips its own current state.
+		command->add_child(
+			new olive::BlockEnableDisableCommand(clip, !clip->is_enabled()));
+	}
+	if (count > 0) {
+		push_or_run(command, QStringLiteral("Toggle Clips Enabled"));
+	} else {
+		delete command;
+	}
+	return count;
+}
+
+int oakengine_clip_set_linked(OakEngineClip **clips, int count, int linked)
+{
+	set_seq_error(QString());
+	if (count < 0 || (count > 0 && !clips)) {
+		set_seq_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	if (count == 0) {
+		return OAKENGINE_OK;
+	}
+	QVector<olive::Node *> nodes;
+	nodes.reserve(count);
+	for (int i = 0; i < count; i++) {
+		olive::ClipBlock *clip =
+			reinterpret_cast<olive::ClipBlock *>(clips[i]);
+		if (!clip) {
+			set_seq_error(QStringLiteral("invalid clip at index %1").arg(i));
+			return OAKENGINE_E_INVALID;
+		}
+		nodes.append(clip);
+	}
+	push_or_run(new olive::NodeLinkManyCommand(nodes, linked != 0),
+				QStringLiteral("Link Clips"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_sequence_add_default_transition(OakEngineSequence *seq,
+											  OakEngineClip **clips, int count)
+{
+	set_seq_error(QString());
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	if (!sequence || count < 0 || (count > 0 && !clips)) {
+		set_seq_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	if (count == 0) {
+		return OAKENGINE_OK;
+	}
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return OAKENGINE_E_STATE;
+	}
+	QVector<olive::ClipBlock *> blocks;
+	blocks.reserve(count);
+	for (int i = 0; i < count; i++) {
+		olive::ClipBlock *clip =
+			reinterpret_cast<olive::ClipBlock *>(clips[i]);
+		if (!clip) {
+			set_seq_error(QStringLiteral("invalid clip at index %1").arg(i));
+			return OAKENGINE_E_INVALID;
+		}
+		blocks.append(clip);
+	}
+	push_or_run(new olive::TimelineAddDefaultTransitionCommand(blocks, tb),
+				QStringLiteral("Add Default Transitions"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_clip_is_enabled(const OakEngineClip *self)
+{
+	if (!self) {
+		return 0;
+	}
+	return reinterpret_cast<const olive::ClipBlock *>(self)->is_enabled() ?
+			   1 :
+			   0;
+}
+
+int oakengine_clip_are_linked(const OakEngineClip *a, const OakEngineClip *b)
+{
+	if (!a || !b) {
+		return 0;
+	}
+	// Block::are_linked() takes non-const pointers (it is read-only in
+	// practice).
+	return olive::Block::are_linked(
+		const_cast<olive::ClipBlock *>(
+			reinterpret_cast<const olive::ClipBlock *>(a)),
+		const_cast<olive::ClipBlock *>(
+			reinterpret_cast<const olive::ClipBlock *>(b))) ?
+			   1 :
+			   0;
+}
+
 int oakengine_sequence_ripple_delete_in_to_out(OakEngineSequence *seq,
 											   int ripple, int64_t in_ts,
 											   int64_t out_ts)

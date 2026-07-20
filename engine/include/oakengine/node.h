@@ -151,6 +151,33 @@ OAKENGINE_API int oakengine_node_set_label(OakEngineNode *self,
 OAKENGINE_API int oakengine_node_set_label_ex(OakEngineNode *self,
 											  const char *label, int undoable);
 
+/**
+ * @brief Set one label on several nodes at once (undoable, ONE command;
+ * olive::NodeRenameCommand with all of them, like the application's
+ * Core::label_nodes() after its rename dialog).
+ *
+ * `nodes` holds borrowed handles (the handle is the engine node pointer
+ * in this family, so the application can pass its own nodes directly).
+ * Every entry must be non-NULL. `label` may be NULL for an empty label.
+ */
+OAKENGINE_API int oakengine_node_set_label_many(OakEngineNode **nodes,
+												int count,
+												const char *label);
+
+/**
+ * @brief Set the color-label index of several nodes at once (undoable,
+ * ONE command; olive::NodeOverrideColorCommand per node, like the
+ * timeline panel's color-label menu). `nodes` holds borrowed handles.
+ */
+OAKENGINE_API int oakengine_node_set_color_label(OakEngineNode **nodes,
+												 int count, int color_index);
+
+/**
+ * @brief The node's color-label index (Node::get_override_color(); -1 =
+ * none). -1 on a NULL handle.
+ */
+OAKENGINE_API int oakengine_node_get_color_label(const OakEngineNode *self);
+
 /* ---- Input introspection ---------------------------------------------------- */
 
 /**

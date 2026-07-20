@@ -549,6 +549,66 @@ int oakengine_node_set_label_ex(OakEngineNode *self, const char *label,
 	return OAKENGINE_OK;
 }
 
+int oakengine_node_set_label_many(OakEngineNode **nodes, int count,
+								  const char *label)
+{
+	set_error(QString());
+	if (count < 0 || (count > 0 && !nodes)) {
+		set_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	if (count == 0) {
+		return OAKENGINE_OK;
+	}
+	// One multi-node rename command, like Core::label_nodes().
+	auto *command = new olive::NodeRenameCommand();
+	const QString text = QString::fromUtf8(label ? label : "");
+	for (int i = 0; i < count; i++) {
+		if (!nodes[i]) {
+			set_error(QStringLiteral("invalid node at index %1").arg(i));
+			delete command;
+			return OAKENGINE_E_INVALID;
+		}
+		command->add_node(impl(nodes[i]), text);
+	}
+	push_or_run(command, QStringLiteral("Rename Nodes"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_node_set_color_label(OakEngineNode **nodes, int count,
+								   int color_index)
+{
+	set_error(QString());
+	if (count < 0 || (count > 0 && !nodes)) {
+		set_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	if (count == 0) {
+		return OAKENGINE_OK;
+	}
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	for (int i = 0; i < count; i++) {
+		if (!nodes[i]) {
+			set_error(QStringLiteral("invalid node at index %1").arg(i));
+			delete command;
+			return OAKENGINE_E_INVALID;
+		}
+		command->add_child(
+			new olive::NodeOverrideColorCommand(impl(nodes[i]),
+												color_index));
+	}
+	push_or_run(command, QStringLiteral("Set Node Color Labels"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_node_get_color_label(const OakEngineNode *self)
+{
+	if (!self) {
+		return -1;
+	}
+	return impl(self)->get_override_color();
+}
+
 int oakengine_node_input_count(const OakEngineNode *self)
 {
 	return self ? impl(self)->inputs().size() : 0;

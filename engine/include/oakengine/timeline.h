@@ -495,6 +495,52 @@ OAKENGINE_API int oakengine_sequence_ripple_delete_range(
 	OakEngineSequence *seq, int64_t in_ts, int64_t out_ts);
 
 /**
+ * @brief Flip the enabled flag of every given clip (undoable, ONE
+ * command; olive::BlockEnableDisableCommand per clip with the inverted
+ * current state -- the timeline panel's "toggle enabled"). Returns the
+ * number of toggled clips (>= 0) or a negative code.
+ */
+OAKENGINE_API int oakengine_clip_toggle_enabled(OakEngineClip **clips,
+												int count);
+
+/**
+ * @brief Link or unlink every given clip with each other (undoable, ONE
+ * command; olive::NodeLinkManyCommand -- the timeline panel's
+ * "link/unlink clips"). `linked` != 0 links, 0 unlinks.
+ */
+OAKENGINE_API int oakengine_clip_set_linked(OakEngineClip **clips,
+											int count, int linked);
+
+/**
+ * @brief Add the configured default transitions around the given clips
+ * (undoable, ONE command;
+ * olive::TimelineAddDefaultTransitionCommand -- the timeline panel's
+ * "add default transitions").
+ *
+ * In/out transitions are created at clip boundaries that touch a gap or
+ * the sequence edge, dual transitions between adjacent selected clips;
+ * the transition node type and length come from the engine's config
+ * (DefaultVideoTransition/DefaultAudioTransition/
+ * DefaultTransitionLength), exactly like the application. The sequence's
+ * frame-rate timebase is used for the length arithmetic.
+ */
+OAKENGINE_API int oakengine_sequence_add_default_transition(
+	OakEngineSequence *seq, OakEngineClip **clips, int count);
+
+/**
+ * @brief 1 if the clip is enabled (Block::is_enabled()). 0 on a NULL
+ * handle.
+ */
+OAKENGINE_API int oakengine_clip_is_enabled(const OakEngineClip *self);
+
+/**
+ * @brief 1 if the two clips are linked (Block::are_linked()). 0 on a
+ * NULL handle.
+ */
+OAKENGINE_API int oakengine_clip_are_linked(const OakEngineClip *a,
+											const OakEngineClip *b);
+
+/**
  * @brief Delete the workarea range on every track (undoable, ONE command;
  * the application's TimelineWidget::delete_in_to_out).
  *
