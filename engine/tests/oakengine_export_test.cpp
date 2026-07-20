@@ -57,6 +57,7 @@
 #endif
 
 #include "oakengine/exporter.h"
+#include "oakengine/footage.h"
 #include "oakengine/init.h"
 #include "oakengine/project.h"
 #include "oakengine/timeline.h"
@@ -173,6 +174,35 @@ static void test_codecs_and_validation(OakEngineSequence *seq)
 	assert(oakengine_export_last_error(err, sizeof(err)) > 0);
 }
 
+// Generate a loud test tone (440 Hz stereo sine, 2 s) with the ffmpeg
+// CLI -- the demo file's own audio track is essentially silent, so a real
+// tone is needed to exercise "audio content present" assertions.
+static void make_tone(const char *path)
+{
+	char cmd[4608];
+	snprintf(cmd, sizeof(cmd),
+			 "ffmpeg -v error -y -f lavfi -i "
+			 "\"sine=frequency=440:duration=2\" -ar 48000 -ac 2 \"%s\"",
+			 path);
+	assert(system(cmd) == 0);
+	FILE *f = fopen(path, "rb");
+	assert(f != NULL);
+	fclose(f);
+}
+
+// Probe a media file with ffprobe/ffmpeg and assert the output contains a
+// string (used for codec/dimension and loudness checks).
+static void assert_probe_matches(const char *cmd, const char *needle)
+{
+	FILE *probe = popen(cmd, "r");
+	assert(probe != NULL);
+	char out[2048] = { 0 };
+	const size_t len = fread(out, 1, sizeof(out) - 1, probe);
+	(void)len;
+	assert(pclose(probe) == 0);
+	assert(strstr(out, needle) != NULL);
+}
+
 int main(void)
 {
 	make_tmpdir();
@@ -268,6 +298,72 @@ int main(void)
 	assert(comma != NULL);
 	const double duration = atof(comma + 1);
 	assert(fabs(duration - 1.001) < 0.15);
+
+	// ---- First-conform audio export ---------------------------------------
+	// The sandboxed cache guarantees no conform exists yet: this is the
+	// exact first-time-export path that used to come out silent. Lay a loud
+	// tone clip on an audio track and export with AAC audio; the exported
+	// audio must actually contain the tone.
+	{
+		char tone_path[4096];
+		snprintf(tone_path, sizeof(tone_path), "%s/tone.wav", g_tmpdir);
+		make_tone(tone_path);
+
+		// Import through the facade and place through the timeline editing
+		// primitives.
+		OakEngineFootage *tone =
+			oakengine_project_import_footage(project, tone_path);
+		assert(tone != NULL);
+		assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_AUDIO) ==
+			   0);
+		assert(oakengine_sequence_add_footage_clip(
+				   seq, tone, OAKENGINE_TRACK_TYPE_AUDIO, 0, 0, 30, 0) !=
+			   NULL);
+
+		char out2[4096];
+		snprintf(out2, sizeof(out2), "%s/export_audio.mp4", g_tmpdir);
+		oak_export_options opts2;
+		memset(&opts2, 0, sizeof(opts2));
+		opts2.video_codec = OAKENGINE_EXPORT_VIDEO_H264;
+		opts2.audio_codec = OAKENGINE_EXPORT_AUDIO_AAC;
+		opts2.audio_sample_rate = 48000;
+		opts2.audio_channel_count = 2;
+		rc = oakengine_export_render(seq, out2, 0, 30, 320, 180, &opts2);
+		if (rc != OAKENGINE_OK) {
+			fprintf(stderr, "audio export failed (%d): %s\n", rc,
+					oakengine_export_last_error(err, sizeof(err)) > 0 ?
+						err :
+						"(no error)");
+		}
+		assert(rc == OAKENGINE_OK);
+		assert(access(out2, F_OK) == 0);
+
+		// The MP4 carries an AAC audio stream...
+		snprintf(cmd, sizeof(cmd),
+				 "ffprobe -v error -select_streams a:0 -show_entries "
+				 "stream=codec_name -of csv=p=0 \"%s\"",
+				 out2);
+		assert_probe_matches(cmd, "aac");
+
+		// ...and the tone is really in there (sine is ~-24 dB; silence
+		// would read ~-91 dB).
+		snprintf(cmd, sizeof(cmd),
+				 "ffmpeg -v info -i \"%s\" -map a:0 -af volumedetect -f "
+				 "null - 2>&1 | grep mean_volume",
+				 out2);
+		FILE *vol = popen(cmd, "r");
+		assert(vol != NULL);
+		char vol_out[512] = { 0 };
+		const size_t vol_len = fread(vol_out, 1, sizeof(vol_out) - 1, vol);
+		(void)vol_len;
+		assert(pclose(vol) == 0);
+		const char *db = strstr(vol_out, "mean_volume:");
+		assert(db != NULL);
+		const double mean_db = atof(db + strlen("mean_volume:"));
+		assert(mean_db > -60.0);
+
+		oakengine_footage_free(tone);
+	}
 
 	oakengine_project_free(project);
 	assert(oakengine_shutdown() == OAKENGINE_OK);

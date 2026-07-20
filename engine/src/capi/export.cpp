@@ -25,15 +25,18 @@
 
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QString>
 #include <QThread>
 
+#include "codec/conformmanager.h"
 #include "codec/encoder.h"
 #include "codec/ffmpeg/ffmpegencoder.h"
 #include "coreengine.h"
 #include "node/color/colormanager/colormanager.h"
 #include "node/project.h"
+#include "node/project/footage/footage.h"
 #include "node/project/sequence/sequence.h"
 #include "render/rendermanager.h"
 #include "task/export/export.h"
@@ -124,6 +127,72 @@ QString image_sequence_filename(const QString &path)
 	const QFileInfo fi(path);
 	return fi.dir().filePath(fi.completeBaseName() + QStringLiteral("-%04d.") +
 							 fi.suffix());
+}
+
+// Pre-generate audio conforms for every footage with audio streams in the
+// project, using exactly the AudioParams the export render will request.
+// This mirrors what the application gets for free from preview playback
+// (conforms are usually already cached by export time there) and makes
+// first-time exports of freshly imported media both faster and
+// deterministic. Delivery to the TaskManager thread and the completion
+// signal both go through this thread's event queue, so the wait pumps
+// events like the render wait does. Returns false on timeout; the caller
+// proceeds anyway since the render's own conform wait is the fallback.
+bool prewarm_conforms(olive::Project *project,
+					  const olive::AudioParams &params, QString *error)
+{
+	if (!olive::ConformManager::instance() || params.sample_rate() <= 0) {
+		return true; // nothing to prewarm (or nothing to prewarm with)
+	}
+	const QString cache_path = project->cache_path();
+
+	struct Pending {
+		QString decoder_id;
+		olive::Decoder::CodecStream stream;
+	};
+	QVector<Pending> pending;
+	for (olive::Node *n : project->nodes()) {
+		olive::Footage *footage = dynamic_cast<olive::Footage *>(n);
+		if (!footage || !footage->is_valid()) {
+			continue;
+		}
+		const QString decoder_id = footage->decoder().isEmpty() ?
+									   QStringLiteral("ffmpeg") :
+									   footage->decoder();
+		for (int i = 0; i < footage->get_audio_stream_count(); i++) {
+			const olive::AudioParams stream_params =
+				footage->get_audio_params(i);
+			olive::Decoder::CodecStream stream(footage->filename(),
+											   stream_params.stream_index(),
+											   nullptr);
+			// Trigger (or adopt) the conform task.
+			olive::ConformManager::instance()->get_conform_state(
+				decoder_id, cache_path, stream, params, false);
+			pending.append({ decoder_id, stream });
+		}
+	}
+
+	constexpr qint64 k_prewarm_timeout_ms = 120000;
+	QElapsedTimer timer;
+	timer.start();
+	for (const Pending &p : pending) {
+		while (true) {
+			const olive::ConformManager::Conform conform =
+				olive::ConformManager::instance()->get_conform_state(
+					p.decoder_id, cache_path, p.stream, params, false);
+			if (conform.state == olive::ConformManager::k_conform_exists) {
+				break;
+			}
+			if (timer.hasExpired(k_prewarm_timeout_ms)) {
+				*error = QStringLiteral("conform prewarm timed out for %1")
+						 .arg(p.stream.filename());
+				return false;
+			}
+			QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+			QThread::msleep(5);
+		}
+	}
+	return true;
 }
 
 } // namespace
@@ -264,6 +333,15 @@ int oakengine_export_render(OakEngineSequence *seq, const char *path,
 		olive::ColorTransform(QStringLiteral("sRGB OETF")));
 
 	try {
+		// Pre-generate the audio conforms the render is about to need (the
+		// headless equivalent of the application's preview-warmed cache).
+		// A timeout here is not fatal: the render's own conform wait is the
+		// fallback path.
+		if (audio_enabled) {
+			QString prewarm_error;
+			prewarm_conforms(project, ap, &prewarm_error);
+		}
+
 		olive::ExportTask task(sequence, project->color_manager(), params);
 		// The progress signal is emitted on the task thread, so the callback
 		// (installed for the calling thread) is captured by value -- reading
