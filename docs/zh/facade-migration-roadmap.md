@@ -68,6 +68,10 @@ facade 现状覆盖:项目/序列读写、素材探测与导入、时间线查�
 - 视频 prequeue(`prequeue_length_`/`prequeue_count_`/`queue_watchers_`/`request_next_frame_for_queue`/`renderer_generated_frame_for_queue`)→ facade 内部 8 帧 prequeue。
 - 音频播放队列(`audio_playback_queue_`/`audio_processor_`/`prequeued_audio_`/`k_audio_playback_interval`/`queue_next_audio_buffer`/`received_audio_buffer_for_playback`/`decrement_prequeued_audio`)→ facade audio 回调(1/4 秒 planar float 块)。
 - 音频主时钟:facade 内部直接用 `AudioManager`(已在 `engine/audio/`)的秒时钟;UI 侧改为轮询 `oakengine_playback_get_position` 更新播放头。
+- `ViewerPlaybackTimer`(`display_widget_->timer()` 的音频钟→时间戳换算)整体被 `get_position` 取代,`viewerplaybacktimer.{h,cpp}` 删除。
+- `finish_play_preprocess` 中的 `reset_output_clock`/prequeued 音频推送/备份定时器(1385-1421)→ facade `start` 内部完成。
+
+**复用不动(帧显示路径)**:`ViewerDisplayWidget` 的 `queue()->append_timewise` + 显示定时器整套保留——facade frame 回调 marshal 到主线程后走与今天 `renderer_generated_frame_for_queue`(viewer.cpp:1562)完全相同的路径;`dw->play/pause` 照旧。即只换帧的**来源**,不换帧的**去向**。
 
 **留在 UI 侧(facade MVP 不覆盖):**
 - 负倍速 / shuttle(`shuttle_left/right`、`playback_speed_` 变速路径)——后续再议。
@@ -75,7 +79,12 @@ facade 现状覆盖:项目/序列读写、素材探测与导入、时间线查�
 - 录制/capture(`arm_for_recording`/`disarm_recording` 等)。
 - 纯 UI:gizmos、文本编辑、安全框、多屏 `ViewerWindow`、波形视图、右键菜单。
 - multicam 检测(`detect_multicam_node`)——依赖 UI 选择状态。
-- in/out 区间播放(`play_in_to_out_only`)——UI 在 frame 回调里判断到点自行 pause,无需 facade 支持。
+- **边界与循环策略**(`playback_timer_update` 1959-2044 的 min/max 计算、workarea in-out、`StopPlaybackOnLastFrame`、`Loop` 配置、录制范围)——依赖 UI 配置与状态,保留在一个轮询 facade 位置的 UI 定时器里;到点由 UI 调 facade `pause`/`start`(循环时重锚)。
+
+**facade 播放族需随迁移做的细化**:
+- `pause` 时应停 AudioManager 输出(engine 内部,instance 判空),否则缓冲区余音继续播;app 不再直接碰 AudioManager。
+- 音频监视器电平:facade audio 回调 → UI marshal → `AudioMonitor::push_sample_buffer_on_all`(AudioMonitor 是 app 侧控件)。
+- 波形监视器:`AudioMonitor::start_waveform_on_all` 仍在 UI 于 start 时发起(依赖 connected node 的 waveform 元数据)。
 
 **验收**:播放/暂停/停止下帧画面与声音同步;时间标尺播放头跟随;全量 gtest + facade 回归(固定 9 个 + playback)绿;viewer.h 中不再出现 `RenderTicketWatcher` 播放队列字段。
 
