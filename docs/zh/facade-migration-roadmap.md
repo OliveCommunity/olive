@@ -92,6 +92,13 @@ facade 现状覆盖:项目/序列读写、素材探测与导入、时间线查�
 - app/worker 的引擎符号引用清零后:visibility=hidden + version script(`oakengine_*` 白名单)。
 - 验收:`nm -D` 仅 `oakengine_*`;全部测试(含 CLI)绿;三平台打包复验。
 
+## 附 B:复合场景 facade 化取舍(2026-07 评估)
+
+- **nest(序列嵌套)**:补一个小原语 `oakengine_sequence_add_sequence_clip`(与 add_footage_clip 对称)。拖序列上时间线的执行路径由此可迁。
+- **multicam**:不补专门族。MultiCamNode 是节点,节点图族(add_node/connect/set_input)已覆盖建线与切机位;multicam widget 的交互状态留 UI。
+- **waveform-sync(波形对齐)**:补一个小族(estimate_offset / estimate_stretch_offset 两函数),把 timelinewidget 里最后两处直接调引擎算法的执行路径(timelinewidget.cpp:1117/1133)迁掉;偏移量的应用走已有编辑原语。
+- **import place_at**:不补。import_footage + add_track + add_footage_clip 组合已够,文件夹递归/静帧时长/轨道定位是 UI 策略,留在 app。
+
 ## 风险与对策
 
 - **节点参数类型膨胀**:NodeValue 有 ~20 种类型。先支持编辑器最常用的 8 种(float/int/bool/string/rational/color/vec/combo),其余按面板需要逐个加。
