@@ -92,6 +92,14 @@ facade 现状覆盖:项目/序列读写、素材探测与导入、时间线查�
 
 ## 验收清单(阶段 4 完成时)
 
+剩余耦合度可量化复测(在构建目录下执行;阶段 3 推进期间应单调下降,2026-07 基线为 565):
+
+```sh
+nm -u app/oak-editor | awk '$1=="U"{print $2}' | grep '^_ZN5olive' | sort -u > /tmp/u.txt
+comm -12 <(nm -D --defined-only engine/liboakengine.so | awk '{print $3}' | sort -u) /tmp/u.txt | wc -l
+```
+
+- [ ] 上述耦合计数降为 0
 - [ ] `nm -D --defined-only liboakengine.so` 仅 `oakengine_*`
 - [ ] oak-editor/oak-render-worker `ldd` 正常,全部启动
 - [ ] 1986+ gtest 全绿,CLI ctest 全绿,5+ C ABI 测试全绿
