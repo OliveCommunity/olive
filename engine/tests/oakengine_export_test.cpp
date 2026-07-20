@@ -39,6 +39,9 @@
 #include <unistd.h>
 #endif
 
+#include <chrono>
+#include <thread>
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -363,6 +366,143 @@ int main(void)
 		assert(mean_db > -60.0);
 
 		oakengine_footage_free(tone);
+	}
+
+	// ---- render_ex option validation (no GL needed) -------------------------
+	{
+		oak_export_options_ex bad;
+		memset(&bad, 0, sizeof(bad));
+		bad.format = 2; // mp4
+		bad.video_enabled = 1;
+		bad.video_codec = 1; // h264
+		bad.audio_enabled = 0;
+		char out_bad[4096];
+		snprintf(out_bad, sizeof(out_bad), "%s/bad.mp4", g_tmpdir);
+
+		bad.format = -1;
+		assert(oakengine_export_render_ex(seq, out_bad, &bad) ==
+			   OAKENGINE_E_INVALID);
+		bad.format = 99;
+		assert(oakengine_export_render_ex(seq, out_bad, &bad) ==
+			   OAKENGINE_E_INVALID);
+		bad.format = 2;
+
+		bad.video_codec = 99;
+		assert(oakengine_export_render_ex(seq, out_bad, &bad) ==
+			   OAKENGINE_E_INVALID);
+		bad.video_codec = 1;
+
+		bad.range_mode = OAKENGINE_EXPORT_RANGE_CUSTOM;
+		bad.range_in_ts = 30;
+		bad.range_out_ts = 30;
+		assert(oakengine_export_render_ex(seq, out_bad, &bad) ==
+			   OAKENGINE_E_INVALID);
+		bad.range_mode = OAKENGINE_EXPORT_RANGE_STILL;
+		bad.still_time_ts = -1;
+		assert(oakengine_export_render_ex(seq, out_bad, &bad) ==
+			   OAKENGINE_E_INVALID);
+
+		bad.range_mode = OAKENGINE_EXPORT_RANGE_ENTIRE;
+		bad.color_transform = OAKENGINE_EXPORT_COLOR_CUSTOM;
+		bad.color_transform_name[0] = '\0';
+		assert(oakengine_export_render_ex(seq, out_bad, &bad) ==
+			   OAKENGINE_E_INVALID);
+
+		bad.color_transform = OAKENGINE_EXPORT_COLOR_SRGB_OETF;
+		bad.video_pix_fmt = 99;
+		assert(oakengine_export_render_ex(seq, out_bad, &bad) ==
+			   OAKENGINE_E_INVALID);
+
+		assert(oakengine_export_render_ex(NULL, out_bad, &bad) ==
+			   OAKENGINE_E_INVALID);
+		assert(oakengine_export_render_ex(seq, NULL, &bad) ==
+			   OAKENGINE_E_INVALID);
+		assert(oakengine_export_render_ex(seq, out_bad, NULL) ==
+			   OAKENGINE_E_INVALID);
+	}
+
+	// ---- render_ex: real exports ---------------------------------------------
+	{
+		// H.264 + AAC over a custom 20-frame range of the same sequence.
+		char out3[4096];
+		snprintf(out3, sizeof(out3), "%s/ex_custom.mp4", g_tmpdir);
+		oak_export_options_ex o3;
+		memset(&o3, 0, sizeof(o3));
+		o3.range_mode = OAKENGINE_EXPORT_RANGE_CUSTOM;
+		o3.range_in_ts = 5;
+		o3.range_out_ts = 25;
+		o3.format = 2; // ExportFormat::k_format_mpe_g4_video
+		o3.video_enabled = 1;
+		o3.video_codec = 1; // ExportCodec::k_codec_h264
+		o3.audio_enabled = 1;
+		o3.audio_codec = 11; // ExportCodec::k_codec_aac
+		o3.audio_sample_rate = 48000;
+		o3.audio_channel_layout = 0x3;
+		o3.video_width = 320;
+		o3.video_height = 180;
+		rc = oakengine_export_render_ex(seq, out3, &o3);
+		if (rc != OAKENGINE_OK) {
+			fprintf(stderr, "ex custom export failed (%d): %s\n", rc,
+					oakengine_export_last_error(err, sizeof(err)) > 0 ?
+						err :
+						"(no error)");
+		}
+		assert(rc == OAKENGINE_OK);
+		snprintf(cmd, sizeof(cmd),
+				 "ffprobe -v error -show_entries stream=codec_type,duration "
+				 "-of csv=p=0 \"%s\"",
+				 out3);
+		FILE *p3 = popen(cmd, "r");
+		assert(p3 != NULL);
+		char p3_out[512] = { 0 };
+		const size_t p3_len = fread(p3_out, 1, sizeof(p3_out) - 1, p3);
+		(void)p3_len;
+		assert(pclose(p3) == 0);
+		assert(strstr(p3_out, "video") != NULL);
+		assert(strstr(p3_out, "audio") != NULL);
+		// 20 frames at 30000/1001 ~= 0.667 s.
+		assert(strstr(p3_out, "0.6") != NULL);
+
+		// PNG sequence over 5 frames (image-sequence flag auto-fills the
+		// frame placeholder).
+		char out4[4096];
+		snprintf(out4, sizeof(out4), "%s/seqout.png", g_tmpdir);
+		oak_export_options_ex o4 = o3;
+		o4.range_in_ts = 0;
+		o4.range_out_ts = 5;
+		o4.format = 5; // ExportFormat::k_format_png
+		o4.video_codec = 5; // ExportCodec::k_codec_png
+		o4.audio_enabled = 0;
+		o4.is_image_sequence = 1;
+		rc = oakengine_export_render_ex(seq, out4, &o4);
+		if (rc != OAKENGINE_OK) {
+			fprintf(stderr, "ex png export failed (%d): %s\n", rc,
+					oakengine_export_last_error(err, sizeof(err)) > 0 ?
+						err :
+						"(no error)");
+		}
+		assert(rc == OAKENGINE_OK);
+		char png0[4096];
+		snprintf(png0, sizeof(png0), "%s/seqout_00000.png", g_tmpdir);
+		assert(access(png0, F_OK) == 0);
+		snprintf(cmd, sizeof(cmd), "file \"%s\"", png0);
+		assert_probe_matches(cmd, "PNG image data");
+
+		// Cancellation from another thread: either the export finishes
+		// first (idempotent) or reports E_CANCELLED; the exporter must stay
+		// usable afterwards.
+		oak_export_options_ex o5 = o3;
+		snprintf(out3, sizeof(out3), "%s/ex_cancel.mp4", g_tmpdir);
+		std::thread canceller([]() {
+			std::this_thread::sleep_for(std::chrono::milliseconds(100));
+			oakengine_export_cancel();
+		});
+		const int cancel_rc = oakengine_export_render_ex(seq, out3, &o5);
+		canceller.join();
+		assert(cancel_rc == OAKENGINE_OK ||
+			   cancel_rc == OAKENGINE_E_CANCELLED);
+		snprintf(out3, sizeof(out3), "%s/ex_after.mp4", g_tmpdir);
+		assert(oakengine_export_render_ex(seq, out3, &o5) == OAKENGINE_OK);
 	}
 
 	oakengine_project_free(project);

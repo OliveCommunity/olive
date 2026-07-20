@@ -100,6 +100,10 @@ typedef struct oak_export_options {
  * The call blocks until the export finishes. Progress is reported through
  * the callback set with oakengine_export_set_progress_callback().
  *
+ * Image sequences: `path` is the filename template; the engine's frame
+ * placeholder ("_[#####]") is inserted before the extension when absent
+ * (same bracketed-hash form the application uses).
+ *
  * @return OAKENGINE_OK on success; OAKENGINE_E_INVALID for bad arguments;
  * OAKENGINE_E_STATE when the engine lacks OAKENGINE_INIT_RENDER;
  * OAKENGINE_E_FAILED for render/encode failures (see
@@ -143,6 +147,158 @@ typedef void (*oakengine_export_progress_fn)(double fraction,
 OAKENGINE_API void
 oakengine_export_set_progress_callback(oakengine_export_progress_fn fn,
 									   void *userdata);
+
+/**
+ * @brief Cancel the currently running oakengine_export_render()/_ex()
+ * call, if any (from another thread).
+ *
+ * The export aborts at the next opportunity and the blocked render call
+ * returns OAKENGINE_E_CANCELLED. A no-op when no export is running.
+ */
+OAKENGINE_API void oakengine_export_cancel(void);
+
+/**
+ * @brief Cancellation return code of oakengine_export_render()/_ex().
+ */
+#define OAKENGINE_E_CANCELLED (-5)
+
+/* ---- Extended export (oakengine_export_render_ex) -------------------------
+ *
+ * The extended entry point covers every field of the engine's
+ * EncodingParams (engine/codec/encoder.h) through the POD below, so
+ * full-featured consumers (like the application's export dialog) can drive
+ * the same export path without engine headers. Enum int fields carry the
+ * engine's own enum values (olive::ExportFormat::Format,
+ * olive::ExportCodec::Codec, olive::VideoParams::Interlacing/ColorRange,
+ * olive::core::SampleFormat::Format) unless documented otherwise; <= 0
+ * (or -1 where noted) selects the documented default.
+ */
+
+/** @brief range_mode values: what part of the sequence to export. */
+#define OAKENGINE_EXPORT_RANGE_ENTIRE 0 /**< Whole sequence. */
+#define OAKENGINE_EXPORT_RANGE_CUSTOM 1 /**< [range_in_ts, range_out_ts). */
+#define OAKENGINE_EXPORT_RANGE_STILL 2 /**< Single frame at still_time_ts. */
+
+/** @brief color_transform values: output color transform. */
+#define OAKENGINE_EXPORT_COLOR_SRGB_OETF 0 /**< sRGB OETF (dialog default). */
+#define OAKENGINE_EXPORT_COLOR_REC709_OETF 1 /**< Rec.709 OETF. */
+#define OAKENGINE_EXPORT_COLOR_REFERENCE 2 /**< Reference space, no transform. */
+#define OAKENGINE_EXPORT_COLOR_BT1886_EOTF 3 /**< BT.1886 EOTF. */
+#define OAKENGINE_EXPORT_COLOR_CUSTOM (-1) /**< Use color_transform_name. */
+
+/**
+ * @brief Full export parameters (POD; covers EncodingParams).
+ */
+typedef struct oak_export_options_ex {
+	/** OAKENGINE_EXPORT_RANGE_*; default ENTIRE. */
+	int range_mode;
+	/** range_mode == CUSTOM: range [in, out) as frame timestamps in the
+	 * sequence's frame-rate timebase. */
+	int64_t range_in_ts;
+	int64_t range_out_ts;
+	/** range_mode == STILL: the frame to export as a timestamp. */
+	int64_t still_time_ts;
+
+	/** Container format as olive::ExportFormat::Format
+	 * (0 = MP4, 5 = PNG sequence, others per engine/codec/exportformat.h). */
+	int format;
+
+	int video_enabled; /**< 0/1; default 1. */
+	/** Video codec as olive::ExportCodec::Codec (1 = H.264, 3 = H.265,
+	 * 5 = PNG, others per engine/codec/exportcodec.h). */
+	int video_codec;
+	int audio_enabled; /**< 0/1; default 1. */
+	/** Audio codec as olive::ExportCodec::Codec (11 = AAC, 12 = PCM,
+	 * others per engine/codec/exportcodec.h). */
+	int audio_codec;
+
+	int subtitles_enabled; /**< 0/1; default 0. */
+	int subtitles_sidecar; /**< 0 = embedded, 1 = sidecar file; default 0. */
+	/** Sidecar container as olive::ExportFormat::Format (13 = SRT). */
+	int subtitles_format;
+	/** Subtitle codec as olive::ExportCodec::Codec (16 = SRT). */
+	int subtitles_codec;
+
+	/** Video bit rate in bit/s; <= 0 lets the encoder choose. */
+	int64_t video_bit_rate;
+	/** Audio bit rate in bit/s; <= 0 lets the encoder choose. */
+	int64_t audio_bit_rate;
+
+	/** Encoded pixel format as an index into
+	 * FFmpegEncoder::get_pixel_formats_for_codec(video_codec)
+	 * (0 = the codec's preferred format, e.g. yuv420p for H.264;
+	 * -1 = same as 0). Out-of-range indexes fail with
+	 * OAKENGINE_E_INVALID. */
+	int video_pix_fmt;
+
+	/** Audio sample rate in Hz; <= 0 uses the sequence's rate. */
+	int audio_sample_rate;
+	/** Audio channel layout mask (0 = the sequence's layout). */
+	uint64_t audio_channel_layout;
+	/** Audio sample format: <= 0 selects the engine's float planar default
+	 * (f32_p); >= 1 is an explicit olive::core::SampleFormat::Format value
+	 * in engine units (s16_p = 1, s32_p = 2, s64_p = 3, f32_p = 4,
+	 * f64_p = 5, u8 = 6, s16 = 7, s32 = 8, s64 = 9, f32 = 10, f64 = 11).
+	 * u8_p (raw 0) overlaps the default and is not expressible. */
+	int audio_sample_format;
+
+	/** OAKENGINE_EXPORT_COLOR_*; default SRGB_OETF. */
+	int color_transform;
+	/** OCIO color space name, used when color_transform ==
+	 * OAKENGINE_EXPORT_COLOR_CUSTOM. Empty otherwise. */
+	char color_transform_name[64];
+
+	/** Output dimensions; <= 0 uses the sequence's dimensions. */
+	int video_width;
+	int video_height;
+	/** Output frame rate; <= 0 uses the sequence's frame rate. */
+	int frame_rate_num;
+	int frame_rate_den;
+	/** Pixel aspect ratio; <= 0 uses the sequence's ratio. */
+	int pixel_aspect_num;
+	int pixel_aspect_den;
+	/** olive::VideoParams::Interlacing; -1 = the sequence's mode. */
+	int interlacing;
+	/** Render pixel format as olive::core::PixelFormat::Format;
+	 * -1 = the OfflinePixelFormat config default. */
+	int pixel_format;
+	/** Scaling method (EncodingParams::VideoScalingMethod):
+	 * -1 = fit (default), 0 = fit, 1 = stretch, 2 = crop. */
+	int scaling_method;
+	/** olive::VideoParams::ColorRange; -1 = limited (default). */
+	int color_range;
+	/** Encoder thread count; <= 0 = auto. */
+	int video_threads;
+	/** 1 = write an image sequence (still-image codecs); default 0. */
+	int is_image_sequence;
+} oak_export_options_ex;
+
+/**
+ * @brief Extended synchronous export with full EncodingParams coverage.
+ *
+ * Assembles the engine's EncodingParams from `opts` and runs the same
+ * synchronous ExportTask path as oakengine_export_render() (progress
+ * callback, conform prewarm, event-loop drive). PNG sequences accept a
+ * filename template ("-%04d" is inserted before the extension when
+ * absent), same as the simple entry point.
+ *
+ * @return OAKENGINE_OK on success; OAKENGINE_E_INVALID for bad options;
+ * OAKENGINE_E_STATE without OAKENGINE_INIT_RENDER; OAKENGINE_E_FAILED for
+ * render/encode failures; OAKENGINE_E_CANCELLED after
+ * oakengine_export_cancel().
+ */
+OAKENGINE_API int oakengine_export_render_ex(OakEngineSequence *seq,
+											 const char *path,
+											 const oak_export_options_ex *opts);
+
+/**
+ * @brief Set an encoder-specific video option (key/value strings, e.g.
+ * "crf" = "18") applied by subsequent oakengine_export_render()/_ex()
+ * calls on this thread (mirrors EncodingParams::set_video_option()).
+ * Repeated calls accumulate; NULL value clears all options.
+ */
+OAKENGINE_API void oakengine_export_set_video_option(const char *key,
+													 const char *value);
 
 #ifdef __cplusplus
 }

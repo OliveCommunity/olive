@@ -28,13 +28,13 @@
 #include <QLineEdit>
 #include <QProgressBar>
 
+#include "codec/encoder.h"
 #include "codec/exportcodec.h"
 #include "codec/exportformat.h"
 #include "dialog/export/exportformatcombobox.h"
 #include "exportaudiotab.h"
 #include "exportsubtitlestab.h"
 #include "exportvideotab.h"
-#include "task/export/export.h"
 #include "widget/nodeparamview/nodeparamviewwidgetbridge.h"
 #include "widget/viewer/viewer.h"
 

@@ -33,11 +33,13 @@
 
 #include "common/digit.h"
 #include "common/qtutils.h"
+#include "codec/ffmpeg/ffmpegencoder.h"
 #include "dialog/msgbox.h"
 #include "dialog/task/task.h"
 #include "exportsavepresetdialog.h"
 #include "node/project.h"
 #include "node/project/sequence/sequence.h"
+#include "oakengine/exporter.h"
 #include "task/taskmanager.h"
 #include "ui/icons/icons.h"
 #include "widget/timeruler/timeruler.h"
@@ -46,6 +48,164 @@ namespace olive
 {
 
 #define super QDialog
+
+namespace
+{
+
+// pix_fmt string (e.g. "yuv420p") to its index in the codec's supported
+// list; 0 (the codec's preferred format) when absent.
+int pix_fmt_index(ExportCodec::Codec codec, const QString &pix_fmt)
+{
+	if (pix_fmt.isEmpty()) {
+		return 0;
+	}
+	FFmpegEncoder probe{ EncodingParams() };
+	const int index = probe.get_pixel_formats_for_codec(codec).indexOf(pix_fmt);
+	return index >= 0 ? index : 0;
+}
+
+// EncodingParams (assembled by the dialog) -> facade POD. One-to-one with
+// oak_export_options_ex; see oakengine/exporter.h for the field docs.
+oak_export_options_ex params_to_ex(const EncodingParams &p)
+{
+	oak_export_options_ex o = {};
+
+	const VideoParams &vp = p.video_params();
+	const Rational tb = vp.frame_rate().flipped();
+
+	if (p.has_custom_range()) {
+		o.range_mode = OAKENGINE_EXPORT_RANGE_CUSTOM;
+		o.range_in_ts = Timecode::time_to_timestamp(p.custom_range().in(), tb);
+		o.range_out_ts =
+			Timecode::time_to_timestamp(p.custom_range().out(), tb);
+	} else {
+		o.range_mode = OAKENGINE_EXPORT_RANGE_ENTIRE;
+	}
+
+	o.format = int(p.format());
+	o.video_enabled = p.video_enabled() ? 1 : 0;
+	o.video_codec = int(p.video_codec());
+	o.audio_enabled = p.audio_enabled() ? 1 : 0;
+	o.audio_codec = int(p.audio_codec());
+	o.subtitles_enabled = p.subtitles_enabled() ? 1 : 0;
+	o.subtitles_sidecar = p.subtitles_are_sidecar() ? 1 : 0;
+	o.subtitles_format =
+		p.subtitles_are_sidecar() ? int(p.subtitle_sidecar_fmt()) : 0;
+	o.subtitles_codec = p.subtitles_enabled() ? int(p.subtitles_codec()) : 0;
+
+	o.video_bit_rate = p.video_bit_rate();
+	o.audio_bit_rate = p.audio_bit_rate();
+	o.video_pix_fmt = pix_fmt_index(p.video_codec(), p.video_pix_fmt());
+
+	o.audio_sample_rate = p.audio_params().sample_rate();
+	o.audio_channel_layout = p.audio_params().channel_layout();
+	o.audio_sample_format = int(p.audio_params().format());
+
+	const QString ct = p.color_transform().output();
+	if (ct.isEmpty()) {
+		o.color_transform = OAKENGINE_EXPORT_COLOR_REFERENCE;
+	} else if (ct == QStringLiteral("sRGB OETF")) {
+		o.color_transform = OAKENGINE_EXPORT_COLOR_SRGB_OETF;
+	} else if (ct == QStringLiteral("Rec.709 OETF")) {
+		o.color_transform = OAKENGINE_EXPORT_COLOR_REC709_OETF;
+	} else if (ct == QStringLiteral("BT.1886 EOTF")) {
+		o.color_transform = OAKENGINE_EXPORT_COLOR_BT1886_EOTF;
+	} else {
+		o.color_transform = OAKENGINE_EXPORT_COLOR_CUSTOM;
+		const QByteArray utf = ct.toUtf8();
+		snprintf(o.color_transform_name, sizeof(o.color_transform_name),
+				 "%s", utf.constData());
+	}
+
+	o.video_width = vp.width();
+	o.video_height = vp.height();
+	o.frame_rate_num = vp.frame_rate().numerator();
+	o.frame_rate_den = vp.frame_rate().denominator();
+	o.pixel_aspect_num = vp.pixel_aspect_ratio().numerator();
+	o.pixel_aspect_den = vp.pixel_aspect_ratio().denominator();
+	o.interlacing = int(vp.interlacing());
+	o.pixel_format = int(vp.format());
+	o.scaling_method = int(p.video_scaling_method());
+	o.color_range = int(vp.color_range());
+	o.video_threads = p.video_threads();
+	o.is_image_sequence = p.video_is_image_sequence() ? 1 : 0;
+
+	return o;
+}
+
+} // namespace
+
+/**
+ * @brief ExportTask replacement driven by the liboakengine C ABI facade
+ *
+ * Same Task contract as the engine's ExportTask (progress via
+ * progress_changed, cancel via CancelEvent), but the actual
+ * render+encode goes through oakengine_export_render_ex(): the facade
+ * owns the ExportTask instance, its event-loop drive and the conform
+ * prewarm. Cancellation is forwarded to the facade
+ * (oakengine_export_cancel()), which reports OAKENGINE_E_CANCELLED back.
+ */
+class FacadeExportTask : public Task {
+public:
+	FacadeExportTask(ViewerOutput *viewer_node, const EncodingParams &params)
+		: sequence_(reinterpret_cast<OakEngineSequence *>(viewer_node))
+		, params_(params)
+	{
+		set_title(tr("Exporting \"%1\"").arg(viewer_node->get_label()));
+	}
+
+protected:
+	virtual bool run() override
+	{
+		oak_export_options_ex o = params_to_ex(params_);
+		// Pass the codec section's encoder-specific options through.
+		for (auto it = params_.video_opts().cbegin();
+			 it != params_.video_opts().cend(); ++it) {
+			oakengine_export_set_video_option(it.key().toUtf8().constData(),
+										   it.value().toUtf8().constData());
+		}
+		oakengine_export_set_progress_callback(
+			&FacadeExportTask::forward_progress, this);
+		const int rc = oakengine_export_render_ex(
+			sequence_, params_.filename().toUtf8().constData(), &o);
+		oakengine_export_set_progress_callback(nullptr, nullptr);
+		oakengine_export_set_video_option("", nullptr);
+
+		if (rc == OAKENGINE_E_CANCELLED) {
+			// Mirror the engine task's cancelled state for TaskDialog.
+			cancel();
+			return false;
+		}
+		if (rc != OAKENGINE_OK) {
+			char err[1024];
+			err[0] = '\0';
+			oakengine_export_last_error(err, sizeof(err));
+			set_error(err[0] ? QString::fromUtf8(err) :
+							   QStringLiteral("Export failed"));
+			return false;
+		}
+		return true;
+	}
+
+	virtual void CancelEvent() override
+	{
+		oakengine_export_cancel();
+	}
+
+private:
+	static void forward_progress(double fraction, void *userdata)
+	{
+		static_cast<FacadeExportTask *>(userdata)->emit_progress(fraction);
+	}
+
+	void emit_progress(double fraction)
+	{
+		emit progress_changed(fraction);
+	}
+
+	OakEngineSequence *sequence_;
+	EncodingParams params_;
+};
 
 ExportDialog::ExportDialog(ViewerOutput *viewer_node, bool stills_only_mode,
 						   QWidget *parent)
@@ -398,8 +558,8 @@ void ExportDialog::start_export()
 		return;
 	}
 
-	ExportTask *task =
-		new ExportTask(viewer_node_, color_manager_, generate_params());
+	FacadeExportTask *task =
+		new FacadeExportTask(viewer_node_, generate_params());
 
 	if (export_bkg_box_->isChecked()) {
 		// Send to TaskManager to export in background
