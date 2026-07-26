@@ -27,7 +27,7 @@ namespace
 /**
  * @brief No-op reporter used when no UI factory is registered
  *
- * Never emits cancelled(), so processing always continues.
+ * Never reports cancellation, so processing always continues.
  */
 class NullPluginProgressReporter : public PluginProgressReporter {
 public:

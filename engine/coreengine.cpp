@@ -178,7 +178,7 @@ void EngineCore::declare_types_for_qt()
 	qRegisterMetaType<olive::AudioVisualWaveform>();
 	qRegisterMetaType<olive::VideoParams>();
 	qRegisterMetaType<olive::VideoParams::Interlacing>();
-	qRegisterMetaType<olive::MainWindowLayoutInfo>();
+	qRegisterMetaType<olive::SerializedLayoutInfo>();
 	qRegisterMetaType<olive::RenderTicketPtr>();
 }
 

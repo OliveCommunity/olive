@@ -1,8 +1,7 @@
 /***
 
-  Olive - Non-Linear Video Editor
-  Copyright (C) 2022 Olive Team
-  Modifications Copyright (C) 2025 mikesolar
+  Oak - Non-Linear Video Editor
+  Copyright (C) 2026 Oak Team
 
   This program is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -19,13 +18,9 @@
 
 ***/
 
-#ifndef OAK_MANAGEDCOLOR_H
-#define OAK_MANAGEDCOLOR_H
+#include <Cocoa/Cocoa.h>
 
-// ManagedColor has moved to application code
-// (app/widget/manageddisplay/colorprocessorhandle.h) as part of the C ABI
-// migration: it is a pure UI value type that the engine never uses. This
-// header is intentionally left empty (the file is kept so the existing
-// build rules keep working) and must not be included by new code.
-
-#endif // OAK_MANAGEDCOLOR_H
+void HideWorkerDockIcon()
+{
+	[NSApp setActivationPolicy:NSApplicationActivationPolicyProhibited];
+}

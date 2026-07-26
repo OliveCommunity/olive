@@ -439,17 +439,16 @@ void OlivePluginInstance::progressStart(const std::string &message,
 
 	if (progress_reporter_) {
 		progress_reporter_->close();
-		progress_reporter_->deleteLater();
+		progress_reporter_.reset();
 	}
 
 	QString dialog_message = message.empty() ? QStringLiteral("Processing...") :
 											   QString::fromStdString(message);
 
-	progress_reporter_ = create_plugin_progress_reporter(
-		dialog_message, QStringLiteral("OpenFX"));
-	QObject::connect(progress_reporter_, &PluginProgressReporter::cancelled,
-					 progress_reporter_,
-					 [this]() { progress_cancelled_ = true; });
+	progress_reporter_.reset(create_plugin_progress_reporter(
+		dialog_message, QStringLiteral("OpenFX")));
+	progress_reporter_->set_cancel_callback(
+		[this](void *) { progress_cancelled_ = true; }, nullptr);
 	progress_reporter_->show();
 }
 
@@ -460,7 +459,7 @@ void OlivePluginInstance::progressEnd()
 
 	if (progress_reporter_) {
 		progress_reporter_->close();
-		progress_reporter_->deleteLater();
+		progress_reporter_.reset();
 	}
 }
 

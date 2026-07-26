@@ -23,7 +23,7 @@
 #define OAK_PROJECTLOADBASETASK_H
 
 #include "node/project.h"
-#include "node/project/serializer/mainwindowlayoutinfo.h"
+#include "node/project/serializer/serializedlayoutinfo.h"
 #include "task/task.h"
 
 namespace olive
@@ -44,7 +44,7 @@ public:
 		return filename_;
 	}
 
-	const MainWindowLayoutInfo &get_loaded_layout() const
+	const SerializedLayoutInfo &get_loaded_layout() const
 	{
 		return layout_;
 	}
@@ -52,7 +52,7 @@ public:
 protected:
 	Project *project_;
 
-	MainWindowLayoutInfo layout_;
+	SerializedLayoutInfo layout_;
 
 private:
 	QString filename_;

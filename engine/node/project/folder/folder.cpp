@@ -25,7 +25,6 @@
 #include "node/nodeundo.h"
 #include "node/project/footage/footage.h"
 #include "node/project/sequence/sequence.h"
-#include "ui/icons/icons.h"
 
 namespace olive
 {
@@ -45,7 +44,7 @@ Folder::Folder()
 QVariant Folder::data(const DataType &d) const
 {
 	if (d == icon) {
-		return icon::folder;
+		return QStringLiteral("folder");
 	}
 
 	return super::data(d);

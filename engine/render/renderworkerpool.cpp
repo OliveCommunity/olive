@@ -446,6 +446,12 @@ bool RenderWorkerPool::submit_frame(
 
 	ticket->moveToThread(this);
 
+	// Mark the ticket running the moment it is accepted for rendering.
+	// Otherwise there is a window between dispatch and worker pickup where the
+	// ticket still appears idle, and clear_single_frame_renders() -- which only
+	// spares running tickets -- would cancel a frame the viewer just requested.
+	ticket->start();
+
 	QMutexLocker locker(&mutex_);
 	queue_.push_back(job);
 	wait_.wakeOne();

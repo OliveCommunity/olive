@@ -31,8 +31,12 @@
 namespace olive
 {
 
+#ifndef OAK_CONFIG
 #define OAK_CONFIG(x) Config::current()[QStringLiteral(x)]
+#endif
+#ifndef OAK_CONFIG_STR
 #define OAK_CONFIG_STR(x) Config::current()[x]
+#endif
 
 class Config {
 public:

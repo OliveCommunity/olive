@@ -33,7 +33,7 @@
 #include "node/project/footage/footage.h"
 #include "node/project.h"
 #include "node/project/sequence/sequence.h"
-#include "node/project/serializer/mainwindowlayoutinfo.h"
+#include "node/project/serializer/serializedlayoutinfo.h"
 #include "task/task.h"
 #include "tool/tool.h"
 #include "undo/undostack.h"
@@ -304,7 +304,7 @@ public:
 	 * @brief Handler applying a loaded main window layout after a project load
 	 */
 	using LoadLayoutHandler =
-		std::function<void(const MainWindowLayoutInfo &layout)>;
+		std::function<void(const SerializedLayoutInfo &layout)>;
 	void set_load_layout_handler(LoadLayoutHandler handler);
 
 	/**
@@ -319,6 +319,17 @@ public:
 	 * @brief Removes a project from the recently opened list (e.g. if it no longer exists)
 	 */
 	void remove_recently_opened_project(int index);
+
+	/**
+	 * @brief Currently open project (may be nullptr)
+	 *
+	 * Read accessor for the C ABI facade (oakengine_app_open_project());
+	 * the UI layer used to read the protected member directly.
+	 */
+	Project *open_project() const
+	{
+		return open_project_;
+	}
 
 #ifdef USE_OTIO
 	/**
@@ -410,6 +421,26 @@ public slots:
 	bool show_otio_import_dialog(const QList<Sequence *> &sequences);
 #endif
 
+	void add_recovery_project_from_task(Task *task);
+
+public:
+	/**
+	 * @brief Adds a project to the "open projects" list
+	 *
+	 * (Public for the C ABI facade; was protected while olive::Core derived
+	 * from this class.)
+	 */
+	void add_open_project(olive::Project *p, bool add_to_recents = false);
+
+	bool add_open_project_from_task(Task *task, bool add_to_recents);
+
+	void set_active_project(Project *p);
+
+	/**
+	 * @brief Returns the filename of the autorecovery index
+	 */
+	static QString get_auto_recovery_index_filename();
+
 signals:
 	/**
 	 * @brief Signal emitted when the tool is changed from somewhere
@@ -472,25 +503,11 @@ signals:
 
 protected:
 	/**
-	 * @brief Adds a project to the "open projects" list
-	 */
-	void add_open_project(olive::Project *p, bool add_to_recents = false);
-
-	bool add_open_project_from_task(Task *task, bool add_to_recents);
-
-	void set_active_project(Project *p);
-
-	/**
 	 * @brief Currently open project
 	 *
 	 * Protected so the UI layer (olive::Core) can read it.
 	 */
 	Project *open_project_;
-
-	static QString get_auto_recovery_index_filename();
-
-protected slots:
-	void add_recovery_project_from_task(Task *task);
 
 private:
 	/**

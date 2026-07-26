@@ -37,7 +37,6 @@
 #include "node/color/colormanager/colormanager.h"
 #include "node/project.h"
 #include "render/job/footagejob.h"
-#include "ui/icons/icons.h"
 
 namespace olive
 {
@@ -613,18 +612,18 @@ QVariant Footage::data(const DataType &d) const
 
 			if (s.is_valid() &&
 				s.video_type() != VideoParams::k_video_type_still) {
-				return icon::video;
+				return QStringLiteral("video");
 			} else if (has_enabled_audio_streams()) {
-				return icon::audio;
+				return QStringLiteral("audio");
 			} else if (s.is_valid() &&
 					   s.video_type() == VideoParams::k_video_type_still) {
-				return icon::image;
+				return QStringLiteral("image");
 			} else if (has_enabled_subtitle_streams()) {
-				return icon::subtitles;
+				return QStringLiteral("subtitles");
 			}
 		}
 
-		return icon::error;
+		return QStringLiteral("error");
 	}
 	case tooltip: {
 		if (valid_) {

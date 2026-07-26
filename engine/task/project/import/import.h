@@ -37,12 +37,17 @@ class ProjectImportTask : public Task {
 	Q_OBJECT
 public:
 	ProjectImportTask(Folder *folder, const QStringList &filenames);
+	~ProjectImportTask() override;
 
 	const int &get_file_count() const;
 
-	MultiUndoCommand *get_command() const
+	/** Take ownership of the import command. After this call the task no
+	 *  longer owns (and will not delete) the returned command. */
+	MultiUndoCommand *take_command()
 	{
-		return command_;
+		MultiUndoCommand *c = command_;
+		command_ = nullptr;
+		return c;
 	}
 
 	const QStringList &get_invalid_files() const

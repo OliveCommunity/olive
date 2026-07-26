@@ -26,7 +26,7 @@
 
 #include "common/define.h"
 #include "node/project.h"
-#include "node/project/serializer/mainwindowlayoutinfo.h"
+#include "node/project/serializer/serializedlayoutinfo.h"
 #include "typeserializer.h"
 
 namespace olive
@@ -80,7 +80,7 @@ public:
 
 		SerializedKeyframes keyframes;
 
-		MainWindowLayoutInfo layout;
+		SerializedLayoutInfo layout;
 
 		QVector<Node *> nodes;
 
@@ -173,11 +173,11 @@ public:
 			return type_;
 		}
 
-		const MainWindowLayoutInfo &get_layout() const
+		const SerializedLayoutInfo &get_layout() const
 		{
 			return layout_;
 		}
-		void set_layout(const MainWindowLayoutInfo &layout)
+		void set_layout(const SerializedLayoutInfo &layout)
 		{
 			layout_ = layout;
 		}
@@ -226,7 +226,7 @@ public:
 
 		QString filename_;
 
-		MainWindowLayoutInfo layout_;
+		SerializedLayoutInfo layout_;
 
 		QVector<Node *> only_serialize_nodes_;
 

@@ -23,7 +23,6 @@
 
 #include <QThread>
 
-#include "ui/icons/icons.h"
 #include "timeline/timelineundogeneral.h"
 
 namespace olive
@@ -81,7 +80,7 @@ void Sequence::add_default_nodes(MultiUndoCommand *command)
 QVariant Sequence::data(const DataType &d) const
 {
 	if (d == icon) {
-		return icon::sequence;
+		return QStringLiteral("sequence");
 	}
 
 	return super::data(d);

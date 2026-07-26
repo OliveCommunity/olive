@@ -46,6 +46,11 @@ ProjectImportTask::ProjectImportTask(Folder *folder,
 	set_title(tr("Importing %n file(s)", nullptr, file_count_));
 }
 
+ProjectImportTask::~ProjectImportTask()
+{
+	delete command_;
+}
+
 const int &ProjectImportTask::get_file_count() const
 {
 	return file_count_;
