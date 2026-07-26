@@ -210,3 +210,19 @@ grep -E '"(node|render|timeline|undo|task|pluginSupport)/'`）。不产生
 4. 更新 `plans/riir.md` 状态（边界已纯 → 可进 Step 1 拆分）、
    `facade-migration-roadmap.md` R7 批次记录。
 5. 向用户报告，由用户宣布进入 riir.md §4 的模块拆分阶段。
+
+---
+
+## 状态：R7 已完成（eb634b53e，2026-07-27）
+
+- R7-A ✅ display.h 已按 §A.2 契约重写（POD + 句柄 retain/free），
+  app TexturePtr/FramePtr 清零。
+- R7-B ✅ liboakengine.so 导出 3486 → 19（version script；19 个为
+  oakgl/oakvulkan dlopen 插件 ABI，ver 文件内注释钉死）。
+- 复核修复 1 处：viewer.cpp 生产端推裸 `void *`、消费端解
+  `OakSharedBufferPtr` 的类型不匹配（vulkan 显示路径全挂），
+  已改为 oak_make_shared_frame/texture(retain)。
+- R7-C（app 的 ~40 个 engine C++ 头清理）未做，转入 riir/ 模块
+  拆分阶段顺带处理（M 系列手册的适配头天然覆盖）。
+- 验收：构建 0 error、ctest 45/45、双二进制 nm U _ZN5olive = 0。
+  **RIIR 模块拆分（plans/riir/ M1-M9）解锁。**
