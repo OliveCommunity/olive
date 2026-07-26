@@ -28,8 +28,12 @@
 #include <QMessageBox>
 
 #include "node/project.h"
+#include "oakengine/color.h"
+#include "widget/manageddisplay/colorprocessorhandle.h"
 #include "oakengine/footage.h"
 #include "oakengine/node.h"
+#include "oakengine/viewer.h"
+#include "oakengine/videoparams.h"
 
 namespace olive
 {
@@ -46,7 +50,10 @@ VideoStreamProperties::VideoStreamProperties(Footage *footage, int video_index)
 
 	video_layout->addWidget(new QLabel(tr("Pixel Aspect:")), row, 0);
 
-	VideoParams vp = footage_->get_video_params(video_index_);
+	oak_video_params vpod;
+	oakengine_viewer_get_video_params(
+		reinterpret_cast<const OakEngineNode *>(footage_), video_index_,
+		&vpod);
 
 	// Stream override values come through the liboakengine C ABI facade;
 	// layout-only conditions (channel count, video type) stay direct reads.
@@ -85,10 +92,13 @@ VideoStreamProperties::VideoStreamProperties(Footage *footage, int video_index)
 
 	// The dropdown's color space list comes through the facade (same list
 	// the engine's color config reports).
+	OakEngineColorManager *cm = oakengine_color_manager_from_project(
+		reinterpret_cast<OakEngineProject *>(footage_->project()));
 	video_color_space_->addItem(tr("Default (%1)")
-									.arg(footage_->project()
-											 ->color_manager()
-											 ->get_default_input_color_space()));
+									.arg(oak_query_string([cm](char *buf, int size) {
+										return oakengine_color_manager_default_input_color_space(
+											cm, buf, size);
+									})));
 
 	const int colorspace_count =
 		oakengine_footage_colorspace_count(facade_handle);
@@ -110,14 +120,14 @@ VideoStreamProperties::VideoStreamProperties(Footage *footage, int video_index)
 
 	color_range_combo_ = new QComboBox();
 	color_range_combo_->addItem(tr("Limited (16-235)"),
-								VideoParams::k_color_range_limited);
+								0);
 	color_range_combo_->addItem(tr("Full (0-255)"),
-								VideoParams::k_color_range_full);
+								1);
 	color_range_combo_->setCurrentIndex(color_range);
 
 	video_layout->addWidget(color_range_combo_, row, 1);
 
-	if (vp.channel_count() == VideoParams::k_rgba_channel_count) {
+	if (oakengine_video_params_internal_channel_count() == 4) {
 		row++;
 
 		video_premultiply_alpha_ = new QCheckBox(tr("Premultiplied Alpha"));
@@ -127,7 +137,7 @@ VideoStreamProperties::VideoStreamProperties(Footage *footage, int video_index)
 
 	row++;
 
-	if (vp.video_type() == VideoParams::k_video_type_image_sequence) {
+	if (vpod.video_type == 2) {
 		QGroupBox *imgseq_group = new QGroupBox(tr("Image Sequence"));
 		QGridLayout *imgseq_layout = new QGridLayout(imgseq_group);
 
@@ -169,7 +179,7 @@ VideoStreamProperties::VideoStreamProperties(Footage *footage, int video_index)
 	oakengine_footage_free(facade_handle);
 }
 
-void VideoStreamProperties::accept(MultiUndoCommand *parent)
+void VideoStreamProperties::accept(void *parent)
 {
 	Q_UNUSED(parent)
 
@@ -182,17 +192,40 @@ void VideoStreamProperties::accept(MultiUndoCommand *parent)
 		set_colorspace = video_color_space_->currentText();
 	}
 
-	VideoParams vp = footage_->get_video_params(video_index_);
+	// Fetch current values through the facade (avoids the inline
+	// ViewerOutput::get_video_params() which references k_video_params_input).
+	char vp_colorspace[256];
+	vp_colorspace[0] = '\0';
+	int vp_color_range = 0, vp_interlacing = 0, vp_premultiplied = 0;
+	oakengine_footage_get_video_stream_overrides(
+		facade_handle, video_index_, vp_colorspace, sizeof(vp_colorspace),
+		&vp_color_range, &vp_interlacing, &vp_premultiplied);
+
+	int vp_par_num = 1, vp_par_den = 1;
+	oakengine_footage_get_pixel_aspect(facade_handle, video_index_,
+									   &vp_par_num, &vp_par_den);
+
+	oak_video_params vpod;
+	oakengine_viewer_get_video_params(
+		reinterpret_cast<const OakEngineNode *>(footage_), video_index_,
+		&vpod);
+
+	int64_t vp_start_time = 0, vp_duration = 0;
+	int vp_fr_num = 0, vp_fr_den = 1;
+	oakengine_footage_get_image_sequence_params(
+		facade_handle, video_index_, &vp_start_time, &vp_duration,
+		&vp_fr_num, &vp_fr_den);
 
 	// Write every override through the facade (each call is one undoable
 	// command on the shared undo stack, replacing this dialog's own undo
 	// command classes with identical semantics).
 	if ((video_premultiply_alpha_ &&
-		 video_premultiply_alpha_->isChecked() != vp.premultiplied_alpha()) ||
-		set_colorspace != vp.colorspace() ||
+		 video_premultiply_alpha_->isChecked() != (vp_premultiplied != 0)) ||
+		set_colorspace != QString::fromUtf8(vp_colorspace) ||
 		static_cast<VideoParams::Interlacing>(
-			video_interlace_combo_->currentIndex()) != vp.interlacing() ||
-		color_range_combo_->currentData().toInt() != vp.color_range()) {
+			video_interlace_combo_->currentIndex()) !=
+			static_cast<VideoParams::Interlacing>(vp_interlacing) ||
+		color_range_combo_->currentData().toInt() != vp_color_range) {
 		oakengine_footage_set_video_stream_overrides(
 			facade_handle, video_index_,
 			set_colorspace.toUtf8().constData(),
@@ -204,19 +237,19 @@ void VideoStreamProperties::accept(MultiUndoCommand *parent)
 	}
 
 	const Rational new_par = pixel_aspect_combo_->get_pixel_aspect_ratio();
-	if (new_par != vp.pixel_aspect_ratio()) {
+	if (new_par != Rational(vp_par_num, vp_par_den)) {
 		oakengine_footage_set_pixel_aspect(facade_handle, video_index_,
 										   new_par.numerator(),
 										   new_par.denominator());
 	}
 
-	if (vp.video_type() == VideoParams::k_video_type_image_sequence) {
+	if (vpod.video_type == 2) {
 		int64_t new_dur =
 			imgseq_end_time_->get_value() - imgseq_start_time_->get_value() + 1;
 
-		if (vp.start_time() != imgseq_start_time_->get_value() ||
-			vp.duration() != new_dur ||
-			vp.frame_rate() != imgseq_frame_rate_->get_frame_rate()) {
+		if (vp_start_time != imgseq_start_time_->get_value() ||
+			vp_duration != new_dur ||
+			Rational(vp_fr_num, vp_fr_den) != imgseq_frame_rate_->get_frame_rate()) {
 			const Rational fr = imgseq_frame_rate_->get_frame_rate();
 			oakengine_footage_set_image_sequence_params(
 				facade_handle, video_index_,
@@ -230,8 +263,11 @@ void VideoStreamProperties::accept(MultiUndoCommand *parent)
 
 bool VideoStreamProperties::sanity_check()
 {
-	if (footage_->get_video_params(video_index_).video_type() ==
-		VideoParams::k_video_type_image_sequence) {
+	oak_video_params vpod;
+	oakengine_viewer_get_video_params(
+		reinterpret_cast<const OakEngineNode *>(footage_), video_index_,
+		&vpod);
+	if (vpod.video_type == 2) {
 		if (imgseq_start_time_->get_value() >= imgseq_end_time_->get_value()) {
 			QMessageBox::critical(
 				this, tr("Invalid Configuration"),

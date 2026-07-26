@@ -22,6 +22,7 @@
 #include <QString>
 #include "ofxhImageEffect.h"
 #include "node/plugins/plugin.h"
+#include "pluginSupport/pluginprogressreporter.h"
 #include "render/videoparams.h"
 #include "undo/undocommand.h"
 
@@ -228,7 +229,7 @@ private:
 	QString edit_label_;
 	QString edit_first_label_;
 	int edit_param_count_ = 0;
-	QPointer<PluginProgressReporter> progress_reporter_;
+	std::unique_ptr<PluginProgressReporter> progress_reporter_;
 	bool progress_cancelled_ = false;
 	bool progress_active_ = false;
 	bool open_gl_enabled_ = false;

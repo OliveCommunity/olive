@@ -29,8 +29,11 @@
 #include <QtMath>
 
 #include "common/decibel.h"
+#include "common/nodevaluehandle.h"
+#include "common/oakvaluehelper.h"
 #include "common/qtutils.h"
 #include "oakengine/node.h"
+#include "widget/keyframeview/keyframehandle.h"
 
 namespace olive
 {
@@ -441,22 +444,27 @@ void CurveView::first_chance_mouse_move(QMouseEvent *event)
 
 	// If the user is NOT holding control, we set the other handle to the exact negative of this handle
 	QPointF new_opposing_pos;
-	NodeKeyframe::BezierType opposing_type =
-		NodeKeyframe::get_opposing_bezier_type(dragging_bezier_pt_->type);
+	int opposing_type =
+		oakengine_keyframe_opposing_bezier_type(dragging_bezier_pt_->type);
 
 	if (!(event->modifiers() & Qt::ControlModifier)) {
 		new_opposing_pos = generate_bezier_control_position(
-			opposing_type, dragging_bezier_point_opposing_start_,
+			static_cast<NodeKeyframe::BezierType>(opposing_type),
+			dragging_bezier_point_opposing_start_,
 			-mouse_diff_scaled);
 	} else {
 		new_opposing_pos = dragging_bezier_point_opposing_start_;
 	}
 
-	dragging_bezier_pt_->keyframe->set_bezier_control(dragging_bezier_pt_->type,
-													  new_bezier_pos);
+	oakengine_keyframe_set_bezier_point_live(
+		reinterpret_cast<OakEngineKeyframe *>(dragging_bezier_pt_->keyframe),
+		dragging_bezier_pt_->type,
+		new_bezier_pos.x(), new_bezier_pos.y());
 
-	dragging_bezier_pt_->keyframe->set_bezier_control(opposing_type,
-													  new_opposing_pos);
+	oakengine_keyframe_set_bezier_point_live(
+		reinterpret_cast<OakEngineKeyframe *>(dragging_bezier_pt_->keyframe),
+		opposing_type,
+		new_opposing_pos.x(), new_opposing_pos.y());
 
 	redraw();
 }
@@ -484,13 +492,13 @@ void CurveView::first_chance_mouse_release(QMouseEvent *event)
 		dragging_bezier_point_start_.y());
 
 	if (!(event->modifiers() & Qt::ControlModifier)) {
-		auto opposing_type =
-			NodeKeyframe::get_opposing_bezier_type(dragging_bezier_pt_->type);
-		const QPointF opposing_current = key->bezier_control(opposing_type);
+		int opposing_type =
+			oakengine_keyframe_opposing_bezier_type(dragging_bezier_pt_->type);
+		const QPointF opposing_current = key->bezier_control(static_cast<NodeKeyframe::BezierType>(opposing_type));
 		oakengine_node_keyframe_set_bezier_point(
 			handle, key->input().toUtf8().constData(), key->element(), ts,
 			key->track(),
-			(opposing_type == NodeKeyframe::k_in_handle) ? 0 : 1,
+			opposing_type,
 			opposing_current.x(), opposing_current.y(),
 			dragging_bezier_point_opposing_start_.x(),
 			dragging_bezier_point_opposing_start_.y());
@@ -516,7 +524,10 @@ void CurveView::keyframe_drag_move(QMouseEvent *event, QString &tip)
 		// Lock to X axis only and set original values on all keys
 		for (size_t i = 0; i < get_selected_keyframes().size(); i++) {
 			NodeKeyframe *key = get_selected_keyframes().at(i);
-			key->set_value(drag_keyframe_values_.at(i));
+			oak_node_value v;
+			track_value_to_c(key->parent()->get_input_data_type(key->input()),
+							 drag_keyframe_values_.at(i), &v);
+			key_set_value_live(key, v);
 		}
 		return;
 	}
@@ -559,11 +570,16 @@ void CurveView::keyframe_drag_move(QMouseEvent *event, QString &tip)
 	for (size_t i = 0; i < get_selected_keyframes().size(); i++) {
 		NodeKeyframe *key = get_selected_keyframes().at(i);
 		FloatSlider::DisplayType display = get_float_display_type_from_keyframe(key);
-		key->set_value(FloatSlider::transform_display_to_value(
-			FloatSlider::transform_value_to_display(
-				drag_keyframe_values_.at(i).toDouble(), display) -
-				scaled_diff,
-			display));
+		oak_node_value v;
+		track_value_to_c(
+			key->parent()->get_input_data_type(key->input()),
+			FloatSlider::transform_display_to_value(
+				FloatSlider::transform_value_to_display(
+					drag_keyframe_values_.at(i).toDouble(), display) -
+					scaled_diff,
+				display),
+			&v);
+		key_set_value_live(key, v);
 	}
 
 	NodeKeyframe *tip_item = get_selected_keyframes().front();
@@ -580,7 +596,7 @@ void CurveView::keyframe_drag_move(QMouseEvent *event, QString &tip)
 }
 
 void CurveView::keyframe_drag_release(QMouseEvent *event,
-									MultiUndoCommand *command)
+									void *command)
 {
 	Q_UNUSED(command) // the facade pushes its own single command below
 
@@ -791,12 +807,18 @@ double CurveView::get_offset_from_keyframe(NodeKeyframe *key)
 	if (node->has_input_property(input, QStringLiteral("offset"))) {
 		QVariant v = node->get_input_property(input, QStringLiteral("offset"));
 
-		// NOTE: Implement getting correct offset for the track based on the data type
-		QVector<QVariant> track_vals =
-			NodeValue::split_normal_value_into_track_values(
-				node->get_input_data_type(input), v);
-
-		return track_vals.at(key->track()).toDouble();
+		const NodeValue::Type dt = node->get_input_data_type(input);
+		const int c_type = node_value_type_to_c(dt);
+		oak_node_value normal;
+		const int tc = oakengine_node_value_keyframe_track_count(c_type);
+		QVector<oak_node_value> track_vals(tc);
+		if (QVariantToOakNodeValue(dt, v, &normal) &&
+			oakengine_node_value_split_to_tracks(
+				c_type, &normal, track_vals.data(), tc) == OAKENGINE_OK &&
+			key->track() >= 0 && key->track() < tc) {
+			return track_vals.at(key->track()).f[0];
+		}
+		return 0;
 	}
 
 	return 0;

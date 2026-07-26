@@ -21,10 +21,12 @@
 #include "render/rendermanager.h"
 #include "task/task.h"
 #include "task/taskmanager.h"
+#include "oakengine/task.h"
+#include "engineeventbridge.h"
 #include "widget/menu/menushared.h"
 #include "window/mainwindow/mainstatusbar.h"
 #include "window/mainwindow/mainwindow.h"
-#include "node/project/serializer/mainwindowlayoutinfo.h"
+#include "node/project/serializer/serializedlayoutinfo.h"
 
 using namespace olive;
 
@@ -47,7 +49,7 @@ protected:
 
 } // namespace
 
-TEST(MainWindowLayoutInfo, AccessorsStoreAndRetrieve)
+TEST(SerializedLayoutInfo, AccessorsStoreAndRetrieve)
 {
 	Project project;
 	project.initialize();
@@ -58,48 +60,49 @@ TEST(MainWindowLayoutInfo, AccessorsStoreAndRetrieve)
 	auto *viewer = new ViewerOutput();
 	viewer->setParent(&project);
 
-	MainWindowLayoutInfo info;
-	EXPECT_TRUE(info.open_folders().empty());
-	EXPECT_TRUE(info.open_sequences().empty());
-	EXPECT_TRUE(info.open_viewers().empty());
-	EXPECT_TRUE(info.panel_data().empty());
-	EXPECT_TRUE(info.state().isEmpty());
+	SerializedLayoutInfo info;
+	EXPECT_TRUE(info.open_folders.empty());
+	EXPECT_TRUE(info.open_sequences.empty());
+	EXPECT_TRUE(info.open_viewers.empty());
+	EXPECT_TRUE(info.panel_data.empty());
+	EXPECT_TRUE(info.state.isEmpty());
 
-	info.add_folder(folder);
-	info.add_sequence(sequence);
-	info.add_viewer(viewer);
+	info.open_folders.push_back(folder);
+	info.open_sequences.push_back(sequence);
+	info.open_viewers.push_back(viewer);
 
-	ASSERT_EQ(info.open_folders().size(), 1);
-	EXPECT_EQ(info.open_folders().front(), folder);
-	ASSERT_EQ(info.open_sequences().size(), 1);
-	EXPECT_EQ(info.open_sequences().front(), sequence);
-	ASSERT_EQ(info.open_viewers().size(), 1);
-	EXPECT_EQ(info.open_viewers().front(), viewer);
+	ASSERT_EQ(info.open_folders.size(), 1);
+	EXPECT_EQ(info.open_folders.front(), folder);
+	ASSERT_EQ(info.open_sequences.size(), 1);
+	EXPECT_EQ(info.open_sequences.front(), sequence);
+	ASSERT_EQ(info.open_viewers.size(), 1);
+	EXPECT_EQ(info.open_viewers.front(), viewer);
 
 	PanelWidget::Info data;
 	data[QStringLiteral("key")] = QStringLiteral("value");
-	info.set_panel_data(QStringLiteral("panel_a"), data);
-	ASSERT_EQ(info.panel_data().size(), 1);
-	EXPECT_EQ(info.panel_data()
+	info.panel_data[QStringLiteral("panel_a")] = data;
+	ASSERT_EQ(info.panel_data.size(), 1);
+	EXPECT_EQ(info.panel_data
 				  .at(QStringLiteral("panel_a"))
 				  .at(QStringLiteral("key")),
 			  QStringLiteral("value"));
 
-	// move_panel_data renames the entry
-	info.move_panel_data(QStringLiteral("panel_a"),
-						 QStringLiteral("panel_b"));
-	EXPECT_EQ(info.panel_data().count(QStringLiteral("panel_a")), 0);
-	ASSERT_EQ(info.panel_data().count(QStringLiteral("panel_b")), 1);
-	EXPECT_EQ(info.panel_data()
+	// renaming the entry moves the data
+	info.panel_data[QStringLiteral("panel_b")] =
+		info.panel_data.at(QStringLiteral("panel_a"));
+	info.panel_data.erase(QStringLiteral("panel_a"));
+	EXPECT_EQ(info.panel_data.count(QStringLiteral("panel_a")), 0);
+	ASSERT_EQ(info.panel_data.count(QStringLiteral("panel_b")), 1);
+	EXPECT_EQ(info.panel_data
 				  .at(QStringLiteral("panel_b"))
 				  .at(QStringLiteral("key")),
 			  QStringLiteral("value"));
 
-	info.set_state(QByteArray("layout-state"));
-	EXPECT_EQ(info.state(), QByteArray("layout-state"));
+	info.state = QByteArray("layout-state");
+	EXPECT_EQ(info.state, QByteArray("layout-state"));
 }
 
-TEST(MainWindowLayoutInfo, XmlRoundTripPreservesEverything)
+TEST(SerializedLayoutInfo, XmlRoundTripPreservesEverything)
 {
 	Project project;
 	project.initialize();
@@ -110,14 +113,14 @@ TEST(MainWindowLayoutInfo, XmlRoundTripPreservesEverything)
 	auto *viewer = new ViewerOutput();
 	viewer->setParent(&project);
 
-	MainWindowLayoutInfo info;
-	info.add_folder(folder);
-	info.add_sequence(sequence);
-	info.add_viewer(viewer);
+	SerializedLayoutInfo info;
+	info.open_folders.push_back(folder);
+	info.open_sequences.push_back(sequence);
+	info.open_viewers.push_back(viewer);
 	PanelWidget::Info data;
 	data[QStringLiteral("splitter")] = QStringLiteral("AAA=");
-	info.set_panel_data(QStringLiteral("TimelinePanel"), data);
-	info.set_state(QByteArray("binary\x01\x02state", 12));
+	info.panel_data[QStringLiteral("TimelinePanel")] = data;
+	info.state = QByteArray("binary\x01\x02state", 12);
 
 	QString xml;
 	QXmlStreamWriter writer(&xml);
@@ -136,32 +139,32 @@ TEST(MainWindowLayoutInfo, XmlRoundTripPreservesEverything)
 	ASSERT_TRUE(reader.readNextStartElement());
 	ASSERT_EQ(reader.name(), QStringLiteral("layout"));
 
-	MainWindowLayoutInfo loaded = MainWindowLayoutInfo::from_xml(&reader, node_map);
+	SerializedLayoutInfo loaded = SerializedLayoutInfo::from_xml(&reader, node_map);
 
-	ASSERT_EQ(loaded.open_folders().size(), 1);
-	EXPECT_EQ(loaded.open_folders().front(), folder);
-	ASSERT_EQ(loaded.open_sequences().size(), 1);
-	EXPECT_EQ(loaded.open_sequences().front(), sequence);
+	ASSERT_EQ(loaded.open_folders.size(), 1);
+	EXPECT_EQ(loaded.open_folders.front(), folder);
+	ASSERT_EQ(loaded.open_sequences.size(), 1);
+	EXPECT_EQ(loaded.open_sequences.front(), sequence);
 
 	// Open viewers must survive the round trip too
-	ASSERT_EQ(loaded.open_viewers().size(), 1);
-	EXPECT_EQ(loaded.open_viewers().front(), viewer);
+	ASSERT_EQ(loaded.open_viewers.size(), 1);
+	EXPECT_EQ(loaded.open_viewers.front(), viewer);
 
-	EXPECT_EQ(loaded.state(), info.state());
+	EXPECT_EQ(loaded.state, info.state);
 
-	ASSERT_EQ(loaded.panel_data().count(QStringLiteral("TimelinePanel")), 1);
-	EXPECT_EQ(loaded.panel_data()
+	ASSERT_EQ(loaded.panel_data.count(QStringLiteral("TimelinePanel")), 1);
+	EXPECT_EQ(loaded.panel_data
 				  .at(QStringLiteral("TimelinePanel"))
 				  .at(QStringLiteral("splitter")),
 			  QStringLiteral("AAA="));
 
 	// No unknown nodes leak into the viewers list: it must contain exactly the
 	// viewer that was added, not a duplicate of the sequences list
-	EXPECT_NE(loaded.open_viewers().front(),
+	EXPECT_NE(loaded.open_viewers.front(),
 			  static_cast<ViewerOutput *>(sequence));
 }
 
-TEST(MainWindowLayoutInfo, FromXmlSkipsUnknownElementsAndNodes)
+TEST(SerializedLayoutInfo, FromXmlSkipsUnknownElementsAndNodes)
 {
 	const QString xml = QStringLiteral(
 		"<layout version=\"1\">"
@@ -177,17 +180,17 @@ TEST(MainWindowLayoutInfo, FromXmlSkipsUnknownElementsAndNodes)
 	ASSERT_TRUE(reader.readNextStartElement());
 	ASSERT_EQ(reader.name(), QStringLiteral("layout"));
 
-	MainWindowLayoutInfo info = MainWindowLayoutInfo::from_xml(&reader, {});
+	SerializedLayoutInfo info = SerializedLayoutInfo::from_xml(&reader, {});
 
 	// Unknown pointers resolve to null but are still listed
-	ASSERT_EQ(info.open_folders().size(), 1);
-	EXPECT_EQ(info.open_folders().front(), nullptr);
-	ASSERT_EQ(info.open_sequences().size(), 1);
-	EXPECT_EQ(info.open_sequences().front(), nullptr);
-	ASSERT_EQ(info.open_viewers().size(), 1);
-	EXPECT_EQ(info.open_viewers().front(), nullptr);
-	EXPECT_EQ(info.state(), QByteArray("ABC"));
-	EXPECT_TRUE(info.panel_data().empty());
+	ASSERT_EQ(info.open_folders.size(), 1);
+	EXPECT_EQ(info.open_folders.front(), nullptr);
+	ASSERT_EQ(info.open_sequences.size(), 1);
+	EXPECT_EQ(info.open_sequences.front(), nullptr);
+	ASSERT_EQ(info.open_viewers.size(), 1);
+	EXPECT_EQ(info.open_viewers.front(), nullptr);
+	EXPECT_EQ(info.state, QByteArray("ABC"));
+	EXPECT_TRUE(info.panel_data.empty());
 }
 
 TEST(MainWindowStatusBar, ConstructionDefaults)
@@ -202,29 +205,36 @@ TEST(MainWindowStatusBar, ConstructionDefaults)
 
 TEST(MainWindowStatusBar, ReflectsTaskManagerState)
 {
-	TaskManager manager;
+	// The status bar now uses the global TaskManager singleton via the facade.
+	if (!TaskManager::instance()) {
+		TaskManager::create_instance();
+	}
 
+	EngineEventBridge bridge;
 	MainStatusBar bar;
 	bar.show();
 	auto *progress = bar.findChild<QProgressBar *>();
 	ASSERT_NE(progress, nullptr);
 
-	bar.connect_task_manager(&manager);
+	bar.connect_task_manager(&bridge);
 
 	auto *task = new DummyTask();
-	manager.add_task(task);
+	oakengine_task_manager_add(
+		reinterpret_cast<OakEngineTask *>(task));
 
 	// One running task shows its title and the progress bar
 	EXPECT_EQ(bar.currentMessage(), QStringLiteral("Status Test Task"));
 	EXPECT_TRUE(progress->isVisible());
 
-	// Progress signals are forwarded to the bar
+	// Progress signals are forwarded to the bar through the facade event bridge
 	emit task->progress_changed(0.5);
-	EXPECT_EQ(progress->value(), 50);
+	QTRY_COMPARE_WITH_TIMEOUT(progress->value(), 50, 1000);
 
 	// When the task list empties, the bar hides and the message clears
-	manager.cancel_task_and_wait(task);
-	QTRY_COMPARE_WITH_TIMEOUT(manager.get_task_count(), 0, 2000);
+	oakengine_task_manager_cancel(
+		reinterpret_cast<OakEngineTask *>(task));
+	// Wait for the deferred delete on the task (facade cancel removes it)
+	QTRY_COMPARE_WITH_TIMEOUT(oakengine_task_manager_count(), 0, 2000);
 	EXPECT_TRUE(bar.currentMessage().isEmpty());
 	EXPECT_FALSE(progress->isVisible());
 	EXPECT_EQ(progress->value(), 0);
@@ -300,7 +310,7 @@ TEST(MainWindow, ConstructsOffscreenWithPanelsAndMenus)
 		AudioManager::create_instance();
 	}
 	if (!Core::instance()) {
-		new Core(Core::CoreParams()); // intentionally leaked
+		new Core(); // intentionally leaked
 	}
 	KDDockWidgets::initFrontend(KDDockWidgets::FrontendType::QtWidgets);
 

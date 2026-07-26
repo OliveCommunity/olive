@@ -26,13 +26,29 @@
 
 #include "common/qtutils.h"
 #include "dialog/speedduration/speeddurationdialog.h"
-#include "node/group/group.h"
 #include "node/project/sequence/sequence.h"
 #include "oakengine/node.h"
 #include "pluginSupport/oliveplugininstance.h"
 
 namespace olive
 {
+
+static NodeInput ResolveGroupInput(const NodeInput &input)
+{
+	OakEngineNode *node = reinterpret_cast<OakEngineNode *>(input.node());
+	char input_id[256];
+	int element = input.element();
+	const QByteArray utf = input.input().toUtf8();
+	memcpy(input_id, utf.constData(), qMin<int>(sizeof(input_id) - 1, utf.size()));
+	input_id[sizeof(input_id) - 1] = '\0';
+	if (oakengine_group_resolve_input(
+			node, input_id, element,
+			&node, input_id, sizeof(input_id), &element) != OAKENGINE_OK) {
+		return input;
+	}
+	return NodeInput(reinterpret_cast<Node *>(node),
+					 QString::fromUtf8(input_id), element);
+}
 
 const int NodeParamViewItemBody::k_key_control_column = 10;
 const int NodeParamViewItemBody::k_array_insert_column = k_key_control_column - 1;
@@ -59,21 +75,32 @@ NodeParamViewItem::NodeParamViewItem(
 	, create_checkboxes_(create_checkboxes)
 	, ctx_(nullptr)
 	, time_target_(nullptr)
+	, bridge_(new EngineEventBridge(this))
 {
 	node_->retranslate();
 
 	// Create and add contents widget
 	recreate_body();
 
-	connect(node_, &Node::label_changed, this, &NodeParamViewItem::retranslate);
-	connect(node_, &Node::input_array_size_changed, this,
-			&NodeParamViewItem::input_array_size_changed);
-	connect(node_, &Node::message_count_changed, this,
-			&NodeParamViewItem::update_message_panel);
+	bridge_->subscribe(reinterpret_cast<void *>(node_),
+					   OAKENGINE_EVENT_NODE_LABEL_CHANGED);
+	bridge_->subscribe(reinterpret_cast<void *>(node_),
+					   OAKENGINE_EVENT_NODE_INPUT_ARRAY_SIZE_CHANGED);
+	bridge_->subscribe(reinterpret_cast<void *>(node_),
+					   OAKENGINE_EVENT_NODE_MESSAGE_COUNT_CHANGED);
+	bridge_->subscribe(reinterpret_cast<void *>(node_),
+					   OAKENGINE_EVENT_NODE_INPUT_FLAGS_CHANGED);
 
-	// FIXME: Implemented to pick up when an input is set to hidden or not - DEFINITELY not a fast
-	//        way of doing this, but "fine" for now.
-	connect(node_, &Node::input_flags_changed, this,
+	connect(bridge_, &EngineEventBridge::node_label_changed, this,
+			&NodeParamViewItem::retranslate);
+	connect(bridge_, &EngineEventBridge::node_input_array_size_changed, this,
+			[this](OakEngineNode *, const QString &input, int old_sz,
+				   int new_size) {
+				emit input_array_size_changed(input, old_sz, new_size);
+			});
+	connect(bridge_, &EngineEventBridge::node_message_count_changed, this,
+			&NodeParamViewItem::update_message_panel);
+	connect(bridge_, &EngineEventBridge::node_input_flags_changed, this,
 			&NodeParamViewItem::recreate_body);
 
 	setBackgroundRole(QPalette::Window);
@@ -224,6 +251,7 @@ NodeParamViewItemBody::NodeParamViewItemBody(
 	, node_(node)
 	, time_target_(nullptr)
 	, create_checkboxes_(create_checkboxes)
+	, bridge_(new EngineEventBridge(this))
 {
 	QGridLayout *root_layout = new QGridLayout(this);
 
@@ -233,18 +261,35 @@ NodeParamViewItemBody::NodeParamViewItemBody(
 
 	QVector<Node *> connected_signals;
 
+	connect(bridge_, &EngineEventBridge::node_input_array_size_changed,
+			this, &NodeParamViewItemBody::input_array_size_changed);
+	connect(bridge_, &EngineEventBridge::node_input_connected, this,
+			[this](OakEngineNode *source, OakEngineNode *output,
+				   const QString &input, int element) {
+				edge_changed(output,
+					NodeInput(reinterpret_cast<Node *>(source), input,
+							  element));
+			});
+	connect(bridge_, &EngineEventBridge::node_input_disconnected, this,
+			[this](OakEngineNode *source, OakEngineNode *output,
+				   const QString &input, int element) {
+				edge_changed(output,
+					NodeInput(reinterpret_cast<Node *>(source), input,
+							  element));
+			});
+
 	// Create widgets all root level components
 	foreach (QString input, node->inputs()) {
 		Node *n = node;
 
-		NodeInput resolved = NodeGroup::resolve_input(NodeInput(n, input));
+		NodeInput resolved = ResolveGroupInput(NodeInput(n, input));
 		if (!connected_signals.contains(resolved.node())) {
-			connect(resolved.node(), &Node::input_array_size_changed, this,
-					&NodeParamViewItemBody::input_array_size_changed);
-			connect(resolved.node(), &Node::input_connected, this,
-					&NodeParamViewItemBody::edge_changed);
-			connect(resolved.node(), &Node::input_disconnected, this,
-					&NodeParamViewItemBody::edge_changed);
+			bridge_->subscribe(reinterpret_cast<void *>(resolved.node()),
+							   OAKENGINE_EVENT_NODE_INPUT_ARRAY_SIZE_CHANGED);
+			bridge_->subscribe(reinterpret_cast<void *>(resolved.node()),
+							   OAKENGINE_EVENT_NODE_INPUT_CONNECTED);
+			bridge_->subscribe(reinterpret_cast<void *>(resolved.node()),
+							   OAKENGINE_EVENT_NODE_INPUT_DISCONNECTED);
 
 			connected_signals.append(resolved.node());
 		}
@@ -402,7 +447,7 @@ void NodeParamViewItemBody::create_widgets(QGridLayout *layout, Node *node,
 	place_widgets_from_bridge(layout, ui_objects.widget_bridge, row);
 
 	// In case this input is a group, resolve that actual input to use for connected labels
-	NodeInput resolved = NodeGroup::resolve_input(input_ref);
+	NodeInput resolved = ResolveGroupInput(input_ref);
 
 	if (node->is_input_connectable(input)) {
 		// Create clickable label used when an input is connected
@@ -492,7 +537,7 @@ int NodeParamViewItemBody::get_element_y(NodeInput c) const
 	return lbl_center.y();
 }
 
-void NodeParamViewItemBody::edge_changed(Node *output, const NodeInput &input)
+void NodeParamViewItemBody::edge_changed(OakEngineNode *output, const NodeInput &input)
 {
 	Q_UNUSED(output)
 
@@ -509,7 +554,7 @@ void NodeParamViewItemBody::update_ui_for_edge_connection(const NodeInput &input
 	if (input_ui_map_.contains(input)) {
 		const InputUI &ui_objects = input_ui_map_[input];
 
-		bool is_connected = NodeGroup::resolve_input(input).is_connected();
+		bool is_connected = ResolveGroupInput(input).is_connected();
 
 		foreach (QWidget *w, ui_objects.widget_bridge->widgets()) {
 			w->setVisible(!is_connected);
@@ -604,7 +649,7 @@ void NodeParamViewItemBody::array_collapse_btn_pressed(bool checked)
 	if (checked) {
 		// Ensure widgets are created (the signal will be ignored if they are)
 		NodeInput resolved =
-			NodeGroup::resolve_input(NodeInput(input.node, input.input));
+			ResolveGroupInput(NodeInput(input.node, input.input));
 		input_array_size_changed_internal(input.node, input.input,
 									  resolved.get_array_size());
 	}
@@ -612,13 +657,14 @@ void NodeParamViewItemBody::array_collapse_btn_pressed(bool checked)
 	emit array_expanded_changed(checked);
 }
 
-void NodeParamViewItemBody::input_array_size_changed(const QString &input,
+void NodeParamViewItemBody::input_array_size_changed(OakEngineNode *source,
+												  const QString &input,
 												  int old_sz, int size)
 {
 	Q_UNUSED(old_sz)
 
 	NodeInputPair nip =
-		input_group_lookup_.value({ static_cast<Node *>(sender()), input });
+		input_group_lookup_.value({ reinterpret_cast<Node *>(source), input });
 
 	input_array_size_changed_internal(nip.node, nip.input, size);
 }
@@ -627,7 +673,7 @@ void NodeParamViewItemBody::array_append_clicked()
 {
 	for (auto it = array_ui_.cbegin(); it != array_ui_.cend(); it++) {
 		if (it.value().append_btn == sender()) {
-			NodeInput real_input = NodeGroup::resolve_input(
+			NodeInput real_input = ResolveGroupInput(
 				NodeInput(it.key().node, it.key().input));
 			// Through the liboakengine C ABI facade (one undoable command,
 			// same as the old NodeArrayInsertCommand push).
@@ -645,7 +691,7 @@ void NodeParamViewItemBody::array_insert_clicked()
 	for (auto it = input_ui_map_.cbegin(); it != input_ui_map_.cend(); it++) {
 		if (it.value().array_insert_btn == sender()) {
 			// Found our input and element
-			NodeInput ic = NodeGroup::resolve_input(it.key());
+			NodeInput ic = ResolveGroupInput(it.key());
 			// Through the liboakengine C ABI facade (one undoable command).
 			oakengine_node_array_insert_at(
 				reinterpret_cast<OakEngineNode *>(ic.node()),
@@ -660,7 +706,7 @@ void NodeParamViewItemBody::array_remove_clicked()
 	for (auto it = input_ui_map_.cbegin(); it != input_ui_map_.cend(); it++) {
 		if (it.value().array_remove_btn == sender()) {
 			// Found our input and element
-			NodeInput ic = NodeGroup::resolve_input(it.key());
+			NodeInput ic = ResolveGroupInput(it.key());
 			// Through the liboakengine C ABI facade (one undoable command).
 			oakengine_node_array_remove_at(
 				reinterpret_cast<OakEngineNode *>(ic.node()),

@@ -63,6 +63,24 @@ extern "C" {
 #define OAKENGINE_LOOP_MODE_CLAMP 2 /**< Hold first/last frame (olive k_loop_mode_clamp). */
 
 /**
+ * @brief Opaque preview request handle (an active render ticket for
+ * single-frame or audio-range preview).
+ */
+typedef struct OakEnginePreviewRequest OakEnginePreviewRequest;
+
+/**
+ * @brief POD for a single video frame from a preview request
+ * (borrowed data, valid until the request is freed).
+ */
+typedef struct oak_playback_frame {
+	int width;
+	int height;
+	int format;       /**< olive::PixelFormat::Format value. */
+	const void *data; /**< Planar data pointer (first plane). */
+	int linesize;     /**< Bytes per row of the first plane. */
+} oak_playback_frame;
+
+/**
  * @brief Human-readable reason for the last failed preview call on this
  * thread (buf/size convention).
  */
@@ -117,6 +135,108 @@ OAKENGINE_API int oakengine_preview_get_audio_levels(
 OAKENGINE_API int oakengine_preview_get_waveform_summary(
 	OakEngineFootage *footage, int channel, int64_t start_ts,
 	int64_t end_ts, double *min_vals, double *max_vals, int count);
+
+/* ---- R4: waveform, audio levels, cacher, preview requests ------------------ */
+
+/** @brief Maximum sample rate for waveform generation. > 0. */
+OAKENGINE_API int oakengine_waveform_max_sample_rate(void);
+
+/**
+ * @brief Analyze audio levels (linear RMS) from raw float sample data.
+ * `data` is an array of `channels` float pointers, each with `count` samples.
+ * Writes RMS values into `levels` (one per channel). Returns OAKENGINE_OK
+ * or OAKENGINE_E_INVALID on NULL/bad arguments.
+ */
+OAKENGINE_API int oakengine_audio_analyze_levels(const float *const *data,
+												 int channels, int64_t count,
+												 double *levels);
+
+/**
+ * @brief Set the preview cacher's playhead position (num/den seconds).
+ * Returns OAKENGINE_E_STATE when the cacher is not available.
+ */
+OAKENGINE_API int oakengine_preview_cacher_set_playhead(int64_t num,
+														int64_t den);
+
+/**
+ * @brief Pause or resume thumbnail generation in the cacher.
+ * Returns OAKENGINE_E_STATE when the cacher is not available.
+ */
+OAKENGINE_API int oakengine_preview_cacher_set_thumbnails_paused(int paused);
+
+/**
+ * @brief Clear pending single-frame render requests from the cacher.
+ * Returns OAKENGINE_E_STATE when the cacher is not available.
+ */
+OAKENGINE_API int
+oakengine_preview_cacher_clear_single_frame_renders(int only_finished);
+
+/**
+ * @brief Force the cacher to cache a range (num/den seconds in/out).
+ * Returns OAKENGINE_E_INVALID on NULL node.
+ */
+OAKENGINE_API int oakengine_preview_cacher_force_cache_range(
+	OakEngineNode *node, int64_t in_num, int64_t in_den, int64_t out_num,
+	int64_t out_den);
+
+/**
+ * @brief Request a single video frame at (num/den) seconds from `viewer`.
+ * Returns a request handle (caller owns it, must free) or NULL on failure.
+ */
+OAKENGINE_API OakEnginePreviewRequest *
+oakengine_preview_request_single_frame(OakEngineNode *viewer, int64_t num,
+									   int64_t den, int dry);
+
+/**
+ * @brief Request an audio range (num/den seconds in/out) from `viewer`.
+ * Returns a request handle (caller owns it, must free) or NULL on failure.
+ */
+OAKENGINE_API OakEnginePreviewRequest *
+oakengine_preview_request_audio_range(OakEngineNode *viewer, int64_t in_num,
+									  int64_t in_den, int64_t out_num,
+									  int64_t out_den);
+
+/** @brief 1 if the request is done, 0 otherwise. 0 on NULL. */
+OAKENGINE_API int oakengine_preview_request_is_done(
+	const OakEnginePreviewRequest *req);
+
+/** @brief 1 if the request has a result, 0 otherwise. 0 on NULL. */
+OAKENGINE_API int oakengine_preview_request_has_result(
+	const OakEnginePreviewRequest *req);
+
+/** @brief Set a finished callback (called when the ticket completes).
+ *  `callback` receives `user_data`. Returns OAKENGINE_E_INVALID on NULL
+ *  request. */
+OAKENGINE_API int oakengine_preview_request_set_finished_callback(
+	OakEnginePreviewRequest *req, void (*callback)(void *),
+	void *user_data);
+
+/** @brief Copy the frame data into `out`. Returns OAKENGINE_OK or
+ *  OAKENGINE_E_INVALID when the request has no video frame result. */
+OAKENGINE_API int oakengine_preview_request_get_frame(
+	OakEnginePreviewRequest *req, oak_playback_frame *out);
+
+/** @brief Number of audio channels in the result, or 0 if none. */
+OAKENGINE_API int oakengine_preview_request_get_audio_channel_count(
+	const OakEnginePreviewRequest *req);
+
+/** @brief Sample rate of the audio result, or 0 if none. */
+OAKENGINE_API int oakengine_preview_request_get_audio_sample_rate(
+	const OakEnginePreviewRequest *req);
+
+/**
+ * @brief Get audio sample data from the result.
+ * `channel` is the 0-based channel index. Writes up to `max_samples` float
+ * values into `samples`. Returns the number of samples written, or
+ * OAKENGINE_E_INVALID on bad arguments.
+ */
+OAKENGINE_API int oakengine_preview_request_get_audio_samples(
+	OakEnginePreviewRequest *req, int channel, const float *samples,
+	int max_samples);
+
+/** @brief Free a preview request handle (NULL-safe). */
+OAKENGINE_API void oakengine_preview_request_free(
+	OakEnginePreviewRequest *req);
 
 #ifdef __cplusplus
 }

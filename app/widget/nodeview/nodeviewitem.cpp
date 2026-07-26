@@ -22,15 +22,16 @@
 #include "nodeviewitem.h"
 
 #include <QDebug>
+
+#include "oakengine/node.h"
 #include <QGraphicsScene>
 #include <QGraphicsSceneMouseEvent>
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
 
 #include "common/qtutils.h"
-#include "config/config.h"
+#include "common/configwrapper.h"
 #include "core.h"
-#include "node/nodeundo.h"
 #include "node/value.h"
 #include "pluginSupport/oliveplugininstance.h"
 #include "nodeview.h"
@@ -69,17 +70,23 @@ NodeViewItem::NodeViewItem(Node *node, const QString &input, int element,
 	input_connector_ = new NodeViewItemConnector(false, this);
 	output_connector_ = new NodeViewItemConnector(true, this);
 
-	connect(node_, &Node::label_changed, this,
+	bridge_ = new EngineEventBridge(this);
+	bridge_->subscribe(reinterpret_cast<void *>(node_), OAKENGINE_EVENT_NODE_LABEL_CHANGED);
+	bridge_->subscribe(reinterpret_cast<void *>(node_), OAKENGINE_EVENT_NODE_COLOR_CHANGED);
+	bridge_->subscribe(reinterpret_cast<void *>(node_), OAKENGINE_EVENT_NODE_MESSAGE_COUNT_CHANGED);
+	connect(bridge_, &EngineEventBridge::node_label_changed, this,
 			&NodeViewItem::node_appearance_changed);
-	connect(node_, &Node::color_changed, this,
+	connect(bridge_, &EngineEventBridge::node_color_changed, this,
 			&NodeViewItem::node_appearance_changed);
-	connect(node_, &Node::message_count_changed, this,
+	connect(bridge_, &EngineEventBridge::node_message_count_changed, this,
 			&NodeViewItem::node_appearance_changed);
 
 	if (is_output_item()) {
-		connect(node_, &Node::input_added, this,
+		bridge_->subscribe(reinterpret_cast<void *>(node_), OAKENGINE_EVENT_NODE_INPUT_ADDED);
+		bridge_->subscribe(reinterpret_cast<void *>(node_), OAKENGINE_EVENT_NODE_INPUT_REMOVED);
+		connect(bridge_, &EngineEventBridge::node_input_added, this,
 				&NodeViewItem::repopulate_inputs);
-		connect(node_, &Node::input_removed, this,
+		connect(bridge_, &EngineEventBridge::node_input_removed, this,
 				&NodeViewItem::repopulate_inputs);
 		repopulate_inputs();
 
@@ -94,10 +101,11 @@ NodeViewItem::NodeViewItem(Node *node, const QString &input, int element,
 	} else {
 		output_connector_->setVisible(false);
 
-		connect(node_, &Node::input_array_size_changed, this,
-				&NodeViewItem::input_array_size_changed);
-		connect(node_, &Node::input_array_size_changed, this,
-				&NodeViewItem::input_array_size_changed);
+		bridge_->subscribe(reinterpret_cast<void *>(node_), OAKENGINE_EVENT_NODE_INPUT_ARRAY_SIZE_CHANGED);
+		connect(bridge_, &EngineEventBridge::node_input_array_size_changed, this,
+				[this](OakEngineNode *, const QString &input, int, int) {
+					input_array_size_changed(input);
+				});
 	}
 
 	// This should be set during runtime, but just in case here's a default fallback
@@ -875,12 +883,18 @@ void NodeViewItem::set_highlighted(bool e)
 
 NodeViewItem *NodeViewItem::get_item_for_input(NodeInput input)
 {
-	if (NodeGroup *group = dynamic_cast<NodeGroup *>(node_)) {
-		if (input.node() != group) {
+	if (oakengine_node_is_group(reinterpret_cast<OakEngineNode *>(node_))) {
+		if (input.node() != node_) {
 			// Translate input to group input
-			QString id = group->get_id_of_passthrough(input);
-			input.set_node(group);
-			input.set_input(id);
+			char id[256];
+			if (oakengine_group_get_id_of_passthrough(
+					reinterpret_cast<OakEngineNode *>(node_),
+					reinterpret_cast<OakEngineNode *>(input.node()),
+					input.input().toUtf8().constData(), input.element(),
+					id, sizeof(id)) > 0) {
+				input.set_node(node_);
+				input.set_input(QString::fromUtf8(id));
+			}
 		}
 	}
 

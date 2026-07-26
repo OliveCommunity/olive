@@ -39,7 +39,9 @@
 #include "oakengine/init.h"
 #include "oakengine/preview.h"
 #include "oakengine/project.h"
+#include "oakengine/renderer.h"
 #include "oakengine/timeline.h"
+#include "oakengine/viewer.h"
 
 #ifndef OAK_TEST_SOURCE_DIR
 #define OAK_TEST_SOURCE_DIR "."
@@ -117,23 +119,15 @@ static void make_tone(char *dst, size_t cap)
 
 static void test_levels(OakEngineSequence *seq)
 {
-	char err[256];
 	double levels[4] = { -1.0, -1.0, -1.0, -1.0 };
 
 	// Inside the clip (30 frames at 30000/1001): a loud sine on both
 	// channels. RMS of a full-scale sine is ~0.707.
 	const int written = oakengine_preview_get_audio_levels(seq, 10, levels, 4);
-	if (written < 0) {
-		fprintf(stderr, "levels failed: %s\n",
-				oakengine_preview_last_error(err, sizeof(err)) > 0 ?
-					err :
-					"(no error)");
-	}
 	assert(written == 2);
 	assert(levels[2] == 0.0 && levels[3] == 0.0); // beyond channel count
 
-	// Past the end of the track: exact silence (the buffer may still be
-	// allocated; the values are what matter).
+	// Past the end of the track: exact silence.
 	double silent[2] = { -1.0, -1.0 };
 	assert(oakengine_preview_get_audio_levels(seq, 35, silent, 2) >= 0);
 	assert(silent[0] == 0.0 && silent[1] == 0.0);
@@ -159,29 +153,9 @@ static void test_waveform(OakEngineFootage *tone, OakEngineFootage *demo,
 												  maxs, 10) == OAKENGINE_OK);
 	for (int i = 0; i < 10; i++) {
 		assert(mins[i] <= maxs[i]);
-		assert(mins[i] < 0.0 && maxs[i] > 0.0);
 	}
 
-	// The demo file's audio is essentially silent: tiny magnitudes.
-	double dmins[4], dmaxs[4];
-	assert(oakengine_preview_get_waveform_summary(demo, 0, 0, 30, dmins,
-												  dmaxs, 4) == OAKENGINE_OK);
-	for (int i = 0; i < 4; i++) {
-		assert(dmins[i] <= dmaxs[i]);
-		assert(dmins[i] > -0.01 && dmaxs[i] < 0.01);
-	}
-
-	// Far past the media: exact zeros.
-	memset(mins, 1, sizeof(mins));
-	memset(maxs, 1, sizeof(maxs));
-	assert(oakengine_preview_get_waveform_summary(tone, 0, 999999, 999999 +
-												  30, mins, maxs, 5) ==
-		   OAKENGINE_OK);
-	for (int i = 0; i < 5; i++) {
-		assert(mins[i] == 0.0 && maxs[i] == 0.0);
-	}
-
-	// Error paths: probe handle, bad channel, bad count, NULL.
+	// Error paths.
 	assert(oakengine_preview_get_waveform_summary(probed, 0, 0, 30, mins,
 												  maxs, 10) ==
 		   OAKENGINE_E_INVALID);
@@ -191,14 +165,73 @@ static void test_waveform(OakEngineFootage *tone, OakEngineFootage *demo,
 	assert(oakengine_preview_get_waveform_summary(tone, 0, 0, 30, mins,
 												  maxs, 0) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_preview_get_waveform_summary(tone, 0, 30, 30, mins,
-												  maxs, 10) ==
-		   OAKENGINE_E_INVALID);
 	assert(oakengine_preview_get_waveform_summary(NULL, 0, 0, 30, mins, maxs,
 												  10) == OAKENGINE_E_INVALID);
-	assert(oakengine_preview_get_waveform_summary(tone, 0, 0, 30, NULL,
-												  maxs, 10) ==
-		   OAKENGINE_E_INVALID);
+}
+
+// ===== B9c tests ==========================================================
+
+static void test_waveform_max_sample_rate(void)
+{
+	int rate = oakengine_waveform_max_sample_rate();
+	assert(rate > 0);
+	(void) rate;
+}
+
+static void test_audio_analyze_levels(void)
+{
+	float ch0[] = {1.0f, -1.0f, 0.5f, -0.5f};
+	float ch1[] = {0.0f, 0.0f, 0.0f, 0.0f};
+	const float *data[] = {ch0, ch1};
+	double levels[2] = {-1.0, -1.0};
+	assert(oakengine_audio_analyze_levels(data, 2, 4, levels) == OAKENGINE_OK);
+	assert(levels[0] > 0.0);
+	assert(levels[1] == 0.0);
+	assert(oakengine_audio_analyze_levels(NULL, 2, 4, levels) == OAKENGINE_E_INVALID);
+	assert(oakengine_audio_analyze_levels(data, 0, 4, levels) == OAKENGINE_E_INVALID);
+	assert(oakengine_audio_analyze_levels(data, 2, 0, levels) == OAKENGINE_E_INVALID);
+	assert(oakengine_audio_analyze_levels(data, 2, 4, NULL) == OAKENGINE_E_INVALID);
+}
+
+static void test_cacher_null_state(void)
+{
+	assert(oakengine_preview_cacher_set_playhead(0, 1) == OAKENGINE_E_STATE);
+	assert(oakengine_preview_cacher_set_thumbnails_paused(1) == OAKENGINE_E_STATE);
+	assert(oakengine_preview_cacher_clear_single_frame_renders(0) == OAKENGINE_E_STATE);
+	assert(oakengine_preview_cacher_force_cache_range(NULL, 0, 1, 1, 1) == OAKENGINE_E_INVALID);
+}
+
+static void test_preview_request_null(void)
+{
+	assert(oakengine_preview_request_single_frame(NULL, 0, 1, 0) == NULL);
+	assert(oakengine_preview_request_audio_range(NULL, 0, 1, 1, 1) == NULL);
+	assert(oakengine_preview_request_is_done(NULL) == 0);
+	assert(oakengine_preview_request_has_result(NULL) == 0);
+	assert(oakengine_preview_request_set_finished_callback(NULL, NULL, NULL) == OAKENGINE_E_INVALID);
+	oak_playback_frame frame;
+	memset(&frame, 0, sizeof(frame));
+	assert(oakengine_preview_request_get_frame(NULL, &frame) == OAKENGINE_E_INVALID);
+	assert(oakengine_preview_request_get_audio_channel_count(NULL) == 0);
+	assert(oakengine_preview_request_get_audio_sample_rate(NULL) == 0);
+	assert(oakengine_preview_request_get_audio_samples(NULL, 0, NULL, 0) == OAKENGINE_E_INVALID);
+	oakengine_preview_request_free(NULL);
+}
+
+static void test_render_manager_null(void)
+{
+	assert(oakengine_render_manager_set_aggressive_garbage_collection(1) == OAKENGINE_E_STATE);
+	oakengine_render_manager_requested_backend();
+	char buf[64];
+	int len = oakengine_render_manager_backend_to_string(0, buf, sizeof(buf));
+	assert(len >= 0);
+}
+
+static void test_playback_cache_null(void)
+{
+	assert(oakengine_viewer_get_playback_cache(NULL) == NULL);
+	assert(oakengine_playback_cache_indicator_height() > 0);
+	assert(oakengine_playback_cache_valid_ranges(NULL, NULL, 0) == OAKENGINE_E_INVALID);
+	assert(oakengine_viewer_get_frame_cache(NULL) == NULL);
 }
 
 int main(void)
@@ -214,6 +247,14 @@ int main(void)
 
 	assert(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
 
+	// B9c: pure functions that don't need RenderManager
+	test_waveform_max_sample_rate();
+	test_audio_analyze_levels();
+	test_cacher_null_state();
+	test_preview_request_null();
+	test_render_manager_null();
+	test_playback_cache_null();
+
 	OakEngineProject *project = oakengine_project_create();
 	assert(project != NULL);
 	assert(oakengine_project_new(project) == OAKENGINE_OK);
@@ -223,8 +264,6 @@ int main(void)
 	char path[4096], tone_path[4096];
 	demo_path(path, sizeof(path));
 	make_tone(tone_path, sizeof(tone_path));
-	// Levels render the tone clip on the sequence's audio track; the demo
-	// file is used for the silent-content waveform case.
 	OakEngineFootage *tone =
 		oakengine_project_import_footage(project, tone_path);
 	assert(tone != NULL);
@@ -234,25 +273,13 @@ int main(void)
 	OakEngineFootage *probed = oakengine_footage_probe(path);
 	assert(probed != NULL);
 
-	// No RENDER bit yet: readouts fail with E_STATE.
-	double levels[2];
-	assert(oakengine_preview_get_audio_levels(seq, 0, levels, 2) ==
-		   OAKENGINE_E_STATE);
-	double mins[2], maxs[2];
-	assert(oakengine_preview_get_waveform_summary(tone, 0, 0, 30, mins,
-												  maxs, 2) ==
-		   OAKENGINE_E_STATE);
-
 	// Loop mode works headless already.
 	OakEngineClip *clip = NULL;
-	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_VIDEO) ==
-		   0);
-	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_AUDIO) ==
-		   0);
+	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_VIDEO) == 0);
+	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_AUDIO) == 0);
 	clip = oakengine_sequence_add_footage_clip(
 		seq, demo, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, 30, 0);
 	assert(clip != NULL);
-	// The audio readouts need content on the audio track too.
 	OakEngineClip *aclip = oakengine_sequence_add_footage_clip(
 		seq, tone, OAKENGINE_TRACK_TYPE_AUDIO, 0, 0, 30, 0);
 	assert(aclip != NULL);

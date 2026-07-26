@@ -22,6 +22,7 @@
 #ifndef OAK_TIMELINEWIDGET_H
 #define OAK_TIMELINEWIDGET_H
 
+#include <QHash>
 #include <QScrollBar>
 #include <QRubberBand>
 #include <QWidget>
@@ -29,7 +30,10 @@
 #include "core.h"
 #include "node/block/transition/transition.h"
 #include "node/output/viewer/viewer.h"
-#include "node/project/serializer/serializer.h"
+#include "oakengine/events.h"
+#include "oakengine/serializer.h"
+#include "oakengine/timeline.h"
+#include "oakengine/undo.h"
 #include "timeline/timelinecommon.h"
 #include "timelineandtrackview.h"
 #include "widget/slider/rationalslider.h"
@@ -75,9 +79,9 @@ public:
 
 	void decrease_track_height();
 
-	void insert_footage_at_playhead(const QVector<ViewerOutput *> &footage);
+	void insert_footage_at_playhead(const QVector<OakEngineNode *> &footage);
 
-	void overwrite_footage_at_playhead(const QVector<ViewerOutput *> &footage);
+	void overwrite_footage_at_playhead(const QVector<OakEngineNode *> &footage);
 
 	void toggle_links_on_selected();
 
@@ -151,7 +155,7 @@ public:
 
 	static void replace_blocks_with_gaps(const QVector<Block *> &blocks,
 									  bool remove_from_graph,
-									  MultiUndoCommand *command,
+									  void *command,
 									  bool handle_transitions = true);
 
 	/**
@@ -187,7 +191,7 @@ public:
 	}
 
 	void insert_gaps_at(const Rational &time, const Rational &length,
-					  MultiUndoCommand *command);
+					  void *command);
 
 	void start_rubber_band_select(const QPoint &global_cursor_start);
 	void move_rubber_band_select(bool enable_selecting, bool select_links);
@@ -254,10 +258,10 @@ public:
 		update_viewports();
 	}
 
-	MultiUndoCommand *take_subtitle_section_command()
+	void *take_subtitle_section_command()
 	{
 		// Copy pointer
-		MultiUndoCommand *c = subtitle_show_command_;
+		void *c = subtitle_show_command_;
 
 		// Set to null
 		subtitle_show_command_ = nullptr;
@@ -267,41 +271,9 @@ public:
 		return c;
 	}
 
-	class SetSelectionsCommand : public UndoCommand {
-	public:
-		SetSelectionsCommand(TimelineWidget *timeline,
-							 const TimelineWidgetSelections &now,
-							 const TimelineWidgetSelections &old,
-							 bool process_block_changes = true)
-			: timeline_(timeline)
-			, old_(old)
-			, now_(now)
-			, process_block_changes_(process_block_changes)
-		{
-		}
-
-		virtual Project *get_relevant_project() const override
-		{
-			return nullptr;
-		}
-
-	protected:
-		virtual void redo() override
-		{
-			timeline_->set_selections(now_, process_block_changes_);
-		}
-
-		virtual void undo() override
-		{
-			timeline_->set_selections(old_, process_block_changes_);
-		}
-
-	private:
-		TimelineWidget *timeline_;
-		TimelineWidgetSelections old_;
-		TimelineWidgetSelections now_;
-		bool process_block_changes_;
-	};
+	void *create_set_selections_command(const TimelineWidgetSelections &now,
+										const TimelineWidgetSelections &old,
+										bool process_block_changes = true);
 
 public slots:
 	void clear_tentative_subtitle_track();
@@ -309,13 +281,13 @@ public slots:
 	void rename_selected_blocks();
 
 signals:
-	void block_selection_changed(const QVector<Block *> &selected_blocks);
+	void block_selection_changed(const QVector<OakEngineBlock *> &selected_blocks);
 
 	void request_capture_start(const TimeRange &time,
 							 const Track::Reference &track);
 
-	void reveal_viewer_in_footage_viewer(ViewerOutput *r, const TimeRange &range);
-	void reveal_viewer_in_project(ViewerOutput *r);
+	void reveal_viewer_in_footage_viewer(OakEngineNode *r, const TimeRange &range);
+	void reveal_viewer_in_project(OakEngineNode *r);
 
 protected:
 	virtual void resizeEvent(QResizeEvent *event) override;
@@ -352,7 +324,7 @@ private:
 	TimelineAndTrackView *add_timeline_and_track_view(Qt::Alignment alignment);
 
 	QHash<Node *, Node *>
-	generate_existing_paste_map(const ProjectSerializer::Result &r);
+	generate_existing_paste_map(void *clipboard);
 
 	QRubberBand rubberband_;
 	QVector<QPointF> rubberband_scene_pos_;
@@ -381,39 +353,53 @@ private:
 
 	QVector<Block *> added_blocks_;
 
+	QHash<Block *, QVector<int64_t>> block_subscriptions_;
+
 	int deferred_scroll_value_;
 
 	bool use_audio_time_units_;
 
 	QSplitter *view_splitter_;
 
-	MultiUndoCommand *subtitle_show_command_;
-	Track *subtitle_tentative_track_;
+	void *subtitle_show_command_;
+	OakEngineTrack *subtitle_tentative_track_;
 
 	QTimer *signal_block_change_timer_;
 
-	class SetSplitterSizesCommand : public UndoCommand {
-	public:
-		SetSplitterSizesCommand(QSplitter *splitter, const QList<int> &sizes)
-			: splitter_(splitter)
-			, new_sizes_(sizes)
-		{
-		}
-
-		virtual Project *get_relevant_project() const override
-		{
-			return nullptr;
-		}
-
-	protected:
-		virtual void redo() override;
-		virtual void undo() override;
-
-	private:
-		QSplitter *splitter_;
-		QList<int> new_sizes_;
-		QList<int> old_sizes_;
+	// Command userdata for splitter size changes
+	struct SplitterSizesCmdData {
+		QSplitter *splitter;
+		QList<int> new_sizes;
+		QList<int> old_sizes;
 	};
+
+	static void splitter_sizes_redo(void *userdata)
+	{
+		auto *d = static_cast<SplitterSizesCmdData *>(userdata);
+		d->old_sizes = d->splitter->sizes();
+		d->splitter->setSizes(d->new_sizes);
+	}
+
+	static void splitter_sizes_undo(void *userdata)
+	{
+		auto *d = static_cast<SplitterSizesCmdData *>(userdata);
+		d->splitter->setSizes(d->old_sizes);
+	}
+
+	static void splitter_sizes_free(void *userdata)
+	{
+		delete static_cast<SplitterSizesCmdData *>(userdata);
+	}
+
+	static void *make_splitter_sizes_command(QSplitter *splitter, const QList<int> &sizes)
+	{
+		auto *d = new SplitterSizesCmdData;
+		d->splitter = splitter;
+		d->new_sizes = sizes;
+		return oakengine_undo_command_create(nullptr, splitter_sizes_redo,
+											 splitter_sizes_undo,
+											 splitter_sizes_free, d);
+	}
 
 	void center_on(qreal scene_pos);
 
@@ -434,12 +420,7 @@ private slots:
 	void view_drag_left(QDragLeaveEvent *event);
 	void view_drag_dropped(TimelineViewMouseEvent *event);
 
-	void add_block(Block *block);
-	void remove_block(Block *blocks);
-
-	void add_track(Track *track);
-	void remove_track(Track *track);
-	void track_updated();
+	void track_updated(Track::Type type);
 
 	void block_updated();
 
@@ -467,14 +448,10 @@ private slots:
 
 	void sample_rate_changed();
 
-	void track_index_changed(int old, int now);
-
 	void signal_block_selection_change();
 
 	void reveal_in_footage_viewer();
 	void reveal_in_project();
-
-	void track_about_to_be_deleted(Track *track);
 
 	void set_selected_clips_autocaching(bool e);
 
@@ -485,6 +462,16 @@ private slots:
 	void multicam_enabled_triggered(bool e);
 
 	void force_update_rubber_band();
+
+private:
+	void add_block(Block *block);
+	void remove_block(Block *blocks);
+
+	void add_track(Track *track);
+	void remove_track(Track *track);
+
+	void track_index_changed(Track *track, int old, int now);
+	void track_about_to_be_deleted(OakEngineTrack *track);
 };
 
 }

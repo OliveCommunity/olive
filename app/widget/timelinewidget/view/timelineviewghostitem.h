@@ -29,6 +29,7 @@
 #include "node/output/track/track.h"
 #include "node/project/footage/footage.h"
 #include "timeline/timelinecommon.h"
+#include "widget/timelinewidget/cliphandle.h"
 
 namespace olive
 {
@@ -67,7 +68,7 @@ public:
 		ghost->set_in(block->in());
 		ghost->set_out(block->out());
 		if (dynamic_cast<ClipBlock *>(block)) {
-			ghost->set_media_in(static_cast<ClipBlock *>(block)->media_in());
+			ghost->set_media_in(clip_media_in(static_cast<ClipBlock *>(block)));
 		}
 		ghost->set_track(block->track()->to_reference());
 		ghost->set_data(k_attached_block, QtUtils::ptr_to_value(block));

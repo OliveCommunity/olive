@@ -35,8 +35,8 @@ ColorPreviewBox::ColorPreviewBox(QWidget *parent)
 {
 }
 
-void ColorPreviewBox::set_color_processor(ColorProcessorPtr to_ref,
-										ColorProcessorPtr to_display)
+void ColorPreviewBox::set_color_processor(ColorProcessorHandlePtr to_ref,
+										ColorProcessorHandlePtr to_display)
 {
 	to_ref_processor_ = to_ref;
 	to_display_processor_ = to_display;
@@ -58,8 +58,8 @@ void ColorPreviewBox::paintEvent(QPaintEvent *e)
 
 	// Color management
 	if (to_ref_processor_ && to_display_processor_) {
-		c = QtUtils::to_q_color(to_display_processor_->convert_color(
-			to_ref_processor_->convert_color(color_)));
+		c = QtUtils::to_q_color(oak_convert_color(to_display_processor_,
+			oak_convert_color(to_ref_processor_, color_)));
 	} else {
 		c = QtUtils::to_q_color(color_);
 	}

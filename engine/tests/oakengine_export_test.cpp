@@ -424,6 +424,10 @@ int main(void)
 	// ---- render_ex: real exports ---------------------------------------------
 	{
 		// H.264 + AAC over a custom 20-frame range of the same sequence.
+		// Exercise the encoder-specific video option pass-through
+		// (crf=18) for this render, then clear it so later exports and
+		// the cancellation re-run are unaffected.
+		oakengine_export_set_video_option("crf", "18");
 		char out3[4096];
 		snprintf(out3, sizeof(out3), "%s/ex_custom.mp4", g_tmpdir);
 		oak_export_options_ex o3;
@@ -448,6 +452,7 @@ int main(void)
 						"(no error)");
 		}
 		assert(rc == OAKENGINE_OK);
+		oakengine_export_set_video_option(NULL, NULL);
 		snprintf(cmd, sizeof(cmd),
 				 "ffprobe -v error -show_entries stream=codec_type,duration "
 				 "-of csv=p=0 \"%s\"",

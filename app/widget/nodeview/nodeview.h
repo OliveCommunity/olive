@@ -23,10 +23,11 @@
 #define OAK_NODEVIEW_H
 
 #include <QGraphicsView>
+#include <QHash>
 #include <QTimer>
 
 #include "core.h"
-#include "node/group/group.h"
+#include "engineeventbridge.h"
 #include "nodeviewedge.h"
 #include "nodeviewcontext.h"
 #include "nodeviewminimap.h"
@@ -78,8 +79,9 @@ public:
 	void select_all();
 	void deselect_all();
 
-	void select(const QVector<Node::ContextPair> &nodes,
-				bool center_view_on_item);
+	void select(
+		const QVector<QPair<OakEngineNode *, OakEngineNode *>> &nodes,
+		bool center_view_on_item);
 
 	void copy_selected(bool cut);
 	void paste();
@@ -112,20 +114,20 @@ public slots:
 
 	void center_on_items_bounding_rect();
 
-	void center_on_node(olive::Node *n);
+	void center_on_node(OakEngineNode *n);
 
 	void label_selected_nodes();
 
 signals:
-	void nodes_selected(const QVector<Node *> &nodes);
+	void nodes_selected(const QVector<OakEngineNode *> &nodes);
 
-	void nodes_deselected(const QVector<Node *> &nodes);
+	void nodes_deselected(const QVector<OakEngineNode *> &nodes);
 
-	void node_selection_changed(const QVector<Node *> &nodes);
-	void
-	node_selection_changed_with_contexts(const QVector<Node::ContextPair> &nodes);
+	void node_selection_changed(const QVector<OakEngineNode *> &nodes);
+	void node_selection_changed_with_contexts(
+		const QVector<QPair<OakEngineNode *, OakEngineNode *>> &nodes);
 
-	void node_group_opened(NodeGroup *group);
+	void node_group_opened(OakEngineNode *group);
 	void node_group_closed();
 
 	void esc_pressed();
@@ -161,7 +163,7 @@ private:
 
 	void move_attached_nodes_to_cursor(const QPoint &p);
 	void process_moving_attached_nodes(const QPoint &pos);
-	QVector<Node *> process_dropping_attached_nodes(MultiUndoCommand *command,
+	QVector<Node *> process_dropping_attached_nodes(void *command,
 												 Node *select_context,
 												 const QPoint &pos);
 	Node *get_context_at_mouse_pos(const QPoint &p);
@@ -241,6 +243,10 @@ private:
 
 	bool dont_emit_selection_signals_;
 
+	EngineEventBridge *bridge_ = nullptr;
+
+	QHash<Node *, int64_t> removed_from_graph_subs_;
+
 	QAction *show_in_param_editor_action_;
 
 	static const double k_minimum_scale;
@@ -281,7 +287,7 @@ private slots:
 
 	void move_to_scene_point(const QPointF &pos);
 
-	void node_removed_from_graph();
+	void node_removed_from_graph(OakEngineNode *source);
 
 	void group_nodes();
 

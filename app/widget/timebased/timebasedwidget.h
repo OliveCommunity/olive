@@ -36,6 +36,7 @@
 namespace olive
 {
 
+class EngineEventBridge;
 class TimeRuler;
 
 class TimeBasedWidget : public TimelineScaledWidget {
@@ -149,6 +150,8 @@ protected:
 	{
 	}
 
+	EngineEventBridge *bridge_ = nullptr;
+
 	virtual void ConnectNodeEvent(ViewerOutput *)
 	{
 	}
@@ -213,7 +216,7 @@ protected slots:
 signals:
 	void timebase_changed(const Rational &);
 
-	void connected_node_changed(ViewerOutput *old, ViewerOutput *now);
+	void connected_node_changed(OakEngineNode *old, OakEngineNode *now);
 
 protected slots:
 	virtual void SendCatchUpScrollEvent();

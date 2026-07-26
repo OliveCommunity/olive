@@ -24,8 +24,10 @@
 #include <QDrag>
 #include <QMimeData>
 
-#include "config/config.h"
+#include "common/configwrapper.h"
 #include "node/project.h"
+#include "oakengine/project.h"
+#include "oakengine/timeline.h"
 
 namespace olive
 {
@@ -48,13 +50,26 @@ FootageViewerWidget::FootageViewerWidget(QWidget *parent)
 	connect(controls_, &PlaybackControls::audio_dragged, this,
 			&FootageViewerWidget::start_audio_drag);
 
-	override_workarea_ = new TimelineWorkArea(this);
+	override_workarea_ = reinterpret_cast<TimelineWorkArea *>(
+		oakengine_workarea_create());
+}
+
+FootageViewerWidget::~FootageViewerWidget()
+{
+	if (override_workarea_) {
+		oakengine_workarea_free(
+			reinterpret_cast<OakEngineWorkarea *>(override_workarea_));
+	}
 }
 
 void FootageViewerWidget::override_work_area(const TimeRange &r)
 {
-	override_workarea_->set_enabled(true);
-	override_workarea_->set_range(r);
+	oakengine_workarea_set_enabled(
+		reinterpret_cast<OakEngineWorkarea *>(override_workarea_), 1);
+	oakengine_workarea_set_range(
+		reinterpret_cast<OakEngineWorkarea *>(override_workarea_),
+		r.in().numerator(), r.in().denominator(),
+		r.out().numerator(), r.out().denominator());
 	this->connect_work_area(override_workarea_);
 }
 
@@ -99,7 +114,7 @@ void FootageViewerWidget::start_footage_drag_internal(bool enable_video,
 		data_stream << streams
 					<< reinterpret_cast<quintptr>(get_connected_node());
 
-		mimedata->setData(Project::k_item_mime_type, encoded_data);
+		mimedata->setData(QString::fromUtf8(oakengine_project_item_mime_type()), encoded_data);
 		drag->setMimeData(mimedata);
 
 		drag->exec();

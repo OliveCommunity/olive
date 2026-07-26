@@ -28,7 +28,7 @@
 #include <QPushButton>
 
 #include "dialog/configbase/configdialogbase.h"
-#include "render/diskmanager.h"
+#include "oakengine/disk.h"
 #include "widget/slider/floatslider.h"
 #include "widget/slider/integerslider.h"
 #include "widget/path/pathwidget.h"
@@ -43,7 +43,7 @@ public:
 
 	virtual bool validate() override;
 
-	virtual void accept(MultiUndoCommand *command) override;
+	virtual void accept(void *command) override;
 
 private:
 	PathWidget *disk_cache_location_;
@@ -52,7 +52,7 @@ private:
 
 	FloatSlider *cache_behind_slider_;
 
-	DiskCacheFolder *default_disk_cache_folder_;
+	QString default_disk_cache_folder_;
 
 	IntegerSlider *proxy_width_slider_;
 	IntegerSlider *proxy_height_slider_;

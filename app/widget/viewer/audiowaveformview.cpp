@@ -25,8 +25,10 @@
 #include <QPainter>
 #include <QtMath>
 
-#include "config/config.h"
+#include "common/configwrapper.h"
+#include "engineeventbridge.h"
 #include "timeline/timelinecommon.h"
+#include "widget/viewer/vieweroutpututils.h"
 
 namespace olive
 {
@@ -36,6 +38,8 @@ namespace olive
 AudioWaveformView::AudioWaveformView(QWidget *parent)
 	: super(parent)
 	, playback_(nullptr)
+	, waveform_bridge_(nullptr)
+	, waveform_subscription_(0)
 {
 	setAutoFillBackground(true);
 	setBackgroundRole(QPalette::Base);
@@ -46,6 +50,13 @@ AudioWaveformView::AudioWaveformView(QWidget *parent)
 	//       originates from the center. But we're leaving it top/left for now since it was just
 	//       ported from a QWidget's paintEvent.
 	setAlignment(Qt::AlignLeft | Qt::AlignTop);
+
+	// The connected-waveform notification arrives through the liboakengine
+	// event C ABI (replaces the old ViewerOutput::connected_waveform_changed
+	// connect); set_viewer() only subscribes/unsubscribes on the handle.
+	waveform_bridge_ = new EngineEventBridge(this);
+	connect(waveform_bridge_, &EngineEventBridge::viewer_connected_waveform_changed,
+			this, [this](OakEngineNode *) { viewport()->update(); });
 }
 
 void AudioWaveformView::set_viewer(ViewerOutput *playback)
@@ -54,9 +65,8 @@ void AudioWaveformView::set_viewer(ViewerOutput *playback)
 		pool_.clear();
 		pool_.waitForDone();
 
-		disconnect(playback_, &ViewerOutput::connected_waveform_changed,
-				   viewport(),
-				   static_cast<void (QWidget::*)()>(&QWidget::update));
+		waveform_bridge_->unsubscribe(waveform_subscription_);
+		waveform_subscription_ = 0;
 
 		set_timebase(0);
 	}
@@ -64,10 +74,12 @@ void AudioWaveformView::set_viewer(ViewerOutput *playback)
 	playback_ = playback;
 
 	if (playback_) {
-		connect(playback_, &ViewerOutput::connected_waveform_changed, viewport(),
-				static_cast<void (QWidget::*)()>(&QWidget::update));
+		waveform_subscription_ = waveform_bridge_->subscribe(
+			reinterpret_cast<OakEngineNode *>(playback_),
+			OAKENGINE_EVENT_VIEWER_CONNECTED_WAVEFORM_CHANGED);
 
-		Rational tb = playback_->get_video_params().frame_rate_as_time_base();
+		Rational tb =
+			viewer_output_video_params(playback_).frame_rate_as_time_base();
 		if (tb.isNull()) {
 			tb = OAK_CONFIG("DefaultSequenceFrameRate")
 					 .value<Rational>()

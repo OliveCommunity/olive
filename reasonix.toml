@@ -1,0 +1,2 @@
+[permissions]
+allow = ["Bash(cd /home/mikesolar/Projects/oak && cmake --build cmake-build-debug -j$(nproc) 2>&1 | tail -30)"]

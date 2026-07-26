@@ -100,9 +100,9 @@ public:
 	H264Section(QWidget *parent = nullptr);
 	H264Section(int default_crf, QWidget *parent);
 
-	virtual void add_opts(EncodingParams *params) override;
+	virtual void add_opts(OakEngineEncodingParams *params) override;
 
-	virtual void set_opts(const EncodingParams *p) override;
+	virtual void set_opts(const OakEngineEncodingParams *p) override;
 
 private:
 	QStackedWidget *compression_method_stack_;

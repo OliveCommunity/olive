@@ -47,7 +47,7 @@ public:
 		return static_cast<FootageViewerWidget *>(get_time_based_widget());
 	}
 
-	virtual QVector<ViewerOutput *> get_selected_footage() const override;
+	virtual QVector<OakEngineNode *> get_selected_footage() const override;
 
 protected:
 	virtual void retranslate() override;

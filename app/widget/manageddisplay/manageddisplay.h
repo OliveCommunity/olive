@@ -19,8 +19,8 @@
 
 ***/
 
-#ifndef OAK_MANAGEDDISPLAYOBJECT_H
-#define OAK_MANAGEDDISPLAYOBJECT_H
+#ifndef MANAGEDDISPLAYOBJECT_H
+#define MANAGEDDISPLAYOBJECT_H
 
 //#define USE_QOPENGLWINDOW
 
@@ -32,8 +32,12 @@
 #include <QOpenGLWidget>
 #endif
 
-#include "node/color/colormanager/colormanager.h"
+#include "oakengine/color.h"
+#include "oakengine/events.h"
+#include "render/colorprocessor.h"
+#include "render/colortransform.h"
 #include "render/renderer.h"
+#include "widget/manageddisplay/colorprocessorhandle.h"
 #include "widget/menu/menu.h"
 
 namespace olive
@@ -53,9 +57,9 @@ public:
 	virtual ~ManagedDisplayWidgetOpenGL() override
 	{
 		if (context()) {
-			destroy_listener();
+			DestroyListener();
 			disconnect(context(), &QOpenGLContext::aboutToBeDestroyed, this,
-					   &ManagedDisplayWidgetOpenGL::destroy_listener);
+					   &ManagedDisplayWidgetOpenGL::DestroyListener);
 		}
 	}
 
@@ -69,7 +73,7 @@ protected:
 	virtual void initializeGL() override
 	{
 		connect(context(), &QOpenGLContext::aboutToBeDestroyed, this,
-				&ManagedDisplayWidgetOpenGL::destroy_listener,
+				&ManagedDisplayWidgetOpenGL::DestroyListener,
 				Qt::DirectConnection);
 
 		emit on_init();
@@ -81,7 +85,7 @@ protected:
 	}
 
 private slots:
-	void destroy_listener()
+	void DestroyListener()
 	{
 		makeCurrent();
 
@@ -142,7 +146,7 @@ public:
 	/**
    * @brief Access currently connected ColorManager (nullptr if none)
    */
-	ColorManager *color_manager() const;
+	OakEngineColorManager *color_manager() const;
 
 	/**
    * @brief Get current color transform
@@ -185,18 +189,18 @@ public slots:
 	/**
    * @brief Connect a ColorManager (ColorManagers usually belong to the Project)
    */
-	void connect_color_manager(ColorManager *color_manager);
+	void connect_color_manager(OakEngineColorManager *color_manager);
 
 signals:
 	/**
    * @brief Emitted when the color processor changes
    */
-	void color_processor_changed(ColorProcessorPtr processor);
+	void color_processor_changed(ColorProcessorHandlePtr processor);
 
 	/**
    * @brief Emitted when a new color manager is connected
    */
-	void color_manager_changed(ColorManager *color_manager);
+	void color_manager_changed(OakEngineColorManager *color_manager);
 
 	void frame_swapped();
 
@@ -204,7 +208,7 @@ protected:
 	/**
    * @brief Provides access to the color processor (nullptr if none is set)
    */
-	ColorProcessorPtr color_service();
+	ColorProcessorHandlePtr color_service();
 
 	/**
    * @brief Enables a context menu that allows simple access to the DVL pipeline
@@ -216,7 +220,7 @@ protected:
    *
    * Default functionality is just to call update()
    */
-	virtual void ColorProcessorChangedEvent();
+	virtual void color_processor_changed_event();
 
 	Renderer *renderer() const
 	{
@@ -304,12 +308,12 @@ private:
 	/**
    * @brief Connected color manager
    */
-	ColorManager *color_manager_;
+	OakEngineColorManager *color_manager_;
 
 	/**
    * @brief Color management service
    */
-	ColorProcessorPtr color_service_;
+	ColorProcessorHandlePtr color_service_;
 
 	/**
    * @brief Internal color transform storage
@@ -317,6 +321,8 @@ private:
 	ColorTransform color_transform_;
 
 	bool is_backend_neutral_ = false;
+
+	QVector<int64_t> color_subs_;
 
 private slots:
 	/**
@@ -352,4 +358,4 @@ private slots:
 
 }
 
-#endif // OAK_MANAGEDDISPLAYOBJECT_H
+#endif // MANAGEDDISPLAYOBJECT_H

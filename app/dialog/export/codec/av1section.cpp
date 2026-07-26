@@ -89,19 +89,21 @@ AV1Section::AV1Section(int default_crf, QWidget *parent)
 		compression_method_stack_, &QStackedWidget::setCurrentIndex);
 }
 
-void AV1Section::add_opts(EncodingParams *params)
+void AV1Section::add_opts(OakEngineEncodingParams *params)
 {
 	CompressionMethod method = static_cast<CompressionMethod>(
 		compression_method_stack_->currentIndex());
 
 	if (method == k_constant_rate_factor) {
 		// Set Quantizer value
-		params->set_video_option(QStringLiteral("qp"),
-								 QString::number(crf_section_->get_value()));
+		oakengine_encoding_params_set_video_option(
+			params, "qp",
+			QByteArray::number(crf_section_->get_value()).constData());
 	}
 
-	params->set_video_option(QStringLiteral("preset"),
-							 QString::number(preset_combobox_->currentIndex()));
+	oakengine_encoding_params_set_video_option(
+		params, "preset",
+		QByteArray::number(preset_combobox_->currentIndex()).constData());
 }
 
 AV1CRFSection::AV1CRFSection(int default_crf, QWidget *parent)

@@ -119,7 +119,7 @@ protected:
 	{
 		if (!olive::Core::instance()) {
 			// Leaked intentionally: Core is process-wide (matches footage_test)
-			new olive::Core(olive::Core::CoreParams());
+			new olive::Core();
 		}
 
 		// Footage::Value() resolves Project::cache_path(), which goes through

@@ -34,7 +34,6 @@
 #include "project.h"
 #include "serializeddata.h"
 #include "ui/colorcoding.h"
-#include "ui/icons/icons.h"
 
 namespace olive
 {
@@ -109,7 +108,7 @@ QVariant Node::data(const DataType &d) const
 {
 	if (d == icon) {
 		// Just a meaningless default icon to be used where necessary
-		return icon::New;
+		return QStringLiteral("new");
 	}
 
 	return QVariant();
@@ -2481,7 +2480,7 @@ void Node::childEvent(QChildEvent *event)
 			connect(key, &NodeKeyframe::bezier_control_out_changed, this,
 					&Node::invalidate_from_keyframe_bezier_out_change);
 
-			emit keyframe_added(key);
+			emit keyframe_added(reinterpret_cast<OakEngineKeyframe *>(key));
 			parameter_value_changed(i, get_range_affected_by_keyframe(key));
 		} else if (event->type() == QEvent::ChildRemoved) {
 			TimeRange time_affected = get_range_affected_by_keyframe(key);
@@ -2497,7 +2496,7 @@ void Node::childEvent(QChildEvent *event)
 			disconnect(key, &NodeKeyframe::bezier_control_out_changed, this,
 					   &Node::invalidate_from_keyframe_bezier_out_change);
 
-			emit keyframe_removed(key);
+			emit keyframe_removed(reinterpret_cast<OakEngineKeyframe *>(key));
 
 			get_immediate(key->input(), key->element())->remove_keyframe(key);
 			parameter_value_changed(i, time_affected);
@@ -2570,7 +2569,7 @@ void Node::invalidate_from_keyframe_time_change()
 		parameter_value_changed(key->key_track_ref().input(), r);
 	}
 
-	emit keyframe_time_changed(key);
+	emit keyframe_time_changed(reinterpret_cast<OakEngineKeyframe *>(key));
 }
 
 void Node::invalidate_from_keyframe_value_change()
@@ -2579,7 +2578,7 @@ void Node::invalidate_from_keyframe_value_change()
 	parameter_value_changed(key->key_track_ref().input(),
 						  get_range_affected_by_keyframe(key));
 
-	emit keyframe_value_changed(key);
+	emit keyframe_value_changed(reinterpret_cast<OakEngineKeyframe *>(key));
 }
 
 void Node::invalidate_from_keyframe_type_changed()
@@ -2597,7 +2596,7 @@ void Node::invalidate_from_keyframe_type_changed()
 						  get_range_around_index(key->input(), track.indexOf(key),
 											  key->track(), key->element()));
 
-	emit keyframe_type_changed(key);
+	emit keyframe_type_changed(reinterpret_cast<OakEngineKeyframe *>(key));
 }
 
 void Node::set_value_at_time(const NodeInput &input, const Rational &time,

@@ -27,6 +27,7 @@
  * Use the navigation above to find documentation on classes or source files.
  */
 
+#include "oakengine/plugin.h"
 #include "pluginSupport/olivehost.h"
 
 #include <csignal>
@@ -37,11 +38,12 @@
 #include <QIcon>
 #include <QSurfaceFormat>
 
-#include "config/config.h"
+#include <oakengine/config.h>
+
 #include "core.h"
 #include "common/commandlineparser.h"
-#include "common/debug.h"
-#include "node/project/serializer/serializer.h"
+#include "common/debugapp.h"
+#include <oakengine/serializer.h>
 #include "version.h"
 #include "window/mainwindow/mainwindow.h"
 
@@ -55,6 +57,17 @@
 #ifdef USE_CRASHPAD
 #include "common/crashpadinterface.h"
 #endif // USE_CRASHPAD
+
+static void config_error_handler(const char *title, const char *message,
+								 void *)
+{
+	QWidget *parent = olive::Core::instance() ?
+						olive::Core::instance()->main_window() :
+						nullptr;
+	QMessageBox::critical(parent, QString::fromUtf8(title),
+						  QString::fromUtf8(message), QMessageBox::Ok);
+}
+
 int decompress_project(const QString &project)
 {
 	if (project.isEmpty()) {
@@ -80,7 +93,7 @@ int decompress_project(const QString &project)
 			   .toUtf8()
 			   .constData());
 
-	if (!olive::ProjectSerializer::check_compressed_id(&project_file)) {
+	if (!oakengine_serializer_check_compressed(project.toUtf8().constData())) {
 		printf("%s\n",
 			   QCoreApplication::translate(
 				   "main", "Failed to decompress, project may be corrupt")
@@ -182,7 +195,9 @@ int main(int argc, char *argv[])
 	}
 #endif
 
-	olive::Core::CoreParams startup_params;
+	OakEngineAppParams startup_params;
+	memset(&startup_params, 0, sizeof(startup_params));
+	startup_params.run_mode = OAKENGINE_APP_RUN_NORMAL;
 
 	CommandLineParser parser;
 
@@ -282,26 +297,32 @@ int main(int argc, char *argv[])
 	}
 
 	if (export_option->is_set()) {
-		startup_params.set_run_mode(olive::Core::CoreParams::k_headless_export);
+		startup_params.run_mode = OAKENGINE_APP_RUN_HEADLESS_EXPORT;
 	}
 
 	if (ts_option->is_set()) {
 		if (ts_option->get_setting().isEmpty()) {
 			qWarning() << "--ts was set but no translation file was provided";
 		} else {
-			startup_params.set_startup_language(ts_option->get_setting());
+			QByteArray sl_utf = ts_option->get_setting().toUtf8();
+			startup_params.startup_language = sl_utf.constData();
 		}
 	}
 
 	const bool load_plugins = !no_plugin->is_set();
 
 	if (crash_option->is_set()) {
-		startup_params.set_crash_on_startup(true);
+		startup_params.crash_on_startup = 1;
 	}
 
-	startup_params.set_fullscreen(fullscreen_option->is_set());
+	startup_params.fullscreen = fullscreen_option->is_set() ? 1 : 0;
 
-	startup_params.set_startup_project(project_argument->get_setting());
+	{
+		QByteArray sp_utf = project_argument->get_setting().toUtf8();
+		if (!sp_utf.isEmpty()) {
+			startup_params.startup_project = sp_utf.constData();
+		}
+	}
 
 	// Set OpenGL display profile. Oak's render pipeline still uses OpenGL
 	// internally even when Vulkan is requested as the Qt graphics backend.
@@ -328,7 +349,7 @@ int main(int argc, char *argv[])
 	// Create application instance
 	std::unique_ptr<QCoreApplication> a;
 
-	if (startup_params.run_mode() == olive::Core::CoreParams::k_run_normal) {
+	if (startup_params.run_mode == OAKENGINE_APP_RUN_NORMAL) {
 #ifdef _WIN32
 		// Since Oak Video Editor is linked with the console subsystem (for better POSIX compatibility), a console
 		// is created by default. If the user didn't request one, we free it here.
@@ -344,19 +365,15 @@ int main(int argc, char *argv[])
 
 	// Configuration errors are reported through a UI handler so the engine
 	// layer (config) never has to know about dialogs
-	olive::Config::set_error_handler(
-		[](const QString &title, const QString &message) {
-			QWidget *parent =
-				olive::Core::instance() ? olive::Core::instance()->main_window() :
-										  nullptr;
-			QMessageBox::critical(parent, title, message, QMessageBox::Ok);
-		});
+	oakengine_config_set_error_handler(config_error_handler, NULL);
 
-	olive::Config::load();
+	oakengine_config_load();
+	char backend_buf[64];
+	int backend_len = oakengine_config_get_string(
+			"GraphicsBackend", backend_buf, sizeof(backend_buf));
 	const QString graphics_backend =
-		olive::Config::current()[QStringLiteral("GraphicsBackend")]
-			.toString()
-			.toLower();
+		backend_len > 0 ? QString::fromUtf8(backend_buf).toLower() :
+						  QStringLiteral("opengl");
 	qputenv("QSG_RHI_BACKEND", graphics_backend == QStringLiteral("vulkan") ?
 								   QByteArrayLiteral("vulkan") :
 								   QByteArrayLiteral("opengl"));
@@ -367,7 +384,7 @@ int main(int argc, char *argv[])
 	}
 
 	if (load_plugins) {
-		olive::plugin::load_plugins("plugins");
+		oakengine_plugin_load_plugins("plugins");
 	}
 
 #ifdef _WIN32
@@ -421,7 +438,7 @@ int main(int argc, char *argv[])
 #endif // USE_CRASHPAD
 
 	// Start core
-	olive::Core c(startup_params);
+	olive::Core c(&startup_params);
 
 	c.start();
 

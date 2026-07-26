@@ -69,6 +69,9 @@ public:
 
 	static QString format_string(const QString &input, const QStringList &args);
 
+	/** @brief Access the text gizmo. */
+	TextGizmo *text_gizmo() { return text_gizmo_; }
+
 protected:
 	virtual void InputValueChangedEvent(const QString &input,
 										int element) override;

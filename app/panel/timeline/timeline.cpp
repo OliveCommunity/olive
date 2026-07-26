@@ -171,13 +171,13 @@ void TimelinePanel::rename_selected()
 }
 
 void TimelinePanel::insert_footage_at_playhead(
-	const QVector<ViewerOutput *> &footage)
+	const QVector<OakEngineNode *> &footage)
 {
 	timeline_widget()->insert_footage_at_playhead(footage);
 }
 
 void TimelinePanel::overwrite_footage_at_playhead(
-	const QVector<ViewerOutput *> &footage)
+	const QVector<OakEngineNode *> &footage)
 {
 	timeline_widget()->overwrite_footage_at_playhead(footage);
 }

@@ -31,7 +31,7 @@
 #include <QVector3D>
 
 #include "common/qtutils.h"
-#include "config/config.h"
+#include "common/configwrapper.h"
 #include "node/node.h"
 
 namespace olive
@@ -82,7 +82,7 @@ void WaveformScope::draw_scope(TexturePtr managed_tex, QVariant pipeline)
 
 	// Set luma coefficients
 	double luma_coeffs[3] = { 0.0f, 0.0f, 0.0f };
-	color_manager()->get_default_luma_coefs(luma_coeffs);
+	oakengine_color_manager_default_luma_coefs(color_manager(), luma_coeffs);
 	job.insert(
 		QStringLiteral("luma_coeffs"),
 		NodeValue(NodeValue::k_vec3,

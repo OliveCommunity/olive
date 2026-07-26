@@ -22,6 +22,8 @@
 #include "historywidget.h"
 
 #include "core.h"
+#include "oakengine/events.h"
+#include "oakengine/undo.h"
 
 namespace olive
 {
@@ -33,10 +35,24 @@ HistoryWidget::HistoryWidget(QWidget *parent)
 
 	this->setModel(stack_);
 	this->setRootIsDecorated(false);
-	connect(stack_, &UndoStack::index_changed, this,
-			&HistoryWidget::index_changed);
+	undo_sub_ = oakengine_event_subscribe(
+		oakengine_undo_handle(), OAKENGINE_EVENT_UNDO_INDEX_CHANGED,
+		[](const oakengine_event *event, void *userdata) {
+			auto *self = static_cast<HistoryWidget *>(userdata);
+			self->index_changed(static_cast<int>(event->a));
+		},
+		this);
 	connect(this->selectionModel(), &QItemSelectionModel::currentRowChanged,
 			this, &HistoryWidget::current_row_changed);
+}
+
+HistoryWidget::~HistoryWidget()
+{
+	// Raw subscription carries `this` as userdata; cancel it or the engine
+	// calls back into a dead widget (the undo stack outlives us).
+	if (undo_sub_ > 0) {
+		oakengine_event_unsubscribe(undo_sub_);
+	}
 }
 
 void HistoryWidget::index_changed(int i)
@@ -50,7 +66,7 @@ void HistoryWidget::current_row_changed(const QModelIndex &current,
 									  const QModelIndex &previous)
 {
 	size_t jump_to = (current.row() + 1);
-	stack_->jump(jump_to);
+	oakengine_undo_jump(static_cast<int64_t>(jump_to));
 }
 
 }

@@ -27,6 +27,8 @@
 #include "panel/panel.h"
 #include "widget/projectexplorer/projectexplorer.h"
 
+struct OakEngineNode;
+
 namespace olive
 {
 
@@ -37,6 +39,7 @@ class ProjectPanel : public PanelWidget, public FootageManagementPanel {
 	Q_OBJECT
 public:
 	ProjectPanel(const QString &unique_name);
+	~ProjectPanel() override;
 
 	Project *project() const;
 	void set_project(Project *p);
@@ -49,7 +52,7 @@ public:
 
 	Folder *get_selected_folder() const;
 
-	virtual QVector<ViewerOutput *> get_selected_footage() const override;
+	virtual QVector<OakEngineNode *> get_selected_footage() const override;
 
 	ProjectViewModel *model() const;
 
@@ -66,20 +69,23 @@ public:
 	virtual void rename_selected() override;
 
 public slots:
-	void edit(Node *item);
+	void edit(OakEngineNode *item);
 
 signals:
 	void project_name_changed();
 
-	void selection_changed(const QVector<Node *> &selected);
+	void selection_changed(const QVector<OakEngineNode *> &selected);
 
 private:
 	virtual void retranslate() override;
 
 	ProjectExplorer *explorer_;
 
+	// Event subscription IDs (replaces connect to Project signals)
+	int64_t project_name_sub_ = 0;
+
 private slots:
-	void item_double_click_slot(Node *item);
+	void item_double_click_slot(OakEngineNode *item);
 
 	void show_new_menu();
 

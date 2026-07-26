@@ -78,7 +78,7 @@ protected:
 	virtual void keyframe_drag_start(QMouseEvent *event) override;
 	virtual void keyframe_drag_move(QMouseEvent *event, QString &tip) override;
 	virtual void keyframe_drag_release(QMouseEvent *event,
-									 MultiUndoCommand *command) override;
+									 void *command) override;
 
 private:
 	void zoom_to_fit_internal(bool selected_only);

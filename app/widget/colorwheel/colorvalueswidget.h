@@ -27,7 +27,8 @@
 #include <QWidget>
 
 #include "colorpreviewbox.h"
-#include "node/color/colormanager/colormanager.h"
+#include "oakengine/color.h"
+#include "widget/manageddisplay/colorprocessorhandle.h"
 #include "widget/slider/floatslider.h"
 #include "widget/slider/stringslider.h"
 
@@ -87,14 +88,14 @@ private slots:
 class ColorValuesWidget : public QWidget {
 	Q_OBJECT
 public:
-	ColorValuesWidget(ColorManager *manager, QWidget *parent = nullptr);
+	ColorValuesWidget(OakEngineColorManager *manager, QWidget *parent = nullptr);
 
 	Color get_color() const;
 
-	void set_color_processor(ColorProcessorPtr input_to_ref,
-						   ColorProcessorPtr ref_to_display,
-						   ColorProcessorPtr display_to_ref,
-						   ColorProcessorPtr ref_to_input);
+	void set_color_processor(ColorProcessorHandlePtr input_to_ref,
+						   ColorProcessorHandlePtr ref_to_display,
+						   ColorProcessorHandlePtr display_to_ref,
+						   ColorProcessorHandlePtr ref_to_input);
 
 	virtual bool eventFilter(QObject *watcher, QEvent *event) override;
 
@@ -120,7 +121,7 @@ private:
 
 	void update_ref_from_display();
 
-	ColorManager *manager_;
+	OakEngineColorManager *manager_;
 
 	ColorPreviewBox *preview_;
 
@@ -130,13 +131,13 @@ private:
 
 	ColorValuesTab *display_tab_;
 
-	ColorProcessorPtr input_to_ref_;
+	ColorProcessorHandlePtr input_to_ref_;
 
-	ColorProcessorPtr ref_to_display_;
+	ColorProcessorHandlePtr ref_to_display_;
 
-	ColorProcessorPtr display_to_ref_;
+	ColorProcessorHandlePtr display_to_ref_;
 
-	ColorProcessorPtr ref_to_input_;
+	ColorProcessorHandlePtr ref_to_input_;
 
 	QPushButton *color_picker_btn_;
 

@@ -25,6 +25,8 @@
 #include "panel/panel.h"
 #include "widget/nodeview/nodewidget.h"
 
+struct OakEngineNode;
+
 namespace olive
 {
 
@@ -117,21 +119,22 @@ public:
 	}
 
 public slots:
-	void select(const QVector<Node::ContextPair> &p)
+	void select(
+		const QVector<QPair<OakEngineNode *, OakEngineNode *>> &p)
 	{
 		node_widget_->view()->select(p, true);
 	}
 
 signals:
-	void nodes_selected(const QVector<Node *> &nodes);
+	void nodes_selected(const QVector<OakEngineNode *> &nodes);
 
-	void nodes_deselected(const QVector<Node *> &nodes);
+	void nodes_deselected(const QVector<OakEngineNode *> &nodes);
 
-	void node_selection_changed(const QVector<Node *> &nodes);
-	void
-	node_selection_changed_with_contexts(const QVector<Node::ContextPair> &nodes);
+	void node_selection_changed(const QVector<OakEngineNode *> &nodes);
+	void node_selection_changed_with_contexts(
+		const QVector<QPair<OakEngineNode *, OakEngineNode *>> &nodes);
 
-	void node_group_opened(NodeGroup *group);
+	void node_group_opened(OakEngineNode *group);
 
 	void node_group_closed();
 

@@ -40,6 +40,15 @@ public:
 
 	void push(UndoCommand *command, const QString &name);
 
+  /**
+   * @brief Push a command that has already been executed (redo skipped).
+   *
+   * Used by the facade undo-group: child commands are added to the group
+   * and executed eagerly, then the whole group is pushed with this method
+   * so it is not redone again.  Empty commands are discarded.
+   */
+  void push_pre_executed(UndoCommand *command, const QString &name);
+
 	void jump(size_t index);
 
 	void clear();
@@ -77,6 +86,40 @@ public:
 								int role = Qt::DisplayRole) const override;
 	virtual bool
 	hasChildren(const QModelIndex &parent = QModelIndex()) const override;
+
+	// Facade accessors (oakengine/undo.h C ABI): row-based history queries.
+	// Rows 0..done_count()-1 are done commands (commands_ in order), rows
+	// done_count()..command_count()-1 are undone commands (undone_commands_
+	// in order, most recently undone first).
+	int command_count() const
+	{
+		return int(commands_.size() + undone_commands_.size());
+	}
+
+	int done_count() const
+	{
+		return int(commands_.size());
+	}
+
+	bool command_is_done(int row) const
+	{
+		return row >= 0 && row < done_count();
+	}
+
+	QString command_name(int row) const
+	{
+		if (row < 0 || row >= command_count()) {
+			return QString();
+		}
+		if (row < done_count()) {
+			auto it = commands_.begin();
+			std::advance(it, row);
+			return it->name;
+		}
+		auto it = undone_commands_.begin();
+		std::advance(it, row - done_count());
+		return it->name;
+	}
 
 signals:
 	void index_changed(int i);

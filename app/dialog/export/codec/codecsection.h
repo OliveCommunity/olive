@@ -24,7 +24,7 @@
 
 #include <QWidget>
 
-#include "codec/encoder.h"
+#include "oakengine/encoding.h"
 
 namespace olive
 {
@@ -34,12 +34,12 @@ class CodecSection : public QWidget {
 public:
 	CodecSection(QWidget *parent = nullptr);
 
-	virtual void add_opts(EncodingParams *params)
+	virtual void add_opts(OakEngineEncodingParams *params)
 	{
 		Q_UNUSED(params)
 	}
 
-	virtual void set_opts(const EncodingParams *p)
+	virtual void set_opts(const OakEngineEncodingParams *p)
 	{
 		Q_UNUSED(p)
 	}

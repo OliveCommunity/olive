@@ -44,26 +44,26 @@ public:
 	TaskView(QWidget *parent);
 
 signals:
-	void task_cancelled(Task *t);
+	void task_cancelled(OakEngineTask *t);
 
 public slots:
 	/**
-   * @brief Creates a TaskViewItem, connects it to a Task, and adds it to this widget
-   *
-   * Connect this to TaskManager::TaskAdded().
-   */
-	void add_task(Task *t);
+    * @brief Creates a TaskViewItem, connects it to a Task, and adds it to this widget
+    *
+    * Connect this to TaskManager::TaskAdded().
+    */
+	void add_task(OakEngineTask *t);
 
-	void task_failed(Task *t);
+	void task_failed(OakEngineTask *t);
 
-	void remove_task(Task *t);
+	void remove_task(OakEngineTask *t);
 
 private:
 	QWidget *central_widget_;
 
 	QVBoxLayout *layout_;
 
-	QHash<Task *, TaskViewItem *> items_;
+	QHash<OakEngineTask *, TaskViewItem *> items_;
 };
 
 }

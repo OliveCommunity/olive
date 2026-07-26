@@ -71,7 +71,7 @@ protected:
 			// Leaked intentionally: Core is process-wide and DiskCacheFolder
 			// eviction calls Core::instance()->WarnCacheFull() (matches
 			// viewer_display_repro_test).
-			new olive::Core(olive::Core::CoreParams());
+			new olive::Core();
 		}
 
 		olive::DiskManager::create_instance();

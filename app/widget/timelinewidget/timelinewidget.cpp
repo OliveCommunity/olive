@@ -36,22 +36,27 @@
 #include <QVBoxLayout>
 #include <QtMath>
 
-#include "audio/audiosynchronizer.h"
-#include "audio/audiowaveformsync.h"
-#include "codec/proxymanager.h"
+#include "oakengine/audio.h"
 #include "core.h"
+#include "engineeventbridge.h"
 #include "common/range.h"
 #include "dialog/proxy/proxydialog.h"
 #include "dialog/sequence/sequence.h"
 #include "dialog/speedduration/speeddurationdialog.h"
 #include "node/block/transition/transition.h"
-#include "node/nodeundo.h"
 #include "node/project/footage/footage.h"
-#include "node/project/serializer/serializer.h"
+#include "oakengine/serializer.h"
+#include "oakengine/undo.h"
+#include "oakengine/events.h"
+#include "oakengine/footage.h"
 #include "oakengine/node.h"
+#include "oakengine/project.h"
+#include "oakengine/proxy.h"
 #include "oakengine/timeline.h"
+#include "oakengine/viewer.h"
 #include "render/audiowaveformcache.h"
 #include "task/project/import/import.h"
+#include "common/configwrapper.h"
 #include "timeline/timelineundogeneral.h"
 #include "timeline/timelineundopointer.h"
 #include "timeline/timelineundoripple.h"
@@ -70,11 +75,13 @@
 #include "tool/zoom.h"
 #include "tool/tool.h"
 #include "trackview/trackview.h"
+#include "widget/timelinewidget/cliphandle.h"
 #include "widget/menu/menu.h"
 #include "widget/menu/menushared.h"
 #include "widget/nodeparamview/nodeparamview.h"
 #include "widget/timeruler/timeruler.h"
 
+#include "widget/viewer/vieweroutpututils.h"
 namespace olive
 {
 
@@ -87,7 +94,7 @@ namespace
 
 struct SourceSyncClip {
 	ClipBlock *clip = nullptr;
-	AudioSynchronizer::SourceClip source;
+	oak_audio_sync_source_clip source;
 	Rational source_head;
 };
 
@@ -104,10 +111,14 @@ bool get_source_sync_clip(Block *block, SourceSyncClip *out)
 	}
 
 	out->clip = clip;
-	out->source.source_start_time = footage->source_start_time();
-	out->source.media_in = clip->media_in();
-	out->source.has_source_start_time = true;
-	out->source_head = out->source.source_start_time + out->source.media_in;
+	const Rational source_start = footage->source_start_time();
+	const Rational media_in = clip_media_in(clip);
+	out->source.source_start_time_num = source_start.numerator();
+	out->source.source_start_time_den = source_start.denominator();
+	out->source.media_in_num = media_in.numerator();
+	out->source.media_in_den = media_in.denominator();
+	out->source.has_source_start_time = 1;
+	out->source_head = source_start + media_in;
 	return true;
 }
 
@@ -134,7 +145,11 @@ QVector<Footage *> get_selected_proxy_footage(const QVector<Block *> &blocks)
 		}
 
 		Footage *candidate = dynamic_cast<Footage *>(clip->connected_viewer());
-		if (!candidate || !candidate->get_first_enabled_video_stream().is_valid() ||
+		oak_video_params _vp;
+		if (!candidate ||
+			oakengine_viewer_get_first_enabled_video_stream(
+				reinterpret_cast<OakEngineNode *>(candidate), &_vp) < 0 ||
+			!oakengine_video_params_is_valid(&_vp) ||
 			footage.contains(candidate)) {
 			continue;
 		}
@@ -287,11 +302,18 @@ TimelineWidget::TimelineWidget(QWidget *parent)
 				start = std::min(start, b->in());
 			}
 			if (start != RATIONAL_MAX) {
-				get_connected_node()->set_playhead(start);
+				oakengine_viewer_set_playhead(
+					reinterpret_cast<OakEngineNode *>(get_connected_node()),
+					start.numerator(), start.denominator());
 			}
 		}
 
-		emit block_selection_changed(selected_blocks_);
+		QVector<OakEngineBlock *> oak_blocks;
+		oak_blocks.reserve(selected_blocks_.size());
+		for (Block *b : selected_blocks_) {
+			oak_blocks.append(reinterpret_cast<OakEngineBlock *>(b));
+		}
+		emit block_selection_changed(oak_blocks);
 	});
 }
 
@@ -304,7 +326,7 @@ TimelineWidget::~TimelineWidget()
 
 	qDeleteAll(tools_);
 
-	delete subtitle_show_command_;
+	oakengine_undo_command_free(subtitle_show_command_);
 }
 
 void TimelineWidget::clear()
@@ -383,23 +405,122 @@ void TimelineWidget::ScaleChangedEvent(const double &scale)
 void TimelineWidget::ConnectNodeEvent(ViewerOutput *n)
 {
 	Sequence *s = static_cast<Sequence *>(n);
+	OakEngineNode *handle = reinterpret_cast<OakEngineNode *>(s);
 
-	connect(s, &Sequence::track_added, this, &TimelineWidget::add_track);
-	connect(s, &Sequence::track_removed, this, &TimelineWidget::remove_track);
-	connect(s, &Sequence::frame_rate_changed, this,
-			&TimelineWidget::frame_rate_changed);
-	connect(s, &Sequence::sample_rate_changed, this,
-			&TimelineWidget::sample_rate_changed);
+	// Track add/remove are now received via bridge sequence_track_* signals
+	bridge_->subscribe(handle, OAKENGINE_EVENT_SEQUENCE_TRACK_ADDED);
+	bridge_->subscribe(handle, OAKENGINE_EVENT_SEQUENCE_TRACK_REMOVED);
+	bridge_->subscribe(handle, OAKENGINE_EVENT_SEQUENCE_TRACK_LIST_CHANGED);
+	bridge_->subscribe(handle, OAKENGINE_EVENT_SEQUENCE_TRACK_HEIGHT_CHANGED);
 
-	connect(timecode_label_, &RationalSlider::value_changed, s,
-			&Sequence::set_playhead);
-	connect(s, &Sequence::playhead_changed, timecode_label_,
-			&RationalSlider::set_value);
-	timecode_label_->set_value(s->get_playhead());
+	connect(bridge_, &EngineEventBridge::sequence_track_added, this,
+			[this](OakEngineTrack *track, int track_type) {
+				Track *t = reinterpret_cast<Track *>(track);
+				add_track(t);
+				// Update the TrackView UI for this track type
+				if (track_type >= 0 && track_type < views_.size()) {
+					views_.at(track_type)->track_view()->insert_track(t);
+				}
+			});
+	connect(bridge_, &EngineEventBridge::sequence_track_removed, this,
+			[this](OakEngineTrack *track, int track_type) {
+				Track *t = reinterpret_cast<Track *>(track);
+				remove_track(t);
+				// Update the TrackView UI for this track type
+				if (track_type >= 0 && track_type < views_.size()) {
+					views_.at(track_type)->track_view()->remove_track(t);
+				}
+			});
 
-	ruler()->set_playback_cache(n->video_frame_cache());
+	connect(bridge_, &EngineEventBridge::sequence_track_list_changed, this,
+			[this](OakEngineSequence *, int track_type) {
+				if (track_type >= 0 && track_type < views_.size()) {
+					views_.at(track_type)->view()->track_list_changed();
+				}
+			});
+	connect(bridge_, &EngineEventBridge::sequence_track_height_changed, this,
+			[this](OakEngineSequence *, OakEngineTrack *, int track_type, int) {
+				if (track_type >= 0 && track_type < views_.size()) {
+					views_.at(track_type)->view()->track_list_changed();
+				}
+			});
 
-	SetTimebase(n->get_video_params().frame_rate_as_time_base());
+	// Subscribe to track-level events via bridge (subscriptions in add_track)
+	connect(bridge_, &EngineEventBridge::track_index_changed, this,
+			[this](OakEngineTrack *source, int old_index, int new_index) {
+				Track *track = reinterpret_cast<Track *>(source);
+				track_updated(track->type());
+				track_index_changed(track, old_index, new_index);
+			});
+	connect(bridge_, &EngineEventBridge::track_height_changed, this,
+			[this](OakEngineTrack *source, double) {
+				track_updated(reinterpret_cast<Track *>(source)->type());
+			});
+	connect(bridge_, &EngineEventBridge::track_blocks_refreshed, this,
+			[this](OakEngineTrack *source) {
+				track_updated(reinterpret_cast<Track *>(source)->type());
+			});
+	connect(bridge_, &EngineEventBridge::track_block_added, this,
+			[this](OakEngineBlock *block, qint64, qint64) {
+				add_block(reinterpret_cast<Block *>(block));
+			});
+	connect(bridge_, &EngineEventBridge::track_block_removed, this,
+			[this](OakEngineBlock *block, qint64, qint64) {
+				remove_block(reinterpret_cast<Block *>(block));
+			});
+
+	// Block-level change notifications via bridge (replaces direct
+	// connect(block, &Block::..._changed, ...) to avoid pulling Block's
+	// staticMetaObject across the C ABI boundary).
+	connect(bridge_, &EngineEventBridge::block_enabled_changed, this,
+			[this](OakEngineBlock *) { block_updated(); });
+	connect(bridge_, &EngineEventBridge::block_preview_changed, this,
+			[this](OakEngineBlock *) { block_updated(); });
+	connect(bridge_, &EngineEventBridge::node_label_changed, this,
+			[this](OakEngineNode *) { block_updated(); });
+	connect(bridge_, &EngineEventBridge::node_links_changed, this,
+			[this](OakEngineNode *) { block_updated(); });
+	connect(bridge_, &EngineEventBridge::node_color_changed, this,
+			[this](OakEngineNode *) { block_updated(); });
+
+	// Subscribe to viewer events via bridge
+	bridge_->subscribe(handle, OAKENGINE_EVENT_VIEWER_FRAME_RATE_CHANGED);
+	bridge_->subscribe(handle, OAKENGINE_EVENT_VIEWER_SAMPLE_RATE_CHANGED);
+	bridge_->subscribe(handle, OAKENGINE_EVENT_VIEWER_PLAYHEAD_CHANGED);
+
+	connect(bridge_, &EngineEventBridge::viewer_frame_rate_changed, this,
+			[this](OakEngineNode *, qint64, qint64) {
+				frame_rate_changed();
+			});
+	connect(bridge_, &EngineEventBridge::viewer_sample_rate_changed, this,
+			[this](OakEngineNode *, int) {
+				sample_rate_changed();
+			});
+	connect(bridge_, &EngineEventBridge::viewer_playhead_changed, this,
+			[this](OakEngineNode *, qint64 num, qint64 den) {
+				this->timecode_label_->set_value(Rational(num, den));
+			});
+
+	connect(timecode_label_, &RationalSlider::value_changed, this,
+			[handle](const Rational &time) {
+				oakengine_viewer_set_playhead(
+					handle, time.numerator(), time.denominator());
+			});
+	{
+		int64_t pn, pd;
+		oakengine_viewer_get_playhead(handle, &pn, &pd);
+		timecode_label_->set_value(Rational(pn, pd));
+	}
+
+	ruler()->set_playback_cache(
+		reinterpret_cast<PlaybackCache *>(
+			oakengine_viewer_get_playback_cache(handle)));
+
+	{
+		oak_video_params vp;
+		oakengine_viewer_get_video_params(handle, 0, &vp);
+		SetTimebase(Rational(vp.time_base_den, vp.time_base_num));
+	}
 
 	for (int i = 0; i < views_.size(); i++) {
 		Track::Type track_type = static_cast<Track::Type>(i);
@@ -422,15 +543,8 @@ void TimelineWidget::DisconnectNodeEvent(ViewerOutput *n)
 {
 	Sequence *s = static_cast<Sequence *>(n);
 
-	disconnect(s, &Sequence::track_added, this, &TimelineWidget::add_track);
-	disconnect(s, &Sequence::track_removed, this, &TimelineWidget::remove_track);
-	disconnect(s, &Sequence::frame_rate_changed, this,
-			   &TimelineWidget::frame_rate_changed);
-	disconnect(s, &Sequence::sample_rate_changed, this,
-			   &TimelineWidget::sample_rate_changed);
-
-	disconnect(timecode_label_, &RationalSlider::value_changed, s,
-			   &Sequence::set_playhead);
+	// Bridge subscriptions and connections are cleaned up by
+	// TimeBasedWidget::connect_viewer_node (disconnect(bridge_, nullptr, this, nullptr))
 
 	deselect_all();
 
@@ -577,7 +691,7 @@ void TimelineWidget::split_at_playhead()
 
 void TimelineWidget::replace_blocks_with_gaps(const QVector<Block *> &blocks,
 										   bool remove_from_graph,
-										   MultiUndoCommand *command,
+										   void *command,
 										   bool handle_transitions)
 {
 	foreach (Block *b, blocks) {
@@ -589,12 +703,21 @@ void TimelineWidget::replace_blocks_with_gaps(const QVector<Block *> &blocks,
 
 		Track *original_track = b->track();
 
-		command->add_child(new TrackReplaceBlockWithGapCommand(
-			original_track, b, handle_transitions));
+		oakengine_undo_command_multi_add_child(command, oakengine_track_replace_block_with_gap_command(reinterpret_cast<void *>(original_track), reinterpret_cast<void *>(b), handle_transitions ? 1 : 0));
 
 		if (remove_from_graph) {
-			command->add_child(
-				new NodeRemoveWithExclusiveDependenciesAndDisconnect(b));
+			void *remove_cmd = oakengine_undo_command_create_multi();
+			oakengine_undo_command_multi_add_child(
+				remove_cmd,
+				oakengine_node_remove_and_disconnect_command(
+					reinterpret_cast<void *>(b)));
+			for (Node *dep : b->get_exclusive_dependencies()) {
+				oakengine_undo_command_multi_add_child(
+					remove_cmd,
+					oakengine_node_remove_and_disconnect_command(
+						reinterpret_cast<void *>(dep)));
+			}
+			oakengine_undo_command_multi_add_child(command, remove_cmd);
 		}
 	}
 }
@@ -634,28 +757,27 @@ void TimelineWidget::DeleteSelected(bool ripple)
 		ripple = true;
 	}
 
-	MultiUndoCommand *command = new MultiUndoCommand();
+	void *command = oakengine_undo_command_create_multi();
 
 	// Remove all selections
-	command->add_child(new SetSelectionsCommand(
-		this, TimelineWidgetSelections(), get_selections()));
+	oakengine_undo_command_multi_add_child(command, create_set_selections_command(TimelineWidgetSelections(), get_selections()));
 
 	// For transitions, remove them but extend their attached blocks to fill their place
 	foreach (TransitionBlock *transition, transitions_to_delete) {
-		TransitionRemoveCommand *trc =
-			new TransitionRemoveCommand(transition, true);
+		void *trc = oakengine_transition_remove_command(
+			reinterpret_cast<void *>(transition), 1);
 
 		// Perform the transition removal now so that replacing blocks with gaps below won't get confused
-		trc->redo_now();
+		oakengine_undo_command_redo_now(trc);
 
-		command->add_child(trc);
+		oakengine_undo_command_multi_add_child(command, trc);
 	}
 
 	// Selection clearing and transition removal stay app-side (selection
 	// state and transition commands have no facade equivalent); the clip
 	// deletion core below goes through the facade and lands as one undoable
 	// command right after this one, keeping the undo order intact.
-	Core::instance()->undo_stack()->push(command, tr("Deleted Clips"));
+	oakengine_undo_push(command, tr("Deleted Clips").toUtf8().constData());
 
 	// Delete the clips through the liboakengine C ABI facade (gap
 	// replacement + graph removal, optionally rippling the selected ranges
@@ -692,7 +814,9 @@ void TimelineWidget::DeleteSelected(bool ripple)
 	clear_ghosts();
 
 	if (ripple && rippled && new_playhead != RATIONAL_MAX) {
-		get_connected_node()->set_playhead(new_playhead);
+		oakengine_viewer_set_playhead(
+			reinterpret_cast<OakEngineNode *>(get_connected_node()),
+			new_playhead.numerator(), new_playhead.denominator());
 	}
 }
 
@@ -704,7 +828,14 @@ void TimelineWidget::increase_track_height()
 
 	// Increase the height of each track by one "unit"
 	foreach (Track *t, sequence()->get_tracks()) {
-		t->set_track_height(t->get_track_height() + Track::k_track_height_interval);
+		double h;
+		oakengine_track_get_height(
+			reinterpret_cast<OakEngineSequence *>(sequence()),
+			t->type(), t->index(), &h);
+		oakengine_track_set_height(
+			reinterpret_cast<OakEngineSequence *>(sequence()),
+			t->type(), t->index(),
+			h + oakengine_track_height_interval());
 	}
 }
 
@@ -716,30 +847,46 @@ void TimelineWidget::decrease_track_height()
 
 	// Decrease the height of each track by one "unit"
 	foreach (Track *t, sequence()->get_tracks()) {
-		t->set_track_height(
-			qMax(t->get_track_height() - Track::k_track_height_interval,
-				 Track::k_track_height_minimum));
+		double h;
+		oakengine_track_get_height(
+			reinterpret_cast<OakEngineSequence *>(sequence()),
+			t->type(), t->index(), &h);
+		oakengine_track_set_height(
+			reinterpret_cast<OakEngineSequence *>(sequence()),
+			t->type(), t->index(),
+			qMax(h - oakengine_track_height_interval(),
+				 oakengine_track_height_minimum()));
 	}
 }
 
 void TimelineWidget::insert_footage_at_playhead(
-	const QVector<ViewerOutput *> &footage)
+	const QVector<OakEngineNode *> &footage)
 {
-	auto command = new MultiUndoCommand();
-	import_tool_->place_at(footage, get_connected_node()->get_playhead(), true,
+	auto command = oakengine_undo_command_create_multi();
+	QVector<ViewerOutput *> viewer_footage;
+	viewer_footage.reserve(footage.size());
+	foreach (OakEngineNode *handle, footage) {
+		viewer_footage.append(reinterpret_cast<ViewerOutput *>(handle));
+	}
+	import_tool_->place_at(viewer_footage, get_connected_node()->get_playhead(), true,
 						  command, 0, true);
-	Core::instance()->undo_stack()->push(command,
-										 tr("Inserted Footage At Playhead"));
+	oakengine_undo_push(command,
+										 tr("Inserted Footage At Playhead").toUtf8().constData());
 }
 
 void TimelineWidget::overwrite_footage_at_playhead(
-	const QVector<ViewerOutput *> &footage)
+	const QVector<OakEngineNode *> &footage)
 {
-	auto command = new MultiUndoCommand();
-	import_tool_->place_at(footage, get_connected_node()->get_playhead(), false,
+	auto command = oakengine_undo_command_create_multi();
+	QVector<ViewerOutput *> viewer_footage;
+	viewer_footage.reserve(footage.size());
+	foreach (OakEngineNode *handle, footage) {
+		viewer_footage.append(reinterpret_cast<ViewerOutput *>(handle));
+	}
+	import_tool_->place_at(viewer_footage, get_connected_node()->get_playhead(), false,
 						  command, 0, true);
-	Core::instance()->undo_stack()->push(command,
-										 tr("Overwrote Footage At Playhead"));
+	oakengine_undo_push(command,
+										 tr("Overwrote Footage At Playhead").toUtf8().constData());
 }
 
 void TimelineWidget::toggle_links_on_selected()
@@ -825,27 +972,34 @@ bool TimelineWidget::copy_selected(bool cut)
 		}
 	}
 
-	ProjectSerializer::SaveData sdata(ProjectSerializer::k_only_clips);
-	sdata.set_only_serialize_nodes_and_resolve_groups(selected_nodes);
+	OakEngineClipboard *cb = oakengine_clipboard_create(
+		OAKENGINE_CLIPBOARD_CLIPS, nullptr, nullptr);
+
+	oakengine_clipboard_set_nodes(
+		cb,
+		reinterpret_cast<const OakEngineNode *const *>(
+			selected_nodes.constData()),
+		selected_nodes.size());
 
 	// Cache the earliest in point so all copied clips have a "relative" in point that can be pasted anywhere
 	Rational earliest_in = RATIONAL_MAX;
-	ProjectSerializer::SerializedProperties properties;
 
 	foreach (Block *block, selected_blocks_) {
 		earliest_in = qMin(earliest_in, block->in());
 	}
 
 	foreach (Block *block, selected_blocks_) {
-		properties[block][QStringLiteral("in")] =
-			QString::fromStdString((block->in() - earliest_in).to_string());
-		properties[block][QStringLiteral("track")] =
-			block->track()->to_reference().to_string();
+		oakengine_clipboard_set_property(
+			cb, reinterpret_cast<OakEngineNode *>(block), "in",
+			(block->in() - earliest_in).to_string().c_str());
+		QString track_ref = block->track()->to_reference().to_string();
+		oakengine_clipboard_set_property(
+			cb, reinterpret_cast<OakEngineNode *>(block), "track",
+			track_ref.toUtf8().constData());
 	}
 
-	sdata.set_properties(properties);
-
-	ProjectSerializer::copy(sdata);
+	oakengine_clipboard_copy(cb);
+	oakengine_clipboard_free(cb);
 
 	if (cut) {
 		DeleteSelected();
@@ -900,7 +1054,9 @@ void TimelineWidget::delete_in_to_out(bool ripple)
 
 	// Playhead move is not undoable and stays here (same as before).
 	if (ripple) {
-		get_connected_node()->set_playhead(wa_in);
+		oakengine_viewer_set_playhead(
+			reinterpret_cast<OakEngineNode *>(get_connected_node()),
+			wa_in.numerator(), wa_in.denominator());
 	}
 }
 
@@ -1007,11 +1163,16 @@ void TimelineWidget::synchronize_selected_clips_by_source_time()
 
 	QVector<SyncPlacement> placements;
 	for (const SourceSyncClip &sync_clip : sync_clips) {
-		const AudioSynchronizer::Placement placement =
-			AudioSynchronizer::place_by_source_time(
-				reference.source, sync_clip.source, anchor_timeline_in);
-		if (placement.valid) {
-			placements.append({ sync_clip.clip, placement.timeline_in });
+		oak_audio_sync_placement placement;
+		if (oakengine_audio_sync_place_by_source_time(
+				&reference.source, &sync_clip.source,
+				anchor_timeline_in.numerator(),
+				anchor_timeline_in.denominator(),
+				&placement) == OAKENGINE_OK &&
+			placement.valid) {
+			placements.append({ sync_clip.clip,
+								Rational(int(placement.timeline_in_num),
+										 int(placement.timeline_in_den)) });
 		}
 	}
 
@@ -1019,29 +1180,24 @@ void TimelineWidget::synchronize_selected_clips_by_source_time()
 		return;
 	}
 
-	MultiUndoCommand *command = new MultiUndoCommand();
+	void *command = oakengine_undo_command_create_multi();
 	for (const SyncPlacement &placement : placements) {
-		command->add_child(new TrackReplaceBlockWithGapCommand(
-			placement.clip->track(), placement.clip, false));
+		oakengine_undo_command_multi_add_child(command, oakengine_track_replace_block_with_gap_command(reinterpret_cast<void *>(placement.clip->track()), reinterpret_cast<void *>(placement.clip), false ? 1 : 0));
 	}
 
 	TimelineWidgetSelections new_selections;
 	for (const SyncPlacement &placement : placements) {
-		command->add_child(new TrackPlaceBlockCommand(
-			sequence()->track_list(placement.clip->track()->type()),
-			placement.clip->track()->index(), placement.clip,
-			placement.timeline_in));
+		oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(sequence()->track_list(placement.clip->track()->type())), placement.clip->track()->index(), reinterpret_cast<void *>(placement.clip), core::Timecode::time_to_timestamp(placement.timeline_in, timebase())));
 
 		new_selections[placement.clip->track()->to_reference()].insert(
 			TimeRange(placement.timeline_in,
 					  placement.timeline_in + placement.clip->length()));
 	}
 
-	command->add_child(
-		new SetSelectionsCommand(this, new_selections, get_selections()));
+	oakengine_undo_command_multi_add_child(command, create_set_selections_command(new_selections, get_selections()));
 
-	Core::instance()->undo_stack()->push(
-		command, tr("Synchronize Clips by Source Time"));
+	oakengine_undo_push(
+		command, tr("Synchronize Clips by Source Time").toUtf8().constData());
 }
 
 void TimelineWidget::synchronize_selected_clips_by_waveform()
@@ -1114,10 +1270,15 @@ void TimelineWidget::synchronize_selected_clips_by_waveform_internal(
 
 		// Skip uncached (zero-filled) windows on both sides so partially
 		// cached waveforms don't drag the correlation down
-		AudioWaveformSync::OffsetResult offset =
-			AudioWaveformSync::estimate_envelope_offset(
-				reference_envelope, candidate_envelope, reference_valid,
-				candidate_valid, window_samples, max_offset_windows);
+		oak_audio_waveform_offset offset;
+		oakengine_audio_estimate_envelope_offset(
+			reference_envelope.constData(), reference_envelope.size(),
+			candidate_envelope.constData(), candidate_envelope.size(),
+			reference_valid.isEmpty() ? nullptr : reference_valid.constData(),
+			reference_valid.size(),
+			candidate_valid.isEmpty() ? nullptr : candidate_valid.constData(),
+			candidate_valid.size(), window_samples, max_offset_windows,
+			&offset);
 
 		double speed = 1.0;
 
@@ -1130,11 +1291,15 @@ void TimelineWidget::synchronize_selected_clips_by_waveform_internal(
 				max_offset_windows,
 				(static_cast<int64_t>(sample_rate) * 30) /
 					static_cast<int64_t>(window_samples));
-			const AudioWaveformSync::StretchOffsetResult stretch =
-				AudioWaveformSync::estimate_stretch_and_offset(
-					reference_envelope, candidate_envelope, reference_valid,
-					candidate_valid, window_samples, stretch_radius_windows,
-					0.75, 1.34, 0.005);
+			oak_audio_waveform_stretch_offset stretch;
+			oakengine_audio_estimate_stretch_and_offset(
+				reference_envelope.constData(), reference_envelope.size(),
+				candidate_envelope.constData(), candidate_envelope.size(),
+				reference_valid.isEmpty() ? nullptr : reference_valid.constData(),
+				reference_valid.size(),
+				candidate_valid.isEmpty() ? nullptr : candidate_valid.constData(),
+				candidate_valid.size(), window_samples, stretch_radius_windows,
+				0.75, 1.34, 0.005, &stretch);
 			qDebug() << "TimelineWidget::SynchronizeSelectedClipsByWaveform: "
 						"stretch estimate valid="
 					 << stretch.valid << "rate=" << stretch.rate
@@ -1158,14 +1323,22 @@ void TimelineWidget::synchronize_selected_clips_by_waveform_internal(
 			continue;
 		}
 
-		const AudioSynchronizer::Placement placement =
-			AudioSynchronizer::place_by_waveform_offset(
-				reference.clip->in(), offset.offset_samples, sample_rate);
+		oak_audio_sync_placement placement;
+		oakengine_audio_sync_place_by_waveform_offset(
+			reference.clip->in().numerator(), reference.clip->in().denominator(),
+			offset.offset_samples, sample_rate, &placement);
 		qDebug() << "TimelineWidget::SynchronizeSelectedClipsByWaveform: placement"
 				 << "valid=" << placement.valid << "timeline_in="
-				 << placement.timeline_in.to_double();
-		if (placement.valid && placement.timeline_in >= 0) {
-			placements.append({ sync_clip.clip, placement.timeline_in, speed });
+				 << (placement.valid ? Rational(int(placement.timeline_in_num),
+											int(placement.timeline_in_den))
+									 .to_double()
+									 : 0.0);
+		if (placement.valid) {
+			const Rational timeline_in(int(placement.timeline_in_num),
+								   int(placement.timeline_in_den));
+			if (timeline_in >= 0) {
+				placements.append({ sync_clip.clip, timeline_in, speed });
+			}
 		}
 	}
 
@@ -1177,25 +1350,25 @@ void TimelineWidget::synchronize_selected_clips_by_waveform_internal(
 		return;
 	}
 
-	MultiUndoCommand *command = new MultiUndoCommand();
+	void *command = oakengine_undo_command_create_multi();
 	for (const SyncPlacement &placement : placements) {
-		command->add_child(new TrackReplaceBlockWithGapCommand(
-			placement.clip->track(), placement.clip, false));
+		oakengine_undo_command_multi_add_child(command, oakengine_track_replace_block_with_gap_command(reinterpret_cast<void *>(placement.clip->track()), reinterpret_cast<void *>(placement.clip), false ? 1 : 0));
 
 		if (placement.speed != 1.0) {
-			command->add_child(new NodeParamSetStandardValueCommand(
-				NodeKeyframeTrackReference(
-					NodeInput(placement.clip, ClipBlock::k_speed_input)),
-				placement.clip->speed() * placement.speed));
+			oak_node_value v{};
+			v.type = OAK_NODE_VALUE_FLOAT;
+			v.f[0] = clip_speed(placement.clip) * placement.speed;
+			oakengine_undo_command_multi_add_child(
+				command,
+				oakengine_node_set_standard_value_command(
+					reinterpret_cast<OakEngineNode *>(placement.clip),
+					oakengine_clip_speed_input_id(), 0, 0, &v));
 		}
 	}
 
 	TimelineWidgetSelections new_selections;
 	for (const SyncPlacement &placement : placements) {
-		command->add_child(new TrackPlaceBlockCommand(
-			sequence()->track_list(placement.clip->track()->type()),
-			placement.clip->track()->index(), placement.clip,
-			placement.timeline_in));
+		oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(sequence()->track_list(placement.clip->track()->type())), placement.clip->track()->index(), reinterpret_cast<void *>(placement.clip), core::Timecode::time_to_timestamp(placement.timeline_in, timebase())));
 
 		// A speed change scales the clip's timeline length accordingly
 		const Rational placed_length =
@@ -1208,20 +1381,19 @@ void TimelineWidget::synchronize_selected_clips_by_waveform_internal(
 					  placement.timeline_in + placed_length));
 	}
 
-	command->add_child(
-		new SetSelectionsCommand(this, new_selections, get_selections()));
+	oakengine_undo_command_multi_add_child(command, create_set_selections_command(new_selections, get_selections()));
 
-	Core::instance()->undo_stack()->push(command,
-													 tr("Synchronize Clips by Waveform"));
+	oakengine_undo_push(command,
+													 tr("Synchronize Clips by Waveform").toUtf8().constData());
 	Core::instance()->show_status_bar_message(
 		tr("Synchronized %1 clip(s) by waveform").arg(placements.size()));
 }
 
 void TimelineWidget::generate_proxies_for_selected_clips()
 {
-	if (!ProxyManager::instance() || !sequence()) {
+	if (!sequence()) {
 		qWarning()
-			<< "GenerateProxiesForSelectedClips: ProxyManager or sequence unavailable";
+			<< "GenerateProxiesForSelectedClips: sequence unavailable";
 		return;
 	}
 
@@ -1231,25 +1403,41 @@ void TimelineWidget::generate_proxies_for_selected_clips()
 			 << footage.size() << "footage item(s)";
 	for (Footage *item : footage) {
 		const VideoParams video = item->get_first_enabled_video_stream();
-		if (!video.is_valid()) {
+		oak_video_params _vp;
+		oakengine_viewer_get_first_enabled_video_stream(
+			reinterpret_cast<OakEngineNode *>(item), &_vp);
+		if (!oakengine_video_params_is_valid(&_vp)) {
 			qWarning()
 				<< "GenerateProxiesForSelectedClips: skipping item with no valid video stream"
 				<< item->filename();
 			continue;
 		}
 
-		ProxyManager::ProxyParams params = item->get_effective_proxy_params();
-		const ProxyManager::Proxy proxy =
-			ProxyManager::instance()->get_or_start_proxy(
-				item->project()->cache_path(), item->filename(),
-				video.stream_index(), params);
+		oak_proxy_params params;
+		oakengine_footage_get_effective_proxy_params(
+			reinterpret_cast<OakEngineFootage *>(item), &params);
+		oak_proxy_result proxy;
+		char cache_buf[512];
+		oakengine_project_cache_path(
+			reinterpret_cast<OakEngineProject *>(item->project()),
+			cache_buf, sizeof(cache_buf));
+		int ret = oakengine_proxy_get_or_start(
+			cache_buf,
+			item->filename().toUtf8().constData(),
+			video.stream_index(), &params, &proxy);
+		if (ret != 0) {
+			qWarning() << "GenerateProxiesForSelectedClips: failed to get/start proxy for"
+					   << item->filename();
+			continue;
+		}
 		qDebug() << "GenerateProxiesForSelectedClips: proxy state="
-				 << ProxyManager::proxy_state_to_string(proxy.state)
-				 << "file=" << proxy.filename
-				 << "cache=" << item->project()->cache_path();
-		item->set_proxy(proxy.filename, proxy.state, video.stream_index(),
-					   params.version, true);
-		item->invalidate_all(Footage::k_filename_input);
+				 << proxy.state
+				 << "file=" << QString::fromUtf8(proxy.filename)
+				 << "cache=" << cache_buf;
+		oakengine_footage_set_proxy(reinterpret_cast<OakEngineFootage *>(item),
+								   proxy.filename, proxy.state,
+								   video.stream_index(), 1, params.version);
+		oakengine_footage_invalidate(reinterpret_cast<OakEngineFootage *>(item));
 	}
 }
 
@@ -1266,8 +1454,9 @@ void TimelineWidget::set_selected_clips_proxy_enabled(bool enabled)
 			continue;
 		}
 
-		item->set_proxy_enabled(enabled);
-		item->invalidate_all(Footage::k_filename_input);
+		oakengine_footage_proxy_set_enabled(
+			reinterpret_cast<OakEngineFootage *>(item), enabled ? 1 : 0);
+		oakengine_footage_invalidate(reinterpret_cast<OakEngineFootage *>(item));
 	}
 }
 
@@ -1313,10 +1502,16 @@ void TimelineWidget::delete_proxies_for_selected_clips()
 		}
 
 		QFile::remove(item->proxy_path());
-		QFile::remove(
-			ProxyManager::get_working_proxy_filename(item->proxy_path()));
-		item->clear_proxy();
-		item->invalidate_all(Footage::k_filename_input);
+		{
+			char wbuf[4096];
+			int wlen = oakengine_proxy_get_working_filename(
+				item->proxy_path().toUtf8().constData(), wbuf, sizeof(wbuf));
+			if (wlen > 0) {
+				QFile::remove(QString::fromUtf8(wbuf, wlen));
+			}
+		}
+		oakengine_footage_clear_proxy(reinterpret_cast<OakEngineFootage *>(item));
+		oakengine_footage_invalidate(reinterpret_cast<OakEngineFootage *>(item));
 	}
 }
 
@@ -1330,25 +1525,36 @@ void TimelineWidget::recording_callback(const QString &filename,
 									   const TimeRange &time,
 									   const Track::Reference &track)
 {
-	ProjectImportTask task(get_connected_node()->project()->root(), { filename });
-	task.start();
-
-	auto subimport_command = task.get_command();
-
-	if (task.get_imported_footage().empty()) {
-		qCritical() << "Failed to import recorded audio file" << filename;
-		delete subimport_command;
-	} else {
-		subimport_command->redo_now();
-
-		auto import_command = new MultiUndoCommand();
-		import_command->add_child(subimport_command);
-
-		import_tool_->place_at({ task.get_imported_footage().front() }, time.in(),
-							  false, import_command, track.index());
-		Core::instance()->undo_stack()->push(import_command,
-											 tr("Recorded Audio Clip"));
+	OakEngineNode *root = reinterpret_cast<OakEngineNode *>(
+		get_connected_node()->project()->root());
+	const char *url = filename.toUtf8().constData();
+	OakEngineTask *task = oakengine_task_create_project_import(root, &url, 1);
+	if (!task) {
+		qCritical() << "Failed to create import task for" << filename;
+		return;
 	}
+	oakengine_task_start_sync(task);
+
+	void *subimport_command = oakengine_task_import_get_command(task);
+
+	if (oakengine_task_import_footage_count(task) == 0) {
+		qCritical() << "Failed to import recorded audio file" << filename;
+		if (subimport_command) {
+			oakengine_undo_command_free(subimport_command);
+		}
+	} else {
+		oakengine_undo_command_redo_now(subimport_command);
+
+		auto import_command = oakengine_undo_command_create_multi();
+		oakengine_undo_command_multi_add_child(import_command, static_cast<void *>(subimport_command));
+
+		OakEngineNode *front = oakengine_task_import_footage_at(task, 0);
+		import_tool_->place_at({ reinterpret_cast<Footage *>(front) }, time.in(),
+							  false, import_command, track.index());
+		oakengine_undo_push(import_command,
+											 tr("Recorded Audio Clip").toUtf8().constData());
+	}
+	oakengine_task_free(task);
 }
 
 void TimelineWidget::enable_recording_overlay(const TimelineCoordinate &coord)
@@ -1377,23 +1583,25 @@ void TimelineWidget::add_tentative_subtitle_track()
 
 		if (should_adjust_splitter || should_add_sub_track) {
 			// Create command
-			subtitle_show_command_ = new MultiUndoCommand();
+			subtitle_show_command_ = oakengine_undo_command_create_multi();
 
 			if (should_adjust_splitter) {
 				sz[Track::k_subtitle] = height() / Track::k_count;
-				subtitle_show_command_->add_child(
-					new SetSplitterSizesCommand(view_splitter_, sz));
+				oakengine_undo_command_multi_add_child(
+					subtitle_show_command_,
+					make_splitter_sizes_command(view_splitter_, sz));
 			}
 
 			if (should_add_sub_track) {
-				TimelineAddTrackCommand *track_add_cmd =
-					new TimelineAddTrackCommand(
-						sequence()->track_list(Track::k_subtitle));
-				subtitle_tentative_track_ = track_add_cmd->track();
-				subtitle_show_command_->add_child(track_add_cmd);
+				void *track_add_cmd = oakengine_sequence_add_track_command(
+					reinterpret_cast<OakEngineSequence *>(sequence()),
+					OAKENGINE_TRACK_TYPE_SUBTITLE, 0,
+					&subtitle_tentative_track_);
+				oakengine_undo_command_multi_add_child(
+					subtitle_show_command_, track_add_cmd);
 			}
 
-			subtitle_show_command_->redo_now();
+			oakengine_undo_command_redo_now(subtitle_show_command_);
 		}
 	}
 }
@@ -1429,7 +1637,7 @@ void TimelineWidget::nest_selected_clips()
 		end_time = std::max(end_time, b->out());
 	}
 
-	auto move_to_nest_command = new MultiUndoCommand();
+	auto move_to_nest_command = oakengine_undo_command_create_multi();
 
 	// Remove blocks from this sequence
 	replace_blocks_with_gaps(blocks, false, move_to_nest_command);
@@ -1437,14 +1645,33 @@ void TimelineWidget::nest_selected_clips()
 	// Create new sequence
 	Project *project = this->get_connected_node()->project();
 	Sequence *nest =
-		Core::create_new_sequence_for_project(tr("Nested Sequence %1"), project);
-	nest->set_video_params(get_connected_node()->get_video_params());
-	nest->set_audio_params(get_connected_node()->get_audio_params());
-	move_to_nest_command->add_child(new NodeAddCommand(project, nest));
+		Core::instance()->create_new_sequence_for_project(tr("Nested Sequence %1"), project);
+	{
+		oak_video_params vpod;
+		oakengine_viewer_get_video_params(
+			reinterpret_cast<const OakEngineNode *>(get_connected_node()),
+			0, &vpod);
+		oakengine_viewer_set_video_params(
+			reinterpret_cast<OakEngineNode *>(nest), &vpod, 0);
+	}
+	{
+		int sr = 0, fmt = 0;
+		uint64_t cl = 0;
+		oakengine_viewer_get_audio_params(
+			reinterpret_cast<const OakEngineNode *>(get_connected_node()),
+			0, &sr, &cl, &fmt);
+		oakengine_viewer_set_audio_params(
+			reinterpret_cast<OakEngineNode *>(nest), sr, cl, fmt, 0);
+	}
+	oakengine_undo_command_multi_add_child(move_to_nest_command,
+		oakengine_node_add_to_project_command(
+			reinterpret_cast<OakEngineProject *>(project),
+			reinterpret_cast<OakEngineNode *>(nest)));
 
 	// Add to same folder
-	move_to_nest_command->add_child(
-		new FolderAddChild(this->get_connected_node()->folder(), nest));
+	oakengine_folder_add_child(
+		reinterpret_cast<OakEngineNode *>(this->get_connected_node()->folder()),
+		reinterpret_cast<OakEngineNode *>(nest));
 
 	// Place blocks in new sequence
 	for (int i = 0; i < blocks.size(); i++) {
@@ -1453,17 +1680,14 @@ void TimelineWidget::nest_selected_clips()
 		const TimeRange &range = times.at(i);
 		Track::Reference track = tracks.at(i);
 
-		move_to_nest_command->add_child(new TrackPlaceBlockCommand(
-			nest->track_list(track.type()),
-			track.index() - track_offset.at(track.type()), b,
-			range.in() - start_time));
+		oakengine_undo_command_multi_add_child(move_to_nest_command, oakengine_track_place_block_command(reinterpret_cast<void *>(nest->track_list(track.type())), track.index() - track_offset.at(track.type()), reinterpret_cast<void *>(b), core::Timecode::time_to_timestamp(range.in() - start_time, sequence_timebase(nest))));
 	}
 
 	// Do this command now, because we later do checks and actions that rely on these having been done
-	move_to_nest_command->redo_now();
+	oakengine_undo_command_redo_now(move_to_nest_command);
 
-	auto meta_command = new MultiUndoCommand();
-	meta_command->add_child(move_to_nest_command);
+	auto meta_command = oakengine_undo_command_create_multi();
+	oakengine_undo_command_multi_add_child(meta_command, move_to_nest_command);
 
 	// Find first free track index
 	bool empty = false;
@@ -1491,14 +1715,14 @@ void TimelineWidget::nest_selected_clips()
 	// Place new sequence in this sequence
 	import_tool_->place_at({ nest }, start_time, false, meta_command, index);
 
-	Core::instance()->undo_stack()->push(meta_command, tr("Nested Clips"));
+	oakengine_undo_push(meta_command, tr("Nested Clips").toUtf8().constData());
 }
 
 void TimelineWidget::clear_tentative_subtitle_track()
 {
 	if (subtitle_show_command_) {
-		subtitle_show_command_->undo_now();
-		delete subtitle_show_command_;
+		oakengine_undo_command_undo_now(subtitle_show_command_);
+		oakengine_undo_command_free(subtitle_show_command_);
 		subtitle_show_command_ = nullptr;
 		subtitle_tentative_track_ = nullptr;
 	}
@@ -1506,12 +1730,16 @@ void TimelineWidget::clear_tentative_subtitle_track()
 
 void TimelineWidget::insert_gaps_at(const Rational &earliest_point,
 								  const Rational &insert_length,
-								  MultiUndoCommand *command)
+								  void *command)
 {
 	for (int i = 0; i < Track::k_count; i++) {
-		command->add_child(new TrackListInsertGaps(
-			sequence()->track_list(static_cast<Track::Type>(i)), earliest_point,
-			insert_length));
+		oakengine_undo_command_multi_add_child(
+			command,
+			oakengine_track_list_insert_gaps_command(
+				reinterpret_cast<void *>(sequence()->track_list(
+					static_cast<Track::Type>(i))),
+				earliest_point.numerator(), earliest_point.denominator(),
+				insert_length.numerator(), insert_length.denominator()));
 	}
 }
 
@@ -1652,16 +1880,14 @@ void TimelineWidget::add_block(Block *block)
 {
 	// Set up clip with view parameters (clip item will automatically size its rect accordingly)
 	if (!added_blocks_.contains(block)) {
-		connect(block, &Block::links_changed, this,
-				&TimelineWidget::block_updated);
-		connect(block, &Block::label_changed, this,
-				&TimelineWidget::block_updated);
-		connect(block, &Block::color_changed, this,
-				&TimelineWidget::block_updated);
-		connect(block, &Block::enabled_changed, this,
-				&TimelineWidget::block_updated);
-		connect(block, &Block::preview_changed, this,
-				&TimelineWidget::block_updated);
+		OakEngineNode *node = reinterpret_cast<OakEngineNode *>(block);
+		QVector<int64_t> subs;
+		subs.append(bridge_->subscribe(node, OAKENGINE_EVENT_BLOCK_ENABLED_CHANGED));
+		subs.append(bridge_->subscribe(node, OAKENGINE_EVENT_BLOCK_PREVIEW_CHANGED));
+		subs.append(bridge_->subscribe(node, OAKENGINE_EVENT_NODE_LABEL_CHANGED));
+		subs.append(bridge_->subscribe(node, OAKENGINE_EVENT_NODE_LINKS_CHANGED));
+		subs.append(bridge_->subscribe(node, OAKENGINE_EVENT_NODE_COLOR_CHANGED));
+		block_subscriptions_.insert(block, subs);
 
 		added_blocks_.append(block);
 
@@ -1675,17 +1901,14 @@ void TimelineWidget::add_block(Block *block)
 
 void TimelineWidget::remove_block(Block *block)
 {
-	// Disconnect all signals
-	disconnect(block, &Block::links_changed, this,
-			   &TimelineWidget::block_updated);
-	disconnect(block, &Block::label_changed, this,
-			   &TimelineWidget::block_updated);
-	disconnect(block, &Block::color_changed, this,
-			   &TimelineWidget::block_updated);
-	disconnect(block, &Block::enabled_changed, this,
-			   &TimelineWidget::block_updated);
-	disconnect(block, &Block::preview_changed, this,
-			   &TimelineWidget::block_updated);
+	// Unsubscribe bridge events for this block
+	if (auto it = block_subscriptions_.find(block);
+		it != block_subscriptions_.end()) {
+		for (int64_t id : it.value()) {
+			oakengine_event_unsubscribe(id);
+		}
+		block_subscriptions_.erase(it);
+	}
 
 	// Take item from map
 	added_blocks_.removeOne(block);
@@ -1706,29 +1929,18 @@ void TimelineWidget::add_track(Track *track)
 		add_block(b);
 	}
 
-	connect(track, &Track::index_changed, this, &TimelineWidget::track_updated);
-	connect(track, &Track::index_changed, this,
-			&TimelineWidget::track_index_changed);
-	connect(track, &Track::blocks_refreshed, this,
-			&TimelineWidget::track_updated);
-	connect(track, &Track::track_height_changed, this,
-			&TimelineWidget::track_updated);
-	connect(track, &Track::block_added, this, &TimelineWidget::add_block);
-	connect(track, &Track::block_removed, this, &TimelineWidget::remove_block);
+	OakEngineTrack *h = reinterpret_cast<OakEngineTrack *>(track);
+	bridge_->subscribe(h, OAKENGINE_EVENT_TRACK_INDEX_CHANGED);
+	bridge_->subscribe(h, OAKENGINE_EVENT_TRACK_BLOCKS_REFRESHED);
+	bridge_->subscribe(h, OAKENGINE_EVENT_TRACK_HEIGHT_CHANGED);
+	bridge_->subscribe(h, OAKENGINE_EVENT_TRACK_BLOCK_ADDED);
+	bridge_->subscribe(h, OAKENGINE_EVENT_TRACK_BLOCK_REMOVED);
 }
 
 void TimelineWidget::remove_track(Track *track)
 {
-	disconnect(track, &Track::index_changed, this,
-			   &TimelineWidget::track_updated);
-	disconnect(track, &Track::index_changed, this,
-			   &TimelineWidget::track_index_changed);
-	disconnect(track, &Track::blocks_refreshed, this,
-			   &TimelineWidget::track_updated);
-	disconnect(track, &Track::track_height_changed, this,
-			   &TimelineWidget::track_updated);
-	disconnect(track, &Track::block_added, this, &TimelineWidget::add_block);
-	disconnect(track, &Track::block_removed, this, &TimelineWidget::remove_block);
+	// Bridge subscriptions auto-die with the observed engine object.
+	// No per-track unsubscribe needed.
 
 	remove_selection(TimeRange(0, RATIONAL_MAX), track->to_reference());
 
@@ -1737,9 +1949,9 @@ void TimelineWidget::remove_track(Track *track)
 	}
 }
 
-void TimelineWidget::track_updated()
+void TimelineWidget::track_updated(Track::Type type)
 {
-	update_viewports(static_cast<Track *>(sender())->type());
+	update_viewports(type);
 }
 
 void TimelineWidget::block_updated()
@@ -1819,7 +2031,7 @@ void TimelineWidget::show_context_menu()
 				QAction *autocache_action =
 					cache_menu->addAction(tr("Auto-Cache"));
 				autocache_action->setCheckable(true);
-				autocache_action->setChecked(clip->is_autocaching());
+				autocache_action->setChecked(clip_is_autocaching(clip));
 				connect(autocache_action, &QAction::triggered, this,
 						&TimelineWidget::set_selected_clips_autocaching);
 
@@ -1894,7 +2106,7 @@ void TimelineWidget::show_context_menu()
 				reveal_in_footage_viewer->setData(
 					reinterpret_cast<quintptr>(clip->connected_viewer()));
 				reveal_in_footage_viewer->setProperty(
-					"range", QVariant::fromValue(clip->media_range()));
+					"range", QVariant::fromValue(clip_media_range(clip)));
 				connect(reveal_in_footage_viewer, &QAction::triggered, this,
 						&TimelineWidget::reveal_in_footage_viewer);
 
@@ -2037,7 +2249,7 @@ void TimelineWidget::set_view_thumbnails_enabled(QAction *action)
 
 void TimelineWidget::frame_rate_changed()
 {
-	SetTimebase(get_connected_node()->get_video_params().frame_rate_as_time_base());
+	SetTimebase(viewer_output_video_params(get_connected_node()).frame_rate_as_time_base());
 }
 
 void TimelineWidget::sample_rate_changed()
@@ -2045,10 +2257,8 @@ void TimelineWidget::sample_rate_changed()
 	update_view_timebases();
 }
 
-void TimelineWidget::track_index_changed(int old, int now)
+void TimelineWidget::track_index_changed(Track *track, int old, int now)
 {
-	Track *track = static_cast<Track *>(sender());
-
 	Track::Reference old_ref(track->type(), old);
 	Track::Reference new_ref(track->type(), now);
 
@@ -2072,7 +2282,7 @@ void TimelineWidget::reveal_in_footage_viewer()
 		reinterpret_cast<ViewerOutput *>(a->data().value<quintptr>());
 	TimeRange r = a->property("range").value<TimeRange>();
 
-	emit reveal_viewer_in_footage_viewer(item_to_reveal, r);
+	emit reveal_viewer_in_footage_viewer(reinterpret_cast<OakEngineNode *>(item_to_reveal), r);
 }
 
 void TimelineWidget::reveal_in_project()
@@ -2082,7 +2292,7 @@ void TimelineWidget::reveal_in_project()
 	ViewerOutput *item_to_reveal =
 		reinterpret_cast<ViewerOutput *>(a->data().value<quintptr>());
 
-	emit reveal_viewer_in_project(item_to_reveal);
+	emit reveal_viewer_in_project(reinterpret_cast<OakEngineNode *>(item_to_reveal));
 }
 
 void TimelineWidget::rename_selected_blocks()
@@ -2121,42 +2331,46 @@ void TimelineWidget::rename_selected_blocks()
 								  s.toUtf8().constData());
 }
 
-void TimelineWidget::track_about_to_be_deleted(Track *track)
+void TimelineWidget::track_about_to_be_deleted(OakEngineTrack *track)
 {
 	if (track == subtitle_tentative_track_) {
 		// User is deleting the tentative subtitle track. Technically they shouldn't do this, but they
 		// might if they misinterpret it as permanent. If so, we handle it cleanly by pushing our
 		// command as if the action really were permanent.
-		Core::instance()->undo_stack()->push(take_subtitle_section_command(),
-											 tr("Created Subtitle Track"));
+		oakengine_undo_push(take_subtitle_section_command(),
+											 tr("Created Subtitle Track").toUtf8().constData());
 	}
 }
 
 void TimelineWidget::set_selected_clips_autocaching(bool e)
 {
-	MultiUndoCommand *command = new MultiUndoCommand();
+	void *command = oakengine_undo_command_create_multi();
 
 	for (Block *b : selected_blocks_) {
 		if (ClipBlock *clip = dynamic_cast<ClipBlock *>(b)) {
-			command->add_child(new NodeParamSetStandardValueCommand(
-				NodeKeyframeTrackReference(
-					NodeInput(clip, ClipBlock::k_auto_cache_input)),
-				e));
+			oak_node_value v{};
+			v.type = OAK_NODE_VALUE_BOOL;
+			v.num = e ? 1 : 0;
+			oakengine_undo_command_multi_add_child(
+				command,
+				oakengine_node_set_standard_value_command(
+					reinterpret_cast<OakEngineNode *>(clip),
+					oakengine_clip_auto_cache_input_id(), 0, 0, &v));
 		}
 	}
 
-	Core::instance()->undo_stack()->push(
-		command, e ? tr("Enabled Auto-Caching On %1 Clip(s)")
+	oakengine_undo_push(
+		command, (e ? tr("Enabled Auto-Caching On %1 Clip(s)")
 						 .arg(selected_blocks_.size()) :
 					 tr("Disabled Auto-Caching On %1 Clip(s)")
-						 .arg(selected_blocks_.size()));
+						 .arg(selected_blocks_.size())).toUtf8().constData());
 }
 
 void TimelineWidget::cache_clips()
 {
 	for (Block *b : selected_blocks_) {
 		if (ClipBlock *clip = dynamic_cast<ClipBlock *>(b)) {
-			clip->request_invalidated_from_connected(true);
+			clip_request_invalidate_connected(clip, true);
 		}
 	}
 }
@@ -2173,11 +2387,11 @@ void TimelineWidget::cache_clips_in_out()
 	const TimeRange &r = this->sequence()->get_work_area()->range();
 	for (Block *b : qAsConst(selected_blocks_)) {
 		if (ClipBlock *clip = dynamic_cast<ClipBlock *>(b)) {
-			if (Node *connected = clip->get_connected_output(clip->k_buffer_in)) {
+			if (Node *connected = clip->get_connected_output(oakengine_clip_buffer_input_id())) {
 				TimeRange adjusted =
 					tto.get_adjusted_time(this->sequence(), connected, r,
 										Node::k_transform_towards_input);
-				clip->request_invalidated_from_connected(true, adjusted);
+				clip_request_invalidate_connected(clip, true, adjusted);
 			}
 		}
 	}
@@ -2194,7 +2408,8 @@ void TimelineWidget::cache_discard()
 			QMessageBox::Yes | QMessageBox::No) == QMessageBox::Yes) {
 		for (Block *b : selected_blocks_) {
 			if (ClipBlock *clip = dynamic_cast<ClipBlock *>(b)) {
-				clip->discard_cache();
+				oakengine_clip_discard_cache(
+					reinterpret_cast<OakEngineClip *>(clip));
 			}
 		}
 	}
@@ -2202,7 +2417,7 @@ void TimelineWidget::cache_discard()
 
 void TimelineWidget::multicam_enabled_triggered(bool e)
 {
-	MultiUndoCommand *command = new MultiUndoCommand();
+	void *command = oakengine_undo_command_create_multi();
 
 	for (Block *b : qAsConst(selected_blocks_)) {
 		if (ClipBlock *c = dynamic_cast<ClipBlock *>(b)) {
@@ -2210,27 +2425,52 @@ void TimelineWidget::multicam_enabled_triggered(bool e)
 				if (e) {
 					// Adding multicams
 					// Create multicam node and add it to the graph
-					MultiCamNode *n = new MultiCamNode();
-					n->set_sequence_type(c->get_track_type());
-					command->add_child(new NodeAddCommand(s->parent(), n));
+					MultiCamNode *n = reinterpret_cast<MultiCamNode *>(
+						oakengine_project_add_node(
+							reinterpret_cast<OakEngineProject *>(s->parent()),
+							"org.olivevideoeditor.Olive.multicam"));
+					{
+						oak_node_value v;
+						v.type = OAK_NODE_VALUE_INT;
+						v.num = c->get_track_type();
+						oakengine_node_set_input(
+							reinterpret_cast<OakEngineNode *>(n),
+							oakengine_multicam_input_sequence_type(), &v);
+					}
+					// Node was already added by oakengine_project_add_node
 
 					// For each output the sequence has to this clip, disconnect it and
 					// connect to the multicam instead
 					QVector<NodeInput> inputs = c->find_ways_node_arrives_here(s);
 					for (const NodeInput &i : inputs) {
-						command->add_child(new NodeEdgeRemoveCommand(s, i));
-						command->add_child(new NodeEdgeAddCommand(n, i));
+						oakengine_undo_command_multi_add_child(
+							command,
+							oakengine_node_disconnect_command(
+								reinterpret_cast<OakEngineNode *>(i.node()),
+								i.input().toUtf8().constData(),
+								i.element()));
+						oakengine_undo_command_multi_add_child(
+							command,
+							oakengine_node_connect_command(
+								reinterpret_cast<OakEngineNode *>(n),
+								reinterpret_cast<OakEngineNode *>(i.node()),
+								i.input().toUtf8().constData(),
+								i.element()));
 					}
 
-					command->add_child(new NodeEdgeAddCommand(
-						s, NodeInput(n, n->k_sequence_input)));
+					oakengine_undo_command_multi_add_child(
+						command,
+						oakengine_node_connect_command(
+							reinterpret_cast<OakEngineNode *>(s),
+							reinterpret_cast<OakEngineNode *>(n),
+							oakengine_multicam_input_sequence(),
+							-1));
 
 					// Move sequence node one unit back, and place multicam in sequence's spot
 					QPointF sequence_pos = c->get_node_position_in_context(s);
-					command->add_child(new NodeSetPositionCommand(
-						s, c, sequence_pos - QPointF(1, 0)));
-					command->add_child(
-						new NodeSetPositionCommand(n, c, sequence_pos));
+					QPointF shifted_pos = sequence_pos - QPointF(1, 0);
+					oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(s), reinterpret_cast<void *>(c), shifted_pos.x(), shifted_pos.y(), 0));
+					oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(n), reinterpret_cast<void *>(c), sequence_pos.x(), sequence_pos.y(), 0));
 
 				} else {
 					// Removing multicams
@@ -2241,14 +2481,22 @@ void TimelineWidget::multicam_enabled_triggered(bool e)
 								dynamic_cast<MultiCamNode *>(i.node())) {
 							for (auto it = mcn->output_connections().cbegin();
 								 it != mcn->output_connections().cend(); it++) {
-								command->add_child(new NodeEdgeRemoveCommand(
-									it->first, it->second));
-								command->add_child(
-									new NodeEdgeAddCommand(s, it->second));
+								oakengine_undo_command_multi_add_child(
+									command,
+									oakengine_node_disconnect_command(
+										reinterpret_cast<OakEngineNode *>(it->second.node()),
+										it->second.input().toUtf8().constData(),
+										it->second.element()));
+								oakengine_undo_command_multi_add_child(
+									command,
+									oakengine_node_connect_command(
+										reinterpret_cast<OakEngineNode *>(s),
+										reinterpret_cast<OakEngineNode *>(it->second.node()),
+										it->second.input().toUtf8().constData(),
+										it->second.element()));
 							}
 
-							command->add_child(
-								new NodeRemoveAndDisconnectCommand(mcn));
+							oakengine_undo_command_multi_add_child(command, oakengine_node_remove_and_disconnect_command(reinterpret_cast<void *>(mcn)));
 						}
 					}
 				}
@@ -2256,10 +2504,10 @@ void TimelineWidget::multicam_enabled_triggered(bool e)
 		}
 	}
 
-	Core::instance()->undo_stack()->push(
+	oakengine_undo_push(
 		command,
-		e ? tr("Multi-Cam Enabled On %1 Clip(s)").arg(selected_blocks_.size()) :
-			tr("Multi-Cam Disabled On %1 Clip(s)").arg(selected_blocks_.size()));
+		(e ? tr("Multi-Cam Enabled On %1 Clip(s)").arg(selected_blocks_.size()) :
+			tr("Multi-Cam Disabled On %1 Clip(s)").arg(selected_blocks_.size())).toUtf8().constData());
 }
 
 void TimelineWidget::force_update_rubber_band()
@@ -2284,7 +2532,7 @@ void TimelineWidget::update_view_timebases()
 
 		if (get_connected_node() && use_audio_time_units_ && i == Track::k_audio) {
 			view->view()->set_timebase(
-				get_connected_node()->get_audio_params().sample_rate_as_time_base());
+				viewer_output_audio_params(get_connected_node()).sample_rate_as_time_base());
 		} else {
 			view->view()->set_timebase(timebase());
 		}
@@ -2305,39 +2553,34 @@ void TimelineWidget::nudge_internal(Rational amount)
 			return;
 		}
 
-		MultiUndoCommand *command = new MultiUndoCommand();
+		void *command = oakengine_undo_command_create_multi();
 
 		foreach (Block *b, selected_blocks_) {
-			command->add_child(
-				new TrackReplaceBlockWithGapCommand(b->track(), b, false));
+			oakengine_undo_command_multi_add_child(command, oakengine_track_replace_block_with_gap_command(reinterpret_cast<void *>(b->track()), reinterpret_cast<void *>(b), false ? 1 : 0));
 		}
 
 		foreach (Block *b, selected_blocks_) {
-			command->add_child(new TrackPlaceBlockCommand(
-				sequence()->track_list(b->track()->type()), b->track()->index(),
-				b, b->in() + amount));
+			oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(sequence()->track_list(b->track()->type())), b->track()->index(), reinterpret_cast<void *>(b), core::Timecode::time_to_timestamp(b->in() + amount, timebase())));
 		}
 
 		// Nudge selections
 		TimelineWidgetSelections new_sel = get_selections();
 		new_sel.shift_time(amount);
-		command->add_child(new TimelineWidget::SetSelectionsCommand(
-			this, new_sel, get_selections()));
+		oakengine_undo_command_multi_add_child(command, create_set_selections_command(new_sel, get_selections()));
 
-		Core::instance()->undo_stack()->push(command, tr("Nudged Clips"));
+		oakengine_undo_push(command, tr("Nudged Clips").toUtf8().constData());
 	}
 }
 
 void TimelineWidget::move_to_playhead_internal(bool out)
 {
 	if (get_connected_node() && !selected_blocks_.isEmpty()) {
-		MultiUndoCommand *command = new MultiUndoCommand();
+		void *command = oakengine_undo_command_create_multi();
 
 		// Remove each block from the graph
 		QHash<Track *, Rational> earliest_pts;
 		foreach (Block *b, selected_blocks_) {
-			command->add_child(
-				new TrackReplaceBlockWithGapCommand(b->track(), b, false));
+			oakengine_undo_command_multi_add_child(command, oakengine_track_replace_block_with_gap_command(reinterpret_cast<void *>(b->track()), reinterpret_cast<void *>(b), false ? 1 : 0));
 
 			Rational r = earliest_pts.value(b->track(),
 											out ? RATIONAL_MIN : RATIONAL_MAX);
@@ -2359,16 +2602,13 @@ void TimelineWidget::move_to_playhead_internal(bool out)
 				if (new_out <= 0) {
 					can_shift = false;
 				} else {
-					command->add_child(
-						new BlockResizeWithMediaInCommand(b, new_out));
+					oakengine_undo_command_multi_add_child(command, oakengine_block_resize_with_media_in_command(reinterpret_cast<void *>(b), new_out.numerator(), new_out.denominator()));
 					new_in = 0;
 				}
 			}
 
 			if (can_shift) {
-				command->add_child(new TrackPlaceBlockCommand(
-					sequence()->track_list(b->track()->type()),
-					b->track()->index(), b, new_in));
+				oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(sequence()->track_list(b->track()->type())), b->track()->index(), reinterpret_cast<void *>(b), core::Timecode::time_to_timestamp(new_in, timebase())));
 			}
 		}
 
@@ -2383,11 +2623,10 @@ void TimelineWidget::move_to_playhead_internal(bool out)
 				it.value().shift(track_adj);
 			}
 		}
-		command->add_child(
-			new SetSelectionsCommand(this, new_sel, get_selections()));
+		oakengine_undo_command_multi_add_child(command, create_set_selections_command(new_sel, get_selections()));
 
-		Core::instance()->undo_stack()->push(command,
-											 tr("Moved Clip(s) To Point"));
+		oakengine_undo_push(command,
+											 tr("Moved Clip(s) To Point").toUtf8().constData());
 	}
 }
 
@@ -2590,10 +2829,15 @@ void TimelineWidget::ripple_to(Timeline::MovementMode mode)
 
 	// If we rippled, ump to where new cut is if applicable
 	if (mode == Timeline::k_trim_in) {
-		get_connected_node()->set_playhead(closest_point_to_playhead);
+		oakengine_viewer_set_playhead(
+			reinterpret_cast<OakEngineNode *>(get_connected_node()),
+			closest_point_to_playhead.numerator(),
+			closest_point_to_playhead.denominator());
 	} else if (mode == Timeline::k_trim_out &&
 			   closest_point_to_playhead == get_connected_node()->get_playhead()) {
-		get_connected_node()->set_playhead(playhead_time);
+		oakengine_viewer_set_playhead(
+			reinterpret_cast<OakEngineNode *>(get_connected_node()),
+			playhead_time.numerator(), playhead_time.denominator());
 	}
 }
 
@@ -2628,64 +2872,144 @@ bool TimelineWidget::paste_internal(bool insert)
 		return false;
 	}
 
-	ProjectSerializer::Result res = ProjectSerializer::paste(
-		ProjectSerializer::k_only_clips, get_connected_node()->project());
-	if (res.get_load_data().nodes.isEmpty()) {
+	OakEngineClipboard *cb = oakengine_clipboard_create(
+		OAKENGINE_CLIPBOARD_CLIPS,
+		reinterpret_cast<OakEngineProject *>(get_connected_node()->project()),
+		nullptr);
+	int result_code = OAKENGINE_SERIALIZER_NO_DATA;
+	oakengine_clipboard_paste(cb, OAKENGINE_CLIPBOARD_CLIPS,
+							reinterpret_cast<OakEngineProject *>(
+								get_connected_node()->project()),
+							&result_code, nullptr, 0);
+
+	if (result_code != OAKENGINE_SERIALIZER_OK) {
+		oakengine_clipboard_free(cb);
 		return false;
 	}
 
-	MultiUndoCommand *command = new MultiUndoCommand();
+	const int node_count = oakengine_clipboard_get_loaded_node_count(cb);
+	if (node_count == 0) {
+		oakengine_clipboard_free(cb);
+		return false;
+	}
+
+	void *command = oakengine_undo_command_create_multi();
 
 	Project *project = get_connected_node()->project();
-	foreach (Node *n, res.get_load_data().nodes) {
-		command->add_child(new NodeAddCommand(project, n));
+	for (int i = 0; i < node_count; i++) {
+		Node *n = reinterpret_cast<Node *>(
+			oakengine_clipboard_get_loaded_node_at(cb, i));
+		oakengine_undo_command_multi_add_child(command,
+		oakengine_node_add_to_project_command(
+			reinterpret_cast<OakEngineProject *>(project),
+			reinterpret_cast<OakEngineNode *>(n)));
 		if (n->is_item() && !n->folder()) {
-			command->add_child(new FolderAddChild(project->root(), n));
+			oakengine_folder_add_child(
+			reinterpret_cast<OakEngineNode *>(project->root()),
+			reinterpret_cast<OakEngineNode *>(n));
 		}
 	}
 
-	for (auto it = res.get_load_data().promised_connections.cbegin();
-		 it != res.get_load_data().promised_connections.cend(); it++) {
-		auto oc = *it;
-		command->add_child(new NodeEdgeAddCommand(oc.first, oc.second));
+	// Collect connections
+	struct Conn {
+		Node *output;
+		Node *input;
+		QString input_id;
+		int element;
+	};
+	QVector<Conn> conns;
+	oakengine_clipboard_foreach_connection(
+		cb,
+		[](OakEngineNode *out, OakEngineNode *in, const char *input_id,
+		   int element, void *userdata) -> int {
+			auto *v = static_cast<QVector<Conn> *>(userdata);
+			v->append({reinterpret_cast<Node *>(out),
+					   reinterpret_cast<Node *>(in),
+					   QString::fromUtf8(input_id), element});
+			return 0;
+		},
+		&conns);
+
+	for (const Conn &c : conns) {
+		oakengine_undo_command_multi_add_child(
+			command,
+			oakengine_node_connect_command(
+				reinterpret_cast<OakEngineNode *>(c.output),
+				reinterpret_cast<OakEngineNode *>(c.input),
+				c.input_id.toUtf8().constData(),
+				c.element));
 	}
 
 	Rational paste_start = get_connected_node()->get_playhead();
 
-	if (insert) {
-		Rational paste_end = paste_start;
+	struct PropertyCtx {
+		Rational paste_start;
+		Rational paste_end;
+		bool insert;
+		void *command;
+		TimelineWidget *self;
+	};
 
-		for (auto it = res.get_load_data().properties.cbegin();
-			 it != res.get_load_data().properties.cend(); it++) {
-			Rational length = static_cast<Block *>(it.key())->length();
+	PropertyCtx pctx;
+	pctx.paste_start = paste_start;
+	pctx.paste_end = paste_start;
+	pctx.insert = insert;
+	pctx.command = command;
+	pctx.self = this;
+
+	// First pass: compute paste_end for insert mode
+	oakengine_clipboard_foreach_property(
+		cb,
+		[](OakEngineNode *node, const char *key, const char *value,
+		   void *userdata) -> int {
+			auto *ctx = static_cast<PropertyCtx *>(userdata);
+			if (ctx->insert && std::strcmp(key, "in") == 0) {
+				Block *block = static_cast<Block *>(
+					reinterpret_cast<Node *>(node));
+				Rational length = block->length();
+				Rational in = Rational::from_string(value);
+				Rational end = ctx->paste_start + in + length;
+				if (end > ctx->paste_end) {
+					ctx->paste_end = end;
+				}
+			}
+			return 0;
+		},
+		&pctx);
+
+	if (insert && pctx.paste_end != paste_start) {
+		insert_gaps_at(paste_start, pctx.paste_end - paste_start, command);
+	}
+
+	// Collect all properties
+	QHash<OakEngineNode *, QMap<QString, QString>> props;
+	oakengine_clipboard_foreach_property(
+		cb,
+		[](OakEngineNode *node, const char *key, const char *value,
+		   void *userdata) -> int {
+			auto *m = static_cast<QHash<OakEngineNode *, QMap<QString, QString>> *>(userdata);
+			(*m)[node][QString::fromUtf8(key)] = QString::fromUtf8(value);
+			return 0;
+		},
+		&props);
+
+	for (auto it = props.cbegin(); it != props.cend(); it++) {
+		Block *block = static_cast<Block *>(
+			reinterpret_cast<Node *>(it.key()));
+		if (it.value().contains(QStringLiteral("in"))) {
 			Rational in = Rational::from_string(
 				it.value()[QStringLiteral("in")].toStdString());
-
-			paste_end = qMax(paste_end, paste_start + in + length);
-		}
-
-		if (paste_end != paste_start) {
-			insert_gaps_at(paste_start, paste_end - paste_start, command);
+			Track::Reference track = Track::Reference::from_string(
+				it.value()[QStringLiteral("track")]);
+			oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(sequence()->track_list(track.type())), track.index(), reinterpret_cast<void *>(block), core::Timecode::time_to_timestamp(paste_start + in, timebase())));
 		}
 	}
 
-	for (auto it = res.get_load_data().properties.cbegin();
-		 it != res.get_load_data().properties.cend(); it++) {
-		Block *block = static_cast<Block *>(it.key());
-		Rational in = Rational::from_string(
-			it.value()[QStringLiteral("in")].toStdString());
-		Track::Reference track =
-			Track::Reference::from_string(it.value()[QStringLiteral("track")]);
-
-		command->add_child(
-			new TrackPlaceBlockCommand(sequence()->track_list(track.type()),
-									   track.index(), block, paste_start + in));
-	}
-
-	Core::instance()->undo_stack()->push(
+	oakengine_undo_push(
 		command,
-		tr("Pasted %1 Clip(s)").arg(res.get_load_data().properties.size()));
+		tr("Pasted %1 Clip(s)").arg(node_count).toUtf8().constData());
 
+	oakengine_clipboard_free(cb);
 	return true;
 }
 
@@ -2699,11 +3023,15 @@ TimelineWidget::add_timeline_and_track_view(Qt::Alignment alignment)
 }
 
 QHash<Node *, Node *>
-TimelineWidget::generate_existing_paste_map(const ProjectSerializer::Result &r)
+TimelineWidget::generate_existing_paste_map(void *clipboard)
 {
 	QHash<Node *, Node *> m;
+	OakEngineClipboard *cb = static_cast<OakEngineClipboard *>(clipboard);
+	const int node_count = oakengine_clipboard_get_loaded_node_count(cb);
 
-	for (Node *n : r.get_load_data().nodes) {
+	for (int i = 0; i < node_count; i++) {
+		Node *n = reinterpret_cast<Node *>(
+			oakengine_clipboard_get_loaded_node_at(cb, i));
 		for (Block *b : qAsConst(this->selected_blocks_)) {
 			for (auto it = b->get_context_positions().cbegin();
 				 it != b->get_context_positions().cend(); it++) {
@@ -2855,6 +3183,45 @@ void TimelineWidget::remove_selection(Block *item)
 	}
 }
 
+namespace {
+
+struct SetSelectionsCommandData {
+	TimelineWidget *timeline;
+	TimelineWidgetSelections now;
+	TimelineWidgetSelections old;
+	bool process_block_changes;
+};
+
+static void redo_set_selections(void *userdata)
+{
+	auto *d = static_cast<SetSelectionsCommandData *>(userdata);
+	d->timeline->set_selections(d->now, d->process_block_changes);
+}
+
+static void undo_set_selections(void *userdata)
+{
+	auto *d = static_cast<SetSelectionsCommandData *>(userdata);
+	d->timeline->set_selections(d->old, d->process_block_changes);
+}
+
+static void free_set_selections(void *userdata)
+{
+	delete static_cast<SetSelectionsCommandData *>(userdata);
+}
+
+} // namespace
+
+void *TimelineWidget::create_set_selections_command(
+	const TimelineWidgetSelections &now, const TimelineWidgetSelections &old,
+	bool process_block_changes)
+{
+	auto *d = new SetSelectionsCommandData{this, now, old,
+									   process_block_changes};
+	return oakengine_undo_command_create(
+		tr("Set Selections").toUtf8().constData(), redo_set_selections,
+		undo_set_selections, free_set_selections, d);
+}
+
 void TimelineWidget::set_selections(const TimelineWidgetSelections &s,
 								   bool process_block_changes)
 {
@@ -2907,15 +3274,5 @@ Block *TimelineWidget::get_item_at_scene_pos(const TimelineCoordinate &coord)
 		->get_item_at_scene_pos(coord.get_frame(), coord.get_track().index());
 }
 
-void TimelineWidget::SetSplitterSizesCommand::redo()
-{
-	old_sizes_ = splitter_->sizes();
-	splitter_->setSizes(new_sizes_);
-}
-
-void TimelineWidget::SetSplitterSizesCommand::undo()
-{
-	splitter_->setSizes(old_sizes_);
-}
 
 }

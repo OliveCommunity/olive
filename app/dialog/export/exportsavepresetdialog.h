@@ -26,7 +26,7 @@
 #include <QLineEdit>
 #include <QListWidget>
 
-#include "codec/encoder.h"
+#include "oakengine/encoding.h"
 
 namespace olive
 {
@@ -34,7 +34,7 @@ namespace olive
 class ExportSavePresetDialog : public QDialog {
 	Q_OBJECT
 public:
-	ExportSavePresetDialog(const EncodingParams &p, QWidget *parent = nullptr);
+	ExportSavePresetDialog(const OakEngineEncodingParams *p, QWidget *parent = nullptr);
 
 	QString get_selected_preset_name() const
 	{
@@ -47,7 +47,7 @@ public slots:
 private:
 	QLineEdit *name_edit_;
 
-	EncodingParams params_;
+	const OakEngineEncodingParams *params_;
 };
 
 }

@@ -17,6 +17,7 @@
 #include "node/node.h"
 #include "node/project.h"
 #include "node/project/folder/folder.h"
+#include "oakengine/node.h"
 
 namespace
 {
@@ -774,9 +775,9 @@ TEST_F(NodeCoreTest, KeyframeAddAndRemovalEmitSignals)
 	int added = 0;
 	int removed = 0;
 	QObject::connect(node, &olive::Node::keyframe_added,
-					 [&added](olive::NodeKeyframe *) { ++added; });
+					 [&added](OakEngineKeyframe *) { ++added; });
 	QObject::connect(node, &olive::Node::keyframe_removed,
-					 [&removed](olive::NodeKeyframe *) { ++removed; });
+					 [&removed](OakEngineKeyframe *) { ++removed; });
 	QVector<olive::TimeRange> changed_ranges;
 	QObject::connect(node, &olive::Node::value_changed,
 					 [&changed_ranges](const olive::NodeInput &,
@@ -854,9 +855,9 @@ TEST_F(NodeCoreTest, KeyframeTimeChangeResortsTrackAndEmits)
 	olive::NodeKeyframe *last_changed = nullptr;
 	QObject::connect(node, &olive::Node::keyframe_time_changed,
 					 [&time_changed,
-					  &last_changed](olive::NodeKeyframe *key) {
+					  &last_changed](OakEngineKeyframe *key) {
 						 ++time_changed;
-						 last_changed = key;
+						 last_changed = reinterpret_cast<olive::NodeKeyframe *>(key);
 					 });
 
 	// Moving the first keyframe past the second resorts the track

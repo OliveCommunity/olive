@@ -47,6 +47,10 @@
 #include "render/shadercode.h"
 #include "splitvalue.h"
 
+/* Forward declaration for C ABI keyframe handle used in signals that cross
+ * the app/engine boundary. */
+struct OakEngineKeyframe;
+
 namespace olive
 {
 
@@ -1319,17 +1323,17 @@ signals:
 	void input_array_size_changed(const QString &input, int old_size,
 							   int new_size);
 
-	void keyframe_added(NodeKeyframe *key);
+	void keyframe_added(OakEngineKeyframe *key);
 
-	void keyframe_removed(NodeKeyframe *key);
+	void keyframe_removed(OakEngineKeyframe *key);
 
-	void keyframe_time_changed(NodeKeyframe *key);
+	void keyframe_time_changed(OakEngineKeyframe *key);
 
 	void message_count_changed();
 
-	void keyframe_type_changed(NodeKeyframe *key);
+	void keyframe_type_changed(OakEngineKeyframe *key);
 
-	void keyframe_value_changed(NodeKeyframe *key);
+	void keyframe_value_changed(OakEngineKeyframe *key);
 
 	void keyframe_enable_changed(const NodeInput &input, bool enabled);
 

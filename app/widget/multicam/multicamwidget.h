@@ -23,6 +23,8 @@
 #define OAK_MULTICAMWIDGET_H
 
 #include "multicamdisplay.h"
+#include <cstdint>
+
 #include "node/input/multicam/multicamnode.h"
 #include "widget/viewer/viewer.h"
 
@@ -57,6 +59,9 @@ private:
 	void Switch(int source, bool split_clip);
 
 	ViewerSizer *sizer_;
+
+	int64_t viewer_sub_ = 0;
+	int64_t viewer_sub2_ = 0;
 
 	MulticamDisplay *display_;
 

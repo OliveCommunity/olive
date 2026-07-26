@@ -28,6 +28,7 @@
 #include <QDragLeaveEvent>
 #include <QDropEvent>
 
+#include "engineeventbridge.h"
 #include "node/block/clip/clip.h"
 #include "timelineviewmouseevent.h"
 #include "timelineviewghostitem.h"
@@ -54,6 +55,8 @@ public:
 	void set_scroll_coordinates(const QPoint &pt);
 
 	void connect_track_list(TrackList *list);
+
+	void track_list_changed();
 
 	void set_beam_cursor(const TimelineCoordinate &coord);
 	void set_transition_overlay(ClipBlock *out, ClipBlock *in);
@@ -122,12 +125,7 @@ private:
 				   qreal height, const Rational &in, const Rational &out,
 				   const Rational &media_in);
 	void draw_block(QPainter *painter, bool foreground, Block *block, qreal top,
-				   qreal height)
-	{
-		ClipBlock *cb = dynamic_cast<ClipBlock *>(block);
-		return draw_block(painter, foreground, block, top, height, block->in(),
-						 block->out(), cb ? cb->media_in() : 0);
-	}
+				   qreal height);
 
 	void draw_zebra_stripes(QPainter *painter, const QRectF &r);
 
@@ -160,9 +158,6 @@ private:
 
 	bool recording_overlay_;
 	TimelineCoordinate recording_coord_;
-
-private slots:
-	void track_list_changed();
 };
 
 }

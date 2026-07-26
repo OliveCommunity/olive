@@ -30,8 +30,8 @@
 #include <QTreeWidgetItem>
 #include <QXmlStreamWriter>
 
-#include "config/config.h"
-#include "render/videoparams.h"
+#include "common/configwrapper.h"
+#include "oakengine/videoparams.h"
 #include "ui/icons/icons.h"
 #include "widget/menu/menu.h"
 
@@ -75,12 +75,12 @@ SequenceDialogPresetTab::SequenceDialogPresetTab(QWidget *parent)
 
 	preset_tree_->addTopLevelItem(
 		create_sd_preset_folder(tr("NTSC"), 720, 480, Rational(30000, 1001),
-							 VideoParams::k_pixel_aspect_ntsc_standard,
-							 VideoParams::k_pixel_aspect_ntsc_widescreen, 1));
+							 Rational(8, 9),
+							 Rational(32, 27), 1));
 	preset_tree_->addTopLevelItem(
 		create_sd_preset_folder(tr("PAL"), 720, 576, Rational(25, 1),
-							 VideoParams::k_pixel_aspect_pal_standard,
-							 VideoParams::k_pixel_aspect_pal_widescreen, 1));
+							 Rational(16, 15),
+							 Rational(64, 45), 1));
 
 	// Load custom presets
 	for (int i = 0; i < get_number_of_presets(); i++) {
@@ -118,32 +118,42 @@ SequenceDialogPresetTab::create_hd_preset_folder(const QString &name, int width,
 	add_standard_item(parent,
 					std::make_shared<SequencePreset>(
 						tr("%1 23.976 FPS").arg(name), width, height,
-						Rational(24000, 1001), VideoParams::k_pixel_aspect_square,
-						VideoParams::k_interlace_none, 48000, layout, divider,
+						Rational(24000, 1001),
+						Rational(1), // k_pixel_aspect_square
+						0, // k_interlace_none
+						48000, layout, divider,
 						default_format, default_autocache));
 	add_standard_item(parent,
 					std::make_shared<SequencePreset>(
 						tr("%1 25 FPS").arg(name), width, height,
-						Rational(25, 1), VideoParams::k_pixel_aspect_square,
-						VideoParams::k_interlace_none, 48000, layout, divider,
+						Rational(25, 1),
+						Rational(1), // k_pixel_aspect_square
+						0, // k_interlace_none
+						48000, layout, divider,
 						default_format, default_autocache));
 	add_standard_item(parent,
 					std::make_shared<SequencePreset>(
 						tr("%1 29.97 FPS").arg(name), width, height,
-						Rational(30000, 1001), VideoParams::k_pixel_aspect_square,
-						VideoParams::k_interlace_none, 48000, layout, divider,
+						Rational(30000, 1001),
+						Rational(1), // k_pixel_aspect_square
+						0, // k_interlace_none
+						48000, layout, divider,
 						default_format, default_autocache));
 	add_standard_item(parent,
 					std::make_shared<SequencePreset>(
 						tr("%1 50 FPS").arg(name), width, height,
-						Rational(50, 1), VideoParams::k_pixel_aspect_square,
-						VideoParams::k_interlace_none, 48000, layout, divider,
+						Rational(50, 1),
+						Rational(1), // k_pixel_aspect_square
+						0, // k_interlace_none
+						48000, layout, divider,
 						default_format, default_autocache));
 	add_standard_item(parent,
 					std::make_shared<SequencePreset>(
 						tr("%1 59.94 FPS").arg(name), width, height,
-						Rational(60000, 1001), VideoParams::k_pixel_aspect_square,
-						VideoParams::k_interlace_none, 48000, layout, divider,
+						Rational(60000, 1001),
+						Rational(1), // k_pixel_aspect_square
+						0, // k_interlace_none
+						48000, layout, divider,
 						default_format, default_autocache));
 	return parent;
 }
@@ -161,12 +171,14 @@ QTreeWidgetItem *SequenceDialogPresetTab::create_sd_preset_folder(
 	add_standard_item(
 		parent, std::make_shared<SequencePreset>(
 					tr("%1 Standard").arg(name), width, height, frame_rate,
-					standard_par, VideoParams::k_interlaced_bottom_first, 48000,
+					standard_par, 2, // k_interlaced_bottom_first
+					48000,
 					layout, divider, default_format, default_autocache));
 	add_standard_item(
 		parent, std::make_shared<SequencePreset>(
 					tr("%1 Widescreen").arg(name), width, height, frame_rate,
-					wide_par, VideoParams::k_interlaced_bottom_first, 48000,
+					wide_par, 2, // k_interlaced_bottom_first
+					48000,
 					layout, divider, default_format, default_autocache));
 	return parent;
 }

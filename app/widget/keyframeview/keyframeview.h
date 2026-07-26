@@ -131,7 +131,7 @@ protected:
 	{
 	}
 	virtual void keyframe_drag_release(QMouseEvent *event,
-									 MultiUndoCommand *command)
+									 void *command)
 	{
 	}
 

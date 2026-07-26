@@ -24,6 +24,8 @@
 
 #include <QTreeView>
 
+#include <cstdint>
+
 #include "undo/undostack.h"
 
 namespace olive
@@ -33,9 +35,12 @@ class HistoryWidget : public QTreeView {
 	Q_OBJECT
 public:
 	HistoryWidget(QWidget *parent = nullptr);
+	~HistoryWidget() override;
 
 private:
 	UndoStack *stack_;
+
+	int64_t undo_sub_ = 0;
 
 	size_t current_row_;
 

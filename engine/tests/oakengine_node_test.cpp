@@ -41,6 +41,7 @@
 #include "oakengine/node.h"
 #include "oakengine/project.h"
 #include "oakengine/timeline.h"
+#include "oakengine/undo.h"
 
 #ifndef OAK_TEST_SOURCE_DIR
 #define OAK_TEST_SOURCE_DIR "."
@@ -294,6 +295,24 @@ static void test_edges(OakEngineProject *project, OakEngineNode *solid,
 	assert(oakengine_node_disconnect(lut, "tex_in") ==
 		   OAKENGINE_E_NOT_FOUND);
 
+	// disconnect_ex with element -1 mirrors disconnect(); on an unconnected
+	// input it reports E_NOT_FOUND. NULL/unknown-input rejection matches
+	// disconnect() too.
+	assert(oakengine_node_disconnect_ex(NULL, "tex_in", -1) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_node_disconnect_ex(lut, "no_such_input", -1) ==
+		   OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_node_disconnect_ex(lut, "tex_in", -1) ==
+		   OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_node_connect(solid, lut, "tex_in") == OAKENGINE_OK);
+	assert(oakengine_node_disconnect_ex(lut, "tex_in", -1) == OAKENGINE_OK);
+	assert(oakengine_node_input_is_connected(lut, "tex_in") == 0);
+	// Undo the disconnect_ex so the undo/redo sequence below starts from
+	// the same "connected" state as before this block.
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_node_input_is_connected(lut, "tex_in") == 1);
+	assert(oakengine_node_disconnect(lut, "tex_in") == OAKENGINE_OK);
+
 	// Undo/redo the disconnect and the connect: undo brings the connection
 	// back, undo again removes it; redoing both replays connect then
 	// disconnect, so the end state is disconnected.
@@ -369,6 +388,658 @@ static void test_label_and_color_many(OakEngineProject *project)
 		   OAKENGINE_E_INVALID);
 }
 
+// Extended metadata and value-at-time family (B8a): input introspection,
+// properties, label/input names, defaults, project/edge lookup,
+// copy_inputs and the at-time value readers.
+static void test_extended_metadata(OakEngineProject *project)
+{
+	char buf[256];
+
+	OakEngineNode *solid = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.solidgenerator");
+	OakEngineNode *lut = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.ociolut");
+	OakEngineNode *text = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.text3");
+	assert(solid != NULL && lut != NULL && text != NULL);
+
+	// Introspection.
+	assert(oakengine_node_input_is_array(text, "args_in") == 1);
+	assert(oakengine_node_input_is_array(solid, "color_in") == 0);
+	assert(oakengine_node_input_array_size(text, "args_in") >= 0);
+	assert(oakengine_node_input_array_size(solid, "color_in") == 0);
+	assert(oakengine_node_input_get_flags(solid, "color_in") >= 0);
+	assert(oakengine_node_input_get_flags(NULL, "color_in") == 0);
+	assert(oakengine_node_input_is_connectable(lut, "tex_in") == 1);
+	assert(oakengine_node_input_is_connectable(lut, "lut_file_in") == 0);
+	assert(oakengine_node_input_is_keyframable(solid, "color_in") == 1);
+	assert(oakengine_node_input_is_keyframable(lut, "tex_in") == 0);
+	assert(oakengine_node_input_is_keyframed_ex(solid, "color_in", -1) == 0);
+
+	// Properties: set (with and without notification), read back through
+	// every typed getter, enumerate.
+	assert(oakengine_node_input_has_property(solid, "color_in",
+											 "my_prop") == 0);
+	assert(oakengine_node_set_input_property_string(
+			   solid, "color_in", "my_prop", "2.5", 1) == OAKENGINE_OK);
+	assert(oakengine_node_input_has_property(solid, "color_in",
+											 "my_prop") == 1);
+	assert(oakengine_node_input_get_property_string(
+			   solid, "color_in", "my_prop", buf, sizeof(buf)) > 0);
+	assert(strcmp(buf, "2.5") == 0);
+	double d = 0;
+	assert(oakengine_node_input_get_property_number(solid, "color_in",
+													"my_prop", -1, &d) ==
+		   OAKENGINE_OK);
+	assert(fabs(d - 2.5) < 1e-9);
+	// The per-track variant resolves (component value is type-dependent).
+	assert(oakengine_node_input_get_property_number(solid, "color_in",
+													"my_prop", 2, &d) ==
+		   OAKENGINE_OK);
+	assert(oakengine_node_set_input_property_string(
+			   solid, "color_in", "int_prop", "7", 1) == OAKENGINE_OK);
+	int64_t i64 = 0;
+	assert(oakengine_node_input_get_property_int(solid, "color_in",
+												 "int_prop", &i64) ==
+		   OAKENGINE_OK);
+	assert(i64 == 7);
+	assert(oakengine_node_input_get_property_rational(
+			   solid, "color_in", "my_prop", NULL, NULL) == OAKENGINE_OK);
+	assert(oakengine_node_input_get_property_count(solid, "color_in") >= 1);
+	assert(oakengine_node_input_get_property_string(
+			   solid, "color_in", "no_such", buf, sizeof(buf)) ==
+		   OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_node_input_get_property_number(solid, "color_in",
+													"no_such", -1, &d) ==
+		   OAKENGINE_E_NOT_FOUND);
+	// A scalar string reads back as a one-element list.
+	assert(oakengine_node_input_get_property_string_list_count(
+			   solid, "color_in", "my_prop") == 1);
+	assert(oakengine_node_input_get_property_string_list(
+			   solid, "color_in", "my_prop", 0, buf, sizeof(buf)) > 0);
+	assert(strcmp(buf, "2.5") == 0);
+	assert(oakengine_node_input_get_property_string_list(
+			   solid, "color_in", "my_prop", 1, buf, sizeof(buf)) ==
+		   OAKENGINE_E_NOT_FOUND);
+	// Suppressed write keeps the value too.
+	assert(oakengine_node_set_input_property_string(
+			   solid, "color_in", "my_prop", "3.5", 0) == OAKENGINE_OK);
+	assert(oakengine_node_input_get_property_string(
+			   solid, "color_in", "my_prop", buf, sizeof(buf)) > 0);
+	assert(strcmp(buf, "3.5") == 0);
+
+	// Names.
+	assert(oakengine_node_get_label_and_name(solid, buf, sizeof(buf)) > 0);
+	assert(strcmp(buf, "Solid") == 0);
+	assert(oakengine_node_set_label(solid, "MySolid") == OAKENGINE_OK);
+	assert(oakengine_node_get_label_and_name(solid, buf, sizeof(buf)) > 0);
+	assert(strstr(buf, "MySolid") != NULL && strstr(buf, "Solid") != NULL);
+	assert(oakengine_node_get_input_name(solid, "color_in", buf,
+										 sizeof(buf)) >= 0);
+
+	// Default value: Solid's color defaults to opaque red.
+	oak_node_value def;
+	assert(oakengine_node_input_get_default_value(solid, "color_in", 0,
+												  &def) == OAKENGINE_OK);
+	assert(def.type == OAK_NODE_VALUE_COLOR && fabs(def.f[0] - 1.0) < 1e-6);
+	assert(oakengine_node_input_get_default_value(solid, "color_in", 99,
+												  &def) == OAKENGINE_E_NOT_FOUND);
+
+	// Project and edge lookup.
+	assert(oakengine_node_get_project(solid) == project);
+	assert(oakengine_node_get_project(NULL) == NULL);
+	assert(oakengine_node_input_get_connected_node(lut, "tex_in", -1) ==
+		   NULL);
+	assert(oakengine_node_connect(solid, lut, "tex_in") == OAKENGINE_OK);
+	assert(oakengine_node_input_get_connected_node(lut, "tex_in", -1) ==
+		   solid);
+	assert(oakengine_node_disconnect(lut, "tex_in") == OAKENGINE_OK);
+
+	// copy_inputs: values (not connections) transfer as one undoable step.
+	OakEngineNode *solid2 = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.solidgenerator");
+	assert(solid2 != NULL);
+	oak_node_value c;
+	memset(&c, 0, sizeof(c));
+	c.type = OAK_NODE_VALUE_COLOR;
+	c.f[0] = 0.1;
+	c.f[1] = 0.2;
+	c.f[2] = 0.3;
+	c.f[3] = 1.0;
+	assert(oakengine_node_set_input(solid, "color_in", &c) == OAKENGINE_OK);
+	assert(oakengine_node_copy_inputs(solid2, solid) == OAKENGINE_OK);
+	assert(oakengine_node_get_input(solid2, "color_in", &def) == OAKENGINE_OK);
+	assert(fabs(def.f[0] - 0.1) < 1e-6 && fabs(def.f[2] - 0.3) < 1e-6);
+	assert(oakengine_node_copy_inputs(NULL, solid) == OAKENGINE_E_INVALID);
+
+	// At-time readers: whole value and per-track component.
+	oak_node_value at;
+	assert(oakengine_node_get_input_at_time(solid, "color_in", -1, -1, 0, 1,
+											&at) == OAKENGINE_OK);
+	assert(at.type == OAK_NODE_VALUE_COLOR && fabs(at.f[0] - 0.1) < 1e-6);
+	assert(oakengine_node_get_input_at_time(solid, "color_in", -1, 2, 0, 1,
+											&at) == OAKENGINE_OK);
+	assert(at.type == OAK_NODE_VALUE_COLOR && fabs(at.f[0] - 0.3) < 1e-6);
+	assert(oakengine_node_get_input_at_time(solid, "enabled_in", -1, 0, 0,
+											1, &at) == OAKENGINE_OK);
+	assert(at.type == OAK_NODE_VALUE_BOOL && at.num == 1);
+	// String-family inputs need the string getter.
+	assert(oakengine_node_get_input_at_time(text, "text_in", -1, 0, 0, 1,
+											&at) == OAKENGINE_E_INVALID);
+	assert(oakengine_node_set_input_string_at_time(text, "text_in", -1, 0,
+												   "hello") == OAKENGINE_OK);
+	assert(oakengine_node_get_input_string_at_time(text, "text_in", -1, 0,
+												   1, buf,
+												   sizeof(buf)) > 0);
+	assert(strcmp(buf, "hello") == 0);
+	// Bezier/binary getters reject mismatched inputs.
+	double b6[6];
+	assert(oakengine_node_get_input_bezier_at_time(solid, "color_in", -1, 0,
+												   1, b6) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_node_get_input_binary_at_time(solid, "color_in", -1, 0,
+												   1, NULL, 0) ==
+		   OAKENGINE_E_INVALID);
+
+	// Clean up the played-with nodes so later tests see a fresh graph.
+	assert(oakengine_project_remove_node(project, solid) == OAKENGINE_OK);
+	assert(oakengine_project_remove_node(project, solid2) == OAKENGINE_OK);
+	assert(oakengine_project_remove_node(project, lut) == OAKENGINE_OK);
+	assert(oakengine_project_remove_node(project, text) == OAKENGINE_OK);
+}
+
+// ---- Context positions -----------------------------------------------------
+
+static void test_context_positions(OakEngineProject *project)
+{
+	OakEngineNode *group = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.group");
+	OakEngineNode *solid = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.solidgenerator");
+	OakEngineNode *lut = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.ociolut");
+	assert(group != NULL && solid != NULL && lut != NULL);
+
+	double x = 0, y = 0;
+	int expanded = -1;
+
+	// NULL safety.
+	assert(oakengine_node_context_contains_node(NULL, solid) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_node_context_node_count(NULL) == OAKENGINE_E_INVALID);
+	assert(oakengine_node_context_node_at(NULL, 0, NULL, NULL, NULL) == NULL);
+	assert(oakengine_node_set_context_position(NULL, solid, 0, 0) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_node_set_context_expanded(NULL, solid, 1) ==
+		   OAKENGINE_E_INVALID);
+
+	// A fresh group context is empty.
+	assert(oakengine_node_context_contains_node(group, solid) == 0);
+	assert(oakengine_node_context_node_count(group) == 0);
+	assert(oakengine_node_get_context_position(group, solid, &x, &y,
+											   &expanded) ==
+		   OAKENGINE_E_NOT_FOUND);
+
+	// set_context_position inserts like the C++ setter.
+	assert(oakengine_node_set_context_position(group, solid, 3.5, -2.0) ==
+		   OAKENGINE_OK);
+	assert(oakengine_node_context_contains_node(group, solid) == 1);
+	assert(oakengine_node_context_node_count(group) == 1);
+	assert(oakengine_node_get_context_position(group, solid, &x, &y,
+											   &expanded) == OAKENGINE_OK);
+	assert(x == 3.5 && y == -2.0 && expanded == 0);
+
+	// Expanded flag round-trips.
+	assert(oakengine_node_set_context_expanded(group, solid, 1) ==
+		   OAKENGINE_OK);
+	assert(oakengine_node_get_context_position(group, solid, &x, &y,
+											   &expanded) == OAKENGINE_OK);
+	assert(expanded == 1);
+
+	// Moving keeps the expanded flag.
+	assert(oakengine_node_set_context_position(group, solid, 1.0, 2.0) ==
+		   OAKENGINE_OK);
+	assert(oakengine_node_get_context_position(group, solid, &x, &y,
+											   &expanded) == OAKENGINE_OK);
+	assert(x == 1.0 && y == 2.0 && expanded == 1);
+
+	assert(oakengine_node_set_context_position(group, lut, -4.0, 5.0) ==
+		   OAKENGINE_OK);
+	assert(oakengine_node_context_node_count(group) == 2);
+
+	// Enumeration (order is the hash map's; find both by handle).
+	OakEngineNode *seen0 = oakengine_node_context_node_at(group, 0, &x, &y,
+														  &expanded);
+	OakEngineNode *seen1 = oakengine_node_context_node_at(group, 1, NULL,
+														  NULL, NULL);
+	assert(seen0 != NULL && seen1 != NULL && seen0 != seen1);
+	assert((seen0 == solid || seen0 == lut) &&
+		   (seen1 == solid || seen1 == lut));
+	assert(oakengine_node_context_node_at(group, 2, NULL, NULL, NULL) ==
+		   NULL);
+	assert(oakengine_node_context_node_at(group, -1, NULL, NULL, NULL) ==
+		   NULL);
+
+	assert(oakengine_project_remove_node(project, group) == OAKENGINE_OK);
+	assert(oakengine_project_remove_node(project, solid) == OAKENGINE_OK);
+	assert(oakengine_project_remove_node(project, lut) == OAKENGINE_OK);
+}
+
+// ---- Effect input ------------------------------------------------------------
+
+static void test_get_effect_input(OakEngineProject *project)
+{
+	OakEngineNode *lut = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.ociolut");
+	OakEngineNode *solid = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.solidgenerator");
+	assert(lut != NULL && solid != NULL);
+
+	char buf[64];
+	int element = 99;
+
+	assert(oakengine_node_get_effect_input(NULL, buf, sizeof(buf),
+										   &element) == OAKENGINE_E_INVALID);
+
+	// OCIO LUT declares its texture input as the effect input.
+	assert(oakengine_node_get_effect_input(lut, buf, sizeof(buf),
+										   &element) >= 0);
+	assert(strcmp(buf, "tex_in") == 0 && element == -1);
+
+	// The solid generator has no effect input.
+	assert(oakengine_node_get_effect_input(solid, buf, sizeof(buf),
+										   &element) ==
+		   OAKENGINE_E_NOT_FOUND);
+
+	assert(oakengine_project_remove_node(project, lut) == OAKENGINE_OK);
+	assert(oakengine_project_remove_node(project, solid) == OAKENGINE_OK);
+}
+
+// ---- Group nodes -------------------------------------------------------------
+
+static void test_group(OakEngineProject *project)
+{
+	OakEngineNode *group = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.group");
+	OakEngineNode *group2 = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.group");
+	OakEngineNode *solid = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.solidgenerator");
+	OakEngineNode *lut = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.ociolut");
+	assert(group != NULL && group2 != NULL && solid != NULL && lut != NULL);
+
+	// Type probe.
+	assert(oakengine_node_is_group(group) == 1);
+	assert(oakengine_node_is_group(solid) == 0);
+	assert(oakengine_node_is_group(NULL) == 0);
+	assert(oakengine_group_input_passthrough_count(solid) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_group_add_input_passthrough(solid, lut, "x", -1, NULL,
+												 NULL, 0) ==
+		   OAKENGINE_E_INVALID);
+
+	// Direct passthrough add: the generated id is returned. The group must
+	// contain the inner node first (NodeGroup::add_input_passthrough
+	// asserts context membership).
+	assert(oakengine_node_set_context_position(group, solid, 0, 0) ==
+		   OAKENGINE_OK);
+	char idbuf[64];
+	assert(oakengine_group_add_input_passthrough(group, solid, "color_in",
+												 -1, NULL, idbuf,
+												 sizeof(idbuf)) > 0);
+	assert(idbuf[0] != '\0');
+	assert(oakengine_group_input_passthrough_count(group) == 1);
+
+	// Read back the passthrough.
+	char id_at[64], input_at[64];
+	OakEngineNode *node_at = NULL;
+	int element_at = 99;
+	assert(oakengine_group_input_passthrough_at(group, 0, id_at,
+												sizeof(id_at), &node_at,
+												input_at, sizeof(input_at),
+												&element_at) > 0);
+	assert(strcmp(id_at, idbuf) == 0 && node_at == solid &&
+		   strcmp(input_at, "color_in") == 0 && element_at == -1);
+	assert(oakengine_group_input_passthrough_at(group, 1, NULL, 0, NULL,
+												NULL, 0, NULL) ==
+		   OAKENGINE_E_INVALID);
+
+	// Id lookup by (node, input, element).
+	char idq[64];
+	assert(oakengine_group_get_id_of_passthrough(group, solid, "color_in",
+												 -1, idq, sizeof(idq)) > 0);
+	assert(strcmp(idq, idbuf) == 0);
+	assert(oakengine_group_get_id_of_passthrough(group, lut, "tex_in", -1,
+												 idq, sizeof(idq)) ==
+		   OAKENGINE_E_NOT_FOUND);
+
+	// Output passthrough (direct variant).
+	assert(oakengine_group_get_output_passthrough(group) == NULL);
+	assert(oakengine_group_set_output_passthrough(group, solid) ==
+		   OAKENGINE_OK);
+	assert(oakengine_group_get_output_passthrough(group) == solid);
+
+	// Resolve one level: (group, idbuf) -> (solid, color_in).
+	OakEngineNode *resolved_node = NULL;
+	char resolved_input[64];
+	int resolved_element = 99;
+	assert(oakengine_group_resolve_input(group, idbuf, -1, &resolved_node,
+										 resolved_input,
+										 sizeof(resolved_input),
+										 &resolved_element) >= 0);
+	assert(resolved_node == solid && strcmp(resolved_input, "color_in") == 0);
+
+	// Resolving a plain node input passes through unchanged.
+	assert(oakengine_group_resolve_input(solid, "color_in", -1,
+										 &resolved_node, resolved_input,
+										 sizeof(resolved_input),
+										 &resolved_element) >= 0);
+	assert(resolved_node == solid && strcmp(resolved_input, "color_in") == 0);
+
+	// Nested groups resolve to the innermost real input.
+	char id2[64];
+	assert(oakengine_node_set_context_position(group2, group, 0, 0) ==
+		   OAKENGINE_OK);
+	assert(oakengine_group_add_input_passthrough(group2, group, idbuf, -1,
+												 NULL, id2, sizeof(id2)) > 0);
+	assert(oakengine_group_resolve_input(group2, id2, -1, &resolved_node,
+										 resolved_input,
+										 sizeof(resolved_input),
+										 &resolved_element) >= 0);
+	assert(resolved_node == solid && strcmp(resolved_input, "color_in") == 0);
+
+	// Direct remove.
+	assert(oakengine_group_remove_input_passthrough(group, solid, "color_in",
+													-1) == OAKENGINE_OK);
+	assert(oakengine_group_input_passthrough_count(group) == 0);
+	assert(oakengine_group_remove_input_passthrough(group, solid, "color_in",
+													-1) ==
+		   OAKENGINE_E_NOT_FOUND);
+
+	// Undoable add: one command on the project undo stack.
+	assert(oakengine_node_set_context_position(group, lut, 0, 0) ==
+		   OAKENGINE_OK);
+	assert(oakengine_group_add_input_passthrough_undoable(group, lut,
+														  "tex_in", -1,
+														  NULL) ==
+		   OAKENGINE_OK);
+	assert(oakengine_group_input_passthrough_count(group) == 1);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_group_input_passthrough_count(group) == 0);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	assert(oakengine_group_input_passthrough_count(group) == 1);
+
+	// Undoable output passthrough.
+	assert(oakengine_group_set_output_passthrough_undoable(group, lut) ==
+		   OAKENGINE_OK);
+	assert(oakengine_group_get_output_passthrough(group) == lut);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_group_get_output_passthrough(group) == solid);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	assert(oakengine_group_get_output_passthrough(group) == lut);
+
+	assert(oakengine_project_remove_node(project, group) == OAKENGINE_OK);
+	assert(oakengine_project_remove_node(project, group2) == OAKENGINE_OK);
+	assert(oakengine_project_remove_node(project, solid) == OAKENGINE_OK);
+	assert(oakengine_project_remove_node(project, lut) == OAKENGINE_OK);
+}
+
+// ---- Multi-camera nodes --------------------------------------------------------
+
+static void test_multicam(OakEngineProject *project)
+{
+	OakEngineNode *cam = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.multicam");
+	OakEngineNode *solid = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.solidgenerator");
+	assert(cam != NULL && solid != NULL);
+
+	// Type probe.
+	assert(oakengine_node_is_multicam(cam) == 1);
+	assert(oakengine_node_is_multicam(solid) == 0);
+	assert(oakengine_node_is_multicam(NULL) == 0);
+
+	// Input id constants.
+	const char *cur = oakengine_multicam_input_current();
+	const char *src = oakengine_multicam_input_sources();
+	const char *seq = oakengine_multicam_input_sequence();
+	const char *seqt = oakengine_multicam_input_sequence_type();
+	assert(cur != NULL && src != NULL && seq != NULL && seqt != NULL);
+	assert(strcmp(cur, "current_in") == 0);
+	assert(strcmp(src, "sources_in") == 0);
+	assert(strcmp(seq, "sequence_in") == 0);
+	assert(strcmp(seqt, "sequence_type_in") == 0);
+
+	// A fresh multicam has no connected sources.
+	assert(oakengine_multicam_get_source_count(cam) == 0);
+	assert(oakengine_multicam_get_source_count(solid) ==
+		   OAKENGINE_E_INVALID);
+
+	// Grid layout math (static, no node needed).
+	int rows = 0, cols = 0;
+	assert(oakengine_multicam_get_rows_and_columns(-1, &rows, &cols) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_multicam_get_rows_and_columns(1, &rows, &cols) ==
+		   OAKENGINE_OK);
+	assert(rows == 1 && cols == 1);
+	assert(oakengine_multicam_get_rows_and_columns(2, &rows, &cols) ==
+		   OAKENGINE_OK);
+	assert(rows == 1 && cols == 2);
+	assert(oakengine_multicam_get_rows_and_columns(4, &rows, &cols) ==
+		   OAKENGINE_OK);
+	assert(rows == 2 && cols == 2);
+	assert(oakengine_multicam_get_rows_and_columns(5, &rows, &cols) ==
+		   OAKENGINE_OK);
+	assert(rows == 2 && cols == 3);
+
+	// index <-> (row, col) is an inverse pair for every tile.
+	for (int sources = 1; sources <= 9; sources++) {
+		assert(oakengine_multicam_get_rows_and_columns(sources, &rows,
+													   &cols) ==
+			   OAKENGINE_OK);
+		for (int index = 0; index < sources; index++) {
+			int row = -1, col = -1;
+			assert(oakengine_multicam_index_to_row_cols(index, rows, cols,
+														&row, &col) ==
+				   OAKENGINE_OK);
+			assert(row >= 0 && row < rows && col >= 0 && col < cols);
+			assert(oakengine_multicam_rows_cols_to_index(row, col, rows,
+														 cols) == index);
+		}
+	}
+	assert(oakengine_multicam_index_to_row_cols(-1, 1, 1, &rows, &cols) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_multicam_rows_cols_to_index(-1, 0, 1, 1) ==
+		   OAKENGINE_E_INVALID);
+
+	assert(oakengine_project_remove_node(project, cam) == OAKENGINE_OK);
+	assert(oakengine_project_remove_node(project, solid) == OAKENGINE_OK);
+}
+
+// ---- Bulk graph deletion ---------------------------------------------------
+
+static void test_nodes_delete_many(OakEngineProject *project)
+{
+	// A group acts as the node-view context (the project itself is not a
+	// node).
+	OakEngineNode *context = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.group");
+	assert(context != NULL);
+
+	OakEngineNode *solid = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.solidgenerator");
+	OakEngineNode *lut = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.ociolut");
+	assert(solid != NULL && lut != NULL);
+	assert(oakengine_node_connect(solid, lut, "tex_in") == OAKENGINE_OK);
+	assert(oakengine_node_set_context_position(context, solid, 1.0, 2.0) ==
+		   OAKENGINE_OK);
+	assert(oakengine_node_set_context_position(context, lut, 3.0, 4.0) ==
+		   OAKENGINE_OK);
+
+	// Argument validation.
+	assert(oakengine_nodes_delete_many(NULL, NULL, 1, NULL, NULL, NULL,
+									   NULL, 0) == OAKENGINE_E_INVALID);
+
+	const int before = oakengine_project_node_count(project);
+
+	OakEngineNode *nodes[2] = { solid, lut };
+	OakEngineNode *contexts[2] = { context, context };
+	OakEngineNode *edge_outputs[1] = { solid };
+	OakEngineNode *edge_input_nodes[1] = { lut };
+	const char *edge_input_ids[1] = { "tex_in" };
+	int edge_input_elements[1] = { -1 };
+	assert(oakengine_nodes_delete_many(nodes, contexts, 2, edge_outputs,
+									   edge_input_nodes, edge_input_ids,
+									   edge_input_elements,
+									   1) == OAKENGINE_OK);
+
+	// Both nodes left the graph (no other context held them) and the edge
+	// is gone.
+	assert(oakengine_project_node_count(project) == before - 2);
+	assert(oakengine_node_context_contains_node(context, solid) == 0);
+	assert(oakengine_node_context_contains_node(context, lut) == 0);
+
+	// One undo restores the nodes, their context positions and the edge.
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_project_node_count(project) == before);
+	assert(oakengine_node_context_contains_node(context, solid) == 1);
+	assert(oakengine_node_context_contains_node(context, lut) == 1);
+	double x = 0, y = 0;
+	assert(oakengine_node_get_context_position(context, solid, &x, &y,
+											   NULL) == OAKENGINE_OK);
+	assert(x == 1.0 && y == 2.0);
+	assert(oakengine_node_input_is_connected(lut, "tex_in") == 1);
+
+	// Clean up.
+	assert(oakengine_node_disconnect(lut, "tex_in") == OAKENGINE_OK);
+	assert(oakengine_project_remove_node(project, solid) == OAKENGINE_OK);
+	assert(oakengine_project_remove_node(project, lut) == OAKENGINE_OK);
+	assert(oakengine_project_remove_node(project, context) == OAKENGINE_OK);
+}
+
+// ---- Node frame time base ---------------------------------------------------
+
+static void test_node_frame_time_base(OakEngineProject *project)
+{
+	OakEngineNode *solid = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.solidgenerator");
+	assert(solid != NULL);
+
+	// NULL safety.
+	int num = -1, den = -1;
+	assert(oakengine_node_frame_time_base(NULL, &num, &den) ==
+		   OAKENGINE_E_INVALID);
+
+	// A solid node (not on a sequence) returns a sensible default.
+	assert(oakengine_node_frame_time_base(solid, NULL, NULL) == OAKENGINE_OK);
+	assert(oakengine_node_frame_time_base(solid, &num, NULL) == OAKENGINE_OK);
+	assert(num > 0);
+	assert(oakengine_node_frame_time_base(solid, NULL, &den) == OAKENGINE_OK);
+	assert(den > 0);
+	assert(oakengine_node_frame_time_base(solid, &num, &den) == OAKENGINE_OK);
+	assert(num > 0 && den > 0);
+
+	assert(oakengine_project_remove_node(project, solid) == OAKENGINE_OK);
+}
+
+// ---- Input property key iteration --------------------------------------------
+
+static void test_node_input_get_property_key(OakEngineProject *project)
+{
+	OakEngineNode *solid = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.solidgenerator");
+	assert(solid != NULL);
+
+	char buf[64];
+
+	// NULL safety.
+	assert(oakengine_node_input_get_property_key(NULL, "enabled_in", 0, buf,
+												sizeof(buf)) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_node_input_get_property_key(solid, NULL, 0, buf,
+												sizeof(buf)) ==
+		   OAKENGINE_E_INVALID);
+
+	// Set a property, then read the key at index 0.
+	assert(oakengine_node_set_input_property_string(solid, "enabled_in",
+													"my_key", "my_value",
+													1) == OAKENGINE_OK);
+	assert(oakengine_node_input_get_property_key(solid, "enabled_in", 0, buf,
+												sizeof(buf)) > 0);
+	assert(strcmp(buf, "my_key") == 0);
+
+	// Out of range index.
+	assert(oakengine_node_input_get_property_key(solid, "enabled_in", 99, buf,
+												sizeof(buf)) ==
+		   OAKENGINE_E_NOT_FOUND);
+
+	// Query length mode.
+	assert(oakengine_node_input_get_property_key(solid, "enabled_in", 0, NULL,
+												 0) == (int)strlen("my_key"));
+
+	assert(oakengine_project_remove_node(project, solid) == OAKENGINE_OK);
+}
+
+// ---- Keyframe best type at time ---------------------------------------------
+
+static void test_node_keyframe_best_type_at_time(OakEngineProject *project)
+{
+	OakEngineNode *solid = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.solidgenerator");
+	assert(solid != NULL);
+
+	// Must not crash on NULL/invalid input.
+	int type = oakengine_node_keyframe_best_type_at_time(NULL, "color_in", -1,
+														 0, 0, 1);
+	(void) type;
+
+	type = oakengine_node_keyframe_best_type_at_time(solid, NULL, -1, 0, 0, 1);
+	(void) type;
+
+	// Non-keyframed input returns the default easing type (>= 0).
+	type = oakengine_node_keyframe_best_type_at_time(solid, "color_in", -1,
+													 0, 0, 1);
+	assert(type >= 0);
+
+	assert(oakengine_project_remove_node(project, solid) == OAKENGINE_OK);
+}
+
+static void test_misc_node_facades(OakEngineProject *project)
+{
+	// Subtitle text getter/setter
+	OakEngineNode *sub = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.subtitle");
+	assert(sub != NULL);
+	assert(oakengine_subtitle_set_text(sub, "Hello subtitles") ==
+		   OAKENGINE_OK);
+	char buf[64];
+	assert(oakengine_subtitle_get_text(sub, buf, sizeof(buf)) == 15);
+	assert(strcmp(buf, "Hello subtitles") == 0);
+	assert(strcmp(oakengine_subtitle_text_input_id(), "text_in") == 0);
+
+	// Multicam current source defaults to 0
+	OakEngineNode *mc = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.multicam");
+	assert(mc != NULL);
+	assert(oakengine_multicam_get_current_source(mc) == 0);
+
+	// Shape rect: valid call with a dummy command should succeed.
+	OakEngineNode *shape = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.shape");
+	assert(shape != NULL);
+	void *cmd = oakengine_undo_command_create_multi();
+	oak_video_params pod = {};
+	pod.width = 1920;
+	pod.height = 1080;
+	pod.format = 0;
+	pod.divider = 1;
+	assert(oakengine_shape_set_rect_undoable(shape, 0, 0, 100, 100, &pod,
+										 cmd) == OAKENGINE_OK);
+	oakengine_undo_command_free(cmd);
+}
+
 int main(void)
 {
 	make_tmpdir();
@@ -394,6 +1065,16 @@ int main(void)
 	test_edges(project, solid, lut);
 	test_remove(project, solid, lut);
 	test_label_and_color_many(project);
+	test_extended_metadata(project);
+	test_context_positions(project);
+	test_get_effect_input(project);
+	test_group(project);
+	test_multicam(project);
+	test_nodes_delete_many(project);
+	test_node_frame_time_base(project);
+	test_node_input_get_property_key(project);
+	test_node_keyframe_best_type_at_time(project);
+	test_misc_node_facades(project);
 
 	// Graph nodes are not timeline clips: a sequence's track list stays
 	// empty no matter what the project graph holds.

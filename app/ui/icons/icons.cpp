@@ -21,6 +21,8 @@
 
 #include "icons.h"
 
+#include <QHash>
+
 namespace olive
 {
 
@@ -94,6 +96,36 @@ QIcon icon::lock_closed;
 QIcon icon::pencil;
 QIcon icon::subtitles;
 QIcon icon::color_picker;
+
+QIcon icon::from_name(const QString &name)
+{
+	static const QHash<QString, QIcon *> map = {
+		{ QStringLiteral("prev"), &go_to_start },
+		{ QStringLiteral("rew"), &prev_frame },
+		{ QStringLiteral("play"), &play },
+		{ QStringLiteral("pause"), &pause },
+		{ QStringLiteral("ff"), &next_frame },
+		{ QStringLiteral("next"), &go_to_end },
+		{ QStringLiteral("new"), &New },
+		{ QStringLiteral("open"), &open },
+		{ QStringLiteral("save"), &save },
+		{ QStringLiteral("undo"), &undo },
+		{ QStringLiteral("redo"), &redo },
+		{ QStringLiteral("treeview"), &tree_view },
+		{ QStringLiteral("listview"), &list_view },
+		{ QStringLiteral("iconview"), &icon_view },
+		{ QStringLiteral("folder"), &folder },
+		{ QStringLiteral("sequence"), &sequence },
+		{ QStringLiteral("video"), &video },
+		{ QStringLiteral("audio"), &audio },
+		{ QStringLiteral("image"), &image },
+		{ QStringLiteral("subtitles"), &subtitles },
+		{ QStringLiteral("error"), &error },
+	};
+
+	QIcon *icon_ptr = map.value(name, nullptr);
+	return icon_ptr ? *icon_ptr : QIcon();
+}
 
 void icon::load_all(const QString &theme)
 {

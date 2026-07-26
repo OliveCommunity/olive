@@ -24,7 +24,7 @@
 
 #include <QComboBox>
 
-#include "render/videoparams.h"
+#include "oakengine/videoparams.h"
 
 namespace olive
 {
@@ -41,12 +41,12 @@ public:
 		this->addItem(tr("Bottom-Field First"));
 	}
 
-	VideoParams::Interlacing get_interlace_mode() const
+	int get_interlace_mode() const
 	{
-		return static_cast<VideoParams::Interlacing>(this->currentIndex());
+		return this->currentIndex();
 	}
 
-	void set_interlace_mode(VideoParams::Interlacing mode)
+	void set_interlace_mode(int mode)
 	{
 		this->setCurrentIndex(mode);
 	}

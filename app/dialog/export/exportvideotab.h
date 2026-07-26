@@ -32,8 +32,9 @@
 #include "dialog/export/codec/codecstack.h"
 #include "dialog/export/codec/h264section.h"
 #include "dialog/export/codec/imagesection.h"
-#include "node/color/colormanager/colormanager.h"
+#include "oakengine/color.h"
 #include "widget/colorwheel/colorspacechooser.h"
+#include "widget/manageddisplay/colorprocessorhandle.h"
 #include "widget/slider/integerslider.h"
 #include "widget/standardcombos/standardcombos.h"
 
@@ -43,9 +44,9 @@ namespace olive
 class ExportVideoTab : public QWidget {
 	Q_OBJECT
 public:
-	ExportVideoTab(ColorManager *color_manager, QWidget *parent = nullptr);
+	ExportVideoTab(OakEngineColorManager *color_manager, QWidget *parent = nullptr);
 
-	int set_format(ExportFormat::Format format);
+	int set_format(int format);
 
 	bool is_image_sequence_set() const;
 	void set_image_sequence(bool e) const;
@@ -55,13 +56,12 @@ public:
 		return image_section_->get_time();
 	}
 
-	ExportCodec::Codec get_selected_codec() const
+	int get_selected_codec() const
 	{
-		return static_cast<ExportCodec::Codec>(
-			codec_combobox()->currentData().toInt());
+		return codec_combobox()->currentData().toInt();
 	}
 
-	void set_selected_codec(ExportCodec::Codec c)
+	void set_selected_codec(int c)
 	{
 		QtUtils::set_combo_box_data(codec_combobox(), c);
 	}
@@ -161,11 +161,11 @@ public:
 		pix_fmt_ = s;
 	}
 
-	VideoParams::ColorRange color_range() const
+	int color_range() const
 	{
 		return color_range_;
 	}
-	void set_color_range(VideoParams::ColorRange c)
+	void set_color_range(int c)
 	{
 		color_range_ = c;
 	}
@@ -204,7 +204,7 @@ private:
 	IntegerSlider *width_slider_;
 	IntegerSlider *height_slider_;
 
-	ColorManager *color_manager_;
+	OakEngineColorManager *color_manager_;
 
 	InterlacedComboBox *interlaced_combobox_;
 	PixelAspectRatioComboBox *pixel_aspect_combobox_;
@@ -213,9 +213,9 @@ private:
 	int threads_;
 
 	QString pix_fmt_;
-	VideoParams::ColorRange color_range_;
+	int color_range_;
 
-	ExportFormat::Format format_;
+	int format_;
 
 private slots:
 	void maintain_aspect_ratio_changed(bool val);

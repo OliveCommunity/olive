@@ -142,7 +142,7 @@ void TimelineTool::get_ghost_data(Rational *earliest_point,
 	}
 }
 
-void TimelineTool::insert_gaps_at_ghost_destination(olive::MultiUndoCommand *command)
+void TimelineTool::insert_gaps_at_ghost_destination(void *command)
 {
 	Rational earliest_point, latest_point;
 

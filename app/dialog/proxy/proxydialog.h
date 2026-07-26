@@ -25,7 +25,10 @@
 #include <QLineEdit>
 #include <QTreeWidget>
 
-#include "codec/proxymanager.h"
+#include "oakengine/footage.h"
+#include "oakengine/proxy.h"
+#include "oakengine/videoparams.h"
+#include "oakengine/viewer.h"
 #include "node/project/footage/footage.h"
 #include "widget/slider/integerslider.h"
 
@@ -68,7 +71,7 @@ public:
 	void set_f_fmpeg_path(const QString &path);
 
 private:
-	ProxyManager::ProxyParams current_params() const;
+	oak_proxy_params current_params() const;
 
 	void save_global_settings();
 

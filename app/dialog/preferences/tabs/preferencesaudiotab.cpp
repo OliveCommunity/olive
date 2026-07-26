@@ -25,8 +25,9 @@
 #include <QGroupBox>
 #include <QLabel>
 
-#include "audio/audiomanager.h"
-#include "config/config.h"
+#include "oakengine/audio.h"
+#include <portaudio.h>
+#include "common/configwrapper.h"
 
 namespace olive
 {
@@ -171,13 +172,13 @@ PreferencesAudioTab::PreferencesAudioTab()
 				new ExportFormatComboBox(ExportFormatComboBox::k_show_audio_only);
 			record_format_combo_->setSizePolicy(QSizePolicy::Expanding,
 												QSizePolicy::Expanding);
-			record_format_combo_->set_format(static_cast<ExportFormat::Format>(
+			record_format_combo_->set_format(static_cast<int>(
 				OAK_CONFIG("AudioRecordingFormat").toInt()));
 			fmt_layout->addWidget(record_format_combo_);
 
 			record_options_ = new ExportAudioTab();
 			record_options_->set_format(record_format_combo_->get_format());
-			record_options_->set_codec(static_cast<ExportCodec::Codec>(
+			record_options_->set_codec(static_cast<int>(
 				OAK_CONFIG("AudioRecordingCodec").toInt()));
 			record_options_->sample_rate_combobox()->set_sample_rate(
 				OAK_CONFIG("AudioRecordingSampleRate").toInt());
@@ -213,7 +214,7 @@ PreferencesAudioTab::PreferencesAudioTab()
 	refresh_backends();
 }
 
-void PreferencesAudioTab::accept(MultiUndoCommand *command)
+void PreferencesAudioTab::accept(void *command)
 {
 	Q_UNUSED(command)
 
@@ -228,8 +229,8 @@ void PreferencesAudioTab::accept(MultiUndoCommand *command)
 	OAK_CONFIG("AudioInput") = audio_input_devices_->currentText();
 
 	// Set devices to be used from now on
-	AudioManager::instance()->set_output_device(output_device);
-	AudioManager::instance()->set_input_device(input_device);
+	oakengine_audio_set_output_device(output_device);
+	oakengine_audio_set_input_device(input_device);
 
 	OAK_CONFIG("AudioOutputSampleRate") = output_rate_combo_->get_sample_rate();
 	OAK_CONFIG("AudioOutputChannelLayout") =
@@ -251,7 +252,8 @@ void PreferencesAudioTab::accept(MultiUndoCommand *command)
 								   ->get_sample_format()
 								   .to_string());
 
-	emit AudioManager::instance() -> output_params_changed();
+	// AudioManager output params changed is handled internally by the facade
+	// when oakengine_audio_set_output_device() is called.
 
 	OAK_CONFIG("AudioScrubbing") = audio_scrubbing_->isChecked();
 }
@@ -299,7 +301,7 @@ void PreferencesAudioTab::refresh_devices()
 
 void PreferencesAudioTab::hard_refresh_backends()
 {
-	AudioManager::instance()->hard_reset();
+	oakengine_audio_hard_reset();
 	refresh_backends();
 }
 
@@ -307,9 +309,9 @@ void PreferencesAudioTab::attempt_to_set_devices_from_config()
 {
 	// Load with currently active devices
 	PaDeviceIndex current_output_index =
-		AudioManager::instance()->get_output_device();
+		static_cast<PaDeviceIndex>(oakengine_audio_get_output_device());
 	PaDeviceIndex current_input_index =
-		AudioManager::instance()->get_input_device();
+		static_cast<PaDeviceIndex>(oakengine_audio_get_input_device());
 
 	const PaDeviceInfo *current_output = nullptr, *current_input = nullptr;
 	if (current_output_index != paNoDevice) {

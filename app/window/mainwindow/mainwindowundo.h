@@ -23,51 +23,14 @@
 #define OAK_MAINWINDOWUNDO_H
 
 #include "node/project/sequence/sequence.h"
+#include "oakengine/undo.h"
 
 namespace olive
 {
 
-class OpenSequenceCommand : public UndoCommand {
-public:
-	OpenSequenceCommand(Sequence *sequence)
-		: sequence_(sequence)
-	{
-	}
+void *make_open_sequence_command(Sequence *sequence);
 
-	virtual Project *get_relevant_project() const override
-	{
-		return nullptr;
-	}
-
-protected:
-	virtual void redo() override;
-
-	virtual void undo() override;
-
-private:
-	Sequence *sequence_;
-};
-
-class CloseSequenceCommand : public UndoCommand {
-public:
-	CloseSequenceCommand(Sequence *sequence)
-		: sequence_(sequence)
-	{
-	}
-
-	virtual Project *get_relevant_project() const override
-	{
-		return nullptr;
-	}
-
-protected:
-	virtual void redo() override;
-
-	virtual void undo() override;
-
-private:
-	Sequence *sequence_;
-};
+void *make_close_sequence_command(Sequence *sequence);
 
 }
 

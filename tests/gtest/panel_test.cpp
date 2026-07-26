@@ -63,7 +63,7 @@ public:
 		ColorManager::set_up_default_config();
 
 		if (!Core::instance()) {
-			new Core(Core::CoreParams()); // intentionally leaked
+			new Core(); // intentionally leaked
 		}
 
 		KDDockWidgets::initFrontend(KDDockWidgets::FrontendType::QtWidgets);
@@ -401,7 +401,7 @@ TEST_F(PanelTest, CurvePanelSetNodes)
 	// A single node appears as one top-level item listing its keyframable
 	// inputs (MathNode has three: the base "enabled" input and parameters
 	// A and B)
-	panel.set_node(math);
+	panel.set_node(reinterpret_cast<OakEngineNode *>(math));
 	ASSERT_EQ(tree->topLevelItemCount(), 1);
 	EXPECT_EQ(tree->topLevelItem(0)->text(0), math->name());
 	EXPECT_EQ(tree->topLevelItem(0)->childCount(), 3);
@@ -447,12 +447,12 @@ TEST_F(PanelTest, ParamPanelForwardsViewSignals)
 	ParamPanel panel;
 
 	QSignalSpy focused_spy(&panel, &ParamPanel::focused_node_changed);
-	emit panel.get_param_view()->focused_node_changed(math);
+	emit panel.get_param_view()->focused_node_changed(reinterpret_cast<OakEngineNode *>(math));
 	ASSERT_EQ(focused_spy.count(), 1);
-	EXPECT_EQ(focused_spy.first().first().value<Node *>(), math);
+	EXPECT_EQ(focused_spy.first().first().value<OakEngineNode *>(), reinterpret_cast<OakEngineNode *>(math));
 
 	QSignalSpy selected_spy(&panel, &ParamPanel::selected_nodes_changed);
-	emit panel.get_param_view()->selected_nodes_changed({ { math, nullptr } });
+	emit panel.get_param_view()->selected_nodes_changed({ { reinterpret_cast<OakEngineNode *>(math), nullptr } });
 	EXPECT_EQ(selected_spy.count(), 1);
 
 	QSignalSpy text_spy(&panel, &ParamPanel::request_viewer_to_start_editing_text);
@@ -620,7 +620,7 @@ TEST_F(PanelTest, FootageViewerPanelConstruction)
 
 	panel.connect_viewer_node(viewer);
 	ASSERT_EQ(panel.get_selected_footage().size(), 1);
-	EXPECT_EQ(panel.get_selected_footage().first(), viewer);
+	EXPECT_EQ(panel.get_selected_footage().first(), reinterpret_cast<OakEngineNode *>(viewer));
 
 	panel.disconnect_viewer_node();
 	EXPECT_TRUE(panel.get_selected_footage().isEmpty());
@@ -656,15 +656,15 @@ TEST_F(PanelTest, NodePanelForwardsViewSignals)
 	panel.set_contexts({ project.root() });
 
 	QSignalSpy selected_spy(&panel, &NodePanel::nodes_selected);
-	emit panel.get_node_widget()->view()->nodes_selected({ math });
+	emit panel.get_node_widget()->view()->nodes_selected({ reinterpret_cast<OakEngineNode *>(math) });
 	ASSERT_EQ(selected_spy.count(), 1);
 
 	QSignalSpy deselected_spy(&panel, &NodePanel::nodes_deselected);
-	emit panel.get_node_widget()->view()->nodes_deselected({ math });
+	emit panel.get_node_widget()->view()->nodes_deselected({ reinterpret_cast<OakEngineNode *>(math) });
 	EXPECT_EQ(deselected_spy.count(), 1);
 
 	QSignalSpy selection_spy(&panel, &NodePanel::node_selection_changed);
-	emit panel.get_node_widget()->view()->node_selection_changed({ math });
+	emit panel.get_node_widget()->view()->node_selection_changed({ reinterpret_cast<OakEngineNode *>(math) });
 	EXPECT_EQ(selection_spy.count(), 1);
 }
 

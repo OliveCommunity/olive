@@ -62,7 +62,10 @@ public:
 
 	virtual bool paste() override;
 
-public slots:
+public:
+	// Not a slot: signature uses the engine C++ type Node*, which must not be
+	// exposed to MOC (it would pull Node::staticMetaObject across the ABI
+	// boundary). All connections use new-style member-function syntax.
 	void set_nodes(const QVector<Node *> &nodes);
 
 protected:

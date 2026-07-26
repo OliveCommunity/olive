@@ -38,7 +38,7 @@ class VideoStreamProperties : public StreamProperties {
 public:
 	VideoStreamProperties(Footage *footage, int video_index);
 
-	virtual void accept(MultiUndoCommand *parent) override;
+	virtual void accept(void *parent) override;
 
 	virtual bool sanity_check() override;
 

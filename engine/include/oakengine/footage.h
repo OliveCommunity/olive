@@ -118,6 +118,24 @@ typedef struct oak_footage_audio_info {
 } oak_footage_audio_info;
 
 /**
+ * @brief POD proxy generation parameters (olive::ProxyManager::ProxyParams).
+ *
+ * divider: source resolution divider (1 = use absolute width/height,
+ * 2/4/8 = fraction of the source resolution). extension/preset are the
+ * ffmpeg output container and encoder preset (e.g. "mp4"/"veryfast").
+ */
+typedef struct oak_proxy_params {
+	int width;
+	int height;
+	int divider;
+	int version;
+	int crf;
+	int include_audio; /**< 1/0. */
+	char extension[32];
+	char preset[32];
+} oak_proxy_params;
+
+/**
  * @brief Probe a media file (decoder, streams, durations, color tags).
  *
  * Runs Decoder::create_from_id("ffmpeg")->probe() directly; requires the
@@ -416,6 +434,69 @@ oakengine_footage_colorspace_count(const OakEngineFootage *self);
  */
 OAKENGINE_API int oakengine_footage_colorspace_at(
 	const OakEngineFootage *self, int index, char *buf, int buf_size);
+
+/* ---- Footage extras ------------------------------------------------------- */
+
+/** @brief Filename of the imported footage (buf/size). Returns
+ *  OAKENGINE_E_INVALID on NULL. */
+OAKENGINE_API int oakengine_footage_get_filename(const OakEngineFootage *self,
+												 char *buf, int buf_size);
+
+/** @brief Get the (track_type, stream_index) for the real stream at
+ *  `stream_index_in_footage` (which iterates all streams regardless of type).
+ *  Returns OAKENGINE_OK or OAKENGINE_E_NOT_FOUND. */
+OAKENGINE_API int oakengine_footage_get_stream_reference(
+	const OakEngineFootage *self, int stream_index_in_footage,
+	int *out_track_type, int *out_stream_index);
+
+/** @brief Human-readable description of a video stream (buf/size).
+ *  Returns OAKENGINE_E_NOT_FOUND for an out-of-range index. */
+OAKENGINE_API int oakengine_footage_describe_video_stream(
+	const OakEngineFootage *self, int video_stream_index, char *buf,
+	int buf_size);
+
+/** @brief Human-readable description of an audio stream (buf/size).
+ *  Returns OAKENGINE_E_NOT_FOUND for an out-of-range index. */
+OAKENGINE_API int oakengine_footage_describe_audio_stream(
+	const OakEngineFootage *self, int audio_stream_index, char *buf,
+	int buf_size);
+
+/** @brief Human-readable name of a stream type
+ *  (OAKENGINE_TRACK_TYPE_* -> translated name). buf/size convention. */
+OAKENGINE_API int oakengine_footage_stream_type_name(int track_type, char *buf,
+													 int buf_size);
+
+/** @brief 1 if the footage has custom proxy parameters, 0 otherwise. */
+OAKENGINE_API int oakengine_footage_has_custom_proxy_params(
+	const OakEngineFootage *self);
+
+/** @brief Fill `out` with the effective proxy parameters
+ *  (custom if set, otherwise the application defaults). */
+OAKENGINE_API int oakengine_footage_get_effective_proxy_params(
+	const OakEngineFootage *self, oak_proxy_params *out);
+
+/** @brief Set custom proxy parameters (not undoable). */
+OAKENGINE_API int oakengine_footage_set_custom_proxy_params(
+	OakEngineFootage *self, const oak_proxy_params *params);
+
+/** @brief Clear custom proxy parameters, reverting to defaults. */
+OAKENGINE_API int oakengine_footage_clear_custom_proxy_params(
+	OakEngineFootage *self);
+
+/** @brief Generate a proxy with the given parameters (synchronous).
+ *  `path` is the proxy file path, `state` the proxy state (0=missing,
+ *  1=generating, 2=ready, 3=failed), `stream_index` the video stream index,
+ *  `enabled` 1/0 to enable proxy, `version` the preset version. */
+OAKENGINE_API int oakengine_footage_set_proxy(OakEngineFootage *self,
+											  const char *path, int state,
+											  int stream_index, int enabled,
+											  int version);
+
+/** @brief Delete the proxy file and reset state. */
+OAKENGINE_API int oakengine_footage_clear_proxy(OakEngineFootage *self);
+
+/** @brief Invalidate the footage (force re-probe on next use). */
+OAKENGINE_API int oakengine_footage_invalidate(OakEngineFootage *self);
 
 #ifdef __cplusplus
 }

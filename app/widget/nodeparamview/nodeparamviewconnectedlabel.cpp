@@ -30,6 +30,9 @@
 #include "widget/collapsebutton/collapsebutton.h"
 #include "widget/menu/menu.h"
 
+#include "oakengine/viewer.h"
+#include "oakengine/events.h"
+
 namespace olive
 {
 
@@ -39,6 +42,7 @@ NodeParamViewConnectedLabel::NodeParamViewConnectedLabel(const NodeInput &input,
 	, input_(input)
 	, connected_node_(nullptr)
 	, viewer_(nullptr)
+	, bridge_(new EngineEventBridge(this))
 {
 	QVBoxLayout *layout = new QVBoxLayout(this);
 	layout->setContentsMargins(0, 0, 0, 0);
@@ -79,15 +83,29 @@ NodeParamViewConnectedLabel::NodeParamViewConnectedLabel(const NodeInput &input,
 	connected_to_lbl_->setFont(link_font);
 
 	if (input_.is_connected()) {
-		input_connected(input_.get_connected_output(), input_);
+		input_connected(reinterpret_cast<OakEngineNode *>(input_.get_connected_output()), input_);
 	} else {
 		input_disconnected(nullptr, input_);
 	}
 
-	connect(input_.node(), &Node::input_connected, this,
-			&NodeParamViewConnectedLabel::input_connected);
-	connect(input_.node(), &Node::input_disconnected, this,
-			&NodeParamViewConnectedLabel::input_disconnected);
+	bridge_->subscribe(reinterpret_cast<void *>(input_.node()),
+					   OAKENGINE_EVENT_NODE_INPUT_CONNECTED);
+	bridge_->subscribe(reinterpret_cast<void *>(input_.node()),
+					   OAKENGINE_EVENT_NODE_INPUT_DISCONNECTED);
+	connect(bridge_, &EngineEventBridge::node_input_connected, this,
+			[this](OakEngineNode *source, OakEngineNode *output,
+				   const QString &input, int element) {
+				input_connected(output,
+					NodeInput(reinterpret_cast<Node *>(source), input,
+							  element));
+			});
+	connect(bridge_, &EngineEventBridge::node_input_disconnected, this,
+			[this](OakEngineNode *source, OakEngineNode *output,
+				   const QString &input, int element) {
+				input_disconnected(output,
+					NodeInput(reinterpret_cast<Node *>(source), input,
+							  element));
+			});
 
 	// Creating the tree is expensive, hold off until the user specifically requests it
 	value_tree_ = nullptr;
@@ -98,15 +116,21 @@ NodeParamViewConnectedLabel::NodeParamViewConnectedLabel(const NodeInput &input,
 void NodeParamViewConnectedLabel::set_viewer_node(ViewerOutput *viewer)
 {
 	if (viewer_) {
-		disconnect(viewer_, &ViewerOutput::playhead_changed, this,
-				   &NodeParamViewConnectedLabel::update_value_tree);
+		oakengine_event_unsubscribe(viewer_sub_);
+		viewer_sub_ = 0;
 	}
 
 	viewer_ = viewer;
 
 	if (viewer_) {
-		connect(viewer_, &ViewerOutput::playhead_changed, this,
-				&NodeParamViewConnectedLabel::update_value_tree);
+		viewer_sub_ = oakengine_event_subscribe(
+			reinterpret_cast<OakEngineNode *>(viewer_),
+			OAKENGINE_EVENT_VIEWER_PLAYHEAD_CHANGED,
+			[](const oakengine_event *, void *userdata) {
+				static_cast<NodeParamViewConnectedLabel *>(userdata)
+					->update_value_tree();
+			},
+			this);
 		update_value_tree();
 	}
 }
@@ -118,19 +142,19 @@ void NodeParamViewConnectedLabel::create_tree()
 	layout()->addWidget(value_tree_);
 }
 
-void NodeParamViewConnectedLabel::input_connected(Node *output,
+void NodeParamViewConnectedLabel::input_connected(OakEngineNode *output,
 												 const NodeInput &input)
 {
 	if (input_ != input) {
 		return;
 	}
 
-	connected_node_ = output;
+	connected_node_ = reinterpret_cast<Node *>(output);
 
 	update_label();
 }
 
-void NodeParamViewConnectedLabel::input_disconnected(Node *output,
+void NodeParamViewConnectedLabel::input_disconnected(OakEngineNode *output,
 													const NodeInput &input)
 {
 	if (input_ != input) {
@@ -163,7 +187,7 @@ void NodeParamViewConnectedLabel::show_label_context_menu()
 void NodeParamViewConnectedLabel::connection_clicked()
 {
 	if (connected_node_) {
-		emit request_select_node(connected_node_);
+		emit request_select_node(reinterpret_cast<OakEngineNode *>(connected_node_));
 	}
 }
 

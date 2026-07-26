@@ -152,7 +152,7 @@ protected:
 		}
 
 		if (!Core::instance()) {
-			new Core(Core::CoreParams());
+			new Core();
 		}
 		AudioManager::create_instance();
 	}

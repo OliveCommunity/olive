@@ -24,7 +24,7 @@
 
 #include <QComboBox>
 
-#include "render/videoparams.h"
+#include "oakengine/videoparams.h"
 
 namespace olive
 {
@@ -35,13 +35,13 @@ public:
 	PixelFormatComboBox(bool float_only, QWidget *parent = nullptr)
 		: QComboBox(parent)
 	{
-		// Set up preview formats
-		for (int i = 0; i < PixelFormat::count; i++) {
-			PixelFormat pix_fmt = static_cast<PixelFormat::Format>(i);
-
-			if (!float_only || pix_fmt.is_float()) {
-				this->addItem(VideoParams::get_format_name(pix_fmt),
-							  static_cast<PixelFormat::Format>(pix_fmt));
+		// Set up preview formats (PixelFormat::u8=0 .. f32=4)
+		for (int i = 0; i < 5; i++) {
+			if (!float_only || oakengine_video_params_format_is_float(i)) {
+				char name_buf[64];
+				oakengine_video_params_pixel_format_name(i, name_buf,
+														 sizeof(name_buf));
+				this->addItem(QString::fromUtf8(name_buf), i);
 			}
 		}
 	}

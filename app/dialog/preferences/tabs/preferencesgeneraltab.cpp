@@ -198,7 +198,7 @@ PreferencesGeneralTab::PreferencesGeneralTab()
 	layout->addStretch();
 }
 
-void PreferencesGeneralTab::accept(MultiUndoCommand *command)
+void PreferencesGeneralTab::accept(void *command)
 {
 	Q_UNUSED(command)
 

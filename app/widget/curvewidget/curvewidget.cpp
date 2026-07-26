@@ -30,6 +30,7 @@
 #include "core.h"
 #include "common/qtutils.h"
 #include "node/node.h"
+#include "common/nodevaluehandle.h"
 #include "oakengine/node.h"
 #include "widget/timeruler/timeruler.h"
 
@@ -275,7 +276,7 @@ void CurveWidget::connect_input_internal(Node *node, const QString &input,
 {
 	NodeInput input_ref(node, input, element);
 	int track_count =
-		NodeValue::get_number_of_keyframe_tracks(input_ref.get_data_type());
+		oakengine_node_value_keyframe_track_count(node_value_type_to_c(input_ref.get_data_type()));
 	for (int i = 0; i < track_count; i++) {
 		NodeKeyframeTrackReference track_ref(input_ref, i);
 		view_->connect_input(track_ref);

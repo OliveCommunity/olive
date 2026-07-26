@@ -23,6 +23,9 @@
 
 #include <QEvent>
 
+#include "common/nodevaluehandle.h"
+
+#include "oakengine/node.h"
 namespace olive
 {
 
@@ -190,7 +193,7 @@ QTreeWidgetItem *NodeTreeView::create_item(QTreeWidgetItem *parent,
 
 	QString item_name;
 	if (ref.track() == -1 ||
-		NodeValue::get_number_of_keyframe_tracks(ref.input().get_data_type()) ==
+		oakengine_node_value_keyframe_track_count(node_value_type_to_c(ref.input().get_data_type())) ==
 			1 ||
 		(ref.input().is_array() && ref.input().element() == -1)) {
 		if (ref.input().element() == -1) {
@@ -258,11 +261,11 @@ void NodeTreeView::item_check_state_changed(QTreeWidgetItem *item, int column)
 		if (item->checkState(0) == Qt::Checked) {
 			if (disabled_nodes_.contains(n)) {
 				disabled_nodes_.removeOne(n);
-				emit node_enable_changed(n, true);
+				emit node_enable_changed(reinterpret_cast<OakEngineNode *>(n), true);
 			}
 		} else if (!disabled_nodes_.contains(n)) {
 			disabled_nodes_.append(n);
-			emit node_enable_changed(n, false);
+			emit node_enable_changed(reinterpret_cast<OakEngineNode *>(n), false);
 		}
 		break;
 	}

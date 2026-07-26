@@ -24,6 +24,7 @@
 #include <QVBoxLayout>
 
 #include "oakengine/timeline.h"
+#include "oakengine/videoparams.h"
 
 namespace olive
 {
@@ -122,8 +123,7 @@ SequenceDialogParameterTab::SequenceDialogParameterTab(Sequence *sequence,
 	height_slider_->set_value(height);
 	framerate_combo_->set_frame_rate(Rational(fps_num, fps_den));
 	pixelaspect_combo_->set_pixel_aspect_ratio(Rational(par_num, par_den));
-	interlacing_combo_->set_interlace_mode(
-		static_cast<VideoParams::Interlacing>(interlacing));
+	interlacing_combo_->set_interlace_mode(interlacing);
 	preview_resolution_field_->set_divider(divider);
 	preview_format_field_->set_pixel_format(
 		static_cast<PixelFormat::Format>(format));
@@ -173,15 +173,14 @@ void SequenceDialogParameterTab::save_preset_clicked()
 
 void SequenceDialogParameterTab::update_preview_resolution_label()
 {
-	VideoParams test_param(get_selected_video_width(), get_selected_video_height(),
-						   PixelFormat::invalid,
-						   VideoParams::k_internal_channel_count, Rational(1),
-						   VideoParams::k_interlace_none,
-						   preview_resolution_field_->currentData().toInt());
+	int ew, eh;
+	oakengine_video_params_effective_size(
+		get_selected_video_width(), get_selected_video_height(),
+		preview_resolution_field_->currentData().toInt(), &ew, &eh);
 
 	preview_resolution_label_->setText(
-		tr("(%1x%2)").arg(QString::number(test_param.effective_width()),
-						  QString::number(test_param.effective_height())));
+		tr("(%1x%2)").arg(QString::number(ew),
+						  QString::number(eh)));
 }
 
 }

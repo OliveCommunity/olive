@@ -26,7 +26,7 @@
 #include <QHBoxLayout>
 
 #include "core.h"
-#include "config/config.h"
+#include "common/configwrapper.h"
 #include "ui/icons/icons.h"
 
 namespace olive

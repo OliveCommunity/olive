@@ -24,7 +24,9 @@
 
 #include <QPushButton>
 #include <QWidget>
+#include <cstdint>
 
+#include "engineeventbridge.h"
 #include "node/param.h"
 #include "widget/timetarget/timetarget.h"
 
@@ -66,6 +68,15 @@ private:
 	QPushButton *enable_key_btn_;
 
 	NodeInput input_;
+
+	EngineEventBridge *bridge_ = nullptr;
+
+	int64_t keyframe_enable_sub_ = 0;
+	int64_t keyframe_added_sub_ = 0;
+	int64_t keyframe_removed_sub_ = 0;
+	int64_t keyframe_time_sub_ = 0;
+
+	int64_t viewer_sub_ = 0;
 
 private slots:
 	void show_buttons_from_keyframe_enable(bool e);

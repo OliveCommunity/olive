@@ -30,11 +30,12 @@
 #include <QSplitter>
 #include <QVBoxLayout>
 
-#include "config/config.h"
+#include "common/configwrapper.h"
 #include "common/qtutils.h"
 #include "dialog/msgbox.h"
 #include "oakengine/node.h"
 #include "oakengine/timeline.h"
+#include "oakengine/videoparams.h"
 
 namespace olive
 {
@@ -114,7 +115,7 @@ void SequenceDialog::accept()
 		return;
 	}
 
-	if (!VideoParams::format_is_float(
+	if (!oakengine_video_params_format_is_float(
 			parameter_tab_->get_selected_preview_format()) &&
 		!OAK_CONFIG("PreviewNonFloatDontAskAgain").toBool()) {
 		QMessageBox b(this);

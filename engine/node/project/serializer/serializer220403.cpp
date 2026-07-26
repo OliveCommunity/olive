@@ -55,7 +55,7 @@ ProjectSerializer220403::load(Project *project, QXmlStreamReader *reader,
 				// can continue loading and queue it with the main window so it can handle the data
 				// appropriately in its own thread.
 
-				load_data.layout = MainWindowLayoutInfo::from_xml(
+				load_data.layout = SerializedLayoutInfo::from_xml(
 					reader, xml_node_data.node_ptrs);
 
 			} else if (reader->name() == QStringLiteral("uuid")) {

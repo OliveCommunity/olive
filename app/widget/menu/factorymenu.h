@@ -24,7 +24,8 @@
 
 #include <QAction>
 
-#include "node/factory.h"
+#include "oakengine/node.h"
+#include "node/node.h"
 #include "widget/menu/menu.h"
 
 namespace olive

@@ -24,7 +24,7 @@
 
 #include <QComboBox>
 
-#include "render/videoparams.h"
+#include "oakengine/videoparams.h"
 
 namespace olive
 {
@@ -35,8 +35,12 @@ public:
 	VideoDividerComboBox(QWidget *parent = nullptr)
 		: QComboBox(parent)
 	{
-		foreach (int d, VideoParams::k_supported_dividers) {
-			this->addItem(VideoParams::get_name_for_divider(d), d);
+		const int n = oakengine_video_params_supported_divider_count();
+		for (int i = 0; i < n; i++) {
+			int d = oakengine_video_params_supported_divider_at(i);
+			char name_buf[64];
+			oakengine_video_params_divider_name(d, name_buf, sizeof(name_buf));
+			this->addItem(QString::fromUtf8(name_buf), d);
 		}
 	}
 

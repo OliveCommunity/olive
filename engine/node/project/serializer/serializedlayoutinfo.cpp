@@ -16,19 +16,19 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "mainwindowlayoutinfo.h"
+#include "serializedlayoutinfo.h"
 
 namespace olive
 {
 
-void MainWindowLayoutInfo::to_xml(QXmlStreamWriter *writer) const
+void SerializedLayoutInfo::to_xml(QXmlStreamWriter *writer) const
 {
 	writer->writeAttribute(QStringLiteral("version"),
 						   QString::number(k_version));
 
 	writer->writeStartElement(QStringLiteral("folders"));
 
-	foreach (Folder *folder, open_folders_) {
+	foreach (Folder *folder, open_folders) {
 		writer->writeTextElement(
 			QStringLiteral("folder"),
 			QString::number(reinterpret_cast<quintptr>(folder)));
@@ -38,7 +38,7 @@ void MainWindowLayoutInfo::to_xml(QXmlStreamWriter *writer) const
 
 	writer->writeStartElement(QStringLiteral("timeline"));
 
-	foreach (Sequence *sequence, open_sequences_) {
+	foreach (Sequence *sequence, open_sequences) {
 		writer->writeTextElement(
 			QStringLiteral("sequence"),
 			QString::number(reinterpret_cast<quintptr>(sequence)));
@@ -48,7 +48,7 @@ void MainWindowLayoutInfo::to_xml(QXmlStreamWriter *writer) const
 
 	writer->writeStartElement(QStringLiteral("viewers"));
 
-	foreach (ViewerOutput *viewer, open_viewers_) {
+	foreach (ViewerOutput *viewer, open_viewers) {
 		writer->writeTextElement(
 			QStringLiteral("viewer"),
 			QString::number(reinterpret_cast<quintptr>(viewer)));
@@ -58,7 +58,7 @@ void MainWindowLayoutInfo::to_xml(QXmlStreamWriter *writer) const
 
 	writer->writeStartElement(QStringLiteral("data"));
 
-	for (auto it = panel_data_.cbegin(); it != panel_data_.cend(); it++) {
+	for (auto it = panel_data.cbegin(); it != panel_data.cend(); it++) {
 		writer->writeStartElement(QStringLiteral("panel"));
 
 		writer->writeAttribute(QStringLiteral("id"), it->first);
@@ -80,14 +80,14 @@ void MainWindowLayoutInfo::to_xml(QXmlStreamWriter *writer) const
 	writer->writeEndElement(); // data
 
 	writer->writeTextElement(QStringLiteral("state"),
-							 QString(state_.toBase64()));
+							 QString(state.toBase64()));
 }
 
-MainWindowLayoutInfo
-MainWindowLayoutInfo::from_xml(QXmlStreamReader *reader,
+SerializedLayoutInfo
+SerializedLayoutInfo::from_xml(QXmlStreamReader *reader,
 							  const QHash<quintptr, Node *> &node_ptrs)
 {
-	MainWindowLayoutInfo info;
+	SerializedLayoutInfo info;
 
 	unsigned int file_version = 0;
 
@@ -110,7 +110,7 @@ MainWindowLayoutInfo::from_xml(QXmlStreamReader *reader,
 
 					Folder *open_item =
 						static_cast<Folder *>(node_ptrs.value(item_id));
-					info.open_folders_.push_back(open_item);
+					info.open_folders.push_back(open_item);
 				} else {
 					reader->skipCurrentElement();
 				}
@@ -123,7 +123,7 @@ MainWindowLayoutInfo::from_xml(QXmlStreamReader *reader,
 
 					Sequence *open_seq =
 						static_cast<Sequence *>(node_ptrs.value(item_id));
-					info.open_sequences_.push_back(open_seq);
+					info.open_sequences.push_back(open_seq);
 				} else {
 					reader->skipCurrentElement();
 				}
@@ -136,14 +136,14 @@ MainWindowLayoutInfo::from_xml(QXmlStreamReader *reader,
 
 					ViewerOutput *open_viewer =
 						static_cast<ViewerOutput *>(node_ptrs.value(item_id));
-					info.open_viewers_.push_back(open_viewer);
+					info.open_viewers.push_back(open_viewer);
 				} else {
 					reader->skipCurrentElement();
 				}
 			}
 
 		} else if (reader->name() == QStringLiteral("state")) {
-			info.state_ =
+			info.state =
 				QByteArray::fromBase64(reader->readElementText().toLatin1());
 
 		} else if (reader->name() == QStringLiteral("data")) {
@@ -179,7 +179,7 @@ MainWindowLayoutInfo::from_xml(QXmlStreamReader *reader,
 							}
 						}
 
-						info.panel_data_[id] = i;
+						info.panel_data[id] = i;
 					}
 
 				} else {
@@ -193,40 +193,6 @@ MainWindowLayoutInfo::from_xml(QXmlStreamReader *reader,
 	}
 
 	return info;
-}
-
-void MainWindowLayoutInfo::add_folder(olive::Folder *f)
-{
-	open_folders_.push_back(f);
-}
-
-void MainWindowLayoutInfo::add_sequence(Sequence *seq)
-{
-	open_sequences_.push_back(seq);
-}
-
-void MainWindowLayoutInfo::add_viewer(ViewerOutput *viewer)
-{
-	open_viewers_.push_back(viewer);
-}
-
-void MainWindowLayoutInfo::set_panel_data(const QString &id,
-										  const PanelLayoutInfo &data)
-{
-	panel_data_[id] = data;
-}
-
-void MainWindowLayoutInfo::move_panel_data(const QString &old,
-										   const QString &now)
-{
-	PanelLayoutInfo tmp = panel_data_.at(old);
-	panel_data_.erase(old);
-	panel_data_[now] = tmp;
-}
-
-void MainWindowLayoutInfo::set_state(const QByteArray &layout)
-{
-	state_ = layout;
 }
 
 }

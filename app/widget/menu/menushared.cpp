@@ -28,6 +28,7 @@
 #include "panel/timeline/timeline.h"
 #include "window/mainwindow/mainwindow.h"
 
+#include "oakengine/undo.h"
 namespace olive
 {
 
@@ -172,8 +173,8 @@ void MenuShared::add_items_for_new_menu(Menu *m)
 
 void MenuShared::add_items_for_edit_menu(Menu *m, bool for_clips)
 {
-	m->addAction(Core::instance()->undo_stack()->GetUndoAction());
-	m->addAction(Core::instance()->undo_stack()->GetRedoAction());
+	m->addAction(reinterpret_cast<QAction*>(oakengine_undo_undo_action()));
+	m->addAction(reinterpret_cast<QAction*>(oakengine_undo_redo_action()));
 
 	m->addSeparator();
 

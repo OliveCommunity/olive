@@ -29,15 +29,16 @@
 
 #include "exportadvancedvideodialog.h"
 #include "node/color/colormanager/colormanager.h"
+#include "oakengine/encoding.h"
 
 namespace olive
 {
 
-ExportVideoTab::ExportVideoTab(ColorManager *color_manager, QWidget *parent)
+ExportVideoTab::ExportVideoTab(OakEngineColorManager *color_manager, QWidget *parent)
 	: QWidget(parent)
 	, color_manager_(color_manager)
 	, threads_(0)
-	, color_range_(VideoParams::k_color_range_default)
+	, color_range_(0) // k_color_range_default
 {
 	QVBoxLayout *outer_layout = new QVBoxLayout(this);
 
@@ -50,17 +51,20 @@ ExportVideoTab::ExportVideoTab(ColorManager *color_manager, QWidget *parent)
 	outer_layout->addStretch();
 }
 
-int ExportVideoTab::set_format(ExportFormat::Format format)
+int ExportVideoTab::set_format(int format)
 {
 	format_ = format;
 
-	QList<ExportCodec::Codec> vcodecs = ExportFormat::get_video_codecs(format);
-	setEnabled(!vcodecs.isEmpty());
+	const int vcodec_count = oakengine_encoding_format_video_codec_count(format);
+	setEnabled(vcodec_count > 0);
 	codec_combobox()->clear();
-	foreach (ExportCodec::Codec vcodec, vcodecs) {
-		codec_combobox()->addItem(ExportCodec::get_codec_name(vcodec), vcodec);
+	for (int i = 0; i < vcodec_count; i++) {
+		int vcodec = oakengine_encoding_format_video_codec_at(format, i);
+		char buf[256];
+		oakengine_encoding_codec_name(vcodec, buf, sizeof(buf));
+		codec_combobox()->addItem(QString::fromUtf8(buf), vcodec);
 	}
-	return vcodecs.size();
+	return vcodec_count;
 }
 
 bool ExportVideoTab::is_image_sequence_set() const
@@ -116,9 +120,9 @@ QWidget *ExportVideoTab::setup_resolution_section()
 
 	scaling_method_combobox_ = new QComboBox();
 	scaling_method_combobox_->setEnabled(false);
-	scaling_method_combobox_->addItem(tr("Fit"), EncodingParams::k_fit);
-	scaling_method_combobox_->addItem(tr("Stretch"), EncodingParams::k_stretch);
-	scaling_method_combobox_->addItem(tr("Crop"), EncodingParams::k_crop);
+	scaling_method_combobox_->addItem(tr("Fit"), OAKENGINE_ENCODING_SCALING_FIT);
+	scaling_method_combobox_->addItem(tr("Stretch"), OAKENGINE_ENCODING_SCALING_STRETCH);
+	scaling_method_combobox_->addItem(tr("Crop"), OAKENGINE_ENCODING_SCALING_CROP);
 	layout->addWidget(scaling_method_combobox_, row, 1);
 
 	// Automatically enable/disable the scaling method depending on maintain aspect ratio
@@ -223,9 +227,14 @@ void ExportVideoTab::maintain_aspect_ratio_changed(bool val)
 
 void ExportVideoTab::open_advanced_dialog()
 {
-	// Find export formats compatible with this encoder
-	QStringList pixel_formats =
-		ExportFormat::get_pixel_formats_for_codec(format_, get_selected_codec());
+	// Find pixel formats compatible with this encoder
+	QStringList pixel_formats;
+	const int pix_count = oakengine_encoding_pix_fmt_count(format_, get_selected_codec());
+	for (int i = 0; i < pix_count; i++) {
+		char buf[64];
+		oakengine_encoding_pix_fmt_at(format_, get_selected_codec(), i, buf, sizeof(buf));
+		pixel_formats.append(QString::fromUtf8(buf));
+	}
 
 	ExportAdvancedVideoDialog d(pixel_formats, this);
 
@@ -256,30 +265,35 @@ void ExportVideoTab::update_frame_rate(Rational r)
 
 void ExportVideoTab::video_codec_changed()
 {
-	ExportCodec::Codec codec = get_selected_codec();
+	int codec = get_selected_codec();
 
 	switch (codec) {
-	case ExportCodec::k_codec_h264:
-	case ExportCodec::k_codec_h264rgb:
+	case OAKENGINE_ENCODING_CODEC_H264:
+	case OAKENGINE_ENCODING_CODEC_H264RGB:
 		set_codec_section(h264_section_);
 		break;
-	case ExportCodec::k_codec_h265:
+	case OAKENGINE_ENCODING_CODEC_H265:
 		set_codec_section(h265_section_);
 		break;
-	case ExportCodec::k_codec_a_v1:
+	case OAKENGINE_ENCODING_CODEC_AV1:
 		set_codec_section(av1_section_);
 		break;
-	case ExportCodec::k_codec_cineform:
+	case OAKENGINE_ENCODING_CODEC_CINEFORM:
 		set_codec_section(cineform_section_);
 		break;
 	default:
 		set_codec_section(
-			ExportCodec::is_codec_a_still_image(codec) ? image_section_ : nullptr);
+			oakengine_encoding_codec_is_still_image(codec) ? image_section_ : nullptr);
 	}
 
 	// Set default pixel format
-	QStringList pix_fmts =
-		ExportFormat::get_pixel_formats_for_codec(format_, codec);
+	QStringList pix_fmts;
+	const int pix_count = oakengine_encoding_pix_fmt_count(format_, codec);
+	for (int i = 0; i < pix_count; i++) {
+		char buf[64];
+		oakengine_encoding_pix_fmt_at(format_, codec, i, buf, sizeof(buf));
+		pix_fmts.append(QString::fromUtf8(buf));
+	}
 	if (!pix_fmts.isEmpty()) {
 		pix_fmt_ = pix_fmts.first();
 	} else {

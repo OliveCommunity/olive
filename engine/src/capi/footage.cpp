@@ -19,6 +19,7 @@
 ***/
 
 #include "oakengine/footage.h"
+#include "oakengine/timeline.h"
 
 #include <atomic>
 #include <cstdio>
@@ -41,6 +42,7 @@
 #include "node/project/footage/footage.h"
 #include "undo/undocommand.h"
 #include "undo/undostack.h"
+#include "undointernal.h"
 
 namespace
 {
@@ -153,12 +155,7 @@ olive::Footage *borrowed_node(OakEngineFootage *self)
 // initialized, otherwise execute it directly.
 void push_or_run(olive::UndoCommand *command, const QString &name)
 {
-	if (olive::EngineCore::instance()) {
-		olive::EngineCore::instance()->undo_stack()->push(command, name);
-	} else {
-		command->redo_now();
-		delete command;
-	}
+	oakengine_undo_push_or_run(command, name);
 }
 
 // Undo commands for footage stream overrides. The engine has no undo
@@ -546,13 +543,7 @@ OakEngineFootage *oakengine_project_import_footage(OakEngineProject *project,
 	command->add_child(new olive::NodeAddCommand(p, footage));
 	command->add_child(new olive::FolderAddChild(p->root(), footage));
 
-	if (olive::EngineCore::instance()) {
-		olive::EngineCore::instance()->undo_stack()->push(
-			command, QStringLiteral("Import Footage"));
-	} else {
-		command->redo_now();
-		delete command;
-	}
+	oakengine_undo_push_or_run(command, QStringLiteral("Import Footage"));
 
 	auto *state = new OakEngineFootageState();
 	state->borrowed = true;
@@ -1080,6 +1071,229 @@ int oakengine_footage_colorspace_at(const OakEngineFootage *self, int index,
 	}
 	return string_to_buf(config->getColorSpaceNameByIndex(index), buf,
 						 buf_size);
+}
+
+/* ---- Footage extras ------------------------------------------------------- */
+
+int oakengine_footage_get_filename(const OakEngineFootage *self, char *buf,
+								   int buf_size)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	const OakEngineFootageState *s = impl(self);
+	if (!s->node) {
+		// Probed footage has no node; filename is not applicable.
+		return OAKENGINE_E_INVALID;
+	}
+	return string_to_buf(s->node->filename(), buf, buf_size);
+}
+
+int oakengine_footage_get_stream_reference(const OakEngineFootage *self,
+										   int flat_index, int *out_track_type,
+										   int *out_stream_index)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	const OakEngineFootageState *s = impl(self);
+	if (!s->node) {
+		return OAKENGINE_E_INVALID; // probed-only footage
+	}
+	const int vc = video_stream_count(s);
+	const int ac = audio_stream_count(s);
+	if (flat_index < vc) {
+		if (out_track_type) {
+			*out_track_type = OAKENGINE_TRACK_TYPE_VIDEO;
+		}
+		if (out_stream_index) {
+			*out_stream_index = flat_index;
+		}
+		return OAKENGINE_OK;
+	}
+	flat_index -= vc;
+	if (flat_index < ac) {
+		if (out_track_type) {
+			*out_track_type = OAKENGINE_TRACK_TYPE_AUDIO;
+		}
+		if (out_stream_index) {
+			*out_stream_index = flat_index;
+		}
+		return OAKENGINE_OK;
+	}
+	flat_index -= ac;
+	const int sc = subtitle_stream_count(s);
+	if (flat_index >= sc) {
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	if (out_track_type) {
+		*out_track_type = OAKENGINE_TRACK_TYPE_SUBTITLE;
+	}
+	if (out_stream_index) {
+		*out_stream_index = flat_index;
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_footage_describe_video_stream(const OakEngineFootage *self,
+											int video_stream_index, char *buf,
+											int buf_size)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	const OakEngineFootageState *s = impl(self);
+	if (!s->node) {
+		// Import-handle-only family: probe handles are rejected (probe
+		// metadata is read through the oak_footage_*_info accessors).
+		return OAKENGINE_E_INVALID;
+	}
+	if (video_stream_index < 0 || video_stream_index >= video_stream_count(s)) {
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	olive::VideoParams vp;
+	if (s->node) {
+		vp = s->node->get_video_params(video_stream_index);
+	} else {
+		const auto &streams = s->description.get_video_streams();
+		if (video_stream_index < streams.size()) {
+			vp = streams.at(video_stream_index);
+		} else {
+			return OAKENGINE_E_NOT_FOUND;
+		}
+	}
+	return string_to_buf(olive::Footage::describe_video_stream(vp), buf,
+						 buf_size);
+}
+
+int oakengine_footage_describe_audio_stream(const OakEngineFootage *self,
+											int audio_stream_index, char *buf,
+											int buf_size)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	const OakEngineFootageState *s = impl(self);
+	if (!s->node) {
+		return OAKENGINE_E_INVALID;
+	}
+	if (audio_stream_index < 0 || audio_stream_index >= audio_stream_count(s)) {
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	olive::AudioParams ap;
+	if (s->node) {
+		ap = s->node->get_audio_params(audio_stream_index);
+	} else {
+		const auto &streams = s->description.get_audio_streams();
+		if (audio_stream_index < streams.size()) {
+			ap = streams.at(audio_stream_index);
+		} else {
+			return OAKENGINE_E_NOT_FOUND;
+		}
+	}
+	return string_to_buf(olive::Footage::describe_audio_stream(ap), buf,
+						 buf_size);
+}
+
+int oakengine_footage_stream_type_name(int track_type, char *buf, int buf_size)
+{
+	switch (track_type) {
+	case OAKENGINE_TRACK_TYPE_VIDEO:
+		return string_to_buf(QStringLiteral("Video"), buf, buf_size);
+	case OAKENGINE_TRACK_TYPE_AUDIO:
+		return string_to_buf(QStringLiteral("Audio"), buf, buf_size);
+	case OAKENGINE_TRACK_TYPE_SUBTITLE:
+		return string_to_buf(QStringLiteral("Subtitle"), buf, buf_size);
+	default:
+		return string_to_buf(QStringLiteral("Unknown"), buf, buf_size);
+	}
+}
+
+int oakengine_footage_has_custom_proxy_params(const OakEngineFootage *self)
+{
+	if (!self || !impl(self)->node) {
+		return OAKENGINE_E_INVALID;
+	}
+	return impl(self)->node->has_custom_proxy_params() ? 1 : 0;
+}
+
+int oakengine_footage_get_effective_proxy_params(const OakEngineFootage *self,
+												 oak_proxy_params *out)
+{
+	if (!self || !out || !impl(self)->node) {
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::ProxyManager::ProxyParams pp =
+		impl(self)->node->get_effective_proxy_params();
+	out->width = pp.width;
+	out->height = pp.height;
+	out->divider = pp.divider;
+	out->version = pp.version;
+	out->crf = pp.crf;
+	out->include_audio = pp.include_audio ? 1 : 0;
+	string_to_buf(pp.extension, out->extension, sizeof(out->extension));
+	string_to_buf(pp.preset, out->preset, sizeof(out->preset));
+	return OAKENGINE_OK;
+}
+
+int oakengine_footage_set_custom_proxy_params(OakEngineFootage *self,
+											  const oak_proxy_params *params)
+{
+	if (!self || !params || !impl(self)->node) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::ProxyManager::ProxyParams pp;
+	pp.width = params->width;
+	pp.height = params->height;
+	pp.divider = params->divider;
+	pp.version = params->version;
+	pp.crf = params->crf;
+	pp.include_audio = params->include_audio != 0;
+	pp.extension = QString::fromUtf8(params->extension);
+	pp.preset = QString::fromUtf8(params->preset);
+	impl(self)->node->set_custom_proxy_params(pp);
+	return OAKENGINE_OK;
+}
+
+int oakengine_footage_clear_custom_proxy_params(OakEngineFootage *self)
+{
+	if (!self || !impl(self)->node) {
+		return OAKENGINE_E_INVALID;
+	}
+	impl(self)->node->clear_custom_proxy_params();
+	return OAKENGINE_OK;
+}
+
+int oakengine_footage_set_proxy(OakEngineFootage *self,
+								const char *path, int state,
+								int stream_index, int enabled, int version)
+{
+	if (!self || !impl(self)->node) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Footage *node = impl(self)->node;
+	node->set_proxy(QString::fromUtf8(path ? path : ""),
+					static_cast<olive::ProxyManager::ProxyState>(state),
+					stream_index, version, enabled != 0);
+	return OAKENGINE_OK;
+}
+
+int oakengine_footage_clear_proxy(OakEngineFootage *self)
+{
+	if (!self || !impl(self)->node) {
+		return OAKENGINE_E_INVALID;
+	}
+	impl(self)->node->clear_proxy();
+	return OAKENGINE_OK;
+}
+
+int oakengine_footage_invalidate(OakEngineFootage *self)
+{
+	if (!self || !impl(self)->node) {
+		return OAKENGINE_E_INVALID;
+	}
+	impl(self)->node->clear();
+	return OAKENGINE_OK;
 }
 
 } // extern "C"

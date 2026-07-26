@@ -19,6 +19,33 @@
 set(OLIVE_SOURCES
         core.h
         core.cpp
+        engineeventbridge.h
+        engineeventbridge.cpp
+        common/htmlapp.cpp
+        common/filefunctionsapp.cpp
+        common/colorcodingapp.h
+        common/colorcodingapp.cpp
+        common/xmlutilsapp.cpp
+        common/hashstreamapp.cpp
+        common/qtutilsapp.cpp
+        common/nodevaluehandle.h
+)
+
+# The app-side *app.cpp helpers define symbols whose qualified names also
+# exist in liboakengine.so (B10 moved utilities). Build them with hidden
+# visibility so the executable's definitions are not ELF-interposable: the
+# engine library keeps binding to its own copies and static data members
+# (ColorCoding::colors, Html::k_block_tags) are not double-initialized and
+# double-destroyed at process exit (was the exit-time heap corruption in
+# timeline-tests / olive-gtest).
+set_source_files_properties(
+        common/htmlapp.cpp
+        common/filefunctionsapp.cpp
+        common/colorcodingapp.cpp
+        common/xmlutilsapp.cpp
+        common/hashstreamapp.cpp
+        common/qtutilsapp.cpp
+        PROPERTIES COMPILE_OPTIONS "-fvisibility=hidden"
 )
 
 #set(OLIVE_RESOURCES)
@@ -27,6 +54,7 @@ set(OLIVE_SOURCES
 add_subdirectory(dialog)
 add_subdirectory(packaging)
 add_subdirectory(panel)
+add_subdirectory(timeline)
 add_subdirectory(ts)
 add_subdirectory(ui)
 add_subdirectory(widget)

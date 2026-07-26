@@ -32,7 +32,7 @@ class AudioStreamProperties : public StreamProperties {
 public:
 	AudioStreamProperties(Footage *footage, int audio_index);
 
-	virtual void accept(MultiUndoCommand *parent) override;
+	virtual void accept(void *parent) override;
 
 private:
 	Footage *footage_;

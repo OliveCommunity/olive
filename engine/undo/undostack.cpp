@@ -105,6 +105,42 @@ void UndoStack::push(UndoCommand *command, const QString &name)
 	update_actions();
 }
 
+void UndoStack::push_pre_executed(UndoCommand *command, const QString &name)
+{
+	MultiUndoCommand *mcu = dynamic_cast<MultiUndoCommand *>(command);
+	if (mcu && mcu->child_count() == 0) {
+		delete command;
+		return;
+	}
+
+	// Clear any redoable commands
+	this->beginRemoveRows(QModelIndex(), commands_.size(),
+						  commands_.size() + undone_commands_.size());
+	if (can_redo()) {
+		for (auto it = undone_commands_.cbegin(); it != undone_commands_.cend();
+			 it++) {
+			delete (*it).command;
+		}
+		undone_commands_.clear();
+	}
+	this->endRemoveRows();
+
+	// Push without redoing: the caller already executed the children.
+	this->beginInsertRows(QModelIndex(), commands_.size(), commands_.size());
+	commands_.push_back({ command, name });
+	this->endInsertRows();
+
+	// Delete oldest
+	if (commands_.size() > k_max_undo_commands) {
+		this->beginRemoveRows(QModelIndex(), 0, 0);
+		delete commands_.front().command;
+		commands_.pop_front();
+		this->endRemoveRows();
+	}
+
+	update_actions();
+}
+
 void UndoStack::jump(size_t index)
 {
 	while (commands_.size() > index) {

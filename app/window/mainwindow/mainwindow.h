@@ -25,7 +25,7 @@
 #include <kddockwidgets/Config.h>
 #include <kddockwidgets/MainWindow.h>
 
-#include "node/project/serializer/mainwindowlayoutinfo.h"
+#include "node/project/serializer/serializedlayoutinfo.h"
 #include "node/project.h"
 #include "panel/multicam/multicampanel.h"
 #include "panel/panelmanager.h"
@@ -43,6 +43,7 @@
 #include "panel/footageviewer/footageviewer.h"
 #include "panel/sequenceviewer/sequenceviewer.h"
 #include "panel/pixelsampler/pixelsamplerpanel.h"
+#include "engineeventbridge.h"
 
 #ifdef Q_OS_WINDOWS
 #include <shobjidl.h>
@@ -50,6 +51,8 @@
 
 namespace olive
 {
+
+class EngineEventBridge;
 
 /**
  * @brief Olive's main window responsible for docking widgets and the main menu bar.
@@ -61,9 +64,9 @@ public:
 
 	virtual ~MainWindow() override;
 
-	void load_layout(const MainWindowLayoutInfo &info);
+	void load_layout(const SerializedLayoutInfo &info);
 
-	MainWindowLayoutInfo save_layout() const;
+	SerializedLayoutInfo save_layout() const;
 
 	TimelinePanel *open_sequence(Sequence *sequence, bool enable_focus = true);
 
@@ -94,9 +97,13 @@ public:
 
 	void select_footage(const QVector<Footage *> &e);
 
-public slots:
+public:
+	// Not a slot: signature uses the engine C++ type Project*, which must not
+	// be exposed to MOC (it would pull Project::staticMetaObject across the ABI
+	// boundary). It is only ever called directly, never via connect().
 	void set_project(Project *p);
 
+public slots:
 	void set_fullscreen(bool fullscreen);
 
 	void toggle_maximized_panel();
@@ -157,6 +164,7 @@ private:
 	QList<TimelinePanel *> timeline_panels_;
 	AudioMonitorPanel *audio_monitor_panel_;
 	TaskManagerPanel *task_man_panel_;
+	EngineEventBridge *event_bridge_;
 	PixelSamplerPanel *pixel_sampler_panel_;
 	ScopePanel *scope_panel_;
 	QList<ViewerPanel *> viewer_panels_;
@@ -182,7 +190,7 @@ private slots:
 
 	void viewer_close_requested();
 
-	void viewer_with_panel_removed_from_graph();
+	void viewer_with_panel_removed_from_graph(OakEngineNode *source);
 
 	void folder_panel_close_requested();
 
@@ -194,12 +202,16 @@ private slots:
 	void show_nouveau_warning();
 #endif
 
-	void timeline_panel_selection_changed(const QVector<Block *> &blocks);
-
 	void show_welcome_dialog();
 
-	void reveal_viewer_in_project(ViewerOutput *r);
-	void reveal_viewer_in_footage_viewer(ViewerOutput *r, const TimeRange &range);
+	void reveal_viewer_in_project(OakEngineNode *r);
+	void reveal_viewer_in_footage_viewer(OakEngineNode *r, const TimeRange &range);
+
+private:
+	void timeline_panel_selection_changed(const QVector<OakEngineBlock *> &blocks);
+
+	EngineEventBridge *bridge_ = nullptr;
+	QHash<ViewerOutput *, int64_t> removed_from_graph_subs_;
 };
 
 }

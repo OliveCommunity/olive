@@ -27,6 +27,7 @@
 
 #include "widget/menu/menu.h"
 #include "widget/timebased/timebasedviewselectionmanager.h"
+#include "engineeventbridge.h"
 
 namespace olive
 {
@@ -168,6 +169,14 @@ private:
 	int marker_bottom_;
 
 	bool marker_editing_enabled_;
+
+	QVector<int64_t> marker_list_subs_;
+	bool marker_connects_done_ = false;
+
+	EngineEventBridge *bridge_ = nullptr;
+
+	int64_t workarea_range_sub_ = 0;
+	int64_t workarea_enabled_sub_ = 0;
 
 	QPolygon last_playhead_shape_;
 

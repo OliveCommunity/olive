@@ -27,6 +27,7 @@
 
 #include "core.h"
 
+#include "oakengine/undo.h"
 namespace olive
 {
 
@@ -70,13 +71,13 @@ void ConfigDialogBase::accept()
 		}
 	}
 
-	MultiUndoCommand *command = new MultiUndoCommand();
+	void *command = oakengine_undo_command_create_multi();
 
 	foreach (ConfigDialogBaseTab *tab, tabs_) {
 		tab->accept(command);
 	}
 
-	Core::instance()->undo_stack()->push(command, tr("Set Configuration"));
+	oakengine_undo_push(command, tr("Set Configuration").toUtf8().constData());
 
 	AcceptEvent();
 

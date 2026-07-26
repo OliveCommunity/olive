@@ -25,7 +25,7 @@
 #include <QComboBox>
 
 #include "dialog/ratiodialog.h"
-#include "render/videoparams.h"
+#include "oakengine/videoparams.h"
 
 namespace olive
 {
@@ -37,11 +37,16 @@ public:
 		: QComboBox(parent)
 		, dont_prompt_custom_par_(false)
 	{
-		QStringList par_names = VideoParams::get_standard_pixel_aspect_ratio_names();
-		for (int i = 0; i < VideoParams::k_standard_pixel_aspects.size(); i++) {
-			const Rational &ratio = VideoParams::k_standard_pixel_aspects.at(i);
-
-			this->addItem(par_names.at(i), QVariant::fromValue(ratio));
+		const int n = oakengine_video_params_standard_pixel_aspect_count();
+		for (int i = 0; i < n; i++) {
+			int num, den;
+			oakengine_video_params_standard_pixel_aspect_at(i, &num, &den);
+			char name_buf[256];
+			oakengine_video_params_standard_pixel_aspect_name(i, name_buf,
+															 sizeof(name_buf));
+			Rational ratio(num, den);
+			this->addItem(QString::fromUtf8(name_buf),
+						  QVariant::fromValue(ratio));
 		}
 
 		// Always add custom item last, much of the logic relies on this. Set this to the current AR so
@@ -110,9 +115,13 @@ private:
 			// Use 1:1 to prevent any real chance of the PAR being set to 0
 			this->setItemData(custom_index, QVariant::fromValue(Rational(1)));
 		} else {
-			this->setItemText(custom_index,
-							  VideoParams::format_pixel_aspect_ratio_string(
-								  tr("Custom (%1)"), ratio));
+			char buf[256];
+			oakengine_video_params_format_pixel_aspect_ratio_string(
+				"%1", ratio.numerator(), ratio.denominator(), buf,
+				sizeof(buf));
+			this->setItemText(
+				custom_index,
+				tr("Custom (%1)").arg(QString::fromUtf8(buf)));
 			this->setItemData(custom_index, QVariant::fromValue(ratio));
 		}
 	}

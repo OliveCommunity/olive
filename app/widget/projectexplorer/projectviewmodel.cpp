@@ -20,6 +20,7 @@
 ***/
 
 #include "projectviewmodel.h"
+#include "ui/icons/icons.h"
 
 #include <QDebug>
 #include <QMimeData>
@@ -27,7 +28,9 @@
 
 #include "common/qtutils.h"
 #include "core.h"
-#include "node/nodeundo.h"
+#include "oakengine/project.h"
+#include "oakengine/node.h"
+#include "oakengine/undo.h"
 
 namespace olive
 {
@@ -35,7 +38,35 @@ namespace olive
 ProjectViewModel::ProjectViewModel(QObject *parent)
 	: QAbstractItemModel(parent)
 	, project_(nullptr)
+	, bridge_(new EngineEventBridge(this))
 {
+	connect_bridge_signals();
+}
+
+void ProjectViewModel::connect_bridge_signals()
+{
+	connect(bridge_, &EngineEventBridge::folder_begin_insert_item, this,
+			[this](OakEngineNode *folder, OakEngineNode *child, int index) {
+				this->folder_begin_insert_item(
+					reinterpret_cast<Folder *>(folder),
+					reinterpret_cast<Node *>(child), index);
+			});
+	connect(bridge_, &EngineEventBridge::folder_end_insert_item, this,
+			[this](OakEngineNode *) {
+				this->folder_end_insert_item();
+			});
+	connect(bridge_, &EngineEventBridge::folder_begin_remove_item, this,
+			[this](OakEngineNode *folder, OakEngineNode *child, int index) {
+				this->folder_begin_remove_item(
+					reinterpret_cast<Folder *>(folder),
+					reinterpret_cast<Node *>(child), index);
+			});
+	connect(bridge_, &EngineEventBridge::folder_end_remove_item, this,
+			[this](OakEngineNode *) {
+				this->folder_end_remove_item();
+			});
+	connect(bridge_, &EngineEventBridge::node_label_changed, this,
+			&ProjectViewModel::item_renamed);
 }
 
 Project *ProjectViewModel::project() const
@@ -49,6 +80,10 @@ void ProjectViewModel::set_project(Project *p)
 
 	if (project_) {
 		disconnect_item(project_->root());
+		// Recreate bridge to clear all folder subscriptions
+		delete bridge_;
+		bridge_ = new EngineEventBridge(this);
+		connect_bridge_signals();
 	}
 
 	project_ = p;
@@ -182,7 +217,7 @@ QVariant ProjectViewModel::data(const QModelIndex &index, int role) const
 	case Qt::DecorationRole:
 		// If this is the first column, return the Item's icon
 		if (column_type == k_name) {
-			return internal_item->data(Node::icon);
+			return icon::from_name(internal_item->data(Node::icon).toString());
 		}
 		break;
 	case Qt::ToolTipRole:
@@ -239,13 +274,13 @@ bool ProjectViewModel::setData(const QModelIndex &index, const QVariant &value,
 		QString new_name = value.toString();
 
 		if (!new_name.isEmpty()) {
-			NodeRenameCommand *nrc = new NodeRenameCommand();
+			void *nrc = oakengine_node_rename_command(
+				reinterpret_cast<OakEngineNode *>(item),
+				new_name.toUtf8().constData());
 
-			nrc->add_node(item, value.toString());
-
-			Core::instance()->undo_stack()->push(
-				nrc, tr("Renamed Item \"%1\" to \"%2\"")
-						 .arg(item->get_label(), new_name));
+			oakengine_undo_push(
+				nrc,
+				tr("Renamed Item \"%1\" to \"%2\"").arg(item->get_label(), new_name).toUtf8().constData());
 
 			return true;
 		}
@@ -284,7 +319,7 @@ Qt::ItemFlags ProjectViewModel::flags(const QModelIndex &index) const
 QStringList ProjectViewModel::mimeTypes() const
 {
 	// Allow data from this model and a file list from external sources
-	return { Project::k_item_mime_type, QStringLiteral("text/uri-list") };
+	return { QString::fromUtf8(oakengine_project_item_mime_type()), QStringLiteral("text/uri-list") };
 }
 
 QMimeData *ProjectViewModel::mimeData(const QModelIndexList &indexes) const
@@ -326,7 +361,7 @@ QMimeData *ProjectViewModel::mimeData(const QModelIndexList &indexes) const
 	}
 
 	// Set byte array as the mime data and return the mime data
-	data->setData(Project::k_item_mime_type, encoded_data);
+	data->setData(QString::fromUtf8(oakengine_project_item_mime_type()), encoded_data);
 
 	return data;
 }
@@ -347,9 +382,9 @@ bool ProjectViewModel::dropMimeData(const QMimeData *data,
 	// Probe mime data for its format
 	QStringList mime_formats = data->formats();
 
-	if (mime_formats.contains(Project::k_item_mime_type)) {
+	if (mime_formats.contains(QString::fromUtf8(oakengine_project_item_mime_type()))) {
 		// Data is drag/drop data from this model
-		QByteArray model_data = data->data(Project::k_item_mime_type);
+		QByteArray model_data = data->data(QString::fromUtf8(oakengine_project_item_mime_type()));
 
 		// Use QDataStream to deserialize the data
 		QDataStream stream(&model_data, QIODevice::ReadOnly);
@@ -367,10 +402,8 @@ bool ProjectViewModel::dropMimeData(const QMimeData *data,
 		quintptr item_ptr;
 		QList<Track::Reference> streams;
 
-		// Loop through all data
-		MultiUndoCommand *move_command = new MultiUndoCommand();
-
-		int count = 0;
+		// Loop through all data, collecting the items to move
+		QVector<OakEngineNode *> items_to_move;
 
 		while (!stream.atEnd()) {
 			stream >> streams >> item_ptr;
@@ -384,18 +417,18 @@ bool ProjectViewModel::dropMimeData(const QMimeData *data,
 				(!dynamic_cast<Folder *>(item) ||
 				 !item_is_parent_of_child(static_cast<Folder *>(item),
 									  drop_location))) {
-				move_command->add_child(new NodeEdgeRemoveCommand(
-					item,
-					NodeInput(item->folder(), Folder::k_child_input,
-							  item->folder()->index_of_child_in_array(item))));
-				move_command->add_child(
-					new FolderAddChild(drop_location, item));
-				count++;
+				items_to_move.append(reinterpret_cast<OakEngineNode *>(item));
 			}
 		}
 
-		Core::instance()->undo_stack()->push(move_command,
-											 tr("Move %1 Item(s)").arg(count));
+		if (!items_to_move.isEmpty()) {
+			// ONE undoable command for the whole move (facade removes each
+			// item from its old folder, then adds it to the drop location)
+			oakengine_folder_move_children(
+				items_to_move.constData(), items_to_move.size(),
+				reinterpret_cast<OakEngineNode *>(drop_location),
+				tr("Move %1 Item(s)").arg(items_to_move.size()).toUtf8().constData());
+		}
 
 		return true;
 
@@ -475,18 +508,16 @@ bool ProjectViewModel::item_is_parent_of_child(Folder *parent, Node *child) cons
 
 void ProjectViewModel::connect_item(Node *n)
 {
-	connect(n, &Node::label_changed, this, &ProjectViewModel::item_renamed);
+	label_changed_subs_[n] = bridge_->subscribe(
+		reinterpret_cast<void *>(n), OAKENGINE_EVENT_NODE_LABEL_CHANGED);
 
 	Folder *f = dynamic_cast<Folder *>(n);
 	if (f) {
-		connect(f, &Folder::begin_insert_item, this,
-				&ProjectViewModel::folder_begin_insert_item);
-		connect(f, &Folder::end_insert_item, this,
-				&ProjectViewModel::folder_end_insert_item);
-		connect(f, &Folder::begin_remove_item, this,
-				&ProjectViewModel::folder_begin_remove_item);
-		connect(f, &Folder::end_remove_item, this,
-				&ProjectViewModel::folder_end_remove_item);
+		OakEngineNode *handle = reinterpret_cast<OakEngineNode *>(f);
+		bridge_->subscribe(handle, OAKENGINE_EVENT_FOLDER_BEGIN_INSERT_ITEM);
+		bridge_->subscribe(handle, OAKENGINE_EVENT_FOLDER_END_INSERT_ITEM);
+		bridge_->subscribe(handle, OAKENGINE_EVENT_FOLDER_BEGIN_REMOVE_ITEM);
+		bridge_->subscribe(handle, OAKENGINE_EVENT_FOLDER_END_REMOVE_ITEM);
 
 		foreach (Node *c, f->children()) {
 			connect_item(c);
@@ -496,29 +527,23 @@ void ProjectViewModel::connect_item(Node *n)
 
 void ProjectViewModel::disconnect_item(Node *n)
 {
-	disconnect(n, &Node::label_changed, this, &ProjectViewModel::item_renamed);
+	int64_t sub = label_changed_subs_.take(n);
+	if (sub > 0) {
+		bridge_->unsubscribe(sub);
+	}
 
 	Folder *f = dynamic_cast<Folder *>(n);
 	if (f) {
-		disconnect(f, &Folder::begin_insert_item, this,
-				   &ProjectViewModel::folder_begin_insert_item);
-		disconnect(f, &Folder::end_insert_item, this,
-				   &ProjectViewModel::folder_end_insert_item);
-		disconnect(f, &Folder::begin_remove_item, this,
-				   &ProjectViewModel::folder_begin_remove_item);
-		disconnect(f, &Folder::end_remove_item, this,
-				   &ProjectViewModel::folder_end_remove_item);
-
+		// Bridge subscriptions are cleaned up by recreating the bridge in set_project
 		foreach (Node *c, f->children()) {
 			disconnect_item(c);
 		}
 	}
 }
 
-void ProjectViewModel::folder_begin_insert_item(Node *n, int insert_index)
+void ProjectViewModel::folder_begin_insert_item(Folder *folder, Node *n,
+												int insert_index)
 {
-	Folder *folder = static_cast<Folder *>(sender());
-
 	connect_item(n);
 
 	QModelIndex index;
@@ -535,10 +560,9 @@ void ProjectViewModel::folder_end_insert_item()
 	endInsertRows();
 }
 
-void ProjectViewModel::folder_begin_remove_item(Node *n, int child_index)
+void ProjectViewModel::folder_begin_remove_item(Folder *folder, Node *n,
+												int child_index)
 {
-	Folder *folder = static_cast<Folder *>(sender());
-
 	disconnect_item(n);
 
 	QModelIndex index;
@@ -555,9 +579,9 @@ void ProjectViewModel::folder_end_remove_item()
 	endRemoveRows();
 }
 
-void ProjectViewModel::item_renamed()
+void ProjectViewModel::item_renamed(OakEngineNode *source)
 {
-	Node *item = static_cast<Node *>(sender());
+	Node *item = reinterpret_cast<Node *>(source);
 
 	QModelIndex index = create_index_from_item(item);
 

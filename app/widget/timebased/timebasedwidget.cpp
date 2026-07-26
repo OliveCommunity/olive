@@ -25,15 +25,20 @@
 
 #include "common/autoscroll.h"
 #include "common/range.h"
-#include "config/config.h"
+#include "common/configwrapper.h"
 #include "core.h"
+#include "engineeventbridge.h"
 #include "common/current.h"
 #include "dialog/markerproperties/markerpropertiesdialog.h"
 #include "node/project/sequence/sequence.h"
 #include "oakengine/timeline.h"
-#include "timeline/timelineundoworkarea.h"
+#include "oakengine/viewer.h"
+#include "oakengine/timeline.h"
+#include "oakengine/undo.h"
 #include "widget/timeruler/timeruler.h"
+#include "widget/timelinewidget/cliphandle.h"
 
+#include "widget/viewer/vieweroutpututils.h"
 namespace olive
 {
 
@@ -42,6 +47,7 @@ TimeBasedWidget::TimeBasedWidget(bool ruler_text_visible,
 								 QWidget *parent)
 	: TimelineScaledWidget(parent)
 	, viewer_node_(nullptr)
+	, bridge_(new EngineEventBridge(this))
 	, auto_max_scrollbar_(false)
 	, toggle_show_all_(false)
 	, auto_set_timebase_(true)
@@ -95,32 +101,27 @@ void TimeBasedWidget::connect_viewer_node(ViewerOutput *node)
 	// Set viewer node
 	ViewerOutput *old = viewer_node_.data();
 	viewer_node_ = node;
+
+	// Disconnect old bridge subscriptions and connections
+	disconnect(bridge_, nullptr, this, nullptr);
+	bridge_->unsubscribe_all();
+
 	if (viewer_node_) {
+		oak_video_params vp;
+		oakengine_viewer_get_video_params(
+			reinterpret_cast<OakEngineNode *>(viewer_node_.data()), 0, &vp);
+		// We still need Current class - keep using it for now
 		Current::getInstance().setCurrentVideoParams(
-			viewer_node_->get_video_params());
+			viewer_output_video_params(viewer_node_));
 		Current::getInstance().setCurrentAudioParams(
-			viewer_node_->get_audio_params());
+			viewer_output_audio_params(viewer_node_));
 	} else {
-		Current::getInstance().setCurrentVideoParams(VideoParams());
+		Current::getInstance().setCurrentVideoParams(empty_video_params());
 		Current::getInstance().setCurrentAudioParams(AudioParams());
 	}
 	if (old) {
 		// Call potential derivative functions for disconnecting the viewer node
 		DisconnectNodeEvent(old);
-
-		// Disconnect length changed signal
-		disconnect(old, &ViewerOutput::length_changed, this,
-				   &TimeBasedWidget::update_maximum_scroll);
-		disconnect(old, &ViewerOutput::removed_from_graph, this,
-				   &TimeBasedWidget::connected_node_removed_from_graph);
-		disconnect(old, &ViewerOutput::playhead_changed, this,
-				   &TimeBasedWidget::playhead_time_changed);
-
-		// Disconnect rate change signals if they were connected
-		disconnect(old, &ViewerOutput::frame_rate_changed, this,
-				   &TimeBasedWidget::auto_update_timebase);
-		disconnect(old, &ViewerOutput::sample_rate_changed, this,
-				   &TimeBasedWidget::auto_update_timebase);
 
 		// Reset timebase to null
 		SetTimebase(Rational());
@@ -137,13 +138,28 @@ void TimeBasedWidget::connect_viewer_node(ViewerOutput *node)
 	ConnectedNodeChangeEvent(viewer_node_.data());
 
 	if (viewer_node_) {
-		// Connect length changed signal
-		connect(viewer_node_.data(), &ViewerOutput::length_changed, this,
-				&TimeBasedWidget::update_maximum_scroll);
-		connect(viewer_node_.data(), &ViewerOutput::removed_from_graph, this,
-				&TimeBasedWidget::connected_node_removed_from_graph);
-		connect(viewer_node_.data(), &ViewerOutput::playhead_changed, this,
-				&TimeBasedWidget::playhead_time_changed);
+		OakEngineNode *handle =
+			reinterpret_cast<OakEngineNode *>(viewer_node_.data());
+
+		// Subscribe to viewer events via bridge
+		bridge_->subscribe(handle, OAKENGINE_EVENT_VIEWER_LENGTH_CHANGED);
+		bridge_->subscribe(handle, OAKENGINE_EVENT_VIEWER_PLAYHEAD_CHANGED);
+		bridge_->subscribe(handle, OAKENGINE_EVENT_NODE_REMOVED_FROM_GRAPH);
+
+		connect(bridge_, &EngineEventBridge::viewer_length_changed, this,
+				[this](OakEngineNode *, qint64, qint64) {
+					update_maximum_scroll();
+				});
+		connect(bridge_, &EngineEventBridge::viewer_playhead_changed, this,
+				[this](OakEngineNode *, qint64 num, qint64 den) {
+					playhead_time_changed(Rational(num, den));
+				});
+
+		// Node removed from graph - use the bridge signal
+		connect(bridge_, &EngineEventBridge::node_removed_from_graph, this,
+				[this](OakEngineNode *, OakEngineNode *) {
+					connected_node_removed_from_graph();
+				});
 
 		// Connect ruler and scrollbar to timeline points
 		connect_work_area(viewer_node_->get_work_area());
@@ -152,10 +168,16 @@ void TimeBasedWidget::connect_viewer_node(ViewerOutput *node)
 		// If we're setting the timebase, set it automatically based on the video and audio parameters
 		if (auto_set_timebase_) {
 			auto_update_timebase();
-			connect(viewer_node_.data(), &ViewerOutput::frame_rate_changed, this,
-					&TimeBasedWidget::auto_update_timebase);
-			connect(viewer_node_.data(), &ViewerOutput::sample_rate_changed, this,
-					&TimeBasedWidget::auto_update_timebase);
+			bridge_->subscribe(handle, OAKENGINE_EVENT_VIEWER_FRAME_RATE_CHANGED);
+			bridge_->subscribe(handle, OAKENGINE_EVENT_VIEWER_SAMPLE_RATE_CHANGED);
+			connect(bridge_, &EngineEventBridge::viewer_frame_rate_changed, this,
+					[this](OakEngineNode *, qint64, qint64) {
+						auto_update_timebase();
+					});
+			connect(bridge_, &EngineEventBridge::viewer_sample_rate_changed, this,
+					[this](OakEngineNode *, int) {
+						auto_update_timebase();
+					});
 		}
 
 		// Call derivatives
@@ -164,7 +186,8 @@ void TimeBasedWidget::connect_viewer_node(ViewerOutput *node)
 
 	update_maximum_scroll();
 
-	emit connected_node_changed(old, node);
+	emit connected_node_changed(reinterpret_cast<OakEngineNode *>(old),
+							reinterpret_cast<OakEngineNode *>(node));
 }
 
 void TimeBasedWidget::connect_work_area(TimelineWorkArea *workarea)
@@ -287,13 +310,13 @@ void TimeBasedWidget::auto_update_timebase()
 		return;
 	}
 	Rational video_tb =
-		viewer_node_->get_video_params().frame_rate_as_time_base();
+		viewer_output_video_params(viewer_node_).frame_rate_as_time_base();
 
 	if (!video_tb.isNull()) {
 		SetTimebase(video_tb);
 	} else {
 		Rational audio_tb =
-			viewer_node_->get_audio_params().sample_rate_as_time_base();
+			viewer_output_audio_params(viewer_node_).sample_rate_as_time_base();
 
 		if (!audio_tb.isNull()) {
 			SetTimebase(audio_tb);
@@ -489,7 +512,9 @@ void TimeBasedWidget::go_to_prev_cut()
 		closest_cut = qMax(closest_cut, this_track_closest_cut);
 	}
 
-	get_connected_node()->set_playhead(closest_cut);
+	oakengine_viewer_set_playhead(
+		reinterpret_cast<OakEngineNode *>(get_connected_node()),
+		closest_cut.numerator(), closest_cut.denominator());
 }
 
 void TimeBasedWidget::go_to_next_cut()
@@ -521,14 +546,17 @@ void TimeBasedWidget::go_to_next_cut()
 	}
 
 	if (closest_cut < RATIONAL_MAX) {
-		get_connected_node()->set_playhead(closest_cut);
+		oakengine_viewer_set_playhead(
+		reinterpret_cast<OakEngineNode *>(get_connected_node()),
+		closest_cut.numerator(), closest_cut.denominator());
 	}
 }
 
 void TimeBasedWidget::go_to_start()
 {
 	if (viewer_node_) {
-		viewer_node_->set_playhead(0);
+		oakengine_viewer_set_playhead(
+			reinterpret_cast<OakEngineNode *>(viewer_node_.data()), 0, 1);
 	}
 }
 
@@ -542,7 +570,12 @@ void TimeBasedWidget::prev_frame()
 			// Catch rounding error, assume this time is snapped and just subtract a timebase
 			proposed_time -= timebase();
 		}
-		viewer_node_->set_playhead(qMax(Rational(0), proposed_time));
+		{
+			Rational _pt = qMax(Rational(0), proposed_time);
+			oakengine_viewer_set_playhead(
+				reinterpret_cast<OakEngineNode *>(viewer_node_.data()),
+				_pt.numerator(), _pt.denominator());
+		}
 	}
 }
 
@@ -556,14 +589,19 @@ void TimeBasedWidget::next_frame()
 			// Catch rounding error, assume this time is snapped and just add a timebase
 			proposed_time += timebase();
 		}
-		viewer_node_->set_playhead(proposed_time);
+		oakengine_viewer_set_playhead(
+			reinterpret_cast<OakEngineNode *>(viewer_node_.data()),
+			proposed_time.numerator(), proposed_time.denominator());
 	}
 }
 
 void TimeBasedWidget::go_to_end()
 {
 	if (viewer_node_) {
-		viewer_node_->set_playhead(viewer_node_->get_length());
+		oakengine_viewer_set_playhead(
+			reinterpret_cast<OakEngineNode *>(viewer_node_.data()),
+			viewer_node_->get_length().numerator(),
+			viewer_node_->get_length().denominator());
 	}
 }
 
@@ -587,13 +625,13 @@ void TimeBasedWidget::set_point(Timeline::MovementMode m, const Rational &time)
 		return;
 	}
 
-	MultiUndoCommand *command = new MultiUndoCommand();
+	void *command = oakengine_undo_command_create_multi();
 	TimelineWorkArea *points = viewer_node_->get_work_area();
 
 	// Enable workarea if it isn't already enabled
 	if (!points->enabled()) {
-		command->add_child(new WorkareaSetEnabledCommand(
-			viewer_node_->project(), points, true));
+		oakengine_workarea_set_enabled_undoable(
+			reinterpret_cast<OakEngineWorkarea *>(points), 1, command);
 	}
 
 	// Determine our new range
@@ -603,7 +641,7 @@ void TimeBasedWidget::set_point(Timeline::MovementMode m, const Rational &time)
 		in_point = time;
 
 		if (!points->enabled() || points->out() < in_point) {
-			out_point = TimelineWorkArea::k_reset_out;
+			out_point = RATIONAL_MAX;
 		} else {
 			out_point = points->out();
 		}
@@ -611,17 +649,28 @@ void TimeBasedWidget::set_point(Timeline::MovementMode m, const Rational &time)
 		out_point = time;
 
 		if (!points->enabled() || points->in() > out_point) {
-			in_point = TimelineWorkArea::k_reset_in;
+			in_point = Rational(0, 1);
 		} else {
 			in_point = points->in();
 		}
 	}
 
 	// Set workarea
-	command->add_child(
-		new WorkareaSetRangeCommand(points, TimeRange(in_point, out_point)));
+	{
+		int64_t old_in_num, old_in_den, old_out_num, old_out_den;
+		int old_enabled;
+		oakengine_workarea_get(
+			reinterpret_cast<OakEngineWorkarea *>(points),
+			&old_in_num, &old_in_den, &old_out_num, &old_out_den,
+			&old_enabled);
+		oakengine_workarea_set_range_undoable(
+			reinterpret_cast<OakEngineWorkarea *>(points),
+			in_point.numerator(), in_point.denominator(),
+			out_point.numerator(), out_point.denominator(),
+			old_in_num, old_in_den, old_out_num, old_out_den, command);
+	}
 
-	Core::instance()->undo_stack()->push(command, tr("Set In/Out Point"));
+	oakengine_undo_push(command, tr("Set In/Out Point").toUtf8().constData());
 }
 
 void TimeBasedWidget::reset_point(Timeline::MovementMode m)
@@ -639,13 +688,27 @@ void TimeBasedWidget::reset_point(Timeline::MovementMode m)
 	TimeRange r = points->range();
 
 	if (m == Timeline::k_trim_in) {
-		r.set_in(TimelineWorkArea::k_reset_in);
+		r.set_in(Rational(0, 1));
 	} else {
-		r.set_out(TimelineWorkArea::k_reset_out);
+		r.set_out(RATIONAL_MAX);
 	}
 
-	Core::instance()->undo_stack()->push(new WorkareaSetRangeCommand(points, r),
-										 tr("Reset In/Out Points"));
+	{
+		auto reset_cmd = oakengine_undo_command_create_multi();
+		int64_t old_in_num, old_in_den, old_out_num, old_out_den;
+		int old_enabled;
+		oakengine_workarea_get(
+			reinterpret_cast<OakEngineWorkarea *>(points),
+			&old_in_num, &old_in_den, &old_out_num, &old_out_den,
+			&old_enabled);
+		oakengine_workarea_set_range_undoable(
+			reinterpret_cast<OakEngineWorkarea *>(points),
+			r.in().numerator(), r.in().denominator(),
+			r.out().numerator(), r.out().denominator(),
+			old_in_num, old_in_den, old_out_num, old_out_den, reset_cmd);
+		oakengine_undo_push(reset_cmd,
+									 tr("Reset In/Out Points").toUtf8().constData());
+	}
 }
 
 void TimeBasedWidget::page_scroll_internal(QScrollBar *bar, int maximum,
@@ -717,10 +780,15 @@ void TimeBasedWidget::clear_in_out_points()
 		return;
 	}
 
-	Core::instance()->undo_stack()->push(
-		new WorkareaSetEnabledCommand(get_connected_node()->project(),
-									  get_connected_node()->get_work_area(), false),
-		tr("Cleared In/Out Points"));
+	{
+		auto clear_cmd = oakengine_undo_command_create_multi();
+		oakengine_workarea_set_enabled_undoable(
+			reinterpret_cast<OakEngineWorkarea *>(
+				get_connected_node()->get_work_area()),
+			0, clear_cmd);
+		oakengine_undo_push(clear_cmd,
+			tr("Cleared In/Out Points").toUtf8().constData());
+	}
 }
 
 void TimeBasedWidget::set_marker()
@@ -748,16 +816,20 @@ void TimeBasedWidget::set_marker()
 			color = OAK_CONFIG("MarkerColor").toInt();
 		}
 
-		TimelineMarker *marker = new TimelineMarker(
-			color, TimeRange(get_connected_node()->get_playhead(),
-							 get_connected_node()->get_playhead()));
+		const Rational playhead = get_connected_node()->get_playhead();
+		OakEngineMarker *marker = oakengine_marker_create(
+			color, playhead.numerator(), playhead.denominator(),
+			playhead.numerator(), playhead.denominator(), "");
+		TimelineMarker *cpp_marker =
+			reinterpret_cast<TimelineMarker *>(marker);
 
 		bool edited_in_dialog = false;
 		if (OAK_CONFIG("SetNameWithMarker").toBool()) {
-			MarkerPropertiesDialog mpd({ marker }, timebase(), this);
+			MarkerPropertiesDialog mpd({ cpp_marker }, timebase(), this);
 			if (mpd.exec() != QDialog::Accepted) {
-				delete marker;
+				oakengine_marker_free(marker);
 				marker = nullptr;
+				cpp_marker = nullptr;
 			} else {
 				edited_in_dialog = true;
 			}
@@ -767,19 +839,19 @@ void TimeBasedWidget::set_marker()
 			if (edited_in_dialog) {
 				// The dialog pushed undo commands referencing this exact
 				// marker object, so it must be the one added to the list.
-				Core::instance()->undo_stack()->push(
-					new MarkerAddCommand(markers, marker), tr("Added Marker"));
+				oakengine_marker_list_add_existing(
+					reinterpret_cast<OakEngineMarkerList *>(markers), marker);
 			} else {
 				// Pristine marker: add through the liboakengine C ABI
 				// facade (one undoable command) and drop the temporary.
 				oakengine_sequence_marker_add_ex(
 					reinterpret_cast<OakEngineSequence *>(
 						get_connected_node()),
-					Timecode::time_to_timestamp(marker->time().in(),
+					Timecode::time_to_timestamp(cpp_marker->time().in(),
 												timebase(),
 												Timecode::k_round),
-					"", marker->color());
-				delete marker;
+					"", cpp_marker->color());
+				oakengine_marker_free(marker);
 			}
 		}
 	}
@@ -820,8 +892,10 @@ void TimeBasedWidget::go_to_in()
 {
 	if (get_connected_node()) {
 		if (get_connected_node()->get_work_area()->enabled()) {
-			get_connected_node()->set_playhead(
-				get_connected_node()->get_work_area()->in());
+			oakengine_viewer_set_playhead(
+				reinterpret_cast<OakEngineNode *>(get_connected_node()),
+				get_connected_node()->get_work_area()->in().numerator(),
+				get_connected_node()->get_work_area()->in().denominator());
 		} else {
 			go_to_start();
 		}
@@ -832,8 +906,10 @@ void TimeBasedWidget::go_to_out()
 {
 	if (get_connected_node()) {
 		if (get_connected_node()->get_work_area()->enabled()) {
-			get_connected_node()->set_playhead(
-				get_connected_node()->get_work_area()->out());
+			oakengine_viewer_set_playhead(
+				reinterpret_cast<OakEngineNode *>(get_connected_node()),
+				get_connected_node()->get_work_area()->out().numerator(),
+				get_connected_node()->get_work_area()->out().denominator());
 		} else {
 			go_to_end();
 		}
@@ -913,7 +989,7 @@ bool TimeBasedWidget::snap_point(const std::vector<Rational> &start_times,
 							TimelineMarker *marker = *jt;
 
 							TimeRange marker_range =
-								marker->time() + clip->in() - clip->media_in();
+								marker->time() + clip->in() - clip_media_in(clip);
 
 							qreal marker_in_screen =
 								time_to_scene(marker_range.in());

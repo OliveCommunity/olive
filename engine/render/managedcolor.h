@@ -22,34 +22,10 @@
 #ifndef OAK_MANAGEDCOLOR_H
 #define OAK_MANAGEDCOLOR_H
 
-#include <olive/core/core.h>
-
-#include "colortransform.h"
-
-namespace olive
-{
-
-class ManagedColor : public Color {
-public:
-	ManagedColor();
-	ManagedColor(const double &r, const double &g, const double &b,
-				 const double &a = 1.0);
-	ManagedColor(const char *data, const PixelFormat &format,
-				 int channel_layout);
-	ManagedColor(const Color &c);
-
-	const QString &color_input() const;
-	void set_color_input(const QString &color_input);
-
-	const ColorTransform &color_output() const;
-	void set_color_output(const ColorTransform &color_output);
-
-private:
-	QString color_input_;
-
-	ColorTransform color_transform_;
-};
-
-}
+// ManagedColor has moved to application code
+// (app/widget/manageddisplay/colorprocessorhandle.h) as part of the C ABI
+// migration: it is a pure UI value type that the engine never uses. This
+// header is intentionally left empty (the file is kept so the existing
+// build rules keep working) and must not be included by new code.
 
 #endif // OAK_MANAGEDCOLOR_H

@@ -36,6 +36,7 @@ ResizableTimelineScrollBar::ResizableTimelineScrollBar(QWidget *parent)
 	, markers_(nullptr)
 	, workarea_(nullptr)
 	, scale_(1.0)
+	, bridge_(new EngineEventBridge(this))
 {
 }
 
@@ -45,35 +46,59 @@ ResizableTimelineScrollBar::ResizableTimelineScrollBar(
 	, markers_(nullptr)
 	, workarea_(nullptr)
 	, scale_(1.0)
+	, bridge_(new EngineEventBridge(this))
 {
+}
+
+ResizableTimelineScrollBar::~ResizableTimelineScrollBar()
+{
+	// Raw workarea subscriptions carry `this` as userdata; unlike the
+	// bridge (which dies with us), they must be cancelled explicitly or the
+	// engine would call back into a dead widget.
+	if (workarea_range_sub_ > 0) {
+		oakengine_event_unsubscribe(workarea_range_sub_);
+	}
+	if (workarea_enabled_sub_ > 0) {
+		oakengine_event_unsubscribe(workarea_enabled_sub_);
+	}
 }
 
 void ResizableTimelineScrollBar::connect_markers(TimelineMarkerList *markers)
 {
 	if (markers_) {
-		disconnect(markers_, &TimelineMarkerList::marker_added, this,
-				   static_cast<void (ResizableTimelineScrollBar::*)()>(
-					   &ResizableTimelineScrollBar::update));
-		disconnect(markers_, &TimelineMarkerList::marker_removed, this,
-				   static_cast<void (ResizableTimelineScrollBar::*)()>(
-					   &ResizableTimelineScrollBar::update));
-		disconnect(markers_, &TimelineMarkerList::marker_modified, this,
-				   static_cast<void (ResizableTimelineScrollBar::*)()>(
-					   &ResizableTimelineScrollBar::update));
+		if (marker_sub_add_)
+			bridge_->unsubscribe(marker_sub_add_);
+		if (marker_sub_rem_)
+			bridge_->unsubscribe(marker_sub_rem_);
+		if (marker_sub_mod_)
+			bridge_->unsubscribe(marker_sub_mod_);
 	}
 
 	markers_ = markers;
 
 	if (markers_) {
-		connect(markers_, &TimelineMarkerList::marker_added, this,
-				static_cast<void (ResizableTimelineScrollBar::*)()>(
-					&ResizableTimelineScrollBar::update));
-		connect(markers_, &TimelineMarkerList::marker_removed, this,
-				static_cast<void (ResizableTimelineScrollBar::*)()>(
-					&ResizableTimelineScrollBar::update));
-		connect(markers_, &TimelineMarkerList::marker_modified, this,
-				static_cast<void (ResizableTimelineScrollBar::*)()>(
-					&ResizableTimelineScrollBar::update));
+		marker_sub_add_ = bridge_->subscribe(
+			reinterpret_cast<OakEngineMarkerList *>(markers_),
+			OAKENGINE_EVENT_MARKER_LIST_MARKER_ADDED);
+		marker_sub_rem_ = bridge_->subscribe(
+			reinterpret_cast<OakEngineMarkerList *>(markers_),
+			OAKENGINE_EVENT_MARKER_LIST_MARKER_REMOVED);
+		marker_sub_mod_ = bridge_->subscribe(
+			reinterpret_cast<OakEngineMarkerList *>(markers_),
+			OAKENGINE_EVENT_MARKER_LIST_MARKER_MODIFIED);
+
+		connect(bridge_, &EngineEventBridge::marker_list_marker_added, this,
+				[this](OakEngineMarkerList *, OakEngineMarker *) {
+					update();
+				});
+		connect(bridge_, &EngineEventBridge::marker_list_marker_removed, this,
+				[this](OakEngineMarkerList *, OakEngineMarker *) {
+					update();
+				});
+		connect(bridge_, &EngineEventBridge::marker_list_marker_modified, this,
+				[this](OakEngineMarkerList *, OakEngineMarker *) {
+					update();
+				});
 	}
 
 	update();
@@ -82,23 +107,30 @@ void ResizableTimelineScrollBar::connect_markers(TimelineMarkerList *markers)
 void ResizableTimelineScrollBar::connect_work_area(TimelineWorkArea *workarea)
 {
 	if (workarea_) {
-		disconnect(workarea_, &TimelineWorkArea::range_changed, this,
-				   static_cast<void (ResizableTimelineScrollBar::*)()>(
-					   &ResizableTimelineScrollBar::update));
-		disconnect(workarea_, &TimelineWorkArea::enabled_changed, this,
-				   static_cast<void (ResizableTimelineScrollBar::*)()>(
-					   &ResizableTimelineScrollBar::update));
+		if (workarea_range_sub_ > 0) {
+			oakengine_event_unsubscribe(workarea_range_sub_);
+			workarea_range_sub_ = 0;
+		}
+		if (workarea_enabled_sub_ > 0) {
+			oakengine_event_unsubscribe(workarea_enabled_sub_);
+			workarea_enabled_sub_ = 0;
+		}
 	}
 
 	workarea_ = workarea;
 
 	if (workarea_) {
-		connect(workarea_, &TimelineWorkArea::range_changed, this,
-				static_cast<void (ResizableTimelineScrollBar::*)()>(
-					&ResizableTimelineScrollBar::update));
-		connect(workarea_, &TimelineWorkArea::enabled_changed, this,
-				static_cast<void (ResizableTimelineScrollBar::*)()>(
-					&ResizableTimelineScrollBar::update));
+		void *handle = reinterpret_cast<void *>(workarea_);
+		workarea_range_sub_ = oakengine_event_subscribe(
+			handle, OAKENGINE_EVENT_WORKAREA_RANGE_CHANGED,
+			[](const oakengine_event *, void *userdata) {
+				static_cast<ResizableTimelineScrollBar *>(userdata)->update();
+			}, this);
+		workarea_enabled_sub_ = oakengine_event_subscribe(
+			handle, OAKENGINE_EVENT_WORKAREA_ENABLED_CHANGED,
+			[](const oakengine_event *, void *userdata) {
+				static_cast<ResizableTimelineScrollBar *>(userdata)->update();
+			}, this);
 	}
 
 	update();

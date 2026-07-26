@@ -466,7 +466,7 @@ protected:
 		if (!olive::Core::instance()) {
 			// Leaked intentionally: matches render_diskcache_test, Core is
 			// process-wide and eviction paths call Core::WarnCacheFull().
-			new olive::Core(olive::Core::CoreParams());
+			new olive::Core();
 		}
 
 		olive::DiskManager::create_instance();
@@ -658,7 +658,7 @@ protected:
 		}
 
 		if (!olive::Core::instance()) {
-			new olive::Core(olive::Core::CoreParams()); // intentionally leaked
+			new olive::Core(); // intentionally leaked
 		}
 
 		olive::DiskManager::create_instance();

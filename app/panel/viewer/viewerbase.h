@@ -22,8 +22,11 @@
 #ifndef OAK_VIEWERPANELBASE_H
 #define OAK_VIEWERPANELBASE_H
 
+#include <memory>
+
 #include "panel/pixelsampler/pixelsamplerpanel.h"
 #include "panel/timebased/timebased.h"
+#include "widget/manageddisplay/colorprocessorhandle.h"
 #include "widget/viewer/viewer.h"
 
 namespace olive
@@ -58,7 +61,7 @@ public:
    */
 	void set_full_screen(QScreen *screen = nullptr);
 
-	ColorManager *get_color_manager()
+	OakEngineColorManager *get_color_manager()
 	{
 		return get_viewer_widget()->color_manager();
 	}
@@ -78,7 +81,7 @@ public:
 		get_viewer_widget()->set_timeline_selected_blocks(b);
 	}
 
-	void set_node_view_selections(const QVector<Node *> &n)
+	void set_node_view_selections(const QVector<OakEngineNode *> &n)
 	{
 		get_viewer_widget()->set_node_view_selections(n);
 	}
@@ -89,7 +92,7 @@ public:
 	}
 
 public slots:
-	void set_gizmos(Node *node);
+	void set_gizmos(OakEngineNode *node);
 
 	void cache_entire_sequence();
 
@@ -109,12 +112,12 @@ signals:
 	/**
    * @brief Wrapper for ViewerGLWidget::ColorProcessorChanged()
    */
-	void color_processor_changed(ColorProcessorPtr processor);
+	void color_processor_changed(ColorProcessorHandlePtr processor);
 
 	/**
    * @brief Wrapper for ViewerGLWidget::ColorManagerChanged()
    */
-	void color_manager_changed(ColorManager *color_manager);
+	void color_manager_changed(OakEngineColorManager *color_manager);
 
 protected:
 	void set_viewer_widget(ViewerWidget *vw);

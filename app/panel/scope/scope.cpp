@@ -134,7 +134,7 @@ void ScopePanel::set_reference_buffer(TexturePtr frame)
 	waveform_view_->set_buffer(frame);
 }
 
-void ScopePanel::set_color_manager(ColorManager *manager)
+void ScopePanel::set_color_manager(OakEngineColorManager *manager)
 {
 	histogram_->connect_color_manager(manager);
 	vectorscope_->connect_color_manager(manager);

@@ -22,7 +22,7 @@
 #ifndef OAK_COLORSWATCHCHOOSER_H
 #define OAK_COLORSWATCHCHOOSER_H
 
-#include "node/color/colormanager/colormanager.h"
+#include "oakengine/color.h"
 #include "widget/colorbutton/colorbutton.h"
 
 namespace olive
@@ -31,7 +31,7 @@ namespace olive
 class ColorSwatchChooser : public QWidget {
 	Q_OBJECT
 public:
-	ColorSwatchChooser(ColorManager *manager, QWidget *parent = nullptr);
+	ColorSwatchChooser(OakEngineColorManager *manager, QWidget *parent = nullptr);
 
 public slots:
 	void set_current_color(const ManagedColor &c)

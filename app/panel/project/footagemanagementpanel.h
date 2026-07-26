@@ -26,12 +26,14 @@
 
 #include "node/project/footage/footage.h"
 
+struct OakEngineNode;
+
 namespace olive
 {
 
 class FootageManagementPanel {
 public:
-	virtual QVector<ViewerOutput *> get_selected_footage() const = 0;
+	virtual QVector<OakEngineNode *> get_selected_footage() const = 0;
 };
 
 }

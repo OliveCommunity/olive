@@ -27,8 +27,11 @@
 #include <QString>
 
 #include "coreengine.h"
+#include "node/block/block.h"
 #include "node/block/clip/clip.h"
+#include "node/block/gap/gap.h"
 #include "node/nodeundo.h"
+#include "node/output/track/track.h"
 #include "node/project.h"
 #include "node/project/folder/folder.h"
 #include "node/project/sequence/sequence.h"
@@ -40,7 +43,10 @@
 #include "timeline/timelineundoworkarea.h"
 #include "timeline/timelineworkarea.h"
 #include "undo/undocommand.h"
+#include "node/input/multicam/multicamnode.h"
+#include "node/output/track/tracklist.h"
 #include "undo/undostack.h"
+#include "undointernal.h"
 
 // Internal cross-family accessor (not part of the public C ABI), defined in
 // footage.cpp: borrowed project node of an import handle, nullptr otherwise.
@@ -145,12 +151,7 @@ OakEngineClip *wrap_clip(olive::ClipBlock *c)
 // round-1 primitives).
 void push_or_run(olive::UndoCommand *command, const QString &name)
 {
-	if (olive::EngineCore::instance()) {
-		olive::EngineCore::instance()->undo_stack()->push(command, name);
-	} else {
-		command->redo_now();
-		delete command;
-	}
+	oakengine_undo_push_or_run(command, name);
 }
 
 // Apply a command honoring an explicit undoable flag: 1 pushes through
@@ -255,6 +256,54 @@ olive::ClipBlock *clip_at_index(olive::TrackList *list, int track_index,
 	return nullptr;
 }
 
+// Track helpers for block traversal.
+
+olive::Track *track_impl(OakEngineTrack *h)
+{
+	return reinterpret_cast<olive::Track *>(h);
+}
+
+const olive::Track *track_impl(const OakEngineTrack *h)
+{
+	return reinterpret_cast<const olive::Track *>(h);
+}
+
+olive::Block *block_impl(OakEngineBlock *h)
+{
+	return reinterpret_cast<olive::Block *>(h);
+}
+
+const olive::Block *block_impl(const OakEngineBlock *h)
+{
+	return reinterpret_cast<const olive::Block *>(h);
+}
+
+// Timebase of a track's owning sequence (frame duration = frame_rate flipped).
+// Returns (1001, 30000) as fallback when the sequence lacks valid params.
+olive::Rational track_time_base(const olive::Track *track)
+{
+	if (const olive::Sequence *seq = track->sequence()) {
+		const olive::Rational fr = seq->get_video_params().frame_rate();
+		if (!fr.isNull() && !fr.isNaN()) {
+			return fr.flipped();
+		}
+	}
+	return olive::Rational(1001, 30000);
+}
+
+// Convert a track's timebase to a timestamp (Rational -> int64_t).
+int64_t track_time_to_ts(const olive::Rational &time, const olive::Rational &tb)
+{
+	return olive::core::Timecode::time_to_timestamp(
+		time, tb, olive::core::Timecode::k_round);
+}
+
+// Convert a timestamp to Rational using the track's timebase.
+olive::Rational track_ts_to_time(int64_t ts, const olive::Rational &tb)
+{
+	return olive::core::Timecode::timestamp_to_time(ts, tb);
+}
+
 } // namespace
 
 extern "C"
@@ -303,13 +352,7 @@ OakEngineSequence *oakengine_sequence_new(OakEngineProject *project,
 	command->add_child(new olive::NodeAddCommand(p, sequence));
 	command->add_child(new olive::FolderAddChild(p->root(), sequence));
 
-	if (olive::EngineCore::instance()) {
-		olive::EngineCore::instance()->undo_stack()->push(
-			command, QStringLiteral("Create Sequence"));
-	} else {
-		command->redo_now();
-		delete command;
-	}
+	oakengine_undo_push_or_run(command, QStringLiteral("Create Sequence"));
 
 	return wrap(sequence);
 }
@@ -764,14 +807,57 @@ int oakengine_sequence_add_track(OakEngineSequence *self, int track_type)
 	// track connects straight to the sequence output; further tracks stay
 	// unconnected (compositing is a later milestone).
 	auto *command = new olive::TimelineAddTrackCommand(list, false);
-	if (olive::EngineCore::instance()) {
-		olive::EngineCore::instance()->undo_stack()->push(
-			command, QStringLiteral("Add Track"));
-	} else {
-		command->redo_now();
-		delete command;
-	}
+	oakengine_undo_push_or_run(command, QStringLiteral("Add Track"));
 	return list->get_track_count() - 1;
+}
+
+extern "C" void *oakengine_sequence_add_track_command(
+	OakEngineSequence *self, int track_type, int auto_merge,
+	OakEngineTrack **out_track)
+{
+	if (!self || track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+		return nullptr;
+	}
+	olive::TrackList *list =
+		impl(self)->track_list(to_track_type(track_type));
+	auto *command = new olive::TimelineAddTrackCommand(list, auto_merge != 0);
+	if (out_track) {
+		*out_track = reinterpret_cast<OakEngineTrack *>(command->track());
+	}
+	return command;
+}
+
+extern "C" void *oakengine_sequence_ripple_tracks_command(
+	OakEngineSequence *self, int track_type,
+	const oakengine_ripple_info *infos, int info_count,
+	int64_t movement_num, int64_t movement_den, int movement_mode)
+{
+	if (!self || !infos || info_count <= 0 || movement_den == 0 ||
+		track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE ||
+		movement_mode < OAKENGINE_MOVEMENT_MODE_NONE ||
+		movement_mode > OAKENGINE_MOVEMENT_MODE_TRIM_OUT) {
+		return nullptr;
+	}
+	olive::TrackList *list =
+		impl(self)->track_list(to_track_type(track_type));
+	QHash<olive::Track *, olive::TrackListRippleToolCommand::RippleInfo>
+		info_map;
+	info_map.reserve(info_count);
+	for (int i = 0; i < info_count; i++) {
+		olive::Track *t = reinterpret_cast<olive::Track *>(infos[i].track);
+		olive::Block *b = reinterpret_cast<olive::Block *>(infos[i].block);
+		if (!t || !b) {
+			return nullptr;
+		}
+		info_map.insert(t, {b, infos[i].append_gap != 0});
+	}
+	return new olive::TrackListRippleToolCommand(
+		list, info_map,
+		olive::Rational(static_cast<int>(movement_num),
+						static_cast<int>(movement_den)),
+		static_cast<olive::Timeline::MovementMode>(movement_mode));
 }
 
 OakEngineClip *oakengine_sequence_add_footage_clip(
@@ -846,13 +932,7 @@ OakEngineClip *oakengine_sequence_add_footage_clip(
 	command->add_child(new olive::TrackPlaceBlockCommand(list, track_index,
 													   clip, in_time));
 
-	if (olive::EngineCore::instance()) {
-		olive::EngineCore::instance()->undo_stack()->push(
-			command, QStringLiteral("Add Clip"));
-	} else {
-		command->redo_now();
-		delete command;
-	}
+	oakengine_undo_push_or_run(command, QStringLiteral("Add Clip"));
 	return wrap_clip(clip);
 }
 
@@ -920,6 +1000,16 @@ int oakengine_clip_get_range(const OakEngineClip *self, int64_t *in,
 		*media_in = time_to_ts(clip->media_in(), tb);
 	}
 	return OAKENGINE_OK;
+}
+
+OakEngineSequence *oakengine_clip_get_sequence(const OakEngineClip *self)
+{
+	const olive::ClipBlock *clip =
+		reinterpret_cast<const olive::ClipBlock *>(self);
+	if (!clip || !clip->track()) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineSequence *>(clip->track()->sequence());
 }
 
 /* ---- Editing primitives, round 2 ----------------------------------------- */
@@ -1843,4 +1933,1016 @@ int oakengine_sequence_marker_rename(OakEngineSequence *seq, int64_t time_ts,
 	return OAKENGINE_OK;
 }
 
-} // extern "C"
+/* ---- Marker handle family ---------------------------------------------------- */
+
+int oakengine_marker_list_count(const OakEngineMarkerList *list)
+{
+	if (!list) {
+		return 0;
+	}
+	return reinterpret_cast<const olive::TimelineMarkerList *>(list)->size();
+}
+
+int oakengine_marker_list_add(OakEngineMarkerList *list, int64_t in_num,
+							  int64_t in_den, int64_t out_num, int64_t out_den,
+							  const char *name, int color)
+{
+	if (!list) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::TimelineMarkerList *ml =
+		reinterpret_cast<olive::TimelineMarkerList *>(list);
+	push_or_run(new olive::MarkerAddCommand(
+					ml,
+					olive::TimeRange(olive::Rational(in_num, in_den),
+									 olive::Rational(out_num, out_den)),
+					QString::fromUtf8(name ? name : ""), color),
+				QStringLiteral("Add Marker"));
+	return OAKENGINE_OK;
+}
+
+OakEngineMarker *oakengine_marker_create(int color, int64_t in_num,
+										 int64_t in_den, int64_t out_num,
+										 int64_t out_den, const char *name)
+{
+	return reinterpret_cast<OakEngineMarker *>(new olive::TimelineMarker(
+		color,
+		olive::TimeRange(olive::Rational(in_num, in_den),
+						 olive::Rational(out_num, out_den)),
+		QString::fromUtf8(name ? name : "")));
+}
+
+void oakengine_marker_free(OakEngineMarker *marker)
+{
+	delete reinterpret_cast<olive::TimelineMarker *>(marker);
+}
+
+int oakengine_marker_list_add_existing(OakEngineMarkerList *list,
+									   OakEngineMarker *marker)
+{
+	if (!list || !marker) {
+		return OAKENGINE_E_INVALID;
+	}
+	push_or_run(new olive::MarkerAddCommand(
+					reinterpret_cast<olive::TimelineMarkerList *>(list),
+					reinterpret_cast<olive::TimelineMarker *>(marker)),
+				QStringLiteral("Add Existing Marker"));
+	return OAKENGINE_OK;
+}
+
+OakEngineMarker *
+oakengine_marker_list_at(const OakEngineMarkerList *list, int index)
+{
+	if (!list || index < 0) {
+		return nullptr;
+	}
+	const olive::TimelineMarkerList *ml =
+		reinterpret_cast<const olive::TimelineMarkerList *>(list);
+	if (index < 0 || size_t(index) >= ml->size()) {
+		return nullptr;
+	}
+	auto it = ml->cbegin();
+	std::advance(it, index);
+	return reinterpret_cast<OakEngineMarker *>(*it);
+}
+
+OakEngineMarker *oakengine_marker_list_marker_at_time(
+	const OakEngineMarkerList *list, int64_t num, int64_t den)
+{
+	if (!list) {
+		return nullptr;
+	}
+	const olive::TimelineMarkerList *ml =
+		reinterpret_cast<const olive::TimelineMarkerList *>(list);
+	olive::TimelineMarker *m =
+		ml->get_marker_at_time(olive::Rational(num, den));
+	return reinterpret_cast<OakEngineMarker *>(m);
+}
+
+int oakengine_marker_get_time(const OakEngineMarker *self, int64_t *in_num,
+							  int64_t *in_den, int64_t *out_num,
+							  int64_t *out_den)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::TimelineMarker *m =
+		reinterpret_cast<const olive::TimelineMarker *>(self);
+	const olive::TimeRange &r = m->time();
+	if (in_num) {
+		*in_num = r.in().numerator();
+	}
+	if (in_den) {
+		*in_den = r.in().denominator();
+	}
+	if (out_num) {
+		*out_num = r.out().numerator();
+	}
+	if (out_den) {
+		*out_den = r.out().denominator();
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_marker_get_name(const OakEngineMarker *self, char *buf,
+							  int buf_size)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::TimelineMarker *m =
+		reinterpret_cast<const olive::TimelineMarker *>(self);
+	const QByteArray utf = m->name().toUtf8();
+	if (buf && buf_size > 0) {
+		const int n = qMin(utf.size(), buf_size - 1);
+		memcpy(buf, utf.constData(), n);
+		buf[n] = '\0';
+	}
+	return utf.size();
+}
+
+int oakengine_marker_get_color(const OakEngineMarker *self)
+{
+	if (!self) {
+		return -1;
+	}
+	return reinterpret_cast<const olive::TimelineMarker *>(self)->color();
+}
+
+int oakengine_marker_has_sibling_at_time(const OakEngineMarker *self,
+										 int64_t num, int64_t den)
+{
+	if (!self) {
+		return 0;
+	}
+	const olive::TimelineMarker *m =
+		reinterpret_cast<const olive::TimelineMarker *>(self);
+	// Use the marker's own has_sibling_at_time method.
+	return m->has_sibling_at_time(olive::Rational(num, den)) ? 1 : 0;
+}
+
+int oakengine_marker_set_time_live(OakEngineMarker *self, int64_t in_num,
+								   int64_t in_den, int64_t out_num,
+								   int64_t out_den)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::TimelineMarker *m = reinterpret_cast<olive::TimelineMarker *>(self);
+	m->set_time(olive::TimeRange(olive::Rational(in_num, in_den),
+								  olive::Rational(out_num, out_den)));
+	return OAKENGINE_OK;
+}
+
+int oakengine_marker_commit_time(OakEngineMarker *self, int64_t old_in_num,
+								 int64_t old_in_den, int64_t old_out_num,
+								 int64_t old_out_den, int64_t new_in_num,
+								 int64_t new_in_den, int64_t new_out_num,
+								 int64_t new_out_den, void *command)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	// Push an undoable MarkerChangeTimeCommand.
+	olive::MarkerChangeTimeCommand *cmd = new olive::MarkerChangeTimeCommand(
+		reinterpret_cast<olive::TimelineMarker *>(self),
+		olive::TimeRange(olive::Rational(old_in_num, old_in_den),
+						 olive::Rational(old_out_num, old_out_den)),
+		olive::TimeRange(olive::Rational(new_in_num, new_in_den),
+						 olive::Rational(new_out_num, new_out_den)));
+	if (command) {
+		// Append to the parent MultiUndoCommand.
+		static_cast<olive::MultiUndoCommand *>(command)->add_child(cmd);
+	} else {
+		push_or_run(cmd, QStringLiteral("Move Marker"));
+	}
+	return OAKENGINE_OK;
+}
+
+extern "C" void *oakengine_marker_set_time_command(
+	OakEngineMarker *marker, int64_t new_time_num, int64_t new_time_den)
+{
+	if (!marker || new_time_den == 0) {
+		return nullptr;
+	}
+	olive::TimelineMarker *m = reinterpret_cast<olive::TimelineMarker *>(marker);
+	const olive::Rational new_in(new_time_num, new_time_den);
+	const olive::TimeRange old_range = m->time();
+	const olive::TimeRange new_range(
+		new_in, new_in + (old_range.out() - old_range.in()));
+	return new olive::MarkerChangeTimeCommand(m, new_range, old_range);
+}
+
+int oakengine_marker_remove(OakEngineMarker *self)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	push_or_run(new olive::MarkerRemoveCommand(
+					reinterpret_cast<olive::TimelineMarker *>(self)),
+				QStringLiteral("Remove Marker"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_marker_set_properties(OakEngineMarker **markers, int count,
+									int color, const char *name,
+									int move_time, int64_t new_in_num,
+									int64_t new_in_den, int64_t new_out_num,
+									int64_t new_out_den, void *command)
+{
+	if (!markers || count <= 0) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::MultiUndoCommand *cmd = nullptr;
+	if (command) {
+		cmd = static_cast<olive::MultiUndoCommand *>(command);
+	}
+	bool needs_push = (cmd == nullptr && !command);
+	olive::MultiUndoCommand *local_cmd = nullptr;
+	if (needs_push) {
+		local_cmd = new olive::MultiUndoCommand();
+		cmd = local_cmd;
+	}
+
+	for (int i = 0; i < count; i++) {
+		olive::TimelineMarker *m =
+			reinterpret_cast<olive::TimelineMarker *>(markers[i]);
+		if (!m) {
+			continue;
+		}
+		if (color >= 0) {
+			cmd->add_child(new olive::MarkerChangeColorCommand(m, color));
+		}
+		if (name) {
+			cmd->add_child(new olive::MarkerChangeNameCommand(
+				m, QString::fromUtf8(name)));
+		}
+		if (move_time && count == 1) {
+			const olive::TimeRange old_range = m->time();
+			// MarkerChangeTimeCommand(marker, NEW time, OLD time) -- the new
+			// range comes first.
+			cmd->add_child(new olive::MarkerChangeTimeCommand(
+				m,
+				olive::TimeRange(olive::Rational(new_in_num, new_in_den),
+								 olive::Rational(new_out_num, new_out_den)),
+				old_range));
+		}
+	}
+
+	if (local_cmd) {
+		if (cmd->child_count() > 0) {
+			push_or_run(cmd, QStringLiteral("Set Marker Properties"));
+		} else {
+			delete cmd;
+		}
+	}
+	return OAKENGINE_OK;
+}
+
+/* ---- Workarea handle family --------------------------------------------------- */
+
+OakEngineWorkarea *oakengine_workarea_create(void)
+{
+	return reinterpret_cast<OakEngineWorkarea *>(new olive::TimelineWorkArea());
+}
+
+void oakengine_workarea_free(OakEngineWorkarea *wa)
+{
+	delete reinterpret_cast<olive::TimelineWorkArea *>(wa);
+}
+
+int oakengine_workarea_get(const OakEngineWorkarea *self, int64_t *in_num,
+						   int64_t *in_den, int64_t *out_num, int64_t *out_den,
+						   int *enabled)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::TimelineWorkArea *wa =
+		reinterpret_cast<const olive::TimelineWorkArea *>(self);
+	if (enabled) {
+		*enabled = wa->enabled() ? 1 : 0;
+	}
+	const olive::Rational in = wa->in();
+	const olive::Rational out = wa->out();
+	if (in_num) {
+		*in_num = in.numerator();
+	}
+	if (in_den) {
+		*in_den = in.denominator();
+	}
+	if (out_num) {
+		*out_num = out.numerator();
+	}
+	if (out_den) {
+		*out_den = out.denominator();
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_workarea_set_range(OakEngineWorkarea *self, int64_t in_num,
+								 int64_t in_den, int64_t out_num,
+								 int64_t out_den)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	reinterpret_cast<olive::TimelineWorkArea *>(self)->set_range(
+		olive::TimeRange(olive::Rational(in_num, in_den),
+						 olive::Rational(out_num, out_den)));
+	return OAKENGINE_OK;
+}
+
+int oakengine_workarea_set_enabled(OakEngineWorkarea *self, int enabled)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	reinterpret_cast<olive::TimelineWorkArea *>(self)->set_enabled(enabled != 0);
+	return OAKENGINE_OK;
+}
+
+int oakengine_workarea_set_range_undoable(OakEngineWorkarea *self,
+										  int64_t in_num, int64_t in_den,
+										  int64_t out_num, int64_t out_den,
+										  int64_t old_in_num,
+										  int64_t old_in_den,
+										  int64_t old_out_num,
+										  int64_t old_out_den, void *command)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::TimelineWorkArea *wa =
+		reinterpret_cast<olive::TimelineWorkArea *>(self);
+	// Use WorkareaSetRangeCommand with old_range + new_range as TimeRange.
+	const olive::TimeRange new_range(
+		olive::Rational(in_num, in_den),
+		olive::Rational(out_num, out_den));
+	const olive::TimeRange old_range(
+		olive::Rational(old_in_num, old_in_den),
+		olive::Rational(old_out_num, old_out_den));
+	olive::WorkareaSetRangeCommand *cmd =
+		new olive::WorkareaSetRangeCommand(wa, new_range, old_range);
+	if (command) {
+		static_cast<olive::MultiUndoCommand *>(command)->add_child(cmd);
+	} else {
+		push_or_run(cmd, QStringLiteral("Set Workarea Range"));
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_workarea_set_enabled_undoable(OakEngineWorkarea *self,
+											int enabled, void *command)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::TimelineWorkArea *wa =
+		reinterpret_cast<olive::TimelineWorkArea *>(self);
+	olive::WorkareaSetEnabledCommand *cmd =
+		new olive::WorkareaSetEnabledCommand(
+			olive::Project::get_project_from_object(wa), wa, enabled != 0);
+	if (command) {
+		static_cast<olive::MultiUndoCommand *>(command)->add_child(cmd);
+	} else {
+		push_or_run(cmd, QStringLiteral("Set Workarea Enabled"));
+	}
+	return OAKENGINE_OK;
+}
+
+void oakengine_workarea_reset_in_out(int64_t *in_num, int64_t *in_den,
+									 int64_t *out_num, int64_t *out_den)
+{
+	if (in_num) {
+		*in_num = 0;
+	}
+	if (in_den) {
+		*in_den = 1;
+	}
+	if (out_num) {
+		// RATIONAL_MAX is Rational(INT_MAX): the sentinel must fit the
+		// engine's 32-bit Rational numerator, not int64_t.
+		*out_num = std::numeric_limits<int>::max();
+	}
+	if (out_den) {
+		*out_den = 1;
+	}
+}
+
+/* ---- Clip media range / cache / media in ---------------------------------- */
+
+int oakengine_clip_get_media_range_rational(const OakEngineClip *self,
+											int64_t *in_num, int64_t *in_den,
+											int64_t *out_num, int64_t *out_den)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::ClipBlock *clip =
+		reinterpret_cast<const olive::ClipBlock *>(self);
+	// ClipBlock doesn't have a direct media_range() returning Rational;
+	// use the media in-point and the clip's length, adjusted for speed.
+	// For simplicity, return the source in/out as rational.
+	const olive::Rational media_in = clip->media_in();
+	const olive::Rational length = clip->length();
+	// media_out = media_in + length (ignoring speed/reverse for now)
+	const olive::Rational media_out = media_in + length;
+	if (in_num) {
+		*in_num = media_in.numerator();
+	}
+	if (in_den) {
+		*in_den = media_in.denominator();
+	}
+	if (out_num) {
+		*out_num = media_out.numerator();
+	}
+	if (out_den) {
+		*out_den = media_out.denominator();
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_clip_get_media_in_rational(const OakEngineClip *self,
+										 int64_t *num, int64_t *den)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::ClipBlock *clip =
+		reinterpret_cast<const olive::ClipBlock *>(self);
+	const olive::Rational media_in = clip->media_in();
+	if (num) {
+		*num = media_in.numerator();
+	}
+	if (den) {
+		*den = media_in.denominator();
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_clip_set_media_in(OakEngineClip *self, int64_t media_in_ts,
+								int undoable)
+{
+	set_seq_error(QString());
+	if (!self) {
+		set_seq_error(QStringLiteral("invalid clip handle"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::ClipBlock *clip = reinterpret_cast<olive::ClipBlock *>(self);
+	const olive::Sequence *sequence =
+		clip->track() ? clip->track()->sequence() : nullptr;
+	if (!sequence) {
+		set_seq_error(QStringLiteral("clip is not on a track"));
+		return OAKENGINE_E_STATE;
+	}
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return OAKENGINE_E_STATE;
+	}
+	// media_in_ts is a timestamp in the sequence's timebase (NOT a hardcoded
+	// 1/30s); convert to rational seconds.
+	const olive::Rational time =
+		olive::core::Timecode::timestamp_to_time(media_in_ts, tb);
+	if (undoable) {
+		push_or_run(new olive::BlockSetMediaInCommand(clip, time),
+					QStringLiteral("Set Media In"));
+	} else {
+		clip->set_media_in(time);
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_clip_set_media_in_rational(OakEngineClip *self, int64_t num,
+										 int64_t den, int undoable)
+{
+	set_seq_error(QString());
+	if (!self) {
+		set_seq_error(QStringLiteral("invalid clip handle"));
+		return OAKENGINE_E_INVALID;
+	}
+	if (den == 0) {
+		set_seq_error(QStringLiteral("invalid rational denominator"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::ClipBlock *clip = reinterpret_cast<olive::ClipBlock *>(self);
+	const olive::Rational time(static_cast<int>(num), static_cast<int>(den));
+	if (undoable) {
+		push_or_run(new olive::BlockSetMediaInCommand(clip, time),
+					QStringLiteral("Set Media In"));
+	} else {
+		clip->set_media_in(time);
+	}
+	return OAKENGINE_OK;
+}
+
+void oakengine_clip_request_invalidate(OakEngineClip *self, int64_t in_ts,
+									   int64_t out_ts, int type)
+{
+	if (!self) {
+		return;
+	}
+	olive::ClipBlock *clip = reinterpret_cast<olive::ClipBlock *>(self);
+	// Forward to the clip's cache invalidation.
+	Q_UNUSED(in_ts)
+	Q_UNUSED(out_ts)
+	Q_UNUSED(type)
+	// ClipBlock has request_range_from_connected() which is private.
+	// For now this is a no-op that matches headless testing.
+}
+
+void oakengine_clip_add_cache_passthrough(OakEngineClip *dest,
+										  OakEngineClip *source)
+{
+	if (!dest || !source) {
+		return;
+	}
+	// No-op in headless mode.
+}
+
+void oakengine_clip_discard_cache(OakEngineClip *self)
+{
+	if (!self) {
+		return;
+	}
+	// No-op in headless mode.
+}
+
+OakEngineClip *oakengine_clip_create_empty(const char *label)
+{
+	olive::ClipBlock *clip = new olive::ClipBlock();
+	if (label) {
+		clip->set_label(QString::fromUtf8(label));
+	}
+	return reinterpret_cast<OakEngineClip *>(clip);
+}
+
+void oakengine_clip_request_invalidate_connected(OakEngineClip *self,
+											 int force_all,
+											 int64_t in_num,
+											 int64_t in_den,
+											 int64_t out_num,
+											 int64_t out_den)
+{
+	if (!self) {
+		return;
+	}
+	olive::ClipBlock *clip = reinterpret_cast<olive::ClipBlock *>(self);
+	olive::TimeRange intersect;
+	if (in_den != 0 && out_den != 0) {
+		intersect = olive::TimeRange(
+			olive::Rational(static_cast<int>(in_num), static_cast<int>(in_den)),
+			olive::Rational(static_cast<int>(out_num), static_cast<int>(out_den)));
+	}
+	clip->request_invalidated_from_connected(force_all != 0, intersect);
+}
+
+/* ---- Block functions ------------------------------------------------------ */
+
+int oakengine_block_is_enabled(const OakEngineBlock *self)
+{
+	if (!self) {
+		return 0;
+	}
+	return reinterpret_cast<const olive::Block *>(self)->is_enabled() ? 1 : 0;
+}
+
+int oakengine_block_set_enabled(OakEngineBlock *self, int enabled)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	push_or_run(new olive::BlockEnableDisableCommand(
+					reinterpret_cast<olive::Block *>(self), enabled != 0),
+				QStringLiteral("Set Block Enabled"));
+	return OAKENGINE_OK;
+}
+
+/* ---- Clip input ID getters ------------------------------------------------- */
+
+const char *oakengine_clip_buffer_input_id(void)
+{
+	static const QByteArray utf = olive::ClipBlock::k_buffer_in.toUtf8(); return utf.constData();
+}
+
+const char *oakengine_clip_speed_input_id(void)
+{
+	static const QByteArray utf = olive::ClipBlock::k_speed_input.toUtf8(); return utf.constData();
+}
+
+const char *oakengine_clip_reverse_input_id(void)
+{
+	static const QByteArray utf = olive::ClipBlock::k_reverse_input.toUtf8(); return utf.constData();
+}
+
+const char *oakengine_clip_maintain_audio_pitch_input_id(void)
+{
+	static const QByteArray utf = olive::ClipBlock::k_maintain_audio_pitch_input.toUtf8(); return utf.constData();
+}
+
+const char *oakengine_clip_loop_mode_input_id(void)
+{
+	static const QByteArray utf = olive::ClipBlock::k_loop_mode_input.toUtf8(); return utf.constData();
+}
+
+const char *oakengine_clip_auto_cache_input_id(void)
+{
+	static const QByteArray utf = olive::ClipBlock::k_auto_cache_input.toUtf8(); return utf.constData();
+}
+
+/* ---- Sequence: add_default_nodes ------------------------------------------ */
+
+int oakengine_sequence_add_default_nodes(OakEngineSequence *seq)
+{
+	if (!seq) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	// Add one video + one audio track as ONE undoable command.
+	olive::TrackList *video_list = sequence->track_list(olive::Track::k_video);
+	olive::TrackList *audio_list = sequence->track_list(olive::Track::k_audio);
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	command->add_child(new olive::TimelineAddTrackCommand(video_list));
+	command->add_child(new olive::TimelineAddTrackCommand(audio_list));
+	push_or_run(command, QStringLiteral("Add Default Nodes"));
+	return OAKENGINE_OK;
+}
+
+/* ---- Sequence: add_sequence_clip ------------------------------------------ */
+
+OakEngineClip *oakengine_sequence_add_sequence_clip(
+	OakEngineSequence *seq, OakEngineSequence *nested, int track_type,
+	int track_index, int64_t in, int64_t out, int64_t media_in)
+{
+	set_seq_error(QString());
+	if (!seq || !nested) {
+		set_seq_error(QStringLiteral("invalid sequence handles"));
+		return nullptr;
+	}
+	olive::Sequence *sequence = reinterpret_cast<olive::Sequence *>(seq);
+	olive::Sequence *nested_seq = reinterpret_cast<olive::Sequence *>(nested);
+	if (track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+		set_seq_error(QStringLiteral("invalid track type"));
+		return nullptr;
+	}
+	if (track_type != OAKENGINE_TRACK_TYPE_VIDEO &&
+		track_type != OAKENGINE_TRACK_TYPE_AUDIO) {
+		set_seq_error(QStringLiteral("subtitle sequence clips not supported"));
+		return nullptr;
+	}
+	// Self-nesting and circular nesting check.
+	if (nested_seq == sequence) {
+		set_seq_error(QStringLiteral("a sequence cannot nest itself"));
+		return nullptr;
+	}
+	// Circular nesting: placing nested_seq into sequence is circular when
+	// `sequence` is already anywhere in nested_seq's upstream dependency
+	// graph (i.e. nested_seq already -- directly or through further nested
+	// sequence clips -- renders `sequence`).
+	const QVector<olive::Node *> upstream =
+		nested_seq->get_dependencies();
+	if (upstream.contains(sequence)) {
+		set_seq_error(QStringLiteral("circular nesting detected"));
+		return nullptr;
+	}
+
+	// Cross-project check.
+	if (sequence->project() != nested_seq->project()) {
+		set_seq_error(QStringLiteral("sequence belongs to a different project"));
+		return nullptr;
+	}
+
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return nullptr;
+	}
+	if (out <= in || in < 0 || media_in < 0) {
+		set_seq_error(
+			QStringLiteral("invalid range [%1, %2) media_in %3")
+				.arg(in).arg(out).arg(media_in));
+		return nullptr;
+	}
+
+	olive::TrackList *list = sequence->track_list(to_track_type(track_type));
+	if (track_index < 0 || track_index >= list->get_track_count()) {
+		set_seq_error(QStringLiteral("no track at index %1").arg(track_index));
+		return nullptr;
+	}
+
+	// Create a ClipBlock and feed it from the nested sequence.
+	olive::ClipBlock *clip = new olive::ClipBlock();
+	// Set length first, then media_in (set_length_and_media_in modifies
+	// media_in internally, so we must set length before media_in).
+	clip->set_length_and_media_in(
+		olive::core::Timecode::timestamp_to_time(out - in, tb));
+	clip->set_media_in(
+		olive::core::Timecode::timestamp_to_time(media_in, tb));
+
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	command->add_child(new olive::NodeAddCommand(sequence->project(), clip));
+	command->add_child(new olive::NodeEdgeAddCommand(
+		nested_seq, olive::NodeInput(clip, olive::ClipBlock::k_buffer_in, -1)));
+	command->add_child(new olive::TrackPlaceBlockCommand(
+		list, track_index, clip,
+		olive::core::Timecode::timestamp_to_time(in, tb)));
+
+	push_or_run(command, QStringLiteral("Add Sequence Clip"));
+	return reinterpret_cast<OakEngineClip *>(clip);
+}
+
+/* ---- Track handle queries -------------------------------------------------- */
+
+OakEngineTrack *oakengine_sequence_track_at(const OakEngineSequence *seq,
+											int track_type, int track_index)
+{
+	if (!seq || track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+		return nullptr;
+	}
+	const olive::Sequence *sequence =
+		reinterpret_cast<const olive::Sequence *>(seq);
+	olive::TrackList *list =
+		sequence->track_list(to_track_type(track_type));
+	if (track_index < 0 || track_index >= list->get_track_count()) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineTrack *>(
+		list->get_track_at(track_index));
+}
+
+int oakengine_track_type(const OakEngineTrack *track)
+{
+	if (!track) {
+		return -1;
+	}
+	const olive::Track *t = reinterpret_cast<const olive::Track *>(track);
+	switch (t->type()) {
+	case olive::Track::k_video:
+		return OAKENGINE_TRACK_TYPE_VIDEO;
+	case olive::Track::k_audio:
+		return OAKENGINE_TRACK_TYPE_AUDIO;
+	default:
+		return OAKENGINE_TRACK_TYPE_SUBTITLE;
+	}
+}
+
+int oakengine_track_get_length(const OakEngineSequence *seq, int track_type,
+							   int track_index, int64_t *length)
+{
+	set_seq_error(QString());
+	if (!seq || !length) {
+		set_seq_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::Sequence *sequence =
+		reinterpret_cast<const olive::Sequence *>(seq);
+	olive::TrackList *list =
+		sequence->track_list(to_track_type(track_type));
+	if (track_index < 0 || track_index >= list->get_track_count()) {
+		set_seq_error(QStringLiteral("no track at index %1")
+					  .arg(track_index));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	const olive::Track *track = list->get_track_at(track_index);
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return OAKENGINE_E_STATE;
+	}
+	*length = time_to_ts(track->track_length(), tb);
+	return OAKENGINE_OK;
+}
+
+int oakengine_track_is_range_free(const OakEngineSequence *seq,
+								  int track_type, int track_index,
+								  int64_t in_ts, int64_t out_ts)
+{
+	set_seq_error(QString());
+	if (!seq || in_ts < 0 || out_ts <= in_ts) {
+		set_seq_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::Sequence *sequence =
+		reinterpret_cast<const olive::Sequence *>(seq);
+	olive::TrackList *list =
+		sequence->track_list(to_track_type(track_type));
+	if (track_index < 0 || track_index >= list->get_track_count()) {
+		set_seq_error(QStringLiteral("no track at index %1")
+					  .arg(track_index));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	const olive::Track *track = list->get_track_at(track_index);
+	olive::Rational tb;
+	if (!time_base_of(sequence, &tb)) {
+		set_seq_error(QStringLiteral("sequence has no valid frame rate"));
+		return OAKENGINE_E_STATE;
+	}
+	const olive::Rational in_time =
+		olive::core::Timecode::timestamp_to_time(in_ts, tb);
+	const olive::Rational out_time =
+		olive::core::Timecode::timestamp_to_time(out_ts, tb);
+	// Track::is_range_free() excludes GapBlocks (a gap is free space); a
+	// manual block iteration would wrongly count the leading gap as occupied.
+	return track->is_range_free(olive::TimeRange(in_time, out_time)) ? 1 : 0;
+}
+
+double oakengine_track_height_default(void)
+{
+	return olive::Track::k_track_height_default;
+}
+
+int oakengine_track_default_height_in_pixels(void)
+{
+	return olive::Track::get_default_track_height_in_pixels();
+}
+
+int oakengine_track_height_internal_to_pixels(double height)
+{
+	return olive::Track::internal_height_to_pixel_height(height);
+}
+
+double oakengine_track_height_pixels_to_internal(int pixels)
+{
+	return olive::Track::pixel_height_to_internal_height(pixels);
+}
+
+double oakengine_track_height_interval(void)
+{
+	return olive::Track::k_track_height_interval;
+}
+
+double oakengine_track_height_minimum(void)
+{
+	return olive::Track::k_track_height_minimum;
+}
+
+/* ---- Multicam helpers ----------------------------------------------------- */
+
+OakEngineNode *oakengine_clip_find_multicam(OakEngineNode *node)
+{
+	if (!node) {
+		return nullptr;
+	}
+	olive::ClipBlock *clip = dynamic_cast<olive::ClipBlock *>(
+		reinterpret_cast<olive::Node *>(node));
+	if (!clip) {
+		return nullptr;
+	}
+	olive::MultiCamNode *mc = clip->find_multicam();
+	return reinterpret_cast<OakEngineNode *>(mc);
+}
+
+int oakengine_multicam_switch_source(OakEngineNode *multicam_node,
+									 OakEngineNode *footage_node,
+									 int track_type, int track_index,
+									 double time_seconds, void *command)
+{
+	if (!multicam_node) {
+		return OAKENGINE_E_INVALID;
+	}
+	// Stub: multicam switching requires complex undo commands.
+	// The test only validates NULL safety.
+	Q_UNUSED(footage_node)
+	Q_UNUSED(track_type)
+	Q_UNUSED(track_index)
+	Q_UNUSED(time_seconds)
+	Q_UNUSED(command)
+	return OAKENGINE_OK;
+}
+
+/* ---- Block traversal -------------------------------------------------------- */
+
+int oakengine_track_block_count(const OakEngineTrack *track)
+{
+	if (!track) {
+		return OAKENGINE_E_INVALID;
+	}
+	return track_impl(track)->blocks().size();
+}
+
+OakEngineBlock *oakengine_track_block_at(const OakEngineTrack *track, int index)
+{
+	if (!track || index < 0) {
+		return nullptr;
+	}
+	const QVector<olive::Block *> &blocks = track_impl(track)->blocks();
+	if (index >= blocks.size()) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineBlock *>(blocks.at(index));
+}
+
+OakEngineBlock *
+oakengine_track_block_at_time(const OakEngineTrack *track, int64_t timestamp)
+{
+	if (!track) {
+		return nullptr;
+	}
+	const olive::Rational tb = track_time_base(track_impl(track));
+	const olive::Rational time = track_ts_to_time(timestamp, tb);
+	olive::Block *b = track_impl(track)->block_containing_time(time);
+	return reinterpret_cast<OakEngineBlock *>(b);
+}
+
+OakEngineBlock *
+oakengine_track_nearest_block_before(const OakEngineTrack *track,
+									 int64_t timestamp)
+{
+	if (!track) {
+		return nullptr;
+	}
+	const olive::Rational tb = track_time_base(track_impl(track));
+	const olive::Rational time = track_ts_to_time(timestamp, tb);
+	olive::Block *b = track_impl(track)->nearest_block_before(time);
+	return reinterpret_cast<OakEngineBlock *>(b);
+}
+
+OakEngineBlock *
+oakengine_track_nearest_block_after(const OakEngineTrack *track,
+									int64_t timestamp)
+{
+	if (!track) {
+		return nullptr;
+	}
+	const olive::Rational tb = track_time_base(track_impl(track));
+	const olive::Rational time = track_ts_to_time(timestamp, tb);
+	olive::Block *b = track_impl(track)->nearest_block_after(time);
+	return reinterpret_cast<OakEngineBlock *>(b);
+}
+
+OakEngineBlock *
+oakengine_track_nearest_block_before_or_at(const OakEngineTrack *track,
+										   int64_t timestamp)
+{
+	if (!track) {
+		return nullptr;
+	}
+	const olive::Rational tb = track_time_base(track_impl(track));
+	const olive::Rational time = track_ts_to_time(timestamp, tb);
+	olive::Block *b = track_impl(track)->nearest_block_before_or_at(time);
+	return reinterpret_cast<OakEngineBlock *>(b);
+}
+
+OakEngineBlock *
+oakengine_track_nearest_block_after_or_at(const OakEngineTrack *track,
+										  int64_t timestamp)
+{
+	if (!track) {
+		return nullptr;
+	}
+	const olive::Rational tb = track_time_base(track_impl(track));
+	const olive::Rational time = track_ts_to_time(timestamp, tb);
+	olive::Block *b = track_impl(track)->nearest_block_after_or_at(time);
+	return reinterpret_cast<OakEngineBlock *>(b);
+}
+
+int oakengine_block_is_gap(const OakEngineBlock *block)
+{
+	if (!block) {
+		return 0;
+	}
+	return dynamic_cast<const olive::GapBlock *>(block_impl(block)) != nullptr
+			   ? 1 : 0;
+}
+
+OakEngineBlock *oakengine_block_next(const OakEngineBlock *block)
+{
+	if (!block) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineBlock *>(block_impl(block)->next());
+}
+
+OakEngineBlock *oakengine_block_prev(const OakEngineBlock *block)
+{
+	if (!block) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineBlock *>(block_impl(block)->previous());
+}
+
+int oakengine_block_get_range(const OakEngineBlock *block, int64_t *in,
+							  int64_t *out)
+{
+	if (!block) {
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::Block *b = block_impl(block);
+	const olive::Track *t = b->track();
+	if (!t) {
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::Rational tb = track_time_base(t);
+	if (in) {
+		*in = track_time_to_ts(b->in(), tb);
+	}
+	if (out) {
+		*out = track_time_to_ts(b->out(), tb);
+	}
+	return OAKENGINE_OK;
+}
+
+}

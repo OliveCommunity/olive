@@ -16,6 +16,8 @@
 
 set(OLIVE_SOURCES
         ${OLIVE_SOURCES}
+        widget/timeruler/markerpainting.h
+        widget/timeruler/markerpainting.cpp
         widget/timeruler/seekablewidget.h
         widget/timeruler/seekablewidget.cpp
         widget/timeruler/timeruler.h

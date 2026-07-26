@@ -27,6 +27,8 @@
 #include <QTimer>
 
 #include "widget/timebased/timebasedwidget.h"
+#include "oakengine/events.h"
+#include "oakengine/viewer.h"
 
 namespace olive
 {
@@ -156,15 +158,20 @@ void TimeBasedView::set_y_scale(const double &y_scale)
 void TimeBasedView::set_viewer_node(ViewerOutput *v)
 {
 	if (viewer_) {
-		disconnect(viewer_, &ViewerOutput::playhead_changed, viewport(),
-				   static_cast<void (QWidget::*)()>(&TimeBasedView::update));
+		oakengine_event_unsubscribe(viewer_sub_);
+		viewer_sub_ = 0;
 	}
 
 	viewer_ = v;
 
 	if (viewer_) {
-		connect(viewer_, &ViewerOutput::playhead_changed, viewport(),
-				static_cast<void (QWidget::*)()>(&TimeBasedView::update));
+		viewer_sub_ = oakengine_event_subscribe(
+			reinterpret_cast<OakEngineNode *>(viewer_),
+			OAKENGINE_EVENT_VIEWER_PLAYHEAD_CHANGED,
+			[](const oakengine_event *, void *userdata) {
+				static_cast<TimeBasedView *>(userdata)->viewport()->update();
+			},
+			this);
 	}
 }
 
@@ -247,7 +254,9 @@ bool TimeBasedView::playhead_move(QMouseEvent *event)
 			mouse_time += movement;
 		}
 
-		viewer_->set_playhead(mouse_time);
+		oakengine_viewer_set_playhead(
+			reinterpret_cast<OakEngineNode *>(viewer_),
+			mouse_time.numerator(), mouse_time.denominator());
 	}
 
 	return true;

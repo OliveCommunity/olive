@@ -31,8 +31,10 @@ PluginProgressDialogReporter::PluginProgressDialogReporter(
 	: dialog_(new ProgressDialog(message, title, nullptr))
 {
 	dialog_->setAttribute(Qt::WA_DeleteOnClose);
-	connect(dialog_, &ProgressDialog::cancelled, this,
-			&PluginProgressReporter::cancelled);
+	QObject::connect(dialog_, &ProgressDialog::cancelled, dialog_, [this]() {
+		cancelled_ = true;
+		set_cancelled();
+	});
 }
 
 PluginProgressDialogReporter::~PluginProgressDialogReporter()

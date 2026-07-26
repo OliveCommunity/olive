@@ -25,8 +25,10 @@
 #include <QPainter>
 
 #include "common/qtutils.h"
-#include "config/config.h"
+#include "common/configwrapper.h"
 #include "core.h"
+#include "oakengine/viewer.h"
+#include "markerpainting.h"
 #include "widget/menu/menu.h"
 #include "widget/menu/menushared.h"
 
@@ -74,6 +76,12 @@ TimeRuler::TimeRuler(bool text_visible, bool cache_status_visible,
 	//       the bottom of the widget. However, for now this makes sense since we just ported this
 	//       from a QWidget's paintEvent.
 	setAlignment(Qt::AlignLeft | Qt::AlignTop);
+
+	bridge_ = new EngineEventBridge(this);
+	connect(bridge_, &EngineEventBridge::playback_cache_invalidated,
+			viewport(), [this]() { viewport()->update(); });
+	connect(bridge_, &EngineEventBridge::playback_cache_validated,
+			viewport(), [this]() { viewport()->update(); });
 }
 
 void TimeRuler::set_centered_text(bool c)
@@ -90,19 +98,21 @@ void TimeRuler::set_playback_cache(PlaybackCache *cache)
 	}
 
 	if (playback_cache_) {
-		disconnect(playback_cache_, &PlaybackCache::invalidated, viewport(),
-				   static_cast<void (QWidget::*)()>(&QWidget::update));
-		disconnect(playback_cache_, &PlaybackCache::validated, viewport(),
-				   static_cast<void (QWidget::*)()>(&QWidget::update));
+		bridge_->unsubscribe(cache_sub_invalidated_);
+		bridge_->unsubscribe(cache_sub_validated_);
+		cache_sub_invalidated_ = 0;
+		cache_sub_validated_ = 0;
 	}
 
 	playback_cache_ = cache;
 
 	if (playback_cache_) {
-		connect(playback_cache_, &PlaybackCache::invalidated, viewport(),
-				static_cast<void (QWidget::*)()>(&QWidget::update));
-		connect(playback_cache_, &PlaybackCache::validated, viewport(),
-				static_cast<void (QWidget::*)()>(&QWidget::update));
+		cache_sub_invalidated_ = bridge_->subscribe(
+			reinterpret_cast<void *>(playback_cache_),
+			OAKENGINE_EVENT_PLAYBACK_CACHE_INVALIDATED);
+		cache_sub_validated_ = bridge_->subscribe(
+			reinterpret_cast<void *>(playback_cache_),
+			OAKENGINE_EVENT_PLAYBACK_CACHE_VALIDATED);
 	}
 
 	update();
@@ -116,7 +126,7 @@ void TimeRuler::drawForeground(QPainter *p, const QRectF &rect)
 	}
 
 	// Draw timeline points if connected
-	int marker_height = TimelineMarker::get_marker_height(p->fontMetrics());
+	int marker_height = MarkerPainting::height(p->fontMetrics());
 	draw_work_area(p);
 	draw_markers(p, marker_height);
 
@@ -195,7 +205,7 @@ void TimeRuler::drawForeground(QPainter *p, const QRectF &rect)
 	int line_bottom = height();
 
 	if (show_cache_status_) {
-		line_bottom -= PlaybackCache::get_cache_indicator_height();
+		line_bottom -= oakengine_playback_cache_indicator_height();
 	}
 
 	int long_height = fm.height();
@@ -277,7 +287,7 @@ void TimeRuler::drawForeground(QPainter *p, const QRectF &rect)
 	if (show_cache_status_ && playback_cache_ &&
 		playback_cache_->has_validated_ranges()) {
 		// FIXME: Hardcoded to get video length, if we ever need audio length, this will have to change
-		int h = PlaybackCache::get_cache_indicator_height();
+		int h = oakengine_playback_cache_indicator_height();
 		QRect cache_rect(0, height() - h, width(), h);
 
 		if (ViewerOutput *viewer =
@@ -340,11 +350,11 @@ void TimeRuler::update_height()
 
 	// Add cache status height
 	if (show_cache_status_) {
-		height += PlaybackCache::get_cache_indicator_height();
+		height += oakengine_playback_cache_indicator_height();
 	}
 
 	// Add marker height
-	height += TimelineMarker::get_marker_height(fontMetrics());
+	height += MarkerPainting::height(fontMetrics());
 
 	setFixedHeight(height);
 }

@@ -57,7 +57,7 @@ public:
 		return pixelaspect_combo_->get_pixel_aspect_ratio();
 	}
 
-	VideoParams::Interlacing get_selected_video_interlacing_mode() const
+	int get_selected_video_interlacing_mode() const
 	{
 		return interlacing_combo_->get_interlace_mode();
 	}

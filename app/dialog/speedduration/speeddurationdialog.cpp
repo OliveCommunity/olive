@@ -27,8 +27,15 @@
 #include <QMessageBox>
 
 #include "core.h"
-#include "node/nodeundo.h"
+#include "node/block/clip/clip.h"
+#include "oakengine/timeline.h"
+#include "oakengine/node.h"
+#include "oakengine/undo.h"
+#include "widget/timelinewidget/cliphandle.h"
 #include "timeline/timelineundopointer.h"
+#include "timeline/timelinecommon.h"
+#include "timeline/timelineundopointer.h"
+#include "timeline/timelineundoripple.h"
 
 namespace olive
 {
@@ -122,15 +129,15 @@ SpeedDurationDialog::SpeedDurationDialog(const QVector<ClipBlock *> &clips,
 	layout->addWidget(btns);
 
 	// Determine which speed value to use
-	start_speed_ = clips.first()->speed();
+	start_speed_ = clip_speed(clips.first());
 	start_duration_ = clips.first()->length();
-	start_reverse_ = clips.first()->reverse();
-	start_maintain_audio_pitch_ = clips.first()->maintain_audio_pitch();
-	start_loop_ = int(clips.first()->loop_mode());
+	start_reverse_ = clip_is_reversed(clips.first());
+	start_maintain_audio_pitch_ = clip_maintain_audio_pitch(clips.first());
+	start_loop_ = clip_loop_mode(clips.first());
 	for (int i = 1; i < clips.size(); i++) {
 		ClipBlock *c = clips.at(i);
 
-		if (!qIsNaN(start_speed_) && !qFuzzyCompare(start_speed_, c->speed())) {
+		if (!qIsNaN(start_speed_) && !qFuzzyCompare(start_speed_, clip_speed(c))) {
 			// Speed differs per clip
 			start_speed_ = qSNaN();
 		}
@@ -141,8 +148,8 @@ SpeedDurationDialog::SpeedDurationDialog(const QVector<ClipBlock *> &clips,
 
 		// Yes, in theory a bool should only ever be 0 or 1 anyway, but MSVC complained and it is
 		// *possible* that a bool could be something else, so this code is safer
-		int clip_reverse = c->reverse() ? 1 : 0;
-		int clip_maintain_pitch = c->maintain_audio_pitch() ? 1 : 0;
+		int clip_reverse = clip_is_reversed(c) ? 1 : 0;
+		int clip_maintain_pitch = clip_maintain_audio_pitch(c) ? 1 : 0;
 		if (start_reverse_ != -1 && clip_reverse != start_reverse_) {
 			start_reverse_ = -1;
 		}
@@ -151,7 +158,7 @@ SpeedDurationDialog::SpeedDurationDialog(const QVector<ClipBlock *> &clips,
 			start_maintain_audio_pitch_ = -1;
 		}
 
-		if (start_loop_ != -1 && int(c->loop_mode()) != start_loop_) {
+		if (start_loop_ != -1 && clip_loop_mode(c) != start_loop_) {
 			start_loop_ = -1;
 		}
 	}
@@ -189,9 +196,40 @@ SpeedDurationDialog::SpeedDurationDialog(const QVector<ClipBlock *> &clips,
 
 void SpeedDurationDialog::accept()
 {
-	MultiUndoCommand *command = new MultiUndoCommand();
+	// Collect all duration/speed changes into a single undo entry.
+	const QByteArray undo_name = tr("Speed/Duration").toUtf8();
+	oakengine_undo_group_begin(undo_name.constData());
 
-	// Set duration values
+	// Set speed values
+	if (speed_slider_->is_tristate()) {
+		if (link_box_->isChecked() && !dur_slider_->is_tristate()) {
+			// Automatically determine speed from duration
+			foreach (ClipBlock *c, clips_) {
+				double speed = get_speed_adjustment(clip_speed(c), c->length(),
+												 dur_slider_->get_value());
+				oak_node_value val;
+				memset(&val, 0, sizeof(val));
+				val.type = OAK_NODE_VALUE_FLOAT;
+				val.f[0] = speed;
+				oakengine_node_set_input(
+					reinterpret_cast<OakEngineNode *>(c),
+					oakengine_clip_speed_input_id(), &val);
+			}
+		}
+	} else {
+		// Set speeds to value of slider
+		foreach (ClipBlock *c, clips_) {
+			oak_node_value val;
+			memset(&val, 0, sizeof(val));
+			val.type = OAK_NODE_VALUE_FLOAT;
+			val.f[0] = speed_slider_->get_value();
+			oakengine_node_set_input(
+				reinterpret_cast<OakEngineNode *>(c),
+				oakengine_clip_speed_input_id(), &val);
+		}
+	}
+
+	// Set duration values (undoable via facade)
 	TimelineRippleDeleteGapsAtRegionsCommand::RangeList ripple_ranges;
 
 	foreach (ClipBlock *c, clips_) {
@@ -199,7 +237,7 @@ void SpeedDurationDialog::accept()
 
 		if (dur_slider_->is_tristate()) {
 			if (link_box_->isChecked() && !speed_slider_->is_tristate()) {
-				proposed_length = get_length_adjustment(c->length(), c->speed(),
+				proposed_length = get_length_adjustment(c->length(), clip_speed(c),
 													  speed_slider_->get_value(),
 													  timebase_);
 			}
@@ -219,8 +257,17 @@ void SpeedDurationDialog::accept()
 			}
 
 			if (proposed_length != c->length()) {
-				command->add_child(new BlockTrimCommand(
-					c->track(), c, proposed_length, Timeline::k_trim_out));
+				// Trim the clip's out-point to the new length (one undoable child
+				// inside the group, kept as a direct C++ command because the dialog
+				// already works in Rational time and has the track available).
+				oakengine_undo_push(
+				oakengine_block_trim_command(
+					reinterpret_cast<void *>(c->track()),
+					reinterpret_cast<void *>(c),
+					proposed_length.numerator(),
+					proposed_length.denominator(),
+					olive::Timeline::k_trim_out, 0),
+				tr("Trim Clip").toUtf8().constData());
 				ripple_ranges.append(
 					{ c->track(),
 					  TimeRange(c->in() + proposed_length, c->out()) });
@@ -228,70 +275,85 @@ void SpeedDurationDialog::accept()
 		}
 	}
 
-	if (ripple_box_->isChecked()) {
-		command->add_child(new TimelineRippleDeleteGapsAtRegionsCommand(
-			clips_.first()->track()->sequence(), ripple_ranges));
-	}
-
-	// Set speed values
-	if (speed_slider_->is_tristate()) {
-		if (link_box_->isChecked() && !dur_slider_->is_tristate()) {
-			// Automatically determine speed from duration
-			foreach (ClipBlock *c, clips_) {
-				command->add_child(new NodeParamSetStandardValueCommand(
-					NodeKeyframeTrackReference(
-						NodeInput(c, ClipBlock::k_speed_input)),
-					get_speed_adjustment(c->speed(), c->length(),
-									   dur_slider_->get_value())));
+	if (ripple_box_->isChecked() && !ripple_ranges.isEmpty()) {
+		Sequence *seq = reinterpret_cast<Sequence *>(
+			oakengine_clip_get_sequence(
+				reinterpret_cast<OakEngineClip *>(clips_.first())));
+		if (seq) {
+			QVector<int64_t> range_in_ts;
+			QVector<int64_t> range_out_ts;
+			QVector<int> range_track_types;
+			QVector<int> range_track_indexes;
+			range_in_ts.reserve(ripple_ranges.size());
+			range_out_ts.reserve(ripple_ranges.size());
+			range_track_types.reserve(ripple_ranges.size());
+			range_track_indexes.reserve(ripple_ranges.size());
+			int tbn = 0, tbd = 0;
+			oakengine_node_frame_time_base(
+				reinterpret_cast<OakEngineNode *>(seq), &tbn, &tbd);
+			for (const auto &range : ripple_ranges) {
+				range_track_types.append(range.first->type());
+				range_track_indexes.append(range.first->index());
+				range_in_ts.append(olive::core::Timecode::time_to_timestamp(
+					range.second.in(), olive::Rational(tbn, tbd),
+					olive::core::Timecode::k_round));
+				range_out_ts.append(olive::core::Timecode::time_to_timestamp(
+					range.second.out(), olive::Rational(tbn, tbd),
+					olive::core::Timecode::k_round));
 			}
-		}
-	} else {
-		// Set speeds to value of slider
-		foreach (ClipBlock *c, clips_) {
-			command->add_child(new NodeParamSetStandardValueCommand(
-				NodeKeyframeTrackReference(NodeInput(c, ClipBlock::k_speed_input)),
-				speed_slider_->get_value()));
+			oakengine_undo_push(
+				oakengine_timeline_ripple_delete_gaps_command(
+					reinterpret_cast<void *>(seq),
+					range_in_ts.constData(), range_out_ts.constData(),
+					range_track_types.constData(),
+					range_track_indexes.constData(),
+					ripple_ranges.size()),
+				tr("Ripple Delete Gaps").toUtf8().constData());
 		}
 	}
 
 	// Set reverse values
 	if (!reverse_box_->isTristate()) {
 		foreach (ClipBlock *c, clips_) {
-			command->add_child(new NodeParamSetStandardValueCommand(
-				NodeKeyframeTrackReference(
-					NodeInput(c, ClipBlock::k_reverse_input)),
-				reverse_box_->isChecked()));
+			oak_node_value val;
+			memset(&val, 0, sizeof(val));
+			val.type = OAK_NODE_VALUE_BOOL;
+			val.num = reverse_box_->isChecked() ? 1 : 0;
+			oakengine_node_set_input(
+				reinterpret_cast<OakEngineNode *>(c),
+				oakengine_clip_reverse_input_id(), &val);
 		}
 	}
 
-	// Set reverse values
+	// Set maintain audio pitch values
 	if (!maintain_audio_pitch_box_->isTristate()) {
 		foreach (ClipBlock *c, clips_) {
-			command->add_child(new NodeParamSetStandardValueCommand(
-				NodeKeyframeTrackReference(
-					NodeInput(c, ClipBlock::k_maintain_audio_pitch_input)),
-				maintain_audio_pitch_box_->isChecked()));
+			oak_node_value val;
+			memset(&val, 0, sizeof(val));
+			val.type = OAK_NODE_VALUE_BOOL;
+			val.num = maintain_audio_pitch_box_->isChecked() ? 1 : 0;
+			oakengine_node_set_input(
+				reinterpret_cast<OakEngineNode *>(c),
+				oakengine_clip_maintain_audio_pitch_input_id(), &val);
 		}
 	}
 
 	if (loop_combo_->currentIndex() != -1) {
 		foreach (ClipBlock *c, clips_) {
-			command->add_child(new NodeParamSetStandardValueCommand(
-				NodeKeyframeTrackReference(
-					NodeInput(c, ClipBlock::k_loop_mode_input)),
-				loop_combo_->currentData()));
+			oak_node_value val;
+			memset(&val, 0, sizeof(val));
+			val.type = OAK_NODE_VALUE_INT;
+			val.num = loop_combo_->currentData().toInt();
+			oakengine_node_set_input(
+				reinterpret_cast<OakEngineNode *>(c),
+				oakengine_clip_loop_mode_input_id(), &val);
 		}
 	}
 
-	QString name = (clips_.size() > 1) ?
-					   tr("Set %1 Clip Properties").arg(clips_.size()) :
-					   tr("Set Clip \"%1\" Properties")
-						   .arg(clips_.first()->get_label_or_name());
-	Core::instance()->undo_stack()->push(command, name);
+	oakengine_undo_group_end();
 
 	super::accept();
 }
-
 Rational SpeedDurationDialog::get_length_adjustment(
 	const Rational &original_length, double original_speed, double new_speed,
 	const Rational &timebase)

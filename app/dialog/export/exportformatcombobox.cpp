@@ -24,6 +24,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 
+#include "oakengine/encoding.h"
 #include "ui/icons/icons.h"
 
 namespace olive
@@ -32,6 +33,10 @@ namespace olive
 ExportFormatComboBox::ExportFormatComboBox(Mode mode, QWidget *parent)
 	: QComboBox(parent)
 {
+	// The invalid placeholder format is the format count itself
+	// (ExportFormat::k_format_count), not -1.
+	current_ = oakengine_encoding_format_count();
+
 	custom_menu_ = new Menu(this);
 
 	// Populate combobox formats
@@ -69,43 +74,45 @@ void ExportFormatComboBox::showPopup()
 	custom_menu_->exec(mapToGlobal(QPoint(0, 0)));
 }
 
-void ExportFormatComboBox::set_format(ExportFormat::Format fmt)
+void ExportFormatComboBox::set_format(int fmt)
 {
 	current_ = fmt;
 	clear();
-	addItem(ExportFormat::get_name(current_));
+	char buf[256];
+	oakengine_encoding_format_name(fmt, buf, sizeof(buf));
+	addItem(QString::fromUtf8(buf));
 }
 
 void ExportFormatComboBox::handle_index_change(QAction *a)
 {
-	ExportFormat::Format f =
-		static_cast<ExportFormat::Format>(a->data().toInt());
+	int f = a->data().toInt();
 	set_format(f);
 	emit format_changed(f);
 }
 
 void ExportFormatComboBox::populate_type(Track::Type type)
 {
-	for (int i = 0; i < ExportFormat::k_format_count; i++) {
-		ExportFormat::Format f = static_cast<ExportFormat::Format>(i);
+	const int fmt_count = oakengine_encoding_format_count();
+	for (int i = 0; i < fmt_count; i++) {
+		int f = i;
+		char buf[256];
 
-		if (type == Track::k_video &&
-			!ExportFormat::get_video_codecs(f).isEmpty()) {
+		bool has_video = oakengine_encoding_format_video_codec_count(f) > 0;
+		bool has_audio = oakengine_encoding_format_audio_codec_count(f) > 0;
+		bool has_sub = oakengine_encoding_format_subtitle_codec_count(f) > 0;
+
+		if (type == Track::k_video && has_video) {
 			// Do nothing
-		} else if (type == Track::k_audio &&
-				   ExportFormat::get_video_codecs(f).isEmpty() &&
-				   !ExportFormat::get_audio_codecs(f).isEmpty()) {
+		} else if (type == Track::k_audio && !has_video && has_audio) {
 			// Do nothing
-		} else if (type == Track::k_subtitle &&
-				   ExportFormat::get_video_codecs(f).isEmpty() &&
-				   ExportFormat::get_audio_codecs(f).isEmpty() &&
-				   !ExportFormat::get_subtitle_codecs(f).isEmpty()) {
+		} else if (type == Track::k_subtitle && !has_video && !has_audio && has_sub) {
 			// Do nothing
 		} else {
 			continue;
 		}
 
-		QString format_name = ExportFormat::get_name(f);
+		oakengine_encoding_format_name(f, buf, sizeof(buf));
+		QString format_name = QString::fromUtf8(buf);
 
 		QAction *a = custom_menu_->addAction(format_name);
 		a->setData(i);

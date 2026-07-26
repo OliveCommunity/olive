@@ -26,7 +26,7 @@
 #include <QSplitter>
 #include <QVBoxLayout>
 
-#include "config/config.h"
+#include "oakengine/config.h"
 #include "tabs/preferencesgeneraltab.h"
 #include "tabs/preferencesbehaviortab.h"
 #include "tabs/preferencesappearancetab.h"
@@ -69,7 +69,7 @@ PreferencesDialog::PreferencesDialog(MainWindow *main_window, int start_tab)
 
 void PreferencesDialog::AcceptEvent()
 {
-	Config::save();
+	oakengine_config_save();
 }
 
 }

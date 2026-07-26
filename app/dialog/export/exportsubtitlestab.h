@@ -26,7 +26,6 @@
 #include <QComboBox>
 #include <QLabel>
 
-#include "codec/exportformat.h"
 #include "common/qtutils.h"
 #include "dialog/export/exportformatcombobox.h"
 
@@ -47,24 +46,23 @@ public:
 		sidecar_checkbox_->setChecked(e);
 	}
 
-	ExportFormat::Format get_sidecar_format() const
+	int get_sidecar_format() const
 	{
 		return sidecar_format_combobox_->get_format();
 	}
-	void set_sidecar_format(ExportFormat::Format f)
+	void set_sidecar_format(int f)
 	{
 		sidecar_format_combobox_->set_format(f);
 	}
 
-	int set_format(ExportFormat::Format format);
+	int set_format(int format);
 
-	ExportCodec::Codec get_subtitle_codec()
+	int get_subtitle_codec()
 	{
-		return static_cast<ExportCodec::Codec>(
-			codec_combobox_->currentData().toInt());
+		return codec_combobox_->currentData().toInt();
 	}
 
-	void set_subtitle_codec(ExportCodec::Codec c)
+	void set_subtitle_codec(int c)
 	{
 		QtUtils::set_combo_box_data(codec_combobox_, c);
 	}

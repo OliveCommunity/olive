@@ -1,0 +1,6 @@
+{
+    global:
+        oakengine_*;
+    local:
+        *;
+};

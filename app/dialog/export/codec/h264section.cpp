@@ -101,7 +101,7 @@ H264Section::H264Section(int default_crf, QWidget *parent)
 		compression_method_stack_, &QStackedWidget::setCurrentIndex);
 }
 
-void H264Section::add_opts(EncodingParams *params)
+void H264Section::add_opts(OakEngineEncodingParams *params)
 {
 	// FIXME: Implement two-pass
 
@@ -110,13 +110,15 @@ void H264Section::add_opts(EncodingParams *params)
 
 	// This option is not used by the encoder (nor is anything with the ove_ prefix), it's to help us
 	// identify which option was chosen when params are restored
-	params->set_video_option(QStringLiteral("ove_compressionmethod"),
-							 QString::number(method));
+	oakengine_encoding_params_set_video_option(
+		params, "ove_compressionmethod",
+		QByteArray::number(method).constData());
 
 	if (method == k_constant_rate_factor) {
 		// Simply set CRF value
-		params->set_video_option(QStringLiteral("crf"),
-								 QString::number(crf_section_->get_value()));
+		oakengine_encoding_params_set_video_option(
+			params, "crf",
+			QByteArray::number(crf_section_->get_value()).constData());
 
 	} else {
 		int64_t target_rate, max_rate, min_rate;
@@ -129,40 +131,58 @@ void H264Section::add_opts(EncodingParams *params)
 		} else {
 			// Calculate the bit rate from the file size divided by the sequence length in seconds (bits per second)
 			int64_t target_fs = filesize_section_->get_file_size();
-			target_rate = qRound64(static_cast<double>(target_fs) /
-								   params->get_export_length().to_double());
+			int export_len_num = 0, export_len_den = 1;
+			oakengine_encoding_params_get_export_length(
+				params, &export_len_num, &export_len_den);
+			const double export_len_sec =
+				(export_len_den > 0)
+					? static_cast<double>(export_len_num)
+						  / static_cast<double>(export_len_den)
+					: 1.0;
+			target_rate = qRound64(static_cast<double>(target_fs) / export_len_sec);
 			min_rate = target_rate;
 			max_rate = target_rate;
 
-			params->set_video_option(QStringLiteral("ove_targetfilesize"),
-									 QString::number(target_fs));
+			oakengine_encoding_params_set_video_option(
+				params, "ove_targetfilesize",
+				QByteArray::number(target_fs).constData());
 		}
 
 		// Disable CRF encoding
-		params->set_video_option(QStringLiteral("crf"), QStringLiteral("-1"));
+		oakengine_encoding_params_set_video_option(params, "crf", "-1");
 
-		params->set_video_bit_rate(target_rate);
-		params->set_video_min_bit_rate(min_rate);
-		params->set_video_max_bit_rate(max_rate);
-		params->set_video_buffer_size(2000000);
+		oakengine_encoding_params_set_video_bit_rate(params, target_rate);
+		oakengine_encoding_params_set_video_min_bit_rate(params, min_rate);
+		oakengine_encoding_params_set_video_max_bit_rate(params, max_rate);
+		oakengine_encoding_params_set_video_buffer_size(params, 2000000);
 	}
 
-	params->set_video_option(QStringLiteral("preset"),
-							 QString::number(preset_combobox_->currentIndex()));
+	oakengine_encoding_params_set_video_option(
+		params, "preset",
+		QByteArray::number(preset_combobox_->currentIndex()).constData());
 }
 
-void H264Section::set_opts(const EncodingParams *p)
+void H264Section::set_opts(const OakEngineEncodingParams *p)
 {
-	CompressionMethod method = static_cast<CompressionMethod>(
-		p->video_option(QStringLiteral("ove_compressionmethod")).toInt());
+	char buf[64];
+
+	CompressionMethod method = k_constant_rate_factor;
+	if (oakengine_encoding_params_video_option(
+			p, "ove_compressionmethod", buf,
+			static_cast<int>(sizeof(buf))) > 0) {
+		method = static_cast<CompressionMethod>(QString::fromUtf8(buf).toInt());
+	}
 
 	compression_method_stack_->setCurrentIndex(method);
 
 	if (method == k_constant_rate_factor) {
-		crf_section_->set_value(p->video_option(QStringLiteral("crf")).toInt());
+		if (oakengine_encoding_params_video_option(
+				p, "crf", buf, static_cast<int>(sizeof(buf))) > 0) {
+			crf_section_->set_value(QString::fromUtf8(buf).toInt());
+		}
 	} else {
-		int64_t target_rate = p->video_bit_rate();
-		int64_t max_rate = p->video_max_bit_rate();
+		int64_t target_rate = oakengine_encoding_params_video_bit_rate(p);
+		int64_t max_rate = oakengine_encoding_params_video_max_bit_rate(p);
 
 		if (method == k_target_bit_rate) {
 			// Use user-supplied values for the bit rate
@@ -170,9 +190,12 @@ void H264Section::set_opts(const EncodingParams *p)
 			bitrate_section_->set_maximum_bit_rate(max_rate);
 		} else {
 			// Calculate the bit rate from the file size divided by the sequence length in seconds (bits per second)
-			filesize_section_->set_file_size(
-				p->video_option(QStringLiteral("ove_targetfilesize"))
-					.toLongLong());
+			if (oakengine_encoding_params_video_option(
+					p, "ove_targetfilesize", buf,
+					static_cast<int>(sizeof(buf))) > 0) {
+				filesize_section_->set_file_size(
+					QString::fromUtf8(buf).toLongLong());
+			}
 		}
 	}
 }

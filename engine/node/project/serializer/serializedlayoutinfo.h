@@ -16,8 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef OAK_MAINWINDOWLAYOUTINFO_H
-#define OAK_MAINWINDOWLAYOUTINFO_H
+#ifndef OAK_SERIALIZEDLAYOUTINFO_H
+#define OAK_SERIALIZEDLAYOUTINFO_H
 
 #include <map>
 
@@ -35,68 +35,38 @@ namespace olive
  */
 using PanelLayoutInfo = std::map<QString, QString>;
 
-class MainWindowLayoutInfo {
+/**
+ * @brief Plain data container for a serialized main window layout
+ *
+ * Pure data structure with no behavior beyond XML (de)serialization, so
+ * consumers (app, tests) can use it without pulling in any engine-side
+ * C++ symbols.
+ */
+class SerializedLayoutInfo {
 public:
-	MainWindowLayoutInfo() = default;
+	SerializedLayoutInfo() = default;
 
 	void to_xml(QXmlStreamWriter *writer) const;
 
-	static MainWindowLayoutInfo
+	static SerializedLayoutInfo
 	from_xml(QXmlStreamReader *reader, const QHash<quintptr, Node *> &node_map);
 
-	void add_folder(Folder *f);
+	QByteArray state;
 
-	void add_sequence(Sequence *seq);
+	std::vector<Folder *> open_folders;
 
-	void add_viewer(ViewerOutput *viewer);
+	std::vector<Sequence *> open_sequences;
 
-	void set_panel_data(const QString &id, const PanelLayoutInfo &data);
+	std::vector<ViewerOutput *> open_viewers;
 
-	void move_panel_data(const QString &old, const QString &now);
-
-	void set_state(const QByteArray &layout);
-
-	const std::vector<Folder *> &open_folders() const
-	{
-		return open_folders_;
-	}
-
-	const std::vector<Sequence *> &open_sequences() const
-	{
-		return open_sequences_;
-	}
-
-	const std::vector<ViewerOutput *> &open_viewers() const
-	{
-		return open_viewers_;
-	}
-
-	const std::map<QString, PanelLayoutInfo> &panel_data() const
-	{
-		return panel_data_;
-	}
-
-	const QByteArray &state() const
-	{
-		return state_;
-	}
+	std::map<QString, PanelLayoutInfo> panel_data;
 
 private:
-	QByteArray state_;
-
-	std::vector<Folder *> open_folders_;
-
-	std::vector<Sequence *> open_sequences_;
-
-	std::vector<ViewerOutput *> open_viewers_;
-
-	std::map<QString, PanelLayoutInfo> panel_data_;
-
 	static const unsigned int k_version = 1;
 };
 
 }
 
-Q_DECLARE_METATYPE(olive::MainWindowLayoutInfo)
+Q_DECLARE_METATYPE(olive::SerializedLayoutInfo)
 
-#endif // OAK_MAINWINDOWLAYOUTINFO_H
+#endif // OAK_SERIALIZEDLAYOUTINFO_H

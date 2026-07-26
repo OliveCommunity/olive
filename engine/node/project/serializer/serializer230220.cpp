@@ -49,7 +49,7 @@ ProjectSerializer230220::load(Project *project, QXmlStreamReader *reader,
 					project_data = project->load(reader);
 					load_data.node_ptrs = project_data.node_ptrs;
 				} else if (reader->name() == QStringLiteral("layout")) {
-					load_data.layout = MainWindowLayoutInfo::from_xml(
+					load_data.layout = SerializedLayoutInfo::from_xml(
 						reader, project_data.node_ptrs);
 				} else {
 					reader->skipCurrentElement();

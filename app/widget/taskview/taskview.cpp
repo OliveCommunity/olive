@@ -45,7 +45,7 @@ TaskView::TaskView(QWidget *parent)
 	layout_->addStretch();
 }
 
-void TaskView::add_task(Task *t)
+void TaskView::add_task(OakEngineTask *t)
 {
 	// Create TaskViewItem (UI representation of a Task) and connect it
 	TaskViewItem *item = new TaskViewItem(t);
@@ -54,12 +54,12 @@ void TaskView::add_task(Task *t)
 	layout_->insertWidget(layout_->count() - 1, item);
 }
 
-void TaskView::task_failed(Task *t)
+void TaskView::task_failed(OakEngineTask *t)
 {
 	items_.value(t)->failed();
 }
 
-void TaskView::remove_task(Task *t)
+void TaskView::remove_task(OakEngineTask *t)
 {
 	items_.value(t)->deleteLater();
 	items_.remove(t);

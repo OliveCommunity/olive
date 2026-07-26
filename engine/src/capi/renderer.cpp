@@ -31,11 +31,14 @@
 #include <QString>
 #include <QThread>
 
+#include "colorinternal.h"
 #include "node/project.h"
 #include "node/project/sequence/sequence.h"
 #include "render/colorprocessor.h"
+#include "render/previewautocacher.h"
 #include "render/rendermanager.h"
 #include "render/renderticket.h"
+#include "node/input/multicam/multicamnode.h"
 
 namespace
 {
@@ -477,6 +480,64 @@ const float *oakengine_audio_data(const OakEngineAudioBuffer *self,
 void oakengine_audio_free(OakEngineAudioBuffer *self)
 {
 	delete impl(self);
+}
+
+/* ---- Render manager helpers ----------------------------------------------- */
+
+int oakengine_render_manager_set_aggressive_garbage_collection(int aggressive)
+{
+	if (!olive::RenderManager::instance()) {
+		return OAKENGINE_E_STATE;
+	}
+	olive::RenderManager::instance()->set_aggressive_garbage_collection(
+		aggressive != 0);
+	return OAKENGINE_OK;
+}
+
+int oakengine_render_manager_requested_backend(void)
+{
+	if (!olive::RenderManager::instance()) {
+		return 0;
+	}
+	return int(olive::RenderManager::instance()->requested_backend());
+}
+
+int oakengine_render_manager_backend_to_string(int backend, char *buf,
+											   int buf_size)
+{
+	const QString s = olive::RenderManager::backend_to_string(
+		static_cast<olive::RenderManager::Backend>(backend));
+	const QByteArray utf = s.toUtf8();
+	if (buf && buf_size > 0) {
+		snprintf(buf, size_t(buf_size), "%s", utf.constData());
+	}
+	return int(utf.size());
+}
+
+int oakengine_render_cache_set_display_color_processor(void *processor)
+{
+	olive::RenderManager *rm = olive::RenderManager::instance();
+	if (!rm || !rm->get_cacher()) {
+		return OAKENGINE_E_STATE;
+	}
+	// `processor` is a borrowed OakEngineColorProcessor handle (see
+	// colorinternal.h); unwrap the engine shared pointer it carries.
+	auto *proc = static_cast<const OakEngineColorProcessor *>(processor);
+	rm->get_cacher()->set_display_color_processor(
+		proc ? proc->ptr : olive::ColorProcessorPtr());
+	return OAKENGINE_OK;
+}
+
+int oakengine_render_cache_set_multicam_node(OakEngineNode *node)
+{
+	olive::RenderManager *rm = olive::RenderManager::instance();
+	if (!rm || !rm->get_cacher()) {
+		return OAKENGINE_E_STATE;
+	}
+	rm->get_cacher()->set_multicam_node(
+		node ? dynamic_cast<olive::MultiCamNode *>(reinterpret_cast<olive::Node *>(node))
+			 : nullptr);
+	return OAKENGINE_OK;
 }
 
 } // extern "C"

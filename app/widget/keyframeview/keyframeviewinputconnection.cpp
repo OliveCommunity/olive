@@ -34,21 +34,47 @@ KeyframeViewInputConnection::KeyframeViewInputConnection(
 	, y_(0)
 	, y_behavior_(k_single_row)
 	, brush_(Qt::white)
+	, bridge_(new EngineEventBridge(this))
 {
 	Node *n = input.input().node();
 
-	connect(n, &Node::keyframe_added, this,
-			&KeyframeViewInputConnection::add_keyframe);
-	connect(n, &Node::keyframe_removed, this,
-			&KeyframeViewInputConnection::remove_keyframe);
-	connect(n, &Node::keyframe_time_changed, this,
-			&KeyframeViewInputConnection::keyframe_changed);
-	connect(n, &Node::keyframe_type_changed, this,
-			&KeyframeViewInputConnection::keyframe_changed);
-	connect(n, &Node::keyframe_type_changed, this,
-			&KeyframeViewInputConnection::keyframe_type_changed);
-	connect(n, &Node::keyframe_value_changed, this,
-			&KeyframeViewInputConnection::keyframe_changed);
+	bridge_->subscribe(reinterpret_cast<void *>(n),
+					   OAKENGINE_EVENT_NODE_KEYFRAME_ADDED);
+	bridge_->subscribe(reinterpret_cast<void *>(n),
+					   OAKENGINE_EVENT_NODE_KEYFRAME_REMOVED);
+	bridge_->subscribe(reinterpret_cast<void *>(n),
+					   OAKENGINE_EVENT_NODE_KEYFRAME_TIME_CHANGED);
+	bridge_->subscribe(reinterpret_cast<void *>(n),
+					   OAKENGINE_EVENT_NODE_KEYFRAME_TYPE_CHANGED);
+	bridge_->subscribe(reinterpret_cast<void *>(n),
+					   OAKENGINE_EVENT_NODE_KEYFRAME_VALUE_CHANGED);
+
+	connect(bridge_, &EngineEventBridge::node_keyframe_added, this,
+			[this](OakEngineNode *, OakEngineKeyframe *key,
+				   const QString &, int, int) {
+				add_keyframe(key);
+			});
+	connect(bridge_, &EngineEventBridge::node_keyframe_removed, this,
+			[this](OakEngineNode *, OakEngineKeyframe *key,
+				   const QString &, int, int) {
+				remove_keyframe(key);
+			});
+	connect(bridge_, &EngineEventBridge::node_keyframe_time_changed, this,
+			[this](OakEngineNode *, OakEngineKeyframe *key) {
+				keyframe_changed(key);
+			});
+	connect(bridge_, &EngineEventBridge::node_keyframe_type_changed, this,
+			[this](OakEngineNode *, OakEngineKeyframe *key) {
+				keyframe_changed(key);
+			});
+	connect(bridge_, &EngineEventBridge::node_keyframe_type_changed, this,
+			[this](OakEngineNode *, OakEngineKeyframe *key) {
+				keyframe_type_changed(key);
+			});
+	connect(bridge_, &EngineEventBridge::node_keyframe_value_changed, this,
+			[this](OakEngineNode *, OakEngineKeyframe *key) {
+				keyframe_changed(key);
+			});
 }
 
 void KeyframeViewInputConnection::set_keyframe_y(int y)
@@ -78,30 +104,34 @@ void KeyframeViewInputConnection::set_brush(const QBrush &brush)
 	}
 }
 
-void KeyframeViewInputConnection::add_keyframe(NodeKeyframe *key)
+void KeyframeViewInputConnection::add_keyframe(OakEngineKeyframe *key)
 {
-	if (key->key_track_ref() == input_) {
+	NodeKeyframe *nk = reinterpret_cast<NodeKeyframe *>(key);
+	if (nk->key_track_ref() == input_) {
 		emit require_update();
 	}
 }
 
-void KeyframeViewInputConnection::remove_keyframe(NodeKeyframe *key)
+void KeyframeViewInputConnection::remove_keyframe(OakEngineKeyframe *key)
 {
-	if (key->key_track_ref() == input_) {
+	NodeKeyframe *nk = reinterpret_cast<NodeKeyframe *>(key);
+	if (nk->key_track_ref() == input_) {
 		emit require_update();
 	}
 }
 
-void KeyframeViewInputConnection::keyframe_changed(NodeKeyframe *key)
+void KeyframeViewInputConnection::keyframe_changed(OakEngineKeyframe *key)
 {
-	if (key->key_track_ref() == input_) {
+	NodeKeyframe *nk = reinterpret_cast<NodeKeyframe *>(key);
+	if (nk->key_track_ref() == input_) {
 		emit require_update();
 	}
 }
 
-void KeyframeViewInputConnection::keyframe_type_changed(NodeKeyframe *key)
+void KeyframeViewInputConnection::keyframe_type_changed(OakEngineKeyframe *key)
 {
-	if (key->key_track_ref() == input_) {
+	NodeKeyframe *nk = reinterpret_cast<NodeKeyframe *>(key);
+	if (nk->key_track_ref() == input_) {
 		emit type_changed();
 	}
 }

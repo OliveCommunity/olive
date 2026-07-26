@@ -26,10 +26,14 @@
 #include "node/generator/shape/shapenode.h"
 #include "node/generator/solid/solid.h"
 #include "node/generator/text/textv3.h"
-#include "node/nodeundo.h"
+#include "oakengine/node.h"
+#include "oakengine/timeline.h"
+#include "oakengine/undo.h"
 #include "timeline/timelineundopointer.h"
+#include "widget/timelinewidget/cliphandle.h"
 #include "widget/timelinewidget/timelinewidget.h"
 
+#include "widget/viewer/vieweroutpututils.h"
 namespace olive
 {
 
@@ -100,11 +104,11 @@ void AddTool::mouse_release(TimelineViewMouseEvent *event)
 {
 	if (ghost_) {
 		if (!ghost_->get_adjusted_length().isNull()) {
-			MultiUndoCommand *command = new MultiUndoCommand();
+			void *command = oakengine_undo_command_create_multi();
 
-			if (MultiUndoCommand *subtitle_section_command =
+			if (void *subtitle_section_command =
 					parent()->take_subtitle_section_command()) {
-				command->add_child(subtitle_section_command);
+				oakengine_undo_command_multi_add_child(command, subtitle_section_command);
 			}
 
 			Sequence *s = parent()->sequence();
@@ -112,7 +116,7 @@ void AddTool::mouse_release(TimelineViewMouseEvent *event)
 			QRectF r;
 			if (Core::instance()->get_selected_addable_object() ==
 				Tool::k_addable_title) {
-				VideoParams svp = s->get_video_params();
+				VideoParams svp = viewer_output_video_params(s);
 				r = QRectF(0, 0, svp.width(), svp.height());
 				r.adjust(svp.width() / 10, svp.height() / 10, -svp.width() / 10,
 						 -svp.height() / 10);
@@ -122,8 +126,8 @@ void AddTool::mouse_release(TimelineViewMouseEvent *event)
 							  ghost_->get_adjusted_in(),
 							  ghost_->get_adjusted_length(), r);
 
-			Core::instance()->undo_stack()->push(
-				command, qApp->translate("AddTool", "Added Clip"));
+			oakengine_undo_push(
+				command, qApp->translate("AddTool", "Added Clip").toUtf8().constData());
 		}
 
 		parent()->clear_ghosts();
@@ -132,7 +136,7 @@ void AddTool::mouse_release(TimelineViewMouseEvent *event)
 	}
 }
 
-Node *AddTool::create_addable_clip(MultiUndoCommand *command, Sequence *sequence,
+Node *AddTool::create_addable_clip(void *command, Sequence *sequence,
 								 const Track::Reference &track,
 								 const Rational &in, const Rational &length,
 								 const QRectF &rect)
@@ -140,20 +144,21 @@ Node *AddTool::create_addable_clip(MultiUndoCommand *command, Sequence *sequence
 	ClipBlock *clip;
 	if (Core::instance()->get_selected_addable_object() ==
 		Tool::k_addable_subtitle) {
-		clip = new SubtitleBlock();
+		clip = reinterpret_cast<SubtitleBlock*>(oakengine_node_factory_create_from_id("org.olivevideoeditor.Olive.subtitle"));
 	} else {
-		clip = new ClipBlock();
-		clip->set_label(olive::Tool::get_addable_object_name(
-			Core::instance()->get_selected_addable_object()));
+		clip = clip_create_empty(olive::Tool::get_addable_object_name(
+			Core::instance()->get_selected_addable_object()).toUtf8().constData());
 	}
 	clip->set_length_and_media_out(length);
 
 	Project *graph = sequence->parent();
 
-	command->add_child(new NodeAddCommand(graph, clip));
-	command->add_child(new NodeSetPositionCommand(clip, clip, QPointF(0, 0)));
-	command->add_child(new TrackPlaceBlockCommand(
-		sequence->track_list(track.type()), track.index(), clip, in));
+	oakengine_undo_command_multi_add_child(command,
+		oakengine_node_add_to_project_command(
+			reinterpret_cast<OakEngineProject *>(graph),
+			reinterpret_cast<OakEngineNode *>(clip)));
+	oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(clip), reinterpret_cast<void *>(clip), 0, 0, 0));
+	oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(sequence->track_list(track.type())), track.index(), reinterpret_cast<void *>(clip), core::Timecode::time_to_timestamp(in, sequence_timebase(sequence))));
 
 	Node *node_to_add = nullptr;
 
@@ -162,13 +167,13 @@ Node *AddTool::create_addable_clip(MultiUndoCommand *command, Sequence *sequence
 		// Empty, nothing to be done
 		break;
 	case Tool::k_addable_solid:
-		node_to_add = new SolidGenerator();
+		node_to_add = reinterpret_cast<SolidGenerator*>(oakengine_node_factory_create_from_id("org.olivevideoeditor.Olive.solidgenerator"));
 		break;
 	case Tool::k_addable_shape:
-		node_to_add = new ShapeNode();
+		node_to_add = reinterpret_cast<ShapeNode*>(oakengine_node_factory_create_from_id("org.olivevideoeditor.Olive.shape"));
 		break;
 	case Tool::k_addable_title:
-		node_to_add = new TextGeneratorV3();
+		node_to_add = reinterpret_cast<TextGeneratorV3*>(oakengine_node_factory_create_from_id("org.olivevideoeditor.Olive.text3"));
 		break;
 	case Tool::k_addable_bars:
 	case Tool::k_addable_tone:
@@ -186,17 +191,34 @@ Node *AddTool::create_addable_clip(MultiUndoCommand *command, Sequence *sequence
 
 	if (node_to_add) {
 		QPointF extra_node_offset(k_default_distance_from_output, 0);
-		command->add_child(new NodeAddCommand(graph, node_to_add));
-		command->add_child(new NodeEdgeAddCommand(
-			node_to_add, NodeInput(clip, ClipBlock::k_buffer_in)));
-		command->add_child(
-			new NodeSetPositionCommand(node_to_add, clip, extra_node_offset));
+		oakengine_undo_command_multi_add_child(command,
+		oakengine_node_add_to_project_command(
+			reinterpret_cast<OakEngineProject *>(graph),
+			reinterpret_cast<OakEngineNode *>(node_to_add)));
+		oakengine_undo_command_multi_add_child(
+			command,
+			oakengine_node_connect_command(
+				reinterpret_cast<OakEngineNode *>(node_to_add),
+				reinterpret_cast<OakEngineNode *>(clip),
+				oakengine_clip_buffer_input_id(),
+				-1));
+		oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(node_to_add), reinterpret_cast<void *>(clip), extra_node_offset.x(), extra_node_offset.y(), 0));
 
 		if (!rect.isNull()) {
-			if (ShapeNodeBase *shape =
-					dynamic_cast<ShapeNodeBase *>(node_to_add)) {
-				shape->set_rect(rect, sequence->get_video_params(), command);
-			}
+			const VideoParams vp = viewer_output_video_params(sequence);
+			oak_video_params pod = {};
+			pod.width = vp.width();
+			pod.height = vp.height();
+			pod.time_base_num = vp.time_base().numerator();
+			pod.time_base_den = vp.time_base().denominator();
+			pod.format = vp.format();
+			pod.pixel_aspect_num = vp.pixel_aspect_ratio().numerator();
+			pod.pixel_aspect_den = vp.pixel_aspect_ratio().denominator();
+			pod.interlacing = vp.interlacing();
+			pod.divider = vp.divider();
+			oakengine_shape_set_rect_undoable(
+				reinterpret_cast<OakEngineNode *>(node_to_add), rect.x(),
+				rect.y(), rect.width(), rect.height(), &pod, command);
 		}
 	}
 

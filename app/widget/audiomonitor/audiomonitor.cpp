@@ -28,6 +28,7 @@
 #include "audio/audiolevelmeter.h"
 #include "audio/audiomanager.h"
 #include "common/decibel.h"
+#include "oakengine/preview.h"
 #include "common/qtutils.h"
 
 namespace olive
@@ -90,10 +91,20 @@ void AudioMonitor::push_sample_buffer(const SampleBuffer &d)
 
 	QVector<double> v(params_.channel_count(), 0);
 
-	const AudioLevelMeter::Stats stats =
-		AudioLevelMeter::analyze_sample_buffer(d);
-	for (int i = 0; i < v.size() && i < stats.channels.size(); i++) {
-		v[i] = stats.channels.at(i).peak_linear;
+	if (d.is_allocated() && d.channel_count() > 0) {
+		int channels = d.channel_count();
+		QVector<const float *> ptrs(channels);
+		for (int ch = 0; ch < channels; ch++) {
+			ptrs[ch] = d.data(ch);
+		}
+		QVector<double> levels(channels, 0.0);
+		if (oakengine_audio_analyze_levels(ptrs.data(), channels,
+										   d.sample_count(),
+										   levels.data()) == OAKENGINE_OK) {
+			for (int i = 0; i < v.size() && i < levels.size(); i++) {
+				v[i] = levels[i];
+			}
+		}
 	}
 
 	// Fill values because they get averaged out for smoothing
@@ -102,12 +113,14 @@ void AudioMonitor::push_sample_buffer(const SampleBuffer &d)
 	set_update_loop(true);
 }
 
-void AudioMonitor::start_waveform(const AudioWaveformCache *waveform,
+void AudioMonitor::start_waveform(const void *waveform,
 								 const Rational &start, int playback_speed)
 {
 	stop();
 
-	waveform_length_ = waveform->length();
+	const AudioWaveformCache *cache =
+		static_cast<const AudioWaveformCache *>(waveform);
+	waveform_length_ = cache->length();
 	if (start >= waveform_length_) {
 		return;
 	}
@@ -442,8 +455,10 @@ void AudioMonitor::update_values_from_waveform(QVector<double> &v,
 	// Delta time is provided in milliseconds, so we convert to seconds in Rational
 	Rational length(delta_time, 1000);
 
+	const AudioWaveformCache *cache =
+		static_cast<const AudioWaveformCache *>(waveform_);
 	AudioVisualWaveform::Sample sum =
-		waveform_->get_summary_from_time(waveform_time_, length);
+		cache->get_summary_from_time(waveform_time_, length);
 
 	audio_visual_waveform_sample_to_internal_values(sum, v);
 

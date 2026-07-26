@@ -33,7 +33,10 @@ class NodeTablePanel : public TimeBasedPanel {
 public:
 	NodeTablePanel();
 
-public slots:
+public:
+	// Not slots: signatures use the engine C++ type Node*, which must not be
+	// exposed to MOC (it would pull Node::staticMetaObject across the ABI
+	// boundary). All connections use new-style member-function syntax.
 	void select_nodes(const QVector<Node *> &nodes)
 	{
 		static_cast<NodeTableWidget *>(get_time_based_widget())->select_nodes(nodes);

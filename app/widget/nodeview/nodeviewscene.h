@@ -63,10 +63,14 @@ public:
 		return curved_edges_;
 	}
 
-public slots:
+public:
+	// Not slots: signatures use the engine C++ type Node*, which must not be
+	// exposed to MOC (it would pull Node::staticMetaObject across the ABI
+	// boundary). They are called directly, never used as connect() targets.
 	NodeViewContext *add_context(Node *node);
 	void remove_context(Node *node);
 
+public slots:
 	/**
    * @brief Set whether edges in this scene should be curved or not
    */

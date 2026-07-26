@@ -103,9 +103,9 @@ public:
 		timeline_widget()->nest_selected_clips();
 	}
 
-	void insert_footage_at_playhead(const QVector<ViewerOutput *> &footage);
+	void insert_footage_at_playhead(const QVector<OakEngineNode *> &footage);
 
-	void overwrite_footage_at_playhead(const QVector<ViewerOutput *> &footage);
+	void overwrite_footage_at_playhead(const QVector<OakEngineNode *> &footage);
 
 	const QVector<Block *> &get_selected_blocks() const
 	{
@@ -121,13 +121,13 @@ protected:
 	virtual void retranslate() override;
 
 signals:
-	void block_selection_changed(const QVector<Block *> &selected_blocks);
+	void block_selection_changed(const QVector<OakEngineBlock *> &selected_blocks);
 
 	void request_capture_start(const TimeRange &time,
 							 const Track::Reference &track);
 
-	void reveal_viewer_in_project(ViewerOutput *r);
-	void reveal_viewer_in_footage_viewer(ViewerOutput *r, const TimeRange &range);
+	void reveal_viewer_in_project(OakEngineNode *r);
+	void reveal_viewer_in_footage_viewer(OakEngineNode *r, const TimeRange &range);
 };
 
 }

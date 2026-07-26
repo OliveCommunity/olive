@@ -30,8 +30,10 @@
 #include <QPushButton>
 
 #include "common/filefunctions.h"
-#include "node/color/colormanager/colormanager.h"
-#include "render/diskmanager.h"
+#include "oakengine/color.h"
+#include "oakengine/disk.h"
+#include "oakengine/project.h"
+#include "widget/manageddisplay/colorprocessorhandle.h"
 
 namespace olive
 {
@@ -45,8 +47,12 @@ ProjectPropertiesDialog::ProjectPropertiesDialog(Project *p, QWidget *parent)
 {
 	QVBoxLayout *layout = new QVBoxLayout(this);
 
+	char name_buf[256];
+	oakengine_project_name(
+		reinterpret_cast<OakEngineProject *>(working_project_),
+		name_buf, sizeof(name_buf));
 	setWindowTitle(
-		tr("Project Properties for '%1'").arg(working_project_->name()));
+		tr("Project Properties for '%1'").arg(name_buf));
 
 	QTabWidget *tabs = new QTabWidget;
 	layout->addWidget(tabs);
@@ -85,7 +91,14 @@ ProjectPropertiesDialog::ProjectPropertiesDialog(Project *p, QWidget *parent)
 		reference_space_->addItem(tr("Scene Linear"), ocio::ROLE_SCENE_LINEAR);
 		reference_space_->addItem(tr("Compositing Log"),
 								  ocio::ROLE_COMPOSITING_LOG);
-		QtUtils::set_combo_box_data(reference_space_, p->get_color_reference_space());
+		QtUtils::set_combo_box_data(reference_space_,
+									 [p]() -> QString {
+										 char buf[256];
+										 oakengine_project_get_color_reference_space(
+											 reinterpret_cast<OakEngineProject *>(p),
+											 buf, sizeof(buf));
+										 return QString::fromUtf8(buf);
+									 }());
 		color_layout->addWidget(reference_space_, row, 1, 1, 2);
 
 		row++;
@@ -95,8 +108,11 @@ ProjectPropertiesDialog::ProjectPropertiesDialog(Project *p, QWidget *parent)
 		connect(browse_btn, &QPushButton::clicked, this,
 				&ProjectPropertiesDialog::browse_for_ocio_config);
 
-		ocio_filename_->setText(
-			working_project_->color_manager()->get_config_filename());
+		OakEngineColorManager *cm = oakengine_color_manager_from_project(
+			reinterpret_cast<OakEngineProject *>(working_project_));
+		ocio_filename_->setText(oak_query_string([cm](char *buf, int size) {
+			return oakengine_color_manager_get_config_filename(cm, buf, size);
+		}));
 
 		connect(ocio_filename_, &QLineEdit::textChanged, this,
 				&ProjectPropertiesDialog::ocio_filename_updated);
@@ -129,7 +145,14 @@ ProjectPropertiesDialog::ProjectPropertiesDialog(Project *p, QWidget *parent)
 
 		// Create custom cache path widget
 		custom_cache_path_ =
-			new PathWidget(working_project_->get_custom_cache_path(), this);
+			new PathWidget(
+				[this]() -> QString {
+					char buf[4096];
+					oakengine_project_get_custom_cache_path(
+						reinterpret_cast<OakEngineProject *>(working_project_),
+						buf, sizeof(buf));
+					return QString::fromUtf8(buf);
+				}(), this);
 		custom_cache_path_->setEnabled(false);
 		cache_layout->addWidget(custom_cache_path_);
 
@@ -139,7 +162,8 @@ ProjectPropertiesDialog::ProjectPropertiesDialog(Project *p, QWidget *parent)
 				&PathWidget::setEnabled);
 
 		// Check the radio button that should currently be active
-		disk_cache_radios_[working_project_->get_cache_location_setting()]
+		disk_cache_radios_[oakengine_project_get_cache_location_setting(
+			reinterpret_cast<OakEngineProject *>(working_project_))]
 			->setChecked(true);
 
 		// Add disk cache settings button
@@ -181,7 +205,13 @@ void ProjectPropertiesDialog::accept()
 				   ->isChecked()) {
 		// Ensure alongside project path is valid
 		if (!verify_path_and_warn_if_bad(
-				working_project_->get_cache_alongside_project_path())) {
+				[this]() -> QString {
+					char buf[4096];
+					oakengine_project_cache_alongside_path(
+						reinterpret_cast<OakEngineProject *>(working_project_),
+						buf, sizeof(buf));
+					return QString::fromUtf8(buf);
+				}())) {
 			return;
 		}
 	} else {
@@ -191,33 +221,55 @@ void ProjectPropertiesDialog::accept()
 		}
 	}
 
-	if (custom_cache_path_->text() != working_project_->get_custom_cache_path()) {
+	if (custom_cache_path_->text() !=
+		[this]() -> QString {
+			char buf[4096];
+			oakengine_project_get_custom_cache_path(
+				reinterpret_cast<OakEngineProject *>(working_project_),
+				buf, sizeof(buf));
+			return QString::fromUtf8(buf);
+		}()) {
 		// Check if the user is okay with invalidating the current cache
-		if (!DiskManager::show_disk_cache_change_confirmation_dialog(this)) {
+		if (!oakengine_disk_show_change_confirmation_dialog(this)) {
 			return;
 		}
 
-		working_project_->set_custom_cache_path(custom_cache_path_->text());
+		oakengine_project_set_custom_cache_path(
+			reinterpret_cast<OakEngineProject *>(working_project_),
+			custom_cache_path_->text().toUtf8().constData());
 
-		emit DiskManager::instance() -> invalidate_project(working_project_);
+		oakengine_disk_invalidate_project(
+			reinterpret_cast<OakEngineProject *>(working_project_));
 	}
 
 	// This should ripple changes throughout the graph/cache that the color config has changed, and
 	// therefore should be done after the cache path is changed
-	if (working_project_->color_manager()->get_config_filename() !=
-		ocio_filename_->text()) {
-		working_project_->color_manager()->set_config_filename(
-			ocio_filename_->text());
+	OakEngineColorManager *cm = oakengine_color_manager_from_project(
+		reinterpret_cast<OakEngineProject *>(working_project_));
+	QString old_config = oak_query_string([cm](char *buf, int size) {
+		return oakengine_color_manager_get_config_filename(cm, buf, size);
+	});
+	QString old_input_cs = oak_query_string([cm](char *buf, int size) {
+		return oakengine_color_manager_default_input_color_space(cm, buf, size);
+	});
+	if (old_config != ocio_filename_->text()) {
+		oakengine_color_manager_set_config_filename(
+			cm, ocio_filename_->text().toUtf8().constData());
 	}
-	if (working_project_->color_manager()->get_default_input_color_space() !=
-		default_input_colorspace_->currentText()) {
-		working_project_->color_manager()->set_default_input_color_space(
-			default_input_colorspace_->currentText());
+	if (old_input_cs != default_input_colorspace_->currentText()) {
+		oakengine_color_manager_set_default_input_color_space(
+			cm, default_input_colorspace_->currentText().toUtf8().constData());
 	}
-	if (working_project_->get_color_reference_space() !=
-		reference_space_->currentData().toString()) {
-		working_project_->set_color_reference_space(
-			reference_space_->currentData().toString());
+	if ([this]() -> QString {
+			char buf[256];
+			oakengine_project_get_color_reference_space(
+				reinterpret_cast<OakEngineProject *>(working_project_),
+				buf, sizeof(buf));
+			return QString::fromUtf8(buf);
+		}() != reference_space_->currentData().toString()) {
+		oakengine_project_set_color_reference_space(
+			reinterpret_cast<OakEngineProject *>(working_project_),
+			reference_space_->currentData().toString().toUtf8().constData());
 	}
 
 	super::accept();
@@ -253,50 +305,69 @@ void ProjectPropertiesDialog::ocio_filename_updated()
 {
 	default_input_colorspace_->clear();
 
-	try {
-		ocio::ConstConfigRcPtr c;
+	OakEngineColorConfig *config = nullptr;
 
-		if (ocio_filename_->text().isEmpty()) {
-			c = ColorManager::get_default_config();
-		} else {
-			c = ColorManager::create_config_from_file(ocio_filename_->text());
-		}
+	if (ocio_filename_->text().isEmpty()) {
+		config = oakengine_color_config_load_default();
+	} else {
+		config = oakengine_color_config_load_file(
+			ocio_filename_->text().toUtf8().constData());
+	}
 
+	if (config) {
 		ocio_filename_->setStyleSheet(QString());
 		ocio_config_is_valid_ = true;
 
 		// List input color spaces
-		QStringList input_cs = ColorManager::list_available_colorspaces(c);
+		int cs_count = oakengine_color_config_colorspace_count(config);
+		OakEngineColorManager *cm = oakengine_color_manager_from_project(
+			reinterpret_cast<OakEngineProject *>(working_project_));
+		QString default_cs = oak_query_string([cm](char *buf, int size) {
+			return oakengine_color_manager_default_input_color_space(cm, buf,
+																	 size);
+		});
 
-		foreach (QString cs, input_cs) {
+		for (int i = 0; i < cs_count; i++) {
+			QString cs = oak_query_string([config, i](char *buf, int size) {
+				return oakengine_color_config_colorspace_at(config, i, buf,
+															size);
+			});
 			default_input_colorspace_->addItem(cs);
 
-			if (cs ==
-				working_project_->color_manager()->get_default_input_color_space()) {
+			if (cs == default_cs) {
 				default_input_colorspace_->setCurrentIndex(
 					default_input_colorspace_->count() - 1);
 			}
 		}
-	} catch (ocio::Exception &e) {
+
+		oakengine_color_config_free(config);
+	} else {
+		char err_buf[1024];
+		oakengine_color_last_error(err_buf, sizeof(err_buf));
 		ocio_config_is_valid_ = false;
 		ocio_filename_->setStyleSheet(
 			QStringLiteral("QLineEdit {color: red;}"));
-		ocio_config_error_ = e.what();
+		ocio_config_error_ = QString::fromUtf8(err_buf);
 	}
 }
 
 void ProjectPropertiesDialog::open_disk_cache_settings()
 {
 	if (disk_cache_radios_[Project::k_cache_use_default_location]->isChecked()) {
-		DiskManager::instance()->show_disk_cache_settings_dialog(
-			DiskManager::instance()->get_default_cache_folder(), this);
+		oakengine_disk_show_settings_dialog(nullptr, this);
 	} else if (disk_cache_radios_[Project::k_cache_store_alongside_project]
 				   ->isChecked()) {
-		DiskManager::instance()->show_disk_cache_settings_dialog(
-			working_project_->get_cache_alongside_project_path(), this);
+		oakengine_disk_show_settings_dialog(
+			[this]() -> QString {
+				char buf[4096];
+				oakengine_project_cache_alongside_path(
+					reinterpret_cast<OakEngineProject *>(working_project_),
+					buf, sizeof(buf));
+				return QString::fromUtf8(buf);
+			}().toUtf8().constData(), this);
 	} else {
-		DiskManager::instance()->show_disk_cache_settings_dialog(
-			custom_cache_path_->text(), this);
+		oakengine_disk_show_settings_dialog(
+			custom_cache_path_->text().toUtf8().constData(), this);
 	}
 }
 

@@ -24,7 +24,7 @@
 
 #include <QWidget>
 
-#include "render/colorprocessor.h"
+#include "widget/manageddisplay/colorprocessorhandle.h"
 
 namespace olive
 {
@@ -34,8 +34,8 @@ class ColorPreviewBox : public QWidget {
 public:
 	ColorPreviewBox(QWidget *parent = nullptr);
 
-	void set_color_processor(ColorProcessorPtr to_ref,
-						   ColorProcessorPtr to_display);
+	void set_color_processor(ColorProcessorHandlePtr to_ref,
+						   ColorProcessorHandlePtr to_display);
 
 public slots:
 	void set_color(const Color &c);
@@ -46,9 +46,9 @@ protected:
 private:
 	Color color_;
 
-	ColorProcessorPtr to_ref_processor_;
+	ColorProcessorHandlePtr to_ref_processor_;
 
-	ColorProcessorPtr to_display_processor_;
+	ColorProcessorHandlePtr to_display_processor_;
 };
 
 }

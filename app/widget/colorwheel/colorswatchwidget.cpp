@@ -40,8 +40,8 @@ const Color &ColorSwatchWidget::get_selected_color() const
 	return selected_color_;
 }
 
-void ColorSwatchWidget::set_color_processor(ColorProcessorPtr to_linear,
-										  ColorProcessorPtr to_display)
+void ColorSwatchWidget::set_color_processor(ColorProcessorHandlePtr to_linear,
+										  ColorProcessorHandlePtr to_display)
 {
 	to_linear_processor_ = to_linear;
 	to_display_processor_ = to_display;
@@ -86,8 +86,8 @@ Qt::GlobalColor ColorSwatchWidget::get_ui_selector_color() const
 Color ColorSwatchWidget::get_managed_color(const Color &input) const
 {
 	if (to_linear_processor_ && to_display_processor_) {
-		return to_display_processor_->convert_color(
-			to_linear_processor_->convert_color(input));
+		return oak_convert_color(to_display_processor_,
+			oak_convert_color(to_linear_processor_, input));
 	}
 
 	return input;

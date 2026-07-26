@@ -25,7 +25,6 @@
 #include <QComboBox>
 #include <QWidgetAction>
 
-#include "codec/exportformat.h"
 #include "node/output/track/track.h"
 #include "widget/menu/menu.h"
 
@@ -48,7 +47,7 @@ public:
 	{
 	}
 
-	ExportFormat::Format get_format() const
+	int get_format() const
 	{
 		return current_;
 	}
@@ -56,10 +55,10 @@ public:
 	void showPopup();
 
 signals:
-	void format_changed(ExportFormat::Format fmt);
+	void format_changed(int fmt);
 
 public slots:
-	void set_format(ExportFormat::Format fmt);
+	void set_format(int fmt);
 
 private slots:
 	void handle_index_change(QAction *a);
@@ -71,7 +70,7 @@ private:
 
 	Menu *custom_menu_;
 
-	ExportFormat::Format current_ = ExportFormat::k_format_count;
+	int current_ = -1; // was ExportFormat::k_format_count
 };
 
 }

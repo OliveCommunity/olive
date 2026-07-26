@@ -28,6 +28,8 @@
 
 #include "common/qtutils.h"
 #include "node/node.h"
+#include "oakengine/display.h"
+#include "widget/viewer/vieweroutpututils.h"
 
 namespace olive
 {
@@ -86,9 +88,14 @@ void HistogramScope::draw_scope(TexturePtr managed_tex, QVariant pipeline)
 
 	if (!texture_row_sums_ || texture_row_sums_->width() != this->width() ||
 		texture_row_sums_->height() != this->height()) {
-		texture_row_sums_ = renderer()->create_texture(
-			VideoParams(width(), height(), managed_tex->format(),
-						managed_tex->channel_count()));
+		oak_video_params pod = {};
+		pod.width = width();
+		pod.height = height();
+		pod.format = managed_tex->format();
+		const VideoParams row_sums_params = video_params_from_pod(pod);
+		oakengine_display_renderer_create_texture(renderer(),
+												  &row_sums_params, nullptr, 0,
+												  &texture_row_sums_);
 	}
 
 	// Draw managed texture to a sums texture

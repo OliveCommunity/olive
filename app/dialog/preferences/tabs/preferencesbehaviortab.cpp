@@ -23,7 +23,7 @@
 
 #include <QLabel>
 
-#include "config/config.h"
+#include "common/configwrapper.h"
 
 namespace olive
 {
@@ -114,7 +114,7 @@ PreferencesBehaviorTab::PreferencesBehaviorTab(Category category)
 	}
 }
 
-void PreferencesBehaviorTab::accept(MultiUndoCommand *command)
+void PreferencesBehaviorTab::accept(void *command)
 {
 	Q_UNUSED(command)
 

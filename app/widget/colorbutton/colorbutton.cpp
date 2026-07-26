@@ -21,12 +21,13 @@
 
 #include "colorbutton.h"
 
+#include "common/qtutils.h"
 #include "dialog/color/colordialog.h"
 
 namespace olive
 {
 
-ColorButton::ColorButton(ColorManager *color_manager, bool show_dialog_on_click,
+ColorButton::ColorButton(OakEngineColorManager *color_manager, bool show_dialog_on_click,
 						 QWidget *parent)
 	: QPushButton(parent)
 	, color_manager_(color_manager)
@@ -52,10 +53,29 @@ void ColorButton::set_color(const ManagedColor &c)
 {
 	color_ = c;
 
-	color_.set_color_input(
-		color_manager_->get_compliant_color_space(color_.color_input()));
-	color_.set_color_output(
-		color_manager_->get_compliant_color_space(color_.color_output()));
+	QByteArray in_name = color_.color_input().toUtf8();
+	QString compliant_in = oak_query_string([this, &in_name](char *buf, int size) {
+		return oakengine_color_manager_compliant_color_space(
+			color_manager_, in_name.constData(), buf, size);
+	});
+	color_.set_color_input(compliant_in);
+
+	QByteArray out_name = color_.color_output().output().toUtf8();
+	ColorTransform cs_out = color_.color_output();
+	QByteArray o, v, l;
+	oak_color_transform pod = oak_to_transform(cs_out, &o, &v, &l);
+	int out_is_display = 0;
+	char out_buf[256], view_buf[256], look_buf[256];
+	oakengine_color_manager_compliant_transform(
+		color_manager_, &pod, 0, &out_is_display, out_buf, sizeof(out_buf),
+		view_buf, sizeof(view_buf), look_buf, sizeof(look_buf));
+	if (out_is_display) {
+		color_.set_color_output(ColorTransform(QString::fromUtf8(out_buf),
+											   QString::fromUtf8(view_buf),
+											   QString::fromUtf8(look_buf)));
+	} else {
+		color_.set_color_output(ColorTransform(QString::fromUtf8(out_buf)));
+	}
 
 	update_color();
 }
@@ -92,10 +112,17 @@ void ColorButton::color_dialog_finished(int e)
 
 void ColorButton::update_color()
 {
-	color_processor_ = ColorProcessor::create(
-		color_manager_, color_.color_input(), color_.color_output());
+	QByteArray in_cs = color_.color_input().toUtf8();
+	ColorTransform out = color_.color_output();
+	QByteArray o, v, l;
+	oak_color_transform out_pod = oak_to_transform(out, &o, &v, &l);
+	color_processor_ = ColorProcessorHandlePtr(
+		oakengine_color_processor_create(color_manager_, in_cs.constData(),
+										&out_pod,
+										OAKENGINE_COLOR_PROCESSOR_NORMAL),
+		ColorProcessorHandleDeleter());
 
-	QColor managed = QtUtils::to_q_color(color_processor_->convert_color(color_));
+	QColor managed = QtUtils::to_q_color(oak_convert_color(color_processor_, color_));
 
 	setStyleSheet(QStringLiteral("%1--ColorButton {background: %2;}")
 					  .arg(MACRO_VAL_AS_STR(olive), managed.name()));

@@ -23,19 +23,22 @@
 
 #include <QCoreApplication>
 
+#include "oakengine/node.h"
+
 namespace olive
 {
 
 Menu *create_node_menu(QWidget *parent, bool create_none_item,
 					   Node::CategoryID restrict_to, uint64_t restrict_flags)
 {
-	const QList<Node *> &library = NodeFactory::get_library();
+	const int library_size = oakengine_node_factory_id_count();
 
 	Menu *menu = new Menu(parent);
 	menu->setToolTipsVisible(true);
 
-	for (int i = 0; i < library.size(); i++) {
-		Node *n = library.at(i);
+	for (int i = 0; i < library_size; i++) {
+		olive::Node *n = reinterpret_cast<olive::Node *>(
+			oakengine_node_factory_node_at(i));
 
 		if (restrict_to != Node::k_category_unknown &&
 			!n->category().contains(restrict_to)) {
@@ -54,9 +57,11 @@ Menu *create_node_menu(QWidget *parent, bool create_none_item,
 		// Make sure nodes are up-to-date with the current translation
 		n->retranslate();
 
-		QString category_name = Node::get_category_name(
-			n->category().isEmpty() ? Node::k_category_unknown :
-									  n->category().first());
+		char cat_buf[256];
+		oakengine_node_category_name(
+			n->category().isEmpty() ? 0 : n->category().first(),
+			cat_buf, sizeof(cat_buf));
+		QString category_name = QString::fromUtf8(cat_buf);
 
 		// Find or create top-level category menu
 		Menu *top_menu = nullptr;
@@ -120,7 +125,9 @@ Node *create_node_from_menu_action(QAction *action)
 		return nullptr;
 	}
 
-	return NodeFactory::get_library().at(index)->copy();
+	olive::Node *proto = reinterpret_cast<olive::Node *>(
+		oakengine_node_factory_node_at(index));
+	return proto ? proto->copy() : nullptr;
 }
 
 QString get_node_id_from_menu_action(QAction *action)
@@ -131,7 +138,9 @@ QString get_node_id_from_menu_action(QAction *action)
 		return QString();
 	}
 
-	return NodeFactory::get_library().at(action->data().toInt())->id();
+	olive::Node *proto = reinterpret_cast<olive::Node *>(
+		oakengine_node_factory_node_at(index));
+	return proto ? proto->id() : QString();
 }
 
 }

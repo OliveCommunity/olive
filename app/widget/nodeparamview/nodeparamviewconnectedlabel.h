@@ -22,9 +22,12 @@
 #ifndef OAK_NODEPARAMVIEWCONNECTEDLABEL_H
 #define OAK_NODEPARAMVIEWCONNECTEDLABEL_H
 
+#include "engineeventbridge.h"
 #include "node/param.h"
 #include "widget/clickablelabel/clickablelabel.h"
 #include "widget/nodevaluetree/nodevaluetree.h"
+
+#include <cstdint>
 
 namespace olive
 {
@@ -38,12 +41,12 @@ public:
 	void set_viewer_node(ViewerOutput *viewer);
 
 signals:
-	void request_select_node(Node *n);
+	void request_select_node(OakEngineNode *n);
 
 private slots:
-	void input_connected(Node *output, const NodeInput &input);
+	void input_connected(OakEngineNode *output, const NodeInput &input);
 
-	void input_disconnected(Node *output, const NodeInput &input);
+	void input_disconnected(OakEngineNode *output, const NodeInput &input);
 
 	void show_label_context_menu();
 
@@ -65,6 +68,10 @@ private:
 	NodeValueTree *value_tree_;
 
 	ViewerOutput *viewer_;
+
+	EngineEventBridge *bridge_ = nullptr;
+
+	int64_t viewer_sub_ = 0;
 
 private slots:
 	void set_value_tree_visible(bool e);

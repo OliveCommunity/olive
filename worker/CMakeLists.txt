@@ -17,36 +17,26 @@
 # Render worker process (oak-render-worker).
 #
 # The worker is a headless render process spawned by the editor through
-# RenderWorkerPool. It reuses the libolive-editor object library so it
-# shares the exact same render/node/codec code as the editor. The link set
-# is currently the full OLIVE_LIBRARIES for simplicity; trimming UI-only
-# dependencies is a later-phase cleanup (render-process-isolation plan).
+# RenderWorkerPool. It is a thin shell over liboakengine's pure C ABI
+# (oakengine/worker.h): all render/node/codec logic lives inside the engine
+# library, so the worker executable imports no engine C++ symbols and only
+# sees the C headers under engine/include.
 add_executable(olive-render-worker
         workermain.cpp
         $<TARGET_OBJECTS:olive-version-obj>
 )
 set_target_properties(olive-render-worker PROPERTIES OUTPUT_NAME "oak-render-worker")
 
-if (APPLE)
-    target_sources(olive-render-worker PRIVATE workermain_mac.mm)
-    target_link_libraries(olive-render-worker PRIVATE "-framework Cocoa")
-endif ()
-
-# CMAKE_INCLUDE_CURRENT_DIR only covers the app/ scope, so add the app
-# include roots explicitly now that the worker lives outside it
+# $<LINK_ONLY:...> links liboakengine without inheriting its usage
+# requirements (the engine's C++ include roots); the worker is only allowed
+# to see the public C API headers.
+target_link_libraries(olive-render-worker PRIVATE $<LINK_ONLY:oakengine>)
 target_include_directories(olive-render-worker PRIVATE
-        ${CMAKE_SOURCE_DIR}/app
-        ${CMAKE_BINARY_DIR}/app
-        ${CMAKE_SOURCE_DIR}/app/pluginSupport
-        ${OLIVE_INCLUDE_DIRS})
+        ${CMAKE_SOURCE_DIR}/engine/include)
 
-target_link_libraries(olive-render-worker PUBLIC OfxHost)
-target_link_libraries(olive-render-worker PRIVATE ${OLIVE_LIBRARIES})
-target_compile_options(olive-render-worker PRIVATE ${OLIVE_COMPILE_OPTIONS})
-target_compile_definitions(olive-render-worker PRIVATE ${OLIVE_DEFINITIONS})
-
+# The worker needs the dynamic render backend plugins at runtime; build them
+# first so the worker is never run against stale backends.
 if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
-    target_compile_definitions(olive-render-worker PRIVATE OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
     add_dependencies(olive-render-worker oakgl)
     if (TARGET oakvulkan)
         add_dependencies(olive-render-worker oakvulkan)

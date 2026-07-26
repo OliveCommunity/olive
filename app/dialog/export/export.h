@@ -24,17 +24,17 @@
 
 #include <QComboBox>
 #include <QDialog>
+#include <cstdint>
 #include <QDialogButtonBox>
 #include <QLineEdit>
 #include <QProgressBar>
 
 #include "codec/encoder.h"
-#include "codec/exportcodec.h"
-#include "codec/exportformat.h"
 #include "dialog/export/exportformatcombobox.h"
 #include "exportaudiotab.h"
 #include "exportsubtitlestab.h"
 #include "exportvideotab.h"
+#include "oakengine/encoding.h"
 #include "widget/nodeparamview/nodeparamviewwidgetbridge.h"
 #include "widget/viewer/viewer.h"
 
@@ -54,8 +54,8 @@ public:
 	Rational get_selected_timebase() const;
 	void set_selected_timebase(const Rational &r);
 
-	EncodingParams generate_params() const;
-	void set_params(const EncodingParams &e);
+	OakEngineEncodingParams *generate_params() const;
+	void set_params(const OakEngineEncodingParams *e);
 
 	virtual bool eventFilter(QObject *o, QEvent *e) override;
 
@@ -77,7 +77,9 @@ private:
 
 	ViewerOutput *viewer_node_;
 
-	ExportFormat::Format previously_selected_format_;
+	int64_t viewer_sub_ = 0;
+
+	int previously_selected_format_;
 
 	Rational get_export_length() const;
 	int64_t get_export_length_in_timebase_units() const;
@@ -93,7 +95,7 @@ private:
 
 	QComboBox *preset_combobox_;
 	QComboBox *range_combobox_;
-	std::vector<EncodingParams> presets_;
+	std::vector<OakEngineEncodingParams *> presets_;
 
 	QCheckBox *video_enabled_;
 	QCheckBox *audio_enabled_;
@@ -109,7 +111,7 @@ private:
 
 	double video_aspect_ratio_;
 
-	ColorManager *color_manager_;
+	OakEngineColorManager *color_manager_;
 
 	QWidget *preferences_area_;
 	QCheckBox *export_bkg_box_;
@@ -122,7 +124,7 @@ private:
 private slots:
 	void browse_filename();
 
-	void format_changed(ExportFormat::Format current_format);
+	void format_changed(int current_format);
 
 	void resolution_changed();
 

@@ -39,7 +39,7 @@ class PreferencesGeneralTab : public ConfigDialogBaseTab {
 public:
 	PreferencesGeneralTab();
 
-	virtual void accept(MultiUndoCommand *command) override;
+	virtual void accept(void *command) override;
 
 private:
 	void add_language(const QString &locale_name);

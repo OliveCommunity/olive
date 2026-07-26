@@ -23,7 +23,8 @@
 #define OAK_TASKDIALOG_H
 
 #include "dialog/progress/progress.h"
-#include "task/task.h"
+#include "engineeventbridge.h"
+#include "oakengine/task.h"
 
 namespace olive
 {
@@ -31,29 +32,16 @@ namespace olive
 class TaskDialog : public ProgressDialog {
 	Q_OBJECT
 public:
-	/**
-   * @brief TaskDialog Constructor
-   *
-   * Creates a TaskDialog. The TaskDialog takes ownership of the Task and will destroy it on close.
-   * Connect to the Task::Succeeded() if you want to retrieve information from the task before it
-   * gets destroyed.
-   */
-	TaskDialog(Task *task, const QString &title, QWidget *parent = nullptr);
+	TaskDialog(OakEngineTask *task, const QString &title, QWidget *parent = nullptr);
 
-	/**
-   * @brief Set whether TaskDialog should destroy itself (and the task) when it's closed
-   *
-   * This is TRUE by default.
-   */
+	~TaskDialog() override;
+
 	void set_destroy_on_close(bool e)
 	{
 		destroy_on_close_ = e;
 	}
 
-	/**
-   * @brief Returns this dialog's task
-   */
-	Task *get_task() const
+	OakEngineTask *get_task() const
 	{
 		return task_;
 	}
@@ -64,12 +52,14 @@ protected:
 	virtual void closeEvent(QCloseEvent *e) override;
 
 signals:
-	void task_succeeded(Task *task);
+	void task_succeeded(OakEngineTask *task);
 
-	void task_failed(Task *task);
+	void task_failed(OakEngineTask *task);
 
 private:
-	Task *task_;
+	OakEngineTask *task_;
+
+	EngineEventBridge *bridge_ = nullptr;
 
 	bool destroy_on_close_;
 

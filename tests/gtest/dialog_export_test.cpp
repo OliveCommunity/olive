@@ -8,6 +8,7 @@
 #include <QStandardPaths>
 
 #include "codec/encoder.h"
+#include "oakengine/encoding.h"
 #include "dialog/export/codec/h264section.h"
 #include "dialog/export/codec/imagesection.h"
 #include "dialog/export/exportadvancedvideodialog.h"
@@ -18,6 +19,7 @@
 #include "dialog/export/exportvideotab.h"
 #include "node/color/colormanager/colormanager.h"
 #include "node/project.h"
+#include "widget/manageddisplay/colorprocessorhandle.h"
 
 namespace
 {
@@ -195,7 +197,7 @@ TEST(DialogExportVideoTab, SetFormatPopulatesCodecs)
 	olive::ColorManager::set_up_default_config();
 	olive::Project project;
 
-	olive::ExportVideoTab tab(project.color_manager());
+	olive::ExportVideoTab tab(oak_color_manager(project.color_manager()));
 
 	const QList<olive::ExportCodec::Codec> codecs =
 		olive::ExportFormat::get_video_codecs(olive::ExportFormat::k_format_matroska);
@@ -214,7 +216,7 @@ TEST(DialogExportVideoTab, CodecSelectsMatchingSection)
 	olive::ColorManager::set_up_default_config();
 	olive::Project project;
 
-	olive::ExportVideoTab tab(project.color_manager());
+	olive::ExportVideoTab tab(oak_color_manager(project.color_manager()));
 	tab.set_format(olive::ExportFormat::k_format_matroska);
 
 	// First Matroska codec is H.264, which has a dedicated section
@@ -233,7 +235,7 @@ TEST(DialogExportVideoTab, ImageSequenceCheckboxRoundTrips)
 	olive::ColorManager::set_up_default_config();
 	olive::Project project;
 
-	olive::ExportVideoTab tab(project.color_manager());
+	olive::ExportVideoTab tab(oak_color_manager(project.color_manager()));
 	tab.set_format(olive::ExportFormat::k_format_png);
 	tab.video_codec_changed();
 
@@ -249,7 +251,7 @@ TEST(DialogExportVideoTab, MaintainAspectTogglesScalingMethod)
 	olive::ColorManager::set_up_default_config();
 	olive::Project project;
 
-	olive::ExportVideoTab tab(project.color_manager());
+	olive::ExportVideoTab tab(oak_color_manager(project.color_manager()));
 
 	tab.maintain_aspect_checkbox()->setChecked(true);
 	EXPECT_FALSE(tab.scaling_method_combobox()->isEnabled());
@@ -313,7 +315,7 @@ TEST(DialogExportSavePreset, AcceptWritesPresetFile)
 {
 	StandardPathsTestModeGuard test_mode;
 
-	olive::EncodingParams params;
+	OakEngineEncodingParams *params = oakengine_encoding_params_create();
 
 	olive::ExportSavePresetDialog dialog(params);
 

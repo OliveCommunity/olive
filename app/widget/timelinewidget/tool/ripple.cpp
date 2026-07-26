@@ -22,6 +22,8 @@
 #include "widget/timelinewidget/timelinewidget.h"
 
 #include "node/block/gap/gap.h"
+#include "oakengine/timeline.h"
+#include "oakengine/undo.h"
 #include "timeline/timelineundoripple.h"
 #include "ripple.h"
 
@@ -127,8 +129,7 @@ void RippleTool::finish_drag(TimelineViewMouseEvent *event)
 	Q_UNUSED(event)
 
 	if (parent()->has_ghosts()) {
-		QVector<QHash<Track *, TrackListRippleToolCommand::RippleInfo>>
-			info_list(Track::k_count);
+		QVector<QVector<oakengine_ripple_info>> info_list(Track::k_count);
 
 		foreach (TimelineViewGhostItem *ghost, parent()->get_ghost_items()) {
 			if (!ghost->has_been_adjusted()) {
@@ -137,23 +138,25 @@ void RippleTool::finish_drag(TimelineViewMouseEvent *event)
 
 			Track *track = parent()->get_track_from_reference(ghost->get_track());
 
-			TrackListRippleToolCommand::RippleInfo info;
+			oakengine_ripple_info info;
 			Block *b = QtUtils::value_to_ptr<Block>(
 				ghost->get_data(TimelineViewGhostItem::k_attached_block));
 
 			if (b) {
-				info.block = b;
-				info.append_gap = false;
+				info.block = reinterpret_cast<OakEngineBlock *>(b);
+				info.append_gap = 0;
 			} else {
-				info.block = QtUtils::value_to_ptr<Block>(
-					ghost->get_data(TimelineViewGhostItem::k_reference_block));
-				info.append_gap = true;
+				info.block = reinterpret_cast<OakEngineBlock *>(
+					QtUtils::value_to_ptr<Block>(
+						ghost->get_data(TimelineViewGhostItem::k_reference_block)));
+				info.append_gap = 1;
 			}
+			info.track = reinterpret_cast<OakEngineTrack *>(track);
 
-			info_list[track->type()].insert(track, info);
+			info_list[track->type()].append(info);
 		}
 
-		MultiUndoCommand *command = new MultiUndoCommand();
+		void *command = oakengine_undo_command_create_multi();
 
 		Rational movement;
 
@@ -165,13 +168,17 @@ void RippleTool::finish_drag(TimelineViewMouseEvent *event)
 
 		for (int i = 0; i < info_list.size(); i++) {
 			if (!info_list.at(i).isEmpty()) {
-				command->add_child(new TrackListRippleToolCommand(
-					sequence()->track_list(static_cast<Track::Type>(i)),
-					info_list.at(i), movement, drag_movement_mode()));
+				oakengine_undo_command_multi_add_child(
+					command,
+					oakengine_sequence_ripple_tracks_command(
+						reinterpret_cast<OakEngineSequence *>(sequence()), i,
+						info_list.at(i).constData(), info_list.at(i).size(),
+						movement.numerator(), movement.denominator(),
+						drag_movement_mode()));
 			}
 		}
 
-		if (command->child_count() > 0) {
+		if (oakengine_undo_command_multi_child_count(command) > 0) {
 			TimelineWidgetSelections new_sel = parent()->get_selections();
 			TimelineViewGhostItem *reference_ghost =
 				parent()->get_ghost_items().first();
@@ -180,13 +187,12 @@ void RippleTool::finish_drag(TimelineViewMouseEvent *event)
 			} else {
 				new_sel.trim_out(reference_ghost->get_out_adjustment());
 			}
-			command->add_child(new TimelineWidget::SetSelectionsCommand(
-				parent(), new_sel, parent()->get_selections(), false));
+			oakengine_undo_command_multi_add_child(command, parent()->create_set_selections_command(new_sel, parent()->get_selections(), false));
 
-			Core::instance()->undo_stack()->push(
-				command, qApp->translate("RippleTool", "Rippled Clips"));
+			oakengine_undo_push(
+				command, qApp->translate("RippleTool", "Rippled Clips").toUtf8().constData());
 		} else {
-			delete command;
+			oakengine_undo_command_free(command);
 		}
 	}
 }

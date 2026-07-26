@@ -25,13 +25,16 @@
 #include <QToolTip>
 #include <QVBoxLayout>
 
+#include "common/nodevaluehandle.h"
+#include "common/oakvaluehelper.h"
 #include "common/qtutils.h"
 #include "dialog/keyframeproperties/keyframeproperties.h"
-#include "node/group/group.h"
+#include "keyframehandle.h"
 #include "node/node.h"
-#include "node/nodeundo.h"
-#include "node/project/serializer/serializer.h"
+#include "node/value.h"
 #include "oakengine/node.h"
+#include "oakengine/serializer.h"
+#include "oakengine/undo.h"
 #include "widget/menu/menu.h"
 #include "widget/menu/menushared.h"
 
@@ -39,6 +42,26 @@ namespace olive
 {
 
 #define super TimeBasedView
+
+static bool KeyframeToOakNodeValue(Node *node, NodeKeyframe *key,
+                                   oak_node_value *out)
+{
+	const NodeValue::Type type = node->get_input_data_type(key->input());
+	QVector<QVariant> split = node->get_split_value_at_time(
+		NodeInput(node, key->input(), key->element()), key->time());
+	if (key->track() >= 0 && key->track() < split.size()) {
+		split[key->track()] = key->value();
+	}
+	QVector<oak_node_value> tracks(split.size());
+	for (int i = 0; i < split.size(); i++) {
+		if (!NodeTrackComponentToOakNodeValue(type, split.at(i), &tracks[i])) {
+			return false;
+		}
+	}
+	return oakengine_node_value_combine_tracks(
+			   node_value_type_to_c(type), tracks.constData(), tracks.size(),
+			   out) == OAKENGINE_OK;
+}
 
 KeyframeView::KeyframeView(QWidget *parent)
 	: super(parent)
@@ -58,15 +81,16 @@ KeyframeView::KeyframeView(QWidget *parent)
 void KeyframeView::delete_selected()
 {
 	if (!selection_manager_.is_dragging()) {
-		MultiUndoCommand *command = new MultiUndoCommand();
-
+		QVector<OakEngineKeyframe *> keys;
 		foreach (NodeKeyframe *key, get_selected_keyframes()) {
-			command->add_child(new NodeParamRemoveKeyframeCommand(key));
+			keys.append(reinterpret_cast<OakEngineKeyframe *>(key));
 		}
-
-		Core::instance()->undo_stack()->push(
-			command,
-			tr("Deleted %1 Keyframe(s)").arg(get_selected_keyframes().size()));
+		oakengine_keyframes_remove_many(
+			keys.data(), keys.size(),
+			tr("Deleted %1 Keyframe(s)")
+				.arg(keys.size())
+				.toUtf8()
+				.constData());
 	}
 }
 
@@ -86,7 +110,15 @@ KeyframeView::add_keyframes_of_input(Node *on, const QString &oinput)
 {
 	InputConnections vec;
 
-	NodeInput resolved = NodeGroup::resolve_input(NodeInput(on, oinput));
+	OakEngineNode *resolved_node = nullptr;
+	char resolved_input[256];
+	int resolved_element = 0;
+	oakengine_group_resolve_input(
+		reinterpret_cast<OakEngineNode *>(on), oinput.toUtf8().constData(), -1,
+		&resolved_node, resolved_input, sizeof(resolved_input),
+		&resolved_element);
+	NodeInput resolved(reinterpret_cast<Node *>(resolved_node),
+					   QString::fromUtf8(resolved_input), resolved_element);
 	Node *n = resolved.node();
 	const QString &input = resolved.input();
 
@@ -202,11 +234,17 @@ void KeyframeView::SelectionManagerDeselectEvent(void *obj)
 bool KeyframeView::copy_selected(bool cut)
 {
 	if (!selection_manager_.get_selected_objects().empty()) {
-		ProjectSerializer::SaveData sdata(ProjectSerializer::k_only_keyframes);
-		sdata.set_only_serialize_keyframes(
-			selection_manager_.get_selected_objects());
-
-		ProjectSerializer::copy(sdata);
+		const auto &keys = selection_manager_.get_selected_objects();
+		OakEngineClipboard *cb =
+			oakengine_clipboard_create(OAKENGINE_CLIPBOARD_KEYFRAMES,
+									  nullptr, nullptr);
+		oakengine_clipboard_set_keyframes(
+			cb,
+			reinterpret_cast<const OakEngineKeyframe *const *>(
+				keys.data()),
+			static_cast<int>(keys.size()));
+		oakengine_clipboard_copy(cb);
+		oakengine_clipboard_free(cb);
 
 		if (cut) {
 			delete_selected();
@@ -225,57 +263,108 @@ bool KeyframeView::paste(
 		return false;
 	}
 
-	ProjectSerializer::Result res =
-		ProjectSerializer::paste(ProjectSerializer::k_only_keyframes);
-	if (res == ProjectSerializer::k_success) {
-		const ProjectSerializer::SerializedKeyframes &keys =
-			res.get_load_data().keyframes;
+	OakEngineClipboard *cb = oakengine_clipboard_create(
+		OAKENGINE_CLIPBOARD_KEYFRAMES, nullptr, nullptr);
+	int result_code = OAKENGINE_SERIALIZER_NO_DATA;
+	oakengine_clipboard_paste(cb, OAKENGINE_CLIPBOARD_KEYFRAMES, nullptr,
+							&result_code, nullptr, 0);
 
-		MultiUndoCommand *command = new MultiUndoCommand();
+	if (result_code == OAKENGINE_SERIALIZER_OK) {
+		struct PasteCtx {
+			KeyframeView *self;
+			void *find_fn;
+			void *command;
+			Rational min;
+			int total;
+		};
 
-		Rational min = RATIONAL_MAX;
-		for (auto it = keys.cbegin(); it != keys.cend(); it++) {
-			for (NodeKeyframe *key : it.value()) {
-				min = std::min(min, key->time());
-			}
-		}
-		min -= get_viewer_node()->get_playhead();
+		PasteCtx ctx;
+		ctx.self = this;
+		ctx.find_fn = &find_node_function;
+		ctx.command = oakengine_undo_command_create_multi();
+		ctx.min = RATIONAL_MAX;
+		ctx.total = 0;
 
-		for (auto it = keys.cbegin(); it != keys.cend(); it++) {
-			const QString &paste_id = it.key();
+		// First pass: find minimum time
+		oakengine_clipboard_foreach_keyframe(
+			cb,
+			[](const char *, OakEngineKeyframe *kf, void *userdata) -> int {
+				auto *ctx = static_cast<PasteCtx *>(userdata);
+				NodeKeyframe *key = reinterpret_cast<NodeKeyframe *>(kf);
+				ctx->min = std::min(ctx->min, key->time());
+				ctx->total++;
+				return 0;
+			},
+			&ctx);
 
-			// Find a node with this ID
-			Node *node_with_id = find_node_function(paste_id);
+		ctx.min -= ctx.self->get_viewer_node()->get_playhead();
 
-			if (node_with_id) {
-				for (NodeKeyframe *key : it.value()) {
-					// Adjust sequence time to node's time
-					Rational t = key->time() - min;
-					t = get_adjusted_time(get_time_target(), node_with_id, t,
-										Node::k_transform_towards_input);
-					key->set_time(t);
+		// Second pass: process keyframes
+		oakengine_clipboard_foreach_keyframe(
+			cb,
+			[](const char *node_id, OakEngineKeyframe *kf,
+			   void *userdata) -> int {
+				auto *ctx = static_cast<PasteCtx *>(userdata);
+				NodeKeyframe *key = reinterpret_cast<NodeKeyframe *>(kf);
+				auto &find_fn =
+					*static_cast<std::function<Node *(const QString &)> *>(
+						ctx->find_fn);
+				Node *node_with_id =
+					find_fn(QString::fromUtf8(node_id));
+
+				if (node_with_id) {
+					Rational t = key->time() - ctx->min;
+					t = ctx->self->get_adjusted_time(
+						ctx->self->get_time_target(), node_with_id, t,
+						Node::k_transform_towards_input);
+					key_set_time_live(key, t);
 
 					if (NodeKeyframe *existing =
 							node_with_id->get_keyframe_at_time_on_track(
 								key->input(), key->time(), key->track(),
 								key->element())) {
-						command->add_child(
-							new NodeParamRemoveKeyframeCommand(existing));
+						void *rm = oakengine_node_remove_keyframe_command(
+							reinterpret_cast<OakEngineKeyframe *>(existing));
+						oakengine_undo_command_multi_add_child(
+							ctx->command, rm);
 					}
 
-					command->add_child(
-						new NodeParamInsertKeyframeCommand(node_with_id, key));
+					oak_node_value v;
+					KeyframeToOakNodeValue(node_with_id, key, &v);
+					int tbn = 0, tbd = 0;
+					oakengine_node_frame_time_base(
+						reinterpret_cast<OakEngineNode *>(node_with_id),
+						&tbn, &tbd);
+					const int64_t time_ts = Timecode::time_to_timestamp(
+						key->time(), Rational(tbn, tbd), Timecode::k_round);
+					void *cmd = oakengine_node_insert_keyframe_command(
+						reinterpret_cast<OakEngineNode *>(node_with_id),
+						key->input().toUtf8().constData(),
+						key->element(), key->track(), time_ts, &v,
+						NodeKeyframeTypeToFacade(key->type()),
+						static_cast<float>(key->bezier_control_in().x()),
+						static_cast<float>(key->bezier_control_in().y()),
+						static_cast<float>(key->bezier_control_out().x()),
+						static_cast<float>(key->bezier_control_out().y()));
+					oakengine_undo_command_multi_add_child(ctx->command, cmd);
+				} else {
+					delete key;
 				}
-			} else {
-				qDeleteAll(it.value());
-			}
-		}
 
-		Core::instance()->undo_stack()->push(
-			command, tr("Pasted %1 Keyframe(s)").arg(keys.size()));
+				return 0;
+			},
+			&ctx);
+
+		oakengine_undo_push(ctx.command,
+							tr("Pasted %1 Keyframe(s)")
+								.arg(ctx.total)
+								.toUtf8()
+								.constData());
+		oakengine_clipboard_free(cb);
 		return true;
 	}
 
+	oakengine_clipboard_free(cb);
 	return false;
 }
 
@@ -343,12 +432,12 @@ void KeyframeView::mouseReleaseEvent(QMouseEvent *event)
 		first_chance_mouse_release(event);
 		first_chance_mouse_event_ = false;
 	} else if (selection_manager_.is_dragging()) {
-		MultiUndoCommand *command = new MultiUndoCommand();
+		void *command = oakengine_undo_command_create_multi();
 		selection_manager_.drag_stop(command);
 		keyframe_drag_release(event, command);
-		Core::instance()->undo_stack()->push(
+		oakengine_undo_push(
 			command, tr("Moved %1 Keyframe(s)")
-						 .arg(selection_manager_.get_selected_objects().size()));
+						 .arg(selection_manager_.get_selected_objects().size()).toUtf8().constData());
 	} else if (selection_manager_.is_rubber_banding()) {
 		selection_manager_.rubber_band_stop();
 		redraw();

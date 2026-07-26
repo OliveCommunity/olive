@@ -25,6 +25,7 @@
 
 #include "node/block/clip/clip.h"
 #include "render/audiowaveformcache.h"
+#include "widget/timelinewidget/cliphandle.h"
 
 namespace olive
 {
@@ -35,16 +36,16 @@ namespace timeline_waveform_sync
 bool get_waveform_sync_clip(Block *block, WaveformSyncClip *out)
 {
 	ClipBlock *clip = dynamic_cast<ClipBlock *>(block);
-	if (!clip || !clip->waveform()) {
+	if (!clip || !clip_waveform(clip)) {
 		return false;
 	}
 
-	const TimeRange media_range = clip->media_range();
+	const TimeRange media_range = clip_media_range(clip);
 	if (media_range.length().isNull()) {
 		return false;
 	}
 
-	const AudioWaveformCache *waveform = clip->waveform();
+	const AudioWaveformCache *waveform = clip_waveform(clip);
 	if (waveform->get_parameters().sample_rate() <= 0) {
 		return false;
 	}

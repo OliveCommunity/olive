@@ -18,7 +18,6 @@
 #ifndef OAK_PLUGIN_PROGRESS_REPORTER_H
 #define OAK_PLUGIN_PROGRESS_REPORTER_H
 
-#include <QObject>
 #include <QString>
 
 #include <functional>
@@ -35,16 +34,16 @@ namespace plugin
  * this interface. The UI layer registers a factory (see
  * set_plugin_progress_reporter_factory()) that creates a reporter wrapping a
  * ProgressDialog; without a factory, a no-op reporter is used instead.
+ *
+ * Cancellation is delivered through a C-style callback rather than a Qt
+ * signal, so the class does not need Q_OBJECT and can be used across the
+ * liboakengine C ABI boundary without MOC-generated symbols.
  */
-class PluginProgressReporter : public QObject {
-	Q_OBJECT
+class PluginProgressReporter {
 public:
-	explicit PluginProgressReporter(QObject *parent = nullptr)
-		: QObject(parent)
-	{
-	}
+	PluginProgressReporter() = default;
 
-	virtual ~PluginProgressReporter() override = default;
+	virtual ~PluginProgressReporter() = default;
 
 	virtual void set_progress(double value) = 0;
 
@@ -52,8 +51,40 @@ public:
 
 	virtual void close() = 0;
 
-signals:
-	void cancelled();
+	/**
+	 * @brief Register a callback to be invoked when the user cancels.
+	 *
+	 * The engine (or any C ABI consumer) registers this to receive the
+	 * cancellation event. Only one callback is supported; subsequent calls
+	 * replace the previous registration. Pass nullptr to clear.
+	 */
+	void set_cancel_callback(std::function<void(void *)> cb, void *userdata)
+	{
+		cancel_callback_ = std::move(cb);
+		cancel_callback_userdata_ = userdata;
+	}
+
+	/**
+	 * @brief Mark this reporter as cancelled and notify the registered
+	 * callback.
+	 */
+	void set_cancelled()
+	{
+		cancelled_ = true;
+		if (cancel_callback_) {
+			cancel_callback_(cancel_callback_userdata_);
+		}
+	}
+
+	bool cancelled() const
+	{
+		return cancelled_;
+	}
+
+private:
+	std::function<void(void *)> cancel_callback_;
+	void *cancel_callback_userdata_ = nullptr;
+	bool cancelled_ = false;
 };
 
 /**
@@ -64,7 +95,7 @@ signals:
  */
 using PluginProgressReporterFactory =
 	std::function<PluginProgressReporter *(const QString &message,
-										   const QString &title)>;
+									   const QString &title)>;
 
 void set_plugin_progress_reporter_factory(
 	PluginProgressReporterFactory factory);

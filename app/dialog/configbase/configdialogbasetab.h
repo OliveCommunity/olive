@@ -24,8 +24,7 @@
 
 #include <QWidget>
 
-#include "config/config.h"
-#include "undo/undocommand.h"
+#include "common/configwrapper.h"
 
 namespace olive
 {
@@ -36,7 +35,7 @@ public:
 
 	virtual bool validate();
 
-	virtual void accept(MultiUndoCommand *parent) = 0;
+	virtual void accept(void *parent) = 0;
 };
 
 }

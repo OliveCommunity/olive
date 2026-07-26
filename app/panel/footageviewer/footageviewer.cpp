@@ -45,12 +45,12 @@ void FootageViewerPanel::override_work_area(const TimeRange &r)
 	get_footage_viewer_widget()->override_work_area(r);
 }
 
-QVector<ViewerOutput *> FootageViewerPanel::get_selected_footage() const
+QVector<OakEngineNode *> FootageViewerPanel::get_selected_footage() const
 {
-	QVector<ViewerOutput *> list;
+	QVector<OakEngineNode *> list;
 
 	if (get_connected_viewer()) {
-		list.append(get_connected_viewer());
+		list.append(reinterpret_cast<OakEngineNode *>(get_connected_viewer()));
 	}
 
 	return list;

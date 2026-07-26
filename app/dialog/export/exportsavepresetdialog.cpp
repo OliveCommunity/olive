@@ -22,6 +22,7 @@
 #include "exportsavepresetdialog.h"
 
 #include <QDialogButtonBox>
+#include <QDir>
 #include <QLabel>
 #include <QMessageBox>
 #include <QVBoxLayout>
@@ -29,7 +30,7 @@
 namespace olive
 {
 
-ExportSavePresetDialog::ExportSavePresetDialog(const EncodingParams &p,
+ExportSavePresetDialog::ExportSavePresetDialog(const OakEngineEncodingParams *p,
 											   QWidget *parent)
 	: QDialog(parent)
 	, params_(p)
@@ -39,7 +40,17 @@ ExportSavePresetDialog::ExportSavePresetDialog(const EncodingParams &p,
 	name_edit_ = new QLineEdit();
 
 	// Populate existing list
-	QStringList l = EncodingParams::get_list_of_presets();
+	QStringList l;
+	{
+		const int n = oakengine_encoding_preset_count();
+		for (int i = 0; i < n; i++) {
+			char name_buf[256];
+			if (oakengine_encoding_preset_name(
+					i, name_buf, static_cast<int>(sizeof(name_buf))) > 0) {
+				l.append(QString::fromUtf8(name_buf));
+			}
+		}
+	}
 	if (!l.empty()) {
 		auto list_widget = new QListWidget();
 		for (const QString &f : l) {
@@ -78,13 +89,17 @@ void ExportSavePresetDialog::accept()
 		return;
 	}
 
-	QDir d(EncodingParams::get_preset_path());
+	char preset_path_buf[1024];
+	preset_path_buf[0] = '\0';
+	oakengine_encoding_preset_path(
+		preset_path_buf, static_cast<int>(sizeof(preset_path_buf)));
+	QDir d(QString::fromUtf8(preset_path_buf));
+
 	if (!d.exists()) {
 		d.mkpath(QStringLiteral("."));
 	}
 
-	QFile f(d.filePath(name_edit_->text()));
-	if (f.exists()) {
+	if (d.exists(name_edit_->text())) {
 		if (QMessageBox::question(
 				this, tr("Overwrite Preset"),
 				tr("A preset with the name \"%1\" already exists. Do you wish to overwrite it?")
@@ -94,16 +109,17 @@ void ExportSavePresetDialog::accept()
 		}
 	}
 
-	if (!f.open(QFile::WriteOnly)) {
+	const QByteArray full_path =
+		d.filePath(name_edit_->text()).toUtf8();
+	const int rc = oakengine_encoding_params_save_file(
+		params_, full_path.constData());
+	if (rc != OAKENGINE_OK) {
 		QMessageBox::critical(
 			this, tr("Write Error"),
-			tr("Failed to open file \"%1\" for writing.").arg(f.fileName()));
+			tr("Failed to save preset to \"%1\".").arg(
+				QString::fromUtf8(full_path)));
 		return;
 	}
-
-	params_.save(&f);
-
-	f.close();
 
 	QDialog::accept();
 }

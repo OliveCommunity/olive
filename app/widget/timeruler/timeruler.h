@@ -25,6 +25,7 @@
 #include <QTimer>
 #include <QWidget>
 
+#include "engineeventbridge.h"
 #include "seekablewidget.h"
 #include "render/playbackcache.h"
 
@@ -65,6 +66,10 @@ private:
 	bool show_cache_status_;
 
 	PlaybackCache *playback_cache_;
+
+	EngineEventBridge *bridge_;
+	int64_t cache_sub_invalidated_ = 0;
+	int64_t cache_sub_validated_ = 0;
 };
 
 }

@@ -29,6 +29,11 @@ TimeBasedPanel::TimeBasedPanel(const QString &object_name)
 	, widget_(nullptr)
 	, show_and_raise_on_connect_(false)
 {
+	bridge_ = new EngineEventBridge(this);
+	connect(bridge_, &EngineEventBridge::node_label_changed, this,
+			[this](OakEngineNode *, const QString &label) {
+				set_subtitle(label);
+			});
 }
 
 TimeBasedPanel::~TimeBasedPanel()
@@ -142,16 +147,19 @@ void TimeBasedPanel::retranslate()
 	}
 }
 
-void TimeBasedPanel::connected_node_changed(ViewerOutput *old, ViewerOutput *now)
+void TimeBasedPanel::connected_node_changed(OakEngineNode *old, OakEngineNode *now)
 {
 	if (old) {
-		disconnect(old, &ViewerOutput::label_changed, this,
-				   &TimeBasedPanel::set_subtitle);
+		if (label_sub_) {
+			bridge_->unsubscribe(label_sub_);
+			label_sub_ = 0;
+		}
 	}
 
 	if (now) {
-		connect(now, &ViewerOutput::label_changed, this,
-				&TimeBasedPanel::set_subtitle);
+		label_sub_ = bridge_->subscribe(
+			reinterpret_cast<void *>(now),
+			OAKENGINE_EVENT_NODE_LABEL_CHANGED);
 
 		if (show_and_raise_on_connect_) {
 			this->show();

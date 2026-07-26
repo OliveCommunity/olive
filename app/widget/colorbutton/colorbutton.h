@@ -24,8 +24,8 @@
 
 #include <QPushButton>
 
-#include "node/color/colormanager/colormanager.h"
-#include "render/managedcolor.h"
+#include "oakengine/color.h"
+#include "widget/manageddisplay/colorprocessorhandle.h"
 
 namespace olive
 {
@@ -33,9 +33,9 @@ namespace olive
 class ColorButton : public QPushButton {
 	Q_OBJECT
 public:
-	ColorButton(ColorManager *color_manager, bool show_dialog_on_click,
+	ColorButton(OakEngineColorManager *color_manager, bool show_dialog_on_click,
 				QWidget *parent = nullptr);
-	ColorButton(ColorManager *color_manager, QWidget *parent = nullptr)
+	ColorButton(OakEngineColorManager *color_manager, QWidget *parent = nullptr)
 		: ColorButton(color_manager, true, parent)
 	{
 	}
@@ -56,11 +56,11 @@ private slots:
 private:
 	void update_color();
 
-	ColorManager *color_manager_;
+	OakEngineColorManager *color_manager_;
 
 	ManagedColor color_;
 
-	ColorProcessorPtr color_processor_;
+	ColorProcessorHandlePtr color_processor_;
 
 	bool dialog_open_;
 };

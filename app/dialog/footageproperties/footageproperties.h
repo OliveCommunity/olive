@@ -31,7 +31,6 @@
 #include <QStackedWidget>
 
 #include "node/project/footage/footage.h"
-#include "undo/undocommand.h"
 
 namespace olive
 {

@@ -26,8 +26,9 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QVBoxLayout>
+#include <vector>
 
-#include "render/lutlibrary.h"
+#include "oakengine/lut.h"
 
 namespace olive
 {
@@ -46,7 +47,16 @@ PreferencesLutTab::PreferencesLutTab()
 		   "these locations when picking a LUT file.")));
 
 	library_dirs_list_ = new QListWidget();
-	library_dirs_list_->addItems(LUTLibrary::get_directories());
+	{
+		int dir_count = oakengine_lut_directory_count();
+		for (int i = 0; i < dir_count; i++) {
+			char buf[4096];
+			int len = oakengine_lut_directory_at(i, buf, sizeof(buf));
+			if (len > 0) {
+				library_dirs_list_->addItem(QString::fromUtf8(buf, len));
+			}
+		}
+	}
 	library_layout->addWidget(library_dirs_list_);
 
 	QHBoxLayout *button_layout = new QHBoxLayout();
@@ -74,7 +84,7 @@ PreferencesLutTab::PreferencesLutTab()
 	outer_layout->addStretch();
 }
 
-void PreferencesLutTab::accept(MultiUndoCommand *command)
+void PreferencesLutTab::accept(void *command)
 {
 	Q_UNUSED(command)
 
@@ -83,7 +93,14 @@ void PreferencesLutTab::accept(MultiUndoCommand *command)
 		dirs.append(library_dirs_list_->item(i)->text());
 	}
 
-	LUTLibrary::set_directories(dirs);
+	std::vector<QByteArray> utf8_dirs;
+	std::vector<const char*> cstr_dirs;
+	for (int i = 0; i < dirs.size(); i++) {
+		utf8_dirs.push_back(dirs[i].toUtf8());
+		cstr_dirs.push_back(utf8_dirs.back().constData());
+	}
+	oakengine_lut_set_directories(cstr_dirs.data(),
+								   static_cast<int>(cstr_dirs.size()));
 }
 
 }

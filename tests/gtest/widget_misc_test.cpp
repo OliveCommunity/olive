@@ -35,6 +35,7 @@
 #include "widget/filefield/filefield.h"
 #include "widget/focusablelineedit/focusablelineedit.h"
 #include "widget/handmovableview/handmovableview.h"
+#include "widget/manageddisplay/colorprocessorhandle.h"
 #include "widget/menu/menu.h"
 #include "widget/nodevaluetree/nodevaluetree.h"
 #include "widget/path/pathwidget.h"
@@ -52,7 +53,7 @@ namespace
 void ensure_core()
 {
 	if (!olive::Core::instance()) {
-		new olive::Core(olive::Core::CoreParams()); // intentionally leaked
+		new olive::Core(); // intentionally leaked
 	}
 }
 
@@ -641,7 +642,7 @@ TEST(WidgetColorButton, SetColorRoundTrips)
 	olive::ColorManager::set_up_default_config();
 	olive::Project project;
 
-	olive::ColorButton btn(project.color_manager());
+	olive::ColorButton btn(oak_color_manager(project.color_manager()));
 	EXPECT_FLOAT_EQ(btn.get_color().red(), 1.0f);
 	EXPECT_FLOAT_EQ(btn.get_color().green(), 1.0f);
 	EXPECT_FLOAT_EQ(btn.get_color().blue(), 1.0f);
@@ -716,7 +717,7 @@ TEST(WidgetColorSwatchChooser, ClickingSwatchEmitsItsColor)
 	olive::ColorManager::set_up_default_config();
 	olive::Project project;
 
-	olive::ColorSwatchChooser chooser(project.color_manager());
+	olive::ColorSwatchChooser chooser(oak_color_manager(project.color_manager()));
 	const auto buttons = chooser.findChildren<olive::ColorButton *>();
 	EXPECT_EQ(buttons.size(), 32);
 
@@ -746,7 +747,7 @@ TEST(WidgetColorSpaceChooser, InputRoundTripsAndEmits)
 	ASSERT_GE(spaces.size(), 2);
 
 	// Input-only mode, as used by the export dialog
-	olive::ColorSpaceChooser chooser(project.color_manager(), true, false);
+	olive::ColorSpaceChooser chooser(oak_color_manager(project.color_manager()), true, false);
 	EXPECT_FALSE(chooser.input().isEmpty());
 
 	QSignalSpy spy(&chooser,
@@ -773,7 +774,7 @@ TEST(WidgetColorSpaceChooser, FullModePopulatesDisplayFields)
 	olive::ColorManager::set_up_default_config();
 	olive::Project project;
 
-	olive::ColorSpaceChooser chooser(project.color_manager());
+	olive::ColorSpaceChooser chooser(oak_color_manager(project.color_manager()));
 	EXPECT_FALSE(chooser.input().isEmpty());
 	EXPECT_FALSE(chooser.output().display().isEmpty());
 	EXPECT_FALSE(chooser.output().view().isEmpty());

@@ -33,16 +33,31 @@
 #include <QVBoxLayout>
 
 #include "audio/audiomanager.h"
+#include "oakengine/audio.h"
+#include "oakengine/encoding.h"
+#include "oakengine/project.h"
+#include "olive/core/oakcore/audioparams.h"
 #include "dialog/ratiodialog.h"
-#include "config/config.h"
+#include "common/configwrapper.h"
 #include "core.h"
+#include "engineeventbridge.h"
 #include "node/block/gap/gap.h"
+#include "oakengine/encoding.h"
+#include "oakengine/display.h"
+#include "oakengine/viewer.h"
+#include "oakengine/videoparams.h"
 #include "node/generator/shape/shapenodebase.h"
-#include "node/nodeundo.h"
 #include "node/project.h"
 #include "panel/multicam/multicampanel.h"
 #include "panel/panelmanager.h"
-#include "render/rendermanager.h"
+#include "oakengine/preview.h"
+#include "oakengine/renderer.h"
+#include "oakengine/timeline.h"
+#include "oakengine/undo.h"
+#include "olive/core/oakcore/samplebuffer.h"
+#include "olive/core/render/samplebuffer.h"
+#include "codec/frame.h"
+#include <cstring>
 #include "viewerpreventsleep.h"
 #include "widget/audiomonitor/audiomonitor.h"
 #include "widget/menu/menu.h"
@@ -50,6 +65,7 @@
 #include "widget/timelinewidget/tool/add.h"
 #include "widget/timeruler/timeruler.h"
 
+#include "widget/viewer/vieweroutpututils.h"
 namespace olive
 {
 
@@ -57,18 +73,108 @@ namespace olive
 
 QVector<ViewerWidget *> ViewerWidget::instances;
 
+namespace {
+
+// Convert olive::core::AudioParams to a temporary OakAudioParams*.
+// The caller must free the result with oakcore_audioparams_free().
+OakAudioParams *ap_to_oak(const olive::core::AudioParams &ap)
+{
+	return oakcore_audioparams_create(
+		ap.sample_rate(),
+		ap.channel_layout(),
+		static_cast<int>(ap.format()));
+}
+
+// Extract a SampleBuffer from an OakEnginePreviewRequest's audio result.
+// Returns an unallocated (null) buffer on failure.
+static SampleBuffer preview_req_to_sample_buffer(OakEnginePreviewRequest *req)
+{
+	OakSampleBuffer *sb = oakcore_samplebuffer_create();
+	if (oakengine_preview_request_has_result(req)) {
+		int channels = oakengine_preview_request_get_audio_channel_count(req);
+		int sample_rate = oakengine_preview_request_get_audio_sample_rate(req);
+		if (channels > 0 && sample_rate > 0) {
+			OakAudioParams *ap = oakcore_audioparams_create(sample_rate, 0, 0);
+			oakcore_samplebuffer_set_audio_params(sb, ap);
+			oakcore_audioparams_free(ap);
+
+			// Determine sample count from first channel
+			int n = oakengine_preview_request_get_audio_samples(req, 0, nullptr, 1 << 30);
+			if (n > 0) {
+				oakcore_samplebuffer_set_sample_count(sb, size_t(n));
+				oakcore_samplebuffer_allocate(sb);
+				for (int ch = 0; ch < channels; ch++) {
+					float *dst = oakcore_samplebuffer_data(sb, ch);
+					oakengine_preview_request_get_audio_samples(req, ch, dst, n);
+				}
+			}
+		}
+	}
+	return SampleBuffer::from_handle(sb);
+}
+
+// Bridge from OakEnginePreviewRequest C callback to ViewerWidget main-thread
+// slot.  Each trampoline calls the appropriate method on the widget; the
+// method finds the completed request by scanning its list.
+
+static void nonqueue_finished_cb(void *userdata)
+{
+	QMetaObject::invokeMethod(static_cast<ViewerWidget *>(userdata),
+							  "renderer_generated_frame", Qt::QueuedConnection);
+}
+
+static void queue_finished_cb(void *userdata)
+{
+	QMetaObject::invokeMethod(static_cast<ViewerWidget *>(userdata),
+							  "renderer_generated_frame_for_queue", Qt::QueuedConnection);
+}
+
+static void audio_playback_finished_cb(void *userdata)
+{
+	QMetaObject::invokeMethod(
+		static_cast<ViewerWidget *>(userdata),
+		"received_audio_buffer_for_playback", Qt::QueuedConnection);
+}
+
+static void audio_scrub_finished_cb(void *userdata)
+{
+	QMetaObject::invokeMethod(
+		static_cast<ViewerWidget *>(userdata),
+		"received_audio_buffer_for_scrubbing", Qt::QueuedConnection);
+}
+
+static void dry_run_finished_cb(void *userdata)
+{
+	QMetaObject::invokeMethod(static_cast<ViewerWidget *>(userdata),
+							  "dry_run_finished", Qt::QueuedConnection);
+}
+
+} // namespace
+
+// NOTE: Hardcoded interval of size of audio chunk to render and send to the output at a time.
+//       We want this to be as long as possible so the code has plenty of time to send the audio
+//       while also being as short as possible so users get relatively immediate feedback when
+//       changing values. 1/4 second seems to be a good middleground.
+const Rational ViewerWidget::k_audio_playback_interval = Rational(1, 4);
+
+const Rational k_video_playback_interval = Rational(1, 10);
+
 ViewerWidget::ViewerWidget(ViewerDisplayWidget *display, QWidget *parent)
 	: super(false, true, parent)
 	, playback_speed_(0)
 	, color_menu_enabled_(true)
 	, time_changed_from_timer_(false)
-	, playback_(nullptr)
+	, prequeuing_video_(false)
+	, prequeuing_audio_(0)
 	, record_armed_(false)
 	, recording_(false)
+	, first_requeue_watcher_(nullptr)
 	, enable_audio_scrubbing_(true)
 	, waveform_mode_(k_wf_automatic)
 	, ignore_scrub_(0)
 	, multicam_panel_(nullptr)
+	, bridge_(new EngineEventBridge(this))
+	, audio_processor_(oakengine_audio_processor_create())
 {
 	// Set up main layout
 	QVBoxLayout *layout = new QVBoxLayout(this);
@@ -89,12 +195,12 @@ ViewerWidget::ViewerWidget(ViewerDisplayWidget *display, QWidget *parent)
 			&ViewerWidget::color_processor_changed);
 	connect(
 		display_widget_, &ViewerDisplayWidget::color_processor_changed, this,
-		[](ColorProcessorPtr processor) {
-			RenderManager::instance()->get_cacher()->set_display_color_processor(
-				processor);
+		[](ColorProcessorHandlePtr processor) {
+			oakengine_render_cache_set_display_color_processor(
+				processor ? processor.get() : nullptr);
 		});
-	RenderManager::instance()->get_cacher()->set_display_color_processor(
-		display_widget_->get_current_color_processor());
+	oakengine_render_cache_set_display_color_processor(
+		display_widget_->get_current_color_processor().get());
 	connect(display_widget_, &ViewerDisplayWidget::color_manager_changed, this,
 			&ViewerWidget::color_manager_changed);
 	connect(display_widget_, &ViewerDisplayWidget::drag_entered, this,
@@ -103,6 +209,10 @@ ViewerWidget::ViewerWidget(ViewerDisplayWidget *display, QWidget *parent)
 			&ViewerWidget::dropped);
 	connect(display_widget_, &ViewerDisplayWidget::texture_changed, this,
 			&ViewerWidget::texture_changed);
+	connect(display_widget_, &ViewerDisplayWidget::queue_starved, this,
+			&ViewerWidget::queue_starved);
+	connect(display_widget_, &ViewerDisplayWidget::queue_no_longer_starved, this,
+			&ViewerWidget::queue_no_longer_starved);
 	connect(display_widget_, &ViewerDisplayWidget::create_addable_at, this,
 			&ViewerWidget::create_addable_at);
 	connect(sizer_, &ViewerSizer::request_scale, display_widget_,
@@ -154,8 +264,8 @@ ViewerWidget::ViewerWidget(ViewerDisplayWidget *display, QWidget *parent)
 	connect(waveform_view_, &AudioWaveformView::customContextMenuRequested,
 			this, &ViewerWidget::show_context_menu);
 
-	connect(&playback_poll_timer_, &QTimer::timeout, this,
-			&ViewerWidget::playback_poll_update);
+	connect(&playback_backup_timer_, &QTimer::timeout, this,
+			&ViewerWidget::playback_timer_update);
 
 	set_auto_max_scroll_bar(true);
 
@@ -167,17 +277,13 @@ ViewerWidget::ViewerWidget(ViewerDisplayWidget *display, QWidget *parent)
 			&ViewerWidget::set_signal_cursor_color_enabled);
 	connect(this, &ViewerWidget::cursor_color, Core::instance(),
 			&Core::color_picker_color_emitted);
-	connect(AudioManager::instance(), &AudioManager::output_params_changed, this,
+	connect(bridge_, &EngineEventBridge::audio_output_params_changed, this,
 			&ViewerWidget::update_audio_processor);
 }
 
 ViewerWidget::~ViewerWidget()
 {
 	instances.removeOne(this);
-
-	// Stop and release the facade playback session.
-	oakengine_playback_free(playback_);
-	playback_ = nullptr;
 
 	auto windows = windows_;
 
@@ -187,6 +293,9 @@ ViewerWidget::~ViewerWidget()
 
 	delete display_widget_;
 	display_widget_ = nullptr;
+
+	oakengine_audio_processor_free(audio_processor_);
+	audio_processor_ = nullptr;
 }
 
 void ViewerWidget::TimeChangedEvent(const Rational &time)
@@ -216,51 +325,87 @@ void ViewerWidget::TimeChangedEvent(const Rational &time)
 	}
 
 	// Send time to auto-cacher
-	RenderManager::instance()->get_cacher()->set_playhead(time);
+	oakengine_preview_cacher_set_playhead(time.numerator(), time.denominator());
 
 	last_time_ = time;
 }
 
 void ViewerWidget::ConnectNodeEvent(ViewerOutput *n)
 {
-	connect(n, &ViewerOutput::size_changed, this,
-			&ViewerWidget::set_viewer_resolution);
-	connect(n, &ViewerOutput::pixel_aspect_changed, this,
-			&ViewerWidget::set_viewer_pixel_aspect);
-	connect(n, &ViewerOutput::length_changed, this,
-			&ViewerWidget::length_changed_slot);
-	connect(n, &ViewerOutput::interlacing_changed, this,
-			&ViewerWidget::interlacing_changed_slot);
-	connect(n, &ViewerOutput::video_params_changed, this,
+	OakEngineNode *handle = reinterpret_cast<OakEngineNode *>(n);
+
+	bridge_->subscribe(handle, OAKENGINE_EVENT_VIEWER_SIZE_CHANGED);
+	bridge_->subscribe(handle, OAKENGINE_EVENT_VIEWER_PIXEL_ASPECT_CHANGED);
+	bridge_->subscribe(handle, OAKENGINE_EVENT_VIEWER_LENGTH_CHANGED);
+	bridge_->subscribe(handle, OAKENGINE_EVENT_VIEWER_INTERLACING_CHANGED);
+	bridge_->subscribe(handle, OAKENGINE_EVENT_VIEWER_VIDEO_PARAMS_CHANGED);
+	bridge_->subscribe(handle, OAKENGINE_EVENT_VIEWER_AUDIO_PARAMS_CHANGED);
+	bridge_->subscribe(handle, OAKENGINE_EVENT_VIEWER_TEXTURE_INPUT_CHANGED);
+
+	connect(bridge_, &EngineEventBridge::viewer_size_changed, this,
+			[this](OakEngineNode *, int w, int h) {
+				set_viewer_resolution(w, h);
+			});
+	connect(bridge_, &EngineEventBridge::viewer_pixel_aspect_changed, this,
+			[this](OakEngineNode *, qint64 num, qint64 den) {
+				set_viewer_pixel_aspect(Rational(num, den));
+			});
+	connect(bridge_, &EngineEventBridge::viewer_length_changed, this,
+			[this](OakEngineNode *, qint64 num, qint64 den) {
+				length_changed_slot(Rational(num, den));
+			});
+	connect(bridge_, &EngineEventBridge::viewer_interlacing_changed, this,
+			[this](OakEngineNode *, int mode) {
+				interlacing_changed_slot(mode);
+			});
+	connect(bridge_, &EngineEventBridge::viewer_video_params_changed, this,
 			&ViewerWidget::update_renderer_video_parameters);
-	connect(n, &ViewerOutput::video_params_changed, this,
+	connect(bridge_, &EngineEventBridge::viewer_video_params_changed, this,
 			&ViewerWidget::update_texture_from_node, Qt::QueuedConnection);
-	connect(n, &ViewerOutput::audio_params_changed, this,
+	connect(bridge_, &EngineEventBridge::viewer_audio_params_changed, this,
 			&ViewerWidget::update_renderer_audio_parameters);
-	if (FrameHashCache *cache = n->video_frame_cache()) {
-		connect(cache, &FrameHashCache::invalidated, this,
-				&ViewerWidget::viewer_invalidated_video_range);
-	}
-	connect(n, &ViewerOutput::texture_input_changed, this,
+	connect(bridge_, &EngineEventBridge::viewer_texture_input_changed, this,
 			&ViewerWidget::update_waveform_view_from_mode);
 
-	connect(controls_, &PlaybackControls::time_changed, n,
-			&ViewerOutput::set_playhead);
+	// FrameHashCache invalidated events
+	if (OakEngineFrameCache *cache = oakengine_viewer_get_frame_cache(handle)) {
+		bridge_->subscribe(cache, OAKENGINE_EVENT_FRAME_CACHE_INVALIDATED);
+		connect(bridge_, &EngineEventBridge::frame_cache_invalidated, this,
+				[this](void *, qint64 a, qint64 b) {
+					viewer_invalidated_video_range(
+						TimeRange(Rational(a, 1), Rational(b, 1)));
+				});
+	}
 
-	VideoParams vp = n->get_video_params();
+	// Connect controls to set_playhead via facade
+	connect(controls_, &PlaybackControls::time_changed, this,
+			[handle](const Rational &time) {
+				oakengine_viewer_set_playhead(
+					handle, time.numerator(), time.denominator());
+			});
 
-	interlacing_changed_slot(vp.interlacing());
+	oak_video_params vp;
+	oakengine_viewer_get_video_params(handle, 0, &vp);
 
-	ruler()->set_playback_cache(n->video_frame_cache());
+	interlacing_changed_slot(vp.interlacing);
 
-	set_viewer_resolution(vp.width(), vp.height());
-	set_viewer_pixel_aspect(vp.pixel_aspect_ratio());
+	ruler()->set_playback_cache(
+		reinterpret_cast<PlaybackCache *>(
+			oakengine_viewer_get_playback_cache(handle)));
+
+	set_viewer_resolution(vp.width, vp.height);
+	set_viewer_pixel_aspect(Rational(vp.pixel_aspect_num, vp.pixel_aspect_den));
 	last_length_ = 0;
-	length_changed_slot(n->get_length());
+
+	{
+		int64_t len_num, len_den;
+		oakengine_viewer_get_length(handle, &len_num, &len_den);
+		length_changed_slot(Rational(len_num, len_den));
+	}
 
 	update_audio_processor();
 
-	ColorManager *color_manager = n->project()->color_manager();
+	OakEngineColorManager *color_manager = oak_color_manager(n->project()->color_manager());
 
 	foreach (ViewerDisplayWidget *dw, playback_devices_) {
 		dw->connect_color_manager(color_manager);
@@ -281,29 +426,14 @@ void ViewerWidget::DisconnectNodeEvent(ViewerOutput *n)
 {
 	pause_internal();
 
-	disconnect(n, &ViewerOutput::size_changed, this,
-			   &ViewerWidget::set_viewer_resolution);
-	disconnect(n, &ViewerOutput::pixel_aspect_changed, this,
-			   &ViewerWidget::set_viewer_pixel_aspect);
-	disconnect(n, &ViewerOutput::length_changed, this,
-			   &ViewerWidget::length_changed_slot);
-	disconnect(n, &ViewerOutput::interlacing_changed, this,
-			   &ViewerWidget::interlacing_changed_slot);
-	disconnect(n, &ViewerOutput::video_params_changed, this,
-			   &ViewerWidget::update_renderer_video_parameters);
-	disconnect(n, &ViewerOutput::video_params_changed, this,
-			   &ViewerWidget::update_texture_from_node);
-	disconnect(n, &ViewerOutput::audio_params_changed, this,
-			   &ViewerWidget::update_renderer_audio_parameters);
-	if (FrameHashCache *cache = n->video_frame_cache()) {
-		disconnect(cache, &FrameHashCache::invalidated, this,
-				   &ViewerWidget::viewer_invalidated_video_range);
-	}
-	disconnect(n, &ViewerOutput::texture_input_changed, this,
-			   &ViewerWidget::update_waveform_view_from_mode);
+	// Disconnect all bridge signal connections to this receiver
+	disconnect(bridge_, nullptr, this, nullptr);
 
-	disconnect(controls_, &PlaybackControls::time_changed, n,
-			   &ViewerOutput::set_playhead);
+	// Unsubscribe all bridge subscriptions
+	// (EngineEventBridge does not expose bulk unsubscribe; the bridge
+	//  is per-widget so stale subscriptions are harmless until the next
+	//  ConnectNodeEvent, but we clear the ones we know about)
+	// For now the subscription callbacks filter by source handle internally.
 
 	timeline_selected_blocks_.clear();
 	node_view_selected_.clear();
@@ -364,10 +494,13 @@ void ViewerWidget::resizeEvent(QResizeEvent *event)
 	update_minimum_scale();
 }
 
-RenderTicketPtr ViewerWidget::get_single_frame(const Rational &t, bool dry)
+OakEnginePreviewRequest *ViewerWidget::get_single_frame(const Rational &t,
+														  bool dry)
 {
-	return RenderManager::instance()->get_cacher()->get_single_frame(
-		this->get_connected_node(), t, dry);
+	OakEngineNode *viewer =
+		reinterpret_cast<OakEngineNode *>(get_connected_node());
+	return oakengine_preview_request_single_frame(
+		viewer, t.numerator(), t.denominator(), dry ? 1 : 0);
 }
 
 void ViewerWidget::toggle_play_pause()
@@ -431,7 +564,7 @@ void ViewerWidget::set_full_screen(QScreen *screen)
 			&ViewerWidget::show_context_menu);
 
 	if (get_connected_node()) {
-		vw->set_video_params(get_connected_node()->get_video_params());
+		vw->set_video_params(viewer_output_video_params(get_connected_node()));
 		vw->display_widget()->set_deinterlacing(
 			vw->display_widget()->is_deinterlacing());
 	}
@@ -452,15 +585,21 @@ void ViewerWidget::set_full_screen(QScreen *screen)
 
 void ViewerWidget::cache_entire_sequence()
 {
-	RenderManager::instance()->get_cacher()->force_cache_range(
-		get_connected_node(), TimeRange(0, get_connected_node()->get_video_length()));
+	oakengine_preview_cacher_force_cache_range(
+		reinterpret_cast<OakEngineNode *>(get_connected_node()),
+		0, 1,
+		get_connected_node()->get_video_length().numerator(),
+		get_connected_node()->get_video_length().denominator());
 }
 
 void ViewerWidget::cache_sequence_in_out()
 {
 	if (get_connected_node() && get_connected_node()->get_work_area()->enabled()) {
-		RenderManager::instance()->get_cacher()->force_cache_range(
-			get_connected_node(), get_connected_node()->get_work_area()->range());
+		const auto &r = get_connected_node()->get_work_area()->range();
+		oakengine_preview_cacher_force_cache_range(
+			reinterpret_cast<OakEngineNode *>(get_connected_node()),
+			r.in().numerator(), r.in().denominator(),
+			r.out().numerator(), r.out().denominator());
 	} else {
 		QMessageBox::warning(this, tr("Error"),
 							 tr("No in or out points are set to cache."),
@@ -477,7 +616,9 @@ void ViewerWidget::set_gizmos(Node *node)
 void ViewerWidget::start_capture(TimelineWidget *source, const TimeRange &time,
 								const Track::Reference &track)
 {
-	get_connected_node()->set_playhead(time.in());
+	oakengine_viewer_set_playhead(
+		reinterpret_cast<OakEngineNode *>(get_connected_node()),
+		time.in().numerator(), time.in().denominator());
 	arm_for_recording();
 
 	recording_callback_ = source;
@@ -500,36 +641,6 @@ void ViewerWidget::connect_multicam_widget(MulticamWidget *p)
 	}
 }
 
-FramePtr ViewerWidget::decode_cached_image(const QString &cache_path,
-										 const QUuid &cache_id,
-										 const int64_t &time)
-{
-	FramePtr frame = FrameHashCache::load_cache_frame(cache_path, cache_id, time);
-
-	if (frame) {
-		frame->set_timestamp(time);
-	} else {
-		qWarning() << "Tried to load cached frame from file but it was null";
-	}
-
-	return frame;
-}
-
-void ViewerWidget::decode_cached_image(RenderTicketPtr ticket,
-									 const QString &cache_path,
-									 const QUuid &cache_id, const int64_t &time)
-{
-	ticket->start();
-
-	FramePtr f = decode_cached_image(cache_path, cache_id, time);
-
-	if (f) {
-		ticket->finish(QVariant::fromValue(f));
-	} else {
-		ticket->finish();
-	}
-}
-
 bool ViewerWidget::should_force_waveform() const
 {
 	return get_connected_node() &&
@@ -546,8 +657,16 @@ void ViewerWidget::set_empty_image()
 
 void ViewerWidget::update_auto_cacher()
 {
-	RenderManager::instance()->get_cacher()->set_playhead(
-		get_connected_node()->get_playhead());
+	Rational t = get_connected_node()->get_playhead();
+	oakengine_preview_cacher_set_playhead(t.numerator(), t.denominator());
+}
+
+void ViewerWidget::decrement_prequeued_audio()
+{
+	prequeuing_audio_--;
+	if (!prequeuing_audio_) {
+		finish_play_preprocess();
+	}
 }
 
 void ViewerWidget::arm_for_recording()
@@ -567,14 +686,17 @@ void ViewerWidget::update_audio_processor()
 	if (get_connected_node()) {
 		close_audio_processor();
 
-		AudioParams ap = get_connected_node()->get_audio_params();
+		AudioParams ap = viewer_output_audio_params(get_connected_node());
 		if (ap.sample_rate() <= 0 || ap.channel_count() <= 0) {
 			ap = AudioParams(
 				OAK_CONFIG("DefaultSequenceAudioFrequency").toInt(),
 				OAK_CONFIG("DefaultSequenceAudioLayout").toULongLong(),
-				ViewerOutput::k_default_sample_format);
+				static_cast<SampleFormat::Format>(
+					oakengine_viewer_default_sample_format()));
 		}
-		ap.set_format(ViewerOutput::k_default_sample_format);
+		ap.set_format(
+			static_cast<SampleFormat::Format>(
+				oakengine_viewer_default_sample_format()));
 
 		AudioParams packed(
 			OAK_CONFIG("AudioOutputSampleRate").toInt(),
@@ -591,8 +713,13 @@ void ViewerWidget::update_audio_processor()
 				 << "layout_mask=0x" << packed.channel_layout()
 				 << Qt::dec;
 
-		audio_processor_.open(
-			ap, packed, (playback_speed_ == 0) ? 1 : std::abs(playback_speed_));
+		OakAudioParams *from = ap_to_oak(ap);
+		OakAudioParams *to = ap_to_oak(packed);
+		oakengine_audio_processor_open(
+			audio_processor_, from, to,
+			(playback_speed_ == 0) ? 1 : std::abs(playback_speed_));
+		oakcore_audioparams_free(from);
+		oakcore_audioparams_free(to);
 	}
 }
 
@@ -626,16 +753,37 @@ void ViewerWidget::create_addable_at(const QRectF &f)
 			}
 		}
 
-		MultiUndoCommand *command = new MultiUndoCommand();
+		void *command = oakengine_undo_command_create_multi();
 		Node *clip = AddTool::create_addable_clip(
 			command, s, Track::Reference(type, track_index), in, length);
 
 		if (ShapeNodeBase *shape = dynamic_cast<ShapeNodeBase *>(clip)) {
-			shape->set_rect(f, s->get_video_params(), command);
+			const VideoParams vp = viewer_output_video_params(s);
+			oak_video_params pod = {};
+			pod.width = vp.width();
+			pod.height = vp.height();
+			pod.time_base_num = vp.time_base().numerator();
+			pod.time_base_den = vp.time_base().denominator();
+			pod.format = vp.format();
+			pod.pixel_aspect_num = vp.pixel_aspect_ratio().numerator();
+			pod.pixel_aspect_den = vp.pixel_aspect_ratio().denominator();
+			pod.interlacing = vp.interlacing();
+			pod.divider = vp.divider();
+			oakengine_shape_set_rect_undoable(
+				reinterpret_cast<OakEngineNode *>(shape), f.x(), f.y(),
+				f.width(), f.height(), &pod, command);
 		}
 
-		Core::instance()->undo_stack()->push(command, tr("Created Shape"));
+		oakengine_undo_push(command, tr("Created Shape").toUtf8().constData());
 		set_gizmos(clip);
+	}
+}
+
+void ViewerWidget::handle_first_requeue_destroy()
+{
+	// Extra protection to ensure we don't reference a destroyed object
+	if (first_requeue_watcher_ && !queue_watchers_.contains(first_requeue_watcher_)) {
+		first_requeue_watcher_ = nullptr;
 	}
 }
 
@@ -655,6 +803,38 @@ void ViewerWidget::show_subtitle_properties()
 	}
 }
 
+void ViewerWidget::dry_run_finished()
+{
+	if (!dry_run_watchers_.isEmpty()) {
+		OakEnginePreviewRequest *req = dry_run_watchers_.takeFirst();
+		oakengine_preview_request_free(req);
+		request_next_dry_run();
+	}
+}
+
+void ViewerWidget::request_next_dry_run()
+{
+	if (is_playing()) {
+		Rational next_time =
+			Timecode::timestamp_to_time(dry_run_next_frame_, timebase());
+		if (frame_exists_at_time(next_time)) {
+			if (next_time > get_connected_node()->get_playhead() +
+								Rational(10)) {
+				QTimer::singleShot(timebase().to_double() / playback_speed_,
+								   this, &ViewerWidget::request_next_dry_run);
+			} else {
+				OakEnginePreviewRequest *r = get_single_frame(next_time, true);
+				if (r) {
+					oakengine_preview_request_set_finished_callback(
+						r, dry_run_finished_cb, this);
+					dry_run_next_frame_ += playback_speed_;
+					dry_run_watchers_.append(r);
+				}
+			}
+		}
+	}
+}
+
 void ViewerWidget::save_frame_as_image()
 {
 	Core::instance()->open_export_dialog_for_viewer(get_connected_node(), true);
@@ -669,7 +849,7 @@ void ViewerWidget::detect_multicam_node_now()
 
 void ViewerWidget::close_audio_processor()
 {
-	audio_processor_.close();
+	oakengine_audio_processor_close(audio_processor_);
 }
 
 void ViewerWidget::set_waveform_mode(WaveformMode wf)
@@ -709,7 +889,9 @@ void ViewerWidget::detect_multicam_node(const Rational &time)
 				for (Block *b : qAsConst(timeline_selected_blocks_)) {
 					if (b->range().contains(time)) {
 						if ((clip = dynamic_cast<ClipBlock *>(b))) {
-							if ((multicam = clip->find_multicam())) {
+							if ((multicam = reinterpret_cast<MultiCamNode *>(
+									oakengine_clip_find_multicam(
+										reinterpret_cast<OakEngineNode *>(clip))))) {
 								break;
 							}
 						}
@@ -726,7 +908,9 @@ void ViewerWidget::detect_multicam_node(const Rational &time)
 
 					Block *b = t->nearest_block_before_or_at(time);
 					if ((clip = dynamic_cast<ClipBlock *>(b))) {
-						if ((multicam = clip->find_multicam())) {
+						if ((multicam = reinterpret_cast<MultiCamNode *>(
+								oakengine_clip_find_multicam(
+									reinterpret_cast<OakEngineNode *>(clip))))) {
 							break;
 						}
 					}
@@ -741,9 +925,10 @@ void ViewerWidget::detect_multicam_node(const Rational &time)
 											 time);
 		}
 		// FIXME: Really dirty
-		RenderManager::instance()->get_cacher()->set_multicam_node(multicam);
+		oakengine_render_cache_set_multicam_node(
+			reinterpret_cast<OakEngineNode *>(multicam));
 	} else {
-		RenderManager::instance()->get_cacher()->set_multicam_node(nullptr);
+		oakengine_render_cache_set_multicam_node(nullptr);
 		if (multicam_panel_) {
 			multicam_panel_->set_multicam_node(nullptr, nullptr, nullptr, time);
 		}
@@ -752,8 +937,8 @@ void ViewerWidget::detect_multicam_node(const Rational &time)
 
 bool ViewerWidget::is_video_visible() const
 {
-	return get_connected_node()->get_video_params().video_type() !=
-			   VideoParams::k_video_type_still &&
+	return viewer_output_video_params(get_connected_node()).video_type() !=
+			   1 &&
 		   (display_widget_->isVisible() || !windows_.isEmpty());
 }
 
@@ -775,7 +960,9 @@ void ViewerWidget::update_waveform_view_from_mode()
 									  QSizePolicy::Expanding);
 
 	if (get_connected_node()) {
-		get_connected_node()->set_waveform_enabled(waveform_view_->isVisible());
+		oakengine_viewer_set_waveform_enabled(
+			reinterpret_cast<OakEngineNode *>(get_connected_node()),
+			waveform_view_->isVisible() ? 1 : 0);
 
 		if (waveform_view_->isVisible()) {
 			waveform_view_->set_viewer(get_connected_node());
@@ -785,47 +972,197 @@ void ViewerWidget::update_waveform_view_from_mode()
 	}
 }
 
-void ViewerWidget::received_audio_buffer_for_scrubbing()
+void ViewerWidget::queue_next_audio_buffer()
 {
-	RenderTicketWatcher *watcher = static_cast<RenderTicketWatcher *>(sender());
+	Rational queue_end =
+		audio_playback_queue_time_ + (k_audio_playback_interval * playback_speed_);
 
-	while (!audio_scrub_watchers_.empty() &&
-		   audio_scrub_watchers_.front() != watcher) {
-		audio_scrub_watchers_.pop_front();
+	// Clamp queue end by zero and the audio length
+	queue_end = std::clamp(queue_end, Rational(0),
+						   get_connected_node()->get_audio_length());
+	if ((playback_speed_ > 0 && queue_end <= audio_playback_queue_time_) ||
+		(playback_speed_ < 0 && queue_end >= audio_playback_queue_time_)) {
+		// This will queue nothing, so stop the loop here
+		if (prequeuing_audio_) {
+			decrement_prequeued_audio();
+		}
+		return;
 	}
 
-	if (!audio_scrub_watchers_.empty()) {
-		if (watcher->has_result()) {
-			SampleBuffer samples = watcher->get().value<SampleBuffer>();
-			if (samples.is_allocated()) {
-				if (samples.audio_params().channel_count() > 0) {
-					AudioProcessor::Buffer buf;
-					int r =
-						audio_processor_.convert(samples.to_raw_ptrs().data(),
-												 samples.sample_count(), &buf);
+	OakEngineNode *viewer = reinterpret_cast<OakEngineNode *>(get_connected_node());
+	OakEnginePreviewRequest *req = oakengine_preview_request_audio_range(
+		viewer,
+		audio_playback_queue_time_.numerator(),
+		audio_playback_queue_time_.denominator(),
+		queue_end.numerator(), queue_end.denominator());
+	if (req) {
+		oakengine_preview_request_set_finished_callback(
+			req, audio_playback_finished_cb, this);
+		audio_playback_queue_.push_back(req);
+	}
 
-					if (r >= 0) {
-						if (!buf.empty()) {
-							QString error;
-							const QByteArray &packed = buf.at(0);
-							AudioManager::instance()->clear_buffered_output();
-							if (!AudioManager::instance()->push_to_output(
-									audio_processor_.to(), packed, &error)) {
-								Core::instance()->show_status_bar_message(
-									tr("Audio scrubbing failed: %1").arg(error));
+	audio_playback_queue_time_ = queue_end;
+}
+
+void ViewerWidget::received_audio_buffer_for_playback()
+{
+	while (!audio_playback_queue_.empty() &&
+		   oakengine_preview_request_is_done(audio_playback_queue_.front())) {
+		OakEnginePreviewRequest *req = audio_playback_queue_.front();
+		audio_playback_queue_.pop_front();
+
+		if (oakengine_preview_request_has_result(req)) {
+			SampleBuffer samples = preview_req_to_sample_buffer(req);
+			if (samples.is_allocated()) {
+				// If the samples must be reversed, reverse them now
+				if (playback_speed_ < 0) {
+					samples.reverse();
+				}
+
+				// Convert to packed data for audio output
+				const void *pack_data = nullptr;
+				int pack_size = 0;
+				int r = oakengine_audio_processor_convert(
+					audio_processor_, samples.to_raw_ptrs().data(),
+					samples.sample_count(), &pack_data, &pack_size);
+
+				// TempoProcessor may have emptied the array
+				if (r >= 0) {
+					if (pack_size > 0) {
+						if (prequeuing_audio_) {
+							// Add to prequeued audio buffer
+							prequeued_audio_.append(
+								static_cast<const char *>(pack_data), pack_size);
+						} else {
+							// Push directly to audio manager
+							{
+								OakAudioParams *oap =
+									oakengine_audio_processor_output_params(
+										audio_processor_);
+								oakengine_audio_push_to_output(
+									oap, static_cast<const char *>(pack_data),
+									pack_size, nullptr, 0);
+								oakcore_audioparams_free(oap);
 							}
-							AudioMonitor::push_sample_buffer_on_all(samples);
 						}
-					} else {
-						qCritical()
-							<< "Failed to process audio for scrubbing:" << r;
 					}
+				} else {
+					qCritical() << "Failed to process audio for playback:" << r;
+				}
+			}
+		}
+
+		if (prequeuing_audio_) {
+			decrement_prequeued_audio();
+		}
+
+		oakengine_preview_request_free(req);
+	}
+}
+
+void ViewerWidget::received_audio_buffer_for_scrubbing()
+{
+	if (audio_scrub_watchers_.empty()) {
+		return;
+	}
+
+	OakEnginePreviewRequest *req = audio_scrub_watchers_.front();
+	audio_scrub_watchers_.pop_front();
+
+	if (oakengine_preview_request_has_result(req)) {
+		SampleBuffer samples = preview_req_to_sample_buffer(req);
+		if (samples.is_allocated()) {
+			if (samples.audio_params().channel_count() > 0) {
+				const void *pack_data = nullptr;
+				int pack_size = 0;
+				int r = oakengine_audio_processor_convert(
+					audio_processor_, samples.to_raw_ptrs().data(),
+					samples.sample_count(), &pack_data, &pack_size);
+
+				if (r >= 0) {
+					if (pack_size > 0) {
+						QString error;
+						oakengine_audio_clear_buffered_output();
+						char errbuf[256];
+						OakAudioParams *oap =
+							oakengine_audio_processor_output_params(
+								audio_processor_);
+						if (!oakengine_audio_push_to_output(
+								oap, static_cast<const char *>(pack_data),
+								pack_size, errbuf, sizeof(errbuf))) {
+							oakcore_audioparams_free(oap);
+							Core::instance()->show_status_bar_message(
+								tr("Audio scrubbing failed: %1").arg(QString::fromUtf8(errbuf)));
+						} else {
+							oakcore_audioparams_free(oap);
+						}
+						AudioMonitor::push_sample_buffer_on_all(samples);
+					}
+				} else {
+					qCritical()
+						<< "Failed to process audio for scrubbing:" << r;
 				}
 			}
 		}
 	}
 
-	delete watcher;
+	oakengine_preview_request_free(req);
+}
+
+void ViewerWidget::queue_starved()
+{
+	static const int k_maximum_wait_time_ms = 250;
+	static const Rational k_maximum_wait_time(k_maximum_wait_time_ms, 1000);
+	qint64 now = QDateTime::currentMSecsSinceEpoch();
+
+	if (!queue_starved_start_) {
+		queue_starved_start_ = now;
+	} else if (now > queue_starved_start_ + k_maximum_wait_time_ms) {
+		if (first_requeue_watcher_ && !queue_watchers_.isEmpty()) {
+			// Stale check: request still pending below timeout
+			return;
+		}
+
+		force_requeue_from_current_time();
+		queue_starved_start_ = 0;
+	}
+}
+
+void ViewerWidget::queue_no_longer_starved()
+{
+	queue_starved_start_ = 0;
+}
+
+void ViewerWidget::force_requeue_from_current_time()
+{
+	// Defer the requeue to the next event-loop iteration. This function is often
+	// called from paintEvent paths (QueueStarved) where synchronously cancelling
+	// watchers can re-enter the same request and deadlock.
+	QMetaObject::invokeMethod(
+		this, [this]() { force_requeue_from_current_time_internal(); },
+		Qt::QueuedConnection);
+}
+
+void ViewerWidget::force_requeue_from_current_time_internal()
+{
+	// Allow half a second for requeue to complete
+	static const Rational k_requeue_wait_time(1);
+
+	oakengine_preview_cacher_clear_single_frame_renders(0);
+	queue_watchers_.clear();
+	int queue = determine_playback_queue_size();
+	playback_queue_next_frame_ =
+		get_timestamp() +
+		playback_speed_ * Timecode::time_to_timestamp(
+							  k_requeue_wait_time, timebase(), Timecode::k_floor);
+	;
+	first_requeue_watcher_ = nullptr;
+	for (int i = 0; i < queue; i++) {
+		OakEnginePreviewRequest *req = request_next_frame_for_queue();
+		if (!first_requeue_watcher_) {
+			first_requeue_watcher_ = req;
+		}
+	}
 }
 
 void ViewerWidget::update_texture_from_node()
@@ -846,21 +1183,17 @@ void ViewerWidget::update_texture_from_node()
 	if (frame_exists || frame_might_be_still) {
 		// Frame was not in queue, will require rendering or decoding from cache
 		// Not playing, run a task to get the frame either from the cache or the renderer
-		RenderTicketWatcher *watcher = new RenderTicketWatcher();
-		watcher->setProperty("start", QDateTime::currentMSecsSinceEpoch());
-		watcher->setProperty("time", QVariant::fromValue(time));
-		connect(watcher, &RenderTicketWatcher::finished, this,
-				&ViewerWidget::renderer_generated_frame);
-		nonqueue_watchers_.append(watcher);
+		OakEnginePreviewRequest *req = get_frame(time);
+		if (req) {
+			oakengine_preview_request_set_finished_callback(
+				req, nonqueue_finished_cb, this);
+			nonqueue_watchers_.append(req);
+		}
 
 		// Clear queue because we want this frame more than any others
-		RenderManager::instance()
-			->get_cacher()
-			->clear_single_frame_renders_that_arent_running();
+		oakengine_preview_cacher_clear_single_frame_renders(1);
 
 		detect_multicam_node(time);
-
-		watcher->set_ticket(get_frame(time));
 	} else {
 		// There is definitely no frame here, we can immediately flip to showing nothing
 		nonqueue_watchers_.clear();
@@ -868,7 +1201,6 @@ void ViewerWidget::update_texture_from_node()
 		return;
 	}
 }
-
 void ViewerWidget::play_internal(int speed, bool in_to_out_only)
 {
 	Q_ASSERT(speed != 0);
@@ -883,22 +1215,15 @@ void ViewerWidget::play_internal(int speed, bool in_to_out_only)
 		return;
 	}
 
-	if (speed < 0) {
-		// The facade playback engine covers forward playback only this
-		// round; backward/shuttle playback is deferred (roadmap 附 A).
-		qWarning() << "ViewerWidget: backward playback is not supported yet";
-		return;
-	}
-
 	// Kindly tell all viewers to stop playing and caching so all resources can be used for playback
 	foreach (ViewerWidget *viewer, instances) {
 		if (viewer != this) {
 			viewer->pause_internal();
 		}
 	}
-	RenderManager::instance()->get_cacher()->set_thumbnails_paused(true);
+	oakengine_preview_cacher_set_thumbnails_paused(1);
 
-	RenderManager::instance()->set_aggressive_garbage_collection(true);
+	oakengine_render_manager_set_aggressive_garbage_collection(1);
 
 	// Disarm recording if armed
 	if (record_armed_) {
@@ -910,69 +1235,90 @@ void ViewerWidget::play_internal(int speed, bool in_to_out_only)
 		Rational last_frame = get_connected_node()->get_length() - timebase();
 		if (!in_to_out_only &&
 			get_connected_node()->get_playhead() >= last_frame) {
-			get_connected_node()->set_playhead(0);
+			if (speed > 0) {
+				oakengine_viewer_set_playhead(
+				reinterpret_cast<OakEngineNode *>(get_connected_node()),
+				0, 1);
+			} else {
+				oakengine_viewer_set_playhead(
+				reinterpret_cast<OakEngineNode *>(get_connected_node()),
+				last_frame.numerator(), last_frame.denominator());
+			}
 		}
 	}
 
 	playback_speed_ = speed;
 	play_in_to_out_only_ = in_to_out_only;
 
+	playback_queue_next_frame_ = get_timestamp() + playback_speed_;
+
 	controls_->show_pause_button();
 
-	// Start the facade playback session: its pull thread renders frames
-	// and 1/4s audio blocks ahead, pushes audio to the AudioManager
-	// itself and feeds our frame/audio callbacks.
-	if (!playback_) {
-		const VideoParams vp = get_connected_node()->get_video_params();
-		playback_ = oakengine_playback_create(
-			reinterpret_cast<OakEngineSequence *>(get_connected_node()),
-			vp.effective_width(), vp.effective_height(),
-			timebase().denominator(), timebase().numerator());
-		if (!playback_) {
-			qWarning() << "ViewerWidget: failed to create playback session";
-			playback_speed_ = 0;
-			controls_->show_play_button();
-			return;
+	queue_starved_start_ = 0;
+
+	// Attempt to fill playback queue
+	if (is_video_visible()) {
+		prequeue_length_ = determine_playback_queue_size();
+
+		if (prequeue_length_ > 0) {
+			prequeuing_video_ = true;
+			prequeue_count_ = 0;
+
+			for (int i = 0; i < prequeue_length_; i++) {
+				request_next_frame_for_queue();
+			}
+
+			dry_run_next_frame_ = playback_queue_next_frame_;
+			request_next_dry_run();
 		}
-		oakengine_playback_set_frame_callback(
-			playback_, &ViewerWidget::facade_frame_callback, this);
-		oakengine_playback_set_audio_callback(
-			playback_, &ViewerWidget::facade_audio_callback, this);
 	}
 
-	const int64_t start_ts = get_timestamp();
-	if (oakengine_playback_start(playback_, start_ts, playback_speed_) !=
-		OAKENGINE_OK) {
-		char err[512];
-		err[0] = '\0';
-		oakengine_playback_last_error(playback_, err, sizeof(err));
-		qWarning() << "ViewerWidget: failed to start playback:"
-				   << (err[0] ? err : "(no error)");
-		playback_speed_ = 0;
-		controls_->show_play_button();
-		return;
+	AudioParams ap = viewer_output_audio_params(get_connected_node());
+	qDebug() << "ViewerWidget::PlayInternal: audio params valid=" << ap.is_valid()
+			 << "channel_count=" << ap.channel_count();
+	if (ap.is_valid() && ap.channel_count() != 0) {
+		update_audio_processor();
+
+		// Verify audio processor output params are valid before using them
+		OakAudioParams *output_params =
+			oakengine_audio_processor_output_params(audio_processor_);
+		const bool output_valid =
+			output_params && oakcore_audioparams_is_valid(output_params);
+		qDebug() << "ViewerWidget::PlayInternal: audio processor output params valid="
+				 << output_valid;
+		if (!output_valid) {
+			qWarning()
+				<< "Audio processor output params are invalid, skipping audio playback";
+		} else {
+			oakengine_audio_set_output_notify_interval(
+				oakcore_audioparams_time_to_bytes(
+					output_params, k_audio_playback_interval.to_double()));
+			audio_notify_sub_ = oakengine_event_subscribe(
+				oakengine_audio_manager_handle(),
+				OAKENGINE_EVENT_AUDIO_MANAGER_OUTPUT_NOTIFY,
+				[](const oakengine_event *, void *userdata) {
+					static_cast<ViewerWidget *>(userdata)->queue_next_audio_buffer();
+				},
+				this);
+
+			static const int prequeue_count = 2;
+			prequeuing_audio_ =
+				prequeue_count; // Queue two buffers ahead of time
+			audio_playback_queue_time_ = get_connected_node()->get_playhead();
+			qDebug() << "ViewerWidget::PlayInternal: prequeuing audio start time="
+					 << audio_playback_queue_time_.to_double();
+			for (int i = 0; i < prequeue_count; i++) {
+				queue_next_audio_buffer();
+			}
+		}
+		oakcore_audioparams_free(output_params);
 	}
 
-	// Waveform monitor stays UI-side (it needs the connected waveform
-	// metadata); the facade pushes audio to the output by itself.
-	if (get_connected_node()->get_audio_params().channel_count() > 0) {
-		AudioMonitor::start_waveform_on_all(
-			get_connected_node()->get_connected_waveform(),
-			get_connected_node()->get_playhead(), playback_speed_);
+	// If there's nothing to prequeue, start playback immediately so the
+	// playhead advances even when only the audio waveform is visible.
+	if (!prequeuing_video_ && !prequeuing_audio_) {
+		finish_play_preprocess();
 	}
-
-	display_widget_->reset_fps_timer();
-
-	foreach (ViewerDisplayWidget *dw, playback_devices_) {
-		dw->play(start_ts, playback_speed_, timebase(), is_video_visible());
-	}
-
-	// The UI poll timer drives the playhead, boundary and loop policy
-	// from the facade's playback position.
-	playback_poll_timer_.setInterval(
-		qMax(1, qFloor(timebase().to_double() * 1000.0)));
-	playback_poll_timer_.start();
-	playback_poll_update();
 
 	// Force screen to stay awake
 	prevent_sleep(true);
@@ -981,7 +1327,7 @@ void ViewerWidget::play_internal(int speed, bool in_to_out_only)
 void ViewerWidget::pause_internal()
 {
 	if (recording_) {
-		AudioManager::instance()->stop_recording();
+		oakengine_audio_stop_recording();
 		recording_ = false;
 		controls_->set_pause_button_recording_state(false);
 
@@ -998,88 +1344,42 @@ void ViewerWidget::pause_internal()
 			dw->pause();
 		}
 
-		// The facade pause also stops the audio output (engine side).
-		if (playback_) {
-			oakengine_playback_pause(playback_);
+		// Cancel in-flight render tickets before deleting watchers,
+		// otherwise the render thread keeps working on stale frames
+		// and blocks the single-frame render requested by UpdateTextureFromNode().
+		foreach (OakEnginePreviewRequest *req, queue_watchers_) {
+			oakengine_preview_request_free(req);
 		}
-		playback_poll_timer_.stop();
+		queue_watchers_.clear();
+		oakengine_preview_cacher_clear_single_frame_renders(0);
 
+		playback_backup_timer_.stop();
+
+		// Handle audio
+		oakengine_audio_stop_output();
 		AudioMonitor::stop_on_all();
+		prequeued_audio_.clear();
+		if (audio_notify_sub_ > 0) {
+			oakengine_event_unsubscribe(audio_notify_sub_);
+			audio_notify_sub_ = 0;
+		}
+		for (auto *req : audio_playback_queue_) { oakengine_preview_request_free(req); }
+		audio_playback_queue_.clear();
+		update_audio_processor();
 
-		RenderManager::instance()->get_cacher()->clear_single_frame_renders();
-		RenderManager::instance()->get_cacher()->set_thumbnails_paused(false);
+		oakengine_preview_cacher_set_thumbnails_paused(0);
 
 		update_texture_from_node();
 
-		RenderManager::instance()->set_aggressive_garbage_collection(false);
+		oakengine_render_manager_set_aggressive_garbage_collection(false);
 	}
+
+	prequeuing_video_ = false;
+	prequeuing_audio_ = 0;
+	dry_run_watchers_.clear();
 
 	// Reset screen timeout timer
 	prevent_sleep(false);
-}
-
-void ViewerWidget::facade_frame_callback(const oak_playback_frame *frame,
-										 void *userdata)
-{
-	ViewerWidget *viewer = static_cast<ViewerWidget *>(userdata);
-
-	// Wrap the CPU pixels now (the payload dies when we return), then
-	// append to the display queue on the main thread -- the same
-	// destination the old renderer_generated_frame_for_queue used.
-	FramePtr copy = Frame::create();
-	copy->set_video_params(
-		VideoParams(frame->width, frame->height, viewer->timebase(),
-					static_cast<PixelFormat::Format>(frame->format),
-					VideoParams::k_internal_channel_count));
-	copy->allocate();
-	const int row_bytes = qMin(frame->linesize, copy->linesize_bytes());
-	for (int y = 0; y < frame->height; y++) {
-		memcpy(copy->data() + y * copy->linesize_bytes(),
-			   static_cast<const char *>(frame->data) + y * frame->linesize,
-			   size_t(row_bytes));
-	}
-
-	const Rational ts =
-		Timecode::timestamp_to_time(frame->timestamp, viewer->timebase());
-	QMetaObject::invokeMethod(viewer, [viewer, copy, ts]() {
-		viewer->deliver_facade_frame(copy, ts);
-	}, Qt::QueuedConnection);
-}
-
-void ViewerWidget::facade_audio_callback(const oak_playback_audio *audio,
-										 void *userdata)
-{
-	ViewerWidget *viewer = static_cast<ViewerWidget *>(userdata);
-
-	// Copy the block for the level monitor (the payload dies when we
-	// return; the facade already pushed it to the AudioManager).
-	const AudioParams params(
-		audio->sample_rate,
-		viewer->get_connected_node() ?
-			viewer->get_connected_node()->get_audio_params().channel_layout() :
-			core::k_channel_layout_stereo,
-		core::SampleFormat::f32_p);
-	SampleBuffer buffer(params, size_t(audio->sample_count));
-	for (int ch = 0; ch < audio->channels; ch++) {
-		memcpy(buffer.to_raw_ptrs()[ch], audio->channel_data[ch],
-			   size_t(audio->sample_count) * sizeof(float));
-	}
-
-	QMetaObject::invokeMethod(viewer, [buffer]() {
-		AudioMonitor::push_sample_buffer_on_all(buffer);
-	}, Qt::QueuedConnection);
-}
-
-void ViewerWidget::deliver_facade_frame(const FramePtr &frame,
-										const Rational &ts)
-{
-	if (!is_playing()) {
-		return;
-	}
-	foreach (ViewerDisplayWidget *dw, playback_devices_) {
-		dw->queue()->append_timewise({ ts, QVariant::fromValue(frame) },
-									 playback_speed_);
-	}
 }
 
 void ViewerWidget::push_scrubbed_audio()
@@ -1092,27 +1392,30 @@ void ViewerWidget::push_scrubbed_audio()
 
 		if (ignore_scrub_ == 0) {
 			// Get audio src device from renderer
-			const AudioParams &params = get_connected_node()->get_audio_params();
+			const AudioParams &params = viewer_output_audio_params(get_connected_node());
 
 			if (params.is_valid()) {
 				// NOTE: Hardcoded scrubbing interval (20ms)
 				Rational interval = Rational(20, 1000);
 
-				RenderTicketWatcher *watcher = new RenderTicketWatcher();
-				connect(watcher, &RenderTicketWatcher::finished, this,
-						&ViewerWidget::received_audio_buffer_for_scrubbing);
-				audio_scrub_watchers_.push_back(watcher);
-				watcher->set_ticket(
-					RenderManager::instance()->get_cacher()->get_range_of_audio(
-						get_connected_node(),
-						TimeRange(get_connected_node()->get_playhead(),
-								  get_connected_node()->get_playhead() +
-									  interval)));
+				OakEngineNode *viewer =
+					reinterpret_cast<OakEngineNode *>(get_connected_node());
+				OakEnginePreviewRequest *req =
+					oakengine_preview_request_audio_range(
+						viewer,
+						get_connected_node()->get_playhead().numerator(),
+						get_connected_node()->get_playhead().denominator(),
+						(get_connected_node()->get_playhead() + interval).numerator(),
+						(get_connected_node()->get_playhead() + interval).denominator());
+				if (req) {
+					oakengine_preview_request_set_finished_callback(
+						req, audio_scrub_finished_cb, this);
+					audio_scrub_watchers_.push_back(req);
+				}
 			}
 		}
 	}
 }
-
 void ViewerWidget::update_minimum_scale()
 {
 	if (!get_connected_node()) {
@@ -1160,24 +1463,91 @@ bool ViewerWidget::viewer_might_be_a_still()
 		   get_connected_node()->get_video_length().isNull();
 }
 
-void ViewerWidget::set_display_image(RenderTicketPtr ticket)
+void ViewerWidget::set_display_image(OakEnginePreviewRequest *req)
 {
 	foreach (ViewerDisplayWidget *dw, playback_devices_) {
 		QVariant push;
-		if (ticket) {
+		if (req && oakengine_preview_request_has_result(req)) {
+			oak_playback_frame frame;
 			if (dynamic_cast<MulticamDisplay *>(dw)) {
-				push = ticket->property("multicam_output");
+				// Multicam: use the default frame for now
+				if (oakengine_preview_request_get_frame(req, &frame) == 0) {
+					FramePtr f;
+					oakengine_codec_frame_create(&f);
+					{
+						oak_video_params pod = {};
+						pod.width = frame.width;
+						pod.height = frame.height;
+						pod.format = static_cast<PixelFormat::Format>(frame.format);
+						const VideoParams vp = video_params_from_pod(pod);
+						oakengine_codec_frame_set_video_params(f.get(), &vp);
+					}
+					oakengine_codec_frame_allocate(f.get());
+					if (frame.data && frame.linesize > 0 && f->linesize_bytes() > 0) {
+						memcpy(f->data(), frame.data,
+							   qMin(f->linesize_bytes(), frame.linesize) * frame.height);
+					}
+					push = QVariant::fromValue(f);
+				}
 			} else {
-				push = ticket->get();
+				if (oakengine_preview_request_get_frame(req, &frame) == 0) {
+					FramePtr f;
+					oakengine_codec_frame_create(&f);
+					{
+						oak_video_params pod = {};
+						pod.width = frame.width;
+						pod.height = frame.height;
+						pod.format = static_cast<PixelFormat::Format>(frame.format);
+						const VideoParams vp = video_params_from_pod(pod);
+						oakengine_codec_frame_set_video_params(f.get(), &vp);
+					}
+					oakengine_codec_frame_allocate(f.get());
+					if (frame.data && frame.linesize > 0 && f->linesize_bytes() > 0) {
+						memcpy(f->data(), frame.data,
+							   qMin(f->linesize_bytes(), frame.linesize) * frame.height);
+					}
+					push = QVariant::fromValue(f);
+				}
 			}
 		}
 		dw->set_image(push);
 	}
 }
 
-RenderTicketPtr ViewerWidget::get_frame(const Rational &t)
+void ViewerWidget::set_display_image(RenderTicketPtr ticket)
 {
-	if (is_playing()) {
+	// Legacy compat: convert to OakEnginePreviewRequest* not available,
+	// but this path is no longer called internally.
+	// Call the new overload with nullptr to clear the display.
+	set_display_image(static_cast<OakEnginePreviewRequest *>(nullptr));
+}
+
+OakEnginePreviewRequest *ViewerWidget::request_next_frame_for_queue(bool increment)
+{
+	OakEnginePreviewRequest *req = nullptr;
+
+	Rational next_time =
+		Timecode::timestamp_to_time(playback_queue_next_frame_, timebase());
+
+	if (frame_exists_at_time(next_time) || viewer_might_be_a_still()) {
+		if (increment) {
+			playback_queue_next_frame_ += playback_speed_;
+		}
+
+		req = get_frame(next_time);
+		if (req) {
+			oakengine_preview_request_set_finished_callback(
+				req, queue_finished_cb, this);
+			queue_watchers_.append(req);
+		}
+	}
+
+	return req;
+}
+
+OakEnginePreviewRequest *ViewerWidget::get_frame(const Rational &t)
+{
+	if (is_playing() || prequeuing_video_) {
 		return get_single_frame(t);
 	}
 
@@ -1188,19 +1558,89 @@ RenderTicketPtr ViewerWidget::get_frame(const Rational &t)
 		// Frame hasn't been cached, start render job
 		return get_single_frame(t);
 	} else {
-		// Frame has been cached, grab the frame
-		RenderTicketPtr ticket = std::make_shared<RenderTicket>();
-		ticket->setProperty("time", QVariant::fromValue(t));
-		QtConcurrent::run(
-			static_cast<void (*)(RenderTicketPtr, const QString &,
-								 const QUuid &, const int64_t &)>(
-				ViewerWidget::decode_cached_image),
-			ticket,
-			get_connected_node()->video_frame_cache()->get_cache_directory(),
-			get_connected_node()->video_frame_cache()->get_uuid(),
-			Timecode::time_to_timestamp(t, timebase(), Timecode::k_floor));
-		return ticket;
+		// Frame has been cached, grab the frame via preview request
+		OakEngineNode *viewer =
+			reinterpret_cast<OakEngineNode *>(get_connected_node());
+		return oakengine_preview_request_single_frame(
+			viewer, t.numerator(), t.denominator(), 0);
 	}
+}
+
+void ViewerWidget::finish_play_preprocess()
+{
+	// Check if we're still waiting for video or audio respectively
+	if (prequeuing_video_ || prequeuing_audio_) {
+		return;
+	}
+
+	int64_t playback_start_time = get_timestamp();
+
+	// Restart the audio output clock for this playback run; the playback
+	// timer uses it as its master clock
+	oakengine_audio_reset_output_clock();
+
+	// Start audio waveform playback
+	if (!prequeued_audio_.isEmpty()) {
+		char errbuf[256];
+		OakAudioParams *oap =
+			oakengine_audio_processor_output_params(audio_processor_);
+		if (!oakengine_audio_push_to_output(oap,
+											 prequeued_audio_.constData(),
+											 prequeued_audio_.size(),
+											 errbuf, sizeof(errbuf))) {
+			oakcore_audioparams_free(oap);
+			QMessageBox::critical(
+				this, tr("Audio Error"),
+				tr("Failed to start audio: %1\n\n"
+				   "Please check your audio preferences and try again.")
+					.arg(QString::fromUtf8(errbuf)));
+		} else {
+			oakcore_audioparams_free(oap);
+		}
+		prequeued_audio_.clear();
+
+		AudioMonitor::start_waveform_on_all(
+			get_connected_node()->get_connected_waveform(),
+			get_connected_node()->get_playhead(), playback_speed_);
+	}
+
+	display_widget_->reset_fps_timer();
+
+	foreach (ViewerDisplayWidget *dw, playback_devices_) {
+		dw->play(playback_start_time, playback_speed_, timebase(),
+				 is_video_visible());
+	}
+
+	// This is our timer for loading the queue and setting the time
+	playback_backup_timer_.setInterval(
+		qMax(1, qFloor(timebase_dbl() * 1000.0)));
+	playback_backup_timer_.start();
+
+	playback_timer_update();
+}
+
+int ViewerWidget::determine_playback_queue_size()
+{
+	if (playback_speed_ == 0) {
+		return 0;
+	}
+
+	int64_t end_ts;
+
+	if (playback_speed_ > 0) {
+		end_ts = Timecode::time_to_timestamp(
+			get_connected_node()->get_video_length(), timebase());
+	} else {
+		end_ts = 0;
+	}
+
+	int remaining_frames = (end_ts - get_timestamp() - 1) / playback_speed_;
+
+	// Generate maximum queue
+	int max_frames =
+		qCeil(k_video_playback_interval.to_double() / timebase().to_double());
+
+	return qMin(max_frames, remaining_frames);
 }
 
 void ViewerWidget::context_menu_set_full_screen(QAction *action)
@@ -1212,14 +1652,9 @@ void ViewerWidget::context_menu_set_playback_res(QAction *action)
 {
 	int div = action->data().toInt();
 
-	auto vp = get_connected_node()->get_video_params();
-	vp.set_divider(div);
-
-	auto c = new NodeParamSetStandardValueCommand(
-		NodeKeyframeTrackReference(
-			NodeInput(get_connected_node(), ViewerOutput::k_video_params_input, 0)),
-		QVariant::fromValue(vp));
-	Core::instance()->undo_stack()->push(c, tr("Changed Playback Resolution"));
+	void *c = oakengine_viewer_set_preview_divider_command(
+		reinterpret_cast<OakEngineNode *>(get_connected_node()), div);
+	oakengine_undo_push(c, tr("Changed Playback Resolution").toUtf8().constData());
 }
 
 void ViewerWidget::context_menu_disable_safe_margins()
@@ -1253,22 +1688,74 @@ void ViewerWidget::window_about_to_close()
 
 void ViewerWidget::renderer_generated_frame()
 {
-	RenderTicketWatcher *ticket = static_cast<RenderTicketWatcher *>(sender());
+	if (nonqueue_watchers_.isEmpty()) {
+		return;
+	}
 
-	if (nonqueue_watchers_.contains(ticket)) {
-		while (!nonqueue_watchers_.isEmpty()) {
-			// Pop frames that are "old"
-			if (nonqueue_watchers_.takeFirst() == ticket) {
-				break;
+	OakEnginePreviewRequest *req = nonqueue_watchers_.takeFirst();
+
+	if (oakengine_preview_request_has_result(req)) {
+		set_display_image(req);
+	}
+
+	oakengine_preview_request_free(req);
+}
+
+void ViewerWidget::renderer_generated_frame_for_queue()
+{
+	if (queue_watchers_.isEmpty()) {
+		return;
+	}
+
+	OakEnginePreviewRequest *req = queue_watchers_.takeFirst();
+
+	if (oakengine_preview_request_has_result(req)) {
+		oak_playback_frame pf;
+		bool has_frame = (oakengine_preview_request_get_frame(req, &pf) == 0);
+		bool drop_frame = false;
+
+		// Ignore this signal if we've paused now
+		if (is_playing() || prequeuing_video_) {
+			if (!drop_frame && has_frame) {
+				FramePtr f;
+				oakengine_codec_frame_create(&f);
+				{
+					oak_video_params pod = {};
+					pod.width = pf.width;
+					pod.height = pf.height;
+					pod.format = static_cast<PixelFormat::Format>(pf.format);
+					const VideoParams vp = video_params_from_pod(pod);
+					oakengine_codec_frame_set_video_params(f.get(), &vp);
+				}
+				oakengine_codec_frame_allocate(f.get());
+				if (pf.data && pf.linesize > 0 && f->linesize_bytes() > 0) {
+					memcpy(f->data(), pf.data,
+						   qMin(f->linesize_bytes(), pf.linesize) * pf.height);
+				}
+				QVariant frame = QVariant::fromValue(f);
+
+				foreach (ViewerDisplayWidget *dw, playback_devices_) {
+					dw->queue()->append_timewise({ Rational(), frame },
+												playback_speed_);
+				}
 			}
-		}
 
-		if (ticket->has_result()) {
-			set_display_image(ticket->get_ticket());
+			if (prequeuing_video_) {
+				prequeue_count_++;
+
+				if (prequeue_count_ == prequeue_length_) {
+					prequeuing_video_ = false;
+					finish_play_preprocess();
+				}
+			}
 		}
 	}
 
-	delete ticket;
+	if (first_requeue_watcher_ == req) {
+		first_requeue_watcher_ = nullptr;
+	}
+
+	oakengine_preview_request_free(req);
 }
 
 void ViewerWidget::show_context_menu(const QPoint &pos)
@@ -1355,20 +1842,26 @@ void ViewerWidget::show_context_menu(const QPoint &pos)
 				new Menu(tr("Playback Resolution"), &menu);
 			menu.addMenu(playback_res_menu);
 
-			for (int d : VideoParams::k_supported_dividers) {
+			{
+			const int n = oakengine_video_params_supported_divider_count();
+			for (int i = 0; i < n; i++) {
+				int d = oakengine_video_params_supported_divider_at(i);
+				char name_buf[64];
+				oakengine_video_params_divider_name(d, name_buf, sizeof(name_buf));
 				playback_res_menu->add_action_with_data(
-					VideoParams::get_name_for_divider(d), d,
-					get_connected_node()->get_video_params().divider());
+					QString::fromUtf8(name_buf), d,
+					viewer_output_video_params(get_connected_node()).divider());
 			}
 
 			connect(playback_res_menu, &QMenu::triggered, this,
 					&ViewerWidget::context_menu_set_playback_res);
+			}
 		}
 
 		{
 			// Deinterlace Option
-			if (get_connected_node()->get_video_params().interlacing() !=
-				VideoParams::k_interlace_none) {
+			if (viewer_output_video_params(get_connected_node()).interlacing() !=
+				0) {
 				QAction *deinterlace_action = menu.addAction(tr("Deinterlace"));
 				deinterlace_action->setCheckable(true);
 				deinterlace_action->setChecked(
@@ -1509,22 +2002,29 @@ void ViewerWidget::play(bool in_to_out_only)
 		if (get_connected_node() &&
 			get_connected_node()->get_work_area()->enabled()) {
 			// Jump to in point
-			get_connected_node()->set_playhead(
-				get_connected_node()->get_work_area()->in());
+			oakengine_viewer_set_playhead(
+				reinterpret_cast<OakEngineNode *>(get_connected_node()),
+				get_connected_node()->get_work_area()->in().numerator(),
+				get_connected_node()->get_work_area()->in().denominator());
 		} else {
 			in_to_out_only = false;
 		}
 	} else if (record_armed_) {
 		disarm_recording();
 
-		if (get_connected_node()->project()->filename().isEmpty()) {
+		char fn_buf[512];
+		oakengine_project_filename(
+			reinterpret_cast<OakEngineProject *>(
+				get_connected_node()->project()),
+			fn_buf, sizeof(fn_buf));
+		if (fn_buf[0] == '\0') {
 			QMessageBox::critical(
 				this, tr("Audio Recording"),
 				tr("Project must be saved before you can record audio."));
 			return;
 		}
 
-		QDir audio_path(QFileInfo(get_connected_node()->project()->filename())
+		QDir audio_path(QFileInfo(fn_buf)
 							.dir()
 							.filePath(tr("audio")));
 		if (!audio_path.exists()) {
@@ -1533,26 +2033,35 @@ void ViewerWidget::play(bool in_to_out_only)
 
 		recording_filename_ = audio_path.filePath(QStringLiteral("%1.%2").arg(
 			QDateTime::currentDateTime().toString("yyyy-MM-dd hh-mm-ss"),
-			ExportFormat::get_extension(static_cast<ExportFormat::Format>(
-				OAK_CONFIG("AudioRecordingFormat").toInt()))));
+			[]() -> QString {
+				char ext_buf[64];
+				int fmt = OAK_CONFIG("AudioRecordingFormat").toInt();
+				oakengine_encoding_format_extension(fmt, ext_buf, sizeof(ext_buf));
+				return QString::fromUtf8(ext_buf);
+			}()));
 
-		AudioParams ap(
+		OakEngineEncodingParams *encode_param =
+			oakengine_encoding_params_create();
+		oakengine_encoding_params_enable_audio(
+			encode_param,
 			OAK_CONFIG("AudioRecordingSampleRate").toInt(),
 			OAK_CONFIG("AudioRecordingChannelLayout").toULongLong(),
 			SampleFormat::from_string(OAK_CONFIG("AudioRecordingSampleFormat")
 										  .toString()
-										  .toStdString()));
-
-		EncodingParams encode_param;
-		encode_param.enable_audio(
-			ap, static_cast<ExportCodec::Codec>(
-					OAK_CONFIG("AudioRecordingCodec").toInt()));
-		encode_param.set_filename(recording_filename_);
-		encode_param.set_audio_bit_rate(
+										  .toStdString()),
+			OAK_CONFIG("AudioRecordingCodec").toInt());
+		oakengine_encoding_params_set_filename(
+			encode_param, recording_filename_.toUtf8().constData());
+		oakengine_encoding_params_set_audio_bit_rate(
+			encode_param,
 			OAK_CONFIG("AudioRecordingBitRate").toInt() * 1000);
 
-		QString error;
-		if (AudioManager::instance()->start_recording(encode_param, &error)) {
+		char errbuf[256];
+		const int rec_ret = oakengine_encoding_start_audio_recording(
+			encode_param, errbuf, static_cast<int>(sizeof(errbuf)));
+		oakengine_encoding_params_destroy(encode_param);
+
+		if (rec_ret == OAKENGINE_OK) {
 			recording_ = true;
 			controls_->set_pause_button_recording_state(true);
 			recording_callback_->enable_recording_overlay(
@@ -1560,7 +2069,9 @@ void ViewerWidget::play(bool in_to_out_only)
 		} else {
 			QMessageBox::critical(
 				this, tr("Audio Recording"),
-				tr("Failed to start audio recording: %1").arg(error));
+				tr("Failed to start audio recording: %1").arg(
+					errbuf[0] ? QString::fromUtf8(errbuf)
+							  : tr("Unknown error")));
 			return;
 		}
 	}
@@ -1640,18 +2151,12 @@ void ViewerWidget::TimebaseChangedEvent(const Rational &timebase)
 	length_changed_slot(get_connected_node() ? get_connected_node()->get_length() : 0);
 }
 
-void ViewerWidget::playback_poll_update()
+void ViewerWidget::playback_timer_update()
 {
-	if (!playback_ || !is_playing() || !get_connected_node()) {
-		return;
-	}
+	Q_ASSERT(playback_speed_ != 0);
 
-	// The facade playback engine owns the master clock; poll its
-	// position for the playhead, boundary and loop policy (the min/max
-	// part of the old playback_timer_update).
-	int64_t pos_ts = 0;
-	oakengine_playback_get_position(playback_, &pos_ts);
-	Rational current_time = Timecode::timestamp_to_time(pos_ts, timebase());
+	Rational current_time = Timecode::timestamp_to_time(
+		display_widget_->timer()->get_timestamp_now(), timebase());
 
 	Rational min_time, max_time;
 
@@ -1683,21 +2188,31 @@ void ViewerWidget::playback_poll_update()
 	bool play_after_pause = false;
 
 	if ((!recording_ || recording_range_.out() != recording_range_.in()) &&
-		current_time >= max_time) {
-		// We've reached the end of whatever range we're playing and should either pause
-		// or restart playback (negative speeds are out of scope this round).
+		((playback_speed_ < 0 && current_time <= min_time) ||
+		 (playback_speed_ > 0 && current_time >= max_time))) {
+		// Determine which timestamp we tripped
+		Rational tripped_time;
+
+		if (current_time <= min_time) {
+			tripped_time = min_time;
+		} else {
+			tripped_time = max_time;
+		}
+
+		// Signal that we've reached the end of whatever range we're playing and should either pause
+		// or restart playback
 		end_of_line = true;
 
 		if (OAK_CONFIG("Loop").toBool() && !recording_) {
-			// If we're looping, jump back to the start of the range and continue
-			time_to_set = min_time;
+			// If we're looping, jump to the other side of the workarea and continue
+			time_to_set = (tripped_time == min_time) ? max_time : min_time;
 
 			// Signal to restart playback after the pause signalled by `end_of_line`
 			play_after_pause = true;
 
 		} else {
 			// Pause at the boundary we tripped
-			time_to_set = max_time;
+			time_to_set = tripped_time;
 		}
 
 	} else {
@@ -1709,15 +2224,10 @@ void ViewerWidget::playback_poll_update()
 	// pausing. Even if we pause it later with `end_of_line`, we prefer pausing after setting the time
 	// so that an audio scrub event, etc. isn't sent.
 	time_changed_from_timer_ = true;
-	get_connected_node()->set_playhead(time_to_set);
+	oakengine_viewer_set_playhead(
+		reinterpret_cast<OakEngineNode *>(get_connected_node()),
+		time_to_set.numerator(), time_to_set.denominator());
 	time_changed_from_timer_ = false;
-
-	// Feed the display clocks and purge consumed queue entries.
-	foreach (ViewerDisplayWidget *dw, playback_devices_) {
-		dw->set_playback_timestamp(pos_ts);
-		dw->queue()->purge_before(current_time, playback_speed_);
-	}
-
 	if (end_of_line) {
 		// Cache the current speed
 		int current_speed = playback_speed_;
@@ -1726,6 +2236,20 @@ void ViewerWidget::playback_poll_update()
 		if (play_after_pause) {
 			play_internal(current_speed, play_in_to_out_only_);
 		}
+	}
+
+	if (is_playing() && is_video_visible()) {
+		while ((int(display_widget_->queue()->size()) +
+				queue_watchers_.size()) < determine_playback_queue_size()) {
+			if (!request_next_frame_for_queue()) {
+				// Prevent infinite loop
+				break;
+			}
+		}
+	}
+
+	foreach (ViewerDisplayWidget *dw, playback_devices_) {
+		dw->queue()->purge_before(current_time, playback_speed_);
 	}
 }
 
@@ -1762,10 +2286,10 @@ void ViewerWidget::length_changed_slot(const Rational &length)
 	}
 }
 
-void ViewerWidget::interlacing_changed_slot(VideoParams::Interlacing interlacing)
+void ViewerWidget::interlacing_changed_slot(int interlacing)
 {
 	// Automatically set a "sane" deinterlacing option
-	bool deint = interlacing != VideoParams::k_interlace_none;
+	bool deint = interlacing != 0; // k_interlace_none
 
 	foreach (ViewerDisplayWidget *dw, playback_devices_) {
 		dw->set_deinterlacing(deint);
@@ -1774,7 +2298,7 @@ void ViewerWidget::interlacing_changed_slot(VideoParams::Interlacing interlacing
 
 void ViewerWidget::update_renderer_video_parameters()
 {
-	VideoParams vp = get_connected_node()->get_video_params();
+	VideoParams vp = viewer_output_video_params(get_connected_node());
 
 	foreach (ViewerDisplayWidget *dw, playback_devices_) {
 		dw->set_video_params(vp);
@@ -1783,7 +2307,7 @@ void ViewerWidget::update_renderer_video_parameters()
 
 void ViewerWidget::update_renderer_audio_parameters()
 {
-	AudioParams ap = get_connected_node()->get_audio_params();
+	AudioParams ap = viewer_output_audio_params(get_connected_node());
 
 	update_audio_processor();
 
@@ -1817,14 +2341,14 @@ void ViewerWidget::update_waveform_mode_from_menu(QAction *a)
 
 void ViewerWidget::drag_entered(QDragEnterEvent *event)
 {
-	if (event->mimeData()->formats().contains(Project::k_item_mime_type)) {
+	if (event->mimeData()->formats().contains(QString::fromUtf8(oakengine_project_item_mime_type()))) {
 		event->accept();
 	}
 }
 
 void ViewerWidget::dropped(QDropEvent *event)
 {
-	QByteArray mimedata = event->mimeData()->data(Project::k_item_mime_type);
+	QByteArray mimedata = event->mimeData()->data(QString::fromUtf8(oakengine_project_item_mime_type()));
 	QDataStream stream(&mimedata, QIODevice::ReadOnly);
 
 	// Variables to deserialize into

@@ -24,7 +24,8 @@
 #include <QMessageBox>
 
 #include "node/block/clip/clip.h"
-#include "node/nodeundo.h"
+#include "oakengine/node.h"
+#include "oakengine/undo.h"
 #include "widget/menu/factorymenu.h"
 
 namespace olive
@@ -160,7 +161,7 @@ void NodeParamViewContext::add_effect_menu_item_triggered(QAction *a)
 
 	if (n) {
 		NodeInput new_node_input = n->get_effect_input();
-		MultiUndoCommand *command = new MultiUndoCommand();
+		void *command = oakengine_undo_command_create_multi();
 
 		QVector<Project *> graphs_added_to;
 
@@ -168,29 +169,51 @@ void NodeParamViewContext::add_effect_menu_item_triggered(QAction *a)
 			NodeInput ctx_input = ctx->get_effect_input();
 
 			if (!graphs_added_to.contains(ctx->parent())) {
-				command->add_child(new NodeAddCommand(ctx->parent(), n));
+				oakengine_undo_command_multi_add_child(
+					command,
+					oakengine_node_add_to_project_command(
+						reinterpret_cast<OakEngineProject *>(ctx->parent()),
+						reinterpret_cast<OakEngineNode *>(n)));
 				graphs_added_to.append(ctx->parent());
 			}
 
-			command->add_child(new NodeSetPositionCommand(
-				n, ctx, ctx->get_node_position_in_context(ctx)));
-			command->add_child(new NodeSetPositionCommand(
-				ctx, ctx, ctx->get_node_position_in_context(ctx) + QPointF(1, 0)));
+			oakengine_undo_command_multi_add_child(
+				command, oakengine_node_set_position_command(reinterpret_cast<void *>(n), reinterpret_cast<void *>(ctx), ctx->get_node_position_in_context(ctx).x(), ctx->get_node_position_in_context(ctx).y(), 0));
+			oakengine_undo_command_multi_add_child(
+				command, oakengine_node_set_position_command(
+					reinterpret_cast<void *>(ctx), reinterpret_cast<void *>(ctx),
+					ctx->get_node_position_in_context(ctx).x() + 1,
+					ctx->get_node_position_in_context(ctx).y(), 0));
 
 			if (ctx_input.is_connected()) {
 				Node *prev_output = ctx_input.get_connected_output();
 
-				command->add_child(
-					new NodeEdgeRemoveCommand(prev_output, ctx_input));
-				command->add_child(
-					new NodeEdgeAddCommand(prev_output, new_node_input));
+				oakengine_undo_command_multi_add_child(
+					command,
+					oakengine_node_disconnect_command(
+						reinterpret_cast<OakEngineNode *>(ctx_input.node()),
+						ctx_input.input().toUtf8().constData(),
+						ctx_input.element()));
+				oakengine_undo_command_multi_add_child(
+					command,
+					oakengine_node_connect_command(
+						reinterpret_cast<OakEngineNode *>(prev_output),
+						reinterpret_cast<OakEngineNode *>(new_node_input.node()),
+						new_node_input.input().toUtf8().constData(),
+						new_node_input.element()));
 			}
 
-			command->add_child(new NodeEdgeAddCommand(n, ctx_input));
+			oakengine_undo_command_multi_add_child(
+				command,
+				oakengine_node_connect_command(
+					reinterpret_cast<OakEngineNode *>(n),
+					reinterpret_cast<OakEngineNode *>(ctx_input.node()),
+					ctx_input.input().toUtf8().constData(),
+					ctx_input.element()));
 		}
 
-		Core::instance()->undo_stack()->push(
-			command, tr("Added %1 to Node Chain").arg(n->name()));
+		oakengine_undo_push(
+			command, tr("Added %1 to Node Chain").arg(n->name()).toUtf8().constData());
 	}
 }
 

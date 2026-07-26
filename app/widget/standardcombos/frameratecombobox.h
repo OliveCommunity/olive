@@ -28,7 +28,7 @@
 #include <QInputDialog>
 #include <QMessageBox>
 
-#include "render/videoparams.h"
+#include "oakengine/videoparams.h"
 
 namespace olive
 {
@@ -164,17 +164,32 @@ private:
 
 		inner_->clear();
 
-		foreach (const Rational &fr, VideoParams::k_supported_frame_rates) {
-			inner_->addItem(VideoParams::frame_rate_to_string(fr),
-							QVariant::fromValue(fr));
+		{
+			const int n = oakengine_video_params_supported_frame_rate_count();
+			for (int i = 0; i < n; i++) {
+				int num, den;
+				oakengine_video_params_supported_frame_rate_at(i, &num, &den);
+				char buf[64];
+				oakengine_video_params_frame_rate_to_string(num, den, buf,
+															sizeof(buf));
+				Rational fr(num, den);
+				inner_->addItem(QString::fromUtf8(buf),
+								QVariant::fromValue(fr));
+			}
 		}
 
 		if (custom_rate_.isNull()) {
 			inner_->addItem(tr("Custom..."));
 		} else {
-			inner_->addItem(
-				tr("Custom (%1)")
-					.arg(VideoParams::frame_rate_to_string(custom_rate_)));
+			{
+				char buf[64];
+				oakengine_video_params_frame_rate_to_string(
+					custom_rate_.numerator(), custom_rate_.denominator(), buf,
+					sizeof(buf));
+				inner_->addItem(
+					tr("Custom (%1)")
+						.arg(QString::fromUtf8(buf)));
+		}
 		}
 
 		// On the first populate there is no current index (-1); select the

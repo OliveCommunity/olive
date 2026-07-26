@@ -23,7 +23,7 @@
 #define OAK_PROJECTSAVEMANAGER_H
 
 #include "node/project.h"
-#include "node/project/serializer/mainwindowlayoutinfo.h"
+#include "node/project/serializer/serializedlayoutinfo.h"
 #include "task/task.h"
 
 namespace olive
@@ -44,7 +44,7 @@ public:
 		override_filename_ = filename;
 	}
 
-	void set_layout(const MainWindowLayoutInfo &layout)
+	void set_layout(const SerializedLayoutInfo &layout)
 	{
 		layout_ = layout;
 	}
@@ -59,7 +59,7 @@ private:
 
 	bool use_compression_;
 
-	MainWindowLayoutInfo layout_;
+	SerializedLayoutInfo layout_;
 };
 
 }

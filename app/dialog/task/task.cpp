@@ -24,29 +24,42 @@
 #include <QFutureWatcher>
 #include <QtConcurrent>
 
+#include "oakengine/task.h"
+
 namespace olive
 {
 
 #define super ProgressDialog
 
-TaskDialog::TaskDialog(Task *task, const QString &title, QWidget *parent)
-	: super(task->get_title(), title, parent)
+TaskDialog::TaskDialog(OakEngineTask *task, const QString &title, QWidget *parent)
+	: super([&]() {
+			char buf[512];
+			buf[0] = '\0';
+			oakengine_task_title(task, buf, sizeof(buf));
+			return QString::fromUtf8(buf);
+		}(), title, parent)
 	, task_(task)
 	, destroy_on_close_(true)
 	, already_shown_(false)
 	, task_finished_(false)
 {
-	// Clear task when this dialog is destroyed
-	task_->setParent(this);
+	bridge_ = new EngineEventBridge(this);
+	bridge_->subscribe(task, OAKENGINE_EVENT_TASK_PROGRESS);
+	connect(bridge_, &EngineEventBridge::task_progress, this,
+			[this](OakEngineTask *, double progress) {
+				set_progress(progress);
+			}, Qt::QueuedConnection);
 
-	// Connect the save manager progress signal to the progress bar update on the dialog
-	connect(task_, &Task::progress_changed, this, &TaskDialog::set_progress,
-			Qt::QueuedConnection);
+	connect(this, &TaskDialog::cancelled, this, [this]() {
+		oakengine_task_cancel(task_);
+	}, Qt::DirectConnection);
+}
 
-	// Connect cancel signal (must be a direct connection or it'll be queued after the task has
-	// already finished)
-	connect(this, &TaskDialog::cancelled, task_, &Task::Cancel,
-			Qt::DirectConnection);
+TaskDialog::~TaskDialog()
+{
+	if (task_) {
+		oakengine_task_free(task_);
+	}
 }
 
 void TaskDialog::showEvent(QShowEvent *e)
@@ -54,20 +67,15 @@ void TaskDialog::showEvent(QShowEvent *e)
 	super::showEvent(e);
 
 	if (!already_shown_) {
-		// Create watcher for when the task finishes
 		QFutureWatcher<bool> *task_watcher = new QFutureWatcher<bool>();
 
-		// Listen for when the task finishes
 		connect(task_watcher, &QFutureWatcher<bool>::finished, this,
 				&TaskDialog::task_finished, Qt::QueuedConnection);
 
-		// Run task in another thread with QtConcurrent
 		task_watcher->setFuture(
-#if QT_VERSION_MAJOR >= 6
-			QtConcurrent::run(&Task::start, task_)
-#else
-			QtConcurrent::run(task_, &Task::Start)
-#endif
+			QtConcurrent::run([this]() -> bool {
+				return oakengine_task_start_sync(task_) == 1;
+			})
 		);
 
 		already_shown_ = true;
@@ -76,19 +84,12 @@ void TaskDialog::showEvent(QShowEvent *e)
 
 void TaskDialog::closeEvent(QCloseEvent *e)
 {
-	// Cancel task if it is running
-	task_->Cancel();
+	oakengine_task_cancel(task_);
 
-	// Standard close function
 	super::closeEvent(e);
 
-	// Reset shown
 	already_shown_ = false;
 
-	// Clean up this task and dialog, but only if the task has actually finished.
-	// If the user closes the window while the task is still running, deleting now
-	// would destroy the Task object out from under the worker thread and crash
-	// when the task later touches its own members (e.g. ExportTask::encoder_).
 	if (destroy_on_close_ && task_finished_) {
 		deleteLater();
 	}
@@ -104,7 +105,10 @@ void TaskDialog::task_finished()
 	if (task_watcher->result()) {
 		emit task_succeeded(task_);
 	} else {
-		show_error_message(tr("Task Failed"), task_->get_error());
+		char err[512];
+		err[0] = '\0';
+		oakengine_task_error(task_, err, sizeof(err));
+		show_error_message(tr("Task Failed"), QString::fromUtf8(err));
 		emit task_failed(task_);
 	}
 

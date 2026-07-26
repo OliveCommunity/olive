@@ -30,6 +30,7 @@
 #include <QWidget>
 
 #include "node/node.h"
+#include "engineeventbridge.h"
 #include "nodeparamviewarraywidget.h"
 #include "nodeparamviewconnectedlabel.h"
 #include "nodeparamviewkeyframecontrol.h"
@@ -67,7 +68,7 @@ public:
 	void set_input_checked(const NodeInput &input, bool e);
 
 signals:
-	void request_select_node(Node *node);
+	void request_select_node(OakEngineNode *node);
 
 	void array_expanded_changed(bool e);
 
@@ -128,6 +129,8 @@ private:
 
 	QHash<NodeInputPair, NodeInputPair> input_group_lookup_;
 
+	EngineEventBridge *bridge_ = nullptr;
+
 	/**
    * @brief The column to place the keyframe controls in
    *
@@ -147,11 +150,12 @@ private:
 	static const int k_max_widget_column;
 
 private slots:
-	void edge_changed(Node *output, const NodeInput &input);
+	void edge_changed(OakEngineNode *output, const NodeInput &input);
 
 	void array_collapse_btn_pressed(bool checked);
 
-	void input_array_size_changed(const QString &input, int old_sz, int size);
+	void input_array_size_changed(OakEngineNode *source,
+								  const QString &input, int old_sz, int size);
 
 	void array_append_clicked();
 
@@ -219,7 +223,7 @@ public:
 	}
 
 signals:
-	void request_select_node(Node *node);
+	void request_select_node(OakEngineNode *node);
 
 	void array_expanded_changed(bool e);
 
@@ -250,6 +254,8 @@ private:
 	Rational timebase_;
 
 	KeyframeView::NodeConnections keyframe_connections_;
+
+	EngineEventBridge *bridge_ = nullptr;
 
 private slots:
 	void recreate_body();

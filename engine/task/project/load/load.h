@@ -23,7 +23,7 @@
 #define OAK_PROJECTLOADMANAGER_H
 
 #include "loadbasetask.h"
-#include "node/project/serializer/mainwindowlayoutinfo.h"
+#include "node/project/serializer/serializedlayoutinfo.h"
 
 namespace olive
 {

@@ -114,6 +114,16 @@ extern QIcon subtitles;
 extern QIcon color_picker;
 
 /**
+ * @brief Look up a loaded icon by its resource name
+ *
+ * Engine-side metadata (e.g. Node::data(Node::icon)) carries icon identity as a
+ * plain resource name string ("folder", "video", ...) so the headless engine
+ * never has to depend on QIcon. This maps such a name back to the corresponding
+ * globally loaded icon. Returns a null QIcon for unknown names.
+ */
+QIcon from_name(const QString &name);
+
+/**
  * @brief Create an icon object loaded from file
  *
  * Using `name`, this function will load icon files to create an icon object that can be used throughout the
