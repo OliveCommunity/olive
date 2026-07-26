@@ -24,6 +24,7 @@
 // handle lookup and default path mutation. Runs headless; no GPU required.
 
 #include <assert.h>
+#include <gtest/gtest.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -53,8 +54,8 @@ static void settings_handler(const char *folder_path, void *parent_window,
 {
 	(void) parent_window;
 	(void) userdata;
-	assert(folder_path != NULL);
-	assert(strlen(folder_path) > 0);
+	EXPECT_TRUE(folder_path != NULL);
+	EXPECT_TRUE(strlen(folder_path) > 0);
 	strncpy(g_handler_path, folder_path, sizeof(g_handler_path) - 1);
 	g_handler_path[sizeof(g_handler_path) - 1] = '\0';
 	g_handler_call_count++;
@@ -65,21 +66,21 @@ static void test_instance_lifecycle(void)
 	char buf[512];
 
 	// DiskManager is created by oakengine_init(HEADLESS).
-	assert(oakengine_disk_get_default_cache_path(buf, sizeof(buf)) > 0);
+	EXPECT_TRUE(oakengine_disk_get_default_cache_path(buf, sizeof(buf)) > 0);
 
 	// Destroy is allowed and idempotent.
-	assert(oakengine_disk_destroy_instance() == OAKENGINE_OK);
-	assert(oakengine_disk_get_default_cache_path(buf, sizeof(buf)) ==
+	EXPECT_TRUE(oakengine_disk_destroy_instance() == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_disk_get_default_cache_path(buf, sizeof(buf)) ==
 		   OAKENGINE_E_STATE);
-	assert(oakengine_disk_destroy_instance() == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_disk_destroy_instance() == OAKENGINE_OK);
 
 	// Create recreates the instance.
-	assert(oakengine_disk_create_instance() == OAKENGINE_OK);
-	assert(oakengine_disk_get_default_cache_path(buf, sizeof(buf)) > 0);
+	EXPECT_TRUE(oakengine_disk_create_instance() == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_disk_get_default_cache_path(buf, sizeof(buf)) > 0);
 
 	// Create is idempotent.
-	assert(oakengine_disk_create_instance() == OAKENGINE_OK);
-	assert(oakengine_disk_get_default_cache_path(buf, sizeof(buf)) > 0);
+	EXPECT_TRUE(oakengine_disk_create_instance() == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_disk_get_default_cache_path(buf, sizeof(buf)) > 0);
 }
 
 static void test_default_cache_path(void)
@@ -88,28 +89,28 @@ static void test_default_cache_path(void)
 	memset(buf, 0, sizeof(buf));
 
 	const int len = oakengine_disk_get_default_cache_path(buf, sizeof(buf));
-	assert(len > 0);
-	assert((int) strlen(buf) == len);
-	assert(strchr(buf, '/') != NULL || strchr(buf, '\\') != NULL);
+	EXPECT_TRUE(len > 0);
+	EXPECT_TRUE((int) strlen(buf) == len);
+	EXPECT_TRUE(strchr(buf, '/') != NULL || strchr(buf, '\\') != NULL);
 
 	// Query length with NULL buffer.
-	assert(oakengine_disk_get_default_cache_path(NULL, 0) == len);
+	EXPECT_TRUE(oakengine_disk_get_default_cache_path(NULL, 0) == len);
 }
 
 static void test_open_folder_handle(void)
 {
 	char buf[512];
-	assert(oakengine_disk_get_default_cache_path(buf, sizeof(buf)) > 0);
+	EXPECT_TRUE(oakengine_disk_get_default_cache_path(buf, sizeof(buf)) > 0);
 
 	void *folder = oakengine_disk_get_open_folder(buf);
-	assert(folder != NULL);
+	EXPECT_TRUE(folder != NULL);
 
 	// NULL/empty path returns the default folder handle.
 	void *default_folder = oakengine_disk_get_open_folder(nullptr);
-	assert(default_folder == folder);
+	EXPECT_TRUE(default_folder == folder);
 
 	void *empty_folder = oakengine_disk_get_open_folder("");
-	assert(empty_folder == folder);
+	EXPECT_TRUE(empty_folder == folder);
 
 	// A different path opens a distinct folder.
 	char tmp[256];
@@ -123,20 +124,20 @@ static void test_open_folder_handle(void)
 
 #if defined(_WIN32)
 	char *tmpdir = _mktemp(tmp);
-	assert(tmpdir != NULL);
-	assert(_mkdir(tmpdir) == 0);
+	EXPECT_TRUE(tmpdir != NULL);
+	EXPECT_TRUE(_mkdir(tmpdir) == 0);
 #else
 	char *tmpdir = mkdtemp(tmp);
-	assert(tmpdir != NULL);
+	EXPECT_TRUE(tmpdir != NULL);
 #endif
 
 	void *other_folder = oakengine_disk_get_open_folder(tmpdir);
-	assert(other_folder != NULL);
-	assert(other_folder != folder);
+	EXPECT_TRUE(other_folder != NULL);
+	EXPECT_TRUE(other_folder != folder);
 
 	// The same path returns the same handle.
 	void *other_folder_again = oakengine_disk_get_open_folder(tmpdir);
-	assert(other_folder_again == other_folder);
+	EXPECT_TRUE(other_folder_again == other_folder);
 
 #if defined(_WIN32)
 	_rmdir(tmpdir);
@@ -159,11 +160,11 @@ static void test_clear_cache(void)
 
 #if defined(_WIN32)
 	char *tmpdir = _mktemp(path);
-	assert(tmpdir != NULL);
-	assert(_mkdir(tmpdir) == 0);
+	EXPECT_TRUE(tmpdir != NULL);
+	EXPECT_TRUE(_mkdir(tmpdir) == 0);
 #else
 	char *tmpdir = mkdtemp(path);
-	assert(tmpdir != NULL);
+	EXPECT_TRUE(tmpdir != NULL);
 #endif
 
 	char index_file[512];
@@ -175,17 +176,17 @@ static void test_clear_cache(void)
 #endif
 
 	FILE *f = fopen(index_file, "w");
-	assert(f != NULL);
+	EXPECT_TRUE(f != NULL);
 	fclose(f);
 
 	// clear_cache opens the folder and clears its contents.
-	assert(oakengine_disk_clear_cache(tmpdir) == 1);
+	EXPECT_TRUE(oakengine_disk_clear_cache(tmpdir) == 1);
 
 	// Re-create a file and clear again to ensure idempotency.
 	f = fopen(index_file, "w");
-	assert(f != NULL);
+	EXPECT_TRUE(f != NULL);
 	fclose(f);
-	assert(oakengine_disk_clear_cache(tmpdir) == 1);
+	EXPECT_TRUE(oakengine_disk_clear_cache(tmpdir) == 1);
 
 #if defined(_WIN32)
 	_rmdir(tmpdir);
@@ -198,49 +199,49 @@ static void test_settings_handler_round_trip(void)
 {
 	reset_handler_state();
 
-	assert(oakengine_disk_set_settings_handler(settings_handler, NULL) ==
+	EXPECT_TRUE(oakengine_disk_set_settings_handler(settings_handler, NULL) ==
 		   OAKENGINE_OK);
 
 	// NULL path uses the default folder.
-	assert(oakengine_disk_show_settings_dialog(NULL, NULL) == OAKENGINE_OK);
-	assert(g_handler_call_count == 1);
-	assert(strlen(g_handler_path) > 0);
+	EXPECT_TRUE(oakengine_disk_show_settings_dialog(NULL, NULL) == OAKENGINE_OK);
+	EXPECT_TRUE(g_handler_call_count == 1);
+	EXPECT_TRUE(strlen(g_handler_path) > 0);
 
 	// Calling again with a specific path invokes the handler with that path.
-	assert(oakengine_disk_show_settings_dialog(g_handler_path, NULL) ==
+	EXPECT_TRUE(oakengine_disk_show_settings_dialog(g_handler_path, NULL) ==
 		   OAKENGINE_OK);
-	assert(g_handler_call_count == 2);
-	assert(strcmp(g_handler_path, g_handler_path) == 0);
+	EXPECT_TRUE(g_handler_call_count == 2);
+	EXPECT_TRUE(strcmp(g_handler_path, g_handler_path) == 0);
 
 	// Clearing the handler is allowed and results in a logged skip.
-	assert(oakengine_disk_set_settings_handler(NULL, NULL) == OAKENGINE_OK);
-	assert(oakengine_disk_show_settings_dialog(g_handler_path, NULL) ==
+	EXPECT_TRUE(oakengine_disk_set_settings_handler(NULL, NULL) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_disk_show_settings_dialog(g_handler_path, NULL) ==
 		   OAKENGINE_OK);
-	assert(g_handler_call_count == 2);
+	EXPECT_TRUE(g_handler_call_count == 2);
 }
 
 static void test_invalidate_project(void)
 {
 	// No instance returns an error.
-	assert(oakengine_disk_destroy_instance() == OAKENGINE_OK);
-	assert(oakengine_disk_invalidate_project(NULL) == OAKENGINE_E_STATE);
+	EXPECT_TRUE(oakengine_disk_destroy_instance() == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_disk_invalidate_project(NULL) == OAKENGINE_E_STATE);
 
-	assert(oakengine_disk_create_instance() == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_disk_create_instance() == OAKENGINE_OK);
 
 	// NULL project is accepted (signal emitted with null pointer).
-	assert(oakengine_disk_invalidate_project(NULL) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_disk_invalidate_project(NULL) == OAKENGINE_OK);
 
 	// Valid project returns OK without crashing.
 	OakEngineProject *project = oakengine_project_create();
-	assert(project != NULL);
-	assert(oakengine_disk_invalidate_project(project) == OAKENGINE_OK);
+	EXPECT_TRUE(project != NULL);
+	EXPECT_TRUE(oakengine_disk_invalidate_project(project) == OAKENGINE_OK);
 	oakengine_project_free(project);
 }
 
 static void test_set_default_cache_path(void)
 {
 	char original[512];
-	assert(oakengine_disk_get_default_cache_path(original, sizeof(original)) >
+	EXPECT_TRUE(oakengine_disk_get_default_cache_path(original, sizeof(original)) >
 		   0);
 
 	char tmp[256];
@@ -254,23 +255,23 @@ static void test_set_default_cache_path(void)
 
 #if defined(_WIN32)
 	char *tmpdir = _mktemp(tmp);
-	assert(tmpdir != NULL);
-	assert(_mkdir(tmpdir) == 0);
+	EXPECT_TRUE(tmpdir != NULL);
+	EXPECT_TRUE(_mkdir(tmpdir) == 0);
 #else
 	char *tmpdir = mkdtemp(tmp);
-	assert(tmpdir != NULL);
+	EXPECT_TRUE(tmpdir != NULL);
 #endif
 
-	assert(oakengine_disk_set_default_cache_path(tmpdir) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_disk_set_default_cache_path(tmpdir) == OAKENGINE_OK);
 
 	char updated[512];
-	assert(oakengine_disk_get_default_cache_path(updated, sizeof(updated)) > 0);
-	assert(strcmp(updated, tmpdir) == 0);
+	EXPECT_TRUE(oakengine_disk_get_default_cache_path(updated, sizeof(updated)) > 0);
+	EXPECT_TRUE(strcmp(updated, tmpdir) == 0);
 
 	// Restore original default path.
-	assert(oakengine_disk_set_default_cache_path(original) == OAKENGINE_OK);
-	assert(oakengine_disk_get_default_cache_path(updated, sizeof(updated)) > 0);
-	assert(strcmp(updated, original) == 0);
+	EXPECT_TRUE(oakengine_disk_set_default_cache_path(original) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_disk_get_default_cache_path(updated, sizeof(updated)) > 0);
+	EXPECT_TRUE(strcmp(updated, original) == 0);
 
 #if defined(_WIN32)
 	_rmdir(tmpdir);
@@ -279,9 +280,9 @@ static void test_set_default_cache_path(void)
 #endif
 }
 
-int main(void)
+TEST(OakEngineDisk, Main)
 {
-	assert(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
 
 	test_instance_lifecycle();
 	test_default_cache_path();
@@ -297,5 +298,4 @@ int main(void)
 	oakengine_shutdown();
 
 	printf("oakengine_disk_test: OK\n");
-	return 0;
 }

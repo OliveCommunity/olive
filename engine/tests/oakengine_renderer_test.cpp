@@ -32,6 +32,7 @@
 // footage tests/demo.mp4 feeds its samples input.
 
 #include <assert.h>
+#include <gtest/gtest.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -81,13 +82,13 @@ static void make_tmpdir(void)
 #if defined(_WIN32)
 	char base[MAX_PATH];
 	const DWORD len = GetTempPathA(MAX_PATH, base);
-	assert(len > 0 && len < MAX_PATH);
+	EXPECT_TRUE(len > 0 && len < MAX_PATH);
 	snprintf(g_tmpdir, sizeof(g_tmpdir), "%soakengine_renderer_test_%lu",
 			 base, (unsigned long)GetCurrentProcessId());
-	assert(_mkdir(g_tmpdir) == 0);
+	EXPECT_TRUE(_mkdir(g_tmpdir) == 0);
 #else
 	strcpy(g_tmpdir, "/tmp/oakengine_renderer_test_XXXXXX");
-	assert(mkdtemp(g_tmpdir) != NULL);
+	EXPECT_TRUE(mkdtemp(g_tmpdir) != NULL);
 #endif
 }
 
@@ -158,40 +159,40 @@ static int frame_nonzero_bytes(const OakEngineFrame *frame)
 static void test_validation(OakEngineSequence *seq)
 {
 	// create() argument validation.
-	assert(oakengine_renderer_create(NULL, 320, 180, 4, 30000, 1001, NULL) ==
+	EXPECT_TRUE(oakengine_renderer_create(NULL, 320, 180, 4, 30000, 1001, NULL) ==
 		   NULL);
-	assert(oakengine_renderer_create(seq, 0, 180, 4, 30000, 1001, NULL) ==
+	EXPECT_TRUE(oakengine_renderer_create(seq, 0, 180, 4, 30000, 1001, NULL) ==
 		   NULL);
-	assert(oakengine_renderer_create(seq, 320, -1, 4, 30000, 1001, NULL) ==
+	EXPECT_TRUE(oakengine_renderer_create(seq, 320, -1, 4, 30000, 1001, NULL) ==
 		   NULL);
-	assert(oakengine_renderer_create(seq, 320, 180, 4, 0, 1001, NULL) ==
+	EXPECT_TRUE(oakengine_renderer_create(seq, 320, 180, 4, 0, 1001, NULL) ==
 		   NULL);
-	assert(oakengine_renderer_create(seq, 320, 180, 4, 30000, -1001, NULL) ==
+	EXPECT_TRUE(oakengine_renderer_create(seq, 320, 180, 4, 30000, -1001, NULL) ==
 		   NULL);
-	assert(oakengine_renderer_create(seq, 320, 180, -1, 30000, 1001, NULL) ==
+	EXPECT_TRUE(oakengine_renderer_create(seq, 320, 180, -1, 30000, 1001, NULL) ==
 		   NULL);
-	assert(oakengine_renderer_create(seq, 320, 180, 5, 30000, 1001, NULL) ==
+	EXPECT_TRUE(oakengine_renderer_create(seq, 320, 180, 5, 30000, 1001, NULL) ==
 		   NULL);
 
 	OakEngineRenderer *r =
 		oakengine_renderer_create(seq, 320, 180, 4, 30000, 1001, NULL);
-	assert(r != NULL);
+	EXPECT_TRUE(r != NULL);
 
 	// Mode follows olive::RenderMode: 0/1 accepted, everything else rejected.
-	assert(oakengine_renderer_set_mode(r, 0) == OAKENGINE_OK);
-	assert(oakengine_renderer_set_mode(r, 1) == OAKENGINE_OK);
-	assert(oakengine_renderer_set_mode(r, -1) == OAKENGINE_E_INVALID);
-	assert(oakengine_renderer_set_mode(r, 2) == OAKENGINE_E_INVALID);
-	assert(oakengine_renderer_set_mode(NULL, 0) == OAKENGINE_E_INVALID);
+	EXPECT_TRUE(oakengine_renderer_set_mode(r, 0) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_renderer_set_mode(r, 1) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_renderer_set_mode(r, -1) == OAKENGINE_E_INVALID);
+	EXPECT_TRUE(oakengine_renderer_set_mode(r, 2) == OAKENGINE_E_INVALID);
+	EXPECT_TRUE(oakengine_renderer_set_mode(NULL, 0) == OAKENGINE_E_INVALID);
 
 	// Renders fail while the engine lacks the RENDER bit, with a
 	// human-readable reason.
-	assert(oakengine_renderer_render_frame(r, 0) == NULL);
+	EXPECT_TRUE(oakengine_renderer_render_frame(r, 0) == NULL);
 	char err[256];
-	assert(oakengine_renderer_last_error(r, err, sizeof(err)) > 0);
-	assert(strstr(err, "OAKENGINE_INIT_RENDER") != NULL);
-	assert(oakengine_renderer_render_audio(r, 0, 30) == NULL);
-	assert(oakengine_renderer_last_error(r, err, sizeof(err)) > 0);
+	EXPECT_TRUE(oakengine_renderer_last_error(r, err, sizeof(err)) > 0);
+	EXPECT_TRUE(strstr(err, "OAKENGINE_INIT_RENDER") != NULL);
+	EXPECT_TRUE(oakengine_renderer_render_audio(r, 0, 30) == NULL);
+	EXPECT_TRUE(oakengine_renderer_last_error(r, err, sizeof(err)) > 0);
 
 	// cancel is a no-op when nothing is in flight and is idempotent.
 	oakengine_renderer_cancel(r);
@@ -200,23 +201,23 @@ static void test_validation(OakEngineSequence *seq)
 	oakengine_renderer_free(r);
 
 	// NULL safety across all three handle families.
-	assert(oakengine_renderer_last_error(NULL, err, sizeof(err)) ==
+	EXPECT_TRUE(oakengine_renderer_last_error(NULL, err, sizeof(err)) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_renderer_render_frame(NULL, 0) == NULL);
-	assert(oakengine_renderer_render_audio(NULL, 0, 30) == NULL);
+	EXPECT_TRUE(oakengine_renderer_render_frame(NULL, 0) == NULL);
+	EXPECT_TRUE(oakengine_renderer_render_audio(NULL, 0, 30) == NULL);
 	oakengine_renderer_cancel(NULL);
 	oakengine_renderer_free(NULL);
-	assert(oakengine_frame_width(NULL) == 0);
-	assert(oakengine_frame_height(NULL) == 0);
-	assert(oakengine_frame_format(NULL) == -1);
-	assert(oakengine_frame_channel_count(NULL) == 0);
-	assert(oakengine_frame_linesize_bytes(NULL) == 0);
-	assert(oakengine_frame_data(NULL) == NULL);
+	EXPECT_TRUE(oakengine_frame_width(NULL) == 0);
+	EXPECT_TRUE(oakengine_frame_height(NULL) == 0);
+	EXPECT_TRUE(oakengine_frame_format(NULL) == -1);
+	EXPECT_TRUE(oakengine_frame_channel_count(NULL) == 0);
+	EXPECT_TRUE(oakengine_frame_linesize_bytes(NULL) == 0);
+	EXPECT_TRUE(oakengine_frame_data(NULL) == NULL);
 	oakengine_frame_free(NULL);
-	assert(oakengine_audio_sample_rate(NULL) == 0);
-	assert(oakengine_audio_channel_count(NULL) == 0);
-	assert(oakengine_audio_sample_count(NULL) == 0);
-	assert(oakengine_audio_data(NULL, 0) == NULL);
+	EXPECT_TRUE(oakengine_audio_sample_rate(NULL) == 0);
+	EXPECT_TRUE(oakengine_audio_channel_count(NULL) == 0);
+	EXPECT_TRUE(oakengine_audio_sample_count(NULL) == 0);
+	EXPECT_TRUE(oakengine_audio_data(NULL, 0) == NULL);
 	oakengine_audio_free(NULL);
 }
 
@@ -224,32 +225,32 @@ static void test_render_cache_helpers(void)
 {
 	// Without an active RenderManager, these return OAKENGINE_E_STATE rather
 	// than crashing.
-	assert(oakengine_render_cache_set_display_color_processor(NULL) ==
+	EXPECT_TRUE(oakengine_render_cache_set_display_color_processor(NULL) ==
 		   OAKENGINE_E_STATE);
-	assert(oakengine_render_cache_set_multicam_node(NULL) ==
+	EXPECT_TRUE(oakengine_render_cache_set_multicam_node(NULL) ==
 		   OAKENGINE_E_STATE);
 }
 
-int main(void)
+TEST(OakEngineRenderer, Main)
 {
 	make_tmpdir();
 
 	// Sandbox the config/cache/data locations (see oakengine_init_test).
 #if !defined(_WIN32)
-	assert(setenv("XDG_CONFIG_HOME", g_tmpdir, 1) == 0);
-	assert(setenv("XDG_CACHE_HOME", g_tmpdir, 1) == 0);
-	assert(setenv("XDG_DATA_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_CONFIG_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_CACHE_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_DATA_HOME", g_tmpdir, 1) == 0);
 #endif
 
 	// HEADLESS is enough for the validation part and creates the offscreen
 	// application object the backend probe below depends on.
-	assert(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
 
 	OakEngineProject *project = oakengine_project_create();
-	assert(project != NULL);
-	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	EXPECT_TRUE(project != NULL);
+	EXPECT_TRUE(oakengine_project_new(project) == OAKENGINE_OK);
 	OakEngineSequence *seq = oakengine_sequence_new(project, "Render");
-	assert(seq != NULL);
+	EXPECT_TRUE(seq != NULL);
 
 	test_render_cache_helpers();
 	test_validation(seq);
@@ -260,14 +261,14 @@ int main(void)
 			   "available, render assertions skipped\n");
 		oakengine_project_free(project);
 		oakengine_shutdown();
-		return 0;
+		return;
 	}
 	if (!worker_binary_exists()) {
 		printf("oakengine_renderer_test: SKIP: oak-render-worker binary not "
 			   "found, render assertions skipped\n");
 		oakengine_project_free(project);
 		oakengine_shutdown();
-		return 0;
+		return;
 	}
 
 	// The engine renders through the backend requested in the config.
@@ -275,9 +276,9 @@ int main(void)
 		QStringLiteral("opengl");
 
 	// Upgrade HEADLESS -> HEADLESS|RENDER (idempotent flag add).
-	assert(oakengine_init(OAKENGINE_INIT_HEADLESS | OAKENGINE_INIT_RENDER) ==
+	EXPECT_TRUE(oakengine_init(OAKENGINE_INIT_HEADLESS | OAKENGINE_INIT_RENDER) ==
 		   OAKENGINE_OK);
-	assert(oakengine_init_flags() ==
+	EXPECT_TRUE(oakengine_init_flags() ==
 		   (OAKENGINE_INIT_HEADLESS | OAKENGINE_INIT_RENDER));
 
 	// Build content through the engine C++ API (engine-internal test; the
@@ -296,10 +297,10 @@ int main(void)
 	const QString demo_path =
 		QDir(QStringLiteral(OAK_TEST_SOURCE_DIR))
 			.filePath(QStringLiteral("tests/demo.mp4"));
-	assert(QFileInfo::exists(demo_path));
+	EXPECT_TRUE(QFileInfo::exists(demo_path));
 	auto *footage = new olive::Footage(demo_path);
 	footage->setParent(proj);
-	assert(footage->is_valid());
+	EXPECT_TRUE(footage->is_valid());
 	olive::Node::connect_edge(
 		footage,
 		olive::NodeInput(sequence, olive::ViewerOutput::k_samples_input));
@@ -307,7 +308,7 @@ int main(void)
 	// render_frame: geometry/format and non-black pixels.
 	OakEngineRenderer *renderer =
 		oakengine_renderer_create(seq, 320, 180, 4, 30000, 1001, NULL);
-	assert(renderer != NULL);
+	EXPECT_TRUE(renderer != NULL);
 	OakEngineFrame *frame = oakengine_renderer_render_frame(renderer, 0);
 	char err[256];
 	if (!frame) {
@@ -316,14 +317,14 @@ int main(void)
 					err :
 					"(no error)");
 	}
-	assert(frame != NULL);
-	assert(oakengine_frame_width(frame) == 320);
-	assert(oakengine_frame_height(frame) == 180);
-	assert(oakengine_frame_format(frame) == 4); // f32
-	assert(oakengine_frame_channel_count(frame) == 4);
-	assert(oakengine_frame_linesize_bytes(frame) >= 320 * 4 * 4);
-	assert(oakengine_frame_data(frame) != NULL);
-	assert(frame_nonzero_bytes(frame) > 0); // solid red, not black
+	EXPECT_TRUE(frame != NULL);
+	EXPECT_TRUE(oakengine_frame_width(frame) == 320);
+	EXPECT_TRUE(oakengine_frame_height(frame) == 180);
+	EXPECT_TRUE(oakengine_frame_format(frame) == 4); // f32
+	EXPECT_TRUE(oakengine_frame_channel_count(frame) == 4);
+	EXPECT_TRUE(oakengine_frame_linesize_bytes(frame) >= 320 * 4 * 4);
+	EXPECT_TRUE(oakengine_frame_data(frame) != NULL);
+	EXPECT_TRUE(frame_nonzero_bytes(frame) > 0); // solid red, not black
 	oakengine_frame_free(frame);
 
 	// render_audio: 30 frames at 1001/30000 = 1.001s at 48 kHz stereo.
@@ -335,14 +336,14 @@ int main(void)
 					err :
 					"(no error)");
 	}
-	assert(audio != NULL);
-	assert(oakengine_audio_sample_rate(audio) == 48000);
-	assert(oakengine_audio_channel_count(audio) == 2);
+	EXPECT_TRUE(audio != NULL);
+	EXPECT_TRUE(oakengine_audio_sample_rate(audio) == 48000);
+	EXPECT_TRUE(oakengine_audio_channel_count(audio) == 2);
 	const int64_t samples = oakengine_audio_sample_count(audio);
-	assert(samples > 48048 - 4800 && samples < 48048 + 4800);
-	assert(oakengine_audio_data(audio, 0) != NULL);
-	assert(oakengine_audio_data(audio, 1) != NULL);
-	assert(oakengine_audio_data(audio, 2) == NULL); // out of range
+	EXPECT_TRUE(samples > 48048 - 4800 && samples < 48048 + 4800);
+	EXPECT_TRUE(oakengine_audio_data(audio, 0) != NULL);
+	EXPECT_TRUE(oakengine_audio_data(audio, 1) != NULL);
+	EXPECT_TRUE(oakengine_audio_data(audio, 2) == NULL); // out of range
 	oakengine_audio_free(audio);
 
 	// Cancelling mid-render from another thread must not crash, and the
@@ -355,14 +356,12 @@ int main(void)
 	canceller.join();
 	oakengine_frame_free(maybe); // may be NULL (cancelled) or a frame
 	OakEngineFrame *after = oakengine_renderer_render_frame(renderer, 0);
-	assert(after != NULL);
+	EXPECT_TRUE(after != NULL);
 	oakengine_frame_free(after);
 	oakengine_renderer_cancel(renderer); // idempotent no-op
 
 	oakengine_renderer_free(renderer);
 	oakengine_project_free(project);
-	assert(oakengine_shutdown() == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_shutdown() == OAKENGINE_OK);
 
-	printf("oakengine_renderer_test: all assertions passed\n");
-	return 0;
 }

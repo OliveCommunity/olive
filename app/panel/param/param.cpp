@@ -64,7 +64,7 @@ void ParamPanel::set_contexts(const QVector<Node *> &contexts)
 
 void ParamPanel::retranslate()
 {
-	set_title(tr("Parameter Editor"));
+	set_title(tr("Inspector"));
 }
 
 }

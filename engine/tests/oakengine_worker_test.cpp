@@ -26,6 +26,7 @@
 // here is a validation/error path that never touches a render backend.
 
 #include <assert.h>
+#include <gtest/gtest.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,11 +40,11 @@ static char *handle(OakWorkerSession *session, const char *line)
 {
 	const int needed =
 		oakengine_worker_session_handle_json(session, line, NULL, 0);
-	assert(needed >= 0);
+	EXPECT_TRUE(needed >= 0);
 	char *buf = static_cast<char *>(malloc(size_t(needed) + 1));
 	const int written = oakengine_worker_session_handle_json(
 		session, line, buf, needed + 1);
-	assert(written == needed);
+	EXPECT_TRUE(written == needed);
 	buf[needed] = '\0';
 	return buf;
 }
@@ -55,7 +56,7 @@ static void assert_is_error_with(const char *response, const char *needle)
 		fprintf(stderr,
 				"expected error response containing \"%s\", got: %s\n",
 				needle, response);
-		assert(0);
+		EXPECT_TRUE(0);
 	}
 }
 
@@ -65,51 +66,51 @@ static void test_create_destroy(void)
 	const char *backends[] = { NULL, "", "none", "NONE" };
 	for (size_t i = 0; i < sizeof(backends) / sizeof(backends[0]); ++i) {
 		OakWorkerSession *s = oakengine_worker_session_create(backends[i]);
-		assert(s);
-		assert(oakengine_worker_session_has_renderer(s) == 0);
-		assert(oakengine_worker_session_shutdown_requested(s) == 0);
+		EXPECT_TRUE(s);
+		EXPECT_TRUE(oakengine_worker_session_has_renderer(s) == 0);
+		EXPECT_TRUE(oakengine_worker_session_shutdown_requested(s) == 0);
 		oakengine_worker_session_free(s);
 	}
 	// NULL tolerance
 	oakengine_worker_session_free(NULL);
-	assert(oakengine_worker_session_has_renderer(NULL) == 0);
-	assert(oakengine_worker_session_shutdown_requested(NULL) == 0);
-	assert(oakengine_worker_session_handle_json(NULL, "{}", NULL, 0) == -1);
+	EXPECT_TRUE(oakengine_worker_session_has_renderer(NULL) == 0);
+	EXPECT_TRUE(oakengine_worker_session_shutdown_requested(NULL) == 0);
+	EXPECT_TRUE(oakengine_worker_session_handle_json(NULL, "{}", NULL, 0) == -1);
 }
 
 static void test_startup_handshake(void)
 {
 	OakWorkerSession *s = oakengine_worker_session_create("none");
-	assert(s);
+	EXPECT_TRUE(s);
 
 	// buf/size query convention
 	const int needed =
 		oakengine_worker_session_startup_handshake(s, NULL, 0);
-	assert(needed > 0);
+	EXPECT_TRUE(needed > 0);
 	char *buf = static_cast<char *>(malloc(size_t(needed) + 1));
-	assert(oakengine_worker_session_startup_handshake(s, buf, needed + 1) ==
+	EXPECT_TRUE(oakengine_worker_session_startup_handshake(s, buf, needed + 1) ==
 		   needed);
 	buf[needed] = '\0';
-	assert(strstr(buf, "\"type\":\"handshake\""));
-	assert(strstr(buf, "\"protocol_version\":1"));
+	EXPECT_TRUE(strstr(buf, "\"type\":\"handshake\""));
+	EXPECT_TRUE(strstr(buf, "\"protocol_version\":1"));
 	// No renderer -> no GL version announced
-	assert(!strstr(buf, "gl_major"));
+	EXPECT_TRUE(!strstr(buf, "gl_major"));
 	free(buf);
 
-	assert(oakengine_worker_session_startup_handshake(NULL, NULL, 0) == -1);
+	EXPECT_TRUE(oakengine_worker_session_startup_handshake(NULL, NULL, 0) == -1);
 	oakengine_worker_session_free(s);
 }
 
 static void test_initialize_runtime(void)
 {
 	// NULL tolerance
-	assert(oakengine_worker_session_initialize_runtime(NULL) == 0);
+	EXPECT_TRUE(oakengine_worker_session_initialize_runtime(NULL) == 0);
 
 	// Runtime init (EngineCore, factories, managers) must succeed without a
 	// renderer; the session stays usable for control messages afterwards.
 	OakWorkerSession *s = oakengine_worker_session_create("none");
-	assert(s);
-	assert(oakengine_worker_session_initialize_runtime(s) == 1);
+	EXPECT_TRUE(s);
+	EXPECT_TRUE(oakengine_worker_session_initialize_runtime(s) == 1);
 	char *r = handle(s, "{\"type\":\"teleport\"}");
 	assert_is_error_with(r, "unknown message type");
 	free(r);
@@ -165,7 +166,7 @@ static void test_render_frame_before_load_graph(void)
 					 "\"node_uuid\":\"abc\",\"time_num\":0,\"time_den\":1}");
 	assert_is_error_with(r, "render_frame received before load_graph");
 	// The error carries the ticket id so the caller can correlate
-	assert(strstr(r, "\"ticket\":7"));
+	EXPECT_TRUE(strstr(r, "\"ticket\":7"));
 	free(r);
 	oakengine_worker_session_free(s);
 }
@@ -194,15 +195,15 @@ static void test_shutdown_idempotent(void)
 
 	// Shutdown produces no response and latches the flag
 	char *r = handle(s, "{\"type\":\"shutdown\"}");
-	assert(r[0] == '\0');
+	EXPECT_TRUE(r[0] == '\0');
 	free(r);
-	assert(oakengine_worker_session_shutdown_requested(s) == 1);
+	EXPECT_TRUE(oakengine_worker_session_shutdown_requested(s) == 1);
 
 	// Repeating it is a harmless no-op
 	r = handle(s, "{\"type\":\"shutdown\"}");
-	assert(r[0] == '\0');
+	EXPECT_TRUE(r[0] == '\0');
 	free(r);
-	assert(oakengine_worker_session_shutdown_requested(s) == 1);
+	EXPECT_TRUE(oakengine_worker_session_shutdown_requested(s) == 1);
 
 	// The session still answers other messages afterwards
 	r = handle(s, "{\"type\":\"teleport\"}");
@@ -216,12 +217,12 @@ static void test_cancel_is_silent(void)
 {
 	OakWorkerSession *s = oakengine_worker_session_create("none");
 	char *r = handle(s, "{\"type\":\"cancel\",\"ticket\":3}");
-	assert(r[0] == '\0');
+	EXPECT_TRUE(r[0] == '\0');
 	free(r);
 	oakengine_worker_session_free(s);
 }
 
-int main(void)
+TEST(OakEngineWorker, Main)
 {
 	test_create_destroy();
 	test_startup_handshake();
@@ -233,5 +234,4 @@ int main(void)
 	test_load_graph_missing_file();
 	test_shutdown_idempotent();
 	test_cancel_is_silent();
-	return 0;
 }

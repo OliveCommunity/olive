@@ -161,18 +161,38 @@ void TrackViewItem::line_edit_cancelled()
 
 void TrackViewItem::update_label()
 {
+	// Per the UI design reference, tracks are identified by an NLE-style
+	// type+number prefix (V1/V2 for video, A1/A2 for audio, S1 for subtitle)
+	// followed by the track's custom label or default name.
+	QString prefix;
+	switch (track_->type()) {
+	case Track::k_video:
+		prefix = QStringLiteral("V%1").arg(track_->index() + 1);
+		break;
+	case Track::k_audio:
+		prefix = QStringLiteral("A%1").arg(track_->index() + 1);
+		break;
+	case Track::k_subtitle:
+		prefix = QStringLiteral("S%1").arg(track_->index() + 1);
+		break;
+	}
+
 	char label_buf[256];
 	oakengine_node_get_label(
 		reinterpret_cast<OakEngineNode *>(track_),
 		label_buf, sizeof(label_buf));
+	QString display;
 	if (label_buf[0]) {
-		label_->setText(QString::fromUtf8(label_buf));
+		display = QString::fromUtf8(label_buf);
 	} else {
 		oakengine_node_get_name(
 			reinterpret_cast<OakEngineNode *>(track_),
 			label_buf, sizeof(label_buf));
-		label_->setText(QString::fromUtf8(label_buf));
+		display = QString::fromUtf8(label_buf);
 	}
+
+	label_->setText(prefix.isEmpty() ? display
+									 : QStringLiteral("%1  %2").arg(prefix, display));
 }
 
 void TrackViewItem::show_context_menu(const QPoint &p)

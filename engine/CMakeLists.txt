@@ -241,17 +241,22 @@ endif ()
 # and must not depend on OpenGL/Vulkan.
 if (BUILD_TESTS)
     enable_testing()
+    include(GoogleTest)
 
-    function(make_oakengine_test name)
+    function(make_oakengine_gtest name)
         # oakengine leaves olive::k_app_version to the final executable; the
         # version object library provides it (same as worker/CMakeLists.txt).
+        # Each facade test keeps its own binary because the tests have
+        # heterogeneous oakengine_init() flag requirements; the shared
+        # gtest_main.cpp only bootstraps Google Test (RUN_ALL_TESTS).
         add_executable(${name}
                 tests/${name}.cpp
+                tests/gtest_main.cpp
                 $<TARGET_OBJECTS:olive-version-obj>
         )
         # Link the object library directly to bypass the version-script
         # restrictions on liboakengine.so (tests are internal consumers).
-        target_link_libraries(${name} PRIVATE oakengine-obj)
+        target_link_libraries(${name} PRIVATE oakengine-obj GTest::gtest)
         target_include_directories(${name} PRIVATE
                 "${CMAKE_CURRENT_SOURCE_DIR}/include"
         )
@@ -261,53 +266,53 @@ if (BUILD_TESTS)
         if (UNIX AND NOT APPLE)
             target_link_options(${name} PRIVATE "LINKER:--export-dynamic")
         endif ()
-        add_test(${name} ${name})
+        gtest_discover_tests(${name})
     endfunction()
 
-    make_oakengine_test(oakengine_ipc_test)
+    make_oakengine_gtest(oakengine_ipc_test)
 
-    make_oakengine_test(oakengine_worker_test)
+    make_oakengine_gtest(oakengine_worker_test)
 
-    make_oakengine_test(oakengine_init_test)
+    make_oakengine_gtest(oakengine_init_test)
 
-    make_oakengine_test(oakengine_app_test)
+    make_oakengine_gtest(oakengine_app_test)
     # Resolves the real test assets (tests/demo.mp4, the footage fixture
     # project) relative to the repository root, like tests/gtest does.
     target_compile_definitions(oakengine_init_test PRIVATE
             OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
 
-    make_oakengine_test(oakengine_task_test)
+    make_oakengine_gtest(oakengine_task_test)
     # The task test creates temporary projects and imports non-existent files,
     # so it only needs the headless engine services.
 
-    make_oakengine_test(oakengine_config_test)
+    make_oakengine_gtest(oakengine_config_test)
     # The config test exercises the QSettings-backed key/value store through
     # the C ABI; it is headless and does not touch the disk cache.
 
-    make_oakengine_test(oakengine_audio_test)
+    make_oakengine_gtest(oakengine_audio_test)
     # The audio test exercises the AudioManager instance lifecycle, device
     # get/set round-trips and the output_params_changed event. It is headless
     # and only needs PortAudio initialization.
 
-    make_oakengine_test(oakengine_disk_test)
+    make_oakengine_gtest(oakengine_disk_test)
     # The disk test exercises the DiskManager instance lifecycle, default cache
     # path queries, cache clearing, settings handler dispatch and default path
     # mutation. It is headless and only touches temporary directories.
 
-    make_oakengine_test(oakengine_proxy_test)
+    make_oakengine_gtest(oakengine_proxy_test)
     # The proxy test exercises proxy parameter defaults, state string
     # round-trips and the ProxyManager singleton lifecycle. It is headless.
 
-    make_oakengine_test(oakengine_lut_test)
+    make_oakengine_gtest(oakengine_lut_test)
     # The LUT test exercises directory/file list queries and the
     # set_directories round-trip. It is headless.
 
-    make_oakengine_test(oakengine_serializer_test)
+    make_oakengine_gtest(oakengine_serializer_test)
     # The serializer test exercises compressed-project detection, clipboard
     # create/free/copy and empty-node copy. It is headless.
 
-    make_oakengine_test(oakengine_renderer_test)
+    make_oakengine_gtest(oakengine_renderer_test)
     # The renderer test builds sequence content through the engine C++ API
     # (allowed for engine-internal tests) and probes the dynamic render
     # backend the same way the gtest harness does, so it needs the internal
@@ -338,26 +343,26 @@ if (BUILD_TESTS)
         add_dependencies(oakengine_renderer_test olive-render-worker)
     endif ()
 
-    make_oakengine_test(oakengine_footage_test)
+    make_oakengine_gtest(oakengine_footage_test)
     target_compile_definitions(oakengine_footage_test PRIVATE
             OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
 
-    make_oakengine_test(oakengine_timeline_edit_test)
+    make_oakengine_gtest(oakengine_timeline_edit_test)
     target_compile_definitions(oakengine_timeline_edit_test PRIVATE
             OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
 
-    make_oakengine_test(oakengine_events_test)
+    make_oakengine_gtest(oakengine_events_test)
     target_compile_definitions(oakengine_events_test PRIVATE
             OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
 
-    make_oakengine_test(oakengine_encoding_test)
+    make_oakengine_gtest(oakengine_encoding_test)
 
-    make_oakengine_test(oakengine_color_test)
+    make_oakengine_gtest(oakengine_color_test)
 
-    make_oakengine_test(oakengine_export_test)
+    make_oakengine_gtest(oakengine_export_test)
     # The export test builds sequence content through the engine C++ API and
     # probes the dynamic render backend like oakengine_renderer_test does.
     target_include_directories(oakengine_export_test PRIVATE
@@ -384,29 +389,29 @@ if (BUILD_TESTS)
         add_dependencies(oakengine_export_test olive-render-worker)
     endif ()
 
-    make_oakengine_test(oakengine_node_test)
+    make_oakengine_gtest(oakengine_node_test)
 
-    make_oakengine_test(oakengine_nodevalue_test)
+    make_oakengine_gtest(oakengine_nodevalue_test)
     target_compile_definitions(oakengine_node_test PRIVATE
             OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
 
-    make_oakengine_test(oakengine_keyframe_test)
+    make_oakengine_gtest(oakengine_keyframe_test)
     target_compile_definitions(oakengine_keyframe_test PRIVATE
             OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
 
-    make_oakengine_test(oakengine_viewer_test)
+    make_oakengine_gtest(oakengine_viewer_test)
     target_compile_definitions(oakengine_viewer_test PRIVATE
             OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
 
-    make_oakengine_test(oakengine_traverse_test)
+    make_oakengine_gtest(oakengine_traverse_test)
     target_compile_definitions(oakengine_traverse_test PRIVATE
             OAK_TEST_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
     )
 
-    make_oakengine_test(oakengine_preview_test)
+    make_oakengine_gtest(oakengine_preview_test)
     # The preview test needs audio rendering (RenderManager + workers).
     target_include_directories(oakengine_preview_test PRIVATE
             ${CMAKE_SOURCE_DIR}/third_party/openfx/include
@@ -429,7 +434,7 @@ if (BUILD_TESTS)
         add_dependencies(oakengine_preview_test olive-render-worker)
     endif ()
 
-    make_oakengine_test(oakengine_playback_test)
+    make_oakengine_gtest(oakengine_playback_test)
     # The playback test builds sequence content through the engine C++ API
     # and pulls frames through the render worker pool (same needs as
     # oakengine_renderer_test).
@@ -457,7 +462,7 @@ if (BUILD_TESTS)
         add_dependencies(oakengine_playback_test olive-render-worker)
     endif ()
 
-    make_oakengine_test(oakengine_sync_test)
+    make_oakengine_gtest(oakengine_sync_test)
     # The sync test renders the clips' audio through the worker pool (same
     # needs as oakengine_playback_test).
     target_include_directories(oakengine_sync_test PRIVATE

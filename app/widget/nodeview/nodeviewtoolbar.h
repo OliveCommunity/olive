@@ -41,6 +41,12 @@ signals:
 
 	void mini_map_enabled_toggled(bool e);
 
+	void zoom_in_clicked();
+
+	void zoom_out_clicked();
+
+	void fit_clicked();
+
 protected:
 	virtual void changeEvent(QEvent *e) override;
 
@@ -52,6 +58,12 @@ private:
 	QPushButton *add_node_btn_;
 
 	QPushButton *minimap_btn_;
+
+	QPushButton *zoom_in_btn_;
+
+	QPushButton *zoom_out_btn_;
+
+	QPushButton *fit_btn_;
 };
 
 }

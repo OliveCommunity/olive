@@ -207,7 +207,10 @@ void NodeParamViewConnectedLabel::update_label()
 void NodeParamViewConnectedLabel::update_value_tree()
 {
 	if (value_tree_ && viewer_ && value_tree_->isVisible()) {
-		value_tree_->set_node(input_, viewer_->get_playhead());
+		int64_t pn, pd;
+		oakengine_viewer_get_playhead(
+			reinterpret_cast<OakEngineNode *>(viewer_), &pn, &pd);
+		value_tree_->set_node(input_, Rational(pn, pd));
 	}
 }
 

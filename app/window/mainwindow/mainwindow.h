@@ -25,8 +25,6 @@
 #include <kddockwidgets/Config.h>
 #include <kddockwidgets/MainWindow.h>
 
-#include <QToolBar>
-
 #include "node/project/serializer/serializedlayoutinfo.h"
 #include "node/project.h"
 #include "panel/multicam/multicampanel.h"
@@ -55,6 +53,7 @@ namespace olive
 {
 
 class EngineEventBridge;
+class MainStatusBar;
 
 /**
  * @brief Olive's main window responsible for docking widgets and the main menu bar.
@@ -154,9 +153,6 @@ private:
 
 	QByteArray premaximized_state_;
 
-	// Application toolbar (31px, replaces the dockable ToolPanel by default)
-	QToolBar *tool_bar_;
-
 	// Standard panels
 	ProjectPanel *project_panel_;
 	NodePanel *node_panel_;
@@ -170,6 +166,7 @@ private:
 	AudioMonitorPanel *audio_monitor_panel_;
 	TaskManagerPanel *task_man_panel_;
 	EngineEventBridge *event_bridge_;
+	MainStatusBar *status_bar_;
 	PixelSamplerPanel *pixel_sampler_panel_;
 	ScopePanel *scope_panel_;
 	QList<ViewerPanel *> viewer_panels_;

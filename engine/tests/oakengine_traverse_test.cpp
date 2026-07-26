@@ -28,6 +28,7 @@
 // needed.
 
 #include <assert.h>
+#include <gtest/gtest.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -51,13 +52,13 @@ static void make_tmpdir(void)
 #if defined(_WIN32)
 	char base[MAX_PATH];
 	const DWORD len = GetTempPathA(MAX_PATH, base);
-	assert(len > 0 && len < MAX_PATH);
+	EXPECT_TRUE(len > 0 && len < MAX_PATH);
 	snprintf(g_tmpdir, sizeof(g_tmpdir), "%soakengine_traverse_test_%lu", base,
 			 (unsigned long)GetCurrentProcessId());
-	assert(_mkdir(g_tmpdir) == 0);
+	EXPECT_TRUE(_mkdir(g_tmpdir) == 0);
 #else
 	strcpy(g_tmpdir, "/tmp/oakengine_traverse_test_XXXXXX");
-	assert(mkdtemp(g_tmpdir) != NULL);
+	EXPECT_TRUE(mkdtemp(g_tmpdir) != NULL);
 #endif
 }
 
@@ -67,46 +68,46 @@ static void test_null_robustness(OakEngineNode *solid)
 {
 	double m[6];
 
-	assert(oakengine_traverse_generate_database(NULL, 0, 1, 1, 1) == NULL);
-	assert(oakengine_traverse_generate_table(NULL, 0, 1, 1, 1) == NULL);
+	EXPECT_TRUE(oakengine_traverse_generate_database(NULL, 0, 1, 1, 1) == NULL);
+	EXPECT_TRUE(oakengine_traverse_generate_table(NULL, 0, 1, 1, 1) == NULL);
 	// Zero denominators are invalid rationals.
-	assert(oakengine_traverse_generate_database(solid, 0, 0, 1, 1) == NULL);
-	assert(oakengine_traverse_generate_table(solid, 0, 1, 1, 0) == NULL);
+	EXPECT_TRUE(oakengine_traverse_generate_database(solid, 0, 0, 1, 1) == NULL);
+	EXPECT_TRUE(oakengine_traverse_generate_table(solid, 0, 1, 1, 0) == NULL);
 
 	oakengine_traverse_db_free(NULL); // no-op
 
-	assert(oakengine_traverse_db_input_count(NULL) == 0);
-	assert(oakengine_traverse_db_input_id(NULL, 0) == NULL);
-	assert(oakengine_traverse_db_row_count(NULL, 0) == 0);
-	assert(oakengine_traverse_row_type(NULL, 0, 0) == OAK_NODE_VALUE_NONE);
-	assert(oakengine_traverse_row_source(NULL, 0, 0) == NULL);
-	assert(oakengine_traverse_row_tag(NULL, 0, 0) != NULL); // never NULL
-	assert(oakengine_traverse_row_value_string(NULL, 0, 0) == NULL);
-	assert(oakengine_traverse_row_split_count(NULL, 0, 0) == 0);
-	assert(oakengine_traverse_row_split_string(NULL, 0, 0, 0) == NULL);
+	EXPECT_TRUE(oakengine_traverse_db_input_count(NULL) == 0);
+	EXPECT_TRUE(oakengine_traverse_db_input_id(NULL, 0) == NULL);
+	EXPECT_TRUE(oakengine_traverse_db_row_count(NULL, 0) == 0);
+	EXPECT_TRUE(oakengine_traverse_row_type(NULL, 0, 0) == OAK_NODE_VALUE_NONE);
+	EXPECT_TRUE(oakengine_traverse_row_source(NULL, 0, 0) == NULL);
+	EXPECT_TRUE(oakengine_traverse_row_tag(NULL, 0, 0) != NULL); // never NULL
+	EXPECT_TRUE(oakengine_traverse_row_value_string(NULL, 0, 0) == NULL);
+	EXPECT_TRUE(oakengine_traverse_row_split_count(NULL, 0, 0) == 0);
+	EXPECT_TRUE(oakengine_traverse_row_split_string(NULL, 0, 0, 0) == NULL);
 
-	assert(oakengine_traverse_table_element_index_for_hint(NULL, "x", -1,
+	EXPECT_TRUE(oakengine_traverse_table_element_index_for_hint(NULL, "x", -1,
 														   NULL) == -1);
 
 	// generate_row: the C side can only exercise the error paths -- the
 	// real output is an olive::NodeValueRow (a C++ QHash typedef), which a
 	// pure C test cannot allocate. The filled-row path is covered by the
 	// application (the viewer display gizmo drag-start path).
-	assert(oakengine_traverse_generate_row(NULL, 0, 1, 1, 1, NULL, 0, 0,
+	EXPECT_TRUE(oakengine_traverse_generate_row(NULL, 0, 1, 1, 1, NULL, 0, 0,
 										   (void *)1) == OAKENGINE_E_INVALID);
-	assert(oakengine_traverse_generate_row(solid, 0, 1, 1, 1, NULL, 0, 0,
+	EXPECT_TRUE(oakengine_traverse_generate_row(solid, 0, 1, 1, 1, NULL, 0, 0,
 										   NULL) == OAKENGINE_E_INVALID);
 
-	assert(oakengine_traverse_transform(NULL, solid, 0, 1, 1, 1, NULL, m) ==
+	EXPECT_TRUE(oakengine_traverse_transform(NULL, solid, 0, 1, 1, 1, NULL, m) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_traverse_transform(solid, NULL, 0, 1, 1, 1, NULL, m) ==
+	EXPECT_TRUE(oakengine_traverse_transform(solid, NULL, 0, 1, 1, 1, NULL, m) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_traverse_transform(solid, solid, 0, 1, 1, 1, NULL,
+	EXPECT_TRUE(oakengine_traverse_transform(solid, solid, 0, 1, 1, 1, NULL,
 										NULL) == OAKENGINE_E_INVALID);
 
-	assert(oakengine_node_set_value_hint(NULL, "x", -1, OAK_NODE_VALUE_COLOR,
+	EXPECT_TRUE(oakengine_node_set_value_hint(NULL, "x", -1, OAK_NODE_VALUE_COLOR,
 										 0, NULL) == OAKENGINE_E_INVALID);
-	assert(oakengine_node_set_value_hint(solid, NULL, -1,
+	EXPECT_TRUE(oakengine_node_set_value_hint(solid, NULL, -1,
 										 OAK_NODE_VALUE_COLOR, 0,
 										 NULL) == OAKENGINE_E_INVALID);
 }
@@ -119,58 +120,58 @@ static void test_database(OakEngineNode *solid)
 
 	OakEngineTraverseDb *db =
 		oakengine_traverse_generate_database(solid, 0, 1, 1, 1);
-	assert(db != NULL);
+	EXPECT_TRUE(db != NULL);
 
 	// One entry per node input, in the node's input order (deterministic).
 	const int node_inputs = oakengine_node_input_count(solid);
-	assert(node_inputs >= 2);
-	assert(oakengine_traverse_db_input_count(db) == node_inputs);
+	EXPECT_TRUE(node_inputs >= 2);
+	EXPECT_TRUE(oakengine_traverse_db_input_count(db) == node_inputs);
 	for (int i = 0; i < node_inputs; i++) {
-		assert(oakengine_node_input_id(solid, i, buf, sizeof(buf)) > 0);
+		EXPECT_TRUE(oakengine_node_input_id(solid, i, buf, sizeof(buf)) > 0);
 		const char *id = oakengine_traverse_db_input_id(db, i);
-		assert(id != NULL);
-		assert(strcmp(id, buf) == 0);
+		EXPECT_TRUE(id != NULL);
+		EXPECT_TRUE(strcmp(id, buf) == 0);
 
 		// Every input of an unconnected Solid generator produces one row
 		// (its standard value).
 		const int rows = oakengine_traverse_db_row_count(db, i);
-		assert(rows >= 1);
+		EXPECT_TRUE(rows >= 1);
 		for (int r = 0; r < rows; r++) {
 			// Type is a valid facade value type for plain inputs
 			// (enabled_in is BOOL, color_in is COLOR).
 			const int type = oakengine_traverse_row_type(db, i, r);
-			assert(type > OAK_NODE_VALUE_NONE);
+			EXPECT_TRUE(type > OAK_NODE_VALUE_NONE);
 			// Source: the value's originating node, or NULL; the solid's
 			// standard values are sourced from the node itself.
 			OakEngineNode *src = oakengine_traverse_row_source(db, i, r);
-			assert(src == NULL || src == solid);
+			EXPECT_TRUE(src == NULL || src == solid);
 			// Tag may be empty but never NULL.
-			assert(oakengine_traverse_row_tag(db, i, r) != NULL);
+			EXPECT_TRUE(oakengine_traverse_row_tag(db, i, r) != NULL);
 			// Value string is non-empty for these value types.
 			const char *vs = oakengine_traverse_row_value_string(db, i, r);
-			assert(vs != NULL);
-			assert(vs[0] != '\0');
+			EXPECT_TRUE(vs != NULL);
+			EXPECT_TRUE(vs[0] != '\0');
 			// Split values: at least one track, each with a string.
 			const int splits = oakengine_traverse_row_split_count(db, i, r);
-			assert(splits >= 1);
+			EXPECT_TRUE(splits >= 1);
 			for (int s = 0; s < splits; s++) {
-				assert(oakengine_traverse_row_split_string(db, i, r, s) !=
+				EXPECT_TRUE(oakengine_traverse_row_split_string(db, i, r, s) !=
 					   NULL);
 			}
-			assert(oakengine_traverse_row_split_string(db, i, r, splits) ==
+			EXPECT_TRUE(oakengine_traverse_row_split_string(db, i, r, splits) ==
 				   NULL);
 		}
 	}
 
 	// Out-of-range accessors fail cleanly.
-	assert(oakengine_traverse_db_input_id(db, node_inputs) == NULL);
-	assert(oakengine_traverse_db_row_count(db, node_inputs) == 0);
-	assert(oakengine_traverse_row_type(db, node_inputs, 0) ==
+	EXPECT_TRUE(oakengine_traverse_db_input_id(db, node_inputs) == NULL);
+	EXPECT_TRUE(oakengine_traverse_db_row_count(db, node_inputs) == 0);
+	EXPECT_TRUE(oakengine_traverse_row_type(db, node_inputs, 0) ==
 		   OAK_NODE_VALUE_NONE);
 
 	// A multi-entry database is not a generate_table result: the hint
 	// lookup rejects it.
-	assert(oakengine_traverse_table_element_index_for_hint(solid, "color_in",
+	EXPECT_TRUE(oakengine_traverse_table_element_index_for_hint(solid, "color_in",
 														   -1, db) == -1);
 
 	oakengine_traverse_db_free(db);
@@ -182,35 +183,35 @@ static void test_table_and_hints(OakEngineNode *solid, OakEngineNode *lut)
 {
 	OakEngineTraverseDb *db =
 		oakengine_traverse_generate_table(solid, 0, 1, 1, 1);
-	assert(db != NULL);
-	assert(oakengine_traverse_db_input_count(db) == 1);
+	EXPECT_TRUE(db != NULL);
+	EXPECT_TRUE(oakengine_traverse_db_input_count(db) == 1);
 	// The single output table is keyed by an empty input id.
 	const char *id = oakengine_traverse_db_input_id(db, 0);
-	assert(id != NULL);
-	assert(id[0] == '\0');
-	assert(oakengine_traverse_db_row_count(db, 0) >= 1);
+	EXPECT_TRUE(id != NULL);
+	EXPECT_TRUE(id[0] == '\0');
+	EXPECT_TRUE(oakengine_traverse_db_row_count(db, 0) >= 1);
 
 	// set_value_hint: unknown input ids and bogus types are rejected.
-	assert(oakengine_node_set_value_hint(solid, "not_an_input", -1,
+	EXPECT_TRUE(oakengine_node_set_value_hint(solid, "not_an_input", -1,
 										 OAK_NODE_VALUE_COLOR, 0,
 										 NULL) == OAKENGINE_E_NOT_FOUND);
-	assert(oakengine_node_set_value_hint(solid, "color_in", -1, 999, 0,
+	EXPECT_TRUE(oakengine_node_set_value_hint(solid, "color_in", -1, 999, 0,
 										 NULL) == OAKENGINE_E_INVALID);
 
 	// The solid's output table holds texture rows. A hint preferring COLOR
 	// values (set on the lut's texture input) matches nothing -> -1.
-	assert(oakengine_node_set_value_hint(lut, "tex_in", -1,
+	EXPECT_TRUE(oakengine_node_set_value_hint(lut, "tex_in", -1,
 										 OAK_NODE_VALUE_COLOR, -1,
 										 NULL) == OAKENGINE_OK);
-	assert(oakengine_traverse_table_element_index_for_hint(lut, "tex_in", -1,
+	EXPECT_TRUE(oakengine_traverse_table_element_index_for_hint(lut, "tex_in", -1,
 														   db) == -1);
 
 	// An untyped hint falls back to the input's declared type (k_texture
 	// for "tex_in"), which does have a row in the table.
-	assert(oakengine_node_set_value_hint(lut, "tex_in", -1,
+	EXPECT_TRUE(oakengine_node_set_value_hint(lut, "tex_in", -1,
 										 OAK_NODE_VALUE_NONE, -1,
 										 NULL) == OAKENGINE_OK);
-	assert(oakengine_traverse_table_element_index_for_hint(lut, "tex_in", -1,
+	EXPECT_TRUE(oakengine_traverse_table_element_index_for_hint(lut, "tex_in", -1,
 														   db) >= 0);
 
 	oakengine_traverse_db_free(db);
@@ -223,46 +224,46 @@ static void test_transform(OakEngineNode *solid, OakEngineNode *lut)
 	double m[6] = { 0, 0, 0, 0, 0, 0 };
 
 	// No transform-generating nodes between start and end: identity matrix.
-	assert(oakengine_traverse_transform(solid, solid, 0, 1, 1, 1, NULL, m) ==
+	EXPECT_TRUE(oakengine_traverse_transform(solid, solid, 0, 1, 1, 1, NULL, m) ==
 		   OAKENGINE_OK);
-	assert(m[0] == 1.0 && m[1] == 0.0 && m[2] == 0.0 && m[3] == 1.0);
-	assert(m[4] == 0.0 && m[5] == 0.0);
+	EXPECT_TRUE(m[0] == 1.0 && m[1] == 0.0 && m[2] == 0.0 && m[3] == 1.0);
+	EXPECT_TRUE(m[4] == 0.0 && m[5] == 0.0);
 
 	// Same through an edge, with explicit cache params.
 	oak_video_params vp;
 	memset(&vp, 0, sizeof(vp));
-	assert(oakengine_video_params_make(&vp, 1920, 1080, 1001, 30000, 0, 1, 1,
+	EXPECT_TRUE(oakengine_video_params_make(&vp, 1920, 1080, 1001, 30000, 0, 1, 1,
 									   0, 0, 1) == OAKENGINE_OK);
 	memset(m, 0, sizeof(m));
-	assert(oakengine_traverse_transform(solid, lut, 0, 1, 1, 1, &vp, m) ==
+	EXPECT_TRUE(oakengine_traverse_transform(solid, lut, 0, 1, 1, 1, &vp, m) ==
 		   OAKENGINE_OK);
-	assert(m[0] == 1.0 && m[1] == 0.0 && m[2] == 0.0 && m[3] == 1.0);
-	assert(m[4] == 0.0 && m[5] == 0.0);
+	EXPECT_TRUE(m[0] == 1.0 && m[1] == 0.0 && m[2] == 0.0 && m[3] == 1.0);
+	EXPECT_TRUE(m[4] == 0.0 && m[5] == 0.0);
 }
 
-int main(void)
+TEST(OakEngineTraverse, Main)
 {
 	make_tmpdir();
 
 	// Sandbox the config/cache/data locations.
 #if !defined(_WIN32)
-	assert(setenv("XDG_CONFIG_HOME", g_tmpdir, 1) == 0);
-	assert(setenv("XDG_CACHE_HOME", g_tmpdir, 1) == 0);
-	assert(setenv("XDG_DATA_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_CONFIG_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_CACHE_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_DATA_HOME", g_tmpdir, 1) == 0);
 #endif
 
-	assert(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
 
 	OakEngineProject *project = oakengine_project_create();
-	assert(project != NULL);
-	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	EXPECT_TRUE(project != NULL);
+	EXPECT_TRUE(oakengine_project_new(project) == OAKENGINE_OK);
 
 	OakEngineNode *solid = oakengine_project_add_node(
 		project, "org.olivevideoeditor.Olive.solidgenerator");
-	assert(solid != NULL);
+	EXPECT_TRUE(solid != NULL);
 	OakEngineNode *lut = oakengine_project_add_node(
 		project, "org.olivevideoeditor.Olive.ociolut");
-	assert(lut != NULL);
+	EXPECT_TRUE(lut != NULL);
 
 	test_null_robustness(solid);
 	test_database(solid);
@@ -270,8 +271,6 @@ int main(void)
 	test_transform(solid, lut);
 
 	oakengine_project_free(project);
-	assert(oakengine_shutdown() == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_shutdown() == OAKENGINE_OK);
 
-	printf("oakengine_traverse_test: all assertions passed\n");
-	return 0;
 }

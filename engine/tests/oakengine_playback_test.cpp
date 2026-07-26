@@ -33,6 +33,7 @@
 // under a mutex (the documented marshalling duty of the consumer).
 
 #include <assert.h>
+#include <gtest/gtest.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -83,13 +84,13 @@ static void make_tmpdir(void)
 #if defined(_WIN32)
 	char base[MAX_PATH];
 	const DWORD len = GetTempPathA(MAX_PATH, base);
-	assert(len > 0 && len < MAX_PATH);
+	EXPECT_TRUE(len > 0 && len < MAX_PATH);
 	snprintf(g_tmpdir, sizeof(g_tmpdir), "%soakengine_playback_test_%lu", base,
 			 (unsigned long)GetCurrentProcessId());
-	assert(_mkdir(g_tmpdir) == 0);
+	EXPECT_TRUE(_mkdir(g_tmpdir) == 0);
 #else
 	strcpy(g_tmpdir, "/tmp/oakengine_playback_test_XXXXXX");
-	assert(mkdtemp(g_tmpdir) != NULL);
+	EXPECT_TRUE(mkdtemp(g_tmpdir) != NULL);
 #endif
 }
 
@@ -237,79 +238,79 @@ static bool not_playing(void *userdata)
 // Argument validation, idempotent pause/stop, initial position. No GL.
 static void test_validation(OakEngineSequence *seq)
 {
-	assert(oakengine_playback_create(NULL, 320, 180, 24, 1) == NULL);
-	assert(oakengine_playback_create(seq, 0, 180, 24, 1) == NULL);
-	assert(oakengine_playback_create(seq, 320, -1, 24, 1) == NULL);
-	assert(oakengine_playback_create(seq, 320, 180, 0, 1) == NULL);
-	assert(oakengine_playback_create(seq, 320, 180, 24, 0) == NULL);
+	EXPECT_TRUE(oakengine_playback_create(NULL, 320, 180, 24, 1) == NULL);
+	EXPECT_TRUE(oakengine_playback_create(seq, 0, 180, 24, 1) == NULL);
+	EXPECT_TRUE(oakengine_playback_create(seq, 320, -1, 24, 1) == NULL);
+	EXPECT_TRUE(oakengine_playback_create(seq, 320, 180, 0, 1) == NULL);
+	EXPECT_TRUE(oakengine_playback_create(seq, 320, 180, 24, 0) == NULL);
 
 	OakEnginePlayback *p = oakengine_playback_create(seq, 320, 180, 24, 1);
-	assert(p != NULL);
+	EXPECT_TRUE(p != NULL);
 
 	// Callback setters: NULL-safe, idempotent.
-	assert(oakengine_playback_set_frame_callback(NULL, on_frame, NULL) ==
+	EXPECT_TRUE(oakengine_playback_set_frame_callback(NULL, on_frame, NULL) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_playback_set_frame_callback(p, NULL, NULL) ==
+	EXPECT_TRUE(oakengine_playback_set_frame_callback(p, NULL, NULL) ==
 		   OAKENGINE_OK);
-	assert(oakengine_playback_set_audio_callback(NULL, on_audio, NULL) ==
+	EXPECT_TRUE(oakengine_playback_set_audio_callback(NULL, on_audio, NULL) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_playback_set_audio_callback(p, NULL, NULL) ==
+	EXPECT_TRUE(oakengine_playback_set_audio_callback(p, NULL, NULL) ==
 		   OAKENGINE_OK);
 
 	// Position is 0 before the first start; pause/stop are idempotent.
 	int64_t pos = -1;
-	assert(oakengine_playback_get_position(p, &pos) == OAKENGINE_OK);
-	assert(pos == 0);
-	assert(oakengine_playback_get_position(NULL, &pos) ==
+	EXPECT_TRUE(oakengine_playback_get_position(p, &pos) == OAKENGINE_OK);
+	EXPECT_TRUE(pos == 0);
+	EXPECT_TRUE(oakengine_playback_get_position(NULL, &pos) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_playback_get_position(p, NULL) == OAKENGINE_E_INVALID);
-	assert(oakengine_playback_is_playing(p) == 0);
-	assert(oakengine_playback_is_playing(NULL) == 0);
-	assert(oakengine_playback_pause(p) == OAKENGINE_OK);
-	assert(oakengine_playback_stop(p) == OAKENGINE_OK);
-	assert(oakengine_playback_is_playing(p) == 0);
+	EXPECT_TRUE(oakengine_playback_get_position(p, NULL) == OAKENGINE_E_INVALID);
+	EXPECT_TRUE(oakengine_playback_is_playing(p) == 0);
+	EXPECT_TRUE(oakengine_playback_is_playing(NULL) == 0);
+	EXPECT_TRUE(oakengine_playback_pause(p) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_playback_stop(p) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_playback_is_playing(p) == 0);
 
 	// Bad speeds are rejected with a readable reason; start without the
 	// RENDER bit reports OAKENGINE_E_STATE.
-	assert(oakengine_playback_set_speed(p, 0.0) == OAKENGINE_E_INVALID);
-	assert(oakengine_playback_set_speed(p, -1.0) == OAKENGINE_E_INVALID);
-	assert(oakengine_playback_set_speed(NULL, 1.0) == OAKENGINE_E_INVALID);
+	EXPECT_TRUE(oakengine_playback_set_speed(p, 0.0) == OAKENGINE_E_INVALID);
+	EXPECT_TRUE(oakengine_playback_set_speed(p, -1.0) == OAKENGINE_E_INVALID);
+	EXPECT_TRUE(oakengine_playback_set_speed(NULL, 1.0) == OAKENGINE_E_INVALID);
 	char err[256];
-	assert(oakengine_playback_last_error(p, err, sizeof(err)) > 0);
-	assert(oakengine_playback_start(p, 0, 0.0) == OAKENGINE_E_INVALID);
-	assert(oakengine_playback_start(p, 0, -2.0) == OAKENGINE_E_INVALID);
-	assert(oakengine_playback_start(p, -1, 1.0) == OAKENGINE_E_INVALID);
-	assert(oakengine_playback_start(p, 0, 1.0) == OAKENGINE_E_STATE);
-	assert(strstr(err, "OAKENGINE_INIT_RENDER") != NULL ||
+	EXPECT_TRUE(oakengine_playback_last_error(p, err, sizeof(err)) > 0);
+	EXPECT_TRUE(oakengine_playback_start(p, 0, 0.0) == OAKENGINE_E_INVALID);
+	EXPECT_TRUE(oakengine_playback_start(p, 0, -2.0) == OAKENGINE_E_INVALID);
+	EXPECT_TRUE(oakengine_playback_start(p, -1, 1.0) == OAKENGINE_E_INVALID);
+	EXPECT_TRUE(oakengine_playback_start(p, 0, 1.0) == OAKENGINE_E_STATE);
+	EXPECT_TRUE(strstr(err, "OAKENGINE_INIT_RENDER") != NULL ||
 		   oakengine_playback_last_error(p, err, sizeof(err)) > 0);
-	assert(oakengine_playback_start(NULL, 0, 1.0) == OAKENGINE_E_INVALID);
-	assert(oakengine_playback_pause(NULL) == OAKENGINE_E_INVALID);
-	assert(oakengine_playback_stop(NULL) == OAKENGINE_E_INVALID);
+	EXPECT_TRUE(oakengine_playback_start(NULL, 0, 1.0) == OAKENGINE_E_INVALID);
+	EXPECT_TRUE(oakengine_playback_pause(NULL) == OAKENGINE_E_INVALID);
+	EXPECT_TRUE(oakengine_playback_stop(NULL) == OAKENGINE_E_INVALID);
 
 	oakengine_playback_free(p);
 	oakengine_playback_free(NULL);
 }
 
-int main(void)
+TEST(OakEnginePlayback, Main)
 {
 	make_tmpdir();
 
 	// Sandbox the config/cache/data locations (see oakengine_init_test).
 #if !defined(_WIN32)
-	assert(setenv("XDG_CONFIG_HOME", g_tmpdir, 1) == 0);
-	assert(setenv("XDG_CACHE_HOME", g_tmpdir, 1) == 0);
-	assert(setenv("XDG_DATA_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_CONFIG_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_CACHE_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_DATA_HOME", g_tmpdir, 1) == 0);
 #endif
 
 	// HEADLESS is enough for the validation part and creates the
 	// application object the backend probe below depends on.
-	assert(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
 
 	OakEngineProject *project = oakengine_project_create();
-	assert(project != NULL);
-	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	EXPECT_TRUE(project != NULL);
+	EXPECT_TRUE(oakengine_project_new(project) == OAKENGINE_OK);
 	OakEngineSequence *seq = oakengine_sequence_new(project, "Playback");
-	assert(seq != NULL);
+	EXPECT_TRUE(seq != NULL);
 
 	test_validation(seq);
 
@@ -319,20 +320,20 @@ int main(void)
 			   "available, playback assertions skipped\n");
 		oakengine_project_free(project);
 		oakengine_shutdown();
-		return 0;
+		return;
 	}
 	if (!worker_binary_exists()) {
 		printf("oakengine_playback_test: SKIP: oak-render-worker binary not "
 			   "found, playback assertions skipped\n");
 		oakengine_project_free(project);
 		oakengine_shutdown();
-		return 0;
+		return;
 	}
 
 	// The engine renders through the backend requested in the config.
 	olive::Config::current()[QStringLiteral("GraphicsBackend")] =
 		QStringLiteral("opengl");
-	assert(oakengine_init(OAKENGINE_INIT_HEADLESS | OAKENGINE_INIT_RENDER) ==
+	EXPECT_TRUE(oakengine_init(OAKENGINE_INIT_HEADLESS | OAKENGINE_INIT_RENDER) ==
 		   OAKENGINE_OK);
 
 	// Build content through the facade (a real clip gives the sequence a
@@ -340,54 +341,54 @@ int main(void)
 	// tests/demo.mp4 placed from 0.
 	const QString demo_path = QDir(QStringLiteral(OAK_TEST_SOURCE_DIR))
 								  .filePath(QStringLiteral("tests/demo.mp4"));
-	assert(QFileInfo::exists(demo_path));
-	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_VIDEO) ==
+	EXPECT_TRUE(QFileInfo::exists(demo_path));
+	EXPECT_TRUE(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_VIDEO) ==
 		   0);
 	OakEngineFootage *footage =
 		oakengine_project_import_footage(project, demo_path.toUtf8().constData());
-	assert(footage != NULL);
+	EXPECT_TRUE(footage != NULL);
 	OakEngineClip *clip = oakengine_sequence_add_footage_clip(
 		seq, footage, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, 480, 0);
-	assert(clip != NULL);
+	EXPECT_TRUE(clip != NULL);
 	// Audio comes from an audio track: without one the sequence's samples
 	// output is empty (the video track alone carries no samples).
-	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_AUDIO) ==
+	EXPECT_TRUE(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_AUDIO) ==
 		   0);
 	OakEngineClip *aclip = oakengine_sequence_add_footage_clip(
 		seq, footage, OAKENGINE_TRACK_TYPE_AUDIO, 0, 0, 480, 0);
-	assert(aclip != NULL);
+	EXPECT_TRUE(aclip != NULL);
 	oakengine_footage_free(footage);
 
 	FrameLog frames;
 	AudioLog audio;
 	OakEnginePlayback *p =
 		oakengine_playback_create(seq, 320, 180, 30000, 1001);
-	assert(p != NULL);
-	assert(oakengine_playback_set_frame_callback(p, on_frame, &frames) ==
+	EXPECT_TRUE(p != NULL);
+	EXPECT_TRUE(oakengine_playback_set_frame_callback(p, on_frame, &frames) ==
 		   OAKENGINE_OK);
-	assert(oakengine_playback_set_audio_callback(p, on_audio, &audio) ==
+	EXPECT_TRUE(oakengine_playback_set_audio_callback(p, on_audio, &audio) ==
 		   OAKENGINE_OK);
 
 	// Start at 1x: frames arrive monotonically with the right geometry,
 	// audio blocks with the right layout.
-	assert(oakengine_playback_start(p, 0, 1.0) == OAKENGINE_OK);
-	assert(oakengine_playback_is_playing(p) == 1);
-	assert(wait_until(six_frames, &frames, 10000));
+	EXPECT_TRUE(oakengine_playback_start(p, 0, 1.0) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_playback_is_playing(p) == 1);
+	EXPECT_TRUE(wait_until(six_frames, &frames, 10000));
 	// The first block(s) can land while the decoder is still warming up
 	// (empty channels); require at least one well-formed block and a
 	// consistent layout across all of them (generous for CI stability).
-	assert(wait_until(good_audio_block, &audio, 10000));
+	EXPECT_TRUE(wait_until(good_audio_block, &audio, 10000));
 	{
 		frames.mutex.lock();
 		const size_t n = frames.frames.size();
 		for (size_t i = 0; i < n; i++) {
 			const oak_playback_frame &f = frames.frames.at(i);
-			assert(f.width == 320 && f.height == 180);
-			assert(f.format == 3); // f16
-			assert(f.linesize >= 320 * 4 * 2);
-			assert(f.data != NULL);
+			EXPECT_TRUE(f.width == 320 && f.height == 180);
+			EXPECT_TRUE(f.format == 3); // f16
+			EXPECT_TRUE(f.linesize >= 320 * 4 * 2);
+			EXPECT_TRUE(f.data != NULL);
 			if (i > 0) {
-				assert(f.timestamp > frames.frames.at(i - 1).timestamp);
+				EXPECT_TRUE(f.timestamp > frames.frames.at(i - 1).timestamp);
 			}
 		}
 		frames.mutex.unlock();
@@ -396,15 +397,15 @@ int main(void)
 		audio.mutex.lock();
 		bool found_good = false;
 		for (const oak_playback_audio &a : audio.blocks) {
-			assert(a.channels == 2);
-			assert(a.sample_rate == 48000);
-			assert(a.sample_count >= 0);
+			EXPECT_TRUE(a.channels == 2);
+			EXPECT_TRUE(a.sample_rate == 48000);
+			EXPECT_TRUE(a.sample_count >= 0);
 			if (a.channel_data && a.channel_data[0] && a.channel_data[1] &&
 				a.sample_count > 0) {
 				found_good = true;
 			}
 		}
-		assert(found_good);
+		EXPECT_TRUE(found_good);
 		audio.mutex.unlock();
 	}
 
@@ -412,86 +413,86 @@ int main(void)
 	// instance exists in this process).
 	pump_ms(400);
 	int64_t pos_a = -1;
-	assert(oakengine_playback_get_position(p, &pos_a) == OAKENGINE_OK);
-	assert(pos_a > 0);
+	EXPECT_TRUE(oakengine_playback_get_position(p, &pos_a) == OAKENGINE_OK);
+	EXPECT_TRUE(pos_a > 0);
 
 	// Pause freezes delivery and the position.
-	assert(oakengine_playback_pause(p) == OAKENGINE_OK);
-	assert(oakengine_playback_is_playing(p) == 0);
+	EXPECT_TRUE(oakengine_playback_pause(p) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_playback_is_playing(p) == 0);
 	const size_t frozen_frames = frames.size();
 	int64_t frozen_pos = -1;
-	assert(oakengine_playback_get_position(p, &frozen_pos) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_playback_get_position(p, &frozen_pos) == OAKENGINE_OK);
 	pump_ms(250);
-	assert(frames.size() <= frozen_frames + 1); // one in-flight may land
+	EXPECT_TRUE(frames.size() <= frozen_frames + 1); // one in-flight may land
 	int64_t still_frozen = -1;
-	assert(oakengine_playback_get_position(p, &still_frozen) == OAKENGINE_OK);
-	assert(still_frozen == frozen_pos);
+	EXPECT_TRUE(oakengine_playback_get_position(p, &still_frozen) == OAKENGINE_OK);
+	EXPECT_TRUE(still_frozen == frozen_pos);
 
 	// Resume at the frozen position: delivery continues.
-	assert(oakengine_playback_start(p, frozen_pos, 1.0) == OAKENGINE_OK);
-	assert(oakengine_playback_is_playing(p) == 1);
+	EXPECT_TRUE(oakengine_playback_start(p, frozen_pos, 1.0) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_playback_is_playing(p) == 1);
 	pump_ms(300);
-	assert(frames.size() > frozen_frames);
+	EXPECT_TRUE(frames.size() > frozen_frames);
 
 	// 2x advances the position (much) faster than 1x over the same wall
 	// window (generous margins to stay CI-stable).
-	assert(oakengine_playback_get_position(p, &pos_a) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_playback_get_position(p, &pos_a) == OAKENGINE_OK);
 	pump_ms(600);
 	int64_t pos_b = -1;
-	assert(oakengine_playback_get_position(p, &pos_b) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_playback_get_position(p, &pos_b) == OAKENGINE_OK);
 	const int64_t advance_1x = pos_b - pos_a;
-	assert(oakengine_playback_set_speed(p, 2.0) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_playback_set_speed(p, 2.0) == OAKENGINE_OK);
 	pump_ms(600);
 	int64_t pos_c = -1;
-	assert(oakengine_playback_get_position(p, &pos_c) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_playback_get_position(p, &pos_c) == OAKENGINE_OK);
 	const int64_t advance_2x = pos_c - pos_b;
-	assert(advance_1x > 0);
-	assert(advance_2x > advance_1x + advance_1x / 2);
+	EXPECT_TRUE(advance_1x > 0);
+	EXPECT_TRUE(advance_2x > advance_1x + advance_1x / 2);
 
 	// Stop resets to the last start timestamp; restarting from 0 replays.
-	assert(oakengine_playback_stop(p) == OAKENGINE_OK);
-	assert(oakengine_playback_is_playing(p) == 0);
+	EXPECT_TRUE(oakengine_playback_stop(p) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_playback_is_playing(p) == 0);
 	int64_t stopped_pos = -1;
-	assert(oakengine_playback_get_position(p, &stopped_pos) ==
+	EXPECT_TRUE(oakengine_playback_get_position(p, &stopped_pos) ==
 		   OAKENGINE_OK);
-	assert(stopped_pos == frozen_pos);
+	EXPECT_TRUE(stopped_pos == frozen_pos);
 	{
 		frames.mutex.lock();
 		frames.frames.clear();
 		frames.mutex.unlock();
 	}
-	assert(oakengine_playback_start(p, 0, 1.0) == OAKENGINE_OK);
-	assert(wait_until(six_frames, &frames, 10000));
+	EXPECT_TRUE(oakengine_playback_start(p, 0, 1.0) == OAKENGINE_OK);
+	EXPECT_TRUE(wait_until(six_frames, &frames, 10000));
 	{
 		frames.mutex.lock();
-		assert(frames.frames.front().timestamp < 30);
+		EXPECT_TRUE(frames.frames.front().timestamp < 30);
 		frames.mutex.unlock();
 	}
-	assert(oakengine_playback_stop(p) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_playback_stop(p) == OAKENGINE_OK);
 
 	// End of stream: start near the end at 4x, the engine auto-stops at
 	// the sequence length and reports that as the position.
 	int len_num = 0, len_den = 1;
-	assert(oakengine_sequence_get_length_rational(seq, &len_num, &len_den) ==
+	EXPECT_TRUE(oakengine_sequence_get_length_rational(seq, &len_num, &len_den) ==
 		   OAKENGINE_OK);
 	const int64_t end_ts = int64_t(
 		olive::core::Timecode::time_to_timestamp(
 			olive::Rational(len_num, len_den),
 			olive::Rational(1001, 30000), olive::core::Timecode::k_round));
 	const int64_t near_end = end_ts > 48 ? end_ts - 48 : 0;
-	assert(oakengine_playback_start(p, near_end, 4.0) == OAKENGINE_OK);
-	assert(wait_until(not_playing, p, 10000));
+	EXPECT_TRUE(oakengine_playback_start(p, near_end, 4.0) == OAKENGINE_OK);
+	EXPECT_TRUE(wait_until(not_playing, p, 10000));
 	int64_t end_pos = -1;
-	assert(oakengine_playback_get_position(p, &end_pos) == OAKENGINE_OK);
-	assert(end_pos == end_ts);
+	EXPECT_TRUE(oakengine_playback_get_position(p, &end_pos) == OAKENGINE_OK);
+	EXPECT_TRUE(end_pos == end_ts);
 
 	// Freeing during playback must not crash.
 	OakEnginePlayback *p2 =
 		oakengine_playback_create(seq, 320, 180, 30000, 1001);
-	assert(p2 != NULL);
-	assert(oakengine_playback_set_frame_callback(p2, on_frame,
+	EXPECT_TRUE(p2 != NULL);
+	EXPECT_TRUE(oakengine_playback_set_frame_callback(p2, on_frame,
 												 &frames) == OAKENGINE_OK);
-	assert(oakengine_playback_start(p2, 0, 1.0) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_playback_start(p2, 0, 1.0) == OAKENGINE_OK);
 	pump_ms(50);
 	oakengine_playback_free(p2);
 
@@ -499,17 +500,15 @@ int main(void)
 	// detaches, and free() from this thread waits its exit out.
 	OakEnginePlayback *p3 =
 		oakengine_playback_create(seq, 320, 180, 30000, 1001);
-	assert(p3 != NULL);
-	assert(oakengine_playback_set_frame_callback(p3, on_frame_stop, p3) ==
+	EXPECT_TRUE(p3 != NULL);
+	EXPECT_TRUE(oakengine_playback_set_frame_callback(p3, on_frame_stop, p3) ==
 		   OAKENGINE_OK);
-	assert(oakengine_playback_start(p3, 0, 1.0) == OAKENGINE_OK);
-	assert(wait_until(not_playing, p3, 10000));
+	EXPECT_TRUE(oakengine_playback_start(p3, 0, 1.0) == OAKENGINE_OK);
+	EXPECT_TRUE(wait_until(not_playing, p3, 10000));
 	oakengine_playback_free(p3);
 
 	oakengine_playback_free(p);
 	oakengine_project_free(project);
-	assert(oakengine_shutdown() == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_shutdown() == OAKENGINE_OK);
 
-	printf("oakengine_playback_test: all assertions passed\n");
-	return 0;
 }

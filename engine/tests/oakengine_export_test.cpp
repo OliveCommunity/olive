@@ -27,6 +27,7 @@
 // progress callback.
 
 #include <assert.h>
+#include <gtest/gtest.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -76,13 +77,13 @@ static void make_tmpdir(void)
 #if defined(_WIN32)
 	char base[MAX_PATH];
 	const DWORD len = GetTempPathA(MAX_PATH, base);
-	assert(len > 0 && len < MAX_PATH);
+	EXPECT_TRUE(len > 0 && len < MAX_PATH);
 	snprintf(g_tmpdir, sizeof(g_tmpdir), "%soakengine_export_test_%lu", base,
 			 (unsigned long)GetCurrentProcessId());
-	assert(_mkdir(g_tmpdir) == 0);
+	EXPECT_TRUE(_mkdir(g_tmpdir) == 0);
 #else
 	strcpy(g_tmpdir, "/tmp/oakengine_export_test_XXXXXX");
-	assert(mkdtemp(g_tmpdir) != NULL);
+	EXPECT_TRUE(mkdtemp(g_tmpdir) != NULL);
 #endif
 }
 
@@ -142,39 +143,39 @@ static void progress_cb(double fraction, void *userdata)
 static void test_codecs_and_validation(OakEngineSequence *seq)
 {
 	// Codec probing needs no RENDER bit and no GL.
-	assert(oakengine_export_has_video_codec(OAKENGINE_EXPORT_VIDEO_H264) ==
+	EXPECT_TRUE(oakengine_export_has_video_codec(OAKENGINE_EXPORT_VIDEO_H264) ==
 		   1);
-	assert(oakengine_export_has_video_codec(OAKENGINE_EXPORT_VIDEO_H265) ==
+	EXPECT_TRUE(oakengine_export_has_video_codec(OAKENGINE_EXPORT_VIDEO_H265) ==
 		   1);
-	assert(oakengine_export_has_video_codec(
+	EXPECT_TRUE(oakengine_export_has_video_codec(
 			   OAKENGINE_EXPORT_VIDEO_PNG_SEQUENCE) == 1);
-	assert(oakengine_export_has_video_codec(-2) == 0);
-	assert(oakengine_export_has_video_codec(99) == 0);
-	assert(oakengine_export_has_audio_codec(OAKENGINE_EXPORT_AUDIO_AAC) == 1);
-	assert(oakengine_export_has_audio_codec(OAKENGINE_EXPORT_AUDIO_PCM) == 1);
-	assert(oakengine_export_has_audio_codec(
+	EXPECT_TRUE(oakengine_export_has_video_codec(-2) == 0);
+	EXPECT_TRUE(oakengine_export_has_video_codec(99) == 0);
+	EXPECT_TRUE(oakengine_export_has_audio_codec(OAKENGINE_EXPORT_AUDIO_AAC) == 1);
+	EXPECT_TRUE(oakengine_export_has_audio_codec(OAKENGINE_EXPORT_AUDIO_PCM) == 1);
+	EXPECT_TRUE(oakengine_export_has_audio_codec(
 			   OAKENGINE_EXPORT_AUDIO_NONE) == 0);
-	assert(oakengine_export_has_audio_codec(99) == 0);
+	EXPECT_TRUE(oakengine_export_has_audio_codec(99) == 0);
 
 	// Argument validation (engine has no RENDER bit yet either).
 	char path[4096];
 	snprintf(path, sizeof(path), "%s/out.mp4", g_tmpdir);
-	assert(oakengine_export_render(NULL, path, 0, 30, 320, 180, NULL) ==
+	EXPECT_TRUE(oakengine_export_render(NULL, path, 0, 30, 320, 180, NULL) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_export_render(seq, NULL, 0, 30, 320, 180, NULL) ==
+	EXPECT_TRUE(oakengine_export_render(seq, NULL, 0, 30, 320, 180, NULL) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_export_render(seq, path, -1, 30, 320, 180, NULL) ==
+	EXPECT_TRUE(oakengine_export_render(seq, path, -1, 30, 320, 180, NULL) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_export_render(seq, path, 30, 30, 320, 180, NULL) ==
+	EXPECT_TRUE(oakengine_export_render(seq, path, 30, 30, 320, 180, NULL) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_export_render(seq, path, 40, 30, 320, 180, NULL) ==
+	EXPECT_TRUE(oakengine_export_render(seq, path, 40, 30, 320, 180, NULL) ==
 		   OAKENGINE_E_INVALID);
 
 	// Without OAKENGINE_INIT_RENDER the export is refused with E_STATE.
-	assert(oakengine_export_render(seq, path, 0, 30, 320, 180, NULL) ==
+	EXPECT_TRUE(oakengine_export_render(seq, path, 0, 30, 320, 180, NULL) ==
 		   OAKENGINE_E_STATE);
 	char err[256];
-	assert(oakengine_export_last_error(err, sizeof(err)) > 0);
+	EXPECT_TRUE(oakengine_export_last_error(err, sizeof(err)) > 0);
 }
 
 // Generate a loud test tone (440 Hz stereo sine, 2 s) with the ffmpeg
@@ -187,9 +188,9 @@ static void make_tone(const char *path)
 			 "ffmpeg -v error -y -f lavfi -i "
 			 "\"sine=frequency=440:duration=2\" -ar 48000 -ac 2 \"%s\"",
 			 path);
-	assert(system(cmd) == 0);
+	EXPECT_TRUE(system(cmd) == 0);
 	FILE *f = fopen(path, "rb");
-	assert(f != NULL);
+	EXPECT_TRUE(f != NULL);
 	fclose(f);
 }
 
@@ -198,32 +199,32 @@ static void make_tone(const char *path)
 static void assert_probe_matches(const char *cmd, const char *needle)
 {
 	FILE *probe = popen(cmd, "r");
-	assert(probe != NULL);
+	EXPECT_TRUE(probe != NULL);
 	char out[2048] = { 0 };
 	const size_t len = fread(out, 1, sizeof(out) - 1, probe);
 	(void)len;
-	assert(pclose(probe) == 0);
-	assert(strstr(out, needle) != NULL);
+	EXPECT_TRUE(pclose(probe) == 0);
+	EXPECT_TRUE(strstr(out, needle) != NULL);
 }
 
-int main(void)
+TEST(OakEngineExport, Main)
 {
 	make_tmpdir();
 
 	// Sandbox the config/cache/data locations (see oakengine_init_test).
 #if !defined(_WIN32)
-	assert(setenv("XDG_CONFIG_HOME", g_tmpdir, 1) == 0);
-	assert(setenv("XDG_CACHE_HOME", g_tmpdir, 1) == 0);
-	assert(setenv("XDG_DATA_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_CONFIG_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_CACHE_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_DATA_HOME", g_tmpdir, 1) == 0);
 #endif
 
-	assert(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
 
 	OakEngineProject *project = oakengine_project_create();
-	assert(project != NULL);
-	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	EXPECT_TRUE(project != NULL);
+	EXPECT_TRUE(oakengine_project_new(project) == OAKENGINE_OK);
 	OakEngineSequence *seq = oakengine_sequence_new(project, "Export");
-	assert(seq != NULL);
+	EXPECT_TRUE(seq != NULL);
 
 	test_codecs_and_validation(seq);
 
@@ -233,19 +234,19 @@ int main(void)
 			   "available, export assertions skipped\n");
 		oakengine_project_free(project);
 		oakengine_shutdown();
-		return 0;
+		return;
 	}
 	if (!worker_binary_exists()) {
 		printf("oakengine_export_test: SKIP: oak-render-worker binary not "
 			   "found, export assertions skipped\n");
 		oakengine_project_free(project);
 		oakengine_shutdown();
-		return 0;
+		return;
 	}
 
 	olive::Config::current()[QStringLiteral("GraphicsBackend")] =
 		QStringLiteral("opengl");
-	assert(oakengine_init(OAKENGINE_INIT_HEADLESS | OAKENGINE_INIT_RENDER) ==
+	EXPECT_TRUE(oakengine_init(OAKENGINE_INIT_HEADLESS | OAKENGINE_INIT_RENDER) ==
 		   OAKENGINE_OK);
 
 	// Solid red generator -> texture input (engine C++ API, internal test).
@@ -273,34 +274,34 @@ int main(void)
 					err :
 					"(no error)");
 	}
-	assert(rc == OAKENGINE_OK);
+	EXPECT_TRUE(rc == OAKENGINE_OK);
 	oakengine_export_set_progress_callback(NULL, NULL);
 
 	// Progress was reported, monotonically, and completed.
-	assert(g_progress_calls > 0);
-	assert(g_progress_monotonic == 1);
-	assert(fabs(g_progress_last - 1.0) < 1e-6);
+	EXPECT_TRUE(g_progress_calls > 0);
+	EXPECT_TRUE(g_progress_monotonic == 1);
+	EXPECT_TRUE(fabs(g_progress_last - 1.0) < 1e-6);
 
 	// Validate the MP4 with ffprobe: h264 video, 320x180, ~1 second.
-	assert(access(out, F_OK) == 0);
+	EXPECT_TRUE(access(out, F_OK) == 0);
 	char cmd[4608];
 	snprintf(cmd, sizeof(cmd),
 			 "ffprobe -v error -select_streams v:0 -show_entries "
 			 "stream=codec_name,width,height,duration -of csv=p=0 \"%s\"",
 			 out);
 	FILE *probe = popen(cmd, "r");
-	assert(probe != NULL);
+	EXPECT_TRUE(probe != NULL);
 	char probe_out[512] = { 0 };
 	const size_t probe_len = fread(probe_out, 1, sizeof(probe_out) - 1, probe);
 	(void)probe_len;
-	assert(pclose(probe) == 0);
-	assert(strstr(probe_out, "h264") != NULL);
-	assert(strstr(probe_out, "320,180") != NULL);
+	EXPECT_TRUE(pclose(probe) == 0);
+	EXPECT_TRUE(strstr(probe_out, "h264") != NULL);
+	EXPECT_TRUE(strstr(probe_out, "320,180") != NULL);
 	// Duration is the last csv field; 30 frames at 30000/1001 ~= 1.001 s.
 	const char *comma = strrchr(probe_out, ',');
-	assert(comma != NULL);
+	EXPECT_TRUE(comma != NULL);
 	const double duration = atof(comma + 1);
-	assert(fabs(duration - 1.001) < 0.15);
+	EXPECT_TRUE(fabs(duration - 1.001) < 0.15);
 
 	// ---- First-conform audio export ---------------------------------------
 	// The sandboxed cache guarantees no conform exists yet: this is the
@@ -316,10 +317,10 @@ int main(void)
 		// primitives.
 		OakEngineFootage *tone =
 			oakengine_project_import_footage(project, tone_path);
-		assert(tone != NULL);
-		assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_AUDIO) ==
+		EXPECT_TRUE(tone != NULL);
+		EXPECT_TRUE(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_AUDIO) ==
 			   0);
-		assert(oakengine_sequence_add_footage_clip(
+		EXPECT_TRUE(oakengine_sequence_add_footage_clip(
 				   seq, tone, OAKENGINE_TRACK_TYPE_AUDIO, 0, 0, 30, 0) !=
 			   NULL);
 
@@ -338,8 +339,8 @@ int main(void)
 						err :
 						"(no error)");
 		}
-		assert(rc == OAKENGINE_OK);
-		assert(access(out2, F_OK) == 0);
+		EXPECT_TRUE(rc == OAKENGINE_OK);
+		EXPECT_TRUE(access(out2, F_OK) == 0);
 
 		// The MP4 carries an AAC audio stream...
 		snprintf(cmd, sizeof(cmd),
@@ -355,15 +356,15 @@ int main(void)
 				 "null - 2>&1 | grep mean_volume",
 				 out2);
 		FILE *vol = popen(cmd, "r");
-		assert(vol != NULL);
+		EXPECT_TRUE(vol != NULL);
 		char vol_out[512] = { 0 };
 		const size_t vol_len = fread(vol_out, 1, sizeof(vol_out) - 1, vol);
 		(void)vol_len;
-		assert(pclose(vol) == 0);
+		EXPECT_TRUE(pclose(vol) == 0);
 		const char *db = strstr(vol_out, "mean_volume:");
-		assert(db != NULL);
+		EXPECT_TRUE(db != NULL);
 		const double mean_db = atof(db + strlen("mean_volume:"));
-		assert(mean_db > -60.0);
+		EXPECT_TRUE(mean_db > -60.0);
 
 		oakengine_footage_free(tone);
 	}
@@ -380,44 +381,44 @@ int main(void)
 		snprintf(out_bad, sizeof(out_bad), "%s/bad.mp4", g_tmpdir);
 
 		bad.format = -1;
-		assert(oakengine_export_render_ex(seq, out_bad, &bad) ==
+		EXPECT_TRUE(oakengine_export_render_ex(seq, out_bad, &bad) ==
 			   OAKENGINE_E_INVALID);
 		bad.format = 99;
-		assert(oakengine_export_render_ex(seq, out_bad, &bad) ==
+		EXPECT_TRUE(oakengine_export_render_ex(seq, out_bad, &bad) ==
 			   OAKENGINE_E_INVALID);
 		bad.format = 2;
 
 		bad.video_codec = 99;
-		assert(oakengine_export_render_ex(seq, out_bad, &bad) ==
+		EXPECT_TRUE(oakengine_export_render_ex(seq, out_bad, &bad) ==
 			   OAKENGINE_E_INVALID);
 		bad.video_codec = 1;
 
 		bad.range_mode = OAKENGINE_EXPORT_RANGE_CUSTOM;
 		bad.range_in_ts = 30;
 		bad.range_out_ts = 30;
-		assert(oakengine_export_render_ex(seq, out_bad, &bad) ==
+		EXPECT_TRUE(oakengine_export_render_ex(seq, out_bad, &bad) ==
 			   OAKENGINE_E_INVALID);
 		bad.range_mode = OAKENGINE_EXPORT_RANGE_STILL;
 		bad.still_time_ts = -1;
-		assert(oakengine_export_render_ex(seq, out_bad, &bad) ==
+		EXPECT_TRUE(oakengine_export_render_ex(seq, out_bad, &bad) ==
 			   OAKENGINE_E_INVALID);
 
 		bad.range_mode = OAKENGINE_EXPORT_RANGE_ENTIRE;
 		bad.color_transform = OAKENGINE_EXPORT_COLOR_CUSTOM;
 		bad.color_transform_name[0] = '\0';
-		assert(oakengine_export_render_ex(seq, out_bad, &bad) ==
+		EXPECT_TRUE(oakengine_export_render_ex(seq, out_bad, &bad) ==
 			   OAKENGINE_E_INVALID);
 
 		bad.color_transform = OAKENGINE_EXPORT_COLOR_SRGB_OETF;
 		bad.video_pix_fmt = 99;
-		assert(oakengine_export_render_ex(seq, out_bad, &bad) ==
+		EXPECT_TRUE(oakengine_export_render_ex(seq, out_bad, &bad) ==
 			   OAKENGINE_E_INVALID);
 
-		assert(oakengine_export_render_ex(NULL, out_bad, &bad) ==
+		EXPECT_TRUE(oakengine_export_render_ex(NULL, out_bad, &bad) ==
 			   OAKENGINE_E_INVALID);
-		assert(oakengine_export_render_ex(seq, NULL, &bad) ==
+		EXPECT_TRUE(oakengine_export_render_ex(seq, NULL, &bad) ==
 			   OAKENGINE_E_INVALID);
-		assert(oakengine_export_render_ex(seq, out_bad, NULL) ==
+		EXPECT_TRUE(oakengine_export_render_ex(seq, out_bad, NULL) ==
 			   OAKENGINE_E_INVALID);
 	}
 
@@ -451,22 +452,22 @@ int main(void)
 						err :
 						"(no error)");
 		}
-		assert(rc == OAKENGINE_OK);
+		EXPECT_TRUE(rc == OAKENGINE_OK);
 		oakengine_export_set_video_option(NULL, NULL);
 		snprintf(cmd, sizeof(cmd),
 				 "ffprobe -v error -show_entries stream=codec_type,duration "
 				 "-of csv=p=0 \"%s\"",
 				 out3);
 		FILE *p3 = popen(cmd, "r");
-		assert(p3 != NULL);
+		EXPECT_TRUE(p3 != NULL);
 		char p3_out[512] = { 0 };
 		const size_t p3_len = fread(p3_out, 1, sizeof(p3_out) - 1, p3);
 		(void)p3_len;
-		assert(pclose(p3) == 0);
-		assert(strstr(p3_out, "video") != NULL);
-		assert(strstr(p3_out, "audio") != NULL);
+		EXPECT_TRUE(pclose(p3) == 0);
+		EXPECT_TRUE(strstr(p3_out, "video") != NULL);
+		EXPECT_TRUE(strstr(p3_out, "audio") != NULL);
 		// 20 frames at 30000/1001 ~= 0.667 s.
-		assert(strstr(p3_out, "0.6") != NULL);
+		EXPECT_TRUE(strstr(p3_out, "0.6") != NULL);
 
 		// PNG sequence over 5 frames (image-sequence flag auto-fills the
 		// frame placeholder).
@@ -486,10 +487,10 @@ int main(void)
 						err :
 						"(no error)");
 		}
-		assert(rc == OAKENGINE_OK);
+		EXPECT_TRUE(rc == OAKENGINE_OK);
 		char png0[4096];
 		snprintf(png0, sizeof(png0), "%s/seqout_00000.png", g_tmpdir);
-		assert(access(png0, F_OK) == 0);
+		EXPECT_TRUE(access(png0, F_OK) == 0);
 		snprintf(cmd, sizeof(cmd), "file \"%s\"", png0);
 		assert_probe_matches(cmd, "PNG image data");
 
@@ -504,15 +505,13 @@ int main(void)
 		});
 		const int cancel_rc = oakengine_export_render_ex(seq, out3, &o5);
 		canceller.join();
-		assert(cancel_rc == OAKENGINE_OK ||
+		EXPECT_TRUE(cancel_rc == OAKENGINE_OK ||
 			   cancel_rc == OAKENGINE_E_CANCELLED);
 		snprintf(out3, sizeof(out3), "%s/ex_after.mp4", g_tmpdir);
-		assert(oakengine_export_render_ex(seq, out3, &o5) == OAKENGINE_OK);
+		EXPECT_TRUE(oakengine_export_render_ex(seq, out3, &o5) == OAKENGINE_OK);
 	}
 
 	oakengine_project_free(project);
-	assert(oakengine_shutdown() == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_shutdown() == OAKENGINE_OK);
 
-	printf("oakengine_export_test: all assertions passed\n");
-	return 0;
 }

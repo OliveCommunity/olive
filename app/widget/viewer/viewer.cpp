@@ -176,6 +176,10 @@ ViewerWidget::ViewerWidget(ViewerDisplayWidget *display, QWidget *parent)
 	, multicam_panel_(nullptr)
 	, bridge_(new EngineEventBridge(this))
 	, audio_processor_(oakengine_audio_processor_create())
+	, overlay_(nullptr)
+	, info_chip_(nullptr)
+	, safe_frame_btn_(nullptr)
+	, overlay_zoom_index_(5)
 {
 	// Set up main layout
 	QVBoxLayout *layout = new QVBoxLayout(this);
@@ -224,6 +228,9 @@ ViewerWidget::ViewerWidget(ViewerDisplayWidget *display, QWidget *parent)
 			&ViewerSizer::hand_drag_move);
 	sizer_->set_widget(display_widget_);
 
+	// Create the design-reference overlay (info chip + zoom/safe-frame buttons)
+	create_overlay();
+
 	// Make the display widget the first tabbable widget. While the viewer display cannot actually
 	// be interacted with by tabbing, it prevents the actual first tabbable widget (the playhead
 	// slider in `controls_`) from getting auto-focused any time the panel is maximized (with `)
@@ -234,8 +241,13 @@ ViewerWidget::ViewerWidget(ViewerDisplayWidget *display, QWidget *parent)
 	connect_timeline_view(waveform_view_);
 	layout->addWidget(waveform_view_);
 
-	// Create time ruler
-	layout->addWidget(ruler());
+	// Per the Oak UI design reference the viewer no longer shows its own time
+	// ruler: it duplicates the timeline's ruler and clutters the viewer. The
+	// ruler object still exists (created by TimeBasedWidget) and continues to
+	// back marker/work-area/snapping logic and the scrollbar; we simply do not
+	// add it to the visible layout. Scrubbing is provided by the transport
+	// controls and the scrollbar below.
+	// layout->addWidget(ruler());
 
 	// Create scrollbar
 	layout->addWidget(scrollbar());
@@ -493,6 +505,8 @@ void ViewerWidget::resizeEvent(QResizeEvent *event)
 	super::resizeEvent(event);
 
 	update_minimum_scale();
+
+	position_overlay();
 }
 
 OakEnginePreviewRequest *ViewerWidget::get_single_frame(const Rational &t,
@@ -2260,6 +2274,8 @@ void ViewerWidget::set_viewer_resolution(int width, int height)
 	foreach (ViewerWindow *vw, windows_) {
 		vw->set_resolution(width, height);
 	}
+
+	update_info_chip();
 }
 
 void ViewerWidget::set_viewer_pixel_aspect(const Rational &ratio)
@@ -2321,6 +2337,143 @@ void ViewerWidget::set_zoom_from_menu(QAction *action)
 	auto s = sizer_->get_container_size();
 	sizer_->set_zoom_anchored(action->data().toDouble(), s.width() / 2,
 							s.height() / 2);
+}
+
+void ViewerWidget::create_overlay()
+{
+	// A thin transparent strip laid over the top of the viewer display. Left
+	// side carries an info chip (resolution + frame rate); right side carries
+	// zoom in/out/fit and a safe-frame toggle, per the UI design reference.
+	overlay_ = new QWidget(sizer_);
+	overlay_->setAttribute(Qt::WA_TransparentForMouseEvents, false);
+	overlay_->setAutoFillBackground(false);
+
+	auto *overlay_layout = new QHBoxLayout(overlay_);
+	overlay_layout->setContentsMargins(6, 4, 6, 4);
+	overlay_layout->setSpacing(4);
+
+	info_chip_ = new QLabel(overlay_);
+	info_chip_->setStyleSheet(QStringLiteral(
+		"QLabel { background-color: rgba(0,0,0,160); color: white; "
+		"border-radius: 3px; padding: 2px 6px; }"));
+	info_chip_->setVisible(false);
+	overlay_layout->addWidget(info_chip_);
+
+	overlay_layout->addStretch();
+
+	const QString btn_style = QStringLiteral(
+		"QToolButton { background-color: rgba(0,0,0,160); color: white; "
+		"border: none; border-radius: 3px; padding: 2px 6px; } "
+		"QToolButton:hover { background-color: rgba(0,0,0,200); } "
+		"QToolButton:checked { background-color: rgba(0,120,215,200); }");
+
+	auto make_btn = [this, &btn_style](const QString &text,
+									   const QString &tooltip) {
+		auto *b = new QToolButton(overlay_);
+		b->setText(text);
+		b->setToolTip(tooltip);
+		b->setStyleSheet(btn_style);
+		b->setAutoRaise(false);
+		return b;
+	};
+
+	QToolButton *zoom_out_btn = make_btn(QStringLiteral("\u2212"), tr("Zoom Out"));
+	QToolButton *zoom_in_btn = make_btn(QStringLiteral("+"), tr("Zoom In"));
+	QToolButton *zoom_fit_btn = make_btn(QStringLiteral("\u2922"), tr("Fit to Window"));
+	safe_frame_btn_ = make_btn(QStringLiteral("\u25A2"), tr("Safe Margins"));
+	safe_frame_btn_->setCheckable(true);
+
+	overlay_layout->addWidget(zoom_out_btn);
+	overlay_layout->addWidget(zoom_in_btn);
+	overlay_layout->addWidget(zoom_fit_btn);
+	overlay_layout->addWidget(safe_frame_btn_);
+
+	connect(zoom_out_btn, &QToolButton::clicked, this,
+			&ViewerWidget::overlay_zoom_out);
+	connect(zoom_in_btn, &QToolButton::clicked, this,
+			&ViewerWidget::overlay_zoom_in);
+	connect(zoom_fit_btn, &QToolButton::clicked, this,
+			&ViewerWidget::overlay_zoom_fit);
+	connect(safe_frame_btn_, &QToolButton::toggled, this,
+			[this](bool) { overlay_toggle_safe_frame(); });
+
+	overlay_->raise();
+}
+
+void ViewerWidget::position_overlay()
+{
+	if (!overlay_ || !sizer_) {
+		return;
+	}
+	// Span the full width of the sizer, hugging the top edge.
+	overlay_->setGeometry(0, 0, sizer_->width(), overlay_->sizeHint().height());
+	overlay_->raise();
+}
+
+void ViewerWidget::update_info_chip()
+{
+	if (!info_chip_) {
+		return;
+	}
+
+	if (!get_connected_node()) {
+		info_chip_->setVisible(false);
+		return;
+	}
+
+	VideoParams vp = viewer_output_video_params(get_connected_node());
+	if (vp.width() <= 0 || vp.height() <= 0) {
+		info_chip_->setVisible(false);
+		return;
+	}
+
+	const double fps = vp.frame_rate().to_double();
+	const double fps_rounded = qRound(fps);
+	QString fps_str = (qFuzzyCompare(fps, fps_rounded))
+						  ? QString::number(static_cast<int>(fps_rounded))
+						  : QString::number(fps, 'f', 2);
+
+	info_chip_->setText(QStringLiteral("%1\u00d7%2 \u00b7 %3 FPS")
+							.arg(vp.width())
+							.arg(vp.height())
+							.arg(fps_str));
+	info_chip_->setVisible(true);
+}
+
+void ViewerWidget::overlay_zoom_in()
+{
+	if (overlay_zoom_index_ < ViewerSizer::k_zoom_level_count - 1) {
+		overlay_zoom_index_++;
+	}
+	auto s = sizer_->get_container_size();
+	sizer_->set_zoom_anchored(ViewerSizer::k_zoom_levels[overlay_zoom_index_],
+							  s.width() / 2, s.height() / 2);
+}
+
+void ViewerWidget::overlay_zoom_out()
+{
+	if (overlay_zoom_index_ > 0) {
+		overlay_zoom_index_--;
+	}
+	auto s = sizer_->get_container_size();
+	sizer_->set_zoom_anchored(ViewerSizer::k_zoom_levels[overlay_zoom_index_],
+							  s.width() / 2, s.height() / 2);
+}
+
+void ViewerWidget::overlay_zoom_fit()
+{
+	// The zoom menu uses -1 to mean "fit to window".
+	auto s = sizer_->get_container_size();
+	sizer_->set_zoom_anchored(-1, s.width() / 2, s.height() / 2);
+}
+
+void ViewerWidget::overlay_toggle_safe_frame()
+{
+	if (!safe_frame_btn_) {
+		return;
+	}
+	display_widget_->set_safe_margins(
+		ViewerSafeMarginInfo(safe_frame_btn_->isChecked()));
 }
 
 void ViewerWidget::viewer_invalidated_video_range(const TimeRange &range)

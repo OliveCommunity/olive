@@ -25,6 +25,7 @@
 #include <QHash>
 #include <QScrollBar>
 #include <QRubberBand>
+#include <QSlider>
 #include <QWidget>
 
 #include "core.h"
@@ -361,6 +362,9 @@ private:
 
 	QSplitter *view_splitter_;
 
+	QSlider *zoom_slider_;
+	QSlider *track_height_slider_;
+
 	void *subtitle_show_command_;
 	OakEngineTrack *subtitle_tentative_track_;
 
@@ -422,7 +426,7 @@ private slots:
 
 	void track_updated(Track::Type type);
 
-	void block_updated();
+	void block_updated(OakEngineBlock *block = nullptr);
 
 	void update_horizontal_splitters();
 

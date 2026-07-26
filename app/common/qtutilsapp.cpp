@@ -45,7 +45,8 @@ QFrame *QtUtils::create_vertical_line()
 
 QString QtUtils::get_formatted_date_time(const QDateTime &dt)
 {
-    return dt.toString(Qt::TextDate);
+    // ISO-style date/time (e.g. "2026-06-03 20:25") per the UI design reference
+    return dt.toString(QStringLiteral("yyyy-MM-dd HH:mm"));
 }
 
 QStringList QtUtils::word_wrap_string(const QString &s, const QFontMetrics &fm,

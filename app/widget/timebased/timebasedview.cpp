@@ -166,7 +166,7 @@ void TimeBasedView::set_viewer_node(ViewerOutput *v)
 
 	if (viewer_) {
 		viewer_sub_ = oakengine_event_subscribe(
-			reinterpret_cast<OakEngineNode *>(viewer_),
+			viewer_,
 			OAKENGINE_EVENT_VIEWER_PLAYHEAD_CHANGED,
 			[](const oakengine_event *, void *userdata) {
 				static_cast<TimeBasedView *>(userdata)->viewport()->update();
@@ -280,7 +280,10 @@ bool TimeBasedView::playhead_release(QMouseEvent *)
 qreal TimeBasedView::get_playhead_x()
 {
 	if (viewer_) {
-		return time_to_scene(viewer_->get_playhead());
+		int64_t pn, pd;
+		oakengine_viewer_get_playhead(
+			reinterpret_cast<OakEngineNode *>(viewer_), &pn, &pd);
+		return time_to_scene(Rational(pn, pd));
 	} else {
 		return 0;
 	}

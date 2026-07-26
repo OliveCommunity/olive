@@ -29,6 +29,7 @@
 // robustness checks (NULL handling, error paths) still run.
 
 #include <assert.h>
+#include <gtest/gtest.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -53,13 +54,13 @@ static void make_tmpdir(void)
 #if defined(_WIN32)
 	char base[MAX_PATH];
 	const DWORD len = GetTempPathA(MAX_PATH, base);
-	assert(len > 0 && len < MAX_PATH);
+	EXPECT_TRUE(len > 0 && len < MAX_PATH);
 	snprintf(g_tmpdir, sizeof(g_tmpdir), "%soakengine_color_test_%lu", base,
 			 (unsigned long)GetCurrentProcessId());
-	assert(_mkdir(g_tmpdir) == 0);
+	EXPECT_TRUE(_mkdir(g_tmpdir) == 0);
 #else
 	strcpy(g_tmpdir, "/tmp/oakengine_color_test_XXXXXX");
-	assert(mkdtemp(g_tmpdir) != NULL);
+	EXPECT_TRUE(mkdtemp(g_tmpdir) != NULL);
 #endif
 }
 
@@ -71,59 +72,59 @@ static void test_null_robustness(void)
 	double rgb[3];
 	double rgba[4] = { 0, 0, 0, 0 };
 
-	assert(oakengine_color_manager_from_project(NULL) == NULL);
-	assert(oakengine_color_manager_get_config_filename(NULL, buf,
+	EXPECT_TRUE(oakengine_color_manager_from_project(NULL) == NULL);
+	EXPECT_TRUE(oakengine_color_manager_get_config_filename(NULL, buf,
 													   sizeof(buf)) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_color_manager_set_config_filename(NULL, "x") ==
+	EXPECT_TRUE(oakengine_color_manager_set_config_filename(NULL, "x") ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_color_manager_colorspace_count(NULL) == 0);
-	assert(oakengine_color_manager_colorspace_at(NULL, 0, buf, sizeof(buf)) ==
+	EXPECT_TRUE(oakengine_color_manager_colorspace_count(NULL) == 0);
+	EXPECT_TRUE(oakengine_color_manager_colorspace_at(NULL, 0, buf, sizeof(buf)) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_color_manager_display_count(NULL) == 0);
-	assert(oakengine_color_manager_display_at(NULL, 0, buf, sizeof(buf)) ==
+	EXPECT_TRUE(oakengine_color_manager_display_count(NULL) == 0);
+	EXPECT_TRUE(oakengine_color_manager_display_at(NULL, 0, buf, sizeof(buf)) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_color_manager_view_count(NULL, NULL) == 0);
-	assert(oakengine_color_manager_view_at(NULL, NULL, 0, buf, sizeof(buf)) ==
+	EXPECT_TRUE(oakengine_color_manager_view_count(NULL, NULL) == 0);
+	EXPECT_TRUE(oakengine_color_manager_view_at(NULL, NULL, 0, buf, sizeof(buf)) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_color_manager_look_count(NULL) == 0);
-	assert(oakengine_color_manager_look_at(NULL, 0, buf, sizeof(buf)) ==
+	EXPECT_TRUE(oakengine_color_manager_look_count(NULL) == 0);
+	EXPECT_TRUE(oakengine_color_manager_look_at(NULL, 0, buf, sizeof(buf)) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_color_manager_default_display(NULL, buf, sizeof(buf)) ==
+	EXPECT_TRUE(oakengine_color_manager_default_display(NULL, buf, sizeof(buf)) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_color_manager_default_view(NULL, NULL, buf,
+	EXPECT_TRUE(oakengine_color_manager_default_view(NULL, NULL, buf,
 												sizeof(buf)) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_color_manager_default_input_color_space(NULL, buf,
+	EXPECT_TRUE(oakengine_color_manager_default_input_color_space(NULL, buf,
 															 sizeof(buf)) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_color_manager_set_default_input_color_space(NULL, "x") ==
+	EXPECT_TRUE(oakengine_color_manager_set_default_input_color_space(NULL, "x") ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_color_manager_reference_color_space(NULL, buf,
+	EXPECT_TRUE(oakengine_color_manager_reference_color_space(NULL, buf,
 														 sizeof(buf)) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_color_manager_default_luma_coefs(NULL, rgb) ==
+	EXPECT_TRUE(oakengine_color_manager_default_luma_coefs(NULL, rgb) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_color_manager_compliant_color_space(NULL, "x", buf,
+	EXPECT_TRUE(oakengine_color_manager_compliant_color_space(NULL, "x", buf,
 														 sizeof(buf)) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_color_manager_compliant_transform(NULL, NULL, 0, NULL,
+	EXPECT_TRUE(oakengine_color_manager_compliant_transform(NULL, NULL, 0, NULL,
 													   NULL, 0, NULL, 0, NULL,
 													   0) == OAKENGINE_E_INVALID);
 
-	assert(oakengine_color_config_load_file(NULL) == NULL);
-	assert(oakengine_color_config_colorspace_count(NULL) == 0);
-	assert(oakengine_color_config_colorspace_at(NULL, 0, buf, sizeof(buf)) ==
+	EXPECT_TRUE(oakengine_color_config_load_file(NULL) == NULL);
+	EXPECT_TRUE(oakengine_color_config_colorspace_count(NULL) == 0);
+	EXPECT_TRUE(oakengine_color_config_colorspace_at(NULL, 0, buf, sizeof(buf)) ==
 		   OAKENGINE_E_INVALID);
 	oakengine_color_config_free(NULL); // no-op
 
-	assert(oakengine_color_processor_create(NULL, "in", NULL,
+	EXPECT_TRUE(oakengine_color_processor_create(NULL, "in", NULL,
 											OAKENGINE_COLOR_PROCESSOR_NORMAL) ==
 		   NULL);
-	assert(oakengine_color_processor_is_valid(NULL) == 0);
-	assert(oakengine_color_processor_convert_color(NULL, rgba, rgba) ==
+	EXPECT_TRUE(oakengine_color_processor_is_valid(NULL) == 0);
+	EXPECT_TRUE(oakengine_color_processor_convert_color(NULL, rgba, rgba) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_color_processor_id(NULL, buf, sizeof(buf)) ==
+	EXPECT_TRUE(oakengine_color_processor_id(NULL, buf, sizeof(buf)) ==
 		   OAKENGINE_E_INVALID);
 	oakengine_color_processor_free(NULL); // no-op
 }
@@ -135,9 +136,9 @@ static void test_config_handle(int have_ocio)
 	char buf[256];
 
 	// A missing file must fail cleanly with an error message.
-	assert(oakengine_color_config_load_file("/nonexistent/definitely.ocio") ==
+	EXPECT_TRUE(oakengine_color_config_load_file("/nonexistent/definitely.ocio") ==
 		   NULL);
-	assert(oakengine_color_last_error(buf, sizeof(buf)) > 0);
+	EXPECT_TRUE(oakengine_color_last_error(buf, sizeof(buf)) > 0);
 
 	OakEngineColorConfig *config = oakengine_color_config_load_default();
 	if (!have_ocio) {
@@ -147,19 +148,19 @@ static void test_config_handle(int have_ocio)
 		}
 		return;
 	}
-	assert(config != NULL);
+	EXPECT_TRUE(config != NULL);
 
 	const int count = oakengine_color_config_colorspace_count(config);
-	assert(count > 0);
+	EXPECT_TRUE(count > 0);
 	for (int i = 0; i < count; i++) {
-		assert(oakengine_color_config_colorspace_at(config, i, buf,
+		EXPECT_TRUE(oakengine_color_config_colorspace_at(config, i, buf,
 													sizeof(buf)) > 0);
-		assert(buf[0] != '\0');
+		EXPECT_TRUE(buf[0] != '\0');
 	}
-	assert(oakengine_color_config_colorspace_at(config, count, buf,
+	EXPECT_TRUE(oakengine_color_config_colorspace_at(config, count, buf,
 												sizeof(buf)) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_color_config_colorspace_at(config, -1, buf,
+	EXPECT_TRUE(oakengine_color_config_colorspace_at(config, -1, buf,
 												sizeof(buf)) ==
 		   OAKENGINE_E_INVALID);
 
@@ -176,69 +177,69 @@ static void test_manager_queries(OakEngineColorManager *mgr)
 
 	// Colorspaces
 	const int cs_count = oakengine_color_manager_colorspace_count(mgr);
-	assert(cs_count > 0);
-	assert(oakengine_color_manager_colorspace_at(mgr, 0, first_cs,
+	EXPECT_TRUE(cs_count > 0);
+	EXPECT_TRUE(oakengine_color_manager_colorspace_at(mgr, 0, first_cs,
 												 sizeof(first_cs)) > 0);
-	assert(first_cs[0] != '\0');
-	assert(oakengine_color_manager_colorspace_at(mgr, cs_count, buf,
+	EXPECT_TRUE(first_cs[0] != '\0');
+	EXPECT_TRUE(oakengine_color_manager_colorspace_at(mgr, cs_count, buf,
 												 sizeof(buf)) ==
 		   OAKENGINE_E_INVALID);
 
 	// Displays / views / looks
 	const int disp_count = oakengine_color_manager_display_count(mgr);
-	assert(disp_count > 0);
-	assert(oakengine_color_manager_display_at(mgr, 0, buf, sizeof(buf)) > 0);
+	EXPECT_TRUE(disp_count > 0);
+	EXPECT_TRUE(oakengine_color_manager_display_at(mgr, 0, buf, sizeof(buf)) > 0);
 	char display[256];
 	memcpy(display, buf, sizeof(display));
 	const int view_count = oakengine_color_manager_view_count(mgr, display);
-	assert(view_count > 0);
-	assert(oakengine_color_manager_view_at(mgr, display, 0, buf, sizeof(buf)) >
+	EXPECT_TRUE(view_count > 0);
+	EXPECT_TRUE(oakengine_color_manager_view_at(mgr, display, 0, buf, sizeof(buf)) >
 		   0);
-	assert(oakengine_color_manager_look_count(mgr) >= 0);
-	assert(oakengine_color_manager_display_at(mgr, disp_count, buf,
+	EXPECT_TRUE(oakengine_color_manager_look_count(mgr) >= 0);
+	EXPECT_TRUE(oakengine_color_manager_display_at(mgr, disp_count, buf,
 											  sizeof(buf)) ==
 		   OAKENGINE_E_INVALID);
 
 	// Defaults
 	char default_display[256];
-	assert(oakengine_color_manager_default_display(mgr, default_display,
+	EXPECT_TRUE(oakengine_color_manager_default_display(mgr, default_display,
 												   sizeof(default_display)) > 0);
-	assert(oakengine_color_manager_default_view(mgr, default_display, buf,
+	EXPECT_TRUE(oakengine_color_manager_default_view(mgr, default_display, buf,
 												sizeof(buf)) > 0);
-	assert(oakengine_color_manager_default_input_color_space(mgr, buf,
+	EXPECT_TRUE(oakengine_color_manager_default_input_color_space(mgr, buf,
 															 sizeof(buf)) > 0);
-	assert(oakengine_color_manager_reference_color_space(mgr, buf,
+	EXPECT_TRUE(oakengine_color_manager_reference_color_space(mgr, buf,
 														 sizeof(buf)) > 0);
 
 	// Default input colorspace set/get roundtrip
-	assert(oakengine_color_manager_set_default_input_color_space(mgr,
+	EXPECT_TRUE(oakengine_color_manager_set_default_input_color_space(mgr,
 																 first_cs) ==
 		   OAKENGINE_OK);
-	assert(oakengine_color_manager_default_input_color_space(mgr, buf,
+	EXPECT_TRUE(oakengine_color_manager_default_input_color_space(mgr, buf,
 															 sizeof(buf)) > 0);
-	assert(strcmp(buf, first_cs) == 0);
+	EXPECT_TRUE(strcmp(buf, first_cs) == 0);
 
 	// Config filename set/get roundtrip (an empty filename selects the
 	// built-in default config; setting it must not crash the queries above)
-	assert(oakengine_color_manager_set_config_filename(mgr, "") ==
+	EXPECT_TRUE(oakengine_color_manager_set_config_filename(mgr, "") ==
 		   OAKENGINE_OK);
-	assert(oakengine_color_manager_get_config_filename(mgr, buf, sizeof(buf)) >=
+	EXPECT_TRUE(oakengine_color_manager_get_config_filename(mgr, buf, sizeof(buf)) >=
 		   0);
 
 	// Luma coefficients: Rec.709-style weights, all positive, roughly sum to 1
-	assert(oakengine_color_manager_default_luma_coefs(mgr, rgb) ==
+	EXPECT_TRUE(oakengine_color_manager_default_luma_coefs(mgr, rgb) ==
 		   OAKENGINE_OK);
-	assert(rgb[0] > 0 && rgb[1] > 0 && rgb[2] > 0);
-	assert(fabs(rgb[0] + rgb[1] + rgb[2] - 1.0) < 0.01);
+	EXPECT_TRUE(rgb[0] > 0 && rgb[1] > 0 && rgb[2] > 0);
+	EXPECT_TRUE(fabs(rgb[0] + rgb[1] + rgb[2] - 1.0) < 0.01);
 
 	// Compliant colorspace: an existing space resolves to itself, an empty
 	// name resolves to the default input space
-	assert(oakengine_color_manager_compliant_color_space(mgr, first_cs, buf,
+	EXPECT_TRUE(oakengine_color_manager_compliant_color_space(mgr, first_cs, buf,
 														 sizeof(buf)) > 0);
-	assert(strcmp(buf, first_cs) == 0);
-	assert(oakengine_color_manager_compliant_color_space(mgr, "", buf,
+	EXPECT_TRUE(strcmp(buf, first_cs) == 0);
+	EXPECT_TRUE(oakengine_color_manager_compliant_color_space(mgr, "", buf,
 														 sizeof(buf)) > 0);
-	assert(strcmp(buf, first_cs) == 0);
+	EXPECT_TRUE(strcmp(buf, first_cs) == 0);
 
 	// Compliant transform: force a colorspace transform onto a display
 	// transform and back
@@ -250,19 +251,19 @@ static void test_manager_queries(OakEngineColorManager *mgr)
 	int out_is_display = -1;
 	char out_o[256], out_v[256], out_l[256];
 	out_o[0] = out_v[0] = out_l[0] = '\0';
-	assert(oakengine_color_manager_compliant_transform(mgr, &in, 1,
+	EXPECT_TRUE(oakengine_color_manager_compliant_transform(mgr, &in, 1,
 													   &out_is_display, out_o,
 													   sizeof(out_o), out_v,
 													   sizeof(out_v), out_l,
 													   sizeof(out_l)) ==
 		   OAKENGINE_OK);
-	assert(out_is_display == 1);
-	assert(out_o[0] != '\0');
-	assert(oakengine_color_manager_compliant_transform(
+	EXPECT_TRUE(out_is_display == 1);
+	EXPECT_TRUE(out_o[0] != '\0');
+	EXPECT_TRUE(oakengine_color_manager_compliant_transform(
 			   mgr, &in, 0, &out_is_display, out_o, sizeof(out_o), out_v,
 			   sizeof(out_v), out_l, sizeof(out_l)) == OAKENGINE_OK);
-	assert(out_is_display == 0);
-	assert(strcmp(out_o, first_cs) == 0);
+	EXPECT_TRUE(out_is_display == 0);
+	EXPECT_TRUE(strcmp(out_o, first_cs) == 0);
 }
 
 // ---- Color processor ----------------------------------------------------------
@@ -272,7 +273,7 @@ static void test_processor(OakEngineColorManager *mgr)
 	char ref[256];
 	char buf[256];
 
-	assert(oakengine_color_manager_reference_color_space(mgr, ref,
+	EXPECT_TRUE(oakengine_color_manager_reference_color_space(mgr, ref,
 														 sizeof(ref)) > 0);
 
 	// Identity transform (ref -> ref): white stays white
@@ -284,53 +285,53 @@ static void test_processor(OakEngineColorManager *mgr)
 
 	OakEngineColorProcessor *proc = oakengine_color_processor_create(
 		mgr, ref, &dest, OAKENGINE_COLOR_PROCESSOR_NORMAL);
-	assert(proc != NULL);
-	assert(oakengine_color_processor_is_valid(proc) == 1);
+	EXPECT_TRUE(proc != NULL);
+	EXPECT_TRUE(oakengine_color_processor_is_valid(proc) == 1);
 
 	const double in[4] = { 1.0, 1.0, 1.0, 1.0 };
 	double out[4] = { 0, 0, 0, 0 };
-	assert(oakengine_color_processor_convert_color(proc, in, out) ==
+	EXPECT_TRUE(oakengine_color_processor_convert_color(proc, in, out) ==
 		   OAKENGINE_OK);
-	assert(fabs(out[0] - 1.0) < 1e-3 && fabs(out[1] - 1.0) < 1e-3 &&
+	EXPECT_TRUE(fabs(out[0] - 1.0) < 1e-3 && fabs(out[1] - 1.0) < 1e-3 &&
 		   fabs(out[2] - 1.0) < 1e-3 && fabs(out[3] - 1.0) < 1e-3);
 
 	// Cache id is non-empty and stable
 	const int id_len = oakengine_color_processor_id(proc, buf, sizeof(buf));
-	assert(id_len > 0);
-	assert(buf[0] != '\0');
-	assert(oakengine_color_processor_id(proc, NULL, 0) == id_len);
+	EXPECT_TRUE(id_len > 0);
+	EXPECT_TRUE(buf[0] != '\0');
+	EXPECT_TRUE(oakengine_color_processor_id(proc, NULL, 0) == id_len);
 
 	// Inverse direction constructs too
 	OakEngineColorProcessor *inv = oakengine_color_processor_create(
 		mgr, ref, &dest, OAKENGINE_COLOR_PROCESSOR_INVERSE);
-	assert(inv != NULL);
+	EXPECT_TRUE(inv != NULL);
 	oakengine_color_processor_free(inv);
 
 	// Unknown direction is rejected
-	assert(oakengine_color_processor_create(mgr, ref, &dest, 7) == NULL);
+	EXPECT_TRUE(oakengine_color_processor_create(mgr, ref, &dest, 7) == NULL);
 
 	// An unknown colorspace yields an invalid (pass-through) processor,
 	// matching the engine's non-throwing C++ behavior
 	dest.output = "definitely-not-a-colorspace";
 	OakEngineColorProcessor *bad = oakengine_color_processor_create(
 		mgr, ref, &dest, OAKENGINE_COLOR_PROCESSOR_NORMAL);
-	assert(bad != NULL);
+	EXPECT_TRUE(bad != NULL);
 	if (oakengine_color_processor_is_valid(bad)) {
 		// Some configs resolve unknown names via roles; then conversion must
 		// still not crash.
-		assert(oakengine_color_processor_convert_color(bad, in, out) ==
+		EXPECT_TRUE(oakengine_color_processor_convert_color(bad, in, out) ==
 			   OAKENGINE_OK);
 	} else {
 		out[0] = out[1] = out[2] = out[3] = 0;
-		assert(oakengine_color_processor_convert_color(bad, in, out) ==
+		EXPECT_TRUE(oakengine_color_processor_convert_color(bad, in, out) ==
 			   OAKENGINE_OK);
-		assert(out[0] == 1.0 && out[1] == 1.0 && out[2] == 1.0 &&
+		EXPECT_TRUE(out[0] == 1.0 && out[1] == 1.0 && out[2] == 1.0 &&
 			   out[3] == 1.0);
 	}
 	oakengine_color_processor_free(bad);
 
 	// Processor is valid and usable.
-	assert(proc != NULL);
+	EXPECT_TRUE(proc != NULL);
 
 	oakengine_color_processor_free(proc);
 }
@@ -343,13 +344,13 @@ static int g_reference_events = 0;
 static void count_color_events(const oakengine_event *event, void *userdata)
 {
 	(void)userdata;
-	assert(event != NULL);
+	EXPECT_TRUE(event != NULL);
 	if (event->id == OAKENGINE_EVENT_COLOR_MANAGER_CONFIG_CHANGED) {
 		g_config_events++;
 	} else if (event->id == OAKENGINE_EVENT_COLOR_MANAGER_REFERENCE_SPACE_CHANGED) {
 		g_reference_events++;
 	} else {
-		assert(0); // unexpected event id on this subscription
+		EXPECT_TRUE(0); // unexpected event id on this subscription
 	}
 }
 
@@ -357,7 +358,7 @@ static void test_events(OakEngineProject *project,
 						OakEngineColorManager *mgr)
 {
 	// Family mismatch: a color manager event on a project handle must fail.
-	assert(oakengine_event_subscribe(
+	EXPECT_TRUE(oakengine_event_subscribe(
 			   project, OAKENGINE_EVENT_COLOR_MANAGER_CONFIG_CHANGED,
 			   count_color_events, NULL) == 0);
 
@@ -367,46 +368,46 @@ static void test_events(OakEngineProject *project,
 	int64_t sub_cfg = oakengine_event_subscribe(
 		mgr, OAKENGINE_EVENT_COLOR_MANAGER_CONFIG_CHANGED,
 		count_color_events, NULL);
-	assert(sub_ref > 0);
-	assert(sub_cfg > 0);
+	EXPECT_TRUE(sub_ref > 0);
+	EXPECT_TRUE(sub_cfg > 0);
 
 	// Changing the reference space emits reference_space_changed.
 	char ref[256];
-	assert(oakengine_project_get_color_reference_space(project, ref,
+	EXPECT_TRUE(oakengine_project_get_color_reference_space(project, ref,
 													   sizeof(ref)) > 0);
-	assert(oakengine_project_set_color_reference_space(
+	EXPECT_TRUE(oakengine_project_set_color_reference_space(
 			   project, strcmp(ref, "scene_linear") == 0 ? "reference" :
 														   "scene_linear") ==
 		   OAKENGINE_OK);
-	assert(g_reference_events == 1);
-	assert(g_config_events == 0);
+	EXPECT_TRUE(g_reference_events == 1);
+	EXPECT_TRUE(g_config_events == 0);
 
-	assert(oakengine_event_unsubscribe(sub_ref) == OAKENGINE_OK);
-	assert(oakengine_event_unsubscribe(sub_cfg) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_event_unsubscribe(sub_ref) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_event_unsubscribe(sub_cfg) == OAKENGINE_OK);
 }
 
-int main(void)
+TEST(OakEngineColor, Main)
 {
 	make_tmpdir();
 
 	// Sandbox the config/cache/data locations (the default OCIO config is
 	// extracted under the cache location).
 #if !defined(_WIN32)
-	assert(setenv("XDG_CONFIG_HOME", g_tmpdir, 1) == 0);
-	assert(setenv("XDG_CACHE_HOME", g_tmpdir, 1) == 0);
-	assert(setenv("XDG_DATA_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_CONFIG_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_CACHE_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_DATA_HOME", g_tmpdir, 1) == 0);
 #endif
 
-	assert(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
 
 	test_null_robustness();
 
 	OakEngineProject *project = oakengine_project_create();
-	assert(project != NULL);
-	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	EXPECT_TRUE(project != NULL);
+	EXPECT_TRUE(oakengine_project_new(project) == OAKENGINE_OK);
 
 	OakEngineColorManager *mgr = oakengine_color_manager_from_project(project);
-	assert(mgr != NULL);
+	EXPECT_TRUE(mgr != NULL);
 
 	// The built-in default config should always be available (it is
 	// extracted from the engine's resources); tolerate environments where
@@ -425,8 +426,6 @@ int main(void)
 	test_events(project, mgr);
 
 	oakengine_project_free(project);
-	assert(oakengine_shutdown() == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_shutdown() == OAKENGINE_OK);
 
-	printf("oakengine_color_test: all assertions passed\n");
-	return 0;
 }

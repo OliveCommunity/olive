@@ -50,7 +50,8 @@ TimelineAndTrackView::TimelineAndTrackView(Qt::Alignment vertical_alignment,
 	connect(track_view_->verticalScrollBar(), &QScrollBar::valueChanged, this,
 			&TimelineAndTrackView::tracks_value_changed);
 
-	splitter_->setSizes({ 1, width() });
+	// Default track header width: 180px (per UI design reference)
+	splitter_->setSizes({ 180, width() });
 }
 
 QSplitter *TimelineAndTrackView::splitter() const

@@ -22,6 +22,7 @@
 // (oakengine/config.h). Runs headless; no GPU required.
 
 #include <assert.h>
+#include <gtest/gtest.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -47,72 +48,71 @@ static void test_string_round_trip(void)
 	char buf[256];
 
 	// Missing key returns 0 (empty string).
-	assert(oakengine_config_get_string("oak_test_string_key", buf,
+	EXPECT_TRUE(oakengine_config_get_string("oak_test_string_key", buf,
 									   sizeof(buf)) == 0);
 
-	assert(oakengine_config_set_string("oak_test_string_key",
+	EXPECT_TRUE(oakengine_config_set_string("oak_test_string_key",
 									   "hello world") == OAKENGINE_OK);
 	int len = oakengine_config_get_string("oak_test_string_key", buf,
 									  sizeof(buf));
-	assert(len == int(strlen("hello world")));
-	assert(strcmp(buf, "hello world") == 0);
+	EXPECT_TRUE(len == int(strlen("hello world")));
+	EXPECT_TRUE(strcmp(buf, "hello world") == 0);
 
 	// Query length with NULL buffer.
-	assert(oakengine_config_get_string("oak_test_string_key", NULL, 0) == len);
+	EXPECT_TRUE(oakengine_config_get_string("oak_test_string_key", NULL, 0) == len);
 
 	// NULL key is rejected.
-	assert(oakengine_config_get_string(NULL, buf, sizeof(buf)) ==
+	EXPECT_TRUE(oakengine_config_get_string(NULL, buf, sizeof(buf)) ==
 		   OAKENGINE_E_INVALID);
-	assert(oakengine_config_set_string(NULL, "x") == OAKENGINE_E_INVALID);
+	EXPECT_TRUE(oakengine_config_set_string(NULL, "x") == OAKENGINE_E_INVALID);
 }
 
 static void test_int_round_trip(void)
 {
-	assert(oakengine_config_get_int("oak_test_int_key", 42) == 42);
+	EXPECT_TRUE(oakengine_config_get_int("oak_test_int_key", 42) == 42);
 
-	assert(oakengine_config_set_int("oak_test_int_key", 12345) ==
+	EXPECT_TRUE(oakengine_config_set_int("oak_test_int_key", 12345) ==
 		   OAKENGINE_OK);
-	assert(oakengine_config_get_int("oak_test_int_key", 0) == 12345);
+	EXPECT_TRUE(oakengine_config_get_int("oak_test_int_key", 0) == 12345);
 
-	assert(oakengine_config_set_int("oak_test_int_key", -7) ==
+	EXPECT_TRUE(oakengine_config_set_int("oak_test_int_key", -7) ==
 		   OAKENGINE_OK);
-	assert(oakengine_config_get_int("oak_test_int_key", 0) == -7);
+	EXPECT_TRUE(oakengine_config_get_int("oak_test_int_key", 0) == -7);
 
 	// NULL key returns default.
-	assert(oakengine_config_get_int(NULL, 99) == 99);
-	assert(oakengine_config_set_int(NULL, 1) == OAKENGINE_E_INVALID);
+	EXPECT_TRUE(oakengine_config_get_int(NULL, 99) == 99);
+	EXPECT_TRUE(oakengine_config_set_int(NULL, 1) == OAKENGINE_E_INVALID);
 }
 
 static void test_error_handler(void)
 {
 	g_error_calls = 0;
-	assert(oakengine_config_set_error_handler(error_cb, NULL) ==
+	EXPECT_TRUE(oakengine_config_set_error_handler(error_cb, NULL) ==
 		   OAKENGINE_OK);
 
-	assert(oakengine_config_report_error("Test Title",
+	EXPECT_TRUE(oakengine_config_report_error("Test Title",
 									 "Test Message") == OAKENGINE_OK);
-	assert(g_error_calls == 1);
-	assert(strcmp(g_last_title, "Test Title") == 0);
-	assert(strcmp(g_last_message, "Test Message") == 0);
+	EXPECT_TRUE(g_error_calls == 1);
+	EXPECT_TRUE(strcmp(g_last_title, "Test Title") == 0);
+	EXPECT_TRUE(strcmp(g_last_message, "Test Message") == 0);
 
 	// Clearing the handler does not crash.
-	assert(oakengine_config_set_error_handler(NULL, NULL) == OAKENGINE_OK);
-	assert(oakengine_config_report_error("Ignored", "Ignored") ==
+	EXPECT_TRUE(oakengine_config_set_error_handler(NULL, NULL) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_config_report_error("Ignored", "Ignored") ==
 		   OAKENGINE_OK);
-	assert(g_error_calls == 1);
+	EXPECT_TRUE(g_error_calls == 1);
 }
 
-int main(void)
+TEST(OakEngineConfig, Main)
 {
-	assert(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
 
 	test_string_round_trip();
 	test_int_round_trip();
 	test_error_handler();
 
-	assert(oakengine_config_save() == OAKENGINE_OK);
-	assert(oakengine_config_load() == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_config_save() == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_config_load() == OAKENGINE_OK);
 
-	assert(oakengine_shutdown() == OAKENGINE_OK);
-	return 0;
+	EXPECT_TRUE(oakengine_shutdown() == OAKENGINE_OK);
 }

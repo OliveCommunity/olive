@@ -44,6 +44,12 @@ NodeWidget::NodeWidget(QWidget *parent)
 			&NodeView::set_mini_map_enabled);
 	connect(toolbar_, &NodeViewToolBar::add_node_clicked, node_view_,
 			&NodeView::show_add_menu);
+	connect(toolbar_, &NodeViewToolBar::zoom_in_clicked, node_view_,
+			&NodeView::zoom_in);
+	connect(toolbar_, &NodeViewToolBar::zoom_out_clicked, node_view_,
+			&NodeView::zoom_out);
+	connect(toolbar_, &NodeViewToolBar::fit_clicked, node_view_,
+			&NodeView::center_on_items_bounding_rect);
 
 	// Set defaults
 	toolbar_->set_mini_map_enabled(true);

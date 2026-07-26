@@ -3303,7 +3303,7 @@ This setting is equivalent to the `preset` setting in libx264.</source>
     <message>
         <location filename="../panel/history/historypanel.cpp" line="+39" />
         <source>History</source>
-        <translation type="unfinished" />
+        <translation>历史记录</translation>
     </message>
 </context>
 <context>
@@ -5583,8 +5583,8 @@ This is equivalent to multiplying a video by a number between 0.0 and 1.0.</sour
     <name>olive::ParamPanel</name>
     <message>
         <location filename="../panel/param/param.cpp" line="+67" />
-        <source>Parameter Editor</source>
-        <translation>参数编辑器</translation>
+        <source>Inspector</source>
+        <translation>检查器</translation>
     </message>
 </context>
 <context>
@@ -5853,6 +5853,14 @@ This is equivalent to multiplying a video by a number between 0.0 and 1.0.</sour
         <location line="+15" />
         <source>Use glFinish</source>
         <translation>使用glFinish</translation>
+    </message>
+    <message>
+        <source>Behavior</source>
+        <translation>行为</translation>
+    </message>
+    <message>
+        <source>Enable hover focus</source>
+        <translation>启用悬停聚焦</translation>
     </message>
 </context>
 <context>
@@ -7290,8 +7298,8 @@ Do you wish to continue?</source>
     <message numerus="yes">
         <location filename="../dialog/preferences/tabs/preferencesgeneraltab.cpp" line="-20" />
         <source>%n minute(s)</source>
-        <translation type="unfinished">
-            <numerusform />
+        <translation numerus="yes">
+            <numerusform>%n 分钟</numerusform>
         </translation>
     </message>
 </context>

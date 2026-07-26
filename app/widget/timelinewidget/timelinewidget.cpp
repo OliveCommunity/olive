@@ -31,6 +31,7 @@
 #include <QFileInfo>
 #include <QInputDialog>
 #include <QProcess>
+#include <QSlider>
 #include <QSplitter>
 #include <QUrl>
 #include <QVBoxLayout>
@@ -80,6 +81,7 @@
 #include "widget/menu/menushared.h"
 #include "widget/nodeparamview/nodeparamview.h"
 #include "widget/timeruler/timeruler.h"
+#include "widget/toolbar/toolbar.h"
 
 #include "widget/viewer/vieweroutpututils.h"
 namespace olive
@@ -159,6 +161,26 @@ QVector<Footage *> get_selected_proxy_footage(const QVector<Block *> &blocks)
 	return footage;
 }
 
+// Zoom slider <-> scale mapping (logarithmic: slider 0..1000 -> 0.1..10000 px/s)
+constexpr double k_zoom_scale_min = 0.1;
+constexpr double k_zoom_scale_max = 10000.0;
+
+double zoom_slider_to_scale(int v)
+{
+	return k_zoom_scale_min *
+		   std::pow(k_zoom_scale_max / k_zoom_scale_min, v / 1000.0);
+}
+
+int scale_to_zoom_slider(double s)
+{
+	if (s <= k_zoom_scale_min)
+		return 0;
+	if (s >= k_zoom_scale_max)
+		return 1000;
+	return qRound(1000.0 * std::log(s / k_zoom_scale_min) /
+				  std::log(k_zoom_scale_max / k_zoom_scale_min));
+}
+
 } // namespace
 
 TimelineWidget::TimelineWidget(QWidget *parent)
@@ -172,6 +194,66 @@ TimelineWidget::TimelineWidget(QWidget *parent)
 	QVBoxLayout *vert_layout = new QVBoxLayout(this);
 	vert_layout->setSpacing(0);
 	vert_layout->setContentsMargins(0, 0, 0, 0);
+
+	// Application toolbar row (31px) — replaces the dockable ToolPanel by
+	// default. The dockable ToolPanel remains available via the Window menu.
+	QHBoxLayout *toolbar_row = new QHBoxLayout();
+	toolbar_row->setContentsMargins(0, 0, 0, 0);
+	toolbar_row->setSpacing(4);
+
+	Toolbar *toolbar = new Toolbar(this);
+	toolbar->setFixedHeight(31);
+	toolbar->set_tool(Core::instance()->tool());
+	toolbar->set_snapping(Core::instance()->snapping());
+	toolbar_row->addWidget(toolbar);
+
+	connect(toolbar, &Toolbar::tool_changed, Core::instance(),
+			&Core::set_tool);
+	connect(Core::instance(), &Core::tool_changed, toolbar,
+			&Toolbar::set_tool);
+	connect(toolbar, &Toolbar::snapping_changed, Core::instance(),
+			&Core::set_snapping);
+	connect(Core::instance(), &Core::snapping_changed, toolbar,
+			&Toolbar::set_snapping);
+	connect(toolbar, &Toolbar::selected_transition_changed, Core::instance(),
+			&Core::set_selected_transition_object);
+
+	toolbar_row->addStretch();
+
+	// Zoom slider (logarithmic)
+	zoom_slider_ = new QSlider(Qt::Horizontal, this);
+	zoom_slider_->setRange(0, 1000);
+	zoom_slider_->setFixedWidth(120);
+	zoom_slider_->setToolTip(tr("Zoom"));
+	zoom_slider_->setValue(scale_to_zoom_slider(get_scale()));
+	toolbar_row->addWidget(zoom_slider_);
+
+	connect(zoom_slider_, &QSlider::valueChanged, this, [this](int v) {
+		set_scale(zoom_slider_to_scale(v));
+	});
+
+	// Track height slider
+	track_height_slider_ = new QSlider(Qt::Horizontal, this);
+	track_height_slider_->setRange(0, 8);
+	track_height_slider_->setFixedWidth(80);
+	track_height_slider_->setToolTip(tr("Track Height"));
+	track_height_slider_->setValue(3);
+	toolbar_row->addWidget(track_height_slider_);
+
+	connect(track_height_slider_, &QSlider::valueChanged, this, [this](int v) {
+		if (!get_connected_node()) {
+			return;
+		}
+		double h = oakengine_track_height_minimum() +
+				   v * oakengine_track_height_interval();
+		foreach (Track *t, sequence()->get_tracks()) {
+			oakengine_track_set_height(
+				reinterpret_cast<OakEngineSequence *>(sequence()), t->type(),
+				t->index(), h);
+		}
+	});
+
+	vert_layout->addLayout(toolbar_row);
 
 	QHBoxLayout *ruler_and_time_layout = new QHBoxLayout();
 	vert_layout->addLayout(ruler_and_time_layout);
@@ -396,6 +478,11 @@ void TimelineWidget::ScaleChangedEvent(const double &scale)
 		view->view()->set_scale(scale);
 	}
 
+	// Keep zoom slider in sync when scale changes elsewhere (ctrl+wheel etc.)
+	zoom_slider_->blockSignals(true);
+	zoom_slider_->setValue(scale_to_zoom_slider(scale));
+	zoom_slider_->blockSignals(false);
+
 	if (rubberband_.isVisible()) {
 		QMetaObject::invokeMethod(this, &TimelineWidget::force_update_rubber_band,
 								  Qt::QueuedConnection);
@@ -448,17 +535,20 @@ void TimelineWidget::ConnectNodeEvent(ViewerOutput *n)
 	// Subscribe to track-level events via bridge (subscriptions in add_track)
 	connect(bridge_, &EngineEventBridge::track_index_changed, this,
 			[this](OakEngineTrack *source, int old_index, int new_index) {
-				Track *track = reinterpret_cast<Track *>(source);
-				track_updated(track->type());
-				track_index_changed(track, old_index, new_index);
+				track_updated(static_cast<Track::Type>(
+					oakengine_track_type(source)));
+				track_index_changed(reinterpret_cast<Track *>(source),
+									old_index, new_index);
 			});
 	connect(bridge_, &EngineEventBridge::track_height_changed, this,
 			[this](OakEngineTrack *source, double) {
-				track_updated(reinterpret_cast<Track *>(source)->type());
+				track_updated(static_cast<Track::Type>(
+					oakengine_track_type(source)));
 			});
 	connect(bridge_, &EngineEventBridge::track_blocks_refreshed, this,
 			[this](OakEngineTrack *source) {
-				track_updated(reinterpret_cast<Track *>(source)->type());
+				track_updated(static_cast<Track::Type>(
+					oakengine_track_type(source)));
 			});
 	connect(bridge_, &EngineEventBridge::track_block_added, this,
 			[this](OakEngineBlock *block, qint64, qint64) {
@@ -519,7 +609,10 @@ void TimelineWidget::ConnectNodeEvent(ViewerOutput *n)
 	{
 		oak_video_params vp;
 		oakengine_viewer_get_video_params(handle, 0, &vp);
-		SetTimebase(Rational(vp.time_base_den, vp.time_base_num));
+		// time_base is the frame duration (e.g. 1/25); reconstruct it as
+		// Rational(num, den). (Previously num/den were swapped here, which
+		// produced the frame rate and triggered "INVALID TIMEBASE".)
+		SetTimebase(Rational(vp.time_base_num, vp.time_base_den));
 	}
 
 	for (int i = 0; i < views_.size(); i++) {
@@ -1954,9 +2047,15 @@ void TimelineWidget::track_updated(Track::Type type)
 	update_viewports(type);
 }
 
-void TimelineWidget::block_updated()
+void TimelineWidget::block_updated(OakEngineBlock *)
 {
-	update_viewports(static_cast<Block *>(sender())->track()->type());
+	// The old implementation used sender() to obtain the Block and then
+	// queried its track type to update only one viewport.  With the bridge
+	// approach sender() is the EngineEventBridge (not a Block), and the
+	// OakEngineBlock handle is opaque -- there is no C API to retrieve its
+	// track type.  Simply refresh all viewports; the cost is negligible
+	// (just a repaint request).
+	update_viewports();
 }
 
 void TimelineWidget::update_horizontal_splitters()

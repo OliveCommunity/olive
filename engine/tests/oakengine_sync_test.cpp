@@ -25,6 +25,7 @@
 // worker binary, SKIP with exit 0 when unavailable).
 
 #include <assert.h>
+#include <gtest/gtest.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -61,13 +62,13 @@ static void make_tmpdir(void)
 #if defined(_WIN32)
 	char base[MAX_PATH];
 	const DWORD len = GetTempPathA(MAX_PATH, base);
-	assert(len > 0 && len < MAX_PATH);
+	EXPECT_TRUE(len > 0 && len < MAX_PATH);
 	snprintf(g_tmpdir, sizeof(g_tmpdir), "%soakengine_sync_test_%lu", base,
 			 (unsigned long)GetCurrentProcessId());
-	assert(_mkdir(g_tmpdir) == 0);
+	EXPECT_TRUE(_mkdir(g_tmpdir) == 0);
 #else
 	strcpy(g_tmpdir, "/tmp/oakengine_sync_test_XXXXXX");
-	assert(mkdtemp(g_tmpdir) != NULL);
+	EXPECT_TRUE(mkdtemp(g_tmpdir) != NULL);
 #endif
 }
 
@@ -121,7 +122,7 @@ static void write_textured_wav(const QString &path, int seconds)
 	const int block = rate / 20; // one gain value per envelope window
 
 	QFile f(path);
-	assert(f.open(QFile::WriteOnly));
+	EXPECT_TRUE(f.open(QFile::WriteOnly));
 	auto write_u32 = [&f](uint32_t v) {
 		f.write(reinterpret_cast<const char *>(&v), 4);
 	};
@@ -181,48 +182,48 @@ static OakEngineClip *make_pair(OakEngineProject *project,
 								const char *media_path,
 								OakEngineClip **target_out)
 {
-	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_AUDIO) ==
+	EXPECT_TRUE(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_AUDIO) ==
 		   0);
 	// A second audio track: placing the target on the SAME track would
 	// overwrite (trim) the reference clip.
-	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_AUDIO) ==
+	EXPECT_TRUE(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_AUDIO) ==
 		   1);
 	OakEngineFootage *footage =
 		oakengine_project_import_footage(project, media_path);
-	assert(footage != NULL);
+	EXPECT_TRUE(footage != NULL);
 	OakEngineClip *reference = oakengine_sequence_add_footage_clip(
 		seq, footage, OAKENGINE_TRACK_TYPE_AUDIO, 0, 0, 160, 0);
-	assert(reference != NULL);
+	EXPECT_TRUE(reference != NULL);
 	OakEngineClip *target = oakengine_sequence_add_footage_clip(
 		seq, footage, OAKENGINE_TRACK_TYPE_AUDIO, 1, k_offset_frames,
 		160 + k_offset_frames, k_offset_frames);
-	assert(target != NULL);
+	EXPECT_TRUE(target != NULL);
 	oakengine_footage_free(footage);
 	*target_out = target;
 	return reference;
 }
 
-int main(void)
+TEST(OakEngineSync, Main)
 {
 	make_tmpdir();
 
 	// Sandbox the config/cache/data locations (see oakengine_init_test).
 #if !defined(_WIN32)
-	assert(setenv("XDG_CONFIG_HOME", g_tmpdir, 1) == 0);
-	assert(setenv("XDG_CACHE_HOME", g_tmpdir, 1) == 0);
-	assert(setenv("XDG_DATA_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_CONFIG_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_CACHE_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("XDG_DATA_HOME", g_tmpdir, 1) == 0);
 #endif
 
 	// HEADLESS is enough for the validation part.
-	assert(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
 
 	OakEngineProject *project = oakengine_project_create();
-	assert(project != NULL);
-	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	EXPECT_TRUE(project != NULL);
+	EXPECT_TRUE(oakengine_project_new(project) == OAKENGINE_OK);
 	OakEngineSequence *seq = oakengine_sequence_new(project, "Sync");
-	assert(seq != NULL);
+	EXPECT_TRUE(seq != NULL);
 	// 20 fps: one frame == one envelope window (1/20 s) exactly.
-	assert(oakengine_sequence_set_video_params(seq, -1, -1, 20, 1, -1, -1,
+	EXPECT_TRUE(oakengine_sequence_set_video_params(seq, -1, -1, 20, 1, -1, -1,
 											   -1, -1, 1) == OAKENGINE_OK);
 
 	const QString noise_path = QDir(QString::fromUtf8(g_tmpdir))
@@ -234,26 +235,26 @@ int main(void)
 
 	// ---- Validation (no GL) -------------------------------------------
 	double offset_s = -1, confidence = -1, stretch = -1;
-	assert(oakengine_sync_estimate_offset(NULL, reference, target,
+	EXPECT_TRUE(oakengine_sync_estimate_offset(NULL, reference, target,
 										  &offset_s,
 										  &confidence) == OAKENGINE_E_INVALID);
-	assert(oakengine_sync_estimate_offset(seq, NULL, target, &offset_s,
+	EXPECT_TRUE(oakengine_sync_estimate_offset(seq, NULL, target, &offset_s,
 										  &confidence) == OAKENGINE_E_INVALID);
-	assert(oakengine_sync_estimate_offset(seq, reference, NULL, &offset_s,
+	EXPECT_TRUE(oakengine_sync_estimate_offset(seq, reference, NULL, &offset_s,
 										  &confidence) == OAKENGINE_E_INVALID);
-	assert(oakengine_sync_estimate_stretch_offset(NULL, reference, target,
+	EXPECT_TRUE(oakengine_sync_estimate_stretch_offset(NULL, reference, target,
 												  &stretch, &offset_s,
 												  &confidence) ==
 		   OAKENGINE_E_INVALID);
 	char err[256];
-	assert(oakengine_sync_last_error(err, sizeof(err)) > 0);
+	EXPECT_TRUE(oakengine_sync_last_error(err, sizeof(err)) > 0);
 
 	// Valid handles but the engine lacks the RENDER bit: OAKENGINE_E_STATE
 	// with a readable reason, nothing else changed.
-	assert(oakengine_sync_estimate_offset(seq, reference, target, &offset_s,
+	EXPECT_TRUE(oakengine_sync_estimate_offset(seq, reference, target, &offset_s,
 										  &confidence) == OAKENGINE_E_STATE);
-	assert(oakengine_sync_last_error(err, sizeof(err)) > 0);
-	assert(strstr(err, "OAKENGINE_INIT_RENDER") != NULL);
+	EXPECT_TRUE(oakengine_sync_last_error(err, sizeof(err)) > 0);
+	EXPECT_TRUE(strstr(err, "OAKENGINE_INIT_RENDER") != NULL);
 
 	// ---- GL-gated estimation ------------------------------------------
 	if (!is_render_backend_available(QStringLiteral("opengl"))) {
@@ -261,19 +262,19 @@ int main(void)
 			   "available, estimation assertions skipped\n");
 		oakengine_project_free(project);
 		oakengine_shutdown();
-		return 0;
+		return;
 	}
 	if (!worker_binary_exists()) {
 		printf("oakengine_sync_test: SKIP: oak-render-worker binary not "
 			   "found, estimation assertions skipped\n");
 		oakengine_project_free(project);
 		oakengine_shutdown();
-		return 0;
+		return;
 	}
 
 	olive::Config::current()[QStringLiteral("GraphicsBackend")] =
 		QStringLiteral("opengl");
-	assert(oakengine_init(OAKENGINE_INIT_HEADLESS | OAKENGINE_INIT_RENDER) ==
+	EXPECT_TRUE(oakengine_init(OAKENGINE_INIT_HEADLESS | OAKENGINE_INIT_RENDER) ==
 		   OAKENGINE_OK);
 
 	// The target's content starts k_offset_frames later in the source:
@@ -293,22 +294,20 @@ int main(void)
 		fprintf(stderr, "DEBUG est_rc=%d off=%f conf=%f err='%s'\n", est_rc,
 				offset_s, confidence, est_err);
 	}
-	assert(est_rc == OAKENGINE_OK);
-	assert(fabs(fabs(offset_s) - expected_s) < tolerance_s);
-	assert(offset_s < 0.0); // the target is delayed: it must move earlier
-	assert(confidence > 0.0 && confidence <= 1.0);
+	EXPECT_TRUE(est_rc == OAKENGINE_OK);
+	EXPECT_TRUE(fabs(fabs(offset_s) - expected_s) < tolerance_s);
+	EXPECT_TRUE(offset_s < 0.0); // the target is delayed: it must move earlier
+	EXPECT_TRUE(confidence > 0.0 && confidence <= 1.0);
 
 	// Same-speed content: the stretch estimator reports rate ~1 and the
 	// same offset.
 	const int str_rc = oakengine_sync_estimate_stretch_offset(
 		seq, reference, target, &stretch, &offset_s, &confidence);
-	assert(str_rc == OAKENGINE_OK);
-	assert(fabs(stretch - 1.0) < 0.01);
-	assert(fabs(fabs(offset_s) - expected_s) < tolerance_s);
+	EXPECT_TRUE(str_rc == OAKENGINE_OK);
+	EXPECT_TRUE(fabs(stretch - 1.0) < 0.01);
+	EXPECT_TRUE(fabs(fabs(offset_s) - expected_s) < tolerance_s);
 
 	oakengine_project_free(project);
-	assert(oakengine_shutdown() == OAKENGINE_OK);
+	EXPECT_TRUE(oakengine_shutdown() == OAKENGINE_OK);
 
-	printf("oakengine_sync_test: all assertions passed\n");
-	return 0;
 }

@@ -27,6 +27,7 @@
 #include <QPushButton>
 #include <QScrollBar>
 #include <QTimer>
+#include <QToolButton>
 #include <QWidget>
 
 #include "oakengine/audio.h"
@@ -219,6 +220,11 @@ protected:
 		return display_widget_;
 	}
 
+	// Overlay (info chip + zoom/safe-frame buttons) per the UI design reference
+	void create_overlay();
+	void position_overlay();
+	void update_info_chip();
+
 	void IgnoreNextScrubEvent()
 	{
 		ignore_scrub_++;
@@ -227,6 +233,12 @@ protected:
 	OakEnginePreviewRequest *get_single_frame(const Rational &t, bool dry = false);
 
 	void set_waveform_mode(WaveformMode wf);
+
+private slots:
+	void overlay_zoom_in();
+	void overlay_zoom_out();
+	void overlay_zoom_fit();
+	void overlay_toggle_safe_frame();
 
 private:
 	int64_t get_timestamp() const
@@ -284,6 +296,11 @@ private:
 	bool is_video_visible() const;
 
 	ViewerSizer *sizer_;
+
+	QWidget *overlay_;
+	QLabel *info_chip_;
+	QToolButton *safe_frame_btn_;
+	int overlay_zoom_index_;
 
 	int playback_speed_;
 

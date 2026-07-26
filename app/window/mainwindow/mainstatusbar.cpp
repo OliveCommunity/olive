@@ -44,10 +44,42 @@ MainStatusBar::MainStatusBar(QWidget *parent)
 	bar_->setMaximum(100);
 	bar_->setVisible(false);
 
+	// Permanent right-hand sequence info chips (resolution + frame rate)
+	resolution_label_ = new QLabel();
+	fps_label_ = new QLabel();
+	resolution_label_->setContentsMargins(6, 0, 6, 0);
+	fps_label_->setContentsMargins(6, 0, 6, 0);
+	addPermanentWidget(resolution_label_);
+	addPermanentWidget(fps_label_);
+	resolution_label_->setVisible(false);
+	fps_label_->setVisible(false);
+
 	showMessage(tr("Welcome to %1 %2")
 					.arg(QCoreApplication::applicationName(),
 						 QCoreApplication::applicationVersion()),
 				10000);
+}
+
+void MainStatusBar::set_sequence_info(int width, int height, double fps)
+{
+	if (width <= 0 || height <= 0) {
+		resolution_label_->setVisible(false);
+		fps_label_->setVisible(false);
+		return;
+	}
+
+	resolution_label_->setText(QStringLiteral("%1\u00d7%2").arg(width).arg(height));
+
+	// Show the frame rate as an integer when it is whole, otherwise keep one
+	// decimal place (e.g. 23.976 FPS).
+	const double rounded = qRound(fps);
+	QString fps_str = (qFuzzyCompare(fps, rounded))
+						  ? QString::number(static_cast<int>(rounded))
+						  : QString::number(fps, 'f', 2);
+	fps_label_->setText(tr("%1 FPS").arg(fps_str));
+
+	resolution_label_->setVisible(true);
+	fps_label_->setVisible(true);
 }
 
 void MainStatusBar::connect_task_manager(EngineEventBridge *bridge)

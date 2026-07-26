@@ -424,7 +424,7 @@ TEST_F(PanelTest, ParamPanelConstructionAndContexts)
 
 	ParamPanel panel;
 	EXPECT_EQ(panel.objectName(), QStringLiteral("ParamPanel"));
-	EXPECT_EQ(panel.title(), QStringLiteral("Parameter Editor"));
+	EXPECT_EQ(panel.title(), QStringLiteral("Inspector"));
 	ASSERT_NE(panel.get_param_view(), nullptr);
 
 	EXPECT_TRUE(panel.get_contexts().isEmpty());

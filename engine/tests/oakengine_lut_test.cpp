@@ -22,6 +22,7 @@
 // Runs headless; no GPU required.
 
 #include <assert.h>
+#include <gtest/gtest.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -30,40 +31,39 @@
 
 static void test_counts_after_init(void)
 {
-    assert(oakengine_lut_directory_count() >= 0);
-    assert(oakengine_lut_file_count() >= 0);
+    EXPECT_TRUE(oakengine_lut_directory_count() >= 0);
+    EXPECT_TRUE(oakengine_lut_file_count() >= 0);
 
     // Out-of-range index returns an error.
     char buf[256];
-    assert(oakengine_lut_directory_at(-1, buf, sizeof(buf)) < 0);
-    assert(oakengine_lut_file_at(-1, buf, sizeof(buf)) < 0);
+    EXPECT_TRUE(oakengine_lut_directory_at(-1, buf, sizeof(buf)) < 0);
+    EXPECT_TRUE(oakengine_lut_file_at(-1, buf, sizeof(buf)) < 0);
 }
 
 static void test_set_directories_round_trip(void)
 {
     const char *dirs[] = { "/tmp/oak_lut_a", "/tmp/oak_lut_b" };
 
-    assert(oakengine_lut_set_directories(dirs, 2) == OAKENGINE_OK);
-    assert(oakengine_lut_directory_count() == 2);
+    EXPECT_TRUE(oakengine_lut_set_directories(dirs, 2) == OAKENGINE_OK);
+    EXPECT_TRUE(oakengine_lut_directory_count() == 2);
 
     char buf[256];
-    assert(oakengine_lut_directory_at(0, buf, sizeof(buf)) > 0);
-    assert(strcmp(buf, "/tmp/oak_lut_a") == 0);
-    assert(oakengine_lut_directory_at(1, buf, sizeof(buf)) > 0);
-    assert(strcmp(buf, "/tmp/oak_lut_b") == 0);
+    EXPECT_TRUE(oakengine_lut_directory_at(0, buf, sizeof(buf)) > 0);
+    EXPECT_TRUE(strcmp(buf, "/tmp/oak_lut_a") == 0);
+    EXPECT_TRUE(oakengine_lut_directory_at(1, buf, sizeof(buf)) > 0);
+    EXPECT_TRUE(strcmp(buf, "/tmp/oak_lut_b") == 0);
 
     // Clearing the library.
-    assert(oakengine_lut_set_directories(NULL, 0) == OAKENGINE_OK);
-    assert(oakengine_lut_directory_count() == 0);
+    EXPECT_TRUE(oakengine_lut_set_directories(NULL, 0) == OAKENGINE_OK);
+    EXPECT_TRUE(oakengine_lut_directory_count() == 0);
 }
 
-int main(void)
+TEST(OakEngineLut, Main)
 {
-    assert(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
+    EXPECT_TRUE(oakengine_init(OAKENGINE_INIT_HEADLESS) == OAKENGINE_OK);
 
     test_counts_after_init();
     test_set_directories_round_trip();
 
-    assert(oakengine_shutdown() == OAKENGINE_OK);
-    return 0;
+    EXPECT_TRUE(oakengine_shutdown() == OAKENGINE_OK);
 }

@@ -45,6 +45,22 @@ NodeViewToolBar::NodeViewToolBar(QWidget *parent)
 			&NodeViewToolBar::mini_map_enabled_toggled);
 	layout->addWidget(minimap_btn_);
 
+	// Zoom controls per the UI design reference: [+] [-] [Fit]
+	zoom_out_btn_ = new QPushButton();
+	connect(zoom_out_btn_, &QPushButton::clicked, this,
+			&NodeViewToolBar::zoom_out_clicked);
+	layout->addWidget(zoom_out_btn_);
+
+	zoom_in_btn_ = new QPushButton();
+	connect(zoom_in_btn_, &QPushButton::clicked, this,
+			&NodeViewToolBar::zoom_in_clicked);
+	layout->addWidget(zoom_in_btn_);
+
+	fit_btn_ = new QPushButton();
+	connect(fit_btn_, &QPushButton::clicked, this,
+			&NodeViewToolBar::fit_clicked);
+	layout->addWidget(fit_btn_);
+
 	layout->addStretch();
 
 	retranslate();
@@ -65,12 +81,18 @@ void NodeViewToolBar::retranslate()
 {
 	add_node_btn_->setToolTip(tr("Add Node"));
 	minimap_btn_->setToolTip(tr("Toggle Mini-Map"));
+	zoom_in_btn_->setToolTip(tr("Zoom In"));
+	zoom_out_btn_->setToolTip(tr("Zoom Out"));
+	fit_btn_->setToolTip(tr("Fit to Content"));
+	fit_btn_->setText(tr("Fit"));
 }
 
 void NodeViewToolBar::update_icons()
 {
 	add_node_btn_->setIcon(icon::add);
 	minimap_btn_->setIcon(icon::mini_map);
+	zoom_in_btn_->setIcon(icon::zoom_in);
+	zoom_out_btn_->setIcon(icon::zoom_out);
 }
 
 }

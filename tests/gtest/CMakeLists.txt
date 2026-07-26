@@ -119,6 +119,7 @@ add_executable(olive-gtest
   cli_test.cpp
   timeline_undo_test.cpp
   timeline_undo_general_test.cpp
+  timeline_legacy_test.cpp
   task_project_test.cpp
   task_cache_test.cpp
   codec_oiio_test.cpp

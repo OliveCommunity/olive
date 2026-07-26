@@ -22,6 +22,7 @@
 #ifndef OAK_MAINSTATUSBAR_H
 #define OAK_MAINSTATUSBAR_H
 
+#include <QLabel>
 #include <QProgressBar>
 #include <QStatusBar>
 
@@ -34,6 +35,10 @@ class EngineEventBridge;
 
 /**
  * @brief Shows abbreviated information from the global TaskManager
+ *
+ * Per the Oak UI design reference the status bar is a global information
+ * strip. The transient task message is shown on the left while the active
+ * sequence's resolution and frame rate are shown permanently on the right.
  */
 class MainStatusBar : public QStatusBar {
 	Q_OBJECT
@@ -41,6 +46,14 @@ public:
 	MainStatusBar(QWidget *parent = nullptr);
 
 	void connect_task_manager(EngineEventBridge *bridge);
+
+	/**
+	 * @brief Update the permanent right-hand sequence info chips.
+	 *
+	 * Plain (non-slot) method taking primitives so no engine C++ type leaks
+	 * into the MOC-processed header. Pass width <= 0 to clear the chips.
+	 */
+	void set_sequence_info(int width, int height, double fps);
 
 signals:
 	void double_clicked();
@@ -59,6 +72,9 @@ private:
 	EngineEventBridge *bridge_;
 
 	QProgressBar *bar_;
+
+	QLabel *resolution_label_;
+	QLabel *fps_label_;
 
 	OakEngineTask *connected_task_;
 

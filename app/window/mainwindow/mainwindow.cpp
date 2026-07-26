@@ -25,7 +25,6 @@
 #include <QDebug>
 #include <QMessageBox>
 #include <QScreen>
-#include <QToolBar>
 
 #ifdef Q_OS_LINUX
 #include <QOffscreenSurface>
@@ -44,7 +43,6 @@
 #include "oakengine/undo.h"
 
 #include "widget/viewer/vieweroutpututils.h"
-#include "widget/toolbar/toolbar.h"
 #include "core.h"
 namespace olive
 {
@@ -84,34 +82,11 @@ MainWindow::MainWindow(QWidget *parent)
 
 	// Create and set status bar
 	event_bridge_ = new EngineEventBridge(this);
-	MainStatusBar *status_bar = new MainStatusBar(this);
-	status_bar->connect_task_manager(event_bridge_);
-	connect(status_bar, &MainStatusBar::double_clicked, this,
+	status_bar_ = new MainStatusBar(this);
+	status_bar_->connect_task_manager(event_bridge_);
+	connect(status_bar_, &MainStatusBar::double_clicked, this,
 			&MainWindow::status_bar_double_clicked);
-	setStatusBar(status_bar);
-
-	// Create application toolbar (31px) — replaces the dockable ToolPanel by default
-	tool_bar_ = new QToolBar(this);
-	tool_bar_->setObjectName(QStringLiteral("AppToolbar"));
-	tool_bar_->setFixedHeight(31);
-	tool_bar_->setMovable(false);
-	tool_bar_->setFloatable(false);
-	Toolbar *toolbar_widget = new Toolbar(tool_bar_);
-	toolbar_widget->set_tool(Core::instance()->tool());
-	toolbar_widget->set_snapping(Core::instance()->snapping());
-	tool_bar_->addWidget(toolbar_widget);
-	addToolBar(Qt::TopToolBarArea, tool_bar_);
-
-	connect(toolbar_widget, &Toolbar::tool_changed, Core::instance(),
-			&Core::set_tool);
-	connect(Core::instance(), &Core::tool_changed, toolbar_widget,
-			&Toolbar::set_tool);
-	connect(toolbar_widget, &Toolbar::snapping_changed, Core::instance(),
-			&Core::set_snapping);
-	connect(Core::instance(), &Core::snapping_changed, toolbar_widget,
-			&Toolbar::set_snapping);
-	connect(toolbar_widget, &Toolbar::selected_transition_changed,
-			Core::instance(), &Core::set_selected_transition_object);
+	setStatusBar(status_bar_);
 
 	// Create standard panels
 	node_panel_ = new NodePanel();
@@ -772,6 +747,15 @@ void MainWindow::timeline_focused(ViewerOutput *viewer)
 	multicam_panel_->connect_viewer_node(viewer);
 	param_panel_->connect_viewer_node(viewer);
 	curve_panel_->connect_viewer_node(viewer);
+
+	// Update the global status bar info chips (resolution + frame rate)
+	if (viewer) {
+		VideoParams vp = viewer_output_video_params(viewer);
+		status_bar_->set_sequence_info(vp.width(), vp.height(),
+									   vp.frame_rate().to_double());
+	} else {
+		status_bar_->set_sequence_info(0, 0, 0.0);
+	}
 }
 
 QString MainWindow::get_custom_shortcuts_file()
@@ -947,36 +931,56 @@ void MainWindow::focused_panel_changed(PanelWidget *panel)
 
 void MainWindow::set_default_layout()
 {
+	// Default layout per the Oak UI design reference (design/*.png):
+	//
+	// ┌─────────────┬───────────────────────────┬──────────────┐
+	// │ 素材查看器   │ 序列查看器 | 节点编辑器    │ 检查器|历史   │
+	// ├─────────────┤                           │              │
+	// │ 项目        │                           │              │
+	// ├─────────────┴───────────────────────────┴──────────────┤
+	// │ 工具条(31px) + 时间线 (full width)                      │
+	// ├────────────────────────────────────────────────────────┤
+	// │ 音频监视器 (26px thin strip)                            │
+	// └────────────────────────────────────────────────────────┘
+
 	KDDockWidgets::InitialOption o;
-	o.preferredSize = QSize(0, centralAreaGeometry().height());
 
-	// Top left - Tabify footage viewer, param panel, and node panel
-	addDockWidget(footage_viewer_panel_, KDDockWidgets::Location_OnTop, nullptr,
-				  o);
-	footage_viewer_panel_->addDockWidgetAsTab(param_panel_);
-	footage_viewer_panel_->addDockWidgetAsTab(node_panel_);
-	param_panel_->raise();
-
-	// Top right - sequence viewer
-	addDockWidget(sequence_viewer_panel_, KDDockWidgets::Location_OnRight,
-				  footage_viewer_panel_, o);
-
-	// Bottom center - timelines
+	// Timeline at the very bottom, spanning the full window width
 	addDockWidget(timeline_panels_.first(), KDDockWidgets::Location_OnBottom);
 
-	// Right of timeline - audio monitor
-	o.preferredSize = QSize(320, 0);
-	addDockWidget(audio_monitor_panel_, KDDockWidgets::Location_OnRight,
+	// Audio monitor: 26px ultra-thin strip below the timeline
+	o.preferredSize = QSize(0, 26);
+	addDockWidget(audio_monitor_panel_, KDDockWidgets::Location_OnBottom,
 				  timeline_panels_.first(), o);
 
-	// Bottom left - project panel (tool panel is now the top toolbar;
-	// the dockable ToolPanel remains available via Window menu)
-	addDockWidget(project_panel_, KDDockWidgets::Location_OnLeft,
-				  timeline_panels_.first());
-	project_panel_->addDockWidgetAsTab(history_panel_);
+	// Three-column workspace above the timeline. Establish the horizontal
+	// (left -> right) structure first so the column separators span the full
+	// workspace height, then subdivide the left column vertically.
+	o = KDDockWidgets::InitialOption();
+	o.preferredSize = QSize(0, centralAreaGeometry().height());
+
+	// Left column - footage viewer (top-left anchor)
+	addDockWidget(footage_viewer_panel_, KDDockWidgets::Location_OnTop, nullptr,
+				  o);
+
+	// Center column - sequence viewer tabified with node editor
+	addDockWidget(sequence_viewer_panel_, KDDockWidgets::Location_OnRight,
+				  footage_viewer_panel_, o);
+	sequence_viewer_panel_->addDockWidgetAsTab(node_panel_);
+	sequence_viewer_panel_->raise();
+
+	// Right column - inspector (param panel) with history
+	addDockWidget(param_panel_, KDDockWidgets::Location_OnRight,
+				  sequence_viewer_panel_, o);
+	param_panel_->addDockWidgetAsTab(history_panel_);
+	param_panel_->raise();
+
+	// Left column bottom - project panel (below footage viewer)
+	addDockWidget(project_panel_, KDDockWidgets::Location_OnBottom,
+				  footage_viewer_panel_);
 	project_panel_->raise();
 
-	// Hidden panels
+	// Hidden panels (all remain accessible via the Window menu)
 	tool_panel_->close();
 	pixel_sampler_panel_->close();
 	task_man_panel_->close();
@@ -991,9 +995,8 @@ void MainWindow::set_default_layout()
 	}
 	for (auto it = timeline_panels_.cbegin(); it != timeline_panels_.cend();
 		 it++) {
-		auto p = *it;
-		if (p != timeline_panels_.first()) {
-			p->addDockWidgetAsTab(p);
+		if (*it != timeline_panels_.first()) {
+			(*it)->close();
 		}
 	}
 
