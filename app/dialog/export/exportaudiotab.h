@@ -26,7 +26,6 @@
 #include <QWidget>
 
 #include "common/define.h"
-#include "codec/exportformat.h"
 #include "widget/slider/integerslider.h"
 #include "widget/standardcombos/standardcombos.h"
 
@@ -38,13 +37,12 @@ class ExportAudioTab : public QWidget {
 public:
 	ExportAudioTab(QWidget *parent = nullptr);
 
-	ExportCodec::Codec get_codec() const
+	int get_codec() const
 	{
-		return static_cast<ExportCodec::Codec>(
-			codec_combobox_->currentData().toInt());
+		return codec_combobox_->currentData().toInt();
 	}
 
-	void set_codec(ExportCodec::Codec c)
+	void set_codec(int c)
 	{
 		for (int i = 0; i < codec_combobox_->count(); i++) {
 			if (codec_combobox_->itemData(i) == c) {
@@ -75,10 +73,10 @@ public:
 	}
 
 public slots:
-	int set_format(ExportFormat::Format format);
+	int set_format(int format);
 
 private:
-	ExportFormat::Format fmt_;
+	int fmt_;
 	QComboBox *codec_combobox_;
 	SampleRateComboBox *sample_rate_combobox_;
 	ChannelLayoutComboBox *channel_layout_combobox_;

@@ -25,6 +25,7 @@
 #include <QTreeWidget>
 
 #include "node/node.h"
+#include "oakengine/node.h"
 
 namespace olive
 {
@@ -56,11 +57,14 @@ public:
 		show_keyframe_tracks_as_rows_ = e;
 	}
 
-public slots:
+public:
+	// Not a slot: signature uses the engine C++ type Node*, which must not be
+	// exposed to MOC (it would pull Node::staticMetaObject across the ABI
+	// boundary). All connections use new-style member-function syntax.
 	void set_nodes(const QVector<Node *> &nodes);
 
 signals:
-	void node_enable_changed(Node *n, bool e);
+	void node_enable_changed(OakEngineNode *n, bool e);
 
 	void input_enable_changed(const NodeKeyframeTrackReference &ref, bool e);
 

@@ -21,13 +21,15 @@
 
 #include "taskmanager.h"
 
-#include "task/taskmanager.h"
+#include "engineeventbridge.h"
+#include "oakengine/task.h"
 
 namespace olive
 {
 
 TaskManagerPanel::TaskManagerPanel()
 	: PanelWidget(QStringLiteral("TaskManagerPanel"))
+	, bridge_(new EngineEventBridge(this))
 {
 	// Create task view
 	view_ = new TaskView(this);
@@ -35,15 +37,30 @@ TaskManagerPanel::TaskManagerPanel()
 	// Set it as the main widget
 	setWidget(view_);
 
-	// Connect task view to the task manager
-	connect(TaskManager::instance(), &TaskManager::task_added, view_,
-			&TaskView::add_task);
-	connect(TaskManager::instance(), &TaskManager::task_removed, view_,
-			&TaskView::remove_task);
-	connect(TaskManager::instance(), &TaskManager::task_failed, view_,
-			&TaskView::task_failed);
-	connect(view_, &TaskView::task_cancelled, TaskManager::instance(),
-			&TaskManager::cancel_task);
+	// Connect task view to the task manager via EngineEventBridge
+	bridge_->subscribe(oakengine_task_manager_handle(),
+					   OAKENGINE_EVENT_TASK_MANAGER_TASK_ADDED);
+	bridge_->subscribe(oakengine_task_manager_handle(),
+					   OAKENGINE_EVENT_TASK_MANAGER_TASK_REMOVED);
+	bridge_->subscribe(oakengine_task_manager_handle(),
+					   OAKENGINE_EVENT_TASK_MANAGER_TASK_FAILED);
+
+	connect(bridge_, &EngineEventBridge::task_manager_task_added, this,
+			[this](OakEngineTask *task, const QString &) {
+				view_->add_task(task);
+			});
+	connect(bridge_, &EngineEventBridge::task_manager_task_removed, this,
+			[this](OakEngineTask *task) {
+				view_->remove_task(task);
+			});
+	connect(bridge_, &EngineEventBridge::task_manager_task_failed, this,
+			[this](OakEngineTask *task) {
+				view_->task_failed(task);
+			});
+	connect(view_, &TaskView::task_cancelled, this,
+			[](OakEngineTask *t) {
+				oakengine_task_manager_cancel(t);
+			});
 
 	// Set strings
 	retranslate();

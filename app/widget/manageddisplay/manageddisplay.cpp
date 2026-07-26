@@ -25,11 +25,11 @@
 #include <QMessageBox>
 
 #include "panel/panelmanager.h"
-#ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
-#include "render/backend/dynamicrenderer.h"
-#endif
-#include "render/opengl/openglrenderer.h"
-#include "render/rendermanager.h"
+#include "oakengine/videoparams.h"
+#include "oakengine/renderer.h"
+#include "oakengine/display.h"
+#include "widget/viewer/vieweroutpututils.h"
+#include "common/configwrapper.h"
 
 namespace olive
 {
@@ -49,21 +49,24 @@ ManagedDisplayWidget::ManagedDisplayWidget(QWidget *parent)
 	// Create renderer
 #ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
 	{
-		auto *dynamic_renderer = new DynamicRenderer(
-			RenderManager::backend_to_string(
-				RenderManager::instance()->requested_backend()),
-			this);
-		if (!dynamic_renderer->load()) {
+		const QString backend = oak_query_string([](char *buf, int sz) {
+			int backend = oakengine_render_manager_requested_backend();
+			return oakengine_render_manager_backend_to_string(backend, buf,
+															  sz);
+		});
+		attached_renderer_ = static_cast<Renderer *>(
+			oakengine_display_renderer_create_dynamic(
+				backend.toUtf8().constData(), this));
+		if (!attached_renderer_) {
 			qWarning()
 				<< "Failed to load dynamic render backend for viewer, falling back to OpenGL";
-			delete dynamic_renderer;
-			attached_renderer_ = new OpenGLRenderer(this);
-		} else {
-			attached_renderer_ = dynamic_renderer;
+			attached_renderer_ = static_cast<Renderer *>(
+				oakengine_display_renderer_create_opengl(this));
 		}
 	}
 #else
-	attached_renderer_ = new OpenGLRenderer(this);
+	attached_renderer_ = static_cast<Renderer *>(
+		oakengine_display_renderer_create_opengl(this));
 #endif
 
 	if (attached_renderer_->is_open_gl()) {
@@ -120,33 +123,43 @@ ManagedDisplayWidget::~ManagedDisplayWidget()
 	}
 }
 
-void ManagedDisplayWidget::connect_color_manager(ColorManager *color_manager)
+void ManagedDisplayWidget::connect_color_manager(OakEngineColorManager *color_manager)
 {
 	if (color_manager_ == color_manager) {
 		return;
 	}
 
 	if (color_manager_ != nullptr) {
-		disconnect(color_manager_, &ColorManager::config_changed, this,
-				   &ManagedDisplayWidget::color_config_changed);
-		disconnect(color_manager_, &ColorManager::reference_space_changed, this,
-				   &ManagedDisplayWidget::color_config_changed);
+		for (int64_t id : color_subs_) {
+			oakengine_event_unsubscribe(id);
+		}
+		color_subs_.clear();
 	}
 
 	color_manager_ = color_manager;
 
 	if (color_manager_ != nullptr) {
-		connect(color_manager_, &ColorManager::config_changed, this,
-				&ManagedDisplayWidget::color_config_changed);
-		connect(color_manager_, &ColorManager::reference_space_changed, this,
-				&ManagedDisplayWidget::color_config_changed);
+		auto sub = [this](int ev) {
+			int64_t id = oakengine_event_subscribe(
+				color_manager_, ev,
+				[](const oakengine_event *, void *userdata) {
+					static_cast<ManagedDisplayWidget *>(userdata)
+						->color_config_changed();
+				},
+				this);
+			if (id > 0) {
+				color_subs_.append(id);
+			}
+		};
+		sub(OAKENGINE_EVENT_COLOR_MANAGER_CONFIG_CHANGED);
+		sub(OAKENGINE_EVENT_COLOR_MANAGER_REFERENCE_SPACE_CHANGED);
 	}
 
 	color_config_changed();
 	emit color_manager_changed(color_manager_);
 }
 
-ColorManager *ManagedDisplayWidget::color_manager() const
+OakEngineColorManager *ManagedDisplayWidget::color_manager() const
 {
 	return color_manager_;
 }
@@ -163,7 +176,14 @@ const ColorTransform &ManagedDisplayWidget::get_color_transform() const
 
 Menu *ManagedDisplayWidget::get_color_space_menu(QMenu *parent, bool auto_connect)
 {
-	QStringList colorspaces = color_manager()->list_available_colorspaces();
+	QStringList colorspaces = oak_query_string_list(
+		[this]() {
+			return oakengine_color_manager_colorspace_count(color_manager_);
+		},
+		[this](int i, char *buf, int size) {
+			return oakengine_color_manager_colorspace_at(color_manager_, i, buf,
+														 size);
+		});
 
 	Menu *ocio_colorspace_menu = new Menu(tr("Color Space"), parent);
 
@@ -195,17 +215,27 @@ void ManagedDisplayWidget::color_config_changed()
 	// which is usually a scene-referred space (e.g. ACEScg / Linear) and makes
 	// the picture look raw/wrong on a monitor.
 	if (color_transform_.output().isEmpty()) {
-		QString display = color_manager_->get_default_display();
-		QString view = color_manager_->get_default_view(display);
-		set_color_transform(color_manager_->get_compliant_color_space(
+		QString display = oak_query_string([this](char *buf, int size) {
+			return oakengine_color_manager_default_display(color_manager_, buf,
+														   size);
+		});
+		QString view = oak_query_string([this, &display](char *buf, int size) {
+			QByteArray d = display.toUtf8();
+			return oakengine_color_manager_default_view(color_manager_,
+														d.constData(), buf,
+														size);
+		});
+		set_color_transform(oak_compliant_transform(
+			reinterpret_cast<olive::ColorManager *>(color_manager_),
 			ColorTransform(display, view, QString()), true));
 	} else {
-		set_color_transform(
-			color_manager_->get_compliant_color_space(color_transform_, false));
+		set_color_transform(oak_compliant_transform(
+			reinterpret_cast<olive::ColorManager *>(color_manager_),
+			color_transform_, false));
 	}
 }
 
-ColorProcessorPtr ManagedDisplayWidget::color_service()
+ColorProcessorHandlePtr ManagedDisplayWidget::color_service()
 {
 	return color_service_;
 }
@@ -232,7 +262,8 @@ void ManagedDisplayWidget::menu_display_select(QAction *action)
 {
 	const ColorTransform &old_transform = get_color_transform();
 
-	ColorTransform new_transform = color_manager()->get_compliant_color_space(
+	ColorTransform new_transform = oak_compliant_transform(
+		reinterpret_cast<olive::ColorManager *>(color_manager_),
 		ColorTransform(action->data().toString(), old_transform.view(),
 					   old_transform.look()));
 
@@ -243,7 +274,8 @@ void ManagedDisplayWidget::menu_view_select(QAction *action)
 {
 	const ColorTransform &old_transform = get_color_transform();
 
-	ColorTransform new_transform = color_manager()->get_compliant_color_space(
+	ColorTransform new_transform = oak_compliant_transform(
+		reinterpret_cast<olive::ColorManager *>(color_manager_),
 		ColorTransform(old_transform.display(), action->data().toString(),
 					   old_transform.look()));
 
@@ -254,7 +286,8 @@ void ManagedDisplayWidget::menu_look_select(QAction *action)
 {
 	const ColorTransform &old_transform = get_color_transform();
 
-	ColorTransform new_transform = color_manager()->get_compliant_color_space(
+	ColorTransform new_transform = oak_compliant_transform(
+		reinterpret_cast<olive::ColorManager *>(color_manager_),
 		ColorTransform(old_transform.display(), old_transform.view(),
 					   action->data().toString()));
 
@@ -263,14 +296,14 @@ void ManagedDisplayWidget::menu_look_select(QAction *action)
 
 void ManagedDisplayWidget::menu_colorspace_select(QAction *action)
 {
-	set_color_transform(color_manager()->get_compliant_color_space(
+	set_color_transform(oak_compliant_transform(
+		reinterpret_cast<olive::ColorManager *>(color_manager_),
 		ColorTransform(action->data().toString())));
 }
 
 void ManagedDisplayWidget::on_destroy()
 {
-	attached_renderer_->destroy();
-	attached_renderer_->post_destroy();
+	oakengine_display_renderer_destroy(attached_renderer_);
 }
 
 void ManagedDisplayWidget::set_color_transform(const ColorTransform &transform)
@@ -279,7 +312,7 @@ void ManagedDisplayWidget::set_color_transform(const ColorTransform &transform)
 
 	setup_color_processor();
 
-	ColorProcessorChangedEvent();
+	color_processor_changed_event();
 }
 
 void ManagedDisplayWidget::on_init()
@@ -287,19 +320,9 @@ void ManagedDisplayWidget::on_init()
 	if (!is_backend_neutral_) {
 		QOpenGLContext *context =
 			static_cast<ManagedDisplayWidgetOpenGL *>(inner_widget_)->context();
-#ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
-		if (auto *dynamic_renderer =
-				dynamic_cast<DynamicRenderer *>(attached_renderer_)) {
-			dynamic_renderer->init_with_open_gl_context(context);
-			dynamic_renderer->post_init();
-			return;
-		}
-#endif
-		static_cast<OpenGLRenderer *>(attached_renderer_)->init(context);
-		static_cast<OpenGLRenderer *>(attached_renderer_)->post_init();
+		oakengine_display_renderer_init(attached_renderer_, context);
 	} else {
-		attached_renderer_->init();
-		attached_renderer_->post_init();
+		oakengine_display_renderer_init(attached_renderer_, nullptr);
 	}
 }
 
@@ -309,7 +332,7 @@ void ManagedDisplayWidget::enable_default_context_menu()
 			&ManagedDisplayWidget::show_default_context_menu);
 }
 
-void ManagedDisplayWidget::ColorProcessorChangedEvent()
+void ManagedDisplayWidget::color_processor_changed_event()
 {
 	update();
 }
@@ -346,8 +369,11 @@ VideoParams ManagedDisplayWidget::get_viewport_params() const
 	int device_height = height() * devicePixelRatioF();
 	PixelFormat device_format = static_cast<PixelFormat::Format>(
 		OAK_CONFIG("OfflinePixelFormat").toInt());
-	return VideoParams(device_width, device_height, device_format,
-					   VideoParams::k_internal_channel_count);
+	oak_video_params pod = {};
+	pod.width = device_width;
+	pod.height = device_height;
+	pod.format = device_format;
+	return video_params_from_pod(pod);
 }
 
 void ManagedDisplayWidget::update()
@@ -393,7 +419,14 @@ bool ManagedDisplayWidget::eventFilter(QObject *o, QEvent *e)
 
 Menu *ManagedDisplayWidget::get_display_menu(QMenu *parent, bool auto_connect)
 {
-	QStringList displays = color_manager()->list_available_displays();
+	QStringList displays = oak_query_string_list(
+		[this]() {
+			return oakengine_color_manager_display_count(color_manager_);
+		},
+		[this](int i, char *buf, int size) {
+			return oakengine_color_manager_display_at(color_manager_, i, buf,
+													  size);
+		});
 
 	Menu *ocio_display_menu = new Menu(tr("Display"), parent);
 
@@ -414,8 +447,17 @@ Menu *ManagedDisplayWidget::get_display_menu(QMenu *parent, bool auto_connect)
 
 Menu *ManagedDisplayWidget::get_view_menu(QMenu *parent, bool auto_connect)
 {
-	QStringList views =
-		color_manager()->list_available_views(color_transform_.display());
+	QByteArray disp = color_transform_.display().toUtf8();
+	QStringList views = oak_query_string_list(
+		[this, &disp]() {
+			return oakengine_color_manager_view_count(color_manager_,
+													  disp.constData());
+		},
+		[this, &disp](int i, char *buf, int size) {
+			return oakengine_color_manager_view_at(color_manager_,
+												   disp.constData(), i, buf,
+												   size);
+		});
 
 	Menu *ocio_view_menu = new Menu(tr("View"), parent);
 
@@ -436,7 +478,14 @@ Menu *ManagedDisplayWidget::get_view_menu(QMenu *parent, bool auto_connect)
 
 Menu *ManagedDisplayWidget::get_look_menu(QMenu *parent, bool auto_connect)
 {
-	QStringList looks = color_manager()->list_available_looks();
+	QStringList looks = oak_query_string_list(
+		[this]() {
+			return oakengine_color_manager_look_count(color_manager_);
+		},
+		[this](int i, char *buf, int size) {
+			return oakengine_color_manager_look_at(color_manager_, i, buf,
+												   size);
+		});
 
 	Menu *ocio_look_menu = new Menu(tr("Look"), parent);
 
@@ -467,17 +516,15 @@ void ManagedDisplayWidget::setup_color_processor()
 	color_service_ = nullptr;
 
 	if (color_manager_) {
-		// (Re)create color processor
-		try {
-			color_service_ = ColorProcessor::create(
-				color_manager_, color_manager_->get_reference_color_space(),
-				color_transform_);
-		} catch (ocio::Exception &e) {
-			QMessageBox::critical(
-				this, tr("OpenColorIO Error"),
-				tr("Failed to set color configuration: %1").arg(e.what()),
-				QMessageBox::Ok);
-		}
+		// (Re)create color processor. The facade never throws: OCIO failures
+		// are caught inside the engine and surface as an invalid processor.
+		QString ref_cs = oak_query_string([this](char *buf, int size) {
+			return oakengine_color_manager_reference_color_space(
+				color_manager_, buf, size);
+		});
+		color_service_ = oak_make_color_processor(
+			reinterpret_cast<olive::ColorManager *>(color_manager_),
+			ref_cs, color_transform_);
 	} else {
 		color_service_ = nullptr;
 	}

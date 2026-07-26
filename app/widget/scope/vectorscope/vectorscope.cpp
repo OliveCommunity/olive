@@ -60,7 +60,7 @@ void VectorscopeScope::draw_scope(TexturePtr managed_tex, QVariant pipeline)
 			   NodeValue(NodeValue::k_vec2, QVector2D(width(), height())));
 
 	double luma_coeffs[3] = { 0.0f, 0.0f, 0.0f };
-	color_manager()->get_default_luma_coefs(luma_coeffs);
+	oakengine_color_manager_default_luma_coefs(color_manager(), luma_coeffs);
 	job.insert(
 		QStringLiteral("luma_coeffs"),
 		NodeValue(NodeValue::k_vec3,
@@ -139,7 +139,7 @@ void VectorscopeScope::draw_scope_software(QPainter &p, const QImage &image)
 	buf.fill(Qt::transparent);
 
 	double luma_coeffs[3] = { 0.0, 0.0, 0.0 };
-	color_manager()->get_default_luma_coefs(luma_coeffs);
+	oakengine_color_manager_default_luma_coefs(color_manager(), luma_coeffs);
 
 	const int src_w = image.width();
 	const int src_h = image.height();

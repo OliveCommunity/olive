@@ -39,7 +39,7 @@ const Color k_default_colors[k_default_color_count] = {
 	Color(0.0, 0.0, 0.0)
 };
 
-ColorSwatchChooser::ColorSwatchChooser(ColorManager *manager, QWidget *parent)
+ColorSwatchChooser::ColorSwatchChooser(OakEngineColorManager *manager, QWidget *parent)
 	: QWidget(parent)
 {
 	auto layout = new QGridLayout(this);

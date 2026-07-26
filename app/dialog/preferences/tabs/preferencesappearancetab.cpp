@@ -28,6 +28,7 @@
 #include <QLabel>
 
 #include "node/node.h"
+#include "oakengine/node.h"
 
 namespace olive
 {
@@ -69,8 +70,9 @@ PreferencesAppearanceTab::PreferencesAppearanceTab()
 		QGridLayout *color_layout = new QGridLayout(color_group);
 
 		for (int i = 0; i < Node::k_category_count; i++) {
-			QString cat_name =
-				Node::get_category_name(static_cast<Node::CategoryID>(i));
+			char cat_buf[256];
+			oakengine_node_category_name(i, cat_buf, sizeof(cat_buf));
+			QString cat_name = QString::fromUtf8(cat_buf);
 			color_layout->addWidget(new QLabel(cat_name), i, 0);
 
 			ColorCodingComboBox *ccc = new ColorCodingComboBox();
@@ -102,7 +104,7 @@ PreferencesAppearanceTab::PreferencesAppearanceTab()
 	layout->addStretch();
 }
 
-void PreferencesAppearanceTab::accept(MultiUndoCommand *command)
+void PreferencesAppearanceTab::accept(void *command)
 {
 	Q_UNUSED(command)
 

@@ -23,8 +23,10 @@
 #define OAK_NODEPARAMVIEWWIDGETBRIDGE_H
 
 #include <QObject>
+#include <cstdint>
 
-#include "node/inputdragger.h"
+#include "engineeventbridge.h"
+#include "oakengine/node.h"
 #include "widget/slider/base/numericsliderbase.h"
 #include "widget/timetarget/timetarget.h"
 
@@ -41,6 +43,7 @@ class NodeParamViewWidgetBridge : public QObject, public TimeTargetObject {
 	Q_OBJECT
 public:
 	NodeParamViewWidgetBridge(NodeInput input, QObject *parent);
+	~NodeParamViewWidgetBridge() override;
 
 	const QVector<QWidget *> &widgets() const
 	{
@@ -69,7 +72,7 @@ private:
 	void set_string_value(const QString &value);
 
 	void set_input_value_internal(const QVariant &value, int track,
-							   MultiUndoCommand *command,
+							   void *command,
 							   bool insert_on_all_tracks_if_no_key);
 
 	void process_slider(NumericSliderBase *slider, int slider_track,
@@ -110,19 +113,24 @@ private:
 
 	QVector<QWidget *> widgets_;
 
-	NodeInputDragger dragger_;
+	OakEngineNodeDragger *dragger_ = nullptr;
 
 	NodeParamViewScrollBlocker scroll_filter_;
+
+	EngineEventBridge *bridge_ = nullptr;
+
+	int64_t viewer_sub_ = 0;
 
 private slots:
 	void widget_callback();
 
-	void input_value_changed(const NodeInput &input, const TimeRange &range);
+	void input_value_changed(OakEngineNode *source, const QString &input,
+							 int element, qint64 in_ts, qint64 out_ts);
 
-	void input_data_type_changed(const QString &input, NodeValue::Type type);
+	void input_data_type_changed(OakEngineNode *source,
+								 const QString &input);
 
-	void property_changed(const QString &input, const QString &key,
-						 const QVariant &value);
+	void property_changed(const QString &input);
 };
 
 }

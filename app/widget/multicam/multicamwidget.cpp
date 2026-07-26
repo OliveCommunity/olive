@@ -21,9 +21,14 @@
 
 #include "multicamwidget.h"
 
+#include "oakengine/node.h"
+
 #include <QShortcut>
 
-#include "node/nodeundo.h"
+#include "oakengine/events.h"
+#include "oakengine/viewer.h"
+#include "oakengine/timeline.h"
+#include "oakengine/undo.h"
 #include "timeline/timelineundosplit.h"
 #include "widget/timeruler/timeruler.h"
 
@@ -98,21 +103,41 @@ void MulticamWidget::set_multicam_node(ViewerOutput *viewer, MultiCamNode *n,
 
 void MulticamWidget::ConnectNodeEvent(ViewerOutput *n)
 {
-	connect(n, &ViewerOutput::size_changed, sizer_, &ViewerSizer::set_child_size);
-	connect(n, &ViewerOutput::pixel_aspect_changed, sizer_,
-			&ViewerSizer::set_pixel_aspect_ratio);
+	OakEngineNode *handle = reinterpret_cast<OakEngineNode *>(n);
 
-	VideoParams vp = n->get_video_params();
-	sizer_->set_child_size(vp.width(), vp.height());
-	sizer_->set_pixel_aspect_ratio(vp.pixel_aspect_ratio());
+	viewer_sub_ = oakengine_event_subscribe(
+		handle, OAKENGINE_EVENT_VIEWER_SIZE_CHANGED,
+		[](const oakengine_event *event, void *userdata) {
+			auto *w = static_cast<MulticamWidget *>(userdata);
+			w->sizer_->set_child_size(int(event->a), int(event->b));
+		},
+		this);
+	viewer_sub2_ = oakengine_event_subscribe(
+		handle, OAKENGINE_EVENT_VIEWER_PIXEL_ASPECT_CHANGED,
+		[](const oakengine_event *event, void *userdata) {
+			auto *w = static_cast<MulticamWidget *>(userdata);
+			w->sizer_->set_pixel_aspect_ratio(
+				Rational(event->a, event->b));
+		},
+		this);
+
+	oak_video_params vp;
+	oakengine_viewer_get_video_params(handle, 0, &vp);
+	sizer_->set_child_size(vp.width, vp.height);
+	sizer_->set_pixel_aspect_ratio(
+		Rational(vp.pixel_aspect_num, vp.pixel_aspect_den));
 }
 
 void MulticamWidget::DisconnectNodeEvent(ViewerOutput *n)
 {
-	disconnect(n, &ViewerOutput::size_changed, sizer_,
-			   &ViewerSizer::set_child_size);
-	disconnect(n, &ViewerOutput::pixel_aspect_changed, sizer_,
-			   &ViewerSizer::set_pixel_aspect_ratio);
+	if (viewer_sub_ > 0) {
+		oakengine_event_unsubscribe(viewer_sub_);
+		viewer_sub_ = 0;
+	}
+	if (viewer_sub2_ > 0) {
+		oakengine_event_unsubscribe(viewer_sub2_);
+		viewer_sub2_ = 0;
+	}
 }
 
 void MulticamWidget::TimeChangedEvent(const Rational &t)
@@ -134,12 +159,11 @@ void MulticamWidget::Switch(int source, bool split_clip)
 		return;
 	}
 
-	MultiUndoCommand *command = new MultiUndoCommand();
-
 	MultiCamNode *cam = node_;
 	ClipBlock *clip = clip_;
 
-	BlockSplitPreservingLinksCommand *split = nullptr;
+	const QByteArray undo_name = tr("Switched Multi-Camera Source").toUtf8();
+	oakengine_undo_group_begin(undo_name.constData());
 
 	if (clip_ && split_clip &&
 		clip_->in() < get_connected_node()->get_playhead() &&
@@ -149,33 +173,50 @@ void MulticamWidget::Switch(int source, bool split_clip)
 		blocks.append(clip_);
 		blocks.append(clip_->block_links());
 
-		split = new BlockSplitPreservingLinksCommand(
-			blocks, { get_connected_node()->get_playhead() });
-		split->redo_now();
-		command->add_child(split);
+		int split_tbn = 0, split_tbd = 0;
+		oakengine_node_frame_time_base(
+			reinterpret_cast<OakEngineNode *>(get_connected_node()),
+			&split_tbn, &split_tbd);
+		void *split = oakengine_block_split_preserving_links_command(
+			reinterpret_cast<void *const *>(blocks.data()), blocks.size(),
+			olive::core::Timecode::time_to_timestamp(
+				get_connected_node()->get_playhead(),
+				olive::Rational(split_tbn, split_tbd),
+				olive::core::Timecode::k_round));
+		oakengine_undo_push(split, undo_name.constData());
+		clip = reinterpret_cast<ClipBlock *>(
+			oakengine_block_split_get_split(
+				split, reinterpret_cast<void *>(clip_), 0));
 
-		clip = static_cast<ClipBlock *>(split->get_split(clip_, 0));
-
-		cam = clip->find_multicam();
+		cam = reinterpret_cast<MultiCamNode *>(
+			oakengine_clip_find_multicam(reinterpret_cast<OakEngineNode *>(clip)));
 	}
 
-	command->add_child(new NodeParamSetStandardValueCommand(
-		NodeKeyframeTrackReference(NodeInput(cam, cam->k_current_input)),
-		source));
+	oak_node_value val;
+	memset(&val, 0, sizeof(val));
+	val.type = OAK_NODE_VALUE_INT;
+	val.num = source;
 
-	for (Block *link : clip->block_links()) {
-		if (ClipBlock *clink = dynamic_cast<ClipBlock *>(link)) {
-			if (MultiCamNode *mlink = clink->find_multicam()) {
-				command->add_child(new NodeParamSetStandardValueCommand(
-					NodeKeyframeTrackReference(
-						NodeInput(mlink, mlink->k_current_input)),
-					source));
+	if (cam) {
+		oakengine_node_set_input(
+			reinterpret_cast<OakEngineNode *>(cam),
+			oakengine_multicam_input_current(), &val);
+	}
+
+	if (clip) {
+		for (Block *link : clip->block_links()) {
+			if (ClipBlock *clink = dynamic_cast<ClipBlock *>(link)) {
+				if (MultiCamNode *mlink = reinterpret_cast<MultiCamNode *>(
+						oakengine_clip_find_multicam(reinterpret_cast<OakEngineNode *>(clink)))) {
+					oakengine_node_set_input(
+						reinterpret_cast<OakEngineNode *>(mlink),
+						oakengine_multicam_input_current(), &val);
+				}
 			}
 		}
 	}
 
-	Core::instance()->undo_stack()->push(command,
-										 tr("Switched Multi-Camera Source"));
+	oakengine_undo_group_end();
 
 	display_->update();
 
@@ -198,14 +239,17 @@ void MulticamWidget::display_clicked(const QPoint &p)
 	}
 
 	int rows, cols;
-	node_->get_rows_and_columns(&rows, &cols);
+	oakengine_multicam_get_rows_and_columns(
+		oakengine_multicam_get_source_count(
+			reinterpret_cast<OakEngineNode *>(node_)),
+		&rows, &cols);
 
 	int multi = std::max(cols, rows);
 
 	int c = click.x() / (width / multi);
 	int r = click.y() / (height / multi);
 
-	int source = node_->rows_cols_to_index(r, c, rows, cols);
+	int source = oakengine_multicam_rows_cols_to_index(r, c, rows, cols);
 
 	Switch(source, true);
 }

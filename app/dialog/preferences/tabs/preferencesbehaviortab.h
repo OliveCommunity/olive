@@ -45,7 +45,7 @@ public:
 
 	PreferencesBehaviorTab(Category category);
 
-	virtual void accept(MultiUndoCommand *command) override;
+	virtual void accept(void *command) override;
 
 	static QString behavior_pref_tr(const char *text)
 	{

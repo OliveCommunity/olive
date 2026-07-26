@@ -26,6 +26,7 @@
 
 #include "audio/audiovisualwaveform.h"
 
+#include "oakengine/node.h"
 namespace olive
 {
 
@@ -34,7 +35,7 @@ const int TimeScaledObject::k_calculate_dimensions_padding = 10;
 TimeScaledObject::TimeScaledObject()
 	: scale_(1.0)
 	, min_scale_(0)
-	, max_scale_(AudioVisualWaveform::k_maximum_sample_rate.to_double())
+	, max_scale_(oakengine_audio_waveform_max_sample_rate())
 {
 }
 

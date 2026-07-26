@@ -23,10 +23,11 @@
 #define OAK_VIEWMODEL_H
 
 #include <QAbstractItemModel>
+#include <QHash>
 
+#include "engineeventbridge.h"
 #include "node/block/block.h"
 #include "node/project.h"
-#include "undo/undocommand.h"
 
 namespace olive
 {
@@ -157,18 +158,30 @@ private:
 
 	void disconnect_item(Node *n);
 
-	Project *project_;
+	/**
+	 * @brief Wire the bridge's folder signals to our handlers.
+	 *
+	 * Must be re-run every time bridge_ is recreated (set_project), since
+	 * Qt connections belong to the old bridge instance.
+	 */
+	void connect_bridge_signals();
 
-private slots:
-	void folder_begin_insert_item(Node *n, int insert_index);
+	void folder_begin_insert_item(Folder *folder, Node *n, int insert_index);
 
 	void folder_end_insert_item();
 
-	void folder_begin_remove_item(Node *n, int child_index);
+	void folder_begin_remove_item(Folder *folder, Node *n, int child_index);
 
 	void folder_end_remove_item();
 
-	void item_renamed();
+	Project *project_;
+
+	EngineEventBridge *bridge_;
+
+	QHash<Node *, int64_t> label_changed_subs_;
+
+private slots:
+	void item_renamed(OakEngineNode *source);
 };
 
 }

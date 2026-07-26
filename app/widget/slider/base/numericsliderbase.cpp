@@ -22,7 +22,7 @@
 #include "numericsliderbase.h"
 
 #include "common/qtutils.h"
-#include "config/config.h"
+#include "common/configwrapper.h"
 #include "core.h"
 
 namespace olive

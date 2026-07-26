@@ -25,7 +25,6 @@
 #include <QWidget>
 
 #include "common/define.h"
-#include "undo/undocommand.h"
 
 namespace olive
 {
@@ -34,7 +33,7 @@ class StreamProperties : public QWidget {
 public:
 	StreamProperties(QWidget *parent = nullptr);
 
-	virtual void accept(MultiUndoCommand *)
+	virtual void accept(void *)
 	{
 	}
 

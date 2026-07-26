@@ -30,7 +30,7 @@
 namespace olive
 {
 
-ColorDialog::ColorDialog(ColorManager *color_manager, const ManagedColor &start,
+ColorDialog::ColorDialog(OakEngineColorManager *color_manager, const ManagedColor &start,
 						 QWidget *parent)
 	: QDialog(parent)
 	, color_manager_(color_manager)
@@ -142,11 +142,23 @@ void ColorDialog::set_color(const ManagedColor &start)
 
 	} else {
 		// Convert reference color to the input space
-		ColorProcessorPtr linear_to_input = ColorProcessor::create(
-			color_manager_, color_manager_->get_reference_color_space(),
-			start.color_input());
+		QByteArray ref_cs = oak_query_string([this](char *buf, int size) {
+			return oakengine_color_manager_reference_color_space(
+				color_manager_, buf, size);
+		}).toUtf8();
+		QByteArray in_cs = start.color_input().toUtf8();
+		oak_color_transform in_pod;
+		in_pod.is_display = 0;
+		in_pod.output = in_cs.constData();
+		in_pod.view = nullptr;
+		in_pod.look = nullptr;
+		ColorProcessorHandlePtr linear_to_input(
+			oakengine_color_processor_create(color_manager_, ref_cs.constData(),
+											 &in_pod,
+											 OAKENGINE_COLOR_PROCESSOR_NORMAL),
+			ColorProcessorHandleDeleter());
 
-		managed_start = linear_to_input->convert_color(start);
+		managed_start = oak_convert_color(linear_to_input, start);
 	}
 
 	color_wheel_->set_selected_color(managed_start);
@@ -161,7 +173,7 @@ ManagedColor ColorDialog::get_selected_color() const
 
 	// Convert to linear and return a linear color
 	if (input_to_ref_processor_) {
-		selected = input_to_ref_processor_->convert_color(selected);
+		selected = oak_convert_color(input_to_ref_processor_, selected);
 	}
 
 	selected.set_color_input(get_color_space_input());
@@ -183,22 +195,50 @@ ColorTransform ColorDialog::get_color_space_output() const
 void ColorDialog::color_space_changed(const QString &input,
 									const ColorTransform &output)
 {
-	input_to_ref_processor_ = ColorProcessor::create(
-		color_manager_, input, color_manager_->get_reference_color_space());
+	QByteArray ref_cs = oak_query_string([this](char *buf, int size) {
+		return oakengine_color_manager_reference_color_space(
+			color_manager_, buf, size);
+	}).toUtf8();
+	QByteArray in = input.toUtf8();
+	QByteArray o, v, l;
+	oak_color_transform out_pod = oak_to_transform(output, &o, &v, &l);
 
-	ColorProcessorPtr ref_to_display = ColorProcessor::create(
-		color_manager_, color_manager_->get_reference_color_space(), output);
+	auto make_proc = [&](const char *input_cs, const oak_color_transform *dest,
+						 int dir) -> ColorProcessorHandlePtr {
+		return ColorProcessorHandlePtr(
+			oakengine_color_processor_create(color_manager_, input_cs, dest,
+											 dir),
+			ColorProcessorHandleDeleter());
+	};
 
-	ColorProcessorPtr ref_to_input = ColorProcessor::create(
-		color_manager_, color_manager_->get_reference_color_space(), input);
+	input_to_ref_processor_ = make_proc(in.constData(), &out_pod,
+										OAKENGINE_COLOR_PROCESSOR_NORMAL);
+
+	oak_color_transform ref_display_pod;
+	ref_display_pod.is_display = out_pod.is_display;
+	ref_display_pod.output = out_pod.output;
+	ref_display_pod.view = out_pod.view;
+	ref_display_pod.look = out_pod.look;
+	ColorProcessorHandlePtr ref_to_display = make_proc(
+		ref_cs.constData(), &ref_display_pod,
+		OAKENGINE_COLOR_PROCESSOR_NORMAL);
+
+	oak_color_transform ref_input_pod;
+	ref_input_pod.is_display = 0;
+	ref_input_pod.output = in.constData();
+	ref_input_pod.view = nullptr;
+	ref_input_pod.look = nullptr;
+	ColorProcessorHandlePtr ref_to_input = make_proc(
+		ref_cs.constData(), &ref_input_pod,
+		OAKENGINE_COLOR_PROCESSOR_NORMAL);
 
 	// Display -> reference is the inverse of the display transform. Older OCIO
 	// versions crashed on TRANSFORM_DIR_INVERSE; guard by requiring a valid
 	// processor and fall back to disabling the display tab if creation fails.
-	ColorProcessorPtr display_to_ref = ColorProcessor::create(
-		color_manager_, color_manager_->get_reference_color_space(), output,
-		ColorProcessor::k_inverse);
-	if (display_to_ref && !display_to_ref->get_processor()) {
+	ColorProcessorHandlePtr display_to_ref = make_proc(
+		ref_cs.constData(), &ref_display_pod,
+		OAKENGINE_COLOR_PROCESSOR_INVERSE);
+	if (display_to_ref && !oakengine_color_processor_is_valid(display_to_ref.get())) {
 		display_to_ref = nullptr;
 	}
 

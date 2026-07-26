@@ -23,6 +23,7 @@
 #define OAK_TIMELINEVIEWBASE_H
 
 #include <QGraphicsView>
+#include <cstdint>
 #include <vector>
 
 #include "core.h"
@@ -146,6 +147,8 @@ private:
 	double y_scale_;
 
 	ViewerOutput *viewer_;
+
+	int64_t viewer_sub_ = 0;
 };
 
 }

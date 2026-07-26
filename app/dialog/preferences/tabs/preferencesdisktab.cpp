@@ -29,16 +29,24 @@
 #include <QMessageBox>
 
 #include "common/filefunctions.h"
-#include "config/config.h"
+#include "common/configwrapper.h"
+#include "oakengine/disk.h"
+#include "olive/core/core.h"
 
 namespace olive
 {
 
 PreferencesDiskTab::PreferencesDiskTab()
 {
-	// Get default disk cache folder
-	default_disk_cache_folder_ =
-		DiskManager::instance()->get_default_cache_folder();
+	// Get default disk cache folder path
+	{
+		int len = oakengine_disk_get_default_cache_path(nullptr, 0);
+		if (len > 0) {
+			QByteArray buf(len + 1, '\0');
+			oakengine_disk_get_default_cache_path(buf.data(), buf.size());
+			default_disk_cache_folder_ = QString::fromUtf8(buf.constData());
+		}
+	}
 
 	QVBoxLayout *outer_layout = new QVBoxLayout(this);
 
@@ -54,7 +62,7 @@ PreferencesDiskTab::PreferencesDiskTab()
 									  row, 0);
 
 	disk_cache_location_ =
-		new PathWidget(default_disk_cache_folder_->get_path());
+		new PathWidget(default_disk_cache_folder_);
 	disk_management_layout->addWidget(disk_cache_location_, row, 1);
 
 	row++;
@@ -62,8 +70,8 @@ PreferencesDiskTab::PreferencesDiskTab()
 	QPushButton *disk_cache_settings_btn =
 		new QPushButton(tr("Disk Cache Settings"));
 	connect(disk_cache_settings_btn, &QPushButton::clicked, this, [this]() {
-		DiskManager::instance()->show_disk_cache_settings_dialog(
-			disk_cache_location_->text(), this);
+		oakengine_disk_show_settings_dialog(
+			disk_cache_location_->text().toUtf8().constData(), this);
 	});
 	disk_management_layout->addWidget(disk_cache_settings_btn, row, 1);
 
@@ -81,7 +89,7 @@ PreferencesDiskTab::PreferencesDiskTab()
 	cache_ahead_slider_->set_format(tr("%1 seconds"));
 	cache_ahead_slider_->set_minimum(0);
 	cache_ahead_slider_->set_value(
-		OAK_CONFIG("DiskCacheAhead").value<Rational>().to_double());
+		OAK_CONFIG("DiskCacheAhead").value<core::Rational>().to_double());
 	cache_behavior_layout->addWidget(cache_ahead_slider_, row, 1);
 
 	cache_behavior_layout->addWidget(new QLabel(tr("Cache Behind:")), row, 2);
@@ -90,7 +98,7 @@ PreferencesDiskTab::PreferencesDiskTab()
 	cache_behind_slider_->set_minimum(0);
 	cache_behind_slider_->set_format(tr("%1 seconds"));
 	cache_behind_slider_->set_value(
-		OAK_CONFIG("DiskCacheBehind").value<Rational>().to_double());
+		OAK_CONFIG("DiskCacheBehind").value<core::Rational>().to_double());
 	cache_behavior_layout->addWidget(cache_behind_slider_, row, 3);
 
 	row++;
@@ -171,11 +179,11 @@ PreferencesDiskTab::PreferencesDiskTab()
 
 bool PreferencesDiskTab::validate()
 {
-	if (disk_cache_location_->text() != default_disk_cache_folder_->get_path()) {
+	if (disk_cache_location_->text() != default_disk_cache_folder_) {
 		// Disk cache location is changing
 
 		// Check if the user is okay with invalidating the current cache
-		if (!DiskManager::show_disk_cache_change_confirmation_dialog(this)) {
+		if (!oakengine_disk_show_change_confirmation_dialog(this)) {
 			return false;
 		}
 
@@ -191,18 +199,19 @@ bool PreferencesDiskTab::validate()
 	return true;
 }
 
-void PreferencesDiskTab::accept(MultiUndoCommand *command)
+void PreferencesDiskTab::accept(void *command)
 {
 	Q_UNUSED(command)
 
-	if (disk_cache_location_->text() != default_disk_cache_folder_->get_path()) {
-		default_disk_cache_folder_->set_path(disk_cache_location_->text());
+	if (disk_cache_location_->text() != default_disk_cache_folder_) {
+		oakengine_disk_set_default_cache_path(
+			disk_cache_location_->text().toUtf8().constData());
 	}
 
 	OAK_CONFIG("DiskCacheBehind") = QVariant::fromValue(
-		Rational::from_double(cache_behind_slider_->get_value()));
+		core::Rational::from_double(cache_behind_slider_->get_value()));
 	OAK_CONFIG("DiskCacheAhead") = QVariant::fromValue(
-		Rational::from_double(cache_ahead_slider_->get_value()));
+		core::Rational::from_double(cache_ahead_slider_->get_value()));
 
 	OAK_CONFIG("ProxyWidth") =
 		static_cast<int>(proxy_width_slider_->get_value());

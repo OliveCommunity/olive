@@ -33,16 +33,24 @@
 
 #include "common/digit.h"
 #include "common/qtutils.h"
-#include "codec/ffmpeg/ffmpegencoder.h"
+#include "codec/exportcodec.h"
+#include "codec/exportformat.h"
 #include "dialog/msgbox.h"
 #include "dialog/task/task.h"
 #include "exportsavepresetdialog.h"
 #include "node/project.h"
 #include "node/project/sequence/sequence.h"
+#include "oakengine/events.h"
+#include "widget/manageddisplay/colorprocessorhandle.h"
+#include "widget/viewer/vieweroutpututils.h"
 #include "oakengine/exporter.h"
-#include "task/taskmanager.h"
+#include "oakengine/project.h"
+#include "oakengine/task.h"
+#include "oakengine/encoding.h"
+#include "oakengine/viewer.h"
 #include "ui/icons/icons.h"
 #include "widget/timeruler/timeruler.h"
+#include "common/configwrapper.h"
 
 namespace olive
 {
@@ -54,158 +62,125 @@ namespace
 
 // pix_fmt string (e.g. "yuv420p") to its index in the codec's supported
 // list; 0 (the codec's preferred format) when absent.
-int pix_fmt_index(ExportCodec::Codec codec, const QString &pix_fmt)
+int pix_fmt_index(int codec, const QString &pix_fmt)
 {
 	if (pix_fmt.isEmpty()) {
 		return 0;
 	}
-	FFmpegEncoder probe{ EncodingParams() };
-	const int index = probe.get_pixel_formats_for_codec(codec).indexOf(pix_fmt);
-	return index >= 0 ? index : 0;
+	return oakengine_encoding_pix_fmt_index(codec, pix_fmt.toUtf8().constData());
 }
 
-// EncodingParams (assembled by the dialog) -> facade POD. One-to-one with
+// OakEngineEncodingParams (assembled by the dialog) -> facade POD. One-to-one with
 // oak_export_options_ex; see oakengine/exporter.h for the field docs.
-oak_export_options_ex params_to_ex(const EncodingParams &p)
+oak_export_options_ex params_to_ex(const OakEngineEncodingParams *p)
 {
 	oak_export_options_ex o = {};
 
-	const VideoParams &vp = p.video_params();
-	const Rational tb = vp.frame_rate().flipped();
+	int64_t vbrate = 0, abrate = 0;
+	int asample_rate = 0;
+	uint64_t ach_layout = 0;
+	int asample_fmt = 0;
+	int vthreads = 0;
+	int scaling = 0;
+	int is_img_seq = 0;
 
-	if (p.has_custom_range()) {
+	oak_video_params vp = {};
+	oakengine_encoding_params_get_video_params(p, &vp);
+
+	vbrate = oakengine_encoding_params_video_bit_rate(p);
+	abrate = oakengine_encoding_params_audio_bit_rate(p);
+	vthreads = oakengine_encoding_params_video_threads(p);
+	scaling = oakengine_encoding_params_video_scaling_method(p);
+	is_img_seq = oakengine_encoding_params_video_is_image_sequence(p);
+
+	if (oakengine_encoding_params_has_custom_range(p)) {
 		o.range_mode = OAKENGINE_EXPORT_RANGE_CUSTOM;
-		o.range_in_ts = Timecode::time_to_timestamp(p.custom_range().in(), tb);
+		int64_t r_in_num = 0, r_in_den = 1, r_out_num = 0, r_out_den = 1;
+		oakengine_encoding_params_get_custom_range(
+			p, &r_in_num, &r_in_den, &r_out_num, &r_out_den);
+		o.range_in_ts =
+			Timecode::time_to_timestamp(
+				Rational(r_in_num, r_in_den),
+				Rational(vp.time_base_num, vp.time_base_den));
 		o.range_out_ts =
-			Timecode::time_to_timestamp(p.custom_range().out(), tb);
+			Timecode::time_to_timestamp(
+				Rational(r_out_num, r_out_den),
+				Rational(vp.time_base_num, vp.time_base_den));
 	} else {
 		o.range_mode = OAKENGINE_EXPORT_RANGE_ENTIRE;
 	}
 
-	o.format = int(p.format());
-	o.video_enabled = p.video_enabled() ? 1 : 0;
-	o.video_codec = int(p.video_codec());
-	o.audio_enabled = p.audio_enabled() ? 1 : 0;
-	o.audio_codec = int(p.audio_codec());
-	o.subtitles_enabled = p.subtitles_enabled() ? 1 : 0;
-	o.subtitles_sidecar = p.subtitles_are_sidecar() ? 1 : 0;
+	o.format = oakengine_encoding_params_format(p);
+	o.video_enabled = oakengine_encoding_params_video_enabled(p) ? 1 : 0;
+	o.video_codec = oakengine_encoding_params_video_codec(p);
+	o.audio_enabled = oakengine_encoding_params_audio_enabled(p) ? 1 : 0;
+	o.audio_codec = oakengine_encoding_params_audio_codec(p);
+	o.subtitles_enabled = oakengine_encoding_params_subtitles_enabled(p) ? 1 : 0;
+	o.subtitles_sidecar = oakengine_encoding_params_subtitles_are_sidecar(p) ? 1 : 0;
 	o.subtitles_format =
-		p.subtitles_are_sidecar() ? int(p.subtitle_sidecar_fmt()) : 0;
-	o.subtitles_codec = p.subtitles_enabled() ? int(p.subtitles_codec()) : 0;
+		oakengine_encoding_params_subtitles_are_sidecar(p)
+			? oakengine_encoding_params_subtitles_sidecar_format(p)
+			: 0;
+	o.subtitles_codec = oakengine_encoding_params_subtitles_enabled(p)
+							? oakengine_encoding_params_subtitles_codec(p)
+							: 0;
 
-	o.video_bit_rate = p.video_bit_rate();
-	o.audio_bit_rate = p.audio_bit_rate();
-	o.video_pix_fmt = pix_fmt_index(p.video_codec(), p.video_pix_fmt());
+	o.video_bit_rate = vbrate;
+	o.audio_bit_rate = abrate;
 
-	o.audio_sample_rate = p.audio_params().sample_rate();
-	o.audio_channel_layout = p.audio_params().channel_layout();
-	o.audio_sample_format = int(p.audio_params().format());
-
-	const QString ct = p.color_transform().output();
-	if (ct.isEmpty()) {
-		o.color_transform = OAKENGINE_EXPORT_COLOR_REFERENCE;
-	} else if (ct == QStringLiteral("sRGB OETF")) {
-		o.color_transform = OAKENGINE_EXPORT_COLOR_SRGB_OETF;
-	} else if (ct == QStringLiteral("Rec.709 OETF")) {
-		o.color_transform = OAKENGINE_EXPORT_COLOR_REC709_OETF;
-	} else if (ct == QStringLiteral("BT.1886 EOTF")) {
-		o.color_transform = OAKENGINE_EXPORT_COLOR_BT1886_EOTF;
+	char pix_fmt_buf[64];
+	if (oakengine_encoding_params_video_pix_fmt(
+			p, pix_fmt_buf, static_cast<int>(sizeof(pix_fmt_buf))) > 0) {
+		o.video_pix_fmt = oakengine_encoding_pix_fmt_index(
+			o.video_codec, pix_fmt_buf);
 	} else {
-		o.color_transform = OAKENGINE_EXPORT_COLOR_CUSTOM;
-		const QByteArray utf = ct.toUtf8();
-		snprintf(o.color_transform_name, sizeof(o.color_transform_name),
-				 "%s", utf.constData());
+		o.video_pix_fmt = 0;
 	}
 
-	o.video_width = vp.width();
-	o.video_height = vp.height();
-	o.frame_rate_num = vp.frame_rate().numerator();
-	o.frame_rate_den = vp.frame_rate().denominator();
-	o.pixel_aspect_num = vp.pixel_aspect_ratio().numerator();
-	o.pixel_aspect_den = vp.pixel_aspect_ratio().denominator();
-	o.interlacing = int(vp.interlacing());
-	o.pixel_format = int(vp.format());
-	o.scaling_method = int(p.video_scaling_method());
-	o.color_range = int(vp.color_range());
-	o.video_threads = p.video_threads();
-	o.is_image_sequence = p.video_is_image_sequence() ? 1 : 0;
+	if (oakengine_encoding_params_get_audio_params(
+			p, &asample_rate, &ach_layout, &asample_fmt) == OAKENGINE_OK) {
+		o.audio_sample_rate = asample_rate;
+		o.audio_channel_layout = ach_layout;
+		o.audio_sample_format = asample_fmt;
+	}
+
+	char ct_buf[128];
+	const int ct_ret = oakengine_encoding_params_color_transform_output(
+		p, ct_buf, static_cast<int>(sizeof(ct_buf)));
+	if (ct_ret <= 0 || ct_buf[0] == '\0') {
+		o.color_transform = OAKENGINE_EXPORT_COLOR_REFERENCE;
+	} else {
+		const QString ct = QString::fromUtf8(ct_buf);
+		if (ct == QStringLiteral("sRGB OETF")) {
+			o.color_transform = OAKENGINE_EXPORT_COLOR_SRGB_OETF;
+		} else if (ct == QStringLiteral("Rec.709 OETF")) {
+			o.color_transform = OAKENGINE_EXPORT_COLOR_REC709_OETF;
+		} else if (ct == QStringLiteral("BT.1886 EOTF")) {
+			o.color_transform = OAKENGINE_EXPORT_COLOR_BT1886_EOTF;
+		} else {
+			o.color_transform = OAKENGINE_EXPORT_COLOR_CUSTOM;
+			snprintf(o.color_transform_name, sizeof(o.color_transform_name),
+					 "%s", ct_buf);
+		}
+	}
+
+	o.video_width = vp.width;
+	o.video_height = vp.height;
+	o.frame_rate_num = vp.time_base_den; // time_base is frame duration, so rate = den/num
+	o.frame_rate_den = vp.time_base_num;
+	o.pixel_aspect_num = vp.pixel_aspect_num;
+	o.pixel_aspect_den = vp.pixel_aspect_den;
+	o.interlacing = vp.interlacing;
+	o.pixel_format = vp.format;
+	o.scaling_method = scaling;
+	o.color_range = vp.color_range;
+	o.video_threads = vthreads;
+	o.is_image_sequence = is_img_seq;
 
 	return o;
 }
 
 } // namespace
-
-/**
- * @brief ExportTask replacement driven by the liboakengine C ABI facade
- *
- * Same Task contract as the engine's ExportTask (progress via
- * progress_changed, cancel via CancelEvent), but the actual
- * render+encode goes through oakengine_export_render_ex(): the facade
- * owns the ExportTask instance, its event-loop drive and the conform
- * prewarm. Cancellation is forwarded to the facade
- * (oakengine_export_cancel()), which reports OAKENGINE_E_CANCELLED back.
- */
-class FacadeExportTask : public Task {
-public:
-	FacadeExportTask(ViewerOutput *viewer_node, const EncodingParams &params)
-		: sequence_(reinterpret_cast<OakEngineSequence *>(viewer_node))
-		, params_(params)
-	{
-		set_title(tr("Exporting \"%1\"").arg(viewer_node->get_label()));
-	}
-
-protected:
-	virtual bool run() override
-	{
-		oak_export_options_ex o = params_to_ex(params_);
-		// Pass the codec section's encoder-specific options through.
-		for (auto it = params_.video_opts().cbegin();
-			 it != params_.video_opts().cend(); ++it) {
-			oakengine_export_set_video_option(it.key().toUtf8().constData(),
-										   it.value().toUtf8().constData());
-		}
-		oakengine_export_set_progress_callback(
-			&FacadeExportTask::forward_progress, this);
-		const int rc = oakengine_export_render_ex(
-			sequence_, params_.filename().toUtf8().constData(), &o);
-		oakengine_export_set_progress_callback(nullptr, nullptr);
-		oakengine_export_set_video_option("", nullptr);
-
-		if (rc == OAKENGINE_E_CANCELLED) {
-			// Mirror the engine task's cancelled state for TaskDialog.
-			cancel();
-			return false;
-		}
-		if (rc != OAKENGINE_OK) {
-			char err[1024];
-			err[0] = '\0';
-			oakengine_export_last_error(err, sizeof(err));
-			set_error(err[0] ? QString::fromUtf8(err) :
-							   QStringLiteral("Export failed"));
-			return false;
-		}
-		return true;
-	}
-
-	virtual void CancelEvent() override
-	{
-		oakengine_export_cancel();
-	}
-
-private:
-	static void forward_progress(double fraction, void *userdata)
-	{
-		static_cast<FacadeExportTask *>(userdata)->emit_progress(fraction);
-	}
-
-	void emit_progress(double fraction)
-	{
-		emit progress_changed(fraction);
-	}
-
-	OakEngineSequence *sequence_;
-	EncodingParams params_;
-};
 
 ExportDialog::ExportDialog(ViewerOutput *viewer_node, bool stills_only_mode,
 						   QWidget *parent)
@@ -312,16 +287,32 @@ ExportDialog::ExportDialog(ViewerOutput *viewer_node, bool stills_only_mode,
 
 	preferences_tabs_ = new QTabWidget();
 
-	color_manager_ = viewer_node_->project()->color_manager();
+	color_manager_ = oak_color_manager(viewer_node_->project()->color_manager());
 	video_tab_ = new ExportVideoTab(color_manager_);
 	add_preferences_tab(video_tab_, tr("Video"));
 
 	// Set video tab time and make connections
-	connect(viewer_node, &ViewerOutput::playhead_changed, video_tab_,
-			&ExportVideoTab::set_time);
-	connect(video_tab_, &ExportVideoTab::time_changed, viewer_node,
-			&ViewerOutput::set_playhead);
-	video_tab_->set_time(viewer_node->get_playhead());
+	viewer_sub_ = oakengine_event_subscribe(
+		reinterpret_cast<OakEngineNode *>(viewer_node),
+		OAKENGINE_EVENT_VIEWER_PLAYHEAD_CHANGED,
+		[](const oakengine_event *event, void *userdata) {
+			auto *dlg = static_cast<ExportDialog *>(userdata);
+			auto *tab = dlg->video_tab_;
+			tab->set_time(Rational(event->a, event->b));
+		},
+		this);
+	connect(video_tab_, &ExportVideoTab::time_changed, this,
+			[viewer_node](const Rational &time) {
+				oakengine_viewer_set_playhead(
+					reinterpret_cast<OakEngineNode *>(viewer_node),
+					time.numerator(), time.denominator());
+			});
+	{
+		int64_t pn, pd;
+		oakengine_viewer_get_playhead(
+			reinterpret_cast<OakEngineNode *>(viewer_node), &pn, &pd);
+		video_tab_->set_time(Rational(pn, pd));
+	}
 
 	audio_tab_ = new ExportAudioTab();
 	add_preferences_tab(audio_tab_, tr("Audio"));
@@ -394,11 +385,11 @@ ExportDialog::ExportDialog(ViewerOutput *viewer_node, bool stills_only_mode,
 	set_default_filename();
 
 	// Set defaults
-	previously_selected_format_ = ExportFormat::k_format_mpe_g4_video;
+	previously_selected_format_ = OAKENGINE_ENCODING_FORMAT_MPEG4_VIDEO;
 	connect(format_combobox_, &ExportFormatComboBox::format_changed, this,
 			&ExportDialog::format_changed);
 
-	VideoParams vp = viewer_node_->get_video_params();
+	VideoParams vp = viewer_output_video_params(viewer_node_);
 	video_aspect_ratio_ =
 		static_cast<double>(vp.width()) / static_cast<double>(vp.height());
 
@@ -430,7 +421,8 @@ ExportDialog::ExportDialog(ViewerOutput *viewer_node, bool stills_only_mode,
 
 	// If the viewer already has cached params, use them
 	if (!stills_only_mode_ &&
-		viewer_node_->get_last_used_encoding_params().is_valid()) {
+		oakengine_encoding_params_get_last_used(
+			reinterpret_cast<OakEngineSequence *>(viewer_node_)) != nullptr) {
 		// This will automatically set the param data
 		QtUtils::set_combo_box_data(preset_combobox_, k_preset_last_used);
 	} else {
@@ -477,8 +469,9 @@ void ExportDialog::start_export()
 
 	// Validate if the entered filename contains the correct extension (the extension is necessary
 	// for both FFmpeg and OIIO to determine the output format)
-	QString necessary_ext = QStringLiteral(".%1").arg(
-		ExportFormat::get_extension(format_combobox_->get_format()));
+char ext_buf[64];
+	int ext_len = oakengine_encoding_format_extension(format_combobox_->get_format(), ext_buf, sizeof(ext_buf));
+	QString necessary_ext = QStringLiteral(".%1").arg(QString::fromUtf8(ext_buf, ext_len));
 	QString proposed_filename = filename_edit_->text().trimmed();
 
 	// If it doesn't, see if the user wants to append it automatically. If not, we don't abort the export.
@@ -513,7 +506,7 @@ void ExportDialog::start_export()
 	// Validate if this is an image sequence and if the filename contains enough digits
 	if (video_tab_->is_image_sequence_set()) {
 		// Ensure filename contains digits
-		if (!Encoder::filename_contains_digit_placeholder(proposed_filename)) {
+		if (!oakengine_encoding_filename_contains_digit_placeholder(proposed_filename.toUtf8().constData())) {
 			msg_box(
 				this, QMessageBox::Critical, tr("Invalid filename"),
 				tr("Export is set to an image sequence, but the filename does not have a section for digits "
@@ -524,7 +517,7 @@ void ExportDialog::start_export()
 		int64_t frame_count = get_export_length_in_timebase_units();
 		int64_t needed_digit_count = get_digit_count(frame_count);
 		int current_digit_count =
-			Encoder::get_image_sequence_placeholder_digit_count(proposed_filename);
+			oakengine_encoding_image_sequence_digit_count(proposed_filename.toUtf8().constData());
 		if (current_digit_count < needed_digit_count) {
 			msg_box(
 				this, QMessageBox::Critical, tr("Invalid filename"),
@@ -549,8 +542,8 @@ void ExportDialog::start_export()
 
 	// Validate video resolution
 	if (video_enabled_->isChecked() &&
-		(video_tab_->get_selected_codec() == ExportCodec::k_codec_h264 ||
-		 video_tab_->get_selected_codec() == ExportCodec::k_codec_h265) &&
+		(video_tab_->get_selected_codec() == OAKENGINE_ENCODING_CODEC_H264 ||
+		 video_tab_->get_selected_codec() == OAKENGINE_ENCODING_CODEC_H265) &&
 		(video_tab_->width_slider()->get_value() % 2 != 0 ||
 		 video_tab_->height_slider()->get_value() % 2 != 0)) {
 		msg_box(this, QMessageBox::Critical, tr("Invalid Parameters"),
@@ -558,12 +551,13 @@ void ExportDialog::start_export()
 		return;
 	}
 
-	FacadeExportTask *task =
-		new FacadeExportTask(viewer_node_, generate_params());
+	OakEngineTask *task = oakengine_task_create_export(
+		reinterpret_cast<OakEngineSequence *>(viewer_node_),
+		generate_params());
 
 	if (export_bkg_box_->isChecked()) {
 		// Send to TaskManager to export in background
-		TaskManager::instance()->add_task(task);
+		oakengine_task_manager_add(task);
 		this->accept();
 	} else {
 		// Use modal dialog box
@@ -578,7 +572,7 @@ void ExportDialog::export_finished()
 {
 	TaskDialog *td = static_cast<TaskDialog *>(sender());
 
-	if (td->get_task()->is_cancelled()) {
+	if (oakengine_task_is_cancelled(td->get_task())) {
 		// If this task was cancelled, we stay open so the user can potentially queue another export
 	} else {
 		// Accept this dialog and close
@@ -600,11 +594,14 @@ void ExportDialog::image_sequence_check_box_changed(bool e)
 	QString suffix = current_fileinfo.suffix();
 
 	if (e) {
-		if (!Encoder::filename_contains_digit_placeholder(basename)) {
+		if (!oakengine_encoding_filename_contains_digit_placeholder(basename.toUtf8().constData())) {
 			basename.append(QStringLiteral("_[#####]"));
 		}
 	} else {
-		basename = Encoder::filename_remove_digit_placeholder(basename);
+		char buf[1024];
+		oakengine_encoding_filename_remove_digit_placeholder(
+			basename.toUtf8().constData(), buf, sizeof(buf));
+		basename = QString::fromUtf8(buf);
 	}
 
 	// Set filename
@@ -636,7 +633,14 @@ void ExportDialog::preset_combo_box_changed()
 	if (preset_number == k_preset_default) {
 		set_defaults();
 	} else if (preset_number == k_preset_last_used) {
-		set_params(viewer_node_->get_last_used_encoding_params());
+		OakEngineEncodingParams *last =
+			oakengine_encoding_params_get_last_used(
+				reinterpret_cast<OakEngineSequence *>(viewer_node_));
+		if (last) {
+			set_params(last);
+		} else {
+			set_defaults();
+		}
 	} else {
 		set_params(presets_.at(preset_number));
 	}
@@ -653,12 +657,17 @@ void ExportDialog::add_preferences_tab(QWidget *inner_widget,
 
 void ExportDialog::browse_filename()
 {
-	ExportFormat::Format f = format_combobox_->get_format();
+	int f = format_combobox_->get_format();
+
+	char name_buf[256];
+	char ext_buf[64];
+	oakengine_encoding_format_name(f, name_buf, sizeof(name_buf));
+	oakengine_encoding_format_extension(f, ext_buf, sizeof(ext_buf));
 
 	QString browsed_fn = QFileDialog::getSaveFileName(
 		this, "", filename_edit_->text().trimmed(),
 		QStringLiteral("%1 (*.%2)")
-			.arg(ExportFormat::get_name(f), ExportFormat::get_extension(f)),
+			.arg(QString::fromUtf8(name_buf), QString::fromUtf8(ext_buf)),
 		nullptr,
 
 		// We don't confirm overwrite here because we do it later
@@ -669,12 +678,14 @@ void ExportDialog::browse_filename()
 	}
 }
 
-void ExportDialog::format_changed(ExportFormat::Format current_format)
+void ExportDialog::format_changed(int current_format)
 {
 	QString current_filename = filename_edit_->text().trimmed();
-	QString previously_selected_ext =
-		ExportFormat::get_extension(previously_selected_format_);
-	QString currently_selected_ext = ExportFormat::get_extension(current_format);
+	char ext_buf[64];
+	oakengine_encoding_format_extension(previously_selected_format_, ext_buf, sizeof(ext_buf));
+	QString previously_selected_ext = QString::fromUtf8(ext_buf);
+	oakengine_encoding_format_extension(current_format, ext_buf, sizeof(ext_buf));
+	QString currently_selected_ext = QString::fromUtf8(ext_buf);
 
 	// If the previous extension was added, remove it
 	if (current_filename.endsWith(previously_selected_ext,
@@ -742,25 +753,45 @@ void ExportDialog::load_presets()
 
 	preset_combobox_->addItem(tr("Default"), k_preset_default);
 
-	if (viewer_node_->get_last_used_encoding_params().is_valid()) {
+	if (oakengine_encoding_params_get_last_used(
+			reinterpret_cast<OakEngineSequence *>(viewer_node_)) != nullptr) {
 		preset_combobox_->addItem(tr("Last Used"), k_preset_last_used);
 	}
 
 	preset_combobox_->insertSeparator(preset_combobox_->count());
 
-	QStringList l = EncodingParams::get_list_of_presets();
+	QStringList l;
+	{
+		const int n = oakengine_encoding_preset_count();
+		for (int i = 0; i < n; i++) {
+			char name_buf[256];
+			if (oakengine_encoding_preset_name(
+					i, name_buf, static_cast<int>(sizeof(name_buf))) > 0) {
+				l.append(QString::fromUtf8(name_buf));
+			}
+		}
+	}
 	presets_.reserve(l.size());
 
 	for (const QString &preset : l) {
-		EncodingParams p;
+		OakEngineEncodingParams *p = oakengine_encoding_params_create();
 
-		QFile f(EncodingParams::get_preset_path().filePath(preset));
-		if (f.open(QFile::ReadOnly)) {
-			if (p.load(&f)) {
-				preset_combobox_->addItem(preset, int(presets_.size()));
-				presets_.push_back(p);
-			}
-			f.close();
+		char preset_path_buf[1024];
+		preset_path_buf[0] = '\0';
+		oakengine_encoding_preset_path(
+			preset_path_buf, static_cast<int>(sizeof(preset_path_buf)));
+
+		const QByteArray preset_path_utf =
+			QDir(QString::fromUtf8(preset_path_buf))
+				.filePath(preset)
+				.toUtf8();
+		const int rc = oakengine_encoding_params_load_file(
+			p, preset_path_utf.constData());
+		if (rc == OAKENGINE_OK) {
+			preset_combobox_->addItem(preset, int(presets_.size()));
+			presets_.push_back(p);
+		} else {
+			oakengine_encoding_params_destroy(p);
 		}
 	}
 
@@ -771,13 +802,17 @@ void ExportDialog::set_default_filename()
 {
 	Project *p = viewer_node_->project();
 
+	char fn_buf[512];
+	oakengine_project_filename(
+		reinterpret_cast<OakEngineProject *>(p),
+		fn_buf, sizeof(fn_buf));
 	QDir doc_location;
 
-	if (p->filename().isEmpty()) {
+	if (fn_buf[0] == '\0') {
 		doc_location.setPath(QStandardPaths::writableLocation(
 			QStandardPaths::DocumentsLocation));
 	} else {
-		doc_location = QFileInfo(p->filename()).dir();
+		doc_location = QFileInfo(fn_buf).dir();
 	}
 
 	QString file_location = doc_location.filePath(viewer_node_->get_label());
@@ -801,14 +836,14 @@ bool ExportDialog::sequence_has_subtitles() const
 void ExportDialog::set_defaults()
 {
 	if (!stills_only_mode_) {
-		format_combobox_->set_format(ExportFormat::k_format_mpe_g4_video);
+		format_combobox_->set_format(OAKENGINE_ENCODING_FORMAT_MPEG4_VIDEO);
 	} else {
-		format_combobox_->set_format(ExportFormat::k_format_png);
+		format_combobox_->set_format(OAKENGINE_ENCODING_FORMAT_PNG);
 	}
 	format_changed(format_combobox_->get_format());
 
-	VideoParams vp = viewer_node_->get_video_params();
-	AudioParams ap = viewer_node_->get_audio_params();
+	VideoParams vp = viewer_output_video_params(viewer_node_);
+	AudioParams ap = viewer_output_audio_params(viewer_node_);
 
 	video_tab_->width_slider()->set_value(vp.width());
 	video_tab_->width_slider()->SetDefaultValue(vp.width());
@@ -826,151 +861,217 @@ void ExportDialog::set_defaults()
 	audio_tab_->channel_layout_combobox()->set_channel_layout(
 		ap.channel_layout());
 	subtitles_enabled_->setChecked(sequence_has_subtitles());
-	subtitle_tab_->set_sidecar_format(ExportFormat::k_format_srt);
+	subtitle_tab_->set_sidecar_format(OAKENGINE_ENCODING_FORMAT_SRT);
 }
 
-EncodingParams ExportDialog::generate_params() const
+OakEngineEncodingParams *ExportDialog::generate_params() const
 {
-	VideoParams video_render_params(
-		static_cast<int>(video_tab_->width_slider()->get_value()),
-		static_cast<int>(video_tab_->height_slider()->get_value()),
-		get_selected_timebase(),
-		video_tab_->pixel_format_field()->get_pixel_format(),
-		VideoParams::k_internal_channel_count,
-		video_tab_->pixel_aspect_combobox()->get_pixel_aspect_ratio(),
-		video_tab_->interlaced_combobox()->get_interlace_mode(), 1);
+	OakEngineEncodingParams *params = oakengine_encoding_params_create();
 
-	AudioParams audio_render_params(
-		audio_tab_->sample_rate_combobox()->get_sample_rate(),
-		audio_tab_->channel_layout_combobox()->get_channel_layout(),
-		audio_tab_->sample_format_combobox()->get_sample_format());
+	oakengine_encoding_params_set_format(
+		params, format_combobox_->get_format());
+	oakengine_encoding_params_set_filename(
+		params, filename_edit_->text().trimmed().toUtf8().constData());
 
-	EncodingParams params;
-	params.set_format(format_combobox_->get_format());
-	params.set_filename(filename_edit_->text().trimmed());
-	params.set_export_length(viewer_node_->get_length());
+	const Rational export_len = viewer_node_->get_length();
+	oakengine_encoding_params_set_export_length(
+		params, export_len.numerator(), export_len.denominator());
 
-	if (ExportCodec::is_codec_a_still_image(video_tab_->get_selected_codec()) &&
+	if (oakengine_encoding_codec_is_still_image(video_tab_->get_selected_codec()) &&
 		!video_tab_->is_image_sequence_set()) {
 		// Exporting as image without exporting image sequence, only export one frame
 		Rational export_time = video_tab_->get_still_image_time();
-		params.set_custom_range(
-			TimeRange(export_time, export_time + get_selected_timebase()));
+		const Rational tb = get_selected_timebase();
+		oakengine_encoding_params_set_custom_range(
+			params, export_time.numerator(), export_time.denominator(),
+			(export_time + tb).numerator(),
+			(export_time + tb).denominator());
 	} else if (range_combobox_->currentIndex() == k_range_in_to_out) {
-		// Assume if this combobox is enabled, workarea is enabled - a check that we make in this dialog's constructor
-		params.set_custom_range(viewer_node_->get_work_area()->range());
+		const TimeRange &r = viewer_node_->get_work_area()->range();
+		oakengine_encoding_params_set_custom_range(
+			params, r.in().numerator(), r.in().denominator(),
+			r.out().numerator(), r.out().denominator());
 	}
 
 	if (video_tab_->scaling_method_combobox()->isEnabled()) {
-		params.set_video_scaling_method(
-			static_cast<EncodingParams::VideoScalingMethod>(
-				video_tab_->scaling_method_combobox()->currentData().toInt()));
+		oakengine_encoding_params_set_video_scaling_method(
+			params,
+			video_tab_->scaling_method_combobox()->currentData().toInt());
 	}
 
 	if (video_enabled_->isChecked()) {
-		ExportCodec::Codec video_codec = video_tab_->get_selected_codec();
+		const int video_codec = video_tab_->get_selected_codec();
 
-		video_render_params.set_color_range(video_tab_->color_range());
+		// Build video params from the tab
+		const int vw = static_cast<int>(video_tab_->width_slider()->get_value());
+		const int vh = static_cast<int>(video_tab_->height_slider()->get_value());
+		const Rational tb = get_selected_timebase();
+		const int pix_fmt = video_tab_->pixel_format_field()->get_pixel_format();
+		const int ch_count = oakengine_video_params_internal_channel_count();
+		const Rational par = video_tab_->pixel_aspect_combobox()->get_pixel_aspect_ratio();
+		const int interlace = video_tab_->interlaced_combobox()->get_interlace_mode();
 
-		params.enable_video(video_render_params, video_codec);
+		oak_video_params vp = {};
+		vp.width = vw;
+		vp.height = vh;
+		vp.time_base_num = tb.numerator();
+		vp.time_base_den = tb.denominator();
+		vp.format = pix_fmt;
+		vp.pixel_aspect_num = par.numerator();
+		vp.pixel_aspect_den = par.denominator();
+		vp.interlacing = interlace;
+		vp.color_range = video_tab_->color_range();
 
-		params.set_video_threads(video_tab_->threads());
+		oakengine_encoding_params_enable_video(params, &vp, video_codec);
+
+		oakengine_encoding_params_set_video_threads(
+			params, video_tab_->threads());
 
 		if (video_tab_->isVisible()) {
-			video_tab_->get_codec_section()->add_opts(&params);
+			video_tab_->get_codec_section()->add_opts(params);
 		}
 
-		params.set_color_transform(video_tab_->current_ocio_color_space());
+		{
+			const QString ct = video_tab_->current_ocio_color_space();
+			oakengine_encoding_params_set_color_transform(
+				params, ct.isEmpty() ? nullptr : ct.toUtf8().constData());
+		}
 
-		params.set_video_pix_fmt(video_tab_->pix_fmt());
+		{
+			const QString pix_fmt_name = video_tab_->pix_fmt();
+			oakengine_encoding_params_set_video_pix_fmt(
+				params,
+				pix_fmt_name.isEmpty() ? nullptr
+									   : pix_fmt_name.toUtf8().constData());
+		}
 
-		params.set_video_is_image_sequence(video_tab_->is_image_sequence_set());
+		oakengine_encoding_params_set_video_is_image_sequence(
+			params, video_tab_->is_image_sequence_set() ? 1 : 0);
 	}
 
 	if (audio_enabled_->isChecked()) {
-		ExportCodec::Codec audio_codec = audio_tab_->get_codec();
-		params.enable_audio(audio_render_params, audio_codec);
+		const int audio_codec = audio_tab_->get_codec();
+		const int sample_rate = audio_tab_->sample_rate_combobox()->get_sample_rate();
+		const uint64_t ch_layout = audio_tab_->channel_layout_combobox()->get_channel_layout();
+		const int sample_fmt = audio_tab_->sample_format_combobox()->get_sample_format();
 
-		params.set_audio_bit_rate(audio_tab_->bit_rate_slider()->get_value() *
-								  1000);
+		oakengine_encoding_params_enable_audio(
+			params, sample_rate, ch_layout, sample_fmt, audio_codec);
+
+		oakengine_encoding_params_set_audio_bit_rate(
+			params,
+			audio_tab_->bit_rate_slider()->get_value() * 1000);
 	}
 
 	if (subtitles_enabled_->isEnabled() && subtitles_enabled_->isChecked()) {
 		if (!subtitle_tab_->get_sidecar_enabled()) {
 			// Export subtitles embedded in container
-			params.enable_subtitles(subtitle_tab_->get_subtitle_codec());
+			oakengine_encoding_params_enable_subtitles(
+				params, subtitle_tab_->get_subtitle_codec());
 		} else {
 			// Export subtitles to a sidecar file
-			params.enable_sidecar_subtitles(subtitle_tab_->get_sidecar_format(),
-										  subtitle_tab_->get_subtitle_codec());
+			oakengine_encoding_params_enable_sidecar_subtitles(
+				params, subtitle_tab_->get_sidecar_format(),
+				subtitle_tab_->get_subtitle_codec());
 		}
 	}
 
 	return params;
 }
 
-void ExportDialog::set_params(const EncodingParams &e)
+void ExportDialog::set_params(const OakEngineEncodingParams *e)
 {
-	format_combobox_->set_format(e.format());
+	format_combobox_->set_format(oakengine_encoding_params_format(e));
 	format_changed(format_combobox_->get_format());
 
-	if (e.has_custom_range() && viewer_node_->get_work_area()->enabled()) {
+	if (oakengine_encoding_params_has_custom_range(e) &&
+		viewer_node_->get_work_area()->enabled()) {
 		range_combobox_->setCurrentIndex(k_range_in_to_out);
 	}
 
 	QtUtils::set_combo_box_data(video_tab_->scaling_method_combobox(),
-							 e.video_scaling_method());
+								oakengine_encoding_params_video_scaling_method(e));
 
-	video_enabled_->setChecked(e.video_enabled());
-	if (e.video_enabled()) {
-		video_tab_->width_slider()->set_value(e.video_params().width());
-		video_tab_->height_slider()->set_value(e.video_params().height());
-		set_selected_timebase(e.video_params().time_base());
+	const int video_enabled = oakengine_encoding_params_video_enabled(e);
+	video_enabled_->setChecked(video_enabled);
+	if (video_enabled) {
+		oak_video_params vp = {};
+		oakengine_encoding_params_get_video_params(e, &vp);
+
+		video_tab_->width_slider()->set_value(vp.width);
+		video_tab_->height_slider()->set_value(vp.height);
+		set_selected_timebase(Rational(vp.time_base_num, vp.time_base_den));
 		video_tab_->pixel_format_field()->set_pixel_format(
-			e.video_params().format());
+			static_cast<olive::core::PixelFormat::Format>(vp.format));
 		video_tab_->pixel_aspect_combobox()->set_pixel_aspect_ratio(
-			e.video_params().pixel_aspect_ratio());
-		video_tab_->interlaced_combobox()->set_interlace_mode(
-			e.video_params().interlacing());
+			Rational(vp.pixel_aspect_num, vp.pixel_aspect_den));
+		video_tab_->interlaced_combobox()->set_interlace_mode(vp.interlacing);
 
-		video_tab_->set_selected_codec(e.video_codec());
+		video_tab_->set_selected_codec(oakengine_encoding_params_video_codec(e));
 
-		video_tab_->set_color_range(e.video_params().color_range());
+		video_tab_->set_color_range(vp.color_range);
 
-		video_tab_->set_threads(e.video_threads());
+		video_tab_->set_threads(oakengine_encoding_params_video_threads(e));
 
 		if (video_tab_->isVisible()) {
-			video_tab_->get_codec_section()->set_opts(&e);
+			video_tab_->get_codec_section()->set_opts(e);
 		}
 
-		video_tab_->set_ocio_color_space(e.color_transform().output());
+		{
+			char ct_buf[128];
+			if (oakengine_encoding_params_color_transform_output(
+					e, ct_buf, static_cast<int>(sizeof(ct_buf))) > 0) {
+				video_tab_->set_ocio_color_space(QString::fromUtf8(ct_buf));
+			} else {
+				video_tab_->set_ocio_color_space(QString());
+			}
+		}
 
-		video_tab_->set_pix_fmt(e.video_pix_fmt());
+		{
+			char pix_fmt_buf[64];
+			if (oakengine_encoding_params_video_pix_fmt(
+					e, pix_fmt_buf, static_cast<int>(sizeof(pix_fmt_buf))) > 0) {
+				video_tab_->set_pix_fmt(QString::fromUtf8(pix_fmt_buf));
+			} else {
+				video_tab_->set_pix_fmt(QString());
+			}
+		}
 
-		video_tab_->set_image_sequence(e.video_is_image_sequence());
+		video_tab_->set_image_sequence(
+			oakengine_encoding_params_video_is_image_sequence(e));
 	}
 
-	audio_enabled_->setChecked(e.audio_enabled());
-	if (e.audio_enabled()) {
-		audio_tab_->sample_rate_combobox()->set_sample_rate(
-			e.audio_params().sample_rate());
-		audio_tab_->channel_layout_combobox()->set_channel_layout(
-			e.audio_params().channel_layout());
+	const int audio_enabled = oakengine_encoding_params_audio_enabled(e);
+	audio_enabled_->setChecked(audio_enabled);
+	if (audio_enabled) {
+		int asample_rate = 0;
+		uint64_t ach_layout = 0;
+		int asample_fmt = 0;
+		oakengine_encoding_params_get_audio_params(
+			e, &asample_rate, &ach_layout, &asample_fmt);
+
+		audio_tab_->sample_rate_combobox()->set_sample_rate(asample_rate);
+		audio_tab_->channel_layout_combobox()->set_channel_layout(ach_layout);
 		audio_tab_->sample_format_combobox()->set_sample_format(
-			e.audio_params().format());
+			static_cast<olive::core::SampleFormat::Format>(asample_fmt));
 
-		audio_tab_->set_codec(e.audio_codec());
+		audio_tab_->set_codec(oakengine_encoding_params_audio_codec(e));
 
-		audio_tab_->bit_rate_slider()->set_value(e.audio_bit_rate() / 1000);
+		audio_tab_->bit_rate_slider()->set_value(
+			oakengine_encoding_params_audio_bit_rate(e) / 1000);
 	}
 
 	if (subtitles_enabled_->isEnabled()) {
-		subtitles_enabled_->setChecked(e.subtitles_enabled());
-		subtitle_tab_->set_sidecar_enabled(e.subtitles_are_sidecar());
-		if (e.subtitles_enabled()) {
-			subtitle_tab_->set_subtitle_codec(e.subtitles_codec());
-			if (e.subtitles_are_sidecar()) {
-				subtitle_tab_->set_sidecar_format(e.subtitle_sidecar_fmt());
+		const int subs_enabled = oakengine_encoding_params_subtitles_enabled(e);
+		subtitles_enabled_->setChecked(subs_enabled);
+		subtitle_tab_->set_sidecar_enabled(
+			oakengine_encoding_params_subtitles_are_sidecar(e));
+		if (subs_enabled) {
+			subtitle_tab_->set_subtitle_codec(
+				oakengine_encoding_params_subtitles_codec(e));
+			if (oakengine_encoding_params_subtitles_are_sidecar(e)) {
+				subtitle_tab_->set_sidecar_format(
+					oakengine_encoding_params_subtitles_sidecar_format(e));
 			}
 		}
 	}
@@ -997,7 +1098,10 @@ void ExportDialog::done(int r)
 	preview_viewer_->connect_viewer_node(nullptr);
 
 	if (!stills_only_mode_) {
-		viewer_node_->set_last_used_encoding_params(generate_params());
+		OakEngineEncodingParams *p = generate_params();
+		oakengine_encoding_params_set_last_used(
+			reinterpret_cast<OakEngineSequence *>(viewer_node_), p);
+		oakengine_encoding_params_destroy(p);
 	}
 
 	super::done(r);
@@ -1024,14 +1128,16 @@ void ExportDialog::update_viewer_dimensions()
 		static_cast<int>(video_tab_->width_slider()->get_value()),
 		static_cast<int>(video_tab_->height_slider()->get_value()));
 
-	VideoParams vp = viewer_node_->get_video_params();
+	VideoParams vp = viewer_output_video_params(viewer_node_);
 
-	QMatrix4x4 transform = EncodingParams::generate_matrix(
-		static_cast<EncodingParams::VideoScalingMethod>(
-			video_tab_->scaling_method_combobox()->currentData().toInt()),
+	float mat16[16];
+	oakengine_encoding_generate_matrix(
+		video_tab_->scaling_method_combobox()->currentData().toInt(),
 		vp.width(), vp.height(),
 		static_cast<int>(video_tab_->width_slider()->get_value()),
-		static_cast<int>(video_tab_->height_slider()->get_value()));
+		static_cast<int>(video_tab_->height_slider()->get_value()),
+		mat16);
+	QMatrix4x4 transform(mat16);
 
 	preview_viewer_->set_matrix(transform);
 }

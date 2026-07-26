@@ -81,7 +81,7 @@ PreferencesKeyboardTab::PreferencesKeyboardTab(MainWindow *main_window)
 	setup_kbd_shortcuts(main_window_->menuBar());
 }
 
-void PreferencesKeyboardTab::accept(MultiUndoCommand *command)
+void PreferencesKeyboardTab::accept(void *command)
 {
 	Q_UNUSED(command)
 

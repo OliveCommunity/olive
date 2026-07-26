@@ -22,12 +22,12 @@
 #ifndef OAK_NODEPARAMVIEW_H
 #define OAK_NODEPARAMVIEW_H
 
+#include <QHash>
 #include <QVBoxLayout>
 #include <QWidget>
 
-#include "node/group/group.h"
 #include "node/node.h"
-#include "node/project/serializer/serializer.h"
+#include "oakengine/serializer.h"
 #include "nodeparamviewcontext.h"
 #include "nodeparamviewdockarea.h"
 #include "nodeparamviewitem.h"
@@ -65,8 +65,9 @@ public:
 	void set_selected_nodes(const QVector<NodeParamViewItem *> &nodes,
 						  bool handle_focused_node = true,
 						  bool emit_signal = true);
-	void set_selected_nodes(const QVector<Node::ContextPair> &nodes,
-						  bool emit_signal = true);
+	void set_selected_nodes(
+		const QVector<QPair<OakEngineNode *, OakEngineNode *>> &nodes,
+		bool emit_signal = true);
 
 	Node *get_node_with_id(const QString &id);
 	Node *get_node_with_id_and_ignore_list(const QString &id,
@@ -82,18 +83,23 @@ public:
 	virtual bool paste() override;
 	static bool paste(
 		QWidget *parent,
-		std::function<QHash<Node *, Node *>(const ProjectSerializer::Result &)>
+		std::function<QHash<Node *, Node *>(void *)>
 			get_existing_map_function);
 
-public slots:
+public:
+	// Not a slot: signature uses the engine C++ type Node*, which must not be
+	// exposed to MOC (it would pull Node::staticMetaObject across the ABI
+	// boundary). All connections use new-style member-function syntax.
 	void set_contexts(const QVector<Node *> &contexts);
 
+public slots:
 	void update_element_y();
 
 signals:
-	void focused_node_changed(Node *n);
+	void focused_node_changed(OakEngineNode *n);
 
-	void selected_nodes_changed(const QVector<Node::ContextPair> &nodes);
+	void selected_nodes_changed(
+		const QVector<QPair<OakEngineNode *, OakEngineNode *>> &nodes);
 
 	void request_viewer_to_start_editing_text();
 
@@ -130,6 +136,13 @@ private:
 
 	void remove_context(Node *context);
 
+	// Ordinary member functions (NOT slots): their signatures use Node*, which
+	// must not be exposed to MOC. They are only invoked from lambdas inside
+	// this class, never used as connect() targets.
+	void node_added_to_context(Node *n, Node *ctx);
+
+	void node_removed_from_context(Node *n, Node *ctx);
+
 	void add_node(Node *n, Node *ctx, NodeParamViewContext *context);
 
 	void sort_items_in_context(NodeParamViewContext *context);
@@ -139,13 +152,14 @@ private:
 	bool is_group_mode() const
 	{
 		return contexts_.size() == 1 &&
-			   dynamic_cast<NodeGroup *>(contexts_.first());
+			   oakengine_node_is_group(
+				   reinterpret_cast<OakEngineNode *>(contexts_.first()));
 	}
 
 	void toggle_select(NodeParamViewItem *item);
 
 	QHash<Node *, Node *>
-	generate_existing_paste_map(const ProjectSerializer::Result &r);
+	generate_existing_paste_map(void *clipboard);
 
 	KeyframeView *keyframe_view_;
 
@@ -173,6 +187,13 @@ private:
 
 	bool show_all_nodes_;
 
+	// Group input passthrough subscription IDs (guarded against duplicate
+	// subscriptions when update_contexts() is called repeatedly).
+	int64_t group_passthrough_added_sub_ = 0;
+	int64_t group_passthrough_removed_sub_ = 0;
+
+	QHash<Node *, QPair<int64_t, int64_t>> context_subs_;
+
 private slots:
 	void update_global_scroll_bar();
 
@@ -180,16 +201,12 @@ private slots:
 
 	//void FocusChanged(QWidget *old, QWidget *now);
 
-	void node_added_to_context(Node *n);
-
-	void node_removed_from_context(Node *n);
-
 	void input_check_box_changed(const NodeInput &input, bool e);
 
-	void group_input_passthrough_added(olive::NodeGroup *group,
+	void group_input_passthrough_added(OakEngineNode *group,
 									const olive::NodeInput &input);
 
-	void group_input_passthrough_removed(olive::NodeGroup *group,
+	void group_input_passthrough_removed(OakEngineNode *group,
 									  const olive::NodeInput &input);
 
 	void update_contexts();
@@ -198,7 +215,7 @@ private slots:
 
 	void item_clicked();
 
-	void select_node_from_connected_link(Node *node);
+	void select_node_from_connected_link(OakEngineNode *node);
 
 	void request_edit_text_in_viewer();
 

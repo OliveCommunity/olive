@@ -33,7 +33,7 @@ class PreferencesLutTab : public ConfigDialogBaseTab {
 public:
 	PreferencesLutTab();
 
-	virtual void accept(MultiUndoCommand *command) override;
+	virtual void accept(void *command) override;
 
 private:
 	QListWidget *library_dirs_list_;

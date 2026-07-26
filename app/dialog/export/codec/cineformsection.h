@@ -34,9 +34,9 @@ class CineformSection : public CodecSection {
 public:
 	CineformSection(QWidget *parent = nullptr);
 
-	virtual void add_opts(EncodingParams *params) override;
+	virtual void add_opts(OakEngineEncodingParams *params) override;
 
-	virtual void set_opts(const EncodingParams *p) override;
+	virtual void set_opts(const OakEngineEncodingParams *p) override;
 
 private:
 	QComboBox *quality_combobox_;

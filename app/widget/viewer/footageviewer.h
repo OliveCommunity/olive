@@ -33,6 +33,8 @@ class FootageViewerWidget : public ViewerWidget {
 public:
 	FootageViewerWidget(QWidget *parent = nullptr);
 
+	~FootageViewerWidget() override;
+
 	void override_work_area(const TimeRange &r);
 	void reset_work_area();
 

@@ -58,7 +58,7 @@ public:
 	AV1Section(QWidget *parent = nullptr);
 	AV1Section(int default_crf, QWidget *parent);
 
-	virtual void add_opts(EncodingParams *params) override;
+	virtual void add_opts(OakEngineEncodingParams *params) override;
 
 private:
 	QStackedWidget *compression_method_stack_;

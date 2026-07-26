@@ -35,14 +35,20 @@ NodeParamViewArrayWidget::NodeParamViewArrayWidget(Node *node,
 	: QWidget(parent)
 	, node_(node)
 	, input_(input)
+	, bridge_(new EngineEventBridge(this))
 {
 	QHBoxLayout *layout = new QHBoxLayout(this);
 
 	count_lbl_ = new QLabel();
 	layout->addWidget(count_lbl_);
 
-	connect(node_, &Node::input_array_size_changed, this,
-			&NodeParamViewArrayWidget::update_counter);
+	bridge_->subscribe(reinterpret_cast<void *>(node_),
+					   OAKENGINE_EVENT_NODE_INPUT_ARRAY_SIZE_CHANGED);
+	connect(bridge_, &EngineEventBridge::node_input_array_size_changed, this,
+			[this](OakEngineNode *, const QString &input, int old_size,
+				   int new_size) {
+				update_counter(input, old_size, new_size);
+			});
 
 	update_counter(input_, 0, node_->input_array_size(input_));
 }

@@ -22,7 +22,6 @@
 #include "widget/timelinewidget/timelinewidget.h"
 
 #include "node/block/gap/gap.h"
-#include "node/nodeundo.h"
 #include "rolling.h"
 
 namespace olive

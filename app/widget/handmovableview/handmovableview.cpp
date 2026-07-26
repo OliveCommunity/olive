@@ -23,7 +23,7 @@
 
 #include <QMouseEvent>
 
-#include "config/config.h"
+#include "common/configwrapper.h"
 #include "core.h"
 
 namespace olive

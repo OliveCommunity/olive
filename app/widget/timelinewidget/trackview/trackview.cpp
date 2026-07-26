@@ -29,6 +29,8 @@
 
 #include "trackviewitem.h"
 
+#include "oakengine/timeline.h"
+
 namespace olive
 {
 
@@ -76,11 +78,6 @@ void TrackView::connect_track_list(TrackList *list)
 		for (int i = 0; i < list_->get_track_count(); i++) {
 			splitter_->remove(0);
 		}
-
-		disconnect(list_, &TrackList::track_added, this,
-				   &TrackView::insert_track);
-		disconnect(list_, &TrackList::track_removed, this,
-				   &TrackView::remove_track);
 	}
 
 	list_ = list;
@@ -89,9 +86,6 @@ void TrackView::connect_track_list(TrackList *list)
 		foreach (Track *track, list_->get_tracks()) {
 			insert_track(track);
 		}
-
-		connect(list_, &TrackList::track_added, this, &TrackView::insert_track);
-		connect(list_, &TrackList::track_removed, this, &TrackView::remove_track);
 	}
 }
 
@@ -122,7 +116,11 @@ void TrackView::scrollbar_range_changed(int, int max)
 
 void TrackView::track_height_changed(int index, int height)
 {
-	list_->get_track_at(index)->set_track_height_in_pixels(height);
+	Track *track = list_->get_track_at(index);
+	oakengine_track_set_height(
+		reinterpret_cast<OakEngineSequence *>(list_->parent()),
+		track->type(), track->index(),
+		oakengine_track_height_pixels_to_internal(height));
 }
 
 void TrackView::insert_track(Track *track)

@@ -24,6 +24,7 @@
 
 #include "panel/panel.h"
 #include "widget/timebased/timebasedwidget.h"
+#include "engineeventbridge.h"
 
 namespace olive
 {
@@ -141,8 +142,11 @@ private:
 
 	bool show_and_raise_on_connect_;
 
+	EngineEventBridge *bridge_ = nullptr;
+	int64_t label_sub_ = 0;
+
 private slots:
-	void connected_node_changed(ViewerOutput *old, ViewerOutput *now);
+	void connected_node_changed(OakEngineNode *old, OakEngineNode *now);
 };
 
 }

@@ -31,9 +31,10 @@
 
 #include "node/audio/volume/volume.h"
 #include "node/distort/transform/transformdistortnode.h"
-#include "node/group/group.h"
-#include "node/nodeundo.h"
-#include "node/project/serializer/serializer.h"
+#include "oakengine/node.h"
+#include "oakengine/project.h"
+#include "oakengine/serializer.h"
+#include "oakengine/undo.h"
 #include "panel/panelmanager.h"
 #include "node/traverser.h"
 #include "ui/icons/icons.h"
@@ -45,6 +46,33 @@
 
 namespace olive
 {
+
+namespace
+{
+
+QVector<OakEngineNode *> node_vector_to_engine(const QVector<Node *> &nodes)
+{
+	QVector<OakEngineNode *> result;
+	result.reserve(nodes.size());
+	foreach (Node *n, nodes) {
+		result.append(reinterpret_cast<OakEngineNode *>(n));
+	}
+	return result;
+}
+
+QVector<QPair<OakEngineNode *, OakEngineNode *>>
+context_pair_vector_to_engine(const QVector<Node::ContextPair> &pairs)
+{
+	QVector<QPair<OakEngineNode *, OakEngineNode *>> result;
+	result.reserve(pairs.size());
+	foreach (const Node::ContextPair &p, pairs) {
+		result.append(qMakePair(reinterpret_cast<OakEngineNode *>(p.node),
+							reinterpret_cast<OakEngineNode *>(p.context)));
+	}
+	return result;
+}
+
+} // namespace
 
 const double NodeView::k_minimum_scale = 0.1;
 const int NodeView::k_maximum_contexts = 10;
@@ -59,6 +87,7 @@ NodeView::NodeView(QWidget *parent)
 	, scale_(1.0)
 	, dont_emit_selection_signals_(false)
 	, show_in_param_editor_action_(nullptr)
+	, bridge_(new EngineEventBridge(this))
 {
 	setScene(&scene_);
 	set_default_drag_mode(RubberBandDrag);
@@ -69,6 +98,9 @@ NodeView::NodeView(QWidget *parent)
 
 	connect(this, &NodeView::customContextMenuRequested, this,
 			&NodeView::show_context_menu);
+
+	connect(bridge_, &EngineEventBridge::node_removed_from_graph, this,
+			&NodeView::node_removed_from_graph);
 
 	connect_selection_changed_signal();
 
@@ -159,16 +191,49 @@ void NodeView::clear_graph()
 
 void NodeView::delete_selected()
 {
-	NodeViewDeleteCommand *command = new NodeViewDeleteCommand();
-
-	int count = 0;
+	QVector<Node *> nodes;
+	QVector<Node *> contexts;
+	QVector<NodeViewEdge *> edges;
 
 	foreach (NodeViewContext *ctx, scene_.context_map()) {
-		count += ctx->delete_selected(command);
+		ctx->get_selected_for_deletion(nodes, contexts, edges);
 	}
 
-	Core::instance()->undo_stack()->push(command,
-										 tr("Deleted %1 Node(s)").arg(count));
+	if (nodes.isEmpty() && edges.isEmpty()) {
+		return;
+	}
+
+	// Build C arrays for the facade
+	QVector<OakEngineNode *> oak_nodes(nodes.size());
+	QVector<OakEngineNode *> oak_contexts(nodes.size());
+	for (int i = 0; i < nodes.size(); i++) {
+		oak_nodes[i] = reinterpret_cast<OakEngineNode *>(nodes[i]);
+		oak_contexts[i] = reinterpret_cast<OakEngineNode *>(contexts[i]);
+	}
+
+	QVector<OakEngineNode *> edge_outputs(edges.size());
+	QVector<OakEngineNode *> edge_input_nodes(edges.size());
+	QVector<QByteArray> edge_input_ids_storage(edges.size());
+	QVector<const char *> edge_input_ids(edges.size());
+	QVector<int> edge_input_elements(edges.size());
+	for (int i = 0; i < edges.size(); i++) {
+		edge_outputs[i] = reinterpret_cast<OakEngineNode *>(edges[i]->output());
+		edge_input_nodes[i] = reinterpret_cast<OakEngineNode *>(edges[i]->input().node());
+		edge_input_ids_storage[i] = edges[i]->input().input().toUtf8();
+		edge_input_ids[i] = edge_input_ids_storage[i].constData();
+		edge_input_elements[i] = edges[i]->input().element();
+	}
+
+	// ONE undoable command whether this deletes nodes, edges, or both
+	oakengine_nodes_delete_many(
+		oak_nodes.isEmpty() ? nullptr : oak_nodes.constData(),
+		oak_contexts.isEmpty() ? nullptr : oak_contexts.constData(),
+		nodes.size(),
+		edge_outputs.isEmpty() ? nullptr : edge_outputs.constData(),
+		edge_input_nodes.isEmpty() ? nullptr : edge_input_nodes.constData(),
+		edge_input_ids.isEmpty() ? nullptr : edge_input_ids.constData(),
+		edge_input_elements.isEmpty() ? nullptr : edge_input_elements.constData(),
+		edges.size());
 }
 
 void NodeView::select_all()
@@ -199,14 +264,16 @@ void NodeView::deselect_all()
 	connect_selection_changed_signal();
 
 	// Just emit all the nodes that are currently selected as no longer selected
-	emit nodes_deselected(selected_nodes_);
+	emit nodes_deselected(node_vector_to_engine(selected_nodes_));
 	selected_nodes_.clear();
-	emit node_selection_changed(selected_nodes_);
-	emit node_selection_changed_with_contexts(QVector<Node::ContextPair>());
+	emit node_selection_changed(node_vector_to_engine(selected_nodes_));
+	emit node_selection_changed_with_contexts(
+		QVector<QPair<OakEngineNode *, OakEngineNode *>>());
 }
 
-void NodeView::select(const QVector<Node::ContextPair> &nodes,
-					  bool center_view_on_item)
+void NodeView::select(
+	const QVector<QPair<OakEngineNode *, OakEngineNode *>> &nodes,
+	bool center_view_on_item)
 {
 	// Optimization: rather than respond to every single item being selected, ignore the signal and
 	//               then handle them all at the end.
@@ -217,10 +284,12 @@ void NodeView::select(const QVector<Node::ContextPair> &nodes,
 
 	scene_.deselect_all();
 
-	foreach (const Node::ContextPair &p, nodes) {
-		NodeViewContext *ctx = scene_.context_map().value(p.context);
+	foreach (const auto &p, nodes) {
+		Node *node = reinterpret_cast<Node *>(p.first);
+		Node *context = reinterpret_cast<Node *>(p.second);
+		NodeViewContext *ctx = scene_.context_map().value(context);
 		if (ctx) {
-			NodeViewItem *item = ctx->get_item_from_map(p.node);
+			NodeViewItem *item = ctx->get_item_from_map(node);
 			if (item) {
 				item->setSelected(true);
 			}
@@ -230,7 +299,7 @@ void NodeView::select(const QVector<Node::ContextPair> &nodes,
 	// Center on something
 	if (center_view_on_item && !nodes.isEmpty()) {
 		QMetaObject::invokeMethod(this, "center_on_node", Qt::QueuedConnection,
-								  OLIVE_NS_ARG(Node *, nodes.first().node));
+								  Q_ARG(OakEngineNode *, nodes.first().first));
 	}
 
 	connect_selection_changed_signal();
@@ -247,34 +316,42 @@ void NodeView::copy_selected(bool cut)
 		return;
 	}
 
-	QString copy_str;
-	QXmlStreamWriter writer(&copy_str);
+	OakEngineClipboard *cb = oakengine_clipboard_create(
+		OAKENGINE_CLIPBOARD_NODES, nullptr, nullptr);
 
-	ProjectSerializer::SaveData sdata(ProjectSerializer::k_only_nodes);
-	sdata.set_only_serialize_nodes_and_resolve_groups(selected_nodes_);
-
-	ProjectSerializer::SerializedProperties properties;
+	oakengine_clipboard_set_nodes(
+		cb,
+		reinterpret_cast<const OakEngineNode *const *>(
+			selected_nodes_.constData()),
+		selected_nodes_.size());
 
 	for (Node *n : selected_nodes_) {
 		NodeViewItem *item = get_assumed_item_for_selected_node(n);
 
 		if (item) {
 			Node::Position pos = item->get_node_position_data();
-
-			properties[n][QStringLiteral("x")] =
-				QString::number(pos.position.x());
-			properties[n][QStringLiteral("y")] =
-				QString::number(pos.position.y());
-			properties[n][QStringLiteral("expanded")] =
-				QString::number(pos.expanded);
+			oakengine_clipboard_set_property(
+				cb, reinterpret_cast<OakEngineNode *>(n), "x",
+				QByteArray::number(pos.position.x()).constData());
+			oakengine_clipboard_set_property(
+				cb, reinterpret_cast<OakEngineNode *>(n), "y",
+				QByteArray::number(pos.position.y()).constData());
+			oakengine_clipboard_set_property(
+				cb, reinterpret_cast<OakEngineNode *>(n), "expanded",
+				QByteArray::number(pos.expanded).constData());
 		}
 	}
 
-	sdata.set_properties(properties);
+	// Two-phase buf/size: query the needed length first — serialized node
+	// graphs have no size bound, a fixed buffer would truncate large copies.
+	const int needed = oakengine_clipboard_save_to_xml(cb, nullptr, 0);
+	if (needed >= 0) {
+		QByteArray buf(needed + 1, '\0');
+		oakengine_clipboard_save_to_xml(cb, buf.data(), buf.size());
+		Core::copy_string_to_clipboard(QString::fromUtf8(buf.constData()));
+	}
 
-	ProjectSerializer::save(&writer, sdata);
-
-	Core::copy_string_to_clipboard(copy_str);
+	oakengine_clipboard_free(cb);
 
 	if (cut) {
 		delete_selected();
@@ -287,27 +364,48 @@ void NodeView::paste()
 		return;
 	}
 
-	ProjectSerializer::Result res =
-		ProjectSerializer::paste(ProjectSerializer::k_only_nodes);
-	if (res.get_load_data().nodes.isEmpty()) {
+	OakEngineClipboard *cb = oakengine_clipboard_create(
+		OAKENGINE_CLIPBOARD_NODES, nullptr, nullptr);
+	int result_code = OAKENGINE_SERIALIZER_NO_DATA;
+	oakengine_clipboard_paste(cb, OAKENGINE_CLIPBOARD_NODES, nullptr,
+							&result_code, nullptr, 0);
+
+	if (result_code != OAKENGINE_SERIALIZER_OK) {
+		oakengine_clipboard_free(cb);
 		return;
+	}
+
+	QVector<Node *> nodes;
+	const int node_count = oakengine_clipboard_get_loaded_node_count(cb);
+	nodes.reserve(node_count);
+	for (int i = 0; i < node_count; i++) {
+		nodes.append(reinterpret_cast<Node *>(
+			oakengine_clipboard_get_loaded_node_at(cb, i)));
 	}
 
 	Node::PositionMap map;
 
-	for (auto it = res.get_load_data().properties.cbegin();
-		 it != res.get_load_data().properties.cend(); it++) {
-		Node::Position pos;
+	oakengine_clipboard_foreach_property(
+		cb,
+		[](OakEngineNode *node, const char *key, const char *value,
+		   void *userdata) -> int {
+			auto *m = static_cast<Node::PositionMap *>(userdata);
+			Node *n = reinterpret_cast<Node *>(node);
+			Node::Position &pos = (*m)[n];
+			if (std::strcmp(key, "x") == 0) {
+				pos.position.setX(QString::fromUtf8(value).toDouble());
+			} else if (std::strcmp(key, "y") == 0) {
+				pos.position.setY(QString::fromUtf8(value).toDouble());
+			} else if (std::strcmp(key, "expanded") == 0) {
+				pos.expanded = QString::fromUtf8(value).toDouble();
+			}
+			return 0;
+		},
+		&map);
 
-		const QMap<QString, QString> &node_props = it.value();
-		pos.position.setX(node_props.value(QStringLiteral("x")).toDouble());
-		pos.position.setY(node_props.value(QStringLiteral("y")).toDouble());
-		pos.expanded = node_props.value(QStringLiteral("expanded")).toDouble();
+	oakengine_clipboard_free(cb);
 
-		map.insert(it.key(), pos);
-	}
-
-	post_paste(res.get_load_data().nodes, map);
+	post_paste(nodes, map);
 }
 
 void NodeView::duplicate()
@@ -323,9 +421,10 @@ void NodeView::duplicate()
 		for (int i = 0; i < selected.size(); i++) {
 			new_nodes[i] = selected.at(i)->copy();
 
-			if (NodeGroup *g = dynamic_cast<NodeGroup *>(selected.at(i))) {
-				for (auto it = g->get_context_positions().cbegin();
-					 it != g->get_context_positions().cend(); it++) {
+			if (oakengine_node_is_group(
+					reinterpret_cast<OakEngineNode *>(selected.at(i)))) {
+				for (auto it = selected.at(i)->get_context_positions().cbegin();
+					 it != selected.at(i)->get_context_positions().cend(); it++) {
 					if (!selected.contains(it.key())) {
 						// This should automatically recurse if this is a group inside a group
 						selected.append(it.key());
@@ -353,30 +452,67 @@ void NodeView::duplicate()
 				if (child_index != -1) {
 					Node *child_copy = new_nodes.at(child_index);
 
-					copy->set_node_position_in_context(child_copy, it.value());
+					oakengine_node_set_context_position(
+						reinterpret_cast<OakEngineNode*>(copy),
+						reinterpret_cast<OakEngineNode*>(child_copy),
+						it.value().position.x(), it.value().position.y());
 				}
 			}
 
-			if (NodeGroup *src_group = dynamic_cast<NodeGroup *>(og)) {
-				NodeGroup *dst_group = static_cast<NodeGroup *>(copy);
-
-				for (auto it = src_group->get_input_passthroughs().cbegin();
-					 it != src_group->get_input_passthroughs().cend(); it++) {
-					NodeInput input = it->second;
-					input.set_node(
-						new_nodes.at(selected.indexOf(input.node())));
-					dst_group->add_input_passthrough(input, it->first);
+			if (oakengine_node_is_group(reinterpret_cast<OakEngineNode *>(og))) {
+				const int pt_count = oakengine_group_input_passthrough_count(
+					reinterpret_cast<OakEngineNode *>(og));
+				for (int pt = 0; pt < pt_count; pt++) {
+					OakEngineNode *inner_node = nullptr;
+					char inner_input[256];
+					int inner_element = 0;
+					char id[256];
+					if (oakengine_group_input_passthrough_at(
+							reinterpret_cast<OakEngineNode *>(og), pt,
+							id, sizeof(id), &inner_node, inner_input,
+							sizeof(inner_input), &inner_element) !=
+						OAKENGINE_OK) {
+						continue;
+					}
+					Node *inner = reinterpret_cast<Node *>(inner_node);
+					int src_index = selected.indexOf(inner);
+					if (src_index == -1) {
+						continue;
+					}
+					Node *copy_inner = new_nodes.at(src_index);
+					char out_id[256];
+					oakengine_group_add_input_passthrough(
+						reinterpret_cast<OakEngineNode *>(copy),
+						reinterpret_cast<OakEngineNode *>(copy_inner),
+						inner_input, inner_element, id,
+						out_id, sizeof(out_id));
 				}
 
-				dst_group->set_output_passthrough(new_nodes.at(
-					selected.indexOf(src_group->get_output_passthrough())));
+				if (OakEngineNode *output = oakengine_group_get_output_passthrough(
+						reinterpret_cast<OakEngineNode *>(og))) {
+					int idx = selected.indexOf(reinterpret_cast<Node *>(output));
+					if (idx >= 0 && idx < new_nodes.size()) {
+						oakengine_group_set_output_passthrough(
+							reinterpret_cast<OakEngineNode *>(copy),
+							reinterpret_cast<OakEngineNode *>(
+								new_nodes.at(idx)));
+					}
+				}
 			}
 
-			Node::copy_inputs(selected.at(i), new_nodes.at(i), false);
+			oakengine_node_copy_inputs(
+				reinterpret_cast<OakEngineNode*>(new_nodes.at(i)),
+				reinterpret_cast<const OakEngineNode*>(selected.at(i)));
 		}
 
 		// Copy connections
-		Node::copy_dependency_graph(selected, new_nodes, nullptr);
+		{
+			QVector<OakEngineNode*> sel_arr, new_arr;
+			for (Node *n : selected) sel_arr.append(reinterpret_cast<OakEngineNode*>(n));
+			for (Node *n : new_nodes) new_arr.append(reinterpret_cast<OakEngineNode*>(n));
+			oakengine_node_copy_dependency_graph(
+				sel_arr.data(), new_arr.data(), sel_arr.size(), nullptr);
+		}
 
 		// Set root level context positions and attach to
 		post_paste(new_nodes, map);
@@ -385,14 +521,17 @@ void NodeView::duplicate()
 
 void NodeView::set_color_label(int index)
 {
-	MultiUndoCommand *command = new MultiUndoCommand();
+	void *command = oakengine_undo_command_create_multi();
 
 	for (Node *node : qAsConst(selected_nodes_)) {
-		command->add_child(new NodeOverrideColorCommand(node, index));
+		oakengine_undo_command_multi_add_child(
+			command,
+			oakengine_node_set_color_label_command(
+				reinterpret_cast<OakEngineNode *>(node), index));
 	}
 
-	Core::instance()->undo_stack()->push(
-		command, tr("Set Color of %1 Node(s)").arg(selected_nodes_.size()));
+	oakengine_undo_push(
+		command, tr("Set Color of %1 Node(s)").arg(selected_nodes_.size()).toUtf8().constData());
 }
 
 void NodeView::zoom_in()
@@ -412,7 +551,7 @@ void NodeView::keyPressEvent(QKeyEvent *event)
 	case Qt::Key_Right:
 	case Qt::Key_Up:
 	case Qt::Key_Down: {
-		MultiUndoCommand *pos_command = new MultiUndoCommand();
+		void *pos_command = oakengine_undo_command_create_multi();
 		for (Node *n : qAsConst(selected_nodes_)) {
 			for (Node *context : qAsConst(contexts_)) {
 				if (context->context_contains_node(n)) {
@@ -444,13 +583,20 @@ void NodeView::keyPressEvent(QKeyEvent *event)
 						node_movement, scene_.get_flow_direction());
 
 					// Move command
-					pos_command->add_child(new NodeSetPositionCommand(
-						n, context, old_pos + node_movement));
+					Node::Position new_pos = old_pos;
+					new_pos.position += node_movement;
+					oakengine_undo_command_multi_add_child(
+						pos_command,
+						oakengine_node_set_position_command(
+							reinterpret_cast<void *>(n),
+							reinterpret_cast<void *>(context),
+							new_pos.position.x(), new_pos.position.y(),
+							new_pos.expanded ? 1 : 0));
 				}
 			}
 		}
-		Core::instance()->undo_stack()->push(
-			pos_command, tr("Moved %1 Node(s)").arg(selected_nodes_.size()));
+		oakengine_undo_push(
+			pos_command, tr("Moved %1 Node(s)").arg(selected_nodes_.size()).toUtf8().constData());
 		break;
 	}
 	case Qt::Key_Escape:
@@ -601,7 +747,7 @@ void NodeView::mouseReleaseEvent(QMouseEvent *event)
 		end_edge_drag();
 	}
 
-	MultiUndoCommand *command = new MultiUndoCommand();
+	void *command = oakengine_undo_command_create_multi();
 
 	Node *select_context = nullptr;
 	QVector<Node *> select_nodes;
@@ -632,13 +778,15 @@ void NodeView::mouseReleaseEvent(QMouseEvent *event)
 		}
 		QPointF current_pos = i->get_node_position();
 		if (dragging_items_.value(i) != current_pos) {
-			command->add_child(new NodeSetPositionCommand(
-				i->get_node(), i->get_context(), current_pos));
+			oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(
+				reinterpret_cast<void *>(i->get_node()),
+				reinterpret_cast<void *>(i->get_context()), current_pos.x(),
+				current_pos.y(), 0));
 		}
 	}
 
-	Core::instance()->undo_stack()->push(
-		command, tr("Moved %1 Node(s)").arg(dragging_items_.size()));
+	oakengine_undo_push(
+		command, tr("Moved %1 Node(s)").arg(dragging_items_.size()).toUtf8().constData());
 
 	dragging_items_.clear();
 
@@ -674,8 +822,8 @@ void NodeView::dragEnterEvent(QDragEnterEvent *event)
 
 	QStringList mime_fmts = event->mimeData()->formats();
 
-	if (mime_fmts.contains(Project::k_item_mime_type)) {
-		QByteArray model_data = event->mimeData()->data(Project::k_item_mime_type);
+	if (mime_fmts.contains(QString::fromUtf8(oakengine_project_item_mime_type()))) {
+		QByteArray model_data = event->mimeData()->data(QString::fromUtf8(oakengine_project_item_mime_type()));
 		QDataStream stream(&model_data, QIODevice::ReadOnly);
 
 		// Variables to deserialize into
@@ -732,11 +880,11 @@ void NodeView::dragMoveEvent(QDragMoveEvent *event)
 void NodeView::dropEvent(QDropEvent *event)
 {
 	if (Node *drop_ctx = get_context_at_mouse_pos(event->pos())) {
-		MultiUndoCommand *command = new MultiUndoCommand();
+		void *command = oakengine_undo_command_create_multi();
 		QVector<Node *> select_nodes =
 			process_dropping_attached_nodes(command, drop_ctx, event->pos());
-		Core::instance()->undo_stack()->push(
-			command, tr("Dropped %1 Node(s)").arg(select_nodes.size()));
+		oakengine_undo_push(
+			command, tr("Dropped %1 Node(s)").arg(select_nodes.size()).toUtf8().constData());
 
 		deselect_all();
 		scene_.context_map().value(drop_ctx)->select(select_nodes);
@@ -815,16 +963,17 @@ void NodeView::update_selection_cache()
 	}
 
 	if (!deselected.isEmpty()) {
-		emit nodes_deselected(deselected);
+		emit nodes_deselected(node_vector_to_engine(deselected));
 	}
 
 	if (!selected.isEmpty()) {
-		emit nodes_selected(selected);
+		emit nodes_selected(node_vector_to_engine(selected));
 	}
 
 	if (!dont_emit_selection_signals_) {
-		emit node_selection_changed(selected_nodes_);
-		emit node_selection_changed_with_contexts(sel_with_ctx);
+		emit node_selection_changed(node_vector_to_engine(selected_nodes_));
+		emit node_selection_changed_with_contexts(
+			context_pair_vector_to_engine(sel_with_ctx));
 	}
 }
 
@@ -856,7 +1005,8 @@ void NodeView::show_context_menu(const QPoint &pos)
 	if (item_under_cursor && !selected.isEmpty()) {
 		// Grouping
 		if (selected.size() == 1 &&
-			dynamic_cast<NodeGroup *>(selected.first()->get_node())) {
+			oakengine_node_is_group(reinterpret_cast<OakEngineNode *>(
+				selected.first()->get_node()))) {
 			QAction *ungroup_action = m.addAction(tr("Ungroup"));
 			connect(ungroup_action, &QAction::triggered, this,
 					&NodeView::ungroup_nodes);
@@ -947,9 +1097,10 @@ void NodeView::create_node_slot(QAction *action)
 
 		new_attached.append({ new_item, new_node, QPointF(0, 0) });
 
-		if (NodeGroup *new_group = dynamic_cast<NodeGroup *>(new_node)) {
-			for (auto it = new_group->get_context_positions().cbegin();
-				 it != new_group->get_context_positions().cend(); it++) {
+		if (oakengine_node_is_group(
+				reinterpret_cast<OakEngineNode *>(new_node))) {
+			for (auto it = new_node->get_context_positions().cbegin();
+				 it != new_node->get_context_positions().cend(); it++) {
 				new_attached.append({ nullptr, it.key(), QPointF(0, 0) });
 			}
 		}
@@ -992,10 +1143,11 @@ void NodeView::center_on_items_bounding_rect()
 	centerOn(scene_.itemsBoundingRect().center());
 }
 
-void NodeView::center_on_node(Node *n)
+void NodeView::center_on_node(OakEngineNode *n)
 {
 	foreach (NodeViewContext *ctx, scene_.context_map()) {
-		if (NodeViewItem *item = ctx->get_item_from_map(n)) {
+		if (NodeViewItem *item = ctx->get_item_from_map(
+				reinterpret_cast<Node *>(n))) {
 			centerOn(item);
 			break;
 		}
@@ -1036,9 +1188,9 @@ void NodeView::move_to_scene_point(const QPointF &pos)
 	centerOn(pos);
 }
 
-void NodeView::node_removed_from_graph()
+void NodeView::node_removed_from_graph(OakEngineNode *source)
 {
-	Node *context = static_cast<Node *>(sender());
+	Node *context = reinterpret_cast<Node *>(source);
 
 	remove_context(context);
 
@@ -1111,7 +1263,7 @@ void NodeView::process_moving_attached_nodes(const QPoint &pos)
 				} else {
 					// Otherwise, we may have to iterate to find a valid one
 					for (const QString &input : attached_node->inputs()) {
-						if (input == Node::k_enabled_input) {
+						if (input == QLatin1String(oakengine_node_enabled_input_id())) {
 							// Ignore enabled input
 							continue;
 						}
@@ -1160,7 +1312,7 @@ void NodeView::process_moving_attached_nodes(const QPoint &pos)
 }
 
 QVector<Node *>
-NodeView::process_dropping_attached_nodes(MultiUndoCommand *command,
+NodeView::process_dropping_attached_nodes(void *command,
 									   Node *select_context, const QPoint &pos)
 {
 	QVector<Node *> select_nodes;
@@ -1180,41 +1332,44 @@ NodeView::process_dropping_attached_nodes(MultiUndoCommand *command,
 	}
 
 	{
-		MultiUndoCommand *add_command = new MultiUndoCommand();
+		void *add_command = oakengine_undo_command_create_multi();
 
 		foreach (const AttachedItem &ai, attached) {
 			// Add node to the same graph that the context is in
 			if (ai.node->parent() != select_context->parent()) {
-				add_command->add_child(
-					new NodeAddCommand(select_context->parent(), ai.node));
+				oakengine_undo_command_multi_add_child(add_command,
+		oakengine_node_add_to_project_command(
+			reinterpret_cast<OakEngineProject *>(select_context->parent()),
+			reinterpret_cast<OakEngineNode *>(ai.node)));
 				if (ai.node->is_item() && !ai.node->folder()) {
-					add_command->add_child(new FolderAddChild(
-						select_context->parent()->root(), ai.node));
+					oakengine_folder_add_child(
+						reinterpret_cast<OakEngineNode *>(select_context->parent()->root()),
+						reinterpret_cast<OakEngineNode *>(ai.node));
 				}
 			}
 
 			// Add node to the context
 			if (ai.item) {
 				select_nodes.append(ai.node);
-				add_command->add_child(new NodeSetPositionCommand(
-					ai.node, select_context,
-					scene_.context_map()
+				oakengine_undo_command_multi_add_child(add_command, oakengine_node_set_position_command(reinterpret_cast<void *>(ai.node), reinterpret_cast<void *>(select_context), scene_.context_map()
 						.value(select_context)
-						->map_scene_pos_to_node_pos_in_context(ai.item->pos())));
+						->map_scene_pos_to_node_pos_in_context(ai.item->pos()).x(), scene_.context_map()
+						.value(select_context)
+						->map_scene_pos_to_node_pos_in_context(ai.item->pos()).y(), 0));
 			}
 		}
 
-		if (add_command->child_count()) {
-			add_command->redo_now();
-			command->add_child(add_command);
+		if (oakengine_undo_command_multi_child_count(add_command) > 0) {
+			oakengine_undo_command_redo_now(add_command);
+			oakengine_undo_command_multi_add_child(command, add_command);
 		} else {
-			delete add_command;
+			oakengine_undo_command_free(add_command);
 		}
 	}
 
 	{
-		// Dropped attached item onto an edge, connect it between them
-		MultiUndoCommand *drop_edge_command = new MultiUndoCommand();
+		// Dropped attached item onto an edge, connect it between them as one
+		// undoable child of the parent command.
 		if (attached.size() == 1) {
 			Node *dropping_node = nullptr;
 
@@ -1226,24 +1381,34 @@ NodeView::process_dropping_attached_nodes(MultiUndoCommand *command,
 			}
 
 			if (dropping_node && drop_edge_) {
-				// Remove old edge
-				drop_edge_command->add_child(new NodeEdgeRemoveCommand(
-					drop_edge_->output(), drop_edge_->input()));
+				void *edge_command = oakengine_undo_command_create_multi();
 
-				// Place new edges
-				drop_edge_command->add_child(
-					new NodeEdgeAddCommand(drop_edge_->output(), drop_input_));
-				drop_edge_command->add_child(
-					new NodeEdgeAddCommand(dropping_node, drop_edge_->input()));
+				oakengine_undo_command_multi_add_child(
+					edge_command,
+					oakengine_node_disconnect_command(
+						reinterpret_cast<OakEngineNode *>(drop_edge_->input().node()),
+						drop_edge_->input().input().toUtf8().constData(),
+						drop_edge_->input().element()));
+				oakengine_undo_command_multi_add_child(
+					edge_command,
+					oakengine_node_connect_command(
+						reinterpret_cast<OakEngineNode *>(drop_edge_->output()),
+						reinterpret_cast<OakEngineNode *>(drop_input_.node()),
+						drop_input_.input().toUtf8().constData(),
+						drop_input_.element()));
+				oakengine_undo_command_multi_add_child(
+					edge_command,
+					oakengine_node_connect_command(
+						reinterpret_cast<OakEngineNode *>(dropping_node),
+						reinterpret_cast<OakEngineNode *>(drop_edge_->input().node()),
+						drop_edge_->input().input().toUtf8().constData(),
+						drop_edge_->input().element()));
+
+				oakengine_undo_command_redo_now(edge_command);
+				oakengine_undo_command_multi_add_child(command, edge_command);
 			}
 
 			drop_edge_ = nullptr;
-		}
-		if (drop_edge_command->child_count()) {
-			drop_edge_command->redo_now();
-			command->add_child(drop_edge_command);
-		} else {
-			delete drop_edge_command;
 		}
 	}
 
@@ -1518,28 +1683,29 @@ void NodeView::group_nodes()
 	avg_pos /= items.size();
 
 	// Create group
-	NodeGroup *group = new NodeGroup();
+	Node *group = reinterpret_cast<Node *>(oakengine_node_group_create());
 
 	// Add group to graph and context
-	MultiUndoCommand *command = new MultiUndoCommand();
+	void *command = oakengine_undo_command_create_multi();
 
 	// Add nodes to group
 	Node *output_passthrough = nullptr;
 	QVector<Node *> nodes_to_group = selected_nodes_;
 	deselect_all();
 	foreach (Node *n, nodes_to_group) {
-		command->add_child(
-			new NodeRemovePositionFromContextCommand(n, context));
-		command->add_child(new NodeSetPositionCommand(
-			n, group, context->get_node_position_data_in_context(n)));
+		oakengine_undo_command_multi_add_child(command, oakengine_node_remove_position_command(reinterpret_cast<void *>(n), reinterpret_cast<void *>(context)));
+		oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(n), reinterpret_cast<void *>(group), context->get_node_position_data_in_context(n).position.x(), context->get_node_position_data_in_context(n).position.y(), context->get_node_position_data_in_context(n).expanded ? 1 : 0));
 
 		for (auto it = n->inputs().cbegin(); it != n->inputs().cend(); it++) {
 			NodeInput input(n, *it, -1);
 
 			if (!input.is_connected() ||
 				!nodes_to_group.contains(input.get_connected_output())) {
-				command->add_child(
-					new NodeGroupAddInputPassthrough(group, input));
+				oakengine_undo_command_multi_add_child(command, (void *)(oakengine_group_add_input_passthrough_command(
+						reinterpret_cast<OakEngineNode *>(group),
+						reinterpret_cast<OakEngineNode *>(input.node()),
+						input.input().toUtf8().constData(), input.element(),
+						nullptr)));
 			}
 		}
 
@@ -1556,17 +1722,21 @@ void NodeView::group_nodes()
 	}
 
 	// Set output passthrough
-	command->add_child(
-		new NodeGroupSetOutputPassthrough(group, output_passthrough));
+	oakengine_undo_command_multi_add_child(command, (void *)(oakengine_group_set_output_passthrough_command(
+			reinterpret_cast<OakEngineNode *>(group),
+			reinterpret_cast<OakEngineNode *>(output_passthrough))));
 
 	// Add group to graph
-	command->add_child(new NodeAddCommand(context->parent(), group));
-	command->add_child(new NodeSetPositionCommand(group, context, avg_pos));
+	oakengine_undo_command_multi_add_child(command,
+		oakengine_node_add_to_project_command(
+			reinterpret_cast<OakEngineProject *>(context->parent()),
+			reinterpret_cast<OakEngineNode *>(group)));
+	oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(group), reinterpret_cast<void *>(context), avg_pos.x(), avg_pos.y(), 0));
 
 	// Do command
 	Core::instance()->label_nodes({ group }, command);
 
-	Core::instance()->undo_stack()->push(command, tr("Grouped Nodes"));
+	oakengine_undo_push(command, tr("Grouped Nodes").toUtf8().constData());
 }
 
 void NodeView::ungroup_nodes()
@@ -1577,9 +1747,11 @@ void NodeView::ungroup_nodes()
 		return;
 	}
 
-	NodeGroup *group = nullptr;
+	Node *group = nullptr;
 	foreach (NodeViewItem *i, items) {
-		if ((group = dynamic_cast<NodeGroup *>(i->get_node()))) {
+		if (oakengine_node_is_group(reinterpret_cast<OakEngineNode *>(
+				i->get_node()))) {
+			group = i->get_node();
 			group_item = i;
 			break;
 		}
@@ -1589,30 +1761,27 @@ void NodeView::ungroup_nodes()
 		return;
 	}
 
-	MultiUndoCommand *command = new MultiUndoCommand();
+	void *command = oakengine_undo_command_create_multi();
 
 	Node *context = group_item->get_context();
 
-	command->add_child(
-		new NodeRemovePositionFromContextCommand(group, context));
-	command->add_child(new NodeRemoveAndDisconnectCommand(group));
+	oakengine_undo_command_multi_add_child(command, oakengine_node_remove_position_command(reinterpret_cast<void *>(group), reinterpret_cast<void *>(context)));
+	oakengine_undo_command_multi_add_child(command, oakengine_node_remove_and_disconnect_command(reinterpret_cast<void *>(group)));
 
 	for (auto it = group->get_context_positions().cbegin();
 		 it != group->get_context_positions().cend(); it++) {
-		command->add_child(
-			new NodeRemovePositionFromContextCommand(it.key(), group));
-		command->add_child(new NodeSetPositionCommand(
-			it.key(), context, group->get_node_position_data_in_context(it.key())));
+		oakengine_undo_command_multi_add_child(command, oakengine_node_remove_position_command(reinterpret_cast<void *>(it.key()), reinterpret_cast<void *>(group)));
+		oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(it.key()), reinterpret_cast<void *>(context), group->get_node_position_data_in_context(it.key()).position.x(), group->get_node_position_data_in_context(it.key()).position.y(), group->get_node_position_data_in_context(it.key()).expanded ? 1 : 0));
 	}
 
-	Core::instance()->undo_stack()->push(command, tr("Ungrouped Nodes"));
+	oakengine_undo_push(command, tr("Ungrouped Nodes").toUtf8().constData());
 }
 
 void NodeView::show_node_properties()
 {
 	Node *first_node = selected_nodes_.first();
 
-	if (NodeGroup *group = dynamic_cast<NodeGroup *>(first_node)) {
+	if (oakengine_node_is_group(reinterpret_cast<OakEngineNode *>(first_node))) {
 		if (!overlay_view_) {
 			overlay_view_ = new NodeView(this);
 			overlay_view_->show();
@@ -1647,19 +1816,20 @@ void NodeView::show_node_properties()
 			overlay_close_btn->setStyleSheet(
 				QStringLiteral("background: transparent; border: none;"));
 		}
-		overlay_view_->set_contexts({ group });
+		overlay_view_->set_contexts({ first_node });
 		resize_overlay();
 		QMetaObject::invokeMethod(overlay_view_,
 								  &NodeView::center_on_items_bounding_rect,
 								  Qt::QueuedConnection);
 		overlay_view_->setFocus();
 
-		emit nodes_deselected(selected_nodes_);
-		emit node_selection_changed(QVector<Node *>());
-		emit node_selection_changed_with_contexts(QVector<Node::ContextPair>());
+		emit nodes_deselected(node_vector_to_engine(selected_nodes_));
+		emit node_selection_changed(QVector<OakEngineNode *>());
+		emit node_selection_changed_with_contexts(
+			QVector<QPair<OakEngineNode *, OakEngineNode *>>());
 		overlay_view_->select_all();
 
-		emit node_group_opened(group);
+		emit node_group_opened(reinterpret_cast<OakEngineNode *>(first_node));
 	} else {
 		label_selected_nodes();
 	}
@@ -1701,7 +1871,8 @@ void NodeView::show_selected_node_in_param_editor()
 		}
 	}
 
-	emit node_selection_changed_with_contexts(selection_with_contexts);
+	emit node_selection_changed_with_contexts(
+		context_pair_vector_to_engine(selection_with_contexts));
 }
 
 void NodeView::label_selected_nodes()
@@ -1752,14 +1923,14 @@ void NodeView::add_context(Node *n)
 	connect(ctx, &NodeViewContext::item_about_to_be_deleted, this,
 			&NodeView::item_about_to_be_deleted);
 
-	connect(n, &Node::removed_from_graph, this, &NodeView::node_removed_from_graph);
+	removed_from_graph_subs_[n] = bridge_->subscribe(
+		reinterpret_cast<void *>(n), OAKENGINE_EVENT_NODE_REMOVED_FROM_GRAPH);
 }
 
 void NodeView::remove_context(Node *n)
 {
 	scene_.remove_context(n);
-	disconnect(n, &Node::removed_from_graph, this,
-			   &NodeView::node_removed_from_graph);
+	bridge_->unsubscribe(removed_from_graph_subs_.take(n));
 }
 
 bool NodeView::is_item_attached_to_cursor(NodeViewItem *item) const
@@ -1788,7 +1959,7 @@ void NodeView::collapse_item(NodeViewItem *item)
 void NodeView::end_edge_drag(bool cancel)
 {
 	// Check if the edge was reconnected to the same place as before
-	MultiUndoCommand *command = new MultiUndoCommand();
+	void *command = oakengine_undo_command_create_multi();
 
 	bool reconnected_to_itself = false;
 
@@ -1799,8 +1970,12 @@ void NodeView::end_edge_drag(bool cancel)
 				reconnected_to_itself = true;
 			} else {
 				// We are moving (or removing) an existing edge
-				command->add_child(new NodeEdgeRemoveCommand(
-					create_edge_->output(), create_edge_->input()));
+				oakengine_undo_command_multi_add_child(
+					command,
+					oakengine_node_disconnect_command(
+						reinterpret_cast<OakEngineNode *>(create_edge_->input().node()),
+						create_edge_->input().input().toUtf8().constData(),
+						create_edge_->input().element()));
 			}
 		}
 	} else {
@@ -1827,15 +2002,32 @@ void NodeView::end_edge_drag(bool cancel)
 			if (!reconnected_to_itself) {
 				Node *creating_output = create_edge_output_item_->get_node();
 
-				while (NodeGroup *output_group =
-						   dynamic_cast<NodeGroup *>(creating_output)) {
-					creating_output = output_group->get_output_passthrough();
+				while (oakengine_node_is_group(
+					   reinterpret_cast<OakEngineNode *>(creating_output))) {
+					OakEngineNode *out = oakengine_group_get_output_passthrough(
+						reinterpret_cast<OakEngineNode *>(creating_output));
+					if (!out) {
+						break;
+					}
+					creating_output = reinterpret_cast<Node *>(out);
 				}
 
-				while (NodeGroup *input_group =
-						   dynamic_cast<NodeGroup *>(creating_input.node())) {
-					creating_input =
-						input_group->get_input_from_id(creating_input.input());
+				while (oakengine_node_is_group(reinterpret_cast<OakEngineNode *>(
+						creating_input.node()))) {
+					OakEngineNode *inner_node = nullptr;
+					char inner_input[256];
+					int inner_element = 0;
+					if (oakengine_group_get_passthrough_from_id(
+							reinterpret_cast<OakEngineNode *>(
+								creating_input.node()),
+							creating_input.input().toUtf8().constData(),
+							&inner_node, inner_input, sizeof(inner_input),
+							&inner_element) != OAKENGINE_OK) {
+						break;
+					}
+					creating_input = NodeInput(
+						reinterpret_cast<Node *>(inner_node),
+						QString::fromUtf8(inner_input), inner_element);
 				}
 
 				if (creating_input.is_connected()) {
@@ -1862,33 +2054,52 @@ void NodeView::end_edge_drag(bool cancel)
 					}
 
 					if (!cancel) {
-						command->add_child(new NodeEdgeRemoveCommand(
-							existing_edge_to_remove.first,
-							existing_edge_to_remove.second));
+						oakengine_undo_command_multi_add_child(
+							command,
+							oakengine_node_disconnect_command(
+								reinterpret_cast<OakEngineNode *>(existing_edge_to_remove.second.node()),
+								existing_edge_to_remove.second.input().toUtf8().constData(),
+								existing_edge_to_remove.second.element()));
 					}
 				}
 
 				if (!cancel) {
-					command->add_child(new NodeEdgeAddCommand(creating_output,
-															  creating_input));
+					oakengine_undo_command_multi_add_child(
+						command,
+						oakengine_node_connect_command(
+							reinterpret_cast<OakEngineNode *>(creating_output),
+							reinterpret_cast<OakEngineNode *>(creating_input.node()),
+							creating_input.input().toUtf8().constData(),
+							creating_input.element()));
 
-					command_name = Node::get_connect_command_string(
-						creating_output, creating_input);
+					{
+						char cmd_buf[256];
+						oakengine_node_connect_command_string(
+							reinterpret_cast<OakEngineNode*>(creating_output),
+							reinterpret_cast<OakEngineNode*>(creating_input.node()),
+							creating_input.input().toUtf8().constData(),
+							creating_input.element(), cmd_buf, sizeof(cmd_buf));
+						command_name = QString::fromUtf8(cmd_buf);
+					}
 
 					// If the output is not in the input's context, add it now. We check the item rather than
 					// the node itself, because sometimes a node may not be in the context but another node
 					// representing it will be (e.g. groups)
-					if (!scene_.context_map()
-							 .value(create_edge_input_item_->get_context())
-							 ->get_item_from_map(creating_output)) {
-						command->add_child(new NodeSetPositionCommand(
-							creating_output,
-							create_edge_input_item_->get_context(),
-							scene_.context_map()
-								.value(create_edge_input_item_->get_context())
-								->map_scene_pos_to_node_pos_in_context(
-									create_edge_output_item_->scenePos())));
-					}
+						if (!scene_.context_map()
+								 .value(create_edge_input_item_->get_context())
+								 ->get_item_from_map(creating_output)) {
+							QPointF new_pos = scene_.context_map()
+											.value(create_edge_input_item_->get_context())
+											->map_scene_pos_to_node_pos_in_context(
+													create_edge_output_item_->scenePos());
+							oakengine_undo_command_multi_add_child(
+								command,
+								oakengine_node_set_position_command(
+									reinterpret_cast<void *>(creating_output),
+									reinterpret_cast<void *>(
+										create_edge_input_item_->get_context()),
+									new_pos.x(), new_pos.y(), 0));
+						}
 				}
 			}
 		}
@@ -1905,8 +2116,9 @@ void NodeView::end_edge_drag(bool cancel)
 	}
 	create_edge_expanded_items_.clear();
 
-	Core::instance()->undo_stack()->push(command, command_name);
+	oakengine_undo_push(command, command_name.toUtf8().constData());
 }
+
 
 void NodeView::post_paste(const QVector<Node *> &new_nodes,
 						 const Node::PositionMap &map)

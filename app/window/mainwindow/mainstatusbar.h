@@ -25,20 +25,22 @@
 #include <QProgressBar>
 #include <QStatusBar>
 
-#include "task/taskmanager.h"
+#include "oakengine/task.h"
 
 namespace olive
 {
 
+class EngineEventBridge;
+
 /**
- * @brief Shows abbreviated information from a TaskManager object
+ * @brief Shows abbreviated information from the global TaskManager
  */
 class MainStatusBar : public QStatusBar {
 	Q_OBJECT
 public:
 	MainStatusBar(QWidget *parent = nullptr);
 
-	void connect_task_manager(TaskManager *manager);
+	void connect_task_manager(EngineEventBridge *bridge);
 
 signals:
 	void double_clicked();
@@ -51,14 +53,18 @@ private slots:
 
 	void set_progress_bar_value(double d);
 
-	void connected_task_deleted();
+	void connected_task_finished();
 
 private:
-	TaskManager *manager_;
+	EngineEventBridge *bridge_;
 
 	QProgressBar *bar_;
 
-	Task *connected_task_;
+	OakEngineTask *connected_task_;
+
+	int64_t task_progress_sub_;
+
+	int64_t task_finished_sub_;
 };
 
 }

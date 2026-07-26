@@ -25,7 +25,8 @@
 #include <QComboBox>
 #include <QGroupBox>
 
-#include "node/color/colormanager/colormanager.h"
+#include "oakengine/color.h"
+#include "widget/manageddisplay/colorprocessorhandle.h"
 
 namespace olive
 {
@@ -33,7 +34,7 @@ namespace olive
 class ColorSpaceChooser : public QGroupBox {
 	Q_OBJECT
 public:
-	ColorSpaceChooser(ColorManager *color_manager,
+	ColorSpaceChooser(OakEngineColorManager *color_manager,
 					  bool enable_input_field = true,
 					  bool enable_display_fields = true,
 					  QWidget *parent = nullptr);
@@ -55,7 +56,7 @@ private slots:
 	void update_views(const QString &display);
 
 private:
-	ColorManager *color_manager_;
+	OakEngineColorManager *color_manager_;
 
 	QComboBox *input_combobox_;
 

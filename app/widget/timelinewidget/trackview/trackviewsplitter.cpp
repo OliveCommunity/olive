@@ -25,6 +25,7 @@
 #include <QPainter>
 
 #include "node/output/track/track.h"
+#include "oakengine/timeline.h"
 
 namespace olive
 {
@@ -72,7 +73,8 @@ void TrackViewSplitter::handle_receiver(TrackViewSplitterHandle *h, int diff)
 	int new_ele_sz = old_ele_sz + diff;
 
 	// Limit by track minimum height
-	new_ele_sz = qMax(new_ele_sz, Track::get_minimum_track_height_in_pixels());
+	new_ele_sz = qMax(new_ele_sz,
+					  oakengine_track_height_internal_to_pixels(oakengine_track_height_minimum()));
 
 	if (alignment_ == Qt::AlignBottom) {
 		ele_id = count() - ele_id - 1;

@@ -21,9 +21,10 @@
 
 #include <QGraphicsRectItem>
 #include <QGraphicsTextItem>
+#include <QHash>
 
+#include "engineeventbridge.h"
 #include "node/node.h"
-#include "node/nodeundo.h"
 #include "nodeviewcommon.h"
 #include "nodeviewedge.h"
 
@@ -48,7 +49,9 @@ public:
 
 	void set_curved_edges(bool e);
 
-	int delete_selected(NodeViewDeleteCommand *command);
+	void get_selected_for_deletion(QVector<Node *> &nodes,
+								  QVector<Node *> &contexts,
+								  QVector<NodeViewEdge *> &edges) const;
 
 	void select(const QVector<Node *> &nodes);
 
@@ -65,7 +68,11 @@ public:
 					   const QStyleOptionGraphicsItem *option,
 					   QWidget *widget = nullptr) override;
 
-public slots:
+public:
+	// Not slots: signatures use the engine C++ type Node*, which must not be
+	// exposed to MOC (it would pull Node::staticMetaObject across the ABI
+	// boundary). They are invoked from lambdas / directly, never as connect()
+	// targets.
 	void add_child(Node *node);
 
 	void set_child_position(Node *node, const QPointF &pos);
@@ -105,10 +112,16 @@ private:
 
 	QVector<NodeViewEdge *> edges_;
 
-private slots:
-	void group_added_node(Node *node);
+	EngineEventBridge *bridge_ = nullptr;
 
-	void group_removed_node(Node *node);
+	QHash<Node *, QVector<int64_t>> node_subs_;
+
+private:
+	// Ordinary member functions (NOT slots): signatures use Node*, which must
+	// not be exposed to MOC. Invoked from lambdas only.
+	void group_added_node(Node *node, Node *group);
+
+	void group_removed_node(Node *node, Node *group);
 };
 
 }

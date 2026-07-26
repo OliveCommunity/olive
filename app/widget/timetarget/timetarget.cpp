@@ -21,6 +21,8 @@
 
 #include "timetarget.h"
 
+#include "oakengine/node.h"
+
 namespace olive
 {
 
@@ -73,7 +75,15 @@ TimeTargetObject::get_adjusted_time(Node *from, Node *to, const TimeRange &r,
 		return r;
 	}
 
-	return from->transform_time_to(r, to, dir, path_index_);
+	int64_t rin_num, rin_den, rout_num, rout_den;
+	oakengine_node_transform_time_to(
+		reinterpret_cast<OakEngineNode*>(from),
+		reinterpret_cast<OakEngineNode*>(to),
+		static_cast<int>(dir), path_index_,
+		r.in().numerator(), r.in().denominator(),
+		r.out().numerator(), r.out().denominator(),
+		&rin_num, &rin_den, &rout_num, &rout_den);
+	return TimeRange(Rational(rin_num, rin_den), Rational(rout_num, rout_den));
 }
 
 /*int TimeTargetObject::GetNumberOfPathAdjustments(Node* from, NodeParam::Type direction) const

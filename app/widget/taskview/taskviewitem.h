@@ -29,29 +29,21 @@
 #include <QWidget>
 
 #include "elapsedcounterwidget.h"
-#include "task/task.h"
+#include "engineeventbridge.h"
+#include "oakengine/task.h"
 
 namespace olive
 {
 
-/**
- * @brief A widget that visually represents the status of a Task
- *
- * The TaskViewItem widget shows a description of the Task (Task::text(), a progress bar (updated by
- * Task::ProgressChanged), the Task's status (text generated from Task::status() or Task::error()), and provides
- * a cancel button (triggering Task::Cancel()) for cancelling a Task before it finishes.
- *
- * The main entry point is SetTask() after a Task and TaskViewItem objects are created.
- */
 class TaskViewItem : public QFrame {
 	Q_OBJECT
 public:
-	TaskViewItem(Task *task, QWidget *parent = nullptr);
+	TaskViewItem(OakEngineTask *task, QWidget *parent = nullptr);
 
 	void failed();
 
 signals:
-	void task_cancelled(Task *t);
+	void task_cancelled(OakEngineTask *t);
 
 private:
 	QLabel *task_name_lbl_;
@@ -62,7 +54,9 @@ private:
 	ElapsedCounterWidget *elapsed_timer_lbl_;
 	QLabel *task_error_lbl_;
 
-	Task *task_;
+	OakEngineTask *task_;
+
+	EngineEventBridge *bridge_;
 
 private slots:
 	void update_progress(double d);

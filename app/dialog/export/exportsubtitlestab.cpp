@@ -1,24 +1,8 @@
-/*
- * Oak Video Editor - Non-Linear Video Editor
- * Copyright (C) 2025 Olive CE Team
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- */
-
 #include "exportsubtitlestab.h"
 
 #include <QGridLayout>
+
+#include "oakengine/encoding.h"
 
 namespace olive
 {
@@ -62,32 +46,35 @@ ExportSubtitlesTab::ExportSubtitlesTab(QWidget *parent)
 			&QWidget::setVisible);
 }
 
-int ExportSubtitlesTab::set_format(ExportFormat::Format format)
+int ExportSubtitlesTab::set_format(int format)
 {
-	auto vcodecs = ExportFormat::get_video_codecs(format);
-	auto acodecs = ExportFormat::get_audio_codecs(format);
+	const bool has_video = oakengine_encoding_format_video_codec_count(format) > 0;
+	const bool has_audio = oakengine_encoding_format_audio_codec_count(format) > 0;
+	int scodec_count = oakengine_encoding_format_subtitle_codec_count(format);
 
-	auto scodecs = ExportFormat::get_subtitle_codecs(format);
-
-	if (!scodecs.empty() && vcodecs.empty() && acodecs.empty()) {
+	if (scodec_count > 0 && !has_video && !has_audio) {
 		// If format supports ONLY scodecs, default this to off and disable it
 		sidecar_checkbox_->setChecked(false);
 		sidecar_checkbox_->setEnabled(false);
 	} else {
 		// If format does not support scodecs, default this to checked and disable it
-		sidecar_checkbox_->setChecked(scodecs.empty());
-		sidecar_checkbox_->setEnabled(!scodecs.empty());
+		sidecar_checkbox_->setChecked(scodec_count == 0);
+		sidecar_checkbox_->setEnabled(scodec_count > 0);
 	}
 
-	scodecs =
-		ExportFormat::get_subtitle_codecs(sidecar_format_combobox_->get_format());
+	// Refresh for sidecar format
+	int sidecar_fmt = sidecar_format_combobox_->get_format();
+	scodec_count = oakengine_encoding_format_subtitle_codec_count(sidecar_fmt);
 
 	codec_combobox_->clear();
-	foreach (ExportCodec::Codec scodec, scodecs) {
-		codec_combobox_->addItem(ExportCodec::get_codec_name(scodec), scodec);
+	for (int i = 0; i < scodec_count; i++) {
+		int scodec = oakengine_encoding_format_subtitle_codec_at(sidecar_fmt, i);
+		char buf[256];
+		oakengine_encoding_codec_name(scodec, buf, sizeof(buf));
+		codec_combobox_->addItem(QString::fromUtf8(buf), scodec);
 	}
 
-	return scodecs.size();
+	return scodec_count;
 }
 
 }

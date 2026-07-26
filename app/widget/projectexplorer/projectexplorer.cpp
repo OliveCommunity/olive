@@ -38,10 +38,12 @@
 #include "projectexplorerundo.h"
 #include "oakengine/footage.h"
 #include "oakengine/node.h"
-#include "task/taskmanager.h"
+#include "oakengine/task.h"
+#include "oakengine/videoparams.h"
+#include "oakengine/project.h"
+#include "oakengine/undo.h"
 #include "widget/menu/menu.h"
 #include "widget/menu/menushared.h"
-#include "node/nodeundo.h"
 #include "window/mainwindow/mainwindow.h"
 #include "window/mainwindow/mainwindowundo.h"
 #include "widget/timelinewidget/timelinewidget.h"
@@ -56,7 +58,11 @@ QVector<Footage *> get_selected_proxy_footage(const QVector<Node *> &items)
 	QVector<Footage *> footage;
 	for (Node *node : items) {
 		Footage *candidate = dynamic_cast<Footage *>(node);
-		if (!candidate || !candidate->get_first_enabled_video_stream().is_valid() ||
+		oak_video_params _vp;
+		if (!candidate ||
+			oakengine_viewer_get_first_enabled_video_stream(
+				reinterpret_cast<OakEngineNode *>(candidate), &_vp) < 0 ||
+			!oakengine_video_params_is_valid(&_vp) ||
 			footage.contains(candidate)) {
 			continue;
 		}
@@ -65,45 +71,6 @@ QVector<Footage *> get_selected_proxy_footage(const QVector<Node *> &items)
 	return footage;
 }
 
-/**
- * @brief Proxy generation driven by the liboakengine C ABI facade
- *
- * Replaces the direct ProxyManager::get_or_start_proxy() drive: the actual
- * transcode and its synchronous wait live behind
- * oakengine_footage_proxy_generate() (which also records the proxy state
- * on the footage and invalidates it), while the task stays on the
- * TaskManager queue like before.
- */
-class FacadeProxyTask : public Task {
-public:
-	FacadeProxyTask(Footage *footage)
-		: footage_(footage)
-	{
-		set_title(tr("Generating proxy for \"%1\"")
-					  .arg(footage->get_label_or_name()));
-	}
-
-protected:
-	virtual bool run() override
-	{
-		OakEngineFootage *handle = oakengine_footage_borrow(
-			reinterpret_cast<OakEngineNode *>(footage_));
-		const int rc = oakengine_footage_proxy_generate(handle);
-		oakengine_footage_free(handle);
-		if (rc != OAKENGINE_OK) {
-			char err[512];
-			err[0] = '\0';
-			oakengine_footage_last_error(err, sizeof(err));
-			set_error(err[0] ? QString::fromUtf8(err) :
-							   tr("Proxy generation failed"));
-			return false;
-		}
-		return true;
-	}
-
-private:
-	Footage *footage_;
-};
 }
 
 ProjectExplorer::ProjectExplorer(QWidget *parent)
@@ -191,10 +158,10 @@ void ProjectExplorer::set_view_type(ProjectToolbar::ViewType type)
 	}
 }
 
-void ProjectExplorer::edit(Node *item)
+void ProjectExplorer::edit(OakEngineNode *item)
 {
 	current_view()->edit(
-		sort_model_.mapFromSource(model_.create_index_from_item(item)));
+		sort_model_.mapFromSource(model_.create_index_from_item(reinterpret_cast<Node *>(item))));
 }
 
 void ProjectExplorer::add_view(QAbstractItemView *view)
@@ -257,7 +224,7 @@ int ProjectExplorer::confirm_item_deletion(Node *item)
 
 bool ProjectExplorer::delete_items_internal(const QVector<Node *> &selected,
 										  bool &check_if_item_is_in_use,
-										  MultiUndoCommand *command)
+										  void *command)
 {
 	for (int i = 0; i < selected.size(); i++) {
 		// Delete sequences first
@@ -291,16 +258,29 @@ bool ProjectExplorer::delete_items_internal(const QVector<Node *> &selected,
 			Sequence *sequence = dynamic_cast<Sequence *>(node);
 			if (sequence &&
 				Core::instance()->main_window()->is_sequence_open(sequence)) {
-				command->add_child(new CloseSequenceCommand(sequence));
+				oakengine_undo_command_multi_add_child(command, make_close_sequence_command(sequence));
 			}
 
 			if (node->folder()) {
-				command->add_child(
-					new Folder::RemoveElementCommand(node->folder(), node));
+				oakengine_undo_command_multi_add_child(
+				command,
+				oakengine_folder_remove_element_command(
+					reinterpret_cast<OakEngineNode *>(node->folder()),
+					reinterpret_cast<OakEngineNode *>(node)));
 			}
 
-			command->add_child(
-				new NodeRemoveWithExclusiveDependenciesAndDisconnect(node));
+			void *remove_cmd = oakengine_undo_command_create_multi();
+			oakengine_undo_command_multi_add_child(
+				remove_cmd,
+				oakengine_node_remove_and_disconnect_command(
+					reinterpret_cast<void *>(node)));
+			for (Node *dep : node->get_exclusive_dependencies()) {
+				oakengine_undo_command_multi_add_child(
+					remove_cmd,
+					oakengine_node_remove_and_disconnect_command(
+						reinterpret_cast<void *>(dep)));
+			}
+			oakengine_undo_command_multi_add_child(command, remove_cmd);
 		}
 	}
 
@@ -356,7 +336,7 @@ void ProjectExplorer::item_double_clicked_slot(const QModelIndex &index)
 	}
 
 	// Emit a signal
-	emit double_clicked_item(i);
+	emit double_clicked_item(reinterpret_cast<OakEngineNode *>(i));
 }
 
 void ProjectExplorer::size_changed_slot(int s)
@@ -457,7 +437,9 @@ void ProjectExplorer::show_context_menu()
 			Sequence *sequence_cast_test = dynamic_cast<Sequence *>(i);
 
 			if (footage_cast_test &&
-				!footage_cast_test->has_enabled_video_streams()) {
+			!oakengine_viewer_has_enabled_streams(
+				reinterpret_cast<OakEngineNode *>(footage_cast_test),
+				OAKENGINE_TRACK_TYPE_VIDEO)) {
 				all_items_have_video_streams = false;
 			}
 
@@ -659,8 +641,10 @@ void ProjectExplorer::generate_proxies_for_selected_footage()
 		<< "GenerateProxiesForSelectedFootage: starting proxy generation for"
 		<< footage.size() << "footage item(s)";
 	for (Footage *item : footage) {
-		const VideoParams video = item->get_first_enabled_video_stream();
-		if (!video.is_valid()) {
+		oak_video_params _vp;
+		if (oakengine_viewer_get_first_enabled_video_stream(
+				reinterpret_cast<OakEngineNode *>(item), &_vp) < 0 ||
+			!oakengine_video_params_is_valid(&_vp)) {
 			qWarning()
 				<< "GenerateProxiesForSelectedFootage: skipping item with no valid video stream"
 				<< item->filename();
@@ -669,7 +653,9 @@ void ProjectExplorer::generate_proxies_for_selected_footage()
 
 		// Queue one facade-backed task per footage item (same queueing
 		// semantics as the old per-footage proxy tasks).
-		TaskManager::instance()->add_task(new FacadeProxyTask(item));
+		OakEngineTask *proxy_task = oakengine_task_create_proxy(
+			reinterpret_cast<OakEngineNode *>(item));
+		oakengine_task_manager_add(proxy_task);
 	}
 }
 
@@ -689,10 +675,10 @@ void ProjectExplorer::set_selected_footage_proxy_enabled(bool enabled)
 		OakEngineFootage *handle = oakengine_footage_borrow(
 			reinterpret_cast<OakEngineNode *>(item));
 		oakengine_footage_proxy_set_enabled(handle, enabled ? 1 : 0);
-		oakengine_footage_free(handle);
 		// The facade call toggles the flag; cache invalidation for the UI
 		// stays here.
-		item->invalidate_all(Footage::k_filename_input);
+		oakengine_footage_invalidate(handle);
+		oakengine_footage_free(handle);
 	}
 }
 
@@ -765,18 +751,19 @@ void ProjectExplorer::view_selection_changed()
 
 	QModelIndexList selection = model->selectedIndexes();
 
-	QVector<Node *> nodes;
+	QVector<OakEngineNode *> nodes;
 
 	foreach (const QModelIndex &index, selection) {
 		Node *sel = static_cast<Node *>(
 			sort_model_.mapToSource(index).internalPointer());
-		if (!nodes.contains(sel)) {
-			nodes.append(sel);
+		auto handle = reinterpret_cast<OakEngineNode *>(sel);
+		if (!nodes.contains(handle)) {
+			nodes.append(handle);
 		}
 	}
 
 	if (nodes.isEmpty()) {
-		nodes.append(get_root());
+		nodes.append(reinterpret_cast<OakEngineNode *>(get_root()));
 	}
 
 	emit selection_changed(nodes);
@@ -900,15 +887,15 @@ void ProjectExplorer::delete_selected()
 		return;
 	}
 
-	MultiUndoCommand *command = new MultiUndoCommand();
+	void *command = oakengine_undo_command_create_multi();
 
 	bool check_if_item_is_in_use = true;
 
 	if (delete_items_internal(selected, check_if_item_is_in_use, command)) {
-		Core::instance()->undo_stack()->push(
-			command, tr("Deleted %1 Item(s)").arg(selected.size()));
+		oakengine_undo_push(
+			command, tr("Deleted %1 Item(s)").arg(selected.size()).toUtf8().constData());
 	} else {
-		delete command;
+		oakengine_undo_command_free(command);
 	}
 }
 

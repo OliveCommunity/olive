@@ -29,6 +29,8 @@
 
 #include "core.h"
 
+#include "oakengine/timeline.h"
+
 namespace olive
 {
 
@@ -138,28 +140,28 @@ void MarkerPropertiesDialog::accept()
 		return;
 	}
 
-	MultiUndoCommand *command = new MultiUndoCommand();
-
-	int color = color_menu_->get_selected_color();
-
-	foreach (TimelineMarker *m, markers_) {
-		if (color != -1) {
-			command->add_child(new MarkerChangeColorCommand(m, color));
+	// Batch-set properties via facade (one undoable command)
+	{
+		QVector<OakEngineMarker *> oak_markers;
+		foreach (TimelineMarker *m, markers_) {
+			oak_markers.append(reinterpret_cast<OakEngineMarker *>(m));
 		}
-
+		int color = color_menu_->get_selected_color();
+		QByteArray name_ba;
+		const char *name = nullptr;
 		if (label_edit_->placeholderText().isEmpty()) {
-			command->add_child(
-				new MarkerChangeNameCommand(m, label_edit_->text()));
+			name_ba = label_edit_->text().toUtf8();
+			name = name_ba.constData();
 		}
+		oakengine_marker_set_properties(
+			oak_markers.data(), oak_markers.size(), color, name,
+			(markers_.size() == 1) ? 1 : 0,
+			in_slider_->get_value().numerator(),
+			in_slider_->get_value().denominator(),
+			out_slider_->get_value().numerator(),
+			out_slider_->get_value().denominator(),
+			nullptr);
 	}
-
-	if (markers_.size() == 1) {
-		command->add_child(new MarkerChangeTimeCommand(
-			markers_.front(),
-			TimeRange(in_slider_->get_value(), out_slider_->get_value())));
-	}
-
-	Core::instance()->undo_stack()->push(command, tr("Set Marker Properties"));
 
 	super::accept();
 }

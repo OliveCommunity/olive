@@ -40,7 +40,6 @@ class ProgressDialog;
  * is destroyed by the engine with deleteLater().
  */
 class PluginProgressDialogReporter : public plugin::PluginProgressReporter {
-	Q_OBJECT
 public:
 	PluginProgressDialogReporter(const QString &message, const QString &title);
 
@@ -52,8 +51,11 @@ public:
 
 	virtual void close() override;
 
+	bool was_cancelled() const { return cancelled_; }
+
 private:
 	QPointer<ProgressDialog> dialog_;
+	bool cancelled_ = false;
 };
 
 }

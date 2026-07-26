@@ -24,8 +24,11 @@
 
 #include <QObject>
 
+#include "engineeventbridge.h"
 #include "node/node.h"
 #include "node/param.h"
+
+struct OakEngineKeyframe;
 
 namespace olive
 {
@@ -85,14 +88,16 @@ private:
 
 	QBrush brush_;
 
+	EngineEventBridge *bridge_ = nullptr;
+
 private slots:
-	void add_keyframe(NodeKeyframe *key);
+	void add_keyframe(OakEngineKeyframe *key);
 
-	void remove_keyframe(NodeKeyframe *key);
+	void remove_keyframe(OakEngineKeyframe *key);
 
-	void keyframe_changed(NodeKeyframe *key);
+	void keyframe_changed(OakEngineKeyframe *key);
 
-	void keyframe_type_changed(NodeKeyframe *key);
+	void keyframe_type_changed(OakEngineKeyframe *key);
 };
 
 }

@@ -34,11 +34,13 @@
 #include <QSpinBox>
 
 #include "core.h"
-#include "node/nodeundo.h"
 #include "oakengine/footage.h"
 #include "oakengine/node.h"
+#include "oakengine/timeline.h"
+#include "oakengine/undo.h"
 #include "streamproperties/audiostreamproperties.h"
 #include "streamproperties/videostreamproperties.h"
+#include "widget/viewer/vieweroutpututils.h"
 
 namespace olive
 {
@@ -131,28 +133,43 @@ FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
 		QString description;
 		bool is_enabled = false;
 
+		OakEngineFootage *facade_handle = oakengine_footage_borrow(
+			reinterpret_cast<OakEngineNode *>(footage_));
+
 		switch (reference.type()) {
 		case Track::k_video: {
 			stacked_widget_->addWidget(
 				new VideoStreamProperties(footage_, reference.index()));
 
-			VideoParams vp = footage_->get_video_params(reference.index());
+			VideoParams vp = viewer_output_video_params(footage_, reference.index());
 			is_enabled = vp.enabled();
-			description = Footage::describe_video_stream(vp);
+			{
+				char desc_buf[256];
+				oakengine_footage_describe_video_stream(
+					facade_handle, reference.index(), desc_buf,
+					sizeof(desc_buf));
+				description = QString::fromUtf8(desc_buf);
+			}
 			break;
 		}
 		case Track::k_audio: {
 			stacked_widget_->addWidget(
 				new AudioStreamProperties(footage_, reference.index()));
 
-			AudioParams ap = footage_->get_audio_params(reference.index());
+			AudioParams ap = viewer_output_audio_params(footage_, reference.index());
 			is_enabled = ap.enabled();
-			description = Footage::describe_audio_stream(ap);
+			{
+				char desc_buf[256];
+				oakengine_footage_describe_audio_stream(
+					facade_handle, reference.index(), desc_buf,
+					sizeof(desc_buf));
+				description = QString::fromUtf8(desc_buf);
+			}
 			break;
 		}
 		case Track::k_subtitle: {
-			SubtitleParams sp = footage_->get_subtitle_params(reference.index());
-			is_enabled = sp.enabled();
+			is_enabled = oakengine_footage_get_stream_enabled(
+				facade_handle, OAKENGINE_TRACK_TYPE_SUBTITLE, reference.index());
 
 			// FIXME: Language?
 			description = tr("Subtitles");
@@ -163,6 +180,8 @@ FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
 			description = tr("Unknown");
 			break;
 		}
+
+		oakengine_footage_free(facade_handle);
 
 		QListWidgetItem *item = new QListWidgetItem(description, track_list_);
 		item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
@@ -244,16 +263,16 @@ void FootagePropertiesDialog::accept()
 
 		switch (reference.type()) {
 		case Track::k_video:
-			old_stream_enabled =
-				footage_->get_video_params(reference.index()).enabled();
+			old_stream_enabled = oakengine_footage_get_stream_enabled(
+				facade_handle, OAKENGINE_TRACK_TYPE_VIDEO, reference.index());
 			break;
 		case Track::k_audio:
-			old_stream_enabled =
-				footage_->get_audio_params(reference.index()).enabled();
+			old_stream_enabled = oakengine_footage_get_stream_enabled(
+				facade_handle, OAKENGINE_TRACK_TYPE_AUDIO, reference.index());
 			break;
 		case Track::k_subtitle:
-			old_stream_enabled =
-				footage_->get_subtitle_params(reference.index()).enabled();
+			old_stream_enabled = oakengine_footage_get_stream_enabled(
+				facade_handle, OAKENGINE_TRACK_TYPE_SUBTITLE, reference.index());
 			break;
 		case Track::k_none:
 		case Track::k_count:
@@ -269,12 +288,12 @@ void FootagePropertiesDialog::accept()
 
 	oakengine_footage_free(facade_handle);
 
-	MultiUndoCommand *command = new MultiUndoCommand();
+	void *command = oakengine_undo_command_create_multi();
 	for (int i = 0; i < stacked_widget_->count(); i++) {
 		static_cast<StreamProperties *>(stacked_widget_->widget(i))
 			->accept(command);
 	}
-	delete command; // stream pages write through the facade directly
+	oakengine_undo_command_free(command); // stream pages write through the facade directly
 
 	QDialog::accept();
 }

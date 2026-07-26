@@ -23,8 +23,9 @@
 
 #include "node/block/transition/crossdissolve/crossdissolvetransition.h"
 #include "node/block/transition/transition.h"
-#include "node/factory.h"
-#include "node/nodeundo.h"
+#include "oakengine/node.h"
+#include "oakengine/undo.h"
+#include "oakengine/timeline.h"
 #include "timeline/timelineundopointer.h"
 #include "transition.h"
 
@@ -104,29 +105,28 @@ void TransitionTool::mouse_release(TimelineViewMouseEvent *event)
 
 			if (Core::instance()->get_selected_transition().isEmpty()) {
 				// Fallback if the user hasn't selected one yet
-				transition = new CrossDissolveTransition();
+				transition = reinterpret_cast<CrossDissolveTransition*>(oakengine_node_factory_create_from_id("org.olivevideoeditor.Olive.crossdissolve"));
 			} else {
 				transition =
-					static_cast<TransitionBlock *>(NodeFactory::create_from_id(
-						Core::instance()->get_selected_transition()));
+					reinterpret_cast<TransitionBlock *>(oakengine_node_factory_create_from_id(
+						Core::instance()->get_selected_transition().toUtf8().constData()));
 			}
 
 			// Set transition length
 			Rational len = ghost_->get_adjusted_length();
 			transition->set_length_and_media_out(len);
 
-			MultiUndoCommand *command = new MultiUndoCommand();
+			void *command = oakengine_undo_command_create_multi();
 
 			// Place transition in place
-			command->add_child(new NodeAddCommand(
-				parent()->get_connected_node()->parent(), transition));
+			oakengine_undo_command_multi_add_child(command,
+		oakengine_node_add_to_project_command(
+			reinterpret_cast<OakEngineProject *>(parent()->get_connected_node()->parent()),
+			reinterpret_cast<OakEngineNode *>(transition)));
 
-			command->add_child(new NodeSetPositionCommand(
-				transition, transition, QPointF(0, 0)));
+			oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(transition), reinterpret_cast<void *>(transition), 0, 0, 0));
 
-			command->add_child(new TrackPlaceBlockCommand(
-				sequence()->track_list(track.type()), track.index(), transition,
-				ghost_->get_adjusted_in()));
+			oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(sequence()->track_list(track.type())), track.index(), reinterpret_cast<void *>(transition), core::Timecode::time_to_timestamp(ghost_->get_adjusted_in(), parent()->timebase())));
 
 			if (dual_transition_) {
 				// Block mouse is hovering over
@@ -146,18 +146,24 @@ void TransitionTool::mouse_release(TimelineViewMouseEvent *event)
 									  friend_block;
 
 				// Connect block to transition
-				command->add_child(new NodeEdgeAddCommand(
-					out_block,
-					NodeInput(transition, TransitionBlock::k_out_block_input)));
+				oakengine_undo_command_multi_add_child(
+					command,
+					oakengine_node_connect_command(
+						reinterpret_cast<OakEngineNode *>(out_block),
+						reinterpret_cast<OakEngineNode *>(transition),
+						QLatin1String(oakengine_transition_out_block_input_id()).toUtf8().constData(),
+						-1));
 
-				command->add_child(new NodeEdgeAddCommand(
-					in_block,
-					NodeInput(transition, TransitionBlock::k_in_block_input)));
+				oakengine_undo_command_multi_add_child(
+					command,
+					oakengine_node_connect_command(
+						reinterpret_cast<OakEngineNode *>(in_block),
+						reinterpret_cast<OakEngineNode *>(transition),
+						QLatin1String(oakengine_transition_in_block_input_id()).toUtf8().constData(),
+						-1));
 
-				command->add_child(new NodeSetPositionCommand(
-					out_block, transition, QPointF(-1, -0.5)));
-				command->add_child(new NodeSetPositionCommand(
-					in_block, transition, QPointF(-1, 0.5)));
+				oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(out_block), reinterpret_cast<void *>(transition), -1, -0.5, 0));
+				oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(in_block), reinterpret_cast<void *>(transition), -1, 0.5, 0));
 			} else {
 				Block *block_to_transition = QtUtils::value_to_ptr<Block>(
 					ghost_->get_data(TimelineViewGhostItem::k_attached_block));
@@ -165,24 +171,27 @@ void TransitionTool::mouse_release(TimelineViewMouseEvent *event)
 
 				if (ghost_->get_mode() == Timeline::k_trim_in) {
 					transition_input_to_connect =
-						TransitionBlock::k_in_block_input;
+						QLatin1String(oakengine_transition_in_block_input_id());
 				} else {
 					transition_input_to_connect =
-						TransitionBlock::k_out_block_input;
+						QLatin1String(oakengine_transition_out_block_input_id());
 				}
 
 				// Connect block to transition
-				command->add_child(new NodeEdgeAddCommand(
-					block_to_transition,
-					NodeInput(transition, transition_input_to_connect)));
+				oakengine_undo_command_multi_add_child(
+					command,
+					oakengine_node_connect_command(
+						reinterpret_cast<OakEngineNode *>(block_to_transition),
+						reinterpret_cast<OakEngineNode *>(transition),
+						transition_input_to_connect.toUtf8().constData(),
+						-1));
 
-				command->add_child(new NodeSetPositionCommand(
-					block_to_transition, transition, QPointF(-1, 0)));
+				oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(block_to_transition), reinterpret_cast<void *>(transition), -1, 0, 0));
 			}
 
-			Core::instance()->undo_stack()->push(
+			oakengine_undo_push(
 				command,
-				qApp->translate("TransitionTool", "Created Transition"));
+				qApp->translate("TransitionTool", "Created Transition").toUtf8().constData());
 
 			parent()->set_view_transition_overlay(nullptr, nullptr);
 		}

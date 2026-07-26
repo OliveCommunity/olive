@@ -26,6 +26,8 @@
 #include <QLabel>
 #include <QMessageBox>
 
+#include "oakengine/disk.h"
+
 namespace olive
 {
 
@@ -109,7 +111,7 @@ void DiskCacheDialog::clear_disk_cache(const QString &path, QWidget *parent,
 		if (clear_btn)
 			clear_btn->setEnabled(false);
 
-		if (DiskManager::instance()->clear_disk_cache(path)) {
+		if (oakengine_disk_clear_cache(path.toUtf8().constData())) {
 			if (clear_btn)
 				clear_btn->setText(tr("Disk Cache Cleared"));
 		} else {

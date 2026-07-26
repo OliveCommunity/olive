@@ -41,10 +41,10 @@ public:
 		QVector<QPair<ViewerOutput *, QVector<Track::Reference>>>;
 
 	void place_at(const QVector<ViewerOutput *> &footage, const Rational &start,
-				 bool insert, MultiUndoCommand *command, int track_offset = 0,
+				 bool insert, void *command, int track_offset = 0,
 				 bool jump_to_end = false);
 	void place_at(const DraggedFootageData &footage, const Rational &start,
-				 bool insert, MultiUndoCommand *command, int track_offset = 0,
+				 bool insert, void *command, int track_offset = 0,
 				 bool jump_to_end = false);
 
 	// The canonical definition lives in the engine layer
@@ -61,7 +61,7 @@ private:
 
 	void prep_ghosts(const Rational &frame, const int &track_index);
 
-	void drop_ghosts(bool insert, MultiUndoCommand *parent_command);
+	void drop_ghosts(bool insert, void *parent_command);
 
 	TimelineViewGhostItem *create_ghost(const TimeRange &range,
 									   const Rational &media_in,

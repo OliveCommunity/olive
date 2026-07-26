@@ -28,6 +28,8 @@
 namespace olive
 {
 
+class EngineEventBridge;
+
 /**
  * @brief A PanelWidget wrapper around a TaskView widget
  */
@@ -40,6 +42,8 @@ private:
 	virtual void retranslate() override;
 
 	TaskView *view_;
+
+	EngineEventBridge *bridge_;
 };
 
 }

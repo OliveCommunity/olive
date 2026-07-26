@@ -24,6 +24,9 @@
 #include <QGridLayout>
 #include <QLabel>
 
+#include <olive/core/core.h>
+#include "oakengine/encoding.h"
+
 namespace olive
 {
 
@@ -87,14 +90,17 @@ ExportAudioTab::ExportAudioTab(QWidget *parent)
 	outer_layout->addStretch();
 }
 
-int ExportAudioTab::set_format(ExportFormat::Format format)
+int ExportAudioTab::set_format(int format)
 {
-	QList<ExportCodec::Codec> acodecs = ExportFormat::get_audio_codecs(format);
-	setEnabled(!acodecs.isEmpty());
+	const int acodec_count = oakengine_encoding_format_audio_codec_count(format);
+	setEnabled(acodec_count > 0);
 	codec_combobox_->blockSignals(true);
 	codec_combobox_->clear();
-	foreach (ExportCodec::Codec acodec, acodecs) {
-		codec_combobox_->addItem(ExportCodec::get_codec_name(acodec), acodec);
+	for (int i = 0; i < acodec_count; i++) {
+		int codec = oakengine_encoding_format_audio_codec_at(format, i);
+		char buf[256];
+		oakengine_encoding_codec_name(codec, buf, sizeof(buf));
+		codec_combobox_->addItem(QString::fromUtf8(buf), codec);
 	}
 	codec_combobox_->blockSignals(false);
 	fmt_ = format;
@@ -102,18 +108,25 @@ int ExportAudioTab::set_format(ExportFormat::Format format)
 	update_sample_formats();
 	update_bit_rate_enabled();
 
-	return acodecs.size();
+	return acodec_count;
 }
 
 void ExportAudioTab::update_sample_formats()
 {
-	auto fmts = ExportFormat::get_sample_formats_for_codec(fmt_, get_codec());
+	// Use oakengine to get sample format values and build the vector
+	const int count = oakengine_encoding_sample_format_count(fmt_, get_codec());
+	std::vector<olive::core::SampleFormat> fmts;
+	fmts.reserve(count);
+	for (int i = 0; i < count; i++) {
+		int val = oakengine_encoding_sample_format_at(fmt_, get_codec(), i);
+		fmts.push_back(olive::core::SampleFormat(static_cast<olive::core::SampleFormat::Format>(val)));
+	}
 	sample_format_combobox_->set_available_formats(fmts);
 }
 
 void ExportAudioTab::update_bit_rate_enabled()
 {
-	bool uses_bitrate = !ExportCodec::is_codec_lossless(get_codec());
+	bool uses_bitrate = !oakengine_encoding_codec_is_lossless(get_codec());
 	bit_rate_slider_->setEnabled(uses_bitrate);
 
 	if (!uses_bitrate) {

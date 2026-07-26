@@ -25,6 +25,8 @@
 #include <QVBoxLayout>
 
 #include "core.h"
+#include "oakengine/events.h"
+#include "oakengine/project.h"
 #include "node/project/sequence/sequence.h"
 #include "panel/footageviewer/footageviewer.h"
 #include "panel/timeline/timeline.h"
@@ -35,6 +37,14 @@
 
 namespace olive
 {
+
+ProjectPanel::~ProjectPanel()
+{
+	if (project_name_sub_ > 0) {
+		oakengine_event_unsubscribe(project_name_sub_);
+		project_name_sub_ = 0;
+	}
+}
 
 ProjectPanel::ProjectPanel(const QString &unique_name)
 	: PanelWidget(unique_name)
@@ -87,19 +97,24 @@ Project *ProjectPanel::project() const
 void ProjectPanel::set_project(Project *p)
 {
 	if (project()) {
-		disconnect(project(), &Project::name_changed, this,
-				   &ProjectPanel::update_subtitle);
-		disconnect(project(), &Project::name_changed, this,
-				   &ProjectPanel::project_name_changed);
+		if (project_name_sub_ > 0) {
+			oakengine_event_unsubscribe(project_name_sub_);
+			project_name_sub_ = 0;
+		}
 	}
 
 	explorer_->set_project(p);
 
 	if (project()) {
-		connect(project(), &Project::name_changed, this,
-				&ProjectPanel::update_subtitle);
-		connect(project(), &Project::name_changed, this,
-				&ProjectPanel::project_name_changed);
+		auto *ph = reinterpret_cast<OakEngineProject *>(project());
+		project_name_sub_ = oakengine_event_subscribe(
+			ph, OAKENGINE_EVENT_PROJECT_NAME_CHANGED,
+			[](const oakengine_event *, void *userdata) {
+				auto *s = static_cast<ProjectPanel *>(userdata);
+				s->update_subtitle();
+				s->project_name_changed();
+			},
+			this);
 	}
 
 	update_subtitle();
@@ -154,7 +169,7 @@ void ProjectPanel::rename_selected()
 	explorer_->rename_selected_item();
 }
 
-void ProjectPanel::edit(Node *item)
+void ProjectPanel::edit(OakEngineNode *item)
 {
 	explorer_->edit(item);
 }
@@ -170,8 +185,9 @@ void ProjectPanel::retranslate()
 	update_subtitle();
 }
 
-void ProjectPanel::item_double_click_slot(Node *item)
+void ProjectPanel::item_double_click_slot(OakEngineNode *item_handle)
 {
+	Node *item = reinterpret_cast<Node *>(item_handle);
 	if (item == nullptr) {
 		// If the user double clicks on empty space, show the import dialog
 		Core::instance()->dialog_import_show();
@@ -201,7 +217,11 @@ void ProjectPanel::show_new_menu()
 void ProjectPanel::update_subtitle()
 {
 	if (project()) {
-		QString project_title = QStringLiteral("%1").arg(project()->name());
+		char name_buf[256];
+		oakengine_project_name(
+			reinterpret_cast<OakEngineProject *>(project()),
+			name_buf, sizeof(name_buf));
+		QString project_title = QString::fromUtf8(name_buf);
 
 		if (explorer_->get_root() != project()->root()) {
 			QString folder_path;
@@ -229,14 +249,14 @@ void ProjectPanel::save_connected_project()
 	Core::instance()->save_project();
 }
 
-QVector<ViewerOutput *> ProjectPanel::get_selected_footage() const
+QVector<OakEngineNode *> ProjectPanel::get_selected_footage() const
 {
 	QVector<Node *> items = selected_items();
-	QVector<ViewerOutput *> footage;
+	QVector<OakEngineNode *> footage;
 
 	foreach (Node *i, items) {
 		if (dynamic_cast<ViewerOutput *>(i)) {
-			footage.append(static_cast<ViewerOutput *>(i));
+			footage.append(reinterpret_cast<OakEngineNode *>(i));
 		}
 	}
 

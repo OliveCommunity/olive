@@ -26,8 +26,9 @@
 #include <QEvent>
 #include <QStyleFactory>
 
-#include "config/config.h"
 #include "core.h"
+#include "oakengine/project.h"
+#include "oakengine/undo.h"
 #include "dialog/actionsearch/actionsearch.h"
 #include "dialog/diskcache/diskcachedialog.h"
 #include "dialog/proxy/proxydialog.h"
@@ -38,6 +39,7 @@
 #include "undo/undostack.h"
 #include "widget/menu/menushared.h"
 #include "mainwindow.h"
+#include "common/configwrapper.h"
 
 namespace olive
 {
@@ -89,10 +91,10 @@ MainMenu::MainMenu(MainWindow *parent)
 	connect(edit_menu_, &Menu::aboutToHide, this,
 			&MainMenu::edit_menu_about_to_hide);
 
-	edit_undo_item_ = Core::instance()->undo_stack()->GetUndoAction();
+	edit_undo_item_ = reinterpret_cast<QAction*>(oakengine_undo_undo_action());
 	Menu::conform_item(edit_undo_item_, "undo", tr("Ctrl+Z"));
 	edit_menu_->addAction(edit_undo_item_);
-	edit_redo_item_ = Core::instance()->undo_stack()->GetRedoAction();
+	edit_redo_item_ = reinterpret_cast<QAction*>(oakengine_undo_redo_action());
 	Menu::conform_item(edit_redo_item_, "redo", tr("Ctrl+Shift+Z"));
 	edit_menu_->addAction(edit_redo_item_);
 
@@ -365,7 +367,7 @@ MainMenu::MainMenu(MainWindow *parent)
 	Menu::conform_item(tools_use_proxy_item_, "useproxymedia");
 	tools_use_proxy_item_->setCheckable(true);
 	tools_use_proxy_item_->setChecked(
-		Config::current()[QStringLiteral("UseProxyMedia")].toBool());
+		OAK_CONFIG("UseProxyMedia").toBool());
 	connect(tools_use_proxy_item_, &QAction::triggered, Core::instance(),
 			&Core::set_use_proxy_media);
 	tools_menu_->addAction(tools_use_proxy_item_);
@@ -439,9 +441,13 @@ void MainMenu::file_menu_about_to_show()
 	file_save_as_item_->setEnabled(active_project);
 
 	if (active_project) {
-		file_save_item_->setText(tr("&Save '%1'").arg(active_project->name()));
+		char name_buf[256];
+		oakengine_project_name(
+			reinterpret_cast<OakEngineProject *>(active_project),
+			name_buf, sizeof(name_buf));
+		file_save_item_->setText(tr("&Save '%1'").arg(name_buf));
 		file_save_as_item_->setText(
-			tr("Save '%1' &As").arg(active_project->name()));
+			tr("Save '%1' &As").arg(name_buf));
 	} else {
 		file_save_item_->setText(tr("&Save Project"));
 		file_save_as_item_->setText(tr("Save Project &As"));
@@ -543,7 +549,7 @@ void MainMenu::window_menu_about_to_show()
 
 void MainMenu::populate_open_recent()
 {
-	if (Core::instance()->get_recent_projects().isEmpty()) {
+	if (Core::instance()->get_recent_project_count() == 0) {
 		// Insert dummy/disabled action to show there's nothing
 		QAction *a = new QAction(tr("(None)"));
 		a->setEnabled(false);
@@ -551,9 +557,9 @@ void MainMenu::populate_open_recent()
 
 	} else {
 		// Populate menu with recently opened projects
-		for (int i = 0; i < Core::instance()->get_recent_projects().size(); i++) {
+		for (int i = 0; i < Core::instance()->get_recent_project_count(); i++) {
 			QAction *a =
-				new QAction(Core::instance()->get_recent_projects().at(i));
+				new QAction(Core::instance()->get_recent_project_at(i));
 			a->setData(i);
 			connect(a, &QAction::triggered, this,
 					&MainMenu::open_recent_item_triggered);
@@ -796,8 +802,12 @@ void MainMenu::sequence_cache_in_out_triggered()
 
 void MainMenu::sequence_cache_clear_triggered()
 {
-	DiskCacheDialog::clear_disk_cache(
-		Core::instance()->get_active_project()->cache_path(),
+	char cache_buf[512];
+	oakengine_project_cache_path(
+		reinterpret_cast<OakEngineProject *>(
+			Core::instance()->get_active_project()),
+		cache_buf, sizeof(cache_buf));
+	DiskCacheDialog::clear_disk_cache(cache_buf,
 		Core::instance()->main_window());
 }
 
@@ -827,7 +837,7 @@ void MainMenu::retranslate()
 
 	// Edit menu
 	edit_menu_->setTitle(tr("&Edit"));
-	Core::instance()->undo_stack()->update_actions(); // Update undo and redo
+	oakengine_undo_update_actions(); // Update undo and redo
 	edit_delete2_item_->setText(tr("Delete (alt)"));
 	edit_insert_item_->setText(tr("Insert"));
 	edit_overwrite_item_->setText(tr("Overwrite"));

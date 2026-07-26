@@ -24,27 +24,63 @@
 #include "core.h"
 #include "window/mainwindow/mainwindow.h"
 
+#include "oakengine/undo.h"
 namespace olive
 {
 
-void OpenSequenceCommand::redo()
+namespace {
+
+struct OpenCloseSequenceData {
+	Sequence *sequence;
+};
+
+void open_sequence_redo(void *userdata)
 {
-	Core::instance()->main_window()->open_sequence(sequence_);
+	auto *d = static_cast<OpenCloseSequenceData *>(userdata);
+	Core::instance()->main_window()->open_sequence(d->sequence);
 }
 
-void OpenSequenceCommand::undo()
+void open_sequence_undo(void *userdata)
 {
-	Core::instance()->main_window()->close_sequence(sequence_);
+	auto *d = static_cast<OpenCloseSequenceData *>(userdata);
+	Core::instance()->main_window()->close_sequence(d->sequence);
 }
 
-void CloseSequenceCommand::redo()
+void close_sequence_redo(void *userdata)
 {
-	Core::instance()->main_window()->close_sequence(sequence_);
+	auto *d = static_cast<OpenCloseSequenceData *>(userdata);
+	Core::instance()->main_window()->close_sequence(d->sequence);
 }
 
-void CloseSequenceCommand::undo()
+void close_sequence_undo(void *userdata)
 {
-	Core::instance()->main_window()->open_sequence(sequence_);
+	auto *d = static_cast<OpenCloseSequenceData *>(userdata);
+	Core::instance()->main_window()->open_sequence(d->sequence);
+}
+
+void open_close_sequence_free(void *userdata)
+{
+	delete static_cast<OpenCloseSequenceData *>(userdata);
+}
+
+} // anonymous namespace
+
+void *make_open_sequence_command(Sequence *sequence)
+{
+	auto *d = new OpenCloseSequenceData;
+	d->sequence = sequence;
+	return oakengine_undo_command_create(nullptr, open_sequence_redo,
+										 open_sequence_undo,
+										 open_close_sequence_free, d);
+}
+
+void *make_close_sequence_command(Sequence *sequence)
+{
+	auto *d = new OpenCloseSequenceData;
+	d->sequence = sequence;
+	return oakengine_undo_command_create(nullptr, close_sequence_redo,
+										 close_sequence_undo,
+										 open_close_sequence_free, d);
 }
 
 }

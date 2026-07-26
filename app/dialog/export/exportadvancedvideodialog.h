@@ -54,13 +54,13 @@ public:
 		pixel_format_combobox_->setCurrentText(s);
 	}
 
-	VideoParams::ColorRange yuv_range() const
+	int yuv_range() const
 	{
-		return static_cast<VideoParams::ColorRange>(
+		return static_cast<int>(
 			yuv_color_range_combobox_->currentIndex());
 	}
 
-	void set_yuv_range(VideoParams::ColorRange i)
+	void set_yuv_range(int i)
 	{
 		yuv_color_range_combobox_->setCurrentIndex(i);
 	}

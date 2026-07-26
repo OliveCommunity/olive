@@ -30,6 +30,7 @@
 #include "node/node.h"
 #include "nodeviewcommon.h"
 #include "nodeviewitemconnector.h"
+#include "engineeventbridge.h"
 
 namespace olive
 {
@@ -232,6 +233,8 @@ private:
 	bool has_connectable_inputs_;
 
 	bool label_as_output_;
+
+	EngineEventBridge *bridge_ = nullptr;
 
 private slots:
 	void node_appearance_changed();

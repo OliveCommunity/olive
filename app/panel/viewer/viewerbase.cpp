@@ -93,9 +93,9 @@ void ViewerPanelBase::set_full_screen(QScreen *screen)
 	get_viewer_widget()->set_full_screen(screen);
 }
 
-void ViewerPanelBase::set_gizmos(Node *node)
+void ViewerPanelBase::set_gizmos(OakEngineNode *node)
 {
-	get_viewer_widget()->set_gizmos(node);
+	get_viewer_widget()->set_gizmos(reinterpret_cast<Node *>(node));
 }
 
 void ViewerPanelBase::cache_entire_sequence()

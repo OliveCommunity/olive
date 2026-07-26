@@ -24,7 +24,9 @@
 #include <QCheckBox>
 #include <QHeaderView>
 
-#include "node/traverser.h"
+#include "oakengine/traverse.h"
+#include "oakengine/node.h"
+#include "node/value.h"
 
 namespace olive
 {
@@ -61,41 +63,53 @@ void NodeTableView::set_time(const Rational &time)
 {
 	last_time_ = time;
 
-	NodeTraverser traverser;
-
 	for (auto i = top_level_item_map_.constBegin();
 		 i != top_level_item_map_.constEnd(); i++) {
 		Node *node = i.key();
 		QTreeWidgetItem *item = i.value();
 
-		// Generate a value database for this node at this time
-		NodeValueDatabase db =
-			traverser.generate_database(node, TimeRange(time, time));
+		OakEngineTraverseDb *db = oakengine_traverse_generate_database(
+			reinterpret_cast<OakEngineNode *>(node), time.numerator(),
+			time.denominator(), time.numerator(), time.denominator());
+
+		int input_count = oakengine_traverse_db_input_count(db);
 
 		// Delete any children of this item that aren't in this database
 		for (int j = 0; j < item->childCount(); j++) {
-			if (!db.contains(
-					item->child(j)->data(0, Qt::UserRole).toString())) {
+			QString child_id =
+				item->child(j)->data(0, Qt::UserRole).toString();
+			bool found = false;
+			for (int k = 0; k < input_count; k++) {
+				if (child_id ==
+					QString::fromUtf8(
+						oakengine_traverse_db_input_id(db, k))) {
+					found = true;
+					break;
+				}
+			}
+			if (!found) {
 				delete item->takeChild(j);
 				j--;
 			}
 		}
 
 		// Update all inputs
-		for (auto l = db.begin(); l != db.end(); l++) {
-			const NodeValueTable &table = l.value();
+		for (int l = 0; l < input_count; l++) {
+			const char *input_id_c = oakengine_traverse_db_input_id(db, l);
+			QString input_id = QString::fromUtf8(input_id_c);
 
-			if (!node->has_input_with_id(l.key())) {
-				// Filters out table entries that aren't inputs (like "global")
+			if (!node->has_input_with_id(input_id)) {
 				continue;
 			}
+
+			int row_count = oakengine_traverse_db_row_count(db, l);
 
 			QTreeWidgetItem *input_item = nullptr;
 
 			for (int j = 0; j < item->childCount(); j++) {
 				QTreeWidgetItem *compare = item->child(j);
 
-				if (compare->data(0, Qt::UserRole).toString() == l.key()) {
+				if (compare->data(0, Qt::UserRole).toString() == input_id) {
 					input_item = compare;
 					break;
 				}
@@ -103,64 +117,83 @@ void NodeTableView::set_time(const Rational &time)
 
 			if (!input_item) {
 				input_item = new QTreeWidgetItem();
-				input_item->setText(0, node->get_input_name(l.key()));
-				input_item->setData(0, Qt::UserRole, l.key());
+				input_item->setText(0, node->get_input_name(input_id));
+				input_item->setData(0, Qt::UserRole, input_id);
 				input_item->setFirstColumnSpanned(true);
 				item->addChild(input_item);
 			}
 
 			// Create children if necessary
-			while (input_item->childCount() < table.count()) {
+			while (input_item->childCount() < row_count) {
 				input_item->addChild(new QTreeWidgetItem());
 			}
 
 			// Remove children if necessary
-			while (input_item->childCount() > table.count()) {
-				delete input_item->takeChild(input_item->childCount() - 1);
+			while (input_item->childCount() > row_count) {
+				delete input_item->takeChild(
+					input_item->childCount() - 1);
 			}
 
-			for (int j = 0; j < table.count(); j++) {
-				const NodeValue &value = table.at(table.count() - 1 - j);
-
-				// Create item
+			for (int j = 0; j < row_count; j++) {
+				int actual_row = row_count - 1 - j;
 				QTreeWidgetItem *sub_item = input_item->child(j);
 
+				int type =
+					oakengine_traverse_row_type(db, l, actual_row);
+
 				// Set data type name
-				sub_item->setText(
-					0, NodeValue::get_pretty_data_type_name(value.type()));
+				char name_buf[64];
+				int len = oakengine_node_value_pretty_type_name(type, name_buf, sizeof(name_buf));
+				if (len > 0 && len < sizeof(name_buf)) {
+					name_buf[len] = '\0';
+				} else {
+					snprintf(name_buf, sizeof(name_buf), "Type %d", type);
+				}
+				sub_item->setText(0, QString::fromUtf8(name_buf));
 
 				// Determine source
+				OakEngineNode *source =
+					oakengine_traverse_row_source(db, l, actual_row);
 				QString source_name;
-				if (value.source()) {
-					source_name = value.source()->get_label_and_name();
+				if (source) {
+					char label_buf[256];
+					oakengine_node_get_label_and_name(
+						source, label_buf, sizeof(label_buf));
+					source_name = QString(label_buf);
 				} else {
 					source_name = tr("(unknown)");
 				}
 				sub_item->setText(1, source_name);
 
-				switch (value.type()) {
+				switch (type) {
 				case NodeValue::k_video_params:
 				case NodeValue::k_audio_params:
 					// These types have no string representation
 					break;
 				case NodeValue::k_texture: {
-					// NodeTraverser puts video params in here
-					for (int k = 0; k < VideoParams::k_rgba_channel_count; k++) {
-						this->setItemWidget(sub_item, 2 + k, new QCheckBox());
+					for (int k = 0; k < 4; k++) {
+						this->setItemWidget(sub_item, 2 + k,
+											new QCheckBox());
 					}
 					break;
 				}
 				default: {
-					QVector<QVariant> split_values = value.to_split_value();
-					for (int k = 0; k < split_values.size(); k++) {
-						sub_item->setText(2 + k, NodeValue::value_to_string(
-													 value.type(),
-													 split_values.at(k), true));
+					int split_count =
+						oakengine_traverse_row_split_count(db, l,
+														   actual_row);
+					for (int k = 0; k < split_count; k++) {
+						const char *split_str =
+							oakengine_traverse_row_split_string(
+								db, l, actual_row, k);
+						sub_item->setText(2 + k,
+										  QString(split_str));
 					}
 				}
 				}
 			}
 		}
+
+		oakengine_traverse_db_free(db);
 	}
 }
 

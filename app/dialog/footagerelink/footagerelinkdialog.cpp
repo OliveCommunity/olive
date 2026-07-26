@@ -183,7 +183,9 @@ void FootageRelinkDialog::browse_for_footage()
 						new_dir.filePath(relative_to_original);
 
 					if (QFileInfo::exists(absolute_to_new)) {
-						other_footage->set_filename(absolute_to_new);
+						oakengine_footage_relink(
+							reinterpret_cast<OakEngineFootage *>(other_footage),
+							absolute_to_new.toUtf8().constData());
 					}
 				}
 			}

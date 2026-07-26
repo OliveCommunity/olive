@@ -35,6 +35,8 @@
 #include "widget/projectexplorer/projectexplorernavigation.h"
 #include "widget/projecttoolbar/projecttoolbar.h"
 
+struct OakEngineNode;
+
 namespace olive
 {
 
@@ -91,7 +93,7 @@ public:
 public slots:
 	void set_view_type(ProjectToolbar::ViewType type);
 
-	void edit(Node *item);
+	void edit(OakEngineNode *item);
 
 	void rename_selected_item();
 
@@ -105,9 +107,9 @@ signals:
    *
    * The Item that was double clicked, or nullptr if empty area was double clicked
    */
-	void double_clicked_item(Node *item);
+	void double_clicked_item(OakEngineNode *item);
 
-	void selection_changed(const QVector<Node *> &selected);
+	void selection_changed(const QVector<OakEngineNode *> &selected);
 
 private:
 	/**
@@ -143,7 +145,7 @@ private:
 
 	bool delete_items_internal(const QVector<Node *> &selected,
 							 bool &check_if_item_is_in_use,
-							 MultiUndoCommand *command);
+							 void *command);
 
 	static QString get_human_readable_node_name(Node *node);
 

@@ -21,8 +21,14 @@
 
 #include "scopebase.h"
 
-#include "config/config.h"
+#include <QPainter>
+
+#include "common/configwrapper.h"
+#include "oakengine/display.h"
+#include "oakengine/videoparams.h"
 #include "render/job/colortransformjob.h"
+#include "widget/viewer/vieweroutpututils.h"
+#include "render/job/shaderjob.h"
 
 namespace olive
 {
@@ -76,14 +82,17 @@ void ScopeBase::update_software_image()
 	// it into this scope's renderer before we can sample it.
 	TexturePtr source_tex = texture_;
 	if (texture_->renderer() && texture_->renderer() != renderer()) {
-		FramePtr temp_frame = Frame::create();
-		temp_frame->set_video_params(texture_->params());
-		temp_frame->allocate();
-		texture_->download(temp_frame->data(), temp_frame->linesize_pixels());
+		FramePtr temp_frame;
+		oakengine_codec_frame_create(&temp_frame);
+		oakengine_codec_frame_set_video_params(temp_frame.get(),
+											   &texture_->params());
+		oakengine_codec_frame_allocate(temp_frame.get());
+		oakengine_display_texture_download(texture_.get(), temp_frame->data(),
+										   temp_frame->linesize_pixels());
 
-		local_texture_ = renderer()->create_texture(
-			temp_frame->video_params(), temp_frame->data(),
-			temp_frame->linesize_pixels());
+		oakengine_display_renderer_create_texture(
+			renderer(), &temp_frame->video_params(), temp_frame->data(),
+			temp_frame->linesize_pixels(), &local_texture_);
 		source_tex = local_texture_;
 	}
 
@@ -96,16 +105,20 @@ void ScopeBase::update_software_image()
 	const int texture_width = static_cast<int>(width() * devicePixelRatioF());
 	const int texture_height = static_cast<int>(height() * devicePixelRatioF());
 
-	const VideoParams offscreen_params(texture_width, texture_height,
-									   PixelFormat::u8,
-									   VideoParams::k_rgba_channel_count);
+	oak_video_params pod = {};
+	pod.width = texture_width;
+	pod.height = texture_height;
+	pod.format = PixelFormat::u8;
+	const VideoParams offscreen_params(video_params_from_pod(pod));
 
 	if (!software_tex_ || software_tex_->params() != offscreen_params) {
-		software_tex_ = renderer()->create_texture(offscreen_params);
+		oakengine_display_renderer_create_texture(renderer(),
+												  &offscreen_params, nullptr, 0,
+												  &software_tex_);
 		software_buffer_.resize(
 			texture_width * texture_height *
-			VideoParams::get_bytes_per_pixel(PixelFormat::u8,
-										  VideoParams::k_rgba_channel_count));
+			oakengine_video_params_bytes_per_pixel(PixelFormat::u8,
+										  4));
 	}
 
 	if (!software_tex_ || software_tex_->is_dummy()) {
@@ -115,13 +128,14 @@ void ScopeBase::update_software_image()
 	}
 
 	ColorTransformJob job;
-	job.set_color_processor(color_service());
+	oakengine_color_transform_job_set_processor(&job, color_service().get());
 	job.set_input_texture(source_tex);
 	job.set_input_alpha_association(k_alpha_none);
 	job.set_clear_destination_enabled(true);
 	job.set_force_opaque(true);
 
-	renderer()->blit_color_managed(job, software_tex_.get());
+	oakengine_display_renderer_blit_color_managed(renderer(), &job,
+												  software_tex_.get(), nullptr);
 	renderer()->download_from_texture(software_tex_->id(),
 									software_tex_->params(),
 									software_buffer_.data(), 0);
@@ -129,8 +143,8 @@ void ScopeBase::update_software_image()
 	software_image_ = QImage(
 		reinterpret_cast<const uchar *>(software_buffer_.constData()),
 		texture_width, texture_height,
-		texture_width * VideoParams::get_bytes_per_pixel(
-							PixelFormat::u8, VideoParams::k_rgba_channel_count),
+		texture_width * oakengine_video_params_bytes_per_pixel(
+							PixelFormat::u8, 4),
 		QImage::Format_RGBA8888_Premultiplied);
 	software_image_.setDevicePixelRatio(devicePixelRatioF());
 
@@ -169,14 +183,16 @@ void ScopeBase::on_paint()
 		// Convert reference frame to display space
 		if (!managed_tex_ || !managed_tex_up_to_date_ ||
 			managed_tex_->params() != texture_->params()) {
-			managed_tex_ = renderer()->create_texture(texture_->params());
+			oakengine_display_renderer_create_texture(
+				renderer(), &texture_->params(), nullptr, 0, &managed_tex_);
 
 			ColorTransformJob job;
-			job.set_color_processor(color_service());
+			oakengine_color_transform_job_set_processor(&job, color_service().get());
 			job.set_input_texture(texture_);
 			job.set_input_alpha_association(k_alpha_none);
 
-			renderer()->blit_color_managed(job, managed_tex_.get());
+			oakengine_display_renderer_blit_color_managed(
+				renderer(), &job, managed_tex_.get(), nullptr);
 			managed_tex_up_to_date_ = true;
 		}
 

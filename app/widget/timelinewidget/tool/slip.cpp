@@ -23,10 +23,12 @@
 
 #include <QToolTip>
 
-#include "config/config.h"
+#include "common/configwrapper.h"
 #include "timeline/timelineundogeneral.h"
 #include "widget/timelinewidget/timelinewidget.h"
 
+#include "oakengine/timeline.h"
+#include "oakengine/undo.h"
 namespace olive
 {
 
@@ -70,7 +72,7 @@ void SlipTool::finish_drag(TimelineViewMouseEvent *event)
 {
 	Q_UNUSED(event)
 
-	MultiUndoCommand *command = new MultiUndoCommand();
+	void *command = oakengine_undo_command_create_multi();
 
 	// Find earliest point to ripple around
 	foreach (TimelineViewGhostItem *ghost, parent()->get_ghost_items()) {
@@ -79,14 +81,13 @@ void SlipTool::finish_drag(TimelineViewMouseEvent *event)
 
 		ClipBlock *cb = dynamic_cast<ClipBlock *>(b);
 		if (cb) {
-			command->add_child(
-				new BlockSetMediaInCommand(cb, ghost->get_adjusted_media_in()));
+			oakengine_undo_command_multi_add_child(command, oakengine_block_set_media_in_command(reinterpret_cast<void *>(cb), ghost->get_adjusted_media_in().numerator(), ghost->get_adjusted_media_in().denominator()));
 		}
 	}
 
-	Core::instance()->undo_stack()->push(
+	oakengine_undo_push(
 		command, qApp->translate("SlipTool", "Slipped %1 Clip(s)")
-					 .arg(parent()->get_ghost_items().size()));
+					 .arg(parent()->get_ghost_items().size()).toUtf8().constData());
 }
 
 }

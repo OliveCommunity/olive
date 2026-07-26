@@ -24,7 +24,7 @@
 
 #include <QOpenGLWidget>
 
-#include "render/colorprocessor.h"
+#include "widget/manageddisplay/colorprocessorhandle.h"
 
 namespace olive
 {
@@ -36,8 +36,8 @@ public:
 
 	const Color &get_selected_color() const;
 
-	void set_color_processor(ColorProcessorPtr to_linear,
-						   ColorProcessorPtr to_display);
+	void set_color_processor(ColorProcessorHandlePtr to_linear,
+						   ColorProcessorHandlePtr to_display);
 
 public slots:
 	void set_selected_color(const Color &c);
@@ -63,9 +63,9 @@ private:
 
 	Color selected_color_;
 
-	ColorProcessorPtr to_linear_processor_;
+	ColorProcessorHandlePtr to_linear_processor_;
 
-	ColorProcessorPtr to_display_processor_;
+	ColorProcessorHandlePtr to_display_processor_;
 };
 
 }

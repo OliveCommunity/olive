@@ -26,6 +26,7 @@
 #include <QPushButton>
 #include <QWidget>
 
+#include "engineeventbridge.h"
 #include "node/param.h"
 
 namespace olive
@@ -65,6 +66,8 @@ private:
 	QString input_;
 
 	QLabel *count_lbl_;
+
+	EngineEventBridge *bridge_ = nullptr;
 
 private slots:
 	void update_counter(const QString &input, int old_size, int new_size);

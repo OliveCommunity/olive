@@ -79,17 +79,21 @@ CineformSection::CineformSection(QWidget *parent)
 	layout->addWidget(quality_combobox_, row, 1);
 }
 
-void CineformSection::add_opts(EncodingParams *params)
+void CineformSection::add_opts(OakEngineEncodingParams *params)
 {
-	params->set_video_option(
-		QStringLiteral("quality"),
-		QString::number(quality_combobox_->currentIndex()));
+	oakengine_encoding_params_set_video_option(
+		params, "quality",
+		QByteArray::number(quality_combobox_->currentIndex()).constData());
 }
 
-void CineformSection::set_opts(const EncodingParams *p)
+void CineformSection::set_opts(const OakEngineEncodingParams *p)
 {
-	quality_combobox_->setCurrentIndex(
-		p->video_option(QStringLiteral("quality")).toInt());
+	char buf[64];
+	const int ret = oakengine_encoding_params_video_option(
+		p, "quality", buf, static_cast<int>(sizeof(buf)));
+	if (ret > 0) {
+		quality_combobox_->setCurrentIndex(QString::fromUtf8(buf).toInt());
+	}
 }
 
 }

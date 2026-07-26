@@ -50,7 +50,8 @@ public:
 	}
 
 public slots:
-	void set_selected_nodes(const QVector<Node::ContextPair> &nodes)
+	void set_selected_nodes(
+		const QVector<QPair<OakEngineNode *, OakEngineNode *>> &nodes)
 	{
 		get_param_view()->set_selected_nodes(nodes, false);
 	}
@@ -61,12 +62,17 @@ public slots:
 
 	virtual void deselect_all() override;
 
+public:
+	// Not a slot: signature uses the engine C++ type Node*, which must not be
+	// exposed to MOC (it would pull Node::staticMetaObject across the ABI
+	// boundary). All connections use new-style member-function syntax.
 	void set_contexts(const QVector<Node *> &contexts);
 
 signals:
-	void focused_node_changed(Node *n);
+	void focused_node_changed(OakEngineNode *n);
 
-	void selected_nodes_changed(const QVector<Node::ContextPair> &nodes);
+	void selected_nodes_changed(
+		const QVector<QPair<OakEngineNode *, OakEngineNode *>> &nodes);
 
 	void request_viewer_to_start_editing_text();
 

@@ -25,7 +25,7 @@
 #include <QEvent>
 #include <QDebug>
 
-#include "node/factory.h"
+#include "oakengine/node.h"
 #include "ui/icons/icons.h"
 #include "widget/menu/factorymenu.h"
 #include "widget/menu/menu.h"
@@ -77,7 +77,10 @@ void NodeComboBox::update_text()
 	clear();
 
 	if (!selected_id_.isEmpty()) {
-		addItem(NodeFactory::get_name_from_id(selected_id_));
+		char buf[256];
+		oakengine_node_factory_name_from_id(selected_id_.toUtf8().constData(),
+		                                    buf, sizeof(buf));
+		addItem(QString::fromUtf8(buf));
 	}
 }
 

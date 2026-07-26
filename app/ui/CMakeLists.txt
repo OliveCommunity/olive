@@ -15,6 +15,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 add_subdirectory(cursors)
+add_subdirectory(icons)
 add_subdirectory(graphics)
 add_subdirectory(style)
 

@@ -38,7 +38,7 @@ public:
 
 	SequencePreset(const QString &name, int width, int height,
 				   const Rational &frame_rate, const Rational &pixel_aspect,
-				   VideoParams::Interlacing interlacing, int sample_rate,
+				   int interlacing, int sample_rate,
 				   uint64_t channel_layout, int preview_divider,
 				   PixelFormat preview_format, bool preview_autocache)
 		: width_(width)
@@ -74,7 +74,7 @@ public:
 					   reader->name() == QStringLiteral("interlacing_")) {
 				// "interlacing_" is the element name mistakenly written by
 				// older versions of Save(); accept it for backward compatibility
-				interlacing_ = static_cast<VideoParams::Interlacing>(
+				interlacing_ = static_cast<int>(
 					reader->readElementText().toInt());
 			} else if (reader->name() == QStringLiteral("samplerate")) {
 				sample_rate_ = reader->readElementText().toInt();
@@ -140,7 +140,7 @@ public:
 		return pixel_aspect_;
 	}
 
-	VideoParams::Interlacing interlacing() const
+	int interlacing() const
 	{
 		return interlacing_;
 	}
@@ -175,7 +175,7 @@ private:
 	int height_;
 	Rational frame_rate_;
 	Rational pixel_aspect_;
-	VideoParams::Interlacing interlacing_;
+	int interlacing_;
 	int sample_rate_;
 	uint64_t channel_layout_;
 	int preview_divider_;

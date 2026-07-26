@@ -40,7 +40,7 @@ class PreferencesAudioTab : public ConfigDialogBaseTab {
 public:
 	PreferencesAudioTab();
 
-	virtual void accept(MultiUndoCommand *command) override;
+	virtual void accept(void *command) override;
 
 private:
 	QComboBox *audio_backend_combobox_;

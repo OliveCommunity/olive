@@ -34,7 +34,7 @@
 
 #include "common/lerp.h"
 #include "common/qtutils.h"
-#include "config/config.h"
+#include "common/configwrapper.h"
 
 namespace olive
 {

@@ -45,7 +45,7 @@ public:
 		return waveform_;
 	}
 
-	static void start_waveform_on_all(const AudioWaveformCache *waveform,
+	static void start_waveform_on_all(const void *waveform,
 								   const Rational &start, int playback_speed)
 	{
 		foreach (AudioMonitor *m, instances) {
@@ -74,7 +74,7 @@ public slots:
 
 	void push_sample_buffer(const SampleBuffer &samples);
 
-	void start_waveform(const AudioWaveformCache *waveform,
+	void start_waveform(const void *waveform,
 					   const Rational &start, int playback_speed);
 
 protected:
@@ -100,7 +100,7 @@ private:
 
 	qint64 last_time_;
 
-	const AudioWaveformCache *waveform_;
+	const void *waveform_;
 	Rational waveform_time_;
 	Rational waveform_length_;
 

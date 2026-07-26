@@ -40,20 +40,25 @@ public:
 	virtual void deselect_all() override;
 
 public slots:
-	void set_node(Node *node)
+	void set_node(OakEngineNode *node)
 	{
 		// Convert single pointer to either an empty vector or a vector of one
 		QVector<Node *> nodes;
 
 		if (node) {
-			nodes.append(node);
+			nodes.append(reinterpret_cast<Node *>(node));
 		}
 
 		set_nodes(nodes);
 	}
 
+public:
+	// Not a slot: signature uses the engine C++ type Node*, which must not be
+	// exposed to MOC (it would pull Node::staticMetaObject across the ABI
+	// boundary). All connections use new-style member-function syntax.
 	void set_nodes(const QVector<Node *> &nodes);
 
+public slots:
 	virtual void increase_track_height() override;
 
 	virtual void decrease_track_height() override;

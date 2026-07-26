@@ -26,6 +26,8 @@
 #include "timeline/timelinemarker.h"
 #include "timeline/timelineworkarea.h"
 #include "widget/timebased/timescaledobject.h"
+#include "engineeventbridge.h"
+#include "oakengine/events.h"
 
 namespace olive
 {
@@ -37,6 +39,7 @@ public:
 	ResizableTimelineScrollBar(QWidget *parent = nullptr);
 	ResizableTimelineScrollBar(Qt::Orientation orientation,
 							   QWidget *parent = nullptr);
+	~ResizableTimelineScrollBar() override;
 
 	void connect_markers(TimelineMarkerList *markers);
 	void connect_work_area(TimelineWorkArea *workarea);
@@ -51,7 +54,20 @@ private:
 
 	TimelineWorkArea *workarea_;
 
+	// Workarea signal subscriptions (event 141/142-style, but workarea is a
+	// timeline-level concept tracked via OakEngineEvents).
+	int64_t workarea_range_sub_ = 0;
+	int64_t workarea_enabled_sub_ = 0;
+
 	double scale_;
+
+	EngineEventBridge *bridge_ = nullptr;
+
+	int64_t marker_sub_add_ = 0;
+
+	int64_t marker_sub_rem_ = 0;
+
+	int64_t marker_sub_mod_ = 0;
 };
 
 }

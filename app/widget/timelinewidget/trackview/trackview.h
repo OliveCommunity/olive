@@ -26,6 +26,7 @@
 #include <QSplitter>
 
 #include "node/output/track/tracklist.h"
+#include "oakengine/timeline.h"
 #include "trackviewitem.h"
 #include "trackviewsplitter.h"
 
@@ -41,8 +42,11 @@ public:
 	void connect_track_list(TrackList *list);
 	void disconnect_track_list();
 
+	void insert_track(Track *track);
+	void remove_track(Track *track);
+
 signals:
-	void about_to_delete_track(Track *track);
+	void about_to_delete_track(OakEngineTrack *track);
 
 protected:
 	virtual void resizeEvent(QResizeEvent *e) override;
@@ -60,10 +64,6 @@ private slots:
 	void scrollbar_range_changed(int min, int max);
 
 	void track_height_changed(int index, int height);
-
-	void insert_track(Track *track);
-
-	void remove_track(Track *track);
 };
 
 }

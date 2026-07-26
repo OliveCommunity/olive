@@ -28,8 +28,13 @@
 #include <QToolTip>
 
 #include "common/qtutils.h"
+#include "olive/core/util/timecodefunctions.h"
+#include "oakengine/node.h"
+#include "oakengine/undo.h"
 #include "timebasedview.h"
 #include "timebasedwidget.h"
+#include "widget/keyframeview/keyframehandle.h"
+#include "widget/timeruler/markerhandle.h"
 #include "widget/timetarget/timetarget.h"
 
 namespace olive
@@ -311,7 +316,13 @@ public:
 
 		// Apply movement
 		for (size_t i = 0; i < selected_.size(); i++) {
-			selected_.at(i)->set_time(dragging_.at(i) + time_diff);
+			if constexpr (std::is_same_v<T, NodeKeyframe>) {
+				key_set_time_live(selected_.at(i),
+								  dragging_.at(i) + time_diff);
+			} else {
+				selection_set_time(selected_.at(i),
+								 dragging_.at(i) + time_diff);
+			}
 		}
 
 		// Show information about this keyframe
@@ -336,19 +347,32 @@ public:
 		QToolTip::showText(QCursor::pos(), tip);
 	}
 
-	void drag_stop(MultiUndoCommand *command)
+	void drag_stop(void *command)
 	{
 		QToolTip::hideText();
 
 		for (size_t i = 0; i < selected_.size(); i++) {
-			Rational current;
-			if constexpr (std::is_same_v<T, TimelineMarker>) {
-				current = selected_.at(i)->time().in();
-			} else {
-				current = selected_.at(i)->time();
+			if constexpr (std::is_same_v<T, NodeKeyframe>) {
+				int tbn = 0, tbd = 0;
+				oakengine_node_frame_time_base(
+					reinterpret_cast<OakEngineNode *>(selected_.at(i)->parent()),
+					&tbn, &tbd);
+				const int64_t new_ts = olive::core::Timecode::time_to_timestamp(
+					dragging_.at(i), olive::Rational(tbn, tbd),
+					olive::core::Timecode::k_round);
+				oakengine_undo_command_multi_add_child(
+					command,
+					oakengine_keyframe_set_time_command(
+						reinterpret_cast<OakEngineKeyframe *>(selected_.at(i)),
+						new_ts));
+			} else if constexpr (std::is_same_v<T, TimelineMarker>) {
+				oakengine_undo_command_multi_add_child(
+					command,
+					oakengine_marker_set_time_command(
+						reinterpret_cast<OakEngineMarker *>(selected_.at(i)),
+						dragging_.at(i).numerator(),
+						dragging_.at(i).denominator()));
 			}
-			command->add_child(
-				new SetTimeCommand(selected_.at(i), current, dragging_.at(i)));
 		}
 
 		dragging_.clear();
@@ -419,47 +443,7 @@ public:
 	}
 
 private:
-	class SetTimeCommand : public UndoCommand {
-	public:
-		SetTimeCommand(T *key, const Rational &time)
-		{
-			key_ = key;
-			new_time_ = time;
-			old_time_ = key_->time();
-		}
-
-		SetTimeCommand(T *key, const Rational &new_time,
-					   const Rational &old_time)
-		{
-			key_ = key;
-			new_time_ = new_time;
-			old_time_ = old_time;
-		}
-
-		virtual Project *get_relevant_project() const override
-		{
-			return Project::get_project_from_object(key_);
-		}
-
-	protected:
-		virtual void redo() override
-		{
-			key_->set_time(new_time_);
-		}
-
-		virtual void undo() override
-		{
-			key_->set_time(old_time_);
-		}
-
-	private:
-		T *key_;
-
-		Rational old_time_;
-		Rational new_time_;
-	};
-
-	TimeBasedView *view_;
+TimeBasedView *view_;
 
 	using DrawnObject = QPair<T *, QRectF>;
 	std::vector<DrawnObject> drawn_objects_;

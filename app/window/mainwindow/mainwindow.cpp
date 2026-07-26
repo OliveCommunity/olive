@@ -32,11 +32,17 @@
 
 #include "KDDockWidgets/src/qtwidgets/Window_p.h"
 #include "dialog/about/about.h"
+#include "engineeventbridge.h"
 #include "mainmenu.h"
 #include "mainstatusbar.h"
 #include "KDDockWidgets/src/LayoutSaver.h"
-#include "timeline/timelineundoworkarea.h"
+#include "oakengine/timeline.h"
+#include "common/configwrapper.h"
+#include "oakengine/project.h"
+#include "oakengine/viewer.h"
+#include "oakengine/undo.h"
 
+#include "widget/viewer/vieweroutpututils.h"
 namespace olive
 {
 
@@ -47,6 +53,9 @@ MainWindow::MainWindow(QWidget *parent)
 			parent)
 	, project_(nullptr)
 {
+	bridge_ = new EngineEventBridge(this);
+	connect(bridge_, &EngineEventBridge::node_removed_from_graph, this,
+			&MainWindow::viewer_with_panel_removed_from_graph);
 	// Resizes main window to desktop geometry on startup. Fixes the following issues:
 	// * Qt on Windows has a bug that "de-maximizes" the window when widgets are added, resizing the
 	//   window beforehand works around that issue and we just set it to whatever size is available.
@@ -71,8 +80,9 @@ MainWindow::MainWindow(QWidget *parent)
 	load_custom_shortcuts();
 
 	// Create and set status bar
+	event_bridge_ = new EngineEventBridge(this);
 	MainStatusBar *status_bar = new MainStatusBar(this);
-	status_bar->connect_task_manager(TaskManager::instance());
+	status_bar->connect_task_manager(event_bridge_);
 	connect(status_bar, &MainStatusBar::double_clicked, this,
 			&MainWindow::status_bar_double_clicked);
 	setStatusBar(status_bar);
@@ -151,21 +161,21 @@ MainWindow::~MainWindow()
 #endif
 }
 
-void MainWindow::load_layout(const MainWindowLayoutInfo &info)
+void MainWindow::load_layout(const SerializedLayoutInfo &info)
 {
-	foreach (Folder *folder, info.open_folders()) {
+	foreach (Folder *folder, info.open_folders) {
 		open_folder(folder, true);
 	}
 
-	foreach (Sequence *sequence, info.open_sequences()) {
-		open_sequence(sequence, info.open_sequences().size() == 1);
+	foreach (Sequence *sequence, info.open_sequences) {
+		open_sequence(sequence, info.open_sequences.size() == 1);
 	}
 
-	foreach (ViewerOutput *viewer, info.open_viewers()) {
+	foreach (ViewerOutput *viewer, info.open_viewers) {
 		open_node_in_viewer(viewer);
 	}
 
-	for (auto it = info.panel_data().cbegin(); it != info.panel_data().cend();
+	for (auto it = info.panel_data.cbegin(); it != info.panel_data.cend();
 		 it++) {
 		// Find panel with this ID
 		if (PanelWidget *panel =
@@ -174,7 +184,7 @@ void MainWindow::load_layout(const MainWindowLayoutInfo &info)
 		}
 	}
 
-	KDDockWidgets::LayoutSaver().restoreLayout(qUncompress(info.state()));
+	KDDockWidgets::LayoutSaver().restoreLayout(qUncompress(info.state));
 }
 
 QString transform_name_for_serialization(const QString &unique, int i)
@@ -184,46 +194,47 @@ QString transform_name_for_serialization(const QString &unique, int i)
 }
 
 void correct_panel_data_if_necessary(const QString &unique_name, int index,
-								 MainWindowLayoutInfo &info, QByteArray &layout)
+								 SerializedLayoutInfo &info, QByteArray &layout)
 {
 	QString corrected = transform_name_for_serialization(unique_name, index);
 	if (corrected != unique_name) {
-		info.move_panel_data(unique_name, corrected);
+		info.panel_data[corrected] = info.panel_data[unique_name];
+	info.panel_data.erase(unique_name);
 		layout.replace(unique_name.toUtf8(), corrected.toUtf8());
 	}
 }
 
-MainWindowLayoutInfo MainWindow::save_layout() const
+SerializedLayoutInfo MainWindow::save_layout() const
 {
-	MainWindowLayoutInfo info;
+	SerializedLayoutInfo info;
 
 	QByteArray layout = premaximized_state_.isEmpty() ?
 							KDDockWidgets::LayoutSaver().serializeLayout() :
 							premaximized_state_;
 
 	foreach (PanelWidget *panel, PanelManager::instance()->panels()) {
-		info.set_panel_data(panel->uniqueName(), panel->save_data());
+		info.panel_data[panel->uniqueName()] = panel->save_data();
 	}
 
 	for (int i = 0; i < folder_panels_.size(); i++) {
 		auto panel = folder_panels_.at(i);
-		info.add_folder(panel->get_root());
+		info.open_folders.push_back(panel->get_root());
 		correct_panel_data_if_necessary(panel->uniqueName(), i, info, layout);
 	}
 
 	for (int i = 0; i < timeline_panels_.size(); i++) {
 		auto panel = timeline_panels_.at(i);
-		info.add_sequence(panel->get_sequence());
+		info.open_sequences.push_back(panel->get_sequence());
 		correct_panel_data_if_necessary(panel->uniqueName(), i, info, layout);
 	}
 
 	for (int i = 0; i < viewer_panels_.size(); i++) {
 		auto panel = viewer_panels_.at(i);
-		info.add_viewer(panel->get_connected_viewer());
+		info.open_viewers.push_back(panel->get_connected_viewer());
 		correct_panel_data_if_necessary(panel->uniqueName(), i, info, layout);
 	}
 
-	info.set_state(qCompress(layout));
+	info.state = qCompress(layout);
 
 	return info;
 }
@@ -325,8 +336,10 @@ void MainWindow::open_node_in_viewer(ViewerOutput *node)
 
 		connect(viewer, &ViewerPanel::close_requested, this,
 				&MainWindow::viewer_close_requested);
-		connect(node, &ViewerOutput::removed_from_graph, this,
-				&MainWindow::viewer_with_panel_removed_from_graph);
+		auto sub = bridge_->subscribe(
+			reinterpret_cast<void *>(node),
+			OAKENGINE_EVENT_NODE_REMOVED_FROM_GRAPH);
+		removed_from_graph_subs_[node] = sub;
 	}
 }
 
@@ -538,13 +551,18 @@ void MainWindow::node_panel_group_opened_or_closed()
 	param_panel_->set_contexts(p->get_contexts());
 }
 
-void MainWindow::timeline_panel_selection_changed(const QVector<Block *> &blocks)
+void MainWindow::timeline_panel_selection_changed(const QVector<OakEngineBlock *> &blocks)
 {
 	TimelinePanel *panel = static_cast<TimelinePanel *>(sender());
 
 	if (PanelManager::instance()->currently_focused(false) == panel) {
 		update_node_panel_context_from_timeline_panel(panel);
-		sequence_viewer_panel_->set_timeline_selected_blocks(blocks);
+		QVector<Block *> native_blocks;
+		native_blocks.reserve(blocks.size());
+		for (OakEngineBlock *b : blocks) {
+			native_blocks.append(reinterpret_cast<Block *>(b));
+		}
+		sequence_viewer_panel_->set_timeline_selected_blocks(native_blocks);
 	}
 }
 
@@ -556,32 +574,46 @@ void MainWindow::show_welcome_dialog()
 	}
 }
 
-void MainWindow::reveal_viewer_in_project(ViewerOutput *r)
+void MainWindow::reveal_viewer_in_project(OakEngineNode *r)
 {
 	// Rather than just using the resident ProjectPanel, find the most recently focused one since
 	// that's probably the one people will want
 	auto panels = PanelManager::instance()->get_panels_of_type<ProjectPanel>();
+	ViewerOutput *viewer = reinterpret_cast<ViewerOutput *>(r);
 	foreach (ProjectPanel *p, panels) {
-		if (p->select_item(r)) {
+		if (p->select_item(viewer)) {
 			break;
 		}
 	}
 }
 
-void MainWindow::reveal_viewer_in_footage_viewer(ViewerOutput *r,
+void MainWindow::reveal_viewer_in_footage_viewer(OakEngineNode *r,
 											 const TimeRange &range)
 {
-	footage_viewer_panel_->connect_viewer_node(r);
+	ViewerOutput *viewer = reinterpret_cast<ViewerOutput *>(r);
 
-	auto command = new MultiUndoCommand();
-	if (!r->get_work_area()->enabled()) {
-		command->add_child(new WorkareaSetEnabledCommand(
-			r->project(), r->get_work_area(), true));
+	footage_viewer_panel_->connect_viewer_node(viewer);
+
+	auto command = oakengine_undo_command_create_multi();
+	OakEngineWorkarea *wa = reinterpret_cast<OakEngineWorkarea *>(viewer->get_work_area());
+	if (!viewer->get_work_area()->enabled()) {
+		oakengine_workarea_set_enabled_undoable(wa, 1, command);
 	}
-	command->add_child(new WorkareaSetRangeCommand(r->get_work_area(), range));
-	Core::instance()->undo_stack()->push(command, tr("Set Footage Workarea"));
+	{
+		int64_t old_in_num, old_in_den, old_out_num, old_out_den;
+		int old_enabled;
+		oakengine_workarea_get(wa, &old_in_num, &old_in_den,
+							   &old_out_num, &old_out_den, &old_enabled);
+		oakengine_workarea_set_range_undoable(wa,
+			range.in().numerator(), range.in().denominator(),
+			range.out().numerator(), range.out().denominator(),
+			old_in_num, old_in_den, old_out_num, old_out_den, command);
+	}
+	oakengine_undo_push(command, tr("Set Footage Workarea").toUtf8().constData());
 
-	r->set_playhead(range.in());
+	oakengine_viewer_set_playhead(
+		r,
+		range.in().numerator(), range.in().denominator());
 }
 
 #ifdef Q_OS_LINUX
@@ -599,11 +631,15 @@ void MainWindow::show_nouveau_warning()
 void MainWindow::update_title()
 {
 	if (Core::instance()->get_active_project()) {
+		char name_buf[256];
+		oakengine_project_pretty_filename(
+			reinterpret_cast<OakEngineProject *>(
+				Core::instance()->get_active_project()),
+			name_buf, sizeof(name_buf));
 		setWindowTitle(
 			QStringLiteral("%1 %2 - [*]%3")
 				.arg(QApplication::applicationName(),
-					 QApplication::applicationVersion(),
-					 Core::instance()->get_active_project()->pretty_filename()));
+					 QApplication::applicationVersion(), name_buf));
 	} else {
 		setWindowTitle(
 			QStringLiteral("%1 %2").arg(QApplication::applicationName(),
@@ -630,9 +666,9 @@ void MainWindow::viewer_close_requested()
 	panel->deleteLater();
 }
 
-void MainWindow::viewer_with_panel_removed_from_graph()
+void MainWindow::viewer_with_panel_removed_from_graph(OakEngineNode *source)
 {
-	ViewerOutput *vo = static_cast<ViewerOutput *>(sender());
+	ViewerOutput *vo = reinterpret_cast<ViewerOutput *>(source);
 	ViewerPanel *panel = nullptr;
 
 	foreach (ViewerPanel *p, viewer_panels_) {
@@ -645,8 +681,11 @@ void MainWindow::viewer_with_panel_removed_from_graph()
 	if (panel) {
 		remove_panel_internal(viewer_panels_, panel);
 		panel->deleteLater();
-		disconnect(vo, &ViewerOutput::removed_from_graph, this,
-				   &MainWindow::viewer_with_panel_removed_from_graph);
+		auto it = removed_from_graph_subs_.find(vo);
+		if (it != removed_from_graph_subs_.end()) {
+			bridge_->unsubscribe(it.value());
+			removed_from_graph_subs_.erase(it);
+		}
 	}
 }
 
@@ -815,7 +854,7 @@ void MainWindow::save_custom_shortcuts()
 void MainWindow::update_audio_monitor_params(ViewerOutput *viewer)
 {
 	if (!audio_monitor_panel_->is_playing()) {
-		audio_monitor_panel_->set_params(viewer ? viewer->get_audio_params() :
+		audio_monitor_panel_->set_params(viewer ? viewer_output_audio_params(viewer) :
 												 AudioParams());
 	}
 }

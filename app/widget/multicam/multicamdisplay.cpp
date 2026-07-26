@@ -21,6 +21,9 @@
 
 #include "multicamdisplay.h"
 
+#include "oakengine/display.h"
+#include "oakengine/node.h"
+
 namespace olive
 {
 
@@ -45,15 +48,20 @@ void MulticamDisplay::on_paint()
 		p.setBrush(Qt::NoBrush);
 
 		int rows, cols;
-		node_->get_rows_and_columns(&rows, &cols);
+		oakengine_multicam_get_rows_and_columns(
+			oakengine_multicam_get_source_count(
+				reinterpret_cast<OakEngineNode *>(node_)),
+			&rows, &cols);
 
 		int multi = std::max(rows, cols);
 		int cell_width = width() / multi;
 		int cell_height = height() / multi;
 
 		int col, row;
-		node_->index_to_row_cols(node_->get_current_source(), rows, cols, &row,
-							  &col);
+		int current_source = oakengine_multicam_get_current_source(
+			reinterpret_cast<OakEngineNode *>(node_));
+		oakengine_multicam_index_to_row_cols(
+			current_source, rows, cols, &row, &col);
 
 		QRect r(cell_width * col, cell_height * row, cell_width, cell_height);
 		p.drawRect(generate_world_transform().mapRect(r));
@@ -70,10 +78,13 @@ TexturePtr MulticamDisplay::load_custom_texture_from_frame(const QVariant &v)
 	if (v.canConvert<QVector<TexturePtr>>()) {
 		QVector<TexturePtr> tex = v.value<QVector<TexturePtr>>();
 
-		TexturePtr main = renderer()->create_texture(this->get_viewport_params());
+		TexturePtr main;
+		const VideoParams main_params = this->get_viewport_params();
+		oakengine_display_renderer_create_texture(renderer(), &main_params,
+												  nullptr, 0, &main);
 
 		int rows, cols;
-		MultiCamNode::get_rows_and_columns(tex.size(), &rows, &cols);
+		oakengine_multicam_get_rows_and_columns(tex.size(), &rows, &cols);
 
 		if (shader_.isNull() || rows_ != rows || cols_ != cols) {
 			if (!shader_.isNull()) {
@@ -91,7 +102,7 @@ TexturePtr MulticamDisplay::load_custom_texture_from_frame(const QVariant &v)
 
 		for (int i = 0; i < tex.size(); i++) {
 			int c, r;
-			MultiCamNode::index_to_row_cols(i, rows, cols, &r, &c);
+			oakengine_multicam_index_to_row_cols(i, rows, cols, &r, &c);
 			job.insert(QStringLiteral("tex_%1_%2")
 						   .arg(QString::number(r), QString::number(c)),
 					   NodeValue(NodeValue::k_texture, tex.at(i)));

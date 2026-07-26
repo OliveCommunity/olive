@@ -22,19 +22,20 @@
 #ifndef OAK_VIEWERGLWIDGET_H
 #define OAK_VIEWERGLWIDGET_H
 
-#include <atomic>
-
 #include <QImage>
 #include <QMatrix4x4>
 #include <QRubberBand>
 
 #include "codec/frame.h"
+#include "engineeventbridge.h"
 #include "node/color/colormanager/colormanager.h"
 #include "node/gizmo/text.h"
 #include "node/node.h"
 #include "node/output/track/tracklist.h"
-#include "node/traverser.h"
+#include "node/value.h"
+#include "oakengine/traverse.h"
 #include "tool/tool.h"
+#include "viewerplaybacktimer.h"
 #include "viewerqueue.h"
 #include "viewersafemargininfo.h"
 #include "viewertexteditor.h"
@@ -140,7 +141,7 @@ public:
 		return texture_;
 	}
 
-	ColorProcessorPtr get_current_color_processor()
+	ColorProcessorHandlePtr get_current_color_processor()
 	{
 		return color_service();
 	}
@@ -155,16 +156,9 @@ public:
 		return &queue_;
 	}
 
-	/**
-	 * @brief Feed the facade playback position as this display's clock
-	 *
-	 * The facade playback engine owns the master clock now; the
-	 * ViewerWidget polls it (oakengine_playback_get_position) and pushes
-	 * the timestamp here for update_from_queue() to pop by.
-	 */
-	void set_playback_timestamp(int64_t ts)
+	ViewerPlaybackTimer *timer()
 	{
-		external_ts_.store(ts);
+		return &timer_;
 	}
 
 	QPointF screen_to_scene_point(const QPoint &p);
@@ -261,13 +255,12 @@ protected:
 
 	QTransform generate_display_transform();
 
-	QTransform generate_gizmo_transform(NodeTraverser &gt,
-									  const TimeRange &range);
+	QTransform generate_gizmo_transform(Node *gizmos, Node *target,
+										  const TimeRange &range);
 	QTransform generate_gizmo_transform()
 	{
-		NodeTraverser t;
-		t.set_cache_video_params(gizmo_params_);
-		return generate_gizmo_transform(t, generate_gizmo_time());
+		TimeRange range = generate_gizmo_time();
+		return generate_gizmo_transform(gizmos_, get_time_target(), range);
 	}
 
 	TimeRange generate_gizmo_time()
@@ -425,6 +418,9 @@ private:
 	bool show_subtitles_;
 	Sequence *subtitle_tracks_;
 
+	EngineEventBridge *bridge_;
+	int64_t subtitle_sub_ = 0;
+
 	Rational time_;
 
 	/**
@@ -469,7 +465,7 @@ private:
 	// Playback
 	ViewerQueue queue_;
 
-	std::atomic<int64_t> external_ts_{ -1 };
+	ViewerPlaybackTimer timer_;
 
 	Rational playback_timebase_;
 

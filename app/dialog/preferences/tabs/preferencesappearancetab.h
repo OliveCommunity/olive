@@ -38,7 +38,7 @@ class PreferencesAppearanceTab : public ConfigDialogBaseTab {
 public:
 	PreferencesAppearanceTab();
 
-	virtual void accept(MultiUndoCommand *command) override;
+	virtual void accept(void *command) override;
 
 private:
 	/**

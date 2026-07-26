@@ -24,8 +24,8 @@
 
 #include <QDialog>
 
-#include "node/color/colormanager/colormanager.h"
-#include "render/managedcolor.h"
+#include "oakengine/color.h"
+#include "widget/manageddisplay/colorprocessorhandle.h"
 #include "widget/colorwheel/colorgradientwidget.h"
 #include "widget/colorwheel/colorspacechooser.h"
 #include "widget/colorwheel/colorswatchchooser.h"
@@ -57,7 +57,7 @@ public:
    *
    * QWidget parent.
    */
-	ColorDialog(ColorManager *color_manager,
+	ColorDialog(OakEngineColorManager *color_manager,
 				const ManagedColor &start = Color(1.0f, 1.0f, 1.0f),
 				QWidget *parent = nullptr);
 
@@ -76,7 +76,7 @@ public slots:
 	void set_color(const ManagedColor &c);
 
 private:
-	ColorManager *color_manager_;
+	OakEngineColorManager *color_manager_;
 
 	ColorWheelWidget *color_wheel_;
 
@@ -84,7 +84,7 @@ private:
 
 	ColorGradientWidget *hsv_value_gradient_;
 
-	ColorProcessorPtr input_to_ref_processor_;
+	ColorProcessorHandlePtr input_to_ref_processor_;
 
 	ColorSpaceChooser *chooser_;
 

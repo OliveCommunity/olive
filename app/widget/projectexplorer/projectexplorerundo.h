@@ -22,7 +22,6 @@
 #ifndef OAK_PROJECTEXPLORERUNDO_H
 #define OAK_PROJECTEXPLORERUNDO_H
 
-#include "undo/undocommand.h"
 
 namespace olive
 {

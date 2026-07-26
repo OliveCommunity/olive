@@ -26,7 +26,9 @@
 #include <QStackedWidget>
 #include <QWidget>
 
+#include "engineeventbridge.h"
 #include "node/output/track/track.h"
+#include "oakengine/timeline.h"
 #include "widget/clickablelabel/clickablelabel.h"
 #include "widget/focusablelineedit/focusablelineedit.h"
 #include "widget/timelinewidget/view/timelineviewmouseevent.h"
@@ -40,7 +42,7 @@ public:
 	TrackViewItem(Track *track, QWidget *parent = nullptr);
 
 signals:
-	void about_to_delete_track(Track *track);
+	void about_to_delete_track(OakEngineTrack *track);
 
 private:
 	QPushButton *create_msl_button(const QColor &checked_color) const;
@@ -55,6 +57,8 @@ private:
 	QPushButton *lock_button_;
 
 	Track *track_;
+
+	EngineEventBridge bridge_;
 
 private slots:
 	void label_clicked();

@@ -24,10 +24,12 @@
 #include <QGridLayout>
 #include <QLabel>
 
+#include "widget/manageddisplay/colorprocessorhandle.h"
+
 namespace olive
 {
 
-ColorSpaceChooser::ColorSpaceChooser(ColorManager *color_manager,
+ColorSpaceChooser::ColorSpaceChooser(OakEngineColorManager *color_manager,
 									 bool enable_input_field,
 									 bool enable_display_fields,
 									 QWidget *parent)
@@ -56,15 +58,25 @@ ColorSpaceChooser::ColorSpaceChooser(ColorManager *color_manager,
 		input_combobox_ = new QComboBox();
 		layout->addWidget(input_combobox_, row, 1);
 
-		QStringList input_spaces = color_manager->list_available_colorspaces();
+		QStringList input_spaces = oak_query_string_list(
+			[this]() {
+				return oakengine_color_manager_colorspace_count(color_manager_);
+			},
+			[this](int i, char *buf, int size) {
+				return oakengine_color_manager_colorspace_at(color_manager_, i,
+															 buf, size);
+			});
 
 		foreach (const QString &s, input_spaces) {
 			input_combobox_->addItem(s);
 		}
 
-		if (!color_manager_->get_default_input_color_space().isEmpty()) {
-			input_combobox_->setCurrentText(
-				color_manager_->get_default_input_color_space());
+		QString def_input = oak_query_string([this](char *buf, int size) {
+			return oakengine_color_manager_default_input_color_space(
+				color_manager_, buf, size);
+		});
+		if (!def_input.isEmpty()) {
+			input_combobox_->setCurrentText(def_input);
 		}
 
 		connect(input_combobox_, &QComboBox::currentTextChanged, this,
@@ -82,14 +94,24 @@ ColorSpaceChooser::ColorSpaceChooser(ColorManager *color_manager,
 			display_combobox_ = new QComboBox();
 			layout->addWidget(display_combobox_, row, 1);
 
-			QStringList display_spaces = color_manager->list_available_displays();
+			QStringList display_spaces = oak_query_string_list(
+				[this]() {
+					return oakengine_color_manager_display_count(color_manager_);
+				},
+				[this](int i, char *buf, int size) {
+					return oakengine_color_manager_display_at(color_manager_, i,
+															  buf, size);
+				});
 
 			foreach (const QString &s, display_spaces) {
 				display_combobox_->addItem(s);
 			}
 
 			display_combobox_->setCurrentText(
-				color_manager_->get_default_display());
+				oak_query_string([this](char *buf, int size) {
+					return oakengine_color_manager_default_display(
+						color_manager_, buf, size);
+				}));
 
 			connect(display_combobox_, &QComboBox::currentTextChanged, this,
 					&ColorSpaceChooser::combo_box_changed);
@@ -117,7 +139,14 @@ ColorSpaceChooser::ColorSpaceChooser(ColorManager *color_manager,
 			look_combobox_ = new QComboBox();
 			layout->addWidget(look_combobox_, row, 1);
 
-			QStringList looks = color_manager->list_available_looks();
+			QStringList looks = oak_query_string_list(
+				[this]() {
+					return oakengine_color_manager_look_count(color_manager_);
+				},
+				[this](int i, char *buf, int size) {
+					return oakengine_color_manager_look_at(color_manager_, i,
+														   buf, size);
+				});
 
 			look_combobox_->addItem(tr("(None)"), QString());
 
@@ -155,20 +184,32 @@ ColorTransform ColorSpaceChooser::output() const
 
 void ColorSpaceChooser::set_input(const QString &s)
 {
-	input_combobox_->setCurrentText(color_manager_->get_compliant_color_space(s));
+	QByteArray name = s.toUtf8();
+	QString compliant = oak_query_string([this, &name](char *buf, int size) {
+		return oakengine_color_manager_compliant_color_space(
+			color_manager_, name.constData(), buf, size);
+	});
+	input_combobox_->setCurrentText(compliant);
 }
 
 void ColorSpaceChooser::set_output(const ColorTransform &out)
 {
-	ColorTransform compliant = color_manager_->get_compliant_color_space(out);
+	QByteArray o, v, l;
+	oak_color_transform pod = oak_to_transform(out, &o, &v, &l);
+	int out_is_display = 0;
+	char out_buf[256], view_buf[256], look_buf[256];
+	oakengine_color_manager_compliant_transform(
+		color_manager_, &pod, 0, &out_is_display, out_buf, sizeof(out_buf),
+		view_buf, sizeof(view_buf), look_buf, sizeof(look_buf));
 
-	display_combobox_->setCurrentText(compliant.display());
-	view_combobox_->setCurrentText(compliant.view());
+	display_combobox_->setCurrentText(QString::fromUtf8(out_buf));
+	view_combobox_->setCurrentText(QString::fromUtf8(view_buf));
 
-	if (compliant.look().isEmpty()) {
+	QString look_str = QString::fromUtf8(look_buf);
+	if (look_str.isEmpty()) {
 		look_combobox_->setCurrentIndex(0);
 	} else {
-		look_combobox_->setCurrentText(compliant.look());
+		look_combobox_->setCurrentText(look_str);
 	}
 }
 
@@ -178,7 +219,17 @@ void ColorSpaceChooser::update_views(const QString &display)
 
 	view_combobox_->clear();
 
-	QStringList views = color_manager_->list_available_views(display);
+	QByteArray disp = display.toUtf8();
+	QStringList views = oak_query_string_list(
+		[this, &disp]() {
+			return oakengine_color_manager_view_count(color_manager_,
+													  disp.constData());
+		},
+		[this, &disp](int i, char *buf, int size) {
+			return oakengine_color_manager_view_at(color_manager_,
+												   disp.constData(), i, buf,
+												   size);
+		});
 
 	foreach (const QString &s, views) {
 		view_combobox_->addItem(s);
@@ -189,7 +240,11 @@ void ColorSpaceChooser::update_views(const QString &display)
 		view_combobox_->setCurrentText(v);
 	} else {
 		// Otherwise reset to default view for this display
-		view_combobox_->setCurrentText(color_manager_->get_default_view(display));
+		view_combobox_->setCurrentText(
+			oak_query_string([this, &disp](char *buf, int size) {
+				return oakengine_color_manager_default_view(
+					color_manager_, disp.constData(), buf, size);
+			}));
 	}
 }
 

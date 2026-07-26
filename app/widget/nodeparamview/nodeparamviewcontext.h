@@ -68,7 +68,10 @@ public:
 signals:
 	void about_to_delete_item(NodeParamViewItem *item);
 
-public slots:
+public:
+	// Not slots: signatures use the engine C++ type Node*, which must not be
+	// exposed to MOC (it would pull Node::staticMetaObject across the ABI
+	// boundary). They are called directly, never used as connect() targets.
 	void add_context(Node *node)
 	{
 		contexts_.append(node);

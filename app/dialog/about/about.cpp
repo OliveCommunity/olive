@@ -26,7 +26,7 @@
 #include <QLabel>
 #include <QVBoxLayout>
 
-#include "config/config.h"
+#include "common/configwrapper.h"
 #include "patreon.h"
 #include "scrollinglabel.h"
 

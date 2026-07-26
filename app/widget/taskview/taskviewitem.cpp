@@ -29,7 +29,7 @@
 namespace olive
 {
 
-TaskViewItem::TaskViewItem(Task *task, QWidget *parent)
+TaskViewItem::TaskViewItem(OakEngineTask *task, QWidget *parent)
 	: QFrame(parent)
 	, task_(task)
 {
@@ -41,7 +41,10 @@ TaskViewItem::TaskViewItem(Task *task, QWidget *parent)
 
 	// Create header label
 	task_name_lbl_ = new QLabel(this);
-	task_name_lbl_->setText(task_->get_title());
+	char title_buf[512];
+	title_buf[0] = '\0';
+	oakengine_task_title(task_, title_buf, sizeof(title_buf));
+	task_name_lbl_->setText(QString::fromUtf8(title_buf));
 	layout->addWidget(task_name_lbl_);
 
 	// Create center layout (combines progress bar and a cancel button)
@@ -74,10 +77,18 @@ TaskViewItem::TaskViewItem(Task *task, QWidget *parent)
 	// Set up elapsed timer
 	status_stack_->setCurrentWidget(elapsed_timer_lbl_);
 
-	// Connect to the task
-	connect(task_, &Task::started, elapsed_timer_lbl_,
-			qOverload<qint64>(&ElapsedCounterWidget::start));
-	connect(task_, &Task::progress_changed, this, &TaskViewItem::update_progress);
+	// Connect to the task via EngineEventBridge
+	bridge_ = new EngineEventBridge(this);
+	bridge_->subscribe(task_, OAKENGINE_EVENT_TASK_STARTED);
+	bridge_->subscribe(task_, OAKENGINE_EVENT_TASK_PROGRESS);
+	connect(bridge_, &EngineEventBridge::task_started, this,
+			[this](OakEngineTask *, qint64 start_time) {
+				elapsed_timer_lbl_->start(start_time);
+			});
+	connect(bridge_, &EngineEventBridge::task_progress, this,
+			[this](OakEngineTask *, double progress) {
+				update_progress(progress);
+			});
 	connect(cancel_btn_, &QPushButton::clicked, this,
 			[this] { emit task_cancelled(task_); });
 }
@@ -86,7 +97,10 @@ void TaskViewItem::failed()
 {
 	status_stack_->setCurrentWidget(task_error_lbl_);
 	task_error_lbl_->setStyleSheet("color: red");
-	task_error_lbl_->setText(tr("Error: %1").arg(task_->get_error()));
+	char err[512];
+	err[0] = '\0';
+	oakengine_task_error(task_, err, sizeof(err));
+	task_error_lbl_->setText(tr("Error: %1").arg(QString::fromUtf8(err)));
 }
 
 void TaskViewItem::update_progress(double d)

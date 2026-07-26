@@ -31,19 +31,24 @@
 #include "common/qtutils.h"
 #include "core.h"
 #include "nodeparambutton.h"
-#include "node/group/group.h"
 #include "node/node.h"
-#include "node/nodeundo.h"
 #include "node/project/sequence/sequence.h"
 #include "nodeparamviewarraywidget.h"
 #include "nodeparamviewtextedit.h"
+#include "oakengine/events.h"
+#include "common/nodevaluehandle.h"
+#include "common/oakvaluehelper.h"
 #include "oakengine/node.h"
-#include "render/lutlibrary.h"
+#include "oakengine/plugin.h"
+#include "oakengine/viewer.h"
+#include "oakengine/lut.h"
+#include "oakengine/undo.h"
 #include "undo/undostack.h"
 #include "widget/bezier/bezierwidget.h"
 #include "widget/colorbutton/colorbutton.h"
 #include "widget/filefield/filefield.h"
 #include "widget/filefield/lutfilefield.h"
+#include "widget/manageddisplay/colorprocessorhandle.h"
 #include "widget/slider/floatslider.h"
 #include "widget/slider/integerslider.h"
 #include "widget/slider/rationalslider.h"
@@ -53,27 +58,150 @@
 namespace olive
 {
 
+static int64_t rational_to_node_ts(Node *node, const Rational &time)
+{
+	int num = 0, den = 1;
+	oakengine_node_frame_time_base(reinterpret_cast<OakEngineNode *>(node),
+							   &num, &den);
+	return core::Timecode::time_to_timestamp(time, Rational(num, den));
+}
+
+static QVariant GetInputValueAtTime(const NodeInput &input,
+									const Rational &node_time)
+{
+	Node *node = input.node();
+	if (!node) {
+		return QVariant();
+	}
+	const NodeValue::Type type = node->get_input_data_type(input.input());
+	const QByteArray input_utf8 = input.input().toUtf8();
+	const char *input_id = input_utf8.constData();
+	const int element = input.element();
+	const int64_t time_ts = rational_to_node_ts(node, node_time);
+	const OakEngineNode *enode = reinterpret_cast<OakEngineNode *>(node);
+
+	switch (type) {
+	case NodeValue::k_int:
+	case NodeValue::k_float:
+	case NodeValue::k_boolean:
+	case NodeValue::k_rational:
+	case NodeValue::k_color:
+	case NodeValue::k_vec2:
+	case NodeValue::k_vec3:
+	case NodeValue::k_vec4:
+	case NodeValue::k_combo: {
+		oak_node_value v;
+		if (oakengine_node_get_input_at_time(enode, input_id, element, -1,
+										 time_ts, 1, &v) ==
+			OAKENGINE_OK) {
+			return OakNodeValueToQVariant(v);
+		}
+		break;
+	}
+	case NodeValue::k_file:
+	case NodeValue::k_text:
+	case NodeValue::k_font:
+	case NodeValue::k_str_combo: {
+		char buf[4096];
+		const int len = oakengine_node_get_input_string_at_time(
+			enode, input_id, element, time_ts, 0, buf, sizeof(buf));
+		if (len >= 0) {
+			return QString::fromUtf8(buf, len);
+		}
+		break;
+	}
+	case NodeValue::k_binary: {
+		const int len = oakengine_node_get_input_binary_at_time(
+			enode, input_id, element, time_ts, 0, nullptr, 0);
+		if (len > 0) {
+			QByteArray bytes(len, '\0');
+			oakengine_node_get_input_binary_at_time(
+				enode, input_id, element, time_ts, 0, bytes.data(), len);
+			return bytes;
+		} else if (len == 0) {
+			return QByteArray();
+		}
+		break;
+	}
+	case NodeValue::k_bezier: {
+		double out[6];
+		if (oakengine_node_get_input_bezier_at_time(
+				enode, input_id, element, time_ts, 0, out) == OAKENGINE_OK) {
+			return QVariant::fromValue(
+				Bezier(out[0], out[1], out[2], out[3], out[4], out[5]));
+		}
+		break;
+	}
+	default:
+		break;
+	}
+	return QVariant();
+}
+
+static bool ResolveGroupInput(NodeInput *input)
+{
+	OakEngineNode *node = reinterpret_cast<OakEngineNode *>(input->node());
+	char input_id[256];
+	int element = input->element();
+	memcpy(input_id, input->input().toUtf8().constData(),
+		   qMin<int>(sizeof(input_id) - 1, input->input().toUtf8().size()));
+	input_id[sizeof(input_id) - 1] = '\0';
+	if (!oakengine_node_group_get_inner(&node, input_id, sizeof(input_id),
+									&element)) {
+		return false;
+	}
+	*input = NodeInput(reinterpret_cast<Node *>(node),
+					   QString::fromUtf8(input_id), element);
+	return true;
+}
+
 NodeParamViewWidgetBridge::NodeParamViewWidgetBridge(NodeInput input,
 													 QObject *parent)
 	: QObject(parent)
+	, bridge_(new EngineEventBridge(this))
 {
+	connect(bridge_, &EngineEventBridge::node_input_value_changed, this,
+			&NodeParamViewWidgetBridge::input_value_changed);
+	connect(bridge_, &EngineEventBridge::node_input_property_changed, this,
+			[this](OakEngineNode *, const QString &input) {
+				property_changed(input);
+			});
+	connect(bridge_, &EngineEventBridge::node_input_data_type_changed, this,
+			&NodeParamViewWidgetBridge::input_data_type_changed);
+
 	do {
 		input_hierarchy_.append(input);
 
-		connect(input.node(), &Node::value_changed, this,
-				&NodeParamViewWidgetBridge::input_value_changed);
-		connect(input.node(), &Node::input_property_changed, this,
-				&NodeParamViewWidgetBridge::property_changed);
-		connect(input.node(), &Node::input_data_type_changed, this,
-				&NodeParamViewWidgetBridge::input_data_type_changed);
-	} while (NodeGroup::get_inner(&input));
+		bridge_->subscribe(reinterpret_cast<void *>(input.node()),
+						   OAKENGINE_EVENT_NODE_INPUT_VALUE_CHANGED);
+		bridge_->subscribe(reinterpret_cast<void *>(input.node()),
+						   OAKENGINE_EVENT_NODE_INPUT_PROPERTY_CHANGED);
+		bridge_->subscribe(reinterpret_cast<void *>(input.node()),
+						   OAKENGINE_EVENT_NODE_INPUT_DATA_TYPE_CHANGED);
+	} while (ResolveGroupInput(&input));
+
+	dragger_ = oakengine_dragger_create(
+		reinterpret_cast<OakEngineNode *>(get_inner_input().node()),
+		get_inner_input().input().toUtf8().constData(),
+		get_inner_input().element(),
+		-1); // track set in process_slider at start time
 
 	create_widgets();
 }
 
+NodeParamViewWidgetBridge::~NodeParamViewWidgetBridge()
+{
+	// oakengine_dragger_create() ownership is ours (no-op on NULL)
+	oakengine_dragger_free(dragger_);
+	// Raw viewer subscription carries `this` as userdata
+	if (viewer_sub_ > 0) {
+		oakengine_event_unsubscribe(viewer_sub_);
+	}
+}
+
 int get_slider_count(NodeValue::Type type)
 {
-	return NodeValue::get_number_of_keyframe_tracks(type);
+	return oakengine_node_value_keyframe_track_count(node_value_type_to_c(type));
 }
 
 namespace
@@ -231,7 +359,7 @@ void NodeParamViewWidgetBridge::create_widgets()
 				create_sliders<FloatSlider>(4, parent);
 			} else {
 				ColorButton *color_button = new ColorButton(
-					get_inner_input().node()->project()->color_manager(), parent);
+					oak_color_manager(get_inner_input().node()->project()->color_manager()), parent);
 				widgets_.append(color_button);
 				connect(color_button, &ColorButton::color_changed, this,
 						&NodeParamViewWidgetBridge::widget_callback);
@@ -286,8 +414,12 @@ void NodeParamViewWidgetBridge::create_widgets()
 			widgets_.append(button);
 			plugin::PluginNode *plugin_node =
 				dynamic_cast<plugin::PluginNode *>(input.node());
-			connect(button, &NodeParamButton::on_pressed, plugin_node,
-					&plugin::PluginNode::push_button_clicked);
+			connect(button, &NodeParamButton::on_pressed, this,
+				[plugin_node](const QString &name) {
+					oakengine_plugin_node_push_button_clicked(
+						reinterpret_cast<OakEngineNode*>(plugin_node),
+						name.toUtf8().constData());
+				});
 		}
 		}
 
@@ -312,9 +444,9 @@ void NodeParamViewWidgetBridge::set_input_value(const QVariant &value, int track
 	const NodeInput &input = get_inner_input();
 	oak_node_value c_value;
 	if (!variant_to_c_value(get_data_type(), value, &c_value)) {
-		MultiUndoCommand *command = new MultiUndoCommand();
+		void *command = oakengine_undo_command_create_multi();
 		set_input_value_internal(value, track, command, true);
-		Core::instance()->undo_stack()->push(command, get_command_name());
+		oakengine_undo_push(command, get_command_name().toUtf8().constData());
 		return;
 	}
 
@@ -339,11 +471,21 @@ void NodeParamViewWidgetBridge::set_string_value(const QString &value)
 }
 
 void NodeParamViewWidgetBridge::set_input_value_internal(
-	const QVariant &value, int track, MultiUndoCommand *command,
+	const QVariant &value, int track, void *command,
 	bool insert_on_all_tracks_if_no_key)
 {
-	Node::set_value_at_time(get_inner_input(), get_current_time_as_node_time(), value,
-						 track, command, insert_on_all_tracks_if_no_key);
+		const NodeInput &input = get_inner_input();
+	olive::Rational t = get_current_time_as_node_time();
+	oak_node_value c_value;
+	if (variant_to_c_value(get_data_type(), value, &c_value)) {
+		oakengine_undo_command_multi_add_child(
+			command,
+			oakengine_node_set_value_at_time_command(
+				reinterpret_cast<void *>(input.node()),
+				input.input().toUtf8().constData(), input.element(),
+				t.numerator(), t.denominator(), &c_value, track,
+				insert_on_all_tracks_if_no_key ? 1 : 0));
+	}
 }
 
 void NodeParamViewWidgetBridge::process_slider(NumericSliderBase *slider,
@@ -352,23 +494,27 @@ void NodeParamViewWidgetBridge::process_slider(NumericSliderBase *slider,
 {
 	if (slider->is_dragging()) {
 		// While we're dragging, we block the input's normal signalling and create our own
-		if (!dragger_.is_started()) {
+		if (!oakengine_dragger_is_started(dragger_)) {
+			OakEngineNode *node = reinterpret_cast<OakEngineNode *>(get_inner_input().node());
 			Rational node_time = get_current_time_as_node_time();
+			int64_t ts = node_time_to_ts(node, node_time);
 
-			dragger_.start(NodeKeyframeTrackReference(get_inner_input(),
-													  slider_track),
-						   node_time);
+			oakengine_dragger_start(dragger_, ts, slider_track, 0);
 		}
 
-		dragger_.drag(value);
+		oak_node_value c_value;
+		if (variant_to_c_value(get_data_type(), value, &c_value)) {
+			oakengine_dragger_drag(dragger_, &c_value);
+		}
 
-	} else if (dragger_.is_started()) {
+	} else if (oakengine_dragger_is_started(dragger_)) {
 		// We were dragging and just stopped
-		dragger_.drag(value);
+		oak_node_value c_value;
+		if (variant_to_c_value(get_data_type(), value, &c_value)) {
+			oakengine_dragger_drag(dragger_, &c_value);
+		}
 
-		MultiUndoCommand *command = new MultiUndoCommand();
-		dragger_.end(command);
-		Core::instance()->undo_stack()->push(command, get_command_name());
+		oakengine_dragger_end(dragger_, get_command_name().toUtf8().constData());
 
 	} else {
 		// No drag was involved, we can just push the value
@@ -464,17 +610,22 @@ void NodeParamViewWidgetBridge::widget_callback()
 
 			Node *n = get_inner_input().node();
 			n->blockSignals(true);
-			n->set_input_property(get_inner_input().input(),
-								QStringLiteral("col_input"), c.color_input());
-			n->set_input_property(get_inner_input().input(),
-								QStringLiteral("col_display"),
-								c.color_output().display());
-			n->set_input_property(get_inner_input().input(),
-								QStringLiteral("col_view"),
-								c.color_output().view());
-			n->set_input_property(get_inner_input().input(),
-								QStringLiteral("col_look"),
-								c.color_output().look());
+			oakengine_node_set_input_property_string(
+				reinterpret_cast<OakEngineNode*>(n),
+				get_inner_input().input().toUtf8().constData(),
+				"col_input", c.color_input().toUtf8().constData(), 0);
+			oakengine_node_set_input_property_string(
+				reinterpret_cast<OakEngineNode*>(n),
+				get_inner_input().input().toUtf8().constData(),
+				"col_display", c.color_output().display().toUtf8().constData(), 0);
+			oakengine_node_set_input_property_string(
+				reinterpret_cast<OakEngineNode*>(n),
+				get_inner_input().input().toUtf8().constData(),
+				"col_view", c.color_output().view().toUtf8().constData(), 0);
+			oakengine_node_set_input_property_string(
+				reinterpret_cast<OakEngineNode*>(n),
+				get_inner_input().input().toUtf8().constData(),
+				"col_look", c.color_output().look().toUtf8().constData(), 0);
 			n->blockSignals(false);
 		}
 		break;
@@ -608,29 +759,29 @@ void NodeParamViewWidgetBridge::update_widget_values()
 		NodeParamViewTextEdit *e =
 			static_cast<NodeParamViewTextEdit *>(widgets_.first());
 		QByteArray bytes =
-			get_inner_input().get_value_at_time(node_time).toByteArray();
+			GetInputValueAtTime(get_inner_input(), node_time).toByteArray();
 		e->setTextPreservingCursor(QString::fromUtf8(bytes.toBase64()));
 		break;
 	}
 	case NodeValue::k_int: {
 		static_cast<IntegerSlider *>(widgets_.first())
-			->set_value(get_inner_input().get_value_at_time(node_time).toLongLong());
+			->set_value(GetInputValueAtTime(get_inner_input(), node_time).toLongLong());
 		break;
 	}
 	case NodeValue::k_float: {
 		static_cast<FloatSlider *>(widgets_.first())
-			->set_value(get_inner_input().get_value_at_time(node_time).toDouble());
+			->set_value(GetInputValueAtTime(get_inner_input(), node_time).toDouble());
 		break;
 	}
 	case NodeValue::k_rational: {
 		static_cast<RationalSlider *>(widgets_.first())
 			->set_value(
-				get_inner_input().get_value_at_time(node_time).value<Rational>());
+				GetInputValueAtTime(get_inner_input(), node_time).value<Rational>());
 		break;
 	}
 	case NodeValue::k_vec2: {
 		QVector2D vec2 =
-			get_inner_input().get_value_at_time(node_time).value<QVector2D>();
+			GetInputValueAtTime(get_inner_input(), node_time).value<QVector2D>();
 
 		static_cast<FloatSlider *>(widgets_.at(0))
 			->set_value(static_cast<double>(vec2.x()));
@@ -640,7 +791,7 @@ void NodeParamViewWidgetBridge::update_widget_values()
 	}
 	case NodeValue::k_vec3: {
 		QVector3D vec3 =
-			get_inner_input().get_value_at_time(node_time).value<QVector3D>();
+			GetInputValueAtTime(get_inner_input(), node_time).value<QVector3D>();
 
 		static_cast<FloatSlider *>(widgets_.at(0))
 			->set_value(static_cast<double>(vec3.x()));
@@ -652,7 +803,7 @@ void NodeParamViewWidgetBridge::update_widget_values()
 	}
 	case NodeValue::k_vec4: {
 		QVector4D vec4 =
-			get_inner_input().get_value_at_time(node_time).value<QVector4D>();
+			GetInputValueAtTime(get_inner_input(), node_time).value<QVector4D>();
 
 		static_cast<FloatSlider *>(widgets_.at(0))
 			->set_value(static_cast<double>(vec4.x()));
@@ -666,13 +817,13 @@ void NodeParamViewWidgetBridge::update_widget_values()
 	}
 	case NodeValue::k_file: {
 		FileField *ff = static_cast<FileField *>(widgets_.first());
-		ff->set_filename(get_inner_input().get_value_at_time(node_time).toString());
+		ff->set_filename(GetInputValueAtTime(get_inner_input(), node_time).toString());
 		break;
 	}
 	case NodeValue::k_color: {
 		if (get_inner_input().get_property("color_semantic").toString() ==
 			QStringLiteral("scalar")) {
-			Color c = get_inner_input().get_value_at_time(node_time).value<Color>();
+			Color c = GetInputValueAtTime(get_inner_input(), node_time).value<Color>();
 			static_cast<FloatSlider *>(widgets_.at(0))
 				->set_value(static_cast<double>(c.red()));
 			static_cast<FloatSlider *>(widgets_.at(1))
@@ -683,7 +834,7 @@ void NodeParamViewWidgetBridge::update_widget_values()
 				->set_value(static_cast<double>(c.alpha()));
 		} else {
 			ManagedColor mc =
-				get_inner_input().get_value_at_time(node_time).value<Color>();
+				GetInputValueAtTime(get_inner_input(), node_time).value<Color>();
 
 			mc.set_color_input(
 				get_inner_input().get_property("col_input").toString());
@@ -702,25 +853,25 @@ void NodeParamViewWidgetBridge::update_widget_values()
 		NodeParamViewTextEdit *e =
 			static_cast<NodeParamViewTextEdit *>(widgets_.first());
 		e->setTextPreservingCursor(
-			get_inner_input().get_value_at_time(node_time).toString());
+			GetInputValueAtTime(get_inner_input(), node_time).toString());
 		break;
 	}
 	case NodeValue::k_boolean:
 		static_cast<QCheckBox *>(widgets_.first())
-			->setChecked(get_inner_input().get_value_at_time(node_time).toBool());
+			->setChecked(GetInputValueAtTime(get_inner_input(), node_time).toBool());
 		break;
 	case NodeValue::k_font: {
 		QFontComboBox *fc = static_cast<QFontComboBox *>(widgets_.first());
 		fc->blockSignals(true);
 		fc->setCurrentFont(
-			get_inner_input().get_value_at_time(node_time).toString());
+			GetInputValueAtTime(get_inner_input(), node_time).toString());
 		fc->blockSignals(false);
 		break;
 	}
 	case NodeValue::k_combo: {
 		QComboBox *cb = static_cast<QComboBox *>(widgets_.first());
 		cb->blockSignals(true);
-		int index = get_inner_input().get_value_at_time(node_time).toInt();
+		int index = GetInputValueAtTime(get_inner_input(), node_time).toInt();
 		for (int i = 0; i < cb->count(); i++) {
 			if (cb->itemData(i).toInt() == index) {
 				cb->setCurrentIndex(i);
@@ -733,7 +884,7 @@ void NodeParamViewWidgetBridge::update_widget_values()
 		QComboBox *cb = static_cast<QComboBox *>(widgets_.first());
 		cb->blockSignals(true);
 		const QString current =
-			get_inner_input().get_value_at_time(node_time).toString();
+			GetInputValueAtTime(get_inner_input(), node_time).toString();
 		for (int i = 0; i < cb->count(); ++i) {
 			const QVariant data = cb->itemData(i);
 			if ((data.isValid() && data.toString() == current) ||
@@ -747,7 +898,7 @@ void NodeParamViewWidgetBridge::update_widget_values()
 	}
 	case NodeValue::k_bezier: {
 		BezierWidget *bw = static_cast<BezierWidget *>(widgets_.first());
-		bw->set_value(get_inner_input().get_value_at_time(node_time).value<Bezier>());
+		bw->set_value(GetInputValueAtTime(get_inner_input(), node_time).value<Bezier>());
 		break;
 	}
 	}
@@ -780,24 +931,37 @@ void NodeParamViewWidgetBridge::set_timebase(const Rational &timebase)
 
 void NodeParamViewWidgetBridge::TimeTargetDisconnectEvent(ViewerOutput *v)
 {
-	disconnect(v, &ViewerOutput::playhead_changed, this,
-			   &NodeParamViewWidgetBridge::update_widget_values);
+	if (viewer_sub_ > 0) {
+		oakengine_event_unsubscribe(viewer_sub_);
+		viewer_sub_ = 0;
+	}
 }
 
 void NodeParamViewWidgetBridge::TimeTargetConnectEvent(ViewerOutput *v)
 {
-	connect(v, &ViewerOutput::playhead_changed, this,
-			&NodeParamViewWidgetBridge::update_widget_values);
+	viewer_sub_ = oakengine_event_subscribe(
+		reinterpret_cast<OakEngineNode *>(v),
+		OAKENGINE_EVENT_VIEWER_PLAYHEAD_CHANGED,
+		[](const oakengine_event *, void *userdata) {
+			static_cast<NodeParamViewWidgetBridge *>(userdata)
+				->update_widget_values();
+		},
+		this);
 }
 
-void NodeParamViewWidgetBridge::input_value_changed(const NodeInput &input,
-												  const TimeRange &range)
+void NodeParamViewWidgetBridge::input_value_changed(OakEngineNode *source,
+												  const QString &input,
+												  int element, qint64 in_ts,
+												  qint64 out_ts)
 {
-	if (get_time_target() && get_inner_input() == input && !dragger_.is_started() &&
-		range.in() <= get_time_target()->get_playhead() &&
-		range.out() >= get_time_target()->get_playhead()) {
-		// We'll need to update the widgets because the values have changed on our current time
-		update_widget_values();
+	NodeInput ni(reinterpret_cast<Node *>(source), input, element);
+	if (get_time_target() && get_inner_input() == ni &&
+		!oakengine_dragger_is_started(dragger_)) {
+		int64_t playhead_ts =
+			node_time_to_ts(source, get_time_target()->get_playhead());
+		if (in_ts <= playhead_ts && out_ts >= playhead_ts) {
+			update_widget_values();
+		}
 	}
 }
 
@@ -821,7 +985,7 @@ void NodeParamViewWidgetBridge::set_property(const QString &key,
 		} else { // set specific track/widget
 			bool ok;
 			int element = key.mid(7).toInt(&ok);
-			int tracks = NodeValue::get_number_of_keyframe_tracks(data_type);
+			int tracks = oakengine_node_value_keyframe_track_count(node_value_type_to_c(data_type));
 
 			if (ok && element >= 0 && element < tracks) {
 				widgets_.at(element)->setEnabled(e);
@@ -915,15 +1079,19 @@ void NodeParamViewWidgetBridge::set_property(const QString &key,
 				break;
 			}
 		} else if (key == QStringLiteral("offset")) {
-			int tracks = NodeValue::get_number_of_keyframe_tracks(data_type);
+			const int c_type = node_value_type_to_c(data_type);
+			int tracks = oakengine_node_value_keyframe_track_count(c_type);
 
-			QVector<QVariant> offsets =
-				NodeValue::split_normal_value_into_track_values(data_type,
-																value);
-
-			for (int i = 0; i < tracks; i++) {
-				static_cast<NumericSliderBase *>(widgets_.at(i))
-					->set_offset(offsets.at(i));
+			oak_node_value normal;
+			QVector<oak_node_value> track_vals(tracks);
+			if (QVariantToOakNodeValue(data_type, value, &normal) &&
+				oakengine_node_value_split_to_tracks(
+					c_type, &normal, track_vals.data(), tracks) ==
+					OAKENGINE_OK) {
+				for (int i = 0; i < tracks; i++) {
+					static_cast<NumericSliderBase *>(widgets_.at(i))
+						->set_offset(track_vals.at(i).f[0]);
+				}
 			}
 
 			update_widget_values();
@@ -931,7 +1099,7 @@ void NodeParamViewWidgetBridge::set_property(const QString &key,
 		} else if (key.startsWith(QStringLiteral("color"))) {
 			QColor c(value.toString());
 
-			int tracks = NodeValue::get_number_of_keyframe_tracks(data_type);
+			int tracks = oakengine_node_value_keyframe_track_count(node_value_type_to_c(data_type));
 
 			if (key.size() == 5) {
 				// Set for all tracks
@@ -1057,8 +1225,17 @@ void NodeParamViewWidgetBridge::set_property(const QString &key,
 			// Offer the global LUT library directories as sidebar shortcuts in
 			// the browse dialog
 			QList<QUrl> sidebar_urls;
-			for (const QString &dir : LUTLibrary::get_directories()) {
-				sidebar_urls.append(QUrl::fromLocalFile(dir));
+			{
+				int dir_count = oakengine_lut_directory_count();
+				for (int i = 0; i < dir_count; i++) {
+					char buf[4096];
+					int len = oakengine_lut_directory_at(i, buf, sizeof(buf));
+					if (len > 0) {
+						sidebar_urls.append(
+							QUrl::fromLocalFile(
+								QString::fromUtf8(buf, len)));
+					}
+				}
 			}
 			if (!sidebar_urls.isEmpty()) {
 				ff->set_sidebar_urls(sidebar_urls);
@@ -1077,26 +1254,21 @@ void NodeParamViewWidgetBridge::set_property(const QString &key,
 	}
 }
 
-void NodeParamViewWidgetBridge::input_data_type_changed(const QString &input,
-													 NodeValue::Type type)
+void NodeParamViewWidgetBridge::input_data_type_changed(OakEngineNode *source,
+													 const QString &input)
 {
-	if (sender() == get_outer_input().node() &&
+	if (reinterpret_cast<Node *>(source) == get_outer_input().node() &&
 		input == get_outer_input().input()) {
-		// Delete all widgets
 		qDeleteAll(widgets_);
 		widgets_.clear();
 
-		// Create new widgets
 		create_widgets();
 
-		// Signal that widgets are new
 		emit widgets_recreated(get_outer_input());
 	}
 }
 
-void NodeParamViewWidgetBridge::property_changed(const QString &input,
-												const QString &key,
-												const QVariant &value)
+void NodeParamViewWidgetBridge::property_changed(const QString &input)
 {
 	bool found = false;
 

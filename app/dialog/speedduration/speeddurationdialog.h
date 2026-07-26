@@ -26,14 +26,13 @@
 #include <QComboBox>
 #include <QDialog>
 
-#include "node/block/clip/clip.h"
 #include "node/block/gap/gap.h"
-#include "undo/undocommand.h"
 #include "widget/slider/floatslider.h"
 #include "widget/slider/rationalslider.h"
 
-namespace olive
-{
+namespace olive {
+
+class ClipBlock;
 
 class SpeedDurationDialog : public QDialog {
 	Q_OBJECT

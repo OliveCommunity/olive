@@ -35,10 +35,16 @@
 #include <QScreen>
 #include <QTextEdit>
 
+#include "audio/audiomanager.h"
 #include "common/define.h"
 #include "common/html.h"
+#include "oakengine/gizmo.h"
+#include "oakengine/videoparams.h"
+#include "oakengine/display.h"
+#include "oakengine/undo.h"
+#include "widget/viewer/vieweroutpututils.h"
 #include "common/qtutils.h"
-#include "config/config.h"
+#include "common/configwrapper.h"
 #include "core.h"
 #include "node/block/subtitle/subtitle.h"
 #include "codec/frame.h"
@@ -46,6 +52,7 @@
 #include "node/gizmo/point.h"
 #include "node/gizmo/polygon.h"
 #include "node/gizmo/screen.h"
+#include "render/job/colortransformjob.h"
 #include "window/mainwindow/mainwindow.h"
 
 namespace olive
@@ -72,6 +79,7 @@ ViewerDisplayWidget::ViewerDisplayWidget(QWidget *parent)
 	, add_band_(false)
 	, queue_starved_(false)
 	, text_edit_(nullptr)
+	, gizmo_params_(empty_video_params())
 {
 	connect(Core::instance(), &Core::tool_changed, this,
 			&ViewerDisplayWidget::tool_changed);
@@ -83,6 +91,10 @@ ViewerDisplayWidget::ViewerDisplayWidget(QWidget *parent)
 	frame_rate_averages_.resize(k_frame_rate_average_count);
 
 	inner_widget()->setAcceptDrops(true);
+
+	bridge_ = new EngineEventBridge(this);
+	connect(bridge_, &EngineEventBridge::sequence_subtitles_changed, this,
+			[this](OakEngineSequence *, qint64, qint64) { update(); });
 }
 
 ViewerDisplayWidget::~ViewerDisplayWidget()
@@ -223,15 +235,16 @@ void ViewerDisplayWidget::set_time(const Rational &time)
 void ViewerDisplayWidget::set_subtitle_tracks(Sequence *list)
 {
 	if (subtitle_tracks_) {
-		disconnect(subtitle_tracks_, &Sequence::subtitles_changed, this,
-				   &ViewerDisplayWidget::subtitles_changed);
+		bridge_->unsubscribe(subtitle_sub_);
+		subtitle_sub_ = 0;
 	}
 
 	subtitle_tracks_ = list;
 
 	if (subtitle_tracks_) {
-		connect(subtitle_tracks_, &Sequence::subtitles_changed, this,
-				&ViewerDisplayWidget::subtitles_changed);
+		subtitle_sub_ = bridge_->subscribe(
+			reinterpret_cast<void *>(subtitle_tracks_),
+			OAKENGINE_EVENT_SEQUENCE_SUBTITLES_CHANGED);
 	}
 
 	update();
@@ -396,7 +409,7 @@ void ViewerDisplayWidget::on_paint()
 									 bg_color.greenF(), bg_color.blueF());
 	}
 
-	VideoParams device_params;
+	VideoParams device_params = empty_video_params();
 	ColorTransformJob ctj;
 	bool have_ctj = false;
 
@@ -420,11 +433,12 @@ void ViewerDisplayWidget::on_paint()
 					 texture_->height() != frame->height() ||
 					 texture_->format() != frame->format() ||
 					 texture_->channel_count() != frame->channel_count())) {
-					texture_ = renderer()->create_texture(
-						frame->video_params(), frame->data(),
-						frame->linesize_pixels());
+					oakengine_display_renderer_create_texture(
+						renderer(), &frame->video_params(), frame->data(),
+						frame->linesize_pixels(), &texture_);
 				} else if (!drew_backend_neutral_frame) {
-					texture_->upload(frame->data(), frame->linesize_pixels());
+					oakengine_display_texture_upload(texture_.get(), frame->data(),
+												  frame->linesize_pixels());
 				}
 			} else if (TexturePtr texture = load_frame_.value<TexturePtr>()) {
 				// This is a GPU texture, switch to it directly when possible.
@@ -439,15 +453,17 @@ void ViewerDisplayWidget::on_paint()
 						texture_ = texture;
 					} else {
 						// Cross-backend texture: download and re-upload
-						FramePtr frame = Frame::create();
-						frame->set_video_params(texture->params());
-						if (frame->allocate()) {
+						FramePtr frame;
+						oakengine_codec_frame_create(&frame);
+						oakengine_codec_frame_set_video_params(
+							frame.get(), &texture->params());
+						if (oakengine_codec_frame_allocate(frame.get())) {
 							texture->renderer()->download_from_texture(
 								texture->id(), texture->params(), frame->data(),
 								frame->linesize_pixels());
-							texture_ = renderer()->create_texture(
-								frame->video_params(), frame->data(),
-								frame->linesize_pixels());
+							oakengine_display_renderer_create_texture(
+								renderer(), &frame->video_params(), frame->data(),
+								frame->linesize_pixels(), &texture_);
 						} else {
 							texture_ = texture;
 						}
@@ -488,8 +504,9 @@ void ViewerDisplayWidget::on_paint()
 							deinterlace_texture_->params() !=
 								texture_to_draw->params()) {
 							// (Re)create texture
-							deinterlace_texture_ = renderer()->create_texture(
-								texture_to_draw->params());
+							oakengine_display_renderer_create_texture(
+								renderer(), &texture_to_draw->params(), nullptr,
+								0, &deinterlace_texture_);
 						}
 
 						ShaderJob job;
@@ -509,7 +526,8 @@ void ViewerDisplayWidget::on_paint()
 						texture_to_draw = deinterlace_texture_;
 					}
 
-					ctj.set_color_processor(color_service());
+					oakengine_color_transform_job_set_processor(
+						&ctj, color_service().get());
 					ctj.set_input_texture(texture_to_draw);
 					ctj.set_input_alpha_association(
 						OAK_CONFIG("ReassocLinToNonLin").toBool() ?
@@ -531,7 +549,8 @@ void ViewerDisplayWidget::on_paint()
 		if (backend_neutral) {
 			draw_backend_neutral(ctj, &bg_painter);
 		} else {
-			renderer()->blit_color_managed(ctj, device_params);
+			oakengine_display_renderer_blit_color_managed(
+				renderer(), &ctj, nullptr, &device_params);
 		}
 	}
 
@@ -789,20 +808,25 @@ QTransform ViewerDisplayWidget::generate_display_transform()
 	return gizmo_transform;
 }
 
-QTransform ViewerDisplayWidget::generate_gizmo_transform(NodeTraverser &gt,
+QTransform ViewerDisplayWidget::generate_gizmo_transform(Node *gizmos,
+													   Node *target,
 													   const TimeRange &range)
 {
 	QTransform t = generate_display_transform();
-	if (get_time_target()) {
-		Node *target = get_time_target();
+	if (target) {
 		if (ViewerOutput *v = dynamic_cast<ViewerOutput *>(target)) {
 			if (Node *n = v->get_connected_texture_output()) {
 				target = n;
 			}
 		}
 
-		QTransform nt;
-		gt.transform(&nt, gizmos_, target, range);
+		double m[6];
+		oakengine_traverse_transform(
+			reinterpret_cast<OakEngineNode *>(gizmos),
+			reinterpret_cast<OakEngineNode *>(target),
+			range.in().numerator(), range.in().denominator(),
+			range.out().numerator(), range.out().denominator(), nullptr, m);
+		QTransform nt(m[0], m[1], m[2], m[3], m[4], m[5]);
 
 		t.translate(gizmo_params_.width() * 0.5, gizmo_params_.height() * 0.5);
 		t.scale(gizmo_params_.width(), gizmo_params_.height());
@@ -861,8 +885,6 @@ void ViewerDisplayWidget::open_text_gizmo(TextGizmo *text, QMouseEvent *event)
 							   gizmo_draw_time_, LoopMode::k_loop_mode_off));
 
 	active_text_gizmo_ = text;
-	connect(active_text_gizmo_, &TextGizmo::rect_changed, this,
-			&ViewerDisplayWidget::update_active_text_gizmo_size);
 	text_transform_ = generate_gizmo_transform();
 	text_transform_inverted_ = text_transform_.inverted();
 
@@ -899,16 +921,30 @@ void ViewerDisplayWidget::open_text_gizmo(TextGizmo *text, QMouseEvent *event)
 	QRectF text_rect = update_active_text_gizmo_size();
 
 	// Emit text gizmo activation signal
-	emit text->activated();
+	oakengine_text_gizmo_activated(
+		reinterpret_cast<OakEngineNode *>(gizmos_));
 
 	// Create toolbar
 	text_toolbar_ = new ViewerTextEditorToolBar(text_edit_);
 	text_toolbar_->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint);
 	connect(text_toolbar_, &ViewerTextEditorToolBar::vertical_alignment_changed,
-			text, &TextGizmo::set_vertical_alignment);
-	connect(text, &TextGizmo::vertical_alignment_changed, text_toolbar_,
-			&ViewerTextEditorToolBar::set_vertical_alignment);
-	text_toolbar_->set_vertical_alignment(text->get_vertical_alignment());
+			this, [this](Qt::Alignment align) {
+				oakengine_text_gizmo_set_vertical_alignment(
+					reinterpret_cast<OakEngineNode *>(gizmos_),
+					static_cast<int>(align));
+			});
+	{
+		oakengine_text_gizmo _tg;
+		if (oakengine_text_gizmo_get(
+				reinterpret_cast<OakEngineNode *>(gizmos_),
+				get_gizmo_time().numerator(), get_gizmo_time().denominator(),
+				&_tg) == OAKENGINE_OK) {
+			text_toolbar_->set_vertical_alignment(
+				static_cast<Qt::AlignmentFlag>(_tg.vertical_alignment));
+		} else {
+			text_toolbar_->set_vertical_alignment(Qt::AlignTop);
+		}
+	}
 	text_edit_->connect_tool_bar(text_toolbar_);
 
 	QPoint toolbar_pos =
@@ -1033,40 +1069,41 @@ bool ViewerDisplayWidget::on_mouse_move(QMouseEvent *event)
 
 	} else if (current_gizmo_) {
 		// Signal movement
-		if (DraggableGizmo *draggable =
-				dynamic_cast<DraggableGizmo *>(current_gizmo_)) {
+		int drag_behavior = oakengine_gizmo_get_drag_value_behavior(current_gizmo_);
+		if (drag_behavior >= 0) {
 			if (!gizmo_drag_started_) {
 				QPointF start = screen_to_scene_point(gizmo_start_drag_);
 
 				Rational gizmo_time = get_gizmo_time();
-				NodeTraverser t;
-				t.set_cache_video_params(gizmo_params_);
-				t.set_cache_audio_params(gizmo_audio_params_);
-				NodeValueRow row = t.generate_row(
-					gizmos_,
-					TimeRange(gizmo_time,
-							  gizmo_time +
-								  gizmo_params_.frame_rate_as_time_base()));
+				NodeValueRow row;
+				oakengine_traverse_generate_row(
+					reinterpret_cast<OakEngineNode *>(gizmos_),
+					gizmo_time.numerator(), gizmo_time.denominator(),
+					(gizmo_time + gizmo_params_.frame_rate_as_time_base())
+						.numerator(),
+					(gizmo_time + gizmo_params_.frame_rate_as_time_base())
+						.denominator(),
+					nullptr, 0, 0, &row);
 
-				draggable->drag_start(row, start.x(), start.y(), gizmo_time);
+				oakengine_gizmo_drag_start(current_gizmo_, &row,
+					start.x(), start.y(), gizmo_time.numerator(),
+					gizmo_time.denominator());
 				gizmo_drag_started_ = true;
 			}
 
 			QPointF v = screen_to_scene_point(event->pos());
-			switch (draggable->get_drag_value_behavior()) {
-			case DraggableGizmo::k_absolute:
-				// Above value is correct
-				break;
-			case DraggableGizmo::k_delta_from_previous:
+			switch (drag_behavior) {
+			case 1:
 				v -= screen_to_scene_point(gizmo_last_drag_);
 				gizmo_last_drag_ = event->pos();
 				break;
-			case DraggableGizmo::k_delta_from_start:
+			case 2:
 				v -= screen_to_scene_point(gizmo_start_drag_);
 				break;
 			}
 
-			draggable->drag_move(v.x(), v.y(), event->modifiers());
+			oakengine_gizmo_drag_move(current_gizmo_, v.x(), v.y(),
+				static_cast<int>(event->modifiers()));
 
 			return true;
 		}
@@ -1101,12 +1138,9 @@ bool ViewerDisplayWidget::on_mouse_release(QMouseEvent *e)
 	} else if (current_gizmo_) {
 		// Handle gizmo
 		if (gizmo_drag_started_) {
-			MultiUndoCommand *command = new MultiUndoCommand();
-			if (DraggableGizmo *draggable =
-					dynamic_cast<DraggableGizmo *>(current_gizmo_)) {
-				draggable->drag_end(command);
-			}
-			Core::instance()->undo_stack()->push(command, tr("Dragged Gizmo"));
+			void *command = oakengine_undo_command_create_multi();
+			oakengine_gizmo_drag_end(current_gizmo_, command);
+			oakengine_undo_push(command, tr("Dragged Gizmo").toUtf8().constData());
 			gizmo_drag_started_ = false;
 		}
 		current_gizmo_ = nullptr;
@@ -1173,7 +1207,7 @@ void ViewerDisplayWidget::emit_color_at_cursor(QMouseEvent *e)
 			reference =
 				renderer()->get_pixel_from_texture(texture_.get(), pixel_pos);
 			if (color_service()) {
-				display = color_service()->convert_color(reference);
+				display = oak_convert_color(color_service(), reference);
 			} else {
 				display = reference;
 			}
@@ -1231,8 +1265,13 @@ void ViewerDisplayWidget::draw_subtitle_tracks()
 			if (SubtitleBlock *sub = dynamic_cast<SubtitleBlock *>(
 					sub_track->visible_block_at_time(time_))) {
 				// Split into lines
+				char text_buf[4096];
+				const int len = oakengine_subtitle_get_text(
+					reinterpret_cast<OakEngineNode *>(sub), text_buf,
+					sizeof(text_buf));
 				QStringList list = QtUtils::word_wrap_string(
-					sub->get_text(), fm, bounding_box.width());
+					QString::fromUtf8(text_buf, len), fm,
+					bounding_box.width());
 
 				for (int i = list.size() - 1; i >= 0; i--) {
 					int w = QtUtils::q_font_metrics_width(fm, list.at(i));
@@ -1393,24 +1432,26 @@ void ViewerDisplayWidget::close_text_editor()
 	text_edit_->deleteLater();
 	text_edit_ = nullptr;
 
-	disconnect(active_text_gizmo_, &TextGizmo::rect_changed, this,
-			   &ViewerDisplayWidget::update_active_text_gizmo_size);
 	active_text_gizmo_ = nullptr;
 }
 
 void ViewerDisplayWidget::generate_gizmo_transforms()
 {
-	NodeTraverser gt;
-	gt.set_cache_video_params(gizmo_params_);
-	gt.set_cache_audio_params(gizmo_audio_params_);
-
 	gizmo_draw_time_ = generate_gizmo_time();
 
 	if (gizmos_) {
-		gizmo_db_ = gt.generate_row(gizmos_, gizmo_draw_time_);
+		NodeValueRow row;
+		oakengine_traverse_generate_row(
+			reinterpret_cast<OakEngineNode *>(gizmos_),
+			gizmo_draw_time_.in().numerator(),
+			gizmo_draw_time_.in().denominator(),
+			gizmo_draw_time_.out().numerator(),
+			gizmo_draw_time_.out().denominator(), nullptr, 0, 0, &row);
+		gizmo_db_ = row;
 	}
 
-	gizmo_last_draw_transform_ = generate_gizmo_transform(gt, gizmo_draw_time_);
+	gizmo_last_draw_transform_ = generate_gizmo_transform(
+		gizmos_, get_time_target(), gizmo_draw_time_);
 	gizmo_last_draw_transform_inverted_ = gizmo_last_draw_transform_.inverted();
 }
 
@@ -1437,7 +1478,9 @@ bool ViewerDisplayWidget::draw_backend_neutral_frame(const FramePtr &frame,
 		return false;
 	}
 
-	const QString color_id = QString::fromUtf8(color_service()->id());
+	const QString color_id = oak_query_string([this](char *buf, int size) {
+		return oakengine_color_processor_id(color_service().get(), buf, size);
+	});
 	if (backend_neutral_cpu_source_frame_.get() == frame.get() &&
 		backend_neutral_cpu_color_id_ == color_id &&
 		!backend_neutral_cpu_image_.isNull()) {
@@ -1457,7 +1500,7 @@ bool ViewerDisplayWidget::draw_backend_neutral_frame(const FramePtr &frame,
 
 	QImage source_image;
 	if (display_frame->format() == PixelFormat::u8 &&
-		display_frame->channel_count() == VideoParams::k_rgba_channel_count) {
+		display_frame->channel_count() == 4) {
 		backend_neutral_cpu_display_frame_ = display_frame;
 		backend_neutral_cpu_image_ =
 			QImage(reinterpret_cast<const uchar *>(display_frame->const_data()),
@@ -1466,7 +1509,7 @@ bool ViewerDisplayWidget::draw_backend_neutral_frame(const FramePtr &frame,
 		source_image = backend_neutral_cpu_image_;
 	} else if (display_frame->format() == PixelFormat::u8 &&
 			   display_frame->channel_count() ==
-				   VideoParams::k_rgb_channel_count) {
+				   3) {
 		backend_neutral_cpu_display_frame_ = display_frame;
 		backend_neutral_cpu_image_ =
 			QImage(reinterpret_cast<const uchar *>(display_frame->const_data()),
@@ -1476,7 +1519,9 @@ bool ViewerDisplayWidget::draw_backend_neutral_frame(const FramePtr &frame,
 	} else {
 		backend_neutral_cpu_display_frame_.reset();
 		const int bytes_per_pixel =
-			display_frame->video_params().get_bytes_per_pixel();
+			oakengine_video_params_bytes_per_pixel(
+				static_cast<int>(display_frame->video_params().format()),
+				display_frame->video_params().channel_count());
 		if (backend_neutral_cpu_image_.size() !=
 				QSize(display_frame->width(), display_frame->height()) ||
 			backend_neutral_cpu_image_.format() != QImage::Format_RGBA8888) {
@@ -1523,7 +1568,9 @@ bool ViewerDisplayWidget::draw_backend_neutral_texture(const TexturePtr &texture
 		return false;
 	}
 
-	const QString color_id = QString::fromUtf8(color_service()->id());
+	const QString color_id = oak_query_string([this](char *buf, int size) {
+		return oakengine_color_processor_id(color_service().get(), buf, size);
+	});
 	if (backend_neutral_cpu_source_texture_.get() == texture.get() &&
 		backend_neutral_cpu_color_id_ == color_id &&
 		!backend_neutral_cpu_image_.isNull()) {
@@ -1535,13 +1582,15 @@ bool ViewerDisplayWidget::draw_backend_neutral_texture(const TexturePtr &texture
 		return true;
 	}
 
-	FramePtr frame = Frame::create();
-	frame->set_video_params(texture->params());
-	if (!frame->allocate()) {
+	FramePtr frame;
+	oakengine_codec_frame_create(&frame);
+	oakengine_codec_frame_set_video_params(frame.get(), &texture->params());
+	if (!oakengine_codec_frame_allocate(frame.get())) {
 		return false;
 	}
 
-	texture->download(frame->data(), frame->linesize_pixels());
+	oakengine_display_texture_download(texture.get(), frame->data(),
+									   frame->linesize_pixels());
 
 	if (!draw_backend_neutral_frame(frame, painter)) {
 		return false;
@@ -1564,19 +1613,23 @@ void ViewerDisplayWidget::draw_backend_neutral(const ColorTransformJob &ctj,
 	const int texture_width = static_cast<int>(width() * devicePixelRatioF());
 	const int texture_height = static_cast<int>(height() * devicePixelRatioF());
 
-	const VideoParams offscreen_params(texture_width, texture_height,
-									   PixelFormat::u8,
-									   VideoParams::k_rgba_channel_count);
+	oak_video_params pod = {};
+	pod.width = texture_width;
+	pod.height = texture_height;
+	pod.format = PixelFormat::u8;
+	const VideoParams offscreen_params(video_params_from_pod(pod));
 
 	if (!backend_neutral_texture_ ||
 		backend_neutral_texture_->params() != offscreen_params) {
 		// The offscreen texture is sized in device pixels so high-DPI widgets
 		// draw one downloaded pixel per device pixel after setDevicePixelRatio().
-		backend_neutral_texture_ = renderer()->create_texture(offscreen_params);
+		oakengine_display_renderer_create_texture(renderer(), &offscreen_params,
+												  nullptr, 0,
+												  &backend_neutral_texture_);
 		backend_neutral_buffer_.resize(
 			texture_width * texture_height *
-			VideoParams::get_bytes_per_pixel(PixelFormat::u8,
-										  VideoParams::k_rgba_channel_count));
+			oakengine_video_params_bytes_per_pixel(0, // PixelFormat::u8
+										  4));
 	}
 
 	if (!backend_neutral_texture_ || backend_neutral_texture_->is_dummy()) {
@@ -1588,12 +1641,13 @@ void ViewerDisplayWidget::draw_backend_neutral(const ColorTransformJob &ctj,
 
 	// Reuse the normal color-management shader path, but render into a texture
 	// instead of an OpenGL widget framebuffer.
-	renderer()->blit_color_managed(local_ctj, backend_neutral_texture_.get());
+	oakengine_display_renderer_blit_color_managed(
+		renderer(), &local_ctj, backend_neutral_texture_.get(), nullptr);
 
-	backend_neutral_texture_->download(backend_neutral_buffer_.data(), 0);
+	oakengine_display_texture_download(backend_neutral_texture_.get(),
+									   backend_neutral_buffer_.data(), 0);
 
-	const int bytes_per_pixel = VideoParams::get_bytes_per_pixel(
-		PixelFormat::u8, VideoParams::k_rgba_channel_count);
+	const int bytes_per_pixel = oakengine_video_params_bytes_per_pixel(0, 4); // u8, RGBA
 
 	QImage img(
 		reinterpret_cast<const uchar *>(backend_neutral_buffer_.constData()),
@@ -1632,10 +1686,7 @@ void ViewerDisplayWidget::play(const int64_t &start_timestamp,
 	playback_timebase_ = timebase;
 	playback_speed_ = playback_speed;
 
-	// The facade playback engine owns the master clock; seed the display
-	// clock with the start timestamp (the ViewerWidget keeps feeding it
-	// from oakengine_playback_get_position afterwards).
-	external_ts_.store(start_timestamp);
+	timer_.start(start_timestamp, playback_speed, timebase.to_double());
 
 	if (start_updating) {
 		connect(this, &ViewerDisplayWidget::frame_swapped, this,
@@ -1649,8 +1700,6 @@ void ViewerDisplayWidget::pause()
 {
 	disconnect(this, &ViewerDisplayWidget::frame_swapped, this,
 			   &ViewerDisplayWidget::update_from_queue);
-
-	external_ts_.store(-1);
 
 	queue_.clear();
 	queue_starved_ = false;
@@ -1667,11 +1716,7 @@ QPointF ViewerDisplayWidget::screen_to_scene_point(const QPoint &p)
 
 void ViewerDisplayWidget::update_from_queue()
 {
-	const int64_t t = external_ts_.load();
-	if (t < 0) {
-		// No facade playback position fed yet.
-		return;
-	}
+	int64_t t = timer_.get_timestamp_now();
 
 	Rational time = Timecode::timestamp_to_time(t, playback_timebase_);
 
@@ -1731,14 +1776,16 @@ void ViewerDisplayWidget::text_edit_changed()
 		editor->property("gizmo").value<quintptr>());
 
 	QString html = Html::doc_to_html(editor->document());
-	gizmo->update_input_html(html, get_gizmo_time());
+	oakengine_text_gizmo_update_html(
+		reinterpret_cast<OakEngineNode *>(gizmos_),
+		html.toUtf8().constData(),
+		get_gizmo_time().numerator(), get_gizmo_time().denominator());
 }
 
 void ViewerDisplayWidget::text_edit_destroyed()
 {
-	TextGizmo *gizmo = reinterpret_cast<TextGizmo *>(
-		sender()->property("gizmo").value<quintptr>());
-	emit gizmo->deactivated();
+	oakengine_text_gizmo_deactivated(
+		reinterpret_cast<OakEngineNode *>(gizmos_));
 	text_edit_ = nullptr;
 	text_toolbar_ = nullptr;
 	inner_widget()->setMouseTracking(false);

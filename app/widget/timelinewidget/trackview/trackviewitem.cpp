@@ -29,6 +29,7 @@
 #include <QtMath>
 
 #include "node/project/sequence/sequence.h"
+#include "oakengine/node.h"
 #include "oakengine/timeline.h"
 #include "ui/icons/icons.h"
 #include "widget/menu/menu.h"
@@ -50,8 +51,10 @@ TrackViewItem::TrackViewItem(Track *track, QWidget *parent)
 	label_ = new ClickableLabel();
 	connect(label_, &ClickableLabel::mouse_double_clicked, this,
 			&TrackViewItem::label_clicked);
-	connect(track_, &Track::label_changed, this, &TrackViewItem::update_label);
-	connect(track_, &Track::index_changed, this, &TrackViewItem::update_label);
+	bridge_.subscribe(reinterpret_cast<OakEngineTrack *>(track_),
+						OAKENGINE_EVENT_TRACK_INDEX_CHANGED);
+	connect(&bridge_, &EngineEventBridge::track_index_changed, this,
+			&TrackViewItem::update_label);
 	update_label();
 	stack_->addWidget(label_);
 
@@ -63,9 +66,17 @@ TrackViewItem::TrackViewItem(Track *track, QWidget *parent)
 	stack_->addWidget(line_edit_);
 
 	mute_button_ = create_msl_button(Qt::red);
-	mute_button_->setChecked(track->is_muted());
-	update_mute_button(track->is_muted());
-	connect(mute_button_, &QPushButton::toggled, track_, &Track::set_muted);
+	mute_button_->setChecked(oakengine_track_is_muted(
+		reinterpret_cast<OakEngineSequence *>(track->sequence()),
+		track->type(), track->index()));
+	update_mute_button(oakengine_track_is_muted(
+		reinterpret_cast<OakEngineSequence *>(track->sequence()),
+		track->type(), track->index()));
+	connect(mute_button_, &QPushButton::toggled, this, [this](bool checked) {
+		oakengine_track_set_muted(
+			reinterpret_cast<OakEngineSequence *>(track_->sequence()),
+			track_->type(), track_->index(), checked);
+	});
 	connect(mute_button_, &QPushButton::toggled, this,
 			&TrackViewItem::update_mute_button);
 	layout->addWidget(mute_button_);
@@ -74,9 +85,17 @@ TrackViewItem::TrackViewItem(Track *track, QWidget *parent)
   layout->addWidget(solo_button_);*/
 
 	lock_button_ = create_msl_button(Qt::gray);
-	lock_button_->setChecked(track->is_locked());
-	update_lock_button(track->is_locked());
-	connect(lock_button_, &QPushButton::toggled, track_, &Track::set_locked);
+	lock_button_->setChecked(oakengine_track_is_locked(
+		reinterpret_cast<OakEngineSequence *>(track->sequence()),
+		track->type(), track->index()));
+	update_lock_button(oakengine_track_is_locked(
+		reinterpret_cast<OakEngineSequence *>(track->sequence()),
+		track->type(), track->index()));
+	connect(lock_button_, &QPushButton::toggled, this, [this](bool checked) {
+		oakengine_track_set_locked(
+			reinterpret_cast<OakEngineSequence *>(track_->sequence()),
+			track_->type(), track_->index(), checked);
+	});
 	connect(lock_button_, &QPushButton::toggled, this,
 			&TrackViewItem::update_lock_button);
 	layout->addWidget(lock_button_);
@@ -84,8 +103,12 @@ TrackViewItem::TrackViewItem(Track *track, QWidget *parent)
 	setMinimumHeight(mute_button_->height());
 	setContextMenuPolicy(Qt::CustomContextMenu);
 
-	connect(track, &Track::muted_changed, mute_button_,
-			&QPushButton::setChecked);
+	bridge_.subscribe(reinterpret_cast<OakEngineTrack *>(track),
+						OAKENGINE_EVENT_TRACK_MUTED_CHANGED);
+	connect(&bridge_, &EngineEventBridge::track_muted_changed, mute_button_,
+			[this](OakEngineTrack *, bool muted) {
+				mute_button_->setChecked(muted);
+			});
 	connect(this, &QWidget::customContextMenuRequested, this,
 			&TrackViewItem::show_context_menu);
 }
@@ -117,7 +140,9 @@ void TrackViewItem::line_edit_confirmed()
 {
 	line_edit_->blockSignals(true);
 
-	track_->set_label(line_edit_->text());
+	oakengine_node_set_label(
+		reinterpret_cast<OakEngineNode *>(track_),
+		line_edit_->text().toUtf8().constData());
 	update_label();
 
 	stack_->setCurrentWidget(label_);
@@ -136,7 +161,18 @@ void TrackViewItem::line_edit_cancelled()
 
 void TrackViewItem::update_label()
 {
-	label_->setText(track_->get_label_or_name());
+	char label_buf[256];
+	oakengine_node_get_label(
+		reinterpret_cast<OakEngineNode *>(track_),
+		label_buf, sizeof(label_buf));
+	if (label_buf[0]) {
+		label_->setText(QString::fromUtf8(label_buf));
+	} else {
+		oakengine_node_get_name(
+			reinterpret_cast<OakEngineNode *>(track_),
+			label_buf, sizeof(label_buf));
+		label_->setText(QString::fromUtf8(label_buf));
+	}
 }
 
 void TrackViewItem::show_context_menu(const QPoint &p)
@@ -158,7 +194,7 @@ void TrackViewItem::show_context_menu(const QPoint &p)
 
 void TrackViewItem::delete_track()
 {
-	emit about_to_delete_track(track_);
+	emit about_to_delete_track(reinterpret_cast<OakEngineTrack *>(track_));
 	// Through the liboakengine C ABI facade (one undoable command, same as
 	// the old TimelineRemoveTrackCommand push).
 	oakengine_sequence_remove_track(

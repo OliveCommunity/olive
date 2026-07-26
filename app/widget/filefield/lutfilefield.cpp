@@ -23,7 +23,7 @@
 #include <QDir>
 #include <QHBoxLayout>
 
-#include "render/lutlibrary.h"
+#include "oakengine/lut.h"
 
 namespace olive
 {
@@ -68,8 +68,28 @@ void LutFileField::refresh_library_entries()
 	library_combo_->clear();
 	library_combo_->addItem(tr("Other (Custom File)..."), QString());
 
-	const QStringList library_dirs = LUTLibrary::get_directories();
-	const QStringList luts = LUTLibrary::get_lut_files();
+	QStringList library_dirs;
+	{
+		int dir_count = oakengine_lut_directory_count();
+		for (int i = 0; i < dir_count; i++) {
+			char buf[4096];
+			int len = oakengine_lut_directory_at(i, buf, sizeof(buf));
+			if (len > 0) {
+				library_dirs.append(QString::fromUtf8(buf, len));
+			}
+		}
+	}
+	QStringList luts;
+	{
+		int file_count = oakengine_lut_file_count();
+		for (int i = 0; i < file_count; i++) {
+			char buf[4096];
+			int len = oakengine_lut_file_at(i, buf, sizeof(buf));
+			if (len > 0) {
+				luts.append(QString::fromUtf8(buf, len));
+			}
+		}
+	}
 	for (const QString &lut : luts) {
 		// Show the path relative to the library directory that contains it
 		QString display = lut;

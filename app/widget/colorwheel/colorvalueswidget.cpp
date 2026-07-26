@@ -25,14 +25,14 @@
 #include <QMouseEvent>
 #include <QTabWidget>
 
-#include "config/config.h"
+#include "common/configwrapper.h"
 #include "core.h"
 #include "ui/icons/icons.h"
 
 namespace olive
 {
 
-ColorValuesWidget::ColorValuesWidget(ColorManager *manager, QWidget *parent)
+ColorValuesWidget::ColorValuesWidget(OakEngineColorManager *manager, QWidget *parent)
 	: QWidget(parent)
 	, manager_(manager)
 	, input_to_ref_(nullptr)
@@ -100,10 +100,10 @@ Color ColorValuesWidget::get_color() const
 	return reference_tab_->get_color();
 }
 
-void ColorValuesWidget::set_color_processor(ColorProcessorPtr input_to_ref,
-										  ColorProcessorPtr ref_to_display,
-										  ColorProcessorPtr display_to_ref,
-										  ColorProcessorPtr ref_to_input)
+void ColorValuesWidget::set_color_processor(ColorProcessorHandlePtr input_to_ref,
+										  ColorProcessorHandlePtr ref_to_display,
+										  ColorProcessorHandlePtr display_to_ref,
+										  ColorProcessorHandlePtr ref_to_input)
 {
 	input_to_ref_ = input_to_ref;
 	ref_to_display_ = ref_to_display;
@@ -200,7 +200,7 @@ void ColorValuesWidget::update_input_from_ref()
 {
 	if (ref_to_input_) {
 		input_tab_->set_color(
-			ref_to_input_->convert_color(reference_tab_->get_color()));
+			oak_convert_color(ref_to_input_, reference_tab_->get_color()));
 	} else {
 		input_tab_->set_color(reference_tab_->get_color());
 	}
@@ -213,7 +213,7 @@ void ColorValuesWidget::update_display_from_ref()
 {
 	if (ref_to_display_) {
 		display_tab_->set_color(
-			ref_to_display_->convert_color(reference_tab_->get_color()));
+			oak_convert_color(ref_to_display_, reference_tab_->get_color()));
 	} else {
 		display_tab_->set_color(reference_tab_->get_color());
 	}
@@ -223,7 +223,7 @@ void ColorValuesWidget::update_ref_from_input()
 {
 	if (input_to_ref_) {
 		reference_tab_->set_color(
-			input_to_ref_->convert_color(input_tab_->get_color()));
+			oak_convert_color(input_to_ref_, input_tab_->get_color()));
 	} else {
 		reference_tab_->set_color(input_tab_->get_color());
 	}
@@ -233,7 +233,7 @@ void ColorValuesWidget::update_ref_from_display()
 {
 	if (display_to_ref_) {
 		reference_tab_->set_color(
-			display_to_ref_->convert_color(display_tab_->get_color()));
+			oak_convert_color(display_to_ref_, display_tab_->get_color()));
 	} else {
 		reference_tab_->set_color(display_tab_->get_color());
 	}

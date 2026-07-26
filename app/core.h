@@ -23,6 +23,11 @@
 #define OAK_CORE_H
 
 #include "coreengine.h"
+#include <QObject>
+#include "oakengine/app.h"
+#include "oakengine/undo.h"
+#include "oakengine/init.h"
+#include "oakengine/task.h"
 
 namespace olive
 {
@@ -32,35 +37,40 @@ class MainWindow;
 /**
  * @brief The main central Olive application instance_
  *
- * This is the UI-facing derivation of EngineCore. It runs both in GUI and
- * CLI modes (and handles what to init based on that). All UI-independent
- * engine state lives in the base class EngineCore; this class adds the main
- * window, dialogs and other user interaction on top of it.
+ * This is the UI-facing application controller. It holds an EngineCore
+ * member for UI-independent engine state and adds the main window, dialogs
+ * and other user interaction on top of it.
+ *
+ * EngineCore is NOT a base class — it is a member, so the MOC-generated
+ * code for Core does not pull in EngineCore's Q_OBJECT symbols.
  *
  * The "public slots" are usually user-triggered actions and can be connected to UI elements (e.g. creating a folder,
  * opening the import dialog, etc.)
  */
-class Core : public EngineCore {
+class Core : public QObject {
 	Q_OBJECT
 public:
 	/**
 	 * @brief Core Constructor
 	 *
-	 * Registers the UI handlers that EngineCore uses to request user
-	 * interaction.
+	 * Creates the EngineCore engine instance and registers the UI handlers
+	 * that the engine uses to request user interaction.
 	 */
-	Core(const CoreParams &params);
+	Core(const OakEngineAppParams *params = nullptr);
+
+	~Core()
+	{
+		instance_ = nullptr;
+	}
 
 	/**
 	 * @brief Core object accessible from anywhere in the code
 	 *
-	 * Use this to access Core functions. This is simply EngineCore::instance()
-	 * cast to Core, which is safe because the application entry point (main())
-	 * always constructs a Core.
+	 * Returns the application Core singleton (no EngineCore::instance() call).
 	 */
 	static Core *instance()
 	{
-		return static_cast<Core *>(EngineCore::instance());
+		return instance_;
 	}
 
 	/**
@@ -113,7 +123,7 @@ public:
 	 * @brief Show a dialog to the user to rename a set of nodes
 	 */
 	bool label_nodes(const QVector<Node *> &nodes,
-					MultiUndoCommand *parent = nullptr);
+					void *parent = nullptr);
 
 	/**
 	 * @brief Opens a project from the recently opened list
@@ -136,6 +146,9 @@ public:
 
 	void open_export_dialog_for_viewer(ViewerOutput *viewer,
 								   bool start_still_image);
+
+	bool add_open_project_from_task(OakEngineTask *task, bool add_to_recents);
+	bool add_recovery_project_from_task(OakEngineTask *task);
 
 public slots:
 	/**
@@ -181,13 +194,6 @@ public slots:
 	void dialog_export_show();
 
 	/**
-	 * @brief Show OTIO import dialog
-	 */
-#ifdef USE_OTIO
-	bool DialogImportOTIOShow(const QList<Sequence *> &sequences);
-#endif
-
-	/**
 	 * @brief Create a new folder in the currently active project
 	 */
 	void create_new_folder();
@@ -200,6 +206,85 @@ public slots:
 	void check_for_auto_recoveries();
 
 	void browse_auto_recoveries();
+
+public:
+	// The following methods are ordinary member functions, NOT slots. They are
+	// deliberately kept out of the `public slots:` section because their
+	// signatures reference engine C++ types (Project*, Sequence*, UndoStack*).
+	// If MOC processed them as slots it would instantiate QMetaType for those
+	// types and pull their staticMetaObject symbols across the ABI boundary.
+	// None of them are connect() targets: every connection involving Core uses
+	// the new-style member-function syntax, which works with plain methods.
+
+	/**
+	 * @brief Show OTIO import dialog
+	 */
+#ifdef USE_OTIO
+	bool DialogImportOTIOShow(const QList<Sequence *> &sequences);
+#endif
+
+	// ---- Facade-wrapping methods (shadow EngineCore to avoid symbol refs) ----
+
+	UndoStack *undo_stack() const;
+
+	Tool::Item tool() const;
+	void set_tool(const Tool::Item &tool);
+
+	bool snapping() const;
+	void set_snapping(const bool &b);
+
+	Timecode::Display get_timecode_display() const;
+	void set_timecode_display(Timecode::Display d);
+
+	void show_status_bar_message(const QString &s, int timeout = 0);
+	void clear_status_bar_message();
+
+	static QString footage_file_dialog_filter();
+	static bool is_footage_extension_allowed(const QString &path);
+
+	void create_new_project();
+	Sequence *create_new_sequence_for_project(const QString &format,
+											 Project *project);
+	static Sequence *create_new_sequence_for_project(Project *project);
+
+	void clear_open_recent_list();
+	void set_use_proxy_media(bool enabled);
+
+	void request_pixel_sampling_in_viewers(bool e);
+
+	Tool::AddableObject get_selected_addable_object() const;
+	void set_selected_addable_object(const Tool::AddableObject &obj);
+	void set_selected_transition_object(const QString &obj);
+
+	static void copy_string_to_clipboard(const QString &s);
+
+	void set_magic(bool e);
+
+	// Recent project list accessors (replaces EngineCore::get_recent_projects())
+	int get_recent_project_count() const;
+	QString get_recent_project_at(int index) const;
+
+	// Facade-wrapping methods (delegate through the C ABI)
+
+	bool set_language(const QString &locale);
+	void set_autorecovery_interval(int minutes);
+
+	void on_project_saved(Project *p);
+	static QString get_auto_recovery_index_filename();
+	void add_open_project(olive::Project *p, bool add_to_recents = false);
+	void remove_recently_opened_project(int index);
+	void set_active_project(Project *p);
+	QString get_selected_transition() const;
+
+signals:
+	// Forwarding signals (shadow EngineCore signals so connect() resolves here)
+	void tool_changed(const Tool::Item &tool);
+	void addable_object_changed(Tool::AddableObject o);
+	void snapping_changed(const bool &b);
+	void timecode_display_changed(Timecode::Display d);
+	void open_recent_list_changed();
+	void color_picker_enabled(bool e);
+	void color_picker_color_emitted(const Color &reference, const Color &display);
 
 private:
 	/**
@@ -242,15 +327,20 @@ private:
 	 */
 	MainWindow *main_window_;
 
-private slots:
-	void project_save_succeeded(Task *task);
+	/**
+	 * @brief Cached Core* singleton
+	 */
+	static Core *instance_;
 
-	bool add_open_project_from_task_and_add_to_recents(Task *task)
+private slots:
+	void project_save_succeeded(OakEngineTask *task);
+
+	bool add_open_project_from_task_and_add_to_recents(OakEngineTask *task)
 	{
-		return add_open_project_from_task(task, true);
+		return instance()->add_open_project_from_task(task, true);
 	}
 
-	void import_task_complete(Task *task);
+	void import_task_complete(OakEngineTask *task);
 
 	bool confirm_image_sequence(const QString &filename);
 

@@ -31,6 +31,8 @@
 namespace olive
 {
 
+class EngineEventBridge;
+
 class AudioWaveformView : public SeekableWidget {
 	Q_OBJECT
 public:
@@ -45,6 +47,12 @@ private:
 	QThreadPool pool_;
 
 	ViewerOutput *playback_;
+
+	// Engine event bridge for the viewer's connected-waveform notification
+	// (facade C ABI); subscription is per-viewer in set_viewer().
+	EngineEventBridge *waveform_bridge_;
+
+	int64_t waveform_subscription_;
 };
 
 }

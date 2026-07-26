@@ -27,9 +27,11 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QVBoxLayout>
+#include <cstring>
 
-#include "config/config.h"
+#include "common/configwrapper.h"
 #include "node/project.h"
+#include "oakengine/project.h"
 
 namespace olive
 {
@@ -42,8 +44,8 @@ ProxyDialog::ProxyDialog(QWidget *parent, const QVector<Footage *> &footage)
 {
 	setWindowTitle(tr("Proxy Settings"));
 
-	const ProxyManager::ProxyParams params =
-		ProxyManager::proxy_params_from_config();
+	oak_proxy_params params;
+	oakengine_proxy_params_from_config(&params);
 
 	QVBoxLayout *layout = new QVBoxLayout(this);
 
@@ -186,9 +188,12 @@ void ProxyDialog::accept()
 	if (!footage_.isEmpty()) {
 		for (Footage *item : footage_) {
 			if (custom_params_checkbox_->isChecked()) {
-				item->set_custom_proxy_params(current_params());
+				oak_proxy_params p = current_params();
+				oakengine_footage_set_custom_proxy_params(
+					reinterpret_cast<OakEngineFootage *>(item), &p);
 			} else {
-				item->clear_custom_proxy_params();
+				oakengine_footage_clear_custom_proxy_params(
+					reinterpret_cast<OakEngineFootage *>(item));
 			}
 		}
 	}
@@ -269,15 +274,18 @@ void ProxyDialog::set_f_fmpeg_path(const QString &path)
 	ffmpeg_path_edit_->setText(path);
 }
 
-ProxyManager::ProxyParams ProxyDialog::current_params() const
+oak_proxy_params ProxyDialog::current_params() const
 {
-	ProxyManager::ProxyParams params = ProxyManager::proxy_params_from_config();
+	oak_proxy_params params;
+	oakengine_proxy_params_from_config(&params);
 	params.width = static_cast<int>(width_slider_->get_value());
 	params.height = static_cast<int>(height_slider_->get_value());
 	params.divider = resolution_combo_->currentData().toInt();
 	params.crf = static_cast<int>(crf_slider_->get_value());
-	params.preset = preset_combo_->currentText();
-	params.include_audio = include_audio_checkbox_->isChecked();
+	strncpy(params.preset, preset_combo_->currentText().toUtf8().constData(),
+			sizeof(params.preset) - 1);
+	params.preset[sizeof(params.preset) - 1] = '\0';
+	params.include_audio = include_audio_checkbox_->isChecked() ? 1 : 0;
 	return params;
 }
 
@@ -302,40 +310,60 @@ void ProxyDialog::refresh_footage_list()
 	for (const Footage *item : footage_) {
 		QTreeWidgetItem *tree_item = new QTreeWidgetItem(footage_tree_);
 		tree_item->setText(0, item->filename());
-		QString state = ProxyManager::proxy_state_to_string(item->proxy_state());
-		if (item->has_custom_proxy_params()) {
-			state = tr("%1 (custom settings)").arg(state);
+		{
+			char state_buf[256];
+			int state_len = oakengine_proxy_state_to_string(
+				item->proxy_state(), state_buf, sizeof(state_buf));
+			QString state = (state_len > 0)
+								? QString::fromUtf8(state_buf, state_len)
+								: QString();
+			if (item->has_custom_proxy_params()) {
+				state = tr("%1 (custom settings)").arg(state);
+			}
+			tree_item->setText(1, state);
 		}
-		tree_item->setText(1, state);
 	}
 }
 
 void ProxyDialog::generate_proxies()
 {
-	if (!ProxyManager::instance()) {
-		qWarning() << "ProxyDialog::GenerateProxies: ProxyManager unavailable";
-		return;
-	}
-
 	for (Footage *item : footage_) {
 		const VideoParams video = item->get_first_enabled_video_stream();
-		if (!video.is_valid()) {
+		oak_video_params _vp;
+		oakengine_viewer_get_first_enabled_video_stream(
+			reinterpret_cast<OakEngineNode *>(item), &_vp);
+		if (!oakengine_video_params_is_valid(&_vp)) {
 			qWarning()
 				<< "ProxyDialog::GenerateProxies: skipping item with no valid video stream"
 				<< item->filename();
 			continue;
 		}
 
-		const ProxyManager::ProxyParams params =
-			custom_params_checkbox_->isChecked() ? current_params()
-												 : item->get_effective_proxy_params();
-		const ProxyManager::Proxy proxy =
-			ProxyManager::instance()->get_or_start_proxy(
-				item->project()->cache_path(), item->filename(),
-				video.stream_index(), params);
-		item->set_proxy(proxy.filename, proxy.state, video.stream_index(),
-					   params.version, true);
-		item->invalidate_all(Footage::k_filename_input);
+		oak_proxy_params params;
+		if (custom_params_checkbox_->isChecked()) {
+			params = current_params();
+		} else {
+			oakengine_footage_get_effective_proxy_params(
+				reinterpret_cast<OakEngineFootage *>(item), &params);
+		}
+		oak_proxy_result proxy;
+		char cache_buf[512];
+		oakengine_project_cache_path(
+			reinterpret_cast<OakEngineProject *>(item->project()),
+			cache_buf, sizeof(cache_buf));
+		int ret = oakengine_proxy_get_or_start(
+			cache_buf,
+			item->filename().toUtf8().constData(),
+			video.stream_index(), &params, &proxy);
+		if (ret != 0) {
+			qWarning() << "ProxyDialog::GenerateProxies: failed to get/start proxy for"
+					   << item->filename();
+			continue;
+		}
+		oakengine_footage_set_proxy(reinterpret_cast<OakEngineFootage *>(item),
+								   proxy.filename, proxy.state,
+								   video.stream_index(), 1, params.version);
+		oakengine_footage_invalidate(reinterpret_cast<OakEngineFootage *>(item));
 	}
 
 	refresh_footage_list();
@@ -349,9 +377,16 @@ void ProxyDialog::delete_proxies()
 		}
 
 		QFile::remove(item->proxy_path());
-		QFile::remove(ProxyManager::get_working_proxy_filename(item->proxy_path()));
-		item->clear_proxy();
-		item->invalidate_all(Footage::k_filename_input);
+		{
+			char wbuf[4096];
+			int wlen = oakengine_proxy_get_working_filename(
+				item->proxy_path().toUtf8().constData(), wbuf, sizeof(wbuf));
+			if (wlen > 0) {
+				QFile::remove(QString::fromUtf8(wbuf, wlen));
+			}
+		}
+		oakengine_footage_clear_proxy(reinterpret_cast<OakEngineFootage *>(item));
+		oakengine_footage_invalidate(reinterpret_cast<OakEngineFootage *>(item));
 	}
 
 	refresh_footage_list();

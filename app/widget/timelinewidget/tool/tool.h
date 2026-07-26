@@ -97,7 +97,7 @@ protected:
 
 	void get_ghost_data(Rational *earliest_point, Rational *latest_point);
 
-	void insert_gaps_at_ghost_destination(MultiUndoCommand *command);
+	void insert_gaps_at_ghost_destination(void *command);
 
 	std::vector<Rational> snap_points_;
 

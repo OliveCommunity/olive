@@ -26,11 +26,13 @@
 
 #include "common/qtutils.h"
 #include "common/range.h"
-#include "config/config.h"
+#include "common/configwrapper.h"
 #include "core.h"
 #include "node/block/gap/gap.h"
 #include "node/block/transition/transition.h"
-#include "node/nodeundo.h"
+#include "oakengine/node.h"
+#include "oakengine/undo.h"
+#include "oakengine/timeline.h"
 #include "pointer.h"
 #include "timeline/timelineundopointer.h"
 #include "widget/timeruler/timeruler.h"
@@ -685,7 +687,7 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 		return;
 	}
 
-	MultiUndoCommand *command = new MultiUndoCommand();
+	void *command = oakengine_undo_command_create_multi();
 
 	if (!blocks_trimming.isEmpty()) {
 		foreach (const GhostBlockPair &p, blocks_trimming) {
@@ -694,18 +696,19 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 			if (!ghost->get_data(TimelineViewGhostItem::k_trim_should_be_ignored)
 					 .toBool()) {
 				// Must be an ordinary trim/roll
-				BlockTrimCommand *c = new BlockTrimCommand(
-					parent()->get_track_from_reference(ghost->get_adjusted_track()),
-					p.block, ghost->get_adjusted_length(), ghost->get_mode());
-
-				if (event->get_modifiers() & Qt::ControlModifier) {
-				}
-
-				c->set_trim_is_a_roll_edit(
-					ghost->get_data(TimelineViewGhostItem::k_trim_is_a_roll_edit)
-						.toBool());
-
-				command->add_child(c);
+				oakengine_undo_command_multi_add_child(
+					command,
+					oakengine_block_trim_command(
+						reinterpret_cast<void *>(
+							parent()->get_track_from_reference(ghost->get_adjusted_track())),
+						reinterpret_cast<void *>(p.block),
+						ghost->get_adjusted_length().numerator(),
+						ghost->get_adjusted_length().denominator(),
+						ghost->get_mode(),
+						ghost->get_data(TimelineViewGhostItem::k_trim_is_a_roll_edit)
+							.toBool()
+							? 1
+							: 0));
 			}
 		}
 
@@ -719,8 +722,7 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 			} else {
 				new_sel.trim_out(reference_ghost->get_out_adjustment());
 			}
-			command->add_child(new TimelineWidget::SetSelectionsCommand(
-				parent(), new_sel, parent()->get_selections()));
+			oakengine_undo_command_multi_add_child(command, parent()->create_set_selections_command(new_sel, parent()->get_selections()));
 		}
 	}
 
@@ -756,20 +758,20 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 				// Duplicate rather than move
 				// Place the copy instead of the original block
 				Block *new_block =
-					static_cast<Block *>(Node::copy_node_in_graph(block, command));
+					reinterpret_cast<Block *>(oakengine_node_copy_in_graph(
+						reinterpret_cast<OakEngineNode*>(block), command));
 				relinks.insert(block, new_block);
 				block = new_block;
 
 				if (ClipBlock *new_clip = dynamic_cast<ClipBlock *>(block)) {
-					new_clip->add_cache_passthrough_from(
-						static_cast<ClipBlock *>(p.block));
+					oakengine_clip_add_cache_passthrough(
+						reinterpret_cast<OakEngineClip *>(new_clip),
+						reinterpret_cast<OakEngineClip *>(p.block));
 				}
 			}
 
 			const Track::Reference &track_ref = p.ghost->get_adjusted_track();
-			command->add_child(new TrackPlaceBlockCommand(
-				sequence()->track_list(track_ref.type()), track_ref.index(),
-				block, p.ghost->get_adjusted_in()));
+			oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(sequence()->track_list(track_ref.type())), track_ref.index(), reinterpret_cast<void *>(block), core::Timecode::time_to_timestamp(p.ghost->get_adjusted_in(), parent()->timebase())));
 		}
 
 		if (!relinks.empty()) {
@@ -780,8 +782,9 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 					Node *link = *jt;
 					Node *copy_link = relinks.value(link);
 					if (copy_link) {
-						command->add_child(
-							new NodeLinkCommand(it.value(), copy_link, true));
+					oakengine_undo_command_multi_add_child(command, (void *)(oakengine_node_link_command(
+								reinterpret_cast<OakEngineNode*>(it.value()),
+								reinterpret_cast<OakEngineNode*>(copy_link), 1)));
 					}
 				}
 
@@ -799,10 +802,13 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 						TransitionBlock *cp_in_transition =
 							static_cast<TransitionBlock *>(
 								relinks.value(og_in_transition));
-						command->add_child(new NodeEdgeAddCommand(
-							cp_clip,
-							NodeInput(cp_in_transition,
-									  TransitionBlock::k_in_block_input)));
+						oakengine_undo_command_multi_add_child(
+							command,
+							oakengine_node_connect_command(
+								reinterpret_cast<OakEngineNode *>(cp_clip),
+								reinterpret_cast<OakEngineNode *>(cp_in_transition),
+								QLatin1String(oakengine_transition_in_block_input_id()).toUtf8().constData(),
+								-1));
 					}
 
 					if (og_out_transition &&
@@ -810,10 +816,13 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 						TransitionBlock *cp_out_transition =
 							static_cast<TransitionBlock *>(
 								relinks.value(og_out_transition));
-						command->add_child(new NodeEdgeAddCommand(
-							cp_clip,
-							NodeInput(cp_out_transition,
-									  TransitionBlock::k_out_block_input)));
+						oakengine_undo_command_multi_add_child(
+							command,
+							oakengine_node_connect_command(
+								reinterpret_cast<OakEngineNode *>(cp_clip),
+								reinterpret_cast<OakEngineNode *>(cp_out_transition),
+								QLatin1String(oakengine_transition_out_block_input_id()).toUtf8().constData(),
+								-1));
 					}
 				}
 			}
@@ -824,8 +833,7 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 		new_sel.shift_time(blocks_moving.first().ghost->get_in_adjustment());
 		new_sel.shift_tracks(drag_track_type_,
 							blocks_moving.first().ghost->get_track_adjustment());
-		command->add_child(new TimelineWidget::SetSelectionsCommand(
-			parent(), new_sel, parent()->get_selections()));
+		oakengine_undo_command_multi_add_child(command, parent()->create_set_selections_command(new_sel, parent()->get_selections()));
 	}
 
 	if (!blocks_sliding.isEmpty()) {
@@ -875,22 +883,31 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 		if (!movement.isNull()) {
 			for (auto i = slide_info.constBegin(); i != slide_info.constEnd();
 				 i++) {
-				command->add_child(new TrackSlideCommand(
-					parent()->get_track_from_reference(i.key()), i.value(),
-					in_adjacents.value(i.key()), out_adjacents.value(i.key()),
-					movement));
+				const QList<Block *> &moving_blocks = i.value();
+				QVector<void *> slide_blocks;
+				slide_blocks.reserve(moving_blocks.size());
+				for (Block *b : moving_blocks) {
+					slide_blocks.append(reinterpret_cast<void *>(b));
+				}
+				oakengine_undo_command_multi_add_child(
+					command,
+					oakengine_track_slide_command(
+						reinterpret_cast<void *>(parent()->get_track_from_reference(i.key())),
+						slide_blocks.constData(), slide_blocks.size(),
+						reinterpret_cast<void *>(in_adjacents.value(i.key())),
+						reinterpret_cast<void *>(out_adjacents.value(i.key())),
+						movement.numerator(), movement.denominator()));
 			}
 
 			// Adjust selections
 			TimelineWidgetSelections new_sel = parent()->get_selections();
 			new_sel.shift_time(movement);
-			command->add_child(new TimelineWidget::SetSelectionsCommand(
-				parent(), new_sel, parent()->get_selections()));
+			oakengine_undo_command_multi_add_child(command, parent()->create_set_selections_command(new_sel, parent()->get_selections()));
 		}
 	}
 
-	Core::instance()->undo_stack()->push(
-		command, qApp->translate("PointerTool", "Moved Clips"));
+	oakengine_undo_push(
+		command, qApp->translate("PointerTool", "Moved Clips").toUtf8().constData());
 }
 
 Timeline::MovementMode PointerTool::is_cursor_in_trim_handle(Block *block,
