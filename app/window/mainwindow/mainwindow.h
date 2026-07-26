@@ -25,6 +25,8 @@
 #include <kddockwidgets/Config.h>
 #include <kddockwidgets/MainWindow.h>
 
+#include <QToolBar>
+
 #include "node/project/serializer/serializedlayoutinfo.h"
 #include "node/project.h"
 #include "panel/multicam/multicampanel.h"
@@ -151,6 +153,9 @@ private:
 									  ProjectPanel *p);
 
 	QByteArray premaximized_state_;
+
+	// Application toolbar (31px, replaces the dockable ToolPanel by default)
+	QToolBar *tool_bar_;
 
 	// Standard panels
 	ProjectPanel *project_panel_;

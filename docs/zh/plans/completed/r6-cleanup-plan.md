@@ -5,7 +5,7 @@
 > **背景**：R5 已把 app 对 engine 的 `olive::` C++ 符号从 557 降到 58，
 > 剩余 58 个以"豁免清单"形式记录在 `c-abi-migration-handoff.md` §6.4。
 > 本计划的目标是把它们**全部消除到 0**——这是后续 engine 模块化拆分
-> 与 Rust 重写（RIIR，见 `plans/riir.md`）的硬前提：C ABI 边界上不能
+> 与 Rust 重写（RIIR，见 `../riir.md`）的硬前提：C ABI 边界上不能
 > 残留任何 C++ 渗漏。
 >
 > **三条红线**（违反即返工）：
@@ -476,7 +476,7 @@ app 侧：`manageddisplay`/`viewerdisplay` 不再 `new OpenGLRenderer`，
    （`grep -rn '#include "' app/ | grep -E '"(node|undo|task|render|timeline|pluginSupport)/'`
    应为空或只剩极个别已论证的）。
 4. `c-abi-migration-handoff.md` §6.4 豁免清单清空（改为"无豁免"），
-   roadmap 补 R6 批次记录，`plans/riir.md` 状态更新为"边界已纯"。
+   roadmap 补 R6 批次记录，`../riir.md` 状态更新为"边界已纯"。
 
 ## 执行顺序与节奏建议
 

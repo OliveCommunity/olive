@@ -89,7 +89,7 @@ ctest --test-dir build --output-on-failure
 - 所有测试必须使用 **Google Test** 编写，
 - 面向引擎代码的 C ABI 边界契约。
 
-更多项目文档：[中文文档目录](./)、[`facade-migration-roadmap.md`](facade-migration-roadmap.md)、[`riir.md`](plans/riir.md)、[`gtest-migration-guide.md`](plans/gtest-migration-guide.md)。
+更多项目文档：[中文文档目录](./)、[`facade-migration-roadmap.md`](plans/completed/facade-migration-roadmap.md)、[`riir.md`](plans/riir.md)、[`gtest-migration-guide.md`](plans/gtest-migration-guide.md)。
 
 ## 许可证
 

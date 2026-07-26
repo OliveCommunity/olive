@@ -22,7 +22,7 @@ oakrender/
 
 ### 2.1 `oakrender/renderer.h`（渲染器/纹理/blit）
 
-签名照 R7-A（`docs/zh/r7-pure-abi-plan.md` §A.2）的 display.h 重写版
+签名照 R7-A（`docs/zh/plans/completed/r7-pure-abi-plan.md` §A.2）的 display.h 重写版
 **原样采用**——R7-A 先做的话，M7 直接把它从 facade 层搬进
 oakrender 并改前缀 `oakrender_display_*`；本表不重复，以 R7-A 为准。
 补充后端管理：

@@ -207,7 +207,7 @@ grep -E '"(node|render|timeline|undo|task|pluginSupport)/'`）。不产生
 1. `display.h` 全文无 C++ 类型签名/契约注释；app 无 TexturePtr/FramePtr。
 2. liboakengine.so ` T _Z` = 0；oak-editor ` U _ZN5olive` 保持 0。
 3. 全量构建 0 error；全量 ctest 绿。
-4. 更新 `plans/riir.md` 状态（边界已纯 → 可进 Step 1 拆分）、
+4. 更新 `../riir.md` 状态（边界已纯 → 可进 Step 1 拆分）、
    `facade-migration-roadmap.md` R7 批次记录。
 5. 向用户报告，由用户宣布进入 riir.md §4 的模块拆分阶段。
 
@@ -225,4 +225,4 @@ grep -E '"(node|render|timeline|undo|task|pluginSupport)/'`）。不产生
 - R7-C（app 的 ~40 个 engine C++ 头清理）未做，转入 riir/ 模块
   拆分阶段顺带处理（M 系列手册的适配头天然覆盖）。
 - 验收：构建 0 error、ctest 45/45、双二进制 nm U _ZN5olive = 0。
-  **RIIR 模块拆分（plans/riir/ M1-M9）解锁。**
+  **RIIR 模块拆分（../riir/ M1-M9）解锁。**

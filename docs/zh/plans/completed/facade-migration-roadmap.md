@@ -309,7 +309,7 @@ set_value_at_time/staticMetaObject）从 inline 函数拉入，进豁免清单�
 
 ### R6：豁免清单清零（58 → 0，100% C ABI）— 完成
 
-> 详见 `docs/zh/r6-cleanup-plan.md`（各 P 节已标 ✅）。目标：把 R5 遗留的
+> 详见 `r6-cleanup-plan.md`（各 P 节已标 ✅）。目标：把 R5 遗留的
 > 58 个豁免符号全部消除到 0，为 engine 模块化拆分与 RIIR 打地基。
 
 - **P1（F 类 facade 补齐，17）**：NodeValue 静态方法、VideoParams 构造器、

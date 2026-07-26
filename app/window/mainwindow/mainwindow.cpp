@@ -25,6 +25,7 @@
 #include <QDebug>
 #include <QMessageBox>
 #include <QScreen>
+#include <QToolBar>
 
 #ifdef Q_OS_LINUX
 #include <QOffscreenSurface>
@@ -43,6 +44,8 @@
 #include "oakengine/undo.h"
 
 #include "widget/viewer/vieweroutpututils.h"
+#include "widget/toolbar/toolbar.h"
+#include "core.h"
 namespace olive
 {
 
@@ -86,6 +89,29 @@ MainWindow::MainWindow(QWidget *parent)
 	connect(status_bar, &MainStatusBar::double_clicked, this,
 			&MainWindow::status_bar_double_clicked);
 	setStatusBar(status_bar);
+
+	// Create application toolbar (31px) — replaces the dockable ToolPanel by default
+	tool_bar_ = new QToolBar(this);
+	tool_bar_->setObjectName(QStringLiteral("AppToolbar"));
+	tool_bar_->setFixedHeight(31);
+	tool_bar_->setMovable(false);
+	tool_bar_->setFloatable(false);
+	Toolbar *toolbar_widget = new Toolbar(tool_bar_);
+	toolbar_widget->set_tool(Core::instance()->tool());
+	toolbar_widget->set_snapping(Core::instance()->snapping());
+	tool_bar_->addWidget(toolbar_widget);
+	addToolBar(Qt::TopToolBarArea, tool_bar_);
+
+	connect(toolbar_widget, &Toolbar::tool_changed, Core::instance(),
+			&Core::set_tool);
+	connect(Core::instance(), &Core::tool_changed, toolbar_widget,
+			&Toolbar::set_tool);
+	connect(toolbar_widget, &Toolbar::snapping_changed, Core::instance(),
+			&Core::set_snapping);
+	connect(Core::instance(), &Core::snapping_changed, toolbar_widget,
+			&Toolbar::set_snapping);
+	connect(toolbar_widget, &Toolbar::selected_transition_changed,
+			Core::instance(), &Core::set_selected_transition_object);
 
 	// Create standard panels
 	node_panel_ = new NodePanel();
@@ -938,22 +964,20 @@ void MainWindow::set_default_layout()
 	// Bottom center - timelines
 	addDockWidget(timeline_panels_.first(), KDDockWidgets::Location_OnBottom);
 
-	// Left of timeline - tool panel
-	o.preferredSize = QSize(1, 0);
-	addDockWidget(tool_panel_, KDDockWidgets::Location_OnLeft,
-				  timeline_panels_.first(), o);
-
 	// Right of timeline - audio monitor
 	o.preferredSize = QSize(320, 0);
 	addDockWidget(audio_monitor_panel_, KDDockWidgets::Location_OnRight,
 				  timeline_panels_.first(), o);
 
-	// Bottom left - project panel
-	addDockWidget(project_panel_, KDDockWidgets::Location_OnLeft, tool_panel_);
+	// Bottom left - project panel (tool panel is now the top toolbar;
+	// the dockable ToolPanel remains available via Window menu)
+	addDockWidget(project_panel_, KDDockWidgets::Location_OnLeft,
+				  timeline_panels_.first());
 	project_panel_->addDockWidgetAsTab(history_panel_);
 	project_panel_->raise();
 
 	// Hidden panels
+	tool_panel_->close();
 	pixel_sampler_panel_->close();
 	task_man_panel_->close();
 	curve_panel_->close();

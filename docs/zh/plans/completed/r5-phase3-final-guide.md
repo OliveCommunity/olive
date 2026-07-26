@@ -1,8 +1,8 @@
 # R5 终局计划：181 → 豁免清单（≤6）
 
 > 面向执行者（DeepSeek Flash），自包含。工作分支：`c-abi-migration`。
-> 前置文档：`../facade-migration-roadmap.md`（批次记录）、
-> `../r5-app-migration-guide.md`（R5 总指引）、`../c-abi-migration-handoff.md`
+> 前置文档：`facade-migration-roadmap.md`（批次记录）、
+> `r5-app-migration-guide.md`（R5 总指引）、`c-abi-migration-handoff.md`
 > （v3，§6.4 豁免清单格式）。本文是 R5 的**最后一个阶段**：
 > 处置当前 WIP → 修完已记录缺陷 → 把剩余 181 个 `olive::` 符号收到豁免清单。
 > 每批闭环：全量构建 0 error + 全量 ctest 绿 + nm 复核 + 立即提交。

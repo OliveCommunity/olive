@@ -102,7 +102,7 @@ UndoCommand(3)。
 4. ✅ 反作弊审计：app 无 `dlfcn.h`/dlsym/QLibrary 解析 engine 符号；
    engine 无 inline 化（oakengine/*.h 纯 C 声明）。
 5. ✅ `facade-migration-roadmap.md` 附 C R6 节已记录；
-   `plans/riir.md` §1.1 状态已更新为"边界已纯"。
+   `../riir.md` §1.1 状态已更新为"边界已纯"。
 
 > 已知遗留（已论证，不泄漏符号）：app 仍 include 约 40 个 engine C++ 头
 > （node/render/timeline/undo/pluginSupport，用于类型与 inline 访问器），

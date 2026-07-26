@@ -120,29 +120,7 @@ else ()
           ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 endif ()
 
-if (OLIVECORE_BUILD_TESTS)
+if (OLIVECORE_BUILD_TESTS AND BUILD_TESTS)
   enable_testing()
-
-  function(make_test name)
-    add_executable(${name}
-      tests/${name}.cpp
-    )
-    target_link_libraries(${name} PRIVATE olivecore)
-    target_include_directories(${name} PRIVATE
-      "${CMAKE_CURRENT_SOURCE_DIR}/include"
-      "${CMAKE_CURRENT_SOURCE_DIR}/include/olive/core"
-    )
-    add_test(${name} ${name})
-  endfunction()
-
-  # Pure C ABI tests for the liboakcore public interface
-  make_test(oakcore_audioparams_test)
-  make_test(oakcore_bezier_test)
-  make_test(oakcore_color_test)
-  make_test(oakcore_fractionutils_test)
-  make_test(oakcore_rational_test)
-  make_test(oakcore_samplebuffer_test)
-  make_test(oakcore_stringutils_test)
-  make_test(oakcore_timecodefunctions_test)
-  make_test(oakcore_timerange_test)
+  add_subdirectory(tests)
 endif()

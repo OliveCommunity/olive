@@ -298,6 +298,20 @@ endif()
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 list(APPEND OLIVE_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/third_party)
 
+# Google Test discovery (shared by core/tests, engine/tests, tests/)
+if (BUILD_TESTS)
+  include(FetchContent)
+  find_package(GTest QUIET)
+  if (NOT GTest_FOUND)
+    FetchContent_Declare(
+      googletest
+      URL https://github.com/google/googletest/archive/refs/tags/v1.15.2.zip
+    )
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+  endif()
+endif()
+
 add_subdirectory(core)
 
 set(KDDockWidgets_STATIC ON CACHE INTERNAL "Force KDDockWidgets to build statically")
