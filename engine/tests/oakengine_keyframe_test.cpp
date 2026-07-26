@@ -562,6 +562,265 @@ static void test_keyframe_properties(OakEngineProject *project,
 			   0.f) == OAKENGINE_E_INVALID);
 }
 
+// Handle-based keyframe family (B8a): enumeration, navigation, handle
+// accessors, live mutation, undoable batch operations, detached
+// create/paste/dispose and the input dragger.
+static void test_handle_family(OakEngineProject *project,
+							   OakEngineNode *opacity)
+{
+	char buf[256];
+	oak_node_value v;
+
+	// Start from a clean, keyframing-enabled, empty input.
+	assert(oakengine_node_keyframes_clear(opacity, "opacity_in") ==
+		   OAKENGINE_OK);
+	assert(oakengine_node_keyframe_count_on_track(opacity, "opacity_in", -1,
+												  0) == 0);
+
+	// Toggle ON at 1s: one keyframe with the current value and best type.
+	assert(oakengine_node_keyframes_toggle_at_time(
+			   opacity, "opacity_in", -1, 1, 1, 1, NULL) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_track_count(opacity, "opacity_in", -1) ==
+		   1);
+	assert(oakengine_node_keyframe_count_on_track(opacity, "opacity_in", -1,
+												  0) == 1);
+	assert(oakengine_node_has_keyframe_at_time(opacity, "opacity_in", -1, 1,
+											   1) == 1);
+	// Toggling on again at the same time is a no-op.
+	assert(oakengine_node_keyframes_toggle_at_time(
+			   opacity, "opacity_in", -1, 1, 1, 1, NULL) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_count_on_track(opacity, "opacity_in", -1,
+												  0) == 1);
+
+	// More keys via toggles for navigation tests.
+	assert(oakengine_node_keyframes_toggle_at_time(
+			   opacity, "opacity_in", -1, 0, 1, 1, NULL) == OAKENGINE_OK);
+	assert(oakengine_node_keyframes_toggle_at_time(
+			   opacity, "opacity_in", -1, 3, 1, 1, NULL) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_count_on_track(opacity, "opacity_in", -1,
+												  0) == 3);
+
+	// Navigation.
+	int64_t num = -1, den = -1;
+	assert(oakengine_node_keyframe_earliest_time(opacity, "opacity_in", -1,
+												 &num, &den) == 1);
+	assert(num == 0 && den == 1);
+	assert(oakengine_node_keyframe_latest_time(opacity, "opacity_in", -1,
+											   &num, &den) == 1);
+	assert(num == 3 && den == 1);
+	assert(oakengine_node_keyframe_closest_time_before(
+			   opacity, "opacity_in", -1, 2, 1, &num, &den) == 1);
+	assert(num == 1 && den == 1);
+	assert(oakengine_node_keyframe_closest_time_after(
+			   opacity, "opacity_in", -1, 2, 1, &num, &den) == 1);
+	assert(num == 3 && den == 1);
+	assert(oakengine_node_keyframe_closest_time_before(
+			   opacity, "opacity_in", -1, 0, 1, &num, &den) == 0);
+	assert(oakengine_node_keyframe_closest_time_after(
+			   opacity, "opacity_in", -1, 3, 1, &num, &den) == 0);
+
+	// Handle lookup: on-track enumeration, at-time lookup, and the batch
+	// at-time query all agree.
+	OakEngineKeyframe *k0 =
+		oakengine_node_keyframe_handle_on_track(opacity, "opacity_in", -1, 0, 0);
+	OakEngineKeyframe *k1 =
+		oakengine_node_keyframe_handle_on_track(opacity, "opacity_in", -1, 0, 1);
+	assert(k0 != NULL && k1 != NULL && k0 != k1);
+	assert(oakengine_node_keyframe_handle_on_track(opacity, "opacity_in", -1,
+												   0, 3) == NULL);
+	assert(oakengine_node_keyframe_handle_on_track(opacity, "opacity_in", -1,
+												   1, 0) == NULL);
+	assert(oakengine_node_keyframe_handle_at_time(opacity, "opacity_in", -1,
+												  0, 0, 1) == k0);
+	assert(oakengine_node_keyframe_handle_at_time(opacity, "opacity_in", -1,
+												  0, 1, 1) == k1);
+	assert(oakengine_node_keyframe_handle_at_time(opacity, "opacity_in", -1,
+												  0, 2, 1) == NULL);
+	OakEngineKeyframe *at[4] = { NULL, NULL, NULL, NULL };
+	assert(oakengine_node_keyframes_at_time(opacity, "opacity_in", -1, 1, 1,
+											at, 4) == 1);
+	assert(at[0] == k1);
+
+	// Handle accessors.
+	assert(oakengine_keyframe_get_time(k1, &num, &den) == OAKENGINE_OK);
+	assert(num == 1 && den == 1);
+	assert(oakengine_keyframe_get_input_id(k1, buf, sizeof(buf)) > 0);
+	assert(strcmp(buf, "opacity_in") == 0);
+	assert(oakengine_keyframe_get_track(k1) == 0);
+	assert(oakengine_keyframe_get_element(k1) == -1);
+	assert(oakengine_keyframe_get_node(k1) == opacity);
+	assert(oakengine_keyframe_get_type(k1) >= 0);
+	assert(oakengine_keyframe_default_type() >= 0);
+	assert(oakengine_keyframe_get_value(k1, &v) == OAKENGINE_OK);
+	assert(v.type == OAK_NODE_VALUE_FLOAT);
+	// Sibling check: a key at 0s sees the key at 1s and vice versa.
+	assert(oakengine_keyframe_has_sibling_at_time(k0, 1, 1) == 1);
+	assert(oakengine_keyframe_has_sibling_at_time(k0, 0, 1) == 0);
+	// NULL safety.
+	assert(oakengine_keyframe_get_time(NULL, &num, &den) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_keyframe_get_type(NULL) == -1);
+	assert(oakengine_keyframe_get_node(NULL) == NULL);
+	assert(oakengine_keyframe_get_track(NULL) == -1);
+	assert(oakengine_keyframe_has_sibling_at_time(NULL, 1, 1) == 0);
+
+	// Bezier points: set easing through the existing API, then live-move a
+	// handle (no undo entry) and read it back raw and valid.
+	assert(oakengine_node_keyframe_add(opacity, "opacity_in", 45, &v, 1,
+									   0.1f, 0.2f, 0.3f,
+									   0.4f) == OAKENGINE_OK);
+	assert(oakengine_keyframe_set_bezier_point_live(k1, 0, 0.11, 0.22) ==
+		   OAKENGINE_OK);
+	double x = 0, y = 0;
+	assert(oakengine_keyframe_get_bezier_point(k1, 0, &x, &y) ==
+		   OAKENGINE_OK);
+	assert(fabs(x - 0.11) < 1e-9 && fabs(y - 0.22) < 1e-9);
+	assert(oakengine_keyframe_get_valid_bezier_point(k1, 0, &x, &y) ==
+		   OAKENGINE_OK);
+	assert(oakengine_keyframe_get_bezier_point(k1, 2, &x, &y) ==
+		   OAKENGINE_E_INVALID);
+	// The live move pushed no undo entry of its own: undoing pops the add.
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_count_on_track(opacity, "opacity_in", -1,
+												  0) == 3);
+
+	// Live value/time mutation.
+	assert(oakengine_keyframe_set_value_live(k1, &v) == OAKENGINE_OK);
+	oak_node_value readback;
+	assert(oakengine_keyframe_get_value(k1, &readback) == OAKENGINE_OK);
+	assert(fabs(readback.f[0] - v.f[0]) < 1e-9);
+	assert(oakengine_keyframe_set_time_live(k1, 2, 1) == OAKENGINE_OK);
+	assert(oakengine_node_has_keyframe_at_time(opacity, "opacity_in", -1, 2,
+											   1) == 1);
+	assert(oakengine_keyframe_set_time_live(k1, 1, 1) == OAKENGINE_OK);
+
+	// remove_many: delete the keys at 0s and 3s as ONE undoable command.
+	OakEngineKeyframe *victims[2] = { k0, oakengine_node_keyframe_handle_at_time(
+											opacity, "opacity_in", -1, 0, 3,
+											1) };
+	assert(victims[1] != NULL);
+	assert(oakengine_keyframes_remove_many(victims, 2, NULL) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_count_on_track(opacity, "opacity_in", -1,
+												  0) == 1);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_count_on_track(opacity, "opacity_in", -1,
+												  0) == 3);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_count_on_track(opacity, "opacity_in", -1,
+												  0) == 1);
+	// NULL entries are refused and nothing is pushed.
+	OakEngineKeyframe *with_null[2] = { k1, NULL };
+	assert(oakengine_keyframes_remove_many(with_null, 2, NULL) ==
+		   OAKENGINE_E_INVALID);
+
+	// Detached create + paste as ONE undoable command, then dispose.
+	memset(&v, 0, sizeof(v));
+	v.type = OAK_NODE_VALUE_FLOAT;
+	v.f[0] = 0.33;
+	OakEngineKeyframe *detached1 = oakengine_keyframe_create(
+		opacity, "opacity_in", -1, 0, 5, 1, &v, 0);
+	OakEngineKeyframe *detached2 = oakengine_keyframe_create(
+		opacity, "opacity_in", -1, 0, 6, 1, &v, 0);
+	OakEngineKeyframe *detached3 = oakengine_keyframe_create(
+		opacity, "opacity_in", -1, 0, 7, 1, &v, 0);
+	assert(detached1 != NULL && detached2 != NULL && detached3 != NULL);
+	assert(oakengine_keyframe_create(opacity, "no_such", -1, 0, 5, 1, &v,
+									 0) == NULL);
+	v.f[0] = 1.5;
+	OakEngineKeyframe *both[2] = { detached1, detached2 };
+	assert(oakengine_node_keyframes_paste(opacity, both, 2, NULL) ==
+		   OAKENGINE_OK);
+	assert(oakengine_node_keyframe_count_on_track(opacity, "opacity_in", -1,
+												  0) == 3);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_count_on_track(opacity, "opacity_in", -1,
+												  0) == 1);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_count_on_track(opacity, "opacity_in", -1,
+												  0) == 3);
+	oakengine_keyframe_dispose(detached3);
+	oakengine_keyframe_dispose(NULL); // no-op
+
+	// Toggle OFF the key at 1s: removed, single-track standard value fix-up.
+	assert(oakengine_node_keyframes_toggle_at_time(
+			   opacity, "opacity_in", -1, 1, 1, 0, NULL) == OAKENGINE_OK);
+	assert(oakengine_node_has_keyframe_at_time(opacity, "opacity_in", -1, 1,
+											   1) == 0);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_node_has_keyframe_at_time(opacity, "opacity_in", -1, 1,
+											   1) == 1);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+
+	// Disable keyframing entirely: all keys gone, keyframing flag off.
+	assert(oakengine_node_set_input_keyframing(opacity, "opacity_in", -1, 0,
+											   1, 1, NULL) == OAKENGINE_OK);
+	assert(oakengine_node_input_is_keyframed(opacity, "opacity_in") == 0);
+	assert(oakengine_node_keyframe_count_on_track(opacity, "opacity_in", -1,
+												  0) == 0);
+	// Re-enable through the facade: one default-type key per track.
+	assert(oakengine_node_set_input_keyframing(opacity, "opacity_in", -1, 1,
+											   1, 1, NULL) == OAKENGINE_OK);
+	assert(oakengine_node_input_is_keyframed_ex(opacity, "opacity_in", -1) ==
+		   1);
+	assert(oakengine_node_keyframe_count_on_track(opacity, "opacity_in", -1,
+												  0) == 1);
+	OakEngineKeyframe *sole = oakengine_node_keyframe_handle_on_track(
+		opacity, "opacity_in", -1, 0, 0);
+	assert(oakengine_keyframe_get_type(sole) ==
+		   oakengine_keyframe_default_type());
+	// Redundant enable is a no-op success.
+	assert(oakengine_node_set_input_keyframing(opacity, "opacity_in", -1, 1,
+											   1, 1, NULL) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_count_on_track(opacity, "opacity_in", -1,
+												  0) == 1);
+	// Undo both steps back to keyframing disabled, then redo to enabled.
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_node_input_is_keyframed(opacity, "opacity_in") == 0);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	assert(oakengine_node_input_is_keyframed(opacity, "opacity_in") == 1);
+
+	// Input dragger: start creates a key at the drag time, drag live-sets,
+	// end pushes ONE undoable command.
+	OakEngineNodeDragger *dragger =
+		oakengine_dragger_create(opacity, "opacity_in", -1, 0);
+	assert(dragger != NULL);
+	assert(oakengine_dragger_create(opacity, "no_such", -1, 0) == NULL);
+	assert(oakengine_dragger_is_started(dragger) == 0);
+	assert(oakengine_dragger_end(dragger, NULL) == OAKENGINE_E_STATE);
+	const int keys_before =
+		oakengine_node_keyframe_count_on_track(opacity, "opacity_in", -1, 0);
+	assert(oakengine_dragger_start(dragger, 4, 1, 1) == OAKENGINE_OK);
+	assert(oakengine_dragger_is_started(dragger) == 1);
+	assert(oakengine_dragger_start(dragger, 4, 1, 1) == OAKENGINE_E_STATE);
+	oak_node_value drag_value;
+	memset(&drag_value, 0, sizeof(drag_value));
+	drag_value.type = OAK_NODE_VALUE_FLOAT;
+	drag_value.f[0] = 0.9;
+	assert(oakengine_dragger_drag(dragger, &drag_value) == OAKENGINE_OK);
+	oak_node_value at_time;
+	assert(oakengine_node_get_input_at_time(opacity, "opacity_in", -1, 0, 4,
+											1, &at_time) == OAKENGINE_OK);
+	assert(fabs(at_time.f[0] - 0.9) < 1e-9);
+	assert(oakengine_dragger_end(dragger, "Drag Opacity") == OAKENGINE_OK);
+	assert(oakengine_dragger_is_started(dragger) == 0);
+	assert(oakengine_node_keyframe_count_on_track(opacity, "opacity_in", -1,
+												  0) ==
+		   keys_before + 1);
+	// The whole drag (created key + value) unwinds with one undo.
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_node_keyframe_count_on_track(opacity, "opacity_in", -1,
+												  0) == keys_before);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	oakengine_dragger_free(dragger);
+	oakengine_dragger_free(NULL);
+
+	// Clean up for later tests.
+	assert(oakengine_node_keyframes_clear(opacity, "opacity_in") ==
+		   OAKENGINE_OK);
+}
+
 int main(void)
 {
 	make_tmpdir();
@@ -597,6 +856,7 @@ int main(void)
 	test_rational_and_color(project, timeremap, solid);
 	test_panel_paths(project, opacity, solid);
 	test_keyframe_properties(project, opacity);
+	test_handle_family(project, opacity);
 
 	oakengine_project_free(project);
 	assert(oakengine_shutdown() == OAKENGINE_OK);

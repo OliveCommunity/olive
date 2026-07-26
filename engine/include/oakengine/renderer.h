@@ -88,6 +88,45 @@ typedef struct OakEngineFrame OakEngineFrame;
 typedef struct OakEngineAudioBuffer OakEngineAudioBuffer;
 
 /**
+ * @brief Set aggressive garbage collection on the render manager
+ * (RenderManager::set_aggressive_garbage_collection()). Returns
+ * OAKENGINE_E_STATE when the render manager is not available.
+ */
+OAKENGINE_API int
+oakengine_render_manager_set_aggressive_garbage_collection(int aggressive);
+
+/**
+ * @brief The render backend that was requested (RenderManager::requested_backend()).
+ * Returns 0 (k_open_gl) when the render manager is not available.
+ */
+OAKENGINE_API int oakengine_render_manager_requested_backend(void);
+
+/**
+ * @brief Convert a render backend enum value to a human-readable string
+ * (RenderManager::backend_to_string()). buf/size convention. Returns the
+ * would-be length or a negative error code.
+ */
+OAKENGINE_API int oakengine_render_manager_backend_to_string(int backend,
+															 char *buf,
+															 int buf_size);
+
+/**
+ * @brief Set the display color processor on the render manager's cacher.
+ * `processor` is a borrowed OakEngineColorProcessor handle (NULL to clear).
+ * Returns OAKENGINE_OK or OAKENGINE_E_STATE.
+ */
+OAKENGINE_API int oakengine_render_cache_set_display_color_processor(
+	void *processor);
+
+/**
+ * @brief Set the multicam node on the render manager's cacher.
+ * `node` is a borrowed OakEngineNode handle (NULL to clear).
+ * Returns OAKENGINE_OK or OAKENGINE_E_STATE.
+ */
+OAKENGINE_API int oakengine_render_cache_set_multicam_node(
+	OakEngineNode *node);
+
+/**
  * @brief Create a renderer for `seq` producing `width`x`height` frames of
  * `pixel_format` at the given frame rate.
  *

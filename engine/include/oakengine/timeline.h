@@ -302,6 +302,48 @@ OAKENGINE_API int oakengine_sequence_marker_at(const OakEngineSequence *self,
 typedef struct OakEngineClip OakEngineClip;
 
 /**
+ * @brief Opaque marker list handle (olive::TimelineMarkerList).
+ *
+ * Borrowed from oakengine_viewer_get_marker_list(). Invalidated when the
+ * owning viewer is freed.
+ */
+typedef struct OakEngineMarkerList OakEngineMarkerList;
+
+/**
+ * @brief Opaque marker handle (olive::TimelineMarker).
+ *
+ * Borrowed from oakengine_marker_list_at() / oakengine_marker_list_marker_at_time().
+ * Invalidated when the owning project is freed.
+ */
+typedef struct OakEngineMarker OakEngineMarker;
+
+/**
+ * @brief Opaque workarea handle (olive::TimelineWorkArea).
+ *
+ * Borrowed from oakengine_viewer_get_workarea_handle() or created standalone
+ * with oakengine_workarea_create(). Must be freed with oakengine_workarea_free()
+ * when created standalone; borrowed handles are invalidated with their owner.
+ */
+typedef struct OakEngineWorkarea OakEngineWorkarea;
+
+/**
+ * @brief Opaque track handle (olive::Track).
+ *
+ * Borrowed from oakengine_sequence_track_at(). Invalidated when the owning
+ * sequence is freed.
+ */
+typedef struct OakEngineTrack OakEngineTrack;
+
+/**
+ * @brief Opaque block handle (olive::Block).
+ *
+ * A generic block on a track (ClipBlock, GapBlock, TransitionBlock, etc).
+ * Borrowed from events or cast from OakEngineClip* / OakEngineTrack*. The
+ * handle is invalidated when the owning project is freed.
+ */
+typedef struct OakEngineBlock OakEngineBlock;
+
+/**
  * @brief Human-readable reason for the last failed editing call on this
  * thread (buf/size convention). Editing calls return NULL or a negative
  * OAKENGINE_E_* code; the text explains why.
@@ -321,6 +363,41 @@ OAKENGINE_API int oakengine_sequence_last_error(char *buf, int buf_size);
  */
 OAKENGINE_API int oakengine_sequence_add_track(OakEngineSequence *self,
 											   int track_type);
+
+/**
+ * @brief Create a TimelineAddTrackCommand as an opaque command pointer without
+ * executing or pushing it. If `out_track` is non-NULL, it receives a borrowed
+ * handle to the track that the command will create on redo.
+ */
+OAKENGINE_API void *oakengine_sequence_add_track_command(
+	OakEngineSequence *self, int track_type, int auto_merge,
+	OakEngineTrack **out_track);
+
+/** Movement modes for ripple/trim commands (mirror olive::Timeline::MovementMode). */
+#define OAKENGINE_MOVEMENT_MODE_NONE 0
+#define OAKENGINE_MOVEMENT_MODE_MOVE 1
+#define OAKENGINE_MOVEMENT_MODE_TRIM_IN 2
+#define OAKENGINE_MOVEMENT_MODE_TRIM_OUT 3
+
+/**
+ * @brief One entry in a TrackListRippleToolCommand hash: the track to ripple,
+ * the block being moved, and whether a gap should be appended after it.
+ */
+typedef struct oakengine_ripple_info {
+	OakEngineTrack *track;
+	OakEngineBlock *block;
+	int append_gap;
+} oakengine_ripple_info;
+
+/**
+ * @brief Create a TrackListRippleToolCommand as an opaque command pointer.
+ * `infos` holds one entry per affected track; `movement` is a rational offset
+ * in seconds. Returns NULL on invalid arguments.
+ */
+OAKENGINE_API void *oakengine_sequence_ripple_tracks_command(
+	OakEngineSequence *self, int track_type,
+	const oakengine_ripple_info *infos, int info_count,
+	int64_t movement_num, int64_t movement_den, int movement_mode);
 
 /**
  * @brief Place a clip of `footage` on a track (undoable).
@@ -373,6 +450,15 @@ OAKENGINE_API OakEngineClip *oakengine_sequence_clip_at(
 OAKENGINE_API int oakengine_clip_get_range(const OakEngineClip *self,
 										   int64_t *in, int64_t *out,
 										   int64_t *media_in);
+
+/**
+ * @brief The sequence that owns the clip's track.
+ *
+ * Returns a borrowed handle (the clip's track's parent sequence) or NULL if
+ * the clip is not on a track.
+ */
+OAKENGINE_API OakEngineSequence *oakengine_clip_get_sequence(
+	const OakEngineClip *self);
 
 /* ---- Editing primitives, round 2: split / ripple delete / trim / move ----
  *
@@ -711,6 +797,384 @@ OAKENGINE_API int oakengine_sequence_marker_remove(OakEngineSequence *seq,
 OAKENGINE_API int oakengine_sequence_marker_rename(OakEngineSequence *seq,
 												   int64_t time_ts,
 												   const char *name);
+
+/* ---- Marker handle family ----------------------------------------------------
+ *
+ * Marker list and individual marker operations on opaque handles. The list
+ * is obtained from oakengine_viewer_get_marker_list() (declared in viewer.h).
+ * These functions operate on the handle level rather than through the sequence,
+ * for fine-grained undo/redo and direct marker manipulation.
+ *
+ * All times are rational seconds (numerator/denominator pairs) matching the
+ * engine's internal time representation.
+ */
+
+/** @brief Number of markers in the list. 0 on a NULL handle. */
+OAKENGINE_API int oakengine_marker_list_count(const OakEngineMarkerList *list);
+
+/** @brief Add a marker with the given rational time range, name, and color.
+ *  Returns OAKENGINE_OK or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_marker_list_add(OakEngineMarkerList *list,
+											int64_t in_num, int64_t in_den,
+											int64_t out_num, int64_t out_den,
+											const char *name, int color);
+
+/**
+ * @brief Create a detached marker (not yet added to any list).
+ *
+ * The returned handle can be passed to MarkerPropertiesDialog, then either
+ * added with oakengine_marker_list_add_existing() or freed with
+ * oakengine_marker_free().
+ */
+OAKENGINE_API OakEngineMarker *oakengine_marker_create(
+	int color, int64_t in_num, int64_t in_den, int64_t out_num, int64_t out_den,
+	const char *name);
+
+/** @brief Free a detached marker created by oakengine_marker_create(). */
+OAKENGINE_API void oakengine_marker_free(OakEngineMarker *marker);
+
+/** @brief Re-add an existing (removed) marker to the list. Returns
+ *  OAKENGINE_OK or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_marker_list_add_existing(OakEngineMarkerList *list,
+													 OakEngineMarker *marker);
+
+/** @brief Marker at the given sorted index, or NULL if out of range. */
+OAKENGINE_API OakEngineMarker *
+oakengine_marker_list_at(const OakEngineMarkerList *list, int index);
+
+/** @brief Find a marker by its exact in-point time (rational seconds).
+ *  Returns the marker or NULL if not found. */
+OAKENGINE_API OakEngineMarker *
+oakengine_marker_list_marker_at_time(const OakEngineMarkerList *list,
+									 int64_t num, int64_t den);
+
+/** @brief Get the marker's time range as rational seconds. Any pointer
+ *  may be NULL. Returns OAKENGINE_OK or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_marker_get_time(const OakEngineMarker *self,
+											int64_t *in_num, int64_t *in_den,
+											int64_t *out_num,
+											int64_t *out_den);
+
+/** @brief Get the marker's name (buf/size convention). Returns the
+ *  would-be length (excluding NUL) or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_marker_get_name(const OakEngineMarker *self,
+											char *buf, int buf_size);
+
+/** @brief Get the marker's color index. Returns -1 on a NULL handle. */
+OAKENGINE_API int oakengine_marker_get_color(const OakEngineMarker *self);
+
+/** @brief 1 if the marker list has another marker at the given rational
+ *  time, 0 otherwise. 0 on a NULL marker handle. */
+OAKENGINE_API int
+oakengine_marker_has_sibling_at_time(const OakEngineMarker *self, int64_t num,
+									 int64_t den);
+
+/** @brief Set the marker's time range live (non-undoable). Returns
+ *  OAKENGINE_OK or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_marker_set_time_live(OakEngineMarker *self,
+												 int64_t in_num,
+												 int64_t in_den,
+												 int64_t out_num,
+												 int64_t out_den);
+
+/** @brief Commit a time change as an undoable command (undo restores the
+ *  pre-commit state). Returns OAKENGINE_OK or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_marker_commit_time(
+	OakEngineMarker *self, int64_t old_in_num, int64_t old_in_den,
+	int64_t old_out_num, int64_t old_out_den, int64_t new_in_num,
+	int64_t new_in_den, int64_t new_out_num, int64_t new_out_den,
+	void *command);
+
+/**
+ * @brief Create a MarkerChangeTimeCommand as an opaque command pointer.
+ * `new_time_num`/`new_time_den` is the new in-point in rational seconds;
+ * the marker's out-point offset is preserved.
+ */
+OAKENGINE_API void *oakengine_marker_set_time_command(
+	OakEngineMarker *marker, int64_t new_time_num, int64_t new_time_den);
+
+/** @brief Remove the marker from its list (undoable). Returns
+ *  OAKENGINE_OK or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_marker_remove(OakEngineMarker *self);
+
+/** @brief Batch-set properties on one or more markers (undoable, ONE
+ *  command). Pass -1 for color to leave it unchanged; pass NULL for name
+ *  to leave it unchanged. When `count` == 1, optionally move the marker's
+ *  time range. Returns OAKENGINE_OK or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_marker_set_properties(
+	OakEngineMarker **markers, int count, int color, const char *name,
+	int move_time, int64_t new_in_num, int64_t new_in_den,
+	int64_t new_out_num, int64_t new_out_den, void *command);
+
+/* ---- Workarea handle family ---------------------------------------------------
+ *
+ * Workarea operations on opaque OakEngineWorkarea handles. Create with
+ * oakengine_workarea_create() or borrow from a viewer with
+ * oakengine_viewer_get_workarea_handle(). Standalone workareas must be
+ * freed with oakengine_workarea_free(). All times are rational seconds.
+ */
+
+/** @brief Create a standalone workarea (caller owns it). */
+OAKENGINE_API OakEngineWorkarea *oakengine_workarea_create(void);
+
+/** @brief Free a standalone workarea. NULL-safe. */
+OAKENGINE_API void oakengine_workarea_free(OakEngineWorkarea *wa);
+
+/** @brief Read the workarea state. Any pointer may be NULL. Returns
+ *  OAKENGINE_OK or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_workarea_get(const OakEngineWorkarea *self,
+										 int64_t *in_num, int64_t *in_den,
+										 int64_t *out_num, int64_t *out_den,
+										 int *enabled);
+
+/** @brief Set the workarea range (non-undoable). Returns OAKENGINE_OK or
+ *  OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_workarea_set_range(OakEngineWorkarea *self,
+											   int64_t in_num, int64_t in_den,
+											   int64_t out_num, int64_t out_den);
+
+/** @brief Enable/disable the workarea (non-undoable). Returns
+ *  OAKENGINE_OK or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_workarea_set_enabled(OakEngineWorkarea *self,
+												 int enabled);
+
+/** @brief Set the workarea range with undo support. Pass the reset
+ *  sentinels (from oakengine_workarea_reset_in_out()) for the old range
+ *  when creating fresh. Returns OAKENGINE_OK or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_workarea_set_range_undoable(
+	OakEngineWorkarea *self, int64_t in_num, int64_t in_den, int64_t out_num,
+	int64_t out_den, int64_t old_in_num, int64_t old_in_den,
+	int64_t old_out_num, int64_t old_out_den, void *command);
+
+/** @brief Enable/disable the workarea with undo support. Pass NULL for
+ *  command (creates a standalone undo command that is pushed onto the
+ *  global stack when the workarea has an owning project). Returns
+ *  OAKENGINE_OK or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_workarea_set_enabled_undoable(
+	OakEngineWorkarea *self, int enabled, void *command);
+
+/** @brief Fill the reset sentinel values (in = 0/1, out = RATIONAL_MAX).
+ *  Any pointer may be NULL. */
+OAKENGINE_API void oakengine_workarea_reset_in_out(int64_t *in_num,
+												   int64_t *in_den,
+												   int64_t *out_num,
+												   int64_t *out_den);
+
+/* ---- Clip media range / cache / media in --------------------------------- */
+
+/** @brief Get the clip's media range as rational seconds
+ *  (ClipBlock::media_range()). Any pointer may be NULL. Returns
+ *  OAKENGINE_OK or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_clip_get_media_range_rational(
+	const OakEngineClip *self, int64_t *in_num, int64_t *in_den,
+	int64_t *out_num, int64_t *out_den);
+
+/** @brief Get the clip's media in-point as rational seconds
+ *  (ClipBlock::media_in()). Any pointer may be NULL. Returns OAKENGINE_OK
+ *  or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_clip_get_media_in_rational(
+	const OakEngineClip *self, int64_t *num, int64_t *den);
+
+/** @brief Move the clip's media in-point (undoable when undoable != 0,
+ *  else direct). Returns OAKENGINE_OK or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_clip_set_media_in(OakEngineClip *self,
+											  int64_t media_in_ts,
+											  int undoable);
+
+/** @brief Move the clip's media in-point as a rational seconds value
+ *  (undoable when undoable != 0, else direct). This variant does not
+ *  require the clip to be on a track yet. Returns OAKENGINE_OK or
+ *  OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_clip_set_media_in_rational(OakEngineClip *self,
+													   int64_t num,
+													   int64_t den,
+													   int undoable);
+
+/** @brief Request invalidation of the cache for the given range. NULL-safe
+ *  (no-op). */
+OAKENGINE_API void oakengine_clip_request_invalidate(OakEngineClip *self,
+													 int64_t in_ts,
+													 int64_t out_ts,
+													 int type);
+
+/** @brief Add a cache passthrough dependency (copy results from `source`
+ *  to `dest`). NULL-safe (no-op). */
+OAKENGINE_API void oakengine_clip_add_cache_passthrough(
+	OakEngineClip *dest, OakEngineClip *source);
+
+/** @brief Discard the clip's cache. NULL-safe (no-op). */
+OAKENGINE_API void oakengine_clip_discard_cache(OakEngineClip *self);
+
+/** @brief Create a new empty ClipBlock. The caller owns the returned node
+ *  and must add it to a project (e.g. via oakengine_project_add_node or a
+ *  custom undo command) before the engine can manage its lifecycle. The
+ *  optional `label` sets the node's user label (Node::set_label()). */
+OAKENGINE_API OakEngineClip *oakengine_clip_create_empty(const char *label);
+
+/** @brief Request invalidated cache ranges from the node connected to the
+ *  clip's buffer input (ClipBlock::request_invalidated_from_connected()).
+ *  Pass in_den == 0 or out_den == 0 to intersect the full media range. */
+OAKENGINE_API void oakengine_clip_request_invalidate_connected(
+		OakEngineClip *self, int force_all, int64_t in_num, int64_t in_den,
+		int64_t out_num, int64_t out_den);
+
+/* ---- Block functions (generic block, not just ClipBlock) ------------------ */
+
+/** @brief 1 if the block is enabled (Block::is_enabled()). 0 on NULL. */
+OAKENGINE_API int oakengine_block_is_enabled(const OakEngineBlock *self);
+
+/** @brief Enable or disable the block (undoable). Returns OAKENGINE_OK
+ *  or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_block_set_enabled(OakEngineBlock *self,
+											  int enabled);
+
+/* ---- Block traversal -------------------------------------------------------- */
+
+/** @brief Number of blocks (including gaps) on the track. Returns
+ *  OAKENGINE_E_INVALID for a NULL handle. */
+OAKENGINE_API int oakengine_track_block_count(const OakEngineTrack *track);
+
+/** @brief The block at `index` on the track (0-based, includes gaps).
+ *  Returns NULL when out of range or on a NULL handle. */
+OAKENGINE_API OakEngineBlock *
+oakengine_track_block_at(const OakEngineTrack *track, int index);
+
+/** @brief The block at the given timestamp, or NULL if the time falls in
+ *  a gap or past the end. Timestamp is in the track's sequence timebase. */
+OAKENGINE_API OakEngineBlock *
+oakengine_track_block_at_time(const OakEngineTrack *track, int64_t timestamp);
+
+/** @brief Nearest block whose out-point is strictly before `timestamp`.
+ *  Returns NULL when none. */
+OAKENGINE_API OakEngineBlock *
+oakengine_track_nearest_block_before(const OakEngineTrack *track,
+									 int64_t timestamp);
+
+/** @brief Nearest block whose in-point is strictly after `timestamp`.
+ *  Returns NULL when none. */
+OAKENGINE_API OakEngineBlock *
+oakengine_track_nearest_block_after(const OakEngineTrack *track,
+									int64_t timestamp);
+
+/** @brief Nearest block whose out-point >= `timestamp`
+ *  (i.e. the block containing or immediately before the time).
+ *  Returns NULL when none. */
+OAKENGINE_API OakEngineBlock *
+oakengine_track_nearest_block_before_or_at(const OakEngineTrack *track,
+										   int64_t timestamp);
+
+/** @brief Nearest block whose in-point <= `timestamp`
+ *  (i.e. the block containing or immediately after the time).
+ *  Returns NULL when none. */
+OAKENGINE_API OakEngineBlock *
+oakengine_track_nearest_block_after_or_at(const OakEngineTrack *track,
+										  int64_t timestamp);
+
+/** @brief 1 if the block is a GapBlock, 0 otherwise. 0 on NULL. */
+OAKENGINE_API int oakengine_block_is_gap(const OakEngineBlock *block);
+
+/** @brief Next block in the track's linked list, or NULL. NULL on NULL. */
+OAKENGINE_API OakEngineBlock *oakengine_block_next(const OakEngineBlock *block);
+
+/** @brief Previous block in the track's linked list, or NULL. NULL on NULL. */
+OAKENGINE_API OakEngineBlock *oakengine_block_prev(const OakEngineBlock *block);
+
+/** @brief Fill `in` and `out` with the block's range as timestamps in the
+ *  owning track's sequence timebase. Either pointer may be NULL. Returns
+ *  OAKENGINE_OK or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_block_get_range(const OakEngineBlock *block,
+											int64_t *in, int64_t *out);
+
+/* ---- Clip input ID getters ------------------------------------------------- */
+
+/** @brief ClipBlock::k_buffer_in. Static string, never freed. */
+OAKENGINE_API const char *oakengine_clip_buffer_input_id(void);
+/** @brief ClipBlock::k_speed_input. */
+OAKENGINE_API const char *oakengine_clip_speed_input_id(void);
+/** @brief ClipBlock::k_reverse_input. */
+OAKENGINE_API const char *oakengine_clip_reverse_input_id(void);
+/** @brief ClipBlock::k_maintain_audio_pitch_input. */
+OAKENGINE_API const char *
+oakengine_clip_maintain_audio_pitch_input_id(void);
+/** @brief ClipBlock::k_loop_mode_input. */
+OAKENGINE_API const char *oakengine_clip_loop_mode_input_id(void);
+/** @brief ClipBlock::k_auto_cache_input. */
+OAKENGINE_API const char *oakengine_clip_auto_cache_input_id(void);
+
+/* ---- Sequence: add_default_nodes ------------------------------------------ */
+
+/** @brief Add one video and one audio track as ONE undoable command
+ *  (ViewerOutput helper used by the application). Returns OAKENGINE_OK
+ *  or OAKENGINE_E_INVALID. */
+OAKENGINE_API int
+oakengine_sequence_add_default_nodes(OakEngineSequence *seq);
+
+/* ---- Sequence: add_sequence_clip ------------------------------------------- */
+
+/** @brief Place a nested Sequence as a clip on a track (undoable).
+ *
+ *  Same semantics as oakengine_sequence_add_footage_clip() but creates a
+ *  clip whose buffer input feeds from another Sequence node (nested
+ *  timeline). Self-nesting and circular nesting are detected and rejected.
+ *  Returns a borrowed clip handle or NULL on failure. */
+OAKENGINE_API OakEngineClip *
+oakengine_sequence_add_sequence_clip(OakEngineSequence *seq,
+									 OakEngineSequence *nested,
+									 int track_type, int track_index,
+									 int64_t in, int64_t out,
+									 int64_t media_in);
+
+/* ---- Track handle queries -------------------------------------------------- */
+
+/** @brief Borrowed track handle, or NULL if the track does not exist. */
+OAKENGINE_API OakEngineTrack *
+oakengine_sequence_track_at(const OakEngineSequence *seq, int track_type,
+							int track_index);
+
+/** @brief Track type (OAKENGINE_TRACK_TYPE_*), or -1 on a NULL handle. */
+OAKENGINE_API int oakengine_track_type(const OakEngineTrack *track);
+
+/** @brief Track content length in frame timestamps (Track::get_length()
+ *  converted to timebase units). Returns OAKENGINE_OK or
+ *  OAKENGINE_E_NOT_FOUND/OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_track_get_length(const OakEngineSequence *seq,
+											 int track_type, int track_index,
+											 int64_t *length);
+
+/** @brief 1 if the range [in_ts, out_ts) is free (no blocks intersect it),
+ *  0 if it intersects. Returns OAKENGINE_E_NOT_FOUND when the track does
+ *  not exist, OAKENGINE_E_INVALID for bad arguments. */
+OAKENGINE_API int oakengine_track_is_range_free(const OakEngineSequence *seq,
+												int track_type,
+												int track_index,
+												int64_t in_ts, int64_t out_ts);
+
+/** @brief Track height helpers (matching the engine's
+ *  Track::k_height_* constants). */
+OAKENGINE_API double oakengine_track_height_default(void);
+OAKENGINE_API int oakengine_track_default_height_in_pixels(void);
+OAKENGINE_API int oakengine_track_height_internal_to_pixels(double height);
+OAKENGINE_API double oakengine_track_height_pixels_to_internal(int pixels);
+
+/** @brief Track height step interval (e.g. 0.5). > 0.0. */
+OAKENGINE_API double oakengine_track_height_interval(void);
+
+/** @brief Minimum track height (e.g. 1.5). > 0.0. */
+OAKENGINE_API double oakengine_track_height_minimum(void);
+
+/* ---- Multicam helpers --------------------------------------------------- */
+
+/** @brief Find the MultiCamNode ancestor of a clip, or NULL. Accepts
+ *  OakEngineNode* (a clip or any node). */
+OAKENGINE_API OakEngineNode *
+oakengine_clip_find_multicam(OakEngineNode *node);
+
+/** @brief Switch the multicam source to the given track/stream at the
+ *  given time. Returns OAKENGINE_OK or OAKENGINE_E_INVALID. */
+OAKENGINE_API int oakengine_multicam_switch_source(
+	OakEngineNode *multicam_node, OakEngineNode *footage_node,
+	int track_type, int track_index, double time_seconds,
+	void *command);
 
 #ifdef __cplusplus
 }

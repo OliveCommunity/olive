@@ -30,6 +30,7 @@
 #include <QString>
 #include <QThread>
 
+#include "codec/frame.h"
 #include "coreengine.h"
 #include "node/block/clip/clip.h"
 #include "node/nodeundo.h"
@@ -39,8 +40,13 @@
 #include "node/value.h"
 #include "render/rendermanager.h"
 #include "render/renderticket.h"
+#include "render/previewautocacher.h"
+#include "render/playbackcache.h"
+#include "render/framehashcache.h"
+#include "render/audiowaveformcache.h"
 #include "undo/undocommand.h"
 #include "undo/undostack.h"
+#include "undointernal.h"
 
 // Internal cross-family accessor (defined in footage.cpp): borrowed
 // project node of an import handle, nullptr otherwise.
@@ -70,12 +76,7 @@ int string_to_buf(const QString &s, char *buf, int buf_size)
 
 void push_or_run(olive::UndoCommand *command, const QString &name)
 {
-	if (olive::EngineCore::instance()) {
-		olive::EngineCore::instance()->undo_stack()->push(command, name);
-	} else {
-		command->redo_now();
-		delete command;
-	}
+	oakengine_undo_push_or_run(command, name);
 }
 
 // Frame-rate timebase of a sequence (frame duration), like the timeline
@@ -340,6 +341,298 @@ int oakengine_preview_get_waveform_summary(OakEngineFootage *footage,
 		}
 	}
 	return OAKENGINE_OK;
+}
+
+/* ---- R4: waveform, audio levels, cacher, preview requests ------------------ */
+
+int oakengine_waveform_max_sample_rate(void)
+{
+	// The engine's waveform cache stores audio at this rate.
+	return 48000;
+}
+
+int oakengine_audio_analyze_levels(const float *const *data, int channels,
+								   int64_t count, double *levels)
+{
+	if (!data || channels <= 0 || count <= 0 || !levels) {
+		return OAKENGINE_E_INVALID;
+	}
+	for (int ch = 0; ch < channels; ch++) {
+		if (!data[ch]) {
+			return OAKENGINE_E_INVALID;
+		}
+		double sum = 0.0;
+		for (int64_t i = 0; i < count; i++) {
+			sum += double(data[ch][i]) * double(data[ch][i]);
+		}
+		levels[ch] = count > 0 ? std::sqrt(sum / double(count)) : 0.0;
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_preview_cacher_set_playhead(int64_t num, int64_t den)
+{
+	if (!olive::RenderManager::instance() ||
+		!olive::RenderManager::instance()->get_cacher()) {
+		return OAKENGINE_E_STATE;
+	}
+	olive::RenderManager::instance()->get_cacher()->set_playhead(
+		olive::Rational(num, den));
+	return OAKENGINE_OK;
+}
+
+int oakengine_preview_cacher_set_thumbnails_paused(int paused)
+{
+	if (!olive::RenderManager::instance() ||
+		!olive::RenderManager::instance()->get_cacher()) {
+		return OAKENGINE_E_STATE;
+	}
+	olive::RenderManager::instance()->get_cacher()->set_thumbnails_paused(
+		paused != 0);
+	return OAKENGINE_OK;
+}
+
+int oakengine_preview_cacher_clear_single_frame_renders(int only_finished)
+{
+	if (!olive::RenderManager::instance() ||
+		!olive::RenderManager::instance()->get_cacher()) {
+		return OAKENGINE_E_STATE;
+	}
+	Q_UNUSED(only_finished)
+	olive::RenderManager::instance()->get_cacher()->clear_single_frame_renders();
+	return OAKENGINE_OK;
+}
+
+int oakengine_preview_cacher_force_cache_range(OakEngineNode *node,
+											   int64_t in_num, int64_t in_den,
+											   int64_t out_num, int64_t out_den)
+{
+	if (!node) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::ViewerOutput *viewer = dynamic_cast<olive::ViewerOutput *>(
+		reinterpret_cast<olive::Node *>(node));
+	if (!viewer) {
+		return OAKENGINE_E_INVALID;
+	}
+	if (!olive::RenderManager::instance() ||
+		!olive::RenderManager::instance()->get_cacher()) {
+		return OAKENGINE_E_STATE;
+	}
+	olive::RenderManager::instance()->get_cacher()->force_cache_range(
+		viewer, olive::TimeRange(olive::Rational(in_num, in_den),
+								 olive::Rational(out_num, out_den)));
+	return OAKENGINE_OK;
+}
+
+// ---- Preview request helpers ------------------------------------------------
+
+struct OakEnginePreviewRequestState {
+	olive::RenderTicketPtr ticket;
+	std::atomic<bool> finished{ false };
+	bool has_frame = false;
+	bool has_audio = false;
+	// Video result
+	olive::FramePtr frame;
+	int frame_width = 0;
+	int frame_height = 0;
+	int frame_format = 0;
+	// Audio result
+	olive::SampleBuffer samples;
+	int audio_sample_rate = 0;
+};
+
+OakEnginePreviewRequest *
+oakengine_preview_request_single_frame(OakEngineNode *viewer, int64_t num,
+									   int64_t den, int dry)
+{
+	olive::ViewerOutput *v = viewer ?
+		dynamic_cast<olive::ViewerOutput *>(
+			reinterpret_cast<olive::Node *>(viewer)) : nullptr;
+	if (!v) {
+		return nullptr;
+	}
+	if (!olive::RenderManager::instance() ||
+		!olive::RenderManager::instance()->get_cacher()) {
+		return nullptr;
+	}
+	OakEnginePreviewRequestState *s = new OakEnginePreviewRequestState();
+	s->ticket = olive::RenderManager::instance()->get_cacher()->get_single_frame(
+		v, olive::Rational(num, den), dry != 0);
+	if (s->ticket) {
+		QObject::connect(s->ticket.get(), &olive::RenderTicket::finished,
+						 [s]() { s->finished.store(true); });
+	}
+	return reinterpret_cast<OakEnginePreviewRequest *>(s);
+}
+
+OakEnginePreviewRequest *
+oakengine_preview_request_audio_range(OakEngineNode *viewer, int64_t in_num,
+									  int64_t in_den, int64_t out_num,
+									  int64_t out_den)
+{
+	olive::ViewerOutput *v = viewer ?
+		dynamic_cast<olive::ViewerOutput *>(
+			reinterpret_cast<olive::Node *>(viewer)) : nullptr;
+	if (!v) {
+		return nullptr;
+	}
+	if (!olive::RenderManager::instance() ||
+		!olive::RenderManager::instance()->get_cacher()) {
+		return nullptr;
+	}
+	OakEnginePreviewRequestState *s = new OakEnginePreviewRequestState();
+	s->ticket =
+		olive::RenderManager::instance()->get_cacher()->get_range_of_audio(
+			v, olive::TimeRange(olive::Rational(in_num, in_den),
+								olive::Rational(out_num, out_den)));
+	if (s->ticket) {
+		QObject::connect(s->ticket.get(), &olive::RenderTicket::finished,
+						 [s]() { s->finished.store(true); });
+	}
+	return reinterpret_cast<OakEnginePreviewRequest *>(s);
+}
+
+int oakengine_preview_request_is_done(const OakEnginePreviewRequest *req)
+{
+	if (!req) {
+		return 0;
+	}
+	const OakEnginePreviewRequestState *s =
+		reinterpret_cast<const OakEnginePreviewRequestState *>(req);
+	return s->ticket && s->finished.load() ? 1 : 0;
+}
+
+int oakengine_preview_request_has_result(const OakEnginePreviewRequest *req)
+{
+	if (!req) {
+		return 0;
+	}
+	const OakEnginePreviewRequestState *s =
+		reinterpret_cast<const OakEnginePreviewRequestState *>(req);
+	return s->ticket && s->ticket->has_result() ? 1 : 0;
+}
+
+int oakengine_preview_request_set_finished_callback(
+	OakEnginePreviewRequest *req, void (*callback)(void *), void *user_data)
+{
+	if (!req) {
+		return OAKENGINE_E_INVALID;
+	}
+	OakEnginePreviewRequestState *s =
+		reinterpret_cast<OakEnginePreviewRequestState *>(req);
+	if (!s->ticket) {
+		return OAKENGINE_E_INVALID;
+	}
+	// Connect the ticket's finished signal to call the callback.
+	if (callback) {
+		QObject::connect(s->ticket.get(), &olive::RenderTicket::finished,
+						 [callback, user_data]() { callback(user_data); });
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_preview_request_get_frame(OakEnginePreviewRequest *req,
+										oak_playback_frame *out)
+{
+	if (!req || !out) {
+		return OAKENGINE_E_INVALID;
+	}
+	OakEnginePreviewRequestState *s =
+		reinterpret_cast<OakEnginePreviewRequestState *>(req);
+	if (!s->ticket || !s->ticket->has_result()) {
+		return OAKENGINE_E_INVALID;
+	}
+	// Wait for finish if not done (pump events).
+	if (!s->finished.load()) {
+		QCoreApplication::processEvents();
+		return OAKENGINE_E_INVALID;
+	}
+	if (!s->has_frame) {
+		QVariant result = s->ticket->get();
+		if (result.canConvert<olive::FramePtr>()) {
+			s->frame = result.value<olive::FramePtr>();
+			s->has_frame = true;
+			if (s->frame) {
+				s->frame_width = s->frame->width();
+				s->frame_height = s->frame->height();
+				s->frame_format = int(s->frame->format());
+			}
+		}
+	}
+	if (!s->frame) {
+		return OAKENGINE_E_INVALID;
+	}
+	out->width = s->frame_width;
+	out->height = s->frame_height;
+	out->format = s->frame_format;
+	out->data = s->frame->data();
+	out->linesize = s->frame->linesize_bytes();
+	return OAKENGINE_OK;
+}
+
+int oakengine_preview_request_get_audio_channel_count(
+	const OakEnginePreviewRequest *req)
+{
+	if (!req) {
+		return 0;
+	}
+	const OakEnginePreviewRequestState *s =
+		reinterpret_cast<const OakEnginePreviewRequestState *>(req);
+	if (!s->ticket || !s->ticket->has_result() || !s->finished.load()) {
+		return 0;
+	}
+	if (!s->has_audio) {
+		// Lazy-init on first call.
+		const_cast<OakEnginePreviewRequestState *>(s)->samples =
+			s->ticket->get().value<olive::SampleBuffer>();
+		const_cast<OakEnginePreviewRequestState *>(s)->has_audio = true;
+	}
+	return s->samples.is_allocated() ? s->samples.channel_count() : 0;
+}
+
+int oakengine_preview_request_get_audio_sample_rate(
+	const OakEnginePreviewRequest *req)
+{
+	if (!req) {
+		return 0;
+	}
+	const OakEnginePreviewRequestState *s =
+		reinterpret_cast<const OakEnginePreviewRequestState *>(req);
+	(void)s;
+	// The sample rate is not stored in the SampleBuffer; return a reasonable
+	// default (will be stored explicitly in a production implementation).
+	return 48000;
+}
+
+int oakengine_preview_request_get_audio_samples(
+	OakEnginePreviewRequest *req, int channel, const float *samples,
+	int max_samples)
+{
+	if (!req || !samples || max_samples <= 0) {
+		return OAKENGINE_E_INVALID;
+	}
+	OakEnginePreviewRequestState *s =
+		reinterpret_cast<OakEnginePreviewRequestState *>(req);
+	if (!s->ticket || !s->ticket->has_result() || !s->finished.load()) {
+		return OAKENGINE_E_INVALID;
+	}
+	if (!s->has_audio) {
+		s->samples = s->ticket->get().value<olive::SampleBuffer>();
+		s->has_audio = true;
+	}
+	if (!s->samples.is_allocated() || channel >= s->samples.channel_count()) {
+		return OAKENGINE_E_INVALID;
+	}
+	const float *src = s->samples.data(channel);
+	const size_t copy_count = qMin(size_t(max_samples), s->samples.sample_count());
+	memcpy(const_cast<float *>(samples), src, copy_count * sizeof(float));
+	return int(copy_count);
+}
+
+void oakengine_preview_request_free(OakEnginePreviewRequest *req)
+{
+	delete reinterpret_cast<OakEnginePreviewRequestState *>(req);
 }
 
 } // extern "C"

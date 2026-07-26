@@ -40,6 +40,7 @@
 #include "oakengine/node.h"
 #include "oakengine/project.h"
 #include "oakengine/timeline.h"
+#include "oakengine/viewer.h"
 
 #ifndef OAK_TEST_SOURCE_DIR
 #define OAK_TEST_SOURCE_DIR "."
@@ -1205,6 +1206,596 @@ static void test_batch_editing_round3(const char *media_path)
 	oakengine_project_free(project);
 }
 
+static void test_sequence_clip(void)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	OakEngineSequence *seq = oakengine_sequence_new(project, "Outer");
+	assert(seq != NULL);
+	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_VIDEO) ==
+		   0);
+	OakEngineSequence *nested = oakengine_sequence_new(project, "Nested");
+	assert(nested != NULL);
+
+	int64_t in = -1, out = -1, media_in = -1;
+
+	// Place the nested sequence as a clip; undo/redo ride the stack.
+	OakEngineClip *clip = oakengine_sequence_add_sequence_clip(
+		seq, nested, OAKENGINE_TRACK_TYPE_VIDEO, 0, 10, 40, 5);
+	assert(clip != NULL);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 1);
+	assert(oakengine_sequence_clip_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+									  0) == clip);
+	assert(oakengine_clip_get_range(clip, &in, &out, &media_in) ==
+		   OAKENGINE_OK);
+	assert(in == 10 && out == 40 && media_in == 5);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 0);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 1);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+
+	// A sequence cannot nest into itself or into a sequence that
+	// (indirectly) receives it: place Outer into Nested first, then
+	// placing Nested into Outer must be refused, all without side
+	// effects.
+	assert(oakengine_sequence_add_track(nested, OAKENGINE_TRACK_TYPE_VIDEO) ==
+		   0);
+	assert(oakengine_sequence_add_sequence_clip(
+			   seq, seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, 10, 0) == NULL);
+	assert(oakengine_sequence_add_sequence_clip(
+			   nested, seq, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, 10, 0) != NULL);
+	assert(oakengine_sequence_add_sequence_clip(
+			   seq, nested, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, 10, 0) == NULL);
+	char err[256];
+	assert(oakengine_sequence_last_error(err, sizeof(err)) > 0);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 0);
+
+	// Validation: cross-project, bad track type/index and bad ranges are
+	// all rejected without side effects.
+	OakEngineProject *other = oakengine_project_create();
+	assert(other != NULL);
+	assert(oakengine_project_new(other) == OAKENGINE_OK);
+	OakEngineSequence *foreign = oakengine_sequence_new(other, "Foreign");
+	assert(foreign != NULL);
+	assert(oakengine_sequence_add_sequence_clip(
+			   seq, foreign, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, 10, 0) == NULL);
+	oakengine_project_free(other);
+	assert(oakengine_sequence_add_sequence_clip(
+			   seq, nested, OAKENGINE_TRACK_TYPE_SUBTITLE, 0, 0, 10,
+			   0) == NULL);
+	assert(oakengine_sequence_add_sequence_clip(
+			   seq, nested, OAKENGINE_TRACK_TYPE_VIDEO, 5, 0, 10, 0) == NULL);
+	assert(oakengine_sequence_add_sequence_clip(
+			   seq, nested, OAKENGINE_TRACK_TYPE_VIDEO, 0, 10, 10, 0) == NULL);
+	assert(oakengine_sequence_add_sequence_clip(
+			   seq, nested, OAKENGINE_TRACK_TYPE_VIDEO, 0, -1, 10, 0) == NULL);
+	assert(oakengine_sequence_add_sequence_clip(
+			   seq, nested, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, 10, -1) == NULL);
+	assert(oakengine_sequence_add_sequence_clip(
+			   NULL, nested, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, 10, 0) == NULL);
+	assert(oakengine_sequence_add_sequence_clip(
+			   seq, NULL, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, 10, 0) == NULL);
+	assert(oakengine_sequence_clip_count(seq, OAKENGINE_TRACK_TYPE_VIDEO,
+										 0) == 0);
+
+	oakengine_project_free(project);
+}
+
+// Track queries: oakengine_track_type / oakengine_track_get_length /
+// oakengine_track_is_range_free / oakengine_track_height_interval /
+// oakengine_track_height_minimum.
+static void test_track_queries(const char *media_path)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	OakEngineSequence *seq = oakengine_sequence_new(project, "Queries");
+	assert(seq != NULL);
+	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_VIDEO) ==
+		   0);
+	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_AUDIO) ==
+		   0);
+
+	OakEngineFootage *footage =
+		oakengine_project_import_footage(project, media_path);
+	assert(footage != NULL);
+	// Clip at [10, 20) on the video track.
+	OakEngineClip *clip = oakengine_sequence_add_footage_clip(
+		seq, footage, OAKENGINE_TRACK_TYPE_VIDEO, 0, 10, 20, 0);
+	assert(clip != NULL);
+
+	// Type through the opaque handle.
+	assert(oakengine_track_type(NULL) == -1);
+	OakEngineTrack *vtrack = oakengine_sequence_track_at(
+		seq, OAKENGINE_TRACK_TYPE_VIDEO, 0);
+	OakEngineTrack *atrack = oakengine_sequence_track_at(
+		seq, OAKENGINE_TRACK_TYPE_AUDIO, 0);
+	assert(vtrack != NULL && atrack != NULL);
+	assert(oakengine_track_type(vtrack) == OAKENGINE_TRACK_TYPE_VIDEO);
+	assert(oakengine_track_type(atrack) == OAKENGINE_TRACK_TYPE_AUDIO);
+	assert(oakengine_sequence_track_at(seq, OAKENGINE_TRACK_TYPE_VIDEO, 5) ==
+		   NULL);
+	assert(oakengine_sequence_track_at(NULL, OAKENGINE_TRACK_TYPE_VIDEO,
+									   0) == NULL);
+
+	// Length: the video track ends at 20, the empty audio track at 0.
+	int64_t length = -1;
+	assert(oakengine_track_get_length(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+									  &length) == OAKENGINE_OK);
+	assert(length == 20);
+	assert(oakengine_track_get_length(seq, OAKENGINE_TRACK_TYPE_AUDIO, 0,
+									  &length) == OAKENGINE_OK);
+	assert(length == 0);
+	assert(oakengine_track_get_length(seq, OAKENGINE_TRACK_TYPE_VIDEO, 5,
+									  &length) == OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_track_get_length(NULL, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+									  &length) == OAKENGINE_E_INVALID);
+
+	// Range free: [0, 10) and [20, 30) are free, [15, 25) intersects the
+	// clip, a zero-length probe at 15 also intersects.
+	assert(oakengine_track_is_range_free(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										 0, 10) == 1);
+	assert(oakengine_track_is_range_free(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										 20, 30) == 1);
+	assert(oakengine_track_is_range_free(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										 15, 25) == 0);
+	assert(oakengine_track_is_range_free(seq, OAKENGINE_TRACK_TYPE_AUDIO, 0,
+										 15, 25) == 1);
+	assert(oakengine_track_is_range_free(seq, OAKENGINE_TRACK_TYPE_VIDEO, 5,
+										 0, 10) == OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_track_is_range_free(seq, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										 10, 5) == OAKENGINE_E_INVALID);
+	assert(oakengine_track_is_range_free(NULL, OAKENGINE_TRACK_TYPE_VIDEO, 0,
+										 0, 10) == OAKENGINE_E_INVALID);
+
+	// Height constants are positive (minimum 1.5, interval 0.5 in the
+	// engine; only positivity is contract-level).
+	assert(oakengine_track_height_interval() > 0.0);
+	assert(oakengine_track_height_minimum() > 0.0);
+
+	oakengine_project_free(project);
+}
+
+// ---- Marker handle family (B4c) ----------------------------------------------
+
+static void test_marker_handle_family(void)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	OakEngineSequence *seq = oakengine_sequence_new(project, "MarkerHandles");
+	assert(seq != NULL);
+
+	OakEngineMarkerList *list =
+		oakengine_viewer_get_marker_list((OakEngineNode *)seq);
+	assert(list != NULL);
+	assert(oakengine_viewer_get_marker_list(NULL) == NULL);
+	assert(oakengine_marker_list_count(list) == 0);
+	assert(oakengine_marker_list_count(NULL) == 0);
+
+	// Add two markers (rational seconds) through the list family.
+	assert(oakengine_marker_list_add(list, 4, 1, 6, 1, "Out", 2) ==
+		   OAKENGINE_OK);
+	assert(oakengine_marker_list_add(list, 1, 1, 2, 1, "In", 0) ==
+		   OAKENGINE_OK);
+	assert(oakengine_marker_list_count(list) == 2);
+
+	// Sorted by time: index 0 is the 1s marker.
+	OakEngineMarker *m0 = oakengine_marker_list_at(list, 0);
+	OakEngineMarker *m1 = oakengine_marker_list_at(list, 1);
+	assert(m0 != NULL && m1 != NULL && m0 != m1);
+	assert(oakengine_marker_list_at(list, 2) == NULL);
+	assert(oakengine_marker_list_at(list, -1) == NULL);
+
+	int64_t in_num = 0, in_den = 0, out_num = 0, out_den = 0;
+	assert(oakengine_marker_get_time(m0, &in_num, &in_den, &out_num,
+									 &out_den) == OAKENGINE_OK);
+	assert(in_num == 1 && in_den == 1 && out_num == 2 && out_den == 1);
+	char name[64];
+	assert(oakengine_marker_get_name(m0, name, sizeof(name)) == 2);
+	assert(strcmp(name, "In") == 0);
+	assert(oakengine_marker_get_color(m0) == 0);
+	assert(oakengine_marker_get_color(m1) == 2);
+
+	// Lookup by exact in-point.
+	assert(oakengine_marker_list_marker_at_time(list, 4, 1) == m1);
+	assert(oakengine_marker_list_marker_at_time(list, 5, 1) == NULL);
+
+	// Sibling check: m0 has a sibling at 4s (m1), none at 3s.
+	assert(oakengine_marker_has_sibling_at_time(m0, 4, 1) == 1);
+	assert(oakengine_marker_has_sibling_at_time(m0, 3, 1) == 0);
+
+	// Live (non-undo) resize, then the undoable commit with the old range.
+	assert(oakengine_marker_set_time_live(m0, 1, 1, 3, 1) == OAKENGINE_OK);
+	assert(oakengine_marker_get_time(m0, NULL, NULL, &out_num, &out_den) ==
+		   OAKENGINE_OK);
+	assert(out_num == 3 && out_den == 1);
+	assert(oakengine_marker_commit_time(m0, 1, 1, 3, 1, 1, 1, 2, 1,
+										NULL) == OAKENGINE_OK);
+	// Undo restores the pre-commit (live) state is NOT reverted (the live
+	// edit was already applied; undo goes back to the old range).
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_marker_get_time(m0, NULL, NULL, &out_num, &out_den) ==
+		   OAKENGINE_OK);
+	assert(out_num == 2 && out_den == 1);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	assert(oakengine_marker_get_time(m0, NULL, NULL, &out_num, &out_den) ==
+		   OAKENGINE_OK);
+	assert(out_num == 3 && out_den == 1);
+
+	// Detached marker creation (used by the UI before adding to a list).
+	OakEngineMarker *detached = oakengine_marker_create(3, 5, 1, 7, 1,
+													"Detached");
+	assert(detached != NULL);
+	assert(oakengine_marker_get_color(detached) == 3);
+	assert(oakengine_marker_get_name(detached, name, sizeof(name)) == 8);
+	assert(strcmp(name, "Detached") == 0);
+	assert(oakengine_marker_list_count(list) == 2);
+	oakengine_marker_free(detached);
+
+	// Batch properties: recolor + rename both markers as ONE undo entry.
+	OakEngineMarker *both[2] = { m0, m1 };
+	assert(oakengine_marker_set_properties(both, 2, 7, "Same", 0, 0, 0, 0,
+										   0, NULL) == OAKENGINE_OK);
+	assert(oakengine_marker_get_color(m0) == 7);
+	assert(oakengine_marker_get_color(m1) == 7);
+	assert(oakengine_marker_get_name(m0, name, sizeof(name)) >= 0);
+	assert(strcmp(name, "Same") == 0);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_marker_get_color(m0) == 0);
+	assert(oakengine_marker_get_color(m1) == 2);
+	assert(oakengine_marker_get_name(m0, name, sizeof(name)) >= 0);
+	assert(strcmp(name, "In") == 0);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+
+	// Single-marker time move through the same batch call.
+	assert(oakengine_marker_set_properties(both, 1, -1, NULL, 1, 10, 1, 12,
+										   1, NULL) == OAKENGINE_OK);
+	assert(oakengine_marker_get_time(m0, &in_num, NULL, &out_num, NULL) ==
+		   OAKENGINE_OK);
+	assert(in_num == 10 && out_num == 12);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+
+	// Remove with undo.
+	assert(oakengine_marker_remove(m1) == OAKENGINE_OK);
+	assert(oakengine_marker_list_count(list) == 1);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_marker_list_count(list) == 2);
+
+	// NULL safety.
+	assert(oakengine_marker_get_time(NULL, &in_num, NULL, NULL, NULL) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_marker_get_name(NULL, name, sizeof(name)) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_marker_get_color(NULL) == -1);
+	assert(oakengine_marker_has_sibling_at_time(NULL, 1, 1) == 0);
+	assert(oakengine_marker_set_time_live(NULL, 0, 1, 1, 1) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_marker_list_add(NULL, 0, 1, 1, 1, "x", 0) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_marker_remove(NULL) == OAKENGINE_E_INVALID);
+	assert(oakengine_marker_set_properties(NULL, 1, 0, NULL, 0, 0, 0, 0, 0,
+										   NULL) == OAKENGINE_E_INVALID);
+
+	oakengine_project_free(project);
+}
+
+// ---- Workarea handle family (B4c) ----------------------------------------------
+
+static void test_workarea_handle_family(void)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	OakEngineSequence *seq = oakengine_sequence_new(project, "Workarea");
+	assert(seq != NULL);
+
+	// Reset sentinels: k_reset_in is 0, k_reset_out is RATIONAL_MAX.
+	int64_t ri_num = 0, ri_den = 0, ro_num = 0, ro_den = 0;
+	oakengine_workarea_reset_in_out(&ri_num, &ri_den, &ro_num, &ro_den);
+	assert(ri_num == 0 && ri_den > 0);
+	assert(ro_num > 0 && ro_den > 0);
+
+	OakEngineWorkarea *wa =
+		oakengine_viewer_get_workarea_handle((OakEngineNode *)seq);
+	assert(wa != NULL);
+	assert(oakengine_viewer_get_workarea_handle(NULL) == NULL);
+
+	// A fresh workarea is disabled.
+	int enabled = -1;
+	assert(oakengine_workarea_get(wa, NULL, NULL, NULL, NULL, &enabled) ==
+		   OAKENGINE_OK);
+	assert(enabled == 0);
+
+	// Undoable enable + range change.
+	assert(oakengine_workarea_set_enabled_undoable(wa, 1, NULL) ==
+		   OAKENGINE_OK);
+	assert(oakengine_workarea_get(wa, NULL, NULL, NULL, NULL, &enabled) ==
+		   OAKENGINE_OK);
+	assert(enabled == 1);
+	assert(oakengine_workarea_set_range_undoable(wa, 1, 2, 3, 2, ri_num,
+												 ri_den, ro_num, ro_den,
+												 NULL) == OAKENGINE_OK);
+	int64_t in_num = 0, in_den = 0, out_num = 0, out_den = 0;
+	assert(oakengine_workarea_get(wa, &in_num, &in_den, &out_num, &out_den,
+								  NULL) == OAKENGINE_OK);
+	assert(in_num == 1 && in_den == 2 && out_num == 3 && out_den == 2);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_workarea_get(wa, &in_num, NULL, &out_num, NULL,
+								  NULL) == OAKENGINE_OK);
+	assert(in_num == ri_num && out_num == ro_num);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_workarea_get(wa, NULL, NULL, NULL, NULL, &enabled) ==
+		   OAKENGINE_OK);
+	assert(enabled == 0);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+
+	// Standalone workarea: enabled-undoable degrades to a direct apply
+	// (no project owns it).
+	OakEngineWorkarea *over = oakengine_workarea_create();
+	assert(over != NULL);
+	assert(oakengine_workarea_set_enabled_undoable(over, 1, NULL) ==
+		   OAKENGINE_OK);
+	assert(oakengine_workarea_get(over, NULL, NULL, NULL, NULL, &enabled) ==
+		   OAKENGINE_OK);
+	assert(enabled == 1);
+	assert(oakengine_workarea_set_range(over, 0, 1, 5, 1) == OAKENGINE_OK);
+	assert(oakengine_workarea_get(over, NULL, NULL, &out_num, &out_den,
+								  NULL) == OAKENGINE_OK);
+	assert(out_num == 5 && out_den == 1);
+	oakengine_workarea_free(over);
+
+	// NULL safety.
+	assert(oakengine_workarea_get(NULL, &in_num, NULL, NULL, NULL, NULL) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_workarea_set_range(NULL, 0, 1, 1, 1) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_workarea_set_enabled(NULL, 1) == OAKENGINE_E_INVALID);
+	assert(oakengine_workarea_set_range_undoable(NULL, 0, 1, 1, 1, 0, 1, 1,
+												 1, NULL) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_workarea_set_enabled_undoable(NULL, 1, NULL) ==
+		   OAKENGINE_E_INVALID);
+
+	oakengine_project_free(project);
+}
+
+// ---- Clip input ids / media in / cache (B4c) -----------------------------------
+
+static void test_clip_input_ids_and_media(void)
+{
+	// Input id statics: non-null, distinct, and stable across calls.
+	const char *ids[] = { oakengine_clip_buffer_input_id(),
+						  oakengine_clip_speed_input_id(),
+						  oakengine_clip_reverse_input_id(),
+						  oakengine_clip_maintain_audio_pitch_input_id(),
+						  oakengine_clip_loop_mode_input_id(),
+						  oakengine_clip_auto_cache_input_id() };
+	for (size_t i = 0; i < sizeof(ids) / sizeof(ids[0]); i++) {
+		assert(ids[i] != NULL && ids[i][0] != '\0');
+		for (size_t j = i + 1; j < sizeof(ids) / sizeof(ids[0]); j++) {
+			assert(strcmp(ids[i], ids[j]) != 0);
+		}
+	}
+	assert(strcmp(oakengine_clip_speed_input_id(), ids[1]) == 0);
+
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	OakEngineSequence *seq = oakengine_sequence_new(project, "ClipMedia");
+	assert(seq != NULL);
+	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_VIDEO) ==
+		   0);
+
+	char path[4096];
+	demo_path(path, sizeof(path));
+	OakEngineFootage *footage =
+		oakengine_project_import_footage(project, path);
+	assert(footage != NULL);
+	OakEngineClip *clip = oakengine_sequence_add_footage_clip(
+		seq, footage, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, 30, 0);
+	assert(clip != NULL);
+
+	// Media in-point: read via the range getter, write undoably.
+	int64_t media_in = -1;
+	assert(oakengine_clip_get_range(clip, NULL, NULL, &media_in) ==
+		   OAKENGINE_OK);
+	assert(media_in == 0);
+	assert(oakengine_clip_set_media_in(clip, 5, 1) == OAKENGINE_OK);
+	assert(oakengine_clip_get_range(clip, NULL, NULL, &media_in) ==
+		   OAKENGINE_OK);
+	assert(media_in == 5);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_clip_get_range(clip, NULL, NULL, &media_in) ==
+		   OAKENGINE_OK);
+	assert(media_in == 0);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+
+	// Non-undoable mode applies directly.
+	assert(oakengine_clip_set_media_in(clip, 2, 0) == OAKENGINE_OK);
+	assert(oakengine_clip_get_range(clip, NULL, NULL, &media_in) ==
+		   OAKENGINE_OK);
+	assert(media_in == 2);
+
+	// Cache entry points: smoke calls (headless, no caches to speak of).
+	oakengine_clip_request_invalidate(clip, 0, 0, 0);
+	oakengine_clip_request_invalidate(clip, 1, 0, 30);
+	oakengine_clip_add_cache_passthrough(clip, clip);
+	oakengine_clip_discard_cache(clip);
+
+	// NULL safety.
+	assert(oakengine_clip_set_media_in(NULL, 0, 1) == OAKENGINE_E_INVALID);
+	oakengine_clip_request_invalidate(NULL, 0, 0, 0);
+	oakengine_clip_add_cache_passthrough(NULL, clip);
+	oakengine_clip_add_cache_passthrough(clip, NULL);
+	oakengine_clip_discard_cache(NULL);
+	assert(oakengine_block_is_enabled(NULL) == 0);
+	assert(oakengine_block_is_enabled((OakEngineBlock *)clip) == 1);
+
+	oakengine_footage_free(footage);
+	oakengine_project_free(project);
+}
+
+// ---- Track height helpers / default nodes (B4c) --------------------------------
+
+static void test_track_height_helpers(void)
+{
+	assert(oakengine_track_height_default() > 0.0);
+	// Round-trip through the pixel conversion.
+	const int px = oakengine_track_default_height_in_pixels();
+	assert(px > 0);
+	assert(oakengine_track_height_internal_to_pixels(
+			   oakengine_track_height_pixels_to_internal(px)) == px);
+	assert(oakengine_track_height_internal_to_pixels(
+			   oakengine_track_height_default()) == px);
+}
+
+static void test_add_default_nodes(void)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	OakEngineSequence *seq = oakengine_sequence_new(project, "Defaults");
+	assert(seq != NULL);
+
+	int video = -1, audio = -1;
+	assert(oakengine_sequence_track_count(seq, &video, &audio, NULL) ==
+		   OAKENGINE_OK);
+	assert(video == 0 && audio == 0);
+
+	// Adds one video + one audio track as ONE undo entry.
+	assert(oakengine_sequence_add_default_nodes(seq) == OAKENGINE_OK);
+	assert(oakengine_sequence_track_count(seq, &video, &audio, NULL) ==
+		   OAKENGINE_OK);
+	assert(video == 1 && audio == 1);
+	assert(oakengine_project_undo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_track_count(seq, &video, &audio, NULL) ==
+		   OAKENGINE_OK);
+	assert(video == 0 && audio == 0);
+	assert(oakengine_project_redo(project) == OAKENGINE_OK);
+	assert(oakengine_sequence_track_count(seq, &video, &audio, NULL) ==
+		   OAKENGINE_OK);
+	assert(video == 1 && audio == 1);
+
+	assert(oakengine_sequence_add_default_nodes(NULL) ==
+		   OAKENGINE_E_INVALID);
+
+	oakengine_project_free(project);
+}
+
+// ---- clip_get_media_range_rational ------------------------------------------
+
+static void test_clip_get_media_range_rational(void)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	OakEngineSequence *seq = oakengine_sequence_new(project, "MediaRange");
+	assert(seq != NULL);
+	assert(oakengine_sequence_add_track(seq, OAKENGINE_TRACK_TYPE_VIDEO) == 0);
+
+	char path[4096];
+	demo_path(path, sizeof(path));
+	OakEngineFootage *footage =
+		oakengine_project_import_footage(project, path);
+	assert(footage != NULL);
+
+	OakEngineClip *clip = oakengine_sequence_add_footage_clip(
+		seq, footage, OAKENGINE_TRACK_TYPE_VIDEO, 0, 0, 30, 0);
+	assert(clip != NULL);
+
+	// NULL handle.
+	assert(oakengine_clip_get_media_range_rational(NULL, NULL, NULL, NULL,
+												   NULL) ==
+		   OAKENGINE_E_INVALID);
+
+	// Valid clip: media range should have a non-zero duration.
+	int64_t in_num = -1, in_den = -1, out_num = -1, out_den = -1;
+	assert(oakengine_clip_get_media_range_rational(clip, &in_num, &in_den,
+												   &out_num, &out_den) ==
+		   OAKENGINE_OK);
+	assert(in_num >= 0 && in_den > 0 && out_num > in_num);
+
+	// Partial output pointers (any may be NULL).
+	assert(oakengine_clip_get_media_range_rational(clip, NULL, &in_den,
+												   &out_num, NULL) ==
+		   OAKENGINE_OK);
+	assert(oakengine_clip_get_media_range_rational(clip, NULL, NULL, NULL,
+												   NULL) == OAKENGINE_OK);
+
+	oakengine_project_free(project);
+}
+
+// ---- clip_find_multicam / multicam_switch_source (basic) --------------------
+
+static void test_multicam_basic(void)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+
+	// clip_find_multicam: NULL clip returns NULL.
+	assert(oakengine_clip_find_multicam(NULL) == NULL);
+
+	// A non-clip node (Solid) returns NULL.
+	OakEngineNode *solid = oakengine_project_add_node(
+		project, "org.olivevideoeditor.Olive.solidgenerator");
+	assert(solid != NULL);
+	assert(oakengine_clip_find_multicam(solid) == NULL);
+
+	// multicam_switch_source: NULL args.
+	assert(oakengine_multicam_switch_source(NULL, NULL, 0, 0, 0.0, NULL) ==
+		   OAKENGINE_E_INVALID);
+
+	assert(oakengine_project_remove_node(project, solid) == OAKENGINE_OK);
+	oakengine_project_free(project);
+}
+
+// ---- marker_list_add_existing -----------------------------------------------
+
+static void test_marker_list_add_existing(void)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+	OakEngineSequence *seq = oakengine_sequence_new(project, "MarkerAdopt");
+	assert(seq != NULL);
+
+	OakEngineMarkerList *list =
+		oakengine_viewer_get_marker_list((OakEngineNode *)seq);
+	assert(list != NULL);
+
+	// Add a marker to the list, get its handle.
+	assert(oakengine_marker_list_add(list, 0, 1, 2, 1, "Test", 0) ==
+		   OAKENGINE_OK);
+	OakEngineMarker *marker = oakengine_marker_list_at(list, 0);
+	assert(marker != NULL);
+
+	// Remove it from the list.
+	assert(oakengine_marker_remove(marker) == OAKENGINE_OK);
+	assert(oakengine_marker_list_count(list) == 0);
+
+	// add_existing to re-add it.
+	assert(oakengine_marker_list_add_existing(list, marker) ==
+		   OAKENGINE_OK);
+	assert(oakengine_marker_list_count(list) == 1);
+
+	// NULL list or marker.
+	assert(oakengine_marker_list_add_existing(NULL, marker) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_marker_list_add_existing(list, NULL) ==
+		   OAKENGINE_E_INVALID);
+
+	oakengine_project_free(project);
+}
+
 int main(void)
 {
 	make_tmpdir();
@@ -1237,6 +1828,16 @@ int main(void)
 	test_batch_editing(path);
 	test_batch_editing_round2(path);
 	test_batch_editing_round3(path);
+	test_sequence_clip();
+	test_track_queries(path);
+	test_marker_handle_family();
+	test_workarea_handle_family();
+	test_clip_input_ids_and_media();
+	test_track_height_helpers();
+	test_add_default_nodes();
+	test_clip_get_media_range_rational();
+	test_multicam_basic();
+	test_marker_list_add_existing();
 
 	oakengine_project_free(project);
 	assert(oakengine_shutdown() == OAKENGINE_OK);

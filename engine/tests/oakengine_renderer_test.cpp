@@ -220,6 +220,16 @@ static void test_validation(OakEngineSequence *seq)
 	oakengine_audio_free(NULL);
 }
 
+static void test_render_cache_helpers(void)
+{
+	// Without an active RenderManager, these return OAKENGINE_E_STATE rather
+	// than crashing.
+	assert(oakengine_render_cache_set_display_color_processor(NULL) ==
+		   OAKENGINE_E_STATE);
+	assert(oakengine_render_cache_set_multicam_node(NULL) ==
+		   OAKENGINE_E_STATE);
+}
+
 int main(void)
 {
 	make_tmpdir();
@@ -241,6 +251,7 @@ int main(void)
 	OakEngineSequence *seq = oakengine_sequence_new(project, "Render");
 	assert(seq != NULL);
 
+	test_render_cache_helpers();
 	test_validation(seq);
 
 	// ---- GL-gated part ---------------------------------------------------

@@ -24,6 +24,12 @@
 #include "export.h"
 #include "init.h"
 
+/* Forward declarations from node.h (included by callers in either order). */
+typedef struct OakEngineNode OakEngineNode;
+
+/* Forward declaration for playback cache from viewer.h. */
+typedef struct OakEnginePlaybackCache OakEnginePlaybackCache;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -194,6 +200,127 @@ oakengine_project_sequence_count(const OakEngineProject *self);
  */
 OAKENGINE_API OakEngineSequence *
 oakengine_project_sequence_at(const OakEngineProject *self, int index);
+
+/* ---- Folder operations ---------------------------------------------------- */
+
+/**
+ * @brief Create a folder node named `name` under `parent` in `project`.
+ * Returns a borrowed handle, or NULL on failure.
+ */
+OAKENGINE_API OakEngineNode *oakengine_folder_create(OakEngineProject *project,
+													 OakEngineNode *parent,
+													 const char *name);
+
+/**
+ * @brief 1 if `folder` recursively contains `child`, 0 otherwise.
+ * 0 when either handle is NULL or `folder` is not a Folder.
+ */
+OAKENGINE_API int oakengine_folder_has_child_recursive(
+	const OakEngineNode *folder, const OakEngineNode *child);
+
+/**
+ * @brief Index of `child` in `folder`'s direct children, or
+ * OAKENGINE_E_NOT_FOUND. Returns OAKENGINE_E_INVALID when
+ * `folder` is not a Folder node.
+ */
+OAKENGINE_API int oakengine_folder_index_of_child(
+	const OakEngineNode *folder, const OakEngineNode *child);
+
+/**
+ * @brief Static input key string for Folder children (Folder::k_child_input).
+ * Never freed.
+ */
+OAKENGINE_API const char *oakengine_folder_child_input_key(void);
+
+/**
+ * @brief Add `child` to `folder` (undoable). OAKENGINE_E_INVALID when
+ * `folder` is not a Folder node or on NULL args.
+ */
+OAKENGINE_API int oakengine_folder_add_child(OakEngineNode *folder,
+											 OakEngineNode *child);
+
+/**
+ * @brief Move `node` from its current folder to `new_folder` (undoable).
+ * Removes the node from its old folder first — a true move, not a copy.
+ * Returns OAKENGINE_OK or a negative error code.
+ */
+OAKENGINE_API int oakengine_folder_move_child(OakEngineNode *node,
+											  OakEngineNode *new_folder);
+
+/**
+ * @brief Create a Folder::RemoveElementCommand as an opaque command pointer.
+ * Returns NULL on invalid arguments.
+ */
+OAKENGINE_API void *oakengine_folder_remove_element_command(
+	OakEngineNode *folder, OakEngineNode *child);
+
+/**
+ * @brief Move several nodes into `dest_folder` as ONE undoable command
+ * (each node is removed from its old folder, then added to `dest_folder`).
+ * Nodes already directly inside `dest_folder` are skipped. `undo_name`
+ * may be NULL. Returns OAKENGINE_OK or a negative error code.
+ */
+OAKENGINE_API int oakengine_folder_move_children(
+	OakEngineNode *const *nodes, int count, OakEngineNode *dest_folder,
+	const char *undo_name);
+
+/* ---- Project extras ------------------------------------------------------- */
+
+/** @brief Root folder node of the project (Project::root()). */
+OAKENGINE_API OakEngineNode *oakengine_project_root(OakEngineProject *self);
+
+/** @brief Display name for the project that is safe for window titles
+ *  (Project::pretty_filename()). buf/size convention. */
+OAKENGINE_API int oakengine_project_pretty_filename(const OakEngineProject *self,
+													char *buf, int buf_size);
+
+/** @brief Set the project's filename (Project::set_filename()).
+ *  Returns OAKENGINE_OK or OAKENGINE_E_INVALID on NULL. */
+OAKENGINE_API int oakengine_project_set_filename(OakEngineProject *self,
+												 const char *path);
+
+/** @brief The project's default cache directory (Project::cache_path()).
+ *  buf/size convention. */
+OAKENGINE_API int oakengine_project_cache_path(const OakEngineProject *self,
+											   char *buf, int buf_size);
+
+/** @brief The project's alongside cache directory
+ *  (Project::cache_alongside_path()). buf/size convention. */
+OAKENGINE_API int oakengine_project_cache_alongside_path(
+	const OakEngineProject *self, char *buf, int buf_size);
+
+/** @brief Set a custom cache directory path (Project::set_custom_cache_path()).
+ *  NULL clears it. */
+OAKENGINE_API int oakengine_project_set_custom_cache_path(
+	OakEngineProject *self, const char *path);
+
+/** @brief Get the custom cache directory path, or "" when none is set.
+ *  buf/size convention; returns 0 when no custom path is set. */
+OAKENGINE_API int oakengine_project_get_custom_cache_path(
+	const OakEngineProject *self, char *buf, int buf_size);
+
+/** @brief Cache location setting enum value
+ *  (Project::get_cache_location_setting()). Returns < 0 on NULL. */
+OAKENGINE_API int oakengine_project_get_cache_location_setting(
+	const OakEngineProject *self);
+
+/** @brief Static MIME type string for project items (Project::item_mime_type()).
+ *  Never freed. */
+OAKENGINE_API const char *oakengine_project_item_mime_type(void);
+
+/** @brief Resolve a project node to its owning OakEngineProject
+ *  (Project::get_project_from_object()). Returns NULL when the node is
+ *  not part of a project or on NULL input. */
+OAKENGINE_API OakEngineProject *
+oakengine_project_from_object(const OakEngineNode *node);
+
+/** @brief Get the project's color reference space name (buf/size). */
+OAKENGINE_API int oakengine_project_get_color_reference_space(
+	const OakEngineProject *self, char *buf, int buf_size);
+
+/** @brief Set the project's color reference space (undoable). */
+OAKENGINE_API int oakengine_project_set_color_reference_space(
+	OakEngineProject *self, const char *colorspace);
 
 #ifdef __cplusplus
 }

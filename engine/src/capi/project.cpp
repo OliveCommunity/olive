@@ -28,11 +28,16 @@
 #include <QString>
 
 #include "coreengine.h"
+#include "node/factory.h"
+#include "node/nodeundo.h"
 #include "node/project.h"
 #include "node/project/footage/footage.h"
+#include "node/project/folder/folder.h"
 #include "node/project/sequence/sequence.h"
 #include "node/project/serializer/serializer.h"
+#include "undo/undocommand.h"
 #include "undo/undostack.h"
+#include "undointernal.h"
 
 namespace
 {
@@ -50,6 +55,16 @@ const olive::Project *impl(const OakEngineProject *h)
 OakEngineProject *wrap(olive::Project *p)
 {
 	return reinterpret_cast<OakEngineProject *>(p);
+}
+
+olive::Node *impl(OakEngineNode *h)
+{
+	return reinterpret_cast<olive::Node *>(h);
+}
+
+const olive::Node *impl(const OakEngineNode *h)
+{
+	return reinterpret_cast<const olive::Node *>(h);
 }
 
 OakEngineSequence *wrap_seq(olive::Sequence *s)
@@ -115,6 +130,13 @@ int node_count_of_type(const olive::Project *p, bool sequences)
 		}
 	}
 	return count;
+}
+
+// Push an undoable command onto the global undo stack when the engine is
+// initialized, otherwise execute it directly.
+void push_or_run(olive::UndoCommand *command, const QString &name)
+{
+	oakengine_undo_push_or_run(command, name);
 }
 
 // Human-readable text for a failed project load, mirroring the messages in
@@ -391,6 +413,270 @@ OakEngineSequence *oakengine_project_sequence_at(const OakEngineProject *self,
 		return nullptr;
 	}
 	return wrap_seq(sequence_at(impl(self), index));
+}
+
+/* ---- Folder operations ---------------------------------------------------- */
+
+OakEngineNode *oakengine_folder_create(OakEngineProject *project,
+									   OakEngineNode *parent,
+									   const char *name)
+{
+	if (!project || !parent) {
+		return nullptr;
+	}
+	olive::Project *p = impl(project);
+	olive::Node *n = impl(parent);
+	olive::Folder *folder = dynamic_cast<olive::Folder *>(n);
+	if (!folder) {
+		return nullptr;
+	}
+	olive::Folder *child = new olive::Folder();
+	child->set_label(QString::fromUtf8(name ? name : ""));
+
+	olive::MultiUndoCommand *command = new olive::MultiUndoCommand();
+	command->add_child(new olive::NodeAddCommand(p, child));
+	command->add_child(new olive::FolderAddChild(folder, child));
+
+	oakengine_undo_push_or_run(command, QStringLiteral("Create Folder"));
+	return reinterpret_cast<OakEngineNode *>(child);
+}
+
+int oakengine_folder_has_child_recursive(const OakEngineNode *folder,
+										 const OakEngineNode *child)
+{
+	if (!folder || !child) {
+		return 0;
+	}
+	const olive::Folder *f =
+		dynamic_cast<const olive::Folder *>(impl(
+			const_cast<OakEngineNode *>(folder)));
+	if (!f) {
+		return 0;
+	}
+	return f->has_child_recursive(
+			   const_cast<olive::Node *>(impl(
+				   const_cast<OakEngineNode *>(child)))) ? 1 : 0;
+}
+
+int oakengine_folder_index_of_child(const OakEngineNode *folder,
+									const OakEngineNode *child)
+{
+	if (!folder || !child) {
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::Folder *f =
+		dynamic_cast<const olive::Folder *>(impl(
+			const_cast<OakEngineNode *>(folder)));
+	if (!f) {
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::Node *c = impl(const_cast<OakEngineNode *>(child));
+	const int idx = f->index_of_child(const_cast<olive::Node *>(c));
+	return idx >= 0 ? idx : OAKENGINE_E_NOT_FOUND;
+}
+
+const char *oakengine_folder_child_input_key(void)
+{
+	static const QByteArray s = olive::Folder::k_child_input.toUtf8();
+	return s.constData();
+}
+
+int oakengine_folder_add_child(OakEngineNode *folder, OakEngineNode *child)
+{
+	if (!folder || !child) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Folder *f = dynamic_cast<olive::Folder *>(impl(folder));
+	if (!f) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Node *c = impl(child);
+	if (!c) {
+		return OAKENGINE_E_INVALID;
+	}
+	push_or_run(new olive::FolderAddChild(f, c),
+				QStringLiteral("Add Child to Folder"));
+	return OAKENGINE_OK;
+}
+
+void *oakengine_folder_remove_element_command(OakEngineNode *folder,
+												OakEngineNode *child)
+{
+	if (!folder || !child) {
+		return nullptr;
+	}
+	olive::Folder *f = dynamic_cast<olive::Folder *>(impl(folder));
+	if (!f) {
+		return nullptr;
+	}
+	olive::Node *c = impl(child);
+	if (!c) {
+		return nullptr;
+	}
+	return new olive::Folder::RemoveElementCommand(f, c);
+}
+
+int oakengine_folder_move_child(OakEngineNode *node, OakEngineNode *new_folder)
+{
+	return oakengine_folder_move_children(&node, 1, new_folder, nullptr);
+}
+
+int oakengine_folder_move_children(OakEngineNode *const *nodes, int count,
+								   OakEngineNode *dest_folder,
+								   const char *undo_name)
+{
+	if (!nodes || count <= 0 || !dest_folder) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Folder *dest = dynamic_cast<olive::Folder *>(impl(dest_folder));
+	if (!dest) {
+		return OAKENGINE_E_INVALID;
+	}
+	// A true move: remove each node from its old folder, then add it to the
+	// destination — all inside ONE undoable command (FolderAddChild alone
+	// would leave the node in both folders).
+	auto *command = new olive::MultiUndoCommand();
+	for (int i = 0; i < count; i++) {
+		if (!nodes[i]) {
+			delete command;
+			return OAKENGINE_E_INVALID;
+		}
+		olive::Node *n = impl(nodes[i]);
+		if (n->folder() == dest) {
+			continue;
+		}
+		if (olive::Folder *old = n->folder()) {
+			command->add_child(new olive::Folder::RemoveElementCommand(old, n));
+		}
+		command->add_child(new olive::FolderAddChild(dest, n));
+	}
+	push_or_run(command, undo_name ? QString::fromUtf8(undo_name)
+								   : QStringLiteral("Move Folder Child"));
+	return OAKENGINE_OK;
+}
+
+/* ---- Project extras ------------------------------------------------------- */
+
+OakEngineNode *oakengine_project_root(OakEngineProject *self)
+{
+	if (!self) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineNode *>(impl(self)->root());
+}
+
+int oakengine_project_pretty_filename(const OakEngineProject *self, char *buf,
+									  int buf_size)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	return string_to_buf(impl(self)->pretty_filename(), buf, buf_size);
+}
+
+int oakengine_project_set_filename(OakEngineProject *self, const char *path)
+{
+	if (!self || !path) {
+		return OAKENGINE_E_INVALID;
+	}
+	impl(self)->set_filename(QString::fromUtf8(path));
+	return OAKENGINE_OK;
+}
+
+int oakengine_project_cache_path(const OakEngineProject *self, char *buf,
+								 int buf_size)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	return string_to_buf(impl(self)->cache_path(), buf, buf_size);
+}
+
+int oakengine_project_cache_alongside_path(const OakEngineProject *self,
+										   char *buf, int buf_size)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	return string_to_buf(impl(self)->get_cache_alongside_project_path(), buf,
+						 buf_size);
+}
+
+int oakengine_project_set_custom_cache_path(OakEngineProject *self,
+											const char *path)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	impl(self)->set_custom_cache_path(
+		path ? QString::fromUtf8(path) : QString());
+	return OAKENGINE_OK;
+}
+
+int oakengine_project_get_custom_cache_path(const OakEngineProject *self,
+											char *buf, int buf_size)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	const QString p = impl(self)->get_custom_cache_path();
+	if (p.isEmpty()) {
+		if (buf && buf_size > 0) {
+			buf[0] = '\0';
+		}
+		return 0;
+	}
+	return string_to_buf(p, buf, buf_size);
+}
+
+int oakengine_project_get_cache_location_setting(const OakEngineProject *self)
+{
+	if (!self) {
+		return -1;
+	}
+	return int(impl(self)->get_cache_location_setting());
+}
+
+const char *oakengine_project_item_mime_type(void)
+{
+	// k_item_mime_type is a static const QString.
+	static const QByteArray s = QString(olive::Project::k_item_mime_type).toUtf8();
+	return s.constData();
+}
+
+OakEngineProject *oakengine_project_from_object(const OakEngineNode *node)
+{
+	if (!node) {
+		return nullptr;
+	}
+	const olive::Node *n = impl(node);
+	return reinterpret_cast<OakEngineProject *>(
+		olive::Project::get_project_from_object(n));
+}
+
+int oakengine_project_get_color_reference_space(const OakEngineProject *self,
+												char *buf, int buf_size)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	return string_to_buf(
+		qvariant_cast<QString>(impl(self)->get_setting(
+			olive::Project::k_color_reference_space)),
+		buf, buf_size);
+}
+
+int oakengine_project_set_color_reference_space(OakEngineProject *self,
+												const char *colorspace)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	if (!colorspace) {
+		return OAKENGINE_E_INVALID;
+	}
+	impl(self)->set_color_reference_space(QString::fromUtf8(colorspace));
+	return OAKENGINE_OK;
 }
 
 } // extern "C"

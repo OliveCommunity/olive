@@ -38,7 +38,9 @@
 
 #include "oakengine/footage.h"
 #include "oakengine/init.h"
+#include "oakengine/node.h"
 #include "oakengine/project.h"
+#include "oakengine/timeline.h"
 
 #ifndef OAK_TEST_SOURCE_DIR
 #define OAK_TEST_SOURCE_DIR "."
@@ -588,6 +590,293 @@ static void test_colorspace_candidates(void)
 	oakengine_project_free(project);
 }
 
+// Project extras: filenames, cache paths, settings, MIME type, from_object.
+static void test_project_extras(void)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+
+	char buf[4096];
+
+	// Untitled project: pretty filename is the "(untitled)" placeholder.
+	assert(oakengine_project_pretty_filename(project, buf, sizeof(buf)) > 0);
+	assert(strlen(buf) > 0);
+
+	// set_filename round-trips through the plain filename getter.
+	char target[4096];
+	snprintf(target, sizeof(target), "%s/roundtrip.ove", g_tmpdir);
+	assert(oakengine_project_set_filename(project, target) == OAKENGINE_OK);
+	assert(oakengine_project_filename(project, buf, sizeof(buf)) > 0);
+	assert(strcmp(buf, target) == 0);
+	assert(oakengine_project_set_filename(project, NULL) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_project_set_filename(NULL, target) ==
+		   OAKENGINE_E_INVALID);
+
+	// With a filename set, the cache paths are derivable and non-empty.
+	assert(oakengine_project_cache_path(project, buf, sizeof(buf)) > 0);
+	assert(strlen(buf) > 0);
+	assert(oakengine_project_cache_alongside_path(project, buf, sizeof(buf)) >
+		   0);
+	assert(strlen(buf) > 0);
+
+	// Custom cache path setting round-trip (NULL clears).
+	assert(oakengine_project_set_custom_cache_path(project, "/tmp/oakcache") ==
+		   OAKENGINE_OK);
+	assert(oakengine_project_get_custom_cache_path(project, buf,
+												   sizeof(buf)) > 0);
+	assert(strcmp(buf, "/tmp/oakcache") == 0);
+	assert(oakengine_project_set_custom_cache_path(project, NULL) ==
+		   OAKENGINE_OK);
+	assert(oakengine_project_get_custom_cache_path(project, buf,
+												   sizeof(buf)) == 0);
+
+	// Color reference space setting round-trip.
+	assert(oakengine_project_set_color_reference_space(
+			   project, "Rec.709 OETF") == OAKENGINE_OK);
+	assert(oakengine_project_get_color_reference_space(project, buf,
+													   sizeof(buf)) > 0);
+	assert(strcmp(buf, "Rec.709 OETF") == 0);
+	assert(oakengine_project_set_color_reference_space(NULL, "x") ==
+		   OAKENGINE_E_INVALID);
+
+	// Cache location setting defaults to a valid enum value; NULL is invalid.
+	assert(oakengine_project_get_cache_location_setting(project) >= 0);
+	assert(oakengine_project_get_cache_location_setting(NULL) < 0);
+
+	// The project item MIME type is a non-empty static string.
+	const char *mime = oakengine_project_item_mime_type();
+	assert(mime != NULL && strlen(mime) > 0);
+
+	// from_object: the root node resolves back to its owning project.
+	OakEngineNode *root = oakengine_project_node_at(project, 0);
+	assert(root != NULL);
+	assert(oakengine_project_from_object(root) == project);
+	assert(oakengine_project_from_object(NULL) == NULL);
+
+	// NULL safety.
+	assert(oakengine_project_pretty_filename(NULL, buf, sizeof(buf)) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_project_cache_path(NULL, buf, sizeof(buf)) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_project_get_custom_cache_path(NULL, buf, sizeof(buf)) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_project_get_color_reference_space(NULL, buf,
+													   sizeof(buf)) ==
+		   OAKENGINE_E_INVALID);
+
+	oakengine_project_free(project);
+}
+
+// Folder creation and child queries.
+static void test_folder(void)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+
+	// A fresh project's first node is its root folder.
+	OakEngineNode *root = oakengine_project_node_at(project, 0);
+	assert(root != NULL);
+
+	OakEngineNode *folder =
+		oakengine_folder_create(project, root, "My Folder");
+	assert(folder != NULL);
+	assert(oakengine_folder_has_child_recursive(root, folder) == 1);
+	assert(oakengine_folder_index_of_child(root, folder) >= 0);
+
+	// A subfolder is found recursively from the root.
+	OakEngineNode *sub = oakengine_folder_create(project, folder, "Sub");
+	assert(sub != NULL);
+	assert(oakengine_folder_has_child_recursive(root, sub) == 1);
+	assert(oakengine_folder_has_child_recursive(folder, sub) == 1);
+	assert(oakengine_folder_has_child_recursive(sub, folder) == 0);
+
+	// A folder from another project is not a child here.
+	OakEngineProject *other = oakengine_project_create();
+	assert(other != NULL);
+	assert(oakengine_project_new(other) == OAKENGINE_OK);
+	OakEngineNode *other_root = oakengine_project_node_at(other, 0);
+	assert(other_root != NULL);
+	OakEngineNode *alien = oakengine_folder_create(other, other_root, "Alien");
+	assert(alien != NULL);
+	assert(oakengine_folder_has_child_recursive(root, alien) == 0);
+	assert(oakengine_folder_index_of_child(root, alien) ==
+		   OAKENGINE_E_NOT_FOUND);
+	oakengine_project_free(other);
+
+	// The child input key is a non-empty static string.
+	const char *key = oakengine_folder_child_input_key();
+	assert(key != NULL && strlen(key) > 0);
+
+	// Error paths: non-folder parents, non-folder queries, NULL.
+	assert(oakengine_folder_create(project, folder, NULL) != NULL);
+	OakEngineNode *footage_node = NULL;
+	{
+		char path[4096];
+		demo_path(path, sizeof(path));
+		OakEngineFootage *f = oakengine_project_import_footage(project, path);
+		assert(f != NULL);
+		oakengine_footage_free(f);
+		// The imported footage is a non-folder project node.
+		for (int i = 0; i < oakengine_project_node_count(project); i++) {
+			OakEngineNode *n = oakengine_project_node_at(project, i);
+			char id[128];
+			assert(oakengine_node_get_type_id(n, id, sizeof(id)) > 0);
+			if (strcmp(id, "org.olivevideoeditor.Olive.folder") != 0) {
+				footage_node = n;
+				break;
+			}
+		}
+		assert(footage_node != NULL);
+	}
+	assert(oakengine_folder_create(project, footage_node, "Nope") == NULL);
+	assert(oakengine_folder_has_child_recursive(footage_node, folder) == 0);
+	assert(oakengine_folder_index_of_child(footage_node, folder) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_folder_has_child_recursive(NULL, folder) == 0);
+	assert(oakengine_folder_has_child_recursive(root, NULL) == 0);
+	assert(oakengine_folder_index_of_child(NULL, folder) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_folder_index_of_child(root, NULL) == OAKENGINE_E_INVALID);
+	assert(oakengine_folder_create(NULL, root, "Nope") == NULL);
+
+	oakengine_project_free(project);
+}
+
+// Footage extras: filename, stream references, descriptions, proxy params,
+// manual proxy state and invalidation.
+static void test_footage_extras(void)
+{
+	OakEngineProject *project = oakengine_project_create();
+	assert(project != NULL);
+	assert(oakengine_project_new(project) == OAKENGINE_OK);
+
+	char path[4096];
+	demo_path(path, sizeof(path));
+	OakEngineFootage *f = oakengine_project_import_footage(project, path);
+	assert(f != NULL);
+
+	char buf[4096];
+
+	// Filename of the imported footage.
+	assert(oakengine_footage_get_filename(f, buf, sizeof(buf)) > 0);
+	assert(strcmp(buf, path) == 0);
+	assert(oakengine_footage_get_filename(NULL, buf, sizeof(buf)) ==
+		   OAKENGINE_E_INVALID);
+
+	// Real stream index 0 is the video stream, 1 the audio stream.
+	int track_type = -1, stream_index = -1;
+	assert(oakengine_footage_get_stream_reference(f, 0, &track_type,
+												  &stream_index) == OAKENGINE_OK);
+	assert(track_type == OAKENGINE_TRACK_TYPE_VIDEO && stream_index == 0);
+	assert(oakengine_footage_get_stream_reference(f, 1, &track_type,
+												  &stream_index) == OAKENGINE_OK);
+	assert(track_type == OAKENGINE_TRACK_TYPE_AUDIO && stream_index == 0);
+	assert(oakengine_footage_get_stream_reference(f, 99, &track_type,
+												  &stream_index) ==
+		   OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_footage_get_stream_reference(NULL, 0, &track_type,
+												  &stream_index) ==
+		   OAKENGINE_E_INVALID);
+
+	// Stream descriptions.
+	assert(oakengine_footage_describe_video_stream(f, 0, buf, sizeof(buf)) >
+		   0);
+	assert(strlen(buf) > 0);
+	assert(oakengine_footage_describe_audio_stream(f, 0, buf, sizeof(buf)) >
+		   0);
+	assert(strlen(buf) > 0);
+	assert(oakengine_footage_describe_video_stream(f, 9, buf, sizeof(buf)) ==
+		   OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_footage_describe_audio_stream(f, 9, buf, sizeof(buf)) ==
+		   OAKENGINE_E_NOT_FOUND);
+	assert(oakengine_footage_describe_video_stream(NULL, 0, buf,
+												   sizeof(buf)) ==
+		   OAKENGINE_E_INVALID);
+
+	// Static stream type names (no handle needed).
+	assert(oakengine_footage_stream_type_name(OAKENGINE_TRACK_TYPE_VIDEO, buf,
+											  sizeof(buf)) > 0);
+	assert(strlen(buf) > 0);
+	assert(oakengine_footage_stream_type_name(OAKENGINE_TRACK_TYPE_AUDIO, buf,
+											  sizeof(buf)) > 0);
+	assert(strlen(buf) > 0);
+
+	// Proxy params: effective defaults first, then a custom round-trip.
+	assert(oakengine_footage_has_custom_proxy_params(f) == 0);
+	oak_proxy_params params;
+	memset(&params, 0, sizeof(params));
+	assert(oakengine_footage_get_effective_proxy_params(f, &params) ==
+		   OAKENGINE_OK);
+	assert(params.width > 0 && params.height > 0);
+	params.width = 640;
+	params.height = 360;
+	params.divider = 1;
+	params.version = 1;
+	params.crf = 30;
+	params.include_audio = 0;
+	strcpy(params.extension, "mkv");
+	strcpy(params.preset, "slow");
+	assert(oakengine_footage_set_custom_proxy_params(f, &params) ==
+		   OAKENGINE_OK);
+	assert(oakengine_footage_has_custom_proxy_params(f) == 1);
+	oak_proxy_params back;
+	memset(&back, 0, sizeof(back));
+	assert(oakengine_footage_get_effective_proxy_params(f, &back) ==
+		   OAKENGINE_OK);
+	assert(back.width == 640 && back.height == 360 && back.crf == 30);
+	assert(back.include_audio == 0);
+	assert(strcmp(back.extension, "mkv") == 0);
+	assert(strcmp(back.preset, "slow") == 0);
+	assert(oakengine_footage_clear_custom_proxy_params(f) == OAKENGINE_OK);
+	assert(oakengine_footage_has_custom_proxy_params(f) == 0);
+	assert(oakengine_footage_set_custom_proxy_params(f, NULL) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_footage_get_effective_proxy_params(f, NULL) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_footage_has_custom_proxy_params(NULL) ==
+		   OAKENGINE_E_INVALID);
+
+	// Manual proxy state: set then clear (no file is created here).
+	assert(oakengine_footage_set_proxy(f, "/tmp/fake_proxy.mp4", 2, 0, 1,
+									   1) == OAKENGINE_OK);
+	assert(oakengine_footage_proxy_get_state(f) == 2);
+	assert(oakengine_footage_proxy_get_path(f, buf, sizeof(buf)) > 0);
+	assert(strcmp(buf, "/tmp/fake_proxy.mp4") == 0);
+	assert(oakengine_footage_proxy_is_enabled(f) == 1);
+	assert(oakengine_footage_clear_proxy(f) == OAKENGINE_OK);
+	assert(oakengine_footage_proxy_get_state(f) == 0);
+	assert(oakengine_footage_proxy_get_path(f, buf, sizeof(buf)) == 0);
+	assert(oakengine_footage_set_proxy(NULL, "x", 2, 0, 1, 1) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_footage_clear_proxy(NULL) == OAKENGINE_E_INVALID);
+
+	// Cache invalidation after proxy/relink changes.
+	assert(oakengine_footage_invalidate(f) == OAKENGINE_OK);
+	assert(oakengine_footage_invalidate(NULL) == OAKENGINE_E_INVALID);
+
+	// Probe handles carry no project node: the whole section rejects them.
+	OakEngineFootage *probed = oakengine_footage_probe(path);
+	assert(probed != NULL);
+	assert(oakengine_footage_get_filename(probed, buf, sizeof(buf)) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_footage_get_stream_reference(probed, 0, &track_type,
+												  &stream_index) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_footage_describe_video_stream(probed, 0, buf,
+												   sizeof(buf)) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_footage_get_effective_proxy_params(probed, &params) ==
+		   OAKENGINE_E_INVALID);
+	assert(oakengine_footage_invalidate(probed) == OAKENGINE_E_INVALID);
+	oakengine_footage_free(probed);
+
+	oakengine_footage_free(f);
+	oakengine_project_free(project);
+}
+
 int main(void)
 {
 	make_tmpdir();
@@ -610,6 +899,9 @@ int main(void)
 	test_proxy();
 	test_stream_overrides();
 	test_colorspace_candidates();
+	test_project_extras();
+	test_folder();
+	test_footage_extras();
 
 	assert(oakengine_shutdown() == OAKENGINE_OK);
 

@@ -20,6 +20,8 @@
 
 #include "oakengine/exporter.h"
 
+#include "exportinternal.h"
+
 #include <atomic>
 #include <cstdio>
 
@@ -486,6 +488,21 @@ QString params_from_ex(const oak_export_options_ex &o,
 }
 
 } // namespace
+
+int oakengine_export_render_internal(olive::Sequence *sequence,
+									 olive::Project *project,
+									 olive::EncodingParams &params,
+									 bool prewarm_audio,
+									 const olive::AudioParams &prewarm_params)
+{
+	return render_internal(sequence, project, params, prewarm_audio,
+						   prewarm_params);
+}
+
+void oakengine_export_set_error_string(const QString &error)
+{
+	set_error(error);
+}
 
 extern "C"
 {
