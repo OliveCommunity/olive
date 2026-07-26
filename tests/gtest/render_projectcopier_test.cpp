@@ -75,7 +75,7 @@ protected:
 		if (!olive::Core::instance()) {
 			// Leaked intentionally: Core is process-wide (matches
 			// render_diskcache_test)
-			new olive::Core(olive::Core::CoreParams());
+			new olive::Core();
 		}
 
 		olive::DiskManager::create_instance();

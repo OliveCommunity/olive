@@ -41,7 +41,7 @@
 #include "node/globals.h"
 #include "node/project.h"
 #include "render/job/acceleratedjob.h"
-#include "render/managedcolor.h"
+#include "widget/manageddisplay/colorprocessorhandle.h"
 #include "render/renderjobtracker.h"
 #include "render/rendermanager.h"
 #include "render/renderprocessor.h"

@@ -45,7 +45,7 @@ namespace
 void ensure_app_singletons()
 {
 	if (!olive::Core::instance()) {
-		new olive::Core(olive::Core::CoreParams()); // intentionally leaked
+		new olive::Core(); // intentionally leaked
 	}
 	if (!olive::DiskManager::instance()) {
 		olive::DiskManager::create_instance();
@@ -253,8 +253,8 @@ TEST_F(WidgetPanelsTest, NodeTreeCheckboxesToggleEnableStateAndEmit)
 	int node_emissions = 0;
 	QObject::connect(&view, &NodeTreeView::node_enable_changed,
 					 [&node_signal_node, &node_signal_enabled,
-					  &node_emissions](Node *n, bool e) {
-						 node_signal_node = n;
+					  &node_emissions](OakEngineNode *n, bool e) {
+						 node_signal_node = reinterpret_cast<Node *>(n);
 						 node_signal_enabled = e;
 						 ++node_emissions;
 					 });
@@ -431,7 +431,7 @@ TEST(TaskView, TaskLifecycleUpdatesItems)
 	TaskView view(nullptr);
 	DummyTask task;
 
-	view.add_task(&task);
+	view.add_task(reinterpret_cast<OakEngineTask*>(&task));
 
 	auto *item = view.findChild<TaskViewItem *>();
 	ASSERT_NE(item, nullptr);
@@ -453,16 +453,16 @@ TEST(TaskView, TaskLifecycleUpdatesItems)
 	EXPECT_EQ(bar->value(), 50);
 
 	// The cancel button relays the task through TaskCancelled
-	Task *cancelled = nullptr;
+	OakEngineTask *cancelled = nullptr;
 	QObject::connect(&view, &TaskView::task_cancelled,
-					 [&cancelled](Task *t) { cancelled = t; });
+					 [&cancelled](OakEngineTask *t) { cancelled = t; });
 	auto *cancel_button = item->findChild<QPushButton *>();
 	ASSERT_NE(cancel_button, nullptr);
 	cancel_button->click();
-	EXPECT_EQ(cancelled, &task);
+	EXPECT_EQ(cancelled, reinterpret_cast<OakEngineTask*>(&task));
 
 	// Failure swaps in the error label
-	view.task_failed(&task);
+	view.task_failed(reinterpret_cast<OakEngineTask*>(&task));
 	bool found_error = false;
 	foreach (QLabel *label, item->findChildren<QLabel *>()) {
 		if (label->text().contains(QStringLiteral("boom"))) {
@@ -473,7 +473,7 @@ TEST(TaskView, TaskLifecycleUpdatesItems)
 	EXPECT_TRUE(found_error);
 
 	// Removal deletes the item once deferred deletions are processed
-	view.remove_task(&task);
+	view.remove_task(reinterpret_cast<OakEngineTask*>(&task));
 	QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
 	EXPECT_EQ(view.findChild<TaskViewItem *>(), nullptr);
 }

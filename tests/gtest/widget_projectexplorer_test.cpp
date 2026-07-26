@@ -28,7 +28,7 @@ namespace
 void ensure_app_singletons()
 {
 	if (!olive::Core::instance()) {
-		new olive::Core(olive::Core::CoreParams()); // intentionally leaked
+		new olive::Core(); // intentionally leaked
 	}
 	if (!olive::DiskManager::instance()) {
 		olive::DiskManager::create_instance();

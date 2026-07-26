@@ -40,7 +40,7 @@ protected:
 	{
 		if (!olive::Core::instance()) {
 			// Leaked intentionally: Core is process-wide (matches footage_probe_test)
-			new olive::Core(olive::Core::CoreParams());
+			new olive::Core();
 		}
 
 		created_disk_manager_ = (olive::DiskManager::instance() == nullptr);
@@ -109,9 +109,10 @@ TEST_F(TaskProjectImportTest, ImportOfUnprobeableFileCollectsInvalidList)
 	EXPECT_DOUBLE_EQ(last_progress, 1.0);
 
 	// The undo command exists but contains no children since nothing was added
-	ASSERT_NE(task.get_command(), nullptr);
-	EXPECT_EQ(task.get_command()->child_count(), 0);
-	delete task.get_command();
+	olive::MultiUndoCommand *cmd = task.take_command();
+	ASSERT_NE(cmd, nullptr);
+	EXPECT_EQ(cmd->child_count(), 0);
+	delete cmd;
 }
 
 TEST_F(TaskProjectImportTest, ImportOfImageFileAddsFootageThroughUndoCommand)
@@ -135,18 +136,19 @@ TEST_F(TaskProjectImportTest, ImportOfImageFileAddsFootageThroughUndoCommand)
 	// Nothing is in the folder until the command is redone
 	EXPECT_TRUE(project_->root()->children().isEmpty());
 
-	ASSERT_NE(task.get_command(), nullptr);
-	task.get_command()->redo_now();
+	olive::MultiUndoCommand *cmd = task.take_command();
+	ASSERT_NE(cmd, nullptr);
+	cmd->redo_now();
 
 	ASSERT_EQ(project_->root()->children().size(), 1);
 	EXPECT_EQ(project_->root()->children().first(),
 			  static_cast<olive::Node *>(footage));
 	EXPECT_TRUE(project_->nodes().contains(footage));
 
-	task.get_command()->undo_now();
+	cmd->undo_now();
 	EXPECT_TRUE(project_->root()->children().isEmpty());
 
-	delete task.get_command();
+	delete cmd;
 }
 
 TEST_F(TaskProjectImportTest, ImportOfDirectoryCreatesFolderHierarchy)
@@ -171,8 +173,9 @@ TEST_F(TaskProjectImportTest, ImportOfDirectoryCreatesFolderHierarchy)
 	EXPECT_FALSE(task.has_invalid_files());
 	EXPECT_EQ(task.get_imported_footage().size(), 2);
 
-	ASSERT_NE(task.get_command(), nullptr);
-	task.get_command()->redo_now();
+	olive::MultiUndoCommand *cmd = task.take_command();
+	ASSERT_NE(cmd, nullptr);
+	cmd->redo_now();
 
 	// Importing a directory creates a folder named after it under the target
 	const QVector<olive::Node *> &root_children = project_->root()->children();
@@ -191,10 +194,10 @@ TEST_F(TaskProjectImportTest, ImportOfDirectoryCreatesFolderHierarchy)
 	ASSERT_EQ(sub_folders.size(), 1);
 	EXPECT_EQ(sub_folders.first()->get_label(), QStringLiteral("sub"));
 
-	task.get_command()->undo_now();
+	cmd->undo_now();
 	EXPECT_TRUE(project_->root()->children().isEmpty());
 
-	delete task.get_command();
+	delete cmd;
 }
 
 TEST_F(TaskProjectImportTest, CancelledBeforeRunReturnsFalseAndDropsCommand)
@@ -206,7 +209,7 @@ TEST_F(TaskProjectImportTest, CancelledBeforeRunReturnsFalseAndDropsCommand)
 	task.Cancel();
 
 	EXPECT_FALSE(task.start());
-	EXPECT_EQ(task.get_command(), nullptr);
+	EXPECT_EQ(task.take_command(), nullptr);
 	EXPECT_TRUE(task.get_imported_footage().isEmpty());
 	EXPECT_FALSE(task.has_invalid_files());
 	EXPECT_TRUE(project_->root()->children().isEmpty());

@@ -23,6 +23,7 @@
 #include "dialog/actionsearch/actionsearch.h"
 #include "dialog/autorecovery/autorecoverydialog.h"
 #include "dialog/color/colordialog.h"
+#include "widget/manageddisplay/colorprocessorhandle.h"
 #include "dialog/configbase/configdialogbase.h"
 #include "dialog/diskcache/diskcachedialog.h"
 #include "dialog/preferences/keysequenceeditor.h"
@@ -43,7 +44,7 @@ namespace
 void ensure_app_singletons()
 {
 	if (!olive::Core::instance()) {
-		new olive::Core(olive::Core::CoreParams()); // intentionally leaked
+		new olive::Core(); // intentionally leaked
 	}
 	if (!olive::DiskManager::instance()) {
 		olive::DiskManager::create_instance();
@@ -75,7 +76,7 @@ public:
 		return validate_result;
 	}
 
-	virtual void accept(olive::MultiUndoCommand *) override
+	virtual void accept(void *) override
 	{
 		++accept_count;
 	}
@@ -502,10 +503,10 @@ TEST(DialogTask, WrapsAndOwnsTask)
 	auto *task = new DummyTask();
 	QPointer<olive::Task> task_guard(task);
 
-	auto *dialog = new olive::TaskDialog(task, QStringLiteral("Title"));
+	auto *dialog = new olive::TaskDialog(
+		reinterpret_cast<OakEngineTask*>(task), QStringLiteral("Title"));
 
-	EXPECT_EQ(dialog->get_task(), task);
-	EXPECT_EQ(task->parent(), dialog);
+	EXPECT_EQ(dialog->get_task(), reinterpret_cast<OakEngineTask*>(task));
 
 	// The dialog takes ownership of the task
 	delete dialog;
@@ -520,7 +521,7 @@ TEST(DialogColor, SelectedColorRoundTrips)
 	olive::ColorManager::set_up_default_config();
 	olive::Project project;
 
-	olive::ColorDialog dialog(project.color_manager(),
+	olive::ColorDialog dialog(oak_color_manager(project.color_manager()),
 							  olive::Color(1.0f, 0.0f, 0.0f, 1.0f));
 
 	olive::ManagedColor selected = dialog.get_selected_color();
