@@ -40,14 +40,14 @@ protected:
 
 	virtual void on_destroy() override;
 
-	virtual TexturePtr load_custom_texture_from_frame(const QVariant &v) override;
+	virtual void *load_custom_texture_from_frame(const QVariant &v) override;
 
 private:
 	static QString generate_shader_code(int rows, int cols);
 
 	MultiCamNode *node_;
 
-	QVariant shader_;
+	void *shader_;
 	int rows_;
 	int cols_;
 };

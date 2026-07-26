@@ -26,13 +26,13 @@
 #include <QMutex>
 #include <QMutexLocker>
 
-#include "codec/frame.h"
+#include <olive/core/core.h>
 
 namespace olive
 {
 
 struct ViewerPlaybackFrame {
-	Rational timestamp;
+	core::Rational timestamp;
 	QVariant frame;
 };
 
@@ -73,7 +73,7 @@ public:
 		}
 	}
 
-	void purge_before(const Rational &time, int playback_speed)
+	void purge_before(const core::Rational &time, int playback_speed)
 	{
 		QMutexLocker locker(mutex_);
 		while (!this->empty() &&

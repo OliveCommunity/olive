@@ -37,6 +37,7 @@
 #include "pluginSupport/oliveclip.h"
 #include "pluginSupport/olivehost.h"
 #include "oliveimpl/render/ipc/frameslotpool.h"
+#include "src/capi/displayinternal.h"
 
 namespace olive
 {
@@ -367,7 +368,7 @@ NodeValueDatabase RenderProcessor::generate_database(const Node *node,
 		if (QtUtils::value_to_ptr<MultiCamNode>(ticket_->property("multicam")) ==
 			multicam) {
 			int sz = multicam->get_source_count();
-			QVector<TexturePtr> multicam_tex(sz);
+			QVector<void *> multicam_tex(sz);
 			for (int i = 0; i < sz; i++) {
 				NodeValueTable t =
 					generate_table(multicam->get_connected_render_output(
@@ -377,7 +378,9 @@ NodeValueDatabase RenderProcessor::generate_database(const Node *node,
 					multicam, multicam->k_sources_input, i, &t, range);
 				resolve_jobs(val);
 
-				multicam_tex[i] = val.to_texture();
+				TexturePtr tp = val.to_texture();
+				// Store as opaque retained handle for the C ABI app layer
+				multicam_tex[i] = oakengine_internal_wrap_texture(tp);
 			}
 			ticket_->setProperty("multicam_output",
 								 QVariant::fromValue(multicam_tex));

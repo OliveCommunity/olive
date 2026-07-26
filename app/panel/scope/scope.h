@@ -59,7 +59,7 @@ public:
 	}
 
 public slots:
-	void set_reference_buffer(TexturePtr frame);
+	void set_reference_buffer(void *frame);
 
 	void set_color_manager(OakEngineColorManager *manager);
 

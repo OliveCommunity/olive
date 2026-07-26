@@ -33,10 +33,10 @@
 #endif
 
 #include "oakengine/color.h"
+#include "oakengine/display.h"
 #include "oakengine/events.h"
 #include "render/colorprocessor.h"
 #include "render/colortransform.h"
-#include "render/renderer.h"
 #include "widget/manageddisplay/colorprocessorhandle.h"
 #include "widget/menu/menu.h"
 
@@ -222,7 +222,7 @@ protected:
    */
 	virtual void color_processor_changed_event();
 
-	Renderer *renderer() const
+	void *renderer() const
 	{
 		return attached_renderer_;
 	}
@@ -261,7 +261,7 @@ protected:
 		return wrapper_ ? wrapper_->rect() : QRect();
 	}
 
-	VideoParams get_viewport_params() const;
+	oak_video_params get_viewport_params() const;
 
 protected slots:
 	/**
@@ -303,7 +303,7 @@ private:
 	/**
    * @brief Renderer abstraction
    */
-	Renderer *attached_renderer_;
+	void *attached_renderer_;
 
 	/**
    * @brief Connected color manager

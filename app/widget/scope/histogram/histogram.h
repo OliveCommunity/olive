@@ -40,16 +40,15 @@ protected slots:
 	virtual void on_destroy() override;
 
 protected:
-	virtual ShaderCode generate_shader_code() override;
-	QVariant create_secondary_shader();
+	virtual ScopeShaderCode generate_shader_code() override;
 
-	virtual void draw_scope(TexturePtr managed_tex, QVariant pipeline) override;
+	virtual void draw_scope(void *managed_tex, void *pipeline) override;
 
 	virtual void draw_scope_software(QPainter &p, const QImage &image) override;
 
 private:
-	QVariant pipeline_secondary_;
-	TexturePtr texture_row_sums_;
+	void *pipeline_secondary_;
+	void *texture_row_sums_;
 };
 
 }

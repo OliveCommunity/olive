@@ -53,8 +53,13 @@ function(olive_add_test GROUP NAME SOURCE)
   target_link_libraries(
     ${NAME}
     PRIVATE
+    oakengine-obj
     ${OLIVE_LIBRARIES}
   )
+  # Export symbols so dlopen'd render backend plugins can resolve engine objects
+  if (UNIX AND NOT APPLE)
+    target_link_options(${NAME} PRIVATE "LINKER:--export-dynamic")
+  endif()
   target_compile_definitions(
     ${NAME}
     PRIVATE

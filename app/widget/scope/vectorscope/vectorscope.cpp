@@ -23,11 +23,11 @@
 
 #include <QPainter>
 #include <QtMath>
-#include <QVector2D>
-#include <QVector3D>
 
 #include "common/qtutils.h"
-#include "node/node.h"
+#include "common/filefunctions.h"
+#include "oakengine/color.h"
+#include "oakengine/display.h"
 
 namespace olive
 {
@@ -39,14 +39,14 @@ VectorscopeScope::VectorscopeScope(QWidget *parent)
 {
 }
 
-ShaderCode VectorscopeScope::generate_shader_code()
+ScopeShaderCode VectorscopeScope::generate_shader_code()
 {
-	return ShaderCode(
+	return ScopeShaderCode{
 		FileFunctions::read_file_as_string(":/shaders/rgbvectorscope.frag"),
-		FileFunctions::read_file_as_string(":/shaders/rgbvectorscope.vert"));
+		FileFunctions::read_file_as_string(":/shaders/rgbvectorscope.vert")};
 }
 
-void VectorscopeScope::draw_scope(TexturePtr managed_tex, QVariant pipeline)
+void VectorscopeScope::draw_scope(void *managed_tex, void *pipeline)
 {
 	float vectorscope_scale = 0.80f;
 	float vectorscope_gain = 1.45f;
@@ -54,34 +54,31 @@ void VectorscopeScope::draw_scope(TexturePtr managed_tex, QVariant pipeline)
 	float vectorscope_intensity = 0.035f;
 	float vectorscope_sample_grid = 28.0f;
 
-	ShaderJob job;
-
-	job.insert(QStringLiteral("viewport"),
-			   NodeValue(NodeValue::k_vec2, QVector2D(width(), height())));
-
 	double luma_coeffs[3] = { 0.0f, 0.0f, 0.0f };
 	oakengine_color_manager_default_luma_coefs(color_manager(), luma_coeffs);
-	job.insert(
-		QStringLiteral("luma_coeffs"),
-		NodeValue(NodeValue::k_vec3,
-				  QVector3D(luma_coeffs[0], luma_coeffs[1], luma_coeffs[2])));
 
-	job.insert(QStringLiteral("vectorscope_scale"),
-			   NodeValue(NodeValue::k_float, vectorscope_scale));
-	job.insert(QStringLiteral("vectorscope_gain"),
-			   NodeValue(NodeValue::k_float, vectorscope_gain));
-	job.insert(QStringLiteral("vectorscope_point_radius"),
-			   NodeValue(NodeValue::k_float, vectorscope_point_radius));
-	job.insert(QStringLiteral("vectorscope_intensity"),
-			   NodeValue(NodeValue::k_float, vectorscope_intensity));
-	job.insert(QStringLiteral("vectorscope_sample_grid"),
-			   NodeValue(NodeValue::k_float, vectorscope_sample_grid));
+	oak_shader_uniform uniforms[7];
+	uniforms[0] = {"viewport", 1,
+				   {static_cast<float>(width()), static_cast<float>(height()),
+					0.0f, 0.0f}};
+	uniforms[1] = {"luma_coeffs", 3,
+				   {static_cast<float>(luma_coeffs[0]),
+					static_cast<float>(luma_coeffs[1]),
+					static_cast<float>(luma_coeffs[2]), 0.0f}};
+	uniforms[2] = {"vectorscope_scale", 0,
+				   {vectorscope_scale, 0.0f, 0.0f, 0.0f}};
+	uniforms[3] = {"vectorscope_gain", 0,
+				   {vectorscope_gain, 0.0f, 0.0f, 0.0f}};
+	uniforms[4] = {"vectorscope_point_radius", 0,
+				   {vectorscope_point_radius, 0.0f, 0.0f, 0.0f}};
+	uniforms[5] = {"vectorscope_intensity", 0,
+				   {vectorscope_intensity, 0.0f, 0.0f, 0.0f}};
+	uniforms[6] = {"vectorscope_sample_grid", 0,
+				   {vectorscope_sample_grid, 0.0f, 0.0f, 0.0f}};
 
-	job.insert(QStringLiteral("ove_maintex"),
-			   NodeValue(NodeValue::k_texture,
-						 QVariant::fromValue(managed_tex)));
-
-	renderer()->blit(pipeline, job, get_viewport_params());
+	oak_video_params vp = get_viewport_params();
+	oakengine_display_renderer_blit_shader_uniforms(
+		renderer(), pipeline, managed_tex, uniforms, 7, nullptr, &vp);
 
 	QPainter p(paint_device());
 	QFont font = p.font();

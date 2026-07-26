@@ -1,4 +1,4 @@
-target_sources(oakengine PRIVATE
+target_sources(oakengine-obj PRIVATE
         olivehost.h
         olivehost.cpp
         oliveplugininstance.h

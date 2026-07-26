@@ -26,7 +26,6 @@
 #include <QMatrix4x4>
 #include <QRubberBand>
 
-#include "codec/frame.h"
 #include "engineeventbridge.h"
 #include "node/color/colormanager/colormanager.h"
 #include "node/gizmo/text.h"
@@ -41,6 +40,7 @@
 #include "viewertexteditor.h"
 #include "widget/manageddisplay/manageddisplay.h"
 #include "widget/timetarget/timetarget.h"
+#include "widget/viewer/displaybuffer.h"
 
 namespace olive
 {
@@ -136,7 +136,7 @@ public:
 		fps_timer_update_count_++;
 	}
 
-	TexturePtr get_current_texture() const
+	void *get_current_texture() const
 	{
 		return texture_;
 	}
@@ -242,7 +242,7 @@ signals:
 
 	void dropped(QDropEvent *event);
 
-	void texture_changed(TexturePtr texture);
+	void texture_changed(void *texture);
 
 	void queue_starved();
 
@@ -270,7 +270,7 @@ protected:
 						 node_time + gizmo_params_.frame_rate_as_time_base());
 	}
 
-	virtual TexturePtr load_custom_texture_from_frame(const QVariant &v)
+	virtual void *load_custom_texture_from_frame(const QVariant &v)
 	{
 		return nullptr;
 	}
@@ -333,22 +333,21 @@ private:
 
 	void generate_gizmo_transforms();
 
-	void draw_blank(const VideoParams &device_params);
+	void draw_blank(const oak_video_params &device_params);
 
-	void draw_backend_neutral(const ColorTransformJob &ctj, QPainter *painter);
-	bool draw_backend_neutral_frame(const FramePtr &frame, QPainter *painter);
-	bool draw_backend_neutral_texture(const TexturePtr &texture,
-								   QPainter *painter);
+	void draw_backend_neutral(const oak_color_transform_job &ctj, QPainter *painter);
+	bool draw_backend_neutral_frame(void *frame, QPainter *painter);
+	bool draw_backend_neutral_texture(void *texture, QPainter *painter);
 
 	/**
    * @brief Internal reference to the OpenGL texture to draw. Set in SetTexture() and used in paintGL().
    */
-	TexturePtr texture_;
+	void *texture_;
 
 	/**
    * @brief Internal texture to deinterlace to
    */
-	TexturePtr deinterlace_texture_;
+	void *deinterlace_texture_;
 
 	/**
    * @brief Offscreen texture for backend-neutral viewer rendering.
@@ -356,27 +355,27 @@ private:
    * The texture is rendered at device resolution and read back to a QImage so
    * it can be painted with QPainter on the plain QWidget inner surface.
    */
-	TexturePtr backend_neutral_texture_;
+	void *backend_neutral_texture_;
 
 	/**
    * @brief CPU readback buffer for backend_neutral_texture_.
    */
 	QByteArray backend_neutral_buffer_;
 	QImage backend_neutral_cpu_image_;
-	FramePtr backend_neutral_cpu_display_frame_;
-	FramePtr backend_neutral_cpu_source_frame_;
-	TexturePtr backend_neutral_cpu_source_texture_;
+	void *backend_neutral_cpu_display_frame_;
+	void *backend_neutral_cpu_source_frame_;
+	void *backend_neutral_cpu_source_texture_;
 	QString backend_neutral_cpu_color_id_;
 
 	/**
    * @brief Deinterlace shader
    */
-	QVariant deinterlace_shader_;
+	void *deinterlace_shader_;
 
 	/**
    * @brief Blank shader
    */
-	QVariant blank_shader_;
+	void *blank_shader_;
 
 	/**
    * @brief Translation only matrix (defaults to identity).

@@ -127,7 +127,7 @@ void ScopePanel::set_viewer_panel(ViewerPanelBase *vp)
 	}
 }
 
-void ScopePanel::set_reference_buffer(TexturePtr frame)
+void ScopePanel::set_reference_buffer(void *frame)
 {
 	histogram_->set_buffer(frame);
 	vectorscope_->set_buffer(frame);

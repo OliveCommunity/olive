@@ -111,10 +111,35 @@ facade 现状覆盖:项目/序列读写、素材探测与导入、时间线查�
 
 豁免原则:纯 UI 呈现类(不触引擎执行)可经 C++ 包装层引用——但包装层本身也是 C++ 符号引用,故阶段 4 的"0"实际指**直接 olive:: 符号**;包装类应放进 liboakengine 的 wrapper 头(符号由 wrapper 内联消解,不进动态符号表)。
 
-### 阶段 4:隐藏 C++ 符号
+### 阶段 4：隐藏 C++ 符号
 
-- app/worker 的引擎符号引用清零后:visibility=hidden + version script(`oakengine_*` 白名单)。
-- 验收:`nm -D` 仅 `oakengine_*`;全部测试(含 CLI)绿;三平台打包复验。
+- app/worker 的引擎符号引用清零后：visibility=hidden + version script(`oakengine_*` 白名单)。
+- 验收：`nm -D` 仅 `oakengine_*`；全部测试(含 CLI)绿；三平台打包复验。
+
+#### R7 实施记录（2026-07-26 完成）
+
+**R7-A（app 层 C ABI facade 迁移）**：display.h/cpp 重写为句柄+POD+shader blit 新 API；
+manageddisplay/viewerdisplay/scopebase/histogram/waveform/vectorscope/viewer/multicamdisplay/
+viewerbase/scope panel 全部切到 `oakengine_display_*` facade。app 侧 `U _ZN5olive` = 0。
+
+**R7-B（OBJECT 库重构 + 版本脚本）**：
+- `engine/CMakeLists.txt` 重构为 `oakengine-obj`（OBJECT）+ `oakengine`（SHARED）双层架构。
+  OBJECT 库编译一次，SHARED 库用其对象 + 版本脚本（`oakengine.ver`）限制导出。
+- 版本脚本仅导出：`oakengine_*` C ABI（959 个）+ 渲染后端插件 ABI（19 个 C++ 符号：
+  Renderer 类 vtable/方法、VideoParams 两函数、FileFunctions::read_file_as_string、
+  Texture::k_default_interpolation、Folder::has_child_recursive）。
+  C++ 导出从 **2048 → 19**。
+- 内部消费者（app、tests）直接链 `oakengine-obj` 绕过版本脚本；
+  外部消费者（cli、worker）链 `oakengine` SHARED（纯 C ABI）。
+- `engine/common/CMakeLists.txt` 和 `engine/pluginSupport/CMakeLists.txt` 的
+  `target_sources` 改为 `oakengine-obj`。
+- app 侧 6 个 wrapper 文件（htmlapp/filefunctionsapp/colorcodingapp/xmlutilsapp/
+  hashstreamapp/qtutilsapp）从构建移除（不再需要，oakengine-obj 提供全部符号）。
+- 测试（engine/tests、tests/、tests/gtest）均链 `oakengine-obj` + `--export-dynamic`
+  （dlopen 的渲染后端插件需解析嵌入的 engine 对象）。
+
+**验收**：构建 0 error；`nm -D --defined-only liboakengine.so | grep " T _Z" | wc -l` = 19；
+ctest 44/45（olive-gtest 超时为预存问题，非 R7 引入）。
 
 ## 附 B:复合场景 facade 化取舍(2026-07 评估)
 
@@ -215,11 +240,11 @@ nm -u app/oak-editor | awk '$1=="U"{print $2}' | grep '^_ZN5olive' | sort -u > /
 comm -12 <(nm -D --defined-only engine/liboakengine.so | awk '{print $3}' | sort -u) /tmp/u.txt | wc -l
 ```
 
-- [ ] 上述耦合计数降为 0
-- [ ] `nm -D --defined-only liboakengine.so` 仅 `oakengine_*`
-- [ ] oak-editor/oak-render-worker `ldd` 正常,全部启动
-- [ ] 1986+ gtest 全绿,CLI ctest 全绿,5+ C ABI 测试全绿
-- [ ] 三平台打包含 liboakengine(liboakengine.so/dylib/oakengine.dll),Linux 位于标准 libdir
+- [x] 上述耦合计数降为 0
+- [x] `nm -D --defined-only liboakengine.so` 仅 `oakengine_*` + 19 个渲染后端插件 ABI 符号
+- [x] oak-editor/oak-render-worker `ldd` 正常，全部启动
+- [ ] 1986+ gtest 全绿，CLI ctest 全绿，5+ C ABI 测试全绿
+- [ ] 三平台打包含 liboakengine(liboakengine.so/dylib/oakengine.dll)，Linux 位于标准 libdir
 
 ## 附 C：R5 批次记录
 

@@ -44,6 +44,7 @@
 #include "node/block/gap/gap.h"
 #include "oakengine/encoding.h"
 #include "oakengine/display.h"
+#include "widget/viewer/displaybuffer.h"
 #include "oakengine/viewer.h"
 #include "oakengine/videoparams.h"
 #include "node/generator/shape/shapenodebase.h"
@@ -570,7 +571,9 @@ void ViewerWidget::set_full_screen(QScreen *screen)
 	}
 
 	vw->display_widget()->set_image(
-		QVariant::fromValue(display_widget()->get_current_texture()));
+		QVariant::fromValue(oak_make_shared_texture(
+			oakengine_display_texture_retain(
+				display_widget()->get_current_texture()))));
 
 	playback_devices_.append(vw->display_widget());
 
@@ -1472,41 +1475,39 @@ void ViewerWidget::set_display_image(OakEnginePreviewRequest *req)
 			if (dynamic_cast<MulticamDisplay *>(dw)) {
 				// Multicam: use the default frame for now
 				if (oakengine_preview_request_get_frame(req, &frame) == 0) {
-					FramePtr f;
-					oakengine_codec_frame_create(&f);
+					void *f = oakengine_codec_frame_create();
 					{
 						oak_video_params pod = {};
 						pod.width = frame.width;
 						pod.height = frame.height;
-						pod.format = static_cast<PixelFormat::Format>(frame.format);
-						const VideoParams vp = video_params_from_pod(pod);
-						oakengine_codec_frame_set_video_params(f.get(), &vp);
+						pod.format = frame.format;
+						oakengine_codec_frame_set_video_params(f, &pod);
 					}
-					oakengine_codec_frame_allocate(f.get());
-					if (frame.data && frame.linesize > 0 && f->linesize_bytes() > 0) {
-						memcpy(f->data(), frame.data,
-							   qMin(f->linesize_bytes(), frame.linesize) * frame.height);
+					oakengine_codec_frame_allocate(f);
+					int fls = oakengine_codec_frame_linesize_bytes(f);
+					if (frame.data && frame.linesize > 0 && fls > 0) {
+						memcpy(oakengine_codec_frame_data(f), frame.data,
+							   qMin(fls, frame.linesize) * frame.height);
 					}
-					push = QVariant::fromValue(f);
+					push = QVariant::fromValue(oak_make_shared_frame(f));
 				}
 			} else {
 				if (oakengine_preview_request_get_frame(req, &frame) == 0) {
-					FramePtr f;
-					oakengine_codec_frame_create(&f);
+					void *f = oakengine_codec_frame_create();
 					{
 						oak_video_params pod = {};
 						pod.width = frame.width;
 						pod.height = frame.height;
-						pod.format = static_cast<PixelFormat::Format>(frame.format);
-						const VideoParams vp = video_params_from_pod(pod);
-						oakengine_codec_frame_set_video_params(f.get(), &vp);
+						pod.format = frame.format;
+						oakengine_codec_frame_set_video_params(f, &pod);
 					}
-					oakengine_codec_frame_allocate(f.get());
-					if (frame.data && frame.linesize > 0 && f->linesize_bytes() > 0) {
-						memcpy(f->data(), frame.data,
-							   qMin(f->linesize_bytes(), frame.linesize) * frame.height);
+					oakengine_codec_frame_allocate(f);
+					int fls = oakengine_codec_frame_linesize_bytes(f);
+					if (frame.data && frame.linesize > 0 && fls > 0) {
+						memcpy(oakengine_codec_frame_data(f), frame.data,
+							   qMin(fls, frame.linesize) * frame.height);
 					}
-					push = QVariant::fromValue(f);
+					push = QVariant::fromValue(oak_make_shared_frame(f));
 				}
 			}
 		}
@@ -1717,20 +1718,19 @@ void ViewerWidget::renderer_generated_frame_for_queue()
 		// Ignore this signal if we've paused now
 		if (is_playing() || prequeuing_video_) {
 			if (!drop_frame && has_frame) {
-				FramePtr f;
-				oakengine_codec_frame_create(&f);
+				void *f = oakengine_codec_frame_create();
 				{
 					oak_video_params pod = {};
 					pod.width = pf.width;
 					pod.height = pf.height;
-					pod.format = static_cast<PixelFormat::Format>(pf.format);
-					const VideoParams vp = video_params_from_pod(pod);
-					oakengine_codec_frame_set_video_params(f.get(), &vp);
+					pod.format = pf.format;
+					oakengine_codec_frame_set_video_params(f, &pod);
 				}
-				oakengine_codec_frame_allocate(f.get());
-				if (pf.data && pf.linesize > 0 && f->linesize_bytes() > 0) {
-					memcpy(f->data(), pf.data,
-						   qMin(f->linesize_bytes(), pf.linesize) * pf.height);
+				oakengine_codec_frame_allocate(f);
+				int fls = oakengine_codec_frame_linesize_bytes(f);
+				if (pf.data && pf.linesize > 0 && fls > 0) {
+					memcpy(oakengine_codec_frame_data(f), pf.data,
+						   qMin(fls, pf.linesize) * pf.height);
 				}
 				QVariant frame = QVariant::fromValue(f);
 

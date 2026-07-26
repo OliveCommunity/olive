@@ -1,3 +1,4 @@
+
 /***
 
   Olive - Non-Linear Video Editor
@@ -24,12 +25,10 @@
 #include <array>
 #include <QPainter>
 #include <QtMath>
-#include <QVector2D>
 
 #include "common/qtutils.h"
-#include "node/node.h"
+#include "common/filefunctions.h"
 #include "oakengine/display.h"
-#include "widget/viewer/vieweroutpututils.h"
 
 namespace olive
 {
@@ -38,6 +37,8 @@ namespace olive
 
 HistogramScope::HistogramScope(QWidget *parent)
 	: super(parent)
+	, pipeline_secondary_(nullptr)
+	, texture_row_sums_(nullptr)
 {
 }
 
@@ -45,29 +46,37 @@ void HistogramScope::on_init()
 {
 	super::on_init();
 
-	ShaderCode secondary_code(
-		FileFunctions::read_file_as_string(
-			":/shaders/rgbhistogram_secondary.frag"),
-		FileFunctions::read_file_as_string(":/shaders/rgbhistogram.vert"));
-	pipeline_secondary_ = renderer()->create_native_shader(secondary_code);
+	QString frag = FileFunctions::read_file_as_string(
+		":/shaders/rgbhistogram_secondary.frag");
+	QString vert = FileFunctions::read_file_as_string(
+		":/shaders/rgbhistogram.vert");
+	pipeline_secondary_ = oakengine_display_renderer_create_shader(
+		renderer(), frag.toUtf8().constData(), vert.toUtf8().constData());
 }
 
 void HistogramScope::on_destroy()
 {
-	pipeline_secondary_.clear();
-	texture_row_sums_ = nullptr;
+	if (pipeline_secondary_) {
+		oakengine_display_renderer_destroy_shader(renderer(),
+												  pipeline_secondary_);
+		pipeline_secondary_ = nullptr;
+	}
+	if (texture_row_sums_) {
+		oakengine_display_texture_free(texture_row_sums_);
+		texture_row_sums_ = nullptr;
+	}
 
 	super::on_destroy();
 }
 
-ShaderCode HistogramScope::generate_shader_code()
+ScopeShaderCode HistogramScope::generate_shader_code()
 {
-	return ShaderCode(
+	return ScopeShaderCode{
 		FileFunctions::read_file_as_string(":/shaders/rgbhistogram.frag"),
-		FileFunctions::read_file_as_string(":/shaders/default.vert"));
+		FileFunctions::read_file_as_string(":/shaders/default.vert")};
 }
 
-void HistogramScope::draw_scope(TexturePtr managed_tex, QVariant pipeline)
+void HistogramScope::draw_scope(void *managed_tex, void *pipeline)
 {
 	float histogram_scale = 0.80f;
 	// This value is eyeballed for usefulness. Until we have a geometry
@@ -76,40 +85,45 @@ void HistogramScope::draw_scope(TexturePtr managed_tex, QVariant pipeline)
 	float histogram_base = 2.5f;
 	float histogram_power = 1.0f / histogram_base;
 
-	ShaderJob shader_job;
+	// Set up uniforms shared by both passes
+	oak_shader_uniform uniforms[3];
+	uniforms[0] = {"viewport", 1,
+				   {static_cast<float>(width()), static_cast<float>(height())}};
+	uniforms[1] = {"histogram_scale", 0, {histogram_scale, 0.0f}};
+	uniforms[2] = {"histogram_power", 0, {histogram_power, 0.0f}};
 
-	shader_job.insert(QStringLiteral("viewport"),
-					  NodeValue(NodeValue::k_vec2,
-								QVector2D(width(), height())));
-	shader_job.insert(QStringLiteral("histogram_scale"),
-					  NodeValue(NodeValue::k_float, histogram_scale));
-	shader_job.insert(QStringLiteral("histogram_power"),
-					  NodeValue(NodeValue::k_float, histogram_power));
+	// Recreate row-sums texture if size changed
+	bool need_recreate = false;
+	if (!texture_row_sums_) {
+		need_recreate = true;
+	} else if (oakengine_display_texture_width(texture_row_sums_) != width() ||
+			   oakengine_display_texture_height(texture_row_sums_) !=
+				   height()) {
+		need_recreate = true;
+	}
 
-	if (!texture_row_sums_ || texture_row_sums_->width() != this->width() ||
-		texture_row_sums_->height() != this->height()) {
+	if (need_recreate) {
+		if (texture_row_sums_) {
+			oakengine_display_texture_free(texture_row_sums_);
+		}
 		oak_video_params pod = {};
 		pod.width = width();
 		pod.height = height();
-		pod.format = managed_tex->format();
-		const VideoParams row_sums_params = video_params_from_pod(pod);
-		oakengine_display_renderer_create_texture(renderer(),
-												  &row_sums_params, nullptr, 0,
-												  &texture_row_sums_);
+		pod.format = oakengine_display_texture_format(managed_tex);
+		texture_row_sums_ =
+			oakengine_display_texture_create(renderer(), &pod, nullptr, 0);
 	}
 
-	// Draw managed texture to a sums texture
-	shader_job.insert(QStringLiteral("ove_maintex"),
-					  NodeValue(NodeValue::k_texture,
-								QVariant::fromValue(managed_tex)));
-	renderer()->blit_to_texture(pipeline, shader_job, texture_row_sums_.get());
+	// Pass 1: Draw managed texture to row-sums texture
+	oakengine_display_renderer_blit_shader_uniforms(
+		renderer(), pipeline, managed_tex, uniforms, 3, texture_row_sums_,
+		nullptr);
 
-	// Draw sums into a histogram
-	shader_job.insert(QStringLiteral("ove_maintex"),
-					  NodeValue(NodeValue::k_texture,
-								QVariant::fromValue(texture_row_sums_)));
-	renderer()->blit(pipeline_secondary_, shader_job,
-					 texture_row_sums_->params());
+	// Pass 2: Draw row-sums into a histogram on screen
+	oak_video_params vp = get_viewport_params();
+	oakengine_display_renderer_blit_shader_uniforms(
+		renderer(), pipeline_secondary_, texture_row_sums_, uniforms, 3,
+		nullptr, &vp);
 
 	// Draw line overlays
 	QPainter p(paint_device());
@@ -135,7 +149,6 @@ void HistogramScope::draw_scope(TexturePtr managed_tex, QVariant pipeline)
 	float histogram_start_dim_y = ((height() - 1.0) - histogram_dim_y) / 2.0f;
 	float histogram_end_dim_x = (width() - 1.0) - histogram_start_dim_x;
 
-	// for (int i=0; i <= histogram_steps; i++) {
 	for (std::vector<float>::iterator it = histogram_increments.begin();
 		 it != histogram_increments.end(); it++) {
 		histogram_lines[it - histogram_increments.begin()].setLine(

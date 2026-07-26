@@ -22,12 +22,18 @@
 #ifndef OAK_SCOPEBASE_H
 #define OAK_SCOPEBASE_H
 
-#include "codec/frame.h"
-#include "render/colorprocessor.h"
+#include <QString>
+
 #include "widget/manageddisplay/manageddisplay.h"
 
 namespace olive
 {
+
+/** @brief Fragment + vertex shader source pair returned by scope subclasses. */
+struct ScopeShaderCode {
+	QString frag;
+	QString vert;
+};
 
 class ScopeBase : public ManagedDisplayWidget {
 public:
@@ -36,7 +42,7 @@ public:
 	MANAGEDDISPLAYWIDGET_DEFAULT_DESTRUCTOR(ScopeBase)
 
 public slots:
-	void set_buffer(TexturePtr frame);
+	void set_buffer(void *frame);
 
 protected slots:
 	virtual void on_init() override;
@@ -48,14 +54,14 @@ protected slots:
 protected:
 	virtual void showEvent(QShowEvent *e) override;
 
-	virtual ShaderCode generate_shader_code() = 0;
+	virtual ScopeShaderCode generate_shader_code() = 0;
 
 	/**
    * @brief GPU-accelerated draw function used on OpenGL backends.
    *
    * Override this if your sub-class scope needs extra drawing.
    */
-	virtual void draw_scope(TexturePtr managed_tex, QVariant pipeline);
+	virtual void draw_scope(void *managed_tex, void *pipeline);
 
 	/**
    * @brief Software draw function used on backend-neutral paths (e.g. Vulkan).
@@ -68,20 +74,20 @@ protected:
 private:
 	void update_software_image();
 
-	QVariant pipeline_;
+	void *pipeline_;
 
-	TexturePtr texture_;
+	void *texture_;
 
-	TexturePtr managed_tex_;
+	void *managed_tex_;
 
 	bool managed_tex_up_to_date_;
 
-	TexturePtr software_tex_;
+	void *software_tex_;
 	QByteArray software_buffer_;
 	QImage software_image_;
 	bool software_image_up_to_date_;
 
-	TexturePtr local_texture_;
+	void *local_texture_;
 };
 
 }

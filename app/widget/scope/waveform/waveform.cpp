@@ -26,13 +26,12 @@
 #include <QMenu>
 #include <QPainter>
 #include <QtMath>
-#include <QDebug>
-#include <QVector2D>
-#include <QVector3D>
 
 #include "common/qtutils.h"
 #include "common/configwrapper.h"
-#include "node/node.h"
+#include "common/filefunctions.h"
+#include "oakengine/color.h"
+#include "oakengine/display.h"
 
 namespace olive
 {
@@ -62,46 +61,36 @@ void WaveformScope::contextMenuEvent(QContextMenuEvent *event)
 	menu.exec(event->globalPos());
 }
 
-ShaderCode WaveformScope::generate_shader_code()
+ScopeShaderCode WaveformScope::generate_shader_code()
 {
-	return ShaderCode(
+	return ScopeShaderCode{
 		FileFunctions::read_file_as_string(":/shaders/rgbwaveform.frag"),
-		FileFunctions::read_file_as_string(":/shaders/rgbwaveform.vert"));
+		FileFunctions::read_file_as_string(":/shaders/rgbwaveform.vert")};
 }
 
-void WaveformScope::draw_scope(TexturePtr managed_tex, QVariant pipeline)
+void WaveformScope::draw_scope(void *managed_tex, void *pipeline)
 {
 	float waveform_scale = 0.80f;
 
-	// Draw waveform through shader
-	ShaderJob job;
-
-	// Set viewport size
-	job.insert(QStringLiteral("viewport"),
-			   NodeValue(NodeValue::k_vec2, QVector2D(width(), height())));
-
-	// Set luma coefficients
 	double luma_coeffs[3] = { 0.0f, 0.0f, 0.0f };
 	oakengine_color_manager_default_luma_coefs(color_manager(), luma_coeffs);
-	job.insert(
-		QStringLiteral("luma_coeffs"),
-		NodeValue(NodeValue::k_vec3,
-				  QVector3D(luma_coeffs[0], luma_coeffs[1], luma_coeffs[2])));
 
-	// Scale of the waveform relative to the viewport surface.
-	job.insert(QStringLiteral("waveform_scale"),
-			   NodeValue(NodeValue::k_float, waveform_scale));
+	// Set up uniforms
+	oak_shader_uniform uniforms[4];
+	uniforms[0] = {"viewport", 1,
+				   {static_cast<float>(width()), static_cast<float>(height()),
+					0.0f, 0.0f}};
+	uniforms[1] = {"luma_coeffs", 3,
+				   {static_cast<float>(luma_coeffs[0]),
+					static_cast<float>(luma_coeffs[1]),
+					static_cast<float>(luma_coeffs[2]), 0.0f}};
+	uniforms[2] = {"waveform_scale", 0, {waveform_scale, 0.0f, 0.0f, 0.0f}};
+	uniforms[3] = {"parade_mode", 0,
+				   {parade_mode_ ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f}};
 
-	// Overlay vs. RGB parade display
-	job.insert(QStringLiteral("parade_mode"),
-			   NodeValue(NodeValue::k_float, parade_mode_ ? 1.0f : 0.0f));
-
-	// Insert source texture
-	job.insert(QStringLiteral("ove_maintex"),
-			   NodeValue(NodeValue::k_texture,
-						 QVariant::fromValue(managed_tex)));
-
-	renderer()->blit(pipeline, job, get_viewport_params());
+	oak_video_params vp = get_viewport_params();
+	oakengine_display_renderer_blit_shader_uniforms(
+		renderer(), pipeline, managed_tex, uniforms, 4, nullptr, &vp);
 
 	float waveform_dim_x = ceil((width() - 1.0) * waveform_scale);
 	float waveform_dim_y = ceil((height() - 1.0) * waveform_scale);

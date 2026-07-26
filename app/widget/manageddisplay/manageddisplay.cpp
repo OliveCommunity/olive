@@ -54,22 +54,22 @@ ManagedDisplayWidget::ManagedDisplayWidget(QWidget *parent)
 			return oakengine_render_manager_backend_to_string(backend, buf,
 															  sz);
 		});
-		attached_renderer_ = static_cast<Renderer *>(
+		attached_renderer_ =
 			oakengine_display_renderer_create_dynamic(
-				backend.toUtf8().constData(), this));
+				backend.toUtf8().constData(), this);
 		if (!attached_renderer_) {
 			qWarning()
 				<< "Failed to load dynamic render backend for viewer, falling back to OpenGL";
-			attached_renderer_ = static_cast<Renderer *>(
-				oakengine_display_renderer_create_opengl(this));
+			attached_renderer_ =
+				oakengine_display_renderer_create_opengl(this);
 		}
 	}
 #else
-	attached_renderer_ = static_cast<Renderer *>(
-		oakengine_display_renderer_create_opengl(this));
+	attached_renderer_ =
+		oakengine_display_renderer_create_opengl(this);
 #endif
 
-	if (attached_renderer_->is_open_gl()) {
+	if (oakengine_display_renderer_is_open_gl(attached_renderer_)) {
 		// OpenGL path
 		inner_widget_ = new ManagedDisplayWidgetOpenGL();
 		inner_widget_->setAttribute(Qt::WA_TranslucentBackground, false);
@@ -363,17 +363,16 @@ void ManagedDisplayWidget::set_inner_mouse_tracking(bool e)
 	}
 }
 
-VideoParams ManagedDisplayWidget::get_viewport_params() const
+oak_video_params ManagedDisplayWidget::get_viewport_params() const
 {
 	int device_width = width() * devicePixelRatioF();
 	int device_height = height() * devicePixelRatioF();
-	PixelFormat device_format = static_cast<PixelFormat::Format>(
-		OAK_CONFIG("OfflinePixelFormat").toInt());
+	int device_format = OAK_CONFIG("OfflinePixelFormat").toInt();
 	oak_video_params pod = {};
 	pod.width = device_width;
 	pod.height = device_height;
 	pod.format = device_format;
-	return video_params_from_pod(pod);
+	return pod;
 }
 
 void ManagedDisplayWidget::update()

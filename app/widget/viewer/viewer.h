@@ -184,7 +184,7 @@ signals:
 	/**
    * @brief Signal emitted when a new frame is loaded
    */
-	void texture_changed(TexturePtr t);
+	void texture_changed(void *t);
 
 	/**
    * @brief Wrapper for ViewerGLWidget::ColorProcessorChanged()

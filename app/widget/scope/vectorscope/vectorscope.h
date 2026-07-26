@@ -35,9 +35,9 @@ public:
 	MANAGEDDISPLAYWIDGET_DEFAULT_DESTRUCTOR(VectorscopeScope)
 
 protected:
-	virtual ShaderCode generate_shader_code() override;
+	virtual ScopeShaderCode generate_shader_code() override;
 
-	virtual void draw_scope(TexturePtr managed_tex, QVariant pipeline) override;
+	virtual void draw_scope(void *managed_tex, void *pipeline) override;
 
 	virtual void draw_scope_software(QPainter &p, const QImage &image) override;
 };

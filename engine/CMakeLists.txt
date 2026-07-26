@@ -46,25 +46,31 @@ add_subdirectory(ui)
 add_subdirectory(undo)
 add_subdirectory(src/capi)
 
-add_library(oakengine SHARED
+# Object library: compiled once, consumed by both the shared library (with
+# version-script restrictions) and internal test executables (unrestricted).
+add_library(oakengine-obj OBJECT
         ${OLIVE_SOURCES}
         ${OLIVE_RESOURCES}
 )
 
+add_library(oakengine SHARED $<TARGET_OBJECTS:oakengine-obj>)
+
 # macOS: hides the render worker's dock icon; called from the worker main in
 # src/capi/worker.cpp (declared there as a plain C++ symbol).
 if (APPLE)
-    target_sources(oakengine PRIVATE src/worker_dockicon_mac.mm)
+    target_sources(oakengine-obj PRIVATE src/worker_dockicon_mac.mm)
     target_link_libraries(oakengine PRIVATE "-framework Cocoa")
 endif ()
 
 add_subdirectory(common)
 add_subdirectory(pluginSupport)
 
-target_compile_features(oakengine PUBLIC cxx_std_23)
+target_compile_features(oakengine-obj PUBLIC cxx_std_23)
+set_target_properties(oakengine-obj PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+)
 set_target_properties(oakengine PROPERTIES
         OUTPUT_NAME oakengine
-        POSITION_INDEPENDENT_CODE ON
 )
 
 # Consumers resolve engine headers ("node/...", "render/...", "coreengine.h",
@@ -76,7 +82,7 @@ set_target_properties(oakengine PROPERTIES
 # cannot work here: CMAKE_INCLUDE_CURRENT_DIR puts the engine root ahead of
 # every target-level directory, so the prefixed paths are what keep internal
 # sources from ever picking up a consumer wrapper header by accident.
-target_include_directories(oakengine
+target_include_directories(oakengine-obj
         PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src
         PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
         PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -85,10 +91,28 @@ target_include_directories(oakengine
         ${OLIVE_INCLUDE_DIRS}
 )
 
+target_link_libraries(oakengine-obj PUBLIC ${OLIVE_LIBRARIES} OfxHost)
+target_link_libraries(oakengine PRIVATE oakengine-obj)
+# Propagate engine header paths to consumers of the shared library
+# (the OBJECT lib's PUBLIC includes don't transit through a PRIVATE link).
+target_include_directories(oakengine
+        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
+        PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+# Consumers also need the third-party link deps (Qt, FFmpeg, etc.)
 target_link_libraries(oakengine PUBLIC ${OLIVE_LIBRARIES} OfxHost)
 # OAKENGINE_BUILD marks the library side of the C ABI export macros (dllexport)
-target_compile_definitions(oakengine PRIVATE ${OLIVE_DEFINITIONS} OAKENGINE_BUILD)
-target_compile_options(oakengine PRIVATE ${OLIVE_COMPILE_OPTIONS})
+target_compile_definitions(oakengine-obj PRIVATE ${OLIVE_DEFINITIONS} OAKENGINE_BUILD)
+target_compile_options(oakengine-obj PRIVATE ${OLIVE_COMPILE_OPTIONS})
+
+# Version script: only oakengine_* + render-backend plugin ABI are exported;
+# all other C++ internals are hidden (local: *).
+if (UNIX AND NOT APPLE)
+    target_link_options(oakengine PRIVATE
+            "LINKER:--version-script,${CMAKE_CURRENT_SOURCE_DIR}/oakengine.ver")
+    set_target_properties(oakengine PROPERTIES LINK_DEPENDS
+            ${CMAKE_CURRENT_SOURCE_DIR}/oakengine.ver)
+endif ()
 
 # Install into the platform's standard library directory (/usr/lib,
 # /usr/lib64 or the Debian multiarch path); Windows DLLs go next to the
@@ -112,7 +136,7 @@ endif ()
 # dlopen; they share this engine library instead of embedding a static
 # render-core subset.
 if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
-    target_compile_definitions(oakengine PRIVATE OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
+    target_compile_definitions(oakengine-obj PRIVATE OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
 
     foreach (target olivecore kddockwidgets)
         if (TARGET ${target})
@@ -225,10 +249,18 @@ if (BUILD_TESTS)
                 tests/${name}.cpp
                 $<TARGET_OBJECTS:olive-version-obj>
         )
-        target_link_libraries(${name} PRIVATE oakengine)
+        # Link the object library directly to bypass the version-script
+        # restrictions on liboakengine.so (tests are internal consumers).
+        target_link_libraries(${name} PRIVATE oakengine-obj)
         target_include_directories(${name} PRIVATE
                 "${CMAKE_CURRENT_SOURCE_DIR}/include"
         )
+        # -rdynamic exports the test executable's symbols so that dlopen'd
+        # render backend plugins (oakgl/oakvulkan) can resolve the embedded
+        # engine objects (Renderer base class, etc.).
+        if (UNIX AND NOT APPLE)
+            target_link_options(${name} PRIVATE "LINKER:--export-dynamic")
+        endif ()
         add_test(${name} ${name})
     endfunction()
 

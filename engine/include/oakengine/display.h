@@ -21,8 +21,11 @@
 #ifndef OAKENGINE_DISPLAY_H
 #define OAKENGINE_DISPLAY_H
 
+#include <stdint.h>
+
 #include "export.h"
 #include "init.h"
+#include "videoparams.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -30,154 +33,277 @@ extern "C" {
 
 /**
  * @file display.h
- * @brief C ABI for the GPU display renderer used by viewer/scope widgets
+ * @brief Pure C ABI for the GPU display renderer used by viewer/scope widgets
  *
- * This family wraps the engine's interactive display renderer
- * (olive::Renderer and its OpenGLRenderer/DynamicRenderer implementations,
- * engine/render/renderer.h) plus the GPU texture (olive::Texture) and the
- * CPU frame buffer (olive::Frame) that viewer/scope widgets use to move
- * pixels between the CPU and the GPU.
+ * Ownership protocol: textures and frames are opaque handles pointing to
+ * engine-heap control blocks (internally holding std::shared_ptr; invisible
+ * to the ABI). Ownership transfers via explicit retain/free. Every retain
+ * must be paired with exactly one free. NULL is accepted by all functions
+ * and yields a no-op / zero result.
  *
- * It is distinct from the sequence-rendering facade in oakengine/renderer.h
- * (OakEngineRenderer), which pulls finished CPU frames out of the async
- * render pipeline. This family drives the *on-screen* paint path instead:
- * a widget creates a renderer, initializes it with the widget's GL context,
- * uploads/downloads textures, and blits color-managed images each paint.
- *
- * Conventions (matching the other facade families):
- *   - All object pointers are opaque. `renderer` is an olive::Renderer*,
- *     `texture` an olive::Texture*, `frame` an olive::Frame*.
- *   - `out_texture` / `out_frame` are pointers to caller-owned
- *     olive::TexturePtr / olive::FramePtr (std::shared_ptr) storage; the
- *     callee assigns a newly created smart pointer into them, releasing any
- *     previously held object. This keeps shared-pointer ownership/deleter
- *     bookkeeping entirely on the engine side.
- *   - `video_params` is a `const olive::VideoParams*`; `color_job` is a
- *     `const olive::ColorTransformJob*`. These are passed as opaque pointers
- *     because they are C++ types; both the caller (app) and the callee
- *     (engine) are compiled as C++ against the same headers.
- *   - `gl_context` is a `QOpenGLContext*` or NULL.
- *   - `parent` is the owning `QObject*` (the display widget); the created
- *     renderer is a QObject child of it and is destroyed by Qt ownership.
- *     Do NOT call oakengine_display_renderer_destroy() and then also rely on
- *     Qt deletion of the same renderer's GPU resources -- destroy() releases
- *     GPU state, Qt deletion releases the object.
+ * Conventions:
+ *   - `renderer` is an opaque renderer handle (olive::Renderer* internally).
+ *   - `texture` is an OakEngineDisplayTexture handle (refcounted).
+ *   - `frame` is an OakEngineCodecFrame handle (refcounted).
+ *   - Video parameters use the oak_video_params POD (oakengine/videoparams.h).
+ *   - Color jobs use the oak_color_transform_job POD defined below.
+ *   - `gl_context` is a QOpenGLContext* or NULL.
+ *   - `parent` is the owning QObject* (the display widget).
  */
 
-/* ---- Display renderer lifecycle ---------------------------------------- */
+/* ---- oak_color_transform_job POD ---------------------------------------- */
 
 /**
- * @brief Create a dynamic-backend renderer (olive::DynamicRenderer) for
- * `backend_name` and load() it.
- *
- * @return The renderer (olive::Renderer*), or NULL if the backend library
- *         could not be loaded (the failed renderer is deleted internally and
- *         the caller should fall back to
- *         oakengine_display_renderer_create_opengl()). NULL is also returned
- *         when the engine was built without dynamic-backend support.
+ * @brief Flattened POD of the engine's ColorTransformJob for the display blit
+ * path. Fields map 1:1 to ColorTransformJob members used by viewer/scope.
  */
+typedef struct oak_color_transform_job {
+	const void *processor; /**< OakEngineColorProcessor* (borrowed). */
+	void *input_texture; /**< Texture handle (borrowed, not retained). */
+	int input_alpha_association; /**< 0=none, 1=associated. */
+	int clear_destination; /**< 0/1. */
+	int force_opaque; /**< 0/1. */
+	float matrix[16]; /**< QMatrix4x4 (column-major, identity if all 0). */
+	float crop_matrix[16]; /**< QMatrix4x4 (column-major). */
+} oak_color_transform_job;
+
+/* ---- Display renderer lifecycle ----------------------------------------- */
+
 OAKENGINE_API void *
 oakengine_display_renderer_create_dynamic(const char *backend_name,
 										  void *parent);
 
-/**
- * @brief Create the built-in OpenGL renderer (olive::OpenGLRenderer).
- *
- * @return The renderer (olive::Renderer*), never NULL.
- */
 OAKENGINE_API void *oakengine_display_renderer_create_opengl(void *parent);
 
-/**
- * @brief Initialize a display renderer and run its post-init step.
- *
- * If `gl_context` is non-NULL the OpenGL/dynamic path is taken (the renderer
- * is initialized against the widget's shared QOpenGLContext); otherwise the
- * backend-neutral path (Renderer::init()/post_init()) is used.
- *
- * @return OAKENGINE_OK on success, OAKENGINE_E_INVALID for a NULL renderer.
- */
 OAKENGINE_API int oakengine_display_renderer_init(void *renderer,
 												  void *gl_context);
 
-/**
- * @brief Release a display renderer's GPU resources (Renderer::destroy()
- * followed by post_destroy()). The renderer object itself remains owned by
- * its Qt parent.
- */
 OAKENGINE_API void oakengine_display_renderer_destroy(void *renderer);
 
-/* ---- Texture creation and pixel transfer -------------------------------- */
+/* ---- Renderer queries --------------------------------------------------- */
+
+OAKENGINE_API int oakengine_display_renderer_is_open_gl(const void *renderer);
+OAKENGINE_API int oakengine_display_renderer_is_vulkan(const void *renderer);
+
+/* ---- Texture handle (opaque, refcounted) -------------------------------- */
 
 /**
- * @brief Create a GPU texture on `renderer` (Renderer::create_texture()).
- *
- * @param renderer     olive::Renderer*.
- * @param video_params const olive::VideoParams* describing the texture.
- * @param pixels       Initial pixel data, or NULL for an empty texture.
- * @param linesize     Line stride of `pixels` (ignored when NULL).
- * @param out_texture  Pointer to an olive::TexturePtr to receive the result.
+ * @brief Create a GPU texture on `renderer`.
+ * @return New texture handle (refcount=1), or NULL on failure.
  */
-OAKENGINE_API void
-oakengine_display_renderer_create_texture(void *renderer,
-										  const void *video_params,
-										  const void *pixels, int linesize,
-										  void *out_texture);
+OAKENGINE_API void *oakengine_display_texture_create(
+	void *renderer, const oak_video_params *params,
+	const void *pixels, int linesize);
+
+/** @brief Increment refcount, return same handle. NULL-safe. */
+OAKENGINE_API void *oakengine_display_texture_retain(void *texture);
+
+/** @brief Decrement refcount; frees at zero. NULL-safe. */
+OAKENGINE_API void oakengine_display_texture_free(void *texture);
+
+OAKENGINE_API int oakengine_display_texture_upload(
+	void *texture, const void *pixels, int linesize);
+
+OAKENGINE_API int oakengine_display_texture_download(
+	void *texture, void *pixels, int linesize);
+
+/* ---- Texture queries ---------------------------------------------------- */
+
+OAKENGINE_API int oakengine_display_texture_get_params(
+	const void *texture, oak_video_params *out);
+
+OAKENGINE_API int oakengine_display_texture_id(const void *texture);
+
+OAKENGINE_API int oakengine_display_texture_is_dummy(const void *texture);
+
+/** @brief The renderer that owns this texture (borrowed, do NOT free). */
+OAKENGINE_API void *oakengine_display_texture_renderer(const void *texture);
+
+OAKENGINE_API int oakengine_display_texture_width(const void *texture);
+OAKENGINE_API int oakengine_display_texture_height(const void *texture);
+OAKENGINE_API int oakengine_display_texture_format(const void *texture);
+OAKENGINE_API int oakengine_display_texture_channel_count(const void *texture);
 
 /**
- * @brief Blit a color-managed image (Renderer::blit_color_managed()).
- *
- * @param renderer     olive::Renderer*.
- * @param color_job    const olive::ColorTransformJob*.
- * @param dst_texture  Destination olive::Texture*, or NULL to blit to the
- *                     current output destination.
- * @param video_params const olive::VideoParams* for the destination, or NULL
- *                     to use dst_texture's own parameters (in which case
- *                     dst_texture must be non-NULL).
+ * @brief Compare two texture handles' video params for equality.
+ * @return 1 if equal, 0 otherwise (NULL handles compare unequal).
  */
-OAKENGINE_API void
-oakengine_display_renderer_blit_color_managed(void *renderer,
-											  const void *color_job,
-											  void *dst_texture,
-											  const void *video_params);
+OAKENGINE_API int oakengine_display_texture_params_equal(
+	const void *a, const void *b);
 
-/**
- * @brief Upload CPU pixels into a GPU texture (Texture::upload()).
- */
-OAKENGINE_API void oakengine_display_texture_upload(void *texture,
-													void *pixels, int linesize);
+/* ---- Frame handle (opaque, refcounted) ---------------------------------- */
 
-/**
- * @brief Download GPU texture pixels into CPU memory (Texture::download()).
- */
-OAKENGINE_API void oakengine_display_texture_download(void *texture,
-													  void *pixels,
-													  int linesize);
+/** @brief Create an empty CPU frame. Returns handle (refcount=1). */
+OAKENGINE_API void *oakengine_codec_frame_create(void);
 
-/* ---- CPU frame buffer --------------------------------------------------- */
+/** @brief Increment refcount, return same handle. NULL-safe. */
+OAKENGINE_API void *oakengine_codec_frame_retain(void *frame);
 
-/**
- * @brief Create an empty CPU frame (olive::Frame::create()).
- *
- * @param out_frame Pointer to an olive::FramePtr to receive the new frame.
- */
-OAKENGINE_API void oakengine_codec_frame_create(void *out_frame);
+/** @brief Decrement refcount; frees at zero. NULL-safe. */
+OAKENGINE_API void oakengine_codec_frame_free(void *frame);
 
-/**
- * @brief Set a frame's video parameters (Frame::set_video_params()).
- *
- * @param frame        olive::Frame*.
- * @param video_params const olive::VideoParams*.
- */
-OAKENGINE_API void oakengine_codec_frame_set_video_params(void *frame,
-														  const void
-															  *video_params);
+OAKENGINE_API int oakengine_codec_frame_set_video_params(
+	void *frame, const oak_video_params *params);
 
-/**
- * @brief Allocate the frame's pixel buffer (Frame::allocate()).
- *
- * @return 1 on success, 0 on failure or NULL frame.
- */
+OAKENGINE_API int oakengine_codec_frame_get_params(
+	const void *frame, oak_video_params *out);
+
 OAKENGINE_API int oakengine_codec_frame_allocate(void *frame);
+
+/** @brief Borrowed pixel data pointer (valid until free). */
+OAKENGINE_API void *oakengine_codec_frame_data(void *frame);
+
+/** @brief Borrowed const pixel data pointer. */
+OAKENGINE_API const void *oakengine_codec_frame_const_data(const void *frame);
+
+/** @brief Line stride in pixels. */
+OAKENGINE_API int oakengine_codec_frame_linesize(const void *frame);
+
+/** @brief Line stride in bytes. */
+OAKENGINE_API int oakengine_codec_frame_linesize_bytes(const void *frame);
+
+/* ---- Frame queries ------------------------------------------------------ */
+
+OAKENGINE_API int oakengine_codec_frame_width(const void *frame);
+OAKENGINE_API int oakengine_codec_frame_height(const void *frame);
+OAKENGINE_API int oakengine_codec_frame_format(const void *frame);
+OAKENGINE_API int oakengine_codec_frame_channel_count(const void *frame);
+OAKENGINE_API int oakengine_codec_frame_is_allocated(const void *frame);
+
+/* ---- Color-managed blit ------------------------------------------------- */
+
+/**
+ * @brief Blit a color-managed image through the OCIO pipeline.
+ *
+ * @param renderer   Renderer handle.
+ * @param job        POD color transform job (processor + input texture + flags).
+ * @param dst_texture Destination texture handle, or NULL for screen.
+ * @param params     Destination video params, or NULL to use dst_texture's.
+ */
+OAKENGINE_API int oakengine_display_renderer_blit_color_managed(
+	void *renderer, const oak_color_transform_job *job,
+	void *dst_texture, const oak_video_params *params);
+
+/* ---- Cross-backend texture download ------------------------------------- */
+
+OAKENGINE_API int oakengine_display_renderer_download_from_texture(
+	void *renderer, int texture_id, const oak_video_params *params,
+	void *dst_pixels, int linesize);
+
+/* ---- Shader management -------------------------------------------------- */
+
+/**
+ * @brief Compile a native shader from GLSL source.
+ * @param frag_src Fragment shader source (required).
+ * @param vert_src Vertex shader source, or NULL for engine default.
+ * @return Shader pipeline handle (QVariant*), or NULL on failure.
+ *         Free with oakengine_display_renderer_destroy_shader().
+ */
+OAKENGINE_API void *oakengine_display_renderer_create_shader(
+	void *renderer, const char *frag_src, const char *vert_src);
+
+/**
+ * @brief Create the engine's default blank shader (no custom source).
+ */
+OAKENGINE_API void *oakengine_display_renderer_create_blank_shader(
+	void *renderer);
+
+OAKENGINE_API void oakengine_display_renderer_destroy_shader(
+	void *renderer, void *shader);
+
+/* ---- Shader blit operations --------------------------------------------- */
+
+/**
+ * @brief Blit a single texture through a shader to the screen.
+ * Used by scope draw_scope() path.
+ */
+OAKENGINE_API int oakengine_display_renderer_blit_shader(
+	void *renderer, void *shader, void *texture,
+	const oak_video_params *viewport_params);
+
+/**
+ * @brief Blit a single texture through a shader to a destination texture.
+ * Used by histogram blit_to_texture path.
+ */
+OAKENGINE_API int oakengine_display_renderer_blit_shader_to_texture(
+	void *renderer, void *shader, void *texture, void *dst_texture);
+
+/**
+ * @brief Blit with a vec2 uniform + texture to a destination texture.
+ * Used by deinterlace path (resolution_in uniform).
+ */
+OAKENGINE_API int oakengine_display_renderer_blit_shader_vec2_to_texture(
+	void *renderer, void *shader, void *texture,
+	const char *vec2_name, float vec2_x, float vec2_y,
+	void *dst_texture);
+
+/**
+ * @brief Blit the blank shader with MVP + crop matrices.
+ * Used by draw_blank().
+ */
+OAKENGINE_API int oakengine_display_renderer_blit_blank(
+	void *renderer, void *shader,
+	const float *mvp_matrix, const float *crop_matrix,
+	const oak_video_params *params);
+
+/**
+ * @brief Blit multiple named textures through a shader to a dst texture.
+ * Used by multicam compositing.
+ *
+ * @param names  Array of `count` UTF-8 uniform names.
+ * @param textures Array of `count` texture handles.
+ */
+OAKENGINE_API int oakengine_display_renderer_blit_shader_multi(
+	void *renderer, void *shader,
+	const char *const *names, void *const *textures, int count,
+	void *dst_texture);
+
+/* ---- Generic shader blit with named uniforms ----------------------------- */
+
+/**
+ * @brief Named uniform descriptor for scope shader blits.
+ */
+typedef struct oak_shader_uniform {
+	const char *name; /**< Uniform name (UTF-8). */
+	int type; /**< 0=float, 1=vec2, 2=int/bool, 3=vec3. */
+	float values[4]; /**< float: [0]; vec2: [0],[1]; vec3: [0],[1],[2]; int: [0]. */
+} oak_shader_uniform;
+
+/**
+ * @brief Blit a single texture through a shader with arbitrary named uniforms.
+ *
+ * @param renderer    Renderer handle.
+ * @param shader      Shader pipeline handle.
+ * @param texture     Main input texture (bound as "ove_maintex").
+ * @param uniforms    Array of extra uniforms (may be NULL).
+ * @param uniform_count Number of entries in `uniforms`.
+ * @param dst_texture Destination texture, or NULL for screen.
+ * @param params      Viewport params (used when dst_texture is NULL).
+ */
+OAKENGINE_API int oakengine_display_renderer_blit_shader_uniforms(
+	void *renderer, void *shader, void *texture,
+	const oak_shader_uniform *uniforms, int uniform_count,
+	void *dst_texture, const oak_video_params *params);
+
+/* ---- Renderer clear ----------------------------------------------------- */
+
+/**
+ * @brief Clear the current destination.
+ * @param mask  NULL for default, or a string mask (unused currently).
+ * @param r,g,b  Clear color (0.0-1.0).
+ */
+OAKENGINE_API void oakengine_display_renderer_clear(
+	void *renderer, double r, double g, double b);
+
+/* ---- Pixel readback ----------------------------------------------------- */
+
+/**
+ * @brief Read a single pixel from a texture (Renderer::get_pixel_from_texture).
+ * @param x,y  Pixel coordinates.
+ * @param out_rgba  Output 4 doubles (RGBA).
+ */
+OAKENGINE_API int oakengine_display_renderer_get_pixel(
+	void *renderer, void *texture, int x, int y, double *out_rgba);
 
 #ifdef __cplusplus
 }

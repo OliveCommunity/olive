@@ -35,6 +35,8 @@
 #include <QScreen>
 #include <QTextEdit>
 
+#include <cstring>
+
 #include "audio/audiomanager.h"
 #include "common/define.h"
 #include "common/html.h"
@@ -47,12 +49,10 @@
 #include "common/configwrapper.h"
 #include "core.h"
 #include "node/block/subtitle/subtitle.h"
-#include "codec/frame.h"
 #include "node/gizmo/path.h"
 #include "node/gizmo/point.h"
 #include "node/gizmo/polygon.h"
 #include "node/gizmo/screen.h"
-#include "render/job/colortransformjob.h"
 #include "window/mainwindow/mainwindow.h"
 
 namespace olive
@@ -62,7 +62,14 @@ namespace olive
 
 ViewerDisplayWidget::ViewerDisplayWidget(QWidget *parent)
 	: super(parent)
+	, texture_(nullptr)
 	, deinterlace_texture_(nullptr)
+	, backend_neutral_texture_(nullptr)
+	, backend_neutral_cpu_display_frame_(nullptr)
+	, backend_neutral_cpu_source_frame_(nullptr)
+	, backend_neutral_cpu_source_texture_(nullptr)
+	, deinterlace_shader_(nullptr)
+	, blank_shader_(nullptr)
 	, signal_cursor_color_(false)
 	, gizmos_(nullptr)
 	, current_gizmo_(nullptr)
@@ -172,11 +179,14 @@ void ViewerDisplayWidget::set_deinterlacing(bool e)
 	deinterlace_ = e;
 
 	if (!deinterlace_) {
-		if (!deinterlace_shader_.isNull()) {
-			renderer()->destroy_native_shader(deinterlace_shader_);
-			deinterlace_shader_.clear();
+		if (deinterlace_shader_) {
+			oakengine_display_renderer_destroy_shader(renderer(), deinterlace_shader_);
+			deinterlace_shader_ = nullptr;
 		}
-		deinterlace_texture_ = nullptr;
+		if (deinterlace_texture_) {
+			oakengine_display_texture_free(deinterlace_texture_);
+			deinterlace_texture_ = nullptr;
+		}
 	}
 
 	update();
@@ -405,12 +415,12 @@ void ViewerDisplayWidget::on_paint()
 		// Clear background to empty
 		QColor bg_color = show_widget_background_ ? palette().window().color() :
 													Qt::black;
-		renderer()->clear_destination(nullptr, bg_color.redF(),
-									 bg_color.greenF(), bg_color.blueF());
+		oakengine_display_renderer_clear(renderer(), bg_color.redF(),
+										 bg_color.greenF(), bg_color.blueF());
 	}
 
-	VideoParams device_params = empty_video_params();
-	ColorTransformJob ctj;
+	oak_video_params device_params = {};
+	oak_color_transform_job ctj = {};
 	bool have_ctj = false;
 
 	// We only draw if we have a pipeline
@@ -424,52 +434,65 @@ void ViewerDisplayWidget::on_paint()
 			}
 		} else if (color_service()) {
 			bool drew_backend_neutral_frame = false;
-			if (FramePtr frame = load_frame_.value<FramePtr>()) {
+
+			// Extract handle from QVariant (stored as OakSharedBufferPtr)
+			OakSharedBufferPtr buf = load_frame_.value<OakSharedBufferPtr>();
+			void *load_handle = buf ? buf->handle : nullptr;
+			int load_type = buf ? static_cast<int>(buf->type) : -1;
+
+			if (load_handle && load_type == OakSharedBuffer::k_frame) {
+				// CPU frame path: upload to GPU texture
+				oak_video_params frame_vp = {};
+				oakengine_codec_frame_get_params(load_handle, &frame_vp);
 				if (!drew_backend_neutral_frame &&
 					(!texture_ ||
-					 texture_->renderer() !=
-						 renderer() // Some implementations don't like it if we upload to a texture created in another (albeit shared) context
-					 || texture_->width() != frame->width() ||
-					 texture_->height() != frame->height() ||
-					 texture_->format() != frame->format() ||
-					 texture_->channel_count() != frame->channel_count())) {
-					oakengine_display_renderer_create_texture(
-						renderer(), &frame->video_params(), frame->data(),
-						frame->linesize_pixels(), &texture_);
+					 oakengine_display_texture_renderer(texture_) !=
+						 renderer() ||
+					 oakengine_display_texture_width(texture_) != frame_vp.width ||
+					 oakengine_display_texture_height(texture_) != frame_vp.height ||
+					 oakengine_display_texture_format(texture_) != frame_vp.format ||
+					 oakengine_display_texture_channel_count(texture_) != 4)) {
+					texture_ = oakengine_display_texture_create(
+						renderer(), &frame_vp,
+						oakengine_codec_frame_data(load_handle),
+						oakengine_codec_frame_linesize(load_handle));
 				} else if (!drew_backend_neutral_frame) {
-					oakengine_display_texture_upload(texture_.get(), frame->data(),
-												  frame->linesize_pixels());
+					oakengine_display_texture_upload(
+						texture_, oakengine_codec_frame_data(load_handle),
+						oakengine_codec_frame_linesize(load_handle));
 				}
-			} else if (TexturePtr texture = load_frame_.value<TexturePtr>()) {
-				// This is a GPU texture, switch to it directly when possible.
-				if (!drew_backend_neutral_frame && texture &&
-					texture->renderer() && texture->renderer() != renderer()) {
-					if (texture->renderer()->is_open_gl() &&
-						renderer()->is_open_gl()) {
-						// Shared OpenGL contexts can display the producer texture
-						// directly. Avoid readback here because the producer
-						// renderer may belong to a render thread whose context
-						// cannot be made current from the GUI paint callback.
-						texture_ = texture;
+			} else if (load_handle && load_type == OakSharedBuffer::k_texture) {
+				// GPU texture path
+				void *src_ren = oakengine_display_texture_renderer(load_handle);
+				if (!drew_backend_neutral_frame && load_handle &&
+					src_ren && src_ren != renderer()) {
+					if (oakengine_display_renderer_is_open_gl(src_ren) &&
+						oakengine_display_renderer_is_open_gl(renderer())) {
+						texture_ = load_handle;
 					} else {
-						// Cross-backend texture: download and re-upload
-						FramePtr frame;
-						oakengine_codec_frame_create(&frame);
-						oakengine_codec_frame_set_video_params(
-							frame.get(), &texture->params());
-						if (oakengine_codec_frame_allocate(frame.get())) {
-							texture->renderer()->download_from_texture(
-								texture->id(), texture->params(), frame->data(),
-								frame->linesize_pixels());
-							oakengine_display_renderer_create_texture(
-								renderer(), &frame->video_params(), frame->data(),
-								frame->linesize_pixels(), &texture_);
+						// Cross-backend: download and re-upload
+						void *tmp_frame = oakengine_codec_frame_create();
+						oak_video_params tex_params = {};
+						oakengine_display_texture_get_params(load_handle, &tex_params);
+						oakengine_codec_frame_set_video_params(tmp_frame, &tex_params);
+						if (oakengine_codec_frame_allocate(tmp_frame)) {
+							oakengine_display_renderer_download_from_texture(
+								src_ren,
+								oakengine_display_texture_id(load_handle),
+								&tex_params,
+								oakengine_codec_frame_data(tmp_frame),
+								oakengine_codec_frame_linesize(tmp_frame));
+							texture_ = oakengine_display_texture_create(
+								renderer(), &tex_params,
+								oakengine_codec_frame_data(tmp_frame),
+								oakengine_codec_frame_linesize(tmp_frame));
 						} else {
-							texture_ = texture;
+							texture_ = load_handle;
 						}
+						oakengine_codec_frame_free(tmp_frame);
 					}
 				} else if (!drew_backend_neutral_frame) {
-					texture_ = texture;
+					texture_ = load_handle;
 				}
 			} else {
 				texture_ = load_custom_texture_from_frame(load_frame_);
@@ -484,59 +507,58 @@ void ViewerDisplayWidget::on_paint()
 			push_mode_ = k_push_unnecessary;
 
 			if (!drew_backend_neutral_frame) {
-				TexturePtr texture_to_draw = texture_;
+				void *texture_to_draw = texture_;
 
-				if (!texture_to_draw || texture_to_draw->is_dummy()) {
+				if (!texture_to_draw ||
+					oakengine_display_texture_is_dummy(texture_to_draw)) {
 					if (!backend_neutral) {
 						draw_blank(device_params);
 					}
 				} else {
 					if (deinterlace_) {
-						if (deinterlace_shader_.isNull()) {
+						if (!deinterlace_shader_) {
+							QString src = FileFunctions::read_file_as_string(
+								QStringLiteral(":/shaders/deinterlace.frag"));
 							deinterlace_shader_ =
-								renderer()->create_native_shader(
-									ShaderCode(FileFunctions::read_file_as_string(
-										QStringLiteral(
-											":/shaders/deinterlace.frag"))));
+								oakengine_display_renderer_create_shader(
+									renderer(), src.toUtf8().constData(), nullptr);
 						}
 
 						if (!deinterlace_texture_ ||
-							deinterlace_texture_->params() !=
-								texture_to_draw->params()) {
-							// (Re)create texture
-							oakengine_display_renderer_create_texture(
-								renderer(), &texture_to_draw->params(), nullptr,
-								0, &deinterlace_texture_);
+							!oakengine_display_texture_params_equal(
+								deinterlace_texture_, texture_to_draw)) {
+							if (deinterlace_texture_) {
+								oakengine_display_texture_free(deinterlace_texture_);
+							}
+							oak_video_params tex_params = {};
+							oakengine_display_texture_get_params(texture_to_draw,
+																 &tex_params);
+							deinterlace_texture_ =
+								oakengine_display_texture_create(
+									renderer(), &tex_params, nullptr, 0);
 						}
 
-						ShaderJob job;
-						job.insert(
-							QStringLiteral("resolution_in"),
-							NodeValue(NodeValue::k_vec2,
-									  QVector2D(texture_to_draw->width(),
-												texture_to_draw->height())));
-						job.insert(
-							QStringLiteral("ove_maintex"),
-							NodeValue(NodeValue::k_texture,
-									  QVariant::fromValue(texture_to_draw)));
-
-						renderer()->blit_to_texture(deinterlace_shader_, job,
-												  deinterlace_texture_.get());
+						oakengine_display_renderer_blit_shader_vec2_to_texture(
+							renderer(), deinterlace_shader_, texture_to_draw,
+							"resolution_in",
+							static_cast<float>(oakengine_display_texture_width(texture_to_draw)),
+							static_cast<float>(oakengine_display_texture_height(texture_to_draw)),
+							deinterlace_texture_);
 
 						texture_to_draw = deinterlace_texture_;
 					}
 
-					oakengine_color_transform_job_set_processor(
-						&ctj, color_service().get());
-					ctj.set_input_texture(texture_to_draw);
-					ctj.set_input_alpha_association(
-						OAK_CONFIG("ReassocLinToNonLin").toBool() ?
-							k_alpha_associated :
-							k_alpha_none);
-					ctj.set_clear_destination_enabled(false);
-					ctj.set_transform_matrix(combined_matrix_flipped_);
-					ctj.set_crop_matrix(crop_matrix_);
-					ctj.set_force_opaque(true);
+					// Build color transform job POD
+					ctj.processor = color_service().get();
+					ctj.input_texture = texture_to_draw;
+					ctj.input_alpha_association =
+						OAK_CONFIG("ReassocLinToNonLin").toBool() ? 1 : 0;
+					ctj.clear_destination = 0;
+					ctj.force_opaque = 1;
+					memcpy(ctj.matrix, combined_matrix_flipped_.constData(),
+						   16 * sizeof(float));
+					memcpy(ctj.crop_matrix, crop_matrix_.constData(),
+						   16 * sizeof(float));
 
 					have_ctj = true;
 				}
@@ -689,25 +711,31 @@ void ViewerDisplayWidget::on_paint()
 
 void ViewerDisplayWidget::on_destroy()
 {
-	if (!deinterlace_shader_.isNull()) {
-		renderer()->destroy_native_shader(deinterlace_shader_);
-		deinterlace_shader_.clear();
+	if (deinterlace_shader_) {
+		oakengine_display_renderer_destroy_shader(renderer(), deinterlace_shader_);
+		deinterlace_shader_ = nullptr;
 	}
-	if (!blank_shader_.isNull()) {
-		renderer()->destroy_native_shader(blank_shader_);
-		blank_shader_.clear();
+	if (blank_shader_) {
+		oakengine_display_renderer_destroy_shader(renderer(), blank_shader_);
+		blank_shader_ = nullptr;
 	}
 
 	super::on_destroy();
 
 	texture_ = nullptr;
-	deinterlace_texture_ = nullptr;
-	backend_neutral_texture_ = nullptr;
+	if (deinterlace_texture_) {
+		oakengine_display_texture_free(deinterlace_texture_);
+		deinterlace_texture_ = nullptr;
+	}
+	if (backend_neutral_texture_) {
+		oakengine_display_texture_free(backend_neutral_texture_);
+		backend_neutral_texture_ = nullptr;
+	}
 	backend_neutral_buffer_.clear();
 	backend_neutral_cpu_image_ = QImage();
-	backend_neutral_cpu_display_frame_.reset();
-	backend_neutral_cpu_source_frame_.reset();
-	backend_neutral_cpu_source_texture_.reset();
+	backend_neutral_cpu_display_frame_ = nullptr;
+	backend_neutral_cpu_source_frame_ = nullptr;
+	backend_neutral_cpu_source_texture_ = nullptr;
 	backend_neutral_cpu_color_id_.clear();
 	if (load_frame_.isNull()) {
 		push_mode_ = k_push_null;
@@ -765,7 +793,7 @@ void ViewerDisplayWidget::update_matrix()
 	// up. Vulkan's framebuffer and texture coordinate origins are both top-left,
 	// so the same flip would invert the image. Default to the OpenGL flip when
 	// no renderer is available yet.
-	if (!renderer() || !renderer()->is_vulkan()) {
+	if (!renderer() || !oakengine_display_renderer_is_vulkan(renderer())) {
 		QMatrix4x4 flip;
 		flip.scale(1.0f, -1.0f, 1.0f);
 		combined_matrix_flipped_ = flip * combined_matrix_flipped_;
@@ -1200,12 +1228,18 @@ void ViewerDisplayWidget::emit_color_at_cursor(QMouseEvent *e)
 		if (texture_) {
 			QPointF pixel_pos =
 				generate_display_transform().inverted().map(e->pos());
-			pixel_pos /= texture_->params().divider();
+			oak_video_params tp = {};
+			oakengine_display_texture_get_params(texture_, &tp);
+			pixel_pos /= (tp.divider > 0 ? tp.divider : 1);
 
 			make_current();
 
-			reference =
-				renderer()->get_pixel_from_texture(texture_.get(), pixel_pos);
+			double rgba[4] = {};
+			oakengine_display_renderer_get_pixel(
+				renderer(), texture_,
+				static_cast<int>(pixel_pos.x()),
+				static_cast<int>(pixel_pos.y()), rgba);
+			reference = Color(rgba[0], rgba[1], rgba[2], rgba[3]);
 			if (color_service()) {
 				display = oak_convert_color(color_service(), reference);
 			} else {
@@ -1455,33 +1489,31 @@ void ViewerDisplayWidget::generate_gizmo_transforms()
 	gizmo_last_draw_transform_inverted_ = gizmo_last_draw_transform_.inverted();
 }
 
-void ViewerDisplayWidget::draw_blank(const VideoParams &device_params)
+void ViewerDisplayWidget::draw_blank(const oak_video_params &device_params)
 {
-	if (blank_shader_.isNull()) {
-		blank_shader_ = renderer()->create_native_shader(ShaderCode());
+	if (!blank_shader_) {
+		blank_shader_ = oakengine_display_renderer_create_blank_shader(renderer());
 	}
 
-	ShaderJob job;
-	job.insert(QStringLiteral("ove_mvpmat"),
-			   NodeValue(NodeValue::k_matrix, combined_matrix_flipped_));
-	job.insert(QStringLiteral("ove_cropmatrix"),
-			   NodeValue(NodeValue::k_matrix, crop_matrix_));
-
-	renderer()->blit(blank_shader_, job, device_params, false);
+	oakengine_display_renderer_blit_blank(
+		renderer(), blank_shader_,
+		combined_matrix_flipped_.constData(),
+		crop_matrix_.constData(),
+		&device_params);
 }
 
-bool ViewerDisplayWidget::draw_backend_neutral_frame(const FramePtr &frame,
+bool ViewerDisplayWidget::draw_backend_neutral_frame(void *frame,
 												  QPainter *painter)
 {
-	if (!frame || !frame->is_allocated() || !painter || !painter->isActive() ||
-		!color_service()) {
+	if (!frame || !oakengine_codec_frame_is_allocated(frame) || !painter ||
+		!painter->isActive() || !color_service()) {
 		return false;
 	}
 
 	const QString color_id = oak_query_string([this](char *buf, int size) {
 		return oakengine_color_processor_id(color_service().get(), buf, size);
 	});
-	if (backend_neutral_cpu_source_frame_.get() == frame.get() &&
+	if (backend_neutral_cpu_source_frame_ == frame &&
 		backend_neutral_cpu_color_id_ == color_id &&
 		!backend_neutral_cpu_image_.isNull()) {
 		painter->save();
@@ -1496,47 +1528,43 @@ bool ViewerDisplayWidget::draw_backend_neutral_frame(const FramePtr &frame,
 	// not safe to apply on this GUI path and a crash here kills preview. Worker
 	// frames tagged with display:<processor-id> have already been color managed;
 	// untagged frames are drawn directly as a safe fallback.
-	FramePtr display_frame = frame;
+	const int frame_fmt = oakengine_codec_frame_format(frame);
+	const int frame_ch = oakengine_codec_frame_channel_count(frame);
+	const int frame_w = oakengine_codec_frame_width(frame);
+	const int frame_h = oakengine_codec_frame_height(frame);
+	const int frame_ls = oakengine_codec_frame_linesize_bytes(frame);
+	const char *frame_data =
+		reinterpret_cast<const char *>(oakengine_codec_frame_const_data(frame));
 
 	QImage source_image;
-	if (display_frame->format() == PixelFormat::u8 &&
-		display_frame->channel_count() == 4) {
-		backend_neutral_cpu_display_frame_ = display_frame;
-		backend_neutral_cpu_image_ =
-			QImage(reinterpret_cast<const uchar *>(display_frame->const_data()),
-				   display_frame->width(), display_frame->height(),
-				   display_frame->linesize_bytes(), QImage::Format_RGBA8888);
+	if (frame_fmt == PixelFormat::u8 && frame_ch == 4) {
+		backend_neutral_cpu_display_frame_ = frame;
+		backend_neutral_cpu_image_ = QImage(
+			reinterpret_cast<const uchar *>(frame_data), frame_w, frame_h,
+			frame_ls, QImage::Format_RGBA8888);
 		source_image = backend_neutral_cpu_image_;
-	} else if (display_frame->format() == PixelFormat::u8 &&
-			   display_frame->channel_count() ==
-				   3) {
-		backend_neutral_cpu_display_frame_ = display_frame;
-		backend_neutral_cpu_image_ =
-			QImage(reinterpret_cast<const uchar *>(display_frame->const_data()),
-				   display_frame->width(), display_frame->height(),
-				   display_frame->linesize_bytes(), QImage::Format_RGB888);
+	} else if (frame_fmt == PixelFormat::u8 && frame_ch == 3) {
+		backend_neutral_cpu_display_frame_ = frame;
+		backend_neutral_cpu_image_ = QImage(
+			reinterpret_cast<const uchar *>(frame_data), frame_w, frame_h,
+			frame_ls, QImage::Format_RGB888);
 		source_image = backend_neutral_cpu_image_;
 	} else {
-		backend_neutral_cpu_display_frame_.reset();
-		const int bytes_per_pixel =
-			oakengine_video_params_bytes_per_pixel(
-				static_cast<int>(display_frame->video_params().format()),
-				display_frame->video_params().channel_count());
-		if (backend_neutral_cpu_image_.size() !=
-				QSize(display_frame->width(), display_frame->height()) ||
+		backend_neutral_cpu_display_frame_ = nullptr;
+		const int bpp =
+			oakengine_video_params_bytes_per_pixel(frame_fmt, frame_ch);
+		if (backend_neutral_cpu_image_.size() != QSize(frame_w, frame_h) ||
 			backend_neutral_cpu_image_.format() != QImage::Format_RGBA8888) {
-			backend_neutral_cpu_image_ = QImage(display_frame->width(),
-												display_frame->height(),
-												QImage::Format_RGBA8888);
+			backend_neutral_cpu_image_ =
+				QImage(frame_w, frame_h, QImage::Format_RGBA8888);
 		}
 
-		for (int y = 0; y < display_frame->height(); ++y) {
+		for (int y = 0; y < frame_h; ++y) {
 			uchar *dst = backend_neutral_cpu_image_.scanLine(y);
-			const char *src = display_frame->const_data() +
-							  y * display_frame->linesize_bytes();
-			for (int x = 0; x < display_frame->width(); ++x) {
-				Color c(src + x * bytes_per_pixel, display_frame->format(),
-						display_frame->channel_count());
+			const char *src = frame_data + y * frame_ls;
+			for (int x = 0; x < frame_w; ++x) {
+				Color c(src + x * bpp,
+						static_cast<PixelFormat::Format>(frame_fmt), frame_ch);
 				dst[x * 4 + 0] =
 					static_cast<uchar>(qBound(0, int(c.red() * 255.0), 255));
 				dst[x * 4 + 1] =
@@ -1560,10 +1588,11 @@ bool ViewerDisplayWidget::draw_backend_neutral_frame(const FramePtr &frame,
 	return true;
 }
 
-bool ViewerDisplayWidget::draw_backend_neutral_texture(const TexturePtr &texture,
+bool ViewerDisplayWidget::draw_backend_neutral_texture(void *texture,
 													QPainter *painter)
 {
-	if (!texture || texture->is_dummy() || !texture->renderer() || !painter ||
+	if (!texture || oakengine_display_texture_is_dummy(texture) ||
+		!oakengine_display_texture_renderer(texture) || !painter ||
 		!painter->isActive() || !color_service()) {
 		return false;
 	}
@@ -1571,7 +1600,7 @@ bool ViewerDisplayWidget::draw_backend_neutral_texture(const TexturePtr &texture
 	const QString color_id = oak_query_string([this](char *buf, int size) {
 		return oakengine_color_processor_id(color_service().get(), buf, size);
 	});
-	if (backend_neutral_cpu_source_texture_.get() == texture.get() &&
+	if (backend_neutral_cpu_source_texture_ == texture &&
 		backend_neutral_cpu_color_id_ == color_id &&
 		!backend_neutral_cpu_image_.isNull()) {
 		painter->save();
@@ -1582,28 +1611,33 @@ bool ViewerDisplayWidget::draw_backend_neutral_texture(const TexturePtr &texture
 		return true;
 	}
 
-	FramePtr frame;
-	oakengine_codec_frame_create(&frame);
-	oakengine_codec_frame_set_video_params(frame.get(), &texture->params());
-	if (!oakengine_codec_frame_allocate(frame.get())) {
+	void *tmp_frame = oakengine_codec_frame_create();
+	oak_video_params tex_params = {};
+	oakengine_display_texture_get_params(texture, &tex_params);
+	oakengine_codec_frame_set_video_params(tmp_frame, &tex_params);
+	if (!oakengine_codec_frame_allocate(tmp_frame)) {
+		oakengine_codec_frame_free(tmp_frame);
 		return false;
 	}
 
-	oakengine_display_texture_download(texture.get(), frame->data(),
-									   frame->linesize_pixels());
+	oakengine_display_texture_download(texture,
+									   oakengine_codec_frame_data(tmp_frame),
+									   oakengine_codec_frame_linesize(tmp_frame));
 
-	if (!draw_backend_neutral_frame(frame, painter)) {
+	if (!draw_backend_neutral_frame(tmp_frame, painter)) {
+		oakengine_codec_frame_free(tmp_frame);
 		return false;
 	}
 
 	backend_neutral_cpu_source_texture_ = texture;
 	backend_neutral_cpu_color_id_ = color_id;
+	oakengine_codec_frame_free(tmp_frame);
 	return true;
 }
 
 // Renders a backend-neutral frame by drawing into an offscreen backend texture,
 // downloading it to CPU memory, then painting that image with QPainter.
-void ViewerDisplayWidget::draw_backend_neutral(const ColorTransformJob &ctj,
+void ViewerDisplayWidget::draw_backend_neutral(const oak_color_transform_job &ctj,
 											 QPainter *painter)
 {
 	if (!painter || !painter->isActive()) {
@@ -1613,38 +1647,41 @@ void ViewerDisplayWidget::draw_backend_neutral(const ColorTransformJob &ctj,
 	const int texture_width = static_cast<int>(width() * devicePixelRatioF());
 	const int texture_height = static_cast<int>(height() * devicePixelRatioF());
 
-	oak_video_params pod = {};
-	pod.width = texture_width;
-	pod.height = texture_height;
-	pod.format = PixelFormat::u8;
-	const VideoParams offscreen_params(video_params_from_pod(pod));
+	oak_video_params offscreen_pod = {};
+	offscreen_pod.width = texture_width;
+	offscreen_pod.height = texture_height;
+	offscreen_pod.format = PixelFormat::u8;
 
 	if (!backend_neutral_texture_ ||
-		backend_neutral_texture_->params() != offscreen_params) {
+		oakengine_display_texture_width(backend_neutral_texture_) != texture_width ||
+		oakengine_display_texture_height(backend_neutral_texture_) != texture_height) {
 		// The offscreen texture is sized in device pixels so high-DPI widgets
 		// draw one downloaded pixel per device pixel after setDevicePixelRatio().
-		oakengine_display_renderer_create_texture(renderer(), &offscreen_params,
-												  nullptr, 0,
-												  &backend_neutral_texture_);
+		if (backend_neutral_texture_) {
+			oakengine_display_texture_free(backend_neutral_texture_);
+		}
+		backend_neutral_texture_ = oakengine_display_texture_create(
+			renderer(), &offscreen_pod, nullptr, 0);
 		backend_neutral_buffer_.resize(
 			texture_width * texture_height *
 			oakengine_video_params_bytes_per_pixel(0, // PixelFormat::u8
 										  4));
 	}
 
-	if (!backend_neutral_texture_ || backend_neutral_texture_->is_dummy()) {
+	if (!backend_neutral_texture_ ||
+		oakengine_display_texture_is_dummy(backend_neutral_texture_)) {
 		return;
 	}
 
-	ColorTransformJob local_ctj = ctj;
-	local_ctj.set_clear_destination_enabled(true);
+	oak_color_transform_job local_ctj = ctj;
+	local_ctj.clear_destination = 1;
 
 	// Reuse the normal color-management shader path, but render into a texture
 	// instead of an OpenGL widget framebuffer.
 	oakengine_display_renderer_blit_color_managed(
-		renderer(), &local_ctj, backend_neutral_texture_.get(), nullptr);
+		renderer(), &local_ctj, backend_neutral_texture_, nullptr);
 
-	oakengine_display_texture_download(backend_neutral_texture_.get(),
+	oakengine_display_texture_download(backend_neutral_texture_,
 									   backend_neutral_buffer_.data(), 0);
 
 	const int bytes_per_pixel = oakengine_video_params_bytes_per_pixel(0, 4); // u8, RGBA

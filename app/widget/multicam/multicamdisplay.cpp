@@ -32,6 +32,7 @@ namespace olive
 MulticamDisplay::MulticamDisplay(QWidget *parent)
 	: super(parent)
 	, node_(nullptr)
+	, shader_(nullptr)
 	, rows_(0)
 	, cols_(0)
 {
@@ -70,47 +71,63 @@ void MulticamDisplay::on_paint()
 
 void MulticamDisplay::on_destroy()
 {
-	shader_ = QVariant();
+	if (shader_) {
+		oakengine_display_renderer_destroy_shader(renderer(), shader_);
+		shader_ = nullptr;
+	}
 }
 
-TexturePtr MulticamDisplay::load_custom_texture_from_frame(const QVariant &v)
+void *MulticamDisplay::load_custom_texture_from_frame(const QVariant &v)
 {
-	if (v.canConvert<QVector<TexturePtr>>()) {
-		QVector<TexturePtr> tex = v.value<QVector<TexturePtr>>();
+	if (v.canConvert<QVector<void *>>()) {
+		QVector<void *> tex = v.value<QVector<void *>>();
 
-		TexturePtr main;
-		const VideoParams main_params = this->get_viewport_params();
-		oakengine_display_renderer_create_texture(renderer(), &main_params,
-												  nullptr, 0, &main);
+		oak_video_params main_params = this->get_viewport_params();
+		void *main_tex = oakengine_display_texture_create(
+			renderer(), &main_params, nullptr, 0);
 
 		int rows, cols;
 		oakengine_multicam_get_rows_and_columns(tex.size(), &rows, &cols);
 
-		if (shader_.isNull() || rows_ != rows || cols_ != cols) {
-			if (!shader_.isNull()) {
-				renderer()->destroy_native_shader(shader_);
+		if (!shader_ || rows_ != rows || cols_ != cols) {
+			if (shader_) {
+				oakengine_display_renderer_destroy_shader(renderer(), shader_);
 			}
 
-			shader_ = renderer()->create_native_shader(
-				ShaderCode(generate_shader_code(rows, cols)));
+			QString code = generate_shader_code(rows, cols);
+			shader_ = oakengine_display_renderer_create_shader(
+				renderer(), code.toUtf8().constData(), nullptr);
 
 			rows_ = rows;
 			cols_ = cols;
 		}
 
-		ShaderJob job;
+		// Build name and texture arrays for multi-texture blit
+		const int count = tex.size();
+		QVector<QByteArray> name_storage(count);
+		QVector<const char *> names(count);
+		QVector<void *> textures(count);
 
-		for (int i = 0; i < tex.size(); i++) {
+		for (int i = 0; i < count; i++) {
 			int c, r;
 			oakengine_multicam_index_to_row_cols(i, rows, cols, &r, &c);
-			job.insert(QStringLiteral("tex_%1_%2")
-						   .arg(QString::number(r), QString::number(c)),
-					   NodeValue(NodeValue::k_texture, tex.at(i)));
+			name_storage[i] = QStringLiteral("tex_%1_%2")
+								  .arg(QString::number(r), QString::number(c))
+								  .toUtf8();
+			names[i] = name_storage[i].constData();
+			textures[i] = tex.at(i);
 		}
 
-		renderer()->blit_to_texture(shader_, job, main.get());
+		oakengine_display_renderer_blit_shader_multi(
+			renderer(), shader_, names.data(), textures.data(), count,
+			main_tex);
 
-		return main;
+		// Release input texture handles (they were retained by the engine)
+		for (int i = 0; i < count; i++) {
+			oakengine_display_texture_free(tex.at(i));
+		}
+
+		return main_tex;
 	} else {
 		return super::load_custom_texture_from_frame(v);
 	}

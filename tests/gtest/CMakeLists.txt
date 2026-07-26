@@ -159,6 +159,7 @@ target_include_directories(
 target_link_libraries(
   olive-gtest
   PRIVATE
+  oakengine-obj
   ${OLIVE_LIBRARIES}
   GTest::gtest
   Qt${QT_VERSION_MAJOR}::Test
@@ -176,6 +177,11 @@ target_compile_options(
   PRIVATE
   ${OLIVE_COMPILE_OPTIONS}
 )
+
+# Export symbols so dlopen'd render backend plugins can resolve engine objects
+if (UNIX AND NOT APPLE)
+  target_link_options(olive-gtest PRIVATE "LINKER:--export-dynamic")
+endif()
 
 if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
   target_compile_definitions(olive-gtest PRIVATE OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
