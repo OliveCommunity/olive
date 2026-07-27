@@ -31,7 +31,7 @@
 #include <QVBoxLayout>
 
 #include "common/configwrapper.h"
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "dialog/msgbox.h"
 #include "oakengine/node.h"
 #include "oakengine/timeline.h"

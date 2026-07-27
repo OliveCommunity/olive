@@ -32,9 +32,9 @@
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
 
-#include "common/define.h"
-#include "common/filefunctions.h"
-#include "common/xmlutils.h"
+#include "oakutil/define.h"
+#include "oakutil/filefunctions.h"
+#include "oakutil/xmlutils.h"
 
 namespace olive
 {

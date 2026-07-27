@@ -23,7 +23,7 @@
 
 #include <QHBoxLayout>
 
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "core.h"
 #include "node/node.h"
 #include "oakengine/node.h"

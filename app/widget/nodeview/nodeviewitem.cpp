@@ -29,7 +29,7 @@
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
 
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "common/configwrapper.h"
 #include "core.h"
 #include "node/value.h"

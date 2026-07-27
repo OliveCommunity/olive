@@ -26,7 +26,7 @@
 #include <QComboBox>
 #include <QLabel>
 
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "dialog/export/exportformatcombobox.h"
 
 namespace olive

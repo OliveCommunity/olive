@@ -23,7 +23,7 @@
 // (common/filefunctions.h) which is on the public include path; these
 // definitions resolve the symbols locally in the app binary.
 
-#include "common/filefunctions.h"
+#include "oakutil/filefunctions.h"
 
 #include <QCoreApplication>
 #include <QDir>

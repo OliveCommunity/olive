@@ -28,7 +28,7 @@
 #include <QVector3D>
 #include <QVector4D>
 
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "core.h"
 #include "nodeparambutton.h"
 #include "node/node.h"

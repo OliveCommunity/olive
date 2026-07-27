@@ -29,7 +29,7 @@
 #include <QPen>
 
 #include "common/configwrapper.h"
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "../../timeruler/markerpainting.h"
 #include "node/project/footage/footage.h"
 #include "oakengine/timeline.h"

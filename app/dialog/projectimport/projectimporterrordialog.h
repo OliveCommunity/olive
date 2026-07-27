@@ -24,7 +24,7 @@
 
 #include <QDialog>
 
-#include "common/define.h"
+#include "oakutil/define.h"
 
 namespace olive
 {

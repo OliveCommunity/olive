@@ -24,7 +24,7 @@
 #include <cmath>
 #include <QDebug>
 
-#include "common/decibel.h"
+#include "oakutil/decibel.h"
 
 namespace olive
 {

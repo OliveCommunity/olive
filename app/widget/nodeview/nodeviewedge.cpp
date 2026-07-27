@@ -26,7 +26,7 @@
 #include <QGraphicsSceneMouseEvent>
 #include <QStyleOptionGraphicsItem>
 
-#include "common/lerp.h"
+#include "oakutil/lerp.h"
 #include "nodeview.h"
 #include "nodeviewitem.h"
 #include "nodeviewscene.h"

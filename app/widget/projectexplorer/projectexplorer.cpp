@@ -30,7 +30,7 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
-#include "common/define.h"
+#include "oakutil/define.h"
 #include "core.h"
 #include "dialog/footageproperties/footageproperties.h"
 #include "dialog/proxy/proxydialog.h"

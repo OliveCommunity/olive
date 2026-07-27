@@ -27,9 +27,9 @@
 
 #include "audio/audiolevelmeter.h"
 #include "audio/audiomanager.h"
-#include "common/decibel.h"
+#include "oakutil/decibel.h"
 #include "oakengine/preview.h"
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 
 namespace olive
 {

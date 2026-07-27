@@ -35,6 +35,8 @@
 namespace olive
 {
 
+class NodeGroup;
+
 /**
  * @brief A project instance containing all the data pertaining to the user's project
  *

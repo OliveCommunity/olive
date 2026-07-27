@@ -47,8 +47,8 @@
 #endif
 
 #include "dialog/task/task.h"
-#include "common/filefunctions.h"
-#include "common/xmlutils.h"
+#include "oakutil/filefunctions.h"
+#include "oakutil/xmlutils.h"
 #include "common/configwrapper.h"
 #include "dialog/about/about.h"
 #include "dialog/autorecovery/autorecoverydialog.h"

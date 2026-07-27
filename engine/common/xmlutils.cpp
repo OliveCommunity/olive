@@ -27,13 +27,14 @@
 namespace olive
 {
 
-bool xml_read_next_start_element(QXmlStreamReader *reader, CancelAtom *cancel_atom)
+bool xml_read_next_start_element(QXmlStreamReader *reader, void *cancel_atom)
 {
+	CancelAtom *atom = static_cast<CancelAtom *>(cancel_atom);
 	QXmlStreamReader::TokenType token;
 
 	while ((token = reader->readNext()) != QXmlStreamReader::Invalid &&
 		   token != QXmlStreamReader::EndDocument &&
-		   (!cancel_atom || !cancel_atom->is_cancelled())) {
+		   (!atom || !atom->is_cancelled())) {
 		if (reader->isEndElement()) {
 			return false;
 		} else if (reader->isStartElement()) {

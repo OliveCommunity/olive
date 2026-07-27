@@ -27,7 +27,7 @@
 
 #include "common/nodevaluehandle.h"
 #include "common/oakvaluehelper.h"
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "dialog/keyframeproperties/keyframeproperties.h"
 #include "keyframehandle.h"
 #include "node/node.h"

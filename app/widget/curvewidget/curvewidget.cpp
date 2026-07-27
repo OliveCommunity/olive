@@ -28,7 +28,7 @@
 #include <QVBoxLayout>
 
 #include "core.h"
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "node/node.h"
 #include "common/nodevaluehandle.h"
 #include "oakengine/node.h"

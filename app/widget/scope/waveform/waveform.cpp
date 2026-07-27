@@ -27,9 +27,9 @@
 #include <QPainter>
 #include <QtMath>
 
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "common/configwrapper.h"
-#include "common/filefunctions.h"
+#include "oakutil/filefunctions.h"
 #include "oakengine/color.h"
 #include "oakengine/display.h"
 

@@ -26,8 +26,8 @@
 #include <QPainter>
 #include <QtMath>
 
-#include "common/qtutils.h"
-#include "common/filefunctions.h"
+#include "oakutil/qtutils.h"
+#include "oakutil/filefunctions.h"
 #include "oakengine/display.h"
 
 namespace olive

@@ -143,6 +143,9 @@ list(APPEND OLIVE_INCLUDE_DIRS ${OPENEXR_INCLUDES})
 list(APPEND OLIVE_LIBRARIES olivecore)
 list(APPEND OLIVE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/core/include)
 
+# Shared header-only utilities (used by both engine/ and app/)
+list(APPEND OLIVE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/shared/include)
+
 
 # Link Qt
 set(QT_LIBRARIES

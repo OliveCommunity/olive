@@ -23,8 +23,8 @@
 
 #include <QInputDialog>
 
-#include "common/autoscroll.h"
-#include "common/range.h"
+#include "oakutil/autoscroll.h"
+#include "oakutil/range.h"
 #include "common/configwrapper.h"
 #include "core.h"
 #include "engineeventbridge.h"

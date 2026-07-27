@@ -26,7 +26,7 @@
 #include <QLabel>
 #include <QPushButton>
 
-#include "common/autoscroll.h"
+#include "oakutil/autoscroll.h"
 #include "core.h"
 #include "preferencesbehaviortab.h"
 

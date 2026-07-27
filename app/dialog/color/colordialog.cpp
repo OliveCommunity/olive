@@ -25,7 +25,7 @@
 #include <QSplitter>
 #include <QVBoxLayout>
 
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 
 namespace olive
 {

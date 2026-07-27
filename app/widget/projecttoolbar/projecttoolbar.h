@@ -26,7 +26,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 
-#include "common/define.h"
+#include "oakutil/define.h"
 
 namespace olive
 {

@@ -21,7 +21,7 @@
 
 #include "colorbutton.h"
 
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "dialog/color/colordialog.h"
 
 namespace olive

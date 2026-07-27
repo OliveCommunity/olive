@@ -22,34 +22,23 @@
 #ifndef OAK_XMLREADLOOP_H
 #define OAK_XMLREADLOOP_H
 
-#include <QXmlStreamReader>
+// Base declarations (XMLAttributeLoop macro + void* overload) from shared layer
+#include "oakutil/xmlutils.h"
 
-#include "node/param.h"
 #include "render/cancelatom.h"
-#include "undo/undocommand.h"
 
 namespace olive
 {
 
-class Block;
-class Node;
-class NodeInput;
-class NodeGroup;
-
-#define XMLAttributeLoop(reader, item) \
-	foreach (const QXmlStreamAttribute &item, reader->attributes())
-
 /**
- * @brief Workaround for QXmlStreamReader::readNextStartElement not detecting the end of a document
- *
- * Since Qt's default function doesn't exit at the end of the document, it ends up consistently
- * throwing a "premature end of document" error. We have our own function here that does essentially
- * the same thing but fixes that issue.
- *
- * See also: https://stackoverflow.com/questions/46346450/qt-qxmlstreamreader-always-returns-premature-end-of-document-error
+ * @brief Engine-internal overload with typed CancelAtom pointer
  */
-bool xml_read_next_start_element(QXmlStreamReader *reader,
-							 CancelAtom *cancel_atom = nullptr);
+inline bool xml_read_next_start_element(QXmlStreamReader *reader,
+										CancelAtom *cancel_atom)
+{
+	return xml_read_next_start_element(reader,
+									   static_cast<void *>(cancel_atom));
+}
 
 }
 

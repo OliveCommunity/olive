@@ -27,7 +27,7 @@
 #include <QTimer>
 
 #include "audio/audiovisualwaveform.h"
-#include "common/define.h"
+#include "oakutil/define.h"
 #include "render/audiowaveformcache.h"
 
 namespace olive

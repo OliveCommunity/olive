@@ -25,7 +25,7 @@
 #include <QDialog>
 #include <QProgressBar>
 
-#include "common/debug.h"
+#include "common/debugapp.h"
 #include "widget/taskview/elapsedcounterwidget.h"
 
 namespace olive

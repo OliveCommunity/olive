@@ -26,8 +26,8 @@
 #include <QPainter>
 #include <QtMath>
 
-#include "common/qtutils.h"
-#include "common/range.h"
+#include "oakutil/qtutils.h"
+#include "oakutil/range.h"
 #include "core.h"
 #include "dialog/markerproperties/markerpropertiesdialog.h"
 #include "markerpainting.h"

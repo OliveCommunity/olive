@@ -28,10 +28,10 @@
 #include <QScrollBar>
 #include <QtMath>
 
-#include "common/decibel.h"
+#include "oakutil/decibel.h"
 #include "common/nodevaluehandle.h"
 #include "common/oakvaluehelper.h"
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "oakengine/node.h"
 #include "widget/keyframeview/keyframehandle.h"
 

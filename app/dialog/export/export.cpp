@@ -31,8 +31,8 @@
 #include <QSplitter>
 #include <QStandardPaths>
 
-#include "common/digit.h"
-#include "common/qtutils.h"
+#include "oakutil/digit.h"
+#include "oakutil/qtutils.h"
 #include "codec/exportcodec.h"
 #include "codec/exportformat.h"
 #include "dialog/msgbox.h"

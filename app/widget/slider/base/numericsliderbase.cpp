@@ -21,7 +21,7 @@
 
 #include "numericsliderbase.h"
 
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "common/configwrapper.h"
 #include "core.h"
 

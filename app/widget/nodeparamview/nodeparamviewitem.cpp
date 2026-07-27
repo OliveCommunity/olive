@@ -24,7 +24,7 @@
 #include <QCheckBox>
 #include <QDebug>
 
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "dialog/speedduration/speeddurationdialog.h"
 #include "node/project/sequence/sequence.h"
 #include "oakengine/node.h"

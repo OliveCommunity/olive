@@ -25,7 +25,7 @@
 #include <QPainter>
 #include <QWidgetAction>
 
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "ui/colorcoding.h"
 
 namespace olive

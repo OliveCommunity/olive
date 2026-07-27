@@ -24,7 +24,7 @@
 #include <QApplication>
 #include <QPalette>
 
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "common/colorcodingapp.h"
 
 namespace olive

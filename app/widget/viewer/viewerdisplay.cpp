@@ -38,14 +38,14 @@
 #include <cstring>
 
 #include "audio/audiomanager.h"
-#include "common/define.h"
-#include "common/html.h"
+#include "oakutil/define.h"
+#include "common/htmlapp.h"
 #include "oakengine/gizmo.h"
 #include "oakengine/videoparams.h"
 #include "oakengine/display.h"
 #include "oakengine/undo.h"
 #include "widget/viewer/vieweroutpututils.h"
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "common/configwrapper.h"
 #include "core.h"
 #include "node/block/subtitle/subtitle.h"

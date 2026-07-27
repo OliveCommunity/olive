@@ -28,7 +28,7 @@
 #include <QLabel>
 #include <QMessageBox>
 
-#include "common/filefunctions.h"
+#include "oakutil/filefunctions.h"
 #include "common/configwrapper.h"
 #include "oakengine/disk.h"
 #include "olive/core/core.h"

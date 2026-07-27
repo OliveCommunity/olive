@@ -1,0 +1,108 @@
+# R8 计划：app/ 纯 C ABI 头文件清理
+
+> 目标：app/ 下的代码只 include engine/ 的 C 头文件（`oakengine/*.h`），
+> 不再 include 任何 engine 内部 C++ 头。
+> 前置：R7 已完成（nm U _ZN5olive = 0，liboakengine.so 导出收口）。
+
+---
+
+## 1. 纯头工具共享层（shared/）
+
+### 1.1 新建目录
+
+```
+shared/
+  include/
+    oakutil/
+      define.h          ← engine/common/define.h
+      lerp.h            ← engine/common/lerp.h
+      decibel.h         ← engine/common/decibel.h
+      digit.h           ← engine/common/digit.h
+      range.h           ← engine/common/range.h
+      crashpadutils.h   ← engine/common/crashpadutils.h
+      qtutils.h         ← engine/common/qtutils.h（声明）
+      filefunctions.h   ← engine/common/filefunctions.h（声明）
+      xmlutils.h        ← 精简版（XMLAttributeLoop 宏 + xml_read_next_start_element）
+```
+
+### 1.2 CMake 接入
+
+顶层 CMakeLists.txt 添加：
+```cmake
+list(APPEND OLIVE_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/shared/include)
+```
+
+### 1.3 迁移规则
+
+- engine/common/ 中被移出的 .h：原位置改为 `#include "oakutil/xxx.h"` 的转发头
+  （保持 engine 内部现有 include 路径不断）。
+- app/ 中所有 `#include "common/xxx.h"`（指 engine 的）改为 `#include "oakutil/xxx.h"`。
+- qtutils.h / filefunctions.h：声明移到 shared，.cpp 实现分别留在
+  engine/common/（engine 用）和 app/common/（app 用，已有）。
+- xmlutils.h 精简版：只保留 XMLAttributeLoop 宏 + 无 CancelAtom 的函数声明；
+  engine 内部完整版保留在 engine/common/xmlutils.h（include 精简版 + 追加
+  CancelAtom 重载）。
+
+### 1.4 验证
+
+```bash
+grep -rn '#include "common/' app/ | grep -vE '"common/(colorcodingapp|configwrapper|nodevaluehandle|oakvaluehelper|undowrapper|debugapp|filefunctionsapp|hashstreamapp|htmlapp|qtutilsapp|xmlutilsapp)'
+# 期望：0 结果
+```
+
+---
+
+## 2. engine/ui/colorcoding.h → app 本地化
+
+engine/ui/colorcoding.h 是 C++ 类（ColorCoding），被 app 5 处引用。
+方案：在 app/common/ 下新建 `colorcoding.h`，通过 C ABI 或本地静态表实现。
+engine 内部保留原文件。
+
+---
+
+## 3. engine C++ 类 → C ABI 替换（按子系统）
+
+按影响面排序，每批一个 PR：
+
+| 批次 | 子系统 | 违规 include | 替换方案 |
+|---|---|---|---|
+| P2 | node/value.h + node/keyframe.h | ~10 处 | oakengine/node.h 的 oak_node_value_type 枚举 |
+| P3 | node/node.h + node/param.h | ~20 处 | OakEngineNode* + oakengine_node_* 函数 |
+| P4 | node/project*.h | ~15 处 | OakEngineProject*/OakEngineSequence* |
+| P5 | render/* | ~10 处 | oakengine/display.h + viewer.h |
+| P6 | timeline/* | ~6 处 | oakengine/timeline.h |
+| P7 | codec/* + audio/* | ~10 处 | oakengine/encoding.h + audio.h |
+| P8 | tool/* + undo/* | ~20 处 | 新增 C ABI 或 app 本地枚举 |
+| P9 | pluginSupport/* | ~6 处 | oakengine/plugin.h |
+
+---
+
+## 4. CMake 收口（最终步骤）
+
+- 移除 `target_link_libraries(olive-editor PRIVATE oakengine-obj)`
+- 从 `oakengine` 共享库 PUBLIC include 中移除 engine 根目录
+- 只保留 `engine/include`（C ABI 头）
+
+验证：
+```bash
+grep -rn '#include "' app/ | grep -E '"(node|render|timeline|codec|audio|task|undo|tool|pluginSupport|ui/colorcoding)/'
+# 期望：0 结果
+cmake --build build && ctest --test-dir build --output-on-failure
+```
+
+---
+
+## 状态
+
+- [x] Phase 1：shared/ 纯头工具层（define, lerp, decibel, digit, range, crashpadutils, qtutils, filefunctions, xmlutils, autoscroll）
+- [ ] Phase 2-9：C++ 类替换（node/, render/, timeline/, codec/, audio/, task/, undo/, tool/, pluginSupport/）
+- [ ] Phase 10：CMake 收口
+
+### Phase 1 已知遗留
+
+- `app/widget/timebased/timebasedwidget.cpp` 仍引用 `common/current.h`（依赖 pluginSupport + render，需 Phase 2+ 处理）
+- app/ 仍引用 3 个 engine 内部头（不在 Phase 1 清单内，待后续阶段处理）：
+  `common/commandlineparser.h`（app/main.cpp）、`common/crashpadinterface.h`（app/main.cpp）、
+  `common/dropworkflowbehavior.h`（app/widget/timelinewidget/tool/import.h）
+- `engine/node/project.h` 原先经 `common/xmlutils.h` 间接获得 `NodeGroup` 前置声明，
+  精简后已改为在 project.h 内显式前置声明

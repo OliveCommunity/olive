@@ -24,7 +24,7 @@
 
 #include <QGridLayout>
 
-#include "common/define.h"
+#include "oakutil/define.h"
 
 namespace olive
 {

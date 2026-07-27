@@ -27,7 +27,7 @@
 #include <QToolTip>
 
 #include "common/configwrapper.h"
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "core.h"
 #include "dialog/sequence/sequence.h"
 #include "node/audio/volume/volume.h"

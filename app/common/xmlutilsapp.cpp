@@ -21,19 +21,19 @@
 // App-side implementation of xml_read_next_start_element
 // Provides a local definition so the app doesn't import this from liboakengine.
 
-#include "common/xmlutils.h"
+#include "oakutil/xmlutils.h"
 
 namespace olive
 {
 
 bool xml_read_next_start_element(QXmlStreamReader *reader,
-								CancelAtom *cancel_atom)
+								void *cancel_atom)
 {
 	QXmlStreamReader::TokenType token;
 
 	while ((token = reader->readNext()) != QXmlStreamReader::Invalid &&
 		   token != QXmlStreamReader::EndDocument &&
-		   (!cancel_atom || !cancel_atom->is_cancelled())) {
+		   (!cancel_atom)) {
 		if (reader->isEndElement()) {
 			return false;
 		} else if (reader->isStartElement()) {

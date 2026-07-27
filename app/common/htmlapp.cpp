@@ -29,12 +29,12 @@
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
 
-#include "common/xmlutils.h"
+#include "oakutil/xmlutils.h"
 
 #include <QDebug>
 #include <QTextBlock>
 
-#include "common/xmlutils.h"
+#include "oakutil/xmlutils.h"
 
 namespace olive
 {

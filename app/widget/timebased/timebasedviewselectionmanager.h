@@ -27,7 +27,7 @@
 #include <QRubberBand>
 #include <QToolTip>
 
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "olive/core/util/timecodefunctions.h"
 #include "oakengine/node.h"
 #include "oakengine/undo.h"

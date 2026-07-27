@@ -26,7 +26,7 @@
 #include <QMimeData>
 #include <QUrl>
 
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "core.h"
 #include "oakengine/project.h"
 #include "oakengine/node.h"

@@ -26,7 +26,7 @@
 #include <QGridLayout>
 #include <QLabel>
 
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "widget/slider/integerslider.h"
 
 namespace olive

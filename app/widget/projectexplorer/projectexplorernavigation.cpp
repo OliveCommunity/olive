@@ -24,7 +24,7 @@
 #include <QEvent>
 #include <QHBoxLayout>
 
-#include "common/define.h"
+#include "oakutil/define.h"
 #include "ui/icons/icons.h"
 
 namespace olive

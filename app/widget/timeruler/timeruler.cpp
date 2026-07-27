@@ -24,7 +24,7 @@
 #include <QDebug>
 #include <QPainter>
 
-#include "common/qtutils.h"
+#include "oakutil/qtutils.h"
 #include "common/configwrapper.h"
 #include "core.h"
 #include "oakengine/viewer.h"
