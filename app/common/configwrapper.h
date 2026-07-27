@@ -58,6 +58,10 @@ public:
 	{
 		return static_cast<quint64>(oakengine_config_get_int(key_utf8(), 0));
 	}
+	// int64_t/uint64_t overloads only exist where they differ from
+	// qint64/quint64 (Linux LP64: int64_t is long; on macOS/Windows both are
+	// long long, where declaring them would be a redeclaration).
+#if defined(__linux__)
 	operator int64_t() const
 	{
 		return oakengine_config_get_int(key_utf8(), 0);
@@ -66,6 +70,7 @@ public:
 	{
 		return static_cast<uint64_t>(oakengine_config_get_int(key_utf8(), 0));
 	}
+#endif
 	operator QString() const
 	{
 		char buf[1024];
@@ -103,6 +108,7 @@ public:
 		oakengine_config_set_int(key_utf8(), static_cast<int64_t>(v));
 		return *this;
 	}
+#if defined(__linux__)
 	OakConfigValue &operator=(int64_t v)
 	{
 		oakengine_config_set_int(key_utf8(), v);
@@ -113,6 +119,7 @@ public:
 		oakengine_config_set_int(key_utf8(), static_cast<int64_t>(v));
 		return *this;
 	}
+#endif
 	OakConfigValue &operator=(const QString &v)
 	{
 		const QByteArray utf8 = v.toUtf8();

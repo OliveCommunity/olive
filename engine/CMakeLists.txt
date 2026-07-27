@@ -114,6 +114,14 @@ if (UNIX AND NOT APPLE)
             ${CMAKE_CURRENT_SOURCE_DIR}/oakengine.ver)
 endif ()
 
+# olive::k_app_version is intentionally left undefined in the shared library
+# and provided by the final executable via olive-version-obj (see
+# worker/CMakeLists.txt). ELF allows undefined symbols in shared libraries by
+# default; the macOS linker does not, so whitelist that one symbol.
+if (APPLE)
+    target_link_options(oakengine PRIVATE "LINKER:-U,__ZN5olive13k_app_versionE")
+endif ()
+
 # Install into the platform's standard library directory (/usr/lib,
 # /usr/lib64 or the Debian multiarch path); Windows DLLs go next to the
 # executables in bin.
