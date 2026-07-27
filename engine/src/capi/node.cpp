@@ -1286,6 +1286,13 @@ int oakengine_project_remove_node(OakEngineProject *project,
 	return OAKENGINE_OK;
 }
 
+void oakengine_node_delete_later(OakEngineNode *node)
+{
+	if (olive::Node *n = impl(node)) {
+		n->deleteLater();
+	}
+}
+
 int oakengine_node_connect(OakEngineNode *output_node,
 						   OakEngineNode *input_node, const char *input_id)
 {

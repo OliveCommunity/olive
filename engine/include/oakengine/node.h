@@ -446,6 +446,15 @@ OAKENGINE_API int oakengine_project_remove_node(OakEngineProject *project,
 												OakEngineNode *node);
 
 /**
+ * @brief Schedule a node for deferred deletion (QObject::deleteLater).
+ *
+ * Use this to dispose of orphaned nodes that were created but never added
+ * to a project (e.g. a sequence whose creation dialog was cancelled).
+ * The handle becomes invalid after the next event-loop iteration.
+ */
+OAKENGINE_API void oakengine_node_delete_later(OakEngineNode *node);
+
+/**
  * @brief Connect `output_node`'s output into `input_node`'s `input_id`
  * (undoable, olive::NodeEdgeAddCommand).
  *

@@ -1120,7 +1120,8 @@ void NodeView::open_selected_node_in_viewer()
 	// Find first viewer in list of selected nodes and open it
 	foreach (Node *n, selected_nodes_) {
 		if (ViewerOutput *viewer = dynamic_cast<ViewerOutput *>(n)) {
-			Core::instance()->open_node_in_viewer(viewer);
+			Core::instance()->open_node_in_viewer(
+				reinterpret_cast<OakEngineNode *>(viewer));
 			break;
 		}
 	}
@@ -1734,7 +1735,9 @@ void NodeView::group_nodes()
 	oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(group), reinterpret_cast<void *>(context), avg_pos.x(), avg_pos.y(), 0));
 
 	// Do command
-	Core::instance()->label_nodes({ group }, command);
+	Core::instance()->label_nodes(
+		QVector<OakEngineNode *>{ reinterpret_cast<OakEngineNode *>(group) },
+		command);
 
 	oakengine_undo_push(command, tr("Grouped Nodes").toUtf8().constData());
 }
@@ -1877,7 +1880,8 @@ void NodeView::show_selected_node_in_param_editor()
 
 void NodeView::label_selected_nodes()
 {
-	Core::instance()->label_nodes(selected_nodes_);
+	Core::instance()->label_nodes(
+		reinterpret_cast<const QVector<OakEngineNode *> &>(selected_nodes_));
 }
 
 void NodeView::item_about_to_be_deleted(NodeViewItem *item)

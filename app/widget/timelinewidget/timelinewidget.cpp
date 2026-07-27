@@ -1737,8 +1737,10 @@ void TimelineWidget::nest_selected_clips()
 
 	// Create new sequence
 	Project *project = this->get_connected_node()->project();
-	Sequence *nest =
-		Core::instance()->create_new_sequence_for_project(tr("Nested Sequence %1"), project);
+	Sequence *nest = reinterpret_cast<Sequence *>(
+		Core::instance()->create_new_sequence_for_project(
+			tr("Nested Sequence %1"),
+			reinterpret_cast<OakEngineProject *>(project)));
 	{
 		oak_video_params vpod;
 		oakengine_viewer_get_video_params(

@@ -25,6 +25,9 @@
 #include "coreengine.h"
 #include <QObject>
 #include "oakengine/app.h"
+#include "oakengine/node.h"
+#include "oakengine/project.h"
+#include "oakengine/timeline.h"
 #include "oakengine/undo.h"
 #include "oakengine/init.h"
 #include "oakengine/task.h"
@@ -104,7 +107,7 @@ public:
 	 *
 	 * @param urls
 	 */
-	void import_files(const QStringList &urls, Folder *parent);
+	void import_files(const QStringList &urls, OakEngineNode *parent);
 
 	/**
 	 * @brief Get the currently active project
@@ -116,13 +119,13 @@ public:
 	 *
 	 * The active Project file, or nullptr if the heuristic couldn't find one.
 	 */
-	Project *get_active_project() const;
-	Folder *get_selected_folder_in_active_project() const;
+	OakEngineProject *get_active_project() const;
+	OakEngineNode *get_selected_folder_in_active_project() const;
 
 	/**
 	 * @brief Show a dialog to the user to rename a set of nodes
 	 */
-	bool label_nodes(const QVector<Node *> &nodes,
+	bool label_nodes(const QVector<OakEngineNode *> &nodes,
 					void *parent = nullptr);
 
 	/**
@@ -142,9 +145,9 @@ public:
 
 	void open_recovery_project(const QString &filename);
 
-	void open_node_in_viewer(ViewerOutput *viewer);
+	void open_node_in_viewer(OakEngineNode *viewer);
 
-	void open_export_dialog_for_viewer(ViewerOutput *viewer,
+	void open_export_dialog_for_viewer(OakEngineNode *viewer,
 								   bool start_still_image);
 
 	bool add_open_project_from_task(OakEngineTask *task, bool add_to_recents);
@@ -220,7 +223,7 @@ public:
 	 * @brief Show OTIO import dialog
 	 */
 #ifdef USE_OTIO
-	bool DialogImportOTIOShow(const QList<Sequence *> &sequences);
+	bool DialogImportOTIOShow(const QList<OakEngineSequence *> &sequences);
 #endif
 
 	// ---- Facade-wrapping methods (shadow EngineCore to avoid symbol refs) ----
@@ -243,9 +246,9 @@ public:
 	static bool is_footage_extension_allowed(const QString &path);
 
 	void create_new_project();
-	Sequence *create_new_sequence_for_project(const QString &format,
-											 Project *project);
-	static Sequence *create_new_sequence_for_project(Project *project);
+	OakEngineSequence *create_new_sequence_for_project(const QString &format,
+													 OakEngineProject *project);
+	static OakEngineSequence *create_new_sequence_for_project(OakEngineProject *project);
 
 	void clear_open_recent_list();
 	void set_use_proxy_media(bool enabled);
@@ -269,11 +272,11 @@ public:
 	bool set_language(const QString &locale);
 	void set_autorecovery_interval(int minutes);
 
-	void on_project_saved(Project *p);
+	void on_project_saved(OakEngineProject *p);
 	static QString get_auto_recovery_index_filename();
-	void add_open_project(olive::Project *p, bool add_to_recents = false);
+	void add_open_project(OakEngineProject *p, bool add_to_recents = false);
 	void remove_recently_opened_project(int index);
-	void set_active_project(Project *p);
+	void set_active_project(OakEngineProject *p);
 	QString get_selected_transition() const;
 
 signals:
@@ -308,7 +311,7 @@ private:
 	/**
 	 * @brief Retrieves the currently most active sequence for exporting
 	 */
-	ViewerOutput *get_sequence_to_export();
+	OakEngineNode *get_sequence_to_export();
 
 	bool revert_project_internal(bool by_opening_existing);
 
@@ -320,7 +323,7 @@ private:
 	/**
 	 * @brief Applies a new active project to the main window (connected to EngineCore::active_project_changed)
 	 */
-	void on_active_project_changed(Project *p);
+	void on_active_project_changed(OakEngineProject *p);
 
 	/**
 	 * @brief Internal main window object

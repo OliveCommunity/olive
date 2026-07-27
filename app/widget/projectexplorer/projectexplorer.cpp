@@ -537,7 +537,8 @@ void ProjectExplorer::show_item_properties_dialog()
 		fpd.exec();
 
 	} else if (dynamic_cast<Folder *>(sel)) {
-		Core::instance()->label_nodes(context_menu_items_);
+		Core::instance()->label_nodes(
+			reinterpret_cast<const QVector<OakEngineNode *> &>(context_menu_items_));
 
 	} else if (dynamic_cast<Sequence *>(sel)) {
 		SequenceDialog sd(static_cast<Sequence *>(sel),

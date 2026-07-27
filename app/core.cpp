@@ -32,11 +32,13 @@
 #include <QStatusBar>
 #include "oakengine/audio.h"
 #include "oakengine/disk.h"
+#include "oakengine/footage.h"
 #include "oakengine/plugin.h"
 #include "oakengine/project.h"
 #include "oakengine/task.h"
 #include "oakengine/node.h"
 #include "oakengine/undo.h"
+#include "oakengine/viewer.h"
 #include "window/mainwindow/mainwindowundo.h"
 #ifdef Q_OS_WINDOWS
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
@@ -140,10 +142,10 @@ Core::Core(const OakEngineAppParams *params)
 #ifdef USE_OTIO
 		cb.otio_import = [](OakEngineSequence **sequences, int count,
 							void *userdata) -> int {
-			QList<Sequence *> sq;
+			QList<OakEngineSequence *> sq;
 			sq.reserve(count);
 			for (int i = 0; i < count; i++) {
-				sq.append(reinterpret_cast<Sequence *>(sequences[i]));
+				sq.append(sequences[i]);
 			}
 			return static_cast<Core *>(userdata)->DialogImportOTIOShow(sq) ? 1 :
 																			  0;
@@ -262,7 +264,7 @@ MainWindow *Core::main_window()
 	return main_window_;
 }
 
-void Core::import_files(const QStringList &urls, Folder *parent)
+void Core::import_files(const QStringList &urls, OakEngineNode *parent)
 {
 	if (urls.isEmpty()) {
 		QMessageBox::critical(main_window_, tr("Import error"),
@@ -304,7 +306,7 @@ void Core::import_files(const QStringList &urls, Folder *parent)
 	}
 
 	OakEngineTask *pim = oakengine_task_create_project_import(
-		reinterpret_cast<OakEngineNode *>(parent),
+		parent,
 		url_ptrs.data(), url_ptrs.size());
 
 	if (oakengine_task_import_file_count(pim) == 0) {
@@ -339,11 +341,11 @@ void Core::dialog_import_show()
 		// Locate the most recently focused Project panel (assume that's the panel the user wants to import into)
 		ProjectPanel *active_project_panel =
 			PanelManager::instance()->most_recently_focused<ProjectPanel>();
-		Project *active_project;
+		OakEngineProject *active_project;
 
 		if (active_project_panel ==
 				nullptr // Check that we found a Project panel
-			|| (active_project = active_project_panel->project()) ==
+			|| (active_project = reinterpret_cast<OakEngineProject *>(active_project_panel->project())) ==
 				   nullptr) { // and that we could find an active Project
 			QMessageBox::critical(main_window_, tr("Failed to import footage"),
 								  tr("Failed to find active Project panel"));
@@ -351,7 +353,7 @@ void Core::dialog_import_show()
 		}
 
 		// Get the selected folder in this panel
-		Folder *folder = active_project_panel->get_selected_folder();
+		OakEngineNode *folder = reinterpret_cast<OakEngineNode *>(active_project_panel->get_selected_folder());
 
 		import_files(files, folder);
 	}
@@ -365,10 +367,10 @@ void Core::dialog_preferences_show(int start_tab)
 
 void Core::dialog_project_properties_show()
 {
-	Project *proj = get_active_project();
+	OakEngineProject *proj = get_active_project();
 
 	if (proj) {
-		ProjectPropertiesDialog ppd(proj, main_window_);
+		ProjectPropertiesDialog ppd(reinterpret_cast<Project *>(proj), main_window_);
 		ppd.exec();
 	} else {
 		QMessageBox::critical(
@@ -380,16 +382,21 @@ void Core::dialog_project_properties_show()
 
 void Core::dialog_export_show()
 {
-	if (ViewerOutput *viewer = get_sequence_to_export()) {
+	if (OakEngineNode *viewer = get_sequence_to_export()) {
 		open_export_dialog_for_viewer(viewer, false);
 	}
 }
 
 #ifdef USE_OTIO
-bool Core::DialogImportOTIOShow(const QList<Sequence *> &sequences)
+bool Core::DialogImportOTIOShow(const QList<OakEngineSequence *> &sequences)
 {
-	Project *active_project = get_active_project();
-	OTIOPropertiesDialog opd(sequences, active_project);
+	OakEngineProject *active_project = get_active_project();
+	QList<Sequence *> sq;
+	sq.reserve(sequences.size());
+	for (auto *s : sequences) {
+		sq.append(reinterpret_cast<Sequence *>(s));
+	}
+	OTIOPropertiesDialog opd(sq, reinterpret_cast<Project *>(active_project));
 	return opd.exec() == QDialog::Accepted;
 }
 #endif
@@ -399,10 +406,10 @@ void Core::create_new_folder()
 	// Locate the most recently focused Project panel (assume that's the panel the user wants to import into)
 	ProjectPanel *active_project_panel =
 		PanelManager::instance()->most_recently_focused<ProjectPanel>();
-	Project *active_project;
+	OakEngineProject *active_project;
 
 	if (active_project_panel == nullptr // Check that we found a Project panel
-		|| (active_project = active_project_panel->project()) ==
+		|| (active_project = reinterpret_cast<OakEngineProject *>(active_project_panel->project())) ==
 			   nullptr) { // and that we could find an active Project
 		QMessageBox::critical(main_window_, tr("Failed to create new folder"),
 							  tr("Failed to find active project"));
@@ -410,14 +417,14 @@ void Core::create_new_folder()
 	}
 
 	// Get the selected folder in this panel
-	Folder *folder = active_project_panel->get_selected_folder();
+	OakEngineNode *folder = reinterpret_cast<OakEngineNode *>(active_project_panel->get_selected_folder());
 
 	// Group the three facade edits into a single undo entry.
 	oakengine_undo_group_begin(tr("Create New Folder").toUtf8().constData());
 
 	// Create new folder via facade (creates and adds to project, undoable)
 	OakEngineNode *new_folder_oak = oakengine_project_add_node(
-		reinterpret_cast<OakEngineProject *>(active_project),
+		active_project,
 		"org.olivevideoeditor.Olive.folder");
 
 	// Set a default name (undoable)
@@ -426,7 +433,7 @@ void Core::create_new_folder()
 
 	// Add to the selected folder (undoable)
 	oakengine_folder_add_child(
-		reinterpret_cast<OakEngineNode *>(folder),
+		folder,
 		new_folder_oak);
 
 	oakengine_undo_group_end();
@@ -437,7 +444,7 @@ void Core::create_new_folder()
 
 void Core::create_new_sequence()
 {
-	Project *active_project = get_active_project();
+	OakEngineProject *active_project = get_active_project();
 
 	if (!active_project) {
 		QMessageBox::critical(main_window_, tr("Failed to create new sequence"),
@@ -446,9 +453,9 @@ void Core::create_new_sequence()
 	}
 
 	// Create new sequence
-	Sequence *new_sequence = create_new_sequence_for_project(active_project);
+	OakEngineSequence *new_sequence = create_new_sequence_for_project(active_project);
 
-	SequenceDialog sd(new_sequence, SequenceDialog::k_new, main_window_);
+	SequenceDialog sd(reinterpret_cast<Sequence *>(new_sequence), SequenceDialog::k_new, main_window_);
 
 	// Make sure SequenceDialog doesn't make an undo command for editing the sequence, since we make an undo command for
 	// adding it later on
@@ -460,24 +467,23 @@ void Core::create_new_sequence()
 
 		oakengine_undo_command_multi_add_child(command,
 		oakengine_node_add_to_project_command(
-			reinterpret_cast<OakEngineProject *>(active_project),
+			active_project,
 			reinterpret_cast<OakEngineNode *>(new_sequence)));
 		oakengine_folder_add_child(
-			reinterpret_cast<OakEngineNode *>(get_selected_folder_in_active_project()),
+			get_selected_folder_in_active_project(),
 			reinterpret_cast<OakEngineNode *>(new_sequence));
 		oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(new_sequence), reinterpret_cast<void *>(new_sequence), 0.0, 0.0, 0));
-		oakengine_undo_command_multi_add_child(command, make_open_sequence_command(new_sequence));
+		oakengine_undo_command_multi_add_child(command, make_open_sequence_command(reinterpret_cast<Sequence *>(new_sequence)));
 
 		// Create and connect default nodes to new sequence
-		oakengine_sequence_add_default_nodes(
-			reinterpret_cast<OakEngineSequence *>(new_sequence));
+		oakengine_sequence_add_default_nodes(new_sequence);
 
 		oakengine_undo_push(command,
 						   tr("Created New Sequence").toUtf8().constData());
 
 	} else {
 		// If the dialog was accepted, ownership goes to the AddItemCommand. But if we get here, just delete
-		delete new_sequence;
+		oakengine_node_delete_later(reinterpret_cast<OakEngineNode *>(new_sequence));
 	}
 }
 
@@ -487,10 +493,10 @@ void Core::import_task_complete(OakEngineTask *task)
 		oakengine_task_import_get_command(task));
 
 	int footage_count = oakengine_task_import_footage_count(task);
-	QVector<Footage *> imported_footage;
+	QVector<OakEngineFootage *> imported_footage;
 	imported_footage.reserve(footage_count);
 	for (int i = 0; i < footage_count; i++) {
-		Footage *f = reinterpret_cast<Footage *>(
+		OakEngineFootage *f = reinterpret_cast<OakEngineFootage *>(
 			oakengine_task_import_footage_at(task, i));
 		imported_footage.append(f);
 
@@ -502,15 +508,17 @@ void Core::import_task_complete(OakEngineTask *task)
 		if (aud_count == 0 && vid_count > 1) {
 			bool all_stills = true;
 
-			for (int i = 0; i < vid_count; i++) {
-				const VideoParams &vs = viewer_output_video_params(f, i);
+			for (int j = 0; j < vid_count; j++) {
+				const VideoParams &vs = viewer_output_video_params(f, j);
 				if (!(vs.video_type() == 1 &&
-					  vs.enabled() == (i == 0))) {
+					  vs.enabled() == (j == 0))) {
 					all_stills = false;
 				}
 			}
 
 			if (all_stills) {
+				char fn_buf[512];
+				oakengine_footage_get_filename(f, fn_buf, sizeof(fn_buf));
 				QMessageBox d(main_window());
 
 				d.setIcon(QMessageBox::Question);
@@ -518,7 +526,7 @@ void Core::import_task_complete(OakEngineTask *task)
 				d.setText(
 					tr("The file '%1' has multiple layers. Would you like these layers to be "
 					   "separated across multiple tracks or merged into a single image?")
-						.arg(f->filename()));
+						.arg(QString::fromUtf8(fn_buf)));
 
 				auto multi_btn =
 					d.addButton(tr("Multiple Layers"), QMessageBox::YesRole);
@@ -531,11 +539,11 @@ void Core::import_task_complete(OakEngineTask *task)
 				if (d.clickedButton() == multi_btn) {
 					OakEngineFootage *fh = oakengine_footage_borrow(
 						reinterpret_cast<OakEngineNode *>(f));
-					for (int i = 0; i < vid_count; i++) {
+					for (int j = 0; j < vid_count; j++) {
 						int enabled = oakengine_footage_get_stream_enabled(
-							fh, OAKENGINE_TRACK_TYPE_VIDEO, i);
+							fh, OAKENGINE_TRACK_TYPE_VIDEO, j);
 						oakengine_footage_set_stream_enabled(
-							fh, OAKENGINE_TRACK_TYPE_VIDEO, i,
+							fh, OAKENGINE_TRACK_TYPE_VIDEO, j,
 							enabled ? 0 : 1);
 					}
 					oakengine_footage_free(fh);
@@ -571,7 +579,7 @@ void Core::import_task_complete(OakEngineTask *task)
 		command,
 		tr("Imported %1 File(s)").arg(imported_footage.size()).toUtf8().constData());
 
-	main_window_->select_footage(imported_footage);
+	main_window_->select_footage(reinterpret_cast<const QVector<Footage *> &>(imported_footage));
 }
 
 bool Core::confirm_image_sequence(const QString &filename)
@@ -785,13 +793,11 @@ void Core::start_gui(bool full_screen)
 
 void Core::save_project_internal(const QString &override_filename)
 {
-	Project *open_proj_ = reinterpret_cast<Project *>(oakengine_app_open_project());
+	OakEngineProject *open_proj_ = oakengine_app_open_project();
 
 	// Get project filename via facade
 	char fn_buf[512];
-	oakengine_project_filename(
-		reinterpret_cast<OakEngineProject *>(open_proj_),
-		fn_buf, sizeof(fn_buf));
+	oakengine_project_filename(open_proj_, fn_buf, sizeof(fn_buf));
 	QString fn = QString::fromUtf8(fn_buf);
 
 	// Create save manager
@@ -800,8 +806,7 @@ void Core::save_project_internal(const QString &override_filename)
 	if (fn.endsWith(QStringLiteral(".otio"),
 					   Qt::CaseInsensitive)) {
 #ifdef USE_OTIO
-		psm = oakengine_task_create_project_save_otio(
-			reinterpret_cast<OakEngineProject *>(open_proj_));
+		psm = oakengine_task_create_project_save_otio(open_proj_);
 #else
 		QMessageBox::critical(
 			main_window_, tr("Missing OpenTimelineIO Libraries"),
@@ -814,7 +819,7 @@ void Core::save_project_internal(const QString &override_filename)
 			QStringLiteral(".ovexml"), Qt::CaseInsensitive);
 		SerializedLayoutInfo layout = main_window_->save_layout();
 		psm = oakengine_task_create_project_save(
-			reinterpret_cast<OakEngineProject *>(open_proj_),
+			open_proj_,
 			use_compression ? 1 : 0,
 			override_filename.isEmpty() ? nullptr :
 				override_filename.toUtf8().constData(),
@@ -839,7 +844,7 @@ void Core::save_project_internal(const QString &override_filename)
 	oakengine_task_free(psm);
 }
 
-ViewerOutput *Core::get_sequence_to_export()
+OakEngineNode *Core::get_sequence_to_export()
 {
 	// First try the most recently focused time based window
 	TimeBasedPanel *time_panel =
@@ -853,13 +858,16 @@ ViewerOutput *Core::get_sequence_to_export()
 	}
 
 	if (time_panel && time_panel->get_connected_viewer()) {
-		if (time_panel->get_connected_viewer()->get_length() == 0) {
+		OakEngineNode *viewer = reinterpret_cast<OakEngineNode *>(time_panel->get_connected_viewer());
+		int64_t len_num = 0, len_den = 1;
+		oakengine_viewer_get_length(viewer, &len_num, &len_den);
+		if (len_num == 0) {
 			QMessageBox::critical(
 				main_window_, tr("Error"),
 				tr("This Sequence is empty. There is nothing to export."),
 				QMessageBox::Ok);
 		} else {
-			return time_panel->get_connected_viewer();
+			return viewer;
 		}
 	} else {
 		QMessageBox::critical(
@@ -873,16 +881,13 @@ ViewerOutput *Core::get_sequence_to_export()
 
 bool Core::revert_project_internal(bool by_opening_existing)
 {
-	Project *cur_proj = reinterpret_cast<Project *>(oakengine_app_open_project());
+	OakEngineProject *cur_proj = oakengine_app_open_project();
 	char fn_buf[512];
-	oakengine_project_filename(
-		reinterpret_cast<OakEngineProject *>(cur_proj),
-		fn_buf, sizeof(fn_buf));
+	oakengine_project_filename(cur_proj, fn_buf, sizeof(fn_buf));
 	QString cur_fn = QString::fromUtf8(fn_buf);
 
 	char name_buf[256];
-	oakengine_project_name(reinterpret_cast<OakEngineProject *>(cur_proj),
-			       name_buf, sizeof(name_buf));
+	oakengine_project_name(cur_proj, name_buf, sizeof(name_buf));
 	QString cur_name = QString::fromUtf8(name_buf);
 
 	if (cur_fn.isEmpty()) {
@@ -927,29 +932,28 @@ bool Core::revert_project_internal(bool by_opening_existing)
 
 void Core::project_save_succeeded(OakEngineTask *task)
 {
-	Project *p = reinterpret_cast<Project *>(
+	OakEngineProject *p = reinterpret_cast<OakEngineProject *>(
 		oakengine_task_save_get_project(task));
 
-	oakengine_app_on_project_saved(reinterpret_cast<OakEngineProject *>(p));
+	oakengine_app_on_project_saved(p);
 
 	char fn_buf[512];
-	oakengine_project_filename(reinterpret_cast<OakEngineProject *>(p),
-				   fn_buf, sizeof(fn_buf));
+	oakengine_project_filename(p, fn_buf, sizeof(fn_buf));
 	show_status_bar_message(tr("Saved to \"%1\" successfully").arg(fn_buf));
 }
 
-Project *Core::get_active_project() const
+OakEngineProject *Core::get_active_project() const
 {
-	return reinterpret_cast<Project *>(oakengine_app_open_project());
+	return oakengine_app_open_project();
 }
 
-Folder *Core::get_selected_folder_in_active_project() const
+OakEngineNode *Core::get_selected_folder_in_active_project() const
 {
 	ProjectPanel *active_project_panel =
 		PanelManager::instance()->most_recently_focused<ProjectPanel>();
 
 	if (active_project_panel) {
-		return active_project_panel->get_selected_folder();
+		return reinterpret_cast<OakEngineNode *>(active_project_panel->get_selected_folder());
 	} else {
 		return nullptr;
 	}
@@ -991,12 +995,10 @@ QString Core::get_project_filter(bool include_any_filter)
 
 bool Core::save_project()
 {
-	Project *saved_proj = reinterpret_cast<Project *>(oakengine_app_open_project());
+	OakEngineProject *saved_proj = oakengine_app_open_project();
 
 	char fn_buf[512];
-	oakengine_project_filename(
-		reinterpret_cast<OakEngineProject *>(saved_proj),
-		fn_buf, sizeof(fn_buf));
+	oakengine_project_filename(saved_proj, fn_buf, sizeof(fn_buf));
 	if (fn_buf[0] == '\0') {
 		return save_project_as();
 	} else {
@@ -1010,16 +1012,16 @@ void Core::open_recovery_project(const QString &filename)
 	open_project_internal(filename, true);
 }
 
-void Core::open_node_in_viewer(ViewerOutput *viewer)
+void Core::open_node_in_viewer(OakEngineNode *viewer)
 {
-	main_window_->open_node_in_viewer(viewer);
+	main_window_->open_node_in_viewer(reinterpret_cast<ViewerOutput *>(viewer));
 }
 
-void Core::open_export_dialog_for_viewer(ViewerOutput *viewer,
+void Core::open_export_dialog_for_viewer(OakEngineNode *viewer,
 									 bool start_still_image)
 {
 	ExportDialog *ed =
-		new ExportDialog(viewer, start_still_image, main_window_);
+		new ExportDialog(reinterpret_cast<ViewerOutput *>(viewer), start_still_image, main_window_);
 	connect(ed, &ExportDialog::finished, ed, &ExportDialog::deleteLater);
 	ed->open();
 	connect(ed, &ExportDialog::request_import_file, this,
@@ -1089,15 +1091,14 @@ void Core::show_cache_full_warning()
 		   "3. Reduce usage of the disk cache (e.g. disable auto-cache or only cache specific sections of your sequence)."));
 }
 
-void Core::on_active_project_changed(Project *p)
+void Core::on_active_project_changed(OakEngineProject *p)
 {
-	main_window_->set_project(p);
+	main_window_->set_project(reinterpret_cast<Project *>(p));
 
 	if (p) {
-		auto *ph = reinterpret_cast<OakEngineProject *>(p);
 		// Keep the window's modified state in sync via event subscription
 		// (connection is removed automatically when the project is deleted).
-		oakengine_event_subscribe(ph, OAKENGINE_EVENT_PROJECT_MODIFIED_CHANGED,
+		oakengine_event_subscribe(p, OAKENGINE_EVENT_PROJECT_MODIFIED_CHANGED,
 			[](const oakengine_event *event, void *userdata) {
 				QMainWindow *mw = static_cast<QMainWindow *>(userdata);
 				mw->setWindowModified(event->a != 0);
@@ -1125,7 +1126,7 @@ bool Core::save_project_as()
 		fn = FileFunctions::ensure_filename_extension(fn, extension);
 
 		oakengine_project_set_filename(
-			reinterpret_cast<OakEngineProject *>(static_cast<QObject *>(reinterpret_cast<Project *>(oakengine_app_open_project()))),
+			oakengine_app_open_project(),
 			fn.toUtf8().constData());
 
 		save_project_internal();
@@ -1143,12 +1144,10 @@ void Core::revert_project()
 
 void Core::open_project_internal(const QString &filename, bool recovery_project)
 {
-	Project *open_proj = reinterpret_cast<Project *>(oakengine_app_open_project());
+	OakEngineProject *open_proj = oakengine_app_open_project();
 	if (open_proj) {
 		char fn_buf[512];
-		oakengine_project_filename(
-			reinterpret_cast<OakEngineProject *>(open_proj),
-			fn_buf, sizeof(fn_buf));
+		oakengine_project_filename(open_proj, fn_buf, sizeof(fn_buf));
 		// Comparing QFileInfos will handle case insensitivity and both slash directions on platforms
 		// where this is necessary (not naming any names *cough* Windows)
 		if (QFileInfo(fn_buf) == QFileInfo(filename)) {
@@ -1201,12 +1200,12 @@ void Core::open_project_internal(const QString &filename, bool recovery_project)
 
 void Core::import_single_file(const QString &f)
 {
-	if (Project *p = get_active_project()) {
-		import_files({ f }, p->root());
+	if (OakEngineProject *p = get_active_project()) {
+		import_files({ f }, oakengine_project_root(p));
 	}
 }
 
-bool Core::label_nodes(const QVector<Node *> &nodes, void *parent)
+bool Core::label_nodes(const QVector<OakEngineNode *> &nodes, void *parent)
 {
 	if (nodes.isEmpty()) {
 		return false;
@@ -1214,10 +1213,14 @@ bool Core::label_nodes(const QVector<Node *> &nodes, void *parent)
 
 	bool ok;
 
-	QString start_label = nodes.first()->get_label();
+	char label_buf[256];
+	oakengine_node_get_label(nodes.first(), label_buf, sizeof(label_buf));
+	QString start_label = QString::fromUtf8(label_buf);
 
 	for (int i = 1; i < nodes.size(); i++) {
-		if (nodes.at(i)->get_label() != start_label) {
+		char buf_i[256];
+		oakengine_node_get_label(nodes.at(i), buf_i, sizeof(buf_i));
+		if (QString::fromUtf8(buf_i) != start_label) {
 			// Not all the nodes share the same name, so we'll start with a blank one
 			start_label.clear();
 			break;
@@ -1229,12 +1232,8 @@ bool Core::label_nodes(const QVector<Node *> &nodes, void *parent)
 									  start_label, &ok);
 
 	if (ok) {
-		QVector<OakEngineNode *> oak_nodes;
-		oak_nodes.reserve(nodes.size());
-		foreach (Node *n, nodes) {
-			oak_nodes.append(reinterpret_cast<OakEngineNode *>(n));
-		}
-		oakengine_node_rename_many(oak_nodes.data(), oak_nodes.size(),
+		oakengine_node_rename_many(const_cast<OakEngineNode **>(nodes.data()),
+								nodes.size(),
 								s.toUtf8().constData(), parent);
 
 		return true;
@@ -1265,13 +1264,11 @@ void Core::open_project_from_recent_list(int index)
 
 bool Core::close_project(bool auto_open_new, bool ignore_modified)
 {
-	Project *close_proj = reinterpret_cast<Project *>(oakengine_app_open_project());
+	OakEngineProject *close_proj = oakengine_app_open_project();
 	if (close_proj) {
 		char name_buf[256];
-		oakengine_project_name(
-			reinterpret_cast<OakEngineProject *>(close_proj),
-			name_buf, sizeof(name_buf));
-		if (close_proj->is_modified() && !ignore_modified) {
+		oakengine_project_name(close_proj, name_buf, sizeof(name_buf));
+		if (oakengine_project_is_modified(close_proj) && !ignore_modified) {
 			QMessageBox mb(main_window_);
 
 			mb.setWindowModality(Qt::WindowModal);
@@ -1304,9 +1301,9 @@ bool Core::close_project(bool auto_open_new, bool ignore_modified)
 		// For safety, the undo stack is cleared so no commands try to affect a freed project
 		oakengine_undo_clear();
 
-		Project *tmp = reinterpret_cast<Project *>(oakengine_app_open_project());
+		OakEngineProject *tmp = oakengine_app_open_project();
 		oakengine_app_set_active_project_vp(nullptr);
-		delete tmp;
+		oakengine_project_free(tmp);
 	}
 
 	// Ensure a project is always active
@@ -1436,16 +1433,14 @@ void Core::create_new_project()
 	oakengine_app_create_new_project();
 }
 
-Sequence *Core::create_new_sequence_for_project(const QString &format,
-											 Project *project)
+OakEngineSequence *Core::create_new_sequence_for_project(const QString &format,
+														 OakEngineProject *project)
 {
-	return reinterpret_cast<Sequence *>(
-		oakengine_app_create_sequence(
-			reinterpret_cast<OakEngineProject *>(project),
-			format.toUtf8().constData()));
+	return oakengine_app_create_sequence(
+		project, format.toUtf8().constData());
 }
 
-Sequence *Core::create_new_sequence_for_project(Project *project)
+OakEngineSequence *Core::create_new_sequence_for_project(OakEngineProject *project)
 {
 	return instance()->create_new_sequence_for_project(QStringLiteral("Sequence %1"), project);
 }
@@ -1531,9 +1526,9 @@ void Core::set_autorecovery_interval(int minutes)
 	oakengine_app_set_autorecovery_interval(minutes);
 }
 
-void Core::on_project_saved(Project *p)
+void Core::on_project_saved(OakEngineProject *p)
 {
-	oakengine_app_on_project_saved(reinterpret_cast<OakEngineProject *>(p));
+	oakengine_app_on_project_saved(p);
 }
 
 QString Core::get_auto_recovery_index_filename()
@@ -1545,10 +1540,9 @@ QString Core::get_auto_recovery_index_filename()
 	return QString::fromUtf8(buf.constData());
 }
 
-void Core::add_open_project(olive::Project *p, bool add_to_recents)
+void Core::add_open_project(OakEngineProject *p, bool add_to_recents)
 {
-	oakengine_app_add_open_project(reinterpret_cast<OakEngineProject *>(p),
-								 add_to_recents ? 1 : 0);
+	oakengine_app_add_open_project(p, add_to_recents ? 1 : 0);
 }
 
 void Core::remove_recently_opened_project(int index)
@@ -1556,9 +1550,9 @@ void Core::remove_recently_opened_project(int index)
 	oakengine_app_remove_recently_opened_project(index);
 }
 
-void Core::set_active_project(Project *p)
+void Core::set_active_project(OakEngineProject *p)
 {
-	oakengine_app_set_active_project(reinterpret_cast<OakEngineProject *>(p));
+	oakengine_app_set_active_project(p);
 }
 
 QString Core::get_selected_transition() const

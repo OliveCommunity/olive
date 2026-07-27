@@ -463,7 +463,7 @@ bool ProjectViewModel::dropMimeData(const QMimeData *data,
 		}
 
 		// Trigger an import
-		Core::instance()->import_files(urls, static_cast<Folder *>(drop_item));
+		Core::instance()->import_files(urls, reinterpret_cast<OakEngineNode *>(drop_item));
 
 		return true;
 	}

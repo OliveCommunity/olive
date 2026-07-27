@@ -854,7 +854,8 @@ void ViewerWidget::request_next_dry_run()
 
 void ViewerWidget::save_frame_as_image()
 {
-	Core::instance()->open_export_dialog_for_viewer(get_connected_node(), true);
+	Core::instance()->open_export_dialog_for_viewer(
+		reinterpret_cast<OakEngineNode *>(get_connected_node()), true);
 }
 
 void ViewerWidget::detect_multicam_node_now()

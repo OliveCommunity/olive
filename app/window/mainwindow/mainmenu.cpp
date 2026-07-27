@@ -435,16 +435,14 @@ void MainMenu::tool_item_triggered()
 
 void MainMenu::file_menu_about_to_show()
 {
-	Project *active_project = Core::instance()->get_active_project();
+	OakEngineProject *active_project = Core::instance()->get_active_project();
 
 	file_save_item_->setEnabled(active_project);
 	file_save_as_item_->setEnabled(active_project);
 
 	if (active_project) {
 		char name_buf[256];
-		oakengine_project_name(
-			reinterpret_cast<OakEngineProject *>(active_project),
-			name_buf, sizeof(name_buf));
+		oakengine_project_name(active_project, name_buf, sizeof(name_buf));
 		file_save_item_->setText(tr("&Save '%1'").arg(name_buf));
 		file_save_as_item_->setText(
 			tr("Save '%1' &As").arg(name_buf));

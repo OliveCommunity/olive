@@ -409,12 +409,12 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 		}
 
 		if (behavior != k_dws_disable) {
-			Project *active_project = Core::instance()->get_active_project();
+			OakEngineProject *active_project = Core::instance()->get_active_project();
 
 			if (active_project) {
-				Sequence *new_sequence =
+				Sequence *new_sequence = reinterpret_cast<Sequence *>(
 					Core::instance()->create_new_sequence_for_project(
-						active_project);
+						active_project));
 
 				oakengine_viewer_set_default_parameters(
 			reinterpret_cast<OakEngineNode *>(new_sequence));
@@ -453,7 +453,7 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 				}
 
 				if (sequence_is_valid) {
-					dst_graph = Core::instance()->get_active_project();
+					dst_graph = reinterpret_cast<Project *>(Core::instance()->get_active_project());
 
 					oakengine_undo_command_multi_add_child(command,
 		oakengine_node_add_to_project_command(
