@@ -24,22 +24,25 @@
 
 #include <QVector>
 
-#include "node/block/block.h"
 #include "olive/core/util/rational.h"
 #include "olive/core/util/timerange.h"
+#include "oakengine/timeline.h"
 
 namespace olive
 {
 
-class AudioWaveformCache;
-class ClipBlock;
+// Same namespace bridge the engine headers used to provide (unqualified
+// Rational/TimeRange/TimeRangeList inside namespace olive).
+using namespace core;
 
 /**
  * @brief Data required to synchronize a clip using its cached audio waveform.
  */
 struct WaveformSyncClip {
-	ClipBlock *clip = nullptr;
-	const AudioWaveformCache *waveform = nullptr;
+	OakEngineBlock *clip = nullptr;
+	/// Opaque engine AudioWaveformCache handle, only ever passed to the
+	/// oakengine_waveform_cache_* C ABI (never dereferenced).
+	const void *waveform = nullptr;
 	TimeRange media_range;
 	int sample_rate = 0;
 };
@@ -59,13 +62,13 @@ namespace timeline_waveform_sync
  * has been validated in the waveform cache. Previously the whole range had to
  * be validated, which made the context-menu action unavailable for long clips.
  */
-bool get_waveform_sync_clip(Block *block, WaveformSyncClip *out);
+bool get_waveform_sync_clip(OakEngineBlock *block, WaveformSyncClip *out);
 
 /**
  * @brief Return all selected blocks that can be synchronized by waveform.
  */
 QVector<WaveformSyncClip>
-get_selected_waveform_sync_clips(const QVector<Block *> &blocks);
+get_selected_waveform_sync_clips(const QVector<OakEngineBlock *> &blocks);
 
 /**
  * @brief Extract a peak envelope from the validated regions of a waveform cache.

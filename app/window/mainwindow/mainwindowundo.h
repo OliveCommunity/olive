@@ -22,15 +22,15 @@
 #ifndef OAK_MAINWINDOWUNDO_H
 #define OAK_MAINWINDOWUNDO_H
 
-#include "node/project/sequence/sequence.h"
 #include "oakengine/undo.h"
+#include "oakutil/oaknode.h"
 
 namespace olive
 {
 
-void *make_open_sequence_command(Sequence *sequence);
+void *make_open_sequence_command(oak::Node sequence);
 
-void *make_close_sequence_command(Sequence *sequence);
+void *make_close_sequence_command(oak::Node sequence);
 
 }
 

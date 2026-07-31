@@ -15,6 +15,8 @@
 #include "node/project.h"
 #include "node/project/folder/folder.h"
 #include "node/project/sequence/sequence.h"
+#include "oakengine/app.h"
+#include "oakengine/undo.h"
 #include "panel/audiomonitor/audiomonitor.h"
 #include "panel/curve/curve.h"
 #include "panel/footageviewer/footageviewer.h"
@@ -122,6 +124,24 @@ private:
 	bool created_disk_manager_ = false;
 	QVariant saved_backend_;
 };
+
+// Helpers: bridge engine pointers to the oak:: wrapper layer used by the
+// app interface
+inline oak::Node to_oak(Node *n)
+{
+	return oak::Node(reinterpret_cast<OakEngineNode *>(n));
+}
+
+inline oak::Project to_oak_project(Project *p)
+{
+	return oak::Project(reinterpret_cast<OakEngineProject *>(p));
+}
+
+// The process-wide undo stack previously reached via Core::undo_stack()
+inline UndoStack *app_undo_stack()
+{
+	return static_cast<UndoStack *>(oakengine_app_undo_stack());
+}
 
 // Exposes the protected title/subtitle slots of the base class for testing
 class TestPanel : public PanelWidget {
@@ -411,7 +431,7 @@ TEST_F(PanelTest, CurvePanelSetNodes)
 	EXPECT_EQ(tree->topLevelItemCount(), 0);
 
 	// Same through the multi-node slot
-	panel.set_nodes({ math });
+	panel.set_nodes({ reinterpret_cast<OakEngineNode *>(math) });
 	EXPECT_EQ(tree->topLevelItemCount(), 1);
 	panel.set_nodes({});
 	EXPECT_EQ(tree->topLevelItemCount(), 0);
@@ -428,9 +448,9 @@ TEST_F(PanelTest, ParamPanelConstructionAndContexts)
 	ASSERT_NE(panel.get_param_view(), nullptr);
 
 	EXPECT_TRUE(panel.get_contexts().isEmpty());
-	panel.set_contexts({ project.root() });
+	panel.set_contexts({ to_oak(project.root()) });
 	ASSERT_EQ(panel.get_contexts().size(), 1);
-	EXPECT_EQ(panel.get_contexts().first(), project.root());
+	EXPECT_EQ(panel.get_contexts().first(), to_oak(project.root()));
 
 	// Selection slots on an empty selection are harmless
 	panel.select_all();
@@ -471,10 +491,10 @@ TEST_F(PanelTest, ProjectPanelTracksProject)
 	EXPECT_EQ(panel.project(), nullptr);
 
 	QSignalSpy name_spy(&panel, &ProjectPanel::project_name_changed);
-	panel.set_project(&project);
-	EXPECT_EQ(panel.project(), &project);
+	panel.set_project(to_oak_project(&project));
+	EXPECT_EQ(panel.project(), to_oak_project(&project));
 	EXPECT_EQ(name_spy.count(), 1);
-	EXPECT_EQ(panel.get_root(), project.root());
+	EXPECT_EQ(panel.get_root(), to_oak(project.root()));
 
 	// The subtitle reflects the project name in the panel title
 	EXPECT_TRUE(panel.title().contains(project.name()));
@@ -482,8 +502,8 @@ TEST_F(PanelTest, ProjectPanelTracksProject)
 	// A child folder can become the shown root
 	auto *folder = add_node<Folder>(&project);
 	FolderAddChild(project.root(), folder).redo_now();
-	panel.set_root(folder);
-	EXPECT_EQ(panel.get_root(), folder);
+	panel.set_root(to_oak(folder));
+	EXPECT_EQ(panel.get_root(), to_oak(folder));
 }
 
 TEST_F(PanelTest, ProjectPanelSelectsChildNodes)
@@ -494,12 +514,12 @@ TEST_F(PanelTest, ProjectPanelSelectsChildNodes)
 	FolderAddChild(project.root(), math).redo_now();
 
 	ProjectPanel panel(QStringLiteral("ProjectPanelSelectTest"));
-	panel.set_project(&project);
+	panel.set_project(to_oak_project(&project));
 
 	QSignalSpy selection_spy(&panel, &ProjectPanel::selection_changed);
 
-	ASSERT_TRUE(panel.select_item(math));
-	EXPECT_TRUE(panel.selected_items().contains(math));
+	ASSERT_TRUE(panel.select_item(to_oak(math)));
+	EXPECT_TRUE(panel.selected_items().contains(to_oak(math)));
 	EXPECT_GT(selection_spy.count(), 0);
 }
 
@@ -544,8 +564,8 @@ TEST_F(PanelTest, TimeBasedPanelConnectViewerUpdatesSubtitle)
 	panel.set_time_based_widget(new TimeBasedWidget(false, false, &panel));
 	EXPECT_EQ(panel.get_connected_viewer(), nullptr);
 
-	panel.connect_viewer_node(viewer);
-	EXPECT_EQ(panel.get_connected_viewer(), viewer);
+	panel.connect_viewer_node(reinterpret_cast<OakEngineNode *>(viewer));
+	EXPECT_EQ(panel.get_connected_viewer(), reinterpret_cast<OakEngineNode *>(viewer));
 	EXPECT_TRUE(panel.title().contains(QStringLiteral("My Viewer")));
 
 	// Label changes on the viewer propagate to the panel title
@@ -574,12 +594,12 @@ TEST_F(PanelTest, NodeTablePanelConstruction)
 	EXPECT_EQ(view->topLevelItemCount(), 0);
 
 	// Selecting a node adds a top-level row labeled with the node
-	panel.select_nodes({ math });
+	panel.select_nodes({ reinterpret_cast<OakEngineNode *>(math) });
 	ASSERT_EQ(view->topLevelItemCount(), 1);
 	EXPECT_EQ(view->topLevelItem(0)->text(0), math->get_label_and_name());
 
 	// Deselecting removes it again
-	panel.deselect_nodes({ math });
+	panel.deselect_nodes({ reinterpret_cast<OakEngineNode *>(math) });
 	EXPECT_EQ(view->topLevelItemCount(), 0);
 }
 
@@ -598,10 +618,13 @@ TEST_F(PanelTest, HistoryPanelReflectsUndoStack)
 	EXPECT_EQ(panel.objectName(), QStringLiteral("HistoryPanel"));
 	EXPECT_EQ(panel.title(), QStringLiteral("History"));
 
-	// The embedded HistoryWidget displays Core's undo stack
+	// The embedded HistoryWidget uses the app-side HistoryModel over the
+	// engine undo C ABI (no longer the engine UndoStack as a model)
 	auto *widget = panel.findChild<HistoryWidget *>();
 	ASSERT_NE(widget, nullptr);
-	EXPECT_EQ(widget->model(), Core::instance()->undo_stack());
+	ASSERT_NE(widget->model(), nullptr);
+	EXPECT_EQ(widget->model()->rowCount(),
+			  static_cast<int>(oakengine_undo_count()));
 }
 
 TEST_F(PanelTest, FootageViewerPanelConstruction)
@@ -618,7 +641,7 @@ TEST_F(PanelTest, FootageViewerPanelConstruction)
 	// With nothing connected there is no selected footage
 	EXPECT_TRUE(panel.get_selected_footage().isEmpty());
 
-	panel.connect_viewer_node(viewer);
+	panel.connect_viewer_node(reinterpret_cast<OakEngineNode *>(viewer));
 	ASSERT_EQ(panel.get_selected_footage().size(), 1);
 	EXPECT_EQ(panel.get_selected_footage().first(), reinterpret_cast<OakEngineNode *>(viewer));
 
@@ -637,9 +660,9 @@ TEST_F(PanelTest, NodePanelConstructionAndContexts)
 	EXPECT_NE(panel.get_node_widget(), nullptr);
 
 	EXPECT_TRUE(panel.get_contexts().isEmpty());
-	panel.set_contexts({ project.root() });
+	panel.set_contexts({ to_oak(project.root()) });
 	ASSERT_EQ(panel.get_contexts().size(), 1);
-	EXPECT_EQ(panel.get_contexts().first(), project.root());
+	EXPECT_EQ(panel.get_contexts().first(), to_oak(project.root()));
 
 	// Node selection actions on an empty scene are harmless
 	panel.select_all();
@@ -653,7 +676,7 @@ TEST_F(PanelTest, NodePanelForwardsViewSignals)
 	auto *math = add_node<MathNode>(&project);
 
 	NodePanel panel;
-	panel.set_contexts({ project.root() });
+	panel.set_contexts({ to_oak(project.root()) });
 
 	QSignalSpy selected_spy(&panel, &NodePanel::nodes_selected);
 	emit panel.get_node_widget()->view()->nodes_selected({ reinterpret_cast<OakEngineNode *>(math) });
@@ -679,9 +702,9 @@ TEST_F(PanelTest, TimelinePanelConstructionAndSequence)
 	EXPECT_NE(panel.timeline_widget(), nullptr);
 	EXPECT_EQ(panel.get_sequence(), nullptr);
 
-	panel.connect_viewer_node(sequence);
-	EXPECT_EQ(panel.get_connected_viewer(), sequence);
-	EXPECT_EQ(panel.get_sequence(), sequence);
+	panel.connect_viewer_node(reinterpret_cast<OakEngineNode *>(sequence));
+	EXPECT_EQ(panel.get_connected_viewer(), reinterpret_cast<OakEngineNode *>(sequence));
+	EXPECT_EQ(panel.get_sequence(), reinterpret_cast<OakEngineSequence *>(sequence));
 
 	// Selection actions on an empty sequence are harmless
 	panel.select_all();

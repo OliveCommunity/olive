@@ -51,9 +51,9 @@ public:
 
 	virtual ~NodeView() override;
 
-	void set_contexts(const QVector<Node *> &nodes);
+	void set_contexts(const QVector<oak::Node> &nodes);
 
-	const QVector<Node *> &get_contexts() const
+	const QVector<oak::Node> &get_contexts() const
 	{
 		if (overlay_view_) {
 			return overlay_view_->get_contexts();
@@ -67,7 +67,7 @@ public:
 		return overlay_view_;
 	}
 
-	void close_contexts_belonging_to_project(Project *project);
+	void close_contexts_belonging_to_project(oak::Project project);
 
 	void clear_graph();
 
@@ -94,7 +94,7 @@ public:
 
 	void zoom_out();
 
-	const QVector<Node *> &get_current_contexts() const
+	const QVector<oak::Node> &get_current_contexts() const
 	{
 		return contexts_;
 	}
@@ -163,10 +163,10 @@ private:
 
 	void move_attached_nodes_to_cursor(const QPoint &p);
 	void process_moving_attached_nodes(const QPoint &pos);
-	QVector<Node *> process_dropping_attached_nodes(void *command,
-												 Node *select_context,
+	QVector<oak::Node> process_dropping_attached_nodes(void *command,
+												 oak::Node select_context,
 												 const QPoint &pos);
-	Node *get_context_at_mouse_pos(const QPoint &p);
+	oak::Node get_context_at_mouse_pos(const QPoint &p);
 
 	void connect_selection_changed_signal();
 	void disconnect_selection_changed_signal();
@@ -176,18 +176,18 @@ private:
 	void clear_create_edge_input_if_necessary();
 
 	QPointF get_estimated_position_for_context(NodeViewItem *item,
-										   Node *context) const;
+										   oak::Node context) const;
 
-	NodeViewItem *get_assumed_item_for_selected_node(Node *node);
-	bool get_assumed_position_for_selected_node(Node *node, Node::Position *pos);
+	NodeViewItem *get_assumed_item_for_selected_node(oak::Node node);
+	bool get_assumed_position_for_selected_node(oak::Node node, NodeViewItemPosition *pos);
 
 	Menu *create_add_menu(Menu *parent);
 
 	void position_new_edge(const QPoint &pos);
 
-	void add_context(Node *n);
+	void add_context(oak::Node n);
 
-	void remove_context(Node *n);
+	void remove_context(oak::Node n);
 
 	bool is_item_attached_to_cursor(NodeViewItem *item) const;
 
@@ -197,8 +197,8 @@ private:
 
 	void end_edge_drag(bool cancel = false);
 
-	void post_paste(const QVector<Node *> &new_nodes,
-				   const Node::PositionMap &map);
+	void post_paste(const QVector<oak::Node> &new_nodes,
+				   const QHash<oak::Node, NodeViewItemPosition> &map);
 
 	void resize_overlay();
 
@@ -208,7 +208,7 @@ private:
 
 	struct AttachedItem {
 		NodeViewItem *item;
-		Node *node;
+		oak::Node node;
 		QPointF original_pos;
 	};
 
@@ -216,12 +216,12 @@ private:
 	QVector<AttachedItem> attached_items_;
 
 	NodeViewEdge *drop_edge_;
-	NodeInput drop_input_;
+	oak::Input drop_input_;
 
 	NodeViewEdge *create_edge_;
 	NodeViewItem *create_edge_output_item_;
 	NodeViewItem *create_edge_input_item_;
-	NodeInput create_edge_input_;
+	oak::Input create_edge_input_;
 	bool create_edge_already_exists_;
 	bool create_edge_from_output_;
 
@@ -229,11 +229,11 @@ private:
 
 	NodeViewScene scene_;
 
-	QVector<Node *> selected_nodes_;
+	QVector<oak::Node> selected_nodes_;
 
-	QVector<Node *> contexts_;
-	QVector<Node *> last_set_filter_nodes_;
-	QMap<Node *, QPointF> context_offsets_;
+	QVector<oak::Node> contexts_;
+	QVector<oak::Node> last_set_filter_nodes_;
+	QHash<oak::Node, QPointF> context_offsets_;
 
 	QMap<NodeViewItem *, QPointF> dragging_items_;
 
@@ -245,7 +245,7 @@ private:
 
 	EngineEventBridge *bridge_ = nullptr;
 
-	QHash<Node *, int64_t> removed_from_graph_subs_;
+	QHash<oak::Node, int64_t> removed_from_graph_subs_;
 
 	QAction *show_in_param_editor_action_;
 

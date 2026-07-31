@@ -29,7 +29,6 @@
 #include "oakengine/viewer.h"
 #include "oakengine/timeline.h"
 #include "oakengine/undo.h"
-#include "timeline/timelineundosplit.h"
 #include "widget/timeruler/timeruler.h"
 
 namespace olive
@@ -71,8 +70,9 @@ MulticamWidget::MulticamWidget(QWidget *parent)
 	}
 }
 
-void MulticamWidget::set_multicam_node_internal(ViewerOutput *viewer,
-											 MultiCamNode *n, ClipBlock *clip)
+void MulticamWidget::set_multicam_node_internal(OakEngineNode *viewer,
+											 OakEngineNode *n,
+											 OakEngineBlock *clip)
 {
 	if (get_connected_node() != viewer) {
 		connect_viewer_node(viewer);
@@ -88,11 +88,12 @@ void MulticamWidget::set_multicam_node_internal(ViewerOutput *viewer,
 	}
 }
 
-void MulticamWidget::set_multicam_node(ViewerOutput *viewer, MultiCamNode *n,
-									 ClipBlock *clip, const Rational &time)
+void MulticamWidget::set_multicam_node(OakEngineNode *viewer,
+									 OakEngineNode *n, OakEngineBlock *clip,
+									 const Rational &time)
 {
 	if (time.isNaN() || !get_connected_node() ||
-		time == get_connected_node()->get_playhead()) {
+		time == viewer_output_playhead(get_connected_node())) {
 		set_multicam_node_internal(viewer, n, clip);
 		play_queue_.clear();
 	} else {
@@ -101,10 +102,8 @@ void MulticamWidget::set_multicam_node(ViewerOutput *viewer, MultiCamNode *n,
 	}
 }
 
-void MulticamWidget::ConnectNodeEvent(ViewerOutput *n)
+void MulticamWidget::ConnectNodeEvent(OakEngineNode *handle)
 {
-	OakEngineNode *handle = reinterpret_cast<OakEngineNode *>(n);
-
 	viewer_sub_ = oakengine_event_subscribe(
 		handle, OAKENGINE_EVENT_VIEWER_SIZE_CHANGED,
 		[](const oakengine_event *event, void *userdata) {
@@ -128,7 +127,7 @@ void MulticamWidget::ConnectNodeEvent(ViewerOutput *n)
 		Rational(vp.pixel_aspect_num, vp.pixel_aspect_den));
 }
 
-void MulticamWidget::DisconnectNodeEvent(ViewerOutput *n)
+void MulticamWidget::DisconnectNodeEvent(OakEngineNode *n)
 {
 	if (viewer_sub_ > 0) {
 		oakengine_event_unsubscribe(viewer_sub_);
@@ -159,37 +158,53 @@ void MulticamWidget::Switch(int source, bool split_clip)
 		return;
 	}
 
-	MultiCamNode *cam = node_;
-	ClipBlock *clip = clip_;
+	OakEngineNode *cam = node_;
+	OakEngineBlock *clip = clip_;
 
 	const QByteArray undo_name = tr("Switched Multi-Camera Source").toUtf8();
 	oakengine_undo_group_begin(undo_name.constData());
 
+	// Block range via the C ABI (clip is an opaque block handle; the facade
+	// returns rational seconds, comparable to get_playhead()).
+	int clip_in_num = 0, clip_in_den = 1, clip_out_num = 0, clip_out_den = 1;
+	if (clip_) {
+		oakengine_block_get_in_rational(
+			reinterpret_cast<OakEngineNode *>(clip_), &clip_in_num,
+			&clip_in_den);
+		oakengine_block_get_out_rational(
+			reinterpret_cast<OakEngineNode *>(clip_), &clip_out_num,
+			&clip_out_den);
+	}
+
 	if (clip_ && split_clip &&
-		clip_->in() < get_connected_node()->get_playhead() &&
-		clip_->out() > get_connected_node()->get_playhead()) {
-		QVector<Block *> blocks;
+		Rational(clip_in_num, clip_in_den) <
+			viewer_output_playhead(get_connected_node()) &&
+		Rational(clip_out_num, clip_out_den) >
+			viewer_output_playhead(get_connected_node())) {
+		QVector<OakEngineBlock *> blocks;
 
 		blocks.append(clip_);
-		blocks.append(clip_->block_links());
+		// ClipBlock::block_links() via the C ABI link enumeration
+		const int link_count = oakengine_block_link_count(clip_);
+		for (int i = 0; i < link_count; i++) {
+			blocks.append(oakengine_block_link_at(clip_, i));
+		}
 
 		int split_tbn = 0, split_tbd = 0;
-		oakengine_node_frame_time_base(
-			reinterpret_cast<OakEngineNode *>(get_connected_node()),
+		oakengine_node_frame_time_base(get_connected_node(),
 			&split_tbn, &split_tbd);
 		void *split = oakengine_block_split_preserving_links_command(
 			reinterpret_cast<void *const *>(blocks.data()), blocks.size(),
 			olive::core::Timecode::time_to_timestamp(
-				get_connected_node()->get_playhead(),
+				viewer_output_playhead(get_connected_node()),
 				olive::Rational(split_tbn, split_tbd),
 				olive::core::Timecode::k_round));
 		oakengine_undo_push(split, undo_name.constData());
-		clip = reinterpret_cast<ClipBlock *>(
-			oakengine_block_split_get_split(
-				split, reinterpret_cast<void *>(clip_), 0));
+		clip = reinterpret_cast<OakEngineBlock *>(
+			oakengine_block_split_get_split(split, clip_, 0));
 
-		cam = reinterpret_cast<MultiCamNode *>(
-			oakengine_clip_find_multicam(reinterpret_cast<OakEngineNode *>(clip)));
+		cam = oakengine_clip_find_multicam(
+			reinterpret_cast<OakEngineNode *>(clip));
 	}
 
 	oak_node_value val;
@@ -199,18 +214,19 @@ void MulticamWidget::Switch(int source, bool split_clip)
 
 	if (cam) {
 		oakengine_node_set_input(
-			reinterpret_cast<OakEngineNode *>(cam),
-			oakengine_multicam_input_current(), &val);
+			cam, oakengine_multicam_input_current(), &val);
 	}
 
 	if (clip) {
-		for (Block *link : clip->block_links()) {
-			if (ClipBlock *clink = dynamic_cast<ClipBlock *>(link)) {
-				if (MultiCamNode *mlink = reinterpret_cast<MultiCamNode *>(
-						oakengine_clip_find_multicam(reinterpret_cast<OakEngineNode *>(clink)))) {
+		const int link_count = oakengine_block_link_count(clip);
+		for (int i = 0; i < link_count; i++) {
+			OakEngineNode *link = reinterpret_cast<OakEngineNode *>(
+				oakengine_block_link_at(clip, i));
+			if (oakengine_node_is_clip(link)) {
+				if (OakEngineNode *mlink =
+						oakengine_clip_find_multicam(link)) {
 					oakengine_node_set_input(
-						reinterpret_cast<OakEngineNode *>(mlink),
-						oakengine_multicam_input_current(), &val);
+						mlink, oakengine_multicam_input_current(), &val);
 				}
 			}
 		}
@@ -240,8 +256,7 @@ void MulticamWidget::display_clicked(const QPoint &p)
 
 	int rows, cols;
 	oakengine_multicam_get_rows_and_columns(
-		oakengine_multicam_get_source_count(
-			reinterpret_cast<OakEngineNode *>(node_)),
+		oakengine_multicam_get_source_count(node_),
 		&rows, &cols);
 
 	int multi = std::max(cols, rows);

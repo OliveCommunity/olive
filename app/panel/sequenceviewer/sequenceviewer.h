@@ -22,6 +22,7 @@
 #ifndef OAK_SEQUENCEVIEWERPANEL_H
 #define OAK_SEQUENCEVIEWERPANEL_H
 
+#include "common/trackreferencehandle.h"
 #include "panel/viewer/viewer.h"
 
 namespace olive
@@ -33,7 +34,7 @@ public:
 	SequenceViewerPanel();
 
 public slots:
-	void start_capture(const TimeRange &time, const Track::Reference &track);
+	void start_capture(const TimeRange &time, const TrackReference &track);
 
 protected:
 	virtual void retranslate() override;

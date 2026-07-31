@@ -98,7 +98,7 @@ public:
 	static Rational fromRationalTime(const opentime::RationalTime &t)
 	{
 		// Is this the best way to do this?
-		return fromDouble(t.to_seconds());
+		return from_double(t.to_seconds());
 	}
 
 	// Convert Olive rationals to opentime rationals with the given framerate (defaults to 24)

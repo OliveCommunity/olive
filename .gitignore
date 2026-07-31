@@ -106,3 +106,6 @@ operations-log.md
 verification.md
 act
 .tmp/
+
+# Local OpenTimelineIO build (see docs/build.md)
+otio-install/

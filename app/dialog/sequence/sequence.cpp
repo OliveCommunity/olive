@@ -36,11 +36,12 @@
 #include "oakengine/node.h"
 #include "oakengine/timeline.h"
 #include "oakengine/videoparams.h"
+#include "oakutil/oaknode.h"
 
 namespace olive
 {
 
-SequenceDialog::SequenceDialog(Sequence *s, Type t, QWidget *parent)
+SequenceDialog::SequenceDialog(OakEngineNode *s, Type t, QWidget *parent)
 	: QDialog(parent)
 	, sequence_(s)
 	, make_undoable_(true)
@@ -89,11 +90,12 @@ SequenceDialog::SequenceDialog(Sequence *s, Type t, QWidget *parent)
 		setWindowTitle(tr("New Sequence"));
 		break;
 	case k_existing:
-		setWindowTitle(tr("Editing \"%1\"").arg(sequence_->get_label()));
+		setWindowTitle(
+			tr("Editing \"%1\"").arg(oak::Node(sequence_).get_label()));
 		break;
 	}
 
-	name_field_->setText(sequence_->get_label());
+	name_field_->setText(oak::Node(sequence_).get_label());
 }
 
 void SequenceDialog::set_undoable(bool u)

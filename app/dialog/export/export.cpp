@@ -33,13 +33,11 @@
 
 #include "oakutil/digit.h"
 #include "oakutil/qtutils.h"
-#include "codec/exportcodec.h"
-#include "codec/exportformat.h"
+#include "oakutil/oaknode.h"
 #include "dialog/msgbox.h"
 #include "dialog/task/task.h"
 #include "exportsavepresetdialog.h"
-#include "node/project.h"
-#include "node/project/sequence/sequence.h"
+#include "oakengine/color.h"
 #include "oakengine/events.h"
 #include "widget/manageddisplay/colorprocessorhandle.h"
 #include "widget/viewer/vieweroutpututils.h"
@@ -47,6 +45,7 @@
 #include "oakengine/project.h"
 #include "oakengine/task.h"
 #include "oakengine/encoding.h"
+#include "oakengine/timeline.h"
 #include "oakengine/viewer.h"
 #include "ui/icons/icons.h"
 #include "widget/timeruler/timeruler.h"
@@ -68,6 +67,22 @@ int pix_fmt_index(int codec, const QString &pix_fmt)
 		return 0;
 	}
 	return oakengine_encoding_pix_fmt_index(codec, pix_fmt.toUtf8().constData());
+}
+
+// ViewerOutput::get_work_area() snapshot through the C ABI.
+oakengine_viewer_workarea export_viewer_workarea(const OakEngineNode *viewer)
+{
+	oakengine_viewer_workarea wa = {};
+	oakengine_viewer_get_workarea(viewer, &wa);
+	return wa;
+}
+
+// ViewerOutput::get_length() as a Rational through the C ABI.
+Rational export_viewer_length(const OakEngineNode *viewer)
+{
+	int64_t num = 0, den = 1;
+	oakengine_viewer_get_length(viewer, &num, &den);
+	return Rational(num, den);
 }
 
 // OakEngineEncodingParams (assembled by the dialog) -> facade POD. One-to-one with
@@ -182,7 +197,7 @@ oak_export_options_ex params_to_ex(const OakEngineEncodingParams *p)
 
 } // namespace
 
-ExportDialog::ExportDialog(ViewerOutput *viewer_node, bool stills_only_mode,
+ExportDialog::ExportDialog(OakEngineNode *viewer_node, bool stills_only_mode,
 						   QWidget *parent)
 	: super(parent)
 	, viewer_node_(viewer_node)
@@ -253,7 +268,7 @@ ExportDialog::ExportDialog(ViewerOutput *viewer_node, bool stills_only_mode,
 	range_combobox_ = new QComboBox();
 	range_combobox_->addItem(tr("Entire Sequence"));
 	range_combobox_->addItem(tr("In to Out"));
-	range_combobox_->setEnabled(viewer_node_->get_work_area()->enabled());
+	range_combobox_->setEnabled(export_viewer_workarea(viewer_node_).enabled);
 
 	preferences_layout->addWidget(range_combobox_, row, 1, 1, 3);
 
@@ -287,13 +302,14 @@ ExportDialog::ExportDialog(ViewerOutput *viewer_node, bool stills_only_mode,
 
 	preferences_tabs_ = new QTabWidget();
 
-	color_manager_ = oak_color_manager(viewer_node_->project()->color_manager());
+	color_manager_ = oakengine_color_manager_from_project(
+		oakengine_node_get_project(viewer_node_));
 	video_tab_ = new ExportVideoTab(color_manager_);
 	add_preferences_tab(video_tab_, tr("Video"));
 
 	// Set video tab time and make connections
 	viewer_sub_ = oakengine_event_subscribe(
-		reinterpret_cast<OakEngineNode *>(viewer_node),
+		viewer_node,
 		OAKENGINE_EVENT_VIEWER_PLAYHEAD_CHANGED,
 		[](const oakengine_event *event, void *userdata) {
 			auto *dlg = static_cast<ExportDialog *>(userdata);
@@ -304,13 +320,12 @@ ExportDialog::ExportDialog(ViewerOutput *viewer_node, bool stills_only_mode,
 	connect(video_tab_, &ExportVideoTab::time_changed, this,
 			[viewer_node](const Rational &time) {
 				oakengine_viewer_set_playhead(
-					reinterpret_cast<OakEngineNode *>(viewer_node),
+					viewer_node,
 					time.numerator(), time.denominator());
 			});
 	{
 		int64_t pn, pd;
-		oakengine_viewer_get_playhead(
-			reinterpret_cast<OakEngineNode *>(viewer_node), &pn, &pd);
+		oakengine_viewer_get_playhead(viewer_node, &pn, &pd);
 		video_tab_->set_time(Rational(pn, pd));
 	}
 
@@ -389,7 +404,7 @@ ExportDialog::ExportDialog(ViewerOutput *viewer_node, bool stills_only_mode,
 	connect(format_combobox_, &ExportFormatComboBox::format_changed, this,
 			&ExportDialog::format_changed);
 
-	VideoParams vp = viewer_output_video_params(viewer_node_);
+	oak::VideoParams vp = viewer_output_video_params(viewer_node_);
 	video_aspect_ratio_ =
 		static_cast<double>(vp.width()) / static_cast<double>(vp.height());
 
@@ -408,7 +423,7 @@ ExportDialog::ExportDialog(ViewerOutput *viewer_node, bool stills_only_mode,
 			&ExportDialog::resolution_changed);
 
 	connect(video_tab_, &ExportVideoTab::color_space_changed, preview_viewer_,
-			static_cast<void (ViewerWidget::*)(const ColorTransform &)>(
+			static_cast<void (ViewerWidget::*)(const oak::ColorTransform &)>(
 				&ViewerWidget::set_color_transform));
 	connect(video_tab_, &ExportVideoTab::image_sequence_check_box_changed, this,
 			&ExportDialog::image_sequence_check_box_changed);
@@ -800,12 +815,10 @@ void ExportDialog::load_presets()
 
 void ExportDialog::set_default_filename()
 {
-	Project *p = viewer_node_->project();
+	OakEngineProject *p = oakengine_node_get_project(viewer_node_);
 
 	char fn_buf[512];
-	oakengine_project_filename(
-		reinterpret_cast<OakEngineProject *>(p),
-		fn_buf, sizeof(fn_buf));
+	oakengine_project_filename(p, fn_buf, sizeof(fn_buf));
 	QDir doc_location;
 
 	if (fn_buf[0] == '\0') {
@@ -815,16 +828,25 @@ void ExportDialog::set_default_filename()
 		doc_location = QFileInfo(fn_buf).dir();
 	}
 
-	QString file_location = doc_location.filePath(viewer_node_->get_label());
+	QString file_location = doc_location.filePath(
+		oak::Node(viewer_node_).get_label());
 	filename_edit_->setText(file_location);
 }
 
 bool ExportDialog::sequence_has_subtitles() const
 {
-	if (Sequence *s = dynamic_cast<Sequence *>(viewer_node_)) {
-		TrackList *tl = s->track_list(Track::k_subtitle);
-		for (Track *t : tl->get_tracks()) {
-			if (!t->is_muted() && !t->blocks().empty()) {
+	OakEngineNode *node = viewer_node_;
+	if (oakengine_node_is_sequence(node)) {
+		OakEngineSequence *seq = reinterpret_cast<OakEngineSequence *>(node);
+		int track_count = 0;
+		oakengine_sequence_track_count(seq, nullptr, nullptr, &track_count);
+		for (int i = 0; i < track_count; i++) {
+			OakEngineTrack *t = oakengine_sequence_track_at(
+				seq, OAKENGINE_TRACK_TYPE_SUBTITLE, i);
+			if (t &&
+				!oakengine_track_is_muted(seq, OAKENGINE_TRACK_TYPE_SUBTITLE,
+										  i) &&
+				oakengine_track_block_count(t) > 0) {
 				return true;
 			}
 		}
@@ -842,7 +864,7 @@ void ExportDialog::set_defaults()
 	}
 	format_changed(format_combobox_->get_format());
 
-	VideoParams vp = viewer_output_video_params(viewer_node_);
+	oak::VideoParams vp = viewer_output_video_params(viewer_node_);
 	AudioParams ap = viewer_output_audio_params(viewer_node_);
 
 	video_tab_->width_slider()->set_value(vp.width());
@@ -873,7 +895,7 @@ OakEngineEncodingParams *ExportDialog::generate_params() const
 	oakengine_encoding_params_set_filename(
 		params, filename_edit_->text().trimmed().toUtf8().constData());
 
-	const Rational export_len = viewer_node_->get_length();
+	const Rational export_len = export_viewer_length(viewer_node_);
 	oakengine_encoding_params_set_export_length(
 		params, export_len.numerator(), export_len.denominator());
 
@@ -887,10 +909,10 @@ OakEngineEncodingParams *ExportDialog::generate_params() const
 			(export_time + tb).numerator(),
 			(export_time + tb).denominator());
 	} else if (range_combobox_->currentIndex() == k_range_in_to_out) {
-		const TimeRange &r = viewer_node_->get_work_area()->range();
+		const oakengine_viewer_workarea wa =
+			export_viewer_workarea(viewer_node_);
 		oakengine_encoding_params_set_custom_range(
-			params, r.in().numerator(), r.in().denominator(),
-			r.out().numerator(), r.out().denominator());
+			params, wa.in_num, wa.in_den, wa.out_num, wa.out_den);
 	}
 
 	if (video_tab_->scaling_method_combobox()->isEnabled()) {
@@ -985,7 +1007,7 @@ void ExportDialog::set_params(const OakEngineEncodingParams *e)
 	format_changed(format_combobox_->get_format());
 
 	if (oakengine_encoding_params_has_custom_range(e) &&
-		viewer_node_->get_work_area()->enabled()) {
+		export_viewer_workarea(viewer_node_).enabled) {
 		range_combobox_->setCurrentIndex(k_range_in_to_out);
 	}
 
@@ -1110,9 +1132,12 @@ void ExportDialog::done(int r)
 Rational ExportDialog::get_export_length() const
 {
 	if (range_combobox_->currentIndex() == k_range_in_to_out) {
-		return viewer_node_->get_work_area()->range().length();
+		const oakengine_viewer_workarea wa =
+			export_viewer_workarea(viewer_node_);
+		return Rational(wa.out_num, wa.out_den) -
+			   Rational(wa.in_num, wa.in_den);
 	} else {
-		return viewer_node_->get_length();
+		return export_viewer_length(viewer_node_);
 	}
 }
 
@@ -1128,7 +1153,7 @@ void ExportDialog::update_viewer_dimensions()
 		static_cast<int>(video_tab_->width_slider()->get_value()),
 		static_cast<int>(video_tab_->height_slider()->get_value()));
 
-	VideoParams vp = viewer_output_video_params(viewer_node_);
+	oak::VideoParams vp = viewer_output_video_params(viewer_node_);
 
 	float mat16[16];
 	oakengine_encoding_generate_matrix(

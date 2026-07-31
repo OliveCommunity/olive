@@ -37,7 +37,7 @@ public:
 	LoadOTIOTask(const QString &filename);
 
 protected:
-	virtual bool Run() override;
+	virtual bool run() override;
 };
 
 }

@@ -65,13 +65,9 @@ bool NodeParamViewItemBase::is_expanded() const
 	return title_bar_->is_expanded();
 }
 
-QString NodeParamViewItemBase::get_title_bar_text_from_node(Node *n)
+QString NodeParamViewItemBase::get_title_bar_text_from_node(oak::Node n)
 {
-	if (n->get_label().isEmpty()) {
-		return n->name();
-	} else {
-		return tr("%1 (%2)").arg(n->get_label(), n->name());
-	}
+	return n.label_and_name();
 }
 
 void NodeParamViewItemBase::set_body(QWidget *body)

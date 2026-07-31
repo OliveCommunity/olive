@@ -24,24 +24,27 @@
 
 #include <QTreeWidget>
 
-#include "node/node.h"
+#include "olive/core/util/rational.h"
+#include "oakengine/node.h"
 
 namespace olive
 {
+
+using core::Rational;
 
 class NodeTableView : public QTreeWidget {
 	Q_OBJECT
 public:
 	NodeTableView(QWidget *parent = nullptr);
 
-	void select_nodes(const QVector<Node *> &nodes);
+	void select_nodes(const QVector<OakEngineNode *> &nodes);
 
-	void deselect_nodes(const QVector<Node *> &nodes);
+	void deselect_nodes(const QVector<OakEngineNode *> &nodes);
 
 	void set_time(const Rational &time);
 
 private:
-	QMap<Node *, QTreeWidgetItem *> top_level_item_map_;
+	QMap<OakEngineNode *, QTreeWidgetItem *> top_level_item_map_;
 
 	Rational last_time_;
 };

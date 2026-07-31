@@ -26,7 +26,7 @@
 #include <QWidgetAction>
 
 #include "oakutil/qtutils.h"
-#include "ui/colorcoding.h"
+#include "common/colorcodingapp.h"
 
 namespace olive
 {
@@ -37,14 +37,14 @@ ColorLabelMenu::ColorLabelMenu(QWidget *parent)
 	// Used for size calculations
 	int box_size = fontMetrics().height();
 
-	color_items_.resize(ColorCoding::standard_colors().size());
-	for (int i = 0; i < ColorCoding::standard_colors().size(); i++) {
+	color_items_.resize(AppColorCoding::standard_colors().size());
+	for (int i = 0; i < AppColorCoding::standard_colors().size(); i++) {
 		QPixmap p(box_size, box_size);
 
 		QPainter painter(&p);
 		painter.setPen(Qt::black);
 		painter.setBrush(
-			QtUtils::to_q_color(ColorCoding::standard_colors().at(i)));
+			QtUtils::to_q_color(AppColorCoding::standard_colors().at(i)));
 		painter.drawRect(p.rect().adjusted(0, 0, -1, -1));
 
 		QAction *a = add_item(QStringLiteral("colorlabel%1").arg(i), this,
@@ -71,7 +71,7 @@ void ColorLabelMenu::retranslate()
 	this->setTitle(tr("Color"));
 
 	for (int i = 0; i < color_items_.size(); i++) {
-		color_items_.at(i)->setText(ColorCoding::get_color_name(i));
+		color_items_.at(i)->setText(AppColorCoding::get_color_name(i));
 	}
 }
 

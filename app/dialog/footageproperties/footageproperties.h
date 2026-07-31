@@ -30,7 +30,7 @@
 #include <QListWidget>
 #include <QStackedWidget>
 
-#include "node/project/footage/footage.h"
+struct OakEngineNode;
 
 namespace olive
 {
@@ -55,7 +55,7 @@ public:
    *
    * Media object to set properties for.
    */
-	FootagePropertiesDialog(QWidget *parent, Footage *footage);
+	FootagePropertiesDialog(QWidget *parent, OakEngineNode *footage);
 
 private:
 	/**
@@ -79,9 +79,9 @@ private:
 	QDoubleSpinBox *source_start_time_spin_;
 
 	/**
-   * @brief Internal pointer to Media object (set in constructor)
+   * @brief Internal handle to the footage node (set in constructor)
    */
-	Footage *footage_;
+	OakEngineNode *footage_;
 
 	/**
    * @brief A list widget for listing the tracks in Media

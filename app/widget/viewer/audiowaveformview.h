@@ -25,7 +25,6 @@
 #include <QtConcurrent/QtConcurrent>
 #include <QWidget>
 
-#include "render/audioplaybackcache.h"
 #include "widget/timeruler/seekablewidget.h"
 
 namespace olive
@@ -38,7 +37,7 @@ class AudioWaveformView : public SeekableWidget {
 public:
 	AudioWaveformView(QWidget *parent = nullptr);
 
-	void set_viewer(ViewerOutput *playback);
+	void set_viewer(OakEngineNode *playback);
 
 protected:
 	virtual void drawForeground(QPainter *painter, const QRectF &rect) override;
@@ -46,7 +45,7 @@ protected:
 private:
 	QThreadPool pool_;
 
-	ViewerOutput *playback_;
+	OakEngineNode *playback_;
 
 	// Engine event bridge for the viewer's connected-waveform notification
 	// (facade C ABI); subscription is per-viewer in set_viewer().

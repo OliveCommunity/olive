@@ -33,7 +33,7 @@ SequenceViewerPanel::SequenceViewerPanel()
 }
 
 void SequenceViewerPanel::start_capture(const TimeRange &time,
-									   const Track::Reference &track)
+										const TrackReference &track)
 {
 	TimelinePanel *tp = static_cast<TimelinePanel *>(sender());
 	static_cast<ViewerWidget *>(get_time_based_widget())

@@ -90,9 +90,9 @@ brew install googletest
 
 ---
 
-## Build OpenTimelineIO (Optional)
+## Build OpenTimelineIO (Required)
 
-OpenTimelineIO enables importing/exporting timeline data in OTIO format. If you don't need OTIO support, you can skip this step.
+OpenTimelineIO enables importing/exporting timeline data in OTIO format. It is a required dependency.
 
 ```bash
 # Clone the repository
@@ -103,6 +103,7 @@ cd OpenTimelineIO
 cmake -S . -B build -G Ninja \
   -DOTIO_SHARED_LIBS=ON \
   -DOTIO_PYTHON_BINDINGS=OFF \
+  -DOTIO_FIND_IMATH=ON \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="${PWD}/install"
 
@@ -126,16 +127,6 @@ cd oak
 > **Note:** Make sure to use `--recursive` to clone submodules, as Oak depends on several external libraries included as submodules.
 
 ### 2. Configure with CMake
-
-Basic configuration (without OTIO):
-
-```bash
-cmake -S . -B build -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DOCIO_LOCATION=$(brew --prefix opencolorio)
-```
-
-Configuration with OTIO support:
 
 ```bash
 cmake -S . -B build -G Ninja \
@@ -188,7 +179,7 @@ ctest --test-dir build --output-on-failure -C Release
 | `BUILD_TESTS` | `OFF` | Build unit tests |
 | `BUILD_DOXYGEN` | `OFF` | Build Doxygen documentation |
 | `USE_WERROR` | `OFF` | Treat warnings as errors |
-| `OTIO_LOCATION` | - | Path to OpenTimelineIO installation (optional) |
+| `OTIO_LOCATION` | - | Path to OpenTimelineIO installation (required) |
 | `OCIO_LOCATION` | - | Path to OpenColorIO installation |
 
 ---

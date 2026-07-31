@@ -25,11 +25,9 @@
 #include <QGraphicsScene>
 #include <QTimer>
 
-#include "node/project.h"
 #include "nodeviewcontext.h"
 #include "nodeviewedge.h"
 #include "nodeviewitem.h"
-#include "undo/undostack.h"
 
 namespace olive
 {
@@ -44,7 +42,7 @@ public:
 
 	QVector<NodeViewItem *> get_selected_items() const;
 
-	const QHash<Node *, NodeViewContext *> &context_map() const
+	const QHash<oak::Node, NodeViewContext *> &context_map() const
 	{
 		return context_map_;
 	}
@@ -64,11 +62,9 @@ public:
 	}
 
 public:
-	// Not slots: signatures use the engine C++ type Node*, which must not be
-	// exposed to MOC (it would pull Node::staticMetaObject across the ABI
-	// boundary). They are called directly, never used as connect() targets.
-	NodeViewContext *add_context(Node *node);
-	void remove_context(Node *node);
+	// Not slots: they are called directly, never used as connect() targets.
+	NodeViewContext *add_context(oak::Node node);
+	void remove_context(oak::Node node);
 
 public slots:
 	/**
@@ -77,9 +73,7 @@ public slots:
 	void set_edges_are_curved(bool curved);
 
 private:
-	QHash<Node *, NodeViewContext *> context_map_;
-
-	Project *graph_;
+	QHash<oak::Node, NodeViewContext *> context_map_;
 
 	NodeViewCommon::FlowDirection direction_;
 

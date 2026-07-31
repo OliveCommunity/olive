@@ -29,7 +29,6 @@
 #include <QLineEdit>
 #include <QProgressBar>
 
-#include "codec/encoder.h"
 #include "dialog/export/exportformatcombobox.h"
 #include "exportaudiotab.h"
 #include "exportsubtitlestab.h"
@@ -44,9 +43,9 @@ namespace olive
 class ExportDialog : public QDialog {
 	Q_OBJECT
 public:
-	ExportDialog(ViewerOutput *viewer_node, bool stills_only_mode,
+	ExportDialog(OakEngineNode *viewer_node, bool stills_only_mode,
 				 QWidget *parent = nullptr);
-	ExportDialog(ViewerOutput *viewer_node, QWidget *parent = nullptr)
+	ExportDialog(OakEngineNode *viewer_node, QWidget *parent = nullptr)
 		: ExportDialog(viewer_node, false, parent)
 	{
 	}
@@ -75,7 +74,7 @@ private:
 
 	void set_defaults();
 
-	ViewerOutput *viewer_node_;
+	OakEngineNode *viewer_node_;
 
 	int64_t viewer_sub_ = 0;
 

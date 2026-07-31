@@ -31,74 +31,45 @@
 namespace olive
 {
 
-class Node;
-class NodeKeyframe;
-
 using olive::core::Rational;
 
 /**
- * @brief Facade accessors for keyframe pointers held by the keyframe
+ * @brief Facade accessors for keyframe handles held by the keyframe
  * views.
  *
- * The keyframe/curve views keep olive::NodeKeyframe* as opaque identity
- * pointers (selection, drawing, hit-testing). All engine data and
+ * The keyframe/curve views keep OakEngineKeyframe* as opaque identity
+ * handles (selection, drawing, hit-testing). All engine data and
  * mutations go through the liboakengine C ABI (oakengine/node.h); the
- * pointer itself is only a handle. Easing types use the facade order:
+ * handle itself is only an identity. Easing types use the facade order:
  * 0 = linear, 1 = bezier, 2 = hold.
  */
 
-inline OakEngineKeyframe *keyhandle(NodeKeyframe *key)
+inline OakEngineNode *key_node(const OakEngineKeyframe *key)
 {
-	return reinterpret_cast<OakEngineKeyframe *>(key);
+	return oakengine_keyframe_get_node(key);
 }
 
-inline const OakEngineKeyframe *keyhandle(const NodeKeyframe *key)
-{
-	return reinterpret_cast<const OakEngineKeyframe *>(key);
-}
-
-inline NodeKeyframe *keyhandle(OakEngineKeyframe *key)
-{
-	return reinterpret_cast<NodeKeyframe *>(key);
-}
-
-inline OakEngineNode *nodehandle(Node *node)
-{
-	return reinterpret_cast<OakEngineNode *>(node);
-}
-
-inline const OakEngineNode *nodehandle(const Node *node)
-{
-	return reinterpret_cast<const OakEngineNode *>(node);
-}
-
-inline Node *key_node(const NodeKeyframe *key)
-{
-	return reinterpret_cast<Node *>(
-		oakengine_keyframe_get_node(keyhandle(key)));
-}
-
-inline Rational key_time(const NodeKeyframe *key)
+inline Rational key_time(const OakEngineKeyframe *key)
 {
 	int64_t num = 0, den = 1;
-	oakengine_keyframe_get_time(keyhandle(key), &num, &den);
+	oakengine_keyframe_get_time(key, &num, &den);
 	return Rational(int(num), int(den));
 }
 
-inline int key_easing(const NodeKeyframe *key)
+inline int key_easing(const OakEngineKeyframe *key)
 {
-	return oakengine_keyframe_get_type(keyhandle(key));
+	return oakengine_keyframe_get_type(key);
 }
 
-inline oak_node_value key_value(const NodeKeyframe *key)
+inline oak_node_value key_value(const OakEngineKeyframe *key)
 {
 	oak_node_value v;
 	memset(&v, 0, sizeof(v));
-	oakengine_keyframe_get_value(keyhandle(key), &v);
+	oakengine_keyframe_get_value(key, &v);
 	return v;
 }
 
-inline double key_value_as_double(const NodeKeyframe *key)
+inline double key_value_as_double(const OakEngineKeyframe *key)
 {
 	const oak_node_value v = key_value(key);
 	switch (v.type) {
@@ -113,93 +84,105 @@ inline double key_value_as_double(const NodeKeyframe *key)
 	}
 }
 
-inline void key_set_value_live(NodeKeyframe *key, const oak_node_value &v)
+inline void key_set_value_live(OakEngineKeyframe *key, const oak_node_value &v)
 {
-	oakengine_keyframe_set_value_live(keyhandle(key), &v);
+	oakengine_keyframe_set_value_live(key, &v);
 }
 
-inline QPointF key_bezier_point(const NodeKeyframe *key, int point_index)
+inline QPointF key_bezier_point(const OakEngineKeyframe *key, int point_index)
 {
 	double x = 0, y = 0;
-	oakengine_keyframe_get_bezier_point(keyhandle(key), point_index, &x, &y);
+	oakengine_keyframe_get_bezier_point(key, point_index, &x, &y);
 	return QPointF(x, y);
 }
 
-inline QPointF key_valid_bezier_point(const NodeKeyframe *key,
+inline QPointF key_valid_bezier_point(const OakEngineKeyframe *key,
 									  int point_index)
 {
 	double x = 0, y = 0;
-	oakengine_keyframe_get_valid_bezier_point(keyhandle(key), point_index,
-											  &x, &y);
+	oakengine_keyframe_get_valid_bezier_point(key, point_index, &x, &y);
 	return QPointF(x, y);
 }
 
-inline void key_set_bezier_point_live(NodeKeyframe *key, int point_index,
+inline void key_set_bezier_point_live(OakEngineKeyframe *key, int point_index,
 									  const QPointF &point)
 {
-	oakengine_keyframe_set_bezier_point_live(keyhandle(key), point_index,
+	oakengine_keyframe_set_bezier_point_live(key, point_index,
 											 point.x(), point.y());
 }
 
-inline void key_set_time_live(NodeKeyframe *key, const Rational &time)
+inline void key_set_time_live(OakEngineKeyframe *key, const Rational &time)
 {
-	oakengine_keyframe_set_time_live(keyhandle(key), time.numerator(),
+	oakengine_keyframe_set_time_live(key, time.numerator(),
 									 time.denominator());
 }
 
-inline bool key_has_sibling_at_time(const NodeKeyframe *key,
+/**
+ * @brief NodeKeyframe::has_sibling_at_time() equivalent: true when another
+ * keyframe sits at `time` on the same input/track/element.
+ *
+ * NOTE: oakengine_keyframe_has_sibling_at_time() is NOT used here — its
+ * facade contract (whole-second time, ignored track) does not match the
+ * engine semantics, so the check is done with an exact rational lookup.
+ */
+inline bool key_has_sibling_at_time(const OakEngineKeyframe *key,
 									const Rational &time)
 {
-	return oakengine_keyframe_has_sibling_at_time(
-			   keyhandle(key), time.numerator(), time.denominator()) != 0;
+	char input_id[256];
+	input_id[0] = '\0';
+	oakengine_keyframe_get_input_id(key, input_id, sizeof(input_id));
+	OakEngineKeyframe *sibling = oakengine_node_keyframe_handle_at_time(
+		oakengine_keyframe_get_node(key), input_id,
+		oakengine_keyframe_get_element(key), oakengine_keyframe_get_track(key),
+		time.numerator(), time.denominator());
+	return sibling && sibling != key;
 }
 
-inline QString key_input_id(const NodeKeyframe *key)
+inline QString key_input_id(const OakEngineKeyframe *key)
 {
 	const int size =
-		oakengine_keyframe_get_input_id(keyhandle(key), nullptr, 0);
+		oakengine_keyframe_get_input_id(key, nullptr, 0);
 	QByteArray buf(size + 1, '\0');
-	oakengine_keyframe_get_input_id(keyhandle(key), buf.data(),
+	oakengine_keyframe_get_input_id(key, buf.data(),
 									int(buf.size()));
 	return QString::fromUtf8(buf.constData());
 }
 
-inline int key_track(const NodeKeyframe *key)
+inline int key_track(const OakEngineKeyframe *key)
 {
-	return oakengine_keyframe_get_track(keyhandle(key));
+	return oakengine_keyframe_get_track(key);
 }
 
-inline int key_element(const NodeKeyframe *key)
+inline int key_element(const OakEngineKeyframe *key)
 {
-	return oakengine_keyframe_get_element(keyhandle(key));
+	return oakengine_keyframe_get_element(key);
 }
 
 /**
  * @brief ADL customization points for
- * TimeBasedViewSelectionManager<NodeKeyframe>.
+ * TimeBasedViewSelectionManager<OakEngineKeyframe>.
  *
- * The selection manager template calls these unqualified; the generic
- * member-forwarding templates in timebasedviewselectionmanager.h cover
- * other object types (e.g. TimelineMarker), while these overloads route
- * keyframe access through the facade.
+ * The selection manager template calls these unqualified; the overloads in
+ * timeruler/markerhandle.h cover TimelineMarker, while these route keyframe
+ * access through the facade.
  */
-inline Rational selection_time(NodeKeyframe *key)
+inline Rational selection_time(OakEngineKeyframe *key)
 {
 	return key_time(key);
 }
 
-inline void selection_set_time(NodeKeyframe *key, const Rational &time)
+inline void selection_set_time(OakEngineKeyframe *key, const Rational &time)
 {
 	key_set_time_live(key, time);
 }
 
-inline bool selection_has_sibling_at_time(NodeKeyframe *key,
+inline bool selection_has_sibling_at_time(OakEngineKeyframe *key,
 										  const Rational &time)
 {
 	return key_has_sibling_at_time(key, time);
 }
 
-inline Node *selection_time_target_parent(NodeKeyframe *key)
+inline OakEngineNode *selection_time_target_parent(OakEngineKeyframe *key)
 {
 	return key_node(key);
 }

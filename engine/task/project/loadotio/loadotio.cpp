@@ -46,7 +46,6 @@
 #include "node/project/footage/footage.h"
 #include "node/project/sequence/sequence.h"
 #include "timeline/timelineundogeneral.h"
-#include "window/mainwindow/mainwindowundo.h"
 
 namespace olive
 {
@@ -56,23 +55,23 @@ LoadOTIOTask::LoadOTIOTask(const QString &s)
 {
 }
 
-bool LoadOTIOTask::Run()
+bool LoadOTIOTask::run()
 {
 	OTIO::ErrorStatus es;
 
 	auto root = OTIO::SerializableObjectWithMetadata::from_json_file(
-		GetFilename().toStdString(), &es);
+		get_filename().toStdString(), &es);
 
 	if (es.outcome != OTIO::ErrorStatus::Outcome::OK) {
-		SetError(
+		set_error(
 			tr("Failed to load OpenTimelineIO from file \"%1\" \n\nOpenTimelineIO Error:\n\n%2")
-				.arg(GetFilename(),
+				.arg(get_filename(),
 					 QString::fromStdString(es.full_description)));
 		return false;
 	}
 
 	project_ = new Project();
-	project_->Initialize();
+	project_->initialize();
 	project_->set_modified(true);
 
 	std::vector<OTIO::Timeline *> timelines;
@@ -93,7 +92,7 @@ bool LoadOTIOTask::Run()
 		timelines.push_back(static_cast<OTIO::Timeline *>(root));
 	} else {
 		// Unknown root, we don't know what to do with this
-		SetError(tr("Unknown OpenTimelineIO root element"));
+		set_error(tr("Unknown OpenTimelineIO root element"));
 		delete project_;
 		project_ = nullptr;
 		return false;
@@ -113,12 +112,12 @@ bool LoadOTIOTask::Run()
 	foreach (auto timeline, timelines) {
 		Sequence *sequence = new Sequence();
 		if (!timeline->name().empty()) {
-			sequence->SetLabel(QString::fromStdString(timeline->name()));
+			sequence->set_label(QString::fromStdString(timeline->name()));
 		} else {
 			// If the otio timeline does not provide a name, create a default one here
 			unnamed_sequence_count++;
 			QString label = tr("Sequence %1").arg(unnamed_sequence_count);
-			sequence->SetLabel(QString::fromStdString(label.toStdString()));
+			sequence->set_label(QString::fromStdString(label.toStdString()));
 		}
 		// Set default params incase they aren't edited.
 		sequence->set_default_parameters();
@@ -152,7 +151,7 @@ bool LoadOTIOTask::Run()
 
 		// Create a folder for this sequence's footage
 		Folder *sequence_footage = new Folder();
-		sequence_footage->SetLabel(QString::fromStdString(timeline->name()));
+		sequence_footage->set_label(QString::fromStdString(timeline->name()));
 		sequence_footage->setParent(project_);
 		FolderAddChild(project_->root(), sequence_footage).redo_now();
 
@@ -169,9 +168,9 @@ bool LoadOTIOTask::Run()
 				Track::Type type;
 
 				if (otio_track->kind() == "Video") {
-					type = Track::kVideo;
+					type = Track::k_video;
 				} else {
-					type = Track::kAudio;
+					type = Track::k_audio;
 				}
 
 				// Create track
@@ -187,7 +186,7 @@ bool LoadOTIOTask::Run()
 			// Get clips from track
 			auto clip_map = otio_track->children();
 			if (es.outcome != OTIO::ErrorStatus::Outcome::OK) {
-				SetError(tr("Failed to load clip"));
+				set_error(tr("Failed to load clip"));
 				return false;
 			}
 
@@ -217,21 +216,21 @@ bool LoadOTIOTask::Run()
 				}
 
 				block->setParent(project_);
-				block->SetLabel(QString::fromStdString(otio_block->name()));
+				block->set_label(QString::fromStdString(otio_block->name()));
 
-				track->AppendBlock(block);
+				track->append_block(block);
 
 				Rational start_time;
 				Rational duration;
 
 				if (otio_block->schema_name() == "Clip" ||
 					otio_block->schema_name() == "Gap") {
-					start_time = Rational::fromDouble(
+					start_time = Rational::from_double(
 						static_cast<OTIO::Item *>(otio_block)
 							->source_range()
 							->start_time()
 							.to_seconds());
-					duration = Rational::fromDouble(
+					duration = Rational::from_double(
 						static_cast<OTIO::Item *>(otio_block)
 							->source_range()
 							->duration()
@@ -248,9 +247,9 @@ bool LoadOTIOTask::Run()
 				if (prev_block_transition) {
 					TransitionBlock *previous_transition_block =
 						static_cast<TransitionBlock *>(previous_block);
-					Node::ConnectEdge(
+					Node::connect_edge(
 						block, NodeInput(previous_transition_block,
-										 TransitionBlock::kInBlockInput));
+										 TransitionBlock::k_in_block_input));
 					prev_block_transition = false;
 				}
 
@@ -268,10 +267,10 @@ bool LoadOTIOTask::Run()
 							otio_block_transition->out_offset()));
 
 					if (previous_block) {
-						Node::ConnectEdge(
+						Node::connect_edge(
 							previous_block,
 							NodeInput(transition_block,
-									  TransitionBlock::kOutBlockInput));
+									  TransitionBlock::k_out_block_input));
 					}
 					prev_block_transition = true;
 
@@ -279,7 +278,7 @@ bool LoadOTIOTask::Run()
 					block->setParent(sequence->parent());
 
 					// Position transition in its own context
-					block->SetNodePositionInContext(block, QPointF(0, 0));
+					block->set_node_position_in_context(block, QPointF(0, 0));
 				}
 
 				if (otio_block->schema_name() == "Gap") {
@@ -287,7 +286,7 @@ bool LoadOTIOTask::Run()
 					block->setParent(sequence->parent());
 
 					// Position transition in its own context
-					block->SetNodePositionInContext(block, QPointF(0, 0));
+					block->set_node_position_in_context(block, QPointF(0, 0));
 				}
 
 				// Update this after it's used but before any continue statements
@@ -316,7 +315,7 @@ bool LoadOTIOTask::Run()
 							probed_item->setParent(project_);
 
 							QFileInfo info(probed_item->filename());
-							probed_item->SetLabel(info.fileName());
+							probed_item->set_label(info.fileName());
 
 							FolderAddChild add(sequence_footage, probed_item);
 							add.redo_now();
@@ -326,44 +325,44 @@ bool LoadOTIOTask::Run()
 						block->setParent(sequence->parent());
 
 						// Position clip in its own context
-						block->SetNodePositionInContext(block, QPointF(0, 0));
+						block->set_node_position_in_context(block, QPointF(0, 0));
 
 						// Position footage in its context
-						block->SetNodePositionInContext(probed_item,
-														QPointF(-2, 0));
+						block->set_node_position_in_context(probed_item,
+															QPointF(-2, 0));
 
-						if (track->type() == Track::kVideo) {
+						if (track->type() == Track::k_video) {
 							TransformDistortNode *transform =
 								new TransformDistortNode();
 							transform->setParent(sequence->parent());
 
-							Node::ConnectEdge(
+							Node::connect_edge(
 								probed_item,
 								NodeInput(transform,
-										  TransformDistortNode::kTextureInput));
-							Node::ConnectEdge(transform,
+										  TransformDistortNode::k_texture_input));
+							Node::connect_edge(transform,
 											  NodeInput(block,
-														ClipBlock::kBufferIn));
-							block->SetNodePositionInContext(transform,
-															QPointF(-1, 0));
+														ClipBlock::k_buffer_in));
+							block->set_node_position_in_context(transform,
+																QPointF(-1, 0));
 						} else {
 							VolumeNode *volume_node = new VolumeNode();
 							volume_node->setParent(sequence->parent());
 
-							Node::ConnectEdge(
+							Node::connect_edge(
 								probed_item,
 								NodeInput(volume_node,
-										  VolumeNode::kSamplesInput));
-							Node::ConnectEdge(volume_node,
+										  VolumeNode::k_samples_input));
+							Node::connect_edge(volume_node,
 											  NodeInput(block,
-														ClipBlock::kBufferIn));
-							block->SetNodePositionInContext(volume_node,
-															QPointF(-1, 0));
+														ClipBlock::k_buffer_in));
+							block->set_node_position_in_context(volume_node,
+																QPointF(-1, 0));
 						}
 					}
 				}
 				clips_done++;
-				emit ProgressChanged(clips_done / number_of_clips);
+				emit progress_changed(clips_done / number_of_clips);
 			}
 		}
 	}

@@ -20,12 +20,20 @@
 
 #include "oakengine/gizmo.h"
 
+#include <QPainter>
 #include <QString>
 
 #include "node/gizmo/draggable.h"
+#include "node/gizmo/path.h"
+#include "node/gizmo/point.h"
+#include "node/gizmo/polygon.h"
+#include "node/gizmo/screen.h"
 #include "node/gizmo/text.h"
+#include "node/globals.h"
 #include "node/generator/text/textv3.h"
 #include "node/node.h"
+#include "render/loopmode.h"
+#include "render/videoparams.h"
 
 extern "C" {
 
@@ -263,6 +271,78 @@ int oakengine_gizmo_drag_end(void *gizmo, void *command)
     }
     dg->drag_end(static_cast<olive::MultiUndoCommand *>(command));
     return OAKENGINE_OK;
+}
+
+int oakengine_gizmo_is_visible(void *gizmo)
+{
+    if (!gizmo) {
+        return 0;
+    }
+    return static_cast<olive::NodeGizmo *>(gizmo)->is_visible() ? 1 : 0;
+}
+
+int oakengine_gizmo_draw(void *gizmo, void *painter)
+{
+    if (!gizmo || !painter) {
+        return OAKENGINE_E_INVALID;
+    }
+    static_cast<olive::NodeGizmo *>(gizmo)->draw(
+        static_cast<QPainter *>(painter));
+    return OAKENGINE_OK;
+}
+
+int oakengine_gizmo_set_globals(void *gizmo,
+    int video_width, int video_height,
+    int64_t time_num, int64_t time_den)
+{
+    if (!gizmo) {
+        return OAKENGINE_E_INVALID;
+    }
+    olive::VideoParams vp;
+    if (video_width > 0 && video_height > 0) {
+        vp.set_width(video_width);
+        vp.set_height(video_height);
+    }
+    olive::NodeGlobals globals(
+        vp, olive::AudioParams(),
+        olive::Rational(time_num, time_den),
+        olive::LoopMode::k_loop_mode_off);
+    static_cast<olive::NodeGizmo *>(gizmo)->set_globals(globals);
+    return OAKENGINE_OK;
+}
+
+int oakengine_gizmo_hit_test(void *gizmo,
+    const double *transform6, double px, double py)
+{
+    if (!gizmo) {
+        return 0;
+    }
+    auto *g = static_cast<olive::NodeGizmo *>(gizmo);
+    if (!g->is_visible()) {
+        return 0;
+    }
+
+    const QPointF p(px, py);
+
+    if (auto *point = dynamic_cast<olive::PointGizmo *>(g)) {
+        if (!transform6) {
+            return 0;
+        }
+        const QTransform t(transform6[0], transform6[1], transform6[2],
+                           transform6[3], transform6[4], transform6[5]);
+        return point->get_clicking_rect(t).contains(p) ? 1 : 0;
+    }
+    if (auto *poly = dynamic_cast<olive::PolygonGizmo *>(g)) {
+        return poly->get_polygon().containsPoint(p, Qt::OddEvenFill) ? 1 : 0;
+    }
+    if (auto *path = dynamic_cast<olive::PathGizmo *>(g)) {
+        return path->get_path().contains(p) ? 1 : 0;
+    }
+    if (dynamic_cast<olive::ScreenGizmo *>(g)) {
+        // Screen gizmos are hittable anywhere (mirrors the viewer logic).
+        return 1;
+    }
+    return 0;
 }
 
 } // extern "C"

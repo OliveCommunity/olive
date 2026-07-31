@@ -41,7 +41,7 @@ public:
    * Equivalent to calling SetResolution and SetPixelAspectRatio, just slightly faster since we
    * only calculate the matrix once rather than twice.
    */
-	void set_video_params(const VideoParams &params);
+	void set_video_params(const oak::VideoParams &params);
 
 	/**
    * @brief Used to adjust resulting picture to be the right aspect ratio

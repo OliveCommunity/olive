@@ -173,9 +173,9 @@ QString ColorSpaceChooser::input() const
 	}
 }
 
-ColorTransform ColorSpaceChooser::output() const
+oak::ColorTransform ColorSpaceChooser::output() const
 {
-	return ColorTransform(display_combobox_->currentText(),
+	return oak::ColorTransform(display_combobox_->currentText(),
 						  view_combobox_->currentText(),
 						  look_combobox_->currentIndex() == 0 ?
 							  QString() :
@@ -192,7 +192,7 @@ void ColorSpaceChooser::set_input(const QString &s)
 	input_combobox_->setCurrentText(compliant);
 }
 
-void ColorSpaceChooser::set_output(const ColorTransform &out)
+void ColorSpaceChooser::set_output(const oak::ColorTransform &out)
 {
 	QByteArray o, v, l;
 	oak_color_transform pod = oak_to_transform(out, &o, &v, &l);

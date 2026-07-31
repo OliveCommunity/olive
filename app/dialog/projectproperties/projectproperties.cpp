@@ -30,6 +30,8 @@
 #include <QPushButton>
 
 #include "oakutil/filefunctions.h"
+#include "oakutil/qtutils.h"
+#include "common/projecttypes.h"
 #include "oakengine/color.h"
 #include "oakengine/disk.h"
 #include "oakengine/project.h"
@@ -40,7 +42,8 @@ namespace olive
 
 #define super QDialog
 
-ProjectPropertiesDialog::ProjectPropertiesDialog(Project *p, QWidget *parent)
+ProjectPropertiesDialog::ProjectPropertiesDialog(OakEngineProject *p,
+												 QWidget *parent)
 	: super(parent)
 	, working_project_(p)
 	, ocio_config_is_valid_(true)
@@ -49,7 +52,7 @@ ProjectPropertiesDialog::ProjectPropertiesDialog(Project *p, QWidget *parent)
 
 	char name_buf[256];
 	oakengine_project_name(
-		reinterpret_cast<OakEngineProject *>(working_project_),
+		working_project_,
 		name_buf, sizeof(name_buf));
 	setWindowTitle(
 		tr("Project Properties for '%1'").arg(name_buf));
@@ -88,17 +91,20 @@ ProjectPropertiesDialog::ProjectPropertiesDialog(Project *p, QWidget *parent)
 		color_layout->addWidget(new QLabel(tr("Reference Space:")), row, 0);
 
 		reference_space_ = new QComboBox(this);
-		reference_space_->addItem(tr("Scene Linear"), ocio::ROLE_SCENE_LINEAR);
+		// OpenColorIO role names (ocio::ROLE_SCENE_LINEAR /
+		// ocio::ROLE_COMPOSITING_LOG); mirrored as literals because the OCIO
+		// headers only reached this file transitively through the engine.
+		reference_space_->addItem(tr("Scene Linear"),
+								  QStringLiteral("scene_linear"));
 		reference_space_->addItem(tr("Compositing Log"),
-								  ocio::ROLE_COMPOSITING_LOG);
+								  QStringLiteral("compositing_log"));
 		QtUtils::set_combo_box_data(reference_space_,
-									 [p]() -> QString {
-										 char buf[256];
-										 oakengine_project_get_color_reference_space(
-											 reinterpret_cast<OakEngineProject *>(p),
-											 buf, sizeof(buf));
-										 return QString::fromUtf8(buf);
-									 }());
+									[p]() -> QString {
+										char buf[256];
+										oakengine_project_get_color_reference_space(
+											p, buf, sizeof(buf));
+										return QString::fromUtf8(buf);
+									}());
 		color_layout->addWidget(reference_space_, row, 1, 1, 2);
 
 		row++;
@@ -109,7 +115,7 @@ ProjectPropertiesDialog::ProjectPropertiesDialog(Project *p, QWidget *parent)
 				&ProjectPropertiesDialog::browse_for_ocio_config);
 
 		OakEngineColorManager *cm = oakengine_color_manager_from_project(
-			reinterpret_cast<OakEngineProject *>(working_project_));
+			working_project_);
 		ocio_filename_->setText(oak_query_string([cm](char *buf, int size) {
 			return oakengine_color_manager_get_config_filename(cm, buf, size);
 		}));
@@ -149,7 +155,7 @@ ProjectPropertiesDialog::ProjectPropertiesDialog(Project *p, QWidget *parent)
 				[this]() -> QString {
 					char buf[4096];
 					oakengine_project_get_custom_cache_path(
-						reinterpret_cast<OakEngineProject *>(working_project_),
+						working_project_,
 						buf, sizeof(buf));
 					return QString::fromUtf8(buf);
 				}(), this);
@@ -163,7 +169,7 @@ ProjectPropertiesDialog::ProjectPropertiesDialog(Project *p, QWidget *parent)
 
 		// Check the radio button that should currently be active
 		disk_cache_radios_[oakengine_project_get_cache_location_setting(
-			reinterpret_cast<OakEngineProject *>(working_project_))]
+			working_project_)]
 			->setChecked(true);
 
 		// Add disk cache settings button
@@ -208,7 +214,7 @@ void ProjectPropertiesDialog::accept()
 				[this]() -> QString {
 					char buf[4096];
 					oakengine_project_cache_alongside_path(
-						reinterpret_cast<OakEngineProject *>(working_project_),
+						working_project_,
 						buf, sizeof(buf));
 					return QString::fromUtf8(buf);
 				}())) {
@@ -225,7 +231,7 @@ void ProjectPropertiesDialog::accept()
 		[this]() -> QString {
 			char buf[4096];
 			oakengine_project_get_custom_cache_path(
-				reinterpret_cast<OakEngineProject *>(working_project_),
+				working_project_,
 				buf, sizeof(buf));
 			return QString::fromUtf8(buf);
 		}()) {
@@ -235,17 +241,17 @@ void ProjectPropertiesDialog::accept()
 		}
 
 		oakengine_project_set_custom_cache_path(
-			reinterpret_cast<OakEngineProject *>(working_project_),
+			working_project_,
 			custom_cache_path_->text().toUtf8().constData());
 
 		oakengine_disk_invalidate_project(
-			reinterpret_cast<OakEngineProject *>(working_project_));
+			working_project_);
 	}
 
 	// This should ripple changes throughout the graph/cache that the color config has changed, and
 	// therefore should be done after the cache path is changed
 	OakEngineColorManager *cm = oakengine_color_manager_from_project(
-		reinterpret_cast<OakEngineProject *>(working_project_));
+		working_project_);
 	QString old_config = oak_query_string([cm](char *buf, int size) {
 		return oakengine_color_manager_get_config_filename(cm, buf, size);
 	});
@@ -263,12 +269,12 @@ void ProjectPropertiesDialog::accept()
 	if ([this]() -> QString {
 			char buf[256];
 			oakengine_project_get_color_reference_space(
-				reinterpret_cast<OakEngineProject *>(working_project_),
+				working_project_,
 				buf, sizeof(buf));
 			return QString::fromUtf8(buf);
 		}() != reference_space_->currentData().toString()) {
 		oakengine_project_set_color_reference_space(
-			reinterpret_cast<OakEngineProject *>(working_project_),
+			working_project_,
 			reference_space_->currentData().toString().toUtf8().constData());
 	}
 
@@ -321,7 +327,7 @@ void ProjectPropertiesDialog::ocio_filename_updated()
 		// List input color spaces
 		int cs_count = oakengine_color_config_colorspace_count(config);
 		OakEngineColorManager *cm = oakengine_color_manager_from_project(
-			reinterpret_cast<OakEngineProject *>(working_project_));
+			working_project_);
 		QString default_cs = oak_query_string([cm](char *buf, int size) {
 			return oakengine_color_manager_default_input_color_space(cm, buf,
 																	 size);
@@ -361,7 +367,7 @@ void ProjectPropertiesDialog::open_disk_cache_settings()
 			[this]() -> QString {
 				char buf[4096];
 				oakengine_project_cache_alongside_path(
-					reinterpret_cast<OakEngineProject *>(working_project_),
+					working_project_,
 					buf, sizeof(buf));
 				return QString::fromUtf8(buf);
 			}().toUtf8().constData(), this);

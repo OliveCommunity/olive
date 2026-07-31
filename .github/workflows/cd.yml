@@ -43,11 +43,25 @@ jobs:
             mingw-w64-ucrt-x86_64-nsis
             mingw-w64-ucrt-x86_64-ntldd
 
+      - name: Build OpenTimelineIO
+        shell: msys2 {0}
+        run: |
+          git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
+          cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
+            -DOTIO_SHARED_LIBS=ON \
+            -DOTIO_PYTHON_BINDINGS=OFF \
+            -DOTIO_FIND_IMATH=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
+          cmake --build OpenTimelineIO/build
+          cmake --install OpenTimelineIO/build
+
       - name: Configure
         shell: msys2 {0}
         run: |
           cmake -S . -B build -G Ninja \
             -DBUILD_QT6=ON \
+            -DOTIO_LOCATION="${PWD}/otio-install" \
             -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
@@ -57,6 +71,8 @@ jobs:
       - name: Deploy dependencies
         shell: msys2 {0}
         run: |
+          # Let ntldd discover the OTIO DLLs (no rpath on Windows)
+          export PATH="${GITHUB_WORKSPACE}/otio-install/bin:${PATH}"
           mkdir -p app/packaging/windows/nsis/oak-editor
           cp build/app/oak-editor.exe app/packaging/windows/nsis/oak-editor/
           cp build/worker/oak-render-worker.exe app/packaging/windows/nsis/oak-editor/
@@ -116,6 +132,7 @@ jobs:
           cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
             -DOTIO_SHARED_LIBS=ON \
             -DOTIO_PYTHON_BINDINGS=OFF \
+            -DOTIO_FIND_IMATH=ON \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
           cmake --build OpenTimelineIO/build
@@ -316,11 +333,24 @@ jobs:
             libvulkan-dev \
             wget fuse3 desktop-file-utils
 
+      - name: Build OpenTimelineIO
+        run: |
+          git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
+          cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
+            -DOTIO_SHARED_LIBS=ON \
+            -DOTIO_PYTHON_BINDINGS=OFF \
+            -DOTIO_FIND_IMATH=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
+          cmake --build OpenTimelineIO/build
+          cmake --install OpenTimelineIO/build
+
       - name: Build
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
+            -DOTIO_LOCATION="${PWD}/otio-install" \
             -DBUILD_QT6=ON
           cmake --build build
 
@@ -366,6 +396,8 @@ jobs:
           ls AppDir/usr/lib/libOpenColorIO.so*    || (echo "Missing libOpenColorIO" && exit 1)
           ls AppDir/usr/lib/libportaudio.so*      || (echo "Missing libportaudio" && exit 1)
           ls AppDir/usr/lib/libOpenEXR*.so*       || (echo "Missing libOpenEXR" && exit 1)
+          ls AppDir/usr/lib/libopentimelineio.so* || (echo "Missing libopentimelineio" && exit 1)
+          ls AppDir/usr/lib/libopentime.so*       || (echo "Missing libopentime" && exit 1)
           # Ensure Oak's own binaries and shared libraries are present
           ls AppDir/usr/bin/oak-editor                       || (echo "Missing oak-editor" && exit 1)
           ls AppDir/usr/bin/oak-render-worker                || (echo "Missing oak-render-worker" && exit 1)
@@ -410,11 +442,24 @@ jobs:
             portaudio19-dev libgl1-mesa-dev libxkbcommon-dev \
             libvulkan-dev
 
+      - name: Build OpenTimelineIO
+        run: |
+          git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
+          cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
+            -DOTIO_SHARED_LIBS=ON \
+            -DOTIO_PYTHON_BINDINGS=OFF \
+            -DOTIO_FIND_IMATH=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
+          cmake --build OpenTimelineIO/build
+          cmake --install OpenTimelineIO/build
+
       - name: Build
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
+            -DOTIO_LOCATION="${PWD}/otio-install" \
             -DBUILD_QT6=ON
           cmake --build build
 
@@ -464,11 +509,24 @@ jobs:
             bzip2-devel \
             rpm-build
 
+      - name: Build OpenTimelineIO
+        run: |
+          git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
+          cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
+            -DOTIO_SHARED_LIBS=ON \
+            -DOTIO_PYTHON_BINDINGS=OFF \
+            -DOTIO_FIND_IMATH=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
+          cmake --build OpenTimelineIO/build
+          cmake --install OpenTimelineIO/build
+
       - name: Build
         run: |
           cmake -S . -B build -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/usr \
+            -DOTIO_LOCATION="${PWD}/otio-install" \
             -DBUILD_QT6=ON
           cmake --build build
 
@@ -522,7 +580,8 @@ jobs:
               pacman -S --noconfirm --needed \
                 cmake ninja git pkgconf \
                 qt6-base qt6-tools ffmpeg openimageio opencolorio openexr expat portaudio \
-                mesa vulkan-headers vulkan-icd-loader libxkbcommon fmt
+                mesa vulkan-headers vulkan-icd-loader libxkbcommon fmt \
+                opentimelineio
               useradd -m builder
               chown -R builder /build
               su builder -c "makepkg -s --noconfirm"

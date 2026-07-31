@@ -22,7 +22,6 @@
 #ifndef OAK_MULTICAMDISPLAY_H
 #define OAK_MULTICAMDISPLAY_H
 
-#include "node/input/multicam/multicamnode.h"
 #include "widget/viewer/viewerdisplay.h"
 
 namespace olive
@@ -33,7 +32,7 @@ class MulticamDisplay : public ViewerDisplayWidget {
 public:
 	explicit MulticamDisplay(QWidget *parent = nullptr);
 
-	void set_multicam_node(MultiCamNode *n);
+	void set_multicam_node(OakEngineNode *n);
 
 protected:
 	virtual void on_paint() override;
@@ -45,7 +44,7 @@ protected:
 private:
 	static QString generate_shader_code(int rows, int cols);
 
-	MultiCamNode *node_;
+	OakEngineNode *node_;
 
 	void *shader_;
 	int rows_;

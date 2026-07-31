@@ -22,13 +22,12 @@
 #ifndef OAK_KEYFRAMEVIEWINPUTCONNECTION_H
 #define OAK_KEYFRAMEVIEWINPUTCONNECTION_H
 
+#include <QBrush>
 #include <QObject>
+#include <QVector>
 
 #include "engineeventbridge.h"
-#include "node/node.h"
-#include "node/param.h"
-
-struct OakEngineKeyframe;
+#include "oakutil/oaknode.h"
 
 namespace olive
 {
@@ -38,7 +37,7 @@ class KeyframeView;
 class KeyframeViewInputConnection : public QObject {
 	Q_OBJECT
 public:
-	KeyframeViewInputConnection(const NodeKeyframeTrackReference &input,
+	KeyframeViewInputConnection(const oak::KeyframeTrackRef &input,
 								KeyframeView *parent);
 
 	const int &get_keyframe_y() const
@@ -52,20 +51,14 @@ public:
 
 	void set_y_behavior(YBehavior e);
 
-	const QVector<NodeKeyframe *> &get_keyframes() const
-	{
-		return input_.input()
-			.node()
-			->get_keyframe_tracks(input_.input())
-			.at(input_.track());
-	}
+	QVector<oak::Keyframe> get_keyframes() const;
 
 	const QBrush &get_brush() const
 	{
 		return brush_;
 	}
 
-	const NodeKeyframeTrackReference &get_reference() const
+	const oak::KeyframeTrackRef &get_reference() const
 	{
 		return input_;
 	}
@@ -80,7 +73,7 @@ signals:
 private:
 	KeyframeView *keyframe_view_;
 
-	NodeKeyframeTrackReference input_;
+	oak::KeyframeTrackRef input_;
 
 	int y_;
 

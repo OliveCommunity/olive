@@ -24,7 +24,6 @@
 #include <QToolTip>
 
 #include "common/configwrapper.h"
-#include "timeline/timelineundogeneral.h"
 #include "widget/timelinewidget/timelinewidget.h"
 
 #include "oakengine/timeline.h"
@@ -76,12 +75,11 @@ void SlipTool::finish_drag(TimelineViewMouseEvent *event)
 
 	// Find earliest point to ripple around
 	foreach (TimelineViewGhostItem *ghost, parent()->get_ghost_items()) {
-		Block *b = QtUtils::value_to_ptr<Block>(
+		OakEngineBlock *b = QtUtils::value_to_ptr<OakEngineBlock>(
 			ghost->get_data(TimelineViewGhostItem::k_attached_block));
 
-		ClipBlock *cb = dynamic_cast<ClipBlock *>(b);
-		if (cb) {
-			oakengine_undo_command_multi_add_child(command, oakengine_block_set_media_in_command(reinterpret_cast<void *>(cb), ghost->get_adjusted_media_in().numerator(), ghost->get_adjusted_media_in().denominator()));
+		if (oakengine_node_is_clip(reinterpret_cast<OakEngineNode *>(b))) {
+			oakengine_undo_command_multi_add_child(command, oakengine_block_set_media_in_command(reinterpret_cast<void *>(b), ghost->get_adjusted_media_in().numerator(), ghost->get_adjusted_media_in().denominator()));
 		}
 	}
 

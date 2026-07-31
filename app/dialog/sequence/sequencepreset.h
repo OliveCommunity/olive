@@ -27,10 +27,13 @@
 
 #include "oakutil/xmlutils.h"
 #include "dialog/sequence/presetmanager.h"
-#include "render/videoparams.h"
 
 namespace olive
 {
+
+// Same namespace bridge the engine's render/videoparams.h used to provide
+// (unqualified Rational/PixelFormat inside namespace olive).
+using namespace core;
 
 class SequencePreset : public Preset {
 public:

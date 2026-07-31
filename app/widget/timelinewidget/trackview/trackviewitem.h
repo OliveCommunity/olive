@@ -27,7 +27,6 @@
 #include <QWidget>
 
 #include "engineeventbridge.h"
-#include "node/output/track/track.h"
 #include "oakengine/timeline.h"
 #include "widget/clickablelabel/clickablelabel.h"
 #include "widget/focusablelineedit/focusablelineedit.h"
@@ -39,7 +38,7 @@ namespace olive
 class TrackViewItem : public QWidget {
 	Q_OBJECT
 public:
-	TrackViewItem(Track *track, QWidget *parent = nullptr);
+	TrackViewItem(OakEngineTrack *track, QWidget *parent = nullptr);
 
 signals:
 	void about_to_delete_track(OakEngineTrack *track);
@@ -56,7 +55,7 @@ private:
 	QPushButton *solo_button_;
 	QPushButton *lock_button_;
 
-	Track *track_;
+	OakEngineTrack *track_;
 
 	EngineEventBridge bridge_;
 

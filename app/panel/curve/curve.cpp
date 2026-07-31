@@ -49,9 +49,15 @@ void CurvePanel::deselect_all()
 	static_cast<CurveWidget *>(get_time_based_widget())->deselect_all();
 }
 
-void CurvePanel::set_nodes(const QVector<Node *> &nodes)
+void CurvePanel::set_nodes(const QVector<OakEngineNode *> &nodes)
 {
-	static_cast<CurveWidget *>(get_time_based_widget())->set_nodes(nodes);
+	// Convert to oak::Node for the curve widget (C ABI wrapper layer)
+	QVector<oak::Node> oak_nodes;
+	oak_nodes.reserve(nodes.size());
+	foreach (OakEngineNode *n, nodes) {
+		oak_nodes.append(oak::Node(n));
+	}
+	static_cast<CurveWidget *>(get_time_based_widget())->set_nodes(oak_nodes);
 }
 
 void CurvePanel::increase_track_height()

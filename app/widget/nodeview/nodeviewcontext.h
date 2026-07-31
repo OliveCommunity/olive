@@ -24,7 +24,7 @@
 #include <QHash>
 
 #include "engineeventbridge.h"
-#include "node/node.h"
+#include "oakutil/oaknode.h"
 #include "nodeviewcommon.h"
 #include "nodeviewedge.h"
 
@@ -34,11 +34,11 @@ namespace olive
 class NodeViewContext : public QObject, public QGraphicsRectItem {
 	Q_OBJECT
 public:
-	NodeViewContext(Node *context, QGraphicsItem *item = nullptr);
+	NodeViewContext(oak::Node context, QGraphicsItem *item = nullptr);
 
 	virtual ~NodeViewContext() override;
 
-	Node *get_context() const
+	oak::Node get_context() const
 	{
 		return context_;
 	}
@@ -49,17 +49,17 @@ public:
 
 	void set_curved_edges(bool e);
 
-	void get_selected_for_deletion(QVector<Node *> &nodes,
-								  QVector<Node *> &contexts,
+	void get_selected_for_deletion(QVector<OakEngineNode *> &nodes,
+								  QVector<OakEngineNode *> &contexts,
 								  QVector<NodeViewEdge *> &edges) const;
 
-	void select(const QVector<Node *> &nodes);
+	void select(const QVector<OakEngineNode *> &nodes);
 
 	QVector<NodeViewItem *> get_selected_items() const;
 
 	QPointF map_scene_pos_to_node_pos_in_context(const QPointF &pos) const;
 
-	NodeViewItem *get_item_from_map(Node *node) const
+	NodeViewItem *get_item_from_map(OakEngineNode *node) const
 	{
 		return item_map_.value(node);
 	}
@@ -69,19 +69,17 @@ public:
 					   QWidget *widget = nullptr) override;
 
 public:
-	// Not slots: signatures use the engine C++ type Node*, which must not be
-	// exposed to MOC (it would pull Node::staticMetaObject across the ABI
-	// boundary). They are invoked from lambdas / directly, never as connect()
-	// targets.
-	void add_child(Node *node);
+	// Not slots: they are invoked from EngineEventBridge lambdas / directly,
+	// never as connect() targets.
+	void add_child(OakEngineNode *node);
 
-	void set_child_position(Node *node, const QPointF &pos);
+	void set_child_position(OakEngineNode *node, const QPointF &pos);
 
-	void remove_child(Node *node);
+	void remove_child(OakEngineNode *node);
 
-	void child_input_connected(Node *output, const NodeInput &input);
+	void child_input_connected(OakEngineNode *output, const oak::Input &input);
 
-	bool child_input_disconnected(Node *output, const NodeInput &input);
+	bool child_input_disconnected(OakEngineNode *output, const oak::Input &input);
 
 signals:
 	void item_about_to_be_deleted(NodeViewItem *item);
@@ -93,12 +91,12 @@ protected:
 	virtual void mousePressEvent(QGraphicsSceneMouseEvent *event) override;
 
 private:
-	void add_node_internal(Node *node, NodeViewItem *item);
+	void add_node_internal(OakEngineNode *node, NodeViewItem *item);
 
-	void add_edge_internal(Node *output, const NodeInput &input,
+	void add_edge_internal(OakEngineNode *output, const oak::Input &input,
 						 NodeViewItem *from, NodeViewItem *to);
 
-	Node *context_;
+	oak::Node context_;
 
 	QString lbl_;
 
@@ -108,20 +106,19 @@ private:
 
 	int last_titlebar_height_;
 
-	QMap<Node *, NodeViewItem *> item_map_;
+	QMap<OakEngineNode *, NodeViewItem *> item_map_;
 
 	QVector<NodeViewEdge *> edges_;
 
 	EngineEventBridge *bridge_ = nullptr;
 
-	QHash<Node *, QVector<int64_t>> node_subs_;
+	QHash<OakEngineNode *, QVector<int64_t>> node_subs_;
 
 private:
-	// Ordinary member functions (NOT slots): signatures use Node*, which must
-	// not be exposed to MOC. Invoked from lambdas only.
-	void group_added_node(Node *node, Node *group);
+	// Ordinary member functions (NOT slots): invoked from lambdas only.
+	void group_added_node(OakEngineNode *node, OakEngineNode *group);
 
-	void group_removed_node(Node *node, Node *group);
+	void group_removed_node(OakEngineNode *node, OakEngineNode *group);
 };
 
 }

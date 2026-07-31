@@ -26,7 +26,9 @@
 #include <cstdint>
 
 #include "engineeventbridge.h"
+#include "common/nodevaluehandle.h"
 #include "oakengine/node.h"
+#include "oakutil/oaknode.h"
 #include "widget/slider/base/numericsliderbase.h"
 #include "widget/timetarget/timetarget.h"
 
@@ -42,7 +44,7 @@ public:
 class NodeParamViewWidgetBridge : public QObject, public TimeTargetObject {
 	Q_OBJECT
 public:
-	NodeParamViewWidgetBridge(NodeInput input, QObject *parent);
+	NodeParamViewWidgetBridge(const oak::Input &input, QObject *parent);
 	~NodeParamViewWidgetBridge() override;
 
 	const QVector<QWidget *> &widgets() const
@@ -56,13 +58,13 @@ public:
 signals:
 	void array_widget_double_clicked();
 
-	void widgets_recreated(const NodeInput &input);
+	void widgets_recreated(const oak::Input &input);
 
 	void request_edit_text_in_viewer();
 
 protected:
-	virtual void TimeTargetDisconnectEvent(ViewerOutput *v) override;
-	virtual void TimeTargetConnectEvent(ViewerOutput *v) override;
+	virtual void TimeTargetDisconnectEvent(OakEngineNode *v) override;
+	virtual void TimeTargetConnectEvent(OakEngineNode *v) override;
 
 private:
 	void create_widgets();
@@ -90,26 +92,26 @@ private:
 
 	Rational get_current_time_as_node_time() const;
 
-	const NodeInput &get_outer_input() const
+	const oak::Input &get_outer_input() const
 	{
 		return input_hierarchy_.first();
 	}
 
-	const NodeInput &get_inner_input() const
+	const oak::Input &get_inner_input() const
 	{
 		return input_hierarchy_.last();
 	}
 
 	QString get_command_name() const;
 
-	NodeValue::Type get_data_type() const
+	NodeValueType::Type get_data_type() const
 	{
-		return get_outer_input().get_data_type();
+		return static_cast<NodeValueType::Type>(get_outer_input().data_type());
 	}
 
 	void update_properties();
 
-	QVector<NodeInput> input_hierarchy_;
+	QVector<oak::Input> input_hierarchy_;
 
 	QVector<QWidget *> widgets_;
 

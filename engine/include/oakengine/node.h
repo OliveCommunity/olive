@@ -170,6 +170,75 @@ OAKENGINE_API int oakengine_node_factory_name_from_id(const char *type_id,
 OAKENGINE_API OakEngineNode *
 oakengine_node_factory_node_at(int index);
 
+/**
+ * @brief Number of category IDs assigned to this node
+ * (Node::category().size()). 0 for NULL.
+ */
+OAKENGINE_API int oakengine_node_category_count(const OakEngineNode *self);
+
+/**
+ * @brief The category ID (Node::CategoryID ordinal) at `index` in the
+ * node's category list (Node::category()). Returns -1 for NULL or an
+ * out-of-range index.
+ */
+OAKENGINE_API int oakengine_node_category_at(const OakEngineNode *self,
+											 int index);
+
+/**
+ * @brief The node's flags (Node::get_flags()), an OR-combination of
+ * Node::Flag values. 0 for NULL.
+ */
+OAKENGINE_API uint64_t oakengine_node_get_flags(const OakEngineNode *self);
+
+/**
+ * @brief The value of the Node::k_dont_show_in_create_menu flag.
+ */
+OAKENGINE_API uint64_t oakengine_node_flag_dont_show_in_create_menu(void);
+
+/**
+ * @brief The value of the Node::k_dont_show_in_param_view flag.
+ */
+OAKENGINE_API uint64_t oakengine_node_flag_dont_show_in_param_view(void);
+
+/**
+ * @brief The value of the Node::k_video_effect flag.
+ */
+OAKENGINE_API uint64_t oakengine_node_flag_video_effect(void);
+
+/**
+ * @brief The value of the Node::k_audio_effect flag.
+ */
+OAKENGINE_API uint64_t oakengine_node_flag_audio_effect(void);
+
+/**
+ * @brief Refresh the node's translated strings (Node::retranslate()).
+ * No-op for NULL.
+ */
+OAKENGINE_API void oakengine_node_retranslate(OakEngineNode *self);
+
+/**
+ * @brief The node's sub-category for secondary grouping
+ * (Node::sub_category()). buf/size convention.
+ */
+OAKENGINE_API int oakengine_node_get_sub_category(const OakEngineNode *self,
+												  char *buf, int buf_size);
+
+/**
+ * @brief The node's description (Node::description()). buf/size
+ * convention.
+ */
+OAKENGINE_API int oakengine_node_get_description(const OakEngineNode *self,
+												 char *buf, int buf_size);
+
+/**
+ * @brief Create a copy of the node (Node::copy()). Unlike
+ * oakengine_node_copy_in_graph(), the copy is standalone: the caller
+ * owns it and it is NOT added to any project or undo command.
+ * Returns NULL for NULL.
+ */
+OAKENGINE_API OakEngineNode *
+oakengine_node_create_copy(const OakEngineNode *self);
+
 /* ---- Metadata -------------------------------------------------------------- */
 
 /**
@@ -185,6 +254,13 @@ OAKENGINE_API int oakengine_node_get_type_id(const OakEngineNode *self,
  */
 OAKENGINE_API int oakengine_node_get_name(const OakEngineNode *self,
 										  char *buf, int buf_size);
+
+/**
+ * @brief The node's short display name (Node::short_name(), the virtual
+ * used by the node graph item). buf/size convention.
+ */
+OAKENGINE_API int oakengine_node_get_short_name(const OakEngineNode *self,
+												char *buf, int buf_size);
 
 /**
  * @brief The node's user label (Node::get_label()). buf/size convention.
@@ -265,6 +341,27 @@ OAKENGINE_API void *oakengine_node_set_color_label_command(
  * none). -1 on a NULL handle.
  */
 OAKENGINE_API int oakengine_node_get_color_label(const OakEngineNode *self);
+
+/**
+ * @brief The node's effective color-label index (Node::color()'s index:
+ * the override color when set, otherwise the category-based "CatColor<N>"
+ * config value). Feed into the app's ColorCoding::get_color().
+ */
+OAKENGINE_API int oakengine_node_get_effective_color_label(
+	const OakEngineNode *self);
+
+/**
+ * @brief The node's title-bar brush (Node::brush()), written into a
+ * caller-provided QBrush.
+ *
+ * QBrush is a Qt value type and crosses the ABI as an opaque pointer
+ * (same precedent as QPainter* in oakengine_playback_cache_draw()):
+ * `out_qbrush` must point to a live, constructed QBrush which receives
+ * the result via copy assignment. No-op for NULL arguments.
+ */
+OAKENGINE_API void oakengine_node_get_brush(const OakEngineNode *self,
+											double top, double bottom,
+											void *out_qbrush);
 
 /* ---- Input introspection ---------------------------------------------------- */
 
@@ -453,6 +550,22 @@ OAKENGINE_API int oakengine_project_remove_node(OakEngineProject *project,
  * The handle becomes invalid after the next event-loop iteration.
  */
 OAKENGINE_API void oakengine_node_delete_later(OakEngineNode *node);
+
+/**
+ * @brief Destroy an OWNED node immediately (C++ `delete`). NULL-safe
+ * no-op.
+ *
+ * ONLY valid for owned handles that were never added to a project and
+ * never referenced by an undo command -- i.e. the products of
+ * oakengine_node_factory_create_from_id(), oakengine_node_create_copy()
+ * and oakengine_clip_create_empty() while they are still orphaned. Once a
+ * node lives in a project graph its lifetime belongs to the project (and
+ * to any undo command referencing it); freeing such a node, or freeing
+ * the same owned handle twice, is a use-after-free. Unlike
+ * oakengine_node_delete_later() the destruction is synchronous and does
+ * not need an event loop.
+ */
+OAKENGINE_API void oakengine_node_free(OakEngineNode *node);
 
 /**
  * @brief Connect `output_node`'s output into `input_node`'s `input_id`
@@ -760,6 +873,13 @@ OAKENGINE_API int oakengine_node_input_get_flags(
 	const OakEngineNode *self, const char *input_id);
 
 /**
+ * @brief The input's data type (NodeValue::Type enum ordinal; -1 on NULL
+ * or unknown input).
+ */
+OAKENGINE_API int oakengine_node_input_get_data_type(
+	const OakEngineNode *self, const char *input_id);
+
+/**
  * @brief 1 if the input can accept a connection (connectable).
  */
 OAKENGINE_API int oakengine_node_input_is_connectable(
@@ -772,11 +892,18 @@ OAKENGINE_API int oakengine_node_input_is_keyframable(
 	const OakEngineNode *self, const char *input_id);
 
 /**
- * @brief 1 if keyframing is enabled for this input on any track
- * (keyframed_ex; pass -1 for all tracks).
+ * @brief 1 if the input is hidden (k_input_flag_hidden).
+ */
+OAKENGINE_API int oakengine_node_input_is_hidden(
+	const OakEngineNode *self, const char *input_id);
+
+/**
+ * @brief 1 if keyframing is enabled for this input
+ * (Node::is_input_keyframing()). `element` addresses the input's array
+ * element (-1 for non-array inputs).
  */
 OAKENGINE_API int oakengine_node_input_is_keyframed_ex(
-	const OakEngineNode *self, const char *input_id, int track);
+	const OakEngineNode *self, const char *input_id, int element);
 
 /**
  * @brief The node's label and name combined (buf/size).
@@ -803,6 +930,26 @@ OAKENGINE_API int oakengine_node_input_get_default_value(
  */
 OAKENGINE_API OakEngineProject *oakengine_node_get_project(
 	const OakEngineNode *self);
+
+/**
+ * @brief The node's parent project (Node::parent(); NULL on NULL input).
+ * Same value as oakengine_node_get_project(); provided for graph-parent
+ * semantics parity with the engine API.
+ */
+OAKENGINE_API OakEngineProject *oakengine_node_parent(
+	const OakEngineNode *self);
+
+/**
+ * @brief 1 if the node is an "item" (Node::is_item(), i.e. appears in
+ * the project tree / footage management).
+ */
+OAKENGINE_API int oakengine_node_is_item(const OakEngineNode *self);
+
+/**
+ * @brief The folder this item node belongs to (Node::folder(); NULL if
+ * the node is not an item or has no folder).
+ */
+OAKENGINE_API OakEngineNode *oakengine_node_folder(const OakEngineNode *self);
 
 /**
  * @brief The node connected to the input, or NULL (element -1 for
@@ -892,6 +1039,20 @@ OAKENGINE_API int oakengine_node_input_get_property_int(
 OAKENGINE_API int oakengine_node_input_get_property_rational(
 	const OakEngineNode *self, const char *input_id, const char *key,
 	int *num, int *den);
+
+/**
+ * @brief Read a numeric input property as the per-track component for
+ * `track` (the curve view's "offset" path).
+ *
+ * The property value (the input's declared type, e.g. a QVector2D for a
+ * vec2 input) is split into its keyframe tracks and the `track`-th
+ * component is returned in `out`. For single-track types `track` must be
+ * 0. Returns OAKENGINE_OK, OAKENGINE_E_NOT_FOUND when the property is
+ * missing, or OAKENGINE_E_INVALID for a non-numeric property / bad track.
+ */
+OAKENGINE_API int oakengine_node_input_get_property_track_number(
+	const OakEngineNode *self, const char *input_id, const char *key,
+	int track, double *out);
 
 /**
  * @brief The number of properties on the input.
@@ -1297,21 +1458,22 @@ OAKENGINE_API OakEngineKeyframe *oakengine_node_keyframe_handle_on_track(
 	int track, int index);
 
 /**
- * @brief Borrowed handle of the keyframe at the given time on a track,
- * or NULL.
+ * @brief Borrowed handle of the keyframe at the given rational time on a
+ * track, or NULL (Node::get_keyframe_at_time_on_track()).
  */
 OAKENGINE_API OakEngineKeyframe *oakengine_node_keyframe_handle_at_time(
 	const OakEngineNode *self, const char *input_id, int element,
-	int track, int64_t time_ts, int track_for_time);
+	int track, int64_t time_num, int64_t time_den);
 
 /**
- * @brief Fill an array with keyframe handles at a given time. Returns
+ * @brief Fill an array with the keyframe handles at a given rational time
+ * across all tracks of the input (Node::get_keyframes_at_time()). Returns
  * the number filled.
  */
 OAKENGINE_API int oakengine_node_keyframes_at_time(
 	const OakEngineNode *self, const char *input_id, int element,
-	int64_t time_ts, int track, OakEngineKeyframe **out_handles,
-	int max_handles);
+	int64_t time_num, int64_t time_den,
+	OakEngineKeyframe **out_handles, int max_handles);
 
 /**
  * @brief Enable or disable keyframing on an input for a given element
@@ -1390,6 +1552,20 @@ OAKENGINE_API int oakengine_keyframe_opposing_bezier_type(int type);
  */
 OAKENGINE_API int oakengine_keyframe_get_value(
 	const OakEngineKeyframe *self, oak_node_value *out);
+
+/**
+ * @brief Compute the combined node value to use when inserting
+ * `keyframe` onto `target_node` (the keyframe paste path).
+ *
+ * Takes the target node's split value at the keyframe's time, replaces
+ * the keyframe's own track with the keyframe's value, and combines the
+ * per-track components into a single normal value (mirrors the old
+ * app-side KeyframeToOakNodeValue helper). Returns OAKENGINE_OK on
+ * success.
+ */
+OAKENGINE_API int oakengine_keyframe_compute_paste_value(
+	OakEngineNode *target_node, OakEngineKeyframe *keyframe,
+	oak_node_value *out);
 
 /**
  * @brief 1 if there is a sibling keyframe at the given time on a different
@@ -1614,6 +1790,290 @@ OAKENGINE_API int oakengine_node_value_split_to_tracks(int c_type,
  */
 OAKENGINE_API int oakengine_node_value_combine_tracks(int c_type,
 	const oak_node_value *tracks, int track_count, oak_node_value *normal_out);
+
+/* ---- Node type queries (dynamic_cast replacements) ------------------------- */
+
+/**
+ * @brief 1 if the node is a ClipBlock (or subclass thereof).
+ */
+OAKENGINE_API int oakengine_node_is_clip(const OakEngineNode *self);
+
+/**
+ * @brief 1 if the node is a Track.
+ */
+OAKENGINE_API int oakengine_node_is_track(const OakEngineNode *self);
+
+/**
+ * @brief 1 if the node is a ViewerOutput (or subclass: Sequence, Footage).
+ */
+OAKENGINE_API int oakengine_node_is_viewer_output(const OakEngineNode *self);
+
+/**
+ * @brief 1 if the node is a Footage.
+ */
+OAKENGINE_API int oakengine_node_is_footage(const OakEngineNode *self);
+
+/**
+ * @brief 1 if the node is a Sequence.
+ */
+OAKENGINE_API int oakengine_node_is_sequence(const OakEngineNode *self);
+
+/**
+ * @brief 1 if the node is a Folder.
+ */
+OAKENGINE_API int oakengine_node_is_folder(const OakEngineNode *self);
+
+/* ---- Clip / Track specific ------------------------------------------------- */
+
+/**
+ * @brief The track that owns this clip block (ClipBlock::track()).
+ * Returns NULL when the node is not a clip or has no parent track.
+ */
+OAKENGINE_API OakEngineNode *oakengine_clip_get_track(
+	const OakEngineNode *clip);
+
+/**
+ * @brief The track type (Track::Type enum: 0=video, 1=audio, 2=subtitle;
+ * -1 for NULL or non-track node).
+ */
+OAKENGINE_API int oakengine_track_get_type(const OakEngineNode *track);
+
+/**
+ * @brief The track index within its sequence (-1 for NULL or non-track).
+ */
+OAKENGINE_API int oakengine_track_get_index(const OakEngineNode *track);
+
+/**
+ * @brief The sequence that owns this track (Track::sequence()). Returns
+ * NULL when the node is not a track or the track has no parent sequence.
+ */
+OAKENGINE_API OakEngineNode *oakengine_track_get_sequence(
+	const OakEngineNode *track);
+
+/**
+ * @brief The block's length as rational seconds (out - in).
+ * Returns OAKENGINE_OK or OAKENGINE_E_INVALID.
+ */
+OAKENGINE_API int oakengine_block_get_length_rational(
+	const OakEngineNode *block, int *num, int *den);
+
+/**
+ * @brief The block's in-point as rational seconds.
+ */
+OAKENGINE_API int oakengine_block_get_in_rational(
+	const OakEngineNode *block, int *num, int *den);
+
+/**
+ * @brief The block's out-point as rational seconds.
+ */
+OAKENGINE_API int oakengine_block_get_out_rational(
+	const OakEngineNode *block, int *num, int *den);
+
+/* ---- ViewerOutput specific ------------------------------------------------- */
+
+/**
+ * @brief The node connected to the viewer's texture input
+ * (ViewerOutput::get_connected_texture_output()). NULL when none.
+ */
+OAKENGINE_API OakEngineNode *oakengine_viewer_output_get_connected_texture(
+	const OakEngineNode *self);
+
+/* ---- Gizmo access ---------------------------------------------------------- */
+
+/**
+ * @brief 1 if the node has any gizmos (Node::has_gizmos()).
+ */
+OAKENGINE_API int oakengine_node_has_gizmos(const OakEngineNode *self);
+
+/**
+ * @brief Number of gizmos on the node (Node::get_gizmos().size()).
+ */
+OAKENGINE_API int oakengine_node_gizmo_count(const OakEngineNode *self);
+
+/**
+ * @brief Borrowed opaque gizmo handle at `index`, or NULL when out of
+ * range. The handle is a NodeGizmo* internally; use gizmo.h APIs.
+ */
+OAKENGINE_API void *oakengine_node_gizmo_at(const OakEngineNode *self,
+											 int index);
+
+/**
+ * @brief Recalculate gizmo positions for the given time
+ * (Node::update_gizmo_positions()). `node_value_row` is an opaque
+ * pointer to the engine's NodeValueRow (the traverse result); pass NULL
+ * for an empty row. `time_num`/`time_den` are rational seconds.
+ * `video_width`/`video_height` describe the resolution context.
+ * No-op for NULL or nodes without gizmos.
+ */
+OAKENGINE_API int oakengine_node_update_gizmo_positions(
+	OakEngineNode *self, void *node_value_row,
+	int video_width, int video_height,
+	int64_t time_num, int64_t time_den);
+
+/* ---- Graph topology -------------------------------------------------------- */
+
+/**
+ * @brief 1 if this node directly (or recursively when `recursive` != 0)
+ * receives input from `other` (Node::inputs_from()).
+ */
+OAKENGINE_API int oakengine_node_inputs_from(const OakEngineNode *self,
+											  const OakEngineNode *other,
+											  int recursive);
+
+/**
+ * @brief Number of output connections from this node
+ * (Node::output_connections().size()).
+ */
+OAKENGINE_API int oakengine_node_output_connection_count(
+	const OakEngineNode *self);
+
+/**
+ * @brief Read the output connection at `index`: the receiving node into
+ * `*input_node`, the input id into `input_id_buf` (buf/size), and the
+ * array element into `*element`. Returns OAKENGINE_OK or
+ * OAKENGINE_E_NOT_FOUND for out-of-range.
+ */
+OAKENGINE_API int oakengine_node_output_connection_at(
+	const OakEngineNode *self, int index, OakEngineNode **input_node,
+	char *input_id_buf, int input_id_size, int *element);
+
+/**
+ * @brief Like oakengine_node_output_connection_at(), additionally reporting
+ * whether the receiving input is hidden (`*hidden` = 1 when
+ * NodeInput::is_hidden()). `hidden` may be NULL.
+ */
+OAKENGINE_API int oakengine_node_output_connection_at_ex(
+	const OakEngineNode *self, int index, OakEngineNode **input_node,
+	char *input_id_buf, int input_id_size, int *element, int *hidden);
+
+/**
+ * @brief Total number of input connections on this node
+ * (Node::input_connections().size()), i.e. a flat enumeration over all
+ * connected inputs regardless of input id/element.
+ */
+OAKENGINE_API int oakengine_node_input_connection_count_all(
+	const OakEngineNode *self);
+
+/**
+ * @brief Read the input connection at flat `index` (Node::input_connections()
+ * iteration order): the connected input lives on `*input_node` with id
+ * `input_id_buf` (buf/size) and `*element`; `*source_node` receives the
+ * output node feeding it; `*hidden` reports NodeInput::is_hidden() (may be
+ * NULL). Returns OAKENGINE_OK or OAKENGINE_E_NOT_FOUND for out-of-range.
+ */
+OAKENGINE_API int oakengine_node_input_connection_at_all(
+	const OakEngineNode *self, int index, OakEngineNode **input_node,
+	char *input_id_buf, int input_id_size, int *element,
+	OakEngineNode **source_node, int *hidden);
+
+/**
+ * @brief Number of connections feeding a specific input
+ * (Node::input_connections() filtered by input_id/element).
+ */
+OAKENGINE_API int oakengine_node_input_connection_count(
+	const OakEngineNode *self, const char *input_id, int element);
+
+/**
+ * @brief The output node feeding `input_id`/`element` at connection
+ * `index`. Returns NULL when out of range or not connected.
+ */
+OAKENGINE_API OakEngineNode *oakengine_node_input_connection_at(
+	const OakEngineNode *self, const char *input_id, int element,
+	int index);
+
+/* ---- Node data (project tree columns) ------------------------------------- */
+
+/**
+ * @brief Read a node's display data (Node::data(DataType)) as a POD.
+ *
+ * `role` selects the data kind: 0=icon, 1=duration, 2=created_time,
+ * 3=modified_time, 4=frequency_rate, 5=tooltip. On return `*out_type`
+ * describes the variant: 0=invalid (no data), 1=string (written to
+ * `out_str` using buf/size), 2=int64 (written to `*out_int`). Any of the
+ * out pointers may be NULL. Returns OAKENGINE_OK or OAKENGINE_E_INVALID.
+ */
+OAKENGINE_API int oakengine_node_get_data(const OakEngineNode *self, int role,
+										  int *out_type, int64_t *out_int,
+										  char *out_str, int out_str_size);
+
+/**
+ * @brief Number of exclusive dependencies (Node::get_exclusive_dependencies()
+ * size): nodes that should be removed together with this node.
+ */
+OAKENGINE_API int oakengine_node_get_exclusive_dependency_count(
+	const OakEngineNode *self);
+
+/**
+ * @brief Borrowed handle of the exclusive dependency at `index`, or NULL
+ * when out of range.
+ */
+OAKENGINE_API OakEngineNode *oakengine_node_get_exclusive_dependency_at(
+	const OakEngineNode *self, int index);
+
+/* ---- Plugin messages ------------------------------------------------------- */
+
+/**
+ * @brief 1 if the node has an OFX plugin instance attached
+ * (Node::getPluginInstance() != nullptr), 0 otherwise.
+ */
+OAKENGINE_API int oakengine_node_has_plugin(const OakEngineNode *self);
+
+/**
+ * @brief Number of persistent messages on the node's plugin instance
+ * (0 when the node has no plugin or no messages).
+ */
+OAKENGINE_API int oakengine_node_plugin_message_count(
+	const OakEngineNode *self);
+
+/**
+ * @brief Read the plugin message at `index`: type into `*type`
+ * (0=error, 1=warning, 2=message) and text into `msg_buf` (buf/size).
+ * Returns OAKENGINE_OK or OAKENGINE_E_NOT_FOUND.
+ */
+OAKENGINE_API int oakengine_node_plugin_message_at(
+	const OakEngineNode *self, int index, int *type, char *msg_buf,
+	int msg_buf_size);
+
+/**
+ * @brief Clear all persistent messages on the node's plugin instance.
+ */
+OAKENGINE_API int oakengine_node_plugin_clear_messages(
+	OakEngineNode *self);
+
+/* ---- Node cache objects -----------------------------------------------------
+ *
+ * Borrowed handles of the caches every node owns (engine/node/node.h:
+ * Node::thumbnail_cache() / waveform_cache() / video_frame_cache()). The
+ * handle types are defined in oakengine/viewer.h (forward-declared here
+ * like project.h does for OakEnginePlaybackCache); the application only
+ * passes them on to the cache accessor families there. NULL on a NULL
+ * handle. Handles become invalid with their owning node.
+ */
+
+typedef struct OakEngineFrameCache OakEngineFrameCache;
+typedef struct OakEngineThumbnailCache OakEngineThumbnailCache;
+typedef struct OakEngineWaveformCache OakEngineWaveformCache;
+
+/**
+ * @brief The node's thumbnail cache (Node::thumbnail_cache(); an
+ * olive::ThumbnailCache, a FrameHashCache subclass).
+ */
+OAKENGINE_API OakEngineThumbnailCache *
+oakengine_node_get_thumbnail_cache(const OakEngineNode *self);
+
+/**
+ * @brief The node's audio waveform cache (Node::waveform_cache(); an
+ * olive::AudioWaveformCache), for the oakengine_waveform_cache_* family.
+ */
+OAKENGINE_API OakEngineWaveformCache *
+oakengine_node_get_waveform_cache(const OakEngineNode *self);
+
+/**
+ * @brief The node's video frame cache (Node::video_frame_cache(); an
+ * olive::FrameHashCache).
+ */
+OAKENGINE_API OakEngineFrameCache *
+oakengine_node_get_video_frame_cache(const OakEngineNode *self);
 
 #ifdef __cplusplus
 }

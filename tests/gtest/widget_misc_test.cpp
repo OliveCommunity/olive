@@ -19,7 +19,7 @@
 #include "node/math/math/math.h"
 #include "node/project.h"
 #include "node/traverser.h"
-#include "ui/colorcoding.h"
+#include "common/colorcodingapp.h"
 #include "ui/icons/icons.h"
 #include "widget/bezier/bezierwidget.h"
 #include "widget/clickablelabel/clickablelabel.h"
@@ -208,14 +208,14 @@ TEST(WidgetMenu, ConformItemStoresIdAndKeyDefault)
 TEST(WidgetColorLabelMenu, ItemsCarryIndexAndEmitSelection)
 {
 	olive::ColorLabelMenu menu;
-	const int color_count = int(olive::ColorCoding::standard_colors().size());
+	const int color_count = int(olive::AppColorCoding::standard_colors().size());
 	ASSERT_GE(color_count, 3);
 	ASSERT_EQ(menu.actions().size(), color_count);
 
 	for (int i = 0; i < color_count; i++) {
 		QAction *a = menu.actions().at(i);
 		EXPECT_EQ(a->data().toInt(), i);
-		EXPECT_EQ(a->text(), olive::ColorCoding::get_color_name(i));
+		EXPECT_EQ(a->text(), olive::AppColorCoding::get_color_name(i));
 		EXPECT_EQ(a->property("id").toString(),
 				  QStringLiteral("colorlabel%1").arg(i));
 	}
@@ -864,7 +864,8 @@ TEST(WidgetNodeValueTree, PopulatesRowsAndSetsValueHint)
 							 olive::NodeInput(consumer, olive::MathNode::k_param_a_in));
 
 	olive::NodeValueTree tree;
-	tree.set_node(olive::NodeInput(consumer, olive::MathNode::k_param_a_in),
+	tree.set_node(oak::Input(reinterpret_cast<OakEngineNode *>(consumer),
+							 olive::MathNode::k_param_a_in),
 				 olive::Rational(0));
 
 	// One row per pushed value

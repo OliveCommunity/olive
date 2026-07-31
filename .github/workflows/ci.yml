@@ -53,30 +53,33 @@ jobs:
           echo "$(brew --prefix qt@6)/bin" >> "$GITHUB_PATH"
           echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@6)" >> "$GITHUB_ENV"
 
-      - name: Cache OpenTimelineIO (macOS)
-        if: runner.os == 'macOS'
+      # ------------------------------------------------------------------
+      # OpenTimelineIO (required dependency, built from source; cached)
+      # ------------------------------------------------------------------
+      - name: Cache OpenTimelineIO (Unix)
+        if: runner.os != 'Windows'
         id: otio-cache
         uses: actions/cache@v4
         with:
           path: otio-install
           key: otio-0.16.0-${{ runner.os }}-v1
 
-      - name: Set OTIO location (macOS)
-        if: runner.os == 'macOS'
+      - name: Set OTIO location (Unix)
+        if: runner.os != 'Windows'
         run: echo "OTIO_LOCATION=${PWD}/otio-install" >> "$GITHUB_ENV"
 
-      - name: Build OpenTimelineIO (macOS)
-        if: runner.os == 'macOS' && steps.otio-cache.outputs.cache-hit != 'true'
+      - name: Build OpenTimelineIO (Unix)
+        if: runner.os != 'Windows' && steps.otio-cache.outputs.cache-hit != 'true'
         run: |
           git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
           cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
             -DOTIO_SHARED_LIBS=ON \
             -DOTIO_PYTHON_BINDINGS=OFF \
+            -DOTIO_FIND_IMATH=ON \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
           cmake --build OpenTimelineIO/build
           cmake --install OpenTimelineIO/build
-          echo "OTIO_LOCATION=${PWD}/otio-install" >> "$GITHUB_ENV"
 
       # ------------------------------------------------------------------
       # Windows dependencies (MSYS2)
@@ -107,6 +110,40 @@ jobs:
             mingw-w64-ucrt-x86_64-ccache
 
       # ------------------------------------------------------------------
+      # OpenTimelineIO (required dependency, built from source; cached).
+      # Must come after Setup MSYS2 (uses the msys2 shell).
+      # ------------------------------------------------------------------
+      - name: Cache OpenTimelineIO (Windows)
+        if: runner.os == 'Windows'
+        id: otio-cache-win
+        uses: actions/cache@v4
+        with:
+          path: otio-install
+          key: otio-0.16.0-${{ runner.os }}-v1
+
+      - name: Set OTIO location (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          echo "OTIO_LOCATION=${PWD}/otio-install" >> "$GITHUB_ENV"
+          # No rpath on Windows: test executables need the OTIO DLLs on PATH
+          echo "$(cygpath -w "${PWD}/otio-install/bin")" >> "$GITHUB_PATH"
+
+      - name: Build OpenTimelineIO (Windows)
+        if: runner.os == 'Windows' && steps.otio-cache-win.outputs.cache-hit != 'true'
+        shell: msys2 {0}
+        run: |
+          git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
+          cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
+            -DOTIO_SHARED_LIBS=ON \
+            -DOTIO_PYTHON_BINDINGS=OFF \
+            -DOTIO_FIND_IMATH=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
+          cmake --build OpenTimelineIO/build
+          cmake --install OpenTimelineIO/build
+
+      # ------------------------------------------------------------------
       # Compile cache (ccache) — restored before configure so the launcher
       # flags below pick it up on all three platforms
       # ------------------------------------------------------------------
@@ -130,6 +167,7 @@ jobs:
             -DBUILD_QT6=ON \
             -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON \
             -DOCIO_LOCATION=/usr \
+            -DOTIO_LOCATION=${OTIO_LOCATION} \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
@@ -153,6 +191,7 @@ jobs:
           cmake -S . -B build -G Ninja \
             -DBUILD_TESTS=ON \
             -DBUILD_QT6=ON \
+            -DOTIO_LOCATION=${OTIO_LOCATION} \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}

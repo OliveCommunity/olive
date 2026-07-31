@@ -22,6 +22,8 @@
 #include "node/project/folder/folder.h"
 #include "render/diskmanager.h"
 #include "render/rendermanager.h"
+#include "oakengine/app.h"
+#include "oakengine/undo.h"
 #include "task/task.h"
 #include "undo/undostack.h"
 #include "widget/colorbutton/colorbutton.h"
@@ -98,6 +100,24 @@ private:
 const int k_item_type_role = Qt::UserRole;
 const int k_item_input_reference_role = Qt::UserRole + 1;
 
+// Helper: wrap an engine Node* as oak::Node for the C ABI widget interface
+inline oak::Node to_oak(Node *n)
+{
+	return oak::Node(reinterpret_cast<OakEngineNode *>(n));
+}
+
+// Helper: build an oak::Input value from an engine Node* + input id
+inline oak::Input to_oak_input(Node *n, const QString &input, int element = -1)
+{
+	return oak::Input(reinterpret_cast<OakEngineNode *>(n), input, element);
+}
+
+// The process-wide undo stack previously reached via Core::undo_stack()
+inline UndoStack *app_undo_stack()
+{
+	return static_cast<UndoStack *>(oakengine_app_undo_stack());
+}
+
 } // namespace
 
 class WidgetPanelsTest : public ::testing::Test {
@@ -128,18 +148,18 @@ TEST_F(WidgetPanelsTest, NodeTableSelectNodesCreatesTopLevelItems)
 	NodeTableView view;
 	EXPECT_EQ(view.topLevelItemCount(), 0);
 
-	view.select_nodes({ solid });
+	view.select_nodes({ to_oak(solid) });
 	ASSERT_EQ(view.topLevelItemCount(), 1);
 	EXPECT_EQ(view.topLevelItem(0)->text(0), solid->get_label_and_name());
 
 	auto *math = add_node<MathNode>();
-	view.select_nodes({ math });
+	view.select_nodes({ to_oak(math) });
 	EXPECT_EQ(view.topLevelItemCount(), 2);
 
-	view.deselect_nodes({ solid });
+	view.deselect_nodes({ to_oak(solid) });
 	EXPECT_EQ(view.topLevelItemCount(), 1);
 
-	view.deselect_nodes({ math });
+	view.deselect_nodes({ to_oak(math) });
 	EXPECT_EQ(view.topLevelItemCount(), 0);
 }
 
@@ -149,7 +169,7 @@ TEST_F(WidgetPanelsTest, NodeTableSetTimePopulatesInputRows)
 	solid->retranslate();
 
 	NodeTableView view;
-	view.select_nodes({ solid });
+	view.select_nodes({ to_oak(solid) });
 
 	QTreeWidgetItem *top = view.topLevelItem(0);
 	ASSERT_NE(top, nullptr);
@@ -191,7 +211,7 @@ TEST_F(WidgetPanelsTest, NodeTreeSetNodesBuildsInputHierarchy)
 	math->retranslate();
 
 	NodeTreeView view;
-	view.set_nodes({ math });
+	view.set_nodes({ to_oak(math) });
 
 	ASSERT_EQ(view.topLevelItemCount(), 1);
 	QTreeWidgetItem *node_item = view.topLevelItem(0);
@@ -205,11 +225,11 @@ TEST_F(WidgetPanelsTest, NodeTreeSetNodesBuildsInputHierarchy)
 	for (int i = 0; i < expected_inputs.size(); i++) {
 		QTreeWidgetItem *input_item = node_item->child(i);
 		EXPECT_EQ(input_item->data(0, k_item_type_role).toInt(), 1); // kItemTypeInput
-		const NodeKeyframeTrackReference ref =
+		const oak::KeyframeTrackRef ref =
 			input_item->data(0, k_item_input_reference_role)
-				.value<NodeKeyframeTrackReference>();
-		EXPECT_EQ(ref.input().node(), math);
-		EXPECT_EQ(ref.input().input(), expected_inputs.at(i));
+				.value<oak::KeyframeTrackRef>();
+		EXPECT_EQ(ref.input().node_handle(), reinterpret_cast<OakEngineNode *>(math));
+		EXPECT_EQ(ref.input().input_id(), expected_inputs.at(i));
 	}
 }
 
@@ -219,7 +239,7 @@ TEST_F(WidgetPanelsTest, NodeTreeOnlyShowKeyframableFiltersInputs)
 
 	NodeTreeView view;
 	view.set_only_show_keyframable(true);
-	view.set_nodes({ math });
+	view.set_nodes({ to_oak(math) });
 
 	// The method combo is flagged not-keyframable; enabled and the two
 	// float params remain
@@ -229,13 +249,13 @@ TEST_F(WidgetPanelsTest, NodeTreeOnlyShowKeyframableFiltersInputs)
 	// Of a bare viewer's inputs only "enabled" is keyframable, so it is the
 	// sole row left standing
 	auto *viewer = add_node<ViewerOutput>();
-	view.set_nodes({ viewer });
+	view.set_nodes({ to_oak(viewer) });
 	ASSERT_EQ(view.topLevelItemCount(), 1);
 	EXPECT_EQ(view.topLevelItem(0)->childCount(), 1);
 
 	// Without the filter its buffer inputs show up as well
 	view.set_only_show_keyframable(false);
-	view.set_nodes({ viewer });
+	view.set_nodes({ to_oak(viewer) });
 	ASSERT_EQ(view.topLevelItemCount(), 1);
 	EXPECT_EQ(view.topLevelItem(0)->childCount(), 3);
 }
@@ -246,7 +266,7 @@ TEST_F(WidgetPanelsTest, NodeTreeCheckboxesToggleEnableStateAndEmit)
 
 	NodeTreeView view;
 	view.set_check_boxes_enabled(true);
-	view.set_nodes({ math });
+	view.set_nodes({ to_oak(math) });
 
 	Node *node_signal_node = nullptr;
 	bool node_signal_enabled = true;
@@ -259,12 +279,12 @@ TEST_F(WidgetPanelsTest, NodeTreeCheckboxesToggleEnableStateAndEmit)
 						 ++node_emissions;
 					 });
 
-	NodeKeyframeTrackReference input_signal_ref;
+	oak::KeyframeTrackRef input_signal_ref;
 	bool input_signal_enabled = true;
 	int input_emissions = 0;
 	QObject::connect(&view, &NodeTreeView::input_enable_changed,
 					 [&input_signal_ref, &input_signal_enabled,
-					  &input_emissions](const NodeKeyframeTrackReference &ref,
+					  &input_emissions](const oak::KeyframeTrackRef &ref,
 										bool e) {
 						 input_signal_ref = ref;
 						 input_signal_enabled = e;
@@ -280,20 +300,20 @@ TEST_F(WidgetPanelsTest, NodeTreeCheckboxesToggleEnableStateAndEmit)
 	EXPECT_EQ(node_emissions, 1);
 	EXPECT_EQ(node_signal_node, math);
 	EXPECT_FALSE(node_signal_enabled);
-	EXPECT_FALSE(view.is_node_enabled(math));
+	EXPECT_FALSE(view.is_node_enabled(to_oak(math)));
 
 	// Re-checking restores it
 	node_item->setCheckState(0, Qt::Checked);
 	EXPECT_EQ(node_emissions, 2);
 	EXPECT_TRUE(node_signal_enabled);
-	EXPECT_TRUE(view.is_node_enabled(math));
+	EXPECT_TRUE(view.is_node_enabled(to_oak(math)));
 
 	// Same behavior on input rows
 	QTreeWidgetItem *input_item = node_item->child(0);
 	ASSERT_NE(input_item, nullptr);
 	input_item->setCheckState(0, Qt::Unchecked);
 	EXPECT_EQ(input_emissions, 1);
-	EXPECT_EQ(input_signal_ref.input().input(), Node::k_enabled_input);
+	EXPECT_EQ(input_signal_ref.input().input_id(), Node::k_enabled_input);
 	EXPECT_FALSE(input_signal_enabled);
 	EXPECT_FALSE(view.is_input_enabled(input_signal_ref));
 }
@@ -305,7 +325,7 @@ TEST_F(WidgetPanelsTest, NodeTreeKeyframeTracksBecomeRows)
 
 	NodeTreeView view;
 	view.set_show_keyframe_tracks_as_rows(true);
-	view.set_nodes({ solid });
+	view.set_nodes({ to_oak(solid) });
 
 	QTreeWidgetItem *node_item = view.topLevelItem(0);
 	ASSERT_NE(node_item, nullptr);
@@ -319,17 +339,17 @@ TEST_F(WidgetPanelsTest, NodeTreeKeyframeTracksBecomeRows)
 									  QStringLiteral("B"), QStringLiteral("A") };
 	for (int i = 0; i < 4; i++) {
 		EXPECT_EQ(color_item->child(i)->text(0), track_names.at(i));
-		const NodeKeyframeTrackReference ref =
+		const oak::KeyframeTrackRef ref =
 			color_item->child(i)
 				->data(0, k_item_input_reference_role)
-				.value<NodeKeyframeTrackReference>();
+				.value<oak::KeyframeTrackRef>();
 		EXPECT_EQ(ref.track(), i);
 	}
 
 	// A single-track float input stays a single row
 	auto *math = add_node<MathNode>();
 	math->retranslate();
-	view.set_nodes({ math });
+	view.set_nodes({ to_oak(math) });
 	QTreeWidgetItem *param_item =
 		view.topLevelItem(0)->child(2); // after enabled and the method combo
 	ASSERT_NE(param_item, nullptr);
@@ -342,7 +362,9 @@ TEST_F(WidgetPanelsTest, BridgeCreatesSliderForFloatInput)
 	auto *math = add_node<MathNode>();
 
 	QWidget parent;
-	NodeParamViewWidgetBridge bridge(NodeInput(math, MathNode::k_param_a_in), &parent);
+	NodeParamViewWidgetBridge bridge(
+		to_oak_input(math, MathNode::k_param_a_in, -1),
+		&parent);
 
 	ASSERT_EQ(bridge.widgets().size(), 1);
 	EXPECT_NE(qobject_cast<FloatSlider *>(bridge.widgets().first()), nullptr);
@@ -353,8 +375,9 @@ TEST_F(WidgetPanelsTest, BridgeCreatesColorButtonForColorInput)
 	auto *solid = add_node<SolidGenerator>();
 
 	QWidget parent;
-	NodeParamViewWidgetBridge bridge(NodeInput(solid, SolidGenerator::k_color_input),
-									 &parent);
+	NodeParamViewWidgetBridge bridge(
+		to_oak_input(solid, SolidGenerator::k_color_input, -1),
+		&parent);
 
 	ASSERT_EQ(bridge.widgets().size(), 1);
 	EXPECT_NE(qobject_cast<ColorButton *>(bridge.widgets().first()), nullptr);
@@ -366,7 +389,9 @@ TEST_F(WidgetPanelsTest, BridgeCreatesComboBoxForComboInput)
 	math->retranslate();
 
 	QWidget parent;
-	NodeParamViewWidgetBridge bridge(NodeInput(math, MathNode::k_method_in), &parent);
+	NodeParamViewWidgetBridge bridge(
+		to_oak_input(math, MathNode::k_method_in, -1),
+		&parent);
 
 	ASSERT_EQ(bridge.widgets().size(), 1);
 	auto *combo = qobject_cast<QComboBox *>(bridge.widgets().first());
@@ -380,8 +405,9 @@ TEST_F(WidgetPanelsTest, BridgeCreatesCheckBoxForBooleanInput)
 	auto *clip = add_node<ClipBlock>();
 
 	QWidget parent;
-	NodeParamViewWidgetBridge bridge(NodeInput(clip, ClipBlock::k_reverse_input),
-									 &parent);
+	NodeParamViewWidgetBridge bridge(
+		to_oak_input(clip, ClipBlock::k_reverse_input, -1),
+		&parent);
 
 	ASSERT_EQ(bridge.widgets().size(), 1);
 	EXPECT_NE(qobject_cast<QCheckBox *>(bridge.widgets().first()), nullptr);
@@ -393,14 +419,16 @@ TEST_F(WidgetPanelsTest, BridgeUpdatesWidgetWhenNodeValueChanges)
 	auto *viewer = add_node<ViewerOutput>();
 
 	QWidget parent;
-	NodeParamViewWidgetBridge bridge(NodeInput(math, MathNode::k_param_a_in), &parent);
+	NodeParamViewWidgetBridge bridge(
+		to_oak_input(math, MathNode::k_param_a_in, -1),
+		&parent);
 	auto *slider = qobject_cast<FloatSlider *>(bridge.widgets().first());
 	ASSERT_NE(slider, nullptr);
 	EXPECT_DOUBLE_EQ(slider->get_value(), 0.0);
 
 	// The bridge only refreshes widgets for value changes at the playhead
 	// of a connected time target
-	bridge.set_time_target(viewer);
+	bridge.set_time_target(reinterpret_cast<OakEngineNode *>(viewer));
 
 	math->set_standard_value(MathNode::k_param_a_in, 2.5);
 	EXPECT_DOUBLE_EQ(slider->get_value(), 2.5);
@@ -413,7 +441,9 @@ TEST_F(WidgetPanelsTest, BridgePushesUndoCommandWhenWidgetChanges)
 	ASSERT_EQ(math->get_standard_value(MathNode::k_method_in).toInt(), 0);
 
 	QWidget parent;
-	NodeParamViewWidgetBridge bridge(NodeInput(math, MathNode::k_method_in), &parent);
+	NodeParamViewWidgetBridge bridge(
+		to_oak_input(math, MathNode::k_method_in, -1),
+		&parent);
 	auto *combo = qobject_cast<QComboBox *>(bridge.widgets().first());
 	ASSERT_NE(combo, nullptr);
 	ASSERT_GT(combo->count(), 1);
@@ -421,9 +451,9 @@ TEST_F(WidgetPanelsTest, BridgePushesUndoCommandWhenWidgetChanges)
 	combo->setCurrentIndex(1);
 	EXPECT_EQ(math->get_standard_value(MathNode::k_method_in).toInt(), 1);
 
-	Core::instance()->undo_stack()->undo();
+	app_undo_stack()->undo();
 	EXPECT_EQ(math->get_standard_value(MathNode::k_method_in).toInt(), 0);
-	Core::instance()->undo_stack()->clear();
+	app_undo_stack()->clear();
 }
 
 TEST(TaskView, TaskLifecycleUpdatesItems)
@@ -481,37 +511,41 @@ TEST(TaskView, TaskLifecycleUpdatesItems)
 TEST(HistoryWidget, ReflectsAndDrivesUndoStack)
 {
 	ensure_app_singletons();
-	UndoStack *stack = Core::instance()->undo_stack();
+	UndoStack *stack = app_undo_stack();
 	stack->clear();
 
 	HistoryWidget widget;
-	EXPECT_EQ(widget.model(), stack);
+	// The app-side HistoryModel mirrors the engine undo stack over the C
+	// ABI; it is NOT the engine UndoStack itself. The engine stack keeps a
+	// "New/Open Project" sentinel command after clear(), which is row 0.
+	QAbstractItemModel *model = widget.model();
+	ASSERT_NE(model, nullptr);
+	EXPECT_EQ(model->rowCount(), 1);
 
 	int counter = 0;
 	stack->push(new IncrementCommand(&counter), QStringLiteral("First"));
 	stack->push(new IncrementCommand(&counter), QStringLiteral("Second"));
 	EXPECT_EQ(counter, 2);
-	EXPECT_EQ(stack->rowCount(), 3);
+	EXPECT_EQ(model->rowCount(), 3);
 
-	// Row 0 is the "New/Open Project" sentinel the stack starts with, so
 	// "First" lives at row 1 and "Second" at row 2. Moving the current row
 	// jumps the stack to row+1 applied commands (this is how clicking a
 	// history row works).
-	widget.selectionModel()->setCurrentIndex(stack->index(1, 0),
+	widget.selectionModel()->setCurrentIndex(model->index(1, 0),
 											 QItemSelectionModel::ClearAndSelect |
 												 QItemSelectionModel::Rows);
 	EXPECT_EQ(counter, 1);
 	EXPECT_TRUE(stack->can_redo());
 
 	// Moving to the second entry redoes everything again
-	widget.selectionModel()->setCurrentIndex(stack->index(2, 0),
+	widget.selectionModel()->setCurrentIndex(model->index(2, 0),
 											 QItemSelectionModel::ClearAndSelect |
 												 QItemSelectionModel::Rows);
 	EXPECT_EQ(counter, 2);
 	EXPECT_FALSE(stack->can_redo());
 
 	// Moving back to the sentinel row undoes both commands
-	widget.selectionModel()->setCurrentIndex(stack->index(0, 0),
+	widget.selectionModel()->setCurrentIndex(model->index(0, 0),
 											 QItemSelectionModel::ClearAndSelect |
 												 QItemSelectionModel::Rows);
 	EXPECT_EQ(counter, 0);
@@ -523,7 +557,7 @@ TEST(HistoryWidget, ReflectsAndDrivesUndoStack)
 TEST(TimelineSelections, ShiftTimeMovesAllRanges)
 {
 	TimelineWidgetSelections sel;
-	const Track::Reference video0(Track::k_video, 0);
+	const TrackReference video0(TrackReference::k_video, 0);
 	sel.insert(video0,
 			   TimeRangeList({ TimeRange(Rational(0), Rational(10)) }));
 
@@ -537,26 +571,26 @@ TEST(TimelineSelections, ShiftTimeMovesAllRanges)
 TEST(TimelineSelections, ShiftTracksReindexesMatchingTypeOnly)
 {
 	TimelineWidgetSelections sel;
-	sel.insert(Track::Reference(Track::k_video, 0),
+	sel.insert(TrackReference(TrackReference::k_video, 0),
 			   TimeRangeList({ TimeRange(Rational(0), Rational(10)) }));
-	sel.insert(Track::Reference(Track::k_video, 1),
+	sel.insert(TrackReference(TrackReference::k_video, 1),
 			   TimeRangeList({ TimeRange(Rational(0), Rational(10)) }));
-	sel.insert(Track::Reference(Track::k_audio, 0),
+	sel.insert(TrackReference(TrackReference::k_audio, 0),
 			   TimeRangeList({ TimeRange(Rational(0), Rational(10)) }));
 
-	sel.shift_tracks(Track::k_video, 2);
+	sel.shift_tracks(TrackReference::k_video, 2);
 
-	EXPECT_FALSE(sel.contains(Track::Reference(Track::k_video, 0)));
-	EXPECT_FALSE(sel.contains(Track::Reference(Track::k_video, 1)));
-	EXPECT_TRUE(sel.contains(Track::Reference(Track::k_video, 2)));
-	EXPECT_TRUE(sel.contains(Track::Reference(Track::k_video, 3)));
-	EXPECT_TRUE(sel.contains(Track::Reference(Track::k_audio, 0)));
+	EXPECT_FALSE(sel.contains(TrackReference(TrackReference::k_video, 0)));
+	EXPECT_FALSE(sel.contains(TrackReference(TrackReference::k_video, 1)));
+	EXPECT_TRUE(sel.contains(TrackReference(TrackReference::k_video, 2)));
+	EXPECT_TRUE(sel.contains(TrackReference(TrackReference::k_video, 3)));
+	EXPECT_TRUE(sel.contains(TrackReference(TrackReference::k_audio, 0)));
 }
 
 TEST(TimelineSelections, TrimInAndOutAdjustRangeEnds)
 {
 	TimelineWidgetSelections in_sel;
-	const Track::Reference video0(Track::k_video, 0);
+	const TrackReference video0(TrackReference::k_video, 0);
 	in_sel.insert(video0,
 				  TimeRangeList({ TimeRange(Rational(0), Rational(10)) }));
 	in_sel.trim_in(Rational(2));
@@ -574,14 +608,14 @@ TEST(TimelineSelections, TrimInAndOutAdjustRangeEnds)
 TEST(TimelineSelections, SubtractSplitsAndIgnoresForeignTracks)
 {
 	TimelineWidgetSelections ours;
-	const Track::Reference video0(Track::k_video, 0);
+	const TrackReference video0(TrackReference::k_video, 0);
 	ours.insert(video0,
 				TimeRangeList({ TimeRange(Rational(0), Rational(10)) }));
 
 	TimelineWidgetSelections theirs;
 	theirs.insert(video0,
 				  TimeRangeList({ TimeRange(Rational(3), Rational(5)) }));
-	theirs.insert(Track::Reference(Track::k_audio, 0),
+	theirs.insert(TrackReference(TrackReference::k_audio, 0),
 				  TimeRangeList({ TimeRange(Rational(0), Rational(99)) }));
 
 	TimelineWidgetSelections result = ours.subtracted(theirs);
@@ -610,17 +644,17 @@ TEST(NodeViewScene, AddAndRemoveContexts)
 	NodeViewScene scene;
 	EXPECT_TRUE(scene.context_map().isEmpty());
 
-	NodeViewContext *ctx = scene.add_context(folder);
+	NodeViewContext *ctx = scene.add_context(to_oak(folder));
 	ASSERT_NE(ctx, nullptr);
-	EXPECT_TRUE(scene.context_map().contains(folder));
-	EXPECT_EQ(ctx->get_context(), folder);
+	EXPECT_TRUE(scene.context_map().contains(to_oak(folder)));
+	EXPECT_EQ(ctx->get_context(), to_oak(folder));
 	EXPECT_TRUE(scene.items().contains(ctx));
 
 	// Re-adding the same node returns the existing context item
-	EXPECT_EQ(scene.add_context(folder), ctx);
+	EXPECT_EQ(scene.add_context(to_oak(folder)), ctx);
 	EXPECT_EQ(scene.context_map().size(), 1);
 
-	scene.remove_context(folder);
+	scene.remove_context(to_oak(folder));
 	EXPECT_TRUE(scene.context_map().isEmpty());
 }
 
@@ -687,8 +721,8 @@ TEST_F(MulticamWidgetTest, SwitchWithoutTimestampAppliesImmediately)
 	clip->setParent(project_.get());
 
 	MulticamWidget widget;
-	widget.set_multicam_node(viewer, node, clip, Rational());
-	EXPECT_EQ(widget.get_connected_node(), viewer);
+	widget.set_multicam_node(reinterpret_cast<OakEngineNode *>(viewer), reinterpret_cast<OakEngineNode *>(node), reinterpret_cast<OakEngineBlock *>(clip), Rational());
+	EXPECT_EQ(widget.get_connected_node(), reinterpret_cast<OakEngineNode *>(viewer));
 }
 
 TEST_F(MulticamWidgetTest, FutureSwitchWaitsForPlayheadToAdvance)
@@ -703,14 +737,14 @@ TEST_F(MulticamWidgetTest, FutureSwitchWaitsForPlayheadToAdvance)
 	clip->setParent(project_.get());
 
 	MulticamWidget widget;
-	widget.set_multicam_node(viewer_a, node, clip, Rational());
-	ASSERT_EQ(widget.get_connected_node(), viewer_a);
+	widget.set_multicam_node(reinterpret_cast<OakEngineNode *>(viewer_a), reinterpret_cast<OakEngineNode *>(node), reinterpret_cast<OakEngineBlock *>(clip), Rational());
+	ASSERT_EQ(widget.get_connected_node(), reinterpret_cast<OakEngineNode *>(viewer_a));
 
 	// A switch stamped for a later time is queued, not applied
-	widget.set_multicam_node(viewer_b, node, clip, Rational(5));
-	EXPECT_EQ(widget.get_connected_node(), viewer_a);
+	widget.set_multicam_node(reinterpret_cast<OakEngineNode *>(viewer_b), reinterpret_cast<OakEngineNode *>(node), reinterpret_cast<OakEngineBlock *>(clip), Rational(5));
+	EXPECT_EQ(widget.get_connected_node(), reinterpret_cast<OakEngineNode *>(viewer_a));
 
 	// Once playback time advances, the queued switch takes effect
 	viewer_a->set_playhead(Rational(1));
-	EXPECT_EQ(widget.get_connected_node(), viewer_b);
+	EXPECT_EQ(widget.get_connected_node(), reinterpret_cast<OakEngineNode *>(viewer_b));
 }

@@ -31,13 +31,13 @@ namespace olive
 using namespace core;
 
 /**
- * @brief App-side ColorCoding (moved from engine/ui/colorcoding.h)
+ * @brief App-side color label mapping (moved from engine/ui/colorcoding.h)
  *
  * Provides the same static color-label mapping as the engine version but
  * without QObject inheritance (no moc symbols). Only the static methods
  * used by app code are included.
  */
-class ColorCoding {
+class AppColorCoding {
 public:
 	enum Code {
 		k_red,

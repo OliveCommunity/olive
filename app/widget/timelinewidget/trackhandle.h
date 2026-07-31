@@ -21,52 +21,60 @@
 #ifndef OAK_TRACKHANDLE_H
 #define OAK_TRACKHANDLE_H
 
-#include "node/output/track/track.h"
+#include "oakengine/node.h"
 #include "oakengine/timeline.h"
 
 namespace olive
 {
 
 /**
- * @brief Facade accessors for Track pointers held by the timeline tools.
+ * @brief Facade accessors for track handles held by the timeline tools.
  *
- * Track::is_locked()/is_muted()/type() are out-of-line engine symbols; the
- * timeline code keeps Track* as opaque identity pointers and routes the
- * queries through the liboakengine C ABI instead (same pattern as
- * app/widget/keyframeview/keyframehandle.h). Track::sequence()/index() are
- * header-inline and used directly.
+ * The engine's track accessors (is_locked()/is_muted()/sequence()/index())
+ * are engine symbols; the timeline code keeps tracks as opaque
+ * OakEngineTrack* handles and routes the queries through the liboakengine
+ * C ABI instead (same pattern as app/widget/keyframeview/keyframehandle.h).
  */
 
-inline OakEngineTrack *trackhandle(Track *track)
+inline OakEngineTrack *trackhandle(OakEngineTrack *track)
 {
-	return reinterpret_cast<OakEngineTrack *>(track);
+	return track;
 }
 
-inline OakEngineSequence *track_sequence_handle(Track *track)
+inline OakEngineSequence *track_sequence_handle(OakEngineTrack *track)
 {
-	return reinterpret_cast<OakEngineSequence *>(track ? track->sequence() :
-														 nullptr);
+	return track ? reinterpret_cast<OakEngineSequence *>(
+					   oakengine_track_get_sequence(
+						   reinterpret_cast<OakEngineNode *>(track))) :
+				   nullptr;
 }
 
-inline int track_type_of(Track *track)
+inline int track_type_of(OakEngineTrack *track)
 {
 	return oakengine_track_type(trackhandle(track));
 }
 
-inline bool track_is_locked(Track *track)
+inline int track_index_of(OakEngineTrack *track)
+{
+	return track ? oakengine_track_get_index(
+					   reinterpret_cast<OakEngineNode *>(track)) :
+				   -1;
+}
+
+inline bool track_is_locked(OakEngineTrack *track)
 {
 	return track &&
 		   oakengine_track_is_locked(track_sequence_handle(track),
 									 track_type_of(track),
-									 track->index()) != 0;
+									 track_index_of(track)) != 0;
 }
 
-inline bool track_is_muted(Track *track)
+inline bool track_is_muted(OakEngineTrack *track)
 {
 	return track &&
 		   oakengine_track_is_muted(track_sequence_handle(track),
 									track_type_of(track),
-									track->index()) != 0;
+									track_index_of(track)) != 0;
 }
 
 } // namespace olive

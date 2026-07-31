@@ -26,7 +26,10 @@
 #include <QStyleOptionSlider>
 #include <QtMath>
 
-#include "ui/colorcoding.h"
+#include "common/colorcodingapp.h"
+#include "oakengine/timeline.h"
+#include "oakutil/qtutils.h"
+#include "widget/timeruler/markerhandle.h"
 
 namespace olive
 {
@@ -63,7 +66,7 @@ ResizableTimelineScrollBar::~ResizableTimelineScrollBar()
 	}
 }
 
-void ResizableTimelineScrollBar::connect_markers(TimelineMarkerList *markers)
+void ResizableTimelineScrollBar::connect_markers(OakEngineMarkerList *markers)
 {
 	if (markers_) {
 		if (marker_sub_add_)
@@ -78,14 +81,11 @@ void ResizableTimelineScrollBar::connect_markers(TimelineMarkerList *markers)
 
 	if (markers_) {
 		marker_sub_add_ = bridge_->subscribe(
-			reinterpret_cast<OakEngineMarkerList *>(markers_),
-			OAKENGINE_EVENT_MARKER_LIST_MARKER_ADDED);
+			markers_, OAKENGINE_EVENT_MARKER_LIST_MARKER_ADDED);
 		marker_sub_rem_ = bridge_->subscribe(
-			reinterpret_cast<OakEngineMarkerList *>(markers_),
-			OAKENGINE_EVENT_MARKER_LIST_MARKER_REMOVED);
+			markers_, OAKENGINE_EVENT_MARKER_LIST_MARKER_REMOVED);
 		marker_sub_mod_ = bridge_->subscribe(
-			reinterpret_cast<OakEngineMarkerList *>(markers_),
-			OAKENGINE_EVENT_MARKER_LIST_MARKER_MODIFIED);
+			markers_, OAKENGINE_EVENT_MARKER_LIST_MARKER_MODIFIED);
 
 		connect(bridge_, &EngineEventBridge::marker_list_marker_added, this,
 				[this](OakEngineMarkerList *, OakEngineMarker *) {
@@ -104,7 +104,7 @@ void ResizableTimelineScrollBar::connect_markers(TimelineMarkerList *markers)
 	update();
 }
 
-void ResizableTimelineScrollBar::connect_work_area(TimelineWorkArea *workarea)
+void ResizableTimelineScrollBar::connect_work_area(OakEngineWorkarea *workarea)
 {
 	if (workarea_) {
 		if (workarea_range_sub_ > 0) {
@@ -120,7 +120,7 @@ void ResizableTimelineScrollBar::connect_work_area(TimelineWorkArea *workarea)
 	workarea_ = workarea;
 
 	if (workarea_) {
-		void *handle = reinterpret_cast<void *>(workarea_);
+		void *handle = workarea_;
 		workarea_range_sub_ = oakengine_event_subscribe(
 			handle, OAKENGINE_EVENT_WORKAREA_RANGE_CHANGED,
 			[](const oakengine_event *, void *userdata) {
@@ -147,8 +147,20 @@ void ResizableTimelineScrollBar::paintEvent(QPaintEvent *event)
 {
 	ResizableScrollBar::paintEvent(event);
 
-	if (!timebase().isNull() && ((workarea_ && workarea_->enabled()) ||
-								 (markers_ && !markers_->empty()))) {
+	// Fetch workarea/marker state through the C ABI (the engine types are
+	// opaque identity pointers on this side).
+	int64_t wa_in_num = 0, wa_in_den = 1, wa_out_num = 0, wa_out_den = 1;
+	int wa_enabled_flag = 0;
+	const bool wa_enabled =
+		workarea_ &&
+		oakengine_workarea_get(workarea_, &wa_in_num,
+			&wa_in_den, &wa_out_num, &wa_out_den,
+			&wa_enabled_flag) == OAKENGINE_OK &&
+		wa_enabled_flag;
+	const int marker_count =
+		markers_ ? oakengine_marker_list_count(markers_) : 0;
+
+	if (!timebase().isNull() && (wa_enabled || marker_count > 0)) {
 		// Draw workarea
 		QStyleOptionSlider opt;
 		initStyleOption(&opt);
@@ -160,19 +172,22 @@ void ResizableTimelineScrollBar::paintEvent(QPaintEvent *event)
 			scale_ * double(gr.width()) / double(this->maximum() + gr.width());
 		QPainter p(this);
 
-		if (workarea_ && workarea_->enabled()) {
+		if (wa_enabled) {
+			const Rational wa_in{int(wa_in_num), int(wa_in_den)};
+			const Rational wa_out{int(wa_out_num), int(wa_out_den)};
+
 			QColor workarea_color(this->palette().highlight().color());
 			workarea_color.setAlpha(128);
 
 			qint64 in =
-				qMax(qint64(0), qRound64(ratio * time_to_scene(workarea_->in())));
+				qMax(qint64(0), qRound64(ratio * time_to_scene(wa_in)));
 
 			qint64 out;
-			if (workarea_->out() == RATIONAL_MAX) {
+			if (wa_out == RATIONAL_MAX) {
 				out = gr.width();
 			} else {
 				out = qMin(qint64(gr.width()),
-						   qRound64(ratio * time_to_scene(workarea_->out())));
+						   qRound64(ratio * time_to_scene(wa_out)));
 			}
 
 			qint64 length = qMax(qint64(1), out - in);
@@ -181,18 +196,19 @@ void ResizableTimelineScrollBar::paintEvent(QPaintEvent *event)
 		}
 
 		// Draw markers
-		if (markers_ && !markers_->empty()) {
-			for (auto it = markers_->cbegin(); it != markers_->cend(); it++) {
-				TimelineMarker *marker = *it;
+		if (marker_count > 0) {
+			for (int i = 0; i < marker_count; i++) {
+				OakEngineMarker *marker =
+					oakengine_marker_list_at(markers_, i);
+				const TimeRange range = marker_time(marker);
 
-				QColor marker_color =
-					QtUtils::to_q_color(ColorCoding::get_color(marker->color()));
-				int64_t in = qRound64(ratio * time_to_scene(marker->time().in()));
-				int64_t out =
-					qRound64(ratio * time_to_scene(marker->time().out()));
+				QColor marker_qcolor = QtUtils::to_q_color(
+					AppColorCoding::get_color(marker_color(marker)));
+				int64_t in = qRound64(ratio * time_to_scene(range.in()));
+				int64_t out = qRound64(ratio * time_to_scene(range.out()));
 				int64_t length = qMax(int64_t(1), out - in);
 
-				p.fillRect(gr.x() + in, 0, length, height(), marker_color);
+				p.fillRect(gr.x() + in, 0, length, height(), marker_qcolor);
 			}
 		}
 	}

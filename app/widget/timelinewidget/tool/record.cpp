@@ -19,6 +19,7 @@
 #include "record.h"
 
 #include "widget/timelinewidget/timelinewidget.h"
+#include "widget/timelinewidget/trackhandle.h"
 
 namespace olive
 {
@@ -31,15 +32,18 @@ RecordTool::RecordTool(TimelineWidget *parent)
 
 void RecordTool::mouse_press(TimelineViewMouseEvent *event)
 {
-	const Track::Reference &track = event->get_track();
+	const TrackReference &track = event->get_track();
 
 	// Check if track is locked
-	Track *t = parent()->get_track_from_reference(track);
-	if (t && t->is_locked()) {
+	// TimelineWidget::get_track_from_reference() takes the app
+	// TrackReference mirror (ordinals static_assert-pinned to the engine
+	// Track::Type values, see common/trackreferencehandle.h).
+	OakEngineTrack *t = parent()->get_track_from_reference(track);
+	if (track_is_locked(t)) {
 		return;
 	}
 
-	if (t && t->type() != Track::k_audio) {
+	if (t && oakengine_track_type(t) != TrackReference::k_audio) {
 		// We only support audio tracks here
 		return;
 	}

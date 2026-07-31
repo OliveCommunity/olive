@@ -25,7 +25,7 @@
 #include <QComboBox>
 #include <QWidgetAction>
 
-#include "node/output/track/track.h"
+#include "common/trackreferencehandle.h"
 #include "widget/menu/menu.h"
 
 namespace olive
@@ -64,7 +64,7 @@ private slots:
 	void handle_index_change(QAction *a);
 
 private:
-	void populate_type(Track::Type type);
+	void populate_type(TrackReference::Type type);
 
 	QWidgetAction *create_header(const QIcon &icon, const QString &title);
 

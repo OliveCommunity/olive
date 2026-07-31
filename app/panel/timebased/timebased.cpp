@@ -21,6 +21,8 @@
 
 #include "timebased.h"
 
+#include "oakutil/oaknode.h"
+
 namespace olive
 {
 
@@ -116,7 +118,7 @@ void TimeBasedPanel::shuttle_right()
 	emit shuttle_right_requested();
 }
 
-void TimeBasedPanel::connect_viewer_node(ViewerOutput *node)
+void TimeBasedPanel::connect_viewer_node(OakEngineNode *node)
 {
 	widget_->connect_viewer_node(node);
 }
@@ -140,8 +142,8 @@ void TimeBasedPanel::set_time_based_widget(TimeBasedWidget *widget)
 
 void TimeBasedPanel::retranslate()
 {
-	if (get_time_based_widget()->get_connected_node()) {
-		set_subtitle(get_time_based_widget()->get_connected_node()->get_label());
+	if (get_connected_viewer()) {
+		set_subtitle(oak::Node(get_connected_viewer()).get_label());
 	} else {
 		set_subtitle(tr("(none)"));
 	}

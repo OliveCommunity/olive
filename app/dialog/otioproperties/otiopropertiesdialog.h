@@ -25,8 +25,9 @@
 
 #include "oakutil/define.h"
 #include "opentimelineio/timeline.h"
-#include "node/project/sequence/sequence.h"
-#include "node/project.h"
+
+struct OakEngineProject;
+struct OakEngineSequence;
 
 namespace olive
 {
@@ -39,13 +40,14 @@ namespace olive
 class OTIOPropertiesDialog : public QDialog {
 	Q_OBJECT
 public:
-	OTIOPropertiesDialog(const QList<Sequence *> &sequences,
-						 Project *active_project, QWidget *parent = nullptr);
+	OTIOPropertiesDialog(const QList<OakEngineSequence *> &sequences,
+						 OakEngineProject *active_project,
+						 QWidget *parent = nullptr);
 
 private:
 	QTreeWidget *table_;
 
-	const QList<Sequence *> sequences_;
+	const QList<OakEngineSequence *> sequences_;
 
 private slots:
 	/**

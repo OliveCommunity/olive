@@ -27,21 +27,16 @@
 #include <QToolTip>
 
 #include "common/configwrapper.h"
+#include "common/subtitleapp.h"
+#include "oakutil/oaknode.h"
 #include "oakutil/qtutils.h"
 #include "core.h"
 #include "dialog/sequence/sequence.h"
-#include "node/audio/volume/volume.h"
-#include "node/block/subtitle/subtitle.h"
-#include "node/distort/transform/transformdistortnode.h"
-#include "node/generator/matrix/matrix.h"
-#include "node/math/math/math.h"
-#include "node/project/sequence/sequence.h"
 #include "oakengine/node.h"
 #include "oakengine/timeline.h"
 #include "oakengine/undo.h"
 #include "oakengine/viewer.h"
 #include "oakengine/project.h"
-#include "timeline/timelineundopointer.h"
 #include "widget/timelinewidget/cliphandle.h"
 #include "window/mainwindow/mainwindow.h"
 #include "window/mainwindow/mainwindowundo.h"
@@ -73,7 +68,7 @@ void ImportTool::drag_enter(TimelineViewMouseEvent *event)
 
 		// Variables to deserialize into
 		quintptr item_ptr;
-		QVector<Track::Reference> enabled_streams;
+		QVector<TrackReference> enabled_streams;
 
 		// Set drag start position
 		drag_start_ = event->get_coordinates();
@@ -84,14 +79,16 @@ void ImportTool::drag_enter(TimelineViewMouseEvent *event)
 			stream >> enabled_streams >> item_ptr;
 
 			// Get Item object
-			Node *item = reinterpret_cast<Node *>(item_ptr);
+			OakEngineNode *item = reinterpret_cast<OakEngineNode *>(item_ptr);
 
-			// Check if Item is Footage
-			ViewerOutput *f = dynamic_cast<ViewerOutput *>(item);
-
-			if (f && f->get_total_stream_count()) {
+			// Check if Item is a viewer (Footage or Sequence) with streams
+			if (oakengine_node_is_viewer_output(item) &&
+				oakengine_viewer_get_video_stream_count(item) +
+						oakengine_viewer_get_audio_stream_count(item) +
+						oakengine_viewer_get_subtitle_stream_count(item) >
+					0) {
 				// If the Item is Footage, we can create a Ghost from it
-				dragged_footage_.append({ f, enabled_streams });
+				dragged_footage_.append({ item, enabled_streams });
 			}
 		}
 
@@ -207,15 +204,26 @@ void ImportTool::drag_drop(TimelineViewMouseEvent *event)
 	}
 }
 
-void ImportTool::place_at(const QVector<ViewerOutput *> &footage,
+void ImportTool::place_at(const QVector<OakEngineNode *> &footage,
 						 const Rational &start, bool insert,
 						 void *command, int track_offset,
 						 bool jump_to_end)
 {
 	DraggedFootageData refs;
 
-	foreach (ViewerOutput *f, footage) {
-		refs.append({ f, f->get_enabled_streams_as_references() });
+	foreach (OakEngineNode *f, footage) {
+		// ViewerOutput::get_enabled_streams_as_references() via the oak::
+		// wrapper (C ABI): (track_type, index) pairs with ordinals matching
+		// TrackReference::Type (see common/trackreferencehandle.h)
+		QVector<TrackReference> enabled_streams;
+		const QVector<QPair<int, int>> streams =
+			oak::Node(f).enabled_streams();
+		enabled_streams.reserve(streams.size());
+		for (const QPair<int, int> &s : streams) {
+			enabled_streams.append(TrackReference(
+				static_cast<TrackReference::Type>(s.first), s.second));
+		}
+		refs.append({ f, enabled_streams });
 	}
 
 	place_at(refs, start, insert, command, track_offset, jump_to_end);
@@ -256,27 +264,39 @@ void ImportTool::footage_to_ghosts(Rational ghost_start,
 								 const int &track_start)
 {
 	for (auto it = sorted.cbegin(); it != sorted.cend(); it++) {
-		ViewerOutput *footage = it->first;
+		OakEngineNode *footage = it->first;
 
-		if (footage == sequence() ||
-			(sequence() && footage->inputs_from(sequence(), true))) {
+		if (footage ==
+				reinterpret_cast<OakEngineNode *>(sequence()) ||
+			(sequence() &&
+			 oakengine_node_inputs_from(
+				 footage,
+				 reinterpret_cast<OakEngineNode *>(sequence()), 1))) {
 			// Prevent cyclical dependency
 			continue;
 		}
 
 		// Each stream is offset by one track per track "type", we keep track of them in this vector
-		QVector<int> track_offsets(Track::k_count);
+		QVector<int> track_offsets(TrackReference::k_count);
 		track_offsets.fill(track_start);
 
 		Rational footage_duration;
 		Rational ghost_in;
 
-		TimelineWorkArea *wk = footage->get_work_area();
-		if (wk->enabled()) {
-			footage_duration = wk->length();
-			ghost_in = wk->in();
+		oakengine_viewer_workarea wk;
+		oakengine_viewer_get_workarea(
+			footage, &wk);
+		if (wk.enabled) {
+			footage_duration =
+				Rational(int(wk.out_num), int(wk.out_den)) -
+				Rational(int(wk.in_num), int(wk.in_den));
+			ghost_in = Rational(int(wk.in_num), int(wk.in_den));
 		} else {
-			footage_duration = footage->get_length();
+			int64_t len_num = 0, len_den = 1;
+			oakengine_viewer_get_length(
+				footage, &len_num,
+				&len_den);
+			footage_duration = Rational(int(len_num), int(len_den));
 
 			if (footage_duration.isNull()) {
 				// Fallback to still length if legngth was 0
@@ -293,12 +313,13 @@ void ImportTool::footage_to_ghosts(Rational ghost_start,
 		}
 
 		// Create ghosts
-		foreach (const Track::Reference &ref, it->second) {
-			Track::Type track_type = ref.type();
-			Track::Reference dest_track(track_type,
-										track_offsets.at(track_type));
+		foreach (const TrackReference &ref, it->second) {
+			TrackReference::Type track_type = ref.type();
+			TrackReference dest_track(track_type,
+									  track_offsets.at(track_type));
 
-			if (track_type == Track::k_video || track_type == Track::k_audio) {
+			if (track_type == TrackReference::k_video ||
+				track_type == TrackReference::k_audio) {
 				auto ghost = create_ghost(
 					TimeRange(ghost_start, ghost_start + footage_duration),
 					ghost_in, dest_track);
@@ -310,15 +331,17 @@ void ImportTool::footage_to_ghosts(Rational ghost_start,
 															  ref.to_string() };
 				ghost->set_data(TimelineViewGhostItem::k_attached_footage,
 							   QVariant::fromValue(af));
-			} else if (track_type == Track::k_subtitle) {
+			} else if (track_type == TrackReference::k_subtitle) {
 				int sub_count = oakengine_viewer_get_subtitle_count(
-					reinterpret_cast<const OakEngineNode *>(footage),
+					footage,
 					ref.index());
 
 				for (int si = 0; si < sub_count; si++) {
-					const Subtitle *sub = static_cast<const Subtitle *>(
+					// Points at an engine Subtitle; read through the
+					// layout-identical app mirror (common/subtitleapp.h)
+					const SubtitleApp *sub = static_cast<const SubtitleApp *>(
 						oakengine_viewer_get_subtitle_at(
-							reinterpret_cast<const OakEngineNode *>(footage),
+							footage,
 							ref.index(), si));
 					auto ghost =
 						create_ghost(sub->time() + ghost_start, 0, dest_track);
@@ -354,12 +377,13 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 		oakengine_undo_command_multi_add_child(command, c);
 	}
 
-	Project *dst_graph = nullptr;
-	Sequence *sequence = this->sequence();
+	OakEngineProject *dst_graph = nullptr;
+	OakEngineSequence *sequence = this->sequence();
 	bool open_sequence = false;
 
 	if (sequence) {
-		dst_graph = sequence->parent();
+		dst_graph = oakengine_node_parent(
+			reinterpret_cast<OakEngineNode *>(sequence));
 	} else {
 		// There's no active timeline here, ask the user what to do
 
@@ -412,9 +436,9 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 			OakEngineProject *active_project = Core::instance()->get_active_project();
 
 			if (active_project) {
-				Sequence *new_sequence = reinterpret_cast<Sequence *>(
+				OakEngineSequence *new_sequence =
 					Core::instance()->create_new_sequence_for_project(
-						active_project));
+						active_project);
 
 				oakengine_viewer_set_default_parameters(
 			reinterpret_cast<OakEngineNode *>(new_sequence));
@@ -423,7 +447,7 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 
 				// Even if the user selected manual, set from footage anyway so the user has a useful
 				// starting point
-				QVector<ViewerOutput *> footage_only;
+				QVector<OakEngineNode *> footage_only;
 
 				for (auto it = dragged_footage_.cbegin();
 					 it != dragged_footage_.cend(); it++) {
@@ -434,8 +458,7 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 
 				QVector<OakEngineNode *> _footage_nodes;
 		for (auto *f : footage_only) {
-			_footage_nodes.append(
-				reinterpret_cast<OakEngineNode *>(f));
+			_footage_nodes.append(f);
 		}
 		oakengine_viewer_set_parameters_from_footage(
 			reinterpret_cast<OakEngineNode *>(new_sequence),
@@ -443,7 +466,7 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 
 				// If the user selected manual, show them a dialog with parameters
 				if (behavior == k_dws_manual) {
-					SequenceDialog sd(new_sequence, SequenceDialog::k_new,
+					SequenceDialog sd(reinterpret_cast<OakEngineNode *>(new_sequence), SequenceDialog::k_new,
 									  parent());
 					sd.set_undoable(false);
 
@@ -453,11 +476,11 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 				}
 
 				if (sequence_is_valid) {
-					dst_graph = reinterpret_cast<Project *>(Core::instance()->get_active_project());
+					dst_graph = Core::instance()->get_active_project();
 
 					oakengine_undo_command_multi_add_child(command,
 		oakengine_node_add_to_project_command(
-			reinterpret_cast<OakEngineProject *>(dst_graph),
+			dst_graph,
 			reinterpret_cast<OakEngineNode *>(new_sequence)));
 					oakengine_folder_add_child(
 						reinterpret_cast<OakEngineNode *>(
@@ -465,7 +488,7 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 						reinterpret_cast<OakEngineNode *>(new_sequence));
 					oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(new_sequence), reinterpret_cast<void *>(new_sequence), 0, 0, 0));
 					oakengine_sequence_add_default_nodes(
-						reinterpret_cast<OakEngineSequence *>(new_sequence));
+						new_sequence);
 
 					footage_to_ghosts(0, dragged_footage_,
 									viewer_output_video_params(new_sequence).time_base(),
@@ -483,16 +506,17 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 				} else {
 					// If the sequence is valid, ownership is passed to AddItemCommand.
 					// Otherwise, we're responsible for deleting it.
-					delete new_sequence;
+					oakengine_node_free(
+						reinterpret_cast<OakEngineNode *>(new_sequence));
 				}
 			}
 		}
 	}
 
-	std::list<ClipBlock *> imported_clips;
+	std::list<OakEngineBlock *> imported_clips;
 
 	if (dst_graph) {
-		QVector<Block *> block_items(parent()->get_ghost_items().size());
+		QVector<OakEngineBlock *> block_items(parent()->get_ghost_items().size());
 
 		// Check if we're inserting (only valid if we're not creating this sequence ourselves)
 		if (insert && !open_sequence) {
@@ -501,15 +525,16 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 
 		for (int i = 0; i < parent()->get_ghost_items().size(); i++) {
 			TimelineViewGhostItem *ghost = parent()->get_ghost_items().at(i);
-			Block *block = nullptr;
+			OakEngineBlock *block = nullptr;
 
-			Track::Type track_type = ghost->get_adjusted_track().type();
-			if (track_type == Track::k_video || track_type == Track::k_audio) {
+			TrackReference::Type track_type = ghost->get_adjusted_track().type();
+			if (track_type == TrackReference::k_video ||
+				track_type == TrackReference::k_audio) {
 				TimelineViewGhostItem::AttachedFootage footage_stream =
 					ghost->get_data(TimelineViewGhostItem::k_attached_footage)
 						.value<TimelineViewGhostItem::AttachedFootage>();
 
-				ClipBlock *clip = clip_create_empty();
+				OakEngineBlock *clip = clip_create_empty();
 				block = clip;
 				clip_set_media_in(clip, ghost->get_media_in());
 				oakengine_undo_command_multi_add_child(command,
@@ -528,10 +553,10 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 				dep_pos++;
 
 				switch (
-					Track::Reference::type_from_string(footage_stream.output)) {
-				case Track::k_video: {
-					TransformDistortNode *transform =
-						reinterpret_cast<TransformDistortNode*>(oakengine_node_factory_create_from_id("org.olivevideoeditor.Olive.transformdistort"));
+					TrackReference::type_from_string(footage_stream.output)) {
+				case TrackReference::k_video: {
+					OakEngineNode *transform =
+						oakengine_node_factory_create_from_id("org.olivevideoeditor.Olive.transformdistort");
 					oakengine_undo_command_multi_add_child(command,
 		oakengine_node_add_to_project_command(
 			reinterpret_cast<OakEngineProject *>(dst_graph),
@@ -548,7 +573,7 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 					oakengine_undo_command_multi_add_child(
 						command,
 						oakengine_node_connect_command(
-							reinterpret_cast<OakEngineNode *>(footage_stream.footage),
+							footage_stream.footage,
 							reinterpret_cast<OakEngineNode *>(transform),
 							QLatin1String(oakengine_transform_texture_input_id()).toUtf8().constData(),
 							-1));
@@ -562,8 +587,8 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 					oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(transform), reinterpret_cast<void *>(clip), dep_pos, 0, 0));
 					break;
 				}
-				case Track::k_audio: {
-					VolumeNode *volume_node = reinterpret_cast<VolumeNode*>(oakengine_node_factory_create_from_id("org.olivevideoeditor.Olive.volume"));
+				case TrackReference::k_audio: {
+					OakEngineNode *volume_node = oakengine_node_factory_create_from_id("org.olivevideoeditor.Olive.volume");
 					oakengine_undo_command_multi_add_child(command,
 		oakengine_node_add_to_project_command(
 			reinterpret_cast<OakEngineProject *>(dst_graph),
@@ -580,7 +605,7 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 					oakengine_undo_command_multi_add_child(
 						command,
 						oakengine_node_connect_command(
-							reinterpret_cast<OakEngineNode *>(footage_stream.footage),
+							footage_stream.footage,
 							reinterpret_cast<OakEngineNode *>(volume_node),
 							QLatin1String(oakengine_volume_samples_input_id()).toUtf8().constData(),
 							-1));
@@ -615,11 +640,11 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 				}
 
 				imported_clips.push_back(clip);
-			} else if (track_type == Track::k_subtitle) {
-				Subtitle src =
+			} else if (track_type == TrackReference::k_subtitle) {
+				SubtitleApp src =
 					ghost->get_data(TimelineViewGhostItem::k_attached_footage)
-						.value<Subtitle>();
-				SubtitleBlock *sub = reinterpret_cast<SubtitleBlock *>(
+						.value<SubtitleApp>();
+				OakEngineBlock *sub = reinterpret_cast<OakEngineBlock *>(
 					oakengine_node_factory_create_from_id(
 						"org.olivevideoeditor.Olive.subtitle"));
 				oakengine_subtitle_set_text(
@@ -634,16 +659,32 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 				oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(sub), reinterpret_cast<void *>(sub), 0, 0, 0));
 			}
 
-			block->set_length_and_media_out(ghost->get_length());
+			// Set the block's length before placement through a trim command
+			// child (children redo in order, so the length is set before
+			// the block is placed): oakengine_block_set_length_and_media_out()
+			// itself requires the block to already be on a track
+			// (OAKENGINE_E_STATE), and pre-placement there are no adjacent
+			// blocks, so a trim-out command reduces to
+			// Block::set_length_and_media_out().
+			oakengine_undo_command_multi_add_child(command,
+				oakengine_block_trim_command(
+					reinterpret_cast<void *>(oakengine_sequence_track_at(
+						sequence,
+						ghost->get_adjusted_track().type(),
+						ghost->get_adjusted_track().index())),
+					reinterpret_cast<void *>(block),
+					ghost->get_length().numerator(),
+					ghost->get_length().denominator(),
+					OAKENGINE_MOVEMENT_MODE_TRIM_OUT, 0));
 
-			oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(sequence->track_list(ghost->get_adjusted_track().type())), ghost->get_adjusted_track().index(), reinterpret_cast<void *>(block), core::Timecode::time_to_timestamp(ghost->get_adjusted_in(), parent()->timebase())));
+			oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(oakengine_sequence_track_list(sequence, static_cast<int>(ghost->get_adjusted_track().type()))), ghost->get_adjusted_track().index(), reinterpret_cast<void *>(block), core::Timecode::time_to_timestamp(ghost->get_adjusted_in(), parent()->timebase())));
 
 			block_items.replace(i, block);
 		}
 	}
 
 	if (open_sequence) {
-		oakengine_undo_command_multi_add_child(command, make_open_sequence_command(sequence));
+		oakengine_undo_command_multi_add_child(command, make_open_sequence_command(reinterpret_cast<OakEngineNode *>(sequence)));
 	}
 
 	// Do command now because RequestInvalidatedFromConnected relies on track type, which will be
@@ -662,7 +703,7 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 
 TimelineViewGhostItem *ImportTool::create_ghost(const TimeRange &range,
 											   const Rational &media_in,
-											   const Track::Reference &track)
+											   const TrackReference &track)
 {
 	TimelineViewGhostItem *ghost = new TimelineViewGhostItem();
 
@@ -674,7 +715,7 @@ TimelineViewGhostItem *ImportTool::create_ghost(const TimeRange &range,
 	snap_points_.push_back(ghost->get_in());
 	snap_points_.push_back(ghost->get_out());
 
-	ghost->set_mode(Timeline::k_move);
+	ghost->set_mode(TimelineApp::k_move);
 
 	parent()->add_ghost(ghost);
 

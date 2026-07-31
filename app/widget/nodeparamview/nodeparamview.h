@@ -26,8 +26,8 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
-#include "node/node.h"
 #include "oakengine/serializer.h"
+#include "oakutil/oaknode.h"
 #include "nodeparamviewcontext.h"
 #include "nodeparamviewdockarea.h"
 #include "nodeparamviewitem.h"
@@ -48,7 +48,7 @@ public:
 
 	virtual ~NodeParamView() override;
 
-	void close_contexts_belonging_to_project(Project *p);
+	void close_contexts_belonging_to_project(oak::Project p);
 
 	void DeleteSelected();
 
@@ -69,11 +69,11 @@ public:
 		const QVector<QPair<OakEngineNode *, OakEngineNode *>> &nodes,
 		bool emit_signal = true);
 
-	Node *get_node_with_id(const QString &id);
-	Node *get_node_with_id_and_ignore_list(const QString &id,
-									 const QVector<Node *> &ignore);
+	OakEngineNode *get_node_with_id(const QString &id);
+	OakEngineNode *get_node_with_id_and_ignore_list(const QString &id,
+											 const QVector<OakEngineNode *> &ignore);
 
-	const QVector<Node *> &get_contexts() const
+	const QVector<oak::Node> &get_contexts() const
 	{
 		return contexts_;
 	}
@@ -83,14 +83,13 @@ public:
 	virtual bool paste() override;
 	static bool paste(
 		QWidget *parent,
-		std::function<QHash<Node *, Node *>(void *)>
+		std::function<QHash<OakEngineNode *, OakEngineNode *>(void *)>
 			get_existing_map_function);
 
 public:
-	// Not a slot: signature uses the engine C++ type Node*, which must not be
-	// exposed to MOC (it would pull Node::staticMetaObject across the ABI
-	// boundary). All connections use new-style member-function syntax.
-	void set_contexts(const QVector<Node *> &contexts);
+	// Not a slot: mirrors NodeView::set_contexts(), which is also a plain
+	// member function. All connections use new-style member-function syntax.
+	void set_contexts(const QVector<oak::Node> &contexts);
 
 public slots:
 	void update_element_y();
@@ -109,7 +108,7 @@ protected:
 	virtual void ScaleChangedEvent(const double &) override;
 	virtual void TimebaseChangedEvent(const Rational &) override;
 
-	virtual void ConnectedNodeChangeEvent(ViewerOutput *n) override;
+	virtual void ConnectedNodeChangeEvent(OakEngineNode *n) override;
 
 	virtual const QVector<KeyframeViewInputConnection *> *
 	get_snap_keyframes() const override
@@ -117,7 +116,7 @@ protected:
 		return keyframe_view_ ? &keyframe_view_->get_keyframe_tracks() : nullptr;
 	}
 
-	virtual const std::vector<NodeKeyframe *> *
+	virtual const std::vector<OakEngineKeyframe *> *
 	get_snap_ignore_keyframes() const override
 	{
 		return keyframe_view_ ? &keyframe_view_->get_selected_keyframes() :
@@ -132,33 +131,30 @@ protected:
 private:
 	void queue_keyframe_position_update();
 
-	void add_context(Node *context);
+	void add_context(oak::Node context);
 
-	void remove_context(Node *context);
+	void remove_context(oak::Node context);
 
-	// Ordinary member functions (NOT slots): their signatures use Node*, which
-	// must not be exposed to MOC. They are only invoked from lambdas inside
-	// this class, never used as connect() targets.
-	void node_added_to_context(Node *n, Node *ctx);
+	// Ordinary member functions (NOT slots): they are only invoked from
+	// lambdas inside this class, never used as connect() targets.
+	void node_added_to_context(OakEngineNode *n, OakEngineNode *ctx);
 
-	void node_removed_from_context(Node *n, Node *ctx);
+	void node_removed_from_context(OakEngineNode *n, OakEngineNode *ctx);
 
-	void add_node(Node *n, Node *ctx, NodeParamViewContext *context);
+	void add_node(OakEngineNode *n, OakEngineNode *ctx, NodeParamViewContext *context);
 
 	void sort_items_in_context(NodeParamViewContext *context);
 
-	NodeParamViewContext *get_context_item_from_context(Node *context);
+	NodeParamViewContext *get_context_item_from_context(OakEngineNode *context);
 
 	bool is_group_mode() const
 	{
-		return contexts_.size() == 1 &&
-			   oakengine_node_is_group(
-				   reinterpret_cast<OakEngineNode *>(contexts_.first()));
+		return contexts_.size() == 1 && contexts_.first().is_group();
 	}
 
 	void toggle_select(NodeParamViewItem *item);
 
-	QHash<Node *, Node *>
+	QHash<OakEngineNode *, OakEngineNode *>
 	generate_existing_paste_map(void *clipboard);
 
 	KeyframeView *keyframe_view_;
@@ -175,15 +171,15 @@ private:
 
 	NodeParamViewDockArea *param_widget_area_;
 
-	QVector<Node *> pinned_nodes_;
+	QVector<OakEngineNode *> pinned_nodes_;
 
-	QVector<Node *> active_nodes_;
+	QVector<OakEngineNode *> active_nodes_;
 
 	NodeParamViewItem *focused_node_;
 	QVector<NodeParamViewItem *> selected_nodes_;
 
-	QVector<Node *> contexts_;
-	QVector<Node *> current_contexts_;
+	QVector<oak::Node> contexts_;
+	QVector<oak::Node> current_contexts_;
 
 	bool show_all_nodes_;
 
@@ -192,7 +188,7 @@ private:
 	int64_t group_passthrough_added_sub_ = 0;
 	int64_t group_passthrough_removed_sub_ = 0;
 
-	QHash<Node *, QPair<int64_t, int64_t>> context_subs_;
+	QHash<oak::Node, QPair<int64_t, int64_t>> context_subs_;
 
 private slots:
 	void update_global_scroll_bar();
@@ -201,13 +197,13 @@ private slots:
 
 	//void FocusChanged(QWidget *old, QWidget *now);
 
-	void input_check_box_changed(const NodeInput &input, bool e);
+	void input_check_box_changed(const oak::Input &input, bool e);
 
 	void group_input_passthrough_added(OakEngineNode *group,
-									const olive::NodeInput &input);
+									const oak::Input &input);
 
 	void group_input_passthrough_removed(OakEngineNode *group,
-									  const olive::NodeInput &input);
+									  const oak::Input &input);
 
 	void update_contexts();
 

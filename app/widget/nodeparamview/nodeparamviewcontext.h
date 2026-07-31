@@ -25,6 +25,7 @@
 #include "nodeparamviewdockarea.h"
 #include "nodeparamviewitembase.h"
 #include "nodeparamviewitem.h"
+#include "common/trackreferencehandle.h"
 
 namespace olive
 {
@@ -39,7 +40,7 @@ public:
 		return dock_area_;
 	}
 
-	const QVector<Node *> &get_contexts() const
+	const QVector<oak::Node> &get_contexts() const
 	{
 		return contexts_;
 	}
@@ -49,35 +50,34 @@ public:
 		return items_;
 	}
 
-	NodeParamViewItem *get_item(Node *node, Node *ctx);
+	NodeParamViewItem *get_item(oak::Node node, oak::Node ctx);
 
 	void add_node(NodeParamViewItem *item);
 
-	void remove_node(Node *node, Node *ctx);
+	void remove_node(oak::Node node, oak::Node ctx);
 
-	void remove_nodes_with_context(Node *ctx);
+	void remove_nodes_with_context(oak::Node ctx);
 
-	void set_input_checked(const NodeInput &input, bool e);
+	void set_input_checked(const oak::Input &input, bool e);
 
 	void set_timebase(const Rational &timebase);
 
-	void set_time_target(ViewerOutput *n);
+	void set_time_target(OakEngineNode *n);
 
-	void set_effect_type(Track::Type type);
+	void set_effect_type(TrackReference::Type type);
 
 signals:
 	void about_to_delete_item(NodeParamViewItem *item);
 
 public:
-	// Not slots: signatures use the engine C++ type Node*, which must not be
-	// exposed to MOC (it would pull Node::staticMetaObject across the ABI
-	// boundary). They are called directly, never used as connect() targets.
-	void add_context(Node *node)
+	// Ordinary member functions (NOT slots): they are called directly, never
+	// used as connect() targets.
+	void add_context(oak::Node node)
 	{
 		contexts_.append(node);
 	}
 
-	void remove_context(Node *node)
+	void remove_context(oak::Node node)
 	{
 		contexts_.removeOne(node);
 	}
@@ -88,11 +88,11 @@ protected slots:
 private:
 	NodeParamViewDockArea *dock_area_;
 
-	QVector<Node *> contexts_;
+	QVector<oak::Node> contexts_;
 
 	QVector<NodeParamViewItem *> items_;
 
-	Track::Type type_;
+	TrackReference::Type type_;
 
 private slots:
 	void add_effect_button_clicked();

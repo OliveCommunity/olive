@@ -38,6 +38,7 @@
 #include "oakengine/node.h"
 #include "oakengine/timeline.h"
 #include "oakengine/undo.h"
+#include "oakutil/oaknode.h"
 #include "streamproperties/audiostreamproperties.h"
 #include "streamproperties/videostreamproperties.h"
 #include "widget/viewer/vieweroutpututils.h"
@@ -46,20 +47,26 @@ namespace olive
 {
 
 FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
-												 Footage *footage)
+												 OakEngineNode *footage)
 	: QDialog(parent)
 	, footage_(footage)
 {
 	QGridLayout *layout = new QGridLayout(this);
 
-	setWindowTitle(tr("\"%1\" Properties").arg(footage_->get_label_or_name()));
+	// WRAPPER-GAP: oakengine_node_get_label_or_name -- emulate inline
+	// (Node::get_label_or_name(): the label, falling back to the name).
+	const QString footage_label = oak::Node(footage_).get_label();
+	setWindowTitle(
+		tr("\"%1\" Properties")
+			.arg(footage_label.isEmpty() ? oak::Node(footage_).name() :
+										   footage_label));
 	setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
 	int row = 0;
 
 	layout->addWidget(new QLabel(tr("Name:")), row, 0);
 
-	footage_name_field_ = new QLineEdit(footage_->get_label());
+	footage_name_field_ = new QLineEdit(footage_label);
 	layout->addWidget(footage_name_field_, row, 1);
 	row++;
 
@@ -70,8 +77,15 @@ FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
 	{
 		QHBoxLayout *start_time_layout = new QHBoxLayout();
 
+		OakEngineFootage *start_time_handle = oakengine_footage_borrow(footage_);
+		int sst_num = 0, sst_den = 1;
+		const bool has_sst =
+			oakengine_footage_get_source_start_time(start_time_handle,
+													&sst_num,
+													&sst_den) == 1;
+
 		source_start_time_enable_ = new QCheckBox(tr("Set"));
-		source_start_time_enable_->setChecked(footage_->has_source_start_time());
+		source_start_time_enable_->setChecked(has_sst);
 		start_time_layout->addWidget(source_start_time_enable_);
 
 		source_start_time_spin_ = new QDoubleSpinBox();
@@ -79,9 +93,7 @@ FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
 		source_start_time_spin_->setDecimals(3);
 		source_start_time_spin_->setSuffix(QStringLiteral(" s"));
 		source_start_time_spin_->setValue(
-			footage_->has_source_start_time() ?
-				footage_->source_start_time().to_double() :
-				0.0);
+			has_sst ? double(sst_num) / double(sst_den) : 0.0);
 		source_start_time_spin_->setEnabled(
 			source_start_time_enable_->isChecked());
 		start_time_layout->addWidget(source_start_time_spin_, 1);
@@ -89,14 +101,11 @@ FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
 		QString detection_note;
 		// Detection source comes through the facade (auto-detected field or
 		// "manual"), matching the engine's stored value.
-		if (footage_->has_source_start_time()) {
-			OakEngineFootage *facade_handle = oakengine_footage_borrow(
-				reinterpret_cast<OakEngineNode *>(footage_));
+		if (has_sst) {
 			char source_buf[64];
 			source_buf[0] = '\0';
 			oakengine_footage_get_source_start_time_source(
-				facade_handle, source_buf, sizeof(source_buf));
-			oakengine_footage_free(facade_handle);
+				start_time_handle, source_buf, sizeof(source_buf));
 			const QString source = QString::fromUtf8(source_buf);
 			detection_note =
 				(source == QStringLiteral("manual")) ?
@@ -105,6 +114,7 @@ FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
 		} else {
 			detection_note = tr("(not detected)");
 		}
+		oakengine_footage_free(start_time_handle);
 		start_time_layout->addWidget(new QLabel(detection_note));
 
 		connect(source_start_time_enable_, &QCheckBox::toggled,
@@ -127,49 +137,66 @@ FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
 
 	int first_usable_stream = -1;
 
-	for (int i = 0; i < footage_->get_total_stream_count(); i++) {
-		Track::Reference reference = footage_->get_reference_from_real_index(i);
+	int total_stream_count = 0;
+	{
+		OakEngineFootage *count_handle = oakengine_footage_borrow(footage_);
+		total_stream_count =
+			oakengine_footage_get_video_stream_count(count_handle) +
+			oakengine_footage_get_audio_stream_count(count_handle) +
+			oakengine_footage_get_subtitle_stream_count(count_handle);
+		oakengine_footage_free(count_handle);
+	}
 
+	for (int i = 0; i < total_stream_count; i++) {
 		QString description;
 		bool is_enabled = false;
 
-		OakEngineFootage *facade_handle = oakengine_footage_borrow(
-			reinterpret_cast<OakEngineNode *>(footage_));
+		OakEngineFootage *facade_handle = oakengine_footage_borrow(footage_);
 
-		switch (reference.type()) {
-		case Track::k_video: {
+		// (track_type, stream_index) pair for this real stream index;
+		// track types are OAKENGINE_TRACK_TYPE_* ordinals (identical to
+		// engine Track::Type).
+		int reference_type = -1;
+		int reference_index = -1;
+		oakengine_footage_get_stream_reference(facade_handle, i,
+											   &reference_type,
+											   &reference_index);
+
+		switch (reference_type) {
+		case OAKENGINE_TRACK_TYPE_VIDEO: {
 			stacked_widget_->addWidget(
-				new VideoStreamProperties(footage_, reference.index()));
+				new VideoStreamProperties(footage_, reference_index));
 
-			VideoParams vp = viewer_output_video_params(footage_, reference.index());
-			is_enabled = vp.enabled();
+			is_enabled = oakengine_viewer_get_stream_enabled(
+							reinterpret_cast<const OakEngineNode *>(footage_),
+							OAKENGINE_TRACK_TYPE_VIDEO, reference_index) == 1;
 			{
 				char desc_buf[256];
 				oakengine_footage_describe_video_stream(
-					facade_handle, reference.index(), desc_buf,
+					facade_handle, reference_index, desc_buf,
 					sizeof(desc_buf));
 				description = QString::fromUtf8(desc_buf);
 			}
 			break;
 		}
-		case Track::k_audio: {
+		case OAKENGINE_TRACK_TYPE_AUDIO: {
 			stacked_widget_->addWidget(
-				new AudioStreamProperties(footage_, reference.index()));
+				new AudioStreamProperties(footage_, reference_index));
 
-			AudioParams ap = viewer_output_audio_params(footage_, reference.index());
+			AudioParams ap = viewer_output_audio_params(footage_, reference_index);
 			is_enabled = ap.enabled();
 			{
 				char desc_buf[256];
 				oakengine_footage_describe_audio_stream(
-					facade_handle, reference.index(), desc_buf,
+					facade_handle, reference_index, desc_buf,
 					sizeof(desc_buf));
 				description = QString::fromUtf8(desc_buf);
 			}
 			break;
 		}
-		case Track::k_subtitle: {
+		case OAKENGINE_TRACK_TYPE_SUBTITLE: {
 			is_enabled = oakengine_footage_get_stream_enabled(
-				facade_handle, OAKENGINE_TRACK_TYPE_SUBTITLE, reference.index());
+				facade_handle, OAKENGINE_TRACK_TYPE_SUBTITLE, reference_index);
 
 			// FIXME: Language?
 			description = tr("Subtitles");
@@ -189,9 +216,9 @@ FootagePropertiesDialog::FootagePropertiesDialog(QWidget *parent,
 		track_list_->addItem(item);
 
 		if (first_usable_stream == -1 &&
-			(reference.type() == Track::k_video ||
-			 reference.type() == Track::k_audio ||
-			 reference.type() == Track::k_subtitle)) {
+			(reference_type == OAKENGINE_TRACK_TYPE_VIDEO ||
+			 reference_type == OAKENGINE_TRACK_TYPE_AUDIO ||
+			 reference_type == OAKENGINE_TRACK_TYPE_SUBTITLE)) {
 			first_usable_stream = i;
 		}
 	}
@@ -230,16 +257,14 @@ void FootagePropertiesDialog::accept()
 		}
 	}
 
-	OakEngineFootage *facade_handle = oakengine_footage_borrow(
-		reinterpret_cast<OakEngineNode *>(footage_));
+	OakEngineFootage *facade_handle = oakengine_footage_borrow(footage_);
 
 	// All writes go through the liboakengine C ABI facade; each call lands
 	// on the shared undo stack as an undoable command (replacing this
 	// dialog's own undo command classes with identical semantics).
-	if (footage_->get_label() != footage_name_field_->text()) {
+	if (oak::Node(footage_).get_label() != footage_name_field_->text()) {
 		oakengine_node_set_label(
-			reinterpret_cast<OakEngineNode *>(footage_),
-			footage_name_field_->text().toUtf8().constData());
+			footage_, footage_name_field_->text().toUtf8().constData());
 	}
 
 	// Apply source start time changes
@@ -247,41 +272,55 @@ void FootagePropertiesDialog::accept()
 		const bool new_enabled = source_start_time_enable_->isChecked();
 		const Rational new_time =
 			Rational::from_double(source_start_time_spin_->value());
-		if (new_enabled != footage_->has_source_start_time() ||
-			(new_enabled && new_time != footage_->source_start_time())) {
+		int cur_sst_num = 0, cur_sst_den = 1;
+		const bool cur_has_sst =
+			oakengine_footage_get_source_start_time(facade_handle,
+													&cur_sst_num,
+													&cur_sst_den) == 1;
+		if (new_enabled != cur_has_sst ||
+			(new_enabled &&
+			 new_time != Rational(cur_sst_num, cur_sst_den))) {
 			oakengine_footage_set_source_start_time(
 				facade_handle, new_enabled ? 1 : 0, new_time.numerator(),
 				new_time.denominator());
 		}
 	}
 
-	for (int i = 0; i < footage_->get_total_stream_count(); i++) {
-		Track::Reference reference = footage_->get_reference_from_real_index(i);
+	int total_stream_count =
+		oakengine_footage_get_video_stream_count(facade_handle) +
+		oakengine_footage_get_audio_stream_count(facade_handle) +
+		oakengine_footage_get_subtitle_stream_count(facade_handle);
+
+	for (int i = 0; i < total_stream_count; i++) {
+		int reference_type = -1;
+		int reference_index = -1;
+		oakengine_footage_get_stream_reference(facade_handle, i,
+											   &reference_type,
+											   &reference_index);
 		bool new_stream_enabled =
 			(track_list_->item(i)->checkState() == Qt::Checked);
 		bool old_stream_enabled = new_stream_enabled;
 
-		switch (reference.type()) {
-		case Track::k_video:
+		switch (reference_type) {
+		case OAKENGINE_TRACK_TYPE_VIDEO:
 			old_stream_enabled = oakengine_footage_get_stream_enabled(
-				facade_handle, OAKENGINE_TRACK_TYPE_VIDEO, reference.index());
+				facade_handle, OAKENGINE_TRACK_TYPE_VIDEO, reference_index);
 			break;
-		case Track::k_audio:
+		case OAKENGINE_TRACK_TYPE_AUDIO:
 			old_stream_enabled = oakengine_footage_get_stream_enabled(
-				facade_handle, OAKENGINE_TRACK_TYPE_AUDIO, reference.index());
+				facade_handle, OAKENGINE_TRACK_TYPE_AUDIO, reference_index);
 			break;
-		case Track::k_subtitle:
+		case OAKENGINE_TRACK_TYPE_SUBTITLE:
 			old_stream_enabled = oakengine_footage_get_stream_enabled(
-				facade_handle, OAKENGINE_TRACK_TYPE_SUBTITLE, reference.index());
+				facade_handle, OAKENGINE_TRACK_TYPE_SUBTITLE, reference_index);
 			break;
-		case Track::k_none:
-		case Track::k_count:
+		default:
 			break;
 		}
 
 		if (old_stream_enabled != new_stream_enabled) {
 			oakengine_footage_set_stream_enabled(
-				facade_handle, int(reference.type()), reference.index(),
+				facade_handle, reference_type, reference_index,
 				new_stream_enabled ? 1 : 0);
 		}
 	}

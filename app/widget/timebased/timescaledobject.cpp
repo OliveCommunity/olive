@@ -24,8 +24,6 @@
 #include <cfloat>
 #include <QtMath>
 
-#include "audio/audiovisualwaveform.h"
-
 #include "oakengine/node.h"
 namespace olive
 {

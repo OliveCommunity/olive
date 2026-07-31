@@ -21,8 +21,7 @@
 
 #include "trackselect.h"
 
-#include "node/block/gap/gap.h"
-#include "node/output/track/track.h"
+#include "oakengine/timeline.h"
 #include "widget/timelinewidget/timelinewidget.h"
 
 namespace olive
@@ -35,56 +34,77 @@ TrackSelectTool::TrackSelectTool(TimelineWidget *parent)
 
 void TrackSelectTool::mouse_press(TimelineViewMouseEvent *event)
 {
-	QVector<Block *> blocks;
+	QVector<OakEngineBlock *> blocks;
 	bool forward = !(event->get_modifiers() & Qt::ControlModifier);
 
 	parent()->deselect_all();
 
 	if (event->get_modifiers() & Qt::ShiftModifier) {
 		// Track only
-		Track *track = parent()->get_track_from_reference(event->get_track());
+		OakEngineTrack *track =
+			parent()->get_track_from_reference(event->get_track());
 		if (track) {
 			select_blocks_on_track(track, event, &blocks, forward);
 		}
 	} else {
-		// All tracks
-		foreach (Track *track, parent()->sequence()->get_tracks()) {
-			select_blocks_on_track(track, event, &blocks, forward);
+		// All tracks (engine C ABI: per-type count + indexed access; type
+		// ordinals match TrackReference::Type/OAKENGINE_TRACK_TYPE_*)
+		auto *seq_handle = parent()->sequence();
+		int counts[3] = { 0, 0, 0 };
+		oakengine_sequence_track_count(seq_handle, &counts[0], &counts[1],
+									   &counts[2]);
+		for (int type = 0; type < 3; type++) {
+			for (int i = 0; i < counts[type]; i++) {
+				OakEngineTrack *track =
+					oakengine_sequence_track_at(seq_handle, type, i);
+				select_blocks_on_track(track, event, &blocks, forward);
+			}
 		}
 	}
 
 	if (!blocks.isEmpty()) {
 		parent()->signal_selected_blocks(blocks);
-		set_drag_movement_mode(Timeline::k_move);
+		set_drag_movement_mode(TimelineApp::k_move);
 		set_clicked_item(blocks.first());
 		drag_start_ = event->get_coordinates();
 	} else {
-		set_drag_movement_mode(Timeline::k_none);
+		set_drag_movement_mode(TimelineApp::k_none);
 	}
 }
 
-void TrackSelectTool::select_blocks_on_track(Track *track,
+void TrackSelectTool::select_blocks_on_track(OakEngineTrack *track,
 										  TimelineViewMouseEvent *event,
-										  QVector<Block *> *blocks,
+										  QVector<OakEngineBlock *> *blocks,
 										  bool forward)
 {
-	Block *b = track->nearest_block_before_or_at(event->get_frame());
+	OakEngineBlock *b =
+		oakengine_track_nearest_block_before_or_at(
+			track,
+			core::Timecode::time_to_timestamp(event->get_frame(),
+											parent()->timebase()));
 
-	if (!b && !track->blocks().isEmpty() && !forward) {
+	if (!b && oakengine_track_block_count(track) > 0 && !forward) {
 		// Fallback to first or last block in track
-		b = track->blocks().last();
+		b = oakengine_track_block_at(track,
+								   oakengine_track_block_count(track) - 1);
 	}
 
 	while (b) {
-		if (!dynamic_cast<GapBlock *>(b)) {
+		if (!oakengine_block_is_gap(b)) {
 			if (!blocks->contains(b)) {
 				parent()->add_selection(b);
 				blocks->append(b);
 			}
 
 			if (!(event->get_modifiers() & Qt::AltModifier)) {
-				if (ClipBlock *clip = dynamic_cast<ClipBlock *>(b)) {
-					foreach (Block *link, clip->block_links()) {
+				if (oakengine_node_is_clip(
+						reinterpret_cast<OakEngineNode *>(b))) {
+					// ClipBlock::block_links() via the C ABI (linked blocks)
+					const int link_count =
+						oakengine_block_link_count(b);
+					for (int i = 0; i < link_count; i++) {
+						OakEngineBlock *link =
+							oakengine_block_link_at(b, i);
 						if (!blocks->contains(link)) {
 							parent()->add_selection(link);
 							blocks->append(link);
@@ -94,7 +114,7 @@ void TrackSelectTool::select_blocks_on_track(Track *track,
 			}
 		}
 
-		b = forward ? b->next() : b->previous();
+		b = forward ? oakengine_block_next(b) : oakengine_block_prev(b);
 	}
 }
 

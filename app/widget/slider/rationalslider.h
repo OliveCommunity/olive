@@ -26,7 +26,7 @@
 #include <QMouseEvent>
 
 #include "base/decimalsliderbase.h"
-#include "node/sliderdisplaytype.h"
+#include "sliderdisplaytypeapp.h"
 
 namespace olive
 {
@@ -45,8 +45,9 @@ public:
 	/**
    * @brief enum containing the possibly display types
    *
-   * The canonical definition lives in the engine layer
-   * (node/sliderdisplaytype.h); this alias keeps existing call sites
+   * The canonical definition lives in the app-side mirror
+   * (widget/slider/sliderdisplaytypeapp.h, ordinals synced with engine
+   * node/sliderdisplaytype.h); this alias keeps existing call sites
    * source-compatible. Use slider::k_time etc. for the enumerators.
    */
 	using DisplayType = slider::RationalDisplayType;

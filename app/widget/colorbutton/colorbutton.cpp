@@ -61,7 +61,7 @@ void ColorButton::set_color(const ManagedColor &c)
 	color_.set_color_input(compliant_in);
 
 	QByteArray out_name = color_.color_output().output().toUtf8();
-	ColorTransform cs_out = color_.color_output();
+	oak::ColorTransform cs_out = color_.color_output();
 	QByteArray o, v, l;
 	oak_color_transform pod = oak_to_transform(cs_out, &o, &v, &l);
 	int out_is_display = 0;
@@ -70,11 +70,11 @@ void ColorButton::set_color(const ManagedColor &c)
 		color_manager_, &pod, 0, &out_is_display, out_buf, sizeof(out_buf),
 		view_buf, sizeof(view_buf), look_buf, sizeof(look_buf));
 	if (out_is_display) {
-		color_.set_color_output(ColorTransform(QString::fromUtf8(out_buf),
+		color_.set_color_output(oak::ColorTransform(QString::fromUtf8(out_buf),
 											   QString::fromUtf8(view_buf),
 											   QString::fromUtf8(look_buf)));
 	} else {
-		color_.set_color_output(ColorTransform(QString::fromUtf8(out_buf)));
+		color_.set_color_output(oak::ColorTransform(QString::fromUtf8(out_buf)));
 	}
 
 	update_color();
@@ -113,7 +113,7 @@ void ColorButton::color_dialog_finished(int e)
 void ColorButton::update_color()
 {
 	QByteArray in_cs = color_.color_input().toUtf8();
-	ColorTransform out = color_.color_output();
+	oak::ColorTransform out = color_.color_output();
 	QByteArray o, v, l;
 	oak_color_transform out_pod = oak_to_transform(out, &o, &v, &l);
 	color_processor_ = ColorProcessorHandlePtr(

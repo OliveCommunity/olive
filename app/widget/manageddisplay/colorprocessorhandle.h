@@ -29,10 +29,15 @@
 #include <oakengine/color.h>
 #include <olive/core/core.h>
 
-#include "render/colortransform.h"
+#include "oakutil/oakvideo.h"
+#include "oakutil/qtutils.h"
 
 namespace olive
 {
+
+// Same namespace bridge the engine headers used to provide (unqualified
+// Color/Rational/... inside namespace olive).
+using namespace core;
 
 class ColorManager;
 
@@ -72,11 +77,11 @@ public:
 		color_input_ = color_input;
 	}
 
-	const ColorTransform &color_output() const
+	const oak::ColorTransform &color_output() const
 	{
 		return color_transform_;
 	}
-	void set_color_output(const ColorTransform &color_output)
+	void set_color_output(const oak::ColorTransform &color_output)
 	{
 		color_transform_ = color_output;
 	}
@@ -84,7 +89,7 @@ public:
 private:
 	QString color_input_;
 
-	ColorTransform color_transform_;
+	oak::ColorTransform color_transform_;
 };
 
 /**
@@ -149,10 +154,10 @@ QStringList oak_query_string_list(CountFn &&count_fn, AtFn &&at_fn)
 }
 
 /**
- * @brief Convert an olive::ColorTransform to the facade POD. The QByteArray
+ * @brief Convert an oak::ColorTransform to the facade POD. The QByteArray
  * outputs back the POD's pointers and must outlive its use.
  */
-inline oak_color_transform oak_to_transform(const ColorTransform &t,
+inline oak_color_transform oak_to_transform(const oak::ColorTransform &t,
 											QByteArray *output,
 											QByteArray *view,
 											QByteArray *look)
@@ -172,8 +177,8 @@ inline oak_color_transform oak_to_transform(const ColorTransform &t,
  * @brief ColorManager::get_compliant_color_space(ColorTransform) through
  * the facade.
  */
-inline ColorTransform oak_compliant_transform(ColorManager *mgr,
-											  const ColorTransform &in,
+inline oak::ColorTransform oak_compliant_transform(ColorManager *mgr,
+											  const oak::ColorTransform &in,
 											  bool force_display = false)
 {
 	QByteArray o, v, l;
@@ -187,10 +192,11 @@ inline ColorTransform oak_compliant_transform(ColorManager *mgr,
 		return in;
 	}
 	if (is_display) {
-		return ColorTransform(QString::fromUtf8(out), QString::fromUtf8(view),
-							  QString::fromUtf8(look));
+		return oak::ColorTransform(QString::fromUtf8(out),
+								   QString::fromUtf8(view),
+								   QString::fromUtf8(look));
 	}
-	return ColorTransform(QString::fromUtf8(out));
+	return oak::ColorTransform(QString::fromUtf8(out));
 }
 
 /**
@@ -212,7 +218,7 @@ inline QString oak_compliant_color_space(ColorManager *mgr, const QString &s)
  */
 inline ColorProcessorHandlePtr
 oak_make_color_processor(ColorManager *mgr, const QString &input,
-						 const ColorTransform &dest,
+						 const oak::ColorTransform &dest,
 						 int direction = OAKENGINE_COLOR_PROCESSOR_NORMAL)
 {
 	QByteArray o, v, l;

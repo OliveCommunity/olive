@@ -26,7 +26,7 @@
 
 #include "widget/flowlayout/flowlayout.h"
 #include "widget/toolbar/toolbarbutton.h"
-#include "tool/tool.h"
+#include "common/tooltypes.h"
 
 namespace olive
 {

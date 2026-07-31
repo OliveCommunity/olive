@@ -90,9 +90,9 @@ brew install googletest
 
 ---
 
-## 编译 OpenTimelineIO（可选）
+## 编译 OpenTimelineIO（必需）
 
-OpenTimelineIO 支持以 OTIO 格式导入/导出时间线数据。如果你不需要 OTIO 支持，可以跳过此步骤。
+OpenTimelineIO 支持以 OTIO 格式导入/导出时间线数据，是必需依赖。
 
 ```bash
 # 克隆仓库
@@ -103,6 +103,7 @@ cd OpenTimelineIO
 cmake -S . -B build -G Ninja \
   -DOTIO_SHARED_LIBS=ON \
   -DOTIO_PYTHON_BINDINGS=OFF \
+  -DOTIO_FIND_IMATH=ON \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="${PWD}/install"
 
@@ -126,16 +127,6 @@ cd oak
 > **注意：** 请务必使用 `--recursive` 克隆子模块，因为 Oak 依赖于多个作为子模块包含的外部库。
 
 ### 2. 使用 CMake 配置
-
-基础配置（不包含 OTIO）：
-
-```bash
-cmake -S . -B build -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DOCIO_LOCATION=$(brew --prefix opencolorio)
-```
-
-包含 OTIO 支持的配置：
 
 ```bash
 cmake -S . -B build -G Ninja \
@@ -188,7 +179,7 @@ ctest --test-dir build --output-on-failure -C Release
 | `BUILD_TESTS` | `OFF` | 构建单元测试 |
 | `BUILD_DOXYGEN` | `OFF` | 构建 Doxygen 文档 |
 | `USE_WERROR` | `OFF` | 将警告视为错误 |
-| `OTIO_LOCATION` | - | OpenTimelineIO 安装路径（可选） |
+| `OTIO_LOCATION` | - | OpenTimelineIO 安装路径（必需） |
 | `OCIO_LOCATION` | - | OpenColorIO 安装路径 |
 
 ---

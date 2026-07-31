@@ -29,13 +29,12 @@
 #include <QWidget>
 
 #include "core.h"
-#include "node/block/transition/transition.h"
-#include "node/output/viewer/viewer.h"
 #include "oakengine/events.h"
+#include "oakengine/node.h"
 #include "oakengine/serializer.h"
 #include "oakengine/timeline.h"
 #include "oakengine/undo.h"
-#include "timeline/timelinecommon.h"
+#include "timeline/timelinecommonapp.h"
 #include "timelineandtrackview.h"
 #include "widget/slider/rationalslider.h"
 #include "widget/timebased/timebasedwidget.h"
@@ -127,7 +126,7 @@ public:
 	void show_proxy_dialog_for_selected_clips();
 
 	void recording_callback(const QString &filename, const TimeRange &time,
-						   const Track::Reference &track);
+						   const TrackReference &track);
 
 	void enable_recording_overlay(const TimelineCoordinate &coord);
 
@@ -140,12 +139,21 @@ public:
 	/**
    * @brief Timelines should always be connected to sequences
    */
-	Sequence *sequence() const
+	OakEngineSequence *sequence() const
 	{
-		return static_cast<Sequence *>(get_connected_node());
+		// R8: the type check goes through the C ABI facade predicate; the
+		// Sequence handle is shared with the node handle, so no engine C++
+		// definition is needed here (replaces the old static_cast, which
+		// required the complete engine type).
+		auto *connected = get_connected_node();
+		return (connected &&
+				oakengine_node_is_sequence(
+					reinterpret_cast<OakEngineNode *>(connected)))
+				   ? reinterpret_cast<OakEngineSequence *>(connected)
+				   : nullptr;
 	}
 
-	const QVector<Block *> &get_selected_blocks() const
+	const QVector<OakEngineBlock *> &get_selected_blocks() const
 	{
 		return selected_blocks_;
 	}
@@ -154,7 +162,7 @@ public:
 
 	void restore_splitter_state(const QByteArray &state);
 
-	static void replace_blocks_with_gaps(const QVector<Block *> &blocks,
+	static void replace_blocks_with_gaps(const QVector<OakEngineBlock *> &blocks,
 									  bool remove_from_graph,
 									  void *command,
 									  bool handle_transitions = true);
@@ -165,13 +173,13 @@ public:
    * Requires a float-based scene position. If you have a screen position, use GetScenePos() first to convert it to a
    * scene position
    */
-	Block *get_item_at_scene_pos(const TimelineCoordinate &coord);
+	OakEngineBlock *get_item_at_scene_pos(const TimelineCoordinate &coord);
 
-	void add_selection(const TimeRange &time, const Track::Reference &track);
-	void add_selection(Block *item);
+	void add_selection(const TimeRange &time, const TrackReference &track);
+	void add_selection(OakEngineBlock *item);
 
-	void remove_selection(const TimeRange &time, const Track::Reference &track);
-	void remove_selection(Block *item);
+	void remove_selection(const TimeRange &time, const TrackReference &track);
+	void remove_selection(OakEngineBlock *item);
 
 	const TimelineWidgetSelections &get_selections() const
 	{
@@ -181,10 +189,10 @@ public:
 	void set_selections(const TimelineWidgetSelections &s,
 					   bool process_block_changes);
 
-	Track *get_track_from_reference(const Track::Reference &ref) const;
+	OakEngineTrack *get_track_from_reference(const TrackReference &ref) const;
 
 	void set_view_beam_cursor(const TimelineCoordinate &coord);
-	void set_view_transition_overlay(ClipBlock *out, ClipBlock *in);
+	void set_view_transition_overlay(OakEngineClip *out, OakEngineClip *in);
 
 	const QVector<TimelineViewGhostItem *> &get_ghost_items() const
 	{
@@ -198,8 +206,8 @@ public:
 	void move_rubber_band_select(bool enable_selecting, bool select_links);
 	void end_rubber_band_select();
 
-	int get_track_y(const Track::Reference &ref);
-	int get_track_height(const Track::Reference &ref);
+	int get_track_y(const TrackReference &ref);
+	int get_track_height(const TrackReference &ref);
 
 	void add_ghost(TimelineViewGhostItem *ghost);
 
@@ -210,18 +218,18 @@ public:
 		return !ghost_items_.isEmpty();
 	}
 
-	bool is_block_selected(Block *b) const
+	bool is_block_selected(OakEngineBlock *b) const
 	{
 		return selected_blocks_.contains(b);
 	}
 
-	void set_block_links_selected(ClipBlock *block, bool selected);
+	void set_block_links_selected(OakEngineClip *block, bool selected);
 
 	void queue_scroll(int value);
 
 	TimelineView *get_first_timeline_view();
 
-	Rational get_timebase_for_track_type(Track::Type type);
+	Rational get_timebase_for_track_type(TrackReference::Type type);
 
 	const QRect &get_rubber_band_geometry() const;
 
@@ -241,13 +249,13 @@ public:
    * this is preferable and should only be set to FALSE if the list is guaranteed not to contain
    * already selected blocks (and therefore filtering can be skipped to save time).
    */
-	void signal_selected_blocks(QVector<Block *> selected_blocks,
+	void signal_selected_blocks(QVector<OakEngineBlock *> selected_blocks,
 							  bool filter = true);
 
 	/**
    * @brief Track blocks that have been newly deselected
    */
-	void signal_deselected_blocks(const QVector<Block *> &deselected_blocks);
+	void signal_deselected_blocks(const QVector<OakEngineBlock *> &deselected_blocks);
 
 	/**
    * @brief Convenience function to deselect all blocks and signal them
@@ -285,7 +293,7 @@ signals:
 	void block_selection_changed(const QVector<OakEngineBlock *> &selected_blocks);
 
 	void request_capture_start(const TimeRange &time,
-							 const Track::Reference &track);
+							 const TrackReference &track);
 
 	void reveal_viewer_in_footage_viewer(OakEngineNode *r, const TimeRange &range);
 	void reveal_viewer_in_project(OakEngineNode *r);
@@ -297,10 +305,10 @@ protected:
 	virtual void TimebaseChangedEvent(const Rational &) override;
 	virtual void ScaleChangedEvent(const double &) override;
 
-	virtual void ConnectNodeEvent(ViewerOutput *n) override;
-	virtual void DisconnectNodeEvent(ViewerOutput *n) override;
+	virtual void ConnectNodeEvent(OakEngineNode *n) override;
+	virtual void DisconnectNodeEvent(OakEngineNode *n) override;
 
-	virtual const QVector<Block *> *get_snap_blocks() const override
+	virtual const QVector<OakEngineBlock *> *get_snap_blocks() const override
 	{
 		return &added_blocks_;
 	}
@@ -309,14 +317,14 @@ protected slots:
 	virtual void SendCatchUpScrollEvent() override;
 
 private:
-	QVector<Timeline::EditToInfo> get_edit_to_info(const Rational &playhead_time,
-												Timeline::MovementMode mode);
+	QVector<TimelineApp::EditToInfo> get_edit_to_info(const Rational &playhead_time,
+													TimelineApp::MovementMode mode);
 
-	void ripple_to(Timeline::MovementMode mode);
+	void ripple_to(TimelineApp::MovementMode mode);
 
-	void edit_to(Timeline::MovementMode mode);
+	void edit_to(TimelineApp::MovementMode mode);
 
-	void update_viewports(const Track::Type &type = Track::k_none);
+	void update_viewports(const TrackReference::Type &type = TrackReference::k_none);
 
 	bool paste_internal(bool insert);
 
@@ -324,13 +332,13 @@ private:
 
 	TimelineAndTrackView *add_timeline_and_track_view(Qt::Alignment alignment);
 
-	QHash<Node *, Node *>
+	QHash<OakEngineNode *, OakEngineNode *>
 	generate_existing_paste_map(void *clipboard);
 
 	QRubberBand rubberband_;
 	QVector<QPointF> rubberband_scene_pos_;
 	TimelineWidgetSelections rubberband_old_selections_;
-	QVector<Block *> rubberband_now_selected_;
+	QVector<OakEngineBlock *> rubberband_now_selected_;
 	bool rubberband_enable_selecting_;
 	bool rubberband_select_links_;
 
@@ -350,11 +358,11 @@ private:
 
 	RationalSlider *timecode_label_;
 
-	QVector<Block *> selected_blocks_;
+	QVector<OakEngineBlock *> selected_blocks_;
 
-	QVector<Block *> added_blocks_;
+	QVector<OakEngineBlock *> added_blocks_;
 
-	QHash<Block *, QVector<int64_t>> block_subscriptions_;
+	QHash<OakEngineBlock *, QVector<int64_t>> block_subscriptions_;
 
 	int deferred_scroll_value_;
 
@@ -424,7 +432,7 @@ private slots:
 	void view_drag_left(QDragLeaveEvent *event);
 	void view_drag_dropped(TimelineViewMouseEvent *event);
 
-	void track_updated(Track::Type type);
+	void track_updated(TrackReference::Type type);
 
 	void block_updated(OakEngineBlock *block = nullptr);
 
@@ -468,13 +476,13 @@ private slots:
 	void force_update_rubber_band();
 
 private:
-	void add_block(Block *block);
-	void remove_block(Block *blocks);
+	void add_block(OakEngineBlock *block);
+	void remove_block(OakEngineBlock *blocks);
 
-	void add_track(Track *track);
-	void remove_track(Track *track);
+	void add_track(OakEngineTrack *track);
+	void remove_track(OakEngineTrack *track);
 
-	void track_index_changed(Track *track, int old, int now);
+	void track_index_changed(OakEngineTrack *track, int old, int now);
 	void track_about_to_be_deleted(OakEngineTrack *track);
 };
 

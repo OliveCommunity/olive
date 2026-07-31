@@ -23,7 +23,6 @@
 #define OAK_PROJECT_PANEL_H
 
 #include "footagemanagementpanel.h"
-#include "node/project.h"
 #include "panel/panel.h"
 #include "widget/projectexplorer/projectexplorer.h"
 
@@ -41,22 +40,22 @@ public:
 	ProjectPanel(const QString &unique_name);
 	~ProjectPanel() override;
 
-	Project *project() const;
-	void set_project(Project *p);
+	oak::Project project() const;
+	void set_project(oak::Project p);
 
-	Folder *get_root() const;
+	oak::Node get_root() const;
 
-	void set_root(Folder *item);
+	void set_root(oak::Node item);
 
-	QVector<Node *> selected_items() const;
+	QVector<oak::Node> selected_items() const;
 
-	Folder *get_selected_folder() const;
+	oak::Node get_selected_folder() const;
 
 	virtual QVector<OakEngineNode *> get_selected_footage() const override;
 
 	ProjectViewModel *model() const;
 
-	bool select_item(Node *n, bool deselect_all_first = true)
+	bool select_item(oak::Node n, bool deselect_all_first = true)
 	{
 		return explorer_->select_item(n, deselect_all_first);
 	}

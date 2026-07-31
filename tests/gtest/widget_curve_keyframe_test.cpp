@@ -11,9 +11,11 @@
 #include "node/math/math/math.h"
 #include "node/nodeundo.h"
 #include "node/project.h"
+#include "oakengine/app.h"
 #include "oakengine/node.h"
 #include "oakengine/project.h"
 #include "render/diskmanager.h"
+#include "undo/undostack.h"
 #include "widget/curvewidget/curveview.h"
 #include "widget/curvewidget/curvewidget.h"
 #include "widget/keyframeview/keyframeview.h"
@@ -33,6 +35,31 @@ void ensure_app_singletons()
 	if (!olive::DiskManager::instance()) {
 		olive::DiskManager::create_instance();
 	}
+}
+
+// Helpers: wrap engine pointers as oak:: wrapper values for the C ABI
+// widget interface
+inline oak::Node to_oak(Node *n)
+{
+	return oak::Node(reinterpret_cast<OakEngineNode *>(n));
+}
+
+inline oak::Keyframe to_oak_key(NodeKeyframe *k)
+{
+	return oak::Keyframe(reinterpret_cast<OakEngineKeyframe *>(k));
+}
+
+inline oak::KeyframeTrackRef to_oak_ref(Node *n, const QString &input,
+										int track)
+{
+	return oak::KeyframeTrackRef(
+		oak::Input(reinterpret_cast<OakEngineNode *>(n), input), track);
+}
+
+// The process-wide undo stack previously reached via Core::undo_stack()
+inline UndoStack *app_undo_stack()
+{
+	return static_cast<UndoStack *>(oakengine_app_undo_stack());
 }
 
 NodeKeyframe *insert_keyframe(Node *node, const QString &input,
@@ -73,7 +100,7 @@ TEST_F(KeyframeViewTest, AddKeyframesOfNodeCreatesConnectionPerKeyframableInput)
 	MathNode *node = add_math_node();
 
 	KeyframeView view;
-	KeyframeView::NodeConnections map = view.add_keyframes_of_node(node);
+	KeyframeView::NodeConnections map = view.add_keyframes_of_node(to_oak(node));
 
 	// A float input has one element (the array-less -1) with one track
 	ASSERT_TRUE(map.contains(MathNode::k_param_a_in));
@@ -104,7 +131,7 @@ TEST_F(KeyframeViewTest, SelectAllAndDeselectAllUpdateSelection)
 	NodeKeyframe *key_b = insert_keyframe(node, MathNode::k_param_a_in, Rational(1), 1.0);
 
 	KeyframeView view;
-	view.add_keyframes_of_node(node);
+	view.add_keyframes_of_node(to_oak(node));
 
 	QSignalSpy selection_spy(&view, &KeyframeView::selection_changed);
 
@@ -129,7 +156,7 @@ TEST_F(KeyframeViewTest, RemoveKeyframesOfTrackDeselectsAndDetaches)
 
 	KeyframeView view;
 	KeyframeViewInputConnection *connection = view.add_keyframes_of_track(
-		NodeKeyframeTrackReference(NodeInput(node, MathNode::k_param_a_in), 0));
+		to_oak_ref(node, MathNode::k_param_a_in, 0));
 	ASSERT_NE(connection, nullptr);
 	ASSERT_EQ(view.get_keyframe_tracks().size(), 1);
 
@@ -154,7 +181,7 @@ TEST_F(KeyframeViewTest, ClearRemovesAllTracksAndSelection)
 	insert_keyframe(node, MathNode::k_param_a_in, Rational(0), 0.0);
 
 	KeyframeView view;
-	view.add_keyframes_of_node(node);
+	view.add_keyframes_of_node(to_oak(node));
 	view.select_all();
 	ASSERT_FALSE(view.get_keyframe_tracks().isEmpty());
 	ASSERT_FALSE(view.get_selected_keyframes().empty());
@@ -171,7 +198,7 @@ TEST_F(KeyframeViewTest, DeleteSelectedPushesUndoableRemoval)
 
 	KeyframeView view;
 	view.add_keyframes_of_track(
-		NodeKeyframeTrackReference(NodeInput(node, MathNode::k_param_a_in), 0));
+		to_oak_ref(node, MathNode::k_param_a_in, 0));
 	view.select_all();
 	view.delete_selected();
 
@@ -180,18 +207,18 @@ TEST_F(KeyframeViewTest, DeleteSelectedPushesUndoableRemoval)
 					.at(0)
 					.isEmpty());
 
-	Core::instance()->undo_stack()->undo();
+	app_undo_stack()->undo();
 	EXPECT_TRUE(node->get_keyframe_tracks(MathNode::k_param_a_in, -1)
 					.at(0)
 					.contains(key));
 
-	Core::instance()->undo_stack()->redo();
+	app_undo_stack()->redo();
 	EXPECT_TRUE(node->get_keyframe_tracks(MathNode::k_param_a_in, -1)
 					.at(0)
 					.isEmpty());
 
 	// Keep the shared undo stack clean for other suites
-	Core::instance()->undo_stack()->clear();
+	app_undo_stack()->clear();
 }
 
 class KeyframeViewUndoTest : public ::testing::Test {
@@ -295,10 +322,9 @@ protected:
 		solid_->setParent(project_.get());
 	}
 
-	NodeKeyframeTrackReference color_track_ref(int track) const
+	oak::KeyframeTrackRef color_track_ref(int track) const
 	{
-		return NodeKeyframeTrackReference(
-			NodeInput(solid_, SolidGenerator::k_color_input), track);
+		return to_oak_ref(solid_, SolidGenerator::k_color_input, track);
 	}
 
 	std::unique_ptr<Project> project_;
@@ -346,7 +372,7 @@ TEST_F(CurveViewTest, ConnectionReflectsLiveKeyframeList)
 	NodeKeyframe *key =
 		insert_keyframe(solid_, SolidGenerator::k_color_input, Rational(0), 0.5, 0);
 	EXPECT_EQ(connection->get_keyframes().size(), 1);
-	EXPECT_EQ(connection->get_keyframes().first(), key);
+	EXPECT_EQ(connection->get_keyframes().first(), to_oak_key(key));
 }
 
 TEST_F(CurveViewTest, SetKeyframeTrackColorAppliesToBrush)
@@ -385,13 +411,13 @@ TEST_F(CurveViewTest, SelectKeyframesOfInputSelectsOnlyRequestedTrack)
 	// Previously the reference was ignored and keyframes of every connected
 	// track got selected.
 	view.select_keyframes_of_input(color_track_ref(0));
-	EXPECT_TRUE(view.is_keyframe_selected(key0));
-	EXPECT_FALSE(view.is_keyframe_selected(key1));
+	EXPECT_TRUE(view.is_keyframe_selected(to_oak_key(key0)));
+	EXPECT_FALSE(view.is_keyframe_selected(to_oak_key(key1)));
 
 	// Selecting the other track replaces the selection (DeselectAll first)
 	view.select_keyframes_of_input(color_track_ref(1));
-	EXPECT_FALSE(view.is_keyframe_selected(key0));
-	EXPECT_TRUE(view.is_keyframe_selected(key1));
+	EXPECT_FALSE(view.is_keyframe_selected(to_oak_key(key0)));
+	EXPECT_TRUE(view.is_keyframe_selected(to_oak_key(key1)));
 }
 
 TEST(CurveWidget, VerticalScaleRoundTripsThroughView)
@@ -418,7 +444,7 @@ TEST(CurveWidget, TreeSelectionConnectsTracksAndResolvesNodeId)
 	solid->retranslate();
 
 	CurveWidget widget;
-	widget.set_nodes({ solid });
+	widget.set_nodes({ to_oak(solid) });
 
 	auto *tree = widget.findChild<NodeTreeView *>();
 	ASSERT_NE(tree, nullptr);
@@ -433,7 +459,7 @@ TEST(CurveWidget, TreeSelectionConnectsTracksAndResolvesNodeId)
 	QTreeWidgetItem *color_item = node_item->child(1);
 
 	color_item->setSelected(true);
-	EXPECT_EQ(widget.get_selected_node_with_id(solid->id()), solid);
+	EXPECT_EQ(widget.get_selected_node_with_id(solid->id()), to_oak(solid));
 	EXPECT_EQ(widget.get_selected_node_with_id(QStringLiteral("org.example.bogus")),
 			  nullptr);
 

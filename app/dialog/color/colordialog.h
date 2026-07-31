@@ -70,7 +70,7 @@ public:
 
 	QString get_color_space_input() const;
 
-	ColorTransform get_color_space_output() const;
+	oak::ColorTransform get_color_space_output() const;
 
 public slots:
 	void set_color(const ManagedColor &c);
@@ -91,7 +91,7 @@ private:
 	ColorSwatchChooser *swatch_;
 
 private slots:
-	void color_space_changed(const QString &input, const ColorTransform &output);
+	void color_space_changed(const QString &input, const oak::ColorTransform &output);
 };
 
 }

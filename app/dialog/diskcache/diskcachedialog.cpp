@@ -27,11 +27,26 @@
 #include <QMessageBox>
 
 #include "oakengine/disk.h"
+#include "oakutil/define.h"
 
 namespace olive
 {
 
-DiskCacheDialog::DiskCacheDialog(DiskCacheFolder *folder, QWidget *parent)
+namespace
+{
+
+/// DiskCacheFolder::get_path() through the C ABI (buf/size convention)
+QString disk_folder_path(const void *folder)
+{
+	char buf[1024];
+	buf[0] = '\0';
+	oakengine_disk_folder_get_path(folder, buf, sizeof(buf));
+	return QString::fromUtf8(buf);
+}
+
+} // namespace
+
+DiskCacheDialog::DiskCacheDialog(void *folder, QWidget *parent)
 	: QDialog(parent)
 	, folder_(folder)
 {
@@ -39,8 +54,9 @@ DiskCacheDialog::DiskCacheDialog(DiskCacheFolder *folder, QWidget *parent)
 
 	int row = 0;
 
-	layout->addWidget(new QLabel(tr("Disk Cache: %1").arg(folder->get_path())),
-					  row, 0, 1, 2);
+	layout->addWidget(
+		new QLabel(tr("Disk Cache: %1").arg(disk_folder_path(folder))), row,
+		0, 1, 2);
 	setWindowTitle(tr("Disk Cache Settings"));
 
 	row++;
@@ -50,8 +66,9 @@ DiskCacheDialog::DiskCacheDialog(DiskCacheFolder *folder, QWidget *parent)
 	maximum_cache_slider_ = new FloatSlider();
 	maximum_cache_slider_->set_format(tr("%1 GB"));
 	maximum_cache_slider_->set_minimum(1.0);
-	maximum_cache_slider_->set_value(static_cast<double>(folder->get_limit()) /
-									static_cast<double>(k_bytes_in_gigabyte));
+	// The folder limit is a byte count; the slider works in GB
+	maximum_cache_slider_->set_value(oakengine_disk_folder_get_limit(folder) /
+									 static_cast<double>(k_bytes_in_gigabyte));
 	layout->addWidget(maximum_cache_slider_, row, 1);
 
 	row++;
@@ -66,7 +83,8 @@ DiskCacheDialog::DiskCacheDialog(DiskCacheFolder *folder, QWidget *parent)
 
 	clear_disk_cache_ =
 		new QCheckBox(tr("Automatically clear disk cache on close"));
-	clear_disk_cache_->setChecked(folder->get_clear_on_close());
+	clear_disk_cache_->setChecked(
+		oakengine_disk_folder_get_clear_on_close(folder) != 0);
 	layout->addWidget(clear_disk_cache_, row, 1);
 
 	row++;
@@ -84,12 +102,17 @@ void DiskCacheDialog::accept()
 {
 	qint64 new_disk_cache_limit =
 		qRound64(maximum_cache_slider_->get_value() * k_bytes_in_gigabyte);
-	if (new_disk_cache_limit != folder_->get_limit()) {
-		folder_->set_limit(new_disk_cache_limit);
+	if (static_cast<double>(new_disk_cache_limit) !=
+		oakengine_disk_folder_get_limit(folder_)) {
+		oakengine_disk_folder_set_limit(
+			folder_, static_cast<double>(new_disk_cache_limit));
 	}
 
-	if (folder_->get_clear_on_close() != clear_disk_cache_->isChecked()) {
-		folder_->set_clear_on_close(clear_disk_cache_->isChecked());
+	const bool clear_on_close = clear_disk_cache_->isChecked();
+	if ((oakengine_disk_folder_get_clear_on_close(folder_) != 0) !=
+		clear_on_close) {
+		oakengine_disk_folder_set_clear_on_close(folder_,
+												 clear_on_close ? 1 : 0);
 	}
 
 	QDialog::accept();
@@ -97,7 +120,7 @@ void DiskCacheDialog::accept()
 
 void DiskCacheDialog::clear_disk_cache()
 {
-	clear_disk_cache(folder_->get_path(), this, clear_cache_btn_);
+	clear_disk_cache(disk_folder_path(folder_), this, clear_cache_btn_);
 }
 
 void DiskCacheDialog::clear_disk_cache(const QString &path, QWidget *parent,

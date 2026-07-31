@@ -57,7 +57,7 @@ void ParamPanel::deselect_all()
 	static_cast<NodeParamView *>(get_time_based_widget())->deselect_all();
 }
 
-void ParamPanel::set_contexts(const QVector<Node *> &contexts)
+void ParamPanel::set_contexts(const QVector<oak::Node> &contexts)
 {
 	static_cast<NodeParamView *>(get_time_based_widget())->set_contexts(contexts);
 }

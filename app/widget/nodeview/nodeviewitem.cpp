@@ -32,19 +32,30 @@
 #include "oakutil/qtutils.h"
 #include "common/configwrapper.h"
 #include "core.h"
-#include "node/value.h"
-#include "pluginSupport/oliveplugininstance.h"
+#include "common/nodevaluehandle.h"
 #include "nodeview.h"
 #include "nodeviewscene.h"
-#include "ui/colorcoding.h"
+#include "common/colorcodingapp.h"
 #include "ui/icons/icons.h"
 #include "window/mainwindow/mainwindow.h"
 
 namespace olive
 {
 
-NodeViewItem::NodeViewItem(Node *node, const QString &input, int element,
-						   Node *context, QGraphicsItem *parent)
+static QVector<QString> node_input_list(oak::Node n)
+{
+	const int count = n.input_count();
+	QVector<QString> result;
+	result.reserve(count);
+	for (int i = 0; i < count; i++) {
+		result.append(n.input_id(i));
+	}
+	return result;
+}
+
+NodeViewItem::NodeViewItem(oak::Node node, const QString &input,
+						   int element, oak::Node context,
+						   QGraphicsItem *parent)
 	: QGraphicsRectItem(parent)
 	, node_(node)
 	, input_(input)
@@ -71,9 +82,9 @@ NodeViewItem::NodeViewItem(Node *node, const QString &input, int element,
 	output_connector_ = new NodeViewItemConnector(true, this);
 
 	bridge_ = new EngineEventBridge(this);
-	bridge_->subscribe(reinterpret_cast<void *>(node_), OAKENGINE_EVENT_NODE_LABEL_CHANGED);
-	bridge_->subscribe(reinterpret_cast<void *>(node_), OAKENGINE_EVENT_NODE_COLOR_CHANGED);
-	bridge_->subscribe(reinterpret_cast<void *>(node_), OAKENGINE_EVENT_NODE_MESSAGE_COUNT_CHANGED);
+	bridge_->subscribe(node_.handle(), OAKENGINE_EVENT_NODE_LABEL_CHANGED);
+	bridge_->subscribe(node_.handle(), OAKENGINE_EVENT_NODE_COLOR_CHANGED);
+	bridge_->subscribe(node_.handle(), OAKENGINE_EVENT_NODE_MESSAGE_COUNT_CHANGED);
 	connect(bridge_, &EngineEventBridge::node_label_changed, this,
 			&NodeViewItem::node_appearance_changed);
 	connect(bridge_, &EngineEventBridge::node_color_changed, this,
@@ -82,8 +93,8 @@ NodeViewItem::NodeViewItem(Node *node, const QString &input, int element,
 			&NodeViewItem::node_appearance_changed);
 
 	if (is_output_item()) {
-		bridge_->subscribe(reinterpret_cast<void *>(node_), OAKENGINE_EVENT_NODE_INPUT_ADDED);
-		bridge_->subscribe(reinterpret_cast<void *>(node_), OAKENGINE_EVENT_NODE_INPUT_REMOVED);
+		bridge_->subscribe(node_.handle(), OAKENGINE_EVENT_NODE_INPUT_ADDED);
+		bridge_->subscribe(node_.handle(), OAKENGINE_EVENT_NODE_INPUT_REMOVED);
 		connect(bridge_, &EngineEventBridge::node_input_added, this,
 				&NodeViewItem::repopulate_inputs);
 		connect(bridge_, &EngineEventBridge::node_input_removed, this,
@@ -95,13 +106,17 @@ NodeViewItem::NodeViewItem(Node *node, const QString &input, int element,
 		setFlag(QGraphicsItem::ItemIsMovable);
 		setFlag(QGraphicsItem::ItemIsSelectable);
 
-		if (context_) {
-			set_node_position(context_->get_node_position_data_in_context(node_));
+		if (!context_.is_null()) {
+			QPointF ctx_pos;
+			bool ctx_expanded = false;
+			context_.context_position_of(node_, &ctx_pos, &ctx_expanded);
+			set_node_position(ctx_pos);
+			set_expanded(ctx_expanded);
 		}
 	} else {
 		output_connector_->setVisible(false);
 
-		bridge_->subscribe(reinterpret_cast<void *>(node_), OAKENGINE_EVENT_NODE_INPUT_ARRAY_SIZE_CHANGED);
+		bridge_->subscribe(node_.handle(), OAKENGINE_EVENT_NODE_INPUT_ARRAY_SIZE_CHANGED);
 		connect(bridge_, &EngineEventBridge::node_input_array_size_changed, this,
 				[this](OakEngineNode *, const QString &input, int, int) {
 					input_array_size_changed(input);
@@ -117,9 +132,9 @@ NodeViewItem::~NodeViewItem()
 	Q_ASSERT(edges_.isEmpty());
 }
 
-Node::Position NodeViewItem::get_node_position_data() const
+NodeViewItemPosition NodeViewItem::get_node_position_data() const
 {
-	return Node::Position(get_node_position(), is_expanded());
+	return NodeViewItemPosition{get_node_position(), is_expanded()};
 }
 
 QPointF NodeViewItem::get_node_position() const
@@ -134,7 +149,7 @@ void NodeViewItem::set_node_position(const QPointF &pos)
 	update_node_position();
 }
 
-void NodeViewItem::set_node_position(const Node::Position &pos)
+void NodeViewItem::set_node_position(const NodeViewItemPosition &pos)
 {
 	set_node_position(pos.position);
 	set_expanded(pos.expanded);
@@ -280,8 +295,8 @@ void NodeViewItem::set_expanded(bool e, bool hide_titlebar)
 
 	expanded_ = e;
 
-	if (context_) {
-		context_->set_node_expanded_in_context(node_, e);
+	if (!context_.is_null()) {
+		context_.set_context_expanded_of(node_, e);
 	}
 
 	if (is_output_item()) {
@@ -290,11 +305,11 @@ void NodeViewItem::set_expanded(bool e, bool hide_titlebar)
 	}
 
 	if (expanded_) {
-		node_->retranslate();
+		node_.retranslate();
 
 		if (is_output_item()) {
 			// Create items for each input of the node
-			foreach (const QString &input, node_->inputs()) {
+			foreach (const QString &input, node_input_list(node_)) {
 				if (is_input_valid(input)) {
 					NodeViewItem *item =
 						new NodeViewItem(node_, input, -1, context_, this);
@@ -310,7 +325,7 @@ void NodeViewItem::set_expanded(bool e, bool hide_titlebar)
 			}
 		} else {
 			// Create items for each element of the input array
-			int arr_sz = node_->input_array_size(input_);
+			int arr_sz = oak::Input(node_, input_).array_size();
 			children_.resize(arr_sz);
 			for (int i = 0; i < arr_sz; i++) {
 				NodeViewItem *item =
@@ -368,8 +383,7 @@ void NodeViewItem::paint(QPainter *painter,
 	if (is_output_item()) {
 		// Set output item colors
 		painter->setPen(Qt::black);
-		painter->setBrush(
-			node_->brush(single_unit_rect.top(), single_unit_rect.bottom()));
+		painter->setBrush(node_.brush(single_unit_rect.top(), single_unit_rect.bottom()));
 	} else {
 		// Set input item colors
 		painter->setPen(Qt::NoPen);
@@ -394,17 +408,16 @@ void NodeViewItem::paint(QPainter *painter,
 		if (label_as_output_) {
 			node_name = QCoreApplication::translate("NodeViewItem", "Output");
 		} else {
-			node_label = node_->get_label();
-			node_name = node_->short_name();
+			node_label = node_.get_label();
+			node_name = node_.short_name();
 		}
 	} else {
 		if (element_ == -1) {
-			node_name = node_->get_input_name(input_);
+			node_name = oak::Input(node_, input_).name();
 		} else {
-			node_name = QString::number(
-				element_ +
-				node_->get_input_property(input_, QStringLiteral("arraystart"))
-					.toInt());
+			int64_t arraystart = 0;
+			oak::Input(node_, input_).property_int("arraystart", &arraystart);
+			node_name = QString::number(element_ + static_cast<int>(arraystart));
 		}
 	}
 
@@ -413,7 +426,8 @@ void NodeViewItem::paint(QPainter *painter,
 
 	if (is_output_item()) {
 		// Determine the text color (automatically calculate from node background color)
-		painter->setPen(ColorCoding::get_ui_selector_color(node_->color()));
+		painter->setPen(AppColorCoding::get_ui_selector_color(
+			AppColorCoding::get_color(node_.effective_color_label())));
 	} else {
 		// Just use text item
 		painter->setPen(app_pal.text().color());
@@ -444,11 +458,7 @@ void NodeViewItem::paint(QPainter *painter,
 	}
 
 	if (is_output_item()) {
-		auto *instance = node_->getPluginInstance();
-		auto *olive_instance =
-			dynamic_cast<plugin::OlivePluginInstance *>(instance);
-		int message_count =
-			olive_instance ? olive_instance->persistent_message_count() : 0;
+		int message_count = node_.plugin_message_count();
 
 		if (message_count > 0) {
 			QString badge_text = QString::number(message_count);
@@ -537,15 +547,17 @@ void NodeViewItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
 QVariant NodeViewItem::itemChange(QGraphicsItem::GraphicsItemChange change,
 								  const QVariant &value)
 {
-	if (node_) {
-		if (change == ItemPositionHasChanged) {
-			readjust_all_edges();
+	if (node_.is_null()) {
+		return QGraphicsItem::itemChange(change, value);
+	}
 
-			update_context_rect();
-		} else if (change == ItemSelectedHasChanged) {
-			if (value.toBool()) {
-				qDebug() << "Selected node:" << node_;
-			}
+	if (change == ItemPositionHasChanged) {
+		readjust_all_edges();
+
+		update_context_rect();
+	} else if (change == ItemSelectedHasChanged) {
+		if (value.toBool()) {
+			qDebug() << "Selected node:" << node_.handle();
 		}
 	}
 
@@ -761,14 +773,14 @@ void NodeViewItem::update_output_connector_position()
 
 bool NodeViewItem::is_input_valid(const QString &input)
 {
-	if (!node_->is_input_connectable(input) || node_->is_input_hidden(input)) {
+	oak::Input in(node_, input);
+	if (!in.is_connectable() || in.is_hidden()) {
 		return false;
 	}
 	// For OFX plugin nodes, only show texture inputs in the node graph
 	// to avoid excessively tall nodes with dozens of scalar parameters.
 	// Scalar parameters are still visible in the parameter panel.
-	if (node_->getPluginInstance() != nullptr &&
-		node_->get_input_data_type(input) != NodeValue::k_texture) {
+	if (node_.has_plugin() && in.data_type() != NodeValueType::k_texture) {
 		return false;
 	}
 	return true;
@@ -789,8 +801,8 @@ bool NodeViewItem::can_be_expanded() const
 	if (is_output_item()) {
 		return has_connectable_inputs_;
 	} else {
-		return node_->get_input_flags(input_) & k_input_flag_array &&
-			   element_ == -1 && !node_->is_input_connected(input_);
+		return oak::Input(node_, input_).flags() & k_input_flag_array &&
+			   element_ == -1 && !oak::Input(node_, input_).is_connected();
 	}
 }
 
@@ -845,7 +857,7 @@ void NodeViewItem::repopulate_inputs()
 	if (is_output_item()) {
 		has_connectable_inputs_ = false;
 
-		foreach (const QString &input, node_->inputs()) {
+		foreach (const QString &input, node_input_list(node_)) {
 			if (is_input_valid(input)) {
 				has_connectable_inputs_ = true;
 				break;
@@ -881,19 +893,20 @@ void NodeViewItem::set_highlighted(bool e)
 	update();
 }
 
-NodeViewItem *NodeViewItem::get_item_for_input(NodeInput input)
+NodeViewItem *NodeViewItem::get_item_for_input(oak::Input input)
 {
-	if (oakengine_node_is_group(reinterpret_cast<OakEngineNode *>(node_))) {
+	if (node_.is_group()) {
 		if (input.node() != node_) {
 			// Translate input to group input
+			// WRAPPER-GAP: oakengine_group_get_id_of_passthrough (group passthrough lookup has no wrapper)
 			char id[256];
 			if (oakengine_group_get_id_of_passthrough(
-					reinterpret_cast<OakEngineNode *>(node_),
-					reinterpret_cast<OakEngineNode *>(input.node()),
-					input.input().toUtf8().constData(), input.element(),
+					node_.handle(),
+					input.node_handle(),
+					input.input_id().toUtf8().constData(), input.element(),
 					id, sizeof(id)) > 0) {
-				input.set_node(node_);
-				input.set_input(QString::fromUtf8(id));
+				input.set_node_handle(node_.handle());
+				input.set_input_id(QString::fromUtf8(id));
 			}
 		}
 	}
@@ -902,7 +915,7 @@ NodeViewItem *NodeViewItem::get_item_for_input(NodeInput input)
 		if (input_.isEmpty()) {
 			// Look for the input in our children
 			foreach (NodeViewItem *i, children_) {
-				if (i->input_ == input.input()) {
+				if (i->input_ == input.input_id()) {
 					return i->get_item_for_input(input);
 				}
 			}

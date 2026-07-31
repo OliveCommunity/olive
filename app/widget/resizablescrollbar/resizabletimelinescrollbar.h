@@ -23,11 +23,10 @@
 #define OAK_RESIZABLETIMELINESCROLLBAR_H
 
 #include "resizablescrollbar.h"
-#include "timeline/timelinemarker.h"
-#include "timeline/timelineworkarea.h"
 #include "widget/timebased/timescaledobject.h"
 #include "engineeventbridge.h"
 #include "oakengine/events.h"
+#include "oakengine/timeline.h"
 
 namespace olive
 {
@@ -41,8 +40,8 @@ public:
 							   QWidget *parent = nullptr);
 	~ResizableTimelineScrollBar() override;
 
-	void connect_markers(TimelineMarkerList *markers);
-	void connect_work_area(TimelineWorkArea *workarea);
+	void connect_markers(OakEngineMarkerList *markers);
+	void connect_work_area(OakEngineWorkarea *workarea);
 
 	void SetScale(double d);
 
@@ -50,9 +49,9 @@ protected:
 	virtual void paintEvent(QPaintEvent *event) override;
 
 private:
-	TimelineMarkerList *markers_;
+	OakEngineMarkerList *markers_;
 
-	TimelineWorkArea *workarea_;
+	OakEngineWorkarea *workarea_;
 
 	// Workarea signal subscriptions (event 141/142-style, but workarea is a
 	// timeline-level concept tracked via OakEngineEvents).

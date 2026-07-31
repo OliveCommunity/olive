@@ -102,7 +102,7 @@ TEST(TimeRuler, SeekToScenePointSeeksConnectedViewer)
 	ruler.set_scale(100.0);
 
 	ViewerOutput viewer;
-	ruler.set_viewer_node(&viewer);
+	ruler.set_viewer_node(reinterpret_cast<OakEngineNode *>(&viewer));
 
 	ruler.seek_to_scene_point(150.0);
 	EXPECT_EQ(viewer.get_playhead(), Rational(3, 2));

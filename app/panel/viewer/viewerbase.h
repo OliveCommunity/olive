@@ -76,7 +76,7 @@ public:
 		get_viewer_widget()->add_playback_device(vw);
 	}
 
-	void set_timeline_selected_blocks(const QVector<Block *> &b)
+	void set_timeline_selected_blocks(const QVector<OakEngineBlock *> &b)
 	{
 		get_viewer_widget()->set_timeline_selected_blocks(b);
 	}

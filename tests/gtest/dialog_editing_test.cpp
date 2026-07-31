@@ -14,7 +14,10 @@
 #include <QXmlStreamReader>
 #include <QXmlStreamWriter>
 
+#include "common/keyframetypes.h"
 #include "core.h"
+#include "oakengine/app.h"
+#include "undo/undostack.h"
 #include "dialog/footageproperties/footageproperties.h"
 #include "dialog/footagerelink/footagerelinkdialog.h"
 #include "dialog/keyframeproperties/keyframeproperties.h"
@@ -55,8 +58,10 @@ void ensure_app_singletons()
 
 void clear_undo_stack()
 {
-	if (olive::Core::instance()) {
-		olive::Core::instance()->undo_stack()->clear();
+	// The process-wide undo stack previously reached via Core::undo_stack()
+	if (auto *stack =
+			static_cast<olive::UndoStack *>(oakengine_app_undo_stack())) {
+		stack->clear();
 	}
 }
 
@@ -114,7 +119,7 @@ TEST(DialogSpeedDuration, InitialValuesReflectSingleClip)
 	auto *clip = create_clip(project.get(), olive::Rational(4));
 	create_track_with_clip(project.get(), clip);
 
-	olive::SpeedDurationDialog dialog({ clip }, olive::Rational(1, 24));
+	olive::SpeedDurationDialog dialog({ reinterpret_cast<OakEngineBlock *>(clip) }, olive::Rational(1, 24));
 
 	auto *speed_slider = dialog.findChild<olive::FloatSlider *>();
 	auto *dur_slider = dialog.findChild<olive::RationalSlider *>();
@@ -134,7 +139,7 @@ TEST(DialogSpeedDuration, LinkedSpeedChangeUpdatesDuration)
 	auto *clip = create_clip(project.get(), olive::Rational(4));
 	create_track_with_clip(project.get(), clip);
 
-	olive::SpeedDurationDialog dialog({ clip }, olive::Rational(1, 24));
+	olive::SpeedDurationDialog dialog({ reinterpret_cast<OakEngineBlock *>(clip) }, olive::Rational(1, 24));
 
 	auto *speed_slider = dialog.findChild<olive::FloatSlider *>();
 	auto *dur_slider = dialog.findChild<olive::RationalSlider *>();
@@ -157,7 +162,7 @@ TEST(DialogSpeedDuration, LinkedDurationChangeUpdatesSpeed)
 	auto *clip = create_clip(project.get(), olive::Rational(4));
 	create_track_with_clip(project.get(), clip);
 
-	olive::SpeedDurationDialog dialog({ clip }, olive::Rational(1, 24));
+	olive::SpeedDurationDialog dialog({ reinterpret_cast<OakEngineBlock *>(clip) }, olive::Rational(1, 24));
 
 	auto *speed_slider = dialog.findChild<olive::FloatSlider *>();
 	auto *dur_slider = dialog.findChild<olive::RationalSlider *>();
@@ -181,7 +186,7 @@ TEST(DialogSpeedDuration, AcceptAppliesSpeedAndLength)
 	create_track_with_clip(project.get(), clip);
 
 	{
-		olive::SpeedDurationDialog dialog({ clip }, olive::Rational(1, 24));
+		olive::SpeedDurationDialog dialog({ reinterpret_cast<OakEngineBlock *>(clip) }, olive::Rational(1, 24));
 
 		// Doubling the speed with the link checked halves the duration
 		auto *speed_slider = dialog.findChild<olive::FloatSlider *>();
@@ -207,7 +212,7 @@ TEST(DialogSpeedDuration, DifferingSpeedsAcrossClipsProduceTristate)
 	clip_b->set_standard_value(olive::ClipBlock::k_speed_input, 2.0);
 	create_track_with_clip(project.get(), clip_b);
 
-	olive::SpeedDurationDialog dialog({ clip_a, clip_b },
+	olive::SpeedDurationDialog dialog({ reinterpret_cast<OakEngineBlock *>(clip_a), reinterpret_cast<OakEngineBlock *>(clip_b) },
 									  olive::Rational(1, 24));
 
 	EXPECT_TRUE(dialog.findChild<olive::FloatSlider *>()->is_tristate());
@@ -226,7 +231,7 @@ TEST(DialogSpeedDuration, AcceptDerivesPerClipSpeedFromDuration)
 	create_track_with_clip(project.get(), clip_b);
 
 	{
-		olive::SpeedDurationDialog dialog({ clip_a, clip_b },
+		olive::SpeedDurationDialog dialog({ reinterpret_cast<OakEngineBlock *>(clip_a), reinterpret_cast<OakEngineBlock *>(clip_b) },
 										  olive::Rational(1, 24));
 		// Speed is tristate, so accept() must compute each clip's speed
 		// from its own length/speed ratio: speed = old_speed * old_len / new_len
@@ -269,7 +274,8 @@ TEST(DialogKeyframeProperties, SingleKeyAcceptWritesAllFields)
 	key->setParent(node);
 
 	// The dialog stores the keyframe vector by reference, so it must outlive it
-	std::vector<olive::NodeKeyframe *> keys = { key };
+	QVector<oak::Keyframe> keys = { oak::Keyframe(
+		reinterpret_cast<OakEngineKeyframe *>(key)) };
 
 	{
 		olive::KeyframePropertiesDialog dialog(keys, olive::Rational(1, 24));
@@ -288,10 +294,12 @@ TEST(DialogKeyframeProperties, SingleKeyAcceptWritesAllFields)
 		EXPECT_EQ(type_select->currentData().toInt(), olive::NodeKeyframe::k_linear);
 		EXPECT_FALSE(bezier_group->isEnabled());
 
-		// Switching to Bezier enables the bezier handle editors
+		// Switching to Bezier enables the bezier handle editors. Item data
+		// carries facade easing ordinals (linear=0, bezier=1, hold=2), not
+		// the engine NodeKeyframe::Type values
 		type_select->setCurrentIndex(2);
 		ASSERT_EQ(type_select->currentData().toInt(),
-				  olive::NodeKeyframe::k_bezier);
+				  olive::KeyframeTypes::k_facade_bezier);
 		EXPECT_TRUE(bezier_group->isEnabled());
 
 		time_slider->set_value(olive::Rational(1, 2));
@@ -334,7 +342,10 @@ TEST(DialogKeyframeProperties, MixedTypesAddPlaceholderItem)
 	key_b->setParent(node);
 
 	// The dialog stores the keyframe vector by reference, so it must outlive it
-	std::vector<olive::NodeKeyframe *> keys = { key_a, key_b };
+	QVector<oak::Keyframe> keys = {
+		oak::Keyframe(reinterpret_cast<OakEngineKeyframe *>(key_a)),
+		oak::Keyframe(reinterpret_cast<OakEngineKeyframe *>(key_b)),
+	};
 
 	{
 		olive::KeyframePropertiesDialog dialog(keys, olive::Rational(1, 24));
@@ -372,7 +383,10 @@ TEST(DialogKeyframeProperties, KeysOnSameTrackDisableTimeEdit)
 	key_b->setParent(node);
 
 	// The dialog stores the keyframe vector by reference, so it must outlive it
-	std::vector<olive::NodeKeyframe *> keys = { key_a, key_b };
+	QVector<oak::Keyframe> keys = {
+		oak::Keyframe(reinterpret_cast<OakEngineKeyframe *>(key_a)),
+		oak::Keyframe(reinterpret_cast<OakEngineKeyframe *>(key_b)),
+	};
 
 	olive::KeyframePropertiesDialog dialog(keys, olive::Rational(1, 24));
 
@@ -394,7 +408,7 @@ TEST(DialogMarkerProperties, SingleMarkerAcceptWritesFields)
 		QStringLiteral("Marker A"));
 
 	{
-		olive::MarkerPropertiesDialog dialog({ &marker },
+		olive::MarkerPropertiesDialog dialog({ reinterpret_cast<OakEngineMarker *>(&marker) },
 											 olive::Rational(1, 24));
 
 		auto *label_edit = dialog.findChild<QLineEdit *>();
@@ -439,7 +453,7 @@ TEST(DialogMarkerProperties, MultipleMarkersDisableTimeAndShowPlaceholder)
 		QStringLiteral("Beta"));
 
 	{
-		olive::MarkerPropertiesDialog dialog({ &marker_a, &marker_b },
+		olive::MarkerPropertiesDialog dialog({ reinterpret_cast<OakEngineMarker *>(&marker_a), reinterpret_cast<OakEngineMarker *>(&marker_b) },
 											 olive::Rational(1, 24));
 
 		auto *label_edit = dialog.findChild<QLineEdit *>();
@@ -561,7 +575,7 @@ TEST(DialogSequenceParameterTab, ReflectsSequenceParameters)
 		48000, olive::core::k_channel_layout_stereo,
 		olive::Sequence::k_default_sample_format));
 
-	olive::SequenceDialogParameterTab tab(sequence);
+	olive::SequenceDialogParameterTab tab(reinterpret_cast<OakEngineNode *>(sequence));
 
 	EXPECT_EQ(tab.get_selected_video_width(), 1920);
 	EXPECT_EQ(tab.get_selected_video_height(), 1080);
@@ -590,7 +604,7 @@ TEST(DialogSequenceParameterTab, PresetChangedAppliesValues)
 		48000, olive::core::k_channel_layout_stereo,
 		olive::Sequence::k_default_sample_format));
 
-	olive::SequenceDialogParameterTab tab(sequence);
+	olive::SequenceDialogParameterTab tab(reinterpret_cast<OakEngineNode *>(sequence));
 
 	tab.preset_changed(olive::SequencePreset(
 		QStringLiteral("Preset"), 1280, 720, olive::Rational(24, 1),
@@ -625,7 +639,7 @@ TEST(DialogSequenceDialog, AcceptNonUndoableAppliesParameters)
 		olive::Sequence::k_default_sample_format));
 
 	{
-		olive::SequenceDialog dialog(sequence, olive::SequenceDialog::k_existing);
+		olive::SequenceDialog dialog(reinterpret_cast<OakEngineNode *>(sequence), olive::SequenceDialog::k_existing);
 		dialog.set_undoable(false);
 
 		auto *tab = dialog.findChild<olive::SequenceDialogParameterTab *>();
@@ -672,7 +686,7 @@ TEST(DialogSequenceDialog, AcceptUndoablePushesCommand)
 		olive::Sequence::k_default_sample_format));
 
 	{
-		olive::SequenceDialog dialog(sequence, olive::SequenceDialog::k_existing);
+		olive::SequenceDialog dialog(reinterpret_cast<OakEngineNode *>(sequence), olive::SequenceDialog::k_existing);
 
 		auto *tab = dialog.findChild<olive::SequenceDialogParameterTab *>();
 		ASSERT_NE(tab, nullptr);
@@ -701,7 +715,7 @@ TEST(DialogSequenceDialog, PresetTabListsDefaultPresets)
 	auto *sequence = new olive::Sequence();
 	sequence->setParent(project.get());
 
-	olive::SequenceDialog dialog(sequence, olive::SequenceDialog::k_existing);
+	olive::SequenceDialog dialog(reinterpret_cast<OakEngineNode *>(sequence), olive::SequenceDialog::k_existing);
 
 	auto *tree = dialog.findChild<QTreeWidget *>();
 	ASSERT_NE(tree, nullptr);
@@ -723,7 +737,7 @@ TEST(DialogFootageProperties, AcceptRenamesAndSetsSourceStartTime)
 	footage->set_filename(QStringLiteral("/tmp/oak-nonexistent.mp4"));
 
 	{
-		olive::FootagePropertiesDialog dialog(nullptr, footage);
+		olive::FootagePropertiesDialog dialog(nullptr, reinterpret_cast<OakEngineNode *>(footage));
 
 		auto *name_field = dialog.findChild<QLineEdit *>();
 		auto *start_enable = dialog.findChild<QCheckBox *>();
@@ -752,7 +766,7 @@ TEST(DialogFootageProperties, AcceptRenamesAndSetsSourceStartTime)
 
 	{
 		// Unchecking the box must clear the source start time again
-		olive::FootagePropertiesDialog dialog(nullptr, footage);
+		olive::FootagePropertiesDialog dialog(nullptr, reinterpret_cast<OakEngineNode *>(footage));
 
 		auto *start_enable = dialog.findChild<QCheckBox *>();
 		ASSERT_NE(start_enable, nullptr);
@@ -785,7 +799,7 @@ TEST(DialogFootageRelink, TableListsFootageAndFilenames)
 	footage_b->set_label(QStringLiteral("Footage B"));
 	footage_b->set_filename(QStringLiteral("/old/path/b.mp4"));
 
-	olive::FootageRelinkDialog dialog({ footage_a, footage_b });
+	olive::FootageRelinkDialog dialog({ reinterpret_cast<OakEngineNode *>(footage_a), reinterpret_cast<OakEngineNode *>(footage_b) });
 
 	auto *table = dialog.findChild<QTreeWidget *>();
 	ASSERT_NE(table, nullptr);
@@ -806,7 +820,7 @@ TEST(DialogProjectProperties, OcioValidationTogglesOnInvalidFilename)
 	ensure_app_singletons();
 	auto project = create_project();
 
-	olive::ProjectPropertiesDialog dialog(project.get(), nullptr);
+	olive::ProjectPropertiesDialog dialog(reinterpret_cast<OakEngineProject *>(project.get()), nullptr);
 
 	EXPECT_TRUE(dialog.windowTitle().contains(project->name()));
 
@@ -843,7 +857,7 @@ TEST(DialogProjectProperties, AcceptWithDefaultsClosesDialog)
 	ensure_app_singletons();
 	auto project = create_project();
 
-	olive::ProjectPropertiesDialog dialog(project.get(), nullptr);
+	olive::ProjectPropertiesDialog dialog(reinterpret_cast<OakEngineProject *>(project.get()), nullptr);
 	dialog.accept();
 
 	EXPECT_EQ(dialog.result(), QDialog::Accepted);

@@ -28,9 +28,6 @@
 
 #include "oakutil/qtutils.h"
 #include "core.h"
-#include "oakengine/project.h"
-#include "oakengine/node.h"
-#include "oakengine/undo.h"
 
 namespace olive
 {
@@ -47,9 +44,7 @@ void ProjectViewModel::connect_bridge_signals()
 {
 	connect(bridge_, &EngineEventBridge::folder_begin_insert_item, this,
 			[this](OakEngineNode *folder, OakEngineNode *child, int index) {
-				this->folder_begin_insert_item(
-					reinterpret_cast<Folder *>(folder),
-					reinterpret_cast<Node *>(child), index);
+				this->folder_begin_insert_item(folder, child, index);
 			});
 	connect(bridge_, &EngineEventBridge::folder_end_insert_item, this,
 			[this](OakEngineNode *) {
@@ -57,9 +52,7 @@ void ProjectViewModel::connect_bridge_signals()
 			});
 	connect(bridge_, &EngineEventBridge::folder_begin_remove_item, this,
 			[this](OakEngineNode *folder, OakEngineNode *child, int index) {
-				this->folder_begin_remove_item(
-					reinterpret_cast<Folder *>(folder),
-					reinterpret_cast<Node *>(child), index);
+				this->folder_begin_remove_item(folder, child, index);
 			});
 	connect(bridge_, &EngineEventBridge::folder_end_remove_item, this,
 			[this](OakEngineNode *) {
@@ -69,17 +62,17 @@ void ProjectViewModel::connect_bridge_signals()
 			&ProjectViewModel::item_renamed);
 }
 
-Project *ProjectViewModel::project() const
+oak::Project ProjectViewModel::project() const
 {
 	return project_;
 }
 
-void ProjectViewModel::set_project(Project *p)
+void ProjectViewModel::set_project(oak::Project p)
 {
 	beginResetModel();
 
 	if (project_) {
-		disconnect_item(project_->root());
+		disconnect_item(project_.root());
 		// Recreate bridge to clear all folder subscriptions
 		delete bridge_;
 		bridge_ = new EngineEventBridge(this);
@@ -89,7 +82,7 @@ void ProjectViewModel::set_project(Project *p)
 	project_ = p;
 
 	if (project_) {
-		connect_item(project_->root());
+		connect_item(project_.root());
 	}
 
 	endResetModel();
@@ -104,22 +97,22 @@ QModelIndex ProjectViewModel::index(int row, int column,
 	}
 
 	// Get the parent object, we assume it's a folder since only folders can have children
-	Folder *item_parent = static_cast<Folder *>(get_item_object_from_index(parent));
+	oak::Node item_parent = get_item_object_from_index(parent);
 
 	// Return an index to this object
-	return createIndex(row, column, item_parent->item_child(row));
+	return createIndex(row, column, item_parent.item_child(row).handle());
 }
 
 QModelIndex ProjectViewModel::parent(const QModelIndex &child) const
 {
 	// Get the Item object from the index
-	Node *item = get_item_object_from_index(child);
+	oak::Node item = get_item_object_from_index(child);
 
 	// Get Item's parent object
-	Folder *par = item->folder();
+	oak::Node par = item.folder();
 
 	// If the parent is the root, return an empty index
-	if (par == project_->root()) {
+	if (par == project_.root()) {
 		return QModelIndex();
 	}
 
@@ -130,7 +123,7 @@ QModelIndex ProjectViewModel::parent(const QModelIndex &child) const
 	Q_ASSERT(parent_index > -1);
 
 	// Return an index to the parent
-	return createIndex(parent_index, 0, par);
+	return createIndex(parent_index, 0, par.handle());
 }
 
 int ProjectViewModel::rowCount(const QModelIndex &parent) const
@@ -142,12 +135,11 @@ int ProjectViewModel::rowCount(const QModelIndex &parent) const
 
 	// If the index is the root, return the root child count
 	if (parent == QModelIndex()) {
-		return project_->root()->item_child_count();
+		return project_.root().item_child_count();
 	}
 
 	// Otherwise, the index must contain a valid pointer, so we just return its child count
-	return static_cast<Folder *>(get_item_object_from_index(parent))
-		->item_child_count();
+	return get_item_object_from_index(parent).item_child_count();
 }
 
 int ProjectViewModel::columnCount(const QModelIndex &parent) const
@@ -164,7 +156,7 @@ int ProjectViewModel::columnCount(const QModelIndex &parent) const
 
 QVariant ProjectViewModel::data(const QModelIndex &index, int role) const
 {
-	Node *internal_item = get_item_object_from_index(index);
+	oak::Node internal_item = get_item_object_from_index(index);
 
 	ColumnType column_type = static_cast<ColumnType>(index.column());
 
@@ -175,17 +167,15 @@ QVariant ProjectViewModel::data(const QModelIndex &index, int role) const
 
 		switch (column_type) {
 		case k_name:
-			return internal_item->get_label();
+			return internal_item.get_label();
 		case k_duration:
-			return internal_item->data(Node::duration);
+			return internal_item.data(1);
 		case k_rate:
-			return internal_item->data(Node::frequency_rate);
+			return internal_item.data(4);
 		case k_last_modified:
 		case k_created_time: {
-			qint64 using_time =
-				(column_type == k_last_modified) ?
-					internal_item->data(Node::modified_time).toLongLong() :
-					internal_item->data(Node::created_time).toLongLong();
+			const int data_role = (column_type == k_last_modified) ? 3 : 2;
+			qint64 using_time = internal_item.data(data_role).toLongLong();
 
 			if (using_time == 0) {
 				// 0 is the null value, return nothing
@@ -211,17 +201,17 @@ QVariant ProjectViewModel::data(const QModelIndex &index, int role) const
 	} break;
 	case Qt::EditRole:
 		if (column_type == k_name) {
-			return internal_item->get_label();
+			return internal_item.get_label();
 		}
 		break;
 	case Qt::DecorationRole:
 		// If this is the first column, return the Item's icon
 		if (column_type == k_name) {
-			return icon::from_name(internal_item->data(Node::icon).toString());
+			return icon::from_name(internal_item.data(0).toString());
 		}
 		break;
 	case Qt::ToolTipRole:
-		return internal_item->data(Node::tooltip);
+		return internal_item.data(5);
 	}
 
 	return QVariant();
@@ -259,9 +249,7 @@ bool ProjectViewModel::hasChildren(const QModelIndex &parent) const
 {
 	// If it's a folder, we always return TRUE in order to always show the "expand triangle" icon,
 	// even when there are no "physical" children
-	Node *item = get_item_object_from_index(parent);
-
-	return dynamic_cast<Folder *>(item);
+	return get_item_object_from_index(parent).is_folder();
 }
 
 bool ProjectViewModel::setData(const QModelIndex &index, const QVariant &value,
@@ -269,18 +257,17 @@ bool ProjectViewModel::setData(const QModelIndex &index, const QVariant &value,
 {
 	// The name is editable
 	if (index.isValid() && index.column() == k_name && role == Qt::EditRole) {
-		Node *item = get_item_object_from_index(index);
+		oak::Node item = get_item_object_from_index(index);
 
 		QString new_name = value.toString();
 
 		if (!new_name.isEmpty()) {
 			void *nrc = oakengine_node_rename_command(
-				reinterpret_cast<OakEngineNode *>(item),
-				new_name.toUtf8().constData());
+				item.handle(), new_name.toUtf8().constData());
 
 			oakengine_undo_push(
 				nrc,
-				tr("Renamed Item \"%1\" to \"%2\"").arg(item->get_label(), new_name).toUtf8().constData());
+				tr("Renamed Item \"%1\" to \"%2\"").arg(item.get_label(), new_name).toUtf8().constData());
 
 			return true;
 		}
@@ -304,7 +291,7 @@ Qt::ItemFlags ProjectViewModel::flags(const QModelIndex &index) const
 
 	Qt::ItemFlags f = Qt::ItemIsDragEnabled | QAbstractItemModel::flags(index);
 
-	if (dynamic_cast<Folder *>(get_item_object_from_index(index))) {
+	if (get_item_object_from_index(index).is_folder()) {
 		f |= Qt::ItemIsDropEnabled;
 	}
 
@@ -345,17 +332,20 @@ QMimeData *ProjectViewModel::mimeData(const QModelIndexList &indexes) const
 			// Check if we've dragged this item before
 			if (!dragged_items.contains(index.internalPointer())) {
 				// If not, add it to the stream (and also keep track of it in the vector)
-				Node *item = static_cast<Node *>(index.internalPointer());
-				QVector<Track::Reference> streams;
+				oak::Node item(static_cast<OakEngineNode *>(index.internalPointer()));
 
-				if (ViewerOutput *footage =
-						dynamic_cast<ViewerOutput *>(item)) {
-					streams = footage->get_enabled_streams_as_references();
+				// Serialize the enabled streams (type/index pairs) for viewer items
+				const QVector<QPair<int, int>> streams =
+					item.is_viewer_output() ? item.enabled_streams()
+											: QVector<QPair<int, int>>();
+
+				stream << streams.size();
+				for (const QPair<int, int> &s : streams) {
+					stream << s.first << s.second;
 				}
+				stream << reinterpret_cast<quintptr>(item.handle());
 
-				stream << streams << reinterpret_cast<quintptr>(item);
-
-				dragged_items.append(item);
+				dragged_items.append(item.handle());
 			}
 		}
 	}
@@ -390,34 +380,38 @@ bool ProjectViewModel::dropMimeData(const QMimeData *data,
 		QDataStream stream(&model_data, QIODevice::ReadOnly);
 
 		// Get the Item object that the items were dropped on
-		Folder *drop_location =
-			dynamic_cast<Folder *>(get_item_object_from_index(drop));
+		oak::Node drop_location = get_item_object_from_index(drop);
 
 		// If this is not a folder, we cannot drop these items here
-		if (!drop_location) {
+		if (!drop_location.is_folder()) {
 			return false;
 		}
-
-		// Variables to deserialize into
-		quintptr item_ptr;
-		QList<Track::Reference> streams;
 
 		// Loop through all data, collecting the items to move
 		QVector<OakEngineNode *> items_to_move;
 
 		while (!stream.atEnd()) {
-			stream >> streams >> item_ptr;
+			// Written as qsizetype (8 bytes) by mimeData(); must match
+			qint64 stream_count = 0;
+			stream >> stream_count;
+			for (qint64 si = 0; si < stream_count; si++) {
+				int st = 0, sidx = 0;
+				stream >> st >> sidx;
+			}
 
-			Node *item = reinterpret_cast<Node *>(item_ptr);
+			quintptr item_ptr;
+			stream >> item_ptr;
+
+			oak::Node item(reinterpret_cast<OakEngineNode *>(item_ptr));
 
 			// Check if Item is already the drop location or if its parent is the drop location, in which case this is a
 			// no-op
 
-			if (item != drop_location && item->folder() != drop_location &&
-				(!dynamic_cast<Folder *>(item) ||
-				 !item_is_parent_of_child(static_cast<Folder *>(item),
-									  drop_location))) {
-				items_to_move.append(reinterpret_cast<OakEngineNode *>(item));
+			if (item != drop_location &&
+				item.folder() != drop_location &&
+				(!item.is_folder() ||
+				 !item_is_parent_of_child(item, drop_location))) {
+				items_to_move.append(item.handle());
 			}
 		}
 
@@ -426,7 +420,7 @@ bool ProjectViewModel::dropMimeData(const QMimeData *data,
 			// item from its old folder, then adds it to the drop location)
 			oakengine_folder_move_children(
 				items_to_move.constData(), items_to_move.size(),
-				reinterpret_cast<OakEngineNode *>(drop_location),
+				drop_location.handle(),
 				tr("Move %1 Item(s)").arg(items_to_move.size()).toUtf8().constData());
 		}
 
@@ -450,11 +444,11 @@ bool ProjectViewModel::dropMimeData(const QMimeData *data,
 		}
 
 		// Get folder dropped onto
-		Node *drop_item = get_item_object_from_index(drop);
+		oak::Node drop_item = get_item_object_from_index(drop);
 
 		// If we didn't drop onto an item, find the nearest parent folder (should eventually terminate at root either way)
-		if (!dynamic_cast<Folder *>(drop_item)) {
-			drop_item = drop_item->folder();
+		if (!drop_item.is_folder()) {
+			drop_item = drop_item.folder();
 
 			if (!drop_item) {
 				// Failed to find folder to place this in
@@ -463,7 +457,7 @@ bool ProjectViewModel::dropMimeData(const QMimeData *data,
 		}
 
 		// Trigger an import
-		Core::instance()->import_files(urls, reinterpret_cast<OakEngineNode *>(drop_item));
+		Core::instance()->import_files(urls, drop_item.handle());
 
 		return true;
 	}
@@ -471,32 +465,32 @@ bool ProjectViewModel::dropMimeData(const QMimeData *data,
 	return false;
 }
 
-int ProjectViewModel::index_of_child(Node *item) const
+int ProjectViewModel::index_of_child(oak::Node item) const
 {
 	// Find parent's index within its own parent
-	Folder *parent = item->folder();
+	oak::Node parent = item.folder();
 
 	if (parent) {
-		return parent->index_of_child(item);
+		return parent.index_of_child(item);
 	}
 
 	return -1;
 }
 
-Node *ProjectViewModel::get_item_object_from_index(const QModelIndex &index) const
+oak::Node ProjectViewModel::get_item_object_from_index(const QModelIndex &index) const
 {
 	if (index.isValid()) {
-		return static_cast<Node *>(index.internalPointer());
+		return oak::Node(static_cast<OakEngineNode *>(index.internalPointer()));
 	}
 
-	return project_ ? project_->root() : nullptr;
+	return project_ ? project_.root() : oak::Node();
 }
 
-bool ProjectViewModel::item_is_parent_of_child(Folder *parent, Node *child) const
+bool ProjectViewModel::item_is_parent_of_child(oak::Node parent, oak::Node child) const
 {
 	// Loop through parent hierarchy checking if `parent` is one of its parents
 	do {
-		child = child->folder();
+		child = child.folder();
 
 		if (parent == child) {
 			return true;
@@ -506,49 +500,48 @@ bool ProjectViewModel::item_is_parent_of_child(Folder *parent, Node *child) cons
 	return false;
 }
 
-void ProjectViewModel::connect_item(Node *n)
+void ProjectViewModel::connect_item(oak::Node n)
 {
 	label_changed_subs_[n] = bridge_->subscribe(
-		reinterpret_cast<void *>(n), OAKENGINE_EVENT_NODE_LABEL_CHANGED);
+		n.handle(), OAKENGINE_EVENT_NODE_LABEL_CHANGED);
 
-	Folder *f = dynamic_cast<Folder *>(n);
-	if (f) {
-		OakEngineNode *handle = reinterpret_cast<OakEngineNode *>(f);
-		bridge_->subscribe(handle, OAKENGINE_EVENT_FOLDER_BEGIN_INSERT_ITEM);
-		bridge_->subscribe(handle, OAKENGINE_EVENT_FOLDER_END_INSERT_ITEM);
-		bridge_->subscribe(handle, OAKENGINE_EVENT_FOLDER_BEGIN_REMOVE_ITEM);
-		bridge_->subscribe(handle, OAKENGINE_EVENT_FOLDER_END_REMOVE_ITEM);
+	if (n.is_folder()) {
+		bridge_->subscribe(n.handle(), OAKENGINE_EVENT_FOLDER_BEGIN_INSERT_ITEM);
+		bridge_->subscribe(n.handle(), OAKENGINE_EVENT_FOLDER_END_INSERT_ITEM);
+		bridge_->subscribe(n.handle(), OAKENGINE_EVENT_FOLDER_BEGIN_REMOVE_ITEM);
+		bridge_->subscribe(n.handle(), OAKENGINE_EVENT_FOLDER_END_REMOVE_ITEM);
 
-		foreach (Node *c, f->children()) {
-			connect_item(c);
+		const int count = n.item_child_count();
+		for (int i = 0; i < count; i++) {
+			connect_item(n.item_child(i));
 		}
 	}
 }
 
-void ProjectViewModel::disconnect_item(Node *n)
+void ProjectViewModel::disconnect_item(oak::Node n)
 {
 	int64_t sub = label_changed_subs_.take(n);
 	if (sub > 0) {
 		bridge_->unsubscribe(sub);
 	}
 
-	Folder *f = dynamic_cast<Folder *>(n);
-	if (f) {
+	if (n.is_folder()) {
 		// Bridge subscriptions are cleaned up by recreating the bridge in set_project
-		foreach (Node *c, f->children()) {
-			disconnect_item(c);
+		const int count = n.item_child_count();
+		for (int i = 0; i < count; i++) {
+			disconnect_item(n.item_child(i));
 		}
 	}
 }
 
-void ProjectViewModel::folder_begin_insert_item(Folder *folder, Node *n,
+void ProjectViewModel::folder_begin_insert_item(oak::Node folder, oak::Node n,
 												int insert_index)
 {
 	connect_item(n);
 
 	QModelIndex index;
 
-	if (folder != project_->root()) {
+	if (folder != project_.root()) {
 		index = create_index_from_item(folder);
 	}
 
@@ -560,14 +553,14 @@ void ProjectViewModel::folder_end_insert_item()
 	endInsertRows();
 }
 
-void ProjectViewModel::folder_begin_remove_item(Folder *folder, Node *n,
+void ProjectViewModel::folder_begin_remove_item(oak::Node folder, oak::Node n,
 												int child_index)
 {
 	disconnect_item(n);
 
 	QModelIndex index;
 
-	if (folder != project_->root()) {
+	if (folder != project_.root()) {
 		index = create_index_from_item(folder);
 	}
 
@@ -581,16 +574,14 @@ void ProjectViewModel::folder_end_remove_item()
 
 void ProjectViewModel::item_renamed(OakEngineNode *source)
 {
-	Node *item = reinterpret_cast<Node *>(source);
-
-	QModelIndex index = create_index_from_item(item);
+	QModelIndex index = create_index_from_item(oak::Node(source));
 
 	emit dataChanged(index, index, { Qt::DisplayRole, Qt::EditRole });
 }
 
-QModelIndex ProjectViewModel::create_index_from_item(Node *item, int column)
+QModelIndex ProjectViewModel::create_index_from_item(oak::Node item, int column)
 {
-	return createIndex(index_of_child(item), column, item);
+	return createIndex(index_of_child(item), column, item.handle());
 }
 
 }

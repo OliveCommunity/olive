@@ -27,17 +27,17 @@
 #include <QtMath>
 
 #include "oakutil/qtutils.h"
+#include "oakutil/oaknode.h"
 #include "oakutil/range.h"
 #include "core.h"
 #include "dialog/markerproperties/markerpropertiesdialog.h"
+#include "markerhandle.h"
 #include "markerpainting.h"
-#include "node/project/sequence/sequence.h"
-#include "node/project/serializer/serializer.h"
+#include "oakengine/node.h"
 #include "oakengine/serializer.h"
 #include "oakengine/timeline.h"
 #include "oakengine/viewer.h"
 #include "oakengine/undo.h"
-#include "timeline/timelineundoworkarea.h"
 #include "widget/colorlabelmenu/colorlabelmenu.h"
 #include "widget/menu/menushared.h"
 #include "widget/timebased/timebasedwidget.h"
@@ -76,7 +76,7 @@ SeekableWidget::SeekableWidget(QWidget *parent)
 	set_is_timeline_axes(true);
 }
 
-void SeekableWidget::set_markers(TimelineMarkerList *markers)
+void SeekableWidget::set_markers(OakEngineMarkerList *markers)
 {
 	// Unsubscribe old marker list events via bridge
 	for (int64_t id : marker_list_subs_) {
@@ -91,15 +91,15 @@ void SeekableWidget::set_markers(TimelineMarkerList *markers)
 	markers_ = markers;
 
 	if (markers_) {
-		// Subscribe to marker list events via bridge instead of direct TimelineMarkerList signals
+		// Subscribe to marker list events via bridge instead of direct marker list signals
 		marker_list_subs_.append(bridge_->subscribe(
-			reinterpret_cast<OakEngineMarkerList *>(markers_),
+			markers_,
 			OAKENGINE_EVENT_MARKER_LIST_MARKER_ADDED));
 		marker_list_subs_.append(bridge_->subscribe(
-			reinterpret_cast<OakEngineMarkerList *>(markers_),
+			markers_,
 			OAKENGINE_EVENT_MARKER_LIST_MARKER_REMOVED));
 		marker_list_subs_.append(bridge_->subscribe(
-			reinterpret_cast<OakEngineMarkerList *>(markers_),
+			markers_,
 			OAKENGINE_EVENT_MARKER_LIST_MARKER_MODIFIED));
 
 		// Wire the bridge signals once — bridge_ outlives individual marker
@@ -125,7 +125,7 @@ void SeekableWidget::set_markers(TimelineMarkerList *markers)
 	viewport()->update();
 }
 
-void SeekableWidget::set_work_area(TimelineWorkArea *workarea)
+void SeekableWidget::set_work_area(OakEngineWorkarea *workarea)
 {
 	if (workarea_) {
 		selection_manager_.clear_selection();
@@ -166,31 +166,27 @@ void SeekableWidget::delete_selected()
 			return;
 		}
 
-		if (Sequence *sequence =
-				dynamic_cast<Sequence *>(get_viewer_node())) {
+		OakEngineNode *viewer_node =
+			get_viewer_node();
+		if (oakengine_node_is_sequence(viewer_node)) {
 			// Batch removal through the liboakengine C ABI facade (one
 			// undoable command). The facade family only wraps sequences;
 			// markers of other viewer nodes (e.g. footage viewers) keep
 			// the old per-marker command path below.
 			QVector<int64_t> times;
 			times.reserve(int(selected.size()));
-			for (TimelineMarker *marker : selected) {
+			for (OakEngineMarker *marker : selected) {
 				times.append(Timecode::time_to_timestamp(
-					marker->time().in(), timebase(), Timecode::k_round));
+					marker_time(marker).in(), timebase(), Timecode::k_round));
 			}
 			oakengine_sequence_marker_remove_many(
-				reinterpret_cast<OakEngineSequence *>(sequence),
+				reinterpret_cast<OakEngineSequence *>(viewer_node),
 				times.constData(), times.size());
 			return;
 		}
 
-		QVector<OakEngineMarker *> oak_markers;
-		foreach (TimelineMarker *marker, selected) {
-			oak_markers.append(
-				reinterpret_cast<OakEngineMarker *>(marker));
-		}
 		// Remove each marker (undoable individually)
-		for (auto *m : oak_markers) {
+		for (auto *m : selected) {
 			oakengine_marker_remove(m);
 		}
 	}
@@ -203,7 +199,7 @@ bool SeekableWidget::copy_selected(bool cut)
 		std::vector<const OakEngineMarker *> markers;
 		markers.reserve(selected.size());
 		for (auto *m : selected) {
-			markers.push_back(reinterpret_cast<OakEngineMarker *>(m));
+			markers.push_back(m);
 		}
 
 		OakEngineClipboard *cb = oakengine_clipboard_create(
@@ -225,52 +221,52 @@ bool SeekableWidget::copy_selected(bool cut)
 
 bool SeekableWidget::paste_markers()
 {
+	OakEngineNode *viewer =
+		get_viewer_node();
+	OakEngineProject *project = oak::Node(viewer).project().handle();
 	OakEngineClipboard *cb = oakengine_clipboard_create(
-		OAKENGINE_CLIPBOARD_MARKERS,
-		reinterpret_cast<OakEngineProject *>(get_viewer_node()->project()),
-		nullptr);
+		OAKENGINE_CLIPBOARD_MARKERS, project, nullptr);
 	int result_code;
 	oakengine_clipboard_paste(
-		cb, OAKENGINE_CLIPBOARD_MARKERS,
-		reinterpret_cast<OakEngineProject *>(get_viewer_node()->project()),
-		&result_code, nullptr, 0);
+		cb, OAKENGINE_CLIPBOARD_MARKERS, project, &result_code, nullptr, 0);
 	if (result_code == OAKENGINE_OK) {
 		int count = oakengine_clipboard_get_loaded_marker_count(cb);
 		if (count > 0) {
 			// Collect the pasted markers
-			std::vector<TimelineMarker *> markers;
+			std::vector<OakEngineMarker *> markers;
 			markers.reserve(count);
 			for (int i = 0; i < count; i++) {
-				markers.push_back(reinterpret_cast<TimelineMarker *>(
-					oakengine_clipboard_get_loaded_marker_at(cb, i)));
+				markers.push_back(
+					oakengine_clipboard_get_loaded_marker_at(cb, i));
 			}
 
 			// Normalize markers to start at playhead
 			Rational min = RATIONAL_MAX;
 			for (auto it = markers.cbegin(); it != markers.cend(); it++) {
-				min = std::min(min, (*it)->time().in());
+				min = std::min(min, marker_time(*it).in());
 			}
-			min -= get_viewer_node()->get_playhead();
+			int64_t ph_num = 0, ph_den = 1;
+			oakengine_viewer_get_playhead(viewer, &ph_num, &ph_den);
+			min -= Rational(int(ph_num), int(ph_den));
 
 			for (auto it = markers.cbegin(); it != markers.cend(); it++) {
-				TimelineMarker *m = *it;
+				OakEngineMarker *m = *it;
 
-				Rational new_in = m->time().in() - min;
+				Rational new_in = marker_time(m).in() - min;
 				oakengine_marker_set_time_live(
-					reinterpret_cast<OakEngineMarker *>(m),
+					m,
 					new_in.numerator(), new_in.denominator(),
 					new_in.numerator(), new_in.denominator());
 
-				if (TimelineMarker *existing =
-						markers_->get_marker_at_time(m->time().in())) {
-					oakengine_marker_remove(
-						reinterpret_cast<OakEngineMarker *>(existing));
+				if (OakEngineMarker *existing =
+						oakengine_marker_list_marker_at_time(
+							markers_, new_in.numerator(),
+							new_in.denominator())) {
+					oakengine_marker_remove(existing);
 				}
 
 				// Re-add the clipboard marker to the list (undoable)
-				oakengine_marker_list_add_existing(
-					reinterpret_cast<OakEngineMarkerList *>(markers_),
-					reinterpret_cast<OakEngineMarker *>(m));
+				oakengine_marker_list_add_existing(markers_, m);
 			}
 
 			oakengine_clipboard_free(cb);
@@ -284,7 +280,7 @@ bool SeekableWidget::paste_markers()
 
 void SeekableWidget::mousePressEvent(QMouseEvent *event)
 {
-	TimelineMarker *initial;
+	OakEngineMarker *initial;
 
 	if (hand_press(event)) {
 		return;
@@ -298,8 +294,12 @@ void SeekableWidget::mousePressEvent(QMouseEvent *event)
 		if (!(event->modifiers() & Qt::ShiftModifier)) {
 			selection_manager_.clear_selection();
 		}
-		if (TimelineMarker *m = dynamic_cast<TimelineMarker *>(resize_item_)) {
-			selection_manager_.select(m);
+		// resize_item_ is either the workarea or a marker (see
+		// find_resize_handle); the handles are opaque here, so tell
+		// them apart by comparing against workarea_ instead of dynamic_cast.
+		if (resize_item_ != workarea_) {
+			selection_manager_.select(
+				static_cast<OakEngineMarker *>(resize_item_));
 		}
 		dragging_ = true;
 		resize_start_ = mapToScene(event->pos());
@@ -405,19 +405,23 @@ void SeekableWidget::draw_markers(QPainter *p, int marker_bottom)
 	selection_manager_.clear_drawn_objects();
 
 	// Draw markers
-	if (markers_ && !markers_->empty() && marker_bottom > 0) {
+	const int marker_count =
+		markers_ ? oakengine_marker_list_count(markers_) : 0;
+	if (marker_count > 0 && marker_bottom > 0) {
 		int lim_left = get_left_limit();
 		int lim_right = get_right_limit();
 
-		for (auto it = markers_->cbegin(); it != markers_->cend(); it++) {
-			TimelineMarker *marker = *it;
+		for (int i = 0; i < marker_count; i++) {
+			OakEngineMarker *marker =
+				oakengine_marker_list_at(markers_, i);
+			const TimeRange range = marker_time(marker);
 
-			int marker_right = time_to_scene(marker->time().out());
+			int marker_right = time_to_scene(range.out());
 			if (marker_right < lim_left) {
 				continue;
 			}
 
-			int marker_left = time_to_scene(marker->time().in());
+			int marker_left = time_to_scene(range.in());
 			if (marker_left >= lim_right) {
 				break;
 			}
@@ -425,20 +429,20 @@ void SeekableWidget::draw_markers(QPainter *p, int marker_bottom)
 			int max_marker_right = lim_right;
 			{
 				// Check if there's a marker next
-				auto next = it;
-				next++;
-				if (next != markers_->cend()) {
+				if (i + 1 < marker_count) {
+					OakEngineMarker *next =
+						oakengine_marker_list_at(markers_, i + 1);
 					max_marker_right =
 						std::min(max_marker_right,
-								 int(time_to_scene((*next)->time().in())));
+								 int(time_to_scene(marker_time(next).in())));
 				}
 			}
 
 			QRect marker_rect = MarkerPainting::draw(
 				p, QPoint(marker_left, marker_bottom), max_marker_right,
 				get_scale(), selection_manager_.is_selected(marker),
-				marker->name(), marker->color(),
-				marker->time().in(), marker->time().out());
+				marker_name(marker), marker_color(marker),
+				range.in(), range.out());
 			marker_top_ = marker_rect.top();
 			selection_manager_.declare_drawn_object(marker, marker_rect);
 		}
@@ -449,19 +453,33 @@ void SeekableWidget::draw_markers(QPainter *p, int marker_bottom)
 
 void SeekableWidget::draw_work_area(QPainter *p)
 {
+	// Fetch workarea state through the C ABI (opaque handle on this side)
+	int64_t wa_in_num = 0, wa_in_den = 1, wa_out_num = 0, wa_out_den = 1;
+	int wa_enabled = 0;
+	const bool have_workarea =
+		workarea_ &&
+		oakengine_workarea_get(
+			workarea_, &wa_in_num,
+			&wa_in_den, &wa_out_num, &wa_out_den,
+			&wa_enabled) == OAKENGINE_OK &&
+		wa_enabled;
+
 	// Draw in/out workarea
-	if (workarea_ && workarea_->enabled()) {
+	if (have_workarea) {
+		const Rational wa_in{int(wa_in_num), int(wa_in_den)};
+		const Rational wa_out{int(wa_out_num), int(wa_out_den)};
+
 		int lim_left = get_left_limit();
 		int lim_right = get_right_limit();
 
-		int workarea_left = qMax(qreal(lim_left), time_to_scene(workarea_->in()));
+		int workarea_left = qMax(qreal(lim_left), time_to_scene(wa_in));
 		int workarea_right;
 
-		if (workarea_->out() == RATIONAL_MAX) {
+		if (wa_out == RATIONAL_MAX) {
 			workarea_right = lim_right;
 		} else {
 			workarea_right =
-				qMin(qreal(lim_right), time_to_scene(workarea_->out()));
+				qMin(qreal(lim_right), time_to_scene(wa_out));
 		}
 
 		QColor translucent_highlight = palette().highlight().color();
@@ -481,9 +499,9 @@ void SeekableWidget::deselect_all_markers()
 void SeekableWidget::set_marker_color(int c)
 {
 	QVector<OakEngineMarker *> oak_markers;
-	foreach (TimelineMarker *marker,
+	foreach (OakEngineMarker *marker,
 			 selection_manager_.get_selected_objects()) {
-		oak_markers.append(reinterpret_cast<OakEngineMarker *>(marker));
+		oak_markers.append(marker);
 	}
 	oakengine_marker_set_properties(
 		oak_markers.data(), oak_markers.size(), c, nullptr, 0, 0, 0, 0, 0,
@@ -523,11 +541,15 @@ void SeekableWidget::seek_to_scene_point(qreal scene)
 		playhead_time += movement;
 	}
 
-	ViewerOutput *viewer = get_viewer_node();
-	if (viewer && playhead_time != viewer->get_playhead()) {
+	OakEngineNode *viewer =
+		get_viewer_node();
+	int64_t ph_num = 0, ph_den = 1;
+	oakengine_viewer_get_playhead(viewer, &ph_num, &ph_den);
+	if (viewer &&
+		playhead_time != Rational(int(ph_num), int(ph_den))) {
 		oakengine_viewer_set_playhead(
-		reinterpret_cast<OakEngineNode *>(viewer),
-		playhead_time.numerator(), playhead_time.denominator());
+			viewer,
+			playhead_time.numerator(), playhead_time.denominator());
 	}
 }
 
@@ -634,39 +656,58 @@ bool SeekableWidget::find_resize_handle(QMouseEvent *event)
 	Rational min = scene_to_time_no_grid(scene.x() - border);
 	Rational max = scene_to_time_no_grid(scene.x() + border);
 
-	// Test for workarea
-	if (workarea_ && workarea_->enabled()) {
-		if (workarea_->in() >= min && workarea_->in() < max) {
+	// Test for workarea (state fetched through the C ABI; the handle is
+	// opaque on this side)
+	int64_t wa_in_num = 0, wa_in_den = 1, wa_out_num = 0, wa_out_den = 1;
+	int wa_enabled = 0;
+	const bool have_workarea =
+		workarea_ &&
+		oakengine_workarea_get(
+			workarea_, &wa_in_num,
+			&wa_in_den, &wa_out_num, &wa_out_den,
+			&wa_enabled) == OAKENGINE_OK &&
+		wa_enabled;
+
+	if (have_workarea) {
+		const Rational wa_in{int(wa_in_num), int(wa_in_den)};
+		const Rational wa_out{int(wa_out_num), int(wa_out_den)};
+
+		if (wa_in >= min && wa_in < max) {
 			resize_mode_ = k_resize_in;
-		} else if (workarea_->out() >= min && workarea_->out() < max) {
+		} else if (wa_out >= min && wa_out < max) {
 			resize_mode_ = k_resize_out;
 		}
-	}
 
-	if (resize_mode_ != k_resize_none) {
-		if (workarea_) {
+		if (resize_mode_ != k_resize_none) {
 			resize_item_ = workarea_;
-			resize_item_range_ = workarea_->range();
+			resize_item_range_ = TimeRange(wa_in, wa_out);
 			resize_snap_mask_ = TimeBasedWidget::k_snap_all &
 								~TimeBasedWidget::k_snap_to_workarea;
 		}
-	} else if (event->pos().y() >= marker_top_ &&
-			   event->pos().y() < marker_bottom_) {
+	}
+
+	if (resize_mode_ == k_resize_none &&
+		event->pos().y() >= marker_top_ &&
+		event->pos().y() < marker_bottom_) {
 		if (markers_) {
 			// Check for markers
-			for (auto it = markers_->cbegin(); it != markers_->cend(); it++) {
-				TimelineMarker *m = *it;
-				if (m->time().in() != m->time().out()) {
-					if (m->time().in() >= min && m->time().in() < max) {
+			const int marker_count =
+				oakengine_marker_list_count(markers_);
+			for (int i = 0; i < marker_count; i++) {
+				OakEngineMarker *m =
+					oakengine_marker_list_at(markers_, i);
+				const TimeRange m_time = marker_time(m);
+				if (m_time.in() != m_time.out()) {
+					if (m_time.in() >= min && m_time.in() < max) {
 						resize_mode_ = k_resize_in;
-					} else if (m->time().out() >= min &&
-							   m->time().out() < max) {
+					} else if (m_time.out() >= min &&
+							   m_time.out() < max) {
 						resize_mode_ = k_resize_out;
 					}
 
 					if (resize_mode_ != k_resize_none) {
 						resize_item_ = m;
-						resize_item_range_ = m->time();
+						resize_item_range_ = m_time;
 						resize_snap_mask_ = TimeBasedWidget::k_snap_all;
 						break;
 					}
@@ -716,10 +757,16 @@ void SeekableWidget::drag_resize_handle(const QPointF &scene)
 		// Markers should not have the same time as anything else
 		// NOTE: This code is largely duplicated from TimeBasedViewSelectionManager::DragMove. Not ideal,
 		//       but I'm not sure if there's a good way to re-use that code
-		if (TimelineMarker *marker =
-				dynamic_cast<TimelineMarker *>(resize_item_)) {
+		// resize_item_ is either the workarea or a marker; the handles are
+		// opaque here, so compare against workarea_ instead of
+		// dynamic_cast.
+		if (resize_item_ != workarea_) {
+			OakEngineMarker *marker =
+				static_cast<OakEngineMarker *>(resize_item_);
 			if (markers_ &&
-				markers_->get_marker_at_time(proposed_time) != marker) {
+				oakengine_marker_list_marker_at_time(
+					markers_, proposed_time.numerator(),
+					proposed_time.denominator()) != marker) {
 				proposed_time = presnap_time;
 
 				if (get_snap_service()) {
@@ -728,8 +775,12 @@ void SeekableWidget::drag_resize_handle(const QPointF &scene)
 			}
 
 			while (markers_ &&
-				   markers_->get_marker_at_time(proposed_time) != marker &&
-				   markers_->get_marker_at_time(proposed_time)) {
+				   oakengine_marker_list_marker_at_time(
+					   markers_, proposed_time.numerator(),
+					   proposed_time.denominator()) != marker &&
+				   oakengine_marker_list_marker_at_time(
+					   markers_, proposed_time.numerator(),
+					   proposed_time.denominator())) {
 				proposed_time += Rational(1, 1000);
 			}
 		}
@@ -739,15 +790,14 @@ void SeekableWidget::drag_resize_handle(const QPointF &scene)
 		new_range.set_out(proposed_time);
 	}
 
-	if (TimelineMarker *marker = dynamic_cast<TimelineMarker *>(resize_item_)) {
+	if (resize_item_ != workarea_) {
 		oakengine_marker_set_time_live(
-			reinterpret_cast<OakEngineMarker *>(marker),
+			static_cast<OakEngineMarker *>(resize_item_),
 			new_range.in().numerator(), new_range.in().denominator(),
 			new_range.out().numerator(), new_range.out().denominator());
-	} else if (TimelineWorkArea *workarea =
-				   dynamic_cast<TimelineWorkArea *>(resize_item_)) {
+	} else {
 		oakengine_workarea_set_range(
-			reinterpret_cast<OakEngineWorkarea *>(workarea),
+			workarea_,
 			new_range.in().numerator(), new_range.in().denominator(),
 			new_range.out().numerator(), new_range.out().denominator());
 	}
@@ -755,16 +805,20 @@ void SeekableWidget::drag_resize_handle(const QPointF &scene)
 
 void SeekableWidget::commit_resize_handle()
 {
-	if (TimelineMarker *marker = dynamic_cast<TimelineMarker *>(resize_item_)) {
+	// resize_item_ is either the workarea or a marker (see
+	// find_resize_handle); compare against workarea_ instead of
+	// dynamic_cast since the handles are opaque here.
+	if (resize_item_ != workarea_) {
+		OakEngineMarker *marker =
+			static_cast<OakEngineMarker *>(resize_item_);
 		oakengine_marker_set_properties(
-			reinterpret_cast<OakEngineMarker **>(&marker), 1, -1, nullptr, 1,
+			&marker, 1, -1, nullptr, 1,
 			resize_item_range_.in().numerator(),
 			resize_item_range_.in().denominator(),
 			resize_item_range_.out().numerator(),
 			resize_item_range_.out().denominator(),
 			nullptr);
-	} else if (TimelineWorkArea *workarea =
-				   dynamic_cast<TimelineWorkArea *>(resize_item_)) {
+	} else {
 		void *wa_cmd = oakengine_undo_command_create(
 			tr("Changed Workarea Length").toUtf8().constData(),
 			nullptr, nullptr, nullptr, nullptr);

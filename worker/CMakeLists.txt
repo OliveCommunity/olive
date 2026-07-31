@@ -27,6 +27,10 @@ add_executable(olive-render-worker
 )
 set_target_properties(olive-render-worker PROPERTIES OUTPUT_NAME "oak-render-worker")
 
+if (COMMAND oak_copy_otio_runtime)
+  oak_copy_otio_runtime(olive-render-worker)
+endif()
+
 # $<LINK_ONLY:...> links liboakengine without inheriting its usage
 # requirements (the engine's C++ include roots); the worker is only allowed
 # to see the public C API headers.

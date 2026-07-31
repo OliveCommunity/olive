@@ -22,28 +22,32 @@
 #ifndef OAK_TIMELINECOORDINATE_H
 #define OAK_TIMELINECOORDINATE_H
 
-#include "node/output/track/track.h"
+#include <olive/core/util/rational.h>
+
+#include "common/trackreferencehandle.h"
 
 namespace olive
 {
 
+using namespace core;
+
 class TimelineCoordinate {
 public:
 	TimelineCoordinate();
-	TimelineCoordinate(const Rational &frame, const Track::Reference &track);
-	TimelineCoordinate(const Rational &frame, const Track::Type &track_type,
+	TimelineCoordinate(const Rational &frame, const TrackReference &track);
+	TimelineCoordinate(const Rational &frame, const TrackReference::Type &track_type,
 					   const int &track_index);
 
 	const Rational &get_frame() const;
-	const Track::Reference &get_track() const;
+	const TrackReference &get_track() const;
 
 	void set_frame(const Rational &frame);
-	void set_track(const Track::Reference &track);
+	void set_track(const TrackReference &track);
 
 private:
 	Rational frame_;
 
-	Track::Reference track_;
+	TrackReference track_;
 };
 
 }

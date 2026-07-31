@@ -24,8 +24,6 @@
 
 #include <QList>
 
-#include "node/project/footage/footage.h"
-
 struct OakEngineNode;
 
 namespace olive

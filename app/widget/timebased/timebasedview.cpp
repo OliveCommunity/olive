@@ -155,7 +155,7 @@ void TimeBasedView::set_y_scale(const double &y_scale)
 	}
 }
 
-void TimeBasedView::set_viewer_node(ViewerOutput *v)
+void TimeBasedView::set_viewer_node(OakEngineNode *v)
 {
 	if (viewer_) {
 		oakengine_event_unsubscribe(viewer_sub_);

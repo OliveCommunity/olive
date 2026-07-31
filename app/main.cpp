@@ -28,7 +28,6 @@
  */
 
 #include "oakengine/plugin.h"
-#include "pluginSupport/olivehost.h"
 
 #include <csignal>
 

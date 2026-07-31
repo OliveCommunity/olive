@@ -24,8 +24,7 @@
 
 #include <QAction>
 
-#include "oakengine/node.h"
-#include "node/node.h"
+#include "oakutil/oaknode.h"
 #include "widget/menu/menu.h"
 
 namespace olive
@@ -41,15 +40,18 @@ namespace olive
  * get_node_id_from_menu_action().
  */
 Menu *create_node_menu(QWidget *parent, bool create_none_item = false,
-					   Node::CategoryID restrict_to = Node::k_category_unknown,
+					   oak::NodeCategory restrict_to = oak::k_category_unknown,
 					   uint64_t restrict_flags = 0);
 
 /**
  * @brief Create a node from an action of a menu built by create_node_menu()
  *
- * Returns nullptr for the "None" item.
+ * Returns a null node for the "None" item.
+ *
+ * NOTE: the returned handle is OWNED by the caller (not added to any
+ * project); hand it on to a project/undo command.
  */
-Node *create_node_from_menu_action(QAction *action);
+oak::Node create_node_from_menu_action(QAction *action);
 
 /**
  * @brief Get the node ID from an action of a menu built by create_node_menu()

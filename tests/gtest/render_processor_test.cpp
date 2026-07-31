@@ -678,11 +678,11 @@ TEST(ManagedColor, ColorInputAndOutputRoundTrip)
 	color.set_color_input(QStringLiteral("linear"));
 	EXPECT_EQ(color.color_input(), QStringLiteral("linear"));
 
-	color.set_color_output(olive::ColorTransform(QStringLiteral("sRGB")));
+	color.set_color_output(oak::ColorTransform(QStringLiteral("sRGB")));
 	EXPECT_FALSE(color.color_output().is_display());
 	EXPECT_EQ(color.color_output().output(), QStringLiteral("sRGB"));
 
-	color.set_color_output(olive::ColorTransform(QStringLiteral("sRGB"),
+	color.set_color_output(oak::ColorTransform(QStringLiteral("sRGB"),
 												 QStringLiteral("Filmic"),
 												 QStringLiteral("None")));
 	EXPECT_TRUE(color.color_output().is_display());

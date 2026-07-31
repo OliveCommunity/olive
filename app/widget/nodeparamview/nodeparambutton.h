@@ -19,7 +19,6 @@
 
 #ifndef OAK_NODEPARAMBUTTON_H
 #define OAK_NODEPARAMBUTTON_H
-#include "node/plugins/plugin.h"
 
 #include <QPushButton>
 

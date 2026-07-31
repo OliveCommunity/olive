@@ -22,14 +22,41 @@
 #ifndef OAK_HISTORYWIDGET_H
 #define OAK_HISTORYWIDGET_H
 
+#include <QAbstractItemModel>
 #include <QTreeView>
 
 #include <cstdint>
 
-#include "undo/undostack.h"
-
 namespace olive
 {
+
+/**
+ * @brief App-side undo history model over the engine C ABI.
+ *
+ * Replaces the direct use of the engine's UndoStack as a Qt item model.
+ * Semantics mirror engine/undo/undostack.cpp: two columns (Number, Action),
+ * rows are all commands on the stack (done first, then undone), undone rows
+ * are shown gray. Refreshes itself on OAKENGINE_EVENT_UNDO_INDEX_CHANGED.
+ */
+class HistoryModel : public QAbstractItemModel {
+	Q_OBJECT
+public:
+	explicit HistoryModel(QObject *parent = nullptr);
+	~HistoryModel() override;
+
+	QModelIndex index(int row, int column,
+					  const QModelIndex &parent = QModelIndex()) const override;
+	QModelIndex parent(const QModelIndex &index) const override;
+	int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+	int columnCount(const QModelIndex &parent = QModelIndex()) const override;
+	QVariant data(const QModelIndex &index,
+				  int role = Qt::DisplayRole) const override;
+	QVariant headerData(int section, Qt::Orientation orientation,
+						int role = Qt::DisplayRole) const override;
+
+private:
+	int64_t sub_ = 0;
+};
 
 class HistoryWidget : public QTreeView {
 	Q_OBJECT
@@ -38,7 +65,7 @@ public:
 	~HistoryWidget() override;
 
 private:
-	UndoStack *stack_;
+	HistoryModel *model_;
 
 	int64_t undo_sub_ = 0;
 

@@ -183,7 +183,7 @@ public:
 
 		dragging_.resize(selected_.size());
 
-		if constexpr (std::is_same_v<T, TimelineMarker>) {
+		if constexpr (std::is_same_v<T, OakEngineMarker>) {
 			snap_points_.resize(selected_.size() * 2);
 		} else {
 			snap_points_.resize(selected_.size());
@@ -192,7 +192,7 @@ public:
 		if (target) {
 			time_targets_.resize(snap_points_.size());
 			memset(time_targets_.data(), 0,
-				   time_targets_.size() * sizeof(Node *));
+				   time_targets_.size() * sizeof(OakEngineNode *));
 		} else {
 			time_targets_.clear();
 		}
@@ -200,21 +200,21 @@ public:
 		for (size_t i = 0; i < selected_.size(); i++) {
 			T *obj = selected_.at(i);
 
-			if constexpr (std::is_same_v<T, TimelineMarker>) {
-				dragging_[i] = obj->time().in();
-				snap_points_[i] = obj->time().in();
-				snap_points_[i + selected_.size()] = obj->time().out();
+			if constexpr (std::is_same_v<T, OakEngineMarker>) {
+				dragging_[i] = selection_time(obj);
+				snap_points_[i] = selection_time(obj);
+				snap_points_[i + selected_.size()] = selection_time_end(obj);
 
 				if (target) {
 					time_targets_[i] = time_targets_[i + selected_.size()] =
-						QtUtils::get_parent_of_type<Node>(obj);
+						selection_time_target_parent(obj);
 				}
 			} else {
-				dragging_[i] = obj->time();
-				snap_points_[i] = obj->time();
+				dragging_[i] = selection_time(obj);
+				snap_points_[i] = selection_time(obj);
 
 				if (target) {
-					time_targets_[i] = QtUtils::get_parent_of_type<Node>(obj);
+					time_targets_[i] = selection_time_target_parent(obj);
 				}
 			}
 		}
@@ -229,10 +229,11 @@ public:
 
 		if (time_target_) {
 			for (size_t i = 0; i < copy.size(); i++) {
-				if (Node *parent = time_targets_[i]) {
+				if (OakEngineNode *parent = time_targets_[i]) {
 					copy[i] = time_target_->get_adjusted_time(
-						parent, time_target_->get_time_target(), copy[i],
-						Node::k_transform_towards_output);
+						parent,
+						time_target_->get_time_target(), copy[i],
+						k_transform_towards_output);
 				}
 			}
 		}
@@ -266,7 +267,7 @@ public:
 				Rational proposed_time = dragging_.at(i) + time_diff;
 				T *sel = selected_.at(i);
 
-				if (sel->has_sibling_at_time(proposed_time)) {
+				if (selection_has_sibling_at_time(sel, proposed_time)) {
 					// Unsnap
 					time_diff = presnap_time_diff;
 					if (view_->get_snap_service()) {
@@ -292,7 +293,7 @@ public:
 			bool loop;
 			do {
 				loop = false;
-				while (sel->has_sibling_at_time(proposed_time)) {
+				while (selection_has_sibling_at_time(sel, proposed_time)) {
 					proposed_time += adj;
 					unsnap();
 				}
@@ -316,22 +317,17 @@ public:
 
 		// Apply movement
 		for (size_t i = 0; i < selected_.size(); i++) {
-			if constexpr (std::is_same_v<T, NodeKeyframe>) {
-				key_set_time_live(selected_.at(i),
-								  dragging_.at(i) + time_diff);
-			} else {
-				selection_set_time(selected_.at(i),
-								 dragging_.at(i) + time_diff);
-			}
+			selection_set_time(selected_.at(i),
+							   dragging_.at(i) + time_diff);
 		}
 
 		// Show information about this keyframe
 		Rational display_time;
 
-		if constexpr (std::is_same_v<T, TimelineMarker>) {
-			display_time = initial_drag_item_->time().in();
+		if constexpr (std::is_same_v<T, OakEngineMarker>) {
+			display_time = selection_time(initial_drag_item_);
 		} else {
-			display_time = initial_drag_item_->time();
+			display_time = selection_time(initial_drag_item_);
 		}
 
 		QString tip = QString::fromStdString(Timecode::time_to_timecode(
@@ -352,10 +348,10 @@ public:
 		QToolTip::hideText();
 
 		for (size_t i = 0; i < selected_.size(); i++) {
-			if constexpr (std::is_same_v<T, NodeKeyframe>) {
+			if constexpr (std::is_same_v<T, OakEngineKeyframe>) {
 				int tbn = 0, tbd = 0;
 				oakengine_node_frame_time_base(
-					reinterpret_cast<OakEngineNode *>(selected_.at(i)->parent()),
+					oakengine_keyframe_get_node(selected_.at(i)),
 					&tbn, &tbd);
 				const int64_t new_ts = olive::core::Timecode::time_to_timestamp(
 					dragging_.at(i), olive::Rational(tbn, tbd),
@@ -363,13 +359,13 @@ public:
 				oakengine_undo_command_multi_add_child(
 					command,
 					oakengine_keyframe_set_time_command(
-						reinterpret_cast<OakEngineKeyframe *>(selected_.at(i)),
+						selected_.at(i),
 						new_ts));
-			} else if constexpr (std::is_same_v<T, TimelineMarker>) {
+			} else if constexpr (std::is_same_v<T, OakEngineMarker>) {
 				oakengine_undo_command_multi_add_child(
 					command,
 					oakengine_marker_set_time_command(
-						reinterpret_cast<OakEngineMarker *>(selected_.at(i)),
+						selected_.at(i),
 						dragging_.at(i).numerator(),
 						dragging_.at(i).denominator()));
 			}
@@ -452,7 +448,7 @@ TimeBasedView *view_;
 
 	std::vector<Rational> dragging_;
 	std::vector<Rational> snap_points_;
-	std::vector<Node *> time_targets_;
+	std::vector<OakEngineNode *> time_targets_;
 
 	T *initial_drag_item_;
 

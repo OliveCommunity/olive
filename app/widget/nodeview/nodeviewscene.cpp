@@ -22,7 +22,6 @@
 #include "nodeviewscene.h"
 
 #include "core.h"
-#include "node/project/sequence/sequence.h"
 #include "nodeviewedge.h"
 #include "nodeviewitem.h"
 
@@ -70,7 +69,7 @@ QVector<NodeViewItem *> NodeViewScene::get_selected_items() const
 	return items;
 }
 
-NodeViewContext *NodeViewScene::add_context(Node *node)
+NodeViewContext *NodeViewScene::add_context(oak::Node node)
 {
 	NodeViewContext *context_item = context_map_.value(node);
 
@@ -96,7 +95,7 @@ NodeViewContext *NodeViewScene::add_context(Node *node)
 	return context_item;
 }
 
-void NodeViewScene::remove_context(Node *node)
+void NodeViewScene::remove_context(oak::Node node)
 {
 	delete context_map_.take(node);
 }

@@ -36,7 +36,7 @@ public:
 
 	virtual ~TimeBasedPanel() override;
 
-	void connect_viewer_node(ViewerOutput *node);
+	void connect_viewer_node(OakEngineNode *node);
 
 	void disconnect_viewer_node()
 	{
@@ -46,7 +46,7 @@ public:
 	// Get the timebase of this panels widget
 	const Rational &timebase();
 
-	ViewerOutput *get_connected_viewer() const
+	OakEngineNode *get_connected_viewer() const
 	{
 		return widget_->get_connected_node();
 	}

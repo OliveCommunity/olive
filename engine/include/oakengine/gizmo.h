@@ -156,6 +156,48 @@ OAKENGINE_API int oakengine_gizmo_drag_move(void *gizmo,
  */
 OAKENGINE_API int oakengine_gizmo_drag_end(void *gizmo, void *command);
 
+/**
+ * @brief 1 if the gizmo is visible (NodeGizmo::is_visible()).
+ */
+OAKENGINE_API int oakengine_gizmo_is_visible(void *gizmo);
+
+/**
+ * @brief Draw the gizmo using the given QPainter (passed as void*).
+ * The painter must be a valid QPainter*. Returns OAKENGINE_OK or
+ * OAKENGINE_E_INVALID.
+ */
+OAKENGINE_API int oakengine_gizmo_draw(void *gizmo, void *painter);
+
+/**
+ * @brief Set the globals on a gizmo (NodeGizmo::set_globals()).
+ * `video_width`/`video_height` describe the resolution; `time_num`/
+ * `time_den` are rational seconds.
+ */
+OAKENGINE_API int oakengine_gizmo_set_globals(void *gizmo,
+    int video_width, int video_height,
+    int64_t time_num, int64_t time_den);
+
+/**
+ * @brief Unified gizmo hit-test used by the viewer to pick a gizmo under
+ * the cursor (replaces the app-side dynamic_cast chain over PointGizmo /
+ * PolygonGizmo / PathGizmo / ScreenGizmo).
+ *
+ * Returns 1 when the gizmo is visible AND the point (`px`,`py`, in gizmo
+ * scene space) hits it, 0 otherwise. `transform6` is the affine QTransform
+ * used for drawing, passed as six doubles in the order
+ * {m11, m12, m21, m22, dx, dy} (it is only needed by point gizmos, whose
+ * clicking rect depends on the draw transform; other types may ignore it).
+ *
+ * Per-type semantics mirror the original viewer logic:
+ *  - PointGizmo:   get_clicking_rect(transform).contains(p)
+ *  - PolygonGizmo: get_polygon().containsPoint(p, Qt::OddEvenFill)
+ *  - PathGizmo:    get_path().contains(p)
+ *  - ScreenGizmo:  always hittable (returns 1 when visible)
+ *  - TextGizmo / other: never hittable via this call (returns 0)
+ */
+OAKENGINE_API int oakengine_gizmo_hit_test(void *gizmo,
+    const double *transform6, double px, double py);
+
 #ifdef __cplusplus
 }
 #endif

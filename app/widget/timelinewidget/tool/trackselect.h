@@ -34,8 +34,8 @@ public:
 	virtual void mouse_press(TimelineViewMouseEvent *event) override;
 
 private:
-	void select_blocks_on_track(Track *track, TimelineViewMouseEvent *event,
-							 QVector<Block *> *blocks, bool forward);
+	void select_blocks_on_track(OakEngineTrack *track, TimelineViewMouseEvent *event,
+							 QVector<OakEngineBlock *> *blocks, bool forward);
 };
 
 }

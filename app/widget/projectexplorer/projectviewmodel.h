@@ -26,8 +26,7 @@
 #include <QHash>
 
 #include "engineeventbridge.h"
-#include "node/block/block.h"
-#include "node/project.h"
+#include "oakutil/oaknode.h"
 
 namespace olive
 {
@@ -39,6 +38,9 @@ namespace olive
  * a ProjectViewModel), it may be better to make modifications (e.g. additions/removals/renames) through the
  * ProjectViewModel so that the views can be efficiently and correctly updated. ProjectViewModel contains several
  * "wrapper" functions for Project and Item functions that also signal any connected views to update accordingly.
+ *
+ * Engine access goes through the oak:: C++ wrapper layer (oakutil/oaknode.h),
+ * which re-wraps the engine's pure C ABI into object form.
  */
 class ProjectViewModel : public QAbstractItemModel {
 	Q_OBJECT
@@ -78,9 +80,9 @@ public:
    *
    * @return
    *
-   * Currently active project or nullptr if there is none
+   * Currently active project or a null handle if there is none
    */
-	Project *project() const;
+	oak::Project project() const;
 
 	/**
    * @brief Set the project to adapt
@@ -89,9 +91,9 @@ public:
    *
    * @param p
    *
-   * Project to adapt, can be set to nullptr to "close" the project (will show an empty model that cannot be modified)
+   * Project to adapt, can be set to null to "close" the project (will show an empty model that cannot be modified)
    */
-	void set_project(Project *p);
+	void set_project(oak::Project p);
 
 	/** Compulsory Qt QAbstractItemModel overrides */
 	virtual QModelIndex
@@ -125,7 +127,7 @@ public:
 	/**
    * @brief Convenience function for creating QModelIndexes from an Item object
    */
-	QModelIndex create_index_from_item(Node *item, int column = 0);
+	QModelIndex create_index_from_item(oak::Node item, int column = 0);
 
 private:
 	/**
@@ -138,25 +140,25 @@ private:
    *
    * Index of the specified item, or -1 if the item is root (in which case it has no parent).
    */
-	int index_of_child(Node *item) const;
+	int index_of_child(oak::Node item) const;
 
 	/**
    * @brief Retrieves the Item object from a given index
    *
    * A convenience function for retrieving Item objects. If the index is not valid, this returns the root Item.
    */
-	Node *get_item_object_from_index(const QModelIndex &index) const;
+	oak::Node get_item_object_from_index(const QModelIndex &index) const;
 
 	/**
    * @brief Check if an Item is a parent of a Child
    *
    * Checks entire "parent hierarchy" of `child` to see if `parent` is one of its parents.
    */
-	bool item_is_parent_of_child(Folder *parent, Node *child) const;
+	bool item_is_parent_of_child(oak::Node parent, oak::Node child) const;
 
-	void connect_item(Node *n);
+	void connect_item(oak::Node n);
 
-	void disconnect_item(Node *n);
+	void disconnect_item(oak::Node n);
 
 	/**
 	 * @brief Wire the bridge's folder signals to our handlers.
@@ -166,19 +168,19 @@ private:
 	 */
 	void connect_bridge_signals();
 
-	void folder_begin_insert_item(Folder *folder, Node *n, int insert_index);
+	void folder_begin_insert_item(oak::Node folder, oak::Node n, int insert_index);
 
 	void folder_end_insert_item();
 
-	void folder_begin_remove_item(Folder *folder, Node *n, int child_index);
+	void folder_begin_remove_item(oak::Node folder, oak::Node n, int child_index);
 
 	void folder_end_remove_item();
 
-	Project *project_;
+	oak::Project project_;
 
 	EngineEventBridge *bridge_;
 
-	QHash<Node *, int64_t> label_changed_subs_;
+	QHash<oak::Node, int64_t> label_changed_subs_;
 
 private slots:
 	void item_renamed(OakEngineNode *source);

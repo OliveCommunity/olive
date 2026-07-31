@@ -23,7 +23,14 @@
 
 #ifdef USE_OTIO
 #include <opentimelineio/version.h>
+// OTIO >= 0.18 splits the version triple (OPENTIMELINEIO_VERSION, e.g.
+// v0_19_0) from the actual C++ namespace (OPENTIMELINEIO_VERSION_NS, e.g.
+// v0_19). Older releases (0.16) only have the former.
+#if defined(OPENTIMELINEIO_VERSION_NS)
+namespace OTIO = opentimelineio::OPENTIMELINEIO_VERSION_NS;
+#else
 namespace OTIO = opentimelineio::OPENTIMELINEIO_VERSION;
+#endif
 #endif
 
 #endif // OTIOUTILS

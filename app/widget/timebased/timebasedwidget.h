@@ -25,8 +25,25 @@
 #include <QPointer>
 #include <QWidget>
 
+// Must precede the engine viewer.h include below: engine headers inline-
+// instantiate QMetaTypeId for core value types (Rational/Color), and the
+// Q_DECLARE_METATYPE specializations in oakutil/qtutils.h are only legal
+// if they come first.
+#include "oakutil/qtutils.h"
+
+// WAVE3: this engine include is intentionally retained. The QPointer below
+// needs the complete QObject-derived ViewerOutput type, and QPointer's
+// null-on-destroy semantics cannot be replicated through the facade: the C
+// ABI exposes no node-destruction event (OAKENGINE_EVENT_* tops out at
+// REMOVED_FROM_GRAPH, which does not fire on every teardown path, e.g.
+// project destruction via the QObject parent chain) and no accessor that
+// hands the node back as a QObject* for a QPointer<QObject>. The queued
+// playhead-scroll slots in the .cpp dereference the pointer after engine
+// teardown, so a raw OakEngineNode* would be a use-after-free there. engine/
+// is frozen for R8, so the include stays until the facade grows a
+// destruction notification (WRAPPER-GAP).
 #include "node/output/viewer/viewer.h"
-#include "timeline/timelinecommon.h"
+#include "timeline/timelinecommonapp.h"
 #include "widget/keyframeview/keyframeviewinputconnection.h"
 #include "widget/resizablescrollbar/resizabletimelinescrollbar.h"
 #include "widget/timebased/timescaledobject.h"
@@ -50,20 +67,20 @@ public:
 
 	void zoom_out();
 
-	ViewerOutput *get_connected_node() const;
+	OakEngineNode *get_connected_node() const;
 
-	void connect_viewer_node(ViewerOutput *node);
+	void connect_viewer_node(OakEngineNode *node);
 
-	TimelineWorkArea *get_connected_work_area() const
+	OakEngineWorkarea *get_connected_work_area() const
 	{
 		return workarea_;
 	}
-	TimelineMarkerList *get_connected_markers() const
+	OakEngineMarkerList *get_connected_markers() const
 	{
 		return markers_;
 	}
-	void connect_work_area(TimelineWorkArea *workarea);
-	void connect_markers(TimelineMarkerList *markers);
+	void connect_work_area(OakEngineWorkarea *workarea);
+	void connect_markers(OakEngineMarkerList *markers);
 
 	void set_scale_and_center_on_playhead(const double &scale);
 
@@ -139,24 +156,24 @@ protected:
 
 	virtual void ScaleChangedEvent(const double &) override;
 
-	virtual void ConnectedNodeChangeEvent(ViewerOutput *)
+	virtual void ConnectedNodeChangeEvent(OakEngineNode *)
 	{
 	}
 
-	virtual void ConnectedWorkAreaChangeEvent(TimelineWorkArea *)
+	virtual void ConnectedWorkAreaChangeEvent(OakEngineWorkarea *)
 	{
 	}
-	virtual void ConnectedMarkersChangeEvent(TimelineMarkerList *)
+	virtual void ConnectedMarkersChangeEvent(OakEngineMarkerList *)
 	{
 	}
 
 	EngineEventBridge *bridge_ = nullptr;
 
-	virtual void ConnectNodeEvent(ViewerOutput *)
+	virtual void ConnectNodeEvent(OakEngineNode *)
 	{
 	}
 
-	virtual void DisconnectNodeEvent(ViewerOutput *)
+	virtual void DisconnectNodeEvent(OakEngineNode *)
 	{
 	}
 
@@ -169,7 +186,7 @@ protected:
 	void set_catch_up_scroll_value(QScrollBar *b, int v, int maximum);
 	void stop_catch_up_scroll_timer(QScrollBar *b);
 
-	virtual const QVector<Block *> *get_snap_blocks() const
+	virtual const QVector<OakEngineBlock *> *get_snap_blocks() const
 	{
 		return nullptr;
 	}
@@ -182,11 +199,11 @@ protected:
 	{
 		return nullptr;
 	}
-	virtual const std::vector<NodeKeyframe *> *get_snap_ignore_keyframes() const
+	virtual const std::vector<OakEngineKeyframe *> *get_snap_ignore_keyframes() const
 	{
 		return nullptr;
 	}
-	virtual const std::vector<TimelineMarker *> *get_snap_ignore_markers() const
+	virtual const std::vector<OakEngineMarker *> *get_snap_ignore_markers() const
 	{
 		return nullptr;
 	}
@@ -229,7 +246,7 @@ private:
    *
    * Set to kTrimIn or kTrimOut for setting the in point or out point respectively.
    */
-	void set_point(Timeline::MovementMode m, const Rational &time);
+	void set_point(TimelineApp::MovementMode m, const Rational &time);
 
 	/**
    * @brief Reset either the in or out point
@@ -240,7 +257,7 @@ private:
    *
    * Set to kTrimIn or kTrimOut for setting the in point or out point respectively.
    */
-	void reset_point(Timeline::MovementMode m);
+	void reset_point(TimelineApp::MovementMode m);
 
 	void page_scroll_internal(int screen_position, bool whole_page_scroll);
 
@@ -268,8 +285,8 @@ private:
 	double scrollbar_start_scale_;
 	bool scrollbar_top_handle_;
 
-	TimelineWorkArea *workarea_;
-	TimelineMarkerList *markers_;
+	OakEngineWorkarea *workarea_;
+	OakEngineMarkerList *markers_;
 
 	QTimer *catchup_scroll_timer_;
 	struct CatchUpScrollData {

@@ -22,17 +22,20 @@
 #include <QRadioButton>
 #include <QTreeWidget>
 
-#include "node/node.h"
+#include "olive/core/util/rational.h"
+#include "oakutil/oaknode.h"
 
 namespace olive
 {
+
+using core::Rational;
 
 class NodeValueTree : public QTreeWidget {
 	Q_OBJECT
 public:
 	NodeValueTree(QWidget *parent = nullptr);
 
-	void set_node(const NodeInput &input, const Rational &time);
+	void set_node(const oak::Input &input, const Rational &time);
 
 protected:
 	virtual void changeEvent(QEvent *event) override;

@@ -27,7 +27,7 @@
 #include <QLinearGradient>
 #include <QWidget>
 
-#include "node/node.h"
+#include "oakutil/oaknode.h"
 #include "nodeviewcommon.h"
 #include "nodeviewitemconnector.h"
 #include "engineeventbridge.h"
@@ -39,6 +39,14 @@ class NodeViewItem;
 class NodeViewEdge;
 
 /**
+ * @brief Local UI-only position aggregate (replaces engine Node::Position).
+ */
+struct NodeViewItemPosition {
+	QPointF position;
+	bool expanded = false;
+};
+
+/**
  * @brief A visual widget representation of a Node object to be used in a NodeView
  *
  * This widget can be collapsed or expanded to show/hide the node's various parameters.
@@ -48,36 +56,37 @@ class NodeViewEdge;
 class NodeViewItem : public QObject, public QGraphicsRectItem {
 	Q_OBJECT
 public:
-	NodeViewItem(Node *node, const QString &input, int element, Node *context,
-				 QGraphicsItem *parent = nullptr);
-	NodeViewItem(Node *node, Node *context, QGraphicsItem *parent = nullptr)
+	NodeViewItem(oak::Node node, const QString &input, int element,
+				 oak::Node context, QGraphicsItem *parent = nullptr);
+	NodeViewItem(oak::Node node, oak::Node context,
+				 QGraphicsItem *parent = nullptr)
 		: NodeViewItem(node, QString(), -1, context, parent)
 	{
 	}
 
 	virtual ~NodeViewItem() override;
 
-	Node::Position get_node_position_data() const;
+	NodeViewItemPosition get_node_position_data() const;
 	QPointF get_node_position() const;
 	void set_node_position(const QPointF &pos);
-	void set_node_position(const Node::Position &pos);
+	void set_node_position(const NodeViewItemPosition &pos);
 
 	QVector<NodeViewEdge *> get_all_edges_recursively() const;
 
 	/**
    * @brief Get currently attached node
    */
-	Node *get_node() const
+	oak::Node get_node() const
 	{
 		return node_;
 	}
 
-	NodeInput get_input() const
+	oak::Input get_input() const
 	{
-		return NodeInput(node_, input_, element_);
+		return oak::Input(node_, input_, element_);
 	}
 
-	Node *get_context() const
+	oak::Node get_context() const
 	{
 		return context_;
 	}
@@ -145,7 +154,7 @@ public:
 
 	void set_highlighted(bool e);
 
-	NodeViewItem *get_item_for_input(NodeInput input);
+	NodeViewItem *get_item_for_input(oak::Input input);
 
 	bool is_output_item() const
 	{
@@ -197,11 +206,11 @@ private:
 	/**
    * @brief Reference to attached Node
    */
-	Node *node_;
+	oak::Node node_;
 	QString input_;
 	int element_;
 
-	Node *context_;
+	oak::Node context_;
 
 	/**
    * @brief Cached list of node inputs

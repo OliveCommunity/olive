@@ -17,6 +17,7 @@
 
 set(OLIVE_SOURCES
         ${OLIVE_SOURCES}
+        timeline/timelinecommonapp.h
         timeline/timelinecoordinate.h
         timeline/timelinecoordinate.cpp
         PARENT_SCOPE

@@ -56,25 +56,22 @@ public:
 		view_->deselect_all();
 	}
 
-	Node *get_selected_node_with_id(const QString &id);
+	oak::Node get_selected_node_with_id(const QString &id);
 
 	virtual bool copy_selected(bool cut) override;
 
 	virtual bool paste() override;
 
 public:
-	// Not a slot: signature uses the engine C++ type Node*, which must not be
-	// exposed to MOC (it would pull Node::staticMetaObject across the ABI
-	// boundary). All connections use new-style member-function syntax.
-	void set_nodes(const QVector<Node *> &nodes);
+	void set_nodes(const QVector<oak::Node> &nodes);
 
 protected:
 	virtual void TimebaseChangedEvent(const Rational &) override;
 	virtual void ScaleChangedEvent(const double &) override;
 
-	virtual void TimeTargetChangedEvent(ViewerOutput *target) override;
+	virtual void TimeTargetChangedEvent(OakEngineNode *target) override;
 
-	virtual void ConnectedNodeChangeEvent(ViewerOutput *n) override;
+	virtual void ConnectedNodeChangeEvent(OakEngineNode *n) override;
 
 	virtual const QVector<KeyframeViewInputConnection *> *
 	get_snap_keyframes() const override
@@ -87,7 +84,7 @@ protected:
 		return view_;
 	}
 
-	virtual const std::vector<NodeKeyframe *> *
+	virtual const std::vector<OakEngineKeyframe *> *
 	get_snap_ignore_keyframes() const override
 	{
 		return &view_->get_selected_keyframes();
@@ -98,13 +95,13 @@ private:
 
 	void set_keyframe_button_checked(bool checked);
 
-	void set_keyframe_button_checked_from_type(NodeKeyframe::Type type);
+	void set_keyframe_button_checked_from_type(int facade_type);
 
-	void connect_input(Node *node, const QString &input, int element);
+	void connect_input(const oak::Node &node, const QString &input, int element);
 
-	void connect_input_internal(Node *node, const QString &input, int element);
+	void connect_input_internal(const oak::Node &node, const QString &input, int element);
 
-	QHash<NodeKeyframeTrackReference, QColor> keyframe_colors_;
+	QHash<oak::KeyframeTrackRef, QColor> keyframe_colors_;
 
 	NodeTreeView *tree_view_;
 
@@ -118,16 +115,16 @@ private:
 
 	NodeParamViewKeyframeControl *key_control_;
 
-	QVector<Node *> nodes_;
+	QVector<oak::Node> nodes_;
 
-	QVector<NodeKeyframeTrackReference> selected_tracks_;
+	QVector<oak::KeyframeTrackRef> selected_tracks_;
 
 private slots:
 	void selection_changed();
 
 	void keyframe_type_button_triggered(bool checked);
 
-	void input_selection_changed(const NodeKeyframeTrackReference &ref);
+	void input_selection_changed(const oak::KeyframeTrackRef &ref);
 
 	void keyframe_view_dragged(int x, int y);
 	void keyframe_view_released();

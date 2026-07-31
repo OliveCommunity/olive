@@ -40,17 +40,17 @@ public:
 					  QWidget *parent = nullptr);
 
 	QString input() const;
-	ColorTransform output() const;
+	oak::ColorTransform output() const;
 
 	void set_input(const QString &s);
-	void set_output(const ColorTransform &out);
+	void set_output(const oak::ColorTransform &out);
 
 signals:
 	void input_color_space_changed(const QString &input);
 
-	void output_color_space_changed(const ColorTransform &out);
+	void output_color_space_changed(const oak::ColorTransform &out);
 
-	void color_space_changed(const QString &input, const ColorTransform &out);
+	void color_space_changed(const QString &input, const oak::ColorTransform &out);
 
 private slots:
 	void update_views(const QString &display);

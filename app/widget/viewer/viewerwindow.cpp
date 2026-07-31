@@ -44,7 +44,7 @@ ViewerDisplayWidget *ViewerWindow::display_widget() const
 	return display_widget_;
 }
 
-void ViewerWindow::set_video_params(const VideoParams &params)
+void ViewerWindow::set_video_params(const oak::VideoParams &params)
 {
 	width_ = params.width();
 	height_ = params.height();

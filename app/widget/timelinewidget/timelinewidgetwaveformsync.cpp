@@ -23,8 +23,8 @@
 
 #include <cmath>
 
-#include "node/block/clip/clip.h"
-#include "render/audiowaveformcache.h"
+#include "olive/core/util/timecodefunctions.h"
+#include "oakengine/viewer.h"
 #include "widget/timelinewidget/cliphandle.h"
 
 namespace olive
@@ -33,10 +33,81 @@ namespace olive
 namespace timeline_waveform_sync
 {
 
-bool get_waveform_sync_clip(Block *block, WaveformSyncClip *out)
+namespace
 {
-	ClipBlock *clip = dynamic_cast<ClipBlock *>(block);
-	if (!clip || !clip_waveform(clip)) {
+
+/**
+ * @brief Validated ranges of a waveform cache as a TimeRangeList.
+ *
+ * WRAPPER-GAP: the C ABI has no waveform-specific validated-ranges accessor;
+ * oakengine_playback_cache_valid_ranges() is reused instead. That function
+ * reinterprets the handle as PlaybackCache, which is sound here because
+ * AudioWaveformCache derives (single inheritance) from PlaybackCache.
+ */
+TimeRangeList waveform_validated_ranges(const void *waveform)
+{
+	TimeRangeList list;
+	QVector<int64_t> quads(4 * 64);
+	int count;
+	while ((count = oakengine_playback_cache_valid_ranges(
+				static_cast<OakEnginePlaybackCache *>(
+					const_cast<void *>(waveform)),
+				quads.data(), quads.size() / 4)) == quads.size() / 4) {
+		quads.resize(quads.size() * 2);
+	}
+	for (int i = 0; i < count; i++) {
+		list.insert(TimeRange(Rational(static_cast<int>(quads.at(i * 4 + 0)),
+									   static_cast<int>(quads.at(i * 4 + 1))),
+							  Rational(static_cast<int>(quads.at(i * 4 + 2)),
+									   static_cast<int>(quads.at(i * 4 + 3)))));
+	}
+	return list;
+}
+
+/**
+ * @brief Peak over [t, t + length) across all channels
+ * (AudioWaveformCache::get_summary_from_time() equivalent). 0 when the
+ * summary is unavailable.
+ */
+double waveform_window_peak(const void *waveform, const Rational &t,
+							const Rational &length, int sample_rate)
+{
+	// The summary C ABI works in sample frames at the cache's sample rate
+	const Rational sample_tb(1, sample_rate);
+	const int64_t start_ts = core::Timecode::time_to_timestamp(
+		t, sample_tb, core::Timecode::k_round);
+	const int64_t end_ts = core::Timecode::time_to_timestamp(
+		t + length, sample_tb, core::Timecode::k_round);
+
+	double min_vals[64], max_vals[64];
+	int channels = 0;
+	if (oakengine_waveform_cache_get_summary(waveform, start_ts, end_ts,
+											min_vals, max_vals, 64,
+											&channels) != OAKENGINE_OK) {
+		return 0.0;
+	}
+
+	double peak = 0.0;
+	for (int i = 0; i < channels; i++) {
+		const double channel_peak =
+			std::max(std::abs(min_vals[i]), std::abs(max_vals[i]));
+		peak = std::max(peak, channel_peak);
+	}
+	return peak;
+}
+
+} // namespace
+
+bool get_waveform_sync_clip(OakEngineBlock *block, WaveformSyncClip *out)
+{
+	if (!block ||
+		!oakengine_node_is_clip(reinterpret_cast<OakEngineNode *>(block))) {
+		return false;
+	}
+	OakEngineBlock *clip = block;
+
+	const void *waveform = clip_waveform(clip);
+	if (!waveform) {
 		return false;
 	}
 
@@ -45,8 +116,8 @@ bool get_waveform_sync_clip(Block *block, WaveformSyncClip *out)
 		return false;
 	}
 
-	const AudioWaveformCache *waveform = clip_waveform(clip);
-	if (waveform->get_parameters().sample_rate() <= 0) {
+	const int sample_rate = oakengine_waveform_cache_sample_rate(waveform);
+	if (sample_rate <= 0) {
 		return false;
 	}
 
@@ -55,7 +126,7 @@ bool get_waveform_sync_clip(Block *block, WaveformSyncClip *out)
 	// validated makes the menu item stay disabled for long clips and gives
 	// the appearance that "nothing happens" when the user tries to sync.
 	const TimeRangeList validated_ranges =
-		waveform->get_validated_ranges().intersects(media_range);
+		waveform_validated_ranges(waveform).intersects(media_range);
 	if (validated_ranges.isEmpty()) {
 		return false;
 	}
@@ -63,15 +134,15 @@ bool get_waveform_sync_clip(Block *block, WaveformSyncClip *out)
 	out->clip = clip;
 	out->waveform = waveform;
 	out->media_range = media_range;
-	out->sample_rate = waveform->get_parameters().sample_rate();
+	out->sample_rate = sample_rate;
 	return true;
 }
 
 QVector<WaveformSyncClip>
-get_selected_waveform_sync_clips(const QVector<Block *> &blocks)
+get_selected_waveform_sync_clips(const QVector<OakEngineBlock *> &blocks)
 {
 	QVector<WaveformSyncClip> clips;
-	for (Block *block : blocks) {
+	for (OakEngineBlock *block : blocks) {
 		WaveformSyncClip sync_clip;
 		if (get_waveform_sync_clip(block, &sync_clip)) {
 			clips.append(sync_clip);
@@ -103,7 +174,7 @@ QVector<double> extract_waveform_cache_envelope(const WaveformSyncClip &clip,
 	// absolute timeline, while the validity mask lets the correlation skip
 	// those placeholders entirely.
 	const TimeRangeList validated_ranges =
-		clip.waveform->get_validated_ranges().intersects(clip.media_range);
+		waveform_validated_ranges(clip.waveform).intersects(clip.media_range);
 
 	for (Rational t = clip.media_range.in(); t < clip.media_range.out();
 		 t += window_time) {
@@ -114,16 +185,7 @@ QVector<double> extract_waveform_cache_envelope(const WaveformSyncClip &clip,
 
 		double peak = 0.0;
 		if (window_valid) {
-			const AudioVisualWaveform::Sample summary =
-				clip.waveform->get_summary_from_time(t, length);
-
-			for (const AudioVisualWaveform::SamplePerChannel &channel :
-				 summary) {
-				const double channel_peak =
-					std::max(std::abs(static_cast<double>(channel.min)),
-							 std::abs(static_cast<double>(channel.max)));
-				peak = std::max(peak, channel_peak);
-			}
+			peak = waveform_window_peak(clip.waveform, t, length, sample_rate);
 		}
 
 		envelope.append(peak);

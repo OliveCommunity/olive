@@ -38,9 +38,9 @@ public:
 	virtual void drag_drop(TimelineViewMouseEvent *event) override;
 
 	using DraggedFootageData =
-		QVector<QPair<ViewerOutput *, QVector<Track::Reference>>>;
+		QVector<QPair<OakEngineNode *, QVector<TrackReference>>>;
 
-	void place_at(const QVector<ViewerOutput *> &footage, const Rational &start,
+	void place_at(const QVector<OakEngineNode *> &footage, const Rational &start,
 				 bool insert, void *command, int track_offset = 0,
 				 bool jump_to_end = false);
 	void place_at(const DraggedFootageData &footage, const Rational &start,
@@ -65,7 +65,7 @@ private:
 
 	TimelineViewGhostItem *create_ghost(const TimeRange &range,
 									   const Rational &media_in,
-									   const Track::Reference &track);
+									   const TrackReference &track);
 
 	DraggedFootageData dragged_footage_;
 

@@ -27,7 +27,6 @@
 #include "core.h"
 #include "oakengine/events.h"
 #include "oakengine/project.h"
-#include "node/project/sequence/sequence.h"
 #include "panel/footageviewer/footageviewer.h"
 #include "panel/timeline/timeline.h"
 #include "panel/panelmanager.h"
@@ -89,12 +88,12 @@ ProjectPanel::ProjectPanel(const QString &unique_name)
 	retranslate();
 }
 
-Project *ProjectPanel::project() const
+oak::Project ProjectPanel::project() const
 {
 	return explorer_->project();
 }
 
-void ProjectPanel::set_project(Project *p)
+void ProjectPanel::set_project(oak::Project p)
 {
 	if (project()) {
 		if (project_name_sub_ > 0) {
@@ -106,9 +105,8 @@ void ProjectPanel::set_project(Project *p)
 	explorer_->set_project(p);
 
 	if (project()) {
-		auto *ph = reinterpret_cast<OakEngineProject *>(project());
 		project_name_sub_ = oakengine_event_subscribe(
-			ph, OAKENGINE_EVENT_PROJECT_NAME_CHANGED,
+			project().handle(), OAKENGINE_EVENT_PROJECT_NAME_CHANGED,
 			[](const oakengine_event *, void *userdata) {
 				auto *s = static_cast<ProjectPanel *>(userdata);
 				s->update_subtitle();
@@ -122,24 +120,24 @@ void ProjectPanel::set_project(Project *p)
 	emit project_name_changed();
 }
 
-Folder *ProjectPanel::get_root() const
+oak::Node ProjectPanel::get_root() const
 {
 	return explorer_->get_root();
 }
 
-void ProjectPanel::set_root(Folder *item)
+void ProjectPanel::set_root(oak::Node item)
 {
 	explorer_->set_root(item);
 
 	retranslate();
 }
 
-QVector<Node *> ProjectPanel::selected_items() const
+QVector<oak::Node> ProjectPanel::selected_items() const
 {
 	return explorer_->selected_items();
 }
 
-Folder *ProjectPanel::get_selected_folder() const
+oak::Node ProjectPanel::get_selected_folder() const
 {
 	return explorer_->get_selected_folder();
 }
@@ -176,7 +174,7 @@ void ProjectPanel::edit(OakEngineNode *item)
 
 void ProjectPanel::retranslate()
 {
-	if (project() && explorer_->get_root() != project()->root()) {
+	if (project() && explorer_->get_root() != project().root()) {
 		set_title(tr("Folder"));
 	} else {
 		set_title(tr("Project"));
@@ -187,21 +185,20 @@ void ProjectPanel::retranslate()
 
 void ProjectPanel::item_double_click_slot(OakEngineNode *item_handle)
 {
-	Node *item = reinterpret_cast<Node *>(item_handle);
+	oak::Node item(item_handle);
 	if (item == nullptr) {
 		// If the user double clicks on empty space, show the import dialog
 		Core::instance()->dialog_import_show();
-	} else if (dynamic_cast<Footage *>(item)) {
+	} else if (item.is_footage()) {
 		// Open this footage in a FootageViewer
 		auto panel =
 			PanelManager::instance()->most_recently_focused<FootageViewerPanel>();
-		panel->connect_viewer_node(static_cast<Footage *>(item));
+		panel->connect_viewer_node(item.handle());
 		panel->raise();
 		panel->setFocus(Qt::FocusReason::MouseFocusReason);
-	} else if (dynamic_cast<Sequence *>(item)) {
+	} else if (item.is_sequence()) {
 		// Open this sequence in the Timeline
-		Core::instance()->main_window()->open_sequence(
-			static_cast<Sequence *>(item));
+		Core::instance()->main_window()->open_sequence(item.handle());
 	}
 }
 
@@ -217,23 +214,19 @@ void ProjectPanel::show_new_menu()
 void ProjectPanel::update_subtitle()
 {
 	if (project()) {
-		char name_buf[256];
-		oakengine_project_name(
-			reinterpret_cast<OakEngineProject *>(project()),
-			name_buf, sizeof(name_buf));
-		QString project_title = QString::fromUtf8(name_buf);
+		QString project_title = project().name();
 
-		if (explorer_->get_root() != project()->root()) {
+		if (explorer_->get_root() != project().root()) {
 			QString folder_path;
 
-			Folder *item = explorer_->get_root();
+			oak::Node item = explorer_->get_root();
 
 			do {
 				folder_path.prepend(
-					QStringLiteral("/%1").arg(item->get_label()));
+					QStringLiteral("/%1").arg(item.get_label()));
 
-				item = item->folder();
-			} while (item != project()->root());
+				item = item.folder();
+			} while (item != project().root());
 
 			project_title.append(folder_path);
 		}
@@ -251,12 +244,12 @@ void ProjectPanel::save_connected_project()
 
 QVector<OakEngineNode *> ProjectPanel::get_selected_footage() const
 {
-	QVector<Node *> items = selected_items();
+	QVector<oak::Node> items = selected_items();
 	QVector<OakEngineNode *> footage;
 
-	foreach (Node *i, items) {
-		if (dynamic_cast<ViewerOutput *>(i)) {
-			footage.append(reinterpret_cast<OakEngineNode *>(i));
+	foreach (const oak::Node &i, items) {
+		if (i.is_viewer_output()) {
+			footage.append(i.handle());
 		}
 	}
 

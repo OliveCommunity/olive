@@ -24,7 +24,9 @@
 #include <QDialogButtonBox>
 #include <QGridLayout>
 
+#include "common/keyframetypes.h"
 #include "oakengine/node.h"
+#include "olive/core/util/timecodefunctions.h"
 
 namespace olive
 {
@@ -32,41 +34,47 @@ namespace olive
 namespace
 {
 
+Rational keyframe_rational_time(const oak::Keyframe &key)
+{
+	int64_t num = 0, den = 1;
+	key.time(&num, &den);
+	return Rational(int(num), int(den));
+}
+
 // Selected keyframes grouped by owning input (node/id/element), with
 // times converted to the facade's frame timestamps. The dialog's
 // per-property writes go through the facade as ONE undoable command per
 // group (usually just one).
 struct KeyGroup {
-	Node *node;
+	OakEngineNode *node;
 	QString input;
 	int element;
 	QVector<int64_t> times;
 	QVector<int> tracks;
 };
 
-QVector<KeyGroup> group_keys(const std::vector<NodeKeyframe *> &keys)
+QVector<KeyGroup> group_keys(const QVector<oak::Keyframe> &keys)
 {
 	QVector<KeyGroup> groups;
-	for (NodeKeyframe *item : keys) {
+	for (const oak::Keyframe &item : keys) {
+		OakEngineNode *node = item.node().handle();
 		int g = 0;
 		for (; g < groups.size(); g++) {
-			if (groups.at(g).node == item->parent() &&
-				groups.at(g).input == item->input() &&
-				groups.at(g).element == item->element()) {
+			if (groups.at(g).node == node &&
+				groups.at(g).input == item.input_id() &&
+				groups.at(g).element == item.element()) {
 				break;
 			}
 		}
 		if (g == groups.size()) {
-			groups.append({ item->parent(), item->input(), item->element(),
+			groups.append({ node, item.input_id(), item.element(),
 							{}, {} });
 		}
-		OakEngineNode *handle =
-			reinterpret_cast<OakEngineNode *>(item->parent());
 		int tbn = 0, tbd = 0;
-		oakengine_node_frame_time_base(handle, &tbn, &tbd);
+		oakengine_node_frame_time_base(node, &tbn, &tbd);
 		groups[g].times.append(Timecode::time_to_timestamp(
-			item->time(), Rational(tbn, tbd), Timecode::k_round));
-		groups[g].tracks.append(item->track());
+			keyframe_rational_time(item), Rational(tbn, tbd), Timecode::k_round));
+		groups[g].tracks.append(item.track());
 	}
 	return groups;
 }
@@ -74,7 +82,7 @@ QVector<KeyGroup> group_keys(const std::vector<NodeKeyframe *> &keys)
 } // namespace
 
 KeyframePropertiesDialog::KeyframePropertiesDialog(
-	const std::vector<NodeKeyframe *> &keys, const Rational &timebase,
+	const QVector<oak::Keyframe> &keys, const Rational &timebase,
 	QWidget *parent)
 	: QDialog(parent)
 	, keys_(keys)
@@ -137,47 +145,48 @@ KeyframePropertiesDialog::KeyframePropertiesDialog(
 	bool all_same_bezier_out_x = true;
 	bool all_same_bezier_out_y = true;
 
-	for (size_t i = 0; i < keys_.size(); i++) {
+	for (int i = 0; i < keys_.size(); i++) {
 		if (i > 0) {
-			NodeKeyframe *prev_key = keys_.at(i - 1);
-			NodeKeyframe *this_key = keys_.at(i);
+			const oak::Keyframe &prev_key = keys_.at(i - 1);
+			const oak::Keyframe &this_key = keys_.at(i);
 
 			// Determine if the keyframes are all the same time or not
 			if (all_same_time) {
-				all_same_time = (prev_key->time() == this_key->time());
+				all_same_time = (keyframe_rational_time(prev_key) ==
+								 keyframe_rational_time(this_key));
 			}
 
 			// Determine if the keyframes are all the same type
 			if (all_same_type) {
-				all_same_type = (prev_key->type() == this_key->type());
+				all_same_type = (prev_key.type() == this_key.type());
 			}
 
 			// Check all four bezier control points
 			if (all_same_bezier_in_x) {
-				all_same_bezier_in_x = (prev_key->bezier_control_in().x() ==
-										this_key->bezier_control_in().x());
+				all_same_bezier_in_x = (prev_key.bezier_point(0).x() ==
+										this_key.bezier_point(0).x());
 			}
 
 			if (all_same_bezier_in_y) {
-				all_same_bezier_in_y = (prev_key->bezier_control_in().y() ==
-										this_key->bezier_control_in().y());
+				all_same_bezier_in_y = (prev_key.bezier_point(0).y() ==
+										this_key.bezier_point(0).y());
 			}
 
 			if (all_same_bezier_out_x) {
-				all_same_bezier_out_x = (prev_key->bezier_control_out().x() ==
-										 this_key->bezier_control_out().x());
+				all_same_bezier_out_x = (prev_key.bezier_point(1).x() ==
+										 this_key.bezier_point(1).x());
 			}
 
 			if (all_same_bezier_out_y) {
-				all_same_bezier_out_y = (prev_key->bezier_control_out().y() ==
-										 this_key->bezier_control_out().y());
+				all_same_bezier_out_y = (prev_key.bezier_point(1).y() ==
+										 this_key.bezier_point(1).y());
 			}
 		}
 
 		// Determine if any keyframes are on the same track (in which case we can't set the time)
 		if (can_set_time) {
-			for (size_t j = 0; j < keys_.size(); j++) {
-				if (i != j && keys_.at(j)->track() == keys_.at(i)->track()) {
+			for (int j = 0; j < keys_.size(); j++) {
+				if (i != j && keys_.at(j).track() == keys_.at(i).track()) {
 					can_set_time = false;
 					break;
 				}
@@ -192,7 +201,7 @@ KeyframePropertiesDialog::KeyframePropertiesDialog(
 	}
 
 	if (all_same_time) {
-		time_slider_->set_value(keys_.front()->time());
+		time_slider_->set_value(keyframe_rational_time(keys_.front()));
 	} else {
 		time_slider_->set_tristate();
 	}
@@ -207,14 +216,16 @@ KeyframePropertiesDialog::KeyframePropertiesDialog(
 		key_type_changed(0);
 	}
 
-	type_select_->addItem(tr("Linear"), NodeKeyframe::k_linear);
-	type_select_->addItem(tr("Hold"), NodeKeyframe::k_hold);
-	type_select_->addItem(tr("Bezier"), NodeKeyframe::k_bezier);
+	// Item data uses the facade easing order (oak::Keyframe::type()):
+	// 0 = linear, 1 = bezier, 2 = hold.
+	type_select_->addItem(tr("Linear"), KeyframeTypes::k_facade_linear);
+	type_select_->addItem(tr("Hold"), KeyframeTypes::k_facade_hold);
+	type_select_->addItem(tr("Bezier"), KeyframeTypes::k_facade_bezier);
 
 	if (all_same_type) {
 		// If all keyframes are the same type, set it here
 		for (int i = 0; i < type_select_->count(); i++) {
-			if (type_select_->itemData(i).toInt() == keys_.front()->type()) {
+			if (type_select_->itemData(i).toInt() == keys_.front().type()) {
 				type_select_->setCurrentIndex(i);
 
 				// Ensure UI updates for this index
@@ -225,13 +236,13 @@ KeyframePropertiesDialog::KeyframePropertiesDialog(
 	}
 
 	set_up_bezier_slider(bezier_in_x_slider_, all_same_bezier_in_x,
-					  keys_.front()->bezier_control_in().x());
+					  keys_.front().bezier_point(0).x());
 	set_up_bezier_slider(bezier_in_y_slider_, all_same_bezier_in_y,
-					  keys_.front()->bezier_control_in().y());
+					  keys_.front().bezier_point(0).y());
 	set_up_bezier_slider(bezier_out_x_slider_, all_same_bezier_out_x,
-					  keys_.front()->bezier_control_out().x());
+					  keys_.front().bezier_point(1).x());
 	set_up_bezier_slider(bezier_out_y_slider_, all_same_bezier_out_y,
-					  keys_.front()->bezier_control_out().y());
+					  keys_.front().bezier_point(1).y());
 
 	row++;
 
@@ -251,26 +262,20 @@ void KeyframePropertiesDialog::accept()
 	const QVector<KeyGroup> groups = group_keys(keys_);
 
 	if (new_type > -1) {
-		// Engine type (linear 0 / hold 1 / bezier 2) to the facade's
-		// easing order (linear 0 / bezier 1 / hold 2).
-		int facade_type = 0;
-		if (new_type == NodeKeyframe::k_bezier) {
-			facade_type = 1;
-		} else if (new_type == NodeKeyframe::k_hold) {
-			facade_type = 2;
-		}
+		// new_type is already in the facade's easing order (linear 0 /
+		// bezier 1 / hold 2), so it can be passed straight through.
 		foreach (const KeyGroup &g, groups) {
 			oakengine_node_keyframes_set_type_many(
-				reinterpret_cast<OakEngineNode *>(g.node),
+				g.node,
 				g.input.toUtf8().constData(), g.element, g.times.constData(),
-				g.tracks.data(), g.times.size(), facade_type);
+				g.tracks.data(), g.times.size(), new_type);
 		}
 	}
 
 	if (bezier_group_->isEnabled()) {
 		foreach (const KeyGroup &g, groups) {
 			oakengine_node_keyframes_set_bezier_many(
-				reinterpret_cast<OakEngineNode *>(g.node),
+				g.node,
 				g.input.toUtf8().constData(), g.element, g.times.constData(),
 				g.tracks.data(), g.times.size(),
 				bezier_in_x_slider_->get_value(),
@@ -285,8 +290,7 @@ void KeyframePropertiesDialog::accept()
 	// the times the groups were built from.
 	if (time_slider_->isEnabled() && !time_slider_->is_tristate()) {
 		foreach (const KeyGroup &g, groups) {
-			OakEngineNode *handle =
-				reinterpret_cast<OakEngineNode *>(g.node);
+			OakEngineNode *handle = g.node;
 			int tbn = 0, tbd = 0;
 			oakengine_node_frame_time_base(handle, &tbn, &tbd);
 			oakengine_node_keyframes_set_time_many(
@@ -313,7 +317,7 @@ void KeyframePropertiesDialog::set_up_bezier_slider(FloatSlider *slider,
 void KeyframePropertiesDialog::key_type_changed(int index)
 {
 	bezier_group_->setEnabled(type_select_->itemData(index) ==
-							  NodeKeyframe::k_bezier);
+							  KeyframeTypes::k_facade_bezier);
 }
 
 }

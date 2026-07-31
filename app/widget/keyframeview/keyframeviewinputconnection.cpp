@@ -26,8 +26,23 @@
 namespace olive
 {
 
+static bool keyframe_matches_ref(OakEngineKeyframe *key,
+								 const oak::KeyframeTrackRef &ref)
+{
+	const oak::Keyframe k(key);
+	if (k.node().handle() != ref.input().node_handle())
+		return false;
+	if (k.input_id() != ref.input().input_id())
+		return false;
+	if (k.element() != ref.input().element())
+		return false;
+	if (k.track() != ref.track())
+		return false;
+	return true;
+}
+
 KeyframeViewInputConnection::KeyframeViewInputConnection(
-	const NodeKeyframeTrackReference &input, KeyframeView *parent)
+	const oak::KeyframeTrackRef &input, KeyframeView *parent)
 	: QObject(parent)
 	, keyframe_view_(parent)
 	, input_(input)
@@ -36,7 +51,7 @@ KeyframeViewInputConnection::KeyframeViewInputConnection(
 	, brush_(Qt::white)
 	, bridge_(new EngineEventBridge(this))
 {
-	Node *n = input.input().node();
+	OakEngineNode *n = input.input().node_handle();
 
 	bridge_->subscribe(reinterpret_cast<void *>(n),
 					   OAKENGINE_EVENT_NODE_KEYFRAME_ADDED);
@@ -104,34 +119,35 @@ void KeyframeViewInputConnection::set_brush(const QBrush &brush)
 	}
 }
 
+QVector<oak::Keyframe> KeyframeViewInputConnection::get_keyframes() const
+{
+	return input_.keyframes();
+}
+
 void KeyframeViewInputConnection::add_keyframe(OakEngineKeyframe *key)
 {
-	NodeKeyframe *nk = reinterpret_cast<NodeKeyframe *>(key);
-	if (nk->key_track_ref() == input_) {
+	if (keyframe_matches_ref(key, input_)) {
 		emit require_update();
 	}
 }
 
 void KeyframeViewInputConnection::remove_keyframe(OakEngineKeyframe *key)
 {
-	NodeKeyframe *nk = reinterpret_cast<NodeKeyframe *>(key);
-	if (nk->key_track_ref() == input_) {
+	if (keyframe_matches_ref(key, input_)) {
 		emit require_update();
 	}
 }
 
 void KeyframeViewInputConnection::keyframe_changed(OakEngineKeyframe *key)
 {
-	NodeKeyframe *nk = reinterpret_cast<NodeKeyframe *>(key);
-	if (nk->key_track_ref() == input_) {
+	if (keyframe_matches_ref(key, input_)) {
 		emit require_update();
 	}
 }
 
 void KeyframeViewInputConnection::keyframe_type_changed(OakEngineKeyframe *key)
 {
-	NodeKeyframe *nk = reinterpret_cast<NodeKeyframe *>(key);
-	if (nk->key_track_ref() == input_) {
+	if (keyframe_matches_ref(key, input_)) {
 		emit type_changed();
 	}
 }

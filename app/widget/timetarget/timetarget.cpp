@@ -32,12 +32,12 @@ TimeTargetObject::TimeTargetObject()
 {
 }
 
-ViewerOutput *TimeTargetObject::get_time_target() const
+OakEngineNode *TimeTargetObject::get_time_target() const
 {
 	return time_target_;
 }
 
-void TimeTargetObject::set_time_target(ViewerOutput *target)
+void TimeTargetObject::set_time_target(OakEngineNode *target)
 {
 	if (time_target_) {
 		TimeTargetDisconnectEvent(time_target_);
@@ -57,8 +57,8 @@ void TimeTargetObject::set_path_index(int index)
 }
 
 Rational
-TimeTargetObject::get_adjusted_time(Node *from, Node *to, const Rational &r,
-								  Node::TransformTimeDirection dir) const
+TimeTargetObject::get_adjusted_time(OakEngineNode *from, OakEngineNode *to,
+								  const Rational &r, int dir) const
 {
 	if (!from || !to) {
 		return r;
@@ -68,8 +68,8 @@ TimeTargetObject::get_adjusted_time(Node *from, Node *to, const Rational &r,
 }
 
 TimeRange
-TimeTargetObject::get_adjusted_time(Node *from, Node *to, const TimeRange &r,
-								  Node::TransformTimeDirection dir) const
+TimeTargetObject::get_adjusted_time(OakEngineNode *from, OakEngineNode *to,
+								  const TimeRange &r, int dir) const
 {
 	if (!from || !to) {
 		return r;
@@ -77,9 +77,8 @@ TimeTargetObject::get_adjusted_time(Node *from, Node *to, const TimeRange &r,
 
 	int64_t rin_num, rin_den, rout_num, rout_den;
 	oakengine_node_transform_time_to(
-		reinterpret_cast<OakEngineNode*>(from),
-		reinterpret_cast<OakEngineNode*>(to),
-		static_cast<int>(dir), path_index_,
+		from, to,
+		dir, path_index_,
 		r.in().numerator(), r.in().denominator(),
 		r.out().numerator(), r.out().denominator(),
 		&rin_num, &rin_den, &rout_num, &rout_den);

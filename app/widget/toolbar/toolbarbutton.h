@@ -24,7 +24,7 @@
 
 #include <QPushButton>
 
-#include "tool/tool.h"
+#include "common/tooltypes.h"
 
 namespace olive
 {

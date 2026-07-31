@@ -30,13 +30,14 @@
 #include <cstring>
 
 #include "common/configwrapper.h"
-#include "node/project.h"
 #include "oakengine/project.h"
+#include "oakengine/timeline.h"
+#include "oakutil/oaknode.h"
 
 namespace olive
 {
 
-ProxyDialog::ProxyDialog(QWidget *parent, const QVector<Footage *> &footage)
+ProxyDialog::ProxyDialog(QWidget *parent, const QVector<OakEngineNode *> &footage)
 	: QDialog(parent)
 	, footage_(footage)
 	, footage_tree_(nullptr)
@@ -63,8 +64,10 @@ ProxyDialog::ProxyDialog(QWidget *parent, const QVector<Footage *> &footage)
 		custom_params_checkbox_ =
 			new QCheckBox(tr("Use custom settings for selected footage"));
 		bool any_custom = false;
-		for (const Footage *item : footage_) {
-			if (item->has_custom_proxy_params()) {
+		for (OakEngineNode *item : footage_) {
+			// WRAPPER-GAP: oak::Footage::has_custom_proxy_params
+			oak::Footage f = oak::Footage::borrow(item);
+			if (f && oakengine_footage_has_custom_proxy_params(f.handle())) {
 				any_custom = true;
 				break;
 			}
@@ -186,14 +189,17 @@ void ProxyDialog::accept()
 	save_global_settings();
 
 	if (!footage_.isEmpty()) {
-		for (Footage *item : footage_) {
+		for (OakEngineNode *item : footage_) {
+			// WRAPPER-GAP: oak::Footage::{set,clear}_custom_proxy_params
+			oak::Footage f = oak::Footage::borrow(item);
+			if (!f) {
+				continue;
+			}
 			if (custom_params_checkbox_->isChecked()) {
 				oak_proxy_params p = current_params();
-				oakengine_footage_set_custom_proxy_params(
-					reinterpret_cast<OakEngineFootage *>(item), &p);
+				oakengine_footage_set_custom_proxy_params(f.handle(), &p);
 			} else {
-				oakengine_footage_clear_custom_proxy_params(
-					reinterpret_cast<OakEngineFootage *>(item));
+				oakengine_footage_clear_custom_proxy_params(f.handle());
 			}
 		}
 	}
@@ -307,17 +313,20 @@ void ProxyDialog::refresh_footage_list()
 	}
 
 	footage_tree_->clear();
-	for (const Footage *item : footage_) {
+	for (OakEngineNode *item : footage_) {
+		// WRAPPER-GAP: oak::Footage::{proxy_state,has_custom_proxy_params}
+		oak::Footage f = oak::Footage::borrow(item);
 		QTreeWidgetItem *tree_item = new QTreeWidgetItem(footage_tree_);
-		tree_item->setText(0, item->filename());
+		tree_item->setText(0, f.filename());
 		{
 			char state_buf[256];
 			int state_len = oakengine_proxy_state_to_string(
-				item->proxy_state(), state_buf, sizeof(state_buf));
+				oakengine_footage_proxy_get_state(f.handle()), state_buf,
+				sizeof(state_buf));
 			QString state = (state_len > 0)
 								? QString::fromUtf8(state_buf, state_len)
 								: QString();
-			if (item->has_custom_proxy_params()) {
+			if (oakengine_footage_has_custom_proxy_params(f.handle())) {
 				state = tr("%1 (custom settings)").arg(state);
 			}
 			tree_item->setText(1, state);
@@ -327,15 +336,30 @@ void ProxyDialog::refresh_footage_list()
 
 void ProxyDialog::generate_proxies()
 {
-	for (Footage *item : footage_) {
-		const VideoParams video = item->get_first_enabled_video_stream();
+	for (OakEngineNode *item : footage_) {
+		// WRAPPER-GAP: oak::Footage::{get_effective_proxy_params,set_proxy}
+		oak::Footage f = oak::Footage::borrow(item);
 		oak_video_params _vp;
-		oakengine_viewer_get_first_enabled_video_stream(
-			reinterpret_cast<OakEngineNode *>(item), &_vp);
+		oakengine_viewer_get_first_enabled_video_stream(item, &_vp);
 		if (!oakengine_video_params_is_valid(&_vp)) {
 			qWarning()
 				<< "ProxyDialog::GenerateProxies: skipping item with no valid video stream"
-				<< item->filename();
+				<< f.filename();
+			continue;
+		}
+
+		// Index of the first enabled video stream
+		// (VideoParams::stream_index() has no facade equivalent).
+		int stream_index = -1;
+		const QVector<QPair<int, int>> streams =
+			oak::Node(item).enabled_streams();
+		for (const QPair<int, int> &s : streams) {
+			if (s.first == OAKENGINE_TRACK_TYPE_VIDEO) {
+				stream_index = s.second;
+				break;
+			}
+		}
+		if (stream_index < 0) {
 			continue;
 		}
 
@@ -343,27 +367,23 @@ void ProxyDialog::generate_proxies()
 		if (custom_params_checkbox_->isChecked()) {
 			params = current_params();
 		} else {
-			oakengine_footage_get_effective_proxy_params(
-				reinterpret_cast<OakEngineFootage *>(item), &params);
+			oakengine_footage_get_effective_proxy_params(f.handle(), &params);
 		}
 		oak_proxy_result proxy;
 		char cache_buf[512];
-		oakengine_project_cache_path(
-			reinterpret_cast<OakEngineProject *>(item->project()),
-			cache_buf, sizeof(cache_buf));
+		oakengine_project_cache_path(oakengine_node_get_project(item),
+									 cache_buf, sizeof(cache_buf));
 		int ret = oakengine_proxy_get_or_start(
-			cache_buf,
-			item->filename().toUtf8().constData(),
-			video.stream_index(), &params, &proxy);
+			cache_buf, f.filename().toUtf8().constData(), stream_index,
+			&params, &proxy);
 		if (ret != 0) {
 			qWarning() << "ProxyDialog::GenerateProxies: failed to get/start proxy for"
-					   << item->filename();
+					   << f.filename();
 			continue;
 		}
-		oakengine_footage_set_proxy(reinterpret_cast<OakEngineFootage *>(item),
-								   proxy.filename, proxy.state,
-								   video.stream_index(), 1, params.version);
-		oakengine_footage_invalidate(reinterpret_cast<OakEngineFootage *>(item));
+		oakengine_footage_set_proxy(f.handle(), proxy.filename, proxy.state,
+									stream_index, 1, params.version);
+		f.invalidate();
 	}
 
 	refresh_footage_list();
@@ -371,22 +391,24 @@ void ProxyDialog::generate_proxies()
 
 void ProxyDialog::delete_proxies()
 {
-	for (Footage *item : footage_) {
-		if (item->proxy_path().isEmpty()) {
+	for (OakEngineNode *item : footage_) {
+		// WRAPPER-GAP: oak::Footage::clear_proxy
+		oak::Footage f = oak::Footage::borrow(item);
+		if (f.proxy_path().isEmpty()) {
 			continue;
 		}
 
-		QFile::remove(item->proxy_path());
+		QFile::remove(f.proxy_path());
 		{
 			char wbuf[4096];
 			int wlen = oakengine_proxy_get_working_filename(
-				item->proxy_path().toUtf8().constData(), wbuf, sizeof(wbuf));
+				f.proxy_path().toUtf8().constData(), wbuf, sizeof(wbuf));
 			if (wlen > 0) {
 				QFile::remove(QString::fromUtf8(wbuf, wlen));
 			}
 		}
-		oakengine_footage_clear_proxy(reinterpret_cast<OakEngineFootage *>(item));
-		oakengine_footage_invalidate(reinterpret_cast<OakEngineFootage *>(item));
+		oakengine_footage_clear_proxy(f.handle());
+		f.invalidate();
 	}
 
 	refresh_footage_list();

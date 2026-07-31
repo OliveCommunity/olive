@@ -21,19 +21,108 @@
 
 #include "historywidget.h"
 
-#include "core.h"
 #include "oakengine/events.h"
 #include "oakengine/undo.h"
 
 namespace olive
 {
 
+HistoryModel::HistoryModel(QObject *parent)
+	: QAbstractItemModel(parent)
+{
+	sub_ = oakengine_event_subscribe(
+		oakengine_undo_handle(), OAKENGINE_EVENT_UNDO_INDEX_CHANGED,
+		[](const oakengine_event *event, void *userdata) {
+			Q_UNUSED(event)
+			auto *self = static_cast<HistoryModel *>(userdata);
+			self->beginResetModel();
+			self->endResetModel();
+		},
+		this);
+}
+
+HistoryModel::~HistoryModel()
+{
+	if (sub_ > 0) {
+		oakengine_event_unsubscribe(sub_);
+	}
+}
+
+QModelIndex HistoryModel::index(int row, int column,
+								const QModelIndex &parent) const
+{
+	Q_UNUSED(parent)
+	return createIndex(row, column, nullptr);
+}
+
+QModelIndex HistoryModel::parent(const QModelIndex &index) const
+{
+	Q_UNUSED(index)
+	return QModelIndex();
+}
+
+int HistoryModel::rowCount(const QModelIndex &parent) const
+{
+	if (parent.isValid()) {
+		return 0;
+	}
+	return static_cast<int>(oakengine_undo_count());
+}
+
+int HistoryModel::columnCount(const QModelIndex &parent) const
+{
+	if (parent.isValid()) {
+		return 0;
+	}
+	return 2;
+}
+
+QVariant HistoryModel::data(const QModelIndex &index, int role) const
+{
+	if (role == Qt::DisplayRole) {
+		switch (index.column()) {
+		case 0:
+			return index.row() + 1;
+		case 1: {
+			char buf[1024];
+			buf[0] = '\0';
+			oakengine_undo_command_text(index.row(), buf, sizeof(buf));
+			const QString name = QString::fromUtf8(buf);
+			return name.isEmpty() ? tr("Command") : name;
+		}
+		}
+	} else if (role == Qt::ForegroundRole) {
+		// Rows at/after the current stack index are undone commands
+		if (index.row() >= oakengine_undo_index()) {
+			return QVariant(QColor(Qt::gray));
+		}
+	}
+
+	return QVariant();
+}
+
+QVariant HistoryModel::headerData(int section, Qt::Orientation orientation,
+								  int role) const
+{
+	Q_UNUSED(orientation)
+	if (role == Qt::DisplayRole) {
+		switch (section) {
+		case 0:
+			return QStringLiteral("Number");
+		case 1:
+			return QStringLiteral("Action");
+		}
+	}
+
+	return QVariant();
+}
+
 HistoryWidget::HistoryWidget(QWidget *parent)
 	: QTreeView(parent)
 {
-	stack_ = Core::instance()->undo_stack();
+	model_ = new HistoryModel(this);
 
-	this->setModel(stack_);
+	this->setModel(model_);
 	this->setRootIsDecorated(false);
 	undo_sub_ = oakengine_event_subscribe(
 		oakengine_undo_handle(), OAKENGINE_EVENT_UNDO_INDEX_CHANGED,

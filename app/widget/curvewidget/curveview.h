@@ -22,7 +22,7 @@
 #ifndef OAK_CURVEVIEW_H
 #define OAK_CURVEVIEW_H
 
-#include "node/keyframe.h"
+#include "common/keyframetypes.h"
 #include "widget/keyframeview/keyframeview.h"
 #include "widget/slider/floatslider.h"
 
@@ -34,16 +34,16 @@ class CurveView : public KeyframeView {
 public:
 	CurveView(QWidget *parent = nullptr);
 
-	void connect_input(const NodeKeyframeTrackReference &ref);
+	void connect_input(const oak::KeyframeTrackRef &ref);
 
-	void disconnect_input(const NodeKeyframeTrackReference &ref);
+	void disconnect_input(const oak::KeyframeTrackRef &ref);
 
-	void select_keyframes_of_input(const NodeKeyframeTrackReference &ref);
+	void select_keyframes_of_input(const oak::KeyframeTrackRef &ref);
 
-	void set_keyframe_track_color(const NodeKeyframeTrackReference &ref,
+	void set_keyframe_track_color(const oak::KeyframeTrackRef &ref,
 							   const QColor &color);
 
-	const QHash<NodeKeyframeTrackReference, KeyframeViewInputConnection *> &
+	const QHash<oak::KeyframeTrackRef, KeyframeViewInputConnection *> &
 	get_connections() const
 	{
 		return track_connections_;
@@ -65,9 +65,9 @@ protected:
 	virtual void SceneRectUpdateEvent(QRectF &r) override;
 
 	virtual qreal get_keyframe_scene_y(KeyframeViewInputConnection *track,
-									NodeKeyframe *key) override;
+									const oak::Keyframe &key) override;
 
-	virtual void draw_keyframe(QPainter *painter, NodeKeyframe *key,
+	virtual void draw_keyframe(QPainter *painter, const oak::Keyframe &key,
 							  KeyframeViewInputConnection *track,
 							  const QRectF &key_rect) override;
 
@@ -83,41 +83,41 @@ protected:
 private:
 	void zoom_to_fit_internal(bool selected_only);
 
-	qreal get_item_y_from_keyframe_value(NodeKeyframe *key);
-	qreal get_unscaled_item_y_from_keyframe_value(NodeKeyframe *key);
+	qreal get_item_y_from_keyframe_value(const oak::Keyframe &key);
+	qreal get_unscaled_item_y_from_keyframe_value(const oak::Keyframe &key);
 
 	QPointF ScalePoint(const QPointF &point);
 
 	static FloatSlider::DisplayType
-	get_float_display_type_from_keyframe(NodeKeyframe *key);
+	get_float_display_type_from_keyframe(const oak::Keyframe &key);
 
-	static double get_offset_from_keyframe(NodeKeyframe *key);
+	static double get_offset_from_keyframe(const oak::Keyframe &key);
 
 	void adjust_lines();
 
-	QPointF get_keyframe_position(NodeKeyframe *key);
+	QPointF get_keyframe_position(const oak::Keyframe &key);
 
 	static QPointF
-	generate_bezier_control_position(const NodeKeyframe::BezierType mode,
+	generate_bezier_control_position(const KeyframeTypes::BezierType mode,
 								  const QPointF &start_point,
 								  const QPointF &scaled_cursor_diff);
 
 	QPointF get_scaled_cursor_pos(const QPointF &cursor_pos);
 
-	QHash<NodeKeyframeTrackReference, QColor> keyframe_colors_;
-	QHash<NodeKeyframeTrackReference, KeyframeViewInputConnection *>
+	QHash<oak::KeyframeTrackRef, QColor> keyframe_colors_;
+	QHash<oak::KeyframeTrackRef, KeyframeViewInputConnection *>
 		track_connections_;
 
 	int text_padding_;
 
 	int minimum_grid_space_;
 
-	QVector<NodeKeyframeTrackReference> connected_inputs_;
+	QVector<oak::KeyframeTrackRef> connected_inputs_;
 
 	struct BezierPoint {
 		QRectF rect;
-		NodeKeyframe *keyframe;
-		NodeKeyframe::BezierType type;
+		OakEngineKeyframe *keyframe;
+		KeyframeTypes::BezierType type;
 	};
 
 	QVector<BezierPoint> bezier_pts_;

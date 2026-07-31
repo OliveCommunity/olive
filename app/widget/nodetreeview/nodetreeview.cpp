@@ -23,9 +23,8 @@
 
 #include <QEvent>
 
-#include "common/nodevaluehandle.h"
-
 #include "oakengine/node.h"
+#include "oakutil/qtutils.h"
 namespace olive
 {
 
@@ -43,17 +42,17 @@ NodeTreeView::NodeTreeView(QWidget *parent)
 	retranslate();
 }
 
-bool NodeTreeView::is_node_enabled(Node *n) const
+bool NodeTreeView::is_node_enabled(const oak::Node &n) const
 {
 	return !disabled_nodes_.contains(n);
 }
 
-bool NodeTreeView::is_input_enabled(const NodeKeyframeTrackReference &ref) const
+bool NodeTreeView::is_input_enabled(const oak::KeyframeTrackRef &ref) const
 {
 	return !disabled_inputs_.contains(ref);
 }
 
-void NodeTreeView::set_keyframe_track_color(const NodeKeyframeTrackReference &ref,
+void NodeTreeView::set_keyframe_track_color(const oak::KeyframeTrackRef &ref,
 										 const QColor &color)
 {
 	// Insert into hashmap
@@ -66,42 +65,45 @@ void NodeTreeView::set_keyframe_track_color(const NodeKeyframeTrackReference &re
 	}
 }
 
-void NodeTreeView::set_nodes(const QVector<Node *> &nodes)
+void NodeTreeView::set_nodes(const QVector<oak::Node> &nodes)
 {
 	nodes_ = nodes;
 
 	this->clear();
 	item_map_.clear();
 
-	foreach (Node *n, nodes_) {
+	foreach (const oak::Node &n, nodes_) {
 		QTreeWidgetItem *node_item = new QTreeWidgetItem();
-		node_item->setText(0, n->name());
+		node_item->setText(0, n.name());
 		if (checkboxes_enabled_) {
 			node_item->setCheckState(
 				0, disabled_nodes_.contains(n) ? Qt::Unchecked : Qt::Checked);
 		}
 		node_item->setData(0, k_item_type, k_item_type_node);
-		node_item->setData(0, k_item_node_pointer, QtUtils::ptr_to_value(n));
+		node_item->setData(0, k_item_node_pointer, QtUtils::ptr_to_value(n.handle()));
 
-		foreach (const QString &input, n->inputs()) {
-			if (n->is_input_hidden(input) ||
-				(only_show_keyframable_ && !n->is_input_keyframable(input))) {
+		const int input_count = n.input_count();
+		for (int idx = 0; idx < input_count; idx++) {
+			const QString input_id = n.input_id(idx);
+
+			oak::Input probe(n.handle(), input_id);
+			if (probe.is_hidden() ||
+				(only_show_keyframable_ && !probe.is_keyframable())) {
 				continue;
 			}
 
 			QTreeWidgetItem *input_item = nullptr;
 
-			int arr_sz = n->input_array_size(input);
+			const int arr_sz = probe.array_size();
 			for (int i = -1; i < arr_sz; i++) {
-				NodeInput input_ref(n, input, i);
-				const QVector<NodeKeyframeTrack> &key_tracks =
-					n->get_keyframe_tracks(input_ref);
+				oak::Input input_ref(n.handle(), input_id, i);
+				const int track_count = input_ref.keyframe_track_count();
 
 				int this_element_track;
 
 				if (show_keyframe_tracks_as_rows_ &&
-					(key_tracks.size() == 1 ||
-					 (i == -1 && n->input_is_array(input)))) {
+					(track_count == 1 ||
+					 (i == -1 && probe.is_array()))) {
 					this_element_track = 0;
 				} else {
 					this_element_track = -1;
@@ -111,19 +113,19 @@ void NodeTreeView::set_nodes(const QVector<Node *> &nodes)
 
 				if (input_item) {
 					element_item = create_item(
-						input_item, NodeKeyframeTrackReference(
+						input_item, oak::KeyframeTrackRef(
 										input_ref, this_element_track));
 				} else {
 					input_item = create_item(node_item,
-											NodeKeyframeTrackReference(
+											oak::KeyframeTrackRef(
 												input_ref, this_element_track));
 					element_item = input_item;
 				}
 
-				if (show_keyframe_tracks_as_rows_ && key_tracks.size() > 1 &&
-					(!n->input_is_array(input) || i >= 0)) {
+				if (show_keyframe_tracks_as_rows_ && track_count > 1 &&
+					(!probe.is_array() || i >= 0)) {
 					create_items_for_tracks(element_item, input_ref,
-										 key_tracks.size());
+										 track_count);
 				}
 			}
 		}
@@ -152,7 +154,7 @@ void NodeTreeView::mouseDoubleClickEvent(QMouseEvent *e)
 {
 	QTreeWidget::mouseDoubleClickEvent(e);
 
-	NodeKeyframeTrackReference ref = get_selected_input();
+	oak::KeyframeTrackRef ref = get_selected_input();
 
 	if (ref.input().is_valid()) {
 		emit input_double_clicked(ref);
@@ -164,21 +166,21 @@ void NodeTreeView::retranslate()
 	setHeaderLabel(tr("Nodes"));
 }
 
-NodeKeyframeTrackReference NodeTreeView::get_selected_input()
+oak::KeyframeTrackRef NodeTreeView::get_selected_input()
 {
 	QList<QTreeWidgetItem *> sel = selectedItems();
 
-	NodeKeyframeTrackReference selected_ref;
+	oak::KeyframeTrackRef selected_ref;
 
 	if (!sel.isEmpty()) {
 		QTreeWidgetItem *item = sel.first();
 
 		if (item->data(0, k_item_type).toInt() == k_item_type_input) {
 			selected_ref = item->data(0, k_item_input_reference)
-							   .value<NodeKeyframeTrackReference>();
+							   .value<oak::KeyframeTrackRef>();
 		} else {
-			selected_ref = NodeKeyframeTrackReference(NodeInput(
-				QtUtils::value_to_ptr<Node>(item->data(0, k_item_node_pointer)),
+			selected_ref = oak::KeyframeTrackRef(oak::Input(
+				QtUtils::value_to_ptr<OakEngineNode>(item->data(0, k_item_node_pointer)),
 				QString()));
 		}
 	}
@@ -187,14 +189,13 @@ NodeKeyframeTrackReference NodeTreeView::get_selected_input()
 }
 
 QTreeWidgetItem *NodeTreeView::create_item(QTreeWidgetItem *parent,
-										  const NodeKeyframeTrackReference &ref)
+										  const oak::KeyframeTrackRef &ref)
 {
 	QTreeWidgetItem *input_item = new QTreeWidgetItem(parent);
 
 	QString item_name;
 	if (ref.track() == -1 ||
-		oakengine_node_value_keyframe_track_count(node_value_type_to_c(ref.input().get_data_type())) ==
-			1 ||
+		ref.input().keyframe_track_count() == 1 ||
 		(ref.input().is_array() && ref.input().element() == -1)) {
 		if (ref.input().element() == -1) {
 			item_name = ref.input().name();
@@ -238,16 +239,16 @@ QTreeWidgetItem *NodeTreeView::create_item(QTreeWidgetItem *parent,
 }
 
 void NodeTreeView::create_items_for_tracks(QTreeWidgetItem *parent,
-										const NodeInput &input, int track_count)
+										const oak::Input &input, int track_count)
 {
 	for (int j = 0; j < track_count; j++) {
-		create_item(parent, NodeKeyframeTrackReference(input, j));
+		create_item(parent, oak::KeyframeTrackRef(input, j));
 	}
 }
 
-bool NodeTreeView::use_rgba_over_xyzw(const NodeKeyframeTrackReference &ref)
+bool NodeTreeView::use_rgba_over_xyzw(const oak::KeyframeTrackRef &ref)
 {
-	return ref.input().get_data_type() == NodeValue::k_color;
+	return ref.input().c_type() == OAK_NODE_VALUE_COLOR;
 }
 
 void NodeTreeView::item_check_state_changed(QTreeWidgetItem *item, int column)
@@ -256,22 +257,22 @@ void NodeTreeView::item_check_state_changed(QTreeWidgetItem *item, int column)
 
 	switch (item->data(0, k_item_type).toInt()) {
 	case k_item_type_node: {
-		Node *n = QtUtils::value_to_ptr<Node>(item->data(0, k_item_node_pointer));
+		oak::Node n(QtUtils::value_to_ptr<OakEngineNode>(item->data(0, k_item_node_pointer)));
 
 		if (item->checkState(0) == Qt::Checked) {
 			if (disabled_nodes_.contains(n)) {
 				disabled_nodes_.removeOne(n);
-				emit node_enable_changed(reinterpret_cast<OakEngineNode *>(n), true);
+				emit node_enable_changed(n.handle(), true);
 			}
 		} else if (!disabled_nodes_.contains(n)) {
 			disabled_nodes_.append(n);
-			emit node_enable_changed(reinterpret_cast<OakEngineNode *>(n), false);
+			emit node_enable_changed(n.handle(), false);
 		}
 		break;
 	}
 	case k_item_type_input: {
-		NodeKeyframeTrackReference i = item->data(0, k_item_input_reference)
-										   .value<NodeKeyframeTrackReference>();
+		oak::KeyframeTrackRef i = item->data(0, k_item_input_reference)
+									   .value<oak::KeyframeTrackRef>();
 
 		if (item->checkState(0) == Qt::Checked) {
 			if (disabled_inputs_.contains(i)) {

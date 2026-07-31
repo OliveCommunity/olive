@@ -24,16 +24,17 @@
 #include <QCoreApplication>
 #include <QGraphicsScene>
 #include <QGraphicsSceneMouseEvent>
+#include <QPainter>
 #include <QPen>
 #include <QStyleOptionGraphicsItem>
 
 #include "core.h"
-#include "node/block/block.h"
-#include "node/output/track/track.h"
-#include "node/project.h"
-#include "node/project/sequence/sequence.h"
+#include "common/trackreferencehandle.h"
 #include "nodeviewitem.h"
-#include "ui/colorcoding.h"
+#include "common/colorcodingapp.h"
+#include "oakengine/timeline.h"
+#include "oakutil/qtutils.h"
+#include "widget/timelinewidget/cliphandle.h"
 
 #include "widget/viewer/vieweroutpututils.h"
 namespace olive
@@ -41,95 +42,109 @@ namespace olive
 
 #define super QGraphicsRectItem
 
-NodeViewContext::NodeViewContext(Node *context, QGraphicsItem *item)
+NodeViewContext::NodeViewContext(oak::Node context, QGraphicsItem *item)
 	: super(item)
 	, context_(context)
 	, bridge_(new EngineEventBridge(this))
 {
-	Block *block = dynamic_cast<Block *>(context_);
-	if (block && block->track() && block->track()->sequence()) {
-		Rational timebase = viewer_output_video_params(block->track()->sequence())
+	// Block contexts (clips/transitions nested in the node graph) show their
+	// track placement in the title. All engine queries go through the C ABI:
+	// oakengine_node_is_block() replaces dynamic_cast<Block*> (Block is
+	// abstract and carries no own type id), and the track type ordinals are
+	// the TrackReference mirror values (== engine Track::Type, pinned by the
+	// static_asserts in trackreferencehandle.h).
+	OakEngineNode *track_node =
+		oakengine_node_is_block(context_.handle()) ?
+			block_track_handle(
+				reinterpret_cast<OakEngineBlock *>(context_.handle())) :
+			nullptr;
+	OakEngineNode *track_seq =
+		track_node ? oakengine_track_get_sequence(track_node) : nullptr;
+	if (track_seq) {
+		Rational timebase = viewer_output_video_params(track_seq)
 								.frame_rate_as_time_base();
 		QString type_label;
-		switch (block->track()->type()) {
-		case Track::k_video:
+		switch (oakengine_track_get_type(track_node)) {
+		case TrackReference::k_video:
 			type_label = QCoreApplication::translate("NodeViewContext", "V");
 			break;
-		case Track::k_audio:
+		case TrackReference::k_audio:
 			type_label = QCoreApplication::translate("NodeViewContext", "A");
 			break;
-		case Track::k_subtitle:
+		case TrackReference::k_subtitle:
 			type_label = QCoreApplication::translate("NodeViewContext", "S");
 			break;
 		default:
 			break;
 		}
 
+		int in_num = 0, in_den = 1, out_num = 0, out_den = 1;
+		oakengine_block_get_in_rational(context_.handle(), &in_num, &in_den);
+		oakengine_block_get_out_rational(context_.handle(), &out_num, &out_den);
+
 		lbl_ =
 			QCoreApplication::translate("NodeViewContext", "%1 [%2] :: %3 - %4")
-				.arg(block->get_label_and_name(),
+				.arg(context_.label_and_name(),
 					 type_label,
 					 QString::fromStdString(Timecode::time_to_timecode(
-						 block->in(), timebase,
+						 Rational(in_num, in_den), timebase,
 						 Core::instance()->get_timecode_display())),
 					 QString::fromStdString(Timecode::time_to_timecode(
-						 block->out(), timebase,
+						 Rational(out_num, out_den), timebase,
 						 Core::instance()->get_timecode_display())));
 	} else {
-		lbl_ = context_->get_label_and_name();
+		lbl_ = context_.label_and_name();
 	}
 
 	connect(bridge_, &EngineEventBridge::node_node_added_to_context, this,
 			[this](OakEngineNode *source, OakEngineNode *node) {
-				Node *src = reinterpret_cast<Node *>(source);
-				if (src == context_) {
-					add_child(reinterpret_cast<Node *>(node));
+				if (source == context_.handle()) {
+					add_child(node);
 				} else {
-					group_added_node(reinterpret_cast<Node *>(node), src);
+					group_added_node(node, source);
 				}
 			});
 	connect(bridge_, &EngineEventBridge::node_node_removed_from_context, this,
 			[this](OakEngineNode *source, OakEngineNode *node) {
-				Node *src = reinterpret_cast<Node *>(source);
-				if (src == context_) {
-					remove_child(reinterpret_cast<Node *>(node));
+				if (source == context_.handle()) {
+					remove_child(node);
 				} else {
-					group_removed_node(reinterpret_cast<Node *>(node), src);
+					group_removed_node(node, source);
 				}
 			});
 	connect(bridge_, &EngineEventBridge::node_context_position_changed, this,
 			[this](OakEngineNode *, OakEngineNode *node, double x, double y) {
-				set_child_position(reinterpret_cast<Node *>(node),
-								   QPointF(x, y));
+				set_child_position(node, QPointF(x, y));
 			});
 	connect(bridge_, &EngineEventBridge::node_input_connected, this,
 			[this](OakEngineNode *source, OakEngineNode *output,
 				   const QString &input, int element) {
-				child_input_connected(reinterpret_cast<Node *>(output),
-					NodeInput(reinterpret_cast<Node *>(source), input,
-							  element));
+				child_input_connected(output,
+					oak::Input(source, input, element));
 			});
 	connect(bridge_, &EngineEventBridge::node_input_disconnected, this,
 			[this](OakEngineNode *source, OakEngineNode *output,
 				   const QString &input, int element) {
-				child_input_disconnected(reinterpret_cast<Node *>(output),
-					NodeInput(reinterpret_cast<Node *>(source), input,
-							  element));
+				child_input_disconnected(output,
+					oak::Input(source, input, element));
 			});
 
-	node_subs_[context_].append(bridge_->subscribe(
-		reinterpret_cast<void *>(context_),
+	node_subs_[context_.handle()].append(bridge_->subscribe(
+		context_.handle(),
 		OAKENGINE_EVENT_NODE_NODE_ADDED_TO_CONTEXT));
-	node_subs_[context_].append(bridge_->subscribe(
-		reinterpret_cast<void *>(context_),
+	node_subs_[context_.handle()].append(bridge_->subscribe(
+		context_.handle(),
 		OAKENGINE_EVENT_NODE_CONTEXT_POSITION_CHANGED));
-	node_subs_[context_].append(bridge_->subscribe(
-		reinterpret_cast<void *>(context_),
+	node_subs_[context_.handle()].append(bridge_->subscribe(
+		context_.handle(),
 		OAKENGINE_EVENT_NODE_NODE_REMOVED_FROM_CONTEXT));
 
-	const Node::PositionMap &map = context_->get_context_positions();
-	for (auto it = map.cbegin(); it != map.cend(); it++) {
-		add_child(it.key());
+	const int ctx_count = context_.context_node_count();
+	for (int i = 0; i < ctx_count; i++) {
+		oak::Node child = context_.context_node_at(i).node;
+		if (!child.is_null()) {
+			add_child(child.handle());
+		}
 	}
 }
 
@@ -140,22 +155,26 @@ NodeViewContext::~NodeViewContext()
 	edges_.clear();
 }
 
-void NodeViewContext::add_child(Node *node)
+void NodeViewContext::add_child(OakEngineNode *node)
 {
-	if (!context_) {
+	if (context_.is_null()) {
 		return;
 	}
 
-	NodeViewItem *item = new NodeViewItem(node, context_, this);
+	NodeViewItem *item = new NodeViewItem(oak::Node(node), context_, this);
 	item->set_flow_direction(flow_dir_);
 
 	add_node_internal(node, item);
 
-	if (oakengine_node_is_group(reinterpret_cast<OakEngineNode *>(node))) {
-		for (auto it = node->get_context_positions().cbegin();
-			 it != node->get_context_positions().cend(); it++) {
-			// Use this item as the representative for all of these nodes too
-			add_node_internal(it.key(), item);
+	oak::Node group_node(node);
+	if (group_node.is_group()) {
+		const int grp_count = group_node.context_node_count();
+		for (int i = 0; i < grp_count; i++) {
+			oak::Node grp_child = group_node.context_node_at(i).node;
+			if (!grp_child.is_null()) {
+				// Use this item as the representative for all of these nodes too
+				add_node_internal(grp_child.handle(), item);
+			}
 		}
 
 		node_subs_[node].append(bridge_->subscribe(
@@ -169,12 +188,12 @@ void NodeViewContext::add_child(Node *node)
 	update_rect();
 }
 
-void NodeViewContext::set_child_position(Node *node, const QPointF &pos)
+void NodeViewContext::set_child_position(OakEngineNode *node, const QPointF &pos)
 {
 	item_map_.value(node)->set_node_position(pos);
 }
 
-void NodeViewContext::remove_child(Node *node)
+void NodeViewContext::remove_child(OakEngineNode *node)
 {
 	foreach (int64_t id, node_subs_.take(node)) {
 		bridge_->unsubscribe(id);
@@ -192,17 +211,16 @@ void NodeViewContext::remove_child(Node *node)
 	// be changed...)
 	QVector<NodeViewEdge *> edges_to_remove = item->get_all_edges_recursively();
 	foreach (NodeViewEdge *edge, edges_to_remove) {
-		if (node == item->get_node() || edge->output() == node ||
-			edge->input().node() == node) {
-			child_input_disconnected(edge->output(), edge->input());
+		if (item->get_node() == oak::Node(node) || edge->output() == oak::Node(node) ||
+			edge->input().node_handle() == node) {
+			child_input_disconnected(edge->output().handle(), edge->input());
 		}
 	}
 
 	// Check if this item is specifically for this node and the node is a group. If so, remove it for
 	// all other entries in the map.
-	if (item->get_node() == node) {
-		if (oakengine_node_is_group(reinterpret_cast<OakEngineNode *>(
-				item->get_node()))) {
+	if (item->get_node() == oak::Node(node)) {
+		if (item->get_node().is_group()) {
 			for (auto it = item_map_.begin(); it != item_map_.end();) {
 				if (it.value() == item) {
 					it = item_map_.erase(it);
@@ -218,25 +236,25 @@ void NodeViewContext::remove_child(Node *node)
 	update_rect();
 }
 
-void NodeViewContext::child_input_connected(Node *output, const NodeInput &input)
+void NodeViewContext::child_input_connected(OakEngineNode *output, const oak::Input &input)
 {
 	// Add edge
 	if (!input.is_hidden()) {
 		if (NodeViewItem *output_item = item_map_.value(output)) {
 			add_edge_internal(
 				output, input, output_item,
-				item_map_.value(input.node())->get_item_for_input(input));
+				item_map_.value(input.node_handle())->get_item_for_input(input));
 		}
 	}
 }
 
-bool NodeViewContext::child_input_disconnected(Node *output,
-											 const NodeInput &input)
+bool NodeViewContext::child_input_disconnected(OakEngineNode *output,
+											 const oak::Input &input)
 {
 	// Remove edge
 	for (int i = 0; i < edges_.size(); i++) {
 		NodeViewEdge *e = edges_.at(i);
-		if (e->output() == output && e->input() == input) {
+		if (e->output() == oak::Node(output) && e->input() == input) {
 			delete e;
 			edges_.removeAt(i);
 			return true;
@@ -284,8 +302,8 @@ void NodeViewContext::set_curved_edges(bool e)
 	}
 }
 
-void NodeViewContext::get_selected_for_deletion(QVector<Node *> &nodes,
-											   QVector<Node *> &contexts,
+void NodeViewContext::get_selected_for_deletion(QVector<OakEngineNode *> &nodes,
+											   QVector<OakEngineNode *> &contexts,
 											   QVector<NodeViewEdge *> &edges) const
 {
 	// Collect any selected edges
@@ -298,15 +316,15 @@ void NodeViewContext::get_selected_for_deletion(QVector<Node *> &nodes,
 	// Collect any selected nodes
 	foreach (NodeViewItem *node, item_map_) {
 		if (node->isSelected()) {
-			nodes.append(node->get_node());
-			contexts.append(context_);
+			nodes.append(node->get_node().handle());
+			contexts.append(context_.handle());
 		}
 	}
 }
 
-void NodeViewContext::select(const QVector<Node *> &nodes)
+void NodeViewContext::select(const QVector<OakEngineNode *> &nodes)
 {
-	foreach (Node *n, nodes) {
+	foreach (OakEngineNode *n, nodes) {
 		if (NodeViewItem *item = item_map_.value(n)) {
 			item->setSelected(true);
 		}
@@ -343,7 +361,7 @@ void NodeViewContext::paint(QPainter *painter,
 							QWidget *widget)
 {
 	// Set pen and brush
-	Color color = context_->color();
+	Color color = AppColorCoding::get_color(context_.effective_color_label());
 	QColor c = QtUtils::to_q_color(color);
 	QPen pen(c, 2);
 	if (option->state & QStyle::State_Selected) {
@@ -368,7 +386,7 @@ void NodeViewContext::paint(QPainter *painter,
 	painter->setClipping(false);
 
 	// Draw titlebar text
-	painter->setPen(ColorCoding::get_ui_selector_color(color));
+	painter->setPen(AppColorCoding::get_ui_selector_color(color));
 
 	int offset = get_text_offset(painter->fontMetrics());
 
@@ -393,7 +411,7 @@ void NodeViewContext::mousePressEvent(QGraphicsSceneMouseEvent *event)
 	super::mousePressEvent(event);
 }
 
-void NodeViewContext::add_node_internal(Node *node, NodeViewItem *item)
+void NodeViewContext::add_node_internal(OakEngineNode *node, NodeViewItem *item)
 {
 	node_subs_[node].append(bridge_->subscribe(
 		reinterpret_cast<void *>(node),
@@ -404,39 +422,46 @@ void NodeViewContext::add_node_internal(Node *node, NodeViewItem *item)
 
 	item_map_.insert(node, item);
 
-	if (node == context_) {
+	if (node == context_.handle()) {
 		item->set_label_as_output(true);
 	}
 
-	for (auto it = node->output_connections().cbegin();
-		 it != node->output_connections().cend(); it++) {
-		if (!it->second.is_hidden()) {
-			if (NodeViewItem *other_item = item_map_.value(it->second.node())) {
-				add_edge_internal(node, it->second, item,
-								other_item->get_item_for_input(it->second));
+	// Iterate output connections via the wrapper
+	oak::Node wrapped(node);
+	const int out_count = wrapped.output_connection_count();
+	for (int i = 0; i < out_count; i++) {
+		oak::NodeConnection conn = wrapped.output_connection_at_ex(i);
+		if (!conn.hidden) {
+			if (NodeViewItem *other_item = item_map_.value(conn.node.handle())) {
+				oak::Input ai(conn.node.handle(), conn.input_id, conn.element);
+				add_edge_internal(node, ai, item,
+								other_item->get_item_for_input(ai));
 			}
 		}
 	}
 
-	for (auto it = node->input_connections().cbegin();
-		 it != node->input_connections().cend(); it++) {
-		if (!it->first.is_hidden()) {
-			if (NodeViewItem *other_item = item_map_.value(it->second)) {
-				add_edge_internal(it->second, it->first, other_item,
-								item->get_item_for_input(it->first));
+	// Iterate input connections via the wrapper
+	const int in_count = wrapped.input_connection_count_all();
+	for (int i = 0; i < in_count; i++) {
+		oak::NodeConnection conn = wrapped.input_connection_at_all(i);
+		if (!conn.hidden) {
+			if (NodeViewItem *other_item = item_map_.value(conn.source_node.handle())) {
+				oak::Input ai(conn.node.handle(), conn.input_id, conn.element);
+				add_edge_internal(conn.source_node.handle(), ai, other_item,
+								item->get_item_for_input(ai));
 			}
 		}
 	}
 }
 
-void NodeViewContext::add_edge_internal(Node *output, const NodeInput &input,
+void NodeViewContext::add_edge_internal(OakEngineNode *output, const oak::Input &input,
 									  NodeViewItem *from, NodeViewItem *to)
 {
 	if (from == to) {
 		return;
 	}
 
-	NodeViewEdge *edge_ui = new NodeViewEdge(output, input, from, to, this);
+	NodeViewEdge *edge_ui = new NodeViewEdge(oak::Node(output), input, from, to, this);
 
 	edge_ui->adjust();
 	edge_ui->set_curved(curved_edges_);
@@ -444,12 +469,12 @@ void NodeViewContext::add_edge_internal(Node *output, const NodeInput &input,
 	edges_.append(edge_ui);
 }
 
-void NodeViewContext::group_added_node(Node *node, Node *group)
+void NodeViewContext::group_added_node(OakEngineNode *node, OakEngineNode *group)
 {
 	add_node_internal(node, item_map_.value(group));
 }
 
-void NodeViewContext::group_removed_node(Node *node, Node *group)
+void NodeViewContext::group_removed_node(OakEngineNode *node, OakEngineNode *group)
 {
 	if (item_map_.value(node) == item_map_.value(group)) {
 		item_map_.remove(node);

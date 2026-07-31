@@ -25,7 +25,7 @@
 namespace olive
 {
 
-QVector<Color> ColorCoding::colors = {
+QVector<Color> AppColorCoding::colors = {
 	Color(0.545f, 0.255f, 0.255f), Color(0.412f, 0.188f, 0.259f),
 	Color(0.561f, 0.427f, 0.239f), Color(0.486f, 0.306f, 0.235f),
 	Color(0.631f, 0.612f, 0.212f), Color(0.404f, 0.478f, 0.243f),
@@ -36,12 +36,12 @@ QVector<Color> ColorCoding::colors = {
 	Color(0.800f, 0.800f, 0.800f), Color(0.502f, 0.502f, 0.502f)
 };
 
-const QVector<Color> &ColorCoding::standard_colors()
+const QVector<Color> &AppColorCoding::standard_colors()
 {
 	return colors;
 }
 
-QString ColorCoding::get_color_name(int c)
+QString AppColorCoding::get_color_name(int c)
 {
 	switch (c) {
 	case k_red: return QObject::tr("Red");
@@ -49,7 +49,7 @@ QString ColorCoding::get_color_name(int c)
 	case k_orange: return QObject::tr("Orange");
 	case k_brown: return QObject::tr("Brown");
 	case k_yellow: return QObject::tr("Yellow");
-	case k_olive: return QObject::tr("Olive");
+	case k_olive: return QObject::tr("Oak");
 	case k_lime: return QObject::tr("Lime");
 	case k_green: return QObject::tr("Green");
 	case k_cyan: return QObject::tr("Cyan");
@@ -64,12 +64,12 @@ QString ColorCoding::get_color_name(int c)
 	return QString();
 }
 
-Color ColorCoding::get_color(int c)
+Color AppColorCoding::get_color(int c)
 {
 	return colors.at(c);
 }
 
-Qt::GlobalColor ColorCoding::get_ui_selector_color(const Color &c)
+Qt::GlobalColor AppColorCoding::get_ui_selector_color(const Color &c)
 {
 	if (c.get_rough_luminance() > 0.40f) {
 		return Qt::black;

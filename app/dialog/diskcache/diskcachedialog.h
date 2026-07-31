@@ -26,7 +26,6 @@
 #include <QDialog>
 #include <QPushButton>
 
-#include "render/diskmanager.h"
 #include "widget/slider/floatslider.h"
 
 namespace olive
@@ -35,7 +34,12 @@ namespace olive
 class DiskCacheDialog : public QDialog {
 	Q_OBJECT
 public:
-	DiskCacheDialog(DiskCacheFolder *folder, QWidget *parent = nullptr);
+	/**
+	 * @param folder Opaque engine DiskCacheFolder handle (from
+	 * oakengine_disk_get_open_folder()), accessed through the
+	 * oakengine_disk_folder_* C ABI.
+	 */
+	DiskCacheDialog(void *folder, QWidget *parent = nullptr);
 
 	static void clear_disk_cache(const QString &path, QWidget *parent,
 							   QPushButton *clear_btn = nullptr);
@@ -44,7 +48,7 @@ public slots:
 	virtual void accept() override;
 
 private:
-	DiskCacheFolder *folder_;
+	void *folder_;
 
 	FloatSlider *maximum_cache_slider_;
 

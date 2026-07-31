@@ -26,8 +26,7 @@
 #include <cstring>
 
 #include "oakengine/viewer.h"
-#include "render/subtitleparams.h"
-#include "render/videoparams.h"
+#include "oakutil/oakvideo.h"
 
 /**
  * @file vieweroutpututils.h
@@ -40,23 +39,27 @@
  * symbols in oak-editor. These helpers fetch the same values through the
  * oakengine C ABI instead. `viewer` may be any viewer handle (ViewerOutput,
  * Sequence, Footage).
+ *
+ * Video parameters are returned as oak::VideoParams (oakutil/oakvideo.h),
+ * the app-side value type replacing the engine's olive::VideoParams.
  */
 namespace olive {
 
-VideoParams viewer_output_video_params(const void *viewer, int index = 0);
+// Same namespace bridge the engine's render/videoparams.h used to provide
+// (unqualified Rational/AudioParams/SampleFormat inside namespace olive).
+using namespace core;
+
+oak::VideoParams viewer_output_video_params(const void *viewer, int index = 0);
 
 AudioParams viewer_output_audio_params(const void *viewer, int index = 0);
 
 /**
- * @brief Construct a VideoParams from an oak_video_params POD using the engine
- * facade. This is the single app-side construction point allowed during the R6
- * C ABI migration; all other app code must not call VideoParams constructors
- * directly.
+ * @brief Construct an oak::VideoParams from an oak_video_params POD.
  */
-VideoParams video_params_from_pod(const oak_video_params &pod);
+oak::VideoParams video_params_from_pod(const oak_video_params &pod);
 
-/** @brief Equivalent to the default-constructed VideoParams(). */
-VideoParams empty_video_params();
+/** @brief Equivalent to the default-constructed oak::VideoParams(). */
+oak::VideoParams empty_video_params();
 
 /**
  * @brief Frame-duration timebase of `sequence` as a Rational (frame rate flipped).
@@ -66,6 +69,22 @@ VideoParams empty_video_params();
  * ViewerOutput inline symbols.
  */
 Rational sequence_timebase(const void *sequence);
+
+/** @brief Facade-backed replacement for ViewerOutput::get_playhead()
+ * (rational seconds). */
+Rational viewer_output_playhead(const void *viewer);
+
+/** @brief Facade-backed replacement for ViewerOutput::get_length()
+ * (rational seconds). */
+Rational viewer_output_length(const void *viewer);
+
+/** @brief Facade-backed replacement for ViewerOutput::get_video_length()
+ * (rational seconds). */
+Rational viewer_output_video_length(const void *viewer);
+
+/** @brief Facade-backed replacement for ViewerOutput::get_audio_length()
+ * (rational seconds). */
+Rational viewer_output_audio_length(const void *viewer);
 
 /**
  * @brief 1 if `node`'s engine type id (Node::id()) equals `type_id`.

@@ -29,9 +29,9 @@
 
 #include "core.h"
 #include "oakutil/qtutils.h"
-#include "node/node.h"
-#include "common/nodevaluehandle.h"
+#include "common/keyframetypes.h"
 #include "oakengine/node.h"
+#include "olive/core/util/timecodefunctions.h"
 #include "widget/timeruler/timeruler.h"
 
 namespace olive
@@ -135,17 +135,17 @@ void CurveWidget::DeleteSelected()
 	view_->delete_selected();
 }
 
-Node *CurveWidget::get_selected_node_with_id(const QString &id)
+oak::Node CurveWidget::get_selected_node_with_id(const QString &id)
 {
 	for (auto it = view_->get_connections().cbegin();
 		 it != view_->get_connections().cend(); it++) {
-		Node *n = it.key().input().node();
-		if (n->id() == id) {
+		oak::Node n = it.key().input().node();
+		if (n.id() == id) {
 			return n;
 		}
 	}
 
-	return nullptr;
+	return oak::Node();
 }
 
 bool CurveWidget::copy_selected(bool cut)
@@ -167,7 +167,7 @@ bool CurveWidget::paste()
 								  std::placeholders::_1));
 }
 
-void CurveWidget::set_nodes(const QVector<Node *> &nodes)
+void CurveWidget::set_nodes(const QVector<oak::Node> &nodes)
 {
 	tree_view_->set_nodes(nodes);
 
@@ -175,19 +175,19 @@ void CurveWidget::set_nodes(const QVector<Node *> &nodes)
 	nodes_ = nodes;
 
 	// Generate colors
-	foreach (Node *node, nodes_) {
-		foreach (const QString &input, node->inputs()) {
-			if (node->is_input_keyframable(input) &&
-				!node->is_input_hidden(input)) {
-				int arr_sz = node->input_array_size(input);
+	foreach (const oak::Node &node, nodes_) {
+		foreach (const oak::Input &input, node.inputs()) {
+			if (input.is_keyframable() && !input.is_hidden()) {
+				const int arr_sz = input.array_size();
 				for (int i = -1; i < arr_sz; i++) {
 					// Generate a random color for this input
-					const QVector<NodeKeyframeTrack> &tracks =
-						node->get_keyframe_tracks(input, i);
+					const oak::Input element_input(node.handle(),
+												   input.input_id(), i);
+					const int track_count =
+						element_input.keyframe_track_count();
 
-					for (int j = 0; j < tracks.size(); j++) {
-						NodeKeyframeTrackReference ref(
-							NodeInput(node, input, i), j);
+					for (int j = 0; j < track_count; j++) {
+						oak::KeyframeTrackRef ref(element_input, j);
 
 						if (!keyframe_colors_.contains(ref)) {
 							QColor c =
@@ -218,7 +218,7 @@ void CurveWidget::ScaleChangedEvent(const double &scale)
 	view_->set_scale(scale);
 }
 
-void CurveWidget::TimeTargetChangedEvent(ViewerOutput *target)
+void CurveWidget::TimeTargetChangedEvent(OakEngineNode *target)
 {
 	TimeTargetObject::TimeTargetChangedEvent(target);
 
@@ -227,7 +227,7 @@ void CurveWidget::TimeTargetChangedEvent(ViewerOutput *target)
 	view_->set_time_target(target);
 }
 
-void CurveWidget::ConnectedNodeChangeEvent(ViewerOutput *n)
+void CurveWidget::ConnectedNodeChangeEvent(OakEngineNode *n)
 {
 	super::ConnectedNodeChangeEvent(n);
 
@@ -250,18 +250,20 @@ void CurveWidget::set_keyframe_button_checked(bool checked)
 	hold_button_->setChecked(checked);
 }
 
-void CurveWidget::set_keyframe_button_checked_from_type(NodeKeyframe::Type type)
+void CurveWidget::set_keyframe_button_checked_from_type(int facade_type)
 {
-	linear_button_->setChecked(type == NodeKeyframe::k_linear);
-	bezier_button_->setChecked(type == NodeKeyframe::k_bezier);
-	hold_button_->setChecked(type == NodeKeyframe::k_hold);
+	linear_button_->setChecked(facade_type == KeyframeTypes::k_facade_linear);
+	bezier_button_->setChecked(facade_type == KeyframeTypes::k_facade_bezier);
+	hold_button_->setChecked(facade_type == KeyframeTypes::k_facade_hold);
 }
 
-void CurveWidget::connect_input(Node *node, const QString &input, int element)
+void CurveWidget::connect_input(const oak::Node &node, const QString &input,
+								int element)
 {
-	if (element == -1 && node->input_is_array(input)) {
+	const oak::Input root_input(node.handle(), input);
+	if (element == -1 && root_input.is_array()) {
 		// This is the root element, connect all elements (if applicable)
-		int arr_sz = node->input_array_size(input);
+		int arr_sz = root_input.array_size();
 		for (int i = -1; i < arr_sz; i++) {
 			connect_input_internal(node, input, i);
 		}
@@ -271,14 +273,13 @@ void CurveWidget::connect_input(Node *node, const QString &input, int element)
 	}
 }
 
-void CurveWidget::connect_input_internal(Node *node, const QString &input,
-									   int element)
+void CurveWidget::connect_input_internal(const oak::Node &node,
+										 const QString &input, int element)
 {
-	NodeInput input_ref(node, input, element);
-	int track_count =
-		oakengine_node_value_keyframe_track_count(node_value_type_to_c(input_ref.get_data_type()));
+	const oak::Input input_ref(node.handle(), input, element);
+	const int track_count = input_ref.keyframe_track_count();
 	for (int i = 0; i < track_count; i++) {
-		NodeKeyframeTrackReference track_ref(input_ref, i);
+		oak::KeyframeTrackRef track_ref(input_ref, i);
 		view_->connect_input(track_ref);
 		selected_tracks_.append(track_ref);
 	}
@@ -286,20 +287,21 @@ void CurveWidget::connect_input_internal(Node *node, const QString &input,
 
 void CurveWidget::selection_changed()
 {
-	const std::vector<NodeKeyframe *> &selected = view_->get_selected_keyframes();
+	const std::vector<OakEngineKeyframe *> &selected = view_->get_selected_keyframes();
 
 	set_keyframe_button_checked(false);
 	set_keyframe_button_enabled(!selected.empty());
 
 	if (!selected.empty()) {
 		bool all_same_type = true;
-		NodeKeyframe::Type type = selected.front()->type();
+		const int type = oakengine_keyframe_get_type(selected.front());
 
 		for (size_t i = 1; i < selected.size(); i++) {
-			NodeKeyframe *prev_item = selected.at(i - 1);
-			NodeKeyframe *this_item = selected.at(i);
+			OakEngineKeyframe *prev_item = selected.at(i - 1);
+			OakEngineKeyframe *this_item = selected.at(i);
 
-			if (prev_item->type() != this_item->type()) {
+			if (oakengine_keyframe_get_type(prev_item) !=
+				oakengine_keyframe_get_type(this_item)) {
 				all_same_type = false;
 				break;
 			}
@@ -322,21 +324,21 @@ void CurveWidget::keyframe_type_button_triggered(bool checked)
 	}
 
 	// Get selected items and do nothing if there are none
-	const std::vector<NodeKeyframe *> &selected = view_->get_selected_keyframes();
+	const std::vector<OakEngineKeyframe *> &selected = view_->get_selected_keyframes();
 	if (selected.empty()) {
 		return;
 	}
 
 	// Set all selected keyframes to this type
-	NodeKeyframe::Type new_type;
+	int new_type;
 
 	// Determine which type to set
 	if (key_btn == bezier_button_) {
-		new_type = NodeKeyframe::k_bezier;
+		new_type = KeyframeTypes::k_facade_bezier;
 	} else if (key_btn == hold_button_) {
-		new_type = NodeKeyframe::k_hold;
+		new_type = KeyframeTypes::k_facade_hold;
 	} else {
-		new_type = NodeKeyframe::k_linear;
+		new_type = KeyframeTypes::k_facade_linear;
 	}
 
 	// Ensure only the appropriate button is checked
@@ -346,53 +348,49 @@ void CurveWidget::keyframe_type_button_triggered(bool checked)
 	// distinct input (usually just one), with the same batch semantics as
 	// the old per-keyframe commands.
 	struct TypeGroup {
-		Node *node;
+		OakEngineNode *node;
 		QString input;
 		int element;
 		QVector<int64_t> times;
 		QVector<int> tracks;
 	};
 	QVector<TypeGroup> groups;
-	foreach (NodeKeyframe *item, selected) {
+	foreach (OakEngineKeyframe *item, selected) {
+		const oak::Keyframe key(item);
+		OakEngineNode *node = key.node().handle();
 		int g = 0;
 		for (; g < groups.size(); g++) {
-			if (groups.at(g).node == item->parent() &&
-				groups.at(g).input == item->input() &&
-				groups.at(g).element == item->element()) {
+			if (groups.at(g).node == node &&
+				groups.at(g).input == key.input_id() &&
+				groups.at(g).element == key.element()) {
 				break;
 			}
 		}
 		if (g == groups.size()) {
-			groups.append({ item->parent(), item->input(), item->element(),
+			groups.append({ node, key.input_id(), key.element(),
 							{}, {} });
 		}
-		OakEngineNode *handle =
-			reinterpret_cast<OakEngineNode *>(item->parent());
 		int tbn = 0, tbd = 0;
-		oakengine_node_frame_time_base(handle, &tbn, &tbd);
+		oakengine_node_frame_time_base(node, &tbn, &tbd);
+		int64_t num = 0, den = 1;
+		key.time(&num, &den);
 		groups[g].times.append(Timecode::time_to_timestamp(
-			item->time(), Rational(tbn, tbd), Timecode::k_round));
-		groups[g].tracks.append(item->track());
-	}
-	int facade_type = 0;
-	if (new_type == NodeKeyframe::k_bezier) {
-		facade_type = 1;
-	} else if (new_type == NodeKeyframe::k_hold) {
-		facade_type = 2;
+			Rational(int(num), int(den)), Rational(tbn, tbd), Timecode::k_round));
+		groups[g].tracks.append(key.track());
 	}
 	foreach (const TypeGroup &g, groups) {
 		oakengine_node_keyframes_set_type_many(
-			reinterpret_cast<OakEngineNode *>(g.node),
+			g.node,
 			g.input.toUtf8().constData(), g.element, g.times.constData(),
-			g.tracks.data(), g.times.size(), facade_type);
+			g.tracks.data(), g.times.size(), new_type);
 	}
 }
 
-void CurveWidget::input_selection_changed(const NodeKeyframeTrackReference &ref)
+void CurveWidget::input_selection_changed(const oak::KeyframeTrackRef &ref)
 {
 	key_control_->set_input(ref.input());
 
-	foreach (const NodeKeyframeTrackReference &c, selected_tracks_) {
+	foreach (const oak::KeyframeTrackRef &c, selected_tracks_) {
 		view_->disconnect_input(c);
 	}
 
@@ -404,14 +402,14 @@ void CurveWidget::input_selection_changed(const NodeKeyframeTrackReference &ref)
 		selected_tracks_.append(ref);
 	} else if (ref.input().is_valid()) {
 		// This reference is a input, connect all tracks
-		connect_input(ref.input().node(), ref.input().input(),
+		connect_input(ref.input().node(), ref.input().input_id(),
 					 ref.input().element());
-	} else if (Node *node = ref.input().node()) {
+	} else if (!ref.input().node().is_null()) {
 		// This is a node, add all inputs
-		foreach (const QString &input, node->inputs()) {
-			if (node->is_input_keyframable(input) &&
-				!node->is_input_hidden(input)) {
-				connect_input(node, input, -1);
+		const oak::Node node = ref.input().node();
+		foreach (const oak::Input &input, node.inputs()) {
+			if (input.is_keyframable() && !input.is_hidden()) {
+				connect_input(node, input.input_id(), -1);
 			}
 		}
 	}

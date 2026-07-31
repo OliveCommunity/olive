@@ -25,7 +25,7 @@
 #include "multicamdisplay.h"
 #include <cstdint>
 
-#include "node/input/multicam/multicamnode.h"
+#include "oakengine/timeline.h"
 #include "widget/viewer/viewer.h"
 
 namespace olive
@@ -41,20 +41,20 @@ public:
 		return display_;
 	}
 
-	void set_multicam_node(ViewerOutput *viewer, MultiCamNode *n, ClipBlock *clip,
-						 const Rational &time);
+	void set_multicam_node(OakEngineNode *viewer, OakEngineNode *n,
+						 OakEngineBlock *clip, const Rational &time);
 
 protected:
-	virtual void ConnectNodeEvent(ViewerOutput *n) override;
-	virtual void DisconnectNodeEvent(ViewerOutput *n) override;
+	virtual void ConnectNodeEvent(OakEngineNode *n) override;
+	virtual void DisconnectNodeEvent(OakEngineNode *n) override;
 	virtual void TimeChangedEvent(const Rational &t) override;
 
 signals:
 	void switched();
 
 private:
-	void set_multicam_node_internal(ViewerOutput *viewer, MultiCamNode *n,
-								 ClipBlock *clip);
+	void set_multicam_node_internal(OakEngineNode *viewer, OakEngineNode *n,
+								 OakEngineBlock *clip);
 
 	void Switch(int source, bool split_clip);
 
@@ -65,15 +65,15 @@ private:
 
 	MulticamDisplay *display_;
 
-	MultiCamNode *node_;
+	OakEngineNode *node_;
 
-	ClipBlock *clip_;
+	OakEngineBlock *clip_;
 
 	struct MulticamNodeQueue {
 		Rational time;
-		ViewerOutput *viewer;
-		MultiCamNode *node;
-		ClipBlock *clip;
+		OakEngineNode *viewer;
+		OakEngineNode *node;
+		OakEngineBlock *clip;
 	};
 
 	std::list<MulticamNodeQueue> play_queue_;

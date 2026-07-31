@@ -38,7 +38,7 @@ public:
 	TimelineViewMouseEvent(
 		const QPointF &scene_pos, const QPoint &screen_pos,
 		const double &scale_x, const Rational &timebase,
-		const Track::Reference &track, const Qt::MouseButton &button,
+		const TrackReference &track, const Qt::MouseButton &button,
 		const Qt::KeyboardModifiers &modifiers = Qt::NoModifier)
 		: scene_pos_(scene_pos)
 		, screen_pos_(screen_pos)
@@ -78,7 +78,7 @@ public:
 											 round);
 	}
 
-	const Track::Reference &get_track() const
+	const TrackReference &get_track() const
 	{
 		return track_;
 	}
@@ -144,7 +144,7 @@ private:
 	double scale_x_;
 	Rational timebase_;
 
-	Track::Reference track_;
+	TrackReference track_;
 
 	Qt::MouseButton button_;
 

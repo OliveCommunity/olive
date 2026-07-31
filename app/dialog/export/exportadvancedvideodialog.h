@@ -22,7 +22,6 @@
 #include <QComboBox>
 #include <QDialog>
 
-#include "codec/encoder.h"
 #include "widget/slider/integerslider.h"
 
 namespace olive

@@ -31,7 +31,7 @@ namespace olive
 namespace {
 
 struct OpenCloseSequenceData {
-	Sequence *sequence;
+	OakEngineNode *sequence;
 };
 
 void open_sequence_redo(void *userdata)
@@ -65,19 +65,21 @@ void open_close_sequence_free(void *userdata)
 
 } // anonymous namespace
 
-void *make_open_sequence_command(Sequence *sequence)
+void *make_open_sequence_command(oak::Node sequence)
 {
 	auto *d = new OpenCloseSequenceData;
-	d->sequence = sequence;
+	d->sequence = sequence.handle();
+	// WRAPPER-GAP: oakengine_undo_command_create (undo command assembly)
 	return oakengine_undo_command_create(nullptr, open_sequence_redo,
 										 open_sequence_undo,
 										 open_close_sequence_free, d);
 }
 
-void *make_close_sequence_command(Sequence *sequence)
+void *make_close_sequence_command(oak::Node sequence)
 {
 	auto *d = new OpenCloseSequenceData;
-	d->sequence = sequence;
+	d->sequence = sequence.handle();
+	// WRAPPER-GAP: oakengine_undo_command_create (undo command assembly)
 	return oakengine_undo_command_create(nullptr, close_sequence_redo,
 										 close_sequence_undo,
 										 open_close_sequence_free, d);

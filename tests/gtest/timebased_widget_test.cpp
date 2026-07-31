@@ -15,8 +15,8 @@ TEST(TimeBasedWidget, ConnectedNodeClearsOnDelete)
 {
 	olive::TimeBasedWidget widget(false, false);
 	auto *viewer = new olive::ViewerOutput();
-	widget.connect_viewer_node(viewer);
-	EXPECT_EQ(widget.get_connected_node(), viewer);
+	widget.connect_viewer_node(reinterpret_cast<OakEngineNode *>(viewer));
+	EXPECT_EQ(widget.get_connected_node(), reinterpret_cast<OakEngineNode *>(viewer));
 	delete viewer;
 	EXPECT_EQ(widget.get_connected_node(), nullptr);
 }
@@ -63,11 +63,11 @@ TEST(SeekableWidget, SetMarkersAndWorkAreaAreReflected)
 	olive::TimelineMarkerList markers;
 	olive::TimelineWorkArea workarea;
 
-	widget.set_markers(&markers);
-	widget.set_work_area(&workarea);
+	widget.set_markers(reinterpret_cast<OakEngineMarkerList *>(&markers));
+	widget.set_work_area(reinterpret_cast<OakEngineWorkarea *>(&workarea));
 
-	EXPECT_EQ(widget.get_markers(), &markers);
-	EXPECT_EQ(widget.get_work_area(), &workarea);
+	EXPECT_EQ(widget.get_markers(), reinterpret_cast<OakEngineMarkerList *>(&markers));
+	EXPECT_EQ(widget.get_work_area(), reinterpret_cast<OakEngineWorkarea *>(&workarea));
 }
 
 TEST(SeekableWidget, MarkerEditingEnabledToggles)

@@ -21,6 +21,7 @@
 
 #include "timelineview.h"
 
+#include <QByteArray>
 #include <QDebug>
 #include <QMimeData>
 #include <QMouseEvent>
@@ -31,13 +32,14 @@
 #include "common/configwrapper.h"
 #include "oakutil/qtutils.h"
 #include "../../timeruler/markerpainting.h"
-#include "node/project/footage/footage.h"
+#include "oakengine/preview.h"
 #include "oakengine/timeline.h"
 #include "oakengine/viewer.h"
 #include "panel/panelmanager.h"
 #include "panel/timeline/timeline.h"
 #include "widget/timelinewidget/cliphandle.h"
-#include "ui/colorcoding.h"
+#include "widget/timelinewidget/trackhandle.h"
+#include "common/colorcodingapp.h"
 #include "widget/timelinewidget/timelinewidget.h"
 
 #include "widget/viewer/vieweroutpututils.h"
@@ -46,12 +48,203 @@ namespace olive
 
 #define super TimeBasedView
 
+namespace
+{
+
+/// Number of tracks of `type` in `seq` (TrackList::get_track_count()).
+int track_count_of(OakEngineSequence *seq, int type)
+{
+	if (!seq || type < 0 || type >= 3) {
+		return 0;
+	}
+	int counts[3] = { 0, 0, 0 };
+	oakengine_sequence_track_count(seq, &counts[0], &counts[1], &counts[2]);
+	return counts[type];
+}
+
+/// Borrowed track at (type, index) as an opaque track handle.
+OakEngineTrack *track_at(OakEngineSequence *seq, int type, int index)
+{
+	return oakengine_sequence_track_at(seq, type, index);
+}
+
+/// All tracks of `type` through the C ABI (count + indexed access).
+QVector<OakEngineTrack *> track_list_tracks(OakEngineSequence *seq, int type)
+{
+	QVector<OakEngineTrack *> tracks;
+	const int n = track_count_of(seq, type);
+	tracks.reserve(n);
+	for (int i = 0; i < n; i++) {
+		if (OakEngineTrack *t = track_at(seq, type, i)) {
+			tracks.append(t);
+		}
+	}
+	return tracks;
+}
+
+/// Track::get_track_height_in_pixels() through the C ABI.
+int track_height_in_pixels(OakEngineSequence *seq, int type, int index)
+{
+	double h = 0;
+	if (!seq ||
+		oakengine_track_get_height(seq, type, index, &h) != OAKENGINE_OK) {
+		return oakengine_track_default_height_in_pixels();
+	}
+	return oakengine_track_height_internal_to_pixels(h);
+}
+
+/// The track's blocks through the C ABI (count + indexed access).
+QVector<OakEngineBlock *> track_all_blocks(OakEngineTrack *track)
+{
+	QVector<OakEngineBlock *> blocks;
+	OakEngineTrack *h = trackhandle(track);
+	const int n = oakengine_track_block_count(h);
+	blocks.reserve(n);
+	for (int i = 0; i < n; i++) {
+		if (OakEngineBlock *b = oakengine_track_block_at(h, i)) {
+			blocks.append(b);
+		}
+	}
+	return blocks;
+}
+
+/// Clip-style predicate for block handles (replaces a dynamic_cast to the
+/// engine clip class now that its definition is no longer visible here).
+OakEngineBlock *block_as_clip(OakEngineBlock *block)
+{
+	return (block &&
+			oakengine_node_is_clip(reinterpret_cast<OakEngineNode *>(block)))
+			   ? block
+			   : nullptr;
+}
+
+/// The block's in-point as rational seconds.
+Rational block_time_in(OakEngineBlock *block)
+{
+	int num = 0, den = 1;
+	oakengine_block_get_in_rational(
+		reinterpret_cast<const OakEngineNode *>(block), &num, &den);
+	return Rational(num, den);
+}
+
+/// The block's out-point as rational seconds.
+Rational block_time_out(OakEngineBlock *block)
+{
+	int num = 0, den = 1;
+	oakengine_block_get_out_rational(
+		reinterpret_cast<const OakEngineNode *>(block), &num, &den);
+	return Rational(num, den);
+}
+
+/// The block's length as rational seconds.
+Rational block_length(OakEngineBlock *block)
+{
+	int num = 0, den = 1;
+	oakengine_block_get_length_rational(
+		reinterpret_cast<const OakEngineNode *>(block), &num, &den);
+	return Rational(num, den);
+}
+
+/// Next block on the track (borrowed handle, may be null).
+OakEngineBlock *block_next(OakEngineBlock *block)
+{
+	return oakengine_block_next(block);
+}
+
+/// The block's enabled flag through the C ABI.
+bool block_is_enabled(OakEngineBlock *block)
+{
+	return oakengine_block_is_enabled(block) != 0;
+}
+
+/// The block's effective color through the C ABI (color label -> app
+/// ColorCoding).
+core::Color block_color(OakEngineBlock *block)
+{
+	return AppColorCoding::get_color(oakengine_node_get_effective_color_label(
+		reinterpret_cast<const OakEngineNode *>(block)));
+}
+
+/// Brush for a block, app-side (gradient or flat, mirroring the engine
+/// version).
+QBrush block_brush(OakEngineBlock *block, qreal top, qreal bottom)
+{
+	const QColor c = QtUtils::to_q_color(block_color(block));
+	if (OAK_CONFIG("UseGradients").toBool()) {
+		QLinearGradient grad;
+		grad.setStart(0, top);
+		grad.setFinalStop(0, bottom);
+		grad.setColorAt(0.0, c.lighter());
+		grad.setColorAt(1.0, c);
+		return grad;
+	}
+	return c;
+}
+
+/// The block's link presence through the C ABI.
+bool block_has_links(OakEngineBlock *block)
+{
+	return oakengine_block_link_count(block) > 0;
+}
+
+/// The block's label-or-name through the C ABI.
+QString block_label_or_name(OakEngineBlock *block)
+{
+	char buf[1024];
+	buf[0] = '\0';
+	oakengine_node_get_label_and_name(
+		reinterpret_cast<const OakEngineNode *>(block), buf, sizeof(buf));
+	return QString::fromUtf8(buf);
+}
+
+/// The clip's connected viewer as an OakEngineNode handle (borrowed).
+OakEngineNode *clip_connected_viewer(OakEngineBlock *clip)
+{
+	return oakengine_clip_get_connected_viewer(clip);
+}
+
+/// The clip's track type through the C ABI (track of the clip).
+int clip_track_type(OakEngineBlock *clip)
+{
+	return oakengine_track_type(reinterpret_cast<OakEngineTrack *>(
+		oakengine_clip_get_track(reinterpret_cast<OakEngineNode *>(clip))));
+}
+
+/// The viewer's length as rational seconds.
+Rational viewer_length(OakEngineNode *viewer)
+{
+	int64_t num = 0, den = 1;
+	oakengine_viewer_get_length(viewer, &num, &den);
+	return Rational(int(num), int(den));
+}
+
+/// Marker time range as rational seconds (oakengine_marker_get_time).
+TimeRange marker_time_range(const OakEngineMarker *marker)
+{
+	int64_t in_num = 0, in_den = 1, out_num = 0, out_den = 1;
+	oakengine_marker_get_time(marker, &in_num, &in_den, &out_num, &out_den);
+	return TimeRange(Rational(int(in_num), int(in_den)),
+					 Rational(int(out_num), int(out_den)));
+}
+
+/// Marker name through the C ABI.
+QString marker_name_of(const OakEngineMarker *marker)
+{
+	const int size = oakengine_marker_get_name(marker, nullptr, 0);
+	QByteArray buf(size + 1, '\0');
+	oakengine_marker_get_name(marker, buf.data(), int(buf.size()));
+	return QString::fromUtf8(buf.constData());
+}
+
+} // namespace
+
 TimelineView::TimelineView(Qt::Alignment vertical_alignment, QWidget *parent)
 	: super(parent)
 	, selections_(nullptr)
 	, ghosts_(nullptr)
 	, show_beam_cursor_(false)
-	, connected_track_list_(nullptr)
+	, connected_sequence_(nullptr)
+	, connected_track_type_(-1)
 	, transition_overlay_out_(nullptr)
 	, transition_overlay_in_(nullptr)
 {
@@ -74,10 +267,10 @@ void TimelineView::mousePressEvent(QMouseEvent *event)
 	for (auto it = clip_marker_rects_.cbegin(); it != clip_marker_rects_.cend();
 		 it++) {
 		if (it.value().contains(scene_pos)) {
-			oakengine_viewer_set_playhead(
-			reinterpret_cast<OakEngineNode *>(get_viewer_node()),
-			it.key()->time().in().numerator(),
-			it.key()->time().in().denominator());
+			const Rational marker_in = marker_time_range(it.key()).in();
+			oakengine_viewer_set_playhead(get_viewer_node(),
+			marker_in.numerator(),
+			marker_in.denominator());
 			break;
 		}
 	}
@@ -116,19 +309,19 @@ void TimelineView::mouseMoveEvent(QMouseEvent *event)
 	}
 
 	if (event->buttons() == Qt::NoButton) {
-		Block *b = get_item_at_scene_pos(timeline_event.get_frame(),
-									 timeline_event.get_track().index());
+		OakEngineBlock *b = get_item_at_scene_pos(
+			timeline_event.get_frame(), timeline_event.get_track().index());
 		if (b) {
 			setToolTip(
 				tr("In: %1\nOut: %2\nDuration: %3")
 					.arg(QString::fromStdString(Timecode::time_to_timecode(
-							 b->in(), timebase(),
+							 block_time_in(b), timebase(),
 							 Core::instance()->get_timecode_display())),
 						 QString::fromStdString(Timecode::time_to_timecode(
-							 b->out(), timebase(),
+							 block_time_out(b), timebase(),
 							 Core::instance()->get_timecode_display())),
 						 QString::fromStdString(Timecode::time_to_timecode(
-							 b->length(), timebase(),
+							 block_length(b), timebase(),
 							 Core::instance()->get_timecode_display()))));
 		} else {
 			setToolTip(QString());
@@ -202,7 +395,7 @@ void TimelineView::dropEvent(QDropEvent *event)
 
 void TimelineView::drawBackground(QPainter *painter, const QRectF &rect)
 {
-	if (!connected_track_list_) {
+	if (!connected_sequence_) {
 		return;
 	}
 
@@ -210,8 +403,11 @@ void TimelineView::drawBackground(QPainter *painter, const QRectF &rect)
 
 	int line_y = 0;
 
-	foreach (Track *track, connected_track_list_->get_tracks()) {
-		line_y += track->get_track_height_in_pixels();
+	const int track_count = track_count_of(connected_sequence_,
+										   connected_track_type_);
+	for (int i = 0; i < track_count; i++) {
+		line_y += track_height_in_pixels(connected_sequence_,
+										 connected_track_type_, i);
 
 		// One px gap between tracks
 		line_y++;
@@ -231,7 +427,7 @@ void TimelineView::drawBackground(QPainter *painter, const QRectF &rect)
 
 void TimelineView::drawForeground(QPainter *painter, const QRectF &rect)
 {
-	if (!connected_track_list_) {
+	if (!connected_sequence_) {
 		return;
 	}
 
@@ -244,7 +440,10 @@ void TimelineView::drawForeground(QPainter *painter, const QRectF &rect)
 		painter->setBrush(QColor(0, 0, 0, 64));
 
 		for (auto it = selections_->cbegin(); it != selections_->cend(); it++) {
-			if (it.key().type() == connected_track_list_->type()) {
+			// TrackReference mirror ordinals == engine Track::Type ordinals
+			// (static_assert-pinned in trackreferencehandle.h)
+			if (it.key().type() ==
+				static_cast<TrackReference::Type>(connected_track_type_)) {
 				int track_index = it.key().index();
 
 				foreach (const TimeRange &range, it.value()) {
@@ -263,11 +462,12 @@ void TimelineView::drawForeground(QPainter *painter, const QRectF &rect)
 	// Draw ghosts
 	if (ghosts_ && !ghosts_->isEmpty()) {
 		foreach (TimelineViewGhostItem *ghost, (*ghosts_)) {
-			if (ghost->get_track().type() == connected_track_list_->type() &&
+			if (ghost->get_track().type() ==
+					static_cast<TrackReference::Type>(connected_track_type_) &&
 				!ghost->is_invisible()) {
 				int track_index = ghost->get_adjusted_track().index();
 
-				Block *attached = QtUtils::value_to_ptr<Block>(
+				OakEngineBlock *attached = QtUtils::value_to_ptr<OakEngineBlock>(
 					ghost->get_data(TimelineViewGhostItem::k_attached_block));
 
 				if (attached &&
@@ -303,7 +503,8 @@ void TimelineView::drawForeground(QPainter *painter, const QRectF &rect)
 
 	// Draw beam cursor
 	if (show_beam_cursor_ &&
-		cursor_coord_.get_track().type() == connected_track_list_->type()) {
+		cursor_coord_.get_track().type() ==
+			static_cast<TrackReference::Type>(connected_track_type_)) {
 		painter->setPen(Qt::gray);
 
 		double cursor_x = time_to_scene(cursor_coord_.get_frame());
@@ -316,13 +517,17 @@ void TimelineView::drawForeground(QPainter *painter, const QRectF &rect)
 
 	// Draw recording overlay
 	if (recording_overlay_ &&
-		recording_coord_.get_track().type() == connected_track_list_->type()) {
+		recording_coord_.get_track().type() ==
+			static_cast<TrackReference::Type>(connected_track_type_)) {
 		painter->setPen(QPen(Qt::red, 2));
 		painter->setBrush(QColor(255, 128, 128));
 
 		int x = time_to_scene(recording_coord_.get_frame());
+		int64_t ph_num = 0, ph_den = 1;
+		oakengine_viewer_get_playhead(get_viewer_node(), &ph_num,
+			&ph_den);
 		painter->drawRect(x, get_track_y(recording_coord_.get_track().index()),
-						  time_to_scene(get_viewer_node()->get_playhead()) - x,
+						  time_to_scene(Rational(int(ph_num), int(ph_den))) - x,
 						  get_track_height(recording_coord_.get_track().index()));
 	}
 
@@ -370,13 +575,9 @@ void TimelineView::SceneRectUpdateEvent(QRectF &rect)
 	}
 }
 
-Track::Type TimelineView::connected_track_type()
+TrackReference::Type TimelineView::connected_track_type() const
 {
-	if (connected_track_list_) {
-		return connected_track_list_->type();
-	}
-
-	return Track::k_none;
+	return static_cast<TrackReference::Type>(connected_track_type_);
 }
 
 TimelineCoordinate TimelineView::screen_to_coordinate(const QPoint &pt)
@@ -387,8 +588,8 @@ TimelineCoordinate TimelineView::screen_to_coordinate(const QPoint &pt)
 TimelineCoordinate TimelineView::scene_to_coordinate(const QPointF &pt)
 {
 	return TimelineCoordinate(scene_to_time(pt.x()),
-							  Track::Reference(connected_track_type(),
-											   scene_to_track(pt.y())));
+							  TrackReference(connected_track_type(),
+											 scene_to_track(pt.y())));
 }
 
 TimelineViewMouseEvent TimelineView::CreateMouseEvent(QMouseEvent *event)
@@ -403,8 +604,8 @@ TimelineView::CreateMouseEvent(const QPoint &pos, Qt::MouseButton button,
 	QPointF scene_pt = mapToScene(pos);
 
 	return TimelineViewMouseEvent(scene_pt, pos, get_scale(), timebase(),
-								  Track::Reference(connected_track_type(),
-												   scene_to_track(scene_pt.y())),
+								  TrackReference(connected_track_type(),
+												 scene_to_track(scene_pt.y())),
 								  button, modifiers);
 }
 
@@ -412,50 +613,56 @@ void TimelineView::draw_blocks(QPainter *painter, bool foreground)
 {
 	Rational start_time = scene_to_time(get_timeline_left_bound());
 	Rational end_time = scene_to_time(get_timeline_right_bound());
+	const int64_t start_ts = core::Timecode::time_to_timestamp(
+		start_time, sequence_timebase(connected_sequence_));
 
-	foreach (Track *track, connected_track_list_->get_tracks()) {
+	foreach (OakEngineTrack *track,
+			 track_list_tracks(connected_sequence_, connected_track_type_)) {
 		// Get first visible block in this track
-		Block *block = track->nearest_block_before_or_at(start_time);
+		OakEngineBlock *block = oakengine_track_nearest_block_before_or_at(
+			trackhandle(track), start_ts);
 
-		qreal track_top = get_track_y(track->index());
-		qreal track_height = get_track_height(track->index());
+		const int track_index = track_index_of(track);
+		qreal track_top = get_track_y(track_index);
+		qreal track_height = get_track_height(track_index);
 
 		while (block) {
 			draw_block(painter, foreground, block, track_top, track_height);
 
-			if (block->out() >= end_time) {
+			if (block_time_out(block) >= end_time) {
 				// Rest of the clips are offscreen, can break loop now
 				break;
 			}
 
-			block = block->next();
+			block = block_next(block);
 		}
 	}
 }
 
-void TimelineView::draw_block(QPainter *painter, bool foreground, Block *block,
-							 qreal block_top, qreal block_height)
+void TimelineView::draw_block(QPainter *painter, bool foreground,
+							 OakEngineBlock *block, qreal block_top,
+							 qreal block_height)
 {
 	Rational media_in = 0;
-	if (ClipBlock *cb = dynamic_cast<ClipBlock *>(block)) {
+	if (OakEngineBlock *cb = block_as_clip(block)) {
 		int64_t in_num, in_den;
 		if (oakengine_clip_get_media_range_rational(
-				reinterpret_cast<OakEngineClip *>(cb), &in_num, &in_den,
+				cliphandle(cb), &in_num, &in_den,
 				nullptr, nullptr) == OAKENGINE_OK) {
 			media_in = Rational(in_num, in_den);
 		}
 	}
 	draw_block(painter, foreground, block, block_top, block_height,
-			   block->in(), block->out(), media_in);
+			   block_time_in(block), block_time_out(block), media_in);
 }
 
-void TimelineView::draw_block(QPainter *painter, bool foreground, Block *block,
-							 qreal block_top, qreal block_height,
-							 const Rational &in, const Rational &out,
-							 const Rational &media_in)
+void TimelineView::draw_block(QPainter *painter, bool foreground,
+							 OakEngineBlock *block, qreal block_top,
+							 qreal block_height, const Rational &in,
+							 const Rational &out, const Rational &media_in)
 {
-	if (dynamic_cast<ClipBlock *>(block) ||
-		dynamic_cast<TransitionBlock *>(block)) {
+	if (block_as_clip(block) ||
+		oakengine_node_is_transition(reinterpret_cast<OakEngineNode *>(block))) {
 		qreal block_in = time_to_scene(in);
 
 		qreal block_left = qMax(get_timeline_left_bound(), block_in);
@@ -463,8 +670,8 @@ void TimelineView::draw_block(QPainter *painter, bool foreground, Block *block,
 
 		QRectF r(block_left, block_top, block_right - block_left, block_height);
 
-		QColor shadow_color = block->is_enabled() ?
-								  QtUtils::to_q_color(block->color()).darker() :
+		QColor shadow_color = block_is_enabled(block) ?
+								  QtUtils::to_q_color(block_color(block)).darker() :
 								  QColor(Qt::darkGray).darker();
 
 		const qreal minimum_rect_width = 2;
@@ -490,18 +697,18 @@ void TimelineView::draw_block(QPainter *painter, bool foreground, Block *block,
 				painter->setBrush(Qt::NoBrush);
 
 				if (r.width() > minimum_detail_width) {
-					QString using_label = block->get_label_or_name();
+					QString using_label = block_label_or_name(block);
 
 					QRectF text_rect = r.adjusted(text_padding, text_padding,
 												  -text_padding, -text_padding);
 					painter->setPen(
-						block->is_enabled() ?
-							ColorCoding::get_ui_selector_color(block->color()) :
+						block_is_enabled(block) ?
+							AppColorCoding::get_ui_selector_color(block_color(block)) :
 							Qt::lightGray);
 					painter->drawText(text_rect, Qt::AlignLeft | Qt::AlignTop,
 									  using_label);
 
-					if (block->has_links()) {
+					if (block_has_links(block)) {
 						int text_width =
 							qMin(qRound(text_rect.width()),
 								 QtUtils::q_font_metrics_width(fm, using_label));
@@ -530,19 +737,19 @@ void TimelineView::draw_block(QPainter *painter, bool foreground, Block *block,
 			} else {
 				painter->setPen(Qt::NoPen);
 				painter->setBrush(
-					block->is_enabled() ?
-						block->brush(block_top, block_top + block_height) :
+					block_is_enabled(block) ?
+						block_brush(block, block_top, block_top + block_height) :
 						Qt::gray);
 				painter->drawRect(r);
 
 				if (r.width() > minimum_detail_width) {
-					if (ClipBlock *clip = dynamic_cast<ClipBlock *>(block)) {
+					if (OakEngineBlock *clip = block_as_clip(block)) {
 						QRect preview_rect = r.toRect();
 
 						// Draw clip thumbnails
-						if (clip->get_track_type() == Track::k_video &&
+						if (clip_track_type(clip) == TrackReference::k_video &&
 							OAK_CONFIG("TimelineThumbnailMode").toInt() !=
-								Timeline::k_thumbnail_off) {
+								TimelineApp::k_thumbnail_off) {
 							// Start thumbnails underneath clip name
 							preview_rect.adjust(0, text_total_height, 0, 0);
 
@@ -555,8 +762,10 @@ void TimelineView::draw_block(QPainter *painter, bool foreground, Block *block,
 									painter->setClipRect(preview_rect);
 
 									if (OAK_CONFIG("TimelineThumbnailMode") ==
-										Timeline::k_thumbnail_on) {
-										Sequence *s = clip->track()->sequence();
+										TimelineApp::k_thumbnail_on) {
+										OakEngineNode *s = oakengine_track_get_sequence(
+											oakengine_clip_get_track(
+												reinterpret_cast<OakEngineNode *>(clip)));
 										int width = viewer_output_video_params(s).width();
 										int height =
 											viewer_output_video_params(s).height();
@@ -583,7 +792,7 @@ void TimelineView::draw_block(QPainter *painter, bool foreground, Block *block,
 												scene_to_time(
 													i - block_in, get_scale(),
 													viewer_output_video_params(
-														connected_track_list_->parent())
+														connected_sequence_)
 														.frame_rate_as_time_base()) +
 												media_in;
 											draw_thumbnail(painter, thumbs,
@@ -609,16 +818,16 @@ void TimelineView::draw_block(QPainter *painter, bool foreground, Block *block,
 						}
 
 						// Draw waveform
-						if (clip->get_track_type() == Track::k_audio &&
+						if (clip_track_type(clip) == TrackReference::k_audio &&
 							OAK_CONFIG("TimelineWaveformMode").toInt() ==
-								Timeline::k_waveforms_enabled) {
+								TimelineApp::k_waveforms_enabled) {
 							if (const AudioWaveformCache *wave =
 									clip_waveform(clip)) {
 								Rational waveform_start =
 									scene_to_time(
 										block_left - block_in, get_scale(),
 									viewer_output_audio_params(
-										connected_track_list_->parent())
+										connected_sequence_)
 										.sample_rate_as_time_base()) +
 									media_in;
 								painter->setPen(shadow_color);
@@ -629,16 +838,21 @@ void TimelineView::draw_block(QPainter *painter, bool foreground, Block *block,
 						}
 
 						// Draw zebra stripes and markers
-						if (clip->connected_viewer()) {
-							if (!clip->connected_viewer()->get_length().isNull()) {
+						OakEngineNode *connected_viewer =
+							clip_connected_viewer(clip);
+						if (connected_viewer) {
+							const Rational connected_length =
+								viewer_length(connected_viewer);
+							if (!connected_length.isNull()) {
 								painter->setPen(shadow_color);
 
 								if (clip_media_in(clip) < 0) {
 									qreal zebra_right = time_to_scene(
-										clip->in() - clip_media_in(clip));
+										block_time_in(block) -
+										clip_media_in(clip));
 
-									switch (static_cast<LoopMode>(clip_loop_mode(clip))) {
-									case LoopMode::k_loop_mode_off:
+									switch (clip_loop_mode(clip)) {
+									case OAKENGINE_LOOP_MODE_OFF:
 										// Draw stripes for sections of clip < 0
 										if (zebra_right >
 											get_timeline_left_bound()) {
@@ -649,18 +863,17 @@ void TimelineView::draw_block(QPainter *painter, bool foreground, Block *block,
 													   block_height));
 										}
 										break;
-									case LoopMode::k_loop_mode_loop:
+									case OAKENGINE_LOOP_MODE_LOOP:
 										for (qreal i = zebra_right;
 											 i > block_left;
 											 i -= time_to_scene(
-												 clip->connected_viewer()
-													 ->get_length())) {
+												 connected_length)) {
 											painter->drawLine(i, block_top, i,
 															  block_top +
 																  block_height);
 										}
 										break;
-									case LoopMode::k_loop_mode_clamp:
+									case OAKENGINE_LOOP_MODE_CLAMP:
 										painter->drawLine(
 											zebra_right, block_top, zebra_right,
 											block_top + block_height);
@@ -668,14 +881,15 @@ void TimelineView::draw_block(QPainter *painter, bool foreground, Block *block,
 									}
 								}
 
-								if (clip->length() + clip_media_in(clip) >
-									clip->connected_viewer()->get_length()) {
+								if (block_length(block) + clip_media_in(clip) >
+									connected_length) {
 									qreal zebra_left = time_to_scene(
-										clip->out() -
-										(clip_media_in(clip) + clip->length() -
-										 clip->connected_viewer()->get_length()));
-									switch (static_cast<LoopMode>(clip_loop_mode(clip))) {
-									case LoopMode::k_loop_mode_off:
+										block_time_out(block) -
+										(clip_media_in(clip) +
+										 block_length(block) -
+										 connected_length));
+									switch (clip_loop_mode(clip)) {
+									case OAKENGINE_LOOP_MODE_OFF:
 										// Draw stripes for sections for clip > clip length
 										if (zebra_left <
 											get_timeline_right_bound()) {
@@ -686,18 +900,17 @@ void TimelineView::draw_block(QPainter *painter, bool foreground, Block *block,
 													   block_height));
 										}
 										break;
-									case LoopMode::k_loop_mode_loop:
+									case OAKENGINE_LOOP_MODE_LOOP:
 										for (qreal i = zebra_left;
 											 i < block_right;
 											 i += time_to_scene(
-												 clip->connected_viewer()
-													 ->get_length())) {
+												 connected_length)) {
 											painter->drawLine(i, block_top, i,
 															  block_top +
 																  block_height);
 										}
 										break;
-									case LoopMode::k_loop_mode_clamp:
+									case OAKENGINE_LOOP_MODE_CLAMP:
 										painter->drawLine(
 											zebra_left, block_top, zebra_left,
 											block_top + block_height);
@@ -706,32 +919,42 @@ void TimelineView::draw_block(QPainter *painter, bool foreground, Block *block,
 								}
 							}
 
-							TimelineMarkerList *marker_list =
-								clip->connected_viewer()->get_markers();
-							if (!marker_list->empty()) {
+							OakEngineMarkerList *marker_list =
+								oakengine_viewer_get_marker_list(
+									connected_viewer);
+							const int marker_count =
+								oakengine_marker_list_count(marker_list);
+							if (marker_count > 0) {
 								clip_marker_rects_.clear();
 
-								for (auto it = marker_list->cbegin();
-									 it != marker_list->cend(); it++) {
-									TimelineMarker *marker = *it;
+								for (int mi = 0; mi < marker_count; mi++) {
+									OakEngineMarker *marker =
+										oakengine_marker_list_at(marker_list,
+																 mi);
+									const TimeRange marker_range =
+										marker_time_range(marker);
 									// Make sure marker is within In/Out points of the clip
-									if (marker->time().in() >=
+									if (marker_range.in() >=
 											clip_media_in(clip) &&
-										marker->time().out() <=
-											clip_media_in(clip) + clip->length()) {
+										marker_range.out() <=
+											clip_media_in(clip) +
+												block_length(block)) {
 										QPoint marker_pt(
-											time_to_scene(clip->in() -
-														clip_media_in(clip) +
-														marker->time().in()),
+											time_to_scene(
+												block_time_in(block) -
+												clip_media_in(clip) +
+												marker_range.in()),
 											block_top + block_height);
 										painter->setClipRect(r);
 										QRect marker_rect =
 											MarkerPainting::draw(
 												painter, marker_pt, -1,
 												get_scale(), false,
-												marker->name(), marker->color(),
-												marker->time().in(),
-												marker->time().out());
+												marker_name_of(marker),
+												oakengine_marker_get_color(
+													marker),
+												marker_range.in(),
+												marker_range.out());
 										clip_marker_rects_.insert(marker,
 																  marker_rect);
 										painter->setClipping(false);
@@ -757,15 +980,16 @@ void TimelineView::draw_block(QPainter *painter, bool foreground, Block *block,
 					}
 
 					// For transitions, show lines representing a transition
-					if (TransitionBlock *transition =
-							dynamic_cast<TransitionBlock *>(block)) {
+					if (oakengine_node_is_transition(
+							reinterpret_cast<OakEngineNode *>(block))) {
 						QVector<QLineF> lines;
+						OakEngineBlock *tb = block;
 
-						if (transition->connected_in_block()) {
+						if (oakengine_transition_connected_in_block(tb)) {
 							lines.append(QLineF(r.bottomLeft(), r.topRight()));
 						}
 
-						if (transition->connected_out_block()) {
+						if (oakengine_transition_connected_out_block(tb)) {
 							lines.append(QLineF(r.topLeft(), r.bottomRight()));
 						}
 
@@ -773,27 +997,26 @@ void TimelineView::draw_block(QPainter *painter, bool foreground, Block *block,
 						painter->drawLines(lines);
 					}
 
-					if (transition_overlay_out_ == block ||
-						transition_overlay_in_ == block) {
+					OakEngineBlock *overlay_out = transition_overlay_out_;
+					OakEngineBlock *overlay_in = transition_overlay_in_;
+					if (overlay_out == block || overlay_in == block) {
 						QRectF transition_overlay_rect = r;
 
 						qreal transition_overlay_width =
-							time_to_scene(block->length()) * 0.5;
-						if (transition_overlay_out_ && transition_overlay_in_) {
+							time_to_scene(block_length(block)) * 0.5;
+						if (overlay_out && overlay_in) {
 							// This is a dual transition, use the smallest width
-							Block *other_block =
-								(transition_overlay_out_ == block) ?
-									transition_overlay_in_ :
-									transition_overlay_out_;
+							OakEngineBlock *other_block =
+								(overlay_out == block) ? overlay_in : overlay_out;
 
 							qreal other_width =
-								time_to_scene(other_block->length()) * 0.5;
+								time_to_scene(block_length(other_block)) * 0.5;
 
 							transition_overlay_width =
 								qMin(transition_overlay_width, other_width);
 						}
 
-						if (transition_overlay_out_ == block) {
+						if (overlay_out == block) {
 							transition_overlay_rect.setLeft(
 								transition_overlay_rect.right() -
 								transition_overlay_width);
@@ -838,11 +1061,13 @@ void TimelineView::draw_zebra_stripes(QPainter *painter, const QRectF &r)
 
 int TimelineView::get_height_of_all_tracks() const
 {
-	if (connected_track_list_) {
+	if (connected_sequence_) {
+		const int count =
+			track_count_of(connected_sequence_, connected_track_type_);
 		if (alignment() & Qt::AlignTop) {
-			return get_track_y(connected_track_list_->get_track_count());
+			return get_track_y(count);
 		} else {
-			return get_track_y(connected_track_list_->get_track_count() - 1);
+			return get_track_y(count - 1);
 		}
 	} else {
 		return 0;
@@ -880,7 +1105,8 @@ void TimelineView::draw_thumbnail(QPainter *painter,
 
 int TimelineView::get_track_y(int track_index) const
 {
-	if (!connected_track_list_ || !connected_track_list_->get_track_count()) {
+	if (!connected_sequence_ ||
+		!track_count_of(connected_sequence_, connected_track_type_)) {
 		return 0;
 	}
 
@@ -906,26 +1132,27 @@ int TimelineView::get_track_y(int track_index) const
 
 int TimelineView::get_track_height(int track_index) const
 {
-	if (!connected_track_list_ || connected_track_list_->get_track_count() == 0) {
+	const int count = track_count_of(connected_sequence_, connected_track_type_);
+	if (!connected_sequence_ || count == 0) {
 		// Handle null or empty track list
 		return oakengine_track_default_height_in_pixels();
 	}
 
-	if (track_index >= connected_track_list_->get_track_count()) {
+	if (track_index >= count) {
 		// Handle new track at the end of the list
-		return connected_track_list_
-			->get_track_at(connected_track_list_->get_track_count() - 1)
-			->get_track_height_in_pixels();
+		return track_height_in_pixels(connected_sequence_,
+									  connected_track_type_, count - 1);
 	}
 
 	if (track_index < 0) {
 		// Handle new track at the beginning of the list
-		return connected_track_list_->get_track_at(0)->get_track_height_in_pixels();
+		return track_height_in_pixels(connected_sequence_,
+									  connected_track_type_, 0);
 	}
 
-	// Track definitely exists, return its actual height
-	return connected_track_list_->get_track_at(track_index)
-		->get_track_height_in_pixels();
+	// The track definitely exists, return its actual height
+	return track_height_in_pixels(connected_sequence_, connected_track_type_,
+								  track_index);
 }
 
 QPoint TimelineView::get_scroll_coordinates() const
@@ -939,20 +1166,24 @@ void TimelineView::set_scroll_coordinates(const QPoint &pt)
 	verticalScrollBar()->setValue(pt.y());
 }
 
-void TimelineView::connect_track_list(TrackList *list)
+void TimelineView::connect_track_list(OakEngineSequence *sequence,
+									  int track_type)
 {
-	connected_track_list_ = list;
+	connected_sequence_ = sequence;
+	connected_track_type_ = track_type;
 }
 
 void TimelineView::set_beam_cursor(const TimelineCoordinate &coord)
 {
-	if (!connected_track_list_) {
+	if (!connected_sequence_) {
 		return;
 	}
 
 	bool update_required =
-		coord.get_track().type() == connected_track_list_->type() ||
-		cursor_coord_.get_track().type() == connected_track_list_->type();
+		coord.get_track().type() ==
+			static_cast<TrackReference::Type>(connected_track_type_) ||
+		cursor_coord_.get_track().type() ==
+			static_cast<TrackReference::Type>(connected_track_type_);
 
 	show_beam_cursor_ = true;
 	cursor_coord_ = coord;
@@ -962,18 +1193,19 @@ void TimelineView::set_beam_cursor(const TimelineCoordinate &coord)
 	}
 }
 
-void TimelineView::set_transition_overlay(ClipBlock *out, ClipBlock *in)
+void TimelineView::set_transition_overlay(OakEngineBlock *out,
+										 OakEngineBlock *in)
 {
 	if (transition_overlay_out_ != out || transition_overlay_in_ != in) {
-		Track::Type type = Track::k_none;
+		int type = -1;
 
 		if (out) {
-			type = out->track()->type();
+			type = clip_track_type(out);
 		} else if (in) {
-			type = in->track()->type();
+			type = clip_track_type(in);
 		}
 
-		if (type == this->connected_track_list_->type()) {
+		if (type == connected_track_type_) {
 			transition_overlay_out_ = out;
 			transition_overlay_in_ = in;
 		} else {
@@ -1015,15 +1247,16 @@ int TimelineView::scene_to_track(double y)
 	return track;
 }
 
-Block *TimelineView::get_item_at_scene_pos(const Rational &time,
-									   int track_index) const
+OakEngineBlock *TimelineView::get_item_at_scene_pos(const Rational &time,
+												int track_index) const
 {
-	if (connected_track_list_) {
-		Track *track = connected_track_list_->get_track_at(track_index);
+	if (connected_sequence_) {
+		OakEngineTrack *track = track_at(connected_sequence_,
+										 connected_track_type_, track_index);
 
 		if (track) {
-			foreach (Block *b, track->blocks()) {
-				if (b->in() <= time && b->out() > time) {
+			foreach (OakEngineBlock *b, track_all_blocks(track)) {
+				if (block_time_in(b) <= time && block_time_out(b) > time) {
 					return b;
 				}
 			}
@@ -1033,25 +1266,33 @@ Block *TimelineView::get_item_at_scene_pos(const Rational &time,
 	return nullptr;
 }
 
-QVector<Block *> TimelineView::get_items_at_scene_rect(const QRectF &rect) const
+QVector<OakEngineBlock *> TimelineView::get_items_at_scene_rect(
+	const QRectF &rect) const
 {
-	QVector<Block *> list;
+	QVector<OakEngineBlock *> list;
 
-	if (connected_track_list_) {
+	if (connected_sequence_) {
 		Rational start = this->scene_to_time(rect.left());
 		Rational end = this->scene_to_time(rect.right());
+		const int64_t start_ts = core::Timecode::time_to_timestamp(
+			start, sequence_timebase(connected_sequence_));
 
-		for (int i = 0; i < connected_track_list_->get_track_count(); i++) {
-			Track *track = connected_track_list_->get_track_at(i);
+		const int count =
+			track_count_of(connected_sequence_, connected_track_type_);
+		for (int i = 0; i < count; i++) {
+			OakEngineTrack *track = track_at(connected_sequence_,
+											 connected_track_type_, i);
 			int track_top = get_track_y(i);
 			int track_bottom = track_top + get_track_height(i);
 
 			if (track) {
 				if (!(track_bottom < rect.top() || track_top > rect.bottom())) {
-					Block *b = track->nearest_block_before_or_at(start);
-					while (b && b->in() < end) {
+					OakEngineBlock *b =
+						oakengine_track_nearest_block_before_or_at(
+							trackhandle(track), start_ts);
+					while (b && block_time_in(b) < end) {
 						list.append(b);
-						b = b->next();
+						b = block_next(b);
 					}
 				}
 			}

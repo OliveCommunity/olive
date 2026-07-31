@@ -22,10 +22,12 @@
 #ifndef OAK_MARKERPROPERTIESDIALOG_H
 #define OAK_MARKERPROPERTIESDIALOG_H
 
+#include <vector>
+
 #include <QDialog>
 #include <QLineEdit>
 
-#include "timeline/timelinemarker.h"
+#include "oakengine/timeline.h"
 #include "widget/colorlabelmenu/colorcodingcombobox.h"
 #include "widget/slider/rationalslider.h"
 
@@ -54,14 +56,14 @@ signals:
 class MarkerPropertiesDialog : public QDialog {
 	Q_OBJECT
 public:
-	MarkerPropertiesDialog(const std::vector<TimelineMarker *> &markers,
+	MarkerPropertiesDialog(const std::vector<OakEngineMarker *> &markers,
 						   const Rational &timebase, QWidget *parent = nullptr);
 
 public slots:
 	virtual void accept() override;
 
 private:
-	std::vector<TimelineMarker *> markers_;
+	std::vector<OakEngineMarker *> markers_;
 
 	LineEditWithFocusSignal *label_edit_;
 

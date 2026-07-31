@@ -69,10 +69,10 @@ public:
 
 	TimelineWidget *parent();
 
-	Sequence *sequence();
+	OakEngineSequence *sequence();
 
-	static Timeline::MovementMode
-	flip_trim_mode(const Timeline::MovementMode &trim_mode);
+	static TimelineApp::MovementMode
+	flip_trim_mode(const TimelineApp::MovementMode &trim_mode);
 
 	static Rational snap_movement_to_timebase(const Rational &start,
 										   Rational movement,

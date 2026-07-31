@@ -27,8 +27,7 @@
 #include <QGroupBox>
 #include <QLabel>
 
-#include "node/node.h"
-#include "oakengine/node.h"
+#include "oakutil/oaknode.h"
 
 namespace olive
 {
@@ -69,10 +68,8 @@ PreferencesAppearanceTab::PreferencesAppearanceTab()
 
 		QGridLayout *color_layout = new QGridLayout(color_group);
 
-		for (int i = 0; i < Node::k_category_count; i++) {
-			char cat_buf[256];
-			oakengine_node_category_name(i, cat_buf, sizeof(cat_buf));
-			QString cat_name = QString::fromUtf8(cat_buf);
+		for (int i = 0; i < oak::k_category_count; i++) {
+			QString cat_name = oak::Node::category_name(i);
 			color_layout->addWidget(new QLabel(cat_name), i, 0);
 
 			ColorCodingComboBox *ccc = new ColorCodingComboBox();

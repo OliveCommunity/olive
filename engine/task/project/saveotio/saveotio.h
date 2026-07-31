@@ -40,7 +40,7 @@ public:
 	SaveOTIOTask(Project *project);
 
 protected:
-	virtual bool Run() override;
+	virtual bool run() override;
 
 private:
 	OTIO::Timeline *SerializeTimeline(Sequence *sequence);

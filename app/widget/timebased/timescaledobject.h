@@ -25,11 +25,14 @@
 #include <olive/core/core.h>
 #include <QWidget>
 
-#include "node/block/block.h"
-
 namespace olive
 {
 
+// Forward declaration for consumers of this header (e.g. timebasedview.h)
+// that previously got ViewerOutput transitively through engine block.h.
+class ViewerOutput;
+
+using olive::core::Rational;
 /**
  * @brief Provides base functionality for any object that uses time and scale
  */

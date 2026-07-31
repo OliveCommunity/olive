@@ -67,9 +67,6 @@
 #include "panel/timebased/timebased.h"
 #include "panel/timeline/timeline.h"
 #include "panel/viewer/viewer.h"
-#include "pluginSupport/oliveplugininstance.h"
-#include "pluginSupport/pluginprogressreporter.h"
-#include "render/diskmanager.h"
 #include "dialog/projectimport/projectimporterrordialog.h"
 #include "ui/style/style.h"
 #include "widget/menu/menushared.h"
@@ -118,10 +115,13 @@ Core::Core(const OakEngineAppParams *params)
 		};
 		cb.relink_footage = [](OakEngineFootage **footage, int count,
 							   void *userdata) -> int {
-			QVector<Footage *> fv;
+			// The engine hands over the footage node pointers themselves
+			// (see install_handlers() in the engine), so they can be used
+			// directly as node handles.
+			QVector<OakEngineNode *> fv;
 			fv.reserve(count);
 			for (int i = 0; i < count; i++) {
-				fv.append(reinterpret_cast<Footage *>(footage[i]));
+				fv.append(reinterpret_cast<OakEngineNode *>(footage[i]));
 			}
 			FootageRelinkDialog frd(fv,
 									static_cast<Core *>(userdata)->main_window_);
@@ -158,10 +158,8 @@ Core::Core(const OakEngineAppParams *params)
 	oakengine_disk_set_settings_handler(
 		[](const char *folder_path, void *parent_window, void *userdata) {
 			Q_UNUSED(userdata)
-			DiskCacheDialog d(
-				reinterpret_cast<DiskCacheFolder *>(
-					oakengine_disk_get_open_folder(folder_path)),
-				reinterpret_cast<QWidget *>(parent_window));
+			DiskCacheDialog d(oakengine_disk_get_open_folder(folder_path),
+							  reinterpret_cast<QWidget *>(parent_window));
 			d.exec();
 		}, nullptr);
 
@@ -345,7 +343,7 @@ void Core::dialog_import_show()
 
 		if (active_project_panel ==
 				nullptr // Check that we found a Project panel
-			|| (active_project = reinterpret_cast<OakEngineProject *>(active_project_panel->project())) ==
+			|| (active_project = active_project_panel->project().handle()) ==
 				   nullptr) { // and that we could find an active Project
 			QMessageBox::critical(main_window_, tr("Failed to import footage"),
 								  tr("Failed to find active Project panel"));
@@ -353,7 +351,7 @@ void Core::dialog_import_show()
 		}
 
 		// Get the selected folder in this panel
-		OakEngineNode *folder = reinterpret_cast<OakEngineNode *>(active_project_panel->get_selected_folder());
+		OakEngineNode *folder = active_project_panel->get_selected_folder().handle();
 
 		import_files(files, folder);
 	}
@@ -370,7 +368,7 @@ void Core::dialog_project_properties_show()
 	OakEngineProject *proj = get_active_project();
 
 	if (proj) {
-		ProjectPropertiesDialog ppd(reinterpret_cast<Project *>(proj), main_window_);
+		ProjectPropertiesDialog ppd(proj, main_window_);
 		ppd.exec();
 	} else {
 		QMessageBox::critical(
@@ -391,12 +389,7 @@ void Core::dialog_export_show()
 bool Core::DialogImportOTIOShow(const QList<OakEngineSequence *> &sequences)
 {
 	OakEngineProject *active_project = get_active_project();
-	QList<Sequence *> sq;
-	sq.reserve(sequences.size());
-	for (auto *s : sequences) {
-		sq.append(reinterpret_cast<Sequence *>(s));
-	}
-	OTIOPropertiesDialog opd(sq, reinterpret_cast<Project *>(active_project));
+	OTIOPropertiesDialog opd(sequences, active_project);
 	return opd.exec() == QDialog::Accepted;
 }
 #endif
@@ -409,7 +402,7 @@ void Core::create_new_folder()
 	OakEngineProject *active_project;
 
 	if (active_project_panel == nullptr // Check that we found a Project panel
-		|| (active_project = reinterpret_cast<OakEngineProject *>(active_project_panel->project())) ==
+		|| (active_project = active_project_panel->project().handle()) ==
 			   nullptr) { // and that we could find an active Project
 		QMessageBox::critical(main_window_, tr("Failed to create new folder"),
 							  tr("Failed to find active project"));
@@ -417,7 +410,7 @@ void Core::create_new_folder()
 	}
 
 	// Get the selected folder in this panel
-	OakEngineNode *folder = reinterpret_cast<OakEngineNode *>(active_project_panel->get_selected_folder());
+	OakEngineNode *folder = active_project_panel->get_selected_folder().handle();
 
 	// Group the three facade edits into a single undo entry.
 	oakengine_undo_group_begin(tr("Create New Folder").toUtf8().constData());
@@ -455,7 +448,7 @@ void Core::create_new_sequence()
 	// Create new sequence
 	OakEngineSequence *new_sequence = create_new_sequence_for_project(active_project);
 
-	SequenceDialog sd(reinterpret_cast<Sequence *>(new_sequence), SequenceDialog::k_new, main_window_);
+	SequenceDialog sd(reinterpret_cast<OakEngineNode *>(new_sequence), SequenceDialog::k_new, main_window_);
 
 	// Make sure SequenceDialog doesn't make an undo command for editing the sequence, since we make an undo command for
 	// adding it later on
@@ -473,7 +466,7 @@ void Core::create_new_sequence()
 			get_selected_folder_in_active_project(),
 			reinterpret_cast<OakEngineNode *>(new_sequence));
 		oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(new_sequence), reinterpret_cast<void *>(new_sequence), 0.0, 0.0, 0));
-		oakengine_undo_command_multi_add_child(command, make_open_sequence_command(reinterpret_cast<Sequence *>(new_sequence)));
+		oakengine_undo_command_multi_add_child(command, make_open_sequence_command(reinterpret_cast<OakEngineNode *>(new_sequence)));
 
 		// Create and connect default nodes to new sequence
 		oakengine_sequence_add_default_nodes(new_sequence);
@@ -509,9 +502,17 @@ void Core::import_task_complete(OakEngineTask *task)
 			bool all_stills = true;
 
 			for (int j = 0; j < vid_count; j++) {
-				const VideoParams &vs = viewer_output_video_params(f, j);
+				const oak::VideoParams vs = viewer_output_video_params(f, j);
+				// Stream enabled state is not part of the POD; query it
+				// through the C ABI (video_type 1 ==
+				// olive::VideoParams::k_video_type_still, keep the ordinal
+				// in sync with the engine enum).
+				const bool stream_enabled =
+					oakengine_viewer_get_stream_enabled(
+						reinterpret_cast<const OakEngineNode *>(f),
+						OAKENGINE_TRACK_TYPE_VIDEO, j) == 1;
 				if (!(vs.video_type() == 1 &&
-					  vs.enabled() == (j == 0))) {
+					  stream_enabled == (j == 0))) {
 					all_stills = false;
 				}
 			}
@@ -579,7 +580,13 @@ void Core::import_task_complete(OakEngineTask *task)
 		command,
 		tr("Imported %1 File(s)").arg(imported_footage.size()).toUtf8().constData());
 
-	main_window_->select_footage(reinterpret_cast<const QVector<Footage *> &>(imported_footage));
+	// select_footage() takes node handles, so unwrap the footage handles here
+	QVector<OakEngineNode *> imported_nodes;
+	imported_nodes.reserve(imported_footage.size());
+	for (OakEngineFootage *f : imported_footage) {
+		imported_nodes.append(reinterpret_cast<OakEngineNode *>(f));
+	}
+	main_window_->select_footage(imported_nodes);
 }
 
 bool Core::confirm_image_sequence(const QString &filename)
@@ -636,7 +643,7 @@ bool Core::start_headless_export()
       return false;
     }
 
-    Sequence* sequence = nullptr;
+    OakEngineSequence* sequence = nullptr;
 
     // Check if this project contains multiple sequences
     if (items.size() > 1) {
@@ -669,9 +676,9 @@ bool Core::start_headless_export()
         }
       }
 
-      sequence = static_cast<Sequence*>(items.at(sequence_index));
+      sequence = reinterpret_cast<OakEngineSequence*>(items.at(sequence_index));
     } else {
-      sequence = static_cast<Sequence*>(items.first());
+      sequence = reinterpret_cast<OakEngineSequence*>(items.first());
     }
 
     ExportParams params;
@@ -953,7 +960,7 @@ OakEngineNode *Core::get_selected_folder_in_active_project() const
 		PanelManager::instance()->most_recently_focused<ProjectPanel>();
 
 	if (active_project_panel) {
-		return reinterpret_cast<OakEngineNode *>(active_project_panel->get_selected_folder());
+		return active_project_panel->get_selected_folder().handle();
 	} else {
 		return nullptr;
 	}
@@ -1014,14 +1021,14 @@ void Core::open_recovery_project(const QString &filename)
 
 void Core::open_node_in_viewer(OakEngineNode *viewer)
 {
-	main_window_->open_node_in_viewer(reinterpret_cast<ViewerOutput *>(viewer));
+	main_window_->open_node_in_viewer(viewer);
 }
 
 void Core::open_export_dialog_for_viewer(OakEngineNode *viewer,
 									 bool start_still_image)
 {
 	ExportDialog *ed =
-		new ExportDialog(reinterpret_cast<ViewerOutput *>(viewer), start_still_image, main_window_);
+		new ExportDialog(viewer, start_still_image, main_window_);
 	connect(ed, &ExportDialog::finished, ed, &ExportDialog::deleteLater);
 	ed->open();
 	connect(ed, &ExportDialog::request_import_file, this,
@@ -1093,7 +1100,7 @@ void Core::show_cache_full_warning()
 
 void Core::on_active_project_changed(OakEngineProject *p)
 {
-	main_window_->set_project(reinterpret_cast<Project *>(p));
+	main_window_->set_project(p);
 
 	if (p) {
 		// Keep the window's modified state in sync via event subscription
@@ -1361,11 +1368,6 @@ void Core::open_project()
 }
 
 // ---- Facade-wrapping method implementations ----
-
-UndoStack *Core::undo_stack() const
-{
-	return reinterpret_cast<UndoStack *>(oakengine_undo_handle());
-}
 
 Tool::Item Core::tool() const
 {

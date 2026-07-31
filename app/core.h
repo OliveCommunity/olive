@@ -22,8 +22,10 @@
 #ifndef OAK_CORE_H
 #define OAK_CORE_H
 
-#include "coreengine.h"
 #include <QObject>
+#include <olive/core/core.h>
+#include "common/tooltypes.h"
+#include "oakutil/qtutils.h"
 #include "oakengine/app.h"
 #include "oakengine/node.h"
 #include "oakengine/project.h"
@@ -34,6 +36,8 @@
 
 namespace olive
 {
+
+using namespace core;
 
 class MainWindow;
 
@@ -212,12 +216,9 @@ public slots:
 
 public:
 	// The following methods are ordinary member functions, NOT slots. They are
-	// deliberately kept out of the `public slots:` section because their
-	// signatures reference engine C++ types (Project*, Sequence*, UndoStack*).
-	// If MOC processed them as slots it would instantiate QMetaType for those
-	// types and pull their staticMetaObject symbols across the ABI boundary.
-	// None of them are connect() targets: every connection involving Core uses
-	// the new-style member-function syntax, which works with plain methods.
+	// deliberately kept out of the `public slots:` section; none of them are
+	// connect() targets: every connection involving Core uses the new-style
+	// member-function syntax, which works with plain methods.
 
 	/**
 	 * @brief Show OTIO import dialog
@@ -227,8 +228,6 @@ public:
 #endif
 
 	// ---- Facade-wrapping methods (shadow EngineCore to avoid symbol refs) ----
-
-	UndoStack *undo_stack() const;
 
 	Tool::Item tool() const;
 	void set_tool(const Tool::Item &tool);

@@ -24,7 +24,8 @@
 namespace olive
 {
 
-AudioStreamProperties::AudioStreamProperties(Footage *footage, int audio_index)
+AudioStreamProperties::AudioStreamProperties(OakEngineNode *footage,
+											 int audio_index)
 	: footage_(footage)
 	, audio_index_(audio_index)
 {

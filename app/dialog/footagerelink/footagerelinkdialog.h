@@ -24,8 +24,9 @@
 
 #include <QDialog>
 #include <QTreeWidget>
+#include <QVector>
 
-#include "node/project/footage/footage.h"
+struct OakEngineNode;
 
 namespace olive
 {
@@ -33,7 +34,7 @@ namespace olive
 class FootageRelinkDialog : public QDialog {
 	Q_OBJECT
 public:
-	FootageRelinkDialog(const QVector<Footage *> &footage,
+	FootageRelinkDialog(const QVector<OakEngineNode *> &footage,
 						QWidget *parent = nullptr);
 
 private:
@@ -41,7 +42,7 @@ private:
 
 	QTreeWidget *table_;
 
-	QVector<Footage *> footage_;
+	QVector<OakEngineNode *> footage_;
 
 private slots:
 	void browse_for_footage();

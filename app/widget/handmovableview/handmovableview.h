@@ -25,7 +25,7 @@
 #include <QGraphicsView>
 #include <QMenu>
 
-#include "tool/tool.h"
+#include "common/tooltypes.h"
 
 namespace olive
 {

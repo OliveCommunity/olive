@@ -21,17 +21,12 @@
 
 #include "add.h"
 #include "core.h"
-#include "node/block/subtitle/subtitle.h"
-#include "node/factory.h"
-#include "node/generator/shape/shapenode.h"
-#include "node/generator/solid/solid.h"
-#include "node/generator/text/textv3.h"
-#include "oakengine/node.h"
+ #include "oakengine/node.h"
 #include "oakengine/timeline.h"
 #include "oakengine/undo.h"
-#include "timeline/timelineundopointer.h"
 #include "widget/timelinewidget/cliphandle.h"
 #include "widget/timelinewidget/timelinewidget.h"
+#include "widget/timelinewidget/trackhandle.h"
 
 #include "widget/viewer/vieweroutpututils.h"
 namespace olive
@@ -45,28 +40,28 @@ AddTool::AddTool(TimelineWidget *parent)
 
 void AddTool::mouse_press(TimelineViewMouseEvent *event)
 {
-	const Track::Reference &track = event->get_track();
+	const TrackReference &track = event->get_track();
 
 	// Check if track is locked
-	Track *t = parent()->get_track_from_reference(track);
-	if (t && t->is_locked()) {
+	OakEngineTrack *t = parent()->get_track_from_reference(track);
+	if (track_is_locked(t)) {
 		return;
 	}
 
-	Track::Type add_type = Track::k_none;
+	TrackReference::Type add_type = TrackReference::k_none;
 
 	switch (Core::instance()->get_selected_addable_object()) {
 	case Tool::k_addable_bars:
 	case Tool::k_addable_solid:
 	case Tool::k_addable_title:
 	case Tool::k_addable_shape:
-		add_type = Track::k_video;
+		add_type = TrackReference::k_video;
 		break;
 	case Tool::k_addable_tone:
-		add_type = Track::k_audio;
+		add_type = TrackReference::k_audio;
 		break;
 	case Tool::k_addable_subtitle:
-		add_type = Track::k_subtitle;
+		add_type = TrackReference::k_subtitle;
 		break;
 	case Tool::k_addable_empty:
 		// Leave as "none", which means this block can be placed on any track
@@ -76,7 +71,7 @@ void AddTool::mouse_press(TimelineViewMouseEvent *event)
 		return;
 	}
 
-	if (add_type == Track::k_none || add_type == track.type()) {
+	if (add_type == TrackReference::k_none || add_type == track.type()) {
 		drag_start_point_ =
 			validated_coordinate(event->get_coordinates(true)).get_frame();
 
@@ -111,12 +106,12 @@ void AddTool::mouse_release(TimelineViewMouseEvent *event)
 				oakengine_undo_command_multi_add_child(command, subtitle_section_command);
 			}
 
-			Sequence *s = parent()->sequence();
+			OakEngineSequence *s = sequence();
 
 			QRectF r;
 			if (Core::instance()->get_selected_addable_object() ==
 				Tool::k_addable_title) {
-				VideoParams svp = viewer_output_video_params(s);
+				oak::VideoParams svp = viewer_output_video_params(s);
 				r = QRectF(0, 0, svp.width(), svp.height());
 				r.adjust(svp.width() / 10, svp.height() / 10, -svp.width() / 10,
 						 -svp.height() / 10);
@@ -136,44 +131,56 @@ void AddTool::mouse_release(TimelineViewMouseEvent *event)
 	}
 }
 
-Node *AddTool::create_addable_clip(void *command, Sequence *sequence,
-								 const Track::Reference &track,
+OakEngineNode *AddTool::create_addable_clip(void *command, OakEngineSequence *sequence,
+								 const TrackReference &track,
 								 const Rational &in, const Rational &length,
 								 const QRectF &rect)
 {
-	ClipBlock *clip;
+	OakEngineBlock *clip;
 	if (Core::instance()->get_selected_addable_object() ==
 		Tool::k_addable_subtitle) {
-		clip = reinterpret_cast<SubtitleBlock*>(oakengine_node_factory_create_from_id("org.olivevideoeditor.Olive.subtitle"));
+		clip = reinterpret_cast<OakEngineBlock*>(oakengine_node_factory_create_from_id("org.olivevideoeditor.Olive.subtitle"));
 	} else {
 		clip = clip_create_empty(olive::Tool::get_addable_object_name(
 			Core::instance()->get_selected_addable_object()).toUtf8().constData());
 	}
-	clip->set_length_and_media_out(length);
-
-	Project *graph = sequence->parent();
+	OakEngineProject *graph = oakengine_node_get_project(
+		reinterpret_cast<OakEngineNode *>(sequence));
 
 	oakengine_undo_command_multi_add_child(command,
 		oakengine_node_add_to_project_command(
-			reinterpret_cast<OakEngineProject *>(graph),
+			graph,
 			reinterpret_cast<OakEngineNode *>(clip)));
 	oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(clip), reinterpret_cast<void *>(clip), 0, 0, 0));
-	oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(sequence->track_list(track.type())), track.index(), reinterpret_cast<void *>(clip), core::Timecode::time_to_timestamp(in, sequence_timebase(sequence))));
+	// Set the clip's length before placement through a trim command child
+	// (children redo in order): oakengine_block_set_length_and_media_out()
+	// requires the block to already be on a track (OAKENGINE_E_STATE), and
+	// pre-placement there are no adjacent blocks, so a trim-out command
+	// reduces to Block::set_length_and_media_out().
+	oakengine_undo_command_multi_add_child(command,
+		oakengine_block_trim_command(
+			reinterpret_cast<void *>(oakengine_sequence_track_at(
+				sequence,
+				track.type(), track.index())),
+			reinterpret_cast<void *>(clip),
+			length.numerator(), length.denominator(),
+			OAKENGINE_MOVEMENT_MODE_TRIM_OUT, 0));
+	oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(oakengine_sequence_track_list(sequence, track.type())), track.index(), reinterpret_cast<void *>(clip), core::Timecode::time_to_timestamp(in, sequence_timebase(sequence))));
 
-	Node *node_to_add = nullptr;
+	OakEngineNode *node_to_add = nullptr;
 
 	switch (Core::instance()->get_selected_addable_object()) {
 	case Tool::k_addable_empty:
 		// Empty, nothing to be done
 		break;
 	case Tool::k_addable_solid:
-		node_to_add = reinterpret_cast<SolidGenerator*>(oakengine_node_factory_create_from_id("org.olivevideoeditor.Olive.solidgenerator"));
+		node_to_add = oakengine_node_factory_create_from_id("org.olivevideoeditor.Olive.solidgenerator");
 		break;
 	case Tool::k_addable_shape:
-		node_to_add = reinterpret_cast<ShapeNode*>(oakengine_node_factory_create_from_id("org.olivevideoeditor.Olive.shape"));
+		node_to_add = oakengine_node_factory_create_from_id("org.olivevideoeditor.Olive.shape");
 		break;
 	case Tool::k_addable_title:
-		node_to_add = reinterpret_cast<TextGeneratorV3*>(oakengine_node_factory_create_from_id("org.olivevideoeditor.Olive.text3"));
+		node_to_add = oakengine_node_factory_create_from_id("org.olivevideoeditor.Olive.text3");
 		break;
 	case Tool::k_addable_bars:
 	case Tool::k_addable_tone:
@@ -205,7 +212,7 @@ Node *AddTool::create_addable_clip(void *command, Sequence *sequence,
 		oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(node_to_add), reinterpret_cast<void *>(clip), extra_node_offset.x(), extra_node_offset.y(), 0));
 
 		if (!rect.isNull()) {
-			const VideoParams vp = viewer_output_video_params(sequence);
+			const oak::VideoParams vp = viewer_output_video_params(sequence);
 			oak_video_params pod = {};
 			pod.width = vp.width();
 			pod.height = vp.height();

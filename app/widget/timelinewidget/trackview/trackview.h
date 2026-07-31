@@ -25,7 +25,6 @@
 #include <QScrollArea>
 #include <QSplitter>
 
-#include "node/output/track/tracklist.h"
 #include "oakengine/timeline.h"
 #include "trackviewitem.h"
 #include "trackviewsplitter.h"
@@ -39,12 +38,15 @@ public:
 	TrackView(Qt::Alignment vertical_alignment = Qt::AlignTop,
 			  QWidget *parent = nullptr);
 
-	void connect_track_list(TrackList *list);
+	/// Bind to the track list of `sequence` for `track_type`
+	/// (OAKENGINE_TRACK_TYPE_*). The view holds the (sequence, type) pair
+	/// and resolves tracks through the C ABI (no engine track-list object
+	/// crosses the boundary).
+	void connect_track_list(OakEngineSequence *sequence, int track_type);
 	void disconnect_track_list();
 
-	void insert_track(Track *track);
-	void remove_track(Track *track);
-
+	void insert_track(OakEngineTrack *track);
+	void remove_track(OakEngineTrack *track);
 signals:
 	void about_to_delete_track(OakEngineTrack *track);
 
@@ -52,7 +54,9 @@ protected:
 	virtual void resizeEvent(QResizeEvent *e) override;
 
 private:
-	TrackList *list_;
+	OakEngineSequence *sequence_;
+
+	int track_type_;
 
 	TrackViewSplitter *splitter_;
 

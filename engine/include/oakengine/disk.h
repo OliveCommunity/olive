@@ -147,6 +147,49 @@ OAKENGINE_API void *oakengine_disk_get_open_folder(const char *path);
 OAKENGINE_API int oakengine_disk_invalidate_project(
 		OakEngineProject *project);
 
+/* ---- DiskCacheFolder accessors -------------------------------------------------
+ *
+ * Accessors for a borrowed folder handle from
+ * oakengine_disk_get_open_folder() (olive::DiskCacheFolder, passed as a
+ * plain `void *` like it is returned). The limit is a byte count carried
+ * as a double (the engine stores a qint64; a double is exact up to
+ * 2**53 bytes, far beyond any cache size).
+ */
+
+/**
+ * @brief Cache size limit of the folder in bytes
+ * (DiskCacheFolder::get_limit()). 0 on a NULL handle.
+ */
+OAKENGINE_API double oakengine_disk_folder_get_limit(const void *folder);
+
+/**
+ * @brief Set the cache size limit in bytes
+ * (DiskCacheFolder::set_limit()). `limit` < 0 yields
+ * OAKENGINE_E_INVALID.
+ */
+OAKENGINE_API int oakengine_disk_folder_set_limit(void *folder, double limit);
+
+/**
+ * @brief 1 if the folder is cleared when the application closes
+ * (DiskCacheFolder::get_clear_on_close()). 0 on a NULL handle.
+ */
+OAKENGINE_API int oakengine_disk_folder_get_clear_on_close(
+		const void *folder);
+
+/**
+ * @brief Set the clear-on-close flag (DiskCacheFolder::set_clear_on_close()).
+ * Returns OAKENGINE_OK or OAKENGINE_E_INVALID.
+ */
+OAKENGINE_API int oakengine_disk_folder_set_clear_on_close(void *folder,
+														   int clear);
+
+/**
+ * @brief The folder's path (DiskCacheFolder::get_path(); buf/size
+ * convention). Returns OAKENGINE_E_INVALID on a NULL handle.
+ */
+OAKENGINE_API int oakengine_disk_folder_get_path(const void *folder,
+												 char *buf, int buf_size);
+
 #ifdef __cplusplus
 }
 #endif

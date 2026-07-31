@@ -41,16 +41,16 @@ namespace olive
 SaveOTIOTask::SaveOTIOTask(Project *project)
 	: project_(project)
 {
-	SetTitle(tr("Exporting project to OpenTimelineIO"));
+	set_title(tr("Exporting project to OpenTimelineIO"));
 }
 
-bool SaveOTIOTask::Run()
+bool SaveOTIOTask::run()
 {
 	QVector<Sequence *> sequences =
-		project_->root()->ListChildrenOfType<Sequence>();
+		project_->root()->list_children_of_type<Sequence>();
 
 	if (sequences.isEmpty()) {
-		SetError(tr("Project contains no sequences to export."));
+		set_error(tr("Project contains no sequences to export."));
 		return false;
 	}
 
@@ -69,8 +69,8 @@ bool SaveOTIOTask::Run()
 			}
 
 			// Error out of function
-			SetError(
-				tr("Failed to serialize sequence \"%1\"").arg(seq->GetLabel()));
+			set_error(
+				tr("Failed to serialize sequence \"%1\"").arg(seq->get_label()));
 
 			return false;
 		}
@@ -101,21 +101,21 @@ bool SaveOTIOTask::Run()
 
 OTIO::Timeline *SaveOTIOTask::SerializeTimeline(Sequence *sequence)
 {
-	auto otio_timeline = new OTIO::Timeline(sequence->GetLabel().toStdString());
+	auto otio_timeline = new OTIO::Timeline(sequence->get_label().toStdString());
 	// Retainers clean themselves up when the final user is removed
 	OTIO::Timeline::Retainer<OTIO::Timeline> *timeline_retainer =
 		new OTIO::Timeline::Retainer<OTIO::Timeline>(otio_timeline);
 	// Suppress unused variable warning
 	Q_UNUSED(timeline_retainer);
 
-	double rate = sequence->GetVideoParams().frame_rate().toDouble();
+	double rate = sequence->get_video_params().frame_rate().to_double();
 	if (qIsNaN(rate)) {
 		return nullptr;
 	}
 
-	if (!SerializeTrackList(sequence->track_list(Track::kVideo), otio_timeline,
+	if (!SerializeTrackList(sequence->track_list(Track::k_video), otio_timeline,
 							rate) ||
-		!SerializeTrackList(sequence->track_list(Track::kAudio), otio_timeline,
+		!SerializeTrackList(sequence->track_list(Track::k_audio), otio_timeline,
 							rate)) {
 		otio_timeline->possibly_delete();
 		return nullptr;
@@ -132,10 +132,10 @@ OTIO::Track *SaveOTIOTask::SerializeTrack(Track *track, double sequence_rate,
 	OTIO::ErrorStatus es;
 
 	switch (track->type()) {
-	case Track::kVideo:
+	case Track::k_video:
 		otio_track->set_kind("Video");
 		break;
-	case Track::kAudio:
+	case Track::k_audio:
 		otio_track->set_kind("Audio");
 		break;
 	default:
@@ -144,17 +144,17 @@ OTIO::Track *SaveOTIOTask::SerializeTrack(Track *track, double sequence_rate,
 		goto fail;
 	}
 
-	foreach (Block *block, track->Blocks()) {
+	foreach (Block *block, track->blocks()) {
 		OTIO::Composable *otio_block = nullptr;
 
 		if (dynamic_cast<ClipBlock *>(block)) {
-			auto otio_clip = new OTIO::Clip(block->GetLabel().toStdString());
+			auto otio_clip = new OTIO::Clip(block->get_label().toStdString());
 
 			otio_clip->set_source_range(
 				OTIO::TimeRange(block->in().toRationalTime(sequence_rate),
 								block->length().toRationalTime(sequence_rate)));
 
-			QVector<Footage *> media_nodes = block->FindInputNodes<Footage>();
+			QVector<Footage *> media_nodes = block->find_input_nodes<Footage>();
 			if (!media_nodes.isEmpty()) {
 				OTIO::TimeRange available_range;
 				if (otio_track->kind().compare("Video") == 0) {
@@ -162,22 +162,22 @@ OTIO::Track *SaveOTIOTask::SerializeTrack(Track *track, double sequence_rate,
 					// the sequences rate
 					double source_frame_rate = static_cast<ClipBlock *>(block)
 												   ->connected_viewer()
-												   ->GetVideoParams()
+												   ->get_video_params()
 												   .frame_rate()
-												   .toDouble();
+												   .to_double();
 					available_range = OTIO::TimeRange(
 						OTIO::RationalTime(0, source_frame_rate),
 						OTIO::RationalTime(
-							media_nodes.first()->GetVideoParams().duration(),
+							media_nodes.first()->get_video_params().duration(),
 							source_frame_rate));
 				} else if (otio_track->kind().compare("Audio") == 0) {
 					available_range = OTIO::TimeRange(
 						OTIO::RationalTime(
 							0,
-							media_nodes.first()->GetAudioParams().sample_rate()),
+							media_nodes.first()->get_audio_params().sample_rate()),
 						OTIO::RationalTime(
-							media_nodes.first()->GetAudioParams().duration(),
-							media_nodes.first()->GetAudioParams().sample_rate()));
+							media_nodes.first()->get_audio_params().duration(),
+							media_nodes.first()->get_audio_params().sample_rate()));
 				}
 				auto media_ref = new OTIO::ExternalReference(
 					media_nodes.first()->filename().toStdString(),
@@ -190,10 +190,10 @@ OTIO::Track *SaveOTIOTask::SerializeTrack(Track *track, double sequence_rate,
 			otio_block =
 				new OTIO::Gap(OTIO::TimeRange(block->in().toRationalTime(),
 											  block->length().toRationalTime()),
-							  block->GetLabel().toStdString());
+							  block->get_label().toStdString());
 		} else if (dynamic_cast<TransitionBlock *>(block)) {
 			auto otio_transition =
-				new OTIO::Transition(block->GetLabel().toStdString());
+				new OTIO::Transition(block->get_label().toStdString());
 
 			TransitionBlock *our_transition =
 				static_cast<TransitionBlock *>(block);
@@ -219,8 +219,8 @@ OTIO::Track *SaveOTIOTask::SerializeTrack(Track *track, double sequence_rate,
 	}
 
 	// All OTIO tracks must have the same duration so we add a Gap to fill the remaining time
-	if (otio_track->duration(&es).to_seconds() < max_track_length.toDouble()) {
-		double time_left = max_track_length.toDouble() -
+	if (otio_track->duration(&es).to_seconds() < max_track_length.to_double()) {
+		double time_left = max_track_length.to_double() -
 						   otio_track->duration(&es).to_seconds();
 
 		OTIO::Gap *gap = new OTIO::Gap(OTIO::TimeRange(
@@ -248,13 +248,13 @@ bool SaveOTIOTask::SerializeTrackList(TrackList *list,
 
 	Rational max_track_length = RATIONAL_MIN;
 
-	foreach (Track *track, list->GetTracks()) {
+	foreach (Track *track, list->get_tracks()) {
 		if (track->track_length() > max_track_length) {
 			max_track_length = track->track_length();
 		}
 	}
 
-	foreach (Track *track, list->GetTracks()) {
+	foreach (Track *track, list->get_tracks()) {
 		auto otio_track =
 			SerializeTrack(track, sequence_rate, max_track_length);
 

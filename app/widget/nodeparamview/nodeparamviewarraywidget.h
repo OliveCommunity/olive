@@ -27,7 +27,7 @@
 #include <QWidget>
 
 #include "engineeventbridge.h"
-#include "node/param.h"
+#include "oakutil/oaknode.h"
 
 namespace olive
 {
@@ -51,7 +51,7 @@ private:
 class NodeParamViewArrayWidget : public QWidget {
 	Q_OBJECT
 public:
-	NodeParamViewArrayWidget(Node *node, const QString &input,
+	NodeParamViewArrayWidget(oak::Node node, const QString &input,
 							 QWidget *parent = nullptr);
 
 signals:
@@ -61,7 +61,7 @@ protected:
 	virtual void mouseDoubleClickEvent(QMouseEvent *event) override;
 
 private:
-	Node *node_;
+	oak::Node node_;
 
 	QString input_;
 

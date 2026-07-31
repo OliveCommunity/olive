@@ -21,7 +21,6 @@
 
 #include "widget/timelinewidget/timelinewidget.h"
 
-#include "node/block/gap/gap.h"
 #include "slide.h"
 
 namespace olive
@@ -35,8 +34,8 @@ SlideTool::SlideTool(TimelineWidget *parent)
 	set_gap_trimming_allowed(true);
 }
 
-void SlideTool::initiate_drag(Block *clicked_item,
-							 Timeline::MovementMode trim_mode,
+void SlideTool::initiate_drag(OakEngineBlock *clicked_item,
+							 TimelineApp::MovementMode trim_mode,
 							 Qt::KeyboardModifiers modifiers)
 {
 	initiate_drag_internal(clicked_item, trim_mode, modifiers, false, true, true);

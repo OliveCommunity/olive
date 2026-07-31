@@ -8,6 +8,17 @@
 
 using namespace olive;
 
+namespace
+{
+
+// Helper: wrap an engine Node* as oak::Node for the C ABI widget interface
+inline oak::Node to_oak(olive::Node *n)
+{
+	return oak::Node(reinterpret_cast<OakEngineNode *>(n));
+}
+
+} // namespace
+
 class NodeViewTest : public ::testing::Test {
 protected:
 	void SetUp() override
@@ -34,10 +45,10 @@ TEST_F(NodeViewTest, SetContextsUpdatesContextList)
 	solid->setParent(project_.get());
 
 	NodeView view;
-	view.set_contexts({ solid });
+	view.set_contexts({ to_oak(solid) });
 
 	EXPECT_EQ(view.get_contexts().size(), 1);
-	EXPECT_EQ(view.get_contexts().first(), solid);
+	EXPECT_EQ(view.get_contexts().first(), to_oak(solid));
 }
 
 TEST_F(NodeViewTest, ShowSelectedNodeInParamEditorNoSelectionIsNoOp)
@@ -71,7 +82,7 @@ TEST_F(NodeViewTest, ClearGraphRemovesContexts)
 	solid->setParent(project_.get());
 
 	NodeView view;
-	view.set_contexts({ solid });
+	view.set_contexts({ to_oak(solid) });
 	EXPECT_FALSE(view.get_contexts().isEmpty());
 
 	view.clear_graph();

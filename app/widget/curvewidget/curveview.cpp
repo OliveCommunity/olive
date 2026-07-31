@@ -29,7 +29,6 @@
 #include <QtMath>
 
 #include "oakutil/decibel.h"
-#include "common/nodevaluehandle.h"
 #include "common/oakvaluehelper.h"
 #include "oakutil/qtutils.h"
 #include "oakengine/node.h"
@@ -44,44 +43,45 @@ namespace
 {
 
 // Map a keyframe track's scalar QVariant into the facade POD for the
-// input's declared type (the curve view drags numeric tracks).
-void track_value_to_c(NodeValue::Type declared, const QVariant &value,
+// input's declared type (the curve view drags numeric tracks). `c_type`
+// is the oak_node_value_type of the input (oakengine_node_input_get_type()).
+void track_value_to_c(int c_type, const QVariant &value,
 					  oak_node_value *out)
 {
 	memset(out, 0, sizeof(*out));
-	switch (declared) {
-	case NodeValue::k_int:
+	switch (c_type) {
+	case OAK_NODE_VALUE_INT:
 		out->type = OAK_NODE_VALUE_INT;
 		out->num = value.toLongLong();
 		break;
-	case NodeValue::k_combo:
+	case OAK_NODE_VALUE_COMBO:
 		out->type = OAK_NODE_VALUE_COMBO;
 		out->num = value.toLongLong();
 		break;
-	case NodeValue::k_boolean:
+	case OAK_NODE_VALUE_BOOL:
 		out->type = OAK_NODE_VALUE_BOOL;
 		out->num = value.toBool() ? 1 : 0;
 		break;
-	case NodeValue::k_rational: {
+	case OAK_NODE_VALUE_RATIONAL: {
 		const Rational r = value.value<Rational>();
 		out->type = OAK_NODE_VALUE_RATIONAL;
 		out->num = r.numerator();
 		out->den = r.denominator();
 		break;
 	}
-	case NodeValue::k_color:
+	case OAK_NODE_VALUE_COLOR:
 		out->type = OAK_NODE_VALUE_COLOR;
 		out->f[0] = value.toDouble();
 		break;
-	case NodeValue::k_vec2:
+	case OAK_NODE_VALUE_VEC2:
 		out->type = OAK_NODE_VALUE_VEC2;
 		out->f[0] = value.toDouble();
 		break;
-	case NodeValue::k_vec3:
+	case OAK_NODE_VALUE_VEC3:
 		out->type = OAK_NODE_VALUE_VEC3;
 		out->f[0] = value.toDouble();
 		break;
-	case NodeValue::k_vec4:
+	case OAK_NODE_VALUE_VEC4:
 		out->type = OAK_NODE_VALUE_VEC4;
 		out->f[0] = value.toDouble();
 		break;
@@ -90,6 +90,14 @@ void track_value_to_c(NodeValue::Type declared, const QVariant &value,
 		out->f[0] = value.toDouble();
 		break;
 	}
+}
+
+// The oak_node_value_type of the input that owns `key`.
+int key_input_c_type(OakEngineKeyframe *key)
+{
+	const QByteArray input = key_input_id(key).toUtf8();
+	return oakengine_node_input_get_type(oakengine_keyframe_get_node(key),
+										 input.constData());
 }
 
 } // namespace
@@ -109,7 +117,7 @@ CurveView::CurveView(QWidget *parent)
 		QtUtils::q_font_metrics_width(fontMetrics(), QStringLiteral("00000"));
 }
 
-void CurveView::connect_input(const NodeKeyframeTrackReference &ref)
+void CurveView::connect_input(const oak::KeyframeTrackRef &ref)
 {
 	if (connected_inputs_.contains(ref)) {
 		// Input wasn't connected, do nothing
@@ -129,7 +137,7 @@ void CurveView::connect_input(const NodeKeyframeTrackReference &ref)
 	connected_inputs_.append(ref);
 }
 
-void CurveView::disconnect_input(const NodeKeyframeTrackReference &ref)
+void CurveView::disconnect_input(const oak::KeyframeTrackRef &ref)
 {
 	if (!connected_inputs_.contains(ref)) {
 		// Input wasn't connected, do nothing
@@ -143,18 +151,18 @@ void CurveView::disconnect_input(const NodeKeyframeTrackReference &ref)
 	connected_inputs_.removeOne(ref);
 }
 
-void CurveView::select_keyframes_of_input(const NodeKeyframeTrackReference &ref)
+void CurveView::select_keyframes_of_input(const oak::KeyframeTrackRef &ref)
 {
 	deselect_all();
 
 	if (KeyframeViewInputConnection *con = track_connections_.value(ref)) {
-		foreach (NodeKeyframe *key, con->get_keyframes()) {
+		foreach (const oak::Keyframe &key, con->get_keyframes()) {
 			select_keyframe(key);
 		}
 	}
 }
 
-void CurveView::set_keyframe_track_color(const NodeKeyframeTrackReference &ref,
+void CurveView::set_keyframe_track_color(const oak::KeyframeTrackRef &ref,
 									  const QColor &color)
 {
 	// Insert color into hashmap
@@ -221,15 +229,9 @@ void CurveView::drawBackground(QPainter *painter, const QRectF &rect)
 	painter->drawLines(lines);
 
 	// Draw keyframe lines
-	foreach (const NodeKeyframeTrackReference &ref, connected_inputs_) {
-		Node *node = ref.input().node();
-		const QString &input = ref.input().input();
-
-		if (node->is_input_keyframing(input, ref.input().element())) {
-			const QVector<NodeKeyframeTrack> &tracks =
-				node->get_keyframe_tracks(ref.input());
-
-			const NodeKeyframeTrack &track = tracks.at(ref.track());
+	foreach (const oak::KeyframeTrackRef &ref, connected_inputs_) {
+		if (ref.input().is_keyframing()) {
+			const QVector<oak::Keyframe> track = ref.keyframes();
 
 			if (!track.isEmpty()) {
 				painter->setPen(QPen(keyframe_colors_.value(ref),
@@ -245,46 +247,46 @@ void CurveView::drawBackground(QPainter *painter, const QRectF &rect)
 
 				// Draw lines between each keyframe
 				for (int i = 1; i < track.size(); i++) {
-					NodeKeyframe *before = track.at(i - 1);
-					NodeKeyframe *after = track.at(i);
+					const oak::Keyframe &before = track.at(i - 1);
+					const oak::Keyframe &after = track.at(i);
 
 					QPointF before_pos = get_keyframe_position(before);
 					QPointF after_pos = get_keyframe_position(after);
 
-					if (before->type() == NodeKeyframe::k_hold) {
+					if (before.type() == KeyframeTypes::k_facade_hold) {
 						// Draw a hold keyframe (basically a right angle)
 						path.lineTo(after_pos.x(), before_pos.y());
 						path.lineTo(after_pos.x(), after_pos.y());
 
-					} else if (before->type() == NodeKeyframe::k_bezier &&
-							   after->type() == NodeKeyframe::k_bezier) {
+					} else if (before.type() == KeyframeTypes::k_facade_bezier &&
+							   after.type() == KeyframeTypes::k_facade_bezier) {
 						// Draw a cubic bezier
 
 						// Cubic beziers have two control points, so we can just use both
 						QPointF before_control_point =
 							before_pos +
-							ScalePoint(before->valid_bezier_control_out());
+							ScalePoint(before.valid_bezier_point(1));
 						QPointF after_control_point =
 							after_pos +
-							ScalePoint(after->valid_bezier_control_in());
+							ScalePoint(after.valid_bezier_point(0));
 
 						path.cubicTo(before_control_point, after_control_point,
 									 after_pos);
 
-					} else if (before->type() == NodeKeyframe::k_bezier ||
-							   after->type() == NodeKeyframe::k_bezier) {
+					} else if (before.type() == KeyframeTypes::k_facade_bezier ||
+							   after.type() == KeyframeTypes::k_facade_bezier) {
 						// Draw a quadratic bezier
 
 						// Quadratic beziers have a single control point, we just have to determine which it is
 						QPointF key_anchor;
 						QPointF control_point;
 
-						if (before->type() == NodeKeyframe::k_bezier) {
+						if (before.type() == KeyframeTypes::k_facade_bezier) {
 							key_anchor = before_pos;
-							control_point = before->valid_bezier_control_out();
+							control_point = before.valid_bezier_point(1);
 						} else {
 							key_anchor = after_pos;
-							control_point = after->valid_bezier_control_in();
+							control_point = after.valid_bezier_point(0);
 						}
 
 						// Scale control point
@@ -327,8 +329,7 @@ void CurveView::ContextMenuEvent(Menu &m)
 			&CurveView::zoom_to_fit_selected);
 
 	QAction *reset_zoom_action = m.addAction(tr("Reset Zoom"));
-	connect(reset_zoom_action, &QAction::triggered, this,
-			&CurveView::reset_zoom);
+	connect(reset_zoom_action, &QAction::triggered, this, &CurveView::reset_zoom);
 }
 
 void CurveView::SceneRectUpdateEvent(QRectF &r)
@@ -337,7 +338,7 @@ void CurveView::SceneRectUpdateEvent(QRectF &r)
 	bool got_val = false;
 
 	foreach (KeyframeViewInputConnection *con, track_connections_) {
-		foreach (NodeKeyframe *key, con->get_keyframes()) {
+		foreach (const oak::Keyframe &key, con->get_keyframes()) {
 			qreal key_y = get_item_y_from_keyframe_value(key);
 
 			if (got_val) {
@@ -358,16 +359,17 @@ void CurveView::SceneRectUpdateEvent(QRectF &r)
 }
 
 qreal CurveView::get_keyframe_scene_y(KeyframeViewInputConnection *track,
-								   NodeKeyframe *key)
+								   const oak::Keyframe &key)
 {
 	return get_item_y_from_keyframe_value(key);
 }
 
-void CurveView::draw_keyframe(QPainter *painter, NodeKeyframe *key,
+void CurveView::draw_keyframe(QPainter *painter, const oak::Keyframe &key,
 							 KeyframeViewInputConnection *track,
 							 const QRectF &key_rect)
 {
-	if (is_keyframe_selected(key) && key->type() == NodeKeyframe::k_bezier) {
+	if (is_keyframe_selected(key) &&
+		key.type() == KeyframeTypes::k_facade_bezier) {
 		// Draw bezier control points if keyframe is selected
 		int control_point_size = QtUtils::q_font_metrics_width(fontMetrics(), "o");
 		int half_sz = control_point_size / 2;
@@ -378,9 +380,9 @@ void CurveView::draw_keyframe(QPainter *painter, NodeKeyframe *key,
 		painter->setBrush(Qt::NoBrush);
 
 		QRectF cp_in = control_point_rect.translated(
-			key_rect.center() + ScalePoint(key->bezier_control_in()));
+			key_rect.center() + ScalePoint(key.bezier_point(0)));
 		QRectF cp_out = control_point_rect.translated(
-			key_rect.center() + ScalePoint(key->bezier_control_out()));
+			key_rect.center() + ScalePoint(key.bezier_point(1)));
 
 		painter->drawLine(key_rect.center(), cp_in.center());
 		painter->drawLine(key_rect.center(), cp_out.center());
@@ -388,8 +390,8 @@ void CurveView::draw_keyframe(QPainter *painter, NodeKeyframe *key,
 		painter->drawEllipse(cp_in);
 		painter->drawEllipse(cp_out);
 
-		bezier_pts_.append({ cp_in, key, NodeKeyframe::k_in_handle });
-		bezier_pts_.append({ cp_out, key, NodeKeyframe::k_out_handle });
+		bezier_pts_.append({ cp_in, key.handle(), KeyframeTypes::k_in_handle });
+		bezier_pts_.append({ cp_out, key.handle(), KeyframeTypes::k_out_handle });
 	}
 
 	super::draw_keyframe(painter, key, track, key_rect);
@@ -407,15 +409,15 @@ bool CurveView::first_chance_mouse_press(QMouseEvent *event)
 	}
 
 	if (dragging_bezier_pt_) {
-		NodeKeyframe *key = dragging_bezier_pt_->keyframe;
+		OakEngineKeyframe *key = dragging_bezier_pt_->keyframe;
 		dragging_bezier_point_start_ =
-			(dragging_bezier_pt_->type == NodeKeyframe::k_in_handle) ?
-				key->bezier_control_in() :
-				key->bezier_control_out();
+			(dragging_bezier_pt_->type == KeyframeTypes::k_in_handle) ?
+				key_bezier_point(key, 0) :
+				key_bezier_point(key, 1);
 		dragging_bezier_point_opposing_start_ =
-			(dragging_bezier_pt_->type == NodeKeyframe::k_in_handle) ?
-				key->bezier_control_out() :
-				key->bezier_control_in();
+			(dragging_bezier_pt_->type == KeyframeTypes::k_in_handle) ?
+				key_bezier_point(key, 1) :
+				key_bezier_point(key, 0);
 
 		drag_start_ = mapToScene(event->pos());
 		return true;
@@ -449,7 +451,7 @@ void CurveView::first_chance_mouse_move(QMouseEvent *event)
 
 	if (!(event->modifiers() & Qt::ControlModifier)) {
 		new_opposing_pos = generate_bezier_control_position(
-			static_cast<NodeKeyframe::BezierType>(opposing_type),
+			static_cast<KeyframeTypes::BezierType>(opposing_type),
 			dragging_bezier_point_opposing_start_,
 			-mouse_diff_scaled);
 	} else {
@@ -457,12 +459,12 @@ void CurveView::first_chance_mouse_move(QMouseEvent *event)
 	}
 
 	oakengine_keyframe_set_bezier_point_live(
-		reinterpret_cast<OakEngineKeyframe *>(dragging_bezier_pt_->keyframe),
+		dragging_bezier_pt_->keyframe,
 		dragging_bezier_pt_->type,
 		new_bezier_pos.x(), new_bezier_pos.y());
 
 	oakengine_keyframe_set_bezier_point_live(
-		reinterpret_cast<OakEngineKeyframe *>(dragging_bezier_pt_->keyframe),
+		dragging_bezier_pt_->keyframe,
 		opposing_type,
 		new_opposing_pos.x(), new_opposing_pos.y());
 
@@ -475,29 +477,29 @@ void CurveView::first_chance_mouse_release(QMouseEvent *event)
 	// as the explicit old values (the drag already live-set the new
 	// ones); one undoable command per handle, same as the old
 	// KeyframeSetBezierControlPoint children.
-	NodeKeyframe *key = dragging_bezier_pt_->keyframe;
-	OakEngineNode *handle =
-		reinterpret_cast<OakEngineNode *>(key->parent());
+	OakEngineKeyframe *key = dragging_bezier_pt_->keyframe;
+	OakEngineNode *handle = oakengine_keyframe_get_node(key);
 	int tbn = 0, tbd = 0;
 	oakengine_node_frame_time_base(handle, &tbn, &tbd);
 	const int64_t ts = Timecode::time_to_timestamp(
-		key->time(), Rational(tbn, tbd), Timecode::k_round);
+		key_time(key), Rational(tbn, tbd), Timecode::k_round);
 	const QPointF current =
-		key->bezier_control(dragging_bezier_pt_->type);
+		key_bezier_point(key, dragging_bezier_pt_->type);
+	const QByteArray input = key_input_id(key).toUtf8();
 	oakengine_node_keyframe_set_bezier_point(
-		handle, key->input().toUtf8().constData(), key->element(), ts,
-		key->track(),
-		(dragging_bezier_pt_->type == NodeKeyframe::k_in_handle) ? 0 : 1,
+		handle, input.constData(), key_element(key), ts,
+		key_track(key),
+		(dragging_bezier_pt_->type == KeyframeTypes::k_in_handle) ? 0 : 1,
 		current.x(), current.y(), dragging_bezier_point_start_.x(),
 		dragging_bezier_point_start_.y());
 
 	if (!(event->modifiers() & Qt::ControlModifier)) {
 		int opposing_type =
 			oakengine_keyframe_opposing_bezier_type(dragging_bezier_pt_->type);
-		const QPointF opposing_current = key->bezier_control(static_cast<NodeKeyframe::BezierType>(opposing_type));
+		const QPointF opposing_current = key_bezier_point(key, opposing_type);
 		oakengine_node_keyframe_set_bezier_point(
-			handle, key->input().toUtf8().constData(), key->element(), ts,
-			key->track(),
+			handle, input.constData(), key_element(key), ts,
+			key_track(key),
 			opposing_type,
 			opposing_current.x(), opposing_current.y(),
 			dragging_bezier_point_opposing_start_.x(),
@@ -511,8 +513,8 @@ void CurveView::keyframe_drag_start(QMouseEvent *event)
 {
 	drag_keyframe_values_.resize(get_selected_keyframes().size());
 	for (size_t i = 0; i < get_selected_keyframes().size(); i++) {
-		NodeKeyframe *key = get_selected_keyframes().at(i);
-		drag_keyframe_values_[i] = key->value();
+		OakEngineKeyframe *key = get_selected_keyframes().at(i);
+		drag_keyframe_values_[i] = OakNodeValueToQVariant(key_value(key));
 	}
 
 	drag_start_ = mapToScene(event->pos());
@@ -523,9 +525,9 @@ void CurveView::keyframe_drag_move(QMouseEvent *event, QString &tip)
 	if (event->modifiers() & Qt::ShiftModifier) {
 		// Lock to X axis only and set original values on all keys
 		for (size_t i = 0; i < get_selected_keyframes().size(); i++) {
-			NodeKeyframe *key = get_selected_keyframes().at(i);
+			OakEngineKeyframe *key = get_selected_keyframes().at(i);
 			oak_node_value v;
-			track_value_to_c(key->parent()->get_input_data_type(key->input()),
+			track_value_to_c(key_input_c_type(key),
 							 drag_keyframe_values_.at(i), &v);
 			key_set_value_live(key, v);
 		}
@@ -538,27 +540,26 @@ void CurveView::keyframe_drag_move(QMouseEvent *event, QString &tip)
 
 	// Validate movement - ensure no keyframe goes above its max point or below its min point
 	for (size_t i = 0; i < get_selected_keyframes().size(); i++) {
-		NodeKeyframe *key = get_selected_keyframes().at(i);
+		OakEngineKeyframe *key = get_selected_keyframes().at(i);
 
-		FloatSlider::DisplayType display = get_float_display_type_from_keyframe(key);
-		Node *node = key->parent();
+		FloatSlider::DisplayType display = get_float_display_type_from_keyframe(oak::Keyframe(key));
+		OakEngineNode *node = oakengine_keyframe_get_node(key);
+		const QByteArray input = key_input_id(key).toUtf8();
 		double original_val = FloatSlider::transform_value_to_display(
 			drag_keyframe_values_.at(i).toDouble(), display);
-		const QString &input = key->input();
 		double new_val = FloatSlider::transform_display_to_value(
 			original_val - scaled_diff, display);
 		double limited = new_val;
 
-		if (node->has_input_property(input, QStringLiteral("min"))) {
-			limited = qMax(
-				limited,
-				node->get_input_property(input, QStringLiteral("min")).toDouble());
+		double prop = 0;
+		if (oakengine_node_input_get_property_number(
+				node, input.constData(), "min", -1, &prop) == OAKENGINE_OK) {
+			limited = qMax(limited, prop);
 		}
 
-		if (node->has_input_property(input, QStringLiteral("max"))) {
-			limited = qMin(
-				limited,
-				node->get_input_property(input, QStringLiteral("max")).toDouble());
+		if (oakengine_node_input_get_property_number(
+				node, input.constData(), "max", -1, &prop) == OAKENGINE_OK) {
+			limited = qMin(limited, prop);
 		}
 
 		if (limited != new_val) {
@@ -568,11 +569,11 @@ void CurveView::keyframe_drag_move(QMouseEvent *event, QString &tip)
 
 	// Set values
 	for (size_t i = 0; i < get_selected_keyframes().size(); i++) {
-		NodeKeyframe *key = get_selected_keyframes().at(i);
-		FloatSlider::DisplayType display = get_float_display_type_from_keyframe(key);
+		OakEngineKeyframe *key = get_selected_keyframes().at(i);
+		FloatSlider::DisplayType display = get_float_display_type_from_keyframe(oak::Keyframe(key));
 		oak_node_value v;
 		track_value_to_c(
-			key->parent()->get_input_data_type(key->input()),
+			key_input_c_type(key),
 			FloatSlider::transform_display_to_value(
 				FloatSlider::transform_value_to_display(
 					drag_keyframe_values_.at(i).toDouble(), display) -
@@ -582,16 +583,16 @@ void CurveView::keyframe_drag_move(QMouseEvent *event, QString &tip)
 		key_set_value_live(key, v);
 	}
 
-	NodeKeyframe *tip_item = get_selected_keyframes().front();
+	OakEngineKeyframe *tip_item = get_selected_keyframes().front();
 
 	bool ok;
-	double num_value = tip_item->value().toDouble(&ok);
+	double num_value = OakNodeValueToQVariant(key_value(tip_item)).toDouble(&ok);
 
 	if (ok) {
 		tip = QStringLiteral("%1\n");
 		tip.append(FloatSlider::value_to_string(
-			num_value + get_offset_from_keyframe(tip_item),
-			get_float_display_type_from_keyframe(tip_item), 2, true));
+			num_value + get_offset_from_keyframe(oak::Keyframe(tip_item)),
+			get_float_display_type_from_keyframe(oak::Keyframe(tip_item)), 2, true));
 	}
 }
 
@@ -605,7 +606,7 @@ void CurveView::keyframe_drag_release(QMouseEvent *event,
 	// drag-start values as the explicit undo values (the drag already
 	// live-set the new ones).
 	struct ValueGroup {
-		Node *node;
+		OakEngineNode *node;
 		QString input;
 		int element;
 		QVector<int64_t> times;
@@ -615,45 +616,45 @@ void CurveView::keyframe_drag_release(QMouseEvent *event,
 	};
 	QVector<ValueGroup> groups;
 	for (size_t i = 0; i < get_selected_keyframes().size(); i++) {
-		NodeKeyframe *k = get_selected_keyframes().at(i);
-		if (qFuzzyCompare(k->value().toDouble(),
+		OakEngineKeyframe *k = get_selected_keyframes().at(i);
+		if (qFuzzyCompare(key_value_as_double(k),
 						  drag_keyframe_values_.at(i).toDouble())) {
 			continue;
 		}
 
+		OakEngineNode *node = oakengine_keyframe_get_node(k);
+		const QString input = key_input_id(k);
+		const int element = key_element(k);
+
 		int g = 0;
 		for (; g < groups.size(); g++) {
-			if (groups.at(g).node == k->parent() &&
-				groups.at(g).input == k->input() &&
-				groups.at(g).element == k->element()) {
+			if (groups.at(g).node == node &&
+				groups.at(g).input == input &&
+				groups.at(g).element == element) {
 				break;
 			}
 		}
 		if (g == groups.size()) {
 			groups.append(
-				{ k->parent(), k->input(), k->element(), {}, {}, {}, {} });
+				{ node, input, element, {}, {}, {}, {} });
 		}
 
-		OakEngineNode *handle =
-			reinterpret_cast<OakEngineNode *>(k->parent());
 		int tbn = 0, tbd = 0;
-		oakengine_node_frame_time_base(handle, &tbn, &tbd);
+		oakengine_node_frame_time_base(node, &tbn, &tbd);
 		groups[g].times.append(Timecode::time_to_timestamp(
-			k->time(), Rational(tbn, tbd), Timecode::k_round));
-		groups[g].tracks.append(k->track());
+			key_time(k), Rational(tbn, tbd), Timecode::k_round));
+		groups[g].tracks.append(key_track(k));
 
-		const NodeValue::Type declared =
-			k->parent()->get_input_data_type(k->input());
-		oak_node_value new_v, old_v;
-		track_value_to_c(declared, k->value(), &new_v);
-		track_value_to_c(declared, drag_keyframe_values_.at(i), &old_v);
-		groups[g].values.push_back(new_v);
+		oak_node_value old_v;
+		track_value_to_c(key_input_c_type(k), drag_keyframe_values_.at(i),
+						 &old_v);
+		groups[g].values.push_back(key_value(k));
 		groups[g].olds.push_back(old_v);
 	}
 
 	foreach (const ValueGroup &g, groups) {
 		oakengine_node_keyframes_set_value_many(
-			reinterpret_cast<OakEngineNode *>(g.node),
+			g.node,
 			g.input.toUtf8().constData(), g.element, g.times.constData(),
 			g.tracks.data(), g.times.size(), g.values.data(),
 			g.olds.data());
@@ -661,7 +662,7 @@ void CurveView::keyframe_drag_release(QMouseEvent *event,
 }
 
 QPointF
-CurveView::generate_bezier_control_position(const NodeKeyframe::BezierType mode,
+CurveView::generate_bezier_control_position(const KeyframeTypes::BezierType mode,
 										 const QPointF &start_point,
 										 const QPointF &scaled_cursor_diff)
 {
@@ -670,7 +671,7 @@ CurveView::generate_bezier_control_position(const NodeKeyframe::BezierType mode,
 	new_bezier_pos += scaled_cursor_diff;
 
 	// LIMIT bezier handles from overlapping each other
-	if (mode == NodeKeyframe::k_in_handle) {
+	if (mode == KeyframeTypes::k_in_handle) {
 		if (new_bezier_pos.x() > 0) {
 			new_bezier_pos.setX(0);
 		}
@@ -696,11 +697,12 @@ void CurveView::zoom_to_fit_internal(bool selected_only)
 	double min_val, max_val;
 
 	foreach (KeyframeViewInputConnection *con, track_connections_) {
-		foreach (NodeKeyframe *key, con->get_keyframes()) {
+		foreach (const oak::Keyframe &key, con->get_keyframes()) {
 			if (!selected_only || is_keyframe_selected(key)) {
 				Rational transformed_time =
-					get_adjusted_time(key->parent(), get_time_target(), key->time(),
-									Node::k_transform_towards_output);
+					get_adjusted_time(key.node().handle(),
+						get_time_target(), key_time(key.handle()),
+						k_transform_towards_output);
 
 				qreal key_y = get_unscaled_item_y_from_keyframe_value(key);
 
@@ -762,14 +764,14 @@ void CurveView::zoom_to_fit_internal(bool selected_only)
 	}
 }
 
-qreal CurveView::get_item_y_from_keyframe_value(NodeKeyframe *key)
+qreal CurveView::get_item_y_from_keyframe_value(const oak::Keyframe &key)
 {
 	return get_unscaled_item_y_from_keyframe_value(key) * get_y_scale();
 }
 
-qreal CurveView::get_unscaled_item_y_from_keyframe_value(NodeKeyframe *key)
+qreal CurveView::get_unscaled_item_y_from_keyframe_value(const oak::Keyframe &key)
 {
-	double val = key->value().toDouble();
+	double val = key_value_as_double(key.handle());
 
 	val = FloatSlider::transform_value_to_display(
 		val, get_float_display_type_from_keyframe(key));
@@ -786,45 +788,35 @@ QPointF CurveView::ScalePoint(const QPointF &point)
 }
 
 FloatSlider::DisplayType
-CurveView::get_float_display_type_from_keyframe(NodeKeyframe *key)
+CurveView::get_float_display_type_from_keyframe(const oak::Keyframe &key)
 {
-	Node *node = key->parent();
-	const QString &input = key->input();
-	if (node->has_input_property(input, QStringLiteral("view"))) {
-		// Try to get view from input (which will be normal if unset)
-		return static_cast<FloatSlider::DisplayType>(
-			node->get_input_property(input, QStringLiteral("view")).toInt());
+	// Try to get view from input (which will be normal if unset)
+	const QByteArray input = key.input_id().toUtf8();
+	double view_type = 0;
+	if (oakengine_node_input_get_property_number(
+			key.node().handle(), input.constData(), "view", -1,
+			&view_type) == OAKENGINE_OK) {
+		return static_cast<FloatSlider::DisplayType>(int(view_type));
 	}
 
 	// Fallback to normal
 	return slider::k_normal;
 }
 
-double CurveView::get_offset_from_keyframe(NodeKeyframe *key)
+double CurveView::get_offset_from_keyframe(const oak::Keyframe &key)
 {
-	Node *node = key->parent();
-	const QString &input = key->input();
-	if (node->has_input_property(input, QStringLiteral("offset"))) {
-		QVariant v = node->get_input_property(input, QStringLiteral("offset"));
-
-		const NodeValue::Type dt = node->get_input_data_type(input);
-		const int c_type = node_value_type_to_c(dt);
-		oak_node_value normal;
-		const int tc = oakengine_node_value_keyframe_track_count(c_type);
-		QVector<oak_node_value> track_vals(tc);
-		if (QVariantToOakNodeValue(dt, v, &normal) &&
-			oakengine_node_value_split_to_tracks(
-				c_type, &normal, track_vals.data(), tc) == OAKENGINE_OK &&
-			key->track() >= 0 && key->track() < tc) {
-			return track_vals.at(key->track()).f[0];
-		}
-		return 0;
+	const QByteArray input = key.input_id().toUtf8();
+	double offset = 0;
+	if (oakengine_node_input_get_property_number(
+			key.node().handle(), input.constData(), "offset", -1,
+			&offset) == OAKENGINE_OK) {
+		return offset;
 	}
 
 	return 0;
 }
 
-QPointF CurveView::get_keyframe_position(NodeKeyframe *key)
+QPointF CurveView::get_keyframe_position(const oak::Keyframe &key)
 {
 	return QPointF(get_keyframe_scene_x(key), get_item_y_from_keyframe_value(key));
 }

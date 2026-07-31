@@ -25,8 +25,7 @@
 #include <kddockwidgets/Config.h>
 #include <kddockwidgets/MainWindow.h>
 
-#include "node/project/serializer/serializedlayoutinfo.h"
-#include "node/project.h"
+#include "common/serializedlayoutinfoapp.h"
 #include "panel/multicam/multicampanel.h"
 #include "panel/panelmanager.h"
 #include "panel/audiomonitor/audiomonitor.h"
@@ -69,15 +68,15 @@ public:
 
 	SerializedLayoutInfo save_layout() const;
 
-	TimelinePanel *open_sequence(Sequence *sequence, bool enable_focus = true);
+	TimelinePanel *open_sequence(OakEngineNode *sequence, bool enable_focus = true);
 
-	void close_sequence(Sequence *sequence);
+	void close_sequence(OakEngineNode *sequence);
 
-	bool is_sequence_open(Sequence *sequence) const;
+	bool is_sequence_open(OakEngineNode *sequence) const;
 
-	void open_folder(Folder *i, bool floating);
+	void open_folder(OakEngineNode *i, bool floating);
 
-	void open_node_in_viewer(ViewerOutput *node);
+	void open_node_in_viewer(OakEngineNode *node);
 
 	enum ProgressStatus { k_progress_none, k_progress_show, k_progress_error };
 
@@ -96,13 +95,12 @@ public:
    */
 	void set_application_progress_value(int value);
 
-	void select_footage(const QVector<Footage *> &e);
+	void select_footage(const QVector<OakEngineNode *> &e);
 
 public:
-	// Not a slot: signature uses the engine C++ type Project*, which must not
-	// be exposed to MOC (it would pull Project::staticMetaObject across the ABI
-	// boundary). It is only ever called directly, never via connect().
-	void set_project(Project *p);
+	// Not a slot: signature uses an opaque engine handle which must not be
+	// exposed to MOC. It is only ever called directly, never via connect().
+	void set_project(OakEngineProject *p);
 
 public slots:
 	void set_fullscreen(bool fullscreen);
@@ -136,7 +134,7 @@ private:
 
 	void remove_timeline_panel(TimelinePanel *panel);
 
-	void timeline_focused(ViewerOutput *viewer);
+	void timeline_focused(OakEngineNode *viewer);
 
 	static QString get_custom_shortcuts_file();
 
@@ -144,11 +142,11 @@ private:
 
 	void save_custom_shortcuts();
 
-	void update_audio_monitor_params(ViewerOutput *viewer);
+	void update_audio_monitor_params(OakEngineNode *viewer);
 
 	void update_node_panel_context_from_timeline_panel(TimelinePanel *panel);
 
-	void select_footage_for_project_panel(const QVector<Footage *> &e,
+	void select_footage_for_project_panel(const QVector<OakEngineNode *> &e,
 									  ProjectPanel *p);
 
 	QByteArray premaximized_state_;
@@ -181,7 +179,7 @@ private:
 
 	bool first_show_;
 
-	Project *project_;
+	OakEngineProject *project_;
 
 private slots:
 	void focused_panel_changed(PanelWidget *panel);
@@ -213,7 +211,7 @@ private:
 	void timeline_panel_selection_changed(const QVector<OakEngineBlock *> &blocks);
 
 	EngineEventBridge *bridge_ = nullptr;
-	QHash<ViewerOutput *, int64_t> removed_from_graph_subs_;
+	QHash<OakEngineNode *, int64_t> removed_from_graph_subs_;
 };
 
 }

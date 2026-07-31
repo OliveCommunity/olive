@@ -33,8 +33,10 @@ PluginProgressDialogReporter::PluginProgressDialogReporter(
 	dialog_->setAttribute(Qt::WA_DeleteOnClose);
 	QObject::connect(dialog_, &ProgressDialog::cancelled, dialog_, [this]() {
 		cancelled_ = true;
-		set_cancelled();
 	});
+	// The engine's C adapter treats show() as a no-op, so the dialog is
+	// shown here at create time.
+	dialog_->show();
 }
 
 PluginProgressDialogReporter::~PluginProgressDialogReporter()
@@ -46,20 +48,6 @@ void PluginProgressDialogReporter::set_progress(double value)
 {
 	if (dialog_) {
 		dialog_->set_progress(value);
-	}
-}
-
-void PluginProgressDialogReporter::show()
-{
-	if (dialog_) {
-		dialog_->show();
-	}
-}
-
-void PluginProgressDialogReporter::close()
-{
-	if (dialog_) {
-		dialog_->close();
 	}
 }
 

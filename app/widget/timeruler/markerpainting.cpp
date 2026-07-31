@@ -49,7 +49,7 @@ QRect draw(QPainter *p, const QPoint &pt, int max_right, double scale,
 
 	int half_width = marker_width / 2;
 
-	QColor c = QtUtils::to_q_color(ColorCoding::get_color(color));
+	QColor c = QtUtils::to_q_color(AppColorCoding::get_color(color));
 	if (selected) {
 		p->setPen(Qt::white);
 		p->setBrush(c.lighter());
@@ -70,8 +70,8 @@ QRect draw(QPainter *p, const QPoint &pt, int max_right, double scale,
 		p->drawRect(marker_rect);
 
 		if (!name.isEmpty()) {
-			p->setPen(ColorCoding::get_ui_selector_color(
-				ColorCoding::get_color(color)));
+			p->setPen(AppColorCoding::get_ui_selector_color(
+				AppColorCoding::get_color(color)));
 			p->drawText(marker_rect.adjusted(marker_width / 4, 0, 0, 0), name,
 						op);
 		}

@@ -142,7 +142,7 @@ TEST(TimelineWaveformSync, PartialCacheIsConsideredReady)
 	Node::connect_edge(&footage, NodeInput(&clip, ClipBlock::k_buffer_in));
 
 	WaveformSyncClip out;
-	EXPECT_TRUE(timeline_waveform_sync::get_waveform_sync_clip(&clip, &out));
+	EXPECT_TRUE(timeline_waveform_sync::get_waveform_sync_clip(reinterpret_cast<OakEngineBlock *>(&clip), &out));
 	EXPECT_EQ(out.waveform, cache);
 	EXPECT_EQ(out.sample_rate, k_sample_rate);
 	EXPECT_EQ(out.media_range, TimeRange(0, 3));
@@ -163,5 +163,5 @@ TEST(TimelineWaveformSync, EmptyCacheIsNotReady)
 	Node::connect_edge(&footage, NodeInput(&clip, ClipBlock::k_buffer_in));
 
 	WaveformSyncClip out;
-	EXPECT_FALSE(timeline_waveform_sync::get_waveform_sync_clip(&clip, &out));
+	EXPECT_FALSE(timeline_waveform_sync::get_waveform_sync_clip(reinterpret_cast<OakEngineBlock *>(&clip), &out));
 }

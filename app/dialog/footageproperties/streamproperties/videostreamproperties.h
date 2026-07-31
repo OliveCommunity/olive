@@ -25,10 +25,11 @@
 #include <QCheckBox>
 #include <QComboBox>
 
-#include "node/project/footage/footage.h"
 #include "streamproperties.h"
 #include "widget/slider/integerslider.h"
 #include "widget/standardcombos/standardcombos.h"
+
+struct OakEngineNode;
 
 namespace olive
 {
@@ -36,14 +37,14 @@ namespace olive
 class VideoStreamProperties : public StreamProperties {
 	Q_OBJECT
 public:
-	VideoStreamProperties(Footage *footage, int video_index);
+	VideoStreamProperties(OakEngineNode *footage, int video_index);
 
 	virtual void accept(void *parent) override;
 
 	virtual bool sanity_check() override;
 
 private:
-	Footage *footage_;
+	OakEngineNode *footage_;
 
 	int video_index_;
 

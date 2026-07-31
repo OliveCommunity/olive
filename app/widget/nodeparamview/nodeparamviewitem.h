@@ -29,13 +29,13 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
-#include "node/node.h"
 #include "engineeventbridge.h"
 #include "nodeparamviewarraywidget.h"
 #include "nodeparamviewconnectedlabel.h"
 #include "nodeparamviewkeyframecontrol.h"
 #include "nodeparamviewitembase.h"
 #include "nodeparamviewwidgetbridge.h"
+#include "oakutil/oaknode.h"
 #include "widget/clickablelabel/clickablelabel.h"
 #include "widget/collapsebutton/collapsebutton.h"
 #include "widget/keyframeview/keyframeview.h"
@@ -52,40 +52,40 @@ enum NodeParamViewCheckBoxBehavior {
 class NodeParamViewItemBody : public QWidget {
 	Q_OBJECT
 public:
-	NodeParamViewItemBody(Node *node,
+	NodeParamViewItemBody(oak::Node node,
 						  NodeParamViewCheckBoxBehavior create_checkboxes,
 						  QWidget *parent = nullptr);
 
-	void set_time_target(ViewerOutput *target);
+	void set_time_target(OakEngineNode *target);
 
 	void retranslate();
 
-	int get_element_y(NodeInput c) const;
+	int get_element_y(oak::Input c) const;
 
 	// Set the timebase of any timebased widgets contained here
 	void set_timebase(const Rational &timebase);
 
-	void set_input_checked(const NodeInput &input, bool e);
+	void set_input_checked(const oak::Input &input, bool e);
 
 signals:
 	void request_select_node(OakEngineNode *node);
 
 	void array_expanded_changed(bool e);
 
-	void input_checked_changed(const NodeInput &input, bool e);
+	void input_checked_changed(const oak::Input &input, bool e);
 
 	void request_edit_text_in_viewer();
 
 private:
-	void create_widgets(QGridLayout *layout, Node *node, const QString &input,
+	void create_widgets(QGridLayout *layout, oak::Node node, const QString &input,
 					   int element, int row_index);
 
-	void update_ui_for_edge_connection(const NodeInput &input);
+	void update_ui_for_edge_connection(const oak::Input &input);
 
 	void place_widgets_from_bridge(QGridLayout *layout,
 								NodeParamViewWidgetBridge *bridge, int row);
 
-	void input_array_size_changed_internal(Node *node, const QString &input,
+	void input_array_size_changed_internal(oak::Node node, const QString &input,
 									   int size);
 
 	struct InputUI {
@@ -104,7 +104,7 @@ private:
 		NodeParamViewArrayButton *array_remove_btn;
 	};
 
-	QHash<NodeInput, InputUI> input_ui_map_;
+	QHash<oak::Input, InputUI> input_ui_map_;
 
 	struct ArrayUI {
 		QWidget *widget;
@@ -115,19 +115,19 @@ private:
 	void set_time_target_on_input_ui(const InputUI &ui);
 	void set_timebase_on_input_ui(const InputUI &ui);
 
-	Node *node_;
+	oak::Node node_;
 
-	QHash<NodeInputPair, ArrayUI> array_ui_;
+	QHash<oak::InputPair, ArrayUI> array_ui_;
 
-	QHash<NodeInputPair, CollapseButton *> array_collapse_buttons_;
+	QHash<oak::InputPair, CollapseButton *> array_collapse_buttons_;
 
 	Rational timebase_;
 
-	ViewerOutput *time_target_;
+	OakEngineNode *time_target_;
 
 	NodeParamViewCheckBoxBehavior create_checkboxes_;
 
-	QHash<NodeInputPair, NodeInputPair> input_group_lookup_;
+	QHash<oak::InputPair, oak::InputPair> input_group_lookup_;
 
 	EngineEventBridge *bridge_ = nullptr;
 
@@ -150,7 +150,7 @@ private:
 	static const int k_max_widget_column;
 
 private slots:
-	void edge_changed(OakEngineNode *output, const NodeInput &input);
+	void edge_changed(OakEngineNode *output, const oak::Input &input);
 
 	void array_collapse_btn_pressed(bool checked);
 
@@ -165,7 +165,7 @@ private slots:
 
 	void toggle_array_expanded();
 
-	void replace_widgets(const NodeInput &input);
+	void replace_widgets(const oak::Input &input);
 
 	void show_speed_duration_dialog_for_node();
 
@@ -175,11 +175,11 @@ private slots:
 class NodeParamViewItem : public NodeParamViewItemBase {
 	Q_OBJECT
 public:
-	NodeParamViewItem(Node *node,
+	NodeParamViewItem(oak::Node node,
 					  NodeParamViewCheckBoxBehavior create_checkboxes,
 					  QWidget *parent = nullptr);
 
-	void set_time_target(ViewerOutput *target)
+	void set_time_target(OakEngineNode *target)
 	{
 		time_target_ = target;
 
@@ -193,24 +193,24 @@ public:
 		body_->set_timebase(timebase);
 	}
 
-	Node *get_context() const
+	oak::Node get_context() const
 	{
 		return ctx_;
 	}
 
-	void set_context(Node *ctx)
+	void set_context(oak::Node ctx)
 	{
 		ctx_ = ctx;
 	}
 
-	Node *get_node() const
+	oak::Node get_node() const
 	{
 		return node_;
 	}
 
-	int get_element_y(const NodeInput &c) const;
+	int get_element_y(const oak::Input &c) const;
 
-	void set_input_checked(const NodeInput &input, bool e);
+	void set_input_checked(const oak::Input &input, bool e);
 
 	KeyframeView::NodeConnections &get_keyframe_connections()
 	{
@@ -227,7 +227,7 @@ signals:
 
 	void array_expanded_changed(bool e);
 
-	void input_checked_changed(const NodeInput &input, bool e);
+	void input_checked_changed(const oak::Input &input, bool e);
 
 	void request_edit_text_in_viewer();
 
@@ -243,13 +243,13 @@ private:
 	QPushButton *message_clear_button_;
 	QWidget *message_container_;
 
-	Node *node_;
+	oak::Node node_;
 
 	NodeParamViewCheckBoxBehavior create_checkboxes_;
 
-	Node *ctx_;
+	oak::Node ctx_;
 
-	ViewerOutput *time_target_;
+	OakEngineNode *time_target_;
 
 	Rational timebase_;
 

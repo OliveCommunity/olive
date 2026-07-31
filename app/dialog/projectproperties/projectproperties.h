@@ -29,8 +29,9 @@
 #include <QLineEdit>
 #include <QRadioButton>
 
-#include "node/project.h"
 #include "widget/path/pathwidget.h"
+
+struct OakEngineProject;
 
 namespace olive
 {
@@ -38,7 +39,7 @@ namespace olive
 class ProjectPropertiesDialog : public QDialog {
 	Q_OBJECT
 public:
-	ProjectPropertiesDialog(Project *p, QWidget *parent);
+	ProjectPropertiesDialog(OakEngineProject *p, QWidget *parent);
 
 public slots:
 	virtual void accept() override;
@@ -46,7 +47,7 @@ public slots:
 private:
 	bool verify_path_and_warn_if_bad(const QString &path);
 
-	Project *working_project_;
+	OakEngineProject *working_project_;
 
 	QLineEdit *ocio_filename_;
 

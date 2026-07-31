@@ -23,7 +23,6 @@
 
 #include <QMessageBox>
 
-#include "node/block/clip/clip.h"
 #include "oakengine/node.h"
 #include "oakengine/undo.h"
 #include "widget/menu/factorymenu.h"
@@ -35,7 +34,7 @@ namespace olive
 
 NodeParamViewContext::NodeParamViewContext(QWidget *parent)
 	: super(parent)
-	, type_(Track::k_none)
+	, type_(TrackReference::k_none)
 {
 	QWidget *body = new QWidget();
 	QHBoxLayout *body_layout = new QHBoxLayout(body);
@@ -52,7 +51,7 @@ NodeParamViewContext::NodeParamViewContext(QWidget *parent)
 			this, &NodeParamViewContext::add_effect_button_clicked);
 }
 
-NodeParamViewItem *NodeParamViewContext::get_item(Node *node, Node *ctx)
+NodeParamViewItem *NodeParamViewContext::get_item(oak::Node node, oak::Node ctx)
 {
 	for (auto it = items_.begin(); it != items_.end(); it++) {
 		NodeParamViewItem *item = *it;
@@ -71,7 +70,7 @@ void NodeParamViewContext::add_node(NodeParamViewItem *item)
 	dock_area_->add_item(item);
 }
 
-void NodeParamViewContext::remove_node(Node *node, Node *ctx)
+void NodeParamViewContext::remove_node(oak::Node node, oak::Node ctx)
 {
 	for (auto it = items_.begin(); it != items_.end();) {
 		NodeParamViewItem *item = *it;
@@ -86,7 +85,7 @@ void NodeParamViewContext::remove_node(Node *node, Node *ctx)
 	}
 }
 
-void NodeParamViewContext::remove_nodes_with_context(Node *ctx)
+void NodeParamViewContext::remove_nodes_with_context(oak::Node ctx)
 {
 	for (auto it = items_.begin(); it != items_.end();) {
 		NodeParamViewItem *item = *it;
@@ -101,7 +100,7 @@ void NodeParamViewContext::remove_nodes_with_context(Node *ctx)
 	}
 }
 
-void NodeParamViewContext::set_input_checked(const NodeInput &input, bool e)
+void NodeParamViewContext::set_input_checked(const oak::Input &input, bool e)
 {
 	foreach (NodeParamViewItem *item, items_) {
 		if (item->get_node() == input.node()) {
@@ -117,14 +116,14 @@ void NodeParamViewContext::set_timebase(const Rational &timebase)
 	}
 }
 
-void NodeParamViewContext::set_time_target(ViewerOutput *n)
+void NodeParamViewContext::set_time_target(OakEngineNode *n)
 {
 	foreach (NodeParamViewItem *item, items_) {
 		item->set_time_target(n);
 	}
 }
 
-void NodeParamViewContext::set_effect_type(Track::Type type)
+void NodeParamViewContext::set_effect_type(TrackReference::Type type)
 {
 	type_ = type;
 }
@@ -135,20 +134,16 @@ void NodeParamViewContext::retranslate()
 
 void NodeParamViewContext::add_effect_button_clicked()
 {
-	Node::Flag flag = Node::k_none;
+	uint64_t flag = (type_ == TrackReference::k_video)
+						? oakengine_node_flag_video_effect()
+						: oakengine_node_flag_audio_effect();
 
-	if (type_ == Track::k_video) {
-		flag = Node::k_video_effect;
-	} else {
-		flag = Node::k_audio_effect;
-	}
-
-	if (flag == Node::k_none) {
+	if (flag == 0) {
 		return;
 	}
 
 	Menu *m =
-		create_node_menu(this, false, Node::k_category_unknown, flag);
+		create_node_menu(this, false, oak::k_category_unknown, flag);
 	connect(m, &Menu::triggered, this,
 			&NodeParamViewContext::add_effect_menu_item_triggered);
 	m->exec(QCursor::pos());
@@ -157,63 +152,68 @@ void NodeParamViewContext::add_effect_button_clicked()
 
 void NodeParamViewContext::add_effect_menu_item_triggered(QAction *a)
 {
-	Node *n = create_node_from_menu_action(a);
+	// Owned handle: handed to the add-to-project undo command below
+	oak::Node n = create_node_from_menu_action(a);
 
-	if (n) {
-		NodeInput new_node_input = n->get_effect_input();
+	if (!n.is_null()) {
+		oak::Input new_node_input = n.effect_input();
+		// WRAPPER-GAP: oakengine_undo_* / oakengine_node_*_command (undo
+		// command assembly has no oak:: wrapper)
 		void *command = oakengine_undo_command_create_multi();
 
-		QVector<Project *> graphs_added_to;
+		QVector<OakEngineProject *> graphs_added_to;
 
-		foreach (Node *ctx, contexts_) {
-			NodeInput ctx_input = ctx->get_effect_input();
+		foreach (oak::Node ctx, contexts_) {
+			oak::Input ctx_input = ctx.effect_input();
 
-			if (!graphs_added_to.contains(ctx->parent())) {
+			OakEngineProject *ctx_project = ctx.project().handle();
+			if (!graphs_added_to.contains(ctx_project)) {
 				oakengine_undo_command_multi_add_child(
 					command,
 					oakengine_node_add_to_project_command(
-						reinterpret_cast<OakEngineProject *>(ctx->parent()),
-						reinterpret_cast<OakEngineNode *>(n)));
-				graphs_added_to.append(ctx->parent());
+						ctx_project, n.handle()));
+				graphs_added_to.append(ctx_project);
 			}
 
+			QPointF ctx_pos;
+			ctx.context_position_of(ctx, &ctx_pos);
 			oakengine_undo_command_multi_add_child(
-				command, oakengine_node_set_position_command(reinterpret_cast<void *>(n), reinterpret_cast<void *>(ctx), ctx->get_node_position_in_context(ctx).x(), ctx->get_node_position_in_context(ctx).y(), 0));
+				command, oakengine_node_set_position_command(n.handle(), ctx.handle(), ctx_pos.x(), ctx_pos.y(), 0));
 			oakengine_undo_command_multi_add_child(
 				command, oakengine_node_set_position_command(
-					reinterpret_cast<void *>(ctx), reinterpret_cast<void *>(ctx),
-					ctx->get_node_position_in_context(ctx).x() + 1,
-					ctx->get_node_position_in_context(ctx).y(), 0));
+					ctx.handle(), ctx.handle(),
+					ctx_pos.x() + 1,
+					ctx_pos.y(), 0));
 
 			if (ctx_input.is_connected()) {
-				Node *prev_output = ctx_input.get_connected_output();
+				oak::Node prev_output = ctx_input.connected_node();
 
 				oakengine_undo_command_multi_add_child(
 					command,
 					oakengine_node_disconnect_command(
-						reinterpret_cast<OakEngineNode *>(ctx_input.node()),
-						ctx_input.input().toUtf8().constData(),
+						ctx_input.node_handle(),
+						ctx_input.input_id().toUtf8().constData(),
 						ctx_input.element()));
 				oakengine_undo_command_multi_add_child(
 					command,
 					oakengine_node_connect_command(
-						reinterpret_cast<OakEngineNode *>(prev_output),
-						reinterpret_cast<OakEngineNode *>(new_node_input.node()),
-						new_node_input.input().toUtf8().constData(),
+						prev_output.handle(),
+						new_node_input.node_handle(),
+						new_node_input.input_id().toUtf8().constData(),
 						new_node_input.element()));
 			}
 
 			oakengine_undo_command_multi_add_child(
 				command,
 				oakengine_node_connect_command(
-					reinterpret_cast<OakEngineNode *>(n),
-					reinterpret_cast<OakEngineNode *>(ctx_input.node()),
-					ctx_input.input().toUtf8().constData(),
+					n.handle(),
+					ctx_input.node_handle(),
+					ctx_input.input_id().toUtf8().constData(),
 					ctx_input.element()));
 		}
 
 		oakengine_undo_push(
-			command, tr("Added %1 to Node Chain").arg(n->name()).toUtf8().constData());
+			command, tr("Added %1 to Node Chain").arg(n.name()).toUtf8().constData());
 	}
 }
 

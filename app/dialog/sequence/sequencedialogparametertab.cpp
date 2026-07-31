@@ -29,7 +29,7 @@
 namespace olive
 {
 
-SequenceDialogParameterTab::SequenceDialogParameterTab(Sequence *sequence,
+SequenceDialogParameterTab::SequenceDialogParameterTab(OakEngineNode *sequence,
 													   QWidget *parent)
 	: QWidget(parent)
 {

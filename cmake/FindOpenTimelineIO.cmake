@@ -79,7 +79,9 @@ find_path(OTIO_DEPS_INCLUDE_DIR
         "OpenTimelineIO headers path"
 )
 
-list(APPEND OTIO_INCLUDE_DIRS ${OTIO_DEPS_INCLUDE_DIR})
+if(OTIO_DEPS_INCLUDE_DIR)
+    list(APPEND OTIO_INCLUDE_DIRS ${OTIO_DEPS_INCLUDE_DIR})
+endif()
 
 find_path(OT_INCLUDE_DIR
         opentime/rationalTime.h
@@ -123,11 +125,19 @@ find_library(OT_LIBRARY
 
 list(APPEND OTIO_LIBRARIES ${OT_LIBRARY})
 
+# OTIO_LIBRARY_DIR is only probed for .so above (never matches on macOS);
+# derive it from the located library as a fallback.
+if(NOT OTIO_LIBRARY_DIR AND OTIO_LIBRARY)
+    get_filename_component(OTIO_LIBRARY_DIR "${OTIO_LIBRARY}" DIRECTORY)
+endif()
+
 include(FindPackageHandleStandardArgs)
 
+# OTIO_DEPS_INCLUDE_DIR (bundled any/optional headers) only exists in OTIO
+# <= 0.15; v0.16 uses C++17 std::any and ships no deps headers, so it is
+# intentionally NOT part of REQUIRED_VARS.
 find_package_handle_standard_args(OpenTimelineIO
     REQUIRED_VARS
         OTIO_LIBRARIES
         OTIO_INCLUDE_DIRS
-        OTIO_DEPS_INCLUDE_DIR
 )

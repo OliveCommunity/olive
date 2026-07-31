@@ -28,16 +28,28 @@
 #include <QPainter>
 #include <QtMath>
 
-#include "node/project/sequence/sequence.h"
 #include "oakengine/node.h"
 #include "oakengine/timeline.h"
 #include "ui/icons/icons.h"
 #include "widget/menu/menu.h"
+#include "widget/timelinewidget/trackhandle.h"
 
 namespace olive
 {
 
-TrackViewItem::TrackViewItem(Track *track, QWidget *parent)
+namespace
+{
+
+// The sequence that owns `track`, through the C ABI.
+OakEngineSequence *track_owner_sequence(OakEngineTrack *track)
+{
+	return reinterpret_cast<OakEngineSequence *>(oakengine_track_get_sequence(
+		reinterpret_cast<OakEngineNode *>(track)));
+}
+
+} // namespace
+
+TrackViewItem::TrackViewItem(OakEngineTrack *track, QWidget *parent)
 	: QWidget(parent)
 	, track_(track)
 {
@@ -51,8 +63,7 @@ TrackViewItem::TrackViewItem(Track *track, QWidget *parent)
 	label_ = new ClickableLabel();
 	connect(label_, &ClickableLabel::mouse_double_clicked, this,
 			&TrackViewItem::label_clicked);
-	bridge_.subscribe(reinterpret_cast<OakEngineTrack *>(track_),
-						OAKENGINE_EVENT_TRACK_INDEX_CHANGED);
+	bridge_.subscribe(track_, OAKENGINE_EVENT_TRACK_INDEX_CHANGED);
 	connect(&bridge_, &EngineEventBridge::track_index_changed, this,
 			&TrackViewItem::update_label);
 	update_label();
@@ -67,15 +78,15 @@ TrackViewItem::TrackViewItem(Track *track, QWidget *parent)
 
 	mute_button_ = create_msl_button(Qt::red);
 	mute_button_->setChecked(oakengine_track_is_muted(
-		reinterpret_cast<OakEngineSequence *>(track->sequence()),
-		track->type(), track->index()));
+		track_owner_sequence(track),
+		track_type_of(track), track_index_of(track)));
 	update_mute_button(oakengine_track_is_muted(
-		reinterpret_cast<OakEngineSequence *>(track->sequence()),
-		track->type(), track->index()));
+		track_owner_sequence(track),
+		track_type_of(track), track_index_of(track)));
 	connect(mute_button_, &QPushButton::toggled, this, [this](bool checked) {
 		oakengine_track_set_muted(
-			reinterpret_cast<OakEngineSequence *>(track_->sequence()),
-			track_->type(), track_->index(), checked);
+			track_owner_sequence(track_),
+			track_type_of(track_), track_index_of(track_), checked);
 	});
 	connect(mute_button_, &QPushButton::toggled, this,
 			&TrackViewItem::update_mute_button);
@@ -86,15 +97,15 @@ TrackViewItem::TrackViewItem(Track *track, QWidget *parent)
 
 	lock_button_ = create_msl_button(Qt::gray);
 	lock_button_->setChecked(oakengine_track_is_locked(
-		reinterpret_cast<OakEngineSequence *>(track->sequence()),
-		track->type(), track->index()));
+		track_owner_sequence(track),
+		track_type_of(track), track_index_of(track)));
 	update_lock_button(oakengine_track_is_locked(
-		reinterpret_cast<OakEngineSequence *>(track->sequence()),
-		track->type(), track->index()));
+		track_owner_sequence(track),
+		track_type_of(track), track_index_of(track)));
 	connect(lock_button_, &QPushButton::toggled, this, [this](bool checked) {
 		oakengine_track_set_locked(
-			reinterpret_cast<OakEngineSequence *>(track_->sequence()),
-			track_->type(), track_->index(), checked);
+			track_owner_sequence(track_),
+			track_type_of(track_), track_index_of(track_), checked);
 	});
 	connect(lock_button_, &QPushButton::toggled, this,
 			&TrackViewItem::update_lock_button);
@@ -103,8 +114,7 @@ TrackViewItem::TrackViewItem(Track *track, QWidget *parent)
 	setMinimumHeight(mute_button_->height());
 	setContextMenuPolicy(Qt::CustomContextMenu);
 
-	bridge_.subscribe(reinterpret_cast<OakEngineTrack *>(track),
-						OAKENGINE_EVENT_TRACK_MUTED_CHANGED);
+	bridge_.subscribe(track, OAKENGINE_EVENT_TRACK_MUTED_CHANGED);
 	connect(&bridge_, &EngineEventBridge::track_muted_changed, mute_button_,
 			[this](OakEngineTrack *, bool muted) {
 				mute_button_->setChecked(muted);
@@ -165,15 +175,15 @@ void TrackViewItem::update_label()
 	// type+number prefix (V1/V2 for video, A1/A2 for audio, S1 for subtitle)
 	// followed by the track's custom label or default name.
 	QString prefix;
-	switch (track_->type()) {
-	case Track::k_video:
-		prefix = QStringLiteral("V%1").arg(track_->index() + 1);
+	switch (track_type_of(track_)) {
+	case OAKENGINE_TRACK_TYPE_VIDEO:
+		prefix = QStringLiteral("V%1").arg(track_index_of(track_) + 1);
 		break;
-	case Track::k_audio:
-		prefix = QStringLiteral("A%1").arg(track_->index() + 1);
+	case OAKENGINE_TRACK_TYPE_AUDIO:
+		prefix = QStringLiteral("A%1").arg(track_index_of(track_) + 1);
 		break;
-	case Track::k_subtitle:
-		prefix = QStringLiteral("S%1").arg(track_->index() + 1);
+	case OAKENGINE_TRACK_TYPE_SUBTITLE:
+		prefix = QStringLiteral("S%1").arg(track_index_of(track_) + 1);
 		break;
 	}
 
@@ -214,28 +224,48 @@ void TrackViewItem::show_context_menu(const QPoint &p)
 
 void TrackViewItem::delete_track()
 {
-	emit about_to_delete_track(reinterpret_cast<OakEngineTrack *>(track_));
+	emit about_to_delete_track(track_);
 	// Through the liboakengine C ABI facade (one undoable command, same as
 	// the old TimelineRemoveTrackCommand push).
 	oakengine_sequence_remove_track(
-		reinterpret_cast<OakEngineSequence *>(track_->sequence()),
-		int(track_->type()), track_->index());
+		track_owner_sequence(track_),
+		int(track_type_of(track_)), track_index_of(track_));
 }
 
 void TrackViewItem::delete_all_empty_tracks()
 {
-	Sequence *sequence = track_->sequence();
-	QVector<Track *> tracks_to_remove;
+	OakEngineSequence *sequence = track_owner_sequence(track_);
 	QStringList track_names_to_remove;
 
-	foreach (Track *t, sequence->get_tracks()) {
-		if (t->blocks().isEmpty()) {
-			tracks_to_remove.append(t);
-			track_names_to_remove.append(t->get_label_or_name());
+	// Iterate all track lists (video, audio, subtitle), mirroring
+	// Sequence::get_tracks(); the per-type counts line up with the
+	// OAKENGINE_TRACK_TYPE_* ordinals (0..2).
+	int track_counts[3] = { 0, 0, 0 };
+	oakengine_sequence_track_count(sequence, &track_counts[0],
+								   &track_counts[1], &track_counts[2]);
+	for (int type = 0; type < 3; type++) {
+		for (int ti = 0; ti < track_counts[type]; ti++) {
+			OakEngineTrack *t = oakengine_sequence_track_at(sequence, type, ti);
+			if (t && oakengine_track_block_count(t) == 0) {
+				// WRAPPER-GAP: oakengine_node_get_label_or_name -- emulate
+				// inline (the label, falling back to the name).
+				char buf[256];
+				buf[0] = '\0';
+				oakengine_node_get_label(
+					reinterpret_cast<OakEngineNode *>(t), buf, sizeof(buf));
+				QString name = QString::fromUtf8(buf);
+				if (name.isEmpty()) {
+					oakengine_node_get_name(
+						reinterpret_cast<OakEngineNode *>(t), buf,
+						sizeof(buf));
+					name = QString::fromUtf8(buf);
+				}
+				track_names_to_remove.append(name);
+			}
 		}
 	}
 
-	if (tracks_to_remove.isEmpty()) {
+	if (track_names_to_remove.isEmpty()) {
 		QMessageBox::information(this, tr("Delete All Empty"),
 								 tr("No tracks are currently empty"));
 	} else {
@@ -246,8 +276,7 @@ void TrackViewItem::delete_all_empty_tracks()
 				QMessageBox::Ok | QMessageBox::Cancel) == QMessageBox::Ok) {
 			// Batch removal through the liboakengine C ABI facade (one
 			// undoable command, same as the old per-track children).
-			oakengine_sequence_delete_empty_tracks(
-				reinterpret_cast<OakEngineSequence *>(sequence), -1);
+			oakengine_sequence_delete_empty_tracks(sequence, -1);
 		}
 	}
 }

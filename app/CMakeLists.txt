@@ -22,6 +22,7 @@ set(OLIVE_SOURCES
         engineeventbridge.h
         engineeventbridge.cpp
         common/colorcodingapp.h
+        common/colorcodingapp.cpp
         common/nodevaluehandle.h
 )
 
@@ -85,6 +86,10 @@ add_executable(olive-editor
         $<TARGET_OBJECTS:libolive-editor>
         $<TARGET_OBJECTS:olive-version-obj>
 )
+
+if (COMMAND oak_copy_otio_runtime)
+  oak_copy_otio_runtime(olive-editor)
+endif()
 
 target_link_libraries(olive-editor PUBLIC OfxHost)
 add_dependencies(olive-editor oakgl-cabi-check)

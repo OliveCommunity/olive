@@ -24,8 +24,6 @@
 
 #include <QComboBox>
 
-#include "node/node.h"
-
 namespace olive
 {
 

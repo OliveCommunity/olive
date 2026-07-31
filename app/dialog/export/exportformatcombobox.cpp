@@ -43,24 +43,24 @@ ExportFormatComboBox::ExportFormatComboBox(Mode mode, QWidget *parent)
 	switch (mode) {
 	case k_show_all_formats:
 		custom_menu_->addAction(create_header(icon::video, tr("Video")));
-		populate_type(Track::k_video);
+		populate_type(TrackReference::k_video);
 		custom_menu_->addSeparator();
 
 		custom_menu_->addAction(create_header(icon::audio, tr("Audio")));
-		populate_type(Track::k_audio);
+		populate_type(TrackReference::k_audio);
 		custom_menu_->addSeparator();
 
 		custom_menu_->addAction(create_header(icon::subtitles, tr("Subtitle")));
-		populate_type(Track::k_subtitle);
+		populate_type(TrackReference::k_subtitle);
 		break;
 	case k_show_audio_only:
-		populate_type(Track::k_audio);
+		populate_type(TrackReference::k_audio);
 		break;
 	case k_show_video_only:
-		populate_type(Track::k_video);
+		populate_type(TrackReference::k_video);
 		break;
 	case k_show_subtitles_only:
-		populate_type(Track::k_subtitle);
+		populate_type(TrackReference::k_subtitle);
 		break;
 	}
 
@@ -90,7 +90,7 @@ void ExportFormatComboBox::handle_index_change(QAction *a)
 	emit format_changed(f);
 }
 
-void ExportFormatComboBox::populate_type(Track::Type type)
+void ExportFormatComboBox::populate_type(TrackReference::Type type)
 {
 	const int fmt_count = oakengine_encoding_format_count();
 	for (int i = 0; i < fmt_count; i++) {
@@ -101,11 +101,11 @@ void ExportFormatComboBox::populate_type(Track::Type type)
 		bool has_audio = oakengine_encoding_format_audio_codec_count(f) > 0;
 		bool has_sub = oakengine_encoding_format_subtitle_codec_count(f) > 0;
 
-		if (type == Track::k_video && has_video) {
+		if (type == TrackReference::k_video && has_video) {
 			// Do nothing
-		} else if (type == Track::k_audio && !has_video && has_audio) {
+		} else if (type == TrackReference::k_audio && !has_video && has_audio) {
 			// Do nothing
-		} else if (type == Track::k_subtitle && !has_video && !has_audio && has_sub) {
+		} else if (type == TrackReference::k_subtitle && !has_video && !has_audio && has_sub) {
 			// Do nothing
 		} else {
 			continue;

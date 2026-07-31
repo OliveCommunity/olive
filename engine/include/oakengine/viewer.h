@@ -312,6 +312,17 @@ typedef struct OakEnginePlaybackCache OakEnginePlaybackCache;
 typedef struct OakEngineFrameCache OakEngineFrameCache;
 
 /**
+ * @brief Opaque thumbnail cache handle (olive::ThumbnailCache, a
+ * FrameHashCache subclass).
+ */
+typedef struct OakEngineThumbnailCache OakEngineThumbnailCache;
+
+/**
+ * @brief Opaque audio waveform cache handle (olive::AudioWaveformCache).
+ */
+typedef struct OakEngineWaveformCache OakEngineWaveformCache;
+
+/**
  * @brief Borrowed playback cache of a viewer's connected output
  * (ViewerOutput::get_connected_video_cache() for video, or from the
  * ClipBlock::connected_video_cache()). Returns NULL when not available
@@ -342,6 +353,90 @@ OAKENGINE_API int oakengine_playback_cache_valid_ranges(
  */
 OAKENGINE_API OakEngineFrameCache *
 oakengine_viewer_get_frame_cache(OakEngineNode *self);
+
+/* ---- Playback cache accessors ------------------------------------------------
+ *
+ * These take the cache as a plain `void *` pass-through (like
+ * oakengine_viewer_get_connected_waveform()): any borrowed playback-cache
+ * pointer (OakEnginePlaybackCache*, OakEngineFrameCache*, an engine-side
+ * PlaybackCache*, ...) converts implicitly. Qt types cross the boundary as
+ * opaque `void *` (same precedent as oakengine_undo_undo_action()'s
+ * QAction *).
+ */
+
+/**
+ * @brief 1 if the playback cache has any validated (cached) ranges
+ * (PlaybackCache::has_validated_ranges()). 0 on a NULL cache.
+ */
+OAKENGINE_API int
+oakengine_playback_cache_has_validated_ranges(const void *cache);
+
+/**
+ * @brief Borrowed node handle of the node that owns the playback cache
+ * (PlaybackCache::parent()), or NULL on a NULL cache.
+ */
+OAKENGINE_API OakEngineNode *oakengine_playback_cache_parent(void *cache);
+
+/**
+ * @brief Draw the cache's validated-range indicator
+ * (PlaybackCache::draw()).
+ *
+ * `qpainter` is an opaque `QPainter *` (NULL-safe no-op). `in_ts` is the
+ * timeline time at the LEFT edge of the painted area as a frame timestamp
+ * in the timebase of the cache's parent viewer (its frame rate flipped;
+ * the engine default 1001/30000 when the cache has no viewer parent).
+ * `scale` is pixels per second and `height` the indicator strip height in
+ * pixels; the painted rectangle spans the painter's viewport horizontally.
+ */
+OAKENGINE_API void oakengine_playback_cache_draw(void *cache, void *qpainter,
+												 int64_t in_ts, double scale,
+												 int height);
+
+/* ---- Audio waveform cache accessors -------------------------------------------
+ *
+ * Accessors for a borrowed AudioWaveformCache handle (from
+ * oakengine_node_get_waveform_cache(), ClipBlock::waveform() equivalents,
+ * or oakengine_viewer_get_connected_waveform()). Pass-through `void *`
+ * like the playback cache accessors above. All times are SAMPLE frames at
+ * the cache's own sample rate (oakengine_waveform_cache_sample_rate()),
+ * i.e. the timestamp timebase is 1/sample_rate seconds.
+ */
+
+/**
+ * @brief Length of the cached waveform in sample frames at the cache's
+ * sample rate (AudioWaveformCache::length()). 0 on a NULL cache or when
+ * the cache has no valid sample rate.
+ */
+OAKENGINE_API int64_t oakengine_waveform_cache_length(const void *cache);
+
+/**
+ * @brief Sample rate of the cache's audio parameters
+ * (AudioWaveformCache::get_parameters().sample_rate()). 0 on a NULL
+ * cache.
+ */
+OAKENGINE_API int oakengine_waveform_cache_sample_rate(const void *cache);
+
+/**
+ * @brief 1 if the waveform cache has any validated ranges
+ * (PlaybackCache::has_validated_ranges()). 0 on a NULL cache.
+ */
+OAKENGINE_API int oakengine_waveform_cache_has_validated_ranges(
+	const void *cache);
+
+/**
+ * @brief Per-channel min/max summary of the waveform over
+ * [start_ts, end_ts) in sample frames
+ * (AudioWaveformCache::get_summary_from_time()).
+ *
+ * `min_out`/`max_out` each receive one linear sample value per channel,
+ * up to `max_channels` entries; `channels_out` (may be NULL) receives the
+ * number of channels written. Requires end_ts >= start_ts and a cache
+ * with a valid sample rate (OAKENGINE_E_STATE otherwise; the summary
+ * timebase depends on it).
+ */
+OAKENGINE_API int oakengine_waveform_cache_get_summary(
+	const void *cache, int64_t start_ts, int64_t end_ts, double *min_out,
+	double *max_out, int max_channels, int *channels_out);
 
 #ifdef __cplusplus
 }

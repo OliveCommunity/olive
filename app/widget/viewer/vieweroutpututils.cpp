@@ -22,18 +22,14 @@
 
 namespace olive {
 
-VideoParams video_params_from_pod(const oak_video_params &pod)
+oak::VideoParams video_params_from_pod(const oak_video_params &pod)
 {
-	void *vp = oakengine_video_params_create(&pod);
-	VideoParams result = *static_cast<VideoParams *>(vp);
-	oakengine_video_params_free(vp);
-	return result;
+	return oak::VideoParams(pod);
 }
 
-VideoParams empty_video_params()
+oak::VideoParams empty_video_params()
 {
-	oak_video_params pod = {};
-	return video_params_from_pod(pod);
+	return oak::VideoParams();
 }
 
 Rational sequence_timebase(const void *sequence)
@@ -47,7 +43,43 @@ Rational sequence_timebase(const void *sequence)
 	return Rational(vp.time_base_num, vp.time_base_den);
 }
 
-VideoParams viewer_output_video_params(const void *viewer, int index)
+namespace {
+
+Rational viewer_rational(const void *viewer,
+						 int (*getter)(const OakEngineNode *, int64_t *,
+									   int64_t *))
+{
+	int64_t num = 0, den = 1;
+	if (getter(reinterpret_cast<const OakEngineNode *>(viewer), &num, &den) <
+		0) {
+		return Rational();
+	}
+	return Rational(num, den);
+}
+
+} // namespace
+
+Rational viewer_output_playhead(const void *viewer)
+{
+	return viewer_rational(viewer, oakengine_viewer_get_playhead);
+}
+
+Rational viewer_output_length(const void *viewer)
+{
+	return viewer_rational(viewer, oakengine_viewer_get_length);
+}
+
+Rational viewer_output_video_length(const void *viewer)
+{
+	return viewer_rational(viewer, oakengine_viewer_get_video_length);
+}
+
+Rational viewer_output_audio_length(const void *viewer)
+{
+	return viewer_rational(viewer, oakengine_viewer_get_audio_length);
+}
+
+oak::VideoParams viewer_output_video_params(const void *viewer, int index)
 {
 	oak_video_params vp;
 	if (oakengine_viewer_get_video_params(

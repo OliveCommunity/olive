@@ -26,7 +26,7 @@
 #include <QDialog>
 #include <QGroupBox>
 
-#include "node/keyframe.h"
+#include "oakutil/oaknode.h"
 #include "widget/slider/floatslider.h"
 #include "widget/slider/rationalslider.h"
 
@@ -36,7 +36,7 @@ namespace olive
 class KeyframePropertiesDialog : public QDialog {
 	Q_OBJECT
 public:
-	KeyframePropertiesDialog(const std::vector<NodeKeyframe *> &keys,
+	KeyframePropertiesDialog(const QVector<oak::Keyframe> &keys,
 							 const Rational &timebase,
 							 QWidget *parent = nullptr);
 
@@ -46,7 +46,7 @@ public slots:
 private:
 	void set_up_bezier_slider(FloatSlider *slider, bool all_same, double value);
 
-	const std::vector<NodeKeyframe *> &keys_;
+	const QVector<oak::Keyframe> &keys_;
 
 	Rational timebase_;
 

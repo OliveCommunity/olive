@@ -144,7 +144,7 @@ void ColorSwatchChooser::load_swatches()
 				Color::DataType r;
 				QString s;
 				ManagedColor c;
-				ColorTransform t;
+				oak::ColorTransform t;
 				bool is_display;
 
 				c.set_alpha(1.0);
@@ -167,10 +167,10 @@ void ColorSwatchChooser::load_swatches()
 					d >> display;
 					d >> view;
 					d >> look;
-					c.set_color_output(ColorTransform(display, view, look));
+					c.set_color_output(oak::ColorTransform(display, view, look));
 				} else {
 					d >> s;
-					c.set_color_output(ColorTransform(s));
+					c.set_color_output(oak::ColorTransform(s));
 				}
 
 				buttons_[index]->set_color(c);

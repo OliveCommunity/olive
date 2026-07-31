@@ -25,17 +25,15 @@
 #include <QToolTip>
 #include <QVBoxLayout>
 
-#include "common/nodevaluehandle.h"
-#include "common/oakvaluehelper.h"
+#include "common/keyframetypes.h"
 #include "oakutil/qtutils.h"
 #include "dialog/keyframeproperties/keyframeproperties.h"
 #include "keyframehandle.h"
-#include "node/node.h"
-#include "node/value.h"
 #include "oakengine/node.h"
 #include "oakengine/serializer.h"
 #include "oakengine/undo.h"
 #include "widget/menu/menu.h"
+#include "widget/viewer/vieweroutpututils.h"
 #include "widget/menu/menushared.h"
 
 namespace olive
@@ -43,24 +41,24 @@ namespace olive
 
 #define super TimeBasedView
 
-static bool KeyframeToOakNodeValue(Node *node, NodeKeyframe *key,
-                                   oak_node_value *out)
+/**
+ * @brief Node::get_keyframes_at_time() equivalent through the C ABI: all
+ * keyframes at the key's time across every track of its input.
+ */
+static QVector<OakEngineKeyframe *> GetKeyframesAtTime(const oak::Keyframe &key)
 {
-	const NodeValue::Type type = node->get_input_data_type(key->input());
-	QVector<QVariant> split = node->get_split_value_at_time(
-		NodeInput(node, key->input(), key->element()), key->time());
-	if (key->track() >= 0 && key->track() < split.size()) {
-		split[key->track()] = key->value();
-	}
-	QVector<oak_node_value> tracks(split.size());
-	for (int i = 0; i < split.size(); i++) {
-		if (!NodeTrackComponentToOakNodeValue(type, split.at(i), &tracks[i])) {
-			return false;
-		}
-	}
-	return oakengine_node_value_combine_tracks(
-			   node_value_type_to_c(type), tracks.constData(), tracks.size(),
-			   out) == OAKENGINE_OK;
+	OakEngineNode *node = oakengine_keyframe_get_node(key.handle());
+	const QByteArray input = key.input_id().toUtf8();
+	int64_t num = 0, den = 1;
+	key.time(&num, &den);
+	QVector<OakEngineKeyframe *> out(
+		qMax(1, oakengine_node_keyframe_track_count(node, input.constData(),
+													key.element())));
+	const int filled = oakengine_node_keyframes_at_time(
+		node, input.constData(), key.element(), num, den, out.data(),
+		out.size());
+	out.resize(filled);
+	return out;
 }
 
 KeyframeView::KeyframeView(QWidget *parent)
@@ -81,9 +79,12 @@ KeyframeView::KeyframeView(QWidget *parent)
 void KeyframeView::delete_selected()
 {
 	if (!selection_manager_.is_dragging()) {
+		const std::vector<OakEngineKeyframe *> &selected =
+			get_selected_keyframes();
 		QVector<OakEngineKeyframe *> keys;
-		foreach (NodeKeyframe *key, get_selected_keyframes()) {
-			keys.append(reinterpret_cast<OakEngineKeyframe *>(key));
+		keys.reserve(int(selected.size()));
+		foreach (OakEngineKeyframe *key, selected) {
+			keys.append(key);
 		}
 		oakengine_keyframes_remove_many(
 			keys.data(), keys.size(),
@@ -94,19 +95,22 @@ void KeyframeView::delete_selected()
 	}
 }
 
-KeyframeView::NodeConnections KeyframeView::add_keyframes_of_node(Node *n)
+KeyframeView::NodeConnections
+KeyframeView::add_keyframes_of_node(const oak::Node &n)
 {
 	NodeConnections map;
 
-	foreach (const QString &i, n->inputs()) {
-		map.insert(i, add_keyframes_of_input(n, i));
+	const int input_count = n.input_count();
+	for (int i = 0; i < input_count; i++) {
+		const QString input = n.input_id(i);
+		map.insert(input, add_keyframes_of_input(n, input));
 	}
 
 	return map;
 }
 
 KeyframeView::InputConnections
-KeyframeView::add_keyframes_of_input(Node *on, const QString &oinput)
+KeyframeView::add_keyframes_of_input(const oak::Node &on, const QString &oinput)
 {
 	InputConnections vec;
 
@@ -114,19 +118,18 @@ KeyframeView::add_keyframes_of_input(Node *on, const QString &oinput)
 	char resolved_input[256];
 	int resolved_element = 0;
 	oakengine_group_resolve_input(
-		reinterpret_cast<OakEngineNode *>(on), oinput.toUtf8().constData(), -1,
+		on.handle(), oinput.toUtf8().constData(), -1,
 		&resolved_node, resolved_input, sizeof(resolved_input),
 		&resolved_element);
-	NodeInput resolved(reinterpret_cast<Node *>(resolved_node),
-					   QString::fromUtf8(resolved_input), resolved_element);
-	Node *n = resolved.node();
-	const QString &input = resolved.input();
+	oak::Input resolved(resolved_node, QString::fromUtf8(resolved_input),
+						resolved_element);
 
-	if (n->is_input_keyframable(input)) {
-		int arr_sz = n->input_array_size(input);
+	if (resolved.is_keyframable()) {
+		int arr_sz = resolved.array_size();
 		vec.resize(arr_sz + 1);
 		for (int i = -1; i < arr_sz; i++) {
-			vec[i + 1] = add_keyframes_of_element(NodeInput(n, input, i));
+			vec[i + 1] = add_keyframes_of_element(
+				oak::Input(resolved_node, resolved.input_id(), i));
 		}
 	}
 
@@ -134,21 +137,22 @@ KeyframeView::add_keyframes_of_input(Node *on, const QString &oinput)
 }
 
 KeyframeView::ElementConnections
-KeyframeView::add_keyframes_of_element(const NodeInput &input)
+KeyframeView::add_keyframes_of_element(const oak::Input &input)
 {
-	const QVector<NodeKeyframeTrack> &tracks =
-		input.node()->get_keyframe_tracks(input);
-	ElementConnections vec(tracks.size());
+	const int track_count = oakengine_node_keyframe_track_count(
+		input.node_handle(), input.input_id().toUtf8().constData(),
+		input.element());
+	ElementConnections vec(track_count);
 
-	for (int i = 0; i < tracks.size(); i++) {
-		vec[i] = add_keyframes_of_track(NodeKeyframeTrackReference(input, i));
+	for (int i = 0; i < track_count; i++) {
+		vec[i] = add_keyframes_of_track(oak::KeyframeTrackRef(input, i));
 	}
 
 	return vec;
 }
 
 KeyframeViewInputConnection *
-KeyframeView::add_keyframes_of_track(const NodeKeyframeTrackReference &ref)
+KeyframeView::add_keyframes_of_track(const oak::KeyframeTrackRef &ref)
 {
 	KeyframeViewInputConnection *track =
 		new KeyframeViewInputConnection(ref, this);
@@ -163,8 +167,8 @@ void KeyframeView::remove_keyframes_of_track(
 	KeyframeViewInputConnection *connection)
 {
 	if (tracks_.removeOne(connection)) {
-		foreach (NodeKeyframe *key, connection->get_keyframes()) {
-			selection_manager_.deselect(key);
+		foreach (const oak::Keyframe &key, connection->get_keyframes()) {
+			selection_manager_.deselect(key.handle());
 		}
 		delete connection;
 		redraw();
@@ -175,7 +179,7 @@ void KeyframeView::remove_keyframes_of_track(
 void KeyframeView::select_all()
 {
 	foreach (KeyframeViewInputConnection *track, tracks_) {
-		foreach (NodeKeyframe *key, track->get_keyframes()) {
+		foreach (const oak::Keyframe &key, track->get_keyframes()) {
 			select_keyframe(key);
 		}
 	}
@@ -202,12 +206,10 @@ void KeyframeView::clear()
 void KeyframeView::SelectionManagerSelectEvent(void *obj)
 {
 	if (autoselect_siblings_) {
-		NodeKeyframe *key = static_cast<NodeKeyframe *>(obj);
-		QVector<NodeKeyframe *> keys = key->parent()->get_keyframes_at_time(
-			key->input(), key->time(), key->element());
-		foreach (NodeKeyframe *k, keys) {
+		OakEngineKeyframe *key = static_cast<OakEngineKeyframe *>(obj);
+		foreach (OakEngineKeyframe *k, GetKeyframesAtTime(oak::Keyframe(key))) {
 			if (k != key) {
-				select_keyframe(k);
+				select_keyframe(oak::Keyframe(k));
 			}
 		}
 	}
@@ -218,12 +220,10 @@ void KeyframeView::SelectionManagerSelectEvent(void *obj)
 void KeyframeView::SelectionManagerDeselectEvent(void *obj)
 {
 	if (autoselect_siblings_) {
-		NodeKeyframe *key = static_cast<NodeKeyframe *>(obj);
-		QVector<NodeKeyframe *> keys = key->parent()->get_keyframes_at_time(
-			key->input(), key->time(), key->element());
-		foreach (NodeKeyframe *k, keys) {
+		OakEngineKeyframe *key = static_cast<OakEngineKeyframe *>(obj);
+		foreach (OakEngineKeyframe *k, GetKeyframesAtTime(oak::Keyframe(key))) {
 			if (k != key) {
-				deselect_keyframe(k);
+				deselect_keyframe(oak::Keyframe(k));
 			}
 		}
 	}
@@ -257,7 +257,7 @@ bool KeyframeView::copy_selected(bool cut)
 }
 
 bool KeyframeView::paste(
-	std::function<Node *(const QString &)> find_node_function)
+	std::function<oak::Node(const QString &)> find_node_function)
 {
 	if (!get_viewer_node()) {
 		return false;
@@ -290,14 +290,13 @@ bool KeyframeView::paste(
 			cb,
 			[](const char *, OakEngineKeyframe *kf, void *userdata) -> int {
 				auto *ctx = static_cast<PasteCtx *>(userdata);
-				NodeKeyframe *key = reinterpret_cast<NodeKeyframe *>(kf);
-				ctx->min = std::min(ctx->min, key->time());
+				ctx->min = std::min(ctx->min, key_time(kf));
 				ctx->total++;
 				return 0;
 			},
 			&ctx);
 
-		ctx.min -= ctx.self->get_viewer_node()->get_playhead();
+		ctx.min -= viewer_output_playhead(ctx.self->get_viewer_node());
 
 		// Second pass: process keyframes
 		oakengine_clipboard_foreach_keyframe(
@@ -305,50 +304,62 @@ bool KeyframeView::paste(
 			[](const char *node_id, OakEngineKeyframe *kf,
 			   void *userdata) -> int {
 				auto *ctx = static_cast<PasteCtx *>(userdata);
-				NodeKeyframe *key = reinterpret_cast<NodeKeyframe *>(kf);
 				auto &find_fn =
-					*static_cast<std::function<Node *(const QString &)> *>(
+					*static_cast<std::function<oak::Node(const QString &)> *>(
 						ctx->find_fn);
-				Node *node_with_id =
+				oak::Node node_with_id =
 					find_fn(QString::fromUtf8(node_id));
 
-				if (node_with_id) {
-					Rational t = key->time() - ctx->min;
+				if (!node_with_id.is_null()) {
+					Rational t = key_time(kf) - ctx->min;
 					t = ctx->self->get_adjusted_time(
-						ctx->self->get_time_target(), node_with_id, t,
-						Node::k_transform_towards_input);
-					key_set_time_live(key, t);
+						ctx->self->get_time_target(),
+						node_with_id.handle(), t,
+						k_transform_towards_input);
+					key_set_time_live(kf, t);
 
-					if (NodeKeyframe *existing =
-							node_with_id->get_keyframe_at_time_on_track(
-								key->input(), key->time(), key->track(),
-								key->element())) {
+					char kf_input[256];
+					kf_input[0] = '\0';
+					oakengine_keyframe_get_input_id(kf, kf_input,
+													sizeof(kf_input));
+					int64_t kn = 0, kd = 1;
+					oakengine_keyframe_get_time(kf, &kn, &kd);
+
+					if (OakEngineKeyframe *existing =
+							oakengine_node_keyframe_handle_at_time(
+								node_with_id.handle(), kf_input,
+								oakengine_keyframe_get_element(kf),
+								oakengine_keyframe_get_track(kf), kn, kd)) {
 						void *rm = oakengine_node_remove_keyframe_command(
-							reinterpret_cast<OakEngineKeyframe *>(existing));
+							existing);
 						oakengine_undo_command_multi_add_child(
 							ctx->command, rm);
 					}
 
 					oak_node_value v;
-					KeyframeToOakNodeValue(node_with_id, key, &v);
+					oakengine_keyframe_compute_paste_value(
+						node_with_id.handle(), kf, &v);
 					int tbn = 0, tbd = 0;
 					oakengine_node_frame_time_base(
-						reinterpret_cast<OakEngineNode *>(node_with_id),
+						node_with_id.handle(),
 						&tbn, &tbd);
 					const int64_t time_ts = Timecode::time_to_timestamp(
-						key->time(), Rational(tbn, tbd), Timecode::k_round);
+						key_time(kf), Rational(tbn, tbd), Timecode::k_round);
+					const QPointF cp_in = key_bezier_point(kf, 0);
+					const QPointF cp_out = key_bezier_point(kf, 1);
 					void *cmd = oakengine_node_insert_keyframe_command(
-						reinterpret_cast<OakEngineNode *>(node_with_id),
-						key->input().toUtf8().constData(),
-						key->element(), key->track(), time_ts, &v,
-						NodeKeyframeTypeToFacade(key->type()),
-						static_cast<float>(key->bezier_control_in().x()),
-						static_cast<float>(key->bezier_control_in().y()),
-						static_cast<float>(key->bezier_control_out().x()),
-						static_cast<float>(key->bezier_control_out().y()));
+						node_with_id.handle(),
+						kf_input,
+						oakengine_keyframe_get_element(kf),
+						oakengine_keyframe_get_track(kf), time_ts, &v,
+						oakengine_keyframe_get_type(kf),
+						static_cast<float>(cp_in.x()),
+						static_cast<float>(cp_in.y()),
+						static_cast<float>(cp_out.x()),
+						static_cast<float>(cp_out.y()));
 					oakengine_undo_command_multi_add_child(ctx->command, cmd);
 				} else {
-					delete key;
+					oakengine_keyframe_dispose(kf);
 				}
 
 				return 0;
@@ -377,7 +388,7 @@ void KeyframeView::CatchUpScrollEvent()
 
 void KeyframeView::mousePressEvent(QMouseEvent *event)
 {
-	NodeKeyframe *key_under_cursor =
+	OakEngineKeyframe *key_under_cursor =
 		selection_manager_.get_object_at_point(event->pos());
 
 	if (hand_press(event) || (!key_under_cursor && playhead_press(event))) {
@@ -387,7 +398,7 @@ void KeyframeView::mousePressEvent(QMouseEvent *event)
 	// Do mouse press things
 	if (first_chance_mouse_press(event)) {
 		first_chance_mouse_event_ = true;
-	} else if (NodeKeyframe *initial_key =
+	} else if (OakEngineKeyframe *initial_key =
 				   selection_manager_.mouse_press(event)) {
 		selection_manager_.drag_start(initial_key, event, this);
 		keyframe_drag_start(event);
@@ -447,7 +458,7 @@ void KeyframeView::mouseReleaseEvent(QMouseEvent *event)
 	emit released();
 }
 
-int binary_search_first_keyframe_after_or_at(const QVector<NodeKeyframe *> &keys,
+int binary_search_first_keyframe_after_or_at(const QVector<oak::Keyframe> &keys,
 									   const Rational &time)
 {
 	int low = 0;
@@ -455,13 +466,13 @@ int binary_search_first_keyframe_after_or_at(const QVector<NodeKeyframe *> &keys
 
 	while (low <= high) {
 		int mid = low + (high - low) / 2;
-		NodeKeyframe *test_key = keys.at(mid);
+		const oak::Keyframe &test_key = keys.at(mid);
 
-		if (test_key->time() == time ||
-			(test_key->time() > time &&
-			 (mid == 0 || keys.at(mid - 1)->time() < time))) {
+		if (key_time(test_key.handle()) == time ||
+			(key_time(test_key.handle()) > time &&
+			 (mid == 0 || key_time(keys.at(mid - 1).handle()) < time))) {
 			return mid;
-		} else if (test_key->time() < time) {
+		} else if (key_time(test_key.handle()) < time) {
 			low = mid + 1;
 		} else {
 			high = mid - 1;
@@ -481,7 +492,7 @@ void KeyframeView::drawForeground(QPainter *painter, const QRectF &rect)
 	painter->setRenderHint(QPainter::Antialiasing);
 
 	foreach (KeyframeViewInputConnection *track, tracks_) {
-		const QVector<NodeKeyframe *> &keys = track->get_keyframes();
+		const QVector<oak::Keyframe> keys = track->get_keyframes();
 
 		if (keys.isEmpty()) {
 			continue;
@@ -501,11 +512,11 @@ void KeyframeView::drawForeground(QPainter *painter, const QRectF &rect)
 		int using_index = binary_search_first_keyframe_after_or_at(keys, left_time);
 
 		Rational next_key = RATIONAL_MIN;
-		NodeKeyframe::Type last_type = NodeKeyframe::k_invalid;
+		int last_type = KeyframeTypes::k_facade_invalid;
 		for (int i = using_index; i < keys.size(); i++) {
-			NodeKeyframe *key = keys.at(i);
+			oak::Keyframe key = keys.at(i);
 
-			if (key->time() < next_key && key->type() == last_type) {
+			if (key_time(key.handle()) < next_key && key.type() == last_type) {
 				// This key will be drawn at exactly the same location as the last one and therefore
 				// doesn't need to be drawn. See if the next one will be drawn.
 				i++;
@@ -515,7 +526,7 @@ void KeyframeView::drawForeground(QPainter *painter, const QRectF &rect)
 
 				key = keys.at(i);
 
-				if (key->time() < next_key) {
+				if (key_time(key.handle()) < next_key) {
 					// Next key still won't be drawn, so we'll switch to a binary search
 					i = binary_search_first_keyframe_after_or_at(keys, next_key);
 
@@ -539,14 +550,14 @@ void KeyframeView::drawForeground(QPainter *painter, const QRectF &rect)
 			draw_keyframe(painter, key, track, key_rect);
 
 			next_key = get_unadjusted_keyframe_time(key, scene_to_time(key_x + 1));
-			last_type = key->type();
+			last_type = key.type();
 		}
 	}
 
 	super::drawForeground(painter, rect);
 }
 
-void KeyframeView::draw_keyframe(QPainter *painter, NodeKeyframe *key,
+void KeyframeView::draw_keyframe(QPainter *painter, const oak::Keyframe &key,
 								KeyframeViewInputConnection *track,
 								const QRectF &key_rect)
 {
@@ -558,12 +569,10 @@ void KeyframeView::draw_keyframe(QPainter *painter, NodeKeyframe *key,
 		painter->setBrush(track->get_brush());
 	}
 
-	selection_manager_.declare_drawn_object(key, key_rect);
+	selection_manager_.declare_drawn_object(key.handle(), key_rect);
 
-	switch (key->type()) {
-	case NodeKeyframe::k_invalid:
-		break;
-	case NodeKeyframe::k_linear: {
+	switch (key.type()) {
+	case KeyframeTypes::k_facade_linear: {
 		QPointF points[] = { QPointF(key_rect.center().x(), key_rect.top()),
 							 QPointF(key_rect.right(), key_rect.center().y()),
 							 QPointF(key_rect.center().x(), key_rect.bottom()),
@@ -572,11 +581,13 @@ void KeyframeView::draw_keyframe(QPainter *painter, NodeKeyframe *key,
 		painter->drawPolygon(points, 4);
 		break;
 	}
-	case NodeKeyframe::k_bezier:
+	case KeyframeTypes::k_facade_bezier:
 		painter->drawEllipse(key_rect);
 		break;
-	case NodeKeyframe::k_hold:
+	case KeyframeTypes::k_facade_hold:
 		painter->drawRect(key_rect);
+		break;
+	default:
 		break;
 	}
 }
@@ -588,7 +599,7 @@ void KeyframeView::ScaleChangedEvent(const double &scale)
 	redraw();
 }
 
-void KeyframeView::TimeTargetChangedEvent(ViewerOutput *v)
+void KeyframeView::TimeTargetChangedEvent(OakEngineNode *v)
 {
 	redraw();
 }
@@ -605,44 +616,46 @@ void KeyframeView::ContextMenuEvent(Menu &m)
 	Q_UNUSED(m)
 }
 
-void KeyframeView::select_keyframe(NodeKeyframe *key)
+void KeyframeView::select_keyframe(const oak::Keyframe &key)
 {
-	if (selection_manager_.select(key)) {
+	if (selection_manager_.select(key.handle())) {
 		redraw();
 
 		emit selection_changed();
 	}
 }
 
-void KeyframeView::deselect_keyframe(NodeKeyframe *key)
+void KeyframeView::deselect_keyframe(const oak::Keyframe &key)
 {
-	if (selection_manager_.deselect(key)) {
+	if (selection_manager_.deselect(key.handle())) {
 		redraw();
 
 		emit selection_changed();
 	}
 }
 
-Rational KeyframeView::get_unadjusted_keyframe_time(NodeKeyframe *key,
+Rational KeyframeView::get_unadjusted_keyframe_time(const oak::Keyframe &key,
 												 const Rational &time)
 {
-	return get_adjusted_time(get_time_target(), key->parent(), time,
-						   Node::k_transform_towards_input);
+	return get_adjusted_time(get_time_target(),
+						   key.node().handle(), time,
+						   k_transform_towards_input);
 }
 
-Rational KeyframeView::get_adjusted_keyframe_time(NodeKeyframe *key)
+Rational KeyframeView::get_adjusted_keyframe_time(const oak::Keyframe &key)
 {
-	return get_adjusted_time(key->parent(), get_time_target(), key->time(),
-						   Node::k_transform_towards_output);
+	return get_adjusted_time(key.node().handle(),
+						   get_time_target(), key_time(key.handle()),
+						   k_transform_towards_output);
 }
 
-double KeyframeView::get_keyframe_scene_x(NodeKeyframe *key)
+double KeyframeView::get_keyframe_scene_x(const oak::Keyframe &key)
 {
 	return time_to_scene(get_adjusted_keyframe_time(key));
 }
 
 qreal KeyframeView::get_keyframe_scene_y(KeyframeViewInputConnection *track,
-									  NodeKeyframe *key)
+									  const oak::Keyframe &key)
 {
 	return mapFromGlobal(QPoint(0, track->get_keyframe_y())).y();
 }
@@ -671,13 +684,15 @@ void KeyframeView::show_context_menu()
 
 	if (!get_selected_keyframes().empty()) {
 		bool all_keys_are_same_type = true;
-		NodeKeyframe::Type type = get_selected_keyframes().front()->type();
+		const int type = oakengine_keyframe_get_type(
+			get_selected_keyframes().front());
 
 		for (size_t i = 1; i < get_selected_keyframes().size(); i++) {
-			NodeKeyframe *key_item = get_selected_keyframes().at(i);
-			NodeKeyframe *prev_item = get_selected_keyframes().at(i - 1);
+			OakEngineKeyframe *key_item = get_selected_keyframes().at(i);
+			OakEngineKeyframe *prev_item = get_selected_keyframes().at(i - 1);
 
-			if (key_item->type() != prev_item->type()) {
+			if (oakengine_keyframe_get_type(key_item) !=
+				oakengine_keyframe_get_type(prev_item)) {
 				all_keys_are_same_type = false;
 				break;
 			}
@@ -691,16 +706,16 @@ void KeyframeView::show_context_menu()
 
 		if (all_keys_are_same_type) {
 			switch (type) {
-			case NodeKeyframe::k_invalid:
-				break;
-			case NodeKeyframe::k_linear:
+			case KeyframeTypes::k_facade_linear:
 				linear_key_action->setChecked(true);
 				break;
-			case NodeKeyframe::k_bezier:
+			case KeyframeTypes::k_facade_bezier:
 				bezier_key_action->setChecked(true);
 				break;
-			case NodeKeyframe::k_hold:
+			case KeyframeTypes::k_facade_hold:
 				hold_key_action->setChecked(true);
+				break;
+			default:
 				break;
 			}
 		}
@@ -724,60 +739,54 @@ void KeyframeView::show_context_menu()
 	if (selected) {
 		if (selected == linear_key_action || selected == bezier_key_action ||
 			selected == hold_key_action) {
-			NodeKeyframe::Type new_type;
+			int new_type;
 
 			if (selected == hold_key_action) {
-				new_type = NodeKeyframe::k_hold;
+				new_type = KeyframeTypes::k_facade_hold;
 			} else if (selected == bezier_key_action) {
-				new_type = NodeKeyframe::k_bezier;
+				new_type = KeyframeTypes::k_facade_bezier;
 			} else {
-				new_type = NodeKeyframe::k_linear;
+				new_type = KeyframeTypes::k_facade_linear;
 			}
 
 			// Through the liboakengine C ABI facade: one undoable command
 			// per distinct input (usually just one), with the same batch
 			// semantics as the old per-keyframe commands.
 			struct TypeGroup {
-				Node *node;
+				OakEngineNode *node;
 				QString input;
 				int element;
 				QVector<int64_t> times;
 				QVector<int> tracks;
 			};
 			QVector<TypeGroup> groups;
-			foreach (NodeKeyframe *item, get_selected_keyframes()) {
+			foreach (OakEngineKeyframe *item, get_selected_keyframes()) {
+				const oak::Keyframe key(item);
+				OakEngineNode *node = key.node().handle();
 				int g = 0;
 				for (; g < groups.size(); g++) {
-					if (groups.at(g).node == item->parent() &&
-						groups.at(g).input == item->input() &&
-						groups.at(g).element == item->element()) {
+					if (groups.at(g).node == node &&
+						groups.at(g).input == key.input_id() &&
+						groups.at(g).element == key.element()) {
 						break;
 					}
 				}
 				if (g == groups.size()) {
-					groups.append({ item->parent(), item->input(),
-									item->element(), {}, {} });
+					groups.append({ node, key.input_id(),
+									key.element(), {}, {} });
 				}
-				OakEngineNode *handle =
-					reinterpret_cast<OakEngineNode *>(item->parent());
 				int tbn = 0, tbd = 0;
-				oakengine_node_frame_time_base(handle, &tbn, &tbd);
+				oakengine_node_frame_time_base(node, &tbn, &tbd);
 				groups[g].times.append(Timecode::time_to_timestamp(
-					item->time(), Rational(tbn, tbd), Timecode::k_round));
-				groups[g].tracks.append(item->track());
-			}
-			int facade_type = 0;
-			if (new_type == NodeKeyframe::k_bezier) {
-				facade_type = 1;
-			} else if (new_type == NodeKeyframe::k_hold) {
-				facade_type = 2;
+					key_time(item), Rational(tbn, tbd), Timecode::k_round));
+				groups[g].tracks.append(key.track());
 			}
 			foreach (const TypeGroup &g, groups) {
 				oakengine_node_keyframes_set_type_many(
-					reinterpret_cast<OakEngineNode *>(g.node),
+					g.node,
 					g.input.toUtf8().constData(), g.element,
 					g.times.constData(), g.tracks.data(), g.times.size(),
-					facade_type);
+					new_type);
 			}
 		}
 	}
@@ -786,7 +795,12 @@ void KeyframeView::show_context_menu()
 void KeyframeView::show_keyframe_properties_dialog()
 {
 	if (!get_selected_keyframes().empty()) {
-		KeyframePropertiesDialog kd(get_selected_keyframes(), timebase(), this);
+		QVector<oak::Keyframe> keys;
+		keys.reserve(int(get_selected_keyframes().size()));
+		foreach (OakEngineKeyframe *key, get_selected_keyframes()) {
+			keys.append(oak::Keyframe(key));
+		}
+		KeyframePropertiesDialog kd(keys, timebase(), this);
 		kd.exec();
 	}
 }

@@ -32,6 +32,7 @@
 #include "node/block/clip/clip.h"
 #include "node/nodeundo.h"
 #include "node/param.h"
+#include "render/audiowaveformcache.h"
 #include "render/playbackcache.h"
 #include "render/framehashcache.h"
 #include "render/videoparams.h"
@@ -614,6 +615,127 @@ OakEngineFrameCache *oakengine_viewer_get_frame_cache(OakEngineNode *self)
 			clip->connected_video_cache());
 	}
 	return nullptr;
+}
+
+/* ---- Playback cache accessors ------------------------------------------------ */
+
+int oakengine_playback_cache_has_validated_ranges(const void *cache)
+{
+	if (!cache) {
+		return 0;
+	}
+	return reinterpret_cast<const olive::PlaybackCache *>(cache)
+				   ->has_validated_ranges()
+			   ? 1
+			   : 0;
+}
+
+OakEngineNode *oakengine_playback_cache_parent(void *cache)
+{
+	if (!cache) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineNode *>(
+		reinterpret_cast<olive::PlaybackCache *>(cache)->parent());
+}
+
+void oakengine_playback_cache_draw(void *cache, void *qpainter, int64_t in_ts,
+								   double scale, int height)
+{
+	if (!cache || !qpainter) {
+		return;
+	}
+	olive::PlaybackCache *pc =
+		reinterpret_cast<olive::PlaybackCache *>(cache);
+	QPainter *painter = static_cast<QPainter *>(qpainter);
+
+	// Timebase of the cache's parent viewer (frame rate flipped), falling
+	// back to the engine default when the cache has no viewer parent.
+	olive::Rational tb(1001, 30000);
+	if (olive::ViewerOutput *v =
+			dynamic_cast<olive::ViewerOutput *>(pc->parent())) {
+		const olive::Rational fr = v->get_video_params().frame_rate();
+		if (!fr.isNull() && !fr.isNaN()) {
+			tb = fr.flipped();
+		}
+	}
+	const olive::Rational start =
+		olive::core::Timecode::timestamp_to_time(in_ts, tb);
+
+	const QRect viewport = painter->viewport();
+	pc->draw(painter, start, scale,
+			 QRect(viewport.x(), viewport.y(), viewport.width(), height));
+}
+
+/* ---- Audio waveform cache accessors ------------------------------------------- */
+
+int64_t oakengine_waveform_cache_length(const void *cache)
+{
+	if (!cache) {
+		return 0;
+	}
+	const olive::AudioWaveformCache *wc =
+		reinterpret_cast<const olive::AudioWaveformCache *>(cache);
+	const olive::Rational tb = wc->get_parameters().sample_rate_as_time_base();
+	if (tb.isNull() || tb.isNaN()) {
+		return 0;
+	}
+	return olive::core::Timecode::time_to_timestamp(
+		wc->length(), tb, olive::core::Timecode::k_round);
+}
+
+int oakengine_waveform_cache_sample_rate(const void *cache)
+{
+	if (!cache) {
+		return 0;
+	}
+	return reinterpret_cast<const olive::AudioWaveformCache *>(cache)
+		->get_parameters()
+		.sample_rate();
+}
+
+int oakengine_waveform_cache_has_validated_ranges(const void *cache)
+{
+	if (!cache) {
+		return 0;
+	}
+	return reinterpret_cast<const olive::AudioWaveformCache *>(cache)
+				   ->has_validated_ranges()
+			   ? 1
+			   : 0;
+}
+
+int oakengine_waveform_cache_get_summary(const void *cache, int64_t start_ts,
+										int64_t end_ts, double *min_out,
+										double *max_out, int max_channels,
+										int *channels_out)
+{
+	if (channels_out) {
+		*channels_out = 0;
+	}
+	if (!cache || !min_out || !max_out || max_channels < 0 ||
+		end_ts < start_ts) {
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::AudioWaveformCache *wc =
+		reinterpret_cast<const olive::AudioWaveformCache *>(cache);
+	const int sample_rate = wc->get_parameters().sample_rate();
+	if (sample_rate <= 0) {
+		return OAKENGINE_E_STATE;
+	}
+	const olive::AudioVisualWaveform::Sample summary =
+		wc->get_summary_from_time(
+			olive::Rational(start_ts, sample_rate),
+			olive::Rational(end_ts - start_ts, sample_rate));
+	const int count = qMin(max_channels, int(summary.size()));
+	for (int i = 0; i < count; i++) {
+		min_out[i] = summary[size_t(i)].min;
+		max_out[i] = summary[size_t(i)].max;
+	}
+	if (channels_out) {
+		*channels_out = count;
+	}
+	return OAKENGINE_OK;
 }
 
 } // extern "C"

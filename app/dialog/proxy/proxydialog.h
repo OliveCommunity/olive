@@ -29,8 +29,9 @@
 #include "oakengine/proxy.h"
 #include "oakengine/videoparams.h"
 #include "oakengine/viewer.h"
-#include "node/project/footage/footage.h"
 #include "widget/slider/integerslider.h"
+
+struct OakEngineNode;
 
 namespace olive
 {
@@ -38,7 +39,7 @@ namespace olive
 class ProxyDialog : public QDialog {
 	Q_OBJECT
 public:
-	ProxyDialog(QWidget *parent, const QVector<Footage *> &footage = {});
+	ProxyDialog(QWidget *parent, const QVector<OakEngineNode *> &footage = {});
 
 	virtual void accept() override;
 
@@ -77,7 +78,7 @@ private:
 
 	void refresh_footage_list();
 
-	QVector<Footage *> footage_;
+	QVector<OakEngineNode *> footage_;
 
 	QTreeWidget *footage_tree_;
 

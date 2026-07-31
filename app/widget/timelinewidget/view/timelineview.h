@@ -29,7 +29,6 @@
 #include <QDropEvent>
 
 #include "engineeventbridge.h"
-#include "node/block/clip/clip.h"
 #include "timelineviewmouseevent.h"
 #include "timelineviewghostitem.h"
 #include "widget/timebased/timebasedview.h"
@@ -37,10 +36,14 @@
 namespace olive
 {
 
+// Engine cache type used here only as an opaque pointer (C ABI interop);
+// the forward declaration replaces the old engine clip.h include.
+class FrameHashCache;
+
 /**
  * @brief A widget for viewing and interacting Sequences
  *
- * This widget primarily exposes users to viewing and modifying Block nodes, usually through a TimelineOutput node.
+ * This widget primarily exposes users to viewing and modifying timeline blocks, usually through a timeline output node.
  */
 class TimelineView : public TimeBasedView {
 	Q_OBJECT
@@ -54,16 +57,16 @@ public:
 	QPoint get_scroll_coordinates() const;
 	void set_scroll_coordinates(const QPoint &pt);
 
-	void connect_track_list(TrackList *list);
+	void connect_track_list(OakEngineSequence *sequence, int track_type);
 
 	void track_list_changed();
 
 	void set_beam_cursor(const TimelineCoordinate &coord);
-	void set_transition_overlay(ClipBlock *out, ClipBlock *in);
+	void set_transition_overlay(OakEngineBlock *out, OakEngineBlock *in);
 	void enable_recording_overlay(const TimelineCoordinate &coord);
 	void disable_recording_overlay();
 
-	void set_selection_list(QHash<Track::Reference, TimeRangeList> *s)
+	void set_selection_list(QHash<TrackReference, TimeRangeList> *s)
 	{
 		selections_ = s;
 	}
@@ -75,9 +78,10 @@ public:
 
 	int scene_to_track(double y);
 
-	Block *get_item_at_scene_pos(const Rational &time, int track_index) const;
+	OakEngineBlock *get_item_at_scene_pos(const Rational &time,
+									  int track_index) const;
 
-	QVector<Block *> get_items_at_scene_rect(const QRectF &rect) const;
+	QVector<OakEngineBlock *> get_items_at_scene_rect(const QRectF &rect) const;
 
 signals:
 	void mouse_pressed(TimelineViewMouseEvent *event);
@@ -109,7 +113,7 @@ protected:
 	virtual void SceneRectUpdateEvent(QRectF &rect) override;
 
 private:
-	Track::Type connected_track_type();
+	TrackReference::Type connected_track_type() const;
 
 	TimelineCoordinate screen_to_coordinate(const QPoint &pt);
 	TimelineCoordinate scene_to_coordinate(const QPointF &pt);
@@ -121,11 +125,11 @@ private:
 
 	void draw_blocks(QPainter *painter, bool foreground);
 
-	void draw_block(QPainter *painter, bool foreground, Block *block, qreal top,
-				   qreal height, const Rational &in, const Rational &out,
-				   const Rational &media_in);
-	void draw_block(QPainter *painter, bool foreground, Block *block, qreal top,
-				   qreal height);
+	void draw_block(QPainter *painter, bool foreground, OakEngineBlock *block,
+				   qreal top, qreal height, const Rational &in,
+				   const Rational &out, const Rational &media_in);
+	void draw_block(QPainter *painter, bool foreground, OakEngineBlock *block,
+				   qreal top, qreal height);
 
 	void draw_zebra_stripes(QPainter *painter, const QRectF &r);
 
@@ -141,7 +145,7 @@ private:
 					   const Rational &time, int x, const QRect &preview_rect,
 					   QRect *thumb_rect) const;
 
-	QHash<Track::Reference, TimeRangeList> *selections_;
+	QHash<TrackReference, TimeRangeList> *selections_;
 
 	QVector<TimelineViewGhostItem *> *ghosts_;
 
@@ -149,12 +153,15 @@ private:
 
 	TimelineCoordinate cursor_coord_;
 
-	TrackList *connected_track_list_;
+	// Connected track list as (sequence, type); tracks are enumerated
+	// through the C ABI (same model as TrackView::connect_track_list).
+	OakEngineSequence *connected_sequence_;
+	int connected_track_type_;
 
-	ClipBlock *transition_overlay_out_;
-	ClipBlock *transition_overlay_in_;
+	OakEngineBlock *transition_overlay_out_;
+	OakEngineBlock *transition_overlay_in_;
 
-	QMap<TimelineMarker *, QRectF> clip_marker_rects_;
+	QMap<OakEngineMarker *, QRectF> clip_marker_rects_;
 
 	bool recording_overlay_;
 	TimelineCoordinate recording_coord_;

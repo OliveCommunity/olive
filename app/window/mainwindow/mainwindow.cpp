@@ -164,15 +164,15 @@ MainWindow::~MainWindow()
 
 void MainWindow::load_layout(const SerializedLayoutInfo &info)
 {
-	foreach (Folder *folder, info.open_folders) {
+	foreach (OakEngineNode *folder, info.open_folders) {
 		open_folder(folder, true);
 	}
 
-	foreach (Sequence *sequence, info.open_sequences) {
+	foreach (OakEngineNode *sequence, info.open_sequences) {
 		open_sequence(sequence, info.open_sequences.size() == 1);
 	}
 
-	foreach (ViewerOutput *viewer, info.open_viewers) {
+	foreach (OakEngineNode *viewer, info.open_viewers) {
 		open_node_in_viewer(viewer);
 	}
 
@@ -219,19 +219,21 @@ SerializedLayoutInfo MainWindow::save_layout() const
 
 	for (int i = 0; i < folder_panels_.size(); i++) {
 		auto panel = folder_panels_.at(i);
-		info.open_folders.push_back(panel->get_root());
+		info.open_folders.push_back(panel->get_root().handle());
 		correct_panel_data_if_necessary(panel->uniqueName(), i, info, layout);
 	}
 
 	for (int i = 0; i < timeline_panels_.size(); i++) {
 		auto panel = timeline_panels_.at(i);
-		info.open_sequences.push_back(panel->get_sequence());
+		info.open_sequences.push_back(
+			reinterpret_cast<OakEngineNode *>(panel->get_sequence()));
 		correct_panel_data_if_necessary(panel->uniqueName(), i, info, layout);
 	}
 
 	for (int i = 0; i < viewer_panels_.size(); i++) {
 		auto panel = viewer_panels_.at(i);
-		info.open_viewers.push_back(panel->get_connected_viewer());
+		info.open_viewers.push_back(
+			reinterpret_cast<OakEngineNode *>(panel->get_connected_viewer()));
 		correct_panel_data_if_necessary(panel->uniqueName(), i, info, layout);
 	}
 
@@ -240,11 +242,11 @@ SerializedLayoutInfo MainWindow::save_layout() const
 	return info;
 }
 
-TimelinePanel *MainWindow::open_sequence(Sequence *sequence, bool enable_focus)
+TimelinePanel *MainWindow::open_sequence(OakEngineNode *sequence, bool enable_focus)
 {
 	// See if this sequence is already open, and switch to it if so
 	foreach (TimelinePanel *tl, timeline_panels_) {
-		if (tl->get_connected_viewer() == sequence) {
+		if (reinterpret_cast<OakEngineNode *>(tl->get_connected_viewer()) == sequence) {
 			tl->raise();
 			return tl;
 		}
@@ -270,23 +272,23 @@ TimelinePanel *MainWindow::open_sequence(Sequence *sequence, bool enable_focus)
 	return panel;
 }
 
-void MainWindow::close_sequence(Sequence *sequence)
+void MainWindow::close_sequence(OakEngineNode *sequence)
 {
 	// We defer to RemoveTimelinePanel() to close the panels, which may delete and remove indices from timeline_panels_.
 	// We make a copy so that our array here doesn't get ruined by what RemoveTimelinePanel() does
 	QList<TimelinePanel *> copy = timeline_panels_;
 
 	foreach (TimelinePanel *tp, copy) {
-		if (tp->get_connected_viewer() == sequence) {
+		if (reinterpret_cast<OakEngineNode *>(tp->get_connected_viewer()) == sequence) {
 			remove_timeline_panel(tp);
 		}
 	}
 }
 
-bool MainWindow::is_sequence_open(Sequence *sequence) const
+bool MainWindow::is_sequence_open(OakEngineNode *sequence) const
 {
 	foreach (TimelinePanel *tp, timeline_panels_) {
-		if (tp->get_connected_viewer() == sequence) {
+		if (reinterpret_cast<OakEngineNode *>(tp->get_connected_viewer()) == sequence) {
 			return true;
 		}
 	}
@@ -294,13 +296,14 @@ bool MainWindow::is_sequence_open(Sequence *sequence) const
 	return false;
 }
 
-void MainWindow::open_folder(Folder *i, bool floating)
+void MainWindow::open_folder(OakEngineNode *i, bool floating)
 {
 	ProjectPanel *panel =
 		append_panel_internal(QStringLiteral("FolderPanel"), folder_panels_);
 
-	panel->set_project(i->project());
-	panel->set_root(i);
+	oak::Node folder(i);
+	panel->set_project(folder.project());
+	panel->set_root(folder);
 
 	if (floating) {
 		panel->setFloating(floating);
@@ -313,13 +316,13 @@ void MainWindow::open_folder(Folder *i, bool floating)
 			&MainWindow::folder_panel_close_requested);
 }
 
-void MainWindow::open_node_in_viewer(ViewerOutput *node)
+void MainWindow::open_node_in_viewer(OakEngineNode *node)
 {
 	ViewerPanel *existing = nullptr;
 
 	for (auto it = viewer_panels_.cbegin(); it != viewer_panels_.cend(); it++) {
 		ViewerPanel *it2 = (*it);
-		if (it2->get_connected_viewer() == node) {
+		if (reinterpret_cast<OakEngineNode *>(it2->get_connected_viewer()) == node) {
 			existing = it2;
 			break;
 		}
@@ -338,7 +341,7 @@ void MainWindow::open_node_in_viewer(ViewerOutput *node)
 		connect(viewer, &ViewerPanel::close_requested, this,
 				&MainWindow::viewer_close_requested);
 		auto sub = bridge_->subscribe(
-			reinterpret_cast<void *>(node),
+			node,
 			OAKENGINE_EVENT_NODE_REMOVED_FROM_GRAPH);
 		removed_from_graph_subs_[node] = sub;
 	}
@@ -405,7 +408,7 @@ void MainWindow::toggle_maximized_panel()
 	}
 }
 
-void MainWindow::set_project(Project *p)
+void MainWindow::set_project(OakEngineProject *p)
 {
 	if (project_ == p) {
 		return;
@@ -413,19 +416,22 @@ void MainWindow::set_project(Project *p)
 
 	if (project_) {
 		// Clear all data
-		param_panel_->set_contexts(QVector<Node *>());
-		node_panel_->set_contexts(QVector<Node *>());
+		param_panel_->set_contexts(QVector<oak::Node>());
+		node_panel_->set_contexts(QVector<oak::Node>());
 
 		// Close any nodes open in TimeBasedWidgets
 		foreach (PanelWidget *panel, PanelManager::instance()->panels()) {
 			TimeBasedPanel *tbp = dynamic_cast<TimeBasedPanel *>(panel);
 
 			if (tbp && tbp->get_connected_viewer() &&
-				tbp->get_connected_viewer()->project() == project_) {
+				oak::Node(reinterpret_cast<OakEngineNode *>(
+							  tbp->get_connected_viewer()))
+						.project()
+						.handle() == project_) {
 				if (dynamic_cast<TimelinePanel *>(tbp)) {
 					// Prefer our CloseSequence function which will delete any unnecessary timeline panels
 					close_sequence(
-						static_cast<Sequence *>(tbp->get_connected_viewer()));
+						reinterpret_cast<OakEngineNode *>(tbp->get_connected_viewer()));
 				} else {
 					tbp->disconnect_viewer_node();
 				}
@@ -444,7 +450,7 @@ void MainWindow::set_project(Project *p)
 	}
 
 	project_ = p;
-	project_panel_->set_project(p);
+	project_panel_->set_project(oak::Project(p));
 
 	if (project_) {
 		project_panel_->setFocus(Qt::OtherFocusReason);
@@ -486,7 +492,7 @@ void MainWindow::set_application_progress_value(int value)
 #endif
 }
 
-void MainWindow::select_footage(const QVector<Footage *> &e)
+void MainWindow::select_footage(const QVector<OakEngineNode *> &e)
 {
 	select_footage_for_project_panel(e, project_panel_);
 	for (ProjectPanel *p : folder_panels_) {
@@ -558,12 +564,7 @@ void MainWindow::timeline_panel_selection_changed(const QVector<OakEngineBlock *
 
 	if (PanelManager::instance()->currently_focused(false) == panel) {
 		update_node_panel_context_from_timeline_panel(panel);
-		QVector<Block *> native_blocks;
-		native_blocks.reserve(blocks.size());
-		for (OakEngineBlock *b : blocks) {
-			native_blocks.append(reinterpret_cast<Block *>(b));
-		}
-		sequence_viewer_panel_->set_timeline_selected_blocks(native_blocks);
+		sequence_viewer_panel_->set_timeline_selected_blocks(blocks);
 	}
 }
 
@@ -580,9 +581,9 @@ void MainWindow::reveal_viewer_in_project(OakEngineNode *r)
 	// Rather than just using the resident ProjectPanel, find the most recently focused one since
 	// that's probably the one people will want
 	auto panels = PanelManager::instance()->get_panels_of_type<ProjectPanel>();
-	ViewerOutput *viewer = reinterpret_cast<ViewerOutput *>(r);
+	oak::Node node(r);
 	foreach (ProjectPanel *p, panels) {
-		if (p->select_item(viewer)) {
+		if (p->select_item(node)) {
 			break;
 		}
 	}
@@ -591,20 +592,18 @@ void MainWindow::reveal_viewer_in_project(OakEngineNode *r)
 void MainWindow::reveal_viewer_in_footage_viewer(OakEngineNode *r,
 											 const TimeRange &range)
 {
-	ViewerOutput *viewer = reinterpret_cast<ViewerOutput *>(r);
-
-	footage_viewer_panel_->connect_viewer_node(viewer);
+	footage_viewer_panel_->connect_viewer_node(r);
 
 	auto command = oakengine_undo_command_create_multi();
-	OakEngineWorkarea *wa = reinterpret_cast<OakEngineWorkarea *>(viewer->get_work_area());
-	if (!viewer->get_work_area()->enabled()) {
+	OakEngineWorkarea *wa = oakengine_viewer_get_workarea_handle(r);
+	int64_t old_in_num, old_in_den, old_out_num, old_out_den;
+	int old_enabled;
+	oakengine_workarea_get(wa, &old_in_num, &old_in_den,
+						   &old_out_num, &old_out_den, &old_enabled);
+	if (!old_enabled) {
 		oakengine_workarea_set_enabled_undoable(wa, 1, command);
 	}
 	{
-		int64_t old_in_num, old_in_den, old_out_num, old_out_den;
-		int old_enabled;
-		oakengine_workarea_get(wa, &old_in_num, &old_in_den,
-							   &old_out_num, &old_out_den, &old_enabled);
 		oakengine_workarea_set_range_undoable(wa,
 			range.in().numerator(), range.in().denominator(),
 			range.out().numerator(), range.out().denominator(),
@@ -669,11 +668,10 @@ void MainWindow::viewer_close_requested()
 
 void MainWindow::viewer_with_panel_removed_from_graph(OakEngineNode *source)
 {
-	ViewerOutput *vo = reinterpret_cast<ViewerOutput *>(source);
 	ViewerPanel *panel = nullptr;
 
 	foreach (ViewerPanel *p, viewer_panels_) {
-		if (p->get_connected_viewer() == vo) {
+		if (p->get_connected_viewer() == source) {
 			panel = p;
 			break;
 		}
@@ -682,7 +680,7 @@ void MainWindow::viewer_with_panel_removed_from_graph(OakEngineNode *source)
 	if (panel) {
 		remove_panel_internal(viewer_panels_, panel);
 		panel->deleteLater();
-		auto it = removed_from_graph_subs_.find(vo);
+		auto it = removed_from_graph_subs_.find(source);
 		if (it != removed_from_graph_subs_.end()) {
 			bridge_->unsubscribe(it.value());
 			removed_from_graph_subs_.erase(it);
@@ -741,7 +739,7 @@ void MainWindow::remove_timeline_panel(TimelinePanel *panel)
 	}
 }
 
-void MainWindow::timeline_focused(ViewerOutput *viewer)
+void MainWindow::timeline_focused(OakEngineNode *viewer)
 {
 	sequence_viewer_panel_->connect_viewer_node(viewer);
 	multicam_panel_->connect_viewer_node(viewer);
@@ -750,7 +748,7 @@ void MainWindow::timeline_focused(ViewerOutput *viewer)
 
 	// Update the global status bar info chips (resolution + frame rate)
 	if (viewer) {
-		VideoParams vp = viewer_output_video_params(viewer);
+		oak::VideoParams vp = viewer_output_video_params(viewer);
 		status_bar_->set_sequence_info(vp.width(), vp.height(),
 									   vp.frame_rate().to_double());
 	} else {
@@ -861,7 +859,7 @@ void MainWindow::save_custom_shortcuts()
 	}
 }
 
-void MainWindow::update_audio_monitor_params(ViewerOutput *viewer)
+void MainWindow::update_audio_monitor_params(OakEngineNode *viewer)
 {
 	if (!audio_monitor_panel_->is_playing()) {
 		audio_monitor_panel_->set_params(viewer ? viewer_output_audio_params(viewer) :
@@ -872,29 +870,30 @@ void MainWindow::update_audio_monitor_params(ViewerOutput *viewer)
 void MainWindow::update_node_panel_context_from_timeline_panel(TimelinePanel *panel)
 {
 	// Add selected blocks (if any)
-	const QVector<Block *> &blocks = panel->get_selected_blocks();
-	QVector<Node *> context(blocks.size());
+	const QVector<OakEngineBlock *> blocks = panel->get_selected_blocks();
+	QVector<oak::Node> context(blocks.size());
 	for (int i = 0; i < blocks.size(); i++) {
-		context[i] = blocks.at(i);
+		context[i] = oak::Node(reinterpret_cast<OakEngineNode *>(blocks.at(i)));
 	}
 
 	// If no selected blocks, set the context to the sequence
-	ViewerOutput *viewer = panel->get_connected_viewer();
+	OakEngineNode *viewer = panel->get_connected_viewer();
 	if (viewer && context.isEmpty()) {
-		context.append(viewer);
+		context.append(oak::Node(viewer));
 	}
 
 	node_panel_->set_contexts(context);
 	param_panel_->set_contexts(context);
 }
 
-void MainWindow::select_footage_for_project_panel(const QVector<Footage *> &e,
+void MainWindow::select_footage_for_project_panel(const QVector<OakEngineNode *> &e,
 											  ProjectPanel *p)
 {
 	p->deselect_all();
-	for (Footage *f : e) {
-		if (p->get_root()->has_child_recursive(f)) {
-			p->select_item(f, false);
+	for (OakEngineNode *f : e) {
+		oak::Node node(f);
+		if (p->get_root().has_child_recursive(node)) {
+			p->select_item(node, false);
 		}
 	}
 }
@@ -908,7 +907,7 @@ void MainWindow::focused_panel_changed(PanelWidget *panel)
 
 	if (NodePanel *node_panel = dynamic_cast<NodePanel *>(panel)) {
 		// Set param view contexts to these
-		const QVector<Node *> &new_ctxs = node_panel->get_contexts();
+		const QVector<oak::Node> &new_ctxs = node_panel->get_contexts();
 
 		if (new_ctxs != param_panel_->get_contexts()) {
 			param_panel_->set_contexts(new_ctxs);

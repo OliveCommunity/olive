@@ -24,15 +24,37 @@
 
 #include <QVariant>
 
-#include "node/block/clip/clip.h"
-#include "node/block/transition/transition.h"
-#include "node/output/track/track.h"
-#include "node/project/footage/footage.h"
-#include "timeline/timelinecommon.h"
+#include <olive/core/core.h>
+
+#include "common/trackreferencehandle.h"
+#include "oakengine/node.h"
+#include "oakengine/timeline.h"
+#include "oakutil/qtutils.h"
+#include "timeline/timelinecommonapp.h"
 #include "widget/timelinewidget/cliphandle.h"
 
 namespace olive
 {
+
+using olive::core::Rational;
+
+/**
+ * @brief TrackReference of the track owning `block`
+ * (the owning track as a reference facade). Type ordinals are the
+ * TrackReference mirror values, pinned to the engine track-type ordinals
+ * by the static_asserts in trackreferencehandle.h.
+ */
+inline TrackReference ghost_block_track_reference(OakEngineBlock *block)
+{
+	OakEngineNode *track = block_track_handle(block);
+	if (!track) {
+		return TrackReference();
+	}
+	return TrackReference(
+		static_cast<TrackReference::Type>(oakengine_track_get_type(track)),
+		oakengine_track_get_index(track));
+}
+
 /**
  * @brief A graphical representation of changes the user is making before they apply it
  */
@@ -48,34 +70,44 @@ public:
 	};
 
 	struct AttachedFootage {
-		ViewerOutput *footage;
+		OakEngineNode *footage;
 		QString output;
 	};
 
 	TimelineViewGhostItem()
 		: track_adj_(0)
-		, mode_(Timeline::k_none)
+		, mode_(TimelineApp::k_none)
 		, can_have_zero_length_(true)
 		, can_move_tracks_(true)
 		, invisible_(false)
 	{
 	}
 
-	static TimelineViewGhostItem *from_block(Block *block)
+	static TimelineViewGhostItem *from_block(OakEngineBlock *block)
 	{
 		TimelineViewGhostItem *ghost = new TimelineViewGhostItem();
 
-		ghost->set_in(block->in());
-		ghost->set_out(block->out());
-		if (dynamic_cast<ClipBlock *>(block)) {
-			ghost->set_media_in(clip_media_in(static_cast<ClipBlock *>(block)));
+		// All engine queries go through the C ABI: oakengine_node_is_clip()/
+		// oakengine_node_is_transition() replace dynamic_cast (the block
+		// classes are abstract and carry no own type id), the range comes
+		// from the block facade as rational seconds.
+		OakEngineNode *block_node = reinterpret_cast<OakEngineNode *>(block);
+
+		int in_num = 0, in_den = 1, out_num = 0, out_den = 1;
+		oakengine_block_get_in_rational(block_node, &in_num, &in_den);
+		oakengine_block_get_out_rational(block_node, &out_num, &out_den);
+		ghost->set_in(Rational(in_num, in_den));
+		ghost->set_out(Rational(out_num, out_den));
+
+		if (oakengine_node_is_clip(block_node)) {
+			ghost->set_media_in(clip_media_in(block));
 		}
-		ghost->set_track(block->track()->to_reference());
+		ghost->set_track(ghost_block_track_reference(block));
 		ghost->set_data(k_attached_block, QtUtils::ptr_to_value(block));
 
-		if (dynamic_cast<ClipBlock *>(block)) {
+		if (oakengine_node_is_clip(block_node)) {
 			ghost->can_have_zero_length_ = false;
-		} else if (dynamic_cast<TransitionBlock *>(block)) {
+		} else if (oakengine_node_is_transition(block_node)) {
 			ghost->can_have_zero_length_ = false;
 		}
 
@@ -192,17 +224,17 @@ public:
 		return media_in_ + media_in_adj_;
 	}
 
-	Track::Reference get_adjusted_track() const
+	TrackReference get_adjusted_track() const
 	{
-		return Track::Reference(track_.type(), track_.index() + track_adj_);
+		return TrackReference(track_.type(), track_.index() + track_adj_);
 	}
 
-	const Timeline::MovementMode &get_mode() const
+	const TimelineApp::MovementMode &get_mode() const
 	{
 		return mode_;
 	}
 
-	void set_mode(const Timeline::MovementMode &mode)
+	void set_mode(const TimelineApp::MovementMode &mode)
 	{
 		mode_ = mode;
 	}
@@ -223,12 +255,12 @@ public:
 		data_.insert(key, value);
 	}
 
-	const Track::Reference &get_track() const
+	const TrackReference &get_track() const
 	{
 		return track_;
 	}
 
-	void set_track(const Track::Reference &track)
+	void set_track(const TrackReference &track)
 	{
 		track_ = track;
 	}
@@ -255,12 +287,12 @@ private:
 
 	int track_adj_;
 
-	Timeline::MovementMode mode_;
+	TimelineApp::MovementMode mode_;
 
 	bool can_have_zero_length_;
 	bool can_move_tracks_;
 
-	Track::Reference track_;
+	TrackReference track_;
 
 	QHash<int, QVariant> data_;
 

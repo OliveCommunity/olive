@@ -40,7 +40,7 @@ public:
 		return node_view_;
 	}
 
-	void set_contexts(const QVector<Node *> &nodes)
+	void set_contexts(const QVector<oak::Node> &nodes)
 	{
 		node_view_->set_contexts(nodes);
 		toolbar_->setEnabled(!nodes.isEmpty());

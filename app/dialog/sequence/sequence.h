@@ -26,9 +26,10 @@
 #include <QDialog>
 #include <QSpinBox>
 
-#include "node/project/sequence/sequence.h"
 #include "sequencedialogparametertab.h"
 #include "sequencedialogpresettab.h"
+
+struct OakEngineNode;
 
 namespace olive
 {
@@ -67,7 +68,7 @@ public:
    * @param parent
    * QWidget parent
    */
-	SequenceDialog(Sequence *s, Type t = k_existing, QWidget *parent = nullptr);
+	SequenceDialog(OakEngineNode *s, Type t = k_existing, QWidget *parent = nullptr);
 
 	/**
    * @brief Set whether the parameter changes should be made into an undo command or not
@@ -90,7 +91,7 @@ public slots:
 	virtual void accept() override;
 
 private:
-	Sequence *sequence_;
+	OakEngineNode *sequence_;
 
 	SequenceDialogPresetTab *preset_tab_;
 

@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <cstring>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
@@ -44,8 +45,7 @@
 #include "dialog/proxy/proxydialog.h"
 #include "dialog/sequence/sequence.h"
 #include "dialog/speedduration/speeddurationdialog.h"
-#include "node/block/transition/transition.h"
-#include "node/project/footage/footage.h"
+#include "oakutil/oaknode.h"
 #include "oakengine/serializer.h"
 #include "oakengine/undo.h"
 #include "oakengine/events.h"
@@ -55,12 +55,7 @@
 #include "oakengine/proxy.h"
 #include "oakengine/timeline.h"
 #include "oakengine/viewer.h"
-#include "render/audiowaveformcache.h"
-#include "task/project/import/import.h"
 #include "common/configwrapper.h"
-#include "timeline/timelineundogeneral.h"
-#include "timeline/timelineundopointer.h"
-#include "timeline/timelineundoripple.h"
 #include "tool/add.h"
 #include "tool/beam.h"
 #include "tool/edit.h"
@@ -77,6 +72,7 @@
 #include "tool/tool.h"
 #include "trackview/trackview.h"
 #include "widget/timelinewidget/cliphandle.h"
+#include "widget/timelinewidget/trackhandle.h"
 #include "widget/menu/menu.h"
 #include "widget/menu/menushared.h"
 #include "widget/nodeparamview/nodeparamview.h"
@@ -94,26 +90,202 @@ using namespace timeline_waveform_sync;
 namespace
 {
 
+/**
+ * @brief Track::to_reference() directly as the app TrackReference mirror
+ * (common/trackreferencehandle.h), resolved through the C ABI. Type
+ * ordinals are identical, pinned by the static_asserts in the mirror
+ * header; update both sides together.
+ */
+TrackReference track_app_ref(OakEngineTrack *track)
+{
+	return TrackReference(static_cast<TrackReference::Type>(track_type_of(track)),
+						  track_index_of(track));
+}
+
+/// Clip-style predicate for block handles (replaces dynamic_cast<ClipBlock*>
+/// now that the engine class definitions are no longer visible here).
+OakEngineBlock *block_as_clip(OakEngineBlock *block)
+{
+	return (block &&
+			oakengine_node_is_clip(reinterpret_cast<OakEngineNode *>(block)))
+			   ? block
+			   : nullptr;
+}
+
+/// Block::track() as a track handle (oakengine_block_get_track facade).
+OakEngineTrack *block_track(OakEngineBlock *block)
+{
+	return oakengine_block_get_track(block);
+}
+
+/**
+ * @brief Sequence::get_tracks() through the C ABI (per-type count + indexed
+ * access; type ordinals match TrackReference::Type/OAKENGINE_TRACK_TYPE_*).
+ *
+ * WRAPPER-GAP: no tracklist enumeration facade
+ * (oakengine_sequence_track_list() returns an opaque handle only).
+ */
+QVector<OakEngineTrack *> sequence_all_tracks(OakEngineSequence *seq)
+{
+	int counts[3] = { 0, 0, 0 };
+	oakengine_sequence_track_count(seq, &counts[0], &counts[1], &counts[2]);
+	QVector<OakEngineTrack *> tracks;
+	for (int type = 0; type < 3; type++) {
+		for (int i = 0; i < counts[type]; i++) {
+			if (OakEngineTrack *t = oakengine_sequence_track_at(seq, type, i)) {
+				tracks.append(t);
+			}
+		}
+	}
+	return tracks;
+}
+
+/// Track::blocks() through the C ABI (count + indexed access).
+QVector<OakEngineBlock *> track_all_blocks(OakEngineTrack *track)
+{
+	QVector<OakEngineBlock *> blocks;
+	const int n = oakengine_track_block_count(track);
+	blocks.reserve(n);
+	for (int i = 0; i < n; i++) {
+		if (OakEngineBlock *b = oakengine_track_block_at(track, i)) {
+			blocks.append(b);
+		}
+	}
+	return blocks;
+}
+
+/// Block::block_links() through the C ABI (count + indexed access).
+QVector<OakEngineBlock *> block_all_links(OakEngineBlock *block)
+{
+	QVector<OakEngineBlock *> links;
+	const int n = oakengine_block_link_count(block);
+	links.reserve(n);
+	for (int i = 0; i < n; i++) {
+		if (OakEngineBlock *l = oakengine_block_link_at(block, i)) {
+			links.append(l);
+		}
+	}
+	return links;
+}
+
+/// Block::range() as rational seconds (C ABI rational getters).
+TimeRange block_range(OakEngineBlock *block)
+{
+	auto *node = reinterpret_cast<const OakEngineNode *>(block);
+	int in_num = 0, in_den = 1, out_num = 0, out_den = 1;
+	oakengine_block_get_in_rational(node, &in_num, &in_den);
+	oakengine_block_get_out_rational(node, &out_num, &out_den);
+	return TimeRange(Rational(in_num, in_den), Rational(out_num, out_den));
+}
+
+/// Block::length() as rational seconds.
+Rational block_length(OakEngineBlock *block)
+{
+	int num = 0, den = 1;
+	oakengine_block_get_length_rational(reinterpret_cast<const OakEngineNode *>(block),
+										&num, &den);
+	return Rational(num, den);
+}
+
+/// Block::in() as rational seconds.
+Rational block_in(OakEngineBlock *block)
+{
+	return block_range(block).in();
+}
+
+/// Block::out() as rational seconds.
+Rational block_out(OakEngineBlock *block)
+{
+	return block_range(block).out();
+}
+
+/// Node::get_exclusive_dependencies() through the C ABI.
+QVector<OakEngineNode *> block_exclusive_dependencies(OakEngineBlock *block)
+{
+	QVector<OakEngineNode *> deps;
+	auto *node = reinterpret_cast<OakEngineNode *>(block);
+	const int n = oakengine_node_get_exclusive_dependency_count(node);
+	deps.reserve(n);
+	for (int i = 0; i < n; i++) {
+		if (OakEngineNode *d = oakengine_node_get_exclusive_dependency_at(node, i)) {
+			deps.append(d);
+		}
+	}
+	return deps;
+}
+
+/// Node::get_dependencies() through the C ABI (recursive input-connection
+/// walk, mirroring the engine's get_dependencies_recursively()).
+void collect_dependencies(QVector<OakEngineNode *> &list, OakEngineNode *node)
+{
+	oak::Node n(node);
+	const int count = n.input_connection_count_all();
+	for (int i = 0; i < count; i++) {
+		const oak::NodeConnection conn = n.input_connection_at_all(i);
+		OakEngineNode *dep = conn.source_node.handle();
+		if (dep && !list.contains(dep)) {
+			list.append(dep);
+			collect_dependencies(list, dep);
+		}
+	}
+}
+
+/// Node::find_ways_node_arrives_here() through the C ABI (recursive
+/// input-connection walk, mirroring the engine implementation).
+void find_ways_node_arrives_here(OakEngineNode *output, OakEngineNode *input,
+								 QVector<oak::Input> &v)
+{
+	oak::Node n(input);
+	const int count = n.input_connection_count_all();
+	for (int i = 0; i < count; i++) {
+		const oak::NodeConnection conn = n.input_connection_at_all(i);
+		if (conn.source_node.handle() == output) {
+			v.append(oak::Input(input, conn.input_id, conn.element));
+		} else if (!conn.source_node.is_null()) {
+			find_ways_node_arrives_here(output, conn.source_node.handle(), v);
+		}
+	}
+}
+
+/// ViewerOutput::get_playhead() through the C ABI (the connected viewer is
+/// only available as an opaque handle here).
+Rational viewer_playhead(OakEngineNode *viewer)
+{
+	int64_t num = 0, den = 1;
+	oakengine_viewer_get_playhead(viewer, &num, &den);
+	return Rational(num, den);
+}
+
 struct SourceSyncClip {
-	ClipBlock *clip = nullptr;
+	OakEngineBlock *clip = nullptr;
 	oak_audio_sync_source_clip source;
 	Rational source_head;
 };
 
-bool get_source_sync_clip(Block *block, SourceSyncClip *out)
+bool get_source_sync_clip(OakEngineBlock *block, SourceSyncClip *out)
 {
-	ClipBlock *clip = dynamic_cast<ClipBlock *>(block);
+	OakEngineBlock *clip = block_as_clip(block);
 	if (!clip) {
 		return false;
 	}
 
-	Footage *footage = dynamic_cast<Footage *>(clip->connected_viewer());
-	if (!footage || !footage->has_source_start_time()) {
+	OakEngineNode *viewer = oakengine_clip_get_connected_viewer(block);
+	if (!viewer || !oakengine_node_is_footage(viewer)) {
+		return false;
+	}
+
+	// WRAPPER-GAP: oak::Footage lacks source_start_time(); query the C ABI
+	// directly on a borrowed handle.
+	oak::Footage footage = oak::Footage::borrow(viewer);
+	int sst_num = 0, sst_den = 1;
+	if (!footage ||
+		oakengine_footage_get_source_start_time(footage.handle(), &sst_num,
+												&sst_den) != 1) {
 		return false;
 	}
 
 	out->clip = clip;
-	const Rational source_start = footage->source_start_time();
+	const Rational source_start(sst_num, sst_den);
 	const Rational media_in = clip_media_in(clip);
 	out->source.source_start_time_num = source_start.numerator();
 	out->source.source_start_time_den = source_start.denominator();
@@ -125,10 +297,10 @@ bool get_source_sync_clip(Block *block, SourceSyncClip *out)
 }
 
 QVector<SourceSyncClip>
-get_selected_source_sync_clips(const QVector<Block *> &blocks)
+get_selected_source_sync_clips(const QVector<OakEngineBlock *> &blocks)
 {
 	QVector<SourceSyncClip> clips;
-	for (Block *block : blocks) {
+	for (OakEngineBlock *block : blocks) {
 		SourceSyncClip sync_clip;
 		if (get_source_sync_clip(block, &sync_clip)) {
 			clips.append(sync_clip);
@@ -137,26 +309,24 @@ get_selected_source_sync_clips(const QVector<Block *> &blocks)
 	return clips;
 }
 
-QVector<Footage *> get_selected_proxy_footage(const QVector<Block *> &blocks)
+QVector<OakEngineNode *> get_selected_proxy_footage(const QVector<OakEngineBlock *> &blocks)
 {
-	QVector<Footage *> footage;
-	for (Block *block : blocks) {
-		ClipBlock *clip = dynamic_cast<ClipBlock *>(block);
-		if (!clip) {
+	QVector<OakEngineNode *> footage;
+	for (OakEngineBlock *block : blocks) {
+		if (!block_as_clip(block)) {
 			continue;
 		}
 
-		Footage *candidate = dynamic_cast<Footage *>(clip->connected_viewer());
+		OakEngineNode *viewer = oakengine_clip_get_connected_viewer(block);
 		oak_video_params _vp;
-		if (!candidate ||
-			oakengine_viewer_get_first_enabled_video_stream(
-				reinterpret_cast<OakEngineNode *>(candidate), &_vp) < 0 ||
+		if (!viewer || !oakengine_node_is_footage(viewer) ||
+			oakengine_viewer_get_first_enabled_video_stream(viewer, &_vp) < 0 ||
 			!oakengine_video_params_is_valid(&_vp) ||
-			footage.contains(candidate)) {
+			footage.contains(viewer)) {
 			continue;
 		}
 
-		footage.append(candidate);
+		footage.append(viewer);
 	}
 	return footage;
 }
@@ -246,10 +416,10 @@ TimelineWidget::TimelineWidget(QWidget *parent)
 		}
 		double h = oakengine_track_height_minimum() +
 				   v * oakengine_track_height_interval();
-		foreach (Track *t, sequence()->get_tracks()) {
+		foreach (OakEngineTrack *t, sequence_all_tracks(sequence())) {
 			oakengine_track_set_height(
-				reinterpret_cast<OakEngineSequence *>(sequence()), t->type(),
-				t->index(), h);
+				sequence(),
+				track_type_of(t), track_index_of(t), h);
 		}
 	});
 
@@ -358,9 +528,9 @@ TimelineWidget::TimelineWidget(QWidget *parent)
 	view_splitter_->setSizes(view_sizes);
 
 	// Video and audio are not collapsible, subtitle is
-	view_splitter_->setCollapsible(Track::k_video, false);
-	view_splitter_->setCollapsible(Track::k_audio, false);
-	view_splitter_->setCollapsible(Track::k_subtitle, true);
+	view_splitter_->setCollapsible(TrackReference::k_video, false);
+	view_splitter_->setCollapsible(TrackReference::k_audio, false);
+	view_splitter_->setCollapsible(TrackReference::k_subtitle, true);
 
 	// FIXME: Magic number
 	SetScale(90.0);
@@ -380,8 +550,8 @@ TimelineWidget::TimelineWidget(QWidget *parent)
 
 		if (OAK_CONFIG("SelectAlsoSeeks").toBool()) {
 			Rational start = RATIONAL_MAX;
-			for (Block *b : selected_blocks_) {
-				start = std::min(start, b->in());
+			for (OakEngineBlock *b : selected_blocks_) {
+				start = std::min(start, block_in(b));
 			}
 			if (start != RATIONAL_MAX) {
 				oakengine_viewer_set_playhead(
@@ -390,12 +560,7 @@ TimelineWidget::TimelineWidget(QWidget *parent)
 			}
 		}
 
-		QVector<OakEngineBlock *> oak_blocks;
-		oak_blocks.reserve(selected_blocks_.size());
-		for (Block *b : selected_blocks_) {
-			oak_blocks.append(reinterpret_cast<OakEngineBlock *>(b));
-		}
-		emit block_selection_changed(oak_blocks);
+		emit block_selection_changed(selected_blocks_);
 	});
 }
 
@@ -444,22 +609,25 @@ void TimelineWidget::TimeChangedEvent(const Rational &t)
 	if (OAK_CONFIG("SeekAlsoSelects").toBool()) {
 		TimelineWidgetSelections sels;
 
-		QVector<Block *> new_blocks;
+		QVector<OakEngineBlock *> new_blocks;
 
-		for (auto it = sequence()->get_tracks().cbegin();
-			 it != sequence()->get_tracks().cend(); it++) {
-			Track *track = *it;
-			if (track->is_locked()) {
+		const QVector<OakEngineTrack *> tracks = sequence_all_tracks(sequence());
+		const int64_t playhead_ts = core::Timecode::time_to_timestamp(
+			viewer_playhead(reinterpret_cast<OakEngineNode *>(get_connected_node())),
+			sequence_timebase(sequence()));
+		for (OakEngineTrack *track : tracks) {
+			if (track_is_locked(track)) {
 				continue;
 			}
 
-			Block *b = track->visible_block_at_time(sequence()->get_playhead());
-			if (!b || dynamic_cast<GapBlock *>(b)) {
+			OakEngineBlock *b =
+				oakengine_track_visible_block_at_time(track, playhead_ts);
+			if (!b || oakengine_block_is_gap(b)) {
 				continue;
 			}
 
 			new_blocks.push_back(b);
-			sels[track->to_reference()].insert(b->range());
+			sels[track_app_ref(track)].insert(block_range(b));
 		}
 
 		if (selected_blocks_ != new_blocks) {
@@ -489,10 +657,9 @@ void TimelineWidget::ScaleChangedEvent(const double &scale)
 	}
 }
 
-void TimelineWidget::ConnectNodeEvent(ViewerOutput *n)
+void TimelineWidget::ConnectNodeEvent(OakEngineNode *n)
 {
-	Sequence *s = static_cast<Sequence *>(n);
-	OakEngineNode *handle = reinterpret_cast<OakEngineNode *>(s);
+	OakEngineNode *handle = n;
 
 	// Track add/remove are now received via bridge sequence_track_* signals
 	bridge_->subscribe(handle, OAKENGINE_EVENT_SEQUENCE_TRACK_ADDED);
@@ -502,20 +669,18 @@ void TimelineWidget::ConnectNodeEvent(ViewerOutput *n)
 
 	connect(bridge_, &EngineEventBridge::sequence_track_added, this,
 			[this](OakEngineTrack *track, int track_type) {
-				Track *t = reinterpret_cast<Track *>(track);
-				add_track(t);
+				add_track(track);
 				// Update the TrackView UI for this track type
 				if (track_type >= 0 && track_type < views_.size()) {
-					views_.at(track_type)->track_view()->insert_track(t);
+					views_.at(track_type)->track_view()->insert_track(track);
 				}
 			});
 	connect(bridge_, &EngineEventBridge::sequence_track_removed, this,
 			[this](OakEngineTrack *track, int track_type) {
-				Track *t = reinterpret_cast<Track *>(track);
-				remove_track(t);
+				remove_track(track);
 				// Update the TrackView UI for this track type
 				if (track_type >= 0 && track_type < views_.size()) {
-					views_.at(track_type)->track_view()->remove_track(t);
+					views_.at(track_type)->track_view()->remove_track(track);
 				}
 			});
 
@@ -535,28 +700,27 @@ void TimelineWidget::ConnectNodeEvent(ViewerOutput *n)
 	// Subscribe to track-level events via bridge (subscriptions in add_track)
 	connect(bridge_, &EngineEventBridge::track_index_changed, this,
 			[this](OakEngineTrack *source, int old_index, int new_index) {
-				track_updated(static_cast<Track::Type>(
+				track_updated(static_cast<TrackReference::Type>(
 					oakengine_track_type(source)));
-				track_index_changed(reinterpret_cast<Track *>(source),
-									old_index, new_index);
+				track_index_changed(source, old_index, new_index);
 			});
 	connect(bridge_, &EngineEventBridge::track_height_changed, this,
 			[this](OakEngineTrack *source, double) {
-				track_updated(static_cast<Track::Type>(
+				track_updated(static_cast<TrackReference::Type>(
 					oakengine_track_type(source)));
 			});
 	connect(bridge_, &EngineEventBridge::track_blocks_refreshed, this,
 			[this](OakEngineTrack *source) {
-				track_updated(static_cast<Track::Type>(
+				track_updated(static_cast<TrackReference::Type>(
 					oakengine_track_type(source)));
 			});
 	connect(bridge_, &EngineEventBridge::track_block_added, this,
 			[this](OakEngineBlock *block, qint64, qint64) {
-				add_block(reinterpret_cast<Block *>(block));
+				add_block(block);
 			});
 	connect(bridge_, &EngineEventBridge::track_block_removed, this,
 			[this](OakEngineBlock *block, qint64, qint64) {
-				remove_block(reinterpret_cast<Block *>(block));
+				remove_block(block);
 			});
 
 	// Block-level change notifications via bridge (replaces direct
@@ -602,9 +766,7 @@ void TimelineWidget::ConnectNodeEvent(ViewerOutput *n)
 		timecode_label_->set_value(Rational(pn, pd));
 	}
 
-	ruler()->set_playback_cache(
-		reinterpret_cast<PlaybackCache *>(
-			oakengine_viewer_get_playback_cache(handle)));
+	ruler()->set_playback_cache(oakengine_viewer_get_playback_cache(handle));
 
 	{
 		oak_video_params vp;
@@ -616,32 +778,36 @@ void TimelineWidget::ConnectNodeEvent(ViewerOutput *n)
 	}
 
 	for (int i = 0; i < views_.size(); i++) {
-		Track::Type track_type = static_cast<Track::Type>(i);
 		TimelineView *view = views_.at(i)->view();
-		TrackList *track_list = s->track_list(track_type);
 		TrackView *track_view = views_.at(i)->track_view();
 
-		track_view->connect_track_list(track_list);
-		view->connect_track_list(track_list);
+		// TrackView holds (sequence, type) and queries tracks via the C ABI
+		track_view->connect_track_list(
+			reinterpret_cast<OakEngineSequence *>(handle), i);
+		view->connect_track_list(reinterpret_cast<OakEngineSequence *>(handle),
+								 i);
 
 		// Defer to the track to make all the block UI items necessary
-		const QVector<Track *> tracks = s->track_list(track_type)->get_tracks();
-		foreach (Track *track, tracks) {
-			add_track(track);
+		int type_counts[3] = { 0, 0, 0 };
+		oakengine_sequence_track_count(
+			reinterpret_cast<OakEngineSequence *>(handle), &type_counts[0],
+			&type_counts[1], &type_counts[2]);
+		for (int ti = 0; ti < type_counts[i]; ti++) {
+			add_track(oakengine_sequence_track_at(
+				reinterpret_cast<OakEngineSequence *>(handle), i, ti));
 		}
 	}
 }
 
-void TimelineWidget::DisconnectNodeEvent(ViewerOutput *n)
+void TimelineWidget::DisconnectNodeEvent(OakEngineNode *n)
 {
-	Sequence *s = static_cast<Sequence *>(n);
-
 	// Bridge subscriptions and connections are cleaned up by
 	// TimeBasedWidget::connect_viewer_node (disconnect(bridge_, nullptr, this, nullptr))
 
 	deselect_all();
 
-	foreach (Track *track, s->get_tracks()) {
+	foreach (OakEngineTrack *track,
+			 sequence_all_tracks(reinterpret_cast<OakEngineSequence *>(n))) {
 		remove_track(track);
 	}
 
@@ -653,7 +819,7 @@ void TimelineWidget::DisconnectNodeEvent(ViewerOutput *n)
 
 	foreach (TimelineAndTrackView *tview, views_) {
 		tview->track_view()->disconnect_track_list();
-		tview->view()->connect_track_list(nullptr);
+		tview->view()->connect_track_list(nullptr, 0);
 	}
 }
 
@@ -668,9 +834,9 @@ void TimelineWidget::SendCatchUpScrollEvent()
 
 void TimelineWidget::select_all()
 {
-	QVector<Block *> newly_selected_blocks;
+	QVector<OakEngineBlock *> newly_selected_blocks;
 
-	foreach (Block *block, added_blocks_) {
+	foreach (OakEngineBlock *block, added_blocks_) {
 		if (!selected_blocks_.contains(block)) {
 			newly_selected_blocks.append(block);
 			add_selection(block);
@@ -694,22 +860,22 @@ void TimelineWidget::deselect_all()
 
 void TimelineWidget::ripple_to_in()
 {
-	ripple_to(Timeline::k_trim_in);
+	ripple_to(TimelineApp::k_trim_in);
 }
 
 void TimelineWidget::ripple_to_out()
 {
-	ripple_to(Timeline::k_trim_out);
+	ripple_to(TimelineApp::k_trim_out);
 }
 
 void TimelineWidget::edit_to_in()
 {
-	edit_to(Timeline::k_trim_in);
+	edit_to(TimelineApp::k_trim_in);
 }
 
 void TimelineWidget::edit_to_out()
 {
-	edit_to(Timeline::k_trim_out);
+	edit_to(TimelineApp::k_trim_out);
 }
 
 void TimelineWidget::split_at_playhead()
@@ -718,29 +884,32 @@ void TimelineWidget::split_at_playhead()
 		return;
 	}
 
-	const Rational &playhead_time = get_connected_node()->get_playhead();
+	const Rational playhead_time =
+		viewer_playhead(reinterpret_cast<OakEngineNode *>(get_connected_node()));
 
-	QVector<Block *> selected_blocks = get_selected_blocks();
+	QVector<OakEngineBlock *> selected_blocks = get_selected_blocks();
 
 	// Prioritize blocks that are selected and overlap the playhead
-	QVector<Block *> blocks_to_split;
+	QVector<OakEngineBlock *> blocks_to_split;
 	QVector<bool> block_is_selected;
 
 	bool some_blocks_are_selected = false;
 
 	// Get all blocks at the playhead
-	foreach (Track *track, sequence()->get_tracks()) {
-		if (track->is_locked()) {
+	const int64_t playhead_ts = core::Timecode::time_to_timestamp(
+		playhead_time, sequence_timebase(sequence()));
+	foreach (OakEngineTrack *track, sequence_all_tracks(sequence())) {
+		if (track_is_locked(track)) {
 			continue;
 		}
 
-		Block *b = track->block_containing_time(playhead_time);
+		OakEngineBlock *b = oakengine_track_block_at_time(track, playhead_ts);
 
-		if (dynamic_cast<ClipBlock *>(b)) {
+		if (block_as_clip(b)) {
 			bool selected = false;
 
 			// See if this block is selected
-			foreach (Block *item, selected_blocks) {
+			foreach (OakEngineBlock *item, selected_blocks) {
 				if (item == b) {
 					some_blocks_are_selected = true;
 					selected = true;
@@ -770,31 +939,30 @@ void TimelineWidget::split_at_playhead()
 		// app-side BlockSplitPreservingLinksCommand push.
 		QVector<OakEngineClip *> clips;
 		clips.reserve(blocks_to_split.size());
-		foreach (Block *b, blocks_to_split) {
-			clips.append(reinterpret_cast<OakEngineClip *>(
-				static_cast<ClipBlock *>(b)));
+		foreach (OakEngineBlock *b, blocks_to_split) {
+			clips.append(reinterpret_cast<OakEngineClip *>(b));
 		}
 		oakengine_sequence_split_clips(
-			reinterpret_cast<OakEngineSequence *>(sequence()), clips.data(),
+			sequence(), clips.data(),
 			clips.size(),
 			Timecode::time_to_timestamp(playhead_time, timebase(),
 										Timecode::k_round));
 	}
 }
 
-void TimelineWidget::replace_blocks_with_gaps(const QVector<Block *> &blocks,
+void TimelineWidget::replace_blocks_with_gaps(const QVector<OakEngineBlock *> &blocks,
 										   bool remove_from_graph,
 										   void *command,
 										   bool handle_transitions)
 {
-	foreach (Block *b, blocks) {
-		if (dynamic_cast<GapBlock *>(b)) {
+	foreach (OakEngineBlock *b, blocks) {
+		if (oakengine_block_is_gap(b)) {
 			// No point in replacing a gap with a gap, and TrackReplaceBlockWithGapCommand will clear
 			// up any extraneous gaps
 			continue;
 		}
 
-		Track *original_track = b->track();
+		OakEngineTrack *original_track = block_track(b);
 
 		oakengine_undo_command_multi_add_child(command, oakengine_track_replace_block_with_gap_command(reinterpret_cast<void *>(original_track), reinterpret_cast<void *>(b), handle_transitions ? 1 : 0));
 
@@ -804,7 +972,7 @@ void TimelineWidget::replace_blocks_with_gaps(const QVector<Block *> &blocks,
 				remove_cmd,
 				oakengine_node_remove_and_disconnect_command(
 					reinterpret_cast<void *>(b)));
-			for (Node *dep : b->get_exclusive_dependencies()) {
+			for (OakEngineNode *dep : block_exclusive_dependencies(b)) {
 				oakengine_undo_command_multi_add_child(
 					remove_cmd,
 					oakengine_node_remove_and_disconnect_command(
@@ -822,27 +990,28 @@ void TimelineWidget::DeleteSelected(bool ripple)
 		return;
 	}
 
-	QVector<Block *> selected_list = get_selected_blocks();
+	QVector<OakEngineBlock *> selected_list = get_selected_blocks();
 
 	// No-op if nothing is selected
 	if (selected_list.isEmpty()) {
 		return;
 	}
 
-	QVector<Block *> clips_to_delete;
-	QVector<TransitionBlock *> transitions_to_delete;
+	QVector<OakEngineBlock *> clips_to_delete;
+	QVector<OakEngineBlock *> transitions_to_delete;
 
 	bool all_gaps = true;
 
-	foreach (Block *b, selected_list) {
-		if (!dynamic_cast<GapBlock *>(b)) {
+	foreach (OakEngineBlock *b, selected_list) {
+		if (!oakengine_block_is_gap(b)) {
 			all_gaps = false;
 		}
 
-		if (dynamic_cast<ClipBlock *>(b)) {
+		if (block_as_clip(b)) {
 			clips_to_delete.append(b);
-		} else if (dynamic_cast<TransitionBlock *>(b)) {
-			transitions_to_delete.append(static_cast<TransitionBlock *>(b));
+		} else if (oakengine_node_is_transition(
+					   reinterpret_cast<OakEngineNode *>(b))) {
+			transitions_to_delete.append(b);
 		}
 	}
 
@@ -856,7 +1025,7 @@ void TimelineWidget::DeleteSelected(bool ripple)
 	oakengine_undo_command_multi_add_child(command, create_set_selections_command(TimelineWidgetSelections(), get_selections()));
 
 	// For transitions, remove them but extend their attached blocks to fill their place
-	foreach (TransitionBlock *transition, transitions_to_delete) {
+	foreach (OakEngineBlock *transition, transitions_to_delete) {
 		void *trc = oakengine_transition_remove_command(
 			reinterpret_cast<void *>(transition), 1);
 
@@ -877,28 +1046,27 @@ void TimelineWidget::DeleteSelected(bool ripple)
 	// closed), same semantics as the old in-command children.
 	QVector<OakEngineClip *> facade_clips;
 	facade_clips.reserve(clips_to_delete.size());
-	foreach (Block *b, clips_to_delete) {
-		facade_clips.append(
-			reinterpret_cast<OakEngineClip *>(static_cast<ClipBlock *>(b)));
+	foreach (OakEngineBlock *b, clips_to_delete) {
+		facade_clips.append(reinterpret_cast<OakEngineClip *>(b));
 	}
 
 	Rational new_playhead = RATIONAL_MAX;
 	QVector<int64_t> ripple_ranges;
 	if (ripple) {
-		foreach (Block *b, selected_list) {
-			ripple_ranges.append(int64_t(b->track()->type()));
-			ripple_ranges.append(b->track()->index());
+		foreach (OakEngineBlock *b, selected_list) {
+			ripple_ranges.append(int64_t(track_type_of(block_track(b))));
+			ripple_ranges.append(track_index_of(block_track(b)));
 			ripple_ranges.append(Timecode::time_to_timestamp(
-				b->in(), timebase(), Timecode::k_round));
+				block_in(b), timebase(), Timecode::k_round));
 			ripple_ranges.append(Timecode::time_to_timestamp(
-				b->out(), timebase(), Timecode::k_round));
-			new_playhead = qMin(new_playhead, b->in());
+				block_out(b), timebase(), Timecode::k_round));
+			new_playhead = qMin(new_playhead, block_in(b));
 		}
 	}
 
 	int rippled = 0;
 	oakengine_sequence_delete_clips(
-		reinterpret_cast<OakEngineSequence *>(sequence()),
+		sequence(),
 		facade_clips.data(), facade_clips.size(), ripple ? 1 : 0,
 		ripple ? ripple_ranges.constData() : nullptr,
 		ripple ? ripple_ranges.size() / 4 : 0, &rippled);
@@ -920,14 +1088,14 @@ void TimelineWidget::increase_track_height()
 	}
 
 	// Increase the height of each track by one "unit"
-	foreach (Track *t, sequence()->get_tracks()) {
+	foreach (OakEngineTrack *t, sequence_all_tracks(sequence())) {
 		double h;
 		oakengine_track_get_height(
-			reinterpret_cast<OakEngineSequence *>(sequence()),
-			t->type(), t->index(), &h);
+			sequence(),
+			track_type_of(t), track_index_of(t), &h);
 		oakengine_track_set_height(
-			reinterpret_cast<OakEngineSequence *>(sequence()),
-			t->type(), t->index(),
+			sequence(),
+			track_type_of(t), track_index_of(t),
 			h + oakengine_track_height_interval());
 	}
 }
@@ -939,14 +1107,14 @@ void TimelineWidget::decrease_track_height()
 	}
 
 	// Decrease the height of each track by one "unit"
-	foreach (Track *t, sequence()->get_tracks()) {
+	foreach (OakEngineTrack *t, sequence_all_tracks(sequence())) {
 		double h;
 		oakengine_track_get_height(
-			reinterpret_cast<OakEngineSequence *>(sequence()),
-			t->type(), t->index(), &h);
+			sequence(),
+			track_type_of(t), track_index_of(t), &h);
 		oakengine_track_set_height(
-			reinterpret_cast<OakEngineSequence *>(sequence()),
-			t->type(), t->index(),
+			sequence(),
+			track_type_of(t), track_index_of(t),
 			qMax(h - oakengine_track_height_interval(),
 				 oakengine_track_height_minimum()));
 	}
@@ -956,13 +1124,9 @@ void TimelineWidget::insert_footage_at_playhead(
 	const QVector<OakEngineNode *> &footage)
 {
 	auto command = oakengine_undo_command_create_multi();
-	QVector<ViewerOutput *> viewer_footage;
-	viewer_footage.reserve(footage.size());
-	foreach (OakEngineNode *handle, footage) {
-		viewer_footage.append(reinterpret_cast<ViewerOutput *>(handle));
-	}
-	import_tool_->place_at(viewer_footage, get_connected_node()->get_playhead(), true,
-						  command, 0, true);
+	import_tool_->place_at(footage,
+						  viewer_playhead(reinterpret_cast<OakEngineNode *>(get_connected_node())),
+						  true, command, 0, true);
 	oakengine_undo_push(command,
 										 tr("Inserted Footage At Playhead").toUtf8().constData());
 }
@@ -971,34 +1135,30 @@ void TimelineWidget::overwrite_footage_at_playhead(
 	const QVector<OakEngineNode *> &footage)
 {
 	auto command = oakengine_undo_command_create_multi();
-	QVector<ViewerOutput *> viewer_footage;
-	viewer_footage.reserve(footage.size());
-	foreach (OakEngineNode *handle, footage) {
-		viewer_footage.append(reinterpret_cast<ViewerOutput *>(handle));
-	}
-	import_tool_->place_at(viewer_footage, get_connected_node()->get_playhead(), false,
-						  command, 0, true);
+	import_tool_->place_at(footage,
+						  viewer_playhead(reinterpret_cast<OakEngineNode *>(get_connected_node())),
+						  false, command, 0, true);
 	oakengine_undo_push(command,
 										 tr("Overwrote Footage At Playhead").toUtf8().constData());
 }
 
 void TimelineWidget::toggle_links_on_selected()
 {
-	QVector<Node *> blocks;
+	QVector<OakEngineNode *> blocks;
 	bool link = true;
 
-	foreach (Block *item, get_selected_blocks()) {
+	foreach (OakEngineBlock *item, get_selected_blocks()) {
 		// Only clips can be linked
-		if (!dynamic_cast<ClipBlock *>(item)) {
+		if (!block_as_clip(item)) {
 			continue;
 		}
 
 		// Prioritize unlinking, if any block has links, assume we're unlinking
-		if (link && item->has_links()) {
+		if (link && oakengine_block_link_count(item) > 0) {
 			link = false;
 		}
 
-		blocks.append(item);
+		blocks.append(reinterpret_cast<OakEngineNode *>(item));
 	}
 
 	if (blocks.isEmpty()) {
@@ -1009,35 +1169,29 @@ void TimelineWidget::toggle_links_on_selected()
 	// command, same as the old NodeLinkManyCommand push).
 	QVector<OakEngineClip *> clips;
 	clips.reserve(blocks.size());
-	foreach (Node *n, blocks) {
-		clips.append(
-			reinterpret_cast<OakEngineClip *>(static_cast<ClipBlock *>(n)));
+	foreach (OakEngineNode *n, blocks) {
+		clips.append(reinterpret_cast<OakEngineClip *>(n));
 	}
 	oakengine_clip_set_linked(clips.data(), clips.size(), link ? 1 : 0);
 }
 
 void TimelineWidget::add_default_transitions_to_selected()
 {
-	QVector<ClipBlock *> blocks;
+	QVector<OakEngineClip *> blocks;
 
-	foreach (Block *item, get_selected_blocks()) {
+	foreach (OakEngineBlock *item, get_selected_blocks()) {
 		// Only clips can be linked
-		if (ClipBlock *clip = dynamic_cast<ClipBlock *>(item)) {
-			blocks.append(clip);
+		if (OakEngineBlock *clip = block_as_clip(item)) {
+			blocks.append(reinterpret_cast<OakEngineClip *>(clip));
 		}
 	}
 
 	if (!blocks.isEmpty()) {
 		// Through the liboakengine C ABI facade (one undoable command with
 		// the same engine semantics as the old app-side push).
-		QVector<OakEngineClip *> clips;
-		clips.reserve(blocks.size());
-		foreach (ClipBlock *clip, blocks) {
-			clips.append(reinterpret_cast<OakEngineClip *>(clip));
-		}
 		oakengine_sequence_add_default_transition(
-			reinterpret_cast<OakEngineSequence *>(sequence()), clips.data(),
-			clips.size());
+			sequence(), blocks.data(),
+			blocks.size());
 	}
 }
 
@@ -1051,14 +1205,15 @@ bool TimelineWidget::copy_selected(bool cut)
 		return false;
 	}
 
-	QVector<Node *> selected_nodes;
+	QVector<OakEngineNode *> selected_nodes;
 
-	foreach (Block *block, selected_blocks_) {
-		selected_nodes.append(block);
+	foreach (OakEngineBlock *block, selected_blocks_) {
+		selected_nodes.append(reinterpret_cast<OakEngineNode *>(block));
 
-		QVector<Node *> deps = block->get_dependencies();
+		QVector<OakEngineNode *> deps;
+		collect_dependencies(deps, reinterpret_cast<OakEngineNode *>(block));
 
-		foreach (Node *d, deps) {
+		foreach (OakEngineNode *d, deps) {
 			if (!selected_nodes.contains(d)) {
 				selected_nodes.append(d);
 			}
@@ -1077,15 +1232,15 @@ bool TimelineWidget::copy_selected(bool cut)
 	// Cache the earliest in point so all copied clips have a "relative" in point that can be pasted anywhere
 	Rational earliest_in = RATIONAL_MAX;
 
-	foreach (Block *block, selected_blocks_) {
-		earliest_in = qMin(earliest_in, block->in());
+	foreach (OakEngineBlock *block, selected_blocks_) {
+		earliest_in = qMin(earliest_in, block_in(block));
 	}
 
-	foreach (Block *block, selected_blocks_) {
+	foreach (OakEngineBlock *block, selected_blocks_) {
 		oakengine_clipboard_set_property(
 			cb, reinterpret_cast<OakEngineNode *>(block), "in",
-			(block->in() - earliest_in).to_string().c_str());
-		QString track_ref = block->track()->to_reference().to_string();
+			(block_in(block) - earliest_in).to_string().c_str());
+		QString track_ref = track_app_ref(block_track(block)).to_string();
 		oakengine_clipboard_set_property(
 			cb, reinterpret_cast<OakEngineNode *>(block), "track",
 			track_ref.toUtf8().constData());
@@ -1131,17 +1286,22 @@ void TimelineWidget::paste_insert()
 
 void TimelineWidget::delete_in_to_out(bool ripple)
 {
-	if (!get_connected_node() || !get_connected_node()->get_work_area()->enabled()) {
+	oakengine_viewer_workarea wa;
+	if (!get_connected_node() ||
+		oakengine_viewer_get_workarea(
+			reinterpret_cast<OakEngineNode *>(get_connected_node()), &wa) !=
+			0 ||
+		!wa.enabled) {
 		return;
 	}
 
 	// Compound through the liboakengine C ABI facade (ripple removal or
 	// per-track gap fill + workarea disable, one undoable command with the
 	// same semantics as the old app-side assembly).
-	const Rational wa_in = get_connected_node()->get_work_area()->in();
-	const Rational wa_out = get_connected_node()->get_work_area()->out();
+	const Rational wa_in(int(wa.in_num), int(wa.in_den));
+	const Rational wa_out(int(wa.out_num), int(wa.out_den));
 	oakengine_sequence_ripple_delete_in_to_out(
-		reinterpret_cast<OakEngineSequence *>(sequence()), ripple ? 1 : 0,
+		sequence(), ripple ? 1 : 0,
 		Timecode::time_to_timestamp(wa_in, timebase(), Timecode::k_round),
 		Timecode::time_to_timestamp(wa_out, timebase(), Timecode::k_round));
 
@@ -1155,7 +1315,7 @@ void TimelineWidget::delete_in_to_out(bool ripple)
 
 void TimelineWidget::toggle_selected_enabled()
 {
-	QVector<Block *> items = get_selected_blocks();
+	QVector<OakEngineBlock *> items = get_selected_blocks();
 
 	if (items.isEmpty()) {
 		return;
@@ -1165,8 +1325,8 @@ void TimelineWidget::toggle_selected_enabled()
 	// undoable command, same per-block inversion as the old children).
 	QVector<OakEngineClip *> clips;
 	clips.reserve(items.size());
-	foreach (Block *i, items) {
-		if (ClipBlock *clip = dynamic_cast<ClipBlock *>(i)) {
+	foreach (OakEngineBlock *i, items) {
+		if (OakEngineBlock *clip = block_as_clip(i)) {
 			clips.append(reinterpret_cast<OakEngineClip *>(clip));
 		}
 	}
@@ -1179,7 +1339,7 @@ void TimelineWidget::set_color_label(int index)
 	// undoable command, same as the old per-block children).
 	QVector<OakEngineNode *> nodes;
 	nodes.reserve(selected_blocks_.size());
-	foreach (Block *b, selected_blocks_) {
+	foreach (OakEngineBlock *b, selected_blocks_) {
 		nodes.append(reinterpret_cast<OakEngineNode *>(b));
 	}
 	oakengine_node_set_color_label(nodes.data(), nodes.size(), index);
@@ -1211,11 +1371,10 @@ void TimelineWidget::move_out_to_playhead()
 
 void TimelineWidget::show_speed_duration_dialog_for_selected_clips()
 {
-	QVector<ClipBlock *> clips;
+	QVector<OakEngineBlock *> clips;
 
-	foreach (Block *b, selected_blocks_) {
-		ClipBlock *c = dynamic_cast<ClipBlock *>(b);
-		if (c) {
+	foreach (OakEngineBlock *b, selected_blocks_) {
+		if (OakEngineBlock *c = block_as_clip(b)) {
 			clips.append(c);
 		}
 	}
@@ -1239,18 +1398,18 @@ void TimelineWidget::synchronize_selected_clips_by_source_time()
 	}
 
 	SourceSyncClip reference = sync_clips.first();
-	Rational anchor_timeline_in = sync_clips.first().clip->in();
+	Rational anchor_timeline_in = block_in(sync_clips.first().clip);
 	for (const SourceSyncClip &sync_clip : sync_clips) {
 		if (sync_clip.source_head < reference.source_head) {
 			reference = sync_clip;
 		}
-		if (sync_clip.clip->in() < anchor_timeline_in) {
-			anchor_timeline_in = sync_clip.clip->in();
+		if (block_in(sync_clip.clip) < anchor_timeline_in) {
+			anchor_timeline_in = block_in(sync_clip.clip);
 		}
 	}
 
 	struct SyncPlacement {
-		ClipBlock *clip = nullptr;
+		OakEngineBlock *clip = nullptr;
 		Rational timeline_in;
 	};
 
@@ -1275,16 +1434,16 @@ void TimelineWidget::synchronize_selected_clips_by_source_time()
 
 	void *command = oakengine_undo_command_create_multi();
 	for (const SyncPlacement &placement : placements) {
-		oakengine_undo_command_multi_add_child(command, oakengine_track_replace_block_with_gap_command(reinterpret_cast<void *>(placement.clip->track()), reinterpret_cast<void *>(placement.clip), false ? 1 : 0));
+		oakengine_undo_command_multi_add_child(command, oakengine_track_replace_block_with_gap_command(reinterpret_cast<void *>(block_track(placement.clip)), reinterpret_cast<void *>(placement.clip), false ? 1 : 0));
 	}
 
 	TimelineWidgetSelections new_selections;
 	for (const SyncPlacement &placement : placements) {
-		oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(sequence()->track_list(placement.clip->track()->type())), placement.clip->track()->index(), reinterpret_cast<void *>(placement.clip), core::Timecode::time_to_timestamp(placement.timeline_in, timebase())));
+		oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(oakengine_sequence_track_list(sequence(), track_type_of(block_track(placement.clip)))), track_index_of(block_track(placement.clip)), reinterpret_cast<void *>(placement.clip), core::Timecode::time_to_timestamp(placement.timeline_in, timebase())));
 
-		new_selections[placement.clip->track()->to_reference()].insert(
+		new_selections[track_app_ref(block_track(placement.clip))].insert(
 			TimeRange(placement.timeline_in,
-					  placement.timeline_in + placement.clip->length()));
+					  placement.timeline_in + block_length(placement.clip)));
 	}
 
 	oakengine_undo_command_multi_add_child(command, create_set_selections_command(new_selections, get_selections()));
@@ -1322,7 +1481,7 @@ void TimelineWidget::synchronize_selected_clips_by_waveform_internal(
 
 	WaveformSyncClip reference = sync_clips.first();
 	for (const WaveformSyncClip &sync_clip : sync_clips) {
-		if (sync_clip.clip->in() < reference.clip->in()) {
+		if (block_in(sync_clip.clip) < block_in(reference.clip)) {
 			reference = sync_clip;
 		}
 	}
@@ -1345,13 +1504,13 @@ void TimelineWidget::synchronize_selected_clips_by_waveform_internal(
 			 << "reference_envelope_size=" << reference_envelope.size();
 
 	struct SyncPlacement {
-		ClipBlock *clip = nullptr;
+		OakEngineBlock *clip = nullptr;
 		Rational timeline_in;
 		double speed = 1.0;
 	};
 
 	QVector<SyncPlacement> placements;
-	placements.append({ reference.clip, reference.clip->in(), 1.0 });
+	placements.append({ reference.clip, block_in(reference.clip), 1.0 });
 	for (const WaveformSyncClip &sync_clip : sync_clips) {
 		if (sync_clip.clip == reference.clip) {
 			continue;
@@ -1417,8 +1576,9 @@ void TimelineWidget::synchronize_selected_clips_by_waveform_internal(
 		}
 
 		oak_audio_sync_placement placement;
+		const Rational reference_in = block_in(reference.clip);
 		oakengine_audio_sync_place_by_waveform_offset(
-			reference.clip->in().numerator(), reference.clip->in().denominator(),
+			reference_in.numerator(), reference_in.denominator(),
 			offset.offset_samples, sample_rate, &placement);
 		qDebug() << "TimelineWidget::SynchronizeSelectedClipsByWaveform: placement"
 				 << "valid=" << placement.valid << "timeline_in="
@@ -1445,7 +1605,7 @@ void TimelineWidget::synchronize_selected_clips_by_waveform_internal(
 
 	void *command = oakengine_undo_command_create_multi();
 	for (const SyncPlacement &placement : placements) {
-		oakengine_undo_command_multi_add_child(command, oakengine_track_replace_block_with_gap_command(reinterpret_cast<void *>(placement.clip->track()), reinterpret_cast<void *>(placement.clip), false ? 1 : 0));
+		oakengine_undo_command_multi_add_child(command, oakengine_track_replace_block_with_gap_command(reinterpret_cast<void *>(block_track(placement.clip)), reinterpret_cast<void *>(placement.clip), false ? 1 : 0));
 
 		if (placement.speed != 1.0) {
 			oak_node_value v{};
@@ -1461,15 +1621,15 @@ void TimelineWidget::synchronize_selected_clips_by_waveform_internal(
 
 	TimelineWidgetSelections new_selections;
 	for (const SyncPlacement &placement : placements) {
-		oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(sequence()->track_list(placement.clip->track()->type())), placement.clip->track()->index(), reinterpret_cast<void *>(placement.clip), core::Timecode::time_to_timestamp(placement.timeline_in, timebase())));
+		oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(oakengine_sequence_track_list(sequence(), track_type_of(block_track(placement.clip)))), track_index_of(block_track(placement.clip)), reinterpret_cast<void *>(placement.clip), core::Timecode::time_to_timestamp(placement.timeline_in, timebase())));
 
 		// A speed change scales the clip's timeline length accordingly
 		const Rational placed_length =
 			placement.speed == 1.0 ?
-				placement.clip->length() :
-				Rational::from_double(placement.clip->length().to_double() /
+				block_length(placement.clip) :
+				Rational::from_double(block_length(placement.clip).to_double() /
 									 placement.speed);
-		new_selections[placement.clip->track()->to_reference()].insert(
+		new_selections[track_app_ref(block_track(placement.clip))].insert(
 			TimeRange(placement.timeline_in,
 					  placement.timeline_in + placed_length));
 	}
@@ -1490,81 +1650,95 @@ void TimelineWidget::generate_proxies_for_selected_clips()
 		return;
 	}
 
-	const QVector<Footage *> footage =
+	const QVector<OakEngineNode *> footage =
 		get_selected_proxy_footage(selected_blocks_);
 	qDebug() << "GenerateProxiesForSelectedClips: starting proxy generation for"
 			 << footage.size() << "footage item(s)";
-	for (Footage *item : footage) {
-		const VideoParams video = item->get_first_enabled_video_stream();
+	for (OakEngineNode *item : footage) {
+		// WRAPPER-GAP: oak::Footage::{get_effective_proxy_params,set_proxy}
+		oak::Footage f = oak::Footage::borrow(item);
 		oak_video_params _vp;
-		oakengine_viewer_get_first_enabled_video_stream(
-			reinterpret_cast<OakEngineNode *>(item), &_vp);
+		oakengine_viewer_get_first_enabled_video_stream(item, &_vp);
 		if (!oakengine_video_params_is_valid(&_vp)) {
 			qWarning()
 				<< "GenerateProxiesForSelectedClips: skipping item with no valid video stream"
-				<< item->filename();
+				<< f.filename();
+			continue;
+		}
+
+		// Index of the first enabled video stream
+		// (VideoParams::stream_index() has no facade equivalent).
+		int stream_index = -1;
+		const QVector<QPair<int, int>> streams =
+			oak::Node(item).enabled_streams();
+		for (const QPair<int, int> &s : streams) {
+			if (s.first == OAKENGINE_TRACK_TYPE_VIDEO) {
+				stream_index = s.second;
+				break;
+			}
+		}
+		if (stream_index < 0) {
 			continue;
 		}
 
 		oak_proxy_params params;
-		oakengine_footage_get_effective_proxy_params(
-			reinterpret_cast<OakEngineFootage *>(item), &params);
+		oakengine_footage_get_effective_proxy_params(f.handle(), &params);
 		oak_proxy_result proxy;
 		char cache_buf[512];
-		oakengine_project_cache_path(
-			reinterpret_cast<OakEngineProject *>(item->project()),
-			cache_buf, sizeof(cache_buf));
+		oakengine_project_cache_path(oakengine_node_get_project(item),
+									 cache_buf, sizeof(cache_buf));
 		int ret = oakengine_proxy_get_or_start(
 			cache_buf,
-			item->filename().toUtf8().constData(),
-			video.stream_index(), &params, &proxy);
+			f.filename().toUtf8().constData(),
+			stream_index, &params, &proxy);
 		if (ret != 0) {
 			qWarning() << "GenerateProxiesForSelectedClips: failed to get/start proxy for"
-					   << item->filename();
+					   << f.filename();
 			continue;
 		}
 		qDebug() << "GenerateProxiesForSelectedClips: proxy state="
 				 << proxy.state
 				 << "file=" << QString::fromUtf8(proxy.filename)
 				 << "cache=" << cache_buf;
-		oakengine_footage_set_proxy(reinterpret_cast<OakEngineFootage *>(item),
+		oakengine_footage_set_proxy(f.handle(),
 								   proxy.filename, proxy.state,
-								   video.stream_index(), 1, params.version);
-		oakengine_footage_invalidate(reinterpret_cast<OakEngineFootage *>(item));
+								   stream_index, 1, params.version);
+		f.invalidate();
 	}
 }
 
 void TimelineWidget::set_selected_clips_proxy_enabled(bool enabled)
 {
-	const QVector<Footage *> footage =
+	const QVector<OakEngineNode *> footage =
 		get_selected_proxy_footage(selected_blocks_);
 	qDebug() << "TimelineWidget::SetSelectedClipsProxyEnabled:" << enabled
 			 << "footage count=" << footage.size();
-	for (Footage *item : footage) {
-		if (item->proxy_path().isEmpty()) {
+	for (OakEngineNode *item : footage) {
+		oak::Footage f = oak::Footage::borrow(item);
+		if (f.proxy_path().isEmpty()) {
 			qDebug()
-				<< "  skipping item with empty proxy path" << item->filename();
+				<< "  skipping item with empty proxy path" << f.filename();
 			continue;
 		}
 
-		oakengine_footage_proxy_set_enabled(
-			reinterpret_cast<OakEngineFootage *>(item), enabled ? 1 : 0);
-		oakengine_footage_invalidate(reinterpret_cast<OakEngineFootage *>(item));
+		f.set_proxy_enabled(enabled);
+		f.invalidate();
 	}
 }
 
 void TimelineWidget::reveal_proxy_for_selected_clips()
 {
-	const QVector<Footage *> footage =
+	const QVector<OakEngineNode *> footage =
 		get_selected_proxy_footage(selected_blocks_);
-	for (Footage *item : footage) {
-		if (item->proxy_path().isEmpty()) {
+	for (OakEngineNode *item : footage) {
+		oak::Footage f = oak::Footage::borrow(item);
+		if (f.proxy_path().isEmpty()) {
 			continue;
 		}
 
 #if defined(Q_OS_WINDOWS)
 		QStringList args;
-		args << "/select," << QDir::toNativeSeparators(item->proxy_path());
+		args << "/select," << QDir::toNativeSeparators(f.proxy_path());
 		QProcess::startDetached(QStringLiteral("explorer"), args);
 #elif defined(Q_OS_MAC)
 		QStringList args;
@@ -1573,13 +1747,13 @@ void TimelineWidget::reveal_proxy_for_selected_clips()
 		args << "-e";
 		args << "activate";
 		args << "-e";
-		args << "select POSIX file \"" + item->proxy_path() + "\"";
+		args << "select POSIX file \"" + f.proxy_path() + "\"";
 		args << "-e";
 		args << "end tell";
 		QProcess::startDetached(QStringLiteral("osascript"), args);
 #else
 		QDesktopServices::openUrl(QUrl::fromLocalFile(
-			QFileInfo(item->proxy_path()).dir().absolutePath()));
+			QFileInfo(f.proxy_path()).dir().absolutePath()));
 #endif
 		return;
 	}
@@ -1587,39 +1761,44 @@ void TimelineWidget::reveal_proxy_for_selected_clips()
 
 void TimelineWidget::delete_proxies_for_selected_clips()
 {
-	const QVector<Footage *> footage =
+	const QVector<OakEngineNode *> footage =
 		get_selected_proxy_footage(selected_blocks_);
-	for (Footage *item : footage) {
-		if (item->proxy_path().isEmpty()) {
+	for (OakEngineNode *item : footage) {
+		// WRAPPER-GAP: oak::Footage::clear_proxy
+		oak::Footage f = oak::Footage::borrow(item);
+		if (f.proxy_path().isEmpty()) {
 			continue;
 		}
 
-		QFile::remove(item->proxy_path());
+		QFile::remove(f.proxy_path());
 		{
 			char wbuf[4096];
 			int wlen = oakengine_proxy_get_working_filename(
-				item->proxy_path().toUtf8().constData(), wbuf, sizeof(wbuf));
+				f.proxy_path().toUtf8().constData(), wbuf, sizeof(wbuf));
 			if (wlen > 0) {
 				QFile::remove(QString::fromUtf8(wbuf, wlen));
 			}
 		}
-		oakengine_footage_clear_proxy(reinterpret_cast<OakEngineFootage *>(item));
-		oakengine_footage_invalidate(reinterpret_cast<OakEngineFootage *>(item));
+		oakengine_footage_clear_proxy(f.handle());
+		f.invalidate();
 	}
 }
 
 void TimelineWidget::show_proxy_dialog_for_selected_clips()
 {
-	ProxyDialog d(this, get_selected_proxy_footage(selected_blocks_));
+	const QVector<OakEngineNode *> handles =
+		get_selected_proxy_footage(selected_blocks_);
+	ProxyDialog d(this, handles);
 	d.exec();
 }
 
 void TimelineWidget::recording_callback(const QString &filename,
 									   const TimeRange &time,
-									   const Track::Reference &track)
+									   const TrackReference &track)
 {
-	OakEngineNode *root = reinterpret_cast<OakEngineNode *>(
-		get_connected_node()->project()->root());
+	OakEngineNode *root = oakengine_project_root(
+		oakengine_node_get_project(
+			reinterpret_cast<OakEngineNode *>(get_connected_node())));
 	const char *url = filename.toUtf8().constData();
 	OakEngineTask *task = oakengine_task_create_project_import(root, &url, 1);
 	if (!task) {
@@ -1642,8 +1821,8 @@ void TimelineWidget::recording_callback(const QString &filename,
 		oakengine_undo_command_multi_add_child(import_command, static_cast<void *>(subimport_command));
 
 		OakEngineNode *front = oakengine_task_import_footage_at(task, 0);
-		import_tool_->place_at({ reinterpret_cast<Footage *>(front) }, time.in(),
-							  false, import_command, track.index());
+		import_tool_->place_at({ front },
+							  time.in(), false, import_command, track.index());
 		oakengine_undo_push(import_command,
 											 tr("Recorded Audio Clip").toUtf8().constData());
 	}
@@ -1669,17 +1848,22 @@ void TimelineWidget::add_tentative_subtitle_track()
 	if (!subtitle_show_command_) {
 		// Determine if we need to do anything
 		QList<int> sz = view_splitter_->sizes();
-		bool should_adjust_splitter = (sz[Track::k_subtitle] == 0);
+		bool should_adjust_splitter = (sz[TrackReference::k_subtitle] == 0);
+		int subtitle_track_count = 0;
+		if (sequence()) {
+			oakengine_sequence_track_count(
+				sequence(), nullptr,
+				nullptr, &subtitle_track_count);
+		}
 		bool should_add_sub_track =
-			(sequence() &&
-			 sequence()->track_list(Track::k_subtitle)->get_track_count() == 0);
+			(sequence() && subtitle_track_count == 0);
 
 		if (should_adjust_splitter || should_add_sub_track) {
 			// Create command
 			subtitle_show_command_ = oakengine_undo_command_create_multi();
 
 			if (should_adjust_splitter) {
-				sz[Track::k_subtitle] = height() / Track::k_count;
+				sz[TrackReference::k_subtitle] = height() / TrackReference::k_count;
 				oakengine_undo_command_multi_add_child(
 					subtitle_show_command_,
 					make_splitter_sizes_command(view_splitter_, sz));
@@ -1687,7 +1871,7 @@ void TimelineWidget::add_tentative_subtitle_track()
 
 			if (should_add_sub_track) {
 				void *track_add_cmd = oakengine_sequence_add_track_command(
-					reinterpret_cast<OakEngineSequence *>(sequence()),
+					sequence(),
 					OAKENGINE_TRACK_TYPE_SUBTITLE, 0,
 					&subtitle_tentative_track_);
 				oakengine_undo_command_multi_add_child(
@@ -1705,29 +1889,28 @@ void TimelineWidget::nest_selected_clips()
 		return;
 	}
 
-	QVector<Block *> blocks = this->selected_blocks_;
+	QVector<OakEngineBlock *> blocks = this->selected_blocks_;
 	if (blocks.empty()) {
 		return;
 	}
 
-	QVector<Track::Reference> tracks(blocks.size());
+	QVector<TrackReference> tracks(blocks.size());
 	QVector<TimeRange> times(blocks.size());
-	QVector<int> track_offset(Track::k_count, INT_MAX);
+	QVector<int> track_offset(TrackReference::k_count, INT_MAX);
 	Rational start_time = RATIONAL_MAX;
 	Rational end_time = RATIONAL_MIN;
 	for (int i = 0; i < blocks.size(); i++) {
-		Block *b = blocks.at(i);
+		OakEngineBlock *b = blocks.at(i);
 
-		Track::Reference tf = b->track()->to_reference();
-		;
+		TrackReference tf = track_app_ref(block_track(b));
 		tracks[i] = tf;
-		times[i] = b->range();
+		times[i] = block_range(b);
 
 		int &to = track_offset[tf.type()];
 		to = std::min(to, tf.index());
 
-		start_time = std::min(start_time, b->in());
-		end_time = std::max(end_time, b->out());
+		start_time = std::min(start_time, block_in(b));
+		end_time = std::max(end_time, block_out(b));
 	}
 
 	auto move_to_nest_command = oakengine_undo_command_create_multi();
@@ -1736,11 +1919,11 @@ void TimelineWidget::nest_selected_clips()
 	replace_blocks_with_gaps(blocks, false, move_to_nest_command);
 
 	// Create new sequence
-	Project *project = this->get_connected_node()->project();
-	Sequence *nest = reinterpret_cast<Sequence *>(
+	OakEngineProject *project = oakengine_node_get_project(
+		reinterpret_cast<OakEngineNode *>(this->get_connected_node()));
+	OakEngineSequence *nest =
 		Core::instance()->create_new_sequence_for_project(
-			tr("Nested Sequence %1"),
-			reinterpret_cast<OakEngineProject *>(project)));
+			tr("Nested Sequence %1"), project);
 	{
 		oak_video_params vpod;
 		oakengine_viewer_get_video_params(
@@ -1760,22 +1943,23 @@ void TimelineWidget::nest_selected_clips()
 	}
 	oakengine_undo_command_multi_add_child(move_to_nest_command,
 		oakengine_node_add_to_project_command(
-			reinterpret_cast<OakEngineProject *>(project),
+			project,
 			reinterpret_cast<OakEngineNode *>(nest)));
 
 	// Add to same folder
 	oakengine_folder_add_child(
-		reinterpret_cast<OakEngineNode *>(this->get_connected_node()->folder()),
+		oakengine_node_folder(
+			reinterpret_cast<OakEngineNode *>(this->get_connected_node())),
 		reinterpret_cast<OakEngineNode *>(nest));
 
 	// Place blocks in new sequence
 	for (int i = 0; i < blocks.size(); i++) {
-		Block *b = blocks.at(i);
+		OakEngineBlock *b = blocks.at(i);
 
 		const TimeRange &range = times.at(i);
-		Track::Reference track = tracks.at(i);
+		const TrackReference &track = tracks.at(i);
 
-		oakengine_undo_command_multi_add_child(move_to_nest_command, oakengine_track_place_block_command(reinterpret_cast<void *>(nest->track_list(track.type())), track.index() - track_offset.at(track.type()), reinterpret_cast<void *>(b), core::Timecode::time_to_timestamp(range.in() - start_time, sequence_timebase(nest))));
+		oakengine_undo_command_multi_add_child(move_to_nest_command, oakengine_track_place_block_command(reinterpret_cast<void *>(oakengine_sequence_track_list(nest, track.type())), track.index() - track_offset.at(track.type()), reinterpret_cast<void *>(b), core::Timecode::time_to_timestamp(range.in() - start_time, sequence_timebase(nest))));
 	}
 
 	// Do this command now, because we later do checks and actions that rely on these having been done
@@ -1790,17 +1974,24 @@ void TimelineWidget::nest_selected_clips()
 	while (!empty) {
 		index++;
 		empty = true;
-		for (int i = 0; i < Track::k_count; i++) {
+		for (int i = 0; i < TrackReference::k_count; i++) {
 			if (track_offset.at(i) == INT_MAX) {
 				// No clips on this track
 				continue;
 			}
 
-			TrackList *list =
-				sequence()->track_list(static_cast<Track::Type>(i));
-			if (index < list->get_track_count() &&
-				!list->get_track_at(index)->is_range_free(
-					TimeRange(start_time, end_time))) {
+			int type_counts[3] = { 0, 0, 0 };
+			oakengine_sequence_track_count(
+				sequence(),
+				&type_counts[0], &type_counts[1], &type_counts[2]);
+			const int64_t start_ts = core::Timecode::time_to_timestamp(
+				start_time, sequence_timebase(sequence()));
+			const int64_t end_ts = core::Timecode::time_to_timestamp(
+				end_time, sequence_timebase(sequence()));
+			if (index < type_counts[i] &&
+				oakengine_track_is_range_free(
+					sequence(), i,
+					index, start_ts, end_ts) != 1) {
 				empty = false;
 				break;
 			}
@@ -1808,7 +1999,8 @@ void TimelineWidget::nest_selected_clips()
 	}
 
 	// Place new sequence in this sequence
-	import_tool_->place_at({ nest }, start_time, false, meta_command, index);
+	import_tool_->place_at({ reinterpret_cast<OakEngineNode *>(nest) },
+						  start_time, false, meta_command, index);
 
 	oakengine_undo_push(meta_command, tr("Nested Clips").toUtf8().constData());
 }
@@ -1827,28 +2019,33 @@ void TimelineWidget::insert_gaps_at(const Rational &earliest_point,
 								  const Rational &insert_length,
 								  void *command)
 {
-	for (int i = 0; i < Track::k_count; i++) {
+	for (int i = 0; i < TrackReference::k_count; i++) {
 		oakengine_undo_command_multi_add_child(
 			command,
 			oakengine_track_list_insert_gaps_command(
-				reinterpret_cast<void *>(sequence()->track_list(
-					static_cast<Track::Type>(i))),
+				reinterpret_cast<void *>(oakengine_sequence_track_list(
+					sequence(), i)),
 				earliest_point.numerator(), earliest_point.denominator(),
 				insert_length.numerator(), insert_length.denominator()));
 	}
 }
 
-Track *TimelineWidget::get_track_from_reference(const Track::Reference &ref) const
+OakEngineTrack *TimelineWidget::get_track_from_reference(const TrackReference &ref) const
 {
-	return sequence()->track_list(ref.type())->get_track_at(ref.index());
+	if (!sequence()) {
+		return nullptr;
+	}
+	return oakengine_sequence_track_at(
+		sequence(),
+		static_cast<int>(ref.type()), ref.index());
 }
 
-int TimelineWidget::get_track_y(const Track::Reference &ref)
+int TimelineWidget::get_track_y(const TrackReference &ref)
 {
 	return views_.at(ref.type())->view()->get_track_y(ref.index());
 }
 
-int TimelineWidget::get_track_height(const Track::Reference &ref)
+int TimelineWidget::get_track_height(const TrackReference &ref)
 {
 	return views_.at(ref.type())->view()->get_track_height(ref.index());
 }
@@ -1971,7 +2168,7 @@ void TimelineWidget::view_drag_dropped(TimelineViewMouseEvent *event)
 	update_viewports();
 }
 
-void TimelineWidget::add_block(Block *block)
+void TimelineWidget::add_block(OakEngineBlock *block)
 {
 	// Set up clip with view parameters (clip item will automatically size its rect accordingly)
 	if (!added_blocks_.contains(block)) {
@@ -1986,15 +2183,15 @@ void TimelineWidget::add_block(Block *block)
 
 		added_blocks_.append(block);
 
-		if (selections_[block->track()->to_reference()].contains(
-				block->range()) &&
+		if (selections_[track_app_ref(block_track(block))].contains(
+				block_range(block)) &&
 			!selected_blocks_.contains(block)) {
 			selected_blocks_.append(block);
 		}
 	}
 }
 
-void TimelineWidget::remove_block(Block *block)
+void TimelineWidget::remove_block(OakEngineBlock *block)
 {
 	// Unsubscribe bridge events for this block
 	if (auto it = block_subscriptions_.find(block);
@@ -2018,33 +2215,32 @@ void TimelineWidget::remove_block(Block *block)
 	}
 }
 
-void TimelineWidget::add_track(Track *track)
+void TimelineWidget::add_track(OakEngineTrack *track)
 {
-	foreach (Block *b, track->blocks()) {
+	foreach (OakEngineBlock *b, track_all_blocks(track)) {
 		add_block(b);
 	}
 
-	OakEngineTrack *h = reinterpret_cast<OakEngineTrack *>(track);
-	bridge_->subscribe(h, OAKENGINE_EVENT_TRACK_INDEX_CHANGED);
-	bridge_->subscribe(h, OAKENGINE_EVENT_TRACK_BLOCKS_REFRESHED);
-	bridge_->subscribe(h, OAKENGINE_EVENT_TRACK_HEIGHT_CHANGED);
-	bridge_->subscribe(h, OAKENGINE_EVENT_TRACK_BLOCK_ADDED);
-	bridge_->subscribe(h, OAKENGINE_EVENT_TRACK_BLOCK_REMOVED);
+	bridge_->subscribe(track, OAKENGINE_EVENT_TRACK_INDEX_CHANGED);
+	bridge_->subscribe(track, OAKENGINE_EVENT_TRACK_BLOCKS_REFRESHED);
+	bridge_->subscribe(track, OAKENGINE_EVENT_TRACK_HEIGHT_CHANGED);
+	bridge_->subscribe(track, OAKENGINE_EVENT_TRACK_BLOCK_ADDED);
+	bridge_->subscribe(track, OAKENGINE_EVENT_TRACK_BLOCK_REMOVED);
 }
 
-void TimelineWidget::remove_track(Track *track)
+void TimelineWidget::remove_track(OakEngineTrack *track)
 {
 	// Bridge subscriptions auto-die with the observed engine object.
 	// No per-track unsubscribe needed.
 
-	remove_selection(TimeRange(0, RATIONAL_MAX), track->to_reference());
+	remove_selection(TimeRange(0, RATIONAL_MAX), track_app_ref(track));
 
-	foreach (Block *b, track->blocks()) {
+	foreach (OakEngineBlock *b, track_all_blocks(track)) {
 		remove_block(b);
 	}
 }
 
-void TimelineWidget::track_updated(Track::Type type)
+void TimelineWidget::track_updated(TrackReference::Type type)
 {
 	update_viewports(type);
 }
@@ -2086,7 +2282,7 @@ void TimelineWidget::show_context_menu()
 {
 	Menu menu(this);
 
-	QVector<Block *> selected = get_selected_blocks();
+	QVector<OakEngineBlock *> selected = get_selected_blocks();
 
 	if (!selected.isEmpty()) {
 		MenuShared::instance()->add_items_for_edit_menu(&menu, true);
@@ -2124,7 +2320,7 @@ void TimelineWidget::show_context_menu()
 
 		menu.addSeparator();
 
-		if (ClipBlock *clip = dynamic_cast<ClipBlock *>(selected.first())) {
+		if (OakEngineBlock *clip = block_as_clip(selected.first())) {
 			{
 				Menu *cache_menu = new Menu(tr("Cache"), &menu);
 				menu.addMenu(cache_menu);
@@ -2152,7 +2348,7 @@ void TimelineWidget::show_context_menu()
 			}
 
 			{
-				const QVector<Footage *> proxy_footage =
+				const QVector<OakEngineNode *> proxy_footage =
 					get_selected_proxy_footage(selected);
 				Menu *proxy_menu = new Menu(tr("Proxy"), &menu);
 				menu.addMenu(proxy_menu);
@@ -2169,8 +2365,10 @@ void TimelineWidget::show_context_menu()
 				use_proxy->setChecked(
 					!proxy_footage.isEmpty() &&
 					std::all_of(proxy_footage.cbegin(), proxy_footage.cend(),
-								[](const Footage *footage) {
-									return footage->proxy_enabled();
+								[](OakEngineNode *footage) {
+									oak::Footage f =
+										oak::Footage::borrow(footage);
+									return f.proxy_enabled();
 								}));
 				connect(use_proxy, &QAction::triggered, this,
 						&TimelineWidget::set_selected_clips_proxy_enabled);
@@ -2179,8 +2377,10 @@ void TimelineWidget::show_context_menu()
 					proxy_menu->addAction(tr("Reveal Proxy"));
 				reveal_proxy->setEnabled(
 					std::any_of(proxy_footage.cbegin(), proxy_footage.cend(),
-								[](const Footage *footage) {
-									return !footage->proxy_path().isEmpty();
+								[](OakEngineNode *footage) {
+									oak::Footage f =
+										oak::Footage::borrow(footage);
+									return !f.proxy_path().isEmpty();
 								}));
 				connect(reveal_proxy, &QAction::triggered, this,
 						&TimelineWidget::reveal_proxy_for_selected_clips);
@@ -2189,8 +2389,10 @@ void TimelineWidget::show_context_menu()
 					proxy_menu->addAction(tr("Delete Proxy"));
 				delete_proxy->setEnabled(
 					std::any_of(proxy_footage.cbegin(), proxy_footage.cend(),
-								[](const Footage *footage) {
-									return !footage->proxy_path().isEmpty();
+								[](OakEngineNode *footage) {
+									oak::Footage f =
+										oak::Footage::borrow(footage);
+									return !f.proxy_path().isEmpty();
 								}));
 				connect(delete_proxy, &QAction::triggered, this,
 						&TimelineWidget::delete_proxies_for_selected_clips);
@@ -2201,11 +2403,14 @@ void TimelineWidget::show_context_menu()
 						&TimelineWidget::show_proxy_dialog_for_selected_clips);
 			}
 
-			if (clip->connected_viewer()) {
+			OakEngineNode *connected_viewer =
+				oakengine_clip_get_connected_viewer(
+					reinterpret_cast<OakEngineBlock *>(clip));
+			if (connected_viewer) {
 				QAction *reveal_in_footage_viewer =
 					menu.addAction(tr("Reveal in Footage Viewer"));
 				reveal_in_footage_viewer->setData(
-					reinterpret_cast<quintptr>(clip->connected_viewer()));
+					reinterpret_cast<quintptr>(connected_viewer));
 				reveal_in_footage_viewer->setProperty(
 					"range", QVariant::fromValue(clip_media_range(clip)));
 				connect(reveal_in_footage_viewer, &QAction::triggered, this,
@@ -2214,25 +2419,32 @@ void TimelineWidget::show_context_menu()
 				QAction *reveal_in_project =
 					menu.addAction(tr("Reveal in Project"));
 				reveal_in_project->setData(
-					reinterpret_cast<quintptr>(clip->connected_viewer()));
+					reinterpret_cast<quintptr>(connected_viewer));
 				connect(reveal_in_project, &QAction::triggered, this,
 						&TimelineWidget::reveal_in_project);
 
-				if (Sequence *sequence =
-						dynamic_cast<Sequence *>(clip->connected_viewer())) {
+				OakEngineSequence *connected_sequence =
+					oakengine_node_is_sequence(connected_viewer) ?
+						reinterpret_cast<OakEngineSequence *>(connected_viewer) :
+						nullptr;
+				if (connected_sequence) {
 					QAction *multicam_enabled = menu.addAction(tr("Multi-Cam"));
 					multicam_enabled->setCheckable(true);
 
-					MultiCamNode *mcn = nullptr;
-					auto paths = clip->find_ways_node_arrives_here(sequence);
+					bool has_multicam = false;
+					QVector<oak::Input> paths;
+					find_ways_node_arrives_here(
+						reinterpret_cast<OakEngineNode *>(connected_sequence),
+						reinterpret_cast<OakEngineNode *>(clip), paths);
 
-					for (const NodeInput &i : paths) {
-						if ((mcn = dynamic_cast<MultiCamNode *>(i.node()))) {
+					for (const oak::Input &i : paths) {
+						if (oakengine_node_is_multicam(i.node_handle())) {
+							has_multicam = true;
 							break;
 						}
 					}
 
-					multicam_enabled->setChecked(mcn);
+					multicam_enabled->setChecked(has_multicam);
 
 					connect(multicam_enabled, &QAction::triggered, this,
 							&TimelineWidget::multicam_enabled_triggered);
@@ -2260,13 +2472,13 @@ void TimelineWidget::show_context_menu()
 			menu.addMenu(thumbnail_menu);
 
 			thumbnail_menu->add_action_with_data(
-				tr("Disabled"), Timeline::k_thumbnail_off,
+				tr("Disabled"), TimelineApp::k_thumbnail_off,
 				OAK_CONFIG("TimelineThumbnailMode"));
 			thumbnail_menu->add_action_with_data(
-				tr("Only At In Points"), Timeline::k_thumbnail_in_out,
+				tr("Only At In Points"), TimelineApp::k_thumbnail_in_out,
 				OAK_CONFIG("TimelineThumbnailMode"));
 			thumbnail_menu->add_action_with_data(
-				tr("Enabled"), Timeline::k_thumbnail_on,
+				tr("Enabled"), TimelineApp::k_thumbnail_on,
 				OAK_CONFIG("TimelineThumbnailMode"));
 
 			connect(thumbnail_menu, &Menu::triggered, this,
@@ -2277,7 +2489,7 @@ void TimelineWidget::show_context_menu()
 		show_waveforms->setCheckable(true);
 		show_waveforms->setChecked(
 			OAK_CONFIG("TimelineWaveformMode").toInt() ==
-			Timeline::k_waveforms_enabled);
+			TimelineApp::k_waveforms_enabled);
 		connect(show_waveforms, &QAction::triggered, this,
 				&TimelineWidget::set_view_waveforms_enabled);
 
@@ -2302,7 +2514,7 @@ void TimelineWidget::show_sequence_dialog()
 		return;
 	}
 
-	SequenceDialog sd(sequence(), SequenceDialog::k_existing, this);
+	SequenceDialog sd(reinterpret_cast<OakEngineNode *>(sequence()), SequenceDialog::k_existing, this);
 	sd.exec();
 }
 
@@ -2317,7 +2529,7 @@ void TimelineWidget::set_use_audio_time_units(bool use)
 void TimelineWidget::tool_changed()
 {
 	hide_snaps();
-	set_view_beam_cursor(TimelineCoordinate(0, Track::k_none, -1));
+	set_view_beam_cursor(TimelineCoordinate(0, TrackReference::k_none, -1));
 	set_view_transition_overlay(nullptr, nullptr);
 
 	addable_object_changed();
@@ -2337,8 +2549,8 @@ void TimelineWidget::addable_object_changed()
 
 void TimelineWidget::set_view_waveforms_enabled(bool e)
 {
-	OAK_CONFIG("TimelineWaveformMode") = e ? Timeline::k_waveforms_enabled :
-											   Timeline::k_waveforms_disabled;
+	OAK_CONFIG("TimelineWaveformMode") = e ? TimelineApp::k_waveforms_enabled :
+											   TimelineApp::k_waveforms_disabled;
 	update_viewports();
 }
 
@@ -2358,10 +2570,12 @@ void TimelineWidget::sample_rate_changed()
 	update_view_timebases();
 }
 
-void TimelineWidget::track_index_changed(Track *track, int old, int now)
+void TimelineWidget::track_index_changed(OakEngineTrack *track, int old, int now)
 {
-	Track::Reference old_ref(track->type(), old);
-	Track::Reference new_ref(track->type(), now);
+	TrackReference old_ref(static_cast<TrackReference::Type>(oakengine_track_type(track)),
+						   old);
+	TrackReference new_ref(static_cast<TrackReference::Type>(oakengine_track_type(track)),
+						   now);
 
 	auto track_selections = selections_.take(old_ref);
 	if (!track_selections.isEmpty()) {
@@ -2379,21 +2593,21 @@ void TimelineWidget::reveal_in_footage_viewer()
 {
 	QAction *a = static_cast<QAction *>(sender());
 
-	ViewerOutput *item_to_reveal =
-		reinterpret_cast<ViewerOutput *>(a->data().value<quintptr>());
+	OakEngineNode *item_to_reveal =
+		reinterpret_cast<OakEngineNode *>(a->data().value<quintptr>());
 	TimeRange r = a->property("range").value<TimeRange>();
 
-	emit reveal_viewer_in_footage_viewer(reinterpret_cast<OakEngineNode *>(item_to_reveal), r);
+	emit reveal_viewer_in_footage_viewer(item_to_reveal, r);
 }
 
 void TimelineWidget::reveal_in_project()
 {
 	QAction *a = static_cast<QAction *>(sender());
 
-	ViewerOutput *item_to_reveal =
-		reinterpret_cast<ViewerOutput *>(a->data().value<quintptr>());
+	OakEngineNode *item_to_reveal =
+		reinterpret_cast<OakEngineNode *>(a->data().value<quintptr>());
 
-	emit reveal_viewer_in_project(reinterpret_cast<OakEngineNode *>(item_to_reveal));
+	emit reveal_viewer_in_project(item_to_reveal);
 }
 
 void TimelineWidget::rename_selected_blocks()
@@ -2406,9 +2620,16 @@ void TimelineWidget::rename_selected_blocks()
 	// through the liboakengine C ABI facade (one undoable multi-node
 	// rename command; the old code also pushed a stray empty command,
 	// which is gone now).
-	QString start_label = selected_blocks_.first()->get_label();
+	auto block_label = [](OakEngineBlock *b) {
+		char buf[512];
+		buf[0] = '\0';
+		oakengine_node_get_label(reinterpret_cast<OakEngineNode *>(b), buf,
+								 sizeof(buf));
+		return QString::fromUtf8(buf);
+	};
+	QString start_label = block_label(selected_blocks_.first());
 	for (int i = 1; i < selected_blocks_.size(); i++) {
-		if (selected_blocks_.at(i)->get_label() != start_label) {
+		if (block_label(selected_blocks_.at(i)) != start_label) {
 			start_label.clear();
 			break;
 		}
@@ -2425,7 +2646,7 @@ void TimelineWidget::rename_selected_blocks()
 
 	QVector<OakEngineNode *> nodes;
 	nodes.reserve(selected_blocks_.size());
-	foreach (Block *b, selected_blocks_) {
+	foreach (OakEngineBlock *b, selected_blocks_) {
 		nodes.append(reinterpret_cast<OakEngineNode *>(b));
 	}
 	oakengine_node_set_label_many(nodes.data(), nodes.size(),
@@ -2447,8 +2668,8 @@ void TimelineWidget::set_selected_clips_autocaching(bool e)
 {
 	void *command = oakengine_undo_command_create_multi();
 
-	for (Block *b : selected_blocks_) {
-		if (ClipBlock *clip = dynamic_cast<ClipBlock *>(b)) {
+	for (OakEngineBlock *b : selected_blocks_) {
+		if (OakEngineBlock *clip = block_as_clip(b)) {
 			oak_node_value v{};
 			v.type = OAK_NODE_VALUE_BOOL;
 			v.num = e ? 1 : 0;
@@ -2469,8 +2690,8 @@ void TimelineWidget::set_selected_clips_autocaching(bool e)
 
 void TimelineWidget::cache_clips()
 {
-	for (Block *b : selected_blocks_) {
-		if (ClipBlock *clip = dynamic_cast<ClipBlock *>(b)) {
+	for (OakEngineBlock *b : selected_blocks_) {
+		if (OakEngineBlock *clip = block_as_clip(b)) {
 			clip_request_invalidate_connected(clip, true);
 		}
 	}
@@ -2478,20 +2699,30 @@ void TimelineWidget::cache_clips()
 
 void TimelineWidget::cache_clips_in_out()
 {
-	if (!this->sequence() || !this->sequence()->get_work_area()->enabled()) {
+	if (!this->sequence()) {
+		return;
+	}
+
+	oakengine_viewer_workarea wa;
+	if (oakengine_viewer_get_workarea(
+			reinterpret_cast<OakEngineNode *>(this->sequence()), &wa) != 0 ||
+		!wa.enabled) {
 		return;
 	}
 
 	TimeTargetObject tto;
-	tto.set_time_target(this->sequence());
+	tto.set_time_target(reinterpret_cast<OakEngineNode *>(this->sequence()));
 
-	const TimeRange &r = this->sequence()->get_work_area()->range();
-	for (Block *b : qAsConst(selected_blocks_)) {
-		if (ClipBlock *clip = dynamic_cast<ClipBlock *>(b)) {
-			if (Node *connected = clip->get_connected_output(oakengine_clip_buffer_input_id())) {
+	const TimeRange r(Rational(int(wa.in_num), int(wa.in_den)),
+					  Rational(int(wa.out_num), int(wa.out_den)));
+	for (OakEngineBlock *b : qAsConst(selected_blocks_)) {
+		if (OakEngineBlock *clip = block_as_clip(b)) {
+			if (OakEngineNode *connected = clip_connected_node(clip)) {
 				TimeRange adjusted =
-					tto.get_adjusted_time(this->sequence(), connected, r,
-										Node::k_transform_towards_input);
+					tto.get_adjusted_time(
+						reinterpret_cast<OakEngineNode *>(this->sequence()),
+						connected,
+						r, k_transform_towards_input);
 				clip_request_invalidate_connected(clip, true, adjusted);
 			}
 		}
@@ -2507,8 +2738,8 @@ void TimelineWidget::cache_discard()
 			   "This cannot be undone.\n\n"
 			   "Do you wish to continue?"),
 			QMessageBox::Yes | QMessageBox::No) == QMessageBox::Yes) {
-		for (Block *b : selected_blocks_) {
-			if (ClipBlock *clip = dynamic_cast<ClipBlock *>(b)) {
+		for (OakEngineBlock *b : selected_blocks_) {
+			if (OakEngineBlock *clip = block_as_clip(b)) {
 				oakengine_clip_discard_cache(
 					reinterpret_cast<OakEngineClip *>(clip));
 			}
@@ -2520,42 +2751,49 @@ void TimelineWidget::multicam_enabled_triggered(bool e)
 {
 	void *command = oakengine_undo_command_create_multi();
 
-	for (Block *b : qAsConst(selected_blocks_)) {
-		if (ClipBlock *c = dynamic_cast<ClipBlock *>(b)) {
-			if (Sequence *s = dynamic_cast<Sequence *>(c->connected_viewer())) {
+	for (OakEngineBlock *b : qAsConst(selected_blocks_)) {
+		if (OakEngineBlock *c = block_as_clip(b)) {
+			OakEngineNode *viewer = oakengine_clip_get_connected_viewer(c);
+			OakEngineSequence *s = oakengine_node_is_sequence(viewer) ?
+							  reinterpret_cast<OakEngineSequence *>(viewer) :
+							  nullptr;
+			if (s) {
 				if (e) {
 					// Adding multicams
 					// Create multicam node and add it to the graph
-					MultiCamNode *n = reinterpret_cast<MultiCamNode *>(
-						oakengine_project_add_node(
-							reinterpret_cast<OakEngineProject *>(s->parent()),
-							"org.olivevideoeditor.Olive.multicam"));
+					OakEngineNode *n = oakengine_project_add_node(
+						oakengine_node_parent(
+							reinterpret_cast<OakEngineNode *>(s)),
+						"org.olivevideoeditor.Olive.multicam");
 					{
 						oak_node_value v;
 						v.type = OAK_NODE_VALUE_INT;
-						v.num = c->get_track_type();
+						v.num = track_type_of(block_track(c));
 						oakengine_node_set_input(
-							reinterpret_cast<OakEngineNode *>(n),
+							n,
 							oakengine_multicam_input_sequence_type(), &v);
 					}
 					// Node was already added by oakengine_project_add_node
 
 					// For each output the sequence has to this clip, disconnect it and
 					// connect to the multicam instead
-					QVector<NodeInput> inputs = c->find_ways_node_arrives_here(s);
-					for (const NodeInput &i : inputs) {
+					QVector<oak::Input> inputs;
+					find_ways_node_arrives_here(
+						reinterpret_cast<OakEngineNode *>(s),
+						reinterpret_cast<OakEngineNode *>(c), inputs);
+					for (const oak::Input &i : inputs) {
 						oakengine_undo_command_multi_add_child(
 							command,
 							oakengine_node_disconnect_command(
-								reinterpret_cast<OakEngineNode *>(i.node()),
-								i.input().toUtf8().constData(),
+								i.node_handle(),
+								i.input_id().toUtf8().constData(),
 								i.element()));
 						oakengine_undo_command_multi_add_child(
 							command,
 							oakengine_node_connect_command(
-								reinterpret_cast<OakEngineNode *>(n),
-								reinterpret_cast<OakEngineNode *>(i.node()),
-								i.input().toUtf8().constData(),
+								n,
+								i.node_handle(),
+								i.input_id().toUtf8().constData(),
 								i.element()));
 					}
 
@@ -2563,12 +2801,17 @@ void TimelineWidget::multicam_enabled_triggered(bool e)
 						command,
 						oakengine_node_connect_command(
 							reinterpret_cast<OakEngineNode *>(s),
-							reinterpret_cast<OakEngineNode *>(n),
+							n,
 							oakengine_multicam_input_sequence(),
 							-1));
 
 					// Move sequence node one unit back, and place multicam in sequence's spot
-					QPointF sequence_pos = c->get_node_position_in_context(s);
+					double pos_x = 0, pos_y = 0;
+					oakengine_node_get_context_position(
+						reinterpret_cast<OakEngineNode *>(s),
+						reinterpret_cast<OakEngineNode *>(c), &pos_x, &pos_y,
+						nullptr);
+					QPointF sequence_pos(pos_x, pos_y);
 					QPointF shifted_pos = sequence_pos - QPointF(1, 0);
 					oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(s), reinterpret_cast<void *>(c), shifted_pos.x(), shifted_pos.y(), 0));
 					oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(n), reinterpret_cast<void *>(c), sequence_pos.x(), sequence_pos.y(), 0));
@@ -2576,25 +2819,32 @@ void TimelineWidget::multicam_enabled_triggered(bool e)
 				} else {
 					// Removing multicams
 					// Locate first multicam that specifically ends up at this clip
-					QVector<NodeInput> inputs = c->find_ways_node_arrives_here(s);
-					for (const NodeInput &i : inputs) {
-						if (MultiCamNode *mcn =
-								dynamic_cast<MultiCamNode *>(i.node())) {
-							for (auto it = mcn->output_connections().cbegin();
-								 it != mcn->output_connections().cend(); it++) {
+					QVector<oak::Input> inputs;
+					find_ways_node_arrives_here(
+						reinterpret_cast<OakEngineNode *>(s),
+						reinterpret_cast<OakEngineNode *>(c), inputs);
+					for (const oak::Input &i : inputs) {
+						OakEngineNode *mcn = i.node_handle();
+						if (oakengine_node_is_multicam(mcn)) {
+							oak::Node mcnode(mcn);
+							const int out_count =
+								mcnode.output_connection_count();
+							for (int k = 0; k < out_count; k++) {
+								const oak::NodeConnection oc =
+									mcnode.output_connection_at_ex(k);
 								oakengine_undo_command_multi_add_child(
 									command,
 									oakengine_node_disconnect_command(
-										reinterpret_cast<OakEngineNode *>(it->second.node()),
-										it->second.input().toUtf8().constData(),
-										it->second.element()));
+										oc.node.handle(),
+										oc.input_id.toUtf8().constData(),
+										oc.element));
 								oakengine_undo_command_multi_add_child(
 									command,
 									oakengine_node_connect_command(
 										reinterpret_cast<OakEngineNode *>(s),
-										reinterpret_cast<OakEngineNode *>(it->second.node()),
-										it->second.input().toUtf8().constData(),
-										it->second.element()));
+										oc.node.handle(),
+										oc.input_id.toUtf8().constData(),
+										oc.element));
 							}
 
 							oakengine_undo_command_multi_add_child(command, oakengine_node_remove_and_disconnect_command(reinterpret_cast<void *>(mcn)));
@@ -2623,7 +2873,7 @@ void TimelineWidget::add_ghost(TimelineViewGhostItem *ghost)
 {
 	ghost_items_.append(ghost);
 
-	update_viewports(ghost->get_track().type());
+	update_viewports(static_cast<TrackReference::Type>(ghost->get_track().type()));
 }
 
 void TimelineWidget::update_view_timebases()
@@ -2631,7 +2881,8 @@ void TimelineWidget::update_view_timebases()
 	for (int i = 0; i < views_.size(); i++) {
 		TimelineAndTrackView *view = views_.at(i);
 
-		if (get_connected_node() && use_audio_time_units_ && i == Track::k_audio) {
+		if (get_connected_node() && use_audio_time_units_ &&
+			i == TrackReference::k_audio) {
 			view->view()->set_timebase(
 				viewer_output_audio_params(get_connected_node()).sample_rate_as_time_base());
 		} else {
@@ -2644,9 +2895,9 @@ void TimelineWidget::nudge_internal(Rational amount)
 {
 	if (!selected_blocks_.isEmpty()) {
 		// Validate
-		foreach (Block *b, selected_blocks_) {
-			if (b->in() + amount < 0) {
-				amount = -b->in();
+		foreach (OakEngineBlock *b, selected_blocks_) {
+			if (block_in(b) + amount < 0) {
+				amount = -block_in(b);
 			}
 		}
 
@@ -2656,12 +2907,12 @@ void TimelineWidget::nudge_internal(Rational amount)
 
 		void *command = oakengine_undo_command_create_multi();
 
-		foreach (Block *b, selected_blocks_) {
-			oakengine_undo_command_multi_add_child(command, oakengine_track_replace_block_with_gap_command(reinterpret_cast<void *>(b->track()), reinterpret_cast<void *>(b), false ? 1 : 0));
+		foreach (OakEngineBlock *b, selected_blocks_) {
+			oakengine_undo_command_multi_add_child(command, oakengine_track_replace_block_with_gap_command(reinterpret_cast<void *>(block_track(b)), reinterpret_cast<void *>(b), false ? 1 : 0));
 		}
 
-		foreach (Block *b, selected_blocks_) {
-			oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(sequence()->track_list(b->track()->type())), b->track()->index(), reinterpret_cast<void *>(b), core::Timecode::time_to_timestamp(b->in() + amount, timebase())));
+		foreach (OakEngineBlock *b, selected_blocks_) {
+			oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(oakengine_sequence_track_list(sequence(), track_type_of(block_track(b)))), track_index_of(block_track(b)), reinterpret_cast<void *>(b), core::Timecode::time_to_timestamp(block_in(b) + amount, timebase())));
 		}
 
 		// Nudge selections
@@ -2679,27 +2930,27 @@ void TimelineWidget::move_to_playhead_internal(bool out)
 		void *command = oakengine_undo_command_create_multi();
 
 		// Remove each block from the graph
-		QHash<Track *, Rational> earliest_pts;
-		foreach (Block *b, selected_blocks_) {
-			oakengine_undo_command_multi_add_child(command, oakengine_track_replace_block_with_gap_command(reinterpret_cast<void *>(b->track()), reinterpret_cast<void *>(b), false ? 1 : 0));
+		QHash<OakEngineTrack *, Rational> earliest_pts;
+		foreach (OakEngineBlock *b, selected_blocks_) {
+			oakengine_undo_command_multi_add_child(command, oakengine_track_replace_block_with_gap_command(reinterpret_cast<void *>(block_track(b)), reinterpret_cast<void *>(b), false ? 1 : 0));
 
-			Rational r = earliest_pts.value(b->track(),
+			Rational r = earliest_pts.value(block_track(b),
 											out ? RATIONAL_MIN : RATIONAL_MAX);
-			Rational compare = out ? b->out() : b->in();
+			Rational compare = out ? block_out(b) : block_in(b);
 			if ((compare < r) == !out) {
-				earliest_pts.insert(b->track(), compare);
+				earliest_pts.insert(block_track(b), compare);
 			}
 		}
 
-		foreach (Block *b, selected_blocks_) {
-			Rational shift_amt = get_connected_node()->get_playhead() -
-								 earliest_pts.value(b->track());
-			Rational new_in = b->in() + shift_amt;
+		foreach (OakEngineBlock *b, selected_blocks_) {
+			Rational shift_amt = viewer_playhead(reinterpret_cast<OakEngineNode *>(get_connected_node())) -
+								 earliest_pts.value(block_track(b));
+			Rational new_in = block_in(b) + shift_amt;
 			bool can_shift = true;
 
 			if (new_in < 0) {
 				// Handle clips threatening to go below 0
-				Rational new_out = new_in + b->length();
+				Rational new_out = new_in + block_length(b);
 				if (new_out <= 0) {
 					can_shift = false;
 				} else {
@@ -2709,7 +2960,7 @@ void TimelineWidget::move_to_playhead_internal(bool out)
 			}
 
 			if (can_shift) {
-				oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(sequence()->track_list(b->track()->type())), b->track()->index(), reinterpret_cast<void *>(b), core::Timecode::time_to_timestamp(new_in, timebase())));
+				oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(oakengine_sequence_track_list(sequence(), track_type_of(block_track(b)))), track_index_of(block_track(b)), reinterpret_cast<void *>(b), core::Timecode::time_to_timestamp(new_in, timebase())));
 			}
 		}
 
@@ -2717,9 +2968,9 @@ void TimelineWidget::move_to_playhead_internal(bool out)
 		TimelineWidgetSelections new_sel = get_selections();
 		for (auto it = new_sel.begin(); it != new_sel.end(); it++) {
 			Rational track_adj =
-				get_connected_node()->get_playhead() -
+				viewer_playhead(reinterpret_cast<OakEngineNode *>(get_connected_node())) -
 				earliest_pts.value(get_track_from_reference(it.key()),
-								   get_connected_node()->get_playhead());
+								   viewer_playhead(reinterpret_cast<OakEngineNode *>(get_connected_node())));
 			if (!track_adj.isNull()) {
 				it.value().shift(track_adj);
 			}
@@ -2738,16 +2989,19 @@ void TimelineWidget::set_view_beam_cursor(const TimelineCoordinate &coord)
 	}
 }
 
-void TimelineWidget::set_view_transition_overlay(ClipBlock *out, ClipBlock *in)
+void TimelineWidget::set_view_transition_overlay(OakEngineClip *out, OakEngineClip *in)
 {
 	foreach (TimelineAndTrackView *tview, views_) {
-		tview->view()->set_transition_overlay(out, in);
+		tview->view()->set_transition_overlay(
+			reinterpret_cast<OakEngineBlock *>(out),
+			reinterpret_cast<OakEngineBlock *>(in));
 	}
 }
 
-void TimelineWidget::set_block_links_selected(ClipBlock *block, bool selected)
+void TimelineWidget::set_block_links_selected(OakEngineClip *block, bool selected)
 {
-	foreach (Block *link, block->block_links()) {
+	foreach (OakEngineBlock *link,
+			 block_all_links(reinterpret_cast<OakEngineBlock *>(block))) {
 		if (selected) {
 			add_selection(link);
 		} else {
@@ -2769,7 +3023,7 @@ TimelineView *TimelineWidget::get_first_timeline_view()
 	return views_.first()->view();
 }
 
-Rational TimelineWidget::get_timebase_for_track_type(Track::Type type)
+Rational TimelineWidget::get_timebase_for_track_type(TrackReference::Type type)
 {
 	return views_.at(type)->view()->timebase();
 }
@@ -2779,7 +3033,7 @@ const QRect &TimelineWidget::get_rubber_band_geometry() const
 	return rubberband_.geometry();
 }
 
-void TimelineWidget::signal_selected_blocks(QVector<Block *> input, bool filter)
+void TimelineWidget::signal_selected_blocks(QVector<OakEngineBlock *> input, bool filter)
 {
 	if (input.isEmpty()) {
 		return;
@@ -2788,7 +3042,7 @@ void TimelineWidget::signal_selected_blocks(QVector<Block *> input, bool filter)
 	if (filter) {
 		// If filtering, remove all the blocks that are already selected
 		for (int i = 0; i < input.size(); i++) {
-			Block *b = input.at(i);
+			OakEngineBlock *b = input.at(i);
 
 			if (selected_blocks_.contains(b)) {
 				input.removeAt(i);
@@ -2803,13 +3057,13 @@ void TimelineWidget::signal_selected_blocks(QVector<Block *> input, bool filter)
 }
 
 void TimelineWidget::signal_deselected_blocks(
-	const QVector<Block *> &deselected_blocks)
+	const QVector<OakEngineBlock *> &deselected_blocks)
 {
 	if (deselected_blocks.isEmpty()) {
 		return;
 	}
 
-	foreach (Block *b, deselected_blocks) {
+	foreach (OakEngineBlock *b, deselected_blocks) {
 		selected_blocks_.removeOne(b);
 	}
 
@@ -2824,40 +3078,51 @@ void TimelineWidget::signal_deselected_all_blocks()
 	}
 }
 
-QVector<Timeline::EditToInfo>
+QVector<TimelineApp::EditToInfo>
 TimelineWidget::get_edit_to_info(const Rational &playhead_time,
-							  Timeline::MovementMode mode)
+							  TimelineApp::MovementMode mode)
 {
 	// Get list of unlocked tracks
-	QVector<Track *> tracks = sequence()->get_unlocked_tracks();
+	QVector<OakEngineTrack *> tracks;
+	{
+		const QVector<OakEngineTrack *> all = sequence_all_tracks(sequence());
+		for (OakEngineTrack *t : all) {
+			if (!track_is_locked(t)) {
+				tracks.append(t);
+			}
+		}
+	}
 
 	// Create list to cache nearest times and the blocks at this point
-	QVector<Timeline::EditToInfo> info_list(tracks.size());
+	QVector<TimelineApp::EditToInfo> info_list(tracks.size());
+
+	const int64_t playhead_ts = core::Timecode::time_to_timestamp(
+		playhead_time, sequence_timebase(sequence()));
 
 	for (int i = 0; i < tracks.size(); i++) {
-		Timeline::EditToInfo &info = info_list[i];
+		TimelineApp::EditToInfo &info = info_list[i];
 
-		Track *track = tracks.at(i);
+		OakEngineTrack *track = tracks.at(i);
 		info.track = track;
 
-		Block *b;
+		OakEngineBlock *b;
 
 		// Determine what block is at this time (for "trim in", we want to catch blocks that start at
 		// the time, for "trim out" we don't)
-		if (mode == Timeline::k_trim_in) {
-			b = track->nearest_block_before_or_at(playhead_time);
+		if (mode == TimelineApp::k_trim_in) {
+			b = oakengine_track_nearest_block_before_or_at(track, playhead_ts);
 		} else {
-			b = track->nearest_block_before(playhead_time);
+			b = oakengine_track_nearest_block_before(track, playhead_ts);
 		}
 
 		// If we have a block here, cache how close it is to the track
 		if (b) {
 			Rational this_track_closest_point;
 
-			if (mode == Timeline::k_trim_in) {
-				this_track_closest_point = b->in();
+			if (mode == TimelineApp::k_trim_in) {
+				this_track_closest_point = block_in(b);
 			} else {
-				this_track_closest_point = b->out();
+				this_track_closest_point = block_out(b);
 			}
 
 			info.nearest_time = this_track_closest_point;
@@ -2869,15 +3134,15 @@ TimelineWidget::get_edit_to_info(const Rational &playhead_time,
 	return info_list;
 }
 
-void TimelineWidget::ripple_to(Timeline::MovementMode mode)
+void TimelineWidget::ripple_to(TimelineApp::MovementMode mode)
 {
 	if (!get_connected_node()) {
 		return;
 	}
 
-	Rational playhead_time = get_connected_node()->get_playhead();
+	Rational playhead_time = viewer_playhead(reinterpret_cast<OakEngineNode *>(get_connected_node()));
 
-	QVector<Timeline::EditToInfo> tracks = get_edit_to_info(playhead_time, mode);
+	QVector<TimelineApp::EditToInfo> tracks = get_edit_to_info(playhead_time, mode);
 
 	if (tracks.isEmpty()) {
 		return;
@@ -2885,11 +3150,11 @@ void TimelineWidget::ripple_to(Timeline::MovementMode mode)
 
 	// Find each track's nearest point and determine the overall timeline's nearest point
 	Rational closest_point_to_playhead =
-		(mode == Timeline::k_trim_in) ? RATIONAL_MIN : RATIONAL_MAX;
+		(mode == TimelineApp::k_trim_in) ? RATIONAL_MIN : RATIONAL_MAX;
 
-	foreach (const Timeline::EditToInfo &info, tracks) {
+	foreach (const TimelineApp::EditToInfo &info, tracks) {
 		if (info.nearest_block) {
-			if (mode == Timeline::k_trim_in) {
+			if (mode == TimelineApp::k_trim_in) {
 				closest_point_to_playhead =
 					qMax(info.nearest_time, closest_point_to_playhead);
 			} else {
@@ -2908,7 +3173,7 @@ void TimelineWidget::ripple_to(Timeline::MovementMode mode)
 	// If we're not inserting gaps and the edit point is right on the nearest in point, we enter a
 	// single-frame mode where we remove one frame only
 	if (closest_point_to_playhead == playhead_time) {
-		if (mode == Timeline::k_trim_in) {
+		if (mode == TimelineApp::k_trim_in) {
 			playhead_time += timebase();
 		} else {
 			playhead_time -= timebase();
@@ -2923,42 +3188,44 @@ void TimelineWidget::ripple_to(Timeline::MovementMode mode)
 	// undoable all-tracks ripple, same as the old
 	// TimelineRippleRemoveAreaCommand push).
 	oakengine_sequence_ripple_delete_range(
-		reinterpret_cast<OakEngineSequence *>(sequence()),
+		sequence(),
 		Timecode::time_to_timestamp(in_ripple, timebase(), Timecode::k_round),
 		Timecode::time_to_timestamp(out_ripple, timebase(),
 									Timecode::k_round));
 
 	// If we rippled, ump to where new cut is if applicable
-	if (mode == Timeline::k_trim_in) {
+	if (mode == TimelineApp::k_trim_in) {
 		oakengine_viewer_set_playhead(
 			reinterpret_cast<OakEngineNode *>(get_connected_node()),
 			closest_point_to_playhead.numerator(),
 			closest_point_to_playhead.denominator());
-	} else if (mode == Timeline::k_trim_out &&
-			   closest_point_to_playhead == get_connected_node()->get_playhead()) {
+	} else if (mode == TimelineApp::k_trim_out &&
+			   closest_point_to_playhead ==
+				   viewer_playhead(reinterpret_cast<OakEngineNode *>(get_connected_node()))) {
 		oakengine_viewer_set_playhead(
 			reinterpret_cast<OakEngineNode *>(get_connected_node()),
 			playhead_time.numerator(), playhead_time.denominator());
 	}
 }
 
-void TimelineWidget::edit_to(Timeline::MovementMode mode)
+void TimelineWidget::edit_to(TimelineApp::MovementMode mode)
 {
-	const Rational playhead_time = get_connected_node()->get_playhead();
+	const Rational playhead_time =
+		viewer_playhead(reinterpret_cast<OakEngineNode *>(get_connected_node()));
 
 	// Batch trim through the liboakengine C ABI facade (one undoable
 	// command; the per-track nearest-block semantics of the old app-side
 	// assembly live behind the facade now).
 	oakengine_sequence_trim_clips_to(
-		reinterpret_cast<OakEngineSequence *>(sequence()),
-		(mode == Timeline::k_trim_in) ? 0 : 1,
+		sequence(),
+		(mode == TimelineApp::k_trim_in) ? 0 : 1,
 		Timecode::time_to_timestamp(playhead_time, timebase(),
 									Timecode::k_round));
 }
 
-void TimelineWidget::update_viewports(const Track::Type &type)
+void TimelineWidget::update_viewports(const TrackReference::Type &type)
 {
-	if (type == Track::k_none) {
+	if (type == TrackReference::k_none) {
 		foreach (TimelineAndTrackView *tview, views_) {
 			tview->view()->viewport()->update();
 		}
@@ -2975,12 +3242,14 @@ bool TimelineWidget::paste_internal(bool insert)
 
 	OakEngineClipboard *cb = oakengine_clipboard_create(
 		OAKENGINE_CLIPBOARD_CLIPS,
-		reinterpret_cast<OakEngineProject *>(get_connected_node()->project()),
+		oakengine_node_get_project(
+			reinterpret_cast<OakEngineNode *>(get_connected_node())),
 		nullptr);
 	int result_code = OAKENGINE_SERIALIZER_NO_DATA;
 	oakengine_clipboard_paste(cb, OAKENGINE_CLIPBOARD_CLIPS,
-							reinterpret_cast<OakEngineProject *>(
-								get_connected_node()->project()),
+							oakengine_node_get_project(
+								reinterpret_cast<OakEngineNode *>(
+									get_connected_node())),
 							&result_code, nullptr, 0);
 
 	if (result_code != OAKENGINE_SERIALIZER_OK) {
@@ -2996,25 +3265,27 @@ bool TimelineWidget::paste_internal(bool insert)
 
 	void *command = oakengine_undo_command_create_multi();
 
-	Project *project = get_connected_node()->project();
+	OakEngineProject *project = oakengine_node_get_project(
+		reinterpret_cast<OakEngineNode *>(get_connected_node()));
 	for (int i = 0; i < node_count; i++) {
-		Node *n = reinterpret_cast<Node *>(
-			oakengine_clipboard_get_loaded_node_at(cb, i));
+		OakEngineNode *n = oakengine_clipboard_get_loaded_node_at(cb, i);
 		oakengine_undo_command_multi_add_child(command,
 		oakengine_node_add_to_project_command(
-			reinterpret_cast<OakEngineProject *>(project),
-			reinterpret_cast<OakEngineNode *>(n)));
-		if (n->is_item() && !n->folder()) {
+			project,
+			n));
+		auto *n_handle = n;
+		if (oakengine_node_is_item(n_handle) &&
+			!oakengine_node_folder(n_handle)) {
 			oakengine_folder_add_child(
-			reinterpret_cast<OakEngineNode *>(project->root()),
-			reinterpret_cast<OakEngineNode *>(n));
+			oakengine_project_root(project),
+			n);
 		}
 	}
 
 	// Collect connections
 	struct Conn {
-		Node *output;
-		Node *input;
+		OakEngineNode *output;
+		OakEngineNode *input;
 		QString input_id;
 		int element;
 	};
@@ -3024,9 +3295,7 @@ bool TimelineWidget::paste_internal(bool insert)
 		[](OakEngineNode *out, OakEngineNode *in, const char *input_id,
 		   int element, void *userdata) -> int {
 			auto *v = static_cast<QVector<Conn> *>(userdata);
-			v->append({reinterpret_cast<Node *>(out),
-					   reinterpret_cast<Node *>(in),
-					   QString::fromUtf8(input_id), element});
+			v->append({out, in, QString::fromUtf8(input_id), element});
 			return 0;
 		},
 		&conns);
@@ -3035,13 +3304,13 @@ bool TimelineWidget::paste_internal(bool insert)
 		oakengine_undo_command_multi_add_child(
 			command,
 			oakengine_node_connect_command(
-				reinterpret_cast<OakEngineNode *>(c.output),
-				reinterpret_cast<OakEngineNode *>(c.input),
+				c.output,
+				c.input,
 				c.input_id.toUtf8().constData(),
 				c.element));
 	}
 
-	Rational paste_start = get_connected_node()->get_playhead();
+	Rational paste_start = viewer_playhead(reinterpret_cast<OakEngineNode *>(get_connected_node()));
 
 	struct PropertyCtx {
 		Rational paste_start;
@@ -3065,9 +3334,8 @@ bool TimelineWidget::paste_internal(bool insert)
 		   void *userdata) -> int {
 			auto *ctx = static_cast<PropertyCtx *>(userdata);
 			if (ctx->insert && std::strcmp(key, "in") == 0) {
-				Block *block = static_cast<Block *>(
-					reinterpret_cast<Node *>(node));
-				Rational length = block->length();
+				OakEngineBlock *block = reinterpret_cast<OakEngineBlock *>(node);
+				Rational length = block_length(block);
 				Rational in = Rational::from_string(value);
 				Rational end = ctx->paste_start + in + length;
 				if (end > ctx->paste_end) {
@@ -3095,14 +3363,13 @@ bool TimelineWidget::paste_internal(bool insert)
 		&props);
 
 	for (auto it = props.cbegin(); it != props.cend(); it++) {
-		Block *block = static_cast<Block *>(
-			reinterpret_cast<Node *>(it.key()));
+		OakEngineBlock *block = reinterpret_cast<OakEngineBlock *>(it.key());
 		if (it.value().contains(QStringLiteral("in"))) {
 			Rational in = Rational::from_string(
 				it.value()[QStringLiteral("in")].toStdString());
-			Track::Reference track = Track::Reference::from_string(
+			TrackReference track = TrackReference::from_string(
 				it.value()[QStringLiteral("track")]);
-			oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(sequence()->track_list(track.type())), track.index(), reinterpret_cast<void *>(block), core::Timecode::time_to_timestamp(paste_start + in, timebase())));
+			oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(oakengine_sequence_track_list(sequence(), static_cast<int>(track.type()))), track.index(), reinterpret_cast<void *>(block), core::Timecode::time_to_timestamp(paste_start + in, timebase())));
 		}
 	}
 
@@ -3123,23 +3390,25 @@ TimelineWidget::add_timeline_and_track_view(Qt::Alignment alignment)
 	return v;
 }
 
-QHash<Node *, Node *>
+QHash<OakEngineNode *, OakEngineNode *>
 TimelineWidget::generate_existing_paste_map(void *clipboard)
 {
-	QHash<Node *, Node *> m;
+	QHash<OakEngineNode *, OakEngineNode *> m;
 	OakEngineClipboard *cb = static_cast<OakEngineClipboard *>(clipboard);
 	const int node_count = oakengine_clipboard_get_loaded_node_count(cb);
 
 	for (int i = 0; i < node_count; i++) {
-		Node *n = reinterpret_cast<Node *>(
-			oakengine_clipboard_get_loaded_node_at(cb, i));
-		for (Block *b : qAsConst(this->selected_blocks_)) {
-			for (auto it = b->get_context_positions().cbegin();
-				 it != b->get_context_positions().cend(); it++) {
-				if (it.key()->id() == n->id() && !m.contains(it.key())) {
-					m.insert(it.key(), n);
-					break;
-				}
+		OakEngineNode *n = oakengine_clipboard_get_loaded_node_at(cb, i);
+		for (OakEngineBlock *b : qAsConst(this->selected_blocks_)) {
+			// WRAPPER-GAP: no C ABI for Node::get_context_positions(); the
+			// block's track-owning sequence is the context that matters here
+			// (blocks on a timeline always live in their sequence's context).
+			OakEngineNode *context =
+				oakengine_track_get_sequence(
+					reinterpret_cast<OakEngineNode *>(block_track(b)));
+			if (context && !m.contains(context) &&
+				oak::Node(context).id() == oak::Node(n).id()) {
+				m.insert(context, n);
 			}
 		}
 	}
@@ -3200,7 +3469,7 @@ void TimelineWidget::move_rubber_band_select(bool enable_selecting,
 	}
 
 	// Get current items in rubberband
-	QVector<Block *> items_in_rubberband;
+	QVector<OakEngineBlock *> items_in_rubberband;
 
 	for (int i = 0; i < views_.size(); i++) {
 		TimelineView *v = views_.at(i)->view();
@@ -3216,13 +3485,13 @@ void TimelineWidget::move_rubber_band_select(bool enable_selecting,
 	// Add any blocks in rubberband
 	rubberband_now_selected_.clear();
 
-	foreach (Block *b, items_in_rubberband) {
-		if (dynamic_cast<GapBlock *>(b)) {
+	foreach (OakEngineBlock *b, items_in_rubberband) {
+		if (oakengine_block_is_gap(b)) {
 			continue;
 		}
 
-		Track *t = b->track();
-		if (t->is_locked()) {
+		OakEngineTrack *t = block_track(b);
+		if (track_is_locked(t)) {
 			continue;
 		}
 
@@ -3231,9 +3500,8 @@ void TimelineWidget::move_rubber_band_select(bool enable_selecting,
 			rubberband_now_selected_.append(b);
 		}
 
-		ClipBlock *c = dynamic_cast<ClipBlock *>(b);
-		if (c && select_links) {
-			foreach (Block *link, c->block_links()) {
+		if (block_as_clip(b) && select_links) {
+			foreach (OakEngineBlock *link, block_all_links(b)) {
 				if (!rubberband_now_selected_.contains(link)) {
 					add_selection(link);
 					rubberband_now_selected_.append(link);
@@ -3255,32 +3523,32 @@ void TimelineWidget::end_rubber_band_select()
 }
 
 void TimelineWidget::add_selection(const TimeRange &time,
-								  const Track::Reference &track)
+								  const TrackReference &track)
 {
 	selections_[track].insert(time);
 
 	update_viewports(track.type());
 }
 
-void TimelineWidget::add_selection(Block *item)
+void TimelineWidget::add_selection(OakEngineBlock *item)
 {
-	if (item->track()) {
-		add_selection(item->range(), item->track()->to_reference());
+	if (block_track(item)) {
+		add_selection(block_range(item), track_app_ref(block_track(item)));
 	}
 }
 
 void TimelineWidget::remove_selection(const TimeRange &time,
-									 const Track::Reference &track)
+									 const TrackReference &track)
 {
 	selections_[track].remove(time);
 
 	update_viewports(track.type());
 }
 
-void TimelineWidget::remove_selection(Block *item)
+void TimelineWidget::remove_selection(OakEngineBlock *item)
 {
-	if (item->track()) {
-		remove_selection(item->range(), item->track()->to_reference());
+	if (block_track(item)) {
+		remove_selection(block_range(item), track_app_ref(block_track(item)));
 	}
 }
 
@@ -3335,24 +3603,24 @@ void TimelineWidget::set_selections(const TimelineWidgetSelections &s,
 	}
 
 	if (process_block_changes) {
-		QVector<Block *> deselected;
-		QVector<Block *> selected;
+		QVector<OakEngineBlock *> deselected;
+		QVector<OakEngineBlock *> selected;
 
-		foreach (Block *b, selected_blocks_) {
-			if (!s[b->track()->to_reference()].contains(b->range())) {
+		foreach (OakEngineBlock *b, selected_blocks_) {
+			if (!s[track_app_ref(block_track(b))].contains(block_range(b))) {
 				deselected.append(b);
 			}
 		}
 
 		// NOTE: This loop could do with some optimization
 		for (auto it = s.cbegin(); it != s.cend(); it++) {
-			Track *track = get_track_from_reference(it.key());
+			OakEngineTrack *track = get_track_from_reference(it.key());
 			if (track) {
 				const TimeRangeList &ranges = it.value();
 
-				foreach (Block *b, track->blocks()) {
+				foreach (OakEngineBlock *b, track_all_blocks(track)) {
 					if (!selected_blocks_.contains(b) &&
-						ranges.contains(b->range())) {
+						ranges.contains(block_range(b))) {
 						selected.append(b);
 					}
 				}
@@ -3368,7 +3636,7 @@ void TimelineWidget::set_selections(const TimelineWidgetSelections &s,
 	update_viewports();
 }
 
-Block *TimelineWidget::get_item_at_scene_pos(const TimelineCoordinate &coord)
+OakEngineBlock *TimelineWidget::get_item_at_scene_pos(const TimelineCoordinate &coord)
 {
 	return views_.at(coord.get_track().type())
 		->view()

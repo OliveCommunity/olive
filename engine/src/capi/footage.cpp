@@ -566,6 +566,16 @@ OakEngineFootage *oakengine_footage_borrow(OakEngineNode *node)
 	return wrap(state);
 }
 
+int oakengine_footage_is_valid(const OakEngineNode *node)
+{
+	if (!node) {
+		return 0;
+	}
+	const auto *footage = dynamic_cast<const olive::Footage *>(
+		reinterpret_cast<const olive::Node *>(node));
+	return footage && footage->is_valid() ? 1 : 0;
+}
+
 int oakengine_footage_relink(OakEngineFootage *footage, const char *new_path)
 {
 	set_error(QString());

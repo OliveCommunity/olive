@@ -39,12 +39,12 @@ public:
 		return static_cast<NodeParamView *>(get_time_based_widget());
 	}
 
-	const QVector<Node *> &get_contexts() const
+	const QVector<oak::Node> &get_contexts() const
 	{
 		return get_param_view()->get_contexts();
 	}
 
-	void close_contexts_belonging_to_project(Project *p)
+	void close_contexts_belonging_to_project(oak::Project p)
 	{
 		get_param_view()->close_contexts_belonging_to_project(p);
 	}
@@ -63,10 +63,9 @@ public slots:
 	virtual void deselect_all() override;
 
 public:
-	// Not a slot: signature uses the engine C++ type Node*, which must not be
-	// exposed to MOC (it would pull Node::staticMetaObject across the ABI
-	// boundary). All connections use new-style member-function syntax.
-	void set_contexts(const QVector<Node *> &contexts);
+	// Not a slot: mirrors NodePanel::set_contexts(), which is also a plain
+	// member function. All connections use new-style member-function syntax.
+	void set_contexts(const QVector<oak::Node> &contexts);
 
 signals:
 	void focused_node_changed(OakEngineNode *n);

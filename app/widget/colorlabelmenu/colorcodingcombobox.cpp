@@ -21,7 +21,7 @@
 
 #include "colorcodingcombobox.h"
 
-#include "ui/colorcoding.h"
+#include "common/colorcodingapp.h"
 
 namespace olive
 {
@@ -48,7 +48,7 @@ void ColorCodingComboBox::showPopup()
 void ColorCodingComboBox::set_color(int index)
 {
 	clear();
-	addItem(ColorCoding::get_color_name(index));
+	addItem(AppColorCoding::get_color_name(index));
 	index_ = index;
 }
 

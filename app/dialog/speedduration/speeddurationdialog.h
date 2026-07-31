@@ -26,18 +26,16 @@
 #include <QComboBox>
 #include <QDialog>
 
-#include "node/block/gap/gap.h"
+#include "oakengine/timeline.h"
 #include "widget/slider/floatslider.h"
 #include "widget/slider/rationalslider.h"
 
 namespace olive {
 
-class ClipBlock;
-
 class SpeedDurationDialog : public QDialog {
 	Q_OBJECT
 public:
-	explicit SpeedDurationDialog(const QVector<ClipBlock *> &clips,
+	explicit SpeedDurationDialog(const QVector<OakEngineBlock *> &clips,
 								 const Rational &timebase,
 								 QWidget *parent = nullptr);
 
@@ -55,7 +53,7 @@ private:
 									 const Rational &original_length,
 									 const Rational &new_length);
 
-	QVector<ClipBlock *> clips_;
+	QVector<OakEngineBlock *> clips_;
 
 	FloatSlider *speed_slider_;
 

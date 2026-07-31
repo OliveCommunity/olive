@@ -23,7 +23,7 @@
 
 #include <QMouseEvent>
 
-#include "ui/colorcoding.h"
+#include "common/colorcodingapp.h"
 
 namespace olive
 {
@@ -80,7 +80,7 @@ void ColorSwatchWidget::SelectedColorChangedEvent(const Color &, bool)
 
 Qt::GlobalColor ColorSwatchWidget::get_ui_selector_color() const
 {
-	return ColorCoding::get_ui_selector_color(get_selected_color());
+	return AppColorCoding::get_ui_selector_color(get_selected_color());
 }
 
 Color ColorSwatchWidget::get_managed_color(const Color &input) const

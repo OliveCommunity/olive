@@ -24,8 +24,9 @@
 
 #include <functional>
 
+#include "keyframehandle.h"
 #include "keyframeviewinputconnection.h"
-#include "node/keyframe.h"
+#include "oakutil/oaknode.h"
 #include "widget/menu/menu.h"
 #include "widget/timebased/timebasedview.h"
 #include "widget/timebased/timebasedviewselectionmanager.h"
@@ -45,14 +46,15 @@ public:
 	using InputConnections = QVector<ElementConnections>;
 	using NodeConnections = QMap<QString, InputConnections>;
 
-	NodeConnections add_keyframes_of_node(Node *n);
+	NodeConnections add_keyframes_of_node(const oak::Node &n);
 
-	InputConnections add_keyframes_of_input(Node *n, const QString &input);
+	InputConnections add_keyframes_of_input(const oak::Node &n,
+											const QString &input);
 
-	ElementConnections add_keyframes_of_element(const NodeInput &input);
+	ElementConnections add_keyframes_of_element(const oak::Input &input);
 
 	KeyframeViewInputConnection *
-	add_keyframes_of_track(const NodeKeyframeTrackReference &ref);
+	add_keyframes_of_track(const oak::KeyframeTrackRef &ref);
 
 	void remove_keyframes_of_track(KeyframeViewInputConnection *connection);
 
@@ -62,7 +64,7 @@ public:
 
 	void clear();
 
-	const std::vector<NodeKeyframe *> &get_selected_keyframes() const
+	const std::vector<OakEngineKeyframe *> &get_selected_keyframes() const
 	{
 		return selection_manager_.get_selected_objects();
 	}
@@ -83,7 +85,7 @@ public:
 
 	bool copy_selected(bool cut);
 
-	bool paste(std::function<Node *(const QString &)> find_node_function);
+	bool paste(std::function<oak::Node(const QString &)> find_node_function);
 
 	virtual void CatchUpScrollEvent() override;
 
@@ -101,13 +103,13 @@ protected:
 
 	virtual void drawForeground(QPainter *painter, const QRectF &rect) override;
 
-	virtual void draw_keyframe(QPainter *painter, NodeKeyframe *key,
+	virtual void draw_keyframe(QPainter *painter, const oak::Keyframe &key,
 							  KeyframeViewInputConnection *track,
 							  const QRectF &key_rect);
 
 	virtual void ScaleChangedEvent(const double &scale) override;
 
-	virtual void TimeTargetChangedEvent(ViewerOutput *v) override;
+	virtual void TimeTargetChangedEvent(OakEngineNode *v) override;
 
 	virtual void TimebaseChangedEvent(const Rational &timebase) override;
 
@@ -135,27 +137,28 @@ protected:
 	{
 	}
 
-	void select_keyframe(NodeKeyframe *key);
+	void select_keyframe(const oak::Keyframe &key);
 
-	void deselect_keyframe(NodeKeyframe *key);
+	void deselect_keyframe(const oak::Keyframe &key);
 
-	bool is_keyframe_selected(NodeKeyframe *key) const
+	bool is_keyframe_selected(const oak::Keyframe &key) const
 	{
-		return selection_manager_.is_selected(key);
+		return selection_manager_.is_selected(key.handle());
 	}
 
-	Rational get_unadjusted_keyframe_time(NodeKeyframe *key, const Rational &time);
-	Rational get_unadjusted_keyframe_time(NodeKeyframe *key)
+	Rational get_unadjusted_keyframe_time(const oak::Keyframe &key,
+									  const Rational &time);
+	Rational get_unadjusted_keyframe_time(const oak::Keyframe &key)
 	{
-		return get_unadjusted_keyframe_time(key, key->time());
+		return get_unadjusted_keyframe_time(key, key_time(key.handle()));
 	}
 
-	Rational get_adjusted_keyframe_time(NodeKeyframe *key);
+	Rational get_adjusted_keyframe_time(const oak::Keyframe &key);
 
-	double get_keyframe_scene_x(NodeKeyframe *key);
+	double get_keyframe_scene_x(const oak::Keyframe &key);
 
 	virtual qreal get_keyframe_scene_y(KeyframeViewInputConnection *track,
-									NodeKeyframe *key);
+									const oak::Keyframe &key);
 
 	void set_auto_select_siblings(bool e)
 	{
@@ -173,7 +176,7 @@ private:
 
 	QVector<KeyframeViewInputConnection *> tracks_;
 
-	TimeBasedViewSelectionManager<NodeKeyframe> selection_manager_;
+	TimeBasedViewSelectionManager<OakEngineKeyframe> selection_manager_;
 
 	bool autoselect_siblings_;
 

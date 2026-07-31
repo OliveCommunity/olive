@@ -30,6 +30,7 @@
 #include "core.h"
 
 #include "oakengine/timeline.h"
+#include "widget/timeruler/markerhandle.h"
 
 namespace olive
 {
@@ -37,7 +38,7 @@ namespace olive
 #define super QDialog
 
 MarkerPropertiesDialog::MarkerPropertiesDialog(
-	const std::vector<TimelineMarker *> &markers, const Rational &timebase,
+	const std::vector<OakEngineMarker *> &markers, const Rational &timebase,
 	QWidget *parent)
 	: super(parent)
 	, markers_(markers)
@@ -66,10 +67,11 @@ MarkerPropertiesDialog::MarkerPropertiesDialog(
 	}
 
 	if (markers.size() == 1) {
-		in_slider_->set_value(markers.front()->time().in());
+		const TimeRange marker_range = marker_time(markers.front());
+		in_slider_->set_value(marker_range.in());
 		in_slider_->set_display_type(slider::k_time);
 		in_slider_->set_timebase(timebase);
-		out_slider_->set_value(markers.front()->time().out());
+		out_slider_->set_value(marker_range.out());
 		out_slider_->set_display_type(slider::k_time);
 		out_slider_->set_timebase(timebase);
 	} else {
@@ -89,9 +91,9 @@ MarkerPropertiesDialog::MarkerPropertiesDialog(
 	color_menu_ = new ColorCodingComboBox();
 	layout->addWidget(color_menu_, row, 1);
 
-	color_menu_->set_color(markers.front()->color());
+	color_menu_->set_color(marker_color(markers.front()));
 	for (size_t i = 1; i < markers.size(); i++) {
-		if (markers.at(i)->color() != color_menu_->get_selected_color()) {
+		if (marker_color(markers.at(i)) != color_menu_->get_selected_color()) {
 			color_menu_->set_color(-1);
 			break;
 		}
@@ -107,9 +109,9 @@ MarkerPropertiesDialog::MarkerPropertiesDialog(
 	layout->addWidget(label_edit_, row, 1);
 
 	// Determine what the startup label text should be
-	label_edit_->setText(markers.front()->name());
+	label_edit_->setText(marker_name(markers.front()));
 	for (size_t i = 1; i < markers.size(); i++) {
-		if (markers.at(i)->name() != label_edit_->text()) {
+		if (marker_name(markers.at(i)) != label_edit_->text()) {
 			label_edit_->clear();
 			label_edit_->setPlaceholderText(tr("(multiple)"));
 			break;
@@ -143,8 +145,8 @@ void MarkerPropertiesDialog::accept()
 	// Batch-set properties via facade (one undoable command)
 	{
 		QVector<OakEngineMarker *> oak_markers;
-		foreach (TimelineMarker *m, markers_) {
-			oak_markers.append(reinterpret_cast<OakEngineMarker *>(m));
+		foreach (OakEngineMarker *m, markers_) {
+			oak_markers.append(m);
 		}
 		int color = color_menu_->get_selected_color();
 		QByteArray name_ba;

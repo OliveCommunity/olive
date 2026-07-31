@@ -344,6 +344,15 @@ typedef struct OakEngineTrack OakEngineTrack;
 typedef struct OakEngineBlock OakEngineBlock;
 
 /**
+ * @brief Opaque track list handle (olive::TrackList).
+ *
+ * The per-type track container of a sequence. Borrowed from
+ * oakengine_sequence_track_list(). Invalidated when the owning sequence is
+ * freed.
+ */
+typedef struct OakEngineTrackList OakEngineTrackList;
+
+/**
  * @brief Human-readable reason for the last failed editing call on this
  * thread (buf/size convention). Editing calls return NULL or a negative
  * OAKENGINE_E_* code; the text explains why.
@@ -1073,6 +1082,12 @@ oakengine_track_nearest_block_after_or_at(const OakEngineTrack *track,
 /** @brief 1 if the block is a GapBlock, 0 otherwise. 0 on NULL. */
 OAKENGINE_API int oakengine_block_is_gap(const OakEngineBlock *block);
 
+/** @brief The track the block sits on (Block::track()), or NULL when the
+ *  block is not on a track. Borrowed handle; NULL on a NULL block.
+ *  Generic-block counterpart of the clip-only oakengine_clip_get_track(). */
+OAKENGINE_API OakEngineTrack *
+oakengine_block_get_track(const OakEngineBlock *block);
+
 /** @brief Next block in the track's linked list, or NULL. NULL on NULL. */
 OAKENGINE_API OakEngineBlock *oakengine_block_next(const OakEngineBlock *block);
 
@@ -1175,6 +1190,121 @@ OAKENGINE_API int oakengine_multicam_switch_source(
 	OakEngineNode *multicam_node, OakEngineNode *footage_node,
 	int track_type, int track_index, double time_seconds,
 	void *command);
+
+/* ---- Track lists, block/clip/transition navigation and links --------------
+ *
+ * Handle-level accessors mirroring the engine's Track / Block / ClipBlock /
+ * TransitionBlock navigation API. All handles are borrowed (same lifetime
+ * rules as the rest of the family); all times are frame timestamps in the
+ * owning sequence's frame-rate timebase.
+ */
+
+/**
+ * @brief Borrowed handle of the sequence's track list for `track_type`
+ * (OAKENGINE_TRACK_TYPE_*; Sequence::track_list()). NULL on a NULL handle
+ * or an out-of-range type.
+ */
+OAKENGINE_API OakEngineTrackList *
+oakengine_sequence_track_list(OakEngineSequence *seq, int track_type);
+
+/**
+ * @brief The block visible at `time_ts` on the track
+ * (Track::visible_block_at_time(): the block whose range contains the
+ * time, gaps included), or NULL when the time is past the track's end.
+ * Borrowed handle; NULL on a NULL track.
+ */
+OAKENGINE_API OakEngineBlock *
+oakengine_track_visible_block_at_time(OakEngineTrack *track, int64_t time_ts);
+
+/**
+ * @brief 1 if the node is a block of any kind (a ClipBlock, GapBlock,
+ * TransitionBlock, ...), 0 otherwise. 0 on a NULL handle.
+ *
+ * This is an is-a check on the engine class (dynamic_cast), deliberately
+ * NOT a type-id string comparison: Block and TransitionBlock are abstract
+ * and carry no own type id -- only their concrete subclasses
+ * (ClipBlock, GapBlock, CrossDissolveTransition, ...) have one -- so no
+ * single type-id string can express "any block" or "any transition".
+ * Use oakengine_node_get_type_id() for exact concrete-type comparisons.
+ */
+OAKENGINE_API int oakengine_node_is_block(const OakEngineNode *node);
+
+/**
+ * @brief 1 if the node is a transition block (any TransitionBlock
+ * subclass), 0 otherwise. 0 on a NULL handle. See
+ * oakengine_node_is_block() for why this is a class check.
+ */
+OAKENGINE_API int oakengine_node_is_transition(const OakEngineNode *node);
+
+/**
+ * @brief Set the block's length keeping its in-point, extending the media
+ * out-point (undoable; olive::BlockResizeCommand wrapping
+ * Block::set_length_and_media_out(), like the other block edits).
+ *
+ * `length_ts` is the new length in frame timestamps of the owning track's
+ * sequence timebase and must be > 0. The block must be on a track
+ * (OAKENGINE_E_STATE otherwise).
+ */
+OAKENGINE_API int
+oakengine_block_set_length_and_media_out(OakEngineBlock *block,
+										 int64_t length_ts);
+
+/**
+ * @brief Number of blocks linked to this block (the block's Node::links()
+ * filtered to blocks; for a ClipBlock this matches
+ * ClipBlock::block_links()). 0 on a NULL handle.
+ */
+OAKENGINE_API int oakengine_block_link_count(const OakEngineBlock *block);
+
+/**
+ * @brief Borrowed handle of the linked block at `index` (same ordering as
+ * Node::links()), or NULL when out of range or on a NULL handle.
+ */
+OAKENGINE_API OakEngineBlock *
+oakengine_block_link_at(const OakEngineBlock *block, int index);
+
+/**
+ * @brief Borrowed handle of the transition attached to the clip's in-point
+ * (ClipBlock::in_transition()), or NULL when the block is not a clip or
+ * has no in-transition.
+ */
+OAKENGINE_API OakEngineBlock *
+oakengine_clip_in_transition(const OakEngineBlock *clip);
+
+/**
+ * @brief Borrowed handle of the transition attached to the clip's
+ * out-point (ClipBlock::out_transition()), or NULL when the block is not
+ * a clip or has no out-transition.
+ */
+OAKENGINE_API OakEngineBlock *
+oakengine_clip_out_transition(const OakEngineBlock *clip);
+
+/**
+ * @brief Borrowed handle of the clip feeding the transition's in side
+ * (TransitionBlock::connected_in_block(): the FOLLOWING clip of an
+ * in-transition or dual transition), or NULL when the block is not a
+ * transition or nothing is connected.
+ */
+OAKENGINE_API OakEngineBlock *
+oakengine_transition_connected_in_block(const OakEngineBlock *transition);
+
+/**
+ * @brief Borrowed handle of the clip feeding the transition's out side
+ * (TransitionBlock::connected_out_block(): the PRECEDING clip of an
+ * out-transition or dual transition), or NULL when the block is not a
+ * transition or nothing is connected.
+ */
+OAKENGINE_API OakEngineBlock *
+oakengine_transition_connected_out_block(const OakEngineBlock *transition);
+
+/**
+ * @brief Borrowed node handle of the viewer the clip is connected to
+ * (ClipBlock::connected_viewer(): the Footage or nested Sequence feeding
+ * the clip's buffer input), or NULL when the block is not a clip or has
+ * no connected viewer.
+ */
+OAKENGINE_API OakEngineNode *
+oakengine_clip_get_connected_viewer(const OakEngineBlock *clip);
 
 #ifdef __cplusplus
 }

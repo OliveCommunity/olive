@@ -28,7 +28,6 @@
 #include <QPushButton>
 
 #include "exportadvancedvideodialog.h"
-#include "node/color/colormanager/colormanager.h"
 #include "oakengine/encoding.h"
 
 namespace olive

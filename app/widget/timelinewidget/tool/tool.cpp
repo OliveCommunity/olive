@@ -21,8 +21,6 @@
 
 #include "widget/timelinewidget/timelinewidget.h"
 
-#include "node/block/transition/transition.h"
-
 namespace olive
 {
 
@@ -43,20 +41,20 @@ TimelineWidget *TimelineTool::parent()
 	return parent_;
 }
 
-Sequence *TimelineTool::sequence()
+OakEngineSequence *TimelineTool::sequence()
 {
 	return parent_->sequence();
 }
 
-Timeline::MovementMode
-TimelineTool::flip_trim_mode(const Timeline::MovementMode &trim_mode)
+TimelineApp::MovementMode
+TimelineTool::flip_trim_mode(const TimelineApp::MovementMode &trim_mode)
 {
-	if (trim_mode == Timeline::k_trim_in) {
-		return Timeline::k_trim_out;
+	if (trim_mode == TimelineApp::k_trim_in) {
+		return TimelineApp::k_trim_out;
 	}
 
-	if (trim_mode == Timeline::k_trim_out) {
-		return Timeline::k_trim_in;
+	if (trim_mode == TimelineApp::k_trim_out) {
+		return TimelineApp::k_trim_in;
 	}
 
 	return trim_mode;
@@ -82,7 +80,7 @@ Rational TimelineTool::validate_time_movement(Rational movement)
 	bool first_ghost = true;
 
 	foreach (TimelineViewGhostItem *ghost, parent()->get_ghost_items()) {
-		if (ghost->get_mode() != Timeline::k_move) {
+		if (ghost->get_mode() != TimelineApp::k_move) {
 			continue;
 		}
 
@@ -106,7 +104,7 @@ int TimelineTool::validate_track_movement(
 	int movement, const QVector<TimelineViewGhostItem *> &ghosts)
 {
 	foreach (TimelineViewGhostItem *ghost, ghosts) {
-		if (ghost->get_mode() != Timeline::k_move) {
+		if (ghost->get_mode() != TimelineApp::k_move) {
 			continue;
 		}
 

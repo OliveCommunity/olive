@@ -53,20 +53,19 @@ namespace olive
 
 namespace
 {
-QVector<Footage *> get_selected_proxy_footage(const QVector<Node *> &items)
+QVector<oak::Node> get_selected_proxy_footage(const QVector<oak::Node> &items)
 {
-	QVector<Footage *> footage;
-	for (Node *node : items) {
-		Footage *candidate = dynamic_cast<Footage *>(node);
+	QVector<oak::Node> footage;
+	for (const oak::Node &node : items) {
 		oak_video_params _vp;
-		if (!candidate ||
+		if (!node.is_footage() ||
 			oakengine_viewer_get_first_enabled_video_stream(
-				reinterpret_cast<OakEngineNode *>(candidate), &_vp) < 0 ||
+				node.handle(), &_vp) < 0 ||
 			!oakengine_video_params_is_valid(&_vp) ||
-			footage.contains(candidate)) {
+			footage.contains(node)) {
 			continue;
 		}
-		footage.append(candidate);
+		footage.append(node);
 	}
 	return footage;
 }
@@ -161,7 +160,7 @@ void ProjectExplorer::set_view_type(ProjectToolbar::ViewType type)
 void ProjectExplorer::edit(OakEngineNode *item)
 {
 	current_view()->edit(
-		sort_model_.mapFromSource(model_.create_index_from_item(reinterpret_cast<Node *>(item))));
+		sort_model_.mapFromSource(model_.create_index_from_item(oak::Node(item))));
 }
 
 void ProjectExplorer::add_view(QAbstractItemView *view)
@@ -190,18 +189,18 @@ void ProjectExplorer::browse_to_folder(const QModelIndex &index)
 	nav_bar_->set_dir_up_enabled(index.isValid());
 }
 
-int ProjectExplorer::confirm_item_deletion(Node *item)
+int ProjectExplorer::confirm_item_deletion(oak::Node item)
 {
 	QMessageBox msgbox(this);
 	msgbox.setWindowTitle(tr("Confirm Item Deletion"));
 	msgbox.setIcon(QMessageBox::Warning);
 
 	QStringList connected_nodes_names;
-	foreach (const Node::OutputConnection &connected,
-			 item->output_connections()) {
-		if (!dynamic_cast<Folder *>(connected.second.node())) {
+	for (int i = 0; i < item.output_connection_count(); i++) {
+		oak::Node connected_node = item.output_connection_node(i);
+		if (!connected_node.is_folder()) {
 			connected_nodes_names.append(
-				get_human_readable_node_name(connected.second.node()));
+				get_human_readable_node_name(connected_node));
 		}
 	}
 
@@ -222,21 +221,20 @@ int ProjectExplorer::confirm_item_deletion(Node *item)
 	return msgbox.exec();
 }
 
-bool ProjectExplorer::delete_items_internal(const QVector<Node *> &selected,
+bool ProjectExplorer::delete_items_internal(const QVector<oak::Node> &selected,
 										  bool &check_if_item_is_in_use,
 										  void *command)
 {
 	for (int i = 0; i < selected.size(); i++) {
 		// Delete sequences first
-		Node *node = selected.at(i);
+		oak::Node node = selected.at(i);
 
 		bool can_delete_item = true;
 
 		if (check_if_item_is_in_use) {
-			foreach (const Node::OutputConnection &oc,
-					 node->output_connections()) {
-				Folder *folder_test = dynamic_cast<Folder *>(oc.second.node());
-				if (!folder_test) {
+			for (int j = 0; j < node.output_connection_count(); j++) {
+				oak::Node oc_node = node.output_connection_node(j);
+				if (!oc_node.is_folder()) {
 					// This sequence outputs to SOMETHING, confirm the user if they want to delete this
 					int r = confirm_item_deletion(node);
 
@@ -255,30 +253,31 @@ bool ProjectExplorer::delete_items_internal(const QVector<Node *> &selected,
 		}
 
 		if (can_delete_item) {
-			Sequence *sequence = dynamic_cast<Sequence *>(node);
-			if (sequence &&
-				Core::instance()->main_window()->is_sequence_open(sequence)) {
-				oakengine_undo_command_multi_add_child(command, make_close_sequence_command(sequence));
+			if (node.is_sequence() &&
+				Core::instance()->main_window()->is_sequence_open(node.handle())) {
+				oakengine_undo_command_multi_add_child(command, make_close_sequence_command(node.handle()));
 			}
 
-			if (node->folder()) {
+			oak::Node parent_folder = node.folder();
+			if (parent_folder) {
 				oakengine_undo_command_multi_add_child(
 				command,
 				oakengine_folder_remove_element_command(
-					reinterpret_cast<OakEngineNode *>(node->folder()),
-					reinterpret_cast<OakEngineNode *>(node)));
+					parent_folder.handle(),
+					node.handle()));
 			}
 
 			void *remove_cmd = oakengine_undo_command_create_multi();
 			oakengine_undo_command_multi_add_child(
 				remove_cmd,
 				oakengine_node_remove_and_disconnect_command(
-					reinterpret_cast<void *>(node)));
-			for (Node *dep : node->get_exclusive_dependencies()) {
+					node.handle()));
+			for (int d = 0; d < node.exclusive_dependency_count(); d++) {
+				oak::Node dep = node.exclusive_dependency_at(d);
 				oakengine_undo_command_multi_add_child(
 					remove_cmd,
 					oakengine_node_remove_and_disconnect_command(
-						reinterpret_cast<void *>(dep)));
+						dep.handle()));
 			}
 			oakengine_undo_command_multi_add_child(command, remove_cmd);
 		}
@@ -287,12 +286,12 @@ bool ProjectExplorer::delete_items_internal(const QVector<Node *> &selected,
 	return true;
 }
 
-QString ProjectExplorer::get_human_readable_node_name(Node *node)
+QString ProjectExplorer::get_human_readable_node_name(const oak::Node &node)
 {
-	if (node->get_label().isEmpty()) {
-		return node->name();
+	if (node.get_label().isEmpty()) {
+		return node.name();
 	} else {
-		return tr("%1 (%2)").arg(node->get_label(), node->name());
+		return tr("%1 (%2)").arg(node.get_label(), node.name());
 	}
 }
 
@@ -300,11 +299,11 @@ void ProjectExplorer::update_nav_bar_text()
 {
 	QString absolute;
 
-	Folder *f = static_cast<Folder *>(
-		sort_model_.mapToSource(list_view_->rootIndex()).internalPointer());
-	while (f && f != project()->root()) {
-		absolute.prepend(QStringLiteral("%1 / ").arg(f->get_label()));
-		f = f->folder();
+	oak::Node f(static_cast<OakEngineNode *>(
+		sort_model_.mapToSource(list_view_->rootIndex()).internalPointer()));
+	while (f && f != project().root()) {
+		absolute.prepend(QStringLiteral("%1 / ").arg(f.get_label()));
+		f = f.folder();
 	}
 
 	absolute.prepend(QStringLiteral("/ "));
@@ -325,18 +324,18 @@ void ProjectExplorer::view_empty_area_double_clicked_slot()
 void ProjectExplorer::item_double_clicked_slot(const QModelIndex &index)
 {
 	// Retrieve source item from index
-	Node *i =
-		static_cast<Node *>(sort_model_.mapToSource(index).internalPointer());
+	oak::Node i(
+		static_cast<OakEngineNode *>(sort_model_.mapToSource(index).internalPointer()));
 
 	// If the item is a folder, browse to it
-	if (dynamic_cast<Folder *>(i) &&
+	if (i.is_folder() &&
 		(view_type() == ProjectToolbar::list_view ||
 		 view_type() == ProjectToolbar::icon_view)) {
 		browse_to_folder(index);
 	}
 
 	// Emit a signal
-	emit double_clicked_item(reinterpret_cast<OakEngineNode *>(i));
+	emit double_clicked_item(i.handle());
 }
 
 void ProjectExplorer::size_changed_slot(int s)
@@ -392,9 +391,9 @@ void ProjectExplorer::show_context_menu()
 	} else {
 		// Actions to add when only one item is selected
 		if (context_menu_items_.size() == 1) {
-			Node *context_menu_item = context_menu_items_.first();
+			oak::Node context_menu_item = context_menu_items_.first();
 
-			if (dynamic_cast<Folder *>(context_menu_item)) {
+			if (context_menu_item.is_folder()) {
 				QAction *open_in_new_tab =
 					menu.addAction(tr("Open in New Tab"));
 				connect(open_in_new_tab, &QAction::triggered, this,
@@ -405,7 +404,7 @@ void ProjectExplorer::show_context_menu()
 				connect(open_in_new_window, &QAction::triggered, this,
 						&ProjectExplorer::open_context_menu_item_in_new_window);
 
-			} else if (dynamic_cast<Footage *>(context_menu_item)) {
+			} else if (context_menu_item.is_footage()) {
 				QString reveal_text;
 
 #if defined(Q_OS_WINDOWS)
@@ -432,28 +431,28 @@ void ProjectExplorer::show_context_menu()
 		bool all_items_have_video_streams = true;
 		bool all_items_are_footage_or_sequence = true;
 
-		foreach (Node *i, context_menu_items_) {
-			Footage *footage_cast_test = dynamic_cast<Footage *>(i);
-			Sequence *sequence_cast_test = dynamic_cast<Sequence *>(i);
+		foreach (const oak::Node &i, context_menu_items_) {
+			bool is_footage = i.is_footage();
+			bool is_sequence = i.is_sequence();
 
-			if (footage_cast_test &&
+			if (is_footage &&
 			!oakengine_viewer_has_enabled_streams(
-				reinterpret_cast<OakEngineNode *>(footage_cast_test),
+				i.handle(),
 				OAKENGINE_TRACK_TYPE_VIDEO)) {
 				all_items_have_video_streams = false;
 			}
 
-			if (!footage_cast_test) {
+			if (!is_footage) {
 				all_items_are_footage = false;
 			}
 
-			if (!footage_cast_test && !sequence_cast_test) {
+			if (!is_footage && !is_sequence) {
 				all_items_are_footage_or_sequence = false;
 			}
 		}
 
 		if (all_items_are_footage && all_items_have_video_streams) {
-			const QVector<Footage *> proxy_footage =
+			const QVector<oak::Node> proxy_footage =
 				get_selected_proxy_footage(context_menu_items_);
 
 			Menu *proxy_menu = new Menu(tr("Proxy"), &menu);
@@ -471,8 +470,9 @@ void ProjectExplorer::show_context_menu()
 			use_proxy->setChecked(
 				!proxy_footage.isEmpty() &&
 				std::all_of(proxy_footage.cbegin(), proxy_footage.cend(),
-							[](const Footage *footage) {
-								return footage->proxy_enabled();
+							[](const oak::Node &node) {
+								oak::Footage f = node.as_footage();
+								return f && f.proxy_enabled();
 							}));
 			connect(use_proxy, &QAction::triggered, this,
 					&ProjectExplorer::set_selected_footage_proxy_enabled);
@@ -480,8 +480,9 @@ void ProjectExplorer::show_context_menu()
 			QAction *reveal_proxy = proxy_menu->addAction(tr("Reveal Proxy"));
 			reveal_proxy->setEnabled(
 				std::any_of(proxy_footage.cbegin(), proxy_footage.cend(),
-							[](const Footage *footage) {
-								return !footage->proxy_path().isEmpty();
+							[](const oak::Node &node) {
+								oak::Footage f = node.as_footage();
+								return f && !f.proxy_path().isEmpty();
 							}));
 			connect(reveal_proxy, &QAction::triggered, this,
 					&ProjectExplorer::reveal_proxy_for_selected_footage);
@@ -489,8 +490,9 @@ void ProjectExplorer::show_context_menu()
 			QAction *delete_proxy = proxy_menu->addAction(tr("Delete Proxy"));
 			delete_proxy->setEnabled(
 				std::any_of(proxy_footage.cbegin(), proxy_footage.cend(),
-							[](const Footage *footage) {
-								return !footage->proxy_path().isEmpty();
+							[](const oak::Node &node) {
+								oak::Footage f = node.as_footage();
+								return f && !f.proxy_path().isEmpty();
 							}));
 			connect(delete_proxy, &QAction::triggered, this,
 					&ProjectExplorer::delete_proxies_for_selected_footage);
@@ -529,19 +531,23 @@ void ProjectExplorer::show_context_menu()
 
 void ProjectExplorer::show_item_properties_dialog()
 {
-	Node *sel = context_menu_items_.first();
+	oak::Node sel = context_menu_items_.first();
 
 	// FIXME: Support for multiple items
-	if (dynamic_cast<Footage *>(sel)) {
-		FootagePropertiesDialog fpd(this, static_cast<Footage *>(sel));
+	if (sel.is_footage()) {
+		FootagePropertiesDialog fpd(this, sel.handle());
 		fpd.exec();
 
-	} else if (dynamic_cast<Folder *>(sel)) {
-		Core::instance()->label_nodes(
-			reinterpret_cast<const QVector<OakEngineNode *> &>(context_menu_items_));
+	} else if (sel.is_folder()) {
+		QVector<OakEngineNode *> handles;
+		handles.reserve(context_menu_items_.size());
+		for (const oak::Node &n : context_menu_items_) {
+			handles.append(n.handle());
+		}
+		Core::instance()->label_nodes(handles);
 
-	} else if (dynamic_cast<Sequence *>(sel)) {
-		SequenceDialog sd(static_cast<Sequence *>(sel),
+	} else if (sel.is_sequence()) {
+		SequenceDialog sd(sel.handle(),
 						  SequenceDialog::k_existing, this);
 		sd.exec();
 	}
@@ -549,12 +555,12 @@ void ProjectExplorer::show_item_properties_dialog()
 
 void ProjectExplorer::reveal_selected_footage()
 {
-	Footage *footage = static_cast<Footage *>(context_menu_items_.first());
+	oak::Footage footage = context_menu_items_.first().as_footage();
 
 #if defined(Q_OS_WINDOWS)
 	// Explorer
 	QStringList args;
-	args << "/select," << QDir::toNativeSeparators(footage->filename());
+	args << "/select," << QDir::toNativeSeparators(footage.filename());
 	QProcess::startDetached("explorer", args);
 #elif defined(Q_OS_MAC)
 	QStringList args;
@@ -563,19 +569,20 @@ void ProjectExplorer::reveal_selected_footage()
 	args << "-e";
 	args << "activate";
 	args << "-e";
-	args << "select POSIX file \"" + footage->filename() + "\"";
+	args << "select POSIX file \"" + footage.filename() + "\"";
 	args << "-e";
 	args << "end tell";
 	QProcess::startDetached("osascript", args);
 #else
 	QDesktopServices::openUrl(QUrl::fromLocalFile(
-		QFileInfo(footage->filename()).dir().absolutePath()));
+		QFileInfo(footage.filename()).dir().absolutePath()));
 #endif
 }
 
 void ProjectExplorer::replace_selected_footage()
 {
-	Footage *footage = static_cast<Footage *>(context_menu_items_.first());
+	oak::Node node = context_menu_items_.first();
+	oak::Footage footage = node.as_footage();
 
 	QString file =
 		QFileDialog::getOpenFileName(this, tr("Replace Footage"), QString(),
@@ -591,28 +598,20 @@ void ProjectExplorer::replace_selected_footage()
 
 		// Change the filename through the facade relink (reprobes the new
 		// file and resets proxy/stream state); the label policy stays here.
-		OakEngineFootage *facade_handle = oakengine_footage_borrow(
-			reinterpret_cast<OakEngineNode *>(footage));
-		const int relink_rc = oakengine_footage_relink(
-			facade_handle, file.toUtf8().constData());
-		oakengine_footage_free(facade_handle);
+		const int relink_rc = footage.relink(file);
 		if (relink_rc != OAKENGINE_OK) {
-			char err[512];
-			err[0] = '\0';
-			oakengine_footage_last_error(err, sizeof(err));
+			const QString err = oak::Footage::last_error();
 			QMessageBox::warning(
 				this, tr("Cannot replace footage"),
-				err[0] ? QString::fromUtf8(err) :
-						 tr("The file could not be used as media."));
+				!err.isEmpty() ? err :
+								 tr("The file could not be used as media."));
 			return;
 		}
 
-		if (QFileInfo(footage->filename()).fileName() ==
-			footage->get_label()) {
+		if (QFileInfo(footage.filename()).fileName() ==
+			node.get_label()) {
 			// Footage label == filename, change label too
-			oakengine_node_set_label(
-				reinterpret_cast<OakEngineNode *>(footage),
-				QFileInfo(file).fileName().toUtf8().constData());
+			node.set_label(QFileInfo(file).fileName());
 		}
 	}
 }
@@ -620,13 +619,13 @@ void ProjectExplorer::replace_selected_footage()
 void ProjectExplorer::open_context_menu_item_in_new_tab()
 {
 	Core::instance()->main_window()->open_folder(
-		static_cast<Folder *>(context_menu_items_.first()), false);
+		context_menu_items_.first().handle(), false);
 }
 
 void ProjectExplorer::open_context_menu_item_in_new_window()
 {
 	Core::instance()->main_window()->open_folder(
-		static_cast<Folder *>(context_menu_items_.first()), true);
+		context_menu_items_.first().handle(), true);
 }
 
 void ProjectExplorer::generate_proxies_for_selected_footage()
@@ -636,69 +635,65 @@ void ProjectExplorer::generate_proxies_for_selected_footage()
 		return;
 	}
 
-	const QVector<Footage *> footage =
+	const QVector<oak::Node> footage =
 		get_selected_proxy_footage(context_menu_items_);
 	qDebug()
 		<< "GenerateProxiesForSelectedFootage: starting proxy generation for"
 		<< footage.size() << "footage item(s)";
-	for (Footage *item : footage) {
+	for (const oak::Node &item : footage) {
 		oak_video_params _vp;
 		if (oakengine_viewer_get_first_enabled_video_stream(
-				reinterpret_cast<OakEngineNode *>(item), &_vp) < 0 ||
+				item.handle(), &_vp) < 0 ||
 			!oakengine_video_params_is_valid(&_vp)) {
+			oak::Footage f = item.as_footage();
 			qWarning()
 				<< "GenerateProxiesForSelectedFootage: skipping item with no valid video stream"
-				<< item->filename();
+				<< (f ? f.filename() : QString());
 			continue;
 		}
 
 		// Queue one facade-backed task per footage item (same queueing
 		// semantics as the old per-footage proxy tasks).
 		OakEngineTask *proxy_task = oakengine_task_create_proxy(
-			reinterpret_cast<OakEngineNode *>(item));
+			item.handle());
 		oakengine_task_manager_add(proxy_task);
 	}
 }
 
 void ProjectExplorer::set_selected_footage_proxy_enabled(bool enabled)
 {
-	const QVector<Footage *> footage =
+	const QVector<oak::Node> footage =
 		get_selected_proxy_footage(context_menu_items_);
 	qDebug() << "ProjectExplorer::SetSelectedFootageProxyEnabled:" << enabled
 			 << "footage count=" << footage.size();
-	for (Footage *item : footage) {
-		if (item->proxy_path().isEmpty()) {
+	for (const oak::Node &item : footage) {
+		oak::Footage f = item.as_footage();
+		if (!f || f.proxy_path().isEmpty()) {
 			qDebug()
-				<< "  skipping item with empty proxy path" << item->filename();
+				<< "  skipping item with empty proxy path" << (f ? f.filename() : QString());
 			continue;
 		}
 
-		OakEngineFootage *handle = oakengine_footage_borrow(
-			reinterpret_cast<OakEngineNode *>(item));
-		oakengine_footage_proxy_set_enabled(handle, enabled ? 1 : 0);
+		f.set_proxy_enabled(enabled);
 		// The facade call toggles the flag; cache invalidation for the UI
 		// stays here.
-		oakengine_footage_invalidate(handle);
-		oakengine_footage_free(handle);
+		f.invalidate();
 	}
 }
 
 void ProjectExplorer::reveal_proxy_for_selected_footage()
 {
-	const QVector<Footage *> footage =
+	const QVector<oak::Node> footage =
 		get_selected_proxy_footage(context_menu_items_);
-	for (Footage *item : footage) {
-		char proxy_path[4096];
-		proxy_path[0] = '\0';
-		OakEngineFootage *handle = oakengine_footage_borrow(
-			reinterpret_cast<OakEngineNode *>(item));
-		oakengine_footage_proxy_get_path(handle, proxy_path,
-										 sizeof(proxy_path));
-		oakengine_footage_free(handle);
-		if (proxy_path[0] == '\0') {
+	for (const oak::Node &item : footage) {
+		oak::Footage f = item.as_footage();
+		if (!f) {
 			continue;
 		}
-		const QString path = QString::fromUtf8(proxy_path);
+		const QString path = f.proxy_path();
+		if (path.isEmpty()) {
+			continue;
+		}
 
 #if defined(Q_OS_WINDOWS)
 		QStringList args;
@@ -724,25 +719,29 @@ void ProjectExplorer::reveal_proxy_for_selected_footage()
 
 void ProjectExplorer::delete_proxies_for_selected_footage()
 {
-	const QVector<Footage *> footage =
+	const QVector<oak::Node> footage =
 		get_selected_proxy_footage(context_menu_items_);
-	for (Footage *item : footage) {
-		if (item->proxy_path().isEmpty()) {
+	for (const oak::Node &item : footage) {
+		oak::Footage f = item.as_footage();
+		if (!f || f.proxy_path().isEmpty()) {
 			continue;
 		}
 
 		// Facade delete: removes the file, clears the proxy state and
 		// invalidates the footage.
-		OakEngineFootage *handle = oakengine_footage_borrow(
-			reinterpret_cast<OakEngineNode *>(item));
-		oakengine_footage_proxy_delete(handle);
-		oakengine_footage_free(handle);
+		f.proxy_delete();
 	}
 }
 
 void ProjectExplorer::show_proxy_dialog_for_selected_footage()
 {
-	ProxyDialog d(this, get_selected_proxy_footage(context_menu_items_));
+	QVector<OakEngineNode *> handles;
+	const QVector<oak::Node> footage = get_selected_proxy_footage(context_menu_items_);
+	handles.reserve(footage.size());
+	for (const oak::Node &n : footage) {
+		handles.append(n.handle());
+	}
+	ProxyDialog d(this, handles);
 	d.exec();
 }
 
@@ -755,43 +754,42 @@ void ProjectExplorer::view_selection_changed()
 	QVector<OakEngineNode *> nodes;
 
 	foreach (const QModelIndex &index, selection) {
-		Node *sel = static_cast<Node *>(
+		auto handle = static_cast<OakEngineNode *>(
 			sort_model_.mapToSource(index).internalPointer());
-		auto handle = reinterpret_cast<OakEngineNode *>(sel);
 		if (!nodes.contains(handle)) {
 			nodes.append(handle);
 		}
 	}
 
 	if (nodes.isEmpty()) {
-		nodes.append(reinterpret_cast<OakEngineNode *>(get_root()));
+		nodes.append(get_root().handle());
 	}
 
 	emit selection_changed(nodes);
 }
 
-Project *ProjectExplorer::project() const
+oak::Project ProjectExplorer::project() const
 {
 	return model_.project();
 }
 
-void ProjectExplorer::set_project(Project *p)
+void ProjectExplorer::set_project(oak::Project p)
 {
 	model_.set_project(p);
 }
 
-Folder *ProjectExplorer::get_root() const
+oak::Node ProjectExplorer::get_root() const
 {
 	QModelIndex root_index = sort_model_.mapToSource(tree_view_->rootIndex());
 
 	if (!root_index.isValid()) {
-		return project()->root();
+		return project().root();
 	}
 
-	return static_cast<Folder *>(root_index.internalPointer());
+	return oak::Node(static_cast<OakEngineNode *>(root_index.internalPointer()));
 }
 
-void ProjectExplorer::set_root(Folder *item)
+void ProjectExplorer::set_root(oak::Node item)
 {
 	QModelIndex index =
 		sort_model_.mapFromSource(model_.create_index_from_item(item));
@@ -800,19 +798,19 @@ void ProjectExplorer::set_root(Folder *item)
 	tree_view_->setRootIndex(index);
 }
 
-QVector<Node *> ProjectExplorer::selected_items() const
+QVector<oak::Node> ProjectExplorer::selected_items() const
 {
 	// Determine which view is active and get its selected indexes
 	QModelIndexList index_list =
 		current_view()->selectionModel()->selectedRows();
 
 	// Convert indexes to item objects
-	QVector<Node *> selected_items;
+	QVector<oak::Node> selected_items;
 
 	for (int i = 0; i < index_list.size(); i++) {
 		QModelIndex index = sort_model_.mapToSource(index_list.at(i));
 
-		Node *item = static_cast<Node *>(index.internalPointer());
+		oak::Node item(static_cast<OakEngineNode *>(index.internalPointer()));
 
 		selected_items.append(item);
 	}
@@ -820,16 +818,16 @@ QVector<Node *> ProjectExplorer::selected_items() const
 	return selected_items;
 }
 
-Folder *ProjectExplorer::get_selected_folder() const
+oak::Node ProjectExplorer::get_selected_folder() const
 {
 	if (project() == nullptr) {
-		return nullptr;
+		return oak::Node();
 	}
 
-	Folder *folder = nullptr;
+	oak::Node folder;
 
 	// Get the selected items from the panel
-	QVector<Node *> selected_nodes = selected_items();
+	QVector<oak::Node> selected_nodes = selected_items();
 
 	// Heuristic for finding the selected folder:
 	//
@@ -839,27 +837,27 @@ Folder *ProjectExplorer::get_selected_folder() const
 	// - If more than one folder is found, we play it safe and import into the root folder
 
 	for (int i = 0; i < selected_nodes.size(); i++) {
-		Node *sel_item = selected_nodes.at(i);
+		oak::Node sel_item = selected_nodes.at(i);
 
 		// If this item is not a folder, presumably it's parent is
-		if (!dynamic_cast<Folder *>(sel_item)) {
-			sel_item = sel_item->folder();
+		if (!sel_item.is_folder()) {
+			sel_item = sel_item.folder();
 		}
 
 		if (folder == nullptr) {
 			// If the folder is nullptr, cache it as this folder
-			folder = static_cast<Folder *>(sel_item);
+			folder = sel_item;
 		} else if (folder != sel_item) {
 			// If not, we've already cached a folder so we check if it's the same
 			// If it isn't, we "play it safe" and use the root folder
-			folder = nullptr;
+			folder = oak::Node();
 			break;
 		}
 	}
 
 	// If we didn't pick up a folder from the heuristic above for whatever reason, use root
 	if (folder == nullptr) {
-		folder = project()->root();
+		folder = project().root();
 	}
 
 	return folder;
@@ -882,7 +880,7 @@ void ProjectExplorer::deselect_all()
 
 void ProjectExplorer::delete_selected()
 {
-	QVector<Node *> selected = selected_items();
+	QVector<oak::Node> selected = selected_items();
 
 	if (selected.isEmpty()) {
 		return;
@@ -900,7 +898,7 @@ void ProjectExplorer::delete_selected()
 	}
 }
 
-bool ProjectExplorer::select_item(Node *n, bool deselect_all_first)
+bool ProjectExplorer::select_item(oak::Node n, bool deselect_all_first)
 {
 	if (deselect_all_first) {
 		deselect_all();

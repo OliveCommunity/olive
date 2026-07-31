@@ -25,10 +25,9 @@
 #include <QDebug>
 #include <QPainter>
 
-#include "audio/audiolevelmeter.h"
-#include "audio/audiomanager.h"
 #include "oakutil/decibel.h"
 #include "oakengine/preview.h"
+#include "oakengine/viewer.h"
 #include "oakutil/qtutils.h"
 
 namespace olive
@@ -38,6 +37,10 @@ const int k_decibel_step = 6;
 const int k_decibel_minimum =
 	-198; // Must be divisible by kDecibelStep for infinity to appear
 const int k_maximum_smoothness = 8;
+
+/// Channel capacity of the summary buffers passed to
+/// oakengine_waveform_cache_get_summary()
+const int k_max_summary_channels = 64;
 
 QVector<AudioMonitor *> AudioMonitor::instances;
 
@@ -118,9 +121,15 @@ void AudioMonitor::start_waveform(const void *waveform,
 {
 	stop();
 
-	const AudioWaveformCache *cache =
-		static_cast<const AudioWaveformCache *>(waveform);
-	waveform_length_ = cache->length();
+	// The waveform cache C ABI reports the length in sample frames at the
+	// cache's own sample rate; convert to seconds (AudioWaveformCache::length())
+	const int sample_rate = oakengine_waveform_cache_sample_rate(waveform);
+	if (sample_rate <= 0) {
+		return;
+	}
+	waveform_length_ =
+		Rational(static_cast<int>(oakengine_waveform_cache_length(waveform)),
+				 sample_rate);
 	if (start >= waveform_length_) {
 		return;
 	}
@@ -455,21 +464,39 @@ void AudioMonitor::update_values_from_waveform(QVector<double> &v,
 	// Delta time is provided in milliseconds, so we convert to seconds in Rational
 	Rational length(delta_time, 1000);
 
-	const AudioWaveformCache *cache =
-		static_cast<const AudioWaveformCache *>(waveform_);
-	AudioVisualWaveform::Sample sum =
-		cache->get_summary_from_time(waveform_time_, length);
+	const int sample_rate = oakengine_waveform_cache_sample_rate(waveform_);
+	if (sample_rate <= 0) {
+		return;
+	}
 
-	audio_visual_waveform_sample_to_internal_values(sum, v);
+	// The summary C ABI works in sample frames at the cache's sample rate
+	// (AudioWaveformCache::get_summary_from_time() equivalent)
+	const Rational sample_tb(1, sample_rate);
+	const int64_t start_ts = core::Timecode::time_to_timestamp(
+		waveform_time_, sample_tb, core::Timecode::k_round);
+	const int64_t end_ts = core::Timecode::time_to_timestamp(
+		waveform_time_ + length, sample_tb, core::Timecode::k_round);
+
+	double min_vals[k_max_summary_channels];
+	double max_vals[k_max_summary_channels];
+	int channels = 0;
+	if (oakengine_waveform_cache_get_summary(waveform_, start_ts, end_ts,
+											min_vals, max_vals,
+											k_max_summary_channels,
+											&channels) == OAKENGINE_OK) {
+		audio_visual_waveform_sample_to_internal_values(min_vals, max_vals,
+													   channels, v);
+	}
 
 	waveform_time_ += length;
 }
 
 void AudioMonitor::audio_visual_waveform_sample_to_internal_values(
-	const AudioVisualWaveform::Sample &in, QVector<double> &out)
+	const double *min_vals, const double *max_vals, int channels,
+	QVector<double> &out)
 {
-	for (size_t i = 0; i < in.size(); i++) {
-		float max = qMax(qAbs(in.at(i).min), qAbs(in.at(i).max));
+	for (int i = 0; i < channels; i++) {
+		double max = qMax(qAbs(min_vals[i]), qAbs(max_vals[i]));
 
 		int output_index = i % out.size();
 		if (max > out.at(output_index)) {

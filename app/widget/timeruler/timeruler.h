@@ -27,7 +27,6 @@
 
 #include "engineeventbridge.h"
 #include "seekablewidget.h"
-#include "render/playbackcache.h"
 
 namespace olive
 {
@@ -40,7 +39,11 @@ public:
 
 	void set_centered_text(bool c);
 
-	void set_playback_cache(PlaybackCache *cache);
+	/**
+	 * @brief Opaque playback cache handle (engine PlaybackCache, accessed
+	 * through the oakengine_playback_cache_* C ABI).
+	 */
+	void set_playback_cache(void *cache);
 
 protected:
 	virtual void drawForeground(QPainter *painter, const QRectF &rect) override;
@@ -65,7 +68,7 @@ private:
 
 	bool show_cache_status_;
 
-	PlaybackCache *playback_cache_;
+	void *playback_cache_;
 
 	EngineEventBridge *bridge_;
 	int64_t cache_sub_invalidated_ = 0;

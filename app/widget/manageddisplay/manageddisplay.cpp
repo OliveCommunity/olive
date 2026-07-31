@@ -169,7 +169,7 @@ void ManagedDisplayWidget::disconnect_color_manager()
 	connect_color_manager(nullptr);
 }
 
-const ColorTransform &ManagedDisplayWidget::get_color_transform() const
+const oak::ColorTransform &ManagedDisplayWidget::get_color_transform() const
 {
 	return color_transform_;
 }
@@ -227,7 +227,7 @@ void ManagedDisplayWidget::color_config_changed()
 		});
 		set_color_transform(oak_compliant_transform(
 			reinterpret_cast<olive::ColorManager *>(color_manager_),
-			ColorTransform(display, view, QString()), true));
+			oak::ColorTransform(display, view, QString()), true));
 	} else {
 		set_color_transform(oak_compliant_transform(
 			reinterpret_cast<olive::ColorManager *>(color_manager_),
@@ -260,11 +260,11 @@ void ManagedDisplayWidget::show_default_context_menu()
 
 void ManagedDisplayWidget::menu_display_select(QAction *action)
 {
-	const ColorTransform &old_transform = get_color_transform();
+	const oak::ColorTransform &old_transform = get_color_transform();
 
-	ColorTransform new_transform = oak_compliant_transform(
+	oak::ColorTransform new_transform = oak_compliant_transform(
 		reinterpret_cast<olive::ColorManager *>(color_manager_),
-		ColorTransform(action->data().toString(), old_transform.view(),
+		oak::ColorTransform(action->data().toString(), old_transform.view(),
 					   old_transform.look()));
 
 	set_color_transform(new_transform);
@@ -272,11 +272,11 @@ void ManagedDisplayWidget::menu_display_select(QAction *action)
 
 void ManagedDisplayWidget::menu_view_select(QAction *action)
 {
-	const ColorTransform &old_transform = get_color_transform();
+	const oak::ColorTransform &old_transform = get_color_transform();
 
-	ColorTransform new_transform = oak_compliant_transform(
+	oak::ColorTransform new_transform = oak_compliant_transform(
 		reinterpret_cast<olive::ColorManager *>(color_manager_),
-		ColorTransform(old_transform.display(), action->data().toString(),
+		oak::ColorTransform(old_transform.display(), action->data().toString(),
 					   old_transform.look()));
 
 	set_color_transform(new_transform);
@@ -284,11 +284,11 @@ void ManagedDisplayWidget::menu_view_select(QAction *action)
 
 void ManagedDisplayWidget::menu_look_select(QAction *action)
 {
-	const ColorTransform &old_transform = get_color_transform();
+	const oak::ColorTransform &old_transform = get_color_transform();
 
-	ColorTransform new_transform = oak_compliant_transform(
+	oak::ColorTransform new_transform = oak_compliant_transform(
 		reinterpret_cast<olive::ColorManager *>(color_manager_),
-		ColorTransform(old_transform.display(), old_transform.view(),
+		oak::ColorTransform(old_transform.display(), old_transform.view(),
 					   action->data().toString()));
 
 	set_color_transform(new_transform);
@@ -298,7 +298,7 @@ void ManagedDisplayWidget::menu_colorspace_select(QAction *action)
 {
 	set_color_transform(oak_compliant_transform(
 		reinterpret_cast<olive::ColorManager *>(color_manager_),
-		ColorTransform(action->data().toString())));
+		oak::ColorTransform(action->data().toString())));
 }
 
 void ManagedDisplayWidget::on_destroy()
@@ -306,7 +306,7 @@ void ManagedDisplayWidget::on_destroy()
 	oakengine_display_renderer_destroy(attached_renderer_);
 }
 
-void ManagedDisplayWidget::set_color_transform(const ColorTransform &transform)
+void ManagedDisplayWidget::set_color_transform(const oak::ColorTransform &transform)
 {
 	color_transform_ = transform;
 

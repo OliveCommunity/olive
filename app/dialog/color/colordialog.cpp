@@ -187,13 +187,13 @@ QString ColorDialog::get_color_space_input() const
 	return chooser_->input();
 }
 
-ColorTransform ColorDialog::get_color_space_output() const
+oak::ColorTransform ColorDialog::get_color_space_output() const
 {
 	return chooser_->output();
 }
 
 void ColorDialog::color_space_changed(const QString &input,
-									const ColorTransform &output)
+									const oak::ColorTransform &output)
 {
 	QByteArray ref_cs = oak_query_string([this](char *buf, int size) {
 		return oakengine_color_manager_reference_color_space(

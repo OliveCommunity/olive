@@ -7,7 +7,8 @@ This document describes how to build Oak Video Editor from source on Windows, Li
 - CMake 3.20+
 - Ninja (recommended)
 - Qt 6 (with private headers)
-- FFmpeg 8.0+ development libraries (distro packages on Ubuntu/Debian are often too old; see the Linux section below)
+- FFmpeg 6.0+ development libraries
+- OpenTimelineIO (0.16+, built from source below — no distro package on most platforms)
 - OpenImageIO
 - OpenColorIO (2.x)
 - OpenEXR
@@ -50,7 +51,23 @@ pacman -S --needed \
 
 > **Note:** Qt 6 private headers may require additional packages depending on the MSYS2 repository state. If CMake reports missing private headers, install `mingw-w64-ucrt-x86_64-qt6-base-private` if available.
 
-### 3. Clone and Build
+### 3. Build OpenTimelineIO (required)
+
+There is no MSYS2 package for OpenTimelineIO, so build it from source:
+
+```bash
+git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
+cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
+  -DOTIO_SHARED_LIBS=ON \
+  -DOTIO_PYTHON_BINDINGS=OFF \
+  -DOTIO_FIND_IMATH=ON \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
+cmake --build OpenTimelineIO/build
+cmake --install OpenTimelineIO/build
+```
+
+### 4. Clone and Build
 
 ```bash
 # Clone the repository
@@ -60,13 +77,14 @@ cd oak
 # Configure
 cmake -S . -B build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
+  -DOTIO_LOCATION="/path/to/otio-install" \
   -DBUILD_QT6=ON
 
 # Build
 cmake --build build --config Release
 ```
 
-### 4. Run Tests (Optional)
+### 5. Run Tests (Optional)
 
 ```bash
 ctest --test-dir build --output-on-failure -C Release
@@ -78,36 +96,30 @@ ctest --test-dir build --output-on-failure -C Release
 
 ### Debian / Ubuntu
 
-Install dependencies (FFmpeg is built from source below because distro packages are often too old):
+Install dependencies (Ubuntu 24.04+ ships FFmpeg 6.1, which satisfies the 6.0 minimum; on older releases build FFmpeg from source as described in Troubleshooting):
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
-  cmake ninja-build pkg-config nasm \
+  cmake ninja-build pkg-config \
   qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
+  libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
   libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
   portaudio19-dev libgl1-mesa-dev libvulkan-dev libxkbcommon-dev
 ```
 
-Build FFmpeg 8.0+ from source:
+Build OpenTimelineIO (required, no distro package):
 
 ```bash
-git clone --branch n8.1.1 --depth 1 https://git.ffmpeg.org/ffmpeg.git ffmpeg-src
-cd ffmpeg-src
-./configure \
-  --prefix="$PWD/../ffmpeg-install" \
-  --enable-static \
-  --disable-shared \
-  --disable-doc \
-  --disable-programs \
-  --disable-avdevice \
-  --disable-network \
-  --enable-pic \
-  --enable-gpl \
-  --enable-version3
-make -j$(nproc)
-make install
-cd ..
+git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
+cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
+  -DOTIO_SHARED_LIBS=ON \
+  -DOTIO_PYTHON_BINDINGS=OFF \
+  -DOTIO_FIND_IMATH=ON \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
+cmake --build OpenTimelineIO/build
+cmake --install OpenTimelineIO/build
 ```
 
 Configure and build:
@@ -115,7 +127,7 @@ Configure and build:
 ```bash
 cmake -S . -B build -G Ninja \
   -DBUILD_TESTS=ON -DBUILD_QT6=ON \
-  -DFFMPEG_ROOT="$PWD/ffmpeg-install"
+  -DOTIO_LOCATION="$PWD/otio-install"
 cmake --build build --config Release
 ```
 
@@ -147,10 +159,26 @@ sudo dnf install -y \
   bzip2-devel
 ```
 
+Build OpenTimelineIO (required, no distro package):
+
+```bash
+git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
+cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
+  -DOTIO_SHARED_LIBS=ON \
+  -DOTIO_PYTHON_BINDINGS=OFF \
+  -DOTIO_FIND_IMATH=ON \
+  -DOTIO_FIND_IMATH=ON \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
+cmake --build OpenTimelineIO/build
+cmake --install OpenTimelineIO/build
+```
+
 Configure and build:
 
 ```bash
-cmake -S . -B build -G Ninja -DBUILD_TESTS=ON -DBUILD_QT6=ON
+cmake -S . -B build -G Ninja -DBUILD_TESTS=ON -DBUILD_QT6=ON \
+  -DOTIO_LOCATION="$PWD/otio-install"
 cmake --build build --config Release
 ```
 
@@ -175,6 +203,7 @@ sudo pacman -S --needed \
   openexr \
   expat \
   portaudio \
+  opentimelineio \
   mesa \
   vulkan-headers \
   vulkan-icd-loader \
@@ -211,13 +240,14 @@ brew update
 brew install cmake ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat molten-vk vulkan-headers vulkan-loader
 ```
 
-Build OpenTimelineIO (optional, required for OTIO support):
+Build OpenTimelineIO (required):
 
 ```bash
 git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
 cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
   -DOTIO_SHARED_LIBS=ON \
   -DOTIO_PYTHON_BINDINGS=OFF \
+  -DOTIO_FIND_IMATH=ON \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
 cmake --build OpenTimelineIO/build
@@ -257,7 +287,8 @@ ctest --test-dir build --output-on-failure -C Release
 | `BUILD_DOXYGEN` | `OFF` | Build Doxygen documentation |
 | `USE_WERROR` | `OFF` | Treat warnings as errors |
 | `BUILD_QT6` | `ON` | Build with Qt 6 instead of Qt 5 |
-| `OTIO_LOCATION` | - | Path to OpenTimelineIO installation (optional) |
+| `OTIO_LOCATION` | - | Path to OpenTimelineIO installation (required) |
+| `OAK_BUNDLE_OTIO` | `ON` | Install OTIO runtime libraries alongside Oak (set `OFF` for distro-native packaging where `opentimelineio` is a package dependency, e.g. Arch) |
 | `OCIO_LOCATION` | - | Path to OpenColorIO installation |
 | `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` | `ON` | Build dynamic render backend libraries (`liboakgl.so` / `liboakvulkan.so`) |
 
@@ -292,7 +323,7 @@ pkg-config --exists libavcodec && echo "Found" || echo "Not found"
 
 ### FFmpeg Version Too Old
 
-If you encounter errors like `AV_PIX_FMT_GRAYF16 was not declared in this scope`, your FFmpeg is too old (Oak requires 8.0+). Build from source:
+Oak requires FFmpeg 6.0 or newer; CMake configure fails with `Could NOT find FFMPEG (missing: FFMPEG_VERSION) (Required is at least version "6.0")` on older versions. Ubuntu 24.04+ / Fedora / Arch / Homebrew / MSYS2 all ship new enough FFmpeg. If your distro is older, build from source:
 
 ```bash
 git clone --branch n8.1.1 --depth 1 https://git.ffmpeg.org/ffmpeg.git ffmpeg-src
@@ -314,3 +345,7 @@ cd ..
 ```
 
 Then pass `-DFFMPEG_ROOT="$PWD/ffmpeg-install"` to CMake.
+
+### OpenTimelineIO Not Found
+
+OpenTimelineIO is a required dependency. Build it from source as shown in your platform's section above and pass `-DOTIO_LOCATION=/path/to/otio-install` to CMake. On Arch Linux the `opentimelineio` package provides it directly.

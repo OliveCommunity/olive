@@ -36,7 +36,7 @@ namespace olive
 
 #define super QGraphicsPathItem
 
-NodeViewEdge::NodeViewEdge(Node *output, const NodeInput &input,
+NodeViewEdge::NodeViewEdge(oak::Node output, const oak::Input &input,
 						   NodeViewItem *from_item, NodeViewItem *to_item,
 						   QGraphicsItem *parent)
 	: super(parent)

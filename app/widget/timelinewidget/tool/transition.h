@@ -38,9 +38,9 @@ public:
 	virtual void mouse_release(TimelineViewMouseEvent *event) override;
 
 private:
-	bool get_blocks_at_coord(const TimelineCoordinate &coord, ClipBlock **primary,
-						  ClipBlock **secondary,
-						  Timeline::MovementMode *trim_mode,
+	bool get_blocks_at_coord(const TimelineCoordinate &coord, OakEngineClip **primary,
+						  OakEngineClip **secondary,
+						  TimelineApp::MovementMode *trim_mode,
 						  Rational *start_point);
 
 	bool dual_transition_;

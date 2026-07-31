@@ -21,6 +21,7 @@
 
 #include "preferencesgeneraltab.h"
 
+#include <QDir>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QLabel>

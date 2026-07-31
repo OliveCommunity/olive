@@ -31,7 +31,7 @@ void TimelineWidgetSelections::shift_time(const Rational &diff)
 	}
 }
 
-void TimelineWidgetSelections::shift_tracks(Track::Type type, int diff)
+void TimelineWidgetSelections::shift_tracks(TrackReference::Type type, int diff)
 {
 	TimelineWidgetSelections cached_selections;
 
@@ -51,7 +51,7 @@ void TimelineWidgetSelections::shift_tracks(Track::Type type, int diff)
 	// Then re-insert them with the diff applied
 	for (auto it = cached_selections.cbegin(); it != cached_selections.cend();
 		 it++) {
-		Track::Reference ref(it.key().type(), it.key().index() + diff);
+		TrackReference ref(it.key().type(), it.key().index() + diff);
 
 		this->insert(ref, it.value());
 	}
@@ -75,7 +75,7 @@ void TimelineWidgetSelections::subtract(
 	const TimelineWidgetSelections &selections)
 {
 	for (auto it = selections.cbegin(); it != selections.cend(); it++) {
-		const Track::Reference &track = it.key();
+		const TrackReference &track = it.key();
 		const TimeRangeList &their_list = it.value();
 
 		if (this->contains(track)) {

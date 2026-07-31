@@ -27,7 +27,6 @@
 #include <QLabel>
 #include <QMessageBox>
 
-#include "node/project.h"
 #include "oakengine/color.h"
 #include "widget/manageddisplay/colorprocessorhandle.h"
 #include "oakengine/footage.h"
@@ -38,7 +37,8 @@
 namespace olive
 {
 
-VideoStreamProperties::VideoStreamProperties(Footage *footage, int video_index)
+VideoStreamProperties::VideoStreamProperties(OakEngineNode *footage,
+											 int video_index)
 	: footage_(footage)
 	, video_index_(video_index)
 	, video_premultiply_alpha_(nullptr)
@@ -51,14 +51,11 @@ VideoStreamProperties::VideoStreamProperties(Footage *footage, int video_index)
 	video_layout->addWidget(new QLabel(tr("Pixel Aspect:")), row, 0);
 
 	oak_video_params vpod;
-	oakengine_viewer_get_video_params(
-		reinterpret_cast<const OakEngineNode *>(footage_), video_index_,
-		&vpod);
+	oakengine_viewer_get_video_params(footage_, video_index_, &vpod);
 
 	// Stream override values come through the liboakengine C ABI facade;
 	// layout-only conditions (channel count, video type) stay direct reads.
-	OakEngineFootage *facade_handle = oakengine_footage_borrow(
-		reinterpret_cast<OakEngineNode *>(footage_));
+	OakEngineFootage *facade_handle = oakengine_footage_borrow(footage_);
 	char colorspace_buf[256];
 	int color_range = 0;
 	int interlacing = 0;
@@ -79,8 +76,7 @@ VideoStreamProperties::VideoStreamProperties(Footage *footage, int video_index)
 	video_layout->addWidget(new QLabel(tr("Interlacing:")), row, 0);
 
 	video_interlace_combo_ = new InterlacedComboBox();
-	video_interlace_combo_->set_interlace_mode(
-		static_cast<VideoParams::Interlacing>(interlacing));
+	video_interlace_combo_->set_interlace_mode(interlacing);
 
 	video_layout->addWidget(video_interlace_combo_, row, 1);
 
@@ -93,7 +89,7 @@ VideoStreamProperties::VideoStreamProperties(Footage *footage, int video_index)
 	// The dropdown's color space list comes through the facade (same list
 	// the engine's color config reports).
 	OakEngineColorManager *cm = oakengine_color_manager_from_project(
-		reinterpret_cast<OakEngineProject *>(footage_->project()));
+		oakengine_node_get_project(footage_));
 	video_color_space_->addItem(tr("Default (%1)")
 									.arg(oak_query_string([cm](char *buf, int size) {
 										return oakengine_color_manager_default_input_color_space(
@@ -183,8 +179,7 @@ void VideoStreamProperties::accept(void *parent)
 {
 	Q_UNUSED(parent)
 
-	OakEngineFootage *facade_handle = oakengine_footage_borrow(
-		reinterpret_cast<OakEngineNode *>(footage_));
+	OakEngineFootage *facade_handle = oakengine_footage_borrow(footage_);
 
 	QString set_colorspace;
 
@@ -206,9 +201,7 @@ void VideoStreamProperties::accept(void *parent)
 									   &vp_par_num, &vp_par_den);
 
 	oak_video_params vpod;
-	oakengine_viewer_get_video_params(
-		reinterpret_cast<const OakEngineNode *>(footage_), video_index_,
-		&vpod);
+	oakengine_viewer_get_video_params(footage_, video_index_, &vpod);
 
 	int64_t vp_start_time = 0, vp_duration = 0;
 	int vp_fr_num = 0, vp_fr_den = 1;
@@ -222,9 +215,7 @@ void VideoStreamProperties::accept(void *parent)
 	if ((video_premultiply_alpha_ &&
 		 video_premultiply_alpha_->isChecked() != (vp_premultiplied != 0)) ||
 		set_colorspace != QString::fromUtf8(vp_colorspace) ||
-		static_cast<VideoParams::Interlacing>(
-			video_interlace_combo_->currentIndex()) !=
-			static_cast<VideoParams::Interlacing>(vp_interlacing) ||
+		video_interlace_combo_->currentIndex() != vp_interlacing ||
 		color_range_combo_->currentData().toInt() != vp_color_range) {
 		oakengine_footage_set_video_stream_overrides(
 			facade_handle, video_index_,
@@ -264,9 +255,7 @@ void VideoStreamProperties::accept(void *parent)
 bool VideoStreamProperties::sanity_check()
 {
 	oak_video_params vpod;
-	oakengine_viewer_get_video_params(
-		reinterpret_cast<const OakEngineNode *>(footage_), video_index_,
-		&vpod);
+	oakengine_viewer_get_video_params(footage_, video_index_, &vpod);
 	if (vpod.video_type == 2) {
 		if (imgseq_start_time_->get_value() >= imgseq_end_time_->get_value()) {
 			QMessageBox::critical(

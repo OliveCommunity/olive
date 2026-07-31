@@ -36,7 +36,7 @@ public:
 	virtual void mouse_release(TimelineViewMouseEvent *event) override;
 
 private:
-	QVector<Track::Reference> split_tracks_;
+	QVector<TrackReference> split_tracks_;
 };
 
 }

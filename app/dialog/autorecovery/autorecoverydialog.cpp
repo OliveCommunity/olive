@@ -29,6 +29,7 @@
 #include <QVBoxLayout>
 
 #include "core.h"
+#include "oakutil/filefunctions.h"
 
 namespace olive
 {

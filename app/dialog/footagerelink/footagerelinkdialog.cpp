@@ -22,9 +22,11 @@
 #include "footagerelinkdialog.h"
 
 #include "core.h"
+#include "common/nodedatatypes.h"
 #include "oakengine/footage.h"
 #include "oakengine/node.h"
 #include "oakengine/project.h"
+#include "oakutil/oaknode.h"
 
 #include <QDialogButtonBox>
 #include <QFileDialog>
@@ -39,7 +41,7 @@
 namespace olive
 {
 
-FootageRelinkDialog::FootageRelinkDialog(const QVector<Footage *> &footage,
+FootageRelinkDialog::FootageRelinkDialog(const QVector<OakEngineNode *> &footage,
 										 QWidget *parent)
 	: QDialog(parent)
 	, footage_(footage)
@@ -64,7 +66,7 @@ FootageRelinkDialog::FootageRelinkDialog(const QVector<Footage *> &footage,
 	table_->header()->setStretchLastSection(false);
 
 	for (int i = 0; i < footage.size(); i++) {
-		Footage *f = footage.at(i);
+		OakEngineNode *f = footage.at(i);
 		QTreeWidgetItem *item = new QTreeWidgetItem();
 
 		QWidget *item_actions = new QWidget();
@@ -75,9 +77,10 @@ FootageRelinkDialog::FootageRelinkDialog(const QVector<Footage *> &footage,
 				&FootageRelinkDialog::browse_for_footage);
 		item_actions_layout->addWidget(item_browse_btn);
 
-		item->setIcon(0, f->data(Node::icon).value<QIcon>());
-		item->setText(0, f->get_label());
-		item->setText(1, f->filename());
+		item->setIcon(
+			0, oak::Node(f).data(k_node_data_icon).value<QIcon>());
+		item->setText(0, oak::Node(f).get_label());
+		item->setText(1, oak::Footage::borrow(f).filename());
 
 		table_->addTopLevelItem(item);
 
@@ -99,21 +102,22 @@ FootageRelinkDialog::FootageRelinkDialog(const QVector<Footage *> &footage,
 
 void FootageRelinkDialog::update_footage_item(int index)
 {
-	Footage *f = footage_.at(index);
+	OakEngineNode *f = footage_.at(index);
 	QTreeWidgetItem *item = table_->topLevelItem(index);
-	item->setIcon(0, f->data(Node::icon).value<QIcon>());
-	item->setText(1, f->filename());
+	item->setIcon(0, oak::Node(f).data(k_node_data_icon).value<QIcon>());
+	item->setText(1, oak::Footage::borrow(f).filename());
 }
 
 void FootageRelinkDialog::browse_for_footage()
 {
 	int index = sender()->property("index").toInt();
-	Footage *f = footage_.at(index);
+	OakEngineNode *f = footage_.at(index);
 
-	QFileInfo info(f->filename());
+	QFileInfo info(oak::Footage::borrow(f).filename());
 
 	QString new_fn = QFileDialog::getOpenFileName(
-		this, tr("Relink \"%1\"").arg(f->get_label()), info.absolutePath(),
+		this, tr("Relink \"%1\"").arg(oak::Node(f).get_label()),
+		info.absolutePath(),
 		Core::footage_file_dialog_filter());
 
 	// Originally, this function would attempt to filter to the exact filename of the missing file.
@@ -141,8 +145,7 @@ void FootageRelinkDialog::browse_for_footage()
 		// Relink through the facade (reprobes the file and resets stream /
 		// proxy state; relinked footage becomes valid when the probe
 		// succeeds).
-		OakEngineFootage *relink_handle = oakengine_footage_borrow(
-			reinterpret_cast<OakEngineNode *>(f));
+		OakEngineFootage *relink_handle = oakengine_footage_borrow(f);
 		const int relink_rc = oakengine_footage_relink(
 			relink_handle, new_fn.toUtf8().constData());
 		oakengine_footage_free(relink_handle);
@@ -162,30 +165,33 @@ void FootageRelinkDialog::browse_for_footage()
 		// Check all other footage files for matches in the new directory
 		// (facade's exact file-name matching, mirroring the second attempt
 		// of the old per-footage loop).
-		Project *project = f->project();
+		OakEngineProject *project = oakengine_node_get_project(f);
 		if (project) {
 			oakengine_project_find_offline_footage(
-				reinterpret_cast<OakEngineProject *>(project),
-				new_dir.absolutePath().toUtf8().constData());
+				project, new_dir.absolutePath().toUtf8().constData());
 
 			// The old dialog also tried the original directory's relative
 			// paths, which the facade's exact-name matching does not cover;
 			// keep that pass here.
 			for (int it = 0; it < footage_.size(); it++) {
-				Footage *other_footage = footage_.at(it);
+				OakEngineNode *other_footage = footage_.at(it);
 
 				// Ignore footage that's already valid of course
-				if (!other_footage->is_valid()) {
+				if (!oakengine_footage_is_valid(other_footage)) {
 					// Get footage path relative to original directory
 					QString relative_to_original =
-						original_dir.relativeFilePath(other_footage->filename());
+						original_dir.relativeFilePath(
+							oak::Footage::borrow(other_footage).filename());
 					QString absolute_to_new =
 						new_dir.filePath(relative_to_original);
 
 					if (QFileInfo::exists(absolute_to_new)) {
+						OakEngineFootage *other_handle =
+							oakengine_footage_borrow(other_footage);
 						oakengine_footage_relink(
-							reinterpret_cast<OakEngineFootage *>(other_footage),
+							other_handle,
 							absolute_to_new.toUtf8().constData());
+						oakengine_footage_free(other_handle);
 					}
 				}
 			}
@@ -201,7 +207,7 @@ void FootageRelinkDialog::browse_for_footage()
 	// jump to that footage so the user knows where it is.
 	int next_invalid = -1;
 	for (int i = 0; i < footage_.size(); i++) {
-		if (!footage_.at(i)->is_valid()) {
+		if (!oakengine_footage_is_valid(footage_.at(i))) {
 			next_invalid = i;
 			break;
 		}

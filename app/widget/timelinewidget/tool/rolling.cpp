@@ -21,7 +21,6 @@
 
 #include "widget/timelinewidget/timelinewidget.h"
 
-#include "node/block/gap/gap.h"
 #include "rolling.h"
 
 namespace olive
@@ -34,8 +33,8 @@ RollingTool::RollingTool(TimelineWidget *parent)
 	set_gap_trimming_allowed(true);
 }
 
-void RollingTool::initiate_drag(Block *clicked_item,
-							   Timeline::MovementMode trim_mode,
+void RollingTool::initiate_drag(OakEngineBlock *clicked_item,
+							   TimelineApp::MovementMode trim_mode,
 							   Qt::KeyboardModifiers modifiers)
 {
 	initiate_drag_internal(clicked_item, trim_mode, modifiers, false, true,

@@ -24,7 +24,7 @@
 #include <QPainter>
 
 #include "oakutil/lerp.h"
-#include "node/node.h"
+#include "oakutil/qtutils.h"
 
 namespace olive
 {

@@ -27,7 +27,6 @@
 
 #include "common/configwrapper.h"
 #include "engineeventbridge.h"
-#include "timeline/timelinecommon.h"
 #include "widget/viewer/vieweroutpututils.h"
 
 namespace olive
@@ -59,7 +58,7 @@ AudioWaveformView::AudioWaveformView(QWidget *parent)
 			this, [this](OakEngineNode *) { viewport()->update(); });
 }
 
-void AudioWaveformView::set_viewer(ViewerOutput *playback)
+void AudioWaveformView::set_viewer(OakEngineNode *playback)
 {
 	if (playback_) {
 		pool_.clear();
@@ -75,8 +74,7 @@ void AudioWaveformView::set_viewer(ViewerOutput *playback)
 
 	if (playback_) {
 		waveform_subscription_ = waveform_bridge_->subscribe(
-			reinterpret_cast<OakEngineNode *>(playback_),
-			OAKENGINE_EVENT_VIEWER_CONNECTED_WAVEFORM_CHANGED);
+			playback_, OAKENGINE_EVENT_VIEWER_CONNECTED_WAVEFORM_CHANGED);
 
 		Rational tb =
 			viewer_output_video_params(playback_).frame_rate_as_time_base();
@@ -98,7 +96,9 @@ void AudioWaveformView::drawForeground(QPainter *p, const QRectF &rect)
 		return;
 	}
 
-	const AudioWaveformCache *wave = playback_->get_connected_waveform();
+	const AudioWaveformCache *wave =
+		static_cast<const AudioWaveformCache *>(
+			oakengine_viewer_get_connected_waveform(playback_));
 	if (!wave) {
 		return;
 	}
@@ -119,7 +119,7 @@ void AudioWaveformView::drawForeground(QPainter *p, const QRectF &rect)
 	// Draw playhead
 	p->setPen(PLAYHEAD_COLOR);
 
-	int playhead_x = time_to_scene(get_viewer_node()->get_playhead());
+	int playhead_x = time_to_scene(viewer_output_playhead(get_viewer_node()));
 	p->drawLine(playhead_x, 0, playhead_x, height());
 }
 

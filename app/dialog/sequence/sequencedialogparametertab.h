@@ -24,10 +24,11 @@
 #include <QList>
 #include <QSpinBox>
 
-#include "node/project/sequence/sequence.h"
 #include "sequencepreset.h"
 #include "widget/slider/integerslider.h"
 #include "widget/standardcombos/standardcombos.h"
+
+struct OakEngineNode;
 
 namespace olive
 {
@@ -35,7 +36,8 @@ namespace olive
 class SequenceDialogParameterTab : public QWidget {
 	Q_OBJECT
 public:
-	SequenceDialogParameterTab(Sequence *sequence, QWidget *parent = nullptr);
+	SequenceDialogParameterTab(OakEngineNode *sequence,
+							   QWidget *parent = nullptr);
 
 	int get_selected_video_width() const
 	{

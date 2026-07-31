@@ -26,7 +26,7 @@
 #include <QPalette>
 
 #include "nodeviewcommon.h"
-#include "node/node.h"
+#include "oakutil/oaknode.h"
 
 namespace olive
 {
@@ -40,19 +40,20 @@ class NodeViewItem;
  */
 class NodeViewEdge : public QGraphicsPathItem {
 public:
-	NodeViewEdge(Node *output, const NodeInput &input, NodeViewItem *from_item,
+	NodeViewEdge(oak::Node output, const oak::Input &input,
+				 NodeViewItem *from_item,
 				 NodeViewItem *to_item, QGraphicsItem *parent = nullptr);
 
 	NodeViewEdge(QGraphicsItem *parent = nullptr);
 
 	virtual ~NodeViewEdge() override;
 
-	Node *output() const
+	oak::Node output() const
 	{
 		return output_;
 	}
 
-	const NodeInput &input() const
+	const oak::Input &input() const
 	{
 		return input_;
 	}
@@ -122,9 +123,9 @@ private:
 
 	void update_curve();
 
-	Node *output_;
+	oak::Node output_;
 
-	NodeInput input_;
+	oak::Input input_;
 
 	int element_;
 

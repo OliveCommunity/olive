@@ -24,7 +24,6 @@
 #include <QDebug>
 #include <QPainter>
 
-#include "node/output/track/track.h"
 #include "oakengine/timeline.h"
 
 namespace olive

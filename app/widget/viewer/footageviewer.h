@@ -22,8 +22,9 @@
 #ifndef OAK_FOOTAGEVIEWERWIDGET_H
 #define OAK_FOOTAGEVIEWERWIDGET_H
 
-#include "node/output/viewer/viewer.h"
 #include "viewer.h"
+
+#include "oakengine/timeline.h"
 
 namespace olive
 {
@@ -41,7 +42,7 @@ public:
 private:
 	void start_footage_drag_internal(bool enable_video, bool enable_audio);
 
-	TimelineWorkArea *override_workarea_;
+	OakEngineWorkarea *override_workarea_;
 
 private slots:
 	void start_footage_drag();

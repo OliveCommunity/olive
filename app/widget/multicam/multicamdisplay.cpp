@@ -21,6 +21,8 @@
 
 #include "multicamdisplay.h"
 
+#include <QPainter>
+
 #include "oakengine/display.h"
 #include "oakengine/node.h"
 
@@ -51,7 +53,7 @@ void MulticamDisplay::on_paint()
 		int rows, cols;
 		oakengine_multicam_get_rows_and_columns(
 			oakengine_multicam_get_source_count(
-				reinterpret_cast<OakEngineNode *>(node_)),
+				node_),
 			&rows, &cols);
 
 		int multi = std::max(rows, cols);
@@ -60,7 +62,7 @@ void MulticamDisplay::on_paint()
 
 		int col, row;
 		int current_source = oakengine_multicam_get_current_source(
-			reinterpret_cast<OakEngineNode *>(node_));
+			node_);
 		oakengine_multicam_index_to_row_cols(
 			current_source, rows, cols, &row, &col);
 
@@ -211,7 +213,7 @@ QString MulticamDisplay::generate_shader_code(int rows, int cols)
 	return shader.join('\n');
 }
 
-void MulticamDisplay::set_multicam_node(MultiCamNode *n)
+void MulticamDisplay::set_multicam_node(OakEngineNode *n)
 {
 	node_ = n;
 }

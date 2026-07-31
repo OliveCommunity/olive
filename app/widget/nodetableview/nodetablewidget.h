@@ -32,12 +32,12 @@ class NodeTableWidget : public TimeBasedWidget {
 public:
 	NodeTableWidget(QWidget *parent = nullptr);
 
-	void select_nodes(const QVector<Node *> &nodes)
+	void select_nodes(const QVector<OakEngineNode *> &nodes)
 	{
 		view_->select_nodes(nodes);
 	}
 
-	void deselect_nodes(const QVector<Node *> &nodes)
+	void deselect_nodes(const QVector<OakEngineNode *> &nodes)
 	{
 		view_->deselect_nodes(nodes);
 	}

@@ -24,6 +24,10 @@ add_executable(oak-cli
         main.cpp
 )
 
+if (COMMAND oak_copy_otio_runtime)
+  oak_copy_otio_runtime(oak-cli)
+endif()
+
 # oakengine leaves olive::k_app_version to the final executable; the version
 # object library provides it (same as the engine C ABI tests and worker).
 target_sources(oak-cli PRIVATE $<TARGET_OBJECTS:olive-version-obj>)

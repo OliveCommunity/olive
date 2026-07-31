@@ -23,7 +23,7 @@
 #define OAK_NODEPARAMVIEWCONNECTEDLABEL_H
 
 #include "engineeventbridge.h"
-#include "node/param.h"
+#include "oakutil/oaknode.h"
 #include "widget/clickablelabel/clickablelabel.h"
 #include "widget/nodevaluetree/nodevaluetree.h"
 
@@ -35,18 +35,18 @@ namespace olive
 class NodeParamViewConnectedLabel : public QWidget {
 	Q_OBJECT
 public:
-	NodeParamViewConnectedLabel(const NodeInput &input,
+	NodeParamViewConnectedLabel(const oak::Input &input,
 								QWidget *parent = nullptr);
 
-	void set_viewer_node(ViewerOutput *viewer);
+	void set_viewer_node(OakEngineNode *viewer);
 
 signals:
 	void request_select_node(OakEngineNode *n);
 
 private slots:
-	void input_connected(OakEngineNode *output, const NodeInput &input);
+	void input_connected(oak::Node output, const oak::Input &input);
 
-	void input_disconnected(OakEngineNode *output, const NodeInput &input);
+	void input_disconnected(oak::Node output, const oak::Input &input);
 
 	void show_label_context_menu();
 
@@ -61,13 +61,13 @@ private:
 
 	ClickableLabel *connected_to_lbl_;
 
-	NodeInput input_;
+	oak::Input input_;
 
-	Node *connected_node_;
+	oak::Node connected_node_;
 
 	NodeValueTree *value_tree_;
 
-	ViewerOutput *viewer_;
+	OakEngineNode *viewer_;
 
 	EngineEventBridge *bridge_ = nullptr;
 

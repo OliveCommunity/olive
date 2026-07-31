@@ -27,7 +27,7 @@
 #include <cstdint>
 
 #include "engineeventbridge.h"
-#include "node/param.h"
+#include "oakutil/oaknode.h"
 #include "widget/timetarget/timetarget.h"
 
 namespace olive
@@ -42,16 +42,16 @@ public:
 	{
 	}
 
-	const NodeInput &get_connected_input() const
+	const oak::Input &get_connected_input() const
 	{
 		return input_;
 	}
 
-	void set_input(const NodeInput &input);
+	void set_input(const oak::Input &input);
 
 protected:
-	virtual void TimeTargetDisconnectEvent(ViewerOutput *v) override;
-	virtual void TimeTargetConnectEvent(ViewerOutput *v) override;
+	virtual void TimeTargetDisconnectEvent(OakEngineNode *v) override;
+	virtual void TimeTargetConnectEvent(OakEngineNode *v) override;
 
 private:
 	QPushButton *create_new_tool_button(const QIcon &icon) const;
@@ -67,7 +67,7 @@ private:
 	QPushButton *next_key_btn_;
 	QPushButton *enable_key_btn_;
 
-	NodeInput input_;
+	oak::Input input_;
 
 	EngineEventBridge *bridge_ = nullptr;
 
@@ -91,7 +91,7 @@ private slots:
 
 	void keyframe_enable_btn_clicked(bool e);
 
-	void keyframe_enable_changed(const NodeInput &input, bool e);
+	void keyframe_enable_changed(const oak::Input &input, bool e);
 };
 
 }

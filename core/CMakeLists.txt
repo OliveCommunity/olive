@@ -74,6 +74,10 @@ set_target_properties(olivecore PROPERTIES
 # OAKCORE_BUILD marks the library side of the export macros (dllexport)
 target_compile_definitions(olivecore PRIVATE OAKCORE_BUILD)
 
+if (COMMAND oak_copy_otio_runtime)
+  oak_copy_otio_runtime(olivecore)
+endif()
+
 # Export only the C ABI (oakcore_*), nothing else — not even symbols from
 # statically linked runtime libraries
 if (UNIX AND NOT APPLE)

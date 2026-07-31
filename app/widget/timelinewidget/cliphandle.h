@@ -23,60 +23,87 @@
 
 #include <cstring>
 
-#include "node/block/clip/clip.h"
+#include <olive/core/core.h>
+
 #include "oakengine/node.h"
 #include "oakengine/timeline.h"
 
 namespace olive
 {
 
+class FrameHashCache;
+class AudioWaveformCache;
+
+using olive::core::Rational;
+using olive::core::TimeRange;
+
 /**
- * @brief Facade accessors for ClipBlock pointers held by the timeline UI.
+ * @brief Facade accessors for clip blocks held by the timeline UI.
  *
- * ClipBlock's header-inline convenience accessors (speed()/loop_mode()/
+ * The engine's header-inline clip convenience accessors (speed()/loop_mode()/
  * thumbnails()/waveform()/connected_video_cache()/...) reference the
  * input-id statics (k_speed_input/k_buffer_in/...), which are engine
  * symbols the app must no longer pull across the liboakengine boundary.
  * These helpers route the same queries through the C ABI instead (same
- * pattern as app/widget/keyframeview/keyframehandle.h). The ClipBlock*
- * itself stays an opaque identity pointer.
+ * pattern as app/widget/keyframeview/keyframehandle.h). Clips are passed
+ * as OakEngineBlock* handles; the engine cache types
+ * (FrameHashCache/AudioWaveformCache) are forward-declared here and only
+ * dereferenced by callers that still see the engine class definition.
  */
 
-inline OakEngineClip *cliphandle(ClipBlock *clip)
+inline OakEngineClip *cliphandle(OakEngineBlock *clip)
 {
 	return reinterpret_cast<OakEngineClip *>(clip);
 }
 
-/** @brief The node feeding the clip's buffer input (ClipBlock's inline
+/** @brief The node feeding the clip's buffer input (the inline
  * get_connected_output(k_buffer_in) uses; borrowed, may be null). */
-inline Node *clip_connected_node(ClipBlock *clip)
+inline OakEngineNode *clip_connected_node(OakEngineBlock *clip)
 {
-	return reinterpret_cast<Node *>(
-		oakengine_node_input_get_connected_node(
-			reinterpret_cast<OakEngineNode *>(clip),
-			oakengine_clip_buffer_input_id(), -1));
+	return oakengine_node_input_get_connected_node(
+		reinterpret_cast<OakEngineNode *>(clip),
+		oakengine_clip_buffer_input_id(), -1);
 }
 
-inline FrameHashCache *clip_thumbnails(ClipBlock *clip)
+inline FrameHashCache *clip_thumbnails(OakEngineBlock *clip)
 {
-	Node *n = clip_connected_node(clip);
-	return n ? n->thumbnail_cache() : nullptr;
+	OakEngineNode *n = clip_connected_node(clip);
+	return n ? reinterpret_cast<FrameHashCache *>(
+				   oakengine_node_get_thumbnail_cache(n)) :
+			   nullptr;
 }
 
-inline AudioWaveformCache *clip_waveform(ClipBlock *clip)
+inline AudioWaveformCache *clip_waveform(OakEngineBlock *clip)
 {
-	Node *n = clip_connected_node(clip);
-	return n ? n->waveform_cache() : nullptr;
+	OakEngineNode *n = clip_connected_node(clip);
+	return n ? reinterpret_cast<AudioWaveformCache *>(
+				   oakengine_node_get_waveform_cache(n)) :
+			   nullptr;
 }
 
-inline FrameHashCache *clip_connected_video_cache(ClipBlock *clip)
+inline FrameHashCache *clip_connected_video_cache(OakEngineBlock *clip)
 {
-	Node *n = clip_connected_node(clip);
-	return n ? n->video_frame_cache() : nullptr;
+	OakEngineNode *n = clip_connected_node(clip);
+	return n ? reinterpret_cast<FrameHashCache *>(
+				   oakengine_node_get_video_frame_cache(n)) :
+			   nullptr;
 }
 
-/** @brief ClipBlock::speed() through the facade input getter. */
-inline double clip_speed(ClipBlock *clip)
+/**
+ * @brief Owning track handle of a block of any kind (the block's track).
+ *
+ * Wraps the generic oakengine_block_get_track(); the timeline family's
+ * OakEngineTrack* is reinterpreted to the node family's OakEngineNode*
+ * (same underlying track object; the track accessors in node.h take the
+ * latter). NULL when the block is not on a track.
+ */
+inline OakEngineNode *block_track_handle(OakEngineBlock *block)
+{
+	return reinterpret_cast<OakEngineNode *>(oakengine_block_get_track(block));
+}
+
+/** @brief The clip's speed through the facade input getter. */
+inline double clip_speed(OakEngineBlock *clip)
 {
 	oak_node_value v;
 	memset(&v, 0, sizeof(v));
@@ -88,8 +115,8 @@ inline double clip_speed(ClipBlock *clip)
 	return v.f[0];
 }
 
-/** @brief ClipBlock::loop_mode() value (an olive::LoopMode int). */
-inline int clip_loop_mode(ClipBlock *clip)
+/** @brief The clip's loop mode value (an OAKENGINE_LOOP_MODE_* int). */
+inline int clip_loop_mode(OakEngineBlock *clip)
 {
 	oak_node_value v;
 	memset(&v, 0, sizeof(v));
@@ -101,8 +128,8 @@ inline int clip_loop_mode(ClipBlock *clip)
 	return int(v.num);
 }
 
-/** @brief ClipBlock::is_reversed() through the facade input getter. */
-inline bool clip_is_reversed(ClipBlock *clip)
+/** @brief The clip's reverse flag through the facade input getter. */
+inline bool clip_is_reversed(OakEngineBlock *clip)
 {
 	oak_node_value v;
 	memset(&v, 0, sizeof(v));
@@ -112,8 +139,8 @@ inline bool clip_is_reversed(ClipBlock *clip)
 		   v.num != 0;
 }
 
-/** @brief ClipBlock::maintain_audio_pitch() through the facade. */
-inline bool clip_maintain_audio_pitch(ClipBlock *clip)
+/** @brief The clip's maintain-audio-pitch flag through the facade. */
+inline bool clip_maintain_audio_pitch(OakEngineBlock *clip)
 {
 	oak_node_value v;
 	memset(&v, 0, sizeof(v));
@@ -124,14 +151,14 @@ inline bool clip_maintain_audio_pitch(ClipBlock *clip)
 		   v.num != 0;
 }
 
-/** @brief Create a new empty ClipBlock through the C ABI. */
-inline ClipBlock *clip_create_empty(const char *label = nullptr)
+/** @brief Create a new empty clip block through the C ABI. */
+inline OakEngineBlock *clip_create_empty(const char *label = nullptr)
 {
-	return reinterpret_cast<ClipBlock *>(oakengine_clip_create_empty(label));
+	return reinterpret_cast<OakEngineBlock *>(oakengine_clip_create_empty(label));
 }
 
-/** @brief ClipBlock::media_in() through the facade. */
-inline Rational clip_media_in(ClipBlock *clip)
+/** @brief The clip's media in-point through the facade. */
+inline Rational clip_media_in(OakEngineBlock *clip)
 {
 	int64_t num = 0, den = 1;
 	if (oakengine_clip_get_media_in_rational(cliphandle(clip), &num, &den) ==
@@ -141,23 +168,23 @@ inline Rational clip_media_in(ClipBlock *clip)
 	return Rational(0, 1);
 }
 
-/** @brief ClipBlock::media_range() through the facade. */
-inline TimeRange clip_media_range(ClipBlock *clip)
+/** @brief The clip's media range through the facade. */
+inline TimeRange clip_media_range(OakEngineBlock *clip)
 {
 	int64_t in_num = 0, in_den = 1, out_num = 0, out_den = 1;
 	if (oakengine_clip_get_media_range_rational(
 			cliphandle(clip), &in_num, &in_den, &out_num, &out_den) ==
 		OAKENGINE_OK) {
 		return TimeRange(Rational(static_cast<int>(in_num),
-							  static_cast<int>(in_den)),
+								  static_cast<int>(in_den)),
 						 Rational(static_cast<int>(out_num),
-							  static_cast<int>(out_den)));
+								  static_cast<int>(out_den)));
 	}
 	return TimeRange(0, 0);
 }
 
 /** @brief Set the clip's media in-point directly (rational seconds). */
-inline void clip_set_media_in(ClipBlock *clip, const Rational &media_in,
+inline void clip_set_media_in(OakEngineBlock *clip, const Rational &media_in,
 							  bool undoable = false)
 {
 	if (!clip) {
@@ -169,8 +196,8 @@ inline void clip_set_media_in(ClipBlock *clip, const Rational &media_in,
 									 undoable ? 1 : 0);
 }
 
-/** @brief ClipBlock::is_autocaching() through the facade. */
-inline bool clip_is_autocaching(ClipBlock *clip)
+/** @brief The clip's auto-cache flag through the facade. */
+inline bool clip_is_autocaching(OakEngineBlock *clip)
 {
 	oak_node_value v;
 	memset(&v, 0, sizeof(v));
@@ -181,9 +208,10 @@ inline bool clip_is_autocaching(ClipBlock *clip)
 		   v.num != 0;
 }
 
-/** @brief ClipBlock::request_invalidated_from_connected() through the facade. */
+/** @brief Request invalidation from the clip's connected node, through the
+ * facade. */
 inline void clip_request_invalidate_connected(
-	ClipBlock *clip, bool force_all = false,
+	OakEngineBlock *clip, bool force_all = false,
 	const TimeRange &intersect = TimeRange())
 {
 	if (!clip) {

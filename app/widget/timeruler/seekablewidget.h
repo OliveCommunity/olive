@@ -42,17 +42,17 @@ public:
 		return horizontalScrollBar()->value();
 	}
 
-	TimelineMarkerList *get_markers() const
+	OakEngineMarkerList *get_markers() const
 	{
 		return markers_;
 	}
-	TimelineWorkArea *get_work_area() const
+	OakEngineWorkarea *get_work_area() const
 	{
 		return workarea_;
 	}
 
-	void set_markers(TimelineMarkerList *markers);
-	void set_work_area(TimelineWorkArea *workarea);
+	void set_markers(OakEngineMarkerList *markers);
+	void set_work_area(OakEngineWorkarea *workarea);
 
 	virtual bool is_dragging_playhead() const override
 	{
@@ -83,7 +83,7 @@ public:
 		return !selection_manager_.get_selected_objects().empty();
 	}
 
-	const std::vector<TimelineMarker *> &get_selected_markers() const
+	const std::vector<OakEngineMarker *> &get_selected_markers() const
 	{
 		return selection_manager_.get_selected_objects();
 	}
@@ -146,8 +146,8 @@ private:
 
 	void commit_resize_handle();
 
-	TimelineMarkerList *markers_;
-	TimelineWorkArea *workarea_;
+	OakEngineMarkerList *markers_;
+	OakEngineWorkarea *workarea_;
 
 	int text_height_;
 
@@ -157,9 +157,9 @@ private:
 
 	bool ignore_next_focus_out_;
 
-	TimeBasedViewSelectionManager<TimelineMarker> selection_manager_;
+	TimeBasedViewSelectionManager<OakEngineMarker> selection_manager_;
 
-	QObject *resize_item_;
+	void *resize_item_;
 	ResizeMode resize_mode_;
 	TimeRange resize_item_range_;
 	QPointF resize_start_;

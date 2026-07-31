@@ -22,6 +22,7 @@
 #ifndef OAK_TIMELINE_PANEL_H
 #define OAK_TIMELINE_PANEL_H
 
+#include "common/trackreferencehandle.h"
 #include "panel/timebased/timebased.h"
 #include "widget/timelinewidget/timelinewidget.h"
 
@@ -107,14 +108,29 @@ public:
 
 	void overwrite_footage_at_playhead(const QVector<OakEngineNode *> &footage);
 
-	const QVector<Block *> &get_selected_blocks() const
+	QVector<OakEngineBlock *> get_selected_blocks() const
 	{
-		return timeline_widget()->get_selected_blocks();
+		// TimelineWidget still exposes engine Block* (its own wave converts
+		// it); re-wrap into the handle family here so callers never see the
+		// engine type.
+		const auto &selected = timeline_widget()->get_selected_blocks();
+		QVector<OakEngineBlock *> handles;
+		handles.reserve(selected.size());
+		for (auto *b : selected) {
+			handles.append(reinterpret_cast<OakEngineBlock *>(b));
+		}
+		return handles;
 	}
 
-	Sequence *get_sequence() const
+	OakEngineSequence *get_sequence() const
 	{
-		return dynamic_cast<Sequence *>(get_connected_viewer());
+		// R8: type check via the C ABI facade predicate (replaces
+		// dynamic_cast<Sequence*>, which needed the complete engine type);
+		// the handle is shared, so the cast is a reinterpret.
+		OakEngineNode *connected = get_connected_viewer();
+		return (connected && oakengine_node_is_sequence(connected))
+				   ? reinterpret_cast<OakEngineSequence *>(connected)
+				   : nullptr;
 	}
 
 protected:
@@ -124,7 +140,7 @@ signals:
 	void block_selection_changed(const QVector<OakEngineBlock *> &selected_blocks);
 
 	void request_capture_start(const TimeRange &time,
-							 const Track::Reference &track);
+							 const TrackReference &track);
 
 	void reveal_viewer_in_project(OakEngineNode *r);
 	void reveal_viewer_in_footage_viewer(OakEngineNode *r, const TimeRange &range);

@@ -21,8 +21,10 @@
 
 #include "razor.h"
 
+#include "oakengine/node.h"
 #include "oakengine/timeline.h"
 #include "widget/timelinewidget/timelinewidget.h"
+#include "widget/timelinewidget/trackhandle.h"
 
 namespace olive
 {
@@ -47,7 +49,7 @@ void RazorTool::mouse_move(TimelineViewMouseEvent *event)
 	}
 
 	// Split at the current cursor track
-	Track::Reference split_track = event->get_track();
+	TrackReference split_track = event->get_track();
 
 	if (!split_tracks_.contains(split_track)) {
 		split_tracks_.append(split_track);
@@ -61,29 +63,42 @@ void RazorTool::mouse_release(TimelineViewMouseEvent *event)
 	// Always split at the same time
 	Rational split_time = drag_start_.get_frame();
 
-	QVector<Block *> blocks_to_split;
+	QVector<OakEngineBlock *> blocks_to_split;
 
-	foreach (const Track::Reference &track_ref, split_tracks_) {
-		Track *track = parent()->get_track_from_reference(track_ref);
+	foreach (const TrackReference &track_ref, split_tracks_) {
+		OakEngineTrack *track = parent()->get_track_from_reference(track_ref);
 
-		if (track == nullptr || track->is_locked()) {
+		if (track == nullptr || track_is_locked(track)) {
 			continue;
 		}
 
-		Block *block_at_time = track->nearest_block_before(split_time);
+		OakEngineBlock *block_at_time = oakengine_track_nearest_block_before(
+			track,
+			Timecode::time_to_timestamp(split_time, parent()->timebase(),
+										Timecode::k_round));
 
 		// Ensure there's a valid block here
-		ClipBlock *clip_at_time;
-		if (block_at_time && block_at_time->out() != split_time &&
-			(clip_at_time = dynamic_cast<ClipBlock *>(block_at_time)) &&
-			!blocks_to_split.contains(block_at_time)) {
-			blocks_to_split.append(block_at_time);
+		if (block_at_time &&
+			oakengine_node_is_clip(
+				reinterpret_cast<OakEngineNode *>(block_at_time))) {
+			int out_num = 0, out_den = 1;
+			oakengine_block_get_out_rational(
+				reinterpret_cast<const OakEngineNode *>(block_at_time),
+				&out_num, &out_den);
+			if (Rational(out_num, out_den) != split_time &&
+				!blocks_to_split.contains(block_at_time)) {
+				blocks_to_split.append(block_at_time);
 
-			// Add links if no alt is held
-			if (!(event->get_modifiers() & Qt::AltModifier)) {
-				foreach (Block *link, clip_at_time->block_links()) {
-					if (!blocks_to_split.contains(link)) {
-						blocks_to_split.append(link);
+				// Add links if no alt is held
+				if (!(event->get_modifiers() & Qt::AltModifier)) {
+					const int link_count =
+						oakengine_block_link_count(block_at_time);
+					for (int i = 0; i < link_count; i++) {
+						OakEngineBlock *link =
+							oakengine_block_link_at(block_at_time, i);
+						if (!blocks_to_split.contains(link)) {
+							blocks_to_split.append(link);
+						}
 					}
 				}
 			}
@@ -98,13 +113,13 @@ void RazorTool::mouse_release(TimelineViewMouseEvent *event)
 		// app-side BlockSplitPreservingLinksCommand push.
 		QVector<OakEngineClip *> clips;
 		clips.reserve(blocks_to_split.size());
-		foreach (Block *b, blocks_to_split) {
-			if (ClipBlock *clip = dynamic_cast<ClipBlock *>(b)) {
-				clips.append(reinterpret_cast<OakEngineClip *>(clip));
+		foreach (OakEngineBlock *b, blocks_to_split) {
+			if (oakengine_node_is_clip(reinterpret_cast<OakEngineNode *>(b))) {
+				clips.append(reinterpret_cast<OakEngineClip *>(b));
 			}
 		}
 		oakengine_sequence_split_clips(
-			reinterpret_cast<OakEngineSequence *>(parent()->sequence()),
+			parent()->sequence(),
 			clips.data(), clips.size(),
 			Timecode::time_to_timestamp(split_time, parent()->timebase(),
 										Timecode::k_round));

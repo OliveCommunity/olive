@@ -7,7 +7,8 @@
 - CMake 3.20+
 - Ninja（推荐）
 - Qt 6（含私有头文件）
-- FFmpeg 8.0+ 开发库（Ubuntu/Debian 系统源里的版本通常太旧，见下文 Linux 章节）
+- FFmpeg 6.0+ 开发库
+- OpenTimelineIO（0.16+，按下文从源码构建——大多数平台没有发行版软件包）
 - OpenImageIO
 - OpenColorIO（2.x）
 - OpenEXR
@@ -50,7 +51,23 @@ pacman -S --needed \
 
 > **注意：** Qt 6 私有头文件可能需要额外安装。如果 CMake 报告找不到私有头文件，请尝试安装 `mingw-w64-ucrt-x86_64-qt6-base-private`（如果仓库中有）。
 
-### 3. 克隆并构建
+### 3. 构建 OpenTimelineIO（必需）
+
+MSYS2 仓库没有 OpenTimelineIO 软件包，需从源码构建：
+
+```bash
+git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
+cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
+  -DOTIO_SHARED_LIBS=ON \
+  -DOTIO_PYTHON_BINDINGS=OFF \
+  -DOTIO_FIND_IMATH=ON \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
+cmake --build OpenTimelineIO/build
+cmake --install OpenTimelineIO/build
+```
+
+### 4. 克隆并构建
 
 ```bash
 # 克隆仓库
@@ -60,13 +77,14 @@ cd oak
 # 配置
 cmake -S . -B build -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
+  -DOTIO_LOCATION="/path/to/otio-install" \
   -DBUILD_QT6=ON
 
 # 构建
 cmake --build build --config Release
 ```
 
-### 4. 运行测试（可选）
+### 5. 运行测试（可选）
 
 ```bash
 ctest --test-dir build --output-on-failure -C Release
@@ -78,36 +96,30 @@ ctest --test-dir build --output-on-failure -C Release
 
 ### Debian / Ubuntu
 
-安装依赖：
+安装依赖（Ubuntu 24.04+ 自带的 FFmpeg 6.1 已满足 6.0 最低要求；更旧的发行版请按"故障排除"一节从源码编译 FFmpeg）：
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
-  cmake ninja-build pkg-config nasm \
+  cmake ninja-build pkg-config \
   qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
+  libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
   libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
   portaudio19-dev libgl1-mesa-dev libvulkan-dev libxkbcommon-dev
 ```
 
-从源码编译 FFmpeg 8.0+：
+从源码构建 OpenTimelineIO（必需，无发行版软件包）：
 
 ```bash
-git clone --branch n8.1.1 --depth 1 https://git.ffmpeg.org/ffmpeg.git ffmpeg-src
-cd ffmpeg-src
-./configure \
-  --prefix="$PWD/../ffmpeg-install" \
-  --enable-static \
-  --disable-shared \
-  --disable-doc \
-  --disable-programs \
-  --disable-avdevice \
-  --disable-network \
-  --enable-pic \
-  --enable-gpl \
-  --enable-version3
-make -j$(nproc)
-make install
-cd ..
+git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
+cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
+  -DOTIO_SHARED_LIBS=ON \
+  -DOTIO_PYTHON_BINDINGS=OFF \
+  -DOTIO_FIND_IMATH=ON \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
+cmake --build OpenTimelineIO/build
+cmake --install OpenTimelineIO/build
 ```
 
 配置并构建：
@@ -115,7 +127,7 @@ cd ..
 ```bash
 cmake -S . -B build -G Ninja \
   -DBUILD_TESTS=ON -DBUILD_QT6=ON \
-  -DFFMPEG_ROOT="$PWD/ffmpeg-install"
+  -DOTIO_LOCATION="$PWD/otio-install"
 cmake --build build --config Release
 ```
 
@@ -147,10 +159,25 @@ sudo dnf install -y \
   bzip2-devel
 ```
 
+从源码构建 OpenTimelineIO（必需，无发行版软件包）：
+
+```bash
+git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
+cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
+  -DOTIO_SHARED_LIBS=ON \
+  -DOTIO_PYTHON_BINDINGS=OFF \
+  -DOTIO_FIND_IMATH=ON \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
+cmake --build OpenTimelineIO/build
+cmake --install OpenTimelineIO/build
+```
+
 配置并构建：
 
 ```bash
-cmake -S . -B build -G Ninja -DBUILD_TESTS=ON -DBUILD_QT6=ON
+cmake -S . -B build -G Ninja -DBUILD_TESTS=ON -DBUILD_QT6=ON \
+  -DOTIO_LOCATION="$PWD/otio-install"
 cmake --build build --config Release
 ```
 
@@ -175,6 +202,7 @@ sudo pacman -S --needed \
   openexr \
   expat \
   portaudio \
+  opentimelineio \
   mesa \
   vulkan-headers \
   vulkan-icd-loader \
@@ -211,13 +239,14 @@ brew update
 brew install cmake ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat molten-vk vulkan-headers vulkan-loader
 ```
 
-构建 OpenTimelineIO（可选，如需 OTIO 支持）：
+构建 OpenTimelineIO（必需）：
 
 ```bash
 git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
 cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
   -DOTIO_SHARED_LIBS=ON \
   -DOTIO_PYTHON_BINDINGS=OFF \
+  -DOTIO_FIND_IMATH=ON \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
 cmake --build OpenTimelineIO/build
@@ -257,7 +286,8 @@ ctest --test-dir build --output-on-failure -C Release
 | `BUILD_DOXYGEN` | `OFF` | 构建 Doxygen 文档 |
 | `USE_WERROR` | `OFF` | 将警告视为错误 |
 | `BUILD_QT6` | `ON` | 使用 Qt 6 而非 Qt 5 |
-| `OTIO_LOCATION` | - | OpenTimelineIO 安装路径（可选） |
+| `OTIO_LOCATION` | - | OpenTimelineIO 安装路径（必需） |
+| `OAK_BUNDLE_OTIO` | `ON` | 随 Oak 一并安装 OTIO 运行库（发行版原生打包且 `opentimelineio` 是包依赖时设 `OFF`，如 Arch） |
 | `OCIO_LOCATION` | - | OpenColorIO 安装路径 |
 | `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` | `ON` | 构建动态渲染后端库（`liboakgl.so` / `liboakvulkan.so`） |
 
@@ -284,7 +314,7 @@ export PATH="/ucrt64/bin:$PATH"
 
 ### FFmpeg 版本太旧
 
-如果遇到 `AV_PIX_FMT_GRAYF16 was not declared in this scope` 之类的错误，说明你的 FFmpeg 版本太旧（Oak 需要 8.0+）。请从源码编译：
+Oak 要求 FFmpeg 6.0 或更新版本；版本不足时 CMake 配置阶段会报 `Could NOT find FFMPEG ... (Required is at least version "6.0")`。Ubuntu 24.04+ / Fedora / Arch / Homebrew / MSYS2 自带的版本都足够新。如果发行版过旧，请从源码编译：
 
 ```bash
 git clone --branch n8.1.1 --depth 1 https://git.ffmpeg.org/ffmpeg.git ffmpeg-src
@@ -306,3 +336,7 @@ cd ..
 ```
 
 然后在 CMake 中加上 `-DFFMPEG_ROOT="$PWD/ffmpeg-install"`。
+
+### 找不到 OpenTimelineIO
+
+OpenTimelineIO 是必需依赖。按你所在平台章节的说明从源码构建，并在 CMake 中加上 `-DOTIO_LOCATION=/path/to/otio-install`。Arch Linux 可直接安装 `opentimelineio` 包。

@@ -25,7 +25,7 @@
 #include <QDockWidget>
 
 #include "nodeparamviewitemtitlebar.h"
-#include "node/node.h"
+#include "oakutil/oaknode.h"
 
 namespace olive
 {
@@ -49,7 +49,7 @@ public:
 
 	bool is_expanded() const;
 
-	static QString get_title_bar_text_from_node(Node *n);
+	static QString get_title_bar_text_from_node(oak::Node n);
 
 public slots:
 	void set_expanded(bool e);

@@ -475,6 +475,35 @@ int oakengine_folder_index_of_child(const OakEngineNode *folder,
 	return idx >= 0 ? idx : OAKENGINE_E_NOT_FOUND;
 }
 
+int oakengine_folder_item_child_count(const OakEngineNode *folder)
+{
+	if (!folder) {
+		return 0;
+	}
+	const olive::Folder *f =
+		dynamic_cast<const olive::Folder *>(impl(
+			const_cast<OakEngineNode *>(folder)));
+	if (!f) {
+		return 0;
+	}
+	return f->item_child_count();
+}
+
+OakEngineNode *oakengine_folder_item_child(const OakEngineNode *folder,
+										   int index)
+{
+	if (!folder) {
+		return nullptr;
+	}
+	const olive::Folder *f =
+		dynamic_cast<const olive::Folder *>(impl(
+			const_cast<OakEngineNode *>(folder)));
+	if (!f || index < 0 || index >= f->item_child_count()) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineNode *>(f->item_child(index));
+}
+
 const char *oakengine_folder_child_input_key(void)
 {
 	static const QByteArray s = olive::Folder::k_child_input.toUtf8();

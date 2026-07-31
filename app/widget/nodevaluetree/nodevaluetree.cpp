@@ -20,10 +20,25 @@
 
 #include <QEvent>
 
-#include "common/nodevaluehandle.h"
 #include "oakengine/traverse.h"
 #include "oakengine/node.h"
-#include "node/value.h"
+
+namespace olive
+{
+
+/**
+ * @brief Local mirror of the engine's value-hint triple (type, index, tag)
+ * carried in the radio buttons' "hint" property.
+ */
+struct ValueHint {
+	int type = 0;
+	int index = -1;
+	QString tag;
+};
+
+}
+
+Q_DECLARE_METATYPE(olive::ValueHint)
 
 namespace olive
 {
@@ -46,23 +61,25 @@ NodeValueTree::NodeValueTree(QWidget *parent)
 	retranslate();
 }
 
-void NodeValueTree::set_node(const NodeInput &input, const Rational &time)
+void NodeValueTree::set_node(const oak::Input &input, const Rational &time)
 {
 	clear();
 
-	Node *connected_node = input.get_connected_output();
+	oak::Node connected_node = input.connected_node();
 
+	// WRAPPER-GAP: oakengine_traverse_* (traverse API has no oak:: wrapper)
 	OakEngineTraverseDb *table_db = oakengine_traverse_generate_table(
-		reinterpret_cast<OakEngineNode *>(connected_node),
+		connected_node.handle(),
 		time.numerator(), time.denominator(), time.numerator(),
 		time.denominator());
 
 	int db_index = 0;
 	int row_count = oakengine_traverse_db_row_count(table_db, db_index);
 
+	// WRAPPER-GAP: oakengine_traverse_table_element_index_for_hint
 	int index = oakengine_traverse_table_element_index_for_hint(
-		reinterpret_cast<OakEngineNode *>(input.node()),
-		input.input().toUtf8().constData(), input.element(), table_db);
+		input.node_handle(),
+		input.input_id().toUtf8().constData(), input.element(), table_db);
 
 	for (int i = 0; i < row_count; i++) {
 		QTreeWidgetItem *item = new QTreeWidgetItem(this);
@@ -72,8 +89,10 @@ void NodeValueTree::set_node(const NodeInput &input, const Rational &time)
 															 i);
 		const char *tag = oakengine_traverse_row_tag(table_db, db_index, i);
 
-		Node::ValueHint hint({ static_cast<NodeValue::Type>(type) },
-							 row_count - 1 - i, QString(tag));
+		ValueHint hint;
+		hint.type = type;
+		hint.index = row_count - 1 - i;
+		hint.tag = QString(tag);
 
 		QRadioButton *radio = new QRadioButton(this);
 		radio->setProperty("input", QVariant::fromValue(input));
@@ -98,10 +117,7 @@ void NodeValueTree::set_node(const NodeInput &input, const Rational &time)
 		item->setText(2, vs ? QString(vs) : QString());
 
 		if (source) {
-			char label_buf[256];
-			oakengine_node_get_label_and_name(source, label_buf,
-											  sizeof(label_buf));
-			item->setText(3, QString(label_buf));
+			item->setText(3, oak::Node(source).label_and_name());
 		} else {
 			item->setText(3, QString());
 		}
@@ -128,20 +144,15 @@ void NodeValueTree::radio_button_checked(bool e)
 {
 	if (e) {
 		QRadioButton *btn = static_cast<QRadioButton *>(sender());
-		Node::ValueHint hint = btn->property("hint").value<Node::ValueHint>();
-		NodeInput input = btn->property("input").value<NodeInput>();
+		ValueHint hint = btn->property("hint").value<ValueHint>();
+		oak::Input input = btn->property("input").value<oak::Input>();
 
-		// Map the full hint through the facade: type (single, or -1 to keep
-		// the input's declared type), index and tag must not be dropped.
-		int c_type = -1;
-		if (!hint.types().isEmpty()) {
-			c_type = node_value_type_to_c(hint.types().first());
-		}
+		// WRAPPER-GAP: oakengine_node_set_value_hint
 		oakengine_node_set_value_hint(
-			reinterpret_cast<OakEngineNode*>(input.node()),
-			input.input().toUtf8().constData(), input.element(),
-			c_type, hint.index(),
-			hint.tag().isEmpty() ? nullptr : hint.tag().toUtf8().constData());
+			input.node_handle(),
+			input.input_id().toUtf8().constData(), input.element(),
+			hint.type, hint.index,
+			hint.tag.isEmpty() ? nullptr : hint.tag.toUtf8().constData());
 	}
 }
 

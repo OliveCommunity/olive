@@ -31,6 +31,7 @@
 #include "markerpainting.h"
 #include "widget/menu/menu.h"
 #include "widget/menu/menushared.h"
+#include "widget/viewer/vieweroutpututils.h"
 
 namespace olive
 {
@@ -91,7 +92,7 @@ void TimeRuler::set_centered_text(bool c)
 	update();
 }
 
-void TimeRuler::set_playback_cache(PlaybackCache *cache)
+void TimeRuler::set_playback_cache(void *cache)
 {
 	if (!show_cache_status_) {
 		return;
@@ -108,11 +109,9 @@ void TimeRuler::set_playback_cache(PlaybackCache *cache)
 
 	if (playback_cache_) {
 		cache_sub_invalidated_ = bridge_->subscribe(
-			reinterpret_cast<void *>(playback_cache_),
-			OAKENGINE_EVENT_PLAYBACK_CACHE_INVALIDATED);
+			playback_cache_, OAKENGINE_EVENT_PLAYBACK_CACHE_INVALIDATED);
 		cache_sub_validated_ = bridge_->subscribe(
-			reinterpret_cast<void *>(playback_cache_),
-			OAKENGINE_EVENT_PLAYBACK_CACHE_VALIDATED);
+			playback_cache_, OAKENGINE_EVENT_PLAYBACK_CACHE_VALIDATED);
 	}
 
 	update();
@@ -285,25 +284,75 @@ void TimeRuler::drawForeground(QPainter *p, const QRectF &rect)
 
 	// If cache status is enabled
 	if (show_cache_status_ && playback_cache_ &&
-		playback_cache_->has_validated_ranges()) {
+		oakengine_playback_cache_has_validated_ranges(playback_cache_)) {
 		// FIXME: Hardcoded to get video length, if we ever need audio length, this will have to change
 		int h = oakengine_playback_cache_indicator_height();
 		QRect cache_rect(0, height() - h, width(), h);
 
-		if (ViewerOutput *viewer =
-				dynamic_cast<ViewerOutput *>(playback_cache_->parent())) {
-			int right = time_to_scene(viewer->get_video_length());
+		OakEngineNode *cache_parent =
+			oakengine_playback_cache_parent(playback_cache_);
+		int64_t len_num = 0, len_den = 1;
+		if (oakengine_viewer_from_node(cache_parent) &&
+			oakengine_viewer_get_video_length(cache_parent, &len_num,
+											  &len_den) == OAKENGINE_OK &&
+			len_den != 0) {
+			int right = time_to_scene(Rational(static_cast<int>(len_num),
+											   static_cast<int>(len_den)));
 			cache_rect.setWidth(std::max(0, right));
 		}
 
 		if (cache_rect.width() > 0) {
-			playback_cache_->draw(p, scene_to_time(get_scroll()), get_scale(),
-								  cache_rect);
+			// App-side equivalent of PlaybackCache::draw(): the
+			// oakengine_playback_cache_draw() C ABI anchors the strip at
+			// the painter viewport's top edge and cannot reproduce this
+			// bottom-anchored indicator, so the validated ranges are
+			// painted directly from oakengine_playback_cache_valid_ranges()
+			// (same fill logic as the engine's draw()).
+			const Rational start = scene_to_time(get_scroll());
+			const double scale = get_scale();
+
+			p->fillRect(cache_rect, Qt::red);
+
+			QVector<int64_t> quads(4 * 64);
+			int range_count;
+			while ((range_count = oakengine_playback_cache_valid_ranges(
+						static_cast<OakEnginePlaybackCache *>(
+							playback_cache_),
+						quads.data(), quads.size() / 4)) == quads.size() / 4) {
+				quads.resize(quads.size() * 2);
+			}
+
+			for (int i = 0; i < range_count; i++) {
+				const Rational in(static_cast<int>(quads.at(i * 4 + 0)),
+								  static_cast<int>(quads.at(i * 4 + 1)));
+				const Rational out(static_cast<int>(quads.at(i * 4 + 2)),
+								   static_cast<int>(quads.at(i * 4 + 3)));
+
+				int range_left =
+					cache_rect.left() + (in - start).to_double() * scale;
+				if (range_left >= cache_rect.right()) {
+					continue;
+				}
+
+				int range_right =
+					cache_rect.left() + (out - start).to_double() * scale;
+				if (range_right < cache_rect.left()) {
+					continue;
+				}
+
+				int adjusted_left = std::max(range_left, cache_rect.left());
+				int adjusted_right =
+					std::min(range_right, cache_rect.right());
+
+				p->fillRect(adjusted_left, cache_rect.top(),
+							adjusted_right - adjusted_left,
+							cache_rect.height(), Qt::green);
+			}
 		}
 	}
 
 	// Draw the playhead if it's on screen at the moment
-	int playhead_pos = time_to_scene(get_viewer_node()->get_playhead());
+	int playhead_pos = time_to_scene(viewer_output_playhead(get_viewer_node()));
 	p->setPen(Qt::NoPen);
 	p->setBrush(PLAYHEAD_COLOR);
 	draw_playhead(p, playhead_pos, line_bottom);

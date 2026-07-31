@@ -26,12 +26,16 @@
 #include <QOpenGLWidget>
 #include <QTimer>
 
-#include "audio/audiovisualwaveform.h"
+#include <olive/core/core.h>
+
 #include "oakutil/define.h"
-#include "render/audiowaveformcache.h"
 
 namespace olive
 {
+
+// Same namespace bridge the engine audio headers used to provide
+// (unqualified Rational/AudioParams/SampleBuffer inside namespace olive).
+using namespace core;
 
 class AudioMonitor : public QOpenGLWidget {
 	Q_OBJECT
@@ -87,8 +91,13 @@ private:
 
 	void update_values_from_waveform(QVector<double> &v, qint64 delta_time);
 
+	/**
+	 * @brief Fold a per-channel min/max summary (POD arrays from
+	 * oakengine_waveform_cache_get_summary()) into the internal values.
+	 */
 	void audio_visual_waveform_sample_to_internal_values(
-		const AudioVisualWaveform::Sample &in, QVector<double> &out);
+		const double *min_vals, const double *max_vals, int channels,
+		QVector<double> &out);
 
 	void push_value(const QVector<double> &v);
 

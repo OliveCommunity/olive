@@ -28,17 +28,71 @@
 #include "oakutil/range.h"
 #include "common/configwrapper.h"
 #include "core.h"
-#include "node/block/gap/gap.h"
-#include "node/block/transition/transition.h"
 #include "oakengine/node.h"
 #include "oakengine/undo.h"
 #include "oakengine/timeline.h"
 #include "pointer.h"
-#include "timeline/timelineundopointer.h"
 #include "widget/timeruler/timeruler.h"
+#include "widget/timelinewidget/trackhandle.h"
 
 namespace olive
 {
+
+namespace
+{
+
+/// Block::in() as rational seconds.
+Rational block_in_rational(const OakEngineBlock *block)
+{
+	int num = 0, den = 1;
+	oakengine_block_get_in_rational(
+		reinterpret_cast<const OakEngineNode *>(block), &num, &den);
+	return Rational(num, den);
+}
+
+/// Block::out() as rational seconds.
+Rational block_out_rational(const OakEngineBlock *block)
+{
+	int num = 0, den = 1;
+	oakengine_block_get_out_rational(
+		reinterpret_cast<const OakEngineNode *>(block), &num, &den);
+	return Rational(num, den);
+}
+
+/**
+ * @brief ClipBlock::block_links() through the engine C ABI
+ * (oakengine_block_link_count/at: Node::links() filtered to blocks, same
+ * content and ordering for a ClipBlock).
+ */
+QVector<OakEngineBlock *> block_links_of(OakEngineBlock *block)
+{
+	QVector<OakEngineBlock *> links;
+	const int n = oakengine_block_link_count(block);
+	links.reserve(n);
+	for (int i = 0; i < n; i++) {
+		links.append(oakengine_block_link_at(block, i));
+	}
+	return links;
+}
+
+/**
+ * @brief Track::to_reference() facade: the app TrackReference mirror of an
+ * engine Track, through the C ABI (same pattern as
+ * ghost_block_track_reference()). Type ordinals are pinned to the engine
+ * Track::Type ordinals by the static_asserts in trackreferencehandle.h.
+ */
+TrackReference track_reference_of(OakEngineTrack *track)
+{
+	if (!track) {
+		return TrackReference();
+	}
+	auto *h = reinterpret_cast<OakEngineNode *>(track);
+	return TrackReference(
+		static_cast<TrackReference::Type>(oakengine_track_get_type(h)),
+		oakengine_track_get_index(h));
+}
+
+} // namespace
 
 PointerTool::PointerTool(TimelineWidget *parent)
 	: TimelineTool(parent)
@@ -53,17 +107,20 @@ PointerTool::PointerTool(TimelineWidget *parent)
 
 void PointerTool::mouse_press(TimelineViewMouseEvent *event)
 {
-	const Track::Reference &track_ref = event->get_track();
+	const TrackReference &track_ref = event->get_track();
 
 	// Determine if item clicked on is selectable
 	clicked_item_ = parent()->get_item_at_scene_pos(event->get_coordinates());
-	ClipBlock *clip_clicked_item = dynamic_cast<ClipBlock *>(clicked_item_);
+	OakEngineClip *clip_clicked_item =
+		oakengine_node_is_clip(reinterpret_cast<OakEngineNode *>(clicked_item_)) ?
+			reinterpret_cast<OakEngineClip *>(clicked_item_) :
+			nullptr;
 
 	can_rubberband_select_ = false;
 
 	bool selectable_item =
 		(clicked_item_ &&
-		 !parent()->get_track_from_reference(track_ref)->is_locked());
+		 !track_is_locked(parent()->get_track_from_reference(track_ref)));
 
 	if (selectable_item) {
 		// Cache the clip's type for use later
@@ -79,15 +136,16 @@ void PointerTool::mouse_press(TimelineViewMouseEvent *event)
 
 		// If we're not in a trim mode, we must be in a move mode (provided the tool allows movement and
 		// the block is not a gap)
-		if (drag_movement_mode_ == Timeline::k_none && movement_allowed_ &&
-			!dynamic_cast<GapBlock *>(clicked_item_)) {
-			drag_movement_mode_ = Timeline::k_move;
+		if (drag_movement_mode_ == TimelineApp::k_none && movement_allowed_ &&
+			!oakengine_block_is_gap(
+				reinterpret_cast<OakEngineBlock *>(clicked_item_))) {
+			drag_movement_mode_ = TimelineApp::k_move;
 		}
 
 		// If this item is already selected, no further selection needs to be made
 		if (parent()->is_block_selected(clicked_item_)) {
 			// Collect item deselections
-			QVector<Block *> deselected_blocks;
+			QVector<OakEngineBlock *> deselected_blocks;
 
 			// If shift is held, deselect it
 			if (event->get_modifiers() & Qt::ShiftModifier) {
@@ -98,7 +156,7 @@ void PointerTool::mouse_press(TimelineViewMouseEvent *event)
 				if (clip_clicked_item &&
 					!(event->get_modifiers() & Qt::AltModifier)) {
 					parent()->set_block_links_selected(clip_clicked_item, false);
-					deselected_blocks.append(clip_clicked_item->block_links());
+					deselected_blocks.append(block_links_of(reinterpret_cast<OakEngineBlock *>(clip_clicked_item)));
 				}
 			}
 
@@ -115,7 +173,7 @@ void PointerTool::mouse_press(TimelineViewMouseEvent *event)
 
 	if (selectable_item) {
 		// Collect item selections
-		QVector<Block *> selected_blocks;
+		QVector<OakEngineBlock *> selected_blocks;
 
 		// Select this item
 		parent()->add_selection(clicked_item_);
@@ -124,7 +182,7 @@ void PointerTool::mouse_press(TimelineViewMouseEvent *event)
 		// If not holding alt, select all links as well
 		if (clip_clicked_item && !(event->get_modifiers() & Qt::AltModifier)) {
 			parent()->set_block_links_selected(clip_clicked_item, true);
-			selected_blocks.append(clip_clicked_item->block_links());
+			selected_blocks.append(block_links_of(reinterpret_cast<OakEngineBlock *>(clip_clicked_item)));
 		}
 
 		parent()->signal_selected_blocks(selected_blocks);
@@ -136,7 +194,7 @@ void PointerTool::mouse_press(TimelineViewMouseEvent *event)
 		 &&
 		 (!selectable_item ||
 		  drag_movement_mode_ ==
-			  Timeline::
+			  TimelineApp::
 				  k_none)); // And if no item was selected OR the item isn't draggable
 
 	if (can_rubberband_select_) {
@@ -176,7 +234,7 @@ void PointerTool::mouse_move(TimelineViewMouseEvent *event)
 			snap_points_.clear();
 
 			// If we're performing an action, we can initiate ghosts
-			if (drag_movement_mode_ != Timeline::k_none) {
+			if (drag_movement_mode_ != TimelineApp::k_none) {
 				initiate_drag(clicked_item_, drag_movement_mode_,
 							 event->get_modifiers());
 			}
@@ -219,15 +277,15 @@ void PointerTool::hover_move(TimelineViewMouseEvent *event)
 {
 	if (trimming_allowed_) {
 		// No dragging, but we still want to process cursors
-		Block *block_at_cursor =
+		OakEngineBlock *block_at_cursor =
 			parent()->get_item_at_scene_pos(event->get_coordinates());
 
 		if (block_at_cursor) {
 			switch (is_cursor_in_trim_handle(block_at_cursor, event->get_scene_x())) {
-			case Timeline::k_trim_in:
+			case TimelineApp::k_trim_in:
 				parent()->setCursor(Qt::SizeHorCursor);
 				break;
-			case Timeline::k_trim_out:
+			case TimelineApp::k_trim_out:
 				parent()->setCursor(Qt::SizeHorCursor);
 				break;
 			default:
@@ -247,20 +305,20 @@ void set_ghost_to_slide_mode(TimelineViewGhostItem *g)
 	g->set_data(TimelineViewGhostItem::k_ghost_is_sliding, true);
 }
 
-void PointerTool::initiate_drag_internal(Block *clicked_item,
-									   Timeline::MovementMode trim_mode,
+void PointerTool::initiate_drag_internal(OakEngineBlock *clicked_item,
+									   TimelineApp::MovementMode trim_mode,
 									   Qt::KeyboardModifiers modifiers,
 									   bool dont_roll_trims,
 									   bool allow_nongap_rolling,
 									   bool slide_instead_of_moving)
 {
 	// Get list of selected blocks
-	QVector<Block *> clips = parent()->get_selected_blocks();
+	QVector<OakEngineBlock *> clips = parent()->get_selected_blocks();
 
-	if (trim_mode == Timeline::k_move) {
+	if (trim_mode == TimelineApp::k_move) {
 		// Gaps are not allowed to move, and since we only allow moving one block type at a time,
 		// dragging a gap is a no-op
-		if (dynamic_cast<GapBlock *>(clicked_item)) {
+		if (oakengine_block_is_gap(clicked_item)) {
 			return;
 		}
 
@@ -269,18 +327,23 @@ void PointerTool::initiate_drag_internal(Block *clicked_item,
 		if (!slide_instead_of_moving) {
 			// If the user tries to move a transition without moving the clip it belongs to, we turn
 			// this into a slide
-			foreach (Block *block, clips) {
-				if (TransitionBlock *transit =
-						dynamic_cast<TransitionBlock *>(block)) {
-					if (!can_transition_move(transit, clips)) {
+			foreach (OakEngineBlock *block, clips) {
+				if (oakengine_node_is_transition(
+						reinterpret_cast<OakEngineNode *>(block))) {
+					if (!can_transition_move(block, clips)) {
 						slide_instead_of_moving = true;
 						break;
 					}
-				} else if (ClipBlock *clip = dynamic_cast<ClipBlock *>(block)) {
-					if ((clip->in_transition() &&
-						 !can_transition_move(clip->in_transition(), clips)) ||
-						(clip->out_transition() &&
-						 !can_transition_move(clip->out_transition(), clips))) {
+				} else if (oakengine_node_is_clip(
+							   reinterpret_cast<OakEngineNode *>(block))) {
+					OakEngineBlock *in_transit =
+						oakengine_clip_in_transition(block);
+					OakEngineBlock *out_transit =
+						oakengine_clip_out_transition(block);
+					if ((in_transit &&
+						 !can_transition_move(in_transit, clips)) ||
+						(out_transit &&
+						 !can_transition_move(out_transit, clips))) {
 						slide_instead_of_moving = true;
 						break;
 					}
@@ -298,117 +361,129 @@ void PointerTool::initiate_drag_internal(Block *clicked_item,
 			// For slides to be legal, we make all blocks "contiguous". This means that only one series
 			// of blocks can move at a time and prevents.
 
-			QHash<Track *, Block *> earliest_block_on_track;
-			QHash<Track *, Block *> latest_block_on_track;
+			QHash<OakEngineTrack *, OakEngineBlock *> earliest_block_on_track;
+			QHash<OakEngineTrack *, OakEngineBlock *> latest_block_on_track;
 
-			foreach (Block *this_block, clips) {
-				Block *current_earliest =
-					earliest_block_on_track.value(this_block->track(), nullptr);
+			foreach (OakEngineBlock *this_block, clips) {
+				OakEngineTrack *this_track =
+					oakengine_block_get_track(this_block);
+				OakEngineBlock *current_earliest =
+					earliest_block_on_track.value(this_track, nullptr);
 				if (!current_earliest ||
-					this_block->in() < current_earliest->in()) {
-					earliest_block_on_track.insert(this_block->track(),
-												   this_block);
+					block_in_rational(this_block) <
+						block_in_rational(current_earliest)) {
+					earliest_block_on_track.insert(this_track, this_block);
 				}
 
-				Block *current_latest =
-					latest_block_on_track.value(this_block->track(), nullptr);
+				OakEngineBlock *current_latest =
+					latest_block_on_track.value(this_track, nullptr);
 				if (!current_latest ||
-					this_block->out() > current_earliest->out()) {
-					latest_block_on_track.insert(this_block->track(),
-												 this_block);
+					block_out_rational(this_block) >
+						block_out_rational(current_earliest)) {
+					latest_block_on_track.insert(this_track, this_block);
 				}
 			}
 
 			for (auto i = earliest_block_on_track.constBegin();
 				 i != earliest_block_on_track.constEnd(); i++) {
 				// Make a contiguous stream
-				Track *track = i.key();
-				Block *earliest = i.value();
-				Block *latest = latest_block_on_track.value(i.key());
+				OakEngineTrack *track = i.key();
+				OakEngineBlock *earliest = i.value();
+				OakEngineBlock *latest = latest_block_on_track.value(i.key());
+
+				OakEngineBlock *earliest_previous =
+					oakengine_block_prev(earliest);
+				OakEngineBlock *latest_next = oakengine_block_next(latest);
 
 				// First we add the block that's out trimming, the one prior to the earliest
 				{
 					TimelineViewGhostItem *earliest_ghost;
 					bool slide_with_earliest_previous = true;
-					if (sliding_due_to_transition && earliest->previous()) {
-						if (TransitionBlock *transit =
-								dynamic_cast<TransitionBlock *>(earliest)) {
-							if (earliest->previous() !=
-								transit->connected_out_block()) {
+					if (sliding_due_to_transition && earliest_previous) {
+						if (oakengine_node_is_transition(
+								reinterpret_cast<OakEngineNode *>(earliest))) {
+							if (earliest_previous !=
+								oakengine_transition_connected_out_block(
+									earliest)) {
 								slide_with_earliest_previous = false;
 							}
-						} else if (ClipBlock *clip =
-									   dynamic_cast<ClipBlock *>(earliest)) {
-							if (earliest->previous() != clip->in_transition()) {
+						} else if (oakengine_node_is_clip(
+									   reinterpret_cast<OakEngineNode *>(
+										   earliest))) {
+							if (earliest_previous !=
+								oakengine_clip_in_transition(earliest)) {
 								slide_with_earliest_previous = false;
 							}
 						}
 					}
 
-					if (earliest->previous() && slide_with_earliest_previous) {
-						earliest_ghost = add_ghost_from_block(earliest->previous(),
-														   Timeline::k_trim_out);
+					if (earliest_previous && slide_with_earliest_previous) {
+						earliest_ghost = add_ghost_from_block(earliest_previous,
+														   TimelineApp::k_trim_out);
 					} else {
-						earliest_ghost = add_ghost_from_null(earliest->in(),
-														  earliest->in(),
-														  track->to_reference(),
-														  Timeline::k_trim_out);
+						earliest_ghost = add_ghost_from_null(block_in_rational(earliest),
+														  block_in_rational(earliest),
+														  track_reference_of(track),
+														  TimelineApp::k_trim_out);
 					}
 					set_ghost_to_slide_mode(earliest_ghost);
 				}
 
 				// Then we add the block that's in trimming, the one after the latest
-				if (latest->next()) {
+				if (latest_next) {
 					TimelineViewGhostItem *latest_ghost;
 
 					bool slide_with_latest_next = true;
 					if (sliding_due_to_transition) {
-						if (TransitionBlock *transit =
-								dynamic_cast<TransitionBlock *>(latest)) {
-							if (latest->next() !=
-								transit->connected_in_block()) {
+						if (oakengine_node_is_transition(
+								reinterpret_cast<OakEngineNode *>(latest))) {
+							if (latest_next !=
+								oakengine_transition_connected_in_block(
+									latest)) {
 								slide_with_latest_next = false;
 							}
-						} else if (ClipBlock *clip =
-									   dynamic_cast<ClipBlock *>(latest)) {
-							if (latest->next() != clip->out_transition()) {
+						} else if (oakengine_node_is_clip(
+									   reinterpret_cast<OakEngineNode *>(
+										   latest))) {
+							if (latest_next !=
+								oakengine_clip_out_transition(latest)) {
 								slide_with_latest_next = false;
 							}
 						}
 					}
 
 					if (slide_with_latest_next) {
-						latest_ghost = add_ghost_from_block(latest->next(),
-														 Timeline::k_trim_in);
+						latest_ghost = add_ghost_from_block(latest_next,
+														 TimelineApp::k_trim_in);
 					} else {
-						latest_ghost = add_ghost_from_null(latest->out(),
-														latest->out(),
-														track->to_reference(),
-														Timeline::k_trim_in);
+						latest_ghost = add_ghost_from_null(block_out_rational(latest),
+														block_out_rational(latest),
+														track_reference_of(track),
+														TimelineApp::k_trim_in);
 					}
 					set_ghost_to_slide_mode(latest_ghost);
 				}
 
 				// Finally, we add all of the moving blocks in between
-				Block *b = nullptr;
+				OakEngineBlock *b = nullptr;
 				do {
 					// On first run-through, set to earliest only. From then on, set to the next of the last
 					// in the loop.
 					if (b) {
-						b = b->next();
+						b = oakengine_block_next(b);
 					} else {
 						b = earliest;
 					}
 
 					TimelineViewGhostItem *between_ghost =
-						add_ghost_from_block(b, Timeline::k_move);
+						add_ghost_from_block(b, TimelineApp::k_move);
 					set_ghost_to_slide_mode(between_ghost);
 				} while (b != latest);
 			}
 		} else {
 			// Prepare for a standard pointer move by creating ghosts for them and any related blocks
-			foreach (Block *block, clips) {
-				if (dynamic_cast<GapBlock *>(block)) {
+			foreach (OakEngineBlock *block, clips) {
+				if (oakengine_block_is_gap(block)) {
 					continue;
 				}
 
@@ -416,14 +491,15 @@ void PointerTool::initiate_drag_internal(Block *clicked_item,
 				auto ghost = add_ghost_from_block(block, trim_mode, true);
 				Q_UNUSED(ghost)
 
-				if (ClipBlock *clip = dynamic_cast<ClipBlock *>(block)) {
-					if (clip->out_transition()) {
-						add_ghost_from_block(clip->out_transition(), trim_mode,
-										  true);
+				if (oakengine_node_is_clip(
+						reinterpret_cast<OakEngineNode *>(block))) {
+					if (OakEngineBlock *out_transit =
+							oakengine_clip_out_transition(block)) {
+						add_ghost_from_block(out_transit, trim_mode, true);
 					}
-					if (clip->in_transition()) {
-						add_ghost_from_block(clip->in_transition(), trim_mode,
-										  true);
+					if (OakEngineBlock *in_transit =
+							oakengine_clip_in_transition(block)) {
+						add_ghost_from_block(in_transit, trim_mode, true);
 					}
 				}
 			}
@@ -437,7 +513,7 @@ void PointerTool::initiate_drag_internal(Block *clicked_item,
 			is_clip_trimmable(clicked_item, clips, trim_mode);
 
 		// Create ghosts for trimming
-		for (Block *clip_item : clips) {
+		for (OakEngineBlock *clip_item : clips) {
 			if (clip_item != clicked_item &&
 				(!multitrim_enabled ||
 				 !is_clip_trimmable(clip_item, clips, trim_mode))) {
@@ -446,7 +522,7 @@ void PointerTool::initiate_drag_internal(Block *clicked_item,
 				continue;
 			}
 
-			Block *block = clip_item;
+			OakEngineBlock *block = clip_item;
 
 			// Create ghost for this block
 			TimelineViewGhostItem *ghost = add_ghost_from_block(block, trim_mode);
@@ -455,22 +531,21 @@ void PointerTool::initiate_drag_internal(Block *clicked_item,
 			// transition than a trim/roll
 			bool treat_trim_as_slide = false;
 
-			ClipBlock *cb = dynamic_cast<ClipBlock *>(block);
-			if (cb) {
+			if (oakengine_node_is_clip(reinterpret_cast<OakEngineNode *>(block))) {
 				// See if this clip has a transition attached, and move it with the trim if so
-				TransitionBlock *connected_transition;
+				OakEngineBlock *connected_transition;
 
 				// Get appropriate transition for the side of the clip
-				if (trim_mode == Timeline::k_trim_in) {
-					connected_transition = cb->in_transition();
+				if (trim_mode == TimelineApp::k_trim_in) {
+					connected_transition = oakengine_clip_in_transition(block);
 				} else {
-					connected_transition = cb->out_transition();
+					connected_transition = oakengine_clip_out_transition(block);
 				}
 
 				if (connected_transition) {
 					// We found a transition, we'll make this a "slide" action
 					TimelineViewGhostItem *transition_ghost = add_ghost_from_block(
-						connected_transition, Timeline::k_move);
+						connected_transition, TimelineApp::k_move);
 
 					// This will in effect be a slide with the transition moving between two other blocks
 					set_ghost_to_slide_mode(ghost);
@@ -485,29 +560,32 @@ void PointerTool::initiate_drag_internal(Block *clicked_item,
 			// Standard pointer trimming in reality is a "roll" edit with an adjacent gap (one that may
 			// or may not exist already)
 			if (!dont_roll_trims) {
-				Block *adjacent = nullptr;
+				OakEngineBlock *adjacent = nullptr;
 
 				// Determine which block is adjacent
-				if (trim_mode == Timeline::k_trim_in) {
-					adjacent = block->previous();
+				if (trim_mode == TimelineApp::k_trim_in) {
+					adjacent = oakengine_block_prev(block);
 				} else {
-					adjacent = block->next();
+					adjacent = oakengine_block_next(block);
 				}
 
 				// See if we can roll the adjacent or if we'll need to create our own gap
-				if (!dynamic_cast<GapBlock *>(block) && !allow_nongap_rolling &&
-					adjacent && !dynamic_cast<GapBlock *>(adjacent) &&
-					!(dynamic_cast<TransitionBlock *>(block) &&
-					  ((trim_mode == Timeline::k_trim_in &&
-						static_cast<TransitionBlock *>(block)
-								->connected_out_block() == adjacent) ||
-					   (trim_mode == Timeline::k_trim_out &&
-						static_cast<TransitionBlock *>(block)
-								->connected_in_block() == adjacent)))) {
+				bool block_is_transition = oakengine_node_is_transition(
+					reinterpret_cast<OakEngineNode *>(block));
+				if (!oakengine_block_is_gap(block) &&
+					!allow_nongap_rolling && adjacent &&
+					!oakengine_block_is_gap(adjacent) &&
+					!(block_is_transition &&
+					  ((trim_mode == TimelineApp::k_trim_in &&
+						oakengine_transition_connected_out_block(block) ==
+							adjacent) ||
+					   (trim_mode == TimelineApp::k_trim_out &&
+						oakengine_transition_connected_in_block(block) ==
+							adjacent)))) {
 					adjacent = nullptr;
 				}
 
-				Timeline::MovementMode flipped_mode = flip_trim_mode(trim_mode);
+				TimelineApp::MovementMode flipped_mode = flip_trim_mode(trim_mode);
 				QVector<TimelineViewGhostItem *> adjacent_ghosts;
 
 				if (adjacent) {
@@ -518,23 +596,26 @@ void PointerTool::initiate_drag_internal(Block *clicked_item,
 					// FIXME: The check for `clips.size() == 1` may not be necessary, but I don't know yet.
 					//        I'm only including it to prevent any potentially unintended behavior.
 					if (clips.size() == 1 && !(modifiers & Qt::AltModifier)) {
-						if (ClipBlock *adjacent_clip =
-								dynamic_cast<ClipBlock *>(adjacent)) {
-							for (Block *adjacent_link :
-								 adjacent_clip->block_links()) {
+						if (oakengine_node_is_clip(
+								reinterpret_cast<OakEngineNode *>(adjacent))) {
+							for (OakEngineBlock *adjacent_link :
+								 block_links_of(adjacent)) {
 								adjacent_ghosts.append(add_ghost_from_block(
 									adjacent_link, flipped_mode));
 							}
 						}
 					}
-				} else if (trim_mode == Timeline::k_trim_in || block->next()) {
-					Rational null_ghost_pos = (trim_mode == Timeline::k_trim_in) ?
-												  block->in() :
-												  block->out();
+				} else if (trim_mode == TimelineApp::k_trim_in ||
+						   oakengine_block_next(block)) {
+					Rational null_ghost_pos = (trim_mode == TimelineApp::k_trim_in) ?
+												  block_in_rational(block) :
+												  block_out_rational(block);
 
 					adjacent_ghosts.append(add_ghost_from_null(
 						null_ghost_pos, null_ghost_pos,
-						clip_item->track()->to_reference(), flipped_mode));
+						track_reference_of(
+							oakengine_block_get_track(clip_item)),
+						flipped_mode));
 				}
 
 				// If we have an adjacent block (for any reason), this is a roll edit and the adjacent is
@@ -547,7 +628,7 @@ void PointerTool::initiate_drag_internal(Block *clicked_item,
 						if (treat_trim_as_slide) {
 							// We're sliding a transition rather than a pure trim/roll
 							set_ghost_to_slide_mode(adjacent_ghost);
-						} else if (dynamic_cast<GapBlock *>(block)) {
+						} else if (oakengine_block_is_gap(block)) {
 							ghost->set_data(
 								TimelineViewGhostItem::k_trim_should_be_ignored,
 								true);
@@ -563,11 +644,11 @@ void PointerTool::initiate_drag_internal(Block *clicked_item,
 	}
 }
 
-bool PointerTool::can_transition_move(TransitionBlock *transit,
-									const QVector<Block *> &clips)
+bool PointerTool::can_transition_move(OakEngineBlock *transit,
+									const QVector<OakEngineBlock *> &clips)
 {
-	Block *out = transit->connected_out_block();
-	Block *in = transit->connected_in_block();
+	OakEngineBlock *out = oakengine_transition_connected_out_block(transit);
+	OakEngineBlock *in = oakengine_transition_connected_in_block(transit);
 
 	if ((out && !clips.contains(out)) || (in && !clips.contains(in))) {
 		return false;
@@ -619,16 +700,16 @@ void PointerTool::process_drag(const TimelineCoordinate &mouse_pos)
 	// Perform movement
 	foreach (TimelineViewGhostItem *ghost, parent()->get_ghost_items()) {
 		switch (ghost->get_mode()) {
-		case Timeline::k_none:
+		case TimelineApp::k_none:
 			break;
-		case Timeline::k_trim_in:
+		case TimelineApp::k_trim_in:
 			ghost->set_in_adjustment(time_movement);
 			ghost->set_media_in_adjustment(time_movement);
 			break;
-		case Timeline::k_trim_out:
+		case TimelineApp::k_trim_out:
 			ghost->set_out_adjustment(time_movement);
 			break;
-		case Timeline::k_move: {
+		case TimelineApp::k_move: {
 			ghost->set_in_adjustment(time_movement);
 			ghost->set_out_adjustment(time_movement);
 
@@ -656,7 +737,7 @@ void PointerTool::process_drag(const TimelineCoordinate &mouse_pos)
 
 struct GhostBlockPair {
 	TimelineViewGhostItem *ghost;
-	Block *block;
+	OakEngineBlock *block;
 };
 
 void PointerTool::finish_drag(TimelineViewMouseEvent *event)
@@ -668,14 +749,14 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 	// Sort ghosts depending on which ones are trimming, which are moving, and which are sliding
 	foreach (TimelineViewGhostItem *ghost, parent()->get_ghost_items()) {
 		if (ghost->has_been_adjusted()) {
-			Block *b = QtUtils::value_to_ptr<Block>(
+			OakEngineBlock *b = QtUtils::value_to_ptr<OakEngineBlock>(
 				ghost->get_data(TimelineViewGhostItem::k_attached_block));
 
 			if (ghost->get_data(TimelineViewGhostItem::k_ghost_is_sliding).toBool()) {
 				blocks_sliding.append({ ghost, b });
-			} else if (ghost->get_mode() == Timeline::k_move) {
+			} else if (ghost->get_mode() == TimelineApp::k_move) {
 				blocks_moving.append({ ghost, b });
-			} else if (Timeline::is_a_trim_mode(ghost->get_mode())) {
+			} else if (TimelineApp::is_a_trim_mode(ghost->get_mode())) {
 				blocks_trimming.append({ ghost, b });
 			}
 		}
@@ -700,7 +781,8 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 					command,
 					oakengine_block_trim_command(
 						reinterpret_cast<void *>(
-							parent()->get_track_from_reference(ghost->get_adjusted_track())),
+							parent()->get_track_from_reference(
+								ghost->get_adjusted_track())),
 						reinterpret_cast<void *>(p.block),
 						ghost->get_adjusted_length().numerator(),
 						ghost->get_adjusted_length().denominator(),
@@ -717,7 +799,7 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 			TimelineWidgetSelections new_sel = parent()->get_selections();
 			TimelineViewGhostItem *reference_ghost =
 				blocks_trimming.first().ghost;
-			if (reference_ghost->get_mode() == Timeline::k_trim_in) {
+			if (reference_ghost->get_mode() == TimelineApp::k_trim_in) {
 				new_sel.trim_in(reference_ghost->get_in_adjustment());
 			} else {
 				new_sel.trim_out(reference_ghost->get_out_adjustment());
@@ -733,7 +815,7 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 
 		// If we're not duplicating, "remove" the clips and replace them with gaps
 		if (!duplicate_clips) {
-			QVector<Block *> blocks_to_delete(blocks_moving.size());
+			QVector<OakEngineBlock *> blocks_to_delete(blocks_moving.size());
 
 			for (int i = 0; i < blocks_moving.size(); i++) {
 				blocks_to_delete[i] = blocks_moving.at(i).block;
@@ -748,39 +830,39 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 			insert_gaps_at_ghost_destination(command);
 		}
 
-		QMap<Node *, Node *> relinks;
+		QMap<OakEngineBlock *, OakEngineBlock *> relinks;
 
 		// Now we can re-add each clip
 		foreach (const GhostBlockPair &p, blocks_moving) {
-			Block *block = p.block;
+			OakEngineBlock *block = p.block;
 
 			if (duplicate_clips) {
 				// Duplicate rather than move
 				// Place the copy instead of the original block
-				Block *new_block =
-					reinterpret_cast<Block *>(oakengine_node_copy_in_graph(
+				OakEngineBlock *new_block =
+					reinterpret_cast<OakEngineBlock *>(oakengine_node_copy_in_graph(
 						reinterpret_cast<OakEngineNode*>(block), command));
 				relinks.insert(block, new_block);
 				block = new_block;
 
-				if (ClipBlock *new_clip = dynamic_cast<ClipBlock *>(block)) {
+				if (oakengine_node_is_clip(
+						reinterpret_cast<OakEngineNode *>(block))) {
 					oakengine_clip_add_cache_passthrough(
-						reinterpret_cast<OakEngineClip *>(new_clip),
+						reinterpret_cast<OakEngineClip *>(block),
 						reinterpret_cast<OakEngineClip *>(p.block));
 				}
 			}
 
-			const Track::Reference &track_ref = p.ghost->get_adjusted_track();
-			oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(sequence()->track_list(track_ref.type())), track_ref.index(), reinterpret_cast<void *>(block), core::Timecode::time_to_timestamp(p.ghost->get_adjusted_in(), parent()->timebase())));
+			const TrackReference track_ref = p.ghost->get_adjusted_track();
+			oakengine_undo_command_multi_add_child(command, oakengine_track_place_block_command(reinterpret_cast<void *>(oakengine_sequence_track_list(sequence(), track_ref.type())), track_ref.index(), reinterpret_cast<void *>(block), core::Timecode::time_to_timestamp(p.ghost->get_adjusted_in(), parent()->timebase())));
 		}
 
 		if (!relinks.empty()) {
 			for (auto it = relinks.cbegin(); it != relinks.cend(); it++) {
-				// Re-connect links on duplicate clips
-				for (auto jt = it.key()->links().cbegin();
-					 jt != it.key()->links().cend(); jt++) {
-					Node *link = *jt;
-					Node *copy_link = relinks.value(link);
+				// Re-connect links on duplicate clips (block links, same
+				// content as Node::links() for a ClipBlock)
+				for (OakEngineBlock *link : block_links_of(it.key())) {
+					OakEngineBlock *copy_link = relinks.value(link);
 					if (copy_link) {
 					oakengine_undo_command_multi_add_child(command, (void *)(oakengine_node_link_command(
 								reinterpret_cast<OakEngineNode*>(it.value()),
@@ -789,23 +871,21 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 				}
 
 				// Re-connect transitions where applicable
-				if (ClipBlock *og_clip = dynamic_cast<ClipBlock *>(it.key())) {
-					ClipBlock *cp_clip = static_cast<ClipBlock *>(it.value());
-
-					TransitionBlock *og_in_transition =
-						og_clip->in_transition();
-					TransitionBlock *og_out_transition =
-						og_clip->out_transition();
+				if (oakengine_node_is_clip(
+						reinterpret_cast<OakEngineNode *>(it.key()))) {
+					OakEngineBlock *og_in_transition =
+						oakengine_clip_in_transition(it.key());
+					OakEngineBlock *og_out_transition =
+						oakengine_clip_out_transition(it.key());
 
 					if (og_in_transition &&
 						relinks.contains(og_in_transition)) {
-						TransitionBlock *cp_in_transition =
-							static_cast<TransitionBlock *>(
-								relinks.value(og_in_transition));
+						OakEngineBlock *cp_in_transition =
+							relinks.value(og_in_transition);
 						oakengine_undo_command_multi_add_child(
 							command,
 							oakengine_node_connect_command(
-								reinterpret_cast<OakEngineNode *>(cp_clip),
+								reinterpret_cast<OakEngineNode *>(it.value()),
 								reinterpret_cast<OakEngineNode *>(cp_in_transition),
 								QLatin1String(oakengine_transition_in_block_input_id()).toUtf8().constData(),
 								-1));
@@ -813,13 +893,12 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 
 					if (og_out_transition &&
 						relinks.contains(og_out_transition)) {
-						TransitionBlock *cp_out_transition =
-							static_cast<TransitionBlock *>(
-								relinks.value(og_out_transition));
+						OakEngineBlock *cp_out_transition =
+							relinks.value(og_out_transition);
 						oakengine_undo_command_multi_add_child(
 							command,
 							oakengine_node_connect_command(
-								reinterpret_cast<OakEngineNode *>(cp_clip),
+								reinterpret_cast<OakEngineNode *>(it.value()),
 								reinterpret_cast<OakEngineNode *>(cp_out_transition),
 								QLatin1String(oakengine_transition_out_block_input_id()).toUtf8().constData(),
 								-1));
@@ -840,26 +919,27 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 		// Assume that the blocks are contiguous per track as set up in InitiateGhostsInternal()
 
 		// All we need to do is sort them by track and order them
-		QHash<Track::Reference, QList<Block *>> slide_info;
-		QHash<Track::Reference, Block *> in_adjacents;
-		QHash<Track::Reference, Block *> out_adjacents;
+		QHash<TrackReference, QList<OakEngineBlock *>> slide_info;
+		QHash<TrackReference, OakEngineBlock *> in_adjacents;
+		QHash<TrackReference, OakEngineBlock *> out_adjacents;
 		Rational movement;
 
 		foreach (const GhostBlockPair &p, blocks_sliding) {
-			const Track::Reference &track = p.ghost->get_track();
+			const TrackReference &track = p.ghost->get_track();
 
 			switch (p.ghost->get_mode()) {
-			case Timeline::k_none:
+			case TimelineApp::k_none:
 				break;
-			case Timeline::k_move: {
+			case TimelineApp::k_move: {
 				// These all should have moved uniformly, so as long as this is set, it should be fine
 				movement = p.ghost->get_in_adjustment();
 
-				QList<Block *> &blocks_on_this_track = slide_info[track];
+				QList<OakEngineBlock *> &blocks_on_this_track = slide_info[track];
 				bool inserted = false;
 
 				for (int i = 0; i < blocks_on_this_track.size(); i++) {
-					if (blocks_on_this_track.at(i)->in() > p.block->in()) {
+					if (block_in_rational(blocks_on_this_track.at(i)) >
+						block_in_rational(p.block)) {
 						blocks_on_this_track.insert(i, p.block);
 						inserted = true;
 						break;
@@ -871,10 +951,10 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 				}
 				break;
 			}
-			case Timeline::k_trim_in:
+			case TimelineApp::k_trim_in:
 				out_adjacents.insert(track, p.block);
 				break;
-			case Timeline::k_trim_out:
+			case TimelineApp::k_trim_out:
 				in_adjacents.insert(track, p.block);
 				break;
 			}
@@ -883,16 +963,17 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 		if (!movement.isNull()) {
 			for (auto i = slide_info.constBegin(); i != slide_info.constEnd();
 				 i++) {
-				const QList<Block *> &moving_blocks = i.value();
+				const QList<OakEngineBlock *> &moving_blocks = i.value();
 				QVector<void *> slide_blocks;
 				slide_blocks.reserve(moving_blocks.size());
-				for (Block *b : moving_blocks) {
+				for (OakEngineBlock *b : moving_blocks) {
 					slide_blocks.append(reinterpret_cast<void *>(b));
 				}
 				oakengine_undo_command_multi_add_child(
 					command,
 					oakengine_track_slide_command(
-						reinterpret_cast<void *>(parent()->get_track_from_reference(i.key())),
+						reinterpret_cast<void *>(
+							parent()->get_track_from_reference(i.key())),
 						slide_blocks.constData(), slide_blocks.size(),
 						reinterpret_cast<void *>(in_adjacents.value(i.key())),
 						reinterpret_cast<void *>(out_adjacents.value(i.key())),
@@ -910,42 +991,42 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 		command, qApp->translate("PointerTool", "Moved Clips").toUtf8().constData());
 }
 
-Timeline::MovementMode PointerTool::is_cursor_in_trim_handle(Block *block,
+TimelineApp::MovementMode PointerTool::is_cursor_in_trim_handle(OakEngineBlock *block,
 														 qreal cursor_x)
 {
 	const double k_trim_handle =
 		QtUtils::q_font_metrics_width(parent()->fontMetrics(), "H");
 
-	double block_left = parent()->time_to_scene(block->in());
-	double block_right = parent()->time_to_scene(block->out());
+	double block_left = parent()->time_to_scene(block_in_rational(block));
+	double block_right = parent()->time_to_scene(block_out_rational(block));
 	double block_width = block_right - block_left;
 
 	// Block is too narrow, no trimming allowed
 	if (block_width <= k_trim_handle * 2) {
-		return Timeline::k_none;
+		return TimelineApp::k_none;
 	}
 
 	if (trimming_allowed_ && cursor_x <= block_left + k_trim_handle) {
-		return Timeline::k_trim_in;
+		return TimelineApp::k_trim_in;
 	} else if (trimming_allowed_ && cursor_x >= block_right - k_trim_handle) {
-		return Timeline::k_trim_out;
+		return TimelineApp::k_trim_out;
 	} else {
-		return Timeline::k_none;
+		return TimelineApp::k_none;
 	}
 }
 
-void PointerTool::initiate_drag(Block *clicked_item,
-							   Timeline::MovementMode trim_mode,
+void PointerTool::initiate_drag(OakEngineBlock *clicked_item,
+							   TimelineApp::MovementMode trim_mode,
 							   Qt::KeyboardModifiers modifiers)
 {
 	initiate_drag_internal(clicked_item, trim_mode, modifiers, false, false,
 						 false);
 }
 
-TimelineViewGhostItem *PointerTool::get_existing_ghost_from_block(Block *block)
+TimelineViewGhostItem *PointerTool::get_existing_ghost_from_block(OakEngineBlock *block)
 {
 	foreach (TimelineViewGhostItem *ghost, parent()->get_ghost_items()) {
-		if (QtUtils::value_to_ptr<Block>(ghost->get_data(
+		if (QtUtils::value_to_ptr<OakEngineBlock>(ghost->get_data(
 				TimelineViewGhostItem::k_attached_block)) == block) {
 			return ghost;
 		}
@@ -957,12 +1038,12 @@ TimelineViewGhostItem *PointerTool::get_existing_ghost_from_block(Block *block)
 //#define HIDE_GAP_GHOSTS
 
 TimelineViewGhostItem *
-PointerTool::add_ghost_from_block(Block *block, Timeline::MovementMode mode,
+PointerTool::add_ghost_from_block(OakEngineBlock *block, TimelineApp::MovementMode mode,
 							   bool check_if_exists)
 {
 	// Ignore null blocks or blocks that aren't attached to a track because there's nothing we can
 	// do with either of those
-	if (!block || !block->track()) {
+	if (!block || !oakengine_block_get_track(block)) {
 		return nullptr;
 	}
 
@@ -979,8 +1060,8 @@ PointerTool::add_ghost_from_block(Block *block, Timeline::MovementMode mode,
 	ghost = TimelineViewGhostItem::from_block(block);
 
 #ifdef HIDE_GAP_GHOSTS
-	if (block->type() == Block::kGap) {
-		ghost->SetInvisible(true);
+	if (oakengine_block_is_gap(block)) {
+		ghost->set_invisible(true);
 	}
 #endif
 
@@ -991,8 +1072,8 @@ PointerTool::add_ghost_from_block(Block *block, Timeline::MovementMode mode,
 
 TimelineViewGhostItem *
 PointerTool::add_ghost_from_null(const Rational &in, const Rational &out,
-							  const Track::Reference &track,
-							  Timeline::MovementMode mode)
+							  const TrackReference &track,
+							  TimelineApp::MovementMode mode)
 {
 	TimelineViewGhostItem *ghost = new TimelineViewGhostItem();
 
@@ -1010,20 +1091,20 @@ PointerTool::add_ghost_from_null(const Rational &in, const Rational &out,
 }
 
 void PointerTool::add_ghost_internal(TimelineViewGhostItem *ghost,
-								   Timeline::MovementMode mode)
+								   TimelineApp::MovementMode mode)
 {
 	ghost->set_mode(mode);
 
 	// Prepare snap points (optimizes snapping for later)
 	switch (mode) {
-	case Timeline::k_move:
+	case TimelineApp::k_move:
 		snap_points_.push_back(ghost->get_in());
 		snap_points_.push_back(ghost->get_out());
 		break;
-	case Timeline::k_trim_in:
+	case TimelineApp::k_trim_in:
 		snap_points_.push_back(ghost->get_in());
 		break;
-	case Timeline::k_trim_out:
+	case TimelineApp::k_trim_out:
 		snap_points_.push_back(ghost->get_out());
 		break;
 	default:
@@ -1033,13 +1114,17 @@ void PointerTool::add_ghost_internal(TimelineViewGhostItem *ghost,
 	parent()->add_ghost(ghost);
 }
 
-bool PointerTool::is_clip_trimmable(Block *clip, const QVector<Block *> &items,
-								  const Timeline::MovementMode &mode)
+bool PointerTool::is_clip_trimmable(OakEngineBlock *clip, const QVector<OakEngineBlock *> &items,
+								  const TimelineApp::MovementMode &mode)
 {
-	foreach (Block *compare, items) {
-		if (clip->track() == compare->track() && clip != compare &&
-			((compare->in() < clip->in() && mode == Timeline::k_trim_in) ||
-			 (compare->out() > clip->out() && mode == Timeline::k_trim_out))) {
+	foreach (OakEngineBlock *compare, items) {
+		if (oakengine_block_get_track(clip) ==
+				oakengine_block_get_track(compare) &&
+			clip != compare &&
+			((block_in_rational(compare) < block_in_rational(clip) &&
+			  mode == TimelineApp::k_trim_in) ||
+			 (block_out_rational(compare) > block_out_rational(clip) &&
+			  mode == TimelineApp::k_trim_out))) {
 			return false;
 		}
 	}
@@ -1052,7 +1137,7 @@ Rational PointerTool::validate_in_trimming(Rational movement)
 	bool first_ghost = true;
 
 	foreach (TimelineViewGhostItem *ghost, parent()->get_ghost_items()) {
-		if (ghost->get_mode() != Timeline::k_trim_in) {
+		if (ghost->get_mode() != TimelineApp::k_trim_in) {
 			continue;
 		}
 
@@ -1090,7 +1175,7 @@ Rational PointerTool::validate_out_trimming(Rational movement)
 	bool first_ghost = true;
 
 	foreach (TimelineViewGhostItem *ghost, parent()->get_ghost_items()) {
-		if (ghost->get_mode() != Timeline::k_trim_out) {
+		if (ghost->get_mode() != TimelineApp::k_trim_out) {
 			continue;
 		}
 

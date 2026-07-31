@@ -236,6 +236,17 @@ OAKENGINE_API OakEngineFootage *oakengine_project_import_footage(
  */
 OAKENGINE_API OakEngineFootage *oakengine_footage_borrow(OakEngineNode *node);
 
+/**
+ * @brief 1 if the footage node is valid (Footage::is_valid(): the media
+ * was probed successfully and is ready to use), 0 otherwise.
+ *
+ * Takes the footage NODE handle directly (like oakengine_footage_borrow())
+ * rather than an OakEngineFootage wrapper, so callers that already hold a
+ * project node do not need to borrow/free a wrapper for a one-shot check.
+ * Returns 0 on a NULL handle or a node that is not a Footage.
+ */
+OAKENGINE_API int oakengine_footage_is_valid(const OakEngineNode *node);
+
 /* ---- Media management: relink and proxies -----------------------------------
  *
  * These functions operate on BORROWED import handles (footage nodes living

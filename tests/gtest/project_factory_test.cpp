@@ -555,8 +555,11 @@ TEST(NodeFactory, CreateMenuWithNoneItem)
 		}
 		const QString id = olive::get_node_id_from_menu_action(leaf);
 		EXPECT_FALSE(id.isEmpty());
+		// create_node_from_menu_action returns an owned oak::Node handle;
+		// reinterpret it back to the engine type to take ownership
+		const oak::Node created_handle = olive::create_node_from_menu_action(leaf);
 		std::unique_ptr<olive::Node> node(
-			olive::create_node_from_menu_action(leaf));
+			reinterpret_cast<olive::Node *>(created_handle.handle()));
 		ASSERT_NE(node, nullptr);
 		EXPECT_EQ(node->id(), id);
 		++created;
@@ -571,7 +574,7 @@ TEST(NodeFactory, CreateMenuRestrictedToCategory)
 	olive::NodeFactory::initialize();
 
 	std::unique_ptr<olive::Menu> menu(olive::create_node_menu(
-		nullptr, false, olive::Node::k_category_math));
+		nullptr, false, oak::k_category_math));
 	ASSERT_NE(menu, nullptr);
 
 	QList<QAction *> leaves;
@@ -579,8 +582,9 @@ TEST(NodeFactory, CreateMenuRestrictedToCategory)
 	ASSERT_FALSE(leaves.isEmpty());
 
 	for (QAction *leaf : leaves) {
+		const oak::Node created_handle = olive::create_node_from_menu_action(leaf);
 		std::unique_ptr<olive::Node> node(
-			olive::create_node_from_menu_action(leaf));
+			reinterpret_cast<olive::Node *>(created_handle.handle()));
 		ASSERT_NE(node, nullptr);
 		EXPECT_TRUE(node->category().contains(olive::Node::k_category_math))
 			<< node->id().toStdString();

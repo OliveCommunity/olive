@@ -55,6 +55,10 @@ add_library(oakengine-obj OBJECT
 
 add_library(oakengine SHARED $<TARGET_OBJECTS:oakengine-obj>)
 
+if (COMMAND oak_copy_otio_runtime)
+  oak_copy_otio_runtime(oakengine)
+endif()
+
 # macOS: hides the render worker's dock icon; called from the worker main in
 # src/capi/worker.cpp (declared there as a plain C++ symbol).
 if (APPLE)
@@ -158,6 +162,9 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
             render/opengl/openglrenderer.h
     )
     target_link_libraries(oakgl PRIVATE oakengine)
+    if (COMMAND oak_copy_otio_runtime)
+        oak_copy_otio_runtime(oakgl)
+    endif()
     target_include_directories(oakgl PRIVATE ${OLIVE_INCLUDE_DIRS})
     target_compile_definitions(oakgl PRIVATE OAK_RENDER_BACKEND_PLUGIN)
     set_target_properties(oakgl PROPERTIES
@@ -182,6 +189,9 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
                 render/vulkan/vulkanrenderer.h
         )
         target_link_libraries(oakvulkan PRIVATE oakengine)
+        if (COMMAND oak_copy_otio_runtime)
+            oak_copy_otio_runtime(oakvulkan)
+        endif()
         target_include_directories(oakvulkan PRIVATE ${OLIVE_INCLUDE_DIRS})
         target_link_libraries(oakvulkan PRIVATE Vulkan::Vulkan)
         target_compile_definitions(oakvulkan PRIVATE OAK_HAS_VULKAN)
@@ -262,6 +272,9 @@ if (BUILD_TESTS)
                 tests/gtest_main.cpp
                 $<TARGET_OBJECTS:olive-version-obj>
         )
+        if (COMMAND oak_copy_otio_runtime)
+            oak_copy_otio_runtime(${name})
+        endif()
         # Link the object library directly to bypass the version-script
         # restrictions on liboakengine.so (tests are internal consumers).
         target_link_libraries(${name} PRIVATE oakengine-obj GTest::gtest)

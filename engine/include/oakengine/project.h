@@ -227,6 +227,21 @@ OAKENGINE_API int oakengine_folder_index_of_child(
 	const OakEngineNode *folder, const OakEngineNode *child);
 
 /**
+ * @brief Number of direct item children of a folder
+ * (Folder::item_child_count()). 0 when `folder` is NULL or not a Folder.
+ */
+OAKENGINE_API int oakengine_folder_item_child_count(
+	const OakEngineNode *folder);
+
+/**
+ * @brief Borrowed handle of the item child at `index`
+ * (Folder::item_child()). NULL when out of range or `folder` is not a
+ * Folder.
+ */
+OAKENGINE_API OakEngineNode *oakengine_folder_item_child(
+	const OakEngineNode *folder, int index);
+
+/**
  * @brief Static input key string for Folder children (Folder::k_child_input).
  * Never freed.
  */

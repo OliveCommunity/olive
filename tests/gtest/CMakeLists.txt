@@ -140,12 +140,17 @@ add_executable(olive-gtest
   widget_panels_model_test.cpp
   panel_test.cpp
   mainwindow_test.cpp
+  serialized_layout_xml_test.cpp
   common_ratiodialog_test.cpp
 )
 
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
 
 target_sources(olive-gtest PRIVATE $<TARGET_OBJECTS:libolive-editor> $<TARGET_OBJECTS:olive-version-obj>)
+
+if (COMMAND oak_copy_otio_runtime)
+  oak_copy_otio_runtime(olive-gtest)
+endif()
 
 target_include_directories(
   olive-gtest

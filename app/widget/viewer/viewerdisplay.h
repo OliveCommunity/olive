@@ -27,13 +27,8 @@
 #include <QRubberBand>
 
 #include "engineeventbridge.h"
-#include "node/color/colormanager/colormanager.h"
-#include "node/gizmo/text.h"
-#include "node/node.h"
-#include "node/output/track/tracklist.h"
-#include "node/value.h"
 #include "oakengine/traverse.h"
-#include "tool/tool.h"
+#include "oakutil/oakvideo.h"
 #include "viewerplaybacktimer.h"
 #include "viewerqueue.h"
 #include "viewersafemargininfo.h"
@@ -41,6 +36,7 @@
 #include "widget/manageddisplay/manageddisplay.h"
 #include "widget/timetarget/timetarget.h"
 #include "widget/viewer/displaybuffer.h"
+#include "widget/viewer/vieweroutpututils.h"
 
 namespace olive
 {
@@ -78,13 +74,13 @@ public:
 	const ViewerSafeMarginInfo &get_safe_margin() const;
 	void set_safe_margins(const ViewerSafeMarginInfo &safe_margin);
 
-	void set_gizmos(Node *node);
+	void set_gizmos(OakEngineNode *node);
 
-	const VideoParams &get_video_params() const
+	const oak::VideoParams &get_video_params() const
 	{
 		return gizmo_params_;
 	}
-	void set_video_params(const VideoParams &params);
+	void set_video_params(const oak::VideoParams &params);
 
 	const AudioParams &get_audio_params() const
 	{
@@ -93,7 +89,7 @@ public:
 	void set_audio_params(const AudioParams &p);
 
 	void set_time(const Rational &time);
-	void set_subtitle_tracks(Sequence *list);
+	void set_subtitle_tracks(OakEngineSequence *list);
 
 	void set_show_widget_background(bool e)
 	{
@@ -255,7 +251,8 @@ protected:
 
 	QTransform generate_display_transform();
 
-	QTransform generate_gizmo_transform(Node *gizmos, Node *target,
+	QTransform generate_gizmo_transform(OakEngineNode *gizmos,
+										  OakEngineNode *target,
 										  const TimeRange &range);
 	QTransform generate_gizmo_transform()
 	{
@@ -300,9 +297,9 @@ private:
 
 	void update_matrix();
 
-	NodeGizmo *try_gizmo_press(const NodeValueRow &row, const QPointF &p);
+	void *try_gizmo_press(const QPointF &p);
 
-	void open_text_gizmo(TextGizmo *text, QMouseEvent *event = nullptr);
+	void open_text_gizmo(void *text, QMouseEvent *event = nullptr);
 
 	bool on_mouse_press(QMouseEvent *e);
 	bool on_mouse_move(QMouseEvent *e);
@@ -402,20 +399,35 @@ private:
 
 	ViewerSafeMarginInfo safe_margin_;
 
-	Node *gizmos_;
-	NodeValueRow gizmo_db_;
-	VideoParams gizmo_params_;
+	OakEngineNode *gizmos_;
+	/**
+	 * @brief Opaque storage for the engine's NodeValueRow
+	 * (QHash<QString, NodeValue>, engine/node/value.h).
+	 *
+	 * WRAPPER-GAP: NodeValue is engine-internal, so the real row typedef
+	 * cannot be declared app-side, and the C ABI offers no row create/free
+	 * pair — the row is only filled in place by
+	 * oakengine_traverse_generate_row() and handed back to the engine
+	 * (oakengine_node_update_gizmo_positions()/oakengine_gizmo_drag_start()).
+	 * Qt 6 QHash is a single-pointer class for any template arguments, so a
+	 * nullptr-initialized pointer is byte-identical to an empty row; the
+	 * engine's real QHash (move-)assignment manages the contents from then
+	 * on. The row held at widget destruction leaks (one row per widget)
+	 * until the C ABI grows a create/free pair.
+	 */
+	void *gizmo_db_ = nullptr;
+	oak::VideoParams gizmo_params_;
 	AudioParams gizmo_audio_params_;
 	QPoint gizmo_start_drag_;
 	QPoint gizmo_last_drag_;
 	TimeRange gizmo_draw_time_;
-	NodeGizmo *current_gizmo_;
+	void *current_gizmo_;
 	bool gizmo_drag_started_;
 	QTransform gizmo_last_draw_transform_;
 	QTransform gizmo_last_draw_transform_inverted_;
 
 	bool show_subtitles_;
-	Sequence *subtitle_tracks_;
+	OakEngineSequence *subtitle_tracks_;
 
 	EngineEventBridge *bridge_;
 	int64_t subtitle_sub_ = 0;
@@ -474,7 +486,7 @@ private:
 
 	bool queue_starved_;
 
-	TextGizmo *active_text_gizmo_;
+	void *active_text_gizmo_;
 	QPointF text_edit_pos_;
 	ViewerTextEditor *text_edit_;
 	ViewerTextEditorToolBar *text_toolbar_;

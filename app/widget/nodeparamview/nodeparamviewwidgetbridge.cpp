@@ -31,10 +31,9 @@
 #include "oakutil/qtutils.h"
 #include "core.h"
 #include "nodeparambutton.h"
-#include "node/node.h"
-#include "node/project/sequence/sequence.h"
 #include "nodeparamviewarraywidget.h"
 #include "nodeparamviewtextedit.h"
+#include "oakengine/color.h"
 #include "oakengine/events.h"
 #include "common/nodevaluehandle.h"
 #include "common/oakvaluehelper.h"
@@ -43,7 +42,6 @@
 #include "oakengine/viewer.h"
 #include "oakengine/lut.h"
 #include "oakengine/undo.h"
-#include "undo/undostack.h"
 #include "widget/bezier/bezierwidget.h"
 #include "widget/colorbutton/colorbutton.h"
 #include "widget/filefield/filefield.h"
@@ -58,38 +56,38 @@
 namespace olive
 {
 
-static int64_t rational_to_node_ts(Node *node, const Rational &time)
+static int64_t rational_to_node_ts(OakEngineNode *node, const Rational &time)
 {
 	int num = 0, den = 1;
-	oakengine_node_frame_time_base(reinterpret_cast<OakEngineNode *>(node),
-							   &num, &den);
+	oakengine_node_frame_time_base(node, &num, &den);
 	return core::Timecode::time_to_timestamp(time, Rational(num, den));
 }
 
-static QVariant GetInputValueAtTime(const NodeInput &input,
+static QVariant GetInputValueAtTime(const oak::Input &input,
 									const Rational &node_time)
 {
-	Node *node = input.node();
+	OakEngineNode *node = input.node_handle();
 	if (!node) {
 		return QVariant();
 	}
-	const NodeValue::Type type = node->get_input_data_type(input.input());
-	const QByteArray input_utf8 = input.input().toUtf8();
+	const NodeValueType::Type type =
+		static_cast<NodeValueType::Type>(input.data_type());
+	const QByteArray input_utf8 = input.input_id().toUtf8();
 	const char *input_id = input_utf8.constData();
 	const int element = input.element();
 	const int64_t time_ts = rational_to_node_ts(node, node_time);
-	const OakEngineNode *enode = reinterpret_cast<OakEngineNode *>(node);
+	const OakEngineNode *enode = node;
 
 	switch (type) {
-	case NodeValue::k_int:
-	case NodeValue::k_float:
-	case NodeValue::k_boolean:
-	case NodeValue::k_rational:
-	case NodeValue::k_color:
-	case NodeValue::k_vec2:
-	case NodeValue::k_vec3:
-	case NodeValue::k_vec4:
-	case NodeValue::k_combo: {
+	case NodeValueType::k_int:
+	case NodeValueType::k_float:
+	case NodeValueType::k_boolean:
+	case NodeValueType::k_rational:
+	case NodeValueType::k_color:
+	case NodeValueType::k_vec2:
+	case NodeValueType::k_vec3:
+	case NodeValueType::k_vec4:
+	case NodeValueType::k_combo: {
 		oak_node_value v;
 		if (oakengine_node_get_input_at_time(enode, input_id, element, -1,
 										 time_ts, 1, &v) ==
@@ -98,10 +96,10 @@ static QVariant GetInputValueAtTime(const NodeInput &input,
 		}
 		break;
 	}
-	case NodeValue::k_file:
-	case NodeValue::k_text:
-	case NodeValue::k_font:
-	case NodeValue::k_str_combo: {
+	case NodeValueType::k_file:
+	case NodeValueType::k_text:
+	case NodeValueType::k_font:
+	case NodeValueType::k_str_combo: {
 		char buf[4096];
 		const int len = oakengine_node_get_input_string_at_time(
 			enode, input_id, element, time_ts, 0, buf, sizeof(buf));
@@ -110,7 +108,7 @@ static QVariant GetInputValueAtTime(const NodeInput &input,
 		}
 		break;
 	}
-	case NodeValue::k_binary: {
+	case NodeValueType::k_binary: {
 		const int len = oakengine_node_get_input_binary_at_time(
 			enode, input_id, element, time_ts, 0, nullptr, 0);
 		if (len > 0) {
@@ -123,7 +121,7 @@ static QVariant GetInputValueAtTime(const NodeInput &input,
 		}
 		break;
 	}
-	case NodeValue::k_bezier: {
+	case NodeValueType::k_bezier: {
 		double out[6];
 		if (oakengine_node_get_input_bezier_at_time(
 				enode, input_id, element, time_ts, 0, out) == OAKENGINE_OK) {
@@ -138,24 +136,24 @@ static QVariant GetInputValueAtTime(const NodeInput &input,
 	return QVariant();
 }
 
-static bool ResolveGroupInput(NodeInput *input)
+static bool ResolveGroupInput(oak::Input *input)
 {
-	OakEngineNode *node = reinterpret_cast<OakEngineNode *>(input->node());
+	OakEngineNode *node = input->node_handle();
 	char input_id[256];
 	int element = input->element();
-	memcpy(input_id, input->input().toUtf8().constData(),
-		   qMin<int>(sizeof(input_id) - 1, input->input().toUtf8().size()));
+	const QByteArray utf = input->input_id().toUtf8();
+	memcpy(input_id, utf.constData(),
+		   qMin<int>(sizeof(input_id) - 1, utf.size()));
 	input_id[sizeof(input_id) - 1] = '\0';
 	if (!oakengine_node_group_get_inner(&node, input_id, sizeof(input_id),
 									&element)) {
 		return false;
 	}
-	*input = NodeInput(reinterpret_cast<Node *>(node),
-					   QString::fromUtf8(input_id), element);
+	*input = oak::Input(node, QString::fromUtf8(input_id), element);
 	return true;
 }
 
-NodeParamViewWidgetBridge::NodeParamViewWidgetBridge(NodeInput input,
+NodeParamViewWidgetBridge::NodeParamViewWidgetBridge(const oak::Input &input,
 													 QObject *parent)
 	: QObject(parent)
 	, bridge_(new EngineEventBridge(this))
@@ -169,20 +167,21 @@ NodeParamViewWidgetBridge::NodeParamViewWidgetBridge(NodeInput input,
 	connect(bridge_, &EngineEventBridge::node_input_data_type_changed, this,
 			&NodeParamViewWidgetBridge::input_data_type_changed);
 
+	oak::Input resolved = input;
 	do {
-		input_hierarchy_.append(input);
+		input_hierarchy_.append(resolved);
 
-		bridge_->subscribe(reinterpret_cast<void *>(input.node()),
+		bridge_->subscribe(reinterpret_cast<void *>(resolved.node_handle()),
 						   OAKENGINE_EVENT_NODE_INPUT_VALUE_CHANGED);
-		bridge_->subscribe(reinterpret_cast<void *>(input.node()),
+		bridge_->subscribe(reinterpret_cast<void *>(resolved.node_handle()),
 						   OAKENGINE_EVENT_NODE_INPUT_PROPERTY_CHANGED);
-		bridge_->subscribe(reinterpret_cast<void *>(input.node()),
+		bridge_->subscribe(reinterpret_cast<void *>(resolved.node_handle()),
 						   OAKENGINE_EVENT_NODE_INPUT_DATA_TYPE_CHANGED);
-	} while (ResolveGroupInput(&input));
+	} while (ResolveGroupInput(&resolved));
 
 	dragger_ = oakengine_dragger_create(
-		reinterpret_cast<OakEngineNode *>(get_inner_input().node()),
-		get_inner_input().input().toUtf8().constData(),
+		get_inner_input().node_handle(),
+		get_inner_input().input_id().toUtf8().constData(),
 		get_inner_input().element(),
 		-1); // track set in process_slider at start time
 
@@ -199,7 +198,7 @@ NodeParamViewWidgetBridge::~NodeParamViewWidgetBridge()
 	}
 }
 
-int get_slider_count(NodeValue::Type type)
+int get_slider_count(NodeValueType::Type type)
 {
 	return oakengine_node_value_keyframe_track_count(node_value_type_to_c(type));
 }
@@ -210,48 +209,48 @@ namespace
 // Map a panel widget's per-track scalar QVariant into the facade POD.
 // Returns false for types that have no facade mapping (the caller keeps
 // the legacy path for those).
-bool variant_to_c_value(NodeValue::Type type, const QVariant &value,
+bool variant_to_c_value(NodeValueType::Type type, const QVariant &value,
 						oak_node_value *out)
 {
 	memset(out, 0, sizeof(*out));
 	switch (type) {
-	case NodeValue::k_int:
+	case NodeValueType::k_int:
 		out->type = OAK_NODE_VALUE_INT;
 		out->num = value.toLongLong();
 		return true;
-	case NodeValue::k_combo:
+	case NodeValueType::k_combo:
 		out->type = OAK_NODE_VALUE_COMBO;
 		out->num = value.toLongLong();
 		return true;
-	case NodeValue::k_float:
-	case NodeValue::k_bezier:
+	case NodeValueType::k_float:
+	case NodeValueType::k_bezier:
 		out->type = OAK_NODE_VALUE_FLOAT;
 		out->f[0] = value.toDouble();
 		return true;
-	case NodeValue::k_boolean:
+	case NodeValueType::k_boolean:
 		out->type = OAK_NODE_VALUE_BOOL;
 		out->num = value.toBool() ? 1 : 0;
 		return true;
-	case NodeValue::k_rational: {
+	case NodeValueType::k_rational: {
 		const Rational r = value.value<Rational>();
 		out->type = OAK_NODE_VALUE_RATIONAL;
 		out->num = r.numerator();
 		out->den = r.denominator();
 		return true;
 	}
-	case NodeValue::k_color:
+	case NodeValueType::k_color:
 		out->type = OAK_NODE_VALUE_COLOR;
 		out->f[0] = value.toDouble();
 		return true;
-	case NodeValue::k_vec2:
+	case NodeValueType::k_vec2:
 		out->type = OAK_NODE_VALUE_VEC2;
 		out->f[0] = value.toDouble();
 		return true;
-	case NodeValue::k_vec3:
+	case NodeValueType::k_vec3:
 		out->type = OAK_NODE_VALUE_VEC3;
 		out->f[0] = value.toDouble();
 		return true;
-	case NodeValue::k_vec4:
+	case NodeValueType::k_vec4:
 		out->type = OAK_NODE_VALUE_VEC4;
 		out->f[0] = value.toDouble();
 		return true;
@@ -270,6 +269,197 @@ int64_t node_time_to_ts(OakEngineNode *node, const Rational &time)
 									   Timecode::k_round);
 }
 
+// Mirrors of engine NodeValue::type_is_numeric()/type_is_vector()
+// (engine/node/value.h) for the NodeValueType mirror ordinals.
+bool type_is_numeric(NodeValueType::Type type)
+{
+	return type == NodeValueType::k_float || type == NodeValueType::k_int ||
+		   type == NodeValueType::k_rational;
+}
+
+bool type_is_vector(NodeValueType::Type type)
+{
+	return type == NodeValueType::k_vec2 || type == NodeValueType::k_vec3 ||
+		   type == NodeValueType::k_vec4;
+}
+
+// NodeInput property access through the typed facade getters (replaces the
+// engine's QVariant-returning NodeInput::get_property()).
+QString input_property_string(const oak::Input &input, const char *key)
+{
+	char buf[4096];
+	buf[0] = '\0';
+	oakengine_node_input_get_property_string(
+		input.node_handle(), input.input_id().toUtf8().constData(), key, buf,
+		sizeof(buf));
+	return QString::fromUtf8(buf);
+}
+
+QStringList input_property_string_list(const oak::Input &input,
+									   const char *key)
+{
+	QStringList out;
+	OakEngineNode *node = input.node_handle();
+	const QByteArray id = input.input_id().toUtf8();
+	const int count =
+		oakengine_node_input_get_property_string_list_count(node, id.constData(), key);
+	for (int i = 0; i < count; i++) {
+		char buf[1024];
+		if (oakengine_node_input_get_property_string_list(
+				node, id.constData(), key, i, buf, sizeof(buf)) >= 0) {
+			out.append(QString::fromUtf8(buf));
+		}
+	}
+	return out;
+}
+
+bool input_property_bool(const oak::Input &input, const char *key)
+{
+	int64_t v = 0;
+	return oakengine_node_input_get_property_int(
+			   input.node_handle(), input.input_id().toUtf8().constData(), key,
+			   &v) == OAKENGINE_OK &&
+		   v != 0;
+}
+
+// NodeInput::get_split_default_value_for_track() through the facade: the
+// getter returns the per-track component as a POD typed with the input's
+// declared type; rebuild the per-track QVariant the sliders expect.
+QVariant split_default_value_for_track(const oak::Input &input, int track)
+{
+	oak_node_value v;
+	memset(&v, 0, sizeof(v));
+	if (oakengine_node_input_get_default_value(
+			input.node_handle(), input.input_id().toUtf8().constData(), track,
+			&v) != OAKENGINE_OK) {
+		return QVariant();
+	}
+	switch (v.type) {
+	case OAK_NODE_VALUE_INT:
+	case OAK_NODE_VALUE_COMBO:
+		return QVariant::fromValue<int64_t>(v.num);
+	case OAK_NODE_VALUE_RATIONAL:
+		return QVariant::fromValue(Rational(int(v.num), int(v.den)));
+	default:
+		return v.f[0];
+	}
+}
+
+// Rebuild one input property as a QVariant through the typed facade getters,
+// replacing Node::get_input_properties() (a QVariantHash) in
+// update_properties(). WRAPPER-GAP: the facade has no generic QVariant
+// property getter (NodeInput::get_property()), only typed string/number/
+// int/rational/string-list getters, so the value is reconstructed per key.
+// Only the keys consumed by set_property() are mapped; unknown keys yield an
+// invalid QVariant, which set_property() ignores.
+// `data_type` is the property-owning input's declared type (needed to
+// rebuild the min/max/offset values for the vector types).
+QVariant read_input_property(const oak::Input &input, const QString &key,
+							 NodeValueType::Type data_type)
+{
+	OakEngineNode *node = input.node_handle();
+	const QByteArray id = input.input_id().toUtf8();
+	const QByteArray key_utf8 = key.toUtf8();
+	const char *k = key_utf8.constData();
+
+	if (key == QStringLiteral("min") || key == QStringLiteral("max") ||
+		key == QStringLiteral("offset")) {
+		switch (data_type) {
+		case NodeValueType::k_int:
+		case NodeValueType::k_combo: {
+			int64_t v = 0;
+			if (oakengine_node_input_get_property_int(node, id.constData(), k,
+													&v) == OAKENGINE_OK) {
+				return QVariant::fromValue<int64_t>(v);
+			}
+			break;
+		}
+		case NodeValueType::k_float: {
+			double v = 0;
+			if (oakengine_node_input_get_property_number(node, id.constData(), k,
+													   -1, &v) == OAKENGINE_OK) {
+				return v;
+			}
+			break;
+		}
+		case NodeValueType::k_rational: {
+			int num = 0, den = 1;
+			if (oakengine_node_input_get_property_rational(
+					node, id.constData(), k, &num, &den) == OAKENGINE_OK) {
+				return QVariant::fromValue(Rational(num, den));
+			}
+			break;
+		}
+		case NodeValueType::k_vec2:
+		case NodeValueType::k_vec3:
+		case NodeValueType::k_vec4: {
+			const int tracks = get_slider_count(data_type);
+			double c[4] = { 0, 0, 0, 0 };
+			for (int i = 0; i < tracks; i++) {
+				if (oakengine_node_input_get_property_track_number(
+						node, id.constData(), k, i, &c[i]) != OAKENGINE_OK) {
+					return QVariant();
+				}
+			}
+			if (data_type == NodeValueType::k_vec2) {
+				return QVariant::fromValue(QVector2D(float(c[0]), float(c[1])));
+			}
+			if (data_type == NodeValueType::k_vec3) {
+				return QVariant::fromValue(
+					QVector3D(float(c[0]), float(c[1]), float(c[2])));
+			}
+			return QVariant::fromValue(
+				QVector4D(float(c[0]), float(c[1]), float(c[2]), float(c[3])));
+		}
+		default:
+			break;
+		}
+		return QVariant();
+	}
+
+	if (key == QStringLiteral("combo_str") ||
+		key == QStringLiteral("combo_value_str")) {
+		return input_property_string_list(input, k);
+	}
+
+	if (key == QStringLiteral("tooltip") ||
+		key == QStringLiteral("placeholder") ||
+		key == QStringLiteral("filter") || key.startsWith(QStringLiteral("color"))) {
+		return input_property_string(input, k);
+	}
+
+	if (key == QStringLiteral("view") ||
+		key == QStringLiteral("decimalplaces")) {
+		int64_t v = 0;
+		if (oakengine_node_input_get_property_int(node, id.constData(), k, &v) ==
+			OAKENGINE_OK) {
+			return int(v);
+		}
+		return QVariant();
+	}
+
+	if (key == QStringLiteral("base")) {
+		double v = 0;
+		if (oakengine_node_input_get_property_number(node, id.constData(), k,
+												   -1, &v) == OAKENGINE_OK) {
+			return v;
+		}
+		return QVariant();
+	}
+
+	if (key.startsWith(QStringLiteral("disable")) ||
+		key.startsWith(QStringLiteral("enabled")) ||
+		key == QStringLiteral("autotrim") ||
+		key == QStringLiteral("viewlock") ||
+		key == QStringLiteral("directory") ||
+		key == QStringLiteral("lut_library") ||
+		key == QStringLiteral("vieweronly")) {
+		return input_property_bool(input, k);
+	}
+
+	return QVariant();
+}
+
 } // namespace
 
 void NodeParamViewWidgetBridge::create_widgets()
@@ -278,49 +468,50 @@ void NodeParamViewWidgetBridge::create_widgets()
 
 	if (get_inner_input().is_array() && get_inner_input().element() == -1) {
 		NodeParamViewArrayWidget *w = new NodeParamViewArrayWidget(
-			get_inner_input().node(), get_inner_input().input(), parent);
+			get_inner_input().node(), get_inner_input().input_id(), parent);
 		connect(w, &NodeParamViewArrayWidget::double_clicked, this,
 				&NodeParamViewWidgetBridge::array_widget_double_clicked);
 		widgets_.append(w);
 
 	} else {
 		// We assume the first data type is the "primary" type
-		NodeValue::Type t = get_data_type();
+		NodeValueType::Type t = get_data_type();
 		switch (t) {
 		// None of these inputs have applicable UI widgets
-		case NodeValue::k_none:
-		case NodeValue::k_texture:
-		case NodeValue::k_matrix:
-		case NodeValue::k_samples:
-		case NodeValue::k_video_params:
-		case NodeValue::k_audio_params:
-		case NodeValue::k_subtitle_params:
-		case NodeValue::k_binary:
-		case NodeValue::k_data_type_count:
+		case NodeValueType::k_none:
+		case NodeValueType::k_texture:
+		case NodeValueType::k_matrix:
+		case NodeValueType::k_samples:
+		case NodeValueType::k_video_params:
+		case NodeValueType::k_audio_params:
+		case NodeValueType::k_subtitle_params:
+		case NodeValueType::k_binary:
+		case NodeValueType::k_data_type_count:
 			break;
-		case NodeValue::k_int: {
+		case NodeValueType::k_int: {
 			create_sliders<IntegerSlider>(1, parent);
 			break;
 		}
-		case NodeValue::k_rational: {
+		case NodeValueType::k_rational: {
 			create_sliders<RationalSlider>(1, parent);
 			break;
 		}
-		case NodeValue::k_float:
-		case NodeValue::k_vec2:
-		case NodeValue::k_vec3:
-		case NodeValue::k_vec4: {
+		case NodeValueType::k_float:
+		case NodeValueType::k_vec2:
+		case NodeValueType::k_vec3:
+		case NodeValueType::k_vec4: {
 			create_sliders<FloatSlider>(get_slider_count(t), parent);
 			break;
 		}
-		case NodeValue::k_combo:
-		case NodeValue::k_str_combo: {
+		case NodeValueType::k_combo:
+		case NodeValueType::k_str_combo: {
 			QComboBox *combobox = new QComboBox(parent);
 
-			QStringList items = get_inner_input().get_combo_box_strings();
+			QStringList items =
+				input_property_string_list(get_inner_input(), "combo_str");
 			QStringList values =
-				get_inner_input().get_property("combo_value_str").toStringList();
-			const bool use_value_data = (t == NodeValue::k_str_combo) &&
+				input_property_string_list(get_inner_input(), "combo_value_str");
+			const bool use_value_data = (t == NodeValueType::k_str_combo) &&
 										!values.isEmpty();
 			for (int i = 0; i < items.size(); ++i) {
 				const QString &label = items.at(i);
@@ -338,10 +529,9 @@ void NodeParamViewWidgetBridge::create_widgets()
 					this, &NodeParamViewWidgetBridge::widget_callback);
 			break;
 		}
-		case NodeValue::k_file: {
+		case NodeValueType::k_file: {
 			FileField *file_field;
-			if (get_inner_input().get_property(QStringLiteral("lut_library"))
-					.toBool()) {
+			if (input_property_bool(get_inner_input(), "lut_library")) {
 				// File inputs that accept LUTs get a combo box for picking
 				// from the global LUT library
 				file_field = new LutFileField(parent);
@@ -353,20 +543,23 @@ void NodeParamViewWidgetBridge::create_widgets()
 					&NodeParamViewWidgetBridge::widget_callback);
 			break;
 		}
-		case NodeValue::k_color: {
-			if (get_inner_input().get_property("color_semantic").toString() ==
+		case NodeValueType::k_color: {
+			if (input_property_string(get_inner_input(), "color_semantic") ==
 				QStringLiteral("scalar")) {
 				create_sliders<FloatSlider>(4, parent);
 			} else {
 				ColorButton *color_button = new ColorButton(
-					oak_color_manager(get_inner_input().node()->project()->color_manager()), parent);
+					oakengine_color_manager_from_project(
+						oakengine_node_get_project(
+							get_inner_input().node_handle())),
+					parent);
 				widgets_.append(color_button);
 				connect(color_button, &ColorButton::color_changed, this,
 						&NodeParamViewWidgetBridge::widget_callback);
 			}
 			break;
 		}
-		case NodeValue::k_text: {
+		case NodeValueType::k_text: {
 			NodeParamViewTextEdit *line_edit =
 				new NodeParamViewTextEdit(parent);
 			widgets_.append(line_edit);
@@ -376,21 +569,21 @@ void NodeParamViewWidgetBridge::create_widgets()
 					this, &NodeParamViewWidgetBridge::request_edit_text_in_viewer);
 			break;
 		}
-		case NodeValue::k_boolean: {
+		case NodeValueType::k_boolean: {
 			QCheckBox *check_box = new QCheckBox(parent);
 			widgets_.append(check_box);
 			connect(check_box, &QCheckBox::clicked, this,
 					&NodeParamViewWidgetBridge::widget_callback);
 			break;
 		}
-		case NodeValue::k_font: {
+		case NodeValueType::k_font: {
 			QFontComboBox *font_combobox = new QFontComboBox(parent);
 			widgets_.append(font_combobox);
 			connect(font_combobox, &QFontComboBox::currentFontChanged, this,
 					&NodeParamViewWidgetBridge::widget_callback);
 			break;
 		}
-		case NodeValue::k_bezier: {
+		case NodeValueType::k_bezier: {
 			BezierWidget *bezier = new BezierWidget(parent);
 			widgets_.append(bezier);
 
@@ -408,16 +601,21 @@ void NodeParamViewWidgetBridge::create_widgets()
 					&NodeParamViewWidgetBridge::widget_callback);
 			break;
 		}
-		case NodeValue::k_push_button: {
-			NodeInput input = get_inner_input();
+		case NodeValueType::k_push_button: {
+			const oak::Input input = get_inner_input();
 			NodeParamButton *button = new NodeParamButton(input.name(), parent);
 			widgets_.append(button);
-			plugin::PluginNode *plugin_node =
-				dynamic_cast<plugin::PluginNode *>(input.node());
+			// PluginNode predicate goes through the C ABI (replaces the old
+			// dynamic_cast<plugin::PluginNode*>); the handle itself is passed
+			// opaquely to the push-button facade.
+			OakEngineNode *plugin_node = input.node_handle();
+			if (!oakengine_node_has_plugin(plugin_node)) {
+				plugin_node = nullptr;
+			}
 			connect(button, &NodeParamButton::on_pressed, this,
 				[plugin_node](const QString &name) {
 					oakengine_plugin_node_push_button_clicked(
-						reinterpret_cast<OakEngineNode*>(plugin_node),
+						plugin_node,
 						name.toUtf8().constData());
 				});
 		}
@@ -441,7 +639,7 @@ void NodeParamViewWidgetBridge::set_input_value(const QVariant &value, int track
 	// command with the same set-value-at-time semantics as the old
 	// app-side assembly); types without a facade mapping keep the legacy
 	// undo assembly below.
-	const NodeInput &input = get_inner_input();
+	const oak::Input &input = get_inner_input();
 	oak_node_value c_value;
 	if (!variant_to_c_value(get_data_type(), value, &c_value)) {
 		void *command = oakengine_undo_command_create_multi();
@@ -451,22 +649,20 @@ void NodeParamViewWidgetBridge::set_input_value(const QVariant &value, int track
 	}
 
 	oakengine_node_set_input_at_time(
-		reinterpret_cast<OakEngineNode *>(input.node()),
-		input.input().toUtf8().constData(), input.element(),
-		node_time_to_ts(reinterpret_cast<OakEngineNode *>(input.node()),
-						get_current_time_as_node_time()),
+		input.node_handle(), input.input_id().toUtf8().constData(),
+		input.element(),
+		node_time_to_ts(input.node_handle(), get_current_time_as_node_time()),
 		track, &c_value, 1);
 }
 
 void NodeParamViewWidgetBridge::set_string_value(const QString &value)
 {
 	// String-family inputs (file/text/font/str_combo) through the facade.
-	const NodeInput &input = get_inner_input();
+	const oak::Input &input = get_inner_input();
 	oakengine_node_set_input_string_at_time(
-		reinterpret_cast<OakEngineNode *>(input.node()),
-		input.input().toUtf8().constData(), input.element(),
-		node_time_to_ts(reinterpret_cast<OakEngineNode *>(input.node()),
-						get_current_time_as_node_time()),
+		input.node_handle(), input.input_id().toUtf8().constData(),
+		input.element(),
+		node_time_to_ts(input.node_handle(), get_current_time_as_node_time()),
 		value.toUtf8().constData());
 }
 
@@ -474,15 +670,15 @@ void NodeParamViewWidgetBridge::set_input_value_internal(
 	const QVariant &value, int track, void *command,
 	bool insert_on_all_tracks_if_no_key)
 {
-		const NodeInput &input = get_inner_input();
+		const oak::Input &input = get_inner_input();
 	olive::Rational t = get_current_time_as_node_time();
 	oak_node_value c_value;
 	if (variant_to_c_value(get_data_type(), value, &c_value)) {
 		oakengine_undo_command_multi_add_child(
 			command,
 			oakengine_node_set_value_at_time_command(
-				reinterpret_cast<void *>(input.node()),
-				input.input().toUtf8().constData(), input.element(),
+				reinterpret_cast<void *>(input.node_handle()),
+				input.input_id().toUtf8().constData(), input.element(),
 				t.numerator(), t.denominator(), &c_value, track,
 				insert_on_all_tracks_if_no_key ? 1 : 0));
 	}
@@ -495,7 +691,7 @@ void NodeParamViewWidgetBridge::process_slider(NumericSliderBase *slider,
 	if (slider->is_dragging()) {
 		// While we're dragging, we block the input's normal signalling and create our own
 		if (!oakengine_dragger_is_started(dragger_)) {
-			OakEngineNode *node = reinterpret_cast<OakEngineNode *>(get_inner_input().node());
+			OakEngineNode *node = get_inner_input().node_handle();
 			Rational node_time = get_current_time_as_node_time();
 			int64_t ts = node_time_to_ts(node, node_time);
 
@@ -526,62 +722,62 @@ void NodeParamViewWidgetBridge::widget_callback()
 {
 	switch (get_data_type()) {
 	// None of these inputs have applicable UI widgets
-	case NodeValue::k_none:
-	case NodeValue::k_texture:
-	case NodeValue::k_matrix:
-	case NodeValue::k_samples:
-	case NodeValue::k_video_params:
-	case NodeValue::k_audio_params:
-	case NodeValue::k_subtitle_params:
-	case NodeValue::k_data_type_count:
+	case NodeValueType::k_none:
+	case NodeValueType::k_texture:
+	case NodeValueType::k_matrix:
+	case NodeValueType::k_samples:
+	case NodeValueType::k_video_params:
+	case NodeValueType::k_audio_params:
+	case NodeValueType::k_subtitle_params:
+	case NodeValueType::k_data_type_count:
 		break;
-	case NodeValue::k_int: {
+	case NodeValueType::k_int: {
 		// Widget is a IntegerSlider
 		IntegerSlider *slider = static_cast<IntegerSlider *>(sender());
 
 		process_slider(slider, QVariant::fromValue(slider->get_value()));
 		break;
 	}
-	case NodeValue::k_float: {
+	case NodeValueType::k_float: {
 		// Widget is a FloatSlider
 		FloatSlider *slider = static_cast<FloatSlider *>(sender());
 
 		process_slider(slider, slider->get_value());
 		break;
 	}
-	case NodeValue::k_rational: {
+	case NodeValueType::k_rational: {
 		// Widget is a RationalSlider
 		RationalSlider *slider = static_cast<RationalSlider *>(sender());
 		process_slider(slider, QVariant::fromValue(slider->get_value()));
 		break;
 	}
-	case NodeValue::k_vec2: {
+	case NodeValueType::k_vec2: {
 		// Widget is a FloatSlider
 		FloatSlider *slider = static_cast<FloatSlider *>(sender());
 
 		process_slider(slider, slider->get_value());
 		break;
 	}
-	case NodeValue::k_vec3: {
+	case NodeValueType::k_vec3: {
 		// Widget is a FloatSlider
 		FloatSlider *slider = static_cast<FloatSlider *>(sender());
 
 		process_slider(slider, slider->get_value());
 		break;
 	}
-	case NodeValue::k_vec4: {
+	case NodeValueType::k_vec4: {
 		// Widget is a FloatSlider
 		FloatSlider *slider = static_cast<FloatSlider *>(sender());
 
 		process_slider(slider, slider->get_value());
 		break;
 	}
-	case NodeValue::k_file: {
+	case NodeValueType::k_file: {
 		set_string_value(static_cast<FileField *>(sender())->get_filename());
 		break;
 	}
-	case NodeValue::k_color: {
-		if (get_inner_input().get_property("color_semantic").toString() ==
+	case NodeValueType::k_color: {
+		if (input_property_string(get_inner_input(), "color_semantic") ==
 			QStringLiteral("scalar")) {
 			FloatSlider *slider = static_cast<FloatSlider *>(sender());
 			process_slider(slider, slider->get_value());
@@ -592,7 +788,7 @@ void NodeParamViewWidgetBridge::widget_callback()
 			// engine and stay direct (same as the old code).
 			ManagedColor c = static_cast<ColorButton *>(sender())->get_color();
 
-			const NodeInput &input = get_inner_input();
+			const oak::Input &input = get_inner_input();
 			oak_node_value c_value;
 			memset(&c_value, 0, sizeof(c_value));
 			c_value.type = OAK_NODE_VALUE_COLOR;
@@ -601,41 +797,39 @@ void NodeParamViewWidgetBridge::widget_callback()
 			c_value.f[2] = c.blue();
 			c_value.f[3] = c.alpha();
 			oakengine_node_set_input_at_time(
-				reinterpret_cast<OakEngineNode *>(input.node()),
-				input.input().toUtf8().constData(), input.element(),
-				node_time_to_ts(
-					reinterpret_cast<OakEngineNode *>(input.node()),
-					get_current_time_as_node_time()),
+				input.node_handle(), input.input_id().toUtf8().constData(),
+				input.element(),
+				node_time_to_ts(input.node_handle(),
+								get_current_time_as_node_time()),
 				-1, &c_value, 0);
 
-			Node *n = get_inner_input().node();
-			n->blockSignals(true);
+			// The old code bracketed these with Node::blockSignals(true/false);
+			// the facade's notify=0 already applies a QSignalBlocker inside
+			// oakengine_node_set_input_property_string, so the bracket is
+			// subsumed.
+			OakEngineNode *n = get_inner_input().node_handle();
+			const QByteArray input_id = get_inner_input().input_id().toUtf8();
 			oakengine_node_set_input_property_string(
-				reinterpret_cast<OakEngineNode*>(n),
-				get_inner_input().input().toUtf8().constData(),
+				n, input_id.constData(),
 				"col_input", c.color_input().toUtf8().constData(), 0);
 			oakengine_node_set_input_property_string(
-				reinterpret_cast<OakEngineNode*>(n),
-				get_inner_input().input().toUtf8().constData(),
+				n, input_id.constData(),
 				"col_display", c.color_output().display().toUtf8().constData(), 0);
 			oakengine_node_set_input_property_string(
-				reinterpret_cast<OakEngineNode*>(n),
-				get_inner_input().input().toUtf8().constData(),
+				n, input_id.constData(),
 				"col_view", c.color_output().view().toUtf8().constData(), 0);
 			oakengine_node_set_input_property_string(
-				reinterpret_cast<OakEngineNode*>(n),
-				get_inner_input().input().toUtf8().constData(),
+				n, input_id.constData(),
 				"col_look", c.color_output().look().toUtf8().constData(), 0);
-			n->blockSignals(false);
 		}
 		break;
 	}
-	case NodeValue::k_text: {
+	case NodeValueType::k_text: {
 		// Sender is a NodeParamViewRichText
 		set_string_value(static_cast<NodeParamViewTextEdit *>(sender())->text());
 		break;
 	}
-	case NodeValue::k_binary: {
+	case NodeValueType::k_binary: {
 		QString text = static_cast<NodeParamViewTextEdit *>(sender())->text();
 		QByteArray raw = text.toUtf8();
 		QByteArray decoded = QByteArray::fromBase64(raw);
@@ -645,18 +839,18 @@ void NodeParamViewWidgetBridge::widget_callback()
 		set_input_value(decoded, 0);
 		break;
 	}
-	case NodeValue::k_boolean: {
+	case NodeValueType::k_boolean: {
 		// Widget is a QCheckBox
 		set_input_value(static_cast<QCheckBox *>(sender())->isChecked(), 0);
 		break;
 	}
-	case NodeValue::k_font: {
+	case NodeValueType::k_font: {
 		// Widget is a QFontComboBox
 		set_string_value(
 			static_cast<QFontComboBox *>(sender())->currentFont().family());
 		break;
 	}
-	case NodeValue::k_combo: {
+	case NodeValueType::k_combo: {
 		// Widget is a QComboBox
 		QComboBox *cb = static_cast<QComboBox *>(widgets_.first());
 		int index = cb->currentIndex();
@@ -672,7 +866,7 @@ void NodeParamViewWidgetBridge::widget_callback()
 		set_input_value(index, 0);
 		break;
 	}
-	case NodeValue::k_str_combo: {
+	case NodeValueType::k_str_combo: {
 		QComboBox *cb = static_cast<QComboBox *>(widgets_.first());
 		const QVariant data = cb->currentData();
 		if (data.isValid()) {
@@ -682,7 +876,7 @@ void NodeParamViewWidgetBridge::widget_callback()
 		}
 		break;
 	}
-	case NodeValue::k_bezier: {
+	case NodeValueType::k_bezier: {
 		// Widget is a FloatSlider (child of BezierWidget)
 		BezierWidget *bw = static_cast<BezierWidget *>(widgets_.first());
 		FloatSlider *fs = static_cast<FloatSlider *>(sender());
@@ -716,7 +910,7 @@ void NodeParamViewWidgetBridge::create_sliders(int count, QWidget *parent)
 	for (int i = 0; i < count; i++) {
 		T *fs = new T(parent);
 		fs->SliderBase::set_default_value(
-			get_inner_input().get_split_default_value_for_track(i));
+			split_default_value_for_track(get_inner_input(), i));
 		fs->set_ladder_element_count(2);
 
 		// HACK: Force some spacing between sliders
@@ -746,16 +940,16 @@ void NodeParamViewWidgetBridge::update_widget_values()
 	// We assume the first data type is the "primary" type
 	switch (get_data_type()) {
 	// None of these inputs have applicable UI widgets
-	case NodeValue::k_none:
-	case NodeValue::k_texture:
-	case NodeValue::k_matrix:
-	case NodeValue::k_samples:
-	case NodeValue::k_video_params:
-	case NodeValue::k_audio_params:
-	case NodeValue::k_subtitle_params:
-	case NodeValue::k_data_type_count:
+	case NodeValueType::k_none:
+	case NodeValueType::k_texture:
+	case NodeValueType::k_matrix:
+	case NodeValueType::k_samples:
+	case NodeValueType::k_video_params:
+	case NodeValueType::k_audio_params:
+	case NodeValueType::k_subtitle_params:
+	case NodeValueType::k_data_type_count:
 		break;
-	case NodeValue::k_binary: {
+	case NodeValueType::k_binary: {
 		NodeParamViewTextEdit *e =
 			static_cast<NodeParamViewTextEdit *>(widgets_.first());
 		QByteArray bytes =
@@ -763,23 +957,23 @@ void NodeParamViewWidgetBridge::update_widget_values()
 		e->setTextPreservingCursor(QString::fromUtf8(bytes.toBase64()));
 		break;
 	}
-	case NodeValue::k_int: {
+	case NodeValueType::k_int: {
 		static_cast<IntegerSlider *>(widgets_.first())
 			->set_value(GetInputValueAtTime(get_inner_input(), node_time).toLongLong());
 		break;
 	}
-	case NodeValue::k_float: {
+	case NodeValueType::k_float: {
 		static_cast<FloatSlider *>(widgets_.first())
 			->set_value(GetInputValueAtTime(get_inner_input(), node_time).toDouble());
 		break;
 	}
-	case NodeValue::k_rational: {
+	case NodeValueType::k_rational: {
 		static_cast<RationalSlider *>(widgets_.first())
 			->set_value(
 				GetInputValueAtTime(get_inner_input(), node_time).value<Rational>());
 		break;
 	}
-	case NodeValue::k_vec2: {
+	case NodeValueType::k_vec2: {
 		QVector2D vec2 =
 			GetInputValueAtTime(get_inner_input(), node_time).value<QVector2D>();
 
@@ -789,7 +983,7 @@ void NodeParamViewWidgetBridge::update_widget_values()
 			->set_value(static_cast<double>(vec2.y()));
 		break;
 	}
-	case NodeValue::k_vec3: {
+	case NodeValueType::k_vec3: {
 		QVector3D vec3 =
 			GetInputValueAtTime(get_inner_input(), node_time).value<QVector3D>();
 
@@ -801,7 +995,7 @@ void NodeParamViewWidgetBridge::update_widget_values()
 			->set_value(static_cast<double>(vec3.z()));
 		break;
 	}
-	case NodeValue::k_vec4: {
+	case NodeValueType::k_vec4: {
 		QVector4D vec4 =
 			GetInputValueAtTime(get_inner_input(), node_time).value<QVector4D>();
 
@@ -815,13 +1009,13 @@ void NodeParamViewWidgetBridge::update_widget_values()
 			->set_value(static_cast<double>(vec4.w()));
 		break;
 	}
-	case NodeValue::k_file: {
+	case NodeValueType::k_file: {
 		FileField *ff = static_cast<FileField *>(widgets_.first());
 		ff->set_filename(GetInputValueAtTime(get_inner_input(), node_time).toString());
 		break;
 	}
-	case NodeValue::k_color: {
-		if (get_inner_input().get_property("color_semantic").toString() ==
+	case NodeValueType::k_color: {
+		if (input_property_string(get_inner_input(), "color_semantic") ==
 			QStringLiteral("scalar")) {
 			Color c = GetInputValueAtTime(get_inner_input(), node_time).value<Color>();
 			static_cast<FloatSlider *>(widgets_.at(0))
@@ -837,30 +1031,30 @@ void NodeParamViewWidgetBridge::update_widget_values()
 				GetInputValueAtTime(get_inner_input(), node_time).value<Color>();
 
 			mc.set_color_input(
-				get_inner_input().get_property("col_input").toString());
+				input_property_string(get_inner_input(), "col_input"));
 
-			QString d = get_inner_input().get_property("col_display").toString();
-			QString v = get_inner_input().get_property("col_view").toString();
-			QString l = get_inner_input().get_property("col_look").toString();
+			QString d = input_property_string(get_inner_input(), "col_display");
+			QString v = input_property_string(get_inner_input(), "col_view");
+			QString l = input_property_string(get_inner_input(), "col_look");
 
-			mc.set_color_output(ColorTransform(d, v, l));
+			mc.set_color_output(oak::ColorTransform(d, v, l));
 
 			static_cast<ColorButton *>(widgets_.first())->set_color(mc);
 		}
 		break;
 	}
-	case NodeValue::k_text: {
+	case NodeValueType::k_text: {
 		NodeParamViewTextEdit *e =
 			static_cast<NodeParamViewTextEdit *>(widgets_.first());
 		e->setTextPreservingCursor(
 			GetInputValueAtTime(get_inner_input(), node_time).toString());
 		break;
 	}
-	case NodeValue::k_boolean:
+	case NodeValueType::k_boolean:
 		static_cast<QCheckBox *>(widgets_.first())
 			->setChecked(GetInputValueAtTime(get_inner_input(), node_time).toBool());
 		break;
-	case NodeValue::k_font: {
+	case NodeValueType::k_font: {
 		QFontComboBox *fc = static_cast<QFontComboBox *>(widgets_.first());
 		fc->blockSignals(true);
 		fc->setCurrentFont(
@@ -868,7 +1062,7 @@ void NodeParamViewWidgetBridge::update_widget_values()
 		fc->blockSignals(false);
 		break;
 	}
-	case NodeValue::k_combo: {
+	case NodeValueType::k_combo: {
 		QComboBox *cb = static_cast<QComboBox *>(widgets_.first());
 		cb->blockSignals(true);
 		int index = GetInputValueAtTime(get_inner_input(), node_time).toInt();
@@ -880,7 +1074,7 @@ void NodeParamViewWidgetBridge::update_widget_values()
 		cb->blockSignals(false);
 		break;
 	}
-	case NodeValue::k_str_combo: {
+	case NodeValueType::k_str_combo: {
 		QComboBox *cb = static_cast<QComboBox *>(widgets_.first());
 		cb->blockSignals(true);
 		const QString current =
@@ -896,7 +1090,7 @@ void NodeParamViewWidgetBridge::update_widget_values()
 		cb->blockSignals(false);
 		break;
 	}
-	case NodeValue::k_bezier: {
+	case NodeValueType::k_bezier: {
 		BezierWidget *bw = static_cast<BezierWidget *>(widgets_.first());
 		bw->set_value(GetInputValueAtTime(get_inner_input(), node_time).value<Bezier>());
 		break;
@@ -907,9 +1101,13 @@ void NodeParamViewWidgetBridge::update_widget_values()
 Rational NodeParamViewWidgetBridge::get_current_time_as_node_time() const
 {
 	if (get_time_target()) {
-		return get_adjusted_time(get_time_target(), get_inner_input().node(),
-							   get_time_target()->get_playhead(),
-							   Node::k_transform_towards_input);
+		// ViewerOutput::get_playhead() via the C ABI
+		int64_t pn = 0, pd = 1;
+		oakengine_viewer_get_playhead(get_time_target(), &pn, &pd);
+		return get_adjusted_time(
+			get_time_target(),
+			get_inner_input().node_handle(),
+			Rational(pn, pd), k_transform_towards_input);
 	} else {
 		return 0;
 	}
@@ -917,19 +1115,19 @@ Rational NodeParamViewWidgetBridge::get_current_time_as_node_time() const
 
 QString NodeParamViewWidgetBridge::get_command_name() const
 {
-	NodeInput i = get_inner_input();
+	const oak::Input i = get_inner_input();
 	return tr("Edited Value Of %1 - %2")
-		.arg(i.node()->get_label_and_name(), i.node()->get_input_name(i.input()));
+		.arg(i.node().label_and_name(), i.name());
 }
 
 void NodeParamViewWidgetBridge::set_timebase(const Rational &timebase)
 {
-	if (get_data_type() == NodeValue::k_rational) {
+	if (get_data_type() == NodeValueType::k_rational) {
 		static_cast<RationalSlider *>(widgets_.first())->set_timebase(timebase);
 	}
 }
 
-void NodeParamViewWidgetBridge::TimeTargetDisconnectEvent(ViewerOutput *v)
+void NodeParamViewWidgetBridge::TimeTargetDisconnectEvent(OakEngineNode *v)
 {
 	if (viewer_sub_ > 0) {
 		oakengine_event_unsubscribe(viewer_sub_);
@@ -937,10 +1135,10 @@ void NodeParamViewWidgetBridge::TimeTargetDisconnectEvent(ViewerOutput *v)
 	}
 }
 
-void NodeParamViewWidgetBridge::TimeTargetConnectEvent(ViewerOutput *v)
+void NodeParamViewWidgetBridge::TimeTargetConnectEvent(OakEngineNode *v)
 {
 	viewer_sub_ = oakengine_event_subscribe(
-		reinterpret_cast<OakEngineNode *>(v),
+		v,
 		OAKENGINE_EVENT_VIEWER_PLAYHEAD_CHANGED,
 		[](const oakengine_event *, void *userdata) {
 			static_cast<NodeParamViewWidgetBridge *>(userdata)
@@ -954,11 +1152,14 @@ void NodeParamViewWidgetBridge::input_value_changed(OakEngineNode *source,
 												  int element, qint64 in_ts,
 												  qint64 out_ts)
 {
-	NodeInput ni(reinterpret_cast<Node *>(source), input, element);
+	const oak::Input ni(source, input, element);
 	if (get_time_target() && get_inner_input() == ni &&
 		!oakengine_dragger_is_started(dragger_)) {
+		int64_t pn = 0, pd = 1;
+		oakengine_viewer_get_playhead(
+			reinterpret_cast<OakEngineNode *>(get_time_target()), &pn, &pd);
 		int64_t playhead_ts =
-			node_time_to_ts(source, get_time_target()->get_playhead());
+			node_time_to_ts(source, Rational(pn, pd));
 		if (in_ts <= playhead_ts && out_ts >= playhead_ts) {
 			update_widget_values();
 		}
@@ -968,7 +1169,7 @@ void NodeParamViewWidgetBridge::input_value_changed(OakEngineNode *source,
 void NodeParamViewWidgetBridge::set_property(const QString &key,
 											const QVariant &value)
 {
-	NodeValue::Type data_type = get_data_type();
+	NodeValueType::Type data_type = get_data_type();
 
 	// Parameters for all types
 	bool key_is_disable = key.startsWith(QStringLiteral("disable"));
@@ -1000,36 +1201,35 @@ void NodeParamViewWidgetBridge::set_property(const QString &key,
 	}
 
 	// Parameters for integers, floats, and vectors
-	if (NodeValue::type_is_numeric(data_type) ||
-		NodeValue::type_is_vector(data_type)) {
+	if (type_is_numeric(data_type) || type_is_vector(data_type)) {
 		if (key == QStringLiteral("min")) {
 			switch (data_type) {
-			case NodeValue::k_int:
+			case NodeValueType::k_int:
 				static_cast<IntegerSlider *>(widgets_.first())
 					->set_minimum(value.value<int64_t>());
 				break;
-			case NodeValue::k_float:
+			case NodeValueType::k_float:
 				static_cast<FloatSlider *>(widgets_.first())
 					->set_minimum(value.toDouble());
 				break;
-			case NodeValue::k_rational:
+			case NodeValueType::k_rational:
 				static_cast<RationalSlider *>(widgets_.first())
 					->set_minimum(value.value<Rational>());
 				break;
-			case NodeValue::k_vec2: {
+			case NodeValueType::k_vec2: {
 				QVector2D min = value.value<QVector2D>();
 				static_cast<FloatSlider *>(widgets_.at(0))->set_minimum(min.x());
 				static_cast<FloatSlider *>(widgets_.at(1))->set_minimum(min.y());
 				break;
 			}
-			case NodeValue::k_vec3: {
+			case NodeValueType::k_vec3: {
 				QVector3D min = value.value<QVector3D>();
 				static_cast<FloatSlider *>(widgets_.at(0))->set_minimum(min.x());
 				static_cast<FloatSlider *>(widgets_.at(1))->set_minimum(min.y());
 				static_cast<FloatSlider *>(widgets_.at(2))->set_minimum(min.z());
 				break;
 			}
-			case NodeValue::k_vec4: {
+			case NodeValueType::k_vec4: {
 				QVector4D min = value.value<QVector4D>();
 				static_cast<FloatSlider *>(widgets_.at(0))->set_minimum(min.x());
 				static_cast<FloatSlider *>(widgets_.at(1))->set_minimum(min.y());
@@ -1042,32 +1242,32 @@ void NodeParamViewWidgetBridge::set_property(const QString &key,
 			}
 		} else if (key == QStringLiteral("max")) {
 			switch (data_type) {
-			case NodeValue::k_int:
+			case NodeValueType::k_int:
 				static_cast<IntegerSlider *>(widgets_.first())
 					->set_maximum(value.value<int64_t>());
 				break;
-			case NodeValue::k_float:
+			case NodeValueType::k_float:
 				static_cast<FloatSlider *>(widgets_.first())
 					->set_maximum(value.toDouble());
 				break;
-			case NodeValue::k_rational:
+			case NodeValueType::k_rational:
 				static_cast<RationalSlider *>(widgets_.first())
 					->set_maximum(value.value<Rational>());
 				break;
-			case NodeValue::k_vec2: {
+			case NodeValueType::k_vec2: {
 				QVector2D max = value.value<QVector2D>();
 				static_cast<FloatSlider *>(widgets_.at(0))->set_maximum(max.x());
 				static_cast<FloatSlider *>(widgets_.at(1))->set_maximum(max.y());
 				break;
 			}
-			case NodeValue::k_vec3: {
+			case NodeValueType::k_vec3: {
 				QVector3D max = value.value<QVector3D>();
 				static_cast<FloatSlider *>(widgets_.at(0))->set_maximum(max.x());
 				static_cast<FloatSlider *>(widgets_.at(1))->set_maximum(max.y());
 				static_cast<FloatSlider *>(widgets_.at(2))->set_maximum(max.z());
 				break;
 			}
-			case NodeValue::k_vec4: {
+			case NodeValueType::k_vec4: {
 				QVector4D max = value.value<QVector4D>();
 				static_cast<FloatSlider *>(widgets_.at(0))->set_maximum(max.x());
 				static_cast<FloatSlider *>(widgets_.at(1))->set_maximum(max.y());
@@ -1124,7 +1324,7 @@ void NodeParamViewWidgetBridge::set_property(const QString &key,
 	}
 
 	// ComboBox strings changing
-	if (data_type == NodeValue::k_combo || data_type == NodeValue::k_str_combo) {
+	if (data_type == NodeValueType::k_combo || data_type == NodeValueType::k_str_combo) {
 		if (key == QStringLiteral("combo_str")) {
 			QComboBox *cb = static_cast<QComboBox *>(widgets_.first());
 
@@ -1137,8 +1337,8 @@ void NodeParamViewWidgetBridge::set_property(const QString &key,
 
 			QStringList items = value.toStringList();
 			QStringList values =
-				get_inner_input().get_property("combo_value_str").toStringList();
-			const bool use_value_data = (data_type == NodeValue::k_str_combo) &&
+				input_property_string_list(get_inner_input(), "combo_value_str");
+			const bool use_value_data = (data_type == NodeValueType::k_str_combo) &&
 										!values.isEmpty();
 			int index = 0;
 			for (int i = 0; i < items.size(); ++i) {
@@ -1169,8 +1369,7 @@ void NodeParamViewWidgetBridge::set_property(const QString &key,
 	}
 
 	// Parameters for floats and vectors only
-	if (data_type == NodeValue::k_float ||
-		NodeValue::type_is_vector(data_type)) {
+	if (data_type == NodeValueType::k_float || type_is_vector(data_type)) {
 		if (key == QStringLiteral("view")) {
 			FloatSlider::DisplayType display_type =
 				static_cast<FloatSlider::DisplayType>(value.toInt());
@@ -1194,7 +1393,7 @@ void NodeParamViewWidgetBridge::set_property(const QString &key,
 		}
 	}
 
-	if (data_type == NodeValue::k_rational) {
+	if (data_type == NodeValueType::k_rational) {
 		if (key == QStringLiteral("view")) {
 			RationalSlider::DisplayType display_type =
 				static_cast<RationalSlider::DisplayType>(value.toInt());
@@ -1212,7 +1411,7 @@ void NodeParamViewWidgetBridge::set_property(const QString &key,
 	}
 
 	// Parameters for files
-	if (data_type == NodeValue::k_file) {
+	if (data_type == NodeValueType::k_file) {
 		FileField *ff = static_cast<FileField *>(widgets_.first());
 
 		if (key == QStringLiteral("placeholder")) {
@@ -1244,7 +1443,7 @@ void NodeParamViewWidgetBridge::set_property(const QString &key,
 	}
 
 	// Parameters for text
-	if (data_type == NodeValue::k_text) {
+	if (data_type == NodeValueType::k_text) {
 		NodeParamViewTextEdit *tex =
 			static_cast<NodeParamViewTextEdit *>(widgets_.first());
 
@@ -1257,8 +1456,8 @@ void NodeParamViewWidgetBridge::set_property(const QString &key,
 void NodeParamViewWidgetBridge::input_data_type_changed(OakEngineNode *source,
 													 const QString &input)
 {
-	if (reinterpret_cast<Node *>(source) == get_outer_input().node() &&
-		input == get_outer_input().input()) {
+	if (source == get_outer_input().node_handle() &&
+		input == get_outer_input().input_id()) {
 		qDeleteAll(widgets_);
 		widgets_.clear();
 
@@ -1274,7 +1473,7 @@ void NodeParamViewWidgetBridge::property_changed(const QString &input)
 
 	for (auto it = input_hierarchy_.cbegin(); it != input_hierarchy_.cend();
 		 it++) {
-		if (it->input() == input) {
+		if (it->input_id() == input) {
 			found = true;
 			break;
 		}
@@ -1290,10 +1489,24 @@ void NodeParamViewWidgetBridge::update_properties()
 	// Set properties from the last entry (the innermost input) to the first (the outermost)
 	for (auto it = input_hierarchy_.crbegin(); it != input_hierarchy_.crend();
 		 it++) {
-		auto input_properties = it->node()->get_input_properties(it->input());
-		for (auto jt = input_properties.cbegin(); jt != input_properties.cend();
-			 jt++) {
-			set_property(jt.key(), jt.value());
+		OakEngineNode *node = it->node_handle();
+		const QByteArray id = it->input_id().toUtf8();
+		// Node::get_input_properties() (a QVariantHash) has no facade
+		// equivalent (WRAPPER-GAP); enumerate the keys and rebuild each value
+		// through the typed getters (read_input_property()).
+		const int count =
+			oakengine_node_input_get_property_count(node, id.constData());
+		for (int i = 0; i < count; i++) {
+			char key_buf[256];
+			if (oakengine_node_input_get_property_key(node, id.constData(), i,
+													key_buf,
+													sizeof(key_buf)) < 0) {
+				continue;
+			}
+			const QString key = QString::fromUtf8(key_buf);
+			set_property(key, read_input_property(
+								  *it, key,
+								  static_cast<NodeValueType::Type>(it->data_type())));
 		}
 	}
 }

@@ -24,6 +24,7 @@
 #include <cstring>
 
 #include <QByteArray>
+#include <QBrush>
 #include <QString>
 #include <QVariant>
 #include <QVector2D>
@@ -31,6 +32,7 @@
 #include <QVector4D>
 
 #include "coreengine.h"
+#include "config/config.h"
 #include "node/factory.h"
 #include "node/keyframe.h"
 #include "node/node.h"
@@ -44,6 +46,13 @@
 #include "node/distort/transform/transformdistortnode.h"
 #include "node/block/transition/transition.h"
 #include "node/block/subtitle/subtitle.h"
+#include "node/block/clip/clip.h"
+#include "node/output/track/track.h"
+#include "node/output/viewer/viewer.h"
+#include "node/project/footage/footage.h"
+#include "node/project/folder/folder.h"
+#include "node/gizmo/gizmo.h"
+#include "pluginSupport/oliveplugininstance.h"
 #include "node/generator/shape/shapenodebase.h"
 #include "audio/audiovisualwaveform.h"
 #include "node/inputimmediate.h"
@@ -617,6 +626,78 @@ OakEngineNode *oakengine_node_factory_node_at(int index)
 	return wrap(lib.at(index));
 }
 
+int oakengine_node_category_count(const OakEngineNode *self)
+{
+	return self ? impl(self)->category().size() : 0;
+}
+
+int oakengine_node_category_at(const OakEngineNode *self, int index)
+{
+	if (!self) {
+		return -1;
+	}
+	const QVector<olive::Node::CategoryID> cats = impl(self)->category();
+	if (index < 0 || index >= cats.size()) {
+		return -1;
+	}
+	return int(cats.at(index));
+}
+
+uint64_t oakengine_node_get_flags(const OakEngineNode *self)
+{
+	return self ? impl(self)->get_flags() : 0;
+}
+
+uint64_t oakengine_node_flag_dont_show_in_create_menu(void)
+{
+	return olive::Node::k_dont_show_in_create_menu;
+}
+
+uint64_t oakengine_node_flag_dont_show_in_param_view(void)
+{
+	return olive::Node::k_dont_show_in_param_view;
+}
+
+uint64_t oakengine_node_flag_video_effect(void)
+{
+	return olive::Node::k_video_effect;
+}
+
+uint64_t oakengine_node_flag_audio_effect(void)
+{
+	return olive::Node::k_audio_effect;
+}
+
+void oakengine_node_retranslate(OakEngineNode *self)
+{
+	if (self) {
+		impl(self)->retranslate();
+	}
+}
+
+int oakengine_node_get_sub_category(const OakEngineNode *self, char *buf,
+									int buf_size)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	return string_to_buf(impl(self)->sub_category(), buf, buf_size);
+}
+
+int oakengine_node_get_description(const OakEngineNode *self, char *buf,
+								   int buf_size)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	return string_to_buf(impl(self)->description(), buf, buf_size);
+}
+
+OakEngineNode *oakengine_node_create_copy(const OakEngineNode *self)
+{
+	return self ? wrap(impl(self)->copy()) : nullptr;
+}
+
 int oakengine_node_get_type_id(const OakEngineNode *self, char *buf,
 							   int buf_size)
 {
@@ -633,6 +714,15 @@ int oakengine_node_get_name(const OakEngineNode *self, char *buf,
 		return OAKENGINE_E_INVALID;
 	}
 	return string_to_buf(impl(self)->name(), buf, buf_size);
+}
+
+int oakengine_node_get_short_name(const OakEngineNode *self, char *buf,
+								  int buf_size)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	return string_to_buf(impl(self)->short_name(), buf, buf_size);
 }
 
 int oakengine_node_get_label(const OakEngineNode *self, char *buf,
@@ -760,9 +850,33 @@ int oakengine_node_get_color_label(const OakEngineNode *self)
 	return impl(self)->get_override_color();
 }
 
+int oakengine_node_get_effective_color_label(const OakEngineNode *self)
+{
+	if (!self) {
+		return -1;
+	}
+	const olive::Node *n = impl(self);
+	int c = n->get_override_color();
+	if (c < 0) {
+		c = olive::Config::current()[QStringLiteral("CatColor%1").arg(
+				n->category().first())]
+				.toInt();
+	}
+	return c;
+}
+
 int oakengine_node_input_count(const OakEngineNode *self)
 {
 	return self ? impl(self)->inputs().size() : 0;
+}
+
+void oakengine_node_get_brush(const OakEngineNode *self, double top,
+							  double bottom, void *out_qbrush)
+{
+	if (!self || !out_qbrush) {
+		return;
+	}
+	*static_cast<QBrush *>(out_qbrush) = impl(self)->brush(top, bottom);
 }
 
 int oakengine_node_input_id(const OakEngineNode *self, int index, char *buf,
@@ -1291,6 +1405,13 @@ void oakengine_node_delete_later(OakEngineNode *node)
 	if (olive::Node *n = impl(node)) {
 		n->deleteLater();
 	}
+}
+
+void oakengine_node_free(OakEngineNode *node)
+{
+	// Immediate destruction of an owned, orphaned node (see the header
+	// comment for the strict preconditions).
+	delete impl(node);
 }
 
 int oakengine_node_connect(OakEngineNode *output_node,
@@ -2025,6 +2146,15 @@ int oakengine_node_input_get_flags(const OakEngineNode *self,
 	return int(impl(self)->get_input_flags(QString::fromUtf8(input_id)));
 }
 
+int oakengine_node_input_get_data_type(const OakEngineNode *self,
+									   const char *input_id)
+{
+	if (!self || !input_id) {
+		return -1;
+	}
+	return int(impl(self)->get_input_data_type(QString::fromUtf8(input_id)));
+}
+
 int oakengine_node_input_is_connectable(const OakEngineNode *self,
 										const char *input_id)
 {
@@ -2043,14 +2173,23 @@ int oakengine_node_input_is_keyframable(const OakEngineNode *self,
 	return impl(self)->is_input_keyframable(QString::fromUtf8(input_id)) ? 1 : 0;
 }
 
-int oakengine_node_input_is_keyframed_ex(const OakEngineNode *self,
-										 const char *input_id, int track)
+int oakengine_node_input_is_hidden(const OakEngineNode *self,
+								   const char *input_id)
 {
 	if (!self || !input_id) {
 		return 0;
 	}
-	(void)track;
-	return impl(self)->is_input_keyframing(QString::fromUtf8(input_id)) ? 1 : 0;
+	return impl(self)->is_input_hidden(QString::fromUtf8(input_id)) ? 1 : 0;
+}
+
+int oakengine_node_input_is_keyframed_ex(const OakEngineNode *self,
+										 const char *input_id, int element)
+{
+	if (!self || !input_id) {
+		return 0;
+	}
+	return impl(self)->is_input_keyframing(QString::fromUtf8(input_id),
+										   element) ? 1 : 0;
 }
 
 int oakengine_node_get_label_and_name(const OakEngineNode *self, char *buf,
@@ -2130,6 +2269,31 @@ OakEngineProject *oakengine_node_get_project(const OakEngineNode *self)
 	}
 	olive::Project *p = impl(self)->project();
 	return reinterpret_cast<OakEngineProject *>(p);
+}
+
+OakEngineProject *oakengine_node_parent(const OakEngineNode *self)
+{
+	if (!self) {
+		return nullptr;
+	}
+	olive::Project *p = impl(self)->parent();
+	return reinterpret_cast<OakEngineProject *>(p);
+}
+
+int oakengine_node_is_item(const OakEngineNode *self)
+{
+	if (!self) {
+		return 0;
+	}
+	return impl(self)->is_item() ? 1 : 0;
+}
+
+OakEngineNode *oakengine_node_folder(const OakEngineNode *self)
+{
+	if (!self) {
+		return nullptr;
+	}
+	return wrap(const_cast<olive::Folder *>(impl(self)->folder()));
 }
 
 OakEngineNode *oakengine_node_input_get_connected_node(
@@ -2517,6 +2681,51 @@ int oakengine_node_input_get_property_rational(const OakEngineNode *self,
 	}
 	if (num) *num = 0;
 	if (den) *den = 1;
+	return OAKENGINE_OK;
+}
+
+int oakengine_node_input_get_property_track_number(const OakEngineNode *self,
+												   const char *input_id,
+												   const char *key, int track,
+												   double *out)
+{
+	set_error(QString());
+	if (!self || !input_id || !key || !out) {
+		set_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::Node *node = impl(self);
+	const QString id = QString::fromUtf8(input_id);
+	if (!node->has_input_property(id, QString::fromUtf8(key))) {
+		set_error(QStringLiteral("property \"%1\" not found on \"%2\"")
+					  .arg(QString::fromUtf8(key)).arg(id));
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	const QVariant v = node->get_input_property(id, QString::fromUtf8(key));
+	const olive::NodeValue::Type dt = node->get_input_data_type(id);
+	const int c_type = to_c_type(dt);
+	oak_node_value normal;
+	memset(&normal, 0, sizeof(normal));
+	normal.type = c_type;
+	if (!qvariant_to_pod(dt, v, &normal)) {
+		set_error(QStringLiteral("property \"%1\" is not numeric")
+					  .arg(QString::fromUtf8(key)));
+		return OAKENGINE_E_INVALID;
+	}
+	const int tc = olive::NodeValue::get_number_of_keyframe_tracks(dt);
+	QVector<oak_node_value> track_vals(tc);
+	if (oakengine_node_value_split_to_tracks(c_type, &normal,
+											 track_vals.data(), tc) !=
+		OAKENGINE_OK) {
+		set_error(QStringLiteral("property \"%1\" could not be split")
+					  .arg(QString::fromUtf8(key)));
+		return OAKENGINE_E_INVALID;
+	}
+	if (track < 0 || track >= tc) {
+		set_error(QStringLiteral("track %1 out of range").arg(track));
+		return OAKENGINE_E_INVALID;
+	}
+	*out = track_vals.at(track).f[0];
 	return OAKENGINE_OK;
 }
 
@@ -3627,22 +3836,21 @@ OakEngineKeyframe *oakengine_node_keyframe_handle_on_track(
 
 OakEngineKeyframe *oakengine_node_keyframe_handle_at_time(
 	const OakEngineNode *self, const char *input_id, int element,
-	int track, int64_t time_ts, int track_for_time)
+	int track, int64_t time_num, int64_t time_den)
 {
 	if (!self || !input_id) {
 		return nullptr;
 	}
 	const olive::Node *node = impl(self);
 	const QString id = QString::fromUtf8(input_id);
-	// Facade contract: time_ts is in SECONDS and track_for_time is 1-based.
 	olive::NodeKeyframe *key = node->get_keyframe_at_time_on_track(
-		id, olive::Rational(time_ts), track_for_time - 1, element);
+		id, olive::Rational(int(time_num), int(time_den)), track, element);
 	return wrap_kf(key);
 }
 
 int oakengine_node_keyframes_at_time(const OakEngineNode *self,
 									 const char *input_id, int element,
-									 int64_t time_ts, int track,
+									 int64_t time_num, int64_t time_den,
 									 OakEngineKeyframe **out_handles,
 									 int max_handles)
 {
@@ -3651,15 +3859,14 @@ int oakengine_node_keyframes_at_time(const OakEngineNode *self,
 	}
 	const olive::Node *node = impl(self);
 	const QString id = QString::fromUtf8(input_id);
-	// Facade contract: time_ts is in SECONDS.
-	const olive::Rational time(time_ts);
+	const olive::Rational t{int(time_num), int(time_den)};
 	olive::NodeInputImmediate *imm =
 		const_cast<olive::Node *>(node)->get_immediate(id, element);
 	if (!imm) {
 		return 0;
 	}
 	const QVector<olive::NodeKeyframe *> at_time =
-		imm->get_keyframe_at_time(time);
+		imm->get_keyframe_at_time(t);
 	const int n = qMin(at_time.size(), max_handles);
 	for (int i = 0; i < n; i++) {
 		out_handles[i] = wrap_kf(at_time[i]);
@@ -3868,6 +4075,92 @@ int oakengine_keyframe_get_value(const OakEngineKeyframe *self,
 	}
 	return kf_value_to_c(type, key->value(), out) ?
 		OAKENGINE_OK : OAKENGINE_E_INVALID;
+}
+
+// Convert a single track's component QVariant into the POD, mirroring the
+// application's NodeTrackComponentToOakNodeValue helper (per-track scalar in
+// f[0]/num with the input's declared type).
+static bool track_component_to_pod(olive::NodeValue::Type type,
+								   const QVariant &v, oak_node_value *out)
+{
+	memset(out, 0, sizeof(*out));
+	switch (type) {
+	case olive::NodeValue::k_int:
+		out->type = OAK_NODE_VALUE_INT;
+		out->num = v.toLongLong();
+		return true;
+	case olive::NodeValue::k_combo:
+		out->type = OAK_NODE_VALUE_COMBO;
+		out->num = v.toLongLong();
+		return true;
+	case olive::NodeValue::k_float:
+	case olive::NodeValue::k_bezier:
+		out->type = OAK_NODE_VALUE_FLOAT;
+		out->f[0] = v.toDouble();
+		return true;
+	case olive::NodeValue::k_boolean:
+		out->type = OAK_NODE_VALUE_BOOL;
+		out->num = v.toBool() ? 1 : 0;
+		return true;
+	case olive::NodeValue::k_rational: {
+		const olive::Rational r = v.value<olive::Rational>();
+		out->type = OAK_NODE_VALUE_RATIONAL;
+		out->num = r.numerator();
+		out->den = r.denominator();
+		return true;
+	}
+	case olive::NodeValue::k_color:
+		out->type = OAK_NODE_VALUE_COLOR;
+		out->f[0] = v.toFloat();
+		return true;
+	case olive::NodeValue::k_vec2:
+		out->type = OAK_NODE_VALUE_VEC2;
+		out->f[0] = v.toFloat();
+		return true;
+	case olive::NodeValue::k_vec3:
+		out->type = OAK_NODE_VALUE_VEC3;
+		out->f[0] = v.toFloat();
+		return true;
+	case olive::NodeValue::k_vec4:
+		out->type = OAK_NODE_VALUE_VEC4;
+		out->f[0] = v.toFloat();
+		return true;
+	default:
+		return false;
+	}
+}
+
+int oakengine_keyframe_compute_paste_value(OakEngineNode *target_node,
+										   OakEngineKeyframe *keyframe,
+										   oak_node_value *out)
+{
+	set_error(QString());
+	if (!target_node || !keyframe || !out) {
+		set_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Node *node = impl(target_node);
+	olive::NodeKeyframe *key = impl_kf(keyframe);
+	const QString &input_id = key->input();
+	if (!node->inputs().contains(input_id)) {
+		set_error(QStringLiteral("unknown input id \"%1\"").arg(input_id));
+		return OAKENGINE_E_INVALID;
+	}
+	const olive::NodeValue::Type type = node->get_input_data_type(input_id);
+	olive::SplitValue split = node->get_split_value_at_time(
+		olive::NodeInput(node, input_id, key->element()), key->time());
+	if (key->track() >= 0 && key->track() < split.size()) {
+		split[key->track()] = key->value();
+	}
+	QVector<oak_node_value> tracks(split.size());
+	for (int i = 0; i < split.size(); i++) {
+		if (!track_component_to_pod(type, split.at(i), &tracks[i])) {
+			set_error(QStringLiteral("unsupported value type"));
+			return OAKENGINE_E_INVALID;
+		}
+	}
+	return oakengine_node_value_combine_tracks(
+		to_c_type(type), tracks.constData(), tracks.size(), out);
 }
 
 int oakengine_keyframe_has_sibling_at_time(const OakEngineKeyframe *self,
@@ -4572,6 +4865,540 @@ int oakengine_node_value_combine_tracks(int c_type,
 		break;
 	}
 	return OAKENGINE_OK;
+}
+
+/* ---- Node type queries ---------------------------------------------------- */
+
+int oakengine_node_is_clip(const OakEngineNode *self)
+{
+	return self && dynamic_cast<const olive::ClipBlock *>(impl(self)) ? 1 : 0;
+}
+
+int oakengine_node_is_track(const OakEngineNode *self)
+{
+	return self && dynamic_cast<const olive::Track *>(impl(self)) ? 1 : 0;
+}
+
+int oakengine_node_is_viewer_output(const OakEngineNode *self)
+{
+	return self && dynamic_cast<const olive::ViewerOutput *>(impl(self)) ? 1 : 0;
+}
+
+int oakengine_node_is_footage(const OakEngineNode *self)
+{
+	return self && dynamic_cast<const olive::Footage *>(impl(self)) ? 1 : 0;
+}
+
+int oakengine_node_is_sequence(const OakEngineNode *self)
+{
+	return self && dynamic_cast<const olive::Sequence *>(impl(self)) ? 1 : 0;
+}
+
+int oakengine_node_is_folder(const OakEngineNode *self)
+{
+	return self && dynamic_cast<const olive::Folder *>(impl(self)) ? 1 : 0;
+}
+
+/* ---- Node data (project tree columns) ------------------------------------- */
+
+int oakengine_node_get_data(const OakEngineNode *self, int role,
+							int *out_type, int64_t *out_int,
+							char *out_str, int out_str_size)
+{
+	if (out_type) *out_type = 0;
+	if (out_int) *out_int = 0;
+	if (out_str && out_str_size > 0) out_str[0] = '\0';
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Node::DataType dt;
+	switch (role) {
+	case 0: dt = olive::Node::icon; break;
+	case 1: dt = olive::Node::duration; break;
+	case 2: dt = olive::Node::created_time; break;
+	case 3: dt = olive::Node::modified_time; break;
+	case 4: dt = olive::Node::frequency_rate; break;
+	case 5: dt = olive::Node::tooltip; break;
+	default: return OAKENGINE_E_INVALID;
+	}
+	const QVariant v = impl(self)->data(dt);
+	if (!v.isValid()) {
+		if (out_type) *out_type = 0;
+		return OAKENGINE_OK;
+	}
+	switch (v.userType()) {
+	case QMetaType::QString: {
+		if (out_type) *out_type = 1;
+		if (out_str) string_to_buf(v.toString(), out_str, out_str_size);
+		break;
+	}
+	case QMetaType::LongLong:
+	case QMetaType::Int:
+	case QMetaType::UInt:
+	case QMetaType::ULongLong: {
+		if (out_type) *out_type = 2;
+		if (out_int) *out_int = v.toLongLong();
+		break;
+	}
+	default:
+		// Unsupported variant kind: report as invalid.
+		if (out_type) *out_type = 0;
+		break;
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_node_get_exclusive_dependency_count(const OakEngineNode *self)
+{
+	if (!self) {
+		return 0;
+	}
+	return impl(self)->get_exclusive_dependencies().size();
+}
+
+OakEngineNode *oakengine_node_get_exclusive_dependency_at(
+	const OakEngineNode *self, int index)
+{
+	if (!self) {
+		return nullptr;
+	}
+	const QVector<olive::Node *> deps =
+		impl(self)->get_exclusive_dependencies();
+	if (index < 0 || index >= deps.size()) {
+		return nullptr;
+	}
+	return wrap(deps.at(index));
+}
+
+/* ---- Clip / Track specific ------------------------------------------------ */
+
+OakEngineNode *oakengine_clip_get_track(const OakEngineNode *clip)
+{
+	if (!clip) {
+		return nullptr;
+	}
+	auto *c = dynamic_cast<olive::ClipBlock *>(impl(const_cast<OakEngineNode *>(clip)));
+	if (!c) {
+		return nullptr;
+	}
+	return wrap(c->track());
+}
+
+int oakengine_track_get_type(const OakEngineNode *track)
+{
+	if (!track) {
+		return -1;
+	}
+	auto *t = dynamic_cast<olive::Track *>(impl(const_cast<OakEngineNode *>(track)));
+	if (!t) {
+		return -1;
+	}
+	return static_cast<int>(t->type());
+}
+
+int oakengine_track_get_index(const OakEngineNode *track)
+{
+	if (!track) {
+		return -1;
+	}
+	auto *t = dynamic_cast<olive::Track *>(impl(const_cast<OakEngineNode *>(track)));
+	if (!t) {
+		return -1;
+	}
+	return t->index();
+}
+
+OakEngineNode *oakengine_track_get_sequence(const OakEngineNode *track)
+{
+	if (!track) {
+		return nullptr;
+	}
+	auto *t = dynamic_cast<olive::Track *>(impl(const_cast<OakEngineNode *>(track)));
+	if (!t) {
+		return nullptr;
+	}
+	return wrap(t->sequence());
+}
+
+int oakengine_block_get_length_rational(
+	const OakEngineNode *block, int *num, int *den)
+{
+	if (!block) {
+		return OAKENGINE_E_INVALID;
+	}
+	auto *b = dynamic_cast<olive::Block *>(impl(const_cast<OakEngineNode *>(block)));
+	if (!b) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Rational l = b->length();
+	if (num) *num = l.numerator();
+	if (den) *den = l.denominator();
+	return OAKENGINE_OK;
+}
+
+int oakengine_block_get_in_rational(
+	const OakEngineNode *block, int *num, int *den)
+{
+	if (!block) {
+		return OAKENGINE_E_INVALID;
+	}
+	auto *b = dynamic_cast<olive::Block *>(impl(const_cast<OakEngineNode *>(block)));
+	if (!b) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Rational v = b->in();
+	if (num) *num = v.numerator();
+	if (den) *den = v.denominator();
+	return OAKENGINE_OK;
+}
+
+int oakengine_block_get_out_rational(
+	const OakEngineNode *block, int *num, int *den)
+{
+	if (!block) {
+		return OAKENGINE_E_INVALID;
+	}
+	auto *b = dynamic_cast<olive::Block *>(impl(const_cast<OakEngineNode *>(block)));
+	if (!b) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Rational v = b->out();
+	if (num) *num = v.numerator();
+	if (den) *den = v.denominator();
+	return OAKENGINE_OK;
+}
+
+/* ---- ViewerOutput specific ------------------------------------------------ */
+
+OakEngineNode *oakengine_viewer_output_get_connected_texture(
+	const OakEngineNode *self)
+{
+	if (!self) {
+		return nullptr;
+	}
+	auto *v = dynamic_cast<olive::ViewerOutput *>(
+		impl(const_cast<OakEngineNode *>(self)));
+	if (!v) {
+		return nullptr;
+	}
+	return wrap(v->get_connected_texture_output());
+}
+
+/* ---- Gizmo access --------------------------------------------------------- */
+
+int oakengine_node_has_gizmos(const OakEngineNode *self)
+{
+	return self && impl(self)->has_gizmos() ? 1 : 0;
+}
+
+int oakengine_node_gizmo_count(const OakEngineNode *self)
+{
+	if (!self) {
+		return 0;
+	}
+	return impl(self)->get_gizmos().size();
+}
+
+void *oakengine_node_gizmo_at(const OakEngineNode *self, int index)
+{
+	if (!self) {
+		return nullptr;
+	}
+	const auto &gizmos = impl(self)->get_gizmos();
+	if (index < 0 || index >= gizmos.size()) {
+		return nullptr;
+	}
+	return gizmos.at(index);
+}
+
+int oakengine_node_update_gizmo_positions(
+	OakEngineNode *self, void *node_value_row,
+	int video_width, int video_height,
+	int64_t time_num, int64_t time_den)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Node *n = impl(self);
+	if (!n->has_gizmos()) {
+		return OAKENGINE_OK;
+	}
+	// Use the caller's NodeValueRow when provided, otherwise empty.
+	const olive::NodeValueRow &row = node_value_row
+		? *static_cast<const olive::NodeValueRow *>(node_value_row)
+		: olive::NodeValueRow();
+	olive::VideoParams vp;
+	if (video_width > 0 && video_height > 0) {
+		vp.set_width(video_width);
+		vp.set_height(video_height);
+	}
+	olive::NodeGlobals globals(
+		vp, olive::AudioParams(),
+		olive::Rational(time_num, time_den),
+		olive::LoopMode::k_loop_mode_off);
+	n->update_gizmo_positions(row, globals);
+	return OAKENGINE_OK;
+}
+
+/* ---- Graph topology ------------------------------------------------------- */
+
+int oakengine_node_inputs_from(const OakEngineNode *self,
+							   const OakEngineNode *other, int recursive)
+{
+	if (!self || !other) {
+		return 0;
+	}
+	return impl(self)->inputs_from(
+		impl(const_cast<OakEngineNode *>(other)), recursive != 0) ? 1 : 0;
+}
+
+int oakengine_node_output_connection_count(const OakEngineNode *self)
+{
+	if (!self) {
+		return 0;
+	}
+	return int(impl(self)->output_connections().size());
+}
+
+int oakengine_node_output_connection_at(
+	const OakEngineNode *self, int index, OakEngineNode **input_node,
+	char *input_id_buf, int input_id_size, int *element)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	const auto &conns = impl(self)->output_connections();
+	if (index < 0 || index >= int(conns.size())) {
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	const auto &conn = conns[size_t(index)];
+	// conn.first = input Node*, conn.second = NodeInput on that node
+	if (input_node) {
+		*input_node = wrap(conn.first);
+	}
+	if (input_id_buf && input_id_size > 0) {
+		string_to_buf(conn.second.input(), input_id_buf, input_id_size);
+	}
+	if (element) {
+		*element = conn.second.element();
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_node_output_connection_at_ex(
+	const OakEngineNode *self, int index, OakEngineNode **input_node,
+	char *input_id_buf, int input_id_size, int *element, int *hidden)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	const auto &conns = impl(self)->output_connections();
+	if (index < 0 || index >= int(conns.size())) {
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	const auto &conn = conns[size_t(index)];
+	// conn.first = input Node*, conn.second = NodeInput on that node
+	if (input_node) {
+		*input_node = wrap(conn.first);
+	}
+	if (input_id_buf && input_id_size > 0) {
+		string_to_buf(conn.second.input(), input_id_buf, input_id_size);
+	}
+	if (element) {
+		*element = conn.second.element();
+	}
+	if (hidden) {
+		*hidden = conn.second.is_hidden() ? 1 : 0;
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_node_input_connection_count_all(const OakEngineNode *self)
+{
+	if (!self) {
+		return 0;
+	}
+	return int(impl(self)->input_connections().size());
+}
+
+int oakengine_node_input_connection_at_all(
+	const OakEngineNode *self, int index, OakEngineNode **input_node,
+	char *input_id_buf, int input_id_size, int *element,
+	OakEngineNode **source_node, int *hidden)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	const auto &conns = impl(self)->input_connections();
+	if (index < 0 || index >= int(conns.size())) {
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	auto it = conns.cbegin();
+	for (int i = 0; i < index; i++) {
+		++it;
+	}
+	// it->first = NodeInput (the connected input on this node),
+	// it->second = source Node* feeding it.
+	if (input_node) {
+		*input_node = wrap(it->first.node());
+	}
+	if (input_id_buf && input_id_size > 0) {
+		string_to_buf(it->first.input(), input_id_buf, input_id_size);
+	}
+	if (element) {
+		*element = it->first.element();
+	}
+	if (source_node) {
+		*source_node = wrap(it->second);
+	}
+	if (hidden) {
+		*hidden = it->first.is_hidden() ? 1 : 0;
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_node_input_connection_count(
+	const OakEngineNode *self, const char *input_id, int element)
+{
+	if (!self || !input_id) {
+		return 0;
+	}
+	const auto &conns = impl(self)->input_connections();
+	int count = 0;
+	for (auto it = conns.cbegin(); it != conns.cend(); it++) {
+		if (it->first.input() == QString::fromUtf8(input_id) &&
+			it->first.element() == element) {
+			count++;
+		}
+	}
+	return count;
+}
+
+OakEngineNode *oakengine_node_input_connection_at(
+	const OakEngineNode *self, const char *input_id, int element, int index)
+{
+	if (!self || !input_id || index < 0) {
+		return nullptr;
+	}
+	const auto &conns = impl(self)->input_connections();
+	int seen = 0;
+	for (auto it = conns.cbegin(); it != conns.cend(); it++) {
+		if (it->first.input() == QString::fromUtf8(input_id) &&
+			it->first.element() == element) {
+			if (seen == index) {
+				return wrap(it->second);
+			}
+			seen++;
+		}
+	}
+	return nullptr;
+}
+
+/* ---- Plugin messages ------------------------------------------------------ */
+
+int oakengine_node_has_plugin(const OakEngineNode *self)
+{
+	if (!self) {
+		return 0;
+	}
+	return impl(self)->getPluginInstance() != nullptr ? 1 : 0;
+}
+
+int oakengine_node_plugin_message_count(const OakEngineNode *self)
+{
+	if (!self) {
+		return 0;
+	}
+	auto *instance = impl(self)->getPluginInstance();
+	auto *olive_inst =
+		dynamic_cast<olive::plugin::OlivePluginInstance *>(instance);
+	if (!olive_inst) {
+		return 0;
+	}
+	return olive_inst->persistent_message_count();
+}
+
+int oakengine_node_plugin_message_at(
+	const OakEngineNode *self, int index, int *type, char *msg_buf,
+	int msg_buf_size)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	auto *instance = impl(self)->getPluginInstance();
+	auto *olive_inst =
+		dynamic_cast<olive::plugin::OlivePluginInstance *>(instance);
+	if (!olive_inst) {
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	const auto &msgs = olive_inst->persistent_messages();
+	if (index < 0 || index >= msgs.size()) {
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	if (type) {
+		switch (msgs.at(index).type) {
+		case olive::plugin::ErrorType::error:
+			*type = 0;
+			break;
+		case olive::plugin::ErrorType::warning:
+			*type = 1;
+			break;
+		default:
+			*type = 2;
+			break;
+		}
+	}
+	if (msg_buf && msg_buf_size > 0) {
+		string_to_buf(msgs.at(index).message, msg_buf, msg_buf_size);
+	}
+	return OAKENGINE_OK;
+}
+
+int oakengine_node_plugin_clear_messages(OakEngineNode *self)
+{
+	if (!self) {
+		return OAKENGINE_E_INVALID;
+	}
+	auto *instance = impl(self)->getPluginInstance();
+	auto *olive_inst =
+		dynamic_cast<olive::plugin::OlivePluginInstance *>(instance);
+	if (!olive_inst) {
+		return OAKENGINE_E_NOT_FOUND;
+	}
+	olive_inst->clearPersistentMessage();
+	return OAKENGINE_OK;
+}
+
+/* ---- Node cache objects ------------------------------------------------------ */
+
+OakEngineThumbnailCache *
+oakengine_node_get_thumbnail_cache(const OakEngineNode *self)
+{
+	if (!self) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineThumbnailCache *>(
+		impl(self)->thumbnail_cache());
+}
+
+OakEngineWaveformCache *
+oakengine_node_get_waveform_cache(const OakEngineNode *self)
+{
+	if (!self) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineWaveformCache *>(
+		impl(self)->waveform_cache());
+}
+
+OakEngineFrameCache *
+oakengine_node_get_video_frame_cache(const OakEngineNode *self)
+{
+	if (!self) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineFrameCache *>(
+		impl(self)->video_frame_cache());
 }
 
 } // extern "C"

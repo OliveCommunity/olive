@@ -6,7 +6,7 @@ pkgdesc="Oak - Non-linear video editor"
 arch=('x86_64')
 url="https://oakvideoeditor.org"
 license=('GPL3')
-depends=('qt6-base' 'qt6-tools' 'ffmpeg' 'openimageio' 'opencolorio' 'openexr' 'expat' 'portaudio' 'mesa' 'vulkan-icd-loader' 'libxkbcommon' 'fmt')
+depends=('qt6-base' 'qt6-tools' 'ffmpeg' 'openimageio' 'opencolorio' 'openexr' 'expat' 'portaudio' 'mesa' 'vulkan-icd-loader' 'libxkbcommon' 'fmt' 'opentimelineio')
 makedepends=('cmake' 'ninja' 'git' 'pkgconf' 'vulkan-headers')
 source=("${pkgname}-${pkgver}.tar.gz")
 md5sums=('SKIP')
@@ -16,6 +16,7 @@ build() {
   cmake -S . -B build -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=/usr \
+    -DOAK_BUNDLE_OTIO=OFF \
     -DBUILD_QT6=ON
   cmake --build build
 }

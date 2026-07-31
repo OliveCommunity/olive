@@ -26,13 +26,14 @@
 
 #include "core.h"
 #include "dialog/sequence/sequence.h"
+#include "oakutil/oaknode.h"
 
 namespace olive
 {
 
-OTIOPropertiesDialog::OTIOPropertiesDialog(const QList<Sequence *> &sequences,
-										   Project *active_project,
-										   QWidget *parent)
+OTIOPropertiesDialog::OTIOPropertiesDialog(
+	const QList<OakEngineSequence *> &sequences,
+	OakEngineProject *active_project, QWidget *parent)
 	: QDialog(parent)
 	, sequences_(sequences)
 {
@@ -51,7 +52,7 @@ OTIOPropertiesDialog::OTIOPropertiesDialog(const QList<Sequence *> &sequences,
 
 	for (int i = 0; i < sequences.size(); i++) {
 		QTreeWidgetItem *item = new QTreeWidgetItem();
-		Sequence *s = sequences.at(i);
+		OakEngineSequence *s = sequences.at(i);
 
 		QWidget *item_actions = new QWidget();
 		QHBoxLayout *item_actions_layout = new QHBoxLayout(item_actions);
@@ -61,7 +62,8 @@ OTIOPropertiesDialog::OTIOPropertiesDialog(const QList<Sequence *> &sequences,
 				&OTIOPropertiesDialog::SetupSequence);
 		item_actions_layout->addWidget(item_settings_btn);
 
-		item->setText(0, s->GetLabel());
+		item->setText(
+			0, oak::Node(reinterpret_cast<OakEngineNode *>(s)).get_label());
 
 		table_->addTopLevelItem(item);
 
@@ -89,9 +91,10 @@ OTIOPropertiesDialog::OTIOPropertiesDialog(const QList<Sequence *> &sequences,
 void OTIOPropertiesDialog::SetupSequence()
 {
 	int index = sender()->property("index").toInt();
-	Sequence *s = sequences_.at(index);
-	SequenceDialog sd(s, SequenceDialog::kNew);
-	sd.SetUndoable(false);
+	OakEngineSequence *s = sequences_.at(index);
+	SequenceDialog sd(reinterpret_cast<OakEngineNode *>(s),
+					  SequenceDialog::k_new);
+	sd.set_undoable(false);
 	sd.exec();
 }
 

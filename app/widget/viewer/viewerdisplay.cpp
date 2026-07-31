@@ -37,10 +37,12 @@
 
 #include <cstring>
 
-#include "audio/audiomanager.h"
+#include <olive/core/util/timecodefunctions.h>
+
 #include "oakutil/define.h"
 #include "common/htmlapp.h"
 #include "oakengine/gizmo.h"
+#include "oakengine/timeline.h"
 #include "oakengine/videoparams.h"
 #include "oakengine/display.h"
 #include "oakengine/undo.h"
@@ -48,11 +50,6 @@
 #include "oakutil/qtutils.h"
 #include "common/configwrapper.h"
 #include "core.h"
-#include "node/block/subtitle/subtitle.h"
-#include "node/gizmo/path.h"
-#include "node/gizmo/point.h"
-#include "node/gizmo/polygon.h"
-#include "node/gizmo/screen.h"
 #include "window/mainwindow/mainwindow.h"
 
 namespace olive
@@ -206,7 +203,7 @@ void ViewerDisplayWidget::set_safe_margins(const ViewerSafeMarginInfo &safe_marg
 	}
 }
 
-void ViewerDisplayWidget::set_gizmos(Node *node)
+void ViewerDisplayWidget::set_gizmos(OakEngineNode *node)
 {
 	if (gizmos_ != node) {
 		gizmos_ = node;
@@ -215,7 +212,7 @@ void ViewerDisplayWidget::set_gizmos(Node *node)
 	}
 }
 
-void ViewerDisplayWidget::set_video_params(const VideoParams &params)
+void ViewerDisplayWidget::set_video_params(const oak::VideoParams &params)
 {
 	gizmo_params_ = params;
 
@@ -242,7 +239,7 @@ void ViewerDisplayWidget::set_time(const Rational &time)
 	}
 }
 
-void ViewerDisplayWidget::set_subtitle_tracks(Sequence *list)
+void ViewerDisplayWidget::set_subtitle_tracks(OakEngineSequence *list)
 {
 	if (subtitle_tracks_) {
 		bridge_->unsubscribe(subtitle_sub_);
@@ -395,6 +392,40 @@ bool ViewerDisplayWidget::eventFilter(QObject *o, QEvent *e)
 
 	return super::eventFilter(o, e);
 }
+
+namespace {
+
+/**
+ * @brief Map oakengine_text_gizmo::vertical_alignment (0=AlignTop,
+ * 1=AlignBottom, 2=AlignVCenter; oakengine/gizmo.h) to Qt::Alignment.
+ * Must stay in sync with the engine-side mapping in
+ * engine/src/capi/gizmo.cpp.
+ */
+Qt::Alignment text_gizmo_v_align_from_pod(int v)
+{
+	switch (v) {
+	case 1:
+		return Qt::AlignBottom;
+	case 2:
+		return Qt::AlignVCenter;
+	default:
+		return Qt::AlignTop;
+	}
+}
+
+/**
+ * @brief Fetch the text gizmo POD of a text v3 node at the given time
+ * (replaces TextGizmo::get_rect()/get_vertical_alignment() member calls).
+ * False when the node has no text gizmo.
+ */
+bool get_text_gizmo_pod(OakEngineNode *node, const Rational &t,
+						oakengine_text_gizmo *out)
+{
+	return oakengine_text_gizmo_get(node, t.numerator(), t.denominator(),
+									out) == OAKENGINE_OK;
+}
+
+} // namespace
 
 void ViewerDisplayWidget::on_paint()
 {
@@ -588,12 +619,17 @@ void ViewerDisplayWidget::on_paint()
 
 		p.setWorldTransform(gizmo_last_draw_transform_);
 
-		gizmos_->update_gizmo_positions(
-			gizmo_db_, NodeGlobals(gizmo_params_, gizmo_audio_params_,
-								   gizmo_draw_time_, LoopMode::k_loop_mode_off));
-		foreach (NodeGizmo *gizmo, gizmos_->get_gizmos()) {
-			if (gizmo->is_visible()) {
-				gizmo->draw(&p);
+		OakEngineNode *gizmos_handle =
+			gizmos_;
+		oakengine_node_update_gizmo_positions(
+			gizmos_handle, &gizmo_db_, gizmo_params_.width(),
+			gizmo_params_.height(), gizmo_draw_time_.in().numerator(),
+			gizmo_draw_time_.in().denominator());
+		const int gizmo_count = oakengine_node_gizmo_count(gizmos_handle);
+		for (int i = 0; i < gizmo_count; i++) {
+			void *gizmo = oakengine_node_gizmo_at(gizmos_handle, i);
+			if (oakengine_gizmo_is_visible(gizmo)) {
+				oakengine_gizmo_draw(gizmo, &p);
 			}
 		}
 
@@ -602,8 +638,12 @@ void ViewerDisplayWidget::on_paint()
 			pm.fill(Qt::transparent);
 
 			QPainter pixp(&pm);
-			text_edit_->paint(&pixp,
-							  active_text_gizmo_->get_vertical_alignment());
+			Qt::Alignment v_align = Qt::AlignTop;
+			oakengine_text_gizmo tg;
+			if (get_text_gizmo_pod(gizmos_handle, get_gizmo_time(), &tg)) {
+				v_align = text_gizmo_v_align_from_pod(tg.vertical_alignment);
+			}
+			text_edit_->paint(&pixp, v_align);
 
 			p.drawPixmap(text_edit_pos_, pm);
 		}
@@ -773,8 +813,9 @@ void ViewerDisplayWidget::draw_text_with_crude_shadow(QPainter *painter,
 
 Rational ViewerDisplayWidget::get_gizmo_time()
 {
-	return get_adjusted_time(get_time_target(), gizmos_, time_,
-						   Node::k_transform_towards_input);
+	// `0` mirrors the engine's Node::k_transform_towards_input ordinal
+	// (see timetarget.h — the direction parameter is an int now).
+	return get_adjusted_time(get_time_target(), gizmos_, time_, 0);
 }
 
 bool ViewerDisplayWidget::is_hand_drag(QMouseEvent *event) const
@@ -836,22 +877,27 @@ QTransform ViewerDisplayWidget::generate_display_transform()
 	return gizmo_transform;
 }
 
-QTransform ViewerDisplayWidget::generate_gizmo_transform(Node *gizmos,
-													   Node *target,
+QTransform ViewerDisplayWidget::generate_gizmo_transform(OakEngineNode *gizmos,
+													   OakEngineNode *target,
 													   const TimeRange &range)
 {
 	QTransform t = generate_display_transform();
 	if (target) {
-		if (ViewerOutput *v = dynamic_cast<ViewerOutput *>(target)) {
-			if (Node *n = v->get_connected_texture_output()) {
-				target = n;
+		OakEngineNode *target_handle = target;
+		// ViewerOutput targets resolve to their connected texture output
+		// (replaces dynamic_cast<ViewerOutput*> +
+		// get_connected_texture_output()).
+		if (oakengine_node_is_viewer_output(target_handle)) {
+			if (OakEngineNode *n =
+					oakengine_viewer_output_get_connected_texture(
+						target_handle)) {
+				target_handle = n;
 			}
 		}
 
 		double m[6];
 		oakengine_traverse_transform(
-			reinterpret_cast<OakEngineNode *>(gizmos),
-			reinterpret_cast<OakEngineNode *>(target),
+			gizmos, target_handle,
 			range.in().numerator(), range.in().denominator(),
 			range.out().numerator(), range.out().denominator(), nullptr, m);
 		QTransform nt(m[0], m[1], m[2], m[3], m[4], m[5]);
@@ -869,48 +915,42 @@ QTransform ViewerDisplayWidget::generate_gizmo_transform(Node *gizmos,
 	return t;
 }
 
-NodeGizmo *ViewerDisplayWidget::try_gizmo_press(const NodeValueRow &row,
-											  const QPointF &p)
+void *ViewerDisplayWidget::try_gizmo_press(const QPointF &p)
 {
 	if (!gizmos_) {
 		return nullptr;
 	}
 
-	for (auto it = gizmos_->get_gizmos().crbegin();
-		 it != gizmos_->get_gizmos().crend(); it++) {
-		NodeGizmo *gizmo = *it;
-		if (gizmo->is_visible()) {
-			if (PointGizmo *point = dynamic_cast<PointGizmo *>(gizmo)) {
-				if (point->get_clicking_rect(gizmo_last_draw_transform_)
-						.contains(p)) {
-					return point;
-				}
-			} else if (PolygonGizmo *poly =
-						   dynamic_cast<PolygonGizmo *>(gizmo)) {
-				if (poly->get_polygon().containsPoint(p, Qt::OddEvenFill)) {
-					return poly;
-				}
-			} else if (PathGizmo *path = dynamic_cast<PathGizmo *>(gizmo)) {
-				if (path->get_path().contains(p)) {
-					return path;
-				}
-			} else if (ScreenGizmo *screen =
-						   dynamic_cast<ScreenGizmo *>(gizmo)) {
-				// NOTE: Perhaps this should limit to the actual visible screen space? We'll see.
-				return screen;
-			}
+	// The engine-side hit test mirrors the original per-type picking logic
+	// (PointGizmo clicking rect / PolygonGizmo containsPoint / PathGizmo
+	// contains / ScreenGizmo always hittable) and checks visibility itself;
+	// see oakengine/gizmo.h.
+	OakEngineNode *gizmos_handle = gizmos_;
+	const double transform6[6] = { gizmo_last_draw_transform_.m11(),
+								   gizmo_last_draw_transform_.m12(),
+								   gizmo_last_draw_transform_.m21(),
+								   gizmo_last_draw_transform_.m22(),
+								   gizmo_last_draw_transform_.dx(),
+								   gizmo_last_draw_transform_.dy() };
+	const int gizmo_count = oakengine_node_gizmo_count(gizmos_handle);
+	for (int i = gizmo_count - 1; i >= 0; i--) {
+		void *gizmo = oakengine_node_gizmo_at(gizmos_handle, i);
+		if (oakengine_gizmo_hit_test(gizmo, transform6, p.x(), p.y())) {
+			return gizmo;
 		}
 	}
 
 	return nullptr;
 }
 
-void ViewerDisplayWidget::open_text_gizmo(TextGizmo *text, QMouseEvent *event)
+void ViewerDisplayWidget::open_text_gizmo(void *text, QMouseEvent *event)
 {
 	generate_gizmo_transforms();
-	gizmos_->update_gizmo_positions(
-		gizmo_db_, NodeGlobals(gizmo_params_, gizmo_audio_params_,
-							   gizmo_draw_time_, LoopMode::k_loop_mode_off));
+	OakEngineNode *gizmos_handle = gizmos_;
+	oakengine_node_update_gizmo_positions(
+		gizmos_handle, &gizmo_db_, gizmo_params_.width(),
+		gizmo_params_.height(), gizmo_draw_time_.in().numerator(),
+		gizmo_draw_time_.in().denominator());
 
 	active_text_gizmo_ = text;
 	text_transform_ = generate_gizmo_transform();
@@ -918,9 +958,6 @@ void ViewerDisplayWidget::open_text_gizmo(TextGizmo *text, QMouseEvent *event)
 
 	// Create text editor
 	text_edit_ = new ViewerTextEditor(text_transform_.m11(), this);
-
-	// Set text editor's gizmo property for later use
-	text_edit_->setProperty("gizmo", reinterpret_cast<quintptr>(text));
 
 	// Install ourselves as event filter so we can receive the text editor's paint events
 	text_edit_->installEventFilter(this);
@@ -934,8 +971,23 @@ void ViewerDisplayWidget::open_text_gizmo(TextGizmo *text, QMouseEvent *event)
 	// "Show" text editor so that it throws paint events, even though its paint event is disabled
 	text_edit_->show();
 
-	// Convert HTML to Qt document
-	Html::html_to_doc(text_edit_->document(), text->get_html());
+	// Convert HTML to Qt document (fetched through the text gizmo facade)
+	QString html;
+	{
+		const Rational gizmo_time = get_gizmo_time();
+		const int html_len = oakengine_text_gizmo_get_html(
+			gizmos_handle, gizmo_time.numerator(), gizmo_time.denominator(),
+			nullptr, 0);
+		if (html_len > 0) {
+			QByteArray html_buf(html_len, '\0');
+			oakengine_text_gizmo_get_html(
+				gizmos_handle, gizmo_time.numerator(),
+				gizmo_time.denominator(), html_buf.data(),
+				static_cast<int>(html_buf.size()));
+			html = QString::fromUtf8(html_buf.constData());
+		}
+	}
+	Html::html_to_doc(text_edit_->document(), html);
 
 	// Connect text change event to propagate back to node
 	connect(text_edit_, &ViewerTextEditor::textChanged, this,
@@ -950,7 +1002,7 @@ void ViewerDisplayWidget::open_text_gizmo(TextGizmo *text, QMouseEvent *event)
 
 	// Emit text gizmo activation signal
 	oakengine_text_gizmo_activated(
-		reinterpret_cast<OakEngineNode *>(gizmos_));
+		gizmos_);
 
 	// Create toolbar
 	text_toolbar_ = new ViewerTextEditorToolBar(text_edit_);
@@ -958,20 +1010,19 @@ void ViewerDisplayWidget::open_text_gizmo(TextGizmo *text, QMouseEvent *event)
 	connect(text_toolbar_, &ViewerTextEditorToolBar::vertical_alignment_changed,
 			this, [this](Qt::Alignment align) {
 				oakengine_text_gizmo_set_vertical_alignment(
-					reinterpret_cast<OakEngineNode *>(gizmos_),
+					gizmos_,
 					static_cast<int>(align));
 			});
 	{
+		// The POD carries 0/1/2 (see oakengine/gizmo.h), map it to the real
+		// Qt alignment flag before handing it to the toolbar.
 		oakengine_text_gizmo _tg;
-		if (oakengine_text_gizmo_get(
-				reinterpret_cast<OakEngineNode *>(gizmos_),
-				get_gizmo_time().numerator(), get_gizmo_time().denominator(),
-				&_tg) == OAKENGINE_OK) {
-			text_toolbar_->set_vertical_alignment(
-				static_cast<Qt::AlignmentFlag>(_tg.vertical_alignment));
-		} else {
-			text_toolbar_->set_vertical_alignment(Qt::AlignTop);
+		Qt::Alignment v_align = Qt::AlignTop;
+		if (get_text_gizmo_pod(gizmos_handle, get_gizmo_time(), &_tg)) {
+			v_align = text_gizmo_v_align_from_pod(_tg.vertical_alignment);
 		}
+		text_toolbar_->set_vertical_alignment(
+			static_cast<Qt::AlignmentFlag>(static_cast<int>(v_align)));
 	}
 	text_edit_->connect_tool_bar(text_toolbar_);
 
@@ -1055,14 +1106,15 @@ bool ViewerDisplayWidget::on_mouse_press(QMouseEvent *event)
 			add_band_ = true;
 
 		} else if ((current_gizmo_ = try_gizmo_press(
-						gizmo_db_, gizmo_last_draw_transform_inverted_.map(
-									   event->pos())))) {
+						gizmo_last_draw_transform_inverted_.map(
+							event->pos())))) {
 			// Handle gizmo click
 			gizmo_start_drag_ = event->pos();
 			gizmo_last_drag_ = gizmo_start_drag_;
-			current_gizmo_->set_globals(
-				NodeGlobals(gizmo_params_, gizmo_audio_params_,
-							generate_gizmo_time(), LoopMode::k_loop_mode_off));
+			const TimeRange gizmo_time = generate_gizmo_time();
+			oakengine_gizmo_set_globals(
+				current_gizmo_, gizmo_params_.width(), gizmo_params_.height(),
+				gizmo_time.in().numerator(), gizmo_time.in().denominator());
 
 		} else {
 			// Handle standard drag
@@ -1103,17 +1155,16 @@ bool ViewerDisplayWidget::on_mouse_move(QMouseEvent *event)
 				QPointF start = screen_to_scene_point(gizmo_start_drag_);
 
 				Rational gizmo_time = get_gizmo_time();
-				NodeValueRow row;
 				oakengine_traverse_generate_row(
-					reinterpret_cast<OakEngineNode *>(gizmos_),
+					gizmos_,
 					gizmo_time.numerator(), gizmo_time.denominator(),
 					(gizmo_time + gizmo_params_.frame_rate_as_time_base())
 						.numerator(),
 					(gizmo_time + gizmo_params_.frame_rate_as_time_base())
 						.denominator(),
-					nullptr, 0, 0, &row);
+					nullptr, 0, 0, &gizmo_db_);
 
-				oakengine_gizmo_drag_start(current_gizmo_, &row,
+				oakengine_gizmo_drag_start(current_gizmo_, &gizmo_db_,
 					start.x(), start.y(), gizmo_time.numerator(),
 					gizmo_time.denominator());
 				gizmo_drag_started_ = true;
@@ -1185,12 +1236,23 @@ bool ViewerDisplayWidget::on_mouse_double_click(QMouseEvent *event)
 		return true;
 	} else if (event->button() == Qt::LeftButton && gizmos_) {
 		QPointF ptr = transform_viewer_space_to_buffer_space(event->pos());
-		foreach (NodeGizmo *g, gizmos_->get_gizmos()) {
-			if (TextGizmo *text = dynamic_cast<TextGizmo *>(g)) {
-				if (text->get_rect().contains(ptr)) {
-					open_text_gizmo(text, event);
-					return true;
-				}
+		OakEngineNode *gizmos_handle =
+			gizmos_;
+		// A text gizmo only exists on a text v3 node, so the node type id is
+		// the predicate (replaces dynamic_cast<TextGizmo*>). The id string
+		// must stay in sync with TextGeneratorV3::id()
+		// (engine/node/generator/text/textv3.cpp). The rect comes from the
+		// text gizmo POD; the pointer handed to open_text_gizmo() is only an
+		// opaque marker (the engine resolves the text gizmo from the node).
+		if (viewer_output_node_type_is(gizmos_handle,
+									   "org.olivevideoeditor.Olive.text3")) {
+			oakengine_text_gizmo tg;
+			if (get_text_gizmo_pod(gizmos_handle, get_gizmo_time(), &tg) &&
+				QRectF(tg.rect_x, tg.rect_y, tg.rect_w, tg.rect_h)
+					.contains(ptr)) {
+				open_text_gizmo(oakengine_node_gizmo_at(gizmos_handle, 0),
+								event);
+				return true;
 			}
 		}
 	}
@@ -1257,9 +1319,11 @@ void ViewerDisplayWidget::draw_subtitle_tracks()
 		return;
 	}
 
-	const QVector<Track *> &subtitle_tracklist =
-		subtitle_tracks_->track_list(Track::k_subtitle)->get_tracks();
-	if (subtitle_tracklist.empty()) {
+	OakEngineSequence *subtitle_seq = subtitle_tracks_;
+	int subtitle_track_count = 0;
+	oakengine_sequence_track_count(subtitle_seq, nullptr, nullptr,
+								   &subtitle_track_count);
+	if (subtitle_track_count <= 0) {
 		return;
 	}
 
@@ -1293,11 +1357,23 @@ void ViewerDisplayWidget::draw_subtitle_tracks()
 
 	QFontMetrics fm(f);
 
-	for (int j = subtitle_tracklist.size() - 1; j >= 0; j--) {
-		Track *sub_track = subtitle_tracklist.at(j);
-		if (!sub_track->is_muted()) {
-			if (SubtitleBlock *sub = dynamic_cast<SubtitleBlock *>(
-					sub_track->visible_block_at_time(time_))) {
+	// visible_block_at_time takes a frame timestamp in the sequence's
+	// frame-rate timebase (see oakengine/timeline.h).
+	const int64_t time_ts = core::Timecode::time_to_timestamp(
+		time_, sequence_timebase(subtitle_seq));
+
+	for (int j = subtitle_track_count - 1; j >= 0; j--) {
+		if (!oakengine_track_is_muted(subtitle_seq,
+									  OAKENGINE_TRACK_TYPE_SUBTITLE, j)) {
+			OakEngineTrack *sub_track = oakengine_sequence_track_at(
+				subtitle_seq, OAKENGINE_TRACK_TYPE_SUBTITLE, j);
+			OakEngineBlock *sub =
+				oakengine_track_visible_block_at_time(sub_track, time_ts);
+			// Subtitle predicate: SubtitleBlock::id() string compare
+			// (replaces dynamic_cast<SubtitleBlock*>); must stay in sync
+			// with engine/node/block/subtitle/subtitle.cpp.
+			if (sub && viewer_output_node_type_is(
+						   sub, "org.olivevideoeditor.Olive.subtitle")) {
 				// Split into lines
 				char text_buf[4096];
 				const int len = oakengine_subtitle_get_text(
@@ -1414,7 +1490,6 @@ bool ViewerDisplayWidget::forward_mouse_event_to_text_edit(QMouseEvent *event,
 			local_pos.y() < 0 || local_pos.y() >= text_edit_->height()) {
 			// Allow clicking other gizmos so the user can resize while the text editor is active
 			if ((current_gizmo_ = try_gizmo_press(
-					 gizmo_db_,
 					 gizmo_last_draw_transform_inverted_.map(event->pos())))) {
 				return false;
 			} else {
@@ -1444,7 +1519,14 @@ bool ViewerDisplayWidget::forward_event_to_text_edit(QEvent *event)
 
 QPointF ViewerDisplayWidget::adjust_pos_by_v_align(QPointF p)
 {
-	switch (active_text_gizmo_->get_vertical_alignment()) {
+	Qt::Alignment v_align = Qt::AlignTop;
+	oakengine_text_gizmo tg;
+	if (get_text_gizmo_pod(gizmos_,
+						   get_gizmo_time(), &tg)) {
+		v_align = text_gizmo_v_align_from_pod(tg.vertical_alignment);
+	}
+
+	switch (v_align) {
 	case Qt::AlignTop:
 		// Do nothing
 		break;
@@ -1474,14 +1556,12 @@ void ViewerDisplayWidget::generate_gizmo_transforms()
 	gizmo_draw_time_ = generate_gizmo_time();
 
 	if (gizmos_) {
-		NodeValueRow row;
 		oakengine_traverse_generate_row(
-			reinterpret_cast<OakEngineNode *>(gizmos_),
+			gizmos_,
 			gizmo_draw_time_.in().numerator(),
 			gizmo_draw_time_.in().denominator(),
 			gizmo_draw_time_.out().numerator(),
-			gizmo_draw_time_.out().denominator(), nullptr, 0, 0, &row);
-		gizmo_db_ = row;
+			gizmo_draw_time_.out().denominator(), nullptr, 0, 0, &gizmo_db_);
 	}
 
 	gizmo_last_draw_transform_ = generate_gizmo_transform(
@@ -1707,11 +1787,14 @@ void ViewerDisplayWidget::set_show_fps(bool e)
 void ViewerDisplayWidget::request_start_editing_text()
 {
 	if (gizmos_) {
-		foreach (NodeGizmo *gizmo, gizmos_->get_gizmos()) {
-			if (TextGizmo *text = dynamic_cast<TextGizmo *>(gizmo)) {
-				open_text_gizmo(text);
-				break;
-			}
+		OakEngineNode *gizmos_handle =
+			gizmos_;
+		// Same text v3 type-id predicate as the double-click path (replaces
+		// dynamic_cast<TextGizmo*>); must stay in sync with
+		// TextGeneratorV3::id() (engine/node/generator/text/textv3.cpp).
+		if (viewer_output_node_type_is(gizmos_handle,
+									   "org.olivevideoeditor.Olive.text3")) {
+			open_text_gizmo(oakengine_node_gizmo_at(gizmos_handle, 0));
 		}
 	}
 }
@@ -1809,12 +1892,9 @@ void ViewerDisplayWidget::text_edit_changed()
 {
 	ViewerTextEditor *editor = static_cast<ViewerTextEditor *>(sender());
 
-	TextGizmo *gizmo = reinterpret_cast<TextGizmo *>(
-		editor->property("gizmo").value<quintptr>());
-
 	QString html = Html::doc_to_html(editor->document());
 	oakengine_text_gizmo_update_html(
-		reinterpret_cast<OakEngineNode *>(gizmos_),
+		gizmos_,
 		html.toUtf8().constData(),
 		get_gizmo_time().numerator(), get_gizmo_time().denominator());
 }
@@ -1822,7 +1902,7 @@ void ViewerDisplayWidget::text_edit_changed()
 void ViewerDisplayWidget::text_edit_destroyed()
 {
 	oakengine_text_gizmo_deactivated(
-		reinterpret_cast<OakEngineNode *>(gizmos_));
+		gizmos_);
 	text_edit_ = nullptr;
 	text_toolbar_ = nullptr;
 	inner_widget()->setMouseTracking(false);
@@ -1864,7 +1944,12 @@ void ViewerDisplayWidget::focus_changed(QWidget *old, QWidget *now)
 
 QRectF ViewerDisplayWidget::update_active_text_gizmo_size()
 {
-	QRectF text_rect = active_text_gizmo_->get_rect();
+	QRectF text_rect;
+	oakengine_text_gizmo tg;
+	if (get_text_gizmo_pod(gizmos_,
+						   get_gizmo_time(), &tg)) {
+		text_rect = QRectF(tg.rect_x, tg.rect_y, tg.rect_w, tg.rect_h);
+	}
 	text_edit_pos_ = text_rect.topLeft();
 	text_edit_->setGeometry(text_rect.toRect());
 	return text_rect;

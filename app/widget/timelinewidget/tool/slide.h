@@ -32,8 +32,8 @@ public:
 	SlideTool(TimelineWidget *parent);
 
 protected:
-	virtual void initiate_drag(Block *clicked_item,
-							  Timeline::MovementMode trim_mode,
+	virtual void initiate_drag(OakEngineBlock *clicked_item,
+							  TimelineApp::MovementMode trim_mode,
 							  Qt::KeyboardModifiers modifiers) override;
 };
 

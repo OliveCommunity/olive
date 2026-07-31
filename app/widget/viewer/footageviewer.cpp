@@ -25,9 +25,9 @@
 #include <QMimeData>
 
 #include "common/configwrapper.h"
-#include "node/project.h"
 #include "oakengine/project.h"
 #include "oakengine/timeline.h"
+#include "oakengine/viewer.h"
 
 namespace olive
 {
@@ -50,24 +50,20 @@ FootageViewerWidget::FootageViewerWidget(QWidget *parent)
 	connect(controls_, &PlaybackControls::audio_dragged, this,
 			&FootageViewerWidget::start_audio_drag);
 
-	override_workarea_ = reinterpret_cast<TimelineWorkArea *>(
-		oakengine_workarea_create());
+	override_workarea_ = oakengine_workarea_create();
 }
 
 FootageViewerWidget::~FootageViewerWidget()
 {
 	if (override_workarea_) {
-		oakengine_workarea_free(
-			reinterpret_cast<OakEngineWorkarea *>(override_workarea_));
+		oakengine_workarea_free(override_workarea_);
 	}
 }
 
 void FootageViewerWidget::override_work_area(const TimeRange &r)
 {
-	oakengine_workarea_set_enabled(
-		reinterpret_cast<OakEngineWorkarea *>(override_workarea_), 1);
-	oakengine_workarea_set_range(
-		reinterpret_cast<OakEngineWorkarea *>(override_workarea_),
+	oakengine_workarea_set_enabled(override_workarea_, 1);
+	oakengine_workarea_set_range(override_workarea_,
 		r.in().numerator(), r.in().denominator(),
 		r.out().numerator(), r.out().denominator());
 	this->connect_work_area(override_workarea_);
@@ -77,7 +73,9 @@ void FootageViewerWidget::reset_work_area()
 {
 	if (get_connected_work_area() == override_workarea_) {
 		this->connect_work_area(
-			get_connected_node() ? get_connected_node()->get_work_area() : nullptr);
+			get_connected_node() ?
+				oakengine_viewer_get_workarea_handle(get_connected_node()) :
+				nullptr);
 	}
 }
 
@@ -94,16 +92,30 @@ void FootageViewerWidget::start_footage_drag_internal(bool enable_video,
 	QByteArray encoded_data;
 	QDataStream data_stream(&encoded_data, QIODevice::WriteOnly);
 
-	QVector<Track::Reference> streams =
-		get_connected_node()->get_enabled_streams_as_references();
+	QVector<TrackReference> streams;
+	{
+		OakEngineNode *viewer =
+			reinterpret_cast<OakEngineNode *>(get_connected_node());
+		const int stream_count =
+			oakengine_viewer_get_enabled_streams(viewer, nullptr, nullptr, 0);
+		QVector<int> stream_types(stream_count), stream_indices(stream_count);
+		oakengine_viewer_get_enabled_streams(viewer, stream_types.data(),
+											 stream_indices.data(), stream_count);
+		streams.reserve(stream_count);
+		for (int i = 0; i < stream_count; i++) {
+			streams.append(TrackReference(
+				static_cast<TrackReference::Type>(stream_types.at(i)),
+				stream_indices.at(i)));
+		}
+	}
 
 	// Disable streams that have been disabled
 	if (!enable_video || !enable_audio) {
 		for (int i = 0; i < streams.size(); i++) {
-			const Track::Reference &ref = streams.at(i);
+			const TrackReference &ref = streams.at(i);
 
-			if ((ref.type() == Track::k_video && !enable_video) ||
-				(ref.type() == Track::k_audio && !enable_audio)) {
+			if ((ref.type() == TrackReference::k_video && !enable_video) ||
+				(ref.type() == TrackReference::k_audio && !enable_audio)) {
 				streams.removeAt(i);
 				i--;
 			}

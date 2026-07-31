@@ -185,3 +185,58 @@ extern "C" int oakengine_disk_invalidate_project(OakEngineProject *project)
 	emit m->invalidate_project(reinterpret_cast<olive::Project *>(project));
 	return OAKENGINE_OK;
 }
+
+/* ---- DiskCacheFolder accessors ------------------------------------------------- */
+
+extern "C" double oakengine_disk_folder_get_limit(const void *folder)
+{
+	if (!folder) {
+		return 0.0;
+	}
+	return static_cast<double>(
+		reinterpret_cast<const olive::DiskCacheFolder *>(folder)
+			->get_limit());
+}
+
+extern "C" int oakengine_disk_folder_set_limit(void *folder, double limit)
+{
+	if (!folder || limit < 0.0) {
+		return OAKENGINE_E_INVALID;
+	}
+	reinterpret_cast<olive::DiskCacheFolder *>(folder)->set_limit(
+		qRound64(limit));
+	return OAKENGINE_OK;
+}
+
+extern "C" int oakengine_disk_folder_get_clear_on_close(const void *folder)
+{
+	if (!folder) {
+		return 0;
+	}
+	return reinterpret_cast<const olive::DiskCacheFolder *>(folder)
+				   ->get_clear_on_close()
+			   ? 1
+			   : 0;
+}
+
+extern "C" int oakengine_disk_folder_set_clear_on_close(void *folder,
+														int clear)
+{
+	if (!folder) {
+		return OAKENGINE_E_INVALID;
+	}
+	reinterpret_cast<olive::DiskCacheFolder *>(folder)->set_clear_on_close(
+		clear != 0);
+	return OAKENGINE_OK;
+}
+
+extern "C" int oakengine_disk_folder_get_path(const void *folder, char *buf,
+											  int buf_size)
+{
+	if (!folder) {
+		return OAKENGINE_E_INVALID;
+	}
+	return write_string(
+		reinterpret_cast<const olive::DiskCacheFolder *>(folder)->get_path(),
+		buf, buf_size);
+}

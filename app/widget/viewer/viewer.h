@@ -32,15 +32,18 @@
 
 #include "oakengine/audio.h"
 #include "audiowaveformview.h"
-#include "node/output/viewer/viewer.h"
-#include "render/previewaudiodevice.h"
+#include "common/trackreferencehandle.h"
 #include "oakengine/preview.h"
+#include "oakengine/timeline.h"
 #include "viewerdisplay.h"
+#include "vieweroutpututils.h"
 #include "viewersizer.h"
 #include "viewerwindow.h"
 #include "widget/playbackcontrols/playbackcontrols.h"
 #include "widget/timebased/timebasedwidget.h"
 #include "widget/timelinewidget/timelinewidget.h"
+
+#include <memory>
 
 namespace olive
 {
@@ -98,10 +101,10 @@ public:
 		return display_widget_->color_manager();
 	}
 
-	void set_gizmos(Node *node);
+	void set_gizmos(OakEngineNode *node);
 
 	void start_capture(TimelineWidget *source, const TimeRange &time,
-					  const Track::Reference &track);
+					  const TrackReference &track);
 
 	void set_audio_scrubbing_enabled(bool e)
 	{
@@ -113,7 +116,7 @@ public:
 		playback_devices_.push_back(vw);
 	}
 
-	void set_timeline_selected_blocks(const QVector<Block *> &b)
+	void set_timeline_selected_blocks(const QVector<OakEngineBlock *> &b)
 	{
 		timeline_selected_blocks_ = b;
 
@@ -126,11 +129,7 @@ public:
 
 	void set_node_view_selections(const QVector<OakEngineNode *> &n)
 	{
-		node_view_selected_.clear();
-		node_view_selected_.reserve(n.size());
-		foreach (OakEngineNode *handle, n) {
-			node_view_selected_.append(reinterpret_cast<Node *>(handle));
-		}
+		node_view_selected_ = n;
 
 		if (!is_playing()) {
 			// If is playing, this will happen by the next frame automatically
@@ -154,7 +153,7 @@ public slots:
 
 	void shuttle_right();
 
-	void set_color_transform(const ColorTransform &transform);
+	void set_color_transform(const oak::ColorTransform &transform);
 
 	/**
    * @brief Wrapper for ViewerGLWidget::SetSignalCursorColorEnabled()
@@ -203,11 +202,11 @@ protected:
 	virtual void TimebaseChangedEvent(const Rational &) override;
 	virtual void TimeChangedEvent(const Rational &time) override;
 
-	virtual void ConnectNodeEvent(ViewerOutput *) override;
-	virtual void DisconnectNodeEvent(ViewerOutput *) override;
-	virtual void ConnectedNodeChangeEvent(ViewerOutput *) override;
-	virtual void ConnectedWorkAreaChangeEvent(TimelineWorkArea *) override;
-	virtual void ConnectedMarkersChangeEvent(TimelineMarkerList *) override;
+	virtual void ConnectNodeEvent(OakEngineNode *n) override;
+	virtual void DisconnectNodeEvent(OakEngineNode *n) override;
+	virtual void ConnectedNodeChangeEvent(OakEngineNode *n) override;
+	virtual void ConnectedWorkAreaChangeEvent(OakEngineWorkarea *workarea) override;
+	virtual void ConnectedMarkersChangeEvent(OakEngineMarkerList *markers) override;
 
 	virtual void ScaleChangedEvent(const double &s) override;
 
@@ -243,7 +242,7 @@ private slots:
 private:
 	int64_t get_timestamp() const
 	{
-		return Timecode::time_to_timestamp(get_connected_node()->get_playhead(),
+		return Timecode::time_to_timestamp(viewer_output_playhead(get_connected_node()),
 										   timebase(), Timecode::k_floor);
 	}
 
@@ -257,7 +256,7 @@ private:
 
 	void update_minimum_scale();
 
-	void set_color_transform(const ColorTransform &transform,
+	void set_color_transform(const oak::ColorTransform &transform,
 						   ViewerDisplayWidget *sender);
 
 	QString get_cached_filename_from_time(const Rational &time);
@@ -266,7 +265,6 @@ private:
 
 	bool viewer_might_be_a_still();
 
-	void set_display_image(RenderTicketPtr ticket);
 	void set_display_image(OakEnginePreviewRequest *req);
 
 	OakEnginePreviewRequest *request_next_frame_for_queue(bool increment = true);
@@ -352,7 +350,7 @@ private:
 	bool recording_;
 	TimelineWidget *recording_callback_;
 	TimeRange recording_range_;
-	Track::Reference recording_track_;
+	TrackReference recording_track_;
 	QString recording_filename_;
 
 	qint64 queue_starved_start_;
@@ -366,8 +364,8 @@ private:
 
 	int ignore_scrub_;
 
-	QVector<Block *> timeline_selected_blocks_;
-	QVector<Node *> node_view_selected_;
+	QVector<OakEngineBlock *> timeline_selected_blocks_;
+	QVector<OakEngineNode *> node_view_selected_;
 
 	MulticamWidget *multicam_panel_;
 

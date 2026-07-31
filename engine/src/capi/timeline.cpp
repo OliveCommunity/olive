@@ -30,6 +30,7 @@
 #include "node/block/block.h"
 #include "node/block/clip/clip.h"
 #include "node/block/gap/gap.h"
+#include "node/block/transition/transition.h"
 #include "node/nodeundo.h"
 #include "node/output/track/track.h"
 #include "node/project.h"
@@ -2908,6 +2909,14 @@ int oakengine_block_is_gap(const OakEngineBlock *block)
 			   ? 1 : 0;
 }
 
+OakEngineTrack *oakengine_block_get_track(const OakEngineBlock *block)
+{
+	if (!block) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineTrack *>(block_impl(block)->track());
+}
+
 OakEngineBlock *oakengine_block_next(const OakEngineBlock *block)
 {
 	if (!block) {
@@ -2943,6 +2952,171 @@ int oakengine_block_get_range(const OakEngineBlock *block, int64_t *in,
 		*out = track_time_to_ts(b->out(), tb);
 	}
 	return OAKENGINE_OK;
+}
+
+/* ---- Track lists, block/clip/transition navigation and links -------------- */
+
+OakEngineTrackList *oakengine_sequence_track_list(OakEngineSequence *seq,
+												  int track_type)
+{
+	if (!seq || track_type < OAKENGINE_TRACK_TYPE_VIDEO ||
+		track_type > OAKENGINE_TRACK_TYPE_SUBTITLE) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineTrackList *>(
+		impl(seq)->track_list(to_track_type(track_type)));
+}
+
+OakEngineBlock *
+oakengine_track_visible_block_at_time(OakEngineTrack *track, int64_t time_ts)
+{
+	if (!track) {
+		return nullptr;
+	}
+	const olive::Rational tb = track_time_base(track_impl(track));
+	const olive::Rational time = track_ts_to_time(time_ts, tb);
+	olive::Block *b = track_impl(track)->visible_block_at_time(time);
+	return reinterpret_cast<OakEngineBlock *>(b);
+}
+
+int oakengine_node_is_block(const OakEngineNode *node)
+{
+	if (!node) {
+		return 0;
+	}
+	return dynamic_cast<const olive::Block *>(
+			   reinterpret_cast<const olive::Node *>(node))
+			   ? 1
+			   : 0;
+}
+
+int oakengine_node_is_transition(const OakEngineNode *node)
+{
+	if (!node) {
+		return 0;
+	}
+	return dynamic_cast<const olive::TransitionBlock *>(
+			   reinterpret_cast<const olive::Node *>(node))
+			   ? 1
+			   : 0;
+}
+
+int oakengine_block_set_length_and_media_out(OakEngineBlock *block,
+											 int64_t length_ts)
+{
+	set_seq_error(QString());
+	if (!block || length_ts <= 0) {
+		set_seq_error(QStringLiteral("invalid arguments"));
+		return OAKENGINE_E_INVALID;
+	}
+	olive::Block *b = block_impl(block);
+	if (!b->track()) {
+		set_seq_error(QStringLiteral("block is not on a track"));
+		return OAKENGINE_E_STATE;
+	}
+	const olive::Rational tb = track_time_base(b->track());
+	push_or_run(new olive::BlockResizeCommand(
+					b, track_ts_to_time(length_ts, tb)),
+				QStringLiteral("Set Block Length"));
+	return OAKENGINE_OK;
+}
+
+int oakengine_block_link_count(const OakEngineBlock *block)
+{
+	if (!block) {
+		return 0;
+	}
+	int count = 0;
+	for (olive::Node *n : block_impl(block)->links()) {
+		if (dynamic_cast<olive::Block *>(n)) {
+			count++;
+		}
+	}
+	return count;
+}
+
+OakEngineBlock *oakengine_block_link_at(const OakEngineBlock *block, int index)
+{
+	if (!block || index < 0) {
+		return nullptr;
+	}
+	int seen = 0;
+	for (olive::Node *n : block_impl(block)->links()) {
+		if (olive::Block *b = dynamic_cast<olive::Block *>(n)) {
+			if (seen == index) {
+				return reinterpret_cast<OakEngineBlock *>(b);
+			}
+			seen++;
+		}
+	}
+	return nullptr;
+}
+
+OakEngineBlock *oakengine_clip_in_transition(const OakEngineBlock *clip)
+{
+	if (!clip) {
+		return nullptr;
+	}
+	olive::ClipBlock *c = dynamic_cast<olive::ClipBlock *>(
+		const_cast<olive::Block *>(block_impl(clip)));
+	if (!c) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineBlock *>(c->in_transition());
+}
+
+OakEngineBlock *oakengine_clip_out_transition(const OakEngineBlock *clip)
+{
+	if (!clip) {
+		return nullptr;
+	}
+	olive::ClipBlock *c = dynamic_cast<olive::ClipBlock *>(
+		const_cast<olive::Block *>(block_impl(clip)));
+	if (!c) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineBlock *>(c->out_transition());
+}
+
+OakEngineBlock *
+oakengine_transition_connected_in_block(const OakEngineBlock *transition)
+{
+	if (!transition) {
+		return nullptr;
+	}
+	const olive::TransitionBlock *t =
+		dynamic_cast<const olive::TransitionBlock *>(block_impl(transition));
+	if (!t) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineBlock *>(t->connected_in_block());
+}
+
+OakEngineBlock *
+oakengine_transition_connected_out_block(const OakEngineBlock *transition)
+{
+	if (!transition) {
+		return nullptr;
+	}
+	const olive::TransitionBlock *t =
+		dynamic_cast<const olive::TransitionBlock *>(block_impl(transition));
+	if (!t) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineBlock *>(t->connected_out_block());
+}
+
+OakEngineNode *oakengine_clip_get_connected_viewer(const OakEngineBlock *clip)
+{
+	if (!clip) {
+		return nullptr;
+	}
+	const olive::ClipBlock *c =
+		dynamic_cast<const olive::ClipBlock *>(block_impl(clip));
+	if (!c) {
+		return nullptr;
+	}
+	return reinterpret_cast<OakEngineNode *>(c->connected_viewer());
 }
 
 }

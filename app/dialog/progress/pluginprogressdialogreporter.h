@@ -24,32 +24,27 @@
 
 #include <QPointer>
 
-#include "pluginSupport/pluginprogressreporter.h"
-
 namespace olive
 {
 
 class ProgressDialog;
 
 /**
- * @brief PluginProgressReporter implementation wrapping a ProgressDialog
+ * @brief ProgressDialog wrapper created through the plugin progress
+ * reporter factory
  *
- * UI-side reporter created through the plugin progress reporter factory.
- * Forwards progress calls to the dialog and the dialog's cancelled() signal
- * back to the engine. The dialog is deleted on close; the reporter itself
- * is destroyed by the engine with deleteLater().
+ * Plain UI-side class; the engine only ever talks to it through the C
+ * callbacks registered with oakengine_plugin_set_progress_reporter_factory()
+ * (create/destroy/is_cancelled/set_progress, see engine/src/capi/plugin.cpp).
+ * The dialog is shown on construction and deleted with the reporter.
  */
-class PluginProgressDialogReporter : public plugin::PluginProgressReporter {
+class PluginProgressDialogReporter {
 public:
 	PluginProgressDialogReporter(const QString &message, const QString &title);
 
-	virtual ~PluginProgressDialogReporter() override;
+	~PluginProgressDialogReporter();
 
-	virtual void set_progress(double value) override;
-
-	virtual void show() override;
-
-	virtual void close() override;
+	void set_progress(double value);
 
 	bool was_cancelled() const { return cancelled_; }
 

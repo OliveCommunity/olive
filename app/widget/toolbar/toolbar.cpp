@@ -206,7 +206,7 @@ void Toolbar::add_button_clicked()
 
 void Toolbar::transition_button_clicked()
 {
-	Menu *m = create_node_menu(this, false, Node::k_category_transition);
+	Menu *m = create_node_menu(this, false, oak::k_category_transition);
 
 	connect(m, &QMenu::triggered, this, &Toolbar::transition_menu_item_triggered);
 

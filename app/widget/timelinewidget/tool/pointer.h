@@ -40,20 +40,20 @@ public:
 protected:
 	virtual void finish_drag(TimelineViewMouseEvent *event);
 
-	virtual void initiate_drag(Block *clicked_item,
-							  Timeline::MovementMode trim_mode,
+	virtual void initiate_drag(OakEngineBlock *clicked_item,
+							  TimelineApp::MovementMode trim_mode,
 							  Qt::KeyboardModifiers modifiers);
 
-	TimelineViewGhostItem *get_existing_ghost_from_block(Block *block);
+	TimelineViewGhostItem *get_existing_ghost_from_block(OakEngineBlock *block);
 
-	TimelineViewGhostItem *add_ghost_from_block(Block *block,
-											 Timeline::MovementMode mode,
+	TimelineViewGhostItem *add_ghost_from_block(OakEngineBlock *block,
+											 TimelineApp::MovementMode mode,
 											 bool check_if_exists = false);
 
 	TimelineViewGhostItem *add_ghost_from_null(const Rational &in,
 											const Rational &out,
-											const Track::Reference &track,
-											Timeline::MovementMode mode);
+											const TrackReference &track,
+											TimelineApp::MovementMode mode);
 
 	/**
    * @brief Validates Ghosts that are getting their in points trimmed
@@ -73,23 +73,23 @@ protected:
 
 	virtual void process_drag(const TimelineCoordinate &mouse_pos);
 
-	void initiate_drag_internal(Block *clicked_item,
-							  Timeline::MovementMode trim_mode,
+	void initiate_drag_internal(OakEngineBlock *clicked_item,
+							  TimelineApp::MovementMode trim_mode,
 							  Qt::KeyboardModifiers modifiers,
 							  bool dont_roll_trims, bool allow_nongap_rolling,
 							  bool slide_instead_of_moving);
 
-	const Timeline::MovementMode &drag_movement_mode() const
+	const TimelineApp::MovementMode &drag_movement_mode() const
 	{
 		return drag_movement_mode_;
 	}
-	void set_drag_movement_mode(const Timeline::MovementMode &d)
+	void set_drag_movement_mode(const TimelineApp::MovementMode &d)
 	{
 		drag_movement_mode_ = d;
 	}
 
-	static bool can_transition_move(TransitionBlock *transit,
-								  const QVector<Block *> &clips);
+	static bool can_transition_move(OakEngineBlock *transit,
+								  const QVector<OakEngineBlock *> &clips);
 
 	void set_movement_allowed(bool e)
 	{
@@ -111,19 +111,19 @@ protected:
 		gap_trimming_allowed_ = e;
 	}
 
-	void set_clicked_item(Block *b)
+	void set_clicked_item(OakEngineBlock *b)
 	{
 		clicked_item_ = b;
 	}
 
 private:
-	Timeline::MovementMode is_cursor_in_trim_handle(Block *block, qreal cursor_x);
+	TimelineApp::MovementMode is_cursor_in_trim_handle(OakEngineBlock *block, qreal cursor_x);
 
 	void add_ghost_internal(TimelineViewGhostItem *ghost,
-						  Timeline::MovementMode mode);
+						  TimelineApp::MovementMode mode);
 
-	bool is_clip_trimmable(Block *clip, const QVector<Block *> &items,
-						 const Timeline::MovementMode &mode);
+	bool is_clip_trimmable(OakEngineBlock *clip, const QVector<OakEngineBlock *> &items,
+						 const TimelineApp::MovementMode &mode);
 
 	void process_ghosts_for_sliding();
 
@@ -136,10 +136,10 @@ private:
 	bool can_rubberband_select_;
 	bool rubberband_selecting_;
 
-	Track::Type drag_track_type_;
-	Timeline::MovementMode drag_movement_mode_;
+	TrackReference::Type drag_track_type_;
+	TimelineApp::MovementMode drag_movement_mode_;
 
-	Block *clicked_item_;
+	OakEngineBlock *clicked_item_;
 
 	QPoint drag_global_start_;
 };

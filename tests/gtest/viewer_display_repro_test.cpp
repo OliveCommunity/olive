@@ -239,7 +239,7 @@ TEST_P(ViewerDisplayReproTest, FootageViewerNotBlack)
 	viewer->resize(800, 600);
 	viewer->show();
 
-	viewer->connect_viewer_node(footage_);
+	viewer->connect_viewer_node(reinterpret_cast<OakEngineNode *>(footage_));
 
 	ASSERT_TRUE(wait_for_texture(viewer->display_widget()))
 		<< "Display widget never received a texture (backend="
@@ -269,7 +269,7 @@ TEST_P(ViewerDisplayReproTest, SequenceViewerIndirectNotBlack)
 	viewer->resize(800, 600);
 	viewer->show();
 
-	viewer->connect_viewer_node(sequence);
+	viewer->connect_viewer_node(reinterpret_cast<OakEngineNode *>(sequence));
 
 	ASSERT_TRUE(wait_for_texture(viewer->display_widget()))
 		<< "Display widget never received a texture (backend="
@@ -297,7 +297,7 @@ TEST_P(ViewerDisplayReproTest, SequenceViewerDirectNotBlack)
 	viewer->resize(800, 600);
 	viewer->show();
 
-	viewer->connect_viewer_node(sequence);
+	viewer->connect_viewer_node(reinterpret_cast<OakEngineNode *>(sequence));
 
 	ASSERT_TRUE(wait_for_texture(viewer->display_widget()))
 		<< "Display widget never received a texture (backend="
@@ -344,7 +344,7 @@ TEST_P(ViewerRuntimeRewireTest, RewireToDirectConnectionNotBlack)
 	TestViewerWidget *viewer = new TestViewerWidget();
 	viewer->resize(800, 600);
 	viewer->show();
-	viewer->connect_viewer_node(sequence);
+	viewer->connect_viewer_node(reinterpret_cast<OakEngineNode *>(sequence));
 
 	double brightness = pump_and_measure(viewer);
 	ASSERT_GT(brightness, 0.01)
@@ -376,7 +376,7 @@ TEST_P(ViewerRuntimeRewireTest, RewireToIndirectConnectionNotBlack)
 	TestViewerWidget *viewer = new TestViewerWidget();
 	viewer->resize(800, 600);
 	viewer->show();
-	viewer->connect_viewer_node(sequence);
+	viewer->connect_viewer_node(reinterpret_cast<OakEngineNode *>(sequence));
 
 	double brightness = pump_and_measure(viewer);
 	ASSERT_GT(brightness, 0.01)

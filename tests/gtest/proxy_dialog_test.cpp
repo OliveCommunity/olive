@@ -7,6 +7,7 @@
 #include "config/config.h"
 #include "dialog/proxy/proxydialog.h"
 #include "node/project/footage/footage.h"
+#include "oakengine/node.h"
 
 namespace
 {
@@ -40,7 +41,9 @@ TEST(ProxyDialog, ConstructsInGlobalModeWithNullParent)
 TEST(ProxyDialog, ConstructsWithFootageList)
 {
 	olive::Footage footage(QStringLiteral("/tmp/oak-proxy-test.mov"));
-	const QVector<olive::Footage *> items = { &footage };
+	const QVector<OakEngineNode *> items = {
+		reinterpret_cast<OakEngineNode *>(&footage)
+	};
 
 	olive::ProxyDialog dialog(nullptr, items);
 	EXPECT_EQ(dialog.windowTitle(), QStringLiteral("Proxy Settings"));

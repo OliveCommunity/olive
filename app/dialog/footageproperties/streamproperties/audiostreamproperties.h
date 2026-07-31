@@ -22,20 +22,21 @@
 #ifndef OAK_AUDIOSTREAMPROPERTIES_H
 #define OAK_AUDIOSTREAMPROPERTIES_H
 
-#include "node/project/footage/footage.h"
 #include "streamproperties.h"
+
+struct OakEngineNode;
 
 namespace olive
 {
 
 class AudioStreamProperties : public StreamProperties {
 public:
-	AudioStreamProperties(Footage *footage, int audio_index);
+	AudioStreamProperties(OakEngineNode *footage, int audio_index);
 
 	virtual void accept(void *parent) override;
 
 private:
-	Footage *footage_;
+	OakEngineNode *footage_;
 
 	int audio_index_;
 };

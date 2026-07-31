@@ -27,7 +27,6 @@
 #include <QTimer>
 #include <QTreeView>
 
-#include "node/project.h"
 #include "projectviewmodel.h"
 #include "widget/projectexplorer/projectexplorericonview.h"
 #include "widget/projectexplorer/projectexplorerlistview.h"
@@ -55,13 +54,13 @@ public:
 
 	const ProjectToolbar::ViewType &view_type() const;
 
-	Project *project() const;
-	void set_project(Project *p);
+	oak::Project project() const;
+	void set_project(oak::Project p);
 
-	Folder *get_root() const;
-	void set_root(Folder *item);
+	oak::Node get_root() const;
+	void set_root(oak::Node item);
 
-	QVector<Node *> selected_items() const;
+	QVector<oak::Node> selected_items() const;
 
 	/**
    * @brief Use a heuristic to determine which (if any) folder is selected
@@ -75,7 +74,7 @@ public:
    * A folder that's heuristically been determined as "selected", or the root directory if none, or nullptr if no
    * project is open.
    */
-	Folder *get_selected_folder() const;
+	oak::Node get_selected_folder() const;
 
 	/**
    * @brief Access the ViewModel model of the project
@@ -88,7 +87,7 @@ public:
 
 	void delete_selected();
 
-	bool select_item(Node *n, bool deselect_all_first = true);
+	bool select_item(oak::Node n, bool deselect_all_first = true);
 
 public slots:
 	void set_view_type(ProjectToolbar::ViewType type);
@@ -113,13 +112,6 @@ signals:
 
 private:
 	/**
-   * @brief Get all the blocks that solely rely on an input node
-   *
-   * Ignores blocks that depend on multiple inputs
-   */
-	QList<Block *> get_footage_blocks(QList<Node *> nodes);
-
-	/**
    * @brief Simple convenience function for adding a view to this stacked widget
    *
    * Mainly for use in the constructor. Adds the view, connects its signals/slots, and sets the model.
@@ -141,13 +133,13 @@ private:
    */
 	void browse_to_folder(const QModelIndex &index);
 
-	int confirm_item_deletion(Node *item);
+	int confirm_item_deletion(oak::Node item);
 
-	bool delete_items_internal(const QVector<Node *> &selected,
+	bool delete_items_internal(const QVector<oak::Node> &selected,
 							 bool &check_if_item_is_in_use,
 							 void *command);
 
-	static QString get_human_readable_node_name(Node *node);
+	static QString get_human_readable_node_name(const oak::Node &node);
 
 	void update_nav_bar_text();
 
@@ -169,7 +161,7 @@ private:
 	QSortFilterProxyModel sort_model_;
 	ProjectViewModel model_;
 
-	QVector<Node *> context_menu_items_;
+	QVector<oak::Node> context_menu_items_;
 
 private slots:
 	void view_empty_area_double_clicked_slot();

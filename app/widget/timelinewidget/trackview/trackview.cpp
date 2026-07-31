@@ -29,14 +29,35 @@
 
 #include "trackviewitem.h"
 
+#include "oakengine/node.h"
 #include "oakengine/timeline.h"
 
 namespace olive
 {
 
+namespace
+{
+/// Number of tracks of `track_type` (OAKENGINE_TRACK_TYPE_*) in `sequence`.
+int track_count_for(OakEngineSequence *sequence, int track_type)
+{
+	int video = 0, audio = 0, subtitle = 0;
+	oakengine_sequence_track_count(sequence, &video, &audio, &subtitle);
+	switch (track_type) {
+	case OAKENGINE_TRACK_TYPE_VIDEO:
+		return video;
+	case OAKENGINE_TRACK_TYPE_AUDIO:
+		return audio;
+	case OAKENGINE_TRACK_TYPE_SUBTITLE:
+		return subtitle;
+	}
+	return 0;
+}
+} // namespace
+
 TrackView::TrackView(Qt::Alignment vertical_alignment, QWidget *parent)
 	: QScrollArea(parent)
-	, list_(nullptr)
+	, sequence_(nullptr)
+	, track_type_(OAKENGINE_TRACK_TYPE_VIDEO)
 	, alignment_(vertical_alignment)
 {
 	setAlignment(Qt::AlignLeft | alignment_);
@@ -71,27 +92,30 @@ TrackView::TrackView(Qt::Alignment vertical_alignment, QWidget *parent)
 	setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
 }
 
-void TrackView::connect_track_list(TrackList *list)
+void TrackView::connect_track_list(OakEngineSequence *sequence, int track_type)
 {
-	if (list_ != nullptr) {
+	if (sequence_ != nullptr) {
 		// Remove tracks
-		for (int i = 0; i < list_->get_track_count(); i++) {
+		const int count = track_count_for(sequence_, track_type_);
+		for (int i = 0; i < count; i++) {
 			splitter_->remove(0);
 		}
 	}
 
-	list_ = list;
+	sequence_ = sequence;
+	track_type_ = track_type;
 
-	if (list_ != nullptr) {
-		foreach (Track *track, list_->get_tracks()) {
-			insert_track(track);
+	if (sequence_ != nullptr) {
+		const int count = track_count_for(sequence_, track_type_);
+		for (int i = 0; i < count; i++) {
+			insert_track(oakengine_sequence_track_at(sequence_, track_type_, i));
 		}
 	}
 }
 
 void TrackView::disconnect_track_list()
 {
-	connect_track_list(nullptr);
+	connect_track_list(nullptr, track_type_);
 }
 
 void TrackView::resizeEvent(QResizeEvent *e)
@@ -116,26 +140,32 @@ void TrackView::scrollbar_range_changed(int, int max)
 
 void TrackView::track_height_changed(int index, int height)
 {
-	Track *track = list_->get_track_at(index);
 	oakengine_track_set_height(
-		reinterpret_cast<OakEngineSequence *>(list_->parent()),
-		track->type(), track->index(),
+		sequence_, track_type_, index,
 		oakengine_track_height_pixels_to_internal(height));
 }
 
-void TrackView::insert_track(Track *track)
+void TrackView::insert_track(OakEngineTrack *track)
 {
 	TrackViewItem *tvi = new TrackViewItem(track);
 
 	connect(tvi, &TrackViewItem::about_to_delete_track, this,
 			&TrackView::about_to_delete_track);
 
-	splitter_->insert(track->index(), track->get_track_height_in_pixels(), tvi);
+	const int index = oakengine_track_get_index(
+		reinterpret_cast<OakEngineNode *>(track));
+	double internal_height = 0.0;
+	oakengine_track_get_height(sequence_, track_type_, index,
+							   &internal_height);
+	splitter_->insert(
+		index, oakengine_track_height_internal_to_pixels(internal_height),
+		tvi);
 }
 
-void TrackView::remove_track(Track *track)
+void TrackView::remove_track(OakEngineTrack *track)
 {
-	splitter_->remove(track->index());
+	splitter_->remove(oakengine_track_get_index(
+		reinterpret_cast<OakEngineNode *>(track)));
 }
 
 }

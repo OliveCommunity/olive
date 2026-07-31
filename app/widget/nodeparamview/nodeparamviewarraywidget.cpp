@@ -24,12 +24,10 @@
 #include <QEvent>
 #include <QHBoxLayout>
 
-#include "node/node.h"
-
 namespace olive
 {
 
-NodeParamViewArrayWidget::NodeParamViewArrayWidget(Node *node,
+NodeParamViewArrayWidget::NodeParamViewArrayWidget(oak::Node node,
 												   const QString &input,
 												   QWidget *parent)
 	: QWidget(parent)
@@ -42,7 +40,7 @@ NodeParamViewArrayWidget::NodeParamViewArrayWidget(Node *node,
 	count_lbl_ = new QLabel();
 	layout->addWidget(count_lbl_);
 
-	bridge_->subscribe(reinterpret_cast<void *>(node_),
+	bridge_->subscribe(reinterpret_cast<void *>(node_.handle()),
 					   OAKENGINE_EVENT_NODE_INPUT_ARRAY_SIZE_CHANGED);
 	connect(bridge_, &EngineEventBridge::node_input_array_size_changed, this,
 			[this](OakEngineNode *, const QString &input, int old_size,
@@ -50,7 +48,7 @@ NodeParamViewArrayWidget::NodeParamViewArrayWidget(Node *node,
 				update_counter(input, old_size, new_size);
 			});
 
-	update_counter(input_, 0, node_->input_array_size(input_));
+	update_counter(input_, 0, oak::Input(node_.handle(), input_).array_size());
 }
 
 void NodeParamViewArrayWidget::mouseDoubleClickEvent(QMouseEvent *event)

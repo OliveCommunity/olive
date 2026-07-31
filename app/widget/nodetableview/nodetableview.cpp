@@ -26,7 +26,7 @@
 
 #include "oakengine/traverse.h"
 #include "oakengine/node.h"
-#include "node/value.h"
+#include "oakutil/oaknode.h"
 
 namespace olive
 {
@@ -39,11 +39,11 @@ NodeTableView::NodeTableView(QWidget *parent)
 					  tr("A/W") });
 }
 
-void NodeTableView::select_nodes(const QVector<Node *> &nodes)
+void NodeTableView::select_nodes(const QVector<OakEngineNode *> &nodes)
 {
-	foreach (Node *n, nodes) {
+	foreach (OakEngineNode *n, nodes) {
 		QTreeWidgetItem *top_item = new QTreeWidgetItem();
-		top_item->setText(0, n->get_label_and_name());
+		top_item->setText(0, oak::Node(n).label_and_name());
 		top_item->setFirstColumnSpanned(true);
 		this->addTopLevelItem(top_item);
 		top_level_item_map_.insert(n, top_item);
@@ -52,9 +52,9 @@ void NodeTableView::select_nodes(const QVector<Node *> &nodes)
 	set_time(last_time_);
 }
 
-void NodeTableView::deselect_nodes(const QVector<Node *> &nodes)
+void NodeTableView::deselect_nodes(const QVector<OakEngineNode *> &nodes)
 {
-	foreach (Node *n, nodes) {
+	foreach (OakEngineNode *n, nodes) {
 		delete top_level_item_map_.take(n);
 	}
 }
@@ -65,11 +65,12 @@ void NodeTableView::set_time(const Rational &time)
 
 	for (auto i = top_level_item_map_.constBegin();
 		 i != top_level_item_map_.constEnd(); i++) {
-		Node *node = i.key();
+		OakEngineNode *node = i.key();
 		QTreeWidgetItem *item = i.value();
 
+		// WRAPPER-GAP: oakengine_traverse_* (traverse API has no oak:: wrapper)
 		OakEngineTraverseDb *db = oakengine_traverse_generate_database(
-			reinterpret_cast<OakEngineNode *>(node), time.numerator(),
+			node, time.numerator(),
 			time.denominator(), time.numerator(), time.denominator());
 
 		int input_count = oakengine_traverse_db_input_count(db);
@@ -98,8 +99,21 @@ void NodeTableView::set_time(const Rational &time)
 			const char *input_id_c = oakengine_traverse_db_input_id(db, l);
 			QString input_id = QString::fromUtf8(input_id_c);
 
-			if (!node->has_input_with_id(input_id)) {
+			if (!oak::Node(node).input_count()) {
 				continue;
+			}
+			{
+				bool found_input = false;
+				const int nic = oak::Node(node).input_count();
+				for (int ni = 0; ni < nic; ni++) {
+					if (input_id == oak::Node(node).input_id(ni)) {
+						found_input = true;
+						break;
+					}
+				}
+				if (!found_input) {
+					continue;
+				}
 			}
 
 			int row_count = oakengine_traverse_db_row_count(db, l);
@@ -117,7 +131,7 @@ void NodeTableView::set_time(const Rational &time)
 
 			if (!input_item) {
 				input_item = new QTreeWidgetItem();
-				input_item->setText(0, node->get_input_name(input_id));
+				input_item->setText(0, oak::Input(node, input_id).name());
 				input_item->setData(0, Qt::UserRole, input_id);
 				input_item->setFirstColumnSpanned(true);
 				item->addChild(input_item);
@@ -156,21 +170,18 @@ void NodeTableView::set_time(const Rational &time)
 					oakengine_traverse_row_source(db, l, actual_row);
 				QString source_name;
 				if (source) {
-					char label_buf[256];
-					oakengine_node_get_label_and_name(
-						source, label_buf, sizeof(label_buf));
-					source_name = QString(label_buf);
+					source_name = oak::Node(source).label_and_name();
 				} else {
 					source_name = tr("(unknown)");
 				}
 				sub_item->setText(1, source_name);
 
 				switch (type) {
-				case NodeValue::k_video_params:
-				case NodeValue::k_audio_params:
+				case OAK_NODE_VALUE_VIDEO_PARAMS:
+				case OAK_NODE_VALUE_AUDIO_PARAMS:
 					// These types have no string representation
 					break;
-				case NodeValue::k_texture: {
+				case OAK_NODE_VALUE_TEXTURE: {
 					for (int k = 0; k < 4; k++) {
 						this->setItemWidget(sub_item, 2 + k,
 											new QCheckBox());

@@ -35,9 +35,9 @@ public:
 	virtual void mouse_move(TimelineViewMouseEvent *event) override;
 	virtual void mouse_release(TimelineViewMouseEvent *event) override;
 
-	static Node *create_addable_clip(void *command,
-								   Sequence *sequence,
-								   const Track::Reference &track,
+	static OakEngineNode *create_addable_clip(void *command,
+								   OakEngineSequence *sequence,
+								   const TrackReference &track,
 								   const Rational &in, const Rational &length,
 								   const QRectF &rect = QRectF());
 

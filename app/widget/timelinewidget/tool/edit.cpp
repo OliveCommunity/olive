@@ -21,6 +21,7 @@
 
 #include "edit.h"
 #include "widget/timelinewidget/timelinewidget.h"
+#include "widget/timelinewidget/trackhandle.h"
 
 namespace olive
 {
@@ -84,9 +85,10 @@ void EditTool::mouse_release(TimelineViewMouseEvent *event)
 
 void EditTool::mouse_double_click(TimelineViewMouseEvent *event)
 {
-	Block *item = parent()->get_item_at_scene_pos(event->get_coordinates());
+	OakEngineBlock *item =
+		parent()->get_item_at_scene_pos(event->get_coordinates());
 
-	if (item && !item->track()->is_locked()) {
+	if (item && !track_is_locked(oakengine_block_get_track(item))) {
 		parent()->add_selection(item);
 	}
 }

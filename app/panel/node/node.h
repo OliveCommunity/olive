@@ -43,7 +43,7 @@ public:
 		return node_widget_;
 	}
 
-	const QVector<Node *> &get_contexts() const
+	const QVector<oak::Node> &get_contexts() const
 	{
 		return node_widget_->view()->get_contexts();
 	}
@@ -53,12 +53,12 @@ public:
 		return node_widget_->view()->is_group_overlay();
 	}
 
-	void set_contexts(const QVector<Node *> &nodes)
+	void set_contexts(const QVector<oak::Node> &nodes)
 	{
 		node_widget_->set_contexts(nodes);
 	}
 
-	void close_contexts_belonging_to_project(Project *project)
+	void close_contexts_belonging_to_project(oak::Project project)
 	{
 		node_widget_->view()->close_contexts_belonging_to_project(project);
 	}

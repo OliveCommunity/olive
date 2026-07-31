@@ -72,12 +72,12 @@ public:
 	{
 	}
 
-	ViewerOutput *get_viewer_node() const
+	OakEngineNode *get_viewer_node() const
 	{
 		return viewer_;
 	}
 
-	void set_viewer_node(ViewerOutput *v);
+	void set_viewer_node(OakEngineNode *v);
 
 	QPointF scale_point(const QPointF &p) const;
 	QPointF unscale_point(const QPointF &p) const;
@@ -146,7 +146,7 @@ private:
 
 	double y_scale_;
 
-	ViewerOutput *viewer_;
+	OakEngineNode *viewer_;
 
 	int64_t viewer_sub_ = 0;
 };

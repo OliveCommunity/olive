@@ -232,14 +232,39 @@ endif()
 list(APPEND OLIVE_INCLUDE_DIRS ${PORTAUDIO_INCLUDE_DIRS})
 list(APPEND OLIVE_LIBRARIES ${PORTAUDIO_LIBRARIES})
 
-# Optional: Link OpenTimelineIO
-find_package(OpenTimelineIO)
-if (OpenTimelineIO_FOUND)
-  list(APPEND OLIVE_DEFINITIONS USE_OTIO)
-  list(APPEND OLIVE_INCLUDE_DIRS ${OTIO_INCLUDE_DIRS})
-  list(APPEND OLIVE_LIBRARIES ${OTIO_LIBRARIES})
-else()
-  message("   OpenTimelineIO interchange will be disabled.")
+# Required: Link OpenTimelineIO
+find_package(OpenTimelineIO REQUIRED)
+list(APPEND OLIVE_DEFINITIONS USE_OTIO)
+list(APPEND OLIVE_INCLUDE_DIRS ${OTIO_INCLUDE_DIRS})
+list(APPEND OLIVE_LIBRARIES ${OTIO_LIBRARIES})
+
+# Bundle the OTIO shared libraries into our install tree so that packages
+# (deb/rpm/AppImage/Windows installer) ship them — most distros have no OTIO
+# package to depend on. Distro-native packaging (e.g. Arch PKGBUILD, where
+# opentimelineio is a proper depends entry) should pass -DOAK_BUNDLE_OTIO=OFF.
+option(OAK_BUNDLE_OTIO "Install OTIO runtime libraries alongside Oak" ON)
+if (OAK_BUNDLE_OTIO AND UNIX AND NOT APPLE)
+  include(GNUInstallDirs)
+  file(GLOB _otio_runtime_libs
+    "${OTIO_LIBRARY_DIR}/libopentimelineio.so*"
+    "${OTIO_LIBRARY_DIR}/libopentime.so*")
+  if (_otio_runtime_libs)
+    install(FILES ${_otio_runtime_libs} DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  endif()
+endif()
+
+# OTIO's macOS dylibs use @loader_path install names: every binary that
+# (transitively) links them needs a copy of the dylibs next to itself.
+# Call oak_copy_otio_runtime(<target>) for each executable/shared library.
+if (OAK_BUNDLE_OTIO AND APPLE AND OTIO_LIBRARY_DIR)
+  file(GLOB OAK_OTIO_DYLIBS
+    "${OTIO_LIBRARY_DIR}/libopentimelineio*.dylib"
+    "${OTIO_LIBRARY_DIR}/libopentime*.dylib")
+  function(oak_copy_otio_runtime target)
+    add_custom_command(TARGET ${target} POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+              ${OAK_OTIO_DYLIBS} $<TARGET_FILE_DIR:${target}>)
+  endfunction()
 endif()
 
 # Optional: Link Google Crashpad

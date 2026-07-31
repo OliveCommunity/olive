@@ -35,8 +35,6 @@
 #include "oakengine/color.h"
 #include "oakengine/display.h"
 #include "oakengine/events.h"
-#include "render/colorprocessor.h"
-#include "render/colortransform.h"
 #include "widget/manageddisplay/colorprocessorhandle.h"
 #include "widget/menu/menu.h"
 
@@ -151,7 +149,7 @@ public:
 	/**
    * @brief Get current color transform
    */
-	const ColorTransform &get_color_transform() const;
+	const oak::ColorTransform &get_color_transform() const;
 
 	/**
    * @brief Get menu that can be used to select the colorspace
@@ -184,7 +182,7 @@ public slots:
 	/**
    * @brief Replaces the color transform with a new one
    */
-	void set_color_transform(const ColorTransform &transform);
+	void set_color_transform(const oak::ColorTransform &transform);
 
 	/**
    * @brief Connect a ColorManager (ColorManagers usually belong to the Project)
@@ -318,7 +316,7 @@ private:
 	/**
    * @brief Internal color transform storage
    */
-	ColorTransform color_transform_;
+	oak::ColorTransform color_transform_;
 
 	bool is_backend_neutral_ = false;
 

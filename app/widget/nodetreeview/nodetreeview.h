@@ -24,8 +24,7 @@
 
 #include <QTreeWidget>
 
-#include "node/node.h"
-#include "oakengine/node.h"
+#include "oakutil/oaknode.h"
 
 namespace olive
 {
@@ -35,16 +34,16 @@ class NodeTreeView : public QTreeWidget {
 public:
 	NodeTreeView(QWidget *parent = nullptr);
 
-	bool is_node_enabled(Node *n) const;
+	bool is_node_enabled(const oak::Node &n) const;
 
-	bool is_input_enabled(const NodeKeyframeTrackReference &ref) const;
+	bool is_input_enabled(const oak::KeyframeTrackRef &ref) const;
 
 	void set_check_boxes_enabled(bool e)
 	{
 		checkboxes_enabled_ = e;
 	}
 
-	void set_keyframe_track_color(const NodeKeyframeTrackReference &ref,
+	void set_keyframe_track_color(const oak::KeyframeTrackRef &ref,
 							   const QColor &color);
 
 	void set_only_show_keyframable(bool e)
@@ -58,19 +57,16 @@ public:
 	}
 
 public:
-	// Not a slot: signature uses the engine C++ type Node*, which must not be
-	// exposed to MOC (it would pull Node::staticMetaObject across the ABI
-	// boundary). All connections use new-style member-function syntax.
-	void set_nodes(const QVector<Node *> &nodes);
+	void set_nodes(const QVector<oak::Node> &nodes);
 
 signals:
 	void node_enable_changed(OakEngineNode *n, bool e);
 
-	void input_enable_changed(const NodeKeyframeTrackReference &ref, bool e);
+	void input_enable_changed(const oak::KeyframeTrackRef &ref, bool e);
 
-	void input_selection_changed(const NodeKeyframeTrackReference &ref);
+	void input_selection_changed(const oak::KeyframeTrackRef &ref);
 
-	void input_double_clicked(const NodeKeyframeTrackReference &ref);
+	void input_double_clicked(const oak::KeyframeTrackRef &ref);
 
 protected:
 	virtual void changeEvent(QEvent *e) override;
@@ -80,15 +76,15 @@ protected:
 private:
 	void retranslate();
 
-	NodeKeyframeTrackReference get_selected_input();
+	oak::KeyframeTrackRef get_selected_input();
 
 	QTreeWidgetItem *create_item(QTreeWidgetItem *parent,
-								const NodeKeyframeTrackReference &ref);
+								const oak::KeyframeTrackRef &ref);
 
-	void create_items_for_tracks(QTreeWidgetItem *parent, const NodeInput &input,
+	void create_items_for_tracks(QTreeWidgetItem *parent, const oak::Input &input,
 							  int track_count);
 
-	static bool use_rgba_over_xyzw(const NodeKeyframeTrackReference &ref);
+	static bool use_rgba_over_xyzw(const oak::KeyframeTrackRef &ref);
 
 	enum ItemType { k_item_type_node, k_item_type_input };
 
@@ -96,19 +92,19 @@ private:
 	static const int k_item_input_reference = Qt::UserRole + 1;
 	static const int k_item_node_pointer = Qt::UserRole + 1;
 
-	QVector<Node *> nodes_;
+	QVector<oak::Node> nodes_;
 
-	QVector<Node *> disabled_nodes_;
+	QVector<oak::Node> disabled_nodes_;
 
-	QVector<NodeKeyframeTrackReference> disabled_inputs_;
+	QVector<oak::KeyframeTrackRef> disabled_inputs_;
 
-	QHash<NodeKeyframeTrackReference, QTreeWidgetItem *> item_map_;
+	QHash<oak::KeyframeTrackRef, QTreeWidgetItem *> item_map_;
 
 	bool only_show_keyframable_;
 
 	bool show_keyframe_tracks_as_rows_;
 
-	QHash<NodeKeyframeTrackReference, QColor> keyframe_colors_;
+	QHash<oak::KeyframeTrackRef, QColor> keyframe_colors_;
 
 	bool checkboxes_enabled_;
 

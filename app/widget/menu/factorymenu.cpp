@@ -29,39 +29,35 @@ namespace olive
 {
 
 Menu *create_node_menu(QWidget *parent, bool create_none_item,
-					   Node::CategoryID restrict_to, uint64_t restrict_flags)
+					   oak::NodeCategory restrict_to, uint64_t restrict_flags)
 {
-	const int library_size = oakengine_node_factory_id_count();
+	const int library_size = oak::Node::factory_count();
 
 	Menu *menu = new Menu(parent);
 	menu->setToolTipsVisible(true);
 
 	for (int i = 0; i < library_size; i++) {
-		olive::Node *n = reinterpret_cast<olive::Node *>(
-			oakengine_node_factory_node_at(i));
+		oak::Node n = oak::Node::factory_node_at(i);
 
-		if (restrict_to != Node::k_category_unknown &&
-			!n->category().contains(restrict_to)) {
-			// Skip this node
+		if (restrict_to != oak::k_category_unknown &&
+			!n.in_category(restrict_to)) {
 			continue;
 		}
 
-		if (restrict_flags && !(n->get_flags() & restrict_flags)) {
+		const uint64_t flags = n.flags();
+		if (restrict_flags && !(flags & restrict_flags)) {
 			continue;
 		}
 
-		if (n->get_flags() & Node::k_dont_show_in_create_menu) {
+		if (flags & oak::Node::flag_dont_show_in_create_menu()) {
 			continue;
 		}
 
 		// Make sure nodes are up-to-date with the current translation
-		n->retranslate();
+		n.retranslate();
 
-		char cat_buf[256];
-		oakengine_node_category_name(
-			n->category().isEmpty() ? 0 : n->category().first(),
-			cat_buf, sizeof(cat_buf));
-		QString category_name = QString::fromUtf8(cat_buf);
+		const int cat_count = n.category_count();
+		QString category_name = oak::Node::category_name(cat_count == 0 ? 0 : n.category_at(0));
 
 		// Find or create top-level category menu
 		Menu *top_menu = nullptr;
@@ -79,8 +75,9 @@ Menu *create_node_menu(QWidget *parent, bool create_none_item,
 
 		// Determine final destination (support secondary grouping)
 		Menu *destination = top_menu;
-		QString sub = n->sub_category();
-		if (!sub.isEmpty() && n->category().contains(Node::k_category_open_fx)) {
+		QString sub = n.sub_category();
+		bool is_openfx = n.in_category(oak::k_category_open_fx);
+		if (!sub.isEmpty() && is_openfx) {
 			QList<QAction *> sub_actions = top_menu->actions();
 			foreach (QAction *action, sub_actions) {
 				if (action->menu() && action->menu()->title() == sub) {
@@ -95,9 +92,9 @@ Menu *create_node_menu(QWidget *parent, bool create_none_item,
 		}
 
 		// Add entry to menu
-		QAction *a = destination->insert_alphabetically(n->name());
+		QAction *a = destination->insert_alphabetically(n.name());
 		a->setData(i);
-		a->setToolTip(n->description());
+		a->setToolTip(n.description());
 	}
 
 	if (create_none_item) {
@@ -117,17 +114,15 @@ Menu *create_node_menu(QWidget *parent, bool create_none_item,
 	return menu;
 }
 
-Node *create_node_from_menu_action(QAction *action)
+oak::Node create_node_from_menu_action(QAction *action)
 {
 	int index = action->data().toInt();
 
 	if (index == -1) {
-		return nullptr;
+		return oak::Node();
 	}
 
-	olive::Node *proto = reinterpret_cast<olive::Node *>(
-		oakengine_node_factory_node_at(index));
-	return proto ? proto->copy() : nullptr;
+	return oak::Node::factory_node_at(index).create_copy();
 }
 
 QString get_node_id_from_menu_action(QAction *action)
@@ -138,9 +133,11 @@ QString get_node_id_from_menu_action(QAction *action)
 		return QString();
 	}
 
-	olive::Node *proto = reinterpret_cast<olive::Node *>(
-		oakengine_node_factory_node_at(index));
-	return proto ? proto->id() : QString();
+	oak::Node proto = oak::Node::factory_node_at(index);
+	if (proto.is_null()) {
+		return QString();
+	}
+	return proto.id();
 }
 
 }
