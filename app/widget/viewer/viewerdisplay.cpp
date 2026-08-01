@@ -108,6 +108,18 @@ ViewerDisplayWidget::~ViewerDisplayWidget()
 	MANAGEDDISPLAYWIDGET_DEFAULT_DESTRUCTOR_INNER;
 }
 
+void ViewerDisplayWidget::assign_texture(void *t, bool owned)
+{
+	if (owned_texture_) {
+		oakengine_display_texture_free(owned_texture_);
+	}
+	if (t && !owned) {
+		oakengine_display_texture_retain(t);
+	}
+	owned_texture_ = t;
+	texture_ = t;
+}
+
 void ViewerDisplayWidget::set_matrix_translate(const QMatrix4x4 &mat)
 {
 	translate_matrix_ = mat;
@@ -483,10 +495,11 @@ void ViewerDisplayWidget::on_paint()
 					 oakengine_display_texture_height(texture_) != frame_vp.height ||
 					 oakengine_display_texture_format(texture_) != frame_vp.format ||
 					 oakengine_display_texture_channel_count(texture_) != 4)) {
-					texture_ = oakengine_display_texture_create(
-						renderer(), &frame_vp,
-						oakengine_codec_frame_data(load_handle),
-						oakengine_codec_frame_linesize(load_handle));
+					assign_texture(oakengine_display_texture_create(
+									   renderer(), &frame_vp,
+									   oakengine_codec_frame_data(load_handle),
+									   oakengine_codec_frame_linesize(load_handle)),
+								   true);
 				} else if (!drew_backend_neutral_frame) {
 					oakengine_display_texture_upload(
 						texture_, oakengine_codec_frame_data(load_handle),
@@ -499,7 +512,7 @@ void ViewerDisplayWidget::on_paint()
 					src_ren && src_ren != renderer()) {
 					if (oakengine_display_renderer_is_open_gl(src_ren) &&
 						oakengine_display_renderer_is_open_gl(renderer())) {
-						texture_ = load_handle;
+						assign_texture(load_handle, false);
 					} else {
 						// Cross-backend: download and re-upload
 						void *tmp_frame = oakengine_codec_frame_create();
@@ -513,24 +526,25 @@ void ViewerDisplayWidget::on_paint()
 								&tex_params,
 								oakengine_codec_frame_data(tmp_frame),
 								oakengine_codec_frame_linesize(tmp_frame));
-							texture_ = oakengine_display_texture_create(
-								renderer(), &tex_params,
-								oakengine_codec_frame_data(tmp_frame),
-								oakengine_codec_frame_linesize(tmp_frame));
+							assign_texture(oakengine_display_texture_create(
+											   renderer(), &tex_params,
+											   oakengine_codec_frame_data(tmp_frame),
+											   oakengine_codec_frame_linesize(tmp_frame)),
+										   true);
 						} else {
-							texture_ = load_handle;
+							assign_texture(load_handle, false);
 						}
 						oakengine_codec_frame_free(tmp_frame);
 					}
 				} else if (!drew_backend_neutral_frame) {
-					texture_ = load_handle;
+					assign_texture(load_handle, false);
 				}
 			} else {
-				texture_ = load_custom_texture_from_frame(load_frame_);
+				assign_texture(load_custom_texture_from_frame(load_frame_), true);
 			}
 
 			if (drew_backend_neutral_frame) {
-				texture_ = nullptr;
+				assign_texture(nullptr, true);
 			}
 
 			emit texture_changed(texture_);
@@ -762,7 +776,7 @@ void ViewerDisplayWidget::on_destroy()
 
 	super::on_destroy();
 
-	texture_ = nullptr;
+	assign_texture(nullptr, true);
 	if (deinterlace_texture_) {
 		oakengine_display_texture_free(deinterlace_texture_);
 		deinterlace_texture_ = nullptr;

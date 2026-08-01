@@ -338,8 +338,28 @@ private:
 
 	/**
    * @brief Internal reference to the OpenGL texture to draw. Set in SetTexture() and used in paintGL().
+   *
+   * Never assign directly; use assign_texture() so ownership stays consistent.
    */
 	void *texture_;
+
+	/**
+   * @brief Owned (retained or created) reference backing texture_.
+   *
+   * texture_ may point to a texture owned by the playback queue's
+   * OakSharedBuffer; this member holds our own reference so texture_ can
+   * never dangle after the queue entry is replaced.
+   */
+	void *owned_texture_ = nullptr;
+
+	/**
+   * @brief Assign texture_ with consistent ownership.
+   *
+   * Releases the previous owned reference. If owned is true, takes over the
+   * passed reference (e.g. freshly created); otherwise retains it. texture_
+   * is set to the same pointer (possibly nullptr).
+   */
+	void assign_texture(void *t, bool owned);
 
 	/**
    * @brief Internal texture to deinterlace to

@@ -318,6 +318,14 @@ void MainWindow::open_folder(OakEngineNode *i, bool floating)
 
 void MainWindow::open_node_in_viewer(OakEngineNode *node)
 {
+	// Sequences already have the dedicated Sequence Viewer. Opening a
+	// floating Viewer on a Sequence just duplicates it and looks like the
+	// two viewers' controls are swapped. This also filters out stale
+	// <viewer> entries pointing at sequences in saved project layouts.
+	if (!node || oak::Node(node).is_sequence()) {
+		return;
+	}
+
 	ViewerPanel *existing = nullptr;
 
 	for (auto it = viewer_panels_.cbegin(); it != viewer_panels_.cend(); it++) {

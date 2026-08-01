@@ -78,6 +78,8 @@ typedef struct oak_playback_frame {
 	int format;       /**< olive::PixelFormat::Format value. */
 	const void *data; /**< Planar data pointer (first plane). */
 	int linesize;     /**< Bytes per row of the first plane. */
+	int64_t timestamp_num; /**< Frame timestamp (seconds) as a rational. */
+	int64_t timestamp_den; /**< 0 when the frame carries no timestamp. */
 } oak_playback_frame;
 
 /**

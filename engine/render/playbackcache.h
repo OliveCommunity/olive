@@ -131,7 +131,10 @@ public:
 
 	void resignal_requests()
 	{
-		for (const TimeRange &r : requested_) {
+		// Iterate over a copy: handlers may call clear_request_range() and
+		// mutate requested_ while we're iterating it.
+		const TimeRangeList requests = requested_;
+		for (const TimeRange &r : requests) {
 			emit requested(request_context_, r);
 		}
 	}

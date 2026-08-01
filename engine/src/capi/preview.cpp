@@ -429,7 +429,12 @@ int oakengine_preview_cacher_force_cache_range(OakEngineNode *node,
 
 struct OakEnginePreviewRequestState {
 	olive::RenderTicketPtr ticket;
-	std::atomic<bool> finished{ false };
+	// Shared finished flag. Ticket completion lambdas capture a weak_ptr to
+	// this flag so that freeing the request (oakengine_preview_request_free)
+	// detaches them instead of leaving dangling writes/callbacks behind —
+	// the ticket can outlive the request inside the RenderManager.
+	std::shared_ptr<std::atomic<bool>> finished =
+		std::make_shared<std::atomic<bool>>(false);
 	bool has_frame = false;
 	bool has_audio = false;
 	// Video result
@@ -460,8 +465,13 @@ oakengine_preview_request_single_frame(OakEngineNode *viewer, int64_t num,
 	s->ticket = olive::RenderManager::instance()->get_cacher()->get_single_frame(
 		v, olive::Rational(num, den), dry != 0);
 	if (s->ticket) {
-		QObject::connect(s->ticket.get(), &olive::RenderTicket::finished,
-						 [s]() { s->finished.store(true); });
+		QObject::connect(
+			s->ticket.get(), &olive::RenderTicket::finished,
+			[weak = std::weak_ptr<std::atomic<bool>>(s->finished)] {
+				if (auto f = weak.lock()) {
+					f->store(true);
+				}
+			});
 	}
 	return reinterpret_cast<OakEnginePreviewRequest *>(s);
 }
@@ -487,8 +497,13 @@ oakengine_preview_request_audio_range(OakEngineNode *viewer, int64_t in_num,
 			v, olive::TimeRange(olive::Rational(in_num, in_den),
 								olive::Rational(out_num, out_den)));
 	if (s->ticket) {
-		QObject::connect(s->ticket.get(), &olive::RenderTicket::finished,
-						 [s]() { s->finished.store(true); });
+		QObject::connect(
+			s->ticket.get(), &olive::RenderTicket::finished,
+			[weak = std::weak_ptr<std::atomic<bool>>(s->finished)] {
+				if (auto f = weak.lock()) {
+					f->store(true);
+				}
+			});
 	}
 	return reinterpret_cast<OakEnginePreviewRequest *>(s);
 }
@@ -500,7 +515,7 @@ int oakengine_preview_request_is_done(const OakEnginePreviewRequest *req)
 	}
 	const OakEnginePreviewRequestState *s =
 		reinterpret_cast<const OakEnginePreviewRequestState *>(req);
-	return s->ticket && s->finished.load() ? 1 : 0;
+	return s->ticket && s->finished->load() ? 1 : 0;
 }
 
 int oakengine_preview_request_has_result(const OakEnginePreviewRequest *req)
@@ -524,10 +539,18 @@ int oakengine_preview_request_set_finished_callback(
 	if (!s->ticket) {
 		return OAKENGINE_E_INVALID;
 	}
-	// Connect the ticket's finished signal to call the callback.
+	// Connect the ticket's finished signal to call the callback. Guarded by
+	// the request's shared flag so a freed request suppresses the callback.
 	if (callback) {
-		QObject::connect(s->ticket.get(), &olive::RenderTicket::finished,
-						 [callback, user_data]() { callback(user_data); });
+		QObject::connect(
+			s->ticket.get(), &olive::RenderTicket::finished,
+			[callback, user_data,
+			 weak = std::weak_ptr<std::atomic<bool>>(s->finished)] {
+				if (auto f = weak.lock()) {
+					f->store(true);
+					callback(user_data);
+				}
+			});
 	}
 	return OAKENGINE_OK;
 }
@@ -544,7 +567,7 @@ int oakengine_preview_request_get_frame(OakEnginePreviewRequest *req,
 		return OAKENGINE_E_INVALID;
 	}
 	// Wait for finish if not done (pump events).
-	if (!s->finished.load()) {
+	if (!s->finished->load()) {
 		QCoreApplication::processEvents();
 		return OAKENGINE_E_INVALID;
 	}
@@ -567,6 +590,11 @@ int oakengine_preview_request_get_frame(OakEnginePreviewRequest *req,
 	out->height = s->frame_height;
 	out->format = s->frame_format;
 	out->data = s->frame->data();
+	{
+		const olive::Rational ts = s->frame->timestamp();
+		out->timestamp_num = ts.numerator();
+		out->timestamp_den = ts.denominator();
+	}
 	out->linesize = s->frame->linesize_bytes();
 	return OAKENGINE_OK;
 }
@@ -579,7 +607,7 @@ int oakengine_preview_request_get_audio_channel_count(
 	}
 	const OakEnginePreviewRequestState *s =
 		reinterpret_cast<const OakEnginePreviewRequestState *>(req);
-	if (!s->ticket || !s->ticket->has_result() || !s->finished.load()) {
+	if (!s->ticket || !s->ticket->has_result() || !s->finished->load()) {
 		return 0;
 	}
 	if (!s->has_audio) {
@@ -614,7 +642,7 @@ int oakengine_preview_request_get_audio_samples(
 	}
 	OakEnginePreviewRequestState *s =
 		reinterpret_cast<OakEnginePreviewRequestState *>(req);
-	if (!s->ticket || !s->ticket->has_result() || !s->finished.load()) {
+	if (!s->ticket || !s->ticket->has_result() || !s->finished->load()) {
 		return OAKENGINE_E_INVALID;
 	}
 	if (!s->has_audio) {

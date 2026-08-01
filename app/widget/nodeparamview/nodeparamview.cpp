@@ -951,24 +951,37 @@ void NodeParamView::add_node(OakEngineNode *n, OakEngineNode *ctx, NodeParamView
 	}
 }
 
-int get_distance_between_nodes(OakEngineNode *start, OakEngineNode *end)
+int get_distance_between_nodes(OakEngineNode *start, OakEngineNode *end,
+							   QSet<OakEngineNode *> *visited)
 {
 	if (start == end) {
 		return 0;
 	}
+
+	if (visited->contains(start)) {
+		return -1;
+	}
+	visited->insert(start);
 
 	const oak::Node start_node(start);
 	const int connection_count = start_node.input_connection_count_all();
 	for (int i = 0; i < connection_count; i++) {
 		OakEngineNode *upstream =
 			start_node.input_connection_at_all(i).node.handle();
-		int this_node_dist = get_distance_between_nodes(upstream, end);
+		int this_node_dist =
+			get_distance_between_nodes(upstream, end, visited);
 		if (this_node_dist != -1) {
 			return 1 + this_node_dist;
 		}
 	}
 
 	return -1;
+}
+
+int get_distance_between_nodes(OakEngineNode *start, OakEngineNode *end)
+{
+	QSet<OakEngineNode *> visited;
+	return get_distance_between_nodes(start, end, &visited);
 }
 
 void NodeParamView::sort_items_in_context(NodeParamViewContext *context_item)

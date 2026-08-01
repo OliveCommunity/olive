@@ -1836,7 +1836,9 @@ void ViewerWidget::renderer_generated_frame_for_queue()
 				QVariant frame = QVariant::fromValue(f);
 
 				foreach (ViewerDisplayWidget *dw, playback_devices_) {
-					dw->queue()->append_timewise({ Rational(), frame },
+					dw->queue()->append_timewise({ Rational(pf.timestamp_num,
+															pf.timestamp_den),
+												   frame },
 												playback_speed_);
 				}
 			}
