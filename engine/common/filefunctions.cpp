@@ -55,6 +55,15 @@ QString FileFunctions::get_unique_file_identifier(const QString &filename)
 
 QString FileFunctions::get_configuration_location()
 {
+	// Tests and tooling can redirect the configuration (and, since most
+	// locations derive from it, the cache/data) root. XDG_* vars only work
+	// on Linux; QStandardPaths ignores them on macOS and Windows.
+	const QByteArray override_dir = qgetenv("OAK_CONFIG_DIR");
+	if (!override_dir.isEmpty()) {
+		QDir(override_dir).mkpath(".");
+		return QString::fromUtf8(override_dir);
+	}
+
 	if (is_portable()) {
 		return get_application_path();
 	} else {

@@ -511,7 +511,9 @@ void Track::replace_block(Block *old, Block *replace)
 	int cache_index = blocks_.indexOf(old);
 	int index_of_old_block = get_array_index_from_cache_index(cache_index);
 
+	ignore_block_disconnect_++;
 	disconnect_edge(old, NodeInput(this, k_block_input, index_of_old_block));
+	ignore_block_disconnect_--;
 	connect_edge(replace, NodeInput(this, k_block_input, index_of_old_block));
 	blocks_.replace(cache_index, replace);
 	disconnect(old, &Block::length_changed, this, &Track::block_length_changed);
@@ -581,6 +583,37 @@ void Track::InputConnectedEvent(const QString &input, int element, Node *node)
 {
 	if (arraymap_invalid_ && input == k_block_input && element >= 0) {
 		refresh_block_cache_from_array_map();
+	}
+}
+
+void Track::InputDisconnectedEvent(const QString &input, int element,
+								   Node *output)
+{
+	Node::InputDisconnectedEvent(input, element, output);
+
+	// Keep the block cache consistent when a block edge is removed outside
+	// the Track's own mutating operations (e.g. the block is being deleted,
+	// or an undo command is detaching the whole track from the graph).
+	// Without this, blocks_ keeps a dangling pointer and later readers such
+	// as track_length() walk into freed memory.
+	//
+	// Only the volatile cache is trimmed here; the persistent array map is
+	// deliberately left alone so that undo can re-attach the blocks from it
+	// (InputConnectedEvent rebuilds the cache while arraymap_invalid_ is
+	// set).
+	if (input == k_block_input && ignore_block_disconnect_ == 0) {
+		const int index = blocks_.indexOf(static_cast<Block *>(output));
+		if (index != -1) {
+			blocks_.removeAt(index);
+			block_array_indexes_.removeAt(index);
+			arraymap_invalid_ = true;
+
+			Block *previous = (index > 0) ? blocks_.at(index - 1) : nullptr;
+			Block *next = (index < blocks_.size()) ? blocks_.at(index) : nullptr;
+			Block::set_previous_next(previous, next);
+
+			update_in_out_from(index);
+		}
 	}
 }
 

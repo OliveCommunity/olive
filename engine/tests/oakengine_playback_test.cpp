@@ -300,6 +300,7 @@ TEST(OakEnginePlayback, Main)
 	EXPECT_TRUE(setenv("XDG_CONFIG_HOME", g_tmpdir, 1) == 0);
 	EXPECT_TRUE(setenv("XDG_CACHE_HOME", g_tmpdir, 1) == 0);
 	EXPECT_TRUE(setenv("XDG_DATA_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("OAK_CONFIG_DIR", g_tmpdir, 1) == 0);
 #endif
 
 	// HEADLESS is enough for the validation part and creates the

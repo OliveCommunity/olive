@@ -1141,6 +1141,17 @@ std::unique_ptr<RenderWorkerPool::PooledWorker> RenderWorkerPool::acquire_worker
 	process->setProgram(worker_program_path());
 	process->setArguments({ QStringLiteral("--backend"), gpu_backend_ });
 
+	// The engine defaults QT_QPA_PLATFORM to "offscreen" for headless hosts
+	// (cli/tests), but the worker needs a real platform GL context. Don't let
+	// it inherit the offscreen default from this process.
+	{
+		QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+		if (qEnvironmentVariable("QT_QPA_PLATFORM") == "offscreen") {
+			env.remove(QStringLiteral("QT_QPA_PLATFORM"));
+			process->setProcessEnvironment(env);
+		}
+	}
+
 	const QString worker_stderr_path =
 		QDir(QDir::tempPath())
 			.filePath(QStringLiteral("oak-render-worker-%1-%2.stderr.log")

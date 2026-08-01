@@ -460,6 +460,8 @@ signals:
 protected:
 	virtual void InputConnectedEvent(const QString &input, int element,
 									 Node *node) override;
+	virtual void InputDisconnectedEvent(const QString &input, int element,
+										Node *output) override;
 	virtual void InputValueChangedEvent(const QString &input,
 										int element) override;
 
@@ -500,6 +502,13 @@ private:
 	int ignore_arraymap_;
 	bool arraymap_invalid_;
 	bool ignore_arraymap_set_;
+
+	/**
+   * @brief Nestable guard suppressing the block-cache maintenance in
+   * InputDisconnectedEvent while the Track itself is rewiring block edges
+   * (e.g. replace_block), where the cache update is handled explicitly.
+   */
+	int ignore_block_disconnect_ = 0;
 
 private slots:
 	void block_length_changed();

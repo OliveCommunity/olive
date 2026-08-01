@@ -312,6 +312,14 @@ static void test_footage_fixture(void)
 	EXPECT_TRUE(n > 0 && (size_t)n < sizeof(fixture));
 	EXPECT_TRUE(file_exists(fixture));
 
+	// The fixture stores footage as the relative path "demo.mp4". Run the
+	// load from the fixture directory so the engine does not treat the
+	// project as "moved" and rewrite the stored filename to an absolute
+	// path (see EngineCore footage relocation on load).
+	char fixture_dir[4096];
+	snprintf(fixture_dir, sizeof(fixture_dir), "%s/tests", OAK_TEST_SOURCE_DIR);
+	EXPECT_TRUE(chdir(fixture_dir) == 0);
+
 	OakEngineProject *p = oakengine_project_create();
 	EXPECT_TRUE(p != NULL);
 	char err[512];
@@ -417,6 +425,7 @@ TEST(OakEngineInit, Main)
 	EXPECT_TRUE(setenv("XDG_CONFIG_HOME", g_tmpdir, 1) == 0);
 	EXPECT_TRUE(setenv("XDG_CACHE_HOME", g_tmpdir, 1) == 0);
 	EXPECT_TRUE(setenv("XDG_DATA_HOME", g_tmpdir, 1) == 0);
+	EXPECT_TRUE(setenv("OAK_CONFIG_DIR", g_tmpdir, 1) == 0);
 #endif
 
 	test_init();
