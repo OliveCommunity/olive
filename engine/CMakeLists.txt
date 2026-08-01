@@ -287,7 +287,9 @@ if (BUILD_TESTS)
         if (UNIX AND NOT APPLE)
             target_link_options(${name} PRIVATE "LINKER:--export-dynamic")
         endif ()
-        gtest_discover_tests(${name})
+        # Freshly linked binaries can exceed the 5s default discovery
+        # timeout on first run (dyld cold cache + Qt/OCIO init)
+        gtest_discover_tests(${name} DISCOVERY_TIMEOUT 60)
     endfunction()
 
     make_oakengine_gtest(oakengine_ipc_test)
