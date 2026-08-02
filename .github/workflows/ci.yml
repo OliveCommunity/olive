@@ -62,11 +62,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: otio-install
-          key: otio-0.16.0-${{ runner.os }}-v1
+          key: otio-0.16.0-${{ runner.os }}-v2
 
       - name: Set OTIO location (Unix)
         if: runner.os != 'Windows'
-        run: echo "OTIO_LOCATION=${PWD}/otio-install" >> "$GITHUB_ENV"
+        run: |
+          echo "OTIO_LOCATION=${PWD}/otio-install" >> "$GITHUB_ENV"
+          # With OTIO_FIND_IMATH=ON the system (brew/apt) Imath must be the
+          # only Imath header set in play; drop any bundled headers a stale
+          # cache entry may have brought back (they collide with the system
+          # include guards and break ImathBox.h).
+          rm -rf "${PWD}/otio-install/include/Imath"
 
       - name: Build OpenTimelineIO (Unix)
         if: runner.os != 'Windows' && steps.otio-cache.outputs.cache-hit != 'true'
@@ -120,7 +126,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: otio-install
-          key: otio-0.16.0-${{ runner.os }}-v1
+          key: otio-0.16.0-${{ runner.os }}-v2
 
       - name: Set OTIO location (Windows)
         if: runner.os == 'Windows'

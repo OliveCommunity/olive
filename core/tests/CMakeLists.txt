@@ -32,3 +32,10 @@ target_include_directories(oakcore_gtest PRIVATE
 )
 
 gtest_discover_tests(oakcore_gtest)
+
+if (WIN32)
+  # gtest discovery executes the binary at build time; it needs the DLL next to it
+  add_custom_command(TARGET oakcore_gtest POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            $<TARGET_FILE:olivecore> $<TARGET_FILE_DIR:oakcore_gtest>)
+endif ()
