@@ -575,7 +575,7 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 						oakengine_node_connect_command(
 							footage_stream.footage,
 							reinterpret_cast<OakEngineNode *>(transform),
-							QLatin1String(oakengine_transform_texture_input_id()).toUtf8().constData(),
+							oakengine_transform_texture_input_id(),
 							-1));
 					oakengine_undo_command_multi_add_child(
 						command,
@@ -607,7 +607,7 @@ void ImportTool::drop_ghosts(bool insert, void *parent_command)
 						oakengine_node_connect_command(
 							footage_stream.footage,
 							reinterpret_cast<OakEngineNode *>(volume_node),
-							QLatin1String(oakengine_volume_samples_input_id()).toUtf8().constData(),
+							oakengine_volume_samples_input_id(),
 							-1));
 					oakengine_undo_command_multi_add_child(
 						command,

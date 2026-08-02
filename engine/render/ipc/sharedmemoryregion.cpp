@@ -66,9 +66,9 @@ QString SharedMemoryRegion::make_key(qint64 owner_pid, int worker_index)
 
 #if defined(Q_OS_WIN)
 
-bool SharedMemoryRegion::Open(const QString &key, size_t size, Mode mode)
+bool SharedMemoryRegion::open(const QString &key, size_t size, Mode mode)
 {
-	Close();
+	close();
 
 	key_ = key;
 	size_ = size;
@@ -78,7 +78,7 @@ bool SharedMemoryRegion::Open(const QString &key, size_t size, Mode mode)
 	const QString mapping_name = QStringLiteral("Local\\") + key;
 	const std::wstring wname = mapping_name.toStdWString();
 
-	if (mode == kCreate) {
+	if (mode == k_create) {
 		const DWORD size_high =
 			static_cast<DWORD>((quint64(size) >> 32) & 0xFFFFFFFF);
 		const DWORD size_low = static_cast<DWORD>(quint64(size) & 0xFFFFFFFF);
@@ -114,13 +114,13 @@ bool SharedMemoryRegion::Open(const QString &key, size_t size, Mode mode)
 		return false;
 	}
 
-	if (mode == kCreate) {
+	if (mode == k_create) {
 		memset(data_, 0, size);
 	}
 	return true;
 }
 
-void SharedMemoryRegion::Close()
+void SharedMemoryRegion::close()
 {
 	if (data_) {
 		UnmapViewOfFile(data_);
