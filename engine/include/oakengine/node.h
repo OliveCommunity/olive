@@ -2087,9 +2087,6 @@ oakengine_node_get_video_frame_cache(const OakEngineNode *self);
 Q_DECLARE_OPAQUE_POINTER(OakEngineNode *)
 Q_DECLARE_OPAQUE_POINTER(OakEngineKeyframe *)
 Q_DECLARE_OPAQUE_POINTER(OakEngineNodeDragger *)
-Q_DECLARE_OPAQUE_POINTER(OakEngineFrameCache *)
-Q_DECLARE_OPAQUE_POINTER(OakEngineThumbnailCache *)
-Q_DECLARE_OPAQUE_POINTER(OakEngineWaveformCache *)
 #endif
 
 #endif /* OAKENGINE_NODE_H */

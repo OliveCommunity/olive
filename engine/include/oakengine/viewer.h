@@ -440,6 +440,7 @@ OAKENGINE_API int oakengine_waveform_cache_get_summary(
 
 #ifdef __cplusplus
 }
+#include <QtCore/qmetatype.h>
 Q_DECLARE_OPAQUE_POINTER(OakEnginePlaybackCache *)
 Q_DECLARE_OPAQUE_POINTER(OakEngineFrameCache *)
 Q_DECLARE_OPAQUE_POINTER(OakEngineThumbnailCache *)

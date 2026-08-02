@@ -249,6 +249,7 @@ OAKENGINE_API int oakengine_clipboard_foreach_connection(
 
 #ifdef __cplusplus
 }
+#include <QtCore/qmetatype.h>
 Q_DECLARE_OPAQUE_POINTER(OakEngineClipboard *)
 Q_DECLARE_OPAQUE_POINTER(OakEngineMarker *)
 #endif

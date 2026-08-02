@@ -292,6 +292,7 @@ OAKENGINE_API int oakengine_color_transform_job_set_processor(
 
 #ifdef __cplusplus
 }
+#include <QtCore/qmetatype.h>
 Q_DECLARE_OPAQUE_POINTER(OakEngineColorManager *)
 Q_DECLARE_OPAQUE_POINTER(OakEngineColorProcessor *)
 Q_DECLARE_OPAQUE_POINTER(OakEngineColorConfig *)

@@ -162,6 +162,7 @@ OAKENGINE_API int oakengine_traverse_transform(
 
 #ifdef __cplusplus
 }
+#include <QtCore/qmetatype.h>
 Q_DECLARE_OPAQUE_POINTER(OakEngineTraverseDb *)
 #endif
 

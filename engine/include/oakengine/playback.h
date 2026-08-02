@@ -213,6 +213,7 @@ OAKENGINE_API int oakengine_playback_last_error(
 
 #ifdef __cplusplus
 }
+#include <QtCore/qmetatype.h>
 Q_DECLARE_OPAQUE_POINTER(OakEnginePlayback *)
 #endif
 

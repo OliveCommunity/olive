@@ -511,6 +511,7 @@ OAKENGINE_API int oakengine_footage_invalidate(OakEngineFootage *self);
 
 #ifdef __cplusplus
 }
+#include <QtCore/qmetatype.h>
 Q_DECLARE_OPAQUE_POINTER(OakEngineFootage *)
 #endif
 

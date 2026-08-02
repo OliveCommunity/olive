@@ -325,6 +325,7 @@ OAKENGINE_API OakAudioParams *oakengine_audio_processor_output_params(
 
 #ifdef __cplusplus
 }
+#include <QtCore/qmetatype.h>
 Q_DECLARE_OPAQUE_POINTER(OakEngineAudioProcessor *)
 #endif
 

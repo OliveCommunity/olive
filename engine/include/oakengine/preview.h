@@ -246,6 +246,7 @@ OAKENGINE_API void oakengine_preview_request_free(
 
 #ifdef __cplusplus
 }
+#include <QtCore/qmetatype.h>
 Q_DECLARE_OPAQUE_POINTER(OakEnginePreviewRequest *)
 #endif
 

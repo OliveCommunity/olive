@@ -245,6 +245,7 @@ OAKENGINE_API void oakengine_audio_free(OakEngineAudioBuffer *self);
 
 #ifdef __cplusplus
 }
+#include <QtCore/qmetatype.h>
 Q_DECLARE_OPAQUE_POINTER(OakEngineRenderer *)
 Q_DECLARE_OPAQUE_POINTER(OakEngineFrame *)
 Q_DECLARE_OPAQUE_POINTER(OakEngineAudioBuffer *)
