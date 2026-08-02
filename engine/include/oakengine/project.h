@@ -339,6 +339,10 @@ OAKENGINE_API int oakengine_project_set_color_reference_space(
 
 #ifdef __cplusplus
 }
+Q_DECLARE_OPAQUE_POINTER(OakEngineNode *)
+Q_DECLARE_OPAQUE_POINTER(OakEnginePlaybackCache *)
+Q_DECLARE_OPAQUE_POINTER(OakEngineProject *)
+Q_DECLARE_OPAQUE_POINTER(OakEngineSequence *)
 #endif
 
 #endif /* OAKENGINE_PROJECT_H */

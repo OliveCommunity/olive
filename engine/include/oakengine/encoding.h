@@ -500,6 +500,7 @@ oakengine_encoding_start_audio_recording(const OakEngineEncodingParams *params,
 
 #ifdef __cplusplus
 }
+Q_DECLARE_OPAQUE_POINTER(OakEngineEncodingParams *)
 #endif
 
 #endif /* OAKENGINE_ENCODING_H */

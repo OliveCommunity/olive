@@ -249,6 +249,8 @@ OAKENGINE_API int oakengine_clipboard_foreach_connection(
 
 #ifdef __cplusplus
 }
+Q_DECLARE_OPAQUE_POINTER(OakEngineClipboard *)
+Q_DECLARE_OPAQUE_POINTER(OakEngineMarker *)
 #endif
 
 #endif /* OAKENGINE_SERIALIZER_H */

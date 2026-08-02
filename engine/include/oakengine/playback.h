@@ -213,6 +213,7 @@ OAKENGINE_API int oakengine_playback_last_error(
 
 #ifdef __cplusplus
 }
+Q_DECLARE_OPAQUE_POINTER(OakEnginePlayback *)
 #endif
 
 #endif /* OAKENGINE_PLAYBACK_H */

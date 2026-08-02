@@ -440,6 +440,10 @@ OAKENGINE_API int oakengine_waveform_cache_get_summary(
 
 #ifdef __cplusplus
 }
+Q_DECLARE_OPAQUE_POINTER(OakEnginePlaybackCache *)
+Q_DECLARE_OPAQUE_POINTER(OakEngineFrameCache *)
+Q_DECLARE_OPAQUE_POINTER(OakEngineThumbnailCache *)
+Q_DECLARE_OPAQUE_POINTER(OakEngineWaveformCache *)
 #endif
 
 #endif /* OAKENGINE_VIEWER_H */

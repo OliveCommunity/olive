@@ -291,10 +291,11 @@ if (BUILD_TESTS)
         endif ()
         # Freshly linked binaries can exceed the 5s default discovery
         # timeout on first run (dyld cold cache + Qt/OCIO init)
-        gtest_discover_tests(${name} DISCOVERY_TIMEOUT 60)
         if (WIN32)
-            # gtest discovery executes the binary at build time; it needs
-            # the engine DLLs next to it
+            # Defer discovery to ctest time; at build time the DLLs are not
+            # next to the exe yet (copied below).
+            gtest_discover_tests(${name} DISCOVERY_TIMEOUT 60
+                                 DISCOVERY_MODE PRE_TEST)
             add_custom_command(TARGET ${name} POST_BUILD
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                         $<TARGET_FILE:oakengine> $<TARGET_FILE_DIR:${name}>
@@ -302,6 +303,8 @@ if (BUILD_TESTS)
                         $<TARGET_FILE:olivecore> $<TARGET_FILE_DIR:${name}>
                 COMMAND ${CMAKE_COMMAND} -E copy_if_different
                         $<TARGET_FILE:ffmpeg_bridge> $<TARGET_FILE_DIR:${name}>)
+        else ()
+            gtest_discover_tests(${name} DISCOVERY_TIMEOUT 60)
         endif ()
     endfunction()
 

@@ -1310,9 +1310,15 @@ oakengine_clip_get_connected_viewer(const OakEngineBlock *clip);
 }
 
 // Qt6 on some toolchains requires complete types in meta-type instantiations
-// (e.g. QList<OakEngineBlock*> in TimelinePanel signals); declare the handle
-// opaque instead of pulling the engine definition into the public header.
+// (e.g. QList<OakEngineBlock*> in TimelinePanel signals); declare the handles
+// opaque instead of pulling the engine definitions into the public header.
 Q_DECLARE_OPAQUE_POINTER(OakEngineBlock *)
+Q_DECLARE_OPAQUE_POINTER(OakEngineClip *)
+Q_DECLARE_OPAQUE_POINTER(OakEngineMarkerList *)
+Q_DECLARE_OPAQUE_POINTER(OakEngineMarker *)
+Q_DECLARE_OPAQUE_POINTER(OakEngineWorkarea *)
+Q_DECLARE_OPAQUE_POINTER(OakEngineTrack *)
+Q_DECLARE_OPAQUE_POINTER(OakEngineTrackList *)
 #endif
 
 #endif /* OAKENGINE_TIMELINE_H */

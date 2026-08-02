@@ -292,6 +292,9 @@ OAKENGINE_API int oakengine_color_transform_job_set_processor(
 
 #ifdef __cplusplus
 }
+Q_DECLARE_OPAQUE_POINTER(OakEngineColorManager *)
+Q_DECLARE_OPAQUE_POINTER(OakEngineColorProcessor *)
+Q_DECLARE_OPAQUE_POINTER(OakEngineColorConfig *)
 #endif
 
 #endif /* OAKENGINE_COLOR_H */

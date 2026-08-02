@@ -325,6 +325,7 @@ OAKENGINE_API OakAudioParams *oakengine_audio_processor_output_params(
 
 #ifdef __cplusplus
 }
+Q_DECLARE_OPAQUE_POINTER(OakEngineAudioProcessor *)
 #endif
 
 #endif /* OAKENGINE_AUDIO_H */

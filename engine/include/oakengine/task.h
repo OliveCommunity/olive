@@ -288,6 +288,7 @@ oakengine_task_save_get_project(OakEngineTask *task);
 
 #ifdef __cplusplus
 }
+Q_DECLARE_OPAQUE_POINTER(OakEngineTask *)
 #endif
 
 #endif /* OAKENGINE_TASK_H */
