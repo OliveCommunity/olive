@@ -1111,6 +1111,26 @@ QVector<QMetaObject::Connection> connect_event(
 			Qt::DirectConnection));
 		break;
 	}
+    case OAKENGINE_EVENT_AUDIO_MANAGER_OUTPUT_NOTIFY: {
+		auto *audio_manager = dynamic_cast<AudioManager *>(obj);
+		if (!audio_manager) {
+			break;
+		}
+		conns.append(QObject::connect(
+			audio_manager, &AudioManager::output_notify, audio_manager,
+			[fn, userdata, audio_manager]() {
+				invoke(fn, userdata,
+					   OAKENGINE_EVENT_AUDIO_MANAGER_OUTPUT_NOTIFY,
+					   audio_manager, 0, 0, nullptr);
+			},
+			Qt::DirectConnection));
+		break;
+	}
+
+
+
+
+
 	case OAKENGINE_EVENT_PLAYBACK_CACHE_INVALIDATED:
 	case OAKENGINE_EVENT_PLAYBACK_CACHE_VALIDATED: {
 		auto *cache = dynamic_cast<PlaybackCache *>(obj);

@@ -207,7 +207,7 @@ extern "C" {
 /* AudioManager family (handle: oakengine_audio_manager_handle(), see
  * oakengine/audio.h). Fired when the output device or format changes. */
 #define OAKENGINE_EVENT_AUDIO_MANAGER_OUTPUT_PARAMS_CHANGED 140 /**< no payload. */
-#define OAKENGINE_EVENT_AUDIO_MANAGER_OUTPUT_NOTIFY 141 /**< no payload; emitted after each notify interval of audio has been consumed. */
+#define OAKENGINE_EVENT_AUDIO_MANAGER_OUTPUT_NOTIFY 144 /**< no payload; emitted after each notify interval of audio has been consumed. */
 
 /* ---- Playback cache / frame cache (B9c) ----------------------------------- */
 #define OAKENGINE_EVENT_PLAYBACK_CACHE_INVALIDATED 141
