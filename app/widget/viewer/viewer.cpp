@@ -1833,7 +1833,16 @@ void ViewerWidget::renderer_generated_frame_for_queue()
 					memcpy(oakengine_codec_frame_data(f), pf.data,
 						   qMin(fls, pf.linesize) * pf.height);
 				}
-				QVariant frame = QVariant::fromValue(f);
+				// The display expects an OakSharedBuffer (see set_display_image);
+				// a raw void* QVariant fails to unwrap and paints blank.
+				QVariant frame = QVariant::fromValue(oak_make_shared_frame(f));
+
+				if (qEnvironmentVariableIsSet("OAK_DEBUG_PLAYBACK")) {
+					qWarning("PLAYBACK-DEBUG: queue append ts=%lld/%lld %dx%d data=%p ls=%d",
+							 (long long)pf.timestamp_num,
+							 (long long)pf.timestamp_den, pf.width, pf.height,
+							 pf.data, pf.linesize);
+				}
 
 				foreach (ViewerDisplayWidget *dw, playback_devices_) {
 					dw->queue()->append_timewise({ Rational(pf.timestamp_num,

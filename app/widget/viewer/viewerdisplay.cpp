@@ -1854,6 +1854,16 @@ void ViewerDisplayWidget::update_from_queue()
 
 	Rational time = Timecode::timestamp_to_time(t, playback_timebase_);
 
+	if (qEnvironmentVariableIsSet("OAK_DEBUG_PLAYBACK")) {
+		qWarning("PLAYBACK-DEBUG: update_from_queue t=%lld time=%lld/%lld qlen=%d front_ts=%s",
+				 (long long)t, (long long)time.numerator(),
+				 (long long)time.denominator(), int(queue_.size()),
+				 queue_.empty() ? "-" : qPrintable(QStringLiteral("%1/%2").arg(
+												 queue_.front().timestamp.numerator())
+											 .arg(
+												 queue_.front().timestamp.denominator())));
+	}
+
 	bool popped = false;
 
 	if (queue_.empty()) {
