@@ -21,7 +21,9 @@
 
 #include "node.h"
 
+#ifndef _WIN32
 #include <execinfo.h>
+#endif
 
 #include <QApplication>
 #include <QGuiApplication>
@@ -1939,6 +1941,7 @@ void Node::report_invalid_input(const char *attempted_action, const QString &id,
 		<< "Failed to" << attempted_action << "parameter" << id << "element"
 		<< element << "in node" << this->id() << "- input doesn't exist";
 
+#ifndef _WIN32
 	if (qEnvironmentVariableIsSet("OAK_DEBUG_INVALID_INPUT")) {
 		void *frames[32];
 		const int n = backtrace(frames, 32);
@@ -1950,6 +1953,7 @@ void Node::report_invalid_input(const char *attempted_action, const QString &id,
 			free(symbols);
 		}
 	}
+#endif
 }
 
 NodeInputImmediate *Node::create_immediate(const QString &input)

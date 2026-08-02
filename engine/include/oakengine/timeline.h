@@ -1316,6 +1316,7 @@ oakengine_clip_get_connected_viewer(const OakEngineBlock *clip);
 Q_DECLARE_OPAQUE_POINTER(OakEngineBlock *)
 Q_DECLARE_OPAQUE_POINTER(OakEngineClip *)
 Q_DECLARE_OPAQUE_POINTER(OakEngineMarkerList *)
+Q_DECLARE_OPAQUE_POINTER(OakEngineMarker *)
 Q_DECLARE_OPAQUE_POINTER(OakEngineWorkarea *)
 Q_DECLARE_OPAQUE_POINTER(OakEngineTrack *)
 Q_DECLARE_OPAQUE_POINTER(OakEngineTrackList *)
