@@ -147,6 +147,8 @@ endif ()
 # Dynamic render backends (OpenGL/Vulkan) are engine plugins loaded via
 # dlopen; they share this engine library instead of embedding a static
 # render-core subset.
+option(OAK_ENABLE_DYNAMIC_RENDER_BACKEND
+       "Build OpenGL/Vulkan render backends as dlopen plugins (oakgl/oakvulkan)" ON)
 if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
     target_compile_definitions(oakengine-obj PRIVATE OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
 

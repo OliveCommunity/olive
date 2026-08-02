@@ -92,6 +92,7 @@ jobs:
           update: true
           cache: true
           install: >-
+            git
             mingw-w64-ucrt-x86_64-cmake
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-gcc
