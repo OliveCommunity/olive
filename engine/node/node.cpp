@@ -21,6 +21,8 @@
 
 #include "node.h"
 
+#include <execinfo.h>
+
 #include <QApplication>
 #include <QGuiApplication>
 #include <QDebug>
@@ -216,7 +218,7 @@ void Node::connect_edge(Node *output, const NodeInput &input)
 	}
 }
 
-void Node::disconnect_edge(Node *output, const NodeInput &input)
+void Node::disconnect_edge(Node *output, const NodeInput &input, bool silent)
 {
 	// Ensure graph is the same
 	Q_ASSERT(input.node()->parent() == output->parent());
@@ -231,6 +233,18 @@ void Node::disconnect_edge(Node *output, const NodeInput &input)
 	OutputConnections &outputs = output->output_connections_;
 	outputs.erase(std::find(outputs.begin(), outputs.end(),
 							std::pair<Node *, NodeInput>({ output, input })));
+
+	if (silent) {
+		// Teardown-only mode: just drop the edge from both maps. No events,
+		// no signals, no invalidation — the whole graph is being destroyed
+		// and handlers would touch half-destroyed nodes.
+		return;
+	}
+
+	if (qEnvironmentVariableIsSet("OAK_DEBUG_EDGES")) {
+		qWarning("EDGE-DEBUG: disconnect_edge %p -> %p (%s)", (void *)output,
+				 (void *)input.node(), qPrintable(input.input()));
+	}
 
 	// Call internal events
 	input.node()->InputDisconnectedEvent(input.input(), input.element(),
@@ -1239,6 +1253,14 @@ Node *Node::copy_node_in_graph(Node *node, MultiUndoCommand *command)
 void Node::send_invalidate_cache(const TimeRange &range,
 							   const InvalidateCacheOptions &options)
 {
+	// During project teardown, don't propagate invalidation across edges:
+	// the nodes on the other side may already be half-destroyed.
+	if (Project *p = project()) {
+		if (p->is_being_cleared()) {
+			return;
+		}
+	}
+
 	for (const OutputConnection &conn : output_connections_) {
 		// Send clear cache signal to the Node
 		const NodeInput &in = conn.second;
@@ -1249,6 +1271,12 @@ void Node::send_invalidate_cache(const TimeRange &range,
 
 void Node::invalidate_all(const QString &input, int element)
 {
+	if (Project *p = project()) {
+		if (p->is_being_cleared()) {
+			return;
+		}
+	}
+
 	invalidate_cache(TimeRange(RATIONAL_MIN, RATIONAL_MAX), input, element);
 }
 
@@ -1910,6 +1938,18 @@ void Node::report_invalid_input(const char *attempted_action, const QString &id,
 	qWarning()
 		<< "Failed to" << attempted_action << "parameter" << id << "element"
 		<< element << "in node" << this->id() << "- input doesn't exist";
+
+	if (qEnvironmentVariableIsSet("OAK_DEBUG_INVALID_INPUT")) {
+		void *frames[32];
+		const int n = backtrace(frames, 32);
+		char **symbols = backtrace_symbols(frames, n);
+		if (symbols) {
+			for (int i = 0; i < n; i++) {
+				qWarning("INVALID-INPUT-BT: %s", symbols[i]);
+			}
+			free(symbols);
+		}
+	}
 }
 
 NodeInputImmediate *Node::create_immediate(const QString &input)
@@ -2284,15 +2324,20 @@ bool Node::inputs_from(const QString &id, bool recursively) const
 
 void Node::disconnect_all()
 {
+	// During project teardown, skip the disconnect events/signals: the
+	// other side's handlers touch this node's members which are already
+	// destroyed at ~Node time (e.g. caches), which is a use-after-free.
+	const bool silent = project() && project()->is_being_cleared();
+
 	// Disconnect inputs (copy map since internal map will change as we disconnect)
 	InputConnections copy = input_connections_;
 	for (auto it = copy.cbegin(); it != copy.cend(); it++) {
-		disconnect_edge(it->second, it->first);
+		disconnect_edge(it->second, it->first, silent);
 	}
 
 	while (!output_connections_.empty()) {
 		OutputConnection conn = output_connections_.back();
-		disconnect_edge(conn.first, conn.second);
+		disconnect_edge(conn.first, conn.second, silent);
 	}
 }
 

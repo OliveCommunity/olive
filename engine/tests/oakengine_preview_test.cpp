@@ -36,6 +36,7 @@
 #include <unistd.h>
 #endif
 
+#include "oakengine/app.h"
 #include "oakengine/footage.h"
 #include "oakengine/init.h"
 #include "oakengine/preview.h"
@@ -43,6 +44,9 @@
 #include "oakengine/renderer.h"
 #include "oakengine/timeline.h"
 #include "oakengine/viewer.h"
+
+#include <QCoreApplication>
+#include <QElapsedTimer>
 
 #ifndef OAK_TEST_SOURCE_DIR
 #define OAK_TEST_SOURCE_DIR "."
@@ -213,6 +217,7 @@ static void test_preview_request_null(void)
 	memset(&frame, 0, sizeof(frame));
 	EXPECT_TRUE(oakengine_preview_request_get_frame(NULL, &frame) == OAKENGINE_E_INVALID);
 	EXPECT_TRUE(oakengine_preview_request_get_audio_channel_count(NULL) == 0);
+	EXPECT_TRUE(oakengine_preview_request_get_audio_sample_count(NULL) == 0);
 	EXPECT_TRUE(oakengine_preview_request_get_audio_sample_rate(NULL) == 0);
 	EXPECT_TRUE(oakengine_preview_request_get_audio_samples(NULL, 0, NULL, 0) == OAKENGINE_E_INVALID);
 	oakengine_preview_request_free(NULL);
@@ -225,6 +230,61 @@ static void test_render_manager_null(void)
 	char buf[64];
 	int len = oakengine_render_manager_backend_to_string(0, buf, sizeof(buf));
 	EXPECT_TRUE(len >= 0);
+}
+
+// Drive the request the way ViewerWidget's playback loop does: pump the
+// event loop until the ticket finishes (bounded).
+static bool pump_until_done(OakEnginePreviewRequest *req, int timeout_ms)
+{
+	QElapsedTimer t;
+	t.start();
+	while (!oakengine_preview_request_is_done(req) &&
+		   !t.hasExpired(timeout_ms)) {
+		QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+	}
+	return oakengine_preview_request_is_done(req) == 1;
+}
+
+// End-to-end preview request round trip through the RenderManager's worker
+// pool: one video frame + one audio range, with the project active. This is
+// the exact flow ViewerWidget's playback drives; it also exercises project
+// teardown while the RenderManager/copier still reference the project.
+static void test_preview_request_roundtrip(OakEngineProject *project,
+										   OakEngineSequence *seq)
+{
+	EXPECT_TRUE(oakengine_app_set_active_project(project) == OAKENGINE_OK);
+
+	OakEnginePreviewRequest *vreq =
+		oakengine_preview_request_single_frame((OakEngineNode *)seq, 0, 1, 0);
+	EXPECT_TRUE(vreq != NULL);
+	ASSERT_TRUE(pump_until_done(vreq, 60000));
+	EXPECT_TRUE(oakengine_preview_request_has_result(vreq) == 1);
+	oak_playback_frame frame;
+	memset(&frame, 0, sizeof(frame));
+	ASSERT_TRUE(oakengine_preview_request_get_frame(vreq, &frame) ==
+		   OAKENGINE_OK);
+	EXPECT_TRUE(frame.width > 0 && frame.height > 0);
+	EXPECT_TRUE(frame.data != NULL && frame.linesize > 0);
+	// The frame must carry a valid timestamp: the viewer's display queue
+	// orders frames by it (all-zero timestamps froze playback).
+	EXPECT_TRUE(frame.timestamp_den != 0);
+	oakengine_preview_request_free(vreq);
+
+	OakEnginePreviewRequest *areq =
+		oakengine_preview_request_audio_range((OakEngineNode *)seq, 0, 1, 1, 1);
+	EXPECT_TRUE(areq != NULL);
+	ASSERT_TRUE(pump_until_done(areq, 60000));
+	EXPECT_TRUE(oakengine_preview_request_has_result(areq) == 1);
+	// The tone clip is stereo 48 kHz, one second long.
+	EXPECT_TRUE(oakengine_preview_request_get_audio_channel_count(areq) == 2);
+	EXPECT_TRUE(oakengine_preview_request_get_audio_sample_rate(areq) > 0);
+	const int sample_count =
+		oakengine_preview_request_get_audio_sample_count(areq);
+	EXPECT_TRUE(sample_count > 0);
+	float buf[48000 * 2];
+	EXPECT_TRUE(oakengine_preview_request_get_audio_samples(
+				areq, 0, buf, qMin(sample_count, 48000 * 2)) > 0);
+	oakengine_preview_request_free(areq);
 }
 
 static void test_playback_cache_null(void)
@@ -292,10 +352,14 @@ TEST(OakEnginePreview, Main)
 		   OAKENGINE_OK);
 	test_levels(seq);
 	test_waveform(tone, demo, probed);
+	test_preview_request_roundtrip(project, seq);
 
 	oakengine_footage_free(probed);
 	oakengine_footage_free(demo);
 	oakengine_footage_free(tone);
+	// Deliberately free the project while it is still the active project:
+	// the RenderManager/ProjectCopier must survive its destruction, and
+	// teardown itself must not crash in edge-disconnect invalidation.
 	oakengine_project_free(project);
 	EXPECT_TRUE(oakengine_shutdown() == OAKENGINE_OK);
 

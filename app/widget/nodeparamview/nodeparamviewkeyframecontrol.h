@@ -41,6 +41,7 @@ public:
 		: NodeParamViewKeyframeControl(true, parent)
 	{
 	}
+	~NodeParamViewKeyframeControl() override;
 
 	const oak::Input &get_connected_input() const
 	{

@@ -255,6 +255,12 @@ bool NodeViewContext::child_input_disconnected(OakEngineNode *output,
 	for (int i = 0; i < edges_.size(); i++) {
 		NodeViewEdge *e = edges_.at(i);
 		if (e->output() == oak::Node(output) && e->input() == input) {
+			if (qEnvironmentVariableIsSet("OAK_DEBUG_EDGES")) {
+				qWarning("EDGE-DEBUG: edge removed: %p -> %p (%s,%d) ctx=%p",
+						 (void *)output, (void *)input.node_handle(),
+						 qPrintable(input.input_id()), input.element(),
+						 (void *)this);
+			}
 			delete e;
 			edges_.removeAt(i);
 			return true;
@@ -413,6 +419,11 @@ void NodeViewContext::mousePressEvent(QGraphicsSceneMouseEvent *event)
 
 void NodeViewContext::add_node_internal(OakEngineNode *node, NodeViewItem *item)
 {
+	if (qEnvironmentVariableIsSet("OAK_DEBUG_EDGES")) {
+		qWarning("EDGE-DEBUG: node added to ctx %p: %p", (void *)this,
+				 (void *)node);
+	}
+
 	node_subs_[node].append(bridge_->subscribe(
 		reinterpret_cast<void *>(node),
 		OAKENGINE_EVENT_NODE_INPUT_CONNECTED));
@@ -436,6 +447,11 @@ void NodeViewContext::add_node_internal(OakEngineNode *node, NodeViewItem *item)
 				oak::Input ai(conn.node.handle(), conn.input_id, conn.element);
 				add_edge_internal(node, ai, item,
 								other_item->get_item_for_input(ai));
+			} else if (qEnvironmentVariableIsSet("OAK_DEBUG_EDGES")) {
+				qWarning("EDGE-DEBUG: out-edge skipped (no item for %p): %p -> %p (%s) ctx=%p",
+						 (void *)conn.node.handle(), (void *)node,
+						 (void *)conn.node.handle(),
+						 qPrintable(conn.input_id), (void *)this);
 			}
 		}
 	}
@@ -449,6 +465,11 @@ void NodeViewContext::add_node_internal(OakEngineNode *node, NodeViewItem *item)
 				oak::Input ai(conn.node.handle(), conn.input_id, conn.element);
 				add_edge_internal(conn.source_node.handle(), ai, other_item,
 								item->get_item_for_input(ai));
+			} else if (qEnvironmentVariableIsSet("OAK_DEBUG_EDGES")) {
+				qWarning("EDGE-DEBUG: in-edge skipped (no item for %p): %p -> %p (%s) ctx=%p",
+						 (void *)conn.source_node.handle(),
+						 (void *)conn.source_node.handle(), (void *)node,
+						 qPrintable(conn.input_id), (void *)this);
 			}
 		}
 	}
@@ -459,6 +480,12 @@ void NodeViewContext::add_edge_internal(OakEngineNode *output, const oak::Input 
 {
 	if (from == to) {
 		return;
+	}
+
+	if (qEnvironmentVariableIsSet("OAK_DEBUG_EDGES")) {
+		qWarning("EDGE-DEBUG: edge added: %p -> %p (%s,%d) ctx=%p", (void *)output,
+				 (void *)input.node_handle(), qPrintable(input.input_id()),
+				 input.element(), (void *)this);
 	}
 
 	NodeViewEdge *edge_ui = new NodeViewEdge(oak::Node(output), input, from, to, this);

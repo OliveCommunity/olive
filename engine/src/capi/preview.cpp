@@ -619,6 +619,25 @@ int oakengine_preview_request_get_audio_channel_count(
 	return s->samples.is_allocated() ? s->samples.channel_count() : 0;
 }
 
+int oakengine_preview_request_get_audio_sample_count(
+	const OakEnginePreviewRequest *req)
+{
+	if (!req) {
+		return 0;
+	}
+	const OakEnginePreviewRequestState *s =
+		reinterpret_cast<const OakEnginePreviewRequestState *>(req);
+	if (!s->ticket || !s->ticket->has_result() || !s->finished->load()) {
+		return 0;
+	}
+	if (!s->has_audio) {
+		const_cast<OakEnginePreviewRequestState *>(s)->samples =
+			s->ticket->get().value<olive::SampleBuffer>();
+		const_cast<OakEnginePreviewRequestState *>(s)->has_audio = true;
+	}
+	return s->samples.is_allocated() ? int(s->samples.sample_count()) : 0;
+}
+
 int oakengine_preview_request_get_audio_sample_rate(
 	const OakEnginePreviewRequest *req)
 {

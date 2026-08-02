@@ -63,6 +63,11 @@ void ProjectCopier::set_project(Project *project)
 	original_ = project;
 
 	if (original_) {
+		// Don't keep a dangling pointer if the project dies while we're
+		// still around (e.g. RenderManager outlives the project at shutdown)
+		connect(original_, &Project::destroyed, this,
+				[this]() { original_ = nullptr; });
+
 		// The copied project is only used as an in-memory render proxy. Mark it so
 		// downstream code (e.g. RenderWorkerPool) knows it is safe to reset its
 		// modified flag after serializing a snapshot.

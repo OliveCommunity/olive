@@ -142,9 +142,9 @@ static bool ResolveGroupInput(oak::Input *input)
 	char input_id[256];
 	int element = input->element();
 	const QByteArray utf = input->input_id().toUtf8();
-	memcpy(input_id, utf.constData(),
-		   qMin<int>(sizeof(input_id) - 1, utf.size()));
-	input_id[sizeof(input_id) - 1] = '\0';
+	const int len = qMin<int>(sizeof(input_id) - 1, utf.size());
+	memcpy(input_id, utf.constData(), len);
+	input_id[len] = '\0';
 	if (!oakengine_node_group_get_inner(&node, input_id, sizeof(input_id),
 									&element)) {
 		return false;

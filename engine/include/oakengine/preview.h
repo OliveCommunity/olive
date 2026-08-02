@@ -222,6 +222,10 @@ OAKENGINE_API int oakengine_preview_request_get_frame(
 OAKENGINE_API int oakengine_preview_request_get_audio_channel_count(
 	const OakEnginePreviewRequest *req);
 
+/** @brief Samples per channel in the result, or 0 if none. */
+OAKENGINE_API int oakengine_preview_request_get_audio_sample_count(
+	const OakEnginePreviewRequest *req);
+
 /** @brief Sample rate of the audio result, or 0 if none. */
 OAKENGINE_API int oakengine_preview_request_get_audio_sample_rate(
 	const OakEnginePreviewRequest *req);

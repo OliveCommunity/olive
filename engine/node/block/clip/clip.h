@@ -265,6 +265,10 @@ private:
 	TransitionBlock *in_transition_;
 	TransitionBlock *out_transition_;
 
+	// Cleared via the viewer's destroyed() signal (see invalidate_cache);
+	// during project teardown the viewer can die before this clip, and a
+	// raw dangling pointer here led to disconnecting signals on a dead
+	// TimelineMarkerList.
 	ViewerOutput *connected_viewer_;
 
 private:

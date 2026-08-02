@@ -110,7 +110,7 @@ static SampleBuffer preview_req_to_sample_buffer(OakEnginePreviewRequest *req)
 			oakcore_audioparams_free(ap);
 
 			// Determine sample count from first channel
-			int n = oakengine_preview_request_get_audio_samples(req, 0, nullptr, 1 << 30);
+			int n = oakengine_preview_request_get_audio_sample_count(req);
 			if (n > 0) {
 				oakcore_samplebuffer_set_sample_count(sb, size_t(n));
 				oakcore_samplebuffer_allocate(sb);

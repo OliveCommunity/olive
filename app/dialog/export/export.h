@@ -49,6 +49,7 @@ public:
 		: ExportDialog(viewer_node, false, parent)
 	{
 	}
+	~ExportDialog() override;
 
 	Rational get_selected_timebase() const;
 	void set_selected_timebase(const Rational &r);

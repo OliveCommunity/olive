@@ -462,6 +462,16 @@ ExportDialog::ExportDialog(OakEngineNode *viewer_node, bool stills_only_mode,
 	subtitle_tab_->setEnabled(subtitles_enabled_->isChecked());
 }
 
+ExportDialog::~ExportDialog()
+{
+	// Raw C-API subscription carries `this` as userdata; not covered by
+	// Qt's auto-disconnect.
+	if (viewer_sub_ > 0) {
+		oakengine_event_unsubscribe(viewer_sub_);
+		viewer_sub_ = 0;
+	}
+}
+
 Rational ExportDialog::get_selected_timebase() const
 {
 	return video_tab_->get_selected_frame_rate().flipped();

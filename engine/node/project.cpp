@@ -86,6 +86,23 @@ void Project::initialize()
 
 void Project::clear()
 {
+	is_being_cleared_ = true;
+
+	// Notify observers about each node while it is still fully constructed.
+	// The childEvent() removal path fires from ~Node, when derived-class
+	// members are already destroyed; observers touching the node there
+	// (e.g. querying a Sequence's tracks) used to crash.
+	const QVector<Node *> notify_copy = node_children_;
+	for (Node *node : notify_copy) {
+		if (!node_children_.contains(node)) {
+			// An observer already removed it from the graph
+			continue;
+		}
+		emit node_removed(node);
+		emit node->removed_from_graph(this);
+		node->RemovedFromGraphEvent(this);
+	}
+
 	// By deleting the last nodes first, we assume that nodes that are most important are deleted last
 	// (e.g. Project's ColorManager or ProjectSettingsNode.
 	for (auto it = node_children_.cbegin(); it != node_children_.cend(); it++) {
@@ -95,6 +112,8 @@ void Project::clear()
 	while (!node_children_.isEmpty()) {
 		delete node_children_.last();
 	}
+
+	is_being_cleared_ = false;
 }
 
 SerializedData Project::load(QXmlStreamReader *reader)
@@ -368,6 +387,14 @@ void Project::childEvent(QChildEvent *event)
 
 		} else if (event->type() == QEvent::ChildRemoved) {
 			node_children_.removeOne(node);
+
+			if (is_being_cleared_) {
+				// Teardown: everything is being destroyed anyway. The
+				// disconnect/emit dance below touches the half-destroyed
+				// child (this fires from ~Node) and has repeatedly crashed;
+				// Qt auto-disconnects the rest when destruction completes.
+				return;
+			}
 
 			// Disconnect signals
 			disconnect(node, &Node::input_connected, this,

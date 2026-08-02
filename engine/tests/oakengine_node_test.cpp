@@ -280,6 +280,22 @@ static void test_edges(OakEngineProject *project, OakEngineNode *solid,
 	EXPECT_TRUE(oakengine_node_connect(solid, lut, "tex_in") == OAKENGINE_OK);
 	EXPECT_TRUE(oakengine_node_input_is_connected(lut, "tex_in") == 1);
 
+	// Output-side enumeration must report the DESTINATION node (the
+	// connection's input side), never the source itself — the node view
+	// builds half its edges through this path.
+	EXPECT_TRUE(oakengine_node_output_connection_count(solid) > 0);
+	{
+		OakEngineNode *dst = NULL;
+		char id_buf[64];
+		int element = -99, hidden = -1;
+		EXPECT_TRUE(oakengine_node_output_connection_at_ex(
+					solid, 0, &dst, id_buf, sizeof(id_buf), &element,
+					&hidden) == OAKENGINE_OK);
+		EXPECT_TRUE(dst == lut);
+		EXPECT_TRUE(strcmp(id_buf, "tex_in") == 0);
+		EXPECT_TRUE(element == -1);
+	}
+
 	// Already-connected input is refused; unknown ids and unconnectable
 	// inputs fail.
 	EXPECT_TRUE(oakengine_node_connect(solid, lut, "tex_in") ==

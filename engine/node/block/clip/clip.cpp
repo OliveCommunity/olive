@@ -435,30 +435,36 @@ void ClipBlock::invalidate_cache(const TimeRange &range, const QString &from,
 			viewers.isEmpty() ? nullptr : viewers.first();
 
 		if (new_connected_viewer != connected_viewer_) {
+ 			TimelineMarkerList *old_markers =
+				connected_viewer_ ? connected_viewer_->get_markers() : nullptr;
+			if (old_markers) {
+				disconnect(old_markers, &TimelineMarkerList::marker_added, this,
+						   &ClipBlock::preview_changed);
+				disconnect(old_markers, &TimelineMarkerList::marker_removed,
+						   this, &ClipBlock::preview_changed);
+				disconnect(old_markers, &TimelineMarkerList::marker_modified,
+						   this, &ClipBlock::preview_changed);
+			}
 			if (connected_viewer_) {
-				disconnect(connected_viewer_->get_markers(),
-						   &TimelineMarkerList::marker_added, this,
-						   &ClipBlock::preview_changed);
-				disconnect(connected_viewer_->get_markers(),
-						   &TimelineMarkerList::marker_removed, this,
-						   &ClipBlock::preview_changed);
-				disconnect(connected_viewer_->get_markers(),
-						   &TimelineMarkerList::marker_modified, this,
-						   &ClipBlock::preview_changed);
+				disconnect(connected_viewer_, &ViewerOutput::destroyed, this,
+						   nullptr);
 			}
 
 			connected_viewer_ = new_connected_viewer;
 
+			TimelineMarkerList *new_markers =
+				connected_viewer_ ? connected_viewer_->get_markers() : nullptr;
+			if (new_markers) {
+				connect(new_markers, &TimelineMarkerList::marker_added, this,
+						&ClipBlock::preview_changed);
+				connect(new_markers, &TimelineMarkerList::marker_removed, this,
+						&ClipBlock::preview_changed);
+				connect(new_markers, &TimelineMarkerList::marker_modified,
+						this, &ClipBlock::preview_changed);
+			}
 			if (connected_viewer_) {
-				connect(connected_viewer_->get_markers(),
-						&TimelineMarkerList::marker_added, this,
-						&ClipBlock::preview_changed);
-				connect(connected_viewer_->get_markers(),
-						&TimelineMarkerList::marker_removed, this,
-						&ClipBlock::preview_changed);
-				connect(connected_viewer_->get_markers(),
-						&TimelineMarkerList::marker_modified, this,
-						&ClipBlock::preview_changed);
+				connect(connected_viewer_, &ViewerOutput::destroyed, this,
+						[this]() { connected_viewer_ = nullptr; });
 			}
 		}
 

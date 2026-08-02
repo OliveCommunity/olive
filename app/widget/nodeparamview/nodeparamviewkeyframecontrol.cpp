@@ -157,6 +157,20 @@ NodeParamViewKeyframeControl::NodeParamViewKeyframeControl(bool right_align,
 	show_buttons_from_keyframe_enable(false);
 }
 
+NodeParamViewKeyframeControl::~NodeParamViewKeyframeControl()
+{
+	// Raw C-API subscription carries `this` as userdata; it is not covered
+	// by Qt's auto-disconnect. Without this, a playhead event delivered
+	// after destruction calls update_state() on a dead object.
+	if (viewer_sub_ > 0) {
+		oakengine_event_unsubscribe(viewer_sub_);
+		viewer_sub_ = 0;
+	}
+	// Drop the keyframe_* bridge subscriptions too (same raw-userdata
+	// mechanism underneath).
+	set_input(oak::Input());
+}
+
 void NodeParamViewKeyframeControl::set_input(const oak::Input &input)
 {
 	if (input_.is_valid()) {

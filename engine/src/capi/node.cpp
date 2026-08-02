@@ -5172,9 +5172,10 @@ int oakengine_node_output_connection_at(
 		return OAKENGINE_E_NOT_FOUND;
 	}
 	const auto &conn = conns[size_t(index)];
-	// conn.first = input Node*, conn.second = NodeInput on that node
+	// output_connections() stores {source (== self), NodeInput}; the
+	// connection's destination is the NodeInput's node, NOT conn.first.
 	if (input_node) {
-		*input_node = wrap(conn.first);
+		*input_node = wrap(conn.second.node());
 	}
 	if (input_id_buf && input_id_size > 0) {
 		string_to_buf(conn.second.input(), input_id_buf, input_id_size);
@@ -5197,9 +5198,10 @@ int oakengine_node_output_connection_at_ex(
 		return OAKENGINE_E_NOT_FOUND;
 	}
 	const auto &conn = conns[size_t(index)];
-	// conn.first = input Node*, conn.second = NodeInput on that node
+	// output_connections() stores {source (== self), NodeInput}; the
+	// connection's destination is the NodeInput's node, NOT conn.first.
 	if (input_node) {
-		*input_node = wrap(conn.first);
+		*input_node = wrap(conn.second.node());
 	}
 	if (input_id_buf && input_id_size > 0) {
 		string_to_buf(conn.second.input(), input_id_buf, input_id_size);

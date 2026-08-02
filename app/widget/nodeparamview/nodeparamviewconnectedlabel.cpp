@@ -110,6 +110,14 @@ NodeParamViewConnectedLabel::NodeParamViewConnectedLabel(const oak::Input &input
 			&NodeParamViewConnectedLabel::set_value_tree_visible);
 }
 
+NodeParamViewConnectedLabel::~NodeParamViewConnectedLabel()
+{
+	// Raw C-API subscription carries `this` as userdata; not covered by
+	// Qt's auto-disconnect. Unsubscribe or the next playhead event calls
+	// into a dead object.
+	set_viewer_node(nullptr);
+}
+
 void NodeParamViewConnectedLabel::set_viewer_node(OakEngineNode *viewer)
 {
 	if (viewer_) {

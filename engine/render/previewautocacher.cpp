@@ -855,6 +855,25 @@ void PreviewAutoCacher::set_project(Project *project)
 	project_ = project;
 
 	if (project_) {
+		// If the project dies while we're still using it (e.g. shutdown order:
+		// project freed before the RenderManager), drop all state that
+		// references its nodes/caches without touching them. Otherwise the
+		// next set_project(nullptr) would disconnect signals on dead caches.
+		connect(project_, &Project::destroyed, this, [this]() {
+			project_ = nullptr;
+			delayed_requeue_timer_.stop();
+			single_frame_render_ = nullptr;
+			video_immediate_passthroughs_.clear();
+			pending_video_jobs_.clear();
+			pending_audio_jobs_.clear();
+			video_cache_data_.clear();
+			audio_cache_data_.clear();
+			multicam_ = nullptr;
+			// The copier's own destroyed-guard nulls its original_; this just
+			// clears its copy maps without touching the dead project.
+			copier_->set_project(nullptr);
+		});
+
 		// Copy graph (this should always be a Project)
 		set_renders_paused(true);
 

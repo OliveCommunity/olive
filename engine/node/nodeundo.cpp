@@ -134,6 +134,12 @@ NodeEdgeAddCommand::~NodeEdgeAddCommand()
 
 void NodeEdgeAddCommand::redo()
 {
+	if (qEnvironmentVariableIsSet("OAK_DEBUG_EDGES")) {
+		qWarning("EDGE-DEBUG: NodeEdgeAddCommand::redo %p -> %p (%s)",
+				 (void *)output_, (void *)input_.node(),
+				 qPrintable(input_.input()));
+	}
+
 	if (input_.is_connected()) {
 		if (!remove_command_) {
 			remove_command_ =
@@ -148,6 +154,12 @@ void NodeEdgeAddCommand::redo()
 
 void NodeEdgeAddCommand::undo()
 {
+	if (qEnvironmentVariableIsSet("OAK_DEBUG_EDGES")) {
+		qWarning("EDGE-DEBUG: NodeEdgeAddCommand::undo %p -> %p (%s)",
+				 (void *)output_, (void *)input_.node(),
+				 qPrintable(input_.input()));
+	}
+
 	Node::disconnect_edge(output_, input_);
 
 	if (remove_command_) {
@@ -169,11 +181,23 @@ NodeEdgeRemoveCommand::NodeEdgeRemoveCommand(Node *output,
 
 void NodeEdgeRemoveCommand::redo()
 {
+	if (qEnvironmentVariableIsSet("OAK_DEBUG_EDGES")) {
+		qWarning("EDGE-DEBUG: NodeEdgeRemoveCommand::redo %p -> %p (%s)",
+				 (void *)output_, (void *)input_.node(),
+				 qPrintable(input_.input()));
+	}
+
 	Node::disconnect_edge(output_, input_);
 }
 
 void NodeEdgeRemoveCommand::undo()
 {
+	if (qEnvironmentVariableIsSet("OAK_DEBUG_EDGES")) {
+		qWarning("EDGE-DEBUG: NodeEdgeRemoveCommand::undo %p -> %p (%s)",
+				 (void *)output_, (void *)input_.node(),
+				 qPrintable(input_.input()));
+	}
+
 	Node::connect_edge(output_, input_);
 }
 

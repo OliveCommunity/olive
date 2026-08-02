@@ -417,7 +417,8 @@ public:
 
 	static void connect_edge(Node *output, const NodeInput &input);
 
-	static void disconnect_edge(Node *output, const NodeInput &input);
+	static void disconnect_edge(Node *output, const NodeInput &input,
+								bool silent = false);
 
 	void copy_cache_uuids_from(Node *n);
 

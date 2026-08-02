@@ -37,8 +37,9 @@ static oak::Input ResolveGroupInput(const oak::Input &input)
 	char input_id[256];
 	int element = input.element();
 	const QByteArray utf = input.input_id().toUtf8();
-	memcpy(input_id, utf.constData(), qMin<int>(sizeof(input_id) - 1, utf.size()));
-	input_id[sizeof(input_id) - 1] = '\0';
+	const int len = qMin<int>(sizeof(input_id) - 1, utf.size());
+	memcpy(input_id, utf.constData(), len);
+	input_id[len] = '\0';
 	// WRAPPER-GAP: oakengine_group_resolve_input (group API has no oak:: wrapper)
 	if (oakengine_group_resolve_input(
 			node, input_id, element,

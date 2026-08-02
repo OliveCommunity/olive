@@ -37,6 +37,7 @@ class NodeParamViewConnectedLabel : public QWidget {
 public:
 	NodeParamViewConnectedLabel(const oak::Input &input,
 								QWidget *parent = nullptr);
+	~NodeParamViewConnectedLabel() override;
 
 	void set_viewer_node(OakEngineNode *viewer);
 

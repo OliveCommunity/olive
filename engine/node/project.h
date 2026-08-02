@@ -103,6 +103,18 @@ public:
 	}
 	void set_modified(bool e);
 
+	/**
+	 * @brief True while clear()/teardown is deleting all nodes.
+	 *
+	 * Nodes use this to suppress cache invalidation storms while the graph
+	 * is being torn down: invalidating during destruction walks edges into
+	 * half-destroyed nodes and has repeatedly caused use-after-free crashes.
+	 */
+	bool is_being_cleared() const
+	{
+		return is_being_cleared_;
+	}
+
 	bool has_autorecovery_been_saved() const;
 	void set_autorecovery_saved(bool e);
 
@@ -258,6 +270,8 @@ private:
 	bool is_modified_;
 
 	bool autorecovery_saved_;
+
+	bool is_being_cleared_ = false;
 
 	ColorManager *color_manager_;
 
