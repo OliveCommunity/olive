@@ -165,18 +165,23 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
         endif ()
     endforeach ()
 
-    add_library(oakgl SHARED
-            render/opengl/openglbackend_c.cpp
-            render/opengl/openglrenderer.cpp
-            render/opengl/openglrenderer.h
-    )
     if (WIN32)
-        # Engine-internal C++ symbols (olive::Renderer, FileFunctions, ...) are
-        # not exported from liboakengine.dll; embed the object library like the
-        # engine tests do. MinGW compares type_info by name, so cross-DLL RTTI
-        # with the shared engine still works.
-        target_link_libraries(oakgl PRIVATE oakengine-obj)
+        # Engine-internal C++ symbols are not exported from liboakengine.dll,
+        # so embed the object library like the engine tests do. oakengine-obj
+        # already contains openglrenderer.cpp and its moc output, so on
+        # Windows the plugin only needs the C entry point (duplicating the
+        # sources would cause duplicate definitions at link time). MinGW
+        # compares type_info by name, so cross-DLL RTTI still works.
+        add_library(oakgl SHARED render/opengl/openglbackend_c.cpp)
+        set_target_properties(oakgl PROPERTIES AUTOMOC OFF)
+        target_link_libraries(oakgl PRIVATE oakengine-obj
+                $<TARGET_OBJECTS:olive-version-obj>)
     else ()
+        add_library(oakgl SHARED
+                render/opengl/openglbackend_c.cpp
+                render/opengl/openglrenderer.cpp
+                render/opengl/openglrenderer.h
+        )
         target_link_libraries(oakgl PRIVATE oakengine)
     endif ()
     if (COMMAND oak_copy_otio_runtime)
@@ -200,15 +205,19 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
     )
 
     if (Vulkan_FOUND)
-        add_library(oakvulkan SHARED
-                render/vulkan/vulkanbackend_c.cpp
-                render/vulkan/vulkanrenderer.cpp
-                render/vulkan/vulkanrenderer.h
-        )
         if (WIN32)
-            # Same as oakgl: embed the engine objects on Windows (see above).
-            target_link_libraries(oakvulkan PRIVATE oakengine-obj)
+            # Same treatment as oakgl (see above): entry point only, engine
+            # objects come from oakengine-obj.
+            add_library(oakvulkan SHARED render/vulkan/vulkanbackend_c.cpp)
+            set_target_properties(oakvulkan PROPERTIES AUTOMOC OFF)
+            target_link_libraries(oakvulkan PRIVATE oakengine-obj
+                    $<TARGET_OBJECTS:olive-version-obj>)
         else ()
+            add_library(oakvulkan SHARED
+                    render/vulkan/vulkanbackend_c.cpp
+                    render/vulkan/vulkanrenderer.cpp
+                    render/vulkan/vulkanrenderer.h
+            )
             target_link_libraries(oakvulkan PRIVATE oakengine)
         endif ()
         if (COMMAND oak_copy_otio_runtime)
