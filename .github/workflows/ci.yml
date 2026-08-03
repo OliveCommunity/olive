@@ -40,7 +40,8 @@ jobs:
             qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
             libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
-            portaudio19-dev libgl1-mesa-dev libxkbcommon-dev ccache
+            portaudio19-dev libgl1-mesa-dev libxkbcommon-dev ccache \
+            xvfb
 
       # ------------------------------------------------------------------
       # macOS dependencies
@@ -248,7 +249,7 @@ jobs:
         if: runner.os == 'Linux'
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build --output-on-failure -C ${{ env.CMAKE_BUILD_TYPE }}
+        run: xvfb-run -a ctest --test-dir build --output-on-failure -C ${{ env.CMAKE_BUILD_TYPE }}
 
       - name: Test (macOS)
         if: runner.os == 'macOS'
@@ -266,7 +267,7 @@ jobs:
         if: runner.os == 'Linux'
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build/tests/gtest/olive-gtest --gtest_filter="PluginSmoke*"
+        run: xvfb-run -a ./build/tests/gtest/olive-gtest --gtest_filter="PluginSmoke*"
 
       - name: Plugin Smoke Tests (macOS)
         if: runner.os == 'macOS'
@@ -281,7 +282,7 @@ jobs:
         if: runner.os == 'Linux'
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build/tests/gtest/olive-gtest --gtest_filter="PluginIntegration.*:PluginMisc.*"
+        run: xvfb-run -a ./build/tests/gtest/olive-gtest --gtest_filter="PluginIntegration.*:PluginMisc.*"
 
       - name: OFX Integration Tests (macOS)
         if: runner.os == 'macOS'
@@ -291,7 +292,7 @@ jobs:
         if: runner.os == 'Linux'
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build/tests/gtest/olive-gtest --gtest_filter="AudioSmoke*"
+        run: xvfb-run -a ./build/tests/gtest/olive-gtest --gtest_filter="AudioSmoke*"
 
       - name: Audio Smoke Tests (macOS)
         if: runner.os == 'macOS'
@@ -306,7 +307,7 @@ jobs:
         if: runner.os == 'Linux'
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build/tests/gtest/olive-gtest --gtest_filter="ViewerSmoke*"
+        run: xvfb-run -a ./build/tests/gtest/olive-gtest --gtest_filter="ViewerSmoke*"
 
       - name: Viewer Smoke Tests (macOS)
         if: runner.os == 'macOS'

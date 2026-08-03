@@ -309,6 +309,12 @@ if (BUILD_TESTS)
         if (UNIX AND NOT APPLE)
             target_link_options(${name} PRIVATE "LINKER:--export-dynamic")
         endif ()
+        if (WIN32)
+            # The test embeds oakengine-obj; its OAKENGINE_API references must
+            # match the library side (dllexport), otherwise MinGW looks for
+            # __imp_* import stubs that only a real DLL import lib provides.
+            target_compile_definitions(${name} PRIVATE OAKENGINE_BUILD)
+        endif ()
         # Freshly linked binaries can exceed the 5s default discovery
         # timeout on first run (dyld cold cache + Qt/OCIO init)
         if (WIN32)
