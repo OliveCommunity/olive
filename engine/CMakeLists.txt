@@ -206,10 +206,16 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
 
     if (Vulkan_FOUND)
         if (WIN32)
-            # Same treatment as oakgl (see above): entry point only, engine
-            # objects come from oakengine-obj.
-            add_library(oakvulkan SHARED render/vulkan/vulkanbackend_c.cpp)
-            set_target_properties(oakvulkan PROPERTIES AUTOMOC OFF)
+            # Engine-internal C++ symbols are not exported from
+            # liboakengine.dll; link the object library like the engine tests
+            # (plus version obj for k_app_version). Unlike openglrenderer.cpp,
+            # vulkanrenderer.cpp is NOT part of oakengine-obj, so the plugin
+            # must compile it itself.
+            add_library(oakvulkan SHARED
+                    render/vulkan/vulkanbackend_c.cpp
+                    render/vulkan/vulkanrenderer.cpp
+                    render/vulkan/vulkanrenderer.h
+            )
             target_link_libraries(oakvulkan PRIVATE oakengine-obj
                     $<TARGET_OBJECTS:olive-version-obj>)
         else ()
