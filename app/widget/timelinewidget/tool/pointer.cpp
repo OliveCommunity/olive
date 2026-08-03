@@ -887,7 +887,7 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 							oakengine_node_connect_command(
 								reinterpret_cast<OakEngineNode *>(it.value()),
 								reinterpret_cast<OakEngineNode *>(cp_in_transition),
-								QLatin1String(oakengine_transition_in_block_input_id()).toUtf8().constData(),
+								oakengine_transition_in_block_input_id(),
 								-1));
 					}
 
@@ -900,7 +900,7 @@ void PointerTool::finish_drag(TimelineViewMouseEvent *event)
 							oakengine_node_connect_command(
 								reinterpret_cast<OakEngineNode *>(it.value()),
 								reinterpret_cast<OakEngineNode *>(cp_out_transition),
-								QLatin1String(oakengine_transition_out_block_input_id()).toUtf8().constData(),
+								oakengine_transition_out_block_input_id(),
 								-1));
 					}
 				}

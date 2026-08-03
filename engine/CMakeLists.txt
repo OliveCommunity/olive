@@ -55,6 +55,13 @@ add_library(oakengine-obj OBJECT
 
 add_library(oakengine SHARED $<TARGET_OBJECTS:oakengine-obj>)
 
+if (WIN32)
+  # Windows DLLs cannot have undefined symbols; embed the version objects
+  # here too (each module keeps its own copy, unlike ELF where the final
+  # executable provides the definition).
+  target_sources(oakengine PRIVATE $<TARGET_OBJECTS:olive-version-obj>)
+endif ()
+
 if (COMMAND oak_copy_otio_runtime)
   oak_copy_otio_runtime(oakengine)
 endif()
