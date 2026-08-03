@@ -41,7 +41,7 @@ jobs:
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
             libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
             portaudio19-dev libgl1-mesa-dev libgl1-mesa-dri libxkbcommon-dev ccache \
-            xvfb
+            xvfb libvulkan-dev mesa-vulkan-drivers vulkan-tools
 
       # ------------------------------------------------------------------
       # macOS dependencies
@@ -173,7 +173,6 @@ jobs:
           cmake -S . -B build -G Ninja \
             -DBUILD_TESTS=ON \
             -DBUILD_QT6=ON \
-            -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON \
             -DOCIO_LOCATION=/usr \
             -DOTIO_LOCATION=${OTIO_LOCATION} \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
