@@ -170,7 +170,15 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
             render/opengl/openglrenderer.cpp
             render/opengl/openglrenderer.h
     )
-    target_link_libraries(oakgl PRIVATE oakengine)
+    if (WIN32)
+        # Engine-internal C++ symbols (olive::Renderer, FileFunctions, ...) are
+        # not exported from liboakengine.dll; embed the object library like the
+        # engine tests do. MinGW compares type_info by name, so cross-DLL RTTI
+        # with the shared engine still works.
+        target_link_libraries(oakgl PRIVATE oakengine-obj)
+    else ()
+        target_link_libraries(oakgl PRIVATE oakengine)
+    endif ()
     if (COMMAND oak_copy_otio_runtime)
         oak_copy_otio_runtime(oakgl)
     endif()
@@ -197,7 +205,12 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
                 render/vulkan/vulkanrenderer.cpp
                 render/vulkan/vulkanrenderer.h
         )
-        target_link_libraries(oakvulkan PRIVATE oakengine)
+        if (WIN32)
+            # Same as oakgl: embed the engine objects on Windows (see above).
+            target_link_libraries(oakvulkan PRIVATE oakengine-obj)
+        else ()
+            target_link_libraries(oakvulkan PRIVATE oakengine)
+        endif ()
         if (COMMAND oak_copy_otio_runtime)
             oak_copy_otio_runtime(oakvulkan)
         endif()
