@@ -47,6 +47,7 @@
 #include "oakengine/display.h"
 #include "widget/viewer/displaybuffer.h"
 #include "oakengine/viewer.h"
+#include "playback/playbackcontroller.h"
 #include "oakengine/videoparams.h"
 #include "panel/multicam/multicampanel.h"
 #include "panel/panelmanager.h"
@@ -402,7 +403,7 @@ void ViewerWidget::ConnectNodeEvent(OakEngineNode *handle)
 	// Connect controls to set_playhead via facade
 	connect(controls_, &PlaybackControls::time_changed, this,
 			[handle](const Rational &time) {
-				oakengine_viewer_set_playhead(
+				PlaybackController::instance()->set_playhead(
 					handle, time.numerator(), time.denominator());
 			});
 
@@ -649,7 +650,7 @@ void ViewerWidget::set_gizmos(OakEngineNode *node)
 void ViewerWidget::start_capture(TimelineWidget *source, const TimeRange &time,
 								const TrackReference &track)
 {
-	oakengine_viewer_set_playhead(get_connected_node(),
+	PlaybackController::instance()->set_playhead(get_connected_node(),
 		time.in().numerator(), time.in().denominator());
 	arm_for_recording();
 
@@ -1349,10 +1350,10 @@ void ViewerWidget::play_internal(int speed, bool in_to_out_only)
 		if (!in_to_out_only &&
 			viewer_output_playhead(get_connected_node()) >= last_frame) {
 			if (speed > 0) {
-				oakengine_viewer_set_playhead(get_connected_node(),
+				PlaybackController::instance()->set_playhead(get_connected_node(),
 				0, 1);
 			} else {
-				oakengine_viewer_set_playhead(get_connected_node(),
+				PlaybackController::instance()->set_playhead(get_connected_node(),
 				last_frame.numerator(), last_frame.denominator());
 			}
 		}
@@ -2118,7 +2119,7 @@ void ViewerWidget::play(bool in_to_out_only)
 				OAKENGINE_OK &&
 			wa.enabled) {
 			// Jump to in point
-			oakengine_viewer_set_playhead(get_connected_node(),
+			PlaybackController::instance()->set_playhead(get_connected_node(),
 				wa.in_num, wa.in_den);
 		} else {
 			in_to_out_only = false;
@@ -2347,7 +2348,7 @@ void ViewerWidget::playback_timer_update()
 	// pausing. Even if we pause it later with `end_of_line`, we prefer pausing after setting the time
 	// so that an audio scrub event, etc. isn't sent.
 	time_changed_from_timer_ = true;
-	oakengine_viewer_set_playhead(get_connected_node(),
+	PlaybackController::instance()->set_playhead(get_connected_node(),
 		time_to_set.numerator(), time_to_set.denominator());
 	time_changed_from_timer_ = false;
 	if (end_of_line) {

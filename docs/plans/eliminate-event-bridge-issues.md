@@ -64,7 +64,7 @@ C callbacks just queue to the GUI thread and re-emit typed Qt signals.
   later (b) migrations must use it instead of their own subscriptions.
 - **Required: build + ctest all green.**
 
-### issue 0c — App-internal PlaybackController (1 day)
+### issue 0c ✅ (done) — App-internal PlaybackController (1 day)
 Create `app/playback/playbackcontroller.{h,cpp}` with a
 `playhead_changed(oak::Node viewer, Rational)` signal. Route every
 `oakengine_viewer_set_playhead` call site in the app (ViewerWidget playback
@@ -82,26 +82,26 @@ In other words: one app-side controller that every
 
 ## Playhead migrations (pattern A, about half a day each)
 
-### issue 1 — timebasedview playhead subscription
+### issue 1 ✅ (done) — timebasedview playhead subscription
 `app/widget/timebased/timebasedview.cpp:168` (raw C callback). Reconnect to
 `PlaybackController::playhead_changed`.
 - Acceptance: the ruler playhead line moves during playback; no raw C
   subscription remains.
 - **Required: build + ctest all green.**
 
-### issue 2 — NodeParamViewWidgetBridge playhead
+### issue 2 ✅ (done) — NodeParamViewWidgetBridge playhead
 `app/widget/nodeparamview/nodeparamviewwidgetbridge.cpp:1140` (raw C).
 - Acceptance: keyframe-interpolated slider values follow the playhead
   during playback.
 - **Required: build + ctest all green.**
 
-### issue 3 — NodeParamViewKeyframeControl playhead
+### issue 3 ✅ (done) — NodeParamViewKeyframeControl playhead
 `app/widget/nodeparamview/nodeparamviewkeyframecontrol.cpp:222` (raw C).
 - Acceptance: prev/next/toggle keyframe buttons have the correct state as
   the playhead moves.
 - **Required: build + ctest all green.**
 
-### issue 4 — NodeParamViewConnectedLabel playhead
+### issue 4 ✅ (done) — NodeParamViewConnectedLabel playhead
 `app/widget/nodeparamview/nodeparamviewconnectedlabel.cpp:131` (raw C).
 - Acceptance: the value tree refreshes with the playhead.
 - **Required: build + ctest all green.**

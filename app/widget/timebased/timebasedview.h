@@ -148,7 +148,7 @@ private:
 
 	OakEngineNode *viewer_;
 
-	int64_t viewer_sub_ = 0;
+	QMetaObject::Connection viewer_conn_;
 };
 
 }

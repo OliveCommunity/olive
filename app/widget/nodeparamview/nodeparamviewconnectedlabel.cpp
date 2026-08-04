@@ -21,6 +21,8 @@
 
 #include "nodeparamviewconnectedlabel.h"
 
+#include "playback/playbackcontroller.h"
+
 #include <QHBoxLayout>
 
 #include "oakutil/qtutils.h"
@@ -112,30 +114,26 @@ NodeParamViewConnectedLabel::NodeParamViewConnectedLabel(const oak::Input &input
 
 NodeParamViewConnectedLabel::~NodeParamViewConnectedLabel()
 {
-	// Raw C-API subscription carries `this` as userdata; not covered by
-	// Qt's auto-disconnect. Unsubscribe or the next playhead event calls
-	// into a dead object.
+	// Drop the PlaybackController connection (Qt would auto-disconnect
+	// anyway, but keep the symmetric teardown).
 	set_viewer_node(nullptr);
 }
 
 void NodeParamViewConnectedLabel::set_viewer_node(OakEngineNode *viewer)
 {
-	if (viewer_) {
-		oakengine_event_unsubscribe(viewer_sub_);
-		viewer_sub_ = 0;
-	}
+	disconnect(viewer_conn_);
 
 	viewer_ = viewer;
 
 	if (viewer_) {
-		viewer_sub_ = oakengine_event_subscribe(
-			viewer_,
-			OAKENGINE_EVENT_VIEWER_PLAYHEAD_CHANGED,
-			[](const oakengine_event *, void *userdata) {
-				static_cast<NodeParamViewConnectedLabel *>(userdata)
-					->update_value_tree();
-			},
-			this);
+		viewer_conn_ = connect(
+			PlaybackController::instance(),
+			&PlaybackController::playhead_changed, this,
+			[this](OakEngineNode *n, const core::Rational &) {
+				if (n == viewer_) {
+					update_value_tree();
+				}
+			});
 		update_value_tree();
 	}
 }

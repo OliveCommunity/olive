@@ -40,6 +40,7 @@
 #include "common/configwrapper.h"
 #include "oakengine/project.h"
 #include "oakengine/viewer.h"
+#include "playback/playbackcontroller.h"
 #include "oakengine/undo.h"
 
 #include "widget/viewer/vieweroutpututils.h"
@@ -619,7 +620,7 @@ void MainWindow::reveal_viewer_in_footage_viewer(OakEngineNode *r,
 	}
 	oakengine_undo_push(command, tr("Set Footage Workarea").toUtf8().constData());
 
-	oakengine_viewer_set_playhead(
+	PlaybackController::instance()->set_playhead(
 		r,
 		range.in().numerator(), range.in().denominator());
 }

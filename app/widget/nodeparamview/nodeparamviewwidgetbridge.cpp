@@ -21,6 +21,8 @@
 
 #include "nodeparamviewwidgetbridge.h"
 
+#include "playback/playbackcontroller.h"
+
 #include <QCheckBox>
 #include <QFontComboBox>
 #include <QUrl>
@@ -192,10 +194,7 @@ NodeParamViewWidgetBridge::~NodeParamViewWidgetBridge()
 {
 	// oakengine_dragger_create() ownership is ours (no-op on NULL)
 	oakengine_dragger_free(dragger_);
-	// Raw viewer subscription carries `this` as userdata
-	if (viewer_sub_ > 0) {
-		oakengine_event_unsubscribe(viewer_sub_);
-	}
+	disconnect(viewer_conn_);
 }
 
 int get_slider_count(NodeValueType::Type type)
@@ -1131,22 +1130,18 @@ void NodeParamViewWidgetBridge::set_timebase(const Rational &timebase)
 
 void NodeParamViewWidgetBridge::TimeTargetDisconnectEvent(OakEngineNode *v)
 {
-	if (viewer_sub_ > 0) {
-		oakengine_event_unsubscribe(viewer_sub_);
-		viewer_sub_ = 0;
-	}
+	disconnect(viewer_conn_);
 }
 
 void NodeParamViewWidgetBridge::TimeTargetConnectEvent(OakEngineNode *v)
 {
-	viewer_sub_ = oakengine_event_subscribe(
-		v,
-		OAKENGINE_EVENT_VIEWER_PLAYHEAD_CHANGED,
-		[](const oakengine_event *, void *userdata) {
-			static_cast<NodeParamViewWidgetBridge *>(userdata)
-				->update_widget_values();
-		},
-		this);
+	viewer_conn_ = connect(
+		PlaybackController::instance(), &PlaybackController::playhead_changed,
+		this, [this, v](OakEngineNode *n, const core::Rational &) {
+			if (n == v) {
+				update_widget_values();
+			}
+		});
 }
 
 void NodeParamViewWidgetBridge::input_value_changed(OakEngineNode *source,

@@ -24,6 +24,8 @@ set(OLIVE_SOURCES
         common/colorcodingapp.h
         common/colorcodingapp.cpp
         common/nodevaluehandle.h
+        playback/playbackcontroller.h
+        playback/playbackcontroller.cpp
 )
 
 #set(OLIVE_RESOURCES)

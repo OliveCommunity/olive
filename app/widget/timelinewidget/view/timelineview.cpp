@@ -35,6 +35,7 @@
 #include "oakengine/preview.h"
 #include "oakengine/timeline.h"
 #include "oakengine/viewer.h"
+#include "playback/playbackcontroller.h"
 #include "panel/panelmanager.h"
 #include "panel/timeline/timeline.h"
 #include "widget/timelinewidget/cliphandle.h"
@@ -268,7 +269,7 @@ void TimelineView::mousePressEvent(QMouseEvent *event)
 		 it++) {
 		if (it.value().contains(scene_pos)) {
 			const Rational marker_in = marker_time_range(it.key()).in();
-			oakengine_viewer_set_playhead(get_viewer_node(),
+			PlaybackController::instance()->set_playhead(get_viewer_node(),
 			marker_in.numerator(),
 			marker_in.denominator());
 			break;
