@@ -38,7 +38,7 @@ public:
 	SampleRateComboBox(QWidget *parent = nullptr)
 		: QComboBox(parent)
 	{
-		foreach (int sr, AudioParams::k_supported_sample_rates) {
+		for (int sr : AudioParams::k_supported_sample_rates) {
 			this->addItem(HumanStrings::sample_rate_to_string(sr), sr);
 		}
 	}

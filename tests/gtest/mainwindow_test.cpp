@@ -3,6 +3,7 @@
 #include <QProgressBar>
 #include <QOffscreenSurface>
 #include <QOpenGLContext>
+#include <QGuiApplication>
 #include <QSignalSpy>
 #include <QTest>
 #include <QXmlStreamReader>
@@ -174,6 +175,14 @@ TEST(MainWindow, ConstructsOffscreenWithPanelsAndMenus)
 	// runners on the offscreen QPA), constructing it crashes in GL code
 	// ("QOpenGLFunctions created with non-current context"). Probe first and
 	// skip where GL is unavailable.
+	// MainWindow instantiates viewer panels containing QOpenGLWidget. The
+	// offscreen QPA cannot paint QOpenGLWidget at all ("QOpenGLWidget is not
+	// supported on this platform") — pumping events then crashes inside Qt's
+	// backing store flush. Skip there regardless of whether a bare
+	// QOpenGLContext can be created.
+	if (QGuiApplication::platformName() == QStringLiteral("offscreen")) {
+		GTEST_SKIP() << "offscreen QPA cannot paint QOpenGLWidget";
+	}
 	QOffscreenSurface probe_surface;
 	probe_surface.create();
 	QOpenGLContext probe_context;

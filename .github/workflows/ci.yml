@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15, windows-latest]
+        os: [warp-ubuntu-latest-x64-16x, warp-macos-15-arm64-12x, warp-windows-latest-x64-32x]
     env:
       CMAKE_BUILD_TYPE: Release
       CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -39,8 +39,10 @@ jobs:
             ninja-build pkg-config nasm \
             qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
             libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
+            ffmpeg \
             libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
-            portaudio19-dev libgl1-mesa-dev libxkbcommon-dev ccache
+            portaudio19-dev libgl1-mesa-dev libgl1-mesa-dri libxkbcommon-dev ccache \
+            xvfb libvulkan-dev mesa-vulkan-drivers vulkan-tools libshaderc-dev
 
       # ------------------------------------------------------------------
       # macOS dependencies
@@ -133,8 +135,9 @@ jobs:
         shell: msys2 {0}
         run: |
           echo "OTIO_LOCATION=${PWD}/otio-install" >> "$GITHUB_ENV"
-          # No rpath on Windows: test executables need the OTIO DLLs on PATH
-          echo "$(cygpath -w "${PWD}/otio-install/bin")" >> "$GITHUB_PATH"
+          # No rpath on Windows: test executables need the OTIO DLLs on PATH.
+          # OTIO's MinGW install puts the DLLs in lib/, not bin/.
+          echo "$(cygpath -w "${PWD}/otio-install/lib")" >> "$GITHUB_PATH"
 
       - name: Build OpenTimelineIO (Windows)
         if: runner.os == 'Windows' && steps.otio-cache-win.outputs.cache-hit != 'true'
@@ -172,7 +175,6 @@ jobs:
           cmake -S . -B build -G Ninja \
             -DBUILD_TESTS=ON \
             -DBUILD_QT6=ON \
-            -DCMAKE_DISABLE_FIND_PACKAGE_Vulkan=ON \
             -DOCIO_LOCATION=/usr \
             -DOTIO_LOCATION=${OTIO_LOCATION} \
             -DCMAKE_C_COMPILER_LAUNCHER=ccache \
@@ -241,6 +243,31 @@ jobs:
           echo "OAK_OFX_PLUGIN_PATH=$PLUGIN_DIR" >> "$GITHUB_ENV"
           echo "OAK_OFX_PLUGIN_ID=net.sf.openfx.ChromaKeyerPlugin" >> "$GITHUB_ENV"
 
+      # The Windows runners have no GPU: WGL falls back to the GDI software
+      # OpenGL 1.1 implementation and every render worker dies calling 3.2
+      # core entry points. Drop Mesa's llvmpipe opengl32.dll next to every
+      # binary that creates a GL context (the application directory wins the
+      # DLL search order over System32).
+      - name: Install Mesa software OpenGL (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          curl -sSL -o /tmp/mesa.7z \
+            https://github.com/pal1000/mesa-dist-win/releases/download/26.1.5/mesa3d-26.1.5-release-mingw.7z
+          "/c/Program Files/7-Zip/7z.exe" x /tmp/mesa.7z -o/tmp/mesa > /dev/null
+          ls -la /tmp/mesa /tmp/mesa/x64
+          for d in build/engine build/worker build/cli build/tests/gtest build/app; do
+            if [ -d "$d" ]; then
+              cp /tmp/mesa/x64/*.dll "$d/"
+              # Qt ignores an app-local opengl32.dll for WGL (it always binds
+              # the System32 one); its documented software-GL override is
+              # opengl32sw.dll, loaded when QT_OPENGL=software.
+              cp "$d/opengl32.dll" "$d/opengl32sw.dll"
+              ls "$d"/opengl32sw.dll "$d"/libgallium_wgl.dll
+            fi
+          done
+          echo "QT_OPENGL=software" >> "$GITHUB_ENV"
+
       # ------------------------------------------------------------------
       # Run all tests (including previously environment-gated OFX tests)
       # ------------------------------------------------------------------
@@ -248,7 +275,25 @@ jobs:
         if: runner.os == 'Linux'
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ctest --test-dir build --output-on-failure -C ${{ env.CMAKE_BUILD_TYPE }}
+        run: xvfb-run -a ctest --test-dir build --output-on-failure -C ${{ env.CMAKE_BUILD_TYPE }}
+
+      # Diagnostic: if the Linux test run failed, re-run the suspect gtest
+      # filter under gdb to capture a native backtrace of the segfault.
+      # Also break on dlclose to see who unloads the render backend library
+      # before RenderManager's destructor calls into it.
+      - name: gtest segfault backtrace (Linux)
+        if: runner.os == 'Linux' && failure()
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          sudo apt-get update && sudo apt-get install -y gdb
+          xvfb-run -a gdb -batch \
+            -ex run \
+            -ex 'bt full' \
+            -ex 'info proc mappings' \
+            -ex 'info symbol $pc' \
+            --args ./build/tests/gtest/olive-gtest \
+            --gtest_filter='MainWindow.ConstructsOffscreenWithPanelsAndMenus' || true
 
       - name: Test (macOS)
         if: runner.os == 'macOS'
@@ -259,6 +304,21 @@ jobs:
         shell: msys2 {0}
         run: ctest --test-dir build --output-on-failure -C ${{ env.CMAKE_BUILD_TYPE }}
 
+      # Diagnostic: if the Windows test run failed, show which DLLs the
+      # engine test executables cannot resolve (0xc0000135).
+      - name: Missing DLL diagnosis (Windows)
+        if: runner.os == 'Windows' && failure()
+        shell: msys2 {0}
+        run: |
+          echo "PATH=$PATH"
+          ldd build/engine/oakengine_ipc_test.exe | grep -i "not found" || true
+          objdump -p build/engine/oakengine_ipc_test.exe | grep "DLL Name" | sort -u
+          ls otio-install/lib otio-install/bin 2>/dev/null || true
+          echo "=== render worker stderr logs ==="
+          for f in "$TEMP"/oak-render-worker-*.stderr.log "$TMP"/oak-render-worker-*.stderr.log /tmp/oak-render-worker-*.stderr.log; do
+            [ -f "$f" ] && { echo "--- $f"; tail -50 "$f"; }
+          done
+
       # ------------------------------------------------------------------
       # Filtered gtest runs for clearer CI output
       # ------------------------------------------------------------------
@@ -266,7 +326,7 @@ jobs:
         if: runner.os == 'Linux'
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build/tests/gtest/olive-gtest --gtest_filter="PluginSmoke*"
+        run: xvfb-run -a ./build/tests/gtest/olive-gtest --gtest_filter="PluginSmoke*"
 
       - name: Plugin Smoke Tests (macOS)
         if: runner.os == 'macOS'
@@ -281,7 +341,7 @@ jobs:
         if: runner.os == 'Linux'
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build/tests/gtest/olive-gtest --gtest_filter="PluginIntegration.*:PluginMisc.*"
+        run: xvfb-run -a ./build/tests/gtest/olive-gtest --gtest_filter="PluginIntegration.*:PluginMisc.*"
 
       - name: OFX Integration Tests (macOS)
         if: runner.os == 'macOS'
@@ -291,7 +351,7 @@ jobs:
         if: runner.os == 'Linux'
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build/tests/gtest/olive-gtest --gtest_filter="AudioSmoke*"
+        run: xvfb-run -a ./build/tests/gtest/olive-gtest --gtest_filter="AudioSmoke*"
 
       - name: Audio Smoke Tests (macOS)
         if: runner.os == 'macOS'
@@ -306,7 +366,7 @@ jobs:
         if: runner.os == 'Linux'
         env:
           QT_QPA_PLATFORM: offscreen
-        run: ./build/tests/gtest/olive-gtest --gtest_filter="ViewerSmoke*"
+        run: xvfb-run -a ./build/tests/gtest/olive-gtest --gtest_filter="ViewerSmoke*"
 
       - name: Viewer Smoke Tests (macOS)
         if: runner.os == 'macOS'

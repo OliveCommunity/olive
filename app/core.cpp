@@ -98,7 +98,7 @@ Core::Core(const OakEngineAppParams *params)
 	if (params) {
 		oakengine_app_create(params);
 	} else {
-		static const OakEngineAppParams default_params = {0};
+		static const OakEngineAppParams default_params = {};
 		oakengine_app_create(&default_params);
 	}
 
@@ -773,7 +773,7 @@ void Core::start_gui(bool full_screen)
 	main_window_ = new MainWindow();
 
 	// Route engine notifications to the UI
-	connect(this, &Core::tool_changed, this, [this](const Tool::Item &) {});
+	connect(this, &Core::tool_changed, this, [](const Tool::Item &) {});
 	// Status-bar and lifecycle notifications are handled through the facade
 	// (oakengine_app_show_status_message, oakengine_app_clear_status_message)
 	// which the engine forwards through registered callbacks. The main window

@@ -334,7 +334,7 @@ void CurveView::ContextMenuEvent(Menu &m)
 
 void CurveView::SceneRectUpdateEvent(QRectF &r)
 {
-	double min_val, max_val;
+	double min_val = 0, max_val = 0;
 	bool got_val = false;
 
 	foreach (KeyframeViewInputConnection *con, track_connections_) {
@@ -694,7 +694,7 @@ void CurveView::zoom_to_fit_internal(bool selected_only)
 	bool got_val = false;
 
 	Rational min_time, max_time;
-	double min_val, max_val;
+	double min_val = 0, max_val = 0;
 
 	foreach (KeyframeViewInputConnection *con, track_connections_) {
 		foreach (const oak::Keyframe &key, con->get_keyframes()) {

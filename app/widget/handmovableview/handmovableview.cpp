@@ -64,8 +64,10 @@ bool HandMovableView::hand_press(QMouseEvent *event)
 		setInteractive(false);
 
 		// Transform mouse event to act like the left button is pressed
-		QMouseEvent transformed(event->type(), event->pos(), Qt::LeftButton,
-								Qt::LeftButton, event->modifiers());
+		QMouseEvent transformed(event->type(), event->position(),
+								event->globalPosition(), Qt::LeftButton,
+								Qt::LeftButton, event->modifiers(),
+								event->pointingDevice());
 
 		transformed_pos_ = QPoint(0, 0);
 
@@ -83,22 +85,24 @@ bool HandMovableView::hand_move(QMouseEvent *event)
 		// Transform mouse event to act like the left button is pressed
 		QPoint adjustment(0, 0);
 
-		QMouseEvent transformed(event->type(), event->pos() - transformed_pos_,
-								Qt::LeftButton, Qt::LeftButton,
-								event->modifiers());
+		QMouseEvent transformed(event->type(),
+								event->position() - transformed_pos_,
+								event->globalPosition(), Qt::LeftButton,
+								Qt::LeftButton, event->modifiers(),
+								event->pointingDevice());
 
-		if (event->pos().x() < 0) {
+		if (event->position().toPoint().x() < 0) {
 			transformed_pos_.setX(transformed_pos_.x() + width());
 			adjustment.setX(width());
-		} else if (event->pos().x() >= width()) {
+		} else if (event->position().toPoint().x() >= width()) {
 			transformed_pos_.setX(transformed_pos_.x() - width());
 			adjustment.setX(-width());
 		}
 
-		if (event->pos().y() < 0) {
+		if (event->position().toPoint().y() < 0) {
 			transformed_pos_.setY(transformed_pos_.y() + height());
 			adjustment.setY(height());
-		} else if (event->pos().y() >= height()) {
+		} else if (event->position().toPoint().y() >= height()) {
 			transformed_pos_.setY(transformed_pos_.y() - height());
 			adjustment.setY(-height());
 		}
@@ -116,8 +120,8 @@ bool HandMovableView::hand_release(QMouseEvent *event)
 {
 	if (dragging_hand_) {
 		// Transform mouse event to act like the left button is pressed
-		QMouseEvent transformed(event->type(), event->localPos(),
-								event->windowPos(), event->screenPos(),
+		QMouseEvent transformed(event->type(), event->position(),
+								event->scenePosition(), event->globalPosition(),
 								Qt::LeftButton, Qt::LeftButton,
 								event->modifiers(), event->source());
 
@@ -194,7 +198,7 @@ void HandMovableView::wheelEvent(QWheelEvent *event)
 #if (QT_VERSION >= QT_VERSION_CHECK(5, 14, 0))
 			event->position(), event->globalPosition(),
 #else
-			event->pos(), event->globalPos(),
+			event->position().toPoint(), event->globalPos(),
 #endif
 			event->pixelDelta(), angle_delta, event->buttons(),
 			event->modifiers(), event->phase(), event->inverted(),
@@ -209,7 +213,7 @@ void HandMovableView::wheelEvent(QWheelEvent *event)
 															Qt::Horizontal;
 		}
 
-		QWheelEvent e(event->pos(), event->globalPos(), event->pixelDelta(),
+		QWheelEvent e(event->position().toPoint(), event->globalPos(), event->pixelDelta(),
 					  event->angleDelta(), event->delta(), orientation,
 					  event->buttons(), event->modifiers());
 #endif

@@ -21,7 +21,9 @@
 
 #include "node.h"
 
+#ifndef _WIN32
 #include <execinfo.h>
+#endif
 
 #include <QApplication>
 #include <QGuiApplication>
@@ -1939,6 +1941,7 @@ void Node::report_invalid_input(const char *attempted_action, const QString &id,
 		<< "Failed to" << attempted_action << "parameter" << id << "element"
 		<< element << "in node" << this->id() << "- input doesn't exist";
 
+#ifndef _WIN32
 	if (qEnvironmentVariableIsSet("OAK_DEBUG_INVALID_INPUT")) {
 		void *frames[32];
 		const int n = backtrace(frames, 32);
@@ -1950,6 +1953,7 @@ void Node::report_invalid_input(const char *attempted_action, const QString &id,
 			free(symbols);
 		}
 	}
+#endif
 }
 
 NodeInputImmediate *Node::create_immediate(const QString &input)
@@ -2382,14 +2386,14 @@ TimeRange Node::transform_time_to(TimeRange time, Node *target,
 	Node *from = this;
 	Node *to = target;
 
-	if (dir == k_transform_towards_input) {
+	if (dir == k_towards_input) {
 		std::swap(from, to);
 	}
 
 	std::list<NodeInput> path = find_path(from, to, path_index);
 
 	if (!path.empty()) {
-		if (dir == k_transform_towards_input) {
+		if (dir == k_towards_input) {
 			for (auto it = path.crbegin(); it != path.crend(); it++) {
 				const NodeInput &i = (*it);
 				time = i.node()->input_time_adjustment(i.input(), i.element(),
@@ -2610,7 +2614,7 @@ void Node::invalidate_from_keyframe_time_change()
 
 	// Invalidate entire area surrounding the keyframe (either where it currently is, or where it used to be before it
 	// was resorted in the if block above)
-	foreach (const TimeRange &r, invalidate_range) {
+	for (const TimeRange &r : invalidate_range) {
 		parameter_value_changed(key->key_track_ref().input(), r);
 	}
 

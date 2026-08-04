@@ -355,7 +355,7 @@ void CurveWidget::keyframe_type_button_triggered(bool checked)
 		QVector<int> tracks;
 	};
 	QVector<TypeGroup> groups;
-	foreach (OakEngineKeyframe *item, selected) {
+	for (OakEngineKeyframe *item : selected) {
 		const oak::Keyframe key(item);
 		OakEngineNode *node = key.node().handle();
 		int g = 0;

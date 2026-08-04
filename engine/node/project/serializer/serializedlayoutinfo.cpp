@@ -28,7 +28,7 @@ void SerializedLayoutInfo::to_xml(QXmlStreamWriter *writer) const
 
 	writer->writeStartElement(QStringLiteral("folders"));
 
-	foreach (Folder *folder, open_folders) {
+	for (Folder *folder : open_folders) {
 		writer->writeTextElement(
 			QStringLiteral("folder"),
 			QString::number(reinterpret_cast<quintptr>(folder)));
@@ -38,7 +38,7 @@ void SerializedLayoutInfo::to_xml(QXmlStreamWriter *writer) const
 
 	writer->writeStartElement(QStringLiteral("timeline"));
 
-	foreach (Sequence *sequence, open_sequences) {
+	for (Sequence *sequence : open_sequences) {
 		writer->writeTextElement(
 			QStringLiteral("sequence"),
 			QString::number(reinterpret_cast<quintptr>(sequence)));
@@ -48,7 +48,7 @@ void SerializedLayoutInfo::to_xml(QXmlStreamWriter *writer) const
 
 	writer->writeStartElement(QStringLiteral("viewers"));
 
-	foreach (ViewerOutput *viewer, open_viewers) {
+	for (ViewerOutput *viewer : open_viewers) {
 		writer->writeTextElement(
 			QStringLiteral("viewer"),
 			QString::number(reinterpret_cast<quintptr>(viewer)));

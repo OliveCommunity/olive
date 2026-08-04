@@ -171,7 +171,7 @@ public:
 
 	ColorTransform(const QString &display, const QString &view,
 				   const QString &look)
-		: is_display_(true), output_(display), view_(view), look_(look)
+		: output_(display), is_display_(true), view_(view), look_(look)
 	{
 	}
 

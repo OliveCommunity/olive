@@ -324,6 +324,14 @@ bool FFmpegEncoder::open()
 
 bool FFmpegEncoder::write_frame(FramePtr frame, Rational time)
 {
+	// The render worker pool finishes tickets without a result when no
+	// worker is available (or the worker crashed); a null frame must fail
+	// the encode cleanly instead of crashing the export task.
+	if (!frame) {
+		qWarning() << "FFmpegEncoder::write_frame called with null frame";
+		return false;
+	}
+
 	// We may need to convert this frame to a frame that the bridge will understand
 	if (frame->format() != video_conversion_fmt_) {
 		frame = frame->convert(video_conversion_fmt_);

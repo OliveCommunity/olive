@@ -118,8 +118,8 @@ NodeViewItem::NodeViewItem(oak::Node node, const QString &input,
 
 		bridge_->subscribe(node_.handle(), OAKENGINE_EVENT_NODE_INPUT_ARRAY_SIZE_CHANGED);
 		connect(bridge_, &EngineEventBridge::node_input_array_size_changed, this,
-				[this](OakEngineNode *, const QString &input, int, int) {
-					input_array_size_changed(input);
+				[this](OakEngineNode *, const QString &changed_input, int, int) {
+					input_array_size_changed(changed_input);
 				});
 	}
 

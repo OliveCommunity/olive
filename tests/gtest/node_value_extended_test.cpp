@@ -64,8 +64,8 @@ TEST(NodeValueExtended, ColorMatrixBezierAccessors)
 
 TEST(NodeValueExtended, ScalarAccessors)
 {
-	olive::NodeValue boolean(olive::NodeValue::k_boolean, true);
-	EXPECT_TRUE(boolean.to_bool());
+	olive::NodeValue bool_val(olive::NodeValue::k_boolean, true);
+	EXPECT_TRUE(bool_val.to_bool());
 
 	olive::NodeValue floating(olive::NodeValue::k_float, 2.75);
 	EXPECT_DOUBLE_EQ(floating.to_double(), 2.75);

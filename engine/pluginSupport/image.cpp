@@ -37,8 +37,11 @@ static const char *pixel_depth_to_ofx(core::PixelFormat format)
 		return kOfxBitDepthShort;
 	case core::PixelFormat::f16:
 		return kOfxBitDepthHalf;
+	default:
+		break;
 	case core::PixelFormat::f32:
 		return kOfxBitDepthFloat;
+	case core::PixelFormat::u10:
 	case core::PixelFormat::invalid:
 	case core::PixelFormat::count:
 		break;

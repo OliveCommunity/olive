@@ -255,11 +255,19 @@ endif()
 
 # OTIO's macOS dylibs use @loader_path install names: every binary that
 # (transitively) links them needs a copy of the dylibs next to itself.
+# Windows has no rpath either, so its DLLs must also sit next to each
+# executable (relying on PATH is fragile in CI shells).
 # Call oak_copy_otio_runtime(<target>) for each executable/shared library.
-if (OAK_BUNDLE_OTIO AND APPLE AND OTIO_LIBRARY_DIR)
-  file(GLOB OAK_OTIO_DYLIBS
-    "${OTIO_LIBRARY_DIR}/libopentimelineio*.dylib"
-    "${OTIO_LIBRARY_DIR}/libopentime*.dylib")
+if (OAK_BUNDLE_OTIO AND (APPLE OR WIN32) AND OTIO_LIBRARY_DIR)
+  if (APPLE)
+    file(GLOB OAK_OTIO_DYLIBS
+      "${OTIO_LIBRARY_DIR}/libopentimelineio*.dylib"
+      "${OTIO_LIBRARY_DIR}/libopentime*.dylib")
+  else()
+    file(GLOB OAK_OTIO_DYLIBS
+      "${OTIO_LIBRARY_DIR}/libopentimelineio*.dll"
+      "${OTIO_LIBRARY_DIR}/libopentime*.dll")
+  endif()
   function(oak_copy_otio_runtime target)
     add_custom_command(TARGET ${target} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -353,8 +361,10 @@ add_subdirectory(third_party/openfx/HostSupport)
 add_subdirectory(engine)
 add_subdirectory(cli)
 
-# Everything above the engine library links against it
-list(APPEND OLIVE_LIBRARIES oakengine)
+# Internal consumers (app, tests) link oakengine-obj directly instead of the
+# oakengine shared library (see app/CMakeLists.txt). Linking both breaks the
+# Windows build: the DLL import library re-defines every symbol already
+# provided by the object files (multiple definition errors at link time).
 
 add_subdirectory(app)
 add_subdirectory(worker)

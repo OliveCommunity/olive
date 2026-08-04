@@ -109,7 +109,7 @@ bool LoadOTIOTask::run()
 	// Generate a list of sequences with the same names as the timelines.
 	// Assumes each timeline has a unique name.
 	int unnamed_sequence_count = 0;
-	foreach (auto timeline, timelines) {
+	for (auto timeline : timelines) {
 		Sequence *sequence = new Sequence();
 		if (!timeline->name().empty()) {
 			sequence->set_label(QString::fromStdString(timeline->name()));
@@ -124,7 +124,7 @@ bool LoadOTIOTask::run()
 		timeline_sequnce_map.insert(timeline, sequence);
 
 		// Get number of clips for loading bar
-		foreach (auto track, timeline->tracks()->children()) {
+		for (auto track : timeline->tracks()->children()) {
 			auto otio_track = static_cast<OTIO::Track *>(track.value);
 			number_of_clips += otio_track->children().size();
 		}

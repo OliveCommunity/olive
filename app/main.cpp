@@ -228,7 +228,7 @@ int main(int argc, char *argv[])
 							 "main", "Decompress project file (No GUI)"));
 
 #ifdef _WIN32
-	auto console_option = parser.AddOption(
+	auto console_option = parser.add_option(
 		{ QStringLiteral("c"), QStringLiteral("-console") },
 		QCoreApplication::translate("main", "Launch with debug console"));
 #endif // _WIN32
@@ -333,15 +333,19 @@ int main(int argc, char *argv[])
 	// so far.
 	//
 	// https://bugreports.qt.io/browse/QTBUG-46140
-	QCoreApplication::setAttribute(Qt::AA_UseDesktopOpenGL);
+	// An explicit QT_OPENGL (e.g. "software" on GPU-less CI runners with
+	// Mesa deployed as opengl32sw.dll) takes precedence over this default.
+	if (!qEnvironmentVariableIsSet("QT_OPENGL")) {
+		QCoreApplication::setAttribute(Qt::AA_UseDesktopOpenGL);
+	}
 	format.setVersion(3, 2);
 	format.setProfile(QSurfaceFormat::CoreProfile);
 
 	format.setDepthBufferSize(24);
 	QSurfaceFormat::setDefaultFormat(format);
 
-	// Enable application automatically using higher resolution images from icons
-	QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
+	// High-DPI pixmaps are always enabled in Qt 6 (AA_UseHighDpiPixmaps is
+	// deprecated and has no effect).
 
 	QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
 
@@ -352,7 +356,7 @@ int main(int argc, char *argv[])
 #ifdef _WIN32
 		// Since Oak Video Editor is linked with the console subsystem (for better POSIX compatibility), a console
 		// is created by default. If the user didn't request one, we free it here.
-		if (!console_option->IsSet()) {
+		if (!console_option->is_set()) {
 			FreeConsole();
 		}
 #endif // _WIN32

@@ -49,6 +49,10 @@ PixelFormat OIIOUtils::get_format_from_oiio_basetype(OIIO::TypeDesc::BASETYPE ty
 	switch (type) {
 	case OIIO::TypeDesc::UNKNOWN:
 	case OIIO::TypeDesc::NONE:
+#if OIIO_VERSION >= 20500
+	case OIIO::TypeDesc::USTRINGHASH:
+#endif
+	default:
 		break;
 
 	case OIIO::TypeDesc::INT8:

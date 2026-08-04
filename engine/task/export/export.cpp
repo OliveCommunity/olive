@@ -211,6 +211,21 @@ bool ExportTask::run()
 
 bool ExportTask::frame_downloaded(FramePtr f, const Rational &time)
 {
+	// The worker pool finishes tickets without a result when no worker is
+	// available (or every worker crashed). Grinding through the whole
+	// timeline at several seconds per dead worker looks like a hang, so
+	// fail the export after a short streak of missing frames.
+	if (!f) {
+		if (++null_frame_streak_ >= 8) {
+			set_error(tr("Render workers failed to deliver %1 consecutive "
+						 "frames; aborting export")
+						  .arg(null_frame_streak_));
+			return false;
+		}
+	} else {
+		null_frame_streak_ = 0;
+	}
+
 	Rational actual_time = time - export_range_.in();
 
 	time_map_.insert(actual_time, f);

@@ -44,7 +44,7 @@ namespace test
 // Helper Functions
 // ============================================================================
 
-static AudioParams make_audio_params(int sample_rate, uint64_t channel_layout,
+[[maybe_unused]] static AudioParams make_audio_params(int sample_rate, uint64_t channel_layout,
 								   SampleFormat format)
 {
 	return AudioParams(sample_rate, channel_layout, format);
@@ -951,7 +951,7 @@ TEST(AudioSmokeThread, ConcurrentWaveformAccess)
 	std::atomic<int> success_count{ 0 };
 
 	for (int t = 0; t < num_threads; ++t) {
-		threads.emplace_back([&waveform, &success_count, num_ops_per_thread]() {
+		threads.emplace_back([&waveform, &success_count]() {
 			for (int i = 0; i < num_ops_per_thread; ++i) {
 				// Read summary from different times
 				auto summary = waveform.get_summary_from_time(

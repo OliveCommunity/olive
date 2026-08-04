@@ -161,8 +161,8 @@ NodeParamViewWidgetBridge::NodeParamViewWidgetBridge(const oak::Input &input,
 	connect(bridge_, &EngineEventBridge::node_input_value_changed, this,
 			&NodeParamViewWidgetBridge::input_value_changed);
 	connect(bridge_, &EngineEventBridge::node_input_property_changed, this,
-			[this](OakEngineNode *, const QString &input) {
-				property_changed(input);
+			[this](OakEngineNode *, const QString &input_id) {
+				property_changed(input_id);
 			});
 	connect(bridge_, &EngineEventBridge::node_input_data_type_changed, this,
 			&NodeParamViewWidgetBridge::input_data_type_changed);
@@ -728,6 +728,7 @@ void NodeParamViewWidgetBridge::widget_callback()
 	case NodeValueType::k_samples:
 	case NodeValueType::k_video_params:
 	case NodeValueType::k_audio_params:
+	case NodeValueType::k_push_button:
 	case NodeValueType::k_subtitle_params:
 	case NodeValueType::k_data_type_count:
 		break;
@@ -946,6 +947,7 @@ void NodeParamViewWidgetBridge::update_widget_values()
 	case NodeValueType::k_samples:
 	case NodeValueType::k_video_params:
 	case NodeValueType::k_audio_params:
+	case NodeValueType::k_push_button:
 	case NodeValueType::k_subtitle_params:
 	case NodeValueType::k_data_type_count:
 		break;

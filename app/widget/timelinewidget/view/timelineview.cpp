@@ -263,7 +263,7 @@ TimelineView::TimelineView(Qt::Alignment vertical_alignment, QWidget *parent)
 void TimelineView::mousePressEvent(QMouseEvent *event)
 {
 	// If we click on marker, jump to that point in the timeline
-	QPointF scene_pos = mapToScene(event->pos());
+	QPointF scene_pos = mapToScene(event->position().toPoint());
 	for (auto it = clip_marker_rects_.cbegin(); it != clip_marker_rects_.cend();
 		 it++) {
 		if (it.value().contains(scene_pos)) {
@@ -358,7 +358,7 @@ void TimelineView::mouseDoubleClickEvent(QMouseEvent *event)
 void TimelineView::dragEnterEvent(QDragEnterEvent *event)
 {
 	TimelineViewMouseEvent timeline_event = CreateMouseEvent(
-		event->pos(), Qt::NoButton, event->keyboardModifiers());
+		event->position().toPoint(), Qt::NoButton, event->modifiers());
 
 	timeline_event.set_mime_data(event->mimeData());
 	timeline_event.SetEvent(event);
@@ -369,7 +369,7 @@ void TimelineView::dragEnterEvent(QDragEnterEvent *event)
 void TimelineView::dragMoveEvent(QDragMoveEvent *event)
 {
 	TimelineViewMouseEvent timeline_event = CreateMouseEvent(
-		event->pos(), Qt::NoButton, event->keyboardModifiers());
+		event->position().toPoint(), Qt::NoButton, event->modifiers());
 
 	timeline_event.set_mime_data(event->mimeData());
 	timeline_event.SetEvent(event);
@@ -385,7 +385,7 @@ void TimelineView::dragLeaveEvent(QDragLeaveEvent *event)
 void TimelineView::dropEvent(QDropEvent *event)
 {
 	TimelineViewMouseEvent timeline_event = CreateMouseEvent(
-		event->pos(), Qt::NoButton, event->keyboardModifiers());
+		event->position().toPoint(), Qt::NoButton, event->modifiers());
 
 	timeline_event.set_mime_data(event->mimeData());
 	timeline_event.SetEvent(event);
@@ -446,7 +446,7 @@ void TimelineView::drawForeground(QPainter *painter, const QRectF &rect)
 				static_cast<TrackReference::Type>(connected_track_type_)) {
 				int track_index = it.key().index();
 
-				foreach (const TimeRange &range, it.value()) {
+				for (const TimeRange &range : it.value()) {
 					painter->drawRect(time_to_scene(range.in()),
 									  get_track_y(track_index),
 									  time_to_scene(range.length()),
@@ -594,7 +594,7 @@ TimelineCoordinate TimelineView::scene_to_coordinate(const QPointF &pt)
 
 TimelineViewMouseEvent TimelineView::CreateMouseEvent(QMouseEvent *event)
 {
-	return CreateMouseEvent(event->pos(), event->button(), event->modifiers());
+	return CreateMouseEvent(event->position().toPoint(), event->button(), event->modifiers());
 }
 
 TimelineViewMouseEvent

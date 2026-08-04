@@ -410,6 +410,8 @@ private:
 								 it.key());
 		}
 
+		log_error(QStringLiteral("LoadGraph: deserialized ok, %1 nodes")
+					  .arg(node_by_token.size()));
 		QJsonObject ack;
 		ack["type"] = QStringLiteral("graph_loaded");
 		ack["nodes"] = node_by_token.size();
@@ -449,6 +451,9 @@ private:
 			return true;
 		}
 
+		log_error(QStringLiteral("render_frame: ticket %1 node %2")
+					  .arg(message.ticket_id)
+					  .arg(message.node_uuid));
 		olive::Node *node = find_node(message.node_uuid);
 		if (!node) {
 			*response =
@@ -726,6 +731,17 @@ olive::Renderer *create_renderer(const char *backend, bool *valid)
 		}
 		if (!ctx || !ctx->isValid()) {
 			renderer_valid = false;
+		} else {
+			// Windows CI runners without a GPU hand back the GDI software
+			// OpenGL 1.1 implementation here; log what we actually got so a
+			// later crash in 3.2 core calls is attributable.
+			log_error(QStringLiteral("OpenGL context version: %1.%2 (%3)")
+						  .arg(ctx->format().majorVersion())
+						  .arg(ctx->format().minorVersion())
+						  .arg(ctx->format().profile() ==
+									   QSurfaceFormat::CoreProfile ?
+								   "core" :
+								   "compatibility/none"));
 		}
 	}
 	if (!renderer_valid) {
@@ -849,7 +865,11 @@ int oakengine_worker_session_shutdown_requested(const OakWorkerSession *self)
 
 int oakengine_worker_main(int argc, char **argv)
 {
-	QCoreApplication::setAttribute(Qt::AA_UseDesktopOpenGL);
+	// QT_OPENGL (e.g. "software" with Mesa opengl32sw.dll on GPU-less CI)
+	// takes precedence over this default.
+	if (!qEnvironmentVariableIsSet("QT_OPENGL")) {
+		QCoreApplication::setAttribute(Qt::AA_UseDesktopOpenGL);
+	}
 	QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
 	install_surface_format();
 

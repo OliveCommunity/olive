@@ -49,12 +49,27 @@
 
 static char g_tmpdir[4096];
 
+// The engine stores project filenames with native separators (backslashes on
+// Windows); normalize a returned path to forward slashes before comparing
+// against the paths these tests construct.
+static void to_forward_slashes(char *s)
+{
+	for (; *s; ++s) {
+		if (*s == '\\') {
+			*s = '/';
+		}
+	}
+}
+
 static void make_tmpdir(void)
 {
 #if defined(_WIN32)
 	char base[MAX_PATH];
 	const DWORD len = GetTempPathA(MAX_PATH, base);
 	EXPECT_TRUE(len > 0 && len < MAX_PATH);
+	// Resolve 8.3 short names (e.g. RUNNER~1) so string comparisons
+	// against engine-canonicalized paths hold.
+	GetLongPathNameA(base, base, MAX_PATH);
 	snprintf(g_tmpdir, sizeof(g_tmpdir), "%soakengine_init_test_%lu", base,
 			 (unsigned long)GetCurrentProcessId());
 	EXPECT_TRUE(_mkdir(g_tmpdir) == 0);
@@ -68,6 +83,10 @@ static void make_path(char *dst, size_t cap, const char *filename)
 {
 	const int n = snprintf(dst, cap, "%s/%s", g_tmpdir, filename);
 	EXPECT_TRUE(n > 0 && (size_t)n < cap);
+	// g_tmpdir comes from GetTempPathA on Windows (backslashes); the
+	// engine's forward-slash-normalized filename must compare against the
+	// same form.
+	to_forward_slashes(dst);
 }
 
 static int file_exists(const char *path)
@@ -231,7 +250,8 @@ static void test_sequence_and_save_load(void)
 	char filename[4096];
 	EXPECT_TRUE(oakengine_project_filename(p, filename, sizeof(filename)) ==
 		   (int)strlen(path));
-	EXPECT_TRUE(strcmp(filename, path) == 0);
+	to_forward_slashes(filename);
+	EXPECT_STREQ(filename, path);
 
 	// Undo removes the sequence, redo brings the same object back.
 	EXPECT_TRUE(oakengine_project_undo(p) == OAKENGINE_OK);
@@ -258,7 +278,8 @@ static void test_sequence_and_save_load(void)
 	EXPECT_TRUE(strcmp(name, "roundtrip") == 0);
 	EXPECT_TRUE(oakengine_project_filename(q, filename, sizeof(filename)) ==
 		   (int)strlen(path));
-	EXPECT_TRUE(strcmp(filename, path) == 0);
+	to_forward_slashes(filename);
+	EXPECT_STREQ(filename, path);
 
 	// The sequence survived the round trip, workarea included (the workarea
 	// is serialized by ViewerOutput::save_custom()).

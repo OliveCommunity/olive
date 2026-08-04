@@ -164,15 +164,15 @@ MainWindow::~MainWindow()
 
 void MainWindow::load_layout(const SerializedLayoutInfo &info)
 {
-	foreach (OakEngineNode *folder, info.open_folders) {
+	for (OakEngineNode *folder : info.open_folders) {
 		open_folder(folder, true);
 	}
 
-	foreach (OakEngineNode *sequence, info.open_sequences) {
+	for (OakEngineNode *sequence : info.open_sequences) {
 		open_sequence(sequence, info.open_sequences.size() == 1);
 	}
 
-	foreach (OakEngineNode *viewer, info.open_viewers) {
+	for (OakEngineNode *viewer : info.open_viewers) {
 		open_node_in_viewer(viewer);
 	}
 
@@ -470,15 +470,15 @@ void MainWindow::set_application_progress_status(ProgressStatus status)
 #if defined(Q_OS_WINDOWS)
 	if (taskbar_interface_) {
 		switch (status) {
-		case kProgressShow:
+		case k_progress_show:
 			taskbar_interface_->SetProgressState(
 				reinterpret_cast<HWND>(this->winId()), TBPF_NORMAL);
 			break;
-		case kProgressNone:
+		case k_progress_none:
 			taskbar_interface_->SetProgressState(
 				reinterpret_cast<HWND>(this->winId()), TBPF_NOPROGRESS);
 			break;
-		case kProgressError:
+		case k_progress_error:
 			taskbar_interface_->SetProgressState(
 				reinterpret_cast<HWND>(this->winId()), TBPF_ERROR);
 			break;

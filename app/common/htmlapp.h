@@ -17,7 +17,7 @@
  */
 
 #ifndef OAK_HTMLAPP_H
-#define OAK_HTML_H
+#define OAK_HTMLAPP_H
 
 #include <QTextDocument>
 #include <QTextFragment>

@@ -22,6 +22,7 @@
 #include "timeformat.h"
 
 #include <QDateTime>
+#include <QTimeZone>
 
 namespace olive
 {
@@ -75,7 +76,8 @@ void TimeFormatNode::value(const NodeValueRow &value,
 	qint64 ms_since_epoch = value[k_time_input].to_double() * 1000;
 	bool time_is_local = value[k_local_time_input].to_bool();
 	QDateTime dt = QDateTime::fromMSecsSinceEpoch(
-		ms_since_epoch, time_is_local ? Qt::LocalTime : Qt::UTC);
+		ms_since_epoch,
+		time_is_local ? QTimeZone::systemTimeZone() : QTimeZone::utc());
 	QString format = value[k_format_input].to_string();
 	QString output = dt.toString(format);
 	table->push(NodeValue(NodeValue::k_text, output, this));

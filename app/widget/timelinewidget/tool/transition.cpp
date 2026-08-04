@@ -198,7 +198,7 @@ void TransitionTool::mouse_release(TimelineViewMouseEvent *event)
 					oakengine_node_connect_command(
 						reinterpret_cast<OakEngineNode *>(out_block),
 						transition,
-						QLatin1String(oakengine_transition_out_block_input_id()).toUtf8().constData(),
+						oakengine_transition_out_block_input_id(),
 						-1));
 
 				oakengine_undo_command_multi_add_child(
@@ -206,7 +206,7 @@ void TransitionTool::mouse_release(TimelineViewMouseEvent *event)
 					oakengine_node_connect_command(
 						reinterpret_cast<OakEngineNode *>(in_block),
 						transition,
-						QLatin1String(oakengine_transition_in_block_input_id()).toUtf8().constData(),
+						oakengine_transition_in_block_input_id(),
 						-1));
 
 				oakengine_undo_command_multi_add_child(command, oakengine_node_set_position_command(reinterpret_cast<void *>(out_block), reinterpret_cast<void *>(transition), -1, -0.5, 0));

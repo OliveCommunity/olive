@@ -55,6 +55,13 @@ add_library(oakengine-obj OBJECT
 
 add_library(oakengine SHARED $<TARGET_OBJECTS:oakengine-obj>)
 
+if (WIN32)
+  # Windows DLLs cannot have undefined symbols; embed the version objects
+  # here too (each module keeps its own copy, unlike ELF where the final
+  # executable provides the definition).
+  target_sources(oakengine PRIVATE $<TARGET_OBJECTS:olive-version-obj>)
+endif ()
+
 if (COMMAND oak_copy_otio_runtime)
   oak_copy_otio_runtime(oakengine)
 endif()
@@ -107,6 +114,9 @@ target_include_directories(oakengine
 target_link_libraries(oakengine PUBLIC ${OLIVE_LIBRARIES} OfxHost)
 # OAKENGINE_BUILD marks the library side of the C ABI export macros (dllexport)
 target_compile_definitions(oakengine-obj PRIVATE ${OLIVE_DEFINITIONS} OAKENGINE_BUILD)
+# Consumers that link the object library directly (app, tests, Windows oakgl)
+# must see plain C declarations, not __declspec(dllimport) ones.
+target_compile_definitions(oakengine-obj INTERFACE OAKENGINE_STATIC)
 target_compile_options(oakengine-obj PRIVATE ${OLIVE_COMPILE_OPTIONS})
 
 # Version script: only oakengine_* + render-backend plugin ABI are exported;
@@ -158,12 +168,25 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
         endif ()
     endforeach ()
 
-    add_library(oakgl SHARED
-            render/opengl/openglbackend_c.cpp
-            render/opengl/openglrenderer.cpp
-            render/opengl/openglrenderer.h
-    )
-    target_link_libraries(oakgl PRIVATE oakengine)
+    if (WIN32)
+        # Engine-internal C++ symbols are not exported from liboakengine.dll,
+        # so embed the object library like the engine tests do. oakengine-obj
+        # already contains openglrenderer.cpp and its moc output, so on
+        # Windows the plugin only needs the C entry point (duplicating the
+        # sources would cause duplicate definitions at link time). MinGW
+        # compares type_info by name, so cross-DLL RTTI still works.
+        add_library(oakgl SHARED render/opengl/openglbackend_c.cpp)
+        set_target_properties(oakgl PROPERTIES AUTOMOC OFF)
+        target_link_libraries(oakgl PRIVATE oakengine-obj
+                $<TARGET_OBJECTS:olive-version-obj>)
+    else ()
+        add_library(oakgl SHARED
+                render/opengl/openglbackend_c.cpp
+                render/opengl/openglrenderer.cpp
+                render/opengl/openglrenderer.h
+        )
+        target_link_libraries(oakgl PRIVATE oakengine)
+    endif ()
     if (COMMAND oak_copy_otio_runtime)
         oak_copy_otio_runtime(oakgl)
     endif()
@@ -185,12 +208,27 @@ if (OAK_ENABLE_DYNAMIC_RENDER_BACKEND)
     )
 
     if (Vulkan_FOUND)
-        add_library(oakvulkan SHARED
-                render/vulkan/vulkanbackend_c.cpp
-                render/vulkan/vulkanrenderer.cpp
-                render/vulkan/vulkanrenderer.h
-        )
-        target_link_libraries(oakvulkan PRIVATE oakengine)
+        if (WIN32)
+            # Engine-internal C++ symbols are not exported from
+            # liboakengine.dll; link the object library like the engine tests
+            # (plus version obj for k_app_version). Unlike openglrenderer.cpp,
+            # vulkanrenderer.cpp is NOT part of oakengine-obj, so the plugin
+            # must compile it itself.
+            add_library(oakvulkan SHARED
+                    render/vulkan/vulkanbackend_c.cpp
+                    render/vulkan/vulkanrenderer.cpp
+                    render/vulkan/vulkanrenderer.h
+            )
+            target_link_libraries(oakvulkan PRIVATE oakengine-obj
+                    $<TARGET_OBJECTS:olive-version-obj>)
+        else ()
+            add_library(oakvulkan SHARED
+                    render/vulkan/vulkanbackend_c.cpp
+                    render/vulkan/vulkanrenderer.cpp
+                    render/vulkan/vulkanrenderer.h
+            )
+            target_link_libraries(oakvulkan PRIVATE oakengine)
+        endif ()
         if (COMMAND oak_copy_otio_runtime)
             oak_copy_otio_runtime(oakvulkan)
         endif()
@@ -288,6 +326,12 @@ if (BUILD_TESTS)
         # engine objects (Renderer base class, etc.).
         if (UNIX AND NOT APPLE)
             target_link_options(${name} PRIVATE "LINKER:--export-dynamic")
+        endif ()
+        if (WIN32)
+            # The test embeds oakengine-obj; its OAKENGINE_API references must
+            # match the library side (dllexport), otherwise MinGW looks for
+            # __imp_* import stubs that only a real DLL import lib provides.
+            target_compile_definitions(${name} PRIVATE OAKENGINE_BUILD)
         endif ()
         # Freshly linked binaries can exceed the 5s default discovery
         # timeout on first run (dyld cold cache + Qt/OCIO init)

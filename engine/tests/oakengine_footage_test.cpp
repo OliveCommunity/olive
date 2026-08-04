@@ -49,12 +49,27 @@
 
 static char g_tmpdir[4096];
 
+// The engine stores project filenames with native separators (backslashes on
+// Windows); normalize a returned path to forward slashes before comparing
+// against the paths these tests construct.
+static void to_forward_slashes(char *s)
+{
+	for (; *s; ++s) {
+		if (*s == '\\') {
+			*s = '/';
+		}
+	}
+}
+
 static void make_tmpdir(void)
 {
 #if defined(_WIN32)
 	char base[MAX_PATH];
 	const DWORD len = GetTempPathA(MAX_PATH, base);
 	EXPECT_TRUE(len > 0 && len < MAX_PATH);
+	// Resolve 8.3 short names (e.g. RUNNER~1) so string comparisons
+	// against engine-canonicalized paths hold.
+	GetLongPathNameA(base, base, MAX_PATH);
 	snprintf(g_tmpdir, sizeof(g_tmpdir), "%soakengine_footage_test_%lu", base,
 			 (unsigned long)GetCurrentProcessId());
 	EXPECT_TRUE(_mkdir(g_tmpdir) == 0);
@@ -607,9 +622,11 @@ static void test_project_extras(void)
 	// set_filename round-trips through the plain filename getter.
 	char target[4096];
 	snprintf(target, sizeof(target), "%s/roundtrip.ove", g_tmpdir);
+	to_forward_slashes(target);
 	EXPECT_TRUE(oakengine_project_set_filename(project, target) == OAKENGINE_OK);
 	EXPECT_TRUE(oakengine_project_filename(project, buf, sizeof(buf)) > 0);
-	EXPECT_TRUE(strcmp(buf, target) == 0);
+	to_forward_slashes(buf);
+	EXPECT_STREQ(buf, target);
 	EXPECT_TRUE(oakengine_project_set_filename(project, NULL) ==
 		   OAKENGINE_E_INVALID);
 	EXPECT_TRUE(oakengine_project_set_filename(NULL, target) ==

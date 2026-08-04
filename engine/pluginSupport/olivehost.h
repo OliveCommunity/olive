@@ -79,18 +79,18 @@ public:
 	makeDescriptor(const std::string &bundle_path,
 				   OFX::Host::ImageEffect::ImageEffectPlugin *plugin) override;
 	/// vmessage
-	virtual OfxStatus vmessage(const char *type, const char *id,
-							   const char *format, va_list args);
+	OfxStatus vmessage(const char *type, const char *id,
+					   const char *format, va_list args) override;
 
 	/// vmessage
-	virtual OfxStatus setPersistentMessage(const char *type, const char *id,
-										   const char *format, va_list args);
+	OfxStatus setPersistentMessage(const char *type, const char *id,
+								   const char *format, va_list args) override;
 	/// vmessage
-	virtual OfxStatus clearPersistentMessage();
+	OfxStatus clearPersistentMessage() override;
 
 #ifdef OFX_SUPPORTS_OPENGLRENDER
 	/// @see OfxImageEffectOpenGLRenderSuiteV1.flushResources()
-	virtual OfxStatus flushOpenGLResources() const
+	virtual OfxStatus flushOpenGLResources() const override
 	{
 		return kOfxStatFailed;
 	};

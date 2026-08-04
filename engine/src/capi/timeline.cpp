@@ -2390,7 +2390,9 @@ int oakengine_clip_set_media_in(OakEngineClip *self, int64_t media_in_ts,
 		set_seq_error(QStringLiteral("invalid clip handle"));
 		return OAKENGINE_E_INVALID;
 	}
+
 	olive::ClipBlock *clip = reinterpret_cast<olive::ClipBlock *>(self);
+
 	const olive::Sequence *sequence =
 		clip->track() ? clip->track()->sequence() : nullptr;
 	if (!sequence) {
@@ -2427,7 +2429,9 @@ int oakengine_clip_set_media_in_rational(OakEngineClip *self, int64_t num,
 		set_seq_error(QStringLiteral("invalid rational denominator"));
 		return OAKENGINE_E_INVALID;
 	}
+
 	olive::ClipBlock *clip = reinterpret_cast<olive::ClipBlock *>(self);
+
 	const olive::Rational time(static_cast<int>(num), static_cast<int>(den));
 	if (undoable) {
 		push_or_run(new olive::BlockSetMediaInCommand(clip, time),
@@ -2444,7 +2448,7 @@ void oakengine_clip_request_invalidate(OakEngineClip *self, int64_t in_ts,
 	if (!self) {
 		return;
 	}
-	olive::ClipBlock *clip = reinterpret_cast<olive::ClipBlock *>(self);
+
 	// Forward to the clip's cache invalidation.
 	Q_UNUSED(in_ts)
 	Q_UNUSED(out_ts)
@@ -2489,7 +2493,9 @@ void oakengine_clip_request_invalidate_connected(OakEngineClip *self,
 	if (!self) {
 		return;
 	}
+
 	olive::ClipBlock *clip = reinterpret_cast<olive::ClipBlock *>(self);
+
 	olive::TimeRange intersect;
 	if (in_den != 0 && out_den != 0) {
 		intersect = olive::TimeRange(

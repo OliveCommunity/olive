@@ -499,8 +499,8 @@ void SeekableWidget::deselect_all_markers()
 void SeekableWidget::set_marker_color(int c)
 {
 	QVector<OakEngineMarker *> oak_markers;
-	foreach (OakEngineMarker *marker,
-			 selection_manager_.get_selected_objects()) {
+	for (OakEngineMarker *marker :
+		 selection_manager_.get_selected_objects()) {
 		oak_markers.append(marker);
 	}
 	oakengine_marker_set_properties(

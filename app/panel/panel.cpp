@@ -49,8 +49,7 @@ PanelWidget::PanelWidget(const QString &object_name)
 
 	View<QWidget>::setFocusPolicy(Qt::ClickFocus);
 
-	connect(this, &PanelWidget::shown, this,
-			reinterpret_cast<void (PanelWidget::*)()>(&PanelWidget::setFocus));
+	connect(this, &PanelWidget::shown, this, [this]() { QWidget::setFocus(); });
 
 	PanelManager::instance()->register_panel(this);
 }

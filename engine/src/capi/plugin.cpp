@@ -61,13 +61,13 @@ int oakengine_plugin_set_progress_reporter_factory(
     oakengine_plugin_reporter_create_fn create,
     oakengine_plugin_reporter_destroy_fn destroy,
     oakengine_plugin_reporter_is_cancelled_fn is_cancelled,
-    oakengine_plugin_reporter_set_progress_fn set_progress,
+    oakengine_plugin_reporter_set_progress_fn set_progress_fn,
     void *userdata)
 {
     g_reporter_create = create;
     g_reporter_destroy = destroy;
     g_reporter_is_cancelled = is_cancelled;
-    g_reporter_set_progress = set_progress;
+    g_reporter_set_progress = set_progress_fn;
     g_reporter_userdata = userdata;
 
     // Register factory with the engine.
@@ -90,12 +90,12 @@ int oakengine_plugin_set_progress_reporter_factory(
                 CAdapter(void *reporter,
                          oakengine_plugin_reporter_destroy_fn destroy,
                          oakengine_plugin_reporter_is_cancelled_fn is_cancelled,
-                         oakengine_plugin_reporter_set_progress_fn set_progress,
+                         oakengine_plugin_reporter_set_progress_fn set_progress_fn,
                          void *userdata)
                     : PluginProgressReporter()
                     , reporter_(reporter)
                     , destroy_(destroy)
-                    , set_progress_(set_progress)
+                    , set_progress_(set_progress_fn)
                     , userdata_(userdata) {}
                 ~CAdapter() override
                 {

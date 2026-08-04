@@ -43,9 +43,9 @@ NodeParamViewArrayWidget::NodeParamViewArrayWidget(oak::Node node,
 	bridge_->subscribe(reinterpret_cast<void *>(node_.handle()),
 					   OAKENGINE_EVENT_NODE_INPUT_ARRAY_SIZE_CHANGED);
 	connect(bridge_, &EngineEventBridge::node_input_array_size_changed, this,
-			[this](OakEngineNode *, const QString &input, int old_size,
+			[this](OakEngineNode *, const QString &input_id, int old_size,
 				   int new_size) {
-				update_counter(input, old_size, new_size);
+				update_counter(input_id, old_size, new_size);
 			});
 
 	update_counter(input_, 0, oak::Input(node_.handle(), input_).array_size());
@@ -58,11 +58,11 @@ void NodeParamViewArrayWidget::mouseDoubleClickEvent(QMouseEvent *event)
 	emit double_clicked();
 }
 
-void NodeParamViewArrayWidget::update_counter(const QString &input, int old_size,
+void NodeParamViewArrayWidget::update_counter(const QString &changed_input, int old_size,
 											 int new_size)
 {
 	Q_UNUSED(old_size)
-	if (input == input_) {
+	if (changed_input == input_) {
 		count_lbl_->setText(tr("%n element(s)", nullptr, new_size));
 	}
 }
