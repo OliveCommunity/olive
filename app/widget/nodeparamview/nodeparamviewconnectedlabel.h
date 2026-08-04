@@ -72,7 +72,7 @@ private:
 
 	EngineEventBridge *bridge_ = nullptr;
 
-	int64_t viewer_sub_ = 0;
+	QMetaObject::Connection viewer_conn_;
 
 private slots:
 	void set_value_tree_visible(bool e);

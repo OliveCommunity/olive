@@ -28,6 +28,7 @@
 #include "oakengine/events.h"
 #include "oakengine/undo.h"
 #include "oakengine/viewer.h"
+#include "playback/playbackcontroller.h"
 #include "oakengine/node.h"
 #include "ui/icons/icons.h"
 
@@ -159,13 +160,9 @@ NodeParamViewKeyframeControl::NodeParamViewKeyframeControl(bool right_align,
 
 NodeParamViewKeyframeControl::~NodeParamViewKeyframeControl()
 {
-	// Raw C-API subscription carries `this` as userdata; it is not covered
-	// by Qt's auto-disconnect. Without this, a playhead event delivered
-	// after destruction calls update_state() on a dead object.
-	if (viewer_sub_ > 0) {
-		oakengine_event_unsubscribe(viewer_sub_);
-		viewer_sub_ = 0;
-	}
+	// Qt auto-disconnect covers the PlaybackController connection; make it
+	// explicit for symmetry with TimeTargetDisconnectEvent.
+	disconnect(viewer_conn_);
 	// Drop the keyframe_* bridge subscriptions too (same raw-userdata
 	// mechanism underneath).
 	set_input(oak::Input());
@@ -211,22 +208,18 @@ void NodeParamViewKeyframeControl::set_input(const oak::Input &input)
 
 void NodeParamViewKeyframeControl::TimeTargetDisconnectEvent(OakEngineNode *v)
 {
-	if (viewer_sub_ > 0) {
-		oakengine_event_unsubscribe(viewer_sub_);
-		viewer_sub_ = 0;
-	}
+	disconnect(viewer_conn_);
 }
 
 void NodeParamViewKeyframeControl::TimeTargetConnectEvent(OakEngineNode *v)
 {
-	viewer_sub_ = oakengine_event_subscribe(
-		v,
-		OAKENGINE_EVENT_VIEWER_PLAYHEAD_CHANGED,
-		[](const oakengine_event *, void *userdata) {
-			static_cast<NodeParamViewKeyframeControl *>(userdata)
-				->update_state();
-		},
-		this);
+	viewer_conn_ = connect(
+		PlaybackController::instance(), &PlaybackController::playhead_changed,
+		this, [this, v](OakEngineNode *n, const core::Rational &) {
+			if (n == v) {
+				update_state();
+			}
+		});
 	update_state();
 }
 
@@ -391,7 +384,7 @@ void NodeParamViewKeyframeControl::go_to_previous_key()
 							  &previous_time) &&
 		get_time_target()) {
 		Rational key_time = convert_to_viewer_time(previous_time);
-		oakengine_viewer_set_playhead(
+		PlaybackController::instance()->set_playhead(
 			reinterpret_cast<OakEngineNode *>(get_time_target()),
 			key_time.numerator(), key_time.denominator());
 	}
@@ -408,7 +401,7 @@ void NodeParamViewKeyframeControl::go_to_next_key()
 							  &next_time) &&
 		get_time_target()) {
 		Rational key_time = convert_to_viewer_time(next_time);
-		oakengine_viewer_set_playhead(
+		PlaybackController::instance()->set_playhead(
 			reinterpret_cast<OakEngineNode *>(get_time_target()),
 			key_time.numerator(), key_time.denominator());
 	}

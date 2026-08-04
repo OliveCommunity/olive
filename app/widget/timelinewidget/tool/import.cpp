@@ -36,6 +36,7 @@
 #include "oakengine/timeline.h"
 #include "oakengine/undo.h"
 #include "oakengine/viewer.h"
+#include "playback/playbackcontroller.h"
 #include "oakengine/project.h"
 #include "widget/timelinewidget/cliphandle.h"
 #include "window/mainwindow/mainwindow.h"
@@ -252,7 +253,7 @@ void ImportTool::place_at(const DraggedFootageData &footage,
 	drop_ghosts(insert, command);
 
 	if (jump_to_end) {
-		oakengine_viewer_set_playhead(
+		PlaybackController::instance()->set_playhead(
 			reinterpret_cast<OakEngineNode *>(this->sequence()),
 			max.numerator(), max.denominator());
 	}

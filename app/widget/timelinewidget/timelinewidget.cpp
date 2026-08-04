@@ -56,6 +56,7 @@
 #include "oakengine/proxy.h"
 #include "oakengine/timeline.h"
 #include "oakengine/viewer.h"
+#include "playback/playbackcontroller.h"
 #include "common/configwrapper.h"
 #include "tool/add.h"
 #include "tool/beam.h"
@@ -555,7 +556,7 @@ TimelineWidget::TimelineWidget(QWidget *parent)
 				start = std::min(start, block_in(b));
 			}
 			if (start != RATIONAL_MAX) {
-				oakengine_viewer_set_playhead(
+				PlaybackController::instance()->set_playhead(
 					reinterpret_cast<OakEngineNode *>(get_connected_node()),
 					start.numerator(), start.denominator());
 			}
@@ -758,7 +759,7 @@ void TimelineWidget::ConnectNodeEvent(OakEngineNode *n)
 
 	connect(timecode_label_, &RationalSlider::value_changed, this,
 			[handle](const Rational &time) {
-				oakengine_viewer_set_playhead(
+				PlaybackController::instance()->set_playhead(
 					handle, time.numerator(), time.denominator());
 			});
 	{
@@ -1076,7 +1077,7 @@ void TimelineWidget::DeleteSelected(bool ripple)
 	clear_ghosts();
 
 	if (ripple && rippled && new_playhead != RATIONAL_MAX) {
-		oakengine_viewer_set_playhead(
+		PlaybackController::instance()->set_playhead(
 			reinterpret_cast<OakEngineNode *>(get_connected_node()),
 			new_playhead.numerator(), new_playhead.denominator());
 	}
@@ -1308,7 +1309,7 @@ void TimelineWidget::delete_in_to_out(bool ripple)
 
 	// Playhead move is not undoable and stays here (same as before).
 	if (ripple) {
-		oakengine_viewer_set_playhead(
+		PlaybackController::instance()->set_playhead(
 			reinterpret_cast<OakEngineNode *>(get_connected_node()),
 			wa_in.numerator(), wa_in.denominator());
 	}
@@ -3196,14 +3197,14 @@ void TimelineWidget::ripple_to(TimelineApp::MovementMode mode)
 
 	// If we rippled, ump to where new cut is if applicable
 	if (mode == TimelineApp::k_trim_in) {
-		oakengine_viewer_set_playhead(
+		PlaybackController::instance()->set_playhead(
 			reinterpret_cast<OakEngineNode *>(get_connected_node()),
 			closest_point_to_playhead.numerator(),
 			closest_point_to_playhead.denominator());
 	} else if (mode == TimelineApp::k_trim_out &&
 			   closest_point_to_playhead ==
 				   viewer_playhead(reinterpret_cast<OakEngineNode *>(get_connected_node()))) {
-		oakengine_viewer_set_playhead(
+		PlaybackController::instance()->set_playhead(
 			reinterpret_cast<OakEngineNode *>(get_connected_node()),
 			playhead_time.numerator(), playhead_time.denominator());
 	}

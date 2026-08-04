@@ -47,6 +47,7 @@
 #include "oakengine/encoding.h"
 #include "oakengine/timeline.h"
 #include "oakengine/viewer.h"
+#include "playback/playbackcontroller.h"
 #include "ui/icons/icons.h"
 #include "widget/timeruler/timeruler.h"
 #include "common/configwrapper.h"
@@ -319,7 +320,7 @@ ExportDialog::ExportDialog(OakEngineNode *viewer_node, bool stills_only_mode,
 		this);
 	connect(video_tab_, &ExportVideoTab::time_changed, this,
 			[viewer_node](const Rational &time) {
-				oakengine_viewer_set_playhead(
+				PlaybackController::instance()->set_playhead(
 					viewer_node,
 					time.numerator(), time.denominator());
 			});

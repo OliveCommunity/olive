@@ -67,7 +67,7 @@ events; C callbacks just queue to the GUI thread and re-emit typed Qt signals.
   must use it instead of their own subscriptions.
 - **必做 / Required：build + ctest 全绿。**
 
-### issue 0c — 建 app 内 PlaybackController（1 天）
+### issue 0c ✅ (done) — 建 app 内 PlaybackController（1 天）
 新建 `app/playback/playbackcontroller.{h,cpp}`，信号
 `playhead_changed(oak::Node viewer, Rational)`。
 把 app 内所有 `oakengine_viewer_set_playhead` 调用点（ViewerWidget 播放循环、
@@ -83,23 +83,23 @@ goes through; it re-broadcasts `playhead_changed` as an app-internal Qt signal.
 
 ## playhead 族迁移 / Playhead migrations（模式 A，约半天/个）
 
-### issue 1 — timebasedview 的 playhead 订阅
+### issue 1 ✅ (done) — timebasedview 的 playhead 订阅
 `app/widget/timebased/timebasedview.cpp:168`（裸 C 回调）。改连
 PlaybackController::playhead_changed。
 - 验收 / Acceptance：播放时 ruler 播放头线正常移动；无裸 C 订阅残留。
 - **必做 / Required：build + ctest 全绿。**
 
-### issue 2 — NodeParamViewWidgetBridge playhead
+### issue 2 ✅ (done) — NodeParamViewWidgetBridge playhead
 `app/widget/nodeparamview/nodeparamviewwidgetbridge.cpp:1140`（裸 C）。
 - 验收 / Acceptance：播放时关键帧插值滑条值随播放头更新。
 - **必做 / Required：build + ctest 全绿。**
 
-### issue 3 — NodeParamViewKeyframeControl playhead
+### issue 3 ✅ (done) — NodeParamViewKeyframeControl playhead
 `app/widget/nodeparamview/nodeparamviewkeyframecontrol.cpp:222`（裸 C）。
 - 验收 / Acceptance：播放头移动时 prev/next/toggle 关键帧按钮状态正确。
 - **必做 / Required：build + ctest 全绿。**
 
-### issue 4 — NodeParamViewConnectedLabel playhead
+### issue 4 ✅ (done) — NodeParamViewConnectedLabel playhead
 `app/widget/nodeparamview/nodeparamviewconnectedlabel.cpp:131`（裸 C）。
 - 验收 / Acceptance：值树随播放头刷新。
 - **必做 / Required：build + ctest 全绿。**

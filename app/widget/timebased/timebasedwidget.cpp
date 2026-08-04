@@ -34,6 +34,7 @@
 #include "oakengine/node.h"
 #include "oakengine/timeline.h"
 #include "oakengine/viewer.h"
+#include "playback/playbackcontroller.h"
 #include "oakengine/timeline.h"
 #include "oakengine/undo.h"
 #include "widget/keyframeview/keyframehandle.h"
@@ -552,7 +553,7 @@ void TimeBasedWidget::go_to_prev_cut()
 		}
 	}
 
-	oakengine_viewer_set_playhead(sequence_node,
+	PlaybackController::instance()->set_playhead(sequence_node,
 		closest_cut.numerator(), closest_cut.denominator());
 }
 
@@ -619,7 +620,7 @@ void TimeBasedWidget::go_to_next_cut()
 	}
 
 	if (closest_cut < RATIONAL_MAX) {
-		oakengine_viewer_set_playhead(sequence_node,
+		PlaybackController::instance()->set_playhead(sequence_node,
 		closest_cut.numerator(), closest_cut.denominator());
 	}
 }
@@ -627,7 +628,7 @@ void TimeBasedWidget::go_to_next_cut()
 void TimeBasedWidget::go_to_start()
 {
 	if (viewer_node_) {
-		oakengine_viewer_set_playhead(get_connected_node(), 0, 1);
+		PlaybackController::instance()->set_playhead(get_connected_node(), 0, 1);
 	}
 }
 
@@ -643,7 +644,7 @@ void TimeBasedWidget::prev_frame()
 		}
 		{
 			Rational _pt = qMax(Rational(0), proposed_time);
-			oakengine_viewer_set_playhead(get_connected_node(),
+			PlaybackController::instance()->set_playhead(get_connected_node(),
 				_pt.numerator(), _pt.denominator());
 		}
 	}
@@ -659,7 +660,7 @@ void TimeBasedWidget::next_frame()
 			// Catch rounding error, assume this time is snapped and just add a timebase
 			proposed_time += timebase();
 		}
-		oakengine_viewer_set_playhead(get_connected_node(),
+		PlaybackController::instance()->set_playhead(get_connected_node(),
 			proposed_time.numerator(), proposed_time.denominator());
 	}
 }
@@ -668,7 +669,7 @@ void TimeBasedWidget::go_to_end()
 {
 	if (viewer_node_) {
 		const Rational length = viewer_output_length(viewer_node_.data());
-		oakengine_viewer_set_playhead(get_connected_node(),
+		PlaybackController::instance()->set_playhead(get_connected_node(),
 			length.numerator(), length.denominator());
 	}
 }
@@ -1006,7 +1007,7 @@ void TimeBasedWidget::go_to_in()
 		oakengine_viewer_workarea wa;
 		oakengine_viewer_get_workarea(get_connected_node(), &wa);
 		if (wa.enabled) {
-			oakengine_viewer_set_playhead(get_connected_node(),
+			PlaybackController::instance()->set_playhead(get_connected_node(),
 				wa.in_num, wa.in_den);
 		} else {
 			go_to_start();
@@ -1020,7 +1021,7 @@ void TimeBasedWidget::go_to_out()
 		oakengine_viewer_workarea wa;
 		oakengine_viewer_get_workarea(get_connected_node(), &wa);
 		if (wa.enabled) {
-			oakengine_viewer_set_playhead(get_connected_node(),
+			PlaybackController::instance()->set_playhead(get_connected_node(),
 				wa.out_num, wa.out_den);
 		} else {
 			go_to_end();

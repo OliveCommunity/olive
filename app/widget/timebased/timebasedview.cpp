@@ -21,6 +21,8 @@
 
 #include "timebasedview.h"
 
+#include "playback/playbackcontroller.h"
+
 #include <QGraphicsRectItem>
 #include <QMouseEvent>
 #include <QScrollBar>
@@ -157,21 +159,19 @@ void TimeBasedView::set_y_scale(const double &y_scale)
 
 void TimeBasedView::set_viewer_node(OakEngineNode *v)
 {
-	if (viewer_) {
-		oakengine_event_unsubscribe(viewer_sub_);
-		viewer_sub_ = 0;
-	}
+	disconnect(viewer_conn_);
 
 	viewer_ = v;
 
 	if (viewer_) {
-		viewer_sub_ = oakengine_event_subscribe(
-			viewer_,
-			OAKENGINE_EVENT_VIEWER_PLAYHEAD_CHANGED,
-			[](const oakengine_event *, void *userdata) {
-				static_cast<TimeBasedView *>(userdata)->viewport()->update();
-			},
-			this);
+		viewer_conn_ = connect(
+			PlaybackController::instance(),
+			&PlaybackController::playhead_changed, this,
+			[this](OakEngineNode *n, const core::Rational &) {
+				if (n == viewer_) {
+					viewport()->update();
+				}
+			});
 	}
 }
 
