@@ -21,7 +21,7 @@
 
 #include "historywidget.h"
 
-#include "oakengine/events.h"
+#include "core.h"
 #include "oakengine/undo.h"
 
 namespace olive
@@ -30,22 +30,13 @@ namespace olive
 HistoryModel::HistoryModel(QObject *parent)
 	: QAbstractItemModel(parent)
 {
-	sub_ = oakengine_event_subscribe(
-		oakengine_undo_handle(), OAKENGINE_EVENT_UNDO_INDEX_CHANGED,
-		[](const oakengine_event *event, void *userdata) {
-			Q_UNUSED(event)
-			auto *self = static_cast<HistoryModel *>(userdata);
-			self->beginResetModel();
-			self->endResetModel();
-		},
-		this);
-}
-
-HistoryModel::~HistoryModel()
-{
-	if (sub_ > 0) {
-		oakengine_event_unsubscribe(sub_);
-	}
+	// Refresh on Core's app-internal undo signal (issue 7 of the EventBridge
+	// elimination plan) instead of a raw C event subscription; the connection
+	// auto-disconnects with `this`.
+	connect(Core::instance(), &Core::undo_index_changed, this, [this](int) {
+		beginResetModel();
+		endResetModel();
+	});
 }
 
 QModelIndex HistoryModel::index(int row, int column,
@@ -124,24 +115,10 @@ HistoryWidget::HistoryWidget(QWidget *parent)
 
 	this->setModel(model_);
 	this->setRootIsDecorated(false);
-	undo_sub_ = oakengine_event_subscribe(
-		oakengine_undo_handle(), OAKENGINE_EVENT_UNDO_INDEX_CHANGED,
-		[](const oakengine_event *event, void *userdata) {
-			auto *self = static_cast<HistoryWidget *>(userdata);
-			self->index_changed(static_cast<int>(event->a));
-		},
-		this);
+	connect(Core::instance(), &Core::undo_index_changed, this,
+			&HistoryWidget::index_changed);
 	connect(this->selectionModel(), &QItemSelectionModel::currentRowChanged,
 			this, &HistoryWidget::current_row_changed);
-}
-
-HistoryWidget::~HistoryWidget()
-{
-	// Raw subscription carries `this` as userdata; cancel it or the engine
-	// calls back into a dead widget (the undo stack outlives us).
-	if (undo_sub_ > 0) {
-		oakengine_event_unsubscribe(undo_sub_);
-	}
 }
 
 void HistoryWidget::index_changed(int i)

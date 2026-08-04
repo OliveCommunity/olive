@@ -308,16 +308,17 @@ ExportDialog::ExportDialog(OakEngineNode *viewer_node, bool stills_only_mode,
 	video_tab_ = new ExportVideoTab(color_manager_);
 	add_preferences_tab(video_tab_, tr("Video"));
 
-	// Set video tab time and make connections
-	viewer_sub_ = oakengine_event_subscribe(
-		viewer_node,
-		OAKENGINE_EVENT_VIEWER_PLAYHEAD_CHANGED,
-		[](const oakengine_event *event, void *userdata) {
-			auto *dlg = static_cast<ExportDialog *>(userdata);
-			auto *tab = dlg->video_tab_;
-			tab->set_time(Rational(event->a, event->b));
-		},
-		this);
+	// Set video tab time and make connections. The dialog follows the
+	// playhead through PlaybackController instead of a raw C event
+	// subscription (issue 5 of the EventBridge elimination plan); the
+	// connection auto-disconnects with `this`.
+	connect(PlaybackController::instance(),
+			&PlaybackController::playhead_changed, this,
+			[this](OakEngineNode *n, const Rational &time) {
+				if (n == viewer_node_) {
+					video_tab_->set_time(time);
+				}
+			});
 	connect(video_tab_, &ExportVideoTab::time_changed, this,
 			[viewer_node](const Rational &time) {
 				PlaybackController::instance()->set_playhead(
@@ -461,16 +462,6 @@ ExportDialog::ExportDialog(OakEngineNode *viewer_node, bool stills_only_mode,
 	connect(subtitles_enabled_, &QCheckBox::toggled, subtitle_tab_,
 			&QWidget::setEnabled);
 	subtitle_tab_->setEnabled(subtitles_enabled_->isChecked());
-}
-
-ExportDialog::~ExportDialog()
-{
-	// Raw C-API subscription carries `this` as userdata; not covered by
-	// Qt's auto-disconnect.
-	if (viewer_sub_ > 0) {
-		oakengine_event_unsubscribe(viewer_sub_);
-		viewer_sub_ = 0;
-	}
 }
 
 Rational ExportDialog::get_selected_timebase() const

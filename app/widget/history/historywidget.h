@@ -36,13 +36,12 @@ namespace olive
  * Replaces the direct use of the engine's UndoStack as a Qt item model.
  * Semantics mirror engine/undo/undostack.cpp: two columns (Number, Action),
  * rows are all commands on the stack (done first, then undone), undone rows
- * are shown gray. Refreshes itself on OAKENGINE_EVENT_UNDO_INDEX_CHANGED.
+ * are shown gray. Refreshes itself on Core::undo_index_changed.
  */
 class HistoryModel : public QAbstractItemModel {
 	Q_OBJECT
 public:
 	explicit HistoryModel(QObject *parent = nullptr);
-	~HistoryModel() override;
 
 	QModelIndex index(int row, int column,
 					  const QModelIndex &parent = QModelIndex()) const override;
@@ -53,21 +52,15 @@ public:
 				  int role = Qt::DisplayRole) const override;
 	QVariant headerData(int section, Qt::Orientation orientation,
 						int role = Qt::DisplayRole) const override;
-
-private:
-	int64_t sub_ = 0;
 };
 
 class HistoryWidget : public QTreeView {
 	Q_OBJECT
 public:
 	HistoryWidget(QWidget *parent = nullptr);
-	~HistoryWidget() override;
 
 private:
 	HistoryModel *model_;
-
-	int64_t undo_sub_ = 0;
 
 	size_t current_row_;
 

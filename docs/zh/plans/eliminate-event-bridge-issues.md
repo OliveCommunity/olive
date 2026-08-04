@@ -104,12 +104,12 @@ PlaybackController::playhead_changed。
 - 验收 / Acceptance：值树随播放头刷新。
 - **必做 / Required：build + ctest 全绿。**
 
-### issue 5 — ExportDialog playhead
+### issue 5 ✅ (done) — ExportDialog playhead
 `app/dialog/export/export.cpp:311`（裸 C）。
 - 验收 / Acceptance：导出对话框 in/out 时间随播放头同步。
 - **必做 / Required：build + ctest 全绿。**
 
-### issue 6 — timelinewidget / viewerdisplay 的 playhead 族（bridge 订阅）
+### issue 6 ✅ (done) — timelinewidget / viewerdisplay 的 playhead 族（bridge 订阅）
 `app/widget/timelinewidget/timelinewidget.cpp`（:741-743 一带）与 viewerdisplay
 的相关订阅。改连 PlaybackController。
 - 验收 / Acceptance：时间线时间码/播放头位置显示正确。
@@ -119,14 +119,14 @@ PlaybackController::playhead_changed。
 
 ## undo/modified 族迁移 / Undo & modified migrations（模式 A，约半天/个）
 
-### issue 7 — historywidget 的 UNDO_INDEX_CHANGED
+### issue 7 ✅ (done) — historywidget 的 UNDO_INDEX_CHANGED
 `app/widget/history/historywidget.cpp:33,127`（裸 C 两处）。
 在 Core 的 undo/redo/push 出口 emit app 内 `undo_index_changed(int)`，
 historywidget 改连它。
 - 验收 / Acceptance：undo/redo 后历史列表 model reset 且选中行正确。
 - **必做 / Required：build + ctest 全绿。**
 
-### issue 8 — core.cpp 的 PROJECT_MODIFIED_CHANGED
+### issue 8 ✅ (done) — core.cpp 的 PROJECT_MODIFIED_CHANGED
 `app/core.cpp:1108`（裸 C）。modified 由 undo 栈驱动，app 在
 push/undo/redo/load 处即可推导；改为 app 内信号驱动 `setWindowModified`。
 - 验收 / Acceptance：编辑/撤销/保存后标题栏修改标记正确。

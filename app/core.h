@@ -288,6 +288,23 @@ signals:
 	void color_picker_enabled(bool e);
 	void color_picker_color_emitted(const Color &reference, const Color &display);
 
+	/**
+	 * @brief App-internal re-broadcast of the engine undo-stack index change
+	 * (issue 7 of the EventBridge elimination plan). Widgets connect to this
+	 * instead of raw oakengine_event_subscribe callbacks on
+	 * OAKENGINE_EVENT_UNDO_INDEX_CHANGED. The argument is the new stack index.
+	 */
+	void undo_index_changed(int index);
+
+	/**
+	 * @brief App-internal re-broadcast of the active project's modified-flag
+	 * change (issue 8 of the EventBridge elimination plan). The main window
+	 * drives setWindowModified from this instead of a raw
+	 * oakengine_event_subscribe callback on
+	 * OAKENGINE_EVENT_PROJECT_MODIFIED_CHANGED.
+	 */
+	void project_modified_changed(bool modified);
+
 private:
 	/**
 	 * @brief Get the file filter than can be used with QFileDialog to open and save compatible projects

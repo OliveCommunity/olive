@@ -24,6 +24,7 @@
 #include "render/rendermanager.h"
 #include "oakengine/app.h"
 #include "oakengine/undo.h"
+#include "playback/playbackcontroller.h"
 #include "task/task.h"
 #include "undo/undostack.h"
 #include "widget/colorbutton/colorbutton.h"
@@ -744,7 +745,10 @@ TEST_F(MulticamWidgetTest, FutureSwitchWaitsForPlayheadToAdvance)
 	widget.set_multicam_node(reinterpret_cast<OakEngineNode *>(viewer_b), reinterpret_cast<OakEngineNode *>(node), reinterpret_cast<OakEngineBlock *>(clip), Rational(5));
 	EXPECT_EQ(widget.get_connected_node(), reinterpret_cast<OakEngineNode *>(viewer_a));
 
-	// Once playback time advances, the queued switch takes effect
-	viewer_a->set_playhead(Rational(1));
+	// Once playback time advances, the queued switch takes effect. The app
+	// drives the playhead through PlaybackController, which is what
+	// TimeBasedWidget now listens to (EventBridge elimination, issue 6).
+	PlaybackController::instance()->set_playhead(
+		reinterpret_cast<OakEngineNode *>(viewer_a), Rational(1));
 	EXPECT_EQ(widget.get_connected_node(), reinterpret_cast<OakEngineNode *>(viewer_b));
 }

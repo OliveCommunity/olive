@@ -102,6 +102,18 @@ Core::Core(const OakEngineAppParams *params)
 		oakengine_app_create(&default_params);
 	}
 
+	// Re-broadcast undo-stack index changes as the app-internal Qt signal
+	// undo_index_changed (issue 7 of the EventBridge elimination plan), so
+	// widgets no longer need raw oakengine_event_subscribe callbacks. Core is
+	// a process-lifetime singleton, so the subscription is never unsubscribed.
+	oakengine_event_subscribe(
+		oakengine_undo_handle(), OAKENGINE_EVENT_UNDO_INDEX_CHANGED,
+		[](const oakengine_event *event, void *userdata) {
+			emit static_cast<Core *>(userdata)->undo_index_changed(
+				static_cast<int>(event->a));
+		},
+		this);
+
 	// Register the UI handlers that the engine uses to request user interaction
 	// through the C ABI callback struct instead of engine_core_->set_*_handler().
 	{
@@ -772,6 +784,11 @@ void Core::start_gui(bool full_screen)
 	// Create main window and open it
 	main_window_ = new MainWindow();
 
+	// The title-bar modified marker follows the app-internal signal
+	// (re-broadcast from the active project in on_active_project_changed).
+	connect(this, &Core::project_modified_changed, main_window_,
+			&QMainWindow::setWindowModified);
+
 	// Route engine notifications to the UI
 	connect(this, &Core::tool_changed, this, [](const Tool::Item &) {});
 	// Status-bar and lifecycle notifications are handled through the facade
@@ -1103,14 +1120,17 @@ void Core::on_active_project_changed(OakEngineProject *p)
 	main_window_->set_project(p);
 
 	if (p) {
-		// Keep the window's modified state in sync via event subscription
-		// (connection is removed automatically when the project is deleted).
+		// Re-broadcast the project's modified flag as the app-internal Qt
+		// signal project_modified_changed (issue 8 of the EventBridge
+		// elimination plan); the main window drives setWindowModified from
+		// it. The subscription is removed automatically when the project is
+		// deleted.
 		oakengine_event_subscribe(p, OAKENGINE_EVENT_PROJECT_MODIFIED_CHANGED,
 			[](const oakengine_event *event, void *userdata) {
-				QMainWindow *mw = static_cast<QMainWindow *>(userdata);
-				mw->setWindowModified(event->a != 0);
+				emit static_cast<Core *>(userdata)->project_modified_changed(
+					event->a != 0);
 			},
-			main_window_);
+			this);
 	}
 }
 

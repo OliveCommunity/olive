@@ -742,7 +742,6 @@ void TimelineWidget::ConnectNodeEvent(OakEngineNode *n)
 	// Subscribe to viewer events via bridge
 	bridge_->subscribe(handle, OAKENGINE_EVENT_VIEWER_FRAME_RATE_CHANGED);
 	bridge_->subscribe(handle, OAKENGINE_EVENT_VIEWER_SAMPLE_RATE_CHANGED);
-	bridge_->subscribe(handle, OAKENGINE_EVENT_VIEWER_PLAYHEAD_CHANGED);
 
 	connect(bridge_, &EngineEventBridge::viewer_frame_rate_changed, this,
 			[this](OakEngineNode *, qint64, qint64) {
@@ -752,10 +751,17 @@ void TimelineWidget::ConnectNodeEvent(OakEngineNode *n)
 			[this](OakEngineNode *, int) {
 				sample_rate_changed();
 			});
-	connect(bridge_, &EngineEventBridge::viewer_playhead_changed, this,
-			[this](OakEngineNode *, qint64 num, qint64 den) {
-				this->timecode_label_->set_value(Rational(num, den));
-			});
+
+	// Keep the timecode label in sync via PlaybackController (issue 6 of the
+	// EventBridge elimination plan) instead of the bridge's
+	// viewer_playhead_changed.
+	timecode_playhead_conn_ = connect(
+		PlaybackController::instance(), &PlaybackController::playhead_changed,
+		this, [this](OakEngineNode *n, const Rational &time) {
+			if (n == get_connected_node()) {
+				this->timecode_label_->set_value(time);
+			}
+		});
 
 	connect(timecode_label_, &RationalSlider::value_changed, this,
 			[handle](const Rational &time) {
@@ -805,6 +811,8 @@ void TimelineWidget::DisconnectNodeEvent(OakEngineNode *n)
 {
 	// Bridge subscriptions and connections are cleaned up by
 	// TimeBasedWidget::connect_viewer_node (disconnect(bridge_, nullptr, this, nullptr))
+
+	disconnect(timecode_playhead_conn_);
 
 	deselect_all();
 
