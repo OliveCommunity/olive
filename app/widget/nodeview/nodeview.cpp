@@ -19,6 +19,7 @@
 
 ***/
 
+#include <utility>
 #include "nodeview.h"
 
 #include <QInputDialog>
@@ -75,8 +76,8 @@ NodeView::NodeView(QWidget *parent)
 	, overlay_view_(nullptr)
 	, scale_(1.0)
 	, dont_emit_selection_signals_(false)
-	, show_in_param_editor_action_(nullptr)
 	, bridge_(new EngineEventBridge(this))
+	, show_in_param_editor_action_(nullptr)
 {
 	setScene(&scene_);
 	set_default_drag_mode(RubberBandDrag);
@@ -499,7 +500,7 @@ void NodeView::set_color_label(int index)
 	// WRAPPER-GAP: oakengine_undo_* command assembly (no wrapper)
 	void *command = oakengine_undo_command_create_multi();
 
-	for (const oak::Node &node : qAsConst(selected_nodes_)) {
+	for (const oak::Node &node : std::as_const(selected_nodes_)) {
 		oakengine_undo_command_multi_add_child(
 			command,
 			oakengine_node_set_color_label_command(node.handle(), index));
@@ -528,8 +529,8 @@ void NodeView::keyPressEvent(QKeyEvent *event)
 	case Qt::Key_Down: {
 		// WRAPPER-GAP: oakengine_undo_* command assembly (no wrapper)
 		void *pos_command = oakengine_undo_command_create_multi();
-		for (const oak::Node &n : qAsConst(selected_nodes_)) {
-			for (const oak::Node &context : qAsConst(contexts_)) {
+		for (const oak::Node &n : std::as_const(selected_nodes_)) {
+			for (const oak::Node &context : std::as_const(contexts_)) {
 				QPointF old_pos;
 				bool old_expanded = false;
 				if (context.context_position_of(n, &old_pos, &old_expanded)) {
@@ -595,7 +596,7 @@ void NodeView::mousePressEvent(QMouseEvent *event)
 		return;
 
 	// Get the item that the user clicked on, if any
-	QGraphicsItem *item = itemAt(event->pos());
+	QGraphicsItem *item = itemAt(event->position().toPoint());
 
 	if (event->button() == Qt::LeftButton) {
 		// Sane defaults
@@ -657,7 +658,7 @@ void NodeView::mousePressEvent(QMouseEvent *event)
 			scene_.addItem(create_edge_);
 
 			// Position edge to mouse cursor
-			position_new_edge(event->pos());
+			position_new_edge(event->position().toPoint());
 			return;
 		}
 	}
@@ -698,7 +699,7 @@ void NodeView::mouseMoveEvent(QMouseEvent *event)
 		return;
 
 	if (create_edge_) {
-		position_new_edge(event->pos());
+		position_new_edge(event->position().toPoint());
 		return;
 	}
 
@@ -708,7 +709,7 @@ void NodeView::mouseMoveEvent(QMouseEvent *event)
 
 	// See if there are any items attached
 	if (!attached_items_.isEmpty()) {
-		process_moving_attached_nodes(event->pos());
+		process_moving_attached_nodes(event->position().toPoint());
 	}
 }
 void NodeView::mouseReleaseEvent(QMouseEvent *event)
@@ -729,11 +730,11 @@ void NodeView::mouseReleaseEvent(QMouseEvent *event)
 	bool had_attached_items = !attached_items_.isEmpty();
 
 	if (!attached_items_.isEmpty()) {
-		select_context = get_context_at_mouse_pos(event->pos());
+		select_context = get_context_at_mouse_pos(event->position().toPoint());
 
 		if (!select_context.is_null()) {
 			select_nodes = process_dropping_attached_nodes(command, select_context,
-														event->pos());
+														event->position().toPoint());
 		} else {
 			QToolTip::showText(QCursor::pos(),
 							   tr("Nodes must be placed inside a context."));
@@ -780,7 +781,7 @@ void NodeView::mouseDoubleClickEvent(QMouseEvent *event)
 
 	if (!(event->modifiers() & Qt::ControlModifier)) {
 		NodeViewItem *item_at_cursor =
-			dynamic_cast<NodeViewItem *>(itemAt(event->pos()));
+			dynamic_cast<NodeViewItem *>(itemAt(event->position().toPoint()));
 		if (item_at_cursor) {
 			item_at_cursor->toggle_expanded();
 		}
@@ -841,9 +842,9 @@ void NodeView::dragMoveEvent(QDragMoveEvent *event)
 	if (attached_items_.empty()) {
 		event->ignore();
 	} else {
-		process_moving_attached_nodes(event->pos());
+		process_moving_attached_nodes(event->position().toPoint());
 
-		if (get_context_at_mouse_pos(event->pos())) {
+		if (get_context_at_mouse_pos(event->position().toPoint())) {
 			event->accept();
 		} else {
 			event->ignore();
@@ -853,12 +854,12 @@ void NodeView::dragMoveEvent(QDragMoveEvent *event)
 
 void NodeView::dropEvent(QDropEvent *event)
 {
-	oak::Node drop_ctx = get_context_at_mouse_pos(event->pos());
+	oak::Node drop_ctx = get_context_at_mouse_pos(event->position().toPoint());
 	if (!drop_ctx.is_null()) {
 		// WRAPPER-GAP: oakengine_undo_* command assembly (no wrapper)
 		void *command = oakengine_undo_command_create_multi();
 		QVector<oak::Node> select_nodes =
-			process_dropping_attached_nodes(command, drop_ctx, event->pos());
+			process_dropping_attached_nodes(command, drop_ctx, event->position().toPoint());
 		oakengine_undo_push(
 			command, tr("Dropped %1 Node(s)").arg(select_nodes.size()).toUtf8().constData());
 
@@ -1192,7 +1193,7 @@ void NodeView::move_attached_nodes_to_cursor(const QPoint &p)
 {
 	QPointF item_pos = mapToScene(p);
 
-	for (const AttachedItem &i : qAsConst(attached_items_)) {
+	for (const AttachedItem &i : std::as_const(attached_items_)) {
 		if (i.item) {
 			i.item->setPos(item_pos + i.original_pos);
 		}
@@ -1219,7 +1220,7 @@ void NodeView::process_moving_attached_nodes(const QPoint &pos)
 		NodeViewEdge *new_drop_edge = nullptr;
 
 		// See if there is an edge here
-		for (QGraphicsItem *item : qAsConst(items)) {
+		for (QGraphicsItem *item : std::as_const(items)) {
 			new_drop_edge = dynamic_cast<NodeViewEdge *>(item);
 
 			if (new_drop_edge) {

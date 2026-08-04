@@ -191,7 +191,7 @@ void PlaybackCache::draw(QPainter *p, const Rational &start, double scale,
 {
 	p->fillRect(rect, Qt::red);
 
-	foreach (const TimeRange &range, get_validated_ranges()) {
+	for (const TimeRange &range : get_validated_ranges()) {
 		int range_left = rect.left() + (range.in() - start).to_double() * scale;
 		if (range_left >= rect.right()) {
 			continue;
@@ -288,11 +288,11 @@ TimeRangeList PlaybackCache::get_invalidated_ranges(TimeRange intersecting) cons
 
 	invalidated.insert(intersecting);
 
-	foreach (const TimeRange &range, validated_) {
+	for (const TimeRange &range : validated_) {
 		invalidated.remove(range);
 	}
 
-	foreach (const TimeRange &range, passthroughs_) {
+	for (const TimeRange &range : passthroughs_) {
 		invalidated.remove(range);
 	}
 

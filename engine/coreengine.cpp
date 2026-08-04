@@ -544,10 +544,11 @@ void EngineCore::save_autorecovery()
 				{
 					QFile realname_file(project_autorecovery_dir.filePath(
 						QStringLiteral("realname.txt")));
-					realname_file.open(QFile::WriteOnly);
-					realname_file.write(
-						open_project_->pretty_filename().toUtf8());
-					realname_file.close();
+					if (realname_file.open(QFile::WriteOnly)) {
+						realname_file.write(
+							open_project_->pretty_filename().toUtf8());
+						realname_file.close();
+					}
 				}
 
 				int64_t max_recoveries_per_file =

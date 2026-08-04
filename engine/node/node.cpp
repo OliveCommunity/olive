@@ -2386,14 +2386,14 @@ TimeRange Node::transform_time_to(TimeRange time, Node *target,
 	Node *from = this;
 	Node *to = target;
 
-	if (dir == k_transform_towards_input) {
+	if (dir == k_towards_input) {
 		std::swap(from, to);
 	}
 
 	std::list<NodeInput> path = find_path(from, to, path_index);
 
 	if (!path.empty()) {
-		if (dir == k_transform_towards_input) {
+		if (dir == k_towards_input) {
 			for (auto it = path.crbegin(); it != path.crend(); it++) {
 				const NodeInput &i = (*it);
 				time = i.node()->input_time_adjustment(i.input(), i.element(),
@@ -2614,7 +2614,7 @@ void Node::invalidate_from_keyframe_time_change()
 
 	// Invalidate entire area surrounding the keyframe (either where it currently is, or where it used to be before it
 	// was resorted in the if block above)
-	foreach (const TimeRange &r, invalidate_range) {
+	for (const TimeRange &r : invalidate_range) {
 		parameter_value_changed(key->key_track_ref().input(), r);
 	}
 

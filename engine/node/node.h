@@ -929,8 +929,8 @@ public:
 	static QString get_category_name(const CategoryID &c);
 
 	enum TransformTimeDirection {
-		k_transform_towards_input,
-		k_transform_towards_output
+		k_towards_input,
+		k_towards_output
 	};
 
 	/**

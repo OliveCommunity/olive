@@ -38,7 +38,7 @@ namespace olive {
  * Replaces engine's olive::debug_handler so oak-editor doesn't import
  * that symbol. Only used in main.cpp's qInstallMessageHandler.
  */
-static void debug_handler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
+[[maybe_unused]] [[maybe_unused]] static void debug_handler(QtMsgType type, const QMessageLogContext &context, const QString &msg)
 {
 	// Suppress noisy warnings from Qt's QXcbIntegration
 	if (type == QtWarningMsg && msg.contains("QXcbIntegration")) {

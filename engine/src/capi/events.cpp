@@ -189,7 +189,7 @@ bool connect_node_event(olive::Node *node, int32_t event_id,
 	case OAKENGINE_EVENT_NODE_INPUT_DISCONNECTED: {
 		const bool connected =
 			event_id == OAKENGINE_EVENT_NODE_INPUT_CONNECTED;
-		auto deliver = [fn, userdata, node, connected, event_id](
+		auto deliver = [fn, userdata, node, event_id](
 						   Node *output, const NodeInput &input) {
 			const QByteArray utf = input.input().toUtf8();
 			invoke(fn, userdata, event_id, node, input.element(), 0, output, 0,

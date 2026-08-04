@@ -502,9 +502,7 @@ void NodeTraverser::resolve_jobs(NodeValue &val)
 						}
 
 						val.set_value(tex);
-					} else if (plugin::PluginJob *plugin_job =
-								   dynamic_cast<plugin::PluginJob *>(
-									   base_job)) {
+					} else if (dynamic_cast<plugin::PluginJob *>(base_job)) {
 						VideoParams tex_params = job_tex->params();
 						// Force internal working format (F32) for plugin processing,
 						// matching FootageJob/GenerateJob behavior.

@@ -462,7 +462,7 @@ TEST(ViewerSmokeThread, ConcurrentQueueAccess)
 
 	for (int t = 0; t < num_threads; ++t) {
 		threads.emplace_back(
-			[&queue, &append_count, t, num_frames_per_thread]() {
+			[&queue, &append_count, t]() {
 				for (int i = 0; i < num_frames_per_thread; ++i) {
 					ViewerPlaybackFrame frame{
 						Rational(t * num_frames_per_thread + i, 24), QVariant()

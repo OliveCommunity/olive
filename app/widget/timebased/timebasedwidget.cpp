@@ -19,6 +19,7 @@
 
 ***/
 
+#include <utility>
 #include "timebasedwidget.h"
 
 #include <QInputDialog>
@@ -48,8 +49,8 @@ TimeBasedWidget::TimeBasedWidget(bool ruler_text_visible,
 								 bool ruler_cache_status_visible,
 								 QWidget *parent)
 	: TimelineScaledWidget(parent)
-	, viewer_node_(nullptr)
 	, bridge_(new EngineEventBridge(this))
+	, viewer_node_(nullptr)
 	, auto_max_scrollbar_(false)
 	, toggle_show_all_(false)
 	, auto_set_timebase_(true)
@@ -408,7 +409,7 @@ void TimeBasedWidget::connect_timeline_view(TimeBasedView *base)
 			&QScrollBar::setValue);
 
 	// Connect scrollbar to other scrollbars
-	for (TimeBasedView *other : qAsConst(timeline_views_)) {
+	for (TimeBasedView *other : std::as_const(timeline_views_)) {
 		connect(other->horizontalScrollBar(), &QScrollBar::valueChanged,
 				base->horizontalScrollBar(), &QScrollBar::setValue);
 		connect(base->horizontalScrollBar(), &QScrollBar::valueChanged,
@@ -1229,7 +1230,7 @@ bool TimeBasedWidget::snap_point(const std::vector<Rational> &start_times,
 
 	// Find all points at this movement
 	std::vector<Rational> snap_times;
-	foreach (const SnapData &d, potential_snaps) {
+	for (const SnapData &d : potential_snaps) {
 		if (d.movement == *movement) {
 			snap_times.push_back(d.time);
 		}

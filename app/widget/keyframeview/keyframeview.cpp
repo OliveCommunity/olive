@@ -83,7 +83,7 @@ void KeyframeView::delete_selected()
 			get_selected_keyframes();
 		QVector<OakEngineKeyframe *> keys;
 		keys.reserve(int(selected.size()));
-		foreach (OakEngineKeyframe *key, selected) {
+		for (OakEngineKeyframe *key : selected) {
 			keys.append(key);
 		}
 		oakengine_keyframes_remove_many(
@@ -289,9 +289,9 @@ bool KeyframeView::paste(
 		oakengine_clipboard_foreach_keyframe(
 			cb,
 			[](const char *, OakEngineKeyframe *kf, void *userdata) -> int {
-				auto *ctx = static_cast<PasteCtx *>(userdata);
-				ctx->min = std::min(ctx->min, key_time(kf));
-				ctx->total++;
+				auto *paste_ctx = static_cast<PasteCtx *>(userdata);
+				paste_ctx->min = std::min(paste_ctx->min, key_time(kf));
+				paste_ctx->total++;
 				return 0;
 			},
 			&ctx);
@@ -303,17 +303,17 @@ bool KeyframeView::paste(
 			cb,
 			[](const char *node_id, OakEngineKeyframe *kf,
 			   void *userdata) -> int {
-				auto *ctx = static_cast<PasteCtx *>(userdata);
+				auto *paste_ctx = static_cast<PasteCtx *>(userdata);
 				auto &find_fn =
 					*static_cast<std::function<oak::Node(const QString &)> *>(
-						ctx->find_fn);
+						paste_ctx->find_fn);
 				oak::Node node_with_id =
 					find_fn(QString::fromUtf8(node_id));
 
 				if (!node_with_id.is_null()) {
-					Rational t = key_time(kf) - ctx->min;
-					t = ctx->self->get_adjusted_time(
-						ctx->self->get_time_target(),
+					Rational t = key_time(kf) - paste_ctx->min;
+					t = paste_ctx->self->get_adjusted_time(
+						paste_ctx->self->get_time_target(),
 						node_with_id.handle(), t,
 						k_transform_towards_input);
 					key_set_time_live(kf, t);
@@ -333,7 +333,7 @@ bool KeyframeView::paste(
 						void *rm = oakengine_node_remove_keyframe_command(
 							existing);
 						oakengine_undo_command_multi_add_child(
-							ctx->command, rm);
+							paste_ctx->command, rm);
 					}
 
 					oak_node_value v;
@@ -357,7 +357,7 @@ bool KeyframeView::paste(
 						static_cast<float>(cp_in.y()),
 						static_cast<float>(cp_out.x()),
 						static_cast<float>(cp_out.y()));
-					oakengine_undo_command_multi_add_child(ctx->command, cmd);
+					oakengine_undo_command_multi_add_child(paste_ctx->command, cmd);
 				} else {
 					oakengine_keyframe_dispose(kf);
 				}
@@ -760,7 +760,7 @@ void KeyframeView::show_context_menu()
 				QVector<int> tracks;
 			};
 			QVector<TypeGroup> groups;
-			foreach (OakEngineKeyframe *item, get_selected_keyframes()) {
+			for (OakEngineKeyframe *item : get_selected_keyframes()) {
 				const oak::Keyframe key(item);
 				OakEngineNode *node = key.node().handle();
 				int g = 0;
@@ -797,7 +797,7 @@ void KeyframeView::show_keyframe_properties_dialog()
 	if (!get_selected_keyframes().empty()) {
 		QVector<oak::Keyframe> keys;
 		keys.reserve(int(get_selected_keyframes().size()));
-		foreach (OakEngineKeyframe *key, get_selected_keyframes()) {
+		for (OakEngineKeyframe *key : get_selected_keyframes()) {
 			keys.append(oak::Keyframe(key));
 		}
 		KeyframePropertiesDialog kd(keys, timebase(), this);

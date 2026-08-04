@@ -103,6 +103,7 @@ if (BUILD_TESTS)
     )
     set_tests_properties(oak_cli_transcode PROPERTIES
             SKIP_RETURN_CODE 2
+            TIMEOUT 300
     )
     add_test(NAME oak_cli_transcode_verify
             COMMAND ${CMAKE_COMMAND} -DOUT=${CMAKE_CURRENT_BINARY_DIR}/oak_cli_transcode.mp4 -P ${CMAKE_CURRENT_SOURCE_DIR}/verify_transcode_mp4.cmake

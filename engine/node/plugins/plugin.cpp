@@ -232,8 +232,6 @@ QHash<QString, QVariant> build_default_values(
 			ofx_type == kOfxParamTypePushButton) {
 			continue;
 		}
-		const auto &props = param.second->getProperties();
-		bool is_secret = props.getIntProperty(kOfxParamPropSecret) != 0;
 		const QString input_id =
 			QString::fromStdString(param.second->getName());
 		if (input_id.isEmpty()) {
@@ -263,10 +261,10 @@ clip_label_for_name(const std::string &name,
 	}
 
 	if (desc) {
-		const std::string &label =
+		const std::string &param_label =
 			desc->getProps().getStringProperty(kOfxPropLabel);
-		if (!label.empty()) {
-			return QString::fromStdString(label);
+		if (!param_label.empty()) {
+			return QString::fromStdString(param_label);
 		}
 	}
 
@@ -432,9 +430,9 @@ olive::plugin::PluginNode::PluginNode(OFX::Host::ImageEffect::Instance *plugin)
 			const int value_count = props.getDimension(kOfxParamPropChoiceEnum);
 
 			for (int i = 0; i < label_count; ++i) {
-				const std::string &label =
+				const std::string &choice_label =
 					props.getStringProperty(kOfxParamPropChoiceOption, i);
-				option_labels.append(QString::fromStdString(label));
+				option_labels.append(QString::fromStdString(choice_label));
 			}
 
 			for (int i = 0; i < value_count; ++i) {

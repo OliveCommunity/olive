@@ -106,7 +106,7 @@ void NodeValueTree::set_node(const oak::Input &input, const Rational &time)
 		setItemWidget(item, 0, radio);
 		char name_buf[64];
 		int len = oakengine_node_value_pretty_type_name(type, name_buf, sizeof(name_buf));
-		if (len > 0 && len < sizeof(name_buf)) {
+		if (len > 0 && len < static_cast<int>(sizeof(name_buf))) {
 			name_buf[len] = '\0';
 		} else {
 			snprintf(name_buf, sizeof(name_buf), "Type %d", type);

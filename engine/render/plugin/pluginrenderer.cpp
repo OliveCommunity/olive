@@ -69,9 +69,9 @@ static int
 get_ofx_av_pixel_format(const OFX::Host::ImageEffect::Image &image,
 					int *bytes_per_pixel)
 {
-	const std::string &depth =
+	[[maybe_unused]] const std::string &depth =
 		image.getStringProperty(kOfxImageEffectPropPixelDepth);
-	const std::string &components =
+	[[maybe_unused]] const std::string &components =
 		image.getStringProperty(kOfxImageEffectPropComponents);
 
 	olive::core::PixelFormat pixel_format = olive::core::PixelFormat::invalid;
@@ -289,7 +289,7 @@ get_destination_av_pixel_format(const olive::VideoParams &params);
 
 // 作用：读取 clip 偏好（像素深度与分量）并更新 VideoParams。
 // Purpose: Apply clip preferences (depth/components) into VideoParams.
-static bool
+[[maybe_unused]] static bool
 apply_clip_preferences_to_params(const OFX::Host::ImageEffect::ClipInstance &clip,
 							 olive::VideoParams *params)
 {
@@ -298,7 +298,7 @@ apply_clip_preferences_to_params(const OFX::Host::ImageEffect::ClipInstance &cli
 	}
 
 	olive::core::PixelFormat format = olive::core::PixelFormat::invalid;
-	const std::string &depth = clip.getPixelDepth();
+	[[maybe_unused]] const std::string &depth = clip.getPixelDepth();
 	if (depth == kOfxBitDepthByte) {
 		format = olive::core::PixelFormat::u8;
 	} else if (depth == kOfxBitDepthShort) {
@@ -310,7 +310,7 @@ apply_clip_preferences_to_params(const OFX::Host::ImageEffect::ClipInstance &cli
 	}
 
 	int channels = 0;
-	const std::string &components = clip.getComponents();
+	[[maybe_unused]] const std::string &components = clip.getComponents();
 	if (components == kOfxImageComponentRGBA) {
 		channels = 4;
 	} else if (components == kOfxImageComponentRGB) {
@@ -359,6 +359,8 @@ static const char *ofx_depth_from_pixel_format(olive::core::PixelFormat format)
 		return kOfxBitDepthShort;
 	case olive::core::PixelFormat::f16:
 		return kOfxBitDepthHalf;
+	default:
+		break;
 	case olive::core::PixelFormat::f32:
 		return kOfxBitDepthFloat;
 	case olive::core::PixelFormat::invalid:
@@ -460,7 +462,7 @@ static bool params_convertible(const olive::VideoParams &params)
 
 // 作用：在 clip 偏好无效时，选择一个插件支持的输出格式。
 // Purpose: Pick a supported output format when clip preferences are invalid.
-static void
+[[maybe_unused]] static void
 choose_supported_output_params(const OFX::Host::ImageEffect::Instance &instance,
 							const OFX::Host::ImageEffect::ClipInstance &clip,
 							const olive::VideoParams &preferred,
@@ -522,7 +524,7 @@ convert_texture_for_params(olive::TexturePtr src,
 
 // 作用：根据插件能力与偏好选择输入格式并执行转换。
 // Purpose: Select a supported input format and convert texture for the clip.
-static olive::TexturePtr
+[[maybe_unused]] static olive::TexturePtr
 convert_texture_for_clip(const OFX::Host::ImageEffect::Instance &instance,
 					  const OFX::Host::ImageEffect::ClipInstance &clip,
 					  olive::TexturePtr src,
@@ -670,7 +672,7 @@ convert_texture_for_clip(const OFX::Host::ImageEffect::Instance &instance,
 
 // 作用：从 OFX Image 复制数据到 AVFrame（按图像属性推导格式）。
 // Purpose: Copy OFX Image data into an AVFrame with inferred format.
-static olive::AVFramePtr
+[[maybe_unused]] static olive::AVFramePtr
 create_avframe_from_ofx_image(OFX::Host::ImageEffect::Image &image)
 {
 	void *data_ptr = image.getPointerProperty(kOfxImagePropData);
@@ -1323,10 +1325,9 @@ static void log_image_props(const char *label,
 	int rod[4] = { 0, 0, 0, 0 };
 	image->getIntPropertyN(kOfxImagePropBounds, bounds, 4);
 	image->getIntPropertyN(kOfxImagePropRegionOfDefinition, rod, 4);
-	const int row_bytes = image->getIntProperty(kOfxImagePropRowBytes);
-	const std::string &depth =
+	[[maybe_unused]] const std::string &depth =
 		image->getStringProperty(kOfxImageEffectPropPixelDepth);
-	const std::string &components =
+	[[maybe_unused]] const std::string &components =
 		image->getStringProperty(kOfxImageEffectPropComponents);
 	/*qWarning().noquote()
 		<< "OFX image props" << label
@@ -1370,7 +1371,7 @@ static void schedule_error_dialog_and_undo(const QString &message)
 	}
 }
 
-static olive::AVFramePtr download_texture_to_frame(const olive::TexturePtr &tex)
+[[maybe_unused]] static olive::AVFramePtr download_texture_to_frame(const olive::TexturePtr &tex)
 {
 	if (!tex || tex->is_dummy() || !tex->renderer()) {
 		return nullptr;
@@ -1425,7 +1426,7 @@ select_best_plugin_input_format(const OFX::Host::ImageEffect::Descriptor &desc)
 	bool supports_f16 = false;
 
 	for (int i = 0; i < dim; ++i) {
-		const std::string &depth =
+		[[maybe_unused]] const std::string &depth =
 			props.getStringProperty(kOfxImageEffectPropSupportedPixelDepths, i);
 		if (depth == kOfxBitDepthFloat) {
 			supports_f32 = true;
@@ -1541,8 +1542,8 @@ void olive::plugin::PluginRenderer::render_plugin(
 		if (!tex->is_dummy() && tex->renderer()) {
 			return true;
 		}
-		AVFramePtr frame = tex->frame();
-		return frame && frame->data(0);
+		AVFramePtr av_frame = tex->frame();
+		return av_frame && av_frame->data(0);
 	};
 	std::map<std::string, TexturePtr> input_textures;
 	std::map<std::string, OliveClipInstance *> input_clips;
@@ -1817,12 +1818,10 @@ void olive::plugin::PluginRenderer::render_plugin(
 		}
 		// Diagnostic: peek at first few pixels
 		void *img_data = output_image->getPointerProperty(kOfxImagePropData);
-		bool img_black = true;
 		if (img_data) {
 			float *f = static_cast<float *>(img_data);
 			for (int i = 0; i < 16; ++i) {
 				if (f[i] != 0.0f) {
-					img_black = false;
 					break;
 				}
 			}

@@ -74,6 +74,8 @@ private:
 
 	int64_t frame_time_;
 
+	int null_frame_streak_ = 0;
+
 	Rational audio_time_;
 
 	TimeRange export_range_;

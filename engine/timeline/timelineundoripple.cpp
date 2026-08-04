@@ -19,6 +19,7 @@
 
 ***/
 
+#include <utility>
 #include "timelineundoripple.h"
 
 #include "timelineundocommon.h"
@@ -391,7 +392,7 @@ void TimelineRippleDeleteGapsAtRegionsCommand::prepare()
 	QHash<Track *, QVector<RemovalRequest>> requested_gaps;
 
 	// Convert regions to gaps
-	for (const QPair<Track *, TimeRange> &region : qAsConst(regions_)) {
+	for (const QPair<Track *, TimeRange> &region : std::as_const(regions_)) {
 		Track *track = region.first;
 		const TimeRange &range = region.second;
 

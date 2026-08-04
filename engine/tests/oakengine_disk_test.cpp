@@ -32,6 +32,7 @@
 #if defined(_WIN32)
 #include <direct.h>
 #include <io.h>
+#include <windows.h>
 #else
 #include <sys/stat.h>
 #include <unistd.h>
@@ -113,20 +114,18 @@ static void test_open_folder_handle(void)
 	EXPECT_TRUE(empty_folder == folder);
 
 	// A different path opens a distinct folder.
-	char tmp[256];
-	snprintf(tmp, sizeof(tmp),
+	char tmp[512];
 #if defined(_WIN32)
-			 "%s\\oakengine_disk_test_folder_XXXXXX",
-#else
-			 "%s/oakengine_disk_test_folder_XXXXXX",
-#endif
-			 getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp");
-
-#if defined(_WIN32)
-	char *tmpdir = _mktemp(tmp);
-	EXPECT_TRUE(tmpdir != NULL);
+	char base[MAX_PATH];
+	const DWORD len = GetTempPathA(MAX_PATH, base);
+	EXPECT_TRUE(len > 0 && len < MAX_PATH);
+	snprintf(tmp, sizeof(tmp), "%soakengine_disk_test_folder_%lu", base,
+			 (unsigned long)GetCurrentProcessId());
+	char *tmpdir = tmp;
 	EXPECT_TRUE(_mkdir(tmpdir) == 0);
 #else
+	snprintf(tmp, sizeof(tmp), "%s/oakengine_disk_test_folder_XXXXXX",
+			 getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp");
 	char *tmpdir = mkdtemp(tmp);
 	EXPECT_TRUE(tmpdir != NULL);
 #endif
@@ -149,20 +148,18 @@ static void test_open_folder_handle(void)
 static void test_clear_cache(void)
 {
 	// Create a temporary cache directory and seed it with a file.
-	char path[256];
-	snprintf(path, sizeof(path),
+	char path[512];
 #if defined(_WIN32)
-			 "%s\\oakengine_disk_test_cache_XXXXXX",
-#else
-			 "%s/oakengine_disk_test_cache_XXXXXX",
-#endif
-			 getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp");
-
-#if defined(_WIN32)
-	char *tmpdir = _mktemp(path);
-	EXPECT_TRUE(tmpdir != NULL);
+	char base[MAX_PATH];
+	const DWORD len = GetTempPathA(MAX_PATH, base);
+	EXPECT_TRUE(len > 0 && len < MAX_PATH);
+	snprintf(path, sizeof(path), "%soakengine_disk_test_cache_%lu", base,
+			 (unsigned long)GetCurrentProcessId());
+	char *tmpdir = path;
 	EXPECT_TRUE(_mkdir(tmpdir) == 0);
 #else
+	snprintf(path, sizeof(path), "%s/oakengine_disk_test_cache_XXXXXX",
+			 getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp");
 	char *tmpdir = mkdtemp(path);
 	EXPECT_TRUE(tmpdir != NULL);
 #endif
@@ -244,20 +241,18 @@ static void test_set_default_cache_path(void)
 	EXPECT_TRUE(oakengine_disk_get_default_cache_path(original, sizeof(original)) >
 		   0);
 
-	char tmp[256];
-	snprintf(tmp, sizeof(tmp),
+	char tmp[512];
 #if defined(_WIN32)
-			 "%s\\oakengine_disk_test_default_XXXXXX",
-#else
-			 "%s/oakengine_disk_test_default_XXXXXX",
-#endif
-			 getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp");
-
-#if defined(_WIN32)
-	char *tmpdir = _mktemp(tmp);
-	EXPECT_TRUE(tmpdir != NULL);
+	char base[MAX_PATH];
+	const DWORD len = GetTempPathA(MAX_PATH, base);
+	EXPECT_TRUE(len > 0 && len < MAX_PATH);
+	snprintf(tmp, sizeof(tmp), "%soakengine_disk_test_default_%lu", base,
+			 (unsigned long)GetCurrentProcessId());
+	char *tmpdir = tmp;
 	EXPECT_TRUE(_mkdir(tmpdir) == 0);
 #else
+	snprintf(tmp, sizeof(tmp), "%s/oakengine_disk_test_default_XXXXXX",
+			 getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp");
 	char *tmpdir = mkdtemp(tmp);
 	EXPECT_TRUE(tmpdir != NULL);
 #endif

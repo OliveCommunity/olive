@@ -19,6 +19,7 @@
 
 ***/
 
+#include <utility>
 #include "timelineundogeneral.h"
 
 #include "node/block/clip/clip.h"
@@ -322,7 +323,7 @@ void TrackListInsertGaps::prepare()
 	QVector<Block *> blocks_to_append_gap_to;
 	QVector<Track *> tracks_to_append_gap_to;
 
-	for (Track *track : qAsConst(working_tracks_)) {
+	for (Track *track : std::as_const(working_tracks_)) {
 		for (Block *b : track->blocks()) {
 			if (dynamic_cast<GapBlock *>(b) && b->in() <= point_ &&
 				b->out() >= point_) {

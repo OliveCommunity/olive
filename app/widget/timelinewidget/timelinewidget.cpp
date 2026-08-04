@@ -19,6 +19,7 @@
 
 ***/
 
+#include <utility>
 #include "timelinewidget.h"
 #include "timelinewidgetwaveformsync.h"
 
@@ -2715,7 +2716,7 @@ void TimelineWidget::cache_clips_in_out()
 
 	const TimeRange r(Rational(int(wa.in_num), int(wa.in_den)),
 					  Rational(int(wa.out_num), int(wa.out_den)));
-	for (OakEngineBlock *b : qAsConst(selected_blocks_)) {
+	for (OakEngineBlock *b : std::as_const(selected_blocks_)) {
 		if (OakEngineBlock *clip = block_as_clip(b)) {
 			if (OakEngineNode *connected = clip_connected_node(clip)) {
 				TimeRange adjusted =
@@ -2751,7 +2752,7 @@ void TimelineWidget::multicam_enabled_triggered(bool e)
 {
 	void *command = oakengine_undo_command_create_multi();
 
-	for (OakEngineBlock *b : qAsConst(selected_blocks_)) {
+	for (OakEngineBlock *b : std::as_const(selected_blocks_)) {
 		if (OakEngineBlock *c = block_as_clip(b)) {
 			OakEngineNode *viewer = oakengine_clip_get_connected_viewer(c);
 			OakEngineSequence *s = oakengine_node_is_sequence(viewer) ?
@@ -3399,7 +3400,7 @@ TimelineWidget::generate_existing_paste_map(void *clipboard)
 
 	for (int i = 0; i < node_count; i++) {
 		OakEngineNode *n = oakengine_clipboard_get_loaded_node_at(cb, i);
-		for (OakEngineBlock *b : qAsConst(this->selected_blocks_)) {
+		for (OakEngineBlock *b : std::as_const(this->selected_blocks_)) {
 			// WRAPPER-GAP: no C ABI for Node::get_context_positions(); the
 			// block's track-owning sequence is the context that matters here
 			// (blocks on a timeline always live in their sequence's context).

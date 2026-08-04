@@ -114,6 +114,9 @@ target_include_directories(oakengine
 target_link_libraries(oakengine PUBLIC ${OLIVE_LIBRARIES} OfxHost)
 # OAKENGINE_BUILD marks the library side of the C ABI export macros (dllexport)
 target_compile_definitions(oakengine-obj PRIVATE ${OLIVE_DEFINITIONS} OAKENGINE_BUILD)
+# Consumers that link the object library directly (app, tests, Windows oakgl)
+# must see plain C declarations, not __declspec(dllimport) ones.
+target_compile_definitions(oakengine-obj INTERFACE OAKENGINE_STATIC)
 target_compile_options(oakengine-obj PRIVATE ${OLIVE_COMPILE_OPTIONS})
 
 # Version script: only oakengine_* + render-backend plugin ABI are exported;

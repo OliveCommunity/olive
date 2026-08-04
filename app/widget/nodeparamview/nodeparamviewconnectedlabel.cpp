@@ -93,15 +93,15 @@ NodeParamViewConnectedLabel::NodeParamViewConnectedLabel(const oak::Input &input
 					   OAKENGINE_EVENT_NODE_INPUT_DISCONNECTED);
 	connect(bridge_, &EngineEventBridge::node_input_connected, this,
 			[this](OakEngineNode *source, OakEngineNode *output,
-				   const QString &input, int element) {
+				   const QString &input_id, int element) {
 				input_connected(output,
-					oak::Input(source, input, element));
+					oak::Input(source, input_id, element));
 			});
 	connect(bridge_, &EngineEventBridge::node_input_disconnected, this,
 			[this](OakEngineNode *source, OakEngineNode *output,
-				   const QString &input, int element) {
+				   const QString &input_id, int element) {
 				input_disconnected(output,
-					oak::Input(source, input, element));
+					oak::Input(source, input_id, element));
 			});
 
 	// Creating the tree is expensive, hold off until the user specifically requests it

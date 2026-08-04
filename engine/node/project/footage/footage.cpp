@@ -377,8 +377,8 @@ void Footage::value(const NodeValueRow &value, const NodeGlobals &globals,
 					this, QStringLiteral("length"));
 
 		// Push each stream as a footage job
-		for (int i = 0; i < get_total_stream_count(); i++) {
-			Track::Reference ref = get_reference_from_real_index(i);
+		for (int si = 0; si < get_total_stream_count(); si++) {
+			Track::Reference ref = get_reference_from_real_index(si);
 			FootageJob job(globals.time(), decoder_, filename(), ref.type(),
 						   get_length(), globals.loop_mode());
 
@@ -427,9 +427,10 @@ void Footage::value(const NodeValueRow &value, const NodeGlobals &globals,
 						ProxyManager::k_proxy_ready &&
 					ProxyManager::proxy_filename_has_audio(proxy_path_)) {
 					int audio_rank = 0;
-					for (int i = 0; i < get_total_stream_count(); i++) {
+					for (int sj = 0; sj < get_total_stream_count(); sj++) {
 						const Track::Reference other =
-							get_reference_from_real_index(i);
+							get_reference_from_real_index(sj);
+
 						if (other.type() == Track::k_audio &&
 							get_audio_params(other.index()).stream_index() <
 								ap.stream_index()) {
@@ -448,8 +449,8 @@ void Footage::value(const NodeValueRow &value, const NodeGlobals &globals,
 		// Media is offline: push a generated warning frame for each video
 		// stream so missing media is clearly visible in the timeline instead
 		// of a transparent/black hole. generate_frame() draws the slat.
-		for (int i = 0; i < get_total_stream_count(); i++) {
-			Track::Reference ref = get_reference_from_real_index(i);
+		for (int si = 0; si < get_total_stream_count(); si++) {
+			Track::Reference ref = get_reference_from_real_index(si);
 			if (ref.type() != Track::k_video) {
 				continue;
 			}

@@ -50,8 +50,8 @@ ManagedDisplayWidget::ManagedDisplayWidget(QWidget *parent)
 #ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
 	{
 		const QString backend = oak_query_string([](char *buf, int sz) {
-			int backend = oakengine_render_manager_requested_backend();
-			return oakengine_render_manager_backend_to_string(backend, buf,
+			int backend_id = oakengine_render_manager_requested_backend();
+			return oakengine_render_manager_backend_to_string(backend_id, buf,
 															  sz);
 		});
 		attached_renderer_ =

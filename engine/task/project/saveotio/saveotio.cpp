@@ -64,7 +64,7 @@ bool SaveOTIOTask::run()
 			serialized.push_back(otio_timeline);
 		} else {
 			// Delete all existing timelines
-			foreach (auto s, serialized) {
+			for (auto s : serialized) {
 				s->possibly_delete();
 			}
 
@@ -91,7 +91,7 @@ bool SaveOTIOTask::run()
 		collection->possibly_delete();
 
 		// Delete all existing timelines
-		foreach (auto s, serialized) {
+		for (auto s : serialized) {
 			s->possibly_delete();
 		}
 	}

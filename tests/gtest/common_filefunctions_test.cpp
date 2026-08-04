@@ -50,7 +50,7 @@ TEST(CommonFileFunctions, GetSafeTemporaryFilename)
 	EXPECT_TRUE(first.contains(QStringLiteral(".tmp0.")));
 
 	QFile f(first);
-	f.open(QIODevice::WriteOnly);
+	(void)f.open(QIODevice::WriteOnly);
 	f.close();
 
 	QString second = olive::FileFunctions::get_safe_temporary_filename(base);
@@ -80,19 +80,19 @@ TEST(CommonFileFunctions, RenameFileAllowOverwrite)
 	QString to = dir.filePath(QStringLiteral("to.txt"));
 
 	QFile f(from);
-	f.open(QIODevice::WriteOnly);
+	(void)f.open(QIODevice::WriteOnly);
 	f.write("source");
 	f.close();
 
 	QFile t(to);
-	t.open(QIODevice::WriteOnly);
+	(void)t.open(QIODevice::WriteOnly);
 	t.write("existing");
 	t.close();
 
 	EXPECT_TRUE(olive::FileFunctions::rename_file_allow_overwrite(from, to));
 	EXPECT_FALSE(QFileInfo::exists(from));
 	QFile result(to);
-	result.open(QIODevice::ReadOnly);
+	(void)result.open(QIODevice::ReadOnly);
 	EXPECT_EQ(result.readAll(), QByteArray("source"));
 }
 
@@ -105,7 +105,7 @@ TEST(CommonFileFunctions, CanCopyDirectoryWithoutOverwriting)
 
 	QString src_file = QDir(src.path()).filePath(QStringLiteral("file.txt"));
 	QFile f(src_file);
-	f.open(QIODevice::WriteOnly);
+	(void)f.open(QIODevice::WriteOnly);
 	f.close();
 
 	EXPECT_TRUE(olive::FileFunctions::can_copy_directory_without_overwriting(
@@ -113,7 +113,7 @@ TEST(CommonFileFunctions, CanCopyDirectoryWithoutOverwriting)
 
 	QString dst_file = QDir(dst.path()).filePath(QStringLiteral("file.txt"));
 	QFile g(dst_file);
-	g.open(QIODevice::WriteOnly);
+	(void)g.open(QIODevice::WriteOnly);
 	g.close();
 
 	EXPECT_FALSE(olive::FileFunctions::can_copy_directory_without_overwriting(
@@ -129,7 +129,7 @@ TEST(CommonFileFunctions, CopyDirectory)
 
 	QString src_file = QDir(src.path()).filePath(QStringLiteral("file.txt"));
 	QFile f(src_file);
-	f.open(QIODevice::WriteOnly);
+	(void)f.open(QIODevice::WriteOnly);
 	f.write("copied");
 	f.close();
 
@@ -208,20 +208,20 @@ TEST(CommonFileFunctions, CopyDirectoryWithOverwrite)
 
 	QString src_file = QDir(src.path()).filePath(QStringLiteral("file.txt"));
 	QFile f(src_file);
-	f.open(QIODevice::WriteOnly);
+	(void)f.open(QIODevice::WriteOnly);
 	f.write("new content");
 	f.close();
 
 	QString dst_file = QDir(dst.path()).filePath(QStringLiteral("file.txt"));
 	QFile g(dst_file);
-	g.open(QIODevice::WriteOnly);
+	(void)g.open(QIODevice::WriteOnly);
 	g.write("old content");
 	g.close();
 
 	olive::FileFunctions::copy_directory(src.path(), dst.path(), true);
 
 	QFile result(dst_file);
-	result.open(QIODevice::ReadOnly);
+	(void)result.open(QIODevice::ReadOnly);
 	EXPECT_EQ(result.readAll(), QByteArray("new content"));
 }
 

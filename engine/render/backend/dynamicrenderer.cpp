@@ -18,7 +18,11 @@ DynamicRenderer::DynamicRenderer(const QString &backend, QObject *parent)
 }
 
 // Tears down the backend in the reverse order used by Load(): release renderer
-// resources, destroy the opaque backend object, then unload the shared library.
+// resources, then destroy the opaque backend object. The shared library itself
+// is deliberately NOT unloaded: multiple DynamicRenderer instances can wrap the
+// same backend library, and one instance's dlclose can unmap code that other
+// instances (or Qt) still reference, producing calls into unmapped memory.
+// Backend libraries stay mapped until process exit.
 DynamicRenderer::~DynamicRenderer()
 {
 	destroy();
@@ -26,9 +30,6 @@ DynamicRenderer::~DynamicRenderer()
 	if (handle_ && destroy_) {
 		destroy_(handle_);
 		handle_ = nullptr;
-	}
-	if (library_.isLoaded()) {
-		library_.unload();
 	}
 }
 

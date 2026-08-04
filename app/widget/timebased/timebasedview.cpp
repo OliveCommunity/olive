@@ -215,7 +215,7 @@ void TimeBasedView::drawForeground(QPainter *painter, const QRectF &rect)
 	if (snapped_) {
 		painter->setPen(palette().text().color());
 
-		foreach (const Rational &r, snap_time_) {
+		for (const Rational &r : snap_time_) {
 			double x = time_to_scene(r);
 
 			painter->drawLine(x, rect.top(), x, rect.height());

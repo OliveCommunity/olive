@@ -145,7 +145,7 @@ void MarkerPropertiesDialog::accept()
 	// Batch-set properties via facade (one undoable command)
 	{
 		QVector<OakEngineMarker *> oak_markers;
-		foreach (OakEngineMarker *m, markers_) {
+		for (OakEngineMarker *m : markers_) {
 			oak_markers.append(m);
 		}
 		int color = color_menu_->get_selected_color();

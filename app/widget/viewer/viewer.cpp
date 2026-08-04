@@ -19,6 +19,7 @@
 
 ***/
 
+#include <utility>
 #include "viewer.h"
 
 #include <QDateTime>
@@ -172,11 +173,16 @@ const Rational k_video_playback_interval = Rational(1, 10);
 
 ViewerWidget::ViewerWidget(ViewerDisplayWidget *display, QWidget *parent)
 	: super(false, true, parent)
+	, overlay_(nullptr)
+	, info_chip_(nullptr)
+	, safe_frame_btn_(nullptr)
+	, overlay_zoom_index_(5)
 	, playback_speed_(0)
 	, color_menu_enabled_(true)
 	, time_changed_from_timer_(false)
 	, prequeuing_video_(false)
 	, prequeuing_audio_(0)
+	, audio_processor_(oakengine_audio_processor_create())
 	, record_armed_(false)
 	, recording_(false)
 	, first_requeue_watcher_(nullptr)
@@ -185,11 +191,6 @@ ViewerWidget::ViewerWidget(ViewerDisplayWidget *display, QWidget *parent)
 	, ignore_scrub_(0)
 	, multicam_panel_(nullptr)
 	, bridge_(new EngineEventBridge(this))
-	, audio_processor_(oakengine_audio_processor_create())
-	, overlay_(nullptr)
-	, info_chip_(nullptr)
-	, safe_frame_btn_(nullptr)
-	, overlay_zoom_index_(5)
 {
 	// Set up main layout
 	QVBoxLayout *layout = new QVBoxLayout(this);
@@ -958,13 +959,13 @@ void ViewerWidget::detect_multicam_node(const Rational &time)
 			const Rational seq_tb = sequence_timebase(seq);
 
 			// Prefer selected nodes
-			for (OakEngineNode *n : qAsConst(node_view_selected_)) {
+			for (OakEngineNode *n : std::as_const(node_view_selected_)) {
 				// MultiCam check via facade predicate (replaces
 				// dynamic_cast<MultiCamNode*>)
 				if (oakengine_node_is_multicam(n)) {
 					multicam = n;
 					// Found multicam, now try to find corresponding clip from selected timeline blocks
-					for (OakEngineBlock *b : qAsConst(timeline_selected_blocks_)) {
+					for (OakEngineBlock *b : std::as_const(timeline_selected_blocks_)) {
 						// Clip check via facade predicate (replaces
 						// dynamic_cast<ClipBlock*>)
 						if (oakengine_node_is_clip(
@@ -983,7 +984,7 @@ void ViewerWidget::detect_multicam_node(const Rational &time)
 
 			// Next, prefer multicam from selected block
 			if (!multicam) {
-				for (OakEngineBlock *b : qAsConst(timeline_selected_blocks_)) {
+				for (OakEngineBlock *b : std::as_const(timeline_selected_blocks_)) {
 					if (block_range_contains(b, seq_tb, time) &&
 						oakengine_node_is_clip(
 							reinterpret_cast<OakEngineNode *>(b))) {

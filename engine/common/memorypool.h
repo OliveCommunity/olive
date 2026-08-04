@@ -225,7 +225,7 @@ public:
 		~Arena()
 		{
 			std::list<Element *> copy = lent_elements_;
-			foreach (Element *e, copy) {
+			for (Element *e : copy) {
 				e->release();
 			}
 
@@ -348,7 +348,7 @@ public:
 		QMutexLocker locker(&lock_);
 
 		// Attempt to get an element from an arena
-		foreach (Arena *a, arenas_) {
+		for (Arena *a : arenas_) {
 			ElementPtr e = a->Get();
 
 			if (e) {

@@ -558,6 +558,8 @@ void OpenGLRenderer::blit(QVariant s, AcceleratedJob &a_job,
 				// over/underflows if the number is large enough, but the likelihood of that is quite low.
 				functions_->glUniform1i(variable_location, value.to_int());
 				break;
+		default:
+			break;
 			case NodeValue::k_float:
 				// kFloat technically specifies a double but as above, OpenGL doesn't support those.
 				functions_->glUniform1f(variable_location, value.to_double());
@@ -828,7 +830,7 @@ void OpenGLRenderer::blit(QVariant s, AcceleratedJob &a_job,
 		vert_vbo.destroy();
 		vao.release();
 		vao.destroy();
-	} catch (std::bad_cast e) {
+	} catch (const std::bad_cast &e) {
 	}
 }
 
@@ -975,7 +977,6 @@ GLuint OpenGLRenderer::compile_shader(GLenum type, const QString &code)
 {
 	const bool is_gles = context_ && context_->isOpenGLES();
 	const int major = context_ ? context_->format().majorVersion() : 0;
-	const int minor = context_ ? context_->format().minorVersion() : 0;
 	const bool is_gles2 = is_gles && (major < 3);
 	const QString gles_preamble =
 		is_gles2 ? QStringLiteral("#version 100\n\n"

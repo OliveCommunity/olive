@@ -372,9 +372,11 @@ TEST(DynamicRenderBackend, VulkanIterativeBlitPingPong)
 	QByteArray dst_data(k_size * k_size * 4, 0);
 	dst->download(dst_data.data(), k_size);
 
-	// After two halving passes, red is 255 * 0.5 * 0.5. UNORM conversion floors
-	// the intermediate value, so the result is 63 rather than 64.
-	EXPECT_EQ(static_cast<uint8_t>(dst_data[0]), 63u);
+	// After two halving passes, red is 255 * 0.5 * 0.5. UNORM conversion may
+	// floor (63) or round-to-nearest (64) depending on the driver (llvmpipe
+	// rounds); both are spec-conformant.
+	const uint8_t red = static_cast<uint8_t>(dst_data[0]);
+	EXPECT_TRUE(red == 63u || red == 64u) << "red = " << int(red);
 	EXPECT_EQ(static_cast<uint8_t>(dst_data[1]), 0u);
 	EXPECT_EQ(static_cast<uint8_t>(dst_data[2]), 0u);
 	EXPECT_EQ(static_cast<uint8_t>(dst_data[3]), 255u);

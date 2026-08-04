@@ -138,7 +138,7 @@ inline oak::Project to_oak_project(Project *p)
 }
 
 // The process-wide undo stack previously reached via Core::undo_stack()
-inline UndoStack *app_undo_stack()
+[[maybe_unused]] inline UndoStack *app_undo_stack()
 {
 	return static_cast<UndoStack *>(oakengine_app_undo_stack());
 }

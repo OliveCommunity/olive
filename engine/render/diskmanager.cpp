@@ -373,7 +373,7 @@ bool DiskCacheFolder::delete_least_recent()
 	auto hash_to_delete = disk_data_.begin();
 
 	if (disk_data_.begin() != disk_data_.end()) {
-		for (auto it = disk_data_.begin() + 1; it != disk_data_.end(); it++) {
+		for (auto it = std::next(disk_data_.begin()); it != disk_data_.end(); it++) {
 			if (it->access_time < hash_to_delete->access_time) {
 				hash_to_delete = it;
 			}

@@ -69,6 +69,7 @@ ViewerDisplayWidget::ViewerDisplayWidget(QWidget *parent)
 	, blank_shader_(nullptr)
 	, signal_cursor_color_(false)
 	, gizmos_(nullptr)
+	, gizmo_params_(empty_video_params())
 	, current_gizmo_(nullptr)
 	, gizmo_drag_started_(false)
 	, show_subtitles_(true)
@@ -83,7 +84,6 @@ ViewerDisplayWidget::ViewerDisplayWidget(QWidget *parent)
 	, add_band_(false)
 	, queue_starved_(false)
 	, text_edit_(nullptr)
-	, gizmo_params_(empty_video_params())
 {
 	connect(Core::instance(), &Core::tool_changed, this,
 			&ViewerDisplayWidget::tool_changed);
@@ -1083,7 +1083,7 @@ void ViewerDisplayWidget::open_text_gizmo(void *text, QMouseEvent *event)
 
 	// Start text cursor where the user clicked
 	if (event) {
-		QPoint click_pos = text_transform_inverted_.map(event->pos()) -
+		QPoint click_pos = text_transform_inverted_.map(event->position().toPoint()) -
 						   text_edit_pos_.toPoint();
 		text_edit_->setTextCursor(text_edit_->cursorForPosition(click_pos));
 	}
@@ -1099,7 +1099,7 @@ bool ViewerDisplayWidget::on_mouse_press(QMouseEvent *event)
 {
 	if (is_hand_drag(event)) {
 		// Handle hand drag
-		hand_last_drag_pos_ = event->pos();
+		hand_last_drag_pos_ = event->position().toPoint();
 		hand_dragging_ = true;
 		emit hand_drag_started();
 		inner_widget()->setCursor(Qt::ClosedHandCursor);
@@ -1115,15 +1115,15 @@ bool ViewerDisplayWidget::on_mouse_press(QMouseEvent *event)
 				 Tool::k_addable_shape ||
 			 Core::instance()->get_selected_addable_object() ==
 				 Tool::k_addable_title)) {
-			add_band_start_ = event->pos();
+			add_band_start_ = event->position().toPoint();
 			add_band_end_ = add_band_start_;
 			add_band_ = true;
 
 		} else if ((current_gizmo_ = try_gizmo_press(
 						gizmo_last_draw_transform_inverted_.map(
-							event->pos())))) {
+							event->position().toPoint())))) {
 			// Handle gizmo click
-			gizmo_start_drag_ = event->pos();
+			gizmo_start_drag_ = event->position().toPoint();
 			gizmo_last_drag_ = gizmo_start_drag_;
 			const TimeRange gizmo_time = generate_gizmo_time();
 			oakengine_gizmo_set_globals(
@@ -1132,7 +1132,7 @@ bool ViewerDisplayWidget::on_mouse_press(QMouseEvent *event)
 
 		} else {
 			// Handle standard drag
-			emit drag_started(event->pos());
+			emit drag_started(event->position().toPoint());
 		}
 
 		return true;
@@ -1146,10 +1146,10 @@ bool ViewerDisplayWidget::on_mouse_move(QMouseEvent *event)
 	// Handle hand dragging
 	if (hand_dragging_) {
 		// Emit movement
-		emit hand_drag_moved(event->x() - hand_last_drag_pos_.x(),
-						   event->y() - hand_last_drag_pos_.y());
+		emit hand_drag_moved(event->position().toPoint().x() - hand_last_drag_pos_.x(),
+						   event->position().toPoint().y() - hand_last_drag_pos_.y());
 
-		hand_last_drag_pos_ = event->pos();
+		hand_last_drag_pos_ = event->position().toPoint();
 
 		return true;
 
@@ -1157,7 +1157,7 @@ bool ViewerDisplayWidget::on_mouse_move(QMouseEvent *event)
 		return true;
 
 	} else if (add_band_) {
-		add_band_end_ = event->pos();
+		add_band_end_ = event->position().toPoint();
 		update();
 		return true;
 
@@ -1184,11 +1184,11 @@ bool ViewerDisplayWidget::on_mouse_move(QMouseEvent *event)
 				gizmo_drag_started_ = true;
 			}
 
-			QPointF v = screen_to_scene_point(event->pos());
+			QPointF v = screen_to_scene_point(event->position().toPoint());
 			switch (drag_behavior) {
 			case 1:
 				v -= screen_to_scene_point(gizmo_last_drag_);
-				gizmo_last_drag_ = event->pos();
+				gizmo_last_drag_ = event->position().toPoint();
 				break;
 			case 2:
 				v -= screen_to_scene_point(gizmo_start_drag_);
@@ -1249,7 +1249,7 @@ bool ViewerDisplayWidget::on_mouse_double_click(QMouseEvent *event)
 	if (text_edit_ && forward_mouse_event_to_text_edit(event)) {
 		return true;
 	} else if (event->button() == Qt::LeftButton && gizmos_) {
-		QPointF ptr = transform_viewer_space_to_buffer_space(event->pos());
+		QPointF ptr = transform_viewer_space_to_buffer_space(event->position().toPoint());
 		OakEngineNode *gizmos_handle =
 			gizmos_;
 		// A text gizmo only exists on a text v3 node, so the node type id is
@@ -1303,7 +1303,7 @@ void ViewerDisplayWidget::emit_color_at_cursor(QMouseEvent *e)
 
 		if (texture_) {
 			QPointF pixel_pos =
-				generate_display_transform().inverted().map(e->pos());
+				generate_display_transform().inverted().map(e->position().toPoint());
 			oak_video_params tp = {};
 			oakengine_display_texture_get_params(texture_, &tp);
 			pixel_pos /= (tp.divider > 0 ? tp.divider : 1);
@@ -1458,9 +1458,9 @@ template <typename T> void ViewerDisplayWidget::forward_drag_event_to_text_edit(
 	if constexpr (std::is_same_v<T, QDragLeaveEvent>) {
 		text_edit_->dragLeaveEvent(e);
 	} else {
-		T relay(adjust_pos_by_v_align(get_virtual_pos_for_text_edit(e->pos())).toPoint(),
-				e->possibleActions(), e->mimeData(), e->mouseButtons(),
-				e->keyboardModifiers());
+		T relay(adjust_pos_by_v_align(get_virtual_pos_for_text_edit(e->position().toPoint())).toPoint(),
+				e->possibleActions(), e->mimeData(), e->buttons(),
+				e->modifiers());
 
 		if (e->type() == QEvent::DragEnter) {
 			text_edit_->dragEnterEvent(static_cast<QDragEnterEvent *>(&relay));
@@ -1484,12 +1484,12 @@ bool ViewerDisplayWidget::forward_mouse_event_to_text_edit(QMouseEvent *event,
 	}
 
 	// Transform screen mouse coords to world mouse coords
-	QPointF local_pos = get_virtual_pos_for_text_edit(event->pos());
+	QPointF local_pos = get_virtual_pos_for_text_edit(event->position().toPoint());
 
 	if (event->type() == QEvent::MouseMove &&
 		event->buttons() == Qt::NoButton) {
 		QPointF mapped =
-			text_transform_inverted_.map(event->pos()) - text_edit_pos_;
+			text_transform_inverted_.map(event->position().toPoint()) - text_edit_pos_;
 		if (mapped.x() >= 0 && mapped.y() >= 0 &&
 			mapped.x() < text_edit_->width() &&
 			mapped.y() < text_edit_->height()) {
@@ -1504,7 +1504,7 @@ bool ViewerDisplayWidget::forward_mouse_event_to_text_edit(QMouseEvent *event,
 			local_pos.y() < 0 || local_pos.y() >= text_edit_->height()) {
 			// Allow clicking other gizmos so the user can resize while the text editor is active
 			if ((current_gizmo_ = try_gizmo_press(
-					 gizmo_last_draw_transform_inverted_.map(event->pos())))) {
+					 gizmo_last_draw_transform_inverted_.map(event->position().toPoint())))) {
 				return false;
 			} else {
 				close_text_editor();
@@ -1515,8 +1515,8 @@ bool ViewerDisplayWidget::forward_mouse_event_to_text_edit(QMouseEvent *event,
 
 	local_pos = adjust_pos_by_v_align(local_pos);
 
-	QMouseEvent derived(event->type(), local_pos, event->windowPos(),
-						event->screenPos(), event->button(), event->buttons(),
+	QMouseEvent derived(event->type(), local_pos, event->scenePosition(),
+						event->globalPosition(), event->button(), event->buttons(),
 						event->modifiers(), event->source());
 	return forward_event_to_text_edit(&derived);
 }

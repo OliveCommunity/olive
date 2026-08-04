@@ -19,6 +19,7 @@
 
 ***/
 
+#include <utility>
 #include "menushared.h"
 
 #include <QActionGroup>
@@ -202,7 +203,7 @@ void MenuShared::add_items_for_edit_menu(Menu *m, bool for_clips)
 
 void MenuShared::add_items_for_addable_objects_menu(Menu *m)
 {
-	for (QAction *a : qAsConst(addable_items_)) {
+	for (QAction *a : std::as_const(addable_items_)) {
 		a->setChecked((a->data().toInt() ==
 					   Core::instance()->get_selected_addable_object()));
 		m->addAction(a);
@@ -425,7 +426,7 @@ void MenuShared::retranslate()
 	edit_split_item_->setText(tr("Split"));
 	edit_speedduration_item_->setText(tr("Speed/Duration"));
 
-	for (QAction *a : qAsConst(addable_items_)) {
+	for (QAction *a : std::as_const(addable_items_)) {
 		a->setText(Tool::get_addable_object_name(
 			static_cast<Tool::AddableObject>(a->data().toInt())));
 	}

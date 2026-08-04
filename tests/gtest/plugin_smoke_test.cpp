@@ -170,7 +170,7 @@ TEST(PluginSmokeThread, ConcurrentImageAllocation)
 	std::atomic<int> success_count{ 0 };
 
 	for (int t = 0; t < num_threads; ++t) {
-		threads.emplace_back([&success_count, num_allocs_per_thread, t]() {
+		threads.emplace_back([&success_count, t]() {
 			for (int i = 0; i < num_allocs_per_thread; ++i) {
 				OFX::Host::ImageEffect::ClipDescriptor desc(
 					kOfxImageEffectOutputClipName);

@@ -36,7 +36,7 @@ void RenderJobTracker::insert(const TimeRange &range, JobTime job_time)
 
 void RenderJobTracker::insert(const TimeRangeList &ranges, JobTime job_time)
 {
-	foreach (const TimeRange &r, ranges) {
+	for (const TimeRange &r : ranges) {
 		insert(r, job_time);
 	}
 }

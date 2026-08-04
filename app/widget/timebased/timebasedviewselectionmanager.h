@@ -405,7 +405,7 @@ public:
 				QRectF(rubberband_scene_start_, current).normalized();
 
 			selected_ = rubberband_preselected_;
-			foreach (const DrawnObject &kp, drawn_objects_) {
+			for (const DrawnObject &kp : drawn_objects_) {
 				if (scene_rect.intersects(kp.second)) {
 					select(kp.first);
 				}

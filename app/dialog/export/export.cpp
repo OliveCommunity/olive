@@ -61,7 +61,7 @@ namespace
 
 // pix_fmt string (e.g. "yuv420p") to its index in the codec's supported
 // list; 0 (the codec's preferred format) when absent.
-int pix_fmt_index(int codec, const QString &pix_fmt)
+[[maybe_unused]] [[maybe_unused]] int pix_fmt_index(int codec, const QString &pix_fmt)
 {
 	if (pix_fmt.isEmpty()) {
 		return 0;
@@ -87,7 +87,7 @@ Rational export_viewer_length(const OakEngineNode *viewer)
 
 // OakEngineEncodingParams (assembled by the dialog) -> facade POD. One-to-one with
 // oak_export_options_ex; see oakengine/exporter.h for the field docs.
-oak_export_options_ex params_to_ex(const OakEngineEncodingParams *p)
+[[maybe_unused]] [[maybe_unused]] oak_export_options_ex params_to_ex(const OakEngineEncodingParams *p)
 {
 	oak_export_options_ex o = {};
 
@@ -939,7 +939,6 @@ OakEngineEncodingParams *ExportDialog::generate_params() const
 		const int vh = static_cast<int>(video_tab_->height_slider()->get_value());
 		const Rational tb = get_selected_timebase();
 		const int pix_fmt = video_tab_->pixel_format_field()->get_pixel_format();
-		const int ch_count = oakengine_video_params_internal_channel_count();
 		const Rational par = video_tab_->pixel_aspect_combobox()->get_pixel_aspect_ratio();
 		const int interlace = video_tab_->interlaced_combobox()->get_interlace_mode();
 

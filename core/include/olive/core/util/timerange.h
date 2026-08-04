@@ -380,7 +380,7 @@ public:
 
 	void shift(const Rational &diff)
 	{
-		for (int i = 0; i < array_.size(); i++) {
+		for (size_t i = 0; i < array_.size(); i++) {
 			array_[i] += diff;
 		}
 	}

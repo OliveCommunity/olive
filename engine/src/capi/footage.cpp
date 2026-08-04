@@ -328,7 +328,11 @@ bool video_stream_at(const olive::Footage *f, int index,
 // Internal cross-family accessor (not part of the public C ABI): returns
 // the borrowed project node of an import handle, or nullptr for probe
 // handles and NULL. Used by the timeline editing primitives.
+#if defined(_WIN32)
+extern "C" void *
+#else
 extern "C" __attribute__((visibility("hidden"))) void *
+#endif
 oakengine_capi_footage_node(OakEngineFootage *h)
 {
 	if (!h) {

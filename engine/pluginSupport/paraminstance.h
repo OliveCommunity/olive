@@ -132,7 +132,7 @@ public:
 	{
 		node_ = new_node;
 	}
-	OfxStatus get(int &a)
+	OfxStatus get(int &a) override
 	{
 		if (!node_) {
 			std::lock_guard<std::mutex> lock(no_node_mutex_);
@@ -151,7 +151,7 @@ public:
 		a = 0;
 		return kOfxStatErrValue;
 	}
-	OfxStatus get(OfxTime time, int &data)
+	OfxStatus get(OfxTime time, int &data) override
 	{
 		if (!node_) {
 			std::lock_guard<std::mutex> lock(no_node_mutex_);
@@ -170,7 +170,7 @@ public:
 		data = 0;
 		return kOfxStatErrValue;
 	}
-	OfxStatus set(int data)
+	OfxStatus set(int data) override
 	{
 		if (!node_) {
 			std::lock_guard<std::mutex> lock(no_node_mutex_);
@@ -186,7 +186,7 @@ public:
 		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
-	OfxStatus set(OfxTime time, int data)
+	OfxStatus set(OfxTime time, int data) override
 	{
 		if (!node_) {
 			std::lock_guard<std::mutex> lock(no_node_mutex_);
@@ -233,7 +233,7 @@ public:
 	{
 		node_ = new_node;
 	}
-	OfxStatus get(double &data)
+	OfxStatus get(double &data) override
 	{
 		if (!node_) {
 			data = has_value_ ? value_ : 0.0;
@@ -253,7 +253,7 @@ public:
 		data = 0.0;
 		return kOfxStatErrValue;
 	}
-	OfxStatus get(OfxTime time, double &data)
+	OfxStatus get(OfxTime time, double &data) override
 	{
 		if (!node_) {
 			data = has_value_ ? value_ : 0.0;
@@ -273,7 +273,7 @@ public:
 		data = 0.0;
 		return kOfxStatErrValue;
 	}
-	OfxStatus set(double data)
+	OfxStatus set(double data) override
 	{
 		if (!node_) {
 			value_ = data;
@@ -293,7 +293,7 @@ public:
 		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
-	OfxStatus set(OfxTime time, double data)
+	OfxStatus set(OfxTime time, double data) override
 	{
 		if (!node_) {
 			value_ = data;
@@ -313,11 +313,11 @@ public:
 		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
-	OfxStatus derive(OfxTime, double &)
+	OfxStatus derive(OfxTime, double &) override
 	{
 		return kOfxStatErrUnsupported;
 	}
-	OfxStatus integrate(OfxTime, OfxTime, double &)
+	OfxStatus integrate(OfxTime, OfxTime, double &) override
 	{
 		return kOfxStatErrUnsupported;
 	}
@@ -352,7 +352,7 @@ public:
 	{
 		node_ = new_node;
 	}
-	OfxStatus get(bool &data)
+	OfxStatus get(bool &data) override
 	{
 		if (!node_) {
 			data = has_value_ ? value_ : false;
@@ -367,7 +367,7 @@ public:
 		data = default_value();
 		return kOfxStatOK;
 	}
-	OfxStatus get(OfxTime time, bool &data)
+	OfxStatus get(OfxTime time, bool &data) override
 	{
 		if (!node_) {
 			data = has_value_ ? value_ : false;
@@ -392,7 +392,7 @@ public:
 		data = default_value();
 		return kOfxStatOK;
 	}
-	OfxStatus set(bool data)
+	OfxStatus set(bool data) override
 	{
 		if (!node_) {
 			value_ = data;
@@ -406,7 +406,7 @@ public:
 		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
-	OfxStatus set(OfxTime time, bool data)
+	OfxStatus set(OfxTime time, bool data) override
 	{
 		if (!node_) {
 			value_ = data;
@@ -452,7 +452,7 @@ public:
 	{
 		node_ = new_node;
 	}
-	OfxStatus get(int &data)
+	OfxStatus get(int &data) override
 	{
 		if (!node_) {
 			data = has_value_ ? value_ : 0;
@@ -467,7 +467,7 @@ public:
 		data = 0;
 		return kOfxStatErrValue;
 	}
-	OfxStatus get(OfxTime time, int &data)
+	OfxStatus get(OfxTime time, int &data) override
 	{
 		if (!node_) {
 			data = has_value_ ? value_ : 0;
@@ -482,7 +482,7 @@ public:
 		data = 0;
 		return kOfxStatErrValue;
 	}
-	OfxStatus set(int data)
+	OfxStatus set(int data) override
 	{
 		if (!node_) {
 			value_ = data;
@@ -496,7 +496,7 @@ public:
 		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
-	OfxStatus set(OfxTime time, int data)
+	OfxStatus set(OfxTime time, int data) override
 	{
 		if (!node_) {
 			value_ = data;
@@ -534,7 +534,7 @@ public:
 	{
 		node_ = new_node;
 	}
-	OfxStatus get(double &r, double &g, double &b, double &a)
+	OfxStatus get(double &r, double &g, double &b, double &a) override
 	{
 		if (!node_) {
 			if (has_value_) {
@@ -557,7 +557,7 @@ public:
 		a = static_cast<double>(c.alpha());
 		return kOfxStatOK;
 	}
-	OfxStatus get(OfxTime time, double &r, double &g, double &b, double &a)
+	OfxStatus get(OfxTime time, double &r, double &g, double &b, double &a) override
 	{
 		if (!node_) {
 			if (has_value_) {
@@ -581,7 +581,7 @@ public:
 		a = static_cast<double>(c.alpha());
 		return kOfxStatOK;
 	}
-	OfxStatus set(double r, double g, double b, double a)
+	OfxStatus set(double r, double g, double b, double a) override
 	{
 		if (!node_) {
 			value_[0] = r;
@@ -599,7 +599,7 @@ public:
 		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
-	OfxStatus set(OfxTime time, double r, double g, double b, double a)
+	OfxStatus set(OfxTime time, double r, double g, double b, double a) override
 	{
 		if (!node_) {
 			value_[0] = r;
@@ -646,7 +646,7 @@ public:
 	{
 		node_ = new_node;
 	}
-	OfxStatus get(double &r, double &g, double &b)
+	OfxStatus get(double &r, double &g, double &b) override
 	{
 		if (!node_) {
 			if (has_value_) {
@@ -667,7 +667,7 @@ public:
 		b = static_cast<double>(c.blue());
 		return kOfxStatOK;
 	}
-	OfxStatus get(OfxTime time, double &r, double &g, double &b)
+	OfxStatus get(OfxTime time, double &r, double &g, double &b) override
 	{
 		if (!node_) {
 			if (has_value_) {
@@ -689,7 +689,7 @@ public:
 		b = static_cast<double>(c.blue());
 		return kOfxStatOK;
 	}
-	OfxStatus set(double r, double g, double b)
+	OfxStatus set(double r, double g, double b) override
 	{
 		if (!node_) {
 			value_[0] = r;
@@ -706,7 +706,7 @@ public:
 		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
-	OfxStatus set(OfxTime time, double r, double g, double b)
+	OfxStatus set(OfxTime time, double r, double g, double b) override
 	{
 		if (!node_) {
 			value_[0] = r;
@@ -751,7 +751,7 @@ public:
 	{
 		node_ = new_node;
 	}
-	OfxStatus get(double &x, double &y)
+	OfxStatus get(double &x, double &y) override
 	{
 		if (!node_) {
 			if (has_value_) {
@@ -774,7 +774,7 @@ public:
 		}
 		return kOfxStatOK;
 	}
-	OfxStatus get(OfxTime time, double &x, double &y)
+	OfxStatus get(OfxTime time, double &x, double &y) override
 	{
 		if (!node_) {
 			if (has_value_) {
@@ -798,7 +798,7 @@ public:
 		}
 		return kOfxStatOK;
 	}
-	OfxStatus set(double x, double y)
+	OfxStatus set(double x, double y) override
 	{
 		if (!node_) {
 			value_[0] = x;
@@ -820,7 +820,7 @@ public:
 		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
-	OfxStatus set(OfxTime time, double x, double y)
+	OfxStatus set(OfxTime time, double x, double y) override
 	{
 		if (!node_) {
 			value_[0] = x;
@@ -869,7 +869,7 @@ public:
 	{
 		node_ = new_node;
 	}
-	OfxStatus get(int &x, int &y)
+	OfxStatus get(int &x, int &y) override
 	{
 		if (!node_) {
 			if (has_value_) {
@@ -886,7 +886,7 @@ public:
 		y = static_cast<int>(vec.y());
 		return kOfxStatOK;
 	}
-	OfxStatus get(OfxTime time, int &x, int &y)
+	OfxStatus get(OfxTime time, int &x, int &y) override
 	{
 		if (!node_) {
 			if (has_value_) {
@@ -904,7 +904,7 @@ public:
 		y = static_cast<int>(vec.y());
 		return kOfxStatOK;
 	}
-	OfxStatus set(int x, int y)
+	OfxStatus set(int x, int y) override
 	{
 		if (!node_) {
 			value_[0] = x;
@@ -919,7 +919,7 @@ public:
 		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
-	OfxStatus set(OfxTime time, int x, int y)
+	OfxStatus set(OfxTime time, int x, int y) override
 	{
 		if (!node_) {
 			value_[0] = x;
@@ -961,7 +961,7 @@ public:
 	{
 		node_ = new_node;
 	}
-	OfxStatus get(double &x, double &y, double &z)
+	OfxStatus get(double &x, double &y, double &z) override
 	{
 		if (!node_) {
 			if (has_value_) {
@@ -987,7 +987,7 @@ public:
 		}
 		return kOfxStatOK;
 	}
-	OfxStatus get(OfxTime time, double &x, double &y, double &z)
+	OfxStatus get(OfxTime time, double &x, double &y, double &z) override
 	{
 		if (!node_) {
 			if (has_value_) {
@@ -1014,7 +1014,7 @@ public:
 		}
 		return kOfxStatOK;
 	}
-	OfxStatus set(double x, double y, double z)
+	OfxStatus set(double x, double y, double z) override
 	{
 		if (!node_) {
 			value_[0] = x;
@@ -1038,7 +1038,7 @@ public:
 		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
-	OfxStatus set(OfxTime time, double x, double y, double z)
+	OfxStatus set(OfxTime time, double x, double y, double z) override
 	{
 		if (!node_) {
 			value_[0] = x;
@@ -1091,7 +1091,7 @@ public:
 	{
 		node_ = new_node;
 	}
-	OfxStatus get(int &x, int &y, int &z)
+	OfxStatus get(int &x, int &y, int &z) override
 	{
 		if (!node_) {
 			if (has_value_) {
@@ -1110,7 +1110,7 @@ public:
 		z = static_cast<int>(vec.z());
 		return kOfxStatOK;
 	}
-	OfxStatus get(OfxTime time, int &x, int &y, int &z)
+	OfxStatus get(OfxTime time, int &x, int &y, int &z) override
 	{
 		if (!node_) {
 			if (has_value_) {
@@ -1130,7 +1130,7 @@ public:
 		z = static_cast<int>(vec.z());
 		return kOfxStatOK;
 	}
-	OfxStatus set(int x, int y, int z)
+	OfxStatus set(int x, int y, int z) override
 	{
 		if (!node_) {
 			value_[0] = x;
@@ -1146,7 +1146,7 @@ public:
 		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
-	OfxStatus set(OfxTime time, int x, int y, int z)
+	OfxStatus set(OfxTime time, int x, int y, int z) override
 	{
 		if (!node_) {
 			value_[0] = x;
@@ -1198,7 +1198,7 @@ public:
 	{
 		node_ = new_node;
 	}
-	OfxStatus get(std::string &data)
+	OfxStatus get(std::string &data) override
 	{
 		if (!node_) {
 			data = has_value_ ? value_ : std::string();
@@ -1213,7 +1213,7 @@ public:
 		data.clear();
 		return kOfxStatErrValue;
 	}
-	OfxStatus get(OfxTime time, std::string &data)
+	OfxStatus get(OfxTime time, std::string &data) override
 	{
 		if (!node_) {
 			data = has_value_ ? value_ : std::string();
@@ -1228,7 +1228,7 @@ public:
 		data.clear();
 		return kOfxStatErrValue;
 	}
-	OfxStatus set(const char *data)
+	OfxStatus set(const char *data) override
 	{
 		if (!node_) {
 			value_ = data ? data : "";
@@ -1243,7 +1243,7 @@ public:
 		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
-	OfxStatus set(OfxTime time, const char *data)
+	OfxStatus set(OfxTime time, const char *data) override
 	{
 		if (!node_) {
 			value_ = data ? data : "";
@@ -1282,7 +1282,7 @@ public:
 	{
 		node_ = new_node;
 	}
-	OfxStatus get(std::string &data)
+	OfxStatus get(std::string &data) override
 	{
 		if (!node_) {
 			data = has_value_ ? value_ : std::string();
@@ -1301,7 +1301,7 @@ public:
 		data.clear();
 		return kOfxStatErrValue;
 	}
-	OfxStatus get(OfxTime time, std::string &data)
+	OfxStatus get(OfxTime time, std::string &data) override
 	{
 		if (!node_) {
 			data = has_value_ ? value_ : std::string();
@@ -1320,7 +1320,7 @@ public:
 		data.clear();
 		return kOfxStatErrValue;
 	}
-	OfxStatus set(const char *data)
+	OfxStatus set(const char *data) override
 	{
 		if (!node_) {
 			value_ = data ? data : "";
@@ -1335,7 +1335,7 @@ public:
 		submit_undo_command(node_, command, param_change_label(descriptor_));
 		return kOfxStatOK;
 	}
-	OfxStatus set(OfxTime time, const char *data)
+	OfxStatus set(OfxTime time, const char *data) override
 	{
 		if (!node_) {
 			value_ = data ? data : "";
