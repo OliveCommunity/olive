@@ -169,6 +169,8 @@ protected:
 
 	EngineEventBridge *bridge_ = nullptr;
 
+	QMetaObject::Connection playhead_conn_;
+
 	virtual void ConnectNodeEvent(OakEngineNode *)
 	{
 	}

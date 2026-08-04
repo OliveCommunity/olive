@@ -49,7 +49,6 @@ public:
 		: ExportDialog(viewer_node, false, parent)
 	{
 	}
-	~ExportDialog() override;
 
 	Rational get_selected_timebase() const;
 	void set_selected_timebase(const Rational &r);
@@ -76,8 +75,6 @@ private:
 	void set_defaults();
 
 	OakEngineNode *viewer_node_;
-
-	int64_t viewer_sub_ = 0;
 
 	int previously_selected_format_;
 

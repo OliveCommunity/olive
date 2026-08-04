@@ -106,13 +106,13 @@ In other words: one app-side controller that every
 - Acceptance: the value tree refreshes with the playhead.
 - **Required: build + ctest all green.**
 
-### issue 5 — ExportDialog playhead
+### issue 5 ✅ (done) — ExportDialog playhead
 `app/dialog/export/export.cpp:311` (raw C).
 - Acceptance: the export dialog's in/out times stay in sync with the
   playhead.
 - **Required: build + ctest all green.**
 
-### issue 6 — timelinewidget / viewerdisplay playhead family (bridge subscriptions)
+### issue 6 ✅ (done) — timelinewidget / viewerdisplay playhead family (bridge subscriptions)
 `app/widget/timelinewidget/timelinewidget.cpp` (around :741-743) and the
 related viewerdisplay subscriptions. Reconnect to PlaybackController.
 - Acceptance: timeline timecode/playhead position display correctly.
@@ -122,7 +122,7 @@ related viewerdisplay subscriptions. Reconnect to PlaybackController.
 
 ## Undo & modified migrations (pattern A, about half a day each)
 
-### issue 7 — historywidget UNDO_INDEX_CHANGED
+### issue 7 ✅ (done) — historywidget UNDO_INDEX_CHANGED
 `app/widget/history/historywidget.cpp:33,127` (two raw C callbacks).
 Emit an app-internal `undo_index_changed(int)` at Core's undo/redo/push
 exit points and reconnect historywidget to it.
@@ -130,7 +130,7 @@ exit points and reconnect historywidget to it.
   the correct row.
 - **Required: build + ctest all green.**
 
-### issue 8 — core.cpp PROJECT_MODIFIED_CHANGED
+### issue 8 ✅ (done) — core.cpp PROJECT_MODIFIED_CHANGED
 `app/core.cpp:1108` (raw C). The modified flag is driven by the undo stack,
 so the app can derive it at push/undo/redo/load; drive `setWindowModified`
 from an app-internal signal instead.

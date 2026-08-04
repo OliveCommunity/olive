@@ -290,6 +290,7 @@ public slots:
 	void rename_selected_blocks();
 
 signals:
+
 	void block_selection_changed(const QVector<OakEngineBlock *> &selected_blocks);
 
 	void request_capture_start(const TimeRange &time,
@@ -357,6 +358,8 @@ private:
 	QVector<TimelineAndTrackView *> views_;
 
 	RationalSlider *timecode_label_;
+
+	QMetaObject::Connection timecode_playhead_conn_;
 
 	QVector<OakEngineBlock *> selected_blocks_;
 

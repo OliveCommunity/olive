@@ -117,6 +117,7 @@ void TimeBasedWidget::connect_viewer_node(OakEngineNode *node)
 	// Disconnect old bridge subscriptions and connections
 	disconnect(bridge_, nullptr, this, nullptr);
 	bridge_->unsubscribe_all();
+	disconnect(playhead_conn_);
 
 	if (viewer_node_) {
 		oak_video_params vp;
@@ -160,17 +161,24 @@ void TimeBasedWidget::connect_viewer_node(OakEngineNode *node)
 	if (viewer_node_) {
 		// Subscribe to viewer events via bridge
 		bridge_->subscribe(node, OAKENGINE_EVENT_VIEWER_LENGTH_CHANGED);
-		bridge_->subscribe(node, OAKENGINE_EVENT_VIEWER_PLAYHEAD_CHANGED);
 		bridge_->subscribe(node, OAKENGINE_EVENT_NODE_REMOVED_FROM_GRAPH);
 
 		connect(bridge_, &EngineEventBridge::viewer_length_changed, this,
 				[this](OakEngineNode *, qint64, qint64) {
 					update_maximum_scroll();
 				});
-		connect(bridge_, &EngineEventBridge::viewer_playhead_changed, this,
-				[this](OakEngineNode *, qint64 num, qint64 den) {
-					playhead_time_changed(Rational(num, den));
-				});
+
+		// Playhead changes arrive via PlaybackController (issue 6 of the
+		// EventBridge elimination plan) instead of the bridge's
+		// viewer_playhead_changed.
+		playhead_conn_ = connect(
+			PlaybackController::instance(),
+			&PlaybackController::playhead_changed, this,
+			[this](OakEngineNode *n, const Rational &time) {
+				if (n == get_connected_node()) {
+					playhead_time_changed(time);
+				}
+			});
 
 		// Node removed from graph - use the bridge signal
 		connect(bridge_, &EngineEventBridge::node_removed_from_graph, this,
