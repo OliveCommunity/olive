@@ -1,0 +1,163 @@
+/***
+
+  Oak Video Editor - Non-Linear Video Editor
+  Copyright (C) 2026 Oak Team
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+***/
+
+#ifndef OAK_EDITOR_NODE_SEQUENCE_H
+#define OAK_EDITOR_NODE_SEQUENCE_H
+
+#ifndef __cplusplus
+#include <stdbool.h>
+#endif
+
+#include "common/videoparams.h"
+#include "node/error.h"
+#include "olive/core/oakcore/audioparams.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * @brief Opaque handle to a sequence (olive::Sequence).
+ *
+ * The handle IS the C++ object pointer; no wrapper is allocated.
+ */
+typedef struct OakNodeSequence OakNodeSequence;
+
+/**
+ * @brief Opaque handle to a track list (olive::TrackList), see node/track.h.
+ */
+typedef struct OakNodeTrackList OakNodeTrackList;
+
+/**
+ * @brief Opaque handle to a track (olive::Track), see node/track.h.
+ */
+typedef struct OakNodeTrack OakNodeTrack;
+
+/**
+ * @brief Create an empty sequence with zero tracks.
+ *
+ * @return Sequence handle, or NULL on allocation failure.
+ */
+OakNodeSequence *oaknode_sequence_create(void);
+
+/**
+ * @brief Destroy a sequence and its track lists. No-op on NULL.
+ *
+ * Tracks and blocks connected to the sequence are owned by the graph and
+ * are not deleted here; the caller must have torn them down first.
+ */
+void oaknode_sequence_free(OakNodeSequence *sequence);
+
+/**
+ * @brief Borrowed handle to the per-type track list.
+ *
+ * @param type One of OAKNODE_TRACK_TYPE_VIDEO / _AUDIO / _SUBTITLE.
+ * @return OAKNODE_OK, OAKNODE_E_INVALID or OAKNODE_E_NOT_FOUND (bad type).
+ */
+int oaknode_sequence_get_track_list(OakNodeSequence *sequence, int type,
+									OakNodeTrackList **out);
+
+/**
+ * @brief Number of connected tracks of the given type.
+ */
+int oaknode_sequence_get_track_count(OakNodeSequence *sequence, int type,
+									 int *count);
+
+/**
+ * @brief Borrowed handle to the track of `type` at `index`.
+ */
+int oaknode_sequence_get_track_at(OakNodeSequence *sequence, int type,
+								  int index, OakNodeTrack **out);
+
+/**
+ * @brief Flat track cache across all types (olive::Sequence::get_tracks()).
+ */
+int oaknode_sequence_get_all_track_count(OakNodeSequence *sequence, int *count);
+int oaknode_sequence_get_all_track_at(OakNodeSequence *sequence, int index,
+									  OakNodeTrack **out);
+
+/**
+ * @brief Playhead position in sequence time.
+ */
+int oaknode_sequence_get_playhead(OakNodeSequence *sequence, int *numerator,
+								  int *denominator);
+int oaknode_sequence_set_playhead(OakNodeSequence *sequence, int numerator,
+								  int denominator);
+
+/**
+ * @brief Cached overall/video/audio lengths (olive::ViewerOutput).
+ */
+int oaknode_sequence_get_length(OakNodeSequence *sequence, int *numerator,
+								int *denominator);
+int oaknode_sequence_get_video_length(OakNodeSequence *sequence,
+									  int *numerator, int *denominator);
+int oaknode_sequence_get_audio_length(OakNodeSequence *sequence,
+									  int *numerator, int *denominator);
+
+/**
+ * @brief Recompute the cached lengths from the track lists
+ * (olive::ViewerOutput::verify_length()).
+ */
+int oaknode_sequence_verify_length(OakNodeSequence *sequence);
+
+/* --------------------------------------------------- Video/audio params */
+
+/**
+ * @brief Number of video/audio parameter slots.
+ */
+int oaknode_sequence_get_video_stream_count(OakNodeSequence *sequence,
+											int *count);
+int oaknode_sequence_get_audio_stream_count(OakNodeSequence *sequence,
+											int *count);
+
+/**
+ * @brief Video parameters at `index` as a NEW handle owned by the caller
+ * (release with oakcommon_videoparams_free()).
+ *
+ * @return OAKNODE_OK, OAKNODE_E_INVALID, OAKNODE_E_NOT_FOUND or
+ * OAKNODE_E_NOMEM.
+ */
+int oaknode_sequence_get_video_params(OakNodeSequence *sequence, int index,
+									  OakCommonVideoParams **out);
+
+/**
+ * @brief Replace the video parameters at `index` with a copy of `params`.
+ */
+int oaknode_sequence_set_video_params(OakNodeSequence *sequence, int index,
+									  const OakCommonVideoParams *params);
+
+/**
+ * @brief Audio parameters at `index` as a NEW handle owned by the caller
+ * (release with oakcore_audioparams_free()).
+ */
+int oaknode_sequence_get_audio_params(OakNodeSequence *sequence, int index,
+									  OakAudioParams **out);
+
+/**
+ * @brief Replace the audio parameters at `index` with a copy of `params`.
+ */
+int oaknode_sequence_set_audio_params(OakNodeSequence *sequence, int index,
+									  const OakAudioParams *params);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif //OAK_EDITOR_NODE_SEQUENCE_H

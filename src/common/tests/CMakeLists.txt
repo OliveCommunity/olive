@@ -19,6 +19,7 @@ find_package(GTest REQUIRED)
 include(GoogleTest)
 
 add_executable(oakcommon-gtest
+        colortransform_test.cpp
         commandlineparser_test.cpp
         current_test.cpp
         debug_test.cpp
@@ -31,7 +32,9 @@ add_executable(oakcommon-gtest
         oiioutils_test.cpp
         power_test.cpp
         qtutils_test.cpp
+        subtitleparams_test.cpp
         threadsafemap_test.cpp
+        videoparams_test.cpp
         xmlutils_test.cpp
 )
 

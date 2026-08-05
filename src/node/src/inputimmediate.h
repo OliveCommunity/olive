@@ -1,0 +1,194 @@
+/***
+
+  Olive - Non-Linear Video Editor
+  Copyright (C) 2022 Olive Team
+  Modifications Copyright (C) 2025 mikesolar
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+***/
+
+#ifndef OAK_NODEINPUTIMMEDIATE_H
+#define OAK_NODEINPUTIMMEDIATE_H
+
+#include <vector>
+
+#include "keyframe.h"
+#include "splitvalue.h"
+#include "value.h"
+#include "xmlutils.h"
+
+namespace olive
+{
+
+class NodeInput;
+
+class NodeInputImmediate {
+public:
+	NodeInputImmediate(NodeValue::Type type, const SplitValue &default_val);
+
+	/**
+   * @brief Internal insert function, automatically does an insertion sort based on the keyframe's time
+   */
+	void insert_keyframe(NodeKeyframe *key);
+
+	void remove_keyframe(NodeKeyframe *key);
+
+	/**
+   * @brief Delete (or hand off) all keyframes
+   *
+   * If `reclaimed` is non-null, ownership of the keyframes is transferred
+   * to that vector instead of deleting them (replaces the old QObject
+   * reparenting to a memory manager).
+   */
+	void delete_all_keyframes(std::vector<NodeKeyframe *> *reclaimed = nullptr);
+
+	/**
+   * @brief Get non-keyframed value split into components (the way it's stored)
+   */
+	const SplitValue &get_split_standard_value() const
+	{
+		return standard_value_;
+	}
+
+	const Variant &get_split_standard_value_on_track(int track) const
+	{
+		return standard_value_.at(track);
+	}
+
+	void set_standard_value_on_track(const Variant &value, int track);
+
+	void set_split_standard_value(const SplitValue &value);
+
+	/**
+   * @brief Retrieve a list of keyframe objects for all tracks at a given time
+   *
+   * List may be empty if this input is not keyframing or has no keyframes at this time.
+   */
+	std::vector<NodeKeyframe *> get_keyframe_at_time(const Rational &time) const;
+
+	/**
+   * @brief Retrieve the keyframe object at a given time for a given track
+   *
+   * @return
+   *
+   * The keyframe object at this time or nullptr if there isn't one or if is_keyframing() is false.
+   */
+	NodeKeyframe *get_keyframe_at_time_on_track(const Rational &time,
+												int track) const;
+
+	/**
+   * @brief Gets the closest keyframe to a time
+   *
+   * If is_keyframing() is false or keyframes_ is empty, this will return nullptr.
+   */
+	NodeKeyframe *get_closest_keyframe_to_time_on_track(const Rational &time,
+														int track) const;
+
+	/**
+   * @brief Get closest keyframe that's before the time on any track
+   *
+   * If no keyframe is before this time, returns nullptr.
+   */
+	NodeKeyframe *get_closest_keyframe_before_time(const Rational &time) const;
+
+	/**
+   * @brief Get closest keyframe that's before the time on any track
+   *
+   * If no keyframe is before this time, returns nullptr.
+   */
+	NodeKeyframe *get_closest_keyframe_after_time(const Rational &time) const;
+
+	/**
+   * @brief A heuristic to determine what type a keyframe should be if it's inserted at a certain time (between keyframes)
+   */
+	NodeKeyframe::Type get_best_keyframe_type_for_time(const Rational &time,
+													   int track) const;
+
+	/**
+   * @brief Return list of keyframes in this parameter
+   */
+	const std::vector<NodeKeyframeTrack> &keyframe_tracks() const
+	{
+		return keyframe_tracks_;
+	}
+
+	/**
+   * @brief Return whether keyframing is enabled on this input or not
+   */
+	bool is_keyframing() const
+	{
+		return keyframing_;
+	}
+
+	/**
+   * @brief Set whether keyframing is enabled on this input or not
+   */
+	void set_is_keyframing(bool k)
+	{
+		keyframing_ = k;
+	}
+
+	/**
+   * @brief Gets the earliest keyframe on any track
+   */
+	NodeKeyframe *get_earliest_keyframe() const;
+
+	/**
+   * @brief Gets the latest keyframe on any track
+   */
+	NodeKeyframe *get_latest_keyframe() const;
+
+	/**
+   * @brief Return whether a keyframe exists at this time
+   *
+   * If is_keyframing() is false, this will always return false. This checks all tracks and will return true if *any*
+   * track has a keyframe.
+   */
+	bool has_keyframe_at_time(const Rational &time) const;
+
+	bool is_using_standard_value(int track) const
+	{
+		return (!is_keyframing() || keyframe_tracks_.at(track).empty());
+	}
+
+	void set_data_type(NodeValue::Type type);
+
+private:
+	/**
+   * @brief Non-keyframed value
+   */
+	SplitValue standard_value_;
+
+	/**
+   * @brief Default value
+   */
+	SplitValue default_value_;
+
+	/**
+   * @brief Internal keyframe array
+   *
+   * If keyframing is enabled, this data is used instead of standard_value.
+   */
+	std::vector<NodeKeyframeTrack> keyframe_tracks_;
+
+	/**
+   * @brief Internal keyframing enabled setting
+   */
+	bool keyframing_;
+};
+
+}
+
+#endif // OAK_NODEINPUTIMMEDIATE_H

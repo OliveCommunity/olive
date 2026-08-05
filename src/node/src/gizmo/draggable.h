@@ -1,0 +1,85 @@
+/***
+
+  Olive - Non-Linear Video Editor
+  Copyright (C) 2022 Olive Team
+  Modifications Copyright (C) 2025 mikesolar
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+***/
+
+#ifndef OAK_DRAGGABLEGIZMO_H
+#define OAK_DRAGGABLEGIZMO_H
+
+#include "gizmo.h"
+#include "inputdragger.h"
+#include "undocommand.h"
+
+namespace olive
+{
+
+class DraggableGizmo : public NodeGizmo {
+public:
+	/// Changes what the X/Y coordinates emitted from HandleMovement specify
+	enum DragValueBehavior {
+		/// X/Y will be the exact mouse coordinates (in sequence pixels)
+		k_absolute,
+
+		/// X/Y will be the movement since the last time HandleMovement was called
+		k_delta_from_previous,
+
+		/// X/Y will be the movement from the start of the drag
+		k_delta_from_start
+	};
+
+	explicit DraggableGizmo(Node *parent = nullptr);
+
+	void drag_start(const NodeValueRow &row, double abs_x, double abs_y,
+				   const olive::core::Rational &time);
+
+	void drag_move(double x, double y, int modifiers);
+
+	void drag_end(olive::MultiUndoCommand *command);
+
+	void add_input(const NodeKeyframeTrackReference &input)
+	{
+		inputs_.push_back(input);
+		draggers_.push_back(NodeInputDragger());
+	}
+
+	std::vector<NodeInputDragger> &get_draggers()
+	{
+		return draggers_;
+	}
+
+	DragValueBehavior get_drag_value_behavior() const
+	{
+		return drag_value_behavior_;
+	}
+	void set_drag_value_behavior(DragValueBehavior d)
+	{
+		drag_value_behavior_ = d;
+	}
+
+private:
+	std::vector<NodeKeyframeTrackReference> inputs_;
+
+	std::vector<NodeInputDragger> draggers_;
+
+	DragValueBehavior drag_value_behavior_;
+};
+
+}
+
+#endif // OAK_DRAGGABLEGIZMO_H

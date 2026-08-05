@@ -18,6 +18,7 @@
 add_library(oakcommon SHARED
         commandlineparser.cpp
         commandlineparser.h
+        colortransform.h
         current.cpp
         current.h
         debug.cpp
@@ -25,6 +26,11 @@ add_library(oakcommon SHARED
         decibel.h
         define.h
         dropworkflowbehavior.h
+        loopmode.h
+        subtitleparams.cpp
+        subtitleparams.h
+        videoparams.cpp
+        videoparams.h
         ffmpegutils.cpp
         ffmpegutils.h
         filefunctions.cpp

@@ -2,7 +2,11 @@ name: CI
 
 on:
   push:
+    branches:
+      - main
   pull_request:
+    branches:
+      - main
   schedule:
     # Daily at 03:17 UTC to keep ccache/dependency caches warm
     - cron: '17 3 * * *'

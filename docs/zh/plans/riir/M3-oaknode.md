@@ -80,3 +80,95 @@ M3 阶段判据（放宽版）：oaknode 目录就位、C API 实现、oaknode_g
 - 枚举序数：NodeValue::Type ⇄ oak_node_value_type 映射表（已在
   nodevaluehandle.h 钉过一次，oaknode 测试再钉一次，防两侧漂移）。
 - `oaknode_debug_alive_count()` 泄漏断言。
+
+## 实施现状（2026-08-05）
+
+M3 已落地并可独立构建、测试全绿（96 个用例全部通过，无 skip）。
+以下为与上文计划的实际差异。
+
+### 最终目录结构
+
+- `src/node/src/` — 去 Qt 化 C++ 实现（`olive::` 命名空间），target
+  `oaknode`（SHARED）；平铺结构，`src/node/src` 为 include 根，
+  模块内 include 无前缀（`"value.h"`、`"block/block.h"`）。
+- `src/node/c_api/` — 纯 C ABI 包装（node/group/keyframe/factory/
+  traverser/project/folder/footage/serializer/block/track/sequence/
+  colormanager 共 13 个 .cpp + 内部头 `valueconvert.h`/`alivecount.h`），
+  通过 `target_sources` 合并进 `oaknode`，不单独成库。
+- `src/node/tests/` — gtest，单一 target `oaknode-gtest`（13 个
+  _test.cpp + 共享夹具 `testnode.h`），`gtest_discover_tests`
+  （`DISCOVERY_MODE PRE_TEST`）。
+- `include/node/`（仓库根）— 公共 C 头：`error.h` + node/group/
+  keyframe/factory/traverser/project/folder/footage/serializer/block/
+  track/sequence/colormanager.h。
+- `src/node/standalone/CMakeLists.txt` — 独立构建 driver（见下）。
+- `src/node/DEQT.md` — 去Qt化替换约定与逐波次裁决记录。
+- `src/node/transition/` — 过渡 stub 头（见「实际依赖」）。
+
+### 独立构建与测试
+
+```sh
+cmake -S src/node/standalone -B build-oaknode
+cmake --build build-oaknode -j
+ctest --test-dir build-oaknode --output-on-failure
+```
+
+driver 照 src/common/standalone 模式：EXPAT/OpenColorIO/OpenImageIO
+用 Homebrew 的 config 包（`find_package(... CONFIG)`）并映射到
+`${OCIO_LIBRARIES}` 等变量；`add_subdirectory` 引入真实 in-repo
+target（core→olivecore、ffmpeg_bridge、src/undo→oakundo、
+src/common→oakcommon，各自 BUILD_TESTS 关闭），不再链接预构建
+dylib；禁用 OpenTimelineIO（`/opt/otio` 的 `@loader_path` 问题，
+oaknode 不需要）。
+
+### 实际依赖
+
+- Oak 内部：oakcommon（XML/Current/工具）、oakundo（UndoCommand/
+  UndoStack）、olivecore（`olive::core::Rational/Color/Bezier` 等
+  C ABI 包装，真实符号）、ffmpeg_bridge（经 oakcommon 间接）。
+- 第三方：EXPAT、OpenColorIO、OpenImageIO、Imath（头）、FFmpeg
+  （经 ffmpeg_bridge 间接）、GTest（仅测试）。
+- **transition stub 机制**（裁决 A）：对尚未拆分的
+  render/codec/timeline/audio/pluginSupport 模块的引用允许悬空——
+  头文件由 `src/node/transition/` 的过渡 stub/转发头提供（engine 头
+  仍是 Qt 版），符号经 `-undefined dynamic_lookup`（macOS）留到
+  运行时解析。测试进程启动时必须能解析这些符号：oaknode-gtest
+  链接真实 target（olivecore/oakcommon/oakundo + OCIO/OIIO/Imath
+  dylib）并 `-Wl,-force_load` 预构建的
+  `build/third_party/openfx/HostSupport/libOfxHost.a`（OFX 符号与
+  typeinfo，否则二进制启动即崩，PRE_TEST 发现模式也会挂；路径用
+  `find_library` 定位，可由 `OAKNODE_OFX_HOST_ARCHIVE` 覆盖）。
+- ColorManager 构造时需要有效 OCIO 配置（`:/ocioconf` qrc 提取是
+  Qt 资源遗留、必然失败）：ctest 经 `ENVIRONMENT OCIO=...` 指向
+  `engine/render/ocioconf/config.ocio`，colormanager_test 另用
+  `OAK_OCIO_TEST_CONFIG` 编译定义兜底。
+
+### 与冻结 C API 的主要差异
+
+- 函数族命名与约定照 oakcommon/oakundo 既有契约：`oaknode_<族>_<动词>`，
+  int 错误码 + out 参数，字符串两段式 buffer；undoable 变体成对
+  （`_undoable` 后缀，部分经 `OakUndoCommand *` 尾参）。
+- §2 冻结表中**跳过/未实现**的函数族：
+  - Sequence 的 workarea/markers 族（timeline 边界类型
+    TimelineMarker/TimelineWorkArea 未拆，留 M4）；
+  - ProjectSerializer 的落盘 save/load（按计划迁 oakstorage M10），
+    本模块只实现内存形态 `save_to_xml`/`load_from_xml` + SaveData/
+    LoadData 句柄；
+  - Node 的 `oak_node_value` 句柄族未单独成族，输入值经
+    `oaknode_node_get/set_input[_string][_undoable]` 直接收发；
+  - 无任何事件订阅接口（与 §2 特殊约定 2 一致）。
+- `oaknode_debug_alive_count()` 泄漏断言已实现并在测试中使用。
+
+### 已知问题
+
+- `NodeGroupAddInputPassthrough` 的上游 bug 原样保留（未修，待裁决）。
+- polygon/text 光栅化后端钩子（PathFillBackend/TextMeasureBackend/
+  TextRenderBackend）未安装前输出空白；footage 离线警示帧丢失文字
+  叠层；track 默认高度固化为 13px——均为被迫行为差异，见
+  `notes.md`「oaknode 去Qt化的删除与语义变更」。
+- 去Qt化顺带修了三个上游 bug（行为与旧版不同）：
+  `Project::clear()` 重置 `root_`（可重新 initialize）、clear 删除
+  顺序修正（不再触发 disconnect_edge 的 parent assert）、
+  `Sequence` 析构删除三个 `TrackList`（原泄漏）。详见 notes.md。
+- 库本体对 transition stub 模块的符号悬空在 M7/M9 复核前是预期
+  状态；禁止新增对 render/codec/timeline/audio/pluginSupport 的引用。
