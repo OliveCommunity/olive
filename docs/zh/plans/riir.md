@@ -147,11 +147,11 @@
                      │
             liboakengine-facade（壳：capi + 事件 + init）
                      │
-   ┌────────┬────────┼─────────┬──────────┐
- oaktask  oakrender  oakplugin  oakaudio  oakserialize
-   │        │         │          │          │
-   └────────┴────┬───┴──────────┴──────────┘
-                 │
+   ┌────────┬────────┼─────────┬──────────┬──────────────┐
+ oaktask  oakrender  oakplugin  oakaudio  oakserialize  oakstorage
+   │        │         │          │          │            （工程文件读写，
+   └────────┴────┬───┴──────────┴──────────┘            独立模块，未来
+                 │                                        替换为数据库）
         oakmodel（节点图 + 项目模型 + 时间线模型）
                  │
         ┌────────┼─────────┐
@@ -159,6 +159,99 @@
         │
    ffmpeg_bridge（已是 C ABI .so）
 ```
+
+**oakstorage 单列说明（本计划对原模块图的唯一结构性修改）**：
+工程文件的读写（`node/project/serializer` 的落盘路径 + `task/project/`
+load/save/loadotio/saveotio 的文件 IO）从 oakserialize / oaktask 中**单独拆出**为
+oakstorage 模块。它对上只暴露**存储后端无关**的 C ABI（打开/保存/探测工程，
+URI 寻址），当前唯一后端是 XML .ove 文件；**未来替换为数据库时只新增一个
+后端实现，上层（oaktask/facade）零改动**。剪贴板序列化（copy/paste）不属于
+存储，仍留在 oakserialize。详细接口设计见 `riir/04-interfaces.md` 与
+`riir/M10-oakstorage.md`。
+
+### 3.1.1 模块数据流图（Mermaid）
+
+下图描述终态各模块之间的调用与数据流向。**实线 = 命令调用（上层→下层，
+内部 C ABI `oak<mod>_*`，调用方知道影响）；虚线 = 仅两种允许的反向通知：
+facade→app 的 `oakengine_event` 通道，以及异步任务（oaktask 任务 /
+渲染 ticket / GPU 帧完成）的完成回调。下层对上层没有事件订阅。**
+
+```mermaid
+flowchart TB
+    subgraph 消费侧["消费侧（不感知实现语言）"]
+        APP["oak-editor (app)"]
+        CLI["oak-cli"]
+        WRK["oak-render-worker"]
+    end
+
+    FACADE["liboakengine-facade<br/>壳：oakengine_* 公共 C ABI（冻结）<br/>+ 事件注册表 + init/shutdown"]
+
+    subgraph 引擎模块["引擎模块（facade 之下，只经内部 C ABI 互调）"]
+        TASK["oaktask<br/>任务编排（Task/TaskManager）"]
+        RENDER["oakrender<br/>渲染管线/缓存/色彩"]
+        PLUGIN["oakplugin<br/>OpenFX 宿主"]
+        AUDIO["oakaudio<br/>音频 DSP/输出/电平"]
+        SERIAL["oakserialize<br/>节点图 XML 序列化<br/>（剪贴板 copy/paste，不落盘）"]
+        STORAGE["oakstorage<br/>工程持久化（URI 打开/保存/探测）<br/>后端可插拔：ove-xml 文件｜未来 oakdb 数据库"]
+        UNDO["oakundo<br/>UndoStack/UndoCommand"]
+        MODEL["oakmodel<br/>Node 类型簇 + Project/Sequence/Track/Block<br/>（最大不可拆分类型簇）"]
+        CODEC["oakcodec<br/>decoder/encoder/conform/proxy"]
+        CORE["liboakcore<br/>rational/timecode/bezier/samplebuffer"]
+        BACKEND["oakbackend<br/>GPU 插件：oakgl / oakvulkan / 未来 Rust(wgpu)"]
+        FFMPEG["ffmpeg_bridge<br/>FFmpeg 的 C ABI 桥（现成 .so）"]
+    end
+
+    APP -->|"oakengine_* 调用"| FACADE
+    CLI --> FACADE
+    WRK --> FACADE
+    FACADE -.->|"oakengine_event 变更通知<br/>（发射线程同步回调）"| APP
+
+    FACADE -->|"任务工厂/进度"| TASK
+    FACADE -->|"渲染请求/帧句柄"| RENDER
+    FACADE --> AUDIO
+    FACADE --> PLUGIN
+    FACADE -->|"工程打开/保存（URI）"| STORAGE
+    FACADE --> UNDO
+
+    TASK -->|"load/save 任务委托<br/>（Project 句柄 + XML 字节流）"| STORAGE
+    TASK -->|"import/conform/proxy 任务"| CODEC
+    TASK -->|"导出任务"| RENDER
+
+    RENDER -->|"遍历节点图求值"| MODEL
+    RENDER -->|"解码帧请求"| CODEC
+    RENDER -->|"上传纹理/绘制"| BACKEND
+    RENDER -->|"OCIO 色彩变换"| CORE
+
+    STORAGE -->|"反序列化建图 / 序列化取图（同步命令）"| MODEL
+    SERIAL --> MODEL
+
+    MODEL -->|"读取媒体参数"| CODEC
+    MODEL --> CORE
+    UNDO -->|"命令持有 Node/Project 句柄"| MODEL
+    AUDIO --> CORE
+    CODEC --> FFMPEG
+    CODEC --> CORE
+    BACKEND -.->|"帧完成（异步任务回调，ticket 返回通道）"| RENDER
+```
+
+**数据流要点**：
+
+1. **命令流（自上而下）**：app 的每个动作 → facade `oakengine_*` → 对应
+   模块内部 C ABI。facade 是唯一入口，模块不允许被 app 直接链接。
+2. **工程 IO 流**：`oaktask` 创建 load/save 任务 → 委托 `oakstorage`；
+   oakstorage 按 URI scheme 选后端（`file://*.ove` → ove-xml 后端，
+   未来 `oakdb://` → 数据库后端），序列化/反序列化时对 `oakmodel` 建图
+   取图。**替换为数据库只发生在 oakstorage 内部。**
+3. **帧数据流**：`oakcodec` 经 `ffmpeg_bridge` 解码 → `oakrender` 遍历
+   `oakmodel` 节点图求值 → `oakbackend`（GPU 插件）上屏/导出；帧以不透明
+   句柄 + buf/size 约定跨边界，不传递 C++ 对象。
+4. **通知流（仅两种反向通道，虚线）**：模块间没有事件订阅——上层调
+   下层只有命令，调用方知道影响；变更通知由命令发起层（通常是 facade）
+   经 `oakengine_event` 同步回调给 app，Rust 化后只是发射端换语言，
+   通道不变（§6.1）。另一例外是异步任务的完成回调（oaktask 任务、
+   渲染 ticket、GPU 帧完成）——回调即该异步命令的返回通道。
+5. **undo 流**：所有可撤销编辑（无论来自 facade 还是模块内部）都包装成
+   `OakUndoCommand` 进入 `oakundo` 栈，命令体内只持 oakmodel 句柄。
 
 **关键架构事实（拆分顺序的依据）**：
 - `Node` 及其子类簇（Project/Folder/Footage/Sequence/Block/Track/Clip/Gap/
@@ -177,7 +270,8 @@
 | M0 | **oakcore** | liboakcore 整体（rational/timecode/bezier/samplebuffer/audioparams，Qt-free） | 无 | 极低；工具链试金石 |
 | M1 | **oakaudio** | AudioProcessor、AudioSynchronizer、AudioLevelMeter、波形计算 | oakcore | 低；顺带消掉 AudioProcessor 豁免项 |
 | M2 | **oakcodec** | decoder/encoder/conform/proxy | ffmpeg_bridge | 中；FFmpeg 行为复刻 |
-| M3 | **oakserialize** | node/project/serializer/*（XML 项目文件） | oakmodel（经 facade node/project 族） | 中；round-trip 必须字节一致 |
+| M3a | **oakstorage** | node/project/serializer 落盘路径 + task/project/{load,save,loadotio,saveotio} 文件 IO（工程持久化，后端可插拔：当前 XML 文件，未来数据库） | oakmodel（经 facade node/project 族） | 中；round-trip 必须字节一致；后端接口一次冻结 |
+| M3b | **oakserialize** | node/project/serializer 的剪贴板/节点图 XML 序列化（copy/paste，不落盘） | oakmodel（经 facade node/project 族） | 中；round-trip 必须字节一致 |
 | M4 | **oakundo** | UndoCommand/UndoStack/MultiUndoCommand | oakmodel（经 facade） | 中；全局调用点多 |
 | M5 | **oakrender** | RenderManager/ticket/watcher/cache/PreviewAutoCacher/ColorProcessor | oakmodel、oakcodec | 高；线程与 OCIO |
 | M6 | **oakmodel** | Node/NodeInput/keyframe/traverser/factory/Project/Folder/Footage/Sequence/Block/Track/效果节点 | oakcore、oakcodec | 最高；最大类型簇 |
@@ -312,7 +406,8 @@ timeline.h，本就是为外部消费设计的）充当模块间缝，缝的质�
 
 1. **S1 完成**：Rust 工具链 + 门禁脚本进 CI；M0（liboakcore）G6 退役。
 2. **M1–M2 完成**：音频 DSP 与编解码 Rust 化；AudioProcessor 豁免项消除。
-3. **M3–M4 完成**：序列化与 undo Rust 化；项目文件 round-trip 金标准常青。
+3. **M3a–M4 完成**：工程存储（oakstorage，含后端可插拔接口冻结）、剪贴板
+   序列化与 undo Rust 化；项目文件 round-trip 金标准常青。
 4. **M5 完成**：渲染管线 Rust 化（OCIO 孤岛与否已裁决并记录）。
 5. **M6 完成**：oakmodel Rust 化——**最大里程碑**，此后 liboakengine 主体为 Rust。
 6. **M7–M8 完成**：任务系统与 facade 壳 Rust 化；liboakengine.so（C++ 版）正式退役。

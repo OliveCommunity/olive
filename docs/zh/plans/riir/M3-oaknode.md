@@ -40,16 +40,18 @@ project.h、timeline.h 的对应函数就是模板，参数命名前缀换
 | Track / TrackList | timeline | height/mute/lock/index/type、block 增删、split/ripple 原语 |
 | Block / ClipBlock / GapBlock / TransitionBlock | timeline | in/out/length/media_in、speed/reverse/loop、links |
 | Footage | task | filename、streams、proxy、duration |
-| ProjectSerializer | task | save/load/copy/paste（clipboard 族，照 oakengine/serializer.h 模板） |
+| ProjectSerializer | task / oakstorage | **剪贴板** copy/paste + 节点图 XML 的内存形态（SaveData/LoadData，照 oakengine/serializer.h 模板）；**落盘 save/load 迁 oakstorage（M10），不在本模块** |
 | ColorManager | render | config、default config、display transform |
 
 **特殊约定**：
-1. undoable 变体与 live 变体成对（`_live` 后缀或 `, void *command`
-   尾参），与 oakengine 现状一致。
-2. 事件：Node 族事件（label/input/keyframe/context 等）经
-   `oaknode_subscribe(handle, event_id, fn, userdata)`——事件 ID 表
-   直接沿用 `oakengine/events.h` 的 70-95 段（值不变，便于
-   EngineEventBridge 逐步换绑）。
+1. undoable 变体与 live 变体成对（`_live` 后缀或
+   `, OakUndoCommand *command` 尾参——有类型句柄，禁 void*），
+   与 oakengine 现状一致。
+2. 无事件订阅接口（2026-08 修订，04 §3）：oaknode 的所有修改都经
+   命令函数完成，调用方知道影响；Node 族的变更通知（label/input/
+   keyframe/context 等）由 facade 在执行命令后经既有 `oakengine_event`
+   通道发出（事件 id 沿用 `oakengine/events.h` 70-95 段，值不变），
+   oaknode 自身不持有任何上层回调。
 3. `Node *`、`Project *` 等句柄即 `OakNodeNode *`/`OakNodeProject *`，
    不透明。
 4. 虚函数不出模块（01 §5）；具体节点类型经
@@ -73,8 +75,8 @@ M3 阶段判据（放宽版）：oaknode 目录就位、C API 实现、oaknode_g
 
 - 重点：Node 增删连边、Project/Folder 层级、Track 属性、
   keyframe live/undoable 对称、serializer 剪贴板往返、
-  factory 枚举与创建。
-- 事件：每族至少 1 个 subscribe/trigger/unsubscribe 用例。
+  factory 枚举与创建；每个变更命令执行后直接读状态断言生效
+  （无事件可断言——通知在 facade 层测）。
 - 枚举序数：NodeValue::Type ⇄ oak_node_value_type 映射表（已在
   nodevaluehandle.h 钉过一次，oaknode 测试再钉一次，防两侧漂移）。
 - `oaknode_debug_alive_count()` 泄漏断言。

@@ -35,17 +35,16 @@ OAKTL_API int oaktimeline_marker_at(const OakTimelineMarkerList *l, int i,
 	int64_t *in_ts, int64_t *out_ts, int *color, char *name_buf, int n);
 OAKTL_API int oaktimeline_marker_add(OakTimelineMarkerList *l,
 	int64_t in_ts, int64_t out_ts, const char *name, int color,
-	void *command);              /* command=NULL 时自行入栈 */
+	OakUndoCommand *command);    /* command=NULL 时自行入栈（2026-08：void* → 有类型句柄） */
 OAKTL_API int oaktimeline_marker_remove_at(OakTimelineMarkerList *l,
-	int i, void *command);
+	int i, OakUndoCommand *command);
 OAKTL_API int oaktimeline_marker_set_time(OakTimelineMarkerList *l,
-	int i, int64_t in_ts, int64_t out_ts, void *command);
+	int i, int64_t in_ts, int64_t out_ts, OakUndoCommand *command);
 OAKTL_API int oaktimeline_marker_set_props(OakTimelineMarkerList *l,
-	int i, int color, const char *name, void *command);
-/* 事件：MARKER_ADDED/REMOVED/MODIFIED（id 沿用 oakengine events 段） */
-OAKTL_API int64_t oaktimeline_subscribe(void *handle, int32_t event_id,
-	oaktl_event_fn fn, void *userdata);
-OAKTL_API void oaktimeline_unsubscribe(int64_t id);
+	int i, int color, const char *name, OakUndoCommand *command);
+/* 无事件接口（2026-08 修订，04 §3）：marker 的增删改都是调用方发的
+ * 命令，MARKER_ADDED/REMOVED/MODIFIED 通知由调用方所在层（facade，
+ * id 沿用 oakengine events 段）在命令后发出。 */
 ```
 
 ### 2.2 `oaktimeline/workarea.h`
@@ -58,9 +57,9 @@ OAKTL_API int oaktimeline_workarea_set_range(OakTimelineWorkarea *w,
 	int64_t in_ts, int64_t out_ts);                    /* live */
 OAKTL_API int oaktimeline_workarea_set_range_undoable(
 	OakTimelineWorkarea *w, int64_t in_ts, int64_t out_ts,
-	int64_t old_in_ts, int64_t old_out_ts, void *command);
+	int64_t old_in_ts, int64_t old_out_ts, OakUndoCommand *command);
 OAKTL_API int oaktimeline_workarea_set_enabled_undoable(
-	OakTimelineWorkarea *w, int enabled, void *command);
+	OakTimelineWorkarea *w, int enabled, OakUndoCommand *command);
 OAKTL_API void oaktimeline_workarea_reset(int64_t *in_ts, int64_t *out_ts);
 /* load/save 经 oakcommon_xml 句柄在 oaknode 序列化路径调用 */
 OAKTL_API int oaktimeline_workarea_load(OakTimelineWorkarea *w,
@@ -107,7 +106,8 @@ OAKTL_API int64_t oaktimeline_nearest_block_ts(OakNodeTrack *track,
 
 ## 4. 测试（映射 03 §2/§3）
 
-- marker：增删改查、undo 往返（push 后 undo 恢复）、事件三件套。
+- marker：增删改查、undo 往返（push 后 undo 恢复）；每命令后读
+  count/at 断言生效（无事件——通知在 facade 层测）。
 - workarea：set/get、undoable 旧值恢复、reset 哨兵、xml 往返。
 - edit：每个 `_command` 工厂 1 个"构造→入栈→undo 还原"用例
   （track 增删、place/replace/trim/split/ripple/slide）。
