@@ -45,10 +45,8 @@ OAKAU_API int oakaudio_manager_push(const float *samples,
 	int frame_count, double speed);
 OAKAU_API int oakaudio_manager_is_playing(void);
 OAKAU_API void oakaudio_manager_stop(void);
-/* 输出参数变化事件 */
-OAKAU_API int64_t oakaudio_manager_subscribe_params_changed(
-	oakaudio_event_fn fn, void *userdata);
-OAKAU_API void oakaudio_unsubscribe(int64_t id);
+/* 无事件接口（2026-08 修订，04 §3）：输出参数的修改是调用方发的
+ * 命令（set_params），params_changed 通知由调用方所在层发出。 */
 ```
 
 ## 3. 切割点
@@ -63,5 +61,5 @@ OAKAU_API void oakaudio_unsubscribe(int64_t id);
 - processor：open/convert/close 全链（44.1k stereo → 48k stereo，
   帧数换算正确、无爆音断言用能量差阈值）、速度 1.5x。
 - manager：无音频设备环境用 null backend 初始化（现有后端探测
-  模式），params set/get 往返、事件触发。
+  模式），params set/get 往返（set 后 get 读数即生效——无事件）。
 - `oakaudio_debug_alive_count()` 泄漏断言。

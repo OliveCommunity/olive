@@ -23,6 +23,11 @@
 已知分层违规 1 处：`render/` 引用了 `src/capi/displayinternal.h`
 （R7-A 重做 display.h 时一并消除）。
 
+> **2026-08 增补（oakstorage 拆出）**：矩阵扫描早于 oakstorage 单列。
+> 其依赖关系为：oakstorage → node（serializer 落盘路径，含版本化
+> serializerXXXXXX 族）+ common；oaktask → oakstorage（load/save/otio
+> 委托）；facade → oakstorage。详细契约见 04 §2.10 与 M10。
+
 ## 2. 模块定义与拆分顺序
 
 顺序原则：叶子先、根后；每步只引入"已拆模块的 C ABI"，不引入
@@ -34,11 +39,12 @@
 | M1 | oakcommon | `common/`（41 文件工具集）+ `config/` | common→render/node/undo/codec/plugin 的 12 次反向 include（清单见 M1 §3） |
 | M2 | oakundo | `undo/`（undocommand/undostack） | undo→node/project.h 1 处（M2 §3） |
 | M3 | oaknode | `node/`（图、工厂、keyframe、nodeundo、traverser） | node→render 47、node→codec 8、node→timeline 5、node→audio 4、node→undo 4（M3 §3，最大的活） |
+| M3a | **oakstorage** | `node/project/serializer` 落盘路径 + `task/project/{load,save,loadotio,saveotio}` 文件 IO（**工程持久化单列**，后端可插拔：当前 XML 文件，未来数据库） | storage→node（序列化建图取图，经 oaknode C ABI）；手册 M10 |
 | M4 | oaktimeline | `timeline/`（marker/workarea/timeline undo 命令族/timelinecommon） | timeline→node 32（经 oaknode C ABI + 适配类） |
 | M5 | oakcodec | `codec/`（decoder/encoder/frame/proxy/conform） | codec→render 11（videoparams 等随 M3.5 下沉）、codec→task 5、codec→node 3 |
 | M6 | oakaudio | `audio/`（AudioManager/AudioProcessor/输出） | audio→render 2、audio→codec 1 |
 | M7 | oakrender | `render/`（Renderer/PlaybackCache/ColorManager/帧缓存/job） | render→node 38、render→codec 9、render→task 2、render→undo 1、render→src 1（违规） |
-| M8 | oaktask | `task/`（Task/TaskManager/项目 load/save/import/OTIO） | task→node 38、task→codec 4、task→render 4 |
+| M8 | oaktask | `task/`（Task/TaskManager/项目任务编排/cache 任务；**工程文件 IO 已划给 oakstorage，M3a**） | task→node 38、task→codec 4、task→render 4、task→storage（load/save 委托） |
 | M9 | oakplugin | `pluginSupport/`（OpenFX host） | plugin→node 6、plugin→render 6、plugin→undo 2、plugin→coreengine 2 |
 | — | liboakengine | `src/capi` + `coreengine` + `tool/` + `ui/` 残余 | 纯装配层：facade 内部调用改经各模块 C ABI（或保持现状直接链，见 M9 §4 裁决） |
 

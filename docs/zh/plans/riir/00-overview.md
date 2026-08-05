@@ -6,9 +6,10 @@
 > 并稳定后，才逐模块用 Rust 重写（届时模块的 C ABI 原样保留，Rust
 > 实现替换 C++ 实现对调用方透明）。
 >
-> 阅读顺序：`00`（本文）→ `01-adapter-pattern.md`（适配器规范，
-> 所有模块共用）→ `02-modules-and-order.md`（模块清单、依赖矩阵、
-> 拆分顺序）→ `03-testing.md`（测试规范）→ `M1`…`M9`（逐模块执行
+> 阅读顺序：`00`（本文）→ `01-adapter-pattern.md`（适配器规范 + §0
+> 接口铁律，所有模块共用）→ `02-modules-and-order.md`（模块清单、依赖矩阵、
+> 拆分顺序）→ `03-testing.md`（测试规范）→ `04-interfaces.md`（模块间
+> 接口 provides/consumes 全表）→ `M1`…`M10`（逐模块执行
 > 手册，**C API 已在各手册中冻结**）。
 
 ## 目标与判据
@@ -18,9 +19,11 @@
 ```
 oakcore（已有，不动）
 oakcommon ─ oakundo ─ oaknode ─ oaktimeline ─ oakcodec ─ oakrender ─ oaktask ─ oakplugin
-                                                                              │
-                                                  oakaudio ───────────────────┤
-                                                                              ▼
+                          │                                             │
+                          └────────────── oakstorage（工程持久化，      ┘
+                                           后端可插拔：文件→数据库）
+                                                  oakaudio ─────────────┐
+                                                                        ▼
                                               liboakengine（= facade + coreengine，纯装配层）
 ```
 

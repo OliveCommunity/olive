@@ -29,8 +29,10 @@
 4. **枚举序数一致性**：C 侧 POD/枚举与 C++ 侧枚举的映射（01 §3 表）
    每个映射 1 个 TEST（如 `oakundo` 的 movement mode 0-3 ⇄
    `Timeline::MovementMode`）。
-5. **事件/回调**：每个 `set_*_cb`/subscribe 至少 1 个 TEST：触发后
-   断言回调被调、payload 正确；反注册后断言不再被调。
+5. **回调（仅异步任务）**：模块间 C ABI 无 subscribe 类接口（04 §3）；
+   仅异步命令（任务/渲染 ticket）的进度/完成回调需要测试：触发后
+   断言回调被调、payload 正确、FINISHED 后自动失效。同步命令的测试
+   改为"调用后直接读状态断言生效"。
 6. **所有权**：borrowed 句柄（文档注释标了 `/* borrowed */` 的）
    free 后原对象仍存活，1 个 TEST。
 

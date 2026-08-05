@@ -51,9 +51,10 @@ OAKRD_API int oakrender_frame_cache_load(OakRenderCache *c,
 	OakCodecFrame **out_frame);
 OAKRD_API void oakrender_frame_cache_save(OakRenderCache *c,
 	const char *path, const char *uuid, const OakCodecFrame *f);
-/* 缓存事件（playback invalidated/validated、frame invalidated） */
-OAKRD_API int64_t oakrender_cache_subscribe(OakRenderCache *c,
-	int32_t event_id, oakrender_event_fn fn, void *userdata);
+/* 无缓存事件（2026-08 修订，04 §3）：缓存的 invalidate/validate 由
+ * 编辑命令的调用方触发并知情，通知由 facade 在命令后发出；
+ * oakrender 不持有上层回调。渲染 ticket 的完成回调属异步命令
+ * 返回通道，不在此限（见 renderer.h 族）。 */
 ```
 
 ### 2.3 `oakrender/color.h`
@@ -107,7 +108,8 @@ OAKRD_API int oakrender_disk_cache_clear(void);
 
 ## 4. 测试（映射 03 §2/§3）
 
-- cache：invalidate/validate 状态机、帧缓存存取往返、事件触发。
+- cache：invalidate/validate 状态机、帧缓存存取往返（调用方触发后
+  读状态断言——无事件）。
 - color：默认 config 建置、processor convert 已知值（sRGB→Linear
   抽样点数值断言，容差 1e-3）。
 - manager：request_frame 对 demo.mp4 + 最小 sequence 出帧非空

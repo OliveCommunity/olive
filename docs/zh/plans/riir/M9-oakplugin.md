@@ -43,7 +43,9 @@ OAKPL_API int oakplugin_instance_get_param(OakPluginInstance *i,
 	const char *param_id, oak_node_value *out);
 OAKPL_API int oakplugin_instance_render(OakPluginInstance *i,
 	OakCodecFrame *dst, const OakCodecFrame *src, int64_t ts);
-/* 进度事件（R6 已把 cancelled 信号改成 C 回调，沿用该机制） */
+/* 进度回调：instance_render 是异步命令（渲染中进行），进度/取消回调
+ * 即其返回通道——04 §3 唯一例外情形（R6 已把 cancelled 信号改成 C
+ * 回调，沿用该机制）。非异步接口一律不配回调。 */
 OAKPL_API void oakplugin_instance_set_progress_cb(OakPluginInstance *i,
 	oakplugin_progress_fn fn, void *userdata);
 OAKPL_API void oakplugin_instance_cancel(OakPluginInstance *i);

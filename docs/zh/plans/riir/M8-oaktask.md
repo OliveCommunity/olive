@@ -1,7 +1,8 @@
 # M8 · oaktask 拆分手册
 
-> 内容：`engine/task/`（Task 基类、TaskManager、project/
-> load/save/import/loadotio/saveotio、cache 任务）。
+> 内容：`engine/task/`（Task 基类、TaskManager、任务编排、cache 任务；
+> **工程文件 IO——project/load/save/loadotio/saveotio 的落盘部分——
+> 已划给 oakstorage（M10），本模块只做任务壳**）。
 > 依赖：node 38、codec 4、render 4、common 4、config 2、timeline 1、
 > coreengine 2。
 > 拆分顺序第 8 位。
@@ -30,7 +31,8 @@ OAKTK_API int oaktask_task_succeeded(const OakTaskTask *t);
 OAKTK_API int oaktask_task_progress(const OakTaskTask *t, double *out);
 OAKTK_API int oaktask_task_title(OakTaskTask *t, char *buf, int n);
 OAKTK_API int oaktask_task_error(OakTaskTask *t, char *buf, int n);
-/* 事件：STARTED/PROGRESS/FINISHED（id 沿用 oakengine events 段） */
+/* 进度/完成回调：任务是异步命令，回调即其返回通道——04 §3 唯一
+ * 例外情形（一次性语义，FINISHED 后自动失效） */
 OAKTK_API int64_t oaktask_task_subscribe(OakTaskTask *t, int32_t event_id,
 	oaktask_event_fn fn, void *userdata);
 ```
@@ -42,6 +44,9 @@ OAKTK_API OakTaskTask *oaktask_create_project_load(const char *filename);
 OAKTK_API OakTaskTask *oaktask_create_project_save(OakNodeProject *p,
 	const char *filename_or_NULL, int use_compression,
 	const void *layout_or_NULL);
+/* 注：以上两个工厂是薄壳——文件 IO 全部委托 oakstorage（M10 §2.4），
+ * 任务只保留进度/取消/事件编排；`use_compression` 等打包进
+ * oakstorage_save 的 options 位掩码。 */
 OAKTK_API OakTaskTask *oaktask_create_project_import(OakNodeNode *folder,
 	const char *const *urls, int url_count);
 OAKTK_API OakTaskTask *oaktask_create_project_load_otio(
@@ -50,7 +55,7 @@ OAKTK_API OakTaskTask *oaktask_create_project_save_otio(
 	OakNodeProject *p, const char *filename, const int *sequence_indexes,
 	int count);
 /* import 结果（task 成功后读，borrowed） */
-OAKTK_API void *oaktask_import_take_command(OakTaskTask *t); /* 所有权转移 */
+OAKTK_API OakUndoCommand *oaktask_import_take_command(OakTaskTask *t); /* 所有权转移（2026-08 修订：按 01 §0.1 由 void* 改为有类型句柄） */
 OAKTK_API int oaktask_import_footage_count(OakTaskTask *t);
 OAKTK_API OakNodeNode *oaktask_import_footage_at(OakTaskTask *t, int i);
 OAKTK_API int oaktask_import_invalid_count(OakTaskTask *t);
@@ -66,10 +71,9 @@ OAKTK_API OakNodeProject *oaktask_load_take_project(OakTaskTask *t);
 OAKTK_API int oaktask_manager_count(void);
 OAKTK_API OakTaskTask *oaktask_manager_at(int i);      /* borrowed */
 OAKTK_API void oaktask_manager_delete_finished(void);
-/* 事件：TASK_ADDED/REMOVED/FAILED/LIST_CHANGED */
-OAKTK_API int64_t oaktask_manager_subscribe(int32_t event_id,
-	oaktask_event_fn fn, void *userdata);
-OAKTK_API void oaktask_unsubscribe(int64_t id);
+/* 无 manager 事件（2026-08 修订，04 §3）：任务的创建/删除都由调用方
+ * 发起（facade 建任务即知 ADDED；delete_finished 的调用方知 REMOVED），
+ * LIST_CHANGED 通知由调用方所在层发出。 */
 ```
 
 ## 3. 切割点
@@ -77,6 +81,7 @@ OAKTK_API void oaktask_unsubscribe(int64_t id);
 | 现状 | 处理 |
 |---|---|
 | task → node/ 38（footage 6、project 5、sequence 3、serializer/layout 3、colormanager 2 等） | 全部经 oaknode C ABI + 适配类（M3 已就位）——本手册工作量主体 |
+| task → 工程文件 IO（load/save/loadotio/saveotio 落盘） | 划给 **oakstorage**（M3a/M10）：任务工厂保留签名，实现改为委托 `oakstorage_open/save` |
 | task → codec/ 4 | 经 oakcodec C ABI（M5） |
 | task → render/ 4 | 经 oakrender C ABI（M7） |
 | task → timeline/ 1 | 经 oaktimeline C ABI（M4） |
@@ -88,7 +93,7 @@ OAKTK_API void oaktask_unsubscribe(int64_t id);
   入栈）、save/load 往返（临时目录 .ove，load 后 project 非空、
   root 非空）。
 - start_sync 成功/失败路径（不存在文件 → failed + error 非空）。
-- 事件：STARTED→PROGRESS→FINISHED 序列（导入任务断言至少一次
-  PROGRESS 且 FINISHED.succeeded==1）。
-- manager：添加/删除/list_changed 事件。
+- 事件（异步任务例外）：STARTED→PROGRESS→FINISHED 序列（导入任务
+  断言至少一次 PROGRESS 且 FINISHED.succeeded==1）。
+- manager：count/at/delete_finished 行为（无事件，直接读状态断言）。
 - `oaktask_debug_alive_count()` 泄漏断言。

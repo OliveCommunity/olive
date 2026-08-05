@@ -40,7 +40,12 @@ OAKUNDO_API void oakundo_command_free(OakUndoCommand *cmd);  /* NULL no-op */
 
 ```c
 typedef struct OakUndoStack OakUndoStack;
-OAKUNDO_API OakUndoStack *oakundo_undostack_init(void *parent_qobject);
+typedef struct OakUndoObjectParent OakUndoObjectParent;  /* borrowed QObject 挂载点 */
+OAKUNDO_API OakUndoStack *oakundo_undostack_init(
+	const OakUndoObjectParent *parent);
+/* OakUndoObjectParent：QObject 父子树挂载点的 borrowed 不透明句柄
+ * （2026-08 修订：按 01 §0.1 由 void* 改为有类型句柄；
+ * 提供侧内部即 QObject*，消费侧不可解引用；可传 NULL 表无父） */
 OAKUNDO_API void oakundo_undostack_free(OakUndoStack *self);
 
 OAKUNDO_API void oakundo_undostack_push(OakUndoStack *self,
@@ -65,15 +70,12 @@ OAKUNDO_API void oakundo_undostack_update_actions(OakUndoStack *self);
 /* QAction* 句柄（GUI 菜单绑定用，borrowed） */
 OAKUNDO_API void *oakundo_undostack_undo_action(OakUndoStack *self);
 OAKUNDO_API void *oakundo_undostack_redo_action(OakUndoStack *self);
-
-/* 事件（index_changed） */
-#define OAKUNDO_EVENT_INDEX_CHANGED 1
-typedef void (*oakundo_event_fn)(int event_id, int64_t a, int64_t b,
-	void *userdata);
-OAKUNDO_API int64_t oakundo_undostack_subscribe(OakUndoStack *self,
-	int event_id, oakundo_event_fn fn, void *userdata);
-OAKUNDO_API void oakundo_unsubscribe(int64_t subscription_id);
 ```
+
+**无事件接口（2026-08 修订）**：上层对下层只有命令。push/undo/redo/jump
+的调用方知道栈索引的变化（`oakundo_undostack_index` 调用后即可读），
+`index_changed` 通知改由**调用方所在层**（facade 的 undo 适配层）在
+每次变更命令后自行发出——oakundo 不持有任何上层回调。
 
 ## 3. 切割点（1 处）
 
@@ -96,7 +98,8 @@ Project* 本来就只是作为不透明身份被使用（修改标记归属）�
 
 - 每条 API 正常+错误路径（NULL self、空 push 不入栈——
   空 MultiUndoCommand 被删除的既有行为必须有 TEST 钉死）。
-- push/undo/redo/jump/clear 全序列；command_text/is_done 边界行。
-- 事件：push 后 index_changed 触发且 a=新 index；unsubscribe 后不再触发。
+- push/undo/redo/jump/clear 全序列；command_text/is_done 边界行；
+  每步后 `oakundo_undostack_index` 读数与预期一致（替代原事件断言——
+  调用方知道影响，直接读状态）。
 - 往返测试：C API 与适配类各做一遍 push-undo-redo，状态一致。
 - `oakundo_debug_alive_count()`：init/free 配对无泄漏。
