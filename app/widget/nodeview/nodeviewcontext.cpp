@@ -146,6 +146,13 @@ NodeViewContext::NodeViewContext(oak::Node context, QGraphicsItem *item)
 			add_child(child.handle());
 		}
 	}
+	connect(Core::instance(),
+        &Core::project_load_finished,
+        this,
+        [this]()
+{
+    update_rect();
+});
 }
 
 NodeViewContext::~NodeViewContext()
