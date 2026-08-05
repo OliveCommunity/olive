@@ -116,6 +116,12 @@ void TimeScaledObject::set_maximum_scale(const double &max)
 {
 	max_scale_ = max;
 
+	// Keep min <= max so the clamp in set_scale() is never called with
+	// inverted limits (undefined behavior)
+	if (min_scale_ > max_scale_) {
+		min_scale_ = max_scale_;
+	}
+
 	if (get_scale() > max_scale_) {
 		set_scale(max_scale_);
 	}
@@ -124,6 +130,12 @@ void TimeScaledObject::set_maximum_scale(const double &max)
 void TimeScaledObject::set_minimum_scale(const double &min)
 {
 	min_scale_ = min;
+
+	// Keep min <= max so the clamp in set_scale() is never called with
+	// inverted limits (undefined behavior)
+	if (max_scale_ < min_scale_) {
+		max_scale_ = min_scale_;
+	}
 
 	if (get_scale() < min_scale_) {
 		set_scale(min_scale_);

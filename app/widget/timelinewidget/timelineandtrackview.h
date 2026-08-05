@@ -42,6 +42,8 @@ public:
 
 	TrackView *track_view() const;
 
+	virtual ~TimelineAndTrackView() override;
+
 private:
 	QSplitter *splitter_;
 

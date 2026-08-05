@@ -54,6 +54,16 @@ TimelineAndTrackView::TimelineAndTrackView(Qt::Alignment vertical_alignment,
 	splitter_->setSizes({ 180, width() });
 }
 
+TimelineAndTrackView::~TimelineAndTrackView()
+{
+	// When the child views are destroyed they reset their scene, which can
+	// push a valueChanged through these connections while this object is
+	// already half-destroyed (Qt aborts on a slot invoked past its class's
+	// destructor). Detach first so teardown emissions go nowhere.
+	disconnect(view_->verticalScrollBar(), nullptr, this, nullptr);
+	disconnect(track_view_->verticalScrollBar(), nullptr, this, nullptr);
+}
+
 QSplitter *TimelineAndTrackView::splitter() const
 {
 	return splitter_;
