@@ -48,8 +48,11 @@ set(CMAKE_AUTORCC ON)
 # root to enrich your IDE with clangd language server protocol functionalities
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+include_directories(include/)
 # Sanitizers
-add_library(olive-sanitizers INTERFACE)
+add_library(olive-sanitizers INTERFACE
+        src/common/c_api/commandlineparser.cpp
+        include/common/commandlineparser.h)
 include(cmake/Sanitizers.cmake)
 enable_sanitizers(olive-sanitizers)
 list(APPEND OLIVE_LIBRARIES olive-sanitizers)
@@ -368,7 +371,7 @@ add_subdirectory(cli)
 
 add_subdirectory(app)
 add_subdirectory(worker)
-
+add_subdirectory(src)
 if (BUILD_TESTS)
   enable_testing()
   add_subdirectory(tests)

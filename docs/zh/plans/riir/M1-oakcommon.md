@@ -101,3 +101,67 @@ OAK/OIIO/FFmpeg 类型全部句柄化或拍平字段。）
 - xml：reader 解析样例串、attr/text 读取、skip、writer 产出解析回读。
 - files：临时目录建/写/读/尺寸/删除。
 - 每函数 1 正常 + 1 错误路径；`oakcommon_debug_alive_count()` 泄漏断言。
+
+## 实施现状（2026-08-05）
+
+M1 已落地并可独立构建、测试全绿（127 个用例：126 通过，1 个
+`GTEST_SKIP`）。以下为与上文计划的实际差异。
+
+### 最终目录结构
+
+- `src/common/src/` — 去 Qt 化 C++ 实现（`olive::` 命名空间），target
+  `oakcommon`（SHARED）。
+- `src/common/c_api/` — 纯 C ABI 包装，通过 `target_sources` 合并进
+  `oakcommon`，不单独成库。
+- `src/common/tests/` — gtest，target `oakcommon-gtest`，
+  `gtest_discover_tests`。
+- `include/common/`（仓库根）— 公共 C 头：`commandlineparser.h`、
+  `current.h`、`debug.h`、`dropworkflowbehavior.h`、`error.h`、
+  `ffmpegutils.h`、`filefunctions.h`、`miscutils.h`、`ocioutils.h`、
+  `oiioutils.h`、`power.h`、`qtutils.h`、`xmlutils.h`。
+- `src/common/standalone/CMakeLists.txt` — 独立构建 driver（见下）。
+
+### 独立构建与测试
+
+```sh
+cmake -S src/common/standalone -B build-oakcommon
+cmake --build build-oakcommon -j
+ctest --test-dir build-oakcommon --output-on-failure
+```
+
+driver 通过 `find_package(... CONFIG)` 使用 Homebrew 的 OCIO/OIIO/GTest
+（顶层 `cmake/FindOpenColorIO.cmake`/`FindOpenImageIO.cmake` 面向
+`.so`，macOS 下不适用），并把 config target 映射到 oakcommon
+CMakeLists 消费的 `${OCIO_LIBRARIES}` 等变量。driver 中额外处理了两点：
+给 `olivecore` 补 `third_party/openfx/include` 头路径（顶层靠全局
+include）；禁用 OpenTimelineIO（`/opt/otio` 的 dylib 用 `@loader_path`
+安装名，构建树内无法加载，且 oakcommon 不需要 OTIO）。
+
+### 实际依赖
+
+- 第三方：EXPAT（XML 解析）、OpenColorIO、OpenImageIO、FFmpeg（经
+  ffmpeg_bridge 间接）、GTest（仅测试）。
+- Oak 内部库：**仍链接 `olivecore` 与 `ffmpeg_bridge`**，二者均为真实
+  符号依赖而非纯头文件：
+  - `olive::core::Rational`（`core/include/olive/core/util/rational.h`）
+    是对 `oakcore_rational_*` C ABI 的包装，构造/析构/运算都需要
+    olivecore 的符号；
+  - `FFmpegUtils::get_compatible_bridge_pixel_format` 调用
+    `fb_find_best_pix_fmt_of_list`（ffmpeg_bridge 导出符号）。
+  - `pixelformat.h`/`sampleformat.h` 本身是 header-only，只需头路径
+    （`core/include`、`ffmpeg_bridge/include`，因这两个 target 的
+    include 目录是 PRIVATE，在 oakcommon 里显式补为 PUBLIC）。
+- 未按计划只链 oakcore 头；OLIVECORE_BUILD_TESTS 在独立构建中关闭。
+
+### 与计划的主要差异
+
+- 接口未按 §2 冻结清单逐条实现，而是按实际使用面包装：C ABI 头放在
+  仓库根 `include/common/`，命名 `oakcommon_<模块>_<动词>`，两段式
+  buffer（先查询尺寸再拷入）约定统一。
+- `xmlutils` 用 expat 实现（事件预先解析成队列）；C API 的
+  `oakcommon_xml_reader_read_element_text` 因底层是消费型读取，在
+  handle 内缓存最近一次文本以兼容两段式调用。
+- 被移除/上移的类（播放钟、autoscroll 等反向 include 涉及项）见
+  `notes.md`。
+- 计划中提到的 `switch(PixelFormat)` 编译问题实际不存在：
+  `olive::core::PixelFormat` 提供 `operator Format()`，可直接 switch。
