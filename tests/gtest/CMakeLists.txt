@@ -142,6 +142,20 @@ add_executable(olive-gtest
   mainwindow_test.cpp
   serialized_layout_xml_test.cpp
   common_ratiodialog_test.cpp
+  common_misc2_test.cpp
+  widget_standardcombos_test.cpp
+  widget_sliderbase_test.cpp
+  widget_handles_test.cpp
+  widget_timebased2_test.cpp
+  widget_viewer2_test.cpp
+  timeline_common_test.cpp
+  widget_projectexplorer2_test.cpp
+  widget_nodeview_test.cpp
+  widget_nodeparamview_test.cpp
+  dialog_misc2_test.cpp
+  widget_scope_test.cpp
+  mainwindow2_test.cpp
+  widget_keyframe_multicam_test.cpp
 )
 
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Test)
