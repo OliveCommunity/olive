@@ -1,14 +1,4 @@
 #pragma once
-// Syntax-check stub only (not in repo).
-#include <string>
-#include <vector>
-#include "olive/core/util/timerange.h"
-#include "render/playbackcache.h"
-namespace olive {
-class Node;
-class AudioWaveformCache : public PlaybackCache {
-public:
-	template <typename T> explicit AudioWaveformCache(T *) : PlaybackCache(this) {}
-	void set_saving_enabled(bool) {}
-};
-}
+// Bridge: routed to the real de-Qt oakrender header (src/render/src/audiowaveformcache.h,
+// M7) so oaknode and oakrender see the same class definition.
+#include "../../../render/src/audiowaveformcache.h"

@@ -1,0 +1,75 @@
+/***
+
+  Olive - Non-Linear Video Editor
+  Copyright (C) 2022 Olive Team
+  Modifications Copyright (C) 2025 mikesolar
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+***/
+
+#include "renderjobtracker.h"
+
+namespace olive
+{
+
+void RenderJobTracker::insert(const TimeRange &range, JobTime job_time)
+{
+	// First remove any ranges that overlap this one (code copied from TimeRangeList::remove)
+	TimeRangeList::util_remove(&jobs_, range);
+
+	// Now append the job
+	TimeRangeWithJob job(range, job_time);
+	jobs_.push_back(job);
+}
+
+void RenderJobTracker::insert(const TimeRangeList &ranges, JobTime job_time)
+{
+	for (const TimeRange &r : ranges) {
+		insert(r, job_time);
+	}
+}
+
+void RenderJobTracker::clear()
+{
+	jobs_.clear();
+}
+
+bool RenderJobTracker::isCurrent(const Rational &time, JobTime job_time) const
+{
+	for (auto it = jobs_.crbegin(); it != jobs_.crend(); it++) {
+		if (it->contains(time)) {
+			return job_time >= it->get_job_time();
+		}
+	}
+
+	return false;
+}
+
+TimeRangeList
+RenderJobTracker::getCurrentSubRanges(const TimeRange &range,
+									  const JobTime &job_time) const
+{
+	TimeRangeList current_ranges;
+
+	for (auto it = jobs_.crbegin(); it != jobs_.crend(); it++) {
+		if (job_time >= it->get_job_time() && it->overlaps_with(range)) {
+			current_ranges.insert(it->intersected(range));
+		}
+	}
+
+	return current_ranges;
+}
+
+}

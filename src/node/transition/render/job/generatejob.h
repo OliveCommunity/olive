@@ -1,11 +1,4 @@
 #pragma once
-#include "render/job/acceleratedjob.h"
-#include "value.h"
-namespace olive {
-class GenerateJob : public AcceleratedJob {
-public:
-	GenerateJob() {}
-	explicit GenerateJob(const NodeValueRow &) {}
-	NodeValue get(const std::string &) const { return NodeValue(); }
-};
-}
+// Bridge: routed to the real de-Qt oakrender header (src/render/src/job/generatejob.h,
+// M7) so oaknode and oakrender see the same class definition.
+#include "../../../../render/src/job/generatejob.h"

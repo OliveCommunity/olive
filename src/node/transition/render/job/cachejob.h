@@ -1,10 +1,4 @@
 #pragma once
-#include <string>
-#include "render/job/acceleratedjob.h"
-namespace olive {
-class CacheJob : public AcceleratedJob {
-public:
-	CacheJob(const std::string &, const NodeValue &) {}
-	TexturePtr get_fallback() const { return nullptr; }
-};
-}
+// Bridge: routed to the real de-Qt oakrender header (src/render/src/job/cachejob.h,
+// M7) so oaknode and oakrender see the same class definition.
+#include "../../../../render/src/job/cachejob.h"

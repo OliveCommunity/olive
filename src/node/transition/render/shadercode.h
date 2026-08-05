@@ -1,9 +1,4 @@
 #pragma once
-#include <string>
-#include "filefunctions.h"
-namespace olive {
-class ShaderCode {
-public:
-	ShaderCode(const std::string &frag = std::string(), const std::string &vert = std::string()) {}
-};
-}
+// Bridge: routed to the real de-Qt oakrender header (src/render/src/shadercode.h,
+// M7) so oaknode and oakrender see the same class definition.
+#include "../../../render/src/shadercode.h"

@@ -1,0 +1,221 @@
+/***
+
+  Oak Video Editor - Non-Linear Video Editor
+  Copyright (C) 2026 Oak Team
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+***/
+
+#include "../../../include/render/color.h"
+
+#include <cstdlib>
+#include <cstring>
+#include <new>
+#include <string>
+
+#include "alivecount.h"
+#include "internalhandles.h"
+
+#include "color/colormanager/colormanager.h"
+#include "filefunctions.h"
+
+namespace
+{
+
+int write_string(const std::string &s, char *buf, int n)
+{
+	const int required = int(s.size()) + 1;
+	if (buf && n >= required) {
+		std::memcpy(buf, s.c_str(), size_t(required));
+	}
+	return required;
+}
+
+} // namespace
+
+OakColorProcessor *oakrender_color_processor_create(const char *src_space,
+													const char *dst_transform,
+													int direction)
+{
+	if (!src_space || !*src_space || !dst_transform || !*dst_transform) {
+		return nullptr;
+	}
+	if (direction != OAKRENDER_COLOR_DIRECTION_NORMAL &&
+		direction != OAKRENDER_COLOR_DIRECTION_INVERSE) {
+		return nullptr;
+	}
+	try {
+		ocio::ConstConfigRcPtr config = olive::ColorManager::get_default_config();
+		if (!config) {
+			return nullptr;
+		}
+
+		// Resolve role names (e.g. "scene_linear") to canonical colorspace
+		// names, mirroring ColorProcessor's constructor.
+		std::string src = src_space;
+		if (config->hasRole(src_space)) {
+			src = config->getCanonicalName(src_space);
+		}
+
+		// OCIO failures are non-fatal (matching the C++ behavior): the
+		// handle is still returned, but holds a null processor and
+		// conversions pass through.
+		ocio::ConstProcessorRcPtr processor;
+		try {
+			if (direction == OAKRENDER_COLOR_DIRECTION_NORMAL) {
+				processor = config->getProcessor(src.c_str(), dst_transform);
+			} else {
+				processor = config->getProcessor(dst_transform, src.c_str());
+			}
+		} catch (ocio::Exception &) {
+			processor = nullptr;
+		}
+
+		auto *block = new OakColorProcessor;
+		block->ptr = olive::ColorProcessor::create(processor);
+		oakrender_c_api::alive_inc();
+		return block;
+	} catch (...) {
+		return nullptr;
+	}
+}
+
+void oakrender_color_processor_free(OakColorProcessor *processor)
+{
+	if (!processor) {
+		return;
+	}
+	delete processor;
+	oakrender_c_api::alive_dec();
+}
+
+int oakrender_color_processor_is_valid(const OakColorProcessor *processor)
+{
+	return processor && processor->ptr && processor->ptr->get_processor() ? 1 :
+																			0;
+}
+
+int oakrender_color_processor_convert(OakColorProcessor *processor,
+									  double ir, double ig, double ib,
+									  double ia, double *out_r, double *out_g,
+									  double *out_b, double *out_a)
+{
+	if (!processor || !processor->ptr || !out_r || !out_g || !out_b || !out_a) {
+		return OAKRENDER_E_INVALID;
+	}
+	try {
+		olive::Color out =
+			processor->ptr->convert_color(olive::Color(ir, ig, ib, ia));
+		*out_r = out.red();
+		*out_g = out.green();
+		*out_b = out.blue();
+		*out_a = out.alpha();
+		return OAKRENDER_OK;
+	} catch (...) {
+		return OAKRENDER_E_FAILED;
+	}
+}
+
+/* ---- ColorManager statics ------------------------------------------------- */
+
+int oakrender_color_manager_set_up_default_config(void)
+{
+	try {
+		olive::ColorManager::set_up_default_config();
+		return olive::ColorManager::get_default_config() ? OAKRENDER_OK :
+														   OAKRENDER_E_FAILED;
+	} catch (...) {
+		return OAKRENDER_E_FAILED;
+	}
+}
+
+int oakrender_color_manager_get_config(char *buf, int n)
+{
+	try {
+		const char *ocio_env = std::getenv("OCIO");
+		if (ocio_env && *ocio_env) {
+			return write_string(ocio_env, buf, n);
+		}
+		if (!olive::ColorManager::get_default_config()) {
+			return OAKRENDER_E_STATE;
+		}
+		// The default config is extracted next to the configuration
+		// location (ColorManager::set_up_default_config()).
+		return write_string(FileFunctions::get_configuration_location() +
+								"/ocioconf/config.ocio",
+							buf, n);
+	} catch (...) {
+		return OAKRENDER_E_FAILED;
+	}
+}
+
+int oakrender_color_manager_display_transform(const char *display,
+											  const char *view, char *buf,
+											  int n)
+{
+	if (!display || !*display || !view || !*view) {
+		return OAKRENDER_E_INVALID;
+	}
+	try {
+		ocio::ConstConfigRcPtr config = olive::ColorManager::get_default_config();
+		if (!config) {
+			return OAKRENDER_E_STATE;
+		}
+
+		bool display_found = false;
+		for (int i = 0; i < config->getNumDisplays(); i++) {
+			if (display == std::string(config->getDisplay(i))) {
+				display_found = true;
+				break;
+			}
+		}
+		if (!display_found) {
+			return OAKRENDER_E_NOT_FOUND;
+		}
+
+		bool view_found = false;
+		for (int i = 0; i < config->getNumViews(display); i++) {
+			if (view == std::string(config->getView(display, i))) {
+				view_found = true;
+				break;
+			}
+		}
+		if (!view_found) {
+			return OAKRENDER_E_NOT_FOUND;
+		}
+
+		// Source = the config's reference colorspace (role lookup).
+		ocio::ConstColorSpaceRcPtr ref_cs =
+			config->getColorSpace(ocio::ROLE_REFERENCE);
+		if (!ref_cs) {
+			return OAKRENDER_E_STATE;
+		}
+
+		auto dvt = ocio::DisplayViewTransform::Create();
+		dvt->setSrc(ref_cs->getName());
+		dvt->setDisplay(display);
+		dvt->setView(view);
+
+		ocio::ConstProcessorRcPtr processor = config->getProcessor(dvt);
+		if (!processor) {
+			return OAKRENDER_E_NOT_FOUND;
+		}
+		return write_string(processor->getCacheID(), buf, n);
+	} catch (ocio::Exception &) {
+		return OAKRENDER_E_NOT_FOUND;
+	} catch (...) {
+		return OAKRENDER_E_FAILED;
+	}
+}

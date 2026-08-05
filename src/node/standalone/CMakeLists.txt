@@ -74,8 +74,14 @@ add_subdirectory(${OAK_REPO_ROOT}/src/node ${CMAKE_BINARY_DIR}/node)
 # The transition stub dir must precede ${OAK_REPO_ROOT}/include so that e.g.
 # "common/current.h" resolves to the transitional forwarder, not the stale
 # public mirror in include/common.
+# M7 收尾：src/node/transition/render/* 已改为桥接头，转发到
+# src/render/src 真身；因此 oaknode 需要 src/render/src 在 include 路径上，
+# 且 src/render/transition 必须置于 src/node/transition 之前（两侧共用
+# render 的扩展 stub，契约一致）。
 target_include_directories(oaknode BEFORE PUBLIC
+        ${OAK_REPO_ROOT}/src/render/transition
         ${OAK_REPO_ROOT}/src/node/transition
+        ${OAK_REPO_ROOT}/src/render/src
 )
 
 target_include_directories(oaknode PUBLIC
@@ -88,4 +94,56 @@ target_include_directories(oaknode PUBLIC
 # resolves them by linking the real targets and force-loading libOfxHost.
 target_link_options(oaknode PRIVATE
         "-undefined" "dynamic_lookup"
+)
+
+# M7 收尾：oaknode 的 render/ 引用现在解析到 src/render/src 的真身类，
+# 其成员函数（如 PlaybackCache::InvalidateEvent）定义在 liboakrender 里。
+# 把 oakrender 构建进来并链进测试二进制；未拆分模块符号同样悬置。
+set(BUILD_TESTS OFF)
+add_subdirectory(${OAK_REPO_ROOT}/src/render/src ${CMAKE_BINARY_DIR}/render)
+set(BUILD_TESTS ON)
+
+target_include_directories(oakrender BEFORE PUBLIC
+        ${OAK_REPO_ROOT}/src/render/transition
+        ${OAK_REPO_ROOT}/src/node/transition
+)
+
+target_include_directories(oakrender PUBLIC
+        ${OAK_REPO_ROOT}/engine/include
+        ${OAK_REPO_ROOT}/third_party/openfx/HostSupport/include
+        /opt/homebrew/include
+        /opt/homebrew/include/Imath
+        /opt/homebrew/include/OpenEXR
+)
+
+foreach(t oakrender oakgl oakvulkan)
+  target_link_options(${t} PRIVATE
+          "-undefined" "dynamic_lookup"
+  )
+endforeach()
+
+target_link_libraries(oakrender PRIVATE
+        oaknode
+        oakcommon
+        oakundo
+        olivecore
+        ffmpeg_bridge
+        ${OCIO_LIBRARIES}
+        ${OIIO_LIBRARIES}
+        "-framework OpenGL"
+        "-framework CoreVideo"
+        "-framework Metal"
+        "-framework QuartzCore"
+)
+
+target_link_libraries(oaknode-gtest PRIVATE oakrender)
+
+# liboakrender references the oakengine_ipc_* C ABI (worker IPC) via
+# dynamic_lookup; the real implementation (engine/src/capi/ipc.cpp) is still
+# Qt-based, so the test binary links an inert shim instead.
+target_sources(oaknode-gtest PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/oakengine_ipc_shim.cpp
+)
+target_include_directories(oaknode-gtest PRIVATE
+        ${OAK_REPO_ROOT}/engine/include
 )

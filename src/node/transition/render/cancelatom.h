@@ -1,8 +1,4 @@
 #pragma once
-namespace olive {
-class CancelAtom {
-public:
-	bool is_cancelled() const { return false; }
-	bool heard_cancel() const { return false; }
-};
-}
+// Bridge: routed to the real de-Qt oakrender header (src/render/src/cancelatom.h,
+// M7) so oaknode and oakrender see the same class definition.
+#include "../../../render/src/cancelatom.h"

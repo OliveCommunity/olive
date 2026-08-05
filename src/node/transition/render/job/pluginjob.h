@@ -1,16 +1,4 @@
 #pragma once
-#include "render/job/acceleratedjob.h"
-#include "olive/core/util/rational.h"
-namespace olive {
-class Node;
-namespace plugin {
-class PluginJob : public AcceleratedJob {
-public:
-	template <typename InstanceT>
-	PluginJob(InstanceT *, const Node *, const NodeValueRow &,
-			  const core::Rational &)
-	{
-	}
-};
-}
-}
+// Bridge: routed to the real de-Qt oakrender header (src/render/src/job/pluginjob.h,
+// M7) so oaknode and oakrender see the same class definition.
+#include "../../../../render/src/job/pluginjob.h"

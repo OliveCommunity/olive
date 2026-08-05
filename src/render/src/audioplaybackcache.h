@@ -1,0 +1,87 @@
+/***
+
+  Olive - Non-Linear Video Editor
+  Copyright (C) 2022 Olive Team
+  Modifications Copyright (C) 2025 mikesolar
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+***/
+
+#ifndef OAK_AUDIOPLAYBACKCACHE_H
+#define OAK_AUDIOPLAYBACKCACHE_H
+
+#include "audio/audiovisualwaveform.h"
+#include "playbackcache.h"
+
+namespace olive
+{
+
+/**
+ * @brief A fully integrated system of storing and playing cached audio
+ *
+ * All audio in Olive is processed and rendered in advance. This makes playback extremely smooth
+ * and reliable, but provides some challenges as far as storing and manipulating this audio while
+ * minimizing the amount of re-renders necessary.
+ *
+ * Olive's PlaybackCaches support "shifting"; moving cached data to a different spot on the
+ * timeline without requiring a costly re-render. While video is naturally stored on disk as
+ * separate frames that are easy to swap out, audio works a little differently. It would be
+ * extremely inefficient to store each sample as a separate file on the disk, but storing in
+ * one single contiguous file would be detrimental to shifting, particularly for longer timelines
+ * since the data will actually have to be shifted on disk.
+ *
+ * As such, AudioPlaybackCache compromises by storing audio in several "segments". This makes
+ * operations like shifting much easier since segments can simply be removed from the playlist
+ * rather than having to shift or re-render potentially hours of audio in every operation.
+ *
+ * Naturally, storing in segments means you can't simply play the PCM data like a file, so
+ * AudioPlaybackCache also provides a playback device (accessible from CreatePlaybackDevice()) that
+ * acts identically to a file-based IO device, transparently joining segments together and acting
+ * like one contiguous file.
+ */
+class AudioPlaybackCache : public PlaybackCache {
+public:
+	AudioPlaybackCache(Node *parent = nullptr);
+
+	virtual ~AudioPlaybackCache() override;
+
+	AudioParams get_parameters()
+	{
+		return params_;
+	}
+
+	void set_parameters(const AudioParams &params);
+
+	void write_pcm(const TimeRange &range, const TimeRangeList &valid_ranges,
+				   const SampleBuffer &samples);
+
+	void write_silence(const TimeRange &range);
+
+private:
+	bool write_part_of_sample_buffer(const SampleBuffer &samples,
+									 const Rational &write_start,
+									 const Rational &buffer_start,
+									 const Rational &length);
+
+	std::string get_segment_filename(int64_t segment_index, int channel);
+
+	static const int64_t k_default_segment_size_per_channel;
+
+	AudioParams params_;
+};
+
+}
+
+#endif // OAK_AUDIOPLAYBACKCACHE_H

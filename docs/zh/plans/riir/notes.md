@@ -213,3 +213,36 @@ ColorManager）去Qt化过程中的删除与语义变化，迁移调用方时需
    见 `src/node/DEQT.md` §7（如 `Sequence::update_track_cache()`、
    `Footage::check_footage()/default_color_space_changed()/
    proxy_ready()/proxy_finished()`、5 条 invalidate_from_keyframe_*）。
+
+## oakrender 去Qt化的删除与语义变更（2026-08-05）
+
+- `RenderTicket::finished` 不再跨线程补发：回调在调用 finish() 的
+  线程上触发；未决状态由 facade 自查 `is_running()`。
+- PreviewAutoCacher 延迟重排队改显式标志：单次 QTimer 重排队删除，
+  `try_render()` 置 `delayed_requeue_pending_`，facade 在
+  `requeue_delay_ms()` 后重调 `try_render()`。
+- DiskCacheFolder 周期存盘由 GUI 线程 QTimer 改后台线程，数据保护
+  用 `std::recursive_mutex`（原靠 QObject 线程亲和串行化）。
+- PlaybackCache 的 Qt 信号改单回调注册：`set_invalidated_callback`/
+  `set_validated_callback`/`set_requested_callback`/
+  `set_cancel_all_callback`；跨层 invalidated/validated 通知由 facade
+  在命令后重发（M7 §2.2：oakrender 不持有上层回调）。
+- `DiskManager::instance()` 惰性自建（原 app 启动时显式
+  create_instance；库消费者不经 facade 也能用）。
+- FrameHashCache 帧缓存 JPEG 读写 QImage→OIIO/OpenEXR。
+- AudioWaveformCache/PlaybackCache 的 QPainter 绘制归 app 层；
+  缓存指示条高度固化为常量 4（`oakrender_cache_indicator_height()`，
+  原 `QFontMetrics(QFont()).height()/4`）。
+- 离屏 GL 上下文共享组需 app 显式传入（原 QOpenGLContext
+  globalShareContext 隐式共享）。
+- OpenGLContext/Vulkan 上下文抽象层（OpenGLContextProvider 等）替代
+  QOpenGLContext 直用。
+- WorkerProcess 仅 POSIX 实现（Windows 占位未做）。
+- worker IPC 的 NDJSON 协议未变，workerjson 为本地（去 Qt）实现。
+- `:/shaders` qrc 资源缺口：着色器源码的 Qt 资源路径在库形态下
+  不可用，需 app 侧提供文件映射。
+- 删除 ipc/ipcmessage.cpp 等 3 个过期 .cpp（对应头已自包含 inline，
+  .cpp 内容失效）。
+- displayinternal.h 分层违规（render→src/capi）并入 texturehandle.h。
+- Renderer 线程亲和由 QObject::thread() 改显式 owner thread
+  （`set_owner_thread_to_current()`/`called_on_owner_thread()`）。
