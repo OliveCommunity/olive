@@ -80,3 +80,49 @@ oakcommon；后续若确认无用途可直接删除。
 - `FFmpegUtils`：新增类内常量 `k_rgb_channel_count/k_rgba_channel_count`
   （3/4）取代对 `VideoParams` 同名常量的引用，消除 common→render
   反向依赖。
+
+## oakundo 去Qt化的删除与语义变更（2026-08-05）
+
+`src/undo/`（olive::UndoCommand / MultiUndoCommand / UndoStack）去Qt化
+过程中以下删除与语义变化，迁移调用方时需注意：
+
+- `UndoStack` 不再继承 `QAbstractItemModel`（删除 `Q_OBJECT`、
+  `columnCount/data/index/parent/rowCount/headerData/hasChildren` 全部
+  model overrides 及 `begin/end*Rows` 通知）。历史面板（QTreeView 等）
+  属 app UI 层，迁移时应以 facade 的行式查询
+  （command_count/done_count/command_name/command_is_done）自行实现
+  model。
+- `UndoStack::GetUndoAction/GetRedoAction/update_actions`（QAction 成员
+  及其文本/使能维护）删除——QAction 属 app 菜单层，app 应自行创建
+  action 并连接 undo/redo；`index_changed(int)` signal 改为 C++ 侧
+  `std::function<void(int)>`（`set_index_changed_callback`），C ABI
+  不暴露事件，调用方在变更命令后读 `oakundo_undostack_index`。
+- `UndoCommand` 与 `olive::Project` 解耦：删除纯虚
+  `get_relevant_project()`（含 MultiUndoCommand/EmptyCommand 的
+  override）与 `project_` 成员；`redo_and_set_modified/
+  undo_and_set_modified` 的修改标记语义改为可选回调对
+  `set_modified_callbacks(is_modified, set_modified)`：redo 时记录当前
+  修改标记并置 true，undo 时恢复记录值；不挂回调则退化为纯
+  redo/undo。读写顺序与 Qt 版一致（redo_now() 之后读取并置位），
+  行为对齐。Project 侧迁移时在适配层把 `Project::is_modified/
+  set_modified` 绑到这对回调即可。
+- `UndoStack` 析构不再调用 `clear()`（Qt 版在析构里 clear 会再 push
+  一个 EmptyCommand 造成泄漏），改为直接删除所有持有命令。
+- 顺带修复三处 engine 原版就存在的缺陷（迁移调用方无需适配，但
+  行为与旧版不同，特此记录）：
+  - `jump(0)` 死循环：底部 EmptyCommand 不可 undo，`jump` 现以
+    `can_undo()/can_redo()` 为守卫，跳到 0 时停在 index 1；
+  - `MultiUndoCommand` 原来不拥有子命令（析构泄漏），现析构删除
+    全部 children；
+  - `push_pre_executed` 原来不置 `done_` 标记，导致入栈后 undo
+    为空操作（facade undo-group 的组撤销实际不生效），现入栈前
+    `set_done(true)`（UndoCommand 新增 `set_done()`）。
+- `clear()` 推入的占位命令名固定为字面量 "New/Open Project"（原
+  `tr()` 翻译移除，翻译由 app 层负责）。
+- `push/push_pre_executed` 的命令名由 `QString` 改为 `std::string`；
+  C ABI 中 NULL name 视同空串。
+- C ABI 句柄语义：`oakundo_command_init/init_multi` 返回的句柄拥有
+  底层命令；push 或 `oakundo_command_multi_add_child` 成功后所有权
+  转移、wrapper 被消费（不可再用/再 free）；
+  `oakundo_command_multi_child` 返回 borrowed wrapper（free 只释放
+  wrapper）。

@@ -103,3 +103,69 @@ Project* 本来就只是作为不透明身份被使用（修改标记归属）�
   调用方知道影响，直接读状态）。
 - 往返测试：C API 与适配类各做一遍 push-undo-redo，状态一致。
 - `oakundo_debug_alive_count()`：init/free 配对无泄漏。
+
+## 实施现状（2026-08-05）
+
+M2 已落地并可独立构建、测试全绿。以下为与上文计划的实际差异。
+
+### 最终目录结构
+
+- `src/undo/src/` — 去 Qt 化 C++ 实现（`olive::` 命名空间，类名
+  `UndoCommand`/`MultiUndoCommand`/`UndoStack` 不变），target
+  `oakundo`（SHARED）。
+- `src/undo/c_api/` — 纯 C ABI 包装（`undocommand.cpp`、`undostack.cpp`
+  + 内部共享头 `commandhandle.h`），通过 `target_sources` 合并进
+  `oakundo`，不单独成库。
+- `src/undo/tests/` — gtest，target `oakundo-gtest`，
+  `gtest_discover_tests`。
+- `include/undo/`（仓库根）— 公共 C 头：`error.h`、`undocommand.h`、
+  `undostack.h`。
+- `src/undo/standalone/CMakeLists.txt` — 独立构建 driver（见下）。
+
+### 独立构建与测试
+
+```sh
+cmake -S src/undo/standalone -B build-oakundo
+cmake --build build-oakundo -j
+ctest --test-dir build-oakundo --output-on-failure
+```
+
+### 实际依赖
+
+- Oak 内部：仅 oakcommon 的头文件宏（`define.h` 的
+  `DISABLE_COPY_MOVE`），纯头文件，按 include 路径引用
+  （`${OAK_REPO_ROOT}/src/common/src`），**不链接** oakcommon；
+  不依赖 olivecore/ffmpeg_bridge。
+- 第三方：GTest（仅测试）。无 Qt。
+
+### 与计划的主要差异
+
+- 接口未按 §2 冻结清单逐条实现，而是对齐 oakcommon 的既有契约：
+  C ABI 头放在仓库根 `include/undo/`，命名 `oakundo_<族>_<动词>`；
+  查询类函数返回 int 错误码 + out 参数（计划中的
+  `int64_t oakundo_undostack_count(...)` 直接返回值形式改为
+  `int ...(OakUndoStack *, int64_t *out)`）；字符串两段式 buffer 约定。
+- 句柄族名：`OakUndoCommand`/`OakUndoStack`；init/free 语义与
+  oakcommon 一致（init 失败返回 NULL 且内部 try/catch 兜底，
+  free(NULL) 为 no-op）。
+- §2.2 的 `OakUndoObjectParent`（QObject 挂载点）、
+  `oakundo_undostack_update_actions`、`oakundo_undostack_undo_action/
+  redo_action`（QAction 句柄）**未实现**：QAction/model 属 app UI 层，
+  已从 UndoStack 剥离（见 notes.md「oakundo 去Qt化的删除与语义
+  变更」）。
+- `index_changed` 事件：C ABI 无订阅接口（与 §2.2 修订一致）；C++ 侧
+  保留了 `set_index_changed_callback(std::function<void(int)>)`
+  作为 Qt signal 的替代。
+- §3 切割点的处理与计划不同：`get_relevant_project()` 未改成返回
+  `void *`，而是整体删除，修改标记语义改为
+  `UndoCommand::set_modified_callbacks(is_modified, set_modified)`
+  回调对（oakundo 完全不认识 Project；M3 node 适配层绑定
+  `Project::is_modified/set_modified`）。
+- 未实现 `oakundo_debug_alive_count()` 泄漏计数。
+- 额外行为修复：`UndoStack` 析构不再经 `clear()`（原实现在析构时会
+  再 push 一个 EmptyCommand 造成泄漏），改为直接删除持有命令；
+  `jump` 增加 `can_undo/can_redo` 守卫（原版 `jump(0)` 死循环）；
+  `MultiUndoCommand` 析构删除子命令（原版泄漏）；
+  `push_pre_executed` 通过新增的 `UndoCommand::set_done()` 置完成
+  标记（原版入栈后 undo 为空操作）。详见 notes.md。
+- 测试结果：22 个用例全部通过（独立构建 `build-oakundo`）。
