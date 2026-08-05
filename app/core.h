@@ -287,6 +287,7 @@ signals:
 	void open_recent_list_changed();
 	void color_picker_enabled(bool e);
 	void color_picker_color_emitted(const Color &reference, const Color &display);
+	void project_load_finished();
 
 private:
 	/**
