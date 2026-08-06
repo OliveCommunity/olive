@@ -1,5 +1,5 @@
 /*
- * Oak Video Editor - Non-Linear Video Editor
+ * Oak Video Editor - Non‑Linear Video Editor
  * Copyright (C) 2025 Olive CE Team
  *
  * This program is free software: you can redistribute it and/or modify
@@ -13,13 +13,10 @@
  * GNU General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * along with this program.  If not, see <http://www.gnu.org/licenses />.
  */
-
 #include "nodeviewcontext.h"
-
 #include <QBrush>
-
 #include "oakengine/node.h"
 #include <QCoreApplication>
 #include <QGraphicsScene>
@@ -27,7 +24,6 @@
 #include <QPainter>
 #include <QPen>
 #include <QStyleOptionGraphicsItem>
-
 #include "core.h"
 #include "common/trackreferencehandle.h"
 #include "nodeviewitem.h"
@@ -35,8 +31,8 @@
 #include "oakengine/timeline.h"
 #include "oakutil/qtutils.h"
 #include "widget/timelinewidget/cliphandle.h"
-
 #include "widget/viewer/vieweroutpututils.h"
+
 namespace olive
 {
 
@@ -45,14 +41,7 @@ namespace olive
 NodeViewContext::NodeViewContext(oak::Node context, QGraphicsItem *item)
 	: super(item)
 	, context_(context)
-	, bridge_(new EngineEventBridge(this))
 {
-	// Block contexts (clips/transitions nested in the node graph) show their
-	// track placement in the title. All engine queries go through the C ABI:
-	// oakengine_node_is_block() replaces dynamic_cast<Block*> (Block is
-	// abstract and carries no own type id), and the track type ordinals are
-	// the TrackReference mirror values (== engine Track::Type, pinned by the
-	// static_asserts in trackreferencehandle.h).
 	OakEngineNode *track_node =
 		oakengine_node_is_block(context_.handle()) ?
 			block_track_handle(
@@ -60,6 +49,7 @@ NodeViewContext::NodeViewContext(oak::Node context, QGraphicsItem *item)
 			nullptr;
 	OakEngineNode *track_seq =
 		track_node ? oakengine_track_get_sequence(track_node) : nullptr;
+
 	if (track_seq) {
 		Rational timebase = viewer_output_video_params(track_seq)
 								.frame_rate_as_time_base();
@@ -96,49 +86,6 @@ NodeViewContext::NodeViewContext(oak::Node context, QGraphicsItem *item)
 		lbl_ = context_.label_and_name();
 	}
 
-	connect(bridge_, &EngineEventBridge::node_node_added_to_context, this,
-			[this](OakEngineNode *source, OakEngineNode *node) {
-				if (source == context_.handle()) {
-					add_child(node);
-				} else {
-					group_added_node(node, source);
-				}
-			});
-	connect(bridge_, &EngineEventBridge::node_node_removed_from_context, this,
-			[this](OakEngineNode *source, OakEngineNode *node) {
-				if (source == context_.handle()) {
-					remove_child(node);
-				} else {
-					group_removed_node(node, source);
-				}
-			});
-	connect(bridge_, &EngineEventBridge::node_context_position_changed, this,
-			[this](OakEngineNode *, OakEngineNode *node, double x, double y) {
-				set_child_position(node, QPointF(x, y));
-			});
-	connect(bridge_, &EngineEventBridge::node_input_connected, this,
-			[this](OakEngineNode *source, OakEngineNode *output,
-				   const QString &input, int element) {
-				child_input_connected(output,
-					oak::Input(source, input, element));
-			});
-	connect(bridge_, &EngineEventBridge::node_input_disconnected, this,
-			[this](OakEngineNode *source, OakEngineNode *output,
-				   const QString &input, int element) {
-				child_input_disconnected(output,
-					oak::Input(source, input, element));
-			});
-
-	node_subs_[context_.handle()].append(bridge_->subscribe(
-		context_.handle(),
-		OAKENGINE_EVENT_NODE_NODE_ADDED_TO_CONTEXT));
-	node_subs_[context_.handle()].append(bridge_->subscribe(
-		context_.handle(),
-		OAKENGINE_EVENT_NODE_CONTEXT_POSITION_CHANGED));
-	node_subs_[context_.handle()].append(bridge_->subscribe(
-		context_.handle(),
-		OAKENGINE_EVENT_NODE_NODE_REMOVED_FROM_CONTEXT));
-
 	const int ctx_count = context_.context_node_count();
 	for (int i = 0; i < ctx_count; i++) {
 		oak::Node child = context_.context_node_at(i).node;
@@ -146,18 +93,15 @@ NodeViewContext::NodeViewContext(oak::Node context, QGraphicsItem *item)
 			add_child(child.handle());
 		}
 	}
+
 	connect(Core::instance(),
-        &Core::project_load_finished,
-        this,
-        [this]()
-{
-    update_rect();
-});
+			&Core::project_load_finished,
+			this,
+			[this](){ update_rect(); });
 }
 
 NodeViewContext::~NodeViewContext()
 {
-	// Delete edges before items, because the edge constructor references the items
 	qDeleteAll(edges_);
 	edges_.clear();
 }
@@ -167,10 +111,8 @@ void NodeViewContext::add_child(OakEngineNode *node)
 	if (context_.is_null()) {
 		return;
 	}
-
 	NodeViewItem *item = new NodeViewItem(oak::Node(node), context_, this);
 	item->set_flow_direction(flow_dir_);
-
 	add_node_internal(node, item);
 
 	oak::Node group_node(node);
@@ -179,19 +121,10 @@ void NodeViewContext::add_child(OakEngineNode *node)
 		for (int i = 0; i < grp_count; i++) {
 			oak::Node grp_child = group_node.context_node_at(i).node;
 			if (!grp_child.is_null()) {
-				// Use this item as the representative for all of these nodes too
 				add_node_internal(grp_child.handle(), item);
 			}
 		}
-
-		node_subs_[node].append(bridge_->subscribe(
-			reinterpret_cast<void *>(node),
-			OAKENGINE_EVENT_NODE_NODE_ADDED_TO_CONTEXT));
-		node_subs_[node].append(bridge_->subscribe(
-			reinterpret_cast<void *>(node),
-			OAKENGINE_EVENT_NODE_NODE_REMOVED_FROM_CONTEXT));
 	}
-
 	update_rect();
 }
 
@@ -202,50 +135,38 @@ void NodeViewContext::set_child_position(OakEngineNode *node, const QPointF &pos
 
 void NodeViewContext::remove_child(OakEngineNode *node)
 {
-	foreach (int64_t id, node_subs_.take(node)) {
-		bridge_->unsubscribe(id);
-	}
-
 	NodeViewItem *item = item_map_.take(node);
+	if (!item) return;
 
-	// Remove from scene before emitting signal so that any drag functions that might be happening
-	// now can be handled before the item is destroyed
 	scene()->removeItem(item);
-
 	emit item_about_to_be_deleted(item);
 
-	// Delete edges first because the edge destructor will try to reference item (maybe that should
-	// be changed...)
 	QVector<NodeViewEdge *> edges_to_remove = item->get_all_edges_recursively();
-	foreach (NodeViewEdge *edge, edges_to_remove) {
-		if (item->get_node() == oak::Node(node) || edge->output() == oak::Node(node) ||
-			edge->input().node_handle() == node) {
+	for (NodeViewEdge *edge : edges_to_remove) {
+		if (item->get_node() == oak::Node(node)
+			|| edge->output() == oak::Node(node)
+			|| edge->input().node_handle() == node) {
 			child_input_disconnected(edge->output().handle(), edge->input());
 		}
 	}
 
-	// Check if this item is specifically for this node and the node is a group. If so, remove it for
-	// all other entries in the map.
 	if (item->get_node() == oak::Node(node)) {
 		if (item->get_node().is_group()) {
-			for (auto it = item_map_.begin(); it != item_map_.end();) {
+			for (auto it = item_map_.begin(); it != item_map_.end(); ) {
 				if (it.value() == item) {
 					it = item_map_.erase(it);
 				} else {
-					it++;
+					++it;
 				}
 			}
 		}
-
 		delete item;
 	}
-
 	update_rect();
 }
 
 void NodeViewContext::child_input_connected(OakEngineNode *output, const oak::Input &input)
 {
-	// Add edge
 	if (!input.is_hidden()) {
 		if (NodeViewItem *output_item = item_map_.value(output)) {
 			add_edge_internal(
@@ -255,15 +176,13 @@ void NodeViewContext::child_input_connected(OakEngineNode *output, const oak::In
 	}
 }
 
-bool NodeViewContext::child_input_disconnected(OakEngineNode *output,
-											 const oak::Input &input)
+bool NodeViewContext::child_input_disconnected(OakEngineNode *output, const oak::Input &input)
 {
-	// Remove edge
 	for (int i = 0; i < edges_.size(); i++) {
 		NodeViewEdge *e = edges_.at(i);
 		if (e->output() == oak::Node(output) && e->input() == input) {
 			if (qEnvironmentVariableIsSet("OAK_DEBUG_EDGES")) {
-				qWarning("EDGE-DEBUG: edge removed: %p -> %p (%s,%d) ctx=%p",
+				qWarning("EDGE‑DEBUG: edge removed: %p -> %p (%s,%d) ctx=%p",
 						 (void *)output, (void *)input.node_handle(),
 						 qPrintable(input.input_id()), input.element(),
 						 (void *)this);
@@ -273,11 +192,10 @@ bool NodeViewContext::child_input_disconnected(OakEngineNode *output,
 			return true;
 		}
 	}
-
 	return false;
 }
 
-qreal get_text_offset(const QFontMetricsF &fm)
+static qreal get_text_offset(const QFontMetricsF &fm)
 {
 	return fm.height() / 2;
 }
@@ -287,21 +205,18 @@ void NodeViewContext::update_rect()
 	QFont f;
 	QFontMetricsF fm(f);
 	qreal lbl_offset = get_text_offset(fm);
-
 	QRectF cbr = childrenBoundingRect();
 	QRectF rect = cbr;
 	int pad = NodeViewItem::default_item_height();
 	rect.adjust(-pad, -lbl_offset * 2 - fm.height() - pad, pad, pad);
 	setRect(rect);
-
 	last_titlebar_height_ = rect.y() + (cbr.y() - rect.y()) - pad;
 }
 
 void NodeViewContext::set_flow_direction(NodeViewCommon::FlowDirection dir)
 {
 	flow_dir_ = dir;
-
-	foreach (NodeViewItem *item, item_map_) {
+	for (NodeViewItem *item : item_map_) {
 		item->set_flow_direction(dir);
 	}
 }
@@ -309,8 +224,7 @@ void NodeViewContext::set_flow_direction(NodeViewCommon::FlowDirection dir)
 void NodeViewContext::set_curved_edges(bool e)
 {
 	curved_edges_ = e;
-
-	foreach (NodeViewEdge *edge, edges_) {
+	for (NodeViewEdge *edge : edges_) {
 		edge->set_curved(e);
 	}
 }
@@ -319,15 +233,12 @@ void NodeViewContext::get_selected_for_deletion(QVector<OakEngineNode *> &nodes,
 											   QVector<OakEngineNode *> &contexts,
 											   QVector<NodeViewEdge *> &edges) const
 {
-	// Collect any selected edges
-	foreach (NodeViewEdge *edge, edges_) {
+	for (NodeViewEdge *edge : edges_) {
 		if (edge->isSelected()) {
 			edges.append(edge);
 		}
 	}
-
-	// Collect any selected nodes
-	foreach (NodeViewItem *node, item_map_) {
+	for (NodeViewItem *node : item_map_) {
 		if (node->isSelected()) {
 			nodes.append(node->get_node().handle());
 			contexts.append(context_.handle());
@@ -337,7 +248,7 @@ void NodeViewContext::get_selected_for_deletion(QVector<OakEngineNode *> &nodes,
 
 void NodeViewContext::select(const QVector<OakEngineNode *> &nodes)
 {
-	foreach (OakEngineNode *n, nodes) {
+	for (OakEngineNode *n : nodes) {
 		if (NodeViewItem *item = item_map_.value(n)) {
 			item->setSelected(true);
 		}
@@ -347,23 +258,18 @@ void NodeViewContext::select(const QVector<OakEngineNode *> &nodes)
 QVector<NodeViewItem *> NodeViewContext::get_selected_items() const
 {
 	QVector<NodeViewItem *> items;
-
-	for (auto it = item_map_.cbegin(); it != item_map_.cend(); it++) {
-		if (it.value()->isSelected()) {
-			if (!items.contains(it.value())) {
-				items.append(it.value());
-			}
+	for (auto it = item_map_.cbegin(); it != item_map_.cend(); ++it) {
+		if (it.value()->isSelected() && !items.contains(it.value())) {
+			items.append(it.value());
 		}
 	}
-
 	return items;
 }
 
 QPointF NodeViewContext::map_scene_pos_to_node_pos_in_context(const QPointF &pos) const
 {
-	for (auto it = item_map_.cbegin(); it != item_map_.cend(); it++) {
-		QPointF pos_inside_parent =
-			it.value()->mapToParent(it.value()->mapFromScene(pos));
+	for (auto it = item_map_.cbegin(); it != item_map_.cend(); ++it) {
+		QPointF pos_inside_parent = it.value()->mapToParent(it.value()->mapFromScene(pos));
 		return NodeViewItem::screen_to_node_point(pos_inside_parent, flow_dir_);
 	}
 	return QPointF(0, 0);
@@ -373,7 +279,6 @@ void NodeViewContext::paint(QPainter *painter,
 							const QStyleOptionGraphicsItem *option,
 							QWidget *widget)
 {
-	// Set pen and brush
 	Color color = AppColorCoding::get_color(context_.effective_color_label());
 	QColor c = QtUtils::to_q_color(color);
 	QPen pen(c, 2);
@@ -386,11 +291,9 @@ void NodeViewContext::paint(QPainter *painter,
 	bg.setAlpha(128);
 	painter->setBrush(bg);
 
-	// Draw semi-transparent rect for whole item
 	int rounded = painter->fontMetrics().height();
 	painter->drawRoundedRect(rect(), rounded, rounded);
 
-	// Draw solid background for titlebar
 	QRectF titlebar_rect = rect();
 	titlebar_rect.setHeight(last_titlebar_height_ - rect().top());
 	painter->setClipRect(titlebar_rect);
@@ -398,18 +301,14 @@ void NodeViewContext::paint(QPainter *painter,
 	painter->drawRoundedRect(rect(), rounded, rounded);
 	painter->setClipping(false);
 
-	// Draw titlebar text
 	painter->setPen(AppColorCoding::get_ui_selector_color(color));
-
 	int offset = get_text_offset(painter->fontMetrics());
-
 	QRectF text_rect = rect();
 	text_rect.adjust(offset, offset, -offset, -offset);
 	painter->drawText(text_rect, lbl_);
 }
 
-QVariant NodeViewContext::itemChange(GraphicsItemChange change,
-									 const QVariant &value)
+QVariant NodeViewContext::itemChange(GraphicsItemChange change, const QVariant &value)
 {
 	return super::itemChange(change, value);
 }
@@ -417,34 +316,22 @@ QVariant NodeViewContext::itemChange(GraphicsItemChange change,
 void NodeViewContext::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
 	bool clicked_inside_titlebar = (event->pos().y() < last_titlebar_height_);
-
 	setFlag(ItemIsMovable, clicked_inside_titlebar);
 	setFlag(ItemIsSelectable, clicked_inside_titlebar);
-
 	super::mousePressEvent(event);
 }
 
 void NodeViewContext::add_node_internal(OakEngineNode *node, NodeViewItem *item)
 {
 	if (qEnvironmentVariableIsSet("OAK_DEBUG_EDGES")) {
-		qWarning("EDGE-DEBUG: node added to ctx %p: %p", (void *)this,
-				 (void *)node);
+		qWarning("EDGE‑DEBUG: node added to ctx %p: %p", (void *)this, (void *)node);
 	}
 
-	node_subs_[node].append(bridge_->subscribe(
-		reinterpret_cast<void *>(node),
-		OAKENGINE_EVENT_NODE_INPUT_CONNECTED));
-	node_subs_[node].append(bridge_->subscribe(
-		reinterpret_cast<void *>(node),
-		OAKENGINE_EVENT_NODE_INPUT_DISCONNECTED));
-
 	item_map_.insert(node, item);
-
 	if (node == context_.handle()) {
 		item->set_label_as_output(true);
 	}
 
-	// Iterate output connections via the wrapper
 	oak::Node wrapped(node);
 	const int out_count = wrapped.output_connection_count();
 	for (int i = 0; i < out_count; i++) {
@@ -452,31 +339,26 @@ void NodeViewContext::add_node_internal(OakEngineNode *node, NodeViewItem *item)
 		if (!conn.hidden) {
 			if (NodeViewItem *other_item = item_map_.value(conn.node.handle())) {
 				oak::Input ai(conn.node.handle(), conn.input_id, conn.element);
-				add_edge_internal(node, ai, item,
-								other_item->get_item_for_input(ai));
+				add_edge_internal(node, ai, item, other_item->get_item_for_input(ai));
 			} else if (qEnvironmentVariableIsSet("OAK_DEBUG_EDGES")) {
-				qWarning("EDGE-DEBUG: out-edge skipped (no item for %p): %p -> %p (%s) ctx=%p",
+				qWarning("EDGE‑DEBUG: out‑edge skipped (no item for %p): %p -> %p (%s) ctx=%p",
 						 (void *)conn.node.handle(), (void *)node,
-						 (void *)conn.node.handle(),
-						 qPrintable(conn.input_id), (void *)this);
+						 (void *)conn.node.handle(), qPrintable(conn.input_id), (void *)this);
 			}
 		}
 	}
 
-	// Iterate input connections via the wrapper
 	const int in_count = wrapped.input_connection_count_all();
 	for (int i = 0; i < in_count; i++) {
 		oak::NodeConnection conn = wrapped.input_connection_at_all(i);
 		if (!conn.hidden) {
 			if (NodeViewItem *other_item = item_map_.value(conn.source_node.handle())) {
 				oak::Input ai(conn.node.handle(), conn.input_id, conn.element);
-				add_edge_internal(conn.source_node.handle(), ai, other_item,
-								item->get_item_for_input(ai));
+				add_edge_internal(conn.source_node.handle(), ai, other_item, item->get_item_for_input(ai));
 			} else if (qEnvironmentVariableIsSet("OAK_DEBUG_EDGES")) {
-				qWarning("EDGE-DEBUG: in-edge skipped (no item for %p): %p -> %p (%s) ctx=%p",
-						 (void *)conn.source_node.handle(),
-						 (void *)conn.source_node.handle(), (void *)node,
-						 qPrintable(conn.input_id), (void *)this);
+				qWarning("EDGE‑DEBUG: in‑edge skipped (no item for %p): %p -> %p (%s) ctx=%p",
+						 (void *)conn.source_node.handle(), (void *)conn.source_node.handle(),
+						 (void *)node, qPrintable(conn.input_id), (void *)this);
 			}
 		}
 	}
@@ -485,21 +367,17 @@ void NodeViewContext::add_node_internal(OakEngineNode *node, NodeViewItem *item)
 void NodeViewContext::add_edge_internal(OakEngineNode *output, const oak::Input &input,
 									  NodeViewItem *from, NodeViewItem *to)
 {
-	if (from == to) {
-		return;
-	}
+	if (from == to) return;
 
 	if (qEnvironmentVariableIsSet("OAK_DEBUG_EDGES")) {
-		qWarning("EDGE-DEBUG: edge added: %p -> %p (%s,%d) ctx=%p", (void *)output,
+		qWarning("EDGE‑DEBUG: edge added: %p -> %p (%s,%d) ctx=%p", (void *)output,
 				 (void *)input.node_handle(), qPrintable(input.input_id()),
 				 input.element(), (void *)this);
 	}
 
 	NodeViewEdge *edge_ui = new NodeViewEdge(oak::Node(output), input, from, to, this);
-
 	edge_ui->adjust();
 	edge_ui->set_curved(curved_edges_);
-
 	edges_.append(edge_ui);
 }
 
