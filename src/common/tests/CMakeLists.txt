@@ -21,6 +21,7 @@ include(GoogleTest)
 add_executable(oakcommon-gtest
         colortransform_test.cpp
         commandlineparser_test.cpp
+        config_test.cpp
         current_test.cpp
         debug_test.cpp
         dropworkflowbehavior_test.cpp

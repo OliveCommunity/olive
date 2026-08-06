@@ -24,6 +24,7 @@
 
 #include <unistd.h>
 
+#include "common/config.h"
 #include "common/filefunctions.h"
 
 #include "taskcallbacks.h"
@@ -188,10 +189,30 @@ bool ProxyManager::proxy_filename_has_audio(const std::string &proxy_filename)
 
 ProxyManager::ProxyParams ProxyManager::proxy_params_from_config()
 {
-	// Interim state: the Qt config store (OAK_CONFIG ProxyWidth/ProxyHeight/
-	// ProxyDivider/ProxyCRF/ProxyPreset/ProxyIncludeAudio) is not split yet,
-	// so the compiled-in defaults apply.
-	return ProxyParams();
+	// config 波次: reads go through the oakcommon_config_* C ABI. The
+	// ProxyParams member defaults double as the getter fallbacks (the same
+	// values are also registered as compiled-in config defaults).
+	ProxyParams params;
+	params.width =
+		oakcommon_config_get_int(nullptr, "ProxyWidth", params.width);
+	params.height =
+		oakcommon_config_get_int(nullptr, "ProxyHeight", params.height);
+	params.divider =
+		oakcommon_config_get_int(nullptr, "ProxyDivider", params.divider);
+	params.crf = oakcommon_config_get_int(nullptr, "ProxyCRF", params.crf);
+	params.include_audio =
+		oakcommon_config_get_bool(nullptr, "ProxyIncludeAudio",
+								  params.include_audio ? 1 : 0) != 0;
+
+	const int preset_size =
+		oakcommon_config_get(nullptr, "ProxyPreset", nullptr, 0);
+	if (preset_size > 0) {
+		std::string preset(preset_size - 1, '\0');
+		oakcommon_config_get(nullptr, "ProxyPreset", preset.data(),
+							 preset_size);
+		params.preset = preset;
+	}
+	return params;
 }
 
 std::string ProxyManager::find_f_fmpeg_executable(const std::string &configured_path)

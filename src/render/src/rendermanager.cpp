@@ -26,7 +26,7 @@
 #include <chrono>
 #include <cstdio>
 
-#include "config/config.h"
+#include "configaccessor.h"
 #ifdef OAK_ENABLE_DYNAMIC_RENDER_BACKEND
 #include "backend/dynamicrenderer.h"
 #endif

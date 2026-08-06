@@ -19,6 +19,8 @@ add_library(oakcommon SHARED
         commandlineparser.cpp
         commandlineparser.h
         colortransform.h
+        configstore.cpp
+        configstore.h
         current.cpp
         current.h
         debug.cpp

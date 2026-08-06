@@ -21,7 +21,7 @@
 
 #include "viewer.h"
 
-#include "config/config.h"
+#include "configaccessor.h"
 #include "coreengine.h"
 #include "traverser.h"
 #include "olive/core/util/timecodefunctions.h"

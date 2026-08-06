@@ -24,7 +24,7 @@
 #include <algorithm>
 #include <cmath>
 
-#include "config/config.h"
+#include "configaccessor.h"
 #include "block/transition/transition.h"
 #include "output/track/track.h"
 #include "output/viewer/viewer.h"

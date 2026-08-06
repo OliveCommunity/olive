@@ -29,7 +29,7 @@
 #include <vector>
 
 #include "color/colormanager/colormanager.h"
-#include "config/config.h"
+#include "configaccessor.h"
 #include "group/group.h"
 #include "node.h"
 #include "output/viewer/viewer.h"

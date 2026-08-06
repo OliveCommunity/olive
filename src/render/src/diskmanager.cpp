@@ -28,7 +28,7 @@
 #include <fstream>
 #include <sstream>
 
-#include "config/config.h"
+#include "configaccessor.h"
 #include "coreengine.h"
 #include "filefunctions.h"
 
@@ -287,7 +287,7 @@ DiskCacheFolder::DiskCacheFolder(const std::string &path)
 	// reached the folder through queued QMetaObject invocations.
 	int interval = OAK_CONFIG("DiskCacheSaveInterval").toInt();
 	if (interval <= 0) {
-		// Config default (10000 ms); the transition config stub returns 0
+		// Defensive fallback; the compiled-in config default is 10000 ms
 		interval = 10000;
 	}
 	save_thread_stop_ = false;

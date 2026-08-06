@@ -31,7 +31,7 @@
 #include <cstdlib>
 
 #include "lerp.h"
-#include "config/config.h"
+#include "configaccessor.h"
 #include "group/group.h"
 #include "project/serializer/typeserializer.h"
 #include "nodeundo.h"

@@ -24,7 +24,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include "config/config.h"
+#include "configaccessor.h"
 #include "factory.h"
 #include "group/group.h"
 
@@ -825,8 +825,8 @@ void ProjectSerializer210907::load_marker_list(XmlStreamReader *reader,
 				}
 			}
 
-			// ADAPT(config/M4): OAK_CONFIG is still Qt-based; TimelineMarker
-			// is de-Qt'd in M4 (must accept std::string name)
+			// MarkerColor resolves through configaccessor.h
+			// (oakcommon_config_* C ABI)
 			new TimelineMarker(OAK_CONFIG("MarkerColor").toInt(),
 							   TimeRange(in, out), name, markers);
 		}

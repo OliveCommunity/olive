@@ -30,7 +30,7 @@
 
 #include "filefunctions.h"
 #if !defined(OAK_RENDER_BACKEND_PLUGIN)
-#include "config/config.h"
+#include "configaccessor.h"
 #endif
 #include "render/job/shaderjob.h"
 

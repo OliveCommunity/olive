@@ -1,5 +1,6 @@
 target_sources(oakcommon PRIVATE
         colortransform.cpp
+        config.cpp
         commandlineparser.cpp
         current.cpp
         subtitleparams.cpp

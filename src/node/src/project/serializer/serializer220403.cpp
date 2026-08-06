@@ -24,7 +24,7 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include "config/config.h"
+#include "configaccessor.h"
 #include "factory.h"
 #include "block/clip/clip.h"
 #include "group/group.h"

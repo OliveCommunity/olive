@@ -29,7 +29,7 @@
 #include <thread>
 #include <vector>
 
-#include "config/config.h"
+#include "configaccessor.h"
 #include "colorprocessorcache.h"
 #include "output/viewer/viewer.h"
 #include "project.h"

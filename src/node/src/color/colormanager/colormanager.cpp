@@ -28,7 +28,7 @@
 
 #include "define.h"
 #include "filefunctions.h"
-#include "config/config.h"
+#include "configaccessor.h"
 #include "project.h"
 
 namespace olive

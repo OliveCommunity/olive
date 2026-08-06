@@ -24,7 +24,7 @@
 #include <cctype>
 #include <filesystem>
 
-#include "config/config.h"
+#include "configaccessor.h"
 
 namespace olive
 {

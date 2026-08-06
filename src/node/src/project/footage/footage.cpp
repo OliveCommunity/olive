@@ -32,7 +32,7 @@
 #include "filefunctions.h"
 #include "qtutils.h"
 #include "xmlutils.h"
-#include "config/config.h"
+#include "configaccessor.h"
 #include "olive/core/util/stringutils.h"
 #include "color/colormanager/colormanager.h"
 #include "project.h"
@@ -392,7 +392,7 @@ void Footage::value(const NodeValueRow &value, const NodeGlobals &globals,
 
 	// Proxies can be globally disabled (Tools > Use Proxy Media) without
 	// losing each footage's individual proxy setting
-	// ADAPT(config 波次): engine config/config.h is still Qt-based; kept as-is
+	// config 波次: resolved via configaccessor.h -> oakcommon_config_* C ABI
 	const bool proxies_allowed =
 		Config::current()[QStringLiteral("UseProxyMedia")].toBool();
 

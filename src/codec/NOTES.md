@@ -8,9 +8,11 @@
    `k_proxy_missing`，不崩溃不阻塞。注册语义为同步提交（回调内完成或
    排队后立即返回）；`SubmitTask` 持锁调回调，回调内不可重入注册函数。
    conform/proxy 任务的 working→finished 改名生命周期整体移交 M8 oaktask。
-2. **Config**（config 里程碑收口）：`ProxyManager::proxy_params_from_config()`
-   返回编译期默认值（1280x720/div1/mp4/crf23/veryfast/含音频）；未引入
-   内存态 stub（ffmpegencoder 当前版本已不读 Config）。
+2. **Config**（config 波次已收口）：`ProxyManager::proxy_params_from_config()`
+   现经 `oakcommon_config_*` C ABI 读取 ProxyWidth/ProxyHeight/ProxyDivider/
+   ProxyCRF/ProxyPreset/ProxyIncludeAudio，ProxyParams 成员默认值兼作
+   getter fallback（与 oakcommon 编译期默认值一致：1280x720/div1/crf23/
+   veryfast/含音频）。
 3. **纹理路径功能回退**（oakrender 增补 shader-blit C API 后可恢复）：
    oakrender C API 无通用 shader-blit，FFmpegDecoder 的 yuv2rgb GLSL 路径与
    去隔行 shader 路径已删除；YUV 帧改在 CPU 上 swscale 转 RGBA 后

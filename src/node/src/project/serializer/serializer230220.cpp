@@ -25,7 +25,7 @@
 
 #include "serializer230220.h"
 
-#include "config/config.h"
+#include "configaccessor.h"
 #include "factory.h"
 #include "group/group.h"
 #include "serializeddata.h"

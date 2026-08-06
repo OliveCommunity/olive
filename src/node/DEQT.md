@@ -257,8 +257,9 @@ cd src/node/src/node && c++ -std=c++17 -fsyntax-only -Wall \
    add/remove_node 函数族）。
 6. `factory.cpp` 的 `pluginSupport/` include、`traverser.h` 的 `"common/cancelableobject.h"`
    原样保留（后者 oakcommon 没有，留 M 系列裁决）。
-7. `node.h` 仍 include `config/config.h`、`ui/colorcoding.h`（engine Qt 头，`color()` 用到
-   `OAK_CONFIG_STR(...)`）——config 波次处理。
+7. ~~`node.h` 仍 include `config/config.h`~~ —— config 波次已处理：`configaccessor.h`
+   （src/node/src）替代 engine Qt 头与 transition stub，`OAK_CONFIG*` 宏在消费侧本地重定义为
+   `oakcommon_config_*` C 调用，调用点零改动；`ui/colorcoding.h` 仍走 stub（UI 波次）。
 8. `Node::gizmo_drag_move` 的 modifiers 参数为 `int`（原 `Qt::KeyboardModifiers`）。
 9. timeformat 的 `format_date_time()` 不实现 `MMMM`（月名）/`dddd`（星期名）本地化 token
    （原默认格式 `hh:mm:ss` 用不到）；负 epoch 毫秒的 `zzz` 取模与 Qt 有边界差异（实际输入不会触发）。
