@@ -22,25 +22,47 @@
 
 #include "../src/current.h"
 
-struct OakCommonCurrent {
-	Current *current;
-};
-
-OakCommonCurrent *oakcommon_current_instance(void)
+namespace
 {
-	static OakCommonCurrent handle = { &Current::get_instance() };
-	return &handle;
+
+/**
+ * @brief No-op addref/release for the singleton: it is never destroyed.
+ */
+void singleton_noop(void *ctx)
+{
+	(void)ctx;
 }
 
-void oakcommon_current_free(OakCommonCurrent *self)
+/**
+ * @brief Recover the Current singleton from a handle (NULL-safe).
+ */
+Current *current_of(OakCurrent self)
 {
-	// No-op: the handle wraps a process-wide singleton.
+	return static_cast<Current *>(self.ctx);
+}
+
+} // namespace
+
+OakCurrent oakcommon_current_instance(void)
+{
+	OakCurrent h = {};
+	h.ctx = &Current::get_instance();
+	h.addref = &singleton_noop;
+	h.release = &singleton_noop;
+	h.abi_version = OAKCOMMON_ABI_VERSION;
+	return h;
+}
+
+void oakcommon_current_free(OakCurrent *self)
+{
+	// No-op: the handle wraps a process-wide singleton whose release()
+	// intentionally never destroys anything.
 	(void)self;
 }
 
 static int current_set(Current *current,
 		       void (Current::*set_fn)(std::shared_ptr<void>),
-		       void *obj, OakCommonDestroyFn destroy)
+		       void *obj, OakDestroyFn destroy)
 {
 	try {
 		std::shared_ptr<void> value;
@@ -70,78 +92,78 @@ static int current_get(Current *current,
 	return OAKCOMMON_OK;
 }
 
-int oakcommon_current_set_video_params(OakCommonCurrent *self, void *obj,
-				       OakCommonDestroyFn destroy)
+int oakcommon_current_set_video_params(OakCurrent self, void *obj,
+				       OakDestroyFn destroy)
 {
-	if (!self)
+	if (!current_of(self))
 		return OAKCOMMON_E_INVALID;
-	return current_set(self->current, &Current::set_current_video_params,
+	return current_set(current_of(self), &Current::set_current_video_params,
 			   obj, destroy);
 }
 
-int oakcommon_current_set_audio_params(OakCommonCurrent *self, void *obj,
-				       OakCommonDestroyFn destroy)
+int oakcommon_current_set_audio_params(OakCurrent self, void *obj,
+				       OakDestroyFn destroy)
 {
-	if (!self)
+	if (!current_of(self))
 		return OAKCOMMON_E_INVALID;
-	return current_set(self->current, &Current::set_current_audio_params,
+	return current_set(current_of(self), &Current::set_current_audio_params,
 			   obj, destroy);
 }
 
-int oakcommon_current_set_plugin_host(OakCommonCurrent *self, void *obj,
-				      OakCommonDestroyFn destroy)
+int oakcommon_current_set_plugin_host(OakCurrent self, void *obj,
+				      OakDestroyFn destroy)
 {
-	if (!self)
+	if (!current_of(self))
 		return OAKCOMMON_E_INVALID;
-	return current_set(self->current, &Current::set_plugin_host, obj,
+	return current_set(current_of(self), &Current::set_plugin_host, obj,
 			   destroy);
 }
 
-int oakcommon_current_set_plugin_cache(OakCommonCurrent *self, void *obj,
-				       OakCommonDestroyFn destroy)
+int oakcommon_current_set_plugin_cache(OakCurrent self, void *obj,
+				       OakDestroyFn destroy)
 {
-	if (!self)
+	if (!current_of(self))
 		return OAKCOMMON_E_INVALID;
-	return current_set(self->current, &Current::set_plugin_cache, obj,
+	return current_set(current_of(self), &Current::set_plugin_cache, obj,
 			   destroy);
 }
 
-int oakcommon_current_get_video_params(OakCommonCurrent *self, void **out)
+int oakcommon_current_get_video_params(OakCurrent self, void **out)
 {
-	if (!self || !out)
+	if (!current_of(self) || !out)
 		return OAKCOMMON_E_INVALID;
-	return current_get(self->current, &Current::current_video_params,
+	return current_get(current_of(self), &Current::current_video_params,
 			   out);
 }
 
-int oakcommon_current_get_audio_params(OakCommonCurrent *self, void **out)
+int oakcommon_current_get_audio_params(OakCurrent self, void **out)
 {
-	if (!self || !out)
+	if (!current_of(self) || !out)
 		return OAKCOMMON_E_INVALID;
-	return current_get(self->current, &Current::current_audio_params,
+	return current_get(current_of(self), &Current::current_audio_params,
 			   out);
 }
 
-int oakcommon_current_get_plugin_host(OakCommonCurrent *self, void **out)
+int oakcommon_current_get_plugin_host(OakCurrent self, void **out)
 {
-	if (!self || !out)
+	if (!current_of(self) || !out)
 		return OAKCOMMON_E_INVALID;
-	return current_get(self->current, &Current::plugin_host, out);
+	return current_get(current_of(self), &Current::plugin_host, out);
 }
 
-int oakcommon_current_get_plugin_cache(OakCommonCurrent *self, void **out)
+int oakcommon_current_get_plugin_cache(OakCurrent self, void **out)
 {
-	if (!self || !out)
+	if (!current_of(self) || !out)
 		return OAKCOMMON_E_INVALID;
-	return current_get(self->current, &Current::plugin_cache, out);
+	return current_get(current_of(self), &Current::plugin_cache, out);
 }
 
-int oakcommon_current_is_interactive(OakCommonCurrent *self, int *out)
+int oakcommon_current_is_interactive(OakCurrent self, int *out)
 {
-	if (!self || !out)
+	if (!current_of(self) || !out)
 		return OAKCOMMON_E_INVALID;
 	try {
-		*out = self->current->interactive() ? 1 : 0;
+		*out = current_of(self)->interactive() ? 1 : 0;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}

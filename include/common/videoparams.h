@@ -28,21 +28,37 @@
 #include <stdint.h>
 
 #include "common/error.h"
+#include "common/handle.h"
 #include "common/ocioutils.h"
 
 #ifdef __cplusplus
+namespace olive
+{
+class VideoParams;
+}
 extern "C" {
 #endif
 
 /**
- * @brief Opaque handle to a video parameter set (olive::VideoParams).
+ * @brief Neutral by-value handle to a video parameter set
+ *        (olive::VideoParams).
+ *
+ * Ownership/count semantics follow the convention in common/handle.h:
+ * init functions return a handle whose object has reference count 1,
+ * addref(ctx)/release(ctx) adjust it atomically, and release destroys
+ * the object at zero. abi_version is always OAKCOMMON_ABI_VERSION.
  */
-typedef struct OakCommonVideoParams OakCommonVideoParams;
+typedef struct OakVideoParams {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKCOMMON_ABI_VERSION. */
+} OakVideoParams;
 
 /**
  * @brief Interlacing modes, mirroring olive::VideoParams::Interlacing.
  */
-enum OakCommonVideoInterlacing {
+enum OakVideoInterlacing {
 	OAKCOMMON_VIDEO_INTERLACE_NONE = 0,
 	OAKCOMMON_VIDEO_INTERLACED_TOP_FIRST = 1,
 	OAKCOMMON_VIDEO_INTERLACED_BOTTOM_FIRST = 2
@@ -51,7 +67,7 @@ enum OakCommonVideoInterlacing {
 /**
  * @brief Video stream types, mirroring olive::VideoParams::Type.
  */
-enum OakCommonVideoType {
+enum OakVideoType {
 	OAKCOMMON_VIDEO_TYPE_VIDEO = 0,
 	OAKCOMMON_VIDEO_TYPE_STILL = 1,
 	OAKCOMMON_VIDEO_TYPE_IMAGE_SEQUENCE = 2
@@ -60,7 +76,7 @@ enum OakCommonVideoType {
 /**
  * @brief Color range codes, mirroring olive::VideoParams::ColorRange.
  */
-enum OakCommonVideoColorRange {
+enum OakVideoColorRange {
 	OAKCOMMON_COLOR_RANGE_LIMITED = 0, /**< 16-235 */
 	OAKCOMMON_COLOR_RANGE_FULL = 1 /**< 0-255 */
 };
@@ -68,17 +84,19 @@ enum OakCommonVideoColorRange {
 /**
  * @brief Create a default (invalid) video parameter set.
  *
- * @return Params handle, or NULL on allocation failure.
+ * @return Handle with reference count 1; ctx is NULL on allocation
+ *         failure.
  */
-OakCommonVideoParams *oakcommon_videoparams_init(void);
+OakVideoParams oakcommon_videoparams_init(void);
 
 /**
  * @brief Create a video parameter set without a time base.
  *
- * @param pixel_format One of the OakCommonPixelFormat values.
- * @return Params handle, or NULL on allocation failure.
+ * @param pixel_format One of the OakPixelFormat values.
+ * @return Handle with reference count 1; ctx is NULL on allocation
+ *         failure.
  */
-OakCommonVideoParams *oakcommon_videoparams_init_basic(
+OakVideoParams oakcommon_videoparams_init_basic(
 	int width, int height, int pixel_format, int nb_channels,
 	int pixel_aspect_num, int pixel_aspect_den, int interlacing, int divider);
 
@@ -87,103 +105,136 @@ OakCommonVideoParams *oakcommon_videoparams_init_basic(
  *
  * The frame rate is derived as the flipped time base.
  *
- * @param pixel_format One of the OakCommonPixelFormat values.
- * @return Params handle, or NULL on allocation failure.
+ * @param pixel_format One of the OakPixelFormat values.
+ * @return Handle with reference count 1; ctx is NULL on allocation
+ *         failure.
  */
-OakCommonVideoParams *oakcommon_videoparams_init_with_time_base(
+OakVideoParams oakcommon_videoparams_init_with_time_base(
 	int width, int height, int time_base_num, int time_base_den,
 	int pixel_format, int nb_channels, int pixel_aspect_num,
 	int pixel_aspect_den, int interlacing, int divider);
 
+#ifdef __cplusplus
 /**
- * @brief Destroy a video parameter set. No-op on NULL.
+ * @brief Copy a native olive::VideoParams into a new handle.
+ *
+ * The source object is deep-copied; the handle does not keep any
+ * reference to @p src, which may be destroyed immediately afterwards.
+ * Only visible to C++ consumers.
+ *
+ * @return Handle with reference count 1; ctx is NULL if src is NULL or
+ *         on allocation failure.
  */
-void oakcommon_videoparams_free(OakCommonVideoParams *params);
+OakVideoParams oakcommon_videoparams_init_from_native(
+	const olive::VideoParams *src);
 
-int oakcommon_videoparams_get_width(OakCommonVideoParams *params, int *width);
-int oakcommon_videoparams_set_width(OakCommonVideoParams *params, int width);
-int oakcommon_videoparams_get_height(OakCommonVideoParams *params, int *height);
-int oakcommon_videoparams_set_height(OakCommonVideoParams *params, int height);
-int oakcommon_videoparams_get_depth(OakCommonVideoParams *params, int *depth);
-int oakcommon_videoparams_set_depth(OakCommonVideoParams *params, int depth);
-int oakcommon_videoparams_get_is_3d(OakCommonVideoParams *params, int *is_3d);
+/**
+ * @brief Borrow the native object behind a handle.
+ *
+ * The returned pointer is borrowed: it stays valid while the caller
+ * holds a reference to the handle (i.e. until the matching release).
+ * Only visible to C++ consumers.
+ *
+ * @return Borrowed pointer, or NULL if params is NULL or params->ctx is
+ *         NULL.
+ */
+const olive::VideoParams *oakcommon_videoparams_get_native(
+	OakVideoParams params);
+#endif
+
+/**
+ * @brief Release one reference to a video parameter set.
+ *
+ * Convenience wrapper around handle.release(handle.ctx): decrements the
+ * atomic reference count and destroys the object when it reaches zero.
+ * No-op when params is NULL or params->ctx is NULL.
+ */
+void oakcommon_videoparams_free(OakVideoParams *params);
+
+int oakcommon_videoparams_get_width(OakVideoParams params, int *width);
+int oakcommon_videoparams_set_width(OakVideoParams params, int width);
+int oakcommon_videoparams_get_height(OakVideoParams params, int *height);
+int oakcommon_videoparams_set_height(OakVideoParams params, int height);
+int oakcommon_videoparams_get_depth(OakVideoParams params, int *depth);
+int oakcommon_videoparams_set_depth(OakVideoParams params, int depth);
+int oakcommon_videoparams_get_is_3d(OakVideoParams params, int *is_3d);
 
 /**
  * @brief Rational getters return the value as a numerator/denominator pair.
  */
-int oakcommon_videoparams_get_time_base(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_time_base(OakVideoParams params,
 										int *numerator, int *denominator);
-int oakcommon_videoparams_set_time_base(OakCommonVideoParams *params,
+int oakcommon_videoparams_set_time_base(OakVideoParams params,
 										int numerator, int denominator);
-int oakcommon_videoparams_get_frame_rate(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_frame_rate(OakVideoParams params,
 										 int *numerator, int *denominator);
-int oakcommon_videoparams_set_frame_rate(OakCommonVideoParams *params,
+int oakcommon_videoparams_set_frame_rate(OakVideoParams params,
 										 int numerator, int denominator);
-int oakcommon_videoparams_frame_rate_as_time_base(OakCommonVideoParams *params,
+int oakcommon_videoparams_frame_rate_as_time_base(OakVideoParams params,
 												  int *numerator,
 												  int *denominator);
-int oakcommon_videoparams_get_pixel_aspect_ratio(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_pixel_aspect_ratio(OakVideoParams params,
 												 int *numerator,
 												 int *denominator);
-int oakcommon_videoparams_set_pixel_aspect_ratio(OakCommonVideoParams *params,
+int oakcommon_videoparams_set_pixel_aspect_ratio(OakVideoParams params,
 												 int numerator, int denominator);
 
 /**
- * @brief Format getters/setters use the OakCommonPixelFormat codes.
+ * @brief Format getters/setters use the OakPixelFormat codes.
  */
-int oakcommon_videoparams_get_format(OakCommonVideoParams *params, int *format);
-int oakcommon_videoparams_set_format(OakCommonVideoParams *params, int format);
-int oakcommon_videoparams_get_channel_count(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_format(OakVideoParams params, int *format);
+int oakcommon_videoparams_set_format(OakVideoParams params, int format);
+int oakcommon_videoparams_get_channel_count(OakVideoParams params,
 											int *count);
-int oakcommon_videoparams_set_channel_count(OakCommonVideoParams *params,
+int oakcommon_videoparams_set_channel_count(OakVideoParams params,
 											int count);
-int oakcommon_videoparams_get_interlacing(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_interlacing(OakVideoParams params,
 										  int *interlacing);
-int oakcommon_videoparams_set_interlacing(OakCommonVideoParams *params,
+int oakcommon_videoparams_set_interlacing(OakVideoParams params,
 										  int interlacing);
-int oakcommon_videoparams_get_divider(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_divider(OakVideoParams params,
 									  int *divider);
-int oakcommon_videoparams_set_divider(OakCommonVideoParams *params,
+int oakcommon_videoparams_set_divider(OakVideoParams params,
 									  int divider);
-int oakcommon_videoparams_get_enabled(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_enabled(OakVideoParams params,
 									  int *enabled);
-int oakcommon_videoparams_set_enabled(OakCommonVideoParams *params,
+int oakcommon_videoparams_set_enabled(OakVideoParams params,
 									  int enabled);
-int oakcommon_videoparams_get_x(OakCommonVideoParams *params, float *x);
-int oakcommon_videoparams_set_x(OakCommonVideoParams *params, float x);
-int oakcommon_videoparams_get_y(OakCommonVideoParams *params, float *y);
-int oakcommon_videoparams_set_y(OakCommonVideoParams *params, float y);
-int oakcommon_videoparams_get_stream_index(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_x(OakVideoParams params, float *x);
+int oakcommon_videoparams_set_x(OakVideoParams params, float x);
+int oakcommon_videoparams_get_y(OakVideoParams params, float *y);
+int oakcommon_videoparams_set_y(OakVideoParams params, float y);
+int oakcommon_videoparams_get_stream_index(OakVideoParams params,
 										   int *index);
-int oakcommon_videoparams_set_stream_index(OakCommonVideoParams *params,
+int oakcommon_videoparams_set_stream_index(OakVideoParams params,
 										   int index);
-int oakcommon_videoparams_get_video_type(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_video_type(OakVideoParams params,
 										 int *type);
-int oakcommon_videoparams_set_video_type(OakCommonVideoParams *params,
+int oakcommon_videoparams_set_video_type(OakVideoParams params,
 										 int type);
-int oakcommon_videoparams_get_start_time(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_start_time(OakVideoParams params,
 										 int64_t *start_time);
-int oakcommon_videoparams_set_start_time(OakCommonVideoParams *params,
+int oakcommon_videoparams_set_start_time(OakVideoParams params,
 										 int64_t start_time);
-int oakcommon_videoparams_get_duration(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_duration(OakVideoParams params,
 									   int64_t *duration);
-int oakcommon_videoparams_set_duration(OakCommonVideoParams *params,
+int oakcommon_videoparams_set_duration(OakVideoParams params,
 									   int64_t duration);
-int oakcommon_videoparams_get_premultiplied_alpha(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_premultiplied_alpha(OakVideoParams params,
 												  int *premultiplied);
-int oakcommon_videoparams_set_premultiplied_alpha(OakCommonVideoParams *params,
+int oakcommon_videoparams_set_premultiplied_alpha(OakVideoParams params,
 												  int premultiplied);
-int oakcommon_videoparams_get_color_range(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_color_range(OakVideoParams params,
 										  int *color_range);
-int oakcommon_videoparams_set_color_range(OakCommonVideoParams *params,
+int oakcommon_videoparams_set_color_range(OakVideoParams params,
 										  int color_range);
-int oakcommon_videoparams_get_color_primaries(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_color_primaries(OakVideoParams params,
 											  int *primaries);
-int oakcommon_videoparams_set_color_primaries(OakCommonVideoParams *params,
+int oakcommon_videoparams_set_color_primaries(OakVideoParams params,
 											  int primaries);
-int oakcommon_videoparams_get_color_transfer(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_color_transfer(OakVideoParams params,
 											 int *transfer);
-int oakcommon_videoparams_set_color_transfer(OakCommonVideoParams *params,
+int oakcommon_videoparams_set_color_transfer(OakVideoParams params,
 											 int transfer);
 
 /**
@@ -192,29 +243,29 @@ int oakcommon_videoparams_set_color_transfer(OakCommonVideoParams *params,
  * @return Required buffer size in bytes including the terminating NUL
  *         (non-negative), or a negative OAKCOMMON_E_* error code.
  */
-int oakcommon_videoparams_get_colorspace(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_colorspace(OakVideoParams params,
 										 char *buf, int buf_size);
-int oakcommon_videoparams_set_colorspace(OakCommonVideoParams *params,
+int oakcommon_videoparams_set_colorspace(OakVideoParams params,
 										 const char *colorspace);
 
 /**
  * @brief Width multiplied by the pixel aspect ratio.
  */
-int oakcommon_videoparams_get_square_pixel_width(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_square_pixel_width(OakVideoParams params,
 												 int *width);
-int oakcommon_videoparams_get_effective_width(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_effective_width(OakVideoParams params,
 											  int *width);
-int oakcommon_videoparams_get_effective_height(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_effective_height(OakVideoParams params,
 											   int *height);
-int oakcommon_videoparams_get_effective_depth(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_effective_depth(OakVideoParams params,
 											  int *depth);
-int oakcommon_videoparams_get_is_valid(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_is_valid(OakVideoParams params,
 									   int *is_valid);
-int oakcommon_videoparams_get_bytes_per_channel(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_bytes_per_channel(OakVideoParams params,
 												int *bytes);
-int oakcommon_videoparams_get_bytes_per_pixel(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_bytes_per_pixel(OakVideoParams params,
 											  int *bytes);
-int oakcommon_videoparams_get_buffer_size(OakCommonVideoParams *params,
+int oakcommon_videoparams_get_buffer_size(OakVideoParams params,
 										  int *size);
 
 /**
@@ -224,14 +275,14 @@ int oakcommon_videoparams_get_buffer_size(OakCommonVideoParams *params,
  * set.
  */
 int oakcommon_videoparams_get_time_in_timebase_units(
-	OakCommonVideoParams *params, int time_num, int time_den,
+	OakVideoParams params, int time_num, int time_den,
 	int64_t *timestamp);
 
 /**
  * @brief Compare two parameter sets for equality.
  */
-int oakcommon_videoparams_equals(OakCommonVideoParams *params,
-								 OakCommonVideoParams *other, int *equal);
+int oakcommon_videoparams_equals(OakVideoParams params,
+								 OakVideoParams other, int *equal);
 
 /**
  * @brief Load parameters from an XML fragment.
@@ -239,7 +290,7 @@ int oakcommon_videoparams_equals(OakCommonVideoParams *params,
  * @param xml NUL-terminated XML text. Must not be NULL.
  * @return OAKCOMMON_OK or a negative OAKCOMMON_E_* error code.
  */
-int oakcommon_videoparams_load_xml(OakCommonVideoParams *params,
+int oakcommon_videoparams_load_xml(OakVideoParams params,
 								   const char *xml);
 
 /**
@@ -248,7 +299,7 @@ int oakcommon_videoparams_load_xml(OakCommonVideoParams *params,
  * @return Required buffer size in bytes including the terminating NUL
  *         (non-negative), or a negative OAKCOMMON_E_* error code.
  */
-int oakcommon_videoparams_save_xml(OakCommonVideoParams *params, char *buf,
+int oakcommon_videoparams_save_xml(OakVideoParams params, char *buf,
 								   int buf_size);
 
 /* Static helpers (no handle required). */
@@ -293,6 +344,21 @@ int oakcommon_videoparams_get_format_name(int pixel_format, char *buf,
  */
 int oakcommon_videoparams_frame_rate_to_string(int numerator, int denominator,
 											   char *buf, int buf_size);
+
+/**
+ * @brief Get bytes per channel.
+ *
+ * @return Bytes per channel.
+ */
+int oakcommon_videoparams_static_get_bytes_per_channel(OakPixelFormat format);
+
+/**
+ * @brief Get bytes per pixel.
+ *
+ * @return Bytes per pixel.
+ */
+int oakcommon_videoparams_static_get_bytes_per_pixel(OakPixelFormat format,
+												 int channels);
 
 #ifdef __cplusplus
 }

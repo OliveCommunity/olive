@@ -263,15 +263,15 @@ TEST_F(ColorManagerTest, CompliantColorTransform)
 		get_string(oaknode_colormanager_get_default_display, m);
 	ASSERT_FALSE(display.empty());
 
-	OakCommonColorTransform *t = oakcommon_colortransform_init_display(
+	OakColorTransform t = oakcommon_colortransform_init_display(
 		display.c_str(), "No Such View", "");
-	ASSERT_NE(t, nullptr);
+	ASSERT_NE(t.ctx, nullptr);
 
-	OakCommonColorTransform *compliant = nullptr;
+	OakColorTransform compliant = {};
 	ASSERT_EQ(oaknode_colormanager_get_compliant_color_transform(m, t, 0,
 																 &compliant),
 			  OAKNODE_OK);
-	ASSERT_NE(compliant, nullptr);
+	ASSERT_NE(compliant.ctx, nullptr);
 
 	int is_display = 0;
 	ASSERT_EQ(oakcommon_colortransform_is_display(compliant, &is_display),
@@ -286,11 +286,11 @@ TEST_F(ColorManagerTest, CompliantColorTransform)
 			  needed);
 	EXPECT_STRNE(buf.data(), "No Such View");
 
-	oakcommon_colortransform_free(compliant);
-	oakcommon_colortransform_free(t);
+	oakcommon_colortransform_free(&compliant);
+	oakcommon_colortransform_free(&t);
 
 	// Error paths
-	EXPECT_EQ(oaknode_colormanager_get_compliant_color_transform(m, nullptr, 0,
+	EXPECT_EQ(oaknode_colormanager_get_compliant_color_transform(m, OakColorTransform{}, 0,
 																 &compliant),
 			  OAKNODE_E_INVALID);
 

@@ -20,11 +20,38 @@
 
 #include "debug.h"
 
+#include <atomic>
 #include <cstdio>
 #include <cstring>
+#include <mutex>
 
 namespace olive
 {
+
+namespace
+{
+
+/**
+ * @brief Minimum level emitted by log_message(); default k_debug_info.
+ */
+std::atomic<int> g_log_level{ k_debug_info };
+
+/**
+ * @brief Guards g_log_sink (std::function is not atomic).
+ */
+std::mutex g_sink_mutex;
+LogSink g_log_sink;
+
+/**
+ * @brief Default sink: stderr + flush, same as debug_handler().
+ */
+void stderr_sink(const std::string &line)
+{
+	fputs(line.c_str(), stderr);
+	fflush(stderr);
+}
+
+} // namespace
 
 int debug_level_name(int level, char *buf, int buf_size)
 {
@@ -58,16 +85,82 @@ int debug_level_name(int level, char *buf, int buf_size)
 	return needed;
 }
 
-void debug_handler(int level, const char *msg)
+std::string format_log_line(int level, const std::string &msg)
 {
 	char level_name[16];
 
 	debug_level_name(level, level_name, sizeof(level_name));
-	fprintf(stderr, "[%s] %s\n", level_name, msg ? msg : "");
 
-	// Always flush so debug messages appear immediately, even on
-	// platforms that buffer stderr.
-	fflush(stderr);
+	std::string line;
+	line.reserve(strlen(level_name) + msg.size() + 4);
+	line += '[';
+	line += level_name;
+	line += "] ";
+	line += msg;
+	line += '\n';
+	return line;
+}
+
+void debug_handler(int level, const char *msg)
+{
+	stderr_sink(format_log_line(level, msg ? msg : ""));
+}
+
+void set_log_sink(LogSink sink)
+{
+	std::lock_guard<std::mutex> lock(g_sink_mutex);
+	g_log_sink = std::move(sink);
+}
+
+void set_log_level(DebugLevel level)
+{
+	if (level < k_debug_debug || level > k_debug_fatal)
+		return;
+	g_log_level.store(static_cast<int>(level), std::memory_order_relaxed);
+}
+
+DebugLevel get_log_level()
+{
+	return static_cast<DebugLevel>(g_log_level.load(std::memory_order_relaxed));
+}
+
+void log_message(int level, const std::string &msg)
+{
+	if (level < g_log_level.load(std::memory_order_relaxed))
+		return;
+
+	std::string line = format_log_line(level, msg);
+
+	LogSink sink;
+	{
+		std::lock_guard<std::mutex> lock(g_sink_mutex);
+		sink = g_log_sink;
+	}
+	// Invoke outside the lock so a sink may log re-entrantly.
+	if (sink)
+		sink(line);
+	else
+		stderr_sink(line);
+}
+
+void log_debug(const std::string &msg)
+{
+	log_message(k_debug_debug, msg);
+}
+
+void log_info(const std::string &msg)
+{
+	log_message(k_debug_info, msg);
+}
+
+void log_warning(const std::string &msg)
+{
+	log_message(k_debug_warning, msg);
+}
+
+void log_critical(const std::string &msg)
+{
+	log_message(k_debug_error, msg);
 }
 
 }

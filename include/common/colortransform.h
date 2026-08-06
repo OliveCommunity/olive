@@ -22,24 +22,39 @@
 #define OAK_EDITOR_COLORTRANSFORM_H
 
 #include "common/error.h"
+#include "common/handle.h"
 
 #ifdef __cplusplus
+namespace olive
+{
+class ColorTransform;
+}
 extern "C" {
 #endif
 
 /**
- * @brief Opaque handle to a color transform description
+ * @brief Neutral by-value handle to a color transform description
  *        (olive::ColorTransform).
+ *
+ * Ownership/count semantics follow the convention in common/handle.h:
+ * init functions return a handle whose object has reference count 1,
+ * addref(ctx)/release(ctx) adjust it atomically, and release destroys
+ * the object at zero. abi_version is always OAKCOMMON_ABI_VERSION.
  */
-typedef struct OakCommonColorTransform OakCommonColorTransform;
+typedef struct OakColorTransform {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKCOMMON_ABI_VERSION. */
+} OakColorTransform;
 
 /**
  * @brief Create a plain output-colorspace transform.
  *
  * @param output Output colorspace name. Must not be NULL.
- * @return Transform handle, or NULL on failure.
+ * @return Handle with reference count 1; ctx is NULL on failure.
  */
-OakCommonColorTransform *oakcommon_colortransform_init_output(
+OakColorTransform oakcommon_colortransform_init_output(
 	const char *output);
 
 /**
@@ -47,15 +62,47 @@ OakCommonColorTransform *oakcommon_colortransform_init_output(
  *
  * All three strings must not be NULL.
  *
- * @return Transform handle, or NULL on failure.
+ * @return Handle with reference count 1; ctx is NULL on failure.
  */
-OakCommonColorTransform *oakcommon_colortransform_init_display(
+OakColorTransform oakcommon_colortransform_init_display(
 	const char *display, const char *view, const char *look);
 
+#ifdef __cplusplus
 /**
- * @brief Destroy a transform. No-op on NULL.
+ * @brief Copy a native olive::ColorTransform into a new handle.
+ *
+ * The source object is deep-copied; the handle does not keep any
+ * reference to @p src, which may be destroyed immediately afterwards.
+ * Only visible to C++ consumers.
+ *
+ * @return Handle with reference count 1; ctx is NULL if src is NULL or
+ *         on allocation failure.
  */
-void oakcommon_colortransform_free(OakCommonColorTransform *transform);
+OakColorTransform oakcommon_colortransform_init_from_native(
+	const olive::ColorTransform *src);
+
+/**
+ * @brief Borrow the native object behind a handle.
+ *
+ * The returned pointer is borrowed: it stays valid while the caller
+ * holds a reference to the handle (i.e. until the matching release).
+ * Only visible to C++ consumers.
+ *
+ * @return Borrowed pointer, or NULL if transform is NULL or
+ *         transform->ctx is NULL.
+ */
+const olive::ColorTransform *oakcommon_colortransform_get_native(
+	OakColorTransform transform);
+#endif
+
+/**
+ * @brief Release one reference to a transform.
+ *
+ * Convenience wrapper around handle.release(handle.ctx): decrements the
+ * atomic reference count and destroys the object when it reaches zero.
+ * No-op when transform is NULL or transform->ctx is NULL.
+ */
+void oakcommon_colortransform_free(OakColorTransform *transform);
 
 /**
  * @brief Query whether this is a display/view/look transform.
@@ -63,7 +110,7 @@ void oakcommon_colortransform_free(OakCommonColorTransform *transform);
  * @param is_display Receives the result. Must not be NULL.
  * @return OAKCOMMON_OK or a negative OAKCOMMON_E_* error code.
  */
-int oakcommon_colortransform_is_display(OakCommonColorTransform *transform,
+int oakcommon_colortransform_is_display(OakColorTransform transform,
 										int *is_display);
 
 /**
@@ -72,7 +119,7 @@ int oakcommon_colortransform_is_display(OakCommonColorTransform *transform,
  * @return Required buffer size in bytes including the terminating NUL
  *         (non-negative), or a negative OAKCOMMON_E_* error code.
  */
-int oakcommon_colortransform_get_display(OakCommonColorTransform *transform,
+int oakcommon_colortransform_get_display(OakColorTransform transform,
 										 char *buf, int buf_size);
 
 /**
@@ -81,7 +128,7 @@ int oakcommon_colortransform_get_display(OakCommonColorTransform *transform,
  * @return Required buffer size in bytes including the terminating NUL
  *         (non-negative), or a negative OAKCOMMON_E_* error code.
  */
-int oakcommon_colortransform_get_output(OakCommonColorTransform *transform,
+int oakcommon_colortransform_get_output(OakColorTransform transform,
 										char *buf, int buf_size);
 
 /**
@@ -90,7 +137,7 @@ int oakcommon_colortransform_get_output(OakCommonColorTransform *transform,
  * @return Required buffer size in bytes including the terminating NUL
  *         (non-negative), or a negative OAKCOMMON_E_* error code.
  */
-int oakcommon_colortransform_get_view(OakCommonColorTransform *transform,
+int oakcommon_colortransform_get_view(OakColorTransform transform,
 									  char *buf, int buf_size);
 
 /**
@@ -99,7 +146,7 @@ int oakcommon_colortransform_get_view(OakCommonColorTransform *transform,
  * @return Required buffer size in bytes including the terminating NUL
  *         (non-negative), or a negative OAKCOMMON_E_* error code.
  */
-int oakcommon_colortransform_get_look(OakCommonColorTransform *transform,
+int oakcommon_colortransform_get_look(OakColorTransform transform,
 									  char *buf, int buf_size);
 
 #ifdef __cplusplus

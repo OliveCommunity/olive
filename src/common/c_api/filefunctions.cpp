@@ -24,10 +24,20 @@
 #include <string>
 
 #include "../src/filefunctions.h"
+#include "refcounted.h"
 
-struct OakCommonFileFunctions {
-	int unused; /**< Stateless family; handle kept for API uniformity. */
+namespace
+{
+
+/**
+ * @brief Stateless family; the boxed object is empty and only exists so
+ *        the handle has something to reference-count.
+ */
+struct FileFunctionsState {
+	int unused;
 };
+
+} // namespace
 
 namespace
 {
@@ -54,25 +64,27 @@ bool is_valid_string_out(const char *buf, int buf_size)
 
 } // namespace
 
-OakCommonFileFunctions *oakcommon_filefunctions_init(void)
+OakFileFunctions oakcommon_filefunctions_init(void)
 {
 	try {
-		return new OakCommonFileFunctions{0};
+		return oakcommon::make_handle<OakFileFunctions>(
+			FileFunctionsState{0});
 	} catch (...) {
-		return nullptr;
+		OakFileFunctions h = {};
+		return h;
 	}
 }
 
-void oakcommon_filefunctions_free(OakCommonFileFunctions *self)
+void oakcommon_filefunctions_free(OakFileFunctions *self)
 {
-	delete self;
+	oakcommon::free_handle(self);
 }
 
 int oakcommon_filefunctions_get_unique_file_identifier(
-	OakCommonFileFunctions *self, const char *filename, char *buf,
+	OakFileFunctions self, const char *filename, char *buf,
 	int buf_size)
 {
-	if (self == nullptr || filename == nullptr ||
+	if (self.ctx == nullptr || filename == nullptr ||
 	    !is_valid_string_out(buf, buf_size)) {
 		return OAKCOMMON_E_INVALID;
 	}
@@ -87,9 +99,9 @@ int oakcommon_filefunctions_get_unique_file_identifier(
 }
 
 int oakcommon_filefunctions_get_configuration_location(
-	OakCommonFileFunctions *self, char *buf, int buf_size)
+	OakFileFunctions self, char *buf, int buf_size)
 {
-	if (self == nullptr || !is_valid_string_out(buf, buf_size)) {
+	if (self.ctx == nullptr || !is_valid_string_out(buf, buf_size)) {
 		return OAKCOMMON_E_INVALID;
 	}
 
@@ -103,9 +115,9 @@ int oakcommon_filefunctions_get_configuration_location(
 }
 
 int oakcommon_filefunctions_get_application_path(
-	OakCommonFileFunctions *self, char *buf, int buf_size)
+	OakFileFunctions self, char *buf, int buf_size)
 {
-	if (self == nullptr || !is_valid_string_out(buf, buf_size)) {
+	if (self.ctx == nullptr || !is_valid_string_out(buf, buf_size)) {
 		return OAKCOMMON_E_INVALID;
 	}
 
@@ -118,9 +130,9 @@ int oakcommon_filefunctions_get_application_path(
 }
 
 int oakcommon_filefunctions_get_temp_file_path(
-	OakCommonFileFunctions *self, char *buf, int buf_size)
+	OakFileFunctions self, char *buf, int buf_size)
 {
-	if (self == nullptr || !is_valid_string_out(buf, buf_size)) {
+	if (self.ctx == nullptr || !is_valid_string_out(buf, buf_size)) {
 		return OAKCOMMON_E_INVALID;
 	}
 
@@ -133,9 +145,9 @@ int oakcommon_filefunctions_get_temp_file_path(
 }
 
 int oakcommon_filefunctions_get_auto_recovery_root(
-	OakCommonFileFunctions *self, char *buf, int buf_size)
+	OakFileFunctions self, char *buf, int buf_size)
 {
-	if (self == nullptr || !is_valid_string_out(buf, buf_size)) {
+	if (self.ctx == nullptr || !is_valid_string_out(buf, buf_size)) {
 		return OAKCOMMON_E_INVALID;
 	}
 
@@ -148,10 +160,10 @@ int oakcommon_filefunctions_get_auto_recovery_root(
 }
 
 int oakcommon_filefunctions_can_copy_directory_without_overwriting(
-	OakCommonFileFunctions *self, const char *source, const char *dest,
+	OakFileFunctions self, const char *source, const char *dest,
 	int *out)
 {
-	if (self == nullptr || source == nullptr || dest == nullptr ||
+	if (self.ctx == nullptr || source == nullptr || dest == nullptr ||
 	    out == nullptr) {
 		return OAKCOMMON_E_INVALID;
 	}
@@ -167,11 +179,11 @@ int oakcommon_filefunctions_can_copy_directory_without_overwriting(
 	}
 }
 
-int oakcommon_filefunctions_copy_directory(OakCommonFileFunctions *self,
+int oakcommon_filefunctions_copy_directory(OakFileFunctions self,
 					   const char *source,
 					   const char *dest, int overwrite)
 {
-	if (self == nullptr || source == nullptr || dest == nullptr) {
+	if (self.ctx == nullptr || source == nullptr || dest == nullptr) {
 		return OAKCOMMON_E_INVALID;
 	}
 
@@ -184,10 +196,10 @@ int oakcommon_filefunctions_copy_directory(OakCommonFileFunctions *self,
 }
 
 int oakcommon_filefunctions_directory_is_valid(
-	OakCommonFileFunctions *self, const char *dir,
+	OakFileFunctions self, const char *dir,
 	int try_to_create_if_not_exists, int *out)
 {
-	if (self == nullptr || dir == nullptr || out == nullptr) {
+	if (self.ctx == nullptr || dir == nullptr || out == nullptr) {
 		return OAKCOMMON_E_INVALID;
 	}
 
@@ -203,10 +215,10 @@ int oakcommon_filefunctions_directory_is_valid(
 }
 
 int oakcommon_filefunctions_ensure_filename_extension(
-	OakCommonFileFunctions *self, const char *filename,
+	OakFileFunctions self, const char *filename,
 	const char *extension, char *buf, int buf_size)
 {
-	if (self == nullptr || filename == nullptr || extension == nullptr ||
+	if (self.ctx == nullptr || filename == nullptr || extension == nullptr ||
 	    !is_valid_string_out(buf, buf_size)) {
 		return OAKCOMMON_E_INVALID;
 	}
@@ -222,10 +234,10 @@ int oakcommon_filefunctions_ensure_filename_extension(
 }
 
 int oakcommon_filefunctions_read_file_as_string(
-	OakCommonFileFunctions *self, const char *filename, char *buf,
+	OakFileFunctions self, const char *filename, char *buf,
 	int buf_size)
 {
-	if (self == nullptr || filename == nullptr ||
+	if (self.ctx == nullptr || filename == nullptr ||
 	    !is_valid_string_out(buf, buf_size)) {
 		return OAKCOMMON_E_INVALID;
 	}
@@ -240,10 +252,10 @@ int oakcommon_filefunctions_read_file_as_string(
 }
 
 int oakcommon_filefunctions_get_safe_temporary_filename(
-	OakCommonFileFunctions *self, const char *original, char *buf,
+	OakFileFunctions self, const char *original, char *buf,
 	int buf_size)
 {
-	if (self == nullptr || original == nullptr ||
+	if (self.ctx == nullptr || original == nullptr ||
 	    !is_valid_string_out(buf, buf_size)) {
 		return OAKCOMMON_E_INVALID;
 	}
@@ -258,10 +270,10 @@ int oakcommon_filefunctions_get_safe_temporary_filename(
 }
 
 int oakcommon_filefunctions_rename_file_allow_overwrite(
-	OakCommonFileFunctions *self, const char *from, const char *to,
+	OakFileFunctions self, const char *from, const char *to,
 	int *out)
 {
-	if (self == nullptr || from == nullptr || to == nullptr ||
+	if (self.ctx == nullptr || from == nullptr || to == nullptr ||
 	    out == nullptr) {
 		return OAKCOMMON_E_INVALID;
 	}
@@ -276,10 +288,10 @@ int oakcommon_filefunctions_rename_file_allow_overwrite(
 }
 
 int oakcommon_filefunctions_get_formatted_executable_for_platform(
-	OakCommonFileFunctions *self, const char *unformatted, char *buf,
+	OakFileFunctions self, const char *unformatted, char *buf,
 	int buf_size)
 {
-	if (self == nullptr || unformatted == nullptr ||
+	if (self.ctx == nullptr || unformatted == nullptr ||
 	    !is_valid_string_out(buf, buf_size)) {
 		return OAKCOMMON_E_INVALID;
 	}

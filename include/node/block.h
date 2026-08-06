@@ -189,7 +189,7 @@ int oaknode_clip_get_maintain_audio_pitch(OakNodeBlock *clip, int *maintain);
 int oaknode_clip_set_maintain_audio_pitch(OakNodeBlock *clip, int maintain);
 
 /**
- * @brief Loop mode, one of the OakCommonLoopMode values
+ * @brief Loop mode, one of the OakLoopMode values
  * (olive::ClipBlock::loop_mode/set_loop_mode).
  */
 int oaknode_clip_get_loop_mode(OakNodeBlock *clip, int *loop_mode);

@@ -24,24 +24,40 @@
 #include <new>
 
 #include "../src/xmlutils.h"
+#include "refcounted.h"
 
-struct OakCommonXmlReader {
+namespace
+{
+
+/**
+ * @brief Reader state boxed behind the handle's ctx pointer.
+ */
+struct XmlReaderState {
 	olive::XmlStreamReader reader;
 	std::string cached_text;
 	bool has_cached_text = false;
 
-	explicit OakCommonXmlReader(const char *data)
+	explicit XmlReaderState(const char *data)
 		: reader(data)
 	{
 	}
 };
 
-struct OakCommonXmlWriter {
-	olive::XmlStreamWriter writer;
-};
-
-namespace
+/**
+ * @brief Recover the boxed reader state from a handle (NULL-safe).
+ */
+XmlReaderState *xr(OakXmlReader reader)
 {
+	return oakcommon::handle_impl<XmlReaderState>(reader.ctx);
+}
+
+/**
+ * @brief Recover the boxed writer from a handle (NULL-safe).
+ */
+olive::XmlStreamWriter *xw(OakXmlWriter writer)
+{
+	return oakcommon::handle_impl<olive::XmlStreamWriter>(writer.ctx);
+}
 
 /**
  * @brief Copy @p value into the two-stage string buffer.
@@ -62,99 +78,102 @@ int copy_string(const std::string &value, char *buf, int buf_size)
 
 extern "C" {
 
-OakCommonXmlReader *oakcommon_xml_reader_init(const char *data)
+OakXmlReader oakcommon_xml_reader_init(const char *data)
 {
+	OakXmlReader h = {};
 	if (!data)
-		return nullptr;
+		return h;
 	try {
-		return new (std::nothrow) OakCommonXmlReader(data);
+		return oakcommon::make_handle<OakXmlReader>(
+			XmlReaderState(data));
 	} catch (...) {
-		return nullptr;
+		OakXmlReader empty = {};
+		return empty;
 	}
 }
 
-void oakcommon_xml_reader_free(OakCommonXmlReader *reader)
+void oakcommon_xml_reader_free(OakXmlReader *reader)
 {
-	delete reader;
+	oakcommon::free_handle(reader);
 }
 
-int oakcommon_xml_reader_read_next_start_element(OakCommonXmlReader *reader,
+int oakcommon_xml_reader_read_next_start_element(OakXmlReader reader,
 												 int *found)
 {
-	if (!reader || !found)
+	if (!xr(reader) || !found)
 		return OAKCOMMON_E_INVALID;
 	try {
-		reader->has_cached_text = false;
-		*found = olive::xml_read_next_start_element(&reader->reader) ? 1 : 0;
+		xr(reader)->has_cached_text = false;
+		*found = olive::xml_read_next_start_element(&xr(reader)->reader) ? 1 : 0;
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_xml_reader_name(OakCommonXmlReader *reader, char *buf,
+int oakcommon_xml_reader_name(OakXmlReader reader, char *buf,
 							  int buf_size)
 {
-	if (!reader)
+	if (!xr(reader))
 		return OAKCOMMON_E_INVALID;
 	try {
-		return copy_string(reader->reader.name(), buf, buf_size);
+		return copy_string(xr(reader)->reader.name(), buf, buf_size);
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_xml_reader_read_element_text(OakCommonXmlReader *reader,
+int oakcommon_xml_reader_read_element_text(OakXmlReader reader,
 										   char *buf, int buf_size)
 {
-	if (!reader)
+	if (!xr(reader))
 		return OAKCOMMON_E_INVALID;
 	try {
 		// read_element_text() consumes the stream, so cache the result to
 		// keep the two-stage (size query then copy) buffer convention working.
-		if (!reader->has_cached_text) {
-			reader->cached_text = reader->reader.read_element_text();
-			reader->has_cached_text = true;
+		if (!xr(reader)->has_cached_text) {
+			xr(reader)->cached_text = xr(reader)->reader.read_element_text();
+			xr(reader)->has_cached_text = true;
 		}
-		return copy_string(reader->cached_text, buf, buf_size);
+		return copy_string(xr(reader)->cached_text, buf, buf_size);
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_xml_reader_skip_current_element(OakCommonXmlReader *reader)
+int oakcommon_xml_reader_skip_current_element(OakXmlReader reader)
 {
-	if (!reader)
+	if (!xr(reader))
 		return OAKCOMMON_E_INVALID;
 	try {
-		reader->has_cached_text = false;
-		reader->reader.skip_current_element();
+		xr(reader)->has_cached_text = false;
+		xr(reader)->reader.skip_current_element();
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_xml_reader_attribute_count(OakCommonXmlReader *reader,
+int oakcommon_xml_reader_attribute_count(OakXmlReader reader,
 										 int *count)
 {
-	if (!reader || !count)
+	if (!xr(reader) || !count)
 		return OAKCOMMON_E_INVALID;
 	try {
-		*count = static_cast<int>(reader->reader.attributes().size());
+		*count = static_cast<int>(xr(reader)->reader.attributes().size());
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_xml_reader_attribute_name(OakCommonXmlReader *reader, int index,
+int oakcommon_xml_reader_attribute_name(OakXmlReader reader, int index,
 										char *buf, int buf_size)
 {
-	if (!reader)
+	if (!xr(reader))
 		return OAKCOMMON_E_INVALID;
 	try {
-		const auto &attrs = reader->reader.attributes();
+		const auto &attrs = xr(reader)->reader.attributes();
 		if (index < 0 || index >= static_cast<int>(attrs.size()))
 			return OAKCOMMON_E_NOT_FOUND;
 		return copy_string(attrs[index].name, buf, buf_size);
@@ -163,13 +182,13 @@ int oakcommon_xml_reader_attribute_name(OakCommonXmlReader *reader, int index,
 	}
 }
 
-int oakcommon_xml_reader_attribute_value(OakCommonXmlReader *reader,
+int oakcommon_xml_reader_attribute_value(OakXmlReader reader,
 										 int index, char *buf, int buf_size)
 {
-	if (!reader)
+	if (!xr(reader))
 		return OAKCOMMON_E_INVALID;
 	try {
-		const auto &attrs = reader->reader.attributes();
+		const auto &attrs = xr(reader)->reader.attributes();
 		if (index < 0 || index >= static_cast<int>(attrs.size()))
 			return OAKCOMMON_E_NOT_FOUND;
 		return copy_string(attrs[index].value, buf, buf_size);
@@ -178,117 +197,119 @@ int oakcommon_xml_reader_attribute_value(OakCommonXmlReader *reader,
 	}
 }
 
-int oakcommon_xml_reader_has_error(OakCommonXmlReader *reader,
+int oakcommon_xml_reader_has_error(OakXmlReader reader,
 								   int *has_error)
 {
-	if (!reader || !has_error)
+	if (!xr(reader) || !has_error)
 		return OAKCOMMON_E_INVALID;
 	try {
-		*has_error = reader->reader.has_error() ? 1 : 0;
+		*has_error = xr(reader)->reader.has_error() ? 1 : 0;
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-OakCommonXmlWriter *oakcommon_xml_writer_init(void)
+OakXmlWriter oakcommon_xml_writer_init(void)
 {
 	try {
-		return new (std::nothrow) OakCommonXmlWriter();
+		return oakcommon::make_handle<OakXmlWriter>(
+			olive::XmlStreamWriter());
 	} catch (...) {
-		return nullptr;
+		OakXmlWriter h = {};
+		return h;
 	}
 }
 
-void oakcommon_xml_writer_free(OakCommonXmlWriter *writer)
+void oakcommon_xml_writer_free(OakXmlWriter *writer)
 {
-	delete writer;
+	oakcommon::free_handle(writer);
 }
 
-int oakcommon_xml_writer_write_start_element(OakCommonXmlWriter *writer,
+int oakcommon_xml_writer_write_start_element(OakXmlWriter writer,
 											 const char *name)
 {
-	if (!writer || !name)
+	if (!xw(writer) || !name)
 		return OAKCOMMON_E_INVALID;
 	try {
-		writer->writer.write_start_element(name);
+		xw(writer)->write_start_element(name);
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_xml_writer_write_attribute(OakCommonXmlWriter *writer,
+int oakcommon_xml_writer_write_attribute(OakXmlWriter writer,
 										 const char *name, const char *value)
 {
-	if (!writer || !name || !value)
+	if (!xw(writer) || !name || !value)
 		return OAKCOMMON_E_INVALID;
 	try {
-		writer->writer.write_attribute(name, value);
+		xw(writer)->write_attribute(name, value);
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_xml_writer_write_characters(OakCommonXmlWriter *writer,
+int oakcommon_xml_writer_write_characters(OakXmlWriter writer,
 										  const char *text)
 {
-	if (!writer || !text)
+	if (!xw(writer) || !text)
 		return OAKCOMMON_E_INVALID;
 	try {
-		writer->writer.write_characters(text);
+		xw(writer)->write_characters(text);
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_xml_writer_write_text_element(OakCommonXmlWriter *writer,
+int oakcommon_xml_writer_write_text_element(OakXmlWriter writer,
 											const char *name,
 											const char *text)
 {
-	if (!writer || !name || !text)
+	if (!xw(writer) || !name || !text)
 		return OAKCOMMON_E_INVALID;
 	try {
-		writer->writer.write_text_element(name, text);
+		xw(writer)->write_text_element(name, text);
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_xml_writer_write_end_element(OakCommonXmlWriter *writer)
+int oakcommon_xml_writer_write_end_element(OakXmlWriter writer)
 {
-	if (!writer)
+	if (!xw(writer))
 		return OAKCOMMON_E_INVALID;
 	try {
-		writer->writer.write_end_element();
+		xw(writer)->write_end_element();
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_xml_writer_write_end_document(OakCommonXmlWriter *writer)
+int oakcommon_xml_writer_write_end_document(OakXmlWriter writer)
 {
-	if (!writer)
+	if (!xw(writer))
 		return OAKCOMMON_E_INVALID;
 	try {
-		writer->writer.write_end_document();
+		xw(writer)->write_end_document();
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_xml_writer_output(OakCommonXmlWriter *writer, char *buf,
+int oakcommon_xml_writer_output(OakXmlWriter writer, char *buf,
 								int buf_size)
 {
-	if (!writer)
+	if (!xw(writer))
 		return OAKCOMMON_E_INVALID;
 	try {
-		return copy_string(writer->writer.output(), buf, buf_size);
+		return copy_string(xw(writer)->output(), buf, buf_size);
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}

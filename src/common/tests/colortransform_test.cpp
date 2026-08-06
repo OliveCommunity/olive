@@ -29,8 +29,8 @@
 namespace
 {
 
-std::string read_string(int (*fn)(OakCommonColorTransform *, char *, int),
-						OakCommonColorTransform *t)
+std::string read_string(int (*fn)(OakColorTransform, char *, int),
+						OakColorTransform t)
 {
 	int needed = fn(t, nullptr, 0);
 	EXPECT_GT(needed, 0);
@@ -43,9 +43,8 @@ std::string read_string(int (*fn)(OakCommonColorTransform *, char *, int),
 
 TEST(CommonColorTransformCApi, InitOutput)
 {
-	OakCommonColorTransform *t =
-		oakcommon_colortransform_init_output("sRGB");
-	ASSERT_NE(t, nullptr);
+	OakColorTransform t = oakcommon_colortransform_init_output("sRGB");
+	ASSERT_NE(t.ctx, nullptr);
 
 	int is_display = -1;
 	EXPECT_EQ(oakcommon_colortransform_is_display(t, &is_display),
@@ -54,19 +53,19 @@ TEST(CommonColorTransformCApi, InitOutput)
 	EXPECT_EQ(read_string(oakcommon_colortransform_get_output, t), "sRGB");
 	EXPECT_EQ(read_string(oakcommon_colortransform_get_display, t), "sRGB");
 
-	oakcommon_colortransform_free(t);
+	oakcommon_colortransform_free(&t);
 }
 
 TEST(CommonColorTransformCApi, InitOutputNullString)
 {
-	EXPECT_EQ(oakcommon_colortransform_init_output(nullptr), nullptr);
+	EXPECT_EQ(oakcommon_colortransform_init_output(nullptr).ctx,
+			  nullptr);
 }
 
 TEST(CommonColorTransformCApi, InitDisplay)
 {
-	OakCommonColorTransform *t =
-		oakcommon_colortransform_init_display("sRGB", "Studio", "None");
-	ASSERT_NE(t, nullptr);
+	OakColorTransform t = oakcommon_colortransform_init_display("sRGB", "Studio", "None");
+	ASSERT_NE(t.ctx, nullptr);
 
 	int is_display = 0;
 	EXPECT_EQ(oakcommon_colortransform_is_display(t, &is_display),
@@ -76,16 +75,16 @@ TEST(CommonColorTransformCApi, InitDisplay)
 	EXPECT_EQ(read_string(oakcommon_colortransform_get_view, t), "Studio");
 	EXPECT_EQ(read_string(oakcommon_colortransform_get_look, t), "None");
 
-	oakcommon_colortransform_free(t);
+	oakcommon_colortransform_free(&t);
 }
 
 TEST(CommonColorTransformCApi, InitDisplayNullString)
 {
-	EXPECT_EQ(oakcommon_colortransform_init_display(nullptr, "v", "l"),
+	EXPECT_EQ(oakcommon_colortransform_init_display(nullptr, "v", "l").ctx,
 			  nullptr);
-	EXPECT_EQ(oakcommon_colortransform_init_display("d", nullptr, "l"),
+	EXPECT_EQ(oakcommon_colortransform_init_display("d", nullptr, "l").ctx,
 			  nullptr);
-	EXPECT_EQ(oakcommon_colortransform_init_display("d", "v", nullptr),
+	EXPECT_EQ(oakcommon_colortransform_init_display("d", "v", nullptr).ctx,
 			  nullptr);
 }
 
@@ -98,24 +97,23 @@ TEST(CommonColorTransformCApi, NullHandleErrors)
 {
 	int i = 0;
 	char buf[16];
-	EXPECT_EQ(oakcommon_colortransform_is_display(nullptr, &i),
+	EXPECT_EQ(oakcommon_colortransform_is_display(OakColorTransform{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_colortransform_get_display(nullptr, buf, sizeof(buf)),
+	EXPECT_EQ(oakcommon_colortransform_get_display(OakColorTransform{}, buf, sizeof(buf)),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_colortransform_get_output(nullptr, buf, sizeof(buf)),
+	EXPECT_EQ(oakcommon_colortransform_get_output(OakColorTransform{}, buf, sizeof(buf)),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_colortransform_get_view(nullptr, buf, sizeof(buf)),
+	EXPECT_EQ(oakcommon_colortransform_get_view(OakColorTransform{}, buf, sizeof(buf)),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_colortransform_get_look(nullptr, buf, sizeof(buf)),
+	EXPECT_EQ(oakcommon_colortransform_get_look(OakColorTransform{}, buf, sizeof(buf)),
 			  OAKCOMMON_E_INVALID);
 }
 
 TEST(CommonColorTransformCApi, NullOutParam)
 {
-	OakCommonColorTransform *t =
-		oakcommon_colortransform_init_output("sRGB");
-	ASSERT_NE(t, nullptr);
+	OakColorTransform t = oakcommon_colortransform_init_output("sRGB");
+	ASSERT_NE(t.ctx, nullptr);
 	EXPECT_EQ(oakcommon_colortransform_is_display(t, nullptr),
 			  OAKCOMMON_E_INVALID);
-	oakcommon_colortransform_free(t);
+	oakcommon_colortransform_free(&t);
 }

@@ -128,20 +128,24 @@ int oaknode_sequence_get_audio_stream_count(OakNodeSequence *sequence,
 											int *count);
 
 /**
- * @brief Video parameters at `index` as a NEW handle owned by the caller
- * (release with oakcommon_videoparams_free()).
+ * @brief Video parameters at `index` as a NEW by-value handle owned by
+ * the caller (reference count 1, release with
+ * oakcommon_videoparams_free()).
  *
  * @return OAKNODE_OK, OAKNODE_E_INVALID, OAKNODE_E_NOT_FOUND or
  * OAKNODE_E_NOMEM.
  */
 int oaknode_sequence_get_video_params(OakNodeSequence *sequence, int index,
-									  OakCommonVideoParams **out);
+									  OakVideoParams *out);
 
 /**
  * @brief Replace the video parameters at `index` with a copy of `params`.
+ *
+ * @return OAKNODE_E_INVALID if sequence is NULL, params.ctx is NULL, or
+ * index is negative.
  */
 int oaknode_sequence_set_video_params(OakNodeSequence *sequence, int index,
-									  const OakCommonVideoParams *params);
+									  OakVideoParams params);
 
 /**
  * @brief Audio parameters at `index` as a NEW handle owned by the caller

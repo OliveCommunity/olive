@@ -24,9 +24,7 @@
 #include <cmath>
 #include <iostream>
 
-#include "ocioutils.h"
 #include "project.h"
-#include "render/colorprocessor.h"
 #include "sliderdisplaytype.h"
 
 namespace olive
@@ -36,23 +34,23 @@ namespace olive
 // GradingPrimaryTransform; do not rename them. OCIO's log style maps the
 // classic wheels as: brightness = lift, contrast = gain, gamma = gamma.
 const std::string OCIOGradingTransformLogNode::k_lift_input =
-	"ocio_grading_primary_brightness";
+	"OCIO_NAMESPACE_grading_primary_brightness";
 const std::string OCIOGradingTransformLogNode::k_gain_input =
-	"ocio_grading_primary_contrast";
+	"OCIO_NAMESPACE_grading_primary_contrast";
 const std::string OCIOGradingTransformLogNode::k_gamma_input =
-	"ocio_grading_primary_gamma";
+	"OCIO_NAMESPACE_grading_primary_gamma";
 const std::string OCIOGradingTransformLogNode::k_saturation_input =
-	"ocio_grading_primary_saturation";
+	"OCIO_NAMESPACE_grading_primary_saturation";
 const std::string OCIOGradingTransformLogNode::k_pivot_input =
-	"ocio_grading_primary_pivot";
+	"OCIO_NAMESPACE_grading_primary_pivot";
 const std::string OCIOGradingTransformLogNode::k_clamp_black_enable_input =
 	"clamp_black_enable_in";
 const std::string OCIOGradingTransformLogNode::k_clamp_black_input =
-	"ocio_grading_primary_clampBlack";
+	"OCIO_NAMESPACE_grading_primary_clampBlack";
 const std::string OCIOGradingTransformLogNode::k_clamp_white_enable_input =
 	"clamp_white_enable_in";
 const std::string OCIOGradingTransformLogNode::k_clamp_white_input =
-	"ocio_grading_primary_clampWhite";
+	"OCIO_NAMESPACE_grading_primary_clampWhite";
 
 #define super OCIOBaseNode
 
@@ -75,7 +73,7 @@ OCIOGradingTransformLogNode::OCIOGradingTransformLogNode()
 	set_input_property(k_saturation_input, "min", 0.0);
 
 	add_input(k_pivot_input, NodeValue::k_float,
-			 -0.2); // Default for GRADING_LOG listed in ocio::GradingPrimary
+			 -0.2); // Default for GRADING_LOG listed in OCIO_NAMESPACE::GradingPrimary
 	set_input_property(k_pivot_input, "base", 0.01);
 
 	add_input(k_clamp_black_enable_input, NodeValue::k_boolean, false);
@@ -93,7 +91,7 @@ OCIOGradingTransformLogNode::OCIOGradingTransformLogNode()
 	set_input_property(k_clamp_white_input, "base", 0.01);
 
 	// Constrain the white clamp minimum to just above the (static) black clamp
-	// as per ocio::GradingPrimary::validate. When the black clamp is keyframed
+	// as per OCIO_NAMESPACE::GradingPrimary::validate. When the black clamp is keyframed
 	// or connected, Value() enforces the invariant per frame instead.
 	update_clamp_white_minimum();
 }
@@ -105,7 +103,7 @@ std::string OCIOGradingTransformLogNode::name() const
 
 std::string OCIOGradingTransformLogNode::id() const
 {
-	return "org.olivevideoeditor.Olive.ociogradingtransformlog";
+	return "org.olivevideoeditor.Olive.OCIO_NAMESPACEgradingtransformlog";
 }
 
 std::vector<Node::CategoryID> OCIOGradingTransformLogNode::category() const
@@ -147,7 +145,7 @@ void OCIOGradingTransformLogNode::InputValueChangedEvent(const std::string &inpu
 						 get_standard_value(k_clamp_black_enable_input).to_bool());
 	} else if (input == k_clamp_black_input) {
 		// Ensure the white clamp is always greater than the black clamp as per
-		// ocio::GradingPrimary::validate
+		// OCIO_NAMESPACE::GradingPrimary::validate
 		update_clamp_white_minimum();
 	}
 
@@ -192,15 +190,15 @@ void OCIOGradingTransformLogNode::update_clamp_white_minimum()
 void OCIOGradingTransformLogNode::generate_processor()
 {
 	if (manager()) {
-		ocio::GradingPrimaryTransformRcPtr gp =
-			ocio::GradingPrimaryTransform::Create(ocio::GRADING_LOG);
+		OCIO_NAMESPACE::GradingPrimaryTransformRcPtr gp =
+			OCIO_NAMESPACE::GradingPrimaryTransform::Create(OCIO_NAMESPACE::GRADING_LOG);
 		gp->makeDynamic();
-		gp->setDirection(ocio::TransformDirection::TRANSFORM_DIR_FORWARD);
+		gp->setDirection(OCIO_NAMESPACE::TransformDirection::TRANSFORM_DIR_FORWARD);
 
 		try {
 			set_processor(ColorProcessor::create(
 				manager()->get_config()->getProcessor(gp)));
-		} catch (const ocio::Exception &e) {
+		} catch (const OCIO_NAMESPACE::Exception &e) {
 			std::cerr << std::endl << e.what() << std::endl;
 		}
 	}
@@ -222,7 +220,7 @@ void OCIOGradingTransformLogNode::value(const NodeValueRow &value,
 
 			// OCIO expects vec3s on the GPU but RGBMs (master + RGB) on the
 			// CPU; the per-style master combination below mirrors
-			// ocio::GradingPrimary. Lift is additive, gain/gamma multiply.
+			// OCIO_NAMESPACE::GradingPrimary. Lift is additive, gain/gamma multiply.
 			Vector4D lift = value.at(k_lift_input).to_vec4();
 			lift.set_y(lift.y() + lift.x());
 			lift.set_z(lift.z() + lift.x());
@@ -250,18 +248,18 @@ void OCIOGradingTransformLogNode::value(const NodeValueRow &value,
 			if (!value.at(k_clamp_black_enable_input).to_bool()) {
 				job.insert(k_clamp_black_input,
 						   NodeValue(NodeValue::k_float,
-									 ocio::GradingPrimary::NoClampBlack()));
+									 OCIO_NAMESPACE::GradingPrimary::NoClampBlack()));
 			}
 
 			if (!value.at(k_clamp_white_enable_input).to_bool()) {
 				job.insert(k_clamp_white_input,
 						   NodeValue(NodeValue::k_float,
-									 ocio::GradingPrimary::NoClampWhite()));
+									 OCIO_NAMESPACE::GradingPrimary::NoClampWhite()));
 			}
 
 			if (value.at(k_clamp_black_enable_input).to_bool() &&
 				value.at(k_clamp_white_enable_input).to_bool()) {
-				// ocio::GradingPrimary::validate requires the white clamp to be
+				// OCIO_NAMESPACE::GradingPrimary::validate requires the white clamp to be
 				// greater than the black clamp. Keyframed or connected values
 				// can violate this at arbitrary times, so enforce the invariant
 				// per frame here.

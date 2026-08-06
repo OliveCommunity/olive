@@ -37,9 +37,9 @@
 
 TEST(OIIOUtilsCApi, InitReturnsHandle)
 {
-	OakCommonOIIOUtils *utils = oakcommon_oiioutils_init();
-	ASSERT_NE(utils, nullptr);
-	oakcommon_oiioutils_free(utils);
+	OakOIIOUtils utils = oakcommon_oiioutils_init();
+	ASSERT_NE(utils.ctx, nullptr);
+	oakcommon_oiioutils_free(&utils);
 }
 
 TEST(OIIOUtilsCApi, FreeNullIsNoOp)
@@ -49,8 +49,8 @@ TEST(OIIOUtilsCApi, FreeNullIsNoOp)
 
 TEST(OIIOUtilsCApi, BaseTypeFromPixelFormat)
 {
-	OakCommonOIIOUtils *utils = oakcommon_oiioutils_init();
-	ASSERT_NE(utils, nullptr);
+	OakOIIOUtils utils = oakcommon_oiioutils_init();
+	ASSERT_NE(utils.ctx, nullptr);
 
 	const struct {
 		int pixel_format;
@@ -72,17 +72,16 @@ TEST(OIIOUtilsCApi, BaseTypeFromPixelFormat)
 		EXPECT_EQ(base_type, c.expected_base_type);
 	}
 
-	oakcommon_oiioutils_free(utils);
+	oakcommon_oiioutils_free(&utils);
 }
 
 TEST(OIIOUtilsCApi, BaseTypeFromPixelFormatRejectsBadArgs)
 {
-	OakCommonOIIOUtils *utils = oakcommon_oiioutils_init();
-	ASSERT_NE(utils, nullptr);
+	OakOIIOUtils utils = oakcommon_oiioutils_init();
+	ASSERT_NE(utils.ctx, nullptr);
 
 	int base_type = 0;
-	EXPECT_EQ(oakcommon_oiioutils_get_oiio_base_type_from_format(
-				  NULL, OAKCOMMON_PIXEL_FORMAT_U8, &base_type),
+	EXPECT_EQ(oakcommon_oiioutils_get_oiio_base_type_from_format(OakOIIOUtils{}, OAKCOMMON_PIXEL_FORMAT_U8, &base_type),
 			  OAKCOMMON_E_INVALID);
 	EXPECT_EQ(oakcommon_oiioutils_get_oiio_base_type_from_format(
 				  utils, OAKCOMMON_PIXEL_FORMAT_U8, NULL),
@@ -94,13 +93,13 @@ TEST(OIIOUtilsCApi, BaseTypeFromPixelFormatRejectsBadArgs)
 				  utils, -2, &base_type),
 			  OAKCOMMON_E_INVALID);
 
-	oakcommon_oiioutils_free(utils);
+	oakcommon_oiioutils_free(&utils);
 }
 
 TEST(OIIOUtilsCApi, PixelFormatFromBaseType)
 {
-	OakCommonOIIOUtils *utils = oakcommon_oiioutils_init();
-	ASSERT_NE(utils, nullptr);
+	OakOIIOUtils utils = oakcommon_oiioutils_init();
+	ASSERT_NE(utils.ctx, nullptr);
 
 	const struct {
 		int base_type;
@@ -123,17 +122,16 @@ TEST(OIIOUtilsCApi, PixelFormatFromBaseType)
 		EXPECT_EQ(pixel_format, c.expected_pixel_format);
 	}
 
-	oakcommon_oiioutils_free(utils);
+	oakcommon_oiioutils_free(&utils);
 }
 
 TEST(OIIOUtilsCApi, PixelFormatFromBaseTypeRejectsBadArgs)
 {
-	OakCommonOIIOUtils *utils = oakcommon_oiioutils_init();
-	ASSERT_NE(utils, nullptr);
+	OakOIIOUtils utils = oakcommon_oiioutils_init();
+	ASSERT_NE(utils.ctx, nullptr);
 
 	int pixel_format = 0;
-	EXPECT_EQ(oakcommon_oiioutils_get_format_from_oiio_basetype(
-				  NULL, 2, &pixel_format),
+	EXPECT_EQ(oakcommon_oiioutils_get_format_from_oiio_basetype(OakOIIOUtils{}, 2, &pixel_format),
 			  OAKCOMMON_E_INVALID);
 	EXPECT_EQ(oakcommon_oiioutils_get_format_from_oiio_basetype(
 				  utils, 2, NULL),
@@ -145,13 +143,13 @@ TEST(OIIOUtilsCApi, PixelFormatFromBaseTypeRejectsBadArgs)
 				  utils, 100, &pixel_format),
 			  OAKCOMMON_E_INVALID); /* >= LASTBASE */
 
-	oakcommon_oiioutils_free(utils);
+	oakcommon_oiioutils_free(&utils);
 }
 
 TEST(OIIOUtilsCApi, PixelAspectRatioConvertsToRational)
 {
-	OakCommonOIIOUtils *utils = oakcommon_oiioutils_init();
-	ASSERT_NE(utils, nullptr);
+	OakOIIOUtils utils = oakcommon_oiioutils_init();
+	ASSERT_NE(utils.ctx, nullptr);
 
 	int num = 0;
 	int den = 0;
@@ -167,17 +165,17 @@ TEST(OIIOUtilsCApi, PixelAspectRatioConvertsToRational)
 	ASSERT_NE(den, 0);
 	EXPECT_NEAR(static_cast<double>(num) / den, 1.5, 1e-9);
 
-	oakcommon_oiioutils_free(utils);
+	oakcommon_oiioutils_free(&utils);
 }
 
 TEST(OIIOUtilsCApi, PixelAspectRatioRejectsBadArgs)
 {
-	OakCommonOIIOUtils *utils = oakcommon_oiioutils_init();
-	ASSERT_NE(utils, nullptr);
+	OakOIIOUtils utils = oakcommon_oiioutils_init();
+	ASSERT_NE(utils.ctx, nullptr);
 
 	int num = 0;
 	int den = 0;
-	EXPECT_EQ(oakcommon_oiioutils_get_pixel_aspect_ratio(NULL, 1.0, &num,
+	EXPECT_EQ(oakcommon_oiioutils_get_pixel_aspect_ratio(OakOIIOUtils{}, 1.0, &num,
 														 &den),
 			  OAKCOMMON_E_INVALID);
 	EXPECT_EQ(oakcommon_oiioutils_get_pixel_aspect_ratio(utils, 1.0, NULL,
@@ -187,5 +185,5 @@ TEST(OIIOUtilsCApi, PixelAspectRatioRejectsBadArgs)
 														 NULL),
 			  OAKCOMMON_E_INVALID);
 
-	oakcommon_oiioutils_free(utils);
+	oakcommon_oiioutils_free(&utils);
 }

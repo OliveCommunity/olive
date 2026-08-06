@@ -23,7 +23,7 @@
 
 #include "common/error.h"
 
-/* Reuses the OakCommonPixelFormat enum (mirroring
+/* Reuses the OakPixelFormat enum (mirroring
  * olive::core::PixelFormat) rather than redefining it here. */
 #include "common/ocioutils.h"
 
@@ -41,48 +41,64 @@ extern "C" {
  * 13 = STRING, 14 = PTR. OIIO >= 2.5 adds 15 = USTRINGHASH and shifts
  * LASTBASE, so the exact LASTBASE value is version-dependent.
  */
-typedef struct OakCommonOIIOUtils OakCommonOIIOUtils;
+/**
+ * @brief Neutral by-value handle for the OIIO utils family
+ *
+ * The object is stateless; the handle exists only to satisfy the C API
+ * lifetime contract. Ownership/count semantics follow common/handle.h:
+ * init returns a handle whose (empty) object has reference count 1 and
+ * release destroys it at zero. abi_version is always
+ * OAKCOMMON_ABI_VERSION.
+ */
+typedef struct OakOIIOUtils {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKCOMMON_ABI_VERSION. */
+} OakOIIOUtils;
 
 /**
  * @brief Creates an OIIOUtils handle
  *
- * The object is stateless; the handle exists only to satisfy the C API
- * lifetime contract. Returns NULL on failure.
+ * @return Handle with reference count 1; ctx is NULL on failure.
  */
-OakCommonOIIOUtils *oakcommon_oiioutils_init(void);
+OakOIIOUtils oakcommon_oiioutils_init(void);
 
 /**
- * @brief Destroys an OIIOUtils handle; no-op on NULL
+ * @brief Releases one reference to an OIIOUtils handle
+ *
+ * Convenience wrapper around handle.release(handle.ctx); no-op when
+ * self is NULL or self->ctx is NULL.
  */
-void oakcommon_oiioutils_free(OakCommonOIIOUtils *self);
+void oakcommon_oiioutils_free(OakOIIOUtils *self);
 
 /**
  * @brief Maps a native pixel format to an OIIO base type
  *
  * @param self handle from oakcommon_oiioutils_init()
- * @param pixel_format one of the OakCommonPixelFormat values
+ * @param pixel_format one of the OakPixelFormat values
  * @param out_base_type receives the OIIO base type as an int (see the
- *        OakCommonOIIOUtils typedef documentation); set to 0
+ *        OakOIIOUtils typedef documentation); set to 0
  *        (TypeDesc::UNKNOWN) for invalid or unmappable formats
- * @return OAKCOMMON_OK, or OAKCOMMON_E_INVALID if self or out_base_type
- *         is NULL or pixel_format is not a known code
+ * @return OAKCOMMON_OK, or OAKCOMMON_E_INVALID if self.ctx or
+ *         out_base_type is NULL or pixel_format is not a known code
  */
 int oakcommon_oiioutils_get_oiio_base_type_from_format(
-	OakCommonOIIOUtils *self, int pixel_format, int *out_base_type);
+	OakOIIOUtils self, int pixel_format, int *out_base_type);
 
 /**
  * @brief Maps an OIIO base type to a native pixel format
  *
  * @param self handle from oakcommon_oiioutils_init()
  * @param base_type an OIIO TypeDesc::BASETYPE value as an int
- * @param out_pixel_format receives one of the OakCommonPixelFormat
+ * @param out_pixel_format receives one of the OakPixelFormat
  *        values; set to OAKCOMMON_PIXEL_FORMAT_INVALID for unknown or
  *        unmappable base types
- * @return OAKCOMMON_OK, or OAKCOMMON_E_INVALID if self or
+ * @return OAKCOMMON_OK, or OAKCOMMON_E_INVALID if self.ctx or
  *         out_pixel_format is NULL or base_type is negative
  */
 int oakcommon_oiioutils_get_format_from_oiio_basetype(
-	OakCommonOIIOUtils *self, int base_type, int *out_pixel_format);
+	OakOIIOUtils self, int base_type, int *out_pixel_format);
 
 /**
  * @brief Converts a PixelAspectRatio attribute value to a rational
@@ -95,11 +111,11 @@ int oakcommon_oiioutils_get_format_from_oiio_basetype(
  * @param pixel_aspect_ratio the PixelAspectRatio attribute value
  * @param out_numerator receives the rational numerator
  * @param out_denominator receives the rational denominator
- * @return OAKCOMMON_OK, or OAKCOMMON_E_INVALID if self, out_numerator
- *         or out_denominator is NULL
+ * @return OAKCOMMON_OK, or OAKCOMMON_E_INVALID if self.ctx,
+ *         out_numerator or out_denominator is NULL
  */
 int oakcommon_oiioutils_get_pixel_aspect_ratio(
-	OakCommonOIIOUtils *self, double pixel_aspect_ratio, int *out_numerator,
+	OakOIIOUtils self, double pixel_aspect_ratio, int *out_numerator,
 	int *out_denominator);
 
 #ifdef __cplusplus

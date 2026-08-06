@@ -23,30 +23,42 @@
 #include <new>
 
 #include "../src/ocioutils.h"
+#include "refcounted.h"
 
-struct OakCommonOCIOUtils {
-	int unused; /**< Stateless; only the address matters. */
+namespace
+{
+
+/**
+ * @brief Stateless family; the boxed object is empty and only exists so
+ *        the handle has something to reference-count.
+ */
+struct OCIOUtilsState {
+	int unused;
 };
 
-OakCommonOCIOUtils *oakcommon_ocioutils_init(void)
+} // namespace
+
+OakOCIOUtils oakcommon_ocioutils_init(void)
 {
 	try {
-		return new (std::nothrow) OakCommonOCIOUtils{};
+		return oakcommon::make_handle<OakOCIOUtils>(
+			OCIOUtilsState{0});
 	} catch (...) {
-		return NULL;
+		OakOCIOUtils h = {};
+		return h;
 	}
 }
 
-void oakcommon_ocioutils_free(OakCommonOCIOUtils *self)
+void oakcommon_ocioutils_free(OakOCIOUtils *self)
 {
-	delete self;
+	oakcommon::free_handle(self);
 }
 
 int oakcommon_ocioutils_get_ocio_bit_depth_from_pixel_format(
-	OakCommonOCIOUtils *self, int pixel_format, int *out_bit_depth)
+	OakOCIOUtils self, int pixel_format, int *out_bit_depth)
 {
 	try {
-		if (self == NULL || out_bit_depth == NULL)
+		if (self.ctx == NULL || out_bit_depth == NULL)
 			return OAKCOMMON_E_INVALID;
 		if (pixel_format < OAKCOMMON_PIXEL_FORMAT_INVALID ||
 			pixel_format >= OAKCOMMON_PIXEL_FORMAT_COUNT)

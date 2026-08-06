@@ -134,6 +134,11 @@ void ColorProcessor::convert_frame(Frame *f)
 	cpu_processor_->apply(img);
 }
 
+ocio::ConstProcessorRcPtr ColorProcessor::get_processor()
+{
+	return processor_;
+}
+
 Color ColorProcessor::convert_color(const Color &in)
 {
 	if (!cpu_processor_) {
@@ -163,10 +168,6 @@ ColorProcessorPtr ColorProcessor::create(ocio::ConstProcessorRcPtr processor)
 	return std::make_shared<ColorProcessor>(processor);
 }
 
-ocio::ConstProcessorRcPtr ColorProcessor::get_processor()
-{
-	return processor_;
-}
 
 void ColorProcessor::convert_frame(FramePtr f)
 {

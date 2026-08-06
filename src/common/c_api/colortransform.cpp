@@ -23,10 +23,15 @@
 #include <cstring>
 
 #include "../src/colortransform.h"
+#include "refcounted.h"
 
-struct OakCommonColorTransform {
-	olive::ColorTransform impl;
-};
+/**
+ * @brief Recover the boxed olive::ColorTransform from a handle (NULL-safe).
+ */
+static olive::ColorTransform *ct(OakColorTransform transform)
+{
+	return oakcommon::handle_impl<olive::ColorTransform>(transform.ctx);
+}
 
 static int copy_string(const std::string &value, char *buf, int buf_size)
 {
@@ -36,89 +41,116 @@ static int copy_string(const std::string &value, char *buf, int buf_size)
 	return needed;
 }
 
-OakCommonColorTransform *oakcommon_colortransform_init_output(
+OakColorTransform oakcommon_colortransform_init_output(
 	const char *output)
 {
+	OakColorTransform h = {};
 	if (!output)
-		return nullptr;
+		return h;
 	try {
-		return new OakCommonColorTransform{
-			olive::ColorTransform(std::string(output))};
+		return oakcommon::make_handle<OakColorTransform>(
+			olive::ColorTransform(std::string(output)));
 	} catch (...) {
-		return nullptr;
+		OakColorTransform empty = {};
+		return empty;
 	}
 }
 
-OakCommonColorTransform *oakcommon_colortransform_init_display(
+OakColorTransform oakcommon_colortransform_init_display(
 	const char *display, const char *view, const char *look)
 {
+	OakColorTransform h = {};
 	if (!display || !view || !look)
-		return nullptr;
+		return h;
 	try {
-		return new OakCommonColorTransform{olive::ColorTransform(
-			std::string(display), std::string(view), std::string(look))};
+		return oakcommon::make_handle<OakColorTransform>(
+			olive::ColorTransform(std::string(display), std::string(view),
+								  std::string(look)));
 	} catch (...) {
-		return nullptr;
+		OakColorTransform empty = {};
+		return empty;
 	}
 }
 
-void oakcommon_colortransform_free(OakCommonColorTransform *transform)
+OakColorTransform oakcommon_colortransform_init_from_native(
+	const olive::ColorTransform *src)
 {
-	delete transform;
+	if (!src) {
+		OakColorTransform h = {};
+		return h;
+	}
+	try {
+		return oakcommon::make_handle<OakColorTransform>(
+			olive::ColorTransform(*src));
+	} catch (...) {
+		OakColorTransform h = {};
+		return h;
+	}
 }
 
-int oakcommon_colortransform_is_display(OakCommonColorTransform *transform,
+const olive::ColorTransform *oakcommon_colortransform_get_native(
+	OakColorTransform transform)
+{
+	return ct(transform);
+}
+
+void oakcommon_colortransform_free(OakColorTransform *transform)
+{
+	oakcommon::free_handle(transform);
+}
+
+int oakcommon_colortransform_is_display(OakColorTransform transform,
 										int *is_display)
 {
-	if (!transform || !is_display)
+	if (!ct(transform) || !is_display)
 		return OAKCOMMON_E_INVALID;
-	*is_display = transform->impl.is_display() ? 1 : 0;
+	*is_display = ct(transform)->is_display() ? 1 : 0;
 	return OAKCOMMON_OK;
 }
 
-int oakcommon_colortransform_get_display(OakCommonColorTransform *transform,
+int oakcommon_colortransform_get_display(OakColorTransform transform,
 										 char *buf, int buf_size)
 {
-	if (!transform)
+	if (!ct(transform))
 		return OAKCOMMON_E_INVALID;
 	try {
-		return copy_string(transform->impl.display(), buf, buf_size);
+		return copy_string(ct(transform)->display(), buf, buf_size);
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_colortransform_get_output(OakCommonColorTransform *transform,
+int oakcommon_colortransform_get_output(OakColorTransform transform,
 										char *buf, int buf_size)
 {
-	if (!transform)
+	if (!ct(transform))
 		return OAKCOMMON_E_INVALID;
 	try {
-		return copy_string(transform->impl.output(), buf, buf_size);
+		return copy_string(ct(transform)->output(), buf, buf_size);
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_colortransform_get_view(OakCommonColorTransform *transform,
+int oakcommon_colortransform_get_view(OakColorTransform transform,
 									  char *buf, int buf_size)
 {
-	if (!transform)
+	if (!ct(transform))
 		return OAKCOMMON_E_INVALID;
 	try {
-		return copy_string(transform->impl.view(), buf, buf_size);
+		return copy_string(ct(transform)->view(), buf, buf_size);
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_colortransform_get_look(OakCommonColorTransform *transform,
+int oakcommon_colortransform_get_look(OakColorTransform transform,
 									  char *buf, int buf_size)
 {
-	if (!transform)
+	if (!ct(transform))
 		return OAKCOMMON_E_INVALID;
 	try {
-		return copy_string(transform->impl.look(), buf, buf_size);
+		return copy_string(ct(transform)->look(), buf, buf_size);
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}

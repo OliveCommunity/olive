@@ -88,17 +88,3 @@ OIIOUtils::get_pixel_aspect_ratio_from_oiio(const OIIO::ImageSpec &spec)
 	return olive::core::Rational::from_double(
 		spec.get_float_attribute("PixelAspectRatio", 1));
 }
-
-void OIIOUtils::frame_to_buffer(const void *data, int64_t linesize_bytes,
-								OIIO::ImageBuf *buf)
-{
-	buf->set_pixels(OIIO::ROI(), buf->spec().format, data, OIIO::AutoStride,
-					static_cast<OIIO::stride_t>(linesize_bytes));
-}
-
-void OIIOUtils::buffer_to_frame(OIIO::ImageBuf *buf, void *data,
-								int64_t linesize_bytes)
-{
-	buf->get_pixels(OIIO::ROI(), buf->spec().format, data, OIIO::AutoStride,
-					static_cast<OIIO::stride_t>(linesize_bytes));
-}

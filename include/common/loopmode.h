@@ -31,7 +31,7 @@ extern "C" {
  * The numeric values must stay in sync with src/common/src/loopmode.h.
  * Pure enum: no functions are needed.
  */
-enum OakCommonLoopMode {
+enum OakLoopMode {
 	OAKCOMMON_LOOP_MODE_OFF = 0, /**< Looping disabled. */
 	OAKCOMMON_LOOP_MODE_LOOP = 1, /**< Loop playback. */
 	OAKCOMMON_LOOP_MODE_CLAMP = 2 /**< Clamp at the end. */

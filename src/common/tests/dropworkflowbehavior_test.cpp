@@ -22,7 +22,7 @@
 
 #include "common/dropworkflowbehavior.h"
 
-TEST(OakCommonDropWorkflowBehavior, IsValidAcceptsAllEnumerators)
+TEST(OakDropWorkflowBehavior, IsValidAcceptsAllEnumerators)
 {
 	EXPECT_EQ(oakcommon_drop_workflow_behavior_is_valid(OAKCOMMON_DWS_ASK),
 		  1);
@@ -36,13 +36,13 @@ TEST(OakCommonDropWorkflowBehavior, IsValidAcceptsAllEnumerators)
 		1);
 }
 
-TEST(OakCommonDropWorkflowBehavior, IsValidRejectsOutOfRange)
+TEST(OakDropWorkflowBehavior, IsValidRejectsOutOfRange)
 {
 	EXPECT_EQ(oakcommon_drop_workflow_behavior_is_valid(-1), 0);
 	EXPECT_EQ(oakcommon_drop_workflow_behavior_is_valid(4), 0);
 }
 
-TEST(OakCommonDropWorkflowBehavior, NameRoundTrip)
+TEST(OakDropWorkflowBehavior, NameRoundTrip)
 {
 	char buf[16];
 
@@ -53,7 +53,7 @@ TEST(OakCommonDropWorkflowBehavior, NameRoundTrip)
 	EXPECT_STREQ(buf, "AUTO");
 }
 
-TEST(OakCommonDropWorkflowBehavior, NameQuerySizeAndTooSmallBuffer)
+TEST(OakDropWorkflowBehavior, NameQuerySizeAndTooSmallBuffer)
 {
 	int needed = oakcommon_drop_workflow_behavior_name(OAKCOMMON_DWS_DISABLE,
 							   nullptr, 0);
@@ -65,7 +65,7 @@ TEST(OakCommonDropWorkflowBehavior, NameQuerySizeAndTooSmallBuffer)
 		  needed);
 }
 
-TEST(OakCommonDropWorkflowBehavior, NameInvalidValue)
+TEST(OakDropWorkflowBehavior, NameInvalidValue)
 {
 	char buf[16];
 

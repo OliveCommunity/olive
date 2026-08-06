@@ -24,25 +24,29 @@
 
 #include "common/current.h"
 
-TEST(OakCommonCurrent, InstanceIsSingleton)
+TEST(OakCurrent, InstanceIsSingleton)
 {
-	OakCommonCurrent *a = oakcommon_current_instance();
-	OakCommonCurrent *b = oakcommon_current_instance();
+	OakCurrent a = oakcommon_current_instance();
+	OakCurrent b = oakcommon_current_instance();
 
-	ASSERT_NE(a, nullptr);
-	EXPECT_EQ(a, b);
+	ASSERT_NE(a.ctx, nullptr);
+	EXPECT_EQ(a.ctx, b.ctx);
+	EXPECT_EQ(a.abi_version, OAKCOMMON_ABI_VERSION);
 }
 
-TEST(OakCommonCurrent, FreeNullIsNoOp)
+TEST(OakCurrent, FreeNullIsNoOp)
 {
 	oakcommon_current_free(nullptr);
-	oakcommon_current_free(oakcommon_current_instance());
+	OakCurrent c = oakcommon_current_instance();
+	oakcommon_current_free(&c);
+	// Releasing the singleton handle never destroys the object.
+	EXPECT_NE(c.ctx, nullptr);
 	SUCCEED();
 }
 
-TEST(OakCommonCurrent, VideoParamsSetGetRoundTrip)
+TEST(OakCurrent, VideoParamsSetGetRoundTrip)
 {
-	OakCommonCurrent *c = oakcommon_current_instance();
+	OakCurrent c = oakcommon_current_instance();
 	int *params = static_cast<int *>(malloc(sizeof(int)));
 	ASSERT_NE(params, nullptr);
 	*params = 42;
@@ -62,9 +66,9 @@ TEST(OakCommonCurrent, VideoParamsSetGetRoundTrip)
 	EXPECT_EQ(out, nullptr);
 }
 
-TEST(OakCommonCurrent, AudioParamsSetGetRoundTrip)
+TEST(OakCurrent, AudioParamsSetGetRoundTrip)
 {
-	OakCommonCurrent *c = oakcommon_current_instance();
+	OakCurrent c = oakcommon_current_instance();
 	int value = 7; // non-owning storage, no destroy callback
 
 	ASSERT_EQ(oakcommon_current_set_audio_params(c, &value, nullptr),
@@ -78,9 +82,9 @@ TEST(OakCommonCurrent, AudioParamsSetGetRoundTrip)
 		  OAKCOMMON_OK);
 }
 
-TEST(OakCommonCurrent, PluginHostAndCacheRoundTrip)
+TEST(OakCurrent, PluginHostAndCacheRoundTrip)
 {
-	OakCommonCurrent *c = oakcommon_current_instance();
+	OakCurrent c = oakcommon_current_instance();
 	int host = 1, cache = 2;
 
 	ASSERT_EQ(oakcommon_current_set_plugin_host(c, &host, nullptr),
@@ -100,31 +104,29 @@ TEST(OakCommonCurrent, PluginHostAndCacheRoundTrip)
 		  OAKCOMMON_OK);
 }
 
-TEST(OakCommonCurrent, NullHandleAndOutArgs)
+TEST(OakCurrent, NullHandleAndOutArgs)
 {
 	void *out = nullptr;
 	int flag = 0;
 
-	EXPECT_EQ(oakcommon_current_set_video_params(nullptr, &flag, nullptr),
+	EXPECT_EQ(oakcommon_current_set_video_params(OakCurrent{}, &flag, nullptr),
 		  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_current_get_video_params(nullptr, &out),
+	EXPECT_EQ(oakcommon_current_get_video_params(OakCurrent{}, &out),
 		  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_current_get_video_params(
-			  oakcommon_current_instance(), nullptr),
+	OakCurrent c = oakcommon_current_instance();
+	EXPECT_EQ(oakcommon_current_get_video_params(c, nullptr),
 		  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_current_is_interactive(nullptr, &flag),
+	EXPECT_EQ(oakcommon_current_is_interactive(OakCurrent{}, &flag),
 		  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_current_is_interactive(
-			  oakcommon_current_instance(), nullptr),
+	EXPECT_EQ(oakcommon_current_is_interactive(c, nullptr),
 		  OAKCOMMON_E_INVALID);
 }
 
-TEST(OakCommonCurrent, IsInteractive)
+TEST(OakCurrent, IsInteractive)
 {
 	int flag = 0;
 
-	ASSERT_EQ(oakcommon_current_is_interactive(
-			  oakcommon_current_instance(), &flag),
-		  OAKCOMMON_OK);
+	OakCurrent c = oakcommon_current_instance();
+	ASSERT_EQ(oakcommon_current_is_interactive(c, &flag), OAKCOMMON_OK);
 	EXPECT_EQ(flag, 1);
 }

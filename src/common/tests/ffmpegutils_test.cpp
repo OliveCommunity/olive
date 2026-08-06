@@ -26,7 +26,7 @@
 
 #include "../src/ffmpegutils.h"
 
-TEST(OakCommonFFmpegUtils, GetCompatiblePixelFormatMapsCorrectly)
+TEST(OakFFmpegUtils, GetCompatiblePixelFormatMapsCorrectly)
 {
 	int out = -2;
 
@@ -51,14 +51,14 @@ TEST(OakCommonFFmpegUtils, GetCompatiblePixelFormatMapsCorrectly)
 	EXPECT_EQ(out, olive::core::PixelFormat::invalid);
 }
 
-TEST(OakCommonFFmpegUtils, GetCompatiblePixelFormatNullOut)
+TEST(OakFFmpegUtils, GetCompatiblePixelFormatNullOut)
 {
 	EXPECT_EQ(oakcommon_ffmpegutils_get_compatible_pixel_format(
 			  olive::core::PixelFormat::u8, nullptr),
 		  OAKCOMMON_E_INVALID);
 }
 
-TEST(OakCommonFFmpegUtils, GetFFmpegPixelFormatMapsCorrectly)
+TEST(OakFFmpegUtils, GetFFmpegPixelFormatMapsCorrectly)
 {
 	int out = -2;
 
@@ -92,7 +92,7 @@ TEST(OakCommonFFmpegUtils, GetFFmpegPixelFormatMapsCorrectly)
 	EXPECT_EQ(out, fb_pix_fmt_none);
 }
 
-TEST(OakCommonFFmpegUtils, GetFFmpegPixelFormatNullOut)
+TEST(OakFFmpegUtils, GetFFmpegPixelFormatNullOut)
 {
 	EXPECT_EQ(oakcommon_ffmpegutils_get_ffmpeg_pixel_format(
 			  olive::core::PixelFormat::u8,
@@ -100,7 +100,7 @@ TEST(OakCommonFFmpegUtils, GetFFmpegPixelFormatNullOut)
 		  OAKCOMMON_E_INVALID);
 }
 
-TEST(OakCommonFFmpegUtils, GetNativeSampleFormatMapsCorrectly)
+TEST(OakFFmpegUtils, GetNativeSampleFormatMapsCorrectly)
 {
 	int out = -2;
 
@@ -125,14 +125,14 @@ TEST(OakCommonFFmpegUtils, GetNativeSampleFormatMapsCorrectly)
 	EXPECT_EQ(out, olive::core::SampleFormat::invalid);
 }
 
-TEST(OakCommonFFmpegUtils, GetNativeSampleFormatNullOut)
+TEST(OakFFmpegUtils, GetNativeSampleFormatNullOut)
 {
 	EXPECT_EQ(oakcommon_ffmpegutils_get_native_sample_format(
 			  fb_sample_fmt_u8, nullptr),
 		  OAKCOMMON_E_INVALID);
 }
 
-TEST(OakCommonFFmpegUtils, GetFFmpegSampleFormatMapsCorrectly)
+TEST(OakFFmpegUtils, GetFFmpegSampleFormatMapsCorrectly)
 {
 	int out = -2;
 
@@ -157,14 +157,14 @@ TEST(OakCommonFFmpegUtils, GetFFmpegSampleFormatMapsCorrectly)
 	EXPECT_EQ(out, fb_sample_fmt_none);
 }
 
-TEST(OakCommonFFmpegUtils, GetFFmpegSampleFormatNullOut)
+TEST(OakFFmpegUtils, GetFFmpegSampleFormatNullOut)
 {
 	EXPECT_EQ(oakcommon_ffmpegutils_get_ffmpeg_sample_format(
 			  olive::core::SampleFormat::u8, nullptr),
 		  OAKCOMMON_E_INVALID);
 }
 
-TEST(OakCommonFFmpegUtils, ConvertJpegSpaceToRegularSpaceMapsCorrectly)
+TEST(OakFFmpegUtils, ConvertJpegSpaceToRegularSpaceMapsCorrectly)
 {
 	int out = -2;
 
@@ -184,21 +184,21 @@ TEST(OakCommonFFmpegUtils, ConvertJpegSpaceToRegularSpaceMapsCorrectly)
 	EXPECT_EQ(out, fb_pix_fmt_rgba);
 }
 
-TEST(OakCommonFFmpegUtils, ConvertJpegSpaceToRegularSpaceNullOut)
+TEST(OakFFmpegUtils, ConvertJpegSpaceToRegularSpaceNullOut)
 {
 	EXPECT_EQ(oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(
 			  fb_pix_fmt_rgba, nullptr),
 		  OAKCOMMON_E_INVALID);
 }
 
-TEST(OakCommonFFmpegUtils, GetCompatibleBridgePixelFormatNullOut)
+TEST(OakFFmpegUtils, GetCompatibleBridgePixelFormatNullOut)
 {
 	EXPECT_EQ(oakcommon_ffmpegutils_get_compatible_bridge_pixel_format(
 			  fb_pix_fmt_rgba, -1, nullptr),
 		  OAKCOMMON_E_INVALID);
 }
 
-TEST(OakCommonFFmpegUtils, GetCompatibleBridgePixelFormatMapsCorrectly)
+TEST(OakFFmpegUtils, GetCompatibleBridgePixelFormatMapsCorrectly)
 {
 	/* Calls fb_find_best_pix_fmt_of_list() in ffmpeg_bridge, which
 	 * requires a working FFmpeg runtime environment. */

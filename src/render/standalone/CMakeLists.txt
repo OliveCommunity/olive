@@ -116,10 +116,12 @@ endif()
 # Symbols of the not-yet-split engine modules (codec/audio/task/config/
 # pluginSupport/...) dangle by design. The backend libraries resolve most
 # symbols from liboakrender at load time and dangle the same way.
-foreach(t oakrender oakgl oakvulkan)
-  target_link_options(${t} PRIVATE
-          "-undefined" "dynamic_lookup"
-  )
+foreach(t oakrender oakgl oakgl2 oakvulkan)
+  if(TARGET ${t})
+    target_link_options(${t} PRIVATE
+            "-undefined" "dynamic_lookup"
+    )
+  endif()
 endforeach()
 
 target_link_libraries(oakrender PRIVATE

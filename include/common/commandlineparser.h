@@ -26,56 +26,82 @@
 #endif
 
 #include "common/error.h"
+#include "common/handle.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
- * @brief Opaque handle to a command-line parser instance.
+ * @brief Neutral by-value handle to a command-line parser instance.
+ *
+ * Ownership/count semantics follow the convention in common/handle.h:
+ * init returns a handle whose object has reference count 1,
+ * addref(ctx)/release(ctx) adjust it atomically, and release destroys
+ * the object at zero. abi_version is always OAKCOMMON_ABI_VERSION.
  */
-typedef struct OakCommonCommandLineParser OakCommonCommandLineParser;
+typedef struct OakCommandLineParser {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKCOMMON_ABI_VERSION. */
+} OakCommandLineParser;
 
 /**
- * @brief Opaque handle to a registered command-line option.
+ * @brief Neutral by-value handle to a registered command-line option.
  *
- * The handle wrapper is freed with oakcommon_commandlineoption_free();
- * the underlying option is owned by the parser and stays valid until
- * the parser is freed.
+ * The handle is released with oakcommon_commandlineoption_free() (or
+ * handle.release(handle.ctx)); the underlying option is owned by the
+ * parser and stays valid until the parser is destroyed. abi_version is
+ * always OAKCOMMON_ABI_VERSION.
  */
-typedef struct OakCommonCommandLineOption OakCommonCommandLineOption;
+typedef struct OakCommandLineOption {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKCOMMON_ABI_VERSION. */
+} OakCommandLineOption;
 
 /**
- * @brief Opaque handle to a registered positional argument.
+ * @brief Neutral by-value handle to a registered positional argument.
  *
- * The handle wrapper is freed with
- * oakcommon_commandlinepositionalargument_free(); the underlying argument
- * is owned by the parser and stays valid until the parser is freed.
+ * The handle is released with
+ * oakcommon_commandlinepositionalargument_free() (or
+ * handle.release(handle.ctx)); the underlying argument is owned by the
+ * parser and stays valid until the parser is destroyed. abi_version is
+ * always OAKCOMMON_ABI_VERSION.
  */
-typedef struct OakCommonCommandLinePositionalArgument
-	OakCommonCommandLinePositionalArgument;
+typedef struct OakCommandLinePositionalArgument {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKCOMMON_ABI_VERSION. */
+} OakCommandLinePositionalArgument;
 
 /**
  * @brief Create a command-line parser.
  *
- * @return Parser handle, or NULL on allocation failure.
+ * @return Handle with reference count 1; ctx is NULL on allocation
+ *         failure.
  */
-OakCommonCommandLineParser *oakcommon_commandlineparser_init(void);
+OakCommandLineParser oakcommon_commandlineparser_init(void);
 
 /**
- * @brief Destroy a command-line parser.
+ * @brief Release one reference to a command-line parser.
  *
- * Destroys all option and positional-argument handles created from it.
- * NULL is a no-op.
+ * Convenience wrapper around handle.release(handle.ctx): decrements the
+ * atomic reference count and destroys the parser (invalidating all
+ * option and positional-argument handles created from it) when the
+ * count reaches zero. No-op when parser is NULL or parser->ctx is NULL.
  */
-void oakcommon_commandlineparser_free(OakCommonCommandLineParser *parser);
+void oakcommon_commandlineparser_free(OakCommandLineParser *parser);
 
 /**
  * @brief Set the application name/version shown by print_help.
  *
  * @return OAKCOMMON_OK or a negative OAKCOMMON_E_* error code.
  */
-int oakcommon_commandlineparser_set_app_info(OakCommonCommandLineParser *parser,
+int oakcommon_commandlineparser_set_app_info(OakCommandLineParser parser,
 											 const char *name,
 											 const char *version);
 
@@ -88,26 +114,28 @@ int oakcommon_commandlineparser_set_app_info(OakCommonCommandLineParser *parser,
  * @param takes_arg Non-zero if the option consumes the following argument.
  * @param arg_placeholder Placeholder shown in help, may be NULL.
  * @param hidden Non-zero to omit from help output.
- * @param out_option Receives the option handle. May be NULL if unused.
+ * @param out_option Receives the option handle (reference count 1).
+ *        May be NULL if unused.
  *
  * @return OAKCOMMON_OK or a negative OAKCOMMON_E_* error code.
  */
 int oakcommon_commandlineparser_add_option(
-	OakCommonCommandLineParser *parser, const char *const *names, int name_count,
+	OakCommandLineParser parser, const char *const *names, int name_count,
 	const char *description, int takes_arg, const char *arg_placeholder,
-	int hidden, OakCommonCommandLineOption **out_option);
+	int hidden, OakCommandLineOption *out_option);
 
 /**
  * @brief Register a positional argument.
  *
- * @param out_argument Receives the argument handle. May be NULL if unused.
+ * @param out_argument Receives the argument handle (reference count 1).
+ *        May be NULL if unused.
  *
  * @return OAKCOMMON_OK or a negative OAKCOMMON_E_* error code.
  */
 int oakcommon_commandlineparser_add_positional_argument(
-	OakCommonCommandLineParser *parser, const char *name,
+	OakCommandLineParser parser, const char *name,
 	const char *description, int required,
-	OakCommonCommandLinePositionalArgument **out_argument);
+	OakCommandLinePositionalArgument *out_argument);
 
 /**
  * @brief Parse an argv-style argument list.
@@ -116,7 +144,7 @@ int oakcommon_commandlineparser_add_positional_argument(
  *
  * @return OAKCOMMON_OK or a negative OAKCOMMON_E_* error code.
  */
-int oakcommon_commandlineparser_process(OakCommonCommandLineParser *parser,
+int oakcommon_commandlineparser_process(OakCommandLineParser parser,
 										const char *const *argv, int argc);
 
 /**
@@ -124,7 +152,7 @@ int oakcommon_commandlineparser_process(OakCommonCommandLineParser *parser,
  *
  * @return OAKCOMMON_OK or a negative OAKCOMMON_E_* error code.
  */
-int oakcommon_commandlineparser_print_help(OakCommonCommandLineParser *parser,
+int oakcommon_commandlineparser_print_help(OakCommandLineParser parser,
 										   const char *filename);
 
 /**
@@ -134,15 +162,17 @@ int oakcommon_commandlineparser_print_help(OakCommonCommandLineParser *parser,
  *
  * @return OAKCOMMON_OK or a negative OAKCOMMON_E_* error code.
  */
-int oakcommon_commandlineoption_is_set(OakCommonCommandLineOption *option,
+int oakcommon_commandlineoption_is_set(OakCommandLineOption option,
 									   bool *is_set);
 
 /**
- * @brief Free an option handle wrapper.
+ * @brief Release one reference to an option handle.
  *
- * Does not unregister the option from the parser. NULL is a no-op.
+ * Convenience wrapper around handle.release(handle.ctx). Does not
+ * unregister the option from the parser. No-op when option is NULL or
+ * option->ctx is NULL.
  */
-void oakcommon_commandlineoption_free(OakCommonCommandLineOption *option);
+void oakcommon_commandlineoption_free(OakCommandLineOption *option);
 
 /**
  * @brief Get an option's argument value (two-stage string getter).
@@ -150,7 +180,7 @@ void oakcommon_commandlineoption_free(OakCommonCommandLineOption *option);
  * @return Required buffer size in bytes including the terminating NUL
  *         (non-negative), or a negative OAKCOMMON_E_* error code.
  */
-int oakcommon_commandlineoption_get_setting(OakCommonCommandLineOption *option,
+int oakcommon_commandlineoption_get_setting(OakCommandLineOption option,
 											char *buf, int buf_size);
 
 /**
@@ -158,7 +188,7 @@ int oakcommon_commandlineoption_get_setting(OakCommonCommandLineOption *option,
  *
  * @return OAKCOMMON_OK or a negative OAKCOMMON_E_* error code.
  */
-int oakcommon_commandlineoption_set_setting(OakCommonCommandLineOption *option,
+int oakcommon_commandlineoption_set_setting(OakCommandLineOption option,
 											const char *value);
 
 /**
@@ -168,7 +198,7 @@ int oakcommon_commandlineoption_set_setting(OakCommonCommandLineOption *option,
  *         (non-negative), or a negative OAKCOMMON_E_* error code.
  */
 int oakcommon_commandlinepositionalargument_get_setting(
-	OakCommonCommandLinePositionalArgument *argument, char *buf, int buf_size);
+	OakCommandLinePositionalArgument argument, char *buf, int buf_size);
 
 /**
  * @brief Set a positional argument's value.
@@ -176,15 +206,17 @@ int oakcommon_commandlinepositionalargument_get_setting(
  * @return OAKCOMMON_OK or a negative OAKCOMMON_E_* error code.
  */
 int oakcommon_commandlinepositionalargument_set_setting(
-	OakCommonCommandLinePositionalArgument *argument, const char *value);
+	OakCommandLinePositionalArgument argument, const char *value);
 
 /**
- * @brief Free a positional argument handle wrapper.
+ * @brief Release one reference to a positional argument handle.
  *
- * Does not unregister the argument from the parser. NULL is a no-op.
+ * Convenience wrapper around handle.release(handle.ctx). Does not
+ * unregister the argument from the parser. No-op when argument is NULL
+ * or argument->ctx is NULL.
  */
 void oakcommon_commandlinepositionalargument_free(
-	OakCommonCommandLinePositionalArgument *argument);
+	OakCommandLinePositionalArgument *argument);
 
 #ifdef __cplusplus
 }

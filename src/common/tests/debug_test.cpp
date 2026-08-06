@@ -22,25 +22,25 @@
 
 #include "common/debug.h"
 
-TEST(OakCommonDebug, LogValidMessage)
+TEST(OakDebug, LogValidMessage)
 {
 	EXPECT_EQ(oakcommon_debug_log(OAKCOMMON_DEBUG_WARNING, "hello"),
 		  OAKCOMMON_OK);
 }
 
-TEST(OakCommonDebug, LogNullMessage)
+TEST(OakDebug, LogNullMessage)
 {
 	EXPECT_EQ(oakcommon_debug_log(OAKCOMMON_DEBUG_WARNING, nullptr),
 		  OAKCOMMON_E_INVALID);
 }
 
-TEST(OakCommonDebug, LogOutOfRangeLevel)
+TEST(OakDebug, LogOutOfRangeLevel)
 {
 	// Out-of-range levels are tolerated and print as UNKNOWN.
 	EXPECT_EQ(oakcommon_debug_log(999, "odd level"), OAKCOMMON_OK);
 }
 
-TEST(OakCommonDebug, LevelNameRoundTrip)
+TEST(OakDebug, LevelNameRoundTrip)
 {
 	char buf[16];
 
@@ -51,14 +51,14 @@ TEST(OakCommonDebug, LevelNameRoundTrip)
 	EXPECT_STREQ(buf, "WARNING");
 }
 
-TEST(OakCommonDebug, LevelNameQuerySize)
+TEST(OakDebug, LevelNameQuerySize)
 {
 	int needed = oakcommon_debug_level_name(OAKCOMMON_DEBUG_DEBUG,
 						nullptr, 0);
 	EXPECT_EQ(needed, 6); // "DEBUG" + NUL
 }
 
-TEST(OakCommonDebug, LevelNameUnknownLevel)
+TEST(OakDebug, LevelNameUnknownLevel)
 {
 	char buf[16];
 

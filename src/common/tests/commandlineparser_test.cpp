@@ -27,9 +27,9 @@
 
 TEST(CommandLineParser, InitFree)
 {
-	OakCommonCommandLineParser *parser = oakcommon_commandlineparser_init();
-	ASSERT_NE(parser, nullptr);
-	oakcommon_commandlineparser_free(parser);
+	OakCommandLineParser parser = oakcommon_commandlineparser_init();
+	ASSERT_NE(parser.ctx, nullptr);
+	oakcommon_commandlineparser_free(&parser);
 }
 
 TEST(CommandLineParser, FreeNull)
@@ -41,14 +41,13 @@ TEST(CommandLineParser, FreeNull)
 
 TEST(CommandLineParser, AddOptionInvalidArgs)
 {
-	OakCommonCommandLineParser *parser = oakcommon_commandlineparser_init();
-	ASSERT_NE(parser, nullptr);
+	OakCommandLineParser parser = oakcommon_commandlineparser_init();
+	ASSERT_NE(parser.ctx, nullptr);
 
 	const char *names[] = { "h", "-help" };
-	OakCommonCommandLineOption *option = nullptr;
+	OakCommandLineOption option = {};
 
-	EXPECT_EQ(oakcommon_commandlineparser_add_option(
-				  nullptr, names, 2, "desc", 0, nullptr, 0, &option),
+	EXPECT_EQ(oakcommon_commandlineparser_add_option(OakCommandLineParser{}, names, 2, "desc", 0, nullptr, 0, &option),
 			  OAKCOMMON_E_INVALID);
 	EXPECT_EQ(oakcommon_commandlineparser_add_option(
 				  parser, nullptr, 2, "desc", 0, nullptr, 0, &option),
@@ -57,28 +56,28 @@ TEST(CommandLineParser, AddOptionInvalidArgs)
 				  parser, names, 0, "desc", 0, nullptr, 0, &option),
 			  OAKCOMMON_E_INVALID);
 
-	oakcommon_commandlineparser_free(parser);
+	oakcommon_commandlineparser_free(&parser);
 }
 
 TEST(CommandLineParser, ProcessOptionHitAndMiss)
 {
-	OakCommonCommandLineParser *parser = oakcommon_commandlineparser_init();
-	ASSERT_NE(parser, nullptr);
+	OakCommandLineParser parser = oakcommon_commandlineparser_init();
+	ASSERT_NE(parser.ctx, nullptr);
 
 	const char *names[] = { "h", "-help" };
-	OakCommonCommandLineOption *hit = nullptr;
-	OakCommonCommandLineOption *miss = nullptr;
+	OakCommandLineOption hit = {};
+	OakCommandLineOption miss = {};
 
 	ASSERT_EQ(oakcommon_commandlineparser_add_option(
 				  parser, names, 2, "Show help", 0, nullptr, 0, &hit),
 			  OAKCOMMON_OK);
-	ASSERT_NE(hit, nullptr);
+	ASSERT_NE(hit.ctx, nullptr);
 
 	const char *other_names[] = { "v", "-version" };
 	ASSERT_EQ(oakcommon_commandlineparser_add_option(
 				  parser, other_names, 2, "Show version", 0, nullptr, 0, &miss),
 			  OAKCOMMON_OK);
-	ASSERT_NE(miss, nullptr);
+	ASSERT_NE(miss.ctx, nullptr);
 
 	const char *argv[] = { "oak", "-h" };
 	ASSERT_EQ(oakcommon_commandlineparser_process(parser, argv, 2),
@@ -92,18 +91,18 @@ TEST(CommandLineParser, ProcessOptionHitAndMiss)
 	ASSERT_EQ(oakcommon_commandlineoption_is_set(miss, &is_set), OAKCOMMON_OK);
 	EXPECT_FALSE(is_set);
 
-	oakcommon_commandlineoption_free(hit);
-	oakcommon_commandlineoption_free(miss);
-	oakcommon_commandlineparser_free(parser);
+	oakcommon_commandlineoption_free(&hit);
+	oakcommon_commandlineoption_free(&miss);
+	oakcommon_commandlineparser_free(&parser);
 }
 
 TEST(CommandLineParser, ProcessMatchesSecondAliasCaseInsensitive)
 {
-	OakCommonCommandLineParser *parser = oakcommon_commandlineparser_init();
-	ASSERT_NE(parser, nullptr);
+	OakCommandLineParser parser = oakcommon_commandlineparser_init();
+	ASSERT_NE(parser.ctx, nullptr);
 
 	const char *names[] = { "h", "-help" };
-	OakCommonCommandLineOption *option = nullptr;
+	OakCommandLineOption option = {};
 	ASSERT_EQ(oakcommon_commandlineparser_add_option(
 				  parser, names, 2, "Show help", 0, nullptr, 0, &option),
 			  OAKCOMMON_OK);
@@ -118,17 +117,17 @@ TEST(CommandLineParser, ProcessMatchesSecondAliasCaseInsensitive)
 			  OAKCOMMON_OK);
 	EXPECT_TRUE(is_set);
 
-	oakcommon_commandlineoption_free(option);
-	oakcommon_commandlineparser_free(parser);
+	oakcommon_commandlineoption_free(&option);
+	oakcommon_commandlineparser_free(&parser);
 }
 
 TEST(CommandLineParser, OptionTakesArg)
 {
-	OakCommonCommandLineParser *parser = oakcommon_commandlineparser_init();
-	ASSERT_NE(parser, nullptr);
+	OakCommandLineParser parser = oakcommon_commandlineparser_init();
+	ASSERT_NE(parser.ctx, nullptr);
 
 	const char *names[] = { "e", "-export" };
-	OakCommonCommandLineOption *option = nullptr;
+	OakCommandLineOption option = {};
 	ASSERT_EQ(oakcommon_commandlineparser_add_option(
 				  parser, names, 2, "Export", 1, "filename", 0, &option),
 			  OAKCOMMON_OK);
@@ -153,20 +152,20 @@ TEST(CommandLineParser, OptionTakesArg)
 			  required);
 	EXPECT_STREQ(buf.data(), "/tmp/out.mp4");
 
-	oakcommon_commandlineoption_free(option);
-	oakcommon_commandlineparser_free(parser);
+	oakcommon_commandlineoption_free(&option);
+	oakcommon_commandlineparser_free(&parser);
 }
 
 TEST(CommandLineParser, PositionalArgument)
 {
-	OakCommonCommandLineParser *parser = oakcommon_commandlineparser_init();
-	ASSERT_NE(parser, nullptr);
+	OakCommandLineParser parser = oakcommon_commandlineparser_init();
+	ASSERT_NE(parser.ctx, nullptr);
 
-	OakCommonCommandLinePositionalArgument *arg = nullptr;
+	OakCommandLinePositionalArgument arg = {};
 	ASSERT_EQ(oakcommon_commandlineparser_add_positional_argument(
 				  parser, "project", "Project file", 0, &arg),
 			  OAKCOMMON_OK);
-	ASSERT_NE(arg, nullptr);
+	ASSERT_NE(arg.ctx, nullptr);
 
 	const char *argv[] = { "oak", "/tmp/project.ove" };
 	ASSERT_EQ(oakcommon_commandlineparser_process(parser, argv, 2),
@@ -182,20 +181,20 @@ TEST(CommandLineParser, PositionalArgument)
 			  required);
 	EXPECT_STREQ(buf.data(), "/tmp/project.ove");
 
-	oakcommon_commandlinepositionalargument_free(arg);
-	oakcommon_commandlineparser_free(parser);
+	oakcommon_commandlinepositionalargument_free(&arg);
+	oakcommon_commandlineparser_free(&parser);
 }
 
 TEST(CommandLineParser, PositionalArgumentSetGetSetting)
 {
-	OakCommonCommandLineParser *parser = oakcommon_commandlineparser_init();
-	ASSERT_NE(parser, nullptr);
+	OakCommandLineParser parser = oakcommon_commandlineparser_init();
+	ASSERT_NE(parser.ctx, nullptr);
 
-	OakCommonCommandLinePositionalArgument *arg = nullptr;
+	OakCommandLinePositionalArgument arg = {};
 	ASSERT_EQ(oakcommon_commandlineparser_add_positional_argument(
 				  parser, "project", "Project file", 0, &arg),
 			  OAKCOMMON_OK);
-	ASSERT_NE(arg, nullptr);
+	ASSERT_NE(arg.ctx, nullptr);
 
 	ASSERT_EQ(oakcommon_commandlinepositionalargument_set_setting(arg,
 																  "hello.ove"),
@@ -209,28 +208,28 @@ TEST(CommandLineParser, PositionalArgumentSetGetSetting)
 	EXPECT_STREQ(buf, "hello.ove");
 
 	// Error paths
-	EXPECT_EQ(oakcommon_commandlinepositionalargument_set_setting(nullptr,
+	EXPECT_EQ(oakcommon_commandlinepositionalargument_set_setting(OakCommandLinePositionalArgument{},
 																  "x"),
 			  OAKCOMMON_E_INVALID);
 	EXPECT_EQ(oakcommon_commandlinepositionalargument_set_setting(arg,
 																  nullptr),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_commandlinepositionalargument_get_setting(nullptr,
+	EXPECT_EQ(oakcommon_commandlinepositionalargument_get_setting(OakCommandLinePositionalArgument{},
 																  buf,
 																  sizeof(buf)),
 			  OAKCOMMON_E_INVALID);
 
-	oakcommon_commandlinepositionalargument_free(arg);
-	oakcommon_commandlineparser_free(parser);
+	oakcommon_commandlinepositionalargument_free(&arg);
+	oakcommon_commandlineparser_free(&parser);
 }
 
 TEST(CommandLineParser, TwoStageStringGetterSmallBuffer)
 {
-	OakCommonCommandLineParser *parser = oakcommon_commandlineparser_init();
-	ASSERT_NE(parser, nullptr);
+	OakCommandLineParser parser = oakcommon_commandlineparser_init();
+	ASSERT_NE(parser.ctx, nullptr);
 
 	const char *names[] = { "e" };
-	OakCommonCommandLineOption *option = nullptr;
+	OakCommandLineOption option = {};
 	ASSERT_EQ(oakcommon_commandlineparser_add_option(
 				  parser, names, 1, "Export", 1, "filename", 0, &option),
 			  OAKCOMMON_OK);
@@ -249,27 +248,27 @@ TEST(CommandLineParser, TwoStageStringGetterSmallBuffer)
 	EXPECT_EQ(oakcommon_commandlineoption_get_setting(option, nullptr, 0), 7);
 
 	// Error paths
-	EXPECT_EQ(oakcommon_commandlineoption_get_setting(nullptr, buf,
+	EXPECT_EQ(oakcommon_commandlineoption_get_setting(OakCommandLineOption{}, buf,
 													  sizeof(buf)),
 			  OAKCOMMON_E_INVALID);
 	EXPECT_EQ(oakcommon_commandlineoption_is_set(option, nullptr),
 			  OAKCOMMON_E_INVALID);
 	bool dummy = false;
-	EXPECT_EQ(oakcommon_commandlineoption_is_set(nullptr, &dummy),
+	EXPECT_EQ(oakcommon_commandlineoption_is_set(OakCommandLineOption{}, &dummy),
 			  OAKCOMMON_E_INVALID);
 
-	oakcommon_commandlineoption_free(option);
-	oakcommon_commandlineparser_free(parser);
+	oakcommon_commandlineoption_free(&option);
+	oakcommon_commandlineparser_free(&parser);
 }
 
 TEST(CommandLineParser, ProcessInvalidArgs)
 {
-	EXPECT_EQ(oakcommon_commandlineparser_process(nullptr, nullptr, 0),
+	EXPECT_EQ(oakcommon_commandlineparser_process(OakCommandLineParser{}, nullptr, 0),
 			  OAKCOMMON_E_INVALID);
 
-	OakCommonCommandLineParser *parser = oakcommon_commandlineparser_init();
-	ASSERT_NE(parser, nullptr);
+	OakCommandLineParser parser = oakcommon_commandlineparser_init();
+	ASSERT_NE(parser.ctx, nullptr);
 	EXPECT_EQ(oakcommon_commandlineparser_process(parser, nullptr, 1),
 			  OAKCOMMON_E_INVALID);
-	oakcommon_commandlineparser_free(parser);
+	oakcommon_commandlineparser_free(&parser);
 }

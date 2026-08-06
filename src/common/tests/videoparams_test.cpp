@@ -29,8 +29,8 @@
 
 TEST(CommonVideoParamsCApi, InitDefaults)
 {
-	OakCommonVideoParams *p = oakcommon_videoparams_init();
-	ASSERT_NE(p, nullptr);
+	OakVideoParams p = oakcommon_videoparams_init();
+	ASSERT_NE(p.ctx, nullptr);
 
 	int v = -1;
 	EXPECT_EQ(oakcommon_videoparams_get_width(p, &v), OAKCOMMON_OK);
@@ -38,7 +38,7 @@ TEST(CommonVideoParamsCApi, InitDefaults)
 	EXPECT_EQ(oakcommon_videoparams_get_is_valid(p, &v), OAKCOMMON_OK);
 	EXPECT_EQ(v, 0);
 
-	oakcommon_videoparams_free(p);
+	oakcommon_videoparams_free(&p);
 }
 
 TEST(CommonVideoParamsCApi, FreeNull)
@@ -48,10 +48,10 @@ TEST(CommonVideoParamsCApi, FreeNull)
 
 TEST(CommonVideoParamsCApi, InitBasic)
 {
-	OakCommonVideoParams *p = oakcommon_videoparams_init_basic(
+	OakVideoParams p = oakcommon_videoparams_init_basic(
 		1920, 1080, OAKCOMMON_PIXEL_FORMAT_U8,
 		4, 1, 1, OAKCOMMON_VIDEO_INTERLACE_NONE, 2);
-	ASSERT_NE(p, nullptr);
+	ASSERT_NE(p.ctx, nullptr);
 
 	int v;
 	EXPECT_EQ(oakcommon_videoparams_get_width(p, &v), OAKCOMMON_OK);
@@ -91,15 +91,15 @@ TEST(CommonVideoParamsCApi, InitBasic)
 	EXPECT_EQ(oakcommon_videoparams_get_buffer_size(p, &v), OAKCOMMON_OK);
 	EXPECT_EQ(v, 1920 * 1080 * 4);
 
-	oakcommon_videoparams_free(p);
+	oakcommon_videoparams_free(&p);
 }
 
 TEST(CommonVideoParamsCApi, InitWithTimeBase)
 {
-	OakCommonVideoParams *p = oakcommon_videoparams_init_with_time_base(
+	OakVideoParams p = oakcommon_videoparams_init_with_time_base(
 		1280, 720, 1001, 30000, OAKCOMMON_PIXEL_FORMAT_F32, 4, 1, 1,
 		OAKCOMMON_VIDEO_INTERLACE_NONE, 1);
-	ASSERT_NE(p, nullptr);
+	ASSERT_NE(p.ctx, nullptr);
 
 	int num, den;
 	EXPECT_EQ(oakcommon_videoparams_get_time_base(p, &num, &den),
@@ -117,13 +117,13 @@ TEST(CommonVideoParamsCApi, InitWithTimeBase)
 	EXPECT_EQ(num, 1001);
 	EXPECT_EQ(den, 30000);
 
-	oakcommon_videoparams_free(p);
+	oakcommon_videoparams_free(&p);
 }
 
 TEST(CommonVideoParamsCApi, ScalarSetters)
 {
-	OakCommonVideoParams *p = oakcommon_videoparams_init();
-	ASSERT_NE(p, nullptr);
+	OakVideoParams p = oakcommon_videoparams_init();
+	ASSERT_NE(p.ctx, nullptr);
 
 	int v;
 	EXPECT_EQ(oakcommon_videoparams_set_width(p, 640), OAKCOMMON_OK);
@@ -205,7 +205,7 @@ TEST(CommonVideoParamsCApi, ScalarSetters)
 	EXPECT_EQ(oakcommon_videoparams_get_effective_depth(p, &v), OAKCOMMON_OK);
 	EXPECT_EQ(v, 1);
 
-	oakcommon_videoparams_free(p);
+	oakcommon_videoparams_free(&p);
 }
 
 TEST(CommonVideoParamsCApi, NullHandleErrors)
@@ -214,123 +214,123 @@ TEST(CommonVideoParamsCApi, NullHandleErrors)
 	float f;
 	int64_t i64;
 	char buf[16];
-	EXPECT_EQ(oakcommon_videoparams_get_width(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_width(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_width(nullptr, 1),
+	EXPECT_EQ(oakcommon_videoparams_set_width(OakVideoParams{}, 1),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_height(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_height(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_height(nullptr, 1),
+	EXPECT_EQ(oakcommon_videoparams_set_height(OakVideoParams{}, 1),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_depth(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_depth(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_depth(nullptr, 1),
+	EXPECT_EQ(oakcommon_videoparams_set_depth(OakVideoParams{}, 1),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_is_3d(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_is_3d(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_time_base(nullptr, &i, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_time_base(OakVideoParams{}, &i, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_time_base(nullptr, 1, 1),
+	EXPECT_EQ(oakcommon_videoparams_set_time_base(OakVideoParams{}, 1, 1),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_frame_rate(nullptr, &i, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_frame_rate(OakVideoParams{}, &i, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_frame_rate(nullptr, 1, 1),
+	EXPECT_EQ(oakcommon_videoparams_set_frame_rate(OakVideoParams{}, 1, 1),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_frame_rate_as_time_base(nullptr, &i, &i),
+	EXPECT_EQ(oakcommon_videoparams_frame_rate_as_time_base(OakVideoParams{}, &i, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_pixel_aspect_ratio(nullptr, &i, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_pixel_aspect_ratio(OakVideoParams{}, &i, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_pixel_aspect_ratio(nullptr, 1, 1),
+	EXPECT_EQ(oakcommon_videoparams_set_pixel_aspect_ratio(OakVideoParams{}, 1, 1),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_format(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_format(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_format(nullptr, 0),
+	EXPECT_EQ(oakcommon_videoparams_set_format(OakVideoParams{}, 0),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_channel_count(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_channel_count(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_channel_count(nullptr, 1),
+	EXPECT_EQ(oakcommon_videoparams_set_channel_count(OakVideoParams{}, 1),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_interlacing(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_interlacing(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_interlacing(nullptr, 0),
+	EXPECT_EQ(oakcommon_videoparams_set_interlacing(OakVideoParams{}, 0),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_divider(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_divider(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_divider(nullptr, 1),
+	EXPECT_EQ(oakcommon_videoparams_set_divider(OakVideoParams{}, 1),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_enabled(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_enabled(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_enabled(nullptr, 1),
+	EXPECT_EQ(oakcommon_videoparams_set_enabled(OakVideoParams{}, 1),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_x(nullptr, &f), OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_x(nullptr, 0.0f), OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_y(nullptr, &f), OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_y(nullptr, 0.0f), OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_stream_index(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_x(OakVideoParams{}, &f), OAKCOMMON_E_INVALID);
+	EXPECT_EQ(oakcommon_videoparams_set_x(OakVideoParams{}, 0.0f), OAKCOMMON_E_INVALID);
+	EXPECT_EQ(oakcommon_videoparams_get_y(OakVideoParams{}, &f), OAKCOMMON_E_INVALID);
+	EXPECT_EQ(oakcommon_videoparams_set_y(OakVideoParams{}, 0.0f), OAKCOMMON_E_INVALID);
+	EXPECT_EQ(oakcommon_videoparams_get_stream_index(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_stream_index(nullptr, 0),
+	EXPECT_EQ(oakcommon_videoparams_set_stream_index(OakVideoParams{}, 0),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_video_type(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_video_type(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_video_type(nullptr, 0),
+	EXPECT_EQ(oakcommon_videoparams_set_video_type(OakVideoParams{}, 0),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_start_time(nullptr, &i64),
+	EXPECT_EQ(oakcommon_videoparams_get_start_time(OakVideoParams{}, &i64),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_start_time(nullptr, 0),
+	EXPECT_EQ(oakcommon_videoparams_set_start_time(OakVideoParams{}, 0),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_duration(nullptr, &i64),
+	EXPECT_EQ(oakcommon_videoparams_get_duration(OakVideoParams{}, &i64),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_duration(nullptr, 0),
+	EXPECT_EQ(oakcommon_videoparams_set_duration(OakVideoParams{}, 0),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_premultiplied_alpha(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_premultiplied_alpha(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_premultiplied_alpha(nullptr, 0),
+	EXPECT_EQ(oakcommon_videoparams_set_premultiplied_alpha(OakVideoParams{}, 0),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_color_range(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_color_range(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_color_range(nullptr, 0),
+	EXPECT_EQ(oakcommon_videoparams_set_color_range(OakVideoParams{}, 0),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_color_primaries(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_color_primaries(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_color_primaries(nullptr, 0),
+	EXPECT_EQ(oakcommon_videoparams_set_color_primaries(OakVideoParams{}, 0),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_color_transfer(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_color_transfer(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_color_transfer(nullptr, 0),
+	EXPECT_EQ(oakcommon_videoparams_set_color_transfer(OakVideoParams{}, 0),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_colorspace(nullptr, buf, sizeof(buf)),
+	EXPECT_EQ(oakcommon_videoparams_get_colorspace(OakVideoParams{}, buf, sizeof(buf)),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_set_colorspace(nullptr, "x"),
+	EXPECT_EQ(oakcommon_videoparams_set_colorspace(OakVideoParams{}, "x"),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_square_pixel_width(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_square_pixel_width(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_effective_width(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_effective_width(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_effective_height(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_effective_height(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_effective_depth(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_effective_depth(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_is_valid(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_is_valid(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_bytes_per_channel(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_bytes_per_channel(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_bytes_per_pixel(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_bytes_per_pixel(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_buffer_size(nullptr, &i),
+	EXPECT_EQ(oakcommon_videoparams_get_buffer_size(OakVideoParams{}, &i),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_get_time_in_timebase_units(nullptr, 0, 1,
+	EXPECT_EQ(oakcommon_videoparams_get_time_in_timebase_units(OakVideoParams{}, 0, 1,
 															   &i64),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_load_xml(nullptr, "<a/>"),
+	EXPECT_EQ(oakcommon_videoparams_load_xml(OakVideoParams{}, "<a/>"),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_save_xml(nullptr, buf, sizeof(buf)),
+	EXPECT_EQ(oakcommon_videoparams_save_xml(OakVideoParams{}, buf, sizeof(buf)),
 			  OAKCOMMON_E_INVALID);
 }
 
 TEST(CommonVideoParamsCApi, NullOutParamErrors)
 {
-	OakCommonVideoParams *p = oakcommon_videoparams_init();
-	ASSERT_NE(p, nullptr);
+	OakVideoParams p = oakcommon_videoparams_init();
+	ASSERT_NE(p.ctx, nullptr);
 	EXPECT_EQ(oakcommon_videoparams_get_width(p, nullptr),
 			  OAKCOMMON_E_INVALID);
 	EXPECT_EQ(oakcommon_videoparams_get_time_base(p, nullptr, nullptr),
@@ -340,13 +340,13 @@ TEST(CommonVideoParamsCApi, NullOutParamErrors)
 	EXPECT_EQ(oakcommon_videoparams_load_xml(p, nullptr), OAKCOMMON_E_INVALID);
 	EXPECT_EQ(oakcommon_videoparams_load_xml(p, "not xml"),
 			  OAKCOMMON_E_FAILED);
-	oakcommon_videoparams_free(p);
+	oakcommon_videoparams_free(&p);
 }
 
 TEST(CommonVideoParamsCApi, Colorspace)
 {
-	OakCommonVideoParams *p = oakcommon_videoparams_init();
-	ASSERT_NE(p, nullptr);
+	OakVideoParams p = oakcommon_videoparams_init();
+	ASSERT_NE(p.ctx, nullptr);
 	EXPECT_EQ(oakcommon_videoparams_set_colorspace(p, "rec709"),
 			  OAKCOMMON_OK);
 	int needed = oakcommon_videoparams_get_colorspace(p, nullptr, 0);
@@ -355,15 +355,15 @@ TEST(CommonVideoParamsCApi, Colorspace)
 	EXPECT_EQ(oakcommon_videoparams_get_colorspace(p, buf.data(), needed),
 			  needed);
 	EXPECT_STREQ(buf.data(), "rec709");
-	oakcommon_videoparams_free(p);
+	oakcommon_videoparams_free(&p);
 }
 
 TEST(CommonVideoParamsCApi, TimeInTimebaseUnits)
 {
-	OakCommonVideoParams *p = oakcommon_videoparams_init_with_time_base(
+	OakVideoParams p = oakcommon_videoparams_init_with_time_base(
 		1920, 1080, 1, 25, OAKCOMMON_PIXEL_FORMAT_U8, 4, 1, 1,
 		OAKCOMMON_VIDEO_INTERLACE_NONE, 1);
-	ASSERT_NE(p, nullptr);
+	ASSERT_NE(p.ctx, nullptr);
 
 	int64_t ts = -1;
 	EXPECT_EQ(oakcommon_videoparams_get_time_in_timebase_units(p, 2, 1, &ts),
@@ -371,26 +371,26 @@ TEST(CommonVideoParamsCApi, TimeInTimebaseUnits)
 	EXPECT_EQ(ts, 50); // 2 seconds at 25 fps
 
 	// Without a time base the result is AV_NOPTS_VALUE
-	OakCommonVideoParams *q = oakcommon_videoparams_init();
-	ASSERT_NE(q, nullptr);
+	OakVideoParams q = oakcommon_videoparams_init();
+	ASSERT_NE(q.ctx, nullptr);
 	EXPECT_EQ(oakcommon_videoparams_get_time_in_timebase_units(q, 2, 1, &ts),
 			  OAKCOMMON_OK);
 	EXPECT_EQ(ts, INT64_MIN);
 
-	oakcommon_videoparams_free(p);
-	oakcommon_videoparams_free(q);
+	oakcommon_videoparams_free(&p);
+	oakcommon_videoparams_free(&q);
 }
 
 TEST(CommonVideoParamsCApi, Equals)
 {
-	OakCommonVideoParams *a = oakcommon_videoparams_init_basic(
+	OakVideoParams a = oakcommon_videoparams_init_basic(
 		1920, 1080, OAKCOMMON_PIXEL_FORMAT_U8, 4, 1, 1,
 		OAKCOMMON_VIDEO_INTERLACE_NONE, 1);
-	OakCommonVideoParams *b = oakcommon_videoparams_init_basic(
+	OakVideoParams b = oakcommon_videoparams_init_basic(
 		1920, 1080, OAKCOMMON_PIXEL_FORMAT_U8, 4, 1, 1,
 		OAKCOMMON_VIDEO_INTERLACE_NONE, 1);
-	ASSERT_NE(a, nullptr);
-	ASSERT_NE(b, nullptr);
+	ASSERT_NE(a.ctx, nullptr);
+	ASSERT_NE(b.ctx, nullptr);
 
 	int equal = 0;
 	EXPECT_EQ(oakcommon_videoparams_equals(a, b, &equal), OAKCOMMON_OK);
@@ -400,23 +400,23 @@ TEST(CommonVideoParamsCApi, Equals)
 	EXPECT_EQ(oakcommon_videoparams_equals(a, b, &equal), OAKCOMMON_OK);
 	EXPECT_EQ(equal, 0);
 
-	EXPECT_EQ(oakcommon_videoparams_equals(nullptr, b, &equal),
+	EXPECT_EQ(oakcommon_videoparams_equals(OakVideoParams{}, b, &equal),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_videoparams_equals(a, nullptr, &equal),
+	EXPECT_EQ(oakcommon_videoparams_equals(a, OakVideoParams{}, &equal),
 			  OAKCOMMON_E_INVALID);
 	EXPECT_EQ(oakcommon_videoparams_equals(a, b, nullptr),
 			  OAKCOMMON_E_INVALID);
 
-	oakcommon_videoparams_free(a);
-	oakcommon_videoparams_free(b);
+	oakcommon_videoparams_free(&a);
+	oakcommon_videoparams_free(&b);
 }
 
 TEST(CommonVideoParamsCApi, XmlRoundTrip)
 {
-	OakCommonVideoParams *p = oakcommon_videoparams_init_with_time_base(
+	OakVideoParams p = oakcommon_videoparams_init_with_time_base(
 		1920, 1080, 1, 25, OAKCOMMON_PIXEL_FORMAT_F16, 4, 4, 3,
 		OAKCOMMON_VIDEO_INTERLACED_BOTTOM_FIRST, 2);
-	ASSERT_NE(p, nullptr);
+	ASSERT_NE(p.ctx, nullptr);
 	EXPECT_EQ(oakcommon_videoparams_set_colorspace(p, "rec709"),
 			  OAKCOMMON_OK);
 	EXPECT_EQ(oakcommon_videoparams_set_color_primaries(p, 9), OAKCOMMON_OK);
@@ -426,8 +426,8 @@ TEST(CommonVideoParamsCApi, XmlRoundTrip)
 	std::vector<char> buf(needed);
 	ASSERT_EQ(oakcommon_videoparams_save_xml(p, buf.data(), needed), needed);
 
-	OakCommonVideoParams *q = oakcommon_videoparams_init();
-	ASSERT_NE(q, nullptr);
+	OakVideoParams q = oakcommon_videoparams_init();
+	ASSERT_NE(q.ctx, nullptr);
 	ASSERT_EQ(oakcommon_videoparams_load_xml(q, buf.data()), OAKCOMMON_OK);
 
 	int equal = 0;
@@ -450,8 +450,8 @@ TEST(CommonVideoParamsCApi, XmlRoundTrip)
 	EXPECT_EQ(oakcommon_videoparams_get_color_primaries(q, &v), OAKCOMMON_OK);
 	EXPECT_EQ(v, 9);
 
-	oakcommon_videoparams_free(p);
-	oakcommon_videoparams_free(q);
+	oakcommon_videoparams_free(&p);
+	oakcommon_videoparams_free(&q);
 }
 
 TEST(CommonVideoParamsCApi, StaticHelpers)

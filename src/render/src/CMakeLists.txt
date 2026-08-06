@@ -30,9 +30,9 @@ add_library(oakrender SHARED ${OAKRENDER_SOURCES})
 
 # Dynamically loaded render backends (oak_renderer_* C ABI). Loaded via
 # dlopen by DynamicRenderer from the app render_backends/ dir.
-add_library(oakgl SHARED opengl/openglbackend_c.cpp)
+add_library(oakgl2 SHARED opengl/openglbackend_c.cpp)
 add_library(oakvulkan SHARED vulkan/vulkanbackend_c.cpp)
-foreach(backend oakgl oakvulkan)
+foreach(backend oakgl2 oakvulkan)
         target_link_libraries(${backend} PRIVATE oakrender)
 endforeach()
 

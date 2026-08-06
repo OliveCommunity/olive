@@ -34,9 +34,9 @@ namespace ocio = OCIO_NAMESPACE;
 
 TEST(OCIOUtilsCApi, InitReturnsHandle)
 {
-	OakCommonOCIOUtils *utils = oakcommon_ocioutils_init();
-	ASSERT_NE(utils, nullptr);
-	oakcommon_ocioutils_free(utils);
+	OakOCIOUtils utils = oakcommon_ocioutils_init();
+	ASSERT_NE(utils.ctx, nullptr);
+	oakcommon_ocioutils_free(&utils);
 }
 
 TEST(OCIOUtilsCApi, FreeNullIsNoOp)
@@ -46,8 +46,8 @@ TEST(OCIOUtilsCApi, FreeNullIsNoOp)
 
 TEST(OCIOUtilsCApi, BitDepthMappingMatchesOCIO)
 {
-	OakCommonOCIOUtils *utils = oakcommon_ocioutils_init();
-	ASSERT_NE(utils, nullptr);
+	OakOCIOUtils utils = oakcommon_ocioutils_init();
+	ASSERT_NE(utils.ctx, nullptr);
 
 	const struct {
 		int pixel_format;
@@ -68,13 +68,13 @@ TEST(OCIOUtilsCApi, BitDepthMappingMatchesOCIO)
 		EXPECT_EQ(depth, static_cast<int>(c.expected));
 	}
 
-	oakcommon_ocioutils_free(utils);
+	oakcommon_ocioutils_free(&utils);
 }
 
 TEST(OCIOUtilsCApi, InvalidFormatYieldsUnknownDepth)
 {
-	OakCommonOCIOUtils *utils = oakcommon_ocioutils_init();
-	ASSERT_NE(utils, nullptr);
+	OakOCIOUtils utils = oakcommon_ocioutils_init();
+	ASSERT_NE(utils.ctx, nullptr);
 
 	int depth = -1;
 	EXPECT_EQ(oakcommon_ocioutils_get_ocio_bit_depth_from_pixel_format(
@@ -82,33 +82,32 @@ TEST(OCIOUtilsCApi, InvalidFormatYieldsUnknownDepth)
 			  OAKCOMMON_OK);
 	EXPECT_EQ(depth, static_cast<int>(ocio::BIT_DEPTH_UNKNOWN));
 
-	oakcommon_ocioutils_free(utils);
+	oakcommon_ocioutils_free(&utils);
 }
 
 TEST(OCIOUtilsCApi, NullHandleReturnsInvalid)
 {
 	int depth = 0;
-	EXPECT_EQ(oakcommon_ocioutils_get_ocio_bit_depth_from_pixel_format(
-				  NULL, OAKCOMMON_PIXEL_FORMAT_U8, &depth),
+	EXPECT_EQ(oakcommon_ocioutils_get_ocio_bit_depth_from_pixel_format(OakOCIOUtils{}, OAKCOMMON_PIXEL_FORMAT_U8, &depth),
 			  OAKCOMMON_E_INVALID);
 }
 
 TEST(OCIOUtilsCApi, NullOutParamReturnsInvalid)
 {
-	OakCommonOCIOUtils *utils = oakcommon_ocioutils_init();
-	ASSERT_NE(utils, nullptr);
+	OakOCIOUtils utils = oakcommon_ocioutils_init();
+	ASSERT_NE(utils.ctx, nullptr);
 
 	EXPECT_EQ(oakcommon_ocioutils_get_ocio_bit_depth_from_pixel_format(
 				  utils, OAKCOMMON_PIXEL_FORMAT_U8, NULL),
 			  OAKCOMMON_E_INVALID);
 
-	oakcommon_ocioutils_free(utils);
+	oakcommon_ocioutils_free(&utils);
 }
 
 TEST(OCIOUtilsCApi, OutOfRangeFormatReturnsInvalid)
 {
-	OakCommonOCIOUtils *utils = oakcommon_ocioutils_init();
-	ASSERT_NE(utils, nullptr);
+	OakOCIOUtils utils = oakcommon_ocioutils_init();
+	ASSERT_NE(utils.ctx, nullptr);
 
 	int depth = 0;
 	EXPECT_EQ(oakcommon_ocioutils_get_ocio_bit_depth_from_pixel_format(
@@ -118,5 +117,5 @@ TEST(OCIOUtilsCApi, OutOfRangeFormatReturnsInvalid)
 				  utils, -2, &depth),
 			  OAKCOMMON_E_INVALID);
 
-	oakcommon_ocioutils_free(utils);
+	oakcommon_ocioutils_free(&utils);
 }

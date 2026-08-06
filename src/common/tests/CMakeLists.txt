@@ -26,6 +26,8 @@ add_executable(oakcommon-gtest
         dropworkflowbehavior_test.cpp
         ffmpegutils_test.cpp
         filefunctions_test.cpp
+        handle_test.cpp
+        log_test.cpp
         memorypool_test.cpp
         miscutils_test.cpp
         ocioutils_test.cpp

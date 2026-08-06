@@ -174,13 +174,13 @@ int oaknode_colormanager_get_default_luma_coefs(OakNodeColorManager *manager,
  * colorspace) is clamped to what the active config offers
  * (olive::ColorManager::get_compliant_color_space(ColorTransform, bool)).
  *
- * `out` receives a NEW handle owned by the caller (release with
- * oakcommon_colortransform_free()). Requires a loaded config
- * (OAKNODE_E_STATE otherwise).
+ * `out` receives a NEW by-value handle owned by the caller (reference
+ * count 1, release with oakcommon_colortransform_free()). Requires a
+ * loaded config (OAKNODE_E_STATE otherwise).
  */
 int oaknode_colormanager_get_compliant_color_transform(
-	OakNodeColorManager *manager, const OakCommonColorTransform *transform,
-	int force_display, OakCommonColorTransform **out);
+	OakNodeColorManager *manager, OakColorTransform transform,
+	int force_display, OakColorTransform *out);
 
 #ifdef __cplusplus
 }

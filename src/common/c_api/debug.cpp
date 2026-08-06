@@ -20,6 +20,9 @@
 
 #include "common/debug.h"
 
+#include <cstdarg>
+#include <vector>
+
 #include "../src/debug.h"
 
 int oakcommon_debug_log(int level, const char *msg)
@@ -42,4 +45,69 @@ int oakcommon_debug_level_name(int level, char *buf, int buf_size)
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
+}
+
+int oakcommon_log(int level, const char *fmt, ...)
+{
+	if (!fmt)
+		return OAKCOMMON_E_INVALID;
+
+	va_list args;
+	va_start(args, fmt);
+
+	va_list sizing;
+	va_copy(sizing, args);
+	int needed = vsnprintf(nullptr, 0, fmt, sizing);
+	va_end(sizing);
+
+	if (needed < 0) {
+		va_end(args);
+		return OAKCOMMON_E_FAILED;
+	}
+
+	std::string msg;
+	try {
+		// Dynamically sized: arbitrary message length, no truncation,
+		// no fixed stack buffer.
+		std::vector<char> buf(static_cast<size_t>(needed) + 1);
+		vsnprintf(buf.data(), buf.size(), fmt, args);
+		msg.assign(buf.data(), static_cast<size_t>(needed));
+	} catch (...) {
+		va_end(args);
+		return OAKCOMMON_E_FAILED;
+	}
+	va_end(args);
+
+	try {
+		olive::log_message(level, msg);
+	} catch (...) {
+		return OAKCOMMON_E_FAILED;
+	}
+	return OAKCOMMON_OK;
+}
+
+int oakcommon_log_set_level(int level)
+{
+	if (level < OAKCOMMON_DEBUG_DEBUG || level > OAKCOMMON_DEBUG_FATAL)
+		return OAKCOMMON_E_INVALID;
+
+	try {
+		olive::set_log_level(static_cast<olive::DebugLevel>(level));
+	} catch (...) {
+		return OAKCOMMON_E_FAILED;
+	}
+	return OAKCOMMON_OK;
+}
+
+int oakcommon_log_get_level(int *out_level)
+{
+	if (!out_level)
+		return OAKCOMMON_E_INVALID;
+
+	try {
+		*out_level = static_cast<int>(olive::get_log_level());
+	} catch (...) {
+		return OAKCOMMON_E_FAILED;
+	}
+	return OAKCOMMON_OK;
 }

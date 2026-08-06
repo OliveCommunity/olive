@@ -21,7 +21,7 @@
 #ifndef OAKUTIL_OAKVIDEO_H
 #define OAKUTIL_OAKVIDEO_H
 
-#include <QString>
+#include <string>
 
 #include <olive/core/util/rational.h>
 
@@ -167,30 +167,30 @@ class ColorTransform
 public:
 	ColorTransform() = default;
 
-	ColorTransform(const QString &output) : output_(output) {}
+	ColorTransform(const std::string &output) : output_(output) {}
 
-	ColorTransform(const QString &display, const QString &view,
-				   const QString &look)
+	ColorTransform(const std::string &display, const std::string &view,
+				   const std::string &look)
 		: output_(display), is_display_(true), view_(view), look_(look)
 	{
 	}
 
 	bool is_display() const { return is_display_; }
 
-	const QString &display() const { return output_; }
+	const std::string &display() const { return output_; }
 
-	const QString &output() const { return output_; }
+	const std::string &output() const { return output_; }
 
-	const QString &view() const { return view_; }
+	const std::string &view() const { return view_; }
 
-	const QString &look() const { return look_; }
+	const std::string &look() const { return look_; }
 
 private:
-	QString output_;
+	std::string output_;
 
 	bool is_display_ = false;
-	QString view_;
-	QString look_;
+	std::string view_;
+	std::string look_;
 };
 
 } // namespace oak

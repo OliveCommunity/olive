@@ -35,7 +35,7 @@ protected:
 	void SetUp() override
 	{
 		handle_ = oakcommon_filefunctions_init();
-		ASSERT_NE(handle_, nullptr);
+		ASSERT_NE(handle_.ctx, nullptr);
 
 		temp_dir_ = fs::temp_directory_path() /
 			    fs::path("oakcommon_filefunctions_test_" +
@@ -46,8 +46,8 @@ protected:
 
 	void TearDown() override
 	{
-		oakcommon_filefunctions_free(handle_);
-		handle_ = nullptr;
+		oakcommon_filefunctions_free(&handle_);
+		handle_.ctx = nullptr;
 
 		std::error_code ec;
 		fs::remove_all(temp_dir_, ec);
@@ -84,7 +84,7 @@ protected:
 		return std::string(buf.data());
 	}
 
-	OakCommonFileFunctions *handle_ = nullptr;
+	OakFileFunctions handle_ = {};
 	fs::path temp_dir_;
 };
 
@@ -98,43 +98,36 @@ TEST_F(FileFunctionsTest, NullHandleReturnsInvalid)
 {
 	char buf[16];
 	int out = 0;
-	EXPECT_EQ(oakcommon_filefunctions_get_configuration_location(
-			  nullptr, buf, sizeof(buf)),
+	EXPECT_EQ(oakcommon_filefunctions_get_configuration_location(OakFileFunctions{}, buf, sizeof(buf)),
 		  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_filefunctions_get_application_path(nullptr, buf,
+	EXPECT_EQ(oakcommon_filefunctions_get_application_path(OakFileFunctions{}, buf,
 							       sizeof(buf)),
 		  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_filefunctions_get_temp_file_path(nullptr, buf,
+	EXPECT_EQ(oakcommon_filefunctions_get_temp_file_path(OakFileFunctions{}, buf,
 							     sizeof(buf)),
 		  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_filefunctions_get_auto_recovery_root(nullptr, buf,
+	EXPECT_EQ(oakcommon_filefunctions_get_auto_recovery_root(OakFileFunctions{}, buf,
 								 sizeof(buf)),
 		  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_filefunctions_get_unique_file_identifier(
-			  nullptr, "x", buf, sizeof(buf)),
+	EXPECT_EQ(oakcommon_filefunctions_get_unique_file_identifier(OakFileFunctions{}, "x", buf, sizeof(buf)),
 		  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_filefunctions_ensure_filename_extension(
-			  nullptr, "x", "y", buf, sizeof(buf)),
+	EXPECT_EQ(oakcommon_filefunctions_ensure_filename_extension(OakFileFunctions{}, "x", "y", buf, sizeof(buf)),
 		  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_filefunctions_read_file_as_string(nullptr, "x",
+	EXPECT_EQ(oakcommon_filefunctions_read_file_as_string(OakFileFunctions{}, "x",
 							      buf, sizeof(buf)),
 		  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_filefunctions_get_safe_temporary_filename(
-			  nullptr, "x", buf, sizeof(buf)),
+	EXPECT_EQ(oakcommon_filefunctions_get_safe_temporary_filename(OakFileFunctions{}, "x", buf, sizeof(buf)),
 		  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_filefunctions_get_formatted_executable_for_platform(
-			  nullptr, "x", buf, sizeof(buf)),
+	EXPECT_EQ(oakcommon_filefunctions_get_formatted_executable_for_platform(OakFileFunctions{}, "x", buf, sizeof(buf)),
 		  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_filefunctions_directory_is_valid(nullptr, "x", 1,
+	EXPECT_EQ(oakcommon_filefunctions_directory_is_valid(OakFileFunctions{}, "x", 1,
 							     &out),
 		  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_filefunctions_can_copy_directory_without_overwriting(
-			  nullptr, "a", "b", &out),
+	EXPECT_EQ(oakcommon_filefunctions_can_copy_directory_without_overwriting(OakFileFunctions{}, "a", "b", &out),
 		  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_filefunctions_copy_directory(nullptr, "a", "b", 0),
+	EXPECT_EQ(oakcommon_filefunctions_copy_directory(OakFileFunctions{}, "a", "b", 0),
 		  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_filefunctions_rename_file_allow_overwrite(
-			  nullptr, "a", "b", &out),
+	EXPECT_EQ(oakcommon_filefunctions_rename_file_allow_overwrite(OakFileFunctions{}, "a", "b", &out),
 		  OAKCOMMON_E_INVALID);
 }
 

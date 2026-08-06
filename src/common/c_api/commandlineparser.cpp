@@ -26,43 +26,79 @@
 #include <vector>
 
 #include "../src/commandlineparser.h"
+#include "refcounted.h"
 
-struct OakCommonCommandLineParser {
-	CommandLineParser impl;
-};
+namespace
+{
 
-struct OakCommonCommandLineOption {
+/**
+ * @brief State boxed behind an option handle's ctx pointer.
+ *
+ * The option pointer is borrowed: the option itself is owned by the
+ * parser, so releasing the box never destroys it.
+ */
+struct OptionState {
 	CommandLineParser::Option *option;
 };
 
-struct OakCommonCommandLinePositionalArgument {
+/**
+ * @brief State boxed behind a positional-argument handle's ctx pointer.
+ *
+ * The argument pointer is borrowed: the argument itself is owned by the
+ * parser, so releasing the box never destroys it.
+ */
+struct PositionalArgumentState {
 	CommandLineParser::PositionalArgument *argument;
 };
 
-OakCommonCommandLineParser *oakcommon_commandlineparser_init(void)
+CommandLineParser *clp(OakCommandLineParser parser)
+{
+	return oakcommon::handle_impl<CommandLineParser>(parser.ctx);
+}
+
+CommandLineParser::Option *clo(OakCommandLineOption option)
+{
+	OptionState *state =
+		oakcommon::handle_impl<OptionState>(option.ctx);
+	return state ? state->option : nullptr;
+}
+
+CommandLineParser::PositionalArgument *clpa(
+	OakCommandLinePositionalArgument argument)
+{
+	PositionalArgumentState *state =
+		oakcommon::handle_impl<PositionalArgumentState>(argument.ctx);
+	return state ? state->argument : nullptr;
+}
+
+} // namespace
+
+OakCommandLineParser oakcommon_commandlineparser_init(void)
 {
 	try {
-		return new (std::nothrow) OakCommonCommandLineParser();
+		return oakcommon::make_handle_in_place<OakCommandLineParser,
+											   CommandLineParser>();
 	} catch (...) {
-		return NULL;
+		OakCommandLineParser h = {};
+		return h;
 	}
 }
 
-void oakcommon_commandlineparser_free(OakCommonCommandLineParser *parser)
+void oakcommon_commandlineparser_free(OakCommandLineParser *parser)
 {
-	delete parser;
+	oakcommon::free_handle(parser);
 }
 
-int oakcommon_commandlineparser_set_app_info(OakCommonCommandLineParser *parser,
+int oakcommon_commandlineparser_set_app_info(OakCommandLineParser parser,
 											 const char *name,
 											 const char *version)
 {
-	if (!parser || !name) {
+	if (!clp(parser) || !name) {
 		return OAKCOMMON_E_INVALID;
 	}
 
 	try {
-		parser->impl.set_app_info(name, version ? version : "");
+		clp(parser)->set_app_info(name, version ? version : "");
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
@@ -70,11 +106,11 @@ int oakcommon_commandlineparser_set_app_info(OakCommonCommandLineParser *parser,
 }
 
 int oakcommon_commandlineparser_add_option(
-	OakCommonCommandLineParser *parser, const char *const *names, int name_count,
+	OakCommandLineParser parser, const char *const *names, int name_count,
 	const char *description, int takes_arg, const char *arg_placeholder,
-	int hidden, OakCommonCommandLineOption **out_option)
+	int hidden, OakCommandLineOption *out_option)
 {
-	if (!parser || !names || name_count <= 0) {
+	if (!clp(parser) || !names || name_count <= 0) {
 		return OAKCOMMON_E_INVALID;
 	}
 
@@ -88,18 +124,16 @@ int oakcommon_commandlineparser_add_option(
 			strings.emplace_back(names[i]);
 		}
 
-		const CommandLineParser::Option *option = parser->impl.add_option(
+		const CommandLineParser::Option *option = clp(parser)->add_option(
 			strings, description ? description : "", takes_arg != 0,
 			arg_placeholder ? arg_placeholder : "", hidden != 0);
 
 		if (out_option) {
-			auto *handle =
-				new (std::nothrow) OakCommonCommandLineOption();
-			if (!handle) {
+			*out_option = oakcommon::make_handle<OakCommandLineOption>(
+				OptionState{const_cast<CommandLineParser::Option *>(option)});
+			if (!out_option->ctx) {
 				return OAKCOMMON_E_NOMEM;
 			}
-			handle->option = const_cast<CommandLineParser::Option *>(option);
-			*out_option = handle;
 		}
 
 		return OAKCOMMON_OK;
@@ -109,28 +143,28 @@ int oakcommon_commandlineparser_add_option(
 }
 
 int oakcommon_commandlineparser_add_positional_argument(
-	OakCommonCommandLineParser *parser, const char *name,
+	OakCommandLineParser parser, const char *name,
 	const char *description, int required,
-	OakCommonCommandLinePositionalArgument **out_argument)
+	OakCommandLinePositionalArgument *out_argument)
 {
-	if (!parser || !name) {
+	if (!clp(parser) || !name) {
 		return OAKCOMMON_E_INVALID;
 	}
 
 	try {
 		const CommandLineParser::PositionalArgument *argument =
-			parser->impl.add_positional_argument(
+			clp(parser)->add_positional_argument(
 				name, description ? description : "", required != 0);
 
 		if (out_argument) {
-			auto *handle =
-				new (std::nothrow) OakCommonCommandLinePositionalArgument();
-			if (!handle) {
+			*out_argument =
+				oakcommon::make_handle<OakCommandLinePositionalArgument>(
+					PositionalArgumentState{
+						const_cast<CommandLineParser::PositionalArgument *>(
+							argument)});
+			if (!out_argument->ctx) {
 				return OAKCOMMON_E_NOMEM;
 			}
-			handle->argument =
-				const_cast<CommandLineParser::PositionalArgument *>(argument);
-			*out_argument = handle;
 		}
 
 		return OAKCOMMON_OK;
@@ -139,10 +173,10 @@ int oakcommon_commandlineparser_add_positional_argument(
 	}
 }
 
-int oakcommon_commandlineparser_process(OakCommonCommandLineParser *parser,
+int oakcommon_commandlineparser_process(OakCommandLineParser parser,
 										const char *const *argv, int argc)
 {
-	if (!parser || !argv || argc < 0) {
+	if (!clp(parser) || !argv || argc < 0) {
 		return OAKCOMMON_E_INVALID;
 	}
 
@@ -153,37 +187,37 @@ int oakcommon_commandlineparser_process(OakCommonCommandLineParser *parser,
 			args.emplace_back(argv[i] ? argv[i] : "");
 		}
 
-		parser->impl.process(args);
+		clp(parser)->process(args);
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_commandlineparser_print_help(OakCommonCommandLineParser *parser,
+int oakcommon_commandlineparser_print_help(OakCommandLineParser parser,
 										   const char *filename)
 {
-	if (!parser || !filename) {
+	if (!clp(parser) || !filename) {
 		return OAKCOMMON_E_INVALID;
 	}
 
 	try {
-		parser->impl.print_help(filename);
+		clp(parser)->print_help(filename);
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_commandlineoption_is_set(OakCommonCommandLineOption *option,
+int oakcommon_commandlineoption_is_set(OakCommandLineOption option,
 									   bool *is_set)
 {
-	if (!option || !option->option || !is_set) {
+	if (!clo(option) || !is_set) {
 		return OAKCOMMON_E_INVALID;
 	}
 
 	try {
-		*is_set = option->option->is_set();
+		*is_set = clo(option)->is_set();
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
@@ -212,29 +246,29 @@ static int copy_setting(const std::string &value, char *buf, int buf_size)
 	return required;
 }
 
-int oakcommon_commandlineoption_get_setting(OakCommonCommandLineOption *option,
+int oakcommon_commandlineoption_get_setting(OakCommandLineOption option,
 											char *buf, int buf_size)
 {
-	if (!option || !option->option) {
+	if (!clo(option)) {
 		return OAKCOMMON_E_INVALID;
 	}
 
 	try {
-		return copy_setting(option->option->get_setting(), buf, buf_size);
+		return copy_setting(clo(option)->get_setting(), buf, buf_size);
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_commandlineoption_set_setting(OakCommonCommandLineOption *option,
+int oakcommon_commandlineoption_set_setting(OakCommandLineOption option,
 											const char *value)
 {
-	if (!option || !option->option || !value) {
+	if (!clo(option) || !value) {
 		return OAKCOMMON_E_INVALID;
 	}
 
 	try {
-		option->option->set_setting(value);
+		clo(option)->set_setting(value);
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
@@ -242,41 +276,41 @@ int oakcommon_commandlineoption_set_setting(OakCommonCommandLineOption *option,
 }
 
 int oakcommon_commandlinepositionalargument_get_setting(
-	OakCommonCommandLinePositionalArgument *argument, char *buf, int buf_size)
+	OakCommandLinePositionalArgument argument, char *buf, int buf_size)
 {
-	if (!argument || !argument->argument) {
+	if (!clpa(argument)) {
 		return OAKCOMMON_E_INVALID;
 	}
 
 	try {
-		return copy_setting(argument->argument->get_setting(), buf, buf_size);
+		return copy_setting(clpa(argument)->get_setting(), buf, buf_size);
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
 int oakcommon_commandlinepositionalargument_set_setting(
-	OakCommonCommandLinePositionalArgument *argument, const char *value)
+	OakCommandLinePositionalArgument argument, const char *value)
 {
-	if (!argument || !argument->argument || !value) {
+	if (!clpa(argument) || !value) {
 		return OAKCOMMON_E_INVALID;
 	}
 
 	try {
-		argument->argument->set_setting(value);
+		clpa(argument)->set_setting(value);
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-void oakcommon_commandlineoption_free(OakCommonCommandLineOption *option)
+void oakcommon_commandlineoption_free(OakCommandLineOption *option)
 {
-	delete option;
+	oakcommon::free_handle(option);
 }
 
 void oakcommon_commandlinepositionalargument_free(
-	OakCommonCommandLinePositionalArgument *argument)
+	OakCommandLinePositionalArgument *argument)
 {
-	delete argument;
+	oakcommon::free_handle(argument);
 }

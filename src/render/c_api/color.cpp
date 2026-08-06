@@ -30,6 +30,7 @@
 
 #include "color/colormanager/colormanager.h"
 #include "filefunctions.h"
+#include <OpenColorIO/OpenColorIO.h>
 
 namespace
 {
@@ -57,7 +58,7 @@ OakColorProcessor *oakrender_color_processor_create(const char *src_space,
 		return nullptr;
 	}
 	try {
-		ocio::ConstConfigRcPtr config = olive::ColorManager::get_default_config();
+		OCIO_NAMESPACE::ConstConfigRcPtr config = olive::ColorManager::get_default_config();
 		if (!config) {
 			return nullptr;
 		}
@@ -69,17 +70,17 @@ OakColorProcessor *oakrender_color_processor_create(const char *src_space,
 			src = config->getCanonicalName(src_space);
 		}
 
-		// OCIO failures are non-fatal (matching the C++ behavior): the
+		// OCIO_NAMESPACE failures are non-fatal (matching the C++ behavior): the
 		// handle is still returned, but holds a null processor and
 		// conversions pass through.
-		ocio::ConstProcessorRcPtr processor;
+		OCIO_NAMESPACE::ConstProcessorRcPtr processor;
 		try {
 			if (direction == OAKRENDER_COLOR_DIRECTION_NORMAL) {
 				processor = config->getProcessor(src.c_str(), dst_transform);
 			} else {
 				processor = config->getProcessor(dst_transform, src.c_str());
 			}
-		} catch (ocio::Exception &) {
+		} catch (OCIO_NAMESPACE::Exception &) {
 			processor = nullptr;
 		}
 
@@ -169,7 +170,7 @@ int oakrender_color_manager_display_transform(const char *display,
 		return OAKRENDER_E_INVALID;
 	}
 	try {
-		ocio::ConstConfigRcPtr config = olive::ColorManager::get_default_config();
+		OCIO_NAMESPACE::ConstConfigRcPtr config = olive::ColorManager::get_default_config();
 		if (!config) {
 			return OAKRENDER_E_STATE;
 		}
@@ -197,24 +198,43 @@ int oakrender_color_manager_display_transform(const char *display,
 		}
 
 		// Source = the config's reference colorspace (role lookup).
-		ocio::ConstColorSpaceRcPtr ref_cs =
-			config->getColorSpace(ocio::ROLE_REFERENCE);
+		OCIO_NAMESPACE::ConstColorSpaceRcPtr ref_cs =
+			config->getColorSpace(OCIO_NAMESPACE::ROLE_REFERENCE);
 		if (!ref_cs) {
 			return OAKRENDER_E_STATE;
 		}
 
-		auto dvt = ocio::DisplayViewTransform::Create();
+		auto dvt = OCIO_NAMESPACE::DisplayViewTransform::Create();
 		dvt->setSrc(ref_cs->getName());
 		dvt->setDisplay(display);
 		dvt->setView(view);
 
-		ocio::ConstProcessorRcPtr processor = config->getProcessor(dvt);
+		OCIO_NAMESPACE::ConstProcessorRcPtr processor = config->getProcessor(dvt);
 		if (!processor) {
 			return OAKRENDER_E_NOT_FOUND;
 		}
 		return write_string(processor->getCacheID(), buf, n);
-	} catch (ocio::Exception &) {
+	} catch (OCIO_NAMESPACE::Exception &) {
 		return OAKRENDER_E_NOT_FOUND;
+	} catch (...) {
+		return OAKRENDER_E_FAILED;
+	}
+}
+
+int oakrender_color_processor_convert_frame(OakColorProcessor *processor,
+											OakCodecFrame *frame)
+{
+	if (!processor || !processor->ptr || !frame || !frame->ptr) {
+		return OAKRENDER_E_INVALID;
+	}
+	try {
+		// In-place: ColorProcessor::convert_frame() applies the CPU
+		// processor to the frame's pixel buffer through an
+		// OCIO::PackedImageDesc view. A processor whose underlying OCIO
+		// processor is null (creation failure was non-fatal) is a
+		// pass-through and still reports success, mirroring the C++ API.
+		processor->ptr->convert_frame(frame->ptr);
+		return OAKRENDER_OK;
 	} catch (...) {
 		return OAKRENDER_E_FAILED;
 	}

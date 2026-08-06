@@ -28,13 +28,6 @@
 #include "colortransform.h"
 #include "project.h"
 
-// Same handle-echo pattern as sequence.cpp: oakcommon defines
-// `struct OakCommonColorTransform { olive::ColorTransform impl; }`
-// (src/common/c_api/colortransform.cpp) without exporting the definition.
-struct OakCommonColorTransform {
-	olive::ColorTransform impl;
-};
-
 struct OakNodeColorManager {
 	olive::ColorManager impl;
 };
@@ -349,20 +342,29 @@ int oaknode_colormanager_get_default_luma_coefs(OakNodeColorManager *manager,
 }
 
 int oaknode_colormanager_get_compliant_color_transform(
-	OakNodeColorManager *manager, const OakCommonColorTransform *transform,
-	int force_display, OakCommonColorTransform **out)
+	OakNodeColorManager *manager, OakColorTransform transform,
+	int force_display, OakColorTransform *out)
 {
-	if (!manager || !transform || !out) {
+	if (!manager || !out) {
+		return OAKNODE_E_INVALID;
+	}
+	const olive::ColorTransform *native =
+		oakcommon_colortransform_get_native(transform);
+	if (!native) {
 		return OAKNODE_E_INVALID;
 	}
 	if (!has_config(&manager->impl)) {
 		return OAKNODE_E_STATE;
 	}
 	try {
-		*out = new OakCommonColorTransform{
-			manager->impl.get_compliant_color_space(transform->impl,
-													force_display != 0)};
+		const olive::ColorTransform compliant =
+			manager->impl.get_compliant_color_space(*native,
+													force_display != 0);
+		*out = oakcommon_colortransform_init_from_native(&compliant);
 	} catch (...) {
+		return OAKNODE_E_NOMEM;
+	}
+	if (!out->ctx) {
 		return OAKNODE_E_NOMEM;
 	}
 	return OAKNODE_OK;

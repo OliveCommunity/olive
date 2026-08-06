@@ -35,8 +35,9 @@
  * Qt-free reimplementation of the former olive::OIIOUtils. The reverse
  * dependencies on codec/frame.h and render/videoparams.h (which pull in
  * Qt) were replaced with the Qt-free olive/core/render/pixelformat.h and
- * olive/core/util/rational.h. The Frame-based helpers were flattened to
- * raw data pointer + linesize, which is all they ever used from Frame.
+ * olive/core/util/rational.h. The Frame-based helpers (frame_to_buffer /
+ * buffer_to_frame) moved to oakcodec in M5
+ * (src/codec/src/oiioframebridge.h) — they are only used by codec.
  */
 class OIIOUtils {
 public:
@@ -65,24 +66,6 @@ public:
 	 */
 	static olive::core::Rational
 	get_pixel_aspect_ratio_from_oiio(const OIIO::ImageSpec &spec);
-
-	/**
-	 * @brief Copies raw pixel data into an OIIO image buffer
-	 *
-	 * Flattened form of the former Frame-based frame_to_buffer(); pass
-	 * Frame::const_data() and Frame::linesize_bytes() at the call site.
-	 */
-	static void frame_to_buffer(const void *data, int64_t linesize_bytes,
-								OIIO::ImageBuf *buf);
-
-	/**
-	 * @brief Copies an OIIO image buffer's pixels into raw memory
-	 *
-	 * Flattened form of the former Frame-based buffer_to_frame(); pass
-	 * Frame::data() and Frame::linesize_bytes() at the call site.
-	 */
-	static void buffer_to_frame(OIIO::ImageBuf *buf, void *data,
-								int64_t linesize_bytes);
 };
 
 #endif // OAK_OIIOUTILS_H

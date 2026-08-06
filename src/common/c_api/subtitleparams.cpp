@@ -23,13 +23,18 @@
 #include <cstring>
 
 #include "../src/subtitleparams.h"
-
-struct OakCommonSubtitleParams {
-	olive::SubtitleParams impl;
-};
+#include "refcounted.h"
 
 namespace
 {
+
+/**
+ * @brief Recover the boxed olive::SubtitleParams from a handle (NULL-safe).
+ */
+olive::SubtitleParams *sp(OakSubtitleParams params)
+{
+	return oakcommon::handle_impl<olive::SubtitleParams>(params.ctx);
+}
 
 int copy_string(const std::string &value, char *buf, int buf_size)
 {
@@ -41,92 +46,110 @@ int copy_string(const std::string &value, char *buf, int buf_size)
 
 } // namespace
 
-OakCommonSubtitleParams *oakcommon_subtitleparams_init(void)
+OakSubtitleParams oakcommon_subtitleparams_init(void)
 {
 	try {
-		return new OakCommonSubtitleParams{olive::SubtitleParams()};
+		return oakcommon::make_handle<OakSubtitleParams>(
+			olive::SubtitleParams());
 	} catch (...) {
-		return nullptr;
+		OakSubtitleParams h = {};
+		return h;
 	}
 }
 
-void oakcommon_subtitleparams_free(OakCommonSubtitleParams *params)
+OakSubtitleParams oakcommon_subtitleparams_init_from_native(
+	const olive::SubtitleParams *src)
 {
-	delete params;
+	if (!src) {
+		OakSubtitleParams h = {};
+		return h;
+	}
+	try {
+		return oakcommon::make_handle<OakSubtitleParams>(
+			olive::SubtitleParams(*src));
+	} catch (...) {
+		OakSubtitleParams h = {};
+		return h;
+	}
+}
+
+void oakcommon_subtitleparams_free(OakSubtitleParams *params)
+{
+	oakcommon::free_handle(params);
 }
 
 int oakcommon_subtitleparams_get_stream_index(
-	OakCommonSubtitleParams *params, int *index)
+	OakSubtitleParams params, int *index)
 {
-	if (!params || !index)
+	if (!sp(params) || !index)
 		return OAKCOMMON_E_INVALID;
-	*index = params->impl.stream_index();
+	*index = sp(params)->stream_index();
 	return OAKCOMMON_OK;
 }
 
 int oakcommon_subtitleparams_set_stream_index(
-	OakCommonSubtitleParams *params, int index)
+	OakSubtitleParams params, int index)
 {
-	if (!params)
+	if (!sp(params))
 		return OAKCOMMON_E_INVALID;
-	params->impl.set_stream_index(index);
+	sp(params)->set_stream_index(index);
 	return OAKCOMMON_OK;
 }
 
-int oakcommon_subtitleparams_get_enabled(OakCommonSubtitleParams *params,
+int oakcommon_subtitleparams_get_enabled(OakSubtitleParams params,
 										 int *enabled)
 {
-	if (!params || !enabled)
+	if (!sp(params) || !enabled)
 		return OAKCOMMON_E_INVALID;
-	*enabled = params->impl.enabled() ? 1 : 0;
+	*enabled = sp(params)->enabled() ? 1 : 0;
 	return OAKCOMMON_OK;
 }
 
-int oakcommon_subtitleparams_set_enabled(OakCommonSubtitleParams *params,
+int oakcommon_subtitleparams_set_enabled(OakSubtitleParams params,
 										 int enabled)
 {
-	if (!params)
+	if (!sp(params))
 		return OAKCOMMON_E_INVALID;
-	params->impl.set_enabled(enabled != 0);
+	sp(params)->set_enabled(enabled != 0);
 	return OAKCOMMON_OK;
 }
 
-int oakcommon_subtitleparams_is_valid(OakCommonSubtitleParams *params,
+int oakcommon_subtitleparams_is_valid(OakSubtitleParams params,
 									  int *is_valid)
 {
-	if (!params || !is_valid)
+	if (!sp(params) || !is_valid)
 		return OAKCOMMON_E_INVALID;
-	*is_valid = params->impl.is_valid() ? 1 : 0;
+	*is_valid = sp(params)->is_valid() ? 1 : 0;
 	return OAKCOMMON_OK;
 }
 
-int oakcommon_subtitleparams_count(OakCommonSubtitleParams *params, int *count)
+int oakcommon_subtitleparams_count(OakSubtitleParams params, int *count)
 {
-	if (!params || !count)
+	if (!sp(params) || !count)
 		return OAKCOMMON_E_INVALID;
-	*count = (int)params->impl.size();
+	*count = (int)sp(params)->size();
 	return OAKCOMMON_OK;
 }
 
-int oakcommon_subtitleparams_duration(OakCommonSubtitleParams *params,
+int oakcommon_subtitleparams_duration(OakSubtitleParams params,
 									  int *numerator, int *denominator)
 {
-	if (!params || !numerator || !denominator)
+	if (!sp(params) || !numerator || !denominator)
 		return OAKCOMMON_E_INVALID;
-	olive::core::Rational d = params->impl.duration();
+	olive::core::Rational d = sp(params)->duration();
 	*numerator = d.numerator();
 	*denominator = d.denominator();
 	return OAKCOMMON_OK;
 }
 
-int oakcommon_subtitleparams_add_subtitle(OakCommonSubtitleParams *params,
+int oakcommon_subtitleparams_add_subtitle(OakSubtitleParams params,
 										  int in_num, int in_den, int out_num,
 										  int out_den, const char *text)
 {
-	if (!params || !text)
+	if (!sp(params) || !text)
 		return OAKCOMMON_E_INVALID;
 	try {
-		params->impl.push_back(olive::Subtitle(
+		sp(params)->push_back(olive::Subtitle(
 			olive::core::TimeRange(olive::core::Rational(in_num, in_den),
 								   olive::core::Rational(out_num, out_den)),
 			text));
@@ -136,23 +159,23 @@ int oakcommon_subtitleparams_add_subtitle(OakCommonSubtitleParams *params,
 	}
 }
 
-int oakcommon_subtitleparams_clear(OakCommonSubtitleParams *params)
+int oakcommon_subtitleparams_clear(OakSubtitleParams params)
 {
-	if (!params)
+	if (!sp(params))
 		return OAKCOMMON_E_INVALID;
-	params->impl.clear();
+	sp(params)->clear();
 	return OAKCOMMON_OK;
 }
 
-int oakcommon_subtitleparams_get_subtitle(OakCommonSubtitleParams *params,
+int oakcommon_subtitleparams_get_subtitle(OakSubtitleParams params,
 										  int index, int *in_num, int *in_den,
 										  int *out_num, int *out_den)
 {
-	if (!params || !in_num || !in_den || !out_num || !out_den)
+	if (!sp(params) || !in_num || !in_den || !out_num || !out_den)
 		return OAKCOMMON_E_INVALID;
-	if (index < 0 || index >= (int)params->impl.size())
+	if (index < 0 || index >= (int)sp(params)->size())
 		return OAKCOMMON_E_NOT_FOUND;
-	const olive::Subtitle &s = params->impl.at(index);
+	const olive::Subtitle &s = sp(params)->at(index);
 	olive::core::Rational in = s.time().in();
 	olive::core::Rational out = s.time().out();
 	*in_num = in.numerator();
@@ -162,16 +185,16 @@ int oakcommon_subtitleparams_get_subtitle(OakCommonSubtitleParams *params,
 	return OAKCOMMON_OK;
 }
 
-int oakcommon_subtitleparams_get_subtitle_text(OakCommonSubtitleParams *params,
+int oakcommon_subtitleparams_get_subtitle_text(OakSubtitleParams params,
 											   int index, char *buf,
 											   int buf_size)
 {
-	if (!params)
+	if (!sp(params))
 		return OAKCOMMON_E_INVALID;
-	if (index < 0 || index >= (int)params->impl.size())
+	if (index < 0 || index >= (int)sp(params)->size())
 		return OAKCOMMON_E_NOT_FOUND;
 	try {
-		return copy_string(params->impl.at(index).text(), buf, buf_size);
+		return copy_string(sp(params)->at(index).text(), buf, buf_size);
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
@@ -187,10 +210,10 @@ int oakcommon_subtitleparams_generate_ass_header(char *buf, int buf_size)
 	}
 }
 
-int oakcommon_subtitleparams_load_xml(OakCommonSubtitleParams *params,
+int oakcommon_subtitleparams_load_xml(OakSubtitleParams params,
 									  const char *xml)
 {
-	if (!params || !xml)
+	if (!sp(params) || !xml)
 		return OAKCOMMON_E_INVALID;
 	try {
 		olive::XmlStreamReader reader(xml);
@@ -199,22 +222,22 @@ int oakcommon_subtitleparams_load_xml(OakCommonSubtitleParams *params,
 		// Position on the root element; load() consumes its children.
 		if (!olive::xml_read_next_start_element(&reader))
 			return OAKCOMMON_E_FAILED;
-		params->impl.load(&reader);
+		sp(params)->load(&reader);
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
 }
 
-int oakcommon_subtitleparams_save_xml(OakCommonSubtitleParams *params,
+int oakcommon_subtitleparams_save_xml(OakSubtitleParams params,
 									  char *buf, int buf_size)
 {
-	if (!params)
+	if (!sp(params))
 		return OAKCOMMON_E_INVALID;
 	try {
 		olive::XmlStreamWriter writer;
 		writer.write_start_element("subtitleparams");
-		params->impl.save(&writer);
+		sp(params)->save(&writer);
 		writer.write_end_element();
 		return copy_string(writer.output(), buf, buf_size);
 	} catch (...) {

@@ -29,8 +29,8 @@
 namespace
 {
 
-std::string read_string(int (*fn)(OakCommonXmlReader *, char *, int),
-						OakCommonXmlReader *reader)
+std::string read_string(int (*fn)(OakXmlReader, char *, int),
+						OakXmlReader reader)
 {
 	int needed = fn(reader, nullptr, 0);
 	EXPECT_GT(needed, 0);
@@ -43,7 +43,7 @@ std::string read_string(int (*fn)(OakCommonXmlReader *, char *, int),
 
 TEST(CommonXmlUtilsCApi, ReaderInitNullData)
 {
-	EXPECT_EQ(oakcommon_xml_reader_init(nullptr), nullptr);
+	EXPECT_EQ(oakcommon_xml_reader_init(nullptr).ctx, nullptr);
 }
 
 TEST(CommonXmlUtilsCApi, ReaderFreeNull)
@@ -53,9 +53,8 @@ TEST(CommonXmlUtilsCApi, ReaderFreeNull)
 
 TEST(CommonXmlUtilsCApi, ReadNextStartElement)
 {
-	OakCommonXmlReader *r =
-		oakcommon_xml_reader_init("<root><child>value</child></root>");
-	ASSERT_NE(r, nullptr);
+	OakXmlReader r = oakcommon_xml_reader_init("<root><child>value</child></root>");
+	ASSERT_NE(r.ctx, nullptr);
 
 	int found = 0;
 	EXPECT_EQ(oakcommon_xml_reader_read_next_start_element(r, &found),
@@ -68,26 +67,26 @@ TEST(CommonXmlUtilsCApi, ReadNextStartElement)
 	EXPECT_EQ(found, 1);
 	EXPECT_EQ(read_string(oakcommon_xml_reader_name, r), "child");
 
-	oakcommon_xml_reader_free(r);
+	oakcommon_xml_reader_free(&r);
 }
 
 TEST(CommonXmlUtilsCApi, ReadNextStartElementNullHandle)
 {
 	int found = 0;
-	EXPECT_EQ(oakcommon_xml_reader_read_next_start_element(nullptr, &found),
+	EXPECT_EQ(oakcommon_xml_reader_read_next_start_element(OakXmlReader{}, &found),
 			  OAKCOMMON_E_INVALID);
 
-	OakCommonXmlReader *r = oakcommon_xml_reader_init("<root/>");
-	ASSERT_NE(r, nullptr);
+	OakXmlReader r = oakcommon_xml_reader_init("<root/>");
+	ASSERT_NE(r.ctx, nullptr);
 	EXPECT_EQ(oakcommon_xml_reader_read_next_start_element(r, nullptr),
 			  OAKCOMMON_E_INVALID);
-	oakcommon_xml_reader_free(r);
+	oakcommon_xml_reader_free(&r);
 }
 
 TEST(CommonXmlUtilsCApi, ReadNextStartElementReturnsFalseAtEnd)
 {
-	OakCommonXmlReader *r = oakcommon_xml_reader_init("<root/>");
-	ASSERT_NE(r, nullptr);
+	OakXmlReader r = oakcommon_xml_reader_init("<root/>");
+	ASSERT_NE(r.ctx, nullptr);
 
 	int found = -1;
 	EXPECT_EQ(oakcommon_xml_reader_read_next_start_element(r, &found),
@@ -97,21 +96,21 @@ TEST(CommonXmlUtilsCApi, ReadNextStartElementReturnsFalseAtEnd)
 			  OAKCOMMON_OK);
 	EXPECT_EQ(found, 0);
 
-	oakcommon_xml_reader_free(r);
+	oakcommon_xml_reader_free(&r);
 }
 
 TEST(CommonXmlUtilsCApi, NameNullHandle)
 {
 	char buf[16];
-	EXPECT_EQ(oakcommon_xml_reader_name(nullptr, buf, sizeof(buf)),
+	EXPECT_EQ(oakcommon_xml_reader_name(OakXmlReader{}, buf, sizeof(buf)),
 			  OAKCOMMON_E_INVALID);
 }
 
 TEST(CommonXmlUtilsCApi, ReadElementText)
 {
-	OakCommonXmlReader *r =
+	OakXmlReader r =
 		oakcommon_xml_reader_init("<root><child>a &amp; b</child></root>");
-	ASSERT_NE(r, nullptr);
+	ASSERT_NE(r.ctx, nullptr);
 
 	int found = 0;
 	EXPECT_EQ(oakcommon_xml_reader_read_next_start_element(r, &found),
@@ -122,22 +121,22 @@ TEST(CommonXmlUtilsCApi, ReadElementText)
 	EXPECT_EQ(read_string(oakcommon_xml_reader_read_element_text, r),
 			  "a & b");
 
-	oakcommon_xml_reader_free(r);
+	oakcommon_xml_reader_free(&r);
 }
 
 TEST(CommonXmlUtilsCApi, ReadElementTextNullHandle)
 {
 	char buf[16];
-	EXPECT_EQ(oakcommon_xml_reader_read_element_text(nullptr, buf,
+	EXPECT_EQ(oakcommon_xml_reader_read_element_text(OakXmlReader{}, buf,
 													 sizeof(buf)),
 			  OAKCOMMON_E_INVALID);
 }
 
 TEST(CommonXmlUtilsCApi, SkipCurrentElement)
 {
-	OakCommonXmlReader *r = oakcommon_xml_reader_init(
+	OakXmlReader r = oakcommon_xml_reader_init(
 		"<root><unknown><nested/></unknown><known/></root>");
-	ASSERT_NE(r, nullptr);
+	ASSERT_NE(r.ctx, nullptr);
 
 	int found = 0;
 	EXPECT_EQ(oakcommon_xml_reader_read_next_start_element(r, &found),
@@ -153,20 +152,20 @@ TEST(CommonXmlUtilsCApi, SkipCurrentElement)
 	EXPECT_EQ(found, 1);
 	EXPECT_EQ(read_string(oakcommon_xml_reader_name, r), "known");
 
-	oakcommon_xml_reader_free(r);
+	oakcommon_xml_reader_free(&r);
 }
 
 TEST(CommonXmlUtilsCApi, SkipCurrentElementNullHandle)
 {
-	EXPECT_EQ(oakcommon_xml_reader_skip_current_element(nullptr),
+	EXPECT_EQ(oakcommon_xml_reader_skip_current_element(OakXmlReader{}),
 			  OAKCOMMON_E_INVALID);
 }
 
 TEST(CommonXmlUtilsCApi, Attributes)
 {
-	OakCommonXmlReader *r = oakcommon_xml_reader_init(
+	OakXmlReader r = oakcommon_xml_reader_init(
 		"<root><item id=\"7\" name=\"a&quot;b\"/></root>");
-	ASSERT_NE(r, nullptr);
+	ASSERT_NE(r.ctx, nullptr);
 
 	int found = 0;
 	EXPECT_EQ(oakcommon_xml_reader_read_next_start_element(r, &found),
@@ -191,16 +190,16 @@ TEST(CommonXmlUtilsCApi, Attributes)
 			  0);
 	EXPECT_STREQ(buf, "a\"b");
 
-	oakcommon_xml_reader_free(r);
+	oakcommon_xml_reader_free(&r);
 }
 
 TEST(CommonXmlUtilsCApi, AttributeErrorPaths)
 {
-	EXPECT_EQ(oakcommon_xml_reader_attribute_count(nullptr, nullptr),
+	EXPECT_EQ(oakcommon_xml_reader_attribute_count(OakXmlReader{}, nullptr),
 			  OAKCOMMON_E_INVALID);
 
-	OakCommonXmlReader *r = oakcommon_xml_reader_init("<root a=\"1\"/>");
-	ASSERT_NE(r, nullptr);
+	OakXmlReader r = oakcommon_xml_reader_init("<root a=\"1\"/>");
+	ASSERT_NE(r.ctx, nullptr);
 	int found = 0;
 	EXPECT_EQ(oakcommon_xml_reader_read_next_start_element(r, &found),
 			  OAKCOMMON_OK);
@@ -210,30 +209,29 @@ TEST(CommonXmlUtilsCApi, AttributeErrorPaths)
 			  OAKCOMMON_E_NOT_FOUND);
 	EXPECT_EQ(oakcommon_xml_reader_attribute_value(r, -1, buf, sizeof(buf)),
 			  OAKCOMMON_E_NOT_FOUND);
-	EXPECT_EQ(oakcommon_xml_reader_attribute_name(nullptr, 0, buf,
+	EXPECT_EQ(oakcommon_xml_reader_attribute_name(OakXmlReader{}, 0, buf,
 												  sizeof(buf)),
 			  OAKCOMMON_E_INVALID);
 
-	oakcommon_xml_reader_free(r);
+	oakcommon_xml_reader_free(&r);
 }
 
 TEST(CommonXmlUtilsCApi, HasError)
 {
-	OakCommonXmlReader *bad =
-		oakcommon_xml_reader_init("<root><unclosed></root>");
-	ASSERT_NE(bad, nullptr);
+	OakXmlReader bad = oakcommon_xml_reader_init("<root><unclosed></root>");
+	ASSERT_NE(bad.ctx, nullptr);
 	int has_error = 0;
 	EXPECT_EQ(oakcommon_xml_reader_has_error(bad, &has_error), OAKCOMMON_OK);
 	EXPECT_EQ(has_error, 1);
-	oakcommon_xml_reader_free(bad);
+	oakcommon_xml_reader_free(&bad);
 
-	OakCommonXmlReader *good = oakcommon_xml_reader_init("<root/>");
-	ASSERT_NE(good, nullptr);
+	OakXmlReader good = oakcommon_xml_reader_init("<root/>");
+	ASSERT_NE(good.ctx, nullptr);
 	EXPECT_EQ(oakcommon_xml_reader_has_error(good, &has_error), OAKCOMMON_OK);
 	EXPECT_EQ(has_error, 0);
-	EXPECT_EQ(oakcommon_xml_reader_has_error(nullptr, &has_error),
+	EXPECT_EQ(oakcommon_xml_reader_has_error(OakXmlReader{}, &has_error),
 			  OAKCOMMON_E_INVALID);
-	oakcommon_xml_reader_free(good);
+	oakcommon_xml_reader_free(&good);
 }
 
 TEST(CommonXmlUtilsCApi, WriterFreeNull)
@@ -244,17 +242,17 @@ TEST(CommonXmlUtilsCApi, WriterFreeNull)
 TEST(CommonXmlUtilsCApi, WriterNullHandleAndArgs)
 {
 	char buf[16];
-	EXPECT_EQ(oakcommon_xml_writer_write_start_element(nullptr, "a"),
+	EXPECT_EQ(oakcommon_xml_writer_write_start_element(OakXmlWriter{}, "a"),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_xml_writer_write_end_element(nullptr),
+	EXPECT_EQ(oakcommon_xml_writer_write_end_element(OakXmlWriter{}),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_xml_writer_write_end_document(nullptr),
+	EXPECT_EQ(oakcommon_xml_writer_write_end_document(OakXmlWriter{}),
 			  OAKCOMMON_E_INVALID);
-	EXPECT_EQ(oakcommon_xml_writer_output(nullptr, buf, sizeof(buf)),
+	EXPECT_EQ(oakcommon_xml_writer_output(OakXmlWriter{}, buf, sizeof(buf)),
 			  OAKCOMMON_E_INVALID);
 
-	OakCommonXmlWriter *w = oakcommon_xml_writer_init();
-	ASSERT_NE(w, nullptr);
+	OakXmlWriter w = oakcommon_xml_writer_init();
+	ASSERT_NE(w.ctx, nullptr);
 	EXPECT_EQ(oakcommon_xml_writer_write_start_element(w, nullptr),
 			  OAKCOMMON_E_INVALID);
 	EXPECT_EQ(oakcommon_xml_writer_write_attribute(w, "a", nullptr),
@@ -263,13 +261,13 @@ TEST(CommonXmlUtilsCApi, WriterNullHandleAndArgs)
 			  OAKCOMMON_E_INVALID);
 	EXPECT_EQ(oakcommon_xml_writer_write_text_element(w, nullptr, "x"),
 			  OAKCOMMON_E_INVALID);
-	oakcommon_xml_writer_free(w);
+	oakcommon_xml_writer_free(&w);
 }
 
 TEST(CommonXmlUtilsCApi, WriterRoundTrip)
 {
-	OakCommonXmlWriter *w = oakcommon_xml_writer_init();
-	ASSERT_NE(w, nullptr);
+	OakXmlWriter w = oakcommon_xml_writer_init();
+	ASSERT_NE(w.ctx, nullptr);
 
 	EXPECT_EQ(oakcommon_xml_writer_write_start_element(w, "root"),
 			  OAKCOMMON_OK);
@@ -287,11 +285,11 @@ TEST(CommonXmlUtilsCApi, WriterRoundTrip)
 	ASSERT_GT(needed, 0);
 	std::vector<char> buf(needed);
 	EXPECT_EQ(oakcommon_xml_writer_output(w, buf.data(), needed), needed);
-	oakcommon_xml_writer_free(w);
+	oakcommon_xml_writer_free(&w);
 
 	// Read the produced document back.
-	OakCommonXmlReader *r = oakcommon_xml_reader_init(buf.data());
-	ASSERT_NE(r, nullptr);
+	OakXmlReader r = oakcommon_xml_reader_init(buf.data());
+	ASSERT_NE(r.ctx, nullptr);
 	int has_error = 1;
 	EXPECT_EQ(oakcommon_xml_reader_has_error(r, &has_error), OAKCOMMON_OK);
 	EXPECT_EQ(has_error, 0);
@@ -326,5 +324,5 @@ TEST(CommonXmlUtilsCApi, WriterRoundTrip)
 			  OAKCOMMON_OK);
 	EXPECT_EQ(found, 0);
 
-	oakcommon_xml_reader_free(r);
+	oakcommon_xml_reader_free(&r);
 }

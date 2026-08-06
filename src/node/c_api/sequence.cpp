@@ -28,15 +28,6 @@
 #include "project/sequence/sequence.h"
 #include "videoparams.h"
 
-// oakcommon defines its handle as `struct OakCommonVideoParams {
-// olive::VideoParams impl; }` (src/common/c_api/videoparams.cpp) without
-// exporting the definition. Echoing the identical layout here is the only
-// way to hand native VideoParams values across without a field-by-field
-// copy; keep in sync with oakcommon (flagged in the family-C report).
-struct OakCommonVideoParams {
-	olive::VideoParams impl;
-};
-
 namespace
 {
 
@@ -244,7 +235,7 @@ int oaknode_sequence_get_audio_stream_count(OakNodeSequence *sequence,
 }
 
 int oaknode_sequence_get_video_params(OakNodeSequence *sequence, int index,
-									  OakCommonVideoParams **out)
+									  OakVideoParams *out)
 {
 	if (!sequence || !out || index < 0) {
 		return OAKNODE_E_INVALID;
@@ -253,24 +244,34 @@ int oaknode_sequence_get_video_params(OakNodeSequence *sequence, int index,
 		return OAKNODE_E_NOT_FOUND;
 	}
 	try {
-		*out = new OakCommonVideoParams{impl(sequence)->get_video_params(index)};
+		const olive::VideoParams params =
+			impl(sequence)->get_video_params(index);
+		*out = oakcommon_videoparams_init_from_native(&params);
 	} catch (...) {
+		return OAKNODE_E_NOMEM;
+	}
+	if (!out->ctx) {
 		return OAKNODE_E_NOMEM;
 	}
 	return OAKNODE_OK;
 }
 
 int oaknode_sequence_set_video_params(OakNodeSequence *sequence, int index,
-									  const OakCommonVideoParams *params)
+									  OakVideoParams params)
 {
-	if (!sequence || !params || index < 0) {
+	if (!sequence || index < 0) {
+		return OAKNODE_E_INVALID;
+	}
+	const olive::VideoParams *native =
+		oakcommon_videoparams_get_native(params);
+	if (!native) {
 		return OAKNODE_E_INVALID;
 	}
 	if (index >= impl(sequence)->get_video_stream_count()) {
 		return OAKNODE_E_NOT_FOUND;
 	}
 	try {
-		impl(sequence)->set_video_params(params->impl, index);
+		impl(sequence)->set_video_params(*native, index);
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}

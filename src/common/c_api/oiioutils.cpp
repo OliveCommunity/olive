@@ -23,30 +23,42 @@
 #include <new>
 
 #include "../src/oiioutils.h"
+#include "refcounted.h"
 
-struct OakCommonOIIOUtils {
-	int unused; /**< Stateless; only the address matters. */
+namespace
+{
+
+/**
+ * @brief Stateless family; the boxed object is empty and only exists so
+ *        the handle has something to reference-count.
+ */
+struct OIIOUtilsState {
+	int unused;
 };
 
-OakCommonOIIOUtils *oakcommon_oiioutils_init(void)
+} // namespace
+
+OakOIIOUtils oakcommon_oiioutils_init(void)
 {
 	try {
-		return new (std::nothrow) OakCommonOIIOUtils{};
+		return oakcommon::make_handle<OakOIIOUtils>(
+			OIIOUtilsState{0});
 	} catch (...) {
-		return NULL;
+		OakOIIOUtils h = {};
+		return h;
 	}
 }
 
-void oakcommon_oiioutils_free(OakCommonOIIOUtils *self)
+void oakcommon_oiioutils_free(OakOIIOUtils *self)
 {
-	delete self;
+	oakcommon::free_handle(self);
 }
 
 int oakcommon_oiioutils_get_oiio_base_type_from_format(
-	OakCommonOIIOUtils *self, int pixel_format, int *out_base_type)
+	OakOIIOUtils self, int pixel_format, int *out_base_type)
 {
 	try {
-		if (self == NULL || out_base_type == NULL)
+		if (self.ctx == NULL || out_base_type == NULL)
 			return OAKCOMMON_E_INVALID;
 		if (pixel_format < OAKCOMMON_PIXEL_FORMAT_INVALID ||
 			pixel_format >= OAKCOMMON_PIXEL_FORMAT_COUNT)
@@ -63,10 +75,10 @@ int oakcommon_oiioutils_get_oiio_base_type_from_format(
 }
 
 int oakcommon_oiioutils_get_format_from_oiio_basetype(
-	OakCommonOIIOUtils *self, int base_type, int *out_pixel_format)
+	OakOIIOUtils self, int base_type, int *out_pixel_format)
 {
 	try {
-		if (self == NULL || out_pixel_format == NULL)
+		if (self.ctx == NULL || out_pixel_format == NULL)
 			return OAKCOMMON_E_INVALID;
 		if (base_type < 0 || base_type >= OIIO::TypeDesc::LASTBASE)
 			return OAKCOMMON_E_INVALID;
@@ -82,11 +94,11 @@ int oakcommon_oiioutils_get_format_from_oiio_basetype(
 }
 
 int oakcommon_oiioutils_get_pixel_aspect_ratio(
-	OakCommonOIIOUtils *self, double pixel_aspect_ratio, int *out_numerator,
+	OakOIIOUtils self, double pixel_aspect_ratio, int *out_numerator,
 	int *out_denominator)
 {
 	try {
-		if (self == NULL || out_numerator == NULL || out_denominator == NULL)
+		if (self.ctx == NULL || out_numerator == NULL || out_denominator == NULL)
 			return OAKCOMMON_E_INVALID;
 
 		olive::core::Rational par =

@@ -35,7 +35,7 @@ extern "C" {
  * src/common/src/dropworkflowbehavior.h; enumerator order and values
  * must stay identical because the config layer persists them as ints.
  */
-enum OakCommonDropWorkflowBehavior {
+enum OakDropWorkflowBehavior {
 	OAKCOMMON_DWS_ASK = 0, /**< Ask the user every time. */
 	OAKCOMMON_DWS_AUTO = 1, /**< Automatically create a sequence. */
 	OAKCOMMON_DWS_MANUAL = 2, /**< Never create; import manually. */
@@ -43,7 +43,7 @@ enum OakCommonDropWorkflowBehavior {
 };
 
 /**
- * @brief Check whether value is a valid OakCommonDropWorkflowBehavior.
+ * @brief Check whether value is a valid OakDropWorkflowBehavior.
  *
  * @param value Integer behavior value (e.g. read from config).
  * @return 1 if valid, 0 otherwise (this is a predicate, not a status
@@ -57,7 +57,7 @@ int oakcommon_drop_workflow_behavior_is_valid(int value);
  * Two-segment string getter: if buf is NULL or buf_size is too small,
  * nothing is written. Invalid values yield "UNKNOWN".
  *
- * @param value One of OakCommonDropWorkflowBehavior.
+ * @param value One of OakDropWorkflowBehavior.
  * @param buf Destination buffer, may be NULL to query the size.
  * @param buf_size Size of buf in bytes.
  * @return Required buffer size in bytes including the terminating NUL

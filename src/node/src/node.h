@@ -22,8 +22,6 @@
 #ifndef OAK_NODE_H
 #define OAK_NODE_H
 
-#include "ofxhImageEffectAPI.h"
-
 #include <algorithm>
 #include <cstdint>
 #include <list>
@@ -37,6 +35,7 @@
 #include "keyframe.h"
 #include "inputimmediate.h"
 #include "param.h"
+#include "ofxhImageEffectAPI.h"
 #include "olive/core/util/timerange.h"
 #include "render/audioplaybackcache.h"
 #include "render/audiowaveformcache.h"

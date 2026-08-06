@@ -116,10 +116,12 @@ target_include_directories(oakrender PUBLIC
         /opt/homebrew/include/OpenEXR
 )
 
-foreach(t oakrender oakgl oakvulkan)
-  target_link_options(${t} PRIVATE
-          "-undefined" "dynamic_lookup"
-  )
+foreach(t oakrender oakgl oakgl2 oakvulkan)
+  if(TARGET ${t})
+    target_link_options(${t} PRIVATE
+            "-undefined" "dynamic_lookup"
+    )
+  endif()
 endforeach()
 
 target_link_libraries(oakrender PRIVATE

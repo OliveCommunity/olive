@@ -247,31 +247,34 @@ TEST(SequenceTest, VideoParamsRoundTrip)
 	ASSERT_GE(count, 1);
 
 	// Default slot is readable
-	OakCommonVideoParams *params = nullptr;
+	OakVideoParams params = {};
 	ASSERT_EQ(oaknode_sequence_get_video_params(seq, 0, &params), OAKNODE_OK);
-	ASSERT_NE(params, nullptr);
-	oakcommon_videoparams_free(params);
+	ASSERT_NE(params.ctx, nullptr);
+	oakcommon_videoparams_free(&params);
 
 	// Out of range
 	EXPECT_EQ(oaknode_sequence_get_video_params(seq, count, &params),
 			  OAKNODE_E_NOT_FOUND);
-	EXPECT_EQ(oaknode_sequence_set_video_params(seq, count, nullptr),
+	EXPECT_EQ(oaknode_sequence_set_video_params(seq, count, OakVideoParams{}),
 			  OAKNODE_E_INVALID);
 
 	// Replace with explicit 1920x1080 @ 25fps params
-	OakCommonVideoParams *replacement = oakcommon_videoparams_init_with_time_base(
-		1920, 1080, 1, 25, 0 /*pixel_format*/, 4 /*nb_channels*/, 1, 1,
-		OAKCOMMON_VIDEO_INTERLACE_NONE, 1);
-	ASSERT_NE(replacement, nullptr);
+	OakVideoParams replacement =
+		oakcommon_videoparams_init_with_time_base(
+			1920, 1080, 1, 25, 0 /*pixel_format*/, 4 /*nb_channels*/, 1, 1,
+			OAKCOMMON_VIDEO_INTERLACE_NONE, 1);
+	ASSERT_NE(replacement.ctx, nullptr);
 	ASSERT_EQ(oaknode_sequence_set_video_params(seq, 0, replacement),
 			  OAKNODE_OK);
-	oakcommon_videoparams_free(replacement);
+	oakcommon_videoparams_free(&replacement);
 
-	OakCommonVideoParams *readback = nullptr;
-	ASSERT_EQ(oaknode_sequence_get_video_params(seq, 0, &readback), OAKNODE_OK);
-	ASSERT_NE(readback, nullptr);
+	OakVideoParams readback = {};
+	ASSERT_EQ(oaknode_sequence_get_video_params(seq, 0, &readback),
+			  OAKNODE_OK);
+	ASSERT_NE(readback.ctx, nullptr);
 	int width = 0, height = 0, tb_num = 0, tb_den = 0;
-	ASSERT_EQ(oakcommon_videoparams_get_width(readback, &width), OAKCOMMON_OK);
+	ASSERT_EQ(oakcommon_videoparams_get_width(readback, &width),
+			  OAKCOMMON_OK);
 	ASSERT_EQ(oakcommon_videoparams_get_height(readback, &height),
 			  OAKCOMMON_OK);
 	ASSERT_EQ(oakcommon_videoparams_get_time_base(readback, &tb_num, &tb_den),
@@ -279,7 +282,7 @@ TEST(SequenceTest, VideoParamsRoundTrip)
 	EXPECT_EQ(width, 1920);
 	EXPECT_EQ(height, 1080);
 	expect_rational(tb_num, tb_den, 1, 25);
-	oakcommon_videoparams_free(readback);
+	oakcommon_videoparams_free(&readback);
 
 	oaknode_sequence_free(seq);
 }

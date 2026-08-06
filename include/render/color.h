@@ -22,6 +22,7 @@
 #define OAK_EDITOR_RENDER_COLOR_H
 
 #include "error.h"
+#include "renderer.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -92,6 +93,23 @@ int oakrender_color_processor_convert(OakColorProcessor *processor,
 									  double ir, double ig, double ib,
 									  double ia, double *out_r, double *out_g,
 									  double *out_b, double *out_a);
+
+/**
+ * @brief Convert a CPU frame's pixels through the processor, in place
+ * (olive::ColorProcessor::convert_frame()).
+ *
+ * The frame's data buffer is rewritten through an OCIO PackedImageDesc
+ * view; nothing is allocated and the frame handle stays owned by the
+ * caller. A processor whose underlying OCIO processor is null
+ * (oakrender_color_processor_create() treats lookup failure as
+ * non-fatal) is a pass-through and returns OAKRENDER_OK, mirroring the
+ * C++ API.
+ *
+ * @return OAKRENDER_OK, OAKRENDER_E_INVALID for NULL/uninitialized
+ *         arguments, or OAKRENDER_E_FAILED on an internal exception.
+ */
+int oakrender_color_processor_convert_frame(OakColorProcessor *processor,
+											OakCodecFrame *frame);
 
 /* ---- ColorManager statics ------------------------------------------------- */
 

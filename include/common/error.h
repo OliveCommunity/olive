@@ -30,7 +30,7 @@
  * (including the terminating NUL) as a non-negative value instead.
  */
 #define OAKCOMMON_OK 0 /**< Success. */
-#define OAKCOMMON_E_INVALID (-1) /**< NULL handle or invalid argument. */
+#define OAKCOMMON_E_INVALID (-1) /**< Empty handle (ctx == NULL) or invalid argument. */
 #define OAKCOMMON_E_STATE (-2) /**< Call not valid in the current state. */
 #define OAKCOMMON_E_FAILED (-3) /**< The underlying operation failed. */
 #define OAKCOMMON_E_NOT_FOUND (-4) /**< Index out of range / entry not found. */

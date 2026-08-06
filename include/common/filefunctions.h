@@ -22,30 +22,44 @@
 #define OAK_EDITOR_FILEFUNCTIONS_H
 
 #include "common/error.h"
+#include "common/handle.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
- * @brief Opaque handle for the filefunctions family
+ * @brief Neutral by-value handle for the filefunctions family
  *
  * File functions are stateless; the handle only exists to keep the C API
- * shape uniform across oakcommon families.
+ * shape uniform across oakcommon families. Ownership/count semantics
+ * follow the convention in common/handle.h: init returns a handle whose
+ * (empty) object has reference count 1, addref(ctx)/release(ctx) adjust
+ * it atomically, and release destroys it at zero. abi_version is always
+ * OAKCOMMON_ABI_VERSION.
  */
-typedef struct OakCommonFileFunctions OakCommonFileFunctions;
+typedef struct OakFileFunctions {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKCOMMON_ABI_VERSION. */
+} OakFileFunctions;
 
 /**
  * @brief Creates a filefunctions handle
  *
- * @return A new handle, or NULL on failure.
+ * @return Handle with reference count 1; ctx is NULL on failure.
  */
-OakCommonFileFunctions *oakcommon_filefunctions_init(void);
+OakFileFunctions oakcommon_filefunctions_init(void);
 
 /**
- * @brief Destroys a filefunctions handle (NULL is a no-op)
+ * @brief Releases one reference to a filefunctions handle
+ *
+ * Convenience wrapper around handle.release(handle.ctx): decrements the
+ * atomic reference count and destroys the object when it reaches zero.
+ * No-op when self is NULL or self->ctx is NULL.
  */
-void oakcommon_filefunctions_free(OakCommonFileFunctions *self);
+void oakcommon_filefunctions_free(OakFileFunctions *self);
 
 /**
  * @brief Returns a deterministic identifier string for a file
@@ -55,20 +69,20 @@ void oakcommon_filefunctions_free(OakCommonFileFunctions *self);
  * the file does not exist.
  */
 int oakcommon_filefunctions_get_unique_file_identifier(
-	OakCommonFileFunctions *self, const char *filename, char *buf,
+	OakFileFunctions self, const char *filename, char *buf,
 	int buf_size);
 
 int oakcommon_filefunctions_get_configuration_location(
-	OakCommonFileFunctions *self, char *buf, int buf_size);
+	OakFileFunctions self, char *buf, int buf_size);
 
 int oakcommon_filefunctions_get_application_path(
-	OakCommonFileFunctions *self, char *buf, int buf_size);
+	OakFileFunctions self, char *buf, int buf_size);
 
 int oakcommon_filefunctions_get_temp_file_path(
-	OakCommonFileFunctions *self, char *buf, int buf_size);
+	OakFileFunctions self, char *buf, int buf_size);
 
 int oakcommon_filefunctions_get_auto_recovery_root(
-	OakCommonFileFunctions *self, char *buf, int buf_size);
+	OakFileFunctions self, char *buf, int buf_size);
 
 /**
  * @brief Checks whether `source` can be copied to `dest` without
@@ -77,13 +91,13 @@ int oakcommon_filefunctions_get_auto_recovery_root(
  * @param out Receives 1 (safe) or 0 (would overwrite).
  */
 int oakcommon_filefunctions_can_copy_directory_without_overwriting(
-	OakCommonFileFunctions *self, const char *source, const char *dest,
+	OakFileFunctions self, const char *source, const char *dest,
 	int *out);
 
 /**
  * @brief Recursively copies a directory
  */
-int oakcommon_filefunctions_copy_directory(OakCommonFileFunctions *self,
+int oakcommon_filefunctions_copy_directory(OakFileFunctions self,
 					   const char *source,
 					   const char *dest, int overwrite);
 
@@ -93,7 +107,7 @@ int oakcommon_filefunctions_copy_directory(OakCommonFileFunctions *self,
  * @param out Receives 1 (valid) or 0 (invalid).
  */
 int oakcommon_filefunctions_directory_is_valid(
-	OakCommonFileFunctions *self, const char *dir,
+	OakFileFunctions self, const char *dir,
 	int try_to_create_if_not_exists, int *out);
 
 /**
@@ -103,7 +117,7 @@ int oakcommon_filefunctions_directory_is_valid(
  * OAKCOMMON_E_* error code.
  */
 int oakcommon_filefunctions_ensure_filename_extension(
-	OakCommonFileFunctions *self, const char *filename,
+	OakFileFunctions self, const char *filename,
 	const char *extension, char *buf, int buf_size);
 
 /**
@@ -114,7 +128,7 @@ int oakcommon_filefunctions_ensure_filename_extension(
  * the file cannot be read.
  */
 int oakcommon_filefunctions_read_file_as_string(
-	OakCommonFileFunctions *self, const char *filename, char *buf,
+	OakFileFunctions self, const char *filename, char *buf,
 	int buf_size);
 
 /**
@@ -124,7 +138,7 @@ int oakcommon_filefunctions_read_file_as_string(
  * OAKCOMMON_E_* error code.
  */
 int oakcommon_filefunctions_get_safe_temporary_filename(
-	OakCommonFileFunctions *self, const char *original, char *buf,
+	OakFileFunctions self, const char *original, char *buf,
 	int buf_size);
 
 /**
@@ -133,7 +147,7 @@ int oakcommon_filefunctions_get_safe_temporary_filename(
  * @param out Receives 1 (renamed) or 0 (failed).
  */
 int oakcommon_filefunctions_rename_file_allow_overwrite(
-	OakCommonFileFunctions *self, const char *from, const char *to,
+	OakFileFunctions self, const char *from, const char *to,
 	int *out);
 
 /**
@@ -143,7 +157,7 @@ int oakcommon_filefunctions_rename_file_allow_overwrite(
  * OAKCOMMON_E_* error code.
  */
 int oakcommon_filefunctions_get_formatted_executable_for_platform(
-	OakCommonFileFunctions *self, const char *unformatted, char *buf,
+	OakFileFunctions self, const char *unformatted, char *buf,
 	int buf_size);
 
 #ifdef __cplusplus
