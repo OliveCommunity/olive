@@ -34,6 +34,18 @@ extern "C" {
 #endif
 
 /**
+ * @brief Sequence texture/samples input ids (ViewerOutput::k_texture_input
+ * / k_samples_input) and the track input id format
+ * (Sequence::k_track_input_format). Pinned by test.
+ */
+#define OAKNODE_SEQUENCE_TEXTURE_INPUT "tex_in"
+#define OAKNODE_SEQUENCE_SAMPLES_INPUT "samples_in"
+#define OAKNODE_SEQUENCE_TRACK_INPUT_FORMAT "track_in_%1"
+
+/* Re-declared here so sequence.h is self-contained; see node/node.h. */
+typedef struct OakNodeNode OakNodeNode;
+
+/**
  * @brief Opaque handle to a sequence (olive::Sequence).
  *
  * The handle IS the C++ object pointer; no wrapper is allocated.
@@ -71,6 +83,12 @@ void oaknode_sequence_free(OakNodeSequence *sequence);
  * @param type One of OAKNODE_TRACK_TYPE_VIDEO / _AUDIO / _SUBTITLE.
  * @return OAKNODE_OK, OAKNODE_E_INVALID or OAKNODE_E_NOT_FOUND (bad type).
  */
+/**
+ * @brief Borrowed cast from a sequence handle to its node handle.
+ * NULL for NULL.
+ */
+OakNodeNode *oaknode_sequence_as_node(OakNodeSequence *sequence);
+
 int oaknode_sequence_get_track_list(OakNodeSequence *sequence, int type,
 									OakNodeTrackList **out);
 

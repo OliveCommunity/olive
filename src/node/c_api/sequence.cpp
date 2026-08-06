@@ -318,3 +318,8 @@ int oaknode_sequence_set_audio_params(OakNodeSequence *sequence, int index,
 	}
 	return OAKNODE_OK;
 }
+
+OakNodeNode *oaknode_sequence_as_node(OakNodeSequence *sequence)
+{
+	return reinterpret_cast<OakNodeNode *>(sequence);
+}

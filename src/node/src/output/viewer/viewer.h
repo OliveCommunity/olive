@@ -176,11 +176,11 @@ public:
 
 	TimelineWorkArea *get_work_area() const
 	{
-		return workarea_;
+		return workarea_.get();
 	}
 	TimelineMarkerList *get_markers() const
 	{
-		return markers_;
+		return markers_.get();
 	}
 
 	virtual TimeRange get_video_cache_range() const override
@@ -275,8 +275,8 @@ private:
 
 	AudioParams cached_audio_params_;
 
-	TimelineWorkArea *workarea_;
-	TimelineMarkerList *markers_;
+	std::unique_ptr<TimelineWorkArea> workarea_;
+	std::unique_ptr<TimelineMarkerList> markers_;
 
 	bool autocache_input_video_;
 	bool autocache_input_audio_;

@@ -881,8 +881,8 @@ void ProjectSerializer211228::load_marker_list(XmlStreamReader *reader,
 
 			// MarkerColor resolves through configaccessor.h
 			// (oakcommon_config_* C ABI)
-			new TimelineMarker(OAK_CONFIG("MarkerColor").toInt(),
-							   TimeRange(in, out), name, markers);
+			markers->add_marker(std::make_unique<TimelineMarker>(
+				OAK_CONFIG("MarkerColor").toInt(), TimeRange(in, out), name));
 		}
 
 		reader->skip_current_element();

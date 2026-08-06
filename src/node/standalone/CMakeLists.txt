@@ -71,6 +71,16 @@ set(BUILD_TESTS ON)
 enable_testing()
 add_subdirectory(${OAK_REPO_ROOT}/src/node ${CMAKE_BINARY_DIR}/node)
 
+# M4 收尾：oaknode 的 Sequence::add_default_nodes() 依赖 oaktimeline 的
+# TimelineAddTrackCommand（src/node/transition/timeline/* 已桥接真身），
+# 两个库在运行期互相解析（dynamic_lookup）
+set(BUILD_TESTS OFF)
+add_subdirectory(${OAK_REPO_ROOT}/src/timeline ${CMAKE_BINARY_DIR}/timeline)
+set(BUILD_TESTS ON)
+target_link_options(oaktimeline PRIVATE
+        "-undefined" "dynamic_lookup"
+)
+
 # The transition stub dir must precede ${OAK_REPO_ROOT}/include so that e.g.
 # "common/current.h" resolves to the transitional forwarder, not the stale
 # public mirror in include/common.
@@ -138,7 +148,7 @@ target_link_libraries(oakrender PRIVATE
         "-framework QuartzCore"
 )
 
-target_link_libraries(oaknode-gtest PRIVATE oakrender)
+target_link_libraries(oaknode-gtest PRIVATE oakrender oaktimeline)
 
 # liboakrender references the oakengine_ipc_* C ABI (worker IPC) via
 # dynamic_lookup; the real implementation (engine/src/capi/ipc.cpp) is still

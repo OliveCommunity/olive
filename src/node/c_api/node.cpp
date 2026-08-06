@@ -25,6 +25,10 @@
 
 #include "nodeundo.h"
 
+#include "project.h"
+
+#include "output/viewer/viewer.h"
+
 #include "valueconvert.h"
 
 namespace
@@ -1027,4 +1031,202 @@ void oaknode_node_free(OakNodeNode *node)
 		oaknode_c_api::alive_dec();
 	} catch (...) {
 	}
+}
+
+OakNodeNode *oaknode_node_copy_in_graph(OakNodeNode *node,
+										OakUndoCommand **out_command)
+{
+	if (!node || !out_command) {
+		return NULL;
+	}
+
+	try {
+		auto *command = new olive::MultiUndoCommand();
+		olive::Node *copy =
+			olive::Node::copy_node_in_graph(to_node(node), command);
+		if (!copy) {
+			delete command;
+			return NULL;
+		}
+		*out_command = oaknode_c_api::wrap_command(command);
+		if (!*out_command) {
+			delete command;
+			return NULL;
+		}
+		oaknode_c_api::alive_inc();
+		return from_node(copy);
+	} catch (...) {
+		return NULL;
+	}
+}
+
+OakUndoCommand *oaknode_command_create_remove_node(OakNodeNode *node)
+{
+	if (!node) {
+		return NULL;
+	}
+
+	try {
+		return oaknode_c_api::wrap_command(
+			new olive::NodeRemoveWithExclusiveDependenciesAndDisconnect(
+				to_node(node)));
+	} catch (...) {
+		return NULL;
+	}
+}
+
+int oaknode_node_get_project(const OakNodeNode *node, OakNodeProject **out)
+{
+	if (!node || !out) {
+		return OAKNODE_E_INVALID;
+	}
+	*out = reinterpret_cast<OakNodeProject *>(to_node(node)->project());
+	return OAKNODE_OK;
+}
+
+int oaknode_node_input_array_insert(OakNodeNode *node, const char *input_id,
+									int index)
+{
+	if (!node || !input_id) {
+		return OAKNODE_E_INVALID;
+	}
+	if (!has_input(to_node(node), input_id)) {
+		return OAKNODE_E_NOT_FOUND;
+	}
+
+	try {
+		to_node(node)->input_array_insert(input_id, index);
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_node_input_array_remove(OakNodeNode *node, const char *input_id,
+									int index)
+{
+	if (!node || !input_id) {
+		return OAKNODE_E_INVALID;
+	}
+	if (!has_input(to_node(node), input_id)) {
+		return OAKNODE_E_NOT_FOUND;
+	}
+
+	try {
+		to_node(node)->input_array_remove(input_id, index);
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_node_connect_element(OakNodeNode *output_node,
+								 OakNodeNode *input_node,
+								 const char *input_id, int element)
+{
+	if (!output_node || !input_node) {
+		return OAKNODE_E_INVALID;
+	}
+	if (!has_input(to_node(input_node), input_id)) {
+		return OAKNODE_E_NOT_FOUND;
+	}
+
+	try {
+		olive::Node::connect_edge(
+			to_node(output_node),
+			olive::NodeInput(to_node(input_node), input_id, element));
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_node_disconnect_element(OakNodeNode *input_node,
+									const char *input_id, int element)
+{
+	if (!input_node) {
+		return OAKNODE_E_INVALID;
+	}
+	if (!has_input(to_node(input_node), input_id)) {
+		return OAKNODE_E_NOT_FOUND;
+	}
+
+	try {
+		olive::Node *output = to_node(input_node)->get_connected_output(
+			input_id, element);
+		if (!output) {
+			return OAKNODE_E_NOT_FOUND;
+		}
+
+		olive::Node::disconnect_edge(
+			output, olive::NodeInput(to_node(input_node), input_id, element));
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+OakUndoCommand *oaknode_command_create_add_node(OakNodeProject *graph,
+												OakNodeNode *node)
+{
+	if (!graph || !node) {
+		return NULL;
+	}
+
+	try {
+		return oaknode_c_api::wrap_command(
+			new olive::NodeAddCommand(
+				reinterpret_cast<olive::Project *>(graph), to_node(node)));
+	} catch (...) {
+		return NULL;
+	}
+}
+
+OakUndoCommand *oaknode_command_create_set_position_recursive(
+	OakNodeNode *node, OakNodeNode *context, double x, double y)
+{
+	if (!node || !context) {
+		return NULL;
+	}
+
+	try {
+		return oaknode_c_api::wrap_command(
+			new olive::NodeSetPositionAndDependenciesRecursivelyCommand(
+				to_node(node), to_node(context),
+				olive::Node::Position(olive::PointF(x, y))));
+	} catch (...) {
+		return NULL;
+	}
+}
+
+int oaknode_node_get_markers(const OakNodeNode *node,
+							 OakNodeMarkerList **out)
+{
+	if (!node || !out) {
+		return OAKNODE_E_INVALID;
+	}
+
+	const olive::Node *n = to_node(node);
+	if (auto *v = dynamic_cast<const olive::ViewerOutput *>(n)) {
+		*out = reinterpret_cast<OakNodeMarkerList *>(v->get_markers());
+	} else {
+		*out = NULL;
+	}
+	return OAKNODE_OK;
+}
+
+int oaknode_node_get_work_area(const OakNodeNode *node,
+							   OakNodeWorkArea **out)
+{
+	if (!node || !out) {
+		return OAKNODE_E_INVALID;
+	}
+
+	const olive::Node *n = to_node(node);
+	if (auto *v = dynamic_cast<const olive::ViewerOutput *>(n)) {
+		*out = reinterpret_cast<OakNodeWorkArea *>(v->get_work_area());
+	} else {
+		*out = NULL;
+	}
+	return OAKNODE_OK;
 }

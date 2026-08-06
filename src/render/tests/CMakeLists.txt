@@ -24,6 +24,7 @@ add_executable(oakrender-gtest
 )
 
 target_link_libraries(oakrender-gtest PRIVATE
+        oaktimeline
         oakrender
         oaknode
         oakcommon

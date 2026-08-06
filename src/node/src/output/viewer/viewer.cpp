@@ -77,8 +77,8 @@ ViewerOutput::ViewerOutput(bool create_buffer_inputs,
 
 	set_flag(k_dont_show_in_param_view);
 
-	workarea_ = new TimelineWorkArea(this);
-	markers_ = new TimelineMarkerList(this);
+	workarea_ = std::make_unique<TimelineWorkArea>();
+	markers_ = std::make_unique<TimelineMarkerList>();
 }
 
 std::string ViewerOutput::name() const

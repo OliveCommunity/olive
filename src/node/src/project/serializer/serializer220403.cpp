@@ -1165,8 +1165,9 @@ void ProjectSerializer220403::load_marker_list(XmlStreamReader *reader,
 {
 	while (xml_read_next_start_element(reader)) {
 		if (reader->name() == "marker") {
-			TimelineMarker *marker = new TimelineMarker(markers);
-			load_marker(reader, marker);
+			auto marker = std::make_unique<TimelineMarker>();
+			load_marker(reader, marker.get());
+			markers->add_marker(std::move(marker));
 		} else {
 			reader->skip_current_element();
 		}

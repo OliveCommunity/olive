@@ -475,3 +475,57 @@ int oaknode_transition_get_connected_in_block(OakNodeBlock *transition,
 	*out = wrap(t->connected_in_block());
 	return OAKNODE_OK;
 }
+
+int oaknode_clip_add_cache_passthrough_from(OakNodeBlock *clip,
+											OakNodeBlock *other)
+{
+	if (!clip || !other) {
+		return OAKNODE_E_INVALID;
+	}
+
+	olive::ClipBlock *c = clip_impl(clip);
+	olive::ClipBlock *o = clip_impl(other);
+	if (!c || !o) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		c->add_cache_passthrough_from(o);
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+OakNodeNode *oaknode_block_as_node(OakNodeBlock *block)
+{
+	return reinterpret_cast<OakNodeNode *>(block);
+}
+
+OakNodeBlock *oaknode_block_from_node(OakNodeNode *node)
+{
+	if (!node) {
+		return NULL;
+	}
+	olive::Node *n = reinterpret_cast<olive::Node *>(node);
+	return wrap(dynamic_cast<olive::Block *>(n));
+}
+
+int oaknode_block_get_kind(OakNodeBlock *block, int *out_kind)
+{
+	if (!block || !out_kind) {
+		return OAKNODE_E_INVALID;
+	}
+
+	olive::Block *b = impl(block);
+	if (dynamic_cast<olive::TransitionBlock *>(b)) {
+		*out_kind = OAKNODE_BLOCK_TRANSITION;
+	} else if (dynamic_cast<olive::ClipBlock *>(b)) {
+		*out_kind = OAKNODE_BLOCK_CLIP;
+	} else if (dynamic_cast<olive::GapBlock *>(b)) {
+		*out_kind = OAKNODE_BLOCK_GAP;
+	} else {
+		*out_kind = OAKNODE_BLOCK_OTHER;
+	}
+	return OAKNODE_OK;
+}

@@ -24,6 +24,8 @@
 
 #include "alivecount.h"
 
+#include "valueconvert.h"
+
 #include "block/block.h"
 #include "output/track/track.h"
 #include "output/track/tracklist.h"
@@ -571,4 +573,90 @@ int oaknode_tracklist_remove_track(OakNodeTrackList *list, OakNodeTrack *track)
 		return OAKNODE_E_FAILED;
 	}
 	return OAKNODE_OK;
+}
+
+int oaknode_track_get_nearest_block_before_or_at(OakNodeTrack *track,
+		int numerator, int denominator, OakNodeBlock **out)
+{
+	olive::Track *t = impl(track);
+	if (!t || !out) {
+		return OAKNODE_E_INVALID;
+	}
+	*out = wrap_block(
+		t->nearest_block_before_or_at(olive::core::Rational(numerator, denominator)));
+	return OAKNODE_OK;
+}
+
+int oaknode_track_get_nearest_block_after_or_at(OakNodeTrack *track,
+		int numerator, int denominator, OakNodeBlock **out)
+{
+	olive::Track *t = impl(track);
+	if (!t || !out) {
+		return OAKNODE_E_INVALID;
+	}
+	*out = wrap_block(
+		t->nearest_block_after_or_at(olive::core::Rational(numerator, denominator)));
+	return OAKNODE_OK;
+}
+
+int oaknode_tracklist_get_sequence(OakNodeTrackList *list,
+								   OakNodeSequence **out)
+{
+	if (!list || !out) {
+		return OAKNODE_E_INVALID;
+	}
+	*out = reinterpret_cast<OakNodeSequence *>(list_impl(list)->parent());
+	return OAKNODE_OK;
+}
+
+int oaknode_tracklist_get_track_input_id(OakNodeTrackList *list, char *buf,
+										 int buf_size)
+{
+	if (!list) {
+		return OAKNODE_E_INVALID;
+	}
+	return oaknode_c_api::copy_string(list_impl(list)->track_input(), buf,
+										   buf_size);
+}
+
+int oaknode_tracklist_array_append(OakNodeTrackList *list)
+{
+	if (!list) {
+		return OAKNODE_E_INVALID;
+	}
+	try {
+		list_impl(list)->array_append();
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_tracklist_array_remove_last(OakNodeTrackList *list)
+{
+	if (!list) {
+		return OAKNODE_E_INVALID;
+	}
+	try {
+		list_impl(list)->array_remove_last();
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_tracklist_get_array_index_from_cache_index(
+	OakNodeTrackList *list, int cache_index, int *out_index)
+{
+	if (!list || !out_index) {
+		return OAKNODE_E_INVALID;
+	}
+	*out_index =
+		list_impl(list)->get_array_index_from_cache_index(cache_index);
+	return OAKNODE_OK;
+}
+
+OakNodeNode *oaknode_track_as_node(OakNodeTrack *track)
+{
+	return reinterpret_cast<OakNodeNode *>(track);
 }

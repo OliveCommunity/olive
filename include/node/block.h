@@ -50,12 +50,27 @@ typedef struct OakNodeBlock OakNodeBlock;
 typedef struct OakNodeTrack OakNodeTrack;
 
 /**
+ * @brief Opaque handle to a node (olive::Node), see node/node.h.
+ *
+ * Re-declared here so block.h is self-contained; the typedef is identical.
+ */
+typedef struct OakNodeNode OakNodeNode;
+
+/**
  * @brief Concrete transition kinds for oaknode_block_transition_create().
  */
 enum OakNodeTransitionKind {
 	OAKNODE_TRANSITION_CROSS_DISSOLVE = 0, /**< CrossDissolveTransition. */
 	OAKNODE_TRANSITION_DIP_TO_COLOR = 1 /**< DipToColorTransition. */
 };
+
+/**
+ * @brief Input ids of a TransitionBlock's block connections
+ * (TransitionBlock::k_out_block_input / k_in_block_input). Pinned by
+ * test; pass to oaknode_node_connect()/oaknode_node_disconnect().
+ */
+#define OAKNODE_TRANSITION_OUT_BLOCK_INPUT "out_block_in"
+#define OAKNODE_TRANSITION_IN_BLOCK_INPUT "in_block_in"
 
 /**
  * @brief Create a ClipBlock.
@@ -90,6 +105,32 @@ OakNodeBlock *oaknode_block_transition_create(int kind);
  * caller is responsible for detaching it first.
  */
 void oaknode_block_free(OakNodeBlock *block);
+
+enum OakNodeBlockKind {
+	OAKNODE_BLOCK_OTHER = 0,
+	OAKNODE_BLOCK_CLIP = 1,
+	OAKNODE_BLOCK_GAP = 2,
+	OAKNODE_BLOCK_TRANSITION = 3
+};
+
+/**
+ * @brief Concrete kind of a block (dynamic_cast query).
+ */
+int oaknode_block_get_kind(OakNodeBlock *block, int *out_kind);
+
+/**
+ * @brief Borrowed cast from a block handle to its node handle.
+ *
+ * Every Block is a Node; the result must not be freed. NULL for NULL.
+ */
+OakNodeNode *oaknode_block_as_node(OakNodeBlock *block);
+
+/**
+ * @brief Borrowed cast from a node handle to a block handle.
+ *
+ * Returns NULL if the node is not a Block (or for NULL).
+ */
+OakNodeBlock *oaknode_block_from_node(OakNodeNode *node);
 
 /**
  * @brief Rational getters/setters use numerator/denominator out pairs.
@@ -232,6 +273,14 @@ int oaknode_transition_get_connected_out_block(OakNodeBlock *transition,
 											   OakNodeBlock **out);
 int oaknode_transition_get_connected_in_block(OakNodeBlock *transition,
 											  OakNodeBlock **out);
+
+/**
+ * @brief Forward cache passthroughs from another clip
+ * (ClipBlock::add_cache_passthrough_from()). Used after splitting a
+ * clip so the new part shares the render caches.
+ */
+int oaknode_clip_add_cache_passthrough_from(OakNodeBlock *clip,
+											OakNodeBlock *other);
 
 #ifdef __cplusplus
 }

@@ -99,6 +99,17 @@ typedef struct oaknode_value {
  */
 typedef struct OakNodeNode OakNodeNode;
 
+/* Re-declared here so node.h is self-contained; see node/project.h. */
+typedef struct OakNodeProject OakNodeProject;
+
+/**
+ * @brief Opaque borrowed handles to the timeline data owned by viewer
+ * nodes (TimelineMarkerList / TimelineWorkArea in oaktimeline).
+ * oaktimeline reinterprets these into its own handle types.
+ */
+typedef struct OakNodeMarkerList OakNodeMarkerList;
+typedef struct OakNodeWorkArea OakNodeWorkArea;
+
 /**
  * @brief Number of live owned objects created through this API
  * (nodes from oaknode_factory_create_from_id()/oaknode_node_create_copy(),
@@ -468,6 +479,79 @@ int oaknode_node_remove_from_context(OakNodeNode *node, OakNodeNode *context);
  * oaknode_node_free() while it is still orphaned. Returns NULL for NULL.
  */
 OakNodeNode *oaknode_node_create_copy(const OakNodeNode *node);
+
+/**
+ * @brief Copy a node inside its graph (Node::copy_node_in_graph()),
+ * recording the reconnect operations in a new MultiUndoCommand.
+ *
+ * `*out_command` receives an owned undo command handle (free with
+ * oakundo_command_free()). The copy is inserted into the graph only when
+ * the returned command is redone; treat it as owned (oaknode_node_free())
+ * until then. Returns NULL on failure.
+ */
+OakNodeNode *oaknode_node_copy_in_graph(OakNodeNode *node,
+										OakUndoCommand **out_command);
+
+/**
+ * @brief Get the project this node belongs to (borrowed). *out may be
+ * NULL if the node is orphaned.
+ */
+int oaknode_node_get_project(const OakNodeNode *node,
+							 OakNodeProject **out);
+
+/**
+ * @brief Insert/remove an element in an input array (live,
+ * Node::input_array_insert/remove()). OAKNODE_E_NOT_FOUND for an
+ * unknown input id.
+ */
+int oaknode_node_input_array_insert(OakNodeNode *node,
+									const char *input_id, int index);
+int oaknode_node_input_array_remove(OakNodeNode *node,
+									const char *input_id, int index);
+
+/**
+ * @brief Element-aware variants of oaknode_node_connect()/disconnect()
+ * (NodeInput element != -1, e.g. Sequence's track_in_N array inputs).
+ */
+int oaknode_node_connect_element(OakNodeNode *output_node,
+								 OakNodeNode *input_node,
+								 const char *input_id, int element);
+int oaknode_node_disconnect_element(OakNodeNode *input_node,
+									const char *input_id, int element);
+
+/**
+ * @brief Create a command that adds a node to a project's graph
+ * (olive::NodeAddCommand). Owned; free with oakundo_command_free().
+ */
+OakUndoCommand *oaknode_command_create_add_node(OakNodeProject *graph,
+												OakNodeNode *node);
+
+/**
+ * @brief Create a command that sets a node's position in a context and
+ * repositions its dependencies recursively
+ * (olive::NodeSetPositionAndDependenciesRecursivelyCommand). Owned.
+ */
+OakUndoCommand *oaknode_command_create_set_position_recursive(
+	OakNodeNode *node, OakNodeNode *context, double x, double y);
+
+/**
+ * @brief Borrowed marker list / work area of a viewer node. *out is NULL
+ * when the node is not a viewer (or for NULL input).
+ */
+int oaknode_node_get_markers(const OakNodeNode *node,
+							 OakNodeMarkerList **out);
+int oaknode_node_get_work_area(const OakNodeNode *node,
+							   OakNodeWorkArea **out);
+
+/**
+ * @brief Create a command that removes a node from its graph together
+ * with its exclusive dependencies and disconnects its edges
+ * (NodeRemoveWithExclusiveDependenciesAndDisconnect).
+ *
+ * Owned command handle; free with oakundo_command_free(). Returns NULL
+ * on failure.
+ */
+OakUndoCommand *oaknode_command_create_remove_node(OakNodeNode *node);
 
 /**
  * @brief Destroy an OWNED node immediately (C++ delete). NULL is a no-op.

@@ -316,3 +316,19 @@ int oakcommon_xml_writer_output(OakXmlWriter writer, char *buf,
 }
 
 } // extern "C"
+
+olive::XmlStreamReader *oakcommon_xml_reader_get_native(OakXmlReader reader)
+{
+	if (!reader.ctx) {
+		return nullptr;
+	}
+	return &oakcommon::handle_impl<XmlReaderState>(reader.ctx)->reader;
+}
+
+olive::XmlStreamWriter *oakcommon_xml_writer_get_native(OakXmlWriter writer)
+{
+	if (!writer.ctx) {
+		return nullptr;
+	}
+	return oakcommon::handle_impl<olive::XmlStreamWriter>(writer.ctx);
+}

@@ -64,6 +64,21 @@ typedef struct OakXmlWriter {
  */
 OakXmlReader oakcommon_xml_reader_init(const char *data);
 
+#ifdef __cplusplus
+} /* extern "C" */
+
+namespace olive { class XmlStreamReader; class XmlStreamWriter; }
+
+extern "C" {
+#endif
+
+/**
+ * @brief Borrowed access to the underlying C++ reader/writer (C++ only,
+ * for adapter layers). Valid while the handle is held. NULL-safe.
+ */
+olive::XmlStreamReader *oakcommon_xml_reader_get_native(OakXmlReader reader);
+olive::XmlStreamWriter *oakcommon_xml_writer_get_native(OakXmlWriter writer);
+
 /**
  * @brief Release one reference to a reader.
  *

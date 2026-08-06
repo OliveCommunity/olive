@@ -112,3 +112,27 @@ OAKTL_API int64_t oaktimeline_nearest_block_ts(OakNodeTrack *track,
 - edit：每个 `_command` 工厂 1 个"构造→入栈→undo 还原"用例
   （track 增删、place/replace/trim/split/ripple/slide）。
 - `oaktimeline_debug_alive_count()` 泄漏断言。
+
+## 实施现状（2026-08-05）
+
+- 目录结构：`src/timeline/{src,c_api,tests,standalone}` +
+  `include/timeline/{error,marker,workarea,edit}.h`。
+- 构建测试：`cmake -S src/timeline/standalone -B build-oaktimeline &&
+  cmake --build build-oaktimeline -j && ctest --test-dir
+  build-oaktimeline`——117/117（本模块 21 用例 + oaknode 回归 96）。
+  全量回归：oakcommon 193、oaknode 96、oakrender 42、oakcodec 18、
+  oakaudio 36 全绿。
+- C API 与 §2 冻结表的差异：marker/workarea 的增删改统一为
+  `_command` 工厂形态（返回 OakUndoCommand，调用方 redo/push），
+  workarea set_range_command 需要调用方提供旧值（facade 知情原则）；
+  edit.h 的 `_command` 工厂按 §2.3 落地并补 insert_gaps/
+  ripple_remove_area；`oaktimeline_marker_list_of/workarea_of` 经
+  oaknode 新增的借用出口（oaknode_node_get_markers/get_work_area）
+  实现。marker list 无 free（borrowed，M4 §2.1 既定）。
+- 与计划的差异：undo 命令类未走"语义函数 + 适配类"，而是命令类整体
+  留在模块内、成员全部换成 oaknode C 句柄直调 C ABI（01 §0 铁律 6
+  的直接执行）；UndoCommand 跨模块继承保留为例外（notes.md 有记录）。
+- oaknode 侧适配：transition/timeline/* 由 stub 改为桥接真身头；
+  viewer 的 workarea/markers 改 unique_ptr；4 个 serializer 的 marker
+  构造点适配显式 add_marker。
+- 已知问题：无（de-Qt 断链的 block→track 长度通知已在本轮修复）。

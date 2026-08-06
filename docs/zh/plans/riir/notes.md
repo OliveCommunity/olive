@@ -246,3 +246,42 @@ ColorManager）去Qt化过程中的删除与语义变化，迁移调用方时需
 - displayinternal.h 分层违规（render→src/capi）并入 texturehandle.h。
 - Renderer 线程亲和由 QObject::thread() 改显式 owner thread
   （`set_owner_thread_to_current()`/`called_on_owner_thread()`）。
+
+## oaktimeline 去Qt化的删除与语义变更（2026-08-05）
+
+- TimelineMarker/TimelineWorkArea 的信号（time_changed/name_changed/
+  color_changed/enabled_changed/range_changed/marker_added/removed/
+  modified）全部删除，变更通知由 facade 层在命令后发出；list 的重排由
+  TimelineMarker::set_time 直调 parent_->resort(this)。
+- TimelineMarker::draw()/get_marker_height()（QPainter/QFontMetrics）
+  删除，归 app 层。
+- TimelineMarkerList 的 QObject childEvent 自动注册改为显式
+  add_marker(std::unique_ptr)/remove_marker 所有权转移；marker 构造
+  不再带 parent 参数（oaknode 的 4 个 serializer 调用点已适配）。
+- ViewerOutput 的 workarea_/markers_ 由 QObject 父子管理改为
+  std::unique_ptr 持有。
+- timeline 全部 undo 命令类改为持有 oaknode C 句柄
+  （OakNodeTrack/OakNodeBlock/OakNodeSequence），图操作全部经
+  oaknode C ABI（01 §0 铁律 6）；为此 oaknode C API 新增：
+  copy_in_graph、clip_add_cache_passthrough_from、block_get_kind、
+  block_as_node/from_node、track_as_node、nearest_block_before/after_or_at、
+  command_create_remove_node/add_node/set_position_recursive、
+  node_get_project、input_array_insert/remove、connect/disconnect_element、
+  tracklist_get_sequence/track_input_id/array_append/array_remove_last/
+  get_array_index_from_cache_index、sequence_as_node、node_get_markers/
+  get_work_area（后两个为 oaktimeline 的借用出口）。
+- UndoCommand 跨模块继承（oaktimeline 命令类继承 oakundo 的
+  olive::UndoCommand）保留——undo 架构的既有跨模块模式，记录为
+  01 §5 的明确例外（oaknode 的 nodeundo 同例）。
+- **修复 de-Qt 断链**：Block 长度变化不再经信号通知 Track，改为
+  Block::InputValueChangedEvent 里对 track_->block_length_changed(this)
+  直调（原 Qt 版 connect 链，wave-2 遗留的 facade 接线项提前兑现）。
+- 命令创建的 GapBlock 在插入 track 前必须先进项目图
+  （block_add_to_graph/block_remove_from_graph helper，对齐原版
+  setParent(graph)/setParent(memory) 语义）；孤立句柄用 orphan 标志
+  跟踪，析构时 oaknode_block_free。
+- oaknode↔oaktimeline 运行期互相解析（add_default_nodes →
+  TimelineAddTrackCommand），双方 dylib dynamic_lookup，测试二进制
+  必须同时链两个库（各 standalone 驱动已接线）。
+- oakcommon xml C API 新增 get_native 借用访问器（C++ only），
+  oaktimeline 的 load/save 经它取回 XmlStreamReader/Writer。

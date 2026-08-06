@@ -24,6 +24,8 @@
 #include <algorithm>
 
 #include "inputdragger.h"
+
+#include "output/track/track.h"
 #include "sliderdisplaytype.h"
 
 namespace olive
@@ -95,6 +97,12 @@ void Block::set_enabled(bool e)
 void Block::InputValueChangedEvent(const std::string &input, int element)
 {
 	super::InputValueChangedEvent(input, element);
+
+	if (input == k_length_input && track_) {
+		// Formerly the length_changed signal connected by Track::insert;
+		// direct call after de-Qt (see DEQT.md §7)
+		track_->block_length_changed(this);
+	}
 }
 
 void Block::set_length_internal(const Rational &length)

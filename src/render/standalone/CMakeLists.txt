@@ -59,6 +59,15 @@ set(BUILD_TESTS OFF)
 add_subdirectory(${OAK_REPO_ROOT}/src/undo ${CMAKE_BINARY_DIR}/undo)
 add_subdirectory(${OAK_REPO_ROOT}/src/common ${CMAKE_BINARY_DIR}/common)
 add_subdirectory(${OAK_REPO_ROOT}/src/node ${CMAKE_BINARY_DIR}/node)
+
+# M4 收尾：oaknode 运行期依赖 oaktimeline（add_default_nodes ->
+# TimelineAddTrackCommand），测试二进制须链入
+set(BUILD_TESTS OFF)
+add_subdirectory(${OAK_REPO_ROOT}/src/timeline ${CMAKE_BINARY_DIR}/timeline)
+set(BUILD_TESTS ON)
+target_link_options(oaktimeline PRIVATE
+        "-undefined" "dynamic_lookup"
+)
 set(BUILD_TESTS ON)
 
 # oaknode needs its transition stubs too when built in this tree (see

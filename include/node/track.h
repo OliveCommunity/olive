@@ -67,6 +67,15 @@ enum OakNodeTrackType {
 	OAKNODE_TRACK_TYPE_COUNT = 3
 };
 
+/* Re-declared here so track.h is self-contained; see node/node.h. */
+typedef struct OakNodeNode OakNodeNode;
+
+/**
+ * @brief Borrowed cast from a track handle to its node handle.
+ * NULL for NULL.
+ */
+OakNodeNode *oaknode_track_as_node(OakNodeTrack *track);
+
 /* ---------------------------------------------------------------- Track */
 
 /**
@@ -220,6 +229,42 @@ int oaknode_track_is_range_free(OakNodeTrack *track, int in_num, int in_den,
 /**
  * @brief Track list type (OakNodeTrackType values).
  */
+/**
+ * @brief Nearest block lookups (Track::nearest_block_before_or_at /
+ * nearest_block_after_or_at). *out is a borrowed handle or NULL.
+ */
+int oaknode_track_get_nearest_block_before_or_at(OakNodeTrack *track,
+		int numerator, int denominator, OakNodeBlock **out);
+int oaknode_track_get_nearest_block_after_or_at(OakNodeTrack *track,
+		int numerator, int denominator, OakNodeBlock **out);
+
+/**
+ * @brief Borrowed sequence owning this track list.
+ */
+int oaknode_tracklist_get_sequence(OakNodeTrackList *list,
+								   OakNodeSequence **out);
+
+/**
+ * @brief The list's track input id on the parent sequence
+ * (e.g. "track_in_0"). Two-stage string getter.
+ */
+int oaknode_tracklist_get_track_input_id(OakNodeTrackList *list,
+										 char *buf, int buf_size);
+
+/**
+ * @brief Live input-array append/remove on the parent sequence for this
+ * list's track input (TrackList::array_append/array_remove_last()).
+ */
+int oaknode_tracklist_array_append(OakNodeTrackList *list);
+int oaknode_tracklist_array_remove_last(OakNodeTrackList *list);
+
+/**
+ * @brief Map a cached track index to the input-array element index
+ * (TrackList::get_array_index_from_cache_index()).
+ */
+int oaknode_tracklist_get_array_index_from_cache_index(
+	OakNodeTrackList *list, int cache_index, int *out_index);
+
 int oaknode_tracklist_get_type(OakNodeTrackList *list, int *type);
 
 /**
