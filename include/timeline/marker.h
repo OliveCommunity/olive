@@ -39,10 +39,10 @@ extern "C" {
 typedef struct OakTimelineMarkerList OakTimelineMarkerList;
 
 /**
- * @brief Borrowed marker list of a viewer node (sequence). NULL for NULL
- * or when the node is not a viewer.
+ * @brief Borrowed marker list of a viewer node (sequence). NULL for an
+ * empty handle or when the node is not a viewer.
  */
-OakTimelineMarkerList *oaktimeline_marker_list_of(OakNodeNode *owner);
+OakTimelineMarkerList *oaktimeline_marker_list_of(OakNodeNode owner);
 
 /**
  * @brief Number of markers. Out-param convention; OAKTIMELINE_E_INVALID

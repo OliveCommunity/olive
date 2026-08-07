@@ -41,7 +41,7 @@ namespace olive
  */
 class ExportTask : public RenderTask {
 public:
-	ExportTask(OakNodeNode *viewer_node, OakNodeColorManager *color_manager,
+	ExportTask(OakNodeNode viewer_node, OakNodeColorManager color_manager,
 			   const oakcodec_encoding_params &params);
 
 	virtual ~ExportTask() override;
@@ -55,7 +55,7 @@ protected:
 	virtual bool audio_downloaded(const TimeRange &range,
 								  OakSampleBuffer *samples) override;
 
-	virtual bool encode_subtitle(OakNodeBlock *sub) override;
+	virtual bool encode_subtitle(OakNodeBlock sub) override;
 
 private:
 	bool write_audio_loop(const TimeRange &time, OakSampleBuffer *samples);
@@ -72,7 +72,8 @@ private:
 	};
 	std::map<TimeRange, OakSampleBuffer *, TimeRangeLess> audio_map_;
 
-	OakNodeColorManager *color_manager_;
+	/** Owned handle (created on the copied project). */
+	OakNodeColorManager color_manager_;
 
 	oakcodec_encoding_params params_;
 

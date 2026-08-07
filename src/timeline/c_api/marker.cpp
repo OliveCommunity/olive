@@ -66,9 +66,9 @@ olive::TimelineMarker *marker_at(OakTimelineMarkerList *list, int index)
 
 } // namespace
 
-OakTimelineMarkerList *oaktimeline_marker_list_of(OakNodeNode *owner)
+OakTimelineMarkerList *oaktimeline_marker_list_of(OakNodeNode owner)
 {
-	if (!owner) {
+	if (!owner.ctx) {
 		return NULL;
 	}
 

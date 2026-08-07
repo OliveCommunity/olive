@@ -36,11 +36,12 @@ TEST(NodeTraverserTest, InitFree)
 {
 	int alive_before = oaknode_debug_alive_count();
 
-	OakNodeTraverser *traverser = oaknode_traverser_init();
-	ASSERT_NE(traverser, nullptr);
+	OakNodeTraverser traverser = oaknode_traverser_init();
+	ASSERT_NE(traverser.ctx, nullptr);
 	EXPECT_EQ(oaknode_debug_alive_count(), alive_before + 1);
 
-	oaknode_traverser_free(traverser);
+	oaknode_traverser_free(&traverser);
+	EXPECT_EQ(traverser.ctx, nullptr);
 	EXPECT_EQ(oaknode_debug_alive_count(), alive_before);
 
 	oaknode_traverser_free(nullptr); // no crash
@@ -55,16 +56,16 @@ TEST(NodeTraverserTest, GenerateDatabaseAndEnumerate)
 	ASSERT_EQ(oaknode_node_set_input(as_handle(&node), "float_in", &in),
 			  OAKNODE_OK);
 
-	OakNodeTraverser *traverser = oaknode_traverser_init();
-	ASSERT_NE(traverser, nullptr);
+	OakNodeTraverser traverser = oaknode_traverser_init();
+	ASSERT_NE(traverser.ctx, nullptr);
 
 	int alive_before = oaknode_debug_alive_count();
 
-	OakNodeValueDatabase *db = nullptr;
+	OakNodeValueDatabase db = {};
 	EXPECT_EQ(oaknode_traverser_generate_database(traverser, as_handle(&node),
 												  0, 1, 1, 1, &db),
 			  OAKNODE_OK);
-	ASSERT_NE(db, nullptr);
+	ASSERT_NE(db.ctx, nullptr);
 	EXPECT_EQ(oaknode_debug_alive_count(), alive_before + 1);
 
 	int rows = 0;
@@ -115,28 +116,30 @@ TEST(NodeTraverserTest, GenerateDatabaseAndEnumerate)
 	oaknode_value out;
 	EXPECT_EQ(oaknode_traverser_database_value_at(db, "nope", 0, &out),
 			  OAKNODE_E_NOT_FOUND);
-	EXPECT_EQ(oaknode_traverser_database_value_at(nullptr, "float_in", 0,
-												  &out),
+	EXPECT_EQ(oaknode_traverser_database_value_at(OakNodeValueDatabase{},
+												  "float_in", 0, &out),
 			  OAKNODE_E_INVALID);
 
-	oaknode_traverser_database_free(db);
+	oaknode_traverser_database_free(&db);
+	EXPECT_EQ(db.ctx, nullptr);
 	EXPECT_EQ(oaknode_debug_alive_count(), alive_before);
 	oaknode_traverser_database_free(nullptr); // no crash
 
-	oaknode_traverser_free(traverser);
+	oaknode_traverser_free(&traverser);
 }
 
 TEST(NodeTraverserTest, InvalidArguments)
 {
-	OakNodeValueDatabase *db = nullptr;
-	EXPECT_EQ(oaknode_traverser_generate_database(nullptr, nullptr, 0, 1, 1, 1,
+	OakNodeValueDatabase db = {};
+	EXPECT_EQ(oaknode_traverser_generate_database(OakNodeTraverser{},
+												  OakNodeNode{}, 0, 1, 1, 1,
 												  &db),
 			  OAKNODE_E_INVALID);
 
-	OakNodeTraverser *traverser = oaknode_traverser_init();
-	ASSERT_NE(traverser, nullptr);
-	EXPECT_EQ(oaknode_traverser_generate_database(traverser, nullptr, 0, 1, 1,
-												  1, &db),
+	OakNodeTraverser traverser = oaknode_traverser_init();
+	ASSERT_NE(traverser.ctx, nullptr);
+	EXPECT_EQ(oaknode_traverser_generate_database(traverser, OakNodeNode{}, 0,
+												  1, 1, 1, &db),
 			  OAKNODE_E_INVALID);
 
 	TestNode node;
@@ -144,10 +147,11 @@ TEST(NodeTraverserTest, InvalidArguments)
 												  0, 1, 1, 1, nullptr),
 			  OAKNODE_E_INVALID);
 
-	EXPECT_EQ(oaknode_traverser_database_row_count(nullptr, nullptr),
+	EXPECT_EQ(oaknode_traverser_database_row_count(OakNodeValueDatabase{},
+												   nullptr),
 			  OAKNODE_E_INVALID);
 
-	oaknode_traverser_free(traverser);
+	oaknode_traverser_free(&traverser);
 }
 
 }

@@ -33,7 +33,7 @@ namespace
 /**
  * @brief Serialize `save_data` to an XML string using the two-stage getter.
  */
-std::string save_to_string(OakNodeSerializerSaveData *save_data)
+std::string save_to_string(OakNodeSerializerSaveData save_data)
 {
 	int required = oaknode_serializer_save_to_xml(save_data, nullptr, 0);
 	if (required <= 0) {
@@ -53,12 +53,12 @@ TEST(NodeSerializer, SaveWithoutInitializeFails)
 {
 	oaknode_serializer_shutdown();
 
-	OakNodeProject *project = oaknode_project_init();
-	ASSERT_NE(project, nullptr);
+	OakNodeProject project = oaknode_project_init();
+	ASSERT_NE(project.ctx, nullptr);
 
-	OakNodeSerializerSaveData *save_data = oaknode_serializer_savedata_create(
+	OakNodeSerializerSaveData save_data = oaknode_serializer_savedata_create(
 		OAKNODE_SERIALIZER_LOAD_ONLY_NODES, project);
-	ASSERT_NE(save_data, nullptr);
+	ASSERT_NE(save_data.ctx, nullptr);
 	EXPECT_EQ(oaknode_serializer_save_to_xml(save_data, nullptr, 0),
 			  OAKNODE_E_STATE);
 
@@ -68,8 +68,8 @@ TEST(NodeSerializer, SaveWithoutInitializeFails)
 											   &result, nullptr, nullptr, 0),
 			  OAKNODE_E_STATE);
 
-	oaknode_serializer_savedata_free(save_data);
-	oaknode_project_free(project);
+	oaknode_serializer_savedata_free(&save_data);
+	oaknode_project_free(&project);
 }
 
 TEST(NodeSerializer, InitializeIsIdempotent)
@@ -83,22 +83,21 @@ TEST(NodeSerializer, NodeGraphCopyPasteRoundTrip)
 	ASSERT_EQ(oaknode_serializer_initialize(), OAKNODE_OK);
 
 	// Source project with a folder under the root
-	OakNodeProject *source = oaknode_project_init();
-	ASSERT_NE(source, nullptr);
+	OakNodeProject source = oaknode_project_init();
+	ASSERT_NE(source.ctx, nullptr);
 	ASSERT_EQ(oaknode_project_initialize(source), OAKNODE_OK);
-	OakNodeFolder *root = oaknode_project_root(source);
-	OakNodeFolder *folder = oaknode_folder_create(source);
-	ASSERT_NE(root, nullptr);
-	ASSERT_NE(folder, nullptr);
-	ASSERT_EQ(oaknode_folder_add_child(
-				  root, reinterpret_cast<OakNodeNode *>(folder)),
+	OakNodeFolder root = oaknode_project_root(source);
+	OakNodeFolder folder = oaknode_folder_create(source);
+	ASSERT_NE(root.ctx, nullptr);
+	ASSERT_NE(folder.ctx, nullptr);
+	ASSERT_EQ(oaknode_folder_add_child(root, oaknode_folder_as_node(folder)),
 			  OAKNODE_OK);
 
 	// "Copy": serialize the folder with a custom property
-	OakNodeSerializerSaveData *save_data = oaknode_serializer_savedata_create(
+	OakNodeSerializerSaveData save_data = oaknode_serializer_savedata_create(
 		OAKNODE_SERIALIZER_LOAD_ONLY_NODES, source);
-	ASSERT_NE(save_data, nullptr);
-	OakNodeNode *nodes[] = { reinterpret_cast<OakNodeNode *>(folder) };
+	ASSERT_NE(save_data.ctx, nullptr);
+	OakNodeNode nodes[] = { oaknode_folder_as_node(folder) };
 	EXPECT_EQ(oaknode_serializer_savedata_set_nodes(save_data, nodes, 1),
 			  OAKNODE_OK);
 	EXPECT_EQ(oaknode_serializer_savedata_set_property(
@@ -108,29 +107,29 @@ TEST(NodeSerializer, NodeGraphCopyPasteRoundTrip)
 	std::string xml = save_to_string(save_data);
 	EXPECT_FALSE(xml.empty());
 	EXPECT_NE(xml.find("<olive"), std::string::npos);
-	oaknode_serializer_savedata_free(save_data);
+	oaknode_serializer_savedata_free(&save_data);
 
 	// "Paste": load the XML into a different project
-	OakNodeProject *target = oaknode_project_init();
-	ASSERT_NE(target, nullptr);
+	OakNodeProject target = oaknode_project_init();
+	ASSERT_NE(target.ctx, nullptr);
 
 	int result = -1;
-	OakNodeSerializerLoadData *load_data = nullptr;
+	OakNodeSerializerLoadData load_data = {};
 	char details[256];
 	EXPECT_EQ(oaknode_serializer_load_from_xml(
 				  target, xml.c_str(), OAKNODE_SERIALIZER_LOAD_ONLY_NODES,
 				  &result, &load_data, details, sizeof(details)),
 			  OAKNODE_OK);
 	EXPECT_EQ(result, OAKNODE_SERIALIZER_OK) << details;
-	ASSERT_NE(load_data, nullptr);
+	ASSERT_NE(load_data.ctx, nullptr);
 
 	EXPECT_GE(oaknode_serializer_loaddata_node_count(load_data), 1);
-	OakNodeNode *loaded = oaknode_serializer_loaddata_node_at(load_data, 0);
-	ASSERT_NE(loaded, nullptr);
-	EXPECT_EQ(oaknode_serializer_loaddata_node_at(load_data, -1), nullptr);
+	OakNodeNode loaded = oaknode_serializer_loaddata_node_at(load_data, 0);
+	ASSERT_NE(loaded.ctx, nullptr);
+	EXPECT_EQ(oaknode_serializer_loaddata_node_at(load_data, -1).ctx, nullptr);
 	EXPECT_EQ(oaknode_serializer_loaddata_node_at(
 				  load_data,
-				  oaknode_serializer_loaddata_node_count(load_data)),
+				  oaknode_serializer_loaddata_node_count(load_data)).ctx,
 			  nullptr);
 
 	// The property rides along, remapped to the new node
@@ -162,26 +161,26 @@ TEST(NodeSerializer, NodeGraphCopyPasteRoundTrip)
 				  OAKNODE_OK);
 	}
 
-	oaknode_serializer_loaddata_free(load_data);
+	oaknode_serializer_loaddata_free(&load_data);
 	oaknode_serializer_loaddata_free(nullptr); // NULL free is a no-op
 	// Detach the source hierarchy before teardown (see the folder tests'
 	// detach_all note about Project::clear()).
-	EXPECT_EQ(oaknode_folder_remove_child(
-				  root, reinterpret_cast<OakNodeNode *>(folder)),
+	EXPECT_EQ(oaknode_folder_remove_child(root,
+										  oaknode_folder_as_node(folder)),
 			  OAKNODE_OK);
-	oaknode_project_free(target);
-	oaknode_project_free(source);
+	oaknode_project_free(&target);
+	oaknode_project_free(&source);
 }
 
 TEST(NodeSerializer, LoadInvalidXmlReportsSerializerError)
 {
 	ASSERT_EQ(oaknode_serializer_initialize(), OAKNODE_OK);
 
-	OakNodeProject *project = oaknode_project_init();
-	ASSERT_NE(project, nullptr);
+	OakNodeProject project = oaknode_project_init();
+	ASSERT_NE(project.ctx, nullptr);
 
 	int result = -1;
-	OakNodeSerializerLoadData *load_data = nullptr;
+	OakNodeSerializerLoadData load_data = {};
 	char details[256] = { 0 };
 	EXPECT_EQ(oaknode_serializer_load_from_xml(
 				  project, "this is not xml",
@@ -190,9 +189,9 @@ TEST(NodeSerializer, LoadInvalidXmlReportsSerializerError)
 			  OAKNODE_OK);
 	// Not an oak document: the format version cannot be determined
 	EXPECT_EQ(result, OAKNODE_SERIALIZER_UNKNOWN_VERSION);
-	EXPECT_EQ(load_data, nullptr);
+	EXPECT_EQ(load_data.ctx, nullptr);
 
-	oaknode_project_free(project);
+	oaknode_project_free(&project);
 }
 
 TEST(NodeSerializer, NullAndInvalidArgs)
@@ -201,37 +200,48 @@ TEST(NodeSerializer, NullAndInvalidArgs)
 
 	int result = -1;
 
-	EXPECT_EQ(oaknode_serializer_savedata_create(-1, nullptr), nullptr);
-	EXPECT_EQ(oaknode_serializer_savedata_create(99, nullptr), nullptr);
+	EXPECT_EQ(oaknode_serializer_savedata_create(-1, OakNodeProject{}).ctx,
+			  nullptr);
+	EXPECT_EQ(oaknode_serializer_savedata_create(99, OakNodeProject{}).ctx,
+			  nullptr);
 
-	EXPECT_EQ(oaknode_serializer_savedata_set_nodes(nullptr, nullptr, 0),
+	EXPECT_EQ(oaknode_serializer_savedata_set_nodes(
+				  OakNodeSerializerSaveData{}, nullptr, 0),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_serializer_savedata_set_property(nullptr, nullptr,
-													   nullptr, nullptr),
+	EXPECT_EQ(oaknode_serializer_savedata_set_property(
+				  OakNodeSerializerSaveData{}, OakNodeNode{}, nullptr, nullptr),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_serializer_save_to_xml(nullptr, nullptr, 0),
+	EXPECT_EQ(oaknode_serializer_save_to_xml(OakNodeSerializerSaveData{},
+											 nullptr, 0),
 			  OAKNODE_E_INVALID);
 
-	EXPECT_EQ(oaknode_serializer_load_from_xml(nullptr, nullptr, 1, &result,
-											   nullptr, nullptr, 0),
-			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_serializer_load_from_xml(nullptr, "<olive/>", 99,
+	EXPECT_EQ(oaknode_serializer_load_from_xml(OakNodeProject{}, nullptr, 1,
 											   &result, nullptr, nullptr, 0),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_serializer_load_from_xml(nullptr, "<olive/>", 1,
+	EXPECT_EQ(oaknode_serializer_load_from_xml(OakNodeProject{}, "<olive/>", 99,
+											   &result, nullptr, nullptr, 0),
+			  OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_serializer_load_from_xml(OakNodeProject{}, "<olive/>", 1,
 											   nullptr, nullptr, nullptr, 0),
 			  OAKNODE_E_INVALID);
 
-	EXPECT_EQ(oaknode_serializer_loaddata_node_count(nullptr),
+	EXPECT_EQ(oaknode_serializer_loaddata_node_count(
+				  OakNodeSerializerLoadData{}),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_serializer_loaddata_node_at(nullptr, 0), nullptr);
-	EXPECT_EQ(oaknode_serializer_loaddata_get_property(nullptr, nullptr,
-													   nullptr, nullptr, 0),
+	EXPECT_EQ(oaknode_serializer_loaddata_node_at(OakNodeSerializerLoadData{},
+												  0)
+				  .ctx,
+			  nullptr);
+	EXPECT_EQ(oaknode_serializer_loaddata_get_property(
+				  OakNodeSerializerLoadData{}, OakNodeNode{}, nullptr, nullptr,
+				  0),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_serializer_loaddata_connection_count(nullptr),
+	EXPECT_EQ(oaknode_serializer_loaddata_connection_count(
+				  OakNodeSerializerLoadData{}),
 			  OAKNODE_E_INVALID);
 	EXPECT_EQ(oaknode_serializer_loaddata_connection_at(
-				  nullptr, 0, nullptr, nullptr, nullptr, 0, nullptr),
+				  OakNodeSerializerLoadData{}, 0, nullptr, nullptr, nullptr, 0,
+				  nullptr),
 			  OAKNODE_E_INVALID);
 }
 

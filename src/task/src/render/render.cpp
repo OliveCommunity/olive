@@ -27,20 +27,22 @@
 #include "node/sequence.h"
 #include "node/track.h"
 
+#include "nodehandle.h"
+
 namespace olive
 {
 
 namespace
 {
 
-Rational task_block_in(OakNodeBlock *b)
+Rational task_block_in(OakNodeBlock b)
 {
 	int n = 0, d = 1;
 	oaknode_block_get_in(b, &n, &d);
 	return Rational(n, d);
 }
 
-Rational task_block_out(OakNodeBlock *b)
+Rational task_block_out(OakNodeBlock b)
 {
 	int n = 0, d = 1;
 	oaknode_block_get_out(b, &n, &d);
@@ -50,7 +52,7 @@ Rational task_block_out(OakNodeBlock *b)
 } // namespace
 
 RenderTask::RenderTask()
-	: viewer_(nullptr)
+	: viewer_({})
 	, video_params_({})
 	, audio_params_(nullptr)
 	, running_tickets_(0)
@@ -61,6 +63,9 @@ RenderTask::RenderTask()
 
 RenderTask::~RenderTask()
 {
+	// Borrowed/owned indifferent: releasing the viewer handle only frees
+	// the handle box once the node lives in a graph.
+	oaknode_node_free(&viewer_);
 	if (video_params_.ctx) {
 		oakcommon_videoparams_free(&video_params_);
 	}
@@ -75,15 +80,15 @@ void RenderTask::on_ticket_finished(OakRenderTicket *ticket)
 	finished_mutex_.unlock();
 }
 
-bool RenderTask::start_video_ticket(OakNodeColorManager *manager,
+bool RenderTask::start_video_ticket(OakNodeColorManager manager,
 									const Rational &time, int mode,
 									OakNodeFrameCache *cache,
 									const ForceParams &force)
 {
-	OakNodeNode *output_node = nullptr;
+	OakNodeNode output_node = {};
 	oaknode_node_input_get_connected_node(
 		viewer_, OAKNODE_SEQUENCE_TEXTURE_INPUT, &output_node);
-	if (!output_node) {
+	if (!output_node.ctx) {
 		return false;
 	}
 
@@ -113,6 +118,9 @@ bool RenderTask::start_video_ticket(OakNodeColorManager *manager,
 			static_cast<RenderTask *>(userdata)->on_ticket_finished(t);
 		},
 		this);
+	// Per-frame call: release the borrowed handle box (the ticket keeps
+	// the native node, not the handle).
+	oaknode_node_free(&output_node);
 	if (!ticket) {
 		return false;
 	}
@@ -124,7 +132,7 @@ bool RenderTask::start_video_ticket(OakNodeColorManager *manager,
 	return true;
 }
 
-bool RenderTask::render(OakNodeColorManager *manager,
+bool RenderTask::render(OakNodeColorManager manager,
 						const TimeRangeList &video_range,
 						const TimeRangeList &audio_range,
 						const TimeRange &subtitle_range, int render_mode,
@@ -137,10 +145,10 @@ bool RenderTask::render(OakNodeColorManager *manager,
 
 	// Queue audio jobs
 	for (const TimeRange &range : audio_range) {
-		OakNodeNode *output_node = nullptr;
+		OakNodeNode output_node = {};
 		oaknode_node_input_get_connected_node(
 			viewer_, OAKNODE_SEQUENCE_SAMPLES_INPUT, &output_node);
-		if (!output_node) {
+		if (!output_node.ctx) {
 			continue;
 		}
 
@@ -158,6 +166,7 @@ bool RenderTask::render(OakNodeColorManager *manager,
 			running_tickets_++;
 			finished_mutex_.unlock();
 		}
+		oaknode_node_free(&output_node);
 	}
 
 	// Frame timestamps
@@ -198,13 +207,16 @@ bool RenderTask::render(OakNodeColorManager *manager,
 
 	// Subtitle loop, loops over all blocks in sequence on all tracks
 	if (!subtitle_range.length().isNull()) {
-		OakNodeSequence *sequence =
-			reinterpret_cast<OakNodeSequence *>(viewer_);
-		OakNodeTrackList *list = nullptr;
+		// Borrowed sequence alias of the viewer handle (same underlying
+		// node; releasing it only frees the handle box).
+		OakNodeSequence sequence = oaknode_c_api::make_handle<
+			OakNodeSequence>(oaknode_c_api::to_native<void>(viewer_), false,
+							 nullptr);
+		OakNodeTrackList list = {};
 		oaknode_sequence_get_track_list(
 			sequence, OAKNODE_TRACK_TYPE_SUBTITLE, &list);
 
-		if (list) {
+		if (list.ctx) {
 			int track_count = 0;
 			oaknode_tracklist_get_track_count(list, &track_count);
 
@@ -214,9 +226,9 @@ bool RenderTask::render(OakNodeColorManager *manager,
 				tracks_to_push.clear();
 
 				for (int i = 0; i < track_count; i++) {
-					OakNodeTrack *this_track = nullptr;
+					OakNodeTrack this_track = {};
 					oaknode_tracklist_get_track_at(list, i, &this_track);
-					if (!this_track) {
+					if (!this_track.ctx) {
 						continue;
 					}
 
@@ -234,27 +246,27 @@ bool RenderTask::render(OakNodeColorManager *manager,
 						continue;
 					}
 
-					OakNodeBlock *this_block = nullptr;
+					OakNodeBlock this_block = {};
 					oaknode_track_get_block_at(this_track,
 											   this_block_index,
 											   &this_block);
 
-					OakNodeTrack *compare_track = nullptr;
+					OakNodeTrack compare_track = {};
 					if (!tracks_to_push.empty()) {
 						oaknode_tracklist_get_track_at(
 							list, tracks_to_push.front(), &compare_track);
 					}
-					OakNodeBlock *compare_block = nullptr;
-					if (compare_track) {
+					OakNodeBlock compare_block = {};
+					if (compare_track.ctx) {
 						oaknode_track_get_block_at(
 							compare_track,
 							block_indexes[size_t(
 								tracks_to_push.front())],
 							&compare_block);
 					}
-					if (!compare_track ||
+					if (!compare_track.ctx ||
 						task_block_out(compare_block) >= task_block_in(this_block)) {
-						if (compare_track &&
+						if (compare_track.ctx &&
 							task_block_in(compare_block) !=
 								task_block_in(this_block)) {
 							tracks_to_push.clear();
@@ -264,17 +276,17 @@ bool RenderTask::render(OakNodeColorManager *manager,
 				}
 
 				for (int i : tracks_to_push) {
-					OakNodeTrack *this_track = nullptr;
+					OakNodeTrack this_track = {};
 					oaknode_tracklist_get_track_at(list, i, &this_track);
-					OakNodeBlock *this_block = nullptr;
+					OakNodeBlock this_block = {};
 					oaknode_track_get_block_at(
 						this_track, block_indexes[size_t(i)], &this_block);
 
 					int kind = OAKNODE_BLOCK_OTHER;
-					if (this_block) {
+					if (this_block.ctx) {
 						oaknode_block_get_kind(this_block, &kind);
 					}
-					if (this_block && kind != OAKNODE_BLOCK_GAP) {
+					if (this_block.ctx && kind != OAKNODE_BLOCK_GAP) {
 						int enabled = 0;
 						oaknode_block_get_enabled(this_block, &enabled);
 						if (enabled) {
@@ -289,6 +301,8 @@ bool RenderTask::render(OakNodeColorManager *manager,
 				}
 			} while (!tracks_to_push.empty());
 		}
+
+		oaknode_sequence_free(&sequence);
 	}
 
 	std::unique_lock<std::mutex> loop_lock(finished_mutex_);
@@ -400,7 +414,7 @@ bool RenderTask::download_frame(OakCodecFrame *frame, const Rational &time)
 	return true;
 }
 
-bool RenderTask::encode_subtitle(OakNodeBlock *subtitle)
+bool RenderTask::encode_subtitle(OakNodeBlock subtitle)
 {
 	(void)subtitle;
 	return true;

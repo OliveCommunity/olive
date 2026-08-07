@@ -22,17 +22,10 @@
 
 #include "factory.h"
 
+#include "nodehandle.h"
 #include "valueconvert.h"
 
-namespace
-{
-
-inline OakNodeNode *from_node(olive::Node *node)
-{
-	return reinterpret_cast<OakNodeNode *>(node);
-}
-
-}
+using oaknode_c_api::make_handle;
 
 int oaknode_factory_initialize(void)
 {
@@ -104,24 +97,22 @@ int oaknode_factory_name_from_id(const char *type_id, char *buf,
 	}
 }
 
-OakNodeNode *oaknode_factory_create_from_id(const char *type_id)
+OakNodeNode oaknode_factory_create_from_id(const char *type_id)
 {
 	if (!type_id) {
-		return NULL;
+		return OakNodeNode{};
 	}
 
 	try {
-		olive::Node *node = olive::NodeFactory::create_from_id(type_id);
-		if (node) {
-			oaknode_c_api::alive_inc();
-		}
-		return from_node(node);
+		return make_handle<OakNodeNode>(
+			olive::NodeFactory::create_from_id(type_id), true,
+			oaknode_c_api::delete_as<olive::Node>);
 	} catch (...) {
-		return NULL;
+		return OakNodeNode{};
 	}
 }
 
-int oaknode_factory_node_at(int index, OakNodeNode **out_node)
+int oaknode_factory_node_at(int index, OakNodeNode *out_node)
 {
 	if (!out_node) {
 		return OAKNODE_E_INVALID;
@@ -136,7 +127,8 @@ int oaknode_factory_node_at(int index, OakNodeNode **out_node)
 		if (index < 0 || index >= static_cast<int>(library.size())) {
 			return OAKNODE_E_NOT_FOUND;
 		}
-		*out_node = from_node(library[size_t(index)]);
+		*out_node = make_handle<OakNodeNode>(library[size_t(index)], false,
+											 nullptr);
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;

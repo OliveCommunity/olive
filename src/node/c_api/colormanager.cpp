@@ -22,15 +22,11 @@
 
 #include <cstring>
 
-#include "alivecount.h"
-
 #include "color/colormanager/colormanager.h"
 #include "colortransform.h"
 #include "project.h"
 
-struct OakNodeColorManager {
-	olive::ColorManager impl;
-};
+#include "nodehandle.h"
 
 namespace
 {
@@ -44,9 +40,9 @@ int copy_string(const std::string &value, char *buf, int buf_size)
 	return needed;
 }
 
-bool has_config(olive::ColorManager *cm)
+bool has_config(const olive::ColorManager *cm)
 {
-	return cm && cm->get_config() != nullptr;
+	return cm->get_config() != nullptr;
 }
 
 int list_at(const olive::StringList &list, int index, char *buf, int buf_size)
@@ -59,37 +55,35 @@ int list_at(const olive::StringList &list, int index, char *buf, int buf_size)
 
 } // namespace
 
-OakNodeColorManager *oaknode_colormanager_init(OakNodeProject *project)
+OakNodeColorManager oaknode_colormanager_init(OakNodeProject project)
 {
-	if (!project) {
-		return nullptr;
+	olive::Project *native = oaknode_c_api::to_native<olive::Project>(project);
+	if (!native) {
+		return OakNodeColorManager{};
 	}
 	try {
-		auto *m = new OakNodeColorManager{
-			olive::ColorManager(reinterpret_cast<olive::Project *>(project))};
-		oaknode_c_api::alive_inc();
-		return m;
+		return oaknode_c_api::make_handle<OakNodeColorManager>(
+			new olive::ColorManager(native), true,
+			&oaknode_c_api::delete_as<olive::ColorManager>);
 	} catch (...) {
-		return nullptr;
+		return OakNodeColorManager{};
 	}
 }
 
 void oaknode_colormanager_free(OakNodeColorManager *manager)
 {
-	if (!manager) {
-		return;
-	}
-	delete manager;
-	oaknode_c_api::alive_dec();
+	oaknode_c_api::free_handle(manager);
 }
 
-int oaknode_colormanager_initialize(OakNodeColorManager *manager)
+int oaknode_colormanager_initialize(OakNodeColorManager manager)
 {
-	if (!manager) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm) {
 		return OAKNODE_E_INVALID;
 	}
 	try {
-		manager->impl.init();
+		cm->init();
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
@@ -106,33 +100,39 @@ int oaknode_colormanager_set_up_default_config(void)
 	return OAKNODE_OK;
 }
 
-int oaknode_colormanager_get_config_filename(OakNodeColorManager *manager,
+int oaknode_colormanager_get_config_filename(OakNodeColorManager manager,
 											 char *buf, int buf_size)
 {
-	if (!manager) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm) {
 		return OAKNODE_E_INVALID;
 	}
-	return copy_string(manager->impl.get_config_filename(), buf, buf_size);
+	return copy_string(cm->get_config_filename(), buf, buf_size);
 }
 
-int oaknode_colormanager_set_config_filename(OakNodeColorManager *manager,
+int oaknode_colormanager_set_config_filename(OakNodeColorManager manager,
 											 const char *filename)
 {
-	if (!manager || !filename) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm || !filename) {
 		return OAKNODE_E_INVALID;
 	}
-	manager->impl.set_config_filename(filename);
+	cm->set_config_filename(filename);
 	return OAKNODE_OK;
 }
 
 int oaknode_colormanager_update_config_from_filename(
-	OakNodeColorManager *manager)
+	OakNodeColorManager manager)
 {
-	if (!manager) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm) {
 		return OAKNODE_E_INVALID;
 	}
 	try {
-		manager->impl.update_config_from_filename();
+		cm->update_config_from_filename();
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
@@ -140,212 +140,240 @@ int oaknode_colormanager_update_config_from_filename(
 }
 
 int oaknode_colormanager_get_default_input_color_space(
-	OakNodeColorManager *manager, char *buf, int buf_size)
+	OakNodeColorManager manager, char *buf, int buf_size)
 {
-	if (!manager) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm) {
 		return OAKNODE_E_INVALID;
 	}
-	return copy_string(manager->impl.get_default_input_color_space(), buf,
-					   buf_size);
+	return copy_string(cm->get_default_input_color_space(), buf, buf_size);
 }
 
 int oaknode_colormanager_set_default_input_color_space(
-	OakNodeColorManager *manager, const char *colorspace)
+	OakNodeColorManager manager, const char *colorspace)
 {
-	if (!manager || !colorspace) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm || !colorspace) {
 		return OAKNODE_E_INVALID;
 	}
-	manager->impl.set_default_input_color_space(colorspace);
+	cm->set_default_input_color_space(colorspace);
 	return OAKNODE_OK;
 }
 
 int oaknode_colormanager_get_reference_color_space(
-	OakNodeColorManager *manager, char *buf, int buf_size)
+	OakNodeColorManager manager, char *buf, int buf_size)
 {
-	if (!manager) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm) {
 		return OAKNODE_E_INVALID;
 	}
-	return copy_string(manager->impl.get_reference_color_space(), buf,
-					   buf_size);
+	return copy_string(cm->get_reference_color_space(), buf, buf_size);
 }
 
 int oaknode_colormanager_get_compliant_color_space(
-	OakNodeColorManager *manager, const char *colorspace, char *buf,
+	OakNodeColorManager manager, const char *colorspace, char *buf,
 	int buf_size)
 {
-	if (!manager || !colorspace) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm || !colorspace) {
 		return OAKNODE_E_INVALID;
 	}
-	if (!has_config(&manager->impl)) {
+	if (!has_config(cm)) {
 		return OAKNODE_E_STATE;
 	}
-	return copy_string(manager->impl.get_compliant_color_space(colorspace), buf,
+	return copy_string(cm->get_compliant_color_space(colorspace), buf,
 					   buf_size);
 }
 
 int oaknode_colormanager_get_colorspace_for_ffmpeg_tags(
-	OakNodeColorManager *manager, int primaries, int trc, char *buf,
+	OakNodeColorManager manager, int primaries, int trc, char *buf,
 	int buf_size)
 {
-	if (!manager) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm) {
 		return OAKNODE_E_INVALID;
 	}
-	if (!has_config(&manager->impl)) {
+	if (!has_config(cm)) {
 		return OAKNODE_E_STATE;
 	}
-	return copy_string(
-		manager->impl.get_colorspace_for_ffmpeg_tags(primaries, trc), buf,
-		buf_size);
+	return copy_string(cm->get_colorspace_for_ffmpeg_tags(primaries, trc), buf,
+					   buf_size);
 }
 
-int oaknode_colormanager_get_display_count(OakNodeColorManager *manager,
+int oaknode_colormanager_get_display_count(OakNodeColorManager manager,
 										   int *count)
 {
-	if (!manager || !count) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm || !count) {
 		return OAKNODE_E_INVALID;
 	}
-	if (!has_config(&manager->impl)) {
+	if (!has_config(cm)) {
 		return OAKNODE_E_STATE;
 	}
-	*count = int(manager->impl.list_available_displays().size());
+	*count = int(cm->list_available_displays().size());
 	return OAKNODE_OK;
 }
 
-int oaknode_colormanager_get_display_at(OakNodeColorManager *manager,
+int oaknode_colormanager_get_display_at(OakNodeColorManager manager,
 										int index, char *buf, int buf_size)
 {
-	if (!manager) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm) {
 		return OAKNODE_E_INVALID;
 	}
-	if (!has_config(&manager->impl)) {
+	if (!has_config(cm)) {
 		return OAKNODE_E_STATE;
 	}
-	return list_at(manager->impl.list_available_displays(), index, buf,
-				   buf_size);
+	return list_at(cm->list_available_displays(), index, buf, buf_size);
 }
 
-int oaknode_colormanager_get_default_display(OakNodeColorManager *manager,
+int oaknode_colormanager_get_default_display(OakNodeColorManager manager,
 											 char *buf, int buf_size)
 {
-	if (!manager) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm) {
 		return OAKNODE_E_INVALID;
 	}
-	if (!has_config(&manager->impl)) {
+	if (!has_config(cm)) {
 		return OAKNODE_E_STATE;
 	}
-	return copy_string(manager->impl.get_default_display(), buf, buf_size);
+	return copy_string(cm->get_default_display(), buf, buf_size);
 }
 
-int oaknode_colormanager_get_view_count(OakNodeColorManager *manager,
+int oaknode_colormanager_get_view_count(OakNodeColorManager manager,
 										const char *display, int *count)
 {
-	if (!manager || !display || !count) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm || !display || !count) {
 		return OAKNODE_E_INVALID;
 	}
-	if (!has_config(&manager->impl)) {
+	if (!has_config(cm)) {
 		return OAKNODE_E_STATE;
 	}
-	*count = int(manager->impl.list_available_views(display).size());
+	*count = int(cm->list_available_views(display).size());
 	return OAKNODE_OK;
 }
 
-int oaknode_colormanager_get_view_at(OakNodeColorManager *manager,
+int oaknode_colormanager_get_view_at(OakNodeColorManager manager,
 									 const char *display, int index, char *buf,
 									 int buf_size)
 {
-	if (!manager || !display) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm || !display) {
 		return OAKNODE_E_INVALID;
 	}
-	if (!has_config(&manager->impl)) {
+	if (!has_config(cm)) {
 		return OAKNODE_E_STATE;
 	}
-	return list_at(manager->impl.list_available_views(display), index, buf,
-				   buf_size);
+	return list_at(cm->list_available_views(display), index, buf, buf_size);
 }
 
-int oaknode_colormanager_get_default_view(OakNodeColorManager *manager,
+int oaknode_colormanager_get_default_view(OakNodeColorManager manager,
 										  const char *display, char *buf,
 										  int buf_size)
 {
-	if (!manager || !display) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm || !display) {
 		return OAKNODE_E_INVALID;
 	}
-	if (!has_config(&manager->impl)) {
+	if (!has_config(cm)) {
 		return OAKNODE_E_STATE;
 	}
-	return copy_string(manager->impl.get_default_view(display), buf, buf_size);
+	return copy_string(cm->get_default_view(display), buf, buf_size);
 }
 
-int oaknode_colormanager_get_look_count(OakNodeColorManager *manager,
+int oaknode_colormanager_get_look_count(OakNodeColorManager manager,
 										int *count)
 {
-	if (!manager || !count) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm || !count) {
 		return OAKNODE_E_INVALID;
 	}
-	if (!has_config(&manager->impl)) {
+	if (!has_config(cm)) {
 		return OAKNODE_E_STATE;
 	}
-	*count = int(manager->impl.list_available_looks().size());
+	*count = int(cm->list_available_looks().size());
 	return OAKNODE_OK;
 }
 
-int oaknode_colormanager_get_look_at(OakNodeColorManager *manager, int index,
+int oaknode_colormanager_get_look_at(OakNodeColorManager manager, int index,
 									 char *buf, int buf_size)
 {
-	if (!manager) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm) {
 		return OAKNODE_E_INVALID;
 	}
-	if (!has_config(&manager->impl)) {
+	if (!has_config(cm)) {
 		return OAKNODE_E_STATE;
 	}
-	return list_at(manager->impl.list_available_looks(), index, buf, buf_size);
+	return list_at(cm->list_available_looks(), index, buf, buf_size);
 }
 
-int oaknode_colormanager_get_colorspace_count(OakNodeColorManager *manager,
+int oaknode_colormanager_get_colorspace_count(OakNodeColorManager manager,
 											  int *count)
 {
-	if (!manager || !count) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm || !count) {
 		return OAKNODE_E_INVALID;
 	}
-	if (!has_config(&manager->impl)) {
+	if (!has_config(cm)) {
 		return OAKNODE_E_STATE;
 	}
-	*count = int(manager->impl.list_available_colorspaces().size());
+	*count = int(cm->list_available_colorspaces().size());
 	return OAKNODE_OK;
 }
 
-int oaknode_colormanager_get_colorspace_at(OakNodeColorManager *manager,
+int oaknode_colormanager_get_colorspace_at(OakNodeColorManager manager,
 										   int index, char *buf,
 										   int buf_size)
 {
-	if (!manager) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm) {
 		return OAKNODE_E_INVALID;
 	}
-	if (!has_config(&manager->impl)) {
+	if (!has_config(cm)) {
 		return OAKNODE_E_STATE;
 	}
-	return list_at(manager->impl.list_available_colorspaces(), index, buf,
-				   buf_size);
+	return list_at(cm->list_available_colorspaces(), index, buf, buf_size);
 }
 
-int oaknode_colormanager_get_default_luma_coefs(OakNodeColorManager *manager,
+int oaknode_colormanager_get_default_luma_coefs(OakNodeColorManager manager,
 												double rgb[3])
 {
-	if (!manager || !rgb) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm || !rgb) {
 		return OAKNODE_E_INVALID;
 	}
-	if (!has_config(&manager->impl)) {
+	if (!has_config(cm)) {
 		return OAKNODE_E_STATE;
 	}
-	manager->impl.get_default_luma_coefs(rgb);
+	cm->get_default_luma_coefs(rgb);
 	return OAKNODE_OK;
 }
 
 int oaknode_colormanager_get_compliant_color_transform(
-	OakNodeColorManager *manager, OakColorTransform transform,
+	OakNodeColorManager manager, OakColorTransform transform,
 	int force_display, OakColorTransform *out)
 {
-	if (!manager || !out) {
+	olive::ColorManager *cm =
+		oaknode_c_api::to_native<olive::ColorManager>(manager);
+	if (!cm || !out) {
 		return OAKNODE_E_INVALID;
 	}
 	const olive::ColorTransform *native =
@@ -353,13 +381,12 @@ int oaknode_colormanager_get_compliant_color_transform(
 	if (!native) {
 		return OAKNODE_E_INVALID;
 	}
-	if (!has_config(&manager->impl)) {
+	if (!has_config(cm)) {
 		return OAKNODE_E_STATE;
 	}
 	try {
 		const olive::ColorTransform compliant =
-			manager->impl.get_compliant_color_space(*native,
-													force_display != 0);
+			cm->get_compliant_color_space(*native, force_display != 0);
 		*out = oakcommon_colortransform_init_from_native(&compliant);
 	} catch (...) {
 		return OAKNODE_E_NOMEM;

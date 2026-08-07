@@ -41,26 +41,46 @@ extern "C" {
  */
 
 /**
- * @brief Opaque traverser handle (olive::NodeTraverser).
+ * @brief Reference-counted handle to a traverser (olive::NodeTraverser).
+ *
+ * Semantics are shared_ptr-like: oaknode_traverser_init() returns a
+ * handle with count 1, addref(ctx) takes another reference, release(ctx)
+ * drops one and the library destroys the object when the count reaches
+ * zero.
  */
-typedef struct OakNodeTraverser OakNodeTraverser;
+typedef struct OakNodeTraverser {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKNODE_ABI_VERSION. */
+} OakNodeTraverser;
 
 /**
- * @brief Opaque value-database handle (an owned copy of an
- * olive::NodeValueDatabase). Release with
- * oaknode_traverser_database_free().
+ * @brief Reference-counted handle to an owned copy of an
+ * olive::NodeValueDatabase. Same reference-counting rules as
+ * OakNodeTraverser; release with oaknode_traverser_database_free().
  */
-typedef struct OakNodeValueDatabase OakNodeValueDatabase;
+typedef struct OakNodeValueDatabase {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKNODE_ABI_VERSION. */
+} OakNodeValueDatabase;
 
 /**
  * @brief Create a traverser.
  *
- * @return Traverser handle, or NULL on allocation failure.
+ * @return Traverser handle with count 1; ctx is NULL on allocation
+ *         failure.
  */
-OakNodeTraverser *oaknode_traverser_init(void);
+OakNodeTraverser oaknode_traverser_init(void);
 
 /**
- * @brief Destroy a traverser. NULL is a no-op.
+ * @brief Release one reference to a traverser handle.
+ *
+ * Convenience wrapper around handle.release(handle.ctx): destroys the
+ * traverser when the count reaches zero. NULL handle or NULL ctx is a
+ * no-op; clears `traverser->ctx` after releasing.
  */
 void oaknode_traverser_free(OakNodeTraverser *traverser);
 
@@ -69,39 +89,43 @@ void oaknode_traverser_free(OakNodeTraverser *traverser);
  * [`in_num`/`in_den`, `out_num`/`out_den`) seconds
  * (NodeTraverser::generate_database()).
  *
- * `out_db` receives an owned database handle.
+ * `out_db` receives an owned database handle with count 1.
  *
  * @return OAKNODE_OK or a negative OAKNODE_E_* error code.
  */
-int oaknode_traverser_generate_database(OakNodeTraverser *traverser,
-										OakNodeNode *node, int64_t in_num,
+int oaknode_traverser_generate_database(OakNodeTraverser traverser,
+										OakNodeNode node, int64_t in_num,
 										int64_t in_den, int64_t out_num,
 										int64_t out_den,
-										OakNodeValueDatabase **out_db);
+										OakNodeValueDatabase *out_db);
 
 /**
- * @brief Destroy a database handle. NULL is a no-op.
+ * @brief Release one reference to a database handle.
+ *
+ * Convenience wrapper around handle.release(handle.ctx): destroys the
+ * database when the count reaches zero. NULL handle or NULL ctx is a
+ * no-op; clears `db->ctx` after releasing.
  */
 void oaknode_traverser_database_free(OakNodeValueDatabase *db);
 
 /**
  * @brief Number of rows (input tables) in the database.
  */
-int oaknode_traverser_database_row_count(const OakNodeValueDatabase *db,
+int oaknode_traverser_database_row_count(OakNodeValueDatabase db,
 										 int *out_count);
 
 /**
  * @brief The input id (key) of the row at `index`. Two-stage getter;
  * OAKNODE_E_NOT_FOUND for an out-of-range index.
  */
-int oaknode_traverser_database_row_key_at(const OakNodeValueDatabase *db,
+int oaknode_traverser_database_row_key_at(OakNodeValueDatabase db,
 										  int index, char *buf, int buf_size);
 
 /**
  * @brief Number of values in the row named `key`.
  * OAKNODE_E_NOT_FOUND for an unknown key.
  */
-int oaknode_traverser_database_row_value_count(const OakNodeValueDatabase *db,
+int oaknode_traverser_database_row_value_count(OakNodeValueDatabase db,
 											   const char *key,
 											   int *out_count);
 
@@ -110,7 +134,7 @@ int oaknode_traverser_database_row_value_count(const OakNodeValueDatabase *db,
  * Values without a POD representation fail with OAKNODE_E_FAILED;
  * OAKNODE_E_NOT_FOUND for an unknown key or out-of-range index.
  */
-int oaknode_traverser_database_value_at(const OakNodeValueDatabase *db,
+int oaknode_traverser_database_value_at(OakNodeValueDatabase db,
 										const char *key, int index,
 										oaknode_value *out);
 
@@ -119,7 +143,7 @@ int oaknode_traverser_database_value_at(const OakNodeValueDatabase *db,
  * (NodeValue::value_to_string()). Two-stage getter;
  * OAKNODE_E_NOT_FOUND for an unknown key or out-of-range index.
  */
-int oaknode_traverser_database_value_string_at(const OakNodeValueDatabase *db,
+int oaknode_traverser_database_value_string_at(OakNodeValueDatabase db,
 											   const char *key, int index,
 											   char *buf, int buf_size);
 

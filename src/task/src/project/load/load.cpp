@@ -27,7 +27,7 @@ namespace olive
 {
 
 ProjectLoadBaseTask::ProjectLoadBaseTask(const std::string &filename)
-	: project_(nullptr)
+	: project_({})
 	, filename_(filename)
 {
 	set_title("Loading '" + filename + "'");
@@ -41,7 +41,7 @@ ProjectLoadTask::ProjectLoadTask(const std::string &filename)
 bool ProjectLoadTask::run()
 {
 	project_ = oaknode_project_init();
-	if (!project_) {
+	if (!project_.ctx) {
 		set_error("Failed to create project");
 		return false;
 	}
@@ -92,8 +92,7 @@ bool ProjectLoadTask::run()
 		return true;
 	}
 
-	oaknode_project_free(project_);
-	project_ = nullptr;
+	oaknode_project_free(&project_);
 	return false;
 }
 

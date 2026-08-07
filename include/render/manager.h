@@ -24,6 +24,7 @@
 #include <stdint.h>
 
 // See cache.h for why these are same-dir relative includes.
+#include "node/node.h" /* OakNodeNode (by-value handle) */
 #include "cache.h" /* OakCodecFrame */
 #include "color.h" /* OakColorProcessor */
 #include "error.h"
@@ -49,12 +50,6 @@ extern "C" {
  * signals "no result" (cancelled or failed). Beyond this callback there
  * are no event subscription interfaces.
  */
-
-/**
- * @brief Borrowed node handle (olive::Node) from the oaknode ABI,
- * re-declared here so this header is self-contained.
- */
-typedef struct OakNodeNode OakNodeNode;
 
 /**
  * @brief Create the RenderManager singleton (spawns render/audio
@@ -91,11 +86,12 @@ typedef void (*oakrender_frame_ready_fn)(OakCodecFrame *frame, int64_t ts,
  * cancelled with oakrender_cancel_request().
  *
  * @return A positive request id, or a negative OAKRENDER_E_* code
- *         (OAKRENDER_E_INVALID for NULL viewer/callback,
- *         OAKRENDER_E_STATE when the manager is not initialized,
- *         OAKRENDER_E_FAILED when no ticket could be created).
+ *         (OAKRENDER_E_INVALID for an empty viewer handle or NULL
+ *         callback, OAKRENDER_E_STATE when the manager is not
+ *         initialized, OAKRENDER_E_FAILED when no ticket could be
+ *         created).
  */
-int64_t oakrender_request_frame(OakNodeNode *viewer, int64_t ts,
+int64_t oakrender_request_frame(OakNodeNode viewer, int64_t ts,
 								oakrender_frame_ready_fn cb, void *userdata);
 
 /**
@@ -109,11 +105,11 @@ int oakrender_cancel_request(int64_t request_id);
 /**
  * @brief Set the multicam node on the manager's auto-cacher
  * (PreviewAutoCacher::set_multicam_node()). `multicam_or_NULL` is a
- * borrowed oaknode handle to a MultiCamNode (NULL to clear).
+ * borrowed oaknode handle to a MultiCamNode (empty handle to clear).
  *
  * @return OAKRENDER_OK or OAKRENDER_E_STATE.
  */
-int oakrender_set_cacher_multicam(OakNodeNode *multicam_or_NULL);
+int oakrender_set_cacher_multicam(OakNodeNode multicam_or_NULL);
 
 /**
  * @brief Set the display color processor on the manager's auto-cacher

@@ -20,7 +20,7 @@
 
 #include "node/sequence.h"
 
-#include "alivecount.h"
+#include "node/node.h"
 #include "node/track.h"
 
 #include "globals.h"
@@ -28,13 +28,15 @@
 #include "project/sequence/sequence.h"
 #include "videoparams.h"
 
+#include "nodehandle.h"
+
+using oaknode_c_api::delete_as;
+using oaknode_c_api::free_handle;
+using oaknode_c_api::make_handle;
+using oaknode_c_api::to_native;
+
 namespace
 {
-
-olive::Sequence *impl(OakNodeSequence *h)
-{
-	return reinterpret_cast<olive::Sequence *>(h);
-}
 
 int get_rational(const olive::core::Rational &r, int *numerator,
 				 int *denominator)
@@ -54,158 +56,165 @@ bool valid_track_type(int type)
 
 } // namespace
 
-OakNodeSequence *oaknode_sequence_create(void)
+OakNodeSequence oaknode_sequence_create(void)
 {
 	try {
-		olive::Sequence *s = new olive::Sequence();
-		oaknode_c_api::alive_inc();
-		return reinterpret_cast<OakNodeSequence *>(s);
+		return make_handle<OakNodeSequence>(new olive::Sequence(), true,
+											&delete_as<olive::Sequence>);
 	} catch (...) {
-		return nullptr;
+		return OakNodeSequence{};
 	}
 }
 
 void oaknode_sequence_free(OakNodeSequence *sequence)
 {
-	if (!sequence) {
-		return;
-	}
-	olive::Sequence *s = impl(sequence);
-	// ~Sequence() deletes the owned TrackLists
-	delete s;
-	oaknode_c_api::alive_dec();
+	// The final release runs ~Sequence(), which deletes the owned TrackLists
+	free_handle(sequence);
 }
 
-int oaknode_sequence_get_track_list(OakNodeSequence *sequence, int type,
-									OakNodeTrackList **out)
+int oaknode_sequence_get_track_list(OakNodeSequence sequence, int type,
+									OakNodeTrackList *out)
 {
-	if (!sequence || !out) {
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s || !out) {
 		return OAKNODE_E_INVALID;
 	}
 	if (!valid_track_type(type)) {
 		return OAKNODE_E_NOT_FOUND;
 	}
-	*out = reinterpret_cast<OakNodeTrackList *>(
-		impl(sequence)->track_list(static_cast<olive::Track::Type>(type)));
-	return OAKNODE_OK;
+	// Borrowed; the track list stays owned by the sequence
+	*out = make_handle<OakNodeTrackList>(
+		s->track_list(static_cast<olive::Track::Type>(type)), false,
+		&delete_as<olive::TrackList>);
+	return out->ctx ? OAKNODE_OK : OAKNODE_E_NOMEM;
 }
 
-int oaknode_sequence_get_track_count(OakNodeSequence *sequence, int type,
+int oaknode_sequence_get_track_count(OakNodeSequence sequence, int type,
 									 int *count)
 {
-	if (!sequence || !count) {
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s || !count) {
 		return OAKNODE_E_INVALID;
 	}
 	if (!valid_track_type(type)) {
 		return OAKNODE_E_NOT_FOUND;
 	}
-	*count = impl(sequence)
-				 ->track_list(static_cast<olive::Track::Type>(type))
+	*count = s->track_list(static_cast<olive::Track::Type>(type))
 				 ->get_track_count();
 	return OAKNODE_OK;
 }
 
-int oaknode_sequence_get_track_at(OakNodeSequence *sequence, int type,
-								  int index, OakNodeTrack **out)
+int oaknode_sequence_get_track_at(OakNodeSequence sequence, int type,
+								  int index, OakNodeTrack *out)
 {
-	if (!sequence || !out || index < 0) {
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s || !out || index < 0) {
 		return OAKNODE_E_INVALID;
 	}
 	if (!valid_track_type(type)) {
 		return OAKNODE_E_NOT_FOUND;
 	}
 	olive::TrackList *list =
-		impl(sequence)->track_list(static_cast<olive::Track::Type>(type));
+		s->track_list(static_cast<olive::Track::Type>(type));
 	if (index >= list->get_track_count()) {
 		return OAKNODE_E_NOT_FOUND;
 	}
-	*out = reinterpret_cast<OakNodeTrack *>(list->get_track_at(index));
+	// Borrowed; the track stays owned by the list
+	*out = make_handle<OakNodeTrack>(list->get_track_at(index), false,
+									 &delete_as<olive::Track>);
+	return out->ctx ? OAKNODE_OK : OAKNODE_E_NOMEM;
+}
+
+int oaknode_sequence_get_all_track_count(OakNodeSequence sequence, int *count)
+{
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s || !count) {
+		return OAKNODE_E_INVALID;
+	}
+	*count = int(s->get_tracks().size());
 	return OAKNODE_OK;
 }
 
-int oaknode_sequence_get_all_track_count(OakNodeSequence *sequence, int *count)
+int oaknode_sequence_get_all_track_at(OakNodeSequence sequence, int index,
+									  OakNodeTrack *out)
 {
-	if (!sequence || !count) {
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s || !out || index < 0) {
 		return OAKNODE_E_INVALID;
 	}
-	*count = int(impl(sequence)->get_tracks().size());
-	return OAKNODE_OK;
-}
-
-int oaknode_sequence_get_all_track_at(OakNodeSequence *sequence, int index,
-									  OakNodeTrack **out)
-{
-	if (!sequence || !out || index < 0) {
-		return OAKNODE_E_INVALID;
-	}
-	const auto &tracks = impl(sequence)->get_tracks();
+	const auto &tracks = s->get_tracks();
 	if (index >= int(tracks.size())) {
 		return OAKNODE_E_NOT_FOUND;
 	}
-	*out = reinterpret_cast<OakNodeTrack *>(tracks.at(index));
-	return OAKNODE_OK;
+	// Borrowed; the track stays owned by its list
+	*out = make_handle<OakNodeTrack>(tracks.at(index), false,
+									 &delete_as<olive::Track>);
+	return out->ctx ? OAKNODE_OK : OAKNODE_E_NOMEM;
 }
 
-int oaknode_sequence_get_playhead(OakNodeSequence *sequence, int *numerator,
+int oaknode_sequence_get_playhead(OakNodeSequence sequence, int *numerator,
 								  int *denominator)
 {
-	if (!sequence) {
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s) {
 		return OAKNODE_E_INVALID;
 	}
-	return get_rational(impl(sequence)->get_playhead(), numerator, denominator);
+	return get_rational(s->get_playhead(), numerator, denominator);
 }
 
-int oaknode_sequence_set_playhead(OakNodeSequence *sequence, int numerator,
+int oaknode_sequence_set_playhead(OakNodeSequence sequence, int numerator,
 								  int denominator)
 {
-	if (!sequence) {
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s) {
 		return OAKNODE_E_INVALID;
 	}
 	try {
-		impl(sequence)->set_playhead(olive::core::Rational(numerator,
-														   denominator));
+		s->set_playhead(olive::core::Rational(numerator, denominator));
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 	return OAKNODE_OK;
 }
 
-int oaknode_sequence_get_length(OakNodeSequence *sequence, int *numerator,
+int oaknode_sequence_get_length(OakNodeSequence sequence, int *numerator,
 								int *denominator)
 {
-	if (!sequence) {
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s) {
 		return OAKNODE_E_INVALID;
 	}
-	return get_rational(impl(sequence)->get_length(), numerator, denominator);
+	return get_rational(s->get_length(), numerator, denominator);
 }
 
-int oaknode_sequence_get_video_length(OakNodeSequence *sequence, int *numerator,
-									  int *denominator)
+int oaknode_sequence_get_video_length(OakNodeSequence sequence,
+									  int *numerator, int *denominator)
 {
-	if (!sequence) {
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s) {
 		return OAKNODE_E_INVALID;
 	}
-	return get_rational(impl(sequence)->get_video_length(), numerator,
-						denominator);
+	return get_rational(s->get_video_length(), numerator, denominator);
 }
 
-int oaknode_sequence_get_audio_length(OakNodeSequence *sequence, int *numerator,
-									  int *denominator)
+int oaknode_sequence_get_audio_length(OakNodeSequence sequence,
+									  int *numerator, int *denominator)
 {
-	if (!sequence) {
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s) {
 		return OAKNODE_E_INVALID;
 	}
-	return get_rational(impl(sequence)->get_audio_length(), numerator,
-						denominator);
+	return get_rational(s->get_audio_length(), numerator, denominator);
 }
 
-int oaknode_sequence_verify_length(OakNodeSequence *sequence)
+int oaknode_sequence_verify_length(OakNodeSequence sequence)
 {
-	if (!sequence) {
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s) {
 		return OAKNODE_E_INVALID;
 	}
 	try {
-		impl(sequence)->verify_length();
+		s->verify_length();
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
@@ -214,38 +223,40 @@ int oaknode_sequence_verify_length(OakNodeSequence *sequence)
 
 /* --------------------------------------------------- Video/audio params */
 
-int oaknode_sequence_get_video_stream_count(OakNodeSequence *sequence,
+int oaknode_sequence_get_video_stream_count(OakNodeSequence sequence,
 											int *count)
 {
-	if (!sequence || !count) {
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s || !count) {
 		return OAKNODE_E_INVALID;
 	}
-	*count = impl(sequence)->get_video_stream_count();
+	*count = s->get_video_stream_count();
 	return OAKNODE_OK;
 }
 
-int oaknode_sequence_get_audio_stream_count(OakNodeSequence *sequence,
+int oaknode_sequence_get_audio_stream_count(OakNodeSequence sequence,
 											int *count)
 {
-	if (!sequence || !count) {
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s || !count) {
 		return OAKNODE_E_INVALID;
 	}
-	*count = impl(sequence)->get_audio_stream_count();
+	*count = s->get_audio_stream_count();
 	return OAKNODE_OK;
 }
 
-int oaknode_sequence_get_video_params(OakNodeSequence *sequence, int index,
+int oaknode_sequence_get_video_params(OakNodeSequence sequence, int index,
 									  OakVideoParams *out)
 {
-	if (!sequence || !out || index < 0) {
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s || !out || index < 0) {
 		return OAKNODE_E_INVALID;
 	}
-	if (index >= impl(sequence)->get_video_stream_count()) {
+	if (index >= s->get_video_stream_count()) {
 		return OAKNODE_E_NOT_FOUND;
 	}
 	try {
-		const olive::VideoParams params =
-			impl(sequence)->get_video_params(index);
+		const olive::VideoParams params = s->get_video_params(index);
 		*out = oakcommon_videoparams_init_from_native(&params);
 	} catch (...) {
 		return OAKNODE_E_NOMEM;
@@ -256,10 +267,11 @@ int oaknode_sequence_get_video_params(OakNodeSequence *sequence, int index,
 	return OAKNODE_OK;
 }
 
-int oaknode_sequence_set_video_params(OakNodeSequence *sequence, int index,
+int oaknode_sequence_set_video_params(OakNodeSequence sequence, int index,
 									  OakVideoParams params)
 {
-	if (!sequence || index < 0) {
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s || index < 0) {
 		return OAKNODE_E_INVALID;
 	}
 	const olive::VideoParams *native =
@@ -267,28 +279,29 @@ int oaknode_sequence_set_video_params(OakNodeSequence *sequence, int index,
 	if (!native) {
 		return OAKNODE_E_INVALID;
 	}
-	if (index >= impl(sequence)->get_video_stream_count()) {
+	if (index >= s->get_video_stream_count()) {
 		return OAKNODE_E_NOT_FOUND;
 	}
 	try {
-		impl(sequence)->set_video_params(*native, index);
+		s->set_video_params(*native, index);
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 	return OAKNODE_OK;
 }
 
-int oaknode_sequence_get_audio_params(OakNodeSequence *sequence, int index,
+int oaknode_sequence_get_audio_params(OakNodeSequence sequence, int index,
 									  OakAudioParams **out)
 {
-	if (!sequence || !out || index < 0) {
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s || !out || index < 0) {
 		return OAKNODE_E_INVALID;
 	}
-	if (index >= impl(sequence)->get_audio_stream_count()) {
+	if (index >= s->get_audio_stream_count()) {
 		return OAKNODE_E_NOT_FOUND;
 	}
 	OakAudioParams *copy =
-		oakcore_audioparams_copy(impl(sequence)->get_audio_params(index).handle());
+		oakcore_audioparams_copy(s->get_audio_params(index).handle());
 	if (!copy) {
 		return OAKNODE_E_NOMEM;
 	}
@@ -296,13 +309,14 @@ int oaknode_sequence_get_audio_params(OakNodeSequence *sequence, int index,
 	return OAKNODE_OK;
 }
 
-int oaknode_sequence_set_audio_params(OakNodeSequence *sequence, int index,
+int oaknode_sequence_set_audio_params(OakNodeSequence sequence, int index,
 									  const OakAudioParams *params)
 {
-	if (!sequence || !params || index < 0) {
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s || !params || index < 0) {
 		return OAKNODE_E_INVALID;
 	}
-	if (index >= impl(sequence)->get_audio_stream_count()) {
+	if (index >= s->get_audio_stream_count()) {
 		return OAKNODE_E_NOT_FOUND;
 	}
 	OakAudioParams *copy = oakcore_audioparams_copy(params);
@@ -310,8 +324,7 @@ int oaknode_sequence_set_audio_params(OakNodeSequence *sequence, int index,
 		return OAKNODE_E_NOMEM;
 	}
 	try {
-		impl(sequence)->set_audio_params(
-			olive::core::AudioParams::from_handle(copy), index);
+		s->set_audio_params(olive::core::AudioParams::from_handle(copy), index);
 	} catch (...) {
 		oakcore_audioparams_free(copy);
 		return OAKNODE_E_FAILED;
@@ -319,19 +332,22 @@ int oaknode_sequence_set_audio_params(OakNodeSequence *sequence, int index,
 	return OAKNODE_OK;
 }
 
-OakNodeNode *oaknode_sequence_as_node(OakNodeSequence *sequence)
+OakNodeNode oaknode_sequence_as_node(OakNodeSequence sequence)
 {
-	return reinterpret_cast<OakNodeNode *>(sequence);
+	// Borrowed; releasing the result never destroys the sequence
+	return make_handle<OakNodeNode>(to_native<olive::Sequence>(sequence),
+									false, &delete_as<olive::Node>);
 }
 
-int oaknode_sequence_set_default_parameters(OakNodeSequence *sequence)
+int oaknode_sequence_set_default_parameters(OakNodeSequence sequence)
 {
-	if (!sequence) {
+	olive::Sequence *s = to_native<olive::Sequence>(sequence);
+	if (!s) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		impl(sequence)->set_default_parameters();
+		s->set_default_parameters();
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;

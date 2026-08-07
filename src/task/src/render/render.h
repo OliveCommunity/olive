@@ -69,7 +69,7 @@ protected:
 		OakColorTransform color_transform = {}; /**< empty ctx = default */
 	};
 
-	bool render(OakNodeColorManager *manager,
+	bool render(OakNodeColorManager manager,
 				const TimeRangeList &video_range,
 				const TimeRangeList &audio_range,
 				const TimeRange &subtitle_range, int render_mode,
@@ -84,14 +84,14 @@ protected:
 	virtual bool audio_downloaded(const TimeRange &range,
 								  OakSampleBuffer *samples) = 0;
 
-	virtual bool encode_subtitle(OakNodeBlock *subtitle);
+	virtual bool encode_subtitle(OakNodeBlock subtitle);
 
-	OakNodeNode *viewer() const
+	OakNodeNode viewer() const
 	{
 		return viewer_;
 	}
 
-	void set_viewer(OakNodeNode *v)
+	void set_viewer(OakNodeNode v)
 	{
 		viewer_ = v;
 	}
@@ -162,12 +162,12 @@ private:
 
 	void on_ticket_finished(OakRenderTicket *ticket);
 
-	bool start_video_ticket(OakNodeColorManager *manager,
+	bool start_video_ticket(OakNodeColorManager manager,
 							const Rational &time, int mode,
 							OakNodeFrameCache *cache,
 							const ForceParams &force);
 
-	OakNodeNode *viewer_;
+	OakNodeNode viewer_;
 
 	OakVideoParams video_params_;
 

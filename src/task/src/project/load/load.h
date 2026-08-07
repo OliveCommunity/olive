@@ -38,13 +38,13 @@ public:
 	ProjectLoadBaseTask(const std::string &filename);
 
 	/**
-	 * @brief Take the loaded project (ownership transfer). NULL if the
-	 *        task has not succeeded.
+	 * @brief Take the loaded project (ownership transfer). Empty handle
+	 *        (ctx == NULL) if the task has not succeeded.
 	 */
-	OakNodeProject *take_project()
+	OakNodeProject take_project()
 	{
-		OakNodeProject *p = project_;
-		project_ = nullptr;
+		OakNodeProject p = project_;
+		project_ = OakNodeProject{};
 		return p;
 	}
 
@@ -54,7 +54,7 @@ public:
 	}
 
 protected:
-	OakNodeProject *project_;
+	OakNodeProject project_;
 
 private:
 	std::string filename_;

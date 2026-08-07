@@ -79,9 +79,9 @@ TEST_F(NodeFactoryTest, NodeAt)
 	ASSERT_EQ(oaknode_factory_id_count(&count), OAKNODE_OK);
 	ASSERT_GT(count, 0);
 
-	OakNodeNode *prototype = nullptr;
+	OakNodeNode prototype = {};
 	EXPECT_EQ(oaknode_factory_node_at(0, &prototype), OAKNODE_OK);
-	ASSERT_NE(prototype, nullptr);
+	ASSERT_NE(prototype.ctx, nullptr);
 
 	// The prototype's id matches id_at(0).
 	int required = oaknode_factory_id_at(0, nullptr, 0);
@@ -92,6 +92,8 @@ TEST_F(NodeFactoryTest, NodeAt)
 	char buf[256];
 	ASSERT_GT(oaknode_node_get_id(prototype, buf, sizeof(buf)), 1);
 	EXPECT_STREQ(buf, id.data());
+
+	oaknode_node_free(&prototype); // borrowed: releases the handle only
 
 	EXPECT_EQ(oaknode_factory_node_at(count, &prototype), OAKNODE_E_NOT_FOUND);
 	EXPECT_EQ(oaknode_factory_node_at(0, nullptr), OAKNODE_E_INVALID);
@@ -111,9 +113,9 @@ TEST_F(NodeFactoryTest, CreateFromId)
 										   name.data(), name_required),
 			  name_required);
 
-	OakNodeNode *node =
+	OakNodeNode node =
 		oaknode_factory_create_from_id("org.olivevideoeditor.Olive.group");
-	ASSERT_NE(node, nullptr);
+	ASSERT_NE(node.ctx, nullptr);
 	EXPECT_EQ(oaknode_debug_alive_count(), alive_before + 1);
 
 	char buf[256];
@@ -121,13 +123,17 @@ TEST_F(NodeFactoryTest, CreateFromId)
 	EXPECT_STREQ(buf, "org.olivevideoeditor.Olive.group");
 
 	// The created instance is a group.
-	EXPECT_NE(oaknode_group_cast(node), nullptr);
+	OakNodeGroup as_group = oaknode_group_cast(node);
+	EXPECT_NE(as_group.ctx, nullptr);
+	oaknode_group_free(&as_group);
 
-	oaknode_node_free(node);
+	oaknode_node_free(&node);
+	EXPECT_EQ(node.ctx, nullptr);
 	EXPECT_EQ(oaknode_debug_alive_count(), alive_before);
 
-	EXPECT_EQ(oaknode_factory_create_from_id("org.oak.DoesNotExist"), nullptr);
-	EXPECT_EQ(oaknode_factory_create_from_id(nullptr), nullptr);
+	EXPECT_EQ(oaknode_factory_create_from_id("org.oak.DoesNotExist").ctx,
+			  nullptr);
+	EXPECT_EQ(oaknode_factory_create_from_id(nullptr).ctx, nullptr);
 }
 
 TEST(NodeFactoryUninitializedTest, StateErrors)
@@ -138,7 +144,7 @@ TEST(NodeFactoryUninitializedTest, StateErrors)
 	int count = 0;
 	EXPECT_EQ(oaknode_factory_id_count(&count), OAKNODE_E_STATE);
 	EXPECT_EQ(oaknode_factory_id_at(0, nullptr, 0), OAKNODE_E_STATE);
-	OakNodeNode *node = nullptr;
+	OakNodeNode node = {};
 	EXPECT_EQ(oaknode_factory_node_at(0, &node), OAKNODE_E_STATE);
 
 	// Re-initialize for any subsequent test run.

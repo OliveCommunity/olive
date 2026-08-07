@@ -37,10 +37,10 @@ namespace olive
  */
 class TrackRippleRemoveBlockCommand : public UndoCommand {
 public:
-	TrackRippleRemoveBlockCommand(OakNodeTrack *track, OakNodeBlock *block)
+	TrackRippleRemoveBlockCommand(OakNodeTrack track, OakNodeBlock block)
 		: track_(track)
 		, block_(block)
-		, before_(nullptr)
+		, before_{}
 	{
 	}
 
@@ -57,16 +57,16 @@ protected:
 	}
 
 private:
-	OakNodeTrack *track_;
+	OakNodeTrack track_;
 
-	OakNodeBlock *block_;
+	OakNodeBlock block_;
 
-	OakNodeBlock *before_;
+	OakNodeBlock before_;
 };
 
 class TrackPrependBlockCommand : public UndoCommand {
 public:
-	TrackPrependBlockCommand(OakNodeTrack *track, OakNodeBlock *block)
+	TrackPrependBlockCommand(OakNodeTrack track, OakNodeBlock block)
 		: track_(track)
 		, block_(block)
 	{
@@ -84,14 +84,14 @@ protected:
 	}
 
 private:
-	OakNodeTrack *track_;
-	OakNodeBlock *block_;
+	OakNodeTrack track_;
+	OakNodeBlock block_;
 };
 
 class TrackInsertBlockAfterCommand : public UndoCommand {
 public:
-	TrackInsertBlockAfterCommand(OakNodeTrack *track, OakNodeBlock *block,
-								 OakNodeBlock *before)
+	TrackInsertBlockAfterCommand(OakNodeTrack track, OakNodeBlock block,
+								 OakNodeBlock before)
 		: track_(track)
 		, block_(block)
 		, before_(before)
@@ -110,11 +110,11 @@ protected:
 	}
 
 private:
-	OakNodeTrack *track_;
+	OakNodeTrack track_;
 
-	OakNodeBlock *block_;
+	OakNodeBlock block_;
 
-	OakNodeBlock *before_;
+	OakNodeBlock before_;
 };
 
 /**
@@ -124,8 +124,8 @@ private:
  */
 class TrackReplaceBlockCommand : public UndoCommand {
 public:
-	TrackReplaceBlockCommand(OakNodeTrack *track, OakNodeBlock *old_block,
-							 OakNodeBlock *replace)
+	TrackReplaceBlockCommand(OakNodeTrack track, OakNodeBlock old_block,
+							 OakNodeBlock replace)
 		: track_(track)
 		, old_(old_block)
 		, replace_(replace)
@@ -144,9 +144,9 @@ protected:
 	}
 
 private:
-	OakNodeTrack *track_;
-	OakNodeBlock *old_;
-	OakNodeBlock *replace_;
+	OakNodeTrack track_;
+	OakNodeBlock old_;
+	OakNodeBlock replace_;
 };
 
 }

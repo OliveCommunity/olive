@@ -31,13 +31,15 @@
 #include "olive/core/util/timecodefunctions.h"
 #include "render/color.h"
 
+#include "nodehandle.h"
+
 namespace olive
 {
 
 namespace
 {
 
-std::string node_label(OakNodeNode *node)
+std::string node_label(OakNodeNode node)
 {
 	int needed = oaknode_node_get_label(node, nullptr, 0);
 	if (needed <= 0) {
@@ -128,13 +130,23 @@ OakFrame copy_frame_to_codec(OakCodecFrame *render_frame)
 	return out;
 }
 
+/**
+ * @brief Borrowed sequence alias of a viewer node handle (same underlying
+ *        node; releasing the alias only frees its handle box).
+ */
+OakNodeSequence sequence_alias_of(OakNodeNode node)
+{
+	return oaknode_c_api::make_handle<OakNodeSequence>(
+		oaknode_c_api::to_native<void>(node), false, nullptr);
+}
+
 } // namespace
 
-ExportTask::ExportTask(OakNodeNode *viewer_node,
-					   OakNodeColorManager *color_manager,
+ExportTask::ExportTask(OakNodeNode viewer_node,
+					   OakNodeColorManager color_manager,
 					   const oakcodec_encoding_params &params)
 	: copier_(nullptr)
-	, color_manager_(nullptr)
+	, color_manager_({})
 	, params_(params)
 	, encoder_({})
 	, subtitle_encoder_({})
@@ -146,24 +158,26 @@ ExportTask::ExportTask(OakNodeNode *viewer_node,
 	(void)color_manager;
 
 	// Create a copy of the project
-	OakNodeProject *source_project = nullptr;
+	OakNodeProject source_project = {};
 	oaknode_node_get_project(viewer_node, &source_project);
 
 	copier_ = oakrender_project_copier_create();
-	if (copier_ && source_project) {
+	if (copier_ && source_project.ctx) {
 		oakrender_project_copier_set_project(copier_, source_project);
 	}
+	oaknode_project_free(&source_project);
 
 	set_viewer(oakrender_project_copier_get_copy(copier_, viewer_node));
 
-	OakNodeProject *copied_project =
+	OakNodeProject copied_project =
 		oakrender_project_copier_get_copied_project(copier_);
 	color_manager_ = oaknode_colormanager_init(copied_project);
+	oaknode_project_free(&copied_project);
 
 	// Adjust video params to have no divider
+	OakNodeSequence viewer_sequence = sequence_alias_of(viewer_node);
 	OakVideoParams vp = {};
-	oaknode_sequence_get_video_params(
-		reinterpret_cast<OakNodeSequence *>(viewer_node), 0, &vp);
+	oaknode_sequence_get_video_params(viewer_sequence, 0, &vp);
 	oakcommon_videoparams_set_divider(vp, 1);
 	oakcommon_videoparams_set_time_base(vp, params_.video_time_base_num,
 										params_.video_time_base_den);
@@ -173,10 +187,9 @@ ExportTask::ExportTask(OakNodeNode *viewer_node,
 	oakcommon_videoparams_free(&vp);
 
 	OakAudioParams *audio_params = nullptr;
-	oaknode_sequence_get_audio_params(
-		reinterpret_cast<OakNodeSequence *>(viewer_node), 0,
-		&audio_params);
+	oaknode_sequence_get_audio_params(viewer_sequence, 0, &audio_params);
 	set_audio_params(audio_params);
+	oaknode_sequence_free(&viewer_sequence);
 
 	set_title("Exporting \"" + node_label(viewer_node) + "\"");
 	set_native_progress_signalling_enabled(false);
@@ -193,9 +206,7 @@ ExportTask::~ExportTask()
 	if (color_processor_) {
 		oakrender_color_processor_free(color_processor_);
 	}
-	if (color_manager_) {
-		oaknode_colormanager_free(color_manager_);
-	}
+	oaknode_colormanager_free(&color_manager_);
 	oakrender_project_copier_free(copier_);
 	if (audio_params()) {
 		oakcore_audioparams_free(audio_params());
@@ -282,8 +293,9 @@ bool ExportTask::run()
 	} else {
 		// Render entire sequence
 		int len_n = 0, len_d = 1;
-		oaknode_sequence_get_length(
-			reinterpret_cast<OakNodeSequence *>(viewer()), &len_n, &len_d);
+		OakNodeSequence viewer_sequence = sequence_alias_of(viewer());
+		oaknode_sequence_get_length(viewer_sequence, &len_n, &len_d);
+		oaknode_sequence_free(&viewer_sequence);
 		export_range_ =
 			TimeRange(Rational(0), Rational(len_n, len_d));
 	}
@@ -474,7 +486,7 @@ bool ExportTask::audio_downloaded(const TimeRange &range,
 	return true;
 }
 
-bool ExportTask::encode_subtitle(OakNodeBlock *sub)
+bool ExportTask::encode_subtitle(OakNodeBlock sub)
 {
 	// The subtitle block's text is its standard "text" input
 	char text[8192];

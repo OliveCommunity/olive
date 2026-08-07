@@ -32,9 +32,9 @@ namespace olive
 
 class ProjectSaveTask : public Task {
 public:
-	ProjectSaveTask(OakNodeProject *project, bool use_compression);
+	ProjectSaveTask(OakNodeProject project, bool use_compression);
 
-	OakNodeProject *get_project() const
+	OakNodeProject get_project() const
 	{
 		return project_;
 	}
@@ -48,7 +48,8 @@ protected:
 	virtual bool run() override;
 
 private:
-	OakNodeProject *project_;
+	/** Borrowed handle; the caller keeps ownership of the project. */
+	OakNodeProject project_;
 
 	std::string override_filename_;
 

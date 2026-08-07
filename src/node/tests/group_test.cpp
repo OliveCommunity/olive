@@ -26,6 +26,8 @@
 
 #include "undo/undocommand.h"
 
+#include "../c_api/nodehandle.h"
+#include "../src/group/group.h"
 #include "testnode.h"
 
 namespace
@@ -35,16 +37,27 @@ using oaknode_test::TestNode;
 using oaknode_test::as_handle;
 
 /**
+ * @brief Borrowed OakNodeNode view of a group handle (the group IS a
+ * node). Release with oaknode_node_free().
+ */
+OakNodeNode group_as_node(OakNodeGroup group)
+{
+	return oaknode_c_api::make_handle<OakNodeNode>(
+		oaknode_c_api::to_native<olive::NodeGroup>(group), false, nullptr);
+}
+
+/**
  * @brief Create a group with `inner` registered in its context
  * (NodeGroup::add_input_passthrough() asserts context membership).
  */
-OakNodeGroup *make_group_with_inner(OakNodeNode *inner)
+OakNodeGroup make_group_with_inner(OakNodeNode inner)
 {
-	OakNodeGroup *group = oaknode_group_create();
-	EXPECT_NE(group, nullptr);
-	EXPECT_EQ(oaknode_node_set_context_position(
-				  reinterpret_cast<OakNodeNode *>(group), inner, 0.0, 0.0, 0),
+	OakNodeGroup group = oaknode_group_create();
+	EXPECT_NE(group.ctx, nullptr);
+	OakNodeNode node_view = group_as_node(group);
+	EXPECT_EQ(oaknode_node_set_context_position(node_view, inner, 0.0, 0.0, 0),
 			  OAKNODE_OK);
+	oaknode_node_free(&node_view);
 	return group;
 }
 
@@ -52,18 +65,24 @@ TEST(NodeGroupTest, CreateCastFree)
 {
 	int alive_before = oaknode_debug_alive_count();
 
-	OakNodeGroup *group = oaknode_group_create();
-	ASSERT_NE(group, nullptr);
+	OakNodeGroup group = oaknode_group_create();
+	ASSERT_NE(group.ctx, nullptr);
 	EXPECT_EQ(oaknode_debug_alive_count(), alive_before + 1);
 
-	OakNodeNode *as_node = reinterpret_cast<OakNodeNode *>(group);
-	EXPECT_EQ(oaknode_group_cast(as_node), group);
+	OakNodeNode as_node = group_as_node(group);
+	OakNodeGroup casted = oaknode_group_cast(as_node);
+	ASSERT_NE(casted.ctx, nullptr);
+	EXPECT_EQ(oaknode_c_api::to_native<olive::NodeGroup>(casted),
+			  oaknode_c_api::to_native<olive::NodeGroup>(group));
+	oaknode_group_free(&casted);
+	oaknode_node_free(&as_node);
 
 	TestNode plain;
-	EXPECT_EQ(oaknode_group_cast(as_handle(&plain)), nullptr);
-	EXPECT_EQ(oaknode_group_cast(nullptr), nullptr);
+	EXPECT_EQ(oaknode_group_cast(as_handle(&plain)).ctx, nullptr);
+	EXPECT_EQ(oaknode_group_cast(OakNodeNode{}).ctx, nullptr);
 
-	oaknode_group_free(group);
+	oaknode_group_free(&group);
+	EXPECT_EQ(group.ctx, nullptr);
 	EXPECT_EQ(oaknode_debug_alive_count(), alive_before);
 
 	oaknode_group_free(nullptr); // no crash
@@ -72,10 +91,10 @@ TEST(NodeGroupTest, CreateCastFree)
 TEST(NodeGroupTest, PassthroughAddEnumerateRemove)
 {
 	TestNode inner;
-	OakNodeNode *inner_handle = as_handle(&inner);
-	OakNodeGroup *group = make_group_with_inner(inner_handle);
-	ASSERT_NE(group, nullptr);
-	OakNodeNode *group_node = reinterpret_cast<OakNodeNode *>(group);
+	OakNodeNode inner_handle = as_handle(&inner);
+	OakNodeGroup group = make_group_with_inner(inner_handle);
+	ASSERT_NE(group.ctx, nullptr);
+	OakNodeNode group_node = group_as_node(group);
 
 	// Two-stage: query the generated id size first.
 	int float_required = oaknode_group_add_input_passthrough(
@@ -102,15 +121,17 @@ TEST(NodeGroupTest, PassthroughAddEnumerateRemove)
 	EXPECT_EQ(oaknode_node_input_get_type(group_node, buf, &type), OAKNODE_OK);
 	EXPECT_EQ(type, OAKNODE_VALUE_FLOAT);
 
-	OakNodeNode *pt_node = nullptr;
+	OakNodeNode pt_node = {};
 	int pt_element = -2;
 	char pt_id[64];
 	EXPECT_EQ(oaknode_group_passthrough_input_at(group, 0, &pt_node, pt_id,
 												 sizeof(pt_id), &pt_element),
 			  9);
-	EXPECT_EQ(pt_node, inner_handle);
+	EXPECT_EQ(oaknode_c_api::to_native<olive::Node>(pt_node),
+			  oaknode_c_api::to_native<olive::Node>(inner_handle));
 	EXPECT_STREQ(pt_id, "float_in");
 	EXPECT_EQ(pt_element, -1);
+	oaknode_node_free(&pt_node);
 	EXPECT_EQ(oaknode_group_passthrough_input_at(group, 5, &pt_node, pt_id,
 												 sizeof(pt_id), &pt_element),
 			  OAKNODE_E_NOT_FOUND);
@@ -123,18 +144,20 @@ TEST(NodeGroupTest, PassthroughAddEnumerateRemove)
 	EXPECT_EQ(oaknode_group_remove_input_passthrough(group, inner_handle,
 													 "float_in", -1),
 			  OAKNODE_E_NOT_FOUND);
-	EXPECT_EQ(oaknode_group_remove_input_passthrough(nullptr, inner_handle,
+	EXPECT_EQ(oaknode_group_remove_input_passthrough(OakNodeGroup{},
+													 inner_handle,
 													 "float_in", -1),
 			  OAKNODE_E_INVALID);
 
-	oaknode_group_free(group);
+	oaknode_node_free(&group_node);
+	oaknode_group_free(&group);
 }
 
 TEST(NodeGroupTest, PassthroughAddUndoable)
 {
 	TestNode inner;
-	OakNodeGroup *group = make_group_with_inner(as_handle(&inner));
-	ASSERT_NE(group, nullptr);
+	OakNodeGroup group = make_group_with_inner(as_handle(&inner));
+	ASSERT_NE(group.ctx, nullptr);
 
 	OakUndoCommand command = {};
 	EXPECT_EQ(oaknode_group_add_input_passthrough_undoable(
@@ -155,51 +178,56 @@ TEST(NodeGroupTest, PassthroughAddUndoable)
 	EXPECT_EQ(count, 0);
 
 	oakundo_command_free(&command);
-	oaknode_group_free(group);
+	oaknode_group_free(&group);
 }
 
 TEST(NodeGroupTest, OutputPassthroughLiveAndUndoable)
 {
 	TestNode inner;
-	OakNodeNode *inner_handle = as_handle(&inner);
-	OakNodeGroup *group = make_group_with_inner(inner_handle);
-	ASSERT_NE(group, nullptr);
+	OakNodeNode inner_handle = as_handle(&inner);
+	OakNodeGroup group = make_group_with_inner(inner_handle);
+	ASSERT_NE(group.ctx, nullptr);
 
-	OakNodeNode *out = reinterpret_cast<OakNodeNode *>(uintptr_t(1));
+	OakNodeNode out = {};
+	out.ctx = reinterpret_cast<void *>(uintptr_t(1)); // sentinel: must be overwritten
 	EXPECT_EQ(oaknode_group_get_output_passthrough(group, &out), OAKNODE_OK);
-	EXPECT_EQ(out, nullptr);
+	EXPECT_EQ(out.ctx, nullptr);
 
 	EXPECT_EQ(oaknode_group_set_output_passthrough(group, inner_handle),
 			  OAKNODE_OK);
 	EXPECT_EQ(oaknode_group_get_output_passthrough(group, &out), OAKNODE_OK);
-	EXPECT_EQ(out, inner_handle);
+	EXPECT_EQ(oaknode_c_api::to_native<olive::Node>(out),
+			  oaknode_c_api::to_native<olive::Node>(inner_handle));
+	oaknode_node_free(&out);
 
 	OakUndoCommand command = {};
-	EXPECT_EQ(oaknode_group_set_output_passthrough_undoable(group, nullptr,
-															&command),
+	EXPECT_EQ(oaknode_group_set_output_passthrough_undoable(
+				  group, OakNodeNode{}, &command),
 			  OAKNODE_OK);
 	ASSERT_NE(command.ctx, nullptr);
 	EXPECT_EQ(oakundo_command_redo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_group_get_output_passthrough(group, &out), OAKNODE_OK);
-	EXPECT_EQ(out, nullptr);
+	EXPECT_EQ(out.ctx, nullptr);
 	EXPECT_EQ(oakundo_command_undo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_group_get_output_passthrough(group, &out), OAKNODE_OK);
-	EXPECT_EQ(out, inner_handle);
+	EXPECT_EQ(oaknode_c_api::to_native<olive::Node>(out),
+			  oaknode_c_api::to_native<olive::Node>(inner_handle));
+	oaknode_node_free(&out);
 	oakundo_command_free(&command);
 
-	EXPECT_EQ(oaknode_group_set_output_passthrough(nullptr, inner_handle),
+	EXPECT_EQ(oaknode_group_set_output_passthrough(OakNodeGroup{}, inner_handle),
 			  OAKNODE_E_INVALID);
 
-	oaknode_group_free(group);
+	oaknode_group_free(&group);
 }
 
 TEST(NodeGroupTest, ResolveInput)
 {
 	TestNode inner;
-	OakNodeNode *inner_handle = as_handle(&inner);
-	OakNodeGroup *group = make_group_with_inner(inner_handle);
-	ASSERT_NE(group, nullptr);
-	OakNodeNode *group_node = reinterpret_cast<OakNodeNode *>(group);
+	OakNodeNode inner_handle = as_handle(&inner);
+	OakNodeGroup group = make_group_with_inner(inner_handle);
+	ASSERT_NE(group.ctx, nullptr);
+	OakNodeNode group_node = group_as_node(group);
 
 	char id_buf[64];
 	int required = oaknode_group_add_input_passthrough(group, inner_handle,
@@ -208,7 +236,7 @@ TEST(NodeGroupTest, ResolveInput)
 	ASSERT_GT(required, 1);
 
 	// Resolving the group's passthrough id yields the inner input.
-	OakNodeNode *resolved_node = nullptr;
+	OakNodeNode resolved_node = {};
 	int resolved_element = -2;
 	char resolved_id[64];
 	EXPECT_EQ(oaknode_group_resolve_input(group_node, id_buf, -1,
@@ -216,9 +244,11 @@ TEST(NodeGroupTest, ResolveInput)
 										  sizeof(resolved_id),
 										  &resolved_element),
 			  9);
-	EXPECT_EQ(resolved_node, inner_handle);
+	EXPECT_EQ(oaknode_c_api::to_native<olive::Node>(resolved_node),
+			  oaknode_c_api::to_native<olive::Node>(inner_handle));
 	EXPECT_STREQ(resolved_id, "float_in");
 	EXPECT_EQ(resolved_element, -1);
+	oaknode_node_free(&resolved_node);
 
 	// A non-group input resolves to itself.
 	EXPECT_EQ(oaknode_group_resolve_input(inner_handle, "float_in", -1,
@@ -226,12 +256,15 @@ TEST(NodeGroupTest, ResolveInput)
 										  sizeof(resolved_id),
 										  &resolved_element),
 			  9);
-	EXPECT_EQ(resolved_node, inner_handle);
+	EXPECT_EQ(oaknode_c_api::to_native<olive::Node>(resolved_node),
+			  oaknode_c_api::to_native<olive::Node>(inner_handle));
 	EXPECT_STREQ(resolved_id, "float_in");
+	oaknode_node_free(&resolved_node);
 
 	// Error paths.
-	EXPECT_EQ(oaknode_group_resolve_input(nullptr, id_buf, -1, &resolved_node,
-										  resolved_id, sizeof(resolved_id),
+	EXPECT_EQ(oaknode_group_resolve_input(OakNodeNode{}, id_buf, -1,
+										  &resolved_node, resolved_id,
+										  sizeof(resolved_id),
 										  &resolved_element),
 			  OAKNODE_E_INVALID);
 	EXPECT_EQ(oaknode_group_resolve_input(group_node, nullptr, -1,
@@ -240,7 +273,8 @@ TEST(NodeGroupTest, ResolveInput)
 										  &resolved_element),
 			  OAKNODE_E_INVALID);
 
-	oaknode_group_free(group);
+	oaknode_node_free(&group_node);
+	oaknode_group_free(&group);
 }
 
 }

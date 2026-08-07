@@ -25,6 +25,7 @@
 // one input per POD-carrying value type, so the C API tests can exercise
 // value mapping without depending on NodeFactory.
 
+#include "../c_api/nodehandle.h"
 #include "../src/node.h"
 
 namespace oaknode_test
@@ -73,9 +74,23 @@ public:
 
 inline const char *TestNode::k_id = "org.oak.TestNode";
 
-inline OakNodeNode *as_handle(olive::Node *node)
+/**
+ * @brief Borrowed handle to a test-owned node; releasing it only releases
+ * the handle, never the node.
+ */
+inline OakNodeNode as_handle(olive::Node *node)
 {
-	return reinterpret_cast<OakNodeNode *>(node);
+	return oaknode_c_api::make_handle<OakNodeNode>(
+		node, false, &oaknode_c_api::delete_as<olive::Node>);
+}
+
+/**
+ * @brief Identity comparison for handles: two handles refer to the same
+ * node when they wrap the same native object.
+ */
+inline bool same_node(OakNodeNode a, olive::Node *node)
+{
+	return oaknode_c_api::to_native<olive::Node>(a) == node;
 }
 
 }

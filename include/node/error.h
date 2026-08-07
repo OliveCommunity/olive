@@ -29,6 +29,16 @@
  * failure. String getters return the required buffer size in bytes
  * (including the terminating NUL) as a non-negative value instead.
  */
+/**
+ * @brief Current ABI version stamped into every oaknode handle.
+ *
+ * Bump whenever a handle layout or the semantics of any exported
+ * function change incompatibly. Consumers should compare a handle's
+ * abi_version field against the value they were compiled with before
+ * dereferencing ctx.
+ */
+#define OAKNODE_ABI_VERSION 1
+
 #define OAKNODE_OK 0 /**< Success. */
 #define OAKNODE_E_INVALID (-1) /**< NULL handle or invalid argument. */
 #define OAKNODE_E_STATE (-2) /**< Call not valid in the current state. */

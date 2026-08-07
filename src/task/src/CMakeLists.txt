@@ -24,6 +24,7 @@ target_include_directories(oaktask PUBLIC
         ${OAK_REPO_ROOT}/include
         ${OAK_REPO_ROOT}/src/common/src
         ${OAK_REPO_ROOT}/src/undo/src
+        ${OAK_REPO_ROOT}/src/node/c_api
         ${OAK_REPO_ROOT}/core/include
         ${OAK_REPO_ROOT}/otio-install/include
 )

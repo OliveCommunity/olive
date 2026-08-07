@@ -64,12 +64,12 @@ enum OakRenderTicketType {
  *        (RenderManager::RenderVideoParams).
  */
 typedef struct oakrender_video_ticket_params {
-	OakNodeNode *output_node; /**< Connected texture output node. */
+	OakNodeNode output_node; /**< Connected texture output node (borrowed). */
 	OakVideoParams video_params; /**< By value (oakcommon handle). */
 	OakAudioParams *audio_params; /**< Borrowed oakcore handle, may be NULL. */
 	int64_t time_num; /**< Frame timestamp as rational. */
 	int64_t time_den;
-	OakNodeColorManager *color_manager; /**< Borrowed, may be NULL. */
+	OakNodeColorManager color_manager; /**< Borrowed, empty ctx = NULL. */
 	int mode; /**< olive::RenderMode::Mode as int. */
 	int force_width; /**< 0/0 = off. */
 	int force_height;
@@ -100,7 +100,7 @@ OakRenderTicket *oakrender_ticket_render_frame(
  * @param params Audio params (borrowed oakcore handle).
  */
 OakRenderTicket *oakrender_ticket_render_audio(
-	OakNodeNode *output_node, int64_t in_num, int64_t in_den,
+	OakNodeNode output_node, int64_t in_num, int64_t in_den,
 	int64_t out_num, int64_t out_den, const OakAudioParams *params,
 	int mode, oakrender_ticket_finished_fn cb, void *userdata);
 

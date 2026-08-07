@@ -22,106 +22,82 @@
 
 #include "group/group.h"
 
+#include "nodehandle.h"
 #include "valueconvert.h"
 
-namespace
-{
+using oaknode_c_api::make_handle;
+using oaknode_c_api::to_native;
 
-inline olive::NodeGroup *to_group(OakNodeGroup *group)
-{
-	return reinterpret_cast<olive::NodeGroup *>(group);
-}
-
-inline const olive::NodeGroup *to_group(const OakNodeGroup *group)
-{
-	return reinterpret_cast<const olive::NodeGroup *>(group);
-}
-
-inline olive::Node *to_node(OakNodeNode *node)
-{
-	return reinterpret_cast<olive::Node *>(node);
-}
-
-inline OakNodeNode *from_node(olive::Node *node)
-{
-	return reinterpret_cast<OakNodeNode *>(node);
-}
-
-}
-
-OakNodeGroup *oaknode_group_create(void)
+OakNodeGroup oaknode_group_create(void)
 {
 	try {
-		olive::NodeGroup *group = new (std::nothrow) olive::NodeGroup();
-		if (group) {
-			oaknode_c_api::alive_inc();
-		}
-		return reinterpret_cast<OakNodeGroup *>(group);
+		return make_handle<OakNodeGroup>(new (std::nothrow) olive::NodeGroup(),
+										 true,
+										 oaknode_c_api::delete_as<olive::NodeGroup>);
 	} catch (...) {
-		return NULL;
+		return OakNodeGroup{};
 	}
 }
 
-OakNodeGroup *oaknode_group_cast(OakNodeNode *node)
+OakNodeGroup oaknode_group_cast(OakNodeNode node)
 {
-	if (!node) {
-		return NULL;
+	olive::Node *native = to_native<olive::Node>(node);
+	if (!native) {
+		return OakNodeGroup{};
 	}
 
 	try {
-		return reinterpret_cast<OakNodeGroup *>(
-			dynamic_cast<olive::NodeGroup *>(to_node(node)));
+		return make_handle<OakNodeGroup>(
+			dynamic_cast<olive::NodeGroup *>(native), false, nullptr);
 	} catch (...) {
-		return NULL;
+		return OakNodeGroup{};
 	}
 }
 
 void oaknode_group_free(OakNodeGroup *group)
 {
-	if (!group) {
-		return;
-	}
-
 	try {
-		delete to_group(group);
-		oaknode_c_api::alive_dec();
+		oaknode_c_api::free_handle(group);
 	} catch (...) {
 	}
 }
 
-int oaknode_group_add_input_passthrough(OakNodeGroup *group,
-										OakNodeNode *node,
+int oaknode_group_add_input_passthrough(OakNodeGroup group,
+										OakNodeNode node,
 										const char *input_id, int element,
 										char *buf, int buf_size)
 {
-	if (!group || !node || !input_id) {
+	olive::NodeGroup *g = to_native<olive::NodeGroup>(group);
+	olive::Node *n = to_native<olive::Node>(node);
+	if (!g || !n || !input_id) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		std::string id = to_group(group)->add_input_passthrough(
-			olive::NodeInput(to_node(node), input_id, element));
+		std::string id = g->add_input_passthrough(
+			olive::NodeInput(n, input_id, element));
 		return oaknode_c_api::copy_string(id, buf, buf_size);
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_group_add_input_passthrough_undoable(OakNodeGroup *group,
-												 OakNodeNode *node,
+int oaknode_group_add_input_passthrough_undoable(OakNodeGroup group,
+												 OakNodeNode node,
 												 const char *input_id,
 												 int element,
 												 OakUndoCommand *out_command)
 {
-	if (!group || !node || !input_id || !out_command) {
+	olive::NodeGroup *g = to_native<olive::NodeGroup>(group);
+	olive::Node *n = to_native<olive::Node>(node);
+	if (!g || !n || !input_id || !out_command) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
 		OakUndoCommand handle = oaknode_c_api::wrap_command(
 			new olive::NodeGroupAddInputPassthrough(
-				to_group(group),
-				olive::NodeInput(to_node(node), input_id, element)));
+				g, olive::NodeInput(n, input_id, element)));
 		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
@@ -132,51 +108,54 @@ int oaknode_group_add_input_passthrough_undoable(OakNodeGroup *group,
 	}
 }
 
-int oaknode_group_remove_input_passthrough(OakNodeGroup *group,
-										   OakNodeNode *node,
+int oaknode_group_remove_input_passthrough(OakNodeGroup group,
+										   OakNodeNode node,
 										   const char *input_id, int element)
 {
-	if (!group || !node || !input_id) {
+	olive::NodeGroup *g = to_native<olive::NodeGroup>(group);
+	olive::Node *n = to_native<olive::Node>(node);
+	if (!g || !n || !input_id) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		olive::NodeInput input(to_node(node), input_id, element);
-		if (!to_group(group)->contains_input_passthrough(input)) {
+		olive::NodeInput input(n, input_id, element);
+		if (!g->contains_input_passthrough(input)) {
 			return OAKNODE_E_NOT_FOUND;
 		}
-		to_group(group)->remove_input_passthrough(input);
+		g->remove_input_passthrough(input);
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_group_passthrough_count(const OakNodeGroup *group, int *out_count)
+int oaknode_group_passthrough_count(OakNodeGroup group, int *out_count)
 {
-	if (!group || !out_count) {
+	olive::NodeGroup *g = to_native<olive::NodeGroup>(group);
+	if (!g || !out_count) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		*out_count =
-			static_cast<int>(to_group(group)->get_input_passthroughs().size());
+		*out_count = static_cast<int>(g->get_input_passthroughs().size());
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_group_passthrough_id_at(const OakNodeGroup *group, int index,
+int oaknode_group_passthrough_id_at(OakNodeGroup group, int index,
 									char *buf, int buf_size)
 {
-	if (!group) {
+	olive::NodeGroup *g = to_native<olive::NodeGroup>(group);
+	if (!g) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
 		const olive::NodeGroup::InputPassthroughs &passthroughs =
-			to_group(group)->get_input_passthroughs();
+			g->get_input_passthroughs();
 		if (index < 0 || index >= static_cast<int>(passthroughs.size())) {
 			return OAKNODE_E_NOT_FOUND;
 		}
@@ -187,24 +166,25 @@ int oaknode_group_passthrough_id_at(const OakNodeGroup *group, int index,
 	}
 }
 
-int oaknode_group_passthrough_input_at(const OakNodeGroup *group, int index,
-									   OakNodeNode **out_node, char *buf,
+int oaknode_group_passthrough_input_at(OakNodeGroup group, int index,
+									   OakNodeNode *out_node, char *buf,
 									   int buf_size, int *out_element)
 {
-	if (!group) {
+	olive::NodeGroup *g = to_native<olive::NodeGroup>(group);
+	if (!g) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
 		const olive::NodeGroup::InputPassthroughs &passthroughs =
-			to_group(group)->get_input_passthroughs();
+			g->get_input_passthroughs();
 		if (index < 0 || index >= static_cast<int>(passthroughs.size())) {
 			return OAKNODE_E_NOT_FOUND;
 		}
 
 		const olive::NodeInput &input = passthroughs[size_t(index)].second;
 		if (out_node) {
-			*out_node = from_node(input.node());
+			*out_node = make_handle<OakNodeNode>(input.node(), false, nullptr);
 		}
 		if (out_element) {
 			*out_element = input.element();
@@ -215,30 +195,33 @@ int oaknode_group_passthrough_input_at(const OakNodeGroup *group, int index,
 	}
 }
 
-int oaknode_group_get_output_passthrough(const OakNodeGroup *group,
-										 OakNodeNode **out_node)
+int oaknode_group_get_output_passthrough(OakNodeGroup group,
+										 OakNodeNode *out_node)
 {
-	if (!group || !out_node) {
+	olive::NodeGroup *g = to_native<olive::NodeGroup>(group);
+	if (!g || !out_node) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		*out_node = from_node(to_group(group)->get_output_passthrough());
+		*out_node =
+			make_handle<OakNodeNode>(g->get_output_passthrough(), false, nullptr);
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_group_set_output_passthrough(OakNodeGroup *group,
-										 OakNodeNode *node)
+int oaknode_group_set_output_passthrough(OakNodeGroup group,
+										 OakNodeNode node)
 {
-	if (!group) {
+	olive::NodeGroup *g = to_native<olive::NodeGroup>(group);
+	if (!g) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		to_group(group)->set_output_passthrough(to_node(node));
+		g->set_output_passthrough(to_native<olive::Node>(node));
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
@@ -246,16 +229,17 @@ int oaknode_group_set_output_passthrough(OakNodeGroup *group,
 }
 
 int oaknode_group_set_output_passthrough_undoable(
-	OakNodeGroup *group, OakNodeNode *node, OakUndoCommand *out_command)
+	OakNodeGroup group, OakNodeNode node, OakUndoCommand *out_command)
 {
-	if (!group || !out_command) {
+	olive::NodeGroup *g = to_native<olive::NodeGroup>(group);
+	if (!g || !out_command) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
 		OakUndoCommand handle = oaknode_c_api::wrap_command(
-			new olive::NodeGroupSetOutputPassthrough(to_group(group),
-													 to_node(node)));
+			new olive::NodeGroupSetOutputPassthrough(
+				g, to_native<olive::Node>(node)));
 		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
@@ -266,23 +250,24 @@ int oaknode_group_set_output_passthrough_undoable(
 	}
 }
 
-int oaknode_group_resolve_input(OakNodeNode *node, const char *input_id,
-								int element, OakNodeNode **out_node,
+int oaknode_group_resolve_input(OakNodeNode node, const char *input_id,
+								int element, OakNodeNode *out_node,
 								char *buf, int buf_size, int *out_element)
 {
-	if (!node || !input_id) {
+	olive::Node *n = to_native<olive::Node>(node);
+	if (!n || !input_id) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
 		olive::NodeInput resolved = olive::NodeGroup::resolve_input(
-			olive::NodeInput(to_node(node), input_id, element));
+			olive::NodeInput(n, input_id, element));
 		if (!resolved.is_valid()) {
 			return OAKNODE_E_NOT_FOUND;
 		}
 
 		if (out_node) {
-			*out_node = from_node(resolved.node());
+			*out_node = make_handle<OakNodeNode>(resolved.node(), false, nullptr);
 		}
 		if (out_element) {
 			*out_element = resolved.element();

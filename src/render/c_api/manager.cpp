@@ -30,6 +30,8 @@
 #include "alivecount.h"
 #include "internalhandles.h"
 
+#include "../../node/c_api/nodehandle.h"
+
 #include "diskmanager.h"
 #include "output/viewer/viewer.h"
 #include "previewautocacher.h"
@@ -75,10 +77,10 @@ void oakrender_manager_shutdown(void)
 	}
 }
 
-int64_t oakrender_request_frame(OakNodeNode *viewer, int64_t ts,
+int64_t oakrender_request_frame(OakNodeNode viewer, int64_t ts,
 								oakrender_frame_ready_fn cb, void *userdata)
 {
-	if (!viewer || !cb) {
+	if (!viewer.ctx || !cb) {
 		return OAKRENDER_E_INVALID;
 	}
 	olive::RenderManager *manager = olive::RenderManager::instance();
@@ -86,7 +88,7 @@ int64_t oakrender_request_frame(OakNodeNode *viewer, int64_t ts,
 		return OAKRENDER_E_STATE;
 	}
 	auto *v = dynamic_cast<olive::ViewerOutput *>(
-		reinterpret_cast<olive::Node *>(viewer));
+		oaknode_c_api::to_native<olive::Node>(viewer));
 	if (!v) {
 		return OAKRENDER_E_INVALID;
 	}
@@ -157,14 +159,16 @@ int oakrender_cancel_request(int64_t request_id)
 	return OAKRENDER_OK;
 }
 
-int oakrender_set_cacher_multicam(OakNodeNode *multicam_or_NULL)
+int oakrender_set_cacher_multicam(OakNodeNode multicam_or_NULL)
 {
 	olive::RenderManager *manager = olive::RenderManager::instance();
 	if (!manager) {
 		return OAKRENDER_E_STATE;
 	}
 	manager->get_cacher()->set_multicam_node(
-		reinterpret_cast<olive::MultiCamNode *>(multicam_or_NULL));
+		multicam_or_NULL.ctx ?
+			oaknode_c_api::to_native<olive::MultiCamNode>(multicam_or_NULL) :
+			nullptr);
 	return OAKRENDER_OK;
 }
 

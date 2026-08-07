@@ -20,7 +20,8 @@
 
 #include "node/block.h"
 
-#include "alivecount.h"
+#include "node/node.h"
+#include "node/track.h"
 
 #include "block/block.h"
 #include "block/clip/clip.h"
@@ -30,27 +31,26 @@
 #include "block/transition/transition.h"
 #include "output/track/track.h"
 
+#include "nodehandle.h"
+
+using oaknode_c_api::delete_as;
+using oaknode_c_api::free_handle;
+using oaknode_c_api::make_handle;
+using oaknode_c_api::to_native;
+
 namespace
 {
 
-olive::Block *impl(OakNodeBlock *h)
+olive::ClipBlock *clip_impl(OakNodeBlock h)
 {
-	return reinterpret_cast<olive::Block *>(h);
+	olive::Block *b = to_native<olive::Block>(h);
+	return b ? dynamic_cast<olive::ClipBlock *>(b) : nullptr;
 }
 
-olive::ClipBlock *clip_impl(OakNodeBlock *h)
+olive::TransitionBlock *transition_impl(OakNodeBlock h)
 {
-	return h ? dynamic_cast<olive::ClipBlock *>(impl(h)) : nullptr;
-}
-
-olive::TransitionBlock *transition_impl(OakNodeBlock *h)
-{
-	return h ? dynamic_cast<olive::TransitionBlock *>(impl(h)) : nullptr;
-}
-
-OakNodeBlock *wrap(olive::Block *b)
-{
-	return reinterpret_cast<OakNodeBlock *>(b);
+	olive::Block *b = to_native<olive::Block>(h);
+	return b ? dynamic_cast<olive::TransitionBlock *>(b) : nullptr;
 }
 
 int get_rational(const olive::core::Rational &r, int *numerator,
@@ -65,30 +65,29 @@ int get_rational(const olive::core::Rational &r, int *numerator,
 }
 
 template <typename T, typename... Args>
-OakNodeBlock *create_block(Args &&...args)
+OakNodeBlock create_block(Args &&...args)
 {
 	try {
-		T *b = new T(std::forward<Args>(args)...);
-		oaknode_c_api::alive_inc();
-		return wrap(b);
+		return make_handle<OakNodeBlock>(new T(std::forward<Args>(args)...),
+										 true, &delete_as<T>);
 	} catch (...) {
-		return nullptr;
+		return OakNodeBlock{};
 	}
 }
 
 } // namespace
 
-OakNodeBlock *oaknode_block_clip_create(void)
+OakNodeBlock oaknode_block_clip_create(void)
 {
 	return create_block<olive::ClipBlock>();
 }
 
-OakNodeBlock *oaknode_block_gap_create(void)
+OakNodeBlock oaknode_block_gap_create(void)
 {
 	return create_block<olive::GapBlock>();
 }
 
-OakNodeBlock *oaknode_block_transition_create(int kind)
+OakNodeBlock oaknode_block_transition_create(int kind)
 {
 	switch (kind) {
 	case OAKNODE_TRANSITION_CROSS_DISSOLVE:
@@ -96,70 +95,72 @@ OakNodeBlock *oaknode_block_transition_create(int kind)
 	case OAKNODE_TRANSITION_DIP_TO_COLOR:
 		return create_block<olive::DipToColorTransition>();
 	default:
-		return nullptr;
+		return OakNodeBlock{};
 	}
 }
 
 void oaknode_block_free(OakNodeBlock *block)
 {
-	if (!block) {
-		return;
-	}
-	delete impl(block);
-	oaknode_c_api::alive_dec();
+	free_handle(block);
 }
 
-int oaknode_block_get_in(OakNodeBlock *block, int *numerator, int *denominator)
+int oaknode_block_get_in(OakNodeBlock block, int *numerator, int *denominator)
 {
-	if (!block) {
+	olive::Block *b = to_native<olive::Block>(block);
+	if (!b) {
 		return OAKNODE_E_INVALID;
 	}
-	return get_rational(impl(block)->in(), numerator, denominator);
+	return get_rational(b->in(), numerator, denominator);
 }
 
-int oaknode_block_set_in(OakNodeBlock *block, int numerator, int denominator)
+int oaknode_block_set_in(OakNodeBlock block, int numerator, int denominator)
 {
-	if (!block) {
+	olive::Block *b = to_native<olive::Block>(block);
+	if (!b) {
 		return OAKNODE_E_INVALID;
 	}
-	impl(block)->set_in(olive::core::Rational(numerator, denominator));
+	b->set_in(olive::core::Rational(numerator, denominator));
 	return OAKNODE_OK;
 }
 
-int oaknode_block_get_out(OakNodeBlock *block, int *numerator, int *denominator)
+int oaknode_block_get_out(OakNodeBlock block, int *numerator, int *denominator)
 {
-	if (!block) {
+	olive::Block *b = to_native<olive::Block>(block);
+	if (!b) {
 		return OAKNODE_E_INVALID;
 	}
-	return get_rational(impl(block)->out(), numerator, denominator);
+	return get_rational(b->out(), numerator, denominator);
 }
 
-int oaknode_block_set_out(OakNodeBlock *block, int numerator, int denominator)
+int oaknode_block_set_out(OakNodeBlock block, int numerator, int denominator)
 {
-	if (!block) {
+	olive::Block *b = to_native<olive::Block>(block);
+	if (!b) {
 		return OAKNODE_E_INVALID;
 	}
-	impl(block)->set_out(olive::core::Rational(numerator, denominator));
+	b->set_out(olive::core::Rational(numerator, denominator));
 	return OAKNODE_OK;
 }
 
-int oaknode_block_get_length(OakNodeBlock *block, int *numerator,
+int oaknode_block_get_length(OakNodeBlock block, int *numerator,
 							 int *denominator)
 {
-	if (!block) {
+	olive::Block *b = to_native<olive::Block>(block);
+	if (!b) {
 		return OAKNODE_E_INVALID;
 	}
-	return get_rational(impl(block)->length(), numerator, denominator);
+	return get_rational(b->length(), numerator, denominator);
 }
 
-int oaknode_block_set_length_and_media_out(OakNodeBlock *block, int numerator,
+int oaknode_block_set_length_and_media_out(OakNodeBlock block, int numerator,
 										   int denominator)
 {
-	if (!block) {
+	olive::Block *b = to_native<olive::Block>(block);
+	if (!b) {
 		return OAKNODE_E_INVALID;
 	}
 	try {
-		impl(block)->set_length_and_media_out(
+		b->set_length_and_media_out(
 			olive::core::Rational(numerator, denominator));
 	} catch (...) {
 		return OAKNODE_E_FAILED;
@@ -167,14 +168,15 @@ int oaknode_block_set_length_and_media_out(OakNodeBlock *block, int numerator,
 	return OAKNODE_OK;
 }
 
-int oaknode_block_set_length_and_media_in(OakNodeBlock *block, int numerator,
+int oaknode_block_set_length_and_media_in(OakNodeBlock block, int numerator,
 										  int denominator)
 {
-	if (!block) {
+	olive::Block *b = to_native<olive::Block>(block);
+	if (!b) {
 		return OAKNODE_E_INVALID;
 	}
 	try {
-		impl(block)->set_length_and_media_in(
+		b->set_length_and_media_in(
 			olive::core::Rational(numerator, denominator));
 	} catch (...) {
 		return OAKNODE_E_FAILED;
@@ -182,102 +184,123 @@ int oaknode_block_set_length_and_media_in(OakNodeBlock *block, int numerator,
 	return OAKNODE_OK;
 }
 
-int oaknode_block_get_enabled(OakNodeBlock *block, int *enabled)
+int oaknode_block_get_enabled(OakNodeBlock block, int *enabled)
 {
-	if (!block || !enabled) {
+	olive::Block *b = to_native<olive::Block>(block);
+	if (!b || !enabled) {
 		return OAKNODE_E_INVALID;
 	}
-	*enabled = impl(block)->is_enabled() ? 1 : 0;
+	*enabled = b->is_enabled() ? 1 : 0;
 	return OAKNODE_OK;
 }
 
-int oaknode_block_set_enabled(OakNodeBlock *block, int enabled)
+int oaknode_block_set_enabled(OakNodeBlock block, int enabled)
 {
-	if (!block) {
+	olive::Block *b = to_native<olive::Block>(block);
+	if (!b) {
 		return OAKNODE_E_INVALID;
 	}
-	impl(block)->set_enabled(enabled != 0);
+	b->set_enabled(enabled != 0);
 	return OAKNODE_OK;
 }
 
-int oaknode_block_get_previous(OakNodeBlock *block, OakNodeBlock **out)
+int oaknode_block_get_previous(OakNodeBlock block, OakNodeBlock *out)
 {
-	if (!block || !out) {
+	olive::Block *b = to_native<olive::Block>(block);
+	if (!b || !out) {
 		return OAKNODE_E_INVALID;
 	}
-	*out = wrap(impl(block)->previous());
+	// Borrowed (empty when there is no neighbour)
+	*out = make_handle<OakNodeBlock>(b->previous(), false,
+									 &delete_as<olive::Block>);
 	return OAKNODE_OK;
 }
 
-int oaknode_block_get_next(OakNodeBlock *block, OakNodeBlock **out)
+int oaknode_block_get_next(OakNodeBlock block, OakNodeBlock *out)
 {
-	if (!block || !out) {
+	olive::Block *b = to_native<olive::Block>(block);
+	if (!b || !out) {
 		return OAKNODE_E_INVALID;
 	}
-	*out = wrap(impl(block)->next());
+	*out = make_handle<OakNodeBlock>(b->next(), false,
+									 &delete_as<olive::Block>);
 	return OAKNODE_OK;
 }
 
-int oaknode_block_get_track(OakNodeBlock *block, OakNodeTrack **out)
+int oaknode_block_get_track(OakNodeBlock block, OakNodeTrack *out)
 {
-	if (!block || !out) {
+	olive::Block *b = to_native<olive::Block>(block);
+	if (!b || !out) {
 		return OAKNODE_E_INVALID;
 	}
-	*out = reinterpret_cast<OakNodeTrack *>(impl(block)->track());
+	// Borrowed (empty when the block is not on a track)
+	*out = make_handle<OakNodeTrack>(b->track(), false,
+									 &delete_as<olive::Track>);
 	return OAKNODE_OK;
 }
 
-int oaknode_block_link(OakNodeBlock *a, OakNodeBlock *b)
+int oaknode_block_link(OakNodeBlock a, OakNodeBlock b)
 {
-	if (!a || !b) {
+	olive::Block *na = to_native<olive::Block>(a);
+	olive::Block *nb = to_native<olive::Block>(b);
+	if (!na || !nb) {
 		return OAKNODE_E_INVALID;
 	}
-	return olive::Node::link(impl(a), impl(b)) ? OAKNODE_OK : OAKNODE_E_FAILED;
+	return olive::Node::link(na, nb) ? OAKNODE_OK : OAKNODE_E_FAILED;
 }
 
-int oaknode_block_unlink(OakNodeBlock *a, OakNodeBlock *b)
+int oaknode_block_unlink(OakNodeBlock a, OakNodeBlock b)
 {
-	if (!a || !b) {
+	olive::Block *na = to_native<olive::Block>(a);
+	olive::Block *nb = to_native<olive::Block>(b);
+	if (!na || !nb) {
 		return OAKNODE_E_INVALID;
 	}
-	return olive::Node::unlink(impl(a), impl(b)) ? OAKNODE_OK : OAKNODE_E_FAILED;
+	return olive::Node::unlink(na, nb) ? OAKNODE_OK : OAKNODE_E_FAILED;
 }
 
-int oaknode_block_are_linked(OakNodeBlock *a, OakNodeBlock *b, int *linked)
+int oaknode_block_are_linked(OakNodeBlock a, OakNodeBlock b, int *linked)
 {
-	if (!a || !b || !linked) {
+	olive::Block *na = to_native<olive::Block>(a);
+	olive::Block *nb = to_native<olive::Block>(b);
+	if (!na || !nb || !linked) {
 		return OAKNODE_E_INVALID;
 	}
-	*linked = olive::Node::are_linked(impl(a), impl(b)) ? 1 : 0;
+	*linked = olive::Node::are_linked(na, nb) ? 1 : 0;
 	return OAKNODE_OK;
 }
 
-int oaknode_block_get_link_count(OakNodeBlock *block, int *count)
+int oaknode_block_get_link_count(OakNodeBlock block, int *count)
 {
-	if (!block || !count) {
+	olive::Block *b = to_native<olive::Block>(block);
+	if (!b || !count) {
 		return OAKNODE_E_INVALID;
 	}
-	*count = int(impl(block)->links().size());
+	*count = int(b->links().size());
 	return OAKNODE_OK;
 }
 
-int oaknode_block_get_link_at(OakNodeBlock *block, int index,
-							  OakNodeBlock **out)
+int oaknode_block_get_link_at(OakNodeBlock block, int index,
+							  OakNodeBlock *out)
 {
-	if (!block || !out || index < 0) {
+	olive::Block *b = to_native<olive::Block>(block);
+	if (!b || !out || index < 0) {
 		return OAKNODE_E_INVALID;
 	}
-	const auto &links = impl(block)->links();
+	const auto &links = b->links();
 	if (index >= int(links.size())) {
 		return OAKNODE_E_NOT_FOUND;
 	}
-	*out = wrap(static_cast<olive::Block *>(links.at(index)));
-	return OAKNODE_OK;
+	// Borrowed; the linked block stays owned by its graph
+	*out = make_handle<OakNodeBlock>(
+		static_cast<olive::Block *>(links.at(index)), false,
+		&delete_as<olive::Block>);
+	return out->ctx ? OAKNODE_OK : OAKNODE_E_NOMEM;
 }
 
 /* ---------------------------------------------------------------- Clip */
 
-int oaknode_clip_get_media_in(OakNodeBlock *clip, int *numerator,
+int oaknode_clip_get_media_in(OakNodeBlock clip, int *numerator,
 							  int *denominator)
 {
 	olive::ClipBlock *c = clip_impl(clip);
@@ -287,7 +310,7 @@ int oaknode_clip_get_media_in(OakNodeBlock *clip, int *numerator,
 	return get_rational(c->media_in(), numerator, denominator);
 }
 
-int oaknode_clip_set_media_in(OakNodeBlock *clip, int numerator,
+int oaknode_clip_set_media_in(OakNodeBlock clip, int numerator,
 							  int denominator)
 {
 	olive::ClipBlock *c = clip_impl(clip);
@@ -298,7 +321,7 @@ int oaknode_clip_set_media_in(OakNodeBlock *clip, int numerator,
 	return OAKNODE_OK;
 }
 
-int oaknode_clip_get_speed(OakNodeBlock *clip, double *speed)
+int oaknode_clip_get_speed(OakNodeBlock clip, double *speed)
 {
 	olive::ClipBlock *c = clip_impl(clip);
 	if (!c || !speed) {
@@ -308,7 +331,7 @@ int oaknode_clip_get_speed(OakNodeBlock *clip, double *speed)
 	return OAKNODE_OK;
 }
 
-int oaknode_clip_set_speed(OakNodeBlock *clip, double speed)
+int oaknode_clip_set_speed(OakNodeBlock clip, double speed)
 {
 	olive::ClipBlock *c = clip_impl(clip);
 	if (!c) {
@@ -318,7 +341,7 @@ int oaknode_clip_set_speed(OakNodeBlock *clip, double speed)
 	return OAKNODE_OK;
 }
 
-int oaknode_clip_get_reverse(OakNodeBlock *clip, int *reverse)
+int oaknode_clip_get_reverse(OakNodeBlock clip, int *reverse)
 {
 	olive::ClipBlock *c = clip_impl(clip);
 	if (!c || !reverse) {
@@ -328,7 +351,7 @@ int oaknode_clip_get_reverse(OakNodeBlock *clip, int *reverse)
 	return OAKNODE_OK;
 }
 
-int oaknode_clip_set_reverse(OakNodeBlock *clip, int reverse)
+int oaknode_clip_set_reverse(OakNodeBlock clip, int reverse)
 {
 	olive::ClipBlock *c = clip_impl(clip);
 	if (!c) {
@@ -338,7 +361,7 @@ int oaknode_clip_set_reverse(OakNodeBlock *clip, int reverse)
 	return OAKNODE_OK;
 }
 
-int oaknode_clip_get_maintain_audio_pitch(OakNodeBlock *clip, int *maintain)
+int oaknode_clip_get_maintain_audio_pitch(OakNodeBlock clip, int *maintain)
 {
 	olive::ClipBlock *c = clip_impl(clip);
 	if (!c || !maintain) {
@@ -348,7 +371,7 @@ int oaknode_clip_get_maintain_audio_pitch(OakNodeBlock *clip, int *maintain)
 	return OAKNODE_OK;
 }
 
-int oaknode_clip_set_maintain_audio_pitch(OakNodeBlock *clip, int maintain)
+int oaknode_clip_set_maintain_audio_pitch(OakNodeBlock clip, int maintain)
 {
 	olive::ClipBlock *c = clip_impl(clip);
 	if (!c) {
@@ -358,7 +381,7 @@ int oaknode_clip_set_maintain_audio_pitch(OakNodeBlock *clip, int maintain)
 	return OAKNODE_OK;
 }
 
-int oaknode_clip_get_loop_mode(OakNodeBlock *clip, int *loop_mode)
+int oaknode_clip_get_loop_mode(OakNodeBlock clip, int *loop_mode)
 {
 	olive::ClipBlock *c = clip_impl(clip);
 	if (!c || !loop_mode) {
@@ -368,7 +391,7 @@ int oaknode_clip_get_loop_mode(OakNodeBlock *clip, int *loop_mode)
 	return OAKNODE_OK;
 }
 
-int oaknode_clip_set_loop_mode(OakNodeBlock *clip, int loop_mode)
+int oaknode_clip_set_loop_mode(OakNodeBlock clip, int loop_mode)
 {
 	olive::ClipBlock *c = clip_impl(clip);
 	if (!c) {
@@ -378,7 +401,7 @@ int oaknode_clip_set_loop_mode(OakNodeBlock *clip, int loop_mode)
 	return OAKNODE_OK;
 }
 
-int oaknode_clip_get_track_type(OakNodeBlock *clip, int *type)
+int oaknode_clip_get_track_type(OakNodeBlock clip, int *type)
 {
 	olive::ClipBlock *c = clip_impl(clip);
 	if (!c || !type) {
@@ -390,7 +413,7 @@ int oaknode_clip_get_track_type(OakNodeBlock *clip, int *type)
 
 /* ----------------------------------------------------------- Transition */
 
-int oaknode_transition_get_in_offset(OakNodeBlock *transition, int *numerator,
+int oaknode_transition_get_in_offset(OakNodeBlock transition, int *numerator,
 									 int *denominator)
 {
 	olive::TransitionBlock *t = transition_impl(transition);
@@ -400,7 +423,7 @@ int oaknode_transition_get_in_offset(OakNodeBlock *transition, int *numerator,
 	return get_rational(t->in_offset(), numerator, denominator);
 }
 
-int oaknode_transition_get_out_offset(OakNodeBlock *transition, int *numerator,
+int oaknode_transition_get_out_offset(OakNodeBlock transition, int *numerator,
 									  int *denominator)
 {
 	olive::TransitionBlock *t = transition_impl(transition);
@@ -410,7 +433,7 @@ int oaknode_transition_get_out_offset(OakNodeBlock *transition, int *numerator,
 	return get_rational(t->out_offset(), numerator, denominator);
 }
 
-int oaknode_transition_get_offset_center(OakNodeBlock *transition,
+int oaknode_transition_get_offset_center(OakNodeBlock transition,
 										 int *numerator, int *denominator)
 {
 	olive::TransitionBlock *t = transition_impl(transition);
@@ -420,7 +443,7 @@ int oaknode_transition_get_offset_center(OakNodeBlock *transition,
 	return get_rational(t->offset_center(), numerator, denominator);
 }
 
-int oaknode_transition_set_offset_center(OakNodeBlock *transition,
+int oaknode_transition_set_offset_center(OakNodeBlock transition,
 										 int numerator, int denominator)
 {
 	olive::TransitionBlock *t = transition_impl(transition);
@@ -431,7 +454,7 @@ int oaknode_transition_set_offset_center(OakNodeBlock *transition,
 	return OAKNODE_OK;
 }
 
-int oaknode_transition_set_offsets_and_length(OakNodeBlock *transition,
+int oaknode_transition_set_offsets_and_length(OakNodeBlock transition,
 											  int in_num, int in_den,
 											  int out_num, int out_den)
 {
@@ -444,7 +467,7 @@ int oaknode_transition_set_offsets_and_length(OakNodeBlock *transition,
 	return OAKNODE_OK;
 }
 
-int oaknode_transition_is_dual(OakNodeBlock *transition, int *dual)
+int oaknode_transition_is_dual(OakNodeBlock transition, int *dual)
 {
 	olive::TransitionBlock *t = transition_impl(transition);
 	if (!t || !dual) {
@@ -454,35 +477,34 @@ int oaknode_transition_is_dual(OakNodeBlock *transition, int *dual)
 	return OAKNODE_OK;
 }
 
-int oaknode_transition_get_connected_out_block(OakNodeBlock *transition,
-											   OakNodeBlock **out)
+int oaknode_transition_get_connected_out_block(OakNodeBlock transition,
+											   OakNodeBlock *out)
 {
 	olive::TransitionBlock *t = transition_impl(transition);
 	if (!t || !out) {
 		return OAKNODE_E_INVALID;
 	}
-	*out = wrap(t->connected_out_block());
+	// Borrowed (empty when unconnected)
+	*out = make_handle<OakNodeBlock>(t->connected_out_block(), false,
+									 &delete_as<olive::Block>);
 	return OAKNODE_OK;
 }
 
-int oaknode_transition_get_connected_in_block(OakNodeBlock *transition,
-											  OakNodeBlock **out)
+int oaknode_transition_get_connected_in_block(OakNodeBlock transition,
+											  OakNodeBlock *out)
 {
 	olive::TransitionBlock *t = transition_impl(transition);
 	if (!t || !out) {
 		return OAKNODE_E_INVALID;
 	}
-	*out = wrap(t->connected_in_block());
+	*out = make_handle<OakNodeBlock>(t->connected_in_block(), false,
+									 &delete_as<olive::Block>);
 	return OAKNODE_OK;
 }
 
-int oaknode_clip_add_cache_passthrough_from(OakNodeBlock *clip,
-											OakNodeBlock *other)
+int oaknode_clip_add_cache_passthrough_from(OakNodeBlock clip,
+											OakNodeBlock other)
 {
-	if (!clip || !other) {
-		return OAKNODE_E_INVALID;
-	}
-
 	olive::ClipBlock *c = clip_impl(clip);
 	olive::ClipBlock *o = clip_impl(other);
 	if (!c || !o) {
@@ -497,27 +519,31 @@ int oaknode_clip_add_cache_passthrough_from(OakNodeBlock *clip,
 	}
 }
 
-OakNodeNode *oaknode_block_as_node(OakNodeBlock *block)
+OakNodeNode oaknode_block_as_node(OakNodeBlock block)
 {
-	return reinterpret_cast<OakNodeNode *>(block);
+	// Borrowed; releasing the result never destroys the block
+	return make_handle<OakNodeNode>(to_native<olive::Block>(block), false,
+									&delete_as<olive::Node>);
 }
 
-OakNodeBlock *oaknode_block_from_node(OakNodeNode *node)
+OakNodeBlock oaknode_block_from_node(OakNodeNode node)
 {
-	if (!node) {
-		return NULL;
+	olive::Node *n = to_native<olive::Node>(node);
+	if (!n) {
+		return OakNodeBlock{};
 	}
-	olive::Node *n = reinterpret_cast<olive::Node *>(node);
-	return wrap(dynamic_cast<olive::Block *>(n));
+	// Borrowed (empty when the node is not a Block)
+	return make_handle<OakNodeBlock>(dynamic_cast<olive::Block *>(n), false,
+									 &delete_as<olive::Block>);
 }
 
-int oaknode_block_get_kind(OakNodeBlock *block, int *out_kind)
+int oaknode_block_get_kind(OakNodeBlock block, int *out_kind)
 {
-	if (!block || !out_kind) {
+	olive::Block *b = to_native<olive::Block>(block);
+	if (!b || !out_kind) {
 		return OAKNODE_E_INVALID;
 	}
 
-	olive::Block *b = impl(block);
 	if (dynamic_cast<olive::TransitionBlock *>(b)) {
 		*out_kind = OAKNODE_BLOCK_TRANSITION;
 	} else if (dynamic_cast<olive::ClipBlock *>(b)) {

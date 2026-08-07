@@ -41,16 +41,16 @@ protected:
 	void SetUp() override
 	{
 		project_ = oaknode_project_init();
-		ASSERT_NE(project_, nullptr);
+		ASSERT_NE(project_.ctx, nullptr);
 		ASSERT_EQ(oaknode_project_initialize(project_), OAKNODE_OK);
 	}
 
 	void TearDown() override
 	{
-		oaknode_project_free(project_);
+		oaknode_project_free(&project_);
 	}
 
-	OakNodeProject *project_ = nullptr;
+	OakNodeProject project_ = {};
 };
 
 // ---- task family ----------------------------------------------------------
@@ -104,7 +104,7 @@ TEST_F(OakTaskFixture, LoadMissingFileFails)
 	char err[256];
 	EXPECT_GT(oaktask_task_error(t, err, sizeof(err)), 0);
 
-	EXPECT_EQ(oaktask_load_take_project(t), nullptr);
+	EXPECT_EQ(oaktask_load_take_project(t).ctx, nullptr);
 	oaktask_task_free(t);
 
 	EXPECT_EQ(oaktask_create_project_load(nullptr), nullptr);
@@ -126,11 +126,11 @@ TEST_F(OakTaskFixture, SaveLoadRoundTrip)
 	ASSERT_NE(load, nullptr);
 	ASSERT_EQ(oaktask_task_start_sync(load), 1);
 
-	OakNodeProject *loaded = oaktask_load_take_project(load);
-	ASSERT_NE(loaded, nullptr);
-	EXPECT_EQ(oaktask_load_take_project(load), nullptr);
+	OakNodeProject loaded = oaktask_load_take_project(load);
+	ASSERT_NE(loaded.ctx, nullptr);
+	EXPECT_EQ(oaktask_load_take_project(load).ctx, nullptr);
 
-	oaknode_project_free(loaded);
+	oaknode_project_free(&loaded);
 	oaktask_task_free(load);
 
 	std::filesystem::remove(path);
@@ -138,8 +138,8 @@ TEST_F(OakTaskFixture, SaveLoadRoundTrip)
 
 TEST_F(OakTaskFixture, ImportDemoFootage)
 {
-	OakNodeFolder *folder = oaknode_folder_create(project_);
-	ASSERT_NE(folder, nullptr);
+	OakNodeFolder folder = oaknode_folder_create(project_);
+	ASSERT_NE(folder.ctx, nullptr);
 
 	const char *urls[] = { OAK_REPO_ROOT "/tests/demo.mp4" };
 	OakTaskTask *t =
@@ -157,8 +157,12 @@ TEST_F(OakTaskFixture, ImportDemoFootage)
 	}
 
 	EXPECT_EQ(oaktask_import_footage_count(t), 1);
-	EXPECT_NE(oaktask_import_footage_at(t, 0), nullptr);
-	EXPECT_EQ(oaktask_import_footage_at(t, 5), nullptr);
+	OakNodeFootage footage = oaktask_import_footage_at(t, 0);
+	EXPECT_NE(footage.ctx, nullptr);
+	if (footage.ctx) {
+		footage.release(footage.ctx);
+	}
+	EXPECT_EQ(oaktask_import_footage_at(t, 5).ctx, nullptr);
 	EXPECT_EQ(oaktask_import_invalid_count(t), 0);
 	EXPECT_EQ(oaktask_import_invalid_at(t, 0, nullptr, 0),
 			  OAKTASK_E_NOT_FOUND);
@@ -179,8 +183,9 @@ TEST_F(OakTaskFixture, ImportDemoFootage)
 	oakundo_command_free(&cmd);
 	oaktask_task_free(t);
 
-	EXPECT_EQ(oaktask_create_project_import(nullptr, project_, urls, 1),
-			  nullptr);
+	EXPECT_EQ(
+		oaktask_create_project_import(OakNodeFolder{}, project_, urls, 1),
+		nullptr);
 	EXPECT_EQ(oaktask_import_footage_count(nullptr), OAKTASK_E_INVALID);
 
 	EXPECT_EQ(oaktask_debug_alive_count(), 0);
@@ -210,8 +215,8 @@ TEST(OakTaskManager, AsyncStartAndSubscribe)
 {
 	ASSERT_EQ(oaktask_manager_init(), OAKTASK_OK);
 
-	OakNodeProject *project = oaknode_project_init();
-	ASSERT_NE(project, nullptr);
+	OakNodeProject project = oaknode_project_init();
+	ASSERT_NE(project.ctx, nullptr);
 	ASSERT_EQ(oaknode_project_initialize(project), OAKNODE_OK);
 
 	std::string path =
@@ -258,7 +263,7 @@ TEST(OakTaskManager, AsyncStartAndSubscribe)
 	std::filesystem::remove(path);
 
 	oaktask_task_free(t);
-	oaknode_project_free(project);
+	oaknode_project_free(&project);
 	oaktask_manager_shutdown();
 
 	EXPECT_EQ(oaktask_debug_alive_count(), 0);
@@ -319,29 +324,34 @@ TEST(OakTaskConform, SubmittedConformProducesPcm)
 
 TEST(OakTaskRenderFamily, FactoryErrorPaths)
 {
-	EXPECT_EQ(oaktask_create_precache(nullptr, 0, nullptr), nullptr);
+	EXPECT_EQ(oaktask_create_precache(OakNodeFootage{}, 0, OakNodeSequence{}),
+			  nullptr);
 
 	oakcodec_encoding_params params = {};
-	EXPECT_EQ(oaktask_create_export(nullptr, nullptr, &params), nullptr);
-	EXPECT_EQ(oaktask_create_export(nullptr, nullptr, nullptr), nullptr);
+	EXPECT_EQ(oaktask_create_export(OakNodeNode{}, OakNodeColorManager{},
+									&params),
+			  nullptr);
+	EXPECT_EQ(oaktask_create_export(OakNodeNode{}, OakNodeColorManager{},
+									nullptr),
+			  nullptr);
 }
 
 TEST(OakTaskRenderFamily, ExportTaskConstruction)
 {
-	OakNodeProject *project = oaknode_project_init();
-	ASSERT_NE(project, nullptr);
+	OakNodeProject project = oaknode_project_init();
+	ASSERT_NE(project.ctx, nullptr);
 	ASSERT_EQ(oaknode_project_initialize(project), OAKNODE_OK);
 
 	// A sequence gives us a viewer with tracks; the factory should wrap
 	// the task successfully (no render manager needed for construction)
-	OakNodeSequence *sequence = oaknode_sequence_create();
-	ASSERT_NE(sequence, nullptr);
+	OakNodeSequence sequence = oaknode_sequence_create();
+	ASSERT_NE(sequence.ctx, nullptr);
 	ASSERT_EQ(oaknode_project_add_node(project,
 									   oaknode_sequence_as_node(sequence)),
 			  OAKNODE_OK);
 
-	OakNodeColorManager *cm = oaknode_colormanager_init(project);
-	ASSERT_NE(cm, nullptr);
+	OakNodeColorManager cm = oaknode_colormanager_init(project);
+	ASSERT_NE(cm.ctx, nullptr);
 
 	oakcodec_encoding_params params = {};
 	strncpy(params.filename, "/tmp/oaktask_export_test.mp4",
@@ -357,8 +367,8 @@ TEST(OakTaskRenderFamily, ExportTaskConstruction)
 
 	// Running needs a render manager; not available in this binary
 	oaktask_task_free(t);
-	oaknode_colormanager_free(cm);
-	oaknode_project_free(project);
+	oaknode_colormanager_free(&cm);
+	oaknode_project_free(&project);
 
 	EXPECT_EQ(oaktask_debug_alive_count(), 0);
 }
@@ -367,13 +377,13 @@ TEST(OakTaskRenderFamily, ExportTaskConstruction)
 
 TEST(OakTaskOTIO, SaveLoadRoundTrip)
 {
-	OakNodeProject *project = oaknode_project_init();
-	ASSERT_NE(project, nullptr);
+	OakNodeProject project = oaknode_project_init();
+	ASSERT_NE(project.ctx, nullptr);
 	ASSERT_EQ(oaknode_project_initialize(project), OAKNODE_OK);
 
 	// A sequence with a name so save has something to serialize
-	OakNodeSequence *sequence = oaknode_sequence_create();
-	ASSERT_NE(sequence, nullptr);
+	OakNodeSequence sequence = oaknode_sequence_create();
+	ASSERT_NE(sequence.ctx, nullptr);
 	ASSERT_EQ(oaknode_project_add_node(project,
 									   oaknode_sequence_as_node(sequence)),
 			  OAKNODE_OK);
@@ -383,8 +393,8 @@ TEST(OakTaskOTIO, SaveLoadRoundTrip)
 									 "OTIO Test Sequence"),
 			  OAKNODE_OK);
 
-	OakNodeFolder *root = oaknode_project_root(project);
-	ASSERT_NE(root, nullptr);
+	OakNodeFolder root = oaknode_project_root(project);
+	ASSERT_NE(root.ctx, nullptr);
 	OakUndoCommand add_seq = oaknode_command_create_folder_add_child(
 		root, oaknode_sequence_as_node(sequence));
 	ASSERT_NE(add_seq.ctx, nullptr);
@@ -409,16 +419,17 @@ TEST(OakTaskOTIO, SaveLoadRoundTrip)
 	ASSERT_NE(load, nullptr);
 	ASSERT_EQ(oaktask_task_start_sync(load), 1);
 
-	OakNodeProject *loaded = oaktask_load_otio_take_project(load);
-	ASSERT_NE(loaded, nullptr);
-	oaknode_project_free(loaded);
+	OakNodeProject loaded = oaktask_load_otio_take_project(load);
+	ASSERT_NE(loaded.ctx, nullptr);
+	oaknode_project_free(&loaded);
 	oaktask_task_free(load);
 
 	std::filesystem::remove(path, ec);
-	oaknode_project_free(project);
+	oaknode_project_free(&project);
 
 	EXPECT_EQ(oaktask_debug_alive_count(), 0);
 
 	EXPECT_EQ(oaktask_create_project_load_otio(nullptr), nullptr);
-	EXPECT_EQ(oaktask_create_project_save_otio(nullptr, "x"), nullptr);
+	EXPECT_EQ(oaktask_create_project_save_otio(OakNodeProject{}, "x"),
+			  nullptr);
 }

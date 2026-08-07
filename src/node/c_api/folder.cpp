@@ -24,97 +24,75 @@
 
 #include <new>
 
+#include "node/node.h"
+
 #include "../src/project.h"
 #include "../src/project/folder/folder.h"
 
-namespace
-{
+#include "nodehandle.h"
 
-olive::Folder *to_cpp(OakNodeFolder *folder)
-{
-	return reinterpret_cast<olive::Folder *>(folder);
-}
+using oaknode_c_api::delete_as;
+using oaknode_c_api::make_handle;
+using oaknode_c_api::to_native;
 
-const olive::Folder *to_cpp(const OakNodeFolder *folder)
+OakNodeFolder oaknode_folder_create(OakNodeProject project)
 {
-	return reinterpret_cast<const olive::Folder *>(folder);
-}
-
-olive::Node *to_cpp(OakNodeNode *node)
-{
-	return reinterpret_cast<olive::Node *>(node);
-}
-
-const olive::Node *to_cpp(const OakNodeNode *node)
-{
-	return reinterpret_cast<const olive::Node *>(node);
-}
-
-OakNodeNode *to_c(olive::Node *node)
-{
-	return reinterpret_cast<OakNodeNode *>(node);
-}
-
-olive::Project *to_cpp(OakNodeProject *project)
-{
-	return reinterpret_cast<olive::Project *>(project);
-}
-
-} // namespace
-
-OakNodeFolder *oaknode_folder_create(OakNodeProject *project)
-{
-	if (!project) {
-		return NULL;
+	if (!project.ctx) {
+		return OakNodeFolder{};
 	}
 
 	try {
 		auto *folder = new (std::nothrow) olive::Folder();
 		if (!folder) {
-			return NULL;
+			return OakNodeFolder{};
 		}
-		to_cpp(project)->add_node(folder);
-		return reinterpret_cast<OakNodeFolder *>(folder);
+		to_native<olive::Project>(project)->add_node(folder);
+		// Borrowed handle: the project graph owns the folder.
+		return make_handle<OakNodeFolder>(folder, false,
+										  &delete_as<olive::Folder>);
 	} catch (...) {
-		return NULL;
+		return OakNodeFolder{};
 	}
 }
 
-int oaknode_folder_child_count(const OakNodeFolder *folder)
+int oaknode_folder_child_count(OakNodeFolder folder)
 {
-	if (!folder) {
+	if (!folder.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		return to_cpp(folder)->item_child_count();
+		return to_native<olive::Folder>(folder)->item_child_count();
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-OakNodeNode *oaknode_folder_child_at(const OakNodeFolder *folder, int index)
+OakNodeNode oaknode_folder_child_at(OakNodeFolder folder, int index)
 {
-	if (!folder || index < 0 || index >= to_cpp(folder)->item_child_count()) {
-		return NULL;
+	if (!folder.ctx || index < 0 ||
+		index >= to_native<olive::Folder>(folder)->item_child_count()) {
+		return OakNodeNode{};
 	}
 
 	try {
-		return to_c(to_cpp(folder)->item_child(index));
+		return make_handle<OakNodeNode>(
+			to_native<olive::Folder>(folder)->item_child(index), false,
+			&delete_as<olive::Node>);
 	} catch (...) {
-		return NULL;
+		return OakNodeNode{};
 	}
 }
 
-int oaknode_folder_add_child(OakNodeFolder *folder, OakNodeNode *child)
+int oaknode_folder_add_child(OakNodeFolder folder, OakNodeNode child)
 {
-	if (!folder || !child) {
+	if (!folder.ctx || !child.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		olive::Folder *f = to_cpp(folder);
-		olive::Node *c = to_cpp(child);
+		olive::Folder *f = to_native<olive::Folder>(folder);
+		olive::Node *c = to_native<olive::Node>(child);
 
 		if (c->folder()) {
 			return OAKNODE_E_STATE;
@@ -122,21 +100,24 @@ int oaknode_folder_add_child(OakNodeFolder *folder, OakNodeNode *child)
 
 		olive::FolderAddChild cmd(f, c);
 		cmd.redo_now();
+		// The graph now owns the child; releasing `child` must not
+		// delete it.
+		oaknode_c_api::mark_container_owned(child);
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_folder_remove_child(OakNodeFolder *folder, OakNodeNode *child)
+int oaknode_folder_remove_child(OakNodeFolder folder, OakNodeNode child)
 {
-	if (!folder || !child) {
+	if (!folder.ctx || !child.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		olive::Folder *f = to_cpp(folder);
-		olive::Node *c = to_cpp(child);
+		olive::Folder *f = to_native<olive::Folder>(folder);
+		olive::Node *c = to_native<olive::Node>(child);
 
 		if (f->index_of_child(c) == -1) {
 			return OAKNODE_E_NOT_FOUND;
@@ -150,22 +131,22 @@ int oaknode_folder_remove_child(OakNodeFolder *folder, OakNodeNode *child)
 	}
 }
 
-int oaknode_folder_move_children(OakNodeNode *const *nodes, int count,
-								 OakNodeFolder *dest_folder)
+int oaknode_folder_move_children(const OakNodeNode *nodes, int count,
+								 OakNodeFolder dest_folder)
 {
-	if (!nodes || count < 0 || !dest_folder) {
+	if (!nodes || count < 0 || !dest_folder.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		olive::Folder *dest = to_cpp(dest_folder);
+		olive::Folder *dest = to_native<olive::Folder>(dest_folder);
 
 		for (int i = 0; i < count; i++) {
-			if (!nodes[i]) {
+			if (!nodes[i].ctx) {
 				return OAKNODE_E_INVALID;
 			}
 
-			olive::Node *node = to_cpp(nodes[i]);
+			olive::Node *node = to_native<olive::Node>(nodes[i]);
 			olive::Folder *old_folder = node->folder();
 
 			if (old_folder == dest) {
@@ -179,6 +160,9 @@ int oaknode_folder_move_children(OakNodeNode *const *nodes, int count,
 
 			olive::FolderAddChild add_cmd(dest, node);
 			add_cmd.redo_now();
+			// The graph owns the moved node; releasing the caller's
+			// handle must not delete it.
+			oaknode_c_api::mark_container_owned(nodes[i]);
 		}
 
 		return OAKNODE_OK;
@@ -187,16 +171,16 @@ int oaknode_folder_move_children(OakNodeNode *const *nodes, int count,
 	}
 }
 
-int oaknode_folder_has_child_recursive(const OakNodeFolder *folder,
-									   const OakNodeNode *child)
+int oaknode_folder_has_child_recursive(OakNodeFolder folder,
+									   OakNodeNode child)
 {
-	if (!folder || !child) {
+	if (!folder.ctx || !child.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		return to_cpp(folder)->has_child_recursive(
-				   const_cast<olive::Node *>(to_cpp(child)))
+		return to_native<olive::Folder>(folder)->has_child_recursive(
+				   to_native<olive::Node>(child))
 				   ? 1
 				   : 0;
 	} catch (...) {
@@ -204,52 +188,55 @@ int oaknode_folder_has_child_recursive(const OakNodeFolder *folder,
 	}
 }
 
-int oaknode_folder_index_of_child(const OakNodeFolder *folder,
-								  const OakNodeNode *child)
+int oaknode_folder_index_of_child(OakNodeFolder folder,
+								  OakNodeNode child)
 {
-	if (!folder || !child) {
+	if (!folder.ctx || !child.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		int index = to_cpp(folder)->index_of_child(
-			const_cast<olive::Node *>(to_cpp(child)));
+		int index = to_native<olive::Folder>(folder)->index_of_child(
+			to_native<olive::Node>(child));
 		return index == -1 ? OAKNODE_E_NOT_FOUND : index;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-OakNodeFolder *oaknode_folder_parent_of(const OakNodeNode *node)
+OakNodeFolder oaknode_folder_parent_of(OakNodeNode node)
 {
-	if (!node) {
-		return NULL;
+	if (!node.ctx) {
+		return OakNodeFolder{};
 	}
 
 	try {
-		return reinterpret_cast<OakNodeFolder *>(to_cpp(node)->folder());
+		return make_handle<OakNodeFolder>(
+			to_native<olive::Node>(node)->folder(), false,
+			&delete_as<olive::Folder>);
 	} catch (...) {
-		return NULL;
+		return OakNodeFolder{};
 	}
 }
 
-OakNodeNode *oaknode_folder_as_node(OakNodeFolder *folder)
+OakNodeNode oaknode_folder_as_node(OakNodeFolder folder)
 {
-	return reinterpret_cast<OakNodeNode *>(folder);
+	// Borrowed cast: same object, the handle only releases itself.
+	return make_handle<OakNodeNode>(to_native<olive::Folder>(folder), false,
+									&delete_as<olive::Node>);
 }
 
 OakUndoCommand oaknode_command_create_folder_add_child(
-	OakNodeFolder *folder, OakNodeNode *child)
+	OakNodeFolder folder, OakNodeNode child)
 {
-	if (!folder || !child) {
+	if (!folder.ctx || !child.ctx) {
 		return OakUndoCommand{};
 	}
 
 	try {
 		return oakundo_capi::make_command_handle(
-			new olive::FolderAddChild(
-				reinterpret_cast<olive::Folder *>(folder),
-				reinterpret_cast<olive::Node *>(child)),
+			new olive::FolderAddChild(to_native<olive::Folder>(folder),
+									  to_native<olive::Node>(child)),
 			true);
 	} catch (...) {
 		return OakUndoCommand{};

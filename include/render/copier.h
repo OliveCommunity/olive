@@ -45,17 +45,19 @@ OakRenderProjectCopier *oakrender_project_copier_create(void);
 /** @brief Free the copier AND its copied project. NULL-safe. */
 void oakrender_project_copier_free(OakRenderProjectCopier *copier);
 
-/** @brief (Re)build the copy from `project`. */
+/** @brief (Re)build the copy from `project` (borrowed handle). */
 int oakrender_project_copier_set_project(OakRenderProjectCopier *copier,
-										 OakNodeProject *project);
+										 OakNodeProject project);
 
-/** @brief The copied counterpart of an original node (borrowed), NULL
- *        when the node is not in the copied project. */
-OakNodeNode *oakrender_project_copier_get_copy(
-	OakRenderProjectCopier *copier, OakNodeNode *original);
+/** @brief The copied counterpart of an original node (borrowed handle;
+ *        freeing it only releases the handle box), empty handle when the
+ *        node is not in the copied project. */
+OakNodeNode oakrender_project_copier_get_copy(
+	OakRenderProjectCopier *copier, OakNodeNode original);
 
-/** @brief The copied project (borrowed). */
-OakNodeProject *oakrender_project_copier_get_copied_project(
+/** @brief The copied project (borrowed handle; freeing it only releases
+ *        the handle box). */
+OakNodeProject oakrender_project_copier_get_copied_project(
 	OakRenderProjectCopier *copier);
 
 #ifdef __cplusplus

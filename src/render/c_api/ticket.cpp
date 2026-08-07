@@ -26,6 +26,7 @@
 #include "../src/framehashcache.h"
 #include "../src/rendermanager.h"
 #include "../src/renderticket.h"
+#include "../../node/c_api/nodehandle.h"
 #include "internalhandles.h"
 
 namespace
@@ -59,9 +60,9 @@ OakRenderTicket *wrap(olive::RenderTicketWatcher *w,
 	return reinterpret_cast<OakRenderTicket *>(h);
 }
 
-olive::Node *to_node(OakNodeNode *n)
+olive::Node *to_node(OakNodeNode n)
 {
-	return reinterpret_cast<olive::Node *>(n);
+	return oaknode_c_api::to_native<olive::Node>(n);
 }
 
 } // namespace
@@ -70,7 +71,7 @@ OakRenderTicket *oakrender_ticket_render_frame(
 	const oakrender_video_ticket_params *params,
 	oakrender_ticket_finished_fn cb, void *userdata)
 {
-	if (!params || !params->output_node) {
+	if (!params || !params->output_node.ctx) {
 		return NULL;
 	}
 
@@ -96,7 +97,10 @@ OakRenderTicket *oakrender_ticket_render_frame(
 				: olive::AudioParams(),
 			olive::core::Rational(int(params->time_num),
 								  int(params->time_den)),
-			reinterpret_cast<olive::ColorManager *>(params->color_manager),
+			params->color_manager.ctx ?
+				oaknode_c_api::to_native<olive::ColorManager>(
+					params->color_manager) :
+				nullptr,
 			static_cast<olive::RenderMode::Mode>(params->mode));
 
 		rvp.force_size =
@@ -161,11 +165,11 @@ OakRenderTicket *oakrender_ticket_render_frame(
 }
 
 OakRenderTicket *oakrender_ticket_render_audio(
-	OakNodeNode *output_node, int64_t in_num, int64_t in_den,
+	OakNodeNode output_node, int64_t in_num, int64_t in_den,
 	int64_t out_num, int64_t out_den, const OakAudioParams *params,
 	int mode, oakrender_ticket_finished_fn cb, void *userdata)
 {
-	if (!output_node || !params) {
+	if (!output_node.ctx || !params) {
 		return NULL;
 	}
 

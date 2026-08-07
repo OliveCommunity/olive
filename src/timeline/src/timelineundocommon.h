@@ -28,36 +28,36 @@
 namespace olive
 {
 
-inline bool node_can_be_removed(OakNodeNode *n)
+inline bool node_can_be_removed(OakNodeNode n)
 {
 	int count = 0;
 	oaknode_node_output_connection_count(n, &count);
 	return count == 0;
 }
 
-inline bool node_can_be_removed(OakNodeBlock *b)
+inline bool node_can_be_removed(OakNodeBlock b)
 {
 	return node_can_be_removed(oaknode_block_as_node(b));
 }
 
-inline OakUndoCommand create_remove_command(OakNodeNode *n)
+inline OakUndoCommand create_remove_command(OakNodeNode n)
 {
 	return oaknode_command_create_remove_node(n);
 }
 
-inline OakUndoCommand create_remove_command(OakNodeBlock *b)
+inline OakUndoCommand create_remove_command(OakNodeBlock b)
 {
 	return oaknode_command_create_remove_node(oaknode_block_as_node(b));
 }
 
-inline OakUndoCommand create_and_run_remove_command(OakNodeNode *n)
+inline OakUndoCommand create_and_run_remove_command(OakNodeNode n)
 {
 	OakUndoCommand command = create_remove_command(n);
 	oakundo_command_redo_now(command);
 	return command;
 }
 
-inline OakUndoCommand create_and_run_remove_command(OakNodeBlock *b)
+inline OakUndoCommand create_and_run_remove_command(OakNodeBlock b)
 {
 	return create_and_run_remove_command(oaknode_block_as_node(b));
 }

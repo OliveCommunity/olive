@@ -29,7 +29,7 @@ namespace olive
 namespace
 {
 
-std::string project_filename(OakNodeProject *project)
+std::string project_filename(OakNodeProject project)
 {
 	int needed = oaknode_project_filename(project, nullptr, 0);
 	if (needed <= 0) {
@@ -43,7 +43,7 @@ std::string project_filename(OakNodeProject *project)
 
 } // namespace
 
-ProjectSaveTask::ProjectSaveTask(OakNodeProject *project,
+ProjectSaveTask::ProjectSaveTask(OakNodeProject project,
 								 bool use_compression)
 	: project_(project)
 	, use_compression_(use_compression)

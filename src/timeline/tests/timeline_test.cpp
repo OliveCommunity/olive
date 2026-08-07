@@ -28,6 +28,8 @@
 #include "timeline/workarea.h"
 #include "undo/undocommand.h"
 
+#include "../../node/c_api/nodehandle.h"
+
 namespace
 {
 
@@ -36,13 +38,13 @@ protected:
 	void SetUp() override
 	{
 		project_ = oaknode_project_init();
-		ASSERT_NE(project_, nullptr);
+		ASSERT_NE(project_.ctx, nullptr);
 		sequence_ = oaknode_sequence_create();
-		ASSERT_NE(sequence_, nullptr);
+		ASSERT_NE(sequence_.ctx, nullptr);
 		node_ = oaknode_sequence_as_node(sequence_);
-		OakNodeProject *owner = nullptr;
+		OakNodeProject owner = {};
 		ASSERT_EQ(oaknode_node_get_project(node_, &owner), OAKNODE_OK);
-		if (!owner) {
+		if (!owner.ctx) {
 			ASSERT_EQ(oaknode_project_add_node(project_, node_),
 					  OAKNODE_OK);
 		}
@@ -51,12 +53,12 @@ protected:
 	void TearDown() override
 	{
 		// The project owns the sequence and everything in its graph
-		oaknode_project_free(project_);
+		oaknode_project_free(&project_);
 	}
 
-	OakNodeProject *project_ = nullptr;
-	OakNodeSequence *sequence_ = nullptr;
-	OakNodeNode *node_ = nullptr;
+	OakNodeProject project_ = {};
+	OakNodeSequence sequence_ = {};
+	OakNodeNode node_ = {};
 };
 
 // ---- marker ---------------------------------------------------------------
@@ -64,7 +66,7 @@ protected:
 TEST_F(TimelineSequenceFixture, MarkerListOfReturnsList)
 {
 	EXPECT_NE(oaktimeline_marker_list_of(node_), nullptr);
-	EXPECT_EQ(oaktimeline_marker_list_of(nullptr), nullptr);
+	EXPECT_EQ(oaktimeline_marker_list_of(OakNodeNode{}), nullptr);
 }
 
 TEST_F(TimelineSequenceFixture, MarkerAddCountAtRemove)
@@ -196,8 +198,8 @@ TEST_F(TimelineSequenceFixture, MarkerListXmlRoundTrip)
 	oakcommon_xml_writer_free(&writer);
 
 	// Load into a fresh sequence's marker list
-	OakNodeSequence *seq2 = oaknode_sequence_create();
-	ASSERT_NE(seq2, nullptr);
+	OakNodeSequence seq2 = oaknode_sequence_create();
+	ASSERT_NE(seq2.ctx, nullptr);
 	ASSERT_EQ(oaknode_project_add_node(project_,
 									 oaknode_sequence_as_node(seq2)),
 			  OAKNODE_OK);
@@ -237,7 +239,7 @@ TEST_F(TimelineSequenceFixture, WorkareaGetSetLive)
 {
 	OakTimelineWorkArea *w = oaktimeline_workarea_of(node_);
 	ASSERT_NE(w, nullptr);
-	EXPECT_EQ(oaktimeline_workarea_of(nullptr), nullptr);
+	EXPECT_EQ(oaktimeline_workarea_of(OakNodeNode{}), nullptr);
 
 	int in_n = 0, in_d = 0, out_n = 0, out_d = 0, enabled = -1;
 	EXPECT_EQ(oaktimeline_workarea_get(w, &in_n, &in_d, &out_n, &out_d,
@@ -343,8 +345,8 @@ TEST_F(TimelineSequenceFixture, WorkareaXmlRoundTrip)
 	ASSERT_LT(needed, int(sizeof(xml)));
 	oakcommon_xml_writer_free(&writer);
 
-	OakNodeSequence *seq2 = oaknode_sequence_create();
-	ASSERT_NE(seq2, nullptr);
+	OakNodeSequence seq2 = oaknode_sequence_create();
+	ASSERT_NE(seq2.ctx, nullptr);
 	ASSERT_EQ(oaknode_project_add_node(project_,
 									 oaknode_sequence_as_node(seq2)),
 			  OAKNODE_OK);
@@ -374,11 +376,11 @@ TEST_F(TimelineSequenceFixture, WorkareaXmlRoundTrip)
 
 TEST_F(TimelineSequenceFixture, AddAndRemoveTrackCommands)
 {
-	OakNodeTrackList *list = nullptr;
+	OakNodeTrackList list = {};
 	ASSERT_EQ(oaknode_sequence_get_track_list(
 				  sequence_, OAKNODE_TRACK_TYPE_VIDEO, &list),
 			  OAKNODE_OK);
-	ASSERT_NE(list, nullptr);
+	ASSERT_NE(list.ctx, nullptr);
 
 	int count = -1;
 	EXPECT_EQ(oaknode_tracklist_get_track_count(list, &count), OAKNODE_OK);
@@ -391,10 +393,10 @@ TEST_F(TimelineSequenceFixture, AddAndRemoveTrackCommands)
 	EXPECT_EQ(oaknode_tracklist_get_track_count(list, &count), OAKNODE_OK);
 	EXPECT_EQ(count, before + 1);
 
-	OakNodeTrack *track = nullptr;
+	OakNodeTrack track = {};
 	EXPECT_EQ(oaknode_tracklist_get_track_at(list, before, &track),
 			  OAKNODE_OK);
-	ASSERT_NE(track, nullptr);
+	ASSERT_NE(track.ctx, nullptr);
 
 	OakUndoCommand rm = oaktimeline_remove_track_command(track);
 	ASSERT_NE(rm.ctx, nullptr);
@@ -414,26 +416,26 @@ TEST_F(TimelineSequenceFixture, AddAndRemoveTrackCommands)
 	oakundo_command_free(&add);
 	oakundo_command_free(&rm);
 
-	EXPECT_EQ(oaktimeline_add_track_command(nullptr).ctx, nullptr);
-	EXPECT_EQ(oaktimeline_remove_track_command(nullptr).ctx, nullptr);
+	EXPECT_EQ(oaktimeline_add_track_command(OakNodeTrackList{}).ctx, nullptr);
+	EXPECT_EQ(oaktimeline_remove_track_command(OakNodeTrack{}).ctx, nullptr);
 }
 
 TEST_F(TimelineSequenceFixture, PlaceTrimSplitRemoveAreaCommands)
 {
-	OakNodeTrackList *list = nullptr;
+	OakNodeTrackList list = {};
 	ASSERT_EQ(oaknode_sequence_get_track_list(
 				  sequence_, OAKNODE_TRACK_TYPE_VIDEO, &list),
 			  OAKNODE_OK);
 
-	OakNodeTrack *track = oaknode_track_create(OAKNODE_TRACK_TYPE_VIDEO);
-	ASSERT_NE(track, nullptr);
+	OakNodeTrack track = oaknode_track_create(OAKNODE_TRACK_TYPE_VIDEO);
+	ASSERT_NE(track.ctx, nullptr);
 	ASSERT_EQ(oaknode_project_add_node(project_,
 									 oaknode_track_as_node(track)),
 			  OAKNODE_OK);
 	ASSERT_EQ(oaknode_tracklist_add_track(list, track), OAKNODE_OK);
 
-	OakNodeBlock *clip = oaknode_block_clip_create();
-	ASSERT_NE(clip, nullptr);
+	OakNodeBlock clip = oaknode_block_clip_create();
+	ASSERT_NE(clip.ctx, nullptr);
 	EXPECT_EQ(oaknode_block_set_length_and_media_out(clip, 10, 1),
 			  OAKNODE_OK);
 	ASSERT_EQ(oaknode_project_add_node(project_,
@@ -466,7 +468,7 @@ TEST_F(TimelineSequenceFixture, PlaceTrimSplitRemoveAreaCommands)
 	oakundo_command_free(&trim);
 
 	// Split at 5: two blocks of 5
-	OakNodeBlock *blocks[] = { clip };
+	OakNodeBlock blocks[] = { clip };
 	OakUndoCommand split =
 		oaktimeline_split_command(blocks, 1, 5, 1);
 	ASSERT_NE(split.ctx, nullptr);
@@ -495,9 +497,9 @@ TEST_F(TimelineSequenceFixture, PlaceTrimSplitRemoveAreaCommands)
 	EXPECT_EQ(oaknode_block_get_length(clip, &n, &d), OAKNODE_OK);
 	EXPECT_EQ(n, 3);
 
-	OakNodeBlock *second = nullptr;
+	OakNodeBlock second = {};
 	EXPECT_EQ(oaknode_track_get_block_at(track, 1, &second), OAKNODE_OK);
-	ASSERT_NE(second, nullptr);
+	ASSERT_NE(second.ctx, nullptr);
 	EXPECT_EQ(oaknode_block_get_length(second, &n, &d), OAKNODE_OK);
 	EXPECT_EQ(n, 5);
 
@@ -512,32 +514,32 @@ TEST_F(TimelineSequenceFixture, PlaceTrimSplitRemoveAreaCommands)
 	EXPECT_EQ(block_count, 0);
 	oakundo_command_free(&place);
 
-	EXPECT_EQ(oaktimeline_place_block_command(nullptr, 0, clip, 0, 1)
+	EXPECT_EQ(oaktimeline_place_block_command(OakNodeTrackList{}, 0, clip, 0, 1)
 				  .ctx,
 			  nullptr);
 	EXPECT_EQ(oaktimeline_trim_command(track, clip, 1, 1, 99).ctx, nullptr);
 	EXPECT_EQ(oaktimeline_split_command(blocks, 0, 1, 1).ctx, nullptr);
-	EXPECT_EQ(oaktimeline_ripple_remove_area_command(nullptr, 0, 1, 1, 1)
+	EXPECT_EQ(oaktimeline_ripple_remove_area_command(OakNodeTrack{}, 0, 1, 1, 1)
 				  .ctx,
 			  nullptr);
 }
 
 TEST_F(TimelineSequenceFixture, ReplaceWithGapCommand)
 {
-	OakNodeTrackList *list = nullptr;
+	OakNodeTrackList list = {};
 	ASSERT_EQ(oaknode_sequence_get_track_list(
 				  sequence_, OAKNODE_TRACK_TYPE_VIDEO, &list),
 			  OAKNODE_OK);
 
-	OakNodeTrack *track = oaknode_track_create(OAKNODE_TRACK_TYPE_VIDEO);
-	ASSERT_NE(track, nullptr);
+	OakNodeTrack track = oaknode_track_create(OAKNODE_TRACK_TYPE_VIDEO);
+	ASSERT_NE(track.ctx, nullptr);
 	ASSERT_EQ(oaknode_project_add_node(project_,
 									 oaknode_track_as_node(track)),
 			  OAKNODE_OK);
 	ASSERT_EQ(oaknode_tracklist_add_track(list, track), OAKNODE_OK);
 
-	OakNodeBlock *clip = oaknode_block_clip_create();
-	ASSERT_NE(clip, nullptr);
+	OakNodeBlock clip = oaknode_block_clip_create();
+	ASSERT_NE(clip.ctx, nullptr);
 	EXPECT_EQ(oaknode_block_set_length_and_media_out(clip, 6, 1),
 			  OAKNODE_OK);
 	ASSERT_EQ(oaknode_project_add_node(project_,
@@ -546,8 +548,8 @@ TEST_F(TimelineSequenceFixture, ReplaceWithGapCommand)
 	EXPECT_EQ(oaknode_track_append_block(track, clip), OAKNODE_OK);
 
 	// Second clip so the first has a next (gap required)
-	OakNodeBlock *clip2 = oaknode_block_clip_create();
-	ASSERT_NE(clip2, nullptr);
+	OakNodeBlock clip2 = oaknode_block_clip_create();
+	ASSERT_NE(clip2.ctx, nullptr);
 	EXPECT_EQ(oaknode_block_set_length_and_media_out(clip2, 6, 1),
 			  OAKNODE_OK);
 	ASSERT_EQ(oaknode_project_add_node(project_,
@@ -565,7 +567,7 @@ TEST_F(TimelineSequenceFixture, ReplaceWithGapCommand)
 			  OAKNODE_OK);
 	ASSERT_EQ(block_count, 2);
 
-	OakNodeBlock *first = nullptr;
+	OakNodeBlock first = {};
 	EXPECT_EQ(oaknode_track_get_block_at(track, 0, &first), OAKNODE_OK);
 	int kind = OAKNODE_BLOCK_OTHER;
 	EXPECT_EQ(oaknode_block_get_kind(first, &kind), OAKNODE_OK);
@@ -573,10 +575,13 @@ TEST_F(TimelineSequenceFixture, ReplaceWithGapCommand)
 
 	oakundo_command_undo_now(replace);
 	EXPECT_EQ(oaknode_track_get_block_at(track, 0, &first), OAKNODE_OK);
-	EXPECT_EQ(first, clip);
+	// Borrowed handles get a fresh box per call, so compare the wrapped
+	// native objects
+	EXPECT_EQ(oaknode_c_api::to_native<void>(first),
+			  oaknode_c_api::to_native<void>(clip));
 	oakundo_command_free(&replace);
 
-	EXPECT_EQ(oaktimeline_replace_block_with_gap_command(nullptr, clip)
+	EXPECT_EQ(oaktimeline_replace_block_with_gap_command(OakNodeTrack{}, clip)
 				  .ctx,
 			  nullptr);
 
@@ -586,17 +591,17 @@ TEST_F(TimelineSequenceFixture, ReplaceWithGapCommand)
 
 TEST_F(TimelineSequenceFixture, SlideAndInsertGapsAndRippleDeleteGapsFactories)
 {
-	OakNodeBlock *clip = oaknode_block_clip_create();
-	EXPECT_EQ(oaktimeline_slide_command(nullptr, &clip, 1, nullptr,
-										nullptr, 1, 1)
+	OakNodeBlock clip = oaknode_block_clip_create();
+	EXPECT_EQ(oaktimeline_slide_command(OakNodeTrack{}, &clip, 1,
+										OakNodeBlock{}, OakNodeBlock{}, 1, 1)
 				  .ctx,
 			  nullptr);
 
-	OakNodeTrackList *list = nullptr;
+	OakNodeTrackList list = {};
 	ASSERT_EQ(oaknode_sequence_get_track_list(
 				  sequence_, OAKNODE_TRACK_TYPE_VIDEO, &list),
 			  OAKNODE_OK);
-	EXPECT_EQ(oaktimeline_insert_gaps_command(nullptr, 0, 1, 1, 1).ctx,
+	EXPECT_EQ(oaktimeline_insert_gaps_command(OakNodeTrackList{}, 0, 1, 1, 1).ctx,
 			  nullptr);
 
 	EXPECT_EQ(oaktimeline_ripple_delete_gaps_command(
@@ -604,7 +609,7 @@ TEST_F(TimelineSequenceFixture, SlideAndInsertGapsAndRippleDeleteGapsFactories)
 				  .ctx,
 			  nullptr);
 
-	oaknode_block_free(clip);
+	oaknode_block_free(&clip);
 }
 
 } // namespace

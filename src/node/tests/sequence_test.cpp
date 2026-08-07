@@ -43,39 +43,41 @@ void expect_rational(int num, int den, int expected_num, int expected_den)
 TEST(SequenceTest, CreateFree)
 {
 	int base = oaknode_debug_alive_count();
-	OakNodeSequence *seq = oaknode_sequence_create();
-	ASSERT_NE(seq, nullptr);
+	OakNodeSequence seq = oaknode_sequence_create();
+	ASSERT_NE(seq.ctx, nullptr);
 	EXPECT_EQ(oaknode_debug_alive_count(), base + 1);
-	oaknode_sequence_free(seq);
+	oaknode_sequence_free(&seq);
 	EXPECT_EQ(oaknode_debug_alive_count(), base);
+	EXPECT_EQ(seq.ctx, nullptr);
 	oaknode_sequence_free(nullptr);
 }
 
 TEST(SequenceTest, NullHandleReturnsInvalid)
 {
 	int v;
-	OakNodeTrackList *list;
-	EXPECT_EQ(oaknode_sequence_get_track_list(nullptr, OAKNODE_TRACK_TYPE_VIDEO,
+	OakNodeSequence empty = {};
+	OakNodeTrackList list = {};
+	EXPECT_EQ(oaknode_sequence_get_track_list(empty, OAKNODE_TRACK_TYPE_VIDEO,
 											  &list),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_sequence_get_track_count(nullptr, 0, &v),
+	EXPECT_EQ(oaknode_sequence_get_track_count(empty, 0, &v),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_sequence_get_playhead(nullptr, &v, &v), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_sequence_get_video_params(nullptr, 0, nullptr),
+	EXPECT_EQ(oaknode_sequence_get_playhead(empty, &v, &v), OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_sequence_get_video_params(empty, 0, nullptr),
 			  OAKNODE_E_INVALID);
 }
 
 TEST(SequenceTest, TrackLists)
 {
-	OakNodeSequence *seq = oaknode_sequence_create();
-	ASSERT_NE(seq, nullptr);
+	OakNodeSequence seq = oaknode_sequence_create();
+	ASSERT_NE(seq.ctx, nullptr);
 
 	for (int type = OAKNODE_TRACK_TYPE_VIDEO; type < OAKNODE_TRACK_TYPE_COUNT;
 		 type++) {
-		OakNodeTrackList *list = nullptr;
+		OakNodeTrackList list = {};
 		ASSERT_EQ(oaknode_sequence_get_track_list(seq, type, &list),
 				  OAKNODE_OK);
-		ASSERT_NE(list, nullptr);
+		ASSERT_NE(list.ctx, nullptr);
 
 		int list_type = -1;
 		ASSERT_EQ(oaknode_tracklist_get_type(list, &list_type), OAKNODE_OK);
@@ -86,7 +88,7 @@ TEST(SequenceTest, TrackLists)
 		EXPECT_EQ(count, 0);
 	}
 
-	OakNodeTrackList *list;
+	OakNodeTrackList list = {};
 	EXPECT_EQ(oaknode_sequence_get_track_list(seq, OAKNODE_TRACK_TYPE_NONE,
 											  &list),
 			  OAKNODE_E_NOT_FOUND);
@@ -94,23 +96,26 @@ TEST(SequenceTest, TrackLists)
 											   nullptr),
 			  OAKNODE_E_INVALID);
 
-	oaknode_sequence_free(seq);
+	oaknode_sequence_free(&seq);
 }
 
 TEST(SequenceTest, AddAndRemoveTracks)
 {
-	OakNodeSequence *seq = oaknode_sequence_create();
-	ASSERT_NE(seq, nullptr);
+	OakNodeSequence seq = oaknode_sequence_create();
+	ASSERT_NE(seq.ctx, nullptr);
 
-	OakNodeTrackList *video = nullptr;
+	OakNodeTrackList video = {};
 	ASSERT_EQ(oaknode_sequence_get_track_list(seq, OAKNODE_TRACK_TYPE_VIDEO,
 											  &video),
 			  OAKNODE_OK);
 
-	OakNodeTrack *t1 = oaknode_track_create(OAKNODE_TRACK_TYPE_VIDEO);
-	OakNodeTrack *t2 = oaknode_track_create(OAKNODE_TRACK_TYPE_VIDEO);
-	ASSERT_NE(t1, nullptr);
-	ASSERT_NE(t2, nullptr);
+	OakNodeTrack t1 = oaknode_track_create(OAKNODE_TRACK_TYPE_VIDEO);
+	OakNodeTrack t2 = oaknode_track_create(OAKNODE_TRACK_TYPE_VIDEO);
+	ASSERT_NE(t1.ctx, nullptr);
+	ASSERT_NE(t2.ctx, nullptr);
+
+	// Marker distinguishing t2 from t1 in the identity checks below
+	ASSERT_EQ(oaknode_track_set_muted(t2, 1), OAKNODE_OK);
 
 	ASSERT_EQ(oaknode_tracklist_add_track(video, t1), OAKNODE_OK);
 	ASSERT_EQ(oaknode_tracklist_add_track(video, t2), OAKNODE_OK);
@@ -139,18 +144,25 @@ TEST(SequenceTest, AddAndRemoveTracks)
 	ASSERT_EQ(oaknode_tracklist_get_array_size(video, &array_size), OAKNODE_OK);
 	EXPECT_EQ(array_size, 2);
 
-	// Sequence back-pointer and reference
-	OakNodeSequence *owner = nullptr;
+	// Sequence back-pointer: mutating through the borrowed handle must be
+	// visible through the owning sequence handle (same object)
+	OakNodeSequence owner = {};
 	ASSERT_EQ(oaknode_track_get_sequence(t1, &owner), OAKNODE_OK);
-	EXPECT_EQ(owner, seq);
+	ASSERT_NE(owner.ctx, nullptr);
+	ASSERT_EQ(oaknode_sequence_set_playhead(owner, 7, 3), OAKNODE_OK);
+	int pnum = -1, pden = -1;
+	ASSERT_EQ(oaknode_sequence_get_playhead(seq, &pnum, &pden), OAKNODE_OK);
+	expect_rational(pnum, pden, 7, 3);
 
 	// Flat cache spans all types
 	int all = 0;
 	ASSERT_EQ(oaknode_sequence_get_all_track_count(seq, &all), OAKNODE_OK);
 	EXPECT_EQ(all, 2);
-	OakNodeTrack *at = nullptr;
+	OakNodeTrack at = {};
+	int muted = -1;
 	ASSERT_EQ(oaknode_sequence_get_all_track_at(seq, 1, &at), OAKNODE_OK);
-	EXPECT_EQ(at, t2);
+	ASSERT_EQ(oaknode_track_get_muted(at, &muted), OAKNODE_OK);
+	EXPECT_EQ(muted, 1); // at is t2
 	EXPECT_EQ(oaknode_sequence_get_all_track_at(seq, 2, &at),
 			  OAKNODE_E_NOT_FOUND);
 
@@ -158,7 +170,8 @@ TEST(SequenceTest, AddAndRemoveTracks)
 	ASSERT_EQ(oaknode_sequence_get_track_at(seq, OAKNODE_TRACK_TYPE_VIDEO, 0,
 											&at),
 			  OAKNODE_OK);
-	EXPECT_EQ(at, t1);
+	ASSERT_EQ(oaknode_track_get_muted(at, &muted), OAKNODE_OK);
+	EXPECT_EQ(muted, 0); // at is t1
 	EXPECT_EQ(oaknode_sequence_get_track_at(seq, OAKNODE_TRACK_TYPE_AUDIO, 0,
 											&at),
 			  OAKNODE_E_NOT_FOUND);
@@ -172,7 +185,8 @@ TEST(SequenceTest, AddAndRemoveTracks)
 	ASSERT_EQ(oaknode_sequence_get_track_at(seq, OAKNODE_TRACK_TYPE_VIDEO, 0,
 											&at),
 			  OAKNODE_OK);
-	EXPECT_EQ(at, t2);
+	ASSERT_EQ(oaknode_track_get_muted(at, &muted), OAKNODE_OK);
+	EXPECT_EQ(muted, 1); // at is t2
 	ASSERT_EQ(oaknode_track_get_index(t2, &index), OAKNODE_OK);
 	EXPECT_EQ(index, 0);
 
@@ -180,26 +194,26 @@ TEST(SequenceTest, AddAndRemoveTracks)
 	EXPECT_EQ(oaknode_tracklist_remove_track(video, t1), OAKNODE_E_NOT_FOUND);
 
 	ASSERT_EQ(oaknode_tracklist_remove_track(video, t2), OAKNODE_OK);
-	oaknode_track_free(t1);
-	oaknode_track_free(t2);
-	oaknode_sequence_free(seq);
+	oaknode_track_free(&t1);
+	oaknode_track_free(&t2);
+	oaknode_sequence_free(&seq);
 }
 
 TEST(SequenceTest, TrackLengthFlowsIntoSequence)
 {
-	OakNodeSequence *seq = oaknode_sequence_create();
-	ASSERT_NE(seq, nullptr);
+	OakNodeSequence seq = oaknode_sequence_create();
+	ASSERT_NE(seq.ctx, nullptr);
 
-	OakNodeTrackList *video = nullptr;
+	OakNodeTrackList video = {};
 	ASSERT_EQ(oaknode_sequence_get_track_list(seq, OAKNODE_TRACK_TYPE_VIDEO,
 											  &video),
 			  OAKNODE_OK);
-	OakNodeTrack *t = oaknode_track_create(OAKNODE_TRACK_TYPE_VIDEO);
-	ASSERT_NE(t, nullptr);
+	OakNodeTrack t = oaknode_track_create(OAKNODE_TRACK_TYPE_VIDEO);
+	ASSERT_NE(t.ctx, nullptr);
 	ASSERT_EQ(oaknode_tracklist_add_track(video, t), OAKNODE_OK);
 
-	OakNodeBlock *gap = oaknode_block_gap_create();
-	ASSERT_NE(gap, nullptr);
+	OakNodeBlock gap = oaknode_block_gap_create();
+	ASSERT_NE(gap.ctx, nullptr);
 	ASSERT_EQ(oaknode_block_set_length_and_media_out(gap, 5, 1), OAKNODE_OK);
 	ASSERT_EQ(oaknode_track_append_block(t, gap), OAKNODE_OK);
 
@@ -215,16 +229,16 @@ TEST(SequenceTest, TrackLengthFlowsIntoSequence)
 	expect_rational(num, den, 5, 1);
 
 	ASSERT_EQ(oaknode_track_ripple_remove_block(t, gap), OAKNODE_OK);
-	oaknode_block_free(gap);
+	oaknode_block_free(&gap);
 	ASSERT_EQ(oaknode_tracklist_remove_track(video, t), OAKNODE_OK);
-	oaknode_track_free(t);
-	oaknode_sequence_free(seq);
+	oaknode_track_free(&t);
+	oaknode_sequence_free(&seq);
 }
 
 TEST(SequenceTest, Playhead)
 {
-	OakNodeSequence *seq = oaknode_sequence_create();
-	ASSERT_NE(seq, nullptr);
+	OakNodeSequence seq = oaknode_sequence_create();
+	ASSERT_NE(seq.ctx, nullptr);
 
 	int num = -1, den = -1;
 	ASSERT_EQ(oaknode_sequence_get_playhead(seq, &num, &den), OAKNODE_OK);
@@ -233,13 +247,13 @@ TEST(SequenceTest, Playhead)
 	ASSERT_EQ(oaknode_sequence_get_playhead(seq, &num, &den), OAKNODE_OK);
 	expect_rational(num, den, 7, 2);
 
-	oaknode_sequence_free(seq);
+	oaknode_sequence_free(&seq);
 }
 
 TEST(SequenceTest, VideoParamsRoundTrip)
 {
-	OakNodeSequence *seq = oaknode_sequence_create();
-	ASSERT_NE(seq, nullptr);
+	OakNodeSequence seq = oaknode_sequence_create();
+	ASSERT_NE(seq.ctx, nullptr);
 
 	int count = 0;
 	ASSERT_EQ(oaknode_sequence_get_video_stream_count(seq, &count),
@@ -284,13 +298,13 @@ TEST(SequenceTest, VideoParamsRoundTrip)
 	expect_rational(tb_num, tb_den, 1, 25);
 	oakcommon_videoparams_free(&readback);
 
-	oaknode_sequence_free(seq);
+	oaknode_sequence_free(&seq);
 }
 
 TEST(SequenceTest, AudioParamsRoundTrip)
 {
-	OakNodeSequence *seq = oaknode_sequence_create();
-	ASSERT_NE(seq, nullptr);
+	OakNodeSequence seq = oaknode_sequence_create();
+	ASSERT_NE(seq.ctx, nullptr);
 
 	int count = 0;
 	ASSERT_EQ(oaknode_sequence_get_audio_stream_count(seq, &count),
@@ -316,5 +330,5 @@ TEST(SequenceTest, AudioParamsRoundTrip)
 	EXPECT_EQ(oaknode_sequence_set_audio_params(seq, 0, nullptr),
 			  OAKNODE_E_INVALID);
 
-	oaknode_sequence_free(seq);
+	oaknode_sequence_free(&seq);
 }

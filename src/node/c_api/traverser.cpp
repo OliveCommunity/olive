@@ -25,32 +25,22 @@
 #include "traverser.h"
 #include "valuedatabase.h"
 
+#include "nodehandle.h"
 #include "valueconvert.h"
 
-struct OakNodeValueDatabase {
-	olive::NodeValueDatabase impl;
-};
+using oaknode_c_api::make_handle;
+using oaknode_c_api::to_native;
 
 namespace
 {
 
-inline olive::NodeTraverser *to_traverser(OakNodeTraverser *traverser)
-{
-	return reinterpret_cast<olive::NodeTraverser *>(traverser);
-}
-
-inline olive::Node *to_node(OakNodeNode *node)
-{
-	return reinterpret_cast<olive::Node *>(node);
-}
-
 /**
  * @brief Find the table named `key`, or NULL when absent.
  */
-const olive::NodeValueTable *find_table(const OakNodeValueDatabase *db,
+const olive::NodeValueTable *find_table(const olive::NodeValueDatabase *db,
 										const char *key)
 {
-	for (auto it = db->impl.cbegin(); it != db->impl.cend(); ++it) {
+	for (auto it = db->cbegin(); it != db->cend(); ++it) {
 		if (it->first == key) {
 			return &it->second;
 		}
@@ -60,39 +50,34 @@ const olive::NodeValueTable *find_table(const OakNodeValueDatabase *db,
 
 }
 
-OakNodeTraverser *oaknode_traverser_init(void)
+OakNodeTraverser oaknode_traverser_init(void)
 {
 	try {
-		olive::NodeTraverser *traverser = new (std::nothrow) olive::NodeTraverser();
-		if (traverser) {
-			oaknode_c_api::alive_inc();
-		}
-		return reinterpret_cast<OakNodeTraverser *>(traverser);
+		return make_handle<OakNodeTraverser>(
+			new (std::nothrow) olive::NodeTraverser(), true,
+			oaknode_c_api::delete_as<olive::NodeTraverser>);
 	} catch (...) {
-		return NULL;
+		return OakNodeTraverser{};
 	}
 }
 
 void oaknode_traverser_free(OakNodeTraverser *traverser)
 {
-	if (!traverser) {
-		return;
-	}
-
 	try {
-		delete to_traverser(traverser);
-		oaknode_c_api::alive_dec();
+		oaknode_c_api::free_handle(traverser);
 	} catch (...) {
 	}
 }
 
-int oaknode_traverser_generate_database(OakNodeTraverser *traverser,
-										OakNodeNode *node, int64_t in_num,
+int oaknode_traverser_generate_database(OakNodeTraverser traverser,
+										OakNodeNode node, int64_t in_num,
 										int64_t in_den, int64_t out_num,
 										int64_t out_den,
-										OakNodeValueDatabase **out_db)
+										OakNodeValueDatabase *out_db)
 {
-	if (!traverser || !node || !out_db) {
+	olive::NodeTraverser *t = to_native<olive::NodeTraverser>(traverser);
+	olive::Node *n = to_native<olive::Node>(node);
+	if (!t || !n || !out_db) {
 		return OAKNODE_E_INVALID;
 	}
 
@@ -102,16 +87,19 @@ int oaknode_traverser_generate_database(OakNodeTraverser *traverser,
 		olive::core::Rational out(static_cast<int>(out_num),
 								  static_cast<int>(out_den));
 
-		OakNodeValueDatabase *db = new (std::nothrow) OakNodeValueDatabase();
+		olive::NodeValueDatabase *db =
+			new (std::nothrow) olive::NodeValueDatabase();
 		if (!db) {
 			return OAKNODE_E_NOMEM;
 		}
 
-		db->impl = to_traverser(traverser)->generate_database(
-			to_node(node), olive::core::TimeRange(in, out));
+		*db = t->generate_database(n, olive::core::TimeRange(in, out));
 
-		*out_db = db;
-		oaknode_c_api::alive_inc();
+		*out_db = make_handle<OakNodeValueDatabase>(
+			db, true, oaknode_c_api::delete_as<olive::NodeValueDatabase>);
+		if (!out_db->ctx) {
+			return OAKNODE_E_NOMEM;
+		}
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
@@ -120,24 +108,24 @@ int oaknode_traverser_generate_database(OakNodeTraverser *traverser,
 
 void oaknode_traverser_database_free(OakNodeValueDatabase *db)
 {
-	if (!db) {
-		return;
+	try {
+		oaknode_c_api::free_handle(db);
+	} catch (...) {
 	}
-
-	delete db;
-	oaknode_c_api::alive_dec();
 }
 
-int oaknode_traverser_database_row_count(const OakNodeValueDatabase *db,
+int oaknode_traverser_database_row_count(OakNodeValueDatabase db,
 										 int *out_count)
 {
-	if (!db || !out_count) {
+	const olive::NodeValueDatabase *impl =
+		to_native<olive::NodeValueDatabase>(db);
+	if (!impl || !out_count) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
 		int count = 0;
-		for (auto it = db->impl.cbegin(); it != db->impl.cend(); ++it) {
+		for (auto it = impl->cbegin(); it != impl->cend(); ++it) {
 			count++;
 		}
 		*out_count = count;
@@ -147,10 +135,12 @@ int oaknode_traverser_database_row_count(const OakNodeValueDatabase *db,
 	}
 }
 
-int oaknode_traverser_database_row_key_at(const OakNodeValueDatabase *db,
+int oaknode_traverser_database_row_key_at(OakNodeValueDatabase db,
 										  int index, char *buf, int buf_size)
 {
-	if (!db) {
+	const olive::NodeValueDatabase *impl =
+		to_native<olive::NodeValueDatabase>(db);
+	if (!impl) {
 		return OAKNODE_E_INVALID;
 	}
 
@@ -158,10 +148,10 @@ int oaknode_traverser_database_row_key_at(const OakNodeValueDatabase *db,
 		if (index < 0) {
 			return OAKNODE_E_NOT_FOUND;
 		}
-		auto it = db->impl.cbegin();
-		for (int i = 0; i < index && it != db->impl.cend(); i++, ++it) {
+		auto it = impl->cbegin();
+		for (int i = 0; i < index && it != impl->cend(); i++, ++it) {
 		}
-		if (it == db->impl.cend()) {
+		if (it == impl->cend()) {
 			return OAKNODE_E_NOT_FOUND;
 		}
 		return oaknode_c_api::copy_string(it->first, buf, buf_size);
@@ -170,16 +160,18 @@ int oaknode_traverser_database_row_key_at(const OakNodeValueDatabase *db,
 	}
 }
 
-int oaknode_traverser_database_row_value_count(const OakNodeValueDatabase *db,
+int oaknode_traverser_database_row_value_count(OakNodeValueDatabase db,
 											   const char *key,
 											   int *out_count)
 {
-	if (!db || !key || !out_count) {
+	const olive::NodeValueDatabase *impl =
+		to_native<olive::NodeValueDatabase>(db);
+	if (!impl || !key || !out_count) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		const olive::NodeValueTable *table = find_table(db, key);
+		const olive::NodeValueTable *table = find_table(impl, key);
 		if (!table) {
 			return OAKNODE_E_NOT_FOUND;
 		}
@@ -190,16 +182,18 @@ int oaknode_traverser_database_row_value_count(const OakNodeValueDatabase *db,
 	}
 }
 
-int oaknode_traverser_database_value_at(const OakNodeValueDatabase *db,
+int oaknode_traverser_database_value_at(OakNodeValueDatabase db,
 										const char *key, int index,
 										oaknode_value *out)
 {
-	if (!db || !key || !out) {
+	const olive::NodeValueDatabase *impl =
+		to_native<olive::NodeValueDatabase>(db);
+	if (!impl || !key || !out) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		const olive::NodeValueTable *table = find_table(db, key);
+		const olive::NodeValueTable *table = find_table(impl, key);
 		if (!table || index < 0 || index >= table->count()) {
 			return OAKNODE_E_NOT_FOUND;
 		}
@@ -212,16 +206,18 @@ int oaknode_traverser_database_value_at(const OakNodeValueDatabase *db,
 	}
 }
 
-int oaknode_traverser_database_value_string_at(const OakNodeValueDatabase *db,
+int oaknode_traverser_database_value_string_at(OakNodeValueDatabase db,
 											   const char *key, int index,
 											   char *buf, int buf_size)
 {
-	if (!db || !key) {
+	const olive::NodeValueDatabase *impl =
+		to_native<olive::NodeValueDatabase>(db);
+	if (!impl || !key) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		const olive::NodeValueTable *table = find_table(db, key);
+		const olive::NodeValueTable *table = find_table(impl, key);
 		if (!table || index < 0 || index >= table->count()) {
 			return OAKNODE_E_NOT_FOUND;
 		}

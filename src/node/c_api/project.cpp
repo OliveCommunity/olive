@@ -25,30 +25,16 @@
 #include <new>
 #include <string>
 
+#include "node/node.h"
+#include "node/folder.h"
+
 #include "../src/project.h"
+#include "../src/project/folder/folder.h"
+
+#include "nodehandle.h"
 
 namespace
 {
-
-olive::Project *to_cpp(OakNodeProject *project)
-{
-	return reinterpret_cast<olive::Project *>(project);
-}
-
-const olive::Project *to_cpp(const OakNodeProject *project)
-{
-	return reinterpret_cast<const olive::Project *>(project);
-}
-
-olive::Node *to_cpp(OakNodeNode *node)
-{
-	return reinterpret_cast<olive::Node *>(node);
-}
-
-OakNodeNode *to_c(olive::Node *node)
-{
-	return reinterpret_cast<OakNodeNode *>(node);
-}
 
 /**
  * @brief Shared two-stage string getter.
@@ -74,189 +60,202 @@ int copy_string(const std::string &value, char *buf, int buf_size)
 
 } // namespace
 
-OakNodeProject *oaknode_project_init(void)
+using oaknode_c_api::delete_as;
+using oaknode_c_api::make_handle;
+using oaknode_c_api::to_native;
+
+OakNodeProject oaknode_project_init(void)
 {
 	try {
-		return reinterpret_cast<OakNodeProject *>(
-			new (std::nothrow) olive::Project());
+		return make_handle<OakNodeProject>(new (std::nothrow) olive::Project(),
+										   true,
+										   &delete_as<olive::Project>);
 	} catch (...) {
-		return NULL;
+		return OakNodeProject{};
 	}
 }
 
 void oaknode_project_free(OakNodeProject *project)
 {
-	delete to_cpp(project);
+	oaknode_c_api::free_handle(project);
 }
 
-int oaknode_project_initialize(OakNodeProject *project)
+int oaknode_project_initialize(OakNodeProject project)
 {
-	if (!project) {
+	if (!project.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		if (to_cpp(project)->root()) {
+		olive::Project *p = to_native<olive::Project>(project);
+		if (p->root()) {
 			return OAKNODE_E_STATE;
 		}
-		to_cpp(project)->initialize();
+		p->initialize();
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_project_clear(OakNodeProject *project)
+int oaknode_project_clear(OakNodeProject project)
 {
-	if (!project) {
+	if (!project.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		to_cpp(project)->clear();
+		to_native<olive::Project>(project)->clear();
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-OakNodeFolder *oaknode_project_root(OakNodeProject *project)
+OakNodeFolder oaknode_project_root(OakNodeProject project)
 {
-	if (!project) {
-		return NULL;
+	if (!project.ctx) {
+		return OakNodeFolder{};
 	}
 
 	try {
-		return reinterpret_cast<OakNodeFolder *>(to_cpp(project)->root());
+		return make_handle<OakNodeFolder>(
+			to_native<olive::Project>(project)->root(), false,
+			&delete_as<olive::Folder>);
 	} catch (...) {
-		return NULL;
+		return OakNodeFolder{};
 	}
 }
 
-int oaknode_project_name(const OakNodeProject *project, char *buf, int buf_size)
+int oaknode_project_name(OakNodeProject project, char *buf, int buf_size)
 {
-	if (!project) {
+	if (!project.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		return copy_string(to_cpp(project)->name(), buf, buf_size);
+		return copy_string(to_native<olive::Project>(project)->name(), buf,
+						   buf_size);
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_project_filename(const OakNodeProject *project, char *buf,
+int oaknode_project_filename(OakNodeProject project, char *buf,
 							 int buf_size)
 {
-	if (!project) {
+	if (!project.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		return copy_string(to_cpp(project)->filename(), buf, buf_size);
+		return copy_string(to_native<olive::Project>(project)->filename(), buf,
+						   buf_size);
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_project_pretty_filename(const OakNodeProject *project, char *buf,
+int oaknode_project_pretty_filename(OakNodeProject project, char *buf,
 									int buf_size)
 {
-	if (!project) {
+	if (!project.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		return copy_string(to_cpp(project)->pretty_filename(), buf, buf_size);
+		return copy_string(to_native<olive::Project>(project)->pretty_filename(),
+						   buf, buf_size);
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_project_set_filename(OakNodeProject *project, const char *filename)
+int oaknode_project_set_filename(OakNodeProject project, const char *filename)
 {
-	if (!project || !filename) {
+	if (!project.ctx || !filename) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		to_cpp(project)->set_filename(filename);
+		to_native<olive::Project>(project)->set_filename(filename);
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_project_is_modified(const OakNodeProject *project)
+int oaknode_project_is_modified(OakNodeProject project)
 {
-	if (!project) {
+	if (!project.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
-	return to_cpp(project)->is_modified() ? 1 : 0;
+	return to_native<olive::Project>(project)->is_modified() ? 1 : 0;
 }
 
-int oaknode_project_set_modified(OakNodeProject *project, int modified)
+int oaknode_project_set_modified(OakNodeProject project, int modified)
 {
-	if (!project) {
+	if (!project.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		to_cpp(project)->set_modified(modified != 0);
+		to_native<olive::Project>(project)->set_modified(modified != 0);
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_project_is_new(const OakNodeProject *project)
+int oaknode_project_is_new(OakNodeProject project)
 {
-	if (!project) {
+	if (!project.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
-	return to_cpp(project)->is_new() ? 1 : 0;
+	return to_native<olive::Project>(project)->is_new() ? 1 : 0;
 }
 
-int oaknode_project_cache_path(const OakNodeProject *project, char *buf,
+int oaknode_project_cache_path(OakNodeProject project, char *buf,
 							   int buf_size)
 {
-	if (!project) {
+	if (!project.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		return copy_string(to_cpp(project)->cache_path(), buf, buf_size);
+		return copy_string(to_native<olive::Project>(project)->cache_path(),
+						   buf, buf_size);
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_project_get_cache_location_setting(const OakNodeProject *project)
+int oaknode_project_get_cache_location_setting(OakNodeProject project)
 {
-	if (!project) {
+	if (!project.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		return static_cast<int>(to_cpp(project)->get_cache_location_setting());
+		return static_cast<int>(
+			to_native<olive::Project>(project)->get_cache_location_setting());
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_project_set_cache_location_setting(OakNodeProject *project,
+int oaknode_project_set_cache_location_setting(OakNodeProject project,
 											   int setting)
 {
-	if (!project || setting < 0 ||
+	if (!project.ctx || setting < 0 ||
 		setting > static_cast<int>(olive::Project::k_cache_custom_path)) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		to_cpp(project)->set_cache_location_setting(
+		to_native<olive::Project>(project)->set_cache_location_setting(
 			static_cast<olive::Project::CacheSetting>(setting));
 		return OAKNODE_OK;
 	} catch (...) {
@@ -264,77 +263,85 @@ int oaknode_project_set_cache_location_setting(OakNodeProject *project,
 	}
 }
 
-int oaknode_project_get_custom_cache_path(const OakNodeProject *project,
+int oaknode_project_get_custom_cache_path(OakNodeProject project,
 										  char *buf, int buf_size)
 {
-	if (!project) {
+	if (!project.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		return copy_string(to_cpp(project)->get_custom_cache_path(), buf,
+		return copy_string(
+			to_native<olive::Project>(project)->get_custom_cache_path(), buf,
+			buf_size);
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_project_set_custom_cache_path(OakNodeProject project,
+										  const char *path)
+{
+	if (!project.ctx) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		to_native<olive::Project>(project)->set_custom_cache_path(
+			path ? path : "");
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_project_get_uuid(OakNodeProject project, char *buf,
+							 int buf_size)
+{
+	if (!project.ctx) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		return copy_string(to_native<olive::Project>(project)->get_uuid(), buf,
 						   buf_size);
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_project_set_custom_cache_path(OakNodeProject *project,
-										  const char *path)
+int oaknode_project_add_node(OakNodeProject project, OakNodeNode node)
 {
-	if (!project) {
+	if (!project.ctx || !node.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		to_cpp(project)->set_custom_cache_path(path ? path : "");
+		to_native<olive::Project>(project)->add_node(
+			to_native<olive::Node>(node));
+		// The graph now owns the node; releasing `node` must not delete it.
+		oaknode_c_api::mark_container_owned(node);
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_project_get_uuid(const OakNodeProject *project, char *buf,
-							 int buf_size)
+int oaknode_project_remove_node(OakNodeProject project, OakNodeNode node)
 {
-	if (!project) {
+	if (!project.ctx || !node.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		return copy_string(to_cpp(project)->get_uuid(), buf, buf_size);
-	} catch (...) {
-		return OAKNODE_E_FAILED;
-	}
-}
-
-int oaknode_project_add_node(OakNodeProject *project, OakNodeNode *node)
-{
-	if (!project || !node) {
-		return OAKNODE_E_INVALID;
-	}
-
-	try {
-		to_cpp(project)->add_node(to_cpp(node));
-		return OAKNODE_OK;
-	} catch (...) {
-		return OAKNODE_E_FAILED;
-	}
-}
-
-int oaknode_project_remove_node(OakNodeProject *project, OakNodeNode *node)
-{
-	if (!project || !node) {
-		return OAKNODE_E_INVALID;
-	}
-
-	try {
-		olive::Project *p = to_cpp(project);
-		olive::Node *n = to_cpp(node);
+		olive::Project *p = to_native<olive::Project>(project);
+		olive::Node *n = to_native<olive::Node>(node);
 		const auto &nodes = p->nodes();
 		if (std::find(nodes.begin(), nodes.end(), n) == nodes.end()) {
 			return OAKNODE_E_NOT_FOUND;
 		}
+		// Detach without deleting (legacy semantics); the caller's handle
+		// keeps its current ownership state.
 		p->remove_node(n);
 		return OAKNODE_OK;
 	} catch (...) {
@@ -342,45 +349,48 @@ int oaknode_project_remove_node(OakNodeProject *project, OakNodeNode *node)
 	}
 }
 
-int oaknode_project_node_count(const OakNodeProject *project)
+int oaknode_project_node_count(OakNodeProject project)
 {
-	if (!project) {
+	if (!project.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		return static_cast<int>(to_cpp(project)->nodes().size());
+		return static_cast<int>(
+			to_native<olive::Project>(project)->nodes().size());
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-OakNodeNode *oaknode_project_node_at(const OakNodeProject *project, int index)
+OakNodeNode oaknode_project_node_at(OakNodeProject project, int index)
 {
-	if (!project || index < 0) {
-		return NULL;
+	if (!project.ctx || index < 0) {
+		return OakNodeNode{};
 	}
 
 	try {
-		const auto &nodes = to_cpp(project)->nodes();
+		const auto &nodes = to_native<olive::Project>(project)->nodes();
 		if (static_cast<size_t>(index) >= nodes.size()) {
-			return NULL;
+			return OakNodeNode{};
 		}
-		return to_c(nodes[static_cast<size_t>(index)]);
+		return make_handle<OakNodeNode>(nodes[static_cast<size_t>(index)],
+										false, &delete_as<olive::Node>);
 	} catch (...) {
-		return NULL;
+		return OakNodeNode{};
 	}
 }
 
-int oaknode_project_copy_settings(OakNodeProject *dst,
-								  const OakNodeProject *src)
+int oaknode_project_copy_settings(OakNodeProject dst,
+								  OakNodeProject src)
 {
-	if (!dst || !src) {
+	if (!dst.ctx || !src.ctx) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		olive::Project::copy_settings(const_cast<olive::Project *>(to_cpp(src)), to_cpp(dst));
+		olive::Project::copy_settings(to_native<olive::Project>(src),
+									  to_native<olive::Project>(dst));
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;

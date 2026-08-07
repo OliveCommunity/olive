@@ -36,8 +36,8 @@ BlockTrimCommand::~BlockTrimCommand()
 	if (deleted_adjacent_command_.ctx) {
 		free_command_handle(&deleted_adjacent_command_);
 	}
-	if (adjacent_orphaned_ && adjacent_) {
-		oaknode_block_free(adjacent_);
+	if (adjacent_orphaned_) {
+		free_detached_handle(&adjacent_);
 	}
 }
 
@@ -148,7 +148,7 @@ void BlockTrimCommand::prepare()
 	// Will be POSITIVE if trimming shorter and NEGATIVE if trimming longer
 	trim_diff_ = old_length_ - new_length_;
 
-	// Retrieve our adjacent block (or nullptr if none)
+	// Retrieve our adjacent block (or an empty handle if none)
 	if (mode_ == Timeline::k_trim_in) {
 		adjacent_ = block_previous(block_);
 	} else {
@@ -157,16 +157,16 @@ void BlockTrimCommand::prepare()
 
 	// Ignore when trimming the out with no adjacent, because the user must have trimmed the end
 	// of the last block in the track, so we don't need to do anything elses
-	needs_adjacent_ = (mode_ == Timeline::k_trim_in || adjacent_);
+	needs_adjacent_ = (mode_ == Timeline::k_trim_in || adjacent_.ctx);
 
 	if (needs_adjacent_) {
 		// If we're trimming shorter, we need an adjacent, so check if we have a viable one.
 		int adjacent_kind = OAKNODE_BLOCK_OTHER;
-		if (adjacent_) {
+		if (adjacent_.ctx) {
 			oaknode_block_get_kind(adjacent_, &adjacent_kind);
 		}
 		we_created_adjacent_ =
-			(trim_diff_ > 0 && (!adjacent_ || (adjacent_kind !=
+			(trim_diff_ > 0 && (!adjacent_.ctx || (adjacent_kind !=
 												   OAKNODE_BLOCK_GAP &&
 											   !trim_is_a_roll_edit_)));
 
@@ -194,11 +194,11 @@ TrackSlideCommand::~TrackSlideCommand()
 	if (out_adjacent_remove_command_.ctx) {
 		free_command_handle(&out_adjacent_remove_command_);
 	}
-	if (in_adjacent_orphaned_ && in_adjacent_) {
-		oaknode_block_free(in_adjacent_);
+	if (in_adjacent_orphaned_) {
+		free_detached_handle(&in_adjacent_);
 	}
-	if (out_adjacent_orphaned_ && out_adjacent_) {
-		oaknode_block_free(out_adjacent_);
+	if (out_adjacent_orphaned_) {
+		free_detached_handle(&out_adjacent_);
 	}
 }
 
@@ -232,7 +232,7 @@ void TrackSlideCommand::redo()
 	}
 
 	// We may not have an out adjacent if the slide was at the end of the track
-	if (out_adjacent_) {
+	if (out_adjacent_.ctx) {
 		if (we_created_out_adjacent_) {
 			// We created out adjacent, so we just have to insert it
 			block_add_to_graph(out_adjacent_, track_);
@@ -283,7 +283,7 @@ void TrackSlideCommand::undo()
 			in_adjacent_, block_length(in_adjacent_) - movement_);
 	}
 
-	if (out_adjacent_) {
+	if (out_adjacent_.ctx) {
 		if (we_created_out_adjacent_) {
 			// We created this, so we can remove it now
 			oaknode_track_ripple_remove_block(track_, out_adjacent_);
@@ -307,7 +307,7 @@ void TrackSlideCommand::undo()
 
 void TrackSlideCommand::prepare()
 {
-	if (!in_adjacent_) {
+	if (!in_adjacent_.ctx) {
 		in_adjacent_ = oaknode_block_gap_create();
 		block_set_length_and_media_out(in_adjacent_, movement_);
 		in_adjacent_orphaned_ = true;
@@ -316,7 +316,7 @@ void TrackSlideCommand::prepare()
 		we_created_in_adjacent_ = false;
 	}
 
-	if (!out_adjacent_ && block_next(blocks_.back())) {
+	if (!out_adjacent_.ctx && block_next(blocks_.back()).ctx) {
 		out_adjacent_ = oaknode_block_gap_create();
 		block_set_length_and_media_out(out_adjacent_, -movement_);
 		out_adjacent_orphaned_ = true;
@@ -335,8 +335,8 @@ TrackPlaceBlockCommand::~TrackPlaceBlockCommand()
 	for (TimelineAddTrackCommand *c : add_track_commands_) {
 		delete c;
 	}
-	if (gap_orphaned_ && gap_) {
-		oaknode_block_free(gap_);
+	if (gap_orphaned_) {
+		free_detached_handle(&gap_);
 	}
 }
 
@@ -362,7 +362,7 @@ void TrackPlaceBlockCommand::redo()
 		}
 	}
 
-	OakNodeTrack *track = nullptr;
+	OakNodeTrack track = {};
 	oaknode_tracklist_get_track_at(timeline_, track_index_, &track);
 
 	bool append = (in_ >= track_length(track));
@@ -371,7 +371,7 @@ void TrackPlaceBlockCommand::redo()
 	if (append) {
 		if (in_ > track_length(track)) {
 			// If so, insert a gap here
-			if (!gap_) {
+			if (!gap_.ctx) {
 				gap_ = oaknode_block_gap_create();
 				block_set_length_and_media_out(gap_,
 											   in_ - track_length(track));
@@ -398,7 +398,7 @@ void TrackPlaceBlockCommand::redo()
 
 void TrackPlaceBlockCommand::undo()
 {
-	OakNodeTrack *t = nullptr;
+	OakNodeTrack t = {};
 	oaknode_tracklist_get_track_at(timeline_, track_index_, &t);
 
 	// Firstly, remove our insert
@@ -407,7 +407,7 @@ void TrackPlaceBlockCommand::undo()
 	if (ripple_remove_command_) {
 		// If we ripple removed, just undo that
 		ripple_remove_command_->undo_now();
-	} else if (gap_) {
+	} else if (gap_.ctx) {
 		oaknode_track_ripple_remove_block(t, gap_);
 		block_remove_from_graph(gap_, t);
 		gap_orphaned_ = true;

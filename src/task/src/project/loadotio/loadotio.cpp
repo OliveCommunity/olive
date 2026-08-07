@@ -58,7 +58,7 @@ const char *k_sequence_id = "org.olivevideoeditor.Olive.sequence";
 const char *k_transform_id = "org.olivevideoeditor.Olive.transform";
 const char *k_volume_id = "org.olivevideoeditor.Olive.volume";
 
-void set_own_context_position(OakNodeNode *node, double x, double y)
+void set_own_context_position(OakNodeNode node, double x, double y)
 {
 	oaknode_node_set_context_position(node, node, x, y, 0);
 }
@@ -87,7 +87,7 @@ bool LoadOTIOTask::run()
 	}
 
 	project_ = oaknode_project_init();
-	if (!project_) {
+	if (!project_.ctx) {
 		set_error("Failed to create project");
 		return false;
 	}
@@ -113,14 +113,13 @@ bool LoadOTIOTask::run()
 	} else {
 		// Unknown root, we don't know what to do with this
 		set_error("Unknown OpenTimelineIO root element");
-		oaknode_project_free(project_);
-		project_ = nullptr;
+		oaknode_project_free(&project_);
 		return false;
 	}
 
 	// Keep track of imported footage
-	std::map<std::string, OakNodeFootage *> imported_footage;
-	std::map<OTIO::Timeline *, OakNodeSequence *> timeline_sequence_map;
+	std::map<std::string, OakNodeFootage> imported_footage;
+	std::map<OTIO::Timeline *, OakNodeSequence> timeline_sequence_map;
 
 	// Variables used for loading bar
 	float number_of_clips = 0;
@@ -130,8 +129,8 @@ bool LoadOTIOTask::run()
 	// Assumes each timeline has a unique name.
 	int unnamed_sequence_count = 0;
 	for (auto timeline : timelines) {
-		OakNodeSequence *sequence = oaknode_sequence_create();
-		if (!sequence) {
+		OakNodeSequence sequence = oaknode_sequence_create();
+		if (!sequence.ctx) {
 			continue;
 		}
 
@@ -180,16 +179,16 @@ bool LoadOTIOTask::run()
 	if (!accepted) {
 		// Cancel to indicate to caller that this task did not complete and to simply dispose of it
 		cancel();
-		for (const auto &pair : timeline_sequence_map) {
-			oaknode_sequence_free(pair.second);
+		for (auto &pair : timeline_sequence_map) {
+			oaknode_sequence_free(&pair.second);
 		}
 		return true;
 	}
 
 	for (const auto &pair : timeline_sequence_map) {
 		OTIO::Timeline *timeline = pair.first;
-		OakNodeSequence *sequence = pair.second;
-		OakNodeNode *sequence_node = oaknode_sequence_as_node(sequence);
+		OakNodeSequence sequence = pair.second;
+		OakNodeNode sequence_node = oaknode_sequence_as_node(sequence);
 
 		oaknode_project_add_node(project_, sequence_node);
 		OakUndoCommand add_seq = oaknode_command_create_folder_add_child(
@@ -200,9 +199,9 @@ bool LoadOTIOTask::run()
 	}
 
 		// Create a folder for this sequence's footage
-		OakNodeFolder *sequence_footage =
+		OakNodeFolder sequence_footage =
 			oaknode_folder_create(project_);
-		if (sequence_footage) {
+		if (sequence_footage.ctx) {
 			oaknode_node_set_label(oaknode_folder_as_node(sequence_footage),
 								   timeline->name().c_str());
 			OakUndoCommand add_folder =
@@ -220,7 +219,7 @@ bool LoadOTIOTask::run()
 			auto otio_track = static_cast<OTIO::Track *>(c.value);
 
 			// Create a new track
-			OakNodeTrack *track = nullptr;
+			OakNodeTrack track = {};
 
 			// Determine what kind of track it is
 			int track_type = OAKNODE_TRACK_TYPE_NONE;
@@ -235,7 +234,7 @@ bool LoadOTIOTask::run()
 			}
 
 			{
-				OakNodeTrackList *track_list = nullptr;
+				OakNodeTrackList track_list = {};
 				oaknode_sequence_get_track_list(sequence, track_type,
 												&track_list);
 				OakUndoCommand add_track =
@@ -253,20 +252,20 @@ bool LoadOTIOTask::run()
 				}
 			}
 
-			if (!track) {
+			if (!track.ctx) {
 				continue;
 			}
 
 			// Get clips from track
 			auto clip_map = otio_track->children();
 
-			OakNodeBlock *previous_block = nullptr;
+			OakNodeBlock previous_block = {};
 			bool prev_block_transition = false;
 
 			for (auto otio_block_retainer : clip_map) {
 				auto otio_block = otio_block_retainer.value;
 
-				OakNodeBlock *block = nullptr;
+				OakNodeBlock block = {};
 
 				if (otio_block->schema_name() == "Clip") {
 					block = oaknode_block_clip_create();
@@ -286,7 +285,7 @@ bool LoadOTIOTask::run()
 					block = oaknode_block_gap_create();
 				}
 
-				if (!block) {
+				if (!block.ctx) {
 					continue;
 				}
 
@@ -347,7 +346,7 @@ bool LoadOTIOTask::run()
 						block, in_offset.numerator(), in_offset.denominator(),
 						out_offset.numerator(), out_offset.denominator());
 
-					if (previous_block) {
+					if (previous_block.ctx) {
 						oaknode_node_connect(
 							oaknode_block_as_node(previous_block),
 							oaknode_block_as_node(block),
@@ -382,7 +381,7 @@ bool LoadOTIOTask::run()
 								otio_clip->media_reference())
 								->target_url();
 
-						OakNodeFootage *probed_item = nullptr;
+						OakNodeFootage probed_item = {};
 
 						auto it = imported_footage.find(footage_url);
 						if (it != imported_footage.end()) {
@@ -390,7 +389,7 @@ bool LoadOTIOTask::run()
 						} else {
 							probed_item = oaknode_footage_create(
 								project_, footage_url.c_str());
-							if (probed_item) {
+							if (probed_item.ctx) {
 								imported_footage.insert(
 									{ footage_url, probed_item });
 
@@ -402,7 +401,7 @@ bool LoadOTIOTask::run()
 									oaknode_footage_as_node(probed_item),
 									label.c_str());
 
-								if (sequence_footage) {
+								if (sequence_footage.ctx) {
 									OakUndoCommand add_footage =
 										oaknode_command_create_folder_add_child(
 											sequence_footage,
@@ -416,7 +415,7 @@ bool LoadOTIOTask::run()
 							}
 						}
 
-						if (probed_item) {
+						if (probed_item.ctx) {
 							// Position clip in its own context
 							set_own_context_position(
 								oaknode_block_as_node(block), 0, 0);
@@ -428,10 +427,10 @@ bool LoadOTIOTask::run()
 								0);
 
 							if (track_type == OAKNODE_TRACK_TYPE_VIDEO) {
-								OakNodeNode *transform =
+								OakNodeNode transform =
 									oaknode_factory_create_from_id(
 										k_transform_id);
-								if (transform) {
+								if (transform.ctx) {
 									oaknode_project_add_node(project_,
 															 transform);
 
@@ -448,10 +447,10 @@ bool LoadOTIOTask::run()
 										transform, -1, 0, 0);
 								}
 							} else {
-								OakNodeNode *volume_node =
+								OakNodeNode volume_node =
 									oaknode_factory_create_from_id(
 										k_volume_id);
-								if (volume_node) {
+								if (volume_node.ctx) {
 									oaknode_project_add_node(project_,
 															 volume_node);
 

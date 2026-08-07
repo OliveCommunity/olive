@@ -24,6 +24,7 @@
 #include <cassert>
 
 #include "node/node.h"
+#include "timelineutil.h"
 #include "undo/undostack.h"
 
 namespace olive
@@ -32,19 +33,13 @@ namespace olive
 namespace
 {
 
-void rat_nd(const Rational &r, int *n, int *d)
-{
-	*n = r.numerator();
-	*d = r.denominator();
-}
-
 /**
  * @brief oaknode-block-link undo command (replaces NodeLinkCommand from
  * oaknode's nodeundo, which does not cross the module boundary)
  */
 class BlockLinkUndoCommand : public UndoCommand {
 public:
-	BlockLinkUndoCommand(OakNodeBlock *a, OakNodeBlock *b, bool link)
+	BlockLinkUndoCommand(OakNodeBlock a, OakNodeBlock b, bool link)
 		: a_(a)
 		, b_(b)
 		, link_(link)
@@ -71,8 +66,8 @@ protected:
 	}
 
 private:
-	OakNodeBlock *a_;
-	OakNodeBlock *b_;
+	OakNodeBlock a_;
+	OakNodeBlock b_;
 	bool link_;
 };
 
@@ -90,7 +85,7 @@ BlockSplitCommand::~BlockSplitCommand()
 
 void BlockSplitCommand::prepare()
 {
-	OakNodeNode *copy = oaknode_node_copy_in_graph(
+	OakNodeNode copy = oaknode_node_copy_in_graph(
 		oaknode_block_as_node(block_), &reconnect_tree_command_);
 	new_block_ = oaknode_block_from_node(copy);
 }
@@ -119,7 +114,7 @@ void BlockSplitCommand::redo()
 	Rational new_part_length = block_out - point_;
 
 	// Begin an operation
-	OakNodeTrack *track = nullptr;
+	OakNodeTrack track = {};
 	oaknode_block_get_track(block_, &track);
 
 	// Set lengths
@@ -134,13 +129,13 @@ void BlockSplitCommand::redo()
 	oaknode_clip_add_cache_passthrough_from(new_block_, block_);
 
 	// If the block had an out transition, we move it to the new block
-	moved_transition_ = nullptr;
+	moved_transition_ = OakNodeBlock{};
 	moved_transition_input_.clear();
 
-	OakNodeBlock *next = nullptr;
+	OakNodeBlock next = {};
 	oaknode_block_get_next(new_block_, &next);
 	int next_kind = OAKNODE_BLOCK_OTHER;
-	if (next) {
+	if (next.ctx) {
 		oaknode_block_get_kind(next, &next_kind);
 	}
 	if (next_kind == OAKNODE_BLOCK_TRANSITION) {
@@ -149,10 +144,10 @@ void BlockSplitCommand::redo()
 		oaknode_node_output_connection_count(
 			oaknode_block_as_node(block_), &conn_count);
 		for (int i = 0; i < conn_count; i++) {
-			OakNodeNode *conn_node = nullptr;
+			OakNodeNode conn_node = {};
 			oaknode_node_output_connection_node_at(
 				oaknode_block_as_node(block_), i, &conn_node);
-			if (oaknode_block_from_node(conn_node) != next) {
+			if (!same_block(oaknode_block_from_node(conn_node), next)) {
 				continue;
 			}
 
@@ -176,10 +171,10 @@ void BlockSplitCommand::redo()
 
 void BlockSplitCommand::undo()
 {
-	OakNodeTrack *track = nullptr;
+	OakNodeTrack track = {};
 	oaknode_block_get_track(block_, &track);
 
-	if (moved_transition_) {
+	if (moved_transition_.ctx) {
 		oaknode_node_disconnect(oaknode_block_as_node(moved_transition_),
 								moved_transition_input_.c_str());
 		oaknode_node_connect(oaknode_block_as_node(block_),
@@ -208,19 +203,19 @@ BlockSplitPreservingLinksCommand::~BlockSplitPreservingLinksCommand()
 	}
 }
 
-OakNodeBlock *
-BlockSplitPreservingLinksCommand::get_split(OakNodeBlock *original,
+OakNodeBlock
+BlockSplitPreservingLinksCommand::get_split(OakNodeBlock original,
 											int time_index) const
 {
 	if (time_index >= 0 && time_index < int(times_.size())) {
 		for (size_t i = 0; i < blocks_.size(); i++) {
-			if (blocks_[i] == original) {
+			if (same_block(blocks_[i], original)) {
 				return splits_.at(time_index).at(i);
 			}
 		}
 	}
 
-	return nullptr;
+	return OakNodeBlock{};
 }
 
 void BlockSplitPreservingLinksCommand::prepare()
@@ -235,10 +230,10 @@ void BlockSplitPreservingLinksCommand::prepare()
 		//        if this ever becomes an issue.
 		assert(i == 0 || time > times_.at(i - 1));
 
-		std::vector<OakNodeBlock *> splits(blocks_.size(), nullptr);
+		std::vector<OakNodeBlock> splits(blocks_.size(), OakNodeBlock{});
 
 		for (size_t j = 0; j < blocks_.size(); j++) {
-			OakNodeBlock *b = blocks_.at(j);
+			OakNodeBlock b = blocks_.at(j);
 
 			int in_n, in_d, out_n, out_d;
 			oaknode_block_get_in(b, &in_n, &in_d);
@@ -260,22 +255,22 @@ void BlockSplitPreservingLinksCommand::prepare()
 
 	// Now that we've determined all the splits, we can relink everything
 	for (size_t i = 0; i < blocks_.size(); i++) {
-		OakNodeBlock *a = blocks_.at(i);
+		OakNodeBlock a = blocks_.at(i);
 
 		for (size_t j = 0; j < blocks_.size(); j++) {
 			if (i == j) {
 				continue;
 			}
 
-			OakNodeBlock *b = blocks_.at(j);
+			OakNodeBlock b = blocks_.at(j);
 
 			int linked = 0;
 			oaknode_block_are_linked(a, b, &linked);
 			if (linked) {
 				// These blocks are linked, ensure all the splits are linked too
-				for (const std::vector<OakNodeBlock *> &split_list :
+				for (const std::vector<OakNodeBlock> &split_list :
 					 splits_) {
-					if (!split_list.at(i) || !split_list.at(j)) {
+					if (!split_list.at(i).ctx || !split_list.at(j).ctx) {
 						continue;
 					}
 					BlockLinkUndoCommand *blc = new BlockLinkUndoCommand(
@@ -297,10 +292,10 @@ void TrackSplitAtTimeCommand::prepare()
 	int n, d;
 	rat_nd(point_, &n, &d);
 
-	OakNodeBlock *b = nullptr;
+	OakNodeBlock b = {};
 	oaknode_track_get_block_containing_time(track_, n, d, &b);
 
-	if (b) {
+	if (b.ctx) {
 		command_ = new BlockSplitCommand(b, point_);
 	}
 }

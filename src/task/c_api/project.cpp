@@ -66,20 +66,20 @@ OakTaskTask *oaktask_create_project_load(const char *filename)
 	}
 }
 
-OakNodeProject *oaktask_load_take_project(OakTaskTask *t)
+OakNodeProject oaktask_load_take_project(OakTaskTask *t)
 {
 	olive::ProjectLoadBaseTask *task = load_impl(t);
 	if (!task) {
-		return NULL;
+		return OakNodeProject{};
 	}
 	return task->take_project();
 }
 
-OakTaskTask *oaktask_create_project_save(OakNodeProject *project,
+OakTaskTask *oaktask_create_project_save(OakNodeProject project,
 										 const char *filename_or_NULL,
 										 int use_compression)
 {
-	if (!project) {
+	if (!project.ctx) {
 		return NULL;
 	}
 	try {
@@ -94,12 +94,13 @@ OakTaskTask *oaktask_create_project_save(OakNodeProject *project,
 	}
 }
 
-OakTaskTask *oaktask_create_project_import(OakNodeFolder *folder,
-										   OakNodeProject *project,
+OakTaskTask *oaktask_create_project_import(OakNodeFolder folder,
+										   OakNodeProject project,
 										   const char *const *urls,
 										   int url_count)
 {
-	if (!folder || !project || (!urls && url_count > 0) || url_count < 0) {
+	if (!folder.ctx || !project.ctx || (!urls && url_count > 0) ||
+		url_count < 0) {
 		return NULL;
 	}
 	try {
@@ -136,14 +137,18 @@ int oaktask_import_footage_count(OakTaskTask *t)
 	return int(task->get_imported_footage().size());
 }
 
-OakNodeFootage *oaktask_import_footage_at(OakTaskTask *t, int index)
+OakNodeFootage oaktask_import_footage_at(OakTaskTask *t, int index)
 {
 	olive::ProjectImportTask *task = import_impl(t);
 	if (!task || index < 0 ||
 		index >= int(task->get_imported_footage().size())) {
-		return NULL;
+		return OakNodeFootage{};
 	}
-	return task->get_imported_footage()[size_t(index)];
+	OakNodeFootage footage = task->get_imported_footage()[size_t(index)];
+	if (footage.ctx) {
+		footage.addref(footage.ctx);
+	}
+	return footage;
 }
 
 int oaktask_import_invalid_count(OakTaskTask *t)
@@ -183,10 +188,10 @@ void oaktask_import_set_image_sequence_confirm_cb(
 		});
 }
 
-OakTaskTask *oaktask_create_precache(OakNodeFootage *footage, int index,
-									 OakNodeSequence *sequence)
+OakTaskTask *oaktask_create_precache(OakNodeFootage footage, int index,
+									 OakNodeSequence sequence)
 {
-	if (!footage || !sequence) {
+	if (!footage.ctx || !sequence.ctx) {
 		return NULL;
 	}
 	try {
@@ -196,11 +201,11 @@ OakTaskTask *oaktask_create_precache(OakNodeFootage *footage, int index,
 	}
 }
 
-OakTaskTask *oaktask_create_export(OakNodeNode *viewer,
-								   OakNodeColorManager *color_manager,
+OakTaskTask *oaktask_create_export(OakNodeNode viewer,
+								   OakNodeColorManager color_manager,
 								   const oakcodec_encoding_params *params)
 {
-	if (!viewer || !params) {
+	if (!viewer.ctx || !params) {
 		return NULL;
 	}
 	try {
@@ -222,19 +227,19 @@ OakTaskTask *oaktask_create_project_load_otio(const char *filename)
 	}
 }
 
-OakNodeProject *oaktask_load_otio_take_project(OakTaskTask *t)
+OakNodeProject oaktask_load_otio_take_project(OakTaskTask *t)
 {
 	olive::ProjectLoadBaseTask *task = load_impl(t);
 	if (!task) {
-		return NULL;
+		return OakNodeProject{};
 	}
 	return task->take_project();
 }
 
-OakTaskTask *oaktask_create_project_save_otio(OakNodeProject *project,
+OakTaskTask *oaktask_create_project_save_otio(OakNodeProject project,
 											  const char *filename)
 {
-	if (!project || !filename) {
+	if (!project.ctx || !filename) {
 		return NULL;
 	}
 	try {

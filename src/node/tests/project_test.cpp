@@ -25,7 +25,10 @@
 #include <vector>
 
 #include "node/folder.h"
+#include "node/node.h"
 #include "node/project.h"
+
+#include "../c_api/nodehandle.h"
 
 namespace
 {
@@ -33,8 +36,8 @@ namespace
 /**
  * @brief Two-stage string getter helper: query, then fetch.
  */
-std::string get_string(int (*fn)(const OakNodeProject *, char *, int),
-					   const OakNodeProject *project)
+std::string get_string(int (*fn)(OakNodeProject, char *, int),
+					   OakNodeProject project)
 {
 	int required = fn(project, nullptr, 0);
 	if (required <= 0) {
@@ -45,23 +48,33 @@ std::string get_string(int (*fn)(const OakNodeProject *, char *, int),
 	return std::string(buf.data());
 }
 
+/**
+ * @brief Identity compare for value handles (each handle has its own
+ * control block, so compare the wrapped objects).
+ */
+bool same_object(OakNodeNode a, OakNodeNode b)
+{
+	return oaknode_c_api::to_native<void>(a) == oaknode_c_api::to_native<void>(b);
+}
+
 } // namespace
 
 TEST(NodeProject, InitAndFree)
 {
-	OakNodeProject *project = oaknode_project_init();
-	ASSERT_NE(project, nullptr);
+	OakNodeProject project = oaknode_project_init();
+	ASSERT_NE(project.ctx, nullptr);
 
 	// No root folder before initialize()
-	EXPECT_EQ(oaknode_project_root(project), nullptr);
+	EXPECT_EQ(oaknode_project_root(project).ctx, nullptr);
 
 	EXPECT_EQ(oaknode_project_initialize(project), OAKNODE_OK);
-	EXPECT_NE(oaknode_project_root(project), nullptr);
+	EXPECT_NE(oaknode_project_root(project).ctx, nullptr);
 
 	// Initializing twice is a state error
 	EXPECT_EQ(oaknode_project_initialize(project), OAKNODE_E_STATE);
 
-	oaknode_project_free(project);
+	oaknode_project_free(&project);
+	EXPECT_EQ(project.ctx, nullptr);
 
 	// NULL free is a no-op (must not crash)
 	oaknode_project_free(nullptr);
@@ -69,39 +82,45 @@ TEST(NodeProject, InitAndFree)
 
 TEST(NodeProject, NullHandleErrors)
 {
-	EXPECT_EQ(oaknode_project_initialize(nullptr), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_project_clear(nullptr), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_project_root(nullptr), nullptr);
-	EXPECT_EQ(oaknode_project_name(nullptr, nullptr, 0), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_project_filename(nullptr, nullptr, 0),
+	EXPECT_EQ(oaknode_project_initialize(OakNodeProject{}),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_project_pretty_filename(nullptr, nullptr, 0),
+	EXPECT_EQ(oaknode_project_clear(OakNodeProject{}), OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_project_root(OakNodeProject{}).ctx, nullptr);
+	EXPECT_EQ(oaknode_project_name(OakNodeProject{}, nullptr, 0),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_project_set_filename(nullptr, "/tmp/x.ove"),
+	EXPECT_EQ(oaknode_project_filename(OakNodeProject{}, nullptr, 0),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_project_is_modified(nullptr), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_project_set_modified(nullptr, 1), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_project_is_new(nullptr), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_project_cache_path(nullptr, nullptr, 0),
+	EXPECT_EQ(oaknode_project_pretty_filename(OakNodeProject{}, nullptr, 0),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_project_get_cache_location_setting(nullptr),
+	EXPECT_EQ(oaknode_project_set_filename(OakNodeProject{}, "/tmp/x.ove"),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_project_set_cache_location_setting(nullptr, 0),
+	EXPECT_EQ(oaknode_project_is_modified(OakNodeProject{}),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_project_get_custom_cache_path(nullptr, nullptr, 0),
+	EXPECT_EQ(oaknode_project_set_modified(OakNodeProject{}, 1),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_project_set_custom_cache_path(nullptr, "/tmp"),
+	EXPECT_EQ(oaknode_project_is_new(OakNodeProject{}), OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_project_cache_path(OakNodeProject{}, nullptr, 0),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_project_get_uuid(nullptr, nullptr, 0),
+	EXPECT_EQ(oaknode_project_get_cache_location_setting(OakNodeProject{}),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_project_node_count(nullptr), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_project_node_at(nullptr, 0), nullptr);
+	EXPECT_EQ(oaknode_project_set_cache_location_setting(OakNodeProject{}, 0),
+			  OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_project_get_custom_cache_path(OakNodeProject{}, nullptr,
+													0),
+			  OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_project_set_custom_cache_path(OakNodeProject{}, "/tmp"),
+			  OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_project_get_uuid(OakNodeProject{}, nullptr, 0),
+			  OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_project_node_count(OakNodeProject{}),
+			  OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_project_node_at(OakNodeProject{}, 0).ctx, nullptr);
 }
 
 TEST(NodeProject, NameAndFilename)
 {
-	OakNodeProject *project = oaknode_project_init();
-	ASSERT_NE(project, nullptr);
+	OakNodeProject project = oaknode_project_init();
+	ASSERT_NE(project.ctx, nullptr);
 
 	// Untitled project
 	EXPECT_EQ(get_string(oaknode_project_name, project), "(untitled)");
@@ -121,13 +140,13 @@ TEST(NodeProject, NameAndFilename)
 	EXPECT_EQ(oaknode_project_set_filename(project, nullptr),
 			  OAKNODE_E_INVALID);
 
-	oaknode_project_free(project);
+	oaknode_project_free(&project);
 }
 
 TEST(NodeProject, ModifiedAndIsNew)
 {
-	OakNodeProject *project = oaknode_project_init();
-	ASSERT_NE(project, nullptr);
+	OakNodeProject project = oaknode_project_init();
+	ASSERT_NE(project.ctx, nullptr);
 
 	EXPECT_EQ(oaknode_project_is_modified(project), 0);
 	EXPECT_EQ(oaknode_project_is_new(project), 1);
@@ -144,13 +163,13 @@ TEST(NodeProject, ModifiedAndIsNew)
 			  OAKNODE_OK);
 	EXPECT_EQ(oaknode_project_is_new(project), 0);
 
-	oaknode_project_free(project);
+	oaknode_project_free(&project);
 }
 
 TEST(NodeProject, CachePathSettings)
 {
-	OakNodeProject *project = oaknode_project_init();
-	ASSERT_NE(project, nullptr);
+	OakNodeProject project = oaknode_project_init();
+	ASSERT_NE(project.ctx, nullptr);
 
 	// Default location setting
 	EXPECT_EQ(oaknode_project_get_cache_location_setting(project), 0);
@@ -178,24 +197,24 @@ TEST(NodeProject, CachePathSettings)
 			  OAKNODE_OK);
 	EXPECT_EQ(get_string(oaknode_project_get_custom_cache_path, project), "");
 
-	oaknode_project_free(project);
+	oaknode_project_free(&project);
 }
 
 TEST(NodeProject, Uuid)
 {
-	OakNodeProject *project = oaknode_project_init();
-	ASSERT_NE(project, nullptr);
+	OakNodeProject project = oaknode_project_init();
+	ASSERT_NE(project.ctx, nullptr);
 
 	std::string uuid = get_string(oaknode_project_get_uuid, project);
 	EXPECT_FALSE(uuid.empty());
 
-	oaknode_project_free(project);
+	oaknode_project_free(&project);
 }
 
 TEST(NodeProject, AddRemoveNode)
 {
-	OakNodeProject *project = oaknode_project_init();
-	ASSERT_NE(project, nullptr);
+	OakNodeProject project = oaknode_project_init();
+	ASSERT_NE(project.ctx, nullptr);
 	ASSERT_EQ(oaknode_project_initialize(project), OAKNODE_OK);
 
 	// The root folder is the only node after initialize()
@@ -203,17 +222,17 @@ TEST(NodeProject, AddRemoveNode)
 	EXPECT_EQ(base_count, 1);
 
 	// folder_create already adds the node to the graph
-	OakNodeFolder *folder = oaknode_folder_create(project);
-	ASSERT_NE(folder, nullptr);
+	OakNodeFolder folder = oaknode_folder_create(project);
+	ASSERT_NE(folder.ctx, nullptr);
 	EXPECT_EQ(oaknode_project_node_count(project), base_count + 1);
 
-	// node_at returns the same node; out-of-range yields NULL
-	OakNodeNode *as_node = nullptr;
+	// node_at returns the same node; out-of-range yields an empty handle
+	OakNodeNode as_node = {};
 	bool found = false;
 	for (int i = 0; i < oaknode_project_node_count(project); i++) {
-		OakNodeNode *n = oaknode_project_node_at(project, i);
-		ASSERT_NE(n, nullptr);
-		if (n == reinterpret_cast<OakNodeNode *>(folder)) {
+		OakNodeNode n = oaknode_project_node_at(project, i);
+		ASSERT_NE(n.ctx, nullptr);
+		if (same_object(n, oaknode_folder_as_node(folder))) {
 			found = true;
 		}
 		if (i == 0) {
@@ -221,13 +240,15 @@ TEST(NodeProject, AddRemoveNode)
 		}
 	}
 	EXPECT_TRUE(found);
-	EXPECT_EQ(oaknode_project_node_at(project, -1), nullptr);
+	EXPECT_NE(as_node.ctx, nullptr);
+	EXPECT_EQ(oaknode_project_node_at(project, -1).ctx, nullptr);
 	EXPECT_EQ(oaknode_project_node_at(project,
-									  oaknode_project_node_count(project)),
+									  oaknode_project_node_count(project))
+				  .ctx,
 			  nullptr);
 
 	// Remove detaches without deleting
-	OakNodeNode *folder_node = reinterpret_cast<OakNodeNode *>(folder);
+	OakNodeNode folder_node = oaknode_folder_as_node(folder);
 	EXPECT_EQ(oaknode_project_remove_node(project, folder_node), OAKNODE_OK);
 	EXPECT_EQ(oaknode_project_node_count(project), base_count);
 
@@ -239,20 +260,21 @@ TEST(NodeProject, AddRemoveNode)
 	EXPECT_EQ(oaknode_project_add_node(project, folder_node), OAKNODE_OK);
 	EXPECT_EQ(oaknode_project_node_count(project), base_count + 1);
 
-	// NULL args
-	EXPECT_EQ(oaknode_project_add_node(project, nullptr), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_project_remove_node(project, nullptr),
+	// Empty handle args
+	EXPECT_EQ(oaknode_project_add_node(project, OakNodeNode{}),
+			  OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_project_remove_node(project, OakNodeNode{}),
 			  OAKNODE_E_INVALID);
 
-	oaknode_project_free(project);
+	oaknode_project_free(&project);
 }
 
 TEST(NodeProject, Clear)
 {
-	OakNodeProject *project = oaknode_project_init();
-	ASSERT_NE(project, nullptr);
+	OakNodeProject project = oaknode_project_init();
+	ASSERT_NE(project.ctx, nullptr);
 	ASSERT_EQ(oaknode_project_initialize(project), OAKNODE_OK);
-	ASSERT_NE(oaknode_folder_create(project), nullptr);
+	ASSERT_NE(oaknode_folder_create(project).ctx, nullptr);
 	EXPECT_GE(oaknode_project_node_count(project), 2);
 
 	EXPECT_EQ(oaknode_project_clear(project), OAKNODE_OK);
@@ -262,5 +284,5 @@ TEST(NodeProject, Clear)
 	EXPECT_EQ(oaknode_project_initialize(project), OAKNODE_OK);
 	EXPECT_GE(oaknode_project_node_count(project), 1);
 
-	oaknode_project_free(project);
+	oaknode_project_free(&project);
 }

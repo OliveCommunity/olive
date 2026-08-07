@@ -51,25 +51,25 @@ namespace olive
  */
 class TrackRippleRemoveAreaCommand : public UndoCommand {
 public:
-	TrackRippleRemoveAreaCommand(OakNodeTrack *track, const TimeRange &range);
+	TrackRippleRemoveAreaCommand(OakNodeTrack track, const TimeRange &range);
 
 	virtual ~TrackRippleRemoveAreaCommand() override;
 
 	/**
 	 * @brief Block to insert after if you want to insert something between this ripple
 	 */
-	OakNodeBlock *get_insertion_index() const
+	OakNodeBlock get_insertion_index() const
 	{
 		return insert_previous_;
 	}
 
-	OakNodeBlock *get_spliced_block() const
+	OakNodeBlock get_spliced_block() const
 	{
 		if (splice_split_command_) {
 			return splice_split_command_->new_block();
 		}
 
-		return nullptr;
+		return OakNodeBlock{};
 	}
 
 	void set_allow_splitting_gaps(bool e)
@@ -86,23 +86,23 @@ protected:
 
 private:
 	struct TrimOperation {
-		OakNodeBlock *block;
+		OakNodeBlock block;
 		Rational old_length;
 		Rational new_length;
 	};
 
 	struct RemoveOperation {
-		OakNodeBlock *block;
-		OakNodeBlock *before;
+		OakNodeBlock block;
+		OakNodeBlock before;
 	};
 
-	OakNodeTrack *track_;
+	OakNodeTrack track_;
 	TimeRange range_;
 
 	TrimOperation trim_out_;
 	std::vector<RemoveOperation> removals_;
 	TrimOperation trim_in_;
-	OakNodeBlock *insert_previous_;
+	OakNodeBlock insert_previous_;
 	bool allow_splitting_gaps_;
 
 	BlockSplitCommand *splice_split_command_;
@@ -111,7 +111,7 @@ private:
 
 class TrackListRippleRemoveAreaCommand : public UndoCommand {
 public:
-	TrackListRippleRemoveAreaCommand(OakNodeTrackList *list, Rational in,
+	TrackListRippleRemoveAreaCommand(OakNodeTrackList list, Rational in,
 									 Rational out)
 		: list_(list)
 		, range_(in, out)
@@ -133,9 +133,9 @@ protected:
 	virtual void undo() override;
 
 private:
-	OakNodeTrackList *list_;
+	OakNodeTrackList list_;
 
-	std::vector<OakNodeTrack *> working_tracks_;
+	std::vector<OakNodeTrack> working_tracks_;
 
 	TimeRange range_;
 
@@ -144,20 +144,20 @@ private:
 
 class TimelineRippleRemoveAreaCommand : public MultiUndoCommand {
 public:
-	TimelineRippleRemoveAreaCommand(OakNodeSequence *timeline, Rational in,
+	TimelineRippleRemoveAreaCommand(OakNodeSequence timeline, Rational in,
 									Rational out);
 };
 
 class TrackListRippleToolCommand : public UndoCommand {
 public:
 	struct RippleInfo {
-		OakNodeBlock *block;
+		OakNodeBlock block;
 		bool append_gap;
 	};
 
 	TrackListRippleToolCommand(
-		OakNodeTrackList *track_list,
-		const std::map<OakNodeTrack *, RippleInfo> &info,
+		OakNodeTrackList track_list,
+		const std::map<OakNodeTrack, RippleInfo, TrackHandleLess> &info,
 		const Rational &ripple_movement,
 		const Timeline::MovementMode &movement_mode);
 
@@ -177,30 +177,30 @@ protected:
 private:
 	void ripple(bool redo);
 
-	OakNodeTrackList *track_list_;
+	OakNodeTrackList track_list_;
 
-	std::map<OakNodeTrack *, RippleInfo> info_;
+	std::map<OakNodeTrack, RippleInfo, TrackHandleLess> info_;
 	Rational ripple_movement_;
 	Timeline::MovementMode movement_mode_;
 
 	struct WorkingData {
-		OakNodeBlock *created_gap = nullptr;
+		OakNodeBlock created_gap{};
 		bool created_gap_orphaned = false;
-		OakNodeBlock *removed_gap = nullptr;
+		OakNodeBlock removed_gap{};
 		bool removed_gap_orphaned = false;
-		OakNodeBlock *removed_gap_after = nullptr;
+		OakNodeBlock removed_gap_after{};
 		Rational old_length;
 		Rational earliest_point_of_change;
 	};
 
-	std::map<OakNodeTrack *, WorkingData> working_data_;
+	std::map<OakNodeTrack, WorkingData, TrackHandleLess> working_data_;
 };
 
 class TimelineRippleDeleteGapsAtRegionsCommand : public UndoCommand {
 public:
-	using RangeList = std::vector<std::pair<OakNodeTrack *, TimeRange>>;
+	using RangeList = std::vector<std::pair<OakNodeTrack, TimeRange>>;
 
-	TimelineRippleDeleteGapsAtRegionsCommand(OakNodeSequence *vo,
+	TimelineRippleDeleteGapsAtRegionsCommand(OakNodeSequence vo,
 											 const RangeList &regions)
 		: timeline_(vo)
 		, regions_(regions)
@@ -227,13 +227,13 @@ protected:
 	virtual void undo() override;
 
 private:
-	OakNodeSequence *timeline_;
+	OakNodeSequence timeline_;
 	RangeList regions_;
 
 	std::vector<UndoCommand *> commands_;
 
 	struct RemovalRequest {
-		OakNodeBlock *gap;
+		OakNodeBlock gap;
 		TimeRange range;
 	};
 };

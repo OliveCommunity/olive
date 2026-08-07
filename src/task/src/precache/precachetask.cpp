@@ -31,6 +31,8 @@
 #include "rendermodes.h"
 #include "timeline/workarea.h"
 
+#include "nodehandle.h"
+
 namespace olive
 {
 
@@ -41,10 +43,10 @@ const char *k_viewer_output_id = "org.olivevideoeditor.Olive.vieweroutput";
 
 } // namespace
 
-PreCacheTask::PreCacheTask(OakNodeFootage *footage, int index,
-						   OakNodeSequence *sequence)
-	: project_(nullptr)
-	, footage_(nullptr)
+PreCacheTask::PreCacheTask(OakNodeFootage footage, int index,
+						   OakNodeSequence sequence)
+	: project_({})
+	, footage_({})
 	, audio_params_(nullptr)
 {
 	// Set video and audio params
@@ -71,30 +73,34 @@ PreCacheTask::PreCacheTask(OakNodeFootage *footage, int index,
 	}
 
 	// Copy project config nodes
-	OakNodeProject *source_project = nullptr;
+	OakNodeProject source_project = {};
 	oaknode_node_get_project(oaknode_footage_as_node(footage),
 							 &source_project);
-	if (source_project) {
+	if (source_project.ctx) {
 		oaknode_project_copy_settings(project_, source_project);
+		oaknode_project_free(&source_project);
 	}
 
 	// Copy footage node so it can precache without any modifications from the user screwing it up
-	OakNodeNode *footage_copy =
+	OakNodeNode footage_copy =
 		oaknode_node_create_copy(oaknode_footage_as_node(footage));
-	footage_ = reinterpret_cast<OakNodeFootage *>(
-		oaknode_block_from_node(footage_copy));
-	if (!footage_) {
-		footage_ = reinterpret_cast<OakNodeFootage *>(footage_copy);
-	}
 	oaknode_project_add_node(project_, footage_copy);
 	oaknode_node_copy_inputs(footage_copy, oaknode_footage_as_node(footage),
 							 0);
+
+	// Borrowed footage alias of the copied node (releasing it only frees
+	// the handle box; the graph owns the node).
+	footage_ = oaknode_c_api::make_handle<OakNodeFootage>(
+		oaknode_c_api::to_native<void>(footage_copy), false, nullptr);
 
 	oaknode_node_connect(footage_copy, viewer(),
 						 OAKNODE_SEQUENCE_TEXTURE_INPUT);
 	oaknode_node_set_value_hint_track(viewer(),
 									  OAKNODE_SEQUENCE_TEXTURE_INPUT,
 									  OAKNODE_TRACK_TYPE_VIDEO, index);
+
+	// The graph owns the copy now; release our handle box.
+	oaknode_node_free(&footage_copy);
 
 	char filename[1024];
 	if (oaknode_footage_filename(footage, filename, sizeof(filename)) <=
@@ -108,7 +114,10 @@ PreCacheTask::PreCacheTask(OakNodeFootage *footage, int index,
 PreCacheTask::~PreCacheTask()
 {
 	// This should delete the footage we copied and the viewer we created
-	oaknode_project_free(project_);
+	oaknode_project_free(&project_);
+	// Release the borrowed alias box (the footage itself died with the
+	// project above).
+	oaknode_c_api::free_handle(&footage_);
 	if (audio_params_) {
 		oakcore_audioparams_free(audio_params_);
 	}
@@ -167,13 +176,13 @@ bool PreCacheTask::run()
 		}
 	}
 
-	OakNodeColorManager *color_manager =
+	OakNodeColorManager color_manager =
 		oaknode_colormanager_init(project_);
 
 	render(color_manager, video_range, TimeRangeList(), TimeRange(),
 		   0 /* RenderMode::k_online */, cache, ForceParams());
 
-	oaknode_colormanager_free(color_manager);
+	oaknode_colormanager_free(&color_manager);
 
 	return true;
 }

@@ -25,6 +25,8 @@
 #include <stdbool.h>
 #endif
 
+#include <stdint.h>
+
 #include "node/error.h"
 
 #ifdef __cplusplus
@@ -32,25 +34,40 @@ extern "C" {
 #endif
 
 /**
- * @brief Opaque handle to a timeline block (olive::Block).
+ * @brief Reference-counted handle to a timeline block (olive::Block).
  *
  * Covers the whole Block family: ClipBlock, GapBlock and the concrete
- * TransitionBlock subclasses. The handle IS the C++ object pointer; no
- * wrapper is allocated. Concrete instances are created through the
- * oaknode_block_*_create() factories below; callers never touch C++
- * subclasses directly.
+ * TransitionBlock subclasses. The object never leaves the library that
+ * created it; every external reference is one of these handles.
+ * Semantics are shared_ptr-like: the oaknode_block_*_create() factories
+ * below return a handle with count 1, addref(ctx) takes another
+ * reference, release(ctx) drops one and the library destroys the object
+ * when the count reaches zero. Callers never touch C++ subclasses
+ * directly.
+ *
+ * Placing a block on a track (the oaknode_track_*_block() primitives)
+ * transfers ownership to the track; handles obtained from accessors
+ * (neighbours, lookups) are borrowed and never destroy the underlying
+ * object.
  */
-typedef struct OakNodeBlock OakNodeBlock;
+typedef struct OakNodeBlock {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKNODE_ABI_VERSION. */
+} OakNodeBlock;
 
 /**
- * @brief Opaque handle to a track (olive::Track), see node/track.h.
+ * @brief Reference-counted handle to a track (olive::Track), see
+ * node/track.h.
  *
  * Re-declared here so block.h is self-contained; the typedef is identical.
  */
 typedef struct OakNodeTrack OakNodeTrack;
 
 /**
- * @brief Opaque handle to a node (olive::Node), see node/node.h.
+ * @brief Reference-counted handle to a node (olive::Node), see
+ * node/node.h.
  *
  * Re-declared here so block.h is self-contained; the typedef is identical.
  */
@@ -79,27 +96,33 @@ enum OakNodeTransitionKind {
  * a project; a block that was never placed must be released with
  * oaknode_block_free().
  *
- * @return Block handle, or NULL on allocation failure.
+ * @return Block handle with reference count 1; ctx is NULL on allocation
+ *         failure.
  */
-OakNodeBlock *oaknode_block_clip_create(void);
+OakNodeBlock oaknode_block_clip_create(void);
 
 /**
  * @brief Create a GapBlock. Ownership as oaknode_block_clip_create().
  *
- * @return Block handle, or NULL on allocation failure.
+ * @return Block handle with reference count 1; ctx is NULL on allocation
+ *         failure.
  */
-OakNodeBlock *oaknode_block_gap_create(void);
+OakNodeBlock oaknode_block_gap_create(void);
 
 /**
  * @brief Create a concrete TransitionBlock.
  *
  * @param kind One of the OakNodeTransitionKind values.
- * @return Block handle, or NULL on invalid kind / allocation failure.
+ * @return Block handle with reference count 1; ctx is NULL on invalid
+ *         kind / allocation failure.
  */
-OakNodeBlock *oaknode_block_transition_create(int kind);
+OakNodeBlock oaknode_block_transition_create(int kind);
 
 /**
- * @brief Destroy a block. No-op on NULL.
+ * @brief Release one reference to a block handle.
+ *
+ * Destroys the block when the reference count reaches zero. NULL handle
+ * or NULL ctx is a no-op; clears `block->ctx` after releasing.
  *
  * The block must not be placed on a track or linked to other nodes; the
  * caller is responsible for detaching it first.
@@ -116,32 +139,33 @@ enum OakNodeBlockKind {
 /**
  * @brief Concrete kind of a block (dynamic_cast query).
  */
-int oaknode_block_get_kind(OakNodeBlock *block, int *out_kind);
+int oaknode_block_get_kind(OakNodeBlock block, int *out_kind);
 
 /**
  * @brief Borrowed cast from a block handle to its node handle.
  *
- * Every Block is a Node; the result must not be freed. NULL for NULL.
+ * Every Block is a Node; releasing the result never destroys the block.
+ * Empty handle for an empty handle.
  */
-OakNodeNode *oaknode_block_as_node(OakNodeBlock *block);
+OakNodeNode oaknode_block_as_node(OakNodeBlock block);
 
 /**
  * @brief Borrowed cast from a node handle to a block handle.
  *
- * Returns NULL if the node is not a Block (or for NULL).
+ * Returns an empty handle if the node is not a Block (or is empty).
  */
-OakNodeBlock *oaknode_block_from_node(OakNodeNode *node);
+OakNodeBlock oaknode_block_from_node(OakNodeNode node);
 
 /**
  * @brief Rational getters/setters use numerator/denominator out pairs.
  *
  * @return OAKNODE_OK or OAKNODE_E_INVALID.
  */
-int oaknode_block_get_in(OakNodeBlock *block, int *numerator, int *denominator);
-int oaknode_block_set_in(OakNodeBlock *block, int numerator, int denominator);
-int oaknode_block_get_out(OakNodeBlock *block, int *numerator, int *denominator);
-int oaknode_block_set_out(OakNodeBlock *block, int numerator, int denominator);
-int oaknode_block_get_length(OakNodeBlock *block, int *numerator,
+int oaknode_block_get_in(OakNodeBlock block, int *numerator, int *denominator);
+int oaknode_block_set_in(OakNodeBlock block, int numerator, int denominator);
+int oaknode_block_get_out(OakNodeBlock block, int *numerator, int *denominator);
+int oaknode_block_set_out(OakNodeBlock block, int numerator, int denominator);
+int oaknode_block_get_length(OakNodeBlock block, int *numerator,
 							 int *denominator);
 
 /**
@@ -150,9 +174,9 @@ int oaknode_block_get_length(OakNodeBlock *block, int *numerator,
  *
  * @return OAKNODE_OK or OAKNODE_E_INVALID.
  */
-int oaknode_block_set_length_and_media_out(OakNodeBlock *block, int numerator,
+int oaknode_block_set_length_and_media_out(OakNodeBlock block, int numerator,
 										   int denominator);
-int oaknode_block_set_length_and_media_in(OakNodeBlock *block, int numerator,
+int oaknode_block_set_length_and_media_in(OakNodeBlock block, int numerator,
 										  int denominator);
 
 /**
@@ -160,18 +184,18 @@ int oaknode_block_set_length_and_media_in(OakNodeBlock *block, int numerator,
  *
  * @return OAKNODE_OK or OAKNODE_E_INVALID.
  */
-int oaknode_block_get_enabled(OakNodeBlock *block, int *enabled);
-int oaknode_block_set_enabled(OakNodeBlock *block, int enabled);
+int oaknode_block_get_enabled(OakNodeBlock block, int *enabled);
+int oaknode_block_set_enabled(OakNodeBlock block, int enabled);
 
 /**
- * @brief Adjacency accessors. `out` receives a borrowed handle (NULL when
+ * @brief Adjacency accessors. `out` receives a borrowed handle (empty when
  * there is no neighbour / the block is not on a track).
  *
  * @return OAKNODE_OK or OAKNODE_E_INVALID.
  */
-int oaknode_block_get_previous(OakNodeBlock *block, OakNodeBlock **out);
-int oaknode_block_get_next(OakNodeBlock *block, OakNodeBlock **out);
-int oaknode_block_get_track(OakNodeBlock *block, OakNodeTrack **out);
+int oaknode_block_get_previous(OakNodeBlock block, OakNodeBlock *out);
+int oaknode_block_get_next(OakNodeBlock block, OakNodeBlock *out);
+int oaknode_block_get_track(OakNodeBlock block, OakNodeTrack *out);
 
 /**
  * @brief Link two blocks (olive::Node::link/unlink/are_linked).
@@ -181,24 +205,24 @@ int oaknode_block_get_track(OakNodeBlock *block, OakNodeTrack **out);
  * @return OAKNODE_OK, OAKNODE_E_INVALID or OAKNODE_E_FAILED (already
  * linked / not linked).
  */
-int oaknode_block_link(OakNodeBlock *a, OakNodeBlock *b);
-int oaknode_block_unlink(OakNodeBlock *a, OakNodeBlock *b);
-int oaknode_block_are_linked(OakNodeBlock *a, OakNodeBlock *b, int *linked);
+int oaknode_block_link(OakNodeBlock a, OakNodeBlock b);
+int oaknode_block_unlink(OakNodeBlock a, OakNodeBlock b);
+int oaknode_block_are_linked(OakNodeBlock a, OakNodeBlock b, int *linked);
 
 /**
  * @brief Number of blocks linked to `block` (olive::Node::links()).
  *
  * @return OAKNODE_OK or OAKNODE_E_INVALID.
  */
-int oaknode_block_get_link_count(OakNodeBlock *block, int *count);
+int oaknode_block_get_link_count(OakNodeBlock block, int *count);
 
 /**
  * @brief Borrowed handle to the linked block at `index`.
  *
  * @return OAKNODE_OK, OAKNODE_E_INVALID or OAKNODE_E_NOT_FOUND.
  */
-int oaknode_block_get_link_at(OakNodeBlock *block, int index,
-							  OakNodeBlock **out);
+int oaknode_block_get_link_at(OakNodeBlock block, int index,
+							  OakNodeBlock *out);
 
 /* ---------------------------------------------------------------- Clip */
 
@@ -206,41 +230,41 @@ int oaknode_block_get_link_at(OakNodeBlock *block, int index,
  * @brief Media in/out accessors (olive::ClipBlock). Non-clip blocks return
  * OAKNODE_E_INVALID.
  */
-int oaknode_clip_get_media_in(OakNodeBlock *clip, int *numerator,
+int oaknode_clip_get_media_in(OakNodeBlock clip, int *numerator,
 							  int *denominator);
-int oaknode_clip_set_media_in(OakNodeBlock *clip, int numerator,
+int oaknode_clip_set_media_in(OakNodeBlock clip, int numerator,
 							  int denominator);
 
 /**
  * @brief Playback speed factor, 1.0 = normal (olive::ClipBlock speed input).
  */
-int oaknode_clip_get_speed(OakNodeBlock *clip, double *speed);
-int oaknode_clip_set_speed(OakNodeBlock *clip, double speed);
+int oaknode_clip_get_speed(OakNodeBlock clip, double *speed);
+int oaknode_clip_set_speed(OakNodeBlock clip, double speed);
 
 /**
  * @brief Reverse playback flag.
  */
-int oaknode_clip_get_reverse(OakNodeBlock *clip, int *reverse);
-int oaknode_clip_set_reverse(OakNodeBlock *clip, int reverse);
+int oaknode_clip_get_reverse(OakNodeBlock clip, int *reverse);
+int oaknode_clip_set_reverse(OakNodeBlock clip, int reverse);
 
 /**
  * @brief Maintain-audio-pitch flag.
  */
-int oaknode_clip_get_maintain_audio_pitch(OakNodeBlock *clip, int *maintain);
-int oaknode_clip_set_maintain_audio_pitch(OakNodeBlock *clip, int maintain);
+int oaknode_clip_get_maintain_audio_pitch(OakNodeBlock clip, int *maintain);
+int oaknode_clip_set_maintain_audio_pitch(OakNodeBlock clip, int maintain);
 
 /**
  * @brief Loop mode, one of the OakLoopMode values
  * (olive::ClipBlock::loop_mode/set_loop_mode).
  */
-int oaknode_clip_get_loop_mode(OakNodeBlock *clip, int *loop_mode);
-int oaknode_clip_set_loop_mode(OakNodeBlock *clip, int loop_mode);
+int oaknode_clip_get_loop_mode(OakNodeBlock clip, int *loop_mode);
+int oaknode_clip_set_loop_mode(OakNodeBlock clip, int loop_mode);
 
 /**
  * @brief Type of the track the clip sits on (OakNodeTrackType values,
  * OAKNODE_TRACK_TYPE_NONE when trackless).
  */
-int oaknode_clip_get_track_type(OakNodeBlock *clip, int *type);
+int oaknode_clip_get_track_type(OakNodeBlock clip, int *type);
 
 /* ----------------------------------------------------------- Transition */
 
@@ -248,39 +272,39 @@ int oaknode_clip_get_track_type(OakNodeBlock *clip, int *type);
  * @brief Transition offsets (olive::TransitionBlock). Non-transition blocks
  * return OAKNODE_E_INVALID.
  */
-int oaknode_transition_get_in_offset(OakNodeBlock *transition, int *numerator,
+int oaknode_transition_get_in_offset(OakNodeBlock transition, int *numerator,
 									 int *denominator);
-int oaknode_transition_get_out_offset(OakNodeBlock *transition, int *numerator,
+int oaknode_transition_get_out_offset(OakNodeBlock transition, int *numerator,
 									  int *denominator);
-int oaknode_transition_get_offset_center(OakNodeBlock *transition,
+int oaknode_transition_get_offset_center(OakNodeBlock transition,
 										 int *numerator, int *denominator);
-int oaknode_transition_set_offset_center(OakNodeBlock *transition,
+int oaknode_transition_set_offset_center(OakNodeBlock transition,
 										 int numerator, int denominator);
-int oaknode_transition_set_offsets_and_length(OakNodeBlock *transition,
+int oaknode_transition_set_offsets_and_length(OakNodeBlock transition,
 											  int in_num, int in_den,
 											  int out_num, int out_den);
 
 /**
  * @brief Whether both sides of the transition are connected to clips.
  */
-int oaknode_transition_is_dual(OakNodeBlock *transition, int *dual);
+int oaknode_transition_is_dual(OakNodeBlock transition, int *dual);
 
 /**
- * @brief Borrowed handles to the connected out/in side blocks (NULL when
+ * @brief Borrowed handles to the connected out/in side blocks (empty when
  * unconnected).
  */
-int oaknode_transition_get_connected_out_block(OakNodeBlock *transition,
-											   OakNodeBlock **out);
-int oaknode_transition_get_connected_in_block(OakNodeBlock *transition,
-											  OakNodeBlock **out);
+int oaknode_transition_get_connected_out_block(OakNodeBlock transition,
+											   OakNodeBlock *out);
+int oaknode_transition_get_connected_in_block(OakNodeBlock transition,
+											  OakNodeBlock *out);
 
 /**
  * @brief Forward cache passthroughs from another clip
  * (ClipBlock::add_cache_passthrough_from()). Used after splitting a
  * clip so the new part shares the render caches.
  */
-int oaknode_clip_add_cache_passthrough_from(OakNodeBlock *clip,
-											OakNodeBlock *other);
+int oaknode_clip_add_cache_passthrough_from(OakNodeBlock clip,
+											OakNodeBlock other);
 
 #ifdef __cplusplus
 }

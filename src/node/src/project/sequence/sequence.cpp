@@ -84,10 +84,13 @@ Sequence::~Sequence()
 void Sequence::add_default_nodes(MultiUndoCommand *command)
 {
 	// Create tracks and connect them to the viewer
+	// (borrowed handles: the track lists are owned by this sequence)
 	UndoCommand *video_track_command = new TimelineAddTrackCommand(
-		reinterpret_cast<OakNodeTrackList *>(track_list(Track::k_video)));
+		oaknode_c_api::make_handle<OakNodeTrackList>(
+			track_list(Track::k_video), false, nullptr));
 	UndoCommand *audio_track_command = new TimelineAddTrackCommand(
-		reinterpret_cast<OakNodeTrackList *>(track_list(Track::k_audio)));
+		oaknode_c_api::make_handle<OakNodeTrackList>(
+			track_list(Track::k_audio), false, nullptr));
 
 	if (command) {
 		command->add_child(video_track_command);

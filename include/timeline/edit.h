@@ -38,63 +38,67 @@ extern "C" {
  * consumers create commands through these factories, receiving base
  * OakUndoCommand handles (owned; free with oakundo_command_free()).
  * Redo a command directly or push it on an undo stack.
+ *
+ * OakNode* handles are passed by value per the oaknode handle
+ * convention; an empty handle (ctx == NULL) yields an empty
+ * OakUndoCommand result.
  */
 
 /** @brief olive::TimelineAddTrackCommand. */
-OakUndoCommand oaktimeline_add_track_command(OakNodeTrackList *list);
+OakUndoCommand oaktimeline_add_track_command(OakNodeTrackList list);
 
 /** @brief olive::TimelineRemoveTrackCommand. */
-OakUndoCommand oaktimeline_remove_track_command(OakNodeTrack *track);
+OakUndoCommand oaktimeline_remove_track_command(OakNodeTrack track);
 
 /** @brief olive::TrackPlaceBlockCommand. */
-OakUndoCommand oaktimeline_place_block_command(OakNodeTrackList *list,
+OakUndoCommand oaktimeline_place_block_command(OakNodeTrackList list,
 												int track_index,
-												OakNodeBlock *block,
+												OakNodeBlock block,
 												int64_t in_num,
 												int64_t in_den);
 
 /** @brief olive::TrackReplaceBlockWithGapCommand. */
 OakUndoCommand oaktimeline_replace_block_with_gap_command(
-	OakNodeTrack *track, OakNodeBlock *block);
+	OakNodeTrack track, OakNodeBlock block);
 
 /**
  * @brief olive::BlockTrimCommand. `mode` is an OakTimelineMovementMode
  * value (k_trim_in / k_trim_out).
  */
-OakUndoCommand oaktimeline_trim_command(OakNodeTrack *track,
-										 OakNodeBlock *block,
+OakUndoCommand oaktimeline_trim_command(OakNodeTrack track,
+										 OakNodeBlock block,
 										 int64_t new_length_num,
 										 int64_t new_length_den, int mode);
 
 /** @brief olive::BlockSplitCommand on a set of blocks at one point. */
-OakUndoCommand oaktimeline_split_command(OakNodeBlock *const *blocks,
+OakUndoCommand oaktimeline_split_command(const OakNodeBlock *blocks,
 										  int count, int64_t point_num,
 										  int64_t point_den);
 
 /** @brief olive::BlockSplitPreservingLinksCommand. */
 OakUndoCommand oaktimeline_split_preserving_links_command(
-	OakNodeBlock *const *blocks, int count, const int64_t *point_nums,
+	const OakNodeBlock *blocks, int count, const int64_t *point_nums,
 	const int64_t *point_dens, int time_count);
 
 /** @brief olive::TimelineRippleDeleteGapsAtRegionsCommand. */
 OakUndoCommand oaktimeline_ripple_delete_gaps_command(
-	OakNodeSequence *sequence, const int64_t *in_nums,
+	OakNodeSequence sequence, const int64_t *in_nums,
 	const int64_t *in_dens, const int64_t *out_nums,
-	const int64_t *out_dens, OakNodeTrack *const *tracks, int range_count);
+	const int64_t *out_dens, const OakNodeTrack *tracks, int range_count);
 
 /** @brief olive::TrackSlideCommand. */
 OakUndoCommand oaktimeline_slide_command(
-	OakNodeTrack *track, OakNodeBlock *const *blocks, int block_count,
-	OakNodeBlock *in_adjacent, OakNodeBlock *out_adjacent,
+	OakNodeTrack track, const OakNodeBlock *blocks, int block_count,
+	OakNodeBlock in_adjacent, OakNodeBlock out_adjacent,
 	int64_t movement_num, int64_t movement_den);
 
 /** @brief olive::TrackRippleRemoveAreaCommand. */
 OakUndoCommand oaktimeline_ripple_remove_area_command(
-	OakNodeTrack *track, int64_t in_num, int64_t in_den, int64_t out_num,
+	OakNodeTrack track, int64_t in_num, int64_t in_den, int64_t out_num,
 	int64_t out_den);
 
 /** @brief olive::TrackListInsertGaps. */
-OakUndoCommand oaktimeline_insert_gaps_command(OakNodeTrackList *list,
+OakUndoCommand oaktimeline_insert_gaps_command(OakNodeTrackList list,
 												int64_t point_num,
 												int64_t point_den,
 												int64_t length_num,

@@ -50,7 +50,7 @@ namespace olive
  */
 class BlockTrimCommand : public UndoCommand {
 public:
-	BlockTrimCommand(OakNodeTrack *track, OakNodeBlock *block,
+	BlockTrimCommand(OakNodeTrack track, OakNodeBlock block,
 					 Rational new_length, Timeline::MovementMode mode)
 		: track_(track)
 		, block_(block)
@@ -60,7 +60,7 @@ public:
 		, trim_is_a_roll_edit_(false)
 		, remove_block_from_graph_(true)
 		, doing_nothing_(false)
-		, adjacent_(nullptr)
+		, adjacent_{}
 		, needs_adjacent_(false)
 		, we_created_adjacent_(false)
 		, we_removed_adjacent_(false)
@@ -99,13 +99,13 @@ private:
 	bool doing_nothing_;
 	Rational trim_diff_;
 
-	OakNodeTrack *track_;
-	OakNodeBlock *block_;
+	OakNodeTrack track_;
+	OakNodeBlock block_;
 	Rational old_length_;
 	Rational new_length_;
 	Timeline::MovementMode mode_;
 
-	OakNodeBlock *adjacent_;
+	OakNodeBlock adjacent_;
 	bool needs_adjacent_;
 	bool we_created_adjacent_;
 	bool we_removed_adjacent_;
@@ -120,9 +120,9 @@ private:
 
 class TrackSlideCommand : public UndoCommand {
 public:
-	TrackSlideCommand(OakNodeTrack *track,
-					  const std::vector<OakNodeBlock *> &moving_blocks,
-					  OakNodeBlock *in_adjacent, OakNodeBlock *out_adjacent,
+	TrackSlideCommand(OakNodeTrack track,
+					  const std::vector<OakNodeBlock> &moving_blocks,
+					  OakNodeBlock in_adjacent, OakNodeBlock out_adjacent,
 					  const Rational &movement)
 		: track_(track)
 		, blocks_(moving_blocks)
@@ -150,18 +150,18 @@ protected:
 	virtual void undo() override;
 
 private:
-	OakNodeTrack *track_;
-	std::vector<OakNodeBlock *> blocks_;
+	OakNodeTrack track_;
+	std::vector<OakNodeBlock> blocks_;
 	Rational movement_;
 
 	bool we_created_in_adjacent_;
 	bool we_removed_in_adjacent_;
-	OakNodeBlock *in_adjacent_;
+	OakNodeBlock in_adjacent_;
 	OakUndoCommand in_adjacent_remove_command_;
 	bool in_adjacent_orphaned_;
 	bool we_created_out_adjacent_;
 	bool we_removed_out_adjacent_;
-	OakNodeBlock *out_adjacent_;
+	OakNodeBlock out_adjacent_;
 	OakUndoCommand out_adjacent_remove_command_;
 	bool out_adjacent_orphaned_;
 };
@@ -175,12 +175,12 @@ private:
  */
 class TrackPlaceBlockCommand : public UndoCommand {
 public:
-	TrackPlaceBlockCommand(OakNodeTrackList *timeline, int track,
-						   OakNodeBlock *block, Rational in)
+	TrackPlaceBlockCommand(OakNodeTrackList timeline, int track,
+						   OakNodeBlock block, Rational in)
 		: timeline_(timeline)
 		, track_index_(track)
 		, in_(in)
-		, gap_(nullptr)
+		, gap_{}
 		, gap_orphaned_(false)
 		, insert_(block)
 		, ripple_remove_command_(nullptr)
@@ -195,12 +195,12 @@ protected:
 	virtual void undo() override;
 
 private:
-	OakNodeTrackList *timeline_;
+	OakNodeTrackList timeline_;
 	int track_index_;
 	Rational in_;
-	OakNodeBlock *gap_;
+	OakNodeBlock gap_;
 	bool gap_orphaned_;
-	OakNodeBlock *insert_;
+	OakNodeBlock insert_;
 	std::vector<TimelineAddTrackCommand *> add_track_commands_;
 	TrackRippleRemoveAreaCommand *ripple_remove_command_;
 };

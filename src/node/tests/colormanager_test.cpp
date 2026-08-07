@@ -33,12 +33,33 @@
 // object directly as scaffolding (borrowed OakNodeProject handle).
 #include "project.h"
 
+#include "../c_api/nodehandle.h"
+
 #ifndef OAK_OCIO_TEST_CONFIG
 #define OAK_OCIO_TEST_CONFIG ""
 #endif
 
 namespace
 {
+
+/**
+ * @brief Wrap a native project in a borrowed (non-owning) value handle.
+ */
+OakNodeProject borrow_project(olive::Project *project)
+{
+	return oaknode_c_api::make_handle<OakNodeProject>(project, false, nullptr);
+}
+
+/**
+ * @brief Release the box of a borrowed handle produced by
+ * borrow_project(); the native object is not touched.
+ */
+void release_borrowed(OakNodeProject h)
+{
+	if (h.ctx) {
+		h.release(h.ctx);
+	}
+}
 
 /**
  * @brief Fixture ensuring the process-wide default OCIO config resolves
@@ -56,9 +77,9 @@ protected:
 		}
 	}
 
-	static std::string get_string(int (*fn)(OakNodeColorManager *, char *,
+	static std::string get_string(int (*fn)(OakNodeColorManager, char *,
 											int),
-								  OakNodeColorManager *m)
+								  OakNodeColorManager m)
 	{
 		int needed = fn(m, nullptr, 0);
 		EXPECT_GT(needed, 0);
@@ -73,39 +94,43 @@ protected:
 TEST_F(ColorManagerTest, InitFree)
 {
 	olive::Project project;
+	OakNodeProject ph = borrow_project(&project);
 
 	int base = oaknode_debug_alive_count();
-	OakNodeColorManager *m =
-		oaknode_colormanager_init(reinterpret_cast<OakNodeProject *>(&project));
-	ASSERT_NE(m, nullptr);
+	OakNodeColorManager m = oaknode_colormanager_init(ph);
+	ASSERT_NE(m.ctx, nullptr);
 	EXPECT_EQ(oaknode_debug_alive_count(), base + 1);
-	oaknode_colormanager_free(m);
+	oaknode_colormanager_free(&m);
 	EXPECT_EQ(oaknode_debug_alive_count(), base);
+	EXPECT_EQ(m.ctx, nullptr);
 
-	EXPECT_EQ(oaknode_colormanager_init(nullptr), nullptr);
+	EXPECT_EQ(oaknode_colormanager_init(OakNodeProject{}).ctx, nullptr);
 	oaknode_colormanager_free(nullptr);
+
+	release_borrowed(ph);
 }
 
 TEST_F(ColorManagerTest, NullHandleReturnsInvalid)
 {
 	char buf[64];
 	int count;
-	EXPECT_EQ(oaknode_colormanager_get_config_filename(nullptr, buf,
+	OakNodeColorManager empty = {};
+	EXPECT_EQ(oaknode_colormanager_get_config_filename(empty, buf,
 													   sizeof(buf)),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_colormanager_initialize(nullptr), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_colormanager_get_display_count(nullptr, &count),
+	EXPECT_EQ(oaknode_colormanager_initialize(empty), OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_colormanager_get_display_count(empty, &count),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_colormanager_set_config_filename(nullptr, "x"),
+	EXPECT_EQ(oaknode_colormanager_set_config_filename(empty, "x"),
 			  OAKNODE_E_INVALID);
 }
 
 TEST_F(ColorManagerTest, ConfigFilenameRoundTrip)
 {
 	olive::Project project;
-	OakNodeColorManager *m =
-		oaknode_colormanager_init(reinterpret_cast<OakNodeProject *>(&project));
-	ASSERT_NE(m, nullptr);
+	OakNodeProject ph = borrow_project(&project);
+	OakNodeColorManager m = oaknode_colormanager_init(ph);
+	ASSERT_NE(m.ctx, nullptr);
 
 	ASSERT_EQ(oaknode_colormanager_set_config_filename(m, "/tmp/myconfig.ocio"),
 			  OAKNODE_OK);
@@ -115,15 +140,16 @@ TEST_F(ColorManagerTest, ConfigFilenameRoundTrip)
 	EXPECT_EQ(oaknode_colormanager_set_config_filename(m, nullptr),
 			  OAKNODE_E_INVALID);
 
-	oaknode_colormanager_free(m);
+	oaknode_colormanager_free(&m);
+	release_borrowed(ph);
 }
 
 TEST_F(ColorManagerTest, ProjectBackedColorSpaces)
 {
 	olive::Project project;
-	OakNodeColorManager *m =
-		oaknode_colormanager_init(reinterpret_cast<OakNodeProject *>(&project));
-	ASSERT_NE(m, nullptr);
+	OakNodeProject ph = borrow_project(&project);
+	OakNodeColorManager m = oaknode_colormanager_init(ph);
+	ASSERT_NE(m.ctx, nullptr);
 
 	// Stored on the project: works even before a config is attached
 	ASSERT_EQ(oaknode_colormanager_set_default_input_color_space(m, "Linear"),
@@ -138,15 +164,16 @@ TEST_F(ColorManagerTest, ProjectBackedColorSpaces)
 		get_string(oaknode_colormanager_get_reference_color_space, m);
 	EXPECT_FALSE(ref.empty());
 
-	oaknode_colormanager_free(m);
+	oaknode_colormanager_free(&m);
+	release_borrowed(ph);
 }
 
 TEST_F(ColorManagerTest, ConfigDependentCallsRequireConfig)
 {
 	olive::Project project;
-	OakNodeColorManager *m =
-		oaknode_colormanager_init(reinterpret_cast<OakNodeProject *>(&project));
-	ASSERT_NE(m, nullptr);
+	OakNodeProject ph = borrow_project(&project);
+	OakNodeColorManager m = oaknode_colormanager_init(ph);
+	ASSERT_NE(m.ctx, nullptr);
 
 	// This manager never got initialize(): no config attached
 	int count;
@@ -167,15 +194,16 @@ TEST_F(ColorManagerTest, ConfigDependentCallsRequireConfig)
 																  sizeof(buf)),
 			  OAKNODE_E_STATE);
 
-	oaknode_colormanager_free(m);
+	oaknode_colormanager_free(&m);
+	release_borrowed(ph);
 }
 
 TEST_F(ColorManagerTest, InitializeAndQueryConfig)
 {
 	olive::Project project;
-	OakNodeColorManager *m =
-		oaknode_colormanager_init(reinterpret_cast<OakNodeProject *>(&project));
-	ASSERT_NE(m, nullptr);
+	OakNodeProject ph = borrow_project(&project);
+	OakNodeColorManager m = oaknode_colormanager_init(ph);
+	ASSERT_NE(m.ctx, nullptr);
 
 	ASSERT_EQ(oaknode_colormanager_initialize(m), OAKNODE_OK);
 
@@ -248,15 +276,16 @@ TEST_F(ColorManagerTest, InitializeAndQueryConfig)
 			  get_string(oaknode_colormanager_get_default_input_color_space,
 						 m));
 
-	oaknode_colormanager_free(m);
+	oaknode_colormanager_free(&m);
+	release_borrowed(ph);
 }
 
 TEST_F(ColorManagerTest, CompliantColorTransform)
 {
 	olive::Project project;
-	OakNodeColorManager *m =
-		oaknode_colormanager_init(reinterpret_cast<OakNodeProject *>(&project));
-	ASSERT_NE(m, nullptr);
+	OakNodeProject ph = borrow_project(&project);
+	OakNodeColorManager m = oaknode_colormanager_init(ph);
+	ASSERT_NE(m.ctx, nullptr);
 	ASSERT_EQ(oaknode_colormanager_initialize(m), OAKNODE_OK);
 
 	std::string display =
@@ -294,5 +323,6 @@ TEST_F(ColorManagerTest, CompliantColorTransform)
 																 &compliant),
 			  OAKNODE_E_INVALID);
 
-	oaknode_colormanager_free(m);
+	oaknode_colormanager_free(&m);
+	release_borrowed(ph);
 }

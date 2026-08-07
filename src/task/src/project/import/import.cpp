@@ -63,7 +63,7 @@ std::string basename_of(const std::string &path)
 ProjectImportTask::ImageSequenceConfirmFn ProjectImportTask::confirm_callback_;
 
 ProjectImportTask::ProjectImportTask(
-	OakNodeFolder *folder, OakNodeProject *project,
+	OakNodeFolder folder, OakNodeProject project,
 	const std::vector<std::string> &filenames)
 	: command_({})
 	, folder_(folder)
@@ -82,6 +82,13 @@ ProjectImportTask::~ProjectImportTask()
 {
 	if (command_.ctx) {
 		oakundo_command_free(&command_);
+	}
+	// Borrowed handles: releasing them only frees the handle boxes (the
+	// footage nodes are owned by the project).
+	for (OakNodeFootage &footage : imported_footage_) {
+		if (footage.ctx) {
+			footage.release(footage.ctx);
+		}
 	}
 }
 
@@ -110,7 +117,7 @@ bool ProjectImportTask::run()
 	return true;
 }
 
-void ProjectImportTask::import(OakNodeFolder *folder,
+void ProjectImportTask::import(OakNodeFolder folder,
 							   const std::vector<std::string> &entries,
 							   int &counter, OakUndoCommand parent_command)
 {
@@ -133,8 +140,8 @@ void ProjectImportTask::import(OakNodeFolder *folder,
 			}
 
 			if (!entry_list.empty()) {
-				OakNodeFolder *f = oaknode_folder_create(project_);
-				if (!f) {
+				OakNodeFolder f = oaknode_folder_create(project_);
+				if (!f.ctx) {
 					continue;
 				}
 
@@ -149,9 +156,9 @@ void ProjectImportTask::import(OakNodeFolder *folder,
 			}
 
 		} else {
-			OakNodeFootage *footage =
+			OakNodeFootage footage =
 				oaknode_footage_create(project_, nullptr);
-			if (!footage) {
+			if (!footage.ctx) {
 				continue;
 			}
 
@@ -181,9 +188,15 @@ void ProjectImportTask::import(OakNodeFolder *folder,
 				// Add to list so we can tell the user about it later
 				invalid_files_.push_back(file_path);
 
-				oaknode_project_remove_node(project_,
-											oaknode_footage_as_node(footage));
-				oaknode_node_free(oaknode_footage_as_node(footage));
+				// Remove the invalid footage from the graph; the remove
+				// command takes ownership on redo and deletes the node
+				// when the command is destroyed.
+				OakUndoCommand remove = oaknode_command_create_remove_node(
+					oaknode_footage_as_node(footage));
+				if (remove.ctx) {
+					oakundo_command_redo_now(remove);
+					oakundo_command_free(&remove);
+				}
 			}
 
 			counter++;
@@ -195,7 +208,7 @@ void ProjectImportTask::import(OakNodeFolder *folder,
 }
 
 void ProjectImportTask::validate_image_sequence(
-	OakNodeFootage *footage, std::vector<std::string> &info_list,
+	OakNodeFootage footage, std::vector<std::string> &info_list,
 	size_t index)
 {
 	char filename[1024];
@@ -245,15 +258,15 @@ void ProjectImportTask::validate_image_sequence(
 	oakcodec_decoder_transform_image_sequence_file_name(filename, ind + 1,
 													  next_fn, sizeof(next_fn));
 
-	OakNodeFootage *previous_file =
+	OakNodeFootage previous_file =
 		oaknode_footage_create(project_, prev_fn);
-	OakNodeFootage *next_file = oaknode_footage_create(project_, next_fn);
+	OakNodeFootage next_file = oaknode_footage_create(project_, next_fn);
 
 	bool prev_matches =
-		previous_file && oaknode_footage_is_valid(previous_file) &&
+		previous_file.ctx && oaknode_footage_is_valid(previous_file) &&
 		compare_still_image_size(previous_file, width, height);
 	bool next_matches =
-		next_file && oaknode_footage_is_valid(next_file) &&
+		next_file.ctx && oaknode_footage_is_valid(next_file) &&
 		compare_still_image_size(next_file, width, height);
 
 	if (prev_matches || next_matches) {
@@ -322,20 +335,23 @@ void ProjectImportTask::validate_image_sequence(
 
 	oakcommon_videoparams_free(&video_stream);
 
-	if (previous_file) {
-		oaknode_project_remove_node(project_,
-									oaknode_footage_as_node(previous_file));
-		oaknode_node_free(oaknode_footage_as_node(previous_file));
-	}
-	if (next_file) {
-		oaknode_project_remove_node(project_,
-									oaknode_footage_as_node(next_file));
-		oaknode_node_free(oaknode_footage_as_node(next_file));
+	// The probe footage above was only created for comparison; remove it
+	// from the graph again (the remove command deletes the node, see
+	// import()).
+	for (OakNodeFootage probe : { previous_file, next_file }) {
+		if (probe.ctx) {
+			OakUndoCommand remove = oaknode_command_create_remove_node(
+				oaknode_footage_as_node(probe));
+			if (remove.ctx) {
+				oakundo_command_redo_now(remove);
+				oakundo_command_free(&remove);
+			}
+		}
 	}
 }
 
-void ProjectImportTask::add_item_to_folder(OakNodeFolder *folder,
-										   OakNodeNode *item,
+void ProjectImportTask::add_item_to_folder(OakNodeFolder folder,
+										   OakNodeNode item,
 										   OakUndoCommand command)
 {
 	OakUndoCommand child =
@@ -346,7 +362,7 @@ void ProjectImportTask::add_item_to_folder(OakNodeFolder *folder,
 }
 
 bool ProjectImportTask::item_is_still_image_footage_only(
-	OakNodeFootage *footage)
+	OakNodeFootage footage)
 {
 	if (oaknode_footage_total_stream_count(footage) != 1) {
 		// Footage with more than one stream (usually video+audio) most likely isn't an image sequence
@@ -368,7 +384,7 @@ bool ProjectImportTask::item_is_still_image_footage_only(
 	return valid && video_type == OAKCOMMON_VIDEO_TYPE_STILL;
 }
 
-bool ProjectImportTask::compare_still_image_size(OakNodeFootage *footage,
+bool ProjectImportTask::compare_still_image_size(OakNodeFootage footage,
 												 int width, int height)
 {
 	if (!item_is_still_image_footage_only(footage)) {

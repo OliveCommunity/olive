@@ -44,12 +44,12 @@ namespace olive
  */
 class BlockSplitCommand : public UndoCommand {
 public:
-	BlockSplitCommand(OakNodeBlock *block, Rational point)
+	BlockSplitCommand(OakNodeBlock block, Rational point)
 		: block_(block)
-		, new_block_(nullptr)
+		, new_block_{}
 		, point_(point)
 		, reconnect_tree_command_({})
-		, moved_transition_(nullptr)
+		, moved_transition_{}
 	{
 	}
 
@@ -58,7 +58,7 @@ public:
 	/**
 	 * @brief Access the second block created as a result. Only valid after redo().
 	 */
-	OakNodeBlock *new_block()
+	OakNodeBlock new_block()
 	{
 		return new_block_;
 	}
@@ -71,22 +71,22 @@ protected:
 	virtual void undo() override;
 
 private:
-	OakNodeBlock *block_;
-	OakNodeBlock *new_block_;
+	OakNodeBlock block_;
+	OakNodeBlock new_block_;
 
 	Rational old_length_;
 	Rational point_;
 
 	OakUndoCommand reconnect_tree_command_;
 
-	OakNodeBlock *moved_transition_;
+	OakNodeBlock moved_transition_;
 	std::string moved_transition_input_;
 };
 
 class BlockSplitPreservingLinksCommand : public UndoCommand {
 public:
 	BlockSplitPreservingLinksCommand(
-		const std::vector<OakNodeBlock *> &blocks,
+		const std::vector<OakNodeBlock> &blocks,
 		const std::vector<Rational> &times)
 		: blocks_(blocks)
 		, times_(times)
@@ -95,7 +95,7 @@ public:
 
 	virtual ~BlockSplitPreservingLinksCommand() override;
 
-	OakNodeBlock *get_split(OakNodeBlock *original, int time_index) const;
+	OakNodeBlock get_split(OakNodeBlock original, int time_index) const;
 
 protected:
 	virtual void prepare() override;
@@ -115,18 +115,18 @@ protected:
 	}
 
 private:
-	std::vector<OakNodeBlock *> blocks_;
+	std::vector<OakNodeBlock> blocks_;
 
 	std::vector<Rational> times_;
 
 	std::vector<UndoCommand *> commands_;
 
-	std::vector<std::vector<OakNodeBlock *>> splits_;
+	std::vector<std::vector<OakNodeBlock>> splits_;
 };
 
 class TrackSplitAtTimeCommand : public UndoCommand {
 public:
-	TrackSplitAtTimeCommand(OakNodeTrack *track, Rational point)
+	TrackSplitAtTimeCommand(OakNodeTrack track, Rational point)
 		: track_(track)
 		, point_(point)
 		, command_(nullptr)
@@ -156,7 +156,7 @@ protected:
 	}
 
 private:
-	OakNodeTrack *track_;
+	OakNodeTrack track_;
 
 	Rational point_;
 

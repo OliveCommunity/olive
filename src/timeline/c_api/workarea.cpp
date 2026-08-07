@@ -54,9 +54,9 @@ olive::core::Rational rat(int64_t n, int64_t d)
 
 } // namespace
 
-OakTimelineWorkArea *oaktimeline_workarea_of(OakNodeNode *owner)
+OakTimelineWorkArea *oaktimeline_workarea_of(OakNodeNode owner)
 {
-	if (!owner) {
+	if (!owner.ctx) {
 		return NULL;
 	}
 

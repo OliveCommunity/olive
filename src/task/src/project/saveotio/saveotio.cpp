@@ -44,7 +44,7 @@ namespace olive
 namespace
 {
 
-std::string node_label_of(OakNodeNode *node)
+std::string node_label_of(OakNodeNode node)
 {
 	char buf[256];
 	if (oaknode_node_get_label(node, buf, sizeof(buf)) <= 0) {
@@ -53,21 +53,21 @@ std::string node_label_of(OakNodeNode *node)
 	return buf;
 }
 
-Rational block_in_of(OakNodeBlock *b)
+Rational block_in_of(OakNodeBlock b)
 {
 	int n = 0, d = 1;
 	oaknode_block_get_in(b, &n, &d);
 	return Rational(n, d);
 }
 
-Rational block_length_of(OakNodeBlock *b)
+Rational block_length_of(OakNodeBlock b)
 {
 	int n = 0, d = 1;
 	oaknode_block_get_length(b, &n, &d);
 	return Rational(n, d);
 }
 
-Rational track_length_of(OakNodeTrack *t)
+Rational track_length_of(OakNodeTrack t)
 {
 	int n = 0, d = 1;
 	oaknode_track_get_length(t, &n, &d);
@@ -76,7 +76,7 @@ Rational track_length_of(OakNodeTrack *t)
 
 } // namespace
 
-SaveOTIOTask::SaveOTIOTask(OakNodeProject *project,
+SaveOTIOTask::SaveOTIOTask(OakNodeProject project,
 						   const std::string &filename)
 	: project_(project)
 	, filename_(filename)
@@ -88,18 +88,18 @@ bool SaveOTIOTask::run()
 {
 	// Collect sequences from the root folder (non-recursive, matching the
 	// original list_children_of_type behavior closely enough for OTIO)
-	std::vector<OakNodeSequence *> sequences;
+	std::vector<OakNodeSequence> sequences;
 
-	OakNodeFolder *root = oaknode_project_root(project_);
-	if (!root) {
+	OakNodeFolder root = oaknode_project_root(project_);
+	if (!root.ctx) {
 		set_error("Project contains no sequences to export.");
 		return false;
 	}
 
 	int child_count = oaknode_folder_child_count(root);
 	for (int i = 0; i < child_count; i++) {
-		OakNodeNode *child = oaknode_folder_child_at(root, i);
-		if (!child) {
+		OakNodeNode child = oaknode_folder_child_at(root, i);
+		if (!child.ctx) {
 			continue;
 		}
 
@@ -108,8 +108,14 @@ bool SaveOTIOTask::run()
 			continue;
 		}
 		if (std::string(id) == "org.olivevideoeditor.Olive.sequence") {
-			sequences.push_back(
-				reinterpret_cast<OakNodeSequence *>(child));
+			// Borrowed sequence alias of the child node handle (all
+			// oaknode handles share the same box layout).
+			OakNodeSequence sequence = {};
+			sequence.ctx = child.ctx;
+			sequence.addref = child.addref;
+			sequence.release = child.release;
+			sequence.abi_version = child.abi_version;
+			sequences.push_back(sequence);
 		}
 	}
 
@@ -120,7 +126,7 @@ bool SaveOTIOTask::run()
 
 	std::vector<OTIO::SerializableObject *> serialized;
 
-	for (OakNodeSequence *seq : sequences) {
+	for (OakNodeSequence seq : sequences) {
 		auto otio_timeline = serialize_timeline(seq);
 
 		if (otio_timeline) {
@@ -163,7 +169,7 @@ bool SaveOTIOTask::run()
 	return (es.outcome == OTIO::ErrorStatus::Outcome::OK);
 }
 
-OTIO::Timeline *SaveOTIOTask::serialize_timeline(OakNodeSequence *sequence)
+OTIO::Timeline *SaveOTIOTask::serialize_timeline(OakNodeSequence sequence)
 {
 	auto otio_timeline = new OTIO::Timeline(
 		node_label_of(oaknode_sequence_as_node(sequence)));
@@ -189,8 +195,8 @@ OTIO::Timeline *SaveOTIOTask::serialize_timeline(OakNodeSequence *sequence)
 		return nullptr;
 	}
 
-	OakNodeTrackList *video_list = nullptr;
-	OakNodeTrackList *audio_list = nullptr;
+	OakNodeTrackList video_list = {};
+	OakNodeTrackList audio_list = {};
 	oaknode_sequence_get_track_list(sequence, OAKNODE_TRACK_TYPE_VIDEO,
 									&video_list);
 	oaknode_sequence_get_track_list(sequence, OAKNODE_TRACK_TYPE_AUDIO,
@@ -205,7 +211,7 @@ OTIO::Timeline *SaveOTIOTask::serialize_timeline(OakNodeSequence *sequence)
 	return otio_timeline;
 }
 
-OTIO::Track *SaveOTIOTask::serialize_track(OakNodeTrack *track,
+OTIO::Track *SaveOTIOTask::serialize_track(OakNodeTrack track,
 										   double sequence_rate,
 										   Rational max_track_length)
 {
@@ -234,9 +240,9 @@ OTIO::Track *SaveOTIOTask::serialize_track(OakNodeTrack *track,
 		oaknode_track_get_block_count(track, &block_count);
 
 		for (int i = 0; i < block_count; i++) {
-			OakNodeBlock *block = nullptr;
+			OakNodeBlock block = {};
 			oaknode_track_get_block_at(track, i, &block);
-			if (!block) {
+			if (!block.ctx) {
 				continue;
 			}
 
@@ -253,10 +259,10 @@ OTIO::Track *SaveOTIOTask::serialize_track(OakNodeTrack *track,
 					block_in_of(block).toRationalTime(sequence_rate),
 					block_length_of(block).toRationalTime(sequence_rate)));
 
-				OakNodeFootage *media = nullptr;
+				OakNodeFootage media = {};
 				oaknode_node_find_input_footage(
 					oaknode_block_as_node(block), &media);
-				if (media) {
+				if (media.ctx) {
 					OTIO::TimeRange available_range;
 					if (track_type == OAKNODE_TRACK_TYPE_VIDEO) {
 						// OTIO ExternalReference uses the source clips frame rate (or sample rate) as opposed to
@@ -353,11 +359,11 @@ fail:
 	return nullptr;
 }
 
-bool SaveOTIOTask::serialize_track_list(OakNodeTrackList *list,
+bool SaveOTIOTask::serialize_track_list(OakNodeTrackList list,
 										OTIO::Timeline *otio_timeline,
 										double sequence_rate)
 {
-	if (!list) {
+	if (!list.ctx) {
 		return true;
 	}
 
@@ -369,17 +375,17 @@ bool SaveOTIOTask::serialize_track_list(OakNodeTrackList *list,
 	oaknode_tracklist_get_track_count(list, &track_count);
 
 	for (int i = 0; i < track_count; i++) {
-		OakNodeTrack *track = nullptr;
+		OakNodeTrack track = {};
 		oaknode_tracklist_get_track_at(list, i, &track);
-		if (track && track_length_of(track) > max_track_length) {
+		if (track.ctx && track_length_of(track) > max_track_length) {
 			max_track_length = track_length_of(track);
 		}
 	}
 
 	for (int i = 0; i < track_count; i++) {
-		OakNodeTrack *track = nullptr;
+		OakNodeTrack track = {};
 		oaknode_tracklist_get_track_at(list, i, &track);
-		if (!track) {
+		if (!track.ctx) {
 			continue;
 		}
 

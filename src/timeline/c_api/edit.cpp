@@ -52,9 +52,9 @@ olive::Timeline::MovementMode to_mode(int mode)
 
 } // namespace
 
-OakUndoCommand oaktimeline_add_track_command(OakNodeTrackList *list)
+OakUndoCommand oaktimeline_add_track_command(OakNodeTrackList list)
 {
-	if (!list) {
+	if (!list.ctx) {
 		return OakUndoCommand{};
 	}
 
@@ -65,9 +65,9 @@ OakUndoCommand oaktimeline_add_track_command(OakNodeTrackList *list)
 	}
 }
 
-OakUndoCommand oaktimeline_remove_track_command(OakNodeTrack *track)
+OakUndoCommand oaktimeline_remove_track_command(OakNodeTrack track)
 {
-	if (!track) {
+	if (!track.ctx) {
 		return OakUndoCommand{};
 	}
 
@@ -78,13 +78,13 @@ OakUndoCommand oaktimeline_remove_track_command(OakNodeTrack *track)
 	}
 }
 
-OakUndoCommand oaktimeline_place_block_command(OakNodeTrackList *list,
+OakUndoCommand oaktimeline_place_block_command(OakNodeTrackList list,
 												int track_index,
-												OakNodeBlock *block,
+												OakNodeBlock block,
 												int64_t in_num,
 												int64_t in_den)
 {
-	if (!list || !block) {
+	if (!list.ctx || !block.ctx) {
 		return OakUndoCommand{};
 	}
 
@@ -97,9 +97,9 @@ OakUndoCommand oaktimeline_place_block_command(OakNodeTrackList *list,
 }
 
 OakUndoCommand oaktimeline_replace_block_with_gap_command(
-	OakNodeTrack *track, OakNodeBlock *block)
+	OakNodeTrack track, OakNodeBlock block)
 {
-	if (!track || !block) {
+	if (!track.ctx || !block.ctx) {
 		return OakUndoCommand{};
 	}
 
@@ -111,13 +111,13 @@ OakUndoCommand oaktimeline_replace_block_with_gap_command(
 	}
 }
 
-OakUndoCommand oaktimeline_trim_command(OakNodeTrack *track,
-										 OakNodeBlock *block,
+OakUndoCommand oaktimeline_trim_command(OakNodeTrack track,
+										 OakNodeBlock block,
 										 int64_t new_length_num,
 										 int64_t new_length_den, int mode)
 {
-	if (!track || !block || (mode != OAKTIMELINE_MOVEMENT_TRIM_IN &&
-							 mode != OAKTIMELINE_MOVEMENT_TRIM_OUT)) {
+	if (!track.ctx || !block.ctx || (mode != OAKTIMELINE_MOVEMENT_TRIM_IN &&
+									 mode != OAKTIMELINE_MOVEMENT_TRIM_OUT)) {
 		return OakUndoCommand{};
 	}
 
@@ -131,7 +131,7 @@ OakUndoCommand oaktimeline_trim_command(OakNodeTrack *track,
 	}
 }
 
-OakUndoCommand oaktimeline_split_command(OakNodeBlock *const *blocks,
+OakUndoCommand oaktimeline_split_command(const OakNodeBlock *blocks,
 										  int count, int64_t point_num,
 										  int64_t point_den)
 {
@@ -142,7 +142,7 @@ OakUndoCommand oaktimeline_split_command(OakNodeBlock *const *blocks,
 	try {
 		auto *multi = new olive::MultiUndoCommand();
 		for (int i = 0; i < count; i++) {
-			if (blocks[i]) {
+			if (blocks[i].ctx) {
 				multi->add_child(new olive::BlockSplitCommand(
 					blocks[i], rat(point_num, point_den)));
 			}
@@ -154,7 +154,7 @@ OakUndoCommand oaktimeline_split_command(OakNodeBlock *const *blocks,
 }
 
 OakUndoCommand oaktimeline_split_preserving_links_command(
-	OakNodeBlock *const *blocks, int count, const int64_t *point_nums,
+	const OakNodeBlock *blocks, int count, const int64_t *point_nums,
 	const int64_t *point_dens, int time_count)
 {
 	if (!blocks || count <= 0 || !point_nums || !point_dens ||
@@ -163,7 +163,7 @@ OakUndoCommand oaktimeline_split_preserving_links_command(
 	}
 
 	try {
-		std::vector<OakNodeBlock *> block_vec(blocks, blocks + count);
+		std::vector<OakNodeBlock> block_vec(blocks, blocks + count);
 		std::vector<olive::core::Rational> times;
 		times.reserve(time_count);
 		for (int i = 0; i < time_count; i++) {
@@ -177,11 +177,11 @@ OakUndoCommand oaktimeline_split_preserving_links_command(
 }
 
 OakUndoCommand oaktimeline_ripple_delete_gaps_command(
-	OakNodeSequence *sequence, const int64_t *in_nums,
+	OakNodeSequence sequence, const int64_t *in_nums,
 	const int64_t *in_dens, const int64_t *out_nums,
-	const int64_t *out_dens, OakNodeTrack *const *tracks, int range_count)
+	const int64_t *out_dens, const OakNodeTrack *tracks, int range_count)
 {
-	if (!sequence || !in_nums || !in_dens || !out_nums || !out_dens ||
+	if (!sequence.ctx || !in_nums || !in_dens || !out_nums || !out_dens ||
 		!tracks || range_count <= 0) {
 		return OakUndoCommand{};
 	}
@@ -204,16 +204,16 @@ OakUndoCommand oaktimeline_ripple_delete_gaps_command(
 }
 
 OakUndoCommand oaktimeline_slide_command(
-	OakNodeTrack *track, OakNodeBlock *const *blocks, int block_count,
-	OakNodeBlock *in_adjacent, OakNodeBlock *out_adjacent,
+	OakNodeTrack track, const OakNodeBlock *blocks, int block_count,
+	OakNodeBlock in_adjacent, OakNodeBlock out_adjacent,
 	int64_t movement_num, int64_t movement_den)
 {
-	if (!track || !blocks || block_count <= 0) {
+	if (!track.ctx || !blocks || block_count <= 0) {
 		return OakUndoCommand{};
 	}
 
 	try {
-		std::vector<OakNodeBlock *> block_vec(blocks, blocks + block_count);
+		std::vector<OakNodeBlock> block_vec(blocks, blocks + block_count);
 		return wrap_command(new olive::TrackSlideCommand(
 			track, block_vec, in_adjacent, out_adjacent,
 			rat(movement_num, movement_den)));
@@ -223,10 +223,10 @@ OakUndoCommand oaktimeline_slide_command(
 }
 
 OakUndoCommand oaktimeline_ripple_remove_area_command(
-	OakNodeTrack *track, int64_t in_num, int64_t in_den, int64_t out_num,
+	OakNodeTrack track, int64_t in_num, int64_t in_den, int64_t out_num,
 	int64_t out_den)
 {
-	if (!track) {
+	if (!track.ctx) {
 		return OakUndoCommand{};
 	}
 
@@ -239,13 +239,13 @@ OakUndoCommand oaktimeline_ripple_remove_area_command(
 	}
 }
 
-OakUndoCommand oaktimeline_insert_gaps_command(OakNodeTrackList *list,
+OakUndoCommand oaktimeline_insert_gaps_command(OakNodeTrackList list,
 												int64_t point_num,
 												int64_t point_den,
 												int64_t length_num,
 												int64_t length_den)
 {
-	if (!list) {
+	if (!list.ctx) {
 		return OakUndoCommand{};
 	}
 

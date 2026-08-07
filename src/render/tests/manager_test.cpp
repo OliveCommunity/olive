@@ -57,30 +57,31 @@ TEST(OakRenderManagerTest, InitShutdown)
 TEST(OakRenderManagerTest, RequestFrameRequiresManager)
 {
 	ASSERT_EQ(oaknode_factory_initialize(), OAKNODE_OK);
-	OakNodeNode *viewer = oaknode_factory_create_from_id(
+	OakNodeNode viewer = oaknode_factory_create_from_id(
 		"org.olivevideoeditor.Olive.vieweroutput");
-	ASSERT_NE(viewer, nullptr);
+	ASSERT_NE(viewer.ctx, nullptr);
 
 	// No oakrender_manager_init() in this process: E_STATE
 	EXPECT_EQ(oakrender_request_frame(viewer, 0, noop_frame_ready, nullptr),
 			  int64_t(OAKRENDER_E_STATE));
 
-	oaknode_node_free(viewer);
+	oaknode_node_free(&viewer);
 	oaknode_factory_destroy();
 }
 
 TEST(OakRenderManagerTest, RequestFrameInvalidArgs)
 {
-	EXPECT_EQ(oakrender_request_frame(nullptr, 0, noop_frame_ready, nullptr),
+	EXPECT_EQ(oakrender_request_frame(OakNodeNode{}, 0, noop_frame_ready,
+									  nullptr),
 			  int64_t(OAKRENDER_E_INVALID));
 
 	ASSERT_EQ(oaknode_factory_initialize(), OAKNODE_OK);
-	OakNodeNode *viewer = oaknode_factory_create_from_id(
+	OakNodeNode viewer = oaknode_factory_create_from_id(
 		"org.olivevideoeditor.Olive.vieweroutput");
-	ASSERT_NE(viewer, nullptr);
+	ASSERT_NE(viewer.ctx, nullptr);
 	EXPECT_EQ(oakrender_request_frame(viewer, 0, nullptr, nullptr),
 			  int64_t(OAKRENDER_E_INVALID));
-	oaknode_node_free(viewer);
+	oaknode_node_free(&viewer);
 	oaknode_factory_destroy();
 }
 
@@ -98,7 +99,7 @@ TEST(OakRenderManagerTest, CancelUnknownRequest)
 
 TEST(OakRenderManagerTest, CacherSettersRequireManager)
 {
-	EXPECT_EQ(oakrender_set_cacher_multicam(nullptr), OAKRENDER_E_STATE);
+	EXPECT_EQ(oakrender_set_cacher_multicam(OakNodeNode{}), OAKRENDER_E_STATE);
 	EXPECT_EQ(oakrender_set_display_color_processor(nullptr),
 			  OAKRENDER_E_STATE);
 }

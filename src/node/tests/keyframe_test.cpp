@@ -24,6 +24,7 @@
 
 #include "undo/undocommand.h"
 
+#include "../c_api/nodehandle.h"
 #include "testnode.h"
 
 namespace
@@ -53,16 +54,16 @@ TEST(NodeKeyframeTest, EnumOrdinalsArePinned)
 TEST(NodeKeyframeTest, CreateAccessorsFree)
 {
 	TestNode node;
-	OakNodeNode *node_handle = as_handle(&node);
+	OakNodeNode node_handle = as_handle(&node);
 
 	int alive_before = oaknode_debug_alive_count();
 
 	oaknode_value value = make_float(1.5);
-	OakNodeKeyframe *key = oaknode_keyframe_create(2, 1, &value,
-												   OAKNODE_KEYFRAME_LINEAR, 0,
-												   -1, "float_in",
-												   node_handle);
-	ASSERT_NE(key, nullptr);
+	OakNodeKeyframe key = oaknode_keyframe_create(2, 1, &value,
+												  OAKNODE_KEYFRAME_LINEAR, 0,
+												  -1, "float_in",
+												  node_handle);
+	ASSERT_NE(key.ctx, nullptr);
 	EXPECT_EQ(oaknode_debug_alive_count(), alive_before + 1);
 
 	int64_t num = 0, den = 0;
@@ -88,11 +89,14 @@ TEST(NodeKeyframeTest, CreateAccessorsFree)
 	EXPECT_EQ(oaknode_keyframe_get_input(key, buf, sizeof(buf)), 9);
 	EXPECT_STREQ(buf, "float_in");
 
-	OakNodeNode *parent = nullptr;
+	OakNodeNode parent = {};
 	EXPECT_EQ(oaknode_keyframe_get_parent(key, &parent), OAKNODE_OK);
-	EXPECT_EQ(parent, node_handle);
+	EXPECT_EQ(oaknode_c_api::to_native<olive::Node>(parent),
+			  oaknode_c_api::to_native<olive::Node>(node_handle));
+	oaknode_node_free(&parent);
 
-	oaknode_keyframe_free(key);
+	oaknode_keyframe_free(&key);
+	EXPECT_EQ(key.ctx, nullptr);
 	EXPECT_EQ(oaknode_debug_alive_count(), alive_before);
 
 	oaknode_keyframe_free(nullptr); // no crash
@@ -102,21 +106,25 @@ TEST(NodeKeyframeTest, CreateErrorPaths)
 {
 	oaknode_value value = make_float(1.0);
 	// Invalid interpolation type.
-	EXPECT_EQ(oaknode_keyframe_create(0, 1, &value, 99, 0, -1, "x", nullptr),
+	EXPECT_EQ(oaknode_keyframe_create(0, 1, &value, 99, 0, -1, "x",
+									  OakNodeNode{})
+				  .ctx,
 			  nullptr);
 	// STRING does not fit the POD.
 	value.type = OAKNODE_VALUE_STRING;
 	EXPECT_EQ(oaknode_keyframe_create(0, 1, &value, OAKNODE_KEYFRAME_LINEAR, 0,
-									  -1, "x", nullptr),
+									  -1, "x", OakNodeNode{})
+				  .ctx,
 			  nullptr);
 }
 
 TEST(NodeKeyframeTest, TimeLiveAndUndoable)
 {
-	OakNodeKeyframe *key = oaknode_keyframe_create(0, 1, nullptr,
-												   OAKNODE_KEYFRAME_LINEAR, 0,
-												   -1, "float_in", nullptr);
-	ASSERT_NE(key, nullptr);
+	OakNodeKeyframe key = oaknode_keyframe_create(0, 1, nullptr,
+												  OAKNODE_KEYFRAME_LINEAR, 0,
+												  -1, "float_in",
+												  OakNodeNode{});
+	ASSERT_NE(key.ctx, nullptr);
 
 	EXPECT_EQ(oaknode_keyframe_set_time(key, 1, 2), OAKNODE_OK);
 	int64_t num = 0, den = 0;
@@ -139,19 +147,21 @@ TEST(NodeKeyframeTest, TimeLiveAndUndoable)
 	EXPECT_EQ(num, 1);
 
 	oakundo_command_free(&command);
-	oaknode_keyframe_free(key);
+	oaknode_keyframe_free(&key);
 
-	EXPECT_EQ(oaknode_keyframe_set_time(nullptr, 0, 1), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_keyframe_get_time(nullptr, &num, &den),
+	EXPECT_EQ(oaknode_keyframe_set_time(OakNodeKeyframe{}, 0, 1),
+			  OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_keyframe_get_time(OakNodeKeyframe{}, &num, &den),
 			  OAKNODE_E_INVALID);
 }
 
 TEST(NodeKeyframeTest, ValueLiveAndUndoable)
 {
-	OakNodeKeyframe *key = oaknode_keyframe_create(0, 1, nullptr,
-												   OAKNODE_KEYFRAME_LINEAR, 0,
-												   -1, "float_in", nullptr);
-	ASSERT_NE(key, nullptr);
+	OakNodeKeyframe key = oaknode_keyframe_create(0, 1, nullptr,
+												  OAKNODE_KEYFRAME_LINEAR, 0,
+												  -1, "float_in",
+												  OakNodeNode{});
+	ASSERT_NE(key.ctx, nullptr);
 
 	oaknode_value in = make_float(3.25);
 	EXPECT_EQ(oaknode_keyframe_set_value(key, &in), OAKNODE_OK);
@@ -180,15 +190,15 @@ TEST(NodeKeyframeTest, ValueLiveAndUndoable)
 	EXPECT_EQ(oaknode_keyframe_set_value(key, &in), OAKNODE_E_INVALID);
 	EXPECT_EQ(oaknode_keyframe_set_value(key, nullptr), OAKNODE_E_INVALID);
 
-	oaknode_keyframe_free(key);
+	oaknode_keyframe_free(&key);
 }
 
 TEST(NodeKeyframeTest, StringValueLiveAndUndoable)
 {
-	OakNodeKeyframe *key = oaknode_keyframe_create(0, 1, nullptr,
-												   OAKNODE_KEYFRAME_HOLD, 0, -1,
-												   "text_in", nullptr);
-	ASSERT_NE(key, nullptr);
+	OakNodeKeyframe key = oaknode_keyframe_create(0, 1, nullptr,
+												  OAKNODE_KEYFRAME_HOLD, 0, -1,
+												  "text_in", OakNodeNode{});
+	ASSERT_NE(key.ctx, nullptr);
 
 	EXPECT_EQ(oaknode_keyframe_set_value_string(key, "hello"), OAKNODE_OK);
 	char buf[16];
@@ -210,18 +220,20 @@ TEST(NodeKeyframeTest, StringValueLiveAndUndoable)
 
 	EXPECT_EQ(oaknode_keyframe_set_value_string(key, nullptr),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_keyframe_get_value_string(nullptr, buf, sizeof(buf)),
+	EXPECT_EQ(oaknode_keyframe_get_value_string(OakNodeKeyframe{}, buf,
+												sizeof(buf)),
 			  OAKNODE_E_INVALID);
 
-	oaknode_keyframe_free(key);
+	oaknode_keyframe_free(&key);
 }
 
 TEST(NodeKeyframeTest, TypeLiveAndUndoable)
 {
-	OakNodeKeyframe *key = oaknode_keyframe_create(0, 1, nullptr,
-												   OAKNODE_KEYFRAME_LINEAR, 0,
-												   -1, "float_in", nullptr);
-	ASSERT_NE(key, nullptr);
+	OakNodeKeyframe key = oaknode_keyframe_create(0, 1, nullptr,
+												  OAKNODE_KEYFRAME_LINEAR, 0,
+												  -1, "float_in",
+												  OakNodeNode{});
+	ASSERT_NE(key.ctx, nullptr);
 
 	EXPECT_EQ(oaknode_keyframe_set_type(key, OAKNODE_KEYFRAME_HOLD),
 			  OAKNODE_OK);
@@ -243,18 +255,20 @@ TEST(NodeKeyframeTest, TypeLiveAndUndoable)
 	oakundo_command_free(&command);
 
 	EXPECT_EQ(oaknode_keyframe_set_type(key, 99), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_keyframe_set_type(nullptr, OAKNODE_KEYFRAME_HOLD),
+	EXPECT_EQ(oaknode_keyframe_set_type(OakNodeKeyframe{},
+										OAKNODE_KEYFRAME_HOLD),
 			  OAKNODE_E_INVALID);
 
-	oaknode_keyframe_free(key);
+	oaknode_keyframe_free(&key);
 }
 
 TEST(NodeKeyframeTest, BezierControlLiveAndUndoable)
 {
-	OakNodeKeyframe *key = oaknode_keyframe_create(0, 1, nullptr,
-												   OAKNODE_KEYFRAME_BEZIER, 0,
-												   -1, "float_in", nullptr);
-	ASSERT_NE(key, nullptr);
+	OakNodeKeyframe key = oaknode_keyframe_create(0, 1, nullptr,
+												  OAKNODE_KEYFRAME_BEZIER, 0,
+												  -1, "float_in",
+												  OakNodeNode{});
+	ASSERT_NE(key.ctx, nullptr);
 
 	EXPECT_EQ(oaknode_keyframe_set_bezier_control(
 				  key, OAKNODE_KEYFRAME_IN_HANDLE, -1.0, 0.5),
@@ -287,12 +301,12 @@ TEST(NodeKeyframeTest, BezierControlLiveAndUndoable)
 
 	EXPECT_EQ(oaknode_keyframe_set_bezier_control(key, 99, 0.0, 0.0),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_keyframe_get_bezier_control(nullptr,
+	EXPECT_EQ(oaknode_keyframe_get_bezier_control(OakNodeKeyframe{},
 												  OAKNODE_KEYFRAME_IN_HANDLE,
 												  &x, &y),
 			  OAKNODE_E_INVALID);
 
-	oaknode_keyframe_free(key);
+	oaknode_keyframe_free(&key);
 }
 
 }

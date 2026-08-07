@@ -31,8 +31,8 @@ namespace olive
 
 class PreCacheTask : public RenderTask {
 public:
-	PreCacheTask(OakNodeFootage *footage, int index,
-				 OakNodeSequence *sequence);
+	PreCacheTask(OakNodeFootage footage, int index,
+				 OakNodeSequence sequence);
 
 	virtual ~PreCacheTask() override;
 
@@ -46,9 +46,12 @@ protected:
 								  OakSampleBuffer *samples) override;
 
 private:
-	OakNodeProject *project_;
+	/** Owned handle; the project owns the whole graph (including the
+	 *  copied footage and the viewer), so freeing it tears them down. */
+	OakNodeProject project_;
 
-	OakNodeFootage *footage_;
+	/** Borrowed alias of the copied footage node inside `project_`. */
+	OakNodeFootage footage_;
 
 	OakAudioParams *audio_params_;
 };

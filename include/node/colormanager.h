@@ -25,28 +25,31 @@
 #include <stdbool.h>
 #endif
 
+#include <stdint.h>
+
 #include "common/colortransform.h"
 #include "node/error.h"
+#include "node/project.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
- * @brief Opaque handle to a color manager (olive::ColorManager).
+ * @brief Reference-counted handle to a color manager
+ * (olive::ColorManager).
  *
- * Unlike node handles this one IS a wrapper allocation (ColorManager is
- * not a Node); release with oaknode_colormanager_free().
+ * Semantics are shared_ptr-like: oaknode_colormanager_init() returns a
+ * handle whose object has reference count 1, addref(ctx) takes another
+ * reference, and release(ctx) (or oaknode_colormanager_free()) drops
+ * one; the library destroys the object when the count reaches zero.
  */
-typedef struct OakNodeColorManager OakNodeColorManager;
-
-/**
- * @brief Opaque borrowed handle to a project (olive::Project).
- *
- * Owned by the project family; re-declared here so this header is
- * self-contained.
- */
-typedef struct OakNodeProject OakNodeProject;
+typedef struct OakNodeColorManager {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKNODE_ABI_VERSION. */
+} OakNodeColorManager;
 
 /**
  * @brief Create a color manager bound to `project` (borrowed).
@@ -56,12 +59,16 @@ typedef struct OakNodeProject OakNodeProject;
  * oaknode_colormanager_update_config_from_filename()) before using the
  * config-dependent queries.
  *
- * @return Manager handle, or NULL on NULL project / allocation failure.
+ * @return Manager handle with reference count 1 (release with
+ *         oaknode_colormanager_free()); ctx is NULL on an empty project
+ *         handle or allocation failure.
  */
-OakNodeColorManager *oaknode_colormanager_init(OakNodeProject *project);
+OakNodeColorManager oaknode_colormanager_init(OakNodeProject project);
 
 /**
- * @brief Destroy a color manager. No-op on NULL.
+ * @brief Release the caller's reference to the color manager and null
+ * out the handle. No-op on NULL or an empty handle; the object is
+ * destroyed when its reference count reaches zero.
  */
 void oaknode_colormanager_free(OakNodeColorManager *manager);
 
@@ -72,7 +79,7 @@ void oaknode_colormanager_free(OakNodeColorManager *manager);
  * @return OAKNODE_OK, OAKNODE_E_INVALID or OAKNODE_E_FAILED (the OCIO
  * config could not be created).
  */
-int oaknode_colormanager_initialize(OakNodeColorManager *manager);
+int oaknode_colormanager_initialize(OakNodeColorManager manager);
 
 /**
  * @brief (Re)build the process-wide default OCIO config
@@ -87,9 +94,9 @@ int oaknode_colormanager_set_up_default_config(void);
  * returns the required buffer size in bytes including NUL; pass
  * buf == NULL or a too-small buffer to query the size.
  */
-int oaknode_colormanager_get_config_filename(OakNodeColorManager *manager,
+int oaknode_colormanager_get_config_filename(OakNodeColorManager manager,
 											 char *buf, int buf_size);
-int oaknode_colormanager_set_config_filename(OakNodeColorManager *manager,
+int oaknode_colormanager_set_config_filename(OakNodeColorManager manager,
 											 const char *filename);
 
 /**
@@ -98,21 +105,21 @@ int oaknode_colormanager_set_config_filename(OakNodeColorManager *manager,
  * olive::ColorManager::update_config_from_filename().
  */
 int oaknode_colormanager_update_config_from_filename(
-	OakNodeColorManager *manager);
+	OakNodeColorManager manager);
 
 /**
  * @brief Default input colorspace. Two-stage string accessor.
  */
 int oaknode_colormanager_get_default_input_color_space(
-	OakNodeColorManager *manager, char *buf, int buf_size);
+	OakNodeColorManager manager, char *buf, int buf_size);
 int oaknode_colormanager_set_default_input_color_space(
-	OakNodeColorManager *manager, const char *colorspace);
+	OakNodeColorManager manager, const char *colorspace);
 
 /**
  * @brief Reference (working) colorspace. Two-stage string getter.
  */
 int oaknode_colormanager_get_reference_color_space(
-	OakNodeColorManager *manager, char *buf, int buf_size);
+	OakNodeColorManager manager, char *buf, int buf_size);
 
 /**
  * @brief Return `colorspace` when the active config lists it, otherwise the
@@ -120,7 +127,7 @@ int oaknode_colormanager_get_reference_color_space(
  * (OAKNODE_E_STATE when none is loaded).
  */
 int oaknode_colormanager_get_compliant_color_space(
-	OakNodeColorManager *manager, const char *colorspace, char *buf,
+	OakNodeColorManager manager, const char *colorspace, char *buf,
 	int buf_size);
 
 /**
@@ -130,7 +137,7 @@ int oaknode_colormanager_get_compliant_color_space(
  * (OAKNODE_E_STATE when none is loaded).
  */
 int oaknode_colormanager_get_colorspace_for_ffmpeg_tags(
-	OakNodeColorManager *manager, int primaries, int trc, char *buf,
+	OakNodeColorManager manager, int primaries, int trc, char *buf,
 	int buf_size);
 
 /**
@@ -138,27 +145,27 @@ int oaknode_colormanager_get_colorspace_for_ffmpeg_tags(
  * All require a loaded config (OAKNODE_E_STATE otherwise); index out of
  * range yields OAKNODE_E_NOT_FOUND.
  */
-int oaknode_colormanager_get_display_count(OakNodeColorManager *manager,
+int oaknode_colormanager_get_display_count(OakNodeColorManager manager,
 										   int *count);
-int oaknode_colormanager_get_display_at(OakNodeColorManager *manager,
+int oaknode_colormanager_get_display_at(OakNodeColorManager manager,
 										int index, char *buf, int buf_size);
-int oaknode_colormanager_get_default_display(OakNodeColorManager *manager,
+int oaknode_colormanager_get_default_display(OakNodeColorManager manager,
 											 char *buf, int buf_size);
-int oaknode_colormanager_get_view_count(OakNodeColorManager *manager,
+int oaknode_colormanager_get_view_count(OakNodeColorManager manager,
 										const char *display, int *count);
-int oaknode_colormanager_get_view_at(OakNodeColorManager *manager,
+int oaknode_colormanager_get_view_at(OakNodeColorManager manager,
 									 const char *display, int index, char *buf,
 									 int buf_size);
-int oaknode_colormanager_get_default_view(OakNodeColorManager *manager,
+int oaknode_colormanager_get_default_view(OakNodeColorManager manager,
 										  const char *display, char *buf,
 										  int buf_size);
-int oaknode_colormanager_get_look_count(OakNodeColorManager *manager,
+int oaknode_colormanager_get_look_count(OakNodeColorManager manager,
 										int *count);
-int oaknode_colormanager_get_look_at(OakNodeColorManager *manager, int index,
+int oaknode_colormanager_get_look_at(OakNodeColorManager manager, int index,
 									 char *buf, int buf_size);
-int oaknode_colormanager_get_colorspace_count(OakNodeColorManager *manager,
+int oaknode_colormanager_get_colorspace_count(OakNodeColorManager manager,
 											  int *count);
-int oaknode_colormanager_get_colorspace_at(OakNodeColorManager *manager,
+int oaknode_colormanager_get_colorspace_at(OakNodeColorManager manager,
 										   int index, char *buf,
 										   int buf_size);
 
@@ -166,7 +173,7 @@ int oaknode_colormanager_get_colorspace_at(OakNodeColorManager *manager,
  * @brief Default luma coefficients of the active config into rgb[3].
  * Requires a loaded config (OAKNODE_E_STATE otherwise).
  */
-int oaknode_colormanager_get_default_luma_coefs(OakNodeColorManager *manager,
+int oaknode_colormanager_get_default_luma_coefs(OakNodeColorManager manager,
 												double rgb[3]);
 
 /**
@@ -179,7 +186,7 @@ int oaknode_colormanager_get_default_luma_coefs(OakNodeColorManager *manager,
  * loaded config (OAKNODE_E_STATE otherwise).
  */
 int oaknode_colormanager_get_compliant_color_transform(
-	OakNodeColorManager *manager, OakColorTransform transform,
+	OakNodeColorManager manager, OakColorTransform transform,
 	int force_display, OakColorTransform *out);
 
 #ifdef __cplusplus

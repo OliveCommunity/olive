@@ -35,15 +35,15 @@ namespace olive
 // TrackRippleRemoveAreaCommand
 //
 TrackRippleRemoveAreaCommand::TrackRippleRemoveAreaCommand(
-	OakNodeTrack *track, const TimeRange &range)
+	OakNodeTrack track, const TimeRange &range)
 	: track_(track)
 	, range_(range)
-	, insert_previous_(nullptr)
+	, insert_previous_{}
 	, allow_splitting_gaps_(false)
 	, splice_split_command_(nullptr)
 {
-	trim_out_.block = nullptr;
-	trim_in_.block = nullptr;
+	trim_out_.block = OakNodeBlock{};
+	trim_in_.block = OakNodeBlock{};
 }
 
 TrackRippleRemoveAreaCommand::~TrackRippleRemoveAreaCommand()
@@ -60,10 +60,10 @@ void TrackRippleRemoveAreaCommand::prepare()
 	rat_nd(range_.in(), &n, &d);
 
 	// Determine precisely what will be happening to these tracks
-	OakNodeBlock *first_block = nullptr;
+	OakNodeBlock first_block = {};
 	oaknode_track_get_nearest_block_before_or_at(track_, n, d, &first_block);
 
-	if (!first_block) {
+	if (!first_block.ctx) {
 		// No blocks at this time, nothing to be done on this track
 		return;
 	}
@@ -111,7 +111,7 @@ void TrackRippleRemoveAreaCommand::prepare()
 		// If the first block is getting in trimmed, we're already at the end of our range
 		if (!first_block_is_in_trimmed) {
 			// Loop through the rest of the blocks and determine what to do with those
-			for (OakNodeBlock *next = block_next(first_block); next;
+			for (OakNodeBlock next = block_next(first_block); next.ctx;
 				 next = block_next(next)) {
 				bool trimming = (block_out(next) > range_.out());
 
@@ -140,16 +140,16 @@ void TrackRippleRemoveAreaCommand::redo()
 		splice_split_command_->redo_now();
 
 		// Trim the in of the split
-		OakNodeBlock *split = splice_split_command_->new_block();
+		OakNodeBlock split = splice_split_command_->new_block();
 		block_set_length_and_media_in(
 			split, block_length(split) - (range_.out() - block_in(split)));
 	} else {
-		if (trim_out_.block) {
+		if (trim_out_.block.ctx) {
 			block_set_length_and_media_out(trim_out_.block,
 										   trim_out_.new_length);
 		}
 
-		if (trim_in_.block) {
+		if (trim_in_.block.ctx) {
 			block_set_length_and_media_in(trim_in_.block, trim_in_.new_length);
 		}
 
@@ -182,12 +182,12 @@ void TrackRippleRemoveAreaCommand::undo()
 	if (splice_split_command_) {
 		splice_split_command_->undo_now();
 	} else {
-		if (trim_out_.block) {
+		if (trim_out_.block.ctx) {
 			block_set_length_and_media_out(trim_out_.block,
 										   trim_out_.old_length);
 		}
 
-		if (trim_in_.block) {
+		if (trim_in_.block.ctx) {
 			block_set_length_and_media_in(trim_in_.block, trim_in_.old_length);
 		}
 
@@ -212,9 +212,9 @@ void TrackListRippleRemoveAreaCommand::prepare()
 	oaknode_tracklist_get_track_count(list_, &count);
 
 	for (int i = 0; i < count; i++) {
-		OakNodeTrack *track = nullptr;
+		OakNodeTrack track = {};
 		oaknode_tracklist_get_track_at(list_, i, &track);
-		if (!track) {
+		if (!track.ctx) {
 			continue;
 		}
 
@@ -249,12 +249,12 @@ void TrackListRippleRemoveAreaCommand::undo()
 // TimelineRippleRemoveAreaCommand
 //
 TimelineRippleRemoveAreaCommand::TimelineRippleRemoveAreaCommand(
-	OakNodeSequence *timeline, Rational in, Rational out)
+	OakNodeSequence timeline, Rational in, Rational out)
 {
 	for (int i = 0; i < OAKNODE_TRACK_TYPE_COUNT; i++) {
-		OakNodeTrackList *list = nullptr;
+		OakNodeTrackList list = {};
 		oaknode_sequence_get_track_list(timeline, i, &list);
-		if (list) {
+		if (list.ctx) {
 			add_child(new TrackListRippleRemoveAreaCommand(list, in, out));
 		}
 	}
@@ -264,8 +264,8 @@ TimelineRippleRemoveAreaCommand::TimelineRippleRemoveAreaCommand(
 // TrackListRippleToolCommand
 //
 TrackListRippleToolCommand::TrackListRippleToolCommand(
-	OakNodeTrackList *track_list,
-	const std::map<OakNodeTrack *, RippleInfo> &info,
+	OakNodeTrackList track_list,
+	const std::map<OakNodeTrack, RippleInfo, TrackHandleLess> &info,
 	const Rational &ripple_movement,
 	const Timeline::MovementMode &movement_mode)
 	: track_list_(track_list)
@@ -280,11 +280,11 @@ TrackListRippleToolCommand::~TrackListRippleToolCommand()
 	// Free any gaps still owned by this command (detached from the graph)
 	for (auto &pair : working_data_) {
 		WorkingData &wd = pair.second;
-		if (wd.created_gap && wd.created_gap_orphaned) {
-			oaknode_block_free(wd.created_gap);
+		if (wd.created_gap_orphaned) {
+			free_detached_handle(&wd.created_gap);
 		}
-		if (wd.removed_gap && wd.removed_gap_orphaned) {
-			oaknode_block_free(wd.removed_gap);
+		if (wd.removed_gap_orphaned) {
+			free_detached_handle(&wd.removed_gap);
 		}
 	}
 }
@@ -304,10 +304,10 @@ void TrackListRippleToolCommand::ripple(bool redo)
 
 	// Make timeline changes
 	for (const auto &pair : info_) {
-		OakNodeTrack *track = pair.first;
+		OakNodeTrack track = pair.first;
 		const RippleInfo &info = pair.second;
 		WorkingData working_data = working_data_[track];
-		OakNodeBlock *b = info.block;
+		OakNodeBlock b = info.block;
 
 		// Generate block length
 		Rational new_block_length;
@@ -321,7 +321,7 @@ void TrackListRippleToolCommand::ripple(bool redo)
 			operation_movement = -operation_movement;
 		}
 
-		if (b) {
+		if (b.ctx) {
 			new_block_length = block_length(b) + operation_movement;
 		}
 
@@ -330,10 +330,10 @@ void TrackListRippleToolCommand::ripple(bool redo)
 
 		if (info.append_gap) {
 			// Rather than rippling the referenced block, we'll insert a gap and ripple with that
-			OakNodeBlock *gap = working_data.created_gap;
+			OakNodeBlock gap = working_data.created_gap;
 
 			if (redo) {
-				if (!gap) {
+				if (!gap.ctx) {
 					gap = oaknode_block_gap_create();
 					block_set_length_and_media_out(
 						gap, ripple_movement_ < Rational(0)
@@ -362,7 +362,7 @@ void TrackListRippleToolCommand::ripple(bool redo)
 			}
 
 		} else if ((redo && new_block_length.isNull()) ||
-				   (!redo && !block_track(b))) {
+				   (!redo && !block_track(b).ctx)) {
 			// The ripple is the length of this block. We assume that for this to happen, it must have
 			// been a gap that we will now remove.
 
@@ -445,9 +445,9 @@ void TrackListRippleToolCommand::ripple(bool redo)
 namespace
 {
 
-bool is_gap(OakNodeBlock *b)
+bool is_gap(OakNodeBlock b)
 {
-	if (!b) {
+	if (!b.ctx) {
 		return false;
 	}
 	int kind = OAKNODE_BLOCK_OTHER;
@@ -460,16 +460,17 @@ bool is_gap(OakNodeBlock *b)
 void TimelineRippleDeleteGapsAtRegionsCommand::prepare()
 {
 	size_t max_gaps = 0;
-	std::map<OakNodeTrack *, std::vector<RemovalRequest>> requested_gaps;
+	std::map<OakNodeTrack, std::vector<RemovalRequest>, TrackHandleLess>
+		requested_gaps;
 
 	// Convert regions to gaps
 	for (const auto &region : regions_) {
-		OakNodeTrack *track = region.first;
+		OakNodeTrack track = region.first;
 		const TimeRange &range = region.second;
 
 		int n, d;
 		rat_nd(range.in(), &n, &d);
-		OakNodeBlock *block = nullptr;
+		OakNodeBlock block = {};
 		oaknode_track_get_nearest_block_before_or_at(track, n, d, &block);
 
 		if (is_gap(block)) {
@@ -499,7 +500,7 @@ void TimelineRippleDeleteGapsAtRegionsCommand::prepare()
 
 	// For each gap on each track, find a corresponding gap on every other track (which may include
 	// a requested gap) to ripple in order to keep everything synchronized
-	std::map<OakNodeBlock *, Rational> gap_lengths;
+	std::map<OakNodeBlock, Rational, BlockHandleLess> gap_lengths;
 	for (size_t gap_index = 0; gap_index < max_gaps; gap_index++) {
 		Rational earliest_point = RATIONAL_MAX;
 		Rational ripple_length = RATIONAL_MAX;
@@ -516,14 +517,14 @@ void TimelineRippleDeleteGapsAtRegionsCommand::prepare()
 		}
 
 		// Determine which gaps will be involved in this operation
-		std::vector<OakNodeBlock *> gaps;
+		std::vector<OakNodeBlock> gaps;
 
 		int track_count = 0;
 		oaknode_sequence_get_all_track_count(timeline_, &track_count);
 		for (int ti = 0; ti < track_count; ti++) {
-			OakNodeTrack *track = nullptr;
+			OakNodeTrack track = {};
 			oaknode_sequence_get_all_track_at(timeline_, ti, &track);
-			if (!track) {
+			if (!track.ctx) {
 				continue;
 			}
 
@@ -538,7 +539,7 @@ void TimelineRippleDeleteGapsAtRegionsCommand::prepare()
 			const std::vector<RemovalRequest> &requested_gaps_on_track =
 				req_it != requested_gaps.end() ? req_it->second : empty_list;
 
-			OakNodeBlock *gap = nullptr;
+			OakNodeBlock gap = {};
 			if (gap_index < requested_gaps_on_track.size()) {
 				// A requested gap was at this index, use it
 				gap = requested_gaps_on_track.at(gap_index).gap;
@@ -546,24 +547,24 @@ void TimelineRippleDeleteGapsAtRegionsCommand::prepare()
 				// No requested gap was at this index, find one
 				int n, d;
 				rat_nd(earliest_point, &n, &d);
-				OakNodeBlock *block = nullptr;
+				OakNodeBlock block = {};
 				oaknode_track_get_nearest_block_after_or_at(track, n, d,
 															&block);
 
-				if (block) {
+				if (block.ctx) {
 					// Found a block, test if it's a gap
 					if (is_gap(block)) {
 						gap = block;
 					} else {
 						if (block_in(block) == earliest_point) {
-							OakNodeBlock *next = block_next(block);
+							OakNodeBlock next = block_next(block);
 							if (is_gap(next)) {
 								gap = next;
 							} else {
 								ripple_length = 0;
 							}
 						} else {
-							OakNodeBlock *prev = block_previous(block);
+							OakNodeBlock prev = block_previous(block);
 							if (is_gap(prev)) {
 								gap = prev;
 							} else {
@@ -576,7 +577,7 @@ void TimelineRippleDeleteGapsAtRegionsCommand::prepare()
 				}
 			}
 
-			if (gap) {
+			if (gap.ctx) {
 				gaps.push_back(gap);
 
 				if (!gap_lengths.count(gap)) {
@@ -592,7 +593,7 @@ void TimelineRippleDeleteGapsAtRegionsCommand::prepare()
 		}
 
 		if (ripple_length > 0) {
-			for (OakNodeBlock *gap : gaps) {
+			for (OakNodeBlock gap : gaps) {
 				if (gap_lengths[gap] == ripple_length) {
 					commands_.push_back(new TrackRippleRemoveBlockCommand(
 						block_track(gap), gap));

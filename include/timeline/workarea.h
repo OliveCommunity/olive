@@ -37,10 +37,10 @@ extern "C" {
 typedef struct OakTimelineWorkArea OakTimelineWorkArea;
 
 /**
- * @brief Borrowed work area of a viewer node (sequence). NULL for NULL
- * or when the node is not a viewer.
+ * @brief Borrowed work area of a viewer node (sequence). NULL for an
+ * empty handle or when the node is not a viewer.
  */
-OakTimelineWorkArea *oaktimeline_workarea_of(OakNodeNode *owner);
+OakTimelineWorkArea *oaktimeline_workarea_of(OakNodeNode owner);
 
 /**
  * @brief Read the work area state. Out params may individually be NULL.

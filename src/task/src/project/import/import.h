@@ -37,7 +37,7 @@ namespace olive
 
 class ProjectImportTask : public Task {
 public:
-	ProjectImportTask(OakNodeFolder *folder, OakNodeProject *project,
+	ProjectImportTask(OakNodeFolder folder, OakNodeProject project,
 					  const std::vector<std::string> &filenames);
 	~ProjectImportTask() override;
 
@@ -62,7 +62,7 @@ public:
 		return !invalid_files_.empty();
 	}
 
-	const std::vector<OakNodeFootage *> &get_imported_footage() const
+	const std::vector<OakNodeFootage> &get_imported_footage() const
 	{
 		return imported_footage_;
 	}
@@ -85,20 +85,20 @@ protected:
 	virtual bool run() override;
 
 private:
-	void import(OakNodeFolder *folder,
+	void import(OakNodeFolder folder,
 				const std::vector<std::string> &entries, int &counter,
 				OakUndoCommand parent_command);
 
-	void validate_image_sequence(OakNodeFootage *footage,
+	void validate_image_sequence(OakNodeFootage footage,
 								 std::vector<std::string> &info_list,
 								 size_t index);
 
-	void add_item_to_folder(OakNodeFolder *folder, OakNodeNode *item,
+	void add_item_to_folder(OakNodeFolder folder, OakNodeNode item,
 							OakUndoCommand command);
 
-	static bool item_is_still_image_footage_only(OakNodeFootage *footage);
+	static bool item_is_still_image_footage_only(OakNodeFootage footage);
 
-	static bool compare_still_image_size(OakNodeFootage *footage, int width,
+	static bool compare_still_image_size(OakNodeFootage footage, int width,
 										 int height);
 
 	static int64_t get_image_sequence_limit(const std::string &start_fn,
@@ -106,9 +106,10 @@ private:
 
 	OakUndoCommand command_;
 
-	OakNodeFolder *folder_;
+	/** Borrowed handles; the caller keeps ownership of both. */
+	OakNodeFolder folder_;
 
-	OakNodeProject *project_;
+	OakNodeProject project_;
 
 	std::vector<std::string> filenames_;
 
@@ -118,7 +119,8 @@ private:
 
 	std::vector<std::string> image_sequence_ignore_files_;
 
-	std::vector<OakNodeFootage *> imported_footage_;
+	/** Borrowed footage handles; the project owns the footage nodes. */
+	std::vector<OakNodeFootage> imported_footage_;
 
 	static ImageSequenceConfirmFn confirm_callback_;
 };

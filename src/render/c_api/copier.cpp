@@ -22,6 +22,7 @@
 
 #include <new>
 
+#include "../../node/c_api/nodehandle.h"
 #include "../src/projectcopier.h"
 
 namespace
@@ -50,36 +51,41 @@ void oakrender_project_copier_free(OakRenderProjectCopier *copier)
 }
 
 int oakrender_project_copier_set_project(OakRenderProjectCopier *copier,
-										 OakNodeProject *project)
+										 OakNodeProject project)
 {
-	if (!copier || !project) {
+	if (!copier || !project.ctx) {
 		return OAKRENDER_E_INVALID;
 	}
 	try {
 		impl(copier)->set_project(
-			reinterpret_cast<olive::Project *>(project));
+			oaknode_c_api::to_native<olive::Project>(project));
 		return OAKRENDER_OK;
 	} catch (...) {
 		return OAKRENDER_E_FAILED;
 	}
 }
 
-OakNodeNode *oakrender_project_copier_get_copy(
-	OakRenderProjectCopier *copier, OakNodeNode *original)
+OakNodeNode oakrender_project_copier_get_copy(
+	OakRenderProjectCopier *copier, OakNodeNode original)
 {
-	if (!copier || !original) {
-		return NULL;
+	if (!copier || !original.ctx) {
+		return OakNodeNode{};
 	}
-	return reinterpret_cast<OakNodeNode *>(
-		impl(copier)->get_copy(reinterpret_cast<olive::Node *>(original)));
+	// Borrowed handle: releasing it only destroys the handle box, never
+	// the copied node (owned by the copier's copied project).
+	return oaknode_c_api::make_handle<OakNodeNode>(
+		impl(copier)->get_copy(oaknode_c_api::to_native<olive::Node>(original)),
+		false, &oaknode_c_api::delete_as<olive::Node>);
 }
 
-OakNodeProject *oakrender_project_copier_get_copied_project(
+OakNodeProject oakrender_project_copier_get_copied_project(
 	OakRenderProjectCopier *copier)
 {
 	if (!copier) {
-		return NULL;
+		return OakNodeProject{};
 	}
-	return reinterpret_cast<OakNodeProject *>(
-		impl(copier)->get_copied_project());
+	// Borrowed handle: the copied project is owned by the copier.
+	return oaknode_c_api::make_handle<OakNodeProject>(
+		impl(copier)->get_copied_project(), false,
+		&oaknode_c_api::delete_as<olive::Project>);
 }

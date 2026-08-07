@@ -24,30 +24,14 @@
 #include "node.h"
 #include "nodeundo.h"
 
+#include "nodehandle.h"
 #include "valueconvert.h"
+
+using oaknode_c_api::make_handle;
+using oaknode_c_api::to_native;
 
 namespace
 {
-
-inline olive::NodeKeyframe *to_key(OakNodeKeyframe *keyframe)
-{
-	return reinterpret_cast<olive::NodeKeyframe *>(keyframe);
-}
-
-inline const olive::NodeKeyframe *to_key(const OakNodeKeyframe *keyframe)
-{
-	return reinterpret_cast<const olive::NodeKeyframe *>(keyframe);
-}
-
-inline olive::Node *to_node(OakNodeNode *node)
-{
-	return reinterpret_cast<olive::Node *>(node);
-}
-
-inline OakNodeNode *from_node(olive::Node *node)
-{
-	return reinterpret_cast<OakNodeNode *>(node);
-}
 
 /**
  * @brief Convert an oaknode_keyframe_type to olive::NodeKeyframe::Type.
@@ -132,61 +116,56 @@ private:
 
 }
 
-OakNodeKeyframe *oaknode_keyframe_create(int64_t time_num, int64_t time_den,
-										 const oaknode_value *value, int type,
-										 int track, int element,
-										 const char *input_id,
-										 OakNodeNode *parent_or_null)
+OakNodeKeyframe oaknode_keyframe_create(int64_t time_num, int64_t time_den,
+										const oaknode_value *value, int type,
+										int track, int element,
+										const char *input_id,
+										OakNodeNode parent_or_null)
 {
 	olive::NodeKeyframe::Type keyframe_type;
 	if (!keyframe_type_from_oak(type, &keyframe_type)) {
-		return NULL;
+		return OakNodeKeyframe{};
 	}
 
 	try {
 		olive::Variant variant;
 		if (value) {
 			if (!oaknode_c_api::variant_from_value(value, &variant)) {
-				return NULL;
+				return OakNodeKeyframe{};
 			}
 		}
 
 		olive::core::Rational time(static_cast<int>(time_num),
 								   static_cast<int>(time_den));
-		olive::NodeKeyframe *key = new (std::nothrow) olive::NodeKeyframe(
-			time, variant, keyframe_type, track, element,
-			input_id ? input_id : "", to_node(parent_or_null));
-		if (key) {
-			oaknode_c_api::alive_inc();
-		}
-		return reinterpret_cast<OakNodeKeyframe *>(key);
+		return make_handle<OakNodeKeyframe>(
+			new (std::nothrow) olive::NodeKeyframe(
+				time, variant, keyframe_type, track, element,
+				input_id ? input_id : "",
+				to_native<olive::Node>(parent_or_null)),
+			true, oaknode_c_api::delete_as<olive::NodeKeyframe>);
 	} catch (...) {
-		return NULL;
+		return OakNodeKeyframe{};
 	}
 }
 
 void oaknode_keyframe_free(OakNodeKeyframe *keyframe)
 {
-	if (!keyframe) {
-		return;
-	}
-
 	try {
-		delete to_key(keyframe);
-		oaknode_c_api::alive_dec();
+		oaknode_c_api::free_handle(keyframe);
 	} catch (...) {
 	}
 }
 
-int oaknode_keyframe_get_time(const OakNodeKeyframe *keyframe,
+int oaknode_keyframe_get_time(OakNodeKeyframe keyframe,
 							  int64_t *out_num, int64_t *out_den)
 {
-	if (!keyframe || !out_num || !out_den) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key || !out_num || !out_den) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		const olive::core::Rational &time = to_key(keyframe)->time();
+		const olive::core::Rational &time = key->time();
 		*out_num = time.numerator();
 		*out_den = time.denominator();
 		return OAKNODE_OK;
@@ -195,36 +174,37 @@ int oaknode_keyframe_get_time(const OakNodeKeyframe *keyframe,
 	}
 }
 
-int oaknode_keyframe_set_time(OakNodeKeyframe *keyframe, int64_t time_num,
+int oaknode_keyframe_set_time(OakNodeKeyframe keyframe, int64_t time_num,
 							  int64_t time_den)
 {
-	if (!keyframe) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		to_key(keyframe)->set_time(olive::core::Rational(
-			static_cast<int>(time_num), static_cast<int>(time_den)));
+		key->set_time(olive::core::Rational(static_cast<int>(time_num),
+											static_cast<int>(time_den)));
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_keyframe_set_time_undoable(OakNodeKeyframe *keyframe,
+int oaknode_keyframe_set_time_undoable(OakNodeKeyframe keyframe,
 									   int64_t time_num, int64_t time_den,
 									   OakUndoCommand *out_command)
 {
-	if (!keyframe || !out_command) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key || !out_command) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
 		OakUndoCommand handle = oaknode_c_api::wrap_command(
 			new olive::NodeParamSetKeyframeTimeCommand(
-				to_key(keyframe),
-				olive::core::Rational(static_cast<int>(time_num),
-									  static_cast<int>(time_den))));
+				key, olive::core::Rational(static_cast<int>(time_num),
+										   static_cast<int>(time_den))));
 		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
@@ -235,15 +215,15 @@ int oaknode_keyframe_set_time_undoable(OakNodeKeyframe *keyframe,
 	}
 }
 
-int oaknode_keyframe_get_value(const OakNodeKeyframe *keyframe,
+int oaknode_keyframe_get_value(OakNodeKeyframe keyframe,
 							   oaknode_value *out)
 {
-	if (!keyframe || !out) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key || !out) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		const olive::NodeKeyframe *key = to_key(keyframe);
 		const olive::Variant &variant = key->value();
 
 		// Preferred path: the parent node's declared input type pins the
@@ -295,10 +275,11 @@ int oaknode_keyframe_get_value(const OakNodeKeyframe *keyframe,
 	}
 }
 
-int oaknode_keyframe_set_value(OakNodeKeyframe *keyframe,
+int oaknode_keyframe_set_value(OakNodeKeyframe keyframe,
 							   const oaknode_value *v)
 {
-	if (!keyframe || !v) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key || !v) {
 		return OAKNODE_E_INVALID;
 	}
 
@@ -307,18 +288,19 @@ int oaknode_keyframe_set_value(OakNodeKeyframe *keyframe,
 		if (!oaknode_c_api::variant_from_value(v, &variant)) {
 			return OAKNODE_E_INVALID;
 		}
-		to_key(keyframe)->set_value(variant);
+		key->set_value(variant);
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_keyframe_set_value_undoable(OakNodeKeyframe *keyframe,
+int oaknode_keyframe_set_value_undoable(OakNodeKeyframe keyframe,
 										const oaknode_value *v,
 										OakUndoCommand *out_command)
 {
-	if (!keyframe || !v || !out_command) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key || !v || !out_command) {
 		return OAKNODE_E_INVALID;
 	}
 
@@ -329,8 +311,7 @@ int oaknode_keyframe_set_value_undoable(OakNodeKeyframe *keyframe,
 		}
 
 		OakUndoCommand handle = oaknode_c_api::wrap_command(
-			new olive::NodeParamSetKeyframeValueCommand(to_key(keyframe),
-														variant));
+			new olive::NodeParamSetKeyframeValueCommand(key, variant));
 		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
@@ -341,48 +322,51 @@ int oaknode_keyframe_set_value_undoable(OakNodeKeyframe *keyframe,
 	}
 }
 
-int oaknode_keyframe_get_value_string(const OakNodeKeyframe *keyframe,
+int oaknode_keyframe_get_value_string(OakNodeKeyframe keyframe,
 									  char *buf, int buf_size)
 {
-	if (!keyframe) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		return oaknode_c_api::copy_string(to_key(keyframe)->value().to_string(),
-										  buf, buf_size);
+		return oaknode_c_api::copy_string(key->value().to_string(), buf,
+										  buf_size);
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_keyframe_set_value_string(OakNodeKeyframe *keyframe,
+int oaknode_keyframe_set_value_string(OakNodeKeyframe keyframe,
 									  const char *value)
 {
-	if (!keyframe || !value) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key || !value) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		to_key(keyframe)->set_value(olive::Variant(value));
+		key->set_value(olive::Variant(value));
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_keyframe_set_value_string_undoable(OakNodeKeyframe *keyframe,
+int oaknode_keyframe_set_value_string_undoable(OakNodeKeyframe keyframe,
 											   const char *value,
 											   OakUndoCommand *out_command)
 {
-	if (!keyframe || !value || !out_command) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key || !value || !out_command) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
 		OakUndoCommand handle = oaknode_c_api::wrap_command(
-			new olive::NodeParamSetKeyframeValueCommand(
-				to_key(keyframe), olive::Variant(value)));
+			new olive::NodeParamSetKeyframeValueCommand(key,
+														olive::Variant(value)));
 		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
@@ -393,23 +377,25 @@ int oaknode_keyframe_set_value_string_undoable(OakNodeKeyframe *keyframe,
 	}
 }
 
-int oaknode_keyframe_get_type(const OakNodeKeyframe *keyframe, int *out_type)
+int oaknode_keyframe_get_type(OakNodeKeyframe keyframe, int *out_type)
 {
-	if (!keyframe || !out_type) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key || !out_type) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		*out_type = static_cast<int>(to_key(keyframe)->type());
+		*out_type = static_cast<int>(key->type());
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_keyframe_set_type(OakNodeKeyframe *keyframe, int type)
+int oaknode_keyframe_set_type(OakNodeKeyframe keyframe, int type)
 {
-	if (!keyframe) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key) {
 		return OAKNODE_E_INVALID;
 	}
 
@@ -418,17 +404,18 @@ int oaknode_keyframe_set_type(OakNodeKeyframe *keyframe, int type)
 		if (!keyframe_type_from_oak(type, &keyframe_type)) {
 			return OAKNODE_E_INVALID;
 		}
-		to_key(keyframe)->set_type(keyframe_type);
+		key->set_type(keyframe_type);
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_keyframe_set_type_undoable(OakNodeKeyframe *keyframe, int type,
+int oaknode_keyframe_set_type_undoable(OakNodeKeyframe keyframe, int type,
 									   OakUndoCommand *out_command)
 {
-	if (!keyframe || !out_command) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key || !out_command) {
 		return OAKNODE_E_INVALID;
 	}
 
@@ -439,7 +426,7 @@ int oaknode_keyframe_set_type_undoable(OakNodeKeyframe *keyframe, int type,
 		}
 
 		OakUndoCommand handle = oaknode_c_api::wrap_command(
-			new KeyframeSetTypeCommand(to_key(keyframe), keyframe_type));
+			new KeyframeSetTypeCommand(key, keyframe_type));
 		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
@@ -450,20 +437,21 @@ int oaknode_keyframe_set_type_undoable(OakNodeKeyframe *keyframe, int type,
 	}
 }
 
-int oaknode_keyframe_get_bezier_control(const OakNodeKeyframe *keyframe,
+int oaknode_keyframe_get_bezier_control(OakNodeKeyframe keyframe,
 										int handle, double *out_x,
 										double *out_y)
 {
-	if (!keyframe || !out_x || !out_y) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key || !out_x || !out_y) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
 		olive::PointF point;
 		if (handle == OAKNODE_KEYFRAME_IN_HANDLE) {
-			point = to_key(keyframe)->bezier_control_in();
+			point = key->bezier_control_in();
 		} else if (handle == OAKNODE_KEYFRAME_OUT_HANDLE) {
-			point = to_key(keyframe)->bezier_control_out();
+			point = key->bezier_control_out();
 		} else {
 			return OAKNODE_E_INVALID;
 		}
@@ -475,18 +463,19 @@ int oaknode_keyframe_get_bezier_control(const OakNodeKeyframe *keyframe,
 	}
 }
 
-int oaknode_keyframe_set_bezier_control(OakNodeKeyframe *keyframe, int handle,
+int oaknode_keyframe_set_bezier_control(OakNodeKeyframe keyframe, int handle,
 										double x, double y)
 {
-	if (!keyframe) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
 		if (handle == OAKNODE_KEYFRAME_IN_HANDLE) {
-			to_key(keyframe)->set_bezier_control_in(olive::PointF(x, y));
+			key->set_bezier_control_in(olive::PointF(x, y));
 		} else if (handle == OAKNODE_KEYFRAME_OUT_HANDLE) {
-			to_key(keyframe)->set_bezier_control_out(olive::PointF(x, y));
+			key->set_bezier_control_out(olive::PointF(x, y));
 		} else {
 			return OAKNODE_E_INVALID;
 		}
@@ -496,11 +485,12 @@ int oaknode_keyframe_set_bezier_control(OakNodeKeyframe *keyframe, int handle,
 	}
 }
 
-int oaknode_keyframe_set_bezier_control_undoable(OakNodeKeyframe *keyframe,
+int oaknode_keyframe_set_bezier_control_undoable(OakNodeKeyframe keyframe,
 												 int handle, double x, double y,
 												 OakUndoCommand *out_command)
 {
-	if (!keyframe || !out_command) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key || !out_command) {
 		return OAKNODE_E_INVALID;
 	}
 
@@ -514,73 +504,76 @@ int oaknode_keyframe_set_bezier_control_undoable(OakNodeKeyframe *keyframe,
 			return OAKNODE_E_INVALID;
 		}
 
-		OakUndoCommand handle_ptr = oaknode_c_api::wrap_command(
-			new KeyframeSetBezierControlCommand(to_key(keyframe), bezier_handle,
+		OakUndoCommand command = oaknode_c_api::wrap_command(
+			new KeyframeSetBezierControlCommand(key, bezier_handle,
 												olive::PointF(x, y)));
-		if (!handle_ptr.ctx) {
+		if (!command.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
-		*out_command = handle_ptr;
+		*out_command = command;
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_keyframe_get_track(const OakNodeKeyframe *keyframe,
+int oaknode_keyframe_get_track(OakNodeKeyframe keyframe,
 							   int *out_track)
 {
-	if (!keyframe || !out_track) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key || !out_track) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		*out_track = to_key(keyframe)->track();
+		*out_track = key->track();
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_keyframe_get_element(const OakNodeKeyframe *keyframe,
+int oaknode_keyframe_get_element(OakNodeKeyframe keyframe,
 								 int *out_element)
 {
-	if (!keyframe || !out_element) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key || !out_element) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		*out_element = to_key(keyframe)->element();
+		*out_element = key->element();
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_keyframe_get_input(const OakNodeKeyframe *keyframe, char *buf,
+int oaknode_keyframe_get_input(OakNodeKeyframe keyframe, char *buf,
 							   int buf_size)
 {
-	if (!keyframe) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		return oaknode_c_api::copy_string(to_key(keyframe)->input(), buf,
-										  buf_size);
+		return oaknode_c_api::copy_string(key->input(), buf, buf_size);
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
 }
 
-int oaknode_keyframe_get_parent(const OakNodeKeyframe *keyframe,
-								OakNodeNode **out_node)
+int oaknode_keyframe_get_parent(OakNodeKeyframe keyframe,
+								OakNodeNode *out_node)
 {
-	if (!keyframe || !out_node) {
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key || !out_node) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		*out_node = from_node(to_key(keyframe)->parent());
+		*out_node = make_handle<OakNodeNode>(key->parent(), false, nullptr);
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;

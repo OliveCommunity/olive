@@ -29,9 +29,11 @@
 #include <olive/core/core.h>
 
 #include "node/block.h"
+#include "node/node.h"
 #include "node/sequence.h"
 #include "node/track.h"
 #include "timelineundosplit.h"
+#include "timelineutil.h"
 #include "undocommand.h"
 
 using namespace olive::core;
@@ -41,7 +43,7 @@ namespace olive
 
 class BlockResizeCommand : public UndoCommand {
 public:
-	BlockResizeCommand(OakNodeBlock *block, Rational new_length)
+	BlockResizeCommand(OakNodeBlock block, Rational new_length)
 		: block_(block)
 		, new_length_(new_length)
 	{
@@ -52,14 +54,14 @@ protected:
 	virtual void undo() override;
 
 private:
-	OakNodeBlock *block_;
+	OakNodeBlock block_;
 	Rational old_length_;
 	Rational new_length_;
 };
 
 class BlockResizeWithMediaInCommand : public UndoCommand {
 public:
-	BlockResizeWithMediaInCommand(OakNodeBlock *block, Rational new_length)
+	BlockResizeWithMediaInCommand(OakNodeBlock block, Rational new_length)
 		: block_(block)
 		, new_length_(new_length)
 	{
@@ -70,14 +72,14 @@ protected:
 	virtual void undo();
 
 private:
-	OakNodeBlock *block_;
+	OakNodeBlock block_;
 	Rational old_length_;
 	Rational new_length_;
 };
 
 class BlockSetMediaInCommand : public UndoCommand {
 public:
-	BlockSetMediaInCommand(OakNodeBlock *block, Rational new_media_in)
+	BlockSetMediaInCommand(OakNodeBlock block, Rational new_media_in)
 		: block_(block)
 		, new_media_in_(new_media_in)
 	{
@@ -88,34 +90,34 @@ protected:
 	virtual void undo();
 
 private:
-	OakNodeBlock *block_;
+	OakNodeBlock block_;
 	Rational old_media_in_;
 	Rational new_media_in_;
 };
 
 class TimelineAddTrackCommand : public UndoCommand {
 public:
-	TimelineAddTrackCommand(OakNodeTrackList *timeline);
-	TimelineAddTrackCommand(OakNodeTrackList *timeline, bool automerge_tracks);
+	TimelineAddTrackCommand(OakNodeTrackList timeline);
+	TimelineAddTrackCommand(OakNodeTrackList timeline, bool automerge_tracks);
 
 	virtual ~TimelineAddTrackCommand() override;
 
-	static OakNodeTrack *run_immediately(OakNodeTrackList *timeline)
+	static OakNodeTrack run_immediately(OakNodeTrackList timeline)
 	{
 		TimelineAddTrackCommand c(timeline);
 		c.redo();
 		return c.track();
 	}
 
-	static OakNodeTrack *run_immediately(OakNodeTrackList *timeline,
-										 bool automerge)
+	static OakNodeTrack run_immediately(OakNodeTrackList timeline,
+										bool automerge)
 	{
 		TimelineAddTrackCommand c(timeline, automerge);
 		c.redo();
 		return c.track();
 	}
 
-	OakNodeTrack *track() const
+	OakNodeTrack track() const
 	{
 		return track_;
 	}
@@ -126,10 +128,10 @@ protected:
 	virtual void undo() override;
 
 private:
-	OakNodeTrackList *timeline_;
+	OakNodeTrackList timeline_;
 
-	OakNodeTrack *track_;
-	OakNodeNode *merge_;
+	OakNodeTrack track_;
+	OakNodeNode merge_;
 	std::string base_input_;
 	std::string blend_input_;
 
@@ -147,9 +149,9 @@ private:
 
 class TimelineRemoveTrackCommand : public UndoCommand {
 public:
-	TimelineRemoveTrackCommand(OakNodeTrack *track)
+	TimelineRemoveTrackCommand(OakNodeTrack track)
 		: track_(track)
-		, list_(nullptr)
+		, list_{}
 		, index_(0)
 		, remove_command_({})
 	{
@@ -165,9 +167,9 @@ protected:
 	virtual void undo() override;
 
 private:
-	OakNodeTrack *track_;
+	OakNodeTrack track_;
 
-	OakNodeTrackList *list_;
+	OakNodeTrackList list_;
 
 	int index_;
 
@@ -176,11 +178,11 @@ private:
 
 class TransitionRemoveCommand : public UndoCommand {
 public:
-	TransitionRemoveCommand(OakNodeBlock *block, bool remove_from_graph)
+	TransitionRemoveCommand(OakNodeBlock block, bool remove_from_graph)
 		: block_(block)
-		, track_(nullptr)
-		, out_block_(nullptr)
-		, in_block_(nullptr)
+		, track_{}
+		, out_block_{}
+		, in_block_{}
 		, remove_from_graph_(remove_from_graph)
 		, remove_command_({})
 	{
@@ -194,12 +196,12 @@ protected:
 	virtual void undo() override;
 
 private:
-	OakNodeBlock *block_;
+	OakNodeBlock block_;
 
-	OakNodeTrack *track_;
+	OakNodeTrack track_;
 
-	OakNodeBlock *out_block_;
-	OakNodeBlock *in_block_;
+	OakNodeBlock out_block_;
+	OakNodeBlock in_block_;
 
 	bool remove_from_graph_;
 	OakUndoCommand remove_command_;
@@ -207,14 +209,14 @@ private:
 
 class TrackReplaceBlockWithGapCommand : public UndoCommand {
 public:
-	TrackReplaceBlockWithGapCommand(OakNodeTrack *track, OakNodeBlock *block,
+	TrackReplaceBlockWithGapCommand(OakNodeTrack track, OakNodeBlock block,
 									bool handle_transitions = true)
 		: track_(track)
 		, block_(block)
-		, existing_gap_(nullptr)
-		, existing_merged_gap_(nullptr)
+		, existing_gap_{}
+		, existing_merged_gap_{}
 		, existing_gap_precedes_(false)
-		, our_gap_(nullptr)
+		, our_gap_{}
 		, handle_transitions_(handle_transitions)
 		, our_gap_orphaned_(false)
 		, merged_gap_orphaned_(false)
@@ -231,13 +233,13 @@ protected:
 private:
 	void create_remove_transition_command_if_necessary(bool next);
 
-	OakNodeTrack *track_;
-	OakNodeBlock *block_;
+	OakNodeTrack track_;
+	OakNodeBlock block_;
 
-	OakNodeBlock *existing_gap_;
-	OakNodeBlock *existing_merged_gap_;
+	OakNodeBlock existing_gap_;
+	OakNodeBlock existing_merged_gap_;
 	bool existing_gap_precedes_;
-	OakNodeBlock *our_gap_;
+	OakNodeBlock our_gap_;
 
 	bool handle_transitions_;
 
@@ -249,7 +251,7 @@ private:
 
 class BlockEnableDisableCommand : public UndoCommand {
 public:
-	BlockEnableDisableCommand(OakNodeBlock *block, bool enabled)
+	BlockEnableDisableCommand(OakNodeBlock block, bool enabled)
 		: block_(block)
 		, new_enabled_(enabled)
 	{
@@ -269,7 +271,7 @@ protected:
 	}
 
 private:
-	OakNodeBlock *block_;
+	OakNodeBlock block_;
 
 	int old_enabled_;
 
@@ -278,7 +280,7 @@ private:
 
 class TrackListInsertGaps : public UndoCommand {
 public:
-	TrackListInsertGaps(OakNodeTrackList *track_list, const Rational &point,
+	TrackListInsertGaps(OakNodeTrackList track_list, const Rational &point,
 						const Rational &length)
 		: track_list_(track_list)
 		, point_(point)
@@ -297,21 +299,21 @@ protected:
 	virtual void undo() override;
 
 private:
-	OakNodeTrackList *track_list_;
+	OakNodeTrackList track_list_;
 
 	Rational point_;
 
 	Rational length_;
 
-	std::vector<OakNodeTrack *> working_tracks_;
+	std::vector<OakNodeTrack> working_tracks_;
 
-	std::vector<OakNodeBlock *> gaps_to_extend_;
+	std::vector<OakNodeBlock> gaps_to_extend_;
 
 	struct AddGap {
-		OakNodeBlock *gap;
+		OakNodeBlock gap;
 		bool orphaned;
-		OakNodeBlock *before;
-		OakNodeTrack *track;
+		OakNodeBlock before;
+		OakNodeTrack track;
 	};
 
 	std::vector<AddGap> gaps_added_;
@@ -322,7 +324,7 @@ private:
 class TimelineAddDefaultTransitionCommand : public UndoCommand {
 public:
 	TimelineAddDefaultTransitionCommand(
-		const std::vector<OakNodeBlock *> &clips, const Rational &timebase)
+		const std::vector<OakNodeBlock> &clips, const Rational &timebase)
 		: clips_(clips)
 		, timebase_(timebase)
 	{
@@ -355,17 +357,17 @@ protected:
 private:
 	enum CreateTransitionMode { k_in, k_out, k_out_dual };
 
-	void add_transition(OakNodeBlock *c, CreateTransitionMode mode);
-	void adjust_clip_length(OakNodeBlock *c, const Rational &transition_length,
+	void add_transition(OakNodeBlock c, CreateTransitionMode mode);
+	void adjust_clip_length(OakNodeBlock c, const Rational &transition_length,
 							bool out);
-	void validate_transition_length(OakNodeBlock *c,
+	void validate_transition_length(OakNodeBlock c,
 									Rational &transition_length);
 
-	std::vector<OakNodeBlock *> clips_;
+	std::vector<OakNodeBlock> clips_;
 	Rational timebase_;
 	std::vector<UndoCommand *> commands_;
 
-	std::map<OakNodeBlock *, Rational> lengths_;
+	std::map<OakNodeBlock, Rational, BlockHandleLess> lengths_;
 };
 
 }

@@ -43,22 +43,23 @@ using core::Rational;
 
 class SaveOTIOTask : public Task {
 public:
-	SaveOTIOTask(OakNodeProject *project, const std::string &filename);
+	SaveOTIOTask(OakNodeProject project, const std::string &filename);
 
 protected:
 	virtual bool run() override;
 
 private:
-	OTIO::Timeline *serialize_timeline(OakNodeSequence *sequence);
+	OTIO::Timeline *serialize_timeline(OakNodeSequence sequence);
 
-	OTIO::Track *serialize_track(OakNodeTrack *track, double sequence_rate,
+	OTIO::Track *serialize_track(OakNodeTrack track, double sequence_rate,
 								 Rational max_track_length);
 
-	bool serialize_track_list(OakNodeTrackList *list,
+	bool serialize_track_list(OakNodeTrackList list,
 							  OTIO::Timeline *otio_timeline,
 							  double sequence_rate);
 
-	OakNodeProject *project_;
+	/** Borrowed handle; the caller keeps ownership of the project. */
+	OakNodeProject project_;
 
 	std::string filename_;
 };

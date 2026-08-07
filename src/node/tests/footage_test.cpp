@@ -33,8 +33,8 @@ namespace
 /**
  * @brief Two-stage string getter helper: query, then fetch.
  */
-std::string get_string(int (*fn)(const OakNodeFootage *, char *, int),
-					   const OakNodeFootage *footage)
+std::string get_string(int (*fn)(OakNodeFootage, char *, int),
+					   OakNodeFootage footage)
 {
 	int required = fn(footage, nullptr, 0);
 	if (required <= 0) {
@@ -49,14 +49,14 @@ std::string get_string(int (*fn)(const OakNodeFootage *, char *, int),
 
 TEST(NodeFootage, CreateAndFilename)
 {
-	OakNodeProject *project = oaknode_project_init();
-	ASSERT_NE(project, nullptr);
+	OakNodeProject project = oaknode_project_init();
+	ASSERT_NE(project.ctx, nullptr);
 
 	// Creating footage requires a project
-	EXPECT_EQ(oaknode_footage_create(nullptr, nullptr), nullptr);
+	EXPECT_EQ(oaknode_footage_create(OakNodeProject{}, nullptr).ctx, nullptr);
 
-	OakNodeFootage *footage = oaknode_footage_create(project, nullptr);
-	ASSERT_NE(footage, nullptr);
+	OakNodeFootage footage = oaknode_footage_create(project, nullptr);
+	ASSERT_NE(footage.ctx, nullptr);
 	EXPECT_EQ(get_string(oaknode_footage_filename, footage), "");
 
 	// A nonexistent path keeps the footage invalid but stores the name
@@ -71,15 +71,15 @@ TEST(NodeFootage, CreateAndFilename)
 	EXPECT_EQ(oaknode_footage_set_filename(footage, nullptr),
 			  OAKNODE_E_INVALID);
 
-	oaknode_project_free(project);
+	oaknode_project_free(&project);
 }
 
 TEST(NodeFootage, TimestampAndMetadataDefaults)
 {
-	OakNodeProject *project = oaknode_project_init();
-	ASSERT_NE(project, nullptr);
-	OakNodeFootage *footage = oaknode_footage_create(project, nullptr);
-	ASSERT_NE(footage, nullptr);
+	OakNodeProject project = oaknode_project_init();
+	ASSERT_NE(project.ctx, nullptr);
+	OakNodeFootage footage = oaknode_footage_create(project, nullptr);
+	ASSERT_NE(footage.ctx, nullptr);
 
 	int64_t timestamp = -1;
 	EXPECT_EQ(oaknode_footage_timestamp(footage, &timestamp), OAKNODE_OK);
@@ -102,15 +102,15 @@ TEST(NodeFootage, TimestampAndMetadataDefaults)
 			  OAKNODE_OK);
 	EXPECT_EQ(numerator, 0);
 
-	oaknode_project_free(project);
+	oaknode_project_free(&project);
 }
 
 TEST(NodeFootage, Proxy)
 {
-	OakNodeProject *project = oaknode_project_init();
-	ASSERT_NE(project, nullptr);
-	OakNodeFootage *footage = oaknode_footage_create(project, nullptr);
-	ASSERT_NE(footage, nullptr);
+	OakNodeProject project = oaknode_project_init();
+	ASSERT_NE(project.ctx, nullptr);
+	OakNodeFootage footage = oaknode_footage_create(project, nullptr);
+	ASSERT_NE(footage.ctx, nullptr);
 
 	EXPECT_EQ(oaknode_footage_proxy_enabled(footage), 0);
 	EXPECT_EQ(get_string(oaknode_footage_proxy_path, footage), "");
@@ -132,7 +132,7 @@ TEST(NodeFootage, Proxy)
 	EXPECT_EQ(get_string(oaknode_footage_proxy_path, footage), "");
 	EXPECT_EQ(oaknode_footage_proxy_state(footage), 0);
 
-	oaknode_project_free(project);
+	oaknode_project_free(&project);
 }
 
 TEST(NodeFootage, NullHandleErrors)
@@ -141,32 +141,40 @@ TEST(NodeFootage, NullHandleErrors)
 	int num = 0;
 	int den = 0;
 
-	EXPECT_EQ(oaknode_footage_filename(nullptr, nullptr, 0),
+	EXPECT_EQ(oaknode_footage_filename(OakNodeFootage{}, nullptr, 0),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_footage_set_filename(nullptr, "/tmp/x"),
+	EXPECT_EQ(oaknode_footage_set_filename(OakNodeFootage{}, "/tmp/x"),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_footage_is_valid(nullptr), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_footage_timestamp(nullptr, &timestamp),
+	EXPECT_EQ(oaknode_footage_is_valid(OakNodeFootage{}), OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_footage_timestamp(OakNodeFootage{}, &timestamp),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_footage_timestamp(nullptr, nullptr),
+	EXPECT_EQ(oaknode_footage_timestamp(OakNodeFootage{}, nullptr),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_footage_set_timestamp(nullptr, 0), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_footage_decoder(nullptr, nullptr, 0),
+	EXPECT_EQ(oaknode_footage_set_timestamp(OakNodeFootage{}, 0),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_footage_total_stream_count(nullptr), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_footage_video_stream_count(nullptr), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_footage_audio_stream_count(nullptr), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_footage_subtitle_stream_count(nullptr),
+	EXPECT_EQ(oaknode_footage_decoder(OakNodeFootage{}, nullptr, 0),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_footage_duration(nullptr, &num, &den),
+	EXPECT_EQ(oaknode_footage_total_stream_count(OakNodeFootage{}),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_footage_proxy_enabled(nullptr), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_footage_set_proxy_enabled(nullptr, 1),
+	EXPECT_EQ(oaknode_footage_video_stream_count(OakNodeFootage{}),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_footage_proxy_path(nullptr, nullptr, 0),
+	EXPECT_EQ(oaknode_footage_audio_stream_count(OakNodeFootage{}),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_footage_proxy_state(nullptr), OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_footage_set_proxy(nullptr, "/tmp/p", 2, 0, 1, 1),
+	EXPECT_EQ(oaknode_footage_subtitle_stream_count(OakNodeFootage{}),
 			  OAKNODE_E_INVALID);
-	EXPECT_EQ(oaknode_footage_clear_proxy(nullptr), OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_footage_duration(OakNodeFootage{}, &num, &den),
+			  OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_footage_proxy_enabled(OakNodeFootage{}),
+			  OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_footage_set_proxy_enabled(OakNodeFootage{}, 1),
+			  OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_footage_proxy_path(OakNodeFootage{}, nullptr, 0),
+			  OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_footage_proxy_state(OakNodeFootage{}),
+			  OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_footage_set_proxy(OakNodeFootage{}, "/tmp/p", 2, 0, 1,
+										1),
+			  OAKNODE_E_INVALID);
+	EXPECT_EQ(oaknode_footage_clear_proxy(OakNodeFootage{}),
+			  OAKNODE_E_INVALID);
 }
