@@ -123,6 +123,13 @@ NodeViewItem::NodeViewItem(oak::Node node, const QString &input,
 				});
 	}
 
+	// Issue 11: reuse the issue 7 undo signal so label/color/message/input-array
+	// changes replayed from the undo stack refresh the node block immediately.
+	connect(Core::instance(), &Core::undo_index_changed, this,
+			&NodeViewItem::node_appearance_changed);
+	connect(Core::instance(), &Core::undo_index_changed, this,
+			&NodeViewItem::repopulate_inputs);
+
 	// This should be set during runtime, but just in case here's a default fallback
 	set_flow_direction(NodeViewCommon::k_left_to_right);
 }
