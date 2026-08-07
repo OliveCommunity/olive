@@ -119,6 +119,15 @@ olive::EncodingParams to_native(const oakcodec_encoding_params *p)
 			Rational(p->export_length_num, p->export_length_den));
 	}
 
+	if (p->has_custom_range && p->custom_range_in_den != 0 &&
+		p->custom_range_out_den != 0) {
+		n.set_custom_range(TimeRange(
+			Rational(int(p->custom_range_in_num),
+					 int(p->custom_range_in_den)),
+			Rational(int(p->custom_range_out_num),
+					 int(p->custom_range_out_den))));
+	}
+
 	return n;
 }
 
@@ -269,4 +278,36 @@ int oakcodec_encoder_last_error(OakEncoder encoder, char *buf, int buf_size)
 		return string_out("", buf, buf_size);
 	return string_out(b->encoder ? b->encoder->get_error() : std::string(),
 				  buf, buf_size);
+}
+
+int oakcodec_encoder_get_desired_pixel_format(OakEncoder encoder)
+{
+	EncoderBox *b = box(encoder.ctx);
+	if (!b || !b->encoder)
+		return OAKCODEC_E_INVALID;
+	return int(b->encoder->get_desired_pixel_format());
+}
+
+int oakcodec_export_format_get_extension(int format, char *buf, int buf_size)
+{
+	return string_out(
+		olive::ExportFormat::get_extension(
+			static_cast<olive::ExportFormat::Format>(format)),
+		buf, buf_size);
+}
+
+int oakcodec_encoding_generate_matrix(int method, int src_width,
+									  int src_height, int dst_width,
+									  int dst_height, double *out_matrix)
+{
+	if (!out_matrix)
+		return OAKCODEC_E_INVALID;
+
+	std::array<float, 16> matrix = olive::EncodingParams::generate_matrix(
+		static_cast<olive::EncodingParams::VideoScalingMethod>(method),
+		src_width, src_height, dst_width, dst_height);
+	for (int i = 0; i < 16; i++) {
+		out_matrix[i] = matrix[size_t(i)];
+	}
+	return OAKCODEC_OK;
 }

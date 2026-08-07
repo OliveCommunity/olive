@@ -371,3 +371,18 @@ OakNodeNode *oaknode_project_node_at(const OakNodeProject *project, int index)
 		return NULL;
 	}
 }
+
+int oaknode_project_copy_settings(OakNodeProject *dst,
+								  const OakNodeProject *src)
+{
+	if (!dst || !src) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		olive::Project::copy_settings(const_cast<olive::Project *>(to_cpp(src)), to_cpp(dst));
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}

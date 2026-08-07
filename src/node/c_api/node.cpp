@@ -20,6 +20,9 @@
 
 #include "node/node.h"
 
+#include "common/videoparams.h"
+#include "olive/core/oakcore/audioparams.h"
+
 #include <atomic>
 #include <string>
 
@@ -1229,4 +1232,103 @@ int oaknode_node_get_work_area(const OakNodeNode *node,
 		*out = NULL;
 	}
 	return OAKNODE_OK;
+}
+
+int oaknode_node_get_video_frame_cache(const OakNodeNode *node,
+									   OakNodeFrameCache **out)
+{
+	if (!node || !out) {
+		return OAKNODE_E_INVALID;
+	}
+	*out = reinterpret_cast<OakNodeFrameCache *>(
+		to_node(node)->video_frame_cache());
+	return OAKNODE_OK;
+}
+
+int oaknode_node_copy_inputs(OakNodeNode *dst, const OakNodeNode *src,
+							 int include_connections)
+{
+	if (!dst || !src) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		olive::Node::copy_inputs(to_node(src), to_node(dst),
+								 include_connections != 0);
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_node_set_value_hint_track(OakNodeNode *node,
+									  const char *input_id,
+									  int track_type, int track_index)
+{
+	if (!node || !input_id) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		to_node(node)->set_value_hint_for_input(
+			input_id,
+			olive::Node::ValueHint({ olive::NodeValue::k_texture },
+								   olive::Track::Reference(
+									   static_cast<olive::Track::Type>(
+										   track_type),
+									   track_index)
+									   .to_string()));
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_viewer_set_video_params(OakNodeNode *viewer,
+									const OakVideoParams *params)
+{
+	if (!viewer || !params || !params->ctx) {
+		return OAKNODE_E_INVALID;
+	}
+
+	const olive::VideoParams *native =
+		oakcommon_videoparams_get_native(*params);
+	if (!native) {
+		return OAKNODE_E_INVALID;
+	}
+
+	olive::ViewerOutput *v =
+		dynamic_cast<olive::ViewerOutput *>(to_node(viewer));
+	if (!v) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		v->set_video_params(*native);
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_viewer_set_audio_params(OakNodeNode *viewer,
+									const OakAudioParams *params)
+{
+	if (!viewer || !params) {
+		return OAKNODE_E_INVALID;
+	}
+
+	olive::ViewerOutput *v =
+		dynamic_cast<olive::ViewerOutput *>(to_node(viewer));
+	if (!v) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		v->set_audio_params(olive::AudioParams::from_handle(
+			oakcore_audioparams_copy(params)));
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
 }

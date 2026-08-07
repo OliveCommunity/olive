@@ -23,6 +23,7 @@
 
 #include <stdint.h>
 
+#include "common/videoparams.h"
 #include "node/error.h"
 #include "undo/undocommand.h"
 
@@ -109,6 +110,16 @@ typedef struct OakNodeProject OakNodeProject;
  */
 typedef struct OakNodeMarkerList OakNodeMarkerList;
 typedef struct OakNodeWorkArea OakNodeWorkArea;
+
+/**
+ * @brief Opaque borrowed handle to a node's video frame cache
+ * (olive::FrameHashCache in oakrender). oakrender reinterprets this into
+ * its own handle types.
+ */
+typedef struct OakNodeFrameCache OakNodeFrameCache;
+
+/* oakcore handles used by the viewer setters. */
+typedef struct OakAudioParams OakAudioParams;
 
 /**
  * @brief Number of live owned objects created through this API
@@ -542,6 +553,40 @@ int oaknode_node_get_markers(const OakNodeNode *node,
 							 OakNodeMarkerList **out);
 int oaknode_node_get_work_area(const OakNodeNode *node,
 							   OakNodeWorkArea **out);
+
+/**
+ * @brief Borrowed video frame cache of a node (NULL when the node has
+ *        none or for NULL input).
+ */
+int oaknode_node_get_video_frame_cache(const OakNodeNode *node,
+									   OakNodeFrameCache **out);
+
+/**
+ * @brief Copy input values/connections from one node to another
+ *        (Node::copy_inputs()). include_connections != 0 also copies
+ *        input connections.
+ */
+int oaknode_node_copy_inputs(OakNodeNode *dst, const OakNodeNode *src,
+							 int include_connections);
+
+/**
+ * @brief Set a track-routing value hint on an input
+ *        (Node::set_value_hint_for_input() with a single texture type
+ *        and a Track::Reference string).
+ */
+int oaknode_node_set_value_hint_track(OakNodeNode *node,
+									  const char *input_id,
+									  int track_type, int track_index);
+
+/**
+ * @brief Set a viewer node's video/audio params (ViewerOutput::
+ * set_video_params/set_audio_params, stream index 0). `params` is an
+ * oakcommon handle (video) or borrowed oakcore handle (audio).
+ */
+int oaknode_viewer_set_video_params(OakNodeNode *viewer,
+									const OakVideoParams *params);
+int oaknode_viewer_set_audio_params(OakNodeNode *viewer,
+									const OakAudioParams *params);
 
 /**
  * @brief Create a command that removes a node from its graph together

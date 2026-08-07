@@ -22,6 +22,8 @@
 
 #include <vector>
 
+#include "../src/export/export.h"
+#include "../src/precache/precachetask.h"
 #include "../src/project/import/import.h"
 #include "../src/project/load/load.h"
 #include "../src/project/save/save.h"
@@ -177,4 +179,31 @@ void oaktask_import_set_image_sequence_confirm_cb(
 		[fn, userdata](const std::string &filename) {
 			return fn(filename.c_str(), userdata) != 0;
 		});
+}
+
+OakTaskTask *oaktask_create_precache(OakNodeFootage *footage, int index,
+									 OakNodeSequence *sequence)
+{
+	if (!footage || !sequence) {
+		return NULL;
+	}
+	try {
+		return wrap(new olive::PreCacheTask(footage, index, sequence));
+	} catch (...) {
+		return NULL;
+	}
+}
+
+OakTaskTask *oaktask_create_export(OakNodeNode *viewer,
+								   OakNodeColorManager *color_manager,
+								   const oakcodec_encoding_params *params)
+{
+	if (!viewer || !params) {
+		return NULL;
+	}
+	try {
+		return wrap(new olive::ExportTask(viewer, color_manager, *params));
+	} catch (...) {
+		return NULL;
+	}
 }

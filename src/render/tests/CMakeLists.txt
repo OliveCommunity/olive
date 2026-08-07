@@ -18,6 +18,7 @@ endif()
 add_executable(oakrender-gtest
         cache_test.cpp
         cancelatom_test.cpp
+        ticket_test.cpp
         color_test.cpp
         manager_test.cpp
         renderer_test.cpp

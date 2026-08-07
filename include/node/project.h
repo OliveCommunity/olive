@@ -164,6 +164,12 @@ int oaknode_project_cache_path(const OakNodeProject *project, char *buf,
 							   int buf_size);
 
 /**
+ * @brief Copy all project settings (Project::copy_settings()).
+ */
+int oaknode_project_copy_settings(OakNodeProject *dst,
+								  const OakNodeProject *src);
+
+/**
  * @brief Cache location setting enum value
  * (Project::get_cache_location_setting(): 0 = default location,
  * 1 = alongside project, 2 = custom path). Negative OAKNODE_E_* code on NULL.

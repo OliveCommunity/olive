@@ -206,3 +206,37 @@ void oakrender_frame_cache_save(OakRenderCache *cache, const char *path,
 	} catch (...) {
 	}
 }
+
+int oakrender_cache_get_invalidated_ranges(OakRenderCache *cache,
+		int64_t in_num, int64_t in_den, int64_t out_num, int64_t out_den,
+		int64_t *ranges, int max_ranges)
+{
+	if (!cache || max_ranges < 0) {
+		return OAKRENDER_E_INVALID;
+	}
+
+	try {
+		olive::core::TimeRangeList list = impl(cache)->get_invalidated_ranges(
+			olive::core::TimeRange(
+				olive::core::Rational(int(in_num), int(in_den)),
+				olive::core::Rational(int(out_num), int(out_den))));
+
+		int count = int(list.size());
+		if (ranges) {
+			int written = 0;
+			for (const olive::core::TimeRange &r : list) {
+				if (written >= max_ranges) {
+					break;
+				}
+				ranges[written * 4 + 0] = r.in().numerator();
+				ranges[written * 4 + 1] = r.in().denominator();
+				ranges[written * 4 + 2] = r.out().numerator();
+				ranges[written * 4 + 3] = r.out().denominator();
+				written++;
+			}
+		}
+		return count;
+	} catch (...) {
+		return OAKRENDER_E_FAILED;
+	}
+}

@@ -21,9 +21,12 @@
 #ifndef OAK_EDITOR_TASK_PROJECT_H
 #define OAK_EDITOR_TASK_PROJECT_H
 
+#include "codec/encoder.h"
+#include "node/colormanager.h"
 #include "node/footage.h"
 #include "node/node.h"
 #include "node/project.h"
+#include "node/sequence.h"
 #include "task/task.h"
 #include "undo/undocommand.h"
 
@@ -66,6 +69,15 @@ int oaktask_import_invalid_count(OakTaskTask *t);
 /** @brief Invalid filename at index (two-stage). */
 int oaktask_import_invalid_at(OakTaskTask *t, int index, char *buf,
 							  int buf_size);
+
+/** @brief olive::PreCacheTask. */
+OakTaskTask *oaktask_create_precache(OakNodeFootage *footage, int index,
+									 OakNodeSequence *sequence);
+
+/** @brief olive::ExportTask (params POD from codec/encoder.h). */
+OakTaskTask *oaktask_create_export(OakNodeNode *viewer,
+								   OakNodeColorManager *color_manager,
+								   const oakcodec_encoding_params *params);
 
 /**
  * @brief Image-sequence confirmation callback (facade/UI concern;

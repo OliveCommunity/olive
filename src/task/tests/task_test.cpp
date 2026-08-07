@@ -314,3 +314,51 @@ TEST(OakTaskConform, SubmittedConformProducesPcm)
 }
 
 } // namespace
+
+// ---- render family factories ----------------------------------------------
+
+TEST(OakTaskRenderFamily, FactoryErrorPaths)
+{
+	EXPECT_EQ(oaktask_create_precache(nullptr, 0, nullptr), nullptr);
+
+	oakcodec_encoding_params params = {};
+	EXPECT_EQ(oaktask_create_export(nullptr, nullptr, &params), nullptr);
+	EXPECT_EQ(oaktask_create_export(nullptr, nullptr, nullptr), nullptr);
+}
+
+TEST(OakTaskRenderFamily, ExportTaskConstruction)
+{
+	OakNodeProject *project = oaknode_project_init();
+	ASSERT_NE(project, nullptr);
+	ASSERT_EQ(oaknode_project_initialize(project), OAKNODE_OK);
+
+	// A sequence gives us a viewer with tracks; the factory should wrap
+	// the task successfully (no render manager needed for construction)
+	OakNodeSequence *sequence = oaknode_sequence_create();
+	ASSERT_NE(sequence, nullptr);
+	ASSERT_EQ(oaknode_project_add_node(project,
+									   oaknode_sequence_as_node(sequence)),
+			  OAKNODE_OK);
+
+	OakNodeColorManager *cm = oaknode_colormanager_init(project);
+	ASSERT_NE(cm, nullptr);
+
+	oakcodec_encoding_params params = {};
+	strncpy(params.filename, "/tmp/oaktask_export_test.mp4",
+			sizeof(params.filename) - 1);
+	params.video_enabled = 1;
+
+	OakTaskTask *t = oaktask_create_export(
+		oaknode_sequence_as_node(sequence), cm, &params);
+	ASSERT_NE(t, nullptr);
+
+	char title[128];
+	EXPECT_GT(oaktask_task_title(t, title, sizeof(title)), 0);
+
+	// Running needs a render manager; not available in this binary
+	oaktask_task_free(t);
+	oaknode_colormanager_free(cm);
+	oaknode_project_free(project);
+
+	EXPECT_EQ(oaktask_debug_alive_count(), 0);
+}

@@ -19,45 +19,40 @@
 
 ***/
 
-#ifndef OAK_PROJECTLOADBASETASK_H
-#define OAK_PROJECTLOADBASETASK_H
+#ifndef OAK_PRECACHETASK_H
+#define OAK_PRECACHETASK_H
 
-#include "node/project.h"
-#include "node/project/serializer/serializedlayoutinfo.h"
-#include "task/task.h"
+#include "node/footage.h"
+#include "node/sequence.h"
+#include "render/render.h"
 
 namespace olive
 {
 
-class ProjectLoadBaseTask : public Task {
-	Q_OBJECT
+class PreCacheTask : public RenderTask {
 public:
-	ProjectLoadBaseTask(const QString &filename);
+	PreCacheTask(OakNodeFootage *footage, int index,
+				 OakNodeSequence *sequence);
 
-	Project *get_loaded_project() const
-	{
-		return project_;
-	}
-
-	const QString &get_filename() const
-	{
-		return filename_;
-	}
-
-	const SerializedLayoutInfo &get_loaded_layout() const
-	{
-		return layout_;
-	}
+	virtual ~PreCacheTask() override;
 
 protected:
-	Project *project_;
+	virtual bool run() override;
 
-	SerializedLayoutInfo layout_;
+	virtual bool frame_downloaded(OakCodecFrame *frame,
+								  const Rational &time) override;
+
+	virtual bool audio_downloaded(const TimeRange &range,
+								  OakSampleBuffer *samples) override;
 
 private:
-	QString filename_;
+	OakNodeProject *project_;
+
+	OakNodeFootage *footage_;
+
+	OakAudioParams *audio_params_;
 };
 
 }
 
-#endif // LOADBASETASK_H
+#endif // OAK_PRECACHETASK_H

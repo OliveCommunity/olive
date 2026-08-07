@@ -116,6 +116,14 @@ typedef struct oakcodec_encoding_params {
 
 	int export_length_num; /**< Export length in seconds (rational). */
 	int export_length_den;
+
+	/** Custom export range (seconds, rational pairs); used when
+	 * has_custom_range != 0. */
+	int has_custom_range;
+	int64_t custom_range_in_num;
+	int64_t custom_range_in_den;
+	int64_t custom_range_out_num;
+	int64_t custom_range_out_den;
 } oakcodec_encoding_params;
 
 /**
@@ -184,6 +192,29 @@ OAKCODEC_API int oakcodec_encoder_flush(OakEncoder encoder);
  *        (buf/size string getter convention).
  */
 OAKCODEC_API int oakcodec_encoder_last_error(OakEncoder encoder, char *buf, int buf_size);
+
+/**
+ * @brief The pixel format the encoder wants frames in
+ *        (Encoder::get_desired_pixel_format()), as int; -1 when
+ *        unknown/invalid encoder.
+ */
+OAKCODEC_API int oakcodec_encoder_get_desired_pixel_format(OakEncoder encoder);
+
+/**
+ * @brief File extension for an export format
+ *        (ExportFormat::get_extension()), two-stage string getter.
+ */
+OAKCODEC_API int oakcodec_export_format_get_extension(int format, char *buf,
+									 int buf_size);
+
+/**
+ * @brief Scaling matrix for a scaling method
+ *        (EncodingParams::generate_matrix()), row-major 4x4 into
+ *        out_matrix[16].
+ */
+OAKCODEC_API int oakcodec_encoding_generate_matrix(int method, int src_width,
+								  int src_height, int dst_width,
+								  int dst_height, double *out_matrix);
 
 #ifdef __cplusplus
 }

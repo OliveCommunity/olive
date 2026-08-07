@@ -108,6 +108,20 @@ int oakrender_cache_has_validated_ranges(const OakRenderCache *cache);
 int oakrender_cache_indicator_height(void);
 
 /**
+ * @brief The invalidated sub-ranges of [in, out) as flat
+ *        {in_n, in_d, out_n, out_d} quadruples
+ *        (PlaybackCache::get_invalidated_ranges()).
+ *
+ * Two-stage: call with ranges == NULL (or max_ranges == 0) to get the
+ * count; then call with a buffer of max_ranges * 4 int64_t values.
+ *
+ * @return Range count (>= 0), or a negative OAKRENDER_E_* code.
+ */
+int oakrender_cache_get_invalidated_ranges(OakRenderCache *c,
+		int64_t in_num, int64_t in_den, int64_t out_num, int64_t out_den,
+		int64_t *ranges, int max_ranges);
+
+/**
  * @brief Load a cached frame from disk
  * (FrameHashCache::load_cache_frame(cache_path, uuid, ts)).
  *
