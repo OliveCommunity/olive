@@ -25,6 +25,7 @@
 
 #include "error.h"
 #include "frame.h"
+#include "render/cancelatom.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -198,6 +199,38 @@ OAKCODEC_API int oakcodec_decoder_decode_audio(OakDecoder decoder, int in_num, i
 								  int out_num, int out_den, int sample_rate,
 								  uint64_t channel_layout, float *buf,
 								  int buf_frames);
+
+/**
+ * @brief Conform the open stream's audio into per-channel pcm cache files
+ *        (Decoder::conform_audio()).
+ *
+ * `output_filenames` is an array of `filename_count` final per-channel
+ * paths. `sample_format` is olive::core::SampleFormat::Format as int.
+ * `cancelled` may be an empty OakCancelAtom (ctx == NULL).
+ *
+ * @return OAKCODEC_OK on success, OAKCODEC_E_STATE when no stream is
+ *         open, OAKCODEC_E_CANCELLED when cancelled, OAKCODEC_E_FAILED
+ *         otherwise.
+ */
+OAKCODEC_API int oakcodec_decoder_conform_audio(OakDecoder decoder,
+		const char *const *output_filenames, int filename_count,
+		int sample_rate, uint64_t channel_layout, int sample_format,
+		OakCancelAtom cancelled);
+
+/**
+ * @brief Image-sequence filename heuristics (Decoder::get_image_sequence_*).
+ *
+ * digit_count: number of trailing digits in the filename stem (0 = not an
+ * image sequence filename). index: the numeric value of those digits (-1
+ * when none). transform: substitute `number` into the digit field,
+ * two-stage string getter.
+ */
+OAKCODEC_API int oakcodec_decoder_get_image_sequence_digit_count(
+		const char *filename);
+OAKCODEC_API int64_t oakcodec_decoder_get_image_sequence_index(
+		const char *filename);
+OAKCODEC_API int oakcodec_decoder_transform_image_sequence_file_name(
+		const char *filename, int64_t number, char *buf, int buf_size);
 
 /**
  * @brief Human-readable detail of the last error on this decoder

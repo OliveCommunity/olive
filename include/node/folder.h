@@ -22,6 +22,7 @@
 #define OAK_EDITOR_NODE_FOLDER_H
 
 #include "node/error.h"
+#include "undo/undocommand.h"
 #include "node/project.h"
 
 #ifdef __cplusplus
@@ -72,6 +73,19 @@ OakNodeNode *oaknode_folder_child_at(const OakNodeFolder *folder, int index);
  *         folder, or another negative OAKNODE_E_* error code.
  */
 int oaknode_folder_add_child(OakNodeFolder *folder, OakNodeNode *child);
+
+/**
+ * @brief Borrowed cast from a folder handle to its node handle.
+ * NULL for NULL.
+ */
+OakNodeNode *oaknode_folder_as_node(OakNodeFolder *folder);
+
+/**
+ * @brief Create an undoable FolderAddChild command. Owned; free with
+ *        oakundo_command_free().
+ */
+OakUndoCommand *oaknode_command_create_folder_add_child(
+	OakNodeFolder *folder, OakNodeNode *child);
 
 /**
  * @brief Remove `child` from `folder` without deleting it (live,

@@ -355,3 +355,78 @@ int oaknode_serializer_loaddata_connection_at(
 		return OAKNODE_E_FAILED;
 	}
 }
+
+namespace
+{
+
+int report_serializer_result(const olive::ProjectSerializer::Result &result,
+							 int *out_code, char *details, int details_size)
+{
+	if (out_code) {
+		*out_code = int(result.code());
+	}
+
+	int needed = 0;
+	if (details || details_size > 0) {
+		std::string d = result.get_details();
+		needed = int(d.size()) + 1;
+		if (details && details_size >= needed) {
+			memcpy(details, d.c_str(), needed);
+		}
+	}
+
+	if (result.code() == olive::ProjectSerializer::k_success) {
+		return OAKNODE_OK;
+	}
+	return (details && details_size > 0) ? needed : OAKNODE_E_FAILED;
+}
+
+} // namespace
+
+int oaknode_serializer_save_to_file(OakNodeProject *project,
+		const char *filename, int use_compression, int *out_code,
+		char *details, int details_size)
+{
+	if (!project || !filename) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		oaknode_serializer_initialize();
+
+		olive::ProjectSerializer::SaveData data(
+			olive::ProjectSerializer::k_project,
+			reinterpret_cast<olive::Project *>(project), filename);
+
+		olive::ProjectSerializer::Result result =
+			olive::ProjectSerializer::save(data, use_compression != 0);
+
+		return report_serializer_result(result, out_code, details,
+										details_size);
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_serializer_load_from_file(OakNodeProject *project,
+		const char *filename, int *out_code, char *details,
+		int details_size)
+{
+	if (!project || !filename) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		oaknode_serializer_initialize();
+
+		olive::ProjectSerializer::Result result =
+			olive::ProjectSerializer::load(
+				reinterpret_cast<olive::Project *>(project), filename,
+				olive::ProjectSerializer::k_project);
+
+		return report_serializer_result(result, out_code, details,
+										details_size);
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}

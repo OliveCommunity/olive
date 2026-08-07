@@ -20,6 +20,8 @@
 
 #include "node/folder.h"
 
+#include "../../undo/c_api/commandhandle.h"
+
 #include <new>
 
 #include "../src/project.h"
@@ -226,6 +228,33 @@ OakNodeFolder *oaknode_folder_parent_of(const OakNodeNode *node)
 
 	try {
 		return reinterpret_cast<OakNodeFolder *>(to_cpp(node)->folder());
+	} catch (...) {
+		return NULL;
+	}
+}
+
+OakNodeNode *oaknode_folder_as_node(OakNodeFolder *folder)
+{
+	return reinterpret_cast<OakNodeNode *>(folder);
+}
+
+OakUndoCommand *oaknode_command_create_folder_add_child(
+	OakNodeFolder *folder, OakNodeNode *child)
+{
+	if (!folder || !child) {
+		return NULL;
+	}
+
+	try {
+		OakUndoCommand *handle =
+			new (std::nothrow) OakUndoCommand{ nullptr, true };
+		if (!handle) {
+			return NULL;
+		}
+		handle->command = new olive::FolderAddChild(
+			reinterpret_cast<olive::Folder *>(folder),
+			reinterpret_cast<olive::Node *>(child));
+		return handle;
 	} catch (...) {
 		return NULL;
 	}

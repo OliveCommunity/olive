@@ -20,6 +20,9 @@
 
 #include "node/footage.h"
 
+#include "common/videoparams.h"
+#include "../../../include/render/cancelatom.h"
+
 #include <cstring>
 #include <new>
 #include <string>
@@ -319,4 +322,79 @@ int oaknode_footage_clear_proxy(OakNodeFootage *footage)
 	} catch (...) {
 		return OAKNODE_E_FAILED;
 	}
+}
+
+int oaknode_footage_get_video_params(OakNodeFootage *footage, int index,
+									 OakVideoParams *out)
+{
+	olive::Footage *f = to_cpp(footage);
+	if (!f || !out || index < 0) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		olive::VideoParams vp = f->get_video_params(index);
+		if (!vp.is_valid() && index >= f->input_array_size(
+				olive::ViewerOutput::k_video_params_input)) {
+			return OAKNODE_E_NOT_FOUND;
+		}
+		*out = oakcommon_videoparams_init_from_native(&vp);
+		return out->ctx ? OAKNODE_OK : OAKNODE_E_NOMEM;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_footage_set_video_params(OakNodeFootage *footage, int index,
+									 const OakVideoParams *params)
+{
+	olive::Footage *f = to_cpp(footage);
+	if (!f || !params || !params->ctx) {
+		return OAKNODE_E_INVALID;
+	}
+
+	const olive::VideoParams *native =
+		oakcommon_videoparams_get_native(*params);
+	if (!native) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		f->set_video_params(*native, index);
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_footage_get_video_length(OakNodeFootage *footage,
+									 int64_t *out_num, int64_t *out_den)
+{
+	olive::Footage *f = to_cpp(footage);
+	if (!f || !out_num || !out_den) {
+		return OAKNODE_E_INVALID;
+	}
+
+	olive::core::Rational len = f->get_video_length();
+	*out_num = len.numerator();
+	*out_den = len.denominator();
+	return OAKNODE_OK;
+}
+
+int oaknode_footage_set_cancel_atom(OakNodeFootage *footage,
+									OakCancelAtom atom)
+{
+	olive::Footage *f = to_cpp(footage);
+	if (!f) {
+		return OAKNODE_E_INVALID;
+	}
+
+	f->set_cancel_pointer(
+		atom.ctx ? oakrender_cancelatom_get_native(atom) : nullptr);
+	return OAKNODE_OK;
+}
+
+OakNodeNode *oaknode_footage_as_node(OakNodeFootage *footage)
+{
+	return reinterpret_cast<OakNodeNode *>(footage);
 }

@@ -29,6 +29,14 @@
 extern "C" {
 #endif
 
+#ifdef __cplusplus
+} /* extern "C" */
+
+namespace olive { class CancelAtom; }
+
+extern "C" {
+#endif
+
 /**
  * @brief Current ABI version stamped into every oakrender handle.
  *
@@ -108,8 +116,14 @@ int oakrender_cancelatom_is_cancelled(OakCancelAtom atom, int *cancelled);
  *         NULL out parameter.
  */
 int oakrender_cancelatom_heard_cancel(OakCancelAtom atom, int *heard);
-
 #ifdef __cplusplus
+
+/**
+ * @brief Borrowed access to the underlying C++ atom (C++ only, for
+ *        adapter layers). Valid while the handle is held. NULL-safe.
+ */
+olive::CancelAtom *oakrender_cancelatom_get_native(OakCancelAtom atom);
+
 }
 #endif
 

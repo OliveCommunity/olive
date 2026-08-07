@@ -133,3 +133,11 @@ int oakrender_cancelatom_heard_cancel(OakCancelAtom atom, int *heard)
 	*heard = c->heard_cancel() ? 1 : 0;
 	return OAKRENDER_OK;
 }
+
+olive::CancelAtom *oakrender_cancelatom_get_native(OakCancelAtom atom)
+{
+	if (!atom.ctx) {
+		return nullptr;
+	}
+	return &static_cast<CancelAtomBox *>(atom.ctx)->impl;
+}

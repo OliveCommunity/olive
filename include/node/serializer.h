@@ -242,3 +242,44 @@ int oaknode_serializer_loaddata_connection_at(
 #endif
 
 #endif //OAK_EDITOR_NODE_SERIALIZER_H
+
+/**
+ * @brief Result codes for file-level save/load (mirror
+ *        ProjectSerializer::ResultCode; pinned by test).
+ */
+enum OakNodeSerializerResultCode {
+	OAKNODE_SERIALIZER_RESULT_SUCCESS = 0,
+	OAKNODE_SERIALIZER_RESULT_PROJECT_TOO_OLD = 1,
+	OAKNODE_SERIALIZER_RESULT_PROJECT_TOO_NEW = 2,
+	OAKNODE_SERIALIZER_RESULT_UNKNOWN_VERSION = 3,
+	OAKNODE_SERIALIZER_RESULT_FILE_ERROR = 4,
+	OAKNODE_SERIALIZER_RESULT_XML_ERROR = 5,
+	OAKNODE_SERIALIZER_RESULT_OVERWRITE_ERROR = 6,
+	OAKNODE_SERIALIZER_RESULT_NO_DATA = 7
+};
+
+/**
+ * @brief Save a project to a file (ProjectSerializer::save(), project
+ *        type, optional OVEC compression). Layout data is not serialized
+ *        through this API (app-layer concern, see oakstorage/M10).
+ *
+ * @param out_code Receives an OakNodeSerializerResultCode (may be NULL).
+ * @param details Optional two-stage buffer for the result details
+ *        string (e.g. the fallback filename on overwrite errors).
+ * @return OAKNODE_OK when the result code is
+ *         OAKNODE_SERIALIZER_RESULT_SUCCESS, OAKNODE_E_FAILED otherwise
+ *         (details in out_code/details), OAKNODE_E_INVALID for NULL args.
+ */
+int oaknode_serializer_save_to_file(OakNodeProject *project,
+		const char *filename, int use_compression, int *out_code,
+		char *details, int details_size);
+
+/**
+ * @brief Load a project from a file into `project`
+ *        (ProjectSerializer::load(), project type).
+ *
+ * Same return/out-param convention as oaknode_serializer_save_to_file().
+ */
+int oaknode_serializer_load_from_file(OakNodeProject *project,
+		const char *filename, int *out_code, char *details,
+		int details_size);

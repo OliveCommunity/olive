@@ -27,6 +27,7 @@
 #include <sys/stat.h>
 
 #include "common/loopmode.h"
+#include "render/cancelatom.h"
 #include "decoder.h"
 #include "footagedescription.h"
 #include "frame.h"
@@ -385,4 +386,72 @@ int oakcodec_decoder_last_error(OakDecoder decoder, char *buf, int buf_size)
 	if (!b)
 		return string_out("", buf, buf_size);
 	return string_out(b->last_error, buf, buf_size);
+}
+
+int oakcodec_decoder_conform_audio(OakDecoder decoder,
+		const char *const *output_filenames, int filename_count,
+		int sample_rate, uint64_t channel_layout, int sample_format,
+		OakCancelAtom cancelled)
+{
+	DecoderBox *b = decoder_box(decoder.ctx);
+	if (!b || (!output_filenames && filename_count > 0) ||
+		filename_count < 0)
+		return OAKCODEC_E_INVALID;
+	if (!b->open || !b->decoder)
+		return OAKCODEC_E_STATE;
+
+	try {
+		std::vector<std::string> filenames;
+		filenames.reserve(size_t(filename_count));
+		for (int i = 0; i < filename_count; i++) {
+			if (!output_filenames[i])
+				return OAKCODEC_E_INVALID;
+			filenames.emplace_back(output_filenames[i]);
+		}
+
+		olive::AudioParams params(
+			sample_rate, channel_layout,
+			static_cast<olive::core::SampleFormat::Format>(sample_format));
+
+		bool ret = b->decoder->conform_audio(filenames, params,
+											 cancelled.ctx ? &cancelled
+														   : nullptr);
+		if (!ret) {
+			int heard = 0;
+			if (cancelled.ctx &&
+				oakrender_cancelatom_heard_cancel(cancelled, &heard) ==
+					OAKRENDER_OK &&
+				heard) {
+				return OAKCODEC_E_CANCELLED;
+			}
+			return OAKCODEC_E_FAILED;
+		}
+		return OAKCODEC_OK;
+	} catch (...) {
+		return OAKCODEC_E_FAILED;
+	}
+}
+
+int oakcodec_decoder_get_image_sequence_digit_count(const char *filename)
+{
+	if (!filename)
+		return OAKCODEC_E_INVALID;
+	return olive::Decoder::get_image_sequence_digit_count(filename);
+}
+
+int64_t oakcodec_decoder_get_image_sequence_index(const char *filename)
+{
+	if (!filename)
+		return OAKCODEC_E_INVALID;
+	return olive::Decoder::get_image_sequence_index(filename);
+}
+
+int oakcodec_decoder_transform_image_sequence_file_name(
+		const char *filename, int64_t number, char *buf, int buf_size)
+{
+	if (!filename)
+		return OAKCODEC_E_INVALID;
+	return string_out(
+		olive::Decoder::transform_image_sequence_file_name(filename, number),
+		buf, buf_size);
 }

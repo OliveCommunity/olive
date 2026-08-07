@@ -23,7 +23,12 @@
 
 #include <stdint.h>
 
+#include "common/videoparams.h"
 #include "node/error.h"
+// NOTE: quoted-relative to bypass the "render/cancelatom.h" transition
+// bridge (oakrender's C++ olive::CancelAtom) that shadows the C ABI
+// header on oaknode's include path.
+#include "../../include/render/cancelatom.h"
 #include "node/project.h"
 
 #ifdef __cplusplus
@@ -59,6 +64,12 @@ typedef struct OakNodeFootage OakNodeFootage;
  */
 OakNodeFootage *oaknode_footage_create(OakNodeProject *project,
 									   const char *filename);
+
+/**
+ * @brief Borrowed cast from a footage handle to its node handle.
+ * NULL for NULL.
+ */
+OakNodeNode *oaknode_footage_as_node(OakNodeFootage *footage);
 
 /**
  * @brief Current media path (Footage::filename()). Two-stage string getter.
@@ -191,6 +202,36 @@ int oaknode_footage_set_proxy(OakNodeFootage *footage, const char *path,
  * @return OAKNODE_OK or a negative OAKNODE_E_* error code.
  */
 int oaknode_footage_clear_proxy(OakNodeFootage *footage);
+
+/**
+ * @brief Video stream parameters as an oakcommon video-params handle
+ * (ViewerOutput::get_video_params()). `out` receives a handle with
+ * reference count 1 (release with oakcommon_videoparams_free()).
+ * OAKNODE_E_NOT_FOUND for an out-of-range index.
+ */
+int oaknode_footage_get_video_params(OakNodeFootage *footage, int index,
+									 OakVideoParams *out);
+
+/**
+ * @brief Set a video stream's parameters from an oakcommon handle
+ * (ViewerOutput::set_video_params()).
+ */
+int oaknode_footage_set_video_params(OakNodeFootage *footage, int index,
+									 const OakVideoParams *params);
+
+/**
+ * @brief Video length as a rational pair (ViewerOutput::get_video_length()).
+ */
+int oaknode_footage_get_video_length(OakNodeFootage *footage,
+									 int64_t *out_num, int64_t *out_den);
+
+/**
+ * @brief Set the footage's cancellation atom used during probing
+ * (Footage::set_cancel_pointer()). `atom` may be an empty OakCancelAtom
+ * (ctx == NULL) to clear.
+ */
+int oaknode_footage_set_cancel_atom(OakNodeFootage *footage,
+									OakCancelAtom atom);
 
 #ifdef __cplusplus
 }
