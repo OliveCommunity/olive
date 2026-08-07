@@ -407,6 +407,14 @@ void EngineEventBridge::dispatch(const oakengine_event *event)
 	case OAKENGINE_EVENT_UNDO_INDEX_CHANGED:
 		emit undo_index_changed(int(event->a));
 		break;
+	case OAKENGINE_EVENT_COLOR_MANAGER_CONFIG_CHANGED:
+		emit color_manager_config_changed(
+			static_cast<OakEngineColorManager *>(event->source));
+		break;
+	case OAKENGINE_EVENT_COLOR_MANAGER_REFERENCE_SPACE_CHANGED:
+		emit color_manager_reference_space_changed(
+			static_cast<OakEngineColorManager *>(event->source));
+		break;
 	case OAKENGINE_EVENT_AUDIO_MANAGER_OUTPUT_PARAMS_CHANGED:
 		emit audio_output_params_changed();
 		break;

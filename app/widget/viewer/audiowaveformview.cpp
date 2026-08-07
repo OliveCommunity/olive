@@ -26,6 +26,7 @@
 #include <QtMath>
 
 #include "common/configwrapper.h"
+#include "core.h"
 #include "engineeventbridge.h"
 #include "widget/viewer/vieweroutpututils.h"
 
@@ -56,6 +57,12 @@ AudioWaveformView::AudioWaveformView(QWidget *parent)
 	waveform_bridge_ = new EngineEventBridge(this);
 	connect(waveform_bridge_, &EngineEventBridge::viewer_connected_waveform_changed,
 			this, [this](OakEngineNode *) { viewport()->update(); });
+
+	// Issue 20: reuse the issue 7 undo signal so connected-waveform changes
+	// replayed from the undo stack refresh the waveform view.
+	connect(Core::instance(), &Core::undo_index_changed, this, [this](int) {
+		viewport()->update();
+	});
 }
 
 void AudioWaveformView::set_viewer(OakEngineNode *playback)

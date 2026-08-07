@@ -99,6 +99,11 @@ ViewerDisplayWidget::ViewerDisplayWidget(QWidget *parent)
 	bridge_ = new EngineEventBridge(this);
 	connect(bridge_, &EngineEventBridge::sequence_subtitles_changed, this,
 			[this](OakEngineSequence *, qint64, qint64) { update(); });
+
+	// Issue 20: reuse the issue 7 undo signal so subtitle-track changes
+	// replayed from the undo stack refresh the viewer display.
+	connect(Core::instance(), &Core::undo_index_changed, this,
+			static_cast<void (QWidget::*)()>(&QWidget::update));
 }
 
 ViewerDisplayWidget::~ViewerDisplayWidget()

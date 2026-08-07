@@ -24,6 +24,7 @@
 #include <QHBoxLayout>
 #include <QMessageBox>
 
+#include "core.h"
 #include "panel/panelmanager.h"
 #include "oakengine/videoparams.h"
 #include "oakengine/renderer.h"
@@ -41,6 +42,7 @@ ManagedDisplayWidget::ManagedDisplayWidget(QWidget *parent)
 	, color_manager_(nullptr)
 	, color_service_(nullptr)
 	, is_backend_neutral_(false)
+	, bridge_(new EngineEventBridge(this))
 {
 	QHBoxLayout *layout = new QHBoxLayout(this);
 	layout->setSpacing(0);
@@ -108,6 +110,19 @@ ManagedDisplayWidget::ManagedDisplayWidget(QWidget *parent)
 		wrapper_ = inner_widget_;
 		layout->addWidget(wrapper_);
 	}
+
+	// Issue 20: connect color-manager bridge signals once in the constructor
+	// so switching the observed color manager doesn't duplicate them.
+	connect(bridge_, &EngineEventBridge::color_manager_config_changed, this,
+			&ManagedDisplayWidget::color_config_changed);
+	connect(bridge_,
+			&EngineEventBridge::color_manager_reference_space_changed, this,
+			&ManagedDisplayWidget::color_config_changed);
+
+	// Issue 20: reuse the issue 7 undo signal so color-manager config changes
+	// replayed from the undo stack refresh the color processor.
+	connect(Core::instance(), &Core::undo_index_changed, this,
+			&ManagedDisplayWidget::color_config_changed);
 }
 
 ManagedDisplayWidget::~ManagedDisplayWidget()
@@ -129,30 +144,19 @@ void ManagedDisplayWidget::connect_color_manager(OakEngineColorManager *color_ma
 		return;
 	}
 
-	if (color_manager_ != nullptr) {
-		for (int64_t id : color_subs_) {
-			oakengine_event_unsubscribe(id);
-		}
-		color_subs_.clear();
-	}
+	// Tear down previous color-manager subscriptions via the bridge.
+	bridge_->unsubscribe_all();
 
 	color_manager_ = color_manager;
 
 	if (color_manager_ != nullptr) {
-		auto sub = [this](int ev) {
-			int64_t id = oakengine_event_subscribe(
-				color_manager_, ev,
-				[](const oakengine_event *, void *userdata) {
-					static_cast<ManagedDisplayWidget *>(userdata)
-						->color_config_changed();
-				},
-				this);
-			if (id > 0) {
-				color_subs_.append(id);
-			}
-		};
-		sub(OAKENGINE_EVENT_COLOR_MANAGER_CONFIG_CHANGED);
-		sub(OAKENGINE_EVENT_COLOR_MANAGER_REFERENCE_SPACE_CHANGED);
+		// Subscribe through the bridge. Corresponding Qt signal connections
+		// live in the constructor (issue 20).
+		bridge_->subscribe(color_manager_,
+						   OAKENGINE_EVENT_COLOR_MANAGER_CONFIG_CHANGED);
+		bridge_->subscribe(
+			color_manager_,
+			OAKENGINE_EVENT_COLOR_MANAGER_REFERENCE_SPACE_CHANGED);
 	}
 
 	color_config_changed();

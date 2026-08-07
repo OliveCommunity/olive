@@ -58,6 +58,8 @@ private:
 
 	void Switch(int source, bool split_clip);
 
+	void update_viewer_sizer();
+
 	ViewerSizer *sizer_;
 
 	int64_t viewer_sub_ = 0;

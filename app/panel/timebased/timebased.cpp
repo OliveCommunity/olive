@@ -21,6 +21,7 @@
 
 #include "timebased.h"
 
+#include "core.h"
 #include "oakutil/oaknode.h"
 
 namespace olive
@@ -36,6 +37,11 @@ TimeBasedPanel::TimeBasedPanel(const QString &object_name)
 			[this](OakEngineNode *, const QString &label) {
 				set_subtitle(label);
 			});
+
+	// Issue 20: reuse the issue 7 undo signal so node label changes replayed
+	// from the undo stack refresh the panel subtitle.
+	connect(Core::instance(), &Core::undo_index_changed, this,
+			&TimeBasedPanel::retranslate);
 }
 
 TimeBasedPanel::~TimeBasedPanel()

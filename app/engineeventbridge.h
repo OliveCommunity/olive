@@ -26,7 +26,9 @@
 #include <QVector>
 
 #include "oakengine/events.h"
+
 #include "oakengine/task.h"
+struct OakEngineColorManager;
 
 namespace olive
 {
@@ -223,6 +225,11 @@ signals:
 
 	/* Undo stack family. */
 	void undo_index_changed(int index);
+
+	/* ColorManager/OCIO family. */
+	void color_manager_config_changed(OakEngineColorManager *source);
+	void color_manager_reference_space_changed(
+		OakEngineColorManager *source);
 
 	/* AudioManager family. */
 	void audio_output_params_changed();

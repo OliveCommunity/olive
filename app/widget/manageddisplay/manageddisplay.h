@@ -32,6 +32,7 @@
 #include <QOpenGLWidget>
 #endif
 
+#include "engineeventbridge.h"
 #include "oakengine/color.h"
 #include "oakengine/display.h"
 #include "oakengine/events.h"
@@ -320,7 +321,7 @@ private:
 
 	bool is_backend_neutral_ = false;
 
-	QVector<int64_t> color_subs_;
+	EngineEventBridge *bridge_ = nullptr;
 
 private slots:
 	/**

@@ -25,6 +25,7 @@
 
 #include <QShortcut>
 
+#include "core.h"
 #include "oakengine/events.h"
 #include "oakengine/viewer.h"
 #include "oakengine/timeline.h"
@@ -68,6 +69,23 @@ MulticamWidget::MulticamWidget(QWidget *parent)
 		new QShortcut(QString::number(i + 1), this, this,
 					  [this, i] { Switch(i, true); });
 	}
+
+	// Issue 20: connect bridge signals once in the constructor so switching
+	// the observed viewer node doesn't duplicate them.
+	connect(bridge_, &EngineEventBridge::viewer_size_changed, this,
+			[this](OakEngineNode *, int w, int h) {
+				sizer_->set_child_size(w, h);
+			});
+	connect(bridge_, &EngineEventBridge::viewer_pixel_aspect_changed, this,
+			[this](OakEngineNode *, qint64 num, qint64 den) {
+				sizer_->set_pixel_aspect_ratio(
+					Rational(static_cast<int>(num), static_cast<int>(den)));
+			});
+
+	// Issue 20: reuse the issue 7 undo signal so viewer size/aspect changes
+	// replayed from the undo stack refresh the multi-camera display.
+	connect(Core::instance(), &Core::undo_index_changed, this,
+			&MulticamWidget::update_viewer_sizer);
 }
 
 void MulticamWidget::set_multicam_node_internal(OakEngineNode *viewer,
@@ -104,38 +122,38 @@ void MulticamWidget::set_multicam_node(OakEngineNode *viewer,
 
 void MulticamWidget::ConnectNodeEvent(OakEngineNode *handle)
 {
-	viewer_sub_ = oakengine_event_subscribe(
-		handle, OAKENGINE_EVENT_VIEWER_SIZE_CHANGED,
-		[](const oakengine_event *event, void *userdata) {
-			auto *w = static_cast<MulticamWidget *>(userdata);
-			w->sizer_->set_child_size(int(event->a), int(event->b));
-		},
-		this);
-	viewer_sub2_ = oakengine_event_subscribe(
-		handle, OAKENGINE_EVENT_VIEWER_PIXEL_ASPECT_CHANGED,
-		[](const oakengine_event *event, void *userdata) {
-			auto *w = static_cast<MulticamWidget *>(userdata);
-			w->sizer_->set_pixel_aspect_ratio(
-				Rational(event->a, event->b));
-		},
-		this);
+	// Subscribe through the bridge. Corresponding Qt signal connections live
+	// in the constructor (issue 20).
+	viewer_sub_ = bridge_->subscribe(handle,
+									 OAKENGINE_EVENT_VIEWER_SIZE_CHANGED);
+	viewer_sub2_ = bridge_->subscribe(
+		handle, OAKENGINE_EVENT_VIEWER_PIXEL_ASPECT_CHANGED);
 
-	oak_video_params vp;
-	oakengine_viewer_get_video_params(handle, 0, &vp);
-	sizer_->set_child_size(vp.width, vp.height);
-	sizer_->set_pixel_aspect_ratio(
-		Rational(vp.pixel_aspect_num, vp.pixel_aspect_den));
+	update_viewer_sizer();
 }
 
 void MulticamWidget::DisconnectNodeEvent(OakEngineNode *n)
 {
+	Q_UNUSED(n)
+
 	if (viewer_sub_ > 0) {
-		oakengine_event_unsubscribe(viewer_sub_);
+		bridge_->unsubscribe(viewer_sub_);
 		viewer_sub_ = 0;
 	}
 	if (viewer_sub2_ > 0) {
-		oakengine_event_unsubscribe(viewer_sub2_);
+		bridge_->unsubscribe(viewer_sub2_);
 		viewer_sub2_ = 0;
+	}
+}
+
+void MulticamWidget::update_viewer_sizer()
+{
+	if (OakEngineNode *viewer = get_connected_node()) {
+		oak_video_params vp;
+		oakengine_viewer_get_video_params(viewer, 0, &vp);
+		sizer_->set_child_size(vp.width, vp.height);
+		sizer_->set_pixel_aspect_ratio(
+			Rational(vp.pixel_aspect_num, vp.pixel_aspect_den));
 	}
 }
 
